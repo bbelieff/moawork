@@ -1,0 +1,25 @@
+{
+  "name": "moawork",
+  "version": "0.1.0",
+  "private": true,
+  "description": "통합관리시스템(moawork) — 서울경영지원센터 먼데이 보드 복제 웹앱 (Next.js + Supabase + Node worker)",
+  "workspaces": [
+    "app",
+    "worker"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "npm run dev --workspace app",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "check": "bash scripts/check.sh",
+    "prepare": "git config core.hooksPath .githooks || true"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.9"
+  }
+}

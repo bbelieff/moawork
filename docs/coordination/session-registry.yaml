@@ -1,0 +1,20 @@
+# 통합관리시스템(moawork) 세션 레지스트리 — SSOT
+# 각 작업 세션(트랙)의 식별/역할/상태를 기록한다.
+version: 1
+updated: 2026-07-21
+
+sessions:
+  - id: T01
+    role: 기반 구축 (모노레포 / CI / check 게이트 / SSOT)
+    owner: belie
+    branch: main
+    status: active
+    started: 2026-07-21
+    scope:
+      - app(Next.js) 골격
+      - worker(Node / pg-boss) 골격
+      - supabase(마이그레이션) 레이어
+      - scripts/check.sh 게이트
+      - .github/workflows/ci.yml
+      - .githooks (pre-commit)
+      - SSOT 4문서 (CLAUDE.md, AGENTS.md, docs/worklog.md, docs/coordination/)

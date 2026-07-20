@@ -1,0 +1,18 @@
+# 디스패치 큐 — 트랙 간 작업 분배 SSOT
+# status: queued | in_progress | done | blocked
+version: 1
+updated: 2026-07-21
+
+# 대기 중 (아직 담당 트랙 없음)
+queue: []
+
+# 진행 중
+in_progress:
+  - id: DQ-0001
+    title: Phase 0 → W1 모노레포 기반 구축
+    assignee: T01
+    opened: 2026-07-21
+    status: in_progress
+
+# 완료
+done: []
