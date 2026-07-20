@@ -83,19 +83,24 @@ sessions:
     role: 커스터마이징 (core.custom) — 커스텀필드 / 선택지(옵션) / 저장뷰, 먼데이 컬럼 재현
     owner: belie
     branch: main
-    status: standby
+    status: active
     started: 2026-07-21
     depends_on: [T01, T02]
+    delivered:
+      - "설계: docs/design/T05-custom-fields-design.md (커스텀필드 엔진 — 13타입 레지스트리·옵션 id 안정성·저장뷰 어댑터·Port+Adapter 레이어링)"
     blocked_on:
-      - T02 완료 (core.crm 보드/아이템 도메인 스키마 v1)
+      # 구현 착수 전 해소 필요 (설계 §0 / OQ-1)
+      - "스키마 정합: saved_views 가 001_schema_v1.sql·0002_core_crm.sql 양쪽 create table(상이). 001(field_defs) vs 0002(board_columns) 정본 확정"
     scope:
       - core.custom 커스텀필드 정의/스키마 (먼데이 컬럼 타입 재현)
       - 필드 타입별 선택지(옵션) 관리
       - 저장뷰(saved view) — 먼데이 보드 뷰 재현
     notes: >-
-      대기 중(standby). 프로젝트 구조 파악 완료(CLAUDE.md/AGENTS.md/docs/ 정독).
-      커스텀필드는 T02 의 보드/아이템 도메인 스키마 위에 얹히므로 T02 done
-      전까지 착수 불가. T02 완료 시 dispatch-queue 로 작업 이관 후 착수한다.
+      착수(active). T02 done 으로 언블록 → 커스텀필드 엔진 설계 완료·커밋.
+      001_schema_v1(field_defs/field_values/saved_views)을 정본으로, T02 가 검증한
+      Port+Adapter·순수 뷰엔진·경량 검증기 패턴을 재사용하는 설계. 구현 착수는
+      스키마 충돌(001 vs 0002 커스터마이징 레이어 중복·saved_views 중복 create) 해소
+      후. 경계: RLS 정책 본체=T03, 프리셋 옵션 값 seed=T09/002.
 
   - id: T08
     role: 홈택스 (mod.hometax) — 조회→발행(전자세금계산서) + 워커 잡
@@ -129,25 +134,28 @@ sessions:
     status: active
     started: 2026-07-21
     depends_on: [T01, T02]
-    blocked_on:
-      # 아래 두 산출물은 착수 지시 시점 기준 저장소에 부재 — 데이터 의존 작업만 차단.
-      - "docs/PLAN-v0.2.md (부재) — 상품 수식·보드 31컬럼 정의"
-      - "supabase/migrations/002_seed_policyfund.sql (부재) — 프리셋 실제 값"
-      - T02 core.crm 보드 CRUD API (UI 연동 선행)
+    delivered:
+      - "app/src/lib/policyfund/: 정산 수식(확정본)·프리셋 로더·보드 추출·파이프라인·타입"
+      - "정산 수식: 수수료=round(실행액×%/100,정수%)·총매출=계약금+수수료·D±180/365=수수료입금일 기준"
+      - "프리셋 로더: 002_seed JSONB→7카테고리(지역218/상품59/기관18/상담16/계약11/진행14/자금28) + 개수검증"
+      - "보드 추출: 업무관리 31컬럼(옵션 ref/inline/redacted·formula 해석)"
+    followup:
+      - "T02 crm/formulas.ts 정합: 총매출·D+n 기산일·base 가 확정 시드와 불일치(부가세 가정 등) → 정산=T09 정의로 교정 요청"
+      - "UI: 선택지 셀렉트·업무관리 31컬럼 보드·파이프라인 필터/정렬 (T02 보드 CRUD API 소비, Next.js 수정판 문서 선확인)"
+      - "프리셋 런타임 로드 배선(industry_modules.presets_jsonb) — T02 store 연동"
     scope:
       - ind.policyfund 진행기관(정책자금 취급기관) 마스터
       - ind.policyfund 상품 카탈로그 (60여종) + 지역 조건
       - 상품 수식(한도/금리/자격 등 계산 로직) 정의·엔진
       - settlements 정산 (계약 성사 → 수수료/정산 산출·기록)
     notes: >-
-      착수(active). 데이터 무의존 순수 계층 구현 완료 —
-      app/src/lib/policyfund/: 도메인 타입 · 정산 수식(수수료/총매출/D+180/D+365,
-      +테스트) · 파이프라인 필터·정렬·집계·그룹화(+테스트) · 프리셋 카테고리 구조 +
-      개수 검증기(기대치 지역218/상품59/기관18/상담16/계약11/진행14/자금28, +테스트).
-      check.sh 초록(앱 22 테스트 통과). 지시된 docs/PLAN-v0.2.md 와
-      supabase/migrations/002_seed_policyfund.sql 는 현 트리에 부재 — 실제 옵션 값·
-      보드 31컬럼·수식 상세는 지어내지 않고 시드/기획 확정 시 로더로 주입 예정.
-      UI 컴포넌트는 데이터 + T02 API 확정 후 착수(Next.js 수정판 문서 선확인).
+      착수(active). 기획 v0.2 + 002_seed_policyfund.sql 확정(랜딩) 확인.
+      데이터 로직 계층 완료: 정산 수식은 002_seed formulas 확정본에 정합, 프리셋 로더는
+      시드 JSONB 구조에서 7개 카테고리 추출·개수 검증(전수 파싱으로 218/59/18/16/11/14/28
+      실측 일치). 업무관리 31컬럼 보드 추출. check.sh 초록(앱 109 테스트, 그중 policyfund 31).
+      T02 crm/formulas.ts 는 가정 기반이라 확정 시드와 불일치 — 정산 소유(T09) 기준
+      교정을 DQ-0009 followup 으로 요청. 남은 것은 UI(셀렉트/보드/파이프라인) — 데이터·로직은
+      준비 완료, T02 API 소비 + Next.js 수정판 문서 선확인 후 착수.
 
   - id: T06
     role: 알림발송 (mod.notify) — 알림톡/문자 발송 + VPS 워커(발송 잡, pg-boss)
@@ -163,13 +171,15 @@ sessions:
       - mod.notify 스키마 (알림 템플릿 / 발송 로그 / 수신자·채널)
       - 알림톡(카카오)·문자(SMS) 발송 프로바이더 어댑터
       - VPS 워커 발송 잡 (pg-boss 큐 핸들러, 재시도·상태 추적)
+    design_doc: docs/design/T06-notify-design.md
     notes: >-
-      대기 중(standby). 프로젝트 구조 파악 완료(CLAUDE.md/AGENTS.md/docs/ 정독).
-      worker/src/index.ts 골격에 pg-boss 부트스트랩만 존재(잡 핸들러 TODO), supabase 는
-      0001_init.sql(메타)만 존재 — mod.notify 도메인 미착수. 기획 v0.2 + DB 스키마 v1
-      (알림 도메인 테이블) 확정 시 마이그레이션 → 프로바이더 어댑터 → pg-boss 발송 잡
-      순으로 착수한다. 발송 트리거가 될 도메인 이벤트는 타 트랙(T02 파이프라인 등) 스키마에
-      의존하므로 조율은 dispatch-queue 로 진행. 비밀값(프로바이더 API 키)은 .env 로만.
+      기획 v0.2 + 스키마 v1 확정 → Phase 2 설계 문서 작성 완료
+      (docs/design/T06-notify-design.md: 발송 파이프라인·트리거 3종·벤더 어댑터·벤더 비교표).
+      단, mod.notify 는 Phase 2(벤더)라 MVP entitlement OFF(001_schema_v1.sql L461-462) →
+      구현은 Phase 2 계약(DI-5) 후. 스키마 v1 의 message_templates·messages 사용,
+      기존 마이그레이션 미수정(Phase 2 착수 시 00X_notify_phase2.sql 로 additive).
+      착수 순서: 추가 마이그레이션 → 벤더 어댑터(SOLAPI 1차) → worker boss.work(notify.send)
+      → App API·entitlement 게이트 → T02 단계이동 이벤트 구독. 비밀값(벤더 API 키)은 .env 로만.
 
   - id: T07
     role: 성과·인센티브 (mod.perf) — 성과 집계 / 리더보드 / 활동량

@@ -4,7 +4,31 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
-## 2026-07-21 — T02 · core.crm MVP 구현 (보드 미러 + 파이프라인 + 저장뷰 + 수식)
+## 2026-07-21 — T05 · 커스터마이징(core.custom) 커스텀필드 엔진 설계(checkpoint)
+
+- T02 done(DQ-0002) 확인 → T05 언블록. `git pull`(up to date) 후 지시된 소스 정독:
+  `docs/PLAN-v0.2.md` §3(core.custom), `supabase/migrations/001_schema_v1.sql`의 `field_defs`·`field_values`·`saved_views`(+ `field_type` 13종·`field_entity` enum), T02 산출물(`app/src/lib/crm/{types,store,views,validation}.ts`).
+- **설계 문서 작성**: `docs/design/T05-custom-fields-design.md`.
+  - 필드 **타입 레지스트리**(13종 `FieldTypeSpec` — 정규화/isEmpty/comparable/연산자, 타입별 value_jsonb 저장형 표).
+  - **선택지(옵션) 관리**: `options_jsonb` = `{options:{id,label,color,order,archived}[]}`, **저장값은 옵션 id**(라벨 아님) → 라벨/순서 변경에도 저장값 불변(먼데이 동작). add/rename/reorder/archive, 고아 값 진단.
+  - **field_defs/field_values 생명주기**: key slug 파생·UNIQUE, 타입변경 정책(MVP 거부), 값 정규화 upsert(PK entity_id+field_key)·프루닝, `deals.custom`은 읽기 캐시로만.
+  - **저장뷰**: T02 `views.ts`(applyView/matchFilter) + `validation.ts` **재사용**, 001의 filters/sort/columns_jsonb ↔ ViewConfig 어댑터, 개인/공유·기본뷰.
+  - **레이어링**: T02 패턴 그대로 — `CustomStore` 포트 + InMemory/PostgREST 어댑터 + service + Next.js API 라우트(app/AGENTS.md 경고 반영: 코드 전 `node_modules/next/dist/docs/` 확인).
+- ⚠️ **착수 선결(BLOCKER) 발견·명시**: 커스터마이징 레이어를 정의하는 마이그레이션이 **두 벌 공존** — `001_schema_v1.sql`(field_defs/field_values) vs `0002_core_crm.sql`(board_columns/column_values). 특히 **`saved_views` 테이블이 두 파일 모두 `create table`**(001:210, 0002:144, 컬럼 상이) → 중복 생성 충돌. 어느 모델이 정본인지(안 A: 001 / 안 B: 0002) 코디네이터 판정 필요(설계 §0/§7/OQ-1). **판정 전 구현 미착수**(경계 존중).
+- 참고: 착수 지시의 "custom_views"는 실제 스키마에 없음 — 테이블명은 `saved_views`(001·PLAN §3 일치). 설계는 `saved_views`로 표기.
+- SSOT 갱신: `session-registry.yaml` T05 standby→active(delivered: 설계문서, blocked_on: 스키마 정합), `dispatch-queue.yaml` DQ-0005 blocked→in_progress.
+- check 게이트 초록 확인 후 커밋·푸시.
+
+## 2026-07-21 — T06 · 알림발송(mod.notify) Phase 2 설계 문서 작성
+
+- 트리거: 오너가 기획 v0.2 + DB 스키마 v1 확정 통보 → `docs/PLAN-v0.2.md` §3/§4(mod.notify·흐름 E) + `001_schema_v1.sql`(message_channel/message_status enum, message_templates·messages 테이블, RLS) 정독.
+- 확인: **mod.notify 는 Phase 2(벤더)** — MVP plan_features 미포함(entitlement OFF, `001_schema_v1.sql` L461-462). 스키마상 테이블은 `message_templates`·`messages`(문서상 명칭). 설계는 미리, 활성화는 Phase 2 계약 후.
+- 산출물: **`docs/design/T06-notify-design.md`** — 발송 파이프라인(App→messages(queued)→pg-boss `notify.send`→VPS 워커 벤더 어댑터→상태갱신·재시도), 트리거 3종(수동/단계이동 자동/정산 D+180·365 스케줄), 벤더 어댑터 추상화, 알림톡→SMS 대체발송, entitlement 게이트, Phase 2 추가 마이그레이션(`00X_notify_phase2.sql`: channel/retry_count/provider_message_id/scheduled_at 등) 제안.
+- **벤더 비교표(비용·API·리드타임)**: SOLAPI/팝빌/NHN Cloud/NCP SENS/알리고/비즈엠. 권장 = 1차 SOLAPI(DX·단일벤더), 전략대안 팝빌(홈택스·세금계산서 통합). belie 계약 결정(DI-5) 요청.
+- 조율: T02 단계이동→알림 트리거 이벤트 계약 필요(dispatch-queue). mod.hometax 트랙과 벤더 통합 논의.
+- 기존 마이그레이션 미수정(규칙 준수) — Phase 2 착수 시 새 파일로 additive.
+
+
 
 - **트리거**: 오너가 기획 v0.2 + DB 스키마 v1 확정 통보. 단, 지정된 `docs/PLAN-v0.2.md` /
   `supabase/migrations/001_schema_v1.sql` 이 저장소에 부재 → 오너 승인 하에 T02 가 core.crm
