@@ -1,83 +1,80 @@
-// T09 · 정산 수식(settlements).
+// T09 · 정산 수식(settlements) — 확정본.
 //
-// 사용자 명세 4종: 수수료 · 총매출 · D+180 · D+365.
+// SSOT: supabase/migrations/002_seed_policyfund.sql 의 formulas 블록
+//   fee_amount    = round(실행액 * 수수료% / 100)   ← 수수료%는 정수 퍼센트(3 = 3%)
+//   total_revenue = 계약금 + 수수료(원)
+//   d180          = 수수료입금일 + 180일
+//   d365          = 수수료입금일 + 365일
+// 또한 기획 v0.2 §3 ind.policyfund / §5(settlements generated column)과 일치.
 //
-// [정의 · 가정]
-// - 수수료(commission) = 집행금액 × 수수료율. (수수료의 보편적 정의: 순수 산술)
-// - 총매출(totalRevenue) = 인식된 수수료(매출)의 합. 회사 관점 매출은 컨설팅 수수료.
-//   ※ "집행금액=총매출" 로 보는 정의(대출 실행액 기준)를 쓰는 경우가 있어,
-//      집행금액 기준 총매출도 grossFromDisbursement() 로 별도 제공한다.
-// - D+180 / D+365 = 계약일 기준 +180일 / +365일 정산 시점(1차/2차 정산일).
-//
-// 실제 수수료율·정산 규칙(반올림 단위, 부가세 등)의 SSOT 는
-// 기획 v0.2 / 002_seed_policyfund.sql 다. 확정 시 이 모듈의 가정을 대조·조정한다.
-
-import { toDateString } from "../format";
+// ⚠ T02 crm/formulas.ts 는 착수 시점 가정(총매출=수수료×1.1 부가세, D+n=계약일 기준,
+//    base=계약금액)으로 저작되어 본 확정본과 불일치 — DQ 로 정합 요청(정산=T09 소유).
 
 const MS_PER_DAY = 86_400_000;
 
-/** 계약(집행) 1건의 정산 입력. */
+/** 계약(집행) 1건의 정산 입력. 금액은 원 단위. */
 export interface SettlementInput {
-  /** 집행금액(대출 실행액 등 수수료 산정 기준액). 원 단위. */
+  /** 실행액(대출 실행액 = 수수료 산정 기준). */
   disbursedAmount: number;
-  /** 수수료율. 비율(예: 0.03 = 3%). */
-  feeRate: number;
-  /** 계약일(정산 기산일). */
-  contractDate: Date;
+  /** 수수료율(정수 퍼센트, 3 = 3%). */
+  feePercent: number;
+  /** 계약금. 총매출 산정에 가산. */
+  downPayment: number;
+  /** 수수료 입금일(D+n 기산일). 미입금이면 null → D+n 도 null. */
+  feeDepositDate: Date | null;
 }
 
 /** 계약 1건의 정산 결과. */
 export interface SettlementResult {
-  /** 수수료 = 집행금액 × 수수료율(원 단위 반올림). */
-  commission: number;
-  /** 1차 정산일 D+180 (YYYY-MM-DD). */
-  settlementDate180: string;
-  /** 2차 정산일 D+365 (YYYY-MM-DD). */
-  settlementDate365: string;
+  /** 수수료(원) = round(실행액 × 수수료% / 100). */
+  feeAmount: number;
+  /** 총매출 = 계약금 + 수수료(원). */
+  totalRevenue: number;
+  /** D+180 (YYYY-MM-DD) 또는 null(수수료입금일 미정). */
+  dPlus180: string | null;
+  /** D+365 (YYYY-MM-DD) 또는 null. */
+  dPlus365: string | null;
 }
 
 /**
- * 수수료 = 집행금액 × 수수료율. 원 단위 반올림.
- * feeRate 는 비율(0.03 = 3%). 음수 입력은 그대로 계산(호출부 검증 책임).
+ * 수수료(원) = round(실행액 × 수수료% / 100).
+ * feePercent 는 정수 퍼센트(3 = 3%). 원 단위 반올림.
  */
-export function commission(disbursedAmount: number, feeRate: number): number {
-  return Math.round(disbursedAmount * feeRate);
+export function feeAmount(disbursedAmount: number, feePercent: number): number {
+  return Math.round((disbursedAmount * feePercent) / 100);
+}
+
+/** 총매출 = 계약금 + 수수료(원). */
+export function totalRevenue(downPayment: number, fee: number): number {
+  return downPayment + fee;
 }
 
 /**
- * 계약일 기준 D+n 정산일.
- * UTC 기준 일수 가산 후 YYYY-MM-DD 문자열로 반환(시간대 영향 배제).
+ * 수수료입금일 기준 D+n (YYYY-MM-DD). base 가 null 이면 null.
+ * UTC 기준 일수 가산(시간대 영향 배제).
  */
-export function settlementDate(contractDate: Date, days: number): string {
-  return toDateString(new Date(contractDate.getTime() + days * MS_PER_DAY));
+export function dPlus(feeDepositDate: Date | null, days: number): string | null {
+  if (feeDepositDate === null) return null;
+  const t = feeDepositDate.getTime();
+  if (Number.isNaN(t)) return null;
+  return new Date(t + days * MS_PER_DAY).toISOString().slice(0, 10);
 }
 
-/** 계약 1건의 정산(수수료 + D+180 + D+365)을 산출한다. */
+/** 계약 1건의 정산(수수료·총매출·D+180·D+365)을 산출한다. */
 export function computeSettlement(input: SettlementInput): SettlementResult {
+  const fee = feeAmount(input.disbursedAmount, input.feePercent);
   return {
-    commission: commission(input.disbursedAmount, input.feeRate),
-    settlementDate180: settlementDate(input.contractDate, 180),
-    settlementDate365: settlementDate(input.contractDate, 365),
+    feeAmount: fee,
+    totalRevenue: totalRevenue(input.downPayment, fee),
+    dPlus180: dPlus(input.feeDepositDate, 180),
+    dPlus365: dPlus(input.feeDepositDate, 365),
   };
 }
 
-/**
- * 총매출 = 여러 계약 건의 수수료(매출) 합.
- * 회사 관점 매출(컨설팅 수수료 합계) 정의.
- */
-export function totalRevenue(items: readonly SettlementInput[]): number {
-  return items.reduce(
-    (sum, it) => sum + commission(it.disbursedAmount, it.feeRate),
-    0,
-  );
-}
-
-/**
- * 총매출(집행금액 기준) = 집행금액의 합.
- * "총매출 = 대출 실행액" 정의를 쓰는 경우를 위한 대안 산출.
- */
-export function grossFromDisbursement(
-  items: readonly SettlementInput[],
-): number {
-  return items.reduce((sum, it) => sum + it.disbursedAmount, 0);
+/** 여러 건의 총매출 합계(대시보드 집계용). */
+export function sumTotalRevenue(items: readonly SettlementInput[]): number {
+  return items.reduce((sum, it) => {
+    const fee = feeAmount(it.disbursedAmount, it.feePercent);
+    return sum + totalRevenue(it.downPayment, fee);
+  }, 0);
 }

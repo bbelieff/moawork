@@ -63,12 +63,12 @@ blocked:
     opened: 2026-07-21
     status: in_progress
     notes: >-
-      데이터 무의존 순수 계층 완료(정산 수식 · 파이프라인 로직 · 프리셋 검증기 · 타입,
-      app/src/lib/policyfund/, check.sh 초록). 남은 작업은 아래 산출물 부재로 차단.
-    blocked_on:
-      - "docs/PLAN-v0.2.md 부재 — 상품 수식·보드 31컬럼 정의 (프리셋/보드 UI 선행)"
-      - "supabase/migrations/002_seed_policyfund.sql 부재 — 프리셋 실제 값(지역218/상품59/기관18…)"
-      - T02 core.crm 보드 CRUD API (보드 UI 연동 선행)
+      기획 v0.2 + 002_seed 확정 반영. 데이터 로직 계층 완료: 정산 수식(확정본) · 프리셋
+      로더(7카테고리, 개수검증) · 업무관리 31컬럼 보드 추출 · 파이프라인 로직. check.sh 초록
+      (앱 109 테스트). 남은 것은 UI + 아래 정합 요청.
+    followup:
+      - "→ T02: crm/formulas.ts 확정 시드와 불일치(총매출=수수료×1.1 부가세→계약금+수수료, D+n=계약일→수수료입금일, base=계약금액→실행액). 정산=T09 소유, 확정 정의는 app/src/lib/policyfund/settlement.ts. 수식컬럼 엔진 정합 필요."
+      - "UI: 선택지 셀렉트 · 업무관리 31컬럼 보드 · 파이프라인 필터/정렬 (T02 API 소비)"
 
   - id: DQ-0006
     title: 알림발송 — mod.notify 알림톡/문자 발송 + VPS 워커 발송 잡(pg-boss)

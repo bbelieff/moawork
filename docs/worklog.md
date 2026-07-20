@@ -4,6 +4,21 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T09 · 정책자금 업종팩 데이터 로직 계층 (확정 시드 반영)
+
+- **트리거**: 기획 v0.2 + DB 스키마 v1 확정 통보. 착수 시점 지정 파일(`docs/PLAN-v0.2.md`, `supabase/migrations/002_seed_policyfund.sql`) 부재 → 순수 계층 선구현 후, **두 파일 랜딩 확인**(T02 core.crm done 과 함께)하여 확정본에 정합.
+- **시드 전수 검증**: `002_seed_policyfund.sql` (industry_modules.presets_jsonb) 파싱 → 개수 실측 = 지역 **218**·상품 **59**·진행기관 **18**·상담상황 **16**·계약상황 **11**·진행상항 **14**·자금명 **28**, 업무관리 보드 **31컬럼** (사용자 명시치·PLAN 과 정확히 일치).
+- **구현** (`app/src/lib/policyfund/`, 순수 TS + vitest):
+  - `settlement.ts`(+test) — **확정 수식**: 수수료(원)=`round(실행액×수수료%/100)`(정수 %), 총매출=`계약금+수수료(원)`, D+180/365=`수수료입금일+n일`(미입금 null). 002_seed formulas 블록과 1:1.
+  - `presets.ts`(+test) — 시드 JSONB → 7개 선택지 카테고리 로더(`loadOptionCategories`, field_presets + board_columns 옵션 출처 매핑) + `validatePresetCounts`(실측 개수 대조).
+  - `board.ts`(+test) — 보드 컬럼 추출(`getWorkBoardColumns`=업무관리 31컬럼), select 옵션 ref(region/product)/inline/redacted·formula 해석.
+  - `pipeline.ts`(+test) — 단계 필터·정렬·집계·그룹화(단계 순서는 시드 pipeline_stages 주입).
+  - `types.ts` 원본 JSONB 구조 + 앱 도메인 타입, `fixture.ts` 테스트 픽스처, `index.ts` 배럴.
+- **⚠ 크로스트랙 정합 이슈 발견**: T02 `crm/formulas.ts` 는 **가정** 기반(총매출=수수료×1.1 부가세, D+n=계약일 기준, base=계약금액)이라 확정 시드와 불일치. 정산(settlements)은 T09 소유이므로 확정 정의를 `policyfund/settlement.ts` 에 두고, T02 수식컬럼 엔진 정합을 **DQ-0009 followup** 으로 요청.
+- **게이트**: `bash scripts/check.sh` → 초록. 앱 **109 테스트**(policyfund 31 신규 포함) + 워커 1 통과, lint/typecheck OK. 타 트랙(T02 crm·T03 auth) 산출물과 충돌 없이 통합.
+- **남은 작업(UI)**: 선택지 셀렉트 · 업무관리 31컬럼 보드 화면 · 파이프라인 필터/정렬 UI — 데이터·로직 준비 완료, T02 보드 CRUD API 소비 + `app/AGENTS.md` 지시대로 `node_modules/next/dist/docs/` 확인 후 착수.
+- SSOT: `session-registry.yaml` T09 delivered/followup 기입, `dispatch-queue.yaml` DQ-0009 followup(T02 정합·UI).
+
 ## 2026-07-21 — T05 · 커스터마이징(core.custom) 커스텀필드 엔진 설계(checkpoint)
 
 - T02 done(DQ-0002) 확인 → T05 언블록. `git pull`(up to date) 후 지시된 소스 정독:

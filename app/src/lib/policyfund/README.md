@@ -1,36 +1,51 @@
 # ind.policyfund — 정책자금 업종팩 (T09)
 
-먼데이 "업무" 보드(정책자금)를 재현하기 위한 도메인 로직 계층.
+서울경영지원센터 먼데이 보드(정책자금)를 재현하는 도메인 로직 계층.
+SSOT: `supabase/migrations/002_seed_policyfund.sql`(industry_modules.presets_jsonb) · `docs/PLAN-v0.2.md`.
 
-## 현재 상태 (데이터 대기)
+## 구성
 
-이 계층은 **의존성 없이 정확히 구현 가능한 순수 로직·타입·검증기**로 구성된다.
-실제 도메인 값(옵션 목록·보드 컬럼)은 아래 SSOT 에서 주입되며 **여기에 하드코딩하지 않는다**.
-
-| 구성 | 파일 | 상태 |
+| 파일 | 내용 | 상태 |
 | --- | --- | --- |
-| 도메인 타입 | `types.ts` | ✅ 완료 |
-| 정산 수식 (수수료·총매출·D+180·D+365) | `settlement.ts` | ✅ 완료 (+테스트) |
-| 파이프라인 필터·정렬·집계·그룹화 | `pipeline.ts` | ✅ 완료 (+테스트) |
-| 프리셋 카테고리 구조 + 개수 검증기 | `presets.ts` | ✅ 로직 완료 · 값 대기 |
-| 프리셋 실제 값 (지역 218·상품 59·기관 18·상담 16·계약 11·진행 14·자금 28) | `presets.ts:PRESET_OPTIONS` | ⏳ `002_seed` 대기 |
-| 보드 31개 컬럼 정의 | (레지스트리 예정) | ⏳ `002_seed` / 기획 v0.2 대기 |
-| UI 컴포넌트 (선택지 셀렉트·보드 뷰·파이프라인) | `app/src/app/...` | ⏳ 데이터 + Next.js 수정판 문서 확인 후 |
+| `types.ts` | 원본 프리셋 JSONB 구조 + 앱 도메인(선택지·보드) 타입 | ✅ |
+| `settlement.ts` | 정산 수식(확정본) — 수수료·총매출·D+180·D+365 | ✅ (+test) |
+| `presets.ts` | 시드→7개 선택지 카테고리 로더 + 개수 검증기 | ✅ (+test) |
+| `board.ts` | 보드 컬럼 추출(업무관리 31컬럼) + 옵션 참조 해석 | ✅ (+test) |
+| `pipeline.ts` | 파이프라인 단계 필터·정렬·집계·그룹화 | ✅ (+test) |
+| `fixture.ts` | 테스트 픽스처(시드 구조 합성) | 테스트용 |
 
-## 대기 중인 입력 (SSOT)
+## 정산 수식 (확정본 · 002_seed formulas)
 
-- `supabase/migrations/002_seed_policyfund.sql` — 진행기관·상품·지역·상태 옵션 프리셋 값.
-- `docs/PLAN-v0.2.md` — 상품 수식(한도/금리/자격), 보드 31개 컬럼 정의, 정산 규칙 상세.
+- **수수료(원)** = `round(실행액 × 수수료% / 100)` — 수수료%는 **정수 퍼센트**(3 = 3%).
+- **총매출** = `계약금 + 수수료(원)`.
+- **D+180 / D+365** = `수수료입금일 + 180일 / 365일` (입금일 미정이면 null).
 
-> ⚠️ 착수 시점 기준 위 두 파일은 저장소에 부재. 파일 확정 시:
-> 1. `PRESET_OPTIONS` 를 시드에서 로드하도록 로더 연결 → `validatePresetCounts()` 로 개수 대조.
-> 2. 보드 31개 컬럼 레지스트리 작성(`BoardColumn[]`).
-> 3. UI 컴포넌트 구현 (T02 보드 CRUD API 연동).
+> ⚠️ T02 `crm/formulas.ts` 는 착수 시점 **가정**(총매출 = 수수료 × 1.1 부가세, D+n = 계약일
+> 기준, base = 계약금액)으로 저작되어 본 확정본과 불일치. 정산(settlements)은 T09 소유이므로
+> 확정 정의는 본 모듈. crm 수식컬럼 엔진 정합은 dispatch-queue(DQ-0009)로 T02 에 요청.
 
-## 정산 수식 가정
+## 선택지 카테고리 (7종 · 시드 실측 개수)
 
-- `수수료 = 집행금액 × 수수료율` (원 단위 반올림).
-- `총매출 = 수수료 매출의 합` (`grossFromDisbursement()` 로 집행금액 기준 대안 제공).
-- `D+180 / D+365 = 계약일 + 180일 / 365일` (UTC 기준).
+| id | 라벨 | 개수 | 시드 출처 |
+| --- | --- | --- | --- |
+| region | 지역 | 218 | field_presets.region |
+| product | 진행상품 | 59 | field_presets.product |
+| agency | 진행기관 | 18 | board_columns.업무관리 "진행 기관" |
+| consult_status | 상담상황 | 16 | board_columns.신규고객 "상담 상황" |
+| contract_status | 계약상황 | 11 | board_columns.컨텍관리 "계약상황" |
+| progress_status | 진행상항 | 14 | board_columns.업무관리 "진행상항" |
+| fund_name | 자금명 | 28 | board_columns.회계_연도차이 25년 "품목" |
 
-정확한 수수료율·반올림 단위·부가세 처리는 기획 v0.2 확정 후 대조·조정한다.
+`loadOptionCategories(presets)` 로 추출, `validatePresetCounts()` 로 위 개수 대조.
+
+## 런타임 데이터 소스
+
+프리셋은 DB `industry_modules.presets_jsonb`(팩 설치 시 조직에 복사). 앱은 이를 로드해
+`loadOptionCategories` / `getWorkBoardColumns` 에 넘긴다. (로드 배선은 T02 store/서비스 연동.)
+
+## 남은 작업 (UI)
+
+- 선택지 셀렉트 컴포넌트(카테고리 옵션 렌더 · 검색/큰 목록=지역 218 가상화).
+- 정책자금 보드 화면(업무관리 31컬럼 테이블/칸반, `getWorkBoardColumns`·`pipeline` 소비).
+- 파이프라인 단계 필터·정렬 UI(로직은 `pipeline.ts` 완료).
+- ⚠️ 앱 코드 작성 전 `app/AGENTS.md` 지시대로 `node_modules/next/dist/docs/` 확인. T02 route handler/페이지 패턴 참고, 보드 CRUD는 T02 API 소비.
