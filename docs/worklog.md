@@ -4,6 +4,29 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T02 · core.crm MVP 구현 (보드 미러 + 파이프라인 + 저장뷰 + 수식)
+
+- **트리거**: 오너가 기획 v0.2 + DB 스키마 v1 확정 통보. 단, 지정된 `docs/PLAN-v0.2.md` /
+  `supabase/migrations/001_schema_v1.sql` 이 저장소에 부재 → 오너 승인 하에 T02 가 core.crm
+  스키마 v1 + 설계를 저작.
+- **스키마**: `supabase/migrations/0002_core_crm.sql` — boards / pipeline_stages /
+  board_columns / items / column_values / saved_views + `org_id` 멀티테넌시 + RLS enable
+  (정책 없음=fail-closed). 방식 B(하이브리드 정규화).
+- **설계 문서**: `docs/PLAN-core-crm-v0.2.md` — 수식 4개 가정, 자동화 규칙, 트랙 경계 명시.
+- **도메인 레이어** `app/src/lib/crm/`:
+  - 수식 엔진(수수료·총매출·D+180·D+365) — 가정을 formulas.ts 상단에 문서화, 교정은 그 파일만.
+  - 파이프라인 단계 이동 + 자동화(진행중→계약일 자동세팅, 완료→completed_at 스탬프/해제).
+  - 저장뷰 필터·정렬 적용, 입력 검증 — 모두 순수 함수 + 단위테스트.
+  - 스토어 포트 + InMemory(참조/테스트) / PostgREST(운영, fetch, 의존성 0) 어댑터.
+  - 서비스 오케스트레이션 + Next.js Route Handlers(boards/items/move/views CRUD).
+- **게이트**: `bash scripts/check.sh` 초록 (app 68 crm 테스트 포함 총 90 통과, lint/typecheck OK).
+- **경계 존중**: RLS 정책 본체·조직 모델·Auth = T03, 커스텀필드 옵션 = T05. `org_id` 컬럼 +
+  앱 레이어 org 스코핑 + `x-org-id` 임시 컨텍스트(T03 연동 시 교체).
+- **조율**: DQ-0002 → done (T05/T07/T09 언블록). session-registry T02 → active.
+- **후속**: T03 Auth/RLS 정합, PostgREST 라이브 DB 통합테스트, 수식 확정본 반영.
+- 앱 라우트 작성 전 `app/AGENTS.md` 지시대로 `node_modules/next/dist/docs/` 확인
+  (route handler 규약: `context.params` = Promise).
+
 ## 2026-07-21 — T09 · 정책자금 업종팩 착수 · 데이터 무의존 순수 계층 구현(checkpoint)
 
 - **선행 파일 부재 확인**: 착수 지시가 가리킨 `docs/PLAN-v0.2.md` 와 `supabase/migrations/002_seed_policyfund.sql` 이 **저장소 어디에도 없음**(트래킹/브랜치/스태시/워크트리 전수 확인). 실제 도메인 값(지역 218·상품 59·기관 18·상담 16·계약 11·진행 14·자금 28, 보드 31컬럼)은 지어내지 않고, 그 데이터가 들어오면 꽂히도록 계층만 선구현.

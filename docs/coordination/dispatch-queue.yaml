@@ -1,6 +1,6 @@
 # 디스패치 큐 — 트랙 간 작업 분배 SSOT
 # status: queued | in_progress | done | blocked
-version: 2
+version: 3
 updated: 2026-07-21
 
 # 대기 중 (아직 담당 트랙 없음)
@@ -25,15 +25,6 @@ in_progress:
 
 # 차단됨 (선행 조건 대기)
 blocked:
-  - id: DQ-0002
-    title: 영업코어 — 보드 미러 + 파이프라인(4단계) + 단계 이동 자동화
-    assignee: T02
-    opened: 2026-07-21
-    status: blocked
-    blocked_on:
-      - 기획 v0.2 확정
-      - DB 스키마 v1 (supabase 도메인 마이그레이션)
-
   - id: DQ-0003
     title: 조직·보안 — core.org + RLS 멀티테넌시 + 구글 OAuth 로그인
     assignee: T03
@@ -103,4 +94,20 @@ blocked:
       - T02 완료 (core.crm 보드/아이템/파이프라인 이벤트)
 
 # 완료
-done: []
+done:
+  - id: DQ-0002
+    title: 영업코어 — 보드 미러 + 파이프라인(4단계) + 단계 이동 자동화
+    assignee: T02
+    opened: 2026-07-21
+    closed: 2026-07-21
+    status: done
+    notes: >-
+      core.crm MVP 산출: 0002_core_crm.sql(boards/pipeline_stages/board_columns/
+      items/column_values/saved_views + org_id + RLS enable), 도메인 레이어(수식4·
+      단계이동 자동화·저장뷰·검증), 스토어 포트+InMemory/PostgREST 어댑터, 서비스,
+      API 라우트(boards/items/move/views). check.sh 초록(app 68 테스트).
+      T05/T07/T09 언블록(보드/아이템/파이프라인 스키마·CRUD API 제공).
+    followup:
+      - T03 Auth/RLS 확정 시 context.ts 세션 연동 + DB RLS 정책 정합
+      - PostgREST 어댑터 라이브 DB 통합테스트 (현재 쿼리빌더 단위테스트)
+      - 수식 정의 확정본 반영(현재 가정)
