@@ -4,6 +4,16 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T10 · 게이트키퍼(검증) 트랙 등록 · 베이스라인 게이트 검증 · 상시대기(checkpoint)
+
+- 역할: 배포마다 **parity**(먼데이 원본 대비 재현 정합성) · **측정** · **RLS 침투테스트**(조직 단위 멀티테넌시 격리) · **완료판정**. 상시 활성.
+- 프로젝트 구조 파악 완료: `CLAUDE.md`, `AGENTS.md`, `app/`·`worker/`·`supabase/` 골격, `scripts/check.sh`, `docs/coordination/*`(session-registry / dispatch-queue / provider-status) 전체 정독.
+- **베이스라인 게이트 검증**: `bash scripts/check.sh` 직접 실행 → **초록(exit 0)**. lint + typecheck(app/worker `tsc --noEmit`) + test(app `format.test`, worker `health.test`, 각 1 pass) 통과 확인 → 현 시점 저장소는 게이트 통과 상태.
+- **검증 대상 현황**: 도메인 트랙 T02~T09 는 기획 v0.2 + DB 스키마 v1 미확정으로 전부 standby/blocked — **검증할 배포 산출물이 아직 없음**. parity 는 T02(core.crm 보드 미러), RLS 침투테스트는 T03(core.org + RLS) 산출물에 의존하므로 해당 트랙 배포 시 착수.
+- **완료판정 기준**: 각 트랙 done 승인은 `check 게이트 통과` + `parity/측정/RLS 검증 통과`를 **모두** 만족할 때만.
+- SSOT 갱신: `session-registry.yaml` 에 T10 등록(status: active), `dispatch-queue.yaml` 에 DQ-0010 추가(status: in_progress, 상시 대기형 검증).
+- 다음: 트랙 PR/배포 발생 시 parity·측정·RLS 침투테스트 착수. 그 전까지 게이트 초록 유지 감시하며 대기.
+
 ## 2026-07-21 — T08 · 홈택스(mod.hometax) 트랙 등록 · 대기(checkpoint)
 
 - 역할: `mod.hometax` 조회→발행(전자세금계산서) + worker 잡(pg-boss 조회·발행 백그라운드 잡).

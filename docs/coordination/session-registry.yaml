@@ -181,3 +181,24 @@ sessions:
       이벤트를 소스로 하므로 T02 done 전까지 착수 불가. 기획 v0.2 + DB 스키마 v1 확정 시
       mod.perf 마이그레이션 → 집계 로직(뷰/잡) → 리더보드 조회 API 순으로 착수한다.
       주기적 집계는 worker(pg-boss) 잡으로 조율하며 T06 등 타 트랙과 dispatch-queue 로 협의.
+
+  - id: T10
+    role: 게이트키퍼(검증) — parity / 측정 / RLS 침투테스트 / 완료판정
+    owner: belie
+    branch: main
+    status: active
+    started: 2026-07-21
+    scope:
+      - 배포/PR 파리티 검증 (먼데이 원본 대비 moawork 재현 정합성)
+      - 측정 (성능·품질 지표 수집, check 게이트 결과 판정)
+      - RLS 침투테스트 (조직 단위 멀티테넌시 격리 우회 시도 — T03 산출물 대상)
+      - 완료판정 (트랙별 done 승인 — 게이트 통과 + 검증 통과 시에만)
+    notes: >-
+      상시 활성(active). 프로젝트 구조 파악 완료(CLAUDE.md/AGENTS.md/app·worker·
+      supabase 골격/docs/coordination 전체 정독). 다른 트랙의 PR/배포 시 검증 역할.
+      현재 도메인 트랙 T02~T09 는 기획 v0.2 + DB 스키마 v1 미확정으로 전부
+      standby/blocked — 검증할 배포 산출물이 아직 없다. 베이스라인 게이트 초록 확인:
+      bash scripts/check.sh → lint + typecheck(app/worker) + test(format/health) 통과.
+      RLS 침투테스트는 T03(core.org + RLS) 산출물에 의존하고, parity 검증은 T02(core.crm)
+      보드 미러 산출물에 의존하므로 해당 트랙 배포 시 착수. 각 트랙 done 판정은
+      check 게이트 통과 + parity/측정/RLS 검증 통과를 모두 만족할 때만 승인한다.

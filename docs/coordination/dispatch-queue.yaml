@@ -14,6 +14,15 @@ in_progress:
     opened: 2026-07-21
     status: in_progress
 
+  - id: DQ-0010
+    title: 게이트키퍼(검증) — 배포마다 parity / 측정 / RLS 침투테스트 / 완료판정 (상시 활성)
+    assignee: T10
+    opened: 2026-07-21
+    status: in_progress
+    notes: >-
+      상시 대기형 검증 트랙. 트랙별 배포/PR 발생 시 parity·측정·RLS 침투테스트·
+      완료판정 수행. 현재 검증 대상 배포 없음 — 베이스라인 check 게이트 초록만 확인.
+
 # 차단됨 (선행 조건 대기)
 blocked:
   - id: DQ-0002
