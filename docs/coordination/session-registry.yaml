@@ -24,19 +24,30 @@ sessions:
     role: 조직·보안 (core.org / RLS 멀티테넌시 / 구글 OAuth 로그인)
     owner: belie
     branch: main
-    status: standby
+    status: active
     started: 2026-07-21
-    blocked_on:
-      - 기획 v0.2 확정
-      - DB 스키마 v1 (core.org 등 도메인 테이블)
     scope:
       - core.org 스키마 (조직/멤버십 도메인)
       - RLS 정책 (조직 단위 멀티테넌시 격리)
       - Supabase Auth 구글 OAuth 로그인 연동
+    delivered:
+      - "인증 플러밍: app/src/lib/supabase/{server,client,env}.ts (@supabase/ssr 쿠키 세션 → auth.uid() 채움 = RLS 동작 전제)"
+      - "세션 게이트: app/src/proxy.ts (Next16 middleware→proxy 규약, 세션 갱신 + 미인증 /login 리다이렉트, env 미설정 시 fail-open)"
+      - "구글 OAuth: /login(소셜 버튼)·/auth/callback(코드교환 + public.users upsert)·/auth/signout"
+      - "인가 lib: app/src/lib/auth/roles.ts(member_role/member_scope·atLeast·isManager)+테스트, membership.ts(getMyMembership/requireRole/requireManager 서버 가드)"
+    followup:
+      - "→ T02: context.ts 세션 연동 언블록 — app/src/lib/auth 의 getUser/getMyMembership 사용 가능"
+      - "→ T10: RLS 침투테스트는 라이브 Supabase + 인증 세션 필요(현재 provider planned). 정책 본체는 001_schema_v1.sql, 세션 주입은 T03 플러밍"
+      - "→ 스키마 오너/T10: 001_schema_v1.sql 은 users 테이블은 있으나 auth.users→users 자동생성 트리거 부재. 앱 콜백 upsert 로 보강했으나 비-OAuth 경로 위해 DB 트리거 추가 권장(마이그레이션 번호 정합 후)"
+      - "→ T10: 마이그레이션 번호 혼재(3자리 001_/002_ vs 4자리 0001_/0002_/0003_) → 문자열 정렬 시 적용 순서 깨짐. core.org 정본=001_schema_v1.sql"
     notes: >-
-      대기 중. 프로젝트 구조 파악 완료(CLAUDE.md/AGENTS.md/docs/ 정독).
-      기획 v0.2 + DB 스키마 v1(core.org 도메인 테이블) 확정 시
-      마이그레이션/RLS/OAuth 구현 착수한다.
+      착수·구현(active). 핵심 정정: core.org 스키마(orgs/users/org_members)·RLS(전 도메인)·
+      auto-owner 트리거·헬퍼(is_org_member/org_role/org_scope)는 이미 001_schema_v1.sql 에
+      완비돼 있어, 별도 T03 마이그레이션은 불필요·중복(작성했던 0002_core_org.sql 은
+      org_members 재정의 충돌로 폐기). T03 실제 산출물은 그 스키마 위의 앱 인증/인가 레이어
+      (Supabase SSR 세션·구글 OAuth·프록시 게이트·서버 역할가드)다. 역할 모델은 스키마 정본에
+      맞춰 member_role(owner/admin/member) + member_scope(all/assigned) — 프로즈의 4역할
+      (viewer 포함)은 스키마에 없어 미채택. check.sh 초록.
 
   - id: T02
     role: 영업코어 (core.crm) — 신규고객/컨택/업무 보드 미러 + 파이프라인 + 단계 이동 자동화
@@ -135,27 +146,31 @@ sessions:
     started: 2026-07-21
     depends_on: [T01, T02]
     delivered:
-      - "app/src/lib/policyfund/: 정산 수식(확정본)·프리셋 로더·보드 추출·파이프라인·타입"
+      - "app/src/lib/policyfund/: 정산 수식(확정본)·프리셋 로더·보드 추출·파이프라인·타입·번들스냅샷"
       - "정산 수식: 수수료=round(실행액×%/100,정수%)·총매출=계약금+수수료·D±180/365=수수료입금일 기준"
       - "프리셋 로더: 002_seed JSONB→7카테고리(지역218/상품59/기관18/상담16/계약11/진행14/자금28) + 개수검증"
       - "보드 추출: 업무관리 31컬럼(옵션 ref/inline/redacted·formula 해석)"
+      - "UI: OptionSelect(선택지 셀렉트)·PolicyfundBoard(31컬럼 테이블+단계 필터/정렬)·/policyfund 보드 화면(서버 컴포넌트)"
+      - "번들 스냅샷: app/src/data/policyfund-presets.json(002_seed 추출) + bundled.test 개수 가드(실데이터 218/59/…/31컬럼 검증)"
     followup:
       - "T02 crm/formulas.ts 정합: 총매출·D+n 기산일·base 가 확정 시드와 불일치(부가세 가정 등) → 정산=T09 정의로 교정 요청"
-      - "UI: 선택지 셀렉트·업무관리 31컬럼 보드·파이프라인 필터/정렬 (T02 보드 CRUD API 소비, Next.js 수정판 문서 선확인)"
-      - "프리셋 런타임 로드 배선(industry_modules.presets_jsonb) — T02 store 연동"
+      - "프리셋 런타임 로드 배선: 번들 스냅샷 → DB industry_modules.presets_jsonb 로드로 교체(팩 설치 시 조직 복사) — T02 store 연동"
+      - "보드 아이템(행) 데이터·formula 셀 계산 연동: T02 보드 CRUD API + settlement.computeSettlement 소비"
+      - "→ 스키마 오너/T10: 마이그레이션 번호 혼재(001_ vs 0002_) 인지. T09 는 마이그레이션 미추가, industry_modules(001_schema_v1)만 참조"
     scope:
       - ind.policyfund 진행기관(정책자금 취급기관) 마스터
       - ind.policyfund 상품 카탈로그 (60여종) + 지역 조건
       - 상품 수식(한도/금리/자격 등 계산 로직) 정의·엔진
       - settlements 정산 (계약 성사 → 수수료/정산 산출·기록)
     notes: >-
-      착수(active). 기획 v0.2 + 002_seed_policyfund.sql 확정(랜딩) 확인.
-      데이터 로직 계층 완료: 정산 수식은 002_seed formulas 확정본에 정합, 프리셋 로더는
-      시드 JSONB 구조에서 7개 카테고리 추출·개수 검증(전수 파싱으로 218/59/18/16/11/14/28
-      실측 일치). 업무관리 31컬럼 보드 추출. check.sh 초록(앱 109 테스트, 그중 policyfund 31).
-      T02 crm/formulas.ts 는 가정 기반이라 확정 시드와 불일치 — 정산 소유(T09) 기준
-      교정을 DQ-0009 followup 으로 요청. 남은 것은 UI(셀렉트/보드/파이프라인) — 데이터·로직은
-      준비 완료, T02 API 소비 + Next.js 수정판 문서 선확인 후 착수.
+      착수·구현(active). 기획 v0.2 + 002_seed_policyfund.sql 확정 반영. 데이터 로직 계층 +
+      UI 완료: 정산 수식은 002_seed formulas 확정본에 1:1 정합. 프리셋 로더가 시드 JSONB→
+      7카테고리 추출·개수 검증(전수 파싱 218/59/18/16/11/14/28 실측 일치). 업무관리 31컬럼
+      보드 추출. UI(OptionSelect·PolicyfundBoard·/policyfund 페이지)는 번들 스냅샷을
+      소비하며 bundled.test 로 실데이터 개수 가드. check.sh 초록(앱 115 테스트, policyfund 37).
+      /policyfund 는 T03 프록시로 인증 뒤(정상) → 로컬 런타임 프리뷰는 세션 필요. 남은 배선:
+      DB industry_modules 로드 교체 + 보드 아이템(T02 API)·formula 셀 계산 연동.
+      T02 crm/formulas.ts 확정본 정합은 DQ-0009 followup.
 
   - id: T06
     role: 알림발송 (mod.notify) — 알림톡/문자 발송 + VPS 워커(발송 잡, pg-boss)

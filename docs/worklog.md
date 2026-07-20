@@ -4,6 +4,44 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T09 · 정책자금 보드 UI + 번들 프리셋 스냅샷
+
+- **UI**(수정판 Next.js16/App Router·React19·Tailwind v4, `node_modules/next/dist/docs` + T02/T03 페이지 패턴 확인 후):
+  - `app/src/components/policyfund/OptionSelect.tsx` — 선택지 카테고리 셀렉트(개수 뱃지, region 218 등 대용량 네이티브 처리).
+  - `app/src/components/policyfund/PolicyfundBoard.tsx` — 업무관리 31컬럼 테이블(가로 스크롤·타입 뱃지·formula 툴팁) + 단계 필터/정렬 컨트롤(`pipeline.ts` 소비).
+  - `app/src/app/policyfund/page.tsx` — 서버 컴포넌트, 보드 + 7종 선택지 카탈로그. T03 프록시로 인증 뒤(정상).
+- **번들 프리셋 스냅샷**: `app/src/data/policyfund-presets.json`(002_seed 추출) + `bundled.ts` 로더. MVP 오프라인 렌더용, 프로덕션은 DB industry_modules 로드로 교체.
+- **드리프트 가드**: `bundled.test.ts` — 스냅샷 **실데이터**로 `validatePresetCounts`(218/59/18/16/11/14/28) + 31컬럼 + 6단계 + 수식정의 검증. 시드 변경 후 스냅샷 재생성 누락 시 실패.
+- **게이트**: `bash scripts/check.sh` → 초록. 앱 **115 테스트**(policyfund 37) + 워커 1, lint/typecheck(tsx 포함) OK.
+- 남은 배선: 번들→DB industry_modules 로드 교체, 보드 아이템(행)·formula 셀 계산 = T02 API + `settlement.computeSettlement` 연동. T02 crm/formulas.ts 확정본 정합(DQ-0009 followup).
+
+## 2026-07-21 — T03 · 조직·보안 — 인증/인가 앱 레이어 (구글 OAuth + RLS 세션 플러밍)
+
+**정정(중요)**: core.org 스키마·RLS·auto-owner 는 이미 `001_schema_v1.sql`(스키마 v1 정본)에
+완비돼 있었다 — `orgs`/`users`/`org_members`(member_role: owner/admin/member, member_scope:
+all/assigned), 헬퍼 `is_org_member`/`org_role`/`org_scope`, 트리거 `add_org_owner`, 전 도메인
+테이블 RLS. 착수 초기엔 이 파일이 리포에 없어 `0002_core_org.sql`(organizations/profiles 재정의)을
+작성했으나, 정본 확인 후 **중복·충돌(특히 `org_members` 재정의로 적용 실패)** 이라 폐기했다.
+따라서 T03 실제 산출물은 **그 스키마 위의 앱 인증/인가 레이어**다(001 에 없는 부분).
+
+- **Supabase SSR 세션 플러밍** (RLS 가 작동하려면 요청에 세션 JWT→`auth.uid()` 가 있어야 함):
+  - `app/src/lib/supabase/server.ts` — RSC/라우트/액션용 서버 클라이언트(Next16 async `cookies()`).
+  - `app/src/lib/supabase/client.ts` — 클라이언트 컴포넌트용 브라우저 클라이언트.
+  - `app/src/lib/supabase/env.ts` — env 가드(NEXT_PUBLIC URL/anon key, 비밀값 저장소 금지).
+- **세션 게이트**: `app/src/proxy.ts` — Next16 `middleware`→`proxy` 규약(문서 확인). 매 요청
+  세션 갱신 + 미인증 시 `/login` 리다이렉트, 인증+`/login`→홈. env 미설정 시 fail-open(개발 편의).
+- **구글 OAuth**: `/login`(소셜 버튼, `signInWithOAuth`), `/auth/callback`(코드교환 +
+  `public.users` upsert — 001 에 auth.users→users 트리거가 없어 앱에서 프로필 보강),
+  `/auth/signout`(POST).
+- **인가 lib**: `app/src/lib/auth/roles.ts`(member_role/member_scope, `atLeast`/`isManager`,
+  타입가드) + `roles.test.ts`(9 테스트). `membership.ts`(서버 가드 `getMyMembership`/`getMyRole`/
+  `requireRole`/`requireManager`). 역할 모델은 스키마 정본에 정합 — 프로즈의 4역할(viewer)은
+  스키마에 없어 미채택.
+- deps: `app/package.json` 에 `@supabase/ssr`·`@supabase/supabase-js` 추가(lock 동기화).
+- `bash scripts/check.sh` **초록**(lint + typecheck app/worker + test, 앱 109→auth 9 포함).
+- 후속: (T02) context.ts 세션 연동 언블록 · (T10) 라이브 RLS 침투테스트는 provider 프로비저닝 후 ·
+  마이그레이션 번호 혼재(001_ vs 0001_) 정합은 T10/스키마 오너 조율 필요.
+
 ## 2026-07-21 — T09 · 정책자금 업종팩 데이터 로직 계층 (확정 시드 반영)
 
 - **트리거**: 기획 v0.2 + DB 스키마 v1 확정 통보. 착수 시점 지정 파일(`docs/PLAN-v0.2.md`, `supabase/migrations/002_seed_policyfund.sql`) 부재 → 순수 계층 선구현 후, **두 파일 랜딩 확인**(T02 core.crm done 과 함께)하여 확정본에 정합.

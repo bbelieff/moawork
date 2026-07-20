@@ -39,15 +39,6 @@ in_progress:
 
 # 차단됨 (선행 조건 대기)
 blocked:
-  - id: DQ-0003
-    title: 조직·보안 — core.org + RLS 멀티테넌시 + 구글 OAuth 로그인
-    assignee: T03
-    opened: 2026-07-21
-    status: blocked
-    blocked_on:
-      - 기획 v0.2 확정
-      - DB 스키마 v1 (core.org 도메인 마이그레이션)
-
   - id: DQ-0004
     title: 문서·대시 — core.files 문서함 + contracts 상태 + core.dash 기본 대시보드
     assignee: T04
@@ -63,12 +54,14 @@ blocked:
     opened: 2026-07-21
     status: in_progress
     notes: >-
-      기획 v0.2 + 002_seed 확정 반영. 데이터 로직 계층 완료: 정산 수식(확정본) · 프리셋
-      로더(7카테고리, 개수검증) · 업무관리 31컬럼 보드 추출 · 파이프라인 로직. check.sh 초록
-      (앱 109 테스트). 남은 것은 UI + 아래 정합 요청.
+      기획 v0.2 + 002_seed 확정 반영. 데이터 로직 + UI 완료: 정산 수식(확정본) · 프리셋
+      로더(7카테고리, 개수검증) · 업무관리 31컬럼 보드 추출 · 파이프라인 로직 ·
+      UI(OptionSelect/PolicyfundBoard//policyfund 페이지) · 번들 스냅샷+개수 가드 테스트.
+      check.sh 초록(앱 115 테스트). 남은 것은 아래 배선/정합.
     followup:
-      - "→ T02: crm/formulas.ts 확정 시드와 불일치(총매출=수수료×1.1 부가세→계약금+수수료, D+n=계약일→수수료입금일, base=계약금액→실행액). 정산=T09 소유, 확정 정의는 app/src/lib/policyfund/settlement.ts. 수식컬럼 엔진 정합 필요."
-      - "UI: 선택지 셀렉트 · 업무관리 31컬럼 보드 · 파이프라인 필터/정렬 (T02 API 소비)"
+      - "→ T02: crm/formulas.ts 확정 시드와 불일치(총매출=수수료×1.1 부가세→계약금+수수료, D+n=계약일→수수료입금일, base=계약금액→실행액). 정산=T09 소유, 확정 정의는 app/src/lib/policyfund/settlement.ts. 수식컬럼 엔진 정합 필요(T02 followup '수식 확정본 반영'과 동일 건)."
+      - "프리셋 런타임: 번들 스냅샷(app/src/data/policyfund-presets.json) → DB industry_modules 로드 교체(T02 store 연동)"
+      - "보드 아이템(행)·formula 셀 계산: T02 보드 CRUD API + settlement.computeSettlement 연동"
 
   - id: DQ-0006
     title: 알림발송 — mod.notify 알림톡/문자 발송 + VPS 워커 발송 잡(pg-boss)
@@ -101,6 +94,26 @@ blocked:
 
 # 완료
 done:
+  - id: DQ-0003
+    title: 조직·보안 — core.org + RLS 멀티테넌시 + 구글 OAuth 로그인
+    assignee: T03
+    opened: 2026-07-21
+    closed: 2026-07-21
+    status: done
+    notes: >-
+      정정: core.org 스키마(orgs/users/org_members)·RLS(전 도메인)·auto-owner 트리거·
+      헬퍼(is_org_member/org_role/org_scope)는 이미 001_schema_v1.sql 에 완비 → 별도
+      T03 마이그레이션 불필요(작성했던 0002_core_org.sql 은 org_members 재정의 충돌로 폐기).
+      T03 산출물 = 그 스키마 위 앱 인증/인가 레이어: @supabase/ssr server/browser 클라이언트,
+      proxy.ts(Next16 세션 게이트, env 미설정 fail-open), 구글 OAuth(/login·/auth/callback·
+      /auth/signout, 콜백에서 public.users upsert), lib/auth(roles·membership 서버 가드).
+      역할=member_role(owner/admin/member)+member_scope(all/assigned). check.sh 초록.
+    followup:
+      - "→ T02: context.ts 세션 연동 언블록 (lib/auth getUser/getMyMembership 사용)"
+      - "→ T10: RLS 침투테스트는 라이브 Supabase+세션 필요(provider planned). 정책 본체=001, 세션 주입=T03"
+      - "→ 스키마 오너: 001 에 auth.users→users 자동생성 트리거 부재. 앱 콜백 upsert 로 보강, 비-OAuth 경로용 DB 트리거는 번호 정합 후 additive 권장"
+      - "→ T10: 마이그레이션 번호 혼재(001_ vs 0001_)로 문자열 정렬 적용순서 깨짐 — 정합 필요"
+
   - id: DQ-0002
     title: 영업코어 — 보드 미러 + 파이프라인(4단계) + 단계 이동 자동화
     assignee: T02
