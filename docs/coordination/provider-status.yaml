@@ -19,3 +19,10 @@ providers:
     kind: worker-host
     status: planned
     notes: pg-boss 잡 러너를 구동할 VPS 호스트.
+
+  - name: hometax
+    kind: tax-invoice
+    status: planned
+    notes: >-
+      국세청 홈택스/전자세금계산서 연동 (T08 mod.hometax 조회→발행).
+      공인인증서/API 키 등 비밀값은 env 로만 주입, 저장소 기록 금지.

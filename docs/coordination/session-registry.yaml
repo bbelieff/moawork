@@ -1,6 +1,7 @@
 # 통합관리시스템(moawork) 세션 레지스트리 — SSOT
 # 각 작업 세션(트랙)의 식별/역할/상태를 기록한다.
-version: 1
+# status: active | standby | blocked | done
+version: 2
 updated: 2026-07-21
 
 sessions:
@@ -18,3 +19,165 @@ sessions:
       - .github/workflows/ci.yml
       - .githooks (pre-commit)
       - SSOT 4문서 (CLAUDE.md, AGENTS.md, docs/worklog.md, docs/coordination/)
+
+  - id: T03
+    role: 조직·보안 (core.org / RLS 멀티테넌시 / 구글 OAuth 로그인)
+    owner: belie
+    branch: main
+    status: standby
+    started: 2026-07-21
+    blocked_on:
+      - 기획 v0.2 확정
+      - DB 스키마 v1 (core.org 등 도메인 테이블)
+    scope:
+      - core.org 스키마 (조직/멤버십 도메인)
+      - RLS 정책 (조직 단위 멀티테넌시 격리)
+      - Supabase Auth 구글 OAuth 로그인 연동
+    notes: >-
+      대기 중. 프로젝트 구조 파악 완료(CLAUDE.md/AGENTS.md/docs/ 정독).
+      기획 v0.2 + DB 스키마 v1(core.org 도메인 테이블) 확정 시
+      마이그레이션/RLS/OAuth 구현 착수한다.
+
+  - id: T02
+    role: 영업코어 (core.crm) — 신규고객/컨택/업무 보드 미러 + 파이프라인 + 단계 이동 자동화
+    owner: belie
+    branch: main
+    status: standby
+    started: 2026-07-21
+    blocked_on:
+      - 기획 v0.2 확정
+      - DB 스키마 v1 (supabase 도메인 마이그레이션)
+    scope:
+      - 신규고객/컨택/업무 보드 미러 (먼데이 → moawork)
+      - 파이프라인 4단계 (상담중 → 계약대기 → 진행중 → 완료)
+      - 단계 이동 자동화 (worker 잡 연동)
+    notes: >-
+      대기 중. 프로젝트 구조 파악 완료(CLAUDE.md/AGENTS.md/docs/ 정독).
+      기획 v0.2 + DB 스키마 v1 확정 시 착수한다.
+
+  - id: T04
+    role: 문서·대시 (core.files 문서함 / contracts 상태 / core.dash 기본 대시보드)
+    owner: belie
+    branch: main
+    status: standby
+    started: 2026-07-21
+    blocked_on:
+      - 기획 v0.2 확정
+      - DB 스키마 v1 (core.files / contracts / core.dash 도메인 테이블)
+    scope:
+      - core.files 문서함 (파일/문서 업로드·보관·조회)
+      - contracts 상태 (계약 상태 추적·표시)
+      - core.dash 기본 대시보드 (핵심 지표·요약 뷰)
+    notes: >-
+      대기 중. 프로젝트 구조 파악 완료(CLAUDE.md/AGENTS.md/docs/ 정독).
+      기획 v0.2 + DB 스키마 v1 확정 시 착수한다. app/AGENTS.md 경고: 이 Next.js는
+      수정 버전이므로 앱 코드 작성 전 node_modules/next/dist/docs/ 확인 필요.
+
+  - id: T05
+    role: 커스터마이징 (core.custom) — 커스텀필드 / 선택지(옵션) / 저장뷰, 먼데이 컬럼 재현
+    owner: belie
+    branch: main
+    status: standby
+    started: 2026-07-21
+    depends_on: [T01, T02]
+    blocked_on:
+      - T02 완료 (core.crm 보드/아이템 도메인 스키마 v1)
+    scope:
+      - core.custom 커스텀필드 정의/스키마 (먼데이 컬럼 타입 재현)
+      - 필드 타입별 선택지(옵션) 관리
+      - 저장뷰(saved view) — 먼데이 보드 뷰 재현
+    notes: >-
+      대기 중(standby). 프로젝트 구조 파악 완료(CLAUDE.md/AGENTS.md/docs/ 정독).
+      커스텀필드는 T02 의 보드/아이템 도메인 스키마 위에 얹히므로 T02 done
+      전까지 착수 불가. T02 완료 시 dispatch-queue 로 작업 이관 후 착수한다.
+
+  - id: T08
+    role: 홈택스 (mod.hometax) — 조회→발행(전자세금계산서) + 워커 잡
+    owner: belie
+    branch: main
+    status: standby
+    started: 2026-07-21
+    depends_on: [T01, T06]
+    blocked_on:
+      - 기획 v0.2 확정
+      - DB 스키마 v1 (mod.hometax 도메인 테이블)
+      - T06 완료 (선행 트랙)
+    scope:
+      - mod.hometax 조회 (홈택스/전자세금계산서 조회 도메인)
+      - mod.hometax 발행 (전자세금계산서 발행 플로우)
+      - worker 잡 (조회·발행 백그라운드 잡, pg-boss 큐 핸들러)
+    notes: >-
+      대기 중(standby). 프로젝트 구조 파악 완료(CLAUDE.md/AGENTS.md/app·worker·
+      supabase 골격/docs/coordination 정독). 현재 supabase 는 0001_init.sql
+      (app_meta/schema_version 메타)만 존재 — 도메인 스키마 미착수.
+      홈택스는 외부 프로바이더(국세청/전자세금계산서 연동)에 의존하므로
+      provider-status.yaml 에 hometax 프로바이더 등록(status: planned).
+      선행 T06 + 기획 v0.2 + DB 스키마 v1(mod.hometax 도메인 테이블) 확정 시
+      dispatch-queue 로 작업 이관 후 착수(조회 → 발행 → worker 잡 순).
+      비밀값(인증서/API 키)은 env 로만 주입, 저장소 기록 금지.
+
+  - id: T09
+    role: 정책자금 업종팩 (ind.policyfund) + 정산 (settlements)
+    owner: belie
+    branch: main
+    status: standby
+    started: 2026-07-21
+    depends_on: [T01, T02]
+    blocked_on:
+      - 기획 v0.2 확정
+      - DB 스키마 v1 (core.crm 계약/아이템 도메인 — settlements 선행)
+    scope:
+      - ind.policyfund 진행기관(정책자금 취급기관) 마스터
+      - ind.policyfund 상품 카탈로그 (60여종) + 지역 조건
+      - 상품 수식(한도/금리/자격 등 계산 로직) 정의·엔진
+      - settlements 정산 (계약 성사 → 수수료/정산 산출·기록)
+    notes: >-
+      대기 중(standby). 프로젝트 구조 파악 완료(CLAUDE.md/AGENTS.md/docs/ 정독).
+      정산(settlements)은 T02 의 계약/아이템 도메인 위에 얹히고, 정책자금
+      업종팩(상품·수식)은 기획 v0.2 의 상품 목록/수식 정의에 의존한다.
+      선행(T01, T02 done) + 기획 v0.2 + DB 스키마 v1 확정 시 착수한다.
+
+  - id: T06
+    role: 알림발송 (mod.notify) — 알림톡/문자 발송 + VPS 워커(발송 잡, pg-boss)
+    owner: belie
+    branch: main
+    status: standby
+    started: 2026-07-21
+    depends_on: [T01]
+    blocked_on:
+      - 기획 v0.2 확정
+      - DB 스키마 v1 (mod.notify 도메인 테이블 — 템플릿/발송로그/수신자)
+    scope:
+      - mod.notify 스키마 (알림 템플릿 / 발송 로그 / 수신자·채널)
+      - 알림톡(카카오)·문자(SMS) 발송 프로바이더 어댑터
+      - VPS 워커 발송 잡 (pg-boss 큐 핸들러, 재시도·상태 추적)
+    notes: >-
+      대기 중(standby). 프로젝트 구조 파악 완료(CLAUDE.md/AGENTS.md/docs/ 정독).
+      worker/src/index.ts 골격에 pg-boss 부트스트랩만 존재(잡 핸들러 TODO), supabase 는
+      0001_init.sql(메타)만 존재 — mod.notify 도메인 미착수. 기획 v0.2 + DB 스키마 v1
+      (알림 도메인 테이블) 확정 시 마이그레이션 → 프로바이더 어댑터 → pg-boss 발송 잡
+      순으로 착수한다. 발송 트리거가 될 도메인 이벤트는 타 트랙(T02 파이프라인 등) 스키마에
+      의존하므로 조율은 dispatch-queue 로 진행. 비밀값(프로바이더 API 키)은 .env 로만.
+
+  - id: T07
+    role: 성과·인센티브 (mod.perf) — 성과 집계 / 리더보드 / 활동량
+    owner: belie
+    branch: main
+    status: standby
+    started: 2026-07-21
+    depends_on: [T01, T02]
+    blocked_on:
+      - 기획 v0.2 확정
+      - DB 스키마 v1 (mod.perf 도메인 테이블 — 성과지표/집계 스냅샷/활동로그)
+      - T02 완료 (활동량·성과 집계의 소스인 core.crm 도메인 데이터)
+    scope:
+      - mod.perf 스키마 (성과 지표 정의 / 기간별 집계 스냅샷 / 활동 로그)
+      - 리더보드 (멤버·조직 단위 순위 산출·조회)
+      - 활동량 집계 (컨택·업무·파이프라인 이동 등 core.crm 이벤트 기반)
+    notes: >-
+      대기 중(standby). 프로젝트 구조 파악 완료(CLAUDE.md/AGENTS.md/docs/ 정독).
+      supabase 는 0001_init.sql(메타)만, worker 는 pg-boss 부트스트랩 골격만 존재 —
+      mod.perf 도메인 미착수. 성과·활동량 집계는 T02(core.crm)의 보드/아이템/파이프라인
+      이벤트를 소스로 하므로 T02 done 전까지 착수 불가. 기획 v0.2 + DB 스키마 v1 확정 시
+      mod.perf 마이그레이션 → 집계 로직(뷰/잡) → 리더보드 조회 API 순으로 착수한다.
+      주기적 집계는 worker(pg-boss) 잡으로 조율하며 T06 등 타 트랙과 dispatch-queue 로 협의.
