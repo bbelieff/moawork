@@ -120,22 +120,28 @@ sessions:
     role: 정책자금 업종팩 (ind.policyfund) + 정산 (settlements)
     owner: belie
     branch: main
-    status: standby
+    status: active
     started: 2026-07-21
     depends_on: [T01, T02]
     blocked_on:
-      - 기획 v0.2 확정
-      - DB 스키마 v1 (core.crm 계약/아이템 도메인 — settlements 선행)
+      # 아래 두 산출물은 착수 지시 시점 기준 저장소에 부재 — 데이터 의존 작업만 차단.
+      - "docs/PLAN-v0.2.md (부재) — 상품 수식·보드 31컬럼 정의"
+      - "supabase/migrations/002_seed_policyfund.sql (부재) — 프리셋 실제 값"
+      - T02 core.crm 보드 CRUD API (UI 연동 선행)
     scope:
       - ind.policyfund 진행기관(정책자금 취급기관) 마스터
       - ind.policyfund 상품 카탈로그 (60여종) + 지역 조건
       - 상품 수식(한도/금리/자격 등 계산 로직) 정의·엔진
       - settlements 정산 (계약 성사 → 수수료/정산 산출·기록)
     notes: >-
-      대기 중(standby). 프로젝트 구조 파악 완료(CLAUDE.md/AGENTS.md/docs/ 정독).
-      정산(settlements)은 T02 의 계약/아이템 도메인 위에 얹히고, 정책자금
-      업종팩(상품·수식)은 기획 v0.2 의 상품 목록/수식 정의에 의존한다.
-      선행(T01, T02 done) + 기획 v0.2 + DB 스키마 v1 확정 시 착수한다.
+      착수(active). 데이터 무의존 순수 계층 구현 완료 —
+      app/src/lib/policyfund/: 도메인 타입 · 정산 수식(수수료/총매출/D+180/D+365,
+      +테스트) · 파이프라인 필터·정렬·집계·그룹화(+테스트) · 프리셋 카테고리 구조 +
+      개수 검증기(기대치 지역218/상품59/기관18/상담16/계약11/진행14/자금28, +테스트).
+      check.sh 초록(앱 22 테스트 통과). 지시된 docs/PLAN-v0.2.md 와
+      supabase/migrations/002_seed_policyfund.sql 는 현 트리에 부재 — 실제 옵션 값·
+      보드 31컬럼·수식 상세는 지어내지 않고 시드/기획 확정 시 로더로 주입 예정.
+      UI 컴포넌트는 데이터 + T02 API 확정 후 착수(Next.js 수정판 문서 선확인).
 
   - id: T06
     role: 알림발송 (mod.notify) — 알림톡/문자 발송 + VPS 워커(발송 잡, pg-boss)

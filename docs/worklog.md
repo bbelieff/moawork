@@ -4,6 +4,19 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T09 · 정책자금 업종팩 착수 · 데이터 무의존 순수 계층 구현(checkpoint)
+
+- **선행 파일 부재 확인**: 착수 지시가 가리킨 `docs/PLAN-v0.2.md` 와 `supabase/migrations/002_seed_policyfund.sql` 이 **저장소 어디에도 없음**(트래킹/브랜치/스태시/워크트리 전수 확인). 실제 도메인 값(지역 218·상품 59·기관 18·상담 16·계약 11·진행 14·자금 28, 보드 31컬럼)은 지어내지 않고, 그 데이터가 들어오면 꽂히도록 계층만 선구현.
+- **구현**(`app/src/lib/policyfund/`, 순수 TS + vitest):
+  - `types.ts` — 옵션 카테고리·프리셋 옵션·진행기관·상품·보드 컬럼/아이템 도메인 타입.
+  - `settlement.ts`(+test) — 정산 수식: `수수료=집행금액×수수료율`, `총매출=수수료 합`(집행금액 기준 대안 제공), `D+180/D+365`(UTC 기산). 가정 명시.
+  - `pipeline.ts`(+test) — 파이프라인 단계별 필터·정렬(미지정 후순위·안정)·개수집계·그룹화(빈 단계 포함). 단계 순서는 시드 옵션 순서를 호출부가 주입(하드코딩 금지).
+  - `presets.ts`(+test) — 7개 카테고리 구조 + `EXPECTED_COUNTS`(기획 명세 개수) + `validatePresetCounts()`/`isFullyLoaded()`. 실제 값은 `PRESET_OPTIONS`(현재 빈 값)에 시드 로더가 주입 예정.
+  - `index.ts` 배럴, `README.md`(상태·대기 입력·정산 가정 문서화).
+- **게이트**: `bash scripts/check.sh` → 초록. 앱 22 테스트(policyfund 21 신규 + format 1) + 워커 1 통과, lint/typecheck OK.
+- **남은 작업(차단)**: (1) `002_seed` 확정 → `PRESET_OPTIONS` 로더 연결 + 개수 대조, (2) 보드 31컬럼 레지스트리(기획 v0.2), (3) UI 컴포넌트(선택지 셀렉트·보드 뷰·파이프라인) — 데이터 + T02 보드 CRUD API + Next.js 수정판 문서 확인 후.
+- SSOT 갱신: `session-registry.yaml` T09 status → active, `dispatch-queue.yaml` DQ-0009 status → in_progress(남은 항목 blocked_on 명시).
+
 ## 2026-07-21 — T10 · 게이트키퍼(검증) 트랙 등록 · 베이스라인 게이트 검증 · 상시대기(checkpoint)
 
 - 역할: 배포마다 **parity**(먼데이 원본 대비 재현 정합성) · **측정** · **RLS 침투테스트**(조직 단위 멀티테넌시 격리) · **완료판정**. 상시 활성.
