@@ -4,6 +4,27 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T03 · 공용 파운데이션(PR-0) — 로컬 우선 세션·Repo·엔타이틀먼트 + 온보딩/멤버 UI
+
+브랜치 `feat/t03-foundation-org`. Supabase 연결 전, **dev-session + repo-레벨 scope** 로
+공용 파운데이션을 먼저 착지시켜 T02·T04 를 언블록한다(구글 OAuth·DB RLS 는 Supabase 연결 후).
+
+- **안정 인터페이스(소비 트랙용)**:
+  - `lib/types/index.ts` — 001_schema_v1 도메인 타입 수동 정의(정본). 역할/enum도 여기로 통합, `lib/auth/roles.ts` 는 위계/가드만.
+  - `lib/repo/index.ts` — `Repo` 포트 + `getRepo()`. `lib/repo/local/{store,seed,localRepo}` = 인메모리 구현. **담당범위 규칙**: owner/admin·scope=all → 조직 전체, member+assigned → 본인(assigned_to)만.
+  - `lib/auth/session.ts` — `getSession(): Promise<Ctx>`(Next16 cookies async) + `getSessionOrNull` + `applyAs`(?as 오버라이드). dev-session 쿠키(mw_uid/mw_org/mw_as).
+  - `lib/entitlements.ts` — `isEnabled(ctx, key)`(feature_key 기반, 001 org_entitlements 반영).
+  - `lib/presets/policyfund.ts` — `installPolicyfundPreset(ctx)` → 딜 커스텀필드(field_defs) 전개 + 엔타이틀먼트 ON(idempotent).
+  - `lib/product.ts` — `PRODUCT_NAME`(단일 상수) + FEATURES/MVP 기본 기능 집합.
+- **UI**(수정판 Next16 — proxy 규약·async cookies/searchParams·route group 확인):
+  - `app/(auth)/login` — dev-session 계정 선택 로그인(서버액션 쿠키).
+  - `app/(app)/layout.tsx` — 인증 셸(getSession 가드 → 미인증 /login). `page.tsx` 홈(=`/`, ?as 역할전환·스코프 시연·FeatureGate 데모), `onboarding`(조직생성+auto-owner+정책자금팩), `settings/members`(멤버·권한, owner/admin만 역할변경).
+  - `components/auth/FeatureGate.tsx` — Phase 2 모듈 자물쇠(mod.notify 등).
+- **테스트**: `localRepo.test.ts`(6) — 스코프 격리(member 본인만/owner 전체)·프리셋 설치·idempotent·auto-owner. `roles.test.ts`(9). check.sh 초록.
+- **라우트 정리**: 기존 Supabase OAuth `app/login/page.tsx`·루트 `page.tsx` 제거(각각 `(auth)/login`·`(app)/page.tsx` 로 대체). 이번 세션 초반 만든 Supabase SSR 레이어(`lib/supabase/*`·`proxy.ts`·`app/auth/*`·`membership.ts`·@supabase deps)는 **이 PR 에 미포함**(로컬 우선 파운데이션에 집중) — 워킹트리에 dormant 로 두고 Supabase 연결(내일) 시 별도 커밋. 이 PR 은 @supabase 의존 없이 자족(CI 정합).
+- **완료기준 대응**: ①/login→온보딩→홈 무에러 ②installPolicyfundPreset→field_defs 생성(테스트) ③?as=member 본인 담당만(테스트) ④FeatureGate 자물쇠 ⑤lib/repo·types·auth 안정 존재 + check.sh 초록.
+- 후속: (Supabase 연결 후) LocalRepo→SupabaseRepo 어댑터 스왑·dev-session→구글 OAuth·DB RLS 침투테스트(T10). T02/T04 는 `lib/repo`·`lib/types`·`lib/auth` 소비.
+
 ## 2026-07-21 — T09 · 정책자금 보드 UI + 번들 프리셋 스냅샷
 
 - **UI**(수정판 Next.js16/App Router·React19·Tailwind v4, `node_modules/next/dist/docs` + T02/T03 페이지 패턴 확인 후):
