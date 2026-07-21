@@ -1,10 +1,12 @@
 import "dotenv/config";
 import PgBoss from "pg-boss";
 import { health } from "./health.js";
+import { defaultProviders, registerNotifyWorker } from "./notify/index.js";
+import { pendingLoader, pendingSink } from "./notify/pending.js";
 
 /**
- * moawork 워커 엔트리포인트 (골격).
- * pg-boss 잡 큐를 부트스트랩한다. 실제 잡 핸들러 등록은 후속 트랙에서 추가한다.
+ * moawork 워커 엔트리포인트.
+ * pg-boss 잡 큐를 부트스트랩하고 잡 핸들러를 등록한다.
  * 비밀값은 환경변수(DATABASE_URL)로만 주입하며 코드/저장소에 기록하지 않는다.
  */
 async function main(): Promise<void> {
@@ -21,7 +23,14 @@ async function main(): Promise<void> {
   await boss.start();
   console.log("[worker] pg-boss 시작됨");
 
-  // TODO(후속 트랙): boss.work("<queue>", handler) 로 잡 핸들러 등록
+  // mod.notify — Phase 2 스캐폴드(스텁). 큐/핸들러 배선만 살아 있고 실제 발송은 하지 않는다.
+  // 활성화 전제: 벤더 계약(DI-5) → 프로바이더 구현 + Supabase 어댑터로 아래 스텁 교체.
+  await registerNotifyWorker(boss, {
+    providers: defaultProviders(),
+    loader: pendingLoader,
+    sink: pendingSink,
+  });
+  console.log("[worker] notify.send 등록됨 (스텁 — 실제 발송 없음)");
 }
 
 main().catch((err: unknown) => {

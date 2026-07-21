@@ -4,6 +4,22 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T06 · worker Phase 2 알림 발송 스캐폴드(스텁)
+
+- 배정: B2-B7 배치의 T06 파트(worker Phase 2 스캐폴드). ⚠️ 지시된 `docs/coordination/next-prompt_B2-B7.md` 는 **저장소 전 ref·워킹트리·히스토리 어디에도 부재** — 지어내지 않고 배정 프롬프트의 요약(잡 스텁 / 발송 인터페이스 / 독립 작업)만을 근거로 착수. DQ-0011·DQ-0014 와 동일 패턴이라 dispatch 에 보고.
+- 산출물 `worker/src/notify/`:
+  - `types.ts` — 채널·`NotifyMessage`·`SendResult`(+`sendOk`/`sendFailed`). 정본 `message_channel`(alimtalk/sms)과 배정이 요구한 email 을 **구분**해 타입화(`isSchemaChannel`).
+  - `provider.ts` — `NotificationProvider` 포트(이메일/SMS/알림톡 공통) + `resolveProvider`, 영속성 포트 `MessageLoader`/`MessageStatusSink`.
+  - `providers/stub.ts` — `StubProvider`(무해·비발송). 벤더 미정(DI-5)이라 실 구현체 없음.
+  - `job.ts` — 큐명 `notify.send`, 페이로드 검증(`isNotifySendJobData`), `processNotifyJob`. **재시도 의미론**: 일시 오류=throw(pg-boss 재시도), 영구 오류=failed 종결.
+  - `register.ts` — `createQueue`(retryLimit 3·backoff) + `work` 등록. **pg-boss v10 확인 반영**: 핸들러가 잡 **배열(batch)** 을 받고 `createQueue` 가 필수(v9 암묵 생성 없음).
+  - `pending.ts` — 미구현 DB 어댑터. 로더가 항상 null → 잡이 들어와도 **실발송 0건**(오발송 원천 차단).
+- `worker/src/index.ts` 의 `TODO(후속 트랙)` 자리에 `registerNotifyWorker` 배선.
+- 검증: `bash scripts/check.sh` **초록** (app 309 / worker 14 — notify 13 신규), 부팅 스모크(골격 모드) 정상, `npm run build`(tsc) 성공.
+- 경계: 스키마 마이그레이션·앱 API·벤더 구현 **미포함**(Phase 2). 기존 파일 수정은 `worker/src/index.ts` 배선 1곳뿐.
+- 브랜치: 지시된 `cdf45f6` 기반으로 시작했으나, main 이 그 뒤 `docs/worklog.md` 를 변경(T10 판정이력 150줄 복구)해 머지 충돌이 T10 복구분을 훼손할 위험 → **origin/main 으로 리베이스**(delta 는 docs 전용, 코드 영향 0).
+- 후속: 벤더 확정 시 `providers/solapi.ts` 추가 · `pending.ts` → Supabase 어댑터 교체 · entitlement 게이트 · T02 단계이동 트리거 구독.
+
 ## 2026-07-21 — T10 · 머지큐 전 단계 main 런타임 스모크 완료 · 최종 판정
 
 - **결과**: 머지큐 ①T03 → ③T02보드엔진 → ④T04 → ⑤T05 **전 단계 main 스모크 통과**. 최종 main `cdf45f6`, 게이트 초록(app 309테스트/23파일), 스모크 **PASS=20 FAIL=0 SKIP=0**.
