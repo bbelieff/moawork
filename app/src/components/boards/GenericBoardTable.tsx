@@ -1,5 +1,6 @@
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
-import { formatCell } from "@/lib/boards/cells";
+import { formatCell, hasOptions } from "@/lib/boards/cells";
+import { StatusCell, StatusSelect } from "./StatusCell";
 import {
   addItemAction,
   deleteItemAction,
@@ -49,18 +50,8 @@ function CellField({
         </>
       ) : column.type === "select" ? (
         <>
-          <select
-            name="value"
-            defaultValue={typeof value === "string" ? value : ""}
-            className={INPUT}
-          >
-            <option value="">—</option>
-            {options.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          {/* 상태 컬럼 — 선택된 옵션 색을 그대로 입힌 셀렉트(먼데이 파리티). */}
+          <StatusSelect name="value" value={value} options={options} className={INPUT} />
           <button type="submit" className="text-xs text-zinc-400 hover:text-zinc-700">
             ↵
           </button>
@@ -165,7 +156,15 @@ export function GenericBoardTable({
                   {columns.map((c) => (
                     <td key={c.id} className="px-3 py-1.5">
                       {readOnly ? (
-                        formatCell(c.type, it.values[c.key] ?? null, c.options_jsonb?.options)
+                        // 선택지 컬럼은 상태 칩으로, 나머지는 텍스트로.
+                        hasOptions(c.type) ? (
+                          <StatusCell
+                            value={it.values[c.key] ?? null}
+                            options={c.options_jsonb?.options}
+                          />
+                        ) : (
+                          formatCell(c.type, it.values[c.key] ?? null, c.options_jsonb?.options)
+                        )
                       ) : (
                         <CellField boardId={boardId} item={it} column={c} />
                       )}

@@ -4,7 +4,28 @@ version: 5
 updated: 2026-07-21
 
 # 대기 중 (아직 담당 트랙 없음)
-queue: []
+queue:
+  - id: DQ-0013
+    title: "[요청→기획] 하위아이템(subitems) 스키마 — 003 items 에 parent 관계 부재"
+    assignee: 기획(planning)
+    requested_by: T05
+    opened: 2026-07-22
+    status: queued
+    reason: >-
+      B3 배정에 '하위아이템'이 포함됐으나 003_boards_engine.sql 의 items 테이블에
+      parent_item_id(또는 subitem 관계) 컬럼이 **없다**(전문 확인). 구현하려면
+      마이그레이션이 필요한데, ADR-0002 규칙 "스키마 정본은 기획 세션이 단독 작성"
+      에 따라 T05 가 임의로 작성하지 않고 요청한다.
+    deliverables:
+      - "supabase/migrations/004_*.sql — items 하위아이템 관계(003 무수정, additive)"
+    decisions_needed:
+      - "모델: (A) items.parent_item_id self-FK 1단계 / (B) 별도 subitems 테이블 / (C) 무제한 트리"
+      - "하위아이템의 컬럼 정의: 부모 보드 board_columns 공유 vs 전용 컬럼셋(먼데이는 전용 서브아이템 컬럼)"
+      - "RLS: items 정책은 assigned_to 기반 — 하위아이템 가시성이 부모를 따르는지"
+      - "집계: 부모 행에 하위 롤업(합계/진행률) 표시 여부 — T04 대시 집계와 연동되는지"
+    context:
+      - "B3 나머지 3건(상태컬럼 UI · board_views CRUD · 003 검증엔진 단일화)은 스키마 무변경으로 완료 — PR 참조."
+      - "board_views 는 이미 003 에 존재. 배정문의 '004 스키마' 는 번호 착오였음."
 
 # ─────────────────────────────────────────────────────────────────────────
 # 승인/판정 기록 (계약 소유자 T03 → 기획2)
@@ -193,13 +214,46 @@ in_progress:
     merge_queue:   # 기획2 판정 2026-07-21
       order: "①T03 → ②T02crm → ③T02boards → ④T04 → ⑤T05(본 트랙, 마지막)"
       wait_condition: "T02·T04 머지 후 공용계약(@/lib/types·@/lib/repo) 안정화"
-      status: standby
+      status: done   # ⑤ 머지 완료 — PR #5 → main cdf45f6 (2026-07-21)
       on_resume: "설계 §11.5 — 최신 main rebase → domain-types.ts 를 @/lib/types 재export 로 1줄 정합 → @/lib/repo 표면 반영 → 001 API 라우트 + 003 어댑터"
+
       expected_conflict: "SSOT 문서(worklog/registry/queue) — 앞 4트랙 동시 편집, append 병합으로 해소. 코드는 신규 디렉터리라 충돌 없음"
     # [T02 해소 2026-07-21] 0002_core_crm.sql 폐기 → saved_views 충돌 제거.
     # 정본 = 001_schema_v1.sql(field_defs/field_values/saved_views). core.custom 착수 가능.
     resolved:
       - "스키마 충돌 해소: 0002_core_crm.sql(board_columns/saved_views) 삭제됨. 001 이 단일 정본."
+
+  - id: DQ-0017
+    title: B3 — 상태(status) 컬럼 UI + board_views CRUD API + 003 검증엔진 단일화
+    assignee: T05
+    opened: 2026-07-22
+    status: in_progress   # PR 제출 → T10 검수 대기
+    branch: feat/t05-b3-status-views
+    base: main 14a1c91
+    spec_missing: >-
+      배정이 가리킨 docs/coordination/next-prompt_B2-B7.md 가 전 ref·전 워킹트리·디스크
+      어디에도 부재(DQ-0011 과 동일 패턴). 지시 메시지 요약을 스펙으로 삼음.
+    corrections:   # 요약의 전제를 실측으로 정정
+      - "'004 스키마의 board_views' → 004 는 부재. board_views 는 003_boards_engine.sql:73 에 이미 존재(main 랜딩). 새 마이그레이션 없이 구현 — 스키마 무변경."
+      - "'status 컬럼' → field_type enum 13종에 status 없음. 먼데이 상태 = select/multiselect 를 색 칩으로 렌더하는 표현 문제(색 출처=FieldOption.color). 스키마 변경 불필요."
+    delivered:
+      - "검증엔진 단일화: boards/cells.ts → custom/field-types 위임 어댑터. 구 normalizeCellValue/validateAgainstOptions 제거(조용한 null 수렴=데이터 유실) → validateCell(){ok,value,error}"
+      - "엔진 결함 2건 교정: number 가 '1,200,000'/₩ 거부 → 허용 / date 가 10자 절단으로 ISO 일시 거부 → 날짜부 수용(달력검증 유지, 2026-02-30 은 계속 거부)"
+      - "검증 훅: BoardsService.validateValues — 통과분만 저장 + errors[] 반환(관대·인라인), 무결성 필드(exec_amount·fee_pct·fee_paid_at)만 throw. setCells → {item, errors}"
+      - "상태 UI: lib/boards/status-palette.ts(결정적 색배정·hex정규화·WCAG 명암비) + components/boards/StatusCell.tsx(StatusPill/StatusCell/StatusSelect) + GenericBoardTable 배선"
+      - "board_views CRUD: 포트 getView/updateView+ViewPatch(전용 포트 — 공용계약 무변경) · 서비스 5종 · GET|POST /api/boards/[boardId]/views(?default=1) · PATCH|DELETE /api/board-views/[viewId] · lib/boards/http.ts"
+      - "기본 뷰는 T05 pickDefaultView 재사용(2중 구현 금지) — shared → name ASC → id ASC"
+      - "check.sh 초록 — 앱 338 테스트(+29)"
+    a11y_note: >-
+      상태 칩은 작은 텍스트(text-xs)라 WCAG AA 4.5:1 필요. 먼데이 원색 red(#e2445c)·
+      blue(#0086c0)·purple(#a25ddc)·teal(#009688) 은 흰·검 어느 글자색으로도 4.5 미달
+      (최대 ~4.1) → hue 유지한 채 어둡게 조정. 명암비 property 테스트가 회귀 감시.
+    blocked_items:
+      - "하위아이템(subitems): 003 items 에 parent_item_id 부재 → DQ-0013 으로 기획에 스키마 요청. 마이그레이션은 기획 단독 작성(ADR-0002)."
+    followup:
+      - "002 seed 에 실 상태 라벨+hex 확정 시: status-palette.ts 의 DUMMY_STATUS_OPTIONS 제거하고 시드 옵션 배선(컴포넌트·색 로직 불변)"
+      - "인라인 오류 표시: setCells 의 errors[] 를 보드 화면(서버 액션 경로)에 노출 — 현재는 API/서비스 계층까지만"
+      - "PostgREST 어댑터에 getView/updateView 반영(현재 local 어댑터만)"
 
 # 차단됨 (선행 조건 대기)
 blocked:

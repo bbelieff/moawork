@@ -71,6 +71,9 @@ export interface NewView {
   shared?: boolean;
 }
 
+/** 뷰 부분 수정 — board_id/user_id 는 이동 불가(소유·소속 고정). */
+export type ViewPatch = Partial<NewView>;
+
 export interface BoardsRepo {
   // 보드
   listBoards(ctx: Ctx): Board[];
@@ -103,6 +106,8 @@ export interface BoardsRepo {
 
   // 뷰
   listViews(ctx: Ctx, boardId: string): BoardView[];
+  getView(ctx: Ctx, id: string): BoardView | undefined;
   createView(ctx: Ctx, boardId: string, input: NewView): BoardView;
+  updateView(ctx: Ctx, id: string, patch: ViewPatch): BoardView | undefined;
   deleteView(ctx: Ctx, id: string): boolean;
 }

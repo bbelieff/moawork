@@ -1,105 +1,68 @@
 /**
- * 셀 값 처리 (T02b) — 001 field_type 13종에 대한 정규화·판정·비교.
- * item_values.value_jsonb 에 저장되기 전/후로 이 함수들을 통과한다.
+ * 셀 값 처리 (T02b 보드) — **검증 엔진은 T05 레지스트리로 단일화**(기획2 판정 2026-07-21).
  *
- * 참고: T05(core.custom)가 `lib/custom/field-types.ts` 에 동일 성격의 레지스트리를
- * 보유. 두 모듈이 각자 브랜치에서 병행 개발 중이라 지금은 독립 구현하고,
- * 머지 정착 후 공용화한다(followup).
+ * 이 파일은 더 이상 자체 정규화 로직을 갖지 않고 `@/lib/custom/field-types` 에 위임한다.
+ * (2중/3중 구현 금지 — 001 field_type 13종의 정본 판정은 그 레지스트리 하나다.)
+ *
+ * 정책 요약:
+ * - 엔진은 **던지지 않고 결과를 반환**한다: `validateCell() → {ok, value, error?}`.
+ * - 던질지 흘릴지는 **호출부(service)** 가 정한다 — 기본은 관대 + 인라인 피드백,
+ *   무결성 필드만 하드 거부(`isIntegrityField`).
+ * - ⛔ 형식 오류를 조용히 null 로 수렴시키지 않는다(데이터 유실).
  */
 
 import type { FieldOption, FieldType } from "@/lib/types";
+import { getFieldTypeSpec, validateValue } from "@/lib/custom/field-types";
 import type { CellValue } from "./types";
 
 /** 선택지를 갖는 타입. */
 export function hasOptions(type: FieldType): boolean {
-  return type === "select" || type === "multiselect";
+  return getFieldTypeSpec(type).supportsOptions;
 }
 
-function toTrimmedOrNull(v: unknown): string | null {
-  if (typeof v !== "string") return v == null ? null : String(v);
-  const t = v.trim();
-  return t === "" ? null : t;
+/** 셀 검증 결과 — 실패해도 던지지 않는다. */
+export interface CellValidation {
+  ok: boolean;
+  /** ok=true 일 때만 저장할 값. 실패 시 null(저장 금지). */
+  value: CellValue;
+  /** ok=false 일 때 사용자에게 보여줄 사유. */
+  error?: string;
 }
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * 원시 입력을 컬럼 타입에 맞는 저장값으로 정규화.
- * 파싱 불가·빈값은 null(멀티셀렉트는 [], 체크박스는 false)로 수렴한다.
- */
-export function normalizeCellValue(type: FieldType, raw: unknown): CellValue {
-  switch (type) {
-    case "checkbox":
-      return raw === true || raw === "true" || raw === 1;
-
-    case "number": {
-      if (raw === null || raw === undefined || raw === "") return null;
-      const n = typeof raw === "number" ? raw : Number(String(raw).replace(/[,\s₩]/g, ""));
-      return Number.isFinite(n) ? n : null;
-    }
-
-    case "date": {
-      const s = toTrimmedOrNull(raw);
-      if (s === null) return null;
-      if (DATE_RE.test(s)) return s;
-      const d = new Date(s);
-      return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
-    }
-
-    case "datetime": {
-      const s = toTrimmedOrNull(raw);
-      if (s === null) return null;
-      const d = new Date(s);
-      return Number.isNaN(d.getTime()) ? null : d.toISOString();
-    }
-
-    case "multiselect": {
-      if (raw === null || raw === undefined || raw === "") return [];
-      const arr = Array.isArray(raw) ? raw : [raw];
-      return arr.map((x) => String(x)).filter((x) => x !== "");
-    }
-
-    // text · longtext · select · phone · email · url · file · person
-    default:
-      return toTrimmedOrNull(raw);
-  }
-}
-
-/** 빈 셀 판정(필터 is_empty 등). */
-export function isEmptyCell(value: CellValue): boolean {
-  if (value === null || value === undefined || value === "") return true;
-  if (Array.isArray(value)) return value.length === 0;
-  return false;
+/** jsonb 값을 보드 셀 표현(CellValue)으로 좁힌다. */
+function toCellValue(v: unknown): CellValue {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return v;
+  if (Array.isArray(v)) return v.map((x) => String(x));
+  return String(v);
 }
 
 /**
- * 선택지 검증 — select 는 옵션 id 하나, multiselect 는 부분집합이어야 한다.
- * 옵션 정의가 없으면(느슨한 보드) 통과시킨다.
+ * 셀 값 검증·정규화 — 보드 쓰기 경로의 유일한 진입점.
+ * 옵션 목록이 없으면(느슨한 보드) 선택지 검증은 생략된다(엔진 규약).
  */
-export function validateAgainstOptions(
+export function validateCell(
   type: FieldType,
-  value: CellValue,
-  options: FieldOption[] | null | undefined,
-): boolean {
-  if (!hasOptions(type) || !options || options.length === 0) return true;
-  const ids = new Set(options.map((o) => o.id));
-  if (type === "select") return value === null || (typeof value === "string" && ids.has(value));
-  if (Array.isArray(value)) return value.every((v) => ids.has(v));
-  return isEmptyCell(value);
+  raw: unknown,
+  options?: FieldOption[] | null,
+): CellValidation {
+  const res = validateValue(type, raw, options ? { options } : undefined);
+  return res.ok
+    ? { ok: true, value: toCellValue(res.normalized) }
+    : { ok: false, value: null, error: res.error };
+}
+
+/** 빈 셀 판정(필터 is_empty 등). 타입 무관 공통 규약. */
+export function isEmptyCell(value: CellValue): boolean {
+  return getFieldTypeSpec("text").isEmpty(value as never);
 }
 
 /** 정렬/비교용 스칼라. 빈값은 항상 뒤로 가도록 호출측에서 처리. */
 export function comparableCell(value: CellValue): number | string {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "number") return value;
-  if (typeof value === "boolean") return value ? 1 : 0;
-  if (Array.isArray(value)) return value.join(",");
-  return value;
+  return getFieldTypeSpec("text").comparable(value as never);
 }
 
-/**
- * 두 셀 비교(오름차순). 빈값은 뒤로.
- */
+/** 두 셀 비교(오름차순). 빈값은 뒤로. */
 export function compareCells(a: CellValue, b: CellValue): number {
   const ae = isEmptyCell(a);
   const be = isEmptyCell(b);

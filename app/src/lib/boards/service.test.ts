@@ -96,11 +96,39 @@ describe("아이템 · 셀 인라인 편집 (EAV)", () => {
     expect(again.values.note).toBe("수정됨");
   });
 
-  it("허용되지 않은 선택지는 거부", () => {
+  // [정책 변경 — 기획2 판정 2026-07-21] 기본은 관대 + 인라인 피드백.
+  // 잘못된 값은 던지지 않고 저장도 하지 않으며, errors 로 사유를 돌려준다.
+  it("허용되지 않은 선택지는 저장하지 않고 errors 로 보고", () => {
     const item = svc.createItem(owner, SEED_BOARD_TASKS, { title: "x" });
-    expect(() =>
-      svc.setCells(owner, SEED_BOARD_TASKS, item.id, { status: "ghost" }),
-    ).toThrow(BoardRuleError);
+    const res = svc.setCells(owner, SEED_BOARD_TASKS, item.id, { status: "ghost" });
+
+    expect(res.errors).toHaveLength(1);
+    expect(res.errors[0].key).toBe("status");
+    expect(res.errors[0].message).toBeTruthy();
+    expect(res.item.values.status).toBeUndefined(); // 저장되지 않음
+  });
+
+  it("한 셀이 틀려도 나머지 정상 값은 저장된다(관대)", () => {
+    const item = svc.createItem(owner, SEED_BOARD_TASKS, { title: "x" });
+    const res = svc.setCells(owner, SEED_BOARD_TASKS, item.id, {
+      status: "ghost", // 실패
+      note: "정상 메모", // 통과
+    });
+
+    expect(res.errors.map((e) => e.key)).toEqual(["status"]);
+    expect(res.item.values.note).toBe("정상 메모");
+    expect(res.item.values.status).toBeUndefined();
+  });
+
+  it("⛔ 형식 오류를 조용히 null 로 수렴시키지 않는다(데이터 유실 금지)", () => {
+    const item = svc.createItem(owner, SEED_BOARD_TASKS, {
+      title: "x",
+      values: { due: "2026-08-01" },
+    });
+    const res = svc.setCells(owner, SEED_BOARD_TASKS, item.id, { due: "2026-02-30" });
+
+    expect(res.errors).toHaveLength(1);
+    expect(res.item.values.due).toBe("2026-08-01"); // 기존 값 보존 — null 로 덮어쓰지 않음
   });
 
   it("정의되지 않은 컬럼 키는 무시(EAV 오염 방지)", () => {
