@@ -285,6 +285,36 @@ describe("attachFile", () => {
     expect(repo.getDeal(ctx, "d1")?.custom.계약상황).toBe("written");
   });
 
+  // ⚠ Repo.updateDeal 은 Object.assign(shallow merge)이라 patch.custom 이 통째 교체된다(T03 경고).
+  //   → 반드시 read-modify-write 로 다른 트랙 값(T05 커스텀필드 · T09 정책자금)을 보존해야 한다.
+  it("타 트랙 custom 값(T05·T09)을 첨부/삭제 양쪽에서 보존한다", () => {
+    const d = makeDeal("d1");
+    d.custom = {
+      계약상황: "written", // T05 커스텀필드
+      실행액: 100_000_000, // T09 정책자금
+      수수료율: 3,
+      수수료입금일: "2026-07-01",
+    };
+    const repo = fakeRepo([d]);
+
+    const f1 = attachFile(ctx, "d1", { name: "a.pdf", size_bytes: 10 }, { repo, ...seq });
+    attachFile(ctx, "d1", { name: "b.pdf", size_bytes: 10 }, { repo, ...seq });
+
+    const afterAttach = repo.getDeal(ctx, "d1")?.custom ?? {};
+    expect(afterAttach.계약상황).toBe("written");
+    expect(afterAttach.실행액).toBe(100_000_000);
+    expect(afterAttach.수수료율).toBe(3);
+    expect(afterAttach.수수료입금일).toBe("2026-07-01");
+    expect(readFileRefs(afterAttach)).toHaveLength(2);
+
+    // 삭제 경로도 동일하게 보존해야 한다.
+    removeFile(ctx, "d1", f1.id, { repo });
+    const afterRemove = repo.getDeal(ctx, "d1")?.custom ?? {};
+    expect(afterRemove.계약상황).toBe("written");
+    expect(afterRemove.실행액).toBe(100_000_000);
+    expect(readFileRefs(afterRemove)).toHaveLength(1);
+  });
+
   it("검증 실패 시 FileValidationError", () => {
     const repo = fakeRepo([makeDeal("d1")]);
     expect(() =>
