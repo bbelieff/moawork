@@ -249,13 +249,14 @@ export function toSettlementInputs(
   return out;
 }
 
-/** 정산 요약 — 수수료·총매출 합계. 입력이 없으면 available=false(화면 '—'). */
+/** 정산 요약 — 수수료·총매출 합계. 입력이 없으면 available=false. */
 export function settlementSummary(
   entries: readonly { input: SettlementInput }[],
 ): SettlementSummary {
   if (entries.length === 0) {
     return {
       available: false,
+      provisional: false,
       count: 0,
       downPaymentSum: 0,
       feeSum: 0,
@@ -273,11 +274,61 @@ export function settlementSummary(
   }
   return {
     available: true,
+    provisional: false,
     count: entries.length,
     downPaymentSum,
     feeSum,
     totalRevenueSum,
   };
+}
+
+/**
+ * 정산 **임시** 추정 — `deal.amount` 합계를 총매출로 간주한다.
+ *
+ * TODO(T04): settlements 원천이 붙으면 제거하고 settlementSummary() 로 일원화할 것.
+ *   현재 001 의 settlements(실행액·수수료%·계약금·수수료입금일)가 @/lib/repo 포트에
+ *   노출되지 않아 정확 계산이 불가하다. 순서(기획2 합의): T03 이 포트 인터페이스에
+ *   settlements 를 선행 추가 → T09 가 구현 → T04 가 임시→실측 교체.
+ *   그때까지 '—' 대신 amount 기반 근사치를 보여주되 화면에 "임시"를 반드시 표기한다.
+ *   ⚠ 수수료·계약금은 산출 불가라 0 이다(총매출만 근사).
+ */
+export function provisionalSettlementFromAmounts(
+  deals: readonly Deal[],
+): SettlementSummary {
+  const withAmount = deals.filter(
+    (d) => typeof d.amount === "number" && Number.isFinite(d.amount),
+  );
+  if (withAmount.length === 0) {
+    return {
+      available: false,
+      provisional: true,
+      count: 0,
+      downPaymentSum: 0,
+      feeSum: 0,
+      totalRevenueSum: 0,
+    };
+  }
+  return {
+    available: true,
+    provisional: true,
+    count: withAmount.length,
+    downPaymentSum: 0,
+    feeSum: 0,
+    totalRevenueSum: sumAmounts(withAmount),
+  };
+}
+
+/**
+ * 정산 요약을 만들되, 정산 원천이 없으면 deal.amount 기반 임시 추정으로 폴백한다.
+ * (기획2 피드백: '—' 대신 임시 계산을 노출)
+ */
+export function settlementSummaryOrProvisional(
+  entries: readonly { input: SettlementInput }[],
+  fallbackDeals: readonly Deal[],
+): SettlementSummary {
+  const exact = settlementSummary(entries);
+  if (exact.available) return exact;
+  return provisionalSettlementFromAmounts(fallbackDeals);
 }
 
 /**

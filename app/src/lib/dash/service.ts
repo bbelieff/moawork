@@ -18,7 +18,7 @@ import {
   pipelineBreakdown,
   reContactDue,
   reContactList,
-  settlementSummary,
+  settlementSummaryOrProvisional,
   sumAmounts,
   toSettlementInputs,
 } from "./aggregate";
@@ -125,8 +125,14 @@ export function buildDashboard(ctx: Ctx, opts: BuildOptions = {}): DashboardData
     ],
     contractStatus: contractStatusBreakdown(deals, fieldDefs),
 
-    settlementAll: settlementSummary(settlementEntries),
-    settlementThisMonth: settlementSummary(toSettlementInputs(paidThisMonth)),
+    // 정산 원천(settlements)이 포트에 없어, 없으면 deal.amount 기반 임시 추정으로 폴백한다.
+    // TODO(T04): T03 포트 추가 → T09 구현 후 실측으로 교체(aggregate.ts 주석 참조).
+    settlementAll: settlementSummaryOrProvisional(settlementEntries, deals),
+    settlementThisMonth: settlementSummaryOrProvisional(
+      toSettlementInputs(paidThisMonth),
+      // 임시 추정의 "이번달" 기준은 생성일(수수료입금일을 알 수 없으므로).
+      filterDealsByRange(deals, range),
+    ),
 
     reContactThisMonth: reContactDue(reContactList(settlementEntries), range),
   };

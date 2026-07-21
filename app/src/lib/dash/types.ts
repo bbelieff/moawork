@@ -60,13 +60,19 @@ export interface ContractStatusBreakdown {
 /** 정산 요약(T09 확정 수식 기반). 원천 데이터가 없으면 available=false. */
 export interface SettlementSummary {
   available: boolean;
-  /** 정산 입력이 완전한 딜 건수. */
+  /**
+   * 임시 추정치 여부.
+   * true = settlements 원천(실행액·수수료율)이 없어 `deal.amount` 로 대체 계산한 값.
+   * 화면은 반드시 "임시" 표기를 함께 노출한다.
+   */
+  provisional: boolean;
+  /** 정산 입력이 완전한 딜 건수(임시 계산 시에는 amount 가 있는 딜 수). */
   count: number;
-  /** 계약금 합계. */
+  /** 계약금 합계. 임시 계산 시 0. */
   downPaymentSum: number;
-  /** 수수료(원) 합계. */
+  /** 수수료(원) 합계. 임시 계산 시 0(수수료율 미상). */
   feeSum: number;
-  /** 총매출 합계 = 계약금 + 수수료. */
+  /** 총매출 합계 = 계약금 + 수수료. 임시 계산 시 deal.amount 합계. */
   totalRevenueSum: number;
 }
 

@@ -150,6 +150,38 @@ describe("buildDashboard", () => {
     expect(got.reContactThisMonth.map((r) => r.dealId)).toEqual(["a"]);
   });
 
+  it("정산 원천이 없으면 deal.amount 기반 임시 추정으로 폴백한다(‘—’ 대신)", () => {
+    const repo = fakeRepo({
+      deals: [
+        deal("a", { amount: 3_000_000, created_at: "2026-07-10T00:00:00.000Z" }),
+        deal("b", { amount: 2_000_000, created_at: "2026-05-10T00:00:00.000Z" }),
+      ],
+    });
+    const got = buildDashboard(ctx, { repo, month: "2026-07" });
+
+    expect(got.settlementAll.provisional).toBe(true);
+    expect(got.settlementAll.totalRevenueSum).toBe(5_000_000);
+    // 임시 추정의 '이번달'은 생성일 기준(수수료입금일을 알 수 없음)
+    expect(got.settlementThisMonth.provisional).toBe(true);
+    expect(got.settlementThisMonth.totalRevenueSum).toBe(3_000_000);
+    // 수수료·계약금은 산출 불가
+    expect(got.settlementAll.feeSum).toBe(0);
+  });
+
+  it("정산 원천이 있으면 임시가 아니라 실측을 쓴다", () => {
+    const repo = fakeRepo({
+      deals: [
+        deal("a", {
+          amount: 999,
+          custom: { 실행액: 100_000_000, 수수료율: 3, 계약금: 1_000_000 },
+        }),
+      ],
+    });
+    const got = buildDashboard(ctx, { repo, month: "2026-07" });
+    expect(got.settlementAll.provisional).toBe(false);
+    expect(got.settlementAll.feeSum).toBe(3_000_000);
+  });
+
   it("계약상황 필드가 없으면 available=false 로 내려준다", () => {
     const got = buildDashboard(ctx, { repo: fakeRepo({ deals: [deal("a")] }), month: "2026-07" });
     expect(got.contractStatus.available).toBe(false);

@@ -175,6 +175,32 @@ export function SettlementWidget({
       </p>
     );
   }
+
+  // 임시 추정(deal.amount 기반)일 때는 총매출만 근사이고 계약금·수수료는 산출 불가.
+  if (data.provisional) {
+    return (
+      <div className="flex flex-col gap-2 text-sm">
+        <div className="flex items-center gap-2">
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+            임시
+          </span>
+          <span className="text-xs text-zinc-500">
+            딜 금액(amount) 기준 근사 — 정산 원천 연결 전
+          </span>
+        </div>
+        <div>
+          <div className="text-xs text-zinc-500">총매출(추정)</div>
+          <div className="mt-0.5 text-lg font-semibold tabular-nums">
+            {formatKrw(data.totalRevenueSum)}
+          </div>
+        </div>
+        <div className="text-xs text-zinc-400">
+          대상 {formatCount(data.count)}건 · 계약금·수수료는 실행액·수수료율 입력 후 산출
+        </div>
+      </div>
+    );
+  }
+
   return (
     <dl className="grid grid-cols-3 gap-3 text-sm">
       <div>

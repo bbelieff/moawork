@@ -8,8 +8,10 @@ import {
   inRange,
   monthRangeKst,
   pipelineBreakdown,
+  provisionalSettlementFromAmounts,
   ratio,
   reachedKind,
+  settlementSummaryOrProvisional,
   reContactDue,
   reContactList,
   settlementSummary,
@@ -382,14 +384,76 @@ describe("settlementSummary", () => {
     expect(got.totalRevenueSum).toBe(1_500_000 + 4_000_000);
   });
 
-  it("입력이 없으면 available=false 이고 합계는 0 (화면 '—')", () => {
+  it("입력이 없으면 available=false 이고 합계는 0", () => {
     expect(settlementSummary([])).toEqual({
       available: false,
+      provisional: false,
       count: 0,
       downPaymentSum: 0,
       feeSum: 0,
       totalRevenueSum: 0,
     });
+  });
+
+  it("정확 계산은 provisional=false 로 표시한다", () => {
+    const entries = toSettlementInputs([
+      deal("a", { custom: { 실행액: 1000, 수수료율: 10 } }),
+    ]);
+    expect(settlementSummary(entries).provisional).toBe(false);
+  });
+});
+
+// ── 정산 임시 추정 (기획2 피드백: '—' 대신 amount 기반) ──
+
+describe("provisionalSettlementFromAmounts", () => {
+  it("deal.amount 합계를 총매출 근사로 쓰고 provisional=true", () => {
+    const got = provisionalSettlementFromAmounts([
+      deal("a", { amount: 1_000_000 }),
+      deal("b", { amount: 500_000 }),
+    ]);
+    expect(got.available).toBe(true);
+    expect(got.provisional).toBe(true);
+    expect(got.count).toBe(2);
+    expect(got.totalRevenueSum).toBe(1_500_000);
+    // 수수료·계약금은 산출 불가 → 0
+    expect(got.feeSum).toBe(0);
+    expect(got.downPaymentSum).toBe(0);
+  });
+
+  it("amount 가 있는 딜만 센다", () => {
+    const got = provisionalSettlementFromAmounts([
+      deal("a", { amount: 100 }),
+      deal("b", { amount: null }),
+    ]);
+    expect(got.count).toBe(1);
+    expect(got.totalRevenueSum).toBe(100);
+  });
+
+  it("amount 가 하나도 없으면 available=false", () => {
+    const got = provisionalSettlementFromAmounts([deal("a", { amount: null })]);
+    expect(got.available).toBe(false);
+    expect(got.provisional).toBe(true);
+  });
+});
+
+describe("settlementSummaryOrProvisional", () => {
+  it("정산 원천이 있으면 실측을 쓴다(폴백 안 함)", () => {
+    const entries = toSettlementInputs([
+      deal("a", { custom: { 실행액: 100_000_000, 수수료율: 3, 계약금: 1_000_000 } }),
+    ]);
+    const got = settlementSummaryOrProvisional(entries, [deal("z", { amount: 999 })]);
+    expect(got.provisional).toBe(false);
+    expect(got.feeSum).toBe(3_000_000);
+  });
+
+  it("정산 원천이 없으면 amount 기반 임시로 폴백한다", () => {
+    const got = settlementSummaryOrProvisional([], [deal("z", { amount: 999 })]);
+    expect(got.provisional).toBe(true);
+    expect(got.totalRevenueSum).toBe(999);
+  });
+
+  it("둘 다 없으면 available=false", () => {
+    expect(settlementSummaryOrProvisional([], []).available).toBe(false);
   });
 });
 

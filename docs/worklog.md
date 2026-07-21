@@ -4,6 +4,30 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T04 · core.files 로컬 구현 + 정산 임시추정 (브랜치 feat/t04-dash)
+
+- **워킹트리 격리**: `git worktree add ../wt-t04 -b feat/t04-dash` (공유 워킹트리 커밋 금지 규약 적용).
+  origin/main 기준으로 분기했으나, 대시보드 코드가 **T03 파운데이션(a7bdc9d)·T02 정본
+  재작성(ab9845e)에 의존**해 그 위에 쌓인 스택 브랜치로 구성. main 은 건드리지 않음.
+- **기획2 피드백 #1 반영** — 정산 집계가 '—' 대신 **`deal.amount` 기반 임시 추정**으로 폴백:
+  `provisionalSettlementFromAmounts()` + `settlementSummaryOrProvisional()`,
+  `SettlementSummary.provisional` 플래그. 화면에 **"임시" 뱃지**와 산출 불가 항목(계약금·수수료)
+  안내를 함께 노출해 실측과 혼동되지 않게 함. 교체 순서는 TODO 주석에 명시
+  (T03 포트 선행 추가 → T09 구현 → T04 실측 교체).
+- **피드백 #2 준수**: 공용 인터페이스(`@/lib/types`, `@/lib/repo/index.ts`) **미변경**.
+  파일 기능은 아직 공용 포트에 없어 T04 자체 서비스로 분리.
+- **core.files 로컬 구현** (독자 CREATE TABLE 금지 → 마이그레이션 없이 로컬 우선):
+  - `lib/services/files.ts` — 딜 파일 첨부 인메모리 스토어 + 검증.
+    크기 제한(10MB) · **실행/스크립트 확장자 24종 차단** · **경로 탈출 방지**
+    (`sanitizeFileName`: 경로 구분자·제어문자 제거) · org 격리 · `buildStoragePath()`
+    (첫 세그먼트=org_id, Storage 버킷 RLS 대비).
+  - `components/deal/ContractStatusField.tsx` — **계약상황 select**. 선택지는 하드코딩이 아니라
+    `field_defs`('계약상황', 002 프리셋)에서 로드, 값은 `deals.custom[key]`.
+    → 기획 §3 core.files **완료 기준("계약상황이 딜에서 표시·변경됨") 충족**.
+  - `components/deal/FilesTab.tsx` — 흐름 C '문서' 탭. 업로드 전 클라이언트 1차 검증 + 다운로드.
+- 신규 테스트 30개(파일 서비스) + 정산 임시추정 7개. `bash scripts/check.sh` **초록**(앱 169 + 워커 1).
+- 남은 것: 파일 메타 스키마(DQ-0014, 기획 단일 PR 대기) · Storage 서명URL 교체 · 딜 상세 화면(T02) 배선.
+
 ## 2026-07-21 — T04 · core.dash 기본 대시보드 구현 (core.files 는 스키마 대기)
 
 - **기획 v0.2 + 스키마 v1 정독**: `docs/PLAN-v0.2.md`, `supabase/migrations/001_schema_v1.sql`.
