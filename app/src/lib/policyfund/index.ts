@@ -3,4 +3,5 @@ export * from "./types";
 export * from "./presets";
 export * from "./board";
 export * from "./settlement";
+export * from "./settlements";
 export * from "./pipeline";
