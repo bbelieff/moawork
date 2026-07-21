@@ -141,14 +141,33 @@ export function sumAmounts(deals: readonly Deal[]): number {
 }
 
 /**
- * 계약상황 분포 — field_defs 의 select 필드(기본 key: `계약상황`) 옵션별 건수.
+ * 정책자금 프리셋(ind.policyfund)이 등록하는 딜 커스텀필드 **key**.
+ *
+ * ⚠ BUG-0002: key 는 **영문 식별자**이고 한글은 `label` 이다. 초기 구현이 라벨을
+ *   key 로 써서 계약상황 위젯이 항상 미가용으로 떨어지고, 정산 추출도 아무것도
+ *   매칭하지 못했다(→ 항상 '임시 추정' 폴백). 하드코딩 대신 이 상수만 참조한다.
+ *
+ * 출처: lib/presets/policyfund.ts (설치 시 field_defs 로 전개).
+ * 정합은 aggregate.test.ts 의 가드 테스트가 실제 프리셋을 설치해 검증한다.
+ */
+export const POLICYFUND_FIELD_KEYS = {
+  contractStatus: "contract_status",
+  execAmount: "exec_amount",
+  feePct: "fee_pct",
+  feePaidAt: "fee_paid_at",
+  /** 계약금 — settlements 엔티티에는 있으나 프리셋 커스텀필드로는 미정의(없으면 0 보정). */
+  downPayment: "down_payment",
+} as const;
+
+/**
+ * 계약상황 분포 — field_defs 의 select 필드(기본 key: `contract_status`) 옵션별 건수.
  * 딜의 값은 `deal.custom[fieldKey]` 에서 읽고, 옵션 id 우선·라벨 폴백으로 매칭한다.
  * 필드 정의가 없으면 available=false (화면은 '—').
  */
 export function contractStatusBreakdown(
   deals: readonly Deal[],
   fieldDefs: readonly FieldDef[],
-  fieldKey = "계약상황",
+  fieldKey: string = POLICYFUND_FIELD_KEYS.contractStatus,
 ): ContractStatusBreakdown {
   const def = fieldDefs.find((f) => f.entity === "deal" && f.key === fieldKey);
   const total = deals.length;
@@ -196,11 +215,16 @@ export interface SettlementFieldKeys {
   feeDepositDate: string;
 }
 
+/**
+ * 딜 커스텀필드에서 정산 입력을 읽는 기본 키.
+ * ⚠ BUG-0002 로 한글 라벨 → 영문 key 로 교정. settlements 엔티티 컬럼명과도 동일하다
+ *   (down_payment / exec_amount / fee_pct / fee_paid_at) — 실측 원천 교체 시 그대로 대응.
+ */
 export const DEFAULT_SETTLEMENT_KEYS: SettlementFieldKeys = {
-  disbursedAmount: "실행액",
-  feePercent: "수수료율",
-  downPayment: "계약금",
-  feeDepositDate: "수수료입금일",
+  disbursedAmount: POLICYFUND_FIELD_KEYS.execAmount,
+  feePercent: POLICYFUND_FIELD_KEYS.feePct,
+  downPayment: POLICYFUND_FIELD_KEYS.downPayment,
+  feeDepositDate: POLICYFUND_FIELD_KEYS.feePaidAt,
 };
 
 /** 셀 값을 유한수로 강제. 콤마·통화기호 허용. 불가면 null. */

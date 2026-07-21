@@ -235,9 +235,9 @@ describe("readFileRefs", () => {
 
 describe("appendFileRef / removeFileRef", () => {
   it("다른 custom 키를 보존한다", () => {
-    const custom = { 계약상황: "written", [FILES_CUSTOM_KEY]: [ref("a")] };
+    const custom = { contract_status: "written", [FILES_CUSTOM_KEY]: [ref("a")] };
     const next = appendFileRef(custom, ref("b"));
-    expect(next.계약상황).toBe("written");
+    expect(next.contract_status).toBe("written");
     expect(readFileRefs(next).map((f) => f.id)).toEqual(["a", "b"]);
   });
 
@@ -279,10 +279,10 @@ describe("attachFile", () => {
 
   it("기존 custom 필드(계약상황)를 덮어쓰지 않는다", () => {
     const d = makeDeal("d1");
-    d.custom = { 계약상황: "written" };
+    d.custom = { contract_status: "written" };
     const repo = fakeRepo([d]);
     attachFile(ctx, "d1", { name: "a.pdf", size_bytes: 10 }, { repo, ...seq });
-    expect(repo.getDeal(ctx, "d1")?.custom.계약상황).toBe("written");
+    expect(repo.getDeal(ctx, "d1")?.custom.contract_status).toBe("written");
   });
 
   // ⚠ Repo.updateDeal 은 Object.assign(shallow merge)이라 patch.custom 이 통째 교체된다(T03 경고).
@@ -290,10 +290,10 @@ describe("attachFile", () => {
   it("타 트랙 custom 값(T05·T09)을 첨부/삭제 양쪽에서 보존한다", () => {
     const d = makeDeal("d1");
     d.custom = {
-      계약상황: "written", // T05 커스텀필드
-      실행액: 100_000_000, // T09 정책자금
-      수수료율: 3,
-      수수료입금일: "2026-07-01",
+      contract_status: "written", // T05 커스텀필드
+      exec_amount: 100_000_000, // T09 정책자금
+      fee_pct: 3,
+      fee_paid_at: "2026-07-01",
     };
     const repo = fakeRepo([d]);
 
@@ -301,17 +301,17 @@ describe("attachFile", () => {
     attachFile(ctx, "d1", { name: "b.pdf", size_bytes: 10 }, { repo, ...seq });
 
     const afterAttach = repo.getDeal(ctx, "d1")?.custom ?? {};
-    expect(afterAttach.계약상황).toBe("written");
-    expect(afterAttach.실행액).toBe(100_000_000);
-    expect(afterAttach.수수료율).toBe(3);
-    expect(afterAttach.수수료입금일).toBe("2026-07-01");
+    expect(afterAttach.contract_status).toBe("written");
+    expect(afterAttach.exec_amount).toBe(100_000_000);
+    expect(afterAttach.fee_pct).toBe(3);
+    expect(afterAttach.fee_paid_at).toBe("2026-07-01");
     expect(readFileRefs(afterAttach)).toHaveLength(2);
 
     // 삭제 경로도 동일하게 보존해야 한다.
     removeFile(ctx, "d1", f1.id, { repo });
     const afterRemove = repo.getDeal(ctx, "d1")?.custom ?? {};
-    expect(afterRemove.계약상황).toBe("written");
-    expect(afterRemove.실행액).toBe(100_000_000);
+    expect(afterRemove.contract_status).toBe("written");
+    expect(afterRemove.exec_amount).toBe(100_000_000);
     expect(readFileRefs(afterRemove)).toHaveLength(1);
   });
 

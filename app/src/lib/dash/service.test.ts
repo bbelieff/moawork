@@ -118,10 +118,10 @@ describe("buildDashboard", () => {
     const repo = fakeRepo({
       deals: [
         deal("a", {
-          custom: { 실행액: 100_000_000, 수수료율: 3, 계약금: 1_000_000, 수수료입금일: "2026-07-15" },
+          custom: { exec_amount: 100_000_000, fee_pct: 3, down_payment: 1_000_000, fee_paid_at: "2026-07-15" },
         }),
         deal("b", {
-          custom: { 실행액: 50_000_000, 수수료율: 2, 계약금: 500_000, 수수료입금일: "2026-05-02" },
+          custom: { exec_amount: 50_000_000, fee_pct: 2, down_payment: 500_000, fee_paid_at: "2026-05-02" },
         }),
       ],
     });
@@ -141,9 +141,9 @@ describe("buildDashboard", () => {
     const repo = fakeRepo({
       deals: [
         // D+180 = 2026-07-24 → 7월 대상
-        deal("a", { custom: { 실행액: 1, 수수료율: 1, 수수료입금일: "2026-01-25" } }),
+        deal("a", { custom: { exec_amount: 1, fee_pct: 1, fee_paid_at: "2026-01-25" } }),
         // D+180 = 2026-06-30 → 제외
-        deal("b", { custom: { 실행액: 1, 수수료율: 1, 수수료입금일: "2026-01-01" } }),
+        deal("b", { custom: { exec_amount: 1, fee_pct: 1, fee_paid_at: "2026-01-01" } }),
       ],
     });
     const got = buildDashboard(ctx, { repo, month: "2026-07" });
@@ -173,7 +173,7 @@ describe("buildDashboard", () => {
       deals: [
         deal("a", {
           amount: 999,
-          custom: { 실행액: 100_000_000, 수수료율: 3, 계약금: 1_000_000 },
+          custom: { exec_amount: 100_000_000, fee_pct: 3, down_payment: 1_000_000 },
         }),
       ],
     });
