@@ -1,6 +1,7 @@
 // 제품 상수 — PLAN-v0.2 §DI-2: 제품명은 코드 전역에서 이 상수 하나로만 참조한다.
-// 교체 시 이 한 줄만 바꾼다(가칭 "모아워크").
-export const PRODUCT_NAME = "모아워크" as const;
+// 표기 확정(design-tokens.md §5, O1/DI-2): "MoaWork" 카멜케이스 고정.
+// MOAWORK·Moawork·모아워크 표기 금지 — 바꿀 일이 생기면 이 한 줄만 바꾼다.
+export const PRODUCT_NAME = "MoaWork" as const;
 
 // 기능 키(엔타이틀먼트) — 001_schema_v1.sql 의 feature_key 와 일치.
 export const FEATURES = {

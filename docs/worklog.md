@@ -4,6 +4,48 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T03 · B1 앱 셸 v0.3 + 브랜드 토큰 + 관리자 자동부여(4b) + RLS 침투테스트 하네스
+
+브랜치 `feat/t03-shell-auth` (격리 worktree). check.sh 초록 + `next build` 성공.
+
+**입력 자산 실측**: 지시서가 가리킨 `docs/design/UI목업_모아워크셸_v0.3.html`·`brand/assets/...` 는
+앱 레포(전 브랜치)에 **없었고**, 기획 워크스페이스
+`C:/Users/belie/Desktop/Belief/서울리드프로젝트/` 에 존재했다(remote 없는 별도 로컬 레포,
+`chore/day0-harness`). 거기서 **무수정 복사**해 앱 레포로 반입.
+
+- **디자인 토큰**: `design-tokens.md §1` 정본을 `app/src/app/globals.css` 에 투입(`--mw-*`).
+  원본 `moawork-color-tokens.css` 는 `app/src/styles/` 에 사본 보존(동기화 대상).
+  컴포넌트는 hex 하드코딩 0 — 전부 `var(--mw-*)` 참조. Tailwind `@theme inline` 매핑 추가.
+- **로고**: 락업/심볼 light·dark SVG → `app/public/brand/`, 파비콘·PWA 아이콘 → `app/public/icons/`.
+  `components/brand/Logo.tsx` 의 `Logo`/`Symbol` 이 CSS(.mw-only-light/dark)로 테마 자동 전환
+  (JS 리렌더 없음). 최소너비 규칙(락업 120px·심볼 16px) 반영.
+- **제품명**: `PRODUCT_NAME` = **"MoaWork"** (design-tokens §5 / O1·DI-2 확정, 기존 "모아워크" 교체).
+- **앱 셸**: `(app)/layout.tsx` 1단 사이드바 232px(11메뉴, 목업 IA 1:1) + 상단바(검색·알림·다크토글).
+  메뉴 잠금은 **서버 엔타이틀먼트 판정**을 사이드바로 내려 표시. 라우트 없는 메뉴는 "준비 중"
+  비활성(타 트랙 화면 침범 금지).
+- **다크/라이트**: `data-theme` + `prefers-color-scheme`. root layout 인라인 스크립트로 FOUC 차단,
+  `ThemeToggle` 은 `useSyncExternalStore` 로 DOM·미디어쿼리를 구독(state 복제 없음 →
+  OS 테마 변경도 즉시 반영).
+- **4b 관리자 자동부여**: `lib/auth/admin.ts` — `resolveAdminGrant(email, rpc?)`.
+  실DB 의 `app_admin_role()` RPC 가 있으면 우선, 없으면 005 seed 와 동일한 폴백 allowlist.
+  RPC 가 명시적 null 이면 폴백으로 뒤집지 않는다(권한상승 방지), RPC 실패는 폴백(로그인 유지).
+  `Ctx.isPlatformAdmin` 추가(선택 필드, additive). 테스트 15건.
+- **RLS 침투테스트**: `lib/auth/rls-penetration.test.ts` — 조직A→조직B의 companies/deals/orgs
+  SELECT=0건 + member/assigned 본인 담당만. **fetch 로 PostgREST 직접 호출**(supabase-js 는
+  어느 워크스페이스에도 선언 안 된 팬텀 의존성이라 회피). 크리덴셜 없으면 skip.
+- **마이그레이션 동기화**: `004_gaps_and_leadin.sql`·`005_app_admins.sql` 반입(무수정).
+  앱 레포에 없어 4b 근거가 비어 있었음.
+
+**미완(정직 보고)**
+- 수용기준 "다른 조직 데이터 절대 안 보임(실DB RLS)" — **미검증**. 크리덴셜 부재로 테스트가 skip.
+  → `docs/coordination/decision-inbox.md` DI-A2 로 요청.
+- 구글 OAuth 실동작 — Google Cloud 클라이언트·redirect 등록이 belie 액션(DI-A1). 코드는 dev-session 폴백 유지.
+- **런타임 클릭스루 미실행** — `preview_start` 가 세션 cwd(메인 워킹트리, 타 트랙 브랜치)를 잡아
+  내 브랜치를 띄우지 못했고 3000 포트도 타 트랙 점유. 대신 `next build` 성공으로 라우트·RSC·
+  클라이언트 경계까지 검증. **완료 판정은 T10 클릭스루 스모크 이후.**
+- Vercel 배포 반영 — main 머지 후.
+
+
 ## 2026-07-21 — T01 · B0 Vercel 워크어라운드 회수 (Install Command 오버라이드 제거·정식화)
 
 - **원인 규명**: `app/tsconfig.json` 의 `include: ["**/*.ts"]` 가 `app/vitest.config.ts` 를 타입체크
