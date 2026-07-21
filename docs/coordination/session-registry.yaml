@@ -179,25 +179,36 @@ sessions:
     role: 알림발송 (mod.notify) — 알림톡/문자 발송 + VPS 워커(발송 잡, pg-boss)
     owner: belie
     branch: main
-    status: standby
+    status: active
     started: 2026-07-21
     depends_on: [T01]
+    branch: feat/t06-notify-worker-scaffold   # 공유 main 트리 경합 회피 → 격리 worktree. PR→T10 검수.
     blocked_on:
-      - 기획 v0.2 확정
-      - DB 스키마 v1 (mod.notify 도메인 테이블 — 템플릿/발송로그/수신자)
+      # 기획 v0.2·스키마 v1 해소. 남은 차단은 Phase 2 벤더 게이트(구현 활성화 조건).
+      - "Phase 2 게이트 — mod.notify entitlement OFF(001_schema_v1.sql L461-462)"
+      - "DI-5 벤더 계약 결정(belie)"
     scope:
       - mod.notify 스키마 (알림 템플릿 / 발송 로그 / 수신자·채널)
       - 알림톡(카카오)·문자(SMS) 발송 프로바이더 어댑터
       - VPS 워커 발송 잡 (pg-boss 큐 핸들러, 재시도·상태 추적)
     design_doc: docs/design/T06-notify-design.md
+    delivered:
+      - "설계: docs/design/T06-notify-design.md (파이프라인·트리거 3종·벤더 비교표) — 브랜치 feat/t06-notify-design, main 미머지"
+      - "스캐폴드: worker/src/notify/ — types(채널·SendResult)·provider(포트+resolve)·providers/stub·job(notify.send·재시도 의미론)·register(createQueue+work)·pending(무해 어댑터)"
+      - "배선: worker/src/index.ts 의 TODO 자리에 registerNotifyWorker (기존 파일 수정은 이 1곳뿐)"
+      - "검증: check.sh 초록(app 309 / worker 14, notify 13 신규) · 부팅 스모크 · tsc 빌드"
+    followup:
+      - "벤더 확정(DI-5) 시 providers/solapi.ts 추가 — 포트 고정이라 교체비용 최소"
+      - "pending.ts(무해 스텁) → Supabase 어댑터 교체 + 00X_notify_phase2.sql additive"
+      - "App API·entitlement 게이트 · T02 단계이동 트리거 구독"
+      - "→ 스키마 오너: email 은 message_channel enum 에 없음(확장 채널로 타입 구분) — 실도입 시 enum 마이그레이션 선행"
     notes: >-
-      기획 v0.2 + 스키마 v1 확정 → Phase 2 설계 문서 작성 완료
-      (docs/design/T06-notify-design.md: 발송 파이프라인·트리거 3종·벤더 어댑터·벤더 비교표).
-      단, mod.notify 는 Phase 2(벤더)라 MVP entitlement OFF(001_schema_v1.sql L461-462) →
-      구현은 Phase 2 계약(DI-5) 후. 스키마 v1 의 message_templates·messages 사용,
-      기존 마이그레이션 미수정(Phase 2 착수 시 00X_notify_phase2.sql 로 additive).
-      착수 순서: 추가 마이그레이션 → 벤더 어댑터(SOLAPI 1차) → worker boss.work(notify.send)
-      → App API·entitlement 게이트 → T02 단계이동 이벤트 구독. 비밀값(벤더 API 키)은 .env 로만.
+      active. Phase 2 **스캐폴드(스텁)** 까지 완료 — 큐/핸들러/포트 배선만 살아 있고
+      실제 발송·DB 연동은 없다. pending.ts 로더가 항상 null 이라 잡이 유입돼도 실발송 0건
+      (벤더·엔타이틀먼트 확정 전 오발송 원천 차단). pg-boss v10 규약 반영: 핸들러가 잡
+      배열(batch)을 받고 createQueue 가 필수. 재시도 의미론은 일시 오류만 재시도하고
+      영구 오류는 즉시 failed 종결. 배정이 가리킨 next-prompt_B2-B7.md 는 부재 →
+      DQ-0015 로 보고하고 배정 요약만 근거로 착수(추측 금지). 비밀값(벤더 API 키)은 .env 로만.
 
   - id: T07
     role: 성과·인센티브 (mod.perf) — 성과 집계 / 리더보드 / 활동량

@@ -262,8 +262,40 @@ blocked:
     opened: 2026-07-21
     status: blocked
     blocked_on:
-      - 기획 v0.2 확정
-      - DB 스키마 v1 (mod.notify 도메인 테이블 — 템플릿/발송로그/수신자)
+      # 기획 v0.2·스키마 v1 은 해소. 남은 차단은 Phase 2 벤더 게이트.
+      - "mod.notify = Phase 2 — MVP plan_features 미포함(001_schema_v1.sql L461-462, entitlement OFF)"
+      - "DI-5 벤더 계약 결정(belie) — SOLAPI vs 팝빌"
+    delivered:
+      - "설계: docs/design/T06-notify-design.md (브랜치 feat/t06-notify-design, main 미머지)"
+      - "스캐폴드: worker/src/notify/ — 발송 포트(이메일/SMS/알림톡)·notify.send 잡·재시도 의미론·스텁 프로바이더 (브랜치 feat/t06-notify-worker-scaffold)"
+    notes: >-
+      스캐폴드는 **스텁**이다: pending.ts 로더가 항상 null 이라 잡이 유입돼도 실발송 0건.
+      벤더/엔타이틀먼트 확정 전 오발송을 원천 차단하려는 의도적 무해 동작.
+      pg-boss v10 규약 반영(핸들러=잡 배열, createQueue 필수).
+    followup:
+      - "→ belie: DI-5 벤더 결정. 확정 시 providers/solapi.ts 추가로 교체 완료(포트 고정)."
+      - "→ T08(mod.hometax): 대기 중이던 'VPS 워커 잡 패턴' 선참조 가능 — worker/src/notify/{job,register}.ts (createQueue+work, 재시도 의미론)."
+      - "→ T02: 단계이동 → 알림 트리거 이벤트 계약(비동기·베스트에포트)."
+      - "→ 스키마 오너: email 채널은 message_channel enum(alimtalk/sms)에 없음. 이메일 발송 실제 도입 시 enum 확장 마이그레이션 선행 필요 — 현재는 인터페이스만 선반영(types.ts isSchemaChannel)."
+
+  - id: DQ-0015
+    title: "[보고→코디네이터] 배정이 가리킨 docs/coordination/next-prompt_B2-B7.md 부재"
+    assignee: 코디네이터(기획2)
+    requested_by: T06
+    opened: 2026-07-21
+    status: queued
+    severity: low   # 배정 프롬프트 요약으로 착수 가능했음 — 산출물 차단 아님
+    detail: >-
+      T06 Phase 2 스캐폴드 배정이 'docs/coordination/next-prompt_B2-B7.md 의 T06 파트를 읽고
+      착수'를 지시했으나 해당 파일이 저장소 전 ref·워킹트리·히스토리(git log --all) 어디에도
+      없다. DQ-0011(003 스키마/T02b 지침)·DQ-0014(core.files 스키마)와 동일 패턴.
+      T06 은 상세 스펙을 추측하지 않고 배정 프롬프트에 포함된 요약(잡 스텁 / 이메일·SMS 발송
+      인터페이스 / 독립 작업)만을 근거로 스캐폴드를 구현했다. B3~B7 타 트랙도 같은 파일을
+      전제한다면 동일하게 막힐 수 있으니 파일 배포 여부 확인 요망.
+    discrepancy: >-
+      요약은 '이메일/SMS' 를 요구하지만 정본 스키마 message_channel 은 (alimtalk, sms) 로
+      email 이 없다. 인터페이스는 채널 무관하게 두고 email 을 '스키마 미반영 확장 채널'로
+      명시 구분했다(types.ts). 실제 이메일 발송 도입 시 enum 확장 마이그레이션 필요 — 판단 요망.
 
   - id: DQ-0008
     title: 홈택스 — mod.hometax 조회→발행(전자세금계산서) + 워커 잡(pg-boss)
