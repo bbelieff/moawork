@@ -80,6 +80,44 @@ approvals:
          ② 폐기 시 ③ 의 베이스가 사라지므로, ③ 는 ① 머지 후 main 으로 리베이스 필요.
          ③ 자체는 전용 BoardsRepo 포트라 공용 계약 미변경 — 규칙 2 클린."
 
+  - id: AP-0003
+    from: T03
+    to: [기획2, T04]
+    subject: "DQ-0016 회신 — getDeal/updateDeal 포트 추가 요청"
+    date: 2026-07-21
+    verdict: NO_ACTION_REQUIRED
+    decision: "요청한 2개 메서드는 이미 ①(PR #1)에 존재. 추가하지 않음(추가 시 빌드 파손)."
+    evidence: >-
+      origin/feat/t03-foundation-org 기준 —
+      포트: app/src/lib/repo/index.ts L122 getDeal(ctx,id): Deal|undefined,
+      L124 updateDeal(ctx,id,patch: DealPatch): Deal|undefined (L36 NewDeal, L47 DealPatch).
+      구현: app/src/lib/repo/local/localRepo.ts L289 getDeal, L319 updateDeal.
+      도입 커밋 = ab9845e (git log -S'getDeal(ctx: Ctx'), 이는 ①·② **공통 조상**이다.
+    root_cause: >-
+      T04 가 ② 위에서 작업하며 해당 메서드가 ② 산출물이라고 판단한 것으로 보인다. 실제로는
+      공통 조상 ab9845e 가 출처이고, T02 가 파운데이션 브랜치에 직접 커밋해 ① 에 이미 포함됐다.
+    why_not_comply: >-
+      동일 시그니처를 interface 에 재선언하면 TS 중복 멤버로 컴파일이 깨진다. 요청대로 '최소 추가'
+      하는 것이 오히려 ① 을 빨간불로 만든다. 따라서 코드 변경 없이 회신한다.
+    branch_delta_audit: >-
+      ② 폐기 전 안전 확인 완료: git diff ① ② -- lib/repo/index.ts · lib/types/ 결과가
+      **전부 삭제분**이다(② 에만 있는 계약 변경 0건). ① 이 ② 의 상위집합이며
+      ① 에만 있는 것은 settlements 포트 + Settlement 타입(내가 추가). → ② 삭제로 유실되는
+      공용 계약 없음. ④ 는 ① 머지 후 리베이스하면 정상 빌드된다.
+    hazard: >-
+      ⚠ DQ-0014(files jsonb) 관련 실제 위험은 메서드 부재가 아니라 **패치 의미론**이다.
+      localRepo.updateDeal 은 Object.assign(d, rest) 라서 patch.custom 이 **통째로 교체**된다
+      (deep-merge 아님). files 서비스가 updateDeal(ctx,id,{custom:{files:[...]}}) 를 호출하면
+      T05 커스텀필드 값·T09 정책자금 값 등 **기존 custom 전체가 소실**된다.
+      → 반드시 read-modify-write: getDeal 로 읽어 {...deal.custom, files:[...]} 로 병합 후 기록.
+    offer: >-
+      files 가 '키 단위 jsonb' 저장을 원한다면 deals.custom(간이 저장)이 아니라 001 정본인
+      field_values(entity_id, field_key, value_jsonb)가 올바른 위치다. 현재 포트에는
+      field_values 접근자가 없다(listFieldDefs/createFieldDef 만 존재).
+      필요하면 T03 이 단일 선행 변경으로 추가한다 — 어느 쪽인지 T04 회신 요망:
+      (A) deals.custom + read-modify-write 로 충분 → 추가 없음
+      (B) field_values 접근자 필요 → T03 이 get/set/list 포트 추가
+
 rules:
   # 기획2 확정(2026-07-21): 계약 파일 단일 소유
   - scope: "app/src/lib/types/**, app/src/lib/repo/index.ts"
