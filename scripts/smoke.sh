@@ -149,8 +149,16 @@ if [ -n "$AID" ]; then
     ok "조직 생성 서버액션 동작 (mw_org 발급)"
     NH="$TMP/newhome.html"
     curl -s -m 15 -b "mw_uid=$OWNER; mw_org=$NEW" "$BASE/" -o "$NH"
-    leak=$(grep -c '시설자금' "$NH")
-    [ "$leak" -eq 0 ] && ok "신규 조직에 이전 조직 딜 0건" || bad "★조직격리 실패★ 이전 조직 딜 $leak 건 노출"
+    # ★ 먼저 '화면이 실제로 렌더됐는지' 확인한다. 기능이 잠겨 아무것도 안 나오면
+    #   "이전 조직 딜 0건"은 격리 성공이 아니라 검사 무효(공허한 참)다.
+    if grep -q '잠긴 기능입니다' "$NH"; then
+      bad "★신규 조직에서 MVP 기능이 잠김★ — 온보딩(흐름 A) 종착점인 홈 대시보드 미표시. 조직격리 검사 무효"
+      grep -oE '(core|ind|mod)\.[a-z]+' "$NH" | sort -u | head -5 | sed 's/^/        잠긴 feature_key: /'
+    else
+      ok "신규 조직 홈이 실제로 렌더됨(기능 잠금 없음)"
+      leak=$(grep -c '시설자금' "$NH")
+      [ "$leak" -eq 0 ] && ok "신규 조직에 이전 조직 딜 0건" || bad "★조직격리 실패★ 이전 조직 딜 $leak 건 노출"
+    fi
     # 프리셋 전개 확인
     NO="$TMP/newonb.html"
     curl -s -m 15 -b "mw_uid=$OWNER; mw_org=$NEW" "$BASE/onboarding" -o "$NO"

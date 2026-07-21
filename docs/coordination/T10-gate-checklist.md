@@ -205,8 +205,47 @@ curl -s -i -X POST -b 'mw_uid=<uid>' -F '$ACTION_ID_<id>=' -F 'name=<조직명>'
       *T10 영향 없음*: 해당 브랜치에 있던 T10 커밋 `ae97140` 은 이미 main 으로 cherry-pick 완료(`8d6cfab`).
 - [x] **③ T02 보드엔진 머지 → main 스모크 ✅ 통과** — main `9bd2b7a`(Merge PR #2), 게이트 초록 + 스모크 `PASS=15 FAIL=0 SKIP=2`.
       **★담당범위(딜 단위) scope 격리 확정** — 아래 ③판정 참조.
-- [ ] **④ T04 독립 머지 → main 스모크**
+- [!] **④ T04 머지 → main 스모크 ❌ FAIL 1건** — main `da7dce0`(Merge PR #4), 게이트 초록이나 스모크 `PASS=17 FAIL=1 SKIP=0`.
+      **신규 조직에서 MVP 기능 전체 잠김(BUG-0001)** — 아래 ④판정 참조. **core.dash done 불가.**
 - [ ] **⑤ T05 구현**
+
+### ★ ④T04 main 판정 (main `da7dce0`, 2026-07-21 · T10 실측) — **반려(FAIL 1)**
+게이트 `✅ check 통과`. 스모크 `PASS=17 **FAIL=1** SKIP=0`(SKIP 0 = 처음으로 전 항목 커버).
+
+**통과 — 집계 정확성(원천 대조, owner vs member)**
+| 지표 | owner(all) | member(assigned) | 검증 |
+|---|---|---|---|
+| 전체 딜 | 3 | 2 | `/api/deals` 원천과 일치 ✅ |
+| 고객사 | 2 | 1 | 고객사도 담당범위 반영 ✅ |
+| 단계별 | 마케팅1·미팅1·계약1 (각 33.3%) | 마케팅1·미팅1·**계약0** (각 50%) | 합계=전체, 비율 합 100% ✅ |
+| 전환율 | 미팅도달 66.7%(2/3)·계약 33.3%(1/3) | 미팅도달 50%(1/2)·계약 0%(0/2) | 누적도달 정의대로 ✅ |
+| 총매출(추정) | 800,000,000원 (대상 2건) | 300,000,000원 (대상 1건) | 시드 amount 300M+500M / 300M 일치 ✅ |
+
+→ **★RLS 하 집계 확인**: 대시보드 수치가 담당범위를 그대로 반영. **집계 경로가 격리 우회 통로가 되지 않는다.**
+→ 빈 상태: NaN·undefined·Infinity 미발생. 재접촉(D+180) 위젯 빈 상태 정상 문구.
+
+**❌ BUG-0001 — 신규 조직에서 MVP 기능 전체 잠김 (온보딩 흐름 A 파손)**
+- **증상**: 온보딩에서 조직 생성 후 홈 진입 → 대시보드 자리에 **"현재 플랜에서 잠긴 기능입니다 (Phase 2)"**. 잠긴 `feature_key: core.dash`.
+- **원인**: `app/src/lib/repo/local/localRepo.ts` `createOrg()`(75–96) 가 org + owner 멤버만 만들고 **엔타이틀먼트 행을 생성하지 않음**.
+  `isFeatureEnabled()`(180–185)는 `enabled===true` 행을 요구 → 행이 없으면 전부 OFF.
+  시드 조직만 `seed.ts:281` 에서 `MVP_ENABLED_FEATURES`(crm·custom·org·files·dash·policyfund)를 부여받는다.
+  앱 전체에서 `setEntitlement` 호출은 `presets/policyfund.ts:52`(**ind.policyfund 한 개**)뿐.
+- **기획 위반**: PLAN v0.2 §5 및 `001_schema_v1.sql:456–463` — "MVP: 모든 플랜에 core.* + MVP 모듈 무료". `createOrg` 가
+  001 의 `plan_features → org_entitlements` 전개를 재현하지 않았다(`add_org_owner` 트리거는 재현했으면서 엔타이틀먼트는 누락).
+- **영향**: PLAN §4 **흐름 A(로그인 → 조직 생성 → 업종팩 → 홈)의 종착점이 신규 사용자에게 잠긴 화면**이 된다. 첫 사용자 경험 파손.
+- **책임 경계**: 표면은 T04(core.dash FeatureGate), **근본 원인은 `createOrg`(T03 파운데이션 repo 레이어)**. 수정 주체 조율 필요.
+- **수정안**: `createOrg` 에서 `MVP_ENABLED_FEATURES` 순회 `setEntitlement(org.id, key, true)` — 또는 `isFeatureEnabled` 를 plan_features 기준으로 판정.
+
+**⚠️ T10 자기 결함 — 조직격리 검사가 '공허한 참'이었다**
+직전(③)까지 `신규 조직에 이전 조직 딜 0건` 이 PASS 였던 것은 격리가 잘돼서가 아니라 **화면이 잠겨 아무것도 렌더되지 않아서**였다.
+→ `smoke.sh` 에 **"먼저 화면이 실제로 렌더됐는지"** 선행 검사 추가. 잠금 문구 감지 시 FAIL + 격리검사 무효 처리.
+→ 교훈: **부정 조건(0건)만 보는 검사는 대상이 존재하지 않을 때도 통과한다. 반드시 긍정 조건(렌더됨)을 함께 확인할 것.**
+
+**⛔ 그 외 미확정**
+- **정산 수식 parity 미검증**: 대시보드 금액이 `settlements` generated column 이 아니라 **`deal.amount` 기준 근사("임시 — 정산 원천 연결 전")**.
+  `fee_amount=round(exec×pct/100)`·`total_revenue` 대조는 정산 원천 연결 후 재검증 필요.
+- **계약상황 위젯**: 시드 조직엔 프리셋 미설치라 "필드가 아직 없습니다" 빈 상태로 표시(정상 폴백). 프리셋 설치 조직에서의 표시·변경은 BUG-0001 해소 후 재확인.
+- 구글 OAuth·Postgres RLS 33정책 런타임: 여전히 미검증(①③과 동일).
 
 ### ★ ③T02 보드엔진 main 판정 (main `9bd2b7a`, 2026-07-21 · T10 실측)
 게이트 `✅ check 통과` + main 스모크 `PASS=15 FAIL=0 SKIP=2`.
