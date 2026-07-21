@@ -34,7 +34,12 @@ beforeEach(() => {
 describe("보드 목록 — 시스템 + 사용자", () => {
   it("정책자금 파이프라인(시스템)과 사용자 보드가 함께 보인다", () => {
     const boards = svc.listBoards(owner);
-    expect(boards.map((b) => b.name)).toEqual(["정책자금 파이프라인", "업무 요청"]);
+    // 공지사항(core.notice)은 T04 가 003 보드 엔진 위에 얹은 시드 보드다.
+    expect(boards.map((b) => b.name)).toEqual([
+      "정책자금 파이프라인",
+      "업무 요청",
+      "공지사항",
+    ]);
     expect(boards[0].is_system).toBe(true);
     expect(boards[0].source).toBe("core.crm.pipeline");
     expect(boards[1].is_system).toBe(false);
