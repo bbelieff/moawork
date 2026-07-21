@@ -167,8 +167,37 @@ blocked:
     opened: 2026-07-21
     status: blocked
     blocked_on:
-      - 기획 v0.2 확정
-      - DB 스키마 v1 (core.files / contracts / core.dash 도메인 테이블)
+      - "DQ-0014 — core.files 스키마(파일 메타/딜 첨부/Storage 버킷) 정본에 부재"
+    resolved:
+      - "기획 v0.2 확정: docs/PLAN-v0.2.md · DB 스키마 v1: 001_schema_v1.sql(+002 seed) 확보."
+      - "모델 충돌 해소(ADR-0002): 정본=A안(deals/pipelines/stages/settlements). B안(0002_core_crm boards/items) 폐기 → T04 는 deals 기준으로 정렬."
+      - "contracts 상태: 별도 테이블 불요. field_defs '계약상황' 프리셋(002 seed)으로 충족 — contracts 테이블·전자서명은 Phase 2(001 line 226)."
+    notes: >-
+      T04 착수 시 정본 부재로 초안 마이그레이션을 만들었다가 회수(추측 금지 원칙 +
+      당시 폐기된 B안 참조). 스키마는 DQ-0014 로 기획에 요청함.
+
+  - id: DQ-0015
+    title: 대시보드 — core.dash 기본 대시보드(단계별 건수·전환율·정산 요약·재접촉)
+    assignee: T04
+    opened: 2026-07-21
+    closed: 2026-07-21
+    status: done
+    notes: >-
+      확정 기획상 core.dash 는 "deals/settlements 집계(뷰)" + "이중저장 금지" 이므로
+      새 테이블 없이 구현 완료 → DQ-0004(core.files 스키마 대기)와 분리 진행.
+      산출: app/src/lib/dash/{aggregate,service,format,types,index} + components/dash/widgets.tsx.
+      화면: 홈 (app)/page.tsx 스텁 → 실제 대시보드 대체, 드릴다운 (app)/dash/[pipelineId].
+      게이트 요건 충족: 전환율 분모/분자 명시 + 0분모 방어 · KST 월 경계(반열린 구간) ·
+      0건 시 0/'—'(NaN 없음) · 담당범위 격리(repo.listDeals(ctx)) · 이중저장 없음(매 요청 파생).
+      신규 테스트 63개, check.sh 초록(앱 201 + 워커 1).
+    scope_boundary:
+      - "칸반/딜상세/고객사 화면 = T02 소유(940a6ec 프론트 설계) — 중복 구현하지 않음(드릴다운은 요약 행만)."
+      - "정산 수식 = T09 소유 — 재저작 없이 computeSettlement 소비."
+    followup:
+      - "→ 스키마/Repo 오너: settlements 가 @/lib/repo 포트에 없어 정산 집계를 deal.custom(실행액/수수료율/계약금/수수료입금일) 파생으로 계산 중. 001 의 settlements 테이블이 Repo 에 노출되면 그쪽을 원천으로 교체 필요(집계 함수는 그대로 재사용 가능 — SettlementInput 계약 동일)."
+      - "→ T09: 정산 입력 필드 키가 현재 한글 라벨(실행액/수수료율/계약금/수수료입금일) 가정. 002 프리셋의 확정 field key 로 DEFAULT_SETTLEMENT_KEYS 정합 필요."
+      - "→ T02: 딜 상세 화면 구현 시 드릴다운(app)/dash/[pipelineId] 의 딜 행에서 딥링크 연결."
+      - "→ T10: 대시보드 수치 parity 검증 시 '계약단계 도달'(파이프라인 KPI)과 '이번달 수납'(수수료입금일 실현 기준)을 구분해 대조할 것 — 화면 라벨도 분리해 둠."
 
   - id: DQ-0009
     title: 정책자금 업종팩 — ind.policyfund(진행기관 + 상품 60여종 + 지역 + 수식) + settlements 정산

@@ -4,6 +4,33 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T04 · core.dash 기본 대시보드 구현 (core.files 는 스키마 대기)
+
+- **기획 v0.2 + 스키마 v1 정독**: `docs/PLAN-v0.2.md`, `supabase/migrations/001_schema_v1.sql`.
+  정본 모델 = `deals`/`pipelines`/`stages`/`settlements` (ADR-0002, B안 `0002_core_crm` 폐기).
+- **디스패치 보고**(지시 사항):
+  - `DQ-0014` [요청→기획] **core.files 스키마 부재** — `core.files` 는 plan_features 에
+    기능키로 등록(MVP ON)됐지만 뒷받침 테이블이 정본 어디에도 없음. "새 SQL 만들지 마 ·
+    스키마 변경은 기획이 단독 작성"(DQ-0011 원칙)에 따라 직접 저작하지 않고 요청.
+    착수 시 만든 초안 `0003_core_files_dash.sql` 은 **회수**(추측 금지 + 폐기된 B안 참조).
+  - `DQ-0015` core.dash 분리 착수 — 확정 기획상 대시보드는 "집계=뷰/파생, 이중저장 금지"라
+    **새 테이블 없이 구현 가능** → core.files 대기와 분리.
+  - `DQ-0004` 갱신: contracts 상태는 `field_defs` '계약상황' 프리셋으로 충족(별도 테이블 불요,
+    Phase 2 확인). blocked_on 을 DQ-0014 하나로 정리.
+- **구현 (`app/src/lib/dash/`)** — 전부 순수 함수, I/O 없음:
+  - `aggregate.ts` — 단계별 건수/비율, 전환율(분모=전체 딜·분자=kind 첫 단계 이상 도달,
+    **0분모 방어**), 계약상황 분포(field_defs 옵션 id·라벨 매칭, archived 제외),
+    **KST 월 경계**(`monthRangeKst`, 반열린 구간), 정산 요약·재접촉(D+180/365).
+  - `service.ts` — `buildDashboard(ctx)`: Repo(담당범위 적용) → 집계 조립. 저장 안 함.
+    "계약단계 도달"(파이프라인 KPI) vs "이번달 수납"(수수료입금일 기준 실현) **라벨 분리**(T07 지적 반영).
+  - `format.ts` — 0건/미가용 시 `0` 또는 `—` (NaN 금지).
+- **화면**: 홈 `(app)/page.tsx` 의 "대시보드 스텁" → **실제 대시보드로 대체**(상단 고정 요약 4종 +
+  파이프라인·전환율·계약상황·이번달수납·전체정산·재접촉 위젯). 드릴다운
+  `(app)/dash/[pipelineId]` = 보드별 상세(단계별 딜 목록). `FeatureGate(core.dash)` 적용.
+- **경계 준수**: 정산 수식은 **T09 확정본**(`policyfund/settlement.ts`) 소비(재저작 없음),
+  딜 상세 화면은 **T02 소유**라 링크/중복 구현하지 않음.
+- 신규 테스트 63개(집계 42 · 서비스 8 · 포맷 13). `bash scripts/check.sh` **초록**(앱 201 + 워커 1).
+
 ## 2026-07-21 — T02b · 사용자 임의 보드 엔진 구현 (003, ADR-0003) — 브랜치 feat/t02-boards-engine
 
 - **선행 해소**: DQ-0011 요청분(003_boards_engine.sql · T02b-boards-engine.md · ADR-0003)이
