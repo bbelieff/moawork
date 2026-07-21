@@ -44,6 +44,9 @@ body()  { curl -s -m 15 "$@"; }
 
 # ---------------------------------------------------------------- 서버 기동
 if [ "$START_SERVER" = "1" ]; then
+  # 브랜치를 갈아끼운 워크트리에는 이전 브랜치의 .next 생성물(라우트 타입 등)이 남아
+  # typecheck/빌드를 엉뚱하게 깨뜨린다(false fail). 검사 전 항상 비운다.
+  rm -rf app/.next app/tsconfig.tsbuildinfo 2>/dev/null
   echo "▶ dev 서버 기동 (PORT=$PORT)"
   # 선점 검사: 이미 응답이 있으면 남의 서버다. 검사하면 오판이므로 즉시 중단.
   if [ "$(code "$BASE/")" != "000" ]; then
