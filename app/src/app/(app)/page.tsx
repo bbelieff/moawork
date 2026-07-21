@@ -14,6 +14,8 @@ import {
   StatCard,
   Widget,
 } from "@/components/dash/widgets";
+import { RecentNotices } from "@/components/dash/RecentNotices";
+import { getNoticesService } from "@/lib/notices";
 import type { MemberRole } from "@/lib/types";
 
 // 홈 = core.dash 메인 대시보드 (T04).
@@ -35,6 +37,9 @@ export default async function DashboardPage({
   const dash = buildDashboard(ctx, { month });
   const repo = getRepo();
   const pipelines = repo.listPipelines(ctx.org.id);
+
+  // 최근 공지 — 003 보드 엔진(공지 보드)에서 파생. 상단고정 우선 정렬은 서비스가 적용.
+  const recentNotices = getNoticesService().list(ctx, { limit: 5 });
 
   // "오늘 할 일" 목록용 — 담당범위(assigned)는 repo.listDeals(ctx) 가 적용한다.
   const myDeals = repo.listDeals(ctx);
@@ -93,6 +98,27 @@ export default async function DashboardPage({
                 formatKrw,
               )}
               hint="수수료입금일 기준"
+            />
+          </section>
+
+          {/* 최근 공지 — 003 보드 엔진 위의 공지 보드에서 파생 */}
+          <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+            <div className="mb-2 flex items-baseline justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+                  📢 최근 공지
+                </h2>
+                <p className="mt-0.5 text-xs text-zinc-400">
+                  상단고정 우선 · 게시일 최신순
+                </p>
+              </div>
+              <Link href="/notices" className="text-xs text-zinc-500 hover:underline">
+                전체 보기 →
+              </Link>
+            </div>
+            <RecentNotices
+              notices={recentNotices}
+              scopeLimited={ctx.scope === "assigned"}
             />
           </section>
 

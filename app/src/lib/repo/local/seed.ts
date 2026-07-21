@@ -16,6 +16,8 @@ const PIPE_ID = "pip00000-0000-0000-0000-000000000001";
 // 003 임의 보드 시드 id (ADR-0003)
 export const SEED_BOARD_PIPELINE = "brd00000-0000-0000-0000-000000000001";
 export const SEED_BOARD_TASKS = "brd00000-0000-0000-0000-000000000002";
+// 공지사항 보드 (T04 · core.notice) — 003 보드 엔진 위에 저장, 전용 테이블 없음.
+export const SEED_BOARD_NOTICE = "brd00000-0000-0000-0000-000000000003";
 
 export function seedDb(): Db {
   const users = [
@@ -169,6 +171,21 @@ export function seedDb(): Db {
       created_at: TS,
       updated_at: TS,
     },
+    {
+      // 공지사항 — is_system=false 로 둔다(true 면 보드 서비스가 아이템 편집을 막아 CRUD 불가).
+      // source 로 시스템 성격을 표시하고, 화면은 /notices 전용 UI 로 렌더한다.
+      id: SEED_BOARD_NOTICE,
+      org_id: SEED_ORG_ID,
+      name: "공지사항",
+      description: "조직 전체 공지 — 상단고정 공지가 먼저 보입니다",
+      icon: "📢",
+      is_system: false,
+      source: "core.notice",
+      sort_order: 2,
+      created_by: SEED_USER_OWNER,
+      created_at: TS,
+      updated_at: TS,
+    },
   ];
 
   const boardGroups = [
@@ -227,12 +244,103 @@ export function seedDb(): Db {
       sort_order: 3,
       width: null,
     },
+    // ── 공지사항 보드 컬럼 (T04) — @/lib/notices/types.ts NOTICE_COLUMNS 와 동일 정의 ──
+    {
+      id: "bcl00000-0000-0000-0000-000000000011",
+      org_id: SEED_ORG_ID,
+      board_id: SEED_BOARD_NOTICE,
+      key: "body",
+      label: "본문",
+      type: "longtext" as const,
+      options_jsonb: null,
+      sort_order: 0,
+      width: null,
+    },
+    {
+      id: "bcl00000-0000-0000-0000-000000000012",
+      org_id: SEED_ORG_ID,
+      board_id: SEED_BOARD_NOTICE,
+      key: "category",
+      label: "분류",
+      type: "select" as const,
+      options_jsonb: {
+        options: [
+          { id: "notice-general", label: "일반", color: "#579bfc", order: 0 },
+          { id: "notice-important", label: "중요", color: "#e2445c", order: 1 },
+          { id: "notice-event", label: "행사", color: "#00c875", order: 2 },
+        ],
+      },
+      sort_order: 1,
+      width: 110,
+    },
+    {
+      id: "bcl00000-0000-0000-0000-000000000013",
+      org_id: SEED_ORG_ID,
+      board_id: SEED_BOARD_NOTICE,
+      key: "pinned",
+      label: "상단고정",
+      type: "checkbox" as const,
+      options_jsonb: null,
+      sort_order: 2,
+      width: 90,
+    },
+    {
+      id: "bcl00000-0000-0000-0000-000000000014",
+      org_id: SEED_ORG_ID,
+      board_id: SEED_BOARD_NOTICE,
+      key: "published_at",
+      label: "게시일",
+      type: "date" as const,
+      options_jsonb: null,
+      sort_order: 3,
+      width: 130,
+    },
+    {
+      id: "bcl00000-0000-0000-0000-000000000015",
+      org_id: SEED_ORG_ID,
+      board_id: SEED_BOARD_NOTICE,
+      key: "author",
+      label: "작성자",
+      type: "person" as const,
+      options_jsonb: null,
+      sort_order: 4,
+      width: 120,
+    },
   ];
 
   const boardItems = [
     { id: "itm00000-0000-0000-0000-000000000001", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, group_id: boardGroups[0].id, title: "사업자등록증 수집", assigned_to: SEED_USER_MEMBER, sort_order: 0, created_at: TS, updated_at: TS },
     { id: "itm00000-0000-0000-0000-000000000002", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, group_id: boardGroups[0].id, title: "재무제표 검토", assigned_to: SEED_USER_ADMIN, sort_order: 1, created_at: TS, updated_at: TS },
     { id: "itm00000-0000-0000-0000-000000000003", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, group_id: boardGroups[1].id, title: "보증서 발급 문의", assigned_to: SEED_USER_MEMBER, sort_order: 2, created_at: TS, updated_at: TS },
+  ];
+
+  // 공지사항 아이템 (T04). assigned_to=null — 공지는 개인이 아니라 조직에 속한다.
+  // ⚠ 003 items RLS/로컬 repo 는 member+scope='assigned' 에게 assigned_to=본인 인 행만 보여준다
+  //    → 그 사용자에게는 공지가 보이지 않는다(DQ-0018 로 기획 판정 요청 중).
+  const noticeItems = [
+    { id: "itm00000-0000-0000-0000-000000000011", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NOTICE, group_id: null, title: "7월 정책자금 상담 일정 안내", assigned_to: null, sort_order: 0, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-000000000012", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NOTICE, group_id: null, title: "[중요] 계약서 양식 개정 (7/25 시행)", assigned_to: null, sort_order: 1, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-000000000013", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NOTICE, group_id: null, title: "하반기 워크숍 참가 신청", assigned_to: null, sort_order: 2, created_at: TS, updated_at: TS },
+  ];
+
+  const noticeValues = [
+    { org_id: SEED_ORG_ID, item_id: noticeItems[0].id, column_key: "body", value_jsonb: "7월 정책자금 상담은 매주 화·목 오후에 진행합니다. 상담 예약은 담당자에게 문의하세요." },
+    { org_id: SEED_ORG_ID, item_id: noticeItems[0].id, column_key: "category", value_jsonb: "notice-general" },
+    { org_id: SEED_ORG_ID, item_id: noticeItems[0].id, column_key: "pinned", value_jsonb: false },
+    { org_id: SEED_ORG_ID, item_id: noticeItems[0].id, column_key: "published_at", value_jsonb: "2026-07-15" },
+    { org_id: SEED_ORG_ID, item_id: noticeItems[0].id, column_key: "author", value_jsonb: SEED_USER_ADMIN },
+
+    { org_id: SEED_ORG_ID, item_id: noticeItems[1].id, column_key: "body", value_jsonb: "표준 계약서 양식이 개정되었습니다. 7/25 이후 체결 건부터 신규 양식을 사용하세요." },
+    { org_id: SEED_ORG_ID, item_id: noticeItems[1].id, column_key: "category", value_jsonb: "notice-important" },
+    { org_id: SEED_ORG_ID, item_id: noticeItems[1].id, column_key: "pinned", value_jsonb: true },
+    { org_id: SEED_ORG_ID, item_id: noticeItems[1].id, column_key: "published_at", value_jsonb: "2026-07-18" },
+    { org_id: SEED_ORG_ID, item_id: noticeItems[1].id, column_key: "author", value_jsonb: SEED_USER_OWNER },
+
+    { org_id: SEED_ORG_ID, item_id: noticeItems[2].id, column_key: "body", value_jsonb: "하반기 워크숍을 8월 중 진행합니다. 참가 희망자는 이번 주까지 신청해 주세요." },
+    { org_id: SEED_ORG_ID, item_id: noticeItems[2].id, column_key: "category", value_jsonb: "notice-event" },
+    { org_id: SEED_ORG_ID, item_id: noticeItems[2].id, column_key: "pinned", value_jsonb: false },
+    { org_id: SEED_ORG_ID, item_id: noticeItems[2].id, column_key: "published_at", value_jsonb: "2026-07-20" },
+    { org_id: SEED_ORG_ID, item_id: noticeItems[2].id, column_key: "author", value_jsonb: SEED_USER_ADMIN },
   ];
 
   const itemValues = [
@@ -299,8 +407,8 @@ export function seedDb(): Db {
     boards,
     boardGroups,
     boardColumns,
-    boardItems,
-    itemValues,
+    boardItems: [...boardItems, ...noticeItems],
+    itemValues: [...itemValues, ...noticeValues],
     boardViews: [],
   };
 }
