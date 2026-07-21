@@ -432,6 +432,49 @@ curl -s -i -X POST -b 'mw_uid=<uid>' -F '$ACTION_ID_<id>=' -F 'name=<조직명>'
 
 ---
 
+## 9. PR 검수 판정 — 8트랙 라운드
+
+### ❌ PR #7 (T09 `feat/t09-settlements`, `54f1baa`) — **반려 · 프로덕션 빌드 파손**
+
+| 검사 | 결과 |
+|---|---|
+| 정적: 마이그레이션 추가 | 없음 (8-A 해당 없음) ✅ |
+| 정적: 계약파일(`lib/types`·`lib/repo/index.ts`) 편집 | 없음 (단일소유 규칙 준수) ✅ |
+| 정적: 베이스 신선도 | merge-base `4367015`, main +1 — 신선 ✅ |
+| 정적: 조율파일 줄수 | dispatch 353=353, registry 244=244 — 소실 없음 ✅ |
+| 정적: 8-B(`custom` 교체) | `updateDeal`·`.custom`·`stage_id` 미사용 ✅ |
+| 인증 | 전 라우트 `requireCtx()` 경유 ✅ |
+| `check.sh` 게이트 | **초록** — app 327 테스트/24 파일 ✅ |
+| **프로덕션 빌드** | **❌ 실패 (exit 1)** |
+
+**⛔ 반려 사유 — 서버 전용 모듈이 클라이언트 번들로 유입**
+```
+Error: Turbopack build failed
+./app/src/lib/auth/session.ts:1  import { cookies } from "next/headers";
+  → "next/headers" 는 서버 전용인데 클라이언트 번들에 포함됨
+```
+**유입 경로(빌드 로그 import trace 실측)**
+```
+PolicyfundBoard.tsx  ("use client")
+  → @/lib/policyfund (배럴)
+  → policyfund/settlements.ts        ← PR 신규 파일
+  → @/lib/crm (배럴)                  ← settlements.ts:13 ValidationError 임포트
+  → crm/context.ts → auth/session.ts → next/headers   ★ 서버 전용
+```
+**방아쇠는 단 1줄** — `policyfund/index.ts` 에 `export * from "./settlements";` 추가.
+`ValidationError` **심볼 하나**를 배럴에서 가져온 대가로 서버 인증 체인 전체가 클라이언트 그래프에 끌려온다.
+
+**해소안(택1)**
+1. `ValidationError` 를 배럴(`@/lib/crm`) 이 아니라 **정의 모듈에서 직접** 임포트(권장 — 최소 변경).
+2. 서버 전용인 `settlements` 를 `policyfund` 배럴에서 **export 하지 않음**(라우트가 직접 임포트).
+3. 서버 전용 모듈에 `import "server-only"` 표식 → 위반이 올바른 지점에서 조기 발견되게.
+
+> **이 건이 §6 경고의 실물 증거다.** `check.sh`·CI 는 **초록**이었고 빌드만 깨졌다.
+> 게이트에 build 가 없으면 **이 PR 은 CI 초록으로 머지되어 Vercel 배포가 실패**했을 것이다.
+> → `check.sh` 에 `[4/4] build` 추가 권고(→T01)의 근거가 가설에서 **실측 사례**로 바뀌었다.
+
+---
+
 ## 8. 교차 위험 — 8트랙 동시 착수 시 매 PR 확인 (T10 실증 2026-07-21)
 
 > 조율 문서에서 제기된 두 위험을 **실행으로 재현 확인**했다. 둘 다 CI 초록으로 통과하며,
