@@ -9,6 +9,7 @@ import type {
   OrgMember,
   Pipeline,
   SavedView,
+  Settlement,
   Stage,
   User,
 } from "@/lib/types";
@@ -30,6 +31,7 @@ export interface Db {
   fieldDefs: FieldDef[];
   fieldValues: FieldValue[];
   savedViews: SavedView[];
+  settlements: Settlement[];
 }
 
 // HMR/요청 간에 상태를 유지하도록 globalThis 에 보관(dev 편의).

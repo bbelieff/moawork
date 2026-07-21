@@ -11,6 +11,7 @@ import type {
   OrgEntitlement,
   OrgMember,
   Pipeline,
+  Settlement,
   Stage,
   User,
 } from "@/lib/types";
@@ -21,12 +22,43 @@ import type {
   NewActivity,
   NewCompany,
   NewDeal,
+  NewSettlement,
   Repo,
+  SettlementPatch,
 } from "../index";
 import { db } from "./store";
 
 function now(): string {
   return new Date().toISOString();
+}
+
+// 'YYYY-MM-DD' + n일 (UTC 기준으로 계산해 타임존 드리프트 방지). null → null.
+function addDays(date: string | null, n: number): string | null {
+  if (!date) return null;
+  const t = Date.parse(`${date}T00:00:00Z`);
+  if (Number.isNaN(t)) return null;
+  return new Date(t + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+// 001 settlements 의 generated column 을 그대로 재현한다(수식 변경 시 스키마와 동시 수정).
+//   fee_amount    = round(exec_amount × fee_pct / 100)
+//   total_revenue = down_payment + fee_amount
+//   d180 / d365   = fee_paid_at + 180 / 365
+type SettlementBase = Pick<
+  Settlement,
+  "down_payment" | "exec_amount" | "fee_pct" | "fee_paid_at"
+>;
+
+function derive(
+  s: SettlementBase,
+): Pick<Settlement, "fee_amount" | "total_revenue" | "d180" | "d365"> {
+  const fee_amount = Math.round((s.exec_amount * s.fee_pct) / 100);
+  return {
+    fee_amount,
+    total_revenue: s.down_payment + fee_amount,
+    d180: addDays(s.fee_paid_at, 180),
+    d365: addDays(s.fee_paid_at, 365),
+  };
 }
 
 // 담당범위 판정: owner/admin 또는 scope='all' → 전체, member+assigned → 본인 것만.
@@ -340,5 +372,87 @@ export class LocalRepo implements Repo {
     const def: FieldDef = { id: crypto.randomUUID(), ...input };
     db().fieldDefs.push(def);
     return def;
+  }
+
+  // ── 정산 (담당범위는 상위 deal 가시성을 따른다) ──
+  // 파생 컬럼은 write 마다 재계산해 001 generated column 과 동일하게 유지한다.
+  listSettlements(ctx: Ctx): Settlement[] {
+    const all = db().settlements.filter((s) => s.org_id === ctx.org.id);
+    if (canSeeAll(ctx)) return all;
+    const visible = new Set(this.listDeals(ctx).map((d) => d.id));
+    return all.filter((s) => s.deal_id !== null && visible.has(s.deal_id));
+  }
+
+  getSettlement(ctx: Ctx, id: string): Settlement | undefined {
+    const s = db().settlements.find(
+      (x) => x.id === id && x.org_id === ctx.org.id,
+    );
+    if (!s) return undefined;
+    if (canSeeAll(ctx)) return s;
+    return s.deal_id && this.getDeal(ctx, s.deal_id) ? s : undefined;
+  }
+
+  getSettlementByDeal(ctx: Ctx, dealId: string): Settlement | undefined {
+    if (!this.getDeal(ctx, dealId)) return undefined; // 안 보이는 딜 → 정산도 비공개
+    return db().settlements.find(
+      (s) => s.deal_id === dealId && s.org_id === ctx.org.id,
+    );
+  }
+
+  createSettlement(ctx: Ctx, input: NewSettlement): Settlement {
+    // 담당범위 밖의 딜에는 정산을 만들 수 없다.
+    if (input.deal_id && !this.getDeal(ctx, input.deal_id)) {
+      throw new Error(`정산 생성 불가: 접근할 수 없는 딜 (${input.deal_id})`);
+    }
+    const base: SettlementBase = {
+      down_payment: input.down_payment ?? 0,
+      exec_amount: input.exec_amount ?? 0,
+      fee_pct: input.fee_pct ?? 0,
+      fee_paid_at: input.fee_paid_at ?? null,
+    };
+    const settlement: Settlement = {
+      id: crypto.randomUUID(),
+      org_id: ctx.org.id,
+      deal_id: input.deal_id,
+      ...base,
+      down_paid_at: input.down_paid_at ?? null,
+      ...derive(base),
+      created_at: now(),
+    };
+    db().settlements.push(settlement);
+    return settlement;
+  }
+
+  updateSettlement(
+    ctx: Ctx,
+    id: string,
+    patch: SettlementPatch,
+  ): Settlement | undefined {
+    const s = this.getSettlement(ctx, id);
+    if (!s) return undefined;
+
+    if (patch.deal_id !== undefined) {
+      if (patch.deal_id && !this.getDeal(ctx, patch.deal_id)) {
+        throw new Error(`정산 수정 불가: 접근할 수 없는 딜 (${patch.deal_id})`);
+      }
+      s.deal_id = patch.deal_id;
+    }
+    if (patch.down_payment !== undefined)
+      s.down_payment = patch.down_payment ?? 0;
+    if (patch.exec_amount !== undefined) s.exec_amount = patch.exec_amount ?? 0;
+    if (patch.fee_pct !== undefined) s.fee_pct = patch.fee_pct ?? 0;
+    if (patch.fee_paid_at !== undefined)
+      s.fee_paid_at = patch.fee_paid_at ?? null;
+    if (patch.down_paid_at !== undefined)
+      s.down_paid_at = patch.down_paid_at ?? null;
+
+    Object.assign(s, derive(s));
+    return s;
+  }
+
+  deleteSettlement(ctx: Ctx, id: string): boolean {
+    if (!this.getSettlement(ctx, id)) return false;
+    db().settlements = db().settlements.filter((x) => x.id !== id);
+    return true;
   }
 }

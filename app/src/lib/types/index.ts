@@ -171,6 +171,28 @@ export interface SavedView {
   shared: boolean;
 }
 
+// ── 정산 (기둥③⑤) — 001 settlements. 먼데이 회계/업무관리 수식 재현 ──
+// 소유: T09(정산 업무 로직) · 소비: T04(대시보드) · 포트 정의: T03(파운데이션).
+// fee_amount/total_revenue/d180/d365 는 001 에서 **generated column** 이다 →
+// 앱에서는 **읽기 전용**(쓰기 입력은 NewSettlement 의 base 컬럼만). LocalRepo 는 동일 식을 재현한다.
+export interface Settlement {
+  id: string;
+  org_id: string;
+  deal_id: string | null;
+  // base (쓰기 가능)
+  down_payment: number; // 계약금
+  down_paid_at: string | null;
+  exec_amount: number; // 실행액
+  fee_pct: number; // 수수료(정수 퍼센트, 3 = 3%)
+  fee_paid_at: string | null; // 수수료 입금일
+  // derived (읽기 전용 — DB generated)
+  fee_amount: number; // round(exec_amount × fee_pct / 100)
+  total_revenue: number; // down_payment + fee_amount
+  d180: string | null; // fee_paid_at + 180일
+  d365: string | null; // fee_paid_at + 365일
+  created_at: string;
+}
+
 // ── 세션 컨텍스트 — 인증/인가의 런타임 단위(현재 조직 + 역할 + 범위) ──
 export interface Ctx {
   user: User;

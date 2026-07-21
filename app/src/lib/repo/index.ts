@@ -11,6 +11,7 @@ import type {
   OrgEntitlement,
   OrgMember,
   Pipeline,
+  Settlement,
   Stage,
   User,
 } from "@/lib/types";
@@ -50,6 +51,19 @@ export interface NewActivity {
   type: string;
   content?: string | null;
 }
+
+// ── 정산(settlements) 쓰기 입력 타입 (포트=T03 / 구현·업무로직=T09 / 소비=T04) ──
+// base 컬럼만 입력받는다. fee_amount·total_revenue·d180·d365 는 001 의 generated
+// column 이라 **입력 불가**(읽기 전용). 구현체가 동일 식으로 파생값을 채운다.
+export interface NewSettlement {
+  deal_id: string | null;
+  down_payment?: number | null; // 계약금
+  down_paid_at?: string | null;
+  exec_amount?: number | null; // 실행액
+  fee_pct?: number | null; // 수수료(정수 %)
+  fee_paid_at?: string | null; // 수수료 입금일
+}
+export type SettlementPatch = Partial<NewSettlement>;
 
 // 저장소 포트(Port). 소비 트랙(T02/T04)은 이 인터페이스만 의존한다.
 // 현재 구현 = LocalRepo(인메모리). Supabase 연결 후 SupabaseRepo 로 교체(어댑터 스왑).
@@ -117,6 +131,20 @@ export interface Repo {
   // 커스텀필드
   listFieldDefs(orgId: string, entity?: FieldEntity): FieldDef[];
   createFieldDef(input: Omit<FieldDef, "id">): FieldDef;
+
+  // 정산 (담당범위 적용 — 상위 deal 가시성 기준)
+  // 소유: T09(업무 로직) · 소비: T04(대시보드). 소비 트랙은 이 포트만 쓰고
+  // 인터페이스를 직접 수정하지 않는다(변경 필요 시 T03 에 요청).
+  listSettlements(ctx: Ctx): Settlement[];
+  getSettlement(ctx: Ctx, id: string): Settlement | undefined;
+  getSettlementByDeal(ctx: Ctx, dealId: string): Settlement | undefined;
+  createSettlement(ctx: Ctx, input: NewSettlement): Settlement;
+  updateSettlement(
+    ctx: Ctx,
+    id: string,
+    patch: SettlementPatch,
+  ): Settlement | undefined;
+  deleteSettlement(ctx: Ctx, id: string): boolean;
 }
 
 // 단일 인스턴스(인메모리 store 를 공유).

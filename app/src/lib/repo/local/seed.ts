@@ -184,5 +184,7 @@ export function seedDb(): Db {
     fieldDefs: [],
     fieldValues: [],
     savedViews: [],
+    // 정산은 시드 없음 — T09 가 딜 진행에 따라 생성한다.
+    settlements: [],
   };
 }

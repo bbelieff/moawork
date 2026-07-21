@@ -4,6 +4,24 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T03 · settlements 엔티티 포트 선행 추가 (worktree 격리)
+
+기획2 피드백 #3 반영. 정산 포트를 **파운데이션에서 선행 정의** → T09 가 업무 로직을 구현하고
+T04 는 소비만 한다(**T04 가 공용 인터페이스를 직접 수정하지 않도록**).
+
+- `lib/types`: `Settlement` 추가. 001 의 **generated column**(`fee_amount`·`total_revenue`·
+  `d180`·`d365`)은 **읽기 전용**으로 표기, 쓰기는 base 컬럼만.
+- `lib/repo/index.ts`: `NewSettlement`/`SettlementPatch` + 포트 6종 —
+  `listSettlements`·`getSettlement`·`getSettlementByDeal`·`createSettlement`·
+  `updateSettlement`·`deleteSettlement`. 소유/소비 경계를 주석에 명시.
+- `lib/repo/local/localRepo.ts`: 구현. 파생값은 001 식을 그대로 재현
+  (`round(exec×pct/100)` · `down+fee` · `fee_paid_at±180/365`, UTC 날짜 연산),
+  **쓰기마다 재계산**. 담당범위는 **상위 deal 가시성**을 따른다(접근 불가 딜엔 생성/수정 거부).
+- `store`/`seed`: `settlements` 배열 추가(시드 비움 — 생성은 T09 몫).
+- 테스트 5종 추가(총 11): 파생 계산·입금일 null·수정 시 재계산·member 스코프 격리·접근불가 딜 거부.
+- **프로세스**: 피드백 #4 반영 — 이번 작업부터 **git worktree 격리**에서 수행(공유 워킹트리 커밋 금지).
+  공유 트리는 그사이 다른 트랙이 브랜치를 `feat/t02-crm-core` 로 전환해 있었음(격리의 필요성 재확인).
+
 ## 2026-07-21 — T02 · core.crm 정본 스키마 정합 재작성 (boards/items → deals/companies)
 
 - **원인**: 초기 구현 직후 정본 `docs/PLAN-v0.2.md` + `001_schema_v1.sql` 이 다른 트랙 커밋으로
