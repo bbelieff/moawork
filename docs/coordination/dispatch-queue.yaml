@@ -135,6 +135,24 @@ in_progress:
     opened: 2026-07-21
     status: in_progress
 
+  - id: DQ-0017
+    title: B5 성과 — KPI 리더보드(담당자별 실적) + 이달의 계약회사 위젯
+    assignee: T07
+    opened: 2026-07-22
+    status: in_progress
+    branch: feat/t07-perf-leaderboard-b5
+    base: cdf45f6
+    notes: >-
+      집계 인터페이스 + 위젯 선구현 완료(app/src/lib/perf/, app/src/components/dashboard/,
+      24 테스트, check.sh 초록). 담당자별 수납건수·실행액·수수료합은 settlements.fee_paid_at
+      귀속월 기준이며 deal.assigned_to 로 조인한다. @/lib/repo 포트만 의존하므로
+      B2 가 Supabase 어댑터로 교체하면 서비스 코드 수정 없이 실 DB 로 전환된다.
+    followup:
+      - "화면 배선(페이지 라우트 + currentUserId 주입)은 B2 실 DB 연결 후"
+      - "정렬 토글·월 선택기 UI(설계 §4.1)는 배선 시 추가"
+      - "⚠ 위젯 디렉터리가 components/dashboard/ 로, T04 의 components/dash/ 와 이원화됨
+         (B5 지시문 경로를 그대로 따름). 통합 여부는 T10 검수에서 판정 요망."
+
   - id: DQ-0010
     title: 게이트키퍼(검증) — 배포마다 parity / 측정 / RLS 침투테스트 / 완료판정 (상시 활성)
     assignee: T10
@@ -316,6 +334,10 @@ blocked:
       - 기획 v0.2 확정
       - DB 스키마 v1 (mod.perf 도메인 테이블 — 성과지표/집계 스냅샷/활동로그)
       - T02 완료 (core.crm 보드/아이템/파이프라인 이벤트)
+    notes: >-
+      B5(리더보드·이달의계약회사)는 DQ-0017 로 분리해 착수. 남은 DQ-0007 범위는
+      인센티브 규칙 평가(flat_pct/tiered) · performance_snapshots 영속화 ·
+      활동량(activities 기반) 으로, 설계 §6 정책결정 4건 확정 후 진행한다.
 
 # 완료
 done:
