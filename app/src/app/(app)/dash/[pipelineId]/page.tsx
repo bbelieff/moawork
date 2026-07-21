@@ -8,6 +8,7 @@ import {
   contractStatusBreakdown,
   conversionRate,
   pipelineBreakdown,
+  POLICYFUND_FIELD_KEYS,
   sumAmounts,
 } from "@/lib/dash";
 import { EMPTY, formatCount, formatKrw, formatPercent } from "@/lib/dash/format";
@@ -142,7 +143,9 @@ function DealList({
   deals: Deal[];
   fieldDefs: FieldDef[];
 }) {
-  const statusDef = fieldDefs.find((f) => f.entity === "deal" && f.key === "계약상황");
+  const statusDef = fieldDefs.find(
+    (f) => f.entity === "deal" && f.key === POLICYFUND_FIELD_KEYS.contractStatus,
+  );
   const labelOf = (d: Deal): string => {
     if (!statusDef?.options_jsonb) return EMPTY;
     const raw = d.custom?.[statusDef.key];

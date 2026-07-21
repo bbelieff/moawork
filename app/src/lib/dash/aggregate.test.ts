@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
-import type { Deal, FieldDef, Stage } from "@/lib/types";
+import type { Ctx, Deal, FieldDef, Stage } from "@/lib/types";
+import { getRepo } from "@/lib/repo";
+import { SEED_ORG_ID, SEED_USER_OWNER } from "@/lib/repo/local/seed";
+import { installPolicyfundPreset } from "@/lib/presets/policyfund";
 import {
   contractStatusBreakdown,
+  POLICYFUND_FIELD_KEYS,
   conversionRate,
   DEFAULT_SETTLEMENT_KEYS,
   filterDealsByRange,
@@ -240,7 +244,7 @@ const contractField: FieldDef = {
   id: "f1",
   org_id: "o1",
   entity: "deal",
-  key: "계약상황",
+  key: "contract_status",
   label: "계약상황",
   type: "select",
   options_jsonb: {
@@ -257,20 +261,20 @@ const contractField: FieldDef = {
 describe("contractStatusBreakdown", () => {
   it("옵션 id 로 매칭해 분포를 만든다", () => {
     const ds = [
-      deal("a", { custom: { 계약상황: "before" } }),
-      deal("b", { custom: { 계약상황: "written" } }),
-      deal("c", { custom: { 계약상황: "written" } }),
+      deal("a", { custom: { contract_status: "before" } }),
+      deal("b", { custom: { contract_status: "written" } }),
+      deal("c", { custom: { contract_status: "written" } }),
     ];
     const got = contractStatusBreakdown(ds, [contractField]);
     expect(got.available).toBe(true);
-    expect(got.fieldKey).toBe("계약상황");
+    expect(got.fieldKey).toBe("contract_status");
     expect(got.unset).toBe(0);
     expect(got.options.find((o) => o.optionId === "written")?.count).toBe(2);
     expect(got.options.find((o) => o.optionId === "written")?.ratio).toBeCloseTo(2 / 3);
   });
 
   it("라벨로도 매칭한다(폴백)", () => {
-    const ds = [deal("a", { custom: { 계약상황: "계약 전" } })];
+    const ds = [deal("a", { custom: { contract_status: "계약 전" } })];
     const got = contractStatusBreakdown(ds, [contractField]);
     expect(got.options.find((o) => o.optionId === "before")?.count).toBe(1);
     expect(got.unset).toBe(0);
@@ -284,8 +288,8 @@ describe("contractStatusBreakdown", () => {
   it("값이 없거나 모르는 값이면 unset 으로 센다", () => {
     const ds = [
       deal("a"),
-      deal("b", { custom: { 계약상황: "이상한값" } }),
-      deal("c", { custom: { 계약상황: 123 } }),
+      deal("b", { custom: { contract_status: "이상한값" } }),
+      deal("c", { custom: { contract_status: 123 } }),
     ];
     const got = contractStatusBreakdown(ds, [contractField]);
     expect(got.unset).toBe(3);
@@ -338,8 +342,8 @@ describe("toDate", () => {
 describe("toSettlementInputs", () => {
   it("실행액·수수료율이 모두 있는 딜만 대상으로 삼는다", () => {
     const ds = [
-      deal("a", { custom: { 실행액: 100_000_000, 수수료율: 3, 계약금: 1_000_000 } }),
-      deal("b", { custom: { 실행액: 100_000_000 } }), // 수수료율 없음 → 제외
+      deal("a", { custom: { exec_amount: 100_000_000, fee_pct: 3, down_payment: 1_000_000 } }),
+      deal("b", { custom: { exec_amount: 100_000_000 } }), // 수수료율 없음 → 제외
       deal("c", { custom: {} }), // 제외
     ];
     const got = toSettlementInputs(ds);
@@ -348,12 +352,12 @@ describe("toSettlementInputs", () => {
   });
 
   it("계약금 누락은 0으로 보정한다", () => {
-    const ds = [deal("a", { custom: { 실행액: 1000, 수수료율: 10 } })];
+    const ds = [deal("a", { custom: { exec_amount: 1000, fee_pct: 10 } })];
     expect(toSettlementInputs(ds)[0].input.downPayment).toBe(0);
   });
 
   it("수수료입금일이 없으면 null", () => {
-    const ds = [deal("a", { custom: { 실행액: 1000, 수수료율: 10 } })];
+    const ds = [deal("a", { custom: { exec_amount: 1000, fee_pct: 10 } })];
     expect(toSettlementInputs(ds)[0].input.feeDepositDate).toBeNull();
   });
 
@@ -372,8 +376,8 @@ describe("toSettlementInputs", () => {
 describe("settlementSummary", () => {
   it("T09 확정 수식(수수료=실행액×%/100, 총매출=계약금+수수료)으로 합산한다", () => {
     const entries = toSettlementInputs([
-      deal("a", { custom: { 실행액: 100_000_000, 수수료율: 3, 계약금: 1_000_000 } }),
-      deal("b", { custom: { 실행액: 50_000_000, 수수료율: 2, 계약금: 500_000 } }),
+      deal("a", { custom: { exec_amount: 100_000_000, fee_pct: 3, down_payment: 1_000_000 } }),
+      deal("b", { custom: { exec_amount: 50_000_000, fee_pct: 2, down_payment: 500_000 } }),
     ]);
     const got = settlementSummary(entries);
     expect(got.available).toBe(true);
@@ -397,7 +401,7 @@ describe("settlementSummary", () => {
 
   it("정확 계산은 provisional=false 로 표시한다", () => {
     const entries = toSettlementInputs([
-      deal("a", { custom: { 실행액: 1000, 수수료율: 10 } }),
+      deal("a", { custom: { exec_amount: 1000, fee_pct: 10 } }),
     ]);
     expect(settlementSummary(entries).provisional).toBe(false);
   });
@@ -439,7 +443,7 @@ describe("provisionalSettlementFromAmounts", () => {
 describe("settlementSummaryOrProvisional", () => {
   it("정산 원천이 있으면 실측을 쓴다(폴백 안 함)", () => {
     const entries = toSettlementInputs([
-      deal("a", { custom: { 실행액: 100_000_000, 수수료율: 3, 계약금: 1_000_000 } }),
+      deal("a", { custom: { exec_amount: 100_000_000, fee_pct: 3, down_payment: 1_000_000 } }),
     ]);
     const got = settlementSummaryOrProvisional(entries, [deal("z", { amount: 999 })]);
     expect(got.provisional).toBe(false);
@@ -463,7 +467,7 @@ describe("reContactList", () => {
   it("수수료입금일 기준 D+180/D+365 를 만든다", () => {
     const entries = toSettlementInputs([
       deal("a", {
-        custom: { 실행액: 1000, 수수료율: 10, 수수료입금일: "2026-01-01" },
+        custom: { exec_amount: 1000, fee_pct: 10, fee_paid_at: "2026-01-01" },
       }),
     ]);
     const got = reContactList(entries);
@@ -473,7 +477,7 @@ describe("reContactList", () => {
   });
 
   it("수수료입금일이 없으면 기본 제외, includeUndated 면 포함(D+n=null)", () => {
-    const entries = toSettlementInputs([deal("a", { custom: { 실행액: 1000, 수수료율: 10 } })]);
+    const entries = toSettlementInputs([deal("a", { custom: { exec_amount: 1000, fee_pct: 10 } })]);
     expect(reContactList(entries)).toHaveLength(0);
     const inc = reContactList(entries, true);
     expect(inc).toHaveLength(1);
@@ -484,8 +488,8 @@ describe("reContactList", () => {
 describe("reContactDue", () => {
   it("지정 월 구간에 드는 재접촉 건만 남긴다", () => {
     const entries = toSettlementInputs([
-      deal("a", { custom: { 실행액: 1, 수수료율: 1, 수수료입금일: "2026-01-01" } }), // D+180=2026-06-30
-      deal("b", { custom: { 실행액: 1, 수수료율: 1, 수수료입금일: "2026-01-25" } }), // D+180=2026-07-24
+      deal("a", { custom: { exec_amount: 1, fee_pct: 1, fee_paid_at: "2026-01-01" } }), // D+180=2026-06-30
+      deal("b", { custom: { exec_amount: 1, fee_pct: 1, fee_paid_at: "2026-01-25" } }), // D+180=2026-07-24
     ]);
     const list = reContactList(entries);
     const due = reContactDue(list, monthRangeKst("2026-07"));
@@ -494,10 +498,74 @@ describe("reContactDue", () => {
 
   it("dPlus365 기준으로도 거를 수 있다", () => {
     const entries = toSettlementInputs([
-      deal("a", { custom: { 실행액: 1, 수수료율: 1, 수수료입금일: "2026-01-01" } }), // D+365=2027-01-01
+      deal("a", { custom: { exec_amount: 1, fee_pct: 1, fee_paid_at: "2026-01-01" } }), // D+365=2027-01-01
     ]);
     const list = reContactList(entries);
     expect(reContactDue(list, monthRangeKst("2027-01"), "dPlus365")).toHaveLength(1);
     expect(reContactDue(list, monthRangeKst("2026-07"), "dPlus365")).toHaveLength(0);
+  });
+});
+
+// ── BUG-0002 회귀 가드: 프리셋 key 정합 ──────────────────
+//
+// 초기 구현이 한글 **라벨**을 field key 로 써서 계약상황 위젯이 항상 미가용이었고,
+// 정산 추출도 아무것도 매칭하지 못해 늘 '임시 추정' 으로 떨어졌다.
+// 상수를 눈으로 맞추는 대신 **실제 프리셋을 설치해** 대조한다 → 프리셋이 바뀌면 여기서 깨진다.
+
+describe("POLICYFUND_FIELD_KEYS — 실제 프리셋과 정합(BUG-0002 가드)", () => {
+  function installedDealFieldKeys(): Set<string> {
+    const repo = getRepo();
+    const org = repo.getOrg(SEED_ORG_ID);
+    const user = repo.getUser(SEED_USER_OWNER);
+    if (!org || !user) throw new Error("시드 데이터 없음");
+    const ctx: Ctx = { user, org, role: "owner", scope: "all" };
+    installPolicyfundPreset(ctx); // idempotent
+    return new Set(repo.listFieldDefs(SEED_ORG_ID, "deal").map((f) => f.key));
+  }
+
+  it("계약상황·실행액·수수료율·수수료입금일 key 가 프리셋에 실제로 존재한다", () => {
+    const keys = installedDealFieldKeys();
+    expect(keys.has(POLICYFUND_FIELD_KEYS.contractStatus)).toBe(true);
+    expect(keys.has(POLICYFUND_FIELD_KEYS.execAmount)).toBe(true);
+    expect(keys.has(POLICYFUND_FIELD_KEYS.feePct)).toBe(true);
+    expect(keys.has(POLICYFUND_FIELD_KEYS.feePaidAt)).toBe(true);
+  });
+
+  it("key 는 영문 식별자다 — 한글 라벨을 key 로 쓰지 않는다", () => {
+    for (const k of Object.values(POLICYFUND_FIELD_KEYS)) {
+      expect(k).toMatch(/^[a-z][a-z0-9_]*$/);
+    }
+  });
+
+  it("정산 기본 키가 프리셋/settlements 컬럼명과 일치한다", () => {
+    expect(DEFAULT_SETTLEMENT_KEYS).toEqual({
+      disbursedAmount: "exec_amount",
+      feePercent: "fee_pct",
+      downPayment: "down_payment",
+      feeDepositDate: "fee_paid_at",
+    });
+  });
+
+  it("계약상황 기본 key 는 contract_status 다", () => {
+    // 프리셋 정의를 그대로 쓰면 available=true 로 잡혀야 한다.
+    const def: FieldDef = {
+      id: "f", org_id: "o1", entity: "deal",
+      key: POLICYFUND_FIELD_KEYS.contractStatus,
+      label: "계약상황", type: "select",
+      options_jsonb: { options: [{ id: "contract_status-0", label: "미작성" }] },
+      module_key: "ind.policyfund", sort_order: 0,
+    };
+    const got = contractStatusBreakdown([deal("a")], [def]);
+    expect(got.available).toBe(true);
+    expect(got.fieldKey).toBe("contract_status");
+  });
+
+  it("계약금(down_payment)은 프리셋 커스텀필드가 아니다 — 없으면 0 보정", () => {
+    const keys = installedDealFieldKeys();
+    expect(keys.has(POLICYFUND_FIELD_KEYS.downPayment)).toBe(false);
+    const [entry] = toSettlementInputs([
+      deal("a", { custom: { exec_amount: 1000, fee_pct: 10 } }),
+    ]);
+    expect(entry.input.downPayment).toBe(0);
   });
 });
