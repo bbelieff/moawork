@@ -4,6 +4,29 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T02 · core.crm 정본 스키마 정합 재작성 (boards/items → deals/companies)
+
+- **원인**: 초기 구현 직후 정본 `docs/PLAN-v0.2.md` + `001_schema_v1.sql` 이 다른 트랙 커밋으로
+  유입됨. 정본 모델(companies/pipelines/stages/deals/activities)이 내 독자 저작(boards/items)과
+  근본적으로 달랐고, 수식/저장뷰 경계도 T09/T05 소유로 확인됨. 오너 결정=**PLAN 경계 준수**.
+- **폐기(삭제)**:
+  - `supabase/migrations/0002_core_crm.sql`(경쟁 모델) → T05 의 saved_views 스키마 충돌 해소.
+  - `app/src/lib/crm/{formulas,pipeline,views,templates,store,postgrest,context,types}` +
+    구 API 라우트(boards/items/views) — boards/items 모델 산출물.
+- **재작성(정본 001 기반)**:
+  - 공유 `@/lib/repo` 포트를 core.crm 쓰기로 확장 — companies/deals CRUD, activities,
+    getStage. 담당범위(scope) 격리(owner/admin/all=전체, member+assigned=본인 담당만).
+  - `app/src/lib/crm/`: service(오케스트레이션)·activity(이동 로그 문구)·validation·
+    context(`@/lib/auth` 세션 → Ctx, 없으면 401)·http.
+  - API: `/api/companies`·`/api/pipelines`·`/api/deals`·`/api/deals/[id]/move`·
+    `/api/deals/[id]/activities`. 단계 이동은 move 로만(활동로그 보장), updateDeal 은 stage 거부.
+  - `docs/PLAN-core-crm-v0.2.md` 정본 정합 내용으로 갱신.
+- **경계 정정**: 수식/settlements=**T09**(정본 = generated column + policyfund/settlement.ts),
+  커스텀필드/저장뷰=**T05**, 조직/RLS/Auth=**T03**(완료). 별도 store/PostgREST 어댑터 미제작 —
+  공유 Repo 포트 재사용(운영 Supabase 어댑터는 포트 뒤 스왑).
+- **게이트**: `bash scripts/check.sh` 초록 (app 76 테스트, 그중 crm/repo 신규 29).
+- **조율**: DQ-0002 done 노트 정정, DQ-0005(T05) saved_views 충돌 resolved 표기, T02 registry 갱신.
+
 ## 2026-07-21 — T03 · 공용 파운데이션(PR-0) — 로컬 우선 세션·Repo·엔타이틀먼트 + 온보딩/멤버 UI
 
 브랜치 `feat/t03-foundation-org`. Supabase 연결 전, **dev-session + repo-레벨 scope** 로

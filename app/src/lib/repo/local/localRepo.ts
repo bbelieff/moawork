@@ -1,4 +1,5 @@
 import type {
+  Activity,
   Company,
   Ctx,
   Deal,
@@ -14,7 +15,14 @@ import type {
   User,
 } from "@/lib/types";
 import { isManager } from "@/lib/auth/roles";
-import type { Repo } from "../index";
+import type {
+  CompanyPatch,
+  DealPatch,
+  NewActivity,
+  NewCompany,
+  NewDeal,
+  Repo,
+} from "../index";
 import { db } from "./store";
 
 function now(): string {
@@ -173,7 +181,11 @@ export class LocalRepo implements Repo {
       .sort((a, b) => a.sort_order - b.sort_order);
   }
 
-  // ── 고객사 / 딜 (담당범위 적용) ──
+  getStage(stageId: string): Stage | undefined {
+    return db().stages.find((s) => s.id === stageId);
+  }
+
+  // ── 고객사 (담당범위 적용) ──
   listCompanies(ctx: Ctx): Company[] {
     const all = db().companies.filter((c) => c.org_id === ctx.org.id);
     return canSeeAll(ctx)
@@ -181,11 +193,138 @@ export class LocalRepo implements Repo {
       : all.filter((c) => c.assigned_to === ctx.user.id);
   }
 
+  getCompany(ctx: Ctx, id: string): Company | undefined {
+    const c = db().companies.find(
+      (x) => x.id === id && x.org_id === ctx.org.id,
+    );
+    if (!c) return undefined;
+    return canSeeAll(ctx) || c.assigned_to === ctx.user.id ? c : undefined;
+  }
+
+  createCompany(ctx: Ctx, input: NewCompany): Company {
+    // member+assigned 는 남에게 배정 불가 → 본인으로 강제.
+    const assigned = canSeeAll(ctx)
+      ? (input.assigned_to ?? null)
+      : ctx.user.id;
+    const company: Company = {
+      id: crypto.randomUUID(),
+      org_id: ctx.org.id,
+      name: input.name,
+      biz_type: input.biz_type ?? null,
+      region: input.region ?? null,
+      owner_name: input.owner_name ?? null,
+      phone: input.phone ?? null,
+      email: input.email ?? null,
+      revenue: input.revenue ?? null,
+      founded_on: input.founded_on ?? null,
+      homepage: input.homepage ?? null,
+      assigned_to: assigned,
+      created_at: now(),
+    };
+    db().companies.push(company);
+    return company;
+  }
+
+  updateCompany(
+    ctx: Ctx,
+    id: string,
+    patch: CompanyPatch,
+  ): Company | undefined {
+    const c = this.getCompany(ctx, id);
+    if (!c) return undefined;
+    // assigned_to 재배정은 매니저/전체범위만.
+    const { assigned_to, ...rest } = patch;
+    Object.assign(c, rest);
+    if (assigned_to !== undefined && canSeeAll(ctx)) c.assigned_to = assigned_to;
+    return c;
+  }
+
+  deleteCompany(ctx: Ctx, id: string): boolean {
+    const c = this.getCompany(ctx, id);
+    if (!c) return false;
+    db().companies = db().companies.filter((x) => x.id !== id);
+    return true;
+  }
+
+  // ── 딜 (담당범위 적용) ──
   listDeals(ctx: Ctx): Deal[] {
     const all = db().deals.filter((d) => d.org_id === ctx.org.id);
     return canSeeAll(ctx)
       ? all
       : all.filter((d) => d.assigned_to === ctx.user.id);
+  }
+
+  getDeal(ctx: Ctx, id: string): Deal | undefined {
+    const d = db().deals.find((x) => x.id === id && x.org_id === ctx.org.id);
+    if (!d) return undefined;
+    return canSeeAll(ctx) || d.assigned_to === ctx.user.id ? d : undefined;
+  }
+
+  createDeal(ctx: Ctx, input: NewDeal): Deal {
+    const assigned = canSeeAll(ctx)
+      ? (input.assigned_to ?? ctx.user.id)
+      : ctx.user.id;
+    const ts = now();
+    const deal: Deal = {
+      id: crypto.randomUUID(),
+      org_id: ctx.org.id,
+      company_id: input.company_id ?? null,
+      pipeline_id: input.pipeline_id ?? null,
+      stage_id: input.stage_id ?? null,
+      assigned_to: assigned,
+      title: input.title,
+      amount: input.amount ?? null,
+      status_note: input.status_note ?? null,
+      applied_on: input.applied_on ?? null,
+      custom: input.custom ?? {},
+      created_at: ts,
+      updated_at: ts,
+    };
+    db().deals.push(deal);
+    return deal;
+  }
+
+  updateDeal(ctx: Ctx, id: string, patch: DealPatch): Deal | undefined {
+    const d = this.getDeal(ctx, id);
+    if (!d) return undefined;
+    const { assigned_to, ...rest } = patch;
+    Object.assign(d, rest);
+    if (assigned_to !== undefined && canSeeAll(ctx)) d.assigned_to = assigned_to;
+    d.updated_at = now();
+    return d;
+  }
+
+  deleteDeal(ctx: Ctx, id: string): boolean {
+    const d = this.getDeal(ctx, id);
+    if (!d) return false;
+    db().deals = db().deals.filter((x) => x.id !== id);
+    db().activities = db().activities.filter((a) => a.deal_id !== id);
+    return true;
+  }
+
+  // ── 활동기록 ──
+  listActivities(ctx: Ctx, dealId: string): Activity[] {
+    // 딜 가시성 확인 후 활동 반환(최신순; 동일 시각은 나중 삽입이 최신).
+    if (!this.getDeal(ctx, dealId)) return [];
+    return db()
+      .activities.filter((a) => a.org_id === ctx.org.id && a.deal_id === dealId)
+      .map((a, i) => ({ a, i }))
+      .sort((x, y) => (x.a.at < y.a.at ? 1 : x.a.at > y.a.at ? -1 : y.i - x.i))
+      .map((x) => x.a);
+  }
+
+  createActivity(ctx: Ctx, input: NewActivity): Activity {
+    const activity: Activity = {
+      id: crypto.randomUUID(),
+      org_id: ctx.org.id,
+      deal_id: input.deal_id,
+      type: input.type,
+      content: input.content ?? null,
+      actor: ctx.user.id,
+      at: now(),
+    };
+    db().activities.push(activity);
+    return activity;
   }
 
   // ── 커스텀필드 ──

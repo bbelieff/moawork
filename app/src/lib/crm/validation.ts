@@ -1,9 +1,10 @@
 /**
- * 입력 검증 (T02). 의존성 없는 경량 검증기.
- * API 라우트에서 요청 바디를 도메인 입력으로 좁힌다.
+ * 입력 검증 (T02 core.crm). 의존성 없는 경량 검증기.
+ * API 라우트에서 요청 바디를 repo 입력 타입으로 좁힌다.
+ * 대상: companies · deals · activities · 단계이동. (수식/뷰/커스텀필드는 타 트랙)
  */
 
-import type { CellValue, ColumnType, ViewConfig, ViewFilter, ViewSort } from "./types";
+import type { CompanyPatch, DealPatch, NewCompany, NewDeal } from "@/lib/repo";
 
 export class ValidationError extends Error {
   constructor(message: string) {
@@ -16,175 +17,138 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function requireString(v: unknown, field: string, { max = 500 } = {}): string {
+function reqString(v: unknown, field: string, max = 500): string {
   if (typeof v !== "string") throw new ValidationError(`${field}: 문자열이어야 합니다`);
-  const trimmed = v.trim();
-  if (trimmed === "") throw new ValidationError(`${field}: 비어 있을 수 없습니다`);
-  if (trimmed.length > max) throw new ValidationError(`${field}: ${max}자를 초과했습니다`);
-  return trimmed;
+  const t = v.trim();
+  if (t === "") throw new ValidationError(`${field}: 비어 있을 수 없습니다`);
+  if (t.length > max) throw new ValidationError(`${field}: ${max}자를 초과했습니다`);
+  return t;
 }
 
-function optionalString(v: unknown, field: string, { max = 2000 } = {}): string | undefined {
-  if (v === undefined || v === null) return undefined;
+/** null 허용 문자열(빈 문자열 → null). */
+function optString(v: unknown, field: string, max = 1000): string | null {
+  if (v === undefined || v === null || v === "") return null;
   if (typeof v !== "string") throw new ValidationError(`${field}: 문자열이어야 합니다`);
   if (v.length > max) throw new ValidationError(`${field}: ${max}자를 초과했습니다`);
   return v;
 }
 
-export interface CreateBoardInput {
-  name: string;
-  description?: string;
+function optNumber(v: unknown, field: string): number | null {
+  if (v === undefined || v === null || v === "") return null;
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) throw new ValidationError(`${field}: 숫자여야 합니다`);
+  return n;
 }
 
-export function parseCreateBoard(body: unknown): CreateBoardInput {
-  if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
+/** YYYY-MM-DD 검증(느슨). null 허용. */
+function optDate(v: unknown, field: string): string | null {
+  if (v === undefined || v === null || v === "") return null;
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v))
+    throw new ValidationError(`${field}: YYYY-MM-DD 형식이어야 합니다`);
+  return v;
+}
+
+function optId(v: unknown, field: string): string | null {
+  if (v === undefined || v === null || v === "") return null;
+  if (typeof v !== "string") throw new ValidationError(`${field}: id 문자열이어야 합니다`);
+  return v;
+}
+
+// ── companies ─────────────────────────────────────────
+
+function companyFields(b: Record<string, unknown>): Omit<NewCompany, "name"> {
   return {
-    name: requireString(body.name, "name", { max: 200 }),
-    description: optionalString(body.description, "description"),
+    biz_type: optString(b.biz_type, "biz_type", 100),
+    region: optString(b.region, "region", 100),
+    owner_name: optString(b.owner_name, "owner_name", 100),
+    phone: optString(b.phone, "phone", 50),
+    email: optString(b.email, "email", 200),
+    revenue: optNumber(b.revenue, "revenue"),
+    founded_on: optDate(b.founded_on, "founded_on"),
+    homepage: optString(b.homepage, "homepage", 500),
+    assigned_to: optId(b.assigned_to, "assigned_to"),
   };
 }
 
-export interface UpdateBoardInput {
-  name?: string;
-  description?: string;
-  archived?: boolean;
+export function parseCreateCompany(body: unknown): NewCompany {
+  if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
+  return { name: reqString(body.name, "name", 200), ...companyFields(body) };
 }
 
-export function parseUpdateBoard(body: unknown): UpdateBoardInput {
+export function parseUpdateCompany(body: unknown): CompanyPatch {
   if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
-  const out: UpdateBoardInput = {};
-  if (body.name !== undefined) out.name = requireString(body.name, "name", { max: 200 });
-  if (body.description !== undefined)
-    out.description = optionalString(body.description, "description");
-  if (body.archived !== undefined) {
-    if (typeof body.archived !== "boolean")
-      throw new ValidationError("archived: 불리언이어야 합니다");
-    out.archived = body.archived;
+  const patch: CompanyPatch = {};
+  if (body.name !== undefined) patch.name = reqString(body.name, "name", 200);
+  for (const k of [
+    "biz_type", "region", "owner_name", "phone", "email", "homepage",
+  ] as const) {
+    if (body[k] !== undefined) patch[k] = optString(body[k], k);
   }
-  if (Object.keys(out).length === 0) throw new ValidationError("변경할 필드가 없습니다");
-  return out;
+  if (body.revenue !== undefined) patch.revenue = optNumber(body.revenue, "revenue");
+  if (body.founded_on !== undefined) patch.founded_on = optDate(body.founded_on, "founded_on");
+  if (body.assigned_to !== undefined) patch.assigned_to = optId(body.assigned_to, "assigned_to");
+  if (Object.keys(patch).length === 0) throw new ValidationError("변경할 필드가 없습니다");
+  return patch;
 }
 
-const COLUMN_TYPES: ColumnType[] = ["text", "number", "date", "status", "people", "formula"];
+// ── deals ─────────────────────────────────────────────
 
-/** 셀 값 검증 — 타입만 대략 확인(도메인 유연성 유지). */
-export function parseCellValue(v: unknown): CellValue {
-  if (v === null || v === undefined) return null;
-  const t = typeof v;
-  if (t === "string" || t === "number" || t === "boolean") return v as CellValue;
-  if (isObject(v)) return v as CellValue;
-  throw new ValidationError("값: 지원하지 않는 형식입니다");
-}
-
-export interface CreateItemInput {
-  name: string;
-  stageKey?: string;
-  values?: Record<string, CellValue>;
-}
-
-export function parseCreateItem(body: unknown): CreateItemInput {
-  if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
-  const out: CreateItemInput = {
-    name: requireString(body.name, "name", { max: 500 }),
+function dealFields(b: Record<string, unknown>): Omit<NewDeal, "title"> {
+  const out: Omit<NewDeal, "title"> = {
+    company_id: optId(b.company_id, "company_id"),
+    pipeline_id: optId(b.pipeline_id, "pipeline_id"),
+    stage_id: optId(b.stage_id, "stage_id"),
+    assigned_to: optId(b.assigned_to, "assigned_to"),
+    amount: optNumber(b.amount, "amount"),
+    status_note: optString(b.status_note, "status_note", 1000),
+    applied_on: optDate(b.applied_on, "applied_on"),
   };
-  if (body.stageKey !== undefined) out.stageKey = requireString(body.stageKey, "stageKey");
-  if (body.values !== undefined) out.values = parseValuesMap(body.values);
-  return out;
-}
-
-export interface UpdateItemInput {
-  name?: string;
-  values?: Record<string, CellValue>;
-}
-
-export function parseUpdateItem(body: unknown): UpdateItemInput {
-  if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
-  const out: UpdateItemInput = {};
-  if (body.name !== undefined) out.name = requireString(body.name, "name", { max: 500 });
-  if (body.values !== undefined) out.values = parseValuesMap(body.values);
-  if (Object.keys(out).length === 0) throw new ValidationError("변경할 필드가 없습니다");
-  return out;
-}
-
-export function parseValuesMap(v: unknown): Record<string, CellValue> {
-  if (!isObject(v)) throw new ValidationError("values: 객체여야 합니다");
-  const out: Record<string, CellValue> = {};
-  for (const [k, raw] of Object.entries(v)) out[k] = parseCellValue(raw);
-  return out;
-}
-
-export interface MoveStageInput {
-  stageKey: string;
-}
-
-export function parseMoveStage(body: unknown): MoveStageInput {
-  if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
-  return { stageKey: requireString(body.stageKey, "stageKey") };
-}
-
-// ── 저장뷰 ─────────────────────────────────────────────
-
-const FILTER_OPS = new Set([
-  "eq", "neq", "contains", "gt", "gte", "lt", "lte", "is_empty", "is_not_empty",
-]);
-
-function parseFilter(v: unknown, i: number): ViewFilter {
-  if (!isObject(v)) throw new ValidationError(`filters[${i}]: 객체여야 합니다`);
-  const columnKey = requireString(v.columnKey, `filters[${i}].columnKey`);
-  if (typeof v.operator !== "string" || !FILTER_OPS.has(v.operator))
-    throw new ValidationError(`filters[${i}].operator: 지원하지 않는 연산자`);
-  const filter: ViewFilter = { columnKey, operator: v.operator as ViewFilter["operator"] };
-  if (v.value !== undefined) filter.value = parseCellValue(v.value);
-  return filter;
-}
-
-function parseSort(v: unknown, i: number): ViewSort {
-  if (!isObject(v)) throw new ValidationError(`sorts[${i}]: 객체여야 합니다`);
-  const columnKey = requireString(v.columnKey, `sorts[${i}].columnKey`);
-  if (v.direction !== "asc" && v.direction !== "desc")
-    throw new ValidationError(`sorts[${i}].direction: asc|desc`);
-  return { columnKey, direction: v.direction };
-}
-
-export function parseViewConfig(v: unknown): ViewConfig {
-  if (!isObject(v)) throw new ValidationError("config: 객체여야 합니다");
-  const filtersRaw = v.filters ?? [];
-  const sortsRaw = v.sorts ?? [];
-  if (!Array.isArray(filtersRaw)) throw new ValidationError("config.filters: 배열이어야 합니다");
-  if (!Array.isArray(sortsRaw)) throw new ValidationError("config.sorts: 배열이어야 합니다");
-  const config: ViewConfig = {
-    filters: filtersRaw.map(parseFilter),
-    sorts: sortsRaw.map(parseSort),
-  };
-  if (v.visibleColumns !== undefined) {
-    if (!Array.isArray(v.visibleColumns) || !v.visibleColumns.every((c) => typeof c === "string"))
-      throw new ValidationError("config.visibleColumns: 문자열 배열이어야 합니다");
-    config.visibleColumns = v.visibleColumns as string[];
-  }
-  return config;
-}
-
-export interface CreateViewInput {
-  name: string;
-  config: ViewConfig;
-  isDefault?: boolean;
-}
-
-export function parseCreateView(body: unknown): CreateViewInput {
-  if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
-  const out: CreateViewInput = {
-    name: requireString(body.name, "name", { max: 200 }),
-    config: parseViewConfig(body.config ?? {}),
-  };
-  if (body.isDefault !== undefined) {
-    if (typeof body.isDefault !== "boolean")
-      throw new ValidationError("isDefault: 불리언이어야 합니다");
-    out.isDefault = body.isDefault;
+  if (b.custom !== undefined) {
+    if (!isObject(b.custom)) throw new ValidationError("custom: 객체여야 합니다");
+    out.custom = b.custom;
   }
   return out;
 }
 
-/** 컬럼 타입 유효성(외부에서 컬럼 정의 받을 때). */
-export function isColumnType(v: unknown): v is ColumnType {
-  return typeof v === "string" && (COLUMN_TYPES as string[]).includes(v);
+export function parseCreateDeal(body: unknown): NewDeal {
+  if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
+  return { title: reqString(body.title, "title", 300), ...dealFields(body) };
+}
+
+export function parseUpdateDeal(body: unknown): DealPatch {
+  if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
+  const patch: DealPatch = {};
+  if (body.title !== undefined) patch.title = reqString(body.title, "title", 300);
+  if (body.company_id !== undefined) patch.company_id = optId(body.company_id, "company_id");
+  if (body.pipeline_id !== undefined) patch.pipeline_id = optId(body.pipeline_id, "pipeline_id");
+  if (body.stage_id !== undefined) patch.stage_id = optId(body.stage_id, "stage_id");
+  if (body.assigned_to !== undefined) patch.assigned_to = optId(body.assigned_to, "assigned_to");
+  if (body.amount !== undefined) patch.amount = optNumber(body.amount, "amount");
+  if (body.status_note !== undefined) patch.status_note = optString(body.status_note, "status_note", 1000);
+  if (body.applied_on !== undefined) patch.applied_on = optDate(body.applied_on, "applied_on");
+  if (body.custom !== undefined) {
+    if (!isObject(body.custom)) throw new ValidationError("custom: 객체여야 합니다");
+    patch.custom = body.custom;
+  }
+  if (Object.keys(patch).length === 0) throw new ValidationError("변경할 필드가 없습니다");
+  return patch;
+}
+
+// ── move / activities ─────────────────────────────────
+
+export function parseMoveStage(body: unknown): { stageId: string } {
+  if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
+  const stageId = optId(body.stageId ?? body.stage_id, "stageId");
+  if (!stageId) throw new ValidationError("stageId: 필수입니다");
+  return { stageId };
+}
+
+const ACTIVITY_TYPE_SET = new Set(["call", "meeting", "memo", "status"]);
+
+export function parseCreateActivity(body: unknown): { type: string; content: string | null } {
+  if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
+  const type = reqString(body.type, "type", 30);
+  if (!ACTIVITY_TYPE_SET.has(type))
+    throw new ValidationError("type: call|meeting|memo|status 중 하나여야 합니다");
+  return { type, content: optString(body.content, "content", 5000) };
 }

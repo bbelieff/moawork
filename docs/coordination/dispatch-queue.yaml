@@ -1,6 +1,6 @@
 # 디스패치 큐 — 트랙 간 작업 분배 SSOT
 # status: queued | in_progress | done | blocked
-version: 3
+version: 4
 updated: 2026-07-21
 
 # 대기 중 (아직 담당 트랙 없음)
@@ -33,9 +33,10 @@ in_progress:
       docs/design/T05-custom-fields-design.md (001_schema_v1 field_defs/field_values/
       saved_views 정본, T02 Port+Adapter·뷰엔진·검증기 재사용, 13타입 레지스트리 +
       옵션 id 안정성 핵심). 구현 착수는 아래 선결 조건(스키마 정합) 확정 후.
-    blocked_on:
-      # 구현 착수 전 해소 필요 — 설계 §0/OQ-1
-      - "스키마 충돌 정합: saved_views 가 001_schema_v1.sql 과 0002_core_crm.sql 양쪽에 create table(컬럼 상이). 001(field_defs) vs 0002(board_columns) 정본 확정 필요"
+    # [T02 해소 2026-07-21] 0002_core_crm.sql 폐기 → saved_views 충돌 제거.
+    # 정본 = 001_schema_v1.sql(field_defs/field_values/saved_views). core.custom 착수 가능.
+    resolved:
+      - "스키마 충돌 해소: 0002_core_crm.sql(board_columns/saved_views) 삭제됨. 001 이 단일 정본."
 
 # 차단됨 (선행 조건 대기)
 blocked:
@@ -121,12 +122,15 @@ done:
     closed: 2026-07-21
     status: done
     notes: >-
-      core.crm MVP 산출: 0002_core_crm.sql(boards/pipeline_stages/board_columns/
-      items/column_values/saved_views + org_id + RLS enable), 도메인 레이어(수식4·
-      단계이동 자동화·저장뷰·검증), 스토어 포트+InMemory/PostgREST 어댑터, 서비스,
-      API 라우트(boards/items/move/views). check.sh 초록(app 68 테스트).
-      T05/T07/T09 언블록(보드/아이템/파이프라인 스키마·CRUD API 제공).
+      [정정] 초기 산출(boards/items 독자 스키마 + 0002_core_crm.sql)은 정본 스키마
+      부재 상태에서 저작됨. 정본 001_schema_v1.sql 확정 후 **정본 모델로 재작성**:
+      companies/pipelines/stages/deals/activities 위에서 딜·고객사 CRUD + 단계이동
+      (활동로그) + 활동. 공유 @/lib/repo 포트를 확장(회사/딜 CRUD·activities·getStage,
+      담당범위 적용), @/lib/auth 세션(Ctx) 재사용. API=/api/companies·pipelines·deals·
+      deals/[id]/move·activities. **0002_core_crm.sql 폐기(삭제)** → T05 saved_views 충돌 해소.
+      경계 정정: 수식/settlements=T09, 커스텀필드/저장뷰=T05, RLS/Auth=T03.
+      check.sh 초록(app 76 테스트).
     followup:
-      - T03 Auth/RLS 확정 시 context.ts 세션 연동 + DB RLS 정책 정합
-      - PostgREST 어댑터 라이브 DB 통합테스트 (현재 쿼리빌더 단위테스트)
-      - 수식 정의 확정본 반영(현재 가정)
+      - Supabase Repo 어댑터(공유) 연결 시 라이브 통합테스트
+      - core.dash(T04)/mod.perf(T07) 가 deals/activities 집계 소비
+      - ind.policyfund(T09) 정산 UI ↔ deal 연결
