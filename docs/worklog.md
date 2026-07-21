@@ -4,6 +4,23 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T03 · hotfix BUG-0001 — createOrg 엔타이틀먼트 미생성
+
+T10 main 스모크 반려 건. **내 코드의 규약 위반**이 맞다.
+
+- 증상: `createOrg()` 가 org + owner 멤버만 만들고 `org_entitlements` 행을 만들지 않았다.
+  `isFeatureEnabled()` 는 `enabled=true` 행을 요구하므로 **신규 조직에서 core.\* 전부 잠김**
+  (FeatureGate 전면 자물쇠). 시드 조직만 `seed.ts` 에서 MVP 기능을 받고 있어 가려져 있었다.
+- 위반한 규약: PLAN v0.2 §5 "MVP: 모든 플랜에 core.* + MVP 모듈 무료".
+- 수정: `createOrg` 에서 `MVP_ENABLED_FEATURES` 를 순회해 엔타이틀먼트 행 생성
+  (`source: "plan"` — 시드와 동일 의미론. `setEntitlement` 는 `source:"manual"` 이라 미사용).
+- 회귀 가드: `localRepo.test.ts` 에 "신규 조직에 MVP 기본 엔타이틀먼트를 부여한다(BUG-0001)"
+  추가 — MVP 기능 전건 ON + Phase 2(mod.notify/mod.hometax) 는 OFF 유지까지 검증.
+- 채택하지 않은 대안: `isFeatureEnabled` 를 plan_features 기준 판정으로 변경.
+  로컬 store 에 plans/plan_features 테이블이 없어 지금은 과한 변경 — Supabase 전환 시
+  `plan_features → org_entitlements` 합산으로 정리하는 게 맞다(주석에 명시).
+- 반영: main 직접 hotfix(기획2 승인). 작업은 격리 worktree 에서 수행.
+
 ## 2026-07-21 — T04 · DQ-0014 판정 반영 — 파일 첨부를 jsonb(deal.custom.files[])로 전환
 
 - **기획2 판정 수령**: MVP 로컬 우선에서는 전용 테이블 없이 **jsonb 저장**

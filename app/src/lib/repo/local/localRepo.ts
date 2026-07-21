@@ -16,6 +16,7 @@ import type {
   User,
 } from "@/lib/types";
 import { isManager } from "@/lib/auth/roles";
+import { MVP_ENABLED_FEATURES } from "@/lib/product";
 import type {
   CompanyPatch,
   DealPatch,
@@ -92,6 +93,23 @@ export class LocalRepo implements Repo {
       created_at: now(),
     };
     db().members.push(member);
+
+    // BUG-0001: 신규 조직에 MVP 기본 엔타이틀먼트를 부여한다.
+    // isFeatureEnabled() 는 enabled=true 행을 요구하므로, 이 행들이 없으면 새 조직에서
+    // core.* 전부가 잠긴다(FeatureGate 전면 자물쇠). PLAN v0.2 §5 "MVP: 모든 플랜에
+    // core.* + MVP 모듈 무료" 규약을 앱에서 재현하는 부분 — 시드 조직(seed.ts)과 동일하게
+    // plan 출처로 넣는다. (Supabase 전환 시엔 plan_features → org_entitlements 합산으로 대체)
+    for (const feature_key of MVP_ENABLED_FEATURES) {
+      db().entitlements.push({
+        org_id: org.id,
+        feature_key,
+        enabled: true,
+        limit_value: null,
+        source: "plan",
+        expires_at: null,
+      });
+    }
+
     return { org, member };
   }
 

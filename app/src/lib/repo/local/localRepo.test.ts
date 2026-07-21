@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import type { Ctx, MemberRole, MemberScope } from "@/lib/types";
 import { installPolicyfundPreset } from "@/lib/presets/policyfund";
-import { FEATURES } from "@/lib/product";
+import { FEATURES, MVP_ENABLED_FEATURES } from "@/lib/product";
 import { LocalRepo } from "./localRepo";
 import { resetDb } from "./store";
 import {
@@ -85,6 +85,21 @@ describe("createOrg auto-owner", () => {
     expect(repo.listMembers(org.id).some((m) => m.user_id === creator.id)).toBe(
       true,
     );
+  });
+
+  // BUG-0001 회귀 방지: 엔타이틀먼트가 없으면 새 조직에서 MVP 기능이 전부 잠긴다.
+  it("신규 조직에 MVP 기본 엔타이틀먼트를 부여한다 (BUG-0001)", () => {
+    const repo = new LocalRepo();
+    const creator = repo.getUser(SEED_USER_OWNER);
+    if (!creator) throw new Error("seed 누락");
+    const { org } = repo.createOrg({ name: "엔타이틀먼트 조직" }, creator);
+
+    for (const key of MVP_ENABLED_FEATURES) {
+      expect(repo.isFeatureEnabled(org.id, key)).toBe(true);
+    }
+    // Phase 2(벤더) 기능은 여전히 잠겨 있어야 한다.
+    expect(repo.isFeatureEnabled(org.id, FEATURES.notify)).toBe(false);
+    expect(repo.isFeatureEnabled(org.id, FEATURES.hometax)).toBe(false);
   });
 });
 
