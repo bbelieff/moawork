@@ -4,6 +4,73 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T04 · DQ-0014 판정 반영 — 파일 첨부를 jsonb(deal.custom.files[])로 전환
+
+- **기획2 판정 수령**: MVP 로컬 우선에서는 전용 테이블 없이 **jsonb 저장**
+  (딜 = `deals.custom.files[]`, 임의보드 = `item_values`). 신규 마이그레이션 금지.
+  전용 attachments 테이블은 Supabase Storage 연결 시 **기획이 004 로 작성**.
+- **적용**: `lib/services/files.ts` 를 자체 인메모리 Map → **Repo 경유 jsonb** 로 재작성.
+  - 순수 jsonb 헬퍼 `readFileRefs` / `appendFileRef` / `removeFileRef` (불변, 형식 방어).
+    배열이 아니거나 원소 형식이 어긋나면 걸러낸다(런타임 jsonb 신뢰 금지).
+  - 서비스는 기존 `Repo.getDeal/updateDeal(custom)` 만 사용 → **공용 인터페이스 무변경**
+    (피드백 #2 준수). org·담당범위 격리는 Repo 가 그대로 보장.
+  - 기존 custom 키(예: `계약상황`)를 덮어쓰지 않음을 테스트로 고정.
+- **머지큐**: ①T03 → ②T02crm → ③T02boards → **④T04** → ⑤T05.
+  현재 origin/main 에 T03(a7bdc9d)·T02crm(ab9845e) **미머지 확인** → rebase 대기 상태.
+  선행 머지 완료 후 `git rebase origin/main` 하여 재푸시 예정.
+- 파일 서비스 테스트 40개. `bash scripts/check.sh` **초록**(앱 179 + 워커 1).
+
+## 2026-07-21 — T04 · core.files 로컬 구현 + 정산 임시추정 (브랜치 feat/t04-dash)
+
+- **워킹트리 격리**: `git worktree add ../wt-t04 -b feat/t04-dash` (공유 워킹트리 커밋 금지 규약 적용).
+  origin/main 기준으로 분기했으나, 대시보드 코드가 **T03 파운데이션(a7bdc9d)·T02 정본
+  재작성(ab9845e)에 의존**해 그 위에 쌓인 스택 브랜치로 구성. main 은 건드리지 않음.
+- **기획2 피드백 #1 반영** — 정산 집계가 '—' 대신 **`deal.amount` 기반 임시 추정**으로 폴백:
+  `provisionalSettlementFromAmounts()` + `settlementSummaryOrProvisional()`,
+  `SettlementSummary.provisional` 플래그. 화면에 **"임시" 뱃지**와 산출 불가 항목(계약금·수수료)
+  안내를 함께 노출해 실측과 혼동되지 않게 함. 교체 순서는 TODO 주석에 명시
+  (T03 포트 선행 추가 → T09 구현 → T04 실측 교체).
+- **피드백 #2 준수**: 공용 인터페이스(`@/lib/types`, `@/lib/repo/index.ts`) **미변경**.
+  파일 기능은 아직 공용 포트에 없어 T04 자체 서비스로 분리.
+- **core.files 로컬 구현** (독자 CREATE TABLE 금지 → 마이그레이션 없이 로컬 우선):
+  - `lib/services/files.ts` — 딜 파일 첨부 인메모리 스토어 + 검증.
+    크기 제한(10MB) · **실행/스크립트 확장자 24종 차단** · **경로 탈출 방지**
+    (`sanitizeFileName`: 경로 구분자·제어문자 제거) · org 격리 · `buildStoragePath()`
+    (첫 세그먼트=org_id, Storage 버킷 RLS 대비).
+  - `components/deal/ContractStatusField.tsx` — **계약상황 select**. 선택지는 하드코딩이 아니라
+    `field_defs`('계약상황', 002 프리셋)에서 로드, 값은 `deals.custom[key]`.
+    → 기획 §3 core.files **완료 기준("계약상황이 딜에서 표시·변경됨") 충족**.
+  - `components/deal/FilesTab.tsx` — 흐름 C '문서' 탭. 업로드 전 클라이언트 1차 검증 + 다운로드.
+- 신규 테스트 30개(파일 서비스) + 정산 임시추정 7개. `bash scripts/check.sh` **초록**(앱 169 + 워커 1).
+- 남은 것: 파일 메타 스키마(DQ-0014, 기획 단일 PR 대기) · Storage 서명URL 교체 · 딜 상세 화면(T02) 배선.
+
+## 2026-07-21 — T04 · core.dash 기본 대시보드 구현 (core.files 는 스키마 대기)
+
+- **기획 v0.2 + 스키마 v1 정독**: `docs/PLAN-v0.2.md`, `supabase/migrations/001_schema_v1.sql`.
+  정본 모델 = `deals`/`pipelines`/`stages`/`settlements` (ADR-0002, B안 `0002_core_crm` 폐기).
+- **디스패치 보고**(지시 사항):
+  - `DQ-0014` [요청→기획] **core.files 스키마 부재** — `core.files` 는 plan_features 에
+    기능키로 등록(MVP ON)됐지만 뒷받침 테이블이 정본 어디에도 없음. "새 SQL 만들지 마 ·
+    스키마 변경은 기획이 단독 작성"(DQ-0011 원칙)에 따라 직접 저작하지 않고 요청.
+    착수 시 만든 초안 `0003_core_files_dash.sql` 은 **회수**(추측 금지 + 폐기된 B안 참조).
+  - `DQ-0015` core.dash 분리 착수 — 확정 기획상 대시보드는 "집계=뷰/파생, 이중저장 금지"라
+    **새 테이블 없이 구현 가능** → core.files 대기와 분리.
+  - `DQ-0004` 갱신: contracts 상태는 `field_defs` '계약상황' 프리셋으로 충족(별도 테이블 불요,
+    Phase 2 확인). blocked_on 을 DQ-0014 하나로 정리.
+- **구현 (`app/src/lib/dash/`)** — 전부 순수 함수, I/O 없음:
+  - `aggregate.ts` — 단계별 건수/비율, 전환율(분모=전체 딜·분자=kind 첫 단계 이상 도달,
+    **0분모 방어**), 계약상황 분포(field_defs 옵션 id·라벨 매칭, archived 제외),
+    **KST 월 경계**(`monthRangeKst`, 반열린 구간), 정산 요약·재접촉(D+180/365).
+  - `service.ts` — `buildDashboard(ctx)`: Repo(담당범위 적용) → 집계 조립. 저장 안 함.
+    "계약단계 도달"(파이프라인 KPI) vs "이번달 수납"(수수료입금일 기준 실현) **라벨 분리**(T07 지적 반영).
+  - `format.ts` — 0건/미가용 시 `0` 또는 `—` (NaN 금지).
+- **화면**: 홈 `(app)/page.tsx` 의 "대시보드 스텁" → **실제 대시보드로 대체**(상단 고정 요약 4종 +
+  파이프라인·전환율·계약상황·이번달수납·전체정산·재접촉 위젯). 드릴다운
+  `(app)/dash/[pipelineId]` = 보드별 상세(단계별 딜 목록). `FeatureGate(core.dash)` 적용.
+- **경계 준수**: 정산 수식은 **T09 확정본**(`policyfund/settlement.ts`) 소비(재저작 없음),
+  딜 상세 화면은 **T02 소유**라 링크/중복 구현하지 않음.
+- 신규 테스트 63개(집계 42 · 서비스 8 · 포맷 13). `bash scripts/check.sh` **초록**(앱 201 + 워커 1).
+
 ## 2026-07-21 — T02b · 사용자 임의 보드 엔진 구현 (003, ADR-0003) — 브랜치 feat/t02-boards-engine
 
 - **선행 해소**: DQ-0011 요청분(003_boards_engine.sql · T02b-boards-engine.md · ADR-0003)이
