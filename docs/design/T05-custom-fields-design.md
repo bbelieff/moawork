@@ -9,7 +9,16 @@
 
 ---
 
-## 0. 먼저 — 착수 전 반드시 해소할 스키마 충돌 ⚠️ (BLOCKER)
+## 상태 (2026-07-21 갱신)
+
+- **OQ-1 해소(ADR-0002)**: 정본 = **A안 `001_schema_v1.sql`**. B안 `0002_core_crm.sql` 폐기. → §0 BLOCKER 해소.
+- **엔진 구현 완료(자기완결 계층)**: `app/src/lib/custom/` — 아래 §10. check.sh 초록.
+- **정합 대기(followup)**: 공유 포트 `@/lib/repo` 넓히기 + API 라우트는 T02 001-모델 재작성 정착 후.
+
+## 0. 스키마 충돌 — 해소됨 ✅ (원 BLOCKER, ADR-0002 로 종결)
+
+> **판정(2026-07-21): A안 001 정본, B안 0002 폐기.** boards/items/board_columns/column_values 는 존재하지 않는 것으로 취급. 아래 표는 판정 배경 기록용으로 보존한다.
+
 
 설계에 앞서 저장소에 **커스터마이징 레이어를 정의하는 마이그레이션이 두 벌** 있음을 확인했다. 착수 전 조율로 하나를 확정해야 한다.
 
@@ -262,3 +271,134 @@ export interface CustomStore {
 8. RLS 정합은 T03, 프리셋 값은 T09와 `dispatch-queue`로 조율.
 
 > 요약: 스키마 v1(001)의 `field_defs`/`field_values`/`saved_views`를 정본으로, T02가 검증한 **Port+Adapter·순수 뷰엔진·경량 검증기 패턴**을 재사용해 13타입 레지스트리와 옵션 안정성(id 저장)을 핵심으로 하는 커스텀필드 엔진을 얹는다. 착수 전 **§0 스키마 충돌(OQ-1) 해소가 선결**이다.
+
+---
+
+## 10. 구현 현황 (2026-07-21)
+
+**착수 트리거**: OQ-1 해소(ADR-0002, A안 001 정본). 설계 §9 순서대로 자기완결 계층 구현.
+
+**전달물** `app/src/lib/custom/` (순수 TS + vitest, 62 테스트 신규, check.sh 초록):
+
+| 파일 | 내용 |
+|---|---|
+| `field-types.ts` | 13종 `FieldTypeSpec` 레지스트리(normalize/isEmpty/comparable/operators) + `ValidationError`. 옵션 id 멤버십·달력일·이메일/URL/전화 검증. |
+| `options.ts` | 옵션 연산(add/rename/recolor/reorder/archive/unarchive) — **id 불변 보장**, 고아 진단. |
+| `views.ts` | 001 saved_views(jsonb) ↔ `ViewConfig` 어댑터 + 순수 필터/정렬 `applyView`(타입-인지 비교). |
+| `store.ts` | `CustomStore` 포트 + `InMemoryCustomStore`(org 격리, 값 PK upsert/프루닝, 뷰 개인/공유 가시성). |
+| `validation.ts` | 요청 파서 + `deriveKey`/`uniqueKey`(**한국어 라벨 지원**, 예약어·중복 회피). |
+| `service.ts` | 오케스트레이션 — key 파생·옵션 id 발급·값 정규화·프리셋(module_key) 편집/삭제 락·뷰 CRUD. |
+| `index.ts` | 배럴. |
+
+**착수 중 내린 OQ 결정(구현 반영):**
+- **OQ-2(타입 변경)**: MVP는 라벨 변경만 허용, `key`·`type` 불변(안전 우선). 타입 변경 UI 는 "새 필드 생성" 유도.
+- **OQ-3(프리셋 옵션)**: `module_key` 필드는 옵션 편집·삭제 **전면 락**(`CustomFieldError`). 프리셋 값 소유 = T09/002.
+- **OQ-5(`deals.custom` 캐시)**: 정본 = `field_values`. 캐시 동기화는 미구현(조기 최적화 회피) — 필요 확인 시 service 에 플래그로 추가.
+- **OQ-4(기본 뷰)**: 001 에 `is_default` 없음 → 미결. 규약 or 신규 마이그레이션은 belie 결정 대기(현재 개인/공유 구분만 구현).
+
+**정합/후속(followup, T02 001-재작성 정착 후):**
+1. **`@/lib/repo` 넓히기** — 현재 `Repo` 는 `listFieldDefs`/`createFieldDef` 스텁만. `CustomStore` 표면(값/뷰/update/reorder/delete)으로 확장하거나 `InMemoryCustomStore` 를 `LocalRepo` 에 위임. (T02 파일이라 지금은 미수정.)
+2. **PostgREST 어댑터** — `CustomStore` 의 운영 구현(field_defs/field_values/saved_views 직접 질의). 라이브 DB 통합은 T10.
+3. **API 라우트** — §7 목록. `app/AGENTS.md` 지시대로 `node_modules/next/dist/docs/` 확인 후.
+4. **RLS** — 정책 본체 T03(001 에 `fielddefs_rw`/`fieldvals_rw`/`savedviews_rw` 존재, 런타임 검증 T03·T10).
+5. **뷰 엔진 공용화** — T02 `crm/views.ts` 와 로직 중복 → 정착 후 공유 모듈로 통합 검토.
+
+---
+
+## 11. ADR-0003(임의 보드) 영향 분석 + 정합 순서 (2026-07-21)
+
+**기획2 지시(순환)**: 001 정본 확인 · 구현 착수 가능 · **단 T02 재작성 + 공용계약 안정화 후 정합 순서 준수** · 워킹트리 격리(git worktree) 사용.
+
+### 11.1 정합 게이트 — 현재 미충족 (실측)
+
+`origin/main` = `de69db6` 기준 실측:
+
+| 정합 선행조건 | 상태 |
+|---|---|
+| T03 파운데이션(`@/lib/types`·`@/lib/repo`·`@/lib/auth`) on main | ❌ 부재 (feat/t03-foundation-org 에만) |
+| T02 001-재작성 on main | ❌ 부재 (main 의 `crm/service.ts` 는 재작성 전 boards/items 구버전) |
+| `0002_core_crm.sql` 폐기 반영 on main | ❌ 아직 존재 |
+| T02 DQ-0012(임의 보드 이전) | ❌ blocked (003 미작성) |
+
+**⇒ 지시대로 정합 보류.** `@/lib/repo` 넓히기·PostgREST 어댑터·API 라우트는 **착수하지 않는다**(§10 followup 유지). 지금 착수하면 소비 대상이 유동적이라 재작업 확정.
+
+**그래서 `domain-types.ts` vendor 를 유지한다** — 파운데이션이 main 에 없으므로, vendor 가 본 모듈이 main 기반에서 단독 컴파일되는 유일한 방법이다. 공용계약 안정화 후 `export * from "@/lib/types"` 재export 로 1줄 정합.
+
+### 11.2 두 겹 구조에서 core.custom 의 위치
+
+ADR-0003: ① 정책자금 파이프라인 = 001 `deals`/`stages`(typed) · ② 사용자 임의 보드 = 003 `boards`/`items`/`board_columns`/`item_values`.
+
+②의 `board_columns`(타입·선택지를 갖는 컬럼)는 **core.custom 과 동일한 커스터마이징 표면**이다. 즉 "먼데이 컬럼 재현"이 001 `field_defs` 와 003 `board_columns` 두 곳에 걸친다.
+
+본 모듈의 재사용성(코드 실측):
+
+| 계층 | 003 재사용 |
+|---|---|
+| `field-types.ts`(13타입 레지스트리) | ✅ 그대로 — 저장소 무관 |
+| `options.ts`(옵션 id 안정성) | ✅ 그대로 — 순수 배열 연산 |
+| `views.ts`(`applyView`) | ✅ 그대로 — 행 타입 제네릭 + `CellResolver` 주입 |
+| `validation.ts` | ✅ 대부분 |
+| `store.ts`/`service.ts` | ⚠️ 001 바인딩 — **003용 어댑터 추가**(재작성 아님) |
+
+**⇒ 003 이 와도 로직은 버려지지 않는다.** 단 003 확정 전 어댑터 작성은 스키마 추측이므로 금지(T02 가 DQ-0011 로 거부한 것과 동일 원칙).
+
+### 11.3 003 스키마 작성 시 T05 입력 (기획 요청 — DQ-0011 반영 요망)
+
+커스터마이징 경계 소유자로서, 003 이 아래를 어기면 이미 겪은 충돌·중복이 재발한다:
+
+1. **저장뷰 구멍 (중요)** — DQ-0011 의 003 산출물 목록에 `saved_views` 가 **없다**. 그런데 001 `saved_views.entity` 는 `field_entity` enum(`company`|`deal`)이라 **보드를 가리킬 수 없다**. 임의 보드의 저장뷰 위치를 003 에서 반드시 정할 것 — (a) 003 에 board-scoped 뷰 테이블 추가 vs (b) `field_entity` 확장. 미정 시 폐기된 `0002` 때와 같은 `saved_views` 중복이 재발한다.
+2. **`board_columns` 의 타입·선택지 규약은 001 을 그대로 따를 것** — 타입은 `field_type`(13종), 선택지는 `options_jsonb = {options:[{id,label,color,order,archived}]}`. 다른 규약을 만들면 레지스트리/옵션 엔진이 두 벌이 된다.
+3. **`item_values` 는 옵션 라벨이 아니라 옵션 id 를 저장할 것** — 본 엔진의 핵심 불변식(§4). 라벨/순서 변경 시 데이터 파손 방지.
+
+### 11.4 003 확정 — T05 입력 3건 전부 반영됨 ✅ (2026-07-21)
+
+`003_boards_engine.sql`(커밋 `d5e31ba`, `feat/t02-boards-engine`) 실측 결과 §11.3 입력이 모두 수용됐다. **재작업 없음.**
+
+| §11.3 입력 | 003 결과 |
+|---|---|
+| ① 저장뷰 위치 확정(중복 회피) | **`board_views` 별도 테이블 신설** — 001 `saved_views` 미건드림. 충돌 없음 |
+| ② `board_columns` 는 `field_type` 13종 + `options_jsonb` | `type field_type not null` + `options_jsonb jsonb` — **001 enum 그대로 재사용** |
+| ③ `item_values` 는 옵션 id 저장 | `(item_id, column_key)` PK + `value_jsonb` — 001 `field_values` 와 **구조 동일** |
+
+**두 표면 매핑(어댑터 설계 확정):**
+
+| core.custom 개념 | 001 (typed: deals/companies) | 003 (임의 보드) |
+|---|---|---|
+| 컬럼 정의 | `field_defs(org_id, entity, key, type, options_jsonb, module_key, sort_order)` | `board_columns(org_id, board_id, key, type, options_jsonb, sort_order, width)` |
+| 값 | `field_values(entity_id, field_key, value_jsonb)` | `item_values(item_id, column_key, value_jsonb)` |
+| 저장뷰 | `saved_views(entity, filters_jsonb, sort_jsonb, columns_jsonb, shared, user_id)` | `board_views(board_id, kind, filters_jsonb, sort_jsonb, visible_columns_jsonb, shared, user_id)` |
+| 스코프 키 | `entity`(company\|deal) | `board_id` |
+
+⇒ 값·뷰 구조가 1:1이라 **`store.ts` 어댑터는 얕다**(키 이름 매핑 수준). `field-types`/`options`/`views`/`validation` 은 수정 없이 재사용.
+차이 2가지만 흡수: (a) 뷰 컬럼 필드명 `columns_jsonb` ↔ `visible_columns_jsonb`, (b) 003 `board_views.kind`(table/kanban) — 001 엔 없는 추가 속성이라 `ViewConfig` 에 선택 필드로 확장.
+
+### 11.5 착수 순서(정합 게이트 통과 후)
+
+머지큐(기획2 판정): ①T03 → ②T02crm → ③T02boards → ④T04 → **⑤T05(본 트랙)**.
+T05 는 **마지막**이라 앞 4개가 main 에 랜딩한 뒤 그 위에서 정합한다.
+
+1. 앞 4개 머지 완료 + 공용계약 안정화 확인(= `@/lib/types`·`@/lib/repo` main 랜딩).
+2. `feat/t05-custom-fields` 를 최신 main 에 rebase/merge. **SSOT 문서(worklog/registry/queue) 충돌 예상** — 앞 4트랙이 모두 편집하므로 append 병합으로 해소.
+3. `domain-types.ts` → `export * from "@/lib/types"` 재export 로 정합(1줄). 중복 정의 제거.
+4. `@/lib/repo` 에 `CustomStore` 표면 반영(스텁 `listFieldDefs`/`createFieldDef` 확장) — T02/T03 과 조율.
+5. 001 `field_defs` API 라우트(§7) + 003 `board_columns`/`item_values`/`board_views` 어댑터(§11.4 매핑).
+6. ~~OQ-4(저장뷰 기본뷰) 결정 반영~~ → **§11.6 에서 해소·구현 완료**.
+
+### 11.6 OQ-4 해소 — 기본 뷰 규약 확정·구현 ✅ (2026-07-21)
+
+**경위**: 1차 판정은 "기본 뷰 = `created_at` ASC"였으나, 실측 결과 **`created_at` 이 001 `saved_views`·003 `board_views` 양쪽 모두 부재**(001 은 다른 8개 테이블에, 003 은 `boards`/`items` 에만 존재 — 두 뷰 테이블만 누락). `id` 는 `gen_random_uuid()`(v4 랜덤)이라 생성순 대용 불가 → 원 판정이 "마이그레이션 없음"과 양립 불가함을 보고. 재판정으로 아래 규약 확정(제안 (C) 채택).
+
+**확정 규약** — `pickDefaultView()` (`app/src/lib/custom/views.ts`):
+
+```
+shared = true 우선  →  name ASC  →  id ASC (tie-break)
+```
+
+- **마이그레이션 없음**(001·003 불변).
+- **`sort_order` 미사용** — 사용자가 뷰를 재정렬해도 기본 뷰가 바뀌지 않도록(판정 의도).
+- 이름 비교는 **로케일 비의존 코드유닛 순서** — 기본 뷰 선택은 표시 정렬과 달리 환경(ICU 버전)에 따라 흔들리면 안 되므로 결정성 우선.
+- 후보 타입은 `DefaultViewCandidate{id,name,shared}` — 001 `saved_views` 와 003 `board_views` 가 **둘 다 만족(구조적 타이핑)** → **두 표면이 같은 함수 공유**.
+- 소비 API: `CustomService.getDefaultView(orgId, userId, entity)`. 뷰가 없으면 `null`(호출부가 "전체 보기" 처리).
+- 테스트 7종: 빈 목록 · shared 우선 · name ASC · id tie-break · **입력 순서 무관(결정성)** · **sort_order 무시** · **003 board_views 형태 적용**.
+
+**Phase 후속**: 사용자가 "이 뷰를 기본으로" 지정하는 기능은 후속. 그때 기획이 `created_at` + `is_default` 를 **두 테이블에 동시** 추가(003 개정 또는 004, 기획 단독). 추가되면 **`compareDefaultView()` 한 함수만 교체**하면 되고 호출부는 불변이다.
