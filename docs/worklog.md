@@ -4,6 +4,84 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T05 · 기획2 판정 반영(비-throw 계약 · 값 정책 · 정본 키맵) · 003 은 followup
+
+- **엔진 계약 변경**: `validateValue(type, raw, ctx) → {ok, normalized, error?}` **추가 — 던지지 않는다**. 던질지 흘릴지는 호출부(정책)가 결정. 기존 `normalize()`(throw)는 엄격 호출부용으로 유지(추가만, breaking 없음).
+- **값 정책 = 관대 + 인라인 피드백**(`applyValues()`, PUT 라우트 기본 경로): 유효값만 저장, 무효값은 **저장하지 않고** `errors[key]` 로 사유 반환(기존 값 보존) → UI 인라인 표시. **⛔ 조용한 null 수렴 금지**(T02b 현행 방식 기각). 응답 `{ok,values,errors}`, errors 있어도 200.
+- **무결성 필드만 엄격**: `exec_amount`·`fee_pct`·`fee_paid_at` → 하드 거부(400). 근거: 001 settlements generated column(fee_amount/total_revenue/d180/d365)이 의존 → 틀린 값이 조용히 잘못된 금액·일자를 만든다.
+- **정본 키맵 대응**: `createField({key})` 로 정본 key 명시 지원(생략 시에만 label 파생). 명시 key 중복은 **거부**(조용히 `_2` 붙이면 정본과 어긋남). 확인 결과 `presets/policyfund.ts` 는 이미 ASCII key 사용 중이라 위반 없음 — 본 변경은 그 경로가 서비스를 타도 정본 key 가 보존되게 하는 것. `deriveKey` 는 사용자 생성 필드에만 적용(사용자 데이터, 코드 조회 key 아님).
+- 테스트 +10 (custom 75→**85**): 무효값 미저장·기존값 보존·무결성 필드 throw·ok=true 경로·정본 key 사용·중복 key 거부·validateValue 비-throw 4종.
+- **003 통합은 followup PR 로 분리**: `cells.ts` 위임 + `boardsRepo.setValues` 검증 훅은 **T02b 머지 모듈 수정 + 003 동작 변경**이라 리뷰 단위를 분리(T02b·T09 영향). 범위는 설계 §13.4 에 확정 기록.
+- PR #5 는 이 커밋 포함해 **머지 가능** 판정(게이트 초록).
+
+## 2026-07-21 — T05 · 머지큐 ⑤ 정합 실행 (rebase + repo/API 배선) · 003 이중화 발견
+
+- **rebase**: 4커밋 squash → `origin/main`(da7dce0) 위 1커밋. 충돌은 `worklog`·`dispatch-queue` 2건뿐, **코드 충돌 0**(신규 디렉터리). worklog 양측 보존, queue 는 최신 항목 채택 + T02 `resolved:` 주석 보존.
+- **정합 완료**:
+  - `domain-types.ts` vendor → **`@/lib/types` 재export** 전환(형태 완전 동일 확인 후, 모듈 내 import 경로 불변으로 9파일 무수정).
+  - **`Repo` 포트 확장** — 커스텀필드 스텁 2개 → 전 표면(정의 get/update/reorder/delete+값프루닝, 값 get/set, 저장뷰 CRUD+공유∪개인 가시성) + `FieldDefPatch`/`SavedViewPatch`. `LocalRepo` 구현(스토어 배열은 T03 이 마련해 둔 것 사용, 스토어 무변경).
+  - **`RepoCustomStore`** 어댑터 + `getCustomService()` — 운영은 공용 Repo, 테스트는 InMemory 유지.
+  - **API 5 라우트**: /api/fields(+[fieldId]), /api/custom-views(+[viewId], ?default=1), /api/entities/[entityId]/values. 수정판 Next 규약(params=Promise) 준수.
+  - `custom/http.ts` 별도 — crm 의 toErrorResponse 는 crm ValidationError 만 400 매핑해서 core.custom 에러가 500 이 되는 문제 회피. 세션은 T03 `@/lib/auth/session` 직접 사용.
+  - `repo-store.test.ts` 6종(값 정규화 round-trip·옵션 id 검증·org 격리·삭제 프루닝·뷰 가시성/기본뷰·config 왕복). custom 69→**75**.
+- **게이트**: `check.sh` 초록 — 앱 **287→** (전 트랙 통합) 통과, 타 트랙 무영향.
+- ⚠️ **003 어댑터 미착수(의도) — 판정 요망**: T02b `boards/cells.ts` 가 동일 성격 엔진을 병행 구현(해당 파일이 스스로 "머지 정착 후 공용화" followup 명시). 어댑터를 얹으면 **3중 구현**이라 중단하고 통합안 제시(설계 §12.2). 두 엔진 의미가 실제로 다름 — T05=엄격(throw), T02b=관용(null 수렴); 특히 **`date` 가 정규식만 통과해 "2026-02-30"·"2026-13-01" 이 그대로 저장**되고, `boardsRepo.setValues` 는 타입·옵션 대조 없이 raw 기록. 정산(D+180/365)·대시보드가 이를 소비하면 조용히 틀린 결과. 권고=(가) 엄격 통일(cells.ts 를 T05 레지스트리에 위임). 타 트랙 머지 모듈이라 단독 수정하지 않고 판정 대기.
+
+## 2026-07-21 — T05 · OQ-4(기본 뷰) 규약 확정·구현 — 마지막 미결 해소
+
+- **경위**: 1차 판정 "기본 뷰 = `created_at` ASC" 를 구현하려 스키마 실측 → **`created_at` 이 001 `saved_views`·003 `board_views` 양쪽 모두 부재**(001 은 다른 8개 테이블에, 003 은 `boards`/`items` 에만 있음 — 두 뷰 테이블만 누락). `id` 는 `gen_random_uuid()`(v4 랜덤)이라 생성순 대용 불가 → "created_at ASC + 마이그레이션 없음" 양립 불가를 보고하고 선택지 3안 제시. **재판정으로 (C) 채택**.
+- **확정 규약**: `pickDefaultView()` — **shared 우선 → name ASC → id ASC(tie-break)**. 마이그레이션 없음.
+  - `sort_order` 미사용 — 사용자 재정렬 시 기본이 바뀌지 않도록(판정 의도).
+  - 이름 비교는 로케일 비의존 코드유닛 순서 — 기본 뷰 선택은 표시 정렬과 달리 ICU 버전에 흔들리면 안 되므로 **결정성 우선**.
+  - 후보 타입 `DefaultViewCandidate{id,name,shared}` → 001 `saved_views` 와 003 `board_views` 가 둘 다 만족(구조적 타이핑) → **두 표면이 같은 함수 공유**.
+- **구현**: `views.ts` 에 `pickDefaultView()`/`compareDefaultView()`, `service.ts` 에 `getDefaultView(orgId,userId,entity)`, `index.ts` export. **테스트 7종 추가**(빈 목록·shared 우선·name ASC·id tie-break·입력순서 무관(결정성)·sort_order 무시·003 board_views 형태 적용) → custom 테스트 **62 → 69**.
+- **Phase 후속 대비**: `created_at`+`is_default` 가 두 테이블에 동시 추가되면 **`compareDefaultView()` 한 함수만 교체**, 호출부 불변으로 설계.
+- **범위 판단**: 본 작업은 타 트랙·003 의존이 0인 **자기 브랜치 내 순수 엔진 로직**이라 대기 중에도 수행. **정합(@/lib/repo·API·rebase)은 계속 보류** — 머지큐 ①③④ 완료 후.
+- 게이트: `check.sh` 초록. 상태: **standby** 유지. 이로써 T05 미결 0.
+
+## 2026-07-21 — T05 · 머지큐 5번 배정 · 003 입력 반영 확인 · 대기 전환(checkpoint)
+
+- **머지큐 확정(기획2)**: ①T03 → ②T02crm → ③T02boards → ④T04 → **⑤T05**. T02·T04 머지 후 공용계약 안정화되면 착수. 그때까지 **대기**.
+- **003 실측 — T05 입력 3건 전부 반영 확인** (`003_boards_engine.sql`, 커밋 `d5e31ba`, feat/t02-boards-engine). ③T02boards 가 T05 보다 먼저 머지되므로 선제 확인함:
+  - ① 저장뷰 구멍 → **`board_views` 별도 테이블 신설**. 001 `saved_views` 미건드림 → 폐기된 0002 때의 중복 충돌 재발 없음.
+  - ② `board_columns.type` = **`field_type`(001 13종 enum) 재사용** + `options_jsonb` → 레지스트리/옵션 엔진 이중화 없음.
+  - ③ `item_values(item_id, column_key, value_jsonb)` — 001 `field_values(entity_id, field_key, value_jsonb)` 와 **구조 동일**.
+  - ⇒ **재작업 없음.** 설계 §11.4 에 두 표면 매핑표 확정 기록. `field-types`/`options`/`views`/`validation` 수정 없이 재사용, `store` 어댑터는 키 이름 매핑 수준으로 얕음. 흡수할 차이 2건: 뷰 컬럼 필드명(`columns_jsonb`↔`visible_columns_jsonb`), `board_views.kind`(table/kanban) → `ViewConfig` 선택 필드로 확장.
+- **정합 게이트 여전히 미충족** → 코드 작업 없음. T05 는 큐 **마지막**이라 앞 4개 랜딩 후 그 위에서 rebase → `domain-types.ts` 를 `@/lib/types` 재export 로 1줄 정합 → repo/API/003 어댑터 순(설계 §11.5).
+- **예상 리스크(기록)**: 앞 4트랙이 모두 SSOT 문서(worklog/registry/queue)를 편집하므로 ⑤ 머지 시 해당 문서 충돌 확실 — append 병합으로 해소 예정. 코드(`app/src/lib/custom/`)는 신규 디렉터리라 충돌 없음.
+- 상태: **standby**(대기). 게이트 초록 유지, 브랜치 `feat/t05-custom-fields` 머지 대기.
+
+## 2026-07-21 — T05 · 기획2 지시 접수(정합 순서 준수) · ADR-0003 영향 분석 · 정합 보류
+
+- **지시(기획2 순환)**: 001 정본 확인 · 구현 착수 가능 · **T02 재작성 + 공용계약 안정화 후 정합 순서 준수** · 워킹트리 격리(git worktree) 사용.
+- **대응**: 엔진 구현은 이미 완료(5f09cd2). 지시의 핵심인 **정합 순서**를 지켜 `@/lib/repo` 넓히기·PostgREST 어댑터·API 라우트는 **착수 보류**. 본 커밋도 격리 worktree 에서 수행.
+- **정합 게이트 실측(origin/main = de69db6)** — 전부 미충족:
+  - T03 파운데이션(`@/lib/types`·`@/lib/repo`·`@/lib/auth`) main 부재(feat/t03-foundation-org 에만).
+  - T02 001-재작성 main 부재 — main 의 `crm/service.ts` 는 재작성 전 boards/items 구버전.
+  - `0002_core_crm.sql` 폐기 미반영(main 에 아직 존재). `003_boards_engine.sql` 전 ref 부재.
+  - ⇒ 공용계약 미안정화 확인. **`domain-types.ts` vendor 유지**(파운데이션이 main 에 없어 단독 컴파일 유일 수단). 안정화 후 `export * from "@/lib/types"` 1줄 정합.
+- **ADR-0003 영향 분석**(설계 §11 신설): 003 `board_columns`/`item_values` 는 core.custom 과 **동일 커스터마이징 표면** → "먼데이 컬럼 재현"이 001 `field_defs` 와 003 `board_columns` 두 곳에 걸침. 코드 실측 결과 `field-types`/`options`/`views`/`validation` 은 **저장소 무관이라 그대로 재사용**, `store`/`service` 만 003 어댑터 추가(재작성 아님). 003 확정 전 어댑터 작성은 스키마 추측이라 금지.
+- **기획 요청(003 작성 시 반영 요망, 설계 §11.3)**:
+  1. **저장뷰 구멍** — DQ-0011 의 003 산출물에 `saved_views` 없음. 001 `saved_views.entity` 는 `field_entity`(company|deal)라 **보드를 못 가리킴**. 임의 보드 저장뷰 위치를 003 에서 확정할 것(board-scoped 테이블 추가 vs enum 확장). 미정 시 `0002` 때와 같은 중복 재발.
+  2. `board_columns` 타입·선택지는 001 규약 준수(`field_type` 13종 + `options_jsonb={options:[{id,label,color,order,archived}]}`) — 엔진 이중화 방지.
+  3. `item_values` 는 옵션 **라벨이 아닌 id** 저장 — 핵심 불변식.
+- 게이트: worktree 에서 `check.sh` 초록 유지. SSOT: registry/queue 에 정합 게이트·003 입력 반영.
+
+## 2026-07-21 — T05 · 커스터마이징(core.custom) 엔진 구현 (branch: feat/t05-custom-fields)
+
+- **트리거**: OQ-1 해소(ADR-0002) — 정본 = A안 `001_schema_v1.sql`, B안 `0002_core_crm.sql` 폐기.
+- **브랜치 사유**: main 공유 워킹트리에서 다수 트랙이 동시 commit/reset/checkout 중 → 경합으로 커밋 유실 발생. 격리 위해 `git worktree` 로 `feat/t05-custom-fields`(base origin/main) 분리, 공유 트리 미간섭. 검증 후 PR/머지.
+- **전달물** `app/src/lib/custom/`(순수 TS + vitest, **62 테스트 신규**):
+  - `field-types.ts` — 13종 `FieldTypeSpec` 레지스트리(normalize/isEmpty/comparable/operators). 옵션 id 멤버십·달력일·email/url/phone 검증.
+  - `options.ts` — 옵션 연산(add/rename/recolor/reorder/archive/unarchive), **id 불변 보장**, 고아 진단.
+  - `views.ts` — 001 saved_views(jsonb) ↔ `ViewConfig` 어댑터 + 타입-인지 `applyView`.
+  - `store.ts` — `CustomStore` 포트 + `InMemoryCustomStore`(org 격리·값 PK upsert·프루닝·뷰 가시성).
+  - `validation.ts` — 요청 파서 + `deriveKey`/`uniqueKey`(**한국어 라벨 지원**, 예약어·중복 회피).
+  - `service.ts` — 오케스트레이션(key 파생·옵션 id 발급·값 정규화·프리셋 락·뷰 CRUD), `index.ts` 배럴.
+  - 도메인 타입은 committed `@/lib/types`(FieldDef/FieldValue/SavedView/FieldOption/FieldType 13종) 사용 → 타입정합 완료. 영속성은 자체 포트(정착 후 `@/lib/repo` 정합).
+- **OQ 결정(구현 반영)**: OQ-2 타입변경=라벨만·OQ-3 프리셋옵션=락·OQ-5 캐시=미구현(정본 field_values). OQ-4 기본뷰=belie 결정 대기.
+- **게이트**: worktree 에서 `bash scripts/check.sh` → 초록(앱 138 + 워커 1, custom 62 포함).
+- **followup**: `@/lib/repo` 넓히기·PostgREST 어댑터·API 라우트(Next.js 수정판 문서 선확인)·RLS(T03)·T02 뷰엔진 공용화 — 모두 T02 001-재작성 정착 후.
 ## 2026-07-21 — T03 · hotfix BUG-0001 — createOrg 엔타이틀먼트 미생성
 
 T10 main 스모크 반려 건. **내 코드의 규약 위반**이 맞다.
