@@ -1,18 +1,19 @@
-// T04 · core.files — 딜 파일 첨부(로컬 우선).
+// T04 · core.files — 딜 파일 첨부(로컬 우선, jsonb 저장).
 //
-// ⚠ 정본 스키마(001+002)에 파일 테이블이 없다. 독자 CREATE TABLE 금지 규칙에 따라
-//   **새 마이그레이션을 만들지 않고** 로컬 인메모리 스토어로 먼저 구현한다.
-//   스키마는 기획 합의 후 단일 선행 PR 로만 추가된다(디스패치 DQ-0014).
+// 저장 위치(기획2 DQ-0014 판정): **별도 테이블 없이 `deals.custom.files[]` (jsonb)**.
+//   - 신규 마이그레이션을 만들지 않는다(정본 = 001 + 002 + 003).
+//   - 전용 attachments 테이블은 Supabase Storage 연결 시 **기획이 004 로 작성**한다.
+//   - 임의 보드(003)의 첨부는 같은 구조를 item_values 에 담는다(동일 헬퍼 재사용 가능).
 //
-// TODO(T04): Supabase 연결 시 교체 지점
-//   1) 저장: 인메모리 Map → Supabase Storage(비공개 버킷, 경로 buildStoragePath())
-//   2) 메타: StoredFile → 파일 메타 테이블 row
-//   3) 다운로드: data_url → 서명 URL(만료 처리)
-//   교체 시 이 파일의 공개 계약(list/attach/remove/get)은 유지한다.
+// TODO(T04): Supabase Storage 연결 시 교체 지점
+//   1) 바이트: data_url(로컬 인라인) → Storage 업로드 후 storage_path 기록
+//   2) 다운로드: data_url → 서명 URL(만료 처리)
+//   3) 메타: 004 attachments 테이블이 생기면 jsonb → 테이블로 이관(읽기 계약 유지)
 //
-// 경계: 공용 인터페이스(@/lib/types, @/lib/repo/index.ts)는 건드리지 않는다.
-//       파일은 아직 공용 포트에 없으므로 T04 자체 서비스로 둔다.
+// 경계: 공용 인터페이스(@/lib/types, @/lib/repo/index.ts)는 **변경하지 않는다**.
+//       기존 Repo.getDeal/updateDeal(custom) 만 사용하므로 org·담당범위 격리는 Repo 가 보장한다.
 
+import { getRepo, type Repo } from "@/lib/repo";
 import type { Ctx } from "@/lib/types";
 
 /** 업로드 최대 크기 — 10MB. */
@@ -28,18 +29,21 @@ export const BLOCKED_EXTENSIONS = [
 /** 파일명에 쓸 수 없는 문자(파일시스템/경로 안전). */
 const UNSAFE_NAME_CHARS = '<>:"|?*';
 
-/** 첨부 파일 1건(로컬). */
-export interface StoredFile {
+/** deal.custom 안에서 첨부 배열이 놓이는 키. */
+export const FILES_CUSTOM_KEY = "files";
+
+/** 첨부 1건 — deal.custom.files[] 의 원소. */
+export interface DealFileRef {
   id: string;
-  org_id: string;
-  deal_id: string;
   name: string;
   mime_type: string;
   size_bytes: number;
   uploaded_by: string | null;
   created_at: string;
-  /** 로컬 개발용 내용(data URL). Supabase 연결 후에는 storage_path 로 대체. */
+  /** 로컬 개발용 내용(data URL). Storage 연결 후에는 storage_path 사용. */
   data_url?: string;
+  /** Supabase Storage 경로(연결 후 채워짐). */
+  storage_path?: string;
 }
 
 export interface NewFileInput {
@@ -129,8 +133,7 @@ export function formatBytes(bytes: number): string {
 }
 
 /**
- * 저장 경로(스토리지 키). Supabase Storage 연결 시 그대로 사용한다.
- * 첫 세그먼트를 org_id 로 두어 버킷 RLS(org 격리)를 걸 수 있게 한다.
+ * Storage 경로(004 연결 대비). 첫 세그먼트를 org_id 로 두어 버킷 RLS(org 격리)를 건다.
  */
 export function buildStoragePath(
   orgId: string,
@@ -141,7 +144,44 @@ export function buildStoragePath(
   return `${orgId}/${dealId}/${fileId}__${sanitizeFileName(fileName)}`;
 }
 
-// ── 로컬 스토어 ───────────────────────────────────────────
+// ── jsonb 조작(순수) — deal.custom.files[] ────────────────
+
+/** 알 수 없는 jsonb 값에서 첨부 배열을 안전하게 읽는다. 형식이 어긋나면 빈 배열. */
+export function readFileRefs(
+  custom: Record<string, unknown> | null | undefined,
+): DealFileRef[] {
+  const raw = custom?.[FILES_CUSTOM_KEY];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((v): v is DealFileRef => {
+    if (typeof v !== "object" || v === null) return false;
+    const o = v as Record<string, unknown>;
+    return typeof o.id === "string" && typeof o.name === "string";
+  });
+}
+
+/** 첨부를 추가한 새 custom 객체를 만든다(불변). */
+export function appendFileRef(
+  custom: Record<string, unknown> | null | undefined,
+  ref: DealFileRef,
+): Record<string, unknown> {
+  return {
+    ...(custom ?? {}),
+    [FILES_CUSTOM_KEY]: [...readFileRefs(custom), ref],
+  };
+}
+
+/** 첨부를 제거한 새 custom 객체를 만든다(불변). */
+export function removeFileRef(
+  custom: Record<string, unknown> | null | undefined,
+  fileId: string,
+): Record<string, unknown> {
+  return {
+    ...(custom ?? {}),
+    [FILES_CUSTOM_KEY]: readFileRefs(custom).filter((f) => f.id !== fileId),
+  };
+}
+
+// ── 서비스 (Repo 경유 — org·담당범위 격리는 Repo 가 보장) ──
 
 export class FileValidationError extends Error {
   constructor(message: string) {
@@ -150,77 +190,104 @@ export class FileValidationError extends Error {
   }
 }
 
-interface FilesStore {
-  files: Map<string, StoredFile>;
-  seq: number;
-}
-
-const globalFiles = globalThis as unknown as { __moaworkFiles?: FilesStore };
-
-function store(): FilesStore {
-  if (!globalFiles.__moaworkFiles) {
-    globalFiles.__moaworkFiles = { files: new Map(), seq: 0 };
+export class DealNotFoundError extends Error {
+  constructor(message = "딜을 찾을 수 없습니다") {
+    super(message);
+    this.name = "DealNotFoundError";
   }
-  return globalFiles.__moaworkFiles;
 }
 
-/** 테스트용 초기화. */
-export function __resetFiles(): void {
-  globalFiles.__moaworkFiles = { files: new Map(), seq: 0 };
+export interface FileServiceOptions {
+  repo?: Repo;
+  /** id 생성기(테스트 결정성). */
+  genId?: () => string;
+  /** 현재 시각(테스트 결정성). */
+  now?: () => string;
 }
 
-/** 딜에 첨부된 파일 목록(최신순). org 스코핑 적용. */
-export function listDealFiles(ctx: Ctx, dealId: string): StoredFile[] {
-  return [...store().files.values()]
-    .filter((f) => f.org_id === ctx.org.id && f.deal_id === dealId)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
+function defaultGenId(): string {
+  return `file-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** 파일 1건 조회(org 스코핑). */
-export function getFile(ctx: Ctx, fileId: string): StoredFile | undefined {
-  const f = store().files.get(fileId);
-  return f && f.org_id === ctx.org.id ? f : undefined;
+/** 딜에 첨부된 파일 목록(최신순). 딜이 없거나 권한 밖이면 빈 배열. */
+export function listDealFiles(
+  ctx: Ctx,
+  dealId: string,
+  opts: FileServiceOptions = {},
+): DealFileRef[] {
+  const repo = opts.repo ?? getRepo();
+  const deal = repo.getDeal(ctx, dealId);
+  if (!deal) return [];
+  return [...readFileRefs(deal.custom)].sort(
+    (a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id),
+  );
+}
+
+/** 딜의 첨부 1건 조회. */
+export function getFile(
+  ctx: Ctx,
+  dealId: string,
+  fileId: string,
+  opts: FileServiceOptions = {},
+): DealFileRef | undefined {
+  return listDealFiles(ctx, dealId, opts).find((f) => f.id === fileId);
+}
+
+/** 딜의 첨부 건수. */
+export function countDealFiles(
+  ctx: Ctx,
+  dealId: string,
+  opts: FileServiceOptions = {},
+): number {
+  return listDealFiles(ctx, dealId, opts).length;
 }
 
 /**
- * 딜에 파일을 첨부한다. 검증 실패 시 FileValidationError.
- * @throws FileValidationError
+ * 딜에 파일을 첨부한다(= deal.custom.files[] 에 append).
+ * @throws FileValidationError 크기/확장자 위반
+ * @throws DealNotFoundError  딜이 없거나 권한 밖
  */
 export function attachFile(
   ctx: Ctx,
   dealId: string,
   input: NewFileInput,
-  now: () => string = () => new Date().toISOString(),
-): StoredFile {
+  opts: FileServiceOptions = {},
+): DealFileRef {
   const verdict = validateUpload({ name: input.name, size_bytes: input.size_bytes });
   if (!verdict.ok) throw new FileValidationError(verdict.reason);
 
-  const s = store();
-  s.seq += 1;
-  const id = `file-${s.seq}`;
-  const file: StoredFile = {
-    id,
-    org_id: ctx.org.id,
-    deal_id: dealId,
+  const repo = opts.repo ?? getRepo();
+  const deal = repo.getDeal(ctx, dealId);
+  if (!deal) throw new DealNotFoundError();
+
+  const ref: DealFileRef = {
+    id: (opts.genId ?? defaultGenId)(),
     name: sanitizeFileName(input.name),
     mime_type: input.mime_type ?? "application/octet-stream",
     size_bytes: input.size_bytes,
     uploaded_by: ctx.user.id,
-    created_at: now(),
+    created_at: (opts.now ?? (() => new Date().toISOString()))(),
     data_url: input.data_url,
   };
-  s.files.set(id, file);
-  return file;
+
+  repo.updateDeal(ctx, dealId, { custom: appendFileRef(deal.custom, ref) });
+  return ref;
 }
 
-/** 첨부 해제(삭제). org 스코핑. 없으면 false. */
-export function removeFile(ctx: Ctx, fileId: string): boolean {
-  const f = getFile(ctx, fileId);
-  if (!f) return false;
-  return store().files.delete(fileId);
-}
+/** 첨부 해제. 대상이 없으면 false. */
+export function removeFile(
+  ctx: Ctx,
+  dealId: string,
+  fileId: string,
+  opts: FileServiceOptions = {},
+): boolean {
+  const repo = opts.repo ?? getRepo();
+  const deal = repo.getDeal(ctx, dealId);
+  if (!deal) return false;
 
-/** 딜의 첨부 건수. */
-export function countDealFiles(ctx: Ctx, dealId: string): number {
-  return listDealFiles(ctx, dealId).length;
+  const before = readFileRefs(deal.custom);
+  if (!before.some((f) => f.id === fileId)) return false;
+
+  repo.updateDeal(ctx, dealId, { custom: removeFileRef(deal.custom, fileId) });
+  return true;
 }

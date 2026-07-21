@@ -5,8 +5,8 @@
 // 기획 v0.2 §4 흐름 C: 딜 상세 탭(정보·활동·문서·정산) 중 '문서'.
 // MVP = 먼데이 파일 컬럼 재현(업로드/다운로드). 문서함 버전관리·전자서명은 Phase 2.
 //
-// 로컬 우선: 현재 저장은 @/lib/services/files 의 인메모리 스토어(data URL).
-// TODO(T04): Supabase Storage 연결 시 다운로드를 서명 URL(만료)로 교체.
+// 저장 위치(DQ-0014 판정): 별도 테이블 없이 deals.custom.files[] (jsonb).
+// TODO(T04): Supabase Storage 연결 시 data_url → 서명 URL(만료)로 교체(기획 004).
 //
 // 사용처: T02 의 딜 상세 화면. 업로드/삭제 실행은 상위가 주입한다(서버 액션 등).
 
@@ -15,11 +15,11 @@ import {
   formatBytes,
   MAX_FILE_BYTES,
   validateUpload,
-  type StoredFile,
+  type DealFileRef,
 } from "@/lib/services/files";
 
 export interface FilesTabProps {
-  files: StoredFile[];
+  files: DealFileRef[];
   /** 업로드 처리(상위에서 서버 액션 등으로 저장). 실패 시 throw. */
   onUpload: (input: {
     name: string;

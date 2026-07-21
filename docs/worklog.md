@@ -4,6 +4,22 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T04 · DQ-0014 판정 반영 — 파일 첨부를 jsonb(deal.custom.files[])로 전환
+
+- **기획2 판정 수령**: MVP 로컬 우선에서는 전용 테이블 없이 **jsonb 저장**
+  (딜 = `deals.custom.files[]`, 임의보드 = `item_values`). 신규 마이그레이션 금지.
+  전용 attachments 테이블은 Supabase Storage 연결 시 **기획이 004 로 작성**.
+- **적용**: `lib/services/files.ts` 를 자체 인메모리 Map → **Repo 경유 jsonb** 로 재작성.
+  - 순수 jsonb 헬퍼 `readFileRefs` / `appendFileRef` / `removeFileRef` (불변, 형식 방어).
+    배열이 아니거나 원소 형식이 어긋나면 걸러낸다(런타임 jsonb 신뢰 금지).
+  - 서비스는 기존 `Repo.getDeal/updateDeal(custom)` 만 사용 → **공용 인터페이스 무변경**
+    (피드백 #2 준수). org·담당범위 격리는 Repo 가 그대로 보장.
+  - 기존 custom 키(예: `계약상황`)를 덮어쓰지 않음을 테스트로 고정.
+- **머지큐**: ①T03 → ②T02crm → ③T02boards → **④T04** → ⑤T05.
+  현재 origin/main 에 T03(a7bdc9d)·T02crm(ab9845e) **미머지 확인** → rebase 대기 상태.
+  선행 머지 완료 후 `git rebase origin/main` 하여 재푸시 예정.
+- 파일 서비스 테스트 40개. `bash scripts/check.sh` **초록**(앱 179 + 워커 1).
+
 ## 2026-07-21 — T04 · core.files 로컬 구현 + 정산 임시추정 (브랜치 feat/t04-dash)
 
 - **워킹트리 격리**: `git worktree add ../wt-t04 -b feat/t04-dash` (공유 워킹트리 커밋 금지 규약 적용).
