@@ -164,6 +164,16 @@ if [ -n "$AID" ]; then
     curl -s -m 15 -b "mw_uid=$OWNER; mw_org=$NEW" "$BASE/onboarding" -o "$NO"
     grep -q '계약상황' "$NO" && ok "업종팩 프리셋 전개(계약상황 필드 존재)" \
       || bad "프리셋 전개 안 됨 — 계약상황 필드 없음(PLAN v0.2.2 파리티)"
+
+    # ★ 필드가 '존재'하는 것과 화면 위젯이 그 필드를 '찾는' 것은 별개다.
+    #   프리셋 key 와 위젯 조회 key 가 어긋나면 위젯은 조용히 빈 상태로 남는다(BUG-0002).
+    if grep -q '계약상황' "$NO"; then
+      if grep -q '계약상황 필드가 아직 없습니다' "$NH"; then
+        bad "★계약상황 위젯이 프리셋 필드를 못 찾음★ — 프리셋은 설치됐는데 대시보드는 '필드 없음'(key 불일치 의심)"
+      else
+        ok "계약상황 위젯이 프리셋 필드를 인식"
+      fi
+    fi
   else bad "조직 생성 후 mw_org 쿠키 미발급"; fi
 else skip "온보딩 서버액션 없음 — 미머지"; fi
 
