@@ -33,7 +33,14 @@ export default async function DashboardPage({
   const ctx = applyAs(base, asParam);
 
   const dash = buildDashboard(ctx, { month });
-  const pipelines = getRepo().listPipelines(ctx.org.id);
+  const repo = getRepo();
+  const pipelines = repo.listPipelines(ctx.org.id);
+
+  // "오늘 할 일" 목록용 — 담당범위(assigned)는 repo.listDeals(ctx) 가 적용한다.
+  const myDeals = repo.listDeals(ctx);
+  const stages = pipelines.flatMap((p) => repo.listStages(p.id));
+  const stageName = (id: string | null) =>
+    stages.find((s) => s.id === id)?.name ?? "-";
 
   const roles: MemberRole[] = ["owner", "admin", "member"];
 
@@ -135,6 +142,28 @@ export default async function DashboardPage({
               <ReContactWidget entries={dash.reContactThisMonth} />
             </Widget>
           </div>
+
+          {/* 오늘 할 일 — 내 담당 딜 (PLAN §3 core.dash "홈 = 오늘 할 일 + 이번달 요약") */}
+          <section>
+            <h2 className="mb-2 text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+              내 딜 ({formatCount(myDeals.length)})
+            </h2>
+            <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+              {myDeals.length === 0 ? (
+                <li className="p-3 text-sm text-zinc-400">담당 딜이 없습니다.</li>
+              ) : (
+                myDeals.map((d) => (
+                  <li
+                    key={d.id}
+                    className="flex items-center justify-between gap-2 p-3 text-sm"
+                  >
+                    <span className="truncate">{d.title}</span>
+                    <span className="shrink-0 text-zinc-500">{stageName(d.stage_id)}</span>
+                  </li>
+                ))
+              )}
+            </ul>
+          </section>
 
           {/* 드릴다운: 보드(파이프라인)별 상세 */}
           <section>
