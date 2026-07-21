@@ -82,6 +82,8 @@ export interface CreateFieldDefInput {
   entity: FieldEntity;
   label: string;
   type: NewFieldDef["type"];
+  /** 정본 key 명시(프리셋·알려진 필드). 생략 시 label 에서 파생. */
+  key?: string;
   /** select/multiselect 초기 라벨(옵션 id 는 서비스가 발급). */
   optionLabels?: string[];
 }
@@ -93,6 +95,8 @@ export function parseCreateFieldDef(body: unknown): CreateFieldDefInput {
   const label = requireString(body.label, "label");
   if (!isFieldType(body.type)) throw new ValidationError("type: 지원하지 않는 필드 타입입니다");
   const out: CreateFieldDefInput = { entity, label, type: body.type };
+  // 한글 라벨을 조회 key 로 쓰지 않도록, 알려진 필드는 정본 key 를 명시할 수 있다.
+  if (body.key !== undefined) out.key = requireString(body.key, "key", 100);
   if (body.optionLabels !== undefined) {
     if (!Array.isArray(body.optionLabels))
       throw new ValidationError("optionLabels: 배열이어야 합니다");

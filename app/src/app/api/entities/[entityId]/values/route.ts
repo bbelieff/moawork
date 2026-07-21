@@ -1,7 +1,11 @@
 /**
  * /api/entities/[entityId]/values — 커스텀필드 값 조회(GET) / 설정(PUT).
  * entityId = company.id | deal.id. PUT 은 ?entity= 로 대상 엔티티 종류를 받는다
- * (필드 정의 조회에 필요). 값은 각 필드 타입 스펙으로 정규화·검증된다.
+ * (필드 정의 조회에 필요).
+ *
+ * 값 정책(기획2 판정) = **관대 + 인라인 피드백**: 유효한 값만 저장하고 유효하지 않은
+ * 값은 저장하지 않은 채 `errors[key]` 로 사유를 돌려준다(UI 가 그 자리서 표시).
+ * 조용한 null 수렴 없음. 단 무결성 필드(실행액·수수료%·수수료입금일)는 하드 거부(400).
  */
 
 import {
@@ -40,7 +44,8 @@ export async function PUT(req: Request, { params }: RouteCtx): Promise<Response>
     const { entityId } = await params;
     const entity = requireEntity(req);
     const patch = parseValuesPatch(await readJson(req));
-    return jsonOk(await getCustomService().setValues(ctx.org.id, entity, entityId, patch));
+    // { ok, values, errors } — errors 가 있어도 200(인라인 피드백용), ok 로 판별한다.
+    return jsonOk(await getCustomService().applyValues(ctx.org.id, entity, entityId, patch));
   } catch (err) {
     return toErrorResponse(err);
   }

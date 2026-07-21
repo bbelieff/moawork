@@ -12,6 +12,8 @@ import type { FieldDef, FieldEntity, FieldOption, SavedView } from "./domain-typ
 import {
   ValidationError,
   getFieldTypeSpec,
+  isIntegrityField,
+  validateValue,
   type JsonValue,
 } from "./field-types";
 import { addOption } from "./options";
@@ -30,6 +32,13 @@ export interface CreateFieldOptions {
   entity: FieldEntity;
   label: string;
   type: FieldDef["type"];
+  /**
+   * 정본 key 명시(프리셋·알려진 필드). 생략 시 label 에서 파생.
+   * 기획2 판정: **코드에서 한글 라벨을 조회 key 로 쓰지 말 것** — 프리셋/알려진 필드는
+   * 정본 키맵(contract_status·biz_type·biz_reg_type·region·agency·product·
+   * progress_status·consult_status …)을 이 필드로 명시한다.
+   */
+  key?: string;
   /** select/multiselect 초기 옵션 라벨. */
   optionLabels?: string[];
   moduleKey?: string | null;
@@ -49,7 +58,17 @@ export class CustomService {
 
   async createField(orgId: string, input: CreateFieldOptions): Promise<FieldDef> {
     const existing = await this.store.listDefs(orgId, input.entity);
-    const key = uniqueKey(input.label, existing.map((d) => d.key));
+    const taken = existing.map((d) => d.key);
+    // 명시 key 우선(정본 키맵). 중복이면 거부 — 조용히 접미사 붙이면 정본과 어긋난다.
+    let key: string;
+    if (input.key !== undefined) {
+      key = input.key.trim();
+      if (key === "") throw new ValidationError("key: 비어 있을 수 없습니다");
+      if (taken.includes(key))
+        throw new CustomFieldError(`이미 존재하는 필드 key 입니다(${key})`);
+    } else {
+      key = uniqueKey(input.label, taken);
+    }
 
     const spec = getFieldTypeSpec(input.type);
     let options: FieldOption[] | undefined;
@@ -136,6 +155,50 @@ export class CustomService {
       await this.store.setValue(orgId, entityId, key, value);
     }
     return this.store.getValues(orgId, entityId);
+  }
+
+  /**
+   * 값 설정 — **기본 정책: 관대 + 인라인 피드백**(기획2 판정, 먼데이 파리티).
+   *
+   * - 유효한 값만 저장하고, 유효하지 않은 값은 **저장하지 않은 채** `errors` 로 사유를 돌려준다
+   *   (호출부/UI 가 그 자리에서 표시 → 사용자가 수정). 기존 값은 보존된다.
+   * - ⛔ 조용히 null 로 수렴시키지 않는다(데이터 유실 금지).
+   * - **무결성 필드**(`INTEGRITY_FIELD_KEYS`: 실행액·수수료%·수수료입금일)만 예외로
+   *   **하드 거부** — 정산 generated column 이 의존해 틀린 값이 잘못된 금액·일자를 만든다.
+   * - 정의 없는 key 는 무시(마이그레이션 중 안전).
+   *
+   * 전부 엄격하게 막고 싶으면 `setValues()` 를 쓴다(첫 오류에서 throw).
+   */
+  async applyValues(
+    orgId: string,
+    entity: FieldEntity,
+    entityId: string,
+    patch: Record<string, unknown>,
+  ): Promise<{ ok: boolean; values: Record<string, JsonValue | null>; errors: Record<string, string> }> {
+    const defs = await this.store.listDefs(orgId, entity);
+    const byKey = new Map(defs.map((d) => [d.key, d]));
+    const errors: Record<string, string> = {};
+
+    for (const [key, raw] of Object.entries(patch)) {
+      const def = byKey.get(key);
+      if (!def) continue; // 정의 없는 key 무시
+      const options = def.options_jsonb?.options ?? [];
+      const result = validateValue(def.type, raw, { options });
+      if (result.ok) {
+        await this.store.setValue(orgId, entityId, key, result.normalized);
+        continue;
+      }
+      // 무결성 필드는 관대 정책의 예외 — 하드 거부.
+      if (isIntegrityField(key))
+        throw new ValidationError(`${def.label}: ${result.error ?? "유효하지 않은 값"}`);
+      errors[key] = result.error ?? "유효하지 않은 값";
+    }
+
+    return {
+      ok: Object.keys(errors).length === 0,
+      values: await this.store.getValues(orgId, entityId),
+      errors,
+    };
   }
 
   // ── 저장뷰 ───────────────────────────────────────────────

@@ -332,6 +332,58 @@ const SPECS: Record<FieldType, FieldTypeSpec> = {
   },
 };
 
+// ── 비-throw 검증 계약 (기획2 판정 2026-07-21) ───────────────
+
+/**
+ * 검증 결과. **엔진은 던지지 않고 결과를 반환**하고, 던질지 흘릴지는 호출부(정책)가 정한다.
+ * - 기본 정책 = 관대 + 인라인 피드백(먼데이 파리티): 틀린 값은 저장하지 않고 `error` 를 화면에 표시.
+ * - ⛔ 조용히 null 로 수렴시키지 말 것(데이터 유실).
+ * - 예외적 엄격 = 무결성 필드(§`INTEGRITY_FIELD_KEYS`)만 하드 거부.
+ */
+export interface ValidationResult {
+  ok: boolean;
+  /** ok=true 일 때만 의미 있는 저장값. 실패 시 null(저장하지 말 것). */
+  normalized: JsonValue | null;
+  /** ok=false 일 때 사용자에게 보여줄 사유. */
+  error?: string;
+}
+
+/**
+ * 값 검증 — 던지지 않는다. 공개 진입점.
+ * (내부적으로는 타입 스펙의 normalize 를 쓰고 예외를 결과로 변환한다.)
+ */
+export function validateValue(
+  type: FieldType,
+  raw: unknown,
+  ctx?: NormalizeCtx,
+): ValidationResult {
+  try {
+    return { ok: true, normalized: getFieldTypeSpec(type).normalize(raw, ctx) };
+  } catch (err) {
+    return {
+      ok: false,
+      normalized: null,
+      error: err instanceof Error ? err.message : "값을 해석할 수 없습니다",
+    };
+  }
+}
+
+/**
+ * 무결성 필드 key — 정산 generated column(fee_amount/total_revenue/d180/d365)이
+ * 이 값들에 의존하므로 **틀린 값을 흘리면 조용히 잘못된 금액·일자가 산출**된다.
+ * 따라서 이 필드만 관대 정책의 예외로 하드 거부한다(기획2 판정).
+ * 값 출처: `lib/presets/policyfund.ts` 프리셋 키.
+ */
+export const INTEGRITY_FIELD_KEYS: ReadonlySet<string> = new Set([
+  "exec_amount", // 실행액
+  "fee_pct", // 수수료(%)
+  "fee_paid_at", // 수수료 입금일 — D+180/365 기산일
+]);
+
+export function isIntegrityField(fieldKey: string): boolean {
+  return INTEGRITY_FIELD_KEYS.has(fieldKey);
+}
+
 /** 타입 스펙 조회. 미지원 타입은 예외. */
 export function getFieldTypeSpec(type: FieldType): FieldTypeSpec {
   const spec = SPECS[type];

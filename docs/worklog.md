@@ -4,6 +4,16 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T05 · 기획2 판정 반영(비-throw 계약 · 값 정책 · 정본 키맵) · 003 은 followup
+
+- **엔진 계약 변경**: `validateValue(type, raw, ctx) → {ok, normalized, error?}` **추가 — 던지지 않는다**. 던질지 흘릴지는 호출부(정책)가 결정. 기존 `normalize()`(throw)는 엄격 호출부용으로 유지(추가만, breaking 없음).
+- **값 정책 = 관대 + 인라인 피드백**(`applyValues()`, PUT 라우트 기본 경로): 유효값만 저장, 무효값은 **저장하지 않고** `errors[key]` 로 사유 반환(기존 값 보존) → UI 인라인 표시. **⛔ 조용한 null 수렴 금지**(T02b 현행 방식 기각). 응답 `{ok,values,errors}`, errors 있어도 200.
+- **무결성 필드만 엄격**: `exec_amount`·`fee_pct`·`fee_paid_at` → 하드 거부(400). 근거: 001 settlements generated column(fee_amount/total_revenue/d180/d365)이 의존 → 틀린 값이 조용히 잘못된 금액·일자를 만든다.
+- **정본 키맵 대응**: `createField({key})` 로 정본 key 명시 지원(생략 시에만 label 파생). 명시 key 중복은 **거부**(조용히 `_2` 붙이면 정본과 어긋남). 확인 결과 `presets/policyfund.ts` 는 이미 ASCII key 사용 중이라 위반 없음 — 본 변경은 그 경로가 서비스를 타도 정본 key 가 보존되게 하는 것. `deriveKey` 는 사용자 생성 필드에만 적용(사용자 데이터, 코드 조회 key 아님).
+- 테스트 +10 (custom 75→**85**): 무효값 미저장·기존값 보존·무결성 필드 throw·ok=true 경로·정본 key 사용·중복 key 거부·validateValue 비-throw 4종.
+- **003 통합은 followup PR 로 분리**: `cells.ts` 위임 + `boardsRepo.setValues` 검증 훅은 **T02b 머지 모듈 수정 + 003 동작 변경**이라 리뷰 단위를 분리(T02b·T09 영향). 범위는 설계 §13.4 에 확정 기록.
+- PR #5 는 이 커밋 포함해 **머지 가능** 판정(게이트 초록).
+
 ## 2026-07-21 — T05 · 머지큐 ⑤ 정합 실행 (rebase + repo/API 배선) · 003 이중화 발견
 
 - **rebase**: 4커밋 squash → `origin/main`(da7dce0) 위 1커밋. 충돌은 `worklog`·`dispatch-queue` 2건뿐, **코드 충돌 0**(신규 디렉터리). worklog 양측 보존, queue 는 최신 항목 채택 + T02 `resolved:` 주석 보존.

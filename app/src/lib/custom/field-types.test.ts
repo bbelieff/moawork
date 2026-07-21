@@ -5,6 +5,8 @@ import {
   normalizeValue,
   isFieldType,
   operatorAllowed,
+  validateValue,
+  isIntegrityField,
   ValidationError,
 } from "./field-types";
 
@@ -130,5 +132,28 @@ describe("field-types: isEmpty/comparable/operators", () => {
     expect(isFieldType("select")).toBe(true);
     expect(isFieldType("nope")).toBe(false);
     expect(() => getFieldTypeSpec("nope" as never)).toThrow(ValidationError);
+  });
+});
+
+describe("field-types: validateValue (비-throw 계약)", () => {
+  it("성공 시 {ok:true, normalized}", () => {
+    expect(validateValue("number", "42")).toEqual({ ok: true, normalized: 42 });
+  });
+  it("실패해도 던지지 않고 {ok:false, error} 반환", () => {
+    const r = validateValue("number", "abc");
+    expect(r.ok).toBe(false);
+    expect(r.normalized).toBeNull();
+    expect(typeof r.error).toBe("string");
+  });
+  it("옵션 검증 실패도 결과로 반환", () => {
+    const r = validateValue("select", "nope", { options: opts });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBeTruthy();
+  });
+  it("무결성 필드 key 집합", () => {
+    expect(isIntegrityField("fee_pct")).toBe(true);
+    expect(isIntegrityField("exec_amount")).toBe(true);
+    expect(isIntegrityField("fee_paid_at")).toBe(true);
+    expect(isIntegrityField("memo")).toBe(false);
   });
 });

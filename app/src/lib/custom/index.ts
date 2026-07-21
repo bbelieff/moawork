@@ -9,12 +9,16 @@ export {
   FILTER_OPERATORS,
   getFieldTypeSpec,
   normalizeValue,
+  validateValue,
+  isIntegrityField,
+  INTEGRITY_FIELD_KEYS,
   isFieldType,
   operatorAllowed,
   type FieldTypeSpec,
   type FilterOperator,
   type JsonValue,
   type NormalizeCtx,
+  type ValidationResult,
 } from "./field-types";
 
 export {

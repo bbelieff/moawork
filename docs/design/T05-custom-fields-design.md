@@ -450,3 +450,50 @@ T02b 가 `app/src/lib/boards/cells.ts` 에 **본 트랙 레지스트리와 동�
 권고 **(가)**. 이유: `date` 정규식만 통과시키는 현 003 경로는 달력에 없는 날짜를 저장하며, 이는 T09 정산(D+180/365)·T04 대시보드가 소비할 때 조용히 틀린 결과를 만든다. 다만 T02b 파일 수정이 필요하므로 판정 후 진행한다.
 
 **보류 근거**: 타 트랙의 머지된 모듈을 단독 재작성하지 않는다(AGENTS 규칙 5). 판정 시 `cells.ts` 위임 + 003 검증 훅 연결까지 T05 가 수행 가능.
+
+---
+
+## 13. 기획2 판정 반영 — 비-throw 계약 · 값 정책 · 정본 키맵 (2026-07-21)
+
+### 13.1 엔진 계약: 던지지 않고 결과 반환
+
+```ts
+validateValue(type, raw, ctx?) → { ok, normalized, error? }   // 공개 진입점, throw 없음
+```
+- **던질지 흘릴지는 호출부(정책)가 결정**한다. 엔진은 판단 재료만 준다.
+- 기존 `normalize()`(throw)는 엄격 호출부용으로 유지 — 추가만 했고 breaking 없음.
+
+### 13.2 값 정책: 관대 + 인라인 피드백 (기본) / 무결성 필드만 엄격
+
+`CustomService.applyValues()` = **기본 경로**(`PUT /api/entities/[entityId]/values` 가 사용):
+
+| 상황 | 처리 |
+|---|---|
+| 유효한 값 | 저장 |
+| 유효하지 않은 값 | **저장하지 않음** + `errors[key]` 에 사유 → UI 인라인 표시, 기존 값 보존 |
+| ⛔ 조용한 `null` 수렴 | **금지**(데이터 유실) — T02b 현행 방식은 기각됨 |
+| 정의 없는 key | 무시(마이그레이션 안전) |
+| **무결성 필드** | **하드 거부(throw → 400)** |
+
+무결성 필드 = `INTEGRITY_FIELD_KEYS` = `exec_amount`(실행액) · `fee_pct`(수수료%) · `fee_paid_at`(수수료 입금일).
+근거: 001 `settlements` 의 generated column(`fee_amount`/`total_revenue`/`d180`/`d365`)이 이 값에 의존 → 틀린 값이 흘러가면 **조용히 잘못된 금액·일자**가 산출된다.
+
+응답은 `{ ok, values, errors }` 이며 `errors` 가 있어도 **200**(인라인 피드백용). 성공 여부는 `ok` 로 판별.
+
+### 13.3 정본 키맵 — 한글 라벨을 조회 key 로 쓰지 않기
+
+`createField({ key })` 로 **정본 key 명시**를 지원한다(생략 시에만 label 에서 파생).
+- 명시 key 중복은 **거부** — 조용히 `_2` 접미사를 붙이면 정본 키맵과 어긋나기 때문.
+- 정본 키맵: `contract_status` · `biz_type` · `biz_reg_type` · `region` · `agency` · `product` · `progress_status` · `consult_status`.
+- 확인 결과 `lib/presets/policyfund.ts` 는 이미 ASCII key(`agency`/`region`/`contract_status`/`exec_amount`/`fee_pct`/`fee_paid_at`)를 명시하고 있어 위반 없음. 본 변경은 **그 경로가 서비스를 타게 될 때도 정본 key 가 보존되도록** 하는 것.
+- label 파생(`deriveKey`)은 **사용자가 직접 만든 필드**에만 적용된다(사용자 데이터이지 코드 조회 key 가 아님).
+
+### 13.4 003 통합 — followup (PR 분리)
+
+본 PR 에는 넣지 않았다. 이유: `cells.ts` 위임 + `boardsRepo.setValues` 검증 훅은 **T02b 의 머지된 모듈을 수정**하고 003 보드의 동작을 바꾸므로, 리뷰 단위를 분리하는 편이 안전하다(T02b·T09 가 영향받음).
+
+followup 작업 범위(확정된 방향):
+1. `boards/cells.ts` → `custom/field-types.ts` 위임(공개 API 유지, 2·3중 구현 제거).
+2. `boardsRepo.setValues` 앞단에 `validateValue` 훅 연결 — 관대 + 인라인 피드백, 무결성 필드만 하드 거부.
+3. 003 경로의 `date` 정규식 통과 문제 해소(`"2026-02-30"`·`"2026-13-01"` 저장 방지).
+4. 회귀: T02b `cells.test.ts`·`service.test.ts` 중 관용 동작 의존 케이스 조정.
