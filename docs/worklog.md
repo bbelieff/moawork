@@ -4,6 +4,24 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-22 — T07 · B5 KPI 리더보드 + 이달의 계약회사 (집계·위젯 선구현)
+
+- 브랜치 `feat/t07-perf-leaderboard-b5` (base `cdf45f6`). DQ-0017.
+- **집계 엔진**(`app/src/lib/perf/aggregate.ts`, 순수 함수 · I/O 없음)
+  - 귀속월 = `settlements.fee_paid_at`(수납일). `fee_paid_at=null` 인 **미실현 정산은 제외**(설계 §2.1).
+  - 담당자 귀속 = `settlement.deal_id → deal.assigned_to`. 담당자/딜이 없는 건은 **미배정 버킷**으로 모아 순위에서 제외하되 조직 합계에는 포함.
+  - 지표: 수납건수 · 실행액 합계(`exec_amount`) · 수수료 합계(`fee_amount`). `fee_amount` 는 001 generated column(이미 round)이라 **앱에서 재반올림하지 않는다**.
+  - 순위: 동점은 순위 공유 후 건너뜀(1,2,2,4). tie-break = 수수료 → 실행액 → 건수 → 이름.
+  - 이달의 계약회사: 같은 모집단을 `deal.company_id` 로 묶어 수수료 내림차순, 1위를 `top` 으로. 고객사 미연결 건도 별도 행으로 보존(합계 정합).
+  - 월 경계(`monthRangeKst`)·구간 판정(`inRange`)은 **T04 core.dash 헬퍼 재사용** — 대시보드와 "이번 달"이 어긋나지 않도록 재작성 금지.
+- **조립 계층**(`lib/perf/service.ts`): `@/lib/repo` 포트만 의존. 표시명은 전역 `listUsers()` 가 아니라 `listMembers(orgId)` 를 거쳐 조회(타 조직 사용자 유출 방지).
+- **위젯**(`app/src/components/dashboard/perf-widgets.tsx`, 프레젠테이션 전용): `LeaderboardWidget`, `MonthlyContractCompanyWidget`. 0건이면 '—'/빈 상태(NaN·빈화면 금지). 포맷터·컨테이너는 T04 `@/lib/dash/format`·`Widget` 재사용.
+- 검증: perf 24 테스트 신규(집계 16 + 서비스 8). `bash scripts/check.sh` 초록 — app 333 통과(25 파일) · worker 1 통과.
+- **배선 상태**: 화면 라우트에 아직 연결하지 않았다. `getRepo()` 구현체가 현재 LocalRepo(인메모리)이므로, **B2 가 Supabase 어댑터로 교체하면 service 코드 수정 없이 실 DB 로 전환**된다(어댑터 스왑). 정렬 토글·월 선택기 UI 는 배선 시 추가.
+- 지시문서 `docs/coordination/next-prompt_B2-B7.md` 는 **전 브랜치·전 히스토리에서 발견되지 않았다**(T09 RQ-0009 와 동일 관측). 프롬프트 요약본을 근거로 착수했다.
+- ⚠ 위젯 경로가 지시대로 `components/dashboard/` 라 T04 의 `components/dash/` 와 이원화됐다. 통합 여부 T10 판정 요망.
+- 남은 DQ-0007 범위(인센티브 규칙 평가 · `performance_snapshots` 영속화 · 활동량)는 설계 §6 정책결정 4건 확정 후 진행.
+
 ## 2026-07-21 — T02 · B2 core.crm Supabase 소스 + 단계 보드 3종 라우트 (PR #9)
 
 - 브랜치 `feat/t02-crm-supabase` (main 4367015 기반 — 지시된 cdf45f6 은 그 조상이라 최신 main 사용).
