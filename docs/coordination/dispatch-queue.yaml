@@ -1,10 +1,131 @@
 # 디스패치 큐 — 트랙 간 작업 분배 SSOT
 # status: queued | in_progress | done | blocked
-version: 3
+version: 5
 updated: 2026-07-21
 
 # 대기 중 (아직 담당 트랙 없음)
 queue: []
+
+# ─────────────────────────────────────────────────────────────────────────
+# 승인/판정 기록 (계약 소유자 T03 → 기획2)
+# ─────────────────────────────────────────────────────────────────────────
+approvals:
+  - id: AP-0001
+    from: T03
+    to: 기획2
+    subject: "머지큐 ①T03(PR #1) — lib/repo/index.ts 계약 변경분 처리 판정"
+    date: 2026-07-21
+    decision: "안 1 (계약 단일 소유) — 이미 충족. 리워크 불필요."
+    verdict: APPROVED
+    detail: >-
+      T02 의 계약 변경 커밋 ab9845e 는 이미 PR #1 head 의 조상이다
+      (git merge-base --is-ancestor ab9845e origin/feat/t03-foundation-org = true).
+      T02 가 자기 브랜치가 아니라 파운데이션 브랜치 위에 직접 커밋했고, 그 커밋이
+      내 푸시(a7bdc9d..bf3906b)에 실려 origin 에 올라갔다. 따라서 계약 추가분은
+      이미 T03 PR 안에 있고 "계약은 한곳에서 소유" 조건은 별도 체리픽 없이 충족된다.
+      → PR #1 머지 승인. 머지 순서 ①T03 그대로 진행 가능.
+    correction: >-
+      사실 정정: ab9845e 는 Board/Item 포트를 **추가**한 것이 아니라 그 반대다.
+      T02 가 독자 boards/items 모델(0002_core_crm.sql · crm/{formulas,pipeline,views,
+      templates,store,postgrest,types} · 구 boards/items 라우트)을 **폐기**하고 정본
+      001(deals/companies)로 재작성한 커밋이다. lib/repo/index.ts 에 실제로 추가된 것은
+      **Company/Deal/Activity CRUD + getStage** 이며 Board/Item 포트는 없다.
+      (③T02boards 로 임의보드가 다시 들어온다면 그때의 Board/Item 포트는 아래 규칙대로
+      T03 단일 선행으로 추가한다.)
+    review: >-
+      계약 품질 리뷰 결과 수용 가능. New*/*Patch 네이밍·ctx 우선 인자·담당범위 주석이
+      기존 포트 규약과 일관되고, 내가 뒤에 추가한 NewSettlement/SettlementPatch 와도 정합.
+    followup:
+      # 승인은 하되, 계약 결함 1건을 T03 후속(선행 단독 변경)으로 등록 — 지금 고치지 않는 이유는
+      # 머지 직전 계약을 깨면 큐 ②T02crm 이 흔들리기 때문(큐 배수 후 단일 선행으로 처리).
+      - "DEFECT(계약): Repo.updateDeal 의 DealPatch = Partial<NewDeal> 이라 stage_id 를 허용하지만,
+         '단계 변경은 move 전용(활동로그 보장)' 불변식은 T02 **서비스 계층**에만 있다(crm/service.ts,
+         service.test.ts:92). Repo 포트에는 move 계열이 없어, repo 를 직접 쓰는 트랙(T04 대시·T09 정산)이
+         getRepo().updateDeal({stage_id}) 로 활동로그 없이 단계를 바꿀 수 있다(불변식 우회).
+         해소안: 포트에 moveDeal(ctx,id,stageId) 추가 + DealPatch 에서 stage_id 제외(Omit).
+         담당 T03, 큐 배수 후 단일 선행 변경으로 처리."
+
+  - id: AP-0002
+    from: T03
+    to: 기획2
+    subject: "T02-repo-contract-review.md 서명 — lib/repo/index.ts 계약 delta 승인"
+    date: 2026-07-21
+    decision: "§1 인터페이스 delta 승인(수정 요구 없음)"
+    verdict: APPROVED
+    signed_doc: docs/coordination/T02-repo-contract-review.md
+    detail: >-
+      additive 확인(기존 시그니처 변경·삭제 없음), lib/types 무변경, New*/*Patch 네이밍과
+      ctx 선행 인자 규약 일관, 담당범위 repo 내부 적용, 미가시 리소스는 undefined/false 로
+      수렴(존재 유출 방지), assigned_to 재배정은 매니저 한정. check.sh·CI 초록.
+      → PR #1 통합 머지 승인.
+    doc_preservation: >-
+      원문은 feat/t02-crm-core 의 d061f65 에만 존재했고 PR #1 브랜치에는 없었다
+      (merge-base --is-ancestor = false). Round 3 에서 해당 브랜치 폐기가 결정돼 그대로 두면
+      승인 기록이 소멸하므로, T02 원문을 무수정 복사해 PR #1 로 이관하고 서명을 덧붙였다.
+    non_blocking_correction: >-
+      문서 §2 '단계 이동' 행의 "updateDeal(stage_id) 로 처리" 는 실제 구현과 어긋난 표현.
+      service.updateDeal 은 stage_id 를 거부(service.ts L104-105)하고 moveDealStage 가
+      repo.updateDeal({stage_id}) + createActivity 로 처리한다(L122·L128).
+      계층 분리(repo=순수 영속성 / service=불변식·로그)는 타당 — 문구만 정정 대상. 비차단.
+    supersedes: >-
+      AP-0001 의 followup(DEFECT) 문구를 대체한다. 정정: T02 구현 결함이 아니라 계층 경계의
+      교차트랙 노출이다. 공용 계약은 소비 트랙이 Repo 포트에 의존한다고 규정하는데 T04/T09 는
+      getRepo() 를 직접 쓰므로, repo.updateDeal({stage_id}) 로 활동로그 없이 단계 변경이 가능하다.
+      해소는 DealPatch 에서 stage_id 를 단순 제거하는 방식이면 안 된다(moveDealStage 가 그
+      경로를 정당하게 사용). 해소안 = 포트에 moveDeal(ctx,id,toStageId) 추가(갱신+로그 원자화)
+      + DealPatch 에서 stage_id 제외 + service.moveDealStage 가 위임.
+      담당 T03, 시점 머지큐 배수 후 단일 선행 변경.
+    escalation:
+      - "⚠ ③ feat/t02-boards-engine 은 ② feat/t02-crm-core 기반이다(리뷰 문서 §3).
+         ② 폐기 시 ③ 의 베이스가 사라지므로, ③ 는 ① 머지 후 main 으로 리베이스 필요.
+         ③ 자체는 전용 BoardsRepo 포트라 공용 계약 미변경 — 규칙 2 클린."
+
+  - id: AP-0003
+    from: T03
+    to: [기획2, T04]
+    subject: "DQ-0016 회신 — getDeal/updateDeal 포트 추가 요청"
+    date: 2026-07-21
+    verdict: NO_ACTION_REQUIRED
+    decision: "요청한 2개 메서드는 이미 ①(PR #1)에 존재. 추가하지 않음(추가 시 빌드 파손)."
+    evidence: >-
+      origin/feat/t03-foundation-org 기준 —
+      포트: app/src/lib/repo/index.ts L122 getDeal(ctx,id): Deal|undefined,
+      L124 updateDeal(ctx,id,patch: DealPatch): Deal|undefined (L36 NewDeal, L47 DealPatch).
+      구현: app/src/lib/repo/local/localRepo.ts L289 getDeal, L319 updateDeal.
+      도입 커밋 = ab9845e (git log -S'getDeal(ctx: Ctx'), 이는 ①·② **공통 조상**이다.
+    root_cause: >-
+      T04 가 ② 위에서 작업하며 해당 메서드가 ② 산출물이라고 판단한 것으로 보인다. 실제로는
+      공통 조상 ab9845e 가 출처이고, T02 가 파운데이션 브랜치에 직접 커밋해 ① 에 이미 포함됐다.
+    why_not_comply: >-
+      동일 시그니처를 interface 에 재선언하면 TS 중복 멤버로 컴파일이 깨진다. 요청대로 '최소 추가'
+      하는 것이 오히려 ① 을 빨간불로 만든다. 따라서 코드 변경 없이 회신한다.
+    branch_delta_audit: >-
+      ② 폐기 전 안전 확인 완료: git diff ① ② -- lib/repo/index.ts · lib/types/ 결과가
+      **전부 삭제분**이다(② 에만 있는 계약 변경 0건). ① 이 ② 의 상위집합이며
+      ① 에만 있는 것은 settlements 포트 + Settlement 타입(내가 추가). → ② 삭제로 유실되는
+      공용 계약 없음. ④ 는 ① 머지 후 리베이스하면 정상 빌드된다.
+    hazard: >-
+      ⚠ DQ-0014(files jsonb) 관련 실제 위험은 메서드 부재가 아니라 **패치 의미론**이다.
+      localRepo.updateDeal 은 Object.assign(d, rest) 라서 patch.custom 이 **통째로 교체**된다
+      (deep-merge 아님). files 서비스가 updateDeal(ctx,id,{custom:{files:[...]}}) 를 호출하면
+      T05 커스텀필드 값·T09 정책자금 값 등 **기존 custom 전체가 소실**된다.
+      → 반드시 read-modify-write: getDeal 로 읽어 {...deal.custom, files:[...]} 로 병합 후 기록.
+    offer: >-
+      files 가 '키 단위 jsonb' 저장을 원한다면 deals.custom(간이 저장)이 아니라 001 정본인
+      field_values(entity_id, field_key, value_jsonb)가 올바른 위치다. 현재 포트에는
+      field_values 접근자가 없다(listFieldDefs/createFieldDef 만 존재).
+      필요하면 T03 이 단일 선행 변경으로 추가한다 — 어느 쪽인지 T04 회신 요망:
+      (A) deals.custom + read-modify-write 로 충분 → 추가 없음
+      (B) field_values 접근자 필요 → T03 이 get/set/list 포트 추가
+
+rules:
+  # 기획2 확정(2026-07-21): 계약 파일 단일 소유
+  - scope: "app/src/lib/types/**, app/src/lib/repo/index.ts"
+    owner: T03
+    policy: >-
+      타 트랙은 직접 편집하지 않는다. 필요한 포트/타입은 dispatch 로 T03 에 요청하고,
+      T03 이 단일 선행 변경으로 추가한 뒤 소비한다. 구현체(local/localRepo.ts 등)와
+      업무 로직은 각 트랙 소유(예: settlements 업무로직=T09).
 
 # 진행 중
 in_progress:
@@ -33,9 +154,10 @@ in_progress:
       docs/design/T05-custom-fields-design.md (001_schema_v1 field_defs/field_values/
       saved_views 정본, T02 Port+Adapter·뷰엔진·검증기 재사용, 13타입 레지스트리 +
       옵션 id 안정성 핵심). 구현 착수는 아래 선결 조건(스키마 정합) 확정 후.
-    blocked_on:
-      # 구현 착수 전 해소 필요 — 설계 §0/OQ-1
-      - "스키마 충돌 정합: saved_views 가 001_schema_v1.sql 과 0002_core_crm.sql 양쪽에 create table(컬럼 상이). 001(field_defs) vs 0002(board_columns) 정본 확정 필요"
+    # [T02 해소 2026-07-21] 0002_core_crm.sql 폐기 → saved_views 충돌 제거.
+    # 정본 = 001_schema_v1.sql(field_defs/field_values/saved_views). core.custom 착수 가능.
+    resolved:
+      - "스키마 충돌 해소: 0002_core_crm.sql(board_columns/saved_views) 삭제됨. 001 이 단일 정본."
 
 # 차단됨 (선행 조건 대기)
 blocked:
@@ -121,12 +243,15 @@ done:
     closed: 2026-07-21
     status: done
     notes: >-
-      core.crm MVP 산출: 0002_core_crm.sql(boards/pipeline_stages/board_columns/
-      items/column_values/saved_views + org_id + RLS enable), 도메인 레이어(수식4·
-      단계이동 자동화·저장뷰·검증), 스토어 포트+InMemory/PostgREST 어댑터, 서비스,
-      API 라우트(boards/items/move/views). check.sh 초록(app 68 테스트).
-      T05/T07/T09 언블록(보드/아이템/파이프라인 스키마·CRUD API 제공).
+      [정정] 초기 산출(boards/items 독자 스키마 + 0002_core_crm.sql)은 정본 스키마
+      부재 상태에서 저작됨. 정본 001_schema_v1.sql 확정 후 **정본 모델로 재작성**:
+      companies/pipelines/stages/deals/activities 위에서 딜·고객사 CRUD + 단계이동
+      (활동로그) + 활동. 공유 @/lib/repo 포트를 확장(회사/딜 CRUD·activities·getStage,
+      담당범위 적용), @/lib/auth 세션(Ctx) 재사용. API=/api/companies·pipelines·deals·
+      deals/[id]/move·activities. **0002_core_crm.sql 폐기(삭제)** → T05 saved_views 충돌 해소.
+      경계 정정: 수식/settlements=T09, 커스텀필드/저장뷰=T05, RLS/Auth=T03.
+      check.sh 초록(app 76 테스트).
     followup:
-      - T03 Auth/RLS 확정 시 context.ts 세션 연동 + DB RLS 정책 정합
-      - PostgREST 어댑터 라이브 DB 통합테스트 (현재 쿼리빌더 단위테스트)
-      - 수식 정의 확정본 반영(현재 가정)
+      - Supabase Repo 어댑터(공유) 연결 시 라이브 통합테스트
+      - core.dash(T04)/mod.perf(T07) 가 deals/activities 집계 소비
+      - ind.policyfund(T09) 정산 UI ↔ deal 연결

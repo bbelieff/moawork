@@ -1,170 +1,135 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { CrmService, NotFoundError } from "./service";
-import { InMemoryCrmStore } from "./store";
 import { ValidationError } from "./validation";
-import type { RequestContext } from "./types";
+import { getRepo } from "@/lib/repo";
+import { resetDb } from "@/lib/repo/local/store";
+import {
+  SEED_ORG_ID,
+  SEED_USER_OWNER,
+  SEED_USER_MEMBER,
+} from "@/lib/repo/local/seed";
+import type { Ctx, MemberRole, MemberScope } from "@/lib/types";
 
-const ctx: RequestContext = { orgId: "org1", userId: "user1" };
-const other: RequestContext = { orgId: "org2", userId: "user2" };
-const TODAY = "2026-07-21";
-
-function mkService() {
-  let seq = 0;
-  const store = new InMemoryCrmStore({
-    genId: () => `id-${++seq}`,
-    now: () => "2026-07-21T00:00:00.000Z",
-  });
-  const service = new CrmService(store, { today: () => TODAY });
-  return { store, service };
+function ctxFor(userId: string, role: MemberRole, scope: MemberScope): Ctx {
+  const repo = getRepo();
+  const user = repo.getUser(userId);
+  const org = repo.getOrg(SEED_ORG_ID);
+  if (!user || !org) throw new Error("seed 누락");
+  return { user, org, role, scope };
 }
 
-describe("CrmService — 보드 프로비저닝", () => {
-  it("보드 생성 시 기본 4단계 + 수식 포함 컬럼 세트가 붙는다", async () => {
-    const { service } = mkService();
-    const { board } = await service.createBoard(ctx, { name: "신규고객" });
-    const detail = await service.getBoardDetail(ctx, board.id);
-    expect(detail.stages.map((s) => s.key)).toEqual([
-      "consulting",
-      "awaiting_contract",
-      "in_progress",
-      "done",
+let svc: CrmService;
+let owner: Ctx;
+let member: Ctx;
+
+beforeEach(() => {
+  resetDb();
+  svc = new CrmService(getRepo());
+  owner = ctxFor(SEED_USER_OWNER, "owner", "all");
+  member = ctxFor(SEED_USER_MEMBER, "member", "assigned");
+});
+
+describe("파이프라인", () => {
+  it("기본 파이프라인 + 5단계(마케팅→정산)", () => {
+    const pipes = svc.listPipelines(owner);
+    expect(pipes).toHaveLength(1);
+    expect(pipes[0].stages.map((s) => s.name)).toEqual([
+      "마케팅", "미팅", "계약", "실무", "정산",
     ]);
-    const formulaCols = detail.columns.filter((c) => c.type === "formula").map((c) => c.key);
-    expect(formulaCols).toEqual(["commission", "total_revenue", "d_plus_180", "d_plus_365"]);
-  });
-
-  it("다른 org 는 보드를 볼 수 없다(테넌트 격리)", async () => {
-    const { service } = mkService();
-    const { board } = await service.createBoard(ctx, { name: "신규고객" });
-    await expect(service.getBoardDetail(other, board.id)).rejects.toThrow(NotFoundError);
-    expect(await service.listBoards(other)).toEqual([]);
   });
 });
 
-describe("CrmService — 아이템 + 수식", () => {
-  it("아이템 생성 시 첫 단계로 배치되고 수식이 계산된다", async () => {
-    const { service } = mkService();
-    const { board } = await service.createBoard(ctx, { name: "신규고객" });
-    const item = await service.createItem(ctx, board.id, {
-      name: "홍길동",
-      values: { contract_amount: 100_000_000, commission_rate: 3, contract_date: "2026-07-21" },
-    });
-    expect(item.name).toBe("홍길동");
-    expect(item.formulas.commission).toBe(3_000_000);
-    expect(item.formulas.total_revenue).toBe(3_300_000);
-    expect(item.formulas.d_plus_180).toBe("2027-01-17");
-    expect(item.formulas.d_plus_365).toBe("2027-07-21");
-  });
-
-  it("값 갱신 시 수식이 재계산된다", async () => {
-    const { service } = mkService();
-    const { board } = await service.createBoard(ctx, { name: "b" });
-    const item = await service.createItem(ctx, board.id, { name: "x" });
-    expect(item.formulas.commission).toBeNull();
-    const updated = await service.updateItem(ctx, item.id, {
-      values: { contract_amount: 50_000_000, commission_rate: 4 },
-    });
-    expect(updated.formulas.commission).toBe(2_000_000);
-  });
-
-  it("알 수 없는 단계로 생성 시 검증 에러", async () => {
-    const { service } = mkService();
-    const { board } = await service.createBoard(ctx, { name: "b" });
-    await expect(
-      service.createItem(ctx, board.id, { name: "x", stageKey: "ghost" }),
-    ).rejects.toThrow(ValidationError);
+describe("고객사 CRUD", () => {
+  it("생성·조회·수정·삭제", () => {
+    const c = svc.createCompany(owner, { name: "새회사", region: "서울" });
+    expect(svc.getCompany(owner, c.id).name).toBe("새회사");
+    const u = svc.updateCompany(owner, c.id, { region: "부산" });
+    expect(u.region).toBe("부산");
+    svc.deleteCompany(owner, c.id);
+    expect(() => svc.getCompany(owner, c.id)).toThrow(NotFoundError);
   });
 });
 
-describe("CrmService — 파이프라인 단계 이동 자동화", () => {
-  it("진행중 진입 시 계약일이 오늘로 자동 세팅되고 D+180/365 가 생긴다", async () => {
-    const { service } = mkService();
-    const { board } = await service.createBoard(ctx, { name: "b" });
-    const item = await service.createItem(ctx, board.id, {
-      name: "x",
-      values: { contract_amount: 100_000_000, commission_rate: 3 },
-    });
-    expect(item.values.contract_date).toBeUndefined();
-
-    const moved = await service.moveItemStage(ctx, item.id, "in_progress");
-    expect(moved.values.contract_date).toBe(TODAY);
-    expect(moved.formulas.d_plus_180).toBe("2027-01-17");
+describe("딜 생성 · 기본 단계 배치 · 활동로그", () => {
+  it("단계 미지정 시 첫 단계(마케팅)로 배치되고 status 활동이 남는다", () => {
+    const deal = svc.createDeal(owner, { title: "신규 상담" });
+    const firstStage = svc.listPipelines(owner)[0].stages[0];
+    expect(deal.stage_id).toBe(firstStage.id);
+    const acts = svc.listActivities(owner, deal.id);
+    expect(acts).toHaveLength(1);
+    expect(acts[0].type).toBe("status");
+    expect(acts[0].content).toBe("→ 마케팅");
   });
 
-  it("완료 진입 시 completed_at 스탬프 + 완료일 세팅", async () => {
-    const { service } = mkService();
-    const { board } = await service.createBoard(ctx, { name: "b" });
-    const item = await service.createItem(ctx, board.id, { name: "x" });
-    const done = await service.moveItemStage(ctx, item.id, "done");
-    expect(done.completedAt).toBe("2026-07-21T00:00:00.000Z");
-    expect(done.values.completed_date).toBe(TODAY);
-  });
-
-  it("완료에서 이탈하면 completed_at 이 해제된다", async () => {
-    const { service } = mkService();
-    const { board } = await service.createBoard(ctx, { name: "b" });
-    const item = await service.createItem(ctx, board.id, { name: "x" });
-    await service.moveItemStage(ctx, item.id, "done");
-    const back = await service.moveItemStage(ctx, item.id, "in_progress");
-    expect(back.completedAt).toBeNull();
-  });
-
-  it("존재하지 않는 아이템 이동은 NotFound", async () => {
-    const { service } = mkService();
-    await expect(service.moveItemStage(ctx, "ghost", "done")).rejects.toThrow(NotFoundError);
+  it("존재하지 않는 단계로 생성 시 ValidationError", () => {
+    expect(() => svc.createDeal(owner, { title: "x", stage_id: "ghost" })).toThrow(
+      ValidationError,
+    );
   });
 });
 
-describe("CrmService — 저장뷰", () => {
-  let service: CrmService;
-  let boardId: string;
+describe("단계 이동", () => {
+  it("이동 시 stage_id 갱신 + 이동 활동로그(from → to)", () => {
+    const deal = svc.createDeal(owner, { title: "이동테스트" });
+    const stages = svc.listPipelines(owner)[0].stages;
+    const contractStage = stages.find((s) => s.kind === "contract");
+    if (!contractStage) throw new Error("no contract stage");
 
-  beforeEach(async () => {
-    const s = mkService();
-    service = s.service;
-    const { board } = await service.createBoard(ctx, { name: "b" });
-    boardId = board.id;
-    // 3건: 상담중 300 / 완료 100 / 완료 200
-    const a = await service.createItem(ctx, boardId, {
-      name: "a",
-      values: { contract_amount: 300 },
-    });
-    const b = await service.createItem(ctx, boardId, {
-      name: "b",
-      values: { contract_amount: 100 },
-    });
-    const c = await service.createItem(ctx, boardId, {
-      name: "c",
-      values: { contract_amount: 200 },
-    });
-    await service.moveItemStage(ctx, b.id, "done");
-    await service.moveItemStage(ctx, c.id, "done");
-    void a;
+    const moved = svc.moveDealStage(owner, deal.id, contractStage.id);
+    expect(moved.stage_id).toBe(contractStage.id);
+
+    const acts = svc.listActivities(owner, deal.id);
+    // 최초 배치 + 이동 = 2건, 최신순
+    expect(acts).toHaveLength(2);
+    expect(acts[0].content).toBe("마케팅 → 계약");
   });
 
-  it("단계 필터 + 금액 오름차순 정렬을 저장뷰로 적용", async () => {
-    const view = await service.createView(ctx, boardId, {
-      name: "완료건",
-      config: {
-        filters: [{ columnKey: "__stage__", operator: "eq", value: "done" }],
-        sorts: [{ columnKey: "contract_amount", direction: "asc" }],
-      },
-    });
-    const items = await service.listItems(ctx, boardId, { viewId: view.id });
-    expect(items.map((i) => i.name)).toEqual(["b", "c"]);
+  it("존재하지 않는 단계로 이동 시 ValidationError", () => {
+    const deal = svc.createDeal(owner, { title: "x" });
+    expect(() => svc.moveDealStage(owner, deal.id, "ghost")).toThrow(ValidationError);
   });
 
-  it("뷰 없이 조회하면 전체(생성 순서)", async () => {
-    const items = await service.listItems(ctx, boardId);
-    expect(items.map((i) => i.name)).toEqual(["a", "b", "c"]);
+  it("updateDeal 로 stage_id 를 바꾸려 하면 거부(=move 사용 유도)", () => {
+    const deal = svc.createDeal(owner, { title: "x" });
+    expect(() => svc.updateDeal(owner, deal.id, { stage_id: "any" })).toThrow(
+      ValidationError,
+    );
+  });
+});
+
+describe("담당범위(scope) 격리", () => {
+  it("member+assigned 는 본인 담당 딜만 보고, 남의 딜은 NotFound", () => {
+    const ownerDeals = svc.listDeals(owner);
+    const memberDeals = svc.listDeals(member);
+    expect(ownerDeals.length).toBeGreaterThan(memberDeals.length);
+    // admin 담당 딜(del...002)은 member 가 못 봄
+    const adminDeal = ownerDeals.find((d) => d.assigned_to !== SEED_USER_MEMBER);
+    if (!adminDeal) throw new Error("타인 담당 딜 없음");
+    expect(() => svc.getDeal(member, adminDeal.id)).toThrow(NotFoundError);
+    expect(() => svc.moveDealStage(member, adminDeal.id, ownerDeals[0].stage_id!)).toThrow(
+      NotFoundError,
+    );
   });
 
-  it("다른 보드의 뷰 id 로 조회하면 NotFound", async () => {
-    const { board: other2 } = await service.createBoard(ctx, { name: "other" });
-    const v = await service.createView(ctx, other2.id, {
-      name: "v",
-      config: { filters: [], sorts: [] },
-    });
-    await expect(service.listItems(ctx, boardId, { viewId: v.id })).rejects.toThrow(NotFoundError);
+  it("member 가 만든 딜은 본인에게 배정된다", () => {
+    const d = svc.createDeal(member, { title: "내 딜" });
+    expect(d.assigned_to).toBe(SEED_USER_MEMBER);
+  });
+});
+
+describe("활동 · 삭제", () => {
+  it("메모 활동 추가", () => {
+    const deal = svc.createDeal(owner, { title: "x" });
+    svc.createActivity(owner, deal.id, { type: "memo", content: "첫 통화 완료" });
+    const acts = svc.listActivities(owner, deal.id);
+    expect(acts.some((a) => a.type === "memo" && a.content === "첫 통화 완료")).toBe(true);
+  });
+
+  it("딜 삭제 시 활동도 함께 제거", () => {
+    const deal = svc.createDeal(owner, { title: "x" });
+    svc.deleteDeal(owner, deal.id);
+    expect(() => svc.getDeal(owner, deal.id)).toThrow(NotFoundError);
+    // 삭제된 딜의 활동 조회는 NotFound
+    expect(() => svc.listActivities(owner, deal.id)).toThrow(NotFoundError);
   });
 });

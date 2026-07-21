@@ -4,6 +4,68 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T03 · settlements 엔티티 포트 선행 추가 (worktree 격리)
+
+기획2 피드백 #3 반영. 정산 포트를 **파운데이션에서 선행 정의** → T09 가 업무 로직을 구현하고
+T04 는 소비만 한다(**T04 가 공용 인터페이스를 직접 수정하지 않도록**).
+
+- `lib/types`: `Settlement` 추가. 001 의 **generated column**(`fee_amount`·`total_revenue`·
+  `d180`·`d365`)은 **읽기 전용**으로 표기, 쓰기는 base 컬럼만.
+- `lib/repo/index.ts`: `NewSettlement`/`SettlementPatch` + 포트 6종 —
+  `listSettlements`·`getSettlement`·`getSettlementByDeal`·`createSettlement`·
+  `updateSettlement`·`deleteSettlement`. 소유/소비 경계를 주석에 명시.
+- `lib/repo/local/localRepo.ts`: 구현. 파생값은 001 식을 그대로 재현
+  (`round(exec×pct/100)` · `down+fee` · `fee_paid_at±180/365`, UTC 날짜 연산),
+  **쓰기마다 재계산**. 담당범위는 **상위 deal 가시성**을 따른다(접근 불가 딜엔 생성/수정 거부).
+- `store`/`seed`: `settlements` 배열 추가(시드 비움 — 생성은 T09 몫).
+- 테스트 5종 추가(총 11): 파생 계산·입금일 null·수정 시 재계산·member 스코프 격리·접근불가 딜 거부.
+- **프로세스**: 피드백 #4 반영 — 이번 작업부터 **git worktree 격리**에서 수행(공유 워킹트리 커밋 금지).
+  공유 트리는 그사이 다른 트랙이 브랜치를 `feat/t02-crm-core` 로 전환해 있었음(격리의 필요성 재확인).
+
+## 2026-07-21 — T02 · core.crm 정본 스키마 정합 재작성 (boards/items → deals/companies)
+
+- **원인**: 초기 구현 직후 정본 `docs/PLAN-v0.2.md` + `001_schema_v1.sql` 이 다른 트랙 커밋으로
+  유입됨. 정본 모델(companies/pipelines/stages/deals/activities)이 내 독자 저작(boards/items)과
+  근본적으로 달랐고, 수식/저장뷰 경계도 T09/T05 소유로 확인됨. 오너 결정=**PLAN 경계 준수**.
+- **폐기(삭제)**:
+  - `supabase/migrations/0002_core_crm.sql`(경쟁 모델) → T05 의 saved_views 스키마 충돌 해소.
+  - `app/src/lib/crm/{formulas,pipeline,views,templates,store,postgrest,context,types}` +
+    구 API 라우트(boards/items/views) — boards/items 모델 산출물.
+- **재작성(정본 001 기반)**:
+  - 공유 `@/lib/repo` 포트를 core.crm 쓰기로 확장 — companies/deals CRUD, activities,
+    getStage. 담당범위(scope) 격리(owner/admin/all=전체, member+assigned=본인 담당만).
+  - `app/src/lib/crm/`: service(오케스트레이션)·activity(이동 로그 문구)·validation·
+    context(`@/lib/auth` 세션 → Ctx, 없으면 401)·http.
+  - API: `/api/companies`·`/api/pipelines`·`/api/deals`·`/api/deals/[id]/move`·
+    `/api/deals/[id]/activities`. 단계 이동은 move 로만(활동로그 보장), updateDeal 은 stage 거부.
+  - `docs/PLAN-core-crm-v0.2.md` 정본 정합 내용으로 갱신.
+- **경계 정정**: 수식/settlements=**T09**(정본 = generated column + policyfund/settlement.ts),
+  커스텀필드/저장뷰=**T05**, 조직/RLS/Auth=**T03**(완료). 별도 store/PostgREST 어댑터 미제작 —
+  공유 Repo 포트 재사용(운영 Supabase 어댑터는 포트 뒤 스왑).
+- **게이트**: `bash scripts/check.sh` 초록 (app 76 테스트, 그중 crm/repo 신규 29).
+- **조율**: DQ-0002 done 노트 정정, DQ-0005(T05) saved_views 충돌 resolved 표기, T02 registry 갱신.
+
+## 2026-07-21 — T03 · 공용 파운데이션(PR-0) — 로컬 우선 세션·Repo·엔타이틀먼트 + 온보딩/멤버 UI
+
+브랜치 `feat/t03-foundation-org`. Supabase 연결 전, **dev-session + repo-레벨 scope** 로
+공용 파운데이션을 먼저 착지시켜 T02·T04 를 언블록한다(구글 OAuth·DB RLS 는 Supabase 연결 후).
+
+- **안정 인터페이스(소비 트랙용)**:
+  - `lib/types/index.ts` — 001_schema_v1 도메인 타입 수동 정의(정본). 역할/enum도 여기로 통합, `lib/auth/roles.ts` 는 위계/가드만.
+  - `lib/repo/index.ts` — `Repo` 포트 + `getRepo()`. `lib/repo/local/{store,seed,localRepo}` = 인메모리 구현. **담당범위 규칙**: owner/admin·scope=all → 조직 전체, member+assigned → 본인(assigned_to)만.
+  - `lib/auth/session.ts` — `getSession(): Promise<Ctx>`(Next16 cookies async) + `getSessionOrNull` + `applyAs`(?as 오버라이드). dev-session 쿠키(mw_uid/mw_org/mw_as).
+  - `lib/entitlements.ts` — `isEnabled(ctx, key)`(feature_key 기반, 001 org_entitlements 반영).
+  - `lib/presets/policyfund.ts` — `installPolicyfundPreset(ctx)` → 딜 커스텀필드(field_defs) 전개 + 엔타이틀먼트 ON(idempotent).
+  - `lib/product.ts` — `PRODUCT_NAME`(단일 상수) + FEATURES/MVP 기본 기능 집합.
+- **UI**(수정판 Next16 — proxy 규약·async cookies/searchParams·route group 확인):
+  - `app/(auth)/login` — dev-session 계정 선택 로그인(서버액션 쿠키).
+  - `app/(app)/layout.tsx` — 인증 셸(getSession 가드 → 미인증 /login). `page.tsx` 홈(=`/`, ?as 역할전환·스코프 시연·FeatureGate 데모), `onboarding`(조직생성+auto-owner+정책자금팩), `settings/members`(멤버·권한, owner/admin만 역할변경).
+  - `components/auth/FeatureGate.tsx` — Phase 2 모듈 자물쇠(mod.notify 등).
+- **테스트**: `localRepo.test.ts`(6) — 스코프 격리(member 본인만/owner 전체)·프리셋 설치·idempotent·auto-owner. `roles.test.ts`(9). check.sh 초록.
+- **라우트 정리**: 기존 Supabase OAuth `app/login/page.tsx`·루트 `page.tsx` 제거(각각 `(auth)/login`·`(app)/page.tsx` 로 대체). 이번 세션 초반 만든 Supabase SSR 레이어(`lib/supabase/*`·`proxy.ts`·`app/auth/*`·`membership.ts`·@supabase deps)는 **이 PR 에 미포함**(로컬 우선 파운데이션에 집중) — 워킹트리에 dormant 로 두고 Supabase 연결(내일) 시 별도 커밋. 이 PR 은 @supabase 의존 없이 자족(CI 정합).
+- **완료기준 대응**: ①/login→온보딩→홈 무에러 ②installPolicyfundPreset→field_defs 생성(테스트) ③?as=member 본인 담당만(테스트) ④FeatureGate 자물쇠 ⑤lib/repo·types·auth 안정 존재 + check.sh 초록.
+- 후속: (Supabase 연결 후) LocalRepo→SupabaseRepo 어댑터 스왑·dev-session→구글 OAuth·DB RLS 침투테스트(T10). T02/T04 는 `lib/repo`·`lib/types`·`lib/auth` 소비.
+
 ## 2026-07-21 — T09 · 정책자금 보드 UI + 번들 프리셋 스냅샷
 
 - **UI**(수정판 Next.js16/App Router·React19·Tailwind v4, `node_modules/next/dist/docs` + T02/T03 페이지 패턴 확인 후):

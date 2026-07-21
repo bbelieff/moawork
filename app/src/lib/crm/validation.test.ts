@@ -1,95 +1,69 @@
 import { describe, it, expect } from "vitest";
 import {
   ValidationError,
-  parseCreateBoard,
-  parseUpdateBoard,
-  parseCreateItem,
-  parseUpdateItem,
+  parseCreateCompany,
+  parseUpdateCompany,
+  parseCreateDeal,
+  parseUpdateDeal,
   parseMoveStage,
-  parseViewConfig,
-  parseCreateView,
-  isColumnType,
+  parseCreateActivity,
 } from "./validation";
 
-describe("parseCreateBoard", () => {
-  it("name 필수, description 선택", () => {
-    expect(parseCreateBoard({ name: "신규고객" })).toEqual({
-      name: "신규고객",
-      description: undefined,
-    });
+describe("parseCreateCompany", () => {
+  it("name 필수 + 선택 필드 정규화", () => {
+    const c = parseCreateCompany({ name: "회사", revenue: "1000", founded_on: "2020-01-01" });
+    expect(c.name).toBe("회사");
+    expect(c.revenue).toBe(1000);
+    expect(c.founded_on).toBe("2020-01-01");
+    expect(c.phone).toBeNull();
   });
   it("name 없으면 에러", () => {
-    expect(() => parseCreateBoard({})).toThrow(ValidationError);
-    expect(() => parseCreateBoard({ name: "  " })).toThrow(ValidationError);
+    expect(() => parseCreateCompany({})).toThrow(ValidationError);
   });
-  it("객체 아니면 에러", () => {
-    expect(() => parseCreateBoard("x")).toThrow(ValidationError);
-  });
-});
-
-describe("parseUpdateBoard", () => {
-  it("부분 갱신 필드만", () => {
-    expect(parseUpdateBoard({ archived: true })).toEqual({ archived: true });
-  });
-  it("변경 필드 없으면 에러", () => {
-    expect(() => parseUpdateBoard({})).toThrow(ValidationError);
-  });
-  it("archived 타입 검사", () => {
-    expect(() => parseUpdateBoard({ archived: "yes" })).toThrow(ValidationError);
+  it("잘못된 날짜/숫자 거부", () => {
+    expect(() => parseCreateCompany({ name: "x", founded_on: "2020/01/01" })).toThrow(ValidationError);
+    expect(() => parseCreateCompany({ name: "x", revenue: "abc" })).toThrow(ValidationError);
   });
 });
 
-describe("parseCreateItem / parseUpdateItem", () => {
-  it("생성: name 필수, values/ stageKey 선택", () => {
-    expect(parseCreateItem({ name: "홍길동", stageKey: "consulting", values: { 금액: 100 } })).toEqual(
-      { name: "홍길동", stageKey: "consulting", values: { 금액: 100 } },
-    );
+describe("parseUpdateCompany", () => {
+  it("부분 갱신, 최소 1필드", () => {
+    expect(parseUpdateCompany({ region: "서울" })).toEqual({ region: "서울" });
+    expect(() => parseUpdateCompany({})).toThrow(ValidationError);
   });
-  it("갱신: 최소 1필드", () => {
-    expect(() => parseUpdateItem({})).toThrow(ValidationError);
-    expect(parseUpdateItem({ name: "새이름" })).toEqual({ name: "새이름" });
+});
+
+describe("parseCreateDeal / parseUpdateDeal", () => {
+  it("title 필수 + custom 객체 허용", () => {
+    const d = parseCreateDeal({ title: "딜", amount: 500, custom: { a: 1 } });
+    expect(d.title).toBe("딜");
+    expect(d.amount).toBe(500);
+    expect(d.custom).toEqual({ a: 1 });
   });
-  it("values 는 객체여야 함", () => {
-    expect(() => parseCreateItem({ name: "x", values: [] })).toThrow(ValidationError);
+  it("title 없으면 에러, custom 비객체 거부", () => {
+    expect(() => parseCreateDeal({})).toThrow(ValidationError);
+    expect(() => parseCreateDeal({ title: "x", custom: [] })).toThrow(ValidationError);
+  });
+  it("갱신 최소 1필드", () => {
+    expect(() => parseUpdateDeal({})).toThrow(ValidationError);
+    expect(parseUpdateDeal({ title: "새제목" })).toEqual({ title: "새제목" });
   });
 });
 
 describe("parseMoveStage", () => {
-  it("stageKey 필수", () => {
-    expect(parseMoveStage({ stageKey: "done" })).toEqual({ stageKey: "done" });
+  it("stageId 또는 stage_id 허용", () => {
+    expect(parseMoveStage({ stageId: "s1" })).toEqual({ stageId: "s1" });
+    expect(parseMoveStage({ stage_id: "s2" })).toEqual({ stageId: "s2" });
     expect(() => parseMoveStage({})).toThrow(ValidationError);
   });
 });
 
-describe("parseViewConfig / parseCreateView", () => {
-  it("필터/정렬 파싱", () => {
-    const cfg = parseViewConfig({
-      filters: [{ columnKey: "금액", operator: "gt", value: 100 }],
-      sorts: [{ columnKey: "금액", direction: "desc" }],
+describe("parseCreateActivity", () => {
+  it("허용 type 만", () => {
+    expect(parseCreateActivity({ type: "memo", content: "메모" })).toEqual({
+      type: "memo",
+      content: "메모",
     });
-    expect(cfg.filters).toHaveLength(1);
-    expect(cfg.sorts[0]).toEqual({ columnKey: "금액", direction: "desc" });
-  });
-  it("잘못된 연산자/방향 거부", () => {
-    expect(() => parseViewConfig({ filters: [{ columnKey: "a", operator: "??" }] })).toThrow(
-      ValidationError,
-    );
-    expect(() => parseViewConfig({ sorts: [{ columnKey: "a", direction: "up" }] })).toThrow(
-      ValidationError,
-    );
-  });
-  it("빈 config 허용(전체 뷰)", () => {
-    expect(parseViewConfig({})).toEqual({ filters: [], sorts: [] });
-  });
-  it("뷰 생성: name + config", () => {
-    const v = parseCreateView({ name: "완료건", config: { filters: [], sorts: [] } });
-    expect(v.name).toBe("완료건");
-  });
-});
-
-describe("isColumnType", () => {
-  it("유효 타입만 true", () => {
-    expect(isColumnType("formula")).toBe(true);
-    expect(isColumnType("banana")).toBe(false);
+    expect(() => parseCreateActivity({ type: "invalid" })).toThrow(ValidationError);
   });
 });

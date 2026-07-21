@@ -56,21 +56,21 @@ sessions:
     status: active
     started: 2026-07-21
     scope:
-      - 신규고객/컨택/업무 보드 미러 (먼데이 → moawork)
-      - 파이프라인 4단계 (상담중 → 계약대기 → 진행중 → 완료)
-      - 단계 이동 자동화 (worker 잡 연동)
+      - 고객사·파이프라인·딜·활동 (companies/pipelines/stages/deals/activities, 001 정본)
+      - 딜/고객사 CRUD + 담당범위(scope) 격리
+      - 단계 이동 자동화 (먼데이 "이동" = 활동로그)
     delivered:
-      - "스키마: supabase/migrations/0002_core_crm.sql (6 테이블 + org_id + RLS enable)"
-      - "설계: docs/PLAN-core-crm-v0.2.md (스키마 v1 저작, 수식 가정 문서화)"
-      - "도메인: app/src/lib/crm/ (수식4·파이프라인 자동화·저장뷰·검증, 순수 테스트)"
-      - "스토어: 포트 + InMemory/PostgREST 어댑터"
-      - "API: /api/boards·items·move·views (Next.js route handlers)"
+      - "정본 모델 재작성: 공유 @/lib/repo 포트 확장(회사/딜 CRUD·activities·getStage)"
+      - "서비스/검증/컨텍스트: app/src/lib/crm/ (@/lib/auth 세션 Ctx 재사용)"
+      - "API: /api/companies·pipelines·deals·deals/[id]/move·deals/[id]/activities"
+      - "설계 노트: docs/PLAN-core-crm-v0.2.md (정본 정합·경계 명시)"
     followup:
-      - T03 Auth/RLS 연동 (context.ts / DB 정책 정합)
-      - PostgREST 라이브 DB 통합테스트, 수식 확정본 반영
+      - 공유 Supabase Repo 어댑터 연결 시 라이브 통합테스트
+      - core.dash(T04)/mod.perf(T07) deals·activities 소비
     notes: >-
-      MVP 스코프(보드/아이템/컬럼값 CRUD, 파이프라인 이동·자동화, 저장뷰, 수식4) 완료.
-      DQ-0002 done → T05/T07/T09 언블록. 경계: RLS 정책 본체=T03, 커스텀필드 옵션=T05.
+      [정정] 초기 boards/items 독자 스키마(0002_core_crm.sql)는 정본 부재 상태 저작 →
+      정본 001_schema_v1.sql 로 재작성, 0002 폐기(삭제, T05 saved_views 충돌 해소).
+      경계: 수식/settlements=T09, 커스텀필드/저장뷰=T05, RLS/Auth=T03. check.sh 초록(app 76).
 
   - id: T04
     role: 문서·대시 (core.files 문서함 / contracts 상태 / core.dash 기본 대시보드)

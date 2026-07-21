@@ -1,104 +1,66 @@
-# PLAN — core.crm (T02 영업코어) · v0.2
+# core.crm (T02 영업코어) — 구현 노트 · v0.2
 
-> 원본 기획 `docs/PLAN-v0.2.md` / `supabase/migrations/001_schema_v1.sql` 가 저장소에
-> 부재하여, 오너 승인 하에 **T02 가 core.crm 도메인의 스키마 v1 + 설계를 저작**했다.
-> 이 문서는 그 설계·가정·경계를 기록한다. (전체 기획 v0.2 확정본이 들어오면 정합화)
+> 정본 기획 = [`docs/PLAN-v0.2.md`], 정본 스키마 = [`supabase/migrations/001_schema_v1.sql`].
+> 이 문서는 그 위에서 T02 가 구현한 **core.crm 앱 레이어**(고객사·파이프라인·딜·활동)를 기록한다.
+> ⚠ 초기에 정본 파일 부재로 T02 가 독자 스키마(boards/items)를 저작했으나, 정본(001)이
+>   확정되어 **정본 모델(companies/pipelines/stages/deals/activities)에 맞춰 재작성**했다.
 
-## 범위 (MVP)
+## 범위 (PLAN §3 core.crm)
 
-먼데이 수준 재현. 벤더 연동 제외. 구현 방식 **B(하이브리드 정규화)**:
-사용자 화면은 먼데이와 동일(보드·컬럼·상태·수식), 내부는 정규화 + RLS.
+- 목적: 먼데이 4단계(신규고객→컨텍→업무→회계)를 하나의 파이프라인으로.
+- 담당 테이블(001): `companies` · `pipelines` · `stages` · `deals` · `activities`.
+- 기능: 딜/고객사 CRUD · 단계 이동(먼데이 "이동" 자동화 = 활동로그) · 활동기록 · 담당범위.
 
-대상 4항목:
-1. 보드(boards) + 아이템(items) + 컬럼값(column_values) CRUD
-2. 파이프라인 단계 이동 (상담중→계약대기→진행중→완료, `status` 컬럼 기반)
-3. 저장뷰/필터 (saved_views)
-4. 수식 컬럼 4개: 수수료·총매출·D+180·D+365
+### 경계 (T02 가 다루지 않음)
+- **수식·정산(settlements, fee_amount/total_revenue/d180/d365)** → **T09**.
+  001 의 generated column + `app/src/lib/policyfund/settlement.ts` 가 정본.
+- **커스텀필드·저장뷰(field_defs/field_values/saved_views)** → **T05**.
+- **조직/RLS/Auth(orgs/org_members, is_org_member 등)** → **T03**(이미 완료).
 
-## 데이터 모델 — `supabase/migrations/0002_core_crm.sql`
-
-| 테이블 | 역할 |
-| --- | --- |
-| `boards` | 보드(신규고객/컨택/업무). org 스코핑. |
-| `pipeline_stages` | 보드별 단계 세트. 기본 4단계. |
-| `board_columns` | 컬럼 정의(먼데이 컬럼 미러). `type`, `settings(jsonb)`. |
-| `items` | 아이템(행). `stage_id` = 파이프라인 위치의 **단일 진실원**. |
-| `column_values` | 아이템×컬럼 값(정규화 셀, `value jsonb`). 수식은 저장 안 함. |
-| `saved_views` | 저장뷰(`config`: filters/sorts/visibleColumns). |
-
-- 파일명은 기존 컨벤션(`NNNN_snake_case.sql`, 4자리)을 따라 `0002_core_crm.sql`.
-- `stage_id` 를 정본으로 두고, 상태 컬럼은 파생 렌더 → 이중기록/불일치 회피.
-
-## 수식 정의 (가정 — `app/src/lib/crm/formulas.ts`)
-
-원본 정의가 없어 아래를 **가정**으로 채택. 확정 시 `formulas.ts` 만 수정.
-
-입력 컬럼: `contract_amount`(계약금액), `commission_rate`(수수료율 %), `contract_date`(계약일)
-
-| 수식 | 정의 |
-| --- | --- |
-| 수수료 `commission` | 계약금액 × 수수료율 / 100 (공급가액) |
-| 총매출 `total_revenue` | 수수료 × (1 + 부가세율 0.1) (부가세 포함 총액) |
-| D+180 `d_plus_180` | 계약일 + 180일 |
-| D+365 `d_plus_365` | 계약일 + 365일 |
-
-## 파이프라인 자동화 (`app/src/lib/crm/pipeline.ts`)
-
-이동은 먼데이처럼 자유(any→any). 이동 시 부수효과:
-- **진행중 진입**: `contract_date` 가 비면 이동일로 채움 → D+180/365 기준일 확보.
-- **완료 진입**: `items.completed_at` 스탬프 + `completed_date` 컬럼값 세팅.
-- **완료 이탈**: `completed_at` 해제.
-
-## 아키텍처 (레이어)
+## 아키텍처 — 공유 인프라 재사용
 
 ```
+@/lib/types           도메인 타입(001 매핑) — 정본, 재사용
+@/lib/repo            저장소 포트 Repo + LocalRepo(인메모리) — 공유
+  └ T02 확장: getStage · company/deal CRUD · activities (담당범위 적용)
+@/lib/auth/session    세션 → Ctx(org+role+scope) — T03, 재사용
 app/src/lib/crm/
-  types.ts         도메인 타입 (DB 1:1)
-  formulas.ts      수식 엔진 (순수·테스트)
-  pipeline.ts      단계 정의·이동 자동화 (순수·테스트)
-  views.ts         저장뷰 필터·정렬 적용 (순수·테스트)
-  validation.ts    입력 검증 (순수·테스트)
-  templates.ts     기본 보드 컬럼/단계 템플릿
-  store.ts         CrmStore 포트 + InMemory 어댑터
-  postgrest.ts     Supabase PostgREST 어댑터 (fetch, 의존성 0)
-  service.ts       오케스트레이션 (도메인 + 스토어)
-  context.ts       요청 컨텍스트(org 스코핑)
-  http.ts          에러→HTTP 매핑
-  index.ts         팩토리 (env 유무로 어댑터 선택)
-app/src/app/api/   Next.js Route Handlers (boards/items/move/views)
+  service.ts          CrmService(Ctx 기반 오케스트레이션)
+  activity.ts         단계이동 활동로그 문구(순수)
+  validation.ts       입력 검증(company/deal/activity/move)
+  context.ts          requireCtx (세션 없으면 401)
+  http.ts             에러 → 상태코드
+  index.ts            배럴 + getCrmService()
+app/src/app/api/      companies · pipelines · deals · deals/[id]/move · deals/[id]/activities
 ```
 
-- 스토어 **포트/어댑터**로 도메인과 DB를 분리 → 인메모리로 완전 단위테스트, 운영은 PostgREST.
-- `getStore()`: `SUPABASE_URL`(또는 `NEXT_PUBLIC_SUPABASE_URL`) + `SUPABASE_SERVICE_ROLE_KEY`
-  존재 시 PostgREST, 없으면 인메모리(개발/테스트).
+- **별도 store/PostgREST 어댑터를 만들지 않고** 공유 `getRepo()` 포트를 재사용·확장.
+  운영 Supabase 어댑터는 Repo 포트 뒤에서 스왑(공유 계획).
+- 담당범위(scope): `owner/admin` 또는 `scope='all'` → 조직 전체, `member+assigned` → 본인
+  담당(assigned_to)만. 앱 레이어 가드 + DB RLS(001)의 이중 방어.
+
+## 단계 이동 자동화
+
+딜의 `stage_id` 변경 = `moveDealStage` 로만(활동로그 보장). 부수효과:
+- `activities` 에 `type='status'`, `content="이전단계 → 목적단계"` 기록.
+- 딜 생성 시에도 최초 배치 로그(`"→ 마케팅"`).
+- 단계값 무결성: `updateDeal` 은 `stage_id` 패치를 거부(=/move 로 유도).
 
 ## API
 
 | 메서드/경로 | 동작 |
 | --- | --- |
-| `GET/POST /api/boards` | 목록 / 생성(기본 단계·컬럼 프로비저닝) |
-| `GET/PATCH/DELETE /api/boards/{boardId}` | 상세(보드+단계+컬럼) / 수정 / 삭제 |
-| `GET/POST /api/boards/{boardId}/items` | 목록(`?viewId=` 저장뷰 적용) / 생성 |
-| `GET/PATCH/DELETE /api/items/{itemId}` | 상세 / 값·이름 수정 / 삭제 |
-| `POST /api/items/{itemId}/move` | 단계 이동 + 자동화 |
-| `GET/POST /api/boards/{boardId}/views` | 저장뷰 목록 / 생성 |
-| `PATCH/DELETE /api/views/{viewId}` | 저장뷰 수정 / 삭제 |
+| `GET/POST /api/companies` | 고객사 목록(담당범위)/생성 |
+| `GET/PATCH/DELETE /api/companies/{id}` | 고객사 상세/수정/삭제 |
+| `GET /api/pipelines` | 파이프라인+단계 목록(칸반 소스) |
+| `GET/POST /api/deals` | 딜 목록(`?stageId=`,`?companyId=`)/생성 |
+| `GET/PATCH/DELETE /api/deals/{id}` | 딜 상세/수정(단계 제외)/삭제 |
+| `POST /api/deals/{id}/move` | 단계 이동 + 활동로그 |
+| `GET/POST /api/deals/{id}/activities` | 활동 목록(최신순)/추가 |
 
-- Next.js 16 규약: `route.ts` 에 `GET/POST/...` export, `context.params` 는 **Promise**.
-- 아이템 응답은 입력값(`values`) + 계산된 수식(`formulas`)을 포함.
-
-## 트랙 경계 (다른 트랙 소유 — 여기서 정의 안 함)
-
-- **T03 (core.org)**: 조직/멤버십 모델 + **RLS 정책 본체** + Supabase Auth.
-  - 본 마이그레이션은 `org_id` 컬럼 + `enable row level security`(정책 없음=fail-closed)까지.
-  - Auth 연동 전 임시: `context.ts` 가 `x-org-id` 헤더로 org 스코핑(T03 시 교체).
-  - 현재 보안: 서버 service_role + **앱 레이어 org 스코핑**. T03 가 DB RLS 로 심화(defense-in-depth).
-- **T05 (core.custom)**: 커스텀필드 옵션/선택지 — `board_columns` 위에 확장.
-- **T09 (ind.policyfund)**, **T07 (mod.perf)**: core.crm 의 아이템/파이프라인/이벤트를 소스로 사용.
+- Next.js 16: `route.ts` 에 메서드 export, `context.params` = Promise, 세션은 `requireCtx()`.
 
 ## 후속 (follow-up)
-
-- [ ] T03 Auth/RLS 확정 시 `context.ts` 실 세션 연동 + DB RLS 정책 정합.
-- [ ] PostgREST 어댑터 라이브 DB 통합테스트(현재 순수 쿼리빌더만 단위테스트).
-- [ ] createBoard 원자화(Postgres RPC) — 현재 순차 insert.
-- [ ] 수식 정의 확정본 반영(가정 → 실제).
+- [ ] Supabase Repo 어댑터(공유) 연결 시 라이브 통합테스트.
+- [ ] core.dash(T04)·mod.perf(T07)가 deals/activities 집계 소비.
+- [ ] ind.policyfund(T09) 정산 UI 가 deal ↔ settlement 연결.

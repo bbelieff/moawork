@@ -1,6 +1,6 @@
 /**
- * API 라우트 공용 HTTP 헬퍼 (T02).
- * 도메인 에러 → 적절한 상태코드 JSON 응답 매핑.
+ * API 라우트 공용 HTTP 헬퍼 (T02 core.crm).
+ * 도메인 에러 → 상태코드 JSON 매핑.
  */
 
 import { ValidationError } from "./validation";
@@ -15,7 +15,6 @@ export function jsonError(message: string, status: number): Response {
   return Response.json({ error: message }, { status });
 }
 
-/** throw 된 에러를 상태코드로 변환. */
 export function toErrorResponse(err: unknown): Response {
   if (err instanceof ValidationError) return jsonError(err.message, 400);
   if (err instanceof UnauthorizedError) return jsonError(err.message, 401);
@@ -24,7 +23,6 @@ export function toErrorResponse(err: unknown): Response {
   return jsonError(message, 500);
 }
 
-/** 요청 바디를 JSON 으로 파싱. 실패 시 ValidationError. */
 export async function readJson(req: Request): Promise<unknown> {
   try {
     return await req.json();
