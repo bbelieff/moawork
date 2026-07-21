@@ -4,6 +4,24 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T02 · B2 core.crm Supabase 소스 + 단계 보드 3종 라우트 (PR #9)
+
+- 브랜치 `feat/t02-crm-supabase` (main 4367015 기반 — 지시된 cdf45f6 은 그 조상이라 최신 main 사용).
+- **배정 지시서 부재 보고**: `docs/coordination/next-prompt_B2-B7.md` 가 전 ref·워킹트리에 없다.
+  프롬프트 본문 요약 + 정본(001/002)만으로 착수 — 스키마 추측은 하지 않았다.
+- **Supabase 실연결** `lib/repo/supabase/`: 환경변수 클라이언트(미설정 시 null·로컬 폴백) +
+  001 테이블 직결 `SupabaseCrmSource` + `getCrmSource()` 팩토리. 담당범위를 쿼리단에 이식.
+- **설계 판단**: 공용 `Repo` 는 **동기**라 네트워크 DB 구현 불가. 계약 파일은 T03 단독 소유이므로
+  별도 **비동기 포트 `CrmSource`** 를 두고 시그니처를 1:1 로 맞췄다(Promise 래핑만 차이).
+  → T03 판단 요청: 공용 포트 비동기 전환 여부(전환 시 단일 선행 PR).
+- **보드 = stage_kind 필터 뷰**(새 테이블 없음): `stageBoards.ts`/`boardData.ts` +
+  `(app)/{newcust,contract,work}` + `StageBoardView`.
+- ⚠️ **명명 확인 요청**: 지시서의 `/contract`="컨텍관리" 인데 002 시드상 컨텍관리=kind `meeting`,
+  `contract` kind 는 별개 단계(계약). 보드 **이름**을 정본으로 보고 meeting 에 묶음(한 줄로 교체 가능).
+- 게이트: `check.sh` 초록(앱 337 테스트·신규 28 + 워커 1), `next build` 로 3개 라우트 등록 확인, 회귀 0.
+- 한계(후속): 딜 상세 `/deals/[id]` 미구현이라 카드 링크를 걸지 않음(404 방지) · 드래그 이동 미포함 ·
+  Supabase 실계정 스모크 미실시(환경변수 부재).
+
 ## 2026-07-21 — T06 · worker Phase 2 알림 발송 스캐폴드(스텁)
 
 - 배정: B2-B7 배치의 T06 파트(worker Phase 2 스캐폴드). ⚠️ 지시된 `docs/coordination/next-prompt_B2-B7.md` 는 **저장소 전 ref·워킹트리·히스토리 어디에도 부재** — 지어내지 않고 배정 프롬프트의 요약(잡 스텁 / 발송 인터페이스 / 독립 작업)만을 근거로 착수. DQ-0011·DQ-0014 와 동일 패턴이라 dispatch 에 보고.
