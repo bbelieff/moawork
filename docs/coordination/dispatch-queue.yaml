@@ -1,10 +1,58 @@
 # 디스패치 큐 — 트랙 간 작업 분배 SSOT
 # status: queued | in_progress | done | blocked
-version: 4
+version: 5
 updated: 2026-07-21
 
 # 대기 중 (아직 담당 트랙 없음)
 queue: []
+
+# ─────────────────────────────────────────────────────────────────────────
+# 승인/판정 기록 (계약 소유자 T03 → 기획2)
+# ─────────────────────────────────────────────────────────────────────────
+approvals:
+  - id: AP-0001
+    from: T03
+    to: 기획2
+    subject: "머지큐 ①T03(PR #1) — lib/repo/index.ts 계약 변경분 처리 판정"
+    date: 2026-07-21
+    decision: "안 1 (계약 단일 소유) — 이미 충족. 리워크 불필요."
+    verdict: APPROVED
+    detail: >-
+      T02 의 계약 변경 커밋 ab9845e 는 이미 PR #1 head 의 조상이다
+      (git merge-base --is-ancestor ab9845e origin/feat/t03-foundation-org = true).
+      T02 가 자기 브랜치가 아니라 파운데이션 브랜치 위에 직접 커밋했고, 그 커밋이
+      내 푸시(a7bdc9d..bf3906b)에 실려 origin 에 올라갔다. 따라서 계약 추가분은
+      이미 T03 PR 안에 있고 "계약은 한곳에서 소유" 조건은 별도 체리픽 없이 충족된다.
+      → PR #1 머지 승인. 머지 순서 ①T03 그대로 진행 가능.
+    correction: >-
+      사실 정정: ab9845e 는 Board/Item 포트를 **추가**한 것이 아니라 그 반대다.
+      T02 가 독자 boards/items 모델(0002_core_crm.sql · crm/{formulas,pipeline,views,
+      templates,store,postgrest,types} · 구 boards/items 라우트)을 **폐기**하고 정본
+      001(deals/companies)로 재작성한 커밋이다. lib/repo/index.ts 에 실제로 추가된 것은
+      **Company/Deal/Activity CRUD + getStage** 이며 Board/Item 포트는 없다.
+      (③T02boards 로 임의보드가 다시 들어온다면 그때의 Board/Item 포트는 아래 규칙대로
+      T03 단일 선행으로 추가한다.)
+    review: >-
+      계약 품질 리뷰 결과 수용 가능. New*/*Patch 네이밍·ctx 우선 인자·담당범위 주석이
+      기존 포트 규약과 일관되고, 내가 뒤에 추가한 NewSettlement/SettlementPatch 와도 정합.
+    followup:
+      # 승인은 하되, 계약 결함 1건을 T03 후속(선행 단독 변경)으로 등록 — 지금 고치지 않는 이유는
+      # 머지 직전 계약을 깨면 큐 ②T02crm 이 흔들리기 때문(큐 배수 후 단일 선행으로 처리).
+      - "DEFECT(계약): Repo.updateDeal 의 DealPatch = Partial<NewDeal> 이라 stage_id 를 허용하지만,
+         '단계 변경은 move 전용(활동로그 보장)' 불변식은 T02 **서비스 계층**에만 있다(crm/service.ts,
+         service.test.ts:92). Repo 포트에는 move 계열이 없어, repo 를 직접 쓰는 트랙(T04 대시·T09 정산)이
+         getRepo().updateDeal({stage_id}) 로 활동로그 없이 단계를 바꿀 수 있다(불변식 우회).
+         해소안: 포트에 moveDeal(ctx,id,stageId) 추가 + DealPatch 에서 stage_id 제외(Omit).
+         담당 T03, 큐 배수 후 단일 선행 변경으로 처리."
+
+rules:
+  # 기획2 확정(2026-07-21): 계약 파일 단일 소유
+  - scope: "app/src/lib/types/**, app/src/lib/repo/index.ts"
+    owner: T03
+    policy: >-
+      타 트랙은 직접 편집하지 않는다. 필요한 포트/타입은 dispatch 로 T03 에 요청하고,
+      T03 이 단일 선행 변경으로 추가한 뒤 소비한다. 구현체(local/localRepo.ts 등)와
+      업무 로직은 각 트랙 소유(예: settlements 업무로직=T09).
 
 # 진행 중
 in_progress:
