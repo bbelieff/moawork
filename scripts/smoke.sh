@@ -63,7 +63,16 @@ if [ "$START_SERVER" = "1" ]; then
   if [ "$(code "$BASE/")" = "000" ]; then
     echo "  [FAIL] 서버가 뜨지 않음 — 로그:"; tail -20 "$TMP/server.log"; exit 1
   fi
-  echo "  서버 준비됨: $BASE"
+  # ★ 기동 확증: 응답이 온다고 '내 서버'인 것은 아니다. 바인딩 실패(EADDRINUSE)면
+  #   남의 서버가 응답한 것이므로 검사 전체가 무효다. 로그로 반드시 확인한다.
+  if grep -qi 'EADDRINUSE' "$TMP/server.log"; then
+    echo "  [ABORT] 포트 바인딩 실패(EADDRINUSE) — 응답한 것은 내 서버가 아니다. 검사 무효."
+    grep -i 'EADDRINUSE' "$TMP/server.log" | head -2
+    exit 1
+  fi
+  grep -qiE '(Ready in|✓ Ready)' "$TMP/server.log" \
+    && echo "  서버 준비됨(기동 확증): $BASE" \
+    || { echo "  [ABORT] 기동 로그에 Ready 없음 — 내 서버인지 확증 불가."; tail -10 "$TMP/server.log"; exit 1; }
 fi
 
 # 인증 계층 자체가 아직 없는 브랜치(T03 미머지)에서는 가드 부재가 결함이 아니라 '미구현'이다.
@@ -100,7 +109,25 @@ for pair in "온보딩:/onboarding" "홈:/"; do
   [ "$c" = "200" ] && ok "$nm($u) 200" || { [ "$c" = "404" ] && skip "$nm($u) 404 — 미머지" || bad "$nm($u) status=$c"; }
 done
 
-echo "▶ [4] scope 격리 — member 는 타인 담당 딜이 안 보여야 함"
+echo "▶ [4a] 담당범위 격리 (딜 단위 · /api/deals) ★PLAN §3 '멤버는 본인 담당만'"
+# 시드: '라마바테크 시설자금'=admin 담당, '가나다상사 운전자금'·'정책자금 상담'=member 담당.
+# member(scope=assigned) 응답에 admin 담당 딜이 섞이면 격리 실패.
+DO="$TMP/api_owner.json"; DM="$TMP/api_member.json"
+ao=$(curl -s -m 15 -b "mw_uid=$OWNER"  "$BASE/api/deals" -o "$DO" -w '%{http_code}')
+am=$(curl -s -m 15 -b "mw_uid=$MEMBER" "$BASE/api/deals" -o "$DM" -w '%{http_code}')
+if [ "$ao" = "200" ] && [ "$am" = "200" ]; then
+  co=$(grep -o '"title"' "$DO" | wc -l); cm=$(grep -o '"title"' "$DM" | wc -l)
+  lo=$(grep -c '시설자금' "$DO");        lm=$(grep -c '시설자금' "$DM")
+  mo=$(grep -c '운전자금' "$DM")
+  echo "      owner deals=$co (admin담당 노출 $lo) / member deals=$cm (admin담당 노출 $lm, 본인담당 $mo)"
+  [ "$lo" -ge 1 ] && ok "owner 는 조직 전체 딜 조회(admin 담당 포함)" || bad "owner 가 admin 담당 딜을 못 봄 — 과잉차단"
+  [ "$lm" -eq 0 ] && ok "member 는 타인(admin) 담당 딜 차단(0건)" || bad "★담당범위 격리 실패★ member 응답에 admin 담당 딜 $lm 건"
+  [ "$mo" -ge 1 ] && ok "member 는 본인 담당 딜은 조회 가능" || bad "member 가 본인 담당 딜도 못 봄 — 과잉차단"
+  [ "$cm" -lt "$co" ] && ok "건수 축소 확인(member $cm < owner $co)" || bad "member 건수가 owner 와 같음($cm/$co) — 스코프 미적용 의심"
+elif [ "$ao" = "404" ] || [ "$am" = "404" ]; then skip "/api/deals 없음 — 미머지"
+else bad "/api/deals 접근 실패 (owner=$ao member=$am)"; fi
+
+echo "▶ [4b] scope 격리 — 칸반 화면(있을 때만)"
 KO="$TMP/k_owner.html"; KM="$TMP/k_member.html"
 co=$(curl -s -m 15 -b "mw_uid=$OWNER"  "$BASE/dash/$PIPE" -o "$KO" -w '%{http_code}')
 cm=$(curl -s -m 15 -b "mw_uid=$MEMBER" "$BASE/dash/$PIPE" -o "$KM" -w '%{http_code}')

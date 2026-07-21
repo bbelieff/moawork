@@ -203,9 +203,32 @@ curl -s -i -X POST -b 'mw_uid=<uid>' -F '$ACTION_ID_<id>=' -F 'name=<조직명>'
       **단, core.org 는 아직 done 아님** — 아래 ①판정 참조(담당범위 격리·DB RLS 미확정).
 - [x] ~~② feat/t02-crm-core~~ — **폐기 확정**(중복·오염, 기획2 Round 3). 브랜치 삭제 예정.
       *T10 영향 없음*: 해당 브랜치에 있던 T10 커밋 `ae97140` 은 이미 main 으로 cherry-pick 완료(`8d6cfab`).
-- [ ] **③ T02 보드엔진(클린 rebase) 머지 → main 스모크** — 이때 **딜 단위 scope 격리 확정**
+- [x] **③ T02 보드엔진 머지 → main 스모크 ✅ 통과** — main `9bd2b7a`(Merge PR #2), 게이트 초록 + 스모크 `PASS=15 FAIL=0 SKIP=2`.
+      **★담당범위(딜 단위) scope 격리 확정** — 아래 ③판정 참조.
 - [ ] **④ T04 독립 머지 → main 스모크**
 - [ ] **⑤ T05 구현**
+
+### ★ ③T02 보드엔진 main 판정 (main `9bd2b7a`, 2026-07-21 · T10 실측)
+게이트 `✅ check 통과` + main 스모크 `PASS=15 FAIL=0 SKIP=2`.
+
+**★담당범위(딜 단위) 격리 — ①에서 미확정이던 항목, 여기서 확정** (`/api/deals`, 시드 딜 3건 기준):
+| 계정 | 조회 딜 | admin 담당 `라마바테크 시설자금` | 판정 |
+|---|---|---|---|
+| owner (`all`) | **3건** | 노출 1 | 조직 전체 조회 ✅ |
+| member (`assigned`) | **2건** | **0건** | 타인 담당 차단 ✅ |
+
+- **직접 접근도 차단**: member 가 admin 담당 딜을 `GET /api/deals/{id}` 로 직접 조회 → **404**(owner 는 200).
+  목록 필터링뿐 아니라 **단건 접근까지 막힌다** — 우회 경로 없음.
+- → **PLAN §3 core.org "멤버는 본인 담당만" 앱 레이어 충족 확인.**
+
+**2-A 단계 이동 자동화(먼데이 "이동" 재현)**: `POST /api/deals/{id}/move` 200 → `stage_id` 미팅→계약 갱신 확인,
+**활동 로그 자동 기록**(`type:"status"`, `content:"미팅 → 계약"`, `actor`=요청자, `at` 타임스탬프) ✅
+**2-C 활동기록**: `GET /api/deals/{id}/activities` 200, 이동 후 1건 적재 확인.
+**T02b 보드엔진**: `/boards` 200(범용 보드 목록/테이블·칸반/컬럼 에디터), `/policyfund` 200.
+
+**⛔ 여전히 미확정**: ① 구글 OAuth 실동작(dev-session 유지) ② **Postgres RLS 33정책 런타임**
+— 위 격리는 전부 **앱 레이어(`localRepo.ts` `isManager(role) || scope==='all'`)**. Supabase 적용 후 §1-B 침투 테스트로 별도 확정 필요.
+**앱 레이어와 DB RLS 가 같은 규칙인지 대조**하지 않으면 한쪽만 막히는 우회 경로가 남는다.
 
 ### T03 PR-0 상세 판정 (2026-07-21 · T10 실측)
 
