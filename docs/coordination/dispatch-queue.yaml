@@ -216,6 +216,31 @@ blocked:
 
 # 완료
 done:
+  - id: DQ-0012
+    title: 임의 보드 엔진 이전 — boards/items/board_columns/item_values (003 기반, ADR-0003)
+    assignee: T02
+    opened: 2026-07-21
+    closed: 2026-07-21
+    status: done
+    branch: feat/t02-boards-engine
+    notes: >-
+      DQ-0011 해소(003 + T02b + ADR-0003 유입) 후 착수·완료. 격리 워크트리(../wt-t02).
+      데이터: lib/boards(types/cells/store 포트/service/validation) + lib/repo/local/boardsRepo
+      + Db 확장·시드(시스템 보드 + 예시 사용자 보드). UI: (app)/boards 목록·[id] 범용 보드
+      (테이블/칸반) + components/boards 4종 + 서버 액션. 신규 SQL 없음(003만 사용).
+      공용 계약(lib/types, lib/repo/index.ts) 미변경 — 전용 BoardsRepo 포트 사용.
+      머지큐 ③: main(①T03 머지본) 위 클린 rebase — 보드 엔진 커밋 3개만 유지.
+    acceptance:
+      - "①보드 생성→컬럼(select 포함)→아이템→셀 편집→유지: 서비스 33테스트 + UI 서버액션 왕복 확인"
+      - "②테이블/칸반 뷰 동작(레인 대기1/진행중1/완료1) — 이동은 폼 기반(dnd-kit 미도입)"
+      - "③scope: member 계정은 본인 담당 2건만 표시(격리 확인)"
+      - "④정책자금 회귀 0: 홈 대시보드 딜 집계·crm 테스트 그대로 통과"
+      - "⑤npm run dev 로컬 동작 + check.sh 초록"
+    followup:
+      - "dnd-kit 드래그 이동(현재 폼 선택 이동, 데이터 경로 moveItemAction 동일 — 핸들러만 추가)"
+      - "TanStack Query 훅(lib/queries/boards.ts): 서버 액션으로 대체 구현. API 라우트 도입 시 전환"
+      - "T05 lib/custom/field-types 와 boards/cells 공용화(현재 병행 브랜치라 독립 구현)"
+
   - id: DQ-0003
     title: 조직·보안 — core.org + RLS 멀티테넌시 + 구글 OAuth 로그인
     assignee: T03

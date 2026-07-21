@@ -32,6 +32,9 @@ export default async function AppLayout({
             <Link href="/" className="hover:underline">
               홈
             </Link>
+            <Link href="/boards" className="hover:underline">
+              보드
+            </Link>
             <Link href="/settings/members" className="hover:underline">
               멤버·권한
             </Link>

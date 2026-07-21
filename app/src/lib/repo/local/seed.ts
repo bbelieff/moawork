@@ -13,6 +13,10 @@ export const SEED_USER_ADMIN = "usr00000-0000-0000-0000-0000000000a2";
 export const SEED_USER_MEMBER = "usr00000-0000-0000-0000-0000000000a3";
 const PIPE_ID = "pip00000-0000-0000-0000-000000000001";
 
+// 003 임의 보드 시드 id (ADR-0003)
+export const SEED_BOARD_PIPELINE = "brd00000-0000-0000-0000-000000000001";
+export const SEED_BOARD_TASKS = "brd00000-0000-0000-0000-000000000002";
+
 export function seedDb(): Db {
   const users = [
     {
@@ -135,6 +139,112 @@ export function seedDb(): Db {
     },
   ];
 
+  // ── 003 사용자 임의 보드 엔진 시드 (ADR-0003) ──
+  // 시스템 보드 1개(정책자금 파이프라인 = 001 deals 로 렌더, 여기엔 메타만) +
+  // 사용자 보드 1개(컬럼/그룹/아이템/셀 값 예시, 담당범위 시연).
+  const boards = [
+    {
+      id: SEED_BOARD_PIPELINE,
+      org_id: SEED_ORG_ID,
+      name: "정책자금 파이프라인",
+      description: "신규고객 → 컨텍 → 업무 → 회계 (typed 코어: deals/stages/settlements)",
+      icon: "🏦",
+      is_system: true,
+      source: "core.crm.pipeline",
+      sort_order: 0,
+      created_by: null,
+      created_at: TS,
+      updated_at: TS,
+    },
+    {
+      id: SEED_BOARD_TASKS,
+      org_id: SEED_ORG_ID,
+      name: "업무 요청",
+      description: "예시 사용자 보드 — 컬럼·행을 자유롭게 추가",
+      icon: "📋",
+      is_system: false,
+      source: null,
+      sort_order: 1,
+      created_by: SEED_USER_OWNER,
+      created_at: TS,
+      updated_at: TS,
+    },
+  ];
+
+  const boardGroups = [
+    { id: "bgr00000-0000-0000-0000-000000000001", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, name: "이번 주", color: "#579bfc", sort_order: 0 },
+    { id: "bgr00000-0000-0000-0000-000000000002", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, name: "다음 주", color: "#a25ddc", sort_order: 1 },
+  ];
+
+  const boardColumns = [
+    {
+      id: "bcl00000-0000-0000-0000-000000000001",
+      org_id: SEED_ORG_ID,
+      board_id: SEED_BOARD_TASKS,
+      key: "status",
+      label: "상태",
+      type: "select" as const,
+      options_jsonb: {
+        options: [
+          { id: "opt-todo", label: "대기", color: "#c4c4c4", order: 0 },
+          { id: "opt-doing", label: "진행중", color: "#fdab3d", order: 1 },
+          { id: "opt-done", label: "완료", color: "#00c875", order: 2 },
+        ],
+      },
+      sort_order: 0,
+      width: 140,
+    },
+    {
+      id: "bcl00000-0000-0000-0000-000000000002",
+      org_id: SEED_ORG_ID,
+      board_id: SEED_BOARD_TASKS,
+      key: "owner",
+      label: "담당",
+      type: "person" as const,
+      options_jsonb: null,
+      sort_order: 1,
+      width: 120,
+    },
+    {
+      id: "bcl00000-0000-0000-0000-000000000003",
+      org_id: SEED_ORG_ID,
+      board_id: SEED_BOARD_TASKS,
+      key: "due",
+      label: "마감일",
+      type: "date" as const,
+      options_jsonb: null,
+      sort_order: 2,
+      width: 130,
+    },
+    {
+      id: "bcl00000-0000-0000-0000-000000000004",
+      org_id: SEED_ORG_ID,
+      board_id: SEED_BOARD_TASKS,
+      key: "note",
+      label: "메모",
+      type: "text" as const,
+      options_jsonb: null,
+      sort_order: 3,
+      width: null,
+    },
+  ];
+
+  const boardItems = [
+    { id: "itm00000-0000-0000-0000-000000000001", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, group_id: boardGroups[0].id, title: "사업자등록증 수집", assigned_to: SEED_USER_MEMBER, sort_order: 0, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-000000000002", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, group_id: boardGroups[0].id, title: "재무제표 검토", assigned_to: SEED_USER_ADMIN, sort_order: 1, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-000000000003", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, group_id: boardGroups[1].id, title: "보증서 발급 문의", assigned_to: SEED_USER_MEMBER, sort_order: 2, created_at: TS, updated_at: TS },
+  ];
+
+  const itemValues = [
+    { org_id: SEED_ORG_ID, item_id: boardItems[0].id, column_key: "status", value_jsonb: "opt-doing" },
+    { org_id: SEED_ORG_ID, item_id: boardItems[0].id, column_key: "owner", value_jsonb: SEED_USER_MEMBER },
+    { org_id: SEED_ORG_ID, item_id: boardItems[0].id, column_key: "due", value_jsonb: "2026-07-25" },
+    { org_id: SEED_ORG_ID, item_id: boardItems[1].id, column_key: "status", value_jsonb: "opt-todo" },
+    { org_id: SEED_ORG_ID, item_id: boardItems[1].id, column_key: "due", value_jsonb: "2026-07-28" },
+    { org_id: SEED_ORG_ID, item_id: boardItems[2].id, column_key: "status", value_jsonb: "opt-done" },
+    { org_id: SEED_ORG_ID, item_id: boardItems[2].id, column_key: "note", value_jsonb: "지역 보증재단 확인 완료" },
+  ];
+
   return {
     orgs: [
       {
@@ -186,5 +296,11 @@ export function seedDb(): Db {
     savedViews: [],
     // 정산은 시드 없음 — T09 가 딜 진행에 따라 생성한다.
     settlements: [],
+    boards,
+    boardGroups,
+    boardColumns,
+    boardItems,
+    itemValues,
+    boardViews: [],
   };
 }

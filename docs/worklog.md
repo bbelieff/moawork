@@ -4,6 +4,33 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T02b · 사용자 임의 보드 엔진 구현 (003, ADR-0003) — 브랜치 feat/t02-boards-engine
+
+- **선행 해소**: DQ-0011 요청분(003_boards_engine.sql · T02b-boards-engine.md · ADR-0003)이
+  T01 push(`d5e31ba`)로 유입 → 즉시 착수. **격리 워크트리** `../wt-t02` (규칙 1).
+  base = feat/t02-crm-core(정정된 deals 모델) + origin/main 머지(003 확보).
+- **데이터 레이어** `app/src/lib/boards/`:
+  - `types.ts` 003 6테이블 1:1 · `cells.ts` 13 field_type 정규화/선택지검증/비교/표시
+  - `store.ts` **전용 BoardsRepo 포트**(공용 `lib/repo/index.ts` 미변경 — 규칙 2 준수)
+  - `service.ts` 보드/컬럼/그룹/아이템/셀 + 칸반 그룹핑(select 컬럼 또는 board_groups)
+    + **시스템 보드 편집 가드**(정책자금은 deals 소유) + EAV 오염 방지(미정의 키 무시)
+  - `validation.ts` 입력 검증. **33 테스트 신규**(cells 16 · service 17)
+- **로컬 어댑터** `lib/repo/local/`: `boardsRepo.ts` + `store.ts` Db 확장 + `seed.ts`
+  (시스템 보드=정책자금 메타 + 예시 사용자 보드 1개: 컬럼 4·그룹 2·아이템 3·셀 값).
+  items 담당범위 = 003 RLS 동일 규칙.
+- **UI**: `(app)/boards`(목록 — 시스템+사용자 통합 UX) · `(app)/boards/[id]`(테이블/칸반 토글,
+  그룹 기준 전환) · `components/boards/`(GenericBoardTable 셀 인라인편집 · GenericBoardKanban ·
+  ColumnEditor 13타입+선택지 · NewBoardDialog) · `actions.ts` 서버 액션.
+  로컬 스토어가 **서버 인메모리**라 API 왕복 없이 서버 액션 + revalidatePath 로 구현.
+- **로컬 실검증**(npm run dev, 포트 3210): 보드목록 렌더 · 테이블 셀값 바인딩(제목/select/date) ·
+  칸반 레인(대기1·진행중1·완료1·미지정0) · **서버액션 왕복**(아이템 생성 반영) ·
+  **member 계정 본인 담당 2건만**(scope 격리) · **홈 대시보드 딜 집계 정상 = deals 회귀 0**.
+- **게이트**: `bash scripts/check.sh` 초록 — app **163 테스트** + worker 1, lint/typecheck OK.
+- **규칙 준수**: 신규 SQL 없음(003만) · 공용 계약 미변경 · 001 deals/stages/settlements 불변.
+- **후속**: dnd-kit 드래그(데이터 경로 동일, 핸들러만) · TanStack 훅(현재 서버액션) ·
+  T05 `lib/custom/field-types` 와 `boards/cells` 공용화(병행 브랜치라 독립 구현).
+
+## 2026-07-21 — T04 · core.dash 기본 대시보드 구현 (core.files 는 스키마 대기)
 ## 2026-07-21 — T03 · settlements 엔티티 포트 선행 추가 (worktree 격리)
 
 기획2 피드백 #3 반영. 정산 포트를 **파운데이션에서 선행 정의** → T09 가 업무 로직을 구현하고
