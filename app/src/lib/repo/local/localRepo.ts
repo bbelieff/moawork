@@ -5,6 +5,7 @@ import type {
   Deal,
   FieldDef,
   FieldEntity,
+  SavedView,
   MemberRole,
   MemberScope,
   Org,
@@ -23,8 +24,10 @@ import type {
   NewActivity,
   NewCompany,
   NewDeal,
+  FieldDefPatch,
   NewSettlement,
   Repo,
+  SavedViewPatch,
   SettlementPatch,
 } from "../index";
 import { db } from "./store";
@@ -386,10 +389,118 @@ export class LocalRepo implements Repo {
       .sort((a, b) => a.sort_order - b.sort_order);
   }
 
+  getFieldDef(orgId: string, defId: string): FieldDef | undefined {
+    return db().fieldDefs.find((f) => f.id === defId && f.org_id === orgId);
+  }
+
   createFieldDef(input: Omit<FieldDef, "id">): FieldDef {
     const def: FieldDef = { id: crypto.randomUUID(), ...input };
     db().fieldDefs.push(def);
     return def;
+  }
+
+  updateFieldDef(orgId: string, defId: string, patch: FieldDefPatch): FieldDef | undefined {
+    const def = this.getFieldDef(orgId, defId);
+    if (!def) return undefined;
+    if (patch.label !== undefined) def.label = patch.label;
+    if (patch.sort_order !== undefined) def.sort_order = patch.sort_order;
+    if (patch.options !== undefined)
+      def.options_jsonb = patch.options ? { options: patch.options } : null;
+    return def;
+  }
+
+  reorderFieldDefs(orgId: string, entity: FieldEntity, orderedIds: string[]): void {
+    const siblings = this.listFieldDefs(orgId, entity);
+    const byId = new Map(siblings.map((d) => [d.id, d]));
+    let order = 0;
+    const seen = new Set<string>();
+    for (const id of orderedIds) {
+      const d = byId.get(id);
+      if (!d || seen.has(id)) continue;
+      seen.add(id);
+      d.sort_order = order++;
+    }
+    // 목록에 없는 정의는 기존 상대순서를 유지하며 뒤로.
+    for (const d of siblings) if (!seen.has(d.id)) d.sort_order = order++;
+  }
+
+  deleteFieldDef(orgId: string, defId: string): boolean {
+    const d = db();
+    const def = this.getFieldDef(orgId, defId);
+    if (!def) return false;
+    d.fieldDefs = d.fieldDefs.filter((f) => f.id !== defId);
+    // 값 정리(EAV 고아 방지) — 같은 org 의 이 field_key 값 제거.
+    d.fieldValues = d.fieldValues.filter(
+      (v) => !(v.org_id === orgId && v.field_key === def.key),
+    );
+    return true;
+  }
+
+  // ── 커스텀필드 값 (PK: entity_id + field_key) ──
+  getFieldValues(orgId: string, entityId: string): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const v of db().fieldValues)
+      if (v.org_id === orgId && v.entity_id === entityId) out[v.field_key] = v.value_jsonb;
+    return out;
+  }
+
+  setFieldValue(orgId: string, entityId: string, fieldKey: string, value: unknown): void {
+    const d = db();
+    if (value === null) {
+      d.fieldValues = d.fieldValues.filter(
+        (v) => !(v.org_id === orgId && v.entity_id === entityId && v.field_key === fieldKey),
+      );
+      return;
+    }
+    const existing = d.fieldValues.find(
+      (v) => v.org_id === orgId && v.entity_id === entityId && v.field_key === fieldKey,
+    );
+    if (existing) existing.value_jsonb = value;
+    else
+      d.fieldValues.push({
+        org_id: orgId,
+        entity_id: entityId,
+        field_key: fieldKey,
+        value_jsonb: value,
+      });
+  }
+
+  // ── 저장뷰 (공유 뷰 ∪ 본인 개인 뷰) ──
+  listSavedViews(orgId: string, userId: string | null, entity?: FieldEntity): SavedView[] {
+    return db().savedViews.filter(
+      (v) =>
+        v.org_id === orgId &&
+        (entity ? v.entity === entity : true) &&
+        (v.shared || v.user_id === userId),
+    );
+  }
+
+  getSavedView(orgId: string, viewId: string): SavedView | undefined {
+    return db().savedViews.find((v) => v.id === viewId && v.org_id === orgId);
+  }
+
+  createSavedView(input: Omit<SavedView, "id">): SavedView {
+    const view: SavedView = { id: crypto.randomUUID(), ...input };
+    db().savedViews.push(view);
+    return view;
+  }
+
+  updateSavedView(orgId: string, viewId: string, patch: SavedViewPatch): SavedView | undefined {
+    const v = this.getSavedView(orgId, viewId);
+    if (!v) return undefined;
+    if (patch.name !== undefined) v.name = patch.name;
+    if (patch.filters_jsonb !== undefined) v.filters_jsonb = patch.filters_jsonb;
+    if (patch.sort_jsonb !== undefined) v.sort_jsonb = patch.sort_jsonb;
+    if (patch.columns_jsonb !== undefined) v.columns_jsonb = patch.columns_jsonb;
+    if (patch.shared !== undefined) v.shared = patch.shared;
+    return v;
+  }
+
+  deleteSavedView(orgId: string, viewId: string): boolean {
+    const d = db();
+    if (!this.getSavedView(orgId, viewId)) return false;
+    d.savedViews = d.savedViews.filter((v) => v.id !== viewId);
+    return true;
   }
 
   // ── 정산 (담당범위는 상위 deal 가시성을 따른다) ──

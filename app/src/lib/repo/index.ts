@@ -5,12 +5,14 @@ import type {
   Deal,
   FieldDef,
   FieldEntity,
+  FieldOption,
   MemberRole,
   MemberScope,
   Org,
   OrgEntitlement,
   OrgMember,
   Pipeline,
+  SavedView,
   Settlement,
   Stage,
   User,
@@ -45,6 +47,23 @@ export interface NewDeal {
   custom?: Record<string, unknown>;
 }
 export type DealPatch = Partial<NewDeal>;
+
+// ── core.custom 쓰기 입력 타입 (T05) ──
+// key/type 은 불변(변경 시 저장값 해석이 깨짐) → 패치에 포함하지 않는다.
+export interface FieldDefPatch {
+  label?: string;
+  /** null 이면 옵션 제거. 옵션 id 안정성은 custom/options.ts 가 보장. */
+  options?: FieldOption[] | null;
+  sort_order?: number;
+}
+
+export interface SavedViewPatch {
+  name?: string;
+  filters_jsonb?: Record<string, unknown>;
+  sort_jsonb?: unknown[];
+  columns_jsonb?: unknown[];
+  shared?: boolean;
+}
 
 export interface NewActivity {
   deal_id: string;
@@ -128,9 +147,27 @@ export interface Repo {
   listActivities(ctx: Ctx, dealId: string): Activity[];
   createActivity(ctx: Ctx, input: NewActivity): Activity;
 
-  // 커스텀필드
+  // 커스텀필드 (core.custom — 소유: T05). 값 정규화·옵션 규약·뷰 적용은
+  // app/src/lib/custom 엔진이 담당하고, 이 포트는 영속성만 책임진다.
   listFieldDefs(orgId: string, entity?: FieldEntity): FieldDef[];
+  getFieldDef(orgId: string, defId: string): FieldDef | undefined;
   createFieldDef(input: Omit<FieldDef, "id">): FieldDef;
+  updateFieldDef(orgId: string, defId: string, patch: FieldDefPatch): FieldDef | undefined;
+  reorderFieldDefs(orgId: string, entity: FieldEntity, orderedIds: string[]): void;
+  /** 정의 삭제 + 해당 field_key 값 정리(EAV 고아 방지). */
+  deleteFieldDef(orgId: string, defId: string): boolean;
+
+  // 커스텀필드 값 (entity_id = company.id | deal.id, PK(entity_id, field_key))
+  getFieldValues(orgId: string, entityId: string): Record<string, unknown>;
+  /** value === null 이면 셀 삭제(빈 값). */
+  setFieldValue(orgId: string, entityId: string, fieldKey: string, value: unknown): void;
+
+  // 저장뷰 (가시성: 공유 뷰 ∪ 본인 개인 뷰)
+  listSavedViews(orgId: string, userId: string | null, entity?: FieldEntity): SavedView[];
+  getSavedView(orgId: string, viewId: string): SavedView | undefined;
+  createSavedView(input: Omit<SavedView, "id">): SavedView;
+  updateSavedView(orgId: string, viewId: string, patch: SavedViewPatch): SavedView | undefined;
+  deleteSavedView(orgId: string, viewId: string): boolean;
 
   // 정산 (담당범위 적용 — 상위 deal 가시성 기준)
   // 소유: T09(업무 로직) · 소비: T04(대시보드). 소비 트랙은 이 포트만 쓰고

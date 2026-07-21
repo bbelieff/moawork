@@ -4,6 +4,19 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T05 · 머지큐 ⑤ 정합 실행 (rebase + repo/API 배선) · 003 이중화 발견
+
+- **rebase**: 4커밋 squash → `origin/main`(da7dce0) 위 1커밋. 충돌은 `worklog`·`dispatch-queue` 2건뿐, **코드 충돌 0**(신규 디렉터리). worklog 양측 보존, queue 는 최신 항목 채택 + T02 `resolved:` 주석 보존.
+- **정합 완료**:
+  - `domain-types.ts` vendor → **`@/lib/types` 재export** 전환(형태 완전 동일 확인 후, 모듈 내 import 경로 불변으로 9파일 무수정).
+  - **`Repo` 포트 확장** — 커스텀필드 스텁 2개 → 전 표면(정의 get/update/reorder/delete+값프루닝, 값 get/set, 저장뷰 CRUD+공유∪개인 가시성) + `FieldDefPatch`/`SavedViewPatch`. `LocalRepo` 구현(스토어 배열은 T03 이 마련해 둔 것 사용, 스토어 무변경).
+  - **`RepoCustomStore`** 어댑터 + `getCustomService()` — 운영은 공용 Repo, 테스트는 InMemory 유지.
+  - **API 5 라우트**: /api/fields(+[fieldId]), /api/custom-views(+[viewId], ?default=1), /api/entities/[entityId]/values. 수정판 Next 규약(params=Promise) 준수.
+  - `custom/http.ts` 별도 — crm 의 toErrorResponse 는 crm ValidationError 만 400 매핑해서 core.custom 에러가 500 이 되는 문제 회피. 세션은 T03 `@/lib/auth/session` 직접 사용.
+  - `repo-store.test.ts` 6종(값 정규화 round-trip·옵션 id 검증·org 격리·삭제 프루닝·뷰 가시성/기본뷰·config 왕복). custom 69→**75**.
+- **게이트**: `check.sh` 초록 — 앱 **287→** (전 트랙 통합) 통과, 타 트랙 무영향.
+- ⚠️ **003 어댑터 미착수(의도) — 판정 요망**: T02b `boards/cells.ts` 가 동일 성격 엔진을 병행 구현(해당 파일이 스스로 "머지 정착 후 공용화" followup 명시). 어댑터를 얹으면 **3중 구현**이라 중단하고 통합안 제시(설계 §12.2). 두 엔진 의미가 실제로 다름 — T05=엄격(throw), T02b=관용(null 수렴); 특히 **`date` 가 정규식만 통과해 "2026-02-30"·"2026-13-01" 이 그대로 저장**되고, `boardsRepo.setValues` 는 타입·옵션 대조 없이 raw 기록. 정산(D+180/365)·대시보드가 이를 소비하면 조용히 틀린 결과. 권고=(가) 엄격 통일(cells.ts 를 T05 레지스트리에 위임). 타 트랙 머지 모듈이라 단독 수정하지 않고 판정 대기.
+
 ## 2026-07-21 — T05 · OQ-4(기본 뷰) 규약 확정·구현 — 마지막 미결 해소
 
 - **경위**: 1차 판정 "기본 뷰 = `created_at` ASC" 를 구현하려 스키마 실측 → **`created_at` 이 001 `saved_views`·003 `board_views` 양쪽 모두 부재**(001 은 다른 8개 테이블에, 003 은 `boards`/`items` 에만 있음 — 두 뷰 테이블만 누락). `id` 는 `gen_random_uuid()`(v4 랜덤)이라 생성순 대용 불가 → "created_at ASC + 마이그레이션 없음" 양립 불가를 보고하고 선택지 3안 제시. **재판정으로 (C) 채택**.

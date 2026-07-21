@@ -402,3 +402,51 @@ shared = true 우선  →  name ASC  →  id ASC (tie-break)
 - 테스트 7종: 빈 목록 · shared 우선 · name ASC · id tie-break · **입력 순서 무관(결정성)** · **sort_order 무시** · **003 board_views 형태 적용**.
 
 **Phase 후속**: 사용자가 "이 뷰를 기본으로" 지정하는 기능은 후속. 그때 기획이 `created_at` + `is_default` 를 **두 테이블에 동시** 추가(003 개정 또는 004, 기획 단독). 추가되면 **`compareDefaultView()` 한 함수만 교체**하면 되고 호출부는 불변이다.
+
+---
+
+## 12. 정합 실행 결과 (2026-07-21, 머지큐 ⑤ 차례)
+
+`origin/main`(`da7dce0`) 위로 rebase 후 정합 수행. 게이트 초록.
+
+### 12.1 완료
+
+| 항목 | 결과 |
+|---|---|
+| **rebase** | 4커밋 → 1커밋 squash 후 rebase(충돌 반복 회피). 충돌은 `worklog.md`·`dispatch-queue.yaml` 2건뿐 — **코드 충돌 0**(신규 디렉터리). worklog 는 양측 보존, queue 는 내 최신 항목 채택 + T02 의 `resolved:` 주석 보존. |
+| **`@/lib/types` 재export** | `domain-types.ts` 를 vendor → **재export 로 전환**. 형태가 완전히 동일함을 대조 확인 후 교체(모듈 내 import 경로 불변, 9파일 무수정). |
+| **`@/lib/repo` 표면 반영** | `Repo` 포트의 커스텀필드 스텁(`listFieldDefs`/`createFieldDef`)을 **전 표면으로 확장** — `getFieldDef`/`updateFieldDef`/`reorderFieldDefs`/`deleteFieldDef`(값 프루닝) · `getFieldValues`/`setFieldValue` · `listSavedViews`(공유∪개인)/`getSavedView`/`createSavedView`/`updateSavedView`/`deleteSavedView`. `FieldDefPatch`·`SavedViewPatch` 입력 타입 추가. `LocalRepo` 에 구현(스토어의 `fieldDefs`/`fieldValues`/`savedViews` 배열은 T03 이 이미 마련해 둔 것 사용 — 스토어 변경 없음). |
+| **어댑터/배선** | `RepoCustomStore implements CustomStore`(공용 Repo 위임) + `getCustomService()` 팩토리. 테스트는 기존 `InMemoryCustomStore` 유지 → 운영/테스트 이중 어댑터. |
+| **API 라우트** | `/api/fields`(GET·POST) · `/api/fields/[fieldId]`(PATCH·DELETE) · `/api/custom-views`(GET·POST, `?default=1` 기본뷰) · `/api/custom-views/[viewId]`(PATCH·DELETE) · `/api/entities/[entityId]/values`(GET·PUT). 수정판 Next 규약 준수(`params` 는 Promise). |
+| **HTTP 헬퍼** | `custom/http.ts` 별도 — T02 `crm/http` 의 `toErrorResponse` 는 **crm 의 ValidationError 만** 400 매핑하므로, core.custom 에러를 넘기면 500 이 된다. 세션은 T03 `@/lib/auth/session` 직접 사용. `CustomFieldError` → 409. |
+| **검증 테스트** | `repo-store.test.ts` 6종 — 값 정규화 round-trip(`"42"`→`42`), select 옵션 id 검증, **org 격리**, 정의 삭제 시 값 프루닝, 저장뷰 개인/공유 가시성 + 기본뷰 규약, config 왕복. custom 69 → **75**. |
+
+### 12.2 미착수 — 003 어댑터 (의도적, 결정 필요) ⚠️
+
+**003 어댑터를 만들지 않았다.** 만들면 **3중 구현**이 되기 때문이다.
+
+T02b 가 `app/src/lib/boards/cells.ts` 에 **본 트랙 레지스트리와 동일 성격의 엔진을 병행 구현**해 두었다(해당 파일 주석에 "T05 가 `lib/custom/field-types.ts` 에 동일 성격 레지스트리 보유 … **머지 정착 후 공용화한다(followup)**" 라고 명시). 지금이 그 "머지 정착" 시점이다.
+
+**두 엔진의 의미 차이(실측)** — 같은 데이터에 대해 결과가 다르므로 방치하면 표면별로 동작이 갈린다:
+
+| 입력 | `custom/field-types.ts` (T05) | `boards/cells.ts` (T02b) |
+|---|---|---|
+| 잘못된 값 일반 | **`ValidationError` throw** (호출자 400) | **조용히 `null` 로 수렴** |
+| `number: "abc"` | throw | `null` |
+| `date: "2026-02-30"` / `"2026-13-01"` | throw(달력일 검증) | **정규식만 통과 → 그대로 저장** |
+| `email`/`url`/`phone` | 형식 검증 | 검증 없음(통과) |
+| `select` 미존재 옵션 id | throw(normalize 내 검증) | normalize 통과 + 별도 `validateAgainstOptions()` 를 호출자가 확인해야 함 |
+| `multiselect` 빈값 | `null` | `[]` |
+| `checkbox` 빈값 | `null` | `false` |
+| `number: "1,000"` | throw | `1000`(콤마·₩ 제거) |
+
+또한 T02b `boardsRepo.setValues` 는 **컬럼 타입·옵션 대조 없이 raw 값을 그대로 기록**한다(검증 훅 미연결) → 003 보드에는 지금 잘못된 값이 그대로 들어갈 수 있다.
+
+**제안(코디네이터 판정 요망)** — 어느 쪽 의미를 정본으로 할지가 **제품 결정**이라 단독 진행하지 않았다:
+- **(가) 엄격(T05 의미)으로 통일** — `cells.ts` 를 `custom/field-types.ts` 에 위임(공개 API 유지). 잘못된 입력은 400. T02b 테스트 중 관용 동작에 의존하는 케이스는 수정 필요.
+- **(나) 관용(T02b 의미) 유지 + 검증만 강화** — 저장은 관용, 대신 `boardsRepo.setValues` 앞단에 옵션/달력일 검증을 붙여 최소 무결성 확보.
+- **(다) 두 표면 의미를 의도적으로 분리 유지**(001=엄격, 003=관용) — 이 경우 문서로 명시하고 공용화는 폐기.
+
+권고 **(가)**. 이유: `date` 정규식만 통과시키는 현 003 경로는 달력에 없는 날짜를 저장하며, 이는 T09 정산(D+180/365)·T04 대시보드가 소비할 때 조용히 틀린 결과를 만든다. 다만 T02b 파일 수정이 필요하므로 판정 후 진행한다.
+
+**보류 근거**: 타 트랙의 머지된 모듈을 단독 재작성하지 않는다(AGENTS 규칙 5). 판정 시 `cells.ts` 위임 + 003 검증 훅 연결까지 T05 가 수행 가능.

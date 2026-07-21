@@ -72,3 +72,16 @@ export {
   CustomFieldError,
   type CreateFieldOptions,
 } from "./service";
+
+// 영속성 어댑터 — 공용 @/lib/repo 위에서 도는 운영 구현 + 서비스 팩토리.
+export { RepoCustomStore, getCustomService } from "./repo-store";
+
+// API 라우트 공용 헬퍼(세션/에러 매핑).
+export {
+  UnauthorizedError,
+  requireCtx,
+  jsonOk,
+  jsonError,
+  toErrorResponse,
+  readJson,
+} from "./http";
