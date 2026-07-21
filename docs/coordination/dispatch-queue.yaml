@@ -6,6 +6,56 @@ updated: 2026-07-21
 # 대기 중 (아직 담당 트랙 없음)
 queue: []
 
+  - id: DQ-0014
+    title: "[요청→기획] core.files 문서함 스키마 (파일 메타 + 딜 첨부 + Storage 버킷) — 정본에 부재"
+    assignee: 기획(planning)
+    requested_by: T04
+    opened: 2026-07-21
+    status: queued
+    reason: >-
+      core.files 는 plan_features(001 line 461)에 기능키로 등록되어 MVP 기본 ON 이지만,
+      이를 뒷받침할 테이블이 정본(001+002) 어디에도 없다. DQ-0011 과 동일 원칙
+      ("새 SQL 만들지 마 · 스키마 변경은 기획이 단독 작성")에 따라 T04 가 직접 저작하지
+      않고 요청함. 착수 시 초안(0003_core_files_dash.sql)을 만들었다가 회수했다 —
+      정본 확정 전 추측 금지 + 당시 초안이 폐기된 B안(boards/items)을 참조했기 때문.
+    deliverables:
+      - "파일 메타 테이블 — org_id / 원본파일명 / mime_type / size_bytes / storage_bucket / storage_path / uploaded_by / created_at"
+      - "딜 첨부 조인 — deal_id ↔ file_id (먼데이 '파일 컬럼' 재현, 1딜 N파일)"
+      - "Storage 버킷(비공개) + org 격리 RLS — 경로 첫 세그먼트=org_id 패턴 권장(is_org_member 재사용)"
+      - "Repo 포트 확장 여부 판단 — @/lib/repo 에 파일 CRUD 를 얹을지, 별도 포트로 둘지"
+    context:
+      - "확정 근거: PLAN-v0.2 §3 core.files — '딜 상세에 파일 첨부 · 업로드/다운로드(서명URL)'."
+      - "T10 게이트 §3-B: 'Storage 저장 + 서명 URL 다운로드 · 버킷 정책=조직 멤버만 · 업로드 크기/확장자 제한 · 만료 URL 처리 · 악성/실행 파일 차단'."
+      - "첨부 대상 = deal(딜). 문서함 버전관리·전자서명 체결은 Phase 2 제외(001 line 226)."
+      - "계약상황은 field_defs '계약상황' 프리셋(002 seed)으로 이미 해결 — contracts 테이블 불필요(Phase 2). T04 역할기술의 'contracts 상태'는 이 프리셋 표시/변경으로 충족."
+      - "T04 는 스키마 확정 전까지 core.dash 만 진행(집계=뷰/파생, 새 테이블 불요)."
+
+  - id: DQ-0013
+    title: "[보고→코디네이터] 공용 pre-commit 게이트가 병렬 트랙 워킹트리에 의해 일시 RED — 무관한 트랙 커밋 차단"
+    assignee: 코디네이터(T01/T10)
+    requested_by: T06
+    opened: 2026-07-21
+    status: queued
+    severity: low   # 실차단 아님(일시적) — 운영 규약만 필요
+    observed: >-
+      T06 이 docs 전용 변경(docs/design/T06-notify-design.md)을 커밋하려 할 때
+      .githooks/pre-commit → scripts/check.sh 가 실패해 커밋이 거부됨.
+      실패 원인은 T06 변경과 무관한 T09 의 미완성 워킹트리 코드
+      (app/src/lib/policyfund/presets.test.ts — 'getCategory' 미존재 export,
+      OptionCategory 타입 불일치 등 tsc 에러 8건). 수 분 후 T09 가 정리하여
+      재실행 시 게이트 초록(앱 138 + 워커 1 테스트, exit 0) → **자연 해소, 현재 문제 없음.**
+    root_cause: >-
+      check.sh 는 스테이징 내용이 아니라 **워킹트리 전체**를 대상으로 lint/typecheck/test 한다.
+      여러 트랙이 같은 워킹트리에서 동시에 편집하는 현 구성에서는, 트랙 A 가 파일을 저장한
+      중간 상태(컴파일 불가)가 트랙 B 의 무관한 커밋을 차단할 수 있다(교차 오염).
+    handled_by_T06: >-
+      훅 우회(--no-verify) 하지 않음(규칙), 타 트랙 파일 수정하지 않음(AGENTS.md 5 경계 존중).
+      게이트 초록 회복 후 정상 커밋으로 처리.
+    proposal:
+      - "규약: 게이트 RED 가 자기 변경과 무관하면 우회(--no-verify) 금지 · 타 트랙 파일 수정 금지 · 초록 회복 후 재시도(본 건 처리 방식)."
+      - "권고: 트랙별 워크트리 분리 또는 커밋 타이밍 조율 시 교차 오염 제거 가능 — 코디네이터 판단."
+      - "관측: 동일 증상 반복 시 T10 이 게이트 초록 유지 감시 대상에 '병렬 편집 중 일시 RED' 를 포함."
+
 # 진행 중
 in_progress:
   - id: DQ-0001
@@ -43,10 +93,31 @@ blocked:
     title: 문서·대시 — core.files 문서함 + contracts 상태 + core.dash 기본 대시보드
     assignee: T04
     opened: 2026-07-21
-    status: blocked
+    status: blocked      # core.files 부분만 차단. core.dash 는 DQ-0015 로 분리 착수.
     blocked_on:
-      - 기획 v0.2 확정
-      - DB 스키마 v1 (core.files / contracts / core.dash 도메인 테이블)
+      - "DQ-0014 — core.files 스키마(파일 메타/딜 첨부/Storage 버킷) 정본에 부재"
+    resolved:
+      - "기획 v0.2 확정: docs/PLAN-v0.2.md · DB 스키마 v1: 001_schema_v1.sql(+002 seed) 확보."
+      - "모델 충돌 해소(ADR-0002): 정본=A안(deals/pipelines/stages/settlements). B안(0002_core_crm boards/items) 폐기 → T04 는 deals 기준으로 정렬."
+      - "contracts 상태: 별도 테이블 불요. field_defs '계약상황' 프리셋(002 seed)으로 충족 — contracts 테이블·전자서명은 Phase 2(001 line 226)."
+    notes: >-
+      T04 착수 시 정본 부재로 초안 마이그레이션을 만들었다가 회수(추측 금지 원칙 +
+      당시 폐기된 B안 참조). 스키마는 DQ-0014 로 기획에 요청함.
+
+  - id: DQ-0015
+    title: 대시보드 — core.dash 기본 대시보드(단계별 건수·전환율·정산 요약·재접촉)
+    assignee: T04
+    opened: 2026-07-21
+    status: in_progress
+    notes: >-
+      확정 기획상 core.dash 는 "deals/settlements 집계(뷰)" + "이중저장 금지" 이므로
+      **새 테이블 없이 착수 가능** → DQ-0004(core.files 스키마 대기)와 분리해 진행.
+      소비 계약: @/lib/repo(listDeals/listStages/listPipelines — 담당범위 적용) ·
+      @/lib/auth(Ctx 세션) · T09 app/src/lib/policyfund/settlement.ts(정산 확정 수식).
+      홈 (app)/page.tsx 는 T02/T03 이 남긴 "대시보드 스텁" → T04 가 실제 대시보드로 대체.
+    scope_boundary:
+      - "칸반/딜상세/고객사 화면 = T02 소유(940a6ec 프론트 설계) — T04 는 중복 구현하지 않고 링크로 연결."
+      - "정산 수식 = T09 소유 — 재저작 없이 computeSettlement/sumTotalRevenue 소비."
 
   - id: DQ-0009
     title: 정책자금 업종팩 — ind.policyfund(진행기관 + 상품 60여종 + 지역 + 수식) + settlements 정산
@@ -69,8 +140,21 @@ blocked:
     opened: 2026-07-21
     status: blocked
     blocked_on:
-      - 기획 v0.2 확정
-      - DB 스키마 v1 (mod.notify 도메인 테이블 — 템플릿/발송로그/수신자)
+      # 기획 v0.2·스키마 v1 은 해소됨. 남은 차단은 Phase 2 게이트(벤더 계약).
+      - "mod.notify = Phase 2(벤더) — MVP plan_features 미포함(001_schema_v1.sql L461-462, entitlement OFF)"
+      - "DI-5 벤더 계약 결정(belie) — SOLAPI vs 팝빌 (설계 §6 비교표)"
+    delivered:
+      - "설계: docs/design/T06-notify-design.md (발송 파이프라인·트리거 3종·벤더 어댑터·알림톡→SMS 대체발송·entitlement 게이트·벤더 비교표)"
+    notes: >-
+      기획 v0.2 + 스키마 v1 확정 → Phase 2 설계 완료. 스키마는 v1 의
+      message_templates·messages 를 그대로 사용(기존 마이그레이션 미수정),
+      Phase 2 착수 시 00X_notify_phase2.sql 로 additive 보강
+      (channel·retry_count·provider_message_id·scheduled_at·payload_jsonb).
+      구현 착수는 벤더 계약(DI-5) 후.
+    followup:
+      - "→ belie: 벤더 결정 요청. 알림/문자 단독이면 SOLAPI(DX·리드타임 최단), 홈택스·세금계산서까지 통합이면 팝빌. 어댑터 추상화로 교체비용 최소."
+      - "→ T02: 단계이동(deals.stage 변경) → 알림 트리거 이벤트 계약 필요. 결합은 느슨하게(비동기·베스트에포트) — 알림 실패가 단계이동을 막지 않도록."
+      - "→ T08(mod.hometax): 팝빌 채택 시 벤더 공유 → 계약 통합 논의. T08 이 대기 중인 'VPS 워커 잡 패턴'은 본 설계 §3.1(pg-boss 큐·재시도·singletonKey) 을 선참조 가능."
 
   - id: DQ-0008
     title: 홈택스 — mod.hometax 조회→발행(전자세금계산서) + 워커 잡(pg-boss)
