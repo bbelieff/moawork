@@ -8,7 +8,7 @@ sessions:
   - id: T01
     role: 기반 구축 (모노레포 / CI / check 게이트 / SSOT)
     owner: belie
-    branch: main
+    branch: feat/t01-vercel-install-fix
     status: active
     started: 2026-07-21
     scope:
@@ -19,6 +19,22 @@ sessions:
       - .github/workflows/ci.yml
       - .githooks (pre-commit)
       - SSOT 4문서 (CLAUDE.md, AGENTS.md, docs/worklog.md, docs/coordination/)
+    current_task:
+      id: B0
+      title: Vercel 워크어라운드 회수 — Install Command 오버라이드 제거·정식화
+      status: in_progress
+      notes: >-
+        원인: app 워크스페이스 typecheck 가 app/vitest.config.ts(=include "**/*.ts")를
+        타입체크하는데 vitest 가 app devDeps 에 없어 Vercel 빌드 실패 → 임시로
+        Install Command 오버라이드(npm install --prefix=.. && npm install --no-save -D vitest)를 넣었음.
+        조치: (A)안 채택 — app/package.json devDependencies 에 vitest ^2.1.9 추가(루트와 동일 스펙
+        → npm dedupe 단일 버전). (B)안(tsconfig 에서 vitest.config.ts exclude)은 설정 파일을
+        타입검사에서 제외하는 회피책이라 미채택.
+        경계: app 워크스페이스만 수정(worker/supabase 무수정). 루트 package-lock.json 은
+        워크스페이스 lockfile 이라 함께 갱신됨.
+        남은 것(대시보드 작업 — 디스패치/Cowork 소관): Vercel Project Settings → Build →
+        Install Command 오버라이드 삭제 후 기본값 복귀. main 머지(T10 검수 통과분)  후
+        기본설정 빌드 green + www.moa-work.com 정상 확인.
 
   - id: T03
     role: 조직·보안 (core.org / RLS 멀티테넌시 / 구글 OAuth 로그인)

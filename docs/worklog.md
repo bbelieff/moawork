@@ -4,6 +4,29 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-21 — T01 · B0 Vercel 워크어라운드 회수 (Install Command 오버라이드 제거·정식화)
+
+- **원인 규명**: `app/tsconfig.json` 의 `include: ["**/*.ts"]` 가 `app/vitest.config.ts` 를 타입체크
+  대상에 포함하는데, 그 파일이 `vitest/config` 를 import 함. 그런데 `vitest` 는 **루트 devDeps 에만**
+  있고 app 워크스페이스에는 선언되어 있지 않았음 → app 을 단독 설치하는 Vercel 빌드에서 모듈
+  해석 실패 → 임시로 Install Command 오버라이드
+  (`npm install --prefix=.. && npm install --no-save -D vitest`) 를 넣어 우회하던 상태.
+- **조치 = (A)안 채택**: `app/package.json` devDependencies 에 `"vitest": "^2.1.9"` 추가.
+  루트와 **동일 스펙**이라 npm 이 단일 버전(2.1.9)으로 dedupe — 중복 설치 없음(설치 패키지 수 불변 422).
+  (B)안(tsconfig 에서 `vitest.config.ts` exclude)은 설정 파일을 타입검사에서 빼는 회피책이라 미채택 —
+  vitest.config.ts 를 계속 타입 보호 대상으로 유지하는 편이 정식화에 부합.
+- **검증**:
+  - `bash scripts/check.sh` **초록** — lint + typecheck + test(app 309/23파일, worker 1).
+  - **Vercel 상황 재현**(핵심): app 트리를 워크스페이스 루트 없이 복사 → 오버라이드 **없이**
+    기본 `npm install`(396 패키지) → `npm run typecheck` **exit 0** → `npm run build`
+    **exit 0(21 라우트)**. 즉 기본 Install Command 로 빌드 green 이 성립함을 로컬에서 확인.
+- **경계 준수**: app 워크스페이스만 수정. `worker/`·`supabase/` 무수정(diff 로 확인).
+  루트 `package-lock.json` 은 워크스페이스 공용 lockfile 이라 함께 갱신됨(app→vitest 기록).
+- **남은 것(레포 밖 · 디스패치/Cowork 소관)**: Vercel Project Settings → Build →
+  **Install Command 오버라이드 삭제 후 기본값 복귀**. 이 커밋이 main 에 머지된 **뒤에** 해제해야
+  안전(먼저 지우면 머지 전까지 빌드 실패). 이후 기본설정 빌드 green + www.moa-work.com 정상 확인.
+- 브랜치 `feat/t01-vercel-install-fix` — main 직행 없이 **T10 검수 대기**(다중 세션 규칙).
+
 ## 2026-07-22 — T07 · B5 KPI 리더보드 + 이달의 계약회사 (집계·위젯 선구현)
 
 - 브랜치 `feat/t07-perf-leaderboard-b5` (base `cdf45f6`). DQ-0017.
