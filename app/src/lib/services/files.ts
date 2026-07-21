@@ -13,8 +13,28 @@
 // 경계: 공용 인터페이스(@/lib/types, @/lib/repo/index.ts)는 **변경하지 않는다**.
 //       기존 Repo.getDeal/updateDeal(custom) 만 사용하므로 org·담당범위 격리는 Repo 가 보장한다.
 
-import { getRepo, type Repo } from "@/lib/repo";
-import type { Ctx } from "@/lib/types";
+import { getRepo } from "@/lib/repo";
+import type { Ctx, Deal } from "@/lib/types";
+
+/**
+ * core.files 가 필요로 하는 **최소 포트**(구조적 타이핑).
+ *
+ * ⚠ 머지 의존성: `getDeal` / `updateDeal` 은 **T02crm(②)이 공유 Repo 에 추가한** 메서드다.
+ *   ①T03 파운데이션 단독 Repo 에는 조회 계열(listDeals/listStages/listFieldDefs…)만 있고
+ *   딜 단건 조회·수정이 없다. ② 폐기 시 이 두 메서드를 포트 소유자가 제공해야
+ *   core.files 가 동작한다(디스패치로 요청). core.dash 는 조회만 쓰므로 영향 없음.
+ *
+ * 이 인터페이스를 별도로 두는 이유: 파일 기능이 공용 Repo 전체가 아니라
+ * **정확히 이 2개 메서드에만** 의존한다는 사실을 컴파일 단계에서 드러내기 위함.
+ */
+export interface DealFilesPort {
+  getDeal(ctx: Ctx, id: string): Deal | undefined;
+  updateDeal(
+    ctx: Ctx,
+    id: string,
+    patch: { custom?: Record<string, unknown> },
+  ): Deal | undefined;
+}
 
 /** 업로드 최대 크기 — 10MB. */
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -198,7 +218,7 @@ export class DealNotFoundError extends Error {
 }
 
 export interface FileServiceOptions {
-  repo?: Repo;
+  repo?: DealFilesPort;
   /** id 생성기(테스트 결정성). */
   genId?: () => string;
   /** 현재 시각(테스트 결정성). */

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import type { Ctx, Deal } from "@/lib/types";
-import type { Repo } from "@/lib/repo";
+import type { DealFilesPort } from "./files";
 import {
   appendFileRef,
   attachFile,
@@ -51,15 +51,15 @@ function makeDeal(id: string, orgId = "o1"): Deal {
   };
 }
 
-/** org 스코핑을 흉내내는 가짜 Repo (getDeal/updateDeal 만). */
-function fakeRepo(deals: Deal[]): Repo {
+/** org 스코핑을 흉내내는 가짜 포트. 최소 포트만 구현하므로 Repo 전체 형태와 무관. */
+function fakeRepo(deals: Deal[]): DealFilesPort {
   const byId = new Map(deals.map((d) => [d.id, { ...d }]));
-  const stub = {
-    getDeal: (c: Ctx, id: string) => {
+  return {
+    getDeal: (c, id) => {
       const d = byId.get(id);
       return d && d.org_id === c.org.id ? d : undefined;
     },
-    updateDeal: (c: Ctx, id: string, patch: { custom?: Record<string, unknown> }) => {
+    updateDeal: (c, id, patch) => {
       const d = byId.get(id);
       if (!d || d.org_id !== c.org.id) return undefined;
       const next = { ...d, ...(patch.custom ? { custom: patch.custom } : {}) };
@@ -67,7 +67,6 @@ function fakeRepo(deals: Deal[]): Repo {
       return next;
     },
   };
-  return stub as unknown as Repo;
 }
 
 /** 결정적 id/시각 주입. */
