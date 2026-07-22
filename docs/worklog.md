@@ -154,6 +154,23 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 - 경계: 스키마 마이그레이션·앱 API·벤더 구현 **미포함**(Phase 2). 기존 파일 수정은 `worker/src/index.ts` 배선 1곳뿐.
 - 브랜치: 지시된 `cdf45f6` 기반으로 시작했으나, main 이 그 뒤 `docs/worklog.md` 를 변경(T10 판정이력 150줄 복구)해 머지 충돌이 T10 복구분을 훼손할 위험 → **origin/main 으로 리베이스**(delta 는 docs 전용, 코드 영향 0).
 - 후속: 벤더 확정 시 `providers/solapi.ts` 추가 · `pending.ts` → Supabase 어댑터 교체 · entitlement 게이트 · T02 단계이동 트리거 구독.
+## 2026-07-21 — T09 · B4 정산 모듈 + /api/settlements (부분 완료 · G8 차단 보고)
+
+- 브랜치: `feat/t09-settlements` (base = `origin/main` 4367015).
+- **산출물**
+  - `app/src/lib/policyfund/settlements.ts` — 정산 업무로직. 검증(`parseCreateSettlement`/`parseUpdateSettlement`) + 서비스(`SettlementsService`, repo 포트 소비) + 집계(`summarize`/`dueBy`).
+  - `app/src/app/api/settlements/route.ts` — GET(목록+집계, `?dealId=` 필터) / POST(생성 201).
+  - `app/src/app/api/settlements/[settlementId]/route.ts` — GET / PATCH / DELETE. 미가시 리소스는 404 로 수렴(존재 유출 방지).
+  - `settlements.test.ts` 18 테스트. 게이트 초록(app 360 / worker 1).
+- **정산 필드**: `exec_amount` · `fee_pct` · `fee_paid_at` · `down_payment` — 지시대로 4종 처리. 키 상수는 `POLICYFUND_FIELD_KEYS`(T04 소유 `lib/dash/aggregate.ts`) **참조만**, 편집 없음.
+- **파생값 정책**: `fee_amount`·`total_revenue`·`d180`·`d365` 는 001 generated column = 읽기 전용. 입력에 섞이면 **400 거절**. 집계는 저장된 파생값을 그대로 합산(재계산 금지 = SSOT 유지). `localRepo.derive` 산식이 `settlement.ts`(002_seed formulas 확정본)와 1:1 일치함을 실측 확인.
+- **⚠ 차단 보고 — G8 상태→그룹 자동이동 미착수 (근거 부재)**
+  1. 지시 문서 `docs/coordination/next-prompt_B2-B7.md` 가 **워킹트리·전 브랜치 히스토리 어디에도 없음** → T09 파트 원문 확인 불가.
+  2. **`004` 마이그레이션 없음**(0001/001/002/003 까지). `board_automation_rules` 테이블은 **전 브랜치 grep 0건** → 자동이동 규칙의 스키마 근거 부재.
+  3. **11개 그룹(준비→진행→심사→승인→관리→불가) 목록이 SSOT 에 없음.** `003` 의 `board_groups` 는 빈 테이블 정의(name/color/sort_order)일 뿐이고, `002_seed` 의 "업무관리" 키는 **컬럼 31종** 목록이지 그룹 목록이 아님.
+  → 테이블 형태를 모른 채 구현하면 004 확정 시 전량 재작성이므로 착수하지 않음. **004 스키마 + 11그룹 SSOT 확정 후 재개**.
+- 참고: 지시된 base `cdf45f6` 는 현재 main tip(`4367015`)의 **조상**이며 그 사이 4커밋은 전부 T10 문서(코드 델타 0). 코드 동일 + T10 B0·B1 검수 기준 문서 포함을 위해 main tip 에서 분기함.
+- 다음: PR → T10 검수. G8 은 근거 확정 시 별건 착수.
 
 ## 2026-07-21 — T10 · 머지큐 전 단계 main 런타임 스모크 완료 · 최종 판정
 
