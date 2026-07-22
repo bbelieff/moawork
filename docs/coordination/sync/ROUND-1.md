@@ -114,6 +114,61 @@ owner:  T03
 | T09 | 정책자금 ind.policyfund + settlements 정산 |
 | T10 | 게이트키퍼 — parity / 측정 / RLS 침투테스트 / 완료판정 |
 
+## S-6. Phase 4 — worktree 현황 (실측 `git worktree list`, 2026-07-22)
+
+> ⚠️ **지시서 목록(7개)보다 실제가 2개 많다(9개).** 아래는 실측 전량이다.
+
+| worktree | 브랜치 | 소유/용도 | 판정 |
+|---|---|---|---|
+| `moawork` (공유) | `feat/t09-settlements` | **공유 워킹트리** — T01/T05/T06 이 pwd 로 쓰나 브랜치는 T09 것 | **유지(정리 필요)** — 불일치 1 |
+| `wt-t10-verify` | `t10-verify` | T10 검증 전용 | 유지 |
+| `wt-shell` | `feat/t03-shell-auth` | T03 앱 셸 | 유지 |
+| `wt-b2` | `feat/t02-crm-supabase` | T02 Supabase | 유지 |
+| `wt-t04` | `feat/t04-notices` | T04 공지 | 유지 |
+| **`moawork-t07`** | `feat/t07-perf-leaderboard-b5` | T07 KPI | **유지** — *지시서 목록에 없던 항목* |
+| `wt-settlements` | `hotfix-bug-0001` | 잔여(BUG-0001 핫픽스, 머지됨) | **제거 대상** |
+| `wt-salvage` | **`main`** | 잔여 — **main 을 점유해 다른 트리의 `checkout main` 을 차단**. 보유 SHA `d15bb85` 로 stale | **제거 대상 ★우선** |
+| `wt-t02` | `feat/t02-boards-engine` | 잔여(머지됨) | **제거 대상** |
+
+**제거는 하지 않았다** — belie 확인 후 집행. `wt-salvage` 는 SYNC R1 Phase 1 에서 실제로 작업을 막았다
+(`fatal: 'main' is already used by worktree at .../wt-salvage`) → **우선 제거 권고**.
+
+## S-7. Phase 4 — `.env.local` 필요 변수 (변수명만, 값 금지)
+
+**현재 `.env.local` 은 전 트랙·전 폴더에 부재**하여 실DB 테스트가 전면 불가하다.
+
+### 앱 (`app/.env.local`)
+| 변수 | 용도 |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase 프로젝트 URL (브라우저 노출) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon 키 (브라우저 노출) |
+| `SUPABASE_URL` | 서버 전용 URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | **service_role 키 — 서버 전용. 클라이언트 번들 유출 금지** |
+
+### 워커 (`worker/.env.local`)
+| 변수 | 용도 |
+|---|---|
+| `DATABASE_URL` | Postgres 연결 문자열 (pg-boss) |
+
+### RLS 침투테스트 전용 (T10 — 미주입 시 테스트 **skip**)
+| 변수 | 용도 |
+|---|---|
+| `RLS_TEST_ORG_A_EMAIL` / `RLS_TEST_ORG_A_PASSWORD` | 조직 A 계정 (owner/all) |
+| `RLS_TEST_ORG_B_ID` | 조직 B 의 org_id (교차 접근 대상) |
+| `RLS_TEST_MEMBER_EMAIL` / `RLS_TEST_MEMBER_PASSWORD` | 담당범위(assigned) 멤버 계정 |
+
+> ⚠️ **`.env.example` 갭**: 위 RLS_TEST_* **5개는 `.env.example` 에 문서화돼 있지 않다**(코드만 참조).
+> `git grep 'process.env.'` 실측으로 발견. `.env.example` 보강 필요(변수명만).
+
+## S-8. Phase 4 — 트랙 활성/휴면 지정 (기획2 확정 2026-07-22)
+
+| 구분 | 트랙 | 비고 |
+|---|---|---|
+| **활성** | T02 · T03 · T04 · T05 · T10 | 진행 중 |
+| **휴면** | T01 · T06 · T07 · T09 | **정체성 유지** — 재배정 시 그대로 복귀 |
+| **미생성** | T08 | 세션 미생성 확인 |
+| **은퇴** | 기획1 | 별창 기획 → 코워크 단일 두뇌로 전환 |
+
 ## S-5. T10 검증 판정 SSOT 위치
 
 트랙 완료판정·검수 기준·판정 이력은 **`docs/coordination/T10-gate-checklist.md`** 가 정본이다(본 폐기 대상 아님).

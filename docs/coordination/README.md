@@ -1,19 +1,53 @@
 # coordination — 트랙 조율 SSOT
 
 여러 작업 세션(트랙)이 병렬로 moawork 를 만들 때 서로의 상태를 공유하기 위한 단일 진실 소스(SSOT).
-사람이 읽고 트랙이 갱신한다. 커밋 시 항상 최신 상태를 유지한다.
+
+> **2026-07-22 SYNC R1 개편**: `session-registry.yaml`·`dispatch-queue.yaml`·`provider-status.yaml` 폐기.
+> 트랙 상태·규칙의 정본은 **최신 `sync/ROUND-N.md`** 다. 폐기 원문은 git 히스토리 참조.
 
 ## 파일
 
-| 파일 | 역할 |
-| --- | --- |
-| `session-registry.yaml` | 활성/보류 트랙(세션) 목록 — 누가 무엇을 맡는지 |
-| `provider-status.yaml` | 외부 연동/실행 주체(Supabase·먼데이·VPS 등) 상태 |
-| `dispatch-queue.yaml` | 트랙 간 작업 분배 큐 (대기 / 진행 / 완료) |
+| 파일 | 역할 | writer |
+| --- | --- | --- |
+| `sync/ROUND-N.md` | **정본**. 라운드별 전수조사·집행 조치·승계 규칙(계약 단일소유·승인기록·미해소 DQ) | 디스패치 |
+| `T10-gate-checklist.md` | 검수 기준 · 완료판정 이력 · 미검증 항목 | T10 |
+| `decision-inbox.md` | 결정 요청 / 회신 | 각 트랙 → 기획 |
+| `T02-repo-contract-review.md` | 계약(포트) 리뷰 기록 | T02·T03 |
 
-## 규칙
+## SYNC 프로토콜 — 순환
 
-- 각 파일 상단의 `updated` 날짜를 변경 시 갱신한다.
-- 비밀값(키·토큰·비밀번호)은 이 문서들에 절대 기록하지 않는다.
-- 트랙을 새로 시작하면 `session-registry.yaml` 에 등록하고, 맡은 일을 `dispatch-queue.yaml` 로 옮긴다.
-- 상세 진행 내역은 [`../worklog.md`](../worklog.md) 에 append-only 로 남긴다.
+```
+코워크(두뇌·판정) → 디스패치(허브) → 코드트랙(실행) → 디스패치(종합) → 코워크(판정)
+```
+
+- 한 바퀴 = 1 라운드. 라운드 결과는 **`sync/ROUND-N.md` 로 박제**한다(덮어쓰지 않고 N 증가).
+- 코드트랙은 디스패치와만 대화한다. 트랙끼리 직접 조율하지 않는다.
+
+## 디스패치(허브) 상설 역할
+
+1. **`coordination` 유일 writer** — 트랙은 이 디렉터리를 직접 수정하지 않는다(T10 의 `T10-gate-checklist.md` 는 예외).
+2. **git 브리지** — main clone 을 쥐고 문서 계층을 main 에 직접 반영한다.
+3. **트랙 유일 대화 창구** — 배정·수집·종합.
+
+## ★ 문서 / 코드 경계 규칙 (기획2 확정 2026-07-22)
+
+| 대상 | 경로 | 절차 |
+| --- | --- | --- |
+| **문서** | `docs/coordination/**`, `docs/worklog/**`(및 `docs/worklog.md`) | 디스패치가 **main 직접 커밋·push 허용** |
+| **코드** | `app/`, `worker/`, `supabase/`, `scripts/`, 루트 설정 | **PR + T10 게이트 필수** |
+
+코드 경로는 예외 없이 PR 로 간다. 문서 직접 push 는 디스패치 권한이며, 다른 트랙에 위임되지 않는다.
+
+> **T10 주의**: 문서 직접 push 는 `check.sh` 가 마크다운/YAML **삭제를 잡지 못한다**.
+> 커밋 전 `git diff --stat` 의 **deletions 를 반드시 확인**할 것(실제 사고 이력 있음 — 판정 이력 150줄 소실 후 복구).
+
+## 워크로그 규약
+
+- 상세 진행 내역은 [`../worklog.md`](../worklog.md) 에 append-only 로 남긴다(최신을 위에).
+- 형식: `## 날짜 — 트랙 · 제목`
+- **END 워크로그 미작성 시 다음 배정을 보류**한다.
+
+## 공통 규칙
+
+- 비밀값(키·토큰·비밀번호·연결 문자열)은 이 문서들에 **절대 기록하지 않는다**. 변수명만 적고 값은 `.env*`(gitignore).
+- 트랙 정체성·활성/휴면 상태는 최신 `sync/ROUND-N.md` 를 따른다.
