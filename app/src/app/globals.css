@@ -92,6 +92,23 @@
   }
 }
 
+/* ── shadcn/ui 매핑 — design-tokens.md §2 ──
+ * shadcn 은 아직 도입 전이지만, 도입 시 컴포넌트가 참조할 이름을 미리 브랜드 토큰에 묶어 둔다.
+ * 그래야 shadcn 기본 팔레트(중립 검정 계열)가 브랜드를 덮어쓰지 않는다.
+ * 중립(그레이 스케일)은 shadcn 표준값을 그대로 쓰므로 여기서 정의하지 않는다. */
+:root,
+[data-theme="dark"] {
+  --background: var(--mw-surface);
+  --foreground: var(--mw-fg);
+  --primary: var(--mw-primary);
+  --primary-foreground: var(--mw-on-accent);
+  --secondary: var(--mw-record);
+  --ring: var(--mw-primary);
+  --destructive: var(--mw-error);
+  --border: var(--mw-line);
+  --muted-foreground: var(--mw-sub);
+}
+
 /* Tailwind 유틸에서 bg-mw-card / text-mw-sub 등으로 쓰기 위한 매핑 */
 @theme inline {
   --color-mw-bg: var(--mw-bg);
