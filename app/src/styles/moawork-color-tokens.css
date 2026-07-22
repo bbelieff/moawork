@@ -1,0 +1,22 @@
+:root {
+  --moawork-work-blue: #3478F6;
+  --moawork-flow-teal: #18A999;
+  --moawork-moa-violet: #6B5CFF;
+  --moawork-people-coral: #F26B5E;
+  --moawork-foreground: #191A1E;
+  --moawork-surface: #FFFFFF;
+
+  --moawork-action-primary: var(--moawork-moa-violet);
+  --moawork-record: var(--moawork-work-blue);
+  --moawork-automation: var(--moawork-flow-teal);
+  --moawork-collaboration: var(--moawork-people-coral);
+}
+
+[data-theme="dark"] {
+  --moawork-work-blue: #6EA0FF;
+  --moawork-flow-teal: #47CFBC;
+  --moawork-moa-violet: #8A7CFF;
+  --moawork-people-coral: #FF8A80;
+  --moawork-foreground: #F7F8FA;
+  --moawork-surface: #111216;
+}

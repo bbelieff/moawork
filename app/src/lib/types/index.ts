@@ -199,4 +199,11 @@ export interface Ctx {
   org: Org;
   role: MemberRole;
   scope: MemberScope;
+  /**
+   * 플랫폼 관리자(전 조직 관리) 여부 — 005_app_admins.sql / app_admin_role().
+   * 조직 내 role 과는 별개의 축이다. 관리자 전용 UI 노출에만 쓰고,
+   * 데이터 격리(RLS·scope)를 우회하는 용도로 쓰지 않는다.
+   * 선택 필드 — 미설정은 false 로 취급.
+   */
+  isPlatformAdmin?: boolean;
 }

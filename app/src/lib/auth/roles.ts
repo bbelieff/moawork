@@ -57,3 +57,23 @@ export function isMemberScope(value: unknown): value is MemberScope {
     (MEMBER_SCOPES as readonly string[]).includes(value)
   );
 }
+
+// ── 표시 라벨(UI 공용) — 목업 v0.3 사이드바 "소유자 · 전체 보기" 표기 기준 ──
+const ROLE_LABEL: Record<MemberRole, string> = {
+  owner: "소유자",
+  admin: "관리자",
+  member: "멤버",
+};
+
+const SCOPE_LABEL: Record<MemberScope, string> = {
+  all: "전체 보기",
+  assigned: "내 담당만",
+};
+
+export function roleLabel(role: MemberRole): string {
+  return ROLE_LABEL[role];
+}
+
+export function scopeLabel(scope: MemberScope): string {
+  return SCOPE_LABEL[scope];
+}

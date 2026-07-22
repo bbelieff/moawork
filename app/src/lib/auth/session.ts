@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { Ctx, MemberScope } from "@/lib/types";
 import { isMemberRole } from "@/lib/auth/roles";
+import { adminGrantFromFallback } from "@/lib/auth/admin";
 import { getRepo } from "@/lib/repo";
 import { SEED_ORG_ID } from "@/lib/repo/local/seed";
 
@@ -34,8 +35,19 @@ export async function getSessionOrNull(): Promise<Ctx | null> {
   const membership = repo.listMembers(orgId).find((m) => m.user_id === uid);
   if (!membership) return null;
 
+  // 4b) 관리자 자동부여 — 실DB 미연결 구간이라 폴백 allowlist 로 판정한다.
+  // Supabase 연결 후에는 여기서 app_admin_role RPC 를 주입한다(resolveAdminGrant 2번째 인자).
+  const grant = adminGrantFromFallback(user.email);
+
   return applyAs(
-    { user, org, role: membership.role, scope: membership.scope },
+    {
+      user,
+      org,
+      // 관리자 예약 사용자는 조직 내 역할이 낮게 잡혀 있어도 owner 로 승격한다.
+      role: grant ? grant.role : membership.role,
+      scope: grant ? "all" : membership.scope,
+      isPlatformAdmin: grant?.isPlatform ?? false,
+    },
     jar.get(SESSION_COOKIE.as)?.value,
   );
 }

@@ -1,26 +1,170 @@
 @import "tailwindcss";
 
+/* =====================================================================
+ * MoaWork 디자인 토큰 — 정본: docs/design/design-tokens.md §1
+ * 유래: brand/assets/MoaWork-Nplus-O-logo-pack-v1.1/moawork-color-tokens.css
+ *       (원본 사본을 app/src/styles/moawork-color-tokens.css 에 보존 · 동기화 대상)
+ *
+ * ⚠ 규칙(플레이북 UI §2): **컴포넌트에서 arbitrary hex 금지.**
+ *   색은 반드시 아래 --mw-* 변수만 참조한다. 값 변경은 이 블록(+정본 문서)에서만.
+ * ===================================================================== */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* 브랜드(로고 팔레트) — moawork-color-tokens.css 와 동일 값 */
+  --mw-work-blue: #3478f6;
+  --mw-flow-teal: #18a999;
+  --mw-moa-violet: #6b5cff;
+  --mw-people-coral: #f26b5e;
+  --mw-fg: #191a1e;
+  --mw-surface: #ffffff;
+
+  /* 역할 별칭(의미로 참조) */
+  --mw-primary: var(--mw-moa-violet); /* Primary CTA·브랜드·설정 */
+  --mw-record: var(--mw-work-blue); /* 딜·기록·파이프라인 */
+  --mw-automation: var(--mw-flow-teal); /* 자동화·연결·흐름 */
+  --mw-people: var(--mw-people-coral); /* 담당자·댓글·멘션 — UI 전용 */
+
+  /* UI 상태색(브랜드·코랄과 분리, WCAG AA) */
+  --mw-success: #16a34a;
+  --mw-warning: #d97706;
+  --mw-error: #dc2626;
+  --mw-info: var(--mw-work-blue);
+
+  /* 셸 표면 토큰 — UI목업_모아워크셸_v0.3 (브랜드 v1.0 O Cool System) */
+  --mw-bg: #f7f8fa; /* 앱 배경 */
+  --mw-card: #ffffff; /* 카드·사이드바 표면 */
+  --mw-sub: #6b7280; /* 보조 텍스트 */
+  --mw-line: #e8eaef; /* 경계선 */
+  --mw-body: #3f4249; /* 본문 단락 */
+  --mw-on-accent: #ffffff; /* 강조 배경 위 전경 */
+  --mw-tint-blue: #eaf0fe;
+  --mw-tint-teal: #eaf7f4;
+  --mw-tint-coral: #fdecea;
+  --mw-radius: 14px;
 }
 
+/* 다크 — 브랜드 v1.0 Dark 토큰(Surface #111216) */
+[data-theme="dark"] {
+  --mw-work-blue: #6ea0ff;
+  --mw-flow-teal: #47cfbc;
+  --mw-moa-violet: #8a7cff;
+  --mw-people-coral: #ff8a80;
+  --mw-fg: #f7f8fa;
+  --mw-surface: #111216;
+
+  --mw-success: #4ade80;
+  --mw-warning: #fbbf24;
+  --mw-error: #f87171;
+
+  --mw-bg: #111216;
+  --mw-card: #1a1c22;
+  --mw-sub: #9aa0ac;
+  --mw-line: #262932;
+  --mw-body: #c6cad3;
+  --mw-on-accent: #10131a;
+  --mw-tint-blue: rgba(110, 160, 255, 0.14);
+  --mw-tint-teal: rgba(71, 207, 188, 0.14);
+  --mw-tint-coral: rgba(255, 138, 128, 0.15);
+}
+
+/* data-theme 미지정(최초 방문)일 때 OS 설정을 따른다 — 토글하면 data-theme 로 확정. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --mw-work-blue: #6ea0ff;
+    --mw-flow-teal: #47cfbc;
+    --mw-moa-violet: #8a7cff;
+    --mw-people-coral: #ff8a80;
+    --mw-fg: #f7f8fa;
+    --mw-surface: #111216;
+
+    --mw-success: #4ade80;
+    --mw-warning: #fbbf24;
+    --mw-error: #f87171;
+
+    --mw-bg: #111216;
+    --mw-card: #1a1c22;
+    --mw-sub: #9aa0ac;
+    --mw-line: #262932;
+    --mw-body: #c6cad3;
+    --mw-on-accent: #10131a;
+    --mw-tint-blue: rgba(110, 160, 255, 0.14);
+    --mw-tint-teal: rgba(71, 207, 188, 0.14);
+    --mw-tint-coral: rgba(255, 138, 128, 0.15);
+  }
+}
+
+/* ── shadcn/ui 매핑 — design-tokens.md §2 ──
+ * shadcn 은 아직 도입 전이지만, 도입 시 컴포넌트가 참조할 이름을 미리 브랜드 토큰에 묶어 둔다.
+ * 그래야 shadcn 기본 팔레트(중립 검정 계열)가 브랜드를 덮어쓰지 않는다.
+ * 중립(그레이 스케일)은 shadcn 표준값을 그대로 쓰므로 여기서 정의하지 않는다. */
+:root,
+[data-theme="dark"] {
+  --background: var(--mw-surface);
+  --foreground: var(--mw-fg);
+  --primary: var(--mw-primary);
+  --primary-foreground: var(--mw-on-accent);
+  --secondary: var(--mw-record);
+  --ring: var(--mw-primary);
+  --destructive: var(--mw-error);
+  --border: var(--mw-line);
+  --muted-foreground: var(--mw-sub);
+}
+
+/* Tailwind 유틸에서 bg-mw-card / text-mw-sub 등으로 쓰기 위한 매핑 */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-mw-bg: var(--mw-bg);
+  --color-mw-card: var(--mw-card);
+  --color-mw-fg: var(--mw-fg);
+  --color-mw-sub: var(--mw-sub);
+  --color-mw-line: var(--mw-line);
+  --color-mw-body: var(--mw-body);
+  --color-mw-primary: var(--mw-primary);
+  --color-mw-record: var(--mw-record);
+  --color-mw-automation: var(--mw-automation);
+  --color-mw-people: var(--mw-people);
+  --color-mw-success: var(--mw-success);
+  --color-mw-warning: var(--mw-warning);
+  --color-mw-error: var(--mw-error);
+  --color-mw-on-accent: var(--mw-on-accent);
+  --color-mw-tint-blue: var(--mw-tint-blue);
+  --color-mw-tint-teal: var(--mw-tint-teal);
+  --color-mw-tint-coral: var(--mw-tint-coral);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
+body {
+  background: var(--mw-bg);
+  color: var(--mw-fg);
+}
+
+/* 테마별 자산 전환(로고 등) — 세 상태(light 확정 / dark 확정 / OS 추종)를 모두 덮는다. */
+.mw-only-dark {
+  display: none;
+}
+.mw-only-light {
+  display: block;
+}
+[data-theme="dark"] .mw-only-light {
+  display: none;
+}
+[data-theme="dark"] .mw-only-dark {
+  display: block;
+}
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  :root:not([data-theme="light"]) .mw-only-light {
+    display: none;
+  }
+  :root:not([data-theme="light"]) .mw-only-dark {
+    display: block;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* 테마 전환 시 표면/경계만 부드럽게 — 목업 v0.3 과 동일 */
+body,
+aside,
+header {
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease;
 }
