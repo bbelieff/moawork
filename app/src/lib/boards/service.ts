@@ -157,10 +157,17 @@ export class BoardsService {
 
   createItem(ctx: Ctx, boardId: string, input: NewItem): ItemWithValues {
     const detail = this.requireEditableBoardDetail(ctx, boardId);
-    // 생성 시점엔 인라인 피드백 지면이 없으므로, 통과분만 싣는다(무결성 필드 오류는 throw).
-    const values = input.values
-      ? this.validateValues(detail.columns, input.values).values
-      : undefined;
+    // 생성은 **인라인 피드백 지면이 없다**(고칠 셀이 화면에 아직 없음).
+    // 따라서 통과분만 조용히 싣지 않고 **거부한다** — 값을 말없이 버리는 것은
+    // 관대 정책이 막으려던 데이터 유실 그 자체다. (편집은 setCells 가 errors 로 돌려준다.)
+    let values: Record<string, CellValue> | undefined;
+    if (input.values) {
+      const res = this.validateValues(detail.columns, input.values);
+      if (res.errors.length > 0) {
+        throw new BoardRuleError(res.errors.map((e) => `${e.label}: ${e.message}`).join(", "));
+      }
+      values = res.values;
+    }
     const item = this.repo.createItem(ctx, boardId, { ...input, values });
     return this.compose(ctx, [item], detail.columns)[0];
   }
