@@ -144,10 +144,19 @@ export class NoticesService {
     if (patch.publishedAt !== undefined) cells[NOTICE_KEYS.publishedAt] = patch.publishedAt;
     if (patch.authorId !== undefined) cells[NOTICE_KEYS.author] = patch.authorId;
 
-    const item =
-      Object.keys(cells).length > 0
-        ? this.boards.setCells(ctx, board.id, noticeId, cells)
-        : this.boards.getItem(ctx, board.id, noticeId);
+    // setCells 는 {item, errors} 를 돌려준다(T05 B3 — 관대 + 인라인 피드백 정책).
+    // 공지는 인라인 편집 화면이 아니라 서비스 API 라 피드백 지면이 없으므로,
+    // 검증 실패를 조용히 삼키지 않고 거부한다(잘못된 분류 id 등).
+    let item: ItemWithValues;
+    if (Object.keys(cells).length > 0) {
+      const res = this.boards.setCells(ctx, board.id, noticeId, cells);
+      if (res.errors.length > 0) {
+        throw new NoticeRuleError(res.errors.map((e) => `${e.label}: ${e.message}`).join(", "));
+      }
+      item = res.item;
+    } else {
+      item = this.boards.getItem(ctx, board.id, noticeId);
+    }
     return this.toNotice(board.id, item);
   }
 

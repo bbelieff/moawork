@@ -25,6 +25,7 @@ import type {
   NewGroup,
   NewItem,
   NewView,
+  ViewPatch,
 } from "@/lib/boards/store";
 import { db } from "./store";
 
@@ -260,6 +261,16 @@ export class LocalBoardsRepo implements BoardsRepo {
     );
   }
 
+  /** 단건 조회 — 가시성 규칙은 listViews 와 동일(공유뷰 ∪ 내 개인뷰). */
+  getView(ctx: Ctx, id: string): BoardView | undefined {
+    return db().boardViews.find(
+      (v) =>
+        v.id === id &&
+        v.org_id === ctx.org.id &&
+        (v.shared || v.user_id === ctx.user.id || v.user_id === null),
+    );
+  }
+
   createView(ctx: Ctx, boardId: string, input: NewView): BoardView {
     const view: BoardView = {
       id: crypto.randomUUID(),
@@ -275,6 +286,18 @@ export class LocalBoardsRepo implements BoardsRepo {
     };
     db().boardViews.push(view);
     return view;
+  }
+
+  updateView(ctx: Ctx, id: string, patch: ViewPatch): BoardView | undefined {
+    const v = this.getView(ctx, id);
+    if (!v) return undefined;
+    if (patch.name !== undefined) v.name = patch.name;
+    if (patch.kind !== undefined) v.kind = patch.kind;
+    if (patch.filters !== undefined) v.filters_jsonb = patch.filters;
+    if (patch.sort !== undefined) v.sort_jsonb = patch.sort;
+    if (patch.visibleColumns !== undefined) v.visible_columns_jsonb = patch.visibleColumns;
+    if (patch.shared !== undefined) v.shared = patch.shared;
+    return v;
   }
 
   deleteView(ctx: Ctx, id: string): boolean {

@@ -198,7 +198,9 @@ const SPECS: Record<FieldType, FieldTypeSpec> = {
       if (isBlank(raw)) return null;
       if (typeof raw !== "number" && typeof raw !== "string")
         throw new ValidationError("number: 숫자여야 합니다");
-      const n = typeof raw === "number" ? raw : Number(raw);
+      // 사용자는 금액을 "1,200,000" / "₩1,200,000" 처럼 입력한다(천단위 구분·통화기호·공백).
+      // 표기만 제거하고 숫자를 해석한다 — 숫자로 안 읽히면 아래에서 거부.
+      const n = typeof raw === "number" ? raw : Number(raw.replace(/[,\s₩]/g, ""));
       if (!Number.isFinite(n)) throw new ValidationError("number: 유효한 숫자가 아닙니다");
       return n;
     },
@@ -224,12 +226,16 @@ const SPECS: Record<FieldType, FieldTypeSpec> = {
     supportsOptions: false,
     operators: NUM_OPS,
     normalize: (raw) => {
-      const s = asString(raw, "date", 10);
+      let s = asString(raw, "date", 40);
       if (s === null) return null;
+      // ISO 일시를 받으면 날짜부만 취한다(날짜 컬럼에 타임스탬프 붙여넣기 허용).
+      // 임의 문자열을 new Date() 로 추측하지는 않는다 — 롤오버로 엉뚱한 날이 되기 때문.
+      const iso = /^(\d{4}-\d{2}-\d{2})[T ]/.exec(s);
+      if (iso) s = iso[1];
       if (!/^\d{4}-\d{2}-\d{2}$/.test(s))
         throw new ValidationError("date: YYYY-MM-DD 형식이어야 합니다");
       const d = new Date(`${s}T00:00:00Z`);
-      // 재확인(달력상 유효 + 정규화 후 동일).
+      // 재확인(달력상 유효 + 정규화 후 동일) — 2026-02-30 / 2026-13-01 은 여기서 걸린다.
       if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s)
         throw new ValidationError("date: 존재하지 않는 날짜입니다");
       return s;

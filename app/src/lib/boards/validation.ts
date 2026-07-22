@@ -4,7 +4,7 @@
 
 import { FIELD_TYPES, type FieldOption, type FieldType } from "@/lib/types";
 import { BOARD_VIEW_KINDS, type BoardViewKind, type CellValue } from "./types";
-import type { NewBoard, NewColumn, NewGroup, NewItem } from "./store";
+import type { NewBoard, NewColumn, NewGroup, NewItem, NewView, ViewPatch } from "./store";
 
 export class ValidationError extends Error {
   constructor(message: string) {
@@ -118,4 +118,51 @@ export function parseNewItem(body: unknown): NewItem {
     item.assigned_to = optString(body.assigned_to, "assigned_to", 64);
   if (body.values !== undefined) item.values = parseValuesMap(body.values);
   return item;
+}
+
+// ── 저장뷰(board_views · 003) ────────────────────────────────
+
+function parseViewShape(body: Record<string, unknown>, partial: boolean): ViewPatch {
+  const out: ViewPatch = {};
+
+  if (body.name !== undefined || !partial) out.name = reqString(body.name, "name", 100);
+  if (body.kind !== undefined || !partial) {
+    if (!isBoardViewKind(body.kind))
+      throw new ValidationError(`kind: ${BOARD_VIEW_KINDS.join(" | ")} 중 하나여야 합니다`);
+    out.kind = body.kind;
+  }
+  if (body.filters !== undefined) {
+    if (!isObject(body.filters)) throw new ValidationError("filters: 객체여야 합니다");
+    out.filters = body.filters;
+  }
+  if (body.sort !== undefined) {
+    if (!Array.isArray(body.sort)) throw new ValidationError("sort: 배열이어야 합니다");
+    out.sort = body.sort;
+  }
+  if (body.visibleColumns !== undefined) {
+    if (!Array.isArray(body.visibleColumns))
+      throw new ValidationError("visibleColumns: 배열이어야 합니다");
+    out.visibleColumns = body.visibleColumns;
+  }
+  if (body.shared !== undefined) {
+    if (typeof body.shared !== "boolean")
+      throw new ValidationError("shared: 불리언이어야 합니다");
+    out.shared = body.shared;
+  }
+  return out;
+}
+
+/** 뷰 생성 본문 — name·kind 필수. */
+export function parseNewView(body: unknown): NewView {
+  if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
+  return parseViewShape(body, false) as NewView;
+}
+
+/** 뷰 수정 본문 — 전 필드 선택. 빈 패치는 거부(무의미한 쓰기 방지). */
+export function parseViewPatch(body: unknown): ViewPatch {
+  if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
+  const patch = parseViewShape(body, true);
+  if (Object.keys(patch).length === 0)
+    throw new ValidationError("수정할 필드가 없습니다");
+  return patch;
 }

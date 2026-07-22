@@ -4,6 +4,40 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-22 — T05 · B3 상태컬럼 UI · board_views CRUD · 003 검증엔진 단일화
+
+브랜치 `feat/t05-b3-status-views` (base=main `14a1c91`). check.sh 초록 — 앱 **338** 테스트(+29).
+
+**지시 문서 부재**: 배정이 가리킨 `docs/coordination/next-prompt_B2-B7.md` 가 **전 ref·전 워킹트리·디스크 어디에도 없음**(DQ-0011 때 003/T02b 지침 부재와 동일 패턴). 지시 메시지의 요약을 스펙으로 삼아 진행했고, 요약의 전제 2건을 실측으로 정정했다:
+- ❗ **"004 스키마의 board_views"** → 004 마이그레이션은 **존재하지 않음**. `board_views` 는 **003_boards_engine.sql:73** 에 이미 있고 main 에 랜딩됨. 새 마이그레이션 없이 003 위에 구현(스키마 무변경).
+- ❗ **"status 컬럼"** → 001 `field_type` enum 13종에 `status` 는 **없다**. 먼데이 상태 컬럼 = `select`/`multiselect` 를 **색 칩으로 렌더**하는 표현 문제이며 색 출처는 `FieldOption.color`. 스키마 변경 불필요.
+
+**(1) 003 통합 followup — 검증 엔진 단일화** (기획2 판정 이행)
+- `lib/boards/cells.ts` 를 자체 구현 → **T05 레지스트리(`lib/custom/field-types`) 위임 어댑터**로 전환. 2중 구현 제거.
+- 구 `normalizeCellValue`/`validateAgainstOptions` **제거** — 형식 오류를 조용히 null 로 수렴시켜(데이터 유실) 관대 정책과 배치. 대체 = `validateCell() → {ok, value, error}`.
+- 위임 과정에서 **엔진 쪽 실제 결함 2건**을 발견해 엔진에서 교정(보드 파리티 복원 + 커스텀필드도 동시 수혜):
+  - `number` 가 `"1,200,000"`·`"₩1,200,000"` 을 거부 → 천단위/통화기호 허용.
+  - `date` 가 입력을 10자로 잘라 ISO 일시(`2026-08-01T00:00:00Z`)를 형식오류로 처리 → ISO 날짜부 수용. **달력 검증은 유지**(`2026-02-30`·`2026-13-01` 은 계속 거부 — 구 boards 는 롤오버로 통과시켜 잘못된 날짜를 저장했다).
+
+**(2) setValues 검증 훅 — 관대+인라인 / 무결성 엄격**
+- `BoardsService.validateValues()` 가 쓰기 경로 단일 관문. 통과분만 저장, 실패분은 `errors[]` 로 반환(throw 아님). 한 셀이 틀려도 **나머지는 저장**되고 **기존 값은 null 로 덮이지 않는다**.
+- 예외: `isIntegrityField`(exec_amount·fee_pct·fee_paid_at)는 정산 generated column 의존 → 하드 거부(throw).
+- `setCells` 반환이 `ItemWithValues` → `{item, errors}` 로 변경(인라인 피드백 지면 확보).
+
+**(3) status 컬럼 UI**
+- `lib/boards/status-palette.ts` — 옵션 색 해석(지정색 우선 → id 해시 기반 **결정적** 팔레트 배정), hex 정규화, WCAG 명암비/글자색 선택, 더미 상태 옵션(시드 확정 시 더미만 제거).
+- `components/boards/StatusCell.tsx` — `StatusPill`/`StatusCell`(읽기, 고아 값은 회색 칩+id 노출로 가시화)·`StatusSelect`(편집, 선택 색을 컨트롤에 적용). `GenericBoardTable` 배선.
+- **접근성 실측 교정**: 칩은 작은 텍스트라 AA 4.5:1 필요. 먼데이 원색 red/blue/purple/teal 은 흰·검 **어느 글자색으로도 4.5 미달**(최대 ~4.1)이라 hue 유지한 채 어둡게 조정. 명암비 property 테스트가 회귀를 잡는다.
+
+**(4) board_views CRUD API** (003 기반, 마이그레이션 없음)
+- 포트에 `getView`/`updateView` + `ViewPatch` 추가(전용 BoardsRepo 포트 — T03 공용계약 `lib/repo/index.ts` 무변경), local 어댑터 구현.
+- 서비스: `listViews`/`getDefaultView`/`createView`/`updateView`/`deleteView`.
+- 기본 뷰는 T05 `pickDefaultView` **재사용**(2중 구현 금지) — shared 우선 → name ASC → id ASC (기획2 OQ-4 재판정).
+- 라우트: `GET|POST /api/boards/[boardId]/views` (`?default=1`), `PATCH|DELETE /api/board-views/[viewId]`. `lib/boards/http.ts` 로 boards 에러→상태코드 매핑(400/401/404/409).
+
+**⛔ 미착수 — 하위아이템(subitems): 스키마 부재로 차단**
+003 `items` 에 `parent_item_id` 가 **없다**(전문 확인). 하위아이템은 마이그레이션이 필요한데 ADR-0002 규칙상 **스키마 정본은 기획 세션이 단독 작성**하므로 T05 가 쓰지 않는다. → `DQ-0013` 으로 기획에 요청 등록. 나머지 3건은 스키마 무변경으로 완료.
+
 ## 2026-07-21 — T03 · B1 앱 셸 v0.3 + 브랜드 토큰 + 관리자 자동부여(4b) + RLS 침투테스트 하네스
 
 브랜치 `feat/t03-shell-auth` (격리 worktree). check.sh 초록 + `next build` 성공.
