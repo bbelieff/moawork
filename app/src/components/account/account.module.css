@@ -1,0 +1,416 @@
+.menuRoot {
+  position: relative;
+}
+.menuButton {
+  display: inline-flex;
+  min-height: 44px;
+  max-width: 260px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--mw-line);
+  border-radius: var(--mw-radius);
+  background: var(--mw-card);
+  color: var(--mw-fg);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.avatar {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--mw-tint-coral);
+  color: var(--mw-people);
+  font-weight: 800;
+}
+
+.menuIdentity {
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.menuIdentity strong,
+.menuIdentity small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menuIdentity small {
+  margin-top: 2px;
+  color: var(--mw-sub);
+  font-size: 11px;
+}
+
+.menuPanel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(300px, calc(100vw - 24px));
+  border: 1px solid var(--mw-line);
+  border-radius: var(--mw-radius);
+  background: var(--mw-card);
+  box-shadow: 0 18px 48px color-mix(in srgb, var(--mw-fg) 14%, transparent);
+  padding: 8px;
+}
+
+.menuPanel[hidden] {
+  display: none;
+}
+
+.menuSummary {
+  border-bottom: 1px solid var(--mw-line);
+  margin-bottom: 4px;
+  padding: 10px;
+}
+
+.menuSummary strong,
+.menuSummary small {
+  display: block;
+}
+
+.menuSummary small {
+  color: var(--mw-sub);
+  margin-top: 3px;
+}
+
+.menuList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.menuItem {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--mw-fg);
+  padding: 10px;
+  text-align: left;
+  text-decoration: none;
+}
+
+.menuItem:hover {
+  background: var(--mw-bg);
+}
+
+.page {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+}
+
+.heading {
+  margin-bottom: 20px;
+}
+
+.heading h1 {
+  font-size: clamp(28px, 4vw, 40px);
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.heading p {
+  color: var(--mw-body);
+  margin: 8px 0 0;
+}
+
+.identity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--mw-line);
+  border-radius: calc(var(--mw-radius) + 6px);
+  background: var(--mw-card);
+  padding: 16px;
+}
+
+.identity .avatar {
+  width: 52px;
+  height: 52px;
+  font-size: 18px;
+}
+
+.identity h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.identity p {
+  color: var(--mw-sub);
+  margin: 4px 0 0;
+}
+
+.roleBadge {
+  border-radius: 999px;
+  background: var(--mw-tint-teal);
+  color: var(--mw-automation);
+  font-size: 13px;
+  font-weight: 800;
+  padding: 7px 10px;
+}
+
+.nav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.navLink,
+.navDisabled {
+  display: grid;
+  min-height: 44px;
+  place-items: center;
+  border: 1px solid var(--mw-line);
+  border-radius: 12px;
+  background: var(--mw-card);
+  color: var(--mw-body);
+  padding: 8px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.navLink[aria-current="page"] {
+  border-color: var(--mw-primary);
+  background: var(--mw-primary);
+  color: var(--mw-on-accent);
+  font-weight: 800;
+}
+
+.navDisabled {
+  color: var(--mw-sub);
+}
+
+.bento {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 12px;
+}
+
+.card {
+  min-width: 0;
+  border: 1px solid var(--mw-line);
+  border-radius: calc(var(--mw-radius) + 2px);
+  background: var(--mw-card);
+  padding: 18px;
+}
+
+.cardWide {
+  grid-column: 1 / -1;
+}
+
+.card h2,
+.card h3 {
+  margin: 0;
+}
+
+.card p {
+  color: var(--mw-body);
+  margin: 8px 0;
+}
+
+.card small {
+  color: var(--mw-sub);
+}
+
+.stat {
+  color: var(--mw-primary);
+  font-size: 28px;
+  font-weight: 900;
+  margin-top: 10px;
+}
+
+.definitionList {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0 0;
+}
+
+.definitionList div {
+  display: grid;
+  gap: 3px;
+}
+
+.definitionList dt {
+  color: var(--mw-sub);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.definitionList dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.actionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.primaryAction,
+.secondaryAction,
+.dangerAction {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--mw-line);
+  border-radius: 12px;
+  background: var(--mw-card);
+  color: var(--mw-fg);
+  padding: 9px 14px;
+  text-decoration: none;
+}
+
+.primaryAction {
+  border-color: var(--mw-primary);
+  background: var(--mw-primary);
+  color: var(--mw-on-accent);
+}
+
+.dangerAction {
+  border-color: var(--mw-error);
+  color: var(--mw-error);
+}
+
+.blocked {
+  border-left: 4px solid var(--mw-warning);
+  background: color-mix(in srgb, var(--mw-warning) 9%, var(--mw-card));
+  padding: 14px;
+}
+
+.advanced {
+  margin-top: 14px;
+  border: 1px dashed var(--mw-line);
+  border-radius: 12px;
+  background: var(--mw-bg);
+  padding: 12px;
+}
+
+.advanced summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.dialog {
+  width: min(500px, calc(100% - 24px));
+  border: 1px solid var(--mw-line);
+  border-radius: calc(var(--mw-radius) + 4px);
+  background: var(--mw-card);
+  color: var(--mw-fg);
+  padding: 0;
+  box-shadow: 0 24px 70px color-mix(in srgb, var(--mw-fg) 24%, transparent);
+}
+
+.dialog::backdrop {
+  background: color-mix(in srgb, var(--mw-fg) 54%, transparent);
+}
+
+.dialogBody {
+  padding: 20px;
+}
+
+.dialogBody h2 {
+  margin: 0;
+}
+
+.dialogBody p {
+  color: var(--mw-body);
+}
+
+.dialogActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--mw-line);
+  padding: 14px 20px;
+}
+
+.state {
+  border: 1px solid var(--mw-line);
+  border-radius: var(--mw-radius);
+  background: var(--mw-card);
+  padding: 20px;
+}
+
+.skeleton {
+  min-height: 120px;
+  background: var(--mw-bg);
+}
+
+.menuButton:focus-visible,
+.menuItem:focus-visible,
+.navLink:focus-visible,
+.primaryAction:focus-visible,
+.secondaryAction:focus-visible,
+.dangerAction:focus-visible,
+.advanced summary:focus-visible {
+  outline: 3px solid var(--mw-primary);
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .menuIdentity {
+    display: none;
+  }
+
+  .menuButton {
+    padding: 5px;
+  }
+
+  .identity {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .roleBadge {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bento {
+    grid-template-columns: 1fr;
+  }
+
+  .cardWide {
+    grid-column: auto;
+  }
+
+  .actionRow,
+  .dialogActions {
+    flex-direction: column;
+  }
+
+  .primaryAction,
+  .secondaryAction,
+  .dangerAction {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menuPanel,
+  .dialog,
+  .skeleton {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}
