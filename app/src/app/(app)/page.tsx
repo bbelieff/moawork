@@ -32,7 +32,8 @@ export default async function DashboardPage({
   const month = typeof sp.month === "string" ? sp.month : undefined;
 
   const base = await getSession();
-  const ctx = applyAs(base, asParam);
+  const devToolsEnabled = process.env.NODE_ENV !== "production";
+  const ctx = devToolsEnabled ? applyAs(base, asParam) : base;
 
   const dash = buildDashboard(ctx, { month });
   const repo = getRepo();
@@ -51,26 +52,28 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* 개발용 역할 전환 — 담당범위 격리 시연 */}
-      <section className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-zinc-500">보기 역할(개발용):</span>
-        {roles.map((r) => (
-          <Link
-            key={r}
-            href={`/?as=${r}`}
-            className={`rounded border px-2 py-1 text-xs ${
-              ctx.role === r
-                ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
-                : "border-zinc-200 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
-            }`}
-          >
-            {r}
-          </Link>
-        ))}
-        <span className="ml-2 text-xs text-zinc-400">
-          현재 {ctx.role}/{ctx.scope} — member+assigned 는 본인 담당만 집계됩니다.
-        </span>
-      </section>
+      {/* 개발용 역할 전환 — 운영에서는 렌더하지 않는다. */}
+      {devToolsEnabled ? (
+        <section className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-zinc-500">보기 역할(개발용):</span>
+          {roles.map((r) => (
+            <Link
+              key={r}
+              href={`/?as=${r}`}
+              className={`rounded border px-2 py-1 text-xs ${
+                ctx.role === r
+                  ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+                  : "border-zinc-200 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              }`}
+            >
+              {r}
+            </Link>
+          ))}
+          <span className="ml-2 text-xs text-zinc-400">
+            현재 {ctx.role}/{ctx.scope} — member+assigned 는 본인 담당만 집계됩니다.
+          </span>
+        </section>
+      ) : null}
 
       <FeatureGate ctx={ctx} feature={FEATURES.dash} label="대시보드(core.dash)">
         <div className="flex flex-col gap-6">

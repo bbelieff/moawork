@@ -1,6 +1,4 @@
 import type { ReactNode } from "react";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { getRepo } from "@/lib/repo";
 import { Logo } from "@/components/brand/Logo";
@@ -29,15 +27,6 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   );
 
   const initial = (ctx.user.name ?? "?").trim().charAt(0) || "?";
-
-  async function signOut() {
-    "use server";
-    const jar = await cookies();
-    jar.delete("mw_uid");
-    jar.delete("mw_org");
-    jar.delete("mw_as");
-    redirect("/login");
-  }
 
   return (
     <div className="flex min-h-full flex-1">
@@ -81,7 +70,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
               {roleLabel(ctx.role)} · {scopeLabel(ctx.scope)}
             </small>
           </div>
-          <form action={signOut}>
+          <form action="/auth/signout" method="post">
             <button
               type="submit"
               title="로그아웃"
