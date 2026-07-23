@@ -17,6 +17,12 @@ describe("login A v1.1 UI contract", () => {
     expect(page).toContain("모든 업무 흐름의 중심");
   });
 
+  it("로그인 패널 우측 상단 브랜드 심볼을 충분한 크기로 보여 준다", () => {
+    expect(page).toContain("<Symbol height={26} />");
+    expect(styles).toContain("width: 38px");
+    expect(styles).toContain("height: 38px");
+  });
+
   it("색상명이 아닌 제품 언어를 사용한다", () => {
     for (const label of ["기록됨", "자동 정리", "한곳에 모임", "함께 진행"]) {
       expect(page).toContain(`label=\"${label}\"`);

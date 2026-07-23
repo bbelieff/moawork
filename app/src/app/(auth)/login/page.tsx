@@ -97,7 +97,7 @@ export default async function LoginPage({
         <div className={styles.loginStack}>
           <div className={styles.miniCopy}>
             <span className={styles.symbolWrap}>
-              <Symbol height={18} />
+              <Symbol height={26} />
             </span>
             하나로 모으고, 자유롭게 일하세요
           </div>
