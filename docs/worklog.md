@@ -4,6 +4,14 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-23 — Codex-Failover-Control · Claude 소진 인수 START
+
+- belie가 Claude 주간 사용량 소진과 Codex 인수를 명시 승인했다.
+- GitHub main `613cc67`, 열린 PR 0건, `origin/wip/t03-oauth` 존재를 다시 실측했다.
+- 기존 `서울리드프로젝트/모아워크`는 원격·커밋 없는 기획 작업본으로 보존하고, 새 `moawork-canonical` 클론을 사용한다.
+- 활성 writer는 `Codex-T03-OAuth` 하나로 제한한다. 보존 WIP에서 새 Codex 전용 worktree로 승격하고 T10 검증 후 PR·배포한다.
+- 상세 controller·writer·file lease·수용기준은 `docs/coordination/sync/ROUND-2.md`가 정본이다.
+
 ## 2026-07-22 — T05 · B3 상태컬럼 UI · board_views CRUD · 003 검증엔진 단일화
 
 브랜치 `feat/t05-b3-status-views` (base=main `14a1c91`). check.sh 초록 — 앱 **338** 테스트(+29).
