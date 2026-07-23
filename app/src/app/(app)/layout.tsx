@@ -1,19 +1,21 @@
 import type { ReactNode } from "react";
 import { getSession } from "@/lib/auth/session";
-import { getRepo } from "@/lib/repo";
 import { Logo } from "@/components/brand/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { SidebarNav } from "@/components/shell/SidebarNav";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
 import { buildAccountViewModel } from "@/lib/account/presentation";
+import {
+  EntitlementReadError,
+  getLockedFeaturesForOrg,
+} from "@/lib/entitlements";
 
 // 앱 셸 — UI목업_모아워크셸_v0.3 (1단 사이드바 232px + 상단바).
 // 색은 전부 globals.css 의 --mw-* 토큰 참조(하드코딩 hex 금지).
 // getSession() 이 세션 없으면 /login 으로 보낸다(가드).
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const ctx = await getSession();
-  const repo = getRepo();
 
   // 엔타이틀먼트는 서버 진실 — 잠긴 기능키를 계산해 사이드바로 내린다.
   const features = Array.from(
@@ -23,9 +25,15 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       ),
     ),
   );
-  const lockedFeatures = features.filter(
-    (f) => !repo.isFeatureEnabled(ctx.org.id, f),
-  );
+  let lockedFeatures: string[];
+  let entitlementError = false;
+  try {
+    lockedFeatures = await getLockedFeaturesForOrg(ctx.org.id, features);
+  } catch (error) {
+    if (!(error instanceof EntitlementReadError)) throw error;
+    lockedFeatures = features;
+    entitlementError = true;
+  }
 
   const initial = (ctx.user.name ?? "?").trim().charAt(0) || "?";
   const account = buildAccountViewModel(ctx);
@@ -114,6 +122,15 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             />
           </div>
         </header>
+        {entitlementError ? (
+          <div
+            role="alert"
+            className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
+          >
+            워크스페이스 권한 정보를 불러오지 못했습니다. 데이터 변경 없이 기능을
+            잠시 잠갔습니다.
+          </div>
+        ) : null}
         <main>{children}</main>
       </div>
     </div>

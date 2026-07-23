@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { safeNextPath } from "@/lib/auth/oauth";
 import { parseAdminRole } from "@/lib/auth/admin";
 import { SESSION_COOKIE } from "@/lib/auth/session";
+import { bootstrapWorkspace } from "@/lib/workspace/service";
 
 type MembershipRow = { org_id: string; role: unknown };
 
@@ -54,9 +55,14 @@ export async function GET(request: Request) {
   if (membershipError) return loginError(request, "provisioning");
 
   const memberships = (membershipData ?? []) as MembershipRow[];
-  let orgId = platformRole
-    ? memberships.find((membership) => membership.role === "owner")?.org_id
-    : memberships[0]?.org_id;
+  const ownerMembership = memberships.find(
+    (membership) => membership.role === "owner",
+  );
+  const selectedMembership = platformRole
+    ? ownerMembership
+    : (ownerMembership ?? memberships[0]);
+  let orgId = selectedMembership?.org_id;
+  let isNewOwnerOrg = false;
 
   // 플랫폼 관리자는 자기 소유 조직이 반드시 있어야 한다. org insert 뒤의
   // 001.trg_orgs_add_owner가 SECURITY DEFINER로 owner 멤버십을 원자적으로 만든다.
@@ -72,12 +78,25 @@ export async function GET(request: Request) {
       .insert({ id: newOrgId, name: "MoaWork 데모 조직" });
     if (orgError) return loginError(request, "provisioning");
     orgId = newOrgId;
+    isNewOwnerOrg = true;
   }
 
   if (!orgId) return loginError(request, "membership");
 
+  // owner만 DB SECURITY DEFINER bootstrap 진입점을 호출한다.
+  // 일반 member/admin 로그인은 기존 조직을 변경하지 않는다.
+  if (isNewOwnerOrg || selectedMembership?.role === "owner") {
+    try {
+      await bootstrapWorkspace(supabase, orgId);
+    } catch {
+      return loginError(request, "provisioning");
+    }
+  }
+
   const destination = new URL(
-    safeNextPath(url.searchParams.get("next")),
+    isNewOwnerOrg
+      ? "/onboarding?first=1"
+      : safeNextPath(url.searchParams.get("next")),
     url.origin,
   );
   const response = NextResponse.redirect(destination);
