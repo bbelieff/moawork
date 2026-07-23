@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Company, Ctx, Deal, Pipeline, Stage } from "@/lib/types";
 import type { CrmSource } from "@/lib/repo/supabase";
 import { isSupabaseConfigured, readSupabaseEnv } from "@/lib/repo/supabase";
@@ -126,9 +126,25 @@ describe("loadStageBoard", () => {
     expect(data.companyById.get("c1")?.name).toBe("가나상사");
   });
 
-  it("소스 종류를 그대로 전달한다(화면 배지용)", async () => {
-    const data = await loadStageBoard(ctx, workBoard, fakeSource({ kind: "supabase" }));
+  it("요청별 인증 Supabase source를 주입하면 그 source로만 조회한다", async () => {
+    const listPipelines = vi.fn(fakeSource().listPipelines);
+    const listStages = vi.fn(fakeSource().listStages);
+    const listDeals = vi.fn(fakeSource().listDeals);
+    const data = await loadStageBoard(
+      ctx,
+      workBoard,
+      fakeSource({
+        kind: "supabase",
+        listPipelines,
+        listStages,
+        listDeals,
+      }),
+    );
+
     expect(data.sourceKind).toBe("supabase");
+    expect(listPipelines).toHaveBeenCalledWith("o1");
+    expect(listStages).toHaveBeenCalledWith("p1");
+    expect(listDeals).toHaveBeenCalledWith(ctx);
   });
 });
 
