@@ -42,7 +42,13 @@ export function GoogleSignInButton({ nextPath = "/" }: { nextPath?: string }) {
           color: "var(--mw-fg)",
         }}
       >
-        <Image src="/brand/google-g.svg" alt="" width={20} height={20} aria-hidden="true" />
+        <Image
+          src="/brand/google-g.svg"
+          alt=""
+          width={20}
+          height={20}
+          aria-hidden="true"
+        />
         <span aria-live="polite">
           {pending ? "Google로 이동 중…" : "Google로 계속하기"}
         </span>

@@ -45,4 +45,17 @@ describe("login A v1.1 UI contract", () => {
     expect(styles).toContain("order: -1");
     expect(styles).toContain("min-height: 100svh");
   });
+
+  it("잔잔한 진입·호흡·hover 모션과 reduced-motion 대안을 함께 제공한다", () => {
+    expect(styles).toContain("@keyframes cardReveal");
+    expect(styles).toContain("@keyframes coreBreathe");
+    expect(styles).toContain("@keyframes flowBreathe");
+    expect(styles).toContain(
+      "@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine)",
+    );
+    expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(styles.match(/animation: cardReveal[^;]+backwards;/g)).toHaveLength(4);
+    expect(button).not.toContain("group-hover:scale");
+    expect(button).not.toContain("hover:-translate-y-px");
+  });
 });

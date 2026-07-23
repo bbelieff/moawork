@@ -23,9 +23,15 @@
   position: absolute;
   z-index: -1;
   inset: 0;
+  animation: glowBreathe 12s ease-in-out infinite alternate;
   background:
     radial-gradient(circle at 92% 5%, color-mix(in srgb, var(--mw-primary) 34%, transparent), transparent 38%),
     radial-gradient(circle at 8% 100%, color-mix(in srgb, var(--mw-automation) 18%, transparent), transparent 34%);
+}
+
+.storyLogo {
+  display: inline-block;
+  animation: contentReveal 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .storyLogo :global(.mw-only-light) {
@@ -43,6 +49,7 @@
   font-weight: 760;
   line-height: 1.04;
   letter-spacing: -0.055em;
+  animation: contentReveal 620ms 80ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .storyCopy h1 em {
@@ -56,6 +63,7 @@
   font-size: clamp(14px, 1.12vw, 15px);
   line-height: 1.7;
   letter-spacing: -0.02em;
+  animation: contentReveal 620ms 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .workspaceVisual {
@@ -69,9 +77,14 @@
   position: absolute;
   height: 1px;
   opacity: 0.2;
+  animation: flowBreathe 6.4s ease-in-out infinite alternate;
   background: linear-gradient(90deg, transparent, var(--mw-brand-panel-line), transparent);
   transform-origin: left center;
 }
+
+.flowTwo { animation-delay: -1.6s; }
+.flowThree { animation-delay: -3.2s; }
+.flowFour { animation-delay: -4.8s; }
 
 .flowOne {
   top: 42%;
@@ -115,6 +128,18 @@
   border-radius: 17px;
   background: color-mix(in srgb, var(--mw-brand-panel-card) 98%, transparent);
   box-shadow: 0 22px 48px color-mix(in srgb, var(--mw-brand-panel) 58%, transparent);
+  animation: cardReveal 680ms 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.workspaceCore::after {
+  position: absolute;
+  z-index: -1;
+  inset: -5px;
+  border: 1px solid color-mix(in srgb, var(--mw-primary) 24%, transparent);
+  border-radius: 21px;
+  content: "";
+  animation: coreBreathe 5.6s 1.2s ease-in-out infinite;
+  pointer-events: none;
 }
 
 .coreSymbol {
@@ -156,24 +181,31 @@
   border-radius: 18px;
   background: color-mix(in srgb, var(--mw-brand-panel-card) 96%, transparent);
   box-shadow: 0 20px 48px color-mix(in srgb, var(--mw-brand-panel) 60%, transparent);
+  transition:
+    translate 260ms ease,
+    border-color 260ms ease,
+    box-shadow 260ms ease;
 }
 
 .moduleOne {
   top: 25%;
   left: 2%;
   transform: rotate(-2deg);
+  animation: cardReveal 640ms 220ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .moduleTwo {
   top: 2%;
   left: 31%;
   transform: rotate(1deg);
+  animation: cardReveal 640ms 300ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .moduleThree {
   top: 28%;
   right: 1%;
   transform: rotate(2deg);
+  animation: cardReveal 640ms 380ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .moduleFour {
@@ -181,6 +213,7 @@
   left: 27%;
   width: clamp(154px, 13.5vw, 188px);
   transform: rotate(-1deg);
+  animation: cardReveal 640ms 460ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .toneBlue { --module-tone: var(--mw-record); }
@@ -248,6 +281,7 @@
   gap: 9px;
   color: var(--mw-sub);
   font-size: 12px;
+  animation: loginReveal 520ms 80ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .symbolWrap {
@@ -265,6 +299,10 @@
   font-weight: 760;
   line-height: 1.18;
   letter-spacing: -0.045em;
+}
+
+.loginHeading {
+  animation: loginReveal 560ms 140ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .loginHeading p {
@@ -315,6 +353,50 @@
   border-radius: 50%;
   background: var(--mw-automation);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--mw-automation) 12%, transparent);
+  animation: secureBreathe 3.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+  .moduleCard:hover {
+    translate: 0 -3px;
+    border-color: color-mix(in srgb, var(--module-tone) 36%, var(--mw-brand-panel-line));
+    box-shadow: 0 24px 54px color-mix(in srgb, var(--mw-brand-panel) 54%, transparent);
+  }
+}
+
+@keyframes contentReveal {
+  from { opacity: 0; translate: 0 10px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes loginReveal {
+  from { opacity: 0; translate: 8px 0; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes cardReveal {
+  from { opacity: 0; translate: 0 12px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes glowBreathe {
+  from { opacity: 0.78; }
+  to { opacity: 1; }
+}
+
+@keyframes flowBreathe {
+  from { opacity: 0.12; }
+  to { opacity: 0.26; }
+}
+
+@keyframes coreBreathe {
+  0%, 100% { opacity: 0.38; transform: scale(0.985); }
+  50% { opacity: 0.8; transform: scale(1.015); }
+}
+
+@keyframes secureBreathe {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
 }
 
 .devAccounts {
@@ -420,6 +502,10 @@
   .moduleFour { width: 148px; }
   .workspaceCore { width: 198px; }
   .devAccount { align-items: flex-start; flex-direction: column; }
+  .storyGlow,
+  .flowLine,
+  .workspaceCore::after,
+  .secure::before { animation: none; }
 }
 
 @media (min-width: 981px) and (max-height: 760px) {
@@ -433,5 +519,21 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .storyGlow,
+  .storyLogo,
+  .storyCopy h1,
+  .storyCopy p,
+  .flowLine,
+  .workspaceCore,
+  .workspaceCore::after,
+  .moduleCard,
+  .miniCopy,
+  .loginHeading,
+  .secure::before {
+    animation: none;
+    translate: none;
+  }
+
+  .moduleCard,
   .devAccount { transition: none; }
 }
