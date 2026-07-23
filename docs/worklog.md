@@ -10,7 +10,8 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 - 루트 `AGENTS.md`가 폐기된 `session-registry.yaml`·`dispatch-queue.yaml` 사용을 요구하는 documentation drift를 확인했다.
 - `AGENTS.md`를 최신 Markdown ROUND 정본 규칙, T01~T10 역사 식별자, 필요 시 생성하는 범용 DEV-1~3, 독립 T10, 단일 writer·file lease, `wip/*` 보존, 코드·운영 완료 분리 검증 체계로 정합화했다.
 - controller·writer·lease·OAuth 운영 검증 잔여 상태는 `docs/coordination/sync/ROUND-3.md`에 기록했다.
-- 비밀값은 기록하지 않았다. `scripts/check.sh` PASS(app 471 passed / 5 skipped, worker 14 passed)와 의도한 3파일만 변경·문서 삭제 0건을 확인했다. PR CI·병합 확인 후 END 판정을 갱신한다.
+- 비밀값은 기록하지 않았다. `scripts/check.sh` PASS(app 471 passed / 5 skipped, worker 14 passed)와 의도한 3파일만 변경·문서 삭제 0건을 확인했다.
+- PR [#16](https://github.com/bbelieff/moawork/pull/16): GitHub CI·GitGuardian·Vercel Preview·Preview Comments 전부 PASS, mergeable. T10 문서 게이트 `PASS / MERGE AUTHORIZED`; 병합 후 이 작업을 END로 닫는다.
 
 ## 2026-07-23 — Codex-Failover-Control · Claude 소진 인수 START
 

@@ -61,3 +61,12 @@ writer 충돌 위험이 크다.
 4. `scripts/check.sh`와 PR CI가 통과한다.
 5. 정식 PR을 거쳐 `main` 반영 여부를 확인한다.
 6. OAuth 최종 운영 판정은 사용자 로그인 완료 후 별도 기록한다.
+
+## T10 문서 게이트 판정
+
+- PR: [#16](https://github.com/bbelieff/moawork/pull/16), head `7ac3526`.
+- 변경 범위: `AGENTS.md`, `docs/worklog.md`, 신규 `ROUND-3.md` 3개 파일만 변경. 문서 삭제 0건.
+- 로컬: `scripts/check.sh` PASS — app 471 passed / 5 skipped, worker 14 passed.
+- 원격: GitHub CI, GitGuardian, Vercel Preview, Vercel Preview Comments 모두 PASS.
+- 비밀값·실고객 데이터 추가 없음. 폐기 YAML 파일 생성 없음.
+- 판정: `PASS / MERGE AUTHORIZED`. OAuth 사용자 로그인 이후의 운영 판정은 이 문서 변경의 merge gate와 분리한다.
