@@ -33,15 +33,16 @@ export function GoogleSignInButton({ nextPath = "/" }: { nextPath?: string }) {
         type="button"
         onClick={signIn}
         disabled={pending}
-        className="flex min-h-12 w-full items-center justify-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-opacity disabled:cursor-wait disabled:opacity-60"
+        className="flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold shadow-sm transition-[transform,border-color,box-shadow,opacity] hover:-translate-y-px hover:border-mw-primary hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mw-primary disabled:cursor-wait disabled:opacity-60 disabled:hover:translate-y-0"
         style={{
-          background: "var(--mw-primary)",
-          color: "var(--mw-on-accent)",
+          borderColor: "var(--mw-line)",
+          background: "var(--mw-card)",
+          color: "var(--mw-fg)",
         }}
       >
         <span
           aria-hidden="true"
-          className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-zinc-800"
+          className="flex h-6 w-6 items-center justify-center rounded-full bg-mw-bg text-sm font-black text-mw-record"
         >
           G
         </span>

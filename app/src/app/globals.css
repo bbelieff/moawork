@@ -40,6 +40,14 @@
   --mw-tint-teal: #eaf7f4;
   --mw-tint-coral: #fdecea;
   --mw-radius: 14px;
+
+  /* 로그인 브랜드 스토리 패널 — 테마와 무관하게 동일한 Dark 자산을 유지한다. */
+  --mw-brand-panel: #111216;
+  --mw-brand-panel-card: #20232b;
+  --mw-brand-panel-line: #343842;
+  --mw-brand-panel-text: #f7f8fa;
+  --mw-brand-panel-body: #b9bec9;
+  --mw-brand-violet-bright: #8a7cff;
 }
 
 /* 다크 — 브랜드 v1.0 Dark 토큰(Surface #111216) */
