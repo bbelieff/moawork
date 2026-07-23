@@ -4,6 +4,14 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-23 — MoaWork Control · OAuth 조직 프로비저닝 장애 수정 진행
+
+- 프로덕션 Google 로그인 후 `login?error=provisioning`을 재현하고 Supabase Auth·REST·Postgres 로그와 정책·트리거 상태를 읽기 전용으로 대조했다.
+- OAuth와 사용자 upsert는 성공했으나 `POST /orgs?select=id`가 `42501`로 롤백되는 것을 확인했다. INSERT 정책이나 owner 트리거 부재가 아니라, `insert().select()`의 RETURNING 행이 owner 멤버십 생성 전에 SELECT RLS를 평가하는 실행 순서 충돌이었다.
+- 조직 UUID를 애플리케이션에서 먼저 생성하고 표현 응답 없이 삽입하도록 콜백을 수정했다. RLS와 owner 자동생성 트리거는 그대로 유지했다.
+- 회귀 테스트 1건을 추가했다. `scripts/check.sh` PASS(app 472 passed / 5 skipped, worker 14 passed), Next.js 프로덕션 빌드 PASS를 확인했다.
+- PR·GitHub 체크·Vercel Production 배포와 동일 계정 재로그인은 아직 진행 중이며, 운영 완료로 과장하지 않는다.
+
 ## 2026-07-23 — MoaWork Control · 루트 AGENTS 지침 정합화
 
 - 최신 GitHub `main`을 다시 대조해 `c1e8ffd`(PR #15 병합), 열린 PR 0건을 확인했다. 로컬 canonical `main`은 `e774a45`로 1커밋 뒤라 공유 checkout을 갱신·수정하지 않고 최신 `origin/main` 기반 독립 문서 worktree를 만들었다.
