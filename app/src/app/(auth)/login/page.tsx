@@ -40,15 +40,15 @@ export default async function LoginPage({
       <article className={styles.story} aria-labelledby="brand-story-title">
         <div className={styles.storyGlow} aria-hidden="true" />
         <div className={styles.storyCopy}>
-          <Logo height={34} className={styles.storyLogo} />
+          <Logo height={42} className={styles.storyLogo} />
           <h1 id="brand-story-title">
             흐름은 단단하게,
             <br />
-            <em>방식은 자유롭게.</em>
+            방식은 <em>자유롭게.</em>
           </h1>
           <p>
-            흩어진 고객, 계약, 정산과 협업을 하나의 흐름에 모으고
-            <br className={styles.desktopBreak} /> 우리 팀의 방식대로 가볍게 연결하세요.
+            고객·계약·정산은 한 흐름으로.
+            <br className={styles.desktopBreak} /> 팀은 각자의 방식대로.
           </p>
         </div>
 
@@ -56,47 +56,57 @@ export default async function LoginPage({
           <span className={`${styles.flowLine} ${styles.flowOne}`} />
           <span className={`${styles.flowLine} ${styles.flowTwo}`} />
           <span className={`${styles.flowLine} ${styles.flowThree}`} />
+          <span className={`${styles.flowLine} ${styles.flowFour}`} />
+          <div className={styles.workspaceCore}>
+            <span className={styles.coreSymbol}>
+              <Symbol height={24} />
+            </span>
+            <span>
+              <strong>하나의 워크스페이스</strong>
+              <small>모든 업무 흐름의 중심</small>
+            </span>
+          </div>
           <ModuleCard
             className={styles.moduleOne}
             toneClass={styles.toneBlue}
-            title="고객 기록"
-            label="Work Blue"
+            title="고객·계약"
+            label="기록됨"
           />
           <ModuleCard
             className={styles.moduleTwo}
             toneClass={styles.toneTeal}
-            title="업무 자동화"
-            label="Flow Teal"
+            title="업무 흐름"
+            label="자동 정리"
           />
           <ModuleCard
             className={styles.moduleThree}
             toneClass={styles.toneViolet}
-            title="나의 워크스페이스"
-            label="Moa Violet"
+            title="워크스페이스"
+            label="한곳에 모임"
           />
           <ModuleCard
             className={styles.moduleFour}
             toneClass={styles.toneCoral}
-            title="함께하는 사람"
-            label="People Coral"
+            title="팀 협업"
+            label="함께 진행"
           />
         </div>
       </article>
 
-      <aside className={styles.loginPanel} aria-label={`${PRODUCT_NAME} 로그인`}>
+      <section className={styles.loginPanel} aria-labelledby="login-title">
         <div className={styles.loginStack}>
           <div className={styles.miniCopy}>
             <span className={styles.symbolWrap}>
               <Symbol height={18} />
             </span>
-            하나의 워크스페이스에서 시작하세요
+            하나로 모으고, 자유롭게 일하세요
           </div>
 
           <div className={styles.loginHeading}>
-            <h2>{PRODUCT_NAME}에 로그인</h2>
+            <h2 id="login-title">{PRODUCT_NAME}에 로그인</h2>
             <p>
-              Google 계정으로 안전하게 연결하고
-              <br /> 우리 팀의 업무 흐름을 이어가세요.
+              Google 계정으로 팀의 업무 흐름에
+              <br /> 안전하게 연결하세요.
             </p>
           </div>
 
@@ -109,10 +119,9 @@ export default async function LoginPage({
           <GoogleSignInButton nextPath={nextPath} />
 
           <p className={styles.legal}>
-            계속하면 MoaWork의 <span>이용약관</span> 및 <span>개인정보처리방침</span>에
-            동의하게 됩니다.
+            계속하면 MoaWork 이용약관 및 개인정보처리방침에 동의하게 됩니다.
           </p>
-          <p className={styles.secure}>보호된 워크스페이스 연결</p>
+          <p className={styles.secure}>Google OAuth로 안전하게 연결</p>
 
           {devToolsEnabled ? (
             <section className={styles.devAccounts}>
@@ -139,7 +148,7 @@ export default async function LoginPage({
             </section>
           ) : null}
         </div>
-      </aside>
+      </section>
     </main>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { safeNextPath } from "@/lib/auth/oauth";
@@ -33,23 +34,21 @@ export function GoogleSignInButton({ nextPath = "/" }: { nextPath?: string }) {
         type="button"
         onClick={signIn}
         disabled={pending}
-        className="flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold shadow-sm transition-[transform,border-color,box-shadow,opacity] hover:-translate-y-px hover:border-mw-primary hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mw-primary disabled:cursor-wait disabled:opacity-60 disabled:hover:translate-y-0"
+        aria-busy={pending}
+        className="flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold shadow-sm transition-[border-color,box-shadow,opacity] hover:border-mw-primary hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mw-primary disabled:cursor-wait disabled:opacity-60"
         style={{
-          borderColor: "var(--mw-line)",
+          borderColor: "color-mix(in srgb, var(--mw-fg) 50%, var(--mw-card))",
           background: "var(--mw-card)",
           color: "var(--mw-fg)",
         }}
       >
-        <span
-          aria-hidden="true"
-          className="flex h-6 w-6 items-center justify-center rounded-full bg-mw-bg text-sm font-black text-mw-record"
-        >
-          G
+        <Image src="/brand/google-g.svg" alt="" width={20} height={20} aria-hidden="true" />
+        <span aria-live="polite">
+          {pending ? "Google로 이동 중…" : "Google로 계속하기"}
         </span>
-        {pending ? "Google로 이동 중…" : "Google로 계속하기"}
       </button>
       {error ? (
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="text-sm text-mw-error">
           {error}
         </p>
       ) : null}
