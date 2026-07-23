@@ -12,6 +12,16 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 - 활성 writer는 `Codex-T03-OAuth` 하나로 제한한다. 보존 WIP에서 새 Codex 전용 worktree로 승격하고 T10 검증 후 PR·배포한다.
 - 상세 controller·writer·file lease·수용기준은 `docs/coordination/sync/ROUND-2.md`가 정본이다.
 
+## 2026-07-23 — Codex-T03-OAuth · B1b 구현 및 로컬 T10 게이트 PASS
+
+- Claude 보존 브랜치 `origin/wip/t03-oauth`를 최신 main 위의 격리 브랜치 `feat/codex-t03-oauth`로 승격하고, 선언되지 않은 TanStack provider·Tailwind 설정은 최종 범위에서 제외했다.
+- `@supabase/ssr` 기반 브라우저/서버/Proxy 세션, Google 1차 CTA, PKCE 콜백, 로그아웃을 배선했다. 콜백은 `public.users` 프로필을 보강하고 `app_admin_role()` 결과가 있는 최초 계정에 owner 조직을 재시도 안전하게 만든다.
+- 세션 구현은 Supabase 환경에서 `auth.getUser()`와 실제 `org_members`만 신뢰한다. 운영에서는 dev-session 버튼과 `?as=` 역할 오버라이드를 렌더·적용하지 않으며, Supabase 환경변수 누락 시 비공개 경로를 fail-closed 처리한다.
+- 오픈 리다이렉트 방어 테스트를 추가했다. 비밀값은 커밋하지 않았고 환경변수 이름만 사용한다.
+- 로컬 T10: `scripts/check.sh` PASS — app **471 passed / 5 skipped**(실DB 자격증명 없는 RLS 침투), worker **14 passed**. Next 16 프로덕션 빌드 PASS(22 static page generation, 전 라우트 수집).
+- 프로덕션 서버 렌더 실측: `/login` 200, Google CTA=true, 개발 계정 라벨=false, 데모 이메일=false. Supabase env 없는 비공개 `/?as=owner`는 `/login?error=config` 307로 차단.
+- 잔여: PR 검수·main 머지·Vercel 배포 뒤 실제 Google 계정 선택→콜백→owner/플랫폼관리자 세션을 라이브 판정해야 최종 완료다.
+
 ## 2026-07-22 — T05 · B3 상태컬럼 UI · board_views CRUD · 003 검증엔진 단일화
 
 브랜치 `feat/t05-b3-status-views` (base=main `14a1c91`). check.sh 초록 — 앱 **338** 테스트(+29).

@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { SESSION_COOKIE } from "@/lib/auth/session";
 
-// 로그아웃: 세션을 파기하고 /login 으로 보낸다. POST 로만 처리(CSRF 안전).
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
-  // 303 See Other: POST 이후 GET 리다이렉트.
-  return NextResponse.redirect(new URL("/login", request.url), { status: 303 });
+  if (hasSupabaseEnv()) {
+    const supabase = await createClient();
+    await supabase.auth.signOut();
+  }
+
+  const response = NextResponse.redirect(new URL("/login", request.url), {
+    status: 303,
+  });
+  response.cookies.delete(SESSION_COOKIE.uid);
+  response.cookies.delete(SESSION_COOKIE.org);
+  response.cookies.delete(SESSION_COOKIE.as);
+  return response;
 }

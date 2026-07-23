@@ -28,8 +28,8 @@ Claude 작업트리와 `wip/*` 브랜치는 읽기 전용으로 보존한다. Cl
 
 | 트랙 | provider / writer | 상태 | 작업 | 브랜치·worktree | file lease |
 |---|---|---|---|---|---|
-| T03 | codex / `Codex-T03-OAuth` | `takeover_in_progress` | B1b 구글 OAuth 완성 | `feat/codex-t03-oauth` / `wt/codex-t03-oauth` | `app/package*.json`, `app/src/app/(auth)/**`, `app/src/app/auth/**`, `app/src/lib/auth/**`, `app/src/lib/supabase/**`, `app/src/proxy.ts`, 관련 테스트 |
-| T10 | codex / `Codex-Failover-Control` | `verify_after_t03` | 정적검사·check·프로덕션 build·OAuth 라이브 판정 | 검증만 | `docs/coordination/T10-gate-checklist.md`(판정 시) |
+| T03 | codex / `Codex-T03-OAuth` | `implementation_verified` | B1b 구글 OAuth 완성 | `feat/codex-t03-oauth` / `wt/codex-t03-oauth` | `app/package*.json`, `app/src/app/(auth)/**`, `app/src/app/auth/**`, `app/src/lib/auth/**`, `app/src/lib/supabase/**`, `app/src/proxy.ts`, 관련 테스트 |
+| T10 | codex / `Codex-Failover-Control` | `local_gate_passed_pr_pending` | 정적검사·check·프로덕션 build·OAuth 라이브 판정 | 검증만 | `docs/coordination/T10-gate-checklist.md`(판정 시) |
 
 T02·T04·T05는 이전 라운드 상태를 보존하되 이번 인수에서 새 작업을 배정하지 않는다. T01·T06·T07·T09는 휴면, T08은 미생성 상태를 유지한다.
 

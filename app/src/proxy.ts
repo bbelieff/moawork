@@ -21,6 +21,7 @@ function isPublicPath(pathname: string): boolean {
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
+  const { pathname, search } = request.nextUrl;
 
   // Supabase 미설정(개발 초기 등)에는 인증 게이트를 끄고 통과시킨다.
   // 운영에서는 env 를 반드시 설정해야 게이트가 활성화된다.
@@ -28,6 +29,14 @@ export async function proxy(request: NextRequest) {
   try {
     env = getSupabaseEnv();
   } catch {
+    if (process.env.NODE_ENV === "production" && !isPublicPath(pathname)) {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = "/login";
+      loginUrl.search = "";
+      loginUrl.searchParams.set("error", "config");
+      loginUrl.searchParams.set("next", `${pathname}${search}`);
+      return NextResponse.redirect(loginUrl);
+    }
     return response;
   }
   const { url, anonKey } = env;
@@ -54,22 +63,12 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
-
   // 미인증 + 비공개 경로 → 로그인으로.
   if (!user && !isPublicPath(pathname)) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
-    loginUrl.searchParams.set("next", pathname);
+    loginUrl.searchParams.set("next", `${pathname}${search}`);
     return NextResponse.redirect(loginUrl);
-  }
-
-  // 인증됨 + 로그인 페이지 → 홈으로.
-  if (user && pathname === "/login") {
-    const homeUrl = request.nextUrl.clone();
-    homeUrl.pathname = "/";
-    homeUrl.search = "";
-    return NextResponse.redirect(homeUrl);
   }
 
   return response;
