@@ -557,6 +557,29 @@ PolicyfundBoard.tsx  ("use client")
 
 ---
 
+## 11. PR #15 · B1b Google OAuth 후보 판정 (2026-07-23 · Codex T10)
+
+**브랜치 후보 PASS · main 완료판정 전.** `feat/codex-t03-oauth` head `47707b2`, base `e774a45`, GitHub mergeable.
+
+| 검증 | 결과 |
+|---|---|
+| 변경범위·계약파일·마이그레이션 | ✅ auth/session/proxy/UI만, 공용 타입·Repo·DB 스키마 무변경 |
+| 비밀값 | ✅ diff credential scan 0, GitGuardian PASS |
+| `scripts/check.sh` | ✅ app 471 passed / 5 RLS skipped, worker 14 passed |
+| 프로덕션 build | ✅ Next 16 compile·typecheck·22 static generation·전체 route collect |
+| 운영 렌더 | ✅ Google CTA 노출, dev 계정·데모 이메일 미노출 |
+| 운영 우회 방어 | ✅ `?as=owner` 무효, Supabase env 누락 비공개 경로 fail-closed |
+| GitHub CI / Vercel Preview | ✅ 전 체크 PASS, Preview 배포 Ready |
+
+**코드 판정 근거**
+- 콜백은 PKCE 교환 후 `public.users`를 보강하고, `app_admin_role()`이 허용한 최초 사용자만 owner 조직을 생성한다. 조직 trigger가 멤버십을 원자적으로 만들며, 이후 세션은 쿠키 값이 아니라 실제 `org_members`를 재검증한다.
+- `next`는 단일 `/` 내부 경로만 허용해 `//evil.example`을 포함한 외부 리다이렉트를 차단한다.
+- dev-session과 역할 오버라이드는 `NODE_ENV !== 'production'`에서만 렌더·적용한다.
+
+**완료판정 보류 1건** — Vercel Preview는 인증 보호 화면이라 자동 외부 요청으로 로그인 UI를 재확인할 수 없다. main 머지·Production 배포 뒤 실제 Google 계정 선택 → 콜백 → 새로고침 세션 → `beliefkimkim@gmail.com` owner/플랫폼관리자를 라이브로 확인한 뒤 §10의 "구글 OAuth 실동작"을 해소한다.
+
+---
+
 ## 8. 교차 위험 — 8트랙 동시 착수 시 매 PR 확인 (T10 실증 2026-07-21)
 
 > 조율 문서에서 제기된 두 위험을 **실행으로 재현 확인**했다. 둘 다 CI 초록으로 통과하며,

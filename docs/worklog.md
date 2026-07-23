@@ -21,6 +21,7 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 - 로컬 T10: `scripts/check.sh` PASS — app **471 passed / 5 skipped**(실DB 자격증명 없는 RLS 침투), worker **14 passed**. Next 16 프로덕션 빌드 PASS(22 static page generation, 전 라우트 수집).
 - 프로덕션 서버 렌더 실측: `/login` 200, Google CTA=true, 개발 계정 라벨=false, 데모 이메일=false. Supabase env 없는 비공개 `/?as=owner`는 `/login?error=config` 307로 차단.
 - 잔여: PR 검수·main 머지·Vercel 배포 뒤 실제 Google 계정 선택→콜백→owner/플랫폼관리자 세션을 라이브 판정해야 최종 완료다.
+- PR [#15](https://github.com/bbelieff/moawork/pull/15) 생성. GitHub CI·GitGuardian·Vercel Preview 전 체크 PASS, mergeable. T10 브랜치 후보 판정은 `docs/coordination/T10-gate-checklist.md` §11에 기록했다.
 
 ## 2026-07-22 — T05 · B3 상태컬럼 UI · board_views CRUD · 003 검증엔진 단일화
 
