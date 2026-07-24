@@ -1,10 +1,12 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
+import { Logo, Symbol } from "@/components/brand/Logo";
 import { getRepo } from "@/lib/repo";
 import { PRODUCT_NAME } from "@/lib/product";
 import { AUTH_ERROR_MESSAGES, safeNextPath } from "@/lib/auth/oauth";
 import { SESSION_COOKIE } from "@/lib/auth/session";
+import styles from "./login.module.css";
 
 export default async function LoginPage({
   searchParams,
@@ -34,54 +36,143 @@ export default async function LoginPage({
   }
 
   return (
-    <main className="mx-auto flex min-h-full w-full max-w-md flex-1 flex-col justify-center gap-8 p-6 sm:p-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {PRODUCT_NAME} 로그인
-        </h1>
-        <p className="mt-2 text-sm text-zinc-500">
-          하나의 워크스페이스에서 업무를 자유롭게 연결하세요.
-        </p>
-      </div>
+    <main className={styles.page}>
+      <article className={styles.story} aria-labelledby="brand-story-title">
+        <div className={styles.storyGlow} aria-hidden="true" />
+        <div className={styles.storyCopy}>
+          <Logo height={42} className={styles.storyLogo} />
+          <h1 id="brand-story-title">
+            흐름은 단단하게,
+            <br />
+            방식은 <em>자유롭게.</em>
+          </h1>
+          <p>
+            고객·계약·정산은 한 흐름으로.
+            <br className={styles.desktopBreak} /> 팀은 각자의 방식대로.
+          </p>
+        </div>
 
-      {errorMessage ? (
-        <p
-          role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
-        >
-          {errorMessage}
-        </p>
-      ) : null}
+        <div className={styles.workspaceVisual} aria-hidden="true">
+          <span className={`${styles.flowLine} ${styles.flowOne}`} />
+          <span className={`${styles.flowLine} ${styles.flowTwo}`} />
+          <span className={`${styles.flowLine} ${styles.flowThree}`} />
+          <span className={`${styles.flowLine} ${styles.flowFour}`} />
+          <div className={styles.workspaceCore}>
+            <span className={styles.coreSymbol}>
+              <Symbol height={24} />
+            </span>
+            <span>
+              <strong>하나의 워크스페이스</strong>
+              <small>모든 업무 흐름의 중심</small>
+            </span>
+          </div>
+          <ModuleCard
+            className={styles.moduleOne}
+            toneClass={styles.toneBlue}
+            title="고객·계약"
+            label="기록됨"
+          />
+          <ModuleCard
+            className={styles.moduleTwo}
+            toneClass={styles.toneTeal}
+            title="업무 흐름"
+            label="자동 정리"
+          />
+          <ModuleCard
+            className={styles.moduleThree}
+            toneClass={styles.toneViolet}
+            title="워크스페이스"
+            label="한곳에 모임"
+          />
+          <ModuleCard
+            className={styles.moduleFour}
+            toneClass={styles.toneCoral}
+            title="팀 협업"
+            label="함께 진행"
+          />
+        </div>
+      </article>
 
-      <GoogleSignInButton nextPath={nextPath} />
+      <section className={styles.loginPanel} aria-labelledby="login-title">
+        <div className={styles.loginStack}>
+          <div className={styles.miniCopy}>
+            <span className={styles.symbolWrap}>
+              <Symbol height={26} />
+            </span>
+            하나로 모으고, 자유롭게 일하세요
+          </div>
 
-      {devToolsEnabled ? (
-        <section className="flex flex-col gap-3 border-t pt-6" style={{ borderColor: "var(--mw-line)" }}>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-              개발용 계정
-            </p>
-            <p className="mt-1 text-xs text-zinc-400">
-              로컬 UI와 역할별 범위를 확인할 때만 사용합니다.
+          <div className={styles.loginHeading}>
+            <h2 id="login-title">{PRODUCT_NAME}에 로그인</h2>
+            <p>
+              Google 계정으로 팀의 업무 흐름에
+              <br /> 안전하게 연결하세요.
             </p>
           </div>
-          <form action={devLogin} className="flex flex-col gap-3">
-            {users.map((user) => (
-              <button
-                key={user.id}
-                type="submit"
-                name="uid"
-                value={user.id}
-                className="flex min-h-12 flex-col items-start justify-center rounded-xl border px-4 py-3 text-left transition-colors hover:bg-zinc-50 sm:flex-row sm:items-center sm:justify-between dark:hover:bg-zinc-900"
-                style={{ borderColor: "var(--mw-line)" }}
-              >
-                <span className="font-medium">{user.name}</span>
-                <span className="break-all text-sm text-zinc-500">{user.email}</span>
-              </button>
-            ))}
-          </form>
-        </section>
-      ) : null}
+
+          {errorMessage ? (
+            <p role="alert" className={styles.alert}>
+              {errorMessage}
+            </p>
+          ) : null}
+
+          <GoogleSignInButton nextPath={nextPath} />
+
+          <p className={styles.legal}>
+            계속하면 MoaWork 이용약관 및 개인정보처리방침에 동의하게 됩니다.
+          </p>
+          <p className={styles.secure}>Google OAuth로 안전하게 연결</p>
+
+          {devToolsEnabled ? (
+            <section className={styles.devAccounts}>
+              <div>
+                <p className={styles.devTitle}>개발용 계정</p>
+                <p className={styles.devHelp}>
+                  로컬 UI와 역할별 범위를 확인할 때만 사용합니다.
+                </p>
+              </div>
+              <form action={devLogin} className={styles.devForm}>
+                {users.map((user) => (
+                  <button
+                    key={user.id}
+                    type="submit"
+                    name="uid"
+                    value={user.id}
+                    className={styles.devAccount}
+                  >
+                    <span>{user.name}</span>
+                    <small>{user.email}</small>
+                  </button>
+                ))}
+              </form>
+            </section>
+          ) : null}
+        </div>
+      </section>
     </main>
+  );
+}
+
+function ModuleCard({
+  className,
+  toneClass,
+  title,
+  label,
+}: {
+  className: string;
+  toneClass: string;
+  title: string;
+  label: string;
+}) {
+  return (
+    <div className={`${styles.moduleCard} ${className} ${toneClass}`}>
+      <div className={styles.moduleHead}>
+        <i />
+        {title}
+      </div>
+      <div className={styles.moduleBar} />
+      <div className={`${styles.moduleBar} ${styles.moduleBarShort}`} />
+      <span className={styles.moduleChip}>{label}</span>
+    </div>
   );
 }
