@@ -39,11 +39,11 @@
 
 ## 검증 영수증
 
-- PR #19 + Account C 대상 테스트: 8개 파일, 30개 테스트 PASS
+- PR #19 + Account C 대상 테스트: 8개 파일, 33개 테스트 PASS
 - `npm.cmd run lint -w app`: PASS
 - `npm.cmd run typecheck -w app`: PASS
 - `scripts/check.sh`: PASS
-  - app: 45개 파일, 501 PASS, 5 SKIP
+  - app: 46개 파일, 508 PASS, 5 SKIP
   - worker: 3개 파일, 14 PASS
 - `npm.cmd run build -w app`: PASS
   - `/account`
