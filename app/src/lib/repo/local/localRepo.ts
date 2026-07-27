@@ -17,6 +17,8 @@ import type {
   User,
 } from "@/lib/types";
 import { isManager } from "@/lib/auth/roles";
+// 이동 로그 문구/타입은 T02 의 순수 헬퍼를 그대로 재사용한다(2중 구현 금지).
+import { ACTIVITY_TYPES, stageMoveContent } from "@/lib/crm/activity";
 import { MVP_ENABLED_FEATURES } from "@/lib/product";
 import type {
   CompanyPatch,
@@ -30,6 +32,7 @@ import type {
   SavedViewPatch,
   SettlementPatch,
 } from "../index";
+import { mergeCustom } from "../custom-merge";
 import { db } from "./store";
 
 function now(): string {
@@ -338,12 +341,41 @@ export class LocalRepo implements Repo {
   }
 
   updateDeal(ctx: Ctx, id: string, patch: DealPatch): Deal | undefined {
+    // 타입에서 뺐어도 JSON 본문 등 런타임 경로로는 들어올 수 있다 → 조용히 무시하지 않고 막는다.
+    // (무시하면 "저장됐다"고 믿는 호출부가 생기고, 적용하면 활동로그 없는 이동이 된다.)
+    if ("stage_id" in patch) {
+      throw new Error("딜 수정 불가: 단계 변경은 moveDeal() 을 사용하세요");
+    }
     const d = this.getDeal(ctx, id);
     if (!d) return undefined;
-    const { assigned_to, ...rest } = patch;
+    const { assigned_to, custom, ...rest } = patch;
     Object.assign(d, rest);
+    // custom 은 통째 교체가 아니라 키 단위 병합 — 타 트랙 값(T05 커스텀필드 · T09
+    // 정책자금 · T04 첨부)이 patch 에 없다는 이유로 사라지면 안 된다(BUG-0003).
+    if (custom !== undefined) d.custom = mergeCustom(d.custom, custom);
     if (assigned_to !== undefined && canSeeAll(ctx)) d.assigned_to = assigned_to;
     d.updated_at = now();
+    return d;
+  }
+
+  /** 단계 이동 + 활동로그(원자적) — stage_id 를 바꾸는 유일한 경로. */
+  moveDeal(ctx: Ctx, id: string, toStageId: string): Deal | undefined {
+    const d = this.getDeal(ctx, id);
+    if (!d) return undefined;
+    const to = this.getStage(toStageId);
+    if (!to) throw new Error(`단계 이동 불가: 존재하지 않는 단계 (${toStageId})`);
+
+    const from = d.stage_id ? this.getStage(d.stage_id) : undefined;
+    d.stage_id = to.id;
+    // 파이프라인 미지정 딜만 목적 단계의 파이프라인으로 채운다(기존 이동 규칙 유지).
+    d.pipeline_id = d.pipeline_id ?? to.pipeline_id;
+    d.updated_at = now();
+
+    this.createActivity(ctx, {
+      deal_id: id,
+      type: ACTIVITY_TYPES.status,
+      content: stageMoveContent(from?.name ?? null, to.name),
+    });
     return d;
   }
 

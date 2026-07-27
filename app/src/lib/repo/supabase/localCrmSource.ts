@@ -66,6 +66,13 @@ export class LocalCrmSource implements CrmSource {
   ): Promise<Deal | undefined> {
     return this.repo.updateDeal(ctx, id, patch);
   }
+  async moveDeal(
+    ctx: Ctx,
+    id: string,
+    toStageId: string,
+  ): Promise<Deal | undefined> {
+    return this.repo.moveDeal(ctx, id, toStageId);
+  }
 
   async listActivities(ctx: Ctx, dealId: string): Promise<Activity[]> {
     return this.repo.listActivities(ctx, dealId);

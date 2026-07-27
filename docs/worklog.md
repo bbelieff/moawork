@@ -704,3 +704,19 @@ all/assigned), 헬퍼 `is_org_member`/`org_role`/`org_scope`, 트리거 `add_org
 - current release는 **`MERGED / PRODUCTION_DEPLOYED / PARTIALLY_LIVE_VERIFIED`**. safe real one-membership/two-plus chooser 및 approval mutation browser fixture는 nonblocking `NOT_RUN`으로 남긴다.
 - PR #19는 closed superseded, PR #20은 Draft/HOLD(rebase/renumber/reconciliation)다. old PR #23 docs draft는 stale hold record로 supersede/close 대상이며 correct docs-only publication을 별도 검증·merge한다.
 - 후속 8개 프로그램은 `NEXT ONLY / NOT_STARTED`; `DYNAMIC-WORKSPACE-BUILDER-01`은 `PAUSED_BY_USER_PRIORITY`다. 제품/DB/migration/deploy write는 수행하지 않았다. `INTERNAL_SUBAGENT_ONLY: NONE`.
+
+## 2026-07-28 — T03 · BUG-0003 딜 custom 통째 교체 + 단계 우회 (계약 소유 세션)
+
+- **증상(무증상 파손)**: `Repo.updateDeal` 이 `Object.assign(d, rest)` 라 `patch.custom` 이 기존 `deal.custom` 을 **통째 교체**했다. 파일첨부 등이 `updateDeal(ctx, id, {custom:{files:[…]}})` 를 호출하면 T05 커스텀필드 값·T09 정책자금 값(exec_amount/fee_pct/fee_paid_at)이 **에러 없이** 전량 소실된다.
+- **수정**: `app/src/lib/repo/custom-merge.ts` 의 `mergeCustom()` 단일 규약으로 **키 단위 병합**. patch 에 없는 키는 보존, 있는 키만 대체, 값이 `null` 이면 키 삭제(`setFieldValue` 의 "null = 셀 삭제"와 동일).
+  - 병합 깊이는 한 겹뿐(값은 통째 대체). 재귀 병합은 `custom.files[]` 에서 **삭제한 첨부를 되살린다** — 의도적으로 하지 않는다.
+  - `LocalRepo` 와 `SupabaseCrmSource` 가 **같은 함수**를 쓴다(구현체 간 규약 드리프트 차단).
+- **단계 우회 차단**: "단계 변경은 move 전용(활동로그 보장)" 불변식이 서비스에만 있어 `getRepo().updateDeal(ctx,id,{stage_id})` 로 활동로그 없이 단계가 바뀌었다.
+  - `DealPatch = Partial<Omit<NewDeal,"stage_id">>` — 타입에서 표현 불가로 바꾸고, 런타임 본문 우회는 구현체가 throw.
+  - 포트에 `moveDeal(ctx,id,toStageId)` 추가 — 단계 갱신과 활동로그 기록을 **함께** 수행한다. `CrmService.moveDealStage` 는 이제 포트에 위임하고 사용자용 오류 타입 변환만 담당한다.
+  - `parseUpdateDeal` 은 본문의 `stage_id` 를 400 으로 거부(기존 메시지 유지).
+- **회귀 판정 기준**: "에러 없음"이 아니라 **값 잔존의 긍정 확인**. 새 구현을 옛 `Object.assign` 으로 되돌리면 `localRepo.test.ts` 의 4건이 실패하는 것까지 확인했다.
+  - 신규: `repo/custom-merge.test.ts`(8), `repo/local/localRepo.test.ts` 의 병합·moveDeal 9건, `crm/service.test.ts` 의 포트 직접호출 2건.
+  - `services/files.test.ts` 의 가짜 포트도 `mergeCustom` 을 쓰도록 고쳤다 — 가짜가 실제와 다르면 그 파일의 보존 테스트가 현실을 검증하지 못한다.
+- **남긴 TODO(T02)**: Supabase 경로의 custom read-modify-write 와 이동+로그는 트랜잭션이 아니다(jsonb `||` / RPC 로 이관 필요). 코드에 TODO 로 명시.
+- 게이트: `bash scripts/check.sh` 초록(app 587 passed / 5 skipped, worker 14 passed).

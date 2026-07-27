@@ -121,7 +121,9 @@ export function parseUpdateDeal(body: unknown): DealPatch {
   if (body.title !== undefined) patch.title = reqString(body.title, "title", 300);
   if (body.company_id !== undefined) patch.company_id = optId(body.company_id, "company_id");
   if (body.pipeline_id !== undefined) patch.pipeline_id = optId(body.pipeline_id, "pipeline_id");
-  if (body.stage_id !== undefined) patch.stage_id = optId(body.stage_id, "stage_id");
+  // 단계 변경은 /move 전용(활동로그 보장) — 패치 본문으로는 받지 않는다.
+  if (body.stage_id !== undefined)
+    throw new ValidationError("단계 변경은 /move 엔드포인트를 사용하세요");
   if (body.assigned_to !== undefined) patch.assigned_to = optId(body.assigned_to, "assigned_to");
   if (body.amount !== undefined) patch.amount = optNumber(body.amount, "amount");
   if (body.status_note !== undefined) patch.status_note = optString(body.status_note, "status_note", 1000);

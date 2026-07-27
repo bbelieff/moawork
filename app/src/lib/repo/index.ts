@@ -19,6 +19,9 @@ import type {
 } from "@/lib/types";
 import { LocalRepo } from "./local/localRepo";
 
+// custom(jsonb) 병합 규약 — 구현체·소비 트랙 모두 이 한 곳만 쓴다.
+export { mergeCustom } from "./custom-merge";
+
 // ── core.crm 쓰기 입력 타입 (T02) ──
 // id/org_id/타임스탬프는 repo 가 채운다. assigned_to 는 담당범위 규칙으로 보정될 수 있다.
 export interface NewCompany {
@@ -39,6 +42,7 @@ export interface NewDeal {
   title: string;
   company_id?: string | null;
   pipeline_id?: string | null;
+  /** 생성 시 최초 배치 전용. 이후 단계 변경은 `moveDeal()` 만 쓴다. */
   stage_id?: string | null;
   assigned_to?: string | null;
   amount?: number | null;
@@ -46,7 +50,21 @@ export interface NewDeal {
   applied_on?: string | null;
   custom?: Record<string, unknown>;
 }
-export type DealPatch = Partial<NewDeal>;
+
+/**
+ * 딜 부분수정 패치.
+ *
+ * ⚠ `stage_id` 가 **의도적으로 빠져 있다** — 단계 변경은 `moveDeal()` 전용이다.
+ *   updateDeal 로 단계를 바꾸면 이동 활동로그가 남지 않는다("단계 변경은 move 전용"
+ *   불변식). 서비스 계층 검사만으로는 `getRepo()` 직접 호출을 막지 못해 타입에서 뺐고,
+ *   런타임으로 섞여 들어오면 구현체가 throw 한다.
+ *
+ * ⚠ `custom` 은 **키 단위 병합**이다 — 통째 교체가 아니다. patch.custom 에 없는 키는
+ *   그대로 남고, 있는 키만 새 값으로 대체되며, 값이 `null` 이면 그 키를 삭제한다.
+ *   깊이는 한 겹뿐(값은 통째 대체) — 근거와 상세는 `./custom-merge` 참고.
+ *   모든 구현체는 `mergeCustom()` 을 써서 이 규약을 동일하게 지켜야 한다.
+ */
+export type DealPatch = Partial<Omit<NewDeal, "stage_id">>;
 
 // ── core.custom 쓰기 입력 타입 (T05) ──
 // key/type 은 불변(변경 시 저장값 해석이 깨짐) → 패치에 포함하지 않는다.
@@ -140,7 +158,19 @@ export interface Repo {
   listDeals(ctx: Ctx): Deal[];
   getDeal(ctx: Ctx, id: string): Deal | undefined;
   createDeal(ctx: Ctx, input: NewDeal): Deal;
+  /**
+   * 부분수정. `custom` 은 키 단위 병합(DealPatch 주석 참고).
+   * @throws 런타임으로 `stage_id` 가 섞여 들어오면 Error — 단계 변경은 `moveDeal()` 전용.
+   */
   updateDeal(ctx: Ctx, id: string, patch: DealPatch): Deal | undefined;
+  /**
+   * 단계 이동 — `stage_id` 를 바꾸는 **유일한** 경로.
+   * 구현체는 단계 갱신과 이동 활동로그(type='status') 기록을 **함께** 수행한다.
+   * 그래야 `getRepo()` 를 직접 쓰는 호출부에서도 로그 없는 이동이 생기지 않는다.
+   * @returns 딜이 없거나 담당범위 밖이면 undefined.
+   * @throws 존재하지 않는 단계면 Error.
+   */
+  moveDeal(ctx: Ctx, id: string, toStageId: string): Deal | undefined;
   deleteDeal(ctx: Ctx, id: string): boolean;
 
   // 활동기록 (딜 하위) — 단계 이동/통화/미팅/메모
