@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import type { Ctx, MemberScope, Org, User } from "@/lib/types";
+import type { Ctx, Org, User } from "@/lib/types";
 import { isMemberRole, isMemberScope } from "@/lib/auth/roles";
-import { adminGrantFromFallback, parseAdminRole } from "@/lib/auth/admin";
+import { parseAdminRole } from "@/lib/auth/admin";
+import { chooseSessionMembership } from "@/lib/auth/workspace-routing";
 import { getRepo } from "@/lib/repo";
 import { SEED_ORG_ID } from "@/lib/repo/local/seed";
 import { createClient } from "@/lib/supabase/server";
@@ -16,6 +17,7 @@ export const SESSION_COOKIE = {
 
 type MembershipRow = {
   org_id: unknown;
+  status: unknown;
   role: unknown;
   scope: unknown;
   orgs: unknown;
@@ -57,21 +59,19 @@ async function getSupabaseSession(
   if (userError || !authUser) return null;
   const authUserId = authUser.id;
 
-  async function findMembership(orgId?: string) {
-    let query = supabase
-      .from("org_members")
-      .select("org_id, role, scope, orgs(id, name, plan_tier, created_at)")
-      .eq("user_id", authUserId)
-      .order("created_at", { ascending: true })
-      .limit(1);
-    if (orgId) query = query.eq("org_id", orgId);
-    const { data, error } = await query.maybeSingle();
-    return error ? null : parseMembership(data as MembershipRow | null);
-  }
+  const { data: membershipRows, error: membershipError } = await supabase
+    .from("org_members")
+    .select(
+      "org_id, status, role, scope, orgs!inner(id, slug, status, name, plan_tier, created_at)",
+    )
+    .eq("user_id", authUserId)
+    .order("created_at", { ascending: true });
+  if (membershipError) return null;
 
-  const membership =
-    (preferredOrgId ? await findMembership(preferredOrgId) : null) ??
-    (await findMembership());
+  const selected = chooseSessionMembership(membershipRows, preferredOrgId);
+  const membership = selected
+    ? parseMembership(selected.source as MembershipRow)
+    : null;
   if (!membership) return null;
 
   let platformRole = null;
@@ -94,8 +94,8 @@ async function getSupabaseSession(
   return {
     user,
     org: membership.org,
-    role: platformRole ?? membership.role,
-    scope: platformRole ? "all" : membership.scope,
+    role: membership.role,
+    scope: membership.scope,
     isPlatformAdmin: platformRole !== null,
   };
 }
@@ -103,7 +103,6 @@ async function getSupabaseSession(
 async function getDevSession(
   uid: string | undefined,
   orgId: string | undefined,
-  as: string | undefined,
 ): Promise<Ctx | null> {
   if (!uid || process.env.NODE_ENV === "production") return null;
   const repo = getRepo();
@@ -116,17 +115,13 @@ async function getDevSession(
     .find((member) => member.user_id === uid);
   if (!membership) return null;
 
-  const grant = adminGrantFromFallback(user.email);
-  return applyAs(
-    {
-      user,
-      org,
-      role: grant ? grant.role : membership.role,
-      scope: grant ? "all" : membership.scope,
-      isPlatformAdmin: grant?.isPlatform ?? false,
-    },
-    as,
-  );
+  return {
+    user,
+    org,
+    role: membership.role,
+    scope: membership.scope,
+    isPlatformAdmin: false,
+  };
 }
 
 export async function getSessionOrNull(): Promise<Ctx | null> {
@@ -137,7 +132,6 @@ export async function getSessionOrNull(): Promise<Ctx | null> {
   return getDevSession(
     jar.get(SESSION_COOKIE.uid)?.value,
     jar.get(SESSION_COOKIE.org)?.value,
-    jar.get(SESSION_COOKIE.as)?.value,
   );
 }
 
@@ -147,9 +141,11 @@ export async function getSession(): Promise<Ctx> {
   return ctx;
 }
 
-/** 개발 전용 역할 오버라이드. 운영에서는 호출되어도 권한을 바꾸지 않는다. */
+/**
+ * Legacy compatibility boundary. Role/scope always come from a verified
+ * workspace membership; query or cookie values never grant authorization.
+ */
 export function applyAs(ctx: Ctx, as: string | null | undefined): Ctx {
-  if (process.env.NODE_ENV === "production" || !isMemberRole(as)) return ctx;
-  const scope: MemberScope = as === "member" ? "assigned" : "all";
-  return { ...ctx, role: as, scope };
+  void as;
+  return ctx;
 }
