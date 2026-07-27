@@ -683,3 +683,24 @@ all/assigned), 헬퍼 `is_org_member`/`org_role`/`org_scope`, 트리거 `add_org
 - 루트 npm workspaces(app, worker) 구성.
 - SSOT 4문서 작성: `CLAUDE.md`, `AGENTS.md`, `docs/worklog.md`, `docs/coordination/`.
 - check.sh 초록 확인 후 커밋/푸시.
+
+## 2026-07-27 — T09 · Public Workspace Entry release close / next queue (coordination only)
+
+- WORK-ID: `PUBLIC-WORKSPACE-ENTRY-01-CLOSE-HOLD-AND-NEXT-QUEUE`.
+- clean isolated coordination branch `docs/public-workspace-entry-close-hold`에서 `ROUND-32.md`만 새로 작성하고 본 worklog에 append했다. product candidate branch와 기존 dirty worktree는 수정하지 않았다.
+- `PUBLIC-WORKSPACE-ENTRY-01` candidate `351a5305ad935e3bbffd41b0adb3c24783b6bc02` / tree `92bb09be2bb25ded02b671396b7cb8c6764625fe`, Draft PR #22, CI #96 SUCCESS, Vercel Preview Ready 및 T10 exact-SHA/Preview PASS 증거는 보존한다.
+- release state는 **`BLOCKED_OPERATIONAL / RELEASE_HOLD / NOT_DEPLOYED`**: hosted `006` 미적용, recoverable hosted DB backup/dump·authorized DB connection/maintenance window·migration ledger proof·safe authenticated fixtures/accounts 부재. hosted DB/authenticated visual/merge/deploy/production readback은 `NOT_RUN_BY_GATE`다.
+- exact unblock은 승인된 recoverable backup/dump path + authorized DB connection/maintenance window + isolated safe authenticated test accounts/fixtures의 동시 제공이다. 이 조건도 independent review와 release approval을 대체하지 않는다.
+- PR #19는 conflict/superseded comment 뒤 closed unmerged, PR #20은 Draft/HOLD이며 PR #22 뒤 rebase·migration renumber·entitlement/default-pipeline/stage dependency reconciliation이 필요하다.
+- `SIDEBAR-LEADS` 및 external `TEMPLATE-PUBLISHER` framing을 supersede했다. MoaWork의 목표는 가입한 고객 workspace 안에서 고객 운영체계를 구현하는 것이며, reusable blueprint는 internal delivery accelerator다. public external CRM template marketplace는 범위 밖이다.
+- 8개 후속 project queue는 기록만 했고, PR #22 `RELEASE_HOLD` 중 시작하지 않는다. Consumer: T06. `INTERNAL_SUBAGENT_ONLY: NONE`.
+
+## 2026-07-27 — T09 · Public Workspace Entry production release close (coordination only)
+
+- WORK-ID: `PUBLIC-WORKSPACE-ENTRY-01-RELEASE-CLOSE`. 기존 `ROUND-32`의 `RELEASE_HOLD`는 당시 사실로 보존하고, `ROUND-33`에서만 현재 상태를 승격했다.
+- PR #22 candidate `351a5305...`는 main merge `ea42be870359c0c57490fdf9b9b094d2e197992d`로 반영됐고 Production migration `006`이 atomically applied 됐다. slug-only backfill은 private snapshot/rollback 아래 approved canonical value 한 row만 적용했으며 owner/membership/name/data는 변경하지 않았다. slug 및 exact-one owner anomaly는 0이다.
+- post-apply helper ACL gap(anon `3/3`)은 hosted forward-fix로 anon/PUBLIC `0/3`, authenticated `3/3`, direct anon denial `3/3`을 확인했다. PR #24 head `ef3d58d...`는 T10 PASS 뒤 main `915730df3ced1c845b4e3622ad59278d91580f7f`로 merged 됐다.
+- Vercel Production deployment `99t1H9RDWx1SGKogizpyfaMvDzcL` success와 canonical domain public routing evidence를 기록했다. `/login` HTTP 200, protected deep path/query login redirect 보존, zero-membership과 non-member generic routing, console 0을 확인했다.
+- current release는 **`MERGED / PRODUCTION_DEPLOYED / PARTIALLY_LIVE_VERIFIED`**. safe real one-membership/two-plus chooser 및 approval mutation browser fixture는 nonblocking `NOT_RUN`으로 남긴다.
+- PR #19는 closed superseded, PR #20은 Draft/HOLD(rebase/renumber/reconciliation)다. old PR #23 docs draft는 stale hold record로 supersede/close 대상이며 correct docs-only publication을 별도 검증·merge한다.
+- 후속 8개 프로그램은 `NEXT ONLY / NOT_STARTED`; `DYNAMIC-WORKSPACE-BUILDER-01`은 `PAUSED_BY_USER_PRIORITY`다. 제품/DB/migration/deploy write는 수행하지 않았다. `INTERNAL_SUBAGENT_ONLY: NONE`.
