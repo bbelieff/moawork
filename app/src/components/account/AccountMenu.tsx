@@ -8,7 +8,8 @@ import styles from "./account.module.css";
 export type AccountMenuProps = {
   displayName: string;
   initial: string;
-  workspaceName: string;
+  /** 이전 호출부 호환용이며 계정 메뉴에는 회사명을 표시하지 않는다. */
+  workspaceName?: string;
   accountHref: string;
   workspaceHref?: string;
   sessionsHref?: string;
@@ -18,7 +19,6 @@ export type AccountMenuProps = {
 export function AccountMenu({
   displayName,
   initial,
-  workspaceName,
   accountHref,
   workspaceHref,
   sessionsHref,
@@ -78,7 +78,7 @@ export function AccountMenu({
         </span>
         <span className={styles.menuIdentity}>
           <strong>{displayName}</strong>
-          <small>{workspaceName}</small>
+          <small>계정 및 설정</small>
         </span>
         <span aria-hidden="true">▾</span>
       </button>
@@ -105,7 +105,7 @@ export function AccountMenu({
       >
         <div className={styles.menuSummary}>
           <strong>{displayName}</strong>
-          <small>{workspaceName} 사용 중</small>
+          <small>개인 계정</small>
         </div>
         <ul className={styles.menuList}>
           <li>

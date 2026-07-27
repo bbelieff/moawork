@@ -11,6 +11,7 @@ import { buildAccountViewModel } from "@/lib/account/presentation";
 import { loadWorkspaceRoutingSnapshot } from "@/lib/auth/workspace-entry-server";
 import {
   loadWorkspaceApprovals,
+  loadWorkspaceEntryContext,
   type WorkspaceApprovals,
 } from "@/lib/workspace-entry/server";
 
@@ -31,6 +32,28 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const workspaceApprovals: WorkspaceApprovals | null = trustedOwnerOrgId
     ? await loadWorkspaceApprovals(trustedOwnerOrgId)
     : null;
+  const workspaceEntryContext = await loadWorkspaceEntryContext();
+  const switcherWorkspaces = routing.kind === "ready"
+    ? routing.memberships.map((membership) => ({
+        orgId: membership.orgId,
+        slug: membership.slug,
+        name: membership.name,
+        role: membership.role,
+        status: "active" as const,
+        signedImageUrl: null,
+      }))
+    : [];
+  const switcherPendingRequests = workspaceEntryContext.kind === "ready"
+    ? workspaceEntryContext.requests
+        .filter((request) => request.status === "pending")
+        .map((request) => ({
+          requestId: request.requestId,
+          name: request.kind === "create" ? "새 회사 요청" : "회사 합류 요청",
+          kind: request.kind,
+        }))
+    : [];
+  const canAccessPlatform = workspaceEntryContext.kind === "ready"
+    && workspaceEntryContext.isPlatformAdmin;
 
   // 엔타이틀먼트는 서버 진실 — 잠긴 기능키를 계산해 사이드바로 내린다.
   const features = Array.from(
@@ -70,6 +93,19 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             badges={workspaceApprovals
               ? { workspaceApprovals: workspaceApprovals.pendingCount }
               : undefined}
+            workspaceSwitcher={{
+              currentOrgId: ctx.org.id,
+              workspaces: switcherWorkspaces,
+              pendingRequests: switcherPendingRequests,
+              destinations: {
+                createHref: "/workspace-entry?mode=new",
+                joinHref: "/workspace-entry?mode=resume",
+                platformHref: canAccessPlatform
+                  ? "/platform/workspace-requests"
+                  : undefined,
+              },
+              serverConfirmedCanAccessPlatform: canAccessPlatform,
+            }}
           />
         </div>
 
@@ -141,7 +177,6 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             <AccountMenu
               displayName={account.displayName}
               initial={account.initial}
-              workspaceName={account.workspaceName}
               accountHref="/account"
               workspaceHref="/settings/account#workspace"
               sessionsHref="/settings/account/sessions"
