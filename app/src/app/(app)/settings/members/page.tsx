@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
 import { getRepo } from "@/lib/repo";
 import { isManager, isMemberRole, MEMBER_ROLES } from "@/lib/auth/roles";
@@ -32,6 +33,12 @@ export default async function MembersPage() {
           {canManage ? "" : " · (열람 전용 — 역할 변경은 관리자만)"}
         </p>
       </div>
+
+      {ctx.role === "owner" ? (
+        <Link href="./members/approvals" className="w-fit rounded-xl bg-mw-primary px-4 py-3 text-sm font-semibold text-mw-on-accent focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-mw-primary">
+          회사 합류 요청 확인하기
+        </Link>
+      ) : null}
 
       <table className="w-full text-sm">
         <thead>

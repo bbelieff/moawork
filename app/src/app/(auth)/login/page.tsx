@@ -121,7 +121,6 @@ export default async function LoginPage({
           <p className={styles.legal}>
             계속하면 MoaWork 이용약관 및 개인정보처리방침에 동의하게 됩니다.
           </p>
-          <p className={styles.secure}>Google OAuth로 안전하게 연결</p>
 
           {devToolsEnabled ? (
             <section className={styles.devAccounts}>

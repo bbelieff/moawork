@@ -2,13 +2,18 @@
 export function safeNextPath(value: unknown, fallback = "/"): string {
   if (typeof value !== "string") return fallback;
   const path = value.trim();
-  if (!path.startsWith("/") || path.startsWith("//")) return fallback;
+  if (!path.startsWith("/") || path.startsWith("//") || /[\\\u0000-\u001f\u007f]/.test(path)) return fallback;
+
+  const pathnameInput = path.split(/[?#]/, 1)[0];
+  if (/%(?:2f|5c|00|0[1-9a-f]|1[0-9a-f]|7f)/i.test(pathnameInput) || /%25/i.test(pathnameInput)) return fallback;
 
   try {
     const url = new URL(path, "https://moa-work.local");
-    return url.origin === "https://moa-work.local"
-      ? `${url.pathname}${url.search}${url.hash}`
-      : fallback;
+    const decodedPath = decodeURIComponent(url.pathname);
+    if (url.origin !== "https://moa-work.local" || decodedPath.startsWith("//") || /[\\\u0000-\u001f\u007f]/.test(decodedPath)) return fallback;
+    if (decodedPath.split("/").some((segment) => segment === "." || segment === "..")) return fallback;
+    decodeURIComponent(url.search);
+    return `${url.pathname}${url.search}${url.hash}`;
   } catch {
     return fallback;
   }

@@ -1,6 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseEnv } from "@/lib/supabase/env";
+import { safeNextPath } from "@/lib/auth/oauth";
+import { SESSION_COOKIE } from "@/lib/auth/session";
+import { decideWorkspaceNamespace, isWorkspaceNamespaceCandidate } from "@/lib/auth/workspace-namespace";
+import { WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
 
 // Next 16: `middleware` 는 `proxy` 로 대체됐다(node_modules/next/dist/docs — proxy.ts 규약).
 // 역할:
@@ -22,6 +26,9 @@ function isPublicPath(pathname: string): boolean {
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
   const { pathname, search } = request.nextUrl;
+  const refreshedCookies: Array<{ name: string; value: string; options: Record<string, unknown> }> = [];
+  const aliasCandidate = pathname.match(/^\/([^/]+)$/)?.[1];
+  const safeRequestedPath = safeNextPath(`${pathname}${search}`, "/");
 
   // Supabase 미설정(개발 초기 등)에는 인증 게이트를 끄고 통과시킨다.
   // 운영에서는 env 를 반드시 설정해야 게이트가 활성화된다.
@@ -34,7 +41,7 @@ export async function proxy(request: NextRequest) {
       loginUrl.pathname = "/login";
       loginUrl.search = "";
       loginUrl.searchParams.set("error", "config");
-      loginUrl.searchParams.set("next", `${pathname}${search}`);
+      loginUrl.searchParams.set("next", safeRequestedPath);
       return NextResponse.redirect(loginUrl);
     }
     return response;
@@ -50,6 +57,7 @@ export async function proxy(request: NextRequest) {
         for (const { name, value } of cookiesToSet) {
           request.cookies.set(name, value);
         }
+        refreshedCookies.splice(0, refreshedCookies.length, ...cookiesToSet);
         response = NextResponse.next({ request });
         for (const { name, value, options } of cookiesToSet) {
           response.cookies.set(name, value, options);
@@ -67,8 +75,44 @@ export async function proxy(request: NextRequest) {
   if (!user && !isPublicPath(pathname)) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
-    loginUrl.searchParams.set("next", `${pathname}${search}`);
+    const canonicalNext = aliasCandidate && isWorkspaceNamespaceCandidate(pathname)
+      ? `/w/${aliasCandidate}${search}`
+      : safeRequestedPath;
+    loginUrl.search = "";
+    loginUrl.searchParams.set("next", canonicalNext);
     return NextResponse.redirect(loginUrl);
+  }
+
+  if (user && isWorkspaceNamespaceCandidate(pathname)) {
+    const { data: membershipRows, error: membershipError } = await supabase
+      .from("org_members")
+      .select("org_id, status, role, scope, created_at, orgs!inner(id, slug, status, name, plan_tier, created_at)")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true });
+    const decision = decideWorkspaceNamespace(`${pathname}${search}`, membershipError ? null : membershipRows);
+    if (decision.kind === "deny" || decision.kind === "none") {
+      const denied = request.nextUrl.clone();
+      denied.pathname = "/workspace-entry";
+      denied.search = "";
+      denied.searchParams.set("error", "routing");
+      const deniedResponse = NextResponse.redirect(denied);
+      deniedResponse.cookies.delete(SESSION_COOKIE.org);
+      return deniedResponse;
+    }
+
+    request.cookies.set(SESSION_COOKIE.org, decision.orgId);
+    let namespaceResponse: NextResponse;
+    if (decision.kind === "alias") {
+      namespaceResponse = NextResponse.redirect(new URL(decision.canonical, request.url));
+    } else {
+      const requestHeaders = new Headers(request.headers);
+      requestHeaders.set("cookie", request.cookies.toString());
+      namespaceResponse = NextResponse.rewrite(new URL(decision.internal, request.url), { request: { headers: requestHeaders } });
+    }
+    for (const cookie of refreshedCookies) namespaceResponse.cookies.set(cookie.name, cookie.value, cookie.options);
+    namespaceResponse.cookies.set(SESSION_COOKIE.org, decision.orgId, { path: "/", httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
+    namespaceResponse.cookies.delete(WORKSPACE_ENTRY_RESUME_COOKIE);
+    return namespaceResponse;
   }
 
   return response;

@@ -35,10 +35,13 @@ describe("login A v1.1 UI contract", () => {
     expect(page).toContain('aria-labelledby="login-title"');
     expect(page).toContain('id="login-title"');
     expect(page).not.toContain("<span>이용약관</span>");
+    expect(page).not.toContain("Google OAuth로 안전하게 연결");
+    expect(styles).not.toContain(".secure");
   });
 
   it("Google 버튼은 공식 아이콘과 진행 상태·테마 오류색을 제공한다", () => {
     expect(button).toContain('/brand/google-g.svg');
+    expect(button).toContain('provider: "google"');
     expect(button).toContain("aria-busy={pending}");
     expect(button).toContain('aria-live="polite"');
     expect(button).toContain("text-mw-error");
