@@ -70,8 +70,10 @@ begin
   end;
 
   foreach v_reserved in array array[
-    'account', 'admin', 'api', 'auth', 'login', 'logout', 'platform',
-    'settings', 'support', 'workspace-entry', 'workspaces', 'www',
+    '_next', 'account', 'admin', 'api', 'auth', 'boards', 'contract',
+    'dash', 'login', 'logout', 'newcust', 'notices', 'onboarding',
+    'platform', 'policyfund', 'settings', 'support', 'w', 'work',
+    'workspace-entry', 'workspaces', 'www',
     'ab', repeat('z', 41), 'Bad_Slug'
   ] loop
     begin
@@ -81,6 +83,14 @@ begin
       raise exception 'ASSERTION FAILED: invalid/reserved address unexpectedly accepted';
     exception when invalid_parameter_value then
       if sqlerrm <> 'workspace address invalid' then raise; end if;
+    end;
+
+    begin
+      insert into public.orgs (name, slug)
+      values ('Constraint Bypass Test', v_reserved);
+      raise exception 'ASSERTION FAILED: invalid/reserved constraint bypass unexpectedly succeeded';
+    exception when check_violation then
+      null;
     end;
   end loop;
 end;
@@ -834,6 +844,9 @@ select pg_temp.assert_true(
 -- Adds exact known-vs-unknown requester state/shape probes before and at the
 -- fixed seven-day deadline, system-attributed expiry, late-approval denial,
 -- generic cancellation/retry, and authenticated direct-table read denial.
+-- CHECKPOINT alias-reserved-segments-test 2026-07-27 KST
+-- Every current top-level product segment is rejected through both the direct
+-- create RPC and the underlying org slug constraint.
 
 select 'PUBLIC_WORKSPACE_ENTRY_SQL_PASS' as result;
 rollback;

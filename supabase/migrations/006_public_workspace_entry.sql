@@ -51,8 +51,10 @@ alter table public.orgs
       and slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'
       and char_length(slug) between 3 and 40
       and slug not in (
-        'account', 'admin', 'api', 'auth', 'login', 'logout', 'platform',
-        'settings', 'support', 'workspace-entry', 'workspaces', 'www'
+        '_next', 'account', 'admin', 'api', 'auth', 'boards', 'contract',
+        'dash', 'login', 'logout', 'newcust', 'notices', 'onboarding',
+        'platform', 'policyfund', 'settings', 'support', 'w', 'work',
+        'workspace-entry', 'workspaces', 'www'
       )
     )
   );
@@ -261,8 +263,10 @@ create table if not exists public.workspace_entry_requests (
       and char_length(desired_slug) between 3 and 40
       and desired_slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'
       and desired_slug not in (
-        'account', 'admin', 'api', 'auth', 'login', 'logout', 'platform',
-        'settings', 'support', 'workspace-entry', 'workspaces', 'www'
+        '_next', 'account', 'admin', 'api', 'auth', 'boards', 'contract',
+        'dash', 'login', 'logout', 'newcust', 'notices', 'onboarding',
+        'platform', 'policyfund', 'settings', 'support', 'w', 'work',
+        'workspace-entry', 'workspaces', 'www'
       )
       and lookup_digest is null
     )
@@ -483,8 +487,10 @@ begin
   if char_length(v_slug) not between 3 and 40
      or v_slug !~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'
      or v_slug in (
-       'account', 'admin', 'api', 'auth', 'login', 'logout', 'platform',
-       'settings', 'support', 'workspace-entry', 'workspaces', 'www'
+       '_next', 'account', 'admin', 'api', 'auth', 'boards', 'contract',
+       'dash', 'login', 'logout', 'newcust', 'notices', 'onboarding',
+       'platform', 'policyfund', 'settings', 'support', 'w', 'work',
+       'workspace-entry', 'workspaces', 'www'
      ) then
     raise exception 'workspace address invalid' using errcode = '22023';
   end if;
@@ -1133,3 +1139,6 @@ comment on function public.list_my_workspace_entry_requests() is
 -- Every join observation now shares a deterministic 7-day requester window.
 -- Unresolved actionable and non-actionable attempts converge to the same state
 -- at the deadline; owner queues and approval reject expired work.
+-- CHECKPOINT alias-reserved-segments-material 2026-07-27 KST
+-- Direct /{slug} aliases reserve every current top-level product route in the
+-- org constraint, request constraint, and RPC validation with one generic error.
