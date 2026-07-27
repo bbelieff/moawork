@@ -49,8 +49,8 @@ export async function handleWorkspaceRequest(
     const resume = workspaceEntryResumeValue(parsed.input.kind, parsed.input.requestId!);
     if (resume) response.cookies.set(WORKSPACE_ENTRY_RESUME_COOKIE, resume, {
       path: "/", httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production",
-      // Helper-cookie lifetime is not the DB approval lifetime. Join alone has a 7-day review window.
-      maxAge: parsed.input.kind === "join" ? 7 * 24 * 60 * 60 : 30 * 24 * 60 * 60,
+      // The helper cookie cannot outlive the server-side 14-day review window.
+      maxAge: 14 * 24 * 60 * 60,
     });
   } else if (result.ok && parsed.input.kind === "cancel") {
     response.cookies.delete(WORKSPACE_ENTRY_RESUME_COOKIE);

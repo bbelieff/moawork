@@ -26,6 +26,7 @@ const migrationNames = [
   "006_public_workspace_entry.sql",
   "007_public_workspace_entry_helper_acl.sql",
   "008_workspace_entry_self_route_state.sql",
+  "009_workspace_entry_request_lifecycle.sql",
 ];
 
 let db;
@@ -124,7 +125,7 @@ after(async () => {
   if (db) await db.close();
 });
 
-test("applies exact base migrations 0001..007 to a fresh PGlite database", async () => {
+test("applies exact base migrations 0001..009 to a fresh PGlite database", async () => {
   for (const name of migrationNames) {
     if (name === "006_public_workspace_entry.sql") {
       await db.exec(`
@@ -151,6 +152,7 @@ test("applies exact base migrations 0001..007 to a fresh PGlite database", async
       to_regprocedure('public.resolve_workspace_join_request(uuid,boolean,text)') is not null as join_rpc,
       to_regprocedure('public.list_my_workspace_entry_requests()') is not null as requester_read_rpc
       ,to_regprocedure('public.workspace_entry_self_route_state()') is not null as self_route_rpc
+      ,to_regprocedure('public.count_pending_workspace_join_requests(uuid)') is not null as owner_approval_count_rpc
   `);
   assert.deepEqual(applied.rows, [
     {
@@ -161,6 +163,7 @@ test("applies exact base migrations 0001..007 to a fresh PGlite database", async
       join_rpc: true,
       requester_read_rpc: true,
       self_route_rpc: true,
+      owner_approval_count_rpc: true,
     },
   ]);
 

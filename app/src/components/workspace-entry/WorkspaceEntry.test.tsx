@@ -7,6 +7,7 @@ import {
   WorkspaceEntry,
   workspaceAddressPreview,
   workspaceEntryCopy,
+  workspaceEntryPendingSummary,
   workspaceEntryProgress,
 } from "./WorkspaceEntry";
 
@@ -60,10 +61,34 @@ describe("WorkspaceEntry B-3 state contract", () => {
 
     expect(html).toContain('data-entry-view="pending"');
     expect(html).toContain("검토 중 · 회사 접근 0곳");
-    expect(html).toContain("요청 관리하기");
-    expect((html.match(/<button/g) ?? [])).toHaveLength(1);
+    expect(html).toContain("대기 요청 요약");
+    expect(html).toContain("회사 합류 요청");
+    expect(html).toContain("취소하거나 다시 입력하기");
+    expect(html).toContain('href="/workspaces"');
+    expect(html).toContain("현재 요청 취소 후 새 회사 시작");
+    expect(html).toContain('action="/auth/signout"');
+    expect(html).toContain("로그아웃");
+    expect((html.match(/<button/g) ?? [])).toHaveLength(3);
     expect(html).not.toContain("취소하고 다시 입력할게요");
+    expect(html).not.toContain("7일 이내");
+    expect(html).not.toContain("자동 만료");
     expect(workspaceEntryProgress("pending").detail).toBe("다음 행동 1개");
+  });
+
+  it("shows a 14-day expiry only when the backend deadline proves it", () => {
+    const verified = {
+      ...pendingJoin,
+      reviewDeadline: "2026-08-10T00:00:00.000Z",
+    } satisfies MyWorkspaceEntryRequest;
+    const unverified = {
+      ...pendingJoin,
+      reviewDeadline: "2026-08-03T00:00:00.000Z",
+    } satisfies MyWorkspaceEntryRequest;
+
+    expect(workspaceEntryPendingSummary(verified)?.expiryLabel).toContain("요청 후 14일 자동 만료");
+    expect(workspaceEntryPendingSummary(unverified)?.expiryLabel).toBeNull();
+    expect(renderToStaticMarkup(<WorkspaceEntry requests={[verified]} />)).toContain("요청 후 14일 자동 만료");
+    expect(renderToStaticMarkup(<WorkspaceEntry requests={[unverified]} />)).not.toContain("자동 만료");
   });
 
   it("fails closed for a platform operator without tenant actions", () => {
@@ -95,5 +120,6 @@ describe("WorkspaceEntry B-3 state contract", () => {
     expect(resolveWorkspaceEntryView({ initialView: "create", hasPendingRequest: false, hasRejectedRequest: false, isPlatformAdmin: false })).toBe("create-name");
     expect(resolveWorkspaceEntryView({ initialView: "fork", hasPendingRequest: true, hasRejectedRequest: true, isPlatformAdmin: true })).toBe("operator");
     expect(workspaceEntryCopy("rejected").lead).toContain("안전한 다음 행동");
+    expect(renderToStaticMarkup(<WorkspaceEntry initialView="rejected" />)).not.toContain("거절 사유");
   });
 });

@@ -1,11 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
-import { decideApprovedRequestTarget, executeWorkspaceRequest, readWorkspaceEntryContext, type WorkspaceEntryRpcClient } from "./server";
+import { decideApprovedRequestTarget, executeWorkspaceRequest, readWorkspaceApprovals, readWorkspaceEntryContext, type WorkspaceEntryRpcClient } from "./server";
 
 function client(results: Record<string, { data: unknown; error: { code?: string } | null }>): WorkspaceEntryRpcClient {
   return { rpc: vi.fn(async (name: string) => results[name] ?? { data: null, error: { code: "missing" } }) };
 }
 
 describe("workspace entry RPC adapter", () => {
+  it("exposes only a protected-owner approval aggregate and fails closed for every other context", async () => {
+    const owner = client({ count_pending_workspace_join_requests: { data: 2, error: null } });
+    await expect(readWorkspaceApprovals(owner, "org-1")).resolves.toEqual({ pendingCount: 2 });
+    expect(owner.rpc).toHaveBeenCalledWith("count_pending_workspace_join_requests", { p_org_id: "org-1" });
+
+    const denied = client({ count_pending_workspace_join_requests: { data: null, error: { code: "42501" } } });
+    await expect(readWorkspaceApprovals(denied, "cross-tenant")).resolves.toEqual({ pendingCount: 0 });
+    await expect(readWorkspaceApprovals(denied)).resolves.toEqual({ pendingCount: 0 });
+    expect(denied.rpc).toHaveBeenCalledTimes(1);
+  });
+
   it("revalidates the newest approved target against an exact active membership even with 2+ memberships", () => {
     const request = (requestId: string, createdAt: string, slug: string) => ({ requestId, kind: "join" as const, status: "approved" as const, createdAt, resolvedAt: createdAt, decisionState: "approved" as const, approvedTargetSlug: slug, reviewDeadline: null });
     const memberships = [
@@ -54,16 +65,18 @@ describe("workspace entry RPC adapter", () => {
       is_platform_admin: { data: false, error: null },
       list_my_workspace_entry_requests: { data: [], error: null },
       list_pending_workspace_join_requests: { data: [{ request_id: "r3", requester_user_id: "user-3", created_at: "2026-07-27T00:00:00Z" }], error: null },
+      count_pending_workspace_join_requests: { data: 1, error: null },
     });
     await expect(readWorkspaceEntryContext(rpc, "org-1")).resolves.toMatchObject({
       kind: "ready",
       isPlatformAdmin: false,
       ownerJoinRequests: [{ requestId: "r3", requesterUserId: "user-3" }],
+      ownerPendingApprovalCount: 1,
     });
   });
 
   it("maps approval to the exact resolver without accepting a role or scope", async () => {
-    const rpc = client({ resolve_workspace_join_request: { data: { accepted: true }, error: null } });
+    const rpc = client({ resolve_workspace_join_request: { data: { accepted: true, status: "approved" }, error: null } });
     const result = await executeWorkspaceRequest(rpc, { kind: "resolve_join", requestId: "40000000-0000-4000-8000-000000000004", approve: true });
     expect(result).toMatchObject({ status: 200, result: { ok: true, state: "approved" } });
     expect(rpc.rpc).toHaveBeenCalledWith("resolve_workspace_join_request", {
@@ -78,5 +91,11 @@ describe("workspace entry RPC adapter", () => {
     const result = await executeWorkspaceRequest(rpc, { kind: "join", requestId: "50000000-0000-4000-8000-000000000005", lookup: "unknown" });
     expect(result.status).toBe(409);
     expect(JSON.stringify(result)).not.toContain("unknown");
+  });
+
+  it("rejects a malformed cancellation envelope instead of guessing a lifecycle state", async () => {
+    const rpc = client({ cancel_workspace_entry_request: { data: { accepted: true }, error: null } });
+    const result = await executeWorkspaceRequest(rpc, { kind: "cancel", requestId: "60000000-0000-4000-8000-000000000006" });
+    expect(result).toMatchObject({ status: 409, result: { ok: false, state: "unavailable" } });
   });
 });

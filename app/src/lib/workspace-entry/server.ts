@@ -33,6 +33,10 @@ export type OwnerJoinRequest = {
   createdAt: string;
 };
 
+export type WorkspaceApprovals = {
+  pendingCount: number;
+};
+
 export type WorkspaceEntryContext =
   | { kind: "error" }
   | {
@@ -41,6 +45,7 @@ export type WorkspaceEntryContext =
       requests: MyWorkspaceEntryRequest[];
       platformCreateRequests: PlatformCreateRequest[];
       ownerJoinRequests: OwnerJoinRequest[];
+      ownerPendingApprovalCount: number;
     };
 
 export type ApprovedRequestTarget =
@@ -146,6 +151,34 @@ function parseOwnerQueue(value: unknown): OwnerJoinRequest[] | null {
   return result;
 }
 
+function parsePendingApprovalCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+export async function readWorkspaceApprovals(
+  client: WorkspaceEntryRpcClient,
+  ownerOrgId?: string,
+): Promise<WorkspaceApprovals> {
+  if (!ownerOrgId) return { pendingCount: 0 };
+  const result = await client.rpc("count_pending_workspace_join_requests", { p_org_id: ownerOrgId });
+  const pendingCount = result.error ? null : parsePendingApprovalCount(result.data);
+  return { pendingCount: pendingCount ?? 0 };
+}
+
+export async function loadWorkspaceApprovals(ownerOrgId?: string): Promise<WorkspaceApprovals> {
+  return readWorkspaceApprovals(await createClient() as unknown as WorkspaceEntryRpcClient, ownerOrgId);
+}
+
+function parseRequestStatus(value: unknown, pendingFallback: boolean): "pending" | "expired" | "cancelled" | "approved" | "rejected" | null {
+  const row = record(value);
+  if (!row || row.accepted !== true) return null;
+  const status = row.status;
+  if (status === undefined && pendingFallback) return "pending";
+  return status === "pending" || status === "expired" || status === "cancelled" || status === "approved" || status === "rejected"
+    ? status
+    : null;
+}
+
 export async function readWorkspaceEntryContext(
   client: WorkspaceEntryRpcClient,
   ownerOrgId?: string,
@@ -169,15 +202,21 @@ export async function readWorkspaceEntryContext(
   }
 
   let ownerJoinRequests: OwnerJoinRequest[] = [];
+  let ownerPendingApprovalCount = 0;
   if (ownerOrgId) {
-    const result = await client.rpc("list_pending_workspace_join_requests", { p_org_id: ownerOrgId });
-    if (result.error) return { kind: "error" };
+    const [result, countResult] = await Promise.all([
+      client.rpc("list_pending_workspace_join_requests", { p_org_id: ownerOrgId }),
+      client.rpc("count_pending_workspace_join_requests", { p_org_id: ownerOrgId }),
+    ]);
+    if (result.error || countResult.error) return { kind: "error" };
     const parsed = parseOwnerQueue(result.data);
-    if (!parsed) return { kind: "error" };
+    const parsedCount = parsePendingApprovalCount(countResult.data);
+    if (!parsed || parsedCount === null || parsed.length !== parsedCount) return { kind: "error" };
     ownerJoinRequests = parsed;
+    ownerPendingApprovalCount = parsedCount;
   }
 
-  return { kind: "ready", isPlatformAdmin, requests, platformCreateRequests, ownerJoinRequests };
+  return { kind: "ready", isPlatformAdmin, requests, platformCreateRequests, ownerJoinRequests, ownerPendingApprovalCount };
 }
 
 export async function loadWorkspaceEntryContext(ownerOrgId?: string): Promise<WorkspaceEntryContext> {
@@ -223,13 +262,17 @@ export async function executeWorkspaceRequest(
     };
   }
 
-  const state = input.kind === "cancel"
-    ? "cancelled"
-    : input.kind === "resolve_create" || input.kind === "resolve_join"
-      ? input.approve ? "approved" : "rejected"
-      : "pending";
+  const state = parseRequestStatus(response.data, input.kind === "create" || input.kind === "join");
+  if (!state) {
+    return {
+      result: { ok: false, state: "unavailable", message: "요청을 지금 처리할 수 없어요. 목록을 새로 확인한 뒤 다시 시도해 주세요." },
+      status: 409,
+    };
+  }
   const message = state === "pending"
     ? "요청을 보냈어요. 승인 전에는 회사에 들어갈 수 없어요."
+    : state === "expired"
+      ? "요청 기간이 끝났어요. 필요하면 새 요청을 보낼 수 있어요."
     : state === "cancelled"
       ? "요청을 취소했어요. 새 요청은 언제든 다시 보낼 수 있어요."
       : state === "approved"

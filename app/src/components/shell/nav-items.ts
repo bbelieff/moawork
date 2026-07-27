@@ -18,7 +18,11 @@ export type NavItem = {
   feature?: FeatureKey;
   /** 담당 트랙(주석용) */
   owner?: string;
+  /** 서버가 검증한 배지 값만 연결하는 소비자 키. */
+  badgeKey?: NavBadgeKey;
 };
+
+export type NavBadgeKey = "workspaceApprovals";
 
 export const NAV_ITEMS: readonly NavItem[] = [
   { key: "dash", label: "대시보드", icon: "◫", href: "/", feature: FEATURES.dash, owner: "T04" },
@@ -27,7 +31,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { key: "work", label: "업무관리", icon: "🛠", href: "/policyfund", feature: FEATURES.policyfund, owner: "T09" },
   { key: "company", label: "업체관리", icon: "🏢", feature: FEATURES.crm, owner: "T02" },
   { key: "notice", label: "공지사항", icon: "📋", owner: "미배정" },
-  { key: "members", label: "멤버관리", icon: "👥", href: "/settings/members", feature: FEATURES.org, owner: "T03" },
+  { key: "members", label: "멤버관리", icon: "👥", href: "/settings/members", feature: FEATURES.org, owner: "T03", badgeKey: "workspaceApprovals" },
   { key: "vendor", label: "거래처등록", icon: "➕", feature: FEATURES.crm, owner: "T02" },
   { key: "topco", label: "이달의 계약회사", icon: "🏆", feature: FEATURES.dash, owner: "T04/B5" },
   { key: "acct", label: "회계", icon: "₩", owner: "T09" },

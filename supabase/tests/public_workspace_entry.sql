@@ -189,7 +189,7 @@ end;
 $$;
 
 -- Requester-visible lifecycle is indistinguishable for known and unknown
--- lookups before the fixed seven-day deadline and converges at that deadline.
+-- lookups before the fixed fourteen-day deadline and converges at that deadline.
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000007', true);
 select public.submit_workspace_join_request(
   '30000000-0000-0000-0000-000000000110', 'alpha-test'
@@ -212,13 +212,13 @@ select pg_temp.assert_true(
   'known and unknown are both pending with no target before deadline'
 );
 select pg_temp.assert_true(
-  (select bool_and(review_deadline - created_at = interval '7 days')
+   (select bool_and(review_deadline - created_at = interval '14 days')
    from public.list_my_workspace_entry_requests()
    where request_id in (
      '30000000-0000-0000-0000-000000000110',
      '30000000-0000-0000-0000-000000000111'
    )),
-  'known and unknown use the same deterministic seven-day window'
+   'known and unknown use the same deterministic fourteen-day window'
 );
 select pg_temp.assert_true(
   (select count(distinct jsonb_build_object(
