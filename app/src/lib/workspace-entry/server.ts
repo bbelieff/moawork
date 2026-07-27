@@ -15,7 +15,7 @@ export type MyWorkspaceEntryRequest = {
   status: "pending" | "approved" | "rejected" | "cancelled";
   createdAt: string;
   resolvedAt: string | null;
-  decisionState: "pending" | "approved" | "not_approved";
+  decisionState: "pending" | "approved" | "not_approved" | "cancelled";
   approvedTargetSlug: string | null;
   reviewDeadline: string | null;
 };
@@ -56,6 +56,7 @@ export function decideApprovedRequestTarget(
   if (!resumeRequestId) return { kind: "none" };
   const candidates = requests.filter((request) => request.requestId === resumeRequestId && (request.decisionState === "approved" || request.status === "approved" || request.approvedTargetSlug !== null));
   if (candidates.length === 0) return { kind: "none" };
+  if (candidates.length !== 1) return { kind: "invalid" };
   for (const request of candidates) {
     const created = Date.parse(request.createdAt);
     const resolved = request.resolvedAt ? Date.parse(request.resolvedAt) : Number.NaN;
@@ -100,7 +101,7 @@ function parseMyRequests(value: unknown): MyWorkspaceEntryRequest[] | null {
       !requestId || !createdAt ||
       (kind !== "create" && kind !== "join") ||
       (status !== "pending" && status !== "approved" && status !== "rejected" && status !== "cancelled") ||
-      (decisionState !== "pending" && decisionState !== "approved" && decisionState !== "not_approved")
+      (decisionState !== "pending" && decisionState !== "approved" && decisionState !== "not_approved" && decisionState !== "cancelled")
     ) return null;
     result.push({
       requestId,

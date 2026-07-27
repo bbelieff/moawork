@@ -25,6 +25,7 @@ const migrationNames = [
   "005_app_admins.sql",
   "006_public_workspace_entry.sql",
   "007_public_workspace_entry_helper_acl.sql",
+  "008_workspace_entry_self_route_state.sql",
 ];
 
 let db;
@@ -149,6 +150,7 @@ test("applies exact base migrations 0001..007 to a fresh PGlite database", async
       to_regprocedure('public.resolve_workspace_create_request(uuid,boolean,text)') is not null as create_rpc,
       to_regprocedure('public.resolve_workspace_join_request(uuid,boolean,text)') is not null as join_rpc,
       to_regprocedure('public.list_my_workspace_entry_requests()') is not null as requester_read_rpc
+      ,to_regprocedure('public.workspace_entry_self_route_state()') is not null as self_route_rpc
   `);
   assert.deepEqual(applied.rows, [
     {
@@ -158,6 +160,7 @@ test("applies exact base migrations 0001..007 to a fresh PGlite database", async
       create_rpc: true,
       join_rpc: true,
       requester_read_rpc: true,
+      self_route_rpc: true,
     },
   ]);
 
@@ -227,6 +230,84 @@ test("keeps authenticated helper access while denying anon and PUBLIC", async ()
       await db.exec("reset role");
     }
   }
+});
+
+test("self route state is authenticated, self-only, and tenant-identity free", async () => {
+  const acl = await db.query(`
+    select
+      has_function_privilege('anon', 'public.workspace_entry_self_route_state()', 'EXECUTE') as anon_execute,
+      has_function_privilege('authenticated', 'public.workspace_entry_self_route_state()', 'EXECUTE') as authenticated_execute,
+      (select count(*) = 0 from aclexplode(coalesce(proacl, acldefault('f', proowner))) privilege where privilege.grantee = 0 and privilege.privilege_type = 'EXECUTE') as public_execute
+    from pg_proc
+    where oid = 'public.workspace_entry_self_route_state()'::regprocedure
+  `);
+  assert.deepEqual(acl.rows, [{ anon_execute: false, authenticated_execute: true, public_execute: true }]);
+
+  await db.exec("set role anon");
+  try {
+    await assert.rejects(db.query("select public.workspace_entry_self_route_state()"), /permission denied for function/iu);
+  } finally { await db.exec("reset role"); }
+
+  await db.exec("set role authenticated; select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', false)");
+  try {
+    const neverMember = await db.query("select public.workspace_entry_self_route_state() as state");
+    assert.deepEqual(neverMember.rows, [{ state: "eligible_entry" }]);
+  } finally { await db.exec("reset role; select set_config('request.jwt.claim.sub', '', false)"); }
+});
+
+test("self route state blocks suspended or inactive rows but permits removed history and platform-only accounts", async () => {
+  await db.exec(`
+    insert into auth.users (id, email, aud, role) values
+      ('11111111-1111-1111-1111-111111111112', 'route-owner@test.invalid', 'authenticated', 'authenticated'),
+      ('11111111-1111-1111-1111-111111111113', 'route-suspended@test.invalid', 'authenticated', 'authenticated'),
+      ('11111111-1111-1111-1111-111111111114', 'route-removed@test.invalid', 'authenticated', 'authenticated'),
+      ('11111111-1111-1111-1111-111111111115', 'route-removed@test.invalid', 'authenticated', 'authenticated'),
+      ('11111111-1111-1111-1111-111111111116', 'route-platform@test.invalid', 'authenticated', 'authenticated');
+    insert into public.users (id, email, name) values
+      ('11111111-1111-1111-1111-111111111112', 'route-owner@test.invalid', 'Owner'),
+      ('11111111-1111-1111-1111-111111111113', 'route-suspended@test.invalid', 'Suspended'),
+      ('11111111-1111-1111-1111-111111111114', 'route-removed@test.invalid', 'Removed'),
+      ('11111111-1111-1111-1111-111111111115', 'route-removed@test.invalid', 'Removed'),
+      ('11111111-1111-1111-1111-111111111116', 'route-platform@test.invalid', 'Platform');
+    insert into public.app_admins (email, role, is_platform, note)
+    values ('route-platform@test.invalid', 'admin', true, 'synthetic platform-only fixture');
+    begin;
+    insert into public.orgs (id, name, slug, status) values
+      ('11111111-1111-1111-1111-111111111120', 'Suspended member workspace', 'route-suspended-member', 'active'),
+      ('11111111-1111-1111-1111-111111111121', 'Inactive workspace', 'route-inactive-workspace', 'suspended'),
+      ('11111111-1111-1111-1111-111111111122', 'Removed history workspace', 'route-removed-history', 'suspended');
+    insert into public.org_members (org_id, user_id, role, scope, status) values
+      ('11111111-1111-1111-1111-111111111120', '11111111-1111-1111-1111-111111111112', 'owner', 'all', 'active'),
+      ('11111111-1111-1111-1111-111111111121', '11111111-1111-1111-1111-111111111112', 'owner', 'all', 'active'),
+      ('11111111-1111-1111-1111-111111111122', '11111111-1111-1111-1111-111111111112', 'owner', 'all', 'active'),
+      ('11111111-1111-1111-1111-111111111120', '11111111-1111-1111-1111-111111111113', 'member', 'assigned', 'suspended'),
+      ('11111111-1111-1111-1111-111111111121', '11111111-1111-1111-1111-111111111114', 'member', 'assigned', 'active'),
+      ('11111111-1111-1111-1111-111111111122', '11111111-1111-1111-1111-111111111115', 'member', 'assigned', 'removed');
+    commit;
+  `);
+
+  for (const actor of ['11111111-1111-1111-1111-111111111113', '11111111-1111-1111-1111-111111111114']) {
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${actor}', false)`);
+    try { assert.deepEqual((await db.query("select public.workspace_entry_self_route_state() as state")).rows, [{ state: "blocked_inactive" }]); }
+    finally { await db.exec("reset role; select set_config('request.jwt.claim.sub', '', false)"); }
+  }
+  await db.exec("set role authenticated; select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111115', false)");
+  try { assert.deepEqual((await db.query("select public.workspace_entry_self_route_state() as state")).rows, [{ state: "eligible_entry" }]); }
+  finally { await db.exec("reset role; select set_config('request.jwt.claim.sub', '', false)"); }
+  await db.exec("set role authenticated; select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111116', false)");
+  try { assert.deepEqual((await db.query("select public.workspace_entry_self_route_state() as state")).rows, [{ state: "eligible_entry" }]); }
+  finally { await db.exec("reset role; select set_config('request.jwt.claim.sub', '', false)"); }
+
+  await db.exec(`
+    delete from public.orgs where id in (
+      '11111111-1111-1111-1111-111111111120',
+      '11111111-1111-1111-1111-111111111121',
+      '11111111-1111-1111-1111-111111111122'
+    );
+    delete from public.app_admins where email = 'route-platform@test.invalid';
+    delete from public.users where id between '11111111-1111-1111-1111-111111111112' and '11111111-1111-1111-1111-111111111116';
+    delete from auth.users where id between '11111111-1111-1111-1111-111111111112' and '11111111-1111-1111-1111-111111111116';
+  `);
 });
 
 test("runs the public-entry SQL attack and atomicity suite with skip=0", async () => {

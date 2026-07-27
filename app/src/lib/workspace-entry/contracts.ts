@@ -54,13 +54,21 @@ export function parseWorkspaceEntryResume(value: unknown): { kind: "create" | "j
 }
 
 export function normalizeWorkspaceSlug(value: string): string {
-  return value.trim().toLowerCase();
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .trim()
+    .replace(/[\s_]+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 export function validateWorkspaceSlug(value: string): string | null {
   const slug = normalizeWorkspaceSlug(value);
-  if (!slugPattern.test(slug)) return "영문 소문자·숫자·하이픈 3~40자로 입력해 주세요.";
-  if (RESERVED_WORKSPACE_SLUGS.has(slug)) return "이 회사 주소는 사용할 수 없어요.";
+  if (!slugPattern.test(slug) || RESERVED_WORKSPACE_SLUGS.has(slug)) {
+    return "이 회사 주소는 사용할 수 없어요. 다른 주소를 선택해 주세요.";
+  }
   return null;
 }
 
