@@ -6,6 +6,7 @@ import { SidebarNav } from "./SidebarNav";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
+  useRouter: () => ({ push: vi.fn() }),
 }));
 
 describe("SidebarNav integration contract", () => {
