@@ -720,3 +720,14 @@ all/assigned), 헬퍼 `is_org_member`/`org_role`/`org_scope`, 트리거 `add_org
   - `services/files.test.ts` 의 가짜 포트도 `mergeCustom` 을 쓰도록 고쳤다 — 가짜가 실제와 다르면 그 파일의 보존 테스트가 현실을 검증하지 못한다.
 - **남긴 TODO(T02)**: Supabase 경로의 custom read-modify-write 와 이동+로그는 트랜잭션이 아니다(jsonb `||` / RPC 로 이관 필요). 코드에 TODO 로 명시.
 - 게이트: `bash scripts/check.sh` 초록(app 587 passed / 5 skipped, worker 14 passed).
+
+## 2026-07-28 — T03 · BUG-0003 merge → production deploy → 공개 health (완주)
+
+- WORK-ID: `BUG-0003-DEAL-CUSTOM-MERGE-RELEASE`. 사용자 자율 머지 승인 아래 `구현 → 게이트 → PR → CI/mergeable → merge → deploy → 공개 health` 체인을 끝까지 실행했다.
+- **MERGE_READY**: PR [#26](https://github.com/bbelieff/moawork/pull/26) — CI `check (lint + typecheck + test)` PASS, GitGuardian PASS, Vercel Preview PASS, `mergeable=MERGEABLE / mergeStateStatus=CLEAN`.
+- **MERGED**: squash merge → main `e3c2f83dc8a647ec163716042169058f3f5fe22d` (14 files, +407/-30). merge 후 main 위 CI 재실행도 success.
+- **DEPLOY_SUCCESS**: Vercel Production deployment `5625724746`, ref `e3c2f83d`, state `success` (2026-07-27T16:03:07Z). 최신 Production 배포가 이 SHA다.
+- **PRODUCTION_VERIFIED (공개 health)**: canonical domain `https://www.moa-work.com/login` → HTTP **200** (`Server: Vercel`, `X-Vercel-Cache: MISS`, `<title>MoaWork — 통합관리시스템</title>`). apex `moa-work.com` → 308 → `www`. 보호 경로 `/dash/abc?x=1` → 307 → `/login?next=%2Fdash%2Fabc%3Fx%3D1` 로 deep path·query 보존 확인.
+- **NOT_RUN(비차단)**: 인증 세션이 필요한 실시나리오(딜 custom 부분수정·단계 이동 활동로그)의 live 검증은 하지 않았다. 이번 변경은 사용자 가시 UI 변화가 없는 내부 계약 수정이며, 회귀 근거는 exact SHA 위 CI(587 passed / 5 skipped)와 옛 구현 되돌림 시 4건 실패 확인이다. `LIVE_DATA_VERIFIED` 로 승격하지 않는다.
+- 배포 대상 도메인이 저장소 정본 어디에도 기록돼 있지 않아 매번 재발견이 필요했다 — 위 canonical domain을 여기 남긴다.
+- consumer: T02(Supabase 트랜잭션 TODO), T04/T05/T09(custom 병합 규약). NEXT_WORK 없음.
