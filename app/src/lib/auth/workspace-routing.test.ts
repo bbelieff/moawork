@@ -83,6 +83,7 @@ describe("workspace routing", () => {
       decideWorkspaceDestination(rows, {
         kind: "workspace",
         slug: "beta-team",
+        path: "/w/beta-team",
       }),
     ).toEqual({
       kind: "workspace",
@@ -94,6 +95,7 @@ describe("workspace routing", () => {
       decideWorkspaceDestination(rows, {
         kind: "workspace",
         slug: "other-team",
+        path: "/w/other-team",
       }),
     ).toEqual({
       kind: "fail-closed",
@@ -102,16 +104,16 @@ describe("workspace routing", () => {
   });
 
   it("next/query는 정확한 canonical Workspace path만 후보로 파싱한다", () => {
-    expect(workspaceTargetFromNext("/w/alpha-team?from=invite")).toEqual({
+    expect(workspaceTargetFromNext("/w/alpha-team/boards/42?tab=files")).toEqual({
       kind: "workspace",
       slug: "alpha-team",
+      path: "/w/alpha-team/boards/42?tab=files",
     });
     expect(workspaceTargetFromNext("/settings/account")).toEqual({
       kind: "none",
     });
-    expect(workspaceTargetFromNext("https://evil.example/w/alpha-team")).toEqual(
-      { kind: "none" },
-    );
+    expect(workspaceTargetFromNext("https://evil.example/w/alpha-team")).toEqual({ kind: "invalid" });
+    expect(workspaceTargetFromNext("//evil.example/w/alpha-team")).toEqual({ kind: "invalid" });
     expect(workspaceTargetFromNext("/w/../../admin")).toEqual({
       kind: "invalid",
     });

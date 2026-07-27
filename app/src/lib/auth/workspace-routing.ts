@@ -3,6 +3,7 @@
  * stage=FIRST_WRITE base=00929168ea440a2532e632b7141135b956b91fca
  * lease=app/src/lib/auth/workspace-routing.ts next=materialize-routing-tests
  */
+import { safeNextPath } from "@/lib/auth/oauth";
 
 const WORKSPACE_SLUG =
   /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){1,38}[a-z0-9]$/;
@@ -41,7 +42,7 @@ export type ParsedActiveMemberships =
 
 export type WorkspaceTargetHint =
   | { kind: "none" }
-  | { kind: "workspace"; slug: string }
+  | { kind: "workspace"; slug: string; path: `/w/${string}` }
   | { kind: "invalid" };
 
 export type WorkspaceDestination =
@@ -139,23 +140,26 @@ export function parseActiveMembershipRows(
   return { ok: true, memberships };
 }
 
-/** Only an exact /w/{slug} path can become a protected target candidate. */
+/** Only a sanitized /w/{slug} path and its same-workspace suffix can be a protected target. */
 export function workspaceTargetFromNext(value: unknown): WorkspaceTargetHint {
   if (typeof value !== "string" || value.trim() === "") {
     return { kind: "none" };
   }
 
-  const trimmed = value.trim();
-  if (!trimmed.startsWith("/w/")) return { kind: "none" };
-  if (trimmed.startsWith("//")) return { kind: "invalid" };
+  const raw = value.trim();
+  const wasWorkspaceCandidate = raw.startsWith("/w/");
+  const trimmed = safeNextPath(raw, "");
+  if (!trimmed) return { kind: "invalid" };
+  if (!trimmed.startsWith("/w/")) return wasWorkspaceCandidate ? { kind: "invalid" } : { kind: "none" };
+  if (!trimmed || trimmed !== raw) return { kind: "invalid" };
 
   try {
     const parsed = new URL(trimmed, "https://moa-work.local");
-    const match = parsed.pathname.match(/^\/w\/([^/]+)\/?$/);
+    const match = parsed.pathname.match(/^\/w\/([^/]+)(?:\/.*)?$/);
     if (!match || !isCanonicalWorkspaceSlug(match[1])) {
       return { kind: "invalid" };
     }
-    return { kind: "workspace", slug: match[1] };
+    return { kind: "workspace", slug: match[1], path: `${parsed.pathname}${parsed.search}${parsed.hash}` as `/w/${string}` };
   } catch {
     return { kind: "invalid" };
   }
@@ -180,7 +184,7 @@ export function decideWorkspaceDestination(
     const membership = matches[0];
     return {
       kind: "workspace",
-      path: `/w/${membership.slug}`,
+      path: target.path,
       orgId: membership.orgId,
       slug: membership.slug,
     };

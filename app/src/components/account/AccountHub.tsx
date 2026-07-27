@@ -8,6 +8,7 @@ export type AccountHubLinks = {
   sessions?: string;
   privacy?: string;
   companyManagement?: string;
+  newWorkspace?: string;
 };
 
 export function AccountHub({
@@ -92,6 +93,11 @@ export function AccountHub({
               </Link>
             ) : null}
             <CurrentSessionLogout />
+            {links.newWorkspace ? (
+              <Link href={links.newWorkspace} className={styles.secondaryAction}>
+                새 회사를 시작하거나 합류하기
+              </Link>
+            ) : null}
           </div>
           {account.canManageCompany ? (
             <details className={styles.advanced}>

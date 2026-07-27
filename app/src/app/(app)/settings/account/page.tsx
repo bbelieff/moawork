@@ -53,6 +53,7 @@ export default async function AccountPage({
           workspace: "/settings/account#workspace",
           sessions: "/settings/account/sessions",
           privacy: "/settings/account/privacy",
+          newWorkspace: "/workspace-entry?mode=new",
         }}
       />
     </div>

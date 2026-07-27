@@ -185,23 +185,31 @@ describe("OAuth callback Workspace routing", () => {
     );
   });
 
-  it("외부·일반 query는 membership count 결정을 우회하지 못한다", async () => {
+  it("2+ 멤버십에서 canonical deep link와 query를 그대로 복원한다", async () => {
+    setup({ rows: [membership("org-alpha", "alpha-team"), membership("org-acme", "acme")] });
+    const next = encodeURIComponent("/w/acme/deals/123?tab=notes");
+    const response = await callback(`code=test-code&next=${next}`);
+    expect(location(response)).toBe("https://www.moa-work.com/w/acme/deals/123?tab=notes");
+    expect(response.headers.get("set-cookie")).toContain("mw_org=org-acme");
+    expect(response.headers.get("set-cookie")).not.toContain("mw_org=org-alpha");
+  });
+
+  it("malicious encoded deep-link variants never become a workspace target", async () => {
+    const rows = [membership("org-alpha", "alpha-team"), membership("org-acme", "acme")];
+    for (const next of ["/w/acme/%252e%252e/admin", "/w/acme/%25252e%25252e/admin", "/w/acme/%25252fapi", "/w/acme/%252fapi", "/w/acme/%5cauth", "//evil.example/w/acme"]) {
+      setup({ rows });
+      expect(location(await callback(`code=test-code&next=${encodeURIComponent(next)}`))).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+    }
+  });
+
+  it("외부 next는 fail closed하고 유효한 일반 내부 path만 membership count를 따른다", async () => {
     const rows = [
       membership("org-1", "alpha-team"),
       membership("org-2", "beta-team"),
     ];
-    for (const next of [
-      "https://evil.example/w/alpha-team",
-      "/settings/account",
-    ]) {
-      setup({ rows });
-      expect(
-        location(
-          await callback(
-            `code=test-code&next=${encodeURIComponent(next)}`,
-          ),
-        ),
-      ).toBe("https://www.moa-work.com/workspaces");
-    }
+    setup({ rows });
+    expect(location(await callback(`code=test-code&next=${encodeURIComponent("https://evil.example/w/alpha-team")}`))).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+    setup({ rows });
+    expect(location(await callback(`code=test-code&next=${encodeURIComponent("/settings/account")}`))).toBe("https://www.moa-work.com/workspaces");
   });
 });
