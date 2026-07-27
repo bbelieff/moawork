@@ -1,7 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  WorkspaceSwitcher,
+  type WorkspaceSwitcherProps,
+} from "@/components/workspace/WorkspaceSwitcher";
 import { NAV_ITEMS, type NavBadgeKey } from "./nav-items";
 
 // 사이드바 메뉴 목록 — 활성 표시를 위해 클라이언트 컴포넌트.
@@ -12,14 +16,25 @@ type Props = {
   lockedFeatures: string[];
   /** 서버에서 범위 검증을 마친 배지만 받는다. 값이 없으면 숫자를 만들지 않는다. */
   badges?: Partial<Record<NavBadgeKey, number>>;
+  workspaceSwitcher?: Omit<WorkspaceSwitcherProps, "onNavigate">;
 };
 
-export function SidebarNav({ lockedFeatures, badges }: Props) {
+export function SidebarNav({ lockedFeatures, badges, workspaceSwitcher }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
   const locked = new Set(lockedFeatures);
 
   return (
-    <nav className="flex flex-col gap-px">
+    <>
+      {workspaceSwitcher ? (
+        <WorkspaceSwitcher
+          {...workspaceSwitcher}
+          onNavigate={async (destination) => {
+            router.push(destination);
+          }}
+        />
+      ) : null}
+      <nav className="flex flex-col gap-px" aria-label="주요 메뉴">
       {NAV_ITEMS.map((item) => {
         const isLocked = item.feature ? locked.has(item.feature) : false;
         // 실제 라우트가 있는 잠금 메뉴는 안내 화면에 도달할 수 있도록 링크를 유지한다.
@@ -117,6 +132,7 @@ export function SidebarNav({ lockedFeatures, badges }: Props) {
           </Link>
         );
       })}
-    </nav>
+      </nav>
+    </>
   );
 }
