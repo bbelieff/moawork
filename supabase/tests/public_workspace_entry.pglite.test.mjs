@@ -24,6 +24,7 @@ const migrationNames = [
   "004_gaps_and_leadin.sql",
   "005_app_admins.sql",
   "006_public_workspace_entry.sql",
+  "007_public_workspace_entry_helper_acl.sql",
 ];
 
 let db;
@@ -122,7 +123,7 @@ after(async () => {
   if (db) await db.close();
 });
 
-test("applies exact base migrations 0001..006 to a fresh PGlite database", async () => {
+test("applies exact base migrations 0001..007 to a fresh PGlite database", async () => {
   for (const name of migrationNames) {
     if (name === "006_public_workspace_entry.sql") {
       await db.exec(`
@@ -175,6 +176,57 @@ test("applies exact base migrations 0001..006 to a fresh PGlite database", async
     delete from auth.users where id = '09000000-0000-0000-0000-000000000001';
     select set_config('request.jwt.claim.sub', '', false);
   `);
+});
+
+test("keeps authenticated helper access while denying anon and PUBLIC", async () => {
+  const acl = await db.query(`
+    with target_functions as (
+      select p.oid, p.proacl, p.proowner
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public'
+        and p.oid in (
+          'public.is_platform_admin()'::regprocedure,
+          'public.is_protected_workspace_owner(uuid)'::regprocedure,
+          'public.shares_workspace_with(uuid)'::regprocedure
+        )
+    )
+    select
+      count(*) filter (
+        where has_function_privilege('anon', oid, 'EXECUTE')
+      )::integer as anon_execute,
+      count(*) filter (
+        where has_function_privilege('authenticated', oid, 'EXECUTE')
+      )::integer as authenticated_execute,
+      count(*) filter (
+        where exists (
+          select 1
+          from aclexplode(coalesce(proacl, acldefault('f', proowner))) privilege
+          where privilege.grantee = 0
+            and privilege.privilege_type = 'EXECUTE'
+        )
+      )::integer as public_execute
+    from target_functions
+  `);
+
+  assert.deepEqual(acl.rows, [
+    { anon_execute: 0, authenticated_execute: 3, public_execute: 0 },
+  ]);
+
+  const anonymousProbes = [
+    "select public.is_platform_admin()",
+    "select public.is_protected_workspace_owner('00000000-0000-0000-0000-000000000000'::uuid)",
+    "select public.shares_workspace_with('00000000-0000-0000-0000-000000000000'::uuid)",
+  ];
+
+  for (const probe of anonymousProbes) {
+    await db.exec("set role anon");
+    try {
+      await assert.rejects(db.query(probe), /permission denied for function/iu);
+    } finally {
+      await db.exec("reset role");
+    }
+  }
 });
 
 test("runs the public-entry SQL attack and atomicity suite with skip=0", async () => {
