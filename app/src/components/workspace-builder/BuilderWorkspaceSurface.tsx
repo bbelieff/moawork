@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import styles from "./builder-workspace.module.css";
+import type { CsvImportScope } from "@/lib/dynamic-workspace/csv-import";
+import type { FunctionalMvpAvailability } from "@/lib/dynamic-workspace/server-contract";
 
 type SourceMode = "same_source_view" | "independent" | "relational";
 type Matrix = { id: string; label: string; sourceMode: SourceMode };
@@ -22,7 +24,7 @@ export function parseDeidentifiedCsvPreview(text: string): CsvPreview {
   return { rows: rows.length - 1 - invalid, quarantined: invalid };
 }
 
-export function BuilderWorkspaceSurface() {
+export function BuilderWorkspaceSurface({ availability, csvScope }: Readonly<{ availability: FunctionalMvpAvailability; csvScope: CsvImportScope }>) {
   const [tabs, setTabs] = useState<BuilderTab[]>([]);
   const [draftTab, setDraftTab] = useState("");
   const [draftBoard, setDraftBoard] = useState("");
@@ -59,7 +61,7 @@ export function BuilderWorkspaceSurface() {
           <h1 id="builder-title">우리 팀 업무 구조 만들기</h1>
           <p className={styles.description}>탭에서 보드와 여러 Matrix를 차례로 설계하세요. 지금은 안전한 초안·미리보기만 제공합니다.</p>
         </div>
-        <span className={styles.status} aria-label="저장 상태">초안 · 서버 저장 전</span>
+        <span className={styles.status} aria-label="저장 상태">{availability.kind === "ready" ? "서버 초안 확인됨" : "초안 · 서버 저장 전"}</span>
       </header>
 
       <div className={styles.layout}>
@@ -79,6 +81,7 @@ export function BuilderWorkspaceSurface() {
 
         <div className={styles.content}>
           <section className={styles.panel} aria-live="polite">
+            {availability.kind !== "ready" ? <p className={styles.notice}>{availability.message}</p> : null}
             <div className={styles.panelHeading}><div><p className={styles.eyebrow}>1. 보드와 Matrix</p><h2>{activeTab ? `${activeTab.label} · ${activeTab.boardLabel}` : "탭을 먼저 추가해 주세요"}</h2></div></div>
             {activeTab ? <>
               <div className={styles.matrixToolbar}><label>원본 연결<select value={sourceMode} onChange={(event) => setSourceMode(event.target.value as SourceMode)}>{Object.entries(SOURCE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><button type="button" className={styles.secondary} onClick={addMatrix}>Matrix 추가</button></div>
@@ -88,7 +91,7 @@ export function BuilderWorkspaceSurface() {
 
           <section className={styles.panel}>
             <p className={styles.eyebrow}>2. 기존 구조 가져오기</p><h2>CSV dry-run과 기본 구조</h2>
-            <div className={styles.importGrid}><label>붙여넣을 CSV<textarea value={csvText} onChange={(event) => setCsvText(event.target.value)} placeholder="개인정보를 제외한 CSV를 붙여넣으세요." /></label><div className={styles.preview}><strong>Dry-run 미리보기</strong><p>{preview ? `적용 후보 ${preview.rows}행 · 격리 ${preview.quarantined}행` : "CSV를 붙여넣으면 행 수와 형식 오류만 미리 확인합니다."}</p><small>서버 저장·적용은 아직 연결되지 않았습니다.</small></div></div>
+            <div className={styles.importGrid}><label>붙여넣을 CSV<textarea value={csvText} onChange={(event) => setCsvText(event.target.value)} placeholder="개인정보를 제외한 CSV를 붙여넣으세요." /></label><div className={styles.preview}><strong>Dry-run 미리보기</strong><p>{preview ? `적용 후보 ${preview.rows}행 · 격리 ${preview.quarantined}행` : "CSV를 붙여넣으면 행 수와 형식 오류만 미리 확인합니다."}</p><small>서버 CSV scope: {csvScope.mappingVersion} · hosted 010 적용 전에는 저장·적용할 수 없습니다.</small></div></div>
             <label className={styles.preset}>기본 구조<select value={preset} onChange={(event) => setPreset(event.target.value as "none" | "seoul_management_basic")}><option value="none">선택 안 함</option><option value="seoul_management_basic">서울경영 기본 구조 (식별정보 없는 프리셋)</option></select></label>
           </section>
 

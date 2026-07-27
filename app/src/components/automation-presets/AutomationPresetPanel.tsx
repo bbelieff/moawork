@@ -4,8 +4,9 @@ import {
   QUARANTINED_AUTOMATIONS,
 } from "./catalogue";
 import styles from "./automation-presets.module.css";
+import type { FunctionalMvpAvailability } from "@/lib/dynamic-workspace/server-contract";
 
-export function AutomationPresetPanel() {
+export function AutomationPresetPanel({ availability }: Readonly<{ availability: FunctionalMvpAvailability }>) {
   return (
     <main className={styles.page} aria-labelledby="automation-title">
       <header className={styles.heading}>
@@ -16,7 +17,7 @@ export function AutomationPresetPanel() {
 
       <section className={styles.notice} aria-label="활성화 안내">
         <strong>지금은 켤 수 없어요</strong>
-        <span>{AUTOMATION_ACTIVATION_BLOCK_MESSAGE}</span>
+        <span>{availability.kind === "ready" ? AUTOMATION_ACTIVATION_BLOCK_MESSAGE : availability.message}</span>
       </section>
 
       <section aria-labelledby="draft-title">
