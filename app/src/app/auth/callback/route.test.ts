@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  createClient: vi.fn(),
-}));
+const mocks = vi.hoisted(() => ({ createClient: vi.fn() }));
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: mocks.createClient,
@@ -10,54 +8,200 @@ vi.mock("@/lib/supabase/server", () => ({
 
 import { GET } from "./route";
 
-describe("OAuth callback owner provisioning", () => {
-  beforeEach(() => {
-    mocks.createClient.mockReset();
+type Scenario = {
+  rows?: unknown[];
+  exchangeError?: unknown;
+  userError?: unknown;
+  profileError?: unknown;
+  membershipError?: unknown;
+};
+
+function membership(
+  orgId: string,
+  slug: string | null,
+  memberStatus = "active",
+  workspaceStatus = "active",
+) {
+  return {
+    org_id: orgId,
+    status: memberStatus,
+    role: "member",
+    scope: "assigned",
+    orgs: {
+      id: orgId,
+      slug,
+      status: workspaceStatus,
+      name: "테스트 회사",
+      plan_tier: "t1_3",
+      created_at: "2026-01-01T00:00:00.000Z",
+    },
+  };
+}
+
+function setup(scenario: Scenario = {}) {
+  const profileUpsert = vi.fn().mockResolvedValue({
+    error: scenario.profileError ?? null,
+  });
+  const membershipEq = vi.fn().mockResolvedValue({
+    data: scenario.rows ?? [],
+    error: scenario.membershipError ?? null,
+  });
+  const membershipSelect = vi.fn(() => ({ eq: membershipEq }));
+  const from = vi.fn((table: string) => {
+    if (table === "users") return { upsert: profileUpsert };
+    if (table === "org_members") return { select: membershipSelect };
+    throw new Error(`Unexpected table: ${table}`);
+  });
+  const supabase = {
+    auth: {
+      exchangeCodeForSession: vi
+        .fn()
+        .mockResolvedValue({ error: scenario.exchangeError ?? null }),
+      getUser: vi.fn().mockResolvedValue({
+        data: {
+          user: scenario.userError
+            ? null
+            : {
+                id: "user-1",
+                email: "member@example.test",
+                user_metadata: { name: "Member" },
+              },
+        },
+        error: scenario.userError ?? null,
+      }),
+    },
+    from,
+    rpc: vi.fn(),
+  };
+  mocks.createClient.mockResolvedValue(supabase);
+  return { supabase, from, membershipSelect, membershipEq };
+}
+
+function callback(search = "code=test-code") {
+  return GET(new Request(`https://www.moa-work.com/auth/callback?${search}`));
+}
+
+function location(response: Response) {
+  return response.headers.get("location");
+}
+
+describe("OAuth callback Workspace routing", () => {
+  beforeEach(() => mocks.createClient.mockReset());
+
+  it("code/provider 교환 오류는 auth 오류로 닫는다", async () => {
+    expect(location(await callback("next=/"))).toBe(
+      "https://www.moa-work.com/login?error=auth",
+    );
+    setup({ exchangeError: { message: "provider" } });
+    expect(location(await callback())).toBe(
+      "https://www.moa-work.com/login?error=auth",
+    );
   });
 
-  it("조직 ID를 먼저 만들고 RETURNING 없이 삽입한다", async () => {
-    const orgInsert = vi.fn().mockResolvedValue({ error: null });
-    const membershipEq = vi.fn().mockResolvedValue({ data: [], error: null });
-    const membershipSelect = vi.fn(() => ({ eq: membershipEq }));
-    const profileUpsert = vi.fn().mockResolvedValue({ error: null });
+  it("provider user 오류와 profile 오류를 구분한다", async () => {
+    setup({ userError: { message: "user" } });
+    expect(location(await callback())).toBe(
+      "https://www.moa-work.com/login?error=auth",
+    );
+    setup({ profileError: { message: "profile" } });
+    expect(location(await callback())).toBe(
+      "https://www.moa-work.com/login?error=profile",
+    );
+  });
 
-    const supabase = {
-      auth: {
-        exchangeCodeForSession: vi.fn().mockResolvedValue({ error: null }),
-        getUser: vi.fn().mockResolvedValue({
-          data: {
-            user: {
-              id: "user-1",
-              email: "owner@example.com",
-              user_metadata: { name: "Owner" },
-            },
-          },
-          error: null,
-        }),
+  it("active membership 0은 membership 오류 없이 public entry로 보낸다", async () => {
+    const { supabase, from } = setup({ rows: [] });
+    const response = await callback();
+    expect(location(response)).toBe(
+      "https://www.moa-work.com/workspace-entry",
+    );
+    expect(response.headers.get("set-cookie")).toContain("mw_org=;");
+    expect(supabase.rpc).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalledWith("orgs");
+  });
+
+  it("active membership 1은 canonical slug로 0-click 이동한다", async () => {
+    setup({ rows: [membership("org-1", "alpha-team")] });
+    const response = await callback();
+    expect(location(response)).toBe("https://www.moa-work.com/w/alpha-team");
+    expect(response.headers.get("set-cookie")).toContain("mw_org=org-1");
+  });
+
+  it("active membership 2+는 첫 행·role과 무관하게 chooser로 보낸다", async () => {
+    setup({
+      rows: [
+        { ...membership("org-owner", "owner-team"), role: "owner" },
+        membership("org-member", "member-team"),
+      ],
+    });
+    const response = await callback();
+    expect(location(response)).toBe("https://www.moa-work.com/workspaces");
+    expect(response.headers.get("set-cookie")).toContain("mw_org=;");
+  });
+
+  it("inactive rows는 active count에서 제외한다", async () => {
+    setup({
+      rows: [
+        membership("org-1", "alpha-team", "removed"),
+        membership("org-2", "beta-team", "active", "suspended"),
+      ],
+    });
+    expect(location(await callback())).toBe(
+      "https://www.moa-work.com/workspace-entry",
+    );
+  });
+
+  it("missing/duplicate slug와 query 오류는 generic fail-closed다", async () => {
+    for (const scenario of [
+      { rows: [membership("org-1", null)] },
+      {
+        rows: [
+          membership("org-1", "same-team"),
+          membership("org-2", "same-team"),
+        ],
       },
-      rpc: vi.fn().mockResolvedValue({ data: "owner", error: null }),
-      from: vi.fn((table: string) => {
-        if (table === "users") return { upsert: profileUpsert };
-        if (table === "org_members") return { select: membershipSelect };
-        if (table === "orgs") return { insert: orgInsert };
-        throw new Error(`Unexpected table: ${table}`);
-      }),
-    };
-    mocks.createClient.mockResolvedValue(supabase);
+      { membershipError: { message: "query" } },
+    ]) {
+      setup(scenario);
+      expect(location(await callback())).toBe(
+        "https://www.moa-work.com/workspace-entry?error=routing",
+      );
+    }
+  });
 
-    const response = await GET(
-      new Request("https://www.moa-work.com/auth/callback?code=test-code"),
+  it("accepted target는 현재 active membership과 일치할 때만 우선한다", async () => {
+    const rows = [
+      membership("org-1", "alpha-team"),
+      membership("org-2", "beta-team"),
+    ];
+    setup({ rows });
+    expect(location(await callback("code=test-code&next=/w/beta-team"))).toBe(
+      "https://www.moa-work.com/w/beta-team",
     );
 
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe("https://www.moa-work.com/");
-    expect(orgInsert).toHaveBeenCalledTimes(1);
-    expect(orgInsert).toHaveBeenCalledWith({
-      id: expect.stringMatching(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-      ),
-      name: "MoaWork 데모 조직",
-    });
-    expect(response.headers.get("set-cookie")).toContain("mw_org=");
+    setup({ rows });
+    expect(location(await callback("code=test-code&next=/w/other-team"))).toBe(
+      "https://www.moa-work.com/workspace-entry?error=routing",
+    );
+  });
+
+  it("외부·일반 query는 membership count 결정을 우회하지 못한다", async () => {
+    const rows = [
+      membership("org-1", "alpha-team"),
+      membership("org-2", "beta-team"),
+    ];
+    for (const next of [
+      "https://evil.example/w/alpha-team",
+      "/settings/account",
+    ]) {
+      setup({ rows });
+      expect(
+        location(
+          await callback(
+            `code=test-code&next=${encodeURIComponent(next)}`,
+          ),
+        ),
+      ).toBe("https://www.moa-work.com/workspaces");
+    }
   });
 });
