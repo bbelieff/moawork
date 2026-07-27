@@ -683,3 +683,14 @@ all/assigned), 헬퍼 `is_org_member`/`org_role`/`org_scope`, 트리거 `add_org
 - 루트 npm workspaces(app, worker) 구성.
 - SSOT 4문서 작성: `CLAUDE.md`, `AGENTS.md`, `docs/worklog.md`, `docs/coordination/`.
 - check.sh 초록 확인 후 커밋/푸시.
+
+## 2026-07-27 — T09 · Public Workspace Entry release close / next queue (coordination only)
+
+- WORK-ID: `PUBLIC-WORKSPACE-ENTRY-01-CLOSE-HOLD-AND-NEXT-QUEUE`.
+- clean isolated coordination branch `docs/public-workspace-entry-close-hold`에서 `ROUND-32.md`만 새로 작성하고 본 worklog에 append했다. product candidate branch와 기존 dirty worktree는 수정하지 않았다.
+- `PUBLIC-WORKSPACE-ENTRY-01` candidate `351a5305ad935e3bbffd41b0adb3c24783b6bc02` / tree `92bb09be2bb25ded02b671396b7cb8c6764625fe`, Draft PR #22, CI #96 SUCCESS, Vercel Preview Ready 및 T10 exact-SHA/Preview PASS 증거는 보존한다.
+- release state는 **`BLOCKED_OPERATIONAL / RELEASE_HOLD / NOT_DEPLOYED`**: hosted `006` 미적용, recoverable hosted DB backup/dump·authorized DB connection/maintenance window·migration ledger proof·safe authenticated fixtures/accounts 부재. hosted DB/authenticated visual/merge/deploy/production readback은 `NOT_RUN_BY_GATE`다.
+- exact unblock은 승인된 recoverable backup/dump path + authorized DB connection/maintenance window + isolated safe authenticated test accounts/fixtures의 동시 제공이다. 이 조건도 independent review와 release approval을 대체하지 않는다.
+- PR #19는 conflict/superseded comment 뒤 closed unmerged, PR #20은 Draft/HOLD이며 PR #22 뒤 rebase·migration renumber·entitlement/default-pipeline/stage dependency reconciliation이 필요하다.
+- `SIDEBAR-LEADS` 및 external `TEMPLATE-PUBLISHER` framing을 supersede했다. MoaWork의 목표는 가입한 고객 workspace 안에서 고객 운영체계를 구현하는 것이며, reusable blueprint는 internal delivery accelerator다. public external CRM template marketplace는 범위 밖이다.
+- 8개 후속 project queue는 기록만 했고, PR #22 `RELEASE_HOLD` 중 시작하지 않는다. Consumer: T06. `INTERNAL_SUBAGENT_ONLY: NONE`.
