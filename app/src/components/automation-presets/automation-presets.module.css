@@ -18,4 +18,4 @@
 .quarantine ul { color: var(--mw-sub); display: grid; gap: 4px; margin: 12px 0 0; padding-left: 20px; }
 .srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 @media (max-width: 620px) { .page { padding-inline: 14px; } .list { grid-template-columns: 1fr; } .sectionHeading { align-items: start; flex-direction: column; } }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; } }
+@media (prefers-reduced-motion: reduce) { .page, .page::before, .page::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; } }
