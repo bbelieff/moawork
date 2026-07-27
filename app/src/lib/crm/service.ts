@@ -100,8 +100,10 @@ export class CrmService {
   }
 
   updateDeal(ctx: Ctx, id: string, patch: DealPatch): Deal {
-    // 단계 변경은 move 로만(활동로그 보장) — patch 에서 stage 제거.
-    if (patch.stage_id !== undefined)
+    // 단계 변경은 move 로만(활동로그 보장). DealPatch 타입에는 stage_id 가 없지만
+    // 라우트 본문 등 런타임 경로로 섞여 들어올 수 있어 여기서 사용자용 메시지로 막는다.
+    // (포트도 자체적으로 throw 하지만 그건 최후 방어선이다.)
+    if ("stage_id" in patch)
       throw new ValidationError("단계 변경은 /move 엔드포인트를 사용하세요");
     const d = this.repo.updateDeal(ctx, id, patch);
     if (!d) throw new NotFoundError("딜을 찾을 수 없습니다");
@@ -112,24 +114,19 @@ export class CrmService {
     if (!this.repo.deleteDeal(ctx, id)) throw new NotFoundError("딜을 찾을 수 없습니다");
   }
 
-  /** 파이프라인 단계 이동 + 활동로그. */
+  /**
+   * 파이프라인 단계 이동 + 활동로그.
+   * 이동과 로그 기록은 포트(`Repo.moveDeal`)가 함께 처리한다 — 서비스를 거치지 않는
+   * `getRepo()` 직접 호출에서도 로그 없는 이동이 생기지 않게 하기 위함.
+   * 여기서는 사용자용 오류 타입(NotFound/Validation)으로 옮기는 일만 한다.
+   */
   moveDealStage(ctx: Ctx, id: string, toStageId: string): Deal {
-    const deal = this.getDeal(ctx, id);
-    const toStage = this.repo.getStage(toStageId);
-    if (!toStage) throw new ValidationError("존재하지 않는 단계입니다");
-    const fromStage = deal.stage_id ? this.repo.getStage(deal.stage_id) : undefined;
+    this.getDeal(ctx, id); // 가시성/존재 확인 → NotFoundError
+    if (!this.repo.getStage(toStageId))
+      throw new ValidationError("존재하지 않는 단계입니다");
 
-    const updated = this.repo.updateDeal(ctx, id, {
-      stage_id: toStage.id,
-      pipeline_id: deal.pipeline_id ?? toStage.pipeline_id,
-    });
+    const updated = this.repo.moveDeal(ctx, id, toStageId);
     if (!updated) throw new NotFoundError("딜을 찾을 수 없습니다");
-
-    this.repo.createActivity(ctx, {
-      deal_id: id,
-      type: ACTIVITY_TYPES.status,
-      content: stageMoveContent(fromStage?.name ?? null, toStage.name),
-    });
     return updated;
   }
 
