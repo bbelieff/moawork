@@ -20,6 +20,20 @@ describe("workspace entry RPC adapter", () => {
     expect(decideApprovedRequestTarget([{ ...request("40000000-0000-4000-8000-000000000004", "2026-07-27T00:00:00Z", "beta-team"), status: "pending" }], memberships, "40000000-0000-4000-8000-000000000004")).toEqual({ kind: "invalid" });
     expect(decideApprovedRequestTarget([{ ...request("50000000-0000-4000-8000-000000000005", "bad-time", "beta-team"), resolvedAt: null }], memberships, "50000000-0000-4000-8000-000000000005")).toEqual({ kind: "invalid" });
     expect(decideApprovedRequestTarget([request("60000000-0000-4000-8000-000000000006", "2026-07-27T00:00:00Z", "beta-team")], memberships)).toEqual({ kind: "none" });
+    const duplicate = request("70000000-0000-4000-8000-000000000007", "2026-07-27T00:00:00Z", "beta-team");
+    expect(decideApprovedRequestTarget([duplicate, { ...duplicate }], memberships, duplicate.requestId)).toEqual({ kind: "invalid" });
+  });
+
+  it("keeps a cancelled decision as non-pending self history", async () => {
+    const rpc = client({
+      is_platform_admin: { data: false, error: null },
+      list_my_workspace_entry_requests: { data: [{ request_id: "r-cancelled", entry_kind: "join", request_status: "cancelled", created_at: "2026-07-27T00:00:00Z", resolved_at: "2026-07-27T00:01:00Z", decision_state: "cancelled", approved_target_slug: null }], error: null },
+    });
+
+    await expect(readWorkspaceEntryContext(rpc)).resolves.toMatchObject({
+      kind: "ready",
+      requests: [{ requestId: "r-cancelled", status: "cancelled", decisionState: "cancelled" }],
+    });
   });
   it("loads only the narrow requester and authorized platform queue fields", async () => {
     const rpc = client({

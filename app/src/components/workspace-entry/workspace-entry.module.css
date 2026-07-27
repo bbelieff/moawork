@@ -77,6 +77,19 @@
 .answerBubble { justify-self: end; border-radius: 18px 8px 18px 18px; color: var(--entry-on-accent); background: var(--entry-violet); }
 .bubble strong, .bubble small, .answerBubble > span { display: block; }
 .bubble small { margin-top: 5px; color: var(--entry-muted); font-size: 12px; }
+.answerPreview {
+  display: grid;
+  width: fit-content;
+  max-width: min(100%, 680px);
+  justify-self: end;
+  gap: 2px;
+  padding: 11px 15px;
+  border-radius: 18px 8px 18px 18px;
+  color: var(--entry-on-accent);
+  background: var(--entry-violet);
+}
+.answerPreview span { font-size: 11px; opacity: .82; }
+.answerPreview strong { overflow-wrap: anywhere; }
 
 .quick { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 0 6px 58px; }
 .quick button, .quick a, .actions button, .inlineActions button {
@@ -93,6 +106,7 @@
   transition: transform .2s var(--entry-ease), border-color .2s var(--entry-ease), background-color .2s var(--entry-ease);
 }
 .quick button, .quick a { color: var(--entry-violet); border-color: color-mix(in srgb, var(--entry-violet) 45%, var(--entry-line)); background: var(--entry-surface); }
+.quick .dangerChoice { color: var(--entry-danger); border-color: color-mix(in srgb, var(--entry-danger) 45%, var(--entry-line)); }
 .quick button:hover, .actions button:hover, .inlineActions button:hover { transform: translateY(-1px); }
 button:disabled { opacity: .58; cursor: wait; transform: none; }
 
@@ -100,6 +114,24 @@ button:disabled { opacity: .58; cursor: wait; transform: none; }
 .form label { display: grid; gap: 7px; color: var(--entry-on-accent); font-size: 14px; font-weight: 800; }
 .form input { width: 100%; min-height: 46px; box-sizing: border-box; border: 1px solid color-mix(in srgb, var(--entry-on-accent) 45%, transparent); border-radius: 13px; padding: 0 13px; color: var(--entry-ink); background: var(--entry-surface); font: inherit; }
 .form small { color: var(--entry-on-accent); font-size: 12px; font-weight: 500; opacity: .85; }
+.slugPreview, .confirmCard {
+  display: grid;
+  gap: 5px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--entry-on-accent) 40%, transparent);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--entry-surface) 12%, transparent);
+}
+.slugPreview span, .confirmCard span { font-size: 12px; font-weight: 800; }
+.slugPreview code, .confirmCard code { overflow-wrap: anywhere; font-family: inherit; font-weight: 850; }
+.confirmCard {
+  width: min(100%, 680px);
+  justify-self: end;
+  color: var(--entry-ink);
+  border-color: var(--entry-line);
+  background: var(--entry-surface);
+}
+.confirmCard small { color: var(--entry-muted); }
 .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .actions .quietButton, .inlineActions .quietButton { color: var(--entry-ink); border-color: var(--entry-line); background: var(--entry-surface); }
 .actions .dangerButton { background: var(--entry-danger); }
@@ -125,7 +157,7 @@ button:disabled { opacity: .58; cursor: wait; transform: none; }
 .stepNumber { display: grid; width: 34px; height: 34px; flex: none; place-items: center; border-radius: 11px; background: var(--entry-paper); color: var(--entry-violet); font-size: 13px; font-weight: 900; }
 .safety { margin: 14px 0 0; padding: 12px 14px; border-left: 3px solid var(--entry-teal); border-radius: 0 13px 13px 0; color: var(--entry-muted); background: color-mix(in srgb, var(--entry-teal) 9%, var(--entry-surface)); font-size: 12px; }
 
-.controlPlane { max-width: 680px; margin-top: 24px; border-top: 1px solid var(--entry-line); padding-top: 18px; }
+.controlPlane { width: min(100%, 680px); margin-top: 4px; border-top: 1px solid var(--entry-line); padding-top: 18px; }
 .controlPlane summary { min-height: 44px; color: var(--entry-violet); font-weight: 850; cursor: pointer; }
 .controlPlane > p { color: var(--entry-muted); font-size: 13px; }
 .queue { min-width: 0; }
@@ -144,7 +176,7 @@ button:disabled { opacity: .58; cursor: wait; transform: none; }
 .workspaceMark { display: grid; width: 38px; height: 38px; flex: none; place-items: center; border-radius: 12px; color: var(--entry-on-accent); background: var(--entry-blue); font-weight: 900; }
 .chooserList b { color: var(--entry-violet); }
 
-.form input:focus-visible, button:focus-visible, a:focus-visible, summary:focus-visible {
+.form input:focus-visible, .chat h1:focus-visible, button:focus-visible, a:focus-visible, summary:focus-visible {
   outline: 3px solid var(--entry-violet);
   outline-offset: 3px;
 }
@@ -152,7 +184,7 @@ button:disabled { opacity: .58; cursor: wait; transform: none; }
 @media (max-width: 980px) {
   .wrap { grid-template-columns: 1fr; }
   .summary { grid-row: 1; border-bottom: 1px solid var(--entry-line); border-left: 0; }
-  .summarySteps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .summarySteps { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 700px) {

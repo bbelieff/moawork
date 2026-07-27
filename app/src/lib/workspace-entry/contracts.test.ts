@@ -6,14 +6,16 @@ import { RESERVED_WORKSPACE_SLUGS, normalizeWorkspaceSlug, parseWorkspaceEntryRe
 describe("workspace entry request contract", () => {
   it("normalizes and validates only lower-case ASCII slug candidates", () => {
     expect(normalizeWorkspaceSlug("  Moa-Team ")).toBe("moa-team");
+    expect(normalizeWorkspaceSlug("  My__팀 Workspace--01 ")).toBe("my-workspace-01");
+    expect(normalizeWorkspaceSlug("ＭＯＡ＿ＴＥＡＭ")).toBe("moa-team");
     expect(validateWorkspaceSlug("moa-team")).toBeNull();
-    expect(validateWorkspaceSlug("모아팀")).toMatch(/영문/);
-    expect(validateWorkspaceSlug("ab")).toMatch(/영문/);
+    expect(validateWorkspaceSlug("모아팀")).toBe("이 회사 주소는 사용할 수 없어요. 다른 주소를 선택해 주세요.");
+    expect(validateWorkspaceSlug("ab")).toBe("이 회사 주소는 사용할 수 없어요. 다른 주소를 선택해 주세요.");
   });
 
   it("keeps reserved slug and duplicate reason generic", () => {
     expect(RESERVED_WORKSPACE_SLUGS.has("login")).toBe(true);
-    expect(validateWorkspaceSlug("login")).toBe("이 회사 주소는 사용할 수 없어요.");
+    expect(validateWorkspaceSlug("login")).toBe("이 회사 주소는 사용할 수 없어요. 다른 주소를 선택해 주세요.");
     expect(parseWorkspaceRequest({ kind: "create", displayName: "모아", slug: "login" })).toEqual({ ok: false, message: "이 회사 주소는 사용할 수 없어요." });
   });
 
