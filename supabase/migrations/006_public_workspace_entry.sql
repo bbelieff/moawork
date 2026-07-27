@@ -250,6 +250,7 @@ create table if not exists public.workspace_entry_requests (
   decision_code text,
   resolved_by uuid references public.users(id) on delete set null,
   created_at timestamptz not null default now(),
+  review_expires_at timestamptz,
   resolved_at timestamptz,
   constraint workspace_entry_request_shape_check check (
     (
@@ -270,7 +271,13 @@ create table if not exists public.workspace_entry_requests (
       and desired_name is null
       and desired_slug is null
       and lookup_digest is not null
+      and review_expires_at is not null
+      and review_expires_at = created_at + interval '7 days'
     )
+  ),
+  constraint workspace_entry_review_window_shape_check check (
+    (kind = 'create' and review_expires_at is null)
+    or (kind = 'join' and review_expires_at > created_at)
   ),
   constraint workspace_entry_resolution_shape_check check (
     (status = 'pending' and resolved_at is null and resolved_by is null)
@@ -676,12 +683,11 @@ as $$
 declare
   v_user_id uuid := auth.uid();
   v_lookup text := lower(btrim(coalesce(p_lookup, '')));
+  v_created_at timestamptz := clock_timestamp();
   v_lookup_digest bytea;
   v_payload_digest bytea;
   v_target_org_id uuid;
   v_invite_id uuid;
-  v_status text := 'pending';
-  v_decision_code text;
   v_existing public.workspace_entry_requests%rowtype;
   v_inserted integer;
 begin
@@ -725,33 +731,30 @@ begin
     hashtextextended(v_user_id::text || ':' || coalesce(v_target_org_id::text, encode(v_lookup_digest, 'hex')), 0)
   );
 
-  if v_target_org_id is null then
-    v_status := 'rejected';
-    v_decision_code := 'not_actionable';
-  elsif exists (
+  if v_target_org_id is not null and exists (
     select 1 from public.org_members
     where org_id = v_target_org_id and user_id = v_user_id
   ) then
-    v_status := 'rejected';
-    v_decision_code := 'not_actionable';
-  elsif exists (
+    v_target_org_id := null;
+    v_invite_id := null;
+  elsif v_target_org_id is not null and exists (
     select 1 from public.workspace_entry_requests
     where requester_user_id = v_user_id
       and target_org_id = v_target_org_id
       and kind = 'join'
       and status = 'pending'
+      and review_expires_at > v_created_at
   ) then
-    v_status := 'rejected';
-    v_decision_code := 'not_actionable';
+    v_target_org_id := null;
+    v_invite_id := null;
   end if;
 
   insert into public.workspace_entry_requests (
     id, requester_user_id, kind, status, target_org_id, invite_code_id,
-    lookup_digest, payload_digest, decision_code, resolved_at
+    lookup_digest, payload_digest, created_at, review_expires_at
   ) values (
-    p_request_id, v_user_id, 'join', v_status, v_target_org_id, v_invite_id,
-    v_lookup_digest, v_payload_digest, v_decision_code,
-    case when v_status = 'pending' then null else now() end
+    p_request_id, v_user_id, 'join', 'pending', v_target_org_id, v_invite_id,
+    v_lookup_digest, v_payload_digest, v_created_at, v_created_at + interval '7 days'
   )
   on conflict (id) do nothing;
   get diagnostics v_inserted = row_count;
@@ -806,6 +809,28 @@ begin
   end if;
   if v_actor is null or not public.is_protected_workspace_owner(v_request.target_org_id) then
     raise exception 'protected workspace owner required' using errcode = '42501';
+  end if;
+
+  if v_request.status = 'pending'
+     and v_request.review_expires_at <= clock_timestamp() then
+    update public.workspace_entry_requests
+    set status = 'rejected',
+        decision_code = 'review_window_expired',
+        resolved_by = null,
+        resolved_at = review_expires_at
+    where id = p_request_id;
+
+    insert into public.workspace_entry_events (
+      request_id, org_id, actor_user_id, event_type, outcome, metadata
+    ) values (
+      p_request_id, v_request.target_org_id, null,
+      'join_request_expired', 'rejected',
+      jsonb_build_object('reason', 'review_window_expired', 'source', 'deadline')
+    );
+
+    return jsonb_build_object(
+      'accepted', true, 'replayed', false, 'status', 'rejected', 'expired', true
+    );
   end if;
 
   if v_request.status <> 'pending' then
@@ -964,6 +989,7 @@ begin
     where request.kind = 'join'
       and request.status = 'pending'
       and request.target_org_id = p_org_id
+      and request.review_expires_at > clock_timestamp()
     order by request.created_at, request.id;
 end;
 $$;
@@ -974,6 +1000,7 @@ create or replace function public.list_my_workspace_entry_requests()
     entry_kind text,
     request_status text,
     created_at timestamptz,
+    review_deadline timestamptz,
     resolved_at timestamptz,
     decision_state text,
     approved_target_slug text
@@ -989,16 +1016,39 @@ begin
     raise exception 'authentication required' using errcode = '42501';
   end if;
 
+  with expired as (
+    update public.workspace_entry_requests request
+    set status = 'rejected',
+        decision_code = 'review_window_expired',
+        resolved_by = null,
+        resolved_at = request.review_expires_at
+    where request.requester_user_id = v_actor
+      and request.kind = 'join'
+      and request.status = 'pending'
+      and request.review_expires_at <= clock_timestamp()
+    returning request.id, request.target_org_id
+  )
+  insert into public.workspace_entry_events (
+    request_id, org_id, actor_user_id, event_type, outcome, metadata
+  )
+  select
+    expired.id, expired.target_org_id, null,
+    'join_request_expired', 'rejected',
+    jsonb_build_object('reason', 'review_window_expired', 'source', 'deadline')
+  from expired;
+
   return query
     select
       request.id,
       request.kind,
       request.status,
       request.created_at,
+      request.review_expires_at,
       request.resolved_at,
       case
         when request.status = 'pending' then 'pending'
         when request.status = 'approved' then 'approved'
+        when request.status = 'cancelled' then 'cancelled'
         else 'not_approved'
       end,
       case
@@ -1073,9 +1123,13 @@ comment on function public.resolve_workspace_create_request(uuid, boolean, text)
 comment on function public.resolve_workspace_join_request(uuid, boolean, text) is
   'Protected-owner-only resolution; approval always inserts member/assigned and never owner/admin.';
 comment on function public.list_my_workspace_entry_requests() is
-  'Requester-owned lifecycle read; target slug appears only after approved active membership.';
+  'Requester-owned lifecycle read; 7-day join review deadline converges unresolved attempts and target slug appears only after approved active membership.';
 
 -- CHECKPOINT material-write 2026-07-27 KST
 -- 006 now contains the complete DB boundary: exact-one owner from both org and
 -- membership changes, platform/workspace plane separation, generic digest-only
 -- entry, atomic approvals, replay locks, audit, and client DML revocation.
+-- CHECKPOINT enumeration-rework-material 2026-07-27 KST
+-- Every join observation now shares a deterministic 7-day requester window.
+-- Unresolved actionable and non-actionable attempts converge to the same state
+-- at the deadline; owner queues and approval reject expired work.

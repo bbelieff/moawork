@@ -24,7 +24,8 @@ values
   ('10000000-0000-0000-0000-000000000003', 'owner-b@test.invalid', 'authenticated', 'authenticated'),
   ('10000000-0000-0000-0000-000000000004', 'joiner@test.invalid', 'authenticated', 'authenticated'),
   ('10000000-0000-0000-0000-000000000005', 'outsider@test.invalid', 'authenticated', 'authenticated'),
-  ('10000000-0000-0000-0000-000000000006', 'workspace-admin@test.invalid', 'authenticated', 'authenticated');
+  ('10000000-0000-0000-0000-000000000006', 'workspace-admin@test.invalid', 'authenticated', 'authenticated'),
+  ('10000000-0000-0000-0000-000000000007', 'enumerator@test.invalid', 'authenticated', 'authenticated');
 
 insert into public.users (id, email, name)
 values
@@ -33,7 +34,8 @@ values
   ('10000000-0000-0000-0000-000000000003', 'owner-b@test.invalid', 'Owner B Test'),
   ('10000000-0000-0000-0000-000000000004', 'joiner@test.invalid', 'Joiner Test'),
   ('10000000-0000-0000-0000-000000000005', 'outsider@test.invalid', 'Outsider Test'),
-  ('10000000-0000-0000-0000-000000000006', 'workspace-admin@test.invalid', 'Workspace Admin Test');
+  ('10000000-0000-0000-0000-000000000006', 'workspace-admin@test.invalid', 'Workspace Admin Test'),
+  ('10000000-0000-0000-0000-000000000007', 'enumerator@test.invalid', 'Enumerator Test');
 
 insert into public.app_admins (email, role, is_platform)
 values ('platform@test.invalid', 'admin', true);
@@ -175,6 +177,185 @@ begin
     'submit is generic and non-enumerating');
 end;
 $$;
+
+-- Requester-visible lifecycle is indistinguishable for known and unknown
+-- lookups before the fixed seven-day deadline and converges at that deadline.
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000007', true);
+select public.submit_workspace_join_request(
+  '30000000-0000-0000-0000-000000000110', 'alpha-test'
+);
+select public.submit_workspace_join_request(
+  '30000000-0000-0000-0000-000000000111', 'unknown-workspace'
+);
+select pg_temp.assert_true(
+  (select count(*) = 2
+   from public.list_my_workspace_entry_requests()
+   where request_id in (
+     '30000000-0000-0000-0000-000000000110',
+     '30000000-0000-0000-0000-000000000111'
+   )
+     and request_status = 'pending'
+     and decision_state = 'pending'
+     and resolved_at is null
+     and approved_target_slug is null
+     and review_deadline > clock_timestamp()),
+  'known and unknown are both pending with no target before deadline'
+);
+select pg_temp.assert_true(
+  (select bool_and(review_deadline - created_at = interval '7 days')
+   from public.list_my_workspace_entry_requests()
+   where request_id in (
+     '30000000-0000-0000-0000-000000000110',
+     '30000000-0000-0000-0000-000000000111'
+   )),
+  'known and unknown use the same deterministic seven-day window'
+);
+select pg_temp.assert_true(
+  (select count(distinct jsonb_build_object(
+     'status', request_status,
+     'decision', decision_state,
+     'resolved', resolved_at is not null,
+     'target', approved_target_slug is not null
+   )) = 1
+   from public.list_my_workspace_entry_requests()
+   where request_id in (
+     '30000000-0000-0000-0000-000000000110',
+     '30000000-0000-0000-0000-000000000111'
+   )),
+  'known and unknown requester-visible shapes match before deadline'
+);
+
+-- Only the protected owner sees the actionable item in its private queue; no
+-- digest, slug, or unknown attempt is returned by that queue.
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+select pg_temp.assert_true(
+  exists (
+    select 1 from public.list_pending_workspace_join_requests(
+      (select id from public.orgs where slug = 'alpha-test')
+    ) where request_id = '30000000-0000-0000-0000-000000000110'
+  )
+  and not exists (
+    select 1 from public.list_pending_workspace_join_requests(
+      (select id from public.orgs where slug = 'alpha-test')
+    ) where request_id = '30000000-0000-0000-0000-000000000111'
+  ),
+  'owner queue includes only actionable in-tenant request'
+);
+
+-- Move both synthetic attempts to the exact seven-day boundary. The requester
+-- read atomically materializes one identical not-approved outcome for both.
+with boundary as (select clock_timestamp() as deadline)
+update public.workspace_entry_requests request
+set created_at = boundary.deadline - interval '7 days',
+    review_expires_at = boundary.deadline
+from boundary
+where request.id in (
+  '30000000-0000-0000-0000-000000000110',
+  '30000000-0000-0000-0000-000000000111'
+);
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000007', true);
+select pg_temp.assert_true(
+  (select count(*) = 2
+   from public.list_my_workspace_entry_requests()
+   where request_id in (
+     '30000000-0000-0000-0000-000000000110',
+     '30000000-0000-0000-0000-000000000111'
+   )
+     and request_status = 'rejected'
+     and decision_state = 'not_approved'
+     and resolved_at = review_deadline
+     and approved_target_slug is null),
+  'known and unknown converge at the exact seven-day deadline'
+);
+select pg_temp.assert_true(
+  (select count(distinct jsonb_build_object(
+     'status', request_status,
+     'decision', decision_state,
+     'resolved_at_deadline', resolved_at = review_deadline,
+     'target', approved_target_slug is not null
+   )) = 1
+   from public.list_my_workspace_entry_requests()
+   where request_id in (
+     '30000000-0000-0000-0000-000000000110',
+     '30000000-0000-0000-0000-000000000111'
+   )),
+  'known and unknown requester-visible shapes match after deadline'
+);
+
+-- A new idempotency key may retry after expiry, but approval at/after its
+-- deadline is converted to rejected and cannot create membership.
+select public.submit_workspace_join_request(
+  '30000000-0000-0000-0000-000000000112', 'alpha-test'
+);
+with boundary as (select clock_timestamp() as deadline)
+update public.workspace_entry_requests request
+set created_at = boundary.deadline - interval '7 days',
+    review_expires_at = boundary.deadline
+from boundary
+where request.id = '30000000-0000-0000-0000-000000000112';
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+select pg_temp.assert_true(
+  public.resolve_workspace_join_request(
+    '30000000-0000-0000-0000-000000000112', true, 'late-approval-attempt'
+  ) @> '{"status": "rejected", "expired": true}'::jsonb,
+  'late approval is deterministically denied'
+);
+select pg_temp.assert_true(
+  not exists (
+    select 1 from public.org_members membership
+    where membership.user_id = '10000000-0000-0000-0000-000000000007'
+  ),
+  'late approval creates no membership'
+);
+select pg_temp.assert_true(
+  (select count(*) = 3
+   from public.workspace_entry_events event
+   where event.request_id in (
+     '30000000-0000-0000-0000-000000000110',
+     '30000000-0000-0000-0000-000000000111',
+     '30000000-0000-0000-0000-000000000112'
+   )
+     and event.event_type = 'join_request_expired'
+     and event.actor_user_id is null
+     and event.metadata ->> 'source' = 'deadline'),
+  'deadline expiry audit is system-derived and never attributed to viewer or owner'
+);
+
+-- Cancellation has the same envelope for known and unknown, and a subsequent
+-- new request id is accepted as a generic retry.
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000007', true);
+select public.submit_workspace_join_request(
+  '30000000-0000-0000-0000-000000000113', 'alpha-test'
+);
+select public.submit_workspace_join_request(
+  '30000000-0000-0000-0000-000000000114', 'still-unknown'
+);
+select pg_temp.assert_true(
+  public.cancel_workspace_entry_request('30000000-0000-0000-0000-000000000113')
+  = public.cancel_workspace_entry_request('30000000-0000-0000-0000-000000000114'),
+  'known and unknown cancellation responses match'
+);
+select pg_temp.assert_true(
+  public.submit_workspace_join_request(
+    '30000000-0000-0000-0000-000000000115', 'still-unknown'
+  ) = '{"accepted": true}'::jsonb,
+  'new idempotency key retries after terminal state'
+);
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000007', true);
+do $$
+begin
+  begin
+    perform 1 from public.workspace_entry_requests limit 1;
+    raise exception 'ASSERTION FAILED: requester direct table read unexpectedly succeeded';
+  exception when insufficient_privilege then null;
+  end;
+end;
+$$;
+reset role;
 
 -- Slug join: only protected owner may approve, base role/scope are fixed.
 do $$
@@ -649,6 +830,10 @@ select pg_temp.assert_true(
 -- Covers two accounts/two workspaces, exact-one 0/2 denial, direct DML,
 -- cross-tenant reads/approval, create/join approve/reject/replay, invite digest,
 -- Platform-vs-tenant separation, and audit-coupled atomic rollback.
+-- CHECKPOINT enumeration-rework-test-material 2026-07-27 KST
+-- Adds exact known-vs-unknown requester state/shape probes before and at the
+-- fixed seven-day deadline, system-attributed expiry, late-approval denial,
+-- generic cancellation/retry, and authenticated direct-table read denial.
 
 select 'PUBLIC_WORKSPACE_ENTRY_SQL_PASS' as result;
 rollback;
