@@ -1,95 +1,68 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
-import { getRepo } from "@/lib/repo";
-import { isManager, isMemberRole, MEMBER_ROLES } from "@/lib/auth/roles";
+import { loadMemberOrgSummary, type MemberSummaryRow } from "@/lib/auth/member-org-summary";
 
-// 멤버·권한 화면. 조직 멤버 목록 + 역할/담당범위. owner/admin 만 역할 변경 가능.
+function roleLabel(role: MemberSummaryRow["role"]) {
+  if (role === "owner") return "대표";
+  if (role === "admin") return "관리자 · 팀장";
+  return "팀원";
+}
+
+function scopeLabel(scope: MemberSummaryRow["scope"]) {
+  return scope === "all" ? "회사 업무 전체" : "내게 배정된 업무";
+}
+
+function MemberRow({ member, protectedOwner = false }: { member: MemberSummaryRow; protectedOwner?: boolean }) {
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 py-3 last:border-0 dark:border-zinc-900">
+      <div>
+        <strong>{member.displayName}</strong>
+        <p className="mt-1 text-sm text-zinc-500">{roleLabel(member.role)} · {scopeLabel(member.scope)}</p>
+      </div>
+      {protectedOwner ? (
+        <span className="rounded-full bg-mw-tint-teal px-3 py-1 text-xs font-semibold text-mw-automation">보호된 대표</span>
+      ) : (
+        <span className="text-sm text-zinc-500">권한 변경은 안전한 관리 기능이 준비된 뒤 열어요.</span>
+      )}
+    </li>
+  );
+}
+
+function Group({ title, members }: { title: string; members: MemberSummaryRow[] }) {
+  return (
+    <section className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+      <h2 className="font-semibold">{title}</h2>
+      {members.length === 0 ? <p className="mt-2 text-sm text-zinc-500">아직 이 그룹에 함께하는 사람이 없어요.</p> : <ul className="mt-2"><>{members.map((member) => <MemberRow key={member.userId} member={member} />)}</></ul>}
+    </section>
+  );
+}
+
 export default async function MembersPage() {
   const ctx = await getSession();
-  const repo = getRepo();
-  const members = repo.listMembers(ctx.org.id);
-  const canManage = isManager(ctx.role);
-
-  async function changeRole(formData: FormData) {
-    "use server";
-    const current = await getSession();
-    if (!isManager(current.role)) {
-      throw new Error("권한 부족: 역할 변경은 owner/admin 만 가능합니다.");
-    }
-    const userId = String(formData.get("user_id") ?? "");
-    const role = formData.get("role");
-    if (!isMemberRole(role)) return;
-    getRepo().setMemberRole(current.org.id, userId, role);
-    redirect("/settings/members");
-  }
+  const summary = await loadMemberOrgSummary(ctx);
 
   return (
-    <div className="flex max-w-2xl flex-col gap-4">
-      <div>
-        <h1 className="text-xl font-semibold">멤버·권한</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          {ctx.org.name} · 멤버 {members.length}명
-          {canManage ? "" : " · (열람 전용 — 역할 변경은 관리자만)"}
-        </p>
-      </div>
+    <div className="mx-auto flex max-w-3xl flex-col gap-4">
+      <header>
+        <h1 className="text-xl font-semibold">우리 회사와 팀</h1>
+        <p className="mt-1 text-sm text-zinc-500">{ctx.org.name}에서 함께 일하는 사람과 업무 범위를 확인해요.</p>
+      </header>
 
-      {ctx.role === "owner" ? (
-        <Link href="./members/approvals" className="w-fit rounded-xl bg-mw-primary px-4 py-3 text-sm font-semibold text-mw-on-accent focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-mw-primary">
-          회사 합류 요청 확인하기
-        </Link>
+      {summary.kind === "ready" ? (
+        <>
+          <section className="rounded-2xl border border-mw-automation bg-mw-tint-teal p-4">
+            <h2 className="font-semibold">보호된 대표</h2>
+            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">대표 권한은 이 화면에서 바꾸거나 지울 수 없어요.</p>
+            <ul className="mt-2"><MemberRow member={summary.owner} protectedOwner /></ul>
+          </section>
+          <Group title="관리자와 팀장" members={summary.admins} />
+          <Group title="팀원" members={summary.members} />
+          {ctx.role === "owner" ? <Link href="/settings/members/approvals" className="w-fit rounded-xl bg-mw-primary px-4 py-3 text-sm font-semibold text-mw-on-accent">회사 합류 요청 확인하기</Link> : null}
+        </>
       ) : null}
-
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-zinc-200 text-left text-zinc-500 dark:border-zinc-800">
-            <th className="py-2">이름</th>
-            <th className="py-2">이메일</th>
-            <th className="py-2">역할</th>
-            <th className="py-2">담당범위</th>
-          </tr>
-        </thead>
-        <tbody>
-          {members.map((m) => (
-            <tr
-              key={m.user_id}
-              className="border-b border-zinc-100 dark:border-zinc-900"
-            >
-              <td className="py-2">{m.user?.name ?? "(알 수 없음)"}</td>
-              <td className="py-2 text-zinc-500">{m.user?.email ?? "-"}</td>
-              <td className="py-2">
-                {canManage ? (
-                  <form action={changeRole} className="flex items-center gap-2">
-                    <input type="hidden" name="user_id" value={m.user_id} />
-                    <select
-                      name="role"
-                      defaultValue={m.role}
-                      className="rounded border border-zinc-300 bg-transparent px-1 py-0.5 text-xs dark:border-zinc-700"
-                    >
-                      {MEMBER_ROLES.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="submit"
-                      className="rounded border border-zinc-300 px-2 py-0.5 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
-                    >
-                      변경
-                    </button>
-                  </form>
-                ) : (
-                  <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
-                    {m.role}
-                  </span>
-                )}
-              </td>
-              <td className="py-2 text-zinc-500">{m.scope}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {summary.kind === "unavailable" ? <section role="status" className="rounded-2xl border border-zinc-200 p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-300">회사 구성원 정보는 서버 연결이 준비되면 안전하게 보여드려요.</section> : null}
+      {summary.kind === "error" ? <section role="alert" className="rounded-2xl border border-zinc-200 p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-300">회사 구성원 정보를 불러오지 못했어요. 잠시 뒤 다시 확인해 주세요.</section> : null}
+      {summary.kind === "owner_integrity_error" ? <section role="alert" className="rounded-2xl border border-red-200 p-4 text-sm text-red-700 dark:border-red-900 dark:text-red-300">보호된 대표 정보를 안전하게 확인하지 못했어요. 이 화면에서는 어떤 권한도 바꿀 수 없어요.</section> : null}
     </div>
   );
 }
