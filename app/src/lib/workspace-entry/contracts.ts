@@ -36,7 +36,7 @@ export type WorkspaceRequestInput = {
 };
 
 export type WorkspaceRequestResult =
-  | { ok: true; state: "pending" | "cancelled" | "approved" | "rejected" | "selection_revalidation"; message: string; redirectTo?: `/w/${string}` }
+  | { ok: true; state: "pending" | "expired" | "cancelled" | "approved" | "rejected" | "selection_revalidation"; message: string; redirectTo?: `/w/${string}` }
   | { ok: false; state: "invalid" | "unavailable"; message: string };
 
 const slugPattern = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
 import { getRepo } from "@/lib/repo";
 import { Logo } from "@/components/brand/Logo";
@@ -7,6 +8,11 @@ import { SidebarNav } from "@/components/shell/SidebarNav";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
 import { buildAccountViewModel } from "@/lib/account/presentation";
+import { loadWorkspaceRoutingSnapshot } from "@/lib/auth/workspace-entry-server";
+import {
+  loadWorkspaceApprovals,
+  type WorkspaceApprovals,
+} from "@/lib/workspace-entry/server";
 
 // 앱 셸 — UI목업_모아워크셸_v0.3 (1단 사이드바 232px + 상단바).
 // 색은 전부 globals.css 의 --mw-* 토큰 참조(하드코딩 hex 금지).
@@ -14,6 +20,17 @@ import { buildAccountViewModel } from "@/lib/account/presentation";
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const ctx = await getSession();
   const repo = getRepo();
+  const routing = await loadWorkspaceRoutingSnapshot();
+  const currentWorkspace = routing.kind === "ready"
+    ? routing.memberships.filter((membership) => membership.orgId === ctx.org.id)
+    : [];
+  const logoHref = currentWorkspace.length === 1
+    ? `/w/${currentWorkspace[0].slug}`
+    : "/workspaces";
+  const trustedOwnerOrgId = ctx.role === "owner" ? ctx.org.id : undefined;
+  const workspaceApprovals: WorkspaceApprovals | null = trustedOwnerOrgId
+    ? await loadWorkspaceApprovals(trustedOwnerOrgId)
+    : null;
 
   // 엔타이틀먼트는 서버 진실 — 잠긴 기능키를 계산해 사이드바로 내린다.
   const features = Array.from(
@@ -38,7 +55,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}
       >
         <div className="px-2 pb-4 pt-1">
-          <Logo height={30} />
+          <Logo height={30} href={logoHref} />
           <small
             className="mt-1.5 block pl-0.5 text-[11px]"
             style={{ color: "var(--mw-sub)" }}
@@ -48,7 +65,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         </div>
 
         <div className="hidden md:block">
-          <SidebarNav lockedFeatures={lockedFeatures} />
+          <SidebarNav
+            lockedFeatures={lockedFeatures}
+            badges={workspaceApprovals
+              ? { workspaceApprovals: workspaceApprovals.pendingCount }
+              : undefined}
+          />
         </div>
 
         {/* 하단 사용자 */}
@@ -82,6 +104,19 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         {/* 페이지 제목은 각 화면이 자기 <h1> 로 그린다 — 셸은 우측 액션만 소유. */}
         <header className="mb-5 flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            {workspaceApprovals && workspaceApprovals.pendingCount > 0 ? (
+              <Link
+                href="/settings/members"
+                className="hidden rounded-xl border px-3 py-2 text-[12px] font-semibold sm:inline-flex"
+                style={{
+                  background: "var(--mw-tint-coral)",
+                  borderColor: "var(--mw-line)",
+                  color: "var(--mw-people)",
+                }}
+              >
+                승인 대기 {workspaceApprovals.pendingCount > 99 ? "99+" : workspaceApprovals.pendingCount}건
+              </Link>
+            ) : null}
             <div
               className="hidden w-[250px] rounded-xl border px-3.5 py-2 text-[13px] lg:block"
               style={{

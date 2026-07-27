@@ -136,6 +136,13 @@ button:disabled { opacity: .58; cursor: wait; transform: none; }
 .actions .quietButton, .inlineActions .quietButton { color: var(--entry-ink); border-color: var(--entry-line); background: var(--entry-surface); }
 .actions .dangerButton { background: var(--entry-danger); }
 .pendingActions { width: min(100%, 680px); }
+.pendingSummary { display: grid; width: min(100%, 680px); gap: 8px; margin: 0; padding: 14px; border: 1px solid var(--entry-line); border-radius: 16px; background: var(--entry-surface); }
+.pendingSummary > div { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; align-items: baseline; }
+.pendingSummary dt { color: var(--entry-muted); font-size: 12px; font-weight: 800; }
+.pendingSummary dd { margin: 0; color: var(--entry-ink); font-size: 13px; font-weight: 850; overflow-wrap: anywhere; }
+.pendingExits { display: flex; width: min(100%, 680px); flex-wrap: wrap; gap: 8px; align-items: center; }
+.pendingExits a, .pendingExits button { min-height: 44px; border: 1px solid var(--entry-line); border-radius: 13px; padding: 0 12px; color: var(--entry-muted); background: var(--entry-surface); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.pendingExits form { margin: 0; }
 
 .status, .error {
   margin: 0 0 13px;
@@ -196,6 +203,8 @@ button:disabled { opacity: .58; cursor: wait; transform: none; }
   .answerBubble { width: 100%; }
   .actions, .inlineActions { flex-direction: column-reverse; }
   .actions button, .inlineActions button { width: 100%; }
+  .pendingExits { align-items: stretch; flex-direction: column; }
+  .pendingExits a, .pendingExits button, .pendingExits form { width: 100%; }
   .summaryStep { align-items: flex-start; flex-wrap: wrap; }
   .summaryStep .inlineActions { width: 100%; }
 }

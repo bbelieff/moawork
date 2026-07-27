@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { handleWorkspaceRequest, POST } from "./route";
 import type { WorkspaceEntryRpcClient } from "@/lib/workspace-entry/server";
 
-function rpcClient(data: unknown = { accepted: true }): WorkspaceEntryRpcClient {
+function rpcClient(data: unknown = { accepted: true, status: "pending" }): WorkspaceEntryRpcClient {
   return { rpc: async () => ({ data, error: null }) };
 }
 
@@ -29,10 +29,10 @@ describe("POST /api/workspace-requests", () => {
     }
   });
 
-  it("binds the resume helper to request kind without calling join review a create expiry", async () => {
+  it("binds every resume helper to the 14-day server review window", async () => {
     const cases = [
-      [{ kind: "create", displayName: "모아", slug: "moa-team", requestId: "60000000-0000-4000-8000-000000000006" }, "create.60000000-0000-4000-8000-000000000006", "2592000"],
-      [{ kind: "join", lookup: "alpha-team", requestId: "70000000-0000-4000-8000-000000000007" }, "join.70000000-0000-4000-8000-000000000007", "604800"],
+      [{ kind: "create", displayName: "모아", slug: "moa-team", requestId: "60000000-0000-4000-8000-000000000006" }, "create.60000000-0000-4000-8000-000000000006", "1209600"],
+      [{ kind: "join", lookup: "alpha-team", requestId: "70000000-0000-4000-8000-000000000007" }, "join.70000000-0000-4000-8000-000000000007", "1209600"],
     ] as const;
     for (const [body, value, maxAge] of cases) {
       const response = await handleWorkspaceRequest(new Request("https://www.moa-work.com/api/workspace-requests", { method: "POST", body: JSON.stringify(body) }), async () => ({ kind: "ready", memberships: [] }), async () => rpcClient());
@@ -42,6 +42,16 @@ describe("POST /api/workspace-requests", () => {
       expect(cookie).toContain("HttpOnly");
       expect(cookie).toContain("SameSite=lax");
     }
+  });
+
+  it("keeps an expired cancellation generic while allowing a retry", async () => {
+    const response = await handleWorkspaceRequest(
+      new Request("https://www.moa-work.com/api/workspace-requests", { method: "POST", body: JSON.stringify({ kind: "cancel", requestId: "80000000-0000-4000-8000-000000000008" }) }),
+      async () => ({ kind: "ready", memberships: [] }),
+      async () => rpcClient({ accepted: true, status: "expired" }),
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true, state: "expired", message: "요청 기간이 끝났어요. 필요하면 새 요청을 보낼 수 있어요." });
   });
 
   it("requires a chooser selection to match one freshly loaded active membership", async () => {

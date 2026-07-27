@@ -2,6 +2,7 @@
 
 import { FormEvent, type ReactNode, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Logo } from "@/components/brand/Logo";
 import type { MyWorkspaceEntryRequest, PlatformCreateRequest } from "@/lib/workspace-entry/server";
 import { normalizeWorkspaceSlug, submitWorkspaceRequest, validateWorkspaceSlug } from "@/lib/workspace-entry/contracts";
@@ -58,6 +59,29 @@ export function nextWorkspaceEntryQuestion(view: WorkspaceEntryView): WorkspaceE
 
 export function workspaceAddressPreview(value: string): string {
   return `https://www.moa-work.com/w/${normalizeWorkspaceSlug(value) || "{주소}"}`;
+}
+
+const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
+
+export function workspaceEntryPendingSummary(request: MyWorkspaceEntryRequest | null): {
+  kindLabel: string;
+  expiryLabel: string | null;
+} | null {
+  if (!request || request.status !== "pending" || request.decisionState !== "pending") return null;
+  const createdAt = Date.parse(request.createdAt);
+  const deadline = request.reviewDeadline ? Date.parse(request.reviewDeadline) : Number.NaN;
+  const hasVerifiedFourteenDayDeadline =
+    request.kind === "join" &&
+    Number.isFinite(createdAt) &&
+    Number.isFinite(deadline) &&
+    deadline - createdAt === FOURTEEN_DAYS_MS;
+
+  return {
+    kindLabel: request.kind === "join" ? "회사 합류 요청" : "회사 만들기 요청",
+    expiryLabel: hasVerifiedFourteenDayDeadline
+      ? `${formatDeadline(request.reviewDeadline!)} · 요청 후 14일 자동 만료`
+      : null,
+  };
 }
 
 export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatformAdmin = false, platformRequests = [] }: Props) {
@@ -152,7 +176,7 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
   const confirmCreate = () => submit("create", { displayName: draftName, slug: draftSlug });
   const confirmJoin = () => submit("join", { lookup: joinSlug });
 
-  async function cancelRequest(editAfter = false) {
+  async function cancelRequest(next: "fork" | "same" | "create" = "fork") {
     if (!activeRequest) return;
     setBusy(true);
     setNotice(null);
@@ -162,7 +186,13 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
       if (result.ok) {
         const priorKind = activeRequest.kind;
         setActiveRequest(null);
-        setView(editAfter ? priorKind === "create" ? "create-name" : "join-address" : "fork");
+        setView(
+          next === "create"
+            ? "create-name"
+            : next === "same"
+              ? priorKind === "create" ? "create-name" : "join-address"
+              : "fork",
+        );
       }
     } catch {
       setNotice({ tone: "error", message: "취소하지 못했어요. 현재 요청은 그대로예요. 목록을 새로 확인한 뒤 다시 시도해 주세요." });
@@ -171,6 +201,7 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
 
   const back = () => { setNotice(null); setDraftName(""); setDraftSlug(""); setSlugInput(""); setJoinSlug(""); setView("fork"); };
   const copy = workspaceEntryCopy(view);
+  const pendingSummary = workspaceEntryPendingSummary(activeRequest);
 
   return (
     <EntryShell eyebrow={view === "operator" ? "운영 영역" : "처음 오셨군요"} title={copy.title} lead={copy.lead} view={view} headingRef={headingRef}>
@@ -223,21 +254,27 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
         </> : null}
 
         {view === "pending" ? <>
-          <div className={styles.bubble}><strong>요청은 도착했어요.</strong><small>{activeRequest?.kind === "join" ? activeRequest.reviewDeadline ? `${formatDeadline(activeRequest.reviewDeadline)}까지 같은 검토 중 상태로 보여요. 기한이 지나면 회사 정보 없이 다시 요청할 수 있어요.` : "7일 이내에 같은 검토 중 상태로 보여요. 새로고침하면 서버가 정한 기한을 확인할 수 있어요." : "아직 멤버십이 아니며 회사 내부는 볼 수 없어요. 승인 결과는 다음 로그인에서도 다시 확인해요."}</small></div>
+          <div className={styles.bubble}><strong>요청은 도착했어요.</strong><small>{pendingSummary?.expiryLabel ? `${pendingSummary.expiryLabel}로 서버에서 확인됐어요. 만료 뒤에는 회사 정보 없이 다시 요청할 수 있어요.` : "아직 멤버십이 아니며 회사 내부는 볼 수 없어요. 만료 기한은 서버에서 확인된 경우에만 표시해요."}</small></div>
+          {pendingSummary ? <dl className={styles.pendingSummary} aria-label="대기 요청 요약"><div><dt>요청</dt><dd>{pendingSummary.kindLabel}</dd></div><div><dt>상태</dt><dd>검토 중</dd></div>{pendingSummary.expiryLabel ? <div><dt>만료</dt><dd>{pendingSummary.expiryLabel}</dd></div> : null}</dl> : null}
           <div className={styles.answerPreview}><span>현재 상태</span><strong>검토 중 · 회사 접근 0곳</strong></div>
-          <div className={styles.quick}><button type="button" onClick={() => setView("pending-manage")}>요청 관리하기</button></div>
+          <div className={styles.quick}><button type="button" onClick={() => setView("pending-manage")}>취소하거나 다시 입력하기</button></div>
+          <div className={styles.pendingExits} aria-label="다른 안전한 이동">
+            <Link href="/workspaces">다른 회사 보기</Link>
+            <button type="button" disabled={busy} onClick={() => void cancelRequest("create")}>현재 요청 취소 후 새 회사 시작</button>
+            <form action="/auth/signout" method="post"><button type="submit">로그아웃</button></form>
+          </div>
         </> : null}
 
         {view === "pending-manage" ? <>
           <div className={styles.bubble}><strong>요청을 다시 입력할까요, 취소할까요?</strong><small>둘 다 현재 요청을 서버에서 안전하게 취소한 뒤 반영해요.</small></div>
           <div className={styles.quick} aria-label="대기 요청 관리">
-            <button type="button" disabled={busy} onClick={() => cancelRequest(true)}>취소하고 다시 입력할게요</button>
-            <button type="button" className={styles.dangerChoice} disabled={busy} onClick={() => cancelRequest(false)}>{busy ? "처리 중…" : "요청을 취소할게요"}</button>
+            <button type="button" disabled={busy} onClick={() => void cancelRequest("same")}>취소하고 다시 입력할게요</button>
+            <button type="button" className={styles.dangerChoice} disabled={busy} onClick={() => void cancelRequest("fork")}>{busy ? "처리 중…" : "요청을 취소할게요"}</button>
           </div>
         </> : null}
 
         {view === "rejected" ? <>
-          <div className={styles.bubble}><strong>이 요청으로는 회사에 들어갈 수 없어요.</strong><small>입력이 맞았는지, 회사가 있는지, 누가 결정했는지는 보여드리지 않아요.</small></div>
+          <div className={styles.bubble}><strong>이 요청으로는 회사에 들어갈 수 없어요.</strong><small>검토 사유와 회사 정보는 보여드리지 않아요.</small></div>
           <div className={styles.quick}><button type="button" onClick={back}>안전하게 다시 시작하기</button></div>
         </> : null}
 
