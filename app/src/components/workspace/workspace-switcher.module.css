@@ -124,8 +124,9 @@
   animation: dialogIn 140ms ease-out;
 }
 
-.dialogHeader { display: flex; min-height: 44px; align-items: center; justify-content: space-between; padding: 0 4px 0 10px; }
+.dialogHeader { display: flex; min-height: 44px; align-items: center; justify-content: space-between; padding: 4px 4px 4px 10px; }
 .dialogHeader h2 { margin: 0; font-size: 13px; font-weight: 700; }
+.commandHint { margin: 2px 0 0; color: var(--mw-sub); font-size: 11px; line-height: 1.35; }
 
 .closeButton {
   display: grid;

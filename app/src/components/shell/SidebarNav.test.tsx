@@ -33,4 +33,21 @@ describe("SidebarNav integration contract", () => {
     expect(visible).toContain("99+");
     expect(absent).not.toContain("승인 대기");
   });
+
+  it("renders the same server-provided switcher data before desktop-only navigation", () => {
+    const html = renderToStaticMarkup(
+      <SidebarNav
+        lockedFeatures={[]}
+        workspaceSwitcher={{
+          currentOrgId: "org-a",
+          workspaces: [{ orgId: "org-a", slug: "sample-lab", name: "샘플랩", role: "owner", status: "active" }],
+          destinations: { createHref: "/workspace-entry?mode=new", joinHref: "/workspace-entry?mode=resume" },
+          defaultOpen: true,
+        }}
+      />,
+    );
+
+    expect(html).toContain('data-destination="/workspace-entry?mode=new"');
+    expect(html).toContain('class="hidden flex-col gap-px md:flex"');
+  });
 });

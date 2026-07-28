@@ -241,7 +241,10 @@ export function WorkspaceSwitcher({
           <div className={styles.mobileBackdrop} aria-hidden="true" onPointerDown={() => close()} />
           <section id={dialogId} className={styles.dialog} role="dialog" aria-labelledby={titleId}>
             <div className={styles.dialogHeader}>
-              <h2 id={titleId}>내 회사</h2>
+              <div>
+                <h2 id={titleId}>회사 전환</h2>
+                <p className={styles.commandHint}>활성 회사만 선택할 수 있어요.</p>
+              </div>
               <button type="button" className={styles.closeButton} onClick={() => close()} aria-label="회사 전환 닫기">
                 ×
               </button>
@@ -284,7 +287,7 @@ export function WorkspaceSwitcher({
                         <WorkspaceMark name={request.name} size={28} muted />
                         <span className={styles.itemText}>
                           <span className={styles.name}>{request.name}</span>
-                          <span className={styles.sub}>{request.kind === "create" ? "회사 만들기 요청함" : "합류 요청함"}</span>
+                          <span className={styles.sub}>{request.kind === "create" ? "새 회사 만들기 요청을 확인하고 있어요" : "기존 회사 합류 요청을 확인하고 있어요"}</span>
                         </span>
                         <span className={styles.pendingState}>승인 대기</span>
                       </button>
@@ -298,11 +301,17 @@ export function WorkspaceSwitcher({
             <div className={styles.actions}>
               <button type="button" className={styles.action} data-destination={destinations.createHref} onClick={() => void navigate(destinations.createHref, "create")} disabled={!destinations.createHref || busyKey !== null}>
                 <span className={styles.actionIcon} aria-hidden="true">+</span>
-                새 회사 만들기
+                <span className={styles.itemText}>
+                  <span className={styles.name}>새 회사 만들기</span>
+                  <span className={styles.sub}>새 워크스페이스를 시작해요</span>
+                </span>
               </button>
               <button type="button" className={styles.action} data-destination={destinations.joinHref} onClick={() => void navigate(destinations.joinHref, "join")} disabled={!destinations.joinHref || busyKey !== null}>
                 <span className={styles.actionIcon} aria-hidden="true">↳</span>
-                기존 회사에 합류하기
+                <span className={styles.itemText}>
+                  <span className={styles.name}>기존 회사에 합류하기</span>
+                  <span className={styles.sub}>초대 정보로 안전하게 찾아요</span>
+                </span>
               </button>
             </div>
 
