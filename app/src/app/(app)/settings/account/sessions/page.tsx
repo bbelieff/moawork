@@ -29,7 +29,14 @@ export default async function AccountSessionsPage() {
   const ctx = await getSession();
   let sessions: Awaited<ReturnType<typeof listMyMemberSessions>> = [];
   let unavailable = false;
-  try { sessions = await listMyMemberSessions(ctx.org.id, null); } catch { unavailable = true; }
+  // The 011 RPC accepts a nullable UUID when the request has no registered
+  // current-session identifier yet. Keep that server contract at this call
+  // boundary instead of inventing a client-side session ID.
+  const listSessions = listMyMemberSessions as (
+    orgId: string,
+    currentSessionId: string | null,
+  ) => ReturnType<typeof listMyMemberSessions>;
+  try { sessions = await listSessions(ctx.org.id, null); } catch { unavailable = true; }
 
   return (
     <div className={styles.page}>
