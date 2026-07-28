@@ -87,7 +87,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           </small>
         </div>
 
-        <div className="hidden md:block">
+        <div>
           <SidebarNav
             lockedFeatures={lockedFeatures}
             badges={workspaceApprovals
