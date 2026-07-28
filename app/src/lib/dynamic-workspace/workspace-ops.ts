@@ -50,7 +50,11 @@ export async function loadOwnerWorkspaceOpsSnapshot(): Promise<WorkspaceOpsSnaps
   const boards = boardRows.map((row) => {
     const item = safeObject(row); const id = item?.board_id; const name = item?.name;
     const description = item?.description; const icon = item?.icon;
-    return typeof id === "string" && typeof name === "string" ? { id, name, description: typeof description === "string" ? description : null, icon: typeof icon === "string" ? icon : null } : null;
+    const descriptionIsValid = description === null || typeof description === "string";
+    const iconIsValid = icon === null || typeof icon === "string";
+    return typeof id === "string" && typeof name === "string" && descriptionIsValid && iconIsValid
+      ? { id, name, description: description === null ? null : description, icon: icon === null ? null : icon }
+      : null;
   });
   const completeBoards = boards.filter(isWorkspaceBoard);
   if (completeBoards.length !== boards.length) return malformed();
