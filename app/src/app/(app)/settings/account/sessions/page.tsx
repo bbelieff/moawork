@@ -3,6 +3,8 @@ import { AccountState } from "@/components/account/AccountState";
 import { CurrentSessionLogout } from "@/components/account/CurrentSessionLogout";
 import styles from "@/components/account/account.module.css";
 import { getSession } from "@/lib/auth/session";
+import { listMyMemberSessions } from "@/lib/account/memberAccountOps";
+import { revokeAllSessions, revokeCurrentSession } from "../actions";
 
 const NAV_ITEMS = [
   { key: "account", label: "내 정보", href: "/account" },
@@ -24,7 +26,17 @@ const NAV_ITEMS = [
 ] as const;
 
 export default async function AccountSessionsPage() {
-  await getSession();
+  const ctx = await getSession();
+  let sessions: Awaited<ReturnType<typeof listMyMemberSessions>> = [];
+  let unavailable = false;
+  // The 011 RPC accepts a nullable UUID when the request has no registered
+  // current-session identifier yet. Keep that server contract at this call
+  // boundary instead of inventing a client-side session ID.
+  const listSessions = listMyMemberSessions as (
+    orgId: string,
+    currentSessionId: string | null,
+  ) => ReturnType<typeof listMyMemberSessions>;
+  try { sessions = await listSessions(ctx.org.id, null); } catch { unavailable = true; }
 
   return (
     <div className={styles.page}>
@@ -33,13 +45,10 @@ export default async function AccountSessionsPage() {
         <p>지금 사용하는 브라우저의 로그인을 안전하게 끝낼 수 있어요.</p>
       </header>
       <AccountNav current="sessions" items={NAV_ITEMS} />
-      <AccountState
-        kind="blocked"
-        title="로그인 기기 기능을 준비하고 있어요"
-        message="로그인 기기 정보를 안전하게 확인하는 기능을 준비하고 있어요. 지금 기기에서는 로그아웃할 수 있어요."
-      />
+      {unavailable ? <AccountState kind="blocked" title="세션 정보를 불러오지 못했습니다" message="잠시 후 다시 시도해 주세요." /> : <section aria-label="로그인 세션"><p>활성 세션 {sessions.length}개</p>{sessions.map((session) => <form action={revokeCurrentSession} key={session.id}><input type="hidden" name="sessionId" value={session.id} /><p>{session.current_session ? "현재 세션" : "다른 세션"} · 마지막 사용 {session.last_seen_at}</p><button type="submit">이 세션 로그아웃</button></form>)}</section>}
       <div className={styles.actionRow}>
         <CurrentSessionLogout />
+        {!unavailable && <form action={revokeAllSessions}><button type="submit">모든 기기에서 로그아웃</button></form>}
       </div>
     </div>
   );
