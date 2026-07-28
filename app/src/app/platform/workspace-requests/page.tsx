@@ -42,7 +42,7 @@ export default async function PlatformWorkspaceRequestsPage() {
           <section aria-labelledby="support-title">
             <h2 id="support-title">지원 접근</h2>
             {supportScopes === null ? <p>지원 접근 상태를 불러오지 못했습니다. 권한을 가정하지 않습니다.</p> : supportScopes.length === 0 ? <p>승인된 읽기 전용 지원 접근이 없습니다.</p> : <ul>{supportScopes.map((scope) => <li key={`${scope.org_id}-${scope.expires_at}`}>목적: {scope.purpose} · 만료: {scope.expires_at} · 읽기 전용</li>)}</ul>}
-            <p>사용자 전환, 원본 개인정보 조회, 직접 수정은 제공하지 않습니다.</p>
+            <p>지원 확인은 읽기 전용으로만 제공돼요. 개인정보 표시·내려받기, 사용자 전환, 원본 개인정보 조회, 직접 수정은 제공하지 않습니다.</p>
           </section>
 
           <ApprovalQueue mode="platform" requests={context.platformCreateRequests} />
