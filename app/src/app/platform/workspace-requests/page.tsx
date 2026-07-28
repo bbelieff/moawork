@@ -5,12 +5,15 @@ import { ApprovalQueue } from "@/components/workspace-entry/ApprovalQueue";
 import styles from "@/components/workspace-entry/workspace-entry.module.css";
 import { loadWorkspaceRoutingSnapshot } from "@/lib/auth/workspace-entry-server";
 import { loadWorkspaceEntryContext } from "@/lib/workspace-entry/server";
+import { getMySupportReadScope } from "@/lib/account/memberAccountOps";
 
 export default async function PlatformWorkspaceRequestsPage() {
   const routing = await loadWorkspaceRoutingSnapshot();
   if (routing.kind === "unauthenticated") redirect("/login?next=/platform/workspace-requests");
   const context = await loadWorkspaceEntryContext();
   if (context.kind === "error" || !context.isPlatformAdmin) redirect("/workspace-entry?error=permission");
+  let supportScopes: Awaited<ReturnType<typeof getMySupportReadScope>> | null = null;
+  try { supportScopes = await getMySupportReadScope(); } catch { supportScopes = null; }
 
   return (
     <main className={styles.page}>
@@ -38,10 +41,8 @@ export default async function PlatformWorkspaceRequestsPage() {
 
           <section aria-labelledby="support-title">
             <h2 id="support-title">지원 접근</h2>
-            <p>
-              지원 확인은 읽기 전용으로만 제공돼요. 사용자 전환, 개인정보 표시·내려받기, 모든 기기 로그아웃은
-              감사 가능한 서버 절차가 준비될 때까지 사용할 수 없어요.
-            </p>
+            {supportScopes === null ? <p>지원 접근 상태를 불러오지 못했습니다. 권한을 가정하지 않습니다.</p> : supportScopes.length === 0 ? <p>승인된 읽기 전용 지원 접근이 없습니다.</p> : <ul>{supportScopes.map((scope) => <li key={`${scope.org_id}-${scope.expires_at}`}>목적: {scope.purpose} · 만료: {scope.expires_at} · 읽기 전용</li>)}</ul>}
+            <p>사용자 전환, 원본 개인정보 조회, 직접 수정은 제공하지 않습니다.</p>
           </section>
 
           <ApprovalQueue mode="platform" requests={context.platformCreateRequests} />
