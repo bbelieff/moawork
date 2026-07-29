@@ -336,6 +336,14 @@ C5 `lib/analytics/` 무결(내 변경 0).
 - 배정 범위(P2): 위 2건만. 스코프 추가 금지.
 - 수용기준: 이벤트 10종 화이트리스트 외 발송 0 · PII 페이로드 부재 · 리플레이 마스킹(maskAllInputs·data-pii·회계/홈택스 경로 녹화 제외) 확인.
 - base = origin/main `421c586` 위로 rebase 완료(무충돌).
+## START 2026-07-23 — T09 · B4 정산 수식 화면 (P3, MWC 재개 배정)
+
+- 트랙 T09 / provider claude. 브랜치 `feat/t09-settlement-form` (base = `origin/main` d172875).
+- 범위: settlements 수식 **화면** — 실행액·수수료% 입력 → 수수료·총매출·D+180/365 표시 + 002 프리셋 연결.
+- **수용기준**: 화면 재계산 금지. 서버(DB generated column) 값을 그대로 표시한다.
+- ⛔ G8(상태→그룹 자동이동) **착수 금지** — MWC 별도 설계 대기. RQ-0009 파킹 유지.
+- 착수 전 실측: settlements API 2종(`/api/settlements`, `/[settlementId]`) main 반영 확인.
+  `lib/repo/supabase/` 어댑터는 **CRM 전용**(settlements 미포함) → 정산은 LocalRepo 경유.
 
 ## 2026-07-28 — T04 · C4 인수: 지표 순수함수 + platform_metrics_daily 야간 배치
 
