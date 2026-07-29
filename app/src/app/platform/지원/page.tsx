@@ -13,6 +13,13 @@ import { getSessionOrNull } from "@/lib/auth/session";
 import { getSupportService } from "@/lib/support";
 import { OperatorSupportConsole } from "@/components/support/OperatorSupportConsole";
 
+/**
+ * 세션 쿠키로 플랫폼 관리자를 가리므로 정적 프리렌더 대상이 아니다.
+ * 한글 세그먼트(`지원`)는 export 단계에서 InvalidCharacterError 로 빌드를 깨뜨리기도 해서,
+ * 여기서 동적으로 못 박는다.
+ */
+export const dynamic = "force-dynamic";
+
 export default async function PlatformSupportPage() {
   const ctx = await getSessionOrNull();
   if (!ctx) redirect("/login?next=/platform/%EC%A7%80%EC%9B%90");
