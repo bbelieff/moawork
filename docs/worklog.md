@@ -4,6 +4,61 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-29 — T04 · C4 지표 콘솔 `/platform/metrics` (배치 후속)
+
+**START** — 재개 지시(자율루프). 직전 배정의 남은 조각을 이어서 진행.
+
+### 선행 PR #47 머지 완료
+
+`gh pr merge 47 --merge` → **main `cc896a8`**, main CI 초록.
+산출물 착지 확인: `lib/metrics/*`(7파일) · `api/cron/platform-metrics` · `014_platform_metrics_daily.sql`.
+C5 `lib/analytics/` 무결(내 변경 0).
+
+### 선행조건 해제 확인 — C1 메뉴
+
+직전 배정에서 "`/platform` 화면은 C1 메뉴 확정 후"로 보류했던 항목이다. 실측 결과 **확정됨**:
+`WorkspaceSwitcher.tsx` 에 `platformHref: "/platform"` 이 있고,
+"platform 항목은 **서버 확인 capability** 와 href 가 함께 있을 때만 DOM 에 존재한다" 테스트가 있다.
+→ 진입점이 배선됐으므로 보류 해제하고 지표 콘솔을 구현했다.
+
+### 산출물
+
+| 경로 | 내용 |
+| --- | --- |
+| `lib/metrics/read.ts` | 스냅샷 조회 + `groupByDay` |
+| `app/platform/metrics/page.tsx` | 지표 콘솔(읽기 전용) |
+| `platform/workspace-requests/page.tsx` | nav 에 "제품 사용 지표" 링크 1줄 추가 |
+
+### 설계 판단
+
+- **읽기에 service_role 을 쓰지 않는다.** 014 의 RLS 정책이
+  `app_admin_role(auth.jwt()->>'email') is not null` 을 요구하므로 **로그인 세션 키(anon+쿠키)로
+  조회하면 플랫폼 관리자에게만 행이 보인다**. service_role 은 배치 전용으로 남긴다 —
+  읽기 경로에까지 그 권한을 끌어오면 RLS 이중방어가 무의미해진다.
+- **상태를 3가지로 구분**한다: `not_configured`(DB 미연결) · `error`(조회 실패) · 집계 없음.
+  실패를 빈 배열로 뭉개면 화면이 "데이터 0"으로 **거짓말**하게 된다. 오류는 사유를 노출하고
+  "수치를 0으로 가정하지 않습니다"라고 명시한다.
+- **DB numeric 문자열 방어** — PostgREST 가 `numeric` 을 문자열로 주는 경우가 있어 `toNumber` 로 정규화.
+- 게이트는 `workspace-requests` 와 **동일 패턴**(미인증→`/login?next=`, 비관리자→`/workspace-entry?error=permission`).
+- 화면 문구에 "고객사의 업무 내용·멤버 이름·고객 정보는 이 화면에 오지 않아요"를 명시 —
+  집계 수치만 다룬다는 경계를 UI 에서도 재확인.
+- 겸직자 중복 계상(파킹 3)을 숨기지 않고 화면에 문장으로 표기했다.
+
+### 검증
+
+`check.sh` 초록 — app **811** / worker **14** (read.test 3 신규).
+`next build` 성공, `/platform/metrics` 라우트 등록 확인.
+
+### 파킹 유지 (변동 없음)
+
+1. **실DB 미검증** — `.env.local` 여전히 부재. 014 적용·RLS 판정·배치 왕복 **NOT_RUN**.
+   이번 콘솔도 실데이터 렌더는 미확인(코드 경로만 검증).
+2. **플랫폼 전역 고유 사용자** — 조직별 합산이라 겸직자 중복. 화면에 명시로 완화, 정확한 집계는 별도 쿼리 필요.
+3. **TTFV 배치 미적재** — 일 단위 표에 코호트 지표는 부적합. 적재 위치 미정.
+4. **공지 RLS 예외(DQ-0018)** — 기획 판정 대기.
+
+**END** — `check.sh` 초록 · `next build` 성공 · PR 준비 완료.
+
 ## 2026-07-23 — T05 · C5 PostHog 인수인계 — END
 
 배정 2건 완료. `check.sh` 초록(앱 **736** PASS/5 skip · 워커 14) · `next build` 초록. 신규 analytics 테스트 포함 136 PASS.
