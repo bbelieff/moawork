@@ -4,6 +4,74 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-29 — [START · C4] T07 · 플랫폼 운영 콘솔 /platform + 활동지표 (P0)
+
+- 브랜치 `feat/t07-platform-console-p0` (base `1744d9f` = origin/main tip 실측).
+- 마이그레이션 번호 **014** 배정 — 실측 근거: main 의 `supabase/migrations/` 가 `013_member_hierarchy_authz.sql` 까지 존재(추측 아님).
+- 범위(P0): 진입점 · 어드민 셸 · 고객사 관리 · 고객사 상세 · 어드민 관리 · 결제/매출 골격 · 지표 배치 · `is_internal`.
+- 원칙: 어드민을 tenant org 로 만들지 않음 · 고객 업무 데이터 조회 0 · 비관리자에겐 메뉴 미노출 · 실시간 집계 금지.
+
+## 2026-07-29 — [END · C4] T07 · 플랫폼 운영 콘솔 /platform + 활동지표 (P0)
+
+### 산출물
+
+- **마이그레이션 `014_platform_console.sql`** (additive, 001~013 무수정, 멱등)
+  - `orgs.is_internal` 컬럼 — 내부 조직 플래그. 지표 기본 제외. **하드코딩 대신 이 컬럼만 판정**한다.
+  - `app_admins` 확장 — `level`(super/operator/viewer) · `added_by` · `revoked_at` · `last_seen_at`.
+  - `platform_metrics_daily` — 야간 배치 롤업 대상. RLS enable + 정책 없음(직접 접근 차단).
+  - 결제·매출 골격 — `plans_billing` · `billing_accounts` · `subscriptions` · `invoices` · `payments`. 부가세는 `supply_amount`/`vat_amount` 분리 보관, `total_amount` 는 generated. 전자세금계산서 상태(`tax_invoice_status`) 컬럼 포함. PG 실연동은 Phase 2.
+  - 조회 RPC(전부 `is_platform_operator()` 게이트): `platform_org_overview` · `platform_metrics_range` · `platform_ttfv` · `platform_admin_list` · `platform_billing_monthly`.
+  - 쓰기 RPC: `platform_set_admin`(안전장치 6개 서버 강제) · `platform_set_org_internal` · `platform_touch_last_seen`.
+  - 롤업 함수 `rollup_platform_metrics_daily(date)` — `count()`/`max()` 만 사용. authenticated 에 execute 미부여(운영자 화면이 집계를 못 돌리게 막음).
+- **앱** — `app/src/lib/platform/`(types·metrics·periods·insight·access·export·server·guard·format) · `app/src/components/platform/`(셸·표·마스킹·진입점) · `app/src/app/platform/`.
+- **워커** — `worker/src/platform/`(rollup·register) + `index.ts` 1줄 배선.
+
+### IA (belie 확정 8메뉴 · 2026-07-29)
+
+`개요 · 고객사 관리 · 결제·매출 · 접근 기록 · 지원 문의 · 운영 분석 · 시스템 · 어드민 관리`
+
+- 분석 메뉴 이름은 **"운영 분석"** 확정. 경로 `/platform/analytics`. 다른 이름을 짓지 않는다(nav.ts 주석에 못 박음).
+- **운영 분석 3분면**: ① 매출지표(DB·확정값) · ② 사용자행동지표(PostHog·추정값) · ③ 종합 인사이트(①×②·추정).
+  - ②가 미가용이면 ③을 **계산하지 않는다**(`available:false`). 확정값만으로 "종합"을 만들면 근거를 과장하는 것이라서다.
+  - ③은 확정값이 섞여도 `confidence: "estimated"` 로 고정 표기.
+- **기간 5구간**: 주(7) · 월(30) · 분기(91) · 반기(182) · 연(365). 달력 정렬이 아니라 **오늘 끝점 되돌아보기 창** — 월초에 표본이 며칠뿐이라 지표가 요동치는 문제를 피한다.
+
+### 판정·보안
+
+- 진입 판정은 `platform_admin_level()` **SECURITY DEFINER 경유**. `app_admins` 직접 select 없음(테스트로 가드).
+- 비관리자는 메뉴 미노출 + **직접 URL 접근도 차단**(`requirePlatformAdmin` → `/workspace-entry?error=permission`). 로그인 페이지로 보내지 않는다 — 존재 자체를 알리지 않기 위함.
+- 조회는 3등급 동일, **실행만 등급으로 가름**. 클라이언트 가드와 RPC 가 같은 규칙(이중 방어).
+- 고객 데이터 게이트: 계약 정보=열람 가능(마스킹) · 고객의 고객 데이터=권한 필요(P0 차단) · **홈택스=등급 무관 항상 차단**.
+- 마스킹: 연락처·사업자번호·이메일·이름 + [전체보기] 1클릭.
+
+### 지표 산식
+
+- 활성 — DAU/WAU/MAU, **스티키니스 = DAU ÷ MAU**. 기간 집계는 조직별 일 최대 활성자의 합(사용자 ID 를 저장하지 않아 합집합 불가 → 과대집계 회피).
+- 입력량 — 쓰기 = 활동기록 + 감사로그 + 신규 딜. 조직 일평균 = 쓰기 ÷ (조직수 × 일수).
+- **TTFV** — 가입 → 첫 딜 등록. 미전환 조직은 0시간이 아니라 **분리 집계**(평균 왜곡 방지).
+- 건강도 — 휴면(14일 무활동) · 오류율 · 미처리 요청 · 리텐션 W1/W4(미도래 코호트 제외).
+- 매출 — MRR=**공급가액**(부가세 제외) · ARR=MRR×12 · NRR=당월÷전월(전월 0이면 **null**, 0%로 표시하지 않음) · 미수금=청구−수납.
+
+### 검증
+
+- 신규 테스트 **94개** — platform 87(metrics 32 · access 20 · periods+insight 13 · server 12 · export 10) + worker rollup 7.
+- `bash scripts/check.sh` 초록 — **app 828 통과(79 파일, 5 skipped) · worker 21 통과**.
+- 0분모·0건·NaN 방어, 위험순 정렬, 등급 서열, 홈택스 항상 차단, BOM/CSV, 배치 부분 실패 격리 전부 커버.
+
+### 작업 중 고친 실제 결함 2건
+
+1. **DAU 가 항상 0이 되는 설계 오류** — 야간 배치는 전일까지만 집계하는데 활성 창의 끝점을 `now`(오늘)로 잡아 오늘 행이 없어 0이 나왔다. 기준일을 **롤업이 실제로 채운 최신 날짜**로 바꾸고 `asOf` 를 화면에 노출하도록 수정.
+2. **감사 기록 실패가 권한 변경을 롤백** — `platform_set_admin` 의 exception 을 함수 최상위에 둬서, `audit_logs.org_id NOT NULL` 로 감사 insert 가 실패하면 plpgsql 이 블록 시작점까지 되돌려 **권한 변경까지 취소**됐다. 감사 insert 를 중첩 블록으로 감싸 실패 범위를 가둠.
+
+### 미포함 / 후속
+
+- break-glass(고객 데이터 실제 열람) — 지시대로 **다음 단계**.
+- 접근 기록 화면은 `access_grants`/`access_events` 부재로 **자리만 + 준비 중**. 테이블은 지원·위임 트랙 소유라 만들지 않았다.
+- 롤업 러너는 스텁(0행) — 활성화에 worker `service_role` 키 주입 필요. 가짜 데이터를 만들지 않는다.
+- **운영 분석 ②** 는 PostHog **서버 조회 키 부재**로 미가용. 저장소에는 클라이언트 공개 키(`NEXT_PUBLIC_POSTHOG_KEY`)만 있고, 서버 집계에는 Query API 개인 키(`POSTHOG_QUERY_API_KEY`)가 따로 필요하다. 임의 수치를 지어내지 않고 사유를 화면에 표시한다.
+- 진입점은 `PlatformMenuEntry` 조각으로 제공. **스위처 파일은 타 세션 소유라 수정하지 않았다** — 배선 1줄은 그쪽에서.
+- 참고 문서 `제품건강도_지표통합_v1.md` 는 저장소에서 찾지 못해(전 브랜치 검색 0건) 지시 본문의 사양대로 구현했다.
+
 ## 2026-07-23 — T05 · C5 PostHog 인수인계 — END
 
 배정 2건 완료. `check.sh` 초록(앱 **736** PASS/5 skip · 워커 14) · `next build` 초록. 신규 analytics 테스트 포함 136 PASS.

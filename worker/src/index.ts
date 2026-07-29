@@ -3,6 +3,10 @@ import PgBoss from "pg-boss";
 import { health } from "./health.js";
 import { defaultProviders, registerNotifyWorker } from "./notify/index.js";
 import { pendingLoader, pendingSink } from "./notify/pending.js";
+import {
+  pendingRollupRunner,
+  registerPlatformMetricsRollup,
+} from "./platform/index.js";
 
 /**
  * moawork 워커 엔트리포인트.
@@ -31,6 +35,12 @@ async function main(): Promise<void> {
     sink: pendingSink,
   });
   console.log("[worker] notify.send 등록됨 (스텁 — 실제 발송 없음)");
+
+  // T07 플랫폼 지표 — 매일 03:10 KST 롤업. 화면(/platform)은 이 배치가 채운
+  // platform_metrics_daily 만 읽는다(요청 시점 실시간 집계 금지).
+  // 러너는 스텁이라 아직 0행이다 — 활성화 조건은 platform/rollup.ts 주석 참고.
+  await registerPlatformMetricsRollup(boss, { runner: pendingRollupRunner });
+  console.log("[worker] platform.metrics.rollup 등록됨 (스텁 — service_role 미주입)");
 }
 
 main().catch((err: unknown) => {
