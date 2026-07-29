@@ -421,6 +421,25 @@ C5 `lib/analytics/` 무결(내 변경 0).
 4. **공지 RLS 예외(DQ-0018)** — 기획 판정 대기.
 
 **END** — `check.sh` 초록 · `next build` 성공 · PR 준비 완료.
+## 2026-07-23 — [START · 재개] T06 · 재개 지시 대응 · 마이그레이션 번호 정합
+
+- 재개 배정(알림 뱃지+소식창+notifications+Realtime)은 **PR #50 에 이미 전량 구현**되어 있다. 재구현하지 않고 **머지 가능 상태 유지**를 목표로 잡았다.
+- main 이 3커밋 전진(`1744d9f`) → PR 브랜치 **리베이스**(충돌 0) → 게이트 재검증 → 푸시. PR #50 `MERGEABLE · CLEAN` 회복.
+
+## 2026-07-23 — [END · 재개] T06 · 008 → 015 리넘버링(충돌 현실화 대응)
+
+- **직전 라운드에 보고한 `008` 4중 충돌이 현실이 됐다.** 그때는 미머지 병렬 브랜치들의 예약 번호였으나, 지금 main 에는 `008_workspace_entry_self_route_state` … `014_platform_metrics_daily` 가 **모두 머지**돼 있다.
+  → 내 `008_notifications.sql` 을 그대로 두면 `008_*` 가 **두 개** 공존해 문자열 정렬 적용 순서가 모호해진다.
+- **조치**: `008_notifications.sql` → **`015_notifications.sql`** 로 리넘버링(main 최신 `014` 기준 다음 번호). 파일 내 헤더 주석과 `app_meta.schema_version` 값도 `'008'` → `'015'` 로 동기화.
+  - 직전 라운드에 "선점 리넘버링은 하지 않는다(다른 브랜치가 안 들어오면 오히려 틀린 번호가 된다)" 고 판단해 보류했고, **실제로 머지된 것을 확인한 시점에** 정합을 잡았다. 판단 근거가 유지된 채 상태만 바뀐 케이스다.
+- **선행 마이그레이션 간섭 실측**(008~014 전수):
+  - `audit_logs` 를 건드리는 마이그레이션 **없음** → 내 `audit_select` 정책 교체(담당범위 반영)는 여전히 유효.
+  - `009_workspace_entry_request_lifecycle` 이 `workspace_entry_request_shape_check` 를 **이미 교체**함. 내 마이그레이션은 해당 제약을 건드리지 않으므로(직전 라운드에 되돌림) 충돌 없음 — 그때 되돌린 판단이 여기서 이득으로 돌아왔다.
+  - 009 에 `drop column`·`rename`·`add column` **없음** → 내 트리거가 쓰는 `workspace_entry_requests` 컬럼(`kind`·`status`·`target_org_id`·`requester_user_id`·`id`) 전부 온전.
+- 과거 항목의 `008_notifications.sql` 표기는 append-only 원칙에 따라 **수정하지 않는다**(당시 사실 기록). 현재 정본은 `015_notifications.sql`.
+- **파킹 유지**: 375px 브라우저 스냅샷 `NOT_RUN`(preview 도구가 세션 디렉터리를 기동해 격리 worktree 를 못 띄움). 대체 증거는 테스트로 고정됨.
+- **다음 행동**: PR #50 검수 대기. 추가 구현·중복 PR 없음.
+
 ## 2026-07-23 — [START · 재배정] T06 · MWC 실행계획v1 재배정 대조
 
 - 재배정 내용(뱃지 규칙·소식창 2탭·주어 표시·딥링크·묶기·notifications 신규·Realtime+60초 폴링·RLS/scope/조직격리·금액·개인정보 금지·가입요청→오너 숫자+승인화면 딥링크·375px)을 **기존 산출물과 1:1 대조**했다.
