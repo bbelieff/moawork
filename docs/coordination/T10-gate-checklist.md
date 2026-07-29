@@ -503,6 +503,82 @@ PolicyfundBoard.tsx  ("use client")
 
 ---
 
+## 11. ★ 실행계획v1 기준 main 검수 (main `e1a3a05`~`1744d9f`, 2026-07-29 · T10)
+
+> 배경: `613cc67` 이후 **37+커밋이 T10 검수 없이** main 에 누적(Codex 인수 Round 2, C0/C1 워크스페이스,
+> OAuth 정식 머지 `#15`, BUG-0003 수정 `#26` 등). 실행계획v1 규칙 8종 + 레인표 + G1~G4 로 실측 검수했다.
+
+### 🔴 BUG-0004 — `is_org_member()` 상시 `false`. **Supabase 연결 시 전면 장애** (배포 차단)
+
+`011_member_account_ops.sql` 이 헬퍼를 재정의하며 세션 검사를 선행 조건으로 걸었다(현재 **최종 정의**):
+```sql
+create or replace function public.is_org_member(p_org uuid) ... as $$
+  select public.member_account_session_valid() and exists (...)
+$$;
+```
+그 `member_account_session_valid()` 는 `current_setting('request.jwt.claim.session_id', true)` 가 비면 **즉시 false**.
+
+**그 클레임을 넣는 배선이 저장소에 없다** (실측, `1744d9f` 기준):
+
+| 확인 | 결과 |
+|---|---|
+| custom access token hook (`supabase/` 전체) | **0건** |
+| `session_id` 클레임을 **설정**하는 SQL | **0건** — 011 은 `current_setting` 으로 **읽기만** |
+| 앱의 JWT 클레임 주입 | **0건** — RPC 인자 `p_session_id` 는 JWT 와 무관 |
+| 011 이후 되돌린 마이그레이션 | **0건** (012·013 재정의 없음) |
+
+**파급**: `is_org_member()` 는 **RLS 활성 26 테이블의 기반 헬퍼**다. 상시 false 면 침입 차단이 아니라
+**정상 사용자 전원이 자기 조직 데이터조차 못 본다**. `org_role()` 도 같은 조건을 물어 역할 경로까지 막힌다.
+
+**왜 안 드러났나 — 게이트 사각지대**: 앱이 Supabase 미연결(인메모리 폴백)이라 이 SQL 이 실행되지 않는다.
+그래서 `check.sh` 초록·빌드 초록·스모크 PASS 가 나오고, RLS 침투테스트는 크리덴셜 부재로 **skip** 된다.
+**`.env.local` 을 넣는 순간 처음 드러난다.**
+
+**해소안(택1)**: ① custom access token hook 으로 `session_id` 클레임 주입 ② 011 의 세션 종속 제거.
+담당: 인증 레인 **T03** 또는 `access_grants`/위임 레인 **T08**.
+
+### 규칙 8 위반 — `is_org_member()` 수정 2건
+| 파일 | 날짜 | 내용 | 평가 |
+|---|---|---|---|
+| `006_public_workspace_entry.sql` | 07-27 | `status='active'` 조건 추가 | fail-closed 강화. 그 자체는 합리적 |
+| `011_member_account_ops.sql` | 07-28 | **세션 종속 도입** | **BUG-0004 원인** |
+
+두 건 모두 규칙 전달 이전 커밋이고 격리를 **조이는** 방향이었다. 문제는 011 이
+**실현 불가능한 전제(존재하지 않는 JWT 클레임)** 위에 격리 전체를 얹은 것.
+
+> **규칙 8 보강 권고**: "수정 금지"만으로는 이 사고를 막지 못한다(둘 다 선의의 강화였다).
+> **"헬퍼가 새 전제(JWT 클레임·세션 등)에 의존하게 만들면 그 전제를 채우는 배선을 같은 PR 에 포함"** 을 추가할 것.
+
+### 라운드 게이트
+| 게이트 | 결과 |
+|---|---|
+| **G1 배포** | ✅ check=0 · build=0 · **782 테스트 / 48 라우트** (`e1a3a05`) |
+| **G2 권한** | ❌ **BUG-0004 로 실패** — 실DB 적용 시 전면 차단 |
+| **G3 회귀** | ⚠️ 부분 — 정적/빌드는 초록, 실DB 회귀는 크리덴셜 부재로 불가 |
+| **G4 워크로그** | ✅ **START/END 규약 도입 확인**(T05 C5 항목). SYNC R1 시점 "미도입"에서 변경됨 |
+
+### 규칙 8종 실측
+| # | 규칙 | 상태 | 근거 |
+|---|---|---|---|
+| 1 | 스위처/어휘 "회사" | ⚠️ 부분 | `WorkspaceSwitcher.tsx` 존재. UI 어휘 '회사' 141 · **'조직' 15건 잔존** |
+| 2 | 뱃지 99+ 절단 | ✅ | `SidebarNav.tsx:66`, `layout.tsx:153`, 테스트 존재 |
+| 3 | 위임 2시간 · break-glass | ❌ **미구현** | 전 소스 0건 (T08 레인 미착수) |
+| 4 | 어드민 등급 super/operator/viewer | ❌ **미구현** | 전 소스 0건 |
+| 5 | 두 층위 · 홈택스 차단 | ⚠️ 부분 | 리플레이 제외목록에 `/hometax` 등재. 데이터 층위 분리는 T08 미착수 |
+| 6 | `orgs.is_internal` | ❌ **미구현** | 마이그레이션 0건 → 지표에서 내부 조직 미분리 |
+| 7 | PostHog | ✅ | US 리전 고정 · `/ingest` rewrites · `maskAllInputs:true`+`maskTextSelector:"*"` · PII scrub + 테스트 |
+| 8 | 토큰 하드코딩 / 마이그 번호 | ⚠️ 부분 | 번호 `006`~`013` 3자리 정렬 정상 ✅ / `#c4c4c4` **8곳**(status 팔레트 빈값 기본색 — 브랜드 토큰 아님, 경미) |
+
+### 레인 검사
+- `165af69` → `docs/` · `dev-drop/` — **MWC 레인 준수**, 코드영역(app/worker/supabase/scripts) **0건 접촉** ✅
+- `1744d9f`(PostHog #53) → `app/src/components/workspace` 포함 — **C5/분석 작업이 T03 셸 레인에 접촉**. 경미하나 레인표상 사전 조율 대상.
+
+### MWC 산출물 커밋 확인
+지시된 9파일(`docs/design/design-tokens.md` · `dev-drop/**`)은 **`165af69`(PR #52)로 이미 반영 완료**
+(88 files, +10376). 워킹트리 clean — T10 추가 커밋 불요.
+
+---
+
 ## 10. ★ 2차 머지큐 최종 판정 (main `6a57489`, 2026-07-22 · T10)
 
 **8개 PR 전량 머지 완료 · main 스모크 초록 → 완료 판정.** 열린 PR 0건.
