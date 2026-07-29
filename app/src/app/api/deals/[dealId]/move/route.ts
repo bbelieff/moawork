@@ -12,7 +12,7 @@ export async function POST(req: Request, { params }: Ctx): Promise<Response> {
     const ctx = await requireCtx();
     const { dealId } = await params;
     const { stageId } = parseMoveStage(await readJson(req));
-    return jsonOk(getCrmService().moveDealStage(ctx, dealId, stageId));
+    return jsonOk(await getCrmService().moveDealStage(ctx, dealId, stageId));
   } catch (err) {
     return toErrorResponse(err);
   }

@@ -4,6 +4,76 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-23 — T02 · [END] 딜 상세 + 고객사 목록 (배정 잔여분) · PR #48 리베이스
+
+- **PR #48 리베이스**: main 이 크게 전진(PostHog·MWC R1 등)해 `origin/main` 위로 리베이스.
+  `docs/worklog.md` 충돌은 append-only 문서라 **양쪽 항목 모두 보존**해 해소. 게이트 초록 유지.
+- **딜 상세 `(app)/deals/[dealId]`** — 보드 카드 드릴인 대상. 정보/활동/첨부를 세로로 쌓은 서버 렌더.
+  - 서버 액션 6종(`actions.ts`): 단계이동(활동로그 자동) · 활동추가 · 기본정보 수정 ·
+    계약상황 저장 · 첨부 업로드/삭제. 저장은 전부 `getCrmService()`(env 있으면 실 Supabase).
+  - `DealInfoTab`/`DealActivityTab`/`DealFilesPanel` 신규. **T04 가 만들어두고 어디에도 연결되지
+    않았던** `ContractStatusField`·`FilesTab` 을 그대로 소비(중복 저작 없음).
+  - 담당범위 밖이면 `NotFound` → **404 로 수렴**(존재 유출 방지), 편집 UI 도 비활성.
+- **고객사 목록 `(app)/companies`** — 담당범위 적용 표 + 업체별 진행 딜 건수.
+- **보드 카드 링크 복구**: 이전에 `/deals/[id]` 부재로 링크를 빼뒀던 워크어라운드 제거.
+- **라우트 슬러그 예약**(아래 경계 이슈): `companies`·`deals` 를 예약 목록에 추가.
+  넣지 않으면 워크스페이스가 slug='deals' 를 선점해 라우트를 가릴 수 있다(실제 결함).
+- 신규 테스트 7건(`dealDetail.test.ts`) — 데이터 조합 · 스코프 404 · 이동 로그 증분 ·
+  custom **키 병합**(다른 커스텀값 보존) · null 로 키 삭제 · 활동 추가/차단.
+- 게이트 `check.sh` **초록**(앱 758 통과/9 skip · 워커 14), `next build` 초록(라우트 등록 확인).
+
+### ⚠ 경계 이슈 보고 — 예약 슬러그가 마이그레이션에 하드코딩됨
+
+`workspace-entry/contracts.test.ts` 가 **006 파일 내용**을 예약목록의 단일 출처로 비교한다.
+그래서 top-level 라우트를 추가하면 006 을 고치지 않는 한 게이트가 빨개진다. 그러나 006 은
+이미 적용된 마이그레이션이라 파일만 고치면 **배포된 DB 에는 반영되지 않는다**(CLAUDE.md
+"기존 파일 수정 금지" 와도 충돌).
+
+→ 양쪽 다 안전하도록 **006/009 갱신(신규 설치용) + `014_reserve_crm_route_slugs.sql` 추가
+(기존 DB 따라잡기용, drop+add 라 재실행 안전)** 로 처리했다. 슬러그 2개를 넣은 것 외에
+술어는 원문 그대로다. **workspace-entry 트랙 리뷰 필요** — 근본 해소는 예약목록을 SQL 상수
+(테이블/함수)로 뽑아 앱과 한 곳에서 공유하는 것.
+
+- **파킹 유지**: `.env.local` 부재 → 실DB 실행검증 미실시(`liveCrm.test.ts` 는 skip 상태).
+  브라우저 검증 NOT_RUN(preview 가 세션 디렉터리 기동). `moveDeal` 비원자성 TODO 유지.
+- **첨부만 저장소가 갈린다**: files 서비스가 아직 동기 `getRepo()` 위 → 첨부는 로컬에만 기록.
+  T04 가 비동기 소스로 옮길 때까지 한시적. 코드에 명시해둠.
+
+## 2026-07-22 — T02 · [END] B2 재개 — CRM 쓰기경로 실DB 연결 완료 (실행검증은 파킹)
+
+- **전달물**:
+  - `lib/crm/asyncService.ts` — `CrmSource` 위 비동기 서비스. 동기 `CrmService` 와 **동일 의미론**
+    (딜 생성 시 기본단계 배치 + 활동로그 1건, 단계이동은 move 전용, 담당범위 규칙).
+  - `getCrmService()` → `AsyncCrmService` 반환으로 전환. 동기판은 `getSyncCrmService()` 로 보존
+    (공용 `Repo` 가 아직 동기라 T04·T09 가 그 위에서 돈다).
+  - **API 라우트 7종 실DB 경로 연결** — deals(목록/생성) · deals/[id](상세/수정/삭제) ·
+    deals/[id]/move · deals/[id]/activities · companies(2) · pipelines. 라우트 한 벌로
+    env 있으면 Supabase, 없으면 로컬(연결 전후 동작 동일 → 회귀 0).
+  - `CrmSource` 에 `deleteCompany`/`deleteDeal` 추가(라우트 DELETE 파리티 복구) + 양쪽 구현.
+- **테스트**: `asyncService.test.ts` 10건(생성 자동로그·이동 증분로그·move 불변식·스코프·동기판 파리티) +
+  `liveCrm.test.ts` 4건(실DB 왕복, 크리덴셜 없으면 skip — T10 rls-penetration 규약 준수).
+- **게이트**: `check.sh` **초록** — 앱 656 통과 / 9 skip, 워커 14. `next build` 성공(라우트 전량 등록).
+- **service_role 미사용 확인**: 클라이언트는 anon 키만 사용(`client.ts`), 실DB 테스트도 비밀번호 로그인
+  JWT 로 RLS 를 통과한다. service_role 키는 코드·문서·env 예시 어디에도 없음.
+- **파킹된 블로커**:
+  1. `.env.local` 부재 → **실DB 실행 검증 미실시**. 수용기준(딜 생성→이동→활동 1건)은 `liveCrm.test.ts`
+     로 자동화해뒀고 크리덴셜 주입 즉시 실행 가능. 현재는 "미검증" 상태가 정직한 판정.
+  2. 브라우저 검증 NOT_RUN — preview 도구가 세션 디렉터리를 기동해 이 worktree 변경엔 적용 불가.
+  3. `moveDeal` 의 UPDATE + 활동로그 INSERT 가 비원자적(기존 TODO 유지) — 004 이후 RPC 로 합칠 것.
+- **다음**: 딜 상세 `/deals/[id]` 화면 · 드래그 단계이동 · 크리덴셜 확보 후 실DB 판정.
+
+## 2026-07-22 — T02 · [START] B2 재개 — CRM 실repo 쓰기경로 + 단계필터 화면 연결
+
+- 브랜치 `feat/t02-crm-supabase-repo` (main d172875 기반).
+- **착수 전 실측**:
+  - 공용 `Repo` 포트는 **여전히 동기**(`listDeals(ctx): Deal[]`) → Supabase 로 "동일 포트" 구현 불가.
+    기존 비동기 포트 `CrmSource`(시그니처 1:1)를 그대로 쓴다. `moveDeal` 은 이미 양쪽에 존재.
+  - `SupabaseCrmSource` 는 CRUD·moveDeal(활동로그 포함)·custom 병합까지 **이미 구현됨**.
+  - **갭 = 쓰기 경로 미연결**: API 라우트가 `CrmService(getRepo())`(동기 LocalRepo)에 묶여 있어
+    env 가 채워져도 딜 생성/단계이동이 실DB 로 가지 않는다. 읽기(보드 3종)만 Supabase 경로.
+- **계획**: ①`CrmSource` 위 비동기 서비스 ②API 라우트 연결 ③실DB 통합테스트(env 없으면 skip).
+- **블로커(파킹)**: `.env.local` 부재 → 실DB 실행 검증 불가. 코드+테스트를 준비하고 키 제공 시 즉시 실행.
+
 ## END 2026-07-30 — T09 · G8 자동이동 엔진 + PR #49 최신화
 
 **1. PR #49 (B4 정산 수식 화면) 최신화**
