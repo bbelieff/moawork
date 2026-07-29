@@ -4,7 +4,7 @@
 //
 // 사용:
 //   const track = useTrack();
-//   track("deal_moved", { deal_id, from_stage_id, to_stage_id });
+//   track("workspace_request_result", { kind: "join", outcome: "success" });
 //
 // 설계:
 //  - 이벤트 이름과 페이로드가 **타입으로 고정**된다. 화이트리스트에 없는 이름이나

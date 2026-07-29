@@ -92,6 +92,7 @@ describe("isSensitiveKey — 키 판정", () => {
     "고객 연락처",
     "name",
     "customer_name",
+    "customer_query",
     "담당자",
   ])("민감 키 %s 를 잡는다", (key) => {
     expect(isSensitiveKey(key)).toBe(true);
@@ -112,16 +113,15 @@ describe("isSensitiveKey — 키 판정", () => {
 });
 
 describe("scrubUrl", () => {
-  it("allowlist 밖 쿼리 값은 키만 남기고 마스킹한다", () => {
+  it("쿼리 키와 값을 전부 제거한다", () => {
     expect(scrubUrl("https://moa-work.com/boards?tab=all&q=홍길동")).toBe(
-      `https://moa-work.com/boards?tab=all&q=${encodeURIComponent(REDACTED)}`,
+      "https://moa-work.com/boards/:board",
     );
   });
 
-  it("utm_* 와 error 는 그대로 둔다", () => {
+  it("utm_* 와 error 도 원문을 남기지 않는다", () => {
     const out = scrubUrl("https://moa-work.com/login?error=routing&utm_source=mail");
-    expect(out).toContain("error=routing");
-    expect(out).toContain("utm_source=mail");
+    expect(out).toBe("https://moa-work.com/login");
   });
 
   it("파라미터 형태의 해시는 통째로 버린다(OAuth 토큰 방지)", () => {
@@ -130,15 +130,15 @@ describe("scrubUrl", () => {
     );
   });
 
-  it("앵커 해시는 유지한다", () => {
+  it("앵커 해시도 제거한다", () => {
     expect(scrubUrl("https://moa-work.com/settings/account#workspace")).toBe(
-      "https://moa-work.com/settings/account#workspace",
+      "https://moa-work.com/settings/account",
     );
   });
 
   it("경로에 박힌 PII 도 지운다", () => {
     expect(scrubUrl("https://moa-work.com/u/member@example.invalid")).toBe(
-      "https://moa-work.com/u/[redacted:email]",
+      "https://moa-work.com/other",
     );
   });
 
@@ -199,9 +199,42 @@ describe("scrubProperties / scrubEvent", () => {
     const out = scrubProperties({
       $current_url: "https://moa-work.com/boards?q=홍길동",
       $referrer: "https://moa-work.com/login#access_token=abc&x=1",
+      $pathname: "/w/private-customer-slug",
+      $prev_pageview_pathname: "/deals/private-record-id",
     });
-    expect(out.$current_url).toContain(encodeURIComponent(REDACTED));
+    expect(out.$current_url).toBe("https://moa-work.com/boards/:board");
     expect(out.$referrer).toBe("https://moa-work.com/login");
+    expect(out.$pathname).toBe("/w/:workspace");
+    expect(out.$prev_pageview_pathname).toBe("/deals/:deal");
+  });
+
+  it("$snapshot의 href·src·action slug/query/hash와 일반 속성 문자열을 지운다", () => {
+    const out = scrubProperties({
+      $snapshot: {
+        attributes: {
+          href: "/w/private-workspace?query=customer#section",
+          src: "/w/another-workspace?token=private#asset",
+          action: "/w/action-workspace?mode=save#form",
+          "aria-label": "member@example.invalid",
+          "data-note": "confidential customer name",
+        },
+      },
+    });
+
+    expect(out).toEqual({
+      $snapshot: {
+        attributes: {
+          href: "/w/:workspace",
+          src: "/w/:workspace",
+          action: "/w/:workspace",
+          "aria-label": REDACTED,
+          "data-note": REDACTED,
+        },
+      },
+    });
+    expect(JSON.stringify(out)).not.toContain("private-workspace");
+    expect(JSON.stringify(out)).not.toContain("another-workspace");
+    expect(JSON.stringify(out)).not.toContain("member@example.invalid");
   });
 
   it("빈 입력은 빈 객체를 준다", () => {

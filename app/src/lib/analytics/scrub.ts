@@ -5,12 +5,14 @@
 //  2. 입력을 변형하지 않는다(always copy). 호출부가 원본을 계속 쓸 수 있어야 한다.
 //  3. **fail-closed**: 판단이 서지 않으면 남기지 말고 지운다.
 //  4. 스크러빙은 "방어선 1개" 가 아니다. 키 기반(민감 키 통째 마스킹) + 값 기반(문자열 패턴)
-//     + URL 기반(쿼리 allowlist) 세 겹을 모두 적용한다.
+//     + URL 기반(쿼리·해시 전면 제거) 세 겹을 모두 적용한다.
 //
 // 여기서 지우는 것: 이메일 · 전화 · 주민등록번호 · 사업자등록번호 · 카드번호 · 계좌 · IP ·
 //                   토큰(JWT/Bearer) · 사람 이름으로 명시된 키.
 // 여기서 남기는 것: uuid/보드 id 같은 내부 식별자, 이벤트 이름, 화면 경로, 숫자 지표.
 //                   (내부 식별자는 PostHog 밖에서 조인해야 의미가 생기므로 PII 로 보지 않는다.)
+
+import { analyticsRouteTemplate } from "./events";
 
 export const REDACTED = "[redacted]";
 
@@ -54,6 +56,10 @@ const SENSITIVE_KEY_PARTS: readonly string[] = [
   "otp",
   "email",
   "e_mail",
+  "search",
+  "query",
+  "customer",
+  "company_name",
   "phone",
   "mobile",
   "card_number",
@@ -133,32 +139,10 @@ export function scrubText(input: string): string {
   );
 }
 
-/** 쿼리스트링에서 **그대로 남겨도 되는 키만** 통과시킨다(allowlist). 나머지는 마스킹. */
-const SAFE_QUERY_KEYS: ReadonlySet<string> = new Set([
-  "error",
-  "tab",
-  "view",
-  "page",
-  "sort",
-  "order",
-  "status",
-  "filter",
-  "q_len",
-  "ref",
-  "source",
-]);
-
-function isSafeQueryKey(key: string): boolean {
-  const normalized = normalizeKey(key);
-  if (normalized.startsWith("utm_")) return true;
-  return SAFE_QUERY_KEYS.has(normalized);
-}
-
 /**
  * URL 스크러빙.
- *  - 쿼리: allowlist 밖의 키는 값을 마스킹한다(키 이름은 남긴다 — 분석에 필요하고 PII 가 아니다).
- *  - 해시: `=`/`&` 가 있으면 파라미터 조각으로 보고 통째로 버린다(OAuth 토큰이 여기 실린다).
- *  - 경로: 패턴 스크러빙만 적용한다(경로에 이메일이 박히는 경우 대비).
+ *  - 쿼리와 해시: 값의 안전성을 추론하지 않고 전부 버린다.
+ *  - 경로: 유한 pathname template으로 바꿔 slug/id/자유문자열을 제거한다.
  * 파싱 불가 입력은 문자열 스크러빙으로 처리한다.
  */
 export function scrubUrl(raw: string): string {
@@ -169,22 +153,9 @@ export function scrubUrl(raw: string): string {
     return scrubText(raw);
   }
 
-  url.pathname = scrubText(url.pathname);
-
-  const params = new URLSearchParams(url.search);
-  const scrubbed = new URLSearchParams();
-  for (const [key, value] of params) {
-    if (isSensitiveKey(key) || !isSafeQueryKey(key)) {
-      scrubbed.append(key, REDACTED);
-      continue;
-    }
-    scrubbed.append(key, scrubText(value));
-  }
-  url.search = scrubbed.toString();
-
-  if (url.hash) {
-    url.hash = /[=&]/.test(url.hash) ? "" : scrubText(url.hash);
-  }
+  url.pathname = analyticsRouteTemplate(url.pathname);
+  url.search = "";
+  url.hash = "";
 
   return url.toString();
 }
@@ -204,6 +175,92 @@ const URL_PROPERTY_KEYS: ReadonlySet<string> = new Set([
   "$initial_referring_domain",
   "$session_entry_url",
 ]);
+
+const SNAPSHOT_URL_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set([
+  "href",
+  "src",
+  "action",
+  "formaction",
+  "poster",
+  "xlink:href",
+]);
+
+const SNAPSHOT_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set(["attributes", "$attributes"]);
+
+const PATH_PROPERTY_KEYS: ReadonlySet<string> = new Set([
+  "$pathname",
+  "$prev_pageview_pathname",
+  "$session_entry_pathname",
+  "$initial_pathname",
+]);
+
+function isSnapshotUrlAttribute(key: string): boolean {
+  return SNAPSHOT_URL_ATTRIBUTE_KEYS.has(normalizeKey(key));
+}
+
+function isSnapshotAttributeKey(key: string): boolean {
+  return SNAPSHOT_ATTRIBUTE_KEYS.has(normalizeKey(key));
+}
+
+function scrubSnapshotPath(raw: string): string {
+  try {
+    const url = new URL(raw, "https://analytics.invalid");
+    if (url.protocol !== "http:" && url.protocol !== "https:") return REDACTED;
+    return analyticsRouteTemplate(url.pathname);
+  } catch {
+    return REDACTED;
+  }
+}
+
+function scrubSnapshotAttributes(value: unknown, depth: number): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string") return REDACTED;
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (depth >= MAX_DEPTH) return REDACTED;
+
+  if (Array.isArray(value)) {
+    return value.map((item) => scrubSnapshotAttributes(item, depth + 1));
+  }
+
+  if (isPlainObject(value)) {
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value)) {
+      if (isSensitiveKey(key)) out[key] = REDACTED;
+      else if (typeof child === "string" && isSnapshotUrlAttribute(key)) {
+        out[key] = scrubSnapshotPath(child);
+      } else out[key] = scrubSnapshotAttributes(child, depth + 1);
+    }
+    return out;
+  }
+
+  return REDACTED;
+}
+
+function scrubSnapshotValue(value: unknown, depth = 0): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string") return REDACTED;
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (depth >= MAX_DEPTH) return REDACTED;
+
+  if (Array.isArray(value)) {
+    return value.map((item) => scrubSnapshotValue(item, depth + 1));
+  }
+
+  if (isPlainObject(value)) {
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value)) {
+      if (isSensitiveKey(key)) out[key] = REDACTED;
+      else if (isSnapshotAttributeKey(key)) {
+        out[key] = scrubSnapshotAttributes(child, depth + 1);
+      } else if (typeof child === "string" && isSnapshotUrlAttribute(key)) {
+        out[key] = scrubSnapshotPath(child);
+      } else out[key] = scrubSnapshotValue(child, depth + 1);
+    }
+    return out;
+  }
+
+  return REDACTED;
+}
 
 /**
  * 임의 값 재귀 스크러빙.
@@ -237,8 +294,16 @@ export function scrubValue(value: unknown, depth = 0): unknown {
         out[key] = REDACTED;
         continue;
       }
+      if (key === "$snapshot") {
+        out[key] = scrubSnapshotValue(child, depth + 1);
+        continue;
+      }
       if (typeof child === "string" && URL_PROPERTY_KEYS.has(key)) {
         out[key] = scrubUrl(child);
+        continue;
+      }
+      if (typeof child === "string" && PATH_PROPERTY_KEYS.has(key)) {
+        out[key] = analyticsRouteTemplate(child);
         continue;
       }
       out[key] = scrubValue(child, depth + 1);

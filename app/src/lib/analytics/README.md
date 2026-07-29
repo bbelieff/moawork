@@ -11,6 +11,7 @@
 - 비었거나 형태가 어긋나면 **완전히 꺼진다**: SDK 청크조차 내려받지 않는다.
 - `NODE_ENV=test` 에서도 항상 꺼진다.
 - 브라우저 Do Not Track 을 존중한다(`respect_dnt`).
+- 수집·자산 호스트는 PostHog US 리전에 고정되며 환경변수 override를 받지 않는다.
 
 키 값은 저장소·로그·ROUND 문서 어디에도 남기지 않는다. `.env.example` 에는 형태만 있다.
 
@@ -38,11 +39,22 @@
 이메일 · 전화(휴대/유선) · 주민등록번호 · 사업자등록번호 · 카드번호 · IP · JWT/Bearer,
 그리고 민감 키(`email`·`password`·`token`·`담당자`·`고객명` 등)의 값 전체.
 
-남는 것: 내부 식별자(uuid·deal_id·org_id) · 이벤트 이름 · 화면 경로 · 숫자 지표.
-`board_name`·`column_name` 같은 업무 키는 사람 이름이 아니므로 지우지 않는다.
+남는 것: 승인된 이벤트 이름, pathname template, 안전한 enum뿐이다. 동적 Workspace 주소,
+레코드 id, 고객·회사 이름, 이메일, 검색어는 이벤트 계약에 필드가 없다.
 
-URL 쿼리는 **allowlist** 다(`utm_*`·`error`·`tab`·`view`·`page`·`sort`·`status` 등).
-목록 밖 파라미터는 키만 남고 값은 마스킹된다. 토큰이 실릴 수 있는 파라미터형 해시는 통째로 버린다.
+URL 쿼리와 해시는 allowlist 없이 전부 제거한다. 페이지뷰는 실제 pathname도 그대로 보내지 않고
+`/w/:workspace`, `/boards/:board` 같은 유한한 template으로 바꾼다.
+
+## 최소 이벤트
+
+- 로그인 성공/실패 유형
+- Workspace entry 상태
+- 회사 생성/합류 요청 성공/실패
+- 브라우저 세션의 첫 `/w/:workspace` 진입
+- pathname template 기반 `$pageview`
+
+autocapture와 pageleave는 끈다. 위 목록과 마스킹된 replay snapshot 외 이벤트는
+`before_send` 화이트리스트에서 폐기된다.
 
 ## 리플레이 마스킹
 

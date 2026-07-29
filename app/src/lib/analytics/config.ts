@@ -8,7 +8,7 @@
 //   저장소에는 `.env.example` 의 **형태**만 남기고 값은 `.env.local` 에 둔다.
 //   이 파일의 어떤 코드도 키 값을 로그·에러 메시지·이벤트에 넣지 않는다.
 
-import type { CaptureResult, PostHogConfig } from "posthog-js";
+import type { CaptureResult, PostHog, PostHogConfig } from "posthog-js";
 import { isAllowedEvent } from "./events";
 import { scrubEvent, scrubText, type ScrubbableEvent } from "./scrub";
 
@@ -19,16 +19,13 @@ import { scrubEvent, scrubText, type ScrubbableEvent } from "./scrub";
  */
 export const ANALYTICS_PROXY_PATH = "/ingest";
 
-/** PostHog 클라우드 기본 리전. 자체 호스팅이면 NEXT_PUBLIC_POSTHOG_HOST 로 덮는다. */
+/** Wave B 고정 PostHog US 리전. 환경변수로 덮어쓸 수 없다. */
 export const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 
 /** 프로젝트 API 키(공개 키)의 형태. 값이 아니라 형태만 검사한다. */
 const PROJECT_KEY_SHAPE = /^phc_[A-Za-z0-9]{20,}$/;
 
-export type AnalyticsEnvInput = {
-  key?: string;
-  host?: string;
-};
+export type AnalyticsEnvInput = { key?: string };
 
 export type AnalyticsConfig = {
   /** 프로젝트 공개 키. 로그로 출력하지 않는다. */
@@ -38,19 +35,6 @@ export type AnalyticsConfig = {
   /** PostHog 원본 호스트. "PostHog 에서 보기" 링크와 rewrites 대상. */
   uiHost: string;
 };
-
-/** 호스트 문자열을 정규화한다. https 절대 URL 이 아니면 null(→ 기본값 사용). */
-function normalizeHost(raw: string | undefined): string | null {
-  const value = raw?.trim();
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:") return null;
-    return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * 환경변수 → 설정. **fail-closed**: 키가 없거나 형태가 어긋나면 `null`(분석 비활성)이다.
@@ -65,7 +49,9 @@ export function resolveAnalyticsConfig(
   return {
     projectKey,
     apiHost: ANALYTICS_PROXY_PATH,
-    uiHost: normalizeHost(input.host) ?? DEFAULT_POSTHOG_HOST,
+    // Wave B is US-only. A public environment variable must not be able to
+    // redirect analytics or replay traffic to another region/origin.
+    uiHost: DEFAULT_POSTHOG_HOST,
   };
 }
 
@@ -112,6 +98,26 @@ export function isReplayExcludedPath(pathname: string): boolean {
   );
 }
 
+/** 설정 또는 경로가 확정되지 않으면 리플레이 SDK를 아예 건드리지 않는다. */
+export function shouldRunReplayPathGate(
+  config: AnalyticsConfig | null,
+  pathname: string | null,
+): boolean {
+  return config !== null && Boolean(pathname);
+}
+
+/** SDK 준비 후에만 경로별 녹화 정책을 적용한다. */
+export function applyReplayPathPolicy(
+  client: Pick<PostHog, "startSessionRecording" | "stopSessionRecording">,
+  config: AnalyticsConfig | null,
+  pathname: string | null,
+): boolean {
+  if (!shouldRunReplayPathGate(config, pathname) || !config || !pathname) return false;
+  if (isReplayExcludedPath(pathname)) client.stopSessionRecording();
+  else client.startSessionRecording();
+  return true;
+}
+
 export function buildSessionRecordingConfig(): PostHogConfig["session_recording"] {
   return {
     maskAllInputs: true,
@@ -132,8 +138,8 @@ export function buildSessionRecordingConfig(): PostHogConfig["session_recording"
  * 주요 결정:
  *  - `api_host`: 항상 프록시 경로. 광고 차단기에 막히지 않고 3rd-party 요청이 사라진다.
  *  - `ui_host`: PostHog 대시보드의 "사이트에서 보기" 링크가 원본 호스트를 알아야 한다.
- *  - `autocapture`: 켜되 텍스트·속성은 전부 마스킹한다. 클릭 구조는 얻고 내용은 안 보낸다.
- *  - `capture_pageview: false`: App Router 의 라우팅은 SDK history 감지와 어긋난다. 직접 보낸다.
+ *  - `autocapture`: 최소 이벤트 원칙에 따라 끈다.
+ *  - `capture_pageview: false`: App Router pathname template만 직접 보낸다.
  *  - `person_profiles: "identified_only"`: 익명 방문자 프로필을 만들지 않는다.
  *  - `respect_dnt`: 브라우저 Do Not Track 을 존중한다.
  *  - `before_send`: 화이트리스트 게이트 + 마지막 스크러빙.
@@ -146,8 +152,10 @@ export function buildPostHogOptions(
     api_host: config.apiHost,
     ui_host: config.uiHost,
     capture_pageview: false,
-    capture_pageleave: true,
-    autocapture: true,
+    capture_pageleave: false,
+    autocapture: false,
+    // 경로 정책이 SDK 준비 후 명시적으로 시작할 때까지는 절대 녹화하지 않는다.
+    disable_session_recording: true,
     mask_all_text: true,
     mask_all_element_attributes: true,
     person_profiles: "identified_only",

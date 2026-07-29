@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ANALYTICS_PROXY_PATH,
   DEFAULT_POSTHOG_HOST,
   REPLAY_BLOCK_SELECTOR,
+  applyReplayPathPolicy,
   buildIdentifyProperties,
   buildPostHogOptions,
   buildSessionRecordingConfig,
@@ -47,17 +48,8 @@ describe("resolveAnalyticsConfig — fail-closed", () => {
     });
   });
 
-  it("host 는 https 절대 URL 일 때만 받는다", () => {
-    expect(resolveAnalyticsConfig({ key: FAKE_KEY, host: "https://eu.i.posthog.com/" })?.uiHost).toBe(
-      "https://eu.i.posthog.com",
-    );
-    // http·상대경로·쓰레기 값은 조용히 기본값으로 떨어진다(평문 전송 금지).
-    expect(resolveAnalyticsConfig({ key: FAKE_KEY, host: "http://eu.i.posthog.com" })?.uiHost).toBe(
-      DEFAULT_POSTHOG_HOST,
-    );
-    expect(resolveAnalyticsConfig({ key: FAKE_KEY, host: "/ingest" })?.uiHost).toBe(
-      DEFAULT_POSTHOG_HOST,
-    );
+  it("host 입력 표면이 없고 US 리전으로 고정된다", () => {
+    expect(resolveAnalyticsConfig({ key: FAKE_KEY })?.uiHost).toBe(DEFAULT_POSTHOG_HOST);
   });
 });
 
@@ -86,6 +78,26 @@ describe("buildSessionRecordingConfig — 리플레이 마스킹", () => {
     expect(recording?.collectFonts).toBe(false);
     expect(recording?.recordCrossOriginIframes).toBe(false);
   });
+
+  it("초기화 시 리플레이를 기본 비활성화한다", () => {
+    expect(buildPostHogOptions(config()).disable_session_recording).toBe(true);
+  });
+});
+
+describe("applyReplayPathPolicy", () => {
+  it("지연된 SDK 준비 뒤에도 제외 초기 경로에서 녹화를 시작하지 않는다", async () => {
+    const client = {
+      startSessionRecording: vi.fn(),
+      stopSessionRecording: vi.fn(),
+    };
+
+    await Promise.resolve(client).then((readyClient) =>
+      applyReplayPathPolicy(readyClient, config(), "/settings/account"),
+    );
+
+    expect(client.startSessionRecording).not.toHaveBeenCalled();
+    expect(client.stopSessionRecording).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("buildPostHogOptions", () => {
@@ -96,8 +108,9 @@ describe("buildPostHogOptions", () => {
     expect(options.ui_host).toBe(DEFAULT_POSTHOG_HOST);
   });
 
-  it("자동수집은 켜되 텍스트·속성은 마스킹한다", () => {
-    expect(options.autocapture).toBe(true);
+  it("최소 이벤트 원칙으로 자동수집과 pageleave를 끈다", () => {
+    expect(options.autocapture).toBe(false);
+    expect(options.capture_pageleave).toBe(false);
     expect(options.mask_all_text).toBe(true);
     expect(options.mask_all_element_attributes).toBe(true);
   });
@@ -116,10 +129,10 @@ describe("buildPostHogOptions", () => {
     expect(typeof send).toBe("function");
     const scrubbed = (send as (e: unknown) => { properties: Record<string, unknown> } | null)({
       uuid: "u-1",
-      event: "deal_created",
-      properties: { email: "a@example.invalid", stage: "심사" },
+      event: "login_result",
+      properties: { email: "a@example.invalid", outcome: "failure" },
     });
-    expect(scrubbed?.properties).toEqual({ email: "[redacted]", stage: "심사" });
+    expect(scrubbed?.properties).toEqual({ email: "[redacted]", outcome: "failure" });
   });
 
   it("before_send 는 null 이벤트를 그대로 흘린다", () => {

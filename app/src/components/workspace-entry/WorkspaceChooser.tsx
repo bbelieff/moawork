@@ -1,15 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Logo } from "@/components/brand/Logo";
 import type { WorkspaceEntryOption } from "@/lib/auth/workspace-entry-server";
 import { submitWorkspaceRequest } from "@/lib/workspace-entry/contracts";
 import styles from "./workspace-entry.module.css";
+import { useTrack } from "@/lib/analytics/useTrack";
 
 export function WorkspaceChooser({ workspaces }: { workspaces: WorkspaceEntryOption[] }) {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const track = useTrack();
+  useEffect(() => {
+    track("workspace_entry_state", { state: "chooser" });
+  }, [track]);
   async function selectWorkspace(workspaceId: string) {
     setBusy(true);
     setMessage(null);
