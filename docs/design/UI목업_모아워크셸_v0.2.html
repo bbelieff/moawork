@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>모아워크 셸 v0.2 — 1단 사이드바 × 브랜드컬러 × 카드 대시보드</title>
+<!-- 근거: belie 레퍼런스(이룸센터 대시보드, 2026-07-21) + 브랜드 v0.2(딥그린×아이보리×앰버) + 스캐폴딩 IA. 보드 내부는 먼데이 파리티(UI목업_먼데이재현) 유지, 셸만 이 방향. 데이터 전부 가상. -->
+<style>
+  /* 브랜드 v1.0 "O Cool System" 정합(2026-07-21): Work Blue·Flow Teal·Moa Violet·People Coral.
+     변수명은 구버전 이름 유지(값만 교체) — 실제 트랙 구현은 brand/assets/.../moawork-color-tokens.css 사용할 것. */
+  :root{
+    --green:#3478F6;      /* = Work Blue(주 액션·액티브) */
+    --green-soft:#6B5CFF; /* = Moa Violet(브랜드 포인트) */
+    --amber:#F26B5E;      /* = People Coral(담당자·알림·협업) */
+    --teal:#18A999;       /* = Flow Teal(연결·자동화) */
+    --ivory:#F7F8FA; --card:#FFFFFF; --ink:#191A1E; --sub:#6B7280;
+    --line:#E8EAEF; --r:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif;}
+  body{background:var(--ivory);color:var(--ink);display:flex;min-height:100vh;}
+
+  /* ── 1단 사이드바 ── */
+  .side{width:230px;background:var(--card);border-right:1px solid var(--line);padding:20px 12px;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh;}
+  .logo{display:flex;align-items:center;gap:9px;padding:6px 10px 18px;}
+  .mark{width:30px;height:30px;border-radius:9px;background:var(--green);position:relative;overflow:hidden;}
+  .mark i{position:absolute;background:#fff;border-radius:3px;}
+  .mark i:nth-child(1){width:11px;height:5px;left:4px;top:5px;}
+  .mark i:nth-child(2){width:5px;height:11px;right:4px;top:4px;}
+  .mark i:nth-child(3){width:11px;height:5px;right:4px;bottom:5px;}
+  .mark i:nth-child(4){width:5px;height:11px;left:4px;bottom:4px;background:var(--amber);}
+  .logo b{font-size:17px;}
+  .logo small{color:var(--sub);font-size:11px;display:block;}
+  .nav{display:flex;flex-direction:column;gap:2px;}
+  .nav a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;color:var(--ink);text-decoration:none;font-size:14px;}
+  .nav a:hover{background:var(--ivory);}
+  .nav a.on{background:var(--green);color:#fff;font-weight:600;}
+  .nav .sec{margin:14px 12px 4px;font-size:11px;color:var(--sub);letter-spacing:.04em;}
+  .side .foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px;display:flex;align-items:center;gap:9px;padding-left:10px;}
+  .avatar{width:30px;height:30px;border-radius:50%;background:var(--green-soft);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;}
+  .foot small{color:var(--sub);display:block;font-size:11px;}
+
+  /* ── 메인 ── */
+  .main{flex:1;padding:22px 28px;min-width:0;}
+  .top{display:flex;align-items:center;gap:12px;margin-bottom:20px;}
+  .top h1{font-size:20px;}
+  .search{margin-left:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 14px;color:var(--sub);font-size:13px;width:260px;}
+  .bell{position:relative;background:var(--card);border:1px solid var(--line);border-radius:12px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;}
+  .bell u{position:absolute;top:-5px;right:-5px;background:var(--amber);color:#fff;font-size:10px;border-radius:9px;padding:1px 5px;text-decoration:none;font-weight:700;}
+
+  .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;}
+  .card h2{font-size:14px;display:flex;align-items:center;gap:7px;margin-bottom:14px;}
+  .card h2 .all{margin-left:auto;font-size:12px;color:var(--sub);font-weight:400;}
+  .wide{grid-column:1/-1;}
+
+  /* 요약 스탯 */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .stat{background:var(--ivory);border-radius:12px;padding:14px 16px;}
+  .stat small{color:var(--sub);font-size:12px;}
+  .stat b{display:block;font-size:22px;margin-top:4px;}
+  .stat b em{font-style:normal;font-size:12px;color:var(--sub);font-weight:400;}
+  .stat.hl{background:var(--green);color:#fff;}
+  .stat.hl small,.stat.hl b em{color:rgba(255,255,255,.75);}
+
+  /* 파이프라인 미니 */
+  .pipe{display:flex;gap:8px;}
+  .st{flex:1;background:var(--ivory);border-radius:10px;padding:10px 12px;text-align:center;}
+  .st small{font-size:11px;color:var(--sub);display:block;}
+  .st b{font-size:17px;}
+  .st.amber{background:#EAF7F4;} .st.amber b{color:var(--teal);}
+
+  /* 오늘 할 일 */
+  .todo{display:flex;flex-direction:column;gap:9px;}
+  .ti{display:flex;align-items:center;gap:10px;padding:11px 13px;background:var(--ivory);border-radius:11px;font-size:13px;}
+  .ti input{accent-color:var(--green);width:15px;height:15px;}
+  .tag{margin-left:auto;font-size:11px;padding:3px 9px;border-radius:8px;background:#E8F0EA;color:var(--green);font-weight:600;white-space:nowrap;}
+  .tag.a{background:#FEF3E2;color:var(--amber);}
+
+  /* 최근 활동(채팅형) */
+  .feed{display:flex;flex-direction:column;gap:11px;}
+  .fi{display:flex;gap:10px;font-size:13px;}
+  .fi .avatar{width:28px;height:28px;font-size:11px;flex:none;}
+  .fi .bub{background:var(--ivory);border-radius:0 12px 12px 12px;padding:9px 13px;}
+  .fi .bub b{font-size:12px;} .fi .bub small{color:var(--sub);font-size:11px;margin-left:6px;}
+  .fi .bub p{margin-top:3px;color:#44403C;}
+</style>
+</head>
+<body>
+
+<aside class="side">
+  <div class="logo">
+    <img src="../../../brand/assets/MoaWork-Nplus-O-logo-pack-v1.1/moawork-lockup-light.svg" alt="MoaWork" style="height:30px;">
+    <small style="color:var(--sub);font-size:11px;">가상컨설팅A</small>
+  </div>
+  <nav class="nav">
+    <a class="on">◫ 대시보드</a>
+    <div class="sec">영업·실무</div>
+    <a>▤ 파이프라인</a>
+    <a>◪ 고객사</a>
+    <div class="sec">운영</div>
+    <a>₩ 정산·회계</a>
+    <a>◔ 성과</a>
+    <a>▣ 문서함</a>
+    <div class="sec">시스템</div>
+    <a>⚙ 설정</a>
+  </nav>
+  <div class="foot"><div class="avatar">앨</div><div style="font-size:13px;">앨리스<small>owner · 내 담당만 보기 해제</small></div></div>
+</aside>
+
+<main class="main">
+  <div class="top">
+    <h1>대시보드</h1>
+    <div class="search">🔍 고객·딜 검색…</div>
+    <div class="bell">🔔<u>3</u></div>
+  </div>
+
+  <div class="grid">
+    <div class="card wide">
+      <h2>이번 달 요약 <span class="all">2026년 7월</span></h2>
+      <div class="stats">
+        <div class="stat hl"><small>총매출</small><b>6,000<em>만원</em></b></div>
+        <div class="stat"><small>계약 건수</small><b>4<em>건</em></b></div>
+        <div class="stat"><small>수납(수수료 입금)</small><b>3,000<em>만원</em></b></div>
+        <div class="stat"><small>D+180 재접촉 예정</small><b>2<em>곳</em></b></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>오늘 할 일 <span class="all">전체 보기 ›</span></h2>
+      <div class="todo">
+        <label class="ti"><input type="checkbox"> 하늘테크 2차 상담 전화 <span class="tag a">14:00</span></label>
+        <label class="ti"><input type="checkbox"> 가온컴퍼니 계약서 발송 <span class="tag">계약</span></label>
+        <label class="ti"><input type="checkbox"> 다올물산 기관 접수 서류 확인 <span class="tag">실무</span></label>
+        <label class="ti"><input type="checkbox" checked> 바다상사 미팅 확정 문자 <span class="tag">완료</span></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>파이프라인 현황 <span class="all">보드 열기 ›</span></h2>
+      <div class="pipe">
+        <div class="st"><small>마케팅</small><b>12</b></div>
+        <div class="st"><small>미팅</small><b>5</b></div>
+        <div class="st amber"><small>계약</small><b>3</b></div>
+        <div class="st"><small>실무</small><b>7</b></div>
+        <div class="st"><small>정산</small><b>2</b></div>
+      </div>
+      <div style="margin-top:14px;">
+        <h2 style="margin-bottom:10px;">최근 활동</h2>
+        <div class="feed">
+          <div class="fi"><div class="avatar">앨</div><div class="bub"><b>앨리스</b><small>10분 전 · 하늘테크</small><p>2차 상담 완료 — 시설자금 쪽으로 진행 희망</p></div></div>
+          <div class="fi"><div class="avatar" style="background:var(--amber);">밥</div><div class="bub"><b>밥</b><small>1시간 전 · 다올물산</small><p>부재 — 안내문자 남김, 내일 재시도</p></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>
