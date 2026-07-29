@@ -50,7 +50,7 @@ describe("Wave B event allowlist", () => {
 
   it("assigned events follow the naming rule (area.target.action)", () => {
     for (const name of ASSIGNED_EVENTS) {
-      expect(name, name).toMatch(/^[a-z]+\\.[a-z_]+\\.[a-z_]+$/);
+      expect(name, name).toMatch(/^[a-z]+\.[a-z_]+\.[a-z_]+$/);
     }
   });
 
