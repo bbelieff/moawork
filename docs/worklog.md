@@ -4,6 +4,55 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## END 2026-07-30 — T09 · G8 자동이동 엔진 + PR #49 최신화
+
+**1. PR #49 (B4 정산 수식 화면) 최신화**
+
+- main 이 6커밋 앞서 있어 `origin/main`(`1744d9f`) 위로 리베이스. 충돌은 `docs/worklog.md` append 2건뿐 — 양쪽 보존으로 해소. 코드 4파일은 백업 대비 **바이트 동일**(변형 0).
+- 확인: 내가 의존하는 계약(`lib/repo/index.ts`·`lib/types/`·`api/settlements/`)은 그 구간에서 **무변경**.
+
+**2. G8 상태→그룹 자동이동 엔진 (착수 언블록 → 구현)**
+
+- **언블록 근거**: `supabase/migrations/004_gaps_and_leadin.sql` 에 `board_automation_rules` 스키마가 내려옴(`board_id`·`status_column_key`·`status_value`·`to_group_id`·`enabled`, unique 3키). 이전 지시의 차단 조건("MWC 가 별도 설계 후 내려보냄")이 충족됨. RQ-0009 의 3개 사유 중 **004 스키마 부재는 해소**.
+- **설계 원칙 — 규칙은 데이터, 엔진은 코드**: 먼데이 11그룹(준비→진행→심사→승인→관리→불가) 목록을 코드에 **하드코딩하지 않는다**. 규칙 행으로 주입되므로 **그룹 목록이 미확정이어도 엔진은 완성 가능**하다. 소스가드 테스트가 구체 그룹명 유입을 차단.
+- 산출물 `app/src/lib/policyfund/automation.ts` — `indexRules`/`decideMove`/`decideMoves`/`findRuleConflicts`. 부수효과 없음.
+- 불변식(테스트 19건 고정): 상태값 공백·null → 이동없음 · 보드/컬럼 격리 · 이미 대상그룹이면 no-op · 비활성 규칙 미발동 · 중복키 선착순(결정적) · 004 unique 위반 사전검출 · 미배치(group_id=null) 아이템도 이동.
+- **미포함(별건)**: 영속성(포트/어댑터)·API 라우트·**규칙 시드(11그룹 매핑)**. 시드는 그룹 목록 SSOT 확정 후.
+
+**3. 잔여 블로커**
+
+- ⚠ **11그룹 목록 SSOT 여전히 부재** — 004 에도, 어느 seed·ROUND 문서에도 없음(실측 grep 0건). 엔진은 무관하게 완성됐고, **규칙 시드만 대기**.
+- ⚠ **타 트랙 잔존 이슈** — `app/src/app/providers.tsx`(git **미추적**, main·본 브랜치 모두 부재)가 `@tanstack/react-query` 를 import 하는데 package.json **미선언**. 공유 워킹트리에서만 typecheck 실패 → 격리 워크트리로 우회 검증. 해당 트랙 확인 요망.
+- 참고: 조율 SSOT 가 `dispatch-queue.yaml` → `sync/ROUND-*.md` 로 이관됨(SYNC R1). 최신 `ROUND-33` 은 `NEXT_WORK: NONE` 이며, 본 작업은 신규 프로그램이 아니라 **기존 T09 배정(B4/G8)의 연속**이다.
+
+## END 2026-07-23 — T09 · B4 정산 수식 화면 완료
+
+- 브랜치 `feat/t09-settlement-form` (base `origin/main` d172875) · 커밋 `dcfbae4`.
+- **산출물**
+  - `app/src/app/policyfund/settlements/page.tsx` — 서버 컴포넌트. 002_seed 번들에서 진행상품(59)·진행기관(18) 로드 후 폼에 주입.
+  - `app/src/components/policyfund/SettlementForm.tsx` — 실행액·수수료%·계약금·수수료입금일 입력 → `POST /api/settlements` → **서버 응답의 파생값 4종을 그대로 표시**.
+  - `app/src/lib/policyfund/settlement-form.ts` — 순수 로직 분리(`toCreatePayload`/`toDerivedDisplay`). **산식 없음 = 복사 전용.**
+  - `settlement-form.test.ts` 11 테스트.
+- **수용기준 달성(화면 재계산 금지)** — 3중으로 고정:
+  1. `toDerivedDisplay` 는 복사만 — DB generated column 값이 그대로 화면에 간다.
+  2. 정합 테스트: 표시값 == 저장 레코드의 `fee_amount`/`total_revenue`/`d180`/`d365` (+ 002_seed 확정본 회귀가드 3,000,000 / 3,500,000 / 2026-07-09 / 2027-01-10).
+  3. 소스가드 테스트: `SettlementForm.tsx` 에 `computeSettlement`·`feeAmount(`·`dPlus(` 등 산식 import 부재, `settlement-form.ts` 에 산술 연산자 부재.
+- **파생키 배제**: 페이로드에 `fee_amount`·`total_revenue`·`d180`·`d365` 미포함(서버 400 방지) — 테스트 고정.
+- **검증**: 격리 워크트리에서 `check.sh` **초록**(app 657 pass/5 skip, worker 14), `npm run build` **통과**(`/policyfund/settlements` 라우트 등록). dev 서버 실측 — 페이지 **200**, 입력 4종·파생 4칸·프리셋 `<option>` **79개**(59+18+placeholder 2) 렌더, 실제 프리셋 값(`개발기술사업화`·`직접_미소` 등) 확인.
+- **미검증(정직 기록)**: 브라우저 클릭스루는 **미실행**. Browser pane 이 https 로 강제 리다이렉트해 접근 실패했고, `/api/settlements` 는 인증 필요(401)라 로그인 없이는 제출 흐름을 끝까지 못 탄다. 제출→표시 왕복은 단위 테스트(repo 경유)로 커버.
+- **블로커 처리**
+  - ⛔ G8: 착수 금지 지시대로 **미착수**. RQ-0009 파킹 유지.
+  - ✅ B-3(공유 워킹트리 타입에러) **부분 해소**: `@supabase/ssr` 은 package.json 에 선언돼 있었고 node_modules 가 stale 했던 것 → `npm install` 로 해소.
+  - ⚠ **잔존**: `app/src/app/providers.tsx`(타 트랙 **미추적** 파일, main·내 브랜치 모두 부재)가 `@tanstack/react-query` 를 import 하는데 해당 패키지는 package.json 에 **미선언** → 공유 워킹트리에서만 typecheck 실패. 타 트랙 파일이라 손대지 않고 격리 워크트리로 우회 검증함. 해당 트랙 확인 필요.
+
+## START 2026-07-23 — T09 · B4 정산 수식 화면 (P3, MWC 재개 배정)
+
+- 트랙 T09 / provider claude. 브랜치 `feat/t09-settlement-form` (base = `origin/main` d172875).
+- 범위: settlements 수식 **화면** — 실행액·수수료% 입력 → 수수료·총매출·D+180/365 표시 + 002 프리셋 연결.
+- **수용기준**: 화면 재계산 금지. 서버(DB generated column) 값을 그대로 표시한다.
+- ⛔ G8(상태→그룹 자동이동) **착수 금지** — MWC 별도 설계 대기. RQ-0009 파킹 유지.
+- 착수 전 실측: settlements API 2종(`/api/settlements`, `/[settlementId]`) main 반영 확인.
+  `lib/repo/supabase/` 어댑터는 **CRM 전용**(settlements 미포함) → 정산은 LocalRepo 경유.
 ## 2026-07-30 — T03 · 플랫폼 관리자가 어드민에 도달하지 못하는 버그 3건
 
 **START** 2026-07-30 09:40 KST · 브랜치 `feat/t03-r1-entry-ux` (base `fc290f4`)
@@ -336,34 +385,6 @@ C5 `lib/analytics/` 무결(내 변경 0).
 - 배정 범위(P2): 위 2건만. 스코프 추가 금지.
 - 수용기준: 이벤트 10종 화이트리스트 외 발송 0 · PII 페이로드 부재 · 리플레이 마스킹(maskAllInputs·data-pii·회계/홈택스 경로 녹화 제외) 확인.
 - base = origin/main `421c586` 위로 rebase 완료(무충돌).
-## END 2026-07-23 — T09 · B4 정산 수식 화면 완료
-
-- 브랜치 `feat/t09-settlement-form` (base `origin/main` d172875) · 커밋 `dcfbae4`.
-- **산출물**
-  - `app/src/app/policyfund/settlements/page.tsx` — 서버 컴포넌트. 002_seed 번들에서 진행상품(59)·진행기관(18) 로드 후 폼에 주입.
-  - `app/src/components/policyfund/SettlementForm.tsx` — 실행액·수수료%·계약금·수수료입금일 입력 → `POST /api/settlements` → **서버 응답의 파생값 4종을 그대로 표시**.
-  - `app/src/lib/policyfund/settlement-form.ts` — 순수 로직 분리(`toCreatePayload`/`toDerivedDisplay`). **산식 없음 = 복사 전용.**
-  - `settlement-form.test.ts` 11 테스트.
-- **수용기준 달성(화면 재계산 금지)** — 3중으로 고정:
-  1. `toDerivedDisplay` 는 복사만 — DB generated column 값이 그대로 화면에 간다.
-  2. 정합 테스트: 표시값 == 저장 레코드의 `fee_amount`/`total_revenue`/`d180`/`d365` (+ 002_seed 확정본 회귀가드 3,000,000 / 3,500,000 / 2026-07-09 / 2027-01-10).
-  3. 소스가드 테스트: `SettlementForm.tsx` 에 `computeSettlement`·`feeAmount(`·`dPlus(` 등 산식 import 부재, `settlement-form.ts` 에 산술 연산자 부재.
-- **파생키 배제**: 페이로드에 `fee_amount`·`total_revenue`·`d180`·`d365` 미포함(서버 400 방지) — 테스트 고정.
-- **검증**: 격리 워크트리에서 `check.sh` **초록**(app 657 pass/5 skip, worker 14), `npm run build` **통과**(`/policyfund/settlements` 라우트 등록). dev 서버 실측 — 페이지 **200**, 입력 4종·파생 4칸·프리셋 `<option>` **79개**(59+18+placeholder 2) 렌더, 실제 프리셋 값(`개발기술사업화`·`직접_미소` 등) 확인.
-- **미검증(정직 기록)**: 브라우저 클릭스루는 **미실행**. Browser pane 이 https 로 강제 리다이렉트해 접근 실패했고, `/api/settlements` 는 인증 필요(401)라 로그인 없이는 제출 흐름을 끝까지 못 탄다. 제출→표시 왕복은 단위 테스트(repo 경유)로 커버.
-- **블로커 처리**
-  - ⛔ G8: 착수 금지 지시대로 **미착수**. RQ-0009 파킹 유지.
-  - ✅ B-3(공유 워킹트리 타입에러) **부분 해소**: `@supabase/ssr` 은 package.json 에 선언돼 있었고 node_modules 가 stale 했던 것 → `npm install` 로 해소.
-  - ⚠ **잔존**: `app/src/app/providers.tsx`(타 트랙 **미추적** 파일, main·내 브랜치 모두 부재)가 `@tanstack/react-query` 를 import 하는데 해당 패키지는 package.json 에 **미선언** → 공유 워킹트리에서만 typecheck 실패. 타 트랙 파일이라 손대지 않고 격리 워크트리로 우회 검증함. 해당 트랙 확인 필요.
-
-## START 2026-07-23 — T09 · B4 정산 수식 화면 (P3, MWC 재개 배정)
-
-- 트랙 T09 / provider claude. 브랜치 `feat/t09-settlement-form` (base = `origin/main` d172875).
-- 범위: settlements 수식 **화면** — 실행액·수수료% 입력 → 수수료·총매출·D+180/365 표시 + 002 프리셋 연결.
-- **수용기준**: 화면 재계산 금지. 서버(DB generated column) 값을 그대로 표시한다.
-- ⛔ G8(상태→그룹 자동이동) **착수 금지** — MWC 별도 설계 대기. RQ-0009 파킹 유지.
-- 착수 전 실측: settlements API 2종(`/api/settlements`, `/[settlementId]`) main 반영 확인.
-  `lib/repo/supabase/` 어댑터는 **CRM 전용**(settlements 미포함) → 정산은 LocalRepo 경유.
 
 ## 2026-07-28 — T04 · C4 인수: 지표 순수함수 + platform_metrics_daily 야간 배치
 
