@@ -503,6 +503,52 @@ PolicyfundBoard.tsx  ("use client")
 
 ---
 
+## 12. ✅ BUG-0004 해소 + 배포 검증 (main `dc0bdc5`, 2026-07-29 · T10)
+
+**PR #59 머지 완료 — 배포 차단 해제.**
+
+### 수정 내용 — `015_fix_org_helper_session_deadlock.sql`
+헬퍼 4종(`is_org_member`·`org_role`·`org_scope`·`is_protected_workspace_owner`)에서
+`member_account_session_valid()` **선행 조건만 제거**. 006 의 fail-closed 강화
+(`membership.status='active' AND organization.status='active'`)는 **유지** — 001 의 느슨한 정의로 돌아간 것이 아니다.
+
+- `member_account_session_valid()` **미삭제** — 세션 무효화는 member account 전용 RPC 에서 계속 유효.
+  조직 격리(RLS 기반)와 세션 수명은 다른 관심사이며, 후자를 전자의 전제로 삼아 테넌시 전체가 잠긴 것이 이번 사고다.
+- **권한 미변경** — 001·006·011 어디에도 이 4종에 `revoke`/`grant` 가 없어(기본 권한),
+  경계를 새로 그으면 무관한 경로를 깨뜨린다. 최소 변경 원칙.
+- **번호 재배정**: 작성 중 `014` 가 T04/C4 에 선점되어(`f85178a`) **015 로 변경**.
+  §8-A 가 경고한 병렬 번호 충돌이 실제로 발생 — 커밋 직전 `ls | sort` 재확인이 잡았다.
+
+### 검증
+| 항목 | 결과 |
+|---|---|
+| 브랜치 게이트 | check=0 · build=0 · **808 테스트** |
+| **머지 후 main** | check=0 · build=0 · **811 테스트** |
+| `is_org_member` 최종 정의 | `015_…sql` — 실행부 `session_valid` 호출 **0건** ✅ |
+| 마이그레이션 정렬 | `013 → 014_platform → 015_fix` — **015 가 최종 적용** ✅ |
+
+### 배포 검증 (G1 보완 — 이전에는 "빌드 초록"으로 갈음했던 항목)
+| 항목 | 결과 |
+|---|---|
+| `www.moa-work.com` | **200** |
+| 구글 OAuth 링크 | **1건** — Supabase Auth 실연결 |
+| PostHog(`#53`) | **1건** — 최신 커밋 반영 = 자동 배포 정상 |
+| **dev-session 우회** | **0건** — 프로덕션 비활성 ✅ (§7-B 보안 항목 **통과**) |
+| 인증 가드 | `/dash`·`/settings/members` 등 **전부 `/login?next=…` 리다이렉트** ✅ |
+
+> **⚠️ `/api/health`·`/api/version` 은 200 이지만 JSON 이 아니라 HTML 을 반환한다** — 라우트가 없는데
+> 로그인 리다이렉트로 흡수돼 200 이 된다. 미존재 라우트도 동일(404 미노출).
+> **"HTTP 200" 만으로 엔드포인트 존재를 판정하면 안 된다**는 실제 사례.
+
+### 남은 조건 — 코드 수정으로 끝나지 않는다
+- **프로덕션 DB 에 011·015 를 적용하는 것은 별개 작업이며 T10 권한 밖**이다.
+  015 가 011 의 데드락을 해제하므로 **둘을 함께 적용**해야 안전하다. 011 만 적용하면 전면 장애가 그대로 재현된다.
+- 적용 전 **스테이징에서 RLS 침투테스트**로 확인할 것(크리덴셜 주입 필요).
+- 현재 프로덕션이 살아 있다는 것은 **011 이 아직 미적용**이라는 정황 근거다(확증하려면
+  프로덕션에서 `select prosrc from pg_proc where proname='is_org_member'` 확인 — DB 접근 권한 필요).
+
+---
+
 ## 11. ★ 실행계획v1 기준 main 검수 (main `e1a3a05`~`1744d9f`, 2026-07-29 · T10)
 
 > 배경: `613cc67` 이후 **37+커밋이 T10 검수 없이** main 에 누적(Codex 인수 Round 2, C0/C1 워크스페이스,
