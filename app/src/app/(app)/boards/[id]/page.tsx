@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import { applyAs, getSession } from "@/lib/auth/session";
+import { CELL_FLASH_COOKIE, decodeCellFlash } from "@/lib/boards/cellFlash";
 import { getBoardsService, NotFoundError } from "@/lib/boards";
 import { GenericBoardTable } from "@/components/boards/GenericBoardTable";
 import { GenericBoardKanban } from "@/components/boards/GenericBoardKanban";
@@ -40,6 +42,9 @@ export default async function BoardPage({
   const groupBy = sp.group && selectColumns.some((c) => c.key === sp.group) ? sp.group : "";
   const items = svc.listItems(ctx, id);
   const lanes = view === "kanban" ? svc.kanban(ctx, id, groupBy || undefined) : [];
+
+  // 직전 셀 편집에서 저장되지 못한 값의 사유(1회성). 없으면 null.
+  const cellFlash = decodeCellFlash((await cookies()).get(CELL_FLASH_COOKIE)?.value);
 
   const qs = (next: Record<string, string>) => {
     const p = new URLSearchParams();
@@ -114,6 +119,7 @@ export default async function BoardPage({
           items={items}
           groups={groups}
           readOnly={board.is_system}
+          cellFlash={cellFlash}
         />
       ) : (
         <GenericBoardKanban
