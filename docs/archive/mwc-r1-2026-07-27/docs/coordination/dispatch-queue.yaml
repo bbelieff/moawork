@@ -1,0 +1,23 @@
+schema_version: 1
+updated_at: "2026-07-21T02:02:00+09:00"
+project: integrated-management-system
+activation_gate:
+  plan_v0_2_confirmed: false
+  github_pushed: false
+  supabase_project_created: false
+tasks:
+  - task_id: day0-harness-bootstrap
+    source: "direct_user_dispatch: !통합 T07 기반(260721)codex"  # 재귀속 → track-01(기반)
+    feature_owner: track-01
+    assigned_provider: codex
+    status: ready_for_handoff
+    scope: "저장소·레이어·SSOT·검증 하네스"
+    file_leases: ["통합관리시스템/**"]
+    exclusions: ["제품 기능", "기획서 v0.1 수정", "원격 push, PR, 배포"]
+    acceptance_criteria: ["scripts/check.ps1 success", "구조 위반 검출", "active plan과 SSOT 검사"]
+  - task_id: product-track-wave
+    feature_owner: planning
+    assigned_provider: unknown
+    status: waiting_for_activation_gate
+    tracks: [T01, T02, T03, T04, T05, T06, T07, T08, T09, T10]
+    note: "제품 트랙 역할 정본은 dispatch-queue.md. T07 명칭충돌 해소(오케스트레이터 결정, belie 2026-07-21): Day-0 기반작업=T01로 귀속, T07은 mod.perf로 환원. 워크로그 파일명(2026-07-21_track-07.md)은 사건기록이라 유지."
