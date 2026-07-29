@@ -75,7 +75,7 @@ P0-AUTHZ-CONTRACT 를 읽고 **전 조직 실시간 집계는 구조적으로 �
 | `lib/analytics/batch.ts` | `MetricsSource`/`MetricsSink` 포트 + 배치 러너(I/O 없음) |
 | `lib/analytics/batch-supabase.ts` | service_role 어댑터 (서버 전용) |
 | `api/cron/platform-metrics/route.ts` | 야간 배치 엔드포인트 |
-| `009_platform_metrics_daily.sql` | 스냅샷 테이블 + RLS + 멱등 upsert RPC |
+| `014_platform_metrics_daily.sql` | 스냅샷 테이블 + RLS + 멱등 upsert RPC |
 | `app/vercel.json` | cron 등록 (`0 19 * * *` UTC = KST 04:00) |
 
 설계 결정 몇 가지를 코드에 고정했다.
@@ -105,12 +105,13 @@ P0-AUTHZ-CONTRACT 를 읽고 **전 조직 실시간 집계는 구조적으로 �
 
 ### 파킹 (블로커 — 다음 백로그로)
 
-1. **실DB 미검증** — `.env.local` 부재(`ls .env*` = `.env.example` 만). 009 적용·RPC 호출·RLS 판정은
+1. **실DB 미검증** — `.env.local` 부재(`ls .env*` = `.env.example` 만). 014 적용·RPC 호출·RLS 판정은
    미실행. 순수 함수와 배치 로직은 인메모리 포트로 전량 검증했으나 **DB 왕복은 NOT_RUN**.
-2. **`009` 번호 선점 주의** — P0 계약 §8.5~8.6 이 "008+ expand / 009+ lockdown"을 논리 단계명으로
-   쓰는데 실제 008 은 이미 workspace_entry 가 점유했다. 이번 009 는 지표 전용이며 P0 lockdown 은
-   010+ 로 밀린다. §2 가 "번호는 구현 직전 최신 main 에서 배정"을 허용하므로 규칙 위반은 아니나
-   **P0 writer 에게 알려야 한다**.
+2. **마이그레이션 번호 = `014`** — 최초에 `009` 로 잡았으나 rebase 해 보니 main 이 그 사이
+   `009_workspace_entry_request_lifecycle` ~ `013_member_hierarchy_authz` 를 추가해 **번호가 충돌**했다.
+   `014_platform_metrics_daily.sql` 로 재배정했다(코드 주석 참조도 함께 정정).
+   → 교훈: 마이그레이션 번호는 **푸시 직전 최신 main 기준으로 다시 확인**해야 한다.
+   P0 계약 §8.5~8.6 의 "008+/009+" 는 논리 단계명이며 실제 번호와 무관하다(§2 가 재배정을 허용).
 3. **플랫폼 전역 고유 사용자 미지원** — `platformTotals` 의 `dauSum` 은 조직별 고유 사용자의 단순 합이라
    한 사람이 두 조직에 속하면 중복 계상된다. 전역 고유 집계는 조직 경계를 없앤 별도 쿼리가 필요하다.
    현재는 오해 방지를 위해 필드명을 `dauSum` 으로 두고 주석에 명시.

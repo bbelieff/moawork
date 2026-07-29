@@ -96,7 +96,7 @@ export interface TtfvSummary {
   meanHours: number | null;
 }
 
-/** 하루치 롤업 1행 — 009_metric_rollups.metric_daily_rollups 와 1:1. */
+/** 하루치 롤업 1행 — 014_platform_metrics_daily.platform_metrics_daily 와 1:1. */
 export interface DailyRollup {
   /** 집계 대상 날짜(YYYY-MM-DD, KST 기준 하루). */
   day: string;

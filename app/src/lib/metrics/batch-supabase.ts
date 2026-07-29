@@ -87,7 +87,7 @@ export class SupabaseMetricsSource implements MetricsSource {
   }
 }
 
-/** 009 의 멱등 upsert RPC 를 호출한다(같은 day+org 재실행 시 덮어쓰기). */
+/** 014 의 멱등 upsert RPC 를 호출한다(같은 day+org 재실행 시 덮어쓰기). */
 export class SupabaseMetricsSink implements MetricsSink {
   constructor(private readonly db: SupabaseClient) {}
 
