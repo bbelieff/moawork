@@ -73,6 +73,54 @@ T10 판정: `011_member_account_ops.sql` 이 `is_org_member()` 에 세션 종속
 
 **END** — 코드 변경 없음(문서 2건). 배포차단 해소는 T03/T08 대기.
 
+---
+
+## 2026-07-29 — T04 · 🔴 `platform_metrics_daily` 이중정의 발견 (T04↔T07)
+
+**START** — PR #58 머지(main `0134975`) 후 열린 PR 목록을 훑다가
+**PR #56 "feat(T07): 플랫폼 운영 콘솔 /platform P0 + 운영 분석 지표"** 를 발견해 겹침을 실측했다.
+
+### 실측 결과 — 충돌 아님으로 시작했다가 충돌로 확정
+
+처음엔 **계층 분담**으로 보였다. T07 의 `lib/platform/metrics.ts` 헤더에
+*"저장 원본은 `platform_metrics_daily`(야간 배치 롤업)이며 실시간 집계는 하지 않는다"* 가 있어
+내 표를 **소비**하는 구조로 읽혔기 때문이다(내 배치 + T07 콘솔).
+
+그런데 T07 이 기대하는 `MetricsDailyRow`(`date`·`writes`·`errors`·`memberCount`)가
+내 014 컬럼과 맞지 않아 마이그레이션을 확인했더니 — **T07 도 같은 테이블을 자기 정의로 만든다**.
+
+| | T04 `014_platform_metrics_daily.sql` (**main**) | T07 `014_platform_console.sql` (PR #56) |
+|---|---|---|
+| PK·날짜 | `(day, org_id)` | `(date, org_id)` |
+| 지표 | `dau`·`mau`·`stickiness`·`active_users`·`dormant_users`·`new_deals` | `active_users`·`writes`·`errors`·`member_count`·`last_activity_at` |
+| RLS | 정책 있음(관리자 SELECT) | 정책 없음(RPC 전용) |
+| 적재 | `upsert_platform_metrics_daily`(앱 배치) | `rollup_platform_metrics_daily`(SQL) |
+
+**파급**: 둘 다 `create table if not exists` 이고 마이그레이션은 **문자열 정렬** 적용이다.
+`014_platform_console` < `014_platform_metrics_daily`(`c`<`m`) → **T07 이 먼저 생성되고
+내 CREATE TABLE 은 무음 무시** → 내 배치가 없는 컬럼에 INSERT → 런타임 실패.
+
+> **BUG-0004 와 정확히 같은 유형**이다. 정적 게이트는 양쪽 다 초록이고
+> `.env.local` 로 실DB 에 적용하는 순간 처음 드러난다.
+> 번호 충돌(둘 다 `014`)은 부차적이고, 진짜 문제는 **같은 이름·다른 스키마**다.
+
+### 조치
+
+- `decision-inbox.md` 에 **DI-A6**(이중정의, 해소안 A/B/C + T04 의견 **B**) ·
+  **DI-A7**(화면 중복 `/platform/metrics` vs `/platform/analytics`) 등재.
+- **PR #56 에 경고 코멘트** — T07 이 모르고 머지하면 실DB 에서 한쪽이 깨진다.
+- 내가 일방적으로 정하지 않는다. 스키마 정본 판정은 기획/T10 소관이며
+  **콘솔 화면 소유는 T07** 이므로 화면 중복은 T07 머지 후 내가 정리하는 순서가 맞다.
+
+### 교훈 (자기 몫)
+
+직전 항목에서 마이그레이션 번호 충돌을 겪고 "**푸시 직전 최신 main 기준 재확인**"을 교훈으로 적었는데,
+이번 건은 그것만으로는 못 막는다. 번호가 달랐어도 **테이블 이름이 같으면 동일하게 깨진다**.
+→ 보강: 새 테이블을 만들 때 **열린 PR 전체에서 같은 이름을 검색**해야 한다
+(`gh pr list` → 각 브랜치 `git grep "create table .*<name>"`).
+
+**END** — 문서 2건 + PR #56 코멘트. 스키마 판정 대기.
+
 ## 2026-07-29 — T04 · C4 지표 콘솔 `/platform/metrics` (배치 후속)
 
 **START** — 재개 지시(자율루프). 직전 배정의 남은 조각을 이어서 진행.

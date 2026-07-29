@@ -6,6 +6,58 @@
 > ⚠ 기획 워크스페이스(`서울리드프로젝트/모아워크/docs/coordination/decision-inbox.md`)에도
 > 별도 결정함이 있다. 이 파일은 **앱 레포(github.com/bbelieff/moawork)에서 코드가 막히는 항목**만 다룬다.
 
+## 🔴 크로스트랙 블로커 — 판정 필요 (T04 ↔ T07)
+
+### DI-A6 · `platform_metrics_daily` **이중 정의** — 실DB 적용 시 한쪽이 조용히 깨진다
+
+**발견**: T04(main 머지됨)와 T07(PR #56)이 **같은 이름의 테이블을 서로 다르게** 정의한다.
+둘 다 `create table if not exists` 라 **먼저 적용된 쪽이 이기고 나중 것은 무음 무시**된다.
+
+| 항목 | T04 — `014_platform_metrics_daily.sql` (**main 적용됨**) | T07 — `014_platform_console.sql` (PR #56) |
+|---|---|---|
+| PK | `(day, org_id)` | `(date, org_id)` |
+| 날짜 컬럼 | **`day`** | **`date`** |
+| 지표 컬럼 | `dau` · `mau` · `stickiness` · `active_users` · `dormant_users` · `new_deals` | `active_users` · `writes` · `errors` · `member_count` · `last_activity_at` |
+| RLS | 정책 있음(플랫폼 관리자 SELECT) | **정책 없음** = 직접 차단, RPC 전용 |
+| 적재 | `upsert_platform_metrics_daily` (앱 배치가 호출) | `rollup_platform_metrics_daily(p_date)` (SQL 내부 집계) |
+| 배치 주체 | Next.js cron route `/api/cron/platform-metrics` | RPC |
+
+**파급 (실측 근거)**: 마이그레이션은 **문자열 정렬**로 적용된다.
+`014_platform_console.sql` < `014_platform_metrics_daily.sql` (`c` < `m`) →
+**T07 이 먼저 적용되고 T04 의 CREATE TABLE 은 무시**된다.
+그 뒤 T04 배치가 `upsert_platform_metrics_daily` 로 `dau`/`mau`/`stickiness` 에 INSERT 하면
+**존재하지 않는 컬럼** 이라 런타임 실패한다. 역순이면 대칭적으로 T07 이 깨진다.
+
+> ⚠ **BUG-0004 와 같은 유형이다** — 정적 게이트(check·build)는 초록이고,
+> `.env.local` 을 넣어 실DB 에 적용하는 순간 처음 드러난다. 두 트랙 모두 CI 초록이었다.
+
+**해소안 (판정 요망)**
+
+- **A) T07 정의를 정본** — 콘솔 전체 소유자에게 맞춘다. T04 배치를 T07 스키마·RPC 로 이관.
+  대가: `dau`/`mau`/`stickiness`/`dormant_users`/`new_deals` 를 T07 표에 additive 로 추가해야 한다.
+- **B) T04 정의를 정본**(← T04 제안) — 이미 main 에 적용된 쪽을 유지하고,
+  T07 이 필요한 `writes`/`errors`/`member_count`/`last_activity_at` 를 **additive 로 추가**한다.
+  기존 파일 무수정 원칙에 맞고(새 번호 마이그레이션), 이미 머지된 것을 되돌리지 않는다.
+  대가: T07 코드의 `date` → `day`, `MetricsDailyRow` 필드명 정합 필요.
+- **C) 표를 분리** — 이름을 달리한다(예: T04 를 `product_metrics_daily` 로).
+  대가: 같은 원본을 두 번 훑는 중복 집계. **비권장**.
+
+**T04 의견**: **B**. 이미 main 에 있는 정의를 additive 로 넓히는 쪽이 되돌림이 없고
+"기존 마이그레이션 무수정" 규칙과도 맞는다. 다만 **콘솔 화면 소유는 T07** 이므로
+아래 화면 중복도 함께 정리해야 한다.
+
+### DI-A7 · 지표 화면 중복 — `/platform/metrics`(T04) vs `/platform/analytics`(T07)
+
+T04 가 PR #54 로 `/platform/metrics` 를 머지했고, T07 PR #56 이 `/platform` 콘솔 셸 전체
+(9개 페이지, `PlatformShell`·`nav.ts` 포함)와 `/platform/analytics` 를 만든다.
+→ 사용자에게 **지표 화면이 2개** 생긴다.
+
+**T04 제안**: 콘솔 셸 소유자는 **T07** 이므로 T07 #56 머지 후 T04 가
+`/platform/metrics` 를 제거하거나 `/platform/analytics` 로 리다이렉트한다.
+지금 먼저 지우면 #56 머지 전까지 지표 화면이 없어지므로 **순서는 T07 머지 후**.
+
+---
+
 ## 대기 중 — belie 액션 필요
 
 ### DI-A4 · 야간 배치 환경변수 2종 (T04/C4)
