@@ -244,13 +244,13 @@ describe("scrubProperties / scrubEvent", () => {
 
   it("이벤트의 properties·$set·$set_once 를 모두 통과시킨다", () => {
     const out = scrubEvent({
-      event: "deal_created",
+      event: "crm.deal.created",
       properties: { deal_id: "d-1", customer_name: "홍길동" },
       $set: { email: "a@example.invalid" },
       $set_once: { first_seen_phone: "010-1234-5678" },
     });
 
-    expect(out?.event).toBe("deal_created");
+    expect(out?.event).toBe("crm.deal.created");
     expect(out?.properties).toEqual({ deal_id: "d-1", customer_name: REDACTED });
     expect(out?.$set).toEqual({ email: REDACTED });
     expect(out?.$set_once).toEqual({ first_seen_phone: REDACTED });

@@ -16,11 +16,19 @@
 import { useCallback } from "react";
 import { capture } from "./client";
 import type { AnalyticsEventPayloads, CustomEventName, EventPropertyValue } from "./events";
-import { isAllowedEvent } from "./events";
+import { isAllowedEvent, passesSampling } from "./events";
+import { APP_VERSION } from "./version";
 
-/** 페이로드에서 undefined 필드를 걷어낸다(빈 키가 이벤트에 남지 않도록). */
+/**
+ * 페이로드에서 undefined 필드를 걷어내고 `app_version` 을 붙인다.
+ *
+ * 나머지 필수 속성(org_id·role·plan_tier)은 AnalyticsIdentity 가 super property 로
+ * 등록해 SDK 가 자동으로 싣는다. app_version 만 여기서 붙이는 이유: 빌드 상수라
+ * 세션·로그인 여부와 무관하게 항상 확정돼 있고, identity 마운트 이전(로그인 화면 등)에
+ * 발생한 이벤트에도 버전이 남아야 하기 때문이다.
+ */
 function compact(payload: Record<string, EventPropertyValue>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
+  const out: Record<string, unknown> = { app_version: APP_VERSION };
   for (const [key, value] of Object.entries(payload)) {
     if (value !== undefined) out[key] = value;
   }
@@ -42,6 +50,8 @@ export function useTrack(): TrackFn {
   return useCallback((event, payload) => {
     // 타입을 우회해 들어온 이름(any 캐스팅 등)도 여기서 차단한다.
     if (!isAllowedEvent(event)) return;
+    // 비용 가드 — 무료 한도(월 100만) 초과 조짐 시 저가치 이벤트부터 비율을 내린다.
+    if (!passesSampling(event)) return;
     capture(event, compact(payload as Record<string, EventPropertyValue>));
   }, []);
 }

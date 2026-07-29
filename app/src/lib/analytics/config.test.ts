@@ -104,7 +104,7 @@ describe("buildPostHogOptions", () => {
   const options = buildPostHogOptions(config());
 
   it("전송은 항상 자기 도메인 프록시로 간다", () => {
-    expect(options.api_host).toBe("/ingest");
+    expect(options.api_host).toBe("/mw-sig");
     expect(options.ui_host).toBe(DEFAULT_POSTHOG_HOST);
   });
 
