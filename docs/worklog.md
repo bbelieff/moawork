@@ -336,6 +336,26 @@ C5 `lib/analytics/` 무결(내 변경 0).
 - 배정 범위(P2): 위 2건만. 스코프 추가 금지.
 - 수용기준: 이벤트 10종 화이트리스트 외 발송 0 · PII 페이로드 부재 · 리플레이 마스킹(maskAllInputs·data-pii·회계/홈택스 경로 녹화 제외) 확인.
 - base = origin/main `421c586` 위로 rebase 완료(무충돌).
+## END 2026-07-23 — T09 · B4 정산 수식 화면 완료
+
+- 브랜치 `feat/t09-settlement-form` (base `origin/main` d172875) · 커밋 `dcfbae4`.
+- **산출물**
+  - `app/src/app/policyfund/settlements/page.tsx` — 서버 컴포넌트. 002_seed 번들에서 진행상품(59)·진행기관(18) 로드 후 폼에 주입.
+  - `app/src/components/policyfund/SettlementForm.tsx` — 실행액·수수료%·계약금·수수료입금일 입력 → `POST /api/settlements` → **서버 응답의 파생값 4종을 그대로 표시**.
+  - `app/src/lib/policyfund/settlement-form.ts` — 순수 로직 분리(`toCreatePayload`/`toDerivedDisplay`). **산식 없음 = 복사 전용.**
+  - `settlement-form.test.ts` 11 테스트.
+- **수용기준 달성(화면 재계산 금지)** — 3중으로 고정:
+  1. `toDerivedDisplay` 는 복사만 — DB generated column 값이 그대로 화면에 간다.
+  2. 정합 테스트: 표시값 == 저장 레코드의 `fee_amount`/`total_revenue`/`d180`/`d365` (+ 002_seed 확정본 회귀가드 3,000,000 / 3,500,000 / 2026-07-09 / 2027-01-10).
+  3. 소스가드 테스트: `SettlementForm.tsx` 에 `computeSettlement`·`feeAmount(`·`dPlus(` 등 산식 import 부재, `settlement-form.ts` 에 산술 연산자 부재.
+- **파생키 배제**: 페이로드에 `fee_amount`·`total_revenue`·`d180`·`d365` 미포함(서버 400 방지) — 테스트 고정.
+- **검증**: 격리 워크트리에서 `check.sh` **초록**(app 657 pass/5 skip, worker 14), `npm run build` **통과**(`/policyfund/settlements` 라우트 등록). dev 서버 실측 — 페이지 **200**, 입력 4종·파생 4칸·프리셋 `<option>` **79개**(59+18+placeholder 2) 렌더, 실제 프리셋 값(`개발기술사업화`·`직접_미소` 등) 확인.
+- **미검증(정직 기록)**: 브라우저 클릭스루는 **미실행**. Browser pane 이 https 로 강제 리다이렉트해 접근 실패했고, `/api/settlements` 는 인증 필요(401)라 로그인 없이는 제출 흐름을 끝까지 못 탄다. 제출→표시 왕복은 단위 테스트(repo 경유)로 커버.
+- **블로커 처리**
+  - ⛔ G8: 착수 금지 지시대로 **미착수**. RQ-0009 파킹 유지.
+  - ✅ B-3(공유 워킹트리 타입에러) **부분 해소**: `@supabase/ssr` 은 package.json 에 선언돼 있었고 node_modules 가 stale 했던 것 → `npm install` 로 해소.
+  - ⚠ **잔존**: `app/src/app/providers.tsx`(타 트랙 **미추적** 파일, main·내 브랜치 모두 부재)가 `@tanstack/react-query` 를 import 하는데 해당 패키지는 package.json 에 **미선언** → 공유 워킹트리에서만 typecheck 실패. 타 트랙 파일이라 손대지 않고 격리 워크트리로 우회 검증함. 해당 트랙 확인 필요.
+
 ## START 2026-07-23 — T09 · B4 정산 수식 화면 (P3, MWC 재개 배정)
 
 - 트랙 T09 / provider claude. 브랜치 `feat/t09-settlement-form` (base = `origin/main` d172875).
