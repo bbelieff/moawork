@@ -8,15 +8,41 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth/session";
 import { getBoardsService } from "@/lib/boards";
 import { parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
 import type { FieldOption } from "@/lib/types";
 import type { CellValue } from "@/lib/boards/types";
+import type { CellError } from "@/lib/boards/service";
+import {
+  CELL_FLASH_COOKIE,
+  CELL_FLASH_MAX_AGE,
+  encodeCellFlash,
+} from "@/lib/boards/cellFlash";
 
 function str(fd: FormData, key: string): string {
   const v = fd.get(key);
   return typeof v === "string" ? v : "";
+}
+
+/**
+ * 저장되지 못한 셀을 다음 렌더에 알린다(1회성 쿠키).
+ *
+ * setCells 는 관대 정책이라 **틀린 셀만 빼고 나머지는 저장**한 뒤 사유를 돌려준다.
+ * 그 사유를 여기서 흘려버리면 사용자에겐 "아무 일도 안 일어난" 것으로 보인다 —
+ * 조용한 실패를 없애려고 이 화면(서버 렌더 폼)에서 쓸 수 있는 방식으로 넘긴다.
+ */
+async function flashCellErrors(itemId: string, errors: CellError[]): Promise<void> {
+  const encoded = encodeCellFlash({ itemId, errors });
+  if (!encoded) return;
+  const jar = await cookies();
+  jar.set(CELL_FLASH_COOKIE, encoded, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: CELL_FLASH_MAX_AGE,
+  });
 }
 
 /** "높음,보통,낮음" → FieldOption[] (id 는 안정적으로 파생). */
@@ -98,7 +124,10 @@ export async function setCellAction(formData: FormData): Promise<void> {
   // 체크박스는 미체크 시 필드가 아예 없다 → false 로 수렴.
   const value: CellValue =
     str(formData, "kind") === "checkbox" ? raw === "on" || raw === "true" : (raw as CellValue);
-  getBoardsService().setCells(ctx, boardId, itemId, { [columnKey]: value });
+  const { errors } = getBoardsService().setCells(ctx, boardId, itemId, {
+    [columnKey]: value,
+  });
+  await flashCellErrors(itemId, errors);
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -124,7 +153,10 @@ export async function moveItemAction(formData: FormData): Promise<void> {
   const groupBy = str(formData, "groupBy");
   const svc = getBoardsService();
   if (groupBy) {
-    svc.setCells(ctx, boardId, itemId, { [groupBy]: lane === "" ? null : lane });
+    const { errors } = svc.setCells(ctx, boardId, itemId, {
+      [groupBy]: lane === "" ? null : lane,
+    });
+    await flashCellErrors(itemId, errors);
   } else {
     svc.updateItem(ctx, boardId, itemId, { group_id: lane === "" ? null : lane });
   }

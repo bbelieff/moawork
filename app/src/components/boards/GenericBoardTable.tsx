@@ -1,5 +1,6 @@
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { formatCell, hasOptions } from "@/lib/boards/cells";
+import { findCellError, type CellFlash } from "@/lib/boards/cellFlash";
 import { StatusCell, StatusSelect } from "./StatusCell";
 import {
   addItemAction,
@@ -21,81 +22,100 @@ function CellField({
   boardId,
   item,
   column,
+  error,
 }: {
   boardId: string;
   item: ItemWithValues;
   column: BoardColumn;
+  /** 직전 편집에서 이 셀이 저장되지 못한 사유. 없으면 null. */
+  error?: string | null;
 }) {
   const value = item.values[column.key] ?? null;
   const options = column.options_jsonb?.options ?? [];
+  const errorId = error ? `cell-err-${item.id}-${column.key}` : undefined;
 
   return (
-    <form action={setCellAction} className="flex items-center gap-1">
-      <input type="hidden" name="boardId" value={boardId} />
-      <input type="hidden" name="itemId" value={item.id} />
-      <input type="hidden" name="columnKey" value={column.key} />
+    <div className="flex flex-col gap-0.5">
+      <form
+        action={setCellAction}
+        className="flex items-center gap-1"
+        aria-describedby={errorId}>
+        <input type="hidden" name="boardId" value={boardId} />
+        <input type="hidden" name="itemId" value={item.id} />
+        <input type="hidden" name="columnKey" value={column.key} />
 
-      {column.type === "checkbox" ? (
-        <>
-          <input type="hidden" name="kind" value="checkbox" />
+        {column.type === "checkbox" ? (
+          <>
+            <input type="hidden" name="kind" value="checkbox" />
+            <input
+              type="checkbox"
+              name="value"
+              defaultChecked={value === true}
+              className="h-4 w-4"
+            />
+            <button type="submit" className="text-xs text-zinc-400 hover:text-zinc-700">
+              저장
+            </button>
+          </>
+        ) : column.type === "select" ? (
+          <>
+            {/* 상태 컬럼 — 선택된 옵션 색을 그대로 입힌 셀렉트(먼데이 파리티). */}
+            <StatusSelect name="value" value={value} options={options} className={INPUT} />
+            <button type="submit" className="text-xs text-zinc-400 hover:text-zinc-700">
+              ↵
+            </button>
+          </>
+        ) : column.type === "multiselect" ? (
+          <>
+            <select
+              name="value"
+              multiple
+              defaultValue={Array.isArray(value) ? value : []}
+              className={`${INPUT} h-16`}
+            >
+              {options.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <button type="submit" className="text-xs text-zinc-400 hover:text-zinc-700">
+              ↵
+            </button>
+          </>
+        ) : (
           <input
-            type="checkbox"
+            type={
+              column.type === "number"
+                ? "number"
+                : column.type === "date"
+                  ? "date"
+                  : column.type === "datetime"
+                    ? "datetime-local"
+                    : column.type === "email"
+                      ? "email"
+                      : column.type === "url"
+                        ? "url"
+                        : "text"
+            }
             name="value"
-            defaultChecked={value === true}
-            className="h-4 w-4"
+            defaultValue={value === null ? "" : String(value)}
+            placeholder={formatCell(column.type, value, options) || "—"}
+            className={INPUT}
           />
-          <button type="submit" className="text-xs text-zinc-400 hover:text-zinc-700">
-            저장
-          </button>
-        </>
-      ) : column.type === "select" ? (
-        <>
-          {/* 상태 컬럼 — 선택된 옵션 색을 그대로 입힌 셀렉트(먼데이 파리티). */}
-          <StatusSelect name="value" value={value} options={options} className={INPUT} />
-          <button type="submit" className="text-xs text-zinc-400 hover:text-zinc-700">
-            ↵
-          </button>
-        </>
-      ) : column.type === "multiselect" ? (
-        <>
-          <select
-            name="value"
-            multiple
-            defaultValue={Array.isArray(value) ? value : []}
-            className={`${INPUT} h-16`}
-          >
-            {options.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          <button type="submit" className="text-xs text-zinc-400 hover:text-zinc-700">
-            ↵
-          </button>
-        </>
-      ) : (
-        <input
-          type={
-            column.type === "number"
-              ? "number"
-              : column.type === "date"
-                ? "date"
-                : column.type === "datetime"
-                  ? "datetime-local"
-                  : column.type === "email"
-                    ? "email"
-                    : column.type === "url"
-                      ? "url"
-                      : "text"
-          }
-          name="value"
-          defaultValue={value === null ? "" : String(value)}
-          placeholder={formatCell(column.type, value, options) || "—"}
-          className={INPUT}
-        />
+        )}
+      </form>
+
+      {/*
+        저장되지 못한 셀의 사유를 그 자리에 표시한다. 관대 정책상 나머지 셀은
+        저장됐고 이 셀만 예전 값 그대로다 — 그 사실이 화면에 드러나야 한다.
+      */}
+      {error && (
+        <p id={errorId} role="alert" className="px-1.5 text-xs text-red-600 dark:text-red-400">
+          {error}
+        </p>
       )}
-    </form>
+    </div>
   );
 }
 
@@ -105,12 +125,15 @@ export function GenericBoardTable({
   items,
   groups,
   readOnly = false,
+  cellFlash = null,
 }: {
   boardId: string;
   columns: BoardColumn[];
   items: ItemWithValues[];
   groups: { id: string; name: string }[];
   readOnly?: boolean;
+  /** 직전 편집에서 저장되지 못한 셀의 사유(1회성). */
+  cellFlash?: CellFlash | null;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -166,7 +189,12 @@ export function GenericBoardTable({
                           formatCell(c.type, it.values[c.key] ?? null, c.options_jsonb?.options)
                         )
                       ) : (
-                        <CellField boardId={boardId} item={it} column={c} />
+                        <CellField
+                          boardId={boardId}
+                          item={it}
+                          column={c}
+                          error={findCellError(cellFlash, it.id, c.key)}
+                        />
                       )}
                     </td>
                   ))}
