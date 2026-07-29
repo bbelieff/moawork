@@ -6,6 +6,7 @@ import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { SidebarNav } from "@/components/shell/SidebarNav";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
+import { SupportBanner, SupportWidget } from "@/components/support/SupportWidget";
 import { buildAccountViewModel } from "@/lib/account/presentation";
 import { loadWorkspaceRoutingSnapshot } from "@/lib/auth/workspace-entry-server";
 import { loadLockedFeatures } from "@/lib/entitlements/server";
@@ -71,7 +72,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const account = buildAccountViewModel(ctx);
 
   return (
-    <div className="flex min-h-full flex-1 flex-col md:flex-row">
+    <div className="flex min-h-full flex-1 flex-col">
+      {/* 위임 중 고정 배너 (T08) — 위임이 살아 있는 동안 화면 최상단에 항상 보인다.
+          사이드바/본문 flex row 바깥이라 데스크톱에서도 폭 전체를 차지한다. */}
+      <SupportBanner ctx={ctx} />
+
+      <div className="flex min-h-full flex-1 flex-col md:flex-row">
       {/* ── 사이드바 ── */}
       <aside
         className="relative flex h-auto w-full flex-none flex-col border-b px-3 py-3 md:sticky md:top-0 md:h-screen md:w-[232px] md:overflow-y-auto md:border-b-0 md:border-r md:py-[18px]"
@@ -186,6 +192,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         </header>
         <main>{children}</main>
       </div>
+      </div>
+
+      {/* 우측 하단 플로팅 지원 버튼 (T08) */}
+      <SupportWidget ctx={ctx} />
     </div>
   );
 }

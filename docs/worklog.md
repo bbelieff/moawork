@@ -4,6 +4,40 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-29 — T08 · 지원(1:1 문의) + 접근위임 C3 [START → END]
+
+**[START · C3]** belie 직접 지시(디스패치 경유 없음). standby 해제 — 지원·접근위임 신규 영역.
+브랜치 `feat/t08-support` (worktree `wt-t08-support`, 최신 `main` 7dc30f0 기준).
+
+**범위**: 채널톡류 플로팅 지원 버튼 + **고객이 직접 열어주는** 접근위임(기본 경로).
+1:1 상담은 **자체 인앱 스레드**로 구현(외부 벤더 미연동). 오너 승인 불필요, 위임 기본 2시간.
+
+**마이그레이션**: `supabase/migrations/008_support_access_delegation.sql` (번호는 main 최신 007 기준 배정).
+- 테이블: `support_threads` · `support_messages` · `support_notifications` · `access_grants` · `access_events`.
+- **`is_org_member()` 무수정.** 신규 `has_active_grant()` / `has_active_grant_write()` /
+  `grant_sees_assignee()` 를 만들고 기존 정책은 그대로 둔 채 **permissive 정책을 OR 로 추가**만 했다.
+- 홈택스(`hometax_consents` · `hometax_docs`)는 **RESTRICTIVE 정책**으로 못 박아 위임 중에도 차단.
+- 활성 위임 1건 = `access_grants(org_id) where revoked_at is null` 부분 유니크 인덱스
+  + 만료분 자동 마감 트리거. 멤버 개시분은 `pin_member_grant_readonly()` 트리거가 `read` 로 고정.
+- 수명주기는 `create_access_grant()` / `revoke_access_grant()` / `log_access_event()` RPC 로만.
+- `access_events` 는 append-only(UPDATE/DELETE 정책 없음 + 권한 revoke).
+
+**앱**: `lib/support/*`(types·store·service·http) + `repo/local/supportRepo.ts` 인메모리 어댑터,
+`/api/support/{threads,grants,notifications}`, 플로팅 버튼(52px·안전영역·풀스크린 시트·Work Blue,
+People Coral 미사용), 위임 중 상단 고정 배너, `/platform/지원` 운영자 콘솔.
+진단 컨텍스트는 **화이트리스트 6키**(경로·워크스페이스·역할·앱버전·브라우저·오류ID)만 첨부 —
+고객사명·대표자명·연락처·금액은 `sanitizeDiag()` 가 버린다(DB CHECK 와 동일 목록).
+
+**[END · C3]** `bash scripts/check.sh` **PASS** — app 610 passed / 5 skipped, worker 14 passed.
+위임 수명주기 테스트 23/23 통과. PR 오픈 후 standby 복귀.
+
+**스코프 경계 준수**: 동의·수명주기까지만. CODEF 등 벤더 실호출은 Phase 2 로 남기고 착수하지 않았다.
+
+**후속(파킹)**:
+- `is_platform_admin()`(006)은 `app_admins.role='admin'` 을 요구하는데 005 시드 belie 행은
+  `role='owner'` 라 프로덕션에서 운영자 판정이 false 가 된다. **T03/T07 소관**이라 건드리지 않았다.
+- `Org` 타입(T03 소유)에 `slug` 가 없어 진단 컨텍스트의 `org_slug` 에 `org.id` 를 넣는다.
+
 ## 2026-07-30 — T03 · 플랫폼 관리자가 어드민에 도달하지 못하는 버그 3건
 
 **START** 2026-07-30 09:40 KST · 브랜치 `feat/t03-r1-entry-ux` (base `fc290f4`)
