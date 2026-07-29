@@ -34,6 +34,7 @@ export default async function PlatformWorkspaceRequestsPage() {
 
           <nav aria-label="플랫폼 운영 탐색">
             <Link href="/platform/workspace-requests">회사 만들기 요청</Link>
+            <Link href="/platform/metrics">제품 사용 지표</Link>
             <Link href="/account">내 계정</Link>
             <Link href="/settings/account/sessions">로그인 기기</Link>
             <Link href="/settings/account/privacy">개인정보</Link>
