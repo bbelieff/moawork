@@ -25,6 +25,9 @@ npm workspaces 사용 (`app`, `worker`).
 - `.githooks/pre-commit` 이 커밋 전에 동일 게이트를 실행한다.
   최초 1회 `git config core.hooksPath .githooks` (루트 `npm install` 시 자동).
 - CI(`.github/workflows/ci.yml`)가 push/PR 마다 동일 게이트를 재실행한다.
+- **예외 — `wip/*` 브랜치**: 보존 전용이므로 pre-commit 우회(`--no-verify`)를 허용한다.
+  단 **머지 금지**이며, main 으로 가려면 `feat/*` 로 승격해 정식 게이트를 통과해야 한다.
+  자세한 규약은 [README.md §브랜치 규약](README.md#브랜치-규약).
 
 ## SSOT (단일 진실 소스)
 

@@ -4,6 +4,48 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-29 — T03 · MWC P1 배치(①~④) — 계약 실측 · 의존성 등재 · wip 최신화
+
+**START** 2026-07-29 15:15 KST · 브랜치 `feat/t03-repo-contract-p1` (worktree 격리, base `d172875`)
+
+배정: ① updateDeal 의 stage_id 거부 ② deal.custom shallow merge ③ @supabase/ssr·
+@tanstack/react-query 정식 등재 ④ wip/t03-oauth 리베이스 정리 + wip/* 규칙 README 등재.
+
+### ① ② — **이미 main 에 구현돼 있었다(신규 작업 없음)**
+착수 전 실측한 결과 두 항목 모두 완료 상태였다. 중복 구현하면 회귀만 만들 수 있어 검증만 했다.
+- `updateDeal`: 타입에서 `stage_id` 제외 + **런타임 `throw`** 까지 있다.
+  `localRepo.ts:346` / `supabaseCrmSource.ts:259` — **양쪽 구현체 모두** 방어.
+- `custom` 병합: `lib/repo/custom-merge.ts` 의 `mergeCustom()` 로 **단일 규약화**.
+  1겹 shallow merge · `null` = 키 삭제. 두 구현체가 같은 함수를 공유(`localRepo.ts:355`,
+  `supabaseCrmSource.ts:269`)라 규약이 갈릴 수 없다.
+- 테스트: `custom-merge.test.ts` 8건 + `localRepo.test.ts` 의 stage_id 거부 assertion.
+- 배경: AP-0002 에서 내가 등록했던 결함이 그 뒤 BUG-0003 대응으로 해소된 것으로 보인다.
+
+### ③ 의존성 정식 등재
+- `@supabase/ssr@^0.12.3` — **이미 등재돼 있었다**(app/package.json). 확인만.
+- `@tanstack/react-query@^5.101.4` — **신규 등재**. 근거: `wip/t03-oauth` 의
+  `app/src/app/providers.tsx` 가 `QueryClient`/`QueryClientProvider` 를 import 하는데
+  선언이 없어, 그대로 승격하면 빌드가 깨진다. lockfile 동반 갱신.
+
+### ④ wip/t03-oauth 리베이스 정리
+- 리베이스 결과 **4파일 충돌** — main 이 그 사이 자체 OAuth 구현을 랜딩했기 때문
+  (`feat/codex-t03-oauth`·`fix/oauth-org-provisioning` 계열).
+- **판정: 충돌 4파일은 main 채택.** main 버전이 전부 더 발전했고(callback 68 vs 41줄,
+  signout 38 vs 10, env 21 vs 14, proxy 126 vs 83) **테스트까지 동반**(route.test.ts).
+  wip 은 과거 스냅샷이라 되살리면 퇴행이다.
+- 남은 wip 고유 delta 3건만 보존 → `providers.tsx`(react-query 배선) ·
+  `membership.ts`(getMyMembership/requireRole/requireManager — main 에 동일기능 없음 확인) ·
+  `tailwind.config.ts`. push 완료(`da807d2`), `origin/main` 조상 포함 확인.
+
+### wip/* 규칙 등재
+`README.md §브랜치 규약` 신설 + `CLAUDE.md §품질 게이트` 에 예외 1줄 + 상호참조.
+pre-commit 우회는 `wip/*` 에서만, **머지 금지**, main 행은 `feat/*` 승격 후 정식 게이트.
+→ `docs/coordination/**` 은 디스패치 단독 writer 규칙이라 건드리지 않았다.
+
+**END** 2026-07-29 15:37 KST · check.sh 결과는 아래 커밋 참조. 블로커 없음(파킹 0건).
+
+---
+
 ## 2026-07-23 — MoaWork Control · OAuth 조직 프로비저닝 장애 수정 진행
 
 - 프로덕션 Google 로그인 후 `login?error=provisioning`을 재현하고 Supabase Auth·REST·Postgres 로그와 정책·트리거 상태를 읽기 전용으로 대조했다.
