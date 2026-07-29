@@ -51,10 +51,10 @@ alter table public.orgs
       and slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'
       and char_length(slug) between 3 and 40
       and slug not in (
-        '_next', 'account', 'admin', 'api', 'auth', 'boards', 'contract',
-        'dash', 'login', 'logout', 'newcust', 'notices', 'onboarding',
-        'platform', 'policyfund', 'settings', 'support', 'w', 'work',
-        'workspace-entry', 'workspaces', 'www'
+        '_next', 'account', 'admin', 'api', 'auth', 'boards', 'companies',
+        'contract', 'dash', 'deals', 'login', 'logout', 'newcust', 'notices',
+        'onboarding', 'platform', 'policyfund', 'settings', 'support', 'w',
+        'work', 'workspace-entry', 'workspaces', 'www'
       )
     )
   );
@@ -263,10 +263,10 @@ create table if not exists public.workspace_entry_requests (
       and char_length(desired_slug) between 3 and 40
       and desired_slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'
       and desired_slug not in (
-        '_next', 'account', 'admin', 'api', 'auth', 'boards', 'contract',
-        'dash', 'login', 'logout', 'newcust', 'notices', 'onboarding',
-        'platform', 'policyfund', 'settings', 'support', 'w', 'work',
-        'workspace-entry', 'workspaces', 'www'
+        '_next', 'account', 'admin', 'api', 'auth', 'boards', 'companies',
+        'contract', 'dash', 'deals', 'login', 'logout', 'newcust', 'notices',
+        'onboarding', 'platform', 'policyfund', 'settings', 'support', 'w',
+        'work', 'workspace-entry', 'workspaces', 'www'
       )
       and lookup_digest is null
     )
