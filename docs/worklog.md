@@ -4,6 +4,40 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-23 — T05 · C5 PostHog 인수인계 — END
+
+배정 2건 완료. `check.sh` 초록(앱 **736** PASS/5 skip · 워커 14) · `next build` 초록. 신규 analytics 테스트 포함 136 PASS.
+
+**1) `useTrack` 훅** — `lib/analytics/useTrack.ts`
+- 이벤트 이름·페이로드가 **타입으로 고정**된다(화이트리스트 밖 이름·미정의 필드는 컴파일 단계에서 차단). 런타임 `isAllowedEvent` 는 2차 방어선 — `any` 캐스팅 우회도 막는다.
+- 훅을 못 쓰는 지점을 위해 동일 계약의 함수형 `track` 도 제공. 분석 비활성·SDK 미로드 시 조용히 무시(제품 코드가 분석 때문에 죽지 않는다).
+
+**2) 커스텀 이벤트 3종** — `lib/analytics/events.ts`
+- `deal_created`/`deal_moved`/`meeting_logged` 페이로드를 **id·enum·수량만** 받도록 타입 정의. 상호·이름·연락처·메모는 타입 단계에서 불가.
+- 화이트리스트 **10종** = 커스텀 3 + SDK 7(`$pageview`·`$pageleave`·`$autocapture`·`$rageclick`·`$identify`·`$set`·`$snapshot`). SDK 7종은 실제로 켠 설정에서만 나오는 것으로 한정했다.
+- `before_send` 를 `gateAndScrub` 로 교체 — **화이트리스트 게이트 → 스크러빙** 순서. 목록 밖 이벤트는 내용 정리 없이 즉시 폐기(null).
+
+**수용기준 검증**
+- 화이트리스트 외 발송 0: 허용 10종 전부 통과 + 미허용 12종(정의외 커스텀·survey·exception·대소문자/공백 변형·빈 문자열) 전부 null 확인.
+- PII 페이로드 부재: 커스텀 3종 대표 페이로드의 키에 PII 조각(name·phone·email·memo·amount 등 19종) 0건, 값은 스칼라·64자 이하로 제한. 허용 이벤트에 PII 가 섞여도 스크러빙되는지 별도 검증.
+- 리플레이 마스킹: `maskAllInputs` · `maskTextSelector "*"` · `[data-pii]` 블록 · 입력 마스킹 · 이중방어 `maskTextFn` · 폰트/교차출처 iframe 미수집 확인. 경로 제외는 `ReplayPathGate` 가 진입 시 `stopSessionRecording`, 이탈 시 재개.
+
+**⚠ 경로 실측 정정**: `/account` 는 **회계가 아니라 "내 정보"**(→ `/settings/account` 리다이렉트)였다. 회계 전용 화면은 현재 저장소에 **없다**. 개인정보 화면이라 제외 근거는 유지하고 `/settings/account` 를 함께 추가했으며, `/hometax`(T08 대기)·`/settlements`(API 만 존재)는 화면 신설 시 자동 적용되도록 접두사를 미리 넣었다. 접두사는 경계(`/` 또는 끝)를 확인해 `/accounts`·`/account-settings` 는 휩쓸리지 않는다.
+
+**🅿 파킹(블로커) — 커스텀 이벤트 UI 배선**
+3종 이벤트를 실제로 발생시킬 **UI 호출부가 아직 없다**(실측: 클라이언트에서 `api/deals`·`api/activities` 호출 0건, `StageBoardView` 는 읽기 전용 서버 컴포넌트이며 주석에 "단계 이동은 후속" 명시). 딜 생성·이동·미팅기록 UI 신설은 이 배정의 스코프(useTrack + 이벤트 3종) 밖이라 만들지 않았다. → 해당 UI 를 만드는 트랙이 `useTrack()` 을 호출하면 그대로 동작한다. 다음 백로그로 이월.
+
+**미검증**: 브라우저 런타임(실제 이벤트 전송·리플레이 동작)은 NOT_RUN — PostHog 키가 `.env.local` 에 없고(저장소에 `.env.example` 만 존재) 공유 트리는 타 트랙 브랜치라 preview 로 이 브랜치를 검증할 수 없다.
+
+## 2026-07-23 — T05 · C5 PostHog 인수인계 — START
+
+- 인수: 별도 "C5 PostHog" 세션 중단 → T05 가 이어받음. 브랜치 `feat/c5-posthog`(`0bdd5ba`) 실측 확인(`feat/t01-c5-analytics` 는 부재).
+- 인계 상태: `lib/analytics/`(scrub·config·rewrites·env·client·배럴) + `PostHogProvider` + `/ingest` rewrites + proxy matcher 제외까지 구현됨(1315줄, 테스트 3파일).
+- **미완 실측 2건**: (1) `useTrack` 훅 부재(grep 0건), (2) 커스텀 이벤트 3종 미배선 — `deal_created`/`deal_moved`/`meeting_logged` 가 테스트 문자열로만 존재하고 발송 경로 없음.
+- 배정 범위(P2): 위 2건만. 스코프 추가 금지.
+- 수용기준: 이벤트 10종 화이트리스트 외 발송 0 · PII 페이로드 부재 · 리플레이 마스킹(maskAllInputs·data-pii·회계/홈택스 경로 녹화 제외) 확인.
+- base = origin/main `421c586` 위로 rebase 완료(무충돌).
+
 ## 2026-07-23 — MoaWork Control · OAuth 조직 프로비저닝 장애 수정 진행
 
 - 프로덕션 Google 로그인 후 `login?error=provisioning`을 재현하고 Supabase Auth·REST·Postgres 로그와 정책·트리거 상태를 읽기 전용으로 대조했다.
@@ -731,3 +765,16 @@ all/assigned), 헬퍼 `is_org_member`/`org_role`/`org_scope`, 트리거 `add_org
 - **NOT_RUN(비차단)**: 인증 세션이 필요한 실시나리오(딜 custom 부분수정·단계 이동 활동로그)의 live 검증은 하지 않았다. 이번 변경은 사용자 가시 UI 변화가 없는 내부 계약 수정이며, 회귀 근거는 exact SHA 위 CI(587 passed / 5 skipped)와 옛 구현 되돌림 시 4건 실패 확인이다. `LIVE_DATA_VERIFIED` 로 승격하지 않는다.
 - 배포 대상 도메인이 저장소 정본 어디에도 기록돼 있지 않아 매번 재발견이 필요했다 — 위 canonical domain을 여기 남긴다.
 - consumer: T02(Supabase 트랜잭션 TODO), T04/T05/T09(custom 병합 규약). NEXT_WORK 없음.
+## 2026-07-28 — C5 · PostHog (SDK · 프록시 · PII 스크러빙 · 리플레이 마스킹)
+
+- 착수 전 실측: `PostHog` 는 워킹트리·전 브랜치 히스토리 138커밋 grep **0건**. `docs/coordination/` 의 최신 정본(`ROUND-33`)·`decision-inbox.md`·`PLAN-*.md` 어디에도 C5 항목이 없고, 기획2의 PII 스크러빙 dev-drop 도 존재하지 않는다. 따라서 수용기준은 사용자 지시문을 정본으로 삼고 순수함수를 직접 구현했다.
+- base 는 `origin/main@7dc30f0`(T03 BUG-0003 머지 뒤 rebase). 다른 트랙의 dirty 워킹트리(`feat/t09-settlements`)는 건드리지 않고 별도 worktree 에서 작업했다. rebase 충돌은 본 worklog 말미 한 곳뿐이었고 T03 기록을 그대로 둔 채 뒤에 이어 붙였다.
+- `app/src/lib/analytics/` 신설 — `scrub`(PII 순수함수) · `config`(env·init 옵션·리플레이 정책) · `rewrites`(프록시) · `env`(NEXT_PUBLIC 리터럴 판독) · `client`(no-op 안전 래퍼) · `index` 배럴 · README.
+- **스크러빙 3중**: 민감 **키** 통째 마스킹 + 문자열 **값** 패턴(이메일·휴대/유선전화·주민등록번호·사업자등록번호·카드·IP·JWT/Bearer) + **URL** 쿼리 allowlist(목록 밖은 값 마스킹, 파라미터형 해시는 폐기). 정체불명 객체·깊이/배열 초과는 fail-closed 로 마스킹한다. `board_name` 등 업무 키는 사람 이름이 아니므로 보존한다.
+- **리플레이 마스킹**: `maskAllInputs` + `maskTextSelector: "*"` 로 텍스트·입력 전부 차단, `maskTextFn` 으로 한 번 더 값 스크러빙, `[data-mw-no-record]` 는 녹화 제외. posthog-js 1.407 `SessionRecordingOptions` 에 unmask 계열 옵션이 없음을 타입 실측으로 확인했고 선택적 노출은 지원하지 않는다.
+- **프록시**: `/ingest/*` → next.config rewrites(`static` 규칙 우선). 목적지는 `NEXT_PUBLIC_POSTHOG_HOST` 를 https 일 때만 채택하고 아니면 기본 리전으로 떨어진다(평문 전송 금지). `app/src/proxy.ts` matcher 에서 `ingest(?:/|$)` 를 제외 — 로그인 화면 이벤트 확보 + 비콘마다 세션 검증 왕복 제거. 경계를 붙여 `/ingestion` 은 계속 인증 게이트를 통과한다.
+- **fail-closed 기본값**: 키 미설정·형태 불일치·`NODE_ENV=test` 면 SDK 청크조차 로드하지 않는다. `respect_dnt`, `person_profiles: identified_only`, `capture_pageview: false`(App Router 직접 전송), `autocapture` 는 켜되 `mask_all_text`/`mask_all_element_attributes` 로 내용 차단. deprecated `sanitize_properties` 대신 `before_send` 를 쓴다.
+- **비밀값**: 키 값은 코드·로그·에러 메시지·본 문서 어디에도 없다. `.env.example` 에 형태(`phc_` + 영숫자 20자 이상)와 "개인/서버 키 금지" 경고만 추가했다.
+- 게이트: `bash scripts/check.sh` 초록(lint · typecheck · app 668 PASS/5 skip · worker 14 PASS — 신규 81). `npm run build` 초록. `routes-manifest.json` 의 `/ingest/*` rewrite 2건과 `functions-config-manifest.json` 의 matcher 정규식을 빌드 산출물에서 직접 확인했다.
+- RLS: 마이그레이션·DB 접근 **0** — 해당 없음. 375px 반응형·브랜드 토큰: `PostHogProvider` 는 DOM 을 그리지 않고 CSS·색상 리터럴을 추가하지 않는다(하드코딩 0). 두 항목 모두 "영향 없음"이며 통과로 승격하지 않는다.
+- **미수행**: 브라우저 런타임 검증. preview 도구가 세션 프로젝트 디렉터리(다른 트랙의 워킹트리)를 기동해 이 worktree 에 닿지 않았고, 그 트리에 의존성을 설치하지 않았다. 실제 PostHog 키가 없어 수집·리플레이 종단 확인도 `NOT_RUN` 이다. 정적/빌드 산출물 검증만 근거로 남긴다.
