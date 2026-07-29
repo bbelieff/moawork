@@ -38,6 +38,109 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 - 수용기준: 이벤트 10종 화이트리스트 외 발송 0 · PII 페이로드 부재 · 리플레이 마스킹(maskAllInputs·data-pii·회계/홈택스 경로 녹화 제외) 확인.
 - base = origin/main `421c586` 위로 rebase 완료(무충돌).
 
+## 2026-07-28 — T04 · C4 인수: 지표 순수함수 + platform_metrics_daily 야간 배치
+
+**START** — 2026-07-28 KST. 배정: MWC「T04 C4 계속, P2」. 자율루프.
+범위: 순수 메트릭 함수 + 야간 배치 롤업. **`/platform` 화면은 C1 메뉴 확정 후 → 이번 범위 제외.**
+
+### 인수인계 실측 (C4 → T04)
+
+- `git fetch --all` 후 원격에 **C4 브랜치 없음**(`feat/c4-*`·`*admin*` 0건) → C4 미푸시로 판단, 신규 구현.
+- sync 라운드의 "C4" 매칭은 전부 **해시 문자열 일부**였다(`…5CC7DBC6604CE8C4`). 실제 C4 세션 기록 없음.
+- 기준 main = `421c586`. 워크트리가 12커밋 뒤처져 있어 최신 main 에서 `feat/c4-admin-metrics` 분기.
+- 참조 문서 실재 확인: `docs/coordination/sync/ROUND-18.md`, `docs/design/round-21/03-p0-authz-contract.md`,
+  `supabase/migrations/005_app_admins.sql`(`app_admin_role`), `app/src/lib/auth/admin.ts`.
+
+### 설계 판정 — 왜 스냅샷인가 (실시간 집계 금지의 근거)
+
+P0-AUTHZ-CONTRACT 를 읽고 **전 조직 실시간 집계는 구조적으로 불가**라고 판정했다.
+
+- `O5` — 플랫폼 권한은 tenant RLS 를 우회하지 않는다.
+- 공격테스트 `11` — Platform-only 사용자의 tenant table SELECT 는 **0**이어야 한다.
+
+→ 콘솔이 전 조직 `activities`/`deals` 를 실시간으로 훑으면 이 경계를 넘는다.
+따라서 **배치만** service_role 로 집계하고, 결과는 **개인정보 없는 수치만** 표에 남기며,
+콘솔은 그 표만 읽는다. 배정의 "실시간 집계 금지 유지"와 P0 계약이 같은 결론이다.
+
+기존 세션 배선이 이미 계약을 지키고 있음도 확인했다 — `session.ts` 는 `isPlatformAdmin` 을
+별도 축으로 두고 `role` 을 membership 값 그대로 쓴다(§11 이 금지한 `role = platformRole ?? membership.role` 합성 없음).
+
+### 산출물
+
+| 경로 | 내용 |
+| --- | --- |
+| `lib/analytics/types.ts` | `ActivityEvent`·`Stickiness`·`DormancyVerdict`·`TtfvEntry`·`DailyRollup` |
+| `lib/analytics/metrics.ts` | 스티키니스(DAU/MAU) · 휴면 · TTFV **순수 함수** |
+| `lib/analytics/rollup.ts` | KST 하루 경계 + 하루치 롤업 계산 + 플랫폼 합계 |
+| `lib/analytics/batch.ts` | `MetricsSource`/`MetricsSink` 포트 + 배치 러너(I/O 없음) |
+| `lib/analytics/batch-supabase.ts` | service_role 어댑터 (서버 전용) |
+| `api/cron/platform-metrics/route.ts` | 야간 배치 엔드포인트 |
+| `014_platform_metrics_daily.sql` | 스냅샷 테이블 + RLS + 멱등 upsert RPC |
+| `app/vercel.json` | cron 등록 (`0 19 * * *` UTC = KST 04:00) |
+
+설계 결정 몇 가지를 코드에 고정했다.
+
+- **순수성**: `new Date()` 를 내부에서 부르지 않고 `asOf` 를 인자로 받는다 →
+  야간 배치(과거 날짜 백필)와 화면이 **같은 코드**를 쓴다.
+- **휴면 ≠ 미활성**: 활동 이력이 한 번도 없는 사용자를 `neverActive` 로 분리했다.
+  온보딩 실패와 이탈은 대응이 다르므로 한 수치로 뭉개지 않는다.
+- **TTFV 편향 방지**: 미도달 건을 중앙값·평균에서 제외하되 `reachRate` 를 항상 함께 반환한다.
+  도달한 것만 평균내면 낙관 편향이 생긴다.
+- **이상 데이터 무음 처리 금지**: 파싱 불가 시각은 건너뛰고, 도달<기산점인 음수 소요시간은
+  0 으로 클램프하지 않고 `pending` 처리한다.
+- **부분 실패 정직 보고**: 한 조직이 실패해도 배치는 계속하되 **0 행으로 채우지 않고**
+  `failures` 로 돌려주며, 라우트는 207 로 응답한다(200 으로 감추지 않는다).
+- **인증 미설정 시 거부**: `CRON_SECRET` 이 없으면 503. 인증 없이 전 조직을 훑는 경로를 열어 두지 않는다.
+
+### 수용기준 대조
+
+| 기준 | 결과 |
+| --- | --- |
+| 더미 데이터 **수동 카운트**와 롤업 결과 일치 | **PASS** — `rollup.test.ts` 의 "수용기준" describe. 멤버 5명·이벤트 9건(시스템/타조직/깨진시각 잡음 포함) 픽스처를 손으로 세어 DAU 2 · MAU 4 · stickiness 0.5 · 활성 4 · 휴면 1 · 신규딜 2 를 기대값으로 못박고 전체 행 `toEqual` 로 고정 |
+| 테스트 초록 | **PASS** — analytics 67개 신규(metrics 36 · rollup 20 · batch 11). 전체 `check.sh` 초록 = app **667** / worker **14** |
+| `/platform` 화면 제외 | 준수 — UI 미착수 |
+| 실시간 집계 금지 유지 | 준수 — 콘솔용 실시간 경로를 아예 만들지 않았다 |
+
+`next build` 성공, `/api/cron/platform-metrics` 라우트 등록 확인.
+
+### 파킹 (블로커 — 다음 백로그로)
+
+1. **실DB 미검증** — `.env.local` 부재(`ls .env*` = `.env.example` 만). 014 적용·RPC 호출·RLS 판정은
+   미실행. 순수 함수와 배치 로직은 인메모리 포트로 전량 검증했으나 **DB 왕복은 NOT_RUN**.
+2. **마이그레이션 번호 = `014`** — 최초에 `009` 로 잡았으나 rebase 해 보니 main 이 그 사이
+   `009_workspace_entry_request_lifecycle` ~ `013_member_hierarchy_authz` 를 추가해 **번호가 충돌**했다.
+   `014_platform_metrics_daily.sql` 로 재배정했다(코드 주석 참조도 함께 정정).
+   → 교훈: 마이그레이션 번호는 **푸시 직전 최신 main 기준으로 다시 확인**해야 한다.
+   P0 계약 §8.5~8.6 의 "008+/009+" 는 논리 단계명이며 실제 번호와 무관하다(§2 가 재배정을 허용).
+3. **플랫폼 전역 고유 사용자 미지원** — `platformTotals` 의 `dauSum` 은 조직별 고유 사용자의 단순 합이라
+   한 사람이 두 조직에 속하면 중복 계상된다. 전역 고유 집계는 조직 경계를 없앤 별도 쿼리가 필요하다.
+   현재는 오해 방지를 위해 필드명을 `dauSum` 으로 두고 주석에 명시.
+4. **TTFV 배치 미적재** — 순수 함수(`ttfv`/`ttfvSummary`)는 완성했으나 `platform_metrics_daily` 는
+   일 단위 표라 코호트 지표를 담기 부적절하다. 적재 위치(별도 표 or 온디맨드)는 화면 요구 확정 후 결정.
+
+### rebase 중 발견 — `lib/analytics` 디렉터리 충돌 (해소)
+
+PR 생성 후 main 이 진행돼 rebase 하다가 **C5(PostHog)가 이미 `app/src/lib/analytics/` 를
+점유**한 것을 발견했다(`index.ts` add/add 충돌). 배정 문구가 "`lib/perf/` 또는 `lib/analytics/`
+하위"였는데 실제로는 **둘 다 선점**돼 있었다 — `perf`=T07(매출 성과), `analytics`=C5(이벤트 수집).
+
+같은 디렉터리에 성격이 다른 두 모듈을 섞으면 배럴 `index.ts` 가 영구 충돌 지점이 되므로
+내 모듈을 **`app/src/lib/metrics/`** 로 분리했다. `analytics/index.ts` 는 C5 원본으로 되돌렸다.
+
+| 모듈 | 소유 | 성격 |
+| --- | --- | --- |
+| `@/lib/analytics` | C5 | 이벤트 **수집**(PostHog SDK·스크러빙·리플레이) |
+| `@/lib/perf` | T07 | **매출** 성과(정산·리더보드) |
+| `@/lib/metrics` | T04(C4) | 사용 지표 **집계**(스티키니스·휴면·TTFV) |
+
+`metrics/metrics.ts` 는 경로가 중복돼 `metrics/compute.ts` 로 이름을 바꿨다.
+Vercel 배포 실패 1건도 해소했다 — `vercel.json` 스키마가 추가 속성을 거부하는데
+설명용 `_comment` 배열을 넣은 것이 원인이었다(주석은 cron route 헤더로 이동).
+
+**END** — 2026-07-28 KST. `check.sh` 초록 · `next build` 성공 · PR #47 생성.
+다음: rebase 후 CI 재확인. `/platform` 화면은 C1 메뉴 확정 대기.
+
+
 ## 2026-07-23 — MoaWork Control · OAuth 조직 프로비저닝 장애 수정 진행
 
 - 프로덕션 Google 로그인 후 `login?error=provisioning`을 재현하고 Supabase Auth·REST·Postgres 로그와 정책·트리거 상태를 읽기 전용으로 대조했다.
