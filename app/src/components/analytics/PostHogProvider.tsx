@@ -12,7 +12,7 @@
 import { Suspense, useEffect, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { setAnalyticsInstance } from "@/lib/analytics/client";
-import { buildPostHogOptions } from "@/lib/analytics/config";
+import { buildPostHogOptions, isReplayExcludedPath } from "@/lib/analytics/config";
 import { getAnalyticsConfig } from "@/lib/analytics/env";
 import { scrubUrl } from "@/lib/analytics/scrub";
 
@@ -61,6 +61,31 @@ function PageViewTracker() {
   return null;
 }
 
+/**
+ * 회계·홈택스·정산 화면에서는 세션 리플레이를 **중단**한다.
+ *
+ * 텍스트 마스킹만으로는 부족하다고 본 이유: 이 화면들은 화면 구조 자체가
+ * 사업자등록번호·세금계산서·정산 금액의 배치를 드러내서, 값이 가려져도
+ * 레이아웃과 상호작용만으로 유추될 여지가 있다. 그래서 아예 녹화를 멈춘다.
+ *
+ * 경로를 벗어나면 다시 시작한다. `usePathname` 만 보므로 쿼리 변화로는 재실행되지 않는다.
+ */
+function ReplayPathGate() {
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (!pathname) return;
+    const excluded = isReplayExcludedPath(pathname);
+    void import("posthog-js").then(({ default: posthog }) => {
+      if (!posthog.__loaded) return;
+      if (excluded) posthog.stopSessionRecording();
+      else posthog.startSessionRecording();
+    });
+  }, [pathname]);
+
+  return null;
+}
+
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
   useInitPostHog();
 
@@ -69,6 +94,7 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
       <Suspense fallback={null}>
         <PageViewTracker />
       </Suspense>
+      <ReplayPathGate />
       {children}
     </>
   );

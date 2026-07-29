@@ -4,6 +4,40 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-23 — T05 · C5 PostHog 인수인계 — END
+
+배정 2건 완료. `check.sh` 초록(앱 **736** PASS/5 skip · 워커 14) · `next build` 초록. 신규 analytics 테스트 포함 136 PASS.
+
+**1) `useTrack` 훅** — `lib/analytics/useTrack.ts`
+- 이벤트 이름·페이로드가 **타입으로 고정**된다(화이트리스트 밖 이름·미정의 필드는 컴파일 단계에서 차단). 런타임 `isAllowedEvent` 는 2차 방어선 — `any` 캐스팅 우회도 막는다.
+- 훅을 못 쓰는 지점을 위해 동일 계약의 함수형 `track` 도 제공. 분석 비활성·SDK 미로드 시 조용히 무시(제품 코드가 분석 때문에 죽지 않는다).
+
+**2) 커스텀 이벤트 3종** — `lib/analytics/events.ts`
+- `deal_created`/`deal_moved`/`meeting_logged` 페이로드를 **id·enum·수량만** 받도록 타입 정의. 상호·이름·연락처·메모는 타입 단계에서 불가.
+- 화이트리스트 **10종** = 커스텀 3 + SDK 7(`$pageview`·`$pageleave`·`$autocapture`·`$rageclick`·`$identify`·`$set`·`$snapshot`). SDK 7종은 실제로 켠 설정에서만 나오는 것으로 한정했다.
+- `before_send` 를 `gateAndScrub` 로 교체 — **화이트리스트 게이트 → 스크러빙** 순서. 목록 밖 이벤트는 내용 정리 없이 즉시 폐기(null).
+
+**수용기준 검증**
+- 화이트리스트 외 발송 0: 허용 10종 전부 통과 + 미허용 12종(정의외 커스텀·survey·exception·대소문자/공백 변형·빈 문자열) 전부 null 확인.
+- PII 페이로드 부재: 커스텀 3종 대표 페이로드의 키에 PII 조각(name·phone·email·memo·amount 등 19종) 0건, 값은 스칼라·64자 이하로 제한. 허용 이벤트에 PII 가 섞여도 스크러빙되는지 별도 검증.
+- 리플레이 마스킹: `maskAllInputs` · `maskTextSelector "*"` · `[data-pii]` 블록 · 입력 마스킹 · 이중방어 `maskTextFn` · 폰트/교차출처 iframe 미수집 확인. 경로 제외는 `ReplayPathGate` 가 진입 시 `stopSessionRecording`, 이탈 시 재개.
+
+**⚠ 경로 실측 정정**: `/account` 는 **회계가 아니라 "내 정보"**(→ `/settings/account` 리다이렉트)였다. 회계 전용 화면은 현재 저장소에 **없다**. 개인정보 화면이라 제외 근거는 유지하고 `/settings/account` 를 함께 추가했으며, `/hometax`(T08 대기)·`/settlements`(API 만 존재)는 화면 신설 시 자동 적용되도록 접두사를 미리 넣었다. 접두사는 경계(`/` 또는 끝)를 확인해 `/accounts`·`/account-settings` 는 휩쓸리지 않는다.
+
+**🅿 파킹(블로커) — 커스텀 이벤트 UI 배선**
+3종 이벤트를 실제로 발생시킬 **UI 호출부가 아직 없다**(실측: 클라이언트에서 `api/deals`·`api/activities` 호출 0건, `StageBoardView` 는 읽기 전용 서버 컴포넌트이며 주석에 "단계 이동은 후속" 명시). 딜 생성·이동·미팅기록 UI 신설은 이 배정의 스코프(useTrack + 이벤트 3종) 밖이라 만들지 않았다. → 해당 UI 를 만드는 트랙이 `useTrack()` 을 호출하면 그대로 동작한다. 다음 백로그로 이월.
+
+**미검증**: 브라우저 런타임(실제 이벤트 전송·리플레이 동작)은 NOT_RUN — PostHog 키가 `.env.local` 에 없고(저장소에 `.env.example` 만 존재) 공유 트리는 타 트랙 브랜치라 preview 로 이 브랜치를 검증할 수 없다.
+
+## 2026-07-23 — T05 · C5 PostHog 인수인계 — START
+
+- 인수: 별도 "C5 PostHog" 세션 중단 → T05 가 이어받음. 브랜치 `feat/c5-posthog`(`0bdd5ba`) 실측 확인(`feat/t01-c5-analytics` 는 부재).
+- 인계 상태: `lib/analytics/`(scrub·config·rewrites·env·client·배럴) + `PostHogProvider` + `/ingest` rewrites + proxy matcher 제외까지 구현됨(1315줄, 테스트 3파일).
+- **미완 실측 2건**: (1) `useTrack` 훅 부재(grep 0건), (2) 커스텀 이벤트 3종 미배선 — `deal_created`/`deal_moved`/`meeting_logged` 가 테스트 문자열로만 존재하고 발송 경로 없음.
+- 배정 범위(P2): 위 2건만. 스코프 추가 금지.
+- 수용기준: 이벤트 10종 화이트리스트 외 발송 0 · PII 페이로드 부재 · 리플레이 마스킹(maskAllInputs·data-pii·회계/홈택스 경로 녹화 제외) 확인.
+- base = origin/main `421c586` 위로 rebase 완료(무충돌).
+
 ## 2026-07-23 — MoaWork Control · OAuth 조직 프로비저닝 장애 수정 진행
 
 - 프로덕션 Google 로그인 후 `login?error=provisioning`을 재현하고 Supabase Auth·REST·Postgres 로그와 정책·트리거 상태를 읽기 전용으로 대조했다.

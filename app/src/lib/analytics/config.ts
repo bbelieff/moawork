@@ -9,7 +9,8 @@
 //   이 파일의 어떤 코드도 키 값을 로그·에러 메시지·이벤트에 넣지 않는다.
 
 import type { CaptureResult, PostHogConfig } from "posthog-js";
-import { scrubEvent, scrubText } from "./scrub";
+import { isAllowedEvent } from "./events";
+import { scrubEvent, scrubText, type ScrubbableEvent } from "./scrub";
 
 /**
  * 리버스 프록시 경로. **상수다**(환경변수로 바꾸지 않는다).
@@ -79,7 +80,37 @@ export function resolveAnalyticsConfig(
  * 즉 선택적 노출은 지원되지 않으며, 이 정책은 그 사실 위에서 세운 fail-closed 기본값이다.
  * 특정 영역을 아예 녹화에서 빼려면 DOM 에 `[data-mw-no-record]` 를 단다.
  */
-export const REPLAY_BLOCK_SELECTOR = "[data-mw-no-record]";
+export const REPLAY_BLOCK_SELECTOR = "[data-mw-no-record],[data-pii]";
+
+/**
+ * 화면 전체를 녹화에서 제외할 경로.
+ *
+ * 이 화면들은 마스킹으로 가리는 수준이 아니라 **아예 녹화하지 않는다** —
+ * 사업자등록번호·세금계산서·정산 금액·개인 계정 정보가 화면 구조 자체에 드러나서,
+ * 텍스트를 가려도 레이아웃과 상호작용만으로 유추될 여지를 남기지 않기 위해서다.
+ *
+ * 접두사 매칭이며 경계(`/` 또는 문자열 끝)를 확인한다 — `/accounts-x` 같은
+ * 다른 경로가 휩쓸리지 않도록.
+ *
+ * ⚠ 경로 실측(2026-07-23): 회계 전용 화면은 **아직 없다**. `/account` 는 회계가 아니라
+ * "내 정보"(사용자 계정)이며 `/settings/account` 로 리다이렉트된다 — 개인정보가 있어
+ * 같은 이유로 제외한다. `/hometax`·`/settlements` 는 아직 UI 가 없지만(T08 대기 ·
+ * settlements 는 API 만 존재) 화면이 생기는 즉시 자동 적용되도록 미리 넣어 둔다.
+ */
+export const REPLAY_EXCLUDED_PATH_PREFIXES: readonly string[] = [
+  "/account", // 내 정보(→ /settings/account 로 리다이렉트)
+  "/settings/account", // 내 정보 본체 — 세션 목록·개인정보 설정
+  "/hometax", // 홈택스(전자세금계산서) — T08 도입 시 자동 적용
+  "/settlements", // 정산 금액 — 화면 신설 시 자동 적용
+];
+
+/** 이 경로에서는 세션 리플레이를 시작하지 않는다. */
+export function isReplayExcludedPath(pathname: string): boolean {
+  const path = pathname.split("?")[0].split("#")[0];
+  return REPLAY_EXCLUDED_PATH_PREFIXES.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
+}
 
 export function buildSessionRecordingConfig(): PostHogConfig["session_recording"] {
   return {
@@ -105,7 +136,8 @@ export function buildSessionRecordingConfig(): PostHogConfig["session_recording"
  *  - `capture_pageview: false`: App Router 의 라우팅은 SDK history 감지와 어긋난다. 직접 보낸다.
  *  - `person_profiles: "identified_only"`: 익명 방문자 프로필을 만들지 않는다.
  *  - `respect_dnt`: 브라우저 Do Not Track 을 존중한다.
- *  - `before_send`: 전송 직전 마지막 스크러빙. (구버전 `sanitize_properties` 는 deprecated 라 쓰지 않는다.)
+ *  - `before_send`: 화이트리스트 게이트 + 마지막 스크러빙.
+ *    (구버전 `sanitize_properties` 는 deprecated 라 쓰지 않는다.)
  */
 export function buildPostHogOptions(
   config: AnalyticsConfig,
@@ -123,8 +155,21 @@ export function buildPostHogOptions(
     respect_dnt: true,
     disable_surveys: true,
     session_recording: buildSessionRecordingConfig(),
-    before_send: (event: CaptureResult | null) => scrubEvent(event),
+    before_send: (event: CaptureResult | null) => gateAndScrub(event),
   };
+}
+
+/**
+ * `before_send` 본체 — **화이트리스트 게이트 → 스크러빙** 순서.
+ *
+ * null 을 돌려주면 PostHog 가 그 이벤트를 버린다(체인 규약). 게이트를 스크러빙보다
+ * 먼저 두는 이유: 목록에 없는 이벤트는 내용을 정리할 필요조차 없이 그냥 버린다.
+ * 이름을 모르는 이벤트가 조용히 새 나가는 경로를 없애는 것이 목적이다.
+ */
+export function gateAndScrub<T extends ScrubbableEvent>(event: T | null): T | null {
+  if (!event) return null;
+  if (!isAllowedEvent(event.event)) return null;
+  return scrubEvent(event);
 }
 
 /**
