@@ -23,6 +23,7 @@ import type {
   AccessGrant,
   SupportMessage,
   SupportNotification,
+  SupportNotifyKind,
   SupportThread,
   SupportThreadStatus,
 } from "@/lib/support/types";
@@ -178,12 +179,16 @@ export class LocalSupportRepo implements SupportRepo {
     return notification;
   }
 
-  markNotificationsRead(userId: string, ids?: string[]): number {
+  markNotificationsRead(
+    userId: string,
+    opts: { ids?: string[]; kinds?: SupportNotifyKind[] } = {},
+  ): number {
     const ts = now();
     let count = 0;
     for (const n of supportDb().notifications) {
       if (n.user_id !== userId || n.read_at !== null) continue;
-      if (ids && !ids.includes(n.id)) continue;
+      if (opts.ids && !opts.ids.includes(n.id)) continue;
+      if (opts.kinds && !opts.kinds.includes(n.kind)) continue;
       n.read_at = ts;
       count += 1;
     }

@@ -299,6 +299,22 @@ describe("감사로그와 알림", () => {
     expect(service.unreadCount(ownerCtx)).toBeGreaterThan(0);
   });
 
+  it("★ 문의 목록을 열어도 위임 알림은 사라지지 않는다 (봤다 ≠ 했다)", () => {
+    // 오너에게 두 종류의 알림을 쌓는다: 답변 알림 + 위임 알림.
+    const { thread } = service.createThread(ownerCtx, { subject: "문의", body: "내용" });
+    service.reply(operatorCtx, thread.id, "확인하겠습니다"); // → support_reply
+    service.createGrant(memberCtx, { minutes: 120 }); // → grant_started (오너에게)
+
+    expect(service.unreadCount(ownerCtx)).toBe(2);
+
+    // 문의 목록 진입 = 답변만 읽음 처리.
+    expect(service.markThreadsRead(ownerCtx)).toBe(1);
+
+    const left = service.listNotifications(ownerCtx, { unreadOnly: true });
+    expect(left.map((n) => n.kind)).toEqual(["grant_started"]);
+    expect(service.unreadCount(ownerCtx)).toBe(1);
+  });
+
   it("수임자 행위는 append-only 감사 이벤트로 쌓인다", () => {
     const grant = service.createGrant(ownerCtx, { minutes: 120 });
     service.logEvent(operatorCtx, grant.id, "view", { table: "deals", id: null });

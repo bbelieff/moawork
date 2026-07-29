@@ -4,6 +4,42 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-30 — T08 · MWC 실행계획v1 재배정 — 설계 정합 [START → END]
+
+**[START]** 재배정 범위(지원 위젯 · 1:1 문의 · `access_grants`/`access_events` 위임)를 실측 대조했다.
+
+**핵심 사실: 재배정 범위는 이미 구현·PR 상태다.** 직전 T08 배정의 산출물이 **PR #46**(`feat/t08-support`)
+으로 열려 있고 수용기준 7종을 모두 충족한다. 재배정문의 "이전 T08 배정(홈택스 위임 테스트)은 완료"라는
+전제는 실제와 다르다 — 직전 배정이 곧 이 지원·위임 작업이었다. **신규 착수 없이 정합 작업만** 했다.
+
+**T06(PR #50 mod.notify)과의 충돌 3건 확인**:
+1. **마이그레이션 번호 충돌** — `008_support_access_delegation`(T08)과 `008_notifications`(T06)이 둘 다 008.
+   둘 다 당시 최신 main(007) 기준 배정. **나중에 머지되는 쪽이 009 로 재번호**. (규칙 확정, 파킹)
+2. **알림 계약 충돌** — T06 이 "봤다(`read_at`) ≠ 했다(`resolved_at`)" 계약과 `notifications` 정본을
+   가져온다. T08 의 `support_notifications` 는 임시 테이블 → T06 머지 후 통합 대상.
+3. **소식창 표면 불일치** — T06 은 회사 소식 = `audit_logs` 재사용으로 확정. T08 의 `postNotice()` 는
+   T04 보드 공지보드에 써서 표면이 다르다 → 통합 시 제거하면 `audit_logs` 로 수렴.
+   (위임 감사행은 `target_type='access_grants'` 라 T06 의 새 `audit_select` 마지막 절
+   `or target_type is distinct from 'deal'` 에 걸려 **계속 보임** — 확인 완료)
+
+**선제 수정 1건 (T06 없이 가능한 실제 결함)**:
+문의 목록 진입 시 `markRead()` 가 **위임 알림까지 지웠다**. 위임 알림은 오너가 "강제 종료할지"
+판단해야 하는 **행동 항목**이라 화면 진입만으로 사라지면 안 된다. `markThreadsRead()` 를 분리해
+**답변 알림만** 읽음 처리하도록 고치고, 회귀 테스트 `★ 문의 목록을 열어도 위임 알림은 사라지지 않는다`
+로 고정했다. 이로써 현재 동작이 T06 계약과 **미리 정합**한다.
+
+**유지보수**: 브랜치가 main(e1a3a05) 대비 뒤처져 리베이스했다. `layout.tsx` 는 T03 `WorkspaceSwitcher`
+와 **자동 병합**됐고(배너·위젯 보존), worklog 충돌만 수동 해소.
+
+**설계 정본 문서화**: `app/src/lib/support/README.md` — 불변식 7종의 강제 지점, RLS 원칙
+(`is_org_member()` 무수정 · OR 추가만 · 좁히려면 교체), T06 머지 후 정리 항목 3종, 파킹 2종.
+
+**[END]** `bash scripts/check.sh` **PASS** — app 611 passed / 5 skipped, worker 14 passed (위임 테스트 24/24).
+PR #46 리베이스 후 CI 전 초록(check · Vercel · GitGuardian). T06 머지 대기 상태로 standby.
+
+**파킹(T08 소관 아님)**: `is_platform_admin()`(006)이 `app_admins.role='admin'` 을 요구하는데 005 시드
+belie 행은 `role='owner'` → **프로덕션에서 운영자 판정 false**. 위임 수임이 실동작하지 않는다. T03/T07 소관.
+
 ## 2026-07-29 — T08 · 지원(1:1 문의) + 접근위임 C3 [START → END]
 
 **[START · C3]** belie 직접 지시(디스패치 경유 없음). standby 해제 — 지원·접근위임 신규 영역.

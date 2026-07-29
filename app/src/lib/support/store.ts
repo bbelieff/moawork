@@ -97,7 +97,14 @@ export interface SupportRepo {
   // ── 알림(뱃지) ──
   listNotifications(userId: string, opts?: { unreadOnly?: boolean }): SupportNotification[];
   createNotification(row: NewNotificationRow): SupportNotification;
-  markNotificationsRead(userId: string, ids?: string[]): number;
+  /**
+   * 읽음 처리. `kinds` 를 주면 그 종류만 대상으로 한다.
+   * 위임 알림을 화면 진입만으로 지우지 않기 위해 필요하다(T06 "봤다≠했다" 계약).
+   */
+  markNotificationsRead(
+    userId: string,
+    opts?: { ids?: string[]; kinds?: SupportNotifyKind[] },
+  ): number;
 
   // ── 위임 ──
   /** 조직의 모든 위임(최신순). */

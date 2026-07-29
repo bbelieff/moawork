@@ -208,8 +208,22 @@ export class SupportService {
     return this.repo.listNotifications(ctx.user.id, { unreadOnly: true }).length;
   }
 
+  /** 명시적으로 지정한 알림만 읽음 처리한다. */
   markRead(ctx: Ctx, ids?: string[]): number {
-    return this.repo.markNotificationsRead(ctx.user.id, ids);
+    return this.repo.markNotificationsRead(ctx.user.id, { ids });
+  }
+
+  /**
+   * 문의 목록을 열었을 때의 읽음 처리 — **답변 알림만** 지운다.
+   *
+   * 위임 알림(`grant_started`)은 오너가 "강제 종료할지" 판단해야 하는 **행동 항목**이라
+   * 화면 진입만으로 사라지면 안 된다(T06 mod.notify 의 "봤다 ≠ 했다" 계약).
+   * 위임 알림은 위임이 실제로 끝날 때만 정리된다.
+   */
+  markThreadsRead(ctx: Ctx): number {
+    return this.repo.markNotificationsRead(ctx.user.id, {
+      kinds: ["support_reply"],
+    });
   }
 
   // =====================================================================

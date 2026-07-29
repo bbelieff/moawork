@@ -20,14 +20,24 @@ export async function GET(): Promise<Response> {
   }
 }
 
+/**
+ * 읽음 처리.
+ * - `{ids: [...]}` → 지정한 알림만.
+ * - 본문 없음(`{}`) → **답변 알림만**. 위임 알림은 화면 진입만으로 지우지 않는다
+ *   (오너가 처리해야 하는 행동 항목이므로 — T06 "봤다 ≠ 했다" 계약).
+ */
 export async function POST(req: Request): Promise<Response> {
   try {
     const ctx = await requireCtx();
     const raw = (await readJson(req)) as { ids?: unknown };
-    const ids = Array.isArray(raw?.ids)
-      ? raw.ids.filter((v): v is string => typeof v === "string")
-      : undefined;
-    return jsonOk({ marked: getSupportService().markRead(ctx, ids) });
+    const service = getSupportService();
+    const marked = Array.isArray(raw?.ids)
+      ? service.markRead(
+          ctx,
+          raw.ids.filter((v): v is string => typeof v === "string"),
+        )
+      : service.markThreadsRead(ctx);
+    return jsonOk({ marked });
   } catch (err) {
     return toSupportErrorResponse(err);
   }
