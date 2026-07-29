@@ -10,10 +10,19 @@
 import type { PostHog } from "posthog-js";
 
 let instance: PostHog | null = null;
+const pending: Array<{ event: string; properties?: Record<string, unknown> }> = [];
+const MAX_PENDING_EVENTS = 20;
 
 /** PostHogProvider 가 초기화 직후 한 번 호출한다. */
 export function setAnalyticsInstance(client: PostHog | null): void {
   instance = client;
+  if (!client) {
+    pending.splice(0, pending.length);
+    return;
+  }
+  for (const item of pending.splice(0, pending.length)) {
+    client.capture(item.event, item.properties);
+  }
 }
 
 export function getAnalyticsInstance(): PostHog | null {
@@ -25,7 +34,11 @@ export function getAnalyticsInstance(): PostHog | null {
  * 호출부에서 PII 를 넣지 않는 것이 1차 책임이고, 스크러빙은 2차 방어선이다.
  */
 export function capture(event: string, properties?: Record<string, unknown>): void {
-  instance?.capture(event, properties);
+  if (instance) {
+    instance.capture(event, properties);
+    return;
+  }
+  if (pending.length < MAX_PENDING_EVENTS) pending.push({ event, properties });
 }
 
 /** 로그인 사용자 연결. 이메일·이름은 넘기지 않는다(buildIdentifyProperties 참고). */

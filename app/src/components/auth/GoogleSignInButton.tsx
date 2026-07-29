@@ -4,6 +4,8 @@ import Image from "next/image";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { safeNextPath } from "@/lib/auth/oauth";
+import { LOGIN_ATTEMPT_MARKER } from "@/lib/analytics/events";
+import { track } from "@/lib/analytics/useTrack";
 
 export function GoogleSignInButton({ nextPath = "/" }: { nextPath?: string }) {
   const [pending, setPending] = useState(false);
@@ -12,6 +14,12 @@ export function GoogleSignInButton({ nextPath = "/" }: { nextPath?: string }) {
   async function signIn() {
     setPending(true);
     setError(null);
+
+    try {
+      window.sessionStorage.setItem(LOGIN_ATTEMPT_MARKER, "1");
+    } catch {
+      // Analytics state must never block authentication.
+    }
 
     try {
       const callback = new URL("/auth/callback", window.location.origin);
@@ -23,6 +31,12 @@ export function GoogleSignInButton({ nextPath = "/" }: { nextPath?: string }) {
       });
       if (authError) throw authError;
     } catch {
+      try {
+        window.sessionStorage.removeItem(LOGIN_ATTEMPT_MARKER);
+      } catch {
+        // Analytics state must never block authentication.
+      }
+      track("login_result", { outcome: "failure", reason: "oauth_start" });
       setPending(false);
       setError("Google 로그인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     }

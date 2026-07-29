@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   // 수집 엔드포인트는 후행 슬래시 유무에 민감해서 Next 의 자동 리다이렉트를 끈다.
   skipTrailingSlashRedirect: true,
   async rewrites() {
-    return posthogRewrites(process.env.NEXT_PUBLIC_POSTHOG_HOST);
+    return posthogRewrites();
   },
 };
 

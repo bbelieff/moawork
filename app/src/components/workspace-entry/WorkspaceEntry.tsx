@@ -7,6 +7,8 @@ import { Logo } from "@/components/brand/Logo";
 import type { MyWorkspaceEntryRequest, PlatformCreateRequest } from "@/lib/workspace-entry/server";
 import { normalizeWorkspaceSlug, submitWorkspaceRequest, validateWorkspaceSlug } from "@/lib/workspace-entry/contracts";
 import { ApprovalQueue } from "./ApprovalQueue";
+import { useTrack } from "@/lib/analytics/useTrack";
+import type { WorkspaceEntryState } from "@/lib/analytics/events";
 import styles from "./workspace-entry.module.css";
 
 type InitialView = "fork" | "create" | "join" | "pending" | "rejected" | "blocked";
@@ -106,6 +108,7 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
   const nameId = useId();
   const slugId = useId();
   const joinSlugId = useId();
+  const track = useTrack();
 
   useEffect(() => {
     if (latestNotApproved) void fetch("/api/workspace-entry-resume", { method: "DELETE" }).catch(() => undefined);
@@ -113,7 +116,8 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
 
   useEffect(() => {
     headingRef.current?.focus({ preventScroll: true });
-  }, [view]);
+    track("workspace_entry_state", { state: analyticsStateForView(view) });
+  }, [track, view]);
 
   async function submit(kind: "create" | "join", fields: { displayName?: string; slug?: string; lookup?: string }) {
     const slug = normalizeWorkspaceSlug(fields.slug ?? "");
@@ -130,6 +134,7 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
     setNotice(null);
     try {
       const result = await submitWorkspaceRequest({ kind, displayName, slug, lookup, requestId });
+      track("workspace_request_result", { kind, outcome: result.ok ? "success" : "failure" });
       setNotice({ tone: result.ok ? "pending" : "error", message: result.message });
       if (result.ok) {
         retryKeys.current[kind] = null;
@@ -138,6 +143,7 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
         router.replace("/workspace-entry?mode=resume");
       }
     } catch {
+      track("workspace_request_result", { kind, outcome: "failure" });
       setNotice({ tone: "error", message: "요청을 지금 처리할 수 없어요. 입력은 그대로 두었어요. 잠시 후 다시 시도해 주세요." });
     } finally { setBusy(false); }
   }
@@ -290,6 +296,16 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
       </div>
     </EntryShell>
   );
+}
+
+function analyticsStateForView(view: WorkspaceEntryView): WorkspaceEntryState {
+  if (view === "fork") return "choose_path";
+  if (view.startsWith("create")) return "create";
+  if (view.startsWith("join")) return "join";
+  if (view.startsWith("pending")) return "pending";
+  if (view === "rejected") return "rejected";
+  if (view === "blocked") return "blocked";
+  return "operator";
 }
 
 export function workspaceEntryCopy(view: WorkspaceEntryView): { title: string; lead: string } {

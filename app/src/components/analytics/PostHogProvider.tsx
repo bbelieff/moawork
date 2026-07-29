@@ -10,11 +10,42 @@
 //  - 렌더링하는 DOM 이 없다 → 레이아웃·반응형·브랜드 토큰에 영향을 주지 않는다.
 
 import { Suspense, useEffect, useRef } from "react";
+import type { PostHog } from "posthog-js";
 import { usePathname, useSearchParams } from "next/navigation";
-import { setAnalyticsInstance } from "@/lib/analytics/client";
-import { buildPostHogOptions, isReplayExcludedPath } from "@/lib/analytics/config";
+import { capture, setAnalyticsInstance } from "@/lib/analytics/client";
+import {
+  applyReplayPathPolicy,
+  buildPostHogOptions,
+  shouldRunReplayPathGate,
+  type AnalyticsConfig,
+} from "@/lib/analytics/config";
 import { getAnalyticsConfig } from "@/lib/analytics/env";
-import { scrubUrl } from "@/lib/analytics/scrub";
+import { analyticsRouteTemplate, LOGIN_ATTEMPT_MARKER, loginFailureReason } from "@/lib/analytics/events";
+const FIRST_WORKSPACE_ENTRY_MARKER = "mw-analytics-first-workspace-entry";
+let posthogReady: Promise<PostHog | null> | null = null;
+
+function loadPostHog(config: AnalyticsConfig): Promise<PostHog | null> {
+  if (!posthogReady) {
+    posthogReady = import("posthog-js")
+      .then(({ default: posthog }) => {
+        if (!posthog.__loaded) posthog.init(config.projectKey, buildPostHogOptions(config));
+        setAnalyticsInstance(posthog);
+        return posthog;
+      })
+      .catch(() => null);
+  }
+  return posthogReady;
+}
+
+function readAndClearLoginAttempt(): boolean {
+  try {
+    if (window.sessionStorage.getItem(LOGIN_ATTEMPT_MARKER) !== "1") return false;
+    window.sessionStorage.removeItem(LOGIN_ATTEMPT_MARKER);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function useInitPostHog(): void {
   const started = useRef(false);
@@ -25,21 +56,7 @@ function useInitPostHog(): void {
     if (!config) return;
     started.current = true;
 
-    let cancelled = false;
-    void import("posthog-js")
-      .then(({ default: posthog }) => {
-        if (cancelled) return;
-        posthog.init(config.projectKey, buildPostHogOptions(config));
-        setAnalyticsInstance(posthog);
-      })
-      .catch(() => {
-        // 분석 로드 실패는 제품 기능이 아니다. 조용히 비활성으로 남는다.
-        // (키·호스트 값이 메시지에 실릴 수 있어 콘솔에도 남기지 않는다.)
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    void loadPostHog(config);
   }, []);
 }
 
@@ -49,13 +66,31 @@ function PageViewTracker() {
 
   useEffect(() => {
     if (!pathname) return;
-    const query = searchParams?.toString();
-    const url = `${window.location.origin}${pathname}${query ? `?${query}` : ""}`;
-    // $current_url 은 before_send 도 한 번 더 훑지만, 여기서 먼저 정리해 보낸다.
-    void import("posthog-js").then(({ default: posthog }) => {
-      if (!posthog.__loaded) return;
-      posthog.capture("$pageview", { $current_url: scrubUrl(url) });
-    });
+    const route = analyticsRouteTemplate(pathname);
+    capture("$pageview", { $current_url: `${window.location.origin}${route}` });
+
+    if (route === "/w/:workspace") {
+      try {
+        if (window.sessionStorage.getItem(FIRST_WORKSPACE_ENTRY_MARKER) !== "1") {
+          window.sessionStorage.setItem(FIRST_WORKSPACE_ENTRY_MARKER, "1");
+          capture("first_workspace_entered", { entry: "canonical" });
+        }
+      } catch {
+        // Storage can be unavailable. Page tracking remains fail-open.
+      }
+    }
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!pathname) return;
+    if (pathname === "/login") {
+      const reason = loginFailureReason(searchParams?.get("error"));
+      if (reason && readAndClearLoginAttempt()) {
+        capture("login_result", { outcome: "failure", reason });
+      }
+      return;
+    }
+    if (readAndClearLoginAttempt()) capture("login_result", { outcome: "success" });
   }, [pathname, searchParams]);
 
   return null;
@@ -74,13 +109,19 @@ function ReplayPathGate() {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (!pathname) return;
-    const excluded = isReplayExcludedPath(pathname);
-    void import("posthog-js").then(({ default: posthog }) => {
-      if (!posthog.__loaded) return;
-      if (excluded) posthog.stopSessionRecording();
-      else posthog.startSessionRecording();
+    const config = getAnalyticsConfig();
+    if (!shouldRunReplayPathGate(config, pathname) || !config || !pathname) return;
+
+    let cancelled = false;
+
+    void loadPostHog(config).then((posthog) => {
+      if (cancelled || !posthog) return;
+      applyReplayPathPolicy(posthog, config, pathname);
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, [pathname]);
 
   return null;

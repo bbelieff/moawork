@@ -19,18 +19,24 @@ export {
 export {
   ALLOWED_EVENTS,
   CUSTOM_EVENTS,
+  LOGIN_ATTEMPT_MARKER,
   SDK_EVENTS,
+  analyticsRouteTemplate,
   isAllowedEvent,
+  loginFailureReason,
   type AnalyticsEventPayloads,
+  type AnalyticsRouteTemplate,
   type CustomEventName,
   type EventPropertyValue,
+  type LoginFailureReason,
+  type WorkspaceEntryState,
 } from "./events";
 
 export { track, useTrack, type TrackFn } from "./useTrack";
 
 export { getAnalyticsConfig, isAnalyticsEnabled, readAnalyticsEnv } from "./env";
 
-export { assetsHostFor, posthogRewrites, type Rewrite } from "./rewrites";
+export { POSTHOG_US_ASSETS_HOST, posthogRewrites, type Rewrite } from "./rewrites";
 
 export {
   REDACTED,

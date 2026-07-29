@@ -8,10 +8,9 @@
 
 import { resolveAnalyticsConfig, type AnalyticsConfig } from "./config";
 
-export function readAnalyticsEnv(): { key?: string; host?: string } {
+export function readAnalyticsEnv(): { key?: string } {
   return {
     key: process.env.NEXT_PUBLIC_POSTHOG_KEY,
-    host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
   };
 }
 
