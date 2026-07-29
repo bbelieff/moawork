@@ -1,11 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "_comment": [
-    "Vercel Root Directory = app 이므로 이 파일은 저장소 루트가 아니라 app/ 에 둔다.",
-    "cron schedule 은 UTC 다. '0 19 * * *' = KST 04:00 (전날 UTC 19:00).",
-    "야간 배치는 '완료된 하루'(KST 어제)를 집계하므로 자정 이후에 돈다.",
-    "엔드포인트는 CRON_SECRET 을 요구한다 — Vercel 이 Authorization: Bearer 로 보낸다."
-  ],
   "crons": [
     {
       "path": "/api/cron/platform-metrics",
