@@ -66,11 +66,12 @@ describe("WorkspaceEntry B-3 state contract", () => {
     expect(html).toContain("대기 요청 요약");
     expect(html).toContain("회사 합류 요청");
     expect(html).toContain("취소하거나 다시 입력하기");
+    expect(html).toContain('aria-label="현재 질문 요약"');
     expect(html).toContain('href="/workspaces"');
-    expect(html).toContain("현재 요청 취소 후 새 회사 시작");
+    expect(html).not.toContain("현재 요청 취소 후 새 회사 시작");
     expect(html).toContain('action="/auth/signout"');
     expect(html).toContain("로그아웃");
-    expect((html.match(/<button/g) ?? [])).toHaveLength(3);
+    expect((html.match(/<button/g) ?? [])).toHaveLength(2);
     expect(html).not.toContain("취소하고 다시 입력할게요");
     expect(html).not.toContain("7일 이내");
     expect(html).not.toContain("자동 만료");
