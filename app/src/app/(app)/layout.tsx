@@ -5,6 +5,7 @@ import { Logo } from "@/components/brand/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { SidebarNav } from "@/components/shell/SidebarNav";
 import { AccountMenu } from "@/components/account/AccountMenu";
+import { AnalyticsIdentity } from "@/components/analytics/AnalyticsIdentity";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
 import { buildAccountViewModel } from "@/lib/account/presentation";
 import { loadWorkspaceRoutingSnapshot } from "@/lib/auth/workspace-entry-server";
@@ -77,6 +78,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-full flex-1 flex-col md:flex-row">
+      {/* 분석 필수 속성(org_id·role·plan_tier·app_version) 등록 + 내부 UUID 식별.
+          DOM 을 그리지 않는다. 이메일·이름은 넘기지 않는다(PII 하드 금지). */}
+      <AnalyticsIdentity
+        userId={ctx.user.id}
+        orgId={ctx.org.id}
+        role={ctx.role}
+        planTier={ctx.org.plan_tier}
+      />
       {/* ── 사이드바 ── */}
       <aside
         className="relative flex h-auto w-full flex-none flex-col border-b px-3 py-3 md:sticky md:top-0 md:h-screen md:w-[232px] md:overflow-y-auto md:border-b-0 md:border-r md:py-[18px]"

@@ -4,6 +4,89 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [END · C5-갭] 2026-07-29 — T01 · PostHog 배정본 대비 갭 보정 완료
+
+브랜치 `feat/t01-c5-gap`, **최종 base `origin/main@afeba90`**(리베이스 후). **check 게이트 초록**(app 832 pass / 5 skip · worker 14 pass).
+
+> **리베이스 경위(중요)**: 최초 작업 base 는 `e1a3a05` 였으나 그 사이 main 이 8커밋 진행되며
+> analytics 가 대폭 개편됐다(Wave B — `autocapture:false` · 경로 템플릿화 `analyticsRouteTemplate` ·
+> `uiHost` 를 env 로 못 바꾸게 US 강제 · capture pending 큐 · 이벤트 4종 **실배선**).
+> PR 이 충돌 상태가 되어 리베이스했고, 그 과정에서 **이벤트 처리 방침을 교체 → 병합으로 바꿨다**:
+> main 의 4종(`login_result` 등)은 로그인·워크스페이스 4개 컴포넌트에서 **실제 호출 중**이라
+> 이름을 바꾸면 그 화면들이 깨진다. 그래서 `WAVE_B_EVENTS`(4) + `ASSIGNED_EVENTS`(10) = **14종**으로 합쳤다.
+> main 의 개선분(전면 마스킹·US 강제·pending 큐 등)은 그대로 살렸다.
+
+### 보정한 갭 4건
+
+| # | 갭 | 조치 |
+| --- | --- | --- |
+| 1 | 이벤트가 배정 목록과 불일치(규약 미준수) | 배정 확정 **10종**(`영역.대상.행동`)을 `ASSIGNED_EVENTS` 로 **추가**(기존 배선 4종은 `WAVE_B_EVENTS` 로 보존). 규약을 정규식 테스트로 강제 |
+| 2 | 필수 속성 `plan_tier`·`app_version` **grep 0건** | `AnalyticsIdentity` 가 세션에서 4종을 super property 로 등록 + `useTrack` 이 `app_version` 을 매 이벤트에 주입 |
+| 3 | 금액·고객정보 화면이 녹화 제외에 없음 | `/policyfund`(실행액·수수료 31컬럼) · `/contract` · `/newcust`(고객사명·연락처) 추가 |
+| 4 | 프록시 경로 `/ingest` = PostHog 공식 예시명 | `/mw-sig`(제품 고유어)로 교체. 상수·rewrites·proxy matcher **3지점 동기화를 테스트로 고정** |
+
+### 산출물
+
+- **신규**: `components/analytics/AnalyticsIdentity.tsx`(필수속성 등록·UUID 식별, DOM 0) ·
+  `lib/analytics/version.ts`(빌드 버전, 40자 SHA→7자리) ·
+  `lib/analytics/proxy-path.test.ts`(경로 동기화·게이트 실제 동작·US 리전 고정) ·
+  `lib/analytics/required-props.test.ts`(필수 4종·샘플링 규칙).
+- **수정**: `events.ts`(10종 + `RequiredEventProperties` + `sampleDecision`/`passesSampling` 비용가드) ·
+  `config.ts`(경로 상수·제외경로) · `client.ts`(`registerAnalyticsContext`) · `useTrack.ts`(app_version·샘플링) ·
+  `proxy.ts`(matcher 경로값) · `(app)/layout.tsx`(Identity 마운트 1곳) · `.env.example`(`NEXT_PUBLIC_APP_VERSION` 형태) ·
+  기존 테스트 4종 신규 규약 반영.
+- **유지(재작업 없음)**: `scrub.ts` 본체 · Wave B 개선분(전면 마스킹 · US 강제 · pending 큐 · 경로 템플릿) — 손대지 않았다.
+- **정책 분기 기록**: main 의 Wave B 페이로드 규칙은 record id 도 금지한다. 배정 지시는 "내부 UUID 허용" 이라
+  둘이 어긋난다. 해소: Wave B 4종에는 **기존의 더 엄격한 규칙(id 전면 금지)을 그대로 유지**하고,
+  배정 10종에만 "*_id 는 허용하되 **UUID 형태여야 함**" 규칙을 적용했다(테스트로 분리 고정).
+  금액 필드는 양쪽 모두 금지 — 배정 이벤트 전수에 대해 별도 테스트로 확인한다.
+
+### 수용기준 대조
+
+| 기준 | 상태 | 근거 |
+| --- | --- | --- |
+| 프록시 경유 수집 | **코드 충족 · 브라우저 미검증** | `api_host=/mw-sig`, rewrites→`us.i.posthog.com`, matcher 제외. 네트워크 탭 확인은 키 주입 후 필요 |
+| PII 전송 0 | **자동 테스트로 고정** | scrub 테스트 + 이벤트 페이로드 PII 키 검사 + 필수속성 비-PII 검사 |
+| 리플레이 입력값 미노출 | **충족** | `maskAllInputs:true` + `mask_all_text` + `maskTextSelector:"*"` + `maskTextFn` 2차 스크러빙 |
+| 회계/홈택스 녹화 제외 | **충족(범위 확대)** | 기존 4경로 + 금액·고객정보 3경로 추가, 테스트로 고정 |
+| 키 레포 미존재 | **충족** | `phc_` 실값 grep 0건. `.env.example` 에 형태만 |
+
+### 남은 것(코드 밖 — 운영)
+
+1. **Vercel/PostHog 환경변수 주입** — `NEXT_PUBLIC_POSTHOG_KEY`(필수) · `NEXT_PUBLIC_APP_VERSION=$VERCEL_GIT_COMMIT_SHA`(권장).
+   키가 없으면 SDK 자체를 로드하지 않아 **분석이 완전히 꺼진 상태**로 배포된다(fail-closed).
+2. **PostHog 대시보드 — 리플레이 보존기간 30일 설정**. 코드로 지정할 수 없는 프로젝트 설정이다.
+3. **프록시 경로 변경 여파** — 이전 `/ingest` 로 나가던 배포본이 있다면 교체 시점에 잠깐 유실될 수 있다(키 미주입 상태면 무해).
+4. **계측 배선** — 커스텀 이벤트 실제 호출부는 여전히 **0개**. 화면에 `track()` 을 심는 일은 각 도메인 트랙 레인이라
+   T01 은 훅·타입·게이트만 제공했다. `useTrack()` 은 이벤트명·페이로드가 타입으로 고정돼 있어 바로 쓸 수 있다.
+5. **data-pii 속성** — 머지본 정책이 `maskTextSelector:"*"`(전체 텍스트 마스킹)이라 속성 부착 없이도 텍스트는 가려진다.
+   `[data-pii]` 는 `blockSelector` 로 남아 있어(요소 자체 제외) 필요한 곳에 붙이면 더 강하게 막힌다.
+
+## [START · C5-갭] 2026-07-29 — T01 · PostHog 배정본 대비 갭 보정
+
+- **착수 전 실측 결과 — C5 는 이미 구현·머지되어 있다**: `origin/main@e1a3a05` = PR #27
+  `feat(C5): PostHog — SDK·/ingest 프록시·PII 스크러핑·리플레이 전면 마스킹` (머지 2026-07-29 06:55).
+  `app/src/lib/analytics/**` 15파일 + `components/analytics/PostHogProvider.tsx` 존재.
+  → **중복 구현하지 않는다.** 배정 지시서와 머지본을 대조해 **갭만 보정**하는 것으로 전환한다.
+- **머지본에서 이미 충족된 것(재작업 없음)**: 리버스 프록시 경유 전송 · fail-closed 키 형태검증 ·
+  `maskAllInputs:true` + `mask_all_text` + `maskTextSelector:"*"`(전면 마스킹) · `maskTextFn` 2차 스크러빙 ·
+  값/키/URL 3중 PII 스크러빙(이메일·전화·주민·사업자·카드·IP·JWT) · `respect_dnt` · 키 레포 미존재(phc_ grep 0건).
+- **확정된 갭 4건(실측 근거)**:
+  1. **이벤트 화이트리스트 불일치** — 배정 10종(`영역.대상.행동`)이 아니라 `deal_created`/`deal_moved`/
+     `meeting_logged` 3종. `auth.login.succeeded`·`settle.settlement.saved` 등 **8종 부재**, 네이밍 규약 미준수.
+  2. **필수 속성 2종 부재** — `plan_tier`·`app_version` 이 analytics 전체에서 **grep 0건**
+     (`org_id`·`role` 은 identify 에만 존재, 이벤트 속성으로는 미주입).
+  3. **금액 화면 녹화 제외 누락** — 제외 목록에 `/policyfund` 없음. 해당 보드는 실행액·수수료가
+     상시 렌더된다(T09 산출물). `/contract`·`/newcust`(고객사명·연락처)도 미포함.
+  4. **프록시 경로가 표준 예시명** — `/ingest` 는 PostHog 공식 문서가 쓰는 대표 경로라
+     차단 목록 등재 위험이 있다. 배정 지시 "뻔한 이름 금지" 와 상충.
+- **만지는 파일**: `app/src/lib/analytics/{events,config,client}.ts` + 각 테스트 ·
+  `app/src/proxy.ts`(matcher 경로값만) · `app/next.config.ts`/`analytics/rewrites.ts`(프록시 경로 상수 반영) ·
+  `app/.env.example` · `docs/worklog.md`.
+- **안 만지는 것**: `scrub.ts` 본체(견고 — 유지) · `worker/**` · `supabase/**`(마이그레이션 0건) ·
+  타 트랙 업무로직 · `lib/types/**`·`lib/repo/index.ts`(계약 = 단일소유) · 리전(US 고정).
+- **계측 배선 경계**: 커스텀 이벤트의 실제 호출부는 현재 **0개**(테스트에서만 호출). 화면 컴포넌트에
+  `track()` 을 심는 일은 각 도메인 트랙 레인이므로 T01 은 **훅·타입·게이트만 제공**하고 배선은 하지 않는다.
 ## 2026-07-23 — T02 · [END] 딜 상세 + 고객사 목록 (배정 잔여분) · PR #48 리베이스
 
 - **PR #48 리베이스**: main 이 크게 전진(PostHog·MWC R1 등)해 `origin/main` 위로 리베이스.

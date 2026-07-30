@@ -16,8 +16,14 @@ import { scrubEvent, scrubText, type ScrubbableEvent } from "./scrub";
  * 리버스 프록시 경로. **상수다**(환경변수로 바꾸지 않는다).
  * next.config 의 rewrites 와 proxy.ts 의 공개 경로 목록이 같은 값을 봐야 하므로
  * 런타임 설정으로 열어두면 어긋날 수 있다. 바꾸려면 이 상수 하나만 고친다.
+ *
+ * ⚠ 이름을 고를 때: 프록시를 두는 목적 자체가 광고 차단기·기업 방화벽을 피하는 것이다.
+ *   `/analytics` `/tracking` `/telemetry` `/posthog` 처럼 용도가 드러나는 이름은 차단 목록에
+ *   패턴으로 올라가 있어 프록시를 둔 의미가 사라진다. `/ingest` 도 PostHog 공식 문서가
+ *   예시로 쓰는 대표 경로라 같은 이유로 피한다(배정 지시: 뻔한 이름 금지).
+ *   `/mw-sig` = MoaWork signal — 제품 고유어라 일반 필터 패턴에 걸리지 않는다.
  */
-export const ANALYTICS_PROXY_PATH = "/ingest";
+export const ANALYTICS_PROXY_PATH = "/mw-sig";
 
 /** Wave B 고정 PostHog US 리전. 환경변수로 덮어쓸 수 없다. */
 export const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
@@ -88,6 +94,10 @@ export const REPLAY_EXCLUDED_PATH_PREFIXES: readonly string[] = [
   "/settings/account", // 내 정보 본체 — 세션 목록·개인정보 설정
   "/hometax", // 홈택스(전자세금계산서) — T08 도입 시 자동 적용
   "/settlements", // 정산 금액 — 화면 신설 시 자동 적용
+  // ── 아래는 실측으로 추가(2026-07-29). 화면이 **이미 존재**하고 금액·고객정보가 상시 렌더된다.
+  "/policyfund", // 정책자금 보드 — 실행액·수수료·계약금 31컬럼(T09 산출물)
+  "/contract", // 계약 — 계약 내용·금액
+  "/newcust", // 신규고객 — 고객사명·대표자명·연락처
 ];
 
 /** 이 경로에서는 세션 리플레이를 시작하지 않는다. */

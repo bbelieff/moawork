@@ -119,15 +119,16 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // 정적 자산·이미지·파비콘, 그리고 분석 프록시(/ingest/*)는 제외하고 모든 경로에서 실행한다.
+  // 정적 자산·이미지·파비콘, 그리고 분석 프록시(/mw-sig/*)는 제외하고 모든 경로에서 실행한다.
   //
-  // /ingest 를 빼는 이유 두 가지:
+  // /mw-sig 를 빼는 이유 두 가지:
   //   1) 로그인 화면에서도 이벤트가 나가야 한다. 인증 게이트에 걸리면 미인증 구간이 통째로 빈다.
   //   2) 수집 요청마다 supabase.auth.getUser() 왕복이 붙으면 비콘 비용이 인증 비용이 된다.
   // 값은 `lib/analytics/config.ts` 의 ANALYTICS_PROXY_PATH 와 같아야 한다.
-  // (Next 는 matcher 를 정적으로 읽으므로 상수를 끼워 넣을 수 없어 문자열로 둔다.)
+  // (Next 는 matcher 를 정적으로 읽으므로 상수를 끼워 넣을 수 없어 문자열로 둔다.
+  //  둘이 어긋나면 proxy.test.ts 가 빨간불로 잡는다.)
   matcher: [
-    // `ingest(?:/|$)` — 경계를 붙여 /ingestion 같은 앞으로의 경로가 게이트에서 새지 않게 한다.
-    "/((?!_next/static|_next/image|favicon.ico|ingest(?:/|$)|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    // `mw-sig(?:/|$)` — 경계를 붙여 /mw-signal 같은 앞으로의 경로가 게이트에서 새지 않게 한다.
+    "/((?!_next/static|_next/image|favicon.ico|mw-sig(?:/|$)|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
