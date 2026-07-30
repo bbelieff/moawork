@@ -260,15 +260,22 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
         </> : null}
 
         {view === "pending" ? <>
-          <div className={styles.bubble}><strong>요청은 도착했어요.</strong><small>{pendingSummary?.expiryLabel ? `${pendingSummary.expiryLabel}로 서버에서 확인됐어요. 만료 뒤에는 회사 정보 없이 다시 요청할 수 있어요.` : "아직 멤버십이 아니며 회사 내부는 볼 수 없어요. 만료 기한은 서버에서 확인된 경우에만 표시해요."}</small></div>
-          {pendingSummary ? <dl className={styles.pendingSummary} aria-label="대기 요청 요약"><div><dt>요청</dt><dd>{pendingSummary.kindLabel}</dd></div><div><dt>상태</dt><dd>검토 중</dd></div>{pendingSummary.expiryLabel ? <div><dt>만료</dt><dd>{pendingSummary.expiryLabel}</dd></div> : null}</dl> : null}
-          <div className={styles.answerPreview}><span>현재 상태</span><strong>검토 중 · 회사 접근 0곳</strong></div>
-          <div className={styles.quick}><button type="button" onClick={() => setView("pending-manage")}>취소하거나 다시 입력하기</button></div>
-          <div className={styles.pendingExits} aria-label="다른 안전한 이동">
-            <Link href="/workspaces">다른 회사 보기</Link>
-            <button type="button" disabled={busy} onClick={() => void cancelRequest("create")}>현재 요청 취소 후 새 회사 시작</button>
-            <form action="/auth/signout" method="post"><button type="submit">로그아웃</button></form>
-          </div>
+          <section className={styles.pendingState} aria-label="대기 요청 상태">
+            <div className={styles.bubble}><strong>요청은 도착했어요.</strong><small>{pendingSummary?.expiryLabel ? `${pendingSummary.expiryLabel}로 서버에서 확인됐어요. 만료 뒤에는 회사 정보 없이 다시 요청할 수 있어요.` : "아직 멤버십이 아니며 회사 내부는 볼 수 없어요. 만료 기한은 서버에서 확인된 경우에만 표시해요."}</small></div>
+            <div className={styles.pendingMeta}>
+              {pendingSummary ? <dl className={styles.pendingSummary} aria-label="대기 요청 요약"><div><dt>요청</dt><dd>{pendingSummary.kindLabel}</dd></div><div><dt>상태</dt><dd>검토 중</dd></div>{pendingSummary.expiryLabel ? <div><dt>만료</dt><dd>{pendingSummary.expiryLabel}</dd></div> : null}</dl> : null}
+              <div className={styles.answerPreview}><span>현재 상태</span><strong>검토 중 · 회사 접근 0곳</strong></div>
+            </div>
+          </section>
+          <div className={styles.pendingDivider} aria-hidden="true" />
+          <section className={styles.pendingActions} aria-label="대기 요청 행동">
+            <div className={styles.quick}><button type="button" onClick={() => setView("pending-manage")}>취소하거나 다시 입력하기</button></div>
+            <div className={styles.pendingExits} aria-label="다른 안전한 이동">
+              <Link href="/workspaces">다른 회사 보기</Link>
+              <button type="button" disabled={busy} onClick={() => void cancelRequest("create")}>현재 요청 취소 후 새 회사 시작</button>
+              <form action="/auth/signout" method="post"><button type="submit">로그아웃</button></form>
+            </div>
+          </section>
         </> : null}
 
         {view === "pending-manage" ? <>
