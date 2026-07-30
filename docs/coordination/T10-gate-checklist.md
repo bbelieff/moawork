@@ -503,6 +503,74 @@ PolicyfundBoard.tsx  ("use client")
 
 ---
 
+## 13. PR #57·#49 머지 · #48 반려 · DI-A6 판정 (main `db545e0`, 2026-07-30 · T10)
+
+### ✅ PR #57 (T03 R1 진입 UX) — 머지 (main `31dd84e`)
+T03 주장 **전부 사실 확인**: 006 `is_platform_admin()` 이 `role='admin'` 을 요구하는데
+005 는 belie 를 `role='owner'` 로 넣어 **실제 관리자가 false** 로 판정된다.
+
+**수용기준 7항목**
+| # | 기준 | 판정 |
+|---|---|---|
+| 5 | 승격 단방향 | ✅ 확증 — `if (!isPlatformAdmin && actorEmail)` 진입, `=true` 만. true 를 뒤집는 경로 없음 |
+| 6 | 017 없이 폴백 생존 | ✅ 확증 — `app_admin_role` 에 `revoke`/`grant` **0건** → 기본 `PUBLIC EXECUTE` 유지 → 호출 가능 |
+| 7 | 014 와 동일 패턴 | ✅ 확증 — `014:56` 이 `app_admin_role(auth.jwt()->>'email') is not null` 사용 |
+| 1~4 | 로그인·탈출구·역할·사이드바 | ⚠️ **코드상 성립, 런타임 미검증** — belie 계정 필요(자격증명 입력은 T10 이 하지 않는다) |
+
+**리베이스 정합 수정 1건**: main `366cf7b`(compact pending screen)이 "현재 요청 취소 후 새 회사 시작"
+버튼을 제거했는데 PR #57 테스트가 그 문구를 기대해 실패했다. **기능 회귀 아님** — 수용기준 2의
+탈출구(`⚙ 플랫폼 관리로 가기`)는 리베이스본에 그대로 있다. **핵심 보안 단언 2건**
+(`not.toContain('href="/platform"')`·`not.toContain("플랫폼 관리로 가기")`)은 손대지 않고
+부수 회귀확인 1줄만 갱신했다. UI 재설계 의도는 T03 소관이므로 사후 확인 요망.
+
+**발견(차단 아님)**: `app_admin_role(p_email text)` 이 `PUBLIC EXECUTE` 라 **누구나 임의 이메일로
+관리자 여부를 확인**할 수 있다. 005 주석의 "이메일 목록 노출 방지" 의도와 어긋난다(005 부터의 기존 상태, 014 도 사용).
+**단, 이 권한이 곧 폴백 동작 근거다** → 조이는 순서: ① 017 적용 → ② 폴백 코드 제거 → ③ 권한 조이기.
+순서를 바꾸면 폴백이 먼저 죽어 관리자가 다시 갇힌다.
+
+### ✅ PR #49 (T09 정산 화면 + G8) — 머지 (main `db545e0`)
+마이그레이션 0 · 계약파일 0 · 삭제 0(+812). worklog 단독 충돌 자동해소(1231 = main 1182 + 블록 49).
+리베이스본 check=0 build=0 **899 테스트**. 머지 후 main 동일.
+
+### ❌ PR #48 (T02 CRM 실DB 연결) — **반려**
+| # | 위반 | 근거 |
+|---|---|---|
+| 1 | **기존 마이그레이션 수정** | `006`(+8/-8)·`009`(+4/-4) 직접 편집. CLAUDE.md "새 파일 추가만, 기존 파일 수정 금지" 위반 |
+| 2 | **014 번호 충돌** | `014_reserve_crm_route_slugs.sql` 추가 — main 에 이미 `014_platform_metrics_daily.sql` 존재 |
+
+**①은 규칙 위반인 동시에 기능적으로 무효다.** 이미 적용된 DB 에서 006 은 재실행되지 않으므로
+예약 슬러그(`companies`·`deals`) 추가가 **프로덕션에 반영되지 않는다**. 신규 환경과 기존 환경의 스키마가 갈린다.
+→ **해소**: 슬러그 추가를 **새 마이그레이션(019+)** 으로 옮기고, 006·009 는 원상복구.
+
+### ★ DI-A6 판정 — `platform_metrics_daily` 이중 정의
+
+**정본 = main `014_platform_metrics_daily.sql` (T04). B안 채택.**
+
+| 근거 | 내용 |
+|---|---|
+| 1 | main 에 **이미 머지**돼 배포 경로에 있다(적용됐을 수 있음) |
+| 2 | `016_platform_console_metrics_alignment.sql` 이 이 테이블을 **5회 참조**해 정책·RPC 를 이미 정렬했다. 재정의하면 그것들이 어긋난다 |
+| 3 | **★결정적**: 양쪽 모두 `create table **if not exists**` 다 |
+
+**3번이 왜 결정적인가** — 정렬상 `014_platform_console.sql` < `014_platform_metrics_daily.sql`(c<m)이라
+T07 것이 **먼저** 실행되고, 그러면 main 014 가 `if not exists` 로 **조용히 건너뛴다**.
+에러도 경고도 없이 **스키마가 T07 버전이 되고**, 016 이 기대한 컬럼과 어긋난 채 동작한다.
+실패하면 차라리 드러나는데 이 경우는 **무증상**이다. BUG-0002·BUG-0004 와 같은 계열의 사각지대다.
+
+**패배 쪽(T07 PR #56) 수정 지시**
+1. `014_platform_console.sql` 에서 `create table ... platform_metrics_daily` **블록 제거**.
+2. 추가로 필요한 컬럼이 있으면 **새 번호(019+)** 파일에 `alter table public.platform_metrics_daily add column if not exists …` 로 **additive** 하게만 넣는다.
+3. 파일 번호를 **014 → 019+ 로 재배정**(main 에 이미 `014_platform_metrics_daily` 가 있다).
+4. 컬럼 기대가 main 정의(`day·org_id·dau·mau·stickiness·active_users·dormant_users·new_deals·computed_at`)와
+   다르면 코드를 정본에 맞추거나 ②의 additive 추가로 해소한다. **테이블 재정의는 금지.**
+
+### ⚠️ 번호 충돌 현황 — 규칙 8 재점검 필요
+main 에 **`016` 이 두 개** 존재한다: `016_entry_request_dedup`(#57) · `016_platform_console_metrics_alignment`.
+서로 다른 대상이라 실행은 되지만 번호 중복은 규칙 위반이고, 위 DI-A6 같은 사고의 온상이다.
+**권고**: 신규 마이그레이션은 **PR 생성 직전 `ls supabase/migrations | sort` 로 최신 main 기준 재확인** 후 번호 확정.
+
+---
+
 ## 12. ✅ BUG-0004 해소 + 배포 검증 (main `dc0bdc5`, 2026-07-29 · T10)
 
 **PR #59 머지 완료 — 배포 차단 해제.**
