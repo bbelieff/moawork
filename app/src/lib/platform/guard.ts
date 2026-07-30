@@ -1,35 +1,27 @@
 import { redirect } from "next/navigation";
-import { loadWorkspaceRoutingSnapshot, type WorkspaceRoutingSnapshot } from "@/lib/auth/workspace-entry-server";
-import { loadWorkspaceEntryContext, type WorkspaceEntryContext } from "@/lib/workspace-entry/server";
+import { loadPlatformActor, type PlatformActor } from "./actor";
 
-export type PlatformAccess = { kind: "allowed" } | { kind: "denied"; reason: "routing" | "permission" };
+export type PlatformAccess = { kind: "allowed" } | { kind: "denied"; reason: "unauthenticated" | "permission" | "unavailable" };
 
 /** Pure boundary used by focused tests and the server guard below. */
-export function resolvePlatformAccess(
-  routing: WorkspaceRoutingSnapshot,
-  context: WorkspaceEntryContext,
-): PlatformAccess {
-  if (routing.kind !== "ready") return { kind: "denied", reason: "routing" };
-  if (context.kind !== "ready" || !context.isPlatformAdmin) {
-    return { kind: "denied", reason: "permission" };
+export function resolvePlatformAccess(actor: PlatformActor): PlatformAccess {
+  if (actor.kind === "granted") return { kind: "allowed" };
+  if (actor.kind === "denied" && actor.reason === "unauthenticated") {
+    return { kind: "denied", reason: "unauthenticated" };
   }
-  return { kind: "allowed" };
+  return { kind: "denied", reason: actor.kind === "unavailable" ? "unavailable" : "permission" };
 }
 
 /**
- * Platform is server-gated via the existing authenticated routing loader and
- * its platform-admin RPC. A failed check fails closed; pages never infer a
- * platform role from client state.
+ * A failed platform-plane actor check fails closed. This boundary deliberately
+ * does not depend on workspace-entry routing or selected workspace context.
  */
 export async function requirePlatformAccess(nextPath: string): Promise<void> {
-  const routing = await loadWorkspaceRoutingSnapshot();
-  if (routing.kind === "unauthenticated") {
+  const access = resolvePlatformAccess(await loadPlatformActor());
+  if (access.kind === "denied" && access.reason === "unauthenticated") {
     redirect(`/login?next=${encodeURIComponent(nextPath)}`);
   }
-
-  const context = await loadWorkspaceEntryContext();
-  const access = resolvePlatformAccess(routing, context);
   if (access.kind !== "allowed") {
-    redirect("/workspace-entry?error=permission");
+    redirect("/?error=platform");
   }
 }
