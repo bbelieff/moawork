@@ -62,7 +62,7 @@
 .guideHead small { margin-top: 2px; color: var(--entry-muted); font-size: 12px; }
 .guideAvatar { display: grid; width: 44px; height: 44px; flex: none; place-items: center; border-radius: 15px; color: var(--entry-on-accent); background: var(--entry-violet); font-weight: 900; }
 .eyebrow { margin: 0 0 10px; color: var(--entry-violet); font-size: 13px; font-weight: 900; letter-spacing: .07em; }
-.chat h1, .compactHub h1 { margin: 0; font-size: clamp(28px, 4vw, 44px); line-height: 1.1; letter-spacing: -.045em; }
+.chat h1, .compactHub h1 { margin: 0; font-size: clamp(28px, 3.2vw, 38px); line-height: 1.16; letter-spacing: -.04em; }
 .lead { max-width: 680px; margin: 12px 0 25px; color: var(--entry-muted); }
 .messages { display: grid; gap: 13px; }
 
@@ -136,6 +136,8 @@ button:disabled { opacity: .58; cursor: wait; transform: none; }
 .actions .quietButton, .inlineActions .quietButton { color: var(--entry-ink); border-color: var(--entry-line); background: var(--entry-surface); }
 .actions .dangerButton { background: var(--entry-danger); }
 .pendingState { display: grid; width: min(100%, 680px); gap: 14px; }
+.pendingProgress { display: flex; width: min(100%, 680px); align-items: baseline; justify-content: space-between; gap: 12px; margin: -8px 0 2px; color: var(--entry-muted); font-size: 13px; }
+.pendingProgress span { font-weight: 750; }.pendingProgress strong { color: var(--entry-violet); font-size: 13px; }
 .pendingState .bubble { width: 100%; box-sizing: border-box; }
 .pendingMeta { display: grid; gap: 10px; padding-left: 20px; }
 .pendingActions { display: grid; width: min(100%, 680px); gap: 12px; }
@@ -188,10 +190,15 @@ button:disabled { opacity: .58; cursor: wait; transform: none; }
 .workspaceMark { display: grid; width: 38px; height: 38px; flex: none; place-items: center; border-radius: 12px; color: var(--entry-on-accent); background: var(--entry-blue); font-weight: 900; }
 .chooserList b { color: var(--entry-violet); }
 
-.form input:focus-visible, .chat h1:focus-visible, button:focus-visible, a:focus-visible, summary:focus-visible {
+.form input:focus-visible, button:focus-visible, a:focus-visible, summary:focus-visible {
   outline: 3px solid var(--entry-violet);
   outline-offset: 3px;
 }
+.chat h1:focus { outline: none; }
+
+.page[data-entry-view="pending"] .shell { width: min(100%, 760px); min-height: 0; }
+.page[data-entry-view="pending"] .wrap { display: block; min-height: 0; background: linear-gradient(145deg, color-mix(in srgb, var(--entry-violet) 5%, transparent), transparent 48%); }
+.page[data-entry-view="pending"] .chat { width: min(100%, 680px); box-sizing: border-box; margin: 0 auto; padding: 32px 28px 36px; }
 
 @media (max-width: 980px) {
   .wrap { grid-template-columns: 1fr; }
@@ -211,6 +218,7 @@ button:disabled { opacity: .58; cursor: wait; transform: none; }
   .pendingExits { align-items: stretch; flex-direction: column; }
   .pendingExits a, .pendingExits button, .pendingExits form { width: 100%; }
   .pendingMeta { padding-left: 0; }
+  .page[data-entry-view="pending"] .chat { padding: 24px 16px 28px; }
   .summaryStep { align-items: flex-start; flex-wrap: wrap; }
   .summaryStep .inlineActions { width: 100%; }
 }
@@ -220,7 +228,8 @@ button:disabled { opacity: .58; cursor: wait; transform: none; }
   .shell { min-height: calc(100svh - 20px); border-radius: 24px; }
   .protoTop { min-height: 64px; padding: 10px 12px; }
   .protoTop > span:last-child { display: none; }
-  .chat h1, .compactHub h1 { font-size: 30px; }
+  .chat h1, .compactHub h1 { font-size: clamp(27px, 8vw, 32px); }
+  .pendingProgress { align-items: flex-start; flex-direction: column; gap: 2px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
