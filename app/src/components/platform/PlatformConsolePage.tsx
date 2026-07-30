@@ -1,6 +1,7 @@
 import { PlatformAggregatePanel, PlatformShell } from "./PlatformShell";
 import { requirePlatformAccess } from "@/lib/platform/guard";
-import { unavailablePlatformAggregate, type PlatformSectionKey } from "@/lib/platform/contracts";
+import { type PlatformSectionKey } from "@/lib/platform/contracts";
+import { loadPlatformAggregate } from "@/lib/platform/server";
 
 const COPY: Record<PlatformSectionKey, { title: string; description: string }> = {
   overview: { title: "운영 개요", description: "플랫폼 전체의 안전한 집계와 연결 상태를 확인해요." },
@@ -16,5 +17,6 @@ const COPY: Record<PlatformSectionKey, { title: string; description: string }> =
 export async function PlatformConsolePage({ section, pathname }: { section: PlatformSectionKey; pathname: string }) {
   await requirePlatformAccess(pathname);
   const copy = COPY[section];
-  return <PlatformShell pathname={pathname} title={copy.title} description={copy.description}><PlatformAggregatePanel section={section} state={unavailablePlatformAggregate()} /></PlatformShell>;
+  const aggregate = await loadPlatformAggregate(section);
+  return <PlatformShell pathname={pathname} title={copy.title} description={copy.description}><PlatformAggregatePanel section={section} state={aggregate} /></PlatformShell>;
 }

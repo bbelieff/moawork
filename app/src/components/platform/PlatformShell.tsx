@@ -51,5 +51,6 @@ export function PlatformAggregatePanel({ section, state }: { section: PlatformSe
   }
   return <section className={styles.grid} aria-label={`${label} 집계`}>
     {state.values.map((value) => <article className={styles.card} key={value.label}><p>{value.label}</p><strong>{value.value ?? "—"}</strong><small>{value.description}</small></article>)}
+    {state.updatedAt ? <p className={styles.freshness}>마지막 집계: {state.updatedAt}</p> : null}
   </section>;
 }
