@@ -1,7 +1,7 @@
 /**
  * 지원(1:1 문의) + 접근위임 도메인 타입 — T08.
  *
- * 저장 정본은 `supabase/migrations/008_support_access_delegation.sql`.
+ * 저장 정본은 `supabase/migrations/017_support_access_delegation.sql`.
  * 여기 상수·규칙은 그 마이그레이션과 **1:1로 대응**해야 한다(둘 중 하나만 바꾸지 말 것).
  */
 

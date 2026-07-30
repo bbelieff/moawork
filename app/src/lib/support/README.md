@@ -1,7 +1,7 @@
 # lib/support — 지원(1:1 문의) + 접근위임 (T08)
 
 레인: `components/support/**` · `access_grants` · 위임.
-저장 정본: `supabase/migrations/008_support_access_delegation.sql`.
+저장 정본: `supabase/migrations/017_support_access_delegation.sql`.
 
 ## 확정 사항 (belie)
 
@@ -41,9 +41,14 @@ RLS 정책은 OR 로 합성되므로 이 방식이 기존 조직 격리를 건�
 T06 PR #50 이 인앱 알림의 **정본 계약**을 가져온다. T08 은 그 전에 만들어져
 **임시 알림 테이블**(`support_notifications`)을 자체 보유한다. T06 머지 후 아래를 수행한다.
 
-### (1) 마이그레이션 번호 충돌
-`008_support_access_delegation.sql`(T08) 과 `008_notifications.sql`(T06) 이 **둘 다 008** 이다.
-둘 다 당시 최신 main(007) 기준으로 배정했다. **나중에 머지되는 쪽이 009 로 재번호**한다.
+### (1) 마이그레이션 번호 — 매 리베이스마다 재실측할 것
+
+**번호는 고정값이 아니다.** T08 은 최초 `008` 로 냈으나 그 사이 `008`~`016` 이 머지돼
+**`017`** 로 재배정했다. T06 도 `008 → 015` 로 옮겼는데 main 에 이미 `015`·`016` 이 있어
+**T06 역시 재배정이 필요**하다(#50 미머지 상태에서 확인).
+
+규칙: **머지 직전에 `git ls-tree origin/main -- supabase/migrations` 로 최신 번호를 실측하고
+그다음 번호를 쓴다.** 나중에 머지되는 쪽이 양보한다. 추측 금지.
 
 ### (2) 알림 테이블 통합 — `support_notifications` → `notifications`
 T06 의 핵심 계약은 **"봤다(`read_at`) ≠ 했다(`resolved_at`)"** 이다.
