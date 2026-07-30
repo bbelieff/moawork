@@ -25,6 +25,13 @@ type Props = {
    */
   notifyBadges?: Record<string, BadgeState>;
   workspaceSwitcher?: Omit<WorkspaceSwitcherProps, "onNavigate">;
+  /**
+   * 플랫폼 운영 링크. **서버가 플랫폼 관리자로 확인했을 때만** 값이 온다.
+   * 값이 없으면 렌더 자체를 하지 않는다(숨김이 아니라 부재 — 존재를 노출하지 않는다).
+   * 스위처 드롭다운 안에도 같은 링크가 있지만, 드롭다운이 열리지 않으면 도달 불가가 되므로
+   * 메뉴에 **항상 보이는** 진입점을 따로 둔다.
+   */
+  platformHref?: string;
 };
 
 export function SidebarNav({
@@ -32,6 +39,7 @@ export function SidebarNav({
   badges,
   notifyBadges,
   workspaceSwitcher,
+  platformHref,
 }: Props) {
   const pathname = usePathname();
   const router = useRouter();
@@ -47,7 +55,7 @@ export function SidebarNav({
           }}
         />
       ) : null}
-      <nav className="hidden flex-col gap-px md:flex" aria-label="주요 메뉴">
+      <nav className="hidden min-h-0 flex-1 flex-col gap-px overflow-y-auto md:flex" aria-label="주요 메뉴">
       {NAV_ITEMS.map((item) => {
         const isLocked = item.feature ? locked.has(item.feature) : false;
         // 실제 라우트가 있는 잠금 메뉴는 안내 화면에 도달할 수 있도록 링크를 유지한다.
@@ -152,6 +160,23 @@ export function SidebarNav({
           </Link>
         );
       })}
+      {platformHref ? (
+        <Link
+          href={platformHref}
+          aria-current={pathname.startsWith("/platform") ? "page" : undefined}
+          className={`mt-2 flex items-center gap-2.5 rounded-[10px] border px-3 py-[9px] text-[13.5px] ${
+            pathname.startsWith("/platform") ? "font-semibold" : "hover:bg-[var(--mw-bg)]"
+          }`}
+          style={
+            pathname.startsWith("/platform")
+              ? { background: "var(--mw-primary)", color: "var(--mw-on-accent)", borderColor: "transparent" }
+              : { color: "var(--mw-fg)", borderColor: "var(--mw-line)" }
+          }
+        >
+          <span className="w-[18px] text-center" aria-hidden="true">⚙</span>
+          <span>플랫폼 관리</span>
+        </Link>
+      ) : null}
       </nav>
     </>
   );

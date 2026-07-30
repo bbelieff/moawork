@@ -19,7 +19,7 @@ export default async function PlatformWorkspaceRequestsPage() {
     <main className={styles.page}>
       <section className={`${styles.shell} ${styles.compactShell}`}>
         <header className={styles.protoTop}>
-          <Logo height={28} />
+          <Logo height={28} href="/platform" />
           <span>플랫폼 운영 영역</span>
         </header>
 

@@ -153,3 +153,19 @@ describe("진입 화면 탈출구 — 플랫폼 관리자 전용", () => {
     expect(html).toContain("로그아웃");
   });
 });
+
+describe("로고·출구 (프로덕션 이슈 3)", () => {
+  // 로고가 <Link> 가 아니어서 클릭해도 아무 일이 없었다 → 이 화면에서 나갈 수단이 부족했다.
+  it("진입 화면 로고가 홈 링크다", () => {
+    const html = renderToStaticMarkup(<WorkspaceEntry />);
+    expect(html).toMatch(/<a[^>]*href="\/"[^>]*>[\s\S]*?MoaWork 로고/);
+  });
+
+  it("operator 화면에도 로고 링크와 로그아웃이 있다", () => {
+    // 관리자가 이 화면에 오면 나갈 길이 플랫폼 링크뿐이었다 — 로그아웃도 준다.
+    const html = renderToStaticMarkup(<WorkspaceEntry isPlatformAdmin />);
+    expect(html).toContain('href="/"');
+    expect(html).toContain('action="/auth/signout"');
+    expect(html).toContain("로그아웃");
+  });
+});

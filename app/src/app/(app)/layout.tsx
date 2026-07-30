@@ -88,7 +88,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       />
       {/* ── 사이드바 ── */}
       <aside
-        className="relative flex h-auto w-full flex-none flex-col border-b px-3 py-3 md:sticky md:top-0 md:h-screen md:w-[232px] md:overflow-y-auto md:border-b-0 md:border-r md:py-[18px]"
+        className="relative flex h-auto w-full flex-none flex-col border-b px-3 py-3 md:sticky md:top-0 md:h-screen md:w-[232px] md:overflow-visible md:border-b-0 md:border-r md:py-[18px]"
         style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}
       >
         <div className="px-2 pb-4 pt-1">
@@ -101,8 +101,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           </small>
         </div>
 
-        <div>
+        {/* ⚠ 이 래퍼에 overflow 를 주면 안 된다 — 회사 전환 스위처가 이 안에 있어서
+            드롭다운(320px)이 232px 사이드바 폭에 다시 잘린다.
+            스크롤은 SidebarNav 안의 <nav>(메뉴 목록)가 담당한다. */}
+        <div className="flex min-h-0 flex-1 flex-col">
           <SidebarNav
+            // 스위처 드롭다운에만 있던 플랫폼 진입점을 메뉴에도 항상 노출한다
+            // (드롭다운이 열리지 않으면 어드민 도달 불가가 되던 문제).
+            platformHref={canAccessPlatform ? "/platform" : undefined}
             lockedFeatures={lockedFeatures}
             badges={workspaceApprovals
               ? { workspaceApprovals: workspaceApprovals.pendingCount }
