@@ -1,4 +1,4 @@
--- 015_notifications.sql — mod.notify 인앱 알림(뱃지·소식창)
+-- 019_notifications.sql — mod.notify 인앱 알림(뱃지·소식창)
 --
 -- 설계 핵심: "봤다(read_at)" 와 "했다(resolved_at)" 를 **다른 컬럼**으로 분리한다.
 --   숫자 뱃지 = 내가 할 일 = is_action AND resolved_at IS NULL  → 화면에 들어가도 사라지지 않는다.
@@ -180,7 +180,7 @@ create trigger trg_resolve_join_request_notifications
 -- 5. 스키마 버전 메타
 -- =====================================================================
 insert into public.app_meta (key, value)
-values ('schema_version', '015')
+values ('schema_version', '019')
 on conflict (key) do update
   set value = excluded.value,
       updated_at = now();

@@ -421,6 +421,44 @@ C5 `lib/analytics/` 무결(내 변경 0).
 4. **공지 RLS 예외(DQ-0018)** — 기획 판정 대기.
 
 **END** — `check.sh` 초록 · `next build` 성공 · PR 준비 완료.
+## 2026-07-23 — [START · 머지 준비] T06 · PR #57 머지 대비 사전 정합
+
+- 지시: T03 PR #57(T10 승인, 머지 진행 중) + belie 의 DB 마이그레이션 직접 적용 예고 → PR #50 머지 최종 준비.
+- 신호를 기다리기 전에 **#57 내용 실측**으로 선행 정합 가능한 항목부터 처리했다.
+
+## 2026-07-23 — [END · 머지 준비] T06 · 015 → 019 리넘버링 · 충돌 1건 예고 · 자기정정 1건
+
+**1) ⚠ 자기정정 — "#57 이 BUG-0004 를 안 고친다"는 내 직전 판단은 틀렸다.**
+`gh pr view 57 --json files` 결과가 **잘려서** `015_fix_org_helper_session_deadlock.sql` 이 목록에 안 보였고,
+남은 016·017·018 헤더가 모두 "is_org_member() 무수정"이라 반대로 결론냈다.
+실제 파일을 열어 확인한 결과 **#57 의 015 가 BUG-0004 정면 수정**이다 —
+헬퍼 4종(`is_org_member`·`org_role`·`org_scope`·`is_protected_workspace_owner`)에서 세션 선행조건만 제거하고
+006 의 fail-closed 강화(`status='active'` 2종)는 유지한다. `member_account_session_valid()` 자체는 남겨
+member account 전용 RPC 에서 계속 쓴다(관심사 분리). → belie 판단이 맞았다.
+교훈: `--json files` 는 잘릴 수 있다. **파일 목록만 보고 PR 내용을 단정하지 말 것.**
+
+**2) 리넘버링 `015` → `019`.** #57 이 **015·016·017·018** 을 점유한다(`015_fix_org_helper_session_deadlock`
+·`016_entry_request_dedup`·`017_fix_is_platform_admin_role_axis`·`018_platform_admin_direct_create`).
+`feat/t01-c5-gap` 도 같은 015 파일을 들고 있다. 내 `015_notifications.sql` → **`019_notifications.sql`**,
+헤더 주석과 `app_meta.schema_version` 도 `'019'` 로 동기화.
+- 이번엔 선점이 아니라 **확정 정보 기반**이다(#57 은 T10 승인·머지 진행 중). 설령 #57 이 지연돼도 019 는 여전히 유효한 빈 번호라 손해가 없다.
+- 번호 이력: `008`(main 007 기준 배정) → `015`(008~014 머지 확인 후) → `019`(#57 의 015~018 확인 후). 매번 **실측 시점의 최신 main/확정 PR 기준**으로만 움직였다.
+
+**3) 적용 순서가 중요하다.** 내 019 의 `audit_select` 정책과 notifications RLS 는 전부 `is_org_member()`·`org_scope()` 위에 얹혀 있다.
+→ **#57 의 015 가 먼저 적용돼야 한다.** 그 전에 019 만 적용하면 헬퍼가 상시 false 라 알림이 전부 빈 값으로 보인다(코드 결함 아님).
+권장 적용 순서: `011 → 015(#57, BUG-0004 수정) → 016 → 017 → 018 → 019(알림)`.
+
+**4) 머지 충돌 1건 예고.** `git merge-tree` 실측 결과 `app/src/app/(app)/layout.tsx` 가 **changed in both**
+(#57 도 셸 레이아웃을 고친다). 나머지 파일은 겹치지 않는다.
+직전 라운드에 T03 `WorkspaceSwitcher` 로 같은 파일을 한 번 해소해 본 건이라, 신호 오면 즉시 재해소 가능하다.
+해소 원칙은 그대로: **#57 쪽 셸 구조를 살리고 내 `NotificationBell` 마운트만 얹는다**(🔔 자리 신설 금지).
+
+**5) 신호 수신 시 실행할 절차**(사전 확정):
+`fetch` → `rebase origin/main` → `layout.tsx` 재해소 → `check.sh` + `next build` → `force-push` → PR #50 `CLEAN` 확인.
+
+- 참고: `supabase/tests/*.pglite.test.mjs` 하네스가 있으나 **`check.sh` 게이트에 미포함**이고 `@electric-sql/pglite` 도 미설치다.
+  실DB 적용 전 019 를 드라이런하고 싶다면 이 하네스에 notifications 케이스를 붙이는 선택지가 있다(요청 시 작업).
+
 ## 2026-07-23 — [START · 재개] T06 · 재개 지시 대응 · 마이그레이션 번호 정합
 
 - 재개 배정(알림 뱃지+소식창+notifications+Realtime)은 **PR #50 에 이미 전량 구현**되어 있다. 재구현하지 않고 **머지 가능 상태 유지**를 목표로 잡았다.
