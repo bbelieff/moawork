@@ -146,9 +146,10 @@ describe("진입 화면 탈출구 — 플랫폼 관리자 전용", () => {
     // 존재를 노출하지 않는다 — 숨기는 게 아니라 마크업에 없어야 한다.
     expect(html).not.toContain('href="/platform"');
     expect(html).not.toContain("플랫폼 관리로 가기");
-    // 기존 출구·문구는 그대로(일반 사용자 흐름 불변).
+    // 기존 출구는 그대로(일반 사용자 흐름 불변).
+    // ※ "현재 요청 취소 후 새 회사 시작" 버튼은 main 366cf7b(compact pending screen)이
+    //    제거했다. 이 테스트의 검증 대상은 위의 플랫폼 링크 미노출이므로, 남은 출구로 확인한다.
     expect(html).toContain('href="/workspaces"');
-    expect(html).toContain("현재 요청 취소 후 새 회사 시작");
     expect(html).toContain("로그아웃");
   });
 });
