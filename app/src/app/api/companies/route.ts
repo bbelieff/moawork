@@ -7,7 +7,7 @@ import { getCrmService, requireCtx, parseCreateCompany, jsonOk, toErrorResponse,
 export async function GET(): Promise<Response> {
   try {
     const ctx = await requireCtx();
-    return jsonOk(getCrmService().listCompanies(ctx));
+    return jsonOk(await getCrmService().listCompanies(ctx));
   } catch (err) {
     return toErrorResponse(err);
   }
@@ -17,7 +17,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const ctx = await requireCtx();
     const input = parseCreateCompany(await readJson(req));
-    return jsonOk(getCrmService().createCompany(ctx, input), 201);
+    return jsonOk(await getCrmService().createCompany(ctx, input), 201);
   } catch (err) {
     return toErrorResponse(err);
   }

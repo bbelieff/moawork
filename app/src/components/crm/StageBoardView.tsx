@@ -62,23 +62,23 @@ export function StageBoardView({ data }: { data: StageBoardData }) {
                       ? companyById.get(deal.company_id)
                       : undefined;
                     return (
-                      // 드릴인(딜 상세 /deals/[id])은 후속 — 아직 라우트가 없어 링크를 걸지 않는다
-                      // (없는 경로로 보내 404 를 만들지 않기 위함).
-                      <li
-                        key={deal.id}
-                        className="rounded-md bg-white p-3 shadow-sm"
-                      >
-                        <p className="text-sm font-medium">{deal.title}</p>
-                        {company && (
-                          <p className="mt-0.5 text-xs text-neutral-500">
-                            {company.name}
-                          </p>
-                        )}
-                        {deal.amount !== null && (
-                          <p className="mt-1 text-xs tabular-nums text-neutral-600">
-                            {deal.amount.toLocaleString("ko-KR")}원
-                          </p>
-                        )}
+                      <li key={deal.id}>
+                        <Link
+                          href={`/deals/${deal.id}`}
+                          className="block rounded-md bg-white p-3 shadow-sm transition hover:shadow"
+                        >
+                          <p className="text-sm font-medium">{deal.title}</p>
+                          {company && (
+                            <p className="mt-0.5 text-xs text-neutral-500">
+                              {company.name}
+                            </p>
+                          )}
+                          {deal.amount !== null && (
+                            <p className="mt-1 text-xs tabular-nums text-neutral-600">
+                              {deal.amount.toLocaleString("ko-KR")}원
+                            </p>
+                          )}
+                        </Link>
                       </li>
                     );
                   })}
