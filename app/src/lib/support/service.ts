@@ -1,7 +1,7 @@
 /**
  * 지원(1:1 문의) + 접근위임 서비스 — T08.
  *
- * 여기 규칙은 `supabase/migrations/017_support_access_delegation.sql` 과 **쌍둥이**다.
+ * 여기 규칙은 `supabase/migrations/019_support_access_delegation.sql` 과 **쌍둥이**다.
  * DB 가 최종 방어선이고, 이 계층은 로컬 런타임과 API 응답 문구를 담당한다.
  * 둘 중 하나만 고치면 안 된다.
  *

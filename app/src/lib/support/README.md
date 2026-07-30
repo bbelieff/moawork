@@ -1,7 +1,7 @@
 # lib/support — 지원(1:1 문의) + 접근위임 (T08)
 
 레인: `components/support/**` · `access_grants` · 위임.
-저장 정본: `supabase/migrations/017_support_access_delegation.sql`.
+저장 정본: `supabase/migrations/019_support_access_delegation.sql`.
 
 ## 확정 사항 (belie)
 
@@ -50,7 +50,7 @@ T06 PR #50 이 인앱 알림의 **정본 계약**을 가져온다. T08 은 그 �
 2. `git ls-tree origin/main -- supabase/migrations` **실측** → 내 번호가 겹치면 재배정 (§1)
 3. §2 알림 통합 · §3 소식창 일원화를 **새 마이그레이션 1개 + 앱 변경**으로 적용
 4. `bash scripts/check.sh` → 위임 테스트 24/24 유지 확인
-5. 파킹 §1(`is_platform_admin` 판정) 해소 여부 재확인 — 미해소면 위임은 프로덕션에서 무동작
+5. 파킹 §1(`is_platform_admin` 판정)은 T03 017 로 **해소 완료** — 재확인만
 
 ### (1) 마이그레이션 번호 — 매 리베이스마다 재실측할 것
 
@@ -120,10 +120,11 @@ T08 의 `SupportService.postNotice()` 는 T04 보드 엔진의 공지보드에 �
 
 ## 파킹 (T08 소관 아님)
 
-1. `is_platform_admin()`(006)은 `app_admins.role='admin'` 을 요구하는데 005 시드의 belie 행은
-   `role='owner'` 다. → **프로덕션에서 운영자 판정이 false** 라 위임 수임이 실동작하지 않는다.
-   **T03/T07 소관**이라 건드리지 않았다.
-2. `Org` 타입(T03 소유)에 `slug` 가 없어 진단 컨텍스트 `org_slug` 에 `org.id` 를 넣는다.
+1. ~~`is_platform_admin()`(006)이 `app_admins.role='admin'` 을 요구해 프로덕션에서 운영자 판정이
+   항상 false → 위임 수임 무동작.~~ **✅ 해소됨** — T03 `017_fix_is_platform_admin_role_axis.sql`
+   이 판정을 `is_platform` 단독으로 바꿨다(role 은 tenant 역할 축이라 보지 않는다).
+   T08 의 `has_active_grant()` 가 이 함수에 의존하므로 **위임의 마지막 실환경 블로커가 사라졌다.**
+2. `Org` 타입(T03 소유)에 `slug` 가 없어 진단 컨텍스트 `org_slug` 에 `org.id` 를 넣는다. (미해소)
 
 ## 프라이버시
 
