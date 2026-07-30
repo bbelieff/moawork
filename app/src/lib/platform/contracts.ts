@@ -15,6 +15,19 @@ export type PlatformAggregateValue = {
   description: string;
 };
 
+/** Aggregate-only row returned by migration 016's platform RPC. */
+export type PlatformMetricsDailyRow = {
+  day: string;
+  workspace_count: number;
+  dau: number;
+  mau: number;
+  stickiness: number;
+  active_users: number;
+  dormant_users: number;
+  new_deals: number;
+  computed_at: string | null;
+};
+
 export type PlatformSectionKey =
   | "overview"
   | "organizations"
