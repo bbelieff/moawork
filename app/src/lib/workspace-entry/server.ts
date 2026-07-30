@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { WorkspaceRequestInput, WorkspaceRequestResult } from "./contracts";
 import type { WorkspaceEntryOption } from "@/lib/auth/workspace-entry-server";
 import { isCanonicalWorkspaceSlug } from "@/lib/auth/workspace-routing";
+import { parseAdminRole } from "@/lib/auth/admin";
 
 type RpcResult = { data: unknown; error: { code?: string } | null };
 
@@ -182,13 +183,34 @@ function parseRequestStatus(value: unknown, pendingFallback: boolean): "pending"
 export async function readWorkspaceEntryContext(
   client: WorkspaceEntryRpcClient,
   ownerOrgId?: string,
+  /** 로그인 사용자 이메일. is_platform_admin() 이 false 일 때 폴백 판정에 쓴다. */
+  actorEmail?: string | null,
 ): Promise<WorkspaceEntryContext> {
   const [platformResult, requestsResult] = await Promise.all([
     client.rpc("is_platform_admin"),
     client.rpc("list_my_workspace_entry_requests"),
   ]);
   if (platformResult.error || requestsResult.error) return { kind: "error" };
-  const isPlatformAdmin = platformResult.data === true;
+  let isPlatformAdmin = platformResult.data === true;
+
+  // ── 폴백: is_platform_admin() 이 false 를 준 경우 app_admin_role 로 한 번 더 본다 ──
+  // 왜 필요한가: 배포된 is_platform_admin()(006)은 `app_admins.role = 'admin'` 을 요구하는데
+  // 005 는 예약 관리자를 role='owner' 로 넣는다. 그래서 실제 관리자가 false 로 나온다.
+  // 017 이 그 함수를 고치지만, **마이그레이션 적용 전에도** 관리자가 갇히지 않아야 한다.
+  // app_admin_role(email) 은 role 필터가 없어 지금도 정상 동작하고, main 의
+  // 014_platform_metrics_daily 도 이미 `app_admin_role(...) is not null` 패턴을 쓴다.
+  // 017 적용 후에는 위 판정이 곧바로 true 라 이 블록은 자연히 no-op 이 된다.
+  // 방향은 한쪽뿐이다 — false→true 승격만 하고, true 를 뒤집지는 않는다.
+  if (!isPlatformAdmin && actorEmail) {
+    try {
+      const fallback = await client.rpc("app_admin_role", { p_email: actorEmail });
+      if (fallback && !fallback.error && parseAdminRole(fallback.data) !== null) {
+        isPlatformAdmin = true;
+      }
+    } catch {
+      // 폴백 실패는 무시 — 판정 불가는 "관리자 아님"으로 남긴다.
+    }
+  }
   const requests = parseMyRequests(requestsResult.data);
   if (!requests) return { kind: "error" };
 
@@ -220,7 +242,20 @@ export async function readWorkspaceEntryContext(
 }
 
 export async function loadWorkspaceEntryContext(ownerOrgId?: string): Promise<WorkspaceEntryContext> {
-  return readWorkspaceEntryContext(await createClient() as unknown as WorkspaceEntryRpcClient, ownerOrgId);
+  const supabase = await createClient();
+  // 폴백 판정용 이메일. 실패해도 진행한다 — 이메일이 없으면 폴백만 건너뛴다.
+  let actorEmail: string | null = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    actorEmail = data?.user?.email ?? null;
+  } catch {
+    actorEmail = null;
+  }
+  return readWorkspaceEntryContext(
+    supabase as unknown as WorkspaceEntryRpcClient,
+    ownerOrgId,
+    actorEmail,
+  );
 }
 
 export async function executeWorkspaceRequest(
