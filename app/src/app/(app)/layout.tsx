@@ -14,6 +14,8 @@ import {
   loadWorkspaceEntryContext,
   type WorkspaceApprovals,
 } from "@/lib/workspace-entry/server";
+import { NotificationBell } from "@/components/notify/NotificationBell";
+import { loadNotifySnapshot } from "@/lib/notify/server";
 
 // 앱 셸 — UI목업_모아워크셸_v0.3 (1단 사이드바 232px + 상단바).
 // 색은 전부 globals.css 의 --mw-* 토큰 참조(하드코딩 hex 금지).
@@ -70,6 +72,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const initial = (ctx.user.name ?? "?").trim().charAt(0) || "?";
   const account = buildAccountViewModel(ctx);
 
+  // 알림 스냅샷(벨 뱃지 + 사이드바 점/숫자). Supabase 미설정이면 빈 값이라 화면은 그대로 뜬다.
+  const notify = await loadNotifySnapshot(ctx);
+
   return (
     <div className="flex min-h-full flex-1 flex-col md:flex-row">
       {/* ── 사이드바 ── */}
@@ -93,6 +98,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             badges={workspaceApprovals
               ? { workspaceApprovals: workspaceApprovals.pendingCount }
               : undefined}
+            // 알림 뱃지는 별도 prop — badges 는 서버 검증 키 전용 계약이라 침범하지 않는다.
+            notifyBadges={notify.sidebar}
             workspaceSwitcher={{
               currentOrgId: ctx.org.id,
               workspaces: switcherWorkspaces,
@@ -163,16 +170,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             >
               🔍 업체·담당자 검색…
             </div>
-            <div
-              className="hidden h-9 w-9 items-center justify-center rounded-xl border sm:flex"
-              style={{
-                background: "var(--mw-card)",
-                borderColor: "var(--mw-line)",
-              }}
-              title="알림"
-            >
-              🔔
-            </div>
+            {/* 기존 🔔 자리에 그대로 연결한다(자리를 새로 만들지 않음).
+                모바일(375px)에서도 알림을 확인해야 하므로 sm 미만 숨김은 걷어낸다. */}
+            <NotificationBell initial={notify} />
             <ThemeToggle />
             <AccountMenu
               displayName={account.displayName}

@@ -421,6 +421,104 @@ C5 `lib/analytics/` 무결(내 변경 0).
 4. **공지 RLS 예외(DQ-0018)** — 기획 판정 대기.
 
 **END** — `check.sh` 초록 · `next build` 성공 · PR 준비 완료.
+## 2026-07-23 — [START · 머지 준비] T06 · PR #57 머지 대비 사전 정합
+
+- 지시: T03 PR #57(T10 승인, 머지 진행 중) + belie 의 DB 마이그레이션 직접 적용 예고 → PR #50 머지 최종 준비.
+- 신호를 기다리기 전에 **#57 내용 실측**으로 선행 정합 가능한 항목부터 처리했다.
+
+## 2026-07-23 — [END · 머지 준비] T06 · 015 → 019 리넘버링 · 충돌 1건 예고 · 자기정정 1건
+
+**1) ⚠ 자기정정 — "#57 이 BUG-0004 를 안 고친다"는 내 직전 판단은 틀렸다.**
+`gh pr view 57 --json files` 결과가 **잘려서** `015_fix_org_helper_session_deadlock.sql` 이 목록에 안 보였고,
+남은 016·017·018 헤더가 모두 "is_org_member() 무수정"이라 반대로 결론냈다.
+실제 파일을 열어 확인한 결과 **#57 의 015 가 BUG-0004 정면 수정**이다 —
+헬퍼 4종(`is_org_member`·`org_role`·`org_scope`·`is_protected_workspace_owner`)에서 세션 선행조건만 제거하고
+006 의 fail-closed 강화(`status='active'` 2종)는 유지한다. `member_account_session_valid()` 자체는 남겨
+member account 전용 RPC 에서 계속 쓴다(관심사 분리). → belie 판단이 맞았다.
+교훈: `--json files` 는 잘릴 수 있다. **파일 목록만 보고 PR 내용을 단정하지 말 것.**
+
+**2) 리넘버링 `015` → `019`.** #57 이 **015·016·017·018** 을 점유한다(`015_fix_org_helper_session_deadlock`
+·`016_entry_request_dedup`·`017_fix_is_platform_admin_role_axis`·`018_platform_admin_direct_create`).
+`feat/t01-c5-gap` 도 같은 015 파일을 들고 있다. 내 `015_notifications.sql` → **`019_notifications.sql`**,
+헤더 주석과 `app_meta.schema_version` 도 `'019'` 로 동기화.
+- 이번엔 선점이 아니라 **확정 정보 기반**이다(#57 은 T10 승인·머지 진행 중). 설령 #57 이 지연돼도 019 는 여전히 유효한 빈 번호라 손해가 없다.
+- 번호 이력: `008`(main 007 기준 배정) → `015`(008~014 머지 확인 후) → `019`(#57 의 015~018 확인 후). 매번 **실측 시점의 최신 main/확정 PR 기준**으로만 움직였다.
+
+**3) 적용 순서가 중요하다.** 내 019 의 `audit_select` 정책과 notifications RLS 는 전부 `is_org_member()`·`org_scope()` 위에 얹혀 있다.
+→ **#57 의 015 가 먼저 적용돼야 한다.** 그 전에 019 만 적용하면 헬퍼가 상시 false 라 알림이 전부 빈 값으로 보인다(코드 결함 아님).
+권장 적용 순서: `011 → 015(#57, BUG-0004 수정) → 016 → 017 → 018 → 019(알림)`.
+
+**4) 머지 충돌 1건 예고.** `git merge-tree` 실측 결과 `app/src/app/(app)/layout.tsx` 가 **changed in both**
+(#57 도 셸 레이아웃을 고친다). 나머지 파일은 겹치지 않는다.
+직전 라운드에 T03 `WorkspaceSwitcher` 로 같은 파일을 한 번 해소해 본 건이라, 신호 오면 즉시 재해소 가능하다.
+해소 원칙은 그대로: **#57 쪽 셸 구조를 살리고 내 `NotificationBell` 마운트만 얹는다**(🔔 자리 신설 금지).
+
+**5) 신호 수신 시 실행할 절차**(사전 확정):
+`fetch` → `rebase origin/main` → `layout.tsx` 재해소 → `check.sh` + `next build` → `force-push` → PR #50 `CLEAN` 확인.
+
+- 참고: `supabase/tests/*.pglite.test.mjs` 하네스가 있으나 **`check.sh` 게이트에 미포함**이고 `@electric-sql/pglite` 도 미설치다.
+  실DB 적용 전 019 를 드라이런하고 싶다면 이 하네스에 notifications 케이스를 붙이는 선택지가 있다(요청 시 작업).
+
+## 2026-07-23 — [START · 재개] T06 · 재개 지시 대응 · 마이그레이션 번호 정합
+
+- 재개 배정(알림 뱃지+소식창+notifications+Realtime)은 **PR #50 에 이미 전량 구현**되어 있다. 재구현하지 않고 **머지 가능 상태 유지**를 목표로 잡았다.
+- main 이 3커밋 전진(`1744d9f`) → PR 브랜치 **리베이스**(충돌 0) → 게이트 재검증 → 푸시. PR #50 `MERGEABLE · CLEAN` 회복.
+
+## 2026-07-23 — [END · 재개] T06 · 008 → 015 리넘버링(충돌 현실화 대응)
+
+- **직전 라운드에 보고한 `008` 4중 충돌이 현실이 됐다.** 그때는 미머지 병렬 브랜치들의 예약 번호였으나, 지금 main 에는 `008_workspace_entry_self_route_state` … `014_platform_metrics_daily` 가 **모두 머지**돼 있다.
+  → 내 `008_notifications.sql` 을 그대로 두면 `008_*` 가 **두 개** 공존해 문자열 정렬 적용 순서가 모호해진다.
+- **조치**: `008_notifications.sql` → **`015_notifications.sql`** 로 리넘버링(main 최신 `014` 기준 다음 번호). 파일 내 헤더 주석과 `app_meta.schema_version` 값도 `'008'` → `'015'` 로 동기화.
+  - 직전 라운드에 "선점 리넘버링은 하지 않는다(다른 브랜치가 안 들어오면 오히려 틀린 번호가 된다)" 고 판단해 보류했고, **실제로 머지된 것을 확인한 시점에** 정합을 잡았다. 판단 근거가 유지된 채 상태만 바뀐 케이스다.
+- **선행 마이그레이션 간섭 실측**(008~014 전수):
+  - `audit_logs` 를 건드리는 마이그레이션 **없음** → 내 `audit_select` 정책 교체(담당범위 반영)는 여전히 유효.
+  - `009_workspace_entry_request_lifecycle` 이 `workspace_entry_request_shape_check` 를 **이미 교체**함. 내 마이그레이션은 해당 제약을 건드리지 않으므로(직전 라운드에 되돌림) 충돌 없음 — 그때 되돌린 판단이 여기서 이득으로 돌아왔다.
+  - 009 에 `drop column`·`rename`·`add column` **없음** → 내 트리거가 쓰는 `workspace_entry_requests` 컬럼(`kind`·`status`·`target_org_id`·`requester_user_id`·`id`) 전부 온전.
+- 과거 항목의 `008_notifications.sql` 표기는 append-only 원칙에 따라 **수정하지 않는다**(당시 사실 기록). 현재 정본은 `015_notifications.sql`.
+- **파킹 유지**: 375px 브라우저 스냅샷 `NOT_RUN`(preview 도구가 세션 디렉터리를 기동해 격리 worktree 를 못 띄움). 대체 증거는 테스트로 고정됨.
+- **다음 행동**: PR #50 검수 대기. 추가 구현·중복 PR 없음.
+
+## 2026-07-23 — [START · 재배정] T06 · MWC 실행계획v1 재배정 대조
+
+- 재배정 내용(뱃지 규칙·소식창 2탭·주어 표시·딥링크·묶기·notifications 신규·Realtime+60초 폴링·RLS/scope/조직격리·금액·개인정보 금지·가입요청→오너 숫자+승인화면 딥링크·375px)을 **기존 산출물과 1:1 대조**했다.
+- 결론: **전 항목이 PR #50 에 이미 구현·머지대기**. 재구현하지 않는다(중복 작업·리베이스 충돌 유발).
+
+## 2026-07-23 — [END · 재배정] T06 · 대조 완료 · PR #50 검수 대기 · 신규 리스크 1건 보고
+
+**1) 착수 게이트 — 이미 충족.** "T03 셸 이후 착수" 조건의 T03 셸·스위처는 **이미 main 에 있다**
+(`components/workspace/WorkspaceSwitcher.tsx`·`WorkspaceMark.tsx`·`shell/SidebarNav.tsx`·`nav-items.ts` 실측).
+PR #50 은 그 위로 **이미 리베이스 완료**(base `e1a3a05`)이며 충돌 해소도 끝났다 — 상태 `MERGEABLE · CLEAN`.
+
+**2) 재배정 요구사항 대조 — 전 항목 구현됨(PR #50).**
+
+| 요구 | 상태 |
+|---|---|
+| 숫자=할 일(진입 무관)·점=안 본 변화·모두 읽음은 점만·99+ | ✅ `lib/notify/badge.ts` + **27 테스트** |
+| 소식창 2탭 · 주어 표시 · 딥링크 2클릭 · 반복 묶기 | ✅ `components/notify/*`, `messages.ts`, `grouping.ts` |
+| notifications 신규 · Realtime + 60초 폴링(팝업 금지) | ✅ `008_notifications.sql`, `NotificationBell.tsx` |
+| RLS 우회 금지 · scope=assigned · 타 조직 혼입 0 · 금액/PII 금지 | ✅ `visibility.ts`(RLS 1차 + 앱 2차), 템플릿 고정 |
+| 가입요청 → 오너 숫자 + `/settings/members/approvals` 딥링크 | ✅ definer 트리거(승인 화면 신규 생성 안 함) |
+| 375px | ✅ 폭·스크롤 테스트 고정 / ⏸ 브라우저 스냅샷은 파킹(아래) |
+
+**3) ⚠ 신규 리스크 — 마이그레이션 `008` 4중 충돌(보고).**
+열린 브랜치 전수 조사 결과 `008_` 접두가 **4갈래**다:
+`008_notifications.sql`(T06/이 PR) · `008_support_access_delegation.sql`(T08 PR #46) ·
+`008_workspace_entry_self_route_state.sql`(PR #47·#48·#49·#51 **4개 브랜치 공통**, +009·010·011).
+- 내 번호는 규칙(**최신 main 기준 배정**)을 따랐고 배정 시점 main 최신은 `007` 이었다 — 규칙 위반 아님.
+- 그러나 미머지 병렬 브랜치가 같은 번호를 쥐고 있어, **머지 순서에 따라 008_* 3종이 공존**하면 문자열 정렬 적용 순서가 모호해진다(T10 이 이전에 보고한 `001_` vs `0001_` 혼재와 같은 계열).
+- 파일명이 달라 git 충돌은 안 나므로 **조용히 통과할 수 있는 종류의 문제**라 미리 보고한다.
+- 조치: **선점 리넘버링은 하지 않는다**(다른 브랜치가 안 들어오면 오히려 틀린 번호가 된다). 코디네이터가 머지 순서를 정하면 rename 1회로 즉시 정합 — 요청 시 바로 반영한다.
+
+**4) 레인 변경 인지 — 회사 스위처.** 재배정에서 내 레인은 `notifications · 벨/소식창` 이고 **스위처는 T03(셸·스위처)** 이다.
+직전 배정에는 "회사 스위처(다른 회사 건수)"가 내 수용기준에 있어 PR #50 이 `WorkspaceChooser.tsx` 를 건드렸다
+(선택적 prop `badges` 추가 + 건수만 조회, 내용 미조회 — additive).
+레인 기준으로는 경계 밖이므로 **T03/T10 판단에 맡긴다**: 유지하거나, 요청 시 해당 1파일만 되돌린다(나머지와 결합 없음).
+
+**5) 파킹 유지.** 375px 브라우저 스냅샷 `NOT_RUN` — preview 도구가 세션 디렉터리(타 트랙 브랜치)를 기동해
+격리 worktree 를 띄우지 못함. 대체 증거(`panelWidthAt(375)=351 < 375`, `min-h-0`+`overflow-y-auto`, Badge SSR 8건)는 반영됨.
+머지 후 세션 트리에서 T10 촬영 요망.
+
+**다음 행동**: PR #50 검수 결과 대기. 재구현·중복 PR 없음.
 
 ## 2026-07-23 — T05 · C5 PostHog 인수인계 — END
 
@@ -455,6 +553,27 @@ C5 `lib/analytics/` 무결(내 변경 0).
 - 배정 범위(P2): 위 2건만. 스코프 추가 금지.
 - 수용기준: 이벤트 10종 화이트리스트 외 발송 0 · PII 페이로드 부재 · 리플레이 마스킹(maskAllInputs·data-pii·회계/홈택스 경로 녹화 제외) 확인.
 - base = origin/main `421c586` 위로 rebase 완료(무충돌).
+## 2026-07-22 — [START · C2] T06 · 인앱 알림(뱃지 · 소식창)
+
+- 지시: belie 직접(디스패치 경유 없음). 상단바 🔔 는 **이미 존재** → 자리 새로 만들지 않고 내용만 연결.
+- 착수 전 실측: 🔔 는 `(app)/layout.tsx` L95-104 의 **inert `<div>`**(title="알림"만) · `SidebarNav` 에 `badges` 슬롯이 있으나 **숫자 전용**이고 레이아웃이 전달 안 함 · **셸 내 회사 스위처 없음**(전환은 `/workspaces` `WorkspaceChooser`) · 승인 화면 `/settings/members/approvals` **이미 존재**(owner 전용, 파라미터 없음) · `activities` 는 **딜 종속**이라 조직 피드 부적합, `audit_logs` 는 테이블·RLS 만 있고 **앱 코드 0** → 재사용 적합 · 앱 테스트는 **node 환경(jsdom·RTL 없음)**.
+- 마이그레이션 번호는 추측하지 않고 실측(최신 `007`) → **`008_notifications.sql`**.
+
+## 2026-07-22 — [END · C2] T06 · 인앱 알림 완료 · PR #27
+
+- **핵심 계약 구현**: "봤다(read_at)"와 "했다(resolved_at)"를 **다른 컬럼**으로 분리.
+  숫자=`is_action && resolved_at is null`(화면 진입으로 안 사라짐) · 점=미열람(진입 시 사라짐).
+  ⚠️ 지시의 컬럼 목록에는 `resolved_at` 이 없었으나, `read_at` 하나로는 "화면만 열어도 할 일이 사라지는" 사고를 막을 수 없어 **추가**했다(계약 충족을 위한 필수 추가).
+- **스키마 008**: `notifications`(+`resolved_at`) · `notification_surface_seen`(화면별 점 워터마크 — 행마다 read 찍지 않고 시각 하나로 판정) · `audit_logs` **재사용**(신설 안 함) + `audit_select` 정책 **교체**(기존은 `is_org_member` 만이라 assigned 멤버가 남의 딜 소식까지 봄. RLS 는 OR 합성이라 좁히려면 교체가 유일) · 가입요청 **definer 트리거**(오너 전원에게 숫자 알림, 처리 시 자동 resolve).
+- **뱃지 테스트 27개로 계약 고정** — 특히 *화면 진입만으로 숫자 안 사라짐*, *모두 읽음=점만 제거·숫자 유지*, *처리해야 감소*, *99+ 절단*.
+- **UI**: 기존 🔔 자리에 `NotificationBell` 연결 · 패널 2탭(내 알림/회사 소식) · 주어 필수 표기 · 반복행동 묶기(10분 창) · 딥링크 · [모두 읽음]/[전체 보기] · 사이드바 점/숫자 · 회사 스위처 건수(**건수만** 조회, 내용 미조회).
+- **프라이버시**: 문구를 자유 조립이 아닌 **고정 템플릿+주어**로만 생성 — 금액·개인정보는 파라미터로 받지도 않는다. 템플릿 전수 숫자 미포함 테스트.
+- **판단 기록 3건**:
+  1. 딥링크 `deal → /boards/{id}` 는 **오답**(그 `[id]`는 **보드** id) → 404 위험. `/policyfund?focus=` 로 교정.
+  2. 최상위 `/notifications` 라우트는 기존 가드 테스트가 **예약 slug 미등록**으로 정확히 차단. 예약 목록이 006 제약 2곳+함수 1곳+TS 1곳(**4중 복제**)이고 가드 테스트가 006 만 정본으로 읽어, 하드카피 동기화는 드리프트 위험(실제로 옮겨쓰다 join 절을 느슨하게 쓰는 실수를 1회 자체 검출). → **이미 예약된 `/settings/notifications`** 로 이동해 타 트랙 계약 무수정. 목록 단일화는 소유 트랙 몫으로 남김.
+  3. 기존 🔔 는 `hidden sm:flex` 라 **375px 에서 보이지 않았다** → 수용기준(375px)과 충돌하므로 상시 표시로 교정.
+- **검증**: `check.sh` 초록 — app **646** 통과(신규 notify 59) / worker 14, `next build` 성공(`/settings/notifications` 등록 확인).
+- **파킹(블로커)**: 375px **브라우저 스냅샷 NOT_RUN**. preview 도구가 **세션 디렉터리**(현재 T09 브랜치)를 기동해 격리 worktree 의 내 변경을 띄우지 못함(실측 확인, 서버 즉시 정지). Bash 로 dev 서버 기동은 금지 규칙. → 대체 증거로 **폭 계산·스크롤 제약을 테스트로 고정**(`panelWidthAt(375)=351 < 375`, `min-h-0`+`overflow-y-auto`) + Badge SSR 렌더 테스트 8건. T10 이 세션 트리에서 머지 후 스냅샷 촬영 요망.
 
 ## 2026-07-28 — T04 · C4 인수: 지표 순수함수 + platform_metrics_daily 야간 배치
 
