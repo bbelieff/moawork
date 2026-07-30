@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
-import { getRepo } from "@/lib/repo";
 import { Logo } from "@/components/brand/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { SidebarNav } from "@/components/shell/SidebarNav";
@@ -9,6 +8,7 @@ import { AccountMenu } from "@/components/account/AccountMenu";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
 import { buildAccountViewModel } from "@/lib/account/presentation";
 import { loadWorkspaceRoutingSnapshot } from "@/lib/auth/workspace-entry-server";
+import { loadLockedFeatures } from "@/lib/entitlements/server";
 import {
   loadWorkspaceApprovals,
   loadWorkspaceEntryContext,
@@ -20,7 +20,6 @@ import {
 // getSession() 이 세션 없으면 /login 으로 보낸다(가드).
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const ctx = await getSession();
-  const repo = getRepo();
   const routing = await loadWorkspaceRoutingSnapshot();
   const currentWorkspace = routing.kind === "ready"
     ? routing.memberships.filter((membership) => membership.orgId === ctx.org.id)
@@ -63,9 +62,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       ),
     ),
   );
-  const lockedFeatures = features.filter(
-    (f) => !repo.isFeatureEnabled(ctx.org.id, f),
-  );
+  // ⚠ 예전엔 getRepo().isFeatureEnabled 로 직접 판정했는데, getRepo() 는 환경과 무관하게
+  // 항상 LocalRepo(인메모리 시드)를 돌려줘서 프로덕션의 실 org UUID 가 조회되지 않았고
+  // 결과적으로 **전 메뉴가 잠겼다**(P0). 이제 환경에 맞는 소스를 골라 읽는다.
+  const lockedFeatures = await loadLockedFeatures(ctx.org.id, features);
 
   const initial = (ctx.user.name ?? "?").trim().charAt(0) || "?";
   const account = buildAccountViewModel(ctx);

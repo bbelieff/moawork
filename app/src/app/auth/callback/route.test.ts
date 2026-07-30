@@ -14,6 +14,9 @@ type Scenario = {
   userError?: unknown;
   profileError?: unknown;
   membershipError?: unknown;
+  /** app_admin_role RPC 가 돌려줄 값. null = 관리자 아님(기본). */
+  adminRole?: unknown;
+  adminRpcError?: unknown;
 };
 
 function membership(
@@ -71,7 +74,12 @@ function setup(scenario: Scenario = {}) {
       }),
     },
     from,
-    rpc: vi.fn(),
+    rpc: vi.fn(async (name: string) => {
+      if (name === "app_admin_role") {
+        return { data: scenario.adminRole ?? null, error: scenario.adminRpcError ?? null };
+      }
+      throw new Error(`Unexpected rpc: ${name}`);
+    }),
   };
   mocks.createClient.mockResolvedValue(supabase);
   return { supabase, from, membershipSelect, membershipEq };
@@ -116,7 +124,11 @@ describe("OAuth callback Workspace routing", () => {
       "https://www.moa-work.com/workspace-entry",
     );
     expect(response.headers.get("set-cookie")).toContain("mw_org=;");
-    expect(supabase.rpc).not.toHaveBeenCalled();
+    // 플랫폼 분기 판정을 위해 app_admin_role 만 부른다(그 외 RPC·orgs 직접 조회는 없다).
+    expect(supabase.rpc).toHaveBeenCalledTimes(1);
+    expect(supabase.rpc).toHaveBeenCalledWith("app_admin_role", {
+      p_email: "member@example.test",
+    });
     expect(from).not.toHaveBeenCalledWith("orgs");
   });
 
@@ -211,5 +223,42 @@ describe("OAuth callback Workspace routing", () => {
     expect(location(await callback(`code=test-code&next=${encodeURIComponent("https://evil.example/w/alpha-team")}`))).toBe("https://www.moa-work.com/workspace-entry?error=routing");
     setup({ rows });
     expect(location(await callback(`code=test-code&next=${encodeURIComponent("/settings/account")}`))).toBe("https://www.moa-work.com/workspaces");
+  });
+});
+
+describe("OAuth callback 플랫폼 관리자 분기", () => {
+  // 버그: 플랫폼 관리자가 소속 0이면 진입 화면에 갇혔다. 어드민 링크는 회사 안
+  // 스위처(⚙)에만 있어 회사에 못 들어가면 어드민에도 도달할 수 없었다.
+  it("소속 0 + 플랫폼 관리자 → /platform 으로 보낸다", async () => {
+    setup({ rows: [], adminRole: "owner" });
+    expect(location(await callback())).toBe("https://www.moa-work.com/platform");
+  });
+
+  it("소속 0 + 일반 사용자 → 기존대로 진입 화면", async () => {
+    setup({ rows: [], adminRole: null });
+    expect(location(await callback())).toBe(
+      "https://www.moa-work.com/workspace-entry",
+    );
+  });
+
+  it("소속 1 + 플랫폼 관리자 → 회사로 (플랫폼 관리는 스위처 ⚙ 로)", async () => {
+    setup({ rows: [membership("org-1", "alpha-team")], adminRole: "owner" });
+    expect(location(await callback())).toBe(
+      "https://www.moa-work.com/w/alpha-team",
+    );
+  });
+
+  it("판정 RPC 가 실패하면 관리자 아님으로 수렴한다(장애가 권한 상승이 되지 않게)", async () => {
+    setup({ rows: [], adminRole: "owner", adminRpcError: { message: "boom" } });
+    expect(location(await callback())).toBe(
+      "https://www.moa-work.com/workspace-entry",
+    );
+  });
+
+  it("알 수 없는 role 값은 관리자로 인정하지 않는다", async () => {
+    setup({ rows: [], adminRole: "superuser" });
+    expect(location(await callback())).toBe(
+      "https://www.moa-work.com/workspace-entry",
+    );
   });
 });

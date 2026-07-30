@@ -4,6 +4,133 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-30 — T03 · 플랫폼 관리자가 어드민에 도달하지 못하는 버그 3건
+
+**START** 2026-07-30 09:40 KST · 브랜치 `feat/t03-r1-entry-ux` (base `fc290f4`)
+
+### 근본원인 — `is_platform_admin()` 이 예약된 관리자를 인식하지 못했다
+지시서 진단은 "라우팅에 플랫폼 분기가 없다" 였는데, 실측하니 **앱은 이미 관리자를
+operator 뷰로 보내도록 돼 있었다**(`resolveWorkspaceEntryView` 첫 분기).
+문제는 그 판정의 입력값이 **항상 false** 였다는 것이다.
+
+`006` 의 `is_platform_admin()` 은 `app_admins.role = 'admin'` 을 요구한다.
+그런데 `005` 는 belie 를 **`role = 'owner'`** 로 예약한다. `app_admins.role` 은
+005 정의상 "플랫폼 등급"이 아니라 **가입 시 부여할 tenant 역할**이고
+(`role text not null default 'owner'`, 주석 "owner + 플랫폼 관리자로 자동 부여"),
+플랫폼 축은 `is_platform` 컬럼이다. 006 이 두 축을 한 컬럼으로 오해했다.
+→ 유일한 예약 관리자가 조건에 걸려 탈락. "DB 는 정상"이라는 관찰은 맞았고,
+**함수가 그 행을 못 읽은 것**이다.
+→ `017`: 판정을 `is_platform` 단독으로. (`role='admin'` 으로 데이터를 바꾸는 방식은
+   belie 가 회사 생성 시 owner 가 아니라 admin 으로 들어가 005 의도가 깨져서 미채택.)
+
+### 수정 1 — 로그인 후 플랫폼 분기
+`decideWorkspaceDestination(rows, target, isPlatformAdmin)` 3번째 인자 추가.
+**소속 0 일 때만** 목적지를 `/platform` 으로 바꾸고, 소속이 있으면 기존대로 회사로 보낸다.
+`isPlatformAdmin` 은 멤버십 파싱·slug 매칭·fail-closed 에 **개입하지 않는다**(계약 유지) —
+테스트로 고정했다(남의 회사 slug 를 next 로 넣어도 관리자여도 fail-closed).
+callback 에서 `app_admin_role` RPC 로 판정하고, **실패는 "관리자 아님"으로 수렴**시킨다
+(실패를 관리자로 처리하면 조회 장애가 곧 권한 상승이다). 라우팅 테스트 6건 추가.
+`app_admin_level()` 은 **레포에 존재하지 않는다** — `app_admin_role()` 만 사용.
+
+### 수정 2 — 진입 화면 탈출구
+`[⚙ 플랫폼 관리로 가기]` 를 추가. 처음 pending 뷰에 넣었으나 **테스트가 사실을 정정해줬다**:
+관리자는 pending 이 아니라 **operator 뷰**에 착지한다(위 분기가 우선). 도달 불가 UI 를
+남기지 않으려고 링크를 operator 뷰로 옮겼다. 그 뷰는 서버가 확인한 `isPlatformAdmin`
+일 때만 선택되므로 **일반 사용자에게는 렌더 자체가 되지 않는다**(숨김이 아니라 부재).
+테스트 2건(관리자 노출 / 비관리자 마크업 부재 + 기존 출구·문구 불변).
+
+`/platform` 인덱스 페이지는 **main 에 이미 생겼다**(타 세션 `feat/platform-console-shell`).
+내가 만들던 리다이렉트 페이지는 폐기했다.
+
+### 수정 3 — 플랫폼 관리자의 회사 생성은 승인 불요
+`018`: `submit_workspace_create_request` 에 자동승인 분기 추가. 검증·멱등·advisory lock 은
+기존과 동일하게 두고 **그 뒤에** 붙였다. 관리자면 pending 없이 orgs + owner 멤버십을 즉시
+만들고 `decision_code='platform_admin_direct_create'` + 감사 이벤트에
+`platform_admin_direct_create/self_approved/reason` 을 남긴다(일반 승인과 구분).
+반환은 하위호환(기존 `accepted` 유지 + 필드 추가). 재호출은 replay 로 방어하고,
+slug 경쟁은 승인 경로와 **같은 키**로 advisory lock. 일반 사용자 경로는 무변경.
+
+앱 배선도 함께: RPC 가 `auto_approved+slug` 를 주면 `redirectTo` 를 실어 보내고 클라이언트가
+바로 입장한다 — 이 배선이 없으면 **이미 만들어진 회사를 두고 "승인 대기" 화면에 머문다**.
+
+### 마이그레이션 번호 충돌 처리
+내 `014_entry_request_dedup` 이 main 의 `014_platform_metrics_daily` 와 충돌 → **016 리넘버링**.
+신규는 `017`·`018`. (커밋 직전 재실측해서 잡았다.)
+
+**END** 2026-07-30 10:05 KST
+- **미검증(파킹)**: 실DB 적용 후 동작. 017·018 은 실 Supabase 에 적용돼야 효력이 있고,
+  로컬에 크리덴셜이 없어 SQL 실행 검증은 못 했다. 수용기준 5개 전부 **배포+마이그레이션
+  적용 후** belie/T10 확인 필요.
+- 정적 검증은 전부 통과(check.sh 초록).
+
+---
+
+## 2026-07-30 — T03 · R1 P0 — 오너 권한 고착 + 사이드바 전 메뉴 잠김 해소
+
+**START** 2026-07-30 01:13 KST · 브랜치 `feat/t03-r1-entry-ux` (worktree 격리, base `1744d9f`)
+
+배정: [0순위] public-workspace-entry 머지·배포 · [1순위] C0 진입 UX 3건 · [2순위] C1 스위처.
+
+### [0순위] — **이미 완료 상태였다(실측)**
+`git rev-list --left-right --count origin/main...origin/feat/public-workspace-entry` = **`33  0`**.
+ahead=0 → 해당 브랜치는 main 에 **전량 포함**돼 있다(다른 세션이 이미 머지). main tip 은
+`1744d9f feat: add safe PostHog analytics (#53)` 로 07-22 정체 상태도 아니다.
+→ 머지할 대상이 없어 마이그레이션 006 리넘버링·형제 브랜치 통합 이슈도 발생하지 않았다.
+브리핑의 "69커밋 적체 / main 07-22 정체"는 **07-27 실측 시점 정보이며 현재와 다르다.**
+
+### P0-a 오너 권한 고착 — **원인은 app_admin_role() 아님**
+브리핑 가설은 "앱이 app_admin_role() 을 안 묻거나 실패를 삼킨다" 였으나 실측 결과 **정상 호출**된다
+(`session.ts:79`, 에러 없으면 `parseAdminRole(data)` 반영).
+
+진짜 원인은 `lib/account/presentation.ts` 였다. `ctx.isPlatformAdmin` 이 true 면 **실제 org 역할을
+무시하고** `roleLabel="회사 역할 확인 중"` + `canManageCompany=false` 로 **고정**하고 있었다.
+belie 는 오너이면서 플랫폼 관리자라 이 분기에 걸려 자기 회사를 관리하지 못했다.
+
+그 방어는 "Platform role 이 workspace membership 을 덮어쓸 수 있다"는 전제였는데 **그 전제는
+이미 해소돼 있었다** — `session.ts` 의 두 경로 모두 role/scope 를 검증된 `org_members` 행에서만
+채운다(`getSupabaseSession`·`getDevSession` 둘 다 `membership.role`). 전제가 사라진 뒤에도
+가림막만 남아 P0 가 된 것이다.
+(솔직 기록: 그 덮어쓰기는 원래 **내가 B1 에서 넣은 코드**였고, 이후 누군가 strict 하게 고쳤다.
+즉 이 가림막은 내 과거 버그를 막으려던 방어였는데 원인이 사라진 뒤 잔재로 남았다.)
+→ 분기 제거, 실제 멤버십 역할 사용. 회귀테스트 2건(관리자여도 역할 노출 / 관리자라고 역할이
+올라가지 않음 — 두 축의 독립성 고정).
+
+### P0-b 사이드바 전 메뉴 잠김 — **별개 원인**
+셸이 `getRepo().isFeatureEnabled(ctx.org.id, key)` 로 판정했는데, `getRepo()` 는 환경과 무관하게
+**항상 LocalRepo(인메모리 시드)** 를 돌려준다. 프로덕션의 `ctx.org.id` 는 Supabase 실 UUID 라
+그 스토어에 없고 → 전 feature false → **전 메뉴 잠김**.
+게다가 Supabase 경로에는 조직 생성 시 `org_entitlements` 행을 만드는 코드가 없어(LocalRepo 만
+부여) DB 를 그대로 읽어도 빈 결과다.
+
+→ `lib/entitlements/resolve.ts`(순수 판정) + `server.ts`(환경별 소스) 신설.
+판정 규칙은 PLAN v0.2 §5("MVP: 모든 플랜에 core.* + MVP 모듈 무료") 그대로 —
+**MVP 기능은 행이 없으면 ON**, 비-MVP 는 행이 없으면 OFF, DB 행은 기본값을 뒤집는 오버라이드,
+만료 행은 무시. 조회 실패 시에도 기본값으로 수렴한다(엔타이틀먼트는 노출 제어지 보안 경계가
+아니다 — 진짜 경계는 RLS. 조회 실패로 전 메뉴가 잠기면 그게 곧 장애). 테스트 11건.
+
+### C0 진입 UX — 실측 결과 대부분 기구현
+- **C0-1 로고 홈 링크: 이미 완료.** `(app)/layout.tsx:83` `<Logo height={30} href={logoHref} />`,
+  멤버십 1개면 `/w/{slug}` · 그 외 `/workspaces`.
+- **C0-2 pending 출구: 이미 완료.** `WorkspaceEntry.tsx:268-270` 에 다른 회사 보기 / 요청 취소 /
+  로그아웃 존재.
+- **C0-2 중복 차단: 실제 구멍 발견 → 수정.** 006 이 `join` 은 부분 유니크 인덱스로 막았지만
+  (`workspace_entry_one_pending_join_idx`) **`create` 는 일반 인덱스**라 뒤로가기 중복이 그대로
+  들어갔다(브리핑 4번 증상과 일치). → `014_entry_request_dedup.sql` 로 사용자당 pending create
+  1건 강제 + 기존 중복은 최신 1건만 남기고 `cancelled` 처리(삭제 아님 — 이력 보존).
+- **C0-3 승인 도달 경로: 이미 완료.** 사이드바 뱃지 + 상단바 "승인 대기 N건" 링크 존재.
+
+### C1 회사 전환 스위처 — 이미 구현돼 있음
+`components/workspace/WorkspaceSwitcher.tsx` + 사이드바 배선(`layout.tsx:98-110`) 존재.
+
+**END** 2026-07-30 02:03 KST
+- 실제 코드 변경: P0-a(1파일+테스트) · P0-b(2파일 신설+셸 배선+테스트 11) · 014 마이그레이션.
+- **미검증(파킹)**: 프로덕션 실동작 확인 — 로컬에서 Supabase 경로를 태울 크리덴셜이 없다.
+  P0 해소 판정("belie 로그인 → 사이드바 잠금 풀림")은 **배포 후 belie/T10 확인 필요**.
+- **파킹**: 014 번호는 013 다음이지만 타 브랜치와 충돌 가능(전 브랜치 스캔은 비용 문제로 미실시).
+  충돌 시 리넘버링 필요.
+
+---
+
 ## 2026-07-29 — T05 · 인라인 셀 오류 표시 (B3 followup 해소)
 
 B3(PR #12)에서 남긴 followup 을 닫는다. `check.sh` 초록(앱 **766** PASS/5 skip · 워커 14) · `next build` 초록.
