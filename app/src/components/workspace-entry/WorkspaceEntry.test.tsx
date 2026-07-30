@@ -60,6 +60,8 @@ describe("WorkspaceEntry B-3 state contract", () => {
     const html = renderToStaticMarkup(<WorkspaceEntry requests={[pendingJoin]} />);
 
     expect(html).toContain('data-entry-view="pending"');
+    expect(html).toContain('aria-label="대기 요청 상태"');
+    expect(html).toContain('aria-label="대기 요청 행동"');
     expect(html).toContain("검토 중 · 회사 접근 0곳");
     expect(html).toContain("대기 요청 요약");
     expect(html).toContain("회사 합류 요청");
