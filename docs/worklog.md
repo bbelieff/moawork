@@ -4,6 +4,67 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-30 — T03 · 플랫폼 관리자가 어드민에 도달하지 못하는 버그 3건
+
+**START** 2026-07-30 09:40 KST · 브랜치 `feat/t03-r1-entry-ux` (base `fc290f4`)
+
+### 근본원인 — `is_platform_admin()` 이 예약된 관리자를 인식하지 못했다
+지시서 진단은 "라우팅에 플랫폼 분기가 없다" 였는데, 실측하니 **앱은 이미 관리자를
+operator 뷰로 보내도록 돼 있었다**(`resolveWorkspaceEntryView` 첫 분기).
+문제는 그 판정의 입력값이 **항상 false** 였다는 것이다.
+
+`006` 의 `is_platform_admin()` 은 `app_admins.role = 'admin'` 을 요구한다.
+그런데 `005` 는 belie 를 **`role = 'owner'`** 로 예약한다. `app_admins.role` 은
+005 정의상 "플랫폼 등급"이 아니라 **가입 시 부여할 tenant 역할**이고
+(`role text not null default 'owner'`, 주석 "owner + 플랫폼 관리자로 자동 부여"),
+플랫폼 축은 `is_platform` 컬럼이다. 006 이 두 축을 한 컬럼으로 오해했다.
+→ 유일한 예약 관리자가 조건에 걸려 탈락. "DB 는 정상"이라는 관찰은 맞았고,
+**함수가 그 행을 못 읽은 것**이다.
+→ `017`: 판정을 `is_platform` 단독으로. (`role='admin'` 으로 데이터를 바꾸는 방식은
+   belie 가 회사 생성 시 owner 가 아니라 admin 으로 들어가 005 의도가 깨져서 미채택.)
+
+### 수정 1 — 로그인 후 플랫폼 분기
+`decideWorkspaceDestination(rows, target, isPlatformAdmin)` 3번째 인자 추가.
+**소속 0 일 때만** 목적지를 `/platform` 으로 바꾸고, 소속이 있으면 기존대로 회사로 보낸다.
+`isPlatformAdmin` 은 멤버십 파싱·slug 매칭·fail-closed 에 **개입하지 않는다**(계약 유지) —
+테스트로 고정했다(남의 회사 slug 를 next 로 넣어도 관리자여도 fail-closed).
+callback 에서 `app_admin_role` RPC 로 판정하고, **실패는 "관리자 아님"으로 수렴**시킨다
+(실패를 관리자로 처리하면 조회 장애가 곧 권한 상승이다). 라우팅 테스트 6건 추가.
+`app_admin_level()` 은 **레포에 존재하지 않는다** — `app_admin_role()` 만 사용.
+
+### 수정 2 — 진입 화면 탈출구
+`[⚙ 플랫폼 관리로 가기]` 를 추가. 처음 pending 뷰에 넣었으나 **테스트가 사실을 정정해줬다**:
+관리자는 pending 이 아니라 **operator 뷰**에 착지한다(위 분기가 우선). 도달 불가 UI 를
+남기지 않으려고 링크를 operator 뷰로 옮겼다. 그 뷰는 서버가 확인한 `isPlatformAdmin`
+일 때만 선택되므로 **일반 사용자에게는 렌더 자체가 되지 않는다**(숨김이 아니라 부재).
+테스트 2건(관리자 노출 / 비관리자 마크업 부재 + 기존 출구·문구 불변).
+
+`/platform` 인덱스 페이지는 **main 에 이미 생겼다**(타 세션 `feat/platform-console-shell`).
+내가 만들던 리다이렉트 페이지는 폐기했다.
+
+### 수정 3 — 플랫폼 관리자의 회사 생성은 승인 불요
+`018`: `submit_workspace_create_request` 에 자동승인 분기 추가. 검증·멱등·advisory lock 은
+기존과 동일하게 두고 **그 뒤에** 붙였다. 관리자면 pending 없이 orgs + owner 멤버십을 즉시
+만들고 `decision_code='platform_admin_direct_create'` + 감사 이벤트에
+`platform_admin_direct_create/self_approved/reason` 을 남긴다(일반 승인과 구분).
+반환은 하위호환(기존 `accepted` 유지 + 필드 추가). 재호출은 replay 로 방어하고,
+slug 경쟁은 승인 경로와 **같은 키**로 advisory lock. 일반 사용자 경로는 무변경.
+
+앱 배선도 함께: RPC 가 `auto_approved+slug` 를 주면 `redirectTo` 를 실어 보내고 클라이언트가
+바로 입장한다 — 이 배선이 없으면 **이미 만들어진 회사를 두고 "승인 대기" 화면에 머문다**.
+
+### 마이그레이션 번호 충돌 처리
+내 `014_entry_request_dedup` 이 main 의 `014_platform_metrics_daily` 와 충돌 → **016 리넘버링**.
+신규는 `017`·`018`. (커밋 직전 재실측해서 잡았다.)
+
+**END** 2026-07-30 10:05 KST
+- **미검증(파킹)**: 실DB 적용 후 동작. 017·018 은 실 Supabase 에 적용돼야 효력이 있고,
+  로컬에 크리덴셜이 없어 SQL 실행 검증은 못 했다. 수용기준 5개 전부 **배포+마이그레이션
+  적용 후** belie/T10 확인 필요.
+- 정적 검증은 전부 통과(check.sh 초록).
+
+---
+
 ## 2026-07-30 — T03 · R1 P0 — 오너 권한 고착 + 사이드바 전 메뉴 잠김 해소
 
 **START** 2026-07-30 01:13 KST · 브랜치 `feat/t03-r1-entry-ux` (worktree 격리, base `1744d9f`)

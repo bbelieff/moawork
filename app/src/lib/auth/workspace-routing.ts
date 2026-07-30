@@ -54,6 +54,9 @@ export type WorkspaceDestination =
     }
   | { kind: "entry"; path: "/workspace-entry" }
   | { kind: "chooser"; path: "/workspaces" }
+  // 플랫폼 관리자인데 소속 회사가 0인 경우. 회사에 들어갈 수 없으니 진입 화면에
+  // 갇히는데, /platform 진입점은 회사 안(스위처)에만 있어 어드민으로 갈 문이 없었다.
+  | { kind: "platform"; path: "/platform" }
   | {
       kind: "fail-closed";
       path: "/workspace-entry?error=routing";
@@ -165,9 +168,19 @@ export function workspaceTargetFromNext(value: unknown): WorkspaceTargetHint {
   }
 }
 
+/**
+ * 로그인 후 착지 지점 판정.
+ *
+ * `isPlatformAdmin` 은 **소속이 0일 때만** 결과를 바꾼다(→ `/platform`).
+ * 소속이 있으면 기존대로 회사로 보낸다 — 플랫폼 관리는 회사 안 스위처의 ⚙ 로 간다.
+ * 플랫폼 역할이 tenant 역할을 대신하거나 멤버십 검증을 우회하지 않는다(계약 유지):
+ * 아래에서 `isPlatformAdmin` 은 멤버십 파싱·slug 매칭·fail-closed 어디에도 개입하지 않고,
+ * "소속 0" 분기의 목적지만 고른다.
+ */
 export function decideWorkspaceDestination(
   rows: unknown,
   target: WorkspaceTargetHint = { kind: "none" },
+  isPlatformAdmin = false,
 ): WorkspaceDestination {
   const parsed = parseActiveMembershipRows(rows);
   if (!parsed.ok || target.kind === "invalid") {
@@ -191,7 +204,11 @@ export function decideWorkspaceDestination(
   }
 
   if (parsed.memberships.length === 0) {
-    return { kind: "entry", path: "/workspace-entry" };
+    // 소속 0 — 일반 사용자는 진입(신청) 화면으로. 플랫폼 관리자는 신청할 회사가 없어도
+    // 할 일(승인 큐)이 있으므로 어드민으로 보낸다.
+    return isPlatformAdmin
+      ? { kind: "platform", path: "/platform" }
+      : { kind: "entry", path: "/workspace-entry" };
   }
   if (parsed.memberships.length > 1) {
     return { kind: "chooser", path: "/workspaces" };

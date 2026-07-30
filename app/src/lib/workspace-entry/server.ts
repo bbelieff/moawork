@@ -278,5 +278,25 @@ export async function executeWorkspaceRequest(
       : state === "approved"
         ? "승인했어요. 현재 멤버십을 다시 확인해 안전하게 반영할게요."
         : "승인하지 않았어요. 요청자에게는 회사 정보 없이 결과만 보여요.";
+
+  // 플랫폼 관리자의 회사 만들기는 승인 절차 없이 즉시 생성된다(018).
+  // 그 경우 RPC 가 auto_approved + slug 를 돌려주므로 바로 새 회사로 보낸다 —
+  // 이 배선이 없으면 이미 만들어진 회사를 두고 "승인 대기" 화면에 머문다.
+  if (input.kind === "create" && state === "approved") {
+    const row = record(response.data);
+    const slug = row?.auto_approved === true && typeof row.slug === "string" ? row.slug : null;
+    if (slug) {
+      return {
+        result: {
+          ok: true,
+          state,
+          message: "회사를 만들었어요. 바로 들어갈게요.",
+          redirectTo: `/w/${slug}`,
+        },
+        status: 200,
+      };
+    }
+  }
+
   return { result: { ok: true, state, message }, status: 200 };
 }

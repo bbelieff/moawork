@@ -138,6 +138,12 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
       setNotice({ tone: result.ok ? "pending" : "error", message: result.message });
       if (result.ok) {
         retryKeys.current[kind] = null;
+        // 플랫폼 관리자의 회사 만들기는 즉시 생성된다(018) → 대기 화면을 거치지 않고 바로 입장.
+        if (result.state === "approved" && result.redirectTo) {
+          setNotice({ tone: "pending", message: result.message });
+          router.replace(result.redirectTo);
+          return;
+        }
         setActiveRequest({ requestId, kind, status: "pending", createdAt: new Date().toISOString(), resolvedAt: null, decisionState: "pending", approvedTargetSlug: null, reviewDeadline: null });
         setView("pending");
         router.replace("/workspace-entry?mode=resume");
@@ -298,6 +304,13 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
         {view === "operator" ? <>
           <div className={styles.bubble}><strong>승인된 운영 요청만 확인할 수 있어요.</strong><small>플랫폼 역할만으로 고객 회사 멤버십이나 대표 권한은 생기지 않아요.</small></div>
           <details className={styles.controlPlane}><summary>회사 만들기 검토 요청 확인</summary><p>이 운영 영역에는 회사 전환·생성·합류·진입 행동이 없어요.</p><ApprovalQueue mode="platform" requests={platformRequests} /></details>
+          {/* 플랫폼 콘솔로 나가는 문. 소속이 0이면 회사로 들어갈 수 없고, 어드민 링크가
+              회사 안 스위처(⚙)에만 있어서 이 화면이 막다른 길이었다.
+              이 블록은 view==="operator" 안에 있고 그 뷰는 서버가 확인한 isPlatformAdmin
+              일 때만 선택된다 → 일반 사용자에게는 렌더 자체가 되지 않는다. */}
+          <div className={styles.pendingExits} aria-label="플랫폼 운영으로 이동">
+            <Link href="/platform">⚙ 플랫폼 관리로 가기</Link>
+          </div>
         </> : null}
       </div>
     </EntryShell>
