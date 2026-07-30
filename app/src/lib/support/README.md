@@ -41,6 +41,17 @@ RLS 정책은 OR 로 합성되므로 이 방식이 기존 조직 격리를 건�
 T06 PR #50 이 인앱 알림의 **정본 계약**을 가져온다. T08 은 그 전에 만들어져
 **임시 알림 테이블**(`support_notifications`)을 자체 보유한다. T06 머지 후 아래를 수행한다.
 
+> **PR #46 은 T06 에 의존하지 않는다.** 단독으로 머지 가능하고, 단독으로 동작한다.
+> 아래는 **머지 후 정리**이지 머지 선행조건이 아니다 — 일부러 결합하지 않았다.
+> (결합하면 T06 이 늦어질 때 T08 까지 같이 막힌다)
+
+**T06 머지 신호 후 체크리스트**
+1. `git fetch && git rebase origin/main` → 충돌 해소
+2. `git ls-tree origin/main -- supabase/migrations` **실측** → 내 번호가 겹치면 재배정 (§1)
+3. §2 알림 통합 · §3 소식창 일원화를 **새 마이그레이션 1개 + 앱 변경**으로 적용
+4. `bash scripts/check.sh` → 위임 테스트 24/24 유지 확인
+5. 파킹 §1(`is_platform_admin` 판정) 해소 여부 재확인 — 미해소면 위임은 프로덕션에서 무동작
+
 ### (1) 마이그레이션 번호 — 매 리베이스마다 재실측할 것
 
 **번호는 고정값이 아니다.** T08 은 최초 `008` 로 냈으나 그 사이 `008`~`016` 이 머지돼
@@ -66,12 +77,33 @@ T08 의 현재 구현은 `read_at` 하나뿐이라 이 계약을 만족하지 �
 | `grant_ended` | `access_grant` | false | 통지일 뿐 행동 불필요 |
 | `support_reply` | `support_reply` | false | 확인이면 충분 → 점 뱃지 |
 
-> ⚠ **알려진 계약 위반(현재)**: `SupportLauncher` 가 문의 목록을 열 때 `markRead()` 를 호출해
-> **위임 알림까지 지운다**. T06 계약에서는 `grant_started` 가 화면 진입만으로 사라지면 안 된다.
-> 통합 시 `resolved_at` 은 **위임을 실제로 종료했을 때만** 찍어야 한다.
+✅ **선반영 완료**: 문의 목록 진입은 `markThreadsRead()` 로 **답변 알림만** 지운다.
+위임 알림은 남는다(회귀 테스트 `★ 문의 목록을 열어도 위임 알림은 사라지지 않는다`).
+통합 시 `resolved_at` 은 **위임이 실제로 끝났을 때만** 찍으면 된다.
 
 T06 은 클라이언트 insert 정책을 두지 않는다(위조·남발 방지). 발행은 **definer 트리거/서버 경로**로만 —
 `create_access_grant()` / `revoke_access_grant()` 가 이미 SECURITY DEFINER 라 그 안에서 발행하면 된다.
+
+**적용 절차(기계적)**
+
+1. `app/src/lib/notify/types.ts` 의 `NOTIFICATION_TYPES` 에 `accessGrant: "access_grant"`,
+   `supportReply: "support_reply"` 추가. (T06 소유 파일 — 값 추가만, 기존 키 무수정)
+2. `messages.ts` 에 고정 템플릿 2종 추가. **금액·개인정보를 파라미터로 받지 않는다**(T06 프라이버시 규칙).
+   - `access_grant` → "화면 보기 권한이 열렸습니다" / "…이 중단되었습니다"
+   - `support_reply` → "문의에 답변이 도착했습니다"
+3. 새 마이그레이션(머지 직전 실측 번호)에서:
+   - `create_access_grant()` 의 `insert into support_notifications … 'grant_started'`
+     → `insert into notifications(org_id,user_id,type,title,body,target_type,target_id,actor_id,is_action)`
+       `values (…, 'access_grant', …, 'access_grants', v_grant.id, auth.uid(), **true**)`
+   - `revoke_access_grant()` 의 `'grant_ended'` → 같은 형태로 `is_action=false`,
+     **그리고 해당 위임의 미해결 `access_grant` 알림을 `resolved_at=now()` 로 마감**한다
+     (위임이 끝나면 "할 일"도 끝난다 — 이게 숫자가 사라지는 유일한 경로).
+   - `drop table support_notifications;`
+4. 앱: `SupportRepo` 의 알림 4메서드(`listNotifications`/`createNotification`/
+   `markNotificationsRead` + `SupportNotification` 타입) 제거하고 `@/lib/notify` 로 대체.
+   `unreadCount()` 는 T06 의 `badge.ts` 집계를 쓴다.
+5. `SupportLauncher` 의 뱃지는 T06 상단바 🔔 와 **이중 표시**가 된다. 위임 알림은 🔔 로 넘기고
+   플로팅 버튼 뱃지는 **미읽음 답변 수만** 세는 쪽이 맞다(버튼 = 지원 표면).
 
 ### (3) 소식창 표면 일원화
 T06 은 **회사 소식 = `audit_logs` 재사용**으로 확정했다(신규 테이블 없음).
@@ -81,6 +113,10 @@ T08 의 `SupportService.postNotice()` 는 T04 보드 엔진의 공지보드에 �
 
 `audit_select` 정책은 T06 이 교체한다. 위임 감사행은 `target_type='access_grants'` 라
 새 정책의 `or target_type is distinct from 'deal'` 절에 걸려 **계속 보인다**(확인 완료).
+
+**적용 절차**: `SupportService.postNotice()` 와 그 호출 3곳(생성·중단·만료), 생성자의
+`NoticesService` 의존, 테스트의 `NoopNotices` 스텁을 제거한다. 감사로그 적재는 그대로 두면
+소식창이 `audit_logs` 하나로 수렴한다. **감사로그 누락 0 테스트는 그대로 통과해야 한다.**
 
 ## 파킹 (T08 소관 아님)
 
