@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { CurrentSessionLogout } from "./CurrentSessionLogout";
 import styles from "./account.module.css";
+import { DeveloperModeControl, type DeveloperModeAction } from "@/components/mode/DeveloperModeControl";
 
 export type AccountMenuProps = {
   displayName: string;
@@ -14,6 +15,9 @@ export type AccountMenuProps = {
   workspaceHref?: string;
   sessionsHref?: string;
   privacyHref?: string;
+  /** Server-confirmed capability and destination are supplied by a later adapter. */
+  serverConfirmedCanAccessPlatform?: boolean;
+  platformModeAction?: DeveloperModeAction;
 };
 
 export function AccountMenu({
@@ -23,6 +27,8 @@ export function AccountMenu({
   workspaceHref,
   sessionsHref,
   privacyHref,
+  serverConfirmedCanAccessPlatform = false,
+  platformModeAction,
 }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -157,6 +163,9 @@ export function AccountMenu({
                 개인정보와 데이터
               </Link>
             </li>
+          ) : null}
+          {serverConfirmedCanAccessPlatform && platformModeAction?.mode === "platform" ? (
+            <li><DeveloperModeControl mode="user" serverConfirmedPlatform action={platformModeAction} /></li>
           ) : null}
           <li>
             <CurrentSessionLogout className={styles.menuItem} menuItem />
