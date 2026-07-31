@@ -24,6 +24,6 @@ describe("PlatformShell", () => {
     const html = renderToStaticMarkup(<PlatformShell pathname="/platform" title="운영" description="집계" userModeAction={{ mode: "user" }}><p>내용</p></PlatformShell>);
     expect(html).toContain("관리자 모드");
     expect(html).toContain("사용자 모드로");
-    expect(html).toContain('action="/mode"');
+    expect(html).toContain('action="/mode/preference"');
   });
 });
