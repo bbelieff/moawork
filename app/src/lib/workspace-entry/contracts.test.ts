@@ -15,7 +15,9 @@ describe("workspace entry request contract", () => {
 
   it("keeps reserved slug and duplicate reason generic", () => {
     expect(RESERVED_WORKSPACE_SLUGS.has("login")).toBe(true);
+    expect(RESERVED_WORKSPACE_SLUGS.has("mode")).toBe(true);
     expect(validateWorkspaceSlug("login")).toBe("이 회사 주소는 사용할 수 없어요. 다른 주소를 선택해 주세요.");
+    expect(validateWorkspaceSlug("mode")).toBe("이 회사 주소는 사용할 수 없어요. 다른 주소를 선택해 주세요.");
     expect(parseWorkspaceRequest({ kind: "create", displayName: "모아", slug: "login" })).toEqual({ ok: false, message: "이 회사 주소는 사용할 수 없어요." });
   });
 
@@ -44,11 +46,13 @@ describe("workspace entry request contract", () => {
   });
 
   it("matches the DB reserved slug contract exactly", () => {
-    const sql = readFileSync(join(process.cwd(), "..", "supabase", "migrations", "006_public_workspace_entry.sql"), "utf8");
-    const block = sql.match(/slug not in \(([\s\S]*?)\)/)?.[1];
-    expect(block).toBeTruthy();
-    const dbReserved = new Set(Array.from(block!.matchAll(/'([^']+)'/g), (match) => match[1]));
-    expect([...RESERVED_WORKSPACE_SLUGS].sort()).toEqual([...dbReserved].sort());
+    const sql = readFileSync(join(process.cwd(), "..", "supabase", "migrations", "021_reserve_mode_workspace_slug.sql"), "utf8");
+    const blocks = Array.from(sql.matchAll(/slug not in \(([\s\S]*?)\)/g), (match) => match[1]);
+    expect(blocks).toHaveLength(2);
+    for (const block of blocks) {
+      const dbReserved = new Set(Array.from(block.matchAll(/'([^']+)'/g), (match) => match[1]));
+      expect([...RESERVED_WORKSPACE_SLUGS].sort()).toEqual([...dbReserved].sort());
+    }
   });
 
   it("keeps slug and invite-code lookup shapes behind one neutral field", () => {

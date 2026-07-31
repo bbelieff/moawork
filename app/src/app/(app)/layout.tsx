@@ -17,6 +17,7 @@ import {
 } from "@/lib/workspace-entry/server";
 import { NotificationBell } from "@/components/notify/NotificationBell";
 import { loadNotifySnapshot } from "@/lib/notify/server";
+import { loadPlatformActor } from "@/lib/platform/actor";
 
 // 앱 셸 — UI목업_모아워크셸_v0.3 (1단 사이드바 232px + 상단바).
 // 색은 전부 globals.css 의 --mw-* 토큰 참조(하드코딩 hex 금지).
@@ -35,6 +36,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     ? await loadWorkspaceApprovals(trustedOwnerOrgId)
     : null;
   const workspaceEntryContext = await loadWorkspaceEntryContext();
+  const platformActor = await loadPlatformActor();
   const switcherWorkspaces = routing.kind === "ready"
     ? routing.memberships.map((membership) => ({
         orgId: membership.orgId,
@@ -54,8 +56,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           kind: request.kind,
         }))
     : [];
-  const canAccessPlatform = workspaceEntryContext.kind === "ready"
-    && workspaceEntryContext.isPlatformAdmin;
+  // Platform entry is a server-owned capability. Workspace-entry context is
+  // useful for pending requests, but it is never used to elevate this action.
+  const canAccessPlatform = platformActor.kind === "granted";
 
   // 엔타이틀먼트는 서버 진실 — 잠긴 기능키를 계산해 사이드바로 내린다.
   const features = Array.from(
@@ -117,7 +120,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
                 createHref: "/workspace-entry?mode=new",
                 joinHref: "/workspace-entry?mode=resume",
                 platformHref: canAccessPlatform
-                  ? "/platform/workspace-requests"
+                  ? "/platform"
                   : undefined,
               },
               serverConfirmedCanAccessPlatform: canAccessPlatform,
@@ -190,6 +193,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
               workspaceHref="/settings/account#workspace"
               sessionsHref="/settings/account/sessions"
               privacyHref="/settings/account/privacy"
+              serverConfirmedCanAccessPlatform={canAccessPlatform}
+              platformModeAction={canAccessPlatform
+                ? { mode: "platform", next: "/platform" }
+                : undefined}
             />
           </div>
         </header>

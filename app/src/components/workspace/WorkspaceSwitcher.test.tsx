@@ -67,17 +67,17 @@ describe("WorkspaceSwitcher", () => {
   });
 
   it("platform 항목은 서버 확인 capability와 href가 함께 있을 때만 DOM에 존재한다", () => {
-    expect(render(false)).not.toContain("플랫폼 관리");
-    expect(render(true)).toContain("플랫폼 관리");
+    expect(render(false)).not.toContain("관리자 모드로");
+    expect(render(true)).toContain("관리자 모드로");
     const html = renderToStaticMarkup(<WorkspaceSwitcher currentOrgId="org-a" workspaces={active} destinations={{ createHref: "/new", joinHref: "/join" }} serverConfirmedCanAccessPlatform onNavigate={async () => {}} defaultOpen />);
-    expect(html).not.toContain("플랫폼 관리");
+    expect(html).not.toContain("관리자 모드로");
   });
 
   it("잘못된 active/current 계약은 이동 항목 없이 복구 안내만 보여준다", () => {
     const html = renderToStaticMarkup(<WorkspaceSwitcher currentOrgId="missing" workspaces={active} destinations={destinations} onNavigate={async () => {}} defaultOpen />);
     expect(html).toContain("회사를 확인할 수 없어요");
     expect(html).not.toContain("새 회사 만들기");
-    expect(html).not.toContain("플랫폼 관리");
+    expect(html).not.toContain("관리자 모드로");
   });
 
   it("counts, badges, fake backend success를 렌더하지 않는다", () => {

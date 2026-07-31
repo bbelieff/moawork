@@ -10,6 +10,7 @@ export const RESERVED_WORKSPACE_SLUGS = new Set([
   "deals",
   "login",
   "logout",
+  "mode",
   "newcust",
   "notices",
   "onboarding",

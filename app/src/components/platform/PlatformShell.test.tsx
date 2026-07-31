@@ -19,4 +19,11 @@ describe("PlatformShell", () => {
     expect(html).toContain("고객사·사용자·업무 원본");
     expect(html).not.toContain("0건");
   });
+
+  it("keeps the platform-mode badge visible and accepts only an injected return destination", () => {
+    const html = renderToStaticMarkup(<PlatformShell pathname="/platform" title="운영" description="집계" userModeAction={{ mode: "user" }}><p>내용</p></PlatformShell>);
+    expect(html).toContain("관리자 모드");
+    expect(html).toContain("사용자 모드로");
+    expect(html).toContain('action="/mode/preference"');
+  });
 });
