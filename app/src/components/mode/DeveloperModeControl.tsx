@@ -70,7 +70,7 @@ export function DeveloperModeControl({
   demoSelectors?: readonly unknown[];
 }) {
   const post = (approvedAction: DeveloperModeAction, label: string) => (
-    <form action="/mode" method="post" className={styles.form}>
+    <form action="/mode/preference" method="post" className={styles.form}>
       <input type="hidden" name="mode" value={approvedAction.mode} />
       {approvedAction.next ? <input type="hidden" name="next" value={approvedAction.next} /> : null}
       <button type="submit" className={styles.action} data-mode-action={approvedAction.mode}>{label}</button>

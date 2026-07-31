@@ -47,12 +47,12 @@ export default async function ModePage({
     <main>
       <h1>어디에서 시작할까요?</h1>
       <p>플랫폼 운영과 내 워크스페이스는 서로 다른 영역이에요.</p>
-      <form action="/mode" method="post">
+      <form action="/mode/preference" method="post">
         <input type="hidden" name="mode" value="platform" />
         {next ? <input type="hidden" name="next" value={next} /> : null}
         <button type="submit">플랫폼 운영으로 이동</button>
       </form>
-      <form action="/mode" method="post">
+      <form action="/mode/preference" method="post">
         <input type="hidden" name="mode" value="user" />
         {next ? <input type="hidden" name="next" value={next} /> : null}
         <button type="submit">내 워크스페이스로 이동</button>

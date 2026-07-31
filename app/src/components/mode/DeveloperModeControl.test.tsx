@@ -10,7 +10,7 @@ describe("DeveloperModeControl", () => {
   it("renders the user-side entry only from a server-confirmed capability", () => {
     const html = renderToStaticMarkup(<DeveloperModeControl mode="user" serverConfirmedPlatform action={{ mode: "platform", next: "/platform" }} />);
     expect(html).toContain("관리자 모드로");
-    expect(html).toContain('action="/mode"');
+    expect(html).toContain('action="/mode/preference"');
     expect(html).toContain('name="mode" value="platform"');
   });
 
