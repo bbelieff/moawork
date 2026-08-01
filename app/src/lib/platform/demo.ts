@@ -54,7 +54,8 @@ export async function loadPlatformDemoTabState(): Promise<PlatformDemoTabState> 
         selector.kind !== "ready" ||
         selector.orgId !== option.orgId ||
         selector.routePath !== option.routePath ||
-        selector.routeAuthorization !== "reviewed_internal_demo" ||
+        (selector.routeAuthorization !== "reviewed_internal_demo" &&
+          selector.routeAuthorization !== "active_membership") ||
         selector.releaseRing !== "canary" ||
         !selector.isInternal ||
         !isFeatureReleased(selector, "platform_reviewed_demo")
