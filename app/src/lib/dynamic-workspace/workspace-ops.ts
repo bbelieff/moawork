@@ -33,11 +33,13 @@ function isWorkspaceAutomation(value: WorkspaceAutomation | null): value is Work
   return value !== null;
 }
 
-export async function loadOwnerWorkspaceOpsSnapshot(): Promise<WorkspaceOpsSnapshot> {
-  const ctx = await getSession();
-  if (ctx.role !== "owner") return { boards: [], builder: null, automations: [], readError: "대표 권한이 필요합니다." };
+/** Server-only: every RPC independently requires the caller to own this org. */
+export async function loadOwnerWorkspaceOpsSnapshotForOrg(orgId: string): Promise<WorkspaceOpsSnapshot> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(orgId)) {
+    return { boards: [], builder: null, automations: [], readError: "대표 권한이 필요합니다." };
+  }
   const client = await createClient() as unknown as RpcClient;
-  const args = { p_org_id: ctx.org.id };
+  const args = { p_org_id: orgId };
   const [boardsResult, builderResult, automationsResult] = await Promise.all([
     client.rpc<unknown[]>("list_workspace_ops_boards", args),
     client.rpc<unknown[]>("get_workspace_builder_config", args),
@@ -73,4 +75,10 @@ export async function loadOwnerWorkspaceOpsSnapshot(): Promise<WorkspaceOpsSnaps
   const completeAutomations = automations.filter(isWorkspaceAutomation);
   if (completeAutomations.length !== automations.length) return malformed();
   return { boards: completeBoards, builder, automations: completeAutomations, readError: null };
+}
+
+export async function loadOwnerWorkspaceOpsSnapshot(): Promise<WorkspaceOpsSnapshot> {
+  const ctx = await getSession();
+  if (ctx.role !== "owner") return { boards: [], builder: null, automations: [], readError: "대표 권한이 필요합니다." };
+  return loadOwnerWorkspaceOpsSnapshotForOrg(ctx.org.id);
 }
