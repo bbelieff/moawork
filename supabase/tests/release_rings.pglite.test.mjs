@@ -37,6 +37,7 @@ const migrations = [
   "021_reserve_mode_workspace_slug.sql",
   "022_admin_mode_workspace_persistence.sql",
   "023_platform_demo_workspace_bootstrap.sql",
+  "024_workspace_ops_read_owner_alignment.sql",
 ];
 
 const compatible = (sql) =>
@@ -45,7 +46,7 @@ const compatible = (sql) =>
     .filter((line) => !/^\s*create extension\b.*\bpgcrypto\b/iu.test(line))
     .join("\n");
 
-test("fresh 0001..023 release rings stay operator-controlled and tenant-safe", async () => {
+test("fresh 0001..024 release rings stay operator-controlled and tenant-safe", async () => {
   const db = new PGlite();
   const bootstrapOwner = "20000000-0000-4000-8000-000000000001";
   const platform = "20000000-0000-4000-8000-000000000002";
