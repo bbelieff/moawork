@@ -23,38 +23,6 @@ export type PlatformDemoTabState =
     }
   | { kind: "unavailable" };
 
-/** Returns a server-only org id after a fresh owner-safe Canary recheck. */
-export async function loadSelectedPlatformDemoWorkspaceId(): Promise<string | null> {
-  try {
-    const supabase = await createClient();
-    const selectionResult = await supabase.rpc("get_my_admin_mode_workspace_selection");
-    if (selectionResult.error) return null;
-    const selection = resolveAdminModeWorkspaceSelection(selectionResult.data);
-    if (selection.kind !== "ready" || selection.routeAuthorization !== "active_membership") return null;
-
-    const selectorResult = await supabase.rpc(
-      "resolve_workspace_release_selector",
-      { p_org_id: selection.orgId },
-    );
-    if (selectorResult.error) return null;
-    const selector = resolveReleaseSelector(
-      Array.isArray(selectorResult.data) ? selectorResult.data[0] : selectorResult.data,
-    );
-    if (
-      selector.kind !== "ready" ||
-      selector.orgId !== selection.orgId ||
-      selector.routeAuthorization !== "active_membership" ||
-      selector.releaseRing !== "canary" ||
-      !selector.isInternal ||
-      selector.internalSource !== "platform_reviewed_demo" ||
-      !isFeatureReleased(selector, "platform_reviewed_demo")
-    ) return null;
-    return selector.orgId;
-  } catch {
-    return null;
-  }
-}
-
 /** Discovery is rechecked per option after the canonical platform-page guard. */
 export async function loadPlatformDemoTabState(): Promise<PlatformDemoTabState> {
   try {
@@ -133,5 +101,28 @@ export async function loadPlatformDemoTabState(): Promise<PlatformDemoTabState> 
     };
   } catch {
     return { kind: "unavailable" };
+  }
+}
+
+/** Keeps the selected org id on the server after the public state was verified. */
+export async function loadPlatformDemoTabContext(): Promise<{
+  state: PlatformDemoTabState;
+  selectedOrgId: string | null;
+}> {
+  const state = await loadPlatformDemoTabState();
+  if (state.kind !== "ready" || state.tenantAccess !== "active-membership") {
+    return { state, selectedOrgId: null };
+  }
+  try {
+    const supabase = await createClient();
+    const selectionResult = await supabase.rpc("get_my_admin_mode_workspace_selection");
+    if (selectionResult.error) return { state: { kind: "unavailable" }, selectedOrgId: null };
+    const selection = resolveAdminModeWorkspaceSelection(selectionResult.data);
+    if (selection.kind !== "ready" || selection.routeAuthorization !== "active_membership") {
+      return { state: { kind: "unavailable" }, selectedOrgId: null };
+    }
+    return { state, selectedOrgId: selection.orgId };
+  } catch {
+    return { state: { kind: "unavailable" }, selectedOrgId: null };
   }
 }
