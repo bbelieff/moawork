@@ -3,7 +3,12 @@ import { loadPlatformDemoTabContext } from "@/lib/platform/demo";
 import { requirePlatformAccess } from "@/lib/platform/guard";
 import { BuilderWorkspaceSurface } from "@/components/workspace-builder/BuilderWorkspaceSurface";
 import { loadOwnerWorkspaceOpsSnapshotForOrg } from "@/lib/dynamic-workspace/workspace-ops";
-import { preparePlatformDemoWorkspace, selectPlatformDemoWorkspace } from "./actions";
+import {
+  createPlatformDemoCsvDryRun,
+  preparePlatformDemoWorkspace,
+  savePlatformDemoBuilder,
+  selectPlatformDemoWorkspace,
+} from "./actions";
 
 export default async function PlatformDemoPage() {
   await requirePlatformAccess("/platform/demo");
@@ -18,7 +23,16 @@ export default async function PlatformDemoPage() {
   const workspaceSurface = snapshot?.readError
     ? { kind: "access-required" as const }
     : snapshot && snapshot.boards.length > 0
-      ? { kind: "available" as const, content: <BuilderWorkspaceSurface snapshot={snapshot} /> }
+      ? {
+          kind: "available" as const,
+          content: (
+            <BuilderWorkspaceSurface
+              snapshot={snapshot}
+              saveBuilderAction={savePlatformDemoBuilder}
+              createCsvDryRunAction={createPlatformDemoCsvDryRun}
+            />
+          ),
+        }
       : selectedOrgId
         ? { kind: "needs-setup" as const }
         : undefined;
