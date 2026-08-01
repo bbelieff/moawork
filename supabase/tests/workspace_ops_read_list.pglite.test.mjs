@@ -23,6 +23,8 @@ const names = [
   "010_functional_workspace_ops.sql",
   "011_member_account_ops.sql",
   "012_workspace_ops_read_list.sql",
+  "015_fix_org_helper_session_deadlock.sql",
+  "024_workspace_ops_read_owner_alignment.sql",
 ];
 const predecessor011 = process.env.MOAWORK_011_PATH;
 const compatible = (sql) =>
@@ -38,7 +40,7 @@ async function migrationSource(name) {
   return readFile(path.join(root, "supabase", "migrations", name), "utf8");
 }
 
-test("fresh 0001..012 owner read RPCs are tenant-scoped and cutoff-safe", async () => {
+test("owner read RPCs follow the canonical active-owner contract without a separate session registration", async () => {
   const db = new PGlite();
   const owner = "12000000-0000-0000-0000-000000000001";
   const member = "12000000-0000-0000-0000-000000000002";
@@ -149,16 +151,6 @@ test("fresh 0001..012 owner read RPCs are tenant-scoped and cutoff-safe", async 
       select set_config('request.jwt.claim.session_id','${ownerSession}',false);
       set role authenticated;
     `);
-    await assert.rejects(
-      db.query(`select * from public.list_workspace_ops_boards('${org}')`),
-      /protected workspace owner with valid session required/iu,
-    );
-    await db.query(
-      `select public.register_my_member_account_session(
-        '12000000-0000-0000-0000-000000000052','${ownerSession}','${org}'
-      )`,
-    );
-
     const boards = await db.query(
       `select board_id,name from public.list_workspace_ops_boards('${org}')`,
     );
@@ -178,7 +170,12 @@ test("fresh 0001..012 owner read RPCs are tenant-scoped and cutoff-safe", async 
     }]);
     await assert.rejects(
       db.query(`select * from public.list_workspace_ops_boards('${otherOrg}')`),
-      /protected workspace owner with valid session required/iu,
+      /protected workspace owner required/iu,
+    );
+    await db.query(
+      `select public.register_my_member_account_session(
+        '12000000-0000-0000-0000-000000000052','${ownerSession}','${org}'
+      )`,
     );
 
     await db.exec(`
@@ -194,7 +191,7 @@ test("fresh 0001..012 owner read RPCs are tenant-scoped and cutoff-safe", async 
     );
     await assert.rejects(
       db.query(`select * from public.get_workspace_builder_config('${org}')`),
-      /protected workspace owner with valid session required/iu,
+      /protected workspace owner required/iu,
     );
 
     await db.exec(`
@@ -208,10 +205,11 @@ test("fresh 0001..012 owner read RPCs are tenant-scoped and cutoff-safe", async 
         '12000000-0000-0000-0000-000000000054','${ownerSession}',false
       )`,
     );
-    await assert.rejects(
-      db.query(`select * from public.list_workspace_automation_configs('${org}')`),
-      /protected workspace owner with valid session required/iu,
+    const automationsAfterSessionCutoff = await db.query(
+      `select automation_id,board_id,draft,state
+         from public.list_workspace_automation_configs('${org}')`,
     );
+    assert.deepEqual(automationsAfterSessionCutoff.rows, automations.rows);
 
     await db.exec("reset role; set role anon;");
     await assert.rejects(
