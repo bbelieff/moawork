@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requirePlatformAccess } from "@/lib/platform/guard";
-import { resolveInternalDemoOptions } from "@/lib/release-rings/resolve";
+import {
+  resolveAdminModeWorkspaceSelection,
+  resolveInternalDemoOptions,
+} from "@/lib/release-rings/resolve";
 import { createClient } from "@/lib/supabase/server";
 
 function unavailable(): never {
@@ -41,6 +44,45 @@ export async function selectPlatformDemoWorkspace(formData: FormData) {
     },
   );
   if (selectionResult.error) unavailable();
+
+  revalidatePath("/platform/demo");
+  redirect("/platform/demo");
+}
+
+/** Creates the selected demo's initial DB board without accepting an org id. */
+export async function preparePlatformDemoWorkspace(formData: FormData) {
+  await requirePlatformAccess("/platform/demo");
+
+  const rawIndex = formData.get("demoIndex");
+  const index = typeof rawIndex === "string" ? Number(rawIndex) : Number.NaN;
+  if (!Number.isInteger(index) || index < 0) unavailable();
+
+  const supabase = await createClient();
+  const [discoveredResult, selectionResult] = await Promise.all([
+    supabase.rpc("list_reviewed_internal_demo_release_options"),
+    supabase.rpc("get_my_admin_mode_workspace_selection"),
+  ]);
+  if (discoveredResult.error || selectionResult.error) unavailable();
+
+  const discovered = resolveInternalDemoOptions(discoveredResult.data);
+  const selection = resolveAdminModeWorkspaceSelection(selectionResult.data);
+  if (
+    discovered.kind !== "ready" ||
+    index >= discovered.options.length ||
+    selection.kind !== "ready" ||
+    selection.routeAuthorization !== "active_membership"
+  ) unavailable();
+
+  const option = discovered.options[index];
+  if (option.orgId !== selection.orgId || option.routePath !== selection.routePath) {
+    unavailable();
+  }
+
+  const result = await supabase.rpc(
+    "platform_ensure_selected_demo_workspace",
+    { p_request_id: crypto.randomUUID(), p_org_id: option.orgId },
+  );
+  if (result.error) unavailable();
 
   revalidatePath("/platform/demo");
   redirect("/platform/demo");

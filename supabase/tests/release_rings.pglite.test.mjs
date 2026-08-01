@@ -36,6 +36,7 @@ const migrations = [
   "020_release_rings.sql",
   "021_reserve_mode_workspace_slug.sql",
   "022_admin_mode_workspace_persistence.sql",
+  "023_platform_demo_workspace_bootstrap.sql",
 ];
 
 const compatible = (sql) =>
@@ -44,7 +45,7 @@ const compatible = (sql) =>
     .filter((line) => !/^\s*create extension\b.*\bpgcrypto\b/iu.test(line))
     .join("\n");
 
-test("fresh 0001..022 release rings stay operator-controlled and tenant-safe", async () => {
+test("fresh 0001..023 release rings stay operator-controlled and tenant-safe", async () => {
   const db = new PGlite();
   const bootstrapOwner = "20000000-0000-4000-8000-000000000001";
   const platform = "20000000-0000-4000-8000-000000000002";
@@ -416,6 +417,52 @@ test("fresh 0001..022 release rings stay operator-controlled and tenant-safe", a
 
     await db.exec(`
       reset role;
+      insert into public.app_admins(email,role,is_platform)
+        values('owner@test.invalid','owner',true)
+        on conflict (email) do update set role=excluded.role,is_platform=excluded.is_platform;
+      set role authenticated;
+      select set_config('request.jwt.claim.sub','${bootstrapOwner}',false);
+    `);
+    await db.query(`select public.platform_set_workspace_release_profile(
+      '20000000-0000-4000-8000-000000000070',
+      '${internalOrg}','canary',true,'platform_reviewed_demo','internal_demo_review'
+    )`);
+    await db.query(`select public.platform_set_feature_release(
+      '20000000-0000-4000-8000-000000000071',
+      'platform_reviewed_demo','canary',true,'release_validation'
+    )`);
+    const ownedDemoSelection = await db.query(`select public.platform_set_admin_mode_workspace_selection(
+      '20000000-0000-4000-8000-000000000072','${internalOrg}'
+    ) as result`);
+    assert.equal(ownedDemoSelection.rows[0].result.route_authorization, "active_membership");
+    const firstBootstrap = await db.query(`select public.platform_ensure_selected_demo_workspace(
+      '20000000-0000-4000-8000-000000000073','${internalOrg}'
+    ) as result`);
+    assert.deepEqual(firstBootstrap.rows, [{ result: { accepted: true, created: true } }]);
+    const replayBootstrap = await db.query(`select public.platform_ensure_selected_demo_workspace(
+      '20000000-0000-4000-8000-000000000074','${internalOrg}'
+    ) as result`);
+    assert.deepEqual(replayBootstrap.rows, [{ result: { accepted: true, created: false } }]);
+    const demoStorage = await db.query(`
+      select
+        count(distinct board.id)::integer as boards,
+        count(distinct group_row.id)::integer as groups,
+        count(distinct column_row.id)::integer as columns
+      from public.boards board
+      left join public.board_groups group_row on group_row.board_id=board.id
+      left join public.board_columns column_row on column_row.board_id=board.id
+      where board.org_id='${internalOrg}'
+        and board.source='platform_reviewed_demo'
+    `);
+    assert.deepEqual(demoStorage.rows, [{ boards: 1, groups: 1, columns: 2 }]);
+    await db.exec(`
+      reset role;
+      set role authenticated;
+      select set_config('request.jwt.claim.sub','${platform}',false);
+    `);
+
+    await db.exec(`
+      reset role;
       update public.org_members
          set status='suspended'
        where org_id='${customerOrg}' and user_id='${platform}';
@@ -496,7 +543,7 @@ test("fresh 0001..022 release rings stay operator-controlled and tenant-safe", a
       internal_owners: 1,
       customer_owners: 1,
       explicit_platform_tenant_memberships: 1,
-      selection_audits: 2,
+        selection_audits: 3,
       replay_audits: 1,
       pii_columns: 0,
       pii_payloads: 0,

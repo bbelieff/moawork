@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getSessionOrNull } from "@/lib/auth/session";
 import {
   isFeatureReleased,
   resolveAdminModeWorkspaceSelection,
@@ -18,6 +19,7 @@ export type PlatformDemoTabState =
       workspaces: readonly PlatformDemoWorkspace[];
       selectedIndex: number | null;
       tenantAccess: "active-membership" | "request-access";
+      selectedWorkspaceIsCurrent: boolean;
     }
   | { kind: "unavailable" };
 
@@ -68,6 +70,7 @@ export async function loadPlatformDemoTabState(): Promise<PlatformDemoTabState> 
         workspaces: Object.freeze(verified.map(({ releaseRing }) => Object.freeze({ releaseRing }))),
         selectedIndex: null,
         tenantAccess: "request-access",
+        selectedWorkspaceIsCurrent: false,
       };
     }
 
@@ -84,6 +87,9 @@ export async function loadPlatformDemoTabState(): Promise<PlatformDemoTabState> 
         releaseRing: selection.releaseRing,
       }) - 1;
     }
+    const session = selection.routeAuthorization === "active_membership"
+      ? await getSessionOrNull()
+      : null;
     return {
       kind: "ready",
       workspaces: Object.freeze(verified.map(({ releaseRing }) => Object.freeze({ releaseRing }))),
@@ -91,6 +97,7 @@ export async function loadPlatformDemoTabState(): Promise<PlatformDemoTabState> 
       tenantAccess: selection.routeAuthorization === "active_membership"
         ? "active-membership"
         : "request-access",
+      selectedWorkspaceIsCurrent: session?.org.id === selection.orgId,
     };
   } catch {
     return { kind: "unavailable" };

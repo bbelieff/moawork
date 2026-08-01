@@ -10,6 +10,7 @@ import type { PlatformDemoTabState } from "@/lib/platform/demo";
  */
 export type PlatformDemoWorkspaceSurface =
   | { kind: "available"; content: ReactNode }
+  | { kind: "needs-setup" }
   | { kind: "access-required" };
 
 /** A later server-authorized CRUD surface is mounted here, never via /w/{slug}. */
@@ -17,10 +18,14 @@ export function PlatformDemoWorkspaceTab({
   state,
   workspaceSurface,
   selectAction,
+  prepareAction,
+  deploymentVersion,
 }: {
   state: PlatformDemoTabState;
   workspaceSurface?: PlatformDemoWorkspaceSurface;
   selectAction?: (formData: FormData) => void | Promise<void>;
+  prepareAction?: (formData: FormData) => void | Promise<void>;
+  deploymentVersion?: string | null;
 }) {
   const selected = state.kind === "ready" ? state.selectedIndex : null;
   return (
@@ -52,8 +57,16 @@ export function PlatformDemoWorkspaceTab({
               })}
             </ul>
             {selected === null ? <p className={styles.hint}>선택된 데모 환경이 없어요. 서버에서 검토한 선택이 생기면 이 탭에 표시해요.</p>
-              : state.tenantAccess === "active-membership" && workspaceSurface?.kind === "available" ? workspaceSurface.content
-                : <div className={styles.surface} aria-live="polite"><h3>데모 환경 {selected + 1}</h3><p>데모 워크스페이스 접근 권한이 필요해요</p><p>활성 멤버십과 일반 RLS가 다시 확인되면 실제 업무 화면이 이 탭 안에서 열려요. 워크스페이스 주소로 이동하거나 권한을 새로 만들지 않아요.</p></div>}
+              : <>
+                <div className={styles.releaseMeta} aria-label="적용 대기 배포 버전">
+                  <span>적용 대기 버전</span>
+                  <strong>{deploymentVersion ?? "확인 중"}</strong>
+                  <small>Canary 검수 중</small>
+                </div>
+                {state.tenantAccess === "active-membership" && workspaceSurface?.kind === "available" ? workspaceSurface.content
+                  : state.tenantAccess === "active-membership" && workspaceSurface?.kind === "needs-setup" && prepareAction ? <div className={styles.surface} aria-live="polite"><h3>데모 환경 {selected + 1}</h3><p>실험용 DB 공간이 비어 있어요.</p><form action={prepareAction}><input type="hidden" name="demoIndex" value={selected} /><button type="submit" className={styles.prepare}>데모 공간 준비하기</button></form></div>
+                    : <div className={styles.surface} aria-live="polite"><h3>데모 환경 {selected + 1}</h3><p>데모 워크스페이스 접근 권한이 필요해요</p><p>활성 멤버십과 일반 RLS가 다시 확인되면 실제 업무 화면이 이 탭 안에서 열려요. 워크스페이스 주소로 이동하거나 권한을 새로 만들지 않아요.</p></div>}
+              </>}
           </section>}
     </PlatformShell>
   );
