@@ -16,9 +16,11 @@ export type PlatformDemoWorkspaceSurface =
 export function PlatformDemoWorkspaceTab({
   state,
   workspaceSurface,
+  selectAction,
 }: {
   state: PlatformDemoTabState;
   workspaceSurface?: PlatformDemoWorkspaceSurface;
+  selectAction?: (formData: FormData) => void | Promise<void>;
 }) {
   const selected = state.kind === "ready" ? state.selectedIndex : null;
   return (
@@ -30,7 +32,23 @@ export function PlatformDemoWorkspaceTab({
             <ul className={styles.tabs} aria-label="데모 워크스페이스 목록">
               {state.workspaces.map((workspace, index) => {
                 const active = selected === index;
-                return <li key={index} aria-current={active ? "true" : undefined} className={active ? styles.tabActive : styles.tab}>데모 환경 {index + 1}<small>{workspace.releaseRing === "canary" ? "Canary" : "Stable"}</small></li>;
+                return (
+                  <li key={index}>
+                    <form action={selectAction}>
+                      <input type="hidden" name="demoIndex" value={index} />
+                      <button
+                        type="submit"
+                        aria-current={active ? "true" : undefined}
+                        aria-label={`데모 환경 ${index + 1} 선택`}
+                        className={active ? styles.tabActive : styles.tab}
+                        disabled={!selectAction}
+                      >
+                        데모 환경 {index + 1}
+                        <small>{workspace.releaseRing === "canary" ? "Canary" : "Stable"}</small>
+                      </button>
+                    </form>
+                  </li>
+                );
               })}
             </ul>
             {selected === null ? <p className={styles.hint}>선택된 데모 환경이 없어요. 서버에서 검토한 선택이 생기면 이 탭에 표시해요.</p>

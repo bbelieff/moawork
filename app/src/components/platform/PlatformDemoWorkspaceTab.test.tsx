@@ -13,7 +13,9 @@ describe("PlatformDemoWorkspaceTab", () => {
   it("renders multiple authorized options as platform tabs, not workspace navigation", () => {
     const html = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "ready", workspaces: [{ releaseRing: "canary" }, { releaseRing: "canary" }], selectedIndex: 1, tenantAccess: "request-access" }} />);
     expect(html).toContain('aria-current="true"');
+    expect(html).toContain('aria-label="데모 환경 1 선택"');
     expect(html).not.toContain("/w/");
+    expect(html).not.toContain("org_id");
   });
 
   it("selects the sole authorized demo without exposing an identifier", () => {
