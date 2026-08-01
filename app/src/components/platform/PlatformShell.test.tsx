@@ -5,10 +5,11 @@ import { PlatformAggregatePanel, PlatformShell } from "./PlatformShell";
 import { unavailablePlatformAggregate } from "@/lib/platform/contracts";
 
 describe("PlatformShell", () => {
-  it("renders exactly eight safe navigation destinations and marks the current page", () => {
+  it("renders the safe navigation destinations and marks the current page", () => {
     const html = renderToStaticMarkup(<PlatformShell pathname="/platform/analytics" title="운영 분석" description="집계만"><p>내용</p></PlatformShell>);
-    expect(PLATFORM_NAV).toHaveLength(8);
+    expect(PLATFORM_NAV).toHaveLength(9);
     expect(html).toContain('href="/platform/analytics"');
+    expect(html).toContain('href="/platform/demo"');
     expect(html).toContain('aria-current="page"');
     expect(html).not.toContain("개인정보 표시");
   });

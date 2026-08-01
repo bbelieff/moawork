@@ -26,6 +26,17 @@ export type InternalDemoOptionsResult =
   | { kind: "ready"; options: readonly InternalDemoOption[] }
   | { kind: "unavailable" };
 
+export type AdminModeWorkspaceSelectionResult =
+  | {
+      kind: "ready";
+      orgId: string;
+      routePath: `/w/${string}`;
+      routeAuthorization: ReleaseRouteAuthorization;
+      releaseRing: ReleaseRing;
+    }
+  | { kind: "none" }
+  | { kind: "unavailable" };
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ROUTE_PATTERN = /^\/w\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -147,4 +158,56 @@ export function resolveInternalDemoOptions(
 
   options.sort((left, right) => left.orgId.localeCompare(right.orgId));
   return { kind: "ready", options: Object.freeze(options) };
+}
+
+/**
+ * Parses a server-revalidated admin-mode presentation selection. An empty RPC
+ * result means the preference is absent or no longer authorized; it never
+ * falls back to a tenant cookie or manufactures workspace access.
+ */
+export function resolveAdminModeWorkspaceSelection(
+  value: unknown,
+): AdminModeWorkspaceSelectionResult {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return { kind: "none" };
+    if (value.length !== 1) return { kind: "unavailable" };
+    value = value[0];
+  }
+  if (!isRecord(value)) return { kind: "unavailable" };
+
+  const keys = Object.keys(value).sort();
+  if (
+    keys.length !== 4 ||
+    keys[0] !== "org_id" ||
+    keys[1] !== "release_ring" ||
+    keys[2] !== "route_authorization" ||
+    keys[3] !== "route_path"
+  ) {
+    return { kind: "unavailable" };
+  }
+
+  const orgId = value.org_id;
+  const routePath = value.route_path;
+  const routeAuthorization = value.route_authorization;
+  const releaseRing = value.release_ring;
+  if (
+    typeof orgId !== "string" ||
+    !UUID_PATTERN.test(orgId) ||
+    typeof routePath !== "string" ||
+    !ROUTE_PATTERN.test(routePath) ||
+    (routeAuthorization !== "active_membership" &&
+      routeAuthorization !== "reviewed_internal_demo") ||
+    (releaseRing !== "canary" && releaseRing !== "stable") ||
+    (routeAuthorization === "reviewed_internal_demo" && releaseRing !== "canary")
+  ) {
+    return { kind: "unavailable" };
+  }
+
+  return {
+    kind: "ready",
+    orgId,
+    routePath: routePath as `/w/${string}`,
+    routeAuthorization,
+    releaseRing,
+  };
 }

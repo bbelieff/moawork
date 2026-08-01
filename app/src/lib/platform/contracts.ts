@@ -36,7 +36,8 @@ export type PlatformSectionKey =
   | "support"
   | "analytics"
   | "system"
-  | "admins";
+  | "admins"
+  | "demo";
 
 /** P0-safe default: a missing aggregate source must never become a fake zero. */
 export function unavailablePlatformAggregate(): PlatformAggregateState {

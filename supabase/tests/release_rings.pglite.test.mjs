@@ -34,6 +34,8 @@ const migrations = [
   "018_platform_admin_direct_create.sql",
   "019_notifications.sql",
   "020_release_rings.sql",
+  "021_reserve_mode_workspace_slug.sql",
+  "022_admin_mode_workspace_persistence.sql",
 ];
 
 const compatible = (sql) =>
@@ -42,7 +44,7 @@ const compatible = (sql) =>
     .filter((line) => !/^\s*create extension\b.*\bpgcrypto\b/iu.test(line))
     .join("\n");
 
-test("fresh 0001..020 release rings stay operator-controlled and tenant-safe", async () => {
+test("fresh 0001..022 release rings stay operator-controlled and tenant-safe", async () => {
   const db = new PGlite();
   const bootstrapOwner = "20000000-0000-4000-8000-000000000001";
   const platform = "20000000-0000-4000-8000-000000000002";
@@ -52,6 +54,7 @@ test("fresh 0001..020 release rings stay operator-controlled and tenant-safe", a
   const internalOrg = "20000000-0000-4000-8000-000000000020";
   const otherOrg = "20000000-0000-4000-8000-000000000030";
   const internalBoard = "20000000-0000-4000-8000-000000000040";
+  const customerBoard = "20000000-0000-4000-8000-000000000041";
   const memberSession = "20000000-0000-4000-8000-000000000050";
 
   try {
@@ -128,6 +131,8 @@ test("fresh 0001..020 release rings stay operator-controlled and tenant-safe", a
 
       insert into public.boards(id,org_id,name,description,icon,is_system,sort_order)
         values('${internalBoard}','${internalOrg}','Internal board',null,null,false,1);
+      insert into public.boards(id,org_id,name,description,icon,is_system,sort_order)
+        values('${customerBoard}','${customerOrg}','Customer board',null,null,false,1);
     `);
 
     const acl = await db.query(`
@@ -136,6 +141,8 @@ test("fresh 0001..020 release rings stay operator-controlled and tenant-safe", a
         has_table_privilege('authenticated','public.workspace_release_profiles','select') as profile_auth,
         has_table_privilege('authenticated','public.feature_release_controls','select') as feature_auth,
         has_table_privilege('authenticated','public.release_ring_audit','select') as audit_auth,
+        has_table_privilege('authenticated','public.admin_mode_workspace_selections','select') as selection_auth,
+        has_table_privilege('authenticated','public.admin_mode_workspace_selection_audit','select') as selection_audit_auth,
         has_function_privilege(
           'anon',
           'public.platform_set_workspace_release_profile(uuid,uuid,text,boolean,text,text)',
@@ -170,13 +177,30 @@ test("fresh 0001..020 release rings stay operator-controlled and tenant-safe", a
           'authenticated',
           'public.release_rings_require_operator()',
           'execute'
-        ) as guard_auth;
+        ) as guard_auth,
+        has_function_privilege(
+          'anon',
+          'public.platform_set_admin_mode_workspace_selection(uuid,uuid)',
+          'execute'
+        ) as selection_set_anon,
+        has_function_privilege(
+          'authenticated',
+          'public.platform_set_admin_mode_workspace_selection(uuid,uuid)',
+          'execute'
+        ) as selection_set_auth,
+        has_function_privilege(
+          'authenticated',
+          'public.get_my_admin_mode_workspace_selection()',
+          'execute'
+        ) as selection_get_auth;
     `);
     assert.deepEqual(acl.rows, [{
       profile_anon: false,
       profile_auth: false,
       feature_auth: false,
       audit_auth: false,
+      selection_auth: false,
+      selection_audit_auth: false,
       profile_mutation_anon: false,
       profile_mutation_auth: true,
       feature_mutation_anon: false,
@@ -184,6 +208,9 @@ test("fresh 0001..020 release rings stay operator-controlled and tenant-safe", a
       demo_list_anon: false,
       demo_list_auth: true,
       guard_auth: false,
+      selection_set_anon: false,
+      selection_set_auth: true,
+      selection_get_auth: true,
     }]);
 
     await db.exec(`
@@ -201,6 +228,16 @@ test("fresh 0001..020 release rings stay operator-controlled and tenant-safe", a
       db.query("select * from public.list_reviewed_internal_demo_release_options()"),
       /platform operator required/iu,
     );
+    await assert.rejects(
+      db.query(`select public.platform_set_admin_mode_workspace_selection(
+        '20000000-0000-4000-8000-000000000068','${otherOrg}'
+      )`),
+      /platform operator required/iu,
+    );
+    await assert.rejects(
+      db.query("select * from public.get_my_admin_mode_workspace_selection()"),
+      /platform operator required/iu,
+    );
 
     await db.exec(`
       reset role;
@@ -215,6 +252,22 @@ test("fresh 0001..020 release rings stay operator-controlled and tenant-safe", a
       "select * from public.list_reviewed_internal_demo_release_options()",
     );
     assert.deepEqual(emptyDemoOptions.rows, []);
+    const emptySelection = await db.query(
+      "select * from public.get_my_admin_mode_workspace_selection()",
+    );
+    assert.deepEqual(emptySelection.rows, []);
+    await assert.rejects(
+      db.query(`select public.platform_set_admin_mode_workspace_selection(
+        '20000000-0000-4000-8000-000000000070','${otherOrg}'
+      )`),
+      /admin mode workspace unavailable/iu,
+    );
+    await assert.rejects(
+      db.query(`select public.platform_set_admin_mode_workspace_selection(
+        '20000000-0000-4000-8000-000000000071','${customerOrg}'
+      )`),
+      /admin mode workspace unavailable/iu,
+    );
 
     const profile = await db.query(`select public.platform_set_workspace_release_profile(
       '20000000-0000-4000-8000-000000000062',
@@ -265,6 +318,28 @@ test("fresh 0001..020 release rings stay operator-controlled and tenant-safe", a
       feature_releases: { "developer.builder": true },
     }]);
 
+    const internalSelection = await db.query(`select public.platform_set_admin_mode_workspace_selection(
+      '20000000-0000-4000-8000-000000000068','${internalOrg}'
+    ) as result`);
+    assert.deepEqual(internalSelection.rows, [{ result: {
+      org_id: internalOrg,
+      route_path: "/w/internal-demo",
+      route_authorization: "reviewed_internal_demo",
+      release_ring: "canary",
+    } }]);
+    const internalSelectionReplay = await db.query(`select public.platform_set_admin_mode_workspace_selection(
+      '20000000-0000-4000-8000-000000000068','${internalOrg}'
+    ) as result`);
+    assert.deepEqual(internalSelectionReplay.rows, internalSelection.rows);
+    const persistedInternalSelection = await db.query(
+      "select * from public.get_my_admin_mode_workspace_selection()",
+    );
+    assert.deepEqual(persistedInternalSelection.rows, [internalSelection.rows[0].result]);
+    const selectedDemoStillCannotReadTenant = await db.query(
+      `select id from public.boards where org_id='${internalOrg}'`,
+    );
+    assert.deepEqual(selectedDemoStillCannotReadTenant.rows, []);
+
     await assert.rejects(
       db.query(`select * from public.resolve_workspace_release_selector('${otherOrg}')`),
       /release selector unavailable/iu,
@@ -303,6 +378,58 @@ test("fresh 0001..020 release rings stay operator-controlled and tenant-safe", a
       db.query(`select * from public.resolve_workspace_release_selector('${internalOrg}')`),
       /release selector unavailable/iu,
     );
+    const driftedSelection = await db.query(
+      "select * from public.get_my_admin_mode_workspace_selection()",
+    );
+    assert.deepEqual(driftedSelection.rows, []);
+
+    await db.exec(`
+      reset role;
+      insert into public.org_members(org_id,user_id,role,scope,status)
+        values('${customerOrg}','${platform}','member','assigned','active');
+      set role authenticated;
+      select set_config('request.jwt.claim.sub','${platform}',false);
+    `);
+    await assert.rejects(
+      db.query(`select public.platform_set_admin_mode_workspace_selection(
+        '20000000-0000-4000-8000-000000000068','${customerOrg}'
+      )`),
+      /idempotency key reuse/iu,
+    );
+    const tenantSelection = await db.query(`select public.platform_set_admin_mode_workspace_selection(
+      '20000000-0000-4000-8000-000000000069','${customerOrg}'
+    ) as result`);
+    assert.deepEqual(tenantSelection.rows, [{ result: {
+      org_id: customerOrg,
+      route_path: "/w/customer-workspace",
+      route_authorization: "active_membership",
+      release_ring: "stable",
+    } }]);
+    const persistedTenantSelection = await db.query(
+      "select * from public.get_my_admin_mode_workspace_selection()",
+    );
+    assert.deepEqual(persistedTenantSelection.rows, [tenantSelection.rows[0].result]);
+    const activeMemberCanReadTenant = await db.query(
+      `select id from public.boards where org_id='${customerOrg}'`,
+    );
+    assert.deepEqual(activeMemberCanReadTenant.rows, [{ id: customerBoard }]);
+
+    await db.exec(`
+      reset role;
+      update public.org_members
+         set status='suspended'
+       where org_id='${customerOrg}' and user_id='${platform}';
+      set role authenticated;
+      select set_config('request.jwt.claim.sub','${platform}',false);
+    `);
+    const revokedTenantSelection = await db.query(
+      "select * from public.get_my_admin_mode_workspace_selection()",
+    );
+    assert.deepEqual(revokedTenantSelection.rows, []);
+    const revokedMemberCannotReadTenant = await db.query(
+      `select id from public.boards where org_id='${customerOrg}'`,
+    );
+    assert.deepEqual(revokedMemberCannotReadTenant.rows, []);
 
     const hiddenBoard = await db.query(
       `select id from public.boards where org_id='${internalOrg}'`,
@@ -347,6 +474,13 @@ test("fresh 0001..020 release rings stay operator-controlled and tenant-safe", a
           where org_id='${internalOrg}' and user_id='${platform}') as platform_memberships,
         (select count(*)::integer from public.org_members
           where org_id='${internalOrg}') as internal_memberships,
+        (select count(*)::integer from public.org_members
+          where org_id='${internalOrg}' and role='owner' and scope='all' and status='active') as internal_owners,
+        (select count(*)::integer from public.org_members
+          where org_id='${customerOrg}' and role='owner' and scope='all' and status='active') as customer_owners,
+        (select count(*)::integer from public.org_members
+          where org_id='${customerOrg}' and user_id='${platform}') as explicit_platform_tenant_memberships,
+        (select count(*)::integer from public.admin_mode_workspace_selection_audit) as selection_audits,
         (select count(*)::integer from public.release_ring_audit
           where operation='workspace_profile_set'
             and request_id='20000000-0000-4000-8000-000000000062') as replay_audits,
@@ -359,6 +493,10 @@ test("fresh 0001..020 release rings stay operator-controlled and tenant-safe", a
     assert.deepEqual(invariants.rows, [{
       platform_memberships: 0,
       internal_memberships: 1,
+      internal_owners: 1,
+      customer_owners: 1,
+      explicit_platform_tenant_memberships: 1,
+      selection_audits: 2,
       replay_audits: 1,
       pii_columns: 0,
       pii_payloads: 0,
@@ -371,6 +509,10 @@ test("fresh 0001..020 release rings stay operator-controlled and tenant-safe", a
     );
     await assert.rejects(
       db.query("select * from public.list_reviewed_internal_demo_release_options()"),
+      /permission denied/iu,
+    );
+    await assert.rejects(
+      db.query("select * from public.get_my_admin_mode_workspace_selection()"),
       /permission denied/iu,
     );
     await db.exec("reset role");

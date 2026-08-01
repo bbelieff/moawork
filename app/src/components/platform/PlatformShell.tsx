@@ -11,7 +11,6 @@ export function PlatformShell({
   description,
   children,
   userModeAction,
-  demoSelectors,
 }: {
   pathname: string;
   title: string;
@@ -19,8 +18,6 @@ export function PlatformShell({
   children: ReactNode;
   /** Trusted platform-to-user destination; supplied by the server adapter later. */
   userModeAction?: DeveloperModeAction;
-  /** Server-approved demo selectors in deterministic server order. */
-  demoSelectors?: readonly unknown[];
 }) {
   const active = activePlatformSection(pathname);
   return (
@@ -28,7 +25,7 @@ export function PlatformShell({
       <header className={styles.band} role="note">
         <span className={styles.mark} aria-hidden="true"><i /><i /><i /></span>
         <div><strong>MoaWork 플랫폼 운영</strong><span>고객 회사의 원본 업무와 개인정보는 이 화면에서 열리지 않아요.</span></div>
-        <DeveloperModeControl mode="platform" action={userModeAction ?? { mode: "user" }} demoSelectors={demoSelectors} />
+        <DeveloperModeControl mode="platform" action={userModeAction ?? { mode: "user" }} />
       </header>
       <div className={styles.layout}>
         <nav className={styles.sidebar} aria-label="플랫폼 운영 메뉴">
