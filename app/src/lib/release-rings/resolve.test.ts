@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isFeatureReleased,
+  resolveAdminModeWorkspaceSelection,
   resolveInternalDemoOptions,
   resolveReleaseSelector,
 } from "./resolve";
@@ -119,5 +120,67 @@ describe("release-ring resolver", () => {
     ],
   ])("fails the entire demo list closed for missing or unsafe rows", (candidate) => {
     expect(resolveInternalDemoOptions(candidate)).toEqual({ kind: "unavailable" });
+  });
+
+  it("parses revalidated demo and active-membership selections without tenant fallback", () => {
+    expect(resolveAdminModeWorkspaceSelection([{
+      org_id: orgId,
+      route_path: "/w/demo-workspace",
+      route_authorization: "reviewed_internal_demo",
+      release_ring: "canary",
+    }])).toEqual({
+      kind: "ready",
+      orgId,
+      routePath: "/w/demo-workspace",
+      routeAuthorization: "reviewed_internal_demo",
+      releaseRing: "canary",
+    });
+
+    expect(resolveAdminModeWorkspaceSelection({
+      org_id: orgId,
+      route_path: "/w/member-workspace",
+      route_authorization: "active_membership",
+      release_ring: "stable",
+    })).toMatchObject({
+      kind: "ready",
+      routeAuthorization: "active_membership",
+    });
+  });
+
+  it("treats a missing or no-longer-authorized persisted selection as none", () => {
+    expect(resolveAdminModeWorkspaceSelection([])).toEqual({ kind: "none" });
+  });
+
+  it.each([
+    null,
+    [{
+      org_id: orgId,
+      route_path: "/w/demo-workspace",
+      route_authorization: "reviewed_internal_demo",
+      release_ring: "stable",
+    }],
+    [{
+      org_id: orgId,
+      route_path: "/w/demo-workspace",
+      route_authorization: "reviewed_internal_demo",
+      release_ring: "canary",
+      workspace_name: "hidden",
+    }],
+    [
+      {
+        org_id: orgId,
+        route_path: "/w/demo-workspace",
+        route_authorization: "reviewed_internal_demo",
+        release_ring: "canary",
+      },
+      {
+        org_id: "20000000-0000-4000-8000-000000000002",
+        route_path: "/w/other-workspace",
+        route_authorization: "active_membership",
+        release_ring: "stable",
+      },
+    ],
+  ])("fails persisted selection parsing closed for unsafe server results", (candidate) => {
+    expect(resolveAdminModeWorkspaceSelection(candidate)).toEqual({ kind: "unavailable" });
   });
 });

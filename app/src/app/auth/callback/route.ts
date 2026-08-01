@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { SESSION_COOKIE } from "@/lib/auth/session";
-import { parseAdminRole } from "@/lib/auth/admin";
 import {
   decideWorkspaceDestination,
   workspaceTargetFromNext,
 } from "@/lib/auth/workspace-routing";
+import { sanitizeModeNext } from "@/lib/mode/contract";
+import { modePreferenceCookie } from "@/lib/mode/preference";
 
 function loginError(request: Request, code: string) {
   const url = new URL("/login", request.url);
@@ -41,36 +42,38 @@ export async function GET(request: Request) {
   );
   if (profileError) return loginError(request, "profile");
 
+  // The SECURITY DEFINER RPC binds the platform decision to auth.uid().
+  // A false, malformed, or unavailable result never grants the platform plane.
+  let isPlatformAdmin = false;
+  try {
+    const adminResult = await supabase.rpc("is_platform_admin");
+    isPlatformAdmin = !adminResult.error && adminResult.data === true;
+  } catch {
+    // Preserve ordinary verified membership routing when the guard is unavailable.
+  }
+
+  if (isPlatformAdmin) {
+    const destination = new URL("/mode", url.origin);
+    const next = sanitizeModeNext(url.searchParams.get("next"));
+    if (next) destination.searchParams.set("next", next);
+    const response = NextResponse.redirect(destination);
+    // A fresh OAuth login must not silently reuse an earlier mode preference.
+    response.cookies.delete(modePreferenceCookie.name);
+    response.cookies.delete(SESSION_COOKIE.org);
+    response.cookies.delete(SESSION_COOKIE.uid);
+    response.cookies.delete(SESSION_COOKIE.as);
+    return response;
+  }
+
   const { data: membershipData, error: membershipError } = await supabase
     .from("org_members")
     .select(
       "org_id, status, role, scope, orgs!inner(id, slug, status, name, plan_tier, created_at)",
     )
     .eq("user_id", user.id);
-  // 플랫폼 관리자 판정 — app_admins 는 RLS 로 직접 select 가 막혀 있어
-  // SECURITY DEFINER 함수(app_admin_role)만이 유일한 조회 경로다(005).
-  // 판정 실패는 "관리자 아님"으로 수렴한다 — 여기서 실패를 관리자로 처리하면
-  // 조회 장애가 곧 권한 상승이 된다.
-  let isPlatformAdmin = false;
-  if (user.email) {
-    try {
-      // 응답 형태를 가정하지 않는다 — RPC 미지원·SDK 변경·목 환경에서 undefined 가 올 수 있고,
-      // 그때 구조분해로 터지면 로그인 전체가 막힌다(판정 하나 때문에 인증을 잃지 않는다).
-      const adminResult = await supabase.rpc("app_admin_role", {
-        p_email: user.email,
-      });
-      if (adminResult && !adminResult.error) {
-        isPlatformAdmin = parseAdminRole(adminResult.data) !== null;
-      }
-    } catch {
-      // 판정 불가 → 관리자 아님으로 수렴.
-    }
-  }
-
   const decision = decideWorkspaceDestination(
     membershipError ? null : membershipData,
     workspaceTargetFromNext(url.searchParams.get("next")),
-    isPlatformAdmin,
   );
 
   const response = NextResponse.redirect(new URL(decision.path, url.origin));

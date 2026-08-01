@@ -16,6 +16,7 @@ export const PLATFORM_NAV: readonly PlatformNavItem[] = [
   { key: "analytics", href: "/platform/analytics", label: "운영 분석", description: "집계 지표" },
   { key: "system", href: "/platform/system", label: "시스템", description: "연결 상태" },
   { key: "admins", href: "/platform/admins", label: "어드민 관리", description: "권한은 별도 계약" },
+  { key: "demo", href: "/platform/demo", label: "데모 워크스페이스", description: "Canary 검토 환경" },
 ];
 
 export function activePlatformSection(pathname: string): PlatformSectionKey {
