@@ -16,6 +16,9 @@ describe("platform workspace requests landing", () => {
     expect(source).toContain('href="/account"');
     expect(source).toContain('href="/settings/account/sessions"');
     expect(source).toContain('href="/settings/account/privacy"');
+    expect(source).toContain('<Logo height={28} href="/platform" />');
+    expect(source).toContain('action="/auth/signout"');
+    expect(source).toContain("로그아웃");
   });
 
   it("keeps support read-only and does not add tenant or PII access controls", () => {

@@ -48,6 +48,33 @@ describe("SidebarNav integration contract", () => {
     );
 
     expect(html).toContain('data-destination="/workspace-entry?mode=new"');
-    expect(html).toContain('class="hidden flex-col gap-px md:flex"');
+    expect(html).toContain('class="hidden min-h-0 flex-1 flex-col gap-px overflow-y-auto md:flex"');
+    expect(html).not.toContain("관리자 모드로");
+    expect(html).not.toContain('action="/mode/preference"');
+  });
+
+  it("renders the current mode-preference action only with a server-confirmed platform capability", () => {
+    const html = renderToStaticMarkup(
+      <SidebarNav
+        lockedFeatures={[]}
+        workspaceSwitcher={{
+          currentOrgId: "org-a",
+          workspaces: [{ orgId: "org-a", slug: "sample-lab", name: "샘플랩", role: "owner", status: "active" }],
+          destinations: {
+            createHref: "/workspace-entry?mode=new",
+            joinHref: "/workspace-entry?mode=resume",
+            platformHref: "/platform",
+          },
+          serverConfirmedCanAccessPlatform: true,
+          defaultOpen: true,
+        }}
+      />,
+    );
+
+    expect(html).toContain("관리자 모드로");
+    expect(html).toContain('action="/mode/preference"');
+    expect(html).toContain('name="mode" value="platform"');
+    expect(html).toContain('name="next" value="/platform"');
+    expect(html).not.toContain('href="/platform"');
   });
 });

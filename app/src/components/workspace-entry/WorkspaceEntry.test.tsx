@@ -132,18 +132,25 @@ describe("진입 화면 탈출구 — 플랫폼 관리자 전용", () => {
   // 어드민 링크는 회사 안 스위처(⚙)에만 있었다.
   // 관리자는 pending 이 아니라 operator 뷰에 착지한다(resolveWorkspaceEntryView 가 우선 분기).
   // 그래서 탈출구는 operator 뷰에 있어야 실제로 도달 가능하다.
-  it("플랫폼 관리자에게 플랫폼 관리 링크를 보여준다", () => {
+  it("플랫폼 관리자에게 현재 mode preference 전환과 로그아웃을 보여준다", () => {
     const html = renderToStaticMarkup(
       <WorkspaceEntry requests={[pendingJoin]} isPlatformAdmin />,
     );
     expect(html).toContain('data-entry-view="operator"');
-    expect(html).toContain('href="/platform"');
+    expect(html).toContain('action="/mode/preference"');
+    expect(html).toContain('name="mode" value="platform"');
+    expect(html).toContain('name="next" value="/platform"');
+    expect(html).not.toContain('href="/platform"');
     expect(html).toContain("플랫폼 관리로 가기");
+    expect(html).toContain('action="/auth/signout"');
+    expect(html).toContain("로그아웃");
   });
 
   it("일반 사용자에게는 플랫폼 링크가 존재조차 렌더되지 않는다", () => {
     const html = renderToStaticMarkup(<WorkspaceEntry requests={[pendingJoin]} />);
     // 존재를 노출하지 않는다 — 숨기는 게 아니라 마크업에 없어야 한다.
+    expect(html).not.toContain('action="/mode/preference"');
+    expect(html).not.toContain('name="mode" value="platform"');
     expect(html).not.toContain('href="/platform"');
     expect(html).not.toContain("플랫폼 관리로 가기");
     // 기존 출구는 그대로(일반 사용자 흐름 불변).

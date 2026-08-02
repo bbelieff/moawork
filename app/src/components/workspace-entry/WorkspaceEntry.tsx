@@ -304,12 +304,15 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
         {view === "operator" ? <>
           <div className={styles.bubble}><strong>승인된 운영 요청만 확인할 수 있어요.</strong><small>플랫폼 역할만으로 고객 회사 멤버십이나 대표 권한은 생기지 않아요.</small></div>
           <details className={styles.controlPlane}><summary>회사 만들기 검토 요청 확인</summary><p>이 운영 영역에는 회사 전환·생성·합류·진입 행동이 없어요.</p><ApprovalQueue mode="platform" requests={platformRequests} /></details>
-          {/* 플랫폼 콘솔로 나가는 문. 소속이 0이면 회사로 들어갈 수 없고, 어드민 링크가
-              회사 안 스위처(⚙)에만 있어서 이 화면이 막다른 길이었다.
-              이 블록은 view==="operator" 안에 있고 그 뷰는 서버가 확인한 isPlatformAdmin
-              일 때만 선택된다 → 일반 사용자에게는 렌더 자체가 되지 않는다. */}
-          <div className={styles.pendingExits} aria-label="플랫폼 운영으로 이동">
-            <Link href="/platform">⚙ 플랫폼 관리로 가기</Link>
+          <div className={styles.pendingExits} aria-label="플랫폼 운영 계정 행동">
+            <form action="/mode/preference" method="post">
+              <input type="hidden" name="mode" value="platform" />
+              <input type="hidden" name="next" value="/platform" />
+              <button type="submit">플랫폼 관리로 가기</button>
+            </form>
+            <form action="/auth/signout" method="post">
+              <button type="submit">로그아웃</button>
+            </form>
           </div>
         </> : null}
       </div>
@@ -349,7 +352,7 @@ function formatDeadline(value: string): string {
 function EntryShell({ eyebrow, title, lead, view, headingRef, children }: { eyebrow: string; title: string; lead: string; view: WorkspaceEntryView; headingRef: RefObject<HTMLHeadingElement | null>; children: ReactNode }) {
   const progress = workspaceEntryProgress(view);
   const isPending = view === "pending";
-  return <main className={styles.page} data-entry-view={view}><section className={styles.shell} aria-labelledby="workspace-entry-title"><header className={styles.protoTop}><Logo height={28} /><span>회사 시작 안내</span></header><div className={styles.wrap}><div className={styles.chat}><div className={styles.guideHead}><span className={styles.guideAvatar} aria-hidden="true">M</span><div><strong>모아 가이드</strong><small>필요한 것만 하나씩 도와드릴게요.</small></div></div><p className={styles.eyebrow}>{eyebrow}</p><h1 id="workspace-entry-title" ref={headingRef} tabIndex={-1} data-focus-target="current-question">{title}</h1><p className={styles.lead}>{lead}</p>{isPending ? <div className={styles.pendingProgress} aria-label="현재 질문 요약"><span>{progress.label}</span><strong>{progress.detail}</strong></div> : null}{children}</div>{!isPending ? <aside className={styles.summary} aria-label="현재 질문 요약"><h2>지금 확인하는 것</h2><div className={styles.summarySteps}><div className={`${styles.summaryStep} ${styles.current}`}><span className={styles.stepNumber}>1</span><div><strong>{progress.label}</strong><small>{progress.detail}</small></div></div></div><p className={styles.safety}>서버가 이미 안전하게 결정한 경로에는 질문을 더하지 않아요. 플랫폼 역할도 고객 회사 권한을 만들지 않아요.</p></aside> : null}</div></section></main>;
+  return <main className={styles.page} data-entry-view={view}><section className={styles.shell} aria-labelledby="workspace-entry-title"><header className={styles.protoTop}><Logo height={28} href="/" /><span>회사 시작 안내</span></header><div className={styles.wrap}><div className={styles.chat}><div className={styles.guideHead}><span className={styles.guideAvatar} aria-hidden="true">M</span><div><strong>모아 가이드</strong><small>필요한 것만 하나씩 도와드릴게요.</small></div></div><p className={styles.eyebrow}>{eyebrow}</p><h1 id="workspace-entry-title" ref={headingRef} tabIndex={-1} data-focus-target="current-question">{title}</h1><p className={styles.lead}>{lead}</p>{isPending ? <div className={styles.pendingProgress} aria-label="현재 질문 요약"><span>{progress.label}</span><strong>{progress.detail}</strong></div> : null}{children}</div>{!isPending ? <aside className={styles.summary} aria-label="현재 질문 요약"><h2>지금 확인하는 것</h2><div className={styles.summarySteps}><div className={`${styles.summaryStep} ${styles.current}`}><span className={styles.stepNumber}>1</span><div><strong>{progress.label}</strong><small>{progress.detail}</small></div></div></div><p className={styles.safety}>서버가 이미 안전하게 결정한 경로에는 질문을 더하지 않아요. 플랫폼 역할도 고객 회사 권한을 만들지 않아요.</p></aside> : null}</div></section></main>;
 }
 
 export function workspaceEntryProgress(view: WorkspaceEntryView): { label: string; detail: string } {
