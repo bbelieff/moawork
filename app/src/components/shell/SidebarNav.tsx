@@ -47,7 +47,7 @@ export function SidebarNav({
           }}
         />
       ) : null}
-      <nav className="hidden flex-col gap-px md:flex" aria-label="주요 메뉴">
+      <nav className="hidden min-h-0 flex-1 flex-col gap-px overflow-y-auto md:flex" aria-label="주요 메뉴">
       {NAV_ITEMS.map((item) => {
         const isLocked = item.feature ? locked.has(item.feature) : false;
         // 실제 라우트가 있는 잠금 메뉴는 안내 화면에 도달할 수 있도록 링크를 유지한다.

@@ -91,7 +91,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       />
       {/* ── 사이드바 ── */}
       <aside
-        className="relative flex h-auto w-full flex-none flex-col border-b px-3 py-3 md:sticky md:top-0 md:h-screen md:w-[232px] md:overflow-y-auto md:border-b-0 md:border-r md:py-[18px]"
+        className="relative flex h-auto w-full flex-none flex-col border-b px-3 py-3 md:sticky md:top-0 md:h-screen md:w-[232px] md:overflow-visible md:border-b-0 md:border-r md:py-[18px]"
         style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}
       >
         <div className="px-2 pb-4 pt-1">
@@ -104,7 +104,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           </small>
         </div>
 
-        <div>
+        <div className="flex min-h-0 flex-1 flex-col">
           <SidebarNav
             lockedFeatures={lockedFeatures}
             badges={workspaceApprovals
