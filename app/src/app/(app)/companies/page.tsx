@@ -56,15 +56,19 @@ export default async function CompaniesPage({
           </Link>
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div>
+          <p id="companies-table-hint" className="mb-2 text-xs text-zinc-500 sm:hidden">
+            표를 좌우로 움직이면 모든 정보를 확인할 수 있습니다.
+          </p>
+          <div className="overflow-x-auto rounded-lg focus-within:ring-2 focus-within:ring-violet-500" tabIndex={0} aria-describedby="companies-table-hint">
           <table className="w-full min-w-[640px] text-sm">
+            <caption className="sr-only">접근 가능한 고객사 목록과 기본 정보, 진행 업무 건수</caption>
             <thead>
               <tr className="border-b border-zinc-200 text-left text-xs text-zinc-500 dark:border-zinc-800">
                 <th className="py-2 pr-4 font-medium">업체명</th>
                 <th className="py-2 pr-4 font-medium">대표자</th>
                 <th className="py-2 pr-4 font-medium">업종</th>
                 <th className="py-2 pr-4 font-medium">지역</th>
-                <th className="py-2 pr-4 font-medium">연락처</th>
                 <th className="py-2 pr-4 text-right font-medium">진행 건</th>
               </tr>
             </thead>
@@ -74,7 +78,15 @@ export default async function CompaniesPage({
                   key={c.id}
                   className="border-b border-zinc-100 last:border-0 dark:border-zinc-900"
                 >
-                  <td className="py-2.5 pr-4 font-medium">{c.name}</td>
+                  <td className="py-2.5 pr-4 font-medium">
+                    <Link
+                      href={`/companies/${c.id}`}
+                      className="inline-flex min-h-11 items-center rounded-md text-zinc-950 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 dark:text-zinc-50 dark:focus-visible:outline-zinc-100"
+                      aria-label={`${c.name} 고객사 상세 보기`}
+                    >
+                      {c.name}
+                    </Link>
+                  </td>
                   <td className="py-2.5 pr-4 text-zinc-600 dark:text-zinc-400">
                     {c.owner_name ?? "—"}
                   </td>
@@ -84,9 +96,6 @@ export default async function CompaniesPage({
                   <td className="py-2.5 pr-4 text-zinc-600 dark:text-zinc-400">
                     {c.region ?? "—"}
                   </td>
-                  <td className="py-2.5 pr-4 text-zinc-600 dark:text-zinc-400">
-                    {c.phone ?? "—"}
-                  </td>
                   <td className="py-2.5 pr-4 text-right tabular-nums">
                     {dealCount.get(c.id) ?? 0}
                   </td>
@@ -94,6 +103,7 @@ export default async function CompaniesPage({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
