@@ -1501,3 +1501,11 @@ all/assigned), 헬퍼 `is_org_member`/`org_role`/`org_scope`, 트리거 `add_org
 - 게이트: `bash scripts/check.sh` 초록(lint · typecheck · app 668 PASS/5 skip · worker 14 PASS — 신규 81). `npm run build` 초록. `routes-manifest.json` 의 `/ingest/*` rewrite 2건과 `functions-config-manifest.json` 의 matcher 정규식을 빌드 산출물에서 직접 확인했다.
 - RLS: 마이그레이션·DB 접근 **0** — 해당 없음. 375px 반응형·브랜드 토큰: `PostHogProvider` 는 DOM 을 그리지 않고 CSS·색상 리터럴을 추가하지 않는다(하드코딩 0). 두 항목 모두 "영향 없음"이며 통과로 승격하지 않는다.
 - **미수행**: 브라우저 런타임 검증. preview 도구가 세션 프로젝트 디렉터리(다른 트랙의 워킹트리)를 기동해 이 worktree 에 닿지 않았고, 그 트리에 의존성을 설치하지 않았다. 실제 PostHog 키가 없어 수집·리플레이 종단 확인도 `NOT_RUN` 이다. 정적/빌드 산출물 검증만 근거로 남긴다.
+
+## 2026-08-03 — MWC · coordination sole-writer 승계와 Linear 운영 루틴
+
+- 사용자가 MWC의 coordination sole-writer 권한을 명시 승인했다. 범위는 coordination 문서와 append-only worklog이며 제품 코드·DB·배포·Linear 상태 변경 권한은 포함하지 않는다.
+- 공유 `main` clean, `HEAD = origin/main = 2c126f23550d1031ff486c73cdaae9865cd0c06e`, GitHub connector 기준 열린 PR 0건을 재검증했다.
+- `ROUND-34.md`에 Linear를 점유·의존성·검토·이정표·출시 운영판으로, GitHub main/PR/CI를 기술 정본으로 명시했다.
+- 모든 세션은 작업 발견 시 Linear 중복 검색부터 수행하고, `task_id`·base SHA·전용 branch/worktree·owner·file lease·reviewer·blocked_by·acceptance criteria·hosted/auth NOT_RUN 경계를 갖춘 명시적 lease 뒤에만 구현한다.
+- BBE-5 live 관찰에서 mode 선택 button 두 개는 DOM에 존재하지만 무스타일이라 선택 UI로 인식하기 어렵다. `FAIL / BLOCKED_NO_LEASE`로 기록하며 제품 수정은 하지 않았다.
