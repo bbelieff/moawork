@@ -5,7 +5,7 @@
 
 import { ValidationError } from "./validation";
 import { NotFoundError } from "./service";
-import { UnauthorizedError } from "./context";
+import { ForbiddenError, UnauthorizedError } from "./errors";
 
 export function jsonOk(data: unknown, status = 200): Response {
   return Response.json({ data }, { status });
@@ -18,6 +18,7 @@ export function jsonError(message: string, status: number): Response {
 export function toErrorResponse(err: unknown): Response {
   if (err instanceof ValidationError) return jsonError(err.message, 400);
   if (err instanceof UnauthorizedError) return jsonError(err.message, 401);
+  if (err instanceof ForbiddenError) return jsonError(err.message, 403);
   if (err instanceof NotFoundError) return jsonError(err.message, 404);
   const message = err instanceof Error ? err.message : "알 수 없는 오류";
   return jsonError(message, 500);

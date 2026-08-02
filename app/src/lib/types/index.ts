@@ -193,6 +193,41 @@ export interface Settlement {
   created_at: string;
 }
 
+// ── 성과 · 인센티브 (mod.perf — 001 L304–321) ──
+export const INCENTIVE_BASES = ["fee", "down", "total"] as const;
+/** 인센티브 산정 기준액: 수수료 / 계약금 / 총매출. */
+export type IncentiveBase = (typeof INCENTIVE_BASES)[number];
+
+export const INCENTIVE_TYPES = ["flat_pct", "tiered"] as const;
+/** 인센티브 규칙 종류: 고정% / 구간%. */
+export type IncentiveType = (typeof INCENTIVE_TYPES)[number];
+
+export interface IncentiveRule {
+  id: string;
+  org_id: string;
+  name: string;
+  base: IncentiveBase;
+  type: IncentiveType;
+  /** 규칙 파라미터. 형태는 type 별로 다르며 lib/perf/incentive.ts 가 검증한다. */
+  config_jsonb: Record<string, unknown>;
+}
+
+/**
+ * 월별 성과 스냅샷 — 소스(settlements/deals)로부터 **재생성 가능한 캐시**다.
+ * 원장이 아니므로 재계산이 항상 정본을 이긴다(T07 설계 §0).
+ */
+export interface PerformanceSnapshot {
+  id: string;
+  org_id: string;
+  /** 귀속 조직원. 담당자 없는 정산을 모은 '조직 공통' 버킷은 null. */
+  user_id: string | null;
+  /** 귀속 월 'YYYY-MM' (KST). */
+  period: string;
+  contracts_cnt: number;
+  fee_sum: number;
+  incentive_amount: number;
+}
+
 // ── 세션 컨텍스트 — 인증/인가의 런타임 단위(현재 조직 + 역할 + 범위) ──
 export interface Ctx {
   user: User;

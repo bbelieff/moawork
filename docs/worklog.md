@@ -4,6 +4,14 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-07-29 — [START · C4] T07 · 플랫폼 운영 콘솔 /platform + 활동지표 (P0)
+
+- 브랜치 `feat/t07-platform-console` (base `7dc30f0` = origin/main tip 실측).
+- 마이그레이션 번호 **008** 배정 — 실측 근거: `supabase/migrations/` 에 `0001_init` · `001_schema_v1` · `002_seed_policyfund` · `003_boards_engine` · `004_gaps_and_leadin` · `005_app_admins` · `006_public_workspace_entry` · `007_public_workspace_entry_helper_acl` 존재(추측 아님).
+- 범위(P0): 진입점 · 어드민 셸 · 고객사 관리 · 고객사 상세 · 어드민 관리 · 결제/매출 골격 · 지표 배치 · `is_internal`.
+- **고객 업무 데이터 접근 0** 원칙: 집계 숫자·메타데이터만. 배치는 야간 롤업(`platform_metrics_daily`), 실시간 집계 금지.
+- 판정은 `app_admin_role()` SECURITY DEFINER 경유(`lib/auth/admin.ts` 재사용). `app_admins` 직접 select 금지.
+
 ## 2026-07-23 — MoaWork Control · OAuth 조직 프로비저닝 장애 수정 진행
 
 - 프로덕션 Google 로그인 후 `login?error=provisioning`을 재현하고 Supabase Auth·REST·Postgres 로그와 정책·트리거 상태를 읽기 전용으로 대조했다.

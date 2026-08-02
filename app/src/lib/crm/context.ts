@@ -7,12 +7,10 @@
 import type { Ctx } from "@/lib/types";
 import { getSessionOrNull } from "@/lib/auth/session";
 
-export class UnauthorizedError extends Error {
-  constructor(message = "인증이 필요합니다") {
-    super(message);
-    this.name = "UnauthorizedError";
-  }
-}
+// 오류 클래스는 의존성 0 인 ./errors 가 정본이다(순수 계층에서도 쓰기 위해).
+// 기존 `@/lib/crm/context` 경로 import 를 깨지 않도록 여기서 다시 내보낸다.
+export { ForbiddenError, UnauthorizedError } from "./errors";
+import { UnauthorizedError } from "./errors";
 
 /** 현재 요청의 세션 컨텍스트. 없으면 UnauthorizedError. */
 export async function requireCtx(): Promise<Ctx> {

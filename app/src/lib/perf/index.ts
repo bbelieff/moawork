@@ -6,10 +6,20 @@
 
 export * from "./types";
 export * from "./aggregate";
+export * from "./incentive";
+export { buildSnapshotRows, previousMonthKst, type SnapshotRow } from "./snapshot";
+export {
+  InMemoryPerfStore,
+  getPerfStore,
+  snapshotKey,
+  type PerfStore,
+} from "./store";
 export {
   buildPerf,
   getLeaderboard,
   getMonthlyContractCompanies,
+  listSnapshots,
+  recomputeSnapshots,
   currentMonthKst,
 } from "./service";
-export type { PerfData, PerfOptions } from "./service";
+export type { PerfData, PerfOptions, RecomputeResult } from "./service";

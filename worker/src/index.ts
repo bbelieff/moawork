@@ -3,6 +3,11 @@ import PgBoss from "pg-boss";
 import { health } from "./health.js";
 import { defaultProviders, registerNotifyWorker } from "./notify/index.js";
 import { pendingLoader, pendingSink } from "./notify/pending.js";
+import {
+  pendingOrgLister,
+  pendingRecomputeRunner,
+  registerPerfMonthlyClose,
+} from "./perf/index.js";
 
 /**
  * moawork 워커 엔트리포인트.
@@ -31,6 +36,15 @@ async function main(): Promise<void> {
     sink: pendingSink,
   });
   console.log("[worker] notify.send 등록됨 (스텁 — 실제 발송 없음)");
+
+  // mod.perf — 월 마감 성과 스냅샷 재계산(설계 §2.4-b, 매월 1일 04:00 KST).
+  // 큐·스케줄·핸들러는 살아 있고 대상 조직 목록 어댑터만 미구현이라 실제 쓰기는 없다.
+  // 활성화 조건은 perf/recompute.ts 의 pendingOrgLister 주석 참고(belie 승인 대상).
+  await registerPerfMonthlyClose(boss, {
+    orgs: pendingOrgLister,
+    runner: pendingRecomputeRunner,
+  });
+  console.log("[worker] perf.monthly-close 등록됨 (스텁 — 대상 조직 0건)");
 }
 
 main().catch((err: unknown) => {

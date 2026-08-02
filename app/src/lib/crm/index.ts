@@ -6,7 +6,8 @@
 export { CrmService, NotFoundError, type PipelineWithStages } from "./service";
 export { ValidationError } from "./validation";
 export * from "./validation";
-export { UnauthorizedError, requireCtx } from "./context";
+export { ForbiddenError, UnauthorizedError } from "./errors";
+export { requireCtx } from "./context";
 export { jsonOk, jsonError, toErrorResponse, readJson } from "./http";
 export { ACTIVITY_TYPES, stageMoveContent, type ActivityType } from "./activity";
 import { CrmService } from "./service";
