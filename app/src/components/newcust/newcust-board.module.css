@@ -1,0 +1,77 @@
+.board { position: relative; display: flex; min-width: 0; flex-direction: column; gap: 14px; color: #262626; }
+.newItemControl { display: flex; align-items: stretch; width: max-content; position: relative; }
+.newItemControl form { display: flex; }
+.newItemControl .primary { border-radius: 6px 0 0 6px; }
+.newItemControl > details > summary { min-width: 44px; border: 1px solid #0073ea; border-left: 1px solid #ffffff88; border-radius: 0 6px 6px 0; background: #0073ea; color: #fff; justify-content: center; }
+.boardInfo { position: relative; width: max-content; }
+.permissionNotice { margin: 0; border: 1px solid #fdab3d; border-radius: 6px; background: #fff8e8; padding: 10px 12px; color: #5b4b20; }
+.structureReadOnly .columnMenu, .structureReadOnly .columnCenter { pointer-events: none; opacity: .45; }
+.structureReadOnly .addGroup { display: none; }
+.header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.header h1 { margin: 2px 0; font-size: 26px; }
+.header p { margin: 0; color: #676879; }
+.eyebrow { font-size: 12px; font-weight: 700; color: #579bfc !important; text-transform: uppercase; }
+.headerActions, .toolbar, .views { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.headerActions button, .toolbar button, .toolbar select, .views button, .toolButton, .addGroup button, .addGroup input { min-height: 44px; border: 1px solid #d0d4e4; border-radius: 6px; background: #fff; padding: 8px 12px; }
+.headerActions button:first-child { width: 44px; border-radius: 50%; background: #579bfc; color: #fff; }
+.views { border-bottom: 1px solid #d0d4e4; }
+.tableViewport + .tableViewport { display: none; }
+.views button { border: 0; border-radius: 0; }
+.views .activeView { border-bottom: 3px solid #0073ea; color: #0073ea; font-weight: 700; }
+.toolbar { position: sticky; top: 0; z-index: 8; background: #fff; padding: 8px 0; }
+.toolbar > form:first-child { display: none; }
+.toolbar form { display: flex; flex-direction: row-reverse; }
+.toolbar input, .toolbar select, .search { min-height: 44px; border: 1px solid #d0d4e4; border-radius: 6px; background: #fff; padding: 8px; }
+.primary { background: #0073ea !important; color: white; border-color: #0073ea !important; }
+.search { display: flex; align-items: center; gap: 6px; }
+.search input { border: 0; padding: 0; }
+.tableViewport { overflow-x: auto; border: 1px solid #d0d4e4; border-radius: 8px; background: #fff; }
+.group { min-width: 1050px; }
+.groupHeader { display: flex; align-items: center; gap: 8px; padding: 14px 12px 8px; border-left: 6px solid var(--group-color); }
+.groupHeader h2 { margin: 0; color: var(--group-color); font-size: 17px; }
+.groupHeader button { min-width: 44px; min-height: 44px; border: 0; background: transparent; }
+.groupHeader button:last-child { margin-left: auto; }
+.group table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.group th, .group td { height: 46px; border: 1px solid #d0d4e4; padding: 0 8px; text-align: left; font-size: 13px; }
+.group th { position: relative; background: #f6f7fb; color: #676879; font-weight: 500; }
+.group th:first-child, .group td:first-child { width: 46px; text-align: center; }
+.sticky { position: sticky; left: 46px; z-index: 3; width: 230px; background: #fff !important; box-shadow: 2px 0 3px #00000010; }
+.updateBubble { display: block; width: 30px; height: 30px; margin: auto; border: 1px solid #c5c7d0; border-radius: 50%; background: #fff; color: #676879; }
+.rowTitle { width: 100%; min-height: 44px; border: 0; background: transparent; text-align: left; color: #0073ea; font-weight: 600; }
+.cellForm, .cellForm input, .cellForm select { width: 100%; height: 100%; }
+.cellForm input, .cellForm select { border: 0; background: transparent; padding: 8px; }
+.emptyRow input { width: 100%; height: 44px; border: 0; background: transparent; padding: 8px; }
+.columnMenu { display: inline-block; float: right; }
+.columnMenu summary, .columnCenter summary { cursor: pointer; list-style: none; min-width: 32px; min-height: 32px; text-align: center; }
+.board summary { display: inline-flex; min-width: 44px; min-height: 44px; align-items: center; cursor: pointer; }
+.popover, .columnPanel { position: absolute; z-index: 30; display: flex; min-width: 230px; flex-direction: column; gap: 8px; border: 1px solid #d0d4e4; border-radius: 8px; background: #fff; padding: 12px; box-shadow: 0 8px 24px #0002; }
+.headerActions .popover { right: 0; }
+.popover form, .popover label { display: flex; flex-direction: column; gap: 6px; }
+.popover input, .popover textarea, .columnPanel input { min-height: 44px; border: 1px solid #d0d4e4; border-radius: 6px; padding: 8px; }
+.popover textarea { min-height: 120px; }
+.columnCenter { position: relative; }
+.columnPanel { right: 0; width: 280px; }
+.columnPanel h3 { margin: 0; }
+.columnPanel button { width: 100%; min-height: 44px; border: 0; border-radius: 6px; background: #f6f7fb; text-align: left; padding: 8px 12px; }
+.danger { color: #d83a52; }
+.addGroup { display: flex; gap: 8px; }
+.drawer { position: fixed; z-index: 50; inset: 0 0 0 auto; width: min(440px, 100vw); max-width: none; height: 100dvh; max-height: none; margin: 0 0 0 auto; overflow: auto; border: 0; border-left: 1px solid #d0d4e4; background: white; padding: 24px; box-shadow: -8px 0 30px #0002; }
+.drawer::backdrop { background: #171b2d66; }
+.drawerHeader { display: flex; justify-content: space-between; }
+.drawerHeader h2 { margin-top: 4px; }
+.drawerHeader button { min-width: 44px; min-height: 44px; border: 0; background: transparent; font-size: 24px; }
+.drawer form, .drawer label { display: flex; flex-direction: column; gap: 8px; }
+.drawer input, .drawer form button { min-height: 44px; border: 1px solid #d0d4e4; border-radius: 6px; padding: 8px; }
+.drawer section { border-top: 1px solid #d0d4e4; margin-top: 20px; padding-top: 12px; }
+.formError { position: absolute; z-index: 40; max-width: 280px; border: 1px solid #e2445c; border-radius: 6px; background: #fff0f2; color: #b63546; padding: 8px; font-size: 12px; box-shadow: 0 4px 12px #0002; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+@media (max-width: 720px) {
+  .header { flex-direction: column; }
+  .headerActions { width: 100%; }
+  .toolbar { position: static; }
+  .toolbar > * { flex: 1 1 130px; }
+  .group { min-width: 800px; }
+  .group th:nth-child(n+5), .group td:nth-child(n+5) { display: none; }
+  .sticky { width: 180px; }
+  .drawer { padding: 18px; }
+}

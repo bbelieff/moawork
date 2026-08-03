@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Ctx } from "@/lib/types";
-import { SupabaseCrmError, SupabaseCrmSource } from "./supabaseCrmSource";
+import { NewcustCutoverConflictError, SupabaseCrmError, SupabaseCrmSource } from "./supabaseCrmSource";
 
 /**
  * PostgREST 쿼리 빌더 최소 흉내 — 체인 호출을 기록하고 준비된 행을 돌려준다.
@@ -55,6 +55,13 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: unknown }> {
     return Promise.resolve(this.result).then(onOk, onErr);
   }
 }
+
+describe("newcust cutover fence", () => {
+  it("cutover DB fence만 명시적 domain conflict로 변환한다", async () => {
+    const { db } = fakeDb({ deals: { data: null, error: { message: "NEWCUST_CUTOVER_FENCE", code: "P0001" } } });
+    await expect(new SupabaseCrmSource(db).createDeal(ctxOf("owner", "all"), { title: "synthetic" })).rejects.toBeInstanceOf(NewcustCutoverConflictError);
+  });
+});
 
 function fakeDb(byTable: Record<string, { data: unknown; error?: unknown }>) {
   const log: { table: string; filters: Filter[] }[] = [];

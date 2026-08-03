@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { validateCell, isEmptyCell, compareCells, formatCell, hasOptions } from "./cells";
+import { validateBoardCell, validateCell, isEmptyCell, compareCells, formatCell, hasOptions } from "./cells";
 import type { FieldOption } from "@/lib/types";
 
 const OPTS: FieldOption[] = [
@@ -106,6 +106,20 @@ describe("compareCells — 빈값 뒤로", () => {
 });
 
 describe("formatCell", () => {
+  it("file metadata object array를 손실 없이 round-trip한다", () => {
+    const files = [{ path: "org-a/deals/file.pdf", name: "file.pdf", size: 12, mime: "application/pdf" }];
+    const result = validateBoardCell("file", files);
+    expect(result).toEqual({ ok: true, value: files });
+    expect(formatCell("file", result.value)).toBe("file.pdf");
+  });
+
+  it("file의 inline URL, 외부 URL, 임의 metadata를 거부한다", () => {
+    expect(validateCell("file", [{ path: "data:text/plain,x", name: "x", size: 1, mime: "text/plain" }]).ok).toBe(false);
+    expect(validateCell("file", [{ path: "https://example.com/x", name: "x", size: 1, mime: "text/plain" }]).ok).toBe(false);
+    expect(validateCell("file", [{ path: "org-a/x", name: "x", size: 1, mime: "text/plain", data_url: "secret" }]).ok).toBe(false);
+    expect(validateBoardCell("file", [{ path: "org-a/x", name: "x", size: 1, mime: "text/plain" }, { path: "org-a/x", name: "y", size: 2, mime: "text/plain" }]).ok).toBe(false);
+    expect(validateBoardCell("file", [{ path: "org-a/x", name: "x", size: 1.5, mime: "text/plain" }]).ok).toBe(false);
+  });
   it("옵션 id 를 라벨로 치환", () => {
     expect(formatCell("select", "o1", OPTS)).toBe("대기");
     expect(formatCell("multiselect", ["o1", "o2"], OPTS)).toBe("대기, 완료");

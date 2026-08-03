@@ -4,7 +4,9 @@ import { SupabaseCrmSource } from "./supabaseCrmSource";
 import type { CrmSource } from "./source";
 
 export { isSupabaseConfigured, readSupabaseEnv, resetSupabaseClient } from "./client";
-export { SupabaseCrmSource, SupabaseCrmError } from "./supabaseCrmSource";
+export { SupabaseCrmSource, SupabaseCrmError, NewcustCutoverConflictError } from "./supabaseCrmSource";
+export { SupabaseBoardsSource, SupabaseBoardsError } from "./supabaseBoardsSource";
+export { NewcustLegacyMigrationSource, NewcustLegacyMigrationError } from "./newcustLegacyMigrationSource";
 export { LocalCrmSource } from "./localCrmSource";
 export { canSeeAll, type CrmSource } from "./source";
 

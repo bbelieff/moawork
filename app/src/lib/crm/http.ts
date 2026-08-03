@@ -6,6 +6,7 @@
 import { ValidationError } from "./validation";
 import { NotFoundError } from "./service";
 import { UnauthorizedError } from "./context";
+import { NewcustCutoverConflictError } from "@/lib/repo/supabase/supabaseCrmSource";
 
 export function jsonOk(data: unknown, status = 200): Response {
   return Response.json({ data }, { status });
@@ -19,6 +20,7 @@ export function toErrorResponse(err: unknown): Response {
   if (err instanceof ValidationError) return jsonError(err.message, 400);
   if (err instanceof UnauthorizedError) return jsonError(err.message, 401);
   if (err instanceof NotFoundError) return jsonError(err.message, 404);
+  if (err instanceof NewcustCutoverConflictError) return jsonError(err.message, 409);
   const message = err instanceof Error ? err.message : "알 수 없는 오류";
   return jsonError(message, 500);
 }

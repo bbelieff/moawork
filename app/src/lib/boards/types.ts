@@ -75,6 +75,17 @@ export interface ItemValue {
   value_jsonb: CellValue;
 }
 
+export interface FileCapableItemValue extends Omit<ItemValue, "value_jsonb"> {
+  value_jsonb: BoardCellValue;
+}
+
+export interface BoardFileValue {
+  path: string;
+  name: string;
+  size: number;
+  mime: string;
+}
+
 /** 셀 값 — jsonb. 컬럼 타입별 정규화는 cells.ts 참조. */
 export type CellValue =
   | string
@@ -82,6 +93,8 @@ export type CellValue =
   | boolean
   | string[]
   | null;
+
+export type BoardCellValue = CellValue | BoardFileValue[];
 
 export interface BoardView {
   id: string;
@@ -99,6 +112,10 @@ export interface BoardView {
 /** 행 + 셀 맵(컬럼 key → 값). 화면 렌더용. */
 export interface ItemWithValues extends BoardItem {
   values: Record<string, CellValue>;
+}
+
+export interface FileCapableItemWithValues extends BoardItem {
+  values: Record<string, BoardCellValue>;
 }
 
 /** 보드 + 컬럼/그룹 — 보드 화면 1회 로드 단위. */

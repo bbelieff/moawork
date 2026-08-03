@@ -29,6 +29,17 @@ export class SupabaseCrmError extends Error {
   }
 }
 
+export class NewcustCutoverConflictError extends Error {
+  constructor() {
+    super("신규업체 이관이 완료되어 기존 CRM 원본은 읽기 전용입니다.");
+    this.name = "NewcustCutoverConflictError";
+  }
+}
+
+function isCutoverFence(error: { message: string; code?: string }): boolean {
+  return error.code === "P0001" && error.message.includes("NEWCUST_CUTOVER_FENCE");
+}
+
 /** numeric 은 드라이버/설정에 따라 문자열로 올 수 있어 숫자로 좁힌다. */
 function num(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
@@ -115,6 +126,7 @@ export class SupabaseCrmSource implements CrmSource {
   constructor(private readonly db: SupabaseClient) {}
 
   private fail(op: string, error: { message: string; code?: string }): never {
+    if (isCutoverFence(error)) throw new NewcustCutoverConflictError();
     throw new SupabaseCrmError(op, error);
   }
 

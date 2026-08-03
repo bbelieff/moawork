@@ -26,7 +26,7 @@ export type NavBadgeKey = "workspaceApprovals";
 
 export const NAV_ITEMS: readonly NavItem[] = [
   { key: "dash", label: "대시보드", icon: "◫", href: "/", feature: FEATURES.dash, owner: "T04" },
-  { key: "new", label: "신규업체", icon: "🔥", href: "/boards", feature: FEATURES.crm, owner: "T02" },
+  { key: "new", label: "신규업체", icon: "🔥", href: "/newcust", feature: FEATURES.crm, owner: "T02" },
   { key: "contact", label: "컨택업체", icon: "📞", feature: FEATURES.crm, owner: "T02" },
   { key: "work", label: "업무관리", icon: "🛠", href: "/policyfund", feature: FEATURES.policyfund, owner: "T09" },
   { key: "company", label: "업체관리", icon: "🏢", feature: FEATURES.crm, owner: "T02" },

@@ -13,7 +13,7 @@
 
 import type { FieldOption, FieldType } from "@/lib/types";
 import { getFieldTypeSpec, validateValue } from "@/lib/custom/field-types";
-import type { CellValue } from "./types";
+import type { BoardCellValue, BoardFileValue, CellValue } from "./types";
 
 /** 선택지를 갖는 타입. */
 export function hasOptions(type: FieldType): boolean {
@@ -30,30 +30,64 @@ export interface CellValidation {
 }
 
 /** jsonb 값을 보드 셀 표현(CellValue)으로 좁힌다. */
-function toCellValue(v: unknown): CellValue {
+function toCellValue(v: unknown): BoardCellValue {
   if (v === null || v === undefined) return null;
   if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return v;
-  if (Array.isArray(v)) return v.map((x) => String(x));
+  if (Array.isArray(v)) {
+    if (v.every((x) => typeof x === "string")) return v;
+    if (v.every(isBoardFileValue)) return v.map((x) => ({ ...x }));
+    return v.map((x) => String(x));
+  }
   return String(v);
+}
+
+function isBoardFileValue(value: unknown): value is BoardFileValue {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const file = value as Record<string, unknown>;
+  return (
+    typeof file.path === "string" && file.path.length > 0 &&
+    typeof file.name === "string" &&
+    typeof file.size === "number" && Number.isSafeInteger(file.size) && file.size >= 0 &&
+    typeof file.mime === "string"
+  );
 }
 
 /**
  * 셀 값 검증·정규화 — 보드 쓰기 경로의 유일한 진입점.
  * 옵션 목록이 없으면(느슨한 보드) 선택지 검증은 생략된다(엔진 규약).
  */
-export function validateCell(
+export interface BoardCellValidation {
+  ok: boolean;
+  value: BoardCellValue;
+  error?: string;
+}
+
+export function validateBoardCell(
   type: FieldType,
   raw: unknown,
   options?: FieldOption[] | null,
-): CellValidation {
+): BoardCellValidation {
   const res = validateValue(type, raw, options ? { options } : undefined);
   return res.ok
     ? { ok: true, value: toCellValue(res.normalized) }
     : { ok: false, value: null, error: res.error };
 }
 
+/** Legacy generic-board contract. File-aware callers must use validateBoardCell. */
+export function validateCell(
+  type: FieldType,
+  raw: unknown,
+  options?: FieldOption[] | null,
+): CellValidation {
+  const result = validateBoardCell(type, raw, options);
+  if (result.ok && Array.isArray(result.value) && result.value.some((entry) => typeof entry !== "string")) {
+    return { ok: false, value: null, error: "file: file-aware cell contract가 필요합니다" };
+  }
+  return result as CellValidation;
+}
+
 /** 빈 셀 판정(필터 is_empty 등). 타입 무관 공통 규약. */
-export function isEmptyCell(value: CellValue): boolean {
+export function isEmptyCell(value: BoardCellValue): boolean {
   return getFieldTypeSpec("text").isEmpty(value as never);
 }
 
@@ -78,16 +112,18 @@ export function compareCells(a: CellValue, b: CellValue): number {
 /** 화면 표시용 문자열(옵션 id → 라벨 치환). */
 export function formatCell(
   type: FieldType,
-  value: CellValue,
+  value: BoardCellValue,
   options?: FieldOption[] | null,
 ): string {
   if (isEmptyCell(value)) return "";
   if (type === "checkbox") return value ? "✓" : "";
   if (hasOptions(type) && options) {
     const label = (id: string) => options.find((o) => o.id === id)?.label ?? id;
-    if (Array.isArray(value)) return value.map(label).join(", ");
+    if (Array.isArray(value) && value.every((entry): entry is string => typeof entry === "string")) return value.map(label).join(", ");
     if (typeof value === "string") return label(value);
   }
-  if (Array.isArray(value)) return value.join(", ");
+  if (Array.isArray(value)) {
+    return value.map((entry) => typeof entry === "string" ? entry : entry.name).join(", ");
+  }
   return String(value);
 }

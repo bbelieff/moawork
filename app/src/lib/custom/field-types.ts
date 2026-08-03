@@ -318,12 +318,21 @@ const SPECS: Record<FieldType, FieldTypeSpec> = {
       if (raw === null || raw === undefined || raw === "") return null;
       if (!Array.isArray(raw)) throw new ValidationError("file: 첨부 배열이어야 합니다");
       const out: JsonValue[] = [];
+      const paths = new Set<string>();
       for (const f of raw) {
         if (typeof f !== "object" || f === null || Array.isArray(f))
           throw new ValidationError("file: 각 첨부는 객체여야 합니다");
         const rec = f as Record<string, unknown>;
         if (typeof rec.path !== "string" || rec.path === "")
           throw new ValidationError("file: path 가 필요합니다");
+        if (Object.keys(rec).some((key) => !["path", "name", "size", "mime"].includes(key)))
+          throw new ValidationError("file: 허용되지 않은 메타데이터 키입니다");
+        if (/^(?:https?:|data:)/i.test(rec.path) || rec.path.includes(".."))
+          throw new ValidationError("file: Storage 내부 경로만 허용됩니다");
+        if (paths.has(rec.path)) throw new ValidationError("file: 중복된 Storage 경로입니다");
+        paths.add(rec.path);
+        if (rec.size !== undefined && (typeof rec.size !== "number" || !Number.isSafeInteger(rec.size) || rec.size < 0))
+          throw new ValidationError("file: size는 안전한 음이 아닌 정수여야 합니다");
         out.push({
           path: rec.path,
           name: typeof rec.name === "string" ? rec.name : rec.path,
