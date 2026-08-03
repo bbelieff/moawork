@@ -13,7 +13,7 @@ describe("platform demo workspace mutations", () => {
   });
 
   it("wires CSV directly into the CRM model behind the selected demo boundary", () => {
-    expect(page).toContain("<PlatformDemoCrm");
+    expect(page).toContain("<PlatformDemoWorkspaceShell");
     expect(page).toContain("importCsv={importPlatformDemoCrmCsv}");
     expect(page).not.toContain("BuilderWorkspaceSurface");
     expect(actions).toContain('"platform_import_selected_demo_crm_csv"');
