@@ -1,4 +1,4 @@
-import { PlatformDemoWorkspaceShell, type DemoWorkspaceScreen } from "@/components/platform/PlatformDemoWorkspaceShell";
+import { PlatformDemoWorkspaceShell, resolveDemoWorkspaceSelection } from "@/components/platform/PlatformDemoWorkspaceShell";
 import { PlatformDemoWorkspaceTab } from "@/components/platform/PlatformDemoWorkspaceTab";
 import { getStageBoard, STAGE_BOARDS } from "@/lib/crm/stageBoards";
 import { resolvePlatformDemoCrm, toPlatformDemoStageBoard } from "@/lib/platform/demo-crm";
@@ -11,7 +11,7 @@ import {
   selectPlatformDemoWorkspace,
 } from "./actions";
 
-export default async function PlatformDemoPage({ searchParams }: Readonly<{ searchParams: Promise<{ crm?: string; screen?: string }> }>) {
+export default async function PlatformDemoPage({ searchParams }: Readonly<{ searchParams: Promise<{ workspace?: string }> }>) {
   await requirePlatformAccess("/platform/demo");
   const [state, params] = await Promise.all([
     loadPlatformDemoTabState(),
@@ -19,16 +19,14 @@ export default async function PlatformDemoPage({ searchParams }: Readonly<{ sear
   ]);
   const exactSelectedDemo = state.kind === "ready"
     && state.selectedIndex !== null;
-  const selectedBoard = getStageBoard(params.crm ?? "") ?? STAGE_BOARDS[0];
-  const activeScreen: DemoWorkspaceScreen = params.screen === "newcust" || params.screen === "contract" || params.screen === "work"
-    ? params.screen
-    : "dashboard";
+  const selection = resolveDemoWorkspaceSelection(params.workspace);
+  const selectedBoard = getStageBoard(selection.boardSlug) ?? STAGE_BOARDS[0];
   const supabase = exactSelectedDemo ? await createClient() : null;
   const result = supabase ? await supabase.rpc("platform_get_selected_demo_crm", { p_board_kind: selectedBoard.kind }) : null;
   const payload = result && !result.error ? resolvePlatformDemoCrm(result.data) : null;
   const data = payload ? toPlatformDemoStageBoard(selectedBoard, payload) : null;
   const workspaceSurface = data
-    ? { kind: "available" as const, content: <PlatformDemoWorkspaceShell activeScreen={activeScreen} data={data} importCsv={importPlatformDemoCrmCsv} /> }
+    ? { kind: "available" as const, content: <PlatformDemoWorkspaceShell activeScreen={selection.screen} data={data} importCsv={importPlatformDemoCrmCsv} /> }
     : exactSelectedDemo
       ? { kind: "access-required" as const }
       : undefined;

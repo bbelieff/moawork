@@ -9,11 +9,23 @@ import styles from "./platform-demo.module.css";
 
 export type DemoWorkspaceScreen = "dashboard" | "newcust" | "contract" | "work";
 
+export type DemoWorkspaceSelection = Readonly<{
+  screen: DemoWorkspaceScreen;
+  boardSlug: "newcust" | "contract" | "work";
+}>;
+
+export function resolveDemoWorkspaceSelection(workspace?: string): DemoWorkspaceSelection {
+  if (workspace === "newcust" || workspace === "contract" || workspace === "work") {
+    return { screen: workspace, boardSlug: workspace };
+  }
+  return { screen: "dashboard", boardSlug: "newcust" };
+}
+
 const DEMO_ROUTES: Readonly<Record<string, { href: string; screen: DemoWorkspaceScreen } | undefined>> = {
   dash: { href: "/platform/demo", screen: "dashboard" },
-  new: { href: "/platform/demo?screen=newcust&crm=newcust", screen: "newcust" },
-  contact: { href: "/platform/demo?screen=contract&crm=contract", screen: "contract" },
-  work: { href: "/platform/demo?screen=work&crm=work", screen: "work" },
+  new: { href: "/platform/demo?workspace=newcust", screen: "newcust" },
+  contact: { href: "/platform/demo?workspace=contract", screen: "contract" },
+  work: { href: "/platform/demo?workspace=work", screen: "work" },
 };
 
 export function PlatformDemoWorkspaceShell({ activeScreen, data, importCsv }: Readonly<{
@@ -64,4 +76,3 @@ export function PlatformDemoWorkspaceShell({ activeScreen, data, importCsv }: Re
     </div>
   </section>;
 }
-

@@ -23,4 +23,11 @@ describe("platform demo workspace mutations", () => {
     expect(page).not.toContain("loadOwnerWorkspaceOpsSnapshotForOrg");
     expect(page).toContain('kind: "access-required"');
   });
+
+  it("uses the workspace query contract and defaults unknown values to the dashboard", () => {
+    expect(page).toContain("workspace?: string");
+    expect(page).toContain("resolveDemoWorkspaceSelection(params.workspace)");
+    expect(page).not.toContain("params.screen");
+    expect(page).not.toContain("params.crm");
+  });
 });
