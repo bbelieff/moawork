@@ -1,21 +1,21 @@
-import { notFound } from "next/navigation";
-import { applyAs, getSession } from "@/lib/auth/session";
-import { loadStageBoard } from "@/lib/crm/boardData";
-import { getStageBoard } from "@/lib/crm/stageBoards";
-import { StageBoardView } from "@/components/crm/StageBoardView";
+import { getSession } from "@/lib/auth/session";
+import { createClient } from "@/lib/supabase/server";
+import { WorkManagementSource, WorkManagementUnavailableError } from "@/lib/repo/supabase/workManagementSource";
+import { WorkBoardSurface } from "@/components/work-management/WorkBoardSurface";
+import styles from "@/components/work-management/work-management.module.css";
 
-/** 업무관리 보드 (T02 · B2) — 002 시드의 업무관리(kind=work) 단계. */
-export default async function WorkBoardPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ as?: string }>;
-}) {
-  const board = getStageBoard("work");
-  if (!board) notFound();
-
-  const sp = await searchParams;
-  const ctx = applyAs(await getSession(), sp.as);
-  const data = await loadStageBoard(ctx, board);
-
-  return <StageBoardView data={data} />;
+export default async function WorkBoardPage() {
+  const ctx = await getSession();
+  let result:
+    | { kind: "ready"; snapshot: Awaited<ReturnType<WorkManagementSource["load"]>> }
+    | { kind: "blocked"; message: string };
+  try {
+    const snapshot = await new WorkManagementSource(await createClient()).load(ctx.org.id);
+    result = { kind: "ready", snapshot };
+  } catch (error) {
+    const message = error instanceof WorkManagementUnavailableError ? error.message : "업무관리 화면을 불러오지 못했습니다.";
+    result = { kind: "blocked", message };
+  }
+  if (result.kind === "ready") return <WorkBoardSurface snapshot={result.snapshot} />;
+  return <section className={styles.blocked} role="status"><span aria-hidden>🔥</span><h1>업무관리</h1><p>{result.message}</p><p className={styles.muted}>로컬 데이터로 대체하지 않았습니다. BBE-29 데이터 계약 활성화 후 다시 시도해 주세요.</p></section>;
 }
