@@ -13,7 +13,7 @@ describe("platform demo workspace mutations", () => {
   });
 
   it("wires CSV directly into the CRM model behind the selected demo boundary", () => {
-    expect(page).toContain("<PlatformDemoCrm");
+    expect(page).toContain("<PlatformDemoWorkspaceShell");
     expect(page).toContain("importCsv={importPlatformDemoCrmCsv}");
     expect(page).not.toContain("BuilderWorkspaceSurface");
     expect(actions).toContain('"platform_import_selected_demo_crm_csv"');
@@ -22,5 +22,12 @@ describe("platform demo workspace mutations", () => {
     expect(page).toContain('"platform_get_selected_demo_crm"');
     expect(page).not.toContain("loadOwnerWorkspaceOpsSnapshotForOrg");
     expect(page).toContain('kind: "access-required"');
+  });
+
+  it("uses the workspace query contract and defaults unknown values to the dashboard", () => {
+    expect(page).toContain("workspace?: string");
+    expect(page).toContain("resolveDemoWorkspaceSelection(params.workspace)");
+    expect(page).not.toContain("params.screen");
+    expect(page).not.toContain("params.crm");
   });
 });
