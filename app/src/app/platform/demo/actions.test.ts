@@ -12,8 +12,12 @@ describe("platform demo workspace mutations", () => {
     expect(actions).not.toContain('formData.get("orgId")');
   });
 
-  it("wires builder and CSV writes to the selected demo actions", () => {
-    expect(page).toContain("saveBuilderAction={savePlatformDemoBuilder}");
-    expect(page).toContain("createCsvDryRunAction={createPlatformDemoCsvDryRun}");
+  it("wires CSV directly into the CRM model behind the selected demo boundary", () => {
+    expect(page).toContain("<PlatformDemoCrm");
+    expect(page).toContain("importCsv={importPlatformDemoCrmCsv}");
+    expect(page).not.toContain("BuilderWorkspaceSurface");
+    expect(actions).toContain("new AsyncCrmService()");
+    expect(actions).toContain("session.org.id !== context.orgId");
+    expect(actions).toContain("state.selectedWorkspaceIsCurrent");
   });
 });

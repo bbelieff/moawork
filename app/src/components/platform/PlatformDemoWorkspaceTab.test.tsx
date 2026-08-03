@@ -3,42 +3,26 @@ import { describe, expect, it } from "vitest";
 import { PlatformDemoWorkspaceTab } from "./PlatformDemoWorkspaceTab";
 
 describe("PlatformDemoWorkspaceTab", () => {
-  it("keeps zero and unavailable states honest without workspace paths", () => {
+  it("keeps unavailable and empty states honest", () => {
     const unavailable = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "unavailable" }} />);
     const empty = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "ready", workspaces: [], selectedIndex: null, tenantAccess: "request-access", selectedWorkspaceIsCurrent: false }} />);
-    expect(unavailable).not.toContain("/w/");
-    expect(empty).toContain("열 수 있는 데모 환경이 없어요");
+    expect(unavailable).toContain("데모 환경을 연결할 수 없어요");
+    expect(empty).toContain("사용 가능한 데모 환경이 없어요");
+    expect(unavailable + empty).not.toContain("/w/");
   });
 
-  it("renders multiple authorized options as platform tabs, not workspace navigation", () => {
-    const html = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "ready", workspaces: [{ releaseRing: "canary" }, { releaseRing: "canary" }], selectedIndex: 1, tenantAccess: "request-access", selectedWorkspaceIsCurrent: false }} />);
-    expect(html).toContain('aria-current="true"');
-    expect(html).toContain('aria-label="데모 환경 1 선택"');
-    expect(html).not.toContain("/w/");
-    expect(html).not.toContain("org_id");
-  });
-
-  it("selects the sole authorized demo without exposing an identifier", () => {
-    const html = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "ready", workspaces: [{ releaseRing: "canary" }], selectedIndex: 0, tenantAccess: "request-access", selectedWorkspaceIsCurrent: false }} />);
-    expect(html).toContain("데모 환경 1");
-    expect(html).toContain('aria-current="true"');
-    expect(html).not.toContain("org_id");
-    expect(html).toContain("데모 워크스페이스 접근 권한이 필요해요");
-  });
-
-  it("mounts an embedded surface only for the server-confirmed active membership", () => {
-    const state = { kind: "ready" as const, workspaces: [{ releaseRing: "canary" as const }], selectedIndex: 0, tenantAccess: "active-membership" as const, selectedWorkspaceIsCurrent: true };
-    const html = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={state} workspaceSurface={{ kind: "available", content: <p>일반 RLS 업무 화면</p> }} deploymentVersion="abcdef1" />);
-    expect(html).toContain("일반 RLS 업무 화면");
+  it("hides workspace selection chrome when only one demo exists", () => {
+    const html = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "ready", workspaces: [{ releaseRing: "canary" }], selectedIndex: 0, tenantAccess: "active-membership", selectedWorkspaceIsCurrent: true }} workspaceSurface={{ kind: "available", content: <p>CRM content</p> }} deploymentVersion="abcdef1" />);
+    expect(html).toContain("CRM content");
     expect(html).toContain("abcdef1");
-    expect(html).not.toContain("데모 워크스페이스 접근 권한이 필요해요");
+    expect(html).not.toContain("데모 환경 1 선택");
+    expect(html).not.toContain("org_id");
   });
 
-  it("offers an id-only setup action when the selected DB workspace is empty", () => {
-    const state = { kind: "ready" as const, workspaces: [{ releaseRing: "canary" as const }], selectedIndex: 0, tenantAccess: "active-membership" as const, selectedWorkspaceIsCurrent: true };
-    const html = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={state} workspaceSurface={{ kind: "needs-setup" }} prepareAction={async () => undefined} />);
-    expect(html).toContain("데모 공간 준비하기");
+  it("retains a server-index selection for multiple authorized demos", () => {
+    const html = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "ready", workspaces: [{ releaseRing: "canary" }, { releaseRing: "stable" }], selectedIndex: 1, tenantAccess: "request-access", selectedWorkspaceIsCurrent: false }} />);
     expect(html).toContain('name="demoIndex"');
+    expect(html).toContain('aria-current="true"');
     expect(html).not.toContain("org_id");
   });
 });
