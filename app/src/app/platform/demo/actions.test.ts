@@ -12,8 +12,15 @@ describe("platform demo workspace mutations", () => {
     expect(actions).not.toContain('formData.get("orgId")');
   });
 
-  it("wires builder and CSV writes to the selected demo actions", () => {
-    expect(page).toContain("saveBuilderAction={savePlatformDemoBuilder}");
-    expect(page).toContain("createCsvDryRunAction={createPlatformDemoCsvDryRun}");
+  it("wires CSV directly into the CRM model behind the selected demo boundary", () => {
+    expect(page).toContain("<PlatformDemoCrm");
+    expect(page).toContain("importCsv={importPlatformDemoCrmCsv}");
+    expect(page).not.toContain("BuilderWorkspaceSurface");
+    expect(actions).toContain('"platform_import_selected_demo_crm_csv"');
+    expect(actions).toContain("p_request_id: requestId");
+    expect(actions).not.toContain('client.from("deals").insert');
+    expect(page).toContain('"platform_get_selected_demo_crm"');
+    expect(page).not.toContain("loadOwnerWorkspaceOpsSnapshotForOrg");
+    expect(page).toContain('kind: "access-required"');
   });
 });

@@ -9,6 +9,9 @@ import {
 } from "@/lib/release-rings/resolve";
 import { loadPlatformDemoTabContext } from "@/lib/platform/demo";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionOrNull } from "@/lib/auth/session";
+import { getStageBoard } from "@/lib/crm/stageBoards";
+import type { CsvRow } from "@/components/workspace-builder/CsvImportDialog";
 
 type WorkspaceOpsAction = Readonly<{ ok: boolean; message: string; id?: string }>;
 type RpcClient = {
@@ -24,11 +27,13 @@ async function selectedDemoMutationContext(): Promise<{
   orgId: string;
 } | null> {
   await requirePlatformAccess("/platform/demo");
-  const { state, selectedOrgId } = await loadPlatformDemoTabContext();
+  const [{ state, selectedOrgId }, session] = await Promise.all([loadPlatformDemoTabContext(), getSessionOrNull()]);
   if (
     state.kind !== "ready" ||
     state.tenantAccess !== "active-membership" ||
-    selectedOrgId === null
+    !state.selectedWorkspaceIsCurrent ||
+    selectedOrgId === null ||
+    session?.org.id !== selectedOrgId
   ) return null;
   return {
     client: await createClient() as unknown as RpcClient,
@@ -171,4 +176,31 @@ export async function createPlatformDemoCsvDryRun(
       p_request_id: requestId,
     },
   ), batchId);
+}
+
+/** Imports synthetic CSV rows into the CRM model currently rendered by the demo. */
+export async function importPlatformDemoCrmCsv(boardSlug: string, rows: readonly CsvRow[], requestId: string): Promise<WorkspaceOpsAction> {
+  const board = getStageBoard(boardSlug);
+  if (!Array.isArray(rows)) return { ok: false, message: "CSV 형식을 확인해 주세요." };
+  const safeRows = rows.length <= 500 && rows.every((row) => {
+    if (!row || typeof row !== "object" || typeof row.title !== "string" || !row.title.trim() || row.title.length > 200 || !row.values || typeof row.values !== "object" || Array.isArray(row.values)) return false;
+    const entries = Object.entries(row.values);
+    return entries.length <= 50 && entries.every(([key, value]) => key.length > 0 && key.length <= 80 && !["__proto__", "constructor", "prototype"].includes(key) && typeof value === "string" && value.length <= 2000);
+  });
+  const payloadBytes = safeRows ? new TextEncoder().encode(JSON.stringify(rows)).byteLength : Number.POSITIVE_INFINITY;
+  if (!board || rows.length === 0 || !safeRows || payloadBytes > 1024 * 1024) {
+    return { ok: false, message: "CSV 형식이나 행 수를 확인해 주세요. 한 번에 최대 500개까지 가져올 수 있어요." };
+  }
+  if (!UUID.test(requestId)) return { ok: false, message: "요청을 확인할 수 없어요. 파일을 다시 선택해 주세요." };
+  await requirePlatformAccess("/platform/demo");
+  const client = await createClient() as unknown as RpcClient;
+  const result = await client.rpc("platform_import_selected_demo_crm_csv", {
+    p_request_id: requestId,
+    p_board_kind: board.kind,
+    p_rows: rows,
+  });
+  const response = result.data as { accepted?: unknown; row_count?: unknown } | null;
+  if (result.error || response?.accepted !== true) return { ok: false, message: "CSV를 저장하지 못했어요. 같은 파일을 다시 시도해도 중복 저장되지 않아요." };
+  revalidatePath("/platform/demo");
+  return { ok: true, message: `${typeof response.row_count === "number" ? response.row_count : rows.length}개 항목을 ${board.title} 보드에 저장했어요.` };
 }
