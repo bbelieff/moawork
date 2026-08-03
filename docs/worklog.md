@@ -4,6 +4,36 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [END · BBE-6/codex] 2026-08-03 — 단일 데모 미선택 상태의 선택 불가 회귀 수정
+
+- task_id: `BBE-6-SINGLE-DEMO-SELECTION-FLOW-02`.
+- 구현: 승인된 데모가 정확히 1개이고 저장된 선택이 없을 때도 서버가 검증한 index `0` 선택 버튼을 표시한다.
+  이미 선택된 단일 데모의 간결 UI와 복수 데모 선택 흐름은 유지했다.
+- 변경 범위: `PlatformDemoWorkspaceTab.tsx`와 집중 테스트만 수정(+11/-1).
+  migration·RPC·auth·RLS·BBE-7 저장 경로는 변경하지 않았다.
+- PR/머지: [#89](https://github.com/bbelieff/moawork/pull/89) · feature `369b7a322e1893ad6622eda5db7a194170719a33`
+  · squash main `9e6fb8b1c90fc40776755ad91c36b0b786eae215`.
+- 게이트: 실제 `bash scripts/check.sh` PASS(app 1071 pass/9 skip, worker 21 pass), production build PASS,
+  PR CI·main CI·GitGuardian PASS.
+- 배포: Vercel Production `dpl_9NVB8Ac5j9ydpcdydBPUfq5AmgsC` READY,
+  `www.moa-work.com` alias와 merge SHA 일치.
+- 독립 QA: `/platform/demo`에서 버전 `9e6fb8b`, 신규고객·컨택관리·업무관리 렌더,
+  사용자 모드 전환 후 관리자 DOM 비노출, 관리자 모드 복귀, console warning/error 0 확인.
+  Linear QA receipt `87cea3c3-bf27-41d9-a597-1557dabf43f0`.
+- 판정: **PASS_WITH_NOT_RUN_BOUNDARIES**. 단일 데모+`selectedIndex=null` 정확 조건은 기존 선택을
+  파괴하지 않기 위해 운영에서 재현하지 않았고, 별도 일반 사용자 계정·hosted DB 변경·신규 실계정 auth·모바일 실기기도 NOT_RUN으로 유지했다.
+
+## [START · BBE-6/codex] 2026-08-03 — 단일 데모 미선택 상태의 선택 불가 회귀 수정
+
+- base `afcfa754e9b40a17e7bba62796bbc2ba06d324fa`, branch `codex/bbe-6-single-option-selection-flow`,
+  전용 worktree `C:\Users\Belief-desktop\Desktop\개발프로젝트\.worktrees\bbe-6-single-option-selection-flow`.
+- 원인: `PlatformDemoWorkspaceTab`이 데모가 2개 이상일 때만 선택 목록을 렌더했다.
+  데모가 1개이고 `selectedIndex=null`이면 “사용할 데모 회사를 선택해 주세요” 문구만 남고 클릭 수단이 없었다.
+- file lease: `app/src/components/platform/PlatformDemoWorkspaceTab.tsx`,
+  `app/src/components/platform/PlatformDemoWorkspaceTab.test.tsx`.
+- owner: code session · reviewer: 독립 Production QA session · blocked_by: 없음.
+- NOT_RUN 경계: hosted DB 적용·신규 실계정 auth·모바일 실기기. BBE-7 RPC/migration/저장 컨텍스트는 변경 금지.
+
 ## [END · C5-갭] 2026-07-29 — T01 · PostHog 배정본 대비 갭 보정 완료
 
 브랜치 `feat/t01-c5-gap`, **최종 base `origin/main@afeba90`**(리베이스 후). **check 게이트 초록**(app 832 pass / 5 skip · worker 14 pass).
