@@ -12,7 +12,17 @@ describe("PlatformDemoWorkspaceTab", () => {
     const html = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "ready", workspaces: [{ releaseRing: "canary" }], selectedIndex: 0, tenantAccess: "request-access", selectedWorkspaceIsCurrent: false }} workspaceSurface={{ kind: "available", content: <p>CRM 내용</p> }} deploymentVersion="abcdef1" />);
     expect(html).toContain("CRM 내용");
     expect(html).toContain("abcdef1");
+    expect(html).not.toContain('name="demoIndex"');
     expect(html).not.toContain("멤버십");
+    expect(html).not.toContain("org_id");
+  });
+
+  it("keeps a selectable server index when the only demo has not been selected yet", () => {
+    const html = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "ready", workspaces: [{ releaseRing: "canary" }], selectedIndex: null, tenantAccess: "request-access", selectedWorkspaceIsCurrent: false }} selectAction={() => undefined} />);
+    expect(html).toContain('name="demoIndex"');
+    expect(html).toContain('value="0"');
+    expect(html).toContain("데모 회사 1 선택");
+    expect(html).toContain("사용할 데모 회사를 선택해 주세요.");
     expect(html).not.toContain("org_id");
   });
 
