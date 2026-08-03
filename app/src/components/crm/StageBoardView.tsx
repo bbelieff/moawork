@@ -7,7 +7,7 @@ import type { StageBoardData } from "@/lib/crm/boardData";
  * 서버 컴포넌트(읽기 전용). 드래그 이동·인라인 편집은 후속(B2 이후) —
  * 단계 이동은 활동로그를 남겨야 해서 서비스(moveDealStage) 경유가 필수다.
  */
-export function StageBoardView({ data, linksEnabled = true, onboardingCta = true }: { data: StageBoardData; linksEnabled?: boolean; onboardingCta?: boolean }) {
+export function StageBoardView({ data, linksEnabled = true, onboardingCta = true, emptyHint }: { data: StageBoardData; linksEnabled?: boolean; onboardingCta?: boolean; emptyHint?: string }) {
   const { board, columns, total, companyById, sourceKind } = data;
 
   return (
@@ -35,7 +35,7 @@ export function StageBoardView({ data, linksEnabled = true, onboardingCta = true
       {columns.length === 0 ? (
         <EmptyState
           title="단계가 아직 없습니다"
-          hint="온보딩에서 정책자금 프리셋을 설치하면 파이프라인 단계가 생성됩니다."
+          hint={emptyHint ?? "온보딩에서 정책자금 프리셋을 설치하면 파이프라인 단계가 생성됩니다."}
           href={onboardingCta ? "/onboarding" : null}
           cta={onboardingCta ? "온보딩으로 이동" : null}
         />

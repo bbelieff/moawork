@@ -19,6 +19,6 @@ export function PlatformDemoCrm({ data, importCsv }: Readonly<{
     <nav className={styles.crmTabs} aria-label="CRM 보드">
       {STAGE_BOARDS.map((board) => <Link key={board.slug} href={`/platform/demo?crm=${board.slug}`} aria-current={data.board.slug === board.slug ? "page" : undefined}>{board.title}</Link>)}
     </nav>
-    <div className={styles.crmBoard}><StageBoardView data={data} linksEnabled={false} onboardingCta={false} /></div>
+    <div className={styles.crmBoard}><StageBoardView data={data} linksEnabled={false} onboardingCta={false} emptyHint="CSV 가져오기를 누르면 첫 단계와 항목이 데모 CRM에 바로 저장돼요." /></div>
   </section>;
 }
