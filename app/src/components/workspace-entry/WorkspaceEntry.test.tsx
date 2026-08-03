@@ -49,7 +49,7 @@ describe("WorkspaceEntry B-3 state contract", () => {
     const html = renderToStaticMarkup(<WorkspaceEntry initialView="join" />);
 
     expect(html).toContain('data-entry-view="join-address"');
-    expect(html).toContain("합류할 영문 Workspace 주소는 무엇인가요?");
+    expect(html).toContain("합류할 회사 주소를 입력해 주세요.");
     expect((html.match(/<input/g) ?? [])).toHaveLength(1);
     expect(html).not.toContain("초대 코드");
     expect(nextWorkspaceEntryQuestion("join-address")).toBe("join-confirm");

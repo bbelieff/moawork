@@ -239,29 +239,29 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
           <div className={styles.answerPreview} aria-label="앞서 답한 회사 이름"><span>회사 이름</span><strong>{draftName}</strong></div>
           <div className={styles.bubble}><strong>회사 주소는 무엇으로 할까요?</strong><small>영문 소문자·숫자·하이픈 3~40자로 적어 주세요. 회사가 만들어진 뒤에는 고정돼요.</small></div>
           <form className={`${styles.form} ${styles.answerBubble}`} onSubmit={continueWithCreateSlug}>
-            <label htmlFor={slugId}>영문 Workspace 주소<input id={slugId} name="slug" minLength={3} maxLength={80} required value={slugInput} onChange={(event) => setSlugInput(event.currentTarget.value)} placeholder="moa-company" autoCapitalize="none" autoCorrect="off" /><small>입력은 영문 소문자·숫자·하이픈 주소로 정리해요.</small></label>
+            <label htmlFor={slugId}>회사 주소<input id={slugId} name="slug" minLength={3} maxLength={80} required value={slugInput} onChange={(event) => setSlugInput(event.currentTarget.value)} placeholder="moa-company" autoCapitalize="none" autoCorrect="off" /><small>영문 소문자·숫자·하이픈만 사용할 수 있어요.</small></label>
             <div className={styles.slugPreview} aria-live="polite"><span>주소 미리보기</span><code>{workspaceAddressPreview(slugInput)}</code><small>미리보기일 뿐 예약이나 생성 성공을 뜻하지 않아요.</small></div>
             <div className={styles.actions}><button type="button" className={styles.quietButton} onClick={() => setView("create-name")}>이전 질문</button><button type="submit">다음 질문</button></div>
           </form>
         </> : null}
 
         {view === "create-confirm" ? <>
-          <div className={styles.bubble}><strong>이대로 회사 만들기를 신청할까요?</strong><small>신청 뒤 플랫폼 검토 전에는 Workspace나 대표 권한이 생기지 않아요.</small></div>
-          <div className={styles.confirmCard}><span>회사 이름</span><strong>{draftName}</strong><span>영문 Workspace 주소</span><code>https://www.moa-work.com/w/{draftSlug}</code></div>
+          <div className={styles.bubble}><strong>이 내용으로 회사 만들기를 신청할까요?</strong><small>운영팀이 신청을 승인하면 회사 공간과 대표 권한을 사용할 수 있어요.</small></div>
+          <div className={styles.confirmCard}><span>회사 이름</span><strong>{draftName}</strong><span>회사 주소</span><code>https://www.moa-work.com/w/{draftSlug}</code></div>
           <div className={styles.actions}><button type="button" className={styles.quietButton} onClick={() => setView("create-slug")}>이전 질문</button><button type="button" disabled={busy} onClick={() => void confirmCreate()}>{busy ? "신청 중…" : "이대로 신청하기"}</button></div>
         </> : null}
 
         {view === "join-address" ? <>
-          <div className={styles.bubble}><strong>합류할 영문 Workspace 주소는 무엇인가요?</strong><small>주소가 맞는지, Workspace가 있는지는 구분해 알려드리지 않아요.</small></div>
+          <div className={styles.bubble}><strong>합류할 회사 주소를 입력해 주세요.</strong><small>보안을 위해 회사가 있는지 여부는 따로 알려드리지 않아요.</small></div>
           <form className={`${styles.form} ${styles.answerBubble}`} onSubmit={continueWithJoinAddress}>
-            <label htmlFor={joinSlugId}>영문 Workspace 주소<input id={joinSlugId} name="slug" required maxLength={80} defaultValue={joinSlug} placeholder="company-address" autoCapitalize="none" autoCorrect="off" /></label>
+            <label htmlFor={joinSlugId}>회사 주소<input id={joinSlugId} name="slug" required maxLength={80} defaultValue={joinSlug} placeholder="company-address" autoCapitalize="none" autoCorrect="off" /></label>
             <div className={styles.actions}><button type="button" className={styles.quietButton} onClick={back}>다른 방법 고르기</button><button type="submit">다음 질문</button></div>
           </form>
         </> : null}
 
         {view === "join-confirm" ? <>
           <div className={styles.bubble}><strong>이 주소로 합류를 신청할까요?</strong><small>신청 뒤에도 대표가 승인하기 전에는 회사 접근 권한이 없어요.</small></div>
-          <div className={styles.confirmCard}><span>영문 Workspace 주소</span><code>https://www.moa-work.com/w/{joinSlug}</code><small>주소 오류·예약어·중복 여부는 같은 안내로 처리해요.</small></div>
+          <div className={styles.confirmCard}><span>회사 주소</span><code>https://www.moa-work.com/w/{joinSlug}</code><small>보안을 위해 주소 오류와 존재 여부는 같은 안내로 처리해요.</small></div>
           <div className={styles.actions}><button type="button" className={styles.quietButton} onClick={() => setView("join-address")}>이전 질문</button><button type="button" disabled={busy} onClick={() => void confirmJoin()}>{busy ? "신청 중…" : "이대로 신청하기"}</button></div>
         </> : null}
 
@@ -334,7 +334,7 @@ export function workspaceEntryCopy(view: WorkspaceEntryView): { title: string; l
   if (view === "create-name") return { title: "회사 만들기를 시작할게요.", lead: "지금은 회사 이름 하나만 여쭤볼게요." };
   if (view === "create-slug") return { title: "회사 주소를 정해요.", lead: "앞서 답한 이름은 그대로 두고 주소 하나만 확인해요." };
   if (view === "create-confirm") return { title: "신청 내용을 확인해요.", lead: "저장하기 전에 지금까지 답한 내용만 확인해 주세요." };
-  if (view === "join-address") return { title: "기존 회사에 합류할게요.", lead: "영문 Workspace 주소 하나만 확인할게요." };
+  if (view === "join-address") return { title: "기존 회사에 합류할게요.", lead: "합류할 회사 주소만 확인할게요." };
   if (view === "join-confirm") return { title: "합류 신청을 확인해요.", lead: "신청하기 전에 주소를 한 번만 확인해 주세요." };
   if (view === "pending") return { title: "요청을 검토하고 있어요.", lead: "승인 전에는 회사에 들어갈 수 없어요. 지금 필요한 행동 하나만 보여드려요." };
   if (view === "pending-manage") return { title: "대기 요청을 관리해요.", lead: "현재 요청을 어떻게 바꿀지 한 번만 선택해 주세요." };
@@ -352,7 +352,7 @@ function formatDeadline(value: string): string {
 function EntryShell({ eyebrow, title, lead, view, headingRef, children }: { eyebrow: string; title: string; lead: string; view: WorkspaceEntryView; headingRef: RefObject<HTMLHeadingElement | null>; children: ReactNode }) {
   const progress = workspaceEntryProgress(view);
   const isPending = view === "pending";
-  return <main className={styles.page} data-entry-view={view}><section className={styles.shell} aria-labelledby="workspace-entry-title"><header className={styles.protoTop}><Logo height={28} href="/" /><span>회사 시작 안내</span></header><div className={styles.wrap}><div className={styles.chat}><div className={styles.guideHead}><span className={styles.guideAvatar} aria-hidden="true">M</span><div><strong>모아 가이드</strong><small>필요한 것만 하나씩 도와드릴게요.</small></div></div><p className={styles.eyebrow}>{eyebrow}</p><h1 id="workspace-entry-title" ref={headingRef} tabIndex={-1} data-focus-target="current-question">{title}</h1><p className={styles.lead}>{lead}</p>{isPending ? <div className={styles.pendingProgress} aria-label="현재 질문 요약"><span>{progress.label}</span><strong>{progress.detail}</strong></div> : null}{children}</div>{!isPending ? <aside className={styles.summary} aria-label="현재 질문 요약"><h2>지금 확인하는 것</h2><div className={styles.summarySteps}><div className={`${styles.summaryStep} ${styles.current}`}><span className={styles.stepNumber}>1</span><div><strong>{progress.label}</strong><small>{progress.detail}</small></div></div></div><p className={styles.safety}>서버가 이미 안전하게 결정한 경로에는 질문을 더하지 않아요. 플랫폼 역할도 고객 회사 권한을 만들지 않아요.</p></aside> : null}</div></section></main>;
+  return <main className={styles.page} data-entry-view={view}><section className={styles.shell} aria-labelledby="workspace-entry-title"><header className={styles.protoTop}><Logo height={28} href="/" /><span>회사 시작 안내</span></header><div className={styles.wrap}><div className={styles.chat}><div className={styles.guideHead}><span className={styles.guideAvatar} aria-hidden="true">M</span><div><strong>모아 가이드</strong><small>필요한 것만 하나씩 도와드릴게요.</small></div></div><p className={styles.eyebrow}>{eyebrow}</p><h1 id="workspace-entry-title" ref={headingRef} tabIndex={-1} data-focus-target="current-question">{title}</h1><p className={styles.lead}>{lead}</p>{isPending ? <div className={styles.pendingProgress} aria-label="현재 질문 요약"><span>{progress.label}</span><strong>{progress.detail}</strong></div> : null}{children}</div>{!isPending ? <aside className={styles.summary} aria-label="현재 질문 요약"><h2>지금 확인하는 것</h2><div className={styles.summarySteps}><div className={`${styles.summaryStep} ${styles.current}`}><span className={styles.stepNumber}>1</span><div><strong>{progress.label}</strong><small>{progress.detail}</small></div></div></div><p className={styles.safety}>확인이 끝난 내용은 다시 묻지 않아요. 서비스 관리자 권한만으로 고객 회사에 들어갈 수는 없어요.</p></aside> : null}</div></section></main>;
 }
 
 export function workspaceEntryProgress(view: WorkspaceEntryView): { label: string; detail: string } {
