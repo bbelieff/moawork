@@ -19,6 +19,13 @@ describe("026 newcust cutover security contract", () => {
     for (const operation of ["select", "insert", "update", "delete"]) expect(sql).toContain(`create policy bviews_${operation}`);
     expect(sql).toContain("user_id=auth.uid() or shared");
     expect(sql).toContain("public.org_role(org_id) in ('owner','admin')");
+    expect(sql).toContain("b.created_by=auth.uid()");
+    expect(sql).toContain("or created_by=auth.uid()");
+    expect(sql).toContain("and created_by=auth.uid()" );
+    expect(sql).toContain("NEWCUST_BOARD_OWNERSHIP_IMMUTABLE");
+    expect(sql).toContain("NEWCUST_BOARD_SOURCE_CLAIM_FORBIDDEN");
+    expect(sql).toContain("new.source is null or new.source not in");
+    expect(sql).toContain("before update of source,org_id,created_by");
     expect(sql.match(/source is null or source not in/g)?.length).toBe(4);
   });
   it("rolls back only materialized imported ids and preserves the fence", () => {

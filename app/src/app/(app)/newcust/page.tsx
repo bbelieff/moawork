@@ -13,5 +13,5 @@ export default async function NewCustomerPage() {
     return <NewcustMigrationGate canApply={ctx.role === "owner" || ctx.role === "admin"} />;
   }
   const snapshot = await loadNewcustBoard(ctx);
-  return <NewcustBoard snapshot={snapshot} currentUserId={ctx.user.id} currentUserName={ctx.user.name ?? ctx.user.email ?? "나"} canManageStructure={ctx.role === "owner" || ctx.role === "admin"} />;
+  return <NewcustBoard snapshot={snapshot} currentUserId={ctx.user.id} currentUserName={ctx.user.name ?? ctx.user.email ?? "나"} canManageStructure={ctx.role === "owner" || ctx.role === "admin" || snapshot.board.created_by === ctx.user.id} />;
 }

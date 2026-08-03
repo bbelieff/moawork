@@ -7,7 +7,7 @@ import { FIELD_TYPES, type FieldType } from "@/lib/types";
 import type { BoardColumn } from "@/lib/boards/types";
 import { parseNewcustCsv } from "@/lib/newcust/csv";
 
-export type NewcustActionState = { ok: boolean; message: string; itemIds?: string[] };
+export type NewcustActionState = { ok: boolean; message: string; itemIds?: string[]; groupId?: string };
 const ok = (message: string): NewcustActionState => ({ ok: true, message });
 const bad = (error: unknown): NewcustActionState => ({ ok: false, message: error instanceof Error ? error.message : "저장하지 못했습니다." });
 const value = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
@@ -21,8 +21,8 @@ async function run(task: (ctx: Awaited<ReturnType<typeof getSession>>, source: A
   } catch (error) { return bad(error); }
 }
 
-function requireStructureAdmin(ctx: Awaited<ReturnType<typeof getSession>>): void {
-  if (ctx.role !== "owner" && ctx.role !== "admin") throw new Error("보드 구조 변경은 소유자 또는 관리자만 할 수 있습니다.");
+async function requireStructureManager(ctx: Awaited<ReturnType<typeof getSession>>, source: Awaited<ReturnType<typeof getNewcustSource>>, boardId: string): Promise<void> {
+  if (!(await source.canManageStructure(ctx, boardId))) throw new Error("보드 구조 변경은 보드 소유자 또는 관리자만 할 수 있습니다.");
 }
 
 export async function createNewcustItem(_: NewcustActionState, form: FormData) {
@@ -55,26 +55,44 @@ export async function updateNewcustItem(_: NewcustActionState, form: FormData) {
 
 export async function addNewcustColumn(_: NewcustActionState, form: FormData) {
   return run(async (ctx, source) => {
-    requireStructureAdmin(ctx);
+    const boardId = value(form, "boardId");
+    await requireStructureManager(ctx, source, boardId);
     const type = value(form, "type") as FieldType;
     if (!FIELD_TYPES.includes(type)) throw new Error("컬럼 유형을 확인해 주세요.");
     const label = value(form, "label");
     if (!label) throw new Error("컬럼 이름을 입력해 주세요.");
-    await source.addColumn(ctx, value(form, "boardId"), { label, type });
+    await source.addColumn(ctx, boardId, { label, type });
     return "컬럼을 추가했습니다.";
   });
 }
 
 export async function renameNewcustColumn(_: NewcustActionState, form: FormData) {
-  return run(async (ctx, source) => { requireStructureAdmin(ctx); await source.renameColumn(ctx, value(form, "boardId"), value(form, "columnId"), value(form, "label")); return "컬럼 이름을 변경했습니다."; });
+  return run(async (ctx, source) => { const boardId=value(form, "boardId"); await requireStructureManager(ctx, source, boardId); await source.renameColumn(ctx, boardId, value(form, "columnId"), value(form, "label")); return "컬럼 이름을 변경했습니다."; });
 }
 
 export async function deleteNewcustColumn(_: NewcustActionState, form: FormData) {
-  return run(async (ctx, source) => { requireStructureAdmin(ctx); await source.deleteColumn(ctx, value(form, "boardId"), { id: value(form, "columnId"), key: value(form, "key") } as BoardColumn); return "컬럼을 삭제했습니다."; });
+  return run(async (ctx, source) => { const boardId=value(form, "boardId"); await requireStructureManager(ctx, source, boardId); await source.deleteColumn(ctx, boardId, { id: value(form, "columnId"), key: value(form, "key") } as BoardColumn); return "컬럼을 삭제했습니다."; });
 }
 
 export async function addNewcustGroup(_: NewcustActionState, form: FormData) {
-  return run(async (ctx, source) => { requireStructureAdmin(ctx); await source.addGroup(ctx, value(form, "boardId"), value(form, "name") || "새 그룹"); return "그룹을 추가했습니다."; });
+  try {
+    const [ctx, source] = await Promise.all([getSession(), getNewcustSource()]);
+    const boardId=value(form, "boardId");
+    await requireStructureManager(ctx, source, boardId);
+    const groupId=await source.addGroup(ctx, boardId, "새 그룹");
+    revalidatePath("/newcust");
+    return { ok: true, message: "새 그룹 이름을 입력해 주세요.", groupId };
+  } catch (error) { return bad(error); }
+}
+
+export async function renameNewcustGroup(_: NewcustActionState, form: FormData) {
+  return run(async (ctx, source) => {
+    const boardId=value(form, "boardId"); const name=value(form, "name");
+    await requireStructureManager(ctx, source, boardId);
+    if (!name) throw new Error("그룹 이름을 입력해 주세요.");
+    await source.renameGroup(ctx, boardId, value(form, "groupId"), name);
+    return "그룹 이름을 저장했습니다.";
+  });
 }
 
 export async function saveNewcustView(_: NewcustActionState, form: FormData) {

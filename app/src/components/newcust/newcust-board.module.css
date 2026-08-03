@@ -18,6 +18,11 @@
 .tableViewport + .tableViewport { display: none; }
 .views button { border: 0; border-radius: 0; }
 .views .activeView { border-bottom: 3px solid #0073ea; color: #0073ea; font-weight: 700; }
+.inlineColumnName { display: inline-flex; margin-left: 4px; }
+.inlineColumnName input { width: 92px; min-height: 32px; border: 1px solid transparent; background: transparent; font: inherit; }
+.inlineColumnName input:focus { border-color: #0073ea; background: #fff; outline: 2px solid #cce5ff; }
+.groupNameButton { border: 0; background: transparent; font: inherit; font-weight: 700; text-align: left; }
+.inlineGroupName input { min-height: 36px; border: 1px solid #0073ea; border-radius: 4px; padding: 4px 8px; font: inherit; font-weight: 700; outline: 2px solid #cce5ff; }
 .toolbar { position: sticky; top: 0; z-index: 8; background: #fff; padding: 8px 0; }
 .toolbar > form:first-child { display: none; }
 .toolbar form { display: flex; flex-direction: row-reverse; }

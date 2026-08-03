@@ -25,6 +25,13 @@ function database(resolve: (call: Call) => Result) {
 const ctx = { user: { id: "u1" }, org: { id: "00000000-0000-4000-8000-000000000001" } } as Ctx;
 
 describe("SupabaseBoardsSource mutation boundaries", () => {
+  it("allows the actual board creator to manage structure and rejects another member", async () => {
+    const creator = database(() => ({ data: { created_by: "u1" }, error: null }));
+    await expect(new SupabaseBoardsSource(creator.db).canManageStructure({ ...ctx, role: "member" }, "b1")).resolves.toBe(true);
+    const nonOwner = database(() => ({ data: { created_by: "u2" }, error: null }));
+    await expect(new SupabaseBoardsSource(nonOwner.db).canManageStructure({ ...ctx, role: "member" }, "b1")).resolves.toBe(false);
+  });
+
   it("rejects a mutation when the target is not the newcust board", async () => {
     const fake = database((call) => call.table === "boards" ? { data: null, error: null } : { data: [], error: null });
     await expect(new SupabaseBoardsSource(fake.db).createItem(ctx, "other", "group", "업체")).rejects.toThrow("신규업체 보드");

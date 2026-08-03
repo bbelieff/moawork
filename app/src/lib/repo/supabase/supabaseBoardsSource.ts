@@ -130,6 +130,13 @@ export class SupabaseBoardsSource {
     if (!board.data) throw new SupabaseBoardsError("권한 확인", "신규업체 보드를 찾을 수 없습니다.");
   }
 
+  async canManageStructure(ctx: Ctx, boardId: string): Promise<boolean> {
+    if (ctx.role === "owner" || ctx.role === "admin") return true;
+    const board = await this.db.from("boards").select("created_by").eq("org_id", ctx.org.id).eq("id", boardId).eq("source", NEWCUST_SOURCE).maybeSingle();
+    if (board.error) this.fail("structure permission", board.error);
+    return board.data?.created_by === ctx.user.id;
+  }
+
   async createItem(ctx: Ctx, boardId: string, groupId: string, title: string): Promise<void> {
     await this.assertBoard(ctx, boardId);
     const group = await this.db.from("board_groups").select("id").eq("org_id", ctx.org.id).eq("board_id", boardId).eq("id", groupId).maybeSingle();
@@ -203,11 +210,19 @@ export class SupabaseBoardsSource {
     }
   }
 
-  async addGroup(ctx: Ctx, boardId: string, name: string): Promise<void> {
+  async addGroup(ctx: Ctx, boardId: string, name: string): Promise<string> {
     await this.assertBoard(ctx, boardId);
     const count = await this.db.from("board_groups").select("id", { count: "exact", head: true }).eq("org_id", ctx.org.id).eq("board_id", boardId);
-    const result = await this.db.from("board_groups").insert({ org_id: ctx.org.id, board_id: boardId, name, color: "#00c875", sort_order: count.count ?? 0 });
+    const result = await this.db.from("board_groups").insert({ org_id: ctx.org.id, board_id: boardId, name, color: "#00c875", sort_order: count.count ?? 0 }).select("id").single();
     if (result.error) this.fail("그룹 추가", result.error);
+    return result.data.id as string;
+  }
+
+  async renameGroup(ctx: Ctx, boardId: string, groupId: string, name: string): Promise<void> {
+    await this.assertBoard(ctx, boardId);
+    const result = await this.db.from("board_groups").update({ name }).eq("org_id", ctx.org.id).eq("board_id", boardId).eq("id", groupId).select("id").maybeSingle();
+    if (result.error) this.fail("그룹 이름 변경", result.error);
+    if (!result.data) throw new SupabaseBoardsError("그룹 이름 변경", "그룹을 찾을 수 없습니다.");
   }
 
   async createView(ctx: Ctx, boardId: string, input: { name: string; kind: string; sort: string; groupBy: string; visibleColumns: string[] }): Promise<void> {
