@@ -1539,3 +1539,18 @@ all/assigned), 헬퍼 `is_org_member`/`org_role`/`org_scope`, 트리거 `add_org
 - `ROUND-34.md`에 Linear를 점유·의존성·검토·이정표·출시 운영판으로, GitHub main/PR/CI를 기술 정본으로 명시했다.
 - 모든 세션은 작업 발견 시 Linear 중복 검색부터 수행하고, `task_id`·base SHA·전용 branch/worktree·owner·file lease·reviewer·blocked_by·acceptance criteria·hosted/auth NOT_RUN 경계를 갖춘 명시적 lease 뒤에만 구현한다.
 - BBE-5 live 관찰에서 mode 선택 button 두 개는 DOM에 존재하지만 무스타일이라 선택 UI로 인식하기 어렵다. `FAIL / BLOCKED_NO_LEASE`로 기록하며 제품 수정은 하지 않았다.
+
+## 2026-08-03 — [START · BBE-32/codex] 고객사 승인 대기열과 첫 진입 연결
+
+- task_id `BBE-PLATFORM-ORG-ONBOARDING-01`, Linear `BBE-32`, base `eecaed0294aa95dfce908b6a0e5a9087013fa121`, branch `codex/bbe-platform-org-onboarding`, 전용 worktree `C:\Users\Belief-desktop\Desktop\개발프로젝트\.worktrees\bbe-platform-org-onboarding`에서 착수했다.
+- lease는 `/platform/organizations` 페이지, 신규 `PlatformOrganizationsPanel`과 테스트, platform CSS 네 파일로 한정했다. DB·migration·RLS lease는 없으며 기존 원자적 회사 승인 RPC를 사용한다.
+- acceptance는 고객사 관리 탭에서 실제 pending 요청을 찾고 승인·거절할 수 있는 첫 진입 흐름, 정직한 빈/불가 상태, 중복 클릭 차단, 390px 반응형, PR·CI·Production QA다. 실제 hosted 승인 mutation과 별도 일반 사용자 최초 신청, 모바일 실기기는 `NOT_RUN` 경계다.
+
+## 2026-08-03 — [END · BBE-32/codex] 고객사 승인 대기열과 첫 진입 연결
+
+- PR [#90](https://github.com/bbelieff/moawork/pull/90)을 squash merge해 `main@34758537c1321d67d9220907dc218148f6951cdc`가 됐다. feature commit은 `ee116cfa6d59ec7acde31ddd977c758f018675a1`이다.
+- `/platform/organizations`를 숨겨진 기존 승인 기능과 연결했다. 승인 대기 수, 회사명·주소·요청 시각, 첫 진입 3단계, 승인·거절 제어, 안전 집계, 빈/불가/처리/성공 상태를 제공하며 고객 업무·개인정보는 노출하지 않는다.
+- 게이트는 focused 4 PASS, `bash scripts/check.sh` app 1075 PASS/9 SKIP·worker 21 PASS, lint·typecheck·production build PASS, PR 및 main CI PASS다.
+- Vercel Production `dpl_BM2g6txphAHZ1iN2rVBuqZZU4iZd`가 exact merge SHA로 READY이고 canonical `https://www.moa-work.com/platform/organizations`에 연결됐다.
+- 독립 MWC Production QA는 `PASS_WITH_NOT_RUN_BOUNDARIES`(Linear receipt `a93e6bf7-49dd-43b1-822a-e752259cb314`): 실제 승인 대기 2건과 3단계 렌더, 사용자 모드의 관리자 DOM 비노출, 관리자 복귀, 390×844 무가로오버플로, console warning/error 0을 확인했다.
+- 실제 승인·거절 및 owner 멤버십 생성, 별도 일반 사용자 최초 신청, hosted DB/migration 변경, 모바일 실기기는 `NOT_RUN`이다. DB/schema/RLS 변경은 0이며 Linear `BBE-32`는 Done이다.
