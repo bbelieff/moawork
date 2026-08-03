@@ -3,42 +3,23 @@ import { describe, expect, it } from "vitest";
 import { PlatformDemoWorkspaceTab } from "./PlatformDemoWorkspaceTab";
 
 describe("PlatformDemoWorkspaceTab", () => {
-  it("keeps zero and unavailable states honest without workspace paths", () => {
-    const unavailable = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "unavailable" }} />);
-    const empty = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "ready", workspaces: [], selectedIndex: null, tenantAccess: "request-access", selectedWorkspaceIsCurrent: false }} />);
-    expect(unavailable).not.toContain("/w/");
-    expect(empty).toContain("지금 확인할 수 있는 데모가 없어요");
+  it("shows clear unavailable and empty states", () => {
+    expect(renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "unavailable" }} />)).toContain("데모를 연결하지 못했어요");
+    expect(renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "ready", workspaces: [], selectedIndex: null, tenantAccess: "request-access", selectedWorkspaceIsCurrent: false }} />)).toContain("지금 확인할 수 있는 데모가 없어요");
   });
 
-  it("renders multiple authorized options as platform tabs, not workspace navigation", () => {
-    const html = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "ready", workspaces: [{ releaseRing: "canary" }, { releaseRing: "canary" }], selectedIndex: 1, tenantAccess: "request-access", selectedWorkspaceIsCurrent: false }} />);
-    expect(html).toContain('aria-current="true"');
-    expect(html).toContain('aria-label="데모 환경 1 선택"');
-    expect(html).not.toContain("/w/");
-    expect(html).not.toContain("org_id");
-  });
-
-  it("selects the sole authorized demo without exposing an identifier", () => {
-    const html = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "ready", workspaces: [{ releaseRing: "canary" }], selectedIndex: 0, tenantAccess: "request-access", selectedWorkspaceIsCurrent: false }} />);
-    expect(html).toContain("데모 환경 1");
-    expect(html).toContain('aria-current="true"');
-    expect(html).not.toContain("org_id");
-    expect(html).toContain("데모를 열 수 없어요");
-  });
-
-  it("mounts an embedded surface only for the server-confirmed active membership", () => {
-    const state = { kind: "ready" as const, workspaces: [{ releaseRing: "canary" as const }], selectedIndex: 0, tenantAccess: "active-membership" as const, selectedWorkspaceIsCurrent: true };
-    const html = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={state} workspaceSurface={{ kind: "available", content: <p>일반 RLS 업무 화면</p> }} deploymentVersion="abcdef1" />);
-    expect(html).toContain("일반 RLS 업무 화면");
+  it("shows the selected demo to an authorized service administrator without tenant membership copy", () => {
+    const html = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "ready", workspaces: [{ releaseRing: "canary" }], selectedIndex: 0, tenantAccess: "request-access", selectedWorkspaceIsCurrent: false }} workspaceSurface={{ kind: "available", content: <p>CRM 내용</p> }} deploymentVersion="abcdef1" />);
+    expect(html).toContain("CRM 내용");
     expect(html).toContain("abcdef1");
-    expect(html).not.toContain("데모 워크스페이스 접근 권한이 필요해요");
+    expect(html).not.toContain("멤버십");
+    expect(html).not.toContain("org_id");
   });
 
-  it("offers an id-only setup action when the selected DB workspace is empty", () => {
-    const state = { kind: "ready" as const, workspaces: [{ releaseRing: "canary" as const }], selectedIndex: 0, tenantAccess: "active-membership" as const, selectedWorkspaceIsCurrent: true };
-    const html = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={state} workspaceSurface={{ kind: "needs-setup" }} prepareAction={async () => undefined} />);
-    expect(html).toContain("데모 공간 준비하기");
+  it("keeps server-index selection for multiple demos", () => {
+    const html = renderToStaticMarkup(<PlatformDemoWorkspaceTab state={{ kind: "ready", workspaces: [{ releaseRing: "canary" }, { releaseRing: "stable" }], selectedIndex: 1, tenantAccess: "request-access", selectedWorkspaceIsCurrent: false }} />);
     expect(html).toContain('name="demoIndex"');
+    expect(html).toContain('aria-current="true"');
     expect(html).not.toContain("org_id");
   });
 });
