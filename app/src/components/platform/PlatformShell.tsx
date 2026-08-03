@@ -26,14 +26,14 @@ export function PlatformShell({
       <header className={styles.band} role="note">
         <div className={styles.brand}>
           <span className={styles.mark} aria-hidden="true"><i /><i /><i /></span>
-          <div><strong>MoaWork 운영 콘솔</strong><span>플랫폼 관리자 전용</span></div>
+          <div><strong>모아워크 운영 관리</strong><span>서비스 관리자 전용</span></div>
         </div>
-        <p className={styles.safety}>플랫폼 운영자 영역 — 고객 업무 데이터는 열람 권한을 받은 경우에만 보여요.</p>
+        <p className={styles.safety}>서비스 관리자 화면이에요. 고객 업무 정보는 별도 권한이 있을 때만 볼 수 있어요.</p>
         <DeveloperModeControl mode="platform" action={userModeAction ?? { mode: "user" }} />
       </header>
       <div className={styles.layout}>
-        <nav className={styles.sidebar} aria-label="플랫폼 운영 메뉴">
-          <div className={styles.sidebarHeading}><span>Platform</span><strong>운영 메뉴</strong></div>
+        <nav className={styles.sidebar} aria-label="서비스 운영 메뉴">
+          <div className={styles.sidebarHeading}><span>서비스 관리</span><strong>운영 메뉴</strong></div>
           {PLATFORM_NAV_GROUPS.map((group) => (
             <section className={styles.navGroup} aria-labelledby={`platform-nav-${group.key}`} key={group.key}>
               <p id={`platform-nav-${group.key}`} className={styles.navGroupLabel}>{group.label}</p>
@@ -53,7 +53,7 @@ export function PlatformShell({
         <main className={styles.main}>
           <div className={styles.mainInner}>
             <header className={styles.heading}>
-              <p className={styles.eyebrow}>플랫폼 운영 <span aria-hidden="true">/</span> {activeItem?.label ?? title}</p>
+              <p className={styles.eyebrow}>서비스 운영 <span aria-hidden="true">/</span> {activeItem?.label ?? title}</p>
               <h1>{title}</h1>
               <p>{description}</p>
             </header>
