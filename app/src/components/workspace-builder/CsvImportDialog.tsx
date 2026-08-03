@@ -42,17 +42,18 @@ export function parseDeidentifiedCsv(text: string): { rows: CsvRow[]; quarantine
 
 export function CsvImportDialog({ activeBoard, importCsv }: Readonly<{
   activeBoard: string;
-  importCsv: (boardSlug: string, rows: readonly CsvRow[]) => Promise<WorkspaceOpsAction>;
+  importCsv: (boardSlug: string, rows: readonly CsvRow[], requestId: string) => Promise<WorkspaceOpsAction>;
 }>) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const requestIdRef = useRef(crypto.randomUUID());
   const [boardSlug, setBoardSlug] = useState(activeBoard);
   const [fileName, setFileName] = useState("");
   const [rows, setRows] = useState<CsvRow[]>([]);
   const [quarantined, setQuarantined] = useState(0);
   const [notice, setNotice] = useState("합성·테스트 데이터만 업로드해 주세요. 실제 고객 개인정보는 사용할 수 없어요.");
   const [busy, setBusy] = useState(false);
-  const resetFile = () => { setFileName(""); setRows([]); setQuarantined(0); };
+  const resetFile = () => { setFileName(""); setRows([]); setQuarantined(0); requestIdRef.current = crypto.randomUUID(); };
   const close = () => { dialogRef.current?.close(); triggerRef.current?.focus(); };
   const readFile = async (file?: File) => {
     resetFile();
@@ -65,8 +66,8 @@ export function CsvImportDialog({ activeBoard, importCsv }: Readonly<{
   const submit = async () => {
     if (busy || rows.length === 0) return;
     setBusy(true);
-    try { const result = await importCsv(boardSlug, rows); setNotice(result.message); if (result.ok) resetFile(); }
-    catch { setNotice("CSV를 가져오지 못했어요. 저장된 항목은 없으며 다시 시도할 수 있어요."); }
+    try { const result = await importCsv(boardSlug, rows, requestIdRef.current); setNotice(result.message); if (result.ok) resetFile(); }
+    catch { setNotice("저장 여부를 확인할 수 없어요. 다시 시도해도 중복 저장되지 않아요."); }
     finally { setBusy(false); }
   };
   return <>

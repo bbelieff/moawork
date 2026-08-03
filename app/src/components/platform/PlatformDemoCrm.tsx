@@ -9,7 +9,7 @@ import styles from "./platform-demo.module.css";
 
 export function PlatformDemoCrm({ data, importCsv }: Readonly<{
   data: StageBoardData;
-  importCsv: (boardSlug: string, rows: readonly CsvRow[]) => Promise<WorkspaceOpsAction>;
+  importCsv: (boardSlug: string, rows: readonly CsvRow[], requestId: string) => Promise<WorkspaceOpsAction>;
 }>) {
   return <section className={styles.crm} aria-label="데모 CRM">
     <header className={styles.crmHeader}>
@@ -19,6 +19,6 @@ export function PlatformDemoCrm({ data, importCsv }: Readonly<{
     <nav className={styles.crmTabs} aria-label="CRM 보드">
       {STAGE_BOARDS.map((board) => <Link key={board.slug} href={`/platform/demo?crm=${board.slug}`} aria-current={data.board.slug === board.slug ? "page" : undefined}>{board.title}</Link>)}
     </nav>
-    <div className={styles.crmBoard}><StageBoardView data={data} /></div>
+    <div className={styles.crmBoard}><StageBoardView data={data} linksEnabled={false} onboardingCta={false} /></div>
   </section>;
 }
