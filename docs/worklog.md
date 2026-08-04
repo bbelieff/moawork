@@ -4,6 +4,45 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [END · BBE-8/claude] 2026-08-04 — hosted migration·환경 적용 인벤토리 (조사 전용)
+
+- 산출물: `docs/evidence/BBE-8-hosted-inventory.md` 신규 1파일. 제품 코드·hosted DB·Linear 변경 **0**.
+- migration 전수 **30개** 목록화(번호·목적·도입 커밋). 번호 중복 `014`·`016` 각 2개, `0001`/`001` 혼재,
+  `025→030` 점프를 기록했다. `submit_workspace_create_request`는 `006→009→018→030` **4중 재정의**로 순서 민감도가 가장 높다.
+- **hosted 적용 이력 실측 = `NOT_RUN`**: supabase CLI·psql·vercel CLI 부재, `supabase/config.toml` 없음,
+  실값 `.env` 없음(레포에 `.env.example` 2개만). 자격증명이 없어 조회 자체를 실행하지 못했다.
+  belie 터미널용 읽기 전용 SQL(Q1~Q4 + 일괄 적용여부 Q1-b)을 산출물 §6에 첨부했다.
+- **Production 배포 SHA 실측 = RUN**: `gh` deployments API로 Production `5725403660` =
+  `0816d2a9c819d21fbf5d0d1e15abf58a2efa32c9`, state `success`, `2026-08-03T11:31:27Z`.
+  **배포 SHA = `origin/main` HEAD.** 코드는 최신이다. `www.moa-work.com` alias 바인딩은 vercel CLI 부재로 `NOT_RUN`.
+- **017 ↔ 관측 증상 인과 사슬을 코드로 검증**: `/platform`은 `loadPlatformActor`가 `is_platform_admin()`을
+  **단독 의존**하며 폴백이 없다(`lib/platform/actor.ts:41`). `006` 정의는 `role='admin'`을 요구하고
+  `005` 시드는 `role='owner'`라 항상 false → `guard.ts:25` `/?error=platform` → `(app)/page.tsx` `getSession()` →
+  소속 0 → `session.ts:140` **`/login?error=membership`**. MWC 관측과 정확히 일치한다.
+- **단, 017 단독 근인으로 단정하지 않았다**(반증 3건 기록): ① `/workspace-entry`에는 `app_admin_role` 폴백이 있어
+  017 미적용이어도 열린다(`lib/workspace-entry/server.ts:196-213`) — 둘 다 막히면 다른 원인이다.
+  ② RPC **오류·권한 부재**도 `unavailable`로 같은 화면을 만든다. ③ 소속 0은 독립 결함일 수 있어
+  017 적용은 `/platform` 복구의 **필요조건이지 `(app)` 진입의 충분조건이 아니다**.
+- 권고: Q1이 `NOT_APPLIED_006`이면 **017 단독 선적용**(함수 1개 `create or replace`, 멱등, 테이블·RLS 무변경) 후 재관측.
+  나머지는 `015 → 017 → 018 → 020 → 021 → 022 → 023 → 024 → 025 → 030` 순, 별도 계약으로 분리.
+  리스크: 순서 역전 시 회귀 부활, 021 제약 실패, 030 컬럼 추가 락, 롤백 스크립트 부재 → 백업 선행.
+- 판정: **INVESTIGATION_COMPLETE / HOSTED_STATE_NOT_RUN**. hosted 적용 여부는 belie 조회 회신 전까지 미확정이다.
+
+## [START · BBE-8/claude] 2026-08-04 — hosted migration·환경 적용 인벤토리 (조사 전용)
+
+- task_id: Linear `BBE-8`. 성격: **조회 전용** — 스키마 변경·migration 적용·`db push`·데이터 수정 전면 금지.
+- base `0816d2a9c819d21fbf5d0d1e15abf58a2efa32c9`(`git fetch --prune` 후 실측),
+  branch `claude/bbe-8-hosted-inventory`,
+  전용 worktree `C:\Users\Belief-desktop\Desktop\개발프로젝트\.worktrees\bbe-8-hosted-inventory`.
+- file lease: `docs/evidence/BBE-8-hosted-inventory.md` 신규 1파일 + 이 worklog START/END append(계약 명시).
+- owner: code session(claude) · reviewer: MWC · blocked_by: 없음.
+- 조사 항목: ① migration 전수 목록 ② hosted 적용 이력 실측 ③ 적용/미적용 대조표와 실증상 매핑
+  ④ Production 배포 SHA ⑤ 적용 권고(실행은 별도 계약).
+- 안전 경계: 비밀값·연결 문자열·토큰 출력·기록 금지("있다/없다"만) · hosted 조회는 집계/존재 확인 수준 ·
+  `app_admins` 직접 select 금지(함수 경유) · `--no-verify` 금지.
+- NOT_RUN 경계(착수 시 예상): hosted DB 조회·migration 원장·실제 브라우저 로그인 재현.
+- 병렬 레인 주의: BBE-6 구현 세션이 같은 레포에서 동시 진행 중 — 해당 브랜치·worktree·파일 미접촉.
+
 ## [END · BBE-6/codex] 2026-08-03 — 단일 데모 미선택 상태의 선택 불가 회귀 수정
 
 - task_id: `BBE-6-SINGLE-DEMO-SELECTION-FLOW-02`.
