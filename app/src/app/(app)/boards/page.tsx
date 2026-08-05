@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { getBoardsService } from "@/lib/boards";
-import { NewBoardDialog } from "@/components/boards/NewBoardDialog";
+import { NewBoardInline } from "./NewBoardInline";
 
 /**
  * 보드 목록 (T02b · ADR-0003).
@@ -22,14 +22,12 @@ export default async function BoardsPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">보드</h1>
-          <p className="text-sm text-zinc-500">
-            시스템 보드와 직접 만든 보드를 한 곳에서. ({ctx.role}/{ctx.scope})
-          </p>
-        </div>
-        <NewBoardDialog />
+      {/* 원칙 3 — 헤더 1줄. 액션(새 보드)은 우상단 분리형 패널이 아니라 아래 목록 안에 있다. */}
+      <div>
+        <h1 className="text-xl font-semibold">보드</h1>
+        <p className="text-sm text-zinc-500">
+          시스템 보드와 직접 만든 보드를 한 곳에서. ({ctx.role}/{ctx.scope})
+        </p>
       </div>
 
       <section className="flex flex-col gap-2">
@@ -56,28 +54,33 @@ export default async function BoardsPage({
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-zinc-500">내 보드</h2>
-        {user.length === 0 ? (
-          <p className="rounded border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700">
-            아직 만든 보드가 없습니다. [+ 새 보드]로 시작하세요.
-          </p>
-        ) : (
-          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {user.map((b) => (
-              <li key={b.id}>
-                <Link
-                  href={`/boards/${b.id}`}
-                  className="flex h-full flex-col gap-1 rounded border border-zinc-200 p-3 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
-                >
-                  <span className="text-sm font-medium">
-                    {b.icon} {b.name}
-                  </span>
-                  <span className="text-xs text-zinc-500">{b.description}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
+        <h2 className="text-sm font-medium text-zinc-500">
+          내 보드
+          {user.length === 0 && (
+            // 원칙 5 — 빈 상태는 인라인 한 줄. 실행 지점은 아래 격자의 [＋ 새 보드] 타일이다.
+            <span className="ml-2 font-normal text-zinc-400">
+              아직 만든 보드가 없습니다. 오른쪽 타일에서 바로 만드세요.
+            </span>
+          )}
+        </h2>
+        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {user.map((b) => (
+            <li key={b.id}>
+              <Link
+                href={`/boards/${b.id}`}
+                className="flex h-full flex-col gap-1 rounded border border-zinc-200 p-3 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+              >
+                <span className="text-sm font-medium">
+                  {b.icon} {b.name}
+                </span>
+                <span className="text-xs text-zinc-500">{b.description}</span>
+              </Link>
+            </li>
+          ))}
+          <li>
+            <NewBoardInline />
+          </li>
+        </ul>
       </section>
     </div>
   );
