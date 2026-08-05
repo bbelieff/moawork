@@ -7,8 +7,13 @@
 
 import { BoardRuleError, NotFoundError } from "@/lib/boards";
 import { UnauthorizedError } from "@/lib/crm/context";
-import { NOTICE_CATEGORY_OPTIONS, type NewNotice, type NoticePatch } from "./types";
-import { NoticeRuleError } from "./service";
+import {
+  NOTICE_AUDIENCE_OPTIONS,
+  NOTICE_CATEGORY_OPTIONS,
+  type NewNotice,
+  type NoticePatch,
+} from "./types";
+import { NoticeForbiddenError, NoticeRuleError } from "./service";
 
 export class NoticeInputError extends Error {
   constructor(message: string) {
@@ -24,6 +29,7 @@ export function jsonOk(data: unknown, status = 200): Response {
 export function toNoticeErrorResponse(err: unknown): Response {
   const map = (status: number, message: string) => Response.json({ error: message }, { status });
   if (err instanceof UnauthorizedError) return map(401, err.message);
+  if (err instanceof NoticeForbiddenError) return map(403, err.message);
   if (err instanceof NotFoundError) return map(404, err.message);
   if (err instanceof NoticeInputError) return map(400, err.message);
   if (err instanceof NoticeRuleError) return map(400, err.message);
@@ -32,6 +38,7 @@ export function toNoticeErrorResponse(err: unknown): Response {
 }
 
 const VALID_CATEGORY_IDS = new Set(NOTICE_CATEGORY_OPTIONS.map((o) => o.id));
+const VALID_AUDIENCE_IDS = new Set(NOTICE_AUDIENCE_OPTIONS.map((o) => o.id));
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function asRecord(raw: unknown): Record<string, unknown> {
@@ -54,11 +61,19 @@ function optionalCategory(v: unknown): string | null | undefined {
   return v;
 }
 
-function optionalDate(v: unknown): string | null | undefined {
+function optionalAudience(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  if (typeof v !== "string" || !VALID_AUDIENCE_IDS.has(v))
+    throw new NoticeInputError("열람 대상: 허용되지 않은 값입니다");
+  return v;
+}
+
+function optionalDate(v: unknown, field = "게시일"): string | null | undefined {
   if (v === undefined) return undefined;
   if (v === null || v === "") return null;
   if (typeof v !== "string" || !DATE_RE.test(v))
-    throw new NoticeInputError("게시일: YYYY-MM-DD 형식이어야 합니다");
+    throw new NoticeInputError(`${field}: YYYY-MM-DD 형식이어야 합니다`);
   return v;
 }
 
@@ -79,6 +94,8 @@ export function parseNewNotice(raw: unknown): NewNotice {
     categoryId: optionalCategory(o.categoryId),
     pinned: optionalBool(o.pinned, "상단고정"),
     publishedAt: optionalDate(o.publishedAt),
+    endedAt: optionalDate(o.endedAt, "종료일"),
+    audienceId: optionalAudience(o.audienceId),
   };
 }
 
@@ -96,6 +113,8 @@ export function parseNoticePatch(raw: unknown): NoticePatch {
   if ("categoryId" in o) patch.categoryId = optionalCategory(o.categoryId);
   if ("pinned" in o) patch.pinned = optionalBool(o.pinned, "상단고정");
   if ("publishedAt" in o) patch.publishedAt = optionalDate(o.publishedAt);
+  if ("endedAt" in o) patch.endedAt = optionalDate(o.endedAt, "종료일");
+  if ("audienceId" in o) patch.audienceId = optionalAudience(o.audienceId);
   if (Object.keys(patch).length === 0) throw new NoticeInputError("변경할 항목이 없습니다");
   return patch;
 }

@@ -104,7 +104,8 @@ export function deepLink(targetType: string | null, targetId: string | null): st
     case "company":
       return `/boards${focus}`;
     case "notice":
-      return "/notices";
+      // 공지는 상세 지면이 있다 — 목록이 아니라 그 공지로 바로 보낸다.
+      return targetId ? `/notices/${encodeURIComponent(targetId)}` : "/notices";
     default:
       return null;
   }
