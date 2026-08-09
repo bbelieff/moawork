@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { getRepo } from "@/lib/repo";
-import { FeatureGate } from "@/components/auth/FeatureGate";
+import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
 import { FEATURES } from "@/lib/product";
 import {
   contractStatusBreakdown,
@@ -74,7 +74,11 @@ export default async function PipelineDashboardPage({
         <span className="text-zinc-700 dark:text-zinc-200">{pipeline.name}</span>
       </nav>
 
-      <FeatureGate ctx={ctx} feature={FEATURES.dash} label="대시보드(core.dash)">
+      <FeatureGateServer
+        orgId={ctx.org.id}
+        feature={FEATURES.dash}
+        label="대시보드(core.dash)"
+      >
         <div className="flex flex-col gap-6">
           <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <StatCard label="딜" value={formatCount(breakdown.total)} />
@@ -130,7 +134,7 @@ export default async function PipelineDashboardPage({
             ) : null}
           </section>
         </div>
-      </FeatureGate>
+      </FeatureGateServer>
     </div>
   );
 }
