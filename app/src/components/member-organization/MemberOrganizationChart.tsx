@@ -10,6 +10,12 @@ type Props = {
   admins: MemberSummaryRow[];
   members: MemberSummaryRow[];
   canEditProfiles: boolean;
+  /**
+   * 지금 이 화면을 보는 로그인 계정의 user id.
+   * 조직도는 이름만 보여줘서 같은 사람의 다른 계정(예: 요청 계정과 승인 계정)을
+   * 화면에서 구분할 수 없었다 → 자기 카드에 "나" 표식을 붙여 계정을 특정한다.
+   */
+  viewerUserId: string;
 };
 
 type SaveState = "idle" | "saving" | "saved" | "error" | "unavailable";
@@ -62,9 +68,10 @@ function teamLabel(teamKey: string | null) {
   return teamKey ? `팀 · ${teamKey}` : "팀 미지정";
 }
 
-function MemberCard({ member, protectedOwner, canEdit, onProfileEdit, onHierarchyEdit, onPermissionEdit }: {
+function MemberCard({ member, protectedOwner, isViewer, canEdit, onProfileEdit, onHierarchyEdit, onPermissionEdit }: {
   member: MemberSummaryRow;
   protectedOwner?: boolean;
+  isViewer: boolean;
   canEdit: boolean;
   onProfileEdit: (member: MemberSummaryRow) => void;
   onHierarchyEdit: (member: MemberSummaryRow) => void;
@@ -74,7 +81,7 @@ function MemberCard({ member, protectedOwner, canEdit, onProfileEdit, onHierarch
     <li className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-semibold">{member.displayName}</p>
+          <p className="font-semibold">{member.displayName}{isViewer ? <span aria-label="지금 로그인한 계정" className="ml-2 rounded-full bg-zinc-900 px-2 py-0.5 text-xs font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900">나</span> : null}</p>
           <p className="mt-1 text-sm text-zinc-500">{member.title ?? "직책 미지정"} · {teamLabel(member.teamKey)}</p>
           <p className="mt-1 text-xs text-zinc-500">{roleLabel(member.role)} · {member.scope === "all" ? "회사 업무 전체" : "배정된 업무"}</p>
         </div>
@@ -90,7 +97,7 @@ function MemberCard({ member, protectedOwner, canEdit, onProfileEdit, onHierarch
   );
 }
 
-export function MemberOrganizationChart({ orgId, owner, admins, members, canEditProfiles }: Props) {
+export function MemberOrganizationChart({ orgId, owner, admins, members, canEditProfiles, viewerUserId }: Props) {
   const [editor, setEditor] = useState<Editor>(null);
   const [title, setTitle] = useState("");
   const [teamKey, setTeamKey] = useState("");
@@ -198,7 +205,7 @@ export function MemberOrganizationChart({ orgId, owner, admins, members, canEdit
   const section = (label: string, rows: MemberSummaryRow[], empty: string) => (
     <section className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
       <h2 className="font-semibold">{label}</h2>
-      {rows.length ? <ul className="mt-3 grid gap-2"><>{rows.map((member) => <MemberCard key={member.userId} member={member} canEdit={canEditProfiles} onProfileEdit={beginProfileEdit} onHierarchyEdit={beginHierarchyEdit} onPermissionEdit={beginPermissionEdit} />)}</></ul> : <p className="mt-2 text-sm text-zinc-500">{empty}</p>}
+      {rows.length ? <ul className="mt-3 grid gap-2"><>{rows.map((member) => <MemberCard key={member.userId} member={member} isViewer={member.userId === viewerUserId} canEdit={canEditProfiles} onProfileEdit={beginProfileEdit} onHierarchyEdit={beginHierarchyEdit} onPermissionEdit={beginPermissionEdit} />)}</></ul> : <p className="mt-2 text-sm text-zinc-500">{empty}</p>}
     </section>
   );
 
@@ -207,7 +214,7 @@ export function MemberOrganizationChart({ orgId, owner, admins, members, canEdit
       <section className="rounded-2xl border border-mw-automation bg-mw-tint-teal p-4">
         <h2 className="font-semibold">대표</h2>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">대표 권한과 조직 단계는 이 화면에서 바꾸거나 지울 수 없어요.</p>
-        <ul className="mt-3"><MemberCard member={owner} protectedOwner canEdit={false} onProfileEdit={beginProfileEdit} onHierarchyEdit={beginHierarchyEdit} onPermissionEdit={beginPermissionEdit} /></ul>
+        <ul className="mt-3"><MemberCard member={owner} protectedOwner isViewer={owner.userId === viewerUserId} canEdit={false} onProfileEdit={beginProfileEdit} onHierarchyEdit={beginHierarchyEdit} onPermissionEdit={beginPermissionEdit} /></ul>
       </section>
       {section("팀장", admins, "아직 팀장이 없어요.")}
       {section("사원", members, "아직 사원이 없어요.")}

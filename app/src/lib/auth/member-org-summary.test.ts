@@ -23,6 +23,20 @@ describe("buildMemberOrgSummary", () => {
     expect(buildMemberOrgSummary("org-a", [{ ...owner, scope: "assigned" }])).toEqual({ kind: "owner_integrity_error" });
   });
 
+  // BBE-88: "승인자가 대표로 표시된다"는 관측의 원인 계층을 고정한다.
+  // 대표 카드는 org_members.role='owner' 행에서만 나온다 — 요청을 처리한 사람이
+  // admin/member 로 들어와도 대표가 되지 않고, owner 행이 안 보이면 fail-close 한다.
+  it("never promotes a non-owner membership to the protected owner card", () => {
+    const resolver = { org_id: "org-a", user_id: "resolver-a", role: "admin", scope: "all", created_at: "2025-12-31T00:00:00Z", users: { name: "승인자" } };
+    const summary = buildMemberOrgSummary("org-a", [resolver, owner]);
+    expect(summary).toMatchObject({ kind: "ready", owner: { userId: "owner-a" } });
+    if (summary.kind !== "ready") throw new Error("expected ready");
+    expect(summary.admins.map((member) => member.userId)).toEqual(["resolver-a"]);
+
+    // 요청자의 owner 행이 RLS·status 로 안 보이면 남은 행을 대표로 승격하지 않는다.
+    expect(buildMemberOrgSummary("org-a", [resolver])).toEqual({ kind: "owner_integrity_error" });
+  });
+
   it("uses the 011 profile RPC shape for display fields and fails closed on a mismatched profile", () => {
     const summary = buildMemberOrgSummary("org-a", [owner]);
     const hydrated = applyMemberProfiles(summary, new Map([

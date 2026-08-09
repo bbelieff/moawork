@@ -20,6 +20,7 @@ export default async function MembersPage() {
           admins={summary.admins}
           members={summary.members}
           canEditProfiles={ctx.role === "owner"}
+          viewerUserId={ctx.user.id}
         />
       ) : null}
       {summary.kind === "unavailable" ? <section role="status" className="rounded-2xl border border-zinc-200 p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-300">회사 구성원 정보는 서버 연결이 준비되면 안전하게 보여드려요.</section> : null}
