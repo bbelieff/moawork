@@ -10,11 +10,14 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth/session";
-import { getBoardsService } from "@/lib/boards";
+import { getBoardsService, NotFoundError } from "@/lib/boards";
 import { parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
 import type { FieldOption } from "@/lib/types";
-import type { CellValue } from "@/lib/boards/types";
+import type { CellValue, ItemWithValues } from "@/lib/boards/types";
 import type { CellError } from "@/lib/boards/service";
+import type { ItemPatch } from "@/lib/boards/store";
+import { groupKeyOf } from "@/components/board/layout";
+import { setGroupColumnOrder } from "./groupLayout";
 import {
   CELL_FLASH_COOKIE,
   CELL_FLASH_MAX_AGE,
@@ -167,5 +170,75 @@ export async function addGroupAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   const boardId = str(formData, "boardId");
   getBoardsService().addGroup(ctx, boardId, { name: str(formData, "name") });
+  revalidatePath(`/boards/${boardId}`);
+}
+
+/**
+ * 행 드래그 — 그룹 내 상하 이동과 그룹 간 이동을 **한 경로**로 처리한다 (PLAN-002 WO-2 ⓒ).
+ *
+ * 두 동작을 나누지 않은 이유: 그룹을 바꾸는 이동도 결국 "대상 그룹의 N번째 자리에 꽂는 것"
+ * 이고, 나누면 같은 재색인 규칙이 두 벌 생긴다.
+ *
+ * 재색인은 **대상 그룹 전체**를 0..n-1 로 다시 매긴다. 삽입 위치에만 소수 sort_order 를
+ * 끼워 넣는 방식은 반복하면 정밀도가 무너져 순서가 뒤섞인다(무증상 파손) — 그래서 매번
+ * 정수로 다시 세운다. 그룹당 행 수 규모에서는 이 비용이 문제되지 않는다.
+ */
+export async function moveRowAction(formData: FormData): Promise<void> {
+  const ctx = await getSession();
+  const boardId = str(formData, "boardId");
+  const itemId = str(formData, "itemId");
+  const rawGroup = str(formData, "groupId");
+  const groupId = rawGroup === "" ? null : rawGroup;
+  const requested = Number.parseInt(str(formData, "index"), 10);
+
+  const svc = getBoardsService();
+  const items = svc.listItems(ctx, boardId);
+  const moving = items.find((i) => i.id === itemId);
+  if (!moving) throw new NotFoundError("아이템을 찾을 수 없습니다");
+
+  const targetKey = groupKeyOf(groupId);
+  const siblings: ItemWithValues[] = items
+    .filter((i) => i.id !== itemId && groupKeyOf(i.group_id) === targetKey)
+    .sort((a, b) => a.sort_order - b.sort_order);
+
+  const at = Number.isNaN(requested)
+    ? siblings.length
+    : Math.max(0, Math.min(requested, siblings.length));
+  siblings.splice(at, 0, moving);
+
+  siblings.forEach((item, index) => {
+    const patch: ItemPatch = { sort_order: index };
+    // 그룹이 실제로 바뀐 행에만 group_id 를 싣는다(불필요한 쓰기 금지).
+    if (item.id === itemId && groupKeyOf(item.group_id) !== targetKey) patch.group_id = groupId;
+    svc.updateItem(ctx, boardId, item.id, patch);
+  });
+
+  revalidatePath(`/boards/${boardId}`);
+}
+
+/**
+ * 그룹별 컬럼 배치 저장 (PLAN-002 WO-2 ⓑ).
+ *
+ * 저장하는 것은 **배치뿐**이다 — 컬럼을 만들거나 지우지 않으므로 셀 값(EAV)은 영향받지 않고,
+ * 다른 그룹의 배치도 건드리지 않는다("그룹 간 독립 배치").
+ *
+ * 인가: 저장소 자체는 권한을 모른다. 여기서 `getBoardDetail` 을 먼저 호출해 이 세션이
+ * 그 보드를 볼 수 있는지 확인하고(없으면 NotFoundError), 통과한 조직 id 로만 키를 만든다.
+ */
+export async function setGroupColumnOrderAction(formData: FormData): Promise<void> {
+  const ctx = await getSession();
+  const boardId = str(formData, "boardId");
+  const groupKey = str(formData, "groupKey");
+
+  // 접근 권한 확인 겸 유효 컬럼 목록 확보.
+  const { columns } = getBoardsService().getBoardDetail(ctx, boardId);
+  const valid = new Set(columns.map((c) => c.key));
+
+  const order = str(formData, "order")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s !== "" && valid.has(s));
+
+  setGroupColumnOrder(ctx.org.id, boardId, groupKey, order);
   revalidatePath(`/boards/${boardId}`);
 }
