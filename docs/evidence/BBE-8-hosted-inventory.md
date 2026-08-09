@@ -12,7 +12,7 @@
 | 일자 | 기준 SHA | 변경 |
 | --- | --- | --- |
 | 2026-08-04 | `0816d2a` | 최초 작성. hosted 상태 전부 `NOT_RUN`, 017 미적용을 P0 최유력 가설로 제시 |
-| **2026-08-09** | **`f4f5a12`** | **belie hosted 조회 회신 도착 → Q1·Q4·EXECUTE `RUN`. 017 미적용 가설 기각.** Production SHA 재실측, 코드 좌표 재실측(#98 반영) |
+| **2026-08-09** | **`f4f5a12`** | **belie hosted 조회 회신 도착 → Q1·Q4·EXECUTE `RELAYED`. 017 미적용 가설 기각.** Production SHA 재실측(`MEASURED`), 코드 좌표 재실측(#98 반영) |
 
 ---
 
@@ -34,9 +34,12 @@
 수동 적용됐다. 적용 여부 판정은 반드시 **객체 존재·함수 본문 검사**(§6 Q1/Q1-b)로 해야 하며,
 `supabase migration list --linked` 결과를 미적용 근거로 쓰면 안 된다.
 
-부수 확정 2 — 017이 적용된 이상 `app/src/lib/workspace-entry/server.ts:196-213`의 `app_admin_role` 폴백은
-**작성자가 예고한 대로 no-op 상태**다. 주석 202행이 이미 "017 적용 후에는 위 판정이 곧바로 true 라
-이 블록은 자연히 no-op 이 된다"고 적어 두었다 — **틀린 주석이 아니라 조건이 충족된 주석**이다. 조치 불필요.
+부수 확정 2 — `app/src/lib/workspace-entry/server.ts:196-213`의 `app_admin_role` 폴백은
+**`is_platform = true`인 경우에 한해** 작성자가 예고한 대로 no-op이다. 주석 202행이 이미 "017 적용 후에는
+위 판정이 곧바로 true 라 이 블록은 자연히 no-op 이 된다"고 적어 두었다 — **틀린 주석이 아니라 조건이 충족된 주석**이다.
+
+**단 그 전제(`is_platform = true`)는 §6 Q6로 아직 확정되지 않았다(`NOT_RUN`).** Q6가 `true`면 조치 불필요이고,
+`false`면 아래 사슬대로 폴백이 오히려 해를 끼치므로 **별도 카드로 재개**해야 한다(§7-5 각주).
 
 다만 **`is_platform = false`(§6 Q6)일 때 이 폴백이 `/workspace-entry`를 스스로 망가뜨린다**는 점은 기록해 둔다.
 코드로 확인한 사슬이다:
@@ -55,8 +58,11 @@ is_platform = false → is_platform_admin() = false
 ```
 
 **즉 `/platform`과 `/workspace-entry`가 둘 다 막힌다. 비대칭은 생기지 않는다.**
-폴백이 없었다면 `isPlatformAdmin`이 false로 남아 그 RPC를 아예 호출하지 않으므로 `/workspace-entry`는
-정상 렌더됐을 것이다 — **폴백이 상황을 개선하는 게 아니라 악화시킨다.**
+폴백이 없었다면 `isPlatformAdmin`이 false로 남아 그 RPC를 아예 호출하지 않는다 — **폴백은 이 경우
+상황을 개선하지 않고 악화시킨다.** 다만 "정상 렌더된다"까지 단정하려면 전제가 하나 더 필요하다:
+`snapshot.selfRouteState === "eligible_entry"`여야 한다. `blocked_inactive`면 폴백과 무관하게
+blocked이다(`app/src/app/workspace-entry/route-decision.ts:44` · `page.tsx:25`).
+방향(개선 아님)은 무조건 성립하고, 결과(정상 렌더)는 이 전제 아래에서만 성립한다.
 
 > **진단 지침**: 둘 다 막힌 것을 보고 `is_platform` 축을 배제하면 안 된다. `is_platform = false`는
 > **정확히 "둘 다 막힘"으로 나타난다.** 이 축의 확정은 오직 §6 Q6뿐이다.
@@ -115,7 +121,7 @@ is_platform = false → is_platform_admin() = false
 
 ---
 
-## 2. hosted DB 적용 이력 — **부분 `RUN` (2026-08-09 회신 반영)**
+## 2. hosted DB 적용 이력 — **부분 `RELAYED` (2026-08-09 회신 반영)**
 
 ### 2-0. 2026-08-09 확정 사실 (belie hosted 조회 회신)
 
@@ -174,7 +180,8 @@ is_platform = false → is_platform_admin() = false
 | `008`~`016`, `019`, `023`~`025`, `030` | **기록 없음** | 전수 grep 결과 hosted 적용 선언 0건 |
 
 > 위 `worklog.md` 줄번호는 **`0816d2a` 시점 기준으로 고정**한다. worklog는 append-only이고 최신 항목을 위에 붙이므로
-> 커밋마다 줄번호가 밀린다(이 갱신은 앞에 **81행**을 추가했다). 조회는 `git show 0816d2a:docs/worklog.md`로 한다.
+> 커밋마다 줄번호가 밀린다 — **이 문서에 밀린 행 수를 적지 않는다. 적는 순간 다음 커밋에서 낡기 때문이다**
+> (실제로 2·3차 검수에서 연속으로 틀렸다). 조회는 `git show 0816d2a:docs/worklog.md`로 한다.
 > **이 문서의 모든 `worklog.md` 인용은 `@0816d2a` 기준이다.**
 
 > ⚠️ 이 표는 **문서 진술**이지 DB 실측이 아니다.
@@ -589,6 +596,10 @@ migration 적용보다 **먼저** 해야 할 조회가 있다. 순서는 다음�
 | 장부 정합 | `025`·`030` 외 수동 적용분을 `schema_migrations`에 소급 기록할지 정책 결정 | §2-0 4번 |
 
 > 위 4건은 **제안일 뿐 이 계약에서 실행하지 않았다.** 각각 별도 owner·lease·reviewer가 필요하다.
+>
+> **조건부 5번째**: Q6가 `false`로 판명되면 `workspace-entry/server.ts:196-213` 폴백 자체가 카드가 된다.
+> 그 경우 폴백은 `/workspace-entry`를 blocked로 만들어 **없느니만 못하다**(§0 부수 확정 2의 사슬).
+> Q6 = `true`면 이 카드는 열지 않는다.
 
 ---
 
