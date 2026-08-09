@@ -54,11 +54,11 @@ export default async function ModePage({
         </header>
 
         <div className={styles.intro}>
-          <p className={styles.eyebrow}>시작 위치 선택</p>
+          <p className={styles.eyebrow}>로그인 후 시작할 곳</p>
           <h1 id="mode-title">어디에서 시작할까요?</h1>
           <p>
-            플랫폼 운영과 내 워크스페이스는 서로 다른 영역이에요.
-            필요한 공간을 선택하면 확인된 권한 범위로 이동합니다.
+            관리자 업무와 회사 업무는 서로 달라요.
+            지금 할 일을 선택하면 권한이 확인된 화면으로 이동해요.
           </p>
         </div>
 
@@ -74,10 +74,10 @@ export default async function ModePage({
             >
               <span className={styles.choiceIcon} aria-hidden="true">P</span>
               <span className={styles.choiceCopy}>
-                <small>플랫폼 관리자</small>
-                <strong id="platform-mode-title">플랫폼 운영으로 이동</strong>
+                <small>관리자 모드</small>
+                <strong id="platform-mode-title">관리자 페이지 열기</strong>
                 <span id="platform-mode-description">
-                  릴리스와 데모 환경 등 운영 도구를 확인합니다.
+                  릴리스 상태와 데모 회사를 확인해요.
                 </span>
               </span>
               <b aria-hidden="true">→</b>
@@ -95,10 +95,10 @@ export default async function ModePage({
             >
               <span className={styles.choiceIcon} aria-hidden="true">W</span>
               <span className={styles.choiceCopy}>
-                <small>일반 업무</small>
-                <strong id="user-mode-title">내 워크스페이스로 이동</strong>
+                <small>사용자 모드</small>
+                <strong id="user-mode-title">회사 업무로 가기</strong>
                 <span id="user-mode-description">
-                  소속된 회사의 업무와 기록을 이어서 확인합니다.
+                  회사 업무 흐름으로 돌아가며, 가입한 회사 수에 따라 바로 열거나 선택·연결해요.
                 </span>
               </span>
               <b aria-hidden="true">→</b>
@@ -107,7 +107,7 @@ export default async function ModePage({
         </div>
 
         <p className={styles.safety}>
-          이 선택은 화면 모드만 바꾸며 멤버십이나 권한을 새로 만들지 않아요.
+          이 선택은 시작 화면만 바꾸며 회사 접근 권한을 새로 만들지 않아요.
         </p>
       </section>
     </main>
