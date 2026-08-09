@@ -4,6 +4,50 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [FIX · PLAN-002/WO-1 (BBE-46)/claude] 2026-08-09 — PR #94 반려 2건 수정 (시드 확정 3건 반영)
+
+- 검수 반려(데탑 CT02 2026-08-09 · ✅5/❌2)에 대한 작성자 수정. 인수: 데탑 CT05(260809-2).
+- **❌1 base 뒤처짐 해소** — `origin/main@0e938e3` 위로 rebase. 충돌 0.
+  CT02 가 지목한 `cf1055d`(BBE-44 `/work` 보드)와 **파일 겹침 0**을 실측했다:
+  BBE-44 는 `app/src/lib/work-management/**`·`app/(app)/work/**`, 본 PR 은
+  `app/src/lib/structure-packs/**`·`supabase/migrations/031`. 다만 같은 업무관리 구조를
+  두 곳이 각자 들고 있다(`work-management/template.ts` 31컬럼 계약 ↔ 팩 업무관리 보드).
+  런타임 충돌은 없다 — 팩은 전역 카탈로그 시드, work-management 는 `/work` 실행 계약이다.
+  **통합은 WO-7 로 넘긴다**(이번 PR 범위 밖, 코덱스 소유 파일 포함).
+- **❌2 시드 확정 3건 반영** (2026-08-05 MW-총괄 판단 · 총괄 2026-08-09 재확인:
+  시드 확정은 동일 복제 원칙에 우선한다):
+  · **① Name = 업체명**. 3보드 모두 `nameColumn` 계약 신설. 중복 `회사명` 컬럼 제거
+    (신규고객 `text_mm2czkqg` · 컨텍관리 `___67` · 업무관리 `text`).
+    Name 은 003 엔진에서 `items.title` 이라 컬럼 행으로 만들지 않는다 — 없는 컬럼을
+    있는 것처럼 만들지 않기 위해 계약으로만 남겼다(유예 컬럼과 같은 판단).
+  · **② 지역 공용 1세트 222지** — `region-options.ts` 신설. R2(업무관리) 표기를 기준으로
+    `시도_시군구` 정규화하고 축약형·정식형을 합쳤다(`서울_영등포`+`서울_영등포구`→`서울_영등포구`).
+    먼데이 원문 오기 `충북_영통군`→`충북_영동군` 교정(근거: 먼데이-전체스키마-v1 부록 R2 주석).
+    두 보드가 `optionRef: "region"` 로 이 한 세트를 참조한다.
+  · **③ 담당자 = 멤버(사람) 컬럼 단일화**. 신규고객 선택지형 담당자(`color_mkyeay16`)를
+    person 컬럼으로 대체, 컨텍관리 `담당자 구분`(`color_mkx7de80`) 제거. 두 컬럼에 박혀 있던
+    직원 실명(이대표·박정화 실장·담당자 미정)이 **전역 카탈로그에서 사라졌다** — 테스트로 고정.
+    신규고객 담당자별 저장 뷰 3종은 라벨이 아니라 멤버 id 로 걸어야 하므로 WO-3 로 넘겼다.
+- **버그 동반 수정**: `optionRef` 를 설치 때 풀지 않아 지역·사업자유형 컬럼이 **선택지 0건**으로
+  만들어지고 있었다(`options: column.options ?? null`). 팩이 `optionSets` 를 들고 설치가 참조를
+  풀도록 고쳤고, 세트가 없으면 조용히 넘어가지 않고 던진다. 설치 테스트로 222지·6종 실림을 긍정 확인.
+- **먼데이 실측 대조표**(테스트가 강제 — `seoul-pack.test.ts` "① 먼데이 실측 컬럼 수와 대조된다"):
+
+  | 보드 | 먼데이 실측 | 팩(Name+설치+유예) | 제거(중복·우회) |
+  | --- | --- | --- | --- |
+  | 신규고객 | 28 | **27** = 1+24+2 | 회사명 1 |
+  | 컨텍관리 | 25 | **23** = 1+21+1 | 회사명·담당자 구분 2 |
+  | 업무관리 | 32 | **31** = 1+24+6 | 회사명 1 |
+
+  업무관리 32는 그대로 대조된다(31 시드 + 중복 1 제거). 아이템 프리셋 32종은 불변.
+- 마이그레이션 번호 재확인: rebase 후 `origin/main` 최신 = `030` → **031 유효**(최신+1).
+  기존 마이그레이션 무수정(deletions 0)·`$json$` 재생성으로 SQL↔TS 완전일치 유지.
+- 게이트: `bash scripts/check.sh` PASS. 구조 팩 테스트 26 → **41건**(지역 7 · 시드 확정 5 추가).
+- **미해소(정직 기록)**: 먼데이 실측 카운트 **239지 중 5지**는 저장소 안 자료(R1 218 · R2 문서 수록 234)에
+  라벨이 없어 미수록이다. 정규화 결과가 222지인 것은 축약·정식 중복 합침의 결과다.
+  지어내지 않았고, 먼데이 API 재수집이 필요하다 — PLAN-003 후보. 제주·세종은 두 원본 모두에 없다.
+- 비주얼: **해당 없음**(팩 데이터·설치 로직·테스트만, UI 파일 0건). 검수 ⑥′ 사전판정 유지.
+
 ## [END · BBE-8(MoaWork)/claude] 2026-08-09 — hosted 인벤토리 완주: 017 미적용 가설 기각
 
 - 세션 `[모아워크 데탑 CT04(260809)]`. 2026-08-05 정지된 `claude/bbe-8-hosted-inventory` 인수 →
@@ -65,6 +109,61 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 - 게이트: `bash scripts/check.sh` PASS · PR CI PASS · 독립 검수 · squash merge. UI 변경 0이라 비주얼 확인 해당 없음.
 - Linear `BBE-8` 도장은 **미수행** — Linear MCP 미인증 + 비대화형 세션이라 OAuth 불가. 초안을 END 보고에 첨부했다.
 - 판정: **INVESTIGATION_COMPLETE / P0_HYPOTHESIS_REFUTED / MEMBERSHIP_Q3_NOT_RUN.**
+
+## [END · PLAN-002/WO-1 (BBE-46)/claude] 2026-08-05 — 서울경영 3보드 구조 시드
+
+- 산출물 3층:
+  1. `supabase/migrations/031_newcust_structure_pack.sql` — 전역 카탈로그 `structure_packs`
+     신설(additive, RLS select-only) + 팩 1행 시드. 기존 마이그레이션 무수정.
+  2. `app/src/lib/structure-packs/*` — 팩 데이터(보드 3종) + 설치 로직 + 타입.
+  3. 테스트 26건 — 팩 계약 16 · 설치 acceptance 10.
+- **아이템 프리셋 32종**(= 탭 안의 그룹, PLAN-002 §1 용어) 분해 등록:
+  신규업체 14 + 컨텍관리 7 + 업무관리 11. 코드 명칭은 `sectionPreset` 으로 먼데이 item(행)과 구분했다.
+  WO-6 라이브러리가 `allSectionPresets()` 로 그대로 초기 데이터로 쓸 수 있다.
+- 실측: monday MCP 로 **구조만** 조회했다(2026-08-05). 컬럼·그룹·라벨 hex 색·저장 뷰 이름만 읽었고
+  고객 행 데이터(8,413건)는 조회하지 않았다. 팩 `source` 필드에 출처·시점을 박아뒀다.
+- 설치 컬럼: 신규고객 25 · 컨텍관리 23 · 업무관리 25. 그룹 색·컬럼 순서·선택지 순서는 먼데이 원본
+  `position`/`labels_positions_v2` 를 그대로 옮겼고 임의 재배열하지 않았다.
+- **유예 9종**(구조만 기록, 설치 안 함 — PLAN-003): 하위아이템 3 · 타임라인 1 · 수식 4 · 생성로그 1.
+  001 `field_type` enum(13종)에 대응 타입이 없다. `text` 같은 것으로 바꿔 만들면 없는 컬럼이
+  있는 것처럼 보이므로 만들지 않고 목록으로 돌려준다. 수식은 원문을 `source` 에 남겼다.
+- 저장 뷰: 업무관리 테이블 뷰 7종 생성. 먼데이 실측 9종 중 `캘린더`·`Vibe 뷰 만들기` 는
+  003 view kind(table/kanban)에 대응이 없어 제외. **다중값 필터 조건은 WO-3 소유**라
+  WO-1 은 뷰 이름·구조만 심었다.
+- 드리프트 방지: 팩이 SQL·TS 두 곳에 있으므로 `seoul-pack.test.ts` 가 마이그레이션의
+  `$json$` 블록을 파싱해 TS 팩과 **완전 일치**를 강제한다. 한쪽만 고치면 게이트가 깨진다.
+- 재설치 안전: 같은 이름 보드가 있으면 건너뛴다. 두 번 눌러도 두 벌 생기지 않고,
+  부분 설치 상태에서는 나머지만 채운다(테스트 2건으로 고정).
+- 게이트: 실제 `bash scripts/check.sh` PASS(app 1106 pass/9 skip, worker 21 pass),
+  production build PASS. `ls supabase/migrations | sort` 에서 031 이 030 뒤 — 적용 순서 정상.
+- **계약서 표기와 실측 차이(기록만, 실측을 따랐다)**:
+  · 업무관리 컬럼 계약 30 → 실측 32(Name·하위태스크 제외 시 30 — 표기 기준 차이로 보인다).
+  · 업무관리 수식 계약 3종 → 실측 4종(`총 매출액` 추가). 4종 모두 유예 목록에 넣었다.
+  · 진행 상품 계약 66지 → 실측 항목 59개(먼데이 최대 id 가 66, 실제 항목은 59).
+  · 진행 기관 계약 19지 → 명명된 라벨 18 + 빈 슬롯 1.
+  · 컨텍관리 그룹명 계약 `계약보류(온·오프)` → 실측 `계약보류(온/오프)`.
+- **NOT_RUN**: hosted DB 적용·데이터 변경(계약 범위 밖, 파일 작성까지만) · 먼데이 실데이터 비교 ·
+  지역 선택지는 002 `field_presets.region`(218) 참조로 두었고 먼데이 실측 239 와의 차이는 미해소.
+- 비주얼: **해당 없음**(migration + lib + 테스트만, UI 변경 0). `docs/plans/README.md` 비주얼
+  컨펌 게이트 규정의 "UI 변화가 없는 WO" 조항에 해당한다 — belie 확인 요청.
+- 판정: 코드 완료 · 운영 판정은 MW-QA 몫. 자기보고로 PASS 승격하지 않는다.
+
+## [START · PLAN-002/WO-1 (BBE-46)/claude] 2026-08-05 — 서울경영 3보드 구조 시드
+
+- task_id: Linear `BBE-46` (PLAN-002/WO-1, P0). base `0816d2a9c819d21fbf5d0d1e15abf58a2efa32c9`(실측),
+  branch `claude/plan002-wo1-structure-seed`,
+  전용 worktree `개발프로젝트\.worktrees\claude-plan002-wo1-structure-seed`.
+- owner: 이 세션(claude) · reviewer: MW-QA · blocked_by: 없음(WO-2와 병렬).
+- 착수 전 실측: 중복 세션 흔적 확인 → `.worktrees\claude-plan002-wo1-structure-seed` **부재**,
+  `claude/plan002-*` 브랜치 **부재** → 중복 착수 아님. 마이그레이션 최신은 origin/main 기준 `030`
+  (메인 체크아웃 워킹트리는 025 까지만 보였다 — HEAD 가 `e937330` 로 뒤처져 있었다) → 신규 번호 `031`.
+- file lease: `supabase/migrations/031_newcust_structure_pack.sql`(신규) ·
+  `app/src/lib/structure-packs/**`(신규 디렉터리 전체) · `docs/worklog.md`.
+- 신규 네임스페이스를 쓴 이유: PLAN-002 §4 lease 매트릭스에서 `lib/boards/presets*` 는 WO-6,
+  `components/newcust/*` 는 WO-2 소유다. 병렬 워커와 파일이 겹치지 않도록 `lib/structure-packs/` 를 새로 팠다.
+- 안 만지는 것: 기존 마이그레이션 전부 · `lib/boards/**`(엔진) · `lib/newcust/**` ·
+  `components/**` · 계약 파일(`lib/types/**`, `lib/repo/index.ts`) · 타 WO lease 전 경로.
+- NOT_RUN 경계: hosted DB 적용·데이터 변경(계약 명시 범위 밖).
 
 ## [END · BBE-8/claude] 2026-08-04 — hosted migration·환경 적용 인벤토리 (조사 전용)
 
