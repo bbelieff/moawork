@@ -1,6 +1,16 @@
 /**
  * 지표 스냅샷 조회 — `platform_metrics_daily` 읽기 전용 계층. (C4 · T04)
  *
+ * ⚠️ **`readRecentMetrics()` 는 016 이후 쓰지 마라 (BBE-12 실측).**
+ * 이 파일의 아래 서술은 014 시절 것이다. 016_platform_console_metrics_alignment 가
+ *   - `drop policy platform_metrics_daily_read`
+ *   - `revoke all on table platform_metrics_daily from public, anon, authenticated`
+ * 를 했으므로, 016 이 적용된 DB 에서 아래 테이블 직접 select 는 **반드시 실패**한다.
+ * 어드민 집계의 정본 경로는 016 의 집계 RPC 하나뿐이다 —
+ * `@/lib/platform/server` 의 `loadPlatformAggregate()` 를 써라.
+ * (현재 `readRecentMetrics()` 호출자는 0건이다. 순수 함수 `groupByDay` 만 살아 있다.)
+ *
+ * ── 아래는 014 기준 서술(참고용) ──
  * 권한: **RLS 가 게이트한다.** 014 의 `platform_metrics_daily_read` 정책이
  * `app_admin_role(auth.jwt()->>'email') is not null` 을 요구하므로, 로그인 세션 키
  * (anon + 쿠키)로 조회하면 플랫폼 관리자에게만 행이 보인다.
@@ -61,6 +71,9 @@ function toRollup(r: MetricsRow): DailyRollup {
  *
  * `days` 는 **날짜 수**가 아니라 조회 행 수 상한을 결정한다 —
  * 조직 수를 알 수 없으므로 넉넉히 잡고 화면에서 날짜별로 묶는다.
+ *
+ * @deprecated 016 이 테이블 권한을 회수했다. 집계 RPC 경유인
+ * `loadPlatformAggregate()`(@/lib/platform/server) 를 쓴다.
  */
 export async function readRecentMetrics(
   days = 14,
