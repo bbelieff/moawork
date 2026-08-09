@@ -2,7 +2,7 @@ import type { Ctx, MemberRole, MemberScope } from "@/lib/types";
 
 export type AccountViewModel = {
   displayName: string;
-  maskedEmail: string;
+  loginEmail: string;
   initial: string;
   workspaceName: string;
   roleLabel: string;
@@ -33,18 +33,9 @@ export function accountInitial(name: string | null | undefined): string {
   return value ? Array.from(value)[0] : "나";
 }
 
-export function maskLoginEmail(email: string | null | undefined): string {
+export function displayLoginEmail(email: string | null | undefined): string {
   const value = email?.trim();
-  if (!value) return "로그인 이메일이 연결되지 않았어요";
-
-  const at = value.lastIndexOf("@");
-  if (at <= 0 || at === value.length - 1) {
-    return "로그인 이메일을 안전하게 표시할 수 없어요";
-  }
-
-  const local = Array.from(value.slice(0, at));
-  const visible = local.slice(0, Math.min(2, local.length)).join("");
-  return `${visible}***${value.slice(at)}`;
+  return value || "로그인 이메일이 연결되지 않았어요";
 }
 
 function membershipPresentation(ctx: Ctx): Pick<
@@ -71,7 +62,7 @@ export function buildAccountViewModel(ctx: Ctx): AccountViewModel {
   const membership = membershipPresentation(ctx);
   return {
     displayName: displayAccountName(ctx.user.name),
-    maskedEmail: maskLoginEmail(ctx.user.email),
+    loginEmail: displayLoginEmail(ctx.user.email),
     initial: accountInitial(ctx.user.name),
     workspaceName: ctx.org.name,
     teamMessage:

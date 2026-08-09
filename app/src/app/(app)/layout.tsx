@@ -188,6 +188,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             <ThemeToggle />
             <AccountMenu
               displayName={account.displayName}
+              loginEmail={account.loginEmail}
               initial={account.initial}
               accountHref="/account"
               workspaceHref="/settings/account#workspace"

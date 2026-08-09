@@ -4,7 +4,7 @@ import {
   accountInitial,
   buildAccountViewModel,
   displayAccountName,
-  maskLoginEmail,
+  displayLoginEmail,
 } from "./presentation";
 
 function context(overrides: Partial<Ctx> = {}): Ctx {
@@ -29,18 +29,14 @@ function context(overrides: Partial<Ctx> = {}): Ctx {
 }
 
 describe("account presentation", () => {
-  it("로그인 이메일은 local 앞 두 글자만 남긴다", () => {
-    expect(maskLoginEmail("member@example.invalid")).toBe(
-      "me***@example.invalid",
+  it("현재 로그인 이메일을 계정 식별값으로 그대로 표시한다", () => {
+    expect(displayLoginEmail("member@example.invalid")).toBe(
+      "member@example.invalid",
     );
-    expect(maskLoginEmail("a@example.invalid")).toBe("a***@example.invalid");
   });
 
   it("이메일과 이름이 없거나 잘못되면 안전한 한글 상태를 반환한다", () => {
-    expect(maskLoginEmail(null)).toBe("로그인 이메일이 연결되지 않았어요");
-    expect(maskLoginEmail("not-an-email")).toBe(
-      "로그인 이메일을 안전하게 표시할 수 없어요",
-    );
+    expect(displayLoginEmail(null)).toBe("로그인 이메일이 연결되지 않았어요");
     expect(displayAccountName("  ")).toBe("이름 미등록");
     expect(accountInitial(null)).toBe("나");
   });
@@ -53,7 +49,7 @@ describe("account presentation", () => {
     const model = buildAccountViewModel(context({ role }));
     expect(model.roleLabel).toBe(label);
     expect(model.canManageCompany).toBe(canManage);
-    expect(model.maskedEmail).not.toContain("member@example.invalid");
+    expect(model.loginEmail).toBe("member@example.invalid");
   });
 
   // 회귀 가드(P0): 플랫폼 관리자여도 **자기 회사 역할은 그대로 보인다**.

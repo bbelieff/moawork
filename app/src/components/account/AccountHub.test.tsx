@@ -5,7 +5,7 @@ import { AccountHub } from "./AccountHub";
 
 const account: AccountViewModel = {
   displayName: "테스트 사용자",
-  maskedEmail: "te***@example.invalid",
+  loginEmail: "test-user@example.invalid",
   initial: "테",
   workspaceName: "테스트 회사",
   roleLabel: "사원",
@@ -27,8 +27,7 @@ describe("AccountHub", () => {
     expect(html).toContain("내 정보");
     expect(html).toContain("내 회사와 팀");
     expect(html).toContain("현재 로그인");
-    expect(html).toContain("te***@example.invalid");
-    expect(html).not.toContain("test-user@example.invalid");
+    expect(html).toContain("test-user@example.invalid");
     expect(html).not.toContain("1급");
     expect(html).not.toContain("지원 모드");
     expect(html).not.toContain("모든 기기에서 로그아웃");
