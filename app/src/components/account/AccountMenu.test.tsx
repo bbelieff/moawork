@@ -2,7 +2,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AccountMenu } from "./AccountMenu";
 
-const props = { displayName: "가상 사용자", initial: "가", accountHref: "/account" };
+const props = {
+  displayName: "가상 사용자",
+  loginEmail: "member@example.invalid",
+  initial: "가",
+  accountHref: "/account",
+};
 
 describe("AccountMenu developer-mode entry", () => {
   it("does not expose an administrator entry without a server-confirmed capability", () => {
@@ -13,5 +18,7 @@ describe("AccountMenu developer-mode entry", () => {
     const html = renderToStaticMarkup(<AccountMenu {...props} serverConfirmedCanAccessPlatform platformModeAction={{ mode: "platform", next: "/platform" }} />);
     expect(html).toContain("관리자 모드로");
     expect(html).toContain('action="/mode/preference"');
+    expect(html).toContain("사용자 모드");
+    expect(html).toContain("member@example.invalid");
   });
 });
