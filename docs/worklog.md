@@ -4,6 +4,35 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [END · BBE-8(MoaWork)/claude] 2026-08-09 — hosted 인벤토리 완주: 017 미적용 가설 기각
+
+- 세션 `[모아워크 데탑 CT04(260809)]`. 2026-08-05 정지된 `claude/bbe-8-hosted-inventory` 인수 →
+  base `f4f5a12b719ba4237f2d71726e4804cc28d3ce75` 위로 rebase(작업 중 origin/main이 `0e938e3`→`f4f5a12`로 이동, 재rebase).
+- lease: `docs/evidence/BBE-8-hosted-inventory.md` 1파일 + 이 worklog append. **제품 코드·hosted DB·Linear 변경 0.**
+- **핵심 재판정 — belie hosted 조회 회신 4건 반영**: `is_platform_admin()` = **`APPLIED_017`**,
+  `authenticated` EXECUTE = **`true`**, `app_admin_role('beliefkimkim@gmail.com')` = **`'owner'`**,
+  hosted 장부에는 **`025`·`030` 2건만** 기록.
+  → 2026-08-04 판의 P0 가설 **"017 미적용 → `/platform` 전면 차단"은 기각**된다.
+  권한 부재 가설(반증 ②)과 005 미적용 가설도 함께 기각. **살아남은 P0 후보는 `org_members` 소속 0(반증 ③) 하나**이며
+  이는 migration 문제가 아니라 **데이터 문제**라 해법이 다르다. 확정 질의 Q3는 **`NOT_RUN`**.
+- **장부 신뢰성 결론**: 017은 장부에 없는데 적용돼 있다 → **`schema_migrations` 부재는 미적용의 근거가 아니다.**
+  적용 판정의 정본은 객체·함수 본문 실물 검사(§6 Q1/Q1-b)뿐. 장부 오독으로 **재적용하는 리스크**를 §7-4에 추가했다.
+- **잔여 갭 정직 기록**: `app_admin_role()`은 `role`만 반환하고 017의 판정축은 `is_platform` 컬럼이라,
+  `'owner'` 회신은 행 존재를 증명할 뿐 `is_platform = true`를 증명하지 않는다. 신규 질의 **Q6**를 추가했다.
+- **직접 실측(전달값 아님)**: migration 전수 = **29개**(`git ls-tree`) — 2026-08-04 판의 "30개"는 오기이며
+  당시 표의 행 수도 29였다(append-only 원칙상 옛 기록은 수정하지 않고 산출물 §1에 정정 주석). `0816d2a→f4f5a12`
+  구간 `supabase/migrations/` 변경 **0건**. Production 배포 = `5817138319` / **`f4f5a12`** / `success` /
+  `2026-08-09T08:54:32Z` → **배포 SHA = origin/main HEAD**.
+- **코드 좌표 재실측(#98 반영)**: 실패 리다이렉트가 `/?error=platform` 단일에서
+  **`/?error=platform-forbidden`(권한 거부) / `/?error=platform-unavailable`(서비스 장애)** 로 분기됐다
+  (`app/src/lib/platform/guard.ts:18-19`). 문서가 요구하던 "오류 vs 거부" 구분이 코드 레벨에서 해결돼
+  재관측 시 URL만으로 판별 가능하다. `session.ts:138-141`의 `/login?error=membership` 경로는 유효.
+- 별도 카드 4건 제안(실행 안 함): 소속 복구 · `workspace-entry/server.ts:196-213` 폴백 주석의 거짓 전제 정정 ·
+  무인증 `GET /api/version` · 장부 정합 정책.
+- 게이트: `bash scripts/check.sh` PASS · PR CI PASS · 독립 검수 · squash merge. UI 변경 0이라 비주얼 확인 해당 없음.
+- Linear `BBE-8` 도장은 **미수행** — Linear MCP 미인증 + 비대화형 세션이라 OAuth 불가. 초안을 END 보고에 첨부했다.
+- 판정: **INVESTIGATION_COMPLETE / P0_HYPOTHESIS_REFUTED / MEMBERSHIP_Q3_NOT_RUN.**
+
 ## [END · BBE-8/claude] 2026-08-04 — hosted migration·환경 적용 인벤토리 (조사 전용)
 
 - 산출물: `docs/evidence/BBE-8-hosted-inventory.md` 신규 1파일. 제품 코드·hosted DB·Linear 변경 **0**.
