@@ -70,7 +70,11 @@ function Bar({ ratio }: { ratio: number }) {
 /** 파이프라인 단계별 현황 위젯. */
 export function PipelineWidget({ data }: { data: PipelineBreakdown }) {
   if (data.stages.length === 0) {
-    return <p className="text-sm text-zinc-400">파이프라인 단계가 없습니다.</p>;
+    return (
+      <p className="text-sm text-zinc-400">
+        파이프라인 단계가 아직 없어요. 단계를 만들면 여기에 보여요.
+      </p>
+    );
   }
   return (
     <div className="flex flex-col gap-3">
@@ -129,16 +133,17 @@ export function ContractStatusWidget({ data }: { data: ContractStatusBreakdown }
   if (!data.available) {
     return (
       <p className="text-sm text-zinc-400">
-        {EMPTY} 계약상황 필드가 아직 없습니다{" "}
-        <span className="text-zinc-300 dark:text-zinc-600">
-          (002 프리셋 로드 후 표시)
-        </span>
+        {EMPTY} 계약상황을 아직 사용할 수 없어요. 계약상황 항목이 준비되면 여기에 보여요.
       </p>
     );
   }
   const shown = data.options.filter((o) => o.count > 0);
   if (shown.length === 0) {
-    return <p className="text-sm text-zinc-400">아직 계약상황이 입력된 딜이 없습니다.</p>;
+    return (
+      <p className="text-sm text-zinc-400">
+        계약상황을 입력한 업무가 아직 없어요. 업무에 계약상황을 입력하면 여기에 보여요.
+      </p>
+    );
   }
   return (
     <ul className="flex flex-col gap-2">
@@ -171,7 +176,7 @@ export function SettlementWidget({
   if (!data.available) {
     return (
       <p className="text-sm text-zinc-400">
-        {EMPTY} {emptyHint ?? "정산 데이터가 없습니다."}
+        {EMPTY} {emptyHint ?? "정산 정보가 아직 없어요. 실행액과 수수료율을 입력하면 여기에 보여요."}
       </p>
     );
   }
@@ -185,7 +190,7 @@ export function SettlementWidget({
             임시
           </span>
           <span className="text-xs text-zinc-500">
-            딜 금액(amount) 기준 근사 — 정산 원천 연결 전
+            업무 금액으로 계산한 예상값이에요. 실행액과 수수료율을 입력하면 정확한 금액이 보여요.
           </span>
         </div>
         <div>
@@ -227,7 +232,11 @@ export function SettlementWidget({
 /** 재접촉(D+180) 목록 위젯. */
 export function ReContactWidget({ entries }: { entries: ReContactEntry[] }) {
   if (entries.length === 0) {
-    return <p className="text-sm text-zinc-400">이번달 재접촉 대상이 없습니다.</p>;
+    return (
+      <p className="text-sm text-zinc-400">
+        이번 달에 재접촉할 업무가 없어요. 재접촉 날짜가 다가오면 여기에 보여요.
+      </p>
+    );
   }
   return (
     <ul className="divide-y divide-zinc-100 text-sm dark:divide-zinc-800">

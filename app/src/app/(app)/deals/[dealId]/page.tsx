@@ -73,7 +73,7 @@ export default async function DealDetailPage({
           href="/newcust"
           className="text-xs text-zinc-500 hover:underline"
         >
-          ← 보드로
+          ← 업무 보드로
         </Link>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-semibold">{deal.title}</h1>
@@ -104,9 +104,9 @@ export default async function DealDetailPage({
               type="submit"
               className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700"
             >
-              이동
+              단계 옮기기
             </button>
-            <span className="text-xs text-zinc-400">이동하면 활동기록이 남습니다</span>
+            <span className="text-xs text-zinc-400">이동하면 활동 기록을 남겨요.</span>
           </form>
         )}
       </header>
