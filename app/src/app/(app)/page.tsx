@@ -17,6 +17,7 @@ import {
 import { RecentNotices } from "@/components/dash/RecentNotices";
 import { getNoticesService } from "@/lib/notices";
 import type { MemberRole } from "@/lib/types";
+import { PlatformAccessNotice } from "@/components/platform/PlatformAccessNotice";
 
 // 홈 = core.dash 메인 대시보드 (T04).
 // 수치는 전부 deals/stages/field_defs 에서 **파생**한다(이중저장 없음).
@@ -30,6 +31,7 @@ export default async function DashboardPage({
   const sp = await searchParams;
   const asParam = typeof sp.as === "string" ? sp.as : undefined;
   const month = typeof sp.month === "string" ? sp.month : undefined;
+  const accessError = typeof sp.error === "string" ? sp.error : undefined;
 
   const base = await getSession();
   const devToolsEnabled = process.env.NODE_ENV !== "production";
@@ -52,6 +54,7 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-col gap-6">
+      <PlatformAccessNotice error={accessError} />
       {/* 개발용 역할 전환 — 운영에서는 렌더하지 않는다. */}
       {devToolsEnabled ? (
         <section className="flex flex-wrap items-center gap-2">

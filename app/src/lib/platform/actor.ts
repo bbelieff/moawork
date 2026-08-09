@@ -12,6 +12,18 @@ export type PlatformActorClient = {
   rpc: (name: "is_platform_admin") => Promise<{ data: unknown; error: unknown | null }>;
 };
 
+type PlatformActorFailure =
+  | "auth_error"
+  | "grant_error"
+  | "grant_malformed"
+  | "unexpected_error";
+
+function logPlatformActorFailure(reason: PlatformActorFailure): void {
+  // Classification only: never log an email, user/org ID, cookie, RPC payload,
+  // or provider error object from this security boundary.
+  console.warn("[platform-actor] unavailable", { reason });
+}
+
 export function resolvePlatformActor(
   userResult: { data: { user: unknown | null }; error: unknown | null },
   grantResult?: { data: unknown; error: unknown | null },
@@ -35,12 +47,22 @@ export async function loadPlatformActor(
   try {
     const supabase = client ?? await createClient();
     const userResult = await supabase.auth.getUser();
-    if (userResult.error || !userResult.data.user) {
+    if (userResult.error) {
+      logPlatformActorFailure("auth_error");
+      return resolvePlatformActor(userResult);
+    }
+    if (!userResult.data.user) {
       return resolvePlatformActor(userResult);
     }
     const grantResult = await supabase.rpc("is_platform_admin");
+    if (grantResult.error) {
+      logPlatformActorFailure("grant_error");
+    } else if (typeof grantResult.data !== "boolean") {
+      logPlatformActorFailure("grant_malformed");
+    }
     return resolvePlatformActor(userResult, grantResult);
   } catch {
+    logPlatformActorFailure("unexpected_error");
     return { kind: "unavailable" };
   }
 }
