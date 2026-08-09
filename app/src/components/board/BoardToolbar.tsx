@@ -63,7 +63,7 @@ export function BoardToolbar({
           onChange={(e) => patch({ q: e.target.value })}
           placeholder="검색"
           aria-label="보드 검색"
-          className="h-9 w-52 rounded-full border border-mw-line bg-mw-card pl-7 pr-3 text-xs text-mw-fg outline-none placeholder:text-mw-sub focus:border-mw-record"
+          className="h-7 w-52 rounded-full border border-mw-line bg-mw-card pl-7 pr-3 text-xs text-mw-fg outline-none placeholder:text-mw-sub focus:border-mw-record"
         />
       </div>
 
@@ -146,10 +146,16 @@ export function BoardToolbar({
         )}
       </FilterChip>
 
+      {/*
+        컬럼수 칩 — 요약은 v5 2-3 형식대로 "표시 중/전체"(예: 21/26)를 항상 보여준다.
+        active(틴트)는 전체보다 적게 골랐을 때만 — 기본값(전부 보임)은 강조하지 않는다.
+      */}
       <FilterChip
-        label="컬럼수"
-        summary={filters.columnLimit > 0 ? `${filters.columnLimit}` : undefined}
-        active={filters.columnLimit > 0}
+        label="컬럼"
+        summary={`${
+          filters.columnLimit > 0 ? Math.min(filters.columnLimit, columns.length) : columns.length
+        }/${columns.length}`}
+        active={filters.columnLimit > 0 && filters.columnLimit < columns.length}
         onClear={() => patch({ columnLimit: 0 })}
       >
         {COLUMN_LIMITS.map((n) => (
@@ -166,7 +172,7 @@ export function BoardToolbar({
         <button
           type="button"
           onClick={() => onChange(EMPTY_FILTERS)}
-          className="h-9 shrink-0 rounded-full px-3 text-xs text-mw-sub underline-offset-2 hover:text-mw-fg hover:underline"
+          className="h-7 shrink-0 rounded-full px-3 text-xs text-mw-sub underline-offset-2 hover:text-mw-fg hover:underline"
         >
           초기화
         </button>

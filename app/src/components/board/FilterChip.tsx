@@ -13,6 +13,10 @@
  *
  * 활성 상태는 accent **틴트**(--mw-tint-blue)로 표시한다. Coral(--mw-people)은 담당자·멘션·
  * 알림 전용이라 필터 강조에 쓰지 않는다(플레이북 §4).
+ *
+ * 칩 높이는 28px(UI목업_신규업체보드_v5.md 2-4: 26~28px). 플레이북의 "터치 44px+" 는 모바일
+ * 탭 대상 규칙이고, 원칙 8·11 이 이 화면을 PC 전용 와이드 표(마우스 조작)로 명시하므로 여기서는
+ * v5 의 밀도 기준을 따른다.
  */
 
 import type { ReactNode } from "react";
@@ -41,7 +45,7 @@ export function FilterChip({
       }`}
     >
       <details name="mw-board-filter" className="relative">
-        <summary className="flex h-9 cursor-pointer select-none items-center gap-1 rounded-full px-3 outline-none list-none [&::-webkit-details-marker]:hidden">
+        <summary className="flex h-7 cursor-pointer select-none items-center gap-1 rounded-full px-2.5 outline-none list-none [&::-webkit-details-marker]:hidden">
           <span>{label}</span>
           {summary && <span className="font-semibold">{summary}</span>}
           <span aria-hidden="true" className="text-[0.6rem] opacity-70">
@@ -59,7 +63,7 @@ export function FilterChip({
           type="button"
           onClick={onClear}
           aria-label={`${label} 필터 해제`}
-          className="flex h-9 items-center pr-2.5 pl-0.5 text-sm leading-none opacity-70 hover:opacity-100"
+          className="flex h-7 items-center pr-2 pl-0.5 text-sm leading-none opacity-70 hover:opacity-100"
         >
           ×
         </button>

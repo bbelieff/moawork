@@ -275,6 +275,7 @@ export function BoardWorkspace({
               columns={shown}
               rows={visibleRows}
               presetName={`${board.name}-${block.name}`}
+              presetChanged={Boolean(optimisticOrder[block.key]?.length)}
             >
               <GroupTable
                 boardId={board.id}
