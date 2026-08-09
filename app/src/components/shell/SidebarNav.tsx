@@ -10,6 +10,7 @@ import { Badge } from "@/components/notify/Badge";
 import type { BadgeState } from "@/lib/notify/types";
 import { Icon } from "./icons";
 import { NAV_ITEMS, type NavBadgeKey } from "./nav-items";
+import { GlobalSearch } from "./GlobalSearch";
 
 // 사이드바 메뉴 목록 — 활성 표시를 위해 클라이언트 컴포넌트.
 // 잠금/미구현 판정은 서버(레이아웃)에서 내려받는다(엔타이틀먼트는 서버 진실).
@@ -48,6 +49,7 @@ export function SidebarNav({
           }}
         />
       ) : null}
+      <GlobalSearch />
       <nav className="hidden min-h-0 flex-1 flex-col gap-px overflow-y-auto md:flex" aria-label="주요 메뉴">
       {NAV_ITEMS.map((item) => {
         const isLocked = item.feature ? locked.has(item.feature) : false;
