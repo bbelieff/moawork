@@ -13,8 +13,10 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
   `authenticated` EXECUTE = **`true`**, `app_admin_role('beliefkimkim@gmail.com')` = **`'owner'`**,
   hosted 장부에는 **`025`·`030` 2건만** 기록.
   → 2026-08-04 판의 P0 가설 **"017 미적용 → `/platform` 전면 차단"은 기각**된다.
-  권한 부재 가설(반증 ②)과 005 미적용 가설도 함께 기각. **살아남은 P0 후보는 `org_members` 소속 0(반증 ③) 하나**이며
-  이는 migration 문제가 아니라 **데이터 문제**라 해법이 다르다. 확정 질의 Q3는 **`NOT_RUN`**.
+  005 미적용 가설도 함께 기각, 권한 부재 가설(반증 ②)은 **절반만** 기각(권한은 죽고 RPC 오류는 살아 있다).
+  증상별로 남은 후보: **`(app)` → `/login?error=membership`은 `org_members` 소속 0(반증 ③)이 유일한 설명**이고,
+  **`/platform` 쪽은 `is_platform = false`와 RPC 실행 오류 2개가 살아 있다.**
+  소속 0은 migration 문제가 아니라 **데이터 문제**라 해법이 다르다. 확정 질의 Q3·Q6 모두 **`NOT_RUN`**.
 - **장부 신뢰성 결론**: 017은 장부에 없는데 적용돼 있다 → **`schema_migrations` 부재는 미적용의 근거가 아니다.**
   적용 판정의 정본은 객체·함수 본문 실물 검사(§6 Q1/Q1-b)뿐. 장부 오독으로 **재적용하는 리스크**를 §7-4에 추가했다.
 - **잔여 갭 정직 기록**: `app_admin_role()`은 `role`만 반환하고 017의 판정축은 `is_platform` 컬럼이라,
@@ -27,19 +29,31 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
   **`/?error=platform-forbidden`(권한 거부) / `/?error=platform-unavailable`(서비스 장애)** 로 분기됐다
   (`app/src/lib/platform/guard.ts:18-19`). 문서가 요구하던 "오류 vs 거부" 구분이 코드 레벨에서 해결돼
   재관측 시 URL만으로 판별 가능하다. `session.ts:138-141`의 `/login?error=membership` 경로는 유효.
-- 별도 카드 4건 제안(실행 안 함): 소속 복구 · `workspace-entry/server.ts:196-213` 폴백 주석의 거짓 전제 정정 ·
+- 별도 카드 4건 제안(실행 안 함): 소속 복구 · Q6가 `false`면 `app_admins.is_platform` 복구(**데이터 조치**) ·
   무인증 `GET /api/version` · 장부 정합 정책.
 - **독립 검수(작성자≠검수자) 지적 10건 전량 반영** — 판정 `PASS_WITH_NOTES` → 수정 후 재검수:
   ① "소속 0이 유일한 P0 후보"를 **증상별로 분리**했다. `(app)` 증상의 유일한 설명은 맞으나 `/platform` 쪽에는
   `is_platform = false`와 RPC 실행 오류 **2개가 살아 있다**. ② 반증 ②를 "해소"로 적었으나 실제로는 **절반만** 기각됐다
   (권한 부재는 죽고 RPC 오류는 살아 있다). **URL로 구분 가능해진 것은 진단 능력이지 원인 배제가 아니다.**
   ③ §7-4 완화책이 `supabase migration list --linked` 원장 조회를 권하고 있어 문서 자신의 장부 결론과 모순 → 교체.
-  ④ 전달값을 "실측"이라 부른 4곳을 "회신"으로 정정. ⑤ 이 커밋이 worklog에 68행을 앞에 붙여 자기 인용 줄번호를
+  ④ 전달값을 "실측"이라 부른 4곳을 "회신"으로 정정. ⑤ 이 커밋이 worklog 앞에 행을 추가해 자기 인용 줄번호를
   깨뜨린 것을 발견 → `worklog.md@0816d2a:NNN` 형태로 SHA 고정. ⑥ 장부 결론에 대응하는 질의가 없어 **Q1-c 신설**.
   ⑦ `guard.ts:30`→`29`. ⑧ "017을 적용해도 막힌다"의 미적용 전제 잔존 문구 정정. ⑨ 폴백 주석을 "거짓 전제"라 한 것은
   과했다 — `server.ts:202`가 이미 "017 적용 후 no-op"을 예고했다. **틀린 주석이 아니라 조건이 충족된 주석**이며
-  카드 제안을 철회했다. 대신 **폴백이 `is_platform=false`를 가려 `/platform` 차단·`/workspace-entry` 개방의
-  비대칭을 만든다**는 실질 부작용을 새로 기록했다. ⑩ Q1의 문자열 기반 탐지 한계를 명시.
+  카드 제안을 철회했다. ⑩ Q1의 문자열 기반 탐지 한계를 명시.
+- **2차 검수에서 내가 새로 넣은 주장이 거짓으로 판명돼 철회했다(재검수 판정 `FAIL` → 정정 후 재제출).**
+  ⑨의 대체 근거로 "폴백이 `is_platform=false`를 가려 `/platform`은 막히고 `/workspace-entry`는 열리는
+  **비대칭**이 생긴다"고 적었으나 **거짓**이다. 코드 실측 사슬: 폴백이 `isPlatformAdmin=true`로 승격
+  (`server.ts:204-213`) → 승격했으므로 `list_pending_workspace_create_requests()` 호출(`server.ts:218-220`) →
+  그 함수가 `not is_platform_admin()`에 `42501` 예외(`006_public_workspace_entry.sql:971-973`) →
+  `{kind:"error"}` → blocked 화면(`app/src/app/workspace-entry/page.tsx:15`).
+  **둘 다 막힌다. 비대칭은 없다.** 폴백이 없었다면 그 RPC를 아예 호출하지 않아 `/workspace-entry`는 정상이었을 것이므로,
+  **폴백은 이 경우 상황을 악화시킨다.** 잘못된 진단 지침("비대칭을 017 미적용 징후로 오독 말 것")을
+  올바른 것("둘 다 막힌 것을 보고 `is_platform` 축을 배제하지 말 것 — `is_platform=false`가 정확히 그렇게 나타난다")으로 교체했다.
+  **증거 없이 반대 방향 결론을 적었다면 다음 진단자를 정확히 틀린 쪽으로 보냈을 사안이다.**
+- 2차 검수 추가 정정: "유일한 P0 후보" 무범위 서술 잔존 4곳을 증상 범위로 한정 · `worklog.md:560-562` 인용을
+  `@0816d2a`로 고정(밀린 행 수는 68이 아니라 **81**) · §5 Q2의 "021이 컬럼 추가"는 오기(**제약** 추가) ·
+  §8-1 제목의 `RUN` 라벨을 `RELAYED`/`MEASURED`로 정렬.
 - 증거 등급을 **`RELAYED`(belie 회신·이 세션 재현 불가) / `MEASURED`(이 세션 직접 실행)** 로 분리 표기했다.
   `RELAYED`는 `NOT_RUN`이 아니라는 뜻일 뿐 `PASS`가 아니다.
 - 게이트: `bash scripts/check.sh` PASS · PR CI PASS · 독립 검수 · squash merge. UI 변경 0이라 비주얼 확인 해당 없음.
