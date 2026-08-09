@@ -4,11 +4,14 @@ import { SEED_ORG_ID, SEED_USER_ADMIN, SEED_USER_MEMBER, SEED_USER_OWNER } from 
 import type { Ctx } from "@/lib/types";
 import { NotFoundError } from "@/lib/boards";
 import {
+  NOTICE_AUDIENCE_MANAGERS,
   NOTICE_BOARD_SOURCE,
   NOTICE_KEYS,
+  NoticeForbiddenError,
   NoticeRuleError,
   NoticesService,
   compareNotices,
+  noticeStatusOf,
   todayKst,
   type Notice,
 } from ".";
@@ -75,6 +78,8 @@ describe("목록 정렬", () => {
     const base = {
       id: "x", boardId: "b", title: "t", body: "", categoryId: null,
       categoryLabel: null, authorId: null,
+      endedAt: null, audienceId: null, audienceLabel: null,
+      status: "published" as const,
       createdAt: "2026-01-01", updatedAt: "2026-01-01",
     };
     const withDate: Notice = { ...base, pinned: false, publishedAt: "2026-07-01" };
@@ -179,16 +184,17 @@ describe("삭제", () => {
   });
 });
 
-describe("담당범위(scope) — 003 items RLS 와 동일 규칙", () => {
-  // 공지는 assigned_to=null 이라 member+assigned 에게는 보이지 않는다.
-  // 앱에서 우회 불가(003 items_rw 정책이 서버측에서 동일하게 막음) → DQ-0018 기획 판정 대기.
+describe("담당범위(scope) — 공지는 조직 전체 공람 (BBE-17)", () => {
+  // 이전 계약(DQ-0018)에서는 공지가 assigned_to=null 이라 member+assigned 에게
+  // 통째로 보이지 않았다. 공지는 조직 공람물이므로 담당범위 축을 적용하지 않는다.
+  // 조직 경계(org_id)는 그대로다 — 열람 제한은 audience/게시상태로만 건다.
   it("owner/admin(scope=all)은 전체 공지를 본다", () => {
     expect(svc().list(owner())).toHaveLength(3);
     expect(svc().list(admin())).toHaveLength(3);
   });
 
-  it("member+assigned 는 미배정 공지를 보지 못한다(현행 계약의 알려진 제약)", () => {
-    expect(svc().list(member())).toHaveLength(0);
+  it("member+assigned 도 조직 공지를 본다", () => {
+    expect(svc().list(member())).toHaveLength(3);
   });
 });
 
@@ -207,5 +213,110 @@ describe("컬럼 key 계약", () => {
     for (const key of Object.values(NOTICE_KEYS)) {
       expect(key).toMatch(/^[a-z][a-z0-9_]*$/);
     }
+  });
+});
+
+// ── BBE-17: 권한 게이트 · 게시 상태 · 열람 대상 ──
+
+describe("쓰기 권한 (BBE-17)", () => {
+  // UI 에서 폼을 숨기는 것만으로는 서버 액션·REST 직접 호출을 막지 못한다.
+  // 서비스가 마지막 관문이라 여기서 거부되는지 확인한다.
+  it("member 는 공지를 작성할 수 없다", () => {
+    expect(() => svc().create(member(), { title: "몰래 쓴 공지" })).toThrow(
+      NoticeForbiddenError,
+    );
+  });
+
+  it("member 는 공지를 수정할 수 없다", () => {
+    const target = svc().list(owner())[0];
+    expect(() => svc().update(member(), target.id, { title: "변조" })).toThrow(
+      NoticeForbiddenError,
+    );
+  });
+
+  it("member 는 공지를 삭제할 수 없다", () => {
+    const target = svc().list(owner())[0];
+    expect(() => svc().remove(member(), target.id)).toThrow(NoticeForbiddenError);
+    expect(svc().list(owner())).toHaveLength(3);
+  });
+
+  it("owner/admin 은 작성할 수 있다", () => {
+    const s = svc();
+    expect(s.create(owner(), { title: "owner 공지" }).title).toBe("owner 공지");
+    expect(s.create(admin(), { title: "admin 공지" }).title).toBe("admin 공지");
+  });
+});
+
+describe("게시 상태 파생 (BBE-17)", () => {
+  it("종료일이 오늘보다 앞서면 종료", () => {
+    expect(noticeStatusOf("2026-08-01", "2026-08-04", "2026-08-05")).toBe("ended");
+  });
+
+  it("종료일이 오늘이면 아직 게시 중(당일 포함)", () => {
+    expect(noticeStatusOf("2026-08-01", "2026-08-05", "2026-08-05")).toBe("published");
+  });
+
+  it("게시일이 미래면 게시 예정", () => {
+    expect(noticeStatusOf("2026-08-09", null, "2026-08-05")).toBe("scheduled");
+  });
+
+  it("게시일 미지정은 즉시 게시로 본다", () => {
+    expect(noticeStatusOf(null, null, "2026-08-05")).toBe("published");
+  });
+
+  it("종료일은 게시일보다 앞설 수 없다", () => {
+    expect(() =>
+      svc().create(owner(), {
+        title: "뒤집힌 기간",
+        publishedAt: "2026-08-10",
+        endedAt: "2026-08-01",
+      }),
+    ).toThrow(NoticeRuleError);
+  });
+});
+
+describe("열람 대상과 게시 상태에 따른 노출 (BBE-17)", () => {
+  const NOW = new Date("2026-08-05T00:00:00Z");
+  const today = todayKst(NOW);
+
+  function seedOne(extra: Parameters<NoticesService["create"]>[1]) {
+    const s = svc();
+    for (const n of s.list(owner())) s.remove(owner(), n.id);
+    return s.create(owner(), extra);
+  }
+
+  it("관리자 전용 공지는 member 에게 보이지 않는다", () => {
+    seedOne({ title: "관리자 전용", audienceId: NOTICE_AUDIENCE_MANAGERS, publishedAt: today });
+    expect(svc().list(member(), { now: NOW })).toHaveLength(0);
+    expect(svc().list(owner(), { now: NOW })).toHaveLength(1);
+  });
+
+  it("게시 예정 공지는 member 에게 보이지 않고 관리자에게는 보인다", () => {
+    seedOne({ title: "예약 공지", publishedAt: "2026-09-01" });
+    expect(svc().list(member(), { now: NOW })).toHaveLength(0);
+    const asOwner = svc().list(owner(), { now: NOW });
+    expect(asOwner).toHaveLength(1);
+    expect(asOwner[0].status).toBe("scheduled");
+  });
+
+  it("종료된 공지는 member 에게 보이지 않는다", () => {
+    seedOne({ title: "지난 공지", publishedAt: "2026-07-01", endedAt: "2026-07-31" });
+    expect(svc().list(member(), { now: NOW })).toHaveLength(0);
+    expect(svc().list(owner(), { now: NOW })[0].status).toBe("ended");
+  });
+
+  it("게시 중 · 전체 대상 공지는 member 에게 보인다", () => {
+    seedOne({ title: "모두 보는 공지", publishedAt: "2026-08-01" });
+    expect(svc().list(member(), { now: NOW })).toHaveLength(1);
+  });
+
+  it("볼 수 없는 공지의 상세는 NotFound 로 답한다(존재를 알리지 않는다)", () => {
+    const hidden = seedOne({
+      title: "관리자 전용",
+      audienceId: NOTICE_AUDIENCE_MANAGERS,
+      publishedAt: today,
+    });
+    expect(() => svc().get(member(), hidden.id, NOW)).toThrow(NotFoundError);
+    expect(svc().get(owner(), hidden.id, NOW).title).toBe("관리자 전용");
   });
 });

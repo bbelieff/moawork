@@ -8,7 +8,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
-import { getNoticesService } from "@/lib/notices";
+import { getNoticesService, todayKst } from "@/lib/notices";
 import { parseNewNotice, parseNoticePatch } from "@/lib/notices/http";
 
 function str(fd: FormData, key: string): string {
@@ -34,7 +34,10 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
     categoryId: orNull(str(formData, "categoryId")),
     pinned: formData.get("pinned") === "on",
     publishedAt: orNull(str(formData, "publishedAt")),
+    endedAt: orNull(str(formData, "endedAt")),
+    audienceId: orNull(str(formData, "audienceId")),
   });
+  // 권한 검사는 서비스가 한다 — 폼을 숨기는 것만으로는 막히지 않는다.
   getNoticesService().create(ctx, input);
   revalidateNotices();
 }
@@ -47,8 +50,24 @@ export async function updateNoticeAction(formData: FormData): Promise<void> {
     categoryId: orNull(str(formData, "categoryId")),
     pinned: formData.get("pinned") === "on",
     publishedAt: orNull(str(formData, "publishedAt")),
+    endedAt: orNull(str(formData, "endedAt")),
+    audienceId: orNull(str(formData, "audienceId")),
   });
   getNoticesService().update(ctx, str(formData, "noticeId"), patch);
+  revalidateNotices();
+}
+
+/** 게시 종료 — 오늘로 종료일을 찍는다(삭제하지 않고 이력을 남긴다). */
+export async function endNoticeAction(formData: FormData): Promise<void> {
+  const ctx = await getSession();
+  getNoticesService().update(ctx, str(formData, "noticeId"), { endedAt: todayKst() });
+  revalidateNotices();
+}
+
+/** 게시 재개 — 종료일을 지운다. */
+export async function resumeNoticeAction(formData: FormData): Promise<void> {
+  const ctx = await getSession();
+  getNoticesService().update(ctx, str(formData, "noticeId"), { endedAt: null });
   revalidateNotices();
 }
 

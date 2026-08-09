@@ -1,11 +1,19 @@
 import Link from "next/link";
 import { applyAs, getSession } from "@/lib/auth/session";
-import { getNoticesService, NOTICE_CATEGORY_OPTIONS, todayKst } from "@/lib/notices";
+import {
+  getNoticesService,
+  NOTICE_AUDIENCE_OPTIONS,
+  NOTICE_CATEGORY_OPTIONS,
+  todayKst,
+} from "@/lib/notices";
 import { isManager } from "@/lib/auth/roles";
 import { NoticeCategoryBadge, PinnedBadge } from "@/components/notices/NoticeCategoryBadge";
+import { NoticeStatusBadge } from "@/components/notices/NoticeStatusBadge";
 import {
   createNoticeAction,
   deleteNoticeAction,
+  endNoticeAction,
+  resumeNoticeAction,
   toggleNoticePinAction,
   updateNoticeAction,
 } from "./actions";
@@ -25,8 +33,8 @@ export default async function NoticesPage({
   const notices = getNoticesService().list(ctx);
 
   // 공지 작성/수정은 관리자(owner/admin)만. member 는 읽기 전용.
+  // (UI 를 숨기는 것과 별개로 서비스가 서버에서 같은 검사를 한다.)
   const canWrite = isManager(ctx.role);
-  const scopeLimited = ctx.scope === "assigned";
 
   return (
     <div className="flex flex-col gap-6">
@@ -86,11 +94,34 @@ export default async function NoticesPage({
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-xs">
+                <span className="text-zinc-500">열람 대상</span>
+                <select
+                  name="audienceId"
+                  defaultValue=""
+                  className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                >
+                  <option value="">구성원 전체</option>
+                  {NOTICE_AUDIENCE_OPTIONS.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs">
                 <span className="text-zinc-500">게시일</span>
                 <input
                   type="date"
                   name="publishedAt"
                   defaultValue={todayKst()}
+                  className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs">
+                <span className="text-zinc-500">종료일 (비우면 무기한)</span>
+                <input
+                  type="date"
+                  name="endedAt"
                   className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
                 />
               </label>
@@ -111,9 +142,7 @@ export default async function NoticesPage({
 
       {notices.length === 0 ? (
         <p className="rounded border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700">
-          {scopeLimited
-            ? "담당범위(assigned) 계정에는 조직 공지가 보이지 않습니다 — 003 items 정책 제약(기획 판정 대기)."
-            : "등록된 공지가 없습니다."}
+          등록된 공지가 없습니다.
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
@@ -125,8 +154,19 @@ export default async function NoticesPage({
             >
               <div className="flex flex-wrap items-center gap-2 px-3 py-2">
                 <PinnedBadge pinned={n.pinned} />
+                <NoticeStatusBadge status={n.status} />
                 <NoticeCategoryBadge categoryId={n.categoryId} label={n.categoryLabel} />
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">{n.title}</span>
+                <Link
+                  href={`/notices/${n.id}`}
+                  className="min-w-0 flex-1 truncate text-sm font-medium hover:underline"
+                >
+                  {n.title}
+                </Link>
+                {canWrite && n.audienceLabel && (
+                  <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-[11px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                    {n.audienceLabel}
+                  </span>
+                )}
                 <span className="shrink-0 text-xs text-zinc-400">{n.publishedAt ?? "—"}</span>
               </div>
 
@@ -146,6 +186,16 @@ export default async function NoticesPage({
                       className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
                     >
                       {n.pinned ? "고정 해제" : "상단고정"}
+                    </button>
+                  </form>
+
+                  <form action={n.status === "ended" ? resumeNoticeAction : endNoticeAction}>
+                    <input type="hidden" name="noticeId" value={n.id} />
+                    <button
+                      type="submit"
+                      className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                    >
+                      {n.status === "ended" ? "게시 재개" : "게시 종료"}
                     </button>
                   </form>
 
@@ -184,10 +234,31 @@ export default async function NoticesPage({
                             </option>
                           ))}
                         </select>
+                        <select
+                          name="audienceId"
+                          defaultValue={n.audienceId ?? ""}
+                          aria-label="열람 대상"
+                          className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                        >
+                          <option value="">구성원 전체</option>
+                          {NOTICE_AUDIENCE_OPTIONS.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
                         <input
                           type="date"
                           name="publishedAt"
+                          aria-label="게시일"
                           defaultValue={n.publishedAt ?? ""}
+                          className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                        />
+                        <input
+                          type="date"
+                          name="endedAt"
+                          aria-label="종료일"
+                          defaultValue={n.endedAt ?? ""}
                           className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
                         />
                         <label className="flex items-center gap-1.5 text-xs text-zinc-500">
