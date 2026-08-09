@@ -70,7 +70,7 @@ export function DealInfoTab({
           <p className="py-1.5 text-sm">
             {stage?.name ?? "미배정"}
             <span className="ml-2 text-xs text-zinc-400">
-              단계 변경은 상단 이동 버튼을 사용하세요
+              업무 단계를 바꾸려면 위의 이동 버튼을 선택하세요.
             </span>
           </p>
         </Field>
@@ -91,7 +91,7 @@ export function DealInfoTab({
               type="submit"
               className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900"
             >
-              저장
+              업무 정보 저장하기
             </button>
           </div>
         )}

@@ -57,14 +57,14 @@ export function DealActivityTab({
             type="submit"
             className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900"
           >
-            기록
+            활동 기록하기
           </button>
         </div>
       </form>
 
       {activities.length === 0 ? (
         <p className="py-8 text-center text-sm text-zinc-400">
-          아직 활동 기록이 없습니다
+          활동 기록이 아직 없어요.
         </p>
       ) : (
         <ol className="flex flex-col gap-3">

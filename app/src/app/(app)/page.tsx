@@ -90,15 +90,15 @@ export default async function DashboardPage({
       <FeatureGateServer
         orgId={ctx.org.id}
         feature={FEATURES.dash}
-        label="대시보드(core.dash)"
+        label="대시보드"
       >
         <div className="flex flex-col gap-6">
           {/* 상단 고정 요약 */}
           <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <StatCard label="전체 딜" value={formatCount(dash.totalDeals)} />
+            <StatCard label="전체 업무" value={formatCount(dash.totalDeals)} />
             <StatCard label="고객사" value={formatCount(dash.totalCompanies)} />
             <StatCard
-              label="이번달 신규 딜"
+              label="이번 달 신규 업무"
               value={formatCount(dash.newDealsThisMonth)}
               hint={formatMonth(dash.month)}
             />
@@ -144,14 +144,14 @@ export default async function DashboardPage({
 
             <Widget
               title="전환율"
-              subtitle="분모=전체 딜 · 분자=해당 단계 이상 도달"
+              subtitle="전체 업무 중 해당 단계 이상 도달한 비율"
             >
               <ConversionWidget rates={dash.conversions} />
             </Widget>
 
             <Widget
               title="계약상황"
-              subtitle="field_defs '계약상황' 프리셋 기준"
+              subtitle="등록된 계약상황 기준"
             >
               <ContractStatusWidget data={dash.contractStatus} />
             </Widget>
@@ -162,14 +162,14 @@ export default async function DashboardPage({
             >
               <SettlementWidget
                 data={dash.settlementThisMonth}
-                emptyHint="이번달 수납 건이 없습니다."
+                emptyHint="이번 달 수납 내역이 아직 없어요. 수수료입금일이 이번 달인 업무가 생기면 여기에 보여요."
               />
             </Widget>
 
             <Widget title="전체 정산" subtitle="전 기간 누적">
               <SettlementWidget
                 data={dash.settlementAll}
-                emptyHint="정산 입력(실행액·수수료율)이 있는 딜이 없습니다."
+                emptyHint="정산 정보가 있는 업무가 아직 없어요. 실행액과 수수료율이 입력된 업무가 생기면 여기에 보여요."
               />
             </Widget>
 
@@ -183,12 +183,19 @@ export default async function DashboardPage({
 
           {/* 오늘 할 일 — 내 담당 딜 (PLAN §3 core.dash "홈 = 오늘 할 일 + 이번달 요약") */}
           <section>
-            <h2 className="mb-2 text-sm font-semibold text-zinc-700 dark:text-zinc-200">
-              내 딜 ({formatCount(myDeals.length)})
-            </h2>
+            <div className="mb-2">
+              <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+                내 업무 ({formatCount(myDeals.length)})
+              </h2>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                업무는 업체와 진행하는 각각의 일입니다.
+              </p>
+            </div>
             <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
               {myDeals.length === 0 ? (
-                <li className="p-3 text-sm text-zinc-400">담당 딜이 없습니다.</li>
+                <li className="p-3 text-sm text-zinc-400">
+                  업무 담당자로 지정되면 여기에 보여요.
+                </li>
               ) : (
                 myDeals.map((d) => (
                   <li
