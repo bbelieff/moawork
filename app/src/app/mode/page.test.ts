@@ -1,5 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import {
+  decideModeDestination,
+  decideUserModeDestination,
+} from "@/lib/mode/contract";
 
 const pageSource = readFileSync(new URL("./page.tsx", import.meta.url), "utf8");
 const styleSource = readFileSync(new URL("./mode-page.module.css", import.meta.url), "utf8");
@@ -24,7 +28,40 @@ describe("mode chooser presentation contract", () => {
     expect(styleSource).toContain("@media (max-width: 680px)");
   });
 
-  it("states that the mode choice does not grant membership or authority", () => {
-    expect(pageSource).toContain("이 선택은 화면 모드만 바꾸며 멤버십이나 권한을 새로 만들지 않아요.");
+  it("explains both outcomes without internal workspace language", () => {
+    expect(pageSource).toContain("관리자 페이지 열기");
+    expect(pageSource).toContain("릴리스 상태와 데모 회사를 확인해요.");
+    expect(pageSource).toContain("회사 업무로 가기");
+    expect(pageSource).toContain(
+      "회사 업무 흐름으로 돌아가며, 가입한 회사 수에 따라 바로 열거나 선택·연결해요.",
+    );
+    expect(pageSource).toContain("회사 접근 권한을 새로 만들지 않아요.");
+    expect(pageSource).not.toMatch(/워크스페이스|조직/);
+  });
+
+  it("matches the user-mode copy to zero, one, and multiple company outcomes", () => {
+    const one = [{ orgId: "org-1", slug: "first-company" }];
+    expect(
+      decideModeDestination({
+        preference: null,
+        platformAccess: "granted",
+        memberships: [],
+      }).kind,
+    ).toBe("chooser");
+    expect(
+      decideModeDestination({
+        preference: "platform",
+        platformAccess: "granted",
+        memberships: [],
+      }).kind,
+    ).toBe("platform");
+    expect(decideUserModeDestination([]).kind).toBe("entry");
+    expect(decideUserModeDestination(one).kind).toBe("workspace");
+    expect(
+      decideUserModeDestination([
+        ...one,
+        { orgId: "org-2", slug: "second-company" },
+      ]).kind,
+    ).toBe("workspaces");
   });
 });

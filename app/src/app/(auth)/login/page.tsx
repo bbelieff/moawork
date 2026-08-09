@@ -8,6 +8,15 @@ import { AUTH_ERROR_MESSAGES, safeNextPath } from "@/lib/auth/oauth";
 import { SESSION_COOKIE } from "@/lib/auth/session";
 import styles from "./login.module.css";
 
+const LOGIN_ERROR_MESSAGES: Record<string, string> = {
+  ...AUTH_ERROR_MESSAGES,
+  auth: "Google 로그인을 마치지 못했어요. 다시 시도해 주세요.",
+  config: "로그인 설정을 확인하고 있어요. 잠시 후 다시 시도해 주세요.",
+  membership: "연결된 회사가 없어요. 회사 관리자에게 초대를 요청해 주세요.",
+  profile: "사용자 정보를 준비하지 못했어요. 다시 로그인해 주세요.",
+  provisioning: "회사 접근 권한을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.",
+};
+
 export default async function LoginPage({
   searchParams,
 }: {
@@ -18,7 +27,7 @@ export default async function LoginPage({
     typeof params.next === "string" ? params.next : undefined,
   );
   const errorCode = typeof params.error === "string" ? params.error : "";
-  const errorMessage = AUTH_ERROR_MESSAGES[errorCode];
+  const errorMessage = LOGIN_ERROR_MESSAGES[errorCode];
   const devToolsEnabled = process.env.NODE_ENV !== "production";
   const users = devToolsEnabled ? getRepo().listUsers() : [];
 
@@ -62,8 +71,8 @@ export default async function LoginPage({
               <Symbol height={24} />
             </span>
             <span>
-              <strong>하나의 워크스페이스</strong>
-              <small>모든 업무 흐름의 중심</small>
+              <strong>회사의 모든 업무</strong>
+              <small>한곳에서 이어지는 흐름</small>
             </span>
           </div>
           <ModuleCard
@@ -81,7 +90,7 @@ export default async function LoginPage({
           <ModuleCard
             className={styles.moduleThree}
             toneClass={styles.toneViolet}
-            title="워크스페이스"
+            title="회사 업무"
             label="한곳에 모임"
           />
           <ModuleCard
@@ -105,8 +114,8 @@ export default async function LoginPage({
           <div className={styles.loginHeading}>
             <h2 id="login-title">{PRODUCT_NAME}에 로그인</h2>
             <p>
-              Google 계정으로 팀의 업무 흐름에
-              <br /> 안전하게 연결하세요.
+              로그인하면 권한과 가입한 회사 수를 확인해
+              <br /> 모드를 고르거나 회사 업무를 시작할 화면으로 이동해요.
             </p>
           </div>
 

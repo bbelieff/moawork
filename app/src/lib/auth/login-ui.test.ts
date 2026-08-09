@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { AUTH_ERROR_MESSAGES } from "./oauth";
 
 function read(relative: string): string {
   return readFileSync(new URL(relative, import.meta.url), "utf8");
@@ -13,8 +14,41 @@ describe("login A v1.1 UI contract", () => {
   it("브랜드 철학과 업무가 모이는 중심을 표현한다", () => {
     expect(page).toContain("흐름은 단단하게");
     expect(page).toContain("방식은 <em>자유롭게.</em>");
-    expect(page).toContain("하나의 워크스페이스");
-    expect(page).toContain("모든 업무 흐름의 중심");
+    expect(page).toContain("회사의 모든 업무");
+    expect(page).toContain("한곳에서 이어지는 흐름");
+  });
+
+  it("로그인 결과와 실패 후 다음 행동을 쉬운 회사 언어로 안내한다", () => {
+    expect(page).toContain("로그인하면 권한과 가입한 회사 수를 확인해");
+    expect(page).toContain("모드를 고르거나 회사 업무를 시작할 화면으로 이동해요.");
+
+    expect(Object.keys(AUTH_ERROR_MESSAGES).sort()).toEqual([
+      "auth",
+      "config",
+      "membership",
+      "profile",
+      "provisioning",
+    ]);
+    const displayEntries = [
+      ...page.matchAll(/^\s+(auth|config|membership|profile|provisioning): "([^"]+)",$/gm),
+    ];
+    const displayErrors = Object.fromEntries(
+      displayEntries.map((match) => [match[1], match[2]]),
+    );
+    expect(Object.keys(displayErrors).sort()).toEqual(
+      Object.keys(AUTH_ERROR_MESSAGES).sort(),
+    );
+    for (const message of Object.values(displayErrors)) {
+      expect(message).not.toMatch(/워크스페이스|조직/);
+    }
+    expect(displayErrors.auth).toContain("다시 시도해 주세요");
+    expect(displayErrors.config).toContain("잠시 후 다시 시도해 주세요");
+    expect(displayErrors.membership).toContain("초대를 요청해 주세요");
+    expect(displayErrors.profile).toContain("다시 로그인해 주세요");
+    expect(displayErrors.provisioning).toContain("잠시 후 다시 시도해 주세요");
+    expect(page).toContain("const errorMessage = LOGIN_ERROR_MESSAGES[errorCode]");
+    expect(page).toContain("{errorMessage}");
+    expect(page).not.toMatch(/워크스페이스|조직/);
   });
 
   it("로그인 패널 우측 상단 브랜드 심볼을 충분한 크기로 보여 준다", () => {
