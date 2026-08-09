@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { getRepo } from "@/lib/repo";
-import { FeatureGate } from "@/components/auth/FeatureGate";
+import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
 import { FEATURES } from "@/lib/product";
 import { buildDashboard } from "@/lib/dash";
 import { formatCount, formatKrw, formatMonth, orEmpty } from "@/lib/dash/format";
@@ -75,15 +75,21 @@ export default async function DashboardPage({
         </section>
       ) : null}
 
-      <FeatureGate ctx={ctx} feature={FEATURES.dash} label="대시보드(core.dash)">
-        <div className="flex flex-col gap-6">
-          <header className="flex flex-wrap items-baseline justify-between gap-2">
-            <h1 className="text-lg font-semibold">대시보드</h1>
-            <span className="text-sm text-zinc-500">
-              기준 {formatMonth(dash.month)} (KST)
-            </span>
-          </header>
+      {/* 제목은 게이트 **밖**이다 — core.dash 가 잠겨도 화면이 잠금 문구 한 줄로
+          붕괴하지 않게 한다(P0 · 신규 회사 첫 진입). 잠금은 아래 영역에만 표시. */}
+      <header className="flex flex-wrap items-baseline justify-between gap-2">
+        <h1 className="text-lg font-semibold">대시보드</h1>
+        <span className="text-sm text-zinc-500">
+          기준 {formatMonth(dash.month)} (KST)
+        </span>
+      </header>
 
+      <FeatureGateServer
+        orgId={ctx.org.id}
+        feature={FEATURES.dash}
+        label="대시보드(core.dash)"
+      >
+        <div className="flex flex-col gap-6">
           {/* 상단 고정 요약 */}
           <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <StatCard label="전체 딜" value={formatCount(dash.totalDeals)} />
@@ -218,7 +224,7 @@ export default async function DashboardPage({
             </ul>
           </section>
         </div>
-      </FeatureGate>
+      </FeatureGateServer>
     </div>
   );
 }
