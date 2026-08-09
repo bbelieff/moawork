@@ -29,6 +29,19 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
   재관측 시 URL만으로 판별 가능하다. `session.ts:138-141`의 `/login?error=membership` 경로는 유효.
 - 별도 카드 4건 제안(실행 안 함): 소속 복구 · `workspace-entry/server.ts:196-213` 폴백 주석의 거짓 전제 정정 ·
   무인증 `GET /api/version` · 장부 정합 정책.
+- **독립 검수(작성자≠검수자) 지적 10건 전량 반영** — 판정 `PASS_WITH_NOTES` → 수정 후 재검수:
+  ① "소속 0이 유일한 P0 후보"를 **증상별로 분리**했다. `(app)` 증상의 유일한 설명은 맞으나 `/platform` 쪽에는
+  `is_platform = false`와 RPC 실행 오류 **2개가 살아 있다**. ② 반증 ②를 "해소"로 적었으나 실제로는 **절반만** 기각됐다
+  (권한 부재는 죽고 RPC 오류는 살아 있다). **URL로 구분 가능해진 것은 진단 능력이지 원인 배제가 아니다.**
+  ③ §7-4 완화책이 `supabase migration list --linked` 원장 조회를 권하고 있어 문서 자신의 장부 결론과 모순 → 교체.
+  ④ 전달값을 "실측"이라 부른 4곳을 "회신"으로 정정. ⑤ 이 커밋이 worklog에 68행을 앞에 붙여 자기 인용 줄번호를
+  깨뜨린 것을 발견 → `worklog.md@0816d2a:NNN` 형태로 SHA 고정. ⑥ 장부 결론에 대응하는 질의가 없어 **Q1-c 신설**.
+  ⑦ `guard.ts:30`→`29`. ⑧ "017을 적용해도 막힌다"의 미적용 전제 잔존 문구 정정. ⑨ 폴백 주석을 "거짓 전제"라 한 것은
+  과했다 — `server.ts:202`가 이미 "017 적용 후 no-op"을 예고했다. **틀린 주석이 아니라 조건이 충족된 주석**이며
+  카드 제안을 철회했다. 대신 **폴백이 `is_platform=false`를 가려 `/platform` 차단·`/workspace-entry` 개방의
+  비대칭을 만든다**는 실질 부작용을 새로 기록했다. ⑩ Q1의 문자열 기반 탐지 한계를 명시.
+- 증거 등급을 **`RELAYED`(belie 회신·이 세션 재현 불가) / `MEASURED`(이 세션 직접 실행)** 로 분리 표기했다.
+  `RELAYED`는 `NOT_RUN`이 아니라는 뜻일 뿐 `PASS`가 아니다.
 - 게이트: `bash scripts/check.sh` PASS · PR CI PASS · 독립 검수 · squash merge. UI 변경 0이라 비주얼 확인 해당 없음.
 - Linear `BBE-8` 도장은 **미수행** — Linear MCP 미인증 + 비대화형 세션이라 OAuth 불가. 초안을 END 보고에 첨부했다.
 - 판정: **INVESTIGATION_COMPLETE / P0_HYPOTHESIS_REFUTED / MEMBERSHIP_Q3_NOT_RUN.**

@@ -22,8 +22,12 @@
 `is_platform_admin()`의 `authenticated` EXECUTE = **true**. 따라서 2026-08-04 문서가 P0 최유력으로 제시했던
 **"017 미적용 → `/platform` 전면 차단" 가설은 기각**한다. §3-1의 인과 사슬은 첫 분기에서 끊긴다.
 
-남은 유효 후보는 **`org_members` 소속 0**(§3-2 ③) 하나다. 이는 `/platform`이 아니라 `(app)` 일반 화면의
-`/login?error=membership`을 설명하며, **Q3가 여전히 `NOT_RUN`**이라 확정하지 못한다.
+증상별로 남은 후보는 다음과 같다. **기각된 것은 "017 미적용" 하나뿐이며 `/platform` 쪽 후보는 아직 남아 있다.**
+
+| 증상 | 살아 있는 후보 | 확정 질의 |
+| --- | --- | --- |
+| `(app)` → `/login?error=membership` | **`org_members` 소속 0**(§3-2 ③) — 이 증상의 **유일한** 설명 | §6 Q3 `NOT_RUN` |
+| `/platform` 차단이 계속될 경우 | ⓐ `app_admins.is_platform = false` ⓑ `is_platform_admin()` RPC 실행 오류 | §6 Q6 · 브라우저 재관측 `NOT_RUN` |
 
 부수 확정 1 — **hosted 장부(`supabase_migrations.schema_migrations`)에는 `025`·`030` 2건만 기록돼 있다.**
 그런데 017은 실제로 적용돼 있다. → **장부는 적용 상태의 정본이 아니다.** 그 외 migration은 장부 밖에서
@@ -31,8 +35,13 @@
 `supabase migration list --linked` 결과를 미적용 근거로 쓰면 안 된다.
 
 부수 확정 2 — 017이 적용된 이상 `app/src/lib/workspace-entry/server.ts:196-213`의 `app_admin_role` 폴백은
-**전제가 소멸한 잔여 안전망**이다(주석 197-201행이 "배포된 006이 `role='admin'`을 요구한다"고 명시).
-무해하나 사실과 어긋난 주석이다. 코드 수정은 이 계약의 리스 밖 → 별도 카드 권고(§7-5).
+**작성자가 예고한 대로 no-op 상태**다. 주석 202행이 이미 "017 적용 후에는 위 판정이 곧바로 true 라
+이 블록은 자연히 no-op 이 된다"고 적어 두었다 — **틀린 주석이 아니라 조건이 충족된 주석**이다. 조치 불필요.
+
+다만 부작용 하나는 기록해 둔다: 이 폴백은 `app_admin_role`이 non-null이기만 하면 승격하므로,
+**`is_platform = false`인 경우(§6 Q6)에도 `/workspace-entry`는 열린다.** 즉 Q6가 `false`로 판명되면
+`/platform`은 막히고 `/workspace-entry`는 열리는 **비대칭**이 나타나며, 이는 폴백이 그 축을 가리기 때문이다.
+진단 시 이 비대칭을 "017 미적용 징후"로 오독하지 않아야 한다.
 
 ---
 
@@ -100,7 +109,7 @@
 | `is_platform_admin()` 정의 상태 | **`APPLIED_017`** | §6 Q1 | **017 적용됨** |
 | `has_function_privilege('authenticated', 'is_platform_admin', 'EXECUTE')` | **`true`** | §6 Q1 2번째 | 권한 부재 가설 기각 |
 | `app_admin_role('beliefkimkim@gmail.com')` | **`'owner'`** | §6 Q4 | `app_admins` 행 존재 · 005 시드 정상 |
-| hosted migration 장부 기록 | **`025`·`030` 2건뿐** | §6 Q1-b 보완 | 장부 ≠ 적용 상태 (아래) |
+| hosted migration 장부 기록 | **`025`·`030` 2건뿐** | §6 **Q1-c** | 장부 ≠ 적용 상태 (아래) |
 
 #### 이 4건이 뒤집는 것
 
@@ -140,16 +149,19 @@
 
 | migration | 문서상 hosted 상태 | 근거 |
 | --- | --- | --- |
-| `006` | **적용됨** — "Production migration `006`이 atomically applied" | `docs/worklog.md:1488` |
-| `007` | **적용됨** — anon `0/3`, authenticated `3/3` 재확인, PR #24 머지 | `docs/worklog.md:1489` |
-| `017`·`018` | 문서상 **미적용(파킹)** — "실 Supabase에 적용돼야 효력이 있고, 로컬에 크리덴셜이 없어 SQL 실행 검증은 못 했다" | `docs/worklog.md:293-295` |
+| `006` | **적용됨** — "Production migration `006`이 atomically applied" | `worklog.md@0816d2a:1488` |
+| `007` | **적용됨** — anon `0/3`, authenticated `3/3` 재확인, PR #24 머지 | `worklog.md@0816d2a:1489` |
+| `017`·`018` | 문서상 **미적용(파킹)** — "실 Supabase에 적용돼야 효력이 있고, 로컬에 크리덴셜이 없어 SQL 실행 검증은 못 했다" | `worklog.md@0816d2a:293-295` |
 | `017`·`020`·`021`·`022` | 문서상 **`NOT_RUN / 미검증`** | `docs/coordination/sync/ROUND-34.md:43` |
 | `008`~`016`, `019`, `023`~`025`, `030` | **기록 없음** | 전수 grep 결과 hosted 적용 선언 0건 |
 
+> 위 `worklog.md` 줄번호는 **`0816d2a` 시점 기준으로 고정**한다. worklog는 append-only이고 최신 항목을 위에 붙이므로
+> 커밋마다 줄번호가 밀린다(이 갱신도 68행을 앞에 추가했다). 조회는 `git show 0816d2a:docs/worklog.md`로 한다.
+
 > ⚠️ 이 표는 **문서 진술**이지 DB 실측이 아니다.
 >
-> **2026-08-09 반증**: §2-0 실측에서 `017`은 **적용돼 있다**. 위 두 행("미적용 파킹", "`NOT_RUN`")은
-> **DB 실측에 의해 무효**다. 문서 진술과 실물이 갈린 첫 사례이며, 이 표 전체를 적용 상태의 근거로 쓰면 안 된다는
+> **2026-08-09 반증**: §2-0 회신값에서 `017`은 **적용돼 있다**. 위 두 행("미적용 파킹", "`NOT_RUN`")은
+> **DB 조회 회신에 의해 무효**다. 문서 진술과 실물이 갈린 첫 사례이며, 이 표 전체를 적용 상태의 근거로 쓰면 안 된다는
 > 뜻이다. `006`·`007`의 "적용됨"도 같은 성격의 문서 진술이므로 실물 재확인 전에는 확정으로 취급하지 않는다.
 >
 > 마찬가지로 **hosted 장부에 `025`·`030`만 있다는 사실도 나머지를 미적용으로 만들지 않는다**(§2-0 4번).
@@ -164,7 +176,7 @@
 
 | migration | 앱이 의존하는 객체 | 미적용 시 실증상 | 심각도 |
 | --- | --- | --- | --- |
-| ~~**017**~~ | `is_platform_admin()` | ~~`/platform/*` 전면 차단~~ → **2026-08-09 `APPLIED_017` 실측으로 해소.** 이 행은 더 이상 미해결 결함이 아니다 | ~~P0~~ → **해소** |
+| ~~**017**~~ | `is_platform_admin()` | ~~`/platform/*` 전면 차단~~ → **2026-08-09 `APPLIED_017` 회신으로 해소.** 이 행은 더 이상 미해결 결함이 아니다 | ~~P0~~ → **해소** |
 | **018** | `submit_workspace_create_request` (관리자 자동승인 분기) | 관리자가 회사를 만들어도 승인 대기에 머묾 | P1 |
 | **030** | `submit_workspace_create_request` (재정의) + `workspace_entry_requests` 신규 컬럼 | 회사 생성 요청 생명주기 회귀(PR #91이 고친 결함 잔존). **컬럼 부재 시 RPC 오류 가능** | P1 |
 | **020** | `list_reviewed_internal_demo_release_options` | `/platform/demo`의 데모 후보 목록이 **RPC 오류 → 빈 상태**. BBE-6이 고친 "단일 데모 선택" 화면 자체가 뜨지 않음 | P1 |
@@ -189,7 +201,7 @@
         └─ loadPlatformActor() → supabase.rpc("is_platform_admin")   [app/src/lib/platform/actor.ts:57]
            │  ※ 이 경로에는 app_admin_role 폴백이 없다 — is_platform_admin() 단독
            └─ ✖ 가정: 006 정의(is_platform AND role='admin')가 살아 있다
-              └─ ✖ 실측 반증: Q1 = APPLIED_017 → role 조건은 이미 제거됐다
+              └─ ✖ 회신 반증: Q1 = APPLIED_017 → role 조건은 이미 제거됐다
                                 017 정의는 `platform_admin.is_platform is true` 단독 판정
                                 [017_fix_is_platform_admin_role_axis.sql]
 ```
@@ -220,7 +232,7 @@
 | --- | --- | --- |
 | RPC가 `false` 반환 (권한 거부) | `/?error=platform-forbidden` | `app/src/lib/platform/guard.ts:19` |
 | RPC 오류 또는 non-boolean (서비스 장애) | `/?error=platform-unavailable` | `guard.ts:18` |
-| 미인증 | `/login?next=...` | `guard.ts:30` |
+| 미인증 | `/login?next=...` | `guard.ts:29` |
 
 → **이제 URL만 보고 "권한 거부"와 "함수 장애"를 구분할 수 있다.** §3-2 ②가 요구하던 구분이
 코드 레벨에서 해결됐다. 재관측 시 `platform-forbidden`이면 `is_platform` 축, `platform-unavailable`이면
@@ -230,21 +242,31 @@ RPC 실행 실패를 본다.
 
 2026-08-04 판이 세운 반증 3건의 현재 상태다. **③만 살아남았다.**
 
-1. ~~**`/workspace-entry` 폴백**~~ — **무효화**. `readWorkspaceEntryContext`는 `is_platform_admin()`이 false면
-   `app_admin_role(email)`로 한 번 더 본다(`app/src/lib/workspace-entry/server.ts:196-213`).
-   017이 적용된 지금 이 폴백은 **전제가 소멸한 잔여 안전망**이며(주석 197-201행이 "배포된 006이 `role='admin'`을
-   요구한다"는 이제 거짓인 전제를 명시), `/platform` vs `/workspace-entry` 대조는 더 이상 017 진단에 쓸 수 없다.
-2. ~~**RPC 오류·권한 부재가 같은 화면을 만든다**~~ — **이중으로 해소**.
-   ⓐ `has_function_privilege('authenticated', ..., 'EXECUTE')` = **true**(§2-0) → 권한 부재 기각.
-   ⓑ `#98` 이후 오류와 거부가 서로 다른 URL로 갈라진다(§3-1) → 증상 구분 가능.
-3. ✅ **소속 0은 독립 결함이다 — 유일하게 살아남은 후보.** `(app)` 사슬의 마지막 단계는 `org_members` 행 부재다.
+1. ~~**`/workspace-entry` 폴백로 017을 진단한다**~~ — **무효화**. `readWorkspaceEntryContext`는
+   `is_platform_admin()`이 false면 `app_admin_role(email)`로 한 번 더 본다
+   (`app/src/lib/workspace-entry/server.ts:196-213`). 017이 적용된 지금 이 블록은 주석 202행의 예고대로 no-op이며,
+   **`/platform` vs `/workspace-entry` 대조는 더 이상 017 진단에 쓸 수 없다.**
+   더 나아가 이 폴백은 `is_platform = false`인 경우에도 `/workspace-entry`를 열어 그 축을 **가린다**(§0 부수 확정 2).
+2. **RPC 오류·권한 부재가 같은 화면을 만든다** — **절반만 해소**.
+   ⓐ **권한 부재는 기각.** `has_function_privilege('authenticated', ..., 'EXECUTE')` = `true`(§2-0).
+   ⓑ **RPC 오류는 여전히 살아 있다.** `resolvePlatformActor`는 `error` 또는 non-boolean이면 `unavailable`을
+      반환한다(`app/src/lib/platform/actor.ts:33`). `#98`이 한 일은 이 경로를 `/?error=platform-unavailable`로
+      **구분 가능하게** 만든 것이지 **원인을 배제한 것이 아니다**. 구분은 진단 능력이고 기각은 증거다 — 둘은 다르다.
+      실제 배제는 §7-2 5단계(브라우저 재관측)가 필요하며 그것은 `NOT_RUN`이다.
+3. ✅ **소속 0은 독립 결함이다.** `(app)` 사슬의 마지막 단계는 `org_members` 행 부재다.
    `/platform`이 열려도 **`(app)` 일반 화면은 여전히 `/login?error=membership`** 이다.
    → 017과 무관하게 성립하며, **`/login?error=membership` 관측의 현재 유일한 설명**이다.
    확정 분기점은 §6 Q3(`NOT_RUN`)이다.
 
-> **재판정 요약**: 2026-08-04 판의 P0("017 미적용")는 기각. 남은 P0 후보는 **belie 계정의 `org_members` 소속 0**이며
-> 이는 migration 적용 문제가 아니라 **데이터 문제**다. 해법도 다르다 — migration 적용이 아니라
-> 소속 행 생성(또는 018 관리자 직접 생성 경로)이 필요하다.
+> **재판정 요약 (증상별로 분리해서 읽어야 한다)**
+>
+> | 증상 | 살아 있는 후보 | 확정 질의 |
+> | --- | --- | --- |
+> | `(app)` → `/login?error=membership` | **`org_members` 소속 0** — **이 증상의 유일한 설명** | §6 Q3 `NOT_RUN` |
+> | `/platform` 차단이 계속될 경우 | ⓐ `app_admins.is_platform = false` ⓑ `is_platform_admin()` RPC 실행 오류 | §6 Q6 · 브라우저 재관측 `NOT_RUN` |
+>
+> 기각된 것은 **"017 미적용"** 하나이고, `/platform` 쪽 후보 2개는 남아 있다.
+> `(app)` 증상의 해법은 migration 적용이 아니라 **소속 행 생성**(또는 018 관리자 직접 생성 경로)이다 — **데이터 문제**다.
 
 ---
 
@@ -299,11 +321,12 @@ gh api "repos/bbelieff/moawork/deployments?per_page=10" --jq '.[] | select(.envi
 
 | # | 질의 | 상태 | 확정값 / 남은 것 |
 | --- | --- | --- | --- |
-| Q1 | **017 적용 여부** | **`RUN` ✅** | **`APPLIED_017`**. + `authenticated` EXECUTE `true`. 017 미적용 가설 기각(§2-0) |
+| Q1 | **017 적용 여부** | **`RELAYED` ✅** | **`APPLIED_017`**. + `authenticated` EXECUTE `true`. 017 미적용 가설 기각(§2-0) |
 | Q2 | **테스트1 `workspace_requests`** | **`NOT_RUN`** | 정확한 테이블명은 `public.workspace_entry_requests`(006 생성, 021·030이 컬럼 추가). hosted 행 존재·집계 조회 필요 → §6 Q2 |
 | Q3 | **오너 배정** | **`NOT_RUN`** ⚠️ | **현재 유일하게 살아 있는 P0 후보**(§3-2 ③). `org_members` 행 유무가 `/login?error=membership`의 분기점 → §6 Q3. **다음 조치의 최우선 항목** |
-| Q4 | **`app_admin_role()` 판정값** | **`RUN` ✅** | **`'owner'`**. `app_admins` 행 존재·005 시드 정상 확정 |
+| Q4 | **`app_admin_role()` 판정값** | **`RELAYED` ✅** | **`'owner'`**. `app_admins` 행 존재·005 시드 정상 확정 |
 | Q1-b | 나머지 migration 적용 여부 | **`NOT_RUN`** | 장부에 `025`·`030`만 있으나 장부는 정본이 아님(§2-0 4번). 객체 실물 검사 필요 → §6 Q1-b |
+| Q1-c | hosted 장부 기록 범위 | **`RELAYED`** ✅ | **`025`·`030` 2건뿐**. 017은 장부에 없는데 적용됨 → **장부는 적용 상태의 정본이 아니다** |
 | **Q6** | **`app_admins.is_platform` 값** | **`NOT_RUN`** (신규) | Q4는 `role`만 반환해 017의 판정축인 `is_platform`을 증명하지 못함 → §6 Q6 |
 
 > Q2·Q3·Q1-b·Q6는 hosted row/객체 조회라 자격증명 없이는 불가하다.
@@ -334,6 +357,11 @@ select coalesce(
   'MISSING'
 ) as is_platform_admin_state;
 ```
+
+> **탐지 한계**: 위 판정은 `role = 'admin'` 문자열 유무에 의존한다. `006`의 실제 본문이
+> `and platform_admin.role = 'admin'`이라 알려진 두 정의(006/017) 사이에서는 정확하지만,
+> **손으로 편집된 제3의 변형은 `APPLIED_017`로 오분류**될 수 있다. 정밀 확인이 필요하면
+> `select pg_get_functiondef(oid) ...` 로 본문 전체를 읽는다.
 
 ```sql
 -- 함수 EXECUTE 권한도 함께 본다 (권한 부재도 같은 증상을 만든다 — §3-2)
@@ -378,6 +406,27 @@ order by 1;
 > ```sql
 > select column_name, data_type from information_schema.columns
 > where table_schema='public' and table_name='workspace_entry_requests' order by ordinal_position;
+> ```
+
+### Q1-c — hosted migration 장부 기록 범위 — **✅ 회신 `025`·`030` 2건뿐**
+
+§2-0의 장부 결론이 근거하는 질의다. 2026-08-04 판에는 이 질의가 없었고 회신값만 도착했으므로,
+재현 가능하도록 여기에 명시해 둔다.
+
+```sql
+select version
+from supabase_migrations.schema_migrations
+order by version;
+```
+
+**회신값 = `025`, `030` 2건.** 그런데 Q1은 `APPLIED_017`이다.
+→ **장부에 없다는 사실은 미적용의 근거가 아니다.** 나머지는 장부 밖에서 수동 적용됐다.
+적용 판정은 Q1/Q1-b의 **객체 실물 검사**로만 한다.
+
+> 스키마·테이블명이 다르면(`supabase_migrations.schema_migrations` 부재) 아래로 확인한다.
+> ```sql
+> select table_schema, table_name from information_schema.tables
+> where table_name ilike '%migration%' order by 1,2;
 > ```
 
 ### Q2 — 테스트1 진입 요청 (집계만)
@@ -442,7 +491,8 @@ select exists (
 ```
 
 - `true` → 017 + 시드 + 권한 3박자 모두 정상. `/platform` 차단이 계속되면 **DB가 아니라 세션·앱 계층**을 본다.
-- `false` → `is_platform` 축이 꺼져 있다. 017을 적용해도 막힌다. **이 경우가 새 근인**이다.
+- `false` → `is_platform` 축이 꺼져 있다. **017이 이미 적용돼 있어도 `/platform`은 막힌다. 이 경우가 새 근인**이다.
+  조치는 migration이 아니라 `app_admins` 행의 `is_platform` 갱신이다(별도 계약).
 
 > RLS로 `app_admins` 직접 조회는 막혀 있다(005). 위 쿼리는 **service role인 SQL Editor에서만** 동작하며
 > 반환값은 boolean 1개뿐이라 관리자 이메일 목록이 노출되지 않는다(F1 준수 취지 유지).
@@ -504,7 +554,7 @@ migration 적용보다 **먼저** 해야 할 조회가 있다. 순서는 다음�
 | **순서 역전** | `submit_workspace_create_request` 4중 재정의(006→009→018→030). 순서가 틀리면 최신 정의가 옛 정의로 덮이고 **회귀가 조용히 부활**한다 | 적용 후 `pg_get_functiondef`로 최종 본문 검증 |
 | **021 제약 실패** | 기존 `orgs`에 `/mode` 계열 slug가 있으면 `alter table ... add constraint`가 실패 | 적용 전 slug 사전 조회 |
 | **030 컬럼 추가** | `workspace_entry_requests`에 컬럼 추가. 대형 테이블이면 락 | 행 수 사전 확인, 유지보수 창 |
-| **번호 중복** | `014`·`016` 각 2개. CLI가 순서를 재해석할 수 있음 | 적용 전 `supabase migration list --linked` 로 원장 실측 |
+| **번호 중복** | `014`·`016` 각 2개. CLI가 순서를 재해석할 수 있음 | 적용 전 §6 Q1-b로 **객체 실물** 확인. ~~`supabase migration list --linked`~~ 는 완화책이 될 수 없다 — 장부에 `025`·`030`만 있는데 017은 적용돼 있다(§2-0 4번) |
 | **롤백 경로 부재** | 다수 migration에 down 스크립트가 없다 | 적용 전 **복구 가능한 백업/스냅샷 필수** |
 | **소속 0 미해소** | 017이 적용된 지금도 `(app)`은 `/login?error=membership`일 수 있다. **현재 유일한 P0 후보** | Q3 결과에 따라 별도 카드 |
 | **장부 오독** | `schema_migrations`에 `025`·`030`만 있어 나머지를 미적용으로 오판 → **이미 적용된 것을 재적용** | 적용 전 반드시 Q1-b 객체 실물 검사 |
@@ -514,7 +564,7 @@ migration 적용보다 **먼저** 해야 할 조회가 있다. 순서는 다음�
 | 후보 | 내용 | 근거 |
 | --- | --- | --- |
 | 소속 복구 | belie 계정 `org_members` 행 부재 시 소속 생성 경로 확정 | §3-2 ③ · Q3 결과 선행 |
-| 폴백 주석 정정 | `app/src/lib/workspace-entry/server.ts:196-213` 폴백 주석이 "배포된 006이 `role='admin'`을 요구한다"는 **거짓 전제**를 명시. 코드는 무해하나 주석이 오도한다 | §0 부수 확정 2 |
+| `is_platform` 복구 | Q6가 `false`면 `app_admins.is_platform` 갱신. **migration이 아니라 데이터 조치** | §6 Q6 결과 선행 |
 | 무인증 버전 엔드포인트 | `GET /api/version`(SHA 7자리만) 신설 — alias↔배포 SHA 교차확인의 순환 의존 제거 | §4-1 |
 | 장부 정합 | `025`·`030` 외 수동 적용분을 `schema_migrations`에 소급 기록할지 정책 결정 | §2-0 4번 |
 
@@ -526,13 +576,18 @@ migration 적용보다 **먼저** 해야 할 조회가 있다. 순서는 다음�
 
 ### 8-1. 해소됨 (`NOT_RUN` → `RUN`)
 
-| 항목 | 확정값 | 출처 |
-| --- | --- | --- |
-| `017` hosted 적용 여부 | **`APPLIED_017`** | belie SQL Editor 회신 |
-| `is_platform_admin()` `authenticated` EXECUTE | **`true`** | 위와 같음 |
-| `app_admin_role('beliefkimkim@gmail.com')` | **`'owner'`** | 위와 같음 |
-| hosted migration 장부 기록 범위 | **`025`·`030` 2건뿐** | 위와 같음 |
-| Production 배포 SHA | **`f4f5a12`** (= `origin/main`) | `gh` deployments API 직접 실측 |
+**`RELAYED`와 `MEASURED`를 구분한다.** `RELAYED`는 belie가 실행하고 이 세션이 전달받은 값이며,
+이 세션이 재현하지 못한다. `NOT_RUN`이 아니라는 뜻일 뿐 `PASS`가 아니다.
+
+| 항목 | 확정값 | 등급 | 출처 |
+| --- | --- | --- | --- |
+| `017` hosted 적용 여부 | **`APPLIED_017`** | `RELAYED` | belie SQL Editor 회신 (§6 Q1) |
+| `is_platform_admin()` `authenticated` EXECUTE | **`true`** | `RELAYED` | 위와 같음 (§6 Q1) |
+| `app_admin_role('beliefkimkim@gmail.com')` | **`'owner'`** | `RELAYED` | 위와 같음 (§6 Q4) |
+| hosted migration 장부 기록 범위 | **`025`·`030` 2건뿐** | `RELAYED` | 위와 같음 (§6 Q1-c) |
+| Production 배포 SHA | **`f4f5a12`** (= `origin/main`) | **`MEASURED`** | `gh` deployments API — 이 세션 직접 실행 |
+| migration 전수 개수 | **29** | **`MEASURED`** | `git ls-tree origin/main` — 이 세션 직접 실행 |
+| §3·§4 코드 좌표 | 본문 기재 | **`MEASURED`** | `git show origin/main:<경로>` — 이 세션 직접 실행 |
 
 ### 8-2. 여전히 `NOT_RUN`
 
