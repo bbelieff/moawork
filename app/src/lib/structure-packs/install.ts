@@ -11,11 +11,16 @@ import type { Ctx } from "@/lib/types";
 import type { BoardsRepo } from "@/lib/boards/store";
 import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { SEOUL_STRUCTURE_PACK } from "./seoul-pack";
-import type { DeferredColumn, PackBoard, StructurePack } from "./types";
+import type { DeferredColumn, PackBoard, PackColumn, StructurePack } from "./types";
 
 export interface InstalledBoard {
   slug: string;
   boardId: string;
+  /**
+   * Name(제목) 칸의 이름 — 시드 확정 ①(업체명).
+   * 003 엔진에서 Name 은 `items.title` 이라 컬럼 행이 없다. 계약으로만 돌려준다.
+   */
+  nameLabel: string;
   /** 만들어진 그룹 id — 팩의 `sections` 순서와 1:1. */
   groupIds: string[];
   /** 만들어진 컬럼 key — 팩의 `columns` 순서와 1:1. */
@@ -59,13 +64,32 @@ export function installStructurePack(
       skipped.push(packBoard.slug);
       continue;
     }
-    boards.push(installBoard(ctx, repo, packBoard));
+    boards.push(installBoard(ctx, repo, packBoard, pack));
   }
 
   return { packKey: pack.key, boards, deferred, skipped };
 }
 
-function installBoard(ctx: Ctx, repo: BoardsRepo, packBoard: PackBoard): InstalledBoard {
+/**
+ * 컬럼에 심을 선택지. `optionRef` 는 팩의 공용 세트(시드 확정 ② 지역 등)를 가리킨다.
+ *
+ * 참조를 풀지 않고 넘기면 선택지 없는 드롭다운이 조용히 만들어진다 —
+ * 없는 것을 있는 것처럼 보이게 하는 쪽이 더 나쁘므로 여기서 끊는다.
+ */
+function resolveOptions(column: PackColumn, pack: StructurePack) {
+  if (column.options) return column.options;
+  if (!column.optionRef) return null;
+  const set = pack.optionSets[column.optionRef];
+  if (!set) throw new Error(`구조 팩 선택지 세트 없음: ${column.optionRef} (${column.key})`);
+  return set;
+}
+
+function installBoard(
+  ctx: Ctx,
+  repo: BoardsRepo,
+  packBoard: PackBoard,
+  pack: StructurePack,
+): InstalledBoard {
   const board = repo.createBoard(ctx, {
     name: packBoard.name,
     description: packBoard.description,
@@ -78,7 +102,7 @@ function installBoard(ctx: Ctx, repo: BoardsRepo, packBoard: PackBoard): Install
       key: column.key,
       label: column.label,
       type: column.type,
-      options: column.options ?? null,
+      options: resolveOptions(column, pack),
       width: column.width ?? null,
     });
     return created.key;
@@ -99,5 +123,12 @@ function installBoard(ctx: Ctx, repo: BoardsRepo, packBoard: PackBoard): Install
       }).id,
   );
 
-  return { slug: packBoard.slug, boardId: board.id, groupIds, columnKeys, viewIds };
+  return {
+    slug: packBoard.slug,
+    boardId: board.id,
+    nameLabel: packBoard.nameColumn.label,
+    groupIds,
+    columnKeys,
+    viewIds,
+  };
 }

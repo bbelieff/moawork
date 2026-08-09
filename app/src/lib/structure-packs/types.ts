@@ -42,6 +42,21 @@ export interface PackColumn {
   width?: number | null;
 }
 
+/**
+ * 보드의 Name(제목) 칸 — 시드 확정 ① (PLAN-002 §5 WO-1).
+ *
+ * 003 엔진에서 Name 은 `board_columns` 행이 아니라 `items.title` 이다.
+ * 별도 컬럼으로 만들면 실제로는 없는 컬럼이 생기므로 계약으로만 남긴다.
+ * 먼데이 원본은 Name 칸에 업종 텍스트(`자사_직접제조`)를 넣는 관행이 있었으나
+ * 승계하지 않는다 — Name 은 업체명이고 업종은 `사업자 유형` 컬럼이 받는다.
+ */
+export interface PackNameColumn {
+  /** 화면에 뜨는 이름. 3보드 공통으로 `업체명`. */
+  label: string;
+  /** 먼데이 원본 Name 칸 표기(`Name`·`이름`) — 대조 추적성. */
+  mondayLabel: string;
+}
+
 /** 구조만 기록하고 설치하지 않는 컬럼. */
 export interface DeferredColumn {
   key: string;
@@ -76,6 +91,8 @@ export interface PackBoard {
   description: string;
   /** 먼데이 원본 보드 id — 실측 추적성 확보용(앱 동작에는 쓰지 않는다). */
   mondayBoardId: string;
+  /** Name(제목) 칸의 의미. 시드 확정 ① — 업체명. */
+  nameColumn: PackNameColumn;
   /** 설치할 컬럼. 배열 순서가 곧 `sort_order` 다. */
   columns: PackColumn[];
   /** 구조만 기록하는 컬럼(PLAN-003). */
@@ -100,5 +117,12 @@ export interface StructurePack {
   name: string;
   /** 실측 출처·시점을 팩 안에 남긴다(나중에 어디서 온 값인지 추적 가능하게). */
   source: string;
+  /**
+   * 보드가 공유하는 선택지 세트. `PackColumn.optionRef` 가 여기를 가리킨다.
+   *
+   * 시드 확정 ②(지역 공용 1세트)가 이 자리를 쓴다. 팩이 자기 선택지를 들고 있어야
+   * 설치 때 실제로 심긴다 — 참조만 남기면 옵션 없는 컬럼이 만들어진다.
+   */
+  optionSets: Record<string, FieldOption[]>;
   boards: PackBoard[];
 }

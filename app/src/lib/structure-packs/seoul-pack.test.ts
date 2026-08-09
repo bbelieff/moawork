@@ -110,8 +110,85 @@ describe("컬럼 계약", () => {
     }
   });
 
-  it("실측 컬럼 수 — 신규고객 25 · 컨텍관리 23 · 업무관리 25 (Name·유예분 제외)", () => {
-    expect(SEOUL_STRUCTURE_PACK.boards.map((b) => b.columns.length)).toEqual([25, 23, 25]);
+  it("실측 컬럼 수 — 신규고객 24 · 컨텍관리 21 · 업무관리 24 (Name·유예분 제외)", () => {
+    expect(SEOUL_STRUCTURE_PACK.boards.map((b) => b.columns.length)).toEqual([24, 21, 24]);
+  });
+
+  it("optionRef 는 팩이 실제로 들고 있는 세트만 가리킨다", () => {
+    for (const board of SEOUL_STRUCTURE_PACK.boards) {
+      for (const column of board.columns) {
+        if (!column.optionRef) continue;
+        expect(
+          SEOUL_STRUCTURE_PACK.optionSets[column.optionRef],
+          `${board.slug}.${column.key} → ${column.optionRef}`,
+        ).toBeTruthy();
+      }
+    }
+  });
+});
+
+describe("시드 확정 3건 — 2026-08-05 MW-총괄 (PLAN-002 §5 WO-1)", () => {
+  const [newcust, contact, work] = SEOUL_STRUCTURE_PACK.boards;
+
+  it("① Name 은 3보드 모두 업체명이고, 중복 `회사명` 컬럼이 없다", () => {
+    for (const board of SEOUL_STRUCTURE_PACK.boards) {
+      expect(board.nameColumn.label, `${board.slug} Name`).toBe("업체명");
+      const labels = board.columns.map((c) => c.label);
+      expect(labels, `${board.slug} 회사명 잔존`).not.toContain("회사명");
+    }
+  });
+
+  it("① 먼데이 실측 컬럼 수와 대조된다 — 신규고객 28 · 컨텍관리 25 · 업무관리 32", () => {
+    // 팩(Name 1 + 설치 + 유예) + 중복이라 뺀 컬럼 = 먼데이 실측 총수.
+    const MONDAY_TOTAL: Record<string, number> = { newcust: 28, contact: 25, work: 32 };
+    const REMOVED: Record<string, string[]> = {
+      newcust: ["회사명"],
+      contact: ["회사명", "담당자 구분"],
+      work: ["회사명"],
+    };
+    for (const board of SEOUL_STRUCTURE_PACK.boards) {
+      const seeded = 1 + board.columns.length + board.deferredColumns.length;
+      expect(seeded + REMOVED[board.slug].length, `${board.slug} 대조`).toBe(
+        MONDAY_TOTAL[board.slug],
+      );
+    }
+    // 신규고객 28 → 27 (PLAN-002 §5 WO-1 ① 이 못박은 숫자)
+    expect(1 + newcust.columns.length + newcust.deferredColumns.length).toBe(27);
+  });
+
+  it("② 지역은 두 보드가 같은 공용 세트 1개를 참조한다", () => {
+    const refs = SEOUL_STRUCTURE_PACK.boards.flatMap((board) =>
+      board.columns.filter((c) => c.label === "지역").map((c) => c.optionRef),
+    );
+    expect(refs).toEqual(["region", "region"]);
+    expect(SEOUL_STRUCTURE_PACK.optionSets.region).toHaveLength(222);
+  });
+
+  it("③ 담당자는 3보드 모두 멤버(사람) 컬럼이고 선택지형 담당자가 없다", () => {
+    for (const board of SEOUL_STRUCTURE_PACK.boards) {
+      const owners = board.columns.filter((c) => c.label.startsWith("담당자"));
+      expect(owners.map((c) => c.type), `${board.slug} 담당자 타입`).toEqual(["person"]);
+    }
+  });
+
+  it("③ 설치 선택지에 직원 실명이 남아 있지 않다 — 전역 카탈로그 PII", () => {
+    // 그룹 이름(아이템 프리셋 32종)은 먼데이 원본이라 유지한다. 여기서 막는 건
+    // 조직마다 달라지는 사람을 컬럼 선택지에 박아 두는 것이다.
+    const STAFF = ["이대표", "박정화", "담당자 미정"];
+    for (const board of SEOUL_STRUCTURE_PACK.boards) {
+      for (const column of board.columns) {
+        for (const option of column.options ?? []) {
+          for (const name of STAFF) {
+            expect(option.label.includes(name), `${board.slug}.${column.key}=${option.label}`).toBe(
+              false,
+            );
+          }
+        }
+      }
+    }
+    for (const view of [...newcust.views, ...contact.views, ...work.views]) {
+      expect(view.filters ?? {}, `${view.name} 뷰 필터`).toEqual({});
+    }
   });
 });
 

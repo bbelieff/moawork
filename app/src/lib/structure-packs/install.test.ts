@@ -91,6 +91,38 @@ describe("새 조직 설치 — acceptance (PLAN-002/WO-1)", () => {
     expect(views).toHaveLength(7);
   });
 
+  it("Name 칸은 업체명이다 — 시드 확정 ①", () => {
+    const result = installStructurePack(owner());
+    expect(result.boards.map((b) => b.nameLabel)).toEqual(["업체명", "업체명", "업체명"]);
+
+    // Name 은 items.title 이라 컬럼 행으로 만들지 않는다 — 없는 컬럼을 만들지 않았음을 확인.
+    for (const board of result.boards) {
+      const labels = boards().getBoardDetail(owner(), board.boardId).columns.map((c) => c.label);
+      expect(labels).not.toContain("업체명");
+      expect(labels).not.toContain("회사명");
+    }
+  });
+
+  it("공용 선택지 세트가 실제로 심긴다 — 지역 222지·사업자유형 6종 (시드 확정 ②)", () => {
+    const result = installStructurePack(owner());
+
+    for (const [index, key] of [
+      [1, "dropdown_mkyfat98"],
+      [2, "dropdown_mky78058"],
+    ] as const) {
+      const detail = boards().getBoardDetail(owner(), result.boards[index].boardId);
+      const 지역 = detail.columns.find((c) => c.key === key);
+      const options = 지역?.options_jsonb?.options;
+      expect(options, `${key} 지역 선택지`).toHaveLength(222);
+      expect(options?.[0]).toMatchObject({ id: "서울_강남구", label: "서울_강남구" });
+      expect(options?.at(-1)).toMatchObject({ label: "경남_합천군" });
+    }
+
+    const contact = boards().getBoardDetail(owner(), result.boards[1].boardId);
+    const 사업자유형 = contact.columns.find((c) => c.key === "dropdown_mkyfg5he");
+    expect(사업자유형?.options_jsonb?.options).toHaveLength(6);
+  });
+
   it("아이템(행) 데이터는 만들지 않는다 — 구조만 복제한다", () => {
     const result = installStructurePack(owner());
     for (const board of result.boards) {

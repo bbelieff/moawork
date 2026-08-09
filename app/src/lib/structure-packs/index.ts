@@ -5,11 +5,13 @@
 
 export * from "./types";
 export {
+  SEOUL_OPTION_SETS,
   SEOUL_PACK_KEY,
   SEOUL_PACK_NAME,
   SEOUL_STRUCTURE_PACK,
   allSectionPresets,
 } from "./seoul-pack";
+export { CANONICAL_REGIONS, normalizeRegion, regionOptions } from "./region-options";
 export { SEOUL_NEWCUST_BOARD } from "./seoul-newcust";
 export { SEOUL_CONTACT_BOARD } from "./seoul-contact";
 export { SEOUL_WORK_BOARD } from "./seoul-work";

@@ -20,11 +20,14 @@ export const SEOUL_NEWCUST_BOARD: PackBoard = {
   description: "신규 상담 원장 — 유입부터 컨텍관리 이동까지",
   mondayBoardId: "1816794539",
 
+  // 시드 확정 ①: Name = 업체명. 먼데이의 중복 `회사명`(text_mm2czkqg) 컬럼은 심지 않는다
+  // → 먼데이 28컬럼 = 팩 27(Name 1 + 설치 24 + 유예 2) + 제거 1.
+  nameColumn: { label: "업체명", mondayLabel: "Name" },
+
   columns: [
     { key: "___1", label: "신청일", type: "date", width: 120 },
     { key: "text_mm40jz80", label: "광고 명", type: "text", width: 120 },
     { key: "text_mkz0gcyr", label: "사업자 유형", type: "text", width: 110 },
-    { key: "text_mm2czkqg", label: "회사명", type: "text", width: 160 },
     // 먼데이 원본이 text 다(숫자 아님). 동일 복제 원칙에 따라 그대로 둔다 —
     // 교정은 먼데이-구조-스펙 §7 교정 대상이며 임의로 바꾸지 않는다.
     { key: "___88", label: "매출액", type: "text", width: 110 },
@@ -57,17 +60,12 @@ export const SEOUL_NEWCUST_BOARD: PackBoard = {
         { id: "부재 메세지 전달", label: "부재 메세지 전달", color: "#00c875", order: 1 },
       ],
     },
-    {
-      key: "color_mkyeay16",
-      label: "담당자",
-      type: "select",
-      width: 120,
-      options: [
-        { id: "이대표", label: "이대표", color: "#225091", order: 0 },
-        { id: "박정화 실장", label: "박정화 실장", color: "#757575", order: 1 },
-        { id: "담당자 미정", label: "담당자 미정", color: GREY, order: 2 },
-      ],
-    },
+    // 시드 확정 ③: 담당자는 멤버(사람) 컬럼이다. 먼데이의 선택지형 담당자
+    // (`color_mkyeay16` — 이대표/박정화 실장/담당자 미정)는 멤버 계정이 없던 시절의
+    // 우회이므로 시드에서 제외한다. 선택지형이면 담당자 탭(WO-3)·복수 배정(WO-4)·
+    // 알림이 사람에 붙지 않고, 전역 카탈로그에 특정 고객사 직원 실명이 박힌다.
+    // key 는 먼데이에 대응 컬럼이 없어 MoaWork 신설분이다.
+    { key: "person", label: "담당자", type: "person", width: 120 },
     { key: "long_text", label: "상담내용", type: "longtext", width: null },
     {
       key: "color",
@@ -187,10 +185,8 @@ export const SEOUL_NEWCUST_BOARD: PackBoard = {
     { name: "신규업체-지원사업만", groupName: "🔅지원사업만", color: "#9cd326", order: 13 },
   ],
 
-  views: [
-    { name: "전체", kind: "table", shared: true },
-    { name: "이대표", kind: "table", filters: { color_mkyeay16: ["이대표"] }, shared: true },
-    { name: "박정화 실장", kind: "table", filters: { color_mkyeay16: ["박정화 실장"] }, shared: true },
-    { name: "미배정", kind: "table", filters: { color_mkyeay16: ["담당자 미정"] }, shared: true },
-  ],
+  // 담당자별 탭(전체·이대표·박정화 실장·미배정)은 WO-3 소유다. 시드 확정 ③ 으로
+  // 담당자가 멤버 컬럼이 됐으므로 그 탭은 라벨이 아니라 멤버 id 로 걸어야 하고,
+  // 멤버는 조직마다 다르다 — 전역 팩에 직원 실명을 박아 심을 수 없다.
+  views: [{ name: "전체", kind: "table", shared: true }],
 };

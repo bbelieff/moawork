@@ -39,9 +39,12 @@ export const SEOUL_WORK_BOARD: PackBoard = {
   description: "실행 단계 — 기관·상품별 진행과 수수료 정산",
   mondayBoardId: "1814266449",
 
+  // 시드 확정 ①: Name = 업체명. 중복 `회사명`(text) 제외
+  // → 먼데이 32컬럼 = 팩 31(Name 1 + 설치 24 + 유예 6) + 제거 1.
+  nameColumn: { label: "업체명", mondayLabel: "이름" },
+
   columns: [
     { key: "project_owner", label: "담당자", type: "person", width: 110 },
-    { key: "text", label: "회사명", type: "text", width: 160 },
     { key: "link_mky5wdr", label: "홈페이지", type: "url", width: 140 },
     { key: "dropdown_mky5vvck", label: "사업자유형", type: "multiselect", optionRef: "biz_reg_type", width: 120 },
     { key: "date_mky57cjt", label: "창업년도", type: "date", width: 110 },

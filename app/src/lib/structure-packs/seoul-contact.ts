@@ -17,11 +17,14 @@ export const SEOUL_CONTACT_BOARD: PackBoard = {
   description: "계약 직전 단계 — 미팅·계약금·업무관리 인계",
   mondayBoardId: "1816794566",
 
+  // 시드 확정 ①: Name = 업체명. 중복 `회사명`(___67) 제외
+  // → 먼데이 25컬럼 = 팩 23(Name 1 + 설치 21 + 유예 1) + 제거 2(회사명·담당자 구분).
+  nameColumn: { label: "업체명", mondayLabel: "Name" },
+
   columns: [
     { key: "text_mm40wa7d", label: "광고 명", type: "text", width: 120 },
     { key: "person", label: "담당자", type: "person", width: 110 },
     { key: "___13", label: "신청일", type: "date", width: 120 },
-    { key: "___67", label: "회사명", type: "text", width: 160 },
     { key: "file", label: "파일", type: "file", width: 90 },
     { key: "____", label: "연락처", type: "phone", width: 130 },
     {
@@ -65,17 +68,8 @@ export const SEOUL_CONTACT_BOARD: PackBoard = {
         { id: "계약취소", label: "계약취소", color: "#bb3354", order: 10 },
       ],
     },
-    {
-      key: "color_mkx7de80",
-      label: "담당자 구분",
-      type: "select",
-      width: 120,
-      options: [
-        { id: "담당자 미정", label: "담당자 미정", color: GREY, order: 0 },
-        { id: "박정화", label: "박정화", color: "#00c875", order: 1 },
-        { id: "이대표", label: "이대표", color: "#225091", order: 2 },
-      ],
-    },
+    // 시드 확정 ③: 선택지형 담당자(`color_mkx7de80` 담당자 구분 — 담당자 미정/박정화/
+    // 이대표)는 심지 않는다. 이 보드의 담당자는 위 `person` 멤버 컬럼 하나다.
     {
       key: "color_mm4td02",
       label: "이동",
