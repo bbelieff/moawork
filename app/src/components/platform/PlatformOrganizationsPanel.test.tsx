@@ -11,6 +11,9 @@ const aggregate: PlatformAggregateState = {
   kind: "ready",
   updatedAt: "2026-08-03T00:00:00Z",
   values: [{ label: "연결된 워크스페이스", value: "3", description: "안전 집계" }],
+  freshness: { kind: "fresh", computedAt: "2026-08-03T00:00:00Z", ageHours: 2, staleAfterHours: 36 },
+  coverage: { requestedDays: 30, receivedRows: 30, usableRows: 30, droppedRows: 0, partial: false },
+  allZero: false,
 };
 
 describe("PlatformOrganizationsPanel", () => {
@@ -58,6 +61,6 @@ describe("PlatformOrganizationsPanel", () => {
   it("reads only the named aggregate metric", () => {
     expect(connectedWorkspaceCount(aggregate)).toBe("3");
     expect(connectedWorkspaceCount(unavailablePlatformAggregate())).toBeNull();
-    expect(connectedWorkspaceCount({ kind: "ready", updatedAt: null, values: [] })).toBeNull();
+    expect(connectedWorkspaceCount({ ...aggregate, kind: "ready", updatedAt: null, values: [] })).toBeNull();
   });
 });
