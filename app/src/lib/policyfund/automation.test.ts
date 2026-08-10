@@ -164,14 +164,6 @@ describe("AND 조건절", () => {
     expect(validateRule(rule({ conditions: [{ column_key: "seal", operator: "is", value_kind: "label_id", value: "완료" }] }))).not.toHaveLength(0);
   });
 
-  it("추가 액션 유형을 손실 없이 표현한다", () => {
-    const actions = [
-      { kind: "move_board", board_id: "board-b", group_id: "group-b", field_mapping: { company: "company" } },
-      { kind: "set_field", column_key: "fee", value: 5 },
-      { kind: "button", command: "move_to_top" },
-    ] satisfies NonNullable<AutomationRule["action"]>[];
-    expect(actions.map((action) => action.kind)).toEqual(["move_board", "set_field", "button"]);
-  });
 });
 
 describe("일괄 판정", () => {

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const sql = readFileSync(new URL("../../../../supabase/migrations/035_automation_cond.sql", import.meta.url), "utf8");
+const sql = readFileSync(new URL("../../../../supabase/migrations/037_automation_cond.sql", import.meta.url), "utf8");
 
 describe("035 automation AND contract", () => {
   it("stores an ordered condition array and stable trigger label id", () => {
@@ -21,15 +21,9 @@ describe("035 automation AND contract", () => {
     expect(sql).toContain("jsonb_array_length(conditions) = 0 or trigger_label_id is not null");
   });
 
-  it("stores every skipped reason instead of silently dropping execution", () => {
-    expect(sql).toContain("create table if not exists public.board_automation_evaluations");
-    expect(sql).toContain("outcome text not null check (outcome in ('executed', 'skipped'))");
-    expect(sql).toContain("outcome = 'skipped' and jsonb_array_length(blocked_reasons) > 0");
-    expect(sql).toContain("record_board_automation_evaluation");
-    expect(sql).toMatch(/grant execute on function public\.record_board_automation_evaluation[\s\S]*to service_role/);
-  });
-
-  it("stores expanded action schemas without replacing existing migrations", () => {
-    for (const kind of ["move_group", "move_board", "set_field", "button"]) expect(sql).toContain(`'${kind}'`);
+  it("does not cross into GT09 execution or history ownership", () => {
+    expect(sql).not.toContain("board_automation_evaluations");
+    expect(sql).not.toContain("record_board_automation_evaluation");
+    expect(sql).not.toContain("service_role");
   });
 });

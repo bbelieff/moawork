@@ -23,7 +23,6 @@ export interface AutomationRule {
   trigger_label_id?: string;
   /** Every condition must match. An empty list preserves legacy behavior. */
   conditions?: readonly AutomationCondition[];
-  action?: AutomationAction;
   /** 이동 대상 그룹. */
   to_group_id: string;
   enabled: boolean;
@@ -38,12 +37,6 @@ export interface AutomationCondition {
   value_kind: ConditionValueKind;
   value: string;
 }
-
-export type AutomationAction =
-  | Readonly<{ kind: "move_group"; group_id: string }>
-  | Readonly<{ kind: "move_board"; board_id: string; group_id: string; field_mapping: Readonly<Record<string, string>> }>
-  | Readonly<{ kind: "set_field"; column_key: string; value: unknown }>
-  | Readonly<{ kind: "button"; command: "move_to_top" }>;
 
 /** 자동이동 판정 입력 — 아이템의 현재 위치와 바뀐 상태값. */
 export interface ItemStateChange {
