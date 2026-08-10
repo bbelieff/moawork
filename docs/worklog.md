@@ -217,6 +217,76 @@ append-only 는 «내용 삭제 금지» 이지 «과거 실수의 흔적을 지
 - 비주얼: **해당 없음**(마이그레이션 + lib + 테스트만, UI 파일 0건).
 - 판정: 코드 완료·게이트 PASS. 노트북 CT10 검수 대기. 자기보고로 PASS 승격하지 않는다.
 
+---
+
+## 2026-08-10 — 노트북 CT04 · BBE-16 딜 상세 협업(타임라인·댓글·파일)
+
+[START · 모아워크 노트북 CT04(260810)/claude]
+
+- **무엇을**: `/deals/[dealId]`(001 core.crm, 실재·가동 중) 위에 통합 타임라인(활동+댓글) · 댓글(수정이력) · 파일(서명URL) · 담당자변경 알림 · 되돌려보내기(보완요청) 구현.
+- **인수인계 문서 검증(중요)**: `24_노트북CT04.md`(Downloads) 참조 파일 4/5가 전체 git 히스토리(122브랜치)에 없음 — `docs/plans/배정-260810/`, `qa-mockup.mjs`, `UI목업_워크스word최종_v6.html`, `결정대장.md`(D49/D51) 전부 미실재. 도장 위치 지시도 오류(BBE-94는 하트비트 전용, 접수/완주 도장은 BBE-73 규정상 작업카드=BBE-16에). belie 확인 후 "BBE-16 실측 기준 착수" 승인받음.
+  두 번째 배정 메시지(dump-mockup.mjs·D60/D61 포함)도 동일 검증 결과 — 여전히 미실재. 단 "멘션→알림"·"되돌려보내기(피드백완료/정보보완/서류보완)"는 `lib/notify/types.ts`(mention/requested 타입 기예약) 및 `structure-packs/seoul-newcust.ts`(피드백 상황 프리셋) 실물 근거 확인 — 이 부분은 반영.
+- **⚠️ 엔티티 중복 발견**: BBE-107(데탑 CT05)을 Linear 로 직접 조회 — board-item 상세(003 보드엔진) 설계이며 `status=Backlog/startedAt=null`, 해당 라우트(`boards/[id]/items/[itemId]` 류) 자체가 레포에 없음(`boards/[id]/page.tsx` 까지만 존재). 반면 BBE-16 제목의 "딜 상세"는 실재·가동 중인 `/deals/[dealId]`(assigned_to/계약상태 등 001 CRM 어휘와 일치, 최근 실커밋 `#48`·`#105`)와 부합. **두 카드가 서로 다른 엔티티를 가리킬 가능성** → 이미 존재·가동 중인 `/deals/[dealId]` 를 대상으로 진행 결정. BBE-16 코멘트에 보고 완료.
+- **프로덕션 버그 발견**: `app/src/lib/services/files.ts`(첨부파일)가 동기 `getRepo()` 위에서 동작하는데, `getRepo()`는 **환경 무관하게 항상 `LocalRepo`(in-memory)** — 즉 첨부파일이 프로덕션에서도 영구 저장되지 않는다(서버리스 인스턴스 재시작 시 소실). BBE-16의 "파일은... 원본 data URL을 저장하지 않는다" 요건 충족을 위해 새 경로(비동기 `getCrmService()` 기반)로 재구현하며 이 버그도 함께 해소.
+- **잡는 파일(리스)**:
+  - `app/src/components/deal/detail/**` (신규)
+  - `app/src/lib/deal/**` (신규 — comments.ts, fileSignedUrl.ts, notify.ts 등. 기존 `lib/services/files.ts` 는 건드리지 않음)
+  - `app/src/app/api/deals/[dealId]/files/[fileId]/route.ts` (신규)
+  - `app/src/app/(app)/deals/[dealId]/page.tsx` · `actions.ts` — **연결 한 줄만**(컴포넌트 마운트 교체, 신규 액션 추가). 기존 액션 삭제 없음.
+  - 신규 마이그레이션(035, 최신 main 기준 재확인) — notifications 발행 트리거/RPC (assigned/mention/requested). 001~034 무수정.
+- **안 만지는 것**: `components/deal/**` 루트(DealInfoTab·ContractStatusField 등 필드 배치, CT05/BBE-107 영역), `app/src/app/platform/**`, `is_org_member()`, `app_admins` 직접 select, 기존 마이그레이션 파일 전부.
+- **산출물**: 위 리스 전체 + PR(BBE-16 본문 포함).
+- **상대에게 필요한 것**: BBE-107 이 실제로 `/deals/[dealId]` 를 대체/흡수할 계획이면 알려달라(이관 필요). 없으면 이대로 진행.
+- Base SHA: `3cc8536e38b7aaa47b843fbfe8e445cecb0bba68` · 격리 worktree `../wt-bbe16` · 브랜치 `claude/bbe-16-deal-detail`.
+
+[END · 모아워크 노트북 CT04(260810)/claude]
+
+- **결과**: PASS(코드·테스트·빌드). CT05 독립 검수 + 배포 확인은 **아직**(완주 아님, 리뷰 대기로 PR 오픈).
+- **산출물**(전부 신규 파일 또는 기존 파일 additive 편집):
+  - `app/src/lib/deal/comments.ts` — 댓글 CRUD(jsonb, `deals.custom.comments[]`), 수정이력, 낙관적 잠금(`version` 정수 카운터)
+  - `app/src/lib/deal/files.ts` — 첨부 CRUD(비동기 `getCrmService()` 경로 — **프로덕션 미영속 버그 해소**)
+  - `app/src/lib/deal/fileSignedUrl.ts` — HMAC 서명·만료 다운로드 토큰
+  - `app/src/lib/deal/timeline/index.ts` — activities+comments 병합
+  - `app/src/lib/deal/members.ts` — 조직 멤버 조회(재배정/멘션 후보)
+  - `app/src/lib/deal/notify.ts` — mention/보완요청 RPC 호출부
+  - `app/src/components/deal/detail/{DealTimeline,DealAssignee,DealFollowupRequest,DealFiles}.tsx` — 신규 UI
+  - `app/src/app/api/deals/[dealId]/files/[fileId]/route.ts` — 서명 다운로드 라우트
+  - `supabase/migrations/035_deal_collab_notify.sql` — assigned 트리거 + mention/requested RPC (001~034 무수정)
+  - 기존 파일 additive 편집: `deals/[dealId]/actions.ts`(신규 액션 6개 추가, 기존 액션 무삭제) ·
+    `deals/[dealId]/page.tsx`(컴포넌트 마운트 교체) · `lib/crm/activity.ts`(assignment 타입 추가) ·
+    `lib/crm/asyncService.ts`(`reassignDeal` 메서드 추가)
+- **테스트로 잡은 실제 버그 2건(직접 원인 규명·수정)**:
+  1. `reassignDeal` 초안이 `before`(getDeal 반환 객체)를 들고 있다가 `updateDeal`(로컬소스는 같은 객체를 in-place mutate)이
+     그 참조를 같이 바꿔버려 변경 감지가 항상 false였다 → `previousAssignedTo` 원시값 스냅샷으로 수정.
+  2. 댓글 낙관적 잠금을 `edited_at`(밀리초 ISO 문자열)로 비교했더니, 빠른 연속 편집이 같은 밀리초에 겹쳐
+     충돌을 못 잡는 테스트 실패 발견 → **정수 `version` 카운터**로 교체(타임스탬프 충돌 원천 차단).
+- **수용기준 대조**:
+  - 활동/댓글 작성·수정이력 저장 — ✅ (comments.ts, edit_history[])
+  - 상태·담당자 변경이 타임라인+알림 반영 — ✅ (activity 자동기록 + 035 트리거)
+  - 파일 서명URL·조직경계, data URL 미저장 — ✅ (content_b64 내부전용 + HMAC 서명 라우트)
+  - 동시수정 충돌·업로드실패 사용자 안내 — ✅ 댓글(ConcurrentEditError). ⚠ 딜 필드(제목/금액) 낙관적 잠금은 그
+    폼이 CT05 소유(DealInfoTab)라 **범위 밖으로 명시 제외** — 후속 필요시 CT05 판단.
+- **검증**: `check.sh` 초록(app 1292 / worker 31, 신규 테스트 ~90건) · `next build` 성공(`/deals/[dealId]`,
+  `/api/deals/[dealId]/files/[fileId]` 라우트 확인). 브라우저 프리뷰 시도 — **NOT_RUN**: 루트 레이아웃
+  (`(app)/layout.tsx` → `loadWorkspaceRoutingSnapshot`)이 이제 Supabase 환경변수를 **무조건** 요구해 전체 앱이
+  로컬에서 기동 자체가 안 됨(내가 만들지 않은 기존 상태 — `.env.local` 부재는 이 세션 내내 반복 확인됨).
+  BBE-16 원문이 이 경우 NOT_RUN 을 명시 허용. 스크린샷(1440/375) 도 같은 사유로 NOT_RUN — 데탑 CT05 환경에
+  Supabase 설정이 있다면 리뷰 시 시각 확인 요청.
+- **반납하는 파일**: 위 리스 전부(신규 파일은 계속 소유, `page.tsx`/`actions.ts`/`activity.ts`/`asyncService.ts` 는
+  additive 편집 완료 후 리스 반납 — 다른 세션이 같은 파일을 이어서 만져도 충돌 지점 최소).
+- **이어받을 것**: PR 리뷰(데탑 CT05) → 승인 시 squash merge → 배포 확인(`https://www.moa-work.com/login` 200) →
+  BBE-16 완주 도장 + BBE-94 완주 하트비트. 셋 다 이 세션이 CT05 승인 이후 이어서 수행 예정(이번 종료는 리뷰 대기 지점).
+- **발견한 리스크**:
+  1. `(app)/layout.tsx` 가 Supabase 미설정 시 전체 앱을 500 으로 죽인다(로컬 개발 전면 불가) — BBE-16 과
+     무관한 기존 상태지만 다른 트랙 작업에도 영향을 줄 수 있어 별도 보고 가치 있음(이 세션은 범위 밖이라 손대지 않음).
+     ⚠ 노트북 CT08(BBE-90, 아래 항목)도 같은 레이아웃 크래시를 독립적으로 발견 — 실재 확인된 공용 버그.
+  2. 노트북 CT06(BBE-21, 아래 항목)도 동일한 "착수 전 6단계 파일 미실재" 문제를 겪었다 — 온보딩 문서 생성
+     경로 자체의 구조적 결함으로 보인다(나 혼자만의 우연이 아님). ⚠ **업데이트**: rebase 시점
+     (2026-08-11) 실측 — `dump-mockup.mjs`·`qa-mockup.mjs`·`결정대장.md` 가 이제 **실재한다**
+     (`bd4c0c7 docs: v6 정본 일괄 등재 — 목업·검사·결정대장·배정판 (원격 부재 해소)`). 문제는 해소됐다.
+
+---
+
 ## [END · 모아워크 노트북 CT08(260810)/claude] BBE-90 — 인증 QA 증거 보강 완료
 
 - **결과 PASS**: `PlatformAccessNotice`의 `platform-forbidden`/`platform-unavailable` 두 상태가
