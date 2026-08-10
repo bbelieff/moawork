@@ -14,7 +14,7 @@
 - 관리자 모드는 `/platform`, 사용자 모드는 가입 회사가 2개 이상인 계정의 `/workspaces`로 이동했다.
 - 회사 선택 후 `/w/{redacted}`로 진입했고 계정 메뉴에서 다시 관리자 모드로 돌아갔다.
 - 브라우저 콘솔 경고·오류는 관찰된 전 구간에서 0건이었다.
-- Preview OAuth는 안전한 Preview URL과 현재 allowlist 상태를 확인할 수 없어 아직 `NOT_RUN`이다. Production PASS를 Preview PASS로 승격하지 않는다.
+- Preview `/login` 렌더링과 Google 인증 공급자 진입은 확인했다. 계정 선택 뒤 동적 콜백 URL은 브라우저 보안 정책이 차단해 `NOT_RUN_BROWSER_POLICY`이며, Production PASS를 Preview OAuth PASS로 승격하지 않는다.
 - 신규 제품 결함은 발견하지 않았다. 기존 다중 회사 라우팅 관측은 BBE-89 범위와 일치한다.
 
 ## 2. 입력과 사전조건
@@ -61,8 +61,9 @@
 
 | ID | 시나리오 | 판정 | 이유 |
 | --- | --- | --- | --- |
-| P1 | Preview `/login` 렌더링 | NOT_RUN | BBE-92 Preview URL 미생성 |
-| P2 | Preview Google OAuth callback | NOT_RUN | Preview URL과 redirect allowlist 현재 상태 미확인 |
+| P1 | Preview `/login` 렌더링 | PASS | PR #138 Vercel Preview에서 로그인 화면과 Google CTA 렌더링 확인 |
+| P2 | Preview Google OAuth provider 진입 | PASS | Google 계정 선택 화면까지 정상 전환 |
+| P3 | Preview Google OAuth callback 완료 | NOT_RUN_BROWSER_POLICY | 계정 선택 뒤 동적 콜백 URL을 브라우저 보안 정책이 차단. 우회·다른 브라우저 표면 사용 금지에 따라 중단 |
 | P3 | 광범위한 `*.vercel.app` 허용 금지 | PASS_STATIC | BBE-92 계약 확인. 환경 변경은 수행하지 않음 |
 
 Preview에서는 실제 배포 URL이 생긴 뒤 해당 URL만 대상으로 OAuth를 왕복한다. Supabase Site URL 변경, 광범위 wildcard 추가, 비밀값 조회·출력은 범위 밖이다.
@@ -71,7 +72,7 @@ Preview에서는 실제 배포 URL이 생긴 뒤 해당 URL만 대상으로 OAut
 
 - 신규 결함: 없음.
 - BBE-89: 다중 회사 계정의 `/workspaces` 진입과 비인가·비멤버 라우팅 일관성은 기존 카드에서 추적한다. 이번 실측은 권한 있는 다중 회사 계정의 정상 진입만 증명한다.
-- Preview OAuth: `NOT_RUN`. Preview 배포가 생긴 뒤 별도 증거가 필요하다.
+- Preview OAuth: `/login`·공급자 진입 `PASS`, callback 완료 `NOT_RUN_BROWSER_POLICY`. 앱 결함으로 분류하지 않았고 Preview OAuth 완료 증거는 여전히 필요하다.
 - 사용자 유형: 이번 실행은 관리자 권한과 다중 회사 멤버십을 가진 단일 실제 계정만 검증했다. 일반 사용자 전용 계정과 0·1개 회사 계정은 `NOT_RUN`이다.
 - 고객 데이터: 화면 진입 여부만 확인했으며 값·행·식별자는 수집하거나 기록하지 않았다.
 
