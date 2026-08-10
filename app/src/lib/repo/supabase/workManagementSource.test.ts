@@ -2,6 +2,38 @@ import { describe, expect, it, vi } from "vitest";
 import { WorkManagementSource, WorkManagementUnavailableError } from "./workManagementSource";
 
 describe("WorkManagementSource", () => {
+  it("loads a tenant-bound empty board through the exact read RPC contract", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: {
+        board: {
+          id: "work-management:org-a",
+          orgId: "org-a",
+          title: "업무관리",
+          icon: "work",
+          templateKey: "work-management",
+          templateVersion: 1,
+          baselineFingerprint: "baseline",
+          currentFingerprint: "current",
+        },
+        groups: [],
+        columns: [],
+        items: [],
+        members: [],
+        views: [],
+        virtualBindings: [],
+        role: "manager",
+        filesEnabled: false,
+      },
+      error: null,
+    });
+
+    const result = await new WorkManagementSource({ rpc }).load("org-a");
+
+    expect(result.items).toEqual([]);
+    expect(result.board.orgId).toBe("org-a");
+    expect(rpc).toHaveBeenCalledWith("read_work_management_board", { p_org_id: "org-a" });
+  });
+
   it("fails closed when the foundation RPC is unavailable", async () => {
     const rpc = vi.fn().mockResolvedValue({ data: null, error: { message: "missing" } });
     await expect(new WorkManagementSource({ rpc }).load("org-a")).rejects.toBeInstanceOf(WorkManagementUnavailableError);
