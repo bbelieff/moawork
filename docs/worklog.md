@@ -174,6 +174,37 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 - 판정: 코드 완료·게이트 PASS. 눈으로 보는 확인과 hosted 031 상태는 belie/CT02 몫으로 남긴다.
   자기보고로 PASS 승격하지 않는다.
 
+---
+
+## [END · BBE-105/claude] 2026-08-10 — 이중 잠금 게이트·설정 토글 UI (구현 완료 · 검수 대기)
+
+- PR [#124](https://github.com/bbelieff/moawork/pull/124) 오픈. 브랜치 `claude/bbe-105-doublelock`,
+  base `origin/main@7520361c2f8620f4e40345098697cffbc571d5fb`, 전용 worktree
+  `C:\Users\Belief-desktop\Desktop\개발프로젝트\.worktrees\bbe-105-doublelock`.
+- 리스: `app/src/lib/automation/lock/**`·`app/src/components/automation-presets/lock/**`
+  (신규 15파일). **기존 파일 변경 0.**
+- 착수 전 6단계 완료 — 목업 `UI목업_워크스페이스_최종_v6.html` 확인, `node docs/design/qa-mockup.mjs`
+  75/75 통과, 결정대장 D36·D54·D55·D66·D69 대조, `git fetch` 실측(origin/main=HEAD).
+- **배정판에 없던 의존관계 3건을 발견해 스코프를 조정했다**(BBE-105·BBE-94 Linear 코멘트에 원문):
+  ① BBE-104(A-1, 조건절 AND 엔진)가 착수 시점 In Progress이고 카드 설명 자체가
+  "blocked by A-1"이다 — N-조건 엔진을 병행 재구현하지 않고 `LockCondition[]` 좁은
+  인터페이스로만 받는다. ② D66(회사별 on/off+사유+감사기록) 영속화는 새 마이그레이션이
+  필요하지만 리스에 `supabase/migrations/**` 가 없다 — 순수 판정 함수까지만 완성하고
+  영속화는 후속 카드로 넘긴다. ③ 목업의 "리드컨택→업무관리" 보드가 `app/src` 에 아직
+  없다(컨택 파이프라인 미머지) — 다이얼로그·토글을 콜백 기반으로 독립 완성했다.
+  상세: `app/src/lib/automation/lock/README.md`.
+- D69/BBE-123 합의 요청: 신규리드 우측 고정이 «컨택 이동»으로 바뀌면 그 버튼에도 이중
+  잠금이 붙는지. 결정대장 실측상 D36 은 2관문(리드컨택→업무관리)에만 적용되므로
+  **기본값으로 1관문에는 붙이지 않음**을 PR 본문에 명시하고 회신을 기다린다.
+- 게이트: `bash scripts/check.sh` 초록 — app 1257 PASS/9 skip(133 files) · worker 21 PASS ·
+  exit 0(commit `570e1db`, pre-commit 훅 동일 게이트 재통과). 비밀값 스캔 0건.
+  `package-lock.json` 의 `"peer": true` 메타 변경은 리스 밖이라 되돌려 커밋에서 제외.
+- **NOT_RUN**: 검수(CT08)·머지·배포·프로덕션 확인·1440/375px 스크린샷 — 실제 보드가
+  없어 브라우저 렌더 검증도 이번 PR 범위 밖이다(컴포넌트는 `renderToStaticMarkup` 테스트로
+  문구·구조만 고정). D66 DB 영속화·BBE-104 어댑터 연결도 후속 카드다. 리스 반납.
+
+---
+
 ## [FIX · PLAN-002/WO-1 (BBE-46)/claude] 2026-08-09 — PR #94 반려 2건 수정 (시드 확정 3건 반영)
 
 - 검수 반려(데탑 CT02 2026-08-09 · ✅5/❌2)에 대한 작성자 수정. 인수: 데탑 CT05(260809-2).
