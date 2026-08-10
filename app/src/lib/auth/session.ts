@@ -36,7 +36,7 @@ function parseOrg(value: unknown): Org | null {
   const planTier = text(row.plan_tier);
   const createdAt = text(row.created_at);
   return id && name && planTier && createdAt
-    ? { id, name, plan_tier: planTier, created_at: createdAt }
+    ? { id, name, plan_tier: planTier, created_at: createdAt, logo_url: text(row.logo_url) }
     : null;
 }
 
@@ -62,7 +62,7 @@ async function getSupabaseSession(
   const { data: membershipRows, error: membershipError } = await supabase
     .from("org_members")
     .select(
-      "org_id, status, role, scope, orgs!inner(id, slug, status, name, plan_tier, created_at)",
+      "org_id, status, role, scope, orgs!inner(id, slug, status, name, plan_tier, created_at, logo_url)",
     )
     .eq("user_id", authUserId)
     .order("created_at", { ascending: true });

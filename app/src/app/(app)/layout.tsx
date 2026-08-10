@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
-import { Logo } from "@/components/brand/Logo";
+import { WorkspaceBrand } from "@/components/brand/WorkspaceBrand";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { SidebarNav } from "@/components/shell/SidebarNav";
 import { AccountMenu } from "@/components/account/AccountMenu";
@@ -95,7 +95,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}
       >
         <div className="px-2 pb-4 pt-1">
-          <Logo height={30} href={logoHref} />
+          <WorkspaceBrand orgName={ctx.org.name} logoUrl={ctx.org.logo_url} href={logoHref} height={30} />
           <small
             className="mt-1.5 block pl-0.5 text-[11px]"
             style={{ color: "var(--mw-sub)" }}
