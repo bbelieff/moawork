@@ -4,6 +4,27 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [START · 모아워크 데탑 CT04(260810)/claude] 2026-08-10 — BBE-125 업체 마스터 · 초성 검색 · 중복 방지
+
+- base `origin/main` = `7520361c2f8620f4e40345098697cffbc571d5fb`(직접 실측). branch `claude/bbe-125-company`, 전용 worktree.
+- 착수 전 6단계 완료: 목업 v6 열람(브라우저) · `node docs/design/qa-mockup.mjs` **75/75 통과**(배정 문서의 "55개"는 낡은 값) ·
+  결정대장 확인 · Linear BBE-125/BBE-108/BBE-121 원문 대조 · 착수 도장(BBE-94).
+- **배정 문서(04_데탑CT04.md)와 Linear 실물이 3곳에서 어긋났다. Linear를 정본으로 따랐다.**
+  ① 배정 문서 "덮는 결정: D44~D48"(로고·필터·실시간·히스토리·복제분산) → 실제로는 D29~D33·D40
+     (결정대장 §J가 BBE-125를 이렇게 명시). ② 배정 문서 리스가 신규 테이블(`app/src/lib/company/**`
+     단독)을 암시했으나, 실제 설계(`docs/design/업체·자금건_데이터모델_v1.md`)는 **기존 001 스키마의
+     `companies`/`deals`를 확장**하는 그림이다. ③ **배정 문서에 없던 사실: BBE-125가 BBE-108(회계 원장)에
+     `blocked_by`로 걸려 있고, BBE-108은 Backlog·미착수(WO 3개로 아직 안 쪼개짐)**.
+- **판단**: `companies`/`deals` 컬럼 확장·migration은 BBE-108의 WO 분해와 소유권이 겹칠 위험이 커서
+  이번 계약에서 제외했다. 대신 **DB 비의존 영역만** 완주했다 — 초성 검색, 사업자등록번호/정규화명+대표자명
+  기반 중복판정(D40 "자동 병합 금지, 애매하면 확인 필요"), 목업 picker UI 1:1 이식. 새 테이블/마이그레이션은
+  **0건**(리스에 있던 `supabase/migrations/<최신+1>_company.sql`은 이번 계약에서 발행하지 않음).
+- 산출물: `app/src/lib/company/{types,chosung,match,index}.ts` + 테스트 2종(24 assertions) ·
+  `app/src/components/company/CompanyPickerPanel.tsx` + 테스트(5). 기존 `app/src/components/company/CompanyDetail.tsx`
+  (001 시절 범용 CRM, 사이드바 미연결 죽은 코드로 확인)는 **무접촉** — 새 파일만 추가했다.
+- 환경 사고(내 실수, 정직 기록): 같은 워크트리에서 npm install을 중복 실행해 `node_modules`가
+  손상됐다(eslint 등 부분 삭제). robocopy mirror 트릭으로 복구 중 — 이 항목은 게이트 PASS 확인 후 END에서 마감.
+
 ## [FIX · PLAN-002/WO-1 (BBE-46)/claude] 2026-08-09 — PR #94 반려 2건 수정 (시드 확정 3건 반영)
 
 - 검수 반려(데탑 CT02 2026-08-09 · ✅5/❌2)에 대한 작성자 수정. 인수: 데탑 CT05(260809-2).
