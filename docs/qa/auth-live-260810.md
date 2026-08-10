@@ -64,7 +64,7 @@
 | P1 | Preview `/login` 렌더링 | PASS | PR #138 Vercel Preview에서 로그인 화면과 Google CTA 렌더링 확인 |
 | P2 | Preview Google OAuth provider 진입 | PASS | Google 계정 선택 화면까지 정상 전환 |
 | P3 | Preview Google OAuth callback 완료 | NOT_RUN_BROWSER_POLICY | 계정 선택 뒤 동적 콜백 URL을 브라우저 보안 정책이 차단. 우회·다른 브라우저 표면 사용 금지에 따라 중단 |
-| P3 | 광범위한 `*.vercel.app` 허용 금지 | PASS_STATIC | BBE-92 계약 확인. 환경 변경은 수행하지 않음 |
+| P4 | 광범위한 `*.vercel.app` 허용 금지 | PASS_STATIC | BBE-92 계약 확인. 환경 변경은 수행하지 않음 |
 
 Preview에서는 실제 배포 URL이 생긴 뒤 해당 URL만 대상으로 OAuth를 왕복한다. Supabase Site URL 변경, 광범위 wildcard 추가, 비밀값 조회·출력은 범위 밖이다.
 
@@ -76,7 +76,50 @@ Preview에서는 실제 배포 URL이 생긴 뒤 해당 URL만 대상으로 OAut
 - 사용자 유형: 이번 실행은 관리자 권한과 다중 회사 멤버십을 가진 단일 실제 계정만 검증했다. 일반 사용자 전용 계정과 0·1개 회사 계정은 `NOT_RUN`이다.
 - 고객 데이터: 화면 진입 여부만 확인했으며 값·행·식별자는 수집하거나 기록하지 않았다.
 
-## 7. 릴리스 게이트
+## 7. 비식별 증거 영수증
+
+아래 세 payload는 이 문서의 fenced block 내부 텍스트만 UTF-8/LF로 해시한 값이다. 계정·이메일·회사명·실제 slug·고객 데이터는 포함하지 않았다. 인증 화면 screenshot은 개인정보 노출 방지를 위해 캡처하지 않았으며 `NOT_CAPTURED_PRIVACY_BOUNDARY`로 남긴다.
+
+| 증거 | 문서 내 위치 | payload bytes | SHA-256 |
+| --- | --- | ---: | --- |
+| public redirect trace | `AUTH92-PUBLIC-REDIRECT-TRACE-01` block | 275 | `D33C0F1D88BCC5BE745E16131A64FC44DB9982040B92F8E454FDBE033BFE7243` |
+| authenticated/Preview route trace | `AUTH92-BROWSER-ROUTE-TRACE-01` block | 420 | `7A62D52AD74783B63E9AF524E43B7C478CE80FA35D57DE7B61F77FACE08CB138` |
+| console/privacy receipt | `AUTH92-CONSOLE-RECEIPT-01` block | 281 | `3ABDC09F2D8115334C991BC1E621DB704A17EA51C2DC95DEF910C9998BC24B1C` |
+
+```text
+evidence_id=AUTH92-PUBLIC-REDIRECT-TRACE-01
+GET /login => 200
+GET /mode => 307 /login?next=%2Fmode
+GET /platform => 307 /login?next=%2Fplatform
+GET /workspaces => 307 /login?next=%2Fworkspaces
+GET /auth/callback (code absent) => 307 /login?error=auth
+GET /auth/signout => 405
+```
+
+```text
+evidence_id=AUTH92-BROWSER-ROUTE-TRACE-01
+privacy=account, email, company name, slug redacted
+production_google_callback => /mode?next=%2F
+admin_mode => /platform
+user_mode => /workspaces
+workspace_select => /w/{redacted}
+account_menu_admin_mode => /platform
+authenticated_direct_mode => /platform (OBSERVED)
+preview_login => rendered
+preview_google_provider => account chooser
+preview_callback => NOT_RUN_BROWSER_POLICY
+```
+
+```text
+evidence_id=AUTH92-CONSOLE-RECEIPT-01
+observed_scope=production login, mode, platform, workspaces, workspace shell; preview login and provider entry
+console_warning_count=0
+console_error_count=0
+network_secret_or_customer_payload_captured=0
+screenshot=NOT_CAPTURED_PRIVACY_BOUNDARY
+```
+
+## 8. 릴리스 게이트
 
 | 게이트 | 상태 | 비고 |
 | --- | --- | --- |
@@ -88,6 +131,6 @@ Preview에서는 실제 배포 URL이 생긴 뒤 해당 URL만 대상으로 OAut
 | 1440px UI 증거 | N/A | UI 파일 변경 0 |
 | 제품 배포·Production health | N/A | 문서 전용 변경. 기존 Production `/login` 200은 §3 증거 |
 
-## 8. 롤백
+## 9. 롤백
 
 이 변경은 신규 QA 문서 1개뿐이다. 철회가 필요하면 해당 문서 커밋을 revert한다. 제품 코드, Supabase, Vercel 환경, 고객 데이터에는 변경이 없다.
