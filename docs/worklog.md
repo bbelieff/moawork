@@ -1754,3 +1754,11 @@ all/assigned), 헬퍼 `is_org_member`/`org_role`/`org_scope`, 트리거 `add_org
 - Vercel Production `dpl_BM2g6txphAHZ1iN2rVBuqZZU4iZd`가 exact merge SHA로 READY이고 canonical `https://www.moa-work.com/platform/organizations`에 연결됐다.
 - 독립 MWC Production QA는 `PASS_WITH_NOT_RUN_BOUNDARIES`(Linear receipt `a93e6bf7-49dd-43b1-822a-e752259cb314`): 실제 승인 대기 2건과 3단계 렌더, 사용자 모드의 관리자 DOM 비노출, 관리자 복귀, 390×844 무가로오버플로, console warning/error 0을 확인했다.
 - 실제 승인·거절 및 owner 멤버십 생성, 별도 일반 사용자 최초 신청, hosted DB/migration 변경, 모바일 실기기는 `NOT_RUN`이다. DB/schema/RLS 변경은 0이며 Linear `BBE-32`는 Done이다.
+
+## 2026-08-10 — [START · 모아워크 데탑 CT08(260810)/claude] BBE-116 로고가 셸에 없다
+
+- Linear `BBE-116`, base `7520361c2f8620f4e40345098697cffbc571d5fb`(#115), branch `claude/bbe-116-brand`, 전용 worktree `.worktrees/bbe-116-brand`.
+- 착수 전 실측으로 D44의 전제("Logo가 셸에 미연결")를 정정했다 — `app/(app)/layout.tsx`에 이미 연결·홈 링크 동작 중이었고, `grep Logo shell/*.tsx`가 0건인 이유는 콜사이트가 `shell/` 폴더 밖이라서였다. 실제 미충족 수용 기준은 회사별 로고·로고 없을 때 이름 대체 2건뿐.
+- lease: `app/src/components/brand/**`(신규 `WorkspaceBrand`) · `supabase/migrations/035_*.sql`(신규 파일, `orgs.logo_url` nullable 추가) · `app/src/lib/types/index.ts`(`Org.logo_url` 선택 필드) · `app/src/lib/auth/session.ts`(select·parseOrg 각 1줄). `app/(app)/layout.tsx`는 00_배정판에 소유자가 없어 BBE-94에 선언 후 2줄(import+JSX)만 접촉 — BBE-126(CT07)과 겹칠 가능성 대비.
+- acceptance: 로고 왼쪽 위·클릭 시 홈(기존 동작 유지) · 회사마다 다른 로고(구조적으로 가능, 값 채우는 관리 UI는 범위 밖) · 로고 없는 회사는 이름 대체(오늘 전 회사 해당).
+- Production QA·스크린샷은 로컬 preview가 이 worktree가 아닌 launch.json 디렉터리를 띄우는 기존 제약과 `(app)` 셸의 실 로그인 요구가 겹쳐 `NOT_RUN` — 정적 렌더로 갈음, PR #130 본문에 마크업 증거 첨부.
