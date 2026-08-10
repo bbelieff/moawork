@@ -1754,3 +1754,68 @@ all/assigned), 헬퍼 `is_org_member`/`org_role`/`org_scope`, 트리거 `add_org
 - Vercel Production `dpl_BM2g6txphAHZ1iN2rVBuqZZU4iZd`가 exact merge SHA로 READY이고 canonical `https://www.moa-work.com/platform/organizations`에 연결됐다.
 - 독립 MWC Production QA는 `PASS_WITH_NOT_RUN_BOUNDARIES`(Linear receipt `a93e6bf7-49dd-43b1-822a-e752259cb314`): 실제 승인 대기 2건과 3단계 렌더, 사용자 모드의 관리자 DOM 비노출, 관리자 복귀, 390×844 무가로오버플로, console warning/error 0을 확인했다.
 - 실제 승인·거절 및 owner 멤버십 생성, 별도 일반 사용자 최초 신청, hosted DB/migration 변경, 모바일 실기기는 `NOT_RUN`이다. DB/schema/RLS 변경은 0이며 Linear `BBE-32`는 Done이다.
+
+## 2026-08-11 — [START · 모아워크 데탑 CT02(260810)/claude] BBE-122 권한 — 역할 4종 × 22항목
+
+- task_id Linear `BBE-122`, base `origin/main@7520361c2f8620f4e40345098697cffbc571d5fb`(`git fetch` 후 실측),
+  branch `claude/bbe-122-perm`, 전용 worktree `개발프로젝트\.worktrees\bbe-122-perm`.
+- 착수 전 6단계 이행: 목업(`UI목업_워크스페이스_최종_v6.html`) 열람 · `node docs/design/qa-mockup.mjs` **75/75 통과**
+  (문서 헤더의 "55개"는 낡은 값) · `docs/handoff/결정대장.md` D23·D24·D30·D31·D32 열람.
+- **배정서 불일치 발견·정정**: 배정서 "덮는 결정: D30 D31 D32 D24"는 결정대장 §J 카드 대조표와 다르다.
+  §J는 `BBE-122 = D23 D24`로 명시하고, D30~D32는 `BBE-125`(업체 마스터·초성 검색) 소유로 별도 기재돼 있다.
+  **목업·결정대장을 정본으로 삼아 D23+D24로 진행**한다(카드보다 목업 우선 원칙).
+- **수치 불일치**: 카드 제목 "22항목"이나 목업 `PERM` 배열 실측(node로 파싱)은 **24항목**
+  (업무5·구조5·자동화발송4·조직공지5·위험5). 목업이 정본이므로 24항목으로 구현하고 PR에 명시한다.
+- 리스: `app/src/lib/perm/**` · `app/src/components/member-organization/perm/**` ·
+  `supabase/migrations/035_perm_role_matrix.sql`(신규, 최신 034 확인 후 +1). 그 밖은 만지지 않는다.
+- 기존 DB 자산 확인: `member_scoped_permission_bindings`(013, 개인 예외 allow/deny·viewer/editor) ·
+  `member_hierarchy_assignments`(013, 보고선) 를 감싸는 방식으로 설계 — 새 장치를 새로 만들지 않는다
+  (목업 주석 그대로). `member_role`(owner/admin/member) · `member_scope`(all/assigned) 는 팀장·부서 티어가
+  없어 이번 마이그레이션에서 enum value 만 추가한다(기존 파일 무수정, `ALTER TYPE ADD VALUE`).
+
+## 2026-08-11 — [END · 모아워크 데탑 CT02(260810)/claude] BBE-122 권한 — 역할 4종 × 24항목
+
+- PR 제출(머지는 검수자 노트북 CT06 승인 후). branch `claude/bbe-122-perm`, head 는 본 커밋.
+- `supabase/migrations/035_perm_role_matrix.sql` — `member_role` 에 `team_lead` 추가(additive,
+  기존 파일 무수정) · `perm_baseline()`(24항목×4역할 불변 상수, 목업 `PERM` 배열과 완전 일치—
+  드리프트는 `matrix.test.ts` 가 정규식 파싱 대조로 막는다) · `org_role_permission_overrides`(조직별
+  역할 오버라이드, 소유자 행 금지) · `org_permission_audit`(위험 실행·매트릭스 변경 기록 전용 신규
+  테이블 — 013 의 공유 감사 테이블 제약을 건드리지 않기 위해 분리) · `effective_permission`(역할
+  기본값 → 오버라이드 → 개인 예외 순, **차단이 허용을 이김**, 소유자 불변) · `write_org_role_permission`
+  (소유자 전용, 013 `member_hierarchy_authz_require_owner` 재사용) · `bind_workspace_member_permission_exception`
+  (013 의 member-only 예외 함수는 그대로 두고, 전 역할 대상으로 같은 테이블에 쓰는 확장판 신설) ·
+  `record_risky_action`(위험 5항목 실행 기록 원시 함수 — CSV 내보내기 등 실제 기능 배선은 그 기능
+  소유 카드 몫, `NOT_RUN`) · `read_org_permission_matrix`(소유자·관리자 전용 조회).
+- **로컬 pglite 자체 검증**(리포 미커밋 — 스크래치패드 한정): `@electric-sql/pglite` 로 실제
+  Postgres 엔진에 `0001~013·015·034·035`를 순서대로 적용해 문법·의존을 확인하고, 22개 시나리오
+  (소유자 불변·역할 기본값·team_lead 신규 판정·오버라이드·재생 멱등·소유자 불변 거부·미지 scope_key
+  닫힘·개인 예외 확장·차단이 허용을 이김·비회원 false·위험기록 권한 강제·매트릭스 읽기 권한 제한)
+  **22/22 통과**. hosted DB 는 F9(로컬 비밀값 없음)로 미접속 — 배포 후 CT06 이 실측할 항목이다.
+- `app/src/lib/perm/**` — `matrix.ts`(TS 24항목 상수, SQL 과 대조 테스트) · `resolve.ts`(순수 판정
+  로직, entitlements/resolve.ts 패턴) · `server.ts`(RPC 래퍼 — 엔타이틀먼트와 달리 **실패 시 기본
+  허용으로 열지 않는다**, 조회 실패는 불허로 수렴) · `guard.ts`(권한없음/장애 구분, platform/guard.ts
+  BBE-90 패턴 미러). 단위 테스트 36건(4파일) 전부 값 긍정 확인(F12).
+- `app/src/components/member-organization/perm/PermissionMatrix.tsx` + `actions.ts` — 역할 4탭 ×
+  24항목 토글 그리드, 소유자 행 불변 표시, 위험 그룹 시각 구분, 개인 예외 건수 인라인 표시,
+  권한없음/장애 두 화면 분기. 서버 액션은 notices 기존 관례(FormData 기반 `"use server"`)를 따랐다.
+  컴포넌트 테스트 9건 `renderToStaticMarkup` — 24항목 렌더·소유자 불변·뷰어 권한별 편집 가능
+  여부·오버라이드 반영·예외 표시·역할탭 4개를 값으로 확인.
+- **의도적으로 미완료 — 리스 밖 명시**: ① 이 화면은 아직 어떤 라우트에도 연결돼 있지 않다.
+  `app/src/app/(app)/settings/members/page.tsx`(조직도, `MemberOrganizationChart` 소유)가 자연스러운
+  삽입 지점이지만 카드 리스가 정확히 `app/src/lib/perm/**` · `.../member-organization/perm/**` ·
+  마이그레이션 1개로 못박혀 있어 그 파일은 만지지 않았다. 컴포넌트는 완성·테스트로 렌더 확인됐으나
+  실제 화면에서 클릭할 수는 아직 없다. ② `member_scope` 에 'department' 값을 추가하지 않았다 —
+  "팀장=내 부서 이하"의 실제 행 단위 RLS 시행(companies/deals 등 업무 테이블)은 조직 트랙(BBE-119)과
+  겹치는 리스라 후속으로 남긴다. 이번 카드는 판정 로직(effective_permission)과 매트릭스 화면까지다.
+  ③ `write_org_role_permission`은 소유자 전용으로만 구현했다 — 목업은 "권한 부여" 항목에서 관리자도
+  1(허용)이지만, 자기참조 권한검사 부트스트랩은 별도 설계가 필요해 보수적으로 소유자 전용으로
+  좁혔다. `org.grant_permission` 항목값 자체는 매트릭스에 있어 화면에는 노출된다.
+- 수용 기준 대조: 24항목(카드 표기 22는 낡은 값, 목업 정본) 토글 화면 — **컴포넌트 완성·라우트
+  미연결**(위 ①) · 멤버가 남의 담당 건 못 봄 — 기존 013/001 RLS(`scope='assigned'`)가 이미 강제,
+  이번 카드가 새로 깬 것 없음(pglite 로 회귀 없음 재확인) · 권한없음/장애 구분 — `guard.ts`+
+  `PermissionMatrix.tsx` 두 문구로 분리 확인(테스트) · `app_admins` 직접 select — `grep` 0건.
+- 게이트: `bash scripts/check.sh` **PASS** — app 132 files/1266 tests(신규 36) · worker 21.
+  비밀값 스캔 0건. 브랜드 토큰 하드코딩 0(위험 라벨 색을 하드코딩 hex 로 넣었다가 `--mw-error` 로
+  정정). 변경 파일 12개 = 리스 정확히 3패턴 + `docs/worklog.md`.
+- NOT_RUN: hosted DB 적용(F9) · 실제 화면 스크린샷(라우트 미연결이라 촬영 대상 없음, ①과 동일 사유)
+  · CSV 내보내기 등 위험 5항목의 실제 기능 배선.
