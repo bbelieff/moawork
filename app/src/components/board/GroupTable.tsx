@@ -16,16 +16,21 @@
  * 낙관적 갱신(useOptimistic)은 부모(BoardWorkspace)가 담당하고 여기서는 이벤트만 올린다.
  */
 
-import { useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { formatCell } from "@/lib/boards/cells";
 import { findCellError, type CellFlash } from "@/lib/boards/cellFlash";
+import { getFieldSourceSpec, isSourceEditable, sourceRequiresConfirm } from "@/lib/field/source";
+import { fieldTypeLabel } from "@/lib/field/type-labels";
 import { StatusCell, StatusSelect } from "@/components/boards/StatusCell";
+import { SourceBadge } from "./FieldBadge";
+import { clampWidth } from "./layout";
 import {
   addItemAction,
   deleteItemAction,
   renameItemAction,
   setCellAction,
+  setColumnWidthAction,
 } from "@/app/(app)/boards/actions";
 
 const CELL_INPUT =
@@ -37,6 +42,7 @@ const STICKY_FIRST = "sticky left-0 z-10 bg-mw-card";
 function inputTypeOf(type: BoardColumn["type"]): string {
   switch (type) {
     case "number":
+    case "money":
       return "number";
     case "date":
       return "date";
@@ -52,6 +58,17 @@ function inputTypeOf(type: BoardColumn["type"]): string {
       return "text";
   }
 }
+
+/**
+ * 컬럼 타입·출처 조합 툴팁 — 목업 정본과 동일하게 셀에 hover 하면 뜬다(D09).
+ * 타입은 헤더에 따로 배지를 그리지 않으므로 여기가 유일한 타입 노출 지점이다.
+ */
+function cellTitle(column: BoardColumn): string {
+  const sourceSpec = getFieldSourceSpec(column.source);
+  return `${column.label} — ${fieldTypeLabel(column.type)} · ${sourceSpec.label}(${sourceSpec.description})`;
+}
+
+const NUMERIC_TYPES = new Set(["money", "number"]);
 
 /** 한 셀 — 읽기 전용이면 표시만, 아니면 셀 단위 서버 액션 폼. */
 function BoardCell({
@@ -69,22 +86,53 @@ function BoardCell({
 }) {
   const value = row.values[column.key] ?? null;
   const options = column.options_jsonb?.options ?? [];
+  // 출처가 편집을 막는 칸(⇄ 연동·ƒ 수식)은 보드가 편집 가능해도 클릭해도 열리지 않는다 — D09 수용기준.
+  const cellReadOnly = readOnly || !isSourceEditable(column.source);
+  const numeric = NUMERIC_TYPES.has(column.type);
+  const title = cellTitle(column);
 
-  if (readOnly) {
-    return column.type === "select" || column.type === "multiselect" ? (
+  if (cellReadOnly) {
+    const display = column.type === "select" || column.type === "status" || column.type === "multiselect" ? (
       <StatusCell value={value} options={options} />
     ) : (
-      <span className="truncate text-xs text-mw-body">
+      <span className={`truncate text-xs text-mw-body ${numeric ? "block text-right tabular-nums" : ""}`}>
         {formatCell(column.type, value, options) || "—"}
+        {column.source === "lk" && value !== null ? (
+          <span aria-hidden="true" className="ml-1 text-mw-automation" title="업체 마스터에서 자동으로 채워집니다">
+            ⇄
+          </span>
+        ) : null}
+      </span>
+    );
+    return (
+      <span title={title} className="block">
+        {display}
       </span>
     );
   }
 
   const errorId = error ? `mwcell-${row.id}-${column.key}` : undefined;
+  const needsConfirm = sourceRequiresConfirm(column.source);
 
   return (
-    <div className="flex flex-col">
-      <form action={setCellAction} aria-describedby={errorId}>
+    <div className="flex flex-col" title={title}>
+      <form
+        action={setCellAction}
+        aria-describedby={errorId}
+        onSubmit={
+          needsConfirm
+            ? (e) => {
+                if (
+                  !window.confirm(
+                    `«${column.label}» 값을 바꾸면 고객에게 문자가 발송되고 비용이 듭니다. 계속할까요?`,
+                  )
+                ) {
+                  e.preventDefault();
+                }
+              }
+            : undefined
+        }
+      >
         <input type="hidden" name="boardId" value={boardId} />
         <input type="hidden" name="itemId" value={row.id} />
         <input type="hidden" name="columnKey" value={column.key} />
@@ -101,7 +149,7 @@ function BoardCell({
               aria-label={column.label}
             />
           </>
-        ) : column.type === "select" ? (
+        ) : column.type === "select" || column.type === "status" ? (
           <StatusSelect
             name="value"
             value={value}
@@ -129,12 +177,12 @@ function BoardCell({
             defaultValue={value === null ? "" : String(value)}
             placeholder="—"
             aria-label={column.label}
-            className={CELL_INPUT}
+            className={`${CELL_INPUT} ${numeric ? "text-right tabular-nums" : ""}`}
           />
         )}
 
         {/* select/multiselect 는 변경만으로 저장되지 않으므로 명시 저장을 남긴다. */}
-        {(column.type === "select" || column.type === "multiselect") && (
+        {(column.type === "select" || column.type === "status" || column.type === "multiselect") && (
           <button type="submit" className="sr-only">
             {column.label} 저장
           </button>
@@ -205,6 +253,67 @@ export function GroupTable({
 
   const colSpan = columns.length + 1;
 
+  /*
+   * 컬럼 폭 조절(D12) — 드래그 중인 값은 dragColRef 와 같은 이유로 ref 가 정본이다
+   * (mousemove 는 리렌더 사이클과 무관하게 계속 들어온다). state(liveWidths)는 화면
+   * 갱신용이고, 서버 저장은 mouseup 에서 한 번만 나간다.
+   */
+  const resizeRef = useRef<{ columnId: string; startX: number; startWidth: number; current: number } | null>(null);
+  const [liveWidths, setLiveWidths] = useState<Record<string, number>>({});
+
+  const commitWidth = useCallback(
+    (columnId: string, width: number | null) => {
+      startTransition(async () => {
+        const fd = new FormData();
+        fd.set("boardId", boardId);
+        fd.set("columnId", columnId);
+        fd.set("width", width === null ? "" : String(width));
+        await setColumnWidthAction(fd);
+      });
+    },
+    [boardId],
+  );
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      const r = resizeRef.current;
+      if (!r) return;
+      r.current = clampWidth(r.startWidth + (e.clientX - r.startX));
+      setLiveWidths((w) => ({ ...w, [r.columnId]: r.current }));
+    }
+    function onUp() {
+      const r = resizeRef.current;
+      resizeRef.current = null;
+      if (!r) return;
+      commitWidth(r.columnId, r.current);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [commitWidth]);
+
+  const startResize = (columnId: string) => (e: React.MouseEvent<HTMLSpanElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const th = e.currentTarget.closest("th");
+    const startWidth = th ? th.getBoundingClientRect().width : 160;
+    resizeRef.current = { columnId, startX: e.clientX, startWidth, current: startWidth };
+  };
+
+  const resetWidth = (columnId: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setLiveWidths((w) => {
+      const next = { ...w };
+      delete next[columnId];
+      return next;
+    });
+    commitWidth(columnId, null);
+  };
+
   const acceptRow = (index: number) => (e: React.DragEvent) => {
     if (!canDropRow()) return;
     e.preventDefault();
@@ -232,6 +341,7 @@ export function GroupTable({
             </th>
             {columns.map((col) => {
               const isTarget = overColKey === col.key && dragColKey !== col.key;
+              const width = liveWidths[col.id] ?? col.width ?? undefined;
               return (
                 <th
                   key={col.id}
@@ -254,12 +364,13 @@ export function GroupTable({
                     if (dragged !== col.key) onColumnDrop(dragged, col.key);
                     clearColDrag();
                   }}
-                  title={readOnly ? col.label : `${col.label} — 끌어서 이 그룹의 컬럼 순서 변경`}
-                  className={`sticky top-0 z-20 min-w-20 border-b border-mw-line bg-mw-card px-2 py-1.5 text-xs font-semibold text-mw-sub ${
+                  title={readOnly ? cellTitle(col) : `${cellTitle(col)} — 끌어서 이 그룹의 컬럼 순서 변경`}
+                  style={width ? { width, minWidth: width } : undefined}
+                  className={`relative sticky top-0 z-20 min-w-20 border-b border-mw-line bg-mw-card px-2 py-1.5 text-xs font-semibold text-mw-sub ${
                     readOnly ? "" : "cursor-grab active:cursor-grabbing"
                   } ${isTarget ? "bg-mw-tint-blue text-mw-record" : ""} ${
                     dragColKey === col.key ? "opacity-50" : ""
-                  }`}
+                  } ${col.rightPinned ? "right-0 border-l-2 border-l-mw-primary" : ""}`}
                 >
                   <span className="flex items-center gap-1">
                     {!readOnly && (
@@ -267,8 +378,17 @@ export function GroupTable({
                         ⠿
                       </span>
                     )}
+                    <SourceBadge source={col.source} />
                     <span className="truncate">{col.label}</span>
                   </span>
+                  <span
+                    aria-hidden="true"
+                    draggable={false}
+                    onMouseDown={startResize(col.id)}
+                    onDoubleClick={resetWidth(col.id)}
+                    title="끌어서 폭 조절 · 두 번 누르면 원래대로"
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-mw-record/40"
+                  />
                 </th>
               );
             })}
@@ -352,7 +472,9 @@ export function GroupTable({
                 {columns.map((col) => (
                   <td
                     key={col.id}
-                    className="border-b border-mw-line px-2 align-middle"
+                    className={`border-b border-mw-line px-2 align-middle group-hover:bg-mw-bg ${
+                      col.rightPinned ? "sticky right-0 z-10 border-l-2 border-l-mw-primary bg-mw-card" : ""
+                    }`}
                   >
                     <BoardCell
                       boardId={boardId}

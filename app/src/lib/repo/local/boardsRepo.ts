@@ -149,6 +149,8 @@ export class LocalBoardsRepo implements BoardsRepo {
       key,
       label: input.label,
       type: input.type,
+      source: input.source ?? "in",
+      rightPinned: input.rightPinned ?? false,
       options_jsonb: input.options ? { options: input.options } : null,
       sort_order: existing.length,
       width: input.width ?? null,
@@ -161,6 +163,8 @@ export class LocalBoardsRepo implements BoardsRepo {
     const c = db().boardColumns.find((x) => x.id === id && x.org_id === ctx.org.id);
     if (!c) return undefined;
     if (patch.label !== undefined) c.label = patch.label;
+    if (patch.source !== undefined) c.source = patch.source;
+    if (patch.rightPinned !== undefined) c.rightPinned = patch.rightPinned;
     if (patch.sort_order !== undefined) c.sort_order = patch.sort_order;
     if (patch.width !== undefined) c.width = patch.width;
     if (patch.options !== undefined)

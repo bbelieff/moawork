@@ -17,7 +17,7 @@ import type { FieldOption } from "@/lib/types";
 import type { CellValue, ItemWithValues } from "@/lib/boards/types";
 import type { CellError } from "@/lib/boards/service";
 import type { ItemPatch } from "@/lib/boards/store";
-import { groupKeyOf } from "@/components/board/layout";
+import { clampWidth, groupKeyOf } from "@/components/board/layout";
 import { setGroupColumnOrder } from "./groupLayout";
 import { installStructurePack } from "@/lib/structure-packs";
 import {
@@ -126,6 +126,21 @@ export async function deleteColumnAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   const boardId = str(formData, "boardId");
   getBoardsService().deleteColumn(ctx, boardId, str(formData, "columnId"));
+  revalidatePath(`/boards/${boardId}`);
+}
+
+/**
+ * 컬럼 폭 조절(D12) — 머리글 경계 드래그·두 번 눌러 초기화.
+ * `width` 가 빈 문자열이면 초기화(null = 컬럼 최소폭으로 되돌아감). 값이 있으면
+ * 클라이언트가 이미 clampWidth 를 거쳤어도 여기서 한 번 더 좁힌다(직접 폼 제출 방어).
+ */
+export async function setColumnWidthAction(formData: FormData): Promise<void> {
+  const ctx = await getSession();
+  const boardId = str(formData, "boardId");
+  const columnId = str(formData, "columnId");
+  const raw = str(formData, "width");
+  const width = raw === "" ? null : clampWidth(Number(raw));
+  getBoardsService().updateColumn(ctx, boardId, columnId, { width });
   revalidatePath(`/boards/${boardId}`);
 }
 

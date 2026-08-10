@@ -86,3 +86,12 @@ export function reorderColumnKeys(
   const keys = columns.map((c) => c.key);
   return moveWithin(keys, keys.indexOf(draggedKey), keys.indexOf(targetKey));
 }
+
+/** 컬럼 폭 조절 한계(D12) — 머리글 경계 드래그로 이 범위 밖을 만들 수 없다. */
+export const COLUMN_MIN_WIDTH = 64;
+export const COLUMN_MAX_WIDTH = 560;
+
+/** 드래그 중 픽셀 값을 저장 가능한 폭으로 좁힌다. 서버 액션에서도 같은 함수로 재검증한다. */
+export function clampWidth(px: number): number {
+  return Math.min(COLUMN_MAX_WIDTH, Math.max(COLUMN_MIN_WIDTH, Math.round(px)));
+}
