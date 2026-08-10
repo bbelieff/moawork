@@ -45,7 +45,10 @@ export interface ChecklistPanelProps {
   dealId: string;
   /** 서버에서 읽어 내려준 현재 상태. 저장된 적 없으면 {dealId, productId:null, items:[]}. */
   initialState: DealChecklistState;
-  /** 상품 선택지(002 프리셋 "product", 59종). 없으면 상품 선택 UI를 감춘다. */
+  /**
+   * 상품 선택지. `@/lib/policyfund/checklist`의 `CHECKLIST_PRODUCT_CATEGORY`(v6 목업
+   * "진행 상품" 7종, dump-mockup.mjs 실측)를 그대로 넘기면 된다. 없으면 상품 선택 UI를 감춘다.
+   */
   productCategory?: OptionCategory;
   /**
    * 조달일·재신청 안내일 등 서류 준비 시점 안내(260810 목업 개정 — "체크리스트에서 그 날짜가

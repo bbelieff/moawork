@@ -14,13 +14,17 @@ Linear: BBE-110 · 근거: `docs/design/블루프린트대조_온보딩설계_v1
 | `store.ts` | globalThis 인메모리 저장소, org 스코프(`boards/groupLayout.ts` 와 같은 idiom) |
 | `service.ts` | `ChecklistService` — engine+store 결합, 상품 적용·프리셋 저장 등 실제 동작 |
 | `actions.ts` | "use server" — 클라이언트에서 부르는 진입점. 배럴(`index.ts`)에서 제외(서버 전용) |
+| `products.ts` | `CHECKLIST_PRODUCT_CATEGORY` — v6 목업 "진행 상품" 7종(dump-mockup.mjs 실측) |
 
 ## 경계
 
 - 001 deals 의 `custom`(JSONB) 이나 T05 커스텀필드 엔진(13종 FieldType)에 얹지 않는다 —
   체크리스트는 "딜마다 자유 추가/삭제 + 상품별 기본값"이 필요한데 13종 어디에도 맞지 않고,
   커스텀필드 엔진을 억지로 확장하면 2중 구현 금지 규약에 걸린다.
-- "진행 상품"은 `@/lib/policyfund/presets`(59종)를 그대로 참조키로 쓴다. 별도 상품 목록 없음.
+- "진행 상품"은 `./products`(v6 목업 "계약업체 실무" 탭 실측 7종)를 참조키로 쓴다.
+  `@/lib/policyfund/presets` 의 `product`(59종, 002 시드의 구 먼데이 스크레이핑 원본)와는
+  세대가 다르다 — 섞지 않았다. 목업이 바뀌면 `node docs/design/dump-mockup.mjs work` 로
+  재실측한다.
 - 딜 상세 페이지(`app/(app)/deals/[dealId]`) 연결은 이번 카드 리스 밖 — `components/policyfund/
   ChecklistPanel`·`ChecklistCompletionCell` 이 각각 상세·표에 바로 얹을 수 있는 완결형이다.
   BBE-47 이 `/newcust` 연결을 WO-7 로 미룬 것과 같은 패턴.
