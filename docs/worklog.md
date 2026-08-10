@@ -4,6 +4,36 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [END · 모아워크 노트북 CT08(260810)/claude] BBE-90 — 인증 QA 증거 보강 완료
+
+- **결과 PASS**: `PlatformAccessNotice`의 `platform-forbidden`/`platform-unavailable` 두 상태가
+  서로 다른 화면(제목·안내문구)으로 렌더됨을 실제 배포 컴포넌트로 시각 확인했다.
+- **방법**: 이 worktree엔 Supabase 실 자격증명이 없고, `(app)/layout.tsx`가 dev-session
+  로그인 성공 후에도 `loadWorkspaceRoutingSnapshot()`에서 무조건 `createClient()`를 호출해
+  레이아웃째 크래시하는 것을 발견(session.ts의 dev 폴백과 별개 경로 — 범위 밖, 미수정).
+  → 컴포넌트가 `error` prop 하나로만 렌더되는 순수 함수라는 점을 이용해 (app) 레이아웃을
+  우회, 실제 파일을 `react-dom/server`로 정적 렌더링 → 실제 `globals.css` `:root` 토큰
+  그대로 + Tailwind 표준 유틸리티(rounded-xl 등, 고정 스펙)만 적용해 재현.
+  재구현·재작성 없음(실제 소스 import).
+- **캡처는 세션 중 시각 확인만** — 이 샌드박스에 Playwright/Puppeteer 등 바이너리 저장 도구가
+  없어 PNG 파일로 영속화하지 못했다. NOT_RUN 으로 낮추지 않고 방법·결과를 정직하게 남긴다.
+- **코드 변경 0**: PR #98(merged)이 이미 구현 정본. check.sh·새 PR·CI·merge·배포는 해당 없음
+  — 기존 merge(`main@0e938e3`)·Production 배포·health 증거가 유효하다.
+- **반납하는 리스**: 없음(애초에 잡지 않음). worktree `wt-bbe90-silent-deny`는 그대로 둔다
+  (커밋 없음, 재사용 가능).
+- **Linear**: BBE-90 → Done. 근거 코멘트 남김. 별도 발견(레이아웃 크래시 버그)은 카드화하지
+  않고 코멘트에만 기록.
+- **이어받을 것**: 없음. belie 승인 아래 배정 문서의 3분할 empty-state 확장 요구는 산출물
+  부재로 착수하지 않았다 — 필요하면 총괄이 실제 목업·QA스크립트·결정기록과 함께 재배정.
+
+## [START · 모아워크 노트북 CT08(260810)/claude] BBE-90 — 인증 QA 증거 보강
+
+- 배정 문서가 참조한 `docs/design/dump-mockup.mjs`·`qa-mockup.mjs`(75개)·결정대장 D32·`app/src/components/shell/empty/**` 신규 컴포넌트 요구는 **레포·전체 원격 브랜치·열린 PR 어디에도 근거 없음**을 재확인(직전 배정 때와 동일 결론). belie 확인 후 새 UI 컴포넌트는 만들지 않는다.
+- BBE-90 실구현은 PR #98(merged, `main@0e938e3`)로 이미 완료 — `platform-forbidden`/`platform-unavailable` 오류 코드 분리, `PlatformAccessNotice`, 서버 로그 분류. 실제 미완결 항목은 원 구현자 코멘트(2026-08-09)의 **"인증 세션에서 두 상태를 재현하는 QA는 NOT_RUN"** 하나뿐.
+- 리스: 없음(코드 변경 없음, 증거 수집만). `app/src/components/shell/empty/**`·`app/src/lib/error/**`는 착수하지 않는다.
+- 산출물: `PlatformAccessNotice`의 forbidden/unavailable 두 상태 스크린샷 2종(개발 세션 재현 — 컴포넌트가 쿼리스트링만으로 렌더되어 dev 세션도 프로덕션과 동일 화면).
+- 상대에게 필요한 것: 없음.
+
 ## [BLOCKED-INVESTIGATION · 모아워크 노트북 CT06(260810)/claude] 2026-08-11 — BBE-21 착수 전 6단계 실행 중 막힘
 
 - 배정: BBE-21(멤버 초대·역할·승인·세션 관리). base `origin/main` = `7520361c2f8620f4e40345098697cffbc571d5fb`(직접 실측, 마이그레이션 최신 034 확인 — 배정 문서 기재값과 일치).
