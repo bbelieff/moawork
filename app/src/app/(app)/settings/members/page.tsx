@@ -1,17 +1,21 @@
 import { getSession } from "@/lib/auth/session";
 import { loadMemberOrgSummary } from "@/lib/auth/member-org-summary";
+import { loadOrgChart } from "@/lib/org/server";
 import { MemberOrganizationChart } from "@/components/member-organization/MemberOrganizationChart";
+import { OrgChartView } from "@/components/member-organization/OrgChartView";
 
 export default async function MembersPage() {
   const ctx = await getSession();
-  const summary = await loadMemberOrgSummary(ctx);
+  const [summary, orgChart] = await Promise.all([loadMemberOrgSummary(ctx), loadOrgChart(ctx)]);
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4">
+    <div className="mx-auto flex max-w-5xl flex-col gap-4">
       <header>
         <h1 className="text-xl font-semibold">우리 회사와 팀</h1>
         <p className="mt-1 text-sm text-zinc-500">{ctx.org.name}에서 함께 일하는 사람과 업무 범위를 확인해요.</p>
       </header>
+
+      {orgChart.kind === "ready" ? <OrgChartView orgId={ctx.org.id} state={orgChart} /> : null}
 
       {summary.kind === "ready" ? (
         <MemberOrganizationChart

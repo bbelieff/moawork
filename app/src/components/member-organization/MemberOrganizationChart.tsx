@@ -97,6 +97,11 @@ function MemberCard({ member, protectedOwner, isViewer, canEdit, onProfileEdit, 
   );
 }
 
+/**
+ * 개인별 프로필·역할/범위·세부 권한 편집. **부서 트리**(누가 어느 부서에 속하고,
+ * 보고 대상이 자동으로 어떻게 계산되는지)는 여기가 아니라 `OrgChartView`(BBE-119,
+ * `settings/members/page.tsx` 에서 이 컴포넌트 위에 함께 렌더된다)가 다룬다.
+ */
 export function MemberOrganizationChart({ orgId, owner, admins, members, canEditProfiles, viewerUserId }: Props) {
   const [editor, setEditor] = useState<Editor>(null);
   const [title, setTitle] = useState("");
@@ -237,7 +242,9 @@ export function MemberOrganizationChart({ orgId, owner, admins, members, canEdit
           <form className="mt-4 grid gap-3" onSubmit={saveHierarchy}>
             <label className="grid gap-1 text-sm font-medium">역할<select value={role} onChange={(event) => setRole(event.target.value as "admin" | "member")} className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="admin">팀장</option><option value="member">사원</option></select></label>
             <label className="grid gap-1 text-sm font-medium">업무 범위<select value={scope} onChange={(event) => setScope(event.target.value as "all" | "assigned")} className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="assigned">배정된 업무</option><option value="all">회사 업무 전체</option></select></label>
-            <label className="grid gap-1 text-sm font-medium">보고받는 사람<select value={reportsToUserId} onChange={(event) => setReportsToUserId(event.target.value)} className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="">지정하지 않음</option>{reportingLineCandidates.filter((candidate) => candidate.userId !== editor.member.userId).map((candidate) => <option key={candidate.userId} value={candidate.userId}>{candidate.displayName} · {roleLabel(candidate.role)}</option>)}</select></label>
+            {/* 부서 트리가 진짜 보고선이다(위 «조직도» 탭) — 이 필드는 그 계산을 무시하고
+                싶을 때만 쓰는 §1-3① 예외 지정이다. 비워두면 부서장에게 자동으로 보고된다. */}
+            <label className="grid gap-1 text-sm font-medium">보고 대상 예외 지정<span className="font-normal text-zinc-500"> — 비워두면 부서장에게 자동 보고</span><select value={reportsToUserId} onChange={(event) => setReportsToUserId(event.target.value)} className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="">지정하지 않음(부서 트리로 계산)</option>{reportingLineCandidates.filter((candidate) => candidate.userId !== editor.member.userId).map((candidate) => <option key={candidate.userId} value={candidate.userId}>{candidate.displayName} · {roleLabel(candidate.role)}</option>)}</select></label>
             {state === "unavailable" ? <p role="alert" className="text-sm text-zinc-600">업무 역할 변경 기능을 아직 사용할 수 없어요. 서버 준비가 끝난 뒤 다시 시도해 주세요.</p> : null}
             {state === "error" ? <p role="alert" className="text-sm text-red-600">저장하지 못했어요. 본인·대표·다른 회사 구성원은 변경할 수 없고, 순환되는 보고선도 설정할 수 없어요.</p> : null}
             {state === "saved" ? <p role="status" className="text-sm text-emerald-700">저장했어요. 새로고침하면 최신 조직도에 반영돼요.</p> : null}
