@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { StageBoardData } from "@/lib/crm/boardData";
+import { ContactPipelineAction } from "./ContactPipelineAction";
 
 /**
  * 단계 보드 화면 (T02 · B2) — 먼데이 보드와 같은 "단계별 열 + 행" 형태.
@@ -7,7 +8,7 @@ import type { StageBoardData } from "@/lib/crm/boardData";
  * 서버 컴포넌트(읽기 전용). 드래그 이동·인라인 편집은 후속(B2 이후) —
  * 단계 이동은 활동로그를 남겨야 해서 서비스(moveDealStage) 경유가 필수다.
  */
-export function StageBoardView({ data, linksEnabled = true, onboardingCta = true, emptyHint }: { data: StageBoardData; linksEnabled?: boolean; onboardingCta?: boolean; emptyHint?: string }) {
+export function StageBoardView({ data, linksEnabled = true, onboardingCta = true, emptyHint, pipelineActionsEnabled = false }: { data: StageBoardData; linksEnabled?: boolean; onboardingCta?: boolean; emptyHint?: string; pipelineActionsEnabled?: boolean }) {
   const { board, columns, total, companyById, sourceKind } = data;
 
   return (
@@ -63,26 +64,19 @@ export function StageBoardView({ data, linksEnabled = true, onboardingCta = true
                       : undefined;
                     return (
                       <li key={deal.id}>
-                        {linksEnabled ? <Link
-                          href={`/deals/${deal.id}`}
-                          className="block rounded-md bg-white p-3 shadow-sm transition hover:shadow"
-                        >
-                          <p className="text-sm font-medium">{deal.title}</p>
-                          {company && (
-                            <p className="mt-0.5 text-xs text-neutral-500">
-                              {company.name}
-                            </p>
-                          )}
-                          {deal.amount !== null && (
-                            <p className="mt-1 text-xs tabular-nums text-neutral-600">
-                              {deal.amount.toLocaleString("ko-KR")}원
-                            </p>
-                          )}
-                        </Link> : <div className="block rounded-md bg-white p-3 shadow-sm">
-                          <p className="text-sm font-medium">{deal.title}</p>
-                          {company && <p className="mt-0.5 text-xs text-neutral-500">{company.name}</p>}
-                          {deal.amount !== null && <p className="mt-1 text-xs tabular-nums text-neutral-600">{deal.amount.toLocaleString("ko-KR")}원</p>}
-                        </div>}
+                        <div className="rounded-md bg-white p-3 shadow-sm">
+                          {linksEnabled ? <Link href={`/deals/${deal.id}`} className="block transition hover:opacity-80">
+                            <p className="text-sm font-medium">{deal.title}</p>
+                            {company ? <p className="mt-0.5 text-xs text-neutral-500">{company.name}</p> : null}
+                            {deal.amount !== null ? <p className="mt-1 text-xs tabular-nums text-neutral-600">{deal.amount.toLocaleString("ko-KR")}원</p> : null}
+                          </Link> : <div>
+                            <p className="text-sm font-medium">{deal.title}</p>
+                            {company ? <p className="mt-0.5 text-xs text-neutral-500">{company.name}</p> : null}
+                            {deal.amount !== null ? <p className="mt-1 text-xs tabular-nums text-neutral-600">{deal.amount.toLocaleString("ko-KR")}원</p> : null}
+                          </div>}
+                          {linksEnabled && pipelineActionsEnabled && stage.kind === "marketing" ? <ContactPipelineAction dealId={deal.id} kind="lead_to_contact" requestId={globalThis.crypto.randomUUID()} /> : null}
+                          {linksEnabled && pipelineActionsEnabled && stage.kind === "meeting" ? <ContactPipelineAction dealId={deal.id} kind="contact_to_work" requestId={globalThis.crypto.randomUUID()} /> : null}
+                        </div>
                       </li>
                     );
                   })}
