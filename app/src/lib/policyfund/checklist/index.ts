@@ -1,6 +1,7 @@
 // BBE-110 · 서류 체크리스트 공개 API.
 export * from "./types";
 export * from "./engine";
+export * from "./products";
 export { ChecklistService, NoProductSelectedError, getChecklistService } from "./service";
 
 // ⚠ `./actions`(서버 액션)는 배럴에서 제외 — "use server" 모듈은 클라이언트 컴포넌트가

@@ -6,8 +6,9 @@
  * 13종 어디에도 맞지 않고(select/multiselect 는 옵션이 고정 카탈로그라 딜마다 자유 추가가 안 됨),
  * 커스텀필드 엔진(2중 구현 금지 규약)을 억지로 확장하느니 독립 저장소로 분리했다.
  *
- * "진행 상품"(product) 카테고리는 `@/lib/policyfund/presets`(59종, PresetOption.id=label)를
- * 그대로 참조키로 쓴다 — 별도 상품 목록을 만들지 않는다.
+ * "진행 상품" 참조키는 `./products`(v6 목업 실측 7종, PresetOption.id=label 관례)를 쓴다.
+ * `@/lib/policyfund/presets` 의 `product`(59종)는 002 시드의 구 먼데이 스크레이핑 원본이라
+ * 세대가 다르다 — 섞지 않는다(`products.ts` 머리말 참조).
  */
 
 /** 딜 하나의 체크리스트 항목. checked 는 딜 단위 상태(프리셋에는 없음). */
