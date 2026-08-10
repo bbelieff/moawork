@@ -4,6 +4,18 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [BLOCKED-INVESTIGATION · 모아워크 노트북 CT06(260810)/claude] 2026-08-11 — BBE-21 착수 전 6단계 실행 중 막힘
+
+- 배정: BBE-21(멤버 초대·역할·승인·세션 관리). base `origin/main` = `7520361c2f8620f4e40345098697cffbc571d5fb`(직접 실측, 마이그레이션 최신 034 확인 — 배정 문서 기재값과 일치).
+- **착수 전 6단계 ①②③ 전부 막힘** — 필요 파일이 저장소 전체(전 브랜치·히스토리)에 부재:
+  `docs/design/qa-mockup.mjs`(착수 게이트 75개) · `docs/design/dump-mockup.mjs`(목업 텍스트 덤프) · `docs/handoff/결정대장.md`(D30·D31).
+  Linear 문서 검색도 0건 — git 파일이 아직 미커밋인 것으로 보임. `docs/design/조직·보고체계_설계_v1.md`(BBE-119 설계 정본)도 동일하게 부재.
+- 우회 없이 대체 경로만 사용: 로컬 Downloads의 `UI목업_워크스페이스_최종_v6.html`을 Read 도구로 직접 읽음(`file://` 브라우저 접근은 이 세션에서도 타임아웃 — `00_정정-브라우저없이-목업읽기.md`가 설명한 증상과 일치). **보조 증거일 뿐 정본 아님**, 코드 착수 근거로 쓰지 않음.
+- **실제 코드 실측**: `member_role`/`member_scope`는 여전히 3역할(owner/admin/member)·2범위(all/assigned)뿐 — 목업의 4역할·부서스코프는 DB에 없음(BBE-119/BBE-122 몫, 둘 다 Backlog·BBE-122가 BBE-119에 blocked_by). 승인 파이프라인(`workspace_entry_requests`, `/settings/members/approvals`)과 세션 관리(`/settings/account/sessions`, 011 RPC 기반 revokeCurrent/revokeAll)는 **이미 상당 부분 구현돼 있음** — 갭은 개별기기 로그아웃·초대 재전송·last-owner 보호·자기권한상승 방지·권한변경 감사기록으로 보임(추정, 코드 미작성).
+- CT02 경계 제안(합의 요청 중): BBE-21은 현재 스키마 위에서 초대/승인/세션 완성, 4역할·부서스코프 신설은 BBE-119/122 몫으로 남김.
+- 산출물: Linear BBE-21·BBE-94 코멘트만(제품 코드 변경 0, 리스 미선언).
+- 상태: **착수 미도장.** CT02 응답 또는 belie 지시 대기.
+
 ## [FIX · PLAN-002/WO-1 (BBE-46)/claude] 2026-08-09 — PR #94 반려 2건 수정 (시드 확정 3건 반영)
 
 - 검수 반려(데탑 CT02 2026-08-09 · ✅5/❌2)에 대한 작성자 수정. 인수: 데탑 CT05(260809-2).
