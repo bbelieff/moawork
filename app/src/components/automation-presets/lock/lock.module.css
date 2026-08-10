@@ -1,0 +1,140 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--mw-fg) 45%, transparent);
+  z-index: 60;
+}
+
+.dialog {
+  width: min(100%, 420px);
+  padding: 20px;
+  border: 1px solid var(--mw-line);
+  border-radius: calc(var(--mw-radius) + 6px);
+  background: var(--mw-card);
+  box-shadow: 0 24px 60px color-mix(in srgb, var(--mw-fg) 16%, transparent);
+}
+
+.dialog h4 {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+
+.reason {
+  margin: 0 0 10px;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--mw-body);
+}
+
+.reasonActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 14px;
+}
+
+.footnote {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  color: var(--mw-sub);
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--mw-line);
+  border-radius: 10px;
+  background: var(--mw-bg);
+  color: var(--mw-fg);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btnPrimary {
+  border-color: var(--mw-primary);
+  background: var(--mw-primary);
+  color: var(--mw-on-accent);
+}
+
+.toggleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--mw-line);
+  border-radius: 14px;
+  background: var(--mw-card);
+}
+
+.toggleCopy {
+  display: grid;
+  gap: 4px;
+}
+
+.toggleCopy strong {
+  font-size: 14px;
+}
+
+.toggleCopy span {
+  color: var(--mw-sub);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.toggleSwitch {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--mw-line);
+  border-radius: 999px;
+  background: var(--mw-bg);
+  color: var(--mw-sub);
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.toggleSwitchOn {
+  border-color: var(--mw-success);
+  background: color-mix(in srgb, var(--mw-success) 10%, var(--mw-card));
+  color: var(--mw-success);
+}
+
+.reasonForm {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.reasonForm textarea {
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 1px solid var(--mw-line);
+  border-radius: 10px;
+  background: var(--mw-bg);
+  color: var(--mw-fg);
+  font: inherit;
+  resize: vertical;
+}
+
+.error {
+  margin: 0;
+  color: var(--mw-error);
+  font-size: 12px;
+}
+
+.audit {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px dashed var(--mw-line);
+  font-size: 11.5px;
+  color: var(--mw-sub);
+}
