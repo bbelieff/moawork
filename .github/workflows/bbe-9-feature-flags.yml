@@ -1,0 +1,22 @@
+name: BBE-9 feature flag contract
+
+on:
+  pull_request:
+    paths:
+      - "app/src/lib/feature-flags/**"
+      - "scripts/release/**"
+      - "supabase/migrations/032_*"
+      - ".github/workflows/bbe-9-feature-flags.yml"
+
+jobs:
+  feature-flag-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/release/check-feature-flags.mjs
+      - run: npm test --workspace app -- --run app/src/lib/feature-flags
