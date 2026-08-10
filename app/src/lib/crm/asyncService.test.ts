@@ -122,6 +122,62 @@ describe("AsyncCrmService — 담당범위(?as=member)", () => {
   });
 });
 
+describe("AsyncCrmService — 담당자 재배정 (BBE-16)", () => {
+  it("배정이 바뀌면 assigned_to 가 갱신되고 활동로그(type=assignment)가 1건 남는다", async () => {
+    const deal = await svc.createDeal(owner, { title: "재배정 대상" });
+    const before = (await svc.listActivities(owner, deal.id)).length;
+
+    const updated = await svc.reassignDeal(owner, deal.id, member.user.id, {
+      fromName: null,
+      toName: "멤버",
+    });
+
+    expect(updated.assigned_to).toBe(member.user.id);
+    const acts = await svc.listActivities(owner, deal.id);
+    expect(acts).toHaveLength(before + 1);
+    // listActivities 반환 순서(최신 우선/삽입 순)에 기대지 않고 내용으로 찾는다.
+    const assignmentLog = acts.find((a) => a.type === "assignment");
+    expect(assignmentLog).toBeDefined();
+    expect(assignmentLog!.content).toContain("멤버");
+  });
+
+  it("실제로 바뀌지 않으면(같은 담당자로 재지정) 활동로그를 추가하지 않는다", async () => {
+    const deal = await svc.createDeal(owner, {
+      title: "동일 재배정",
+      assigned_to: owner.user.id,
+    });
+    const before = (await svc.listActivities(owner, deal.id)).length;
+
+    await svc.reassignDeal(owner, deal.id, owner.user.id, {
+      fromName: "오너",
+      toName: "오너",
+    });
+
+    expect(await svc.listActivities(owner, deal.id)).toHaveLength(before);
+  });
+
+  it("member(scope=assigned)가 자기 담당 딜을 남에게 재배정하려 하면 무시되고, 로그도 남기지 않는다", async () => {
+    // canSeeAll(ctx) 가 false 면 소스의 updateDeal 이 assigned_to 변경을 조용히 무시한다
+    // (repo 계약) — 서비스는 그 결과(실변경 없음)를 보고 활동로그를 남기지 않아야 한다.
+    const deal = await svc.createDeal(member, { title: "권한 없는 재배정" }); // 자동으로 본인 배정
+    const before = (await svc.listActivities(member, deal.id)).length;
+
+    const result = await svc.reassignDeal(member, deal.id, owner.user.id, {
+      fromName: "멤버",
+      toName: "오너",
+    });
+
+    expect(result.assigned_to).toBe(member.user.id); // 안 바뀜(권한 없음)
+    expect(await svc.listActivities(member, deal.id)).toHaveLength(before);
+  });
+
+  it("없는 딜이면 NotFoundError", async () => {
+    await expect(
+      svc.reassignDeal(owner, "nope", member.user.id, { fromName: null, toName: null }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
 describe("동기 서비스와의 파리티", () => {
   it("같은 입력에 대해 동일한 단계 배치·활동로그 수를 만든다", async () => {
     const asyncDeal = await svc.createDeal(owner, { title: "비동기" });
