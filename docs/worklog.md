@@ -173,6 +173,13 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
   재배포 이후 데이터 잔존 여부(별도 카드 대상 — 애초에 인메모리라 원천적으로 보장 안 됨).
 - 판정: 코드 완료·게이트 PASS. 눈으로 보는 확인과 hosted 031 상태는 belie/CT02 몫으로 남긴다.
   자기보고로 PASS 승격하지 않는다.
+## [START · 모아워크 데탑 CT09(260810)/claude] 2026-08-11 00:56 — BBE-117 뷰 시스템 착수
+
+- 카드: BBE-117(MoaWork) · 브랜치 `claude/bbe-117-views` · base `origin/main` = `7520361c2f8620f4e40345098697cffbc571d5fb`
+- 리스: `app/src/lib/view/**` · `app/src/components/view/**` · `supabase/migrations/<머지시점 최신+1>_tab_views.sql`(현재 최신 034 → 예상 035, 머지 시점 재확인)
+- 착수 전 6단계 완료: 목업 v6 확인 · `node docs/design/qa-mockup.mjs` 75/75 통과 · 결정대장 D24·D25·D26 정독 · base SHA 실측
+- 사전 조사(F5): 레포에 이미 `saved_views`(001, T05 core.custom, company/deal 전용) · `board_views`(003/004, T02 EAV 보드 엔진, 로컬 리포지토리만 연결)가 있음을 확인. 둘 다 V6 사이드바 탭(board_key 문자열 키, sectionPreset 기반)과 스키마·소유권이 맞지 않아(엔터티/보드ID 결합, 담당자 동적 조건 없음) 재사용하지 않고 **신규 테이블 `tab_views`** 로 분리 — board_key(문자열) 로만 결합해 CT03 의 아직 미착수인 보드 행 모델과 결합을 느슨하게 둠.
+- 검수자: 노트북 CT01
 
 ## [FIX · PLAN-002/WO-1 (BBE-46)/claude] 2026-08-09 — PR #94 반려 2건 수정 (시드 확정 3건 반영)
 
