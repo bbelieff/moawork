@@ -4,6 +4,25 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [END · BRANCH-SYNC/노트북CT작업반장/claude] 2026-08-10 — 뒤처진 브랜치 최신화 배정 완료
+
+- 배정 15건 전부 판정 완료. 상세 표는 `docs/evidence/BRANCH-SYNC-2026-08-06.md`.
+- **[확인필요] 6건** — origin에 브랜치 자체가 없음(docs/login-a-handoff-round5·agent/p0-session-integration·
+  agent/p0-authz-invite·agent/p0-compat-app·feat/c1-workspace-switcher-stack·feat/monday-automation-surface).
+- **[통과] 2건** — docs/mwc-agents-round3([PR #117](https://github.com/bbelieff/moawork/pull/117)) ·
+  feat/account-platform-product([PR #118](https://github.com/bbelieff/moawork/pull/118)). 둘 다 push+PR 완료,
+  lint·typecheck·build·test 전부 그린.
+- **[보류] 8건** — feat/codex-t03-oauth · feat/login-a-workspace · feat/first-lead-flow ·
+  feat/workspace-bootstrap · feat/public-workspace-entry-db · feat/c1-workspace-switcher-main ·
+  verify/mwc-r1-posthog · feat/developer-mode-ring-integration-t04. (보류 8 + 통과 2 = 실존 배정 10건 전량)
+  판단 없이 자동 병합하면 위험한 두 유형:
+  1) 베이스 기능이 이미 main에 다른 SHA로 병합된 중복 브랜치(5건) — 그중 codex-t03-oauth·
+     c1-workspace-switcher-main·verify/mwc-r1-posthog 는 브랜치에 남은 고유 가치가 없어 **삭제 권장**.
+  2) main과 브랜치가 같은 파일을 각자 발전시켜 실제 로직이 충돌(3건) — 특히
+     feat/public-workspace-entry-db 는 심사 마감기한 **7일(브랜치) vs 14일(main)** 불일치가 있어 총괄 확인 시급.
+- 작업 자체는 전용 worktree(`클로드/wt-branchsync-ct`, 기존 활성 worktree 무간섭)에서 브랜치 하나씩
+  순차 처리(rebase 금지·force-push 금지 준수). 이 로그·증거 문서는 `docs/branch-sync-ct-log` 브랜치에 커밋.
+
 ## [BEAT · BRANCH-SYNC/노트북CT] 2026-08-10 20:01 — 진행상황
 
 - 대상 15개 중: 미존재 6개(확인필요) · 처리 9개
