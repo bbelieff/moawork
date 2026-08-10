@@ -4,6 +4,1001 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [FIX · PLAN-002/WO-1 (BBE-46)/claude] 2026-08-09 — PR #94 반려 2건 수정 (시드 확정 3건 반영)
+
+- 검수 반려(데탑 CT02 2026-08-09 · ✅5/❌2)에 대한 작성자 수정. 인수: 데탑 CT05(260809-2).
+- **❌1 base 뒤처짐 해소** — `origin/main@0e938e3` 위로 rebase. 충돌 0.
+  CT02 가 지목한 `cf1055d`(BBE-44 `/work` 보드)와 **파일 겹침 0**을 실측했다:
+  BBE-44 는 `app/src/lib/work-management/**`·`app/(app)/work/**`, 본 PR 은
+  `app/src/lib/structure-packs/**`·`supabase/migrations/031`. 다만 같은 업무관리 구조를
+  두 곳이 각자 들고 있다(`work-management/template.ts` 31컬럼 계약 ↔ 팩 업무관리 보드).
+  런타임 충돌은 없다 — 팩은 전역 카탈로그 시드, work-management 는 `/work` 실행 계약이다.
+  **통합은 WO-7 로 넘긴다**(이번 PR 범위 밖, 코덱스 소유 파일 포함).
+- **❌2 시드 확정 3건 반영** (2026-08-05 MW-총괄 판단 · 총괄 2026-08-09 재확인:
+  시드 확정은 동일 복제 원칙에 우선한다):
+  · **① Name = 업체명**. 3보드 모두 `nameColumn` 계약 신설. 중복 `회사명` 컬럼 제거
+    (신규고객 `text_mm2czkqg` · 컨텍관리 `___67` · 업무관리 `text`).
+    Name 은 003 엔진에서 `items.title` 이라 컬럼 행으로 만들지 않는다 — 없는 컬럼을
+    있는 것처럼 만들지 않기 위해 계약으로만 남겼다(유예 컬럼과 같은 판단).
+  · **② 지역 공용 1세트 222지** — `region-options.ts` 신설. R2(업무관리) 표기를 기준으로
+    `시도_시군구` 정규화하고 축약형·정식형을 합쳤다(`서울_영등포`+`서울_영등포구`→`서울_영등포구`).
+    먼데이 원문 오기 `충북_영통군`→`충북_영동군` 교정(근거: 먼데이-전체스키마-v1 부록 R2 주석).
+    두 보드가 `optionRef: "region"` 로 이 한 세트를 참조한다.
+  · **③ 담당자 = 멤버(사람) 컬럼 단일화**. 신규고객 선택지형 담당자(`color_mkyeay16`)를
+    person 컬럼으로 대체, 컨텍관리 `담당자 구분`(`color_mkx7de80`) 제거. 두 컬럼에 박혀 있던
+    직원 실명(이대표·박정화 실장·담당자 미정)이 **전역 카탈로그에서 사라졌다** — 테스트로 고정.
+    신규고객 담당자별 저장 뷰 3종은 라벨이 아니라 멤버 id 로 걸어야 하므로 WO-3 로 넘겼다.
+- **버그 동반 수정**: `optionRef` 를 설치 때 풀지 않아 지역·사업자유형 컬럼이 **선택지 0건**으로
+  만들어지고 있었다(`options: column.options ?? null`). 팩이 `optionSets` 를 들고 설치가 참조를
+  풀도록 고쳤고, 세트가 없으면 조용히 넘어가지 않고 던진다. 설치 테스트로 222지·6종 실림을 긍정 확인.
+- **먼데이 실측 대조표**(테스트가 강제 — `seoul-pack.test.ts` "① 먼데이 실측 컬럼 수와 대조된다"):
+
+  | 보드 | 먼데이 실측 | 팩(Name+설치+유예) | 제거(중복·우회) |
+  | --- | --- | --- | --- |
+  | 신규고객 | 28 | **27** = 1+24+2 | 회사명 1 |
+  | 컨텍관리 | 25 | **23** = 1+21+1 | 회사명·담당자 구분 2 |
+  | 업무관리 | 32 | **31** = 1+24+6 | 회사명 1 |
+
+  업무관리 32는 그대로 대조된다(31 시드 + 중복 1 제거). 아이템 프리셋 32종은 불변.
+- 마이그레이션 번호 재확인: rebase 후 `origin/main` 최신 = `030` → **031 유효**(최신+1).
+  기존 마이그레이션 무수정(deletions 0)·`$json$` 재생성으로 SQL↔TS 완전일치 유지.
+- 게이트: `bash scripts/check.sh` PASS. 구조 팩 테스트 26 → **41건**(지역 7 · 시드 확정 5 추가).
+- **미해소(정직 기록)**: 먼데이 실측 카운트 **239지 중 5지**는 저장소 안 자료(R1 218 · R2 문서 수록 234)에
+  라벨이 없어 미수록이다. 정규화 결과가 222지인 것은 축약·정식 중복 합침의 결과다.
+  지어내지 않았고, 먼데이 API 재수집이 필요하다 — PLAN-003 후보. 제주·세종은 두 원본 모두에 없다.
+- 비주얼: **해당 없음**(팩 데이터·설치 로직·테스트만, UI 파일 0건). 검수 ⑥′ 사전판정 유지.
+
+## [END · BBE-8(MoaWork)/claude] 2026-08-09 — hosted 인벤토리 완주: 017 미적용 가설 기각
+
+- 세션 `[모아워크 데탑 CT04(260809)]`. 2026-08-05 정지된 `claude/bbe-8-hosted-inventory` 인수 →
+  base `f4f5a12b719ba4237f2d71726e4804cc28d3ce75` 위로 rebase(작업 중 origin/main이 `0e938e3`→`f4f5a12`로 이동, 재rebase).
+- lease: `docs/evidence/BBE-8-hosted-inventory.md` 1파일 + 이 worklog append. **제품 코드·hosted DB·Linear 변경 0.**
+- **핵심 재판정 — belie hosted 조회 회신 4건 반영**: `is_platform_admin()` = **`APPLIED_017`**,
+  `authenticated` EXECUTE = **`true`**, `app_admin_role('beliefkimkim@gmail.com')` = **`'owner'`**,
+  hosted 장부에는 **`025`·`030` 2건만** 기록.
+  → 2026-08-04 판의 P0 가설 **"017 미적용 → `/platform` 전면 차단"은 기각**된다.
+  005 미적용 가설도 함께 기각, 권한 부재 가설(반증 ②)은 **절반만** 기각(권한은 죽고 RPC 오류는 살아 있다).
+  증상별로 남은 후보: **`(app)` → `/login?error=membership`은 `org_members` 소속 0(반증 ③)이 유일한 설명**이고,
+  **`/platform` 쪽은 `is_platform = false`와 RPC 실행 오류 2개가 살아 있다.**
+  소속 0은 migration 문제가 아니라 **데이터 문제**라 해법이 다르다. 확정 질의 Q3·Q6 모두 **`NOT_RUN`**.
+- **장부 신뢰성 결론**: 017은 장부에 없는데 적용돼 있다 → **`schema_migrations` 부재는 미적용의 근거가 아니다.**
+  적용 판정의 정본은 객체·함수 본문 실물 검사(§6 Q1/Q1-b)뿐. 장부 오독으로 **재적용하는 리스크**를 §7-4에 추가했다.
+- **잔여 갭 정직 기록**: `app_admin_role()`은 `role`만 반환하고 017의 판정축은 `is_platform` 컬럼이라,
+  `'owner'` 회신은 행 존재를 증명할 뿐 `is_platform = true`를 증명하지 않는다. 신규 질의 **Q6**를 추가했다.
+- **직접 실측(전달값 아님)**: migration 전수 = **29개**(`git ls-tree`) — 2026-08-04 판의 "30개"는 오기이며
+  당시 표의 행 수도 29였다(append-only 원칙상 옛 기록은 수정하지 않고 산출물 §1에 정정 주석). `0816d2a→f4f5a12`
+  구간 `supabase/migrations/` 변경 **0건**. Production 배포 = `5817138319` / **`f4f5a12`** / `success` /
+  `2026-08-09T08:54:32Z` → **배포 SHA = origin/main HEAD**.
+- **코드 좌표 재실측(#98 반영)**: 실패 리다이렉트가 `/?error=platform` 단일에서
+  **`/?error=platform-forbidden`(권한 거부) / `/?error=platform-unavailable`(서비스 장애)** 로 분기됐다
+  (`app/src/lib/platform/guard.ts:18-19`). 문서가 요구하던 "오류 vs 거부" 구분이 코드 레벨에서 해결돼
+  재관측 시 URL만으로 판별 가능하다. `session.ts:138-141`의 `/login?error=membership` 경로는 유효.
+- 별도 카드 4건 제안(실행 안 함): 소속 복구 · Q6가 `false`면 `app_admins.is_platform` 복구(**데이터 조치**) ·
+  무인증 `GET /api/version` · 장부 정합 정책.
+- **독립 검수(작성자≠검수자) 지적 10건 전량 반영** — 판정 `PASS_WITH_NOTES` → 수정 후 재검수:
+  ① "소속 0이 유일한 P0 후보"를 **증상별로 분리**했다. `(app)` 증상의 유일한 설명은 맞으나 `/platform` 쪽에는
+  `is_platform = false`와 RPC 실행 오류 **2개가 살아 있다**. ② 반증 ②를 "해소"로 적었으나 실제로는 **절반만** 기각됐다
+  (권한 부재는 죽고 RPC 오류는 살아 있다). **URL로 구분 가능해진 것은 진단 능력이지 원인 배제가 아니다.**
+  ③ §7-4 완화책이 `supabase migration list --linked` 원장 조회를 권하고 있어 문서 자신의 장부 결론과 모순 → 교체.
+  ④ 전달값을 "실측"이라 부른 4곳을 "회신"으로 정정. ⑤ 이 커밋이 worklog 앞에 행을 추가해 자기 인용 줄번호를
+  깨뜨린 것을 발견 → `worklog.md@0816d2a:NNN` 형태로 SHA 고정. ⑥ 장부 결론에 대응하는 질의가 없어 **Q1-c 신설**.
+  ⑦ `guard.ts:30`→`29`. ⑧ "017을 적용해도 막힌다"의 미적용 전제 잔존 문구 정정. ⑨ 폴백 주석을 "거짓 전제"라 한 것은
+  과했다 — `server.ts:202`가 이미 "017 적용 후 no-op"을 예고했다. **틀린 주석이 아니라 조건이 충족된 주석**이며
+  카드 제안을 철회했다. ⑩ Q1의 문자열 기반 탐지 한계를 명시.
+- **2차 검수에서 내가 새로 넣은 주장이 거짓으로 판명돼 철회했다(재검수 판정 `FAIL` → 정정 후 재제출).**
+  ⑨의 대체 근거로 "폴백이 `is_platform=false`를 가려 `/platform`은 막히고 `/workspace-entry`는 열리는
+  **비대칭**이 생긴다"고 적었으나 **거짓**이다. 코드 실측 사슬: 폴백이 `isPlatformAdmin=true`로 승격
+  (`server.ts:204-213`) → 승격했으므로 `list_pending_workspace_create_requests()` 호출(`server.ts:218-220`) →
+  그 함수가 `not is_platform_admin()`에 `42501` 예외(`006_public_workspace_entry.sql:971-973`) →
+  `{kind:"error"}` → blocked 화면(`app/src/app/workspace-entry/page.tsx:15`).
+  **둘 다 막힌다. 비대칭은 없다.** 폴백이 없었다면 그 RPC를 아예 호출하지 않아 `/workspace-entry`는 정상이었을 것이므로,
+  **폴백은 이 경우 상황을 악화시킨다.** 잘못된 진단 지침("비대칭을 017 미적용 징후로 오독 말 것")을
+  올바른 것("둘 다 막힌 것을 보고 `is_platform` 축을 배제하지 말 것 — `is_platform=false`가 정확히 그렇게 나타난다")으로 교체했다.
+  **증거 없이 반대 방향 결론을 적었다면 다음 진단자를 정확히 틀린 쪽으로 보냈을 사안이다.**
+- 2차 검수 추가 정정: "유일한 P0 후보" 무범위 서술 잔존 4곳을 증상 범위로 한정 · `worklog.md:560-562` 인용을
+  `@0816d2a`로 고정 · §5 Q2의 "021이 컬럼 추가"는 오기(**제약** 추가) ·
+  §8-1 제목의 `RUN` 라벨을 `RELAYED`/`MEASURED`로 정렬.
+- 3차 검수 `PASS_WITH_NOTES` 4건 반영: ① **밀린 행 수를 숫자로 적는 것 자체를 금지**했다 — 2·3차에서 연속으로
+  틀렸고(68→81→95) 커밋마다 낡는 값이다. SHA 고정만 남긴다. ② "폴백이 없었다면 `/workspace-entry`가 정상 렌더"는
+  `selfRouteState === "eligible_entry"` 전제가 필요하다(`route-decision.ts:44`) — **방향(개선 아님)은 무조건,
+  결과(정상 렌더)는 전제 아래에서만** 성립으로 분리. ③ 잔존 `RUN` 라벨 2곳(갱신이력·§2 제목)을 `RELAYED`로.
+  ④ "폴백 no-op이므로 조치 불필요"는 `is_platform=true` 전제인데 그 전제가 Q6 `NOT_RUN`이다 →
+  **Q6가 `false`면 폴백 카드가 되살아난다**는 조건부 5번째 카드를 §7-5에 명시.
+- 증거 등급을 **`RELAYED`(belie 회신·이 세션 재현 불가) / `MEASURED`(이 세션 직접 실행)** 로 분리 표기했다.
+  `RELAYED`는 `NOT_RUN`이 아니라는 뜻일 뿐 `PASS`가 아니다.
+- 게이트: `bash scripts/check.sh` PASS · PR CI PASS · 독립 검수 · squash merge. UI 변경 0이라 비주얼 확인 해당 없음.
+- Linear `BBE-8` 도장은 **미수행** — Linear MCP 미인증 + 비대화형 세션이라 OAuth 불가. 초안을 END 보고에 첨부했다.
+- 판정: **INVESTIGATION_COMPLETE / P0_HYPOTHESIS_REFUTED / MEMBERSHIP_Q3_NOT_RUN.**
+
+## [END · PLAN-002/WO-1 (BBE-46)/claude] 2026-08-05 — 서울경영 3보드 구조 시드
+
+- 산출물 3층:
+  1. `supabase/migrations/031_newcust_structure_pack.sql` — 전역 카탈로그 `structure_packs`
+     신설(additive, RLS select-only) + 팩 1행 시드. 기존 마이그레이션 무수정.
+  2. `app/src/lib/structure-packs/*` — 팩 데이터(보드 3종) + 설치 로직 + 타입.
+  3. 테스트 26건 — 팩 계약 16 · 설치 acceptance 10.
+- **아이템 프리셋 32종**(= 탭 안의 그룹, PLAN-002 §1 용어) 분해 등록:
+  신규업체 14 + 컨텍관리 7 + 업무관리 11. 코드 명칭은 `sectionPreset` 으로 먼데이 item(행)과 구분했다.
+  WO-6 라이브러리가 `allSectionPresets()` 로 그대로 초기 데이터로 쓸 수 있다.
+- 실측: monday MCP 로 **구조만** 조회했다(2026-08-05). 컬럼·그룹·라벨 hex 색·저장 뷰 이름만 읽었고
+  고객 행 데이터(8,413건)는 조회하지 않았다. 팩 `source` 필드에 출처·시점을 박아뒀다.
+- 설치 컬럼: 신규고객 25 · 컨텍관리 23 · 업무관리 25. 그룹 색·컬럼 순서·선택지 순서는 먼데이 원본
+  `position`/`labels_positions_v2` 를 그대로 옮겼고 임의 재배열하지 않았다.
+- **유예 9종**(구조만 기록, 설치 안 함 — PLAN-003): 하위아이템 3 · 타임라인 1 · 수식 4 · 생성로그 1.
+  001 `field_type` enum(13종)에 대응 타입이 없다. `text` 같은 것으로 바꿔 만들면 없는 컬럼이
+  있는 것처럼 보이므로 만들지 않고 목록으로 돌려준다. 수식은 원문을 `source` 에 남겼다.
+- 저장 뷰: 업무관리 테이블 뷰 7종 생성. 먼데이 실측 9종 중 `캘린더`·`Vibe 뷰 만들기` 는
+  003 view kind(table/kanban)에 대응이 없어 제외. **다중값 필터 조건은 WO-3 소유**라
+  WO-1 은 뷰 이름·구조만 심었다.
+- 드리프트 방지: 팩이 SQL·TS 두 곳에 있으므로 `seoul-pack.test.ts` 가 마이그레이션의
+  `$json$` 블록을 파싱해 TS 팩과 **완전 일치**를 강제한다. 한쪽만 고치면 게이트가 깨진다.
+- 재설치 안전: 같은 이름 보드가 있으면 건너뛴다. 두 번 눌러도 두 벌 생기지 않고,
+  부분 설치 상태에서는 나머지만 채운다(테스트 2건으로 고정).
+- 게이트: 실제 `bash scripts/check.sh` PASS(app 1106 pass/9 skip, worker 21 pass),
+  production build PASS. `ls supabase/migrations | sort` 에서 031 이 030 뒤 — 적용 순서 정상.
+- **계약서 표기와 실측 차이(기록만, 실측을 따랐다)**:
+  · 업무관리 컬럼 계약 30 → 실측 32(Name·하위태스크 제외 시 30 — 표기 기준 차이로 보인다).
+  · 업무관리 수식 계약 3종 → 실측 4종(`총 매출액` 추가). 4종 모두 유예 목록에 넣었다.
+  · 진행 상품 계약 66지 → 실측 항목 59개(먼데이 최대 id 가 66, 실제 항목은 59).
+  · 진행 기관 계약 19지 → 명명된 라벨 18 + 빈 슬롯 1.
+  · 컨텍관리 그룹명 계약 `계약보류(온·오프)` → 실측 `계약보류(온/오프)`.
+- **NOT_RUN**: hosted DB 적용·데이터 변경(계약 범위 밖, 파일 작성까지만) · 먼데이 실데이터 비교 ·
+  지역 선택지는 002 `field_presets.region`(218) 참조로 두었고 먼데이 실측 239 와의 차이는 미해소.
+- 비주얼: **해당 없음**(migration + lib + 테스트만, UI 변경 0). `docs/plans/README.md` 비주얼
+  컨펌 게이트 규정의 "UI 변화가 없는 WO" 조항에 해당한다 — belie 확인 요청.
+- 판정: 코드 완료 · 운영 판정은 MW-QA 몫. 자기보고로 PASS 승격하지 않는다.
+
+## [START · PLAN-002/WO-1 (BBE-46)/claude] 2026-08-05 — 서울경영 3보드 구조 시드
+
+- task_id: Linear `BBE-46` (PLAN-002/WO-1, P0). base `0816d2a9c819d21fbf5d0d1e15abf58a2efa32c9`(실측),
+  branch `claude/plan002-wo1-structure-seed`,
+  전용 worktree `개발프로젝트\.worktrees\claude-plan002-wo1-structure-seed`.
+- owner: 이 세션(claude) · reviewer: MW-QA · blocked_by: 없음(WO-2와 병렬).
+- 착수 전 실측: 중복 세션 흔적 확인 → `.worktrees\claude-plan002-wo1-structure-seed` **부재**,
+  `claude/plan002-*` 브랜치 **부재** → 중복 착수 아님. 마이그레이션 최신은 origin/main 기준 `030`
+  (메인 체크아웃 워킹트리는 025 까지만 보였다 — HEAD 가 `e937330` 로 뒤처져 있었다) → 신규 번호 `031`.
+- file lease: `supabase/migrations/031_newcust_structure_pack.sql`(신규) ·
+  `app/src/lib/structure-packs/**`(신규 디렉터리 전체) · `docs/worklog.md`.
+- 신규 네임스페이스를 쓴 이유: PLAN-002 §4 lease 매트릭스에서 `lib/boards/presets*` 는 WO-6,
+  `components/newcust/*` 는 WO-2 소유다. 병렬 워커와 파일이 겹치지 않도록 `lib/structure-packs/` 를 새로 팠다.
+- 안 만지는 것: 기존 마이그레이션 전부 · `lib/boards/**`(엔진) · `lib/newcust/**` ·
+  `components/**` · 계약 파일(`lib/types/**`, `lib/repo/index.ts`) · 타 WO lease 전 경로.
+- NOT_RUN 경계: hosted DB 적용·데이터 변경(계약 명시 범위 밖).
+
+## [END · BBE-8/claude] 2026-08-04 — hosted migration·환경 적용 인벤토리 (조사 전용)
+
+- 산출물: `docs/evidence/BBE-8-hosted-inventory.md` 신규 1파일. 제품 코드·hosted DB·Linear 변경 **0**.
+- migration 전수 **30개** 목록화(번호·목적·도입 커밋). 번호 중복 `014`·`016` 각 2개, `0001`/`001` 혼재,
+  `025→030` 점프를 기록했다. `submit_workspace_create_request`는 `006→009→018→030` **4중 재정의**로 순서 민감도가 가장 높다.
+- **hosted 적용 이력 실측 = `NOT_RUN`**: supabase CLI·psql·vercel CLI 부재, `supabase/config.toml` 없음,
+  실값 `.env` 없음(레포에 `.env.example` 2개만). 자격증명이 없어 조회 자체를 실행하지 못했다.
+  belie 터미널용 읽기 전용 SQL(Q1~Q4 + 일괄 적용여부 Q1-b)을 산출물 §6에 첨부했다.
+- **Production 배포 SHA 실측 = RUN**: `gh` deployments API로 Production `5725403660` =
+  `0816d2a9c819d21fbf5d0d1e15abf58a2efa32c9`, state `success`, `2026-08-03T11:31:27Z`.
+  **배포 SHA = `origin/main` HEAD.** 코드는 최신이다. `www.moa-work.com` alias 바인딩은 vercel CLI 부재로 `NOT_RUN`.
+- **017 ↔ 관측 증상 인과 사슬을 코드로 검증**: `/platform`은 `loadPlatformActor`가 `is_platform_admin()`을
+  **단독 의존**하며 폴백이 없다(`lib/platform/actor.ts:41`). `006` 정의는 `role='admin'`을 요구하고
+  `005` 시드는 `role='owner'`라 항상 false → `guard.ts:25` `/?error=platform` → `(app)/page.tsx` `getSession()` →
+  소속 0 → `session.ts:140` **`/login?error=membership`**. MWC 관측과 정확히 일치한다.
+- **단, 017 단독 근인으로 단정하지 않았다**(반증 3건 기록): ① `/workspace-entry`에는 `app_admin_role` 폴백이 있어
+  017 미적용이어도 열린다(`lib/workspace-entry/server.ts:196-213`) — 둘 다 막히면 다른 원인이다.
+  ② RPC **오류·권한 부재**도 `unavailable`로 같은 화면을 만든다. ③ 소속 0은 독립 결함일 수 있어
+  017 적용은 `/platform` 복구의 **필요조건이지 `(app)` 진입의 충분조건이 아니다**.
+- 권고: Q1이 `NOT_APPLIED_006`이면 **017 단독 선적용**(함수 1개 `create or replace`, 멱등, 테이블·RLS 무변경) 후 재관측.
+  나머지는 `015 → 017 → 018 → 020 → 021 → 022 → 023 → 024 → 025 → 030` 순, 별도 계약으로 분리.
+  리스크: 순서 역전 시 회귀 부활, 021 제약 실패, 030 컬럼 추가 락, 롤백 스크립트 부재 → 백업 선행.
+- 판정: **INVESTIGATION_COMPLETE / HOSTED_STATE_NOT_RUN**. hosted 적용 여부는 belie 조회 회신 전까지 미확정이다.
+
+## [START · BBE-8/claude] 2026-08-04 — hosted migration·환경 적용 인벤토리 (조사 전용)
+
+- task_id: Linear `BBE-8`. 성격: **조회 전용** — 스키마 변경·migration 적용·`db push`·데이터 수정 전면 금지.
+- base `0816d2a9c819d21fbf5d0d1e15abf58a2efa32c9`(`git fetch --prune` 후 실측),
+  branch `claude/bbe-8-hosted-inventory`,
+  전용 worktree `C:\Users\Belief-desktop\Desktop\개발프로젝트\.worktrees\bbe-8-hosted-inventory`.
+- file lease: `docs/evidence/BBE-8-hosted-inventory.md` 신규 1파일 + 이 worklog START/END append(계약 명시).
+- owner: code session(claude) · reviewer: MWC · blocked_by: 없음.
+- 조사 항목: ① migration 전수 목록 ② hosted 적용 이력 실측 ③ 적용/미적용 대조표와 실증상 매핑
+  ④ Production 배포 SHA ⑤ 적용 권고(실행은 별도 계약).
+- 안전 경계: 비밀값·연결 문자열·토큰 출력·기록 금지("있다/없다"만) · hosted 조회는 집계/존재 확인 수준 ·
+  `app_admins` 직접 select 금지(함수 경유) · `--no-verify` 금지.
+- NOT_RUN 경계(착수 시 예상): hosted DB 조회·migration 원장·실제 브라우저 로그인 재현.
+- 병렬 레인 주의: BBE-6 구현 세션이 같은 레포에서 동시 진행 중 — 해당 브랜치·worktree·파일 미접촉.
+
+## [END · BBE-6/codex] 2026-08-03 — 단일 데모 미선택 상태의 선택 불가 회귀 수정
+
+- task_id: `BBE-6-SINGLE-DEMO-SELECTION-FLOW-02`.
+- 구현: 승인된 데모가 정확히 1개이고 저장된 선택이 없을 때도 서버가 검증한 index `0` 선택 버튼을 표시한다.
+  이미 선택된 단일 데모의 간결 UI와 복수 데모 선택 흐름은 유지했다.
+- 변경 범위: `PlatformDemoWorkspaceTab.tsx`와 집중 테스트만 수정(+11/-1).
+  migration·RPC·auth·RLS·BBE-7 저장 경로는 변경하지 않았다.
+- PR/머지: [#89](https://github.com/bbelieff/moawork/pull/89) · feature `369b7a322e1893ad6622eda5db7a194170719a33`
+  · squash main `9e6fb8b1c90fc40776755ad91c36b0b786eae215`.
+- 게이트: 실제 `bash scripts/check.sh` PASS(app 1071 pass/9 skip, worker 21 pass), production build PASS,
+  PR CI·main CI·GitGuardian PASS.
+- 배포: Vercel Production `dpl_9NVB8Ac5j9ydpcdydBPUfq5AmgsC` READY,
+  `www.moa-work.com` alias와 merge SHA 일치.
+- 독립 QA: `/platform/demo`에서 버전 `9e6fb8b`, 신규고객·컨택관리·업무관리 렌더,
+  사용자 모드 전환 후 관리자 DOM 비노출, 관리자 모드 복귀, console warning/error 0 확인.
+  Linear QA receipt `87cea3c3-bf27-41d9-a597-1557dabf43f0`.
+- 판정: **PASS_WITH_NOT_RUN_BOUNDARIES**. 단일 데모+`selectedIndex=null` 정확 조건은 기존 선택을
+  파괴하지 않기 위해 운영에서 재현하지 않았고, 별도 일반 사용자 계정·hosted DB 변경·신규 실계정 auth·모바일 실기기도 NOT_RUN으로 유지했다.
+
+## [START · BBE-6/codex] 2026-08-03 — 단일 데모 미선택 상태의 선택 불가 회귀 수정
+
+- base `afcfa754e9b40a17e7bba62796bbc2ba06d324fa`, branch `codex/bbe-6-single-option-selection-flow`,
+  전용 worktree `C:\Users\Belief-desktop\Desktop\개발프로젝트\.worktrees\bbe-6-single-option-selection-flow`.
+- 원인: `PlatformDemoWorkspaceTab`이 데모가 2개 이상일 때만 선택 목록을 렌더했다.
+  데모가 1개이고 `selectedIndex=null`이면 “사용할 데모 회사를 선택해 주세요” 문구만 남고 클릭 수단이 없었다.
+- file lease: `app/src/components/platform/PlatformDemoWorkspaceTab.tsx`,
+  `app/src/components/platform/PlatformDemoWorkspaceTab.test.tsx`.
+- owner: code session · reviewer: 독립 Production QA session · blocked_by: 없음.
+- NOT_RUN 경계: hosted DB 적용·신규 실계정 auth·모바일 실기기. BBE-7 RPC/migration/저장 컨텍스트는 변경 금지.
+
+## [END · C5-갭] 2026-07-29 — T01 · PostHog 배정본 대비 갭 보정 완료
+
+브랜치 `feat/t01-c5-gap`, **최종 base `origin/main@afeba90`**(리베이스 후). **check 게이트 초록**(app 832 pass / 5 skip · worker 14 pass).
+
+> **리베이스 경위(중요)**: 최초 작업 base 는 `e1a3a05` 였으나 그 사이 main 이 8커밋 진행되며
+> analytics 가 대폭 개편됐다(Wave B — `autocapture:false` · 경로 템플릿화 `analyticsRouteTemplate` ·
+> `uiHost` 를 env 로 못 바꾸게 US 강제 · capture pending 큐 · 이벤트 4종 **실배선**).
+> PR 이 충돌 상태가 되어 리베이스했고, 그 과정에서 **이벤트 처리 방침을 교체 → 병합으로 바꿨다**:
+> main 의 4종(`login_result` 등)은 로그인·워크스페이스 4개 컴포넌트에서 **실제 호출 중**이라
+> 이름을 바꾸면 그 화면들이 깨진다. 그래서 `WAVE_B_EVENTS`(4) + `ASSIGNED_EVENTS`(10) = **14종**으로 합쳤다.
+> main 의 개선분(전면 마스킹·US 강제·pending 큐 등)은 그대로 살렸다.
+
+### 보정한 갭 4건
+
+| # | 갭 | 조치 |
+| --- | --- | --- |
+| 1 | 이벤트가 배정 목록과 불일치(규약 미준수) | 배정 확정 **10종**(`영역.대상.행동`)을 `ASSIGNED_EVENTS` 로 **추가**(기존 배선 4종은 `WAVE_B_EVENTS` 로 보존). 규약을 정규식 테스트로 강제 |
+| 2 | 필수 속성 `plan_tier`·`app_version` **grep 0건** | `AnalyticsIdentity` 가 세션에서 4종을 super property 로 등록 + `useTrack` 이 `app_version` 을 매 이벤트에 주입 |
+| 3 | 금액·고객정보 화면이 녹화 제외에 없음 | `/policyfund`(실행액·수수료 31컬럼) · `/contract` · `/newcust`(고객사명·연락처) 추가 |
+| 4 | 프록시 경로 `/ingest` = PostHog 공식 예시명 | `/mw-sig`(제품 고유어)로 교체. 상수·rewrites·proxy matcher **3지점 동기화를 테스트로 고정** |
+
+### 산출물
+
+- **신규**: `components/analytics/AnalyticsIdentity.tsx`(필수속성 등록·UUID 식별, DOM 0) ·
+  `lib/analytics/version.ts`(빌드 버전, 40자 SHA→7자리) ·
+  `lib/analytics/proxy-path.test.ts`(경로 동기화·게이트 실제 동작·US 리전 고정) ·
+  `lib/analytics/required-props.test.ts`(필수 4종·샘플링 규칙).
+- **수정**: `events.ts`(10종 + `RequiredEventProperties` + `sampleDecision`/`passesSampling` 비용가드) ·
+  `config.ts`(경로 상수·제외경로) · `client.ts`(`registerAnalyticsContext`) · `useTrack.ts`(app_version·샘플링) ·
+  `proxy.ts`(matcher 경로값) · `(app)/layout.tsx`(Identity 마운트 1곳) · `.env.example`(`NEXT_PUBLIC_APP_VERSION` 형태) ·
+  기존 테스트 4종 신규 규약 반영.
+- **유지(재작업 없음)**: `scrub.ts` 본체 · Wave B 개선분(전면 마스킹 · US 강제 · pending 큐 · 경로 템플릿) — 손대지 않았다.
+- **정책 분기 기록**: main 의 Wave B 페이로드 규칙은 record id 도 금지한다. 배정 지시는 "내부 UUID 허용" 이라
+  둘이 어긋난다. 해소: Wave B 4종에는 **기존의 더 엄격한 규칙(id 전면 금지)을 그대로 유지**하고,
+  배정 10종에만 "*_id 는 허용하되 **UUID 형태여야 함**" 규칙을 적용했다(테스트로 분리 고정).
+  금액 필드는 양쪽 모두 금지 — 배정 이벤트 전수에 대해 별도 테스트로 확인한다.
+
+### 수용기준 대조
+
+| 기준 | 상태 | 근거 |
+| --- | --- | --- |
+| 프록시 경유 수집 | **코드 충족 · 브라우저 미검증** | `api_host=/mw-sig`, rewrites→`us.i.posthog.com`, matcher 제외. 네트워크 탭 확인은 키 주입 후 필요 |
+| PII 전송 0 | **자동 테스트로 고정** | scrub 테스트 + 이벤트 페이로드 PII 키 검사 + 필수속성 비-PII 검사 |
+| 리플레이 입력값 미노출 | **충족** | `maskAllInputs:true` + `mask_all_text` + `maskTextSelector:"*"` + `maskTextFn` 2차 스크러빙 |
+| 회계/홈택스 녹화 제외 | **충족(범위 확대)** | 기존 4경로 + 금액·고객정보 3경로 추가, 테스트로 고정 |
+| 키 레포 미존재 | **충족** | `phc_` 실값 grep 0건. `.env.example` 에 형태만 |
+
+### 남은 것(코드 밖 — 운영)
+
+1. **Vercel/PostHog 환경변수 주입** — `NEXT_PUBLIC_POSTHOG_KEY`(필수) · `NEXT_PUBLIC_APP_VERSION=$VERCEL_GIT_COMMIT_SHA`(권장).
+   키가 없으면 SDK 자체를 로드하지 않아 **분석이 완전히 꺼진 상태**로 배포된다(fail-closed).
+2. **PostHog 대시보드 — 리플레이 보존기간 30일 설정**. 코드로 지정할 수 없는 프로젝트 설정이다.
+3. **프록시 경로 변경 여파** — 이전 `/ingest` 로 나가던 배포본이 있다면 교체 시점에 잠깐 유실될 수 있다(키 미주입 상태면 무해).
+4. **계측 배선** — 커스텀 이벤트 실제 호출부는 여전히 **0개**. 화면에 `track()` 을 심는 일은 각 도메인 트랙 레인이라
+   T01 은 훅·타입·게이트만 제공했다. `useTrack()` 은 이벤트명·페이로드가 타입으로 고정돼 있어 바로 쓸 수 있다.
+5. **data-pii 속성** — 머지본 정책이 `maskTextSelector:"*"`(전체 텍스트 마스킹)이라 속성 부착 없이도 텍스트는 가려진다.
+   `[data-pii]` 는 `blockSelector` 로 남아 있어(요소 자체 제외) 필요한 곳에 붙이면 더 강하게 막힌다.
+
+## [START · C5-갭] 2026-07-29 — T01 · PostHog 배정본 대비 갭 보정
+
+- **착수 전 실측 결과 — C5 는 이미 구현·머지되어 있다**: `origin/main@e1a3a05` = PR #27
+  `feat(C5): PostHog — SDK·/ingest 프록시·PII 스크러핑·리플레이 전면 마스킹` (머지 2026-07-29 06:55).
+  `app/src/lib/analytics/**` 15파일 + `components/analytics/PostHogProvider.tsx` 존재.
+  → **중복 구현하지 않는다.** 배정 지시서와 머지본을 대조해 **갭만 보정**하는 것으로 전환한다.
+- **머지본에서 이미 충족된 것(재작업 없음)**: 리버스 프록시 경유 전송 · fail-closed 키 형태검증 ·
+  `maskAllInputs:true` + `mask_all_text` + `maskTextSelector:"*"`(전면 마스킹) · `maskTextFn` 2차 스크러빙 ·
+  값/키/URL 3중 PII 스크러빙(이메일·전화·주민·사업자·카드·IP·JWT) · `respect_dnt` · 키 레포 미존재(phc_ grep 0건).
+- **확정된 갭 4건(실측 근거)**:
+  1. **이벤트 화이트리스트 불일치** — 배정 10종(`영역.대상.행동`)이 아니라 `deal_created`/`deal_moved`/
+     `meeting_logged` 3종. `auth.login.succeeded`·`settle.settlement.saved` 등 **8종 부재**, 네이밍 규약 미준수.
+  2. **필수 속성 2종 부재** — `plan_tier`·`app_version` 이 analytics 전체에서 **grep 0건**
+     (`org_id`·`role` 은 identify 에만 존재, 이벤트 속성으로는 미주입).
+  3. **금액 화면 녹화 제외 누락** — 제외 목록에 `/policyfund` 없음. 해당 보드는 실행액·수수료가
+     상시 렌더된다(T09 산출물). `/contract`·`/newcust`(고객사명·연락처)도 미포함.
+  4. **프록시 경로가 표준 예시명** — `/ingest` 는 PostHog 공식 문서가 쓰는 대표 경로라
+     차단 목록 등재 위험이 있다. 배정 지시 "뻔한 이름 금지" 와 상충.
+- **만지는 파일**: `app/src/lib/analytics/{events,config,client}.ts` + 각 테스트 ·
+  `app/src/proxy.ts`(matcher 경로값만) · `app/next.config.ts`/`analytics/rewrites.ts`(프록시 경로 상수 반영) ·
+  `app/.env.example` · `docs/worklog.md`.
+- **안 만지는 것**: `scrub.ts` 본체(견고 — 유지) · `worker/**` · `supabase/**`(마이그레이션 0건) ·
+  타 트랙 업무로직 · `lib/types/**`·`lib/repo/index.ts`(계약 = 단일소유) · 리전(US 고정).
+- **계측 배선 경계**: 커스텀 이벤트의 실제 호출부는 현재 **0개**(테스트에서만 호출). 화면 컴포넌트에
+  `track()` 을 심는 일은 각 도메인 트랙 레인이므로 T01 은 **훅·타입·게이트만 제공**하고 배선은 하지 않는다.
+## 2026-07-23 — T02 · [END] 딜 상세 + 고객사 목록 (배정 잔여분) · PR #48 리베이스
+
+- **PR #48 리베이스**: main 이 크게 전진(PostHog·MWC R1 등)해 `origin/main` 위로 리베이스.
+  `docs/worklog.md` 충돌은 append-only 문서라 **양쪽 항목 모두 보존**해 해소. 게이트 초록 유지.
+- **딜 상세 `(app)/deals/[dealId]`** — 보드 카드 드릴인 대상. 정보/활동/첨부를 세로로 쌓은 서버 렌더.
+  - 서버 액션 6종(`actions.ts`): 단계이동(활동로그 자동) · 활동추가 · 기본정보 수정 ·
+    계약상황 저장 · 첨부 업로드/삭제. 저장은 전부 `getCrmService()`(env 있으면 실 Supabase).
+  - `DealInfoTab`/`DealActivityTab`/`DealFilesPanel` 신규. **T04 가 만들어두고 어디에도 연결되지
+    않았던** `ContractStatusField`·`FilesTab` 을 그대로 소비(중복 저작 없음).
+  - 담당범위 밖이면 `NotFound` → **404 로 수렴**(존재 유출 방지), 편집 UI 도 비활성.
+- **고객사 목록 `(app)/companies`** — 담당범위 적용 표 + 업체별 진행 딜 건수.
+- **보드 카드 링크 복구**: 이전에 `/deals/[id]` 부재로 링크를 빼뒀던 워크어라운드 제거.
+- **라우트 슬러그 예약**(아래 경계 이슈): `companies`·`deals` 를 예약 목록에 추가.
+  넣지 않으면 워크스페이스가 slug='deals' 를 선점해 라우트를 가릴 수 있다(실제 결함).
+- 신규 테스트 7건(`dealDetail.test.ts`) — 데이터 조합 · 스코프 404 · 이동 로그 증분 ·
+  custom **키 병합**(다른 커스텀값 보존) · null 로 키 삭제 · 활동 추가/차단.
+- 게이트 `check.sh` **초록**(앱 758 통과/9 skip · 워커 14), `next build` 초록(라우트 등록 확인).
+
+### ⚠ 경계 이슈 보고 — 예약 슬러그가 마이그레이션에 하드코딩됨
+
+`workspace-entry/contracts.test.ts` 가 **006 파일 내용**을 예약목록의 단일 출처로 비교한다.
+그래서 top-level 라우트를 추가하면 006 을 고치지 않는 한 게이트가 빨개진다. 그러나 006 은
+이미 적용된 마이그레이션이라 파일만 고치면 **배포된 DB 에는 반영되지 않는다**(CLAUDE.md
+"기존 파일 수정 금지" 와도 충돌).
+
+→ 양쪽 다 안전하도록 **006/009 갱신(신규 설치용) + `014_reserve_crm_route_slugs.sql` 추가
+(기존 DB 따라잡기용, drop+add 라 재실행 안전)** 로 처리했다. 슬러그 2개를 넣은 것 외에
+술어는 원문 그대로다. **workspace-entry 트랙 리뷰 필요** — 근본 해소는 예약목록을 SQL 상수
+(테이블/함수)로 뽑아 앱과 한 곳에서 공유하는 것.
+
+- **파킹 유지**: `.env.local` 부재 → 실DB 실행검증 미실시(`liveCrm.test.ts` 는 skip 상태).
+  브라우저 검증 NOT_RUN(preview 가 세션 디렉터리 기동). `moveDeal` 비원자성 TODO 유지.
+- **첨부만 저장소가 갈린다**: files 서비스가 아직 동기 `getRepo()` 위 → 첨부는 로컬에만 기록.
+  T04 가 비동기 소스로 옮길 때까지 한시적. 코드에 명시해둠.
+
+## 2026-07-22 — T02 · [END] B2 재개 — CRM 쓰기경로 실DB 연결 완료 (실행검증은 파킹)
+
+- **전달물**:
+  - `lib/crm/asyncService.ts` — `CrmSource` 위 비동기 서비스. 동기 `CrmService` 와 **동일 의미론**
+    (딜 생성 시 기본단계 배치 + 활동로그 1건, 단계이동은 move 전용, 담당범위 규칙).
+  - `getCrmService()` → `AsyncCrmService` 반환으로 전환. 동기판은 `getSyncCrmService()` 로 보존
+    (공용 `Repo` 가 아직 동기라 T04·T09 가 그 위에서 돈다).
+  - **API 라우트 7종 실DB 경로 연결** — deals(목록/생성) · deals/[id](상세/수정/삭제) ·
+    deals/[id]/move · deals/[id]/activities · companies(2) · pipelines. 라우트 한 벌로
+    env 있으면 Supabase, 없으면 로컬(연결 전후 동작 동일 → 회귀 0).
+  - `CrmSource` 에 `deleteCompany`/`deleteDeal` 추가(라우트 DELETE 파리티 복구) + 양쪽 구현.
+- **테스트**: `asyncService.test.ts` 10건(생성 자동로그·이동 증분로그·move 불변식·스코프·동기판 파리티) +
+  `liveCrm.test.ts` 4건(실DB 왕복, 크리덴셜 없으면 skip — T10 rls-penetration 규약 준수).
+- **게이트**: `check.sh` **초록** — 앱 656 통과 / 9 skip, 워커 14. `next build` 성공(라우트 전량 등록).
+- **service_role 미사용 확인**: 클라이언트는 anon 키만 사용(`client.ts`), 실DB 테스트도 비밀번호 로그인
+  JWT 로 RLS 를 통과한다. service_role 키는 코드·문서·env 예시 어디에도 없음.
+- **파킹된 블로커**:
+  1. `.env.local` 부재 → **실DB 실행 검증 미실시**. 수용기준(딜 생성→이동→활동 1건)은 `liveCrm.test.ts`
+     로 자동화해뒀고 크리덴셜 주입 즉시 실행 가능. 현재는 "미검증" 상태가 정직한 판정.
+  2. 브라우저 검증 NOT_RUN — preview 도구가 세션 디렉터리를 기동해 이 worktree 변경엔 적용 불가.
+  3. `moveDeal` 의 UPDATE + 활동로그 INSERT 가 비원자적(기존 TODO 유지) — 004 이후 RPC 로 합칠 것.
+- **다음**: 딜 상세 `/deals/[id]` 화면 · 드래그 단계이동 · 크리덴셜 확보 후 실DB 판정.
+
+## 2026-07-22 — T02 · [START] B2 재개 — CRM 실repo 쓰기경로 + 단계필터 화면 연결
+
+- 브랜치 `feat/t02-crm-supabase-repo` (main d172875 기반).
+- **착수 전 실측**:
+  - 공용 `Repo` 포트는 **여전히 동기**(`listDeals(ctx): Deal[]`) → Supabase 로 "동일 포트" 구현 불가.
+    기존 비동기 포트 `CrmSource`(시그니처 1:1)를 그대로 쓴다. `moveDeal` 은 이미 양쪽에 존재.
+  - `SupabaseCrmSource` 는 CRUD·moveDeal(활동로그 포함)·custom 병합까지 **이미 구현됨**.
+  - **갭 = 쓰기 경로 미연결**: API 라우트가 `CrmService(getRepo())`(동기 LocalRepo)에 묶여 있어
+    env 가 채워져도 딜 생성/단계이동이 실DB 로 가지 않는다. 읽기(보드 3종)만 Supabase 경로.
+- **계획**: ①`CrmSource` 위 비동기 서비스 ②API 라우트 연결 ③실DB 통합테스트(env 없으면 skip).
+- **블로커(파킹)**: `.env.local` 부재 → 실DB 실행 검증 불가. 코드+테스트를 준비하고 키 제공 시 즉시 실행.
+
+## END 2026-07-30 — T09 · G8 자동이동 엔진 + PR #49 최신화
+
+**1. PR #49 (B4 정산 수식 화면) 최신화**
+
+- main 이 6커밋 앞서 있어 `origin/main`(`1744d9f`) 위로 리베이스. 충돌은 `docs/worklog.md` append 2건뿐 — 양쪽 보존으로 해소. 코드 4파일은 백업 대비 **바이트 동일**(변형 0).
+- 확인: 내가 의존하는 계약(`lib/repo/index.ts`·`lib/types/`·`api/settlements/`)은 그 구간에서 **무변경**.
+
+**2. G8 상태→그룹 자동이동 엔진 (착수 언블록 → 구현)**
+
+- **언블록 근거**: `supabase/migrations/004_gaps_and_leadin.sql` 에 `board_automation_rules` 스키마가 내려옴(`board_id`·`status_column_key`·`status_value`·`to_group_id`·`enabled`, unique 3키). 이전 지시의 차단 조건("MWC 가 별도 설계 후 내려보냄")이 충족됨. RQ-0009 의 3개 사유 중 **004 스키마 부재는 해소**.
+- **설계 원칙 — 규칙은 데이터, 엔진은 코드**: 먼데이 11그룹(준비→진행→심사→승인→관리→불가) 목록을 코드에 **하드코딩하지 않는다**. 규칙 행으로 주입되므로 **그룹 목록이 미확정이어도 엔진은 완성 가능**하다. 소스가드 테스트가 구체 그룹명 유입을 차단.
+- 산출물 `app/src/lib/policyfund/automation.ts` — `indexRules`/`decideMove`/`decideMoves`/`findRuleConflicts`. 부수효과 없음.
+- 불변식(테스트 19건 고정): 상태값 공백·null → 이동없음 · 보드/컬럼 격리 · 이미 대상그룹이면 no-op · 비활성 규칙 미발동 · 중복키 선착순(결정적) · 004 unique 위반 사전검출 · 미배치(group_id=null) 아이템도 이동.
+- **미포함(별건)**: 영속성(포트/어댑터)·API 라우트·**규칙 시드(11그룹 매핑)**. 시드는 그룹 목록 SSOT 확정 후.
+
+**3. 잔여 블로커**
+
+- ⚠ **11그룹 목록 SSOT 여전히 부재** — 004 에도, 어느 seed·ROUND 문서에도 없음(실측 grep 0건). 엔진은 무관하게 완성됐고, **규칙 시드만 대기**.
+- ⚠ **타 트랙 잔존 이슈** — `app/src/app/providers.tsx`(git **미추적**, main·본 브랜치 모두 부재)가 `@tanstack/react-query` 를 import 하는데 package.json **미선언**. 공유 워킹트리에서만 typecheck 실패 → 격리 워크트리로 우회 검증. 해당 트랙 확인 요망.
+- 참고: 조율 SSOT 가 `dispatch-queue.yaml` → `sync/ROUND-*.md` 로 이관됨(SYNC R1). 최신 `ROUND-33` 은 `NEXT_WORK: NONE` 이며, 본 작업은 신규 프로그램이 아니라 **기존 T09 배정(B4/G8)의 연속**이다.
+
+## END 2026-07-23 — T09 · B4 정산 수식 화면 완료
+
+- 브랜치 `feat/t09-settlement-form` (base `origin/main` d172875) · 커밋 `dcfbae4`.
+- **산출물**
+  - `app/src/app/policyfund/settlements/page.tsx` — 서버 컴포넌트. 002_seed 번들에서 진행상품(59)·진행기관(18) 로드 후 폼에 주입.
+  - `app/src/components/policyfund/SettlementForm.tsx` — 실행액·수수료%·계약금·수수료입금일 입력 → `POST /api/settlements` → **서버 응답의 파생값 4종을 그대로 표시**.
+  - `app/src/lib/policyfund/settlement-form.ts` — 순수 로직 분리(`toCreatePayload`/`toDerivedDisplay`). **산식 없음 = 복사 전용.**
+  - `settlement-form.test.ts` 11 테스트.
+- **수용기준 달성(화면 재계산 금지)** — 3중으로 고정:
+  1. `toDerivedDisplay` 는 복사만 — DB generated column 값이 그대로 화면에 간다.
+  2. 정합 테스트: 표시값 == 저장 레코드의 `fee_amount`/`total_revenue`/`d180`/`d365` (+ 002_seed 확정본 회귀가드 3,000,000 / 3,500,000 / 2026-07-09 / 2027-01-10).
+  3. 소스가드 테스트: `SettlementForm.tsx` 에 `computeSettlement`·`feeAmount(`·`dPlus(` 등 산식 import 부재, `settlement-form.ts` 에 산술 연산자 부재.
+- **파생키 배제**: 페이로드에 `fee_amount`·`total_revenue`·`d180`·`d365` 미포함(서버 400 방지) — 테스트 고정.
+- **검증**: 격리 워크트리에서 `check.sh` **초록**(app 657 pass/5 skip, worker 14), `npm run build` **통과**(`/policyfund/settlements` 라우트 등록). dev 서버 실측 — 페이지 **200**, 입력 4종·파생 4칸·프리셋 `<option>` **79개**(59+18+placeholder 2) 렌더, 실제 프리셋 값(`개발기술사업화`·`직접_미소` 등) 확인.
+- **미검증(정직 기록)**: 브라우저 클릭스루는 **미실행**. Browser pane 이 https 로 강제 리다이렉트해 접근 실패했고, `/api/settlements` 는 인증 필요(401)라 로그인 없이는 제출 흐름을 끝까지 못 탄다. 제출→표시 왕복은 단위 테스트(repo 경유)로 커버.
+- **블로커 처리**
+  - ⛔ G8: 착수 금지 지시대로 **미착수**. RQ-0009 파킹 유지.
+  - ✅ B-3(공유 워킹트리 타입에러) **부분 해소**: `@supabase/ssr` 은 package.json 에 선언돼 있었고 node_modules 가 stale 했던 것 → `npm install` 로 해소.
+  - ⚠ **잔존**: `app/src/app/providers.tsx`(타 트랙 **미추적** 파일, main·내 브랜치 모두 부재)가 `@tanstack/react-query` 를 import 하는데 해당 패키지는 package.json 에 **미선언** → 공유 워킹트리에서만 typecheck 실패. 타 트랙 파일이라 손대지 않고 격리 워크트리로 우회 검증함. 해당 트랙 확인 필요.
+
+## START 2026-07-23 — T09 · B4 정산 수식 화면 (P3, MWC 재개 배정)
+
+- 트랙 T09 / provider claude. 브랜치 `feat/t09-settlement-form` (base = `origin/main` d172875).
+- 범위: settlements 수식 **화면** — 실행액·수수료% 입력 → 수수료·총매출·D+180/365 표시 + 002 프리셋 연결.
+- **수용기준**: 화면 재계산 금지. 서버(DB generated column) 값을 그대로 표시한다.
+- ⛔ G8(상태→그룹 자동이동) **착수 금지** — MWC 별도 설계 대기. RQ-0009 파킹 유지.
+- 착수 전 실측: settlements API 2종(`/api/settlements`, `/[settlementId]`) main 반영 확인.
+  `lib/repo/supabase/` 어댑터는 **CRM 전용**(settlements 미포함) → 정산은 LocalRepo 경유.
+## 2026-07-30 — T03 · 플랫폼 관리자가 어드민에 도달하지 못하는 버그 3건
+
+**START** 2026-07-30 09:40 KST · 브랜치 `feat/t03-r1-entry-ux` (base `fc290f4`)
+
+### 근본원인 — `is_platform_admin()` 이 예약된 관리자를 인식하지 못했다
+지시서 진단은 "라우팅에 플랫폼 분기가 없다" 였는데, 실측하니 **앱은 이미 관리자를
+operator 뷰로 보내도록 돼 있었다**(`resolveWorkspaceEntryView` 첫 분기).
+문제는 그 판정의 입력값이 **항상 false** 였다는 것이다.
+
+`006` 의 `is_platform_admin()` 은 `app_admins.role = 'admin'` 을 요구한다.
+그런데 `005` 는 belie 를 **`role = 'owner'`** 로 예약한다. `app_admins.role` 은
+005 정의상 "플랫폼 등급"이 아니라 **가입 시 부여할 tenant 역할**이고
+(`role text not null default 'owner'`, 주석 "owner + 플랫폼 관리자로 자동 부여"),
+플랫폼 축은 `is_platform` 컬럼이다. 006 이 두 축을 한 컬럼으로 오해했다.
+→ 유일한 예약 관리자가 조건에 걸려 탈락. "DB 는 정상"이라는 관찰은 맞았고,
+**함수가 그 행을 못 읽은 것**이다.
+→ `017`: 판정을 `is_platform` 단독으로. (`role='admin'` 으로 데이터를 바꾸는 방식은
+   belie 가 회사 생성 시 owner 가 아니라 admin 으로 들어가 005 의도가 깨져서 미채택.)
+
+### 수정 1 — 로그인 후 플랫폼 분기
+`decideWorkspaceDestination(rows, target, isPlatformAdmin)` 3번째 인자 추가.
+**소속 0 일 때만** 목적지를 `/platform` 으로 바꾸고, 소속이 있으면 기존대로 회사로 보낸다.
+`isPlatformAdmin` 은 멤버십 파싱·slug 매칭·fail-closed 에 **개입하지 않는다**(계약 유지) —
+테스트로 고정했다(남의 회사 slug 를 next 로 넣어도 관리자여도 fail-closed).
+callback 에서 `app_admin_role` RPC 로 판정하고, **실패는 "관리자 아님"으로 수렴**시킨다
+(실패를 관리자로 처리하면 조회 장애가 곧 권한 상승이다). 라우팅 테스트 6건 추가.
+`app_admin_level()` 은 **레포에 존재하지 않는다** — `app_admin_role()` 만 사용.
+
+### 수정 2 — 진입 화면 탈출구
+`[⚙ 플랫폼 관리로 가기]` 를 추가. 처음 pending 뷰에 넣었으나 **테스트가 사실을 정정해줬다**:
+관리자는 pending 이 아니라 **operator 뷰**에 착지한다(위 분기가 우선). 도달 불가 UI 를
+남기지 않으려고 링크를 operator 뷰로 옮겼다. 그 뷰는 서버가 확인한 `isPlatformAdmin`
+일 때만 선택되므로 **일반 사용자에게는 렌더 자체가 되지 않는다**(숨김이 아니라 부재).
+테스트 2건(관리자 노출 / 비관리자 마크업 부재 + 기존 출구·문구 불변).
+
+`/platform` 인덱스 페이지는 **main 에 이미 생겼다**(타 세션 `feat/platform-console-shell`).
+내가 만들던 리다이렉트 페이지는 폐기했다.
+
+### 수정 3 — 플랫폼 관리자의 회사 생성은 승인 불요
+`018`: `submit_workspace_create_request` 에 자동승인 분기 추가. 검증·멱등·advisory lock 은
+기존과 동일하게 두고 **그 뒤에** 붙였다. 관리자면 pending 없이 orgs + owner 멤버십을 즉시
+만들고 `decision_code='platform_admin_direct_create'` + 감사 이벤트에
+`platform_admin_direct_create/self_approved/reason` 을 남긴다(일반 승인과 구분).
+반환은 하위호환(기존 `accepted` 유지 + 필드 추가). 재호출은 replay 로 방어하고,
+slug 경쟁은 승인 경로와 **같은 키**로 advisory lock. 일반 사용자 경로는 무변경.
+
+앱 배선도 함께: RPC 가 `auto_approved+slug` 를 주면 `redirectTo` 를 실어 보내고 클라이언트가
+바로 입장한다 — 이 배선이 없으면 **이미 만들어진 회사를 두고 "승인 대기" 화면에 머문다**.
+
+### 마이그레이션 번호 충돌 처리
+내 `014_entry_request_dedup` 이 main 의 `014_platform_metrics_daily` 와 충돌 → **016 리넘버링**.
+신규는 `017`·`018`. (커밋 직전 재실측해서 잡았다.)
+
+**END** 2026-07-30 10:05 KST
+- **미검증(파킹)**: 실DB 적용 후 동작. 017·018 은 실 Supabase 에 적용돼야 효력이 있고,
+  로컬에 크리덴셜이 없어 SQL 실행 검증은 못 했다. 수용기준 5개 전부 **배포+마이그레이션
+  적용 후** belie/T10 확인 필요.
+- 정적 검증은 전부 통과(check.sh 초록).
+
+---
+
+## 2026-07-30 — T03 · R1 P0 — 오너 권한 고착 + 사이드바 전 메뉴 잠김 해소
+
+**START** 2026-07-30 01:13 KST · 브랜치 `feat/t03-r1-entry-ux` (worktree 격리, base `1744d9f`)
+
+배정: [0순위] public-workspace-entry 머지·배포 · [1순위] C0 진입 UX 3건 · [2순위] C1 스위처.
+
+### [0순위] — **이미 완료 상태였다(실측)**
+`git rev-list --left-right --count origin/main...origin/feat/public-workspace-entry` = **`33  0`**.
+ahead=0 → 해당 브랜치는 main 에 **전량 포함**돼 있다(다른 세션이 이미 머지). main tip 은
+`1744d9f feat: add safe PostHog analytics (#53)` 로 07-22 정체 상태도 아니다.
+→ 머지할 대상이 없어 마이그레이션 006 리넘버링·형제 브랜치 통합 이슈도 발생하지 않았다.
+브리핑의 "69커밋 적체 / main 07-22 정체"는 **07-27 실측 시점 정보이며 현재와 다르다.**
+
+### P0-a 오너 권한 고착 — **원인은 app_admin_role() 아님**
+브리핑 가설은 "앱이 app_admin_role() 을 안 묻거나 실패를 삼킨다" 였으나 실측 결과 **정상 호출**된다
+(`session.ts:79`, 에러 없으면 `parseAdminRole(data)` 반영).
+
+진짜 원인은 `lib/account/presentation.ts` 였다. `ctx.isPlatformAdmin` 이 true 면 **실제 org 역할을
+무시하고** `roleLabel="회사 역할 확인 중"` + `canManageCompany=false` 로 **고정**하고 있었다.
+belie 는 오너이면서 플랫폼 관리자라 이 분기에 걸려 자기 회사를 관리하지 못했다.
+
+그 방어는 "Platform role 이 workspace membership 을 덮어쓸 수 있다"는 전제였는데 **그 전제는
+이미 해소돼 있었다** — `session.ts` 의 두 경로 모두 role/scope 를 검증된 `org_members` 행에서만
+채운다(`getSupabaseSession`·`getDevSession` 둘 다 `membership.role`). 전제가 사라진 뒤에도
+가림막만 남아 P0 가 된 것이다.
+(솔직 기록: 그 덮어쓰기는 원래 **내가 B1 에서 넣은 코드**였고, 이후 누군가 strict 하게 고쳤다.
+즉 이 가림막은 내 과거 버그를 막으려던 방어였는데 원인이 사라진 뒤 잔재로 남았다.)
+→ 분기 제거, 실제 멤버십 역할 사용. 회귀테스트 2건(관리자여도 역할 노출 / 관리자라고 역할이
+올라가지 않음 — 두 축의 독립성 고정).
+
+### P0-b 사이드바 전 메뉴 잠김 — **별개 원인**
+셸이 `getRepo().isFeatureEnabled(ctx.org.id, key)` 로 판정했는데, `getRepo()` 는 환경과 무관하게
+**항상 LocalRepo(인메모리 시드)** 를 돌려준다. 프로덕션의 `ctx.org.id` 는 Supabase 실 UUID 라
+그 스토어에 없고 → 전 feature false → **전 메뉴 잠김**.
+게다가 Supabase 경로에는 조직 생성 시 `org_entitlements` 행을 만드는 코드가 없어(LocalRepo 만
+부여) DB 를 그대로 읽어도 빈 결과다.
+
+→ `lib/entitlements/resolve.ts`(순수 판정) + `server.ts`(환경별 소스) 신설.
+판정 규칙은 PLAN v0.2 §5("MVP: 모든 플랜에 core.* + MVP 모듈 무료") 그대로 —
+**MVP 기능은 행이 없으면 ON**, 비-MVP 는 행이 없으면 OFF, DB 행은 기본값을 뒤집는 오버라이드,
+만료 행은 무시. 조회 실패 시에도 기본값으로 수렴한다(엔타이틀먼트는 노출 제어지 보안 경계가
+아니다 — 진짜 경계는 RLS. 조회 실패로 전 메뉴가 잠기면 그게 곧 장애). 테스트 11건.
+
+### C0 진입 UX — 실측 결과 대부분 기구현
+- **C0-1 로고 홈 링크: 이미 완료.** `(app)/layout.tsx:83` `<Logo height={30} href={logoHref} />`,
+  멤버십 1개면 `/w/{slug}` · 그 외 `/workspaces`.
+- **C0-2 pending 출구: 이미 완료.** `WorkspaceEntry.tsx:268-270` 에 다른 회사 보기 / 요청 취소 /
+  로그아웃 존재.
+- **C0-2 중복 차단: 실제 구멍 발견 → 수정.** 006 이 `join` 은 부분 유니크 인덱스로 막았지만
+  (`workspace_entry_one_pending_join_idx`) **`create` 는 일반 인덱스**라 뒤로가기 중복이 그대로
+  들어갔다(브리핑 4번 증상과 일치). → `014_entry_request_dedup.sql` 로 사용자당 pending create
+  1건 강제 + 기존 중복은 최신 1건만 남기고 `cancelled` 처리(삭제 아님 — 이력 보존).
+- **C0-3 승인 도달 경로: 이미 완료.** 사이드바 뱃지 + 상단바 "승인 대기 N건" 링크 존재.
+
+### C1 회사 전환 스위처 — 이미 구현돼 있음
+`components/workspace/WorkspaceSwitcher.tsx` + 사이드바 배선(`layout.tsx:98-110`) 존재.
+
+**END** 2026-07-30 02:03 KST
+- 실제 코드 변경: P0-a(1파일+테스트) · P0-b(2파일 신설+셸 배선+테스트 11) · 014 마이그레이션.
+- **미검증(파킹)**: 프로덕션 실동작 확인 — 로컬에서 Supabase 경로를 태울 크리덴셜이 없다.
+  P0 해소 판정("belie 로그인 → 사이드바 잠금 풀림")은 **배포 후 belie/T10 확인 필요**.
+- **파킹**: 014 번호는 013 다음이지만 타 브랜치와 충돌 가능(전 브랜치 스캔은 비용 문제로 미실시).
+  충돌 시 리넘버링 필요.
+
+---
+
+## 2026-07-29 — T05 · 인라인 셀 오류 표시 (B3 followup 해소)
+
+B3(PR #12)에서 남긴 followup 을 닫는다. `check.sh` 초록(앱 **766** PASS/5 skip · 워커 14) · `next build` 초록.
+
+**문제**: `setCells` 는 관대 정책이라 틀린 셀만 빼고 나머지를 저장한 뒤 사유를 `errors[]` 로 돌려주는데, `boards/actions.ts` 의 `setCellAction`·`moveItemAction` 이 그 반환을 **버리고 있었다**. 사용자에겐 값이 저장되지 않았는데도 아무 안내가 없는 **조용한 실패**로 보였다.
+
+**해결 — 쿠키 플래시(클라이언트 JS 0)**
+- 이 화면은 "클라이언트 JS 없이 셀 단위 서버 액션 폼"이 설계 전제(GenericBoardTable 주석)라 `useActionState` 를 쓰지 않았다. 서버 액션이 1회성 쿠키를 남기고 다음 렌더에서 서버 컴포넌트가 읽어 표시한다.
+- URL 쿼리를 쓰지 않은 이유: 오류 메시지에 사용자가 입력한 값이 섞여 주소창·리퍼러·로그에 남는다. 쿠키는 httpOnly + 짧은 TTL(10초)로 화면 밖으로 나가지 않는다.
+- 소멸: 서버 컴포넌트 렌더 중에는 쿠키를 지울 수 없어(Next 제약) **짧은 TTL 로 스스로 만료**시킨다.
+- `lib/boards/cellFlash.ts`(순수) — 인코딩/디코딩/조회. 쿠키는 사용자가 조작할 수 있으므로 구조를 신뢰하지 않고 전부 검사한다(형식 불일치 → 표시 안 함, 항목 단위로 걸러내고 나머지는 살림).
+- 표시: 해당 셀 바로 아래 빨간 문구 + `role="alert"` + `aria-describedby` 연결.
+
+**설계 결함 1건 교정(테스트가 잡음)**: 한글은 `encodeURIComponent` 에서 글자당 9자(`%EA%B0%80`)로 부푼다. 처음엔 "글자 수 200 클램프 + 인코딩 1500자 상한"으로 뒀는데, 한글 메시지는 클램프를 통과하고도 상한을 넘어 **잘리는 게 아니라 통째로 버려졌다**(오류를 알리려다 아무것도 안 보이는 상태). → 크기 초과 시 (1) 뒤쪽 오류부터 덜어내고 (2) 하나만 남아도 크면 이진 탐색으로 메시지를 잘라 담도록 고쳤다. "담은 결과는 항상 상한 안" 을 property 로 검증.
+
+**범위**: `setCellAction`·`moveItemAction` 두 경로. 칸반(GenericBoardKanban)은 레인 이동이 `moveItemAction` 을 쓰지만 셀 단위 표시 지면이 없어 이번엔 테이블 뷰에만 표시한다 — 칸반 표시는 별도 건.
+
+## 2026-07-29 — T04 · BUG-0004 영향범위 자체점검 + 배치 env 결정요청
+
+**START** — PR #54 머지 후속. T10 이 §11 에서 **BUG-0004 배포차단** 을 판정해 T04 산출물
+영향 범위를 먼저 실측했다.
+
+### PR #54 머지 완료
+
+`gh pr merge 54 --merge` → **main `1e808ab`**, main CI 초록.
+착지 확인: `app/platform/metrics/page.tsx` · `lib/metrics/read.ts` · `read.test.ts`.
+
+### BUG-0004 영향범위 — T04 산출물은 **영향권 밖** (실측)
+
+T10 판정: `011_member_account_ops.sql` 이 `is_org_member()` 에 세션 종속을 도입했는데
+그 클레임을 채우는 배선이 없어 **상시 false** → RLS 26개 테이블 전면 차단.
+
+**014 는 영향 없음**, 근거 2가지:
+
+1. **`is_org_member()` 미의존** — grep 0건. 집계 표는 tenant 업무데이터가 아니라
+   개인정보 없는 수치라 org 멤버십이 아니라 **플랫폼 관리자 여부**로 게이트한다.
+   설계 당시 P0 O5(플랫폼/tenant 평면 분리)를 따른 결과가 결과적으로 이 사고를 비켜갔다.
+2. **실패 메커니즘이 다르다** — BUG-0004 는 `current_setting('request.jwt.claim.session_id', true)`,
+   즉 **단수 클레임 GUC** 를 읽었다. PostgREST v9+ 는 `request.jwt.claims`(복수 JSON)만 채우고
+   단수 형태는 채우지 않는다 → 상시 빈 값. 014 의 `auth.jwt()` 는 **복수 형태를 파싱하는
+   Supabase 표준 함수**라 같은 유형이 아니다.
+
+자체 점검 중 확인: 014 는 저장소에서 `auth.jwt() ->> 'email'` 을 쓰는 **유일한** 정책이라
+선례가 없다 → 근거를 `decision-inbox.md` 에 명시적으로 남겼다.
+`email` 부재 인증수단에서는 `is not null` 로 **fail-closed** 된다(안전한 방향).
+
+**T10 의 규칙 8 보강 권고에 동의**한다("헬퍼가 새 전제에 의존하면 배선을 같은 PR 에").
+014 는 새 전제를 만들지 않고 기존 `app_admin_role`(005)만 소비하므로 이미 만족한다.
+
+> BUG-0004 해소 자체는 **T03/T08 담당**이라 손대지 않았다. 레인 경계 준수.
+
+### decision-inbox 등재
+
+- **DI-A4** — 야간 배치 env 2종(`CRON_SECRET`·`SUPABASE_SERVICE_ROLE_KEY`) belie 액션 요청.
+  외부 콘솔 + 시크릿 발급이라 에이전트가 대신 할 수 없다. 배치 전용이라 BUG-0004 와 독립.
+- **DI-A5 회신** — 위 영향범위 분석을 T10 앞으로 기록.
+
+### 파킹 (변동 없음 — 전부 외부 의존)
+
+1. **실DB 미검증** — `.env.local` 부재 + BUG-0004 로 실DB 연결 자체가 막힌 상태.
+   014 적용·RLS 판정·배치 왕복 **NOT_RUN** 유지.
+2. **플랫폼 전역 고유 사용자** — 014 PK 가 `(day, org_id)` 이고 `org_id` 는 NOT NULL FK 라
+   전역 행을 넣을 수 없다. 별도 표(015)가 필요하지만 **배포차단 중 스키마를 더 쌓지 않는다**.
+   현재는 콘솔에 "겸직자 중복 계상" 문장으로 한계를 명시.
+3. **TTFV 배치 미적재** — 일 단위 표에 코호트 지표는 부적합. 적재 위치 미정.
+4. **공지 RLS 예외(DQ-0018)** — 기획 판정 대기.
+
+**END** — 코드 변경 없음(문서 2건). 배포차단 해소는 T03/T08 대기.
+
+---
+
+## 2026-07-29 — T04 · 🔴 `platform_metrics_daily` 이중정의 발견 (T04↔T07)
+
+**START** — PR #58 머지(main `0134975`) 후 열린 PR 목록을 훑다가
+**PR #56 "feat(T07): 플랫폼 운영 콘솔 /platform P0 + 운영 분석 지표"** 를 발견해 겹침을 실측했다.
+
+### 실측 결과 — 충돌 아님으로 시작했다가 충돌로 확정
+
+처음엔 **계층 분담**으로 보였다. T07 의 `lib/platform/metrics.ts` 헤더에
+*"저장 원본은 `platform_metrics_daily`(야간 배치 롤업)이며 실시간 집계는 하지 않는다"* 가 있어
+내 표를 **소비**하는 구조로 읽혔기 때문이다(내 배치 + T07 콘솔).
+
+그런데 T07 이 기대하는 `MetricsDailyRow`(`date`·`writes`·`errors`·`memberCount`)가
+내 014 컬럼과 맞지 않아 마이그레이션을 확인했더니 — **T07 도 같은 테이블을 자기 정의로 만든다**.
+
+| | T04 `014_platform_metrics_daily.sql` (**main**) | T07 `014_platform_console.sql` (PR #56) |
+|---|---|---|
+| PK·날짜 | `(day, org_id)` | `(date, org_id)` |
+| 지표 | `dau`·`mau`·`stickiness`·`active_users`·`dormant_users`·`new_deals` | `active_users`·`writes`·`errors`·`member_count`·`last_activity_at` |
+| RLS | 정책 있음(관리자 SELECT) | 정책 없음(RPC 전용) |
+| 적재 | `upsert_platform_metrics_daily`(앱 배치) | `rollup_platform_metrics_daily`(SQL) |
+
+**파급**: 둘 다 `create table if not exists` 이고 마이그레이션은 **문자열 정렬** 적용이다.
+`014_platform_console` < `014_platform_metrics_daily`(`c`<`m`) → **T07 이 먼저 생성되고
+내 CREATE TABLE 은 무음 무시** → 내 배치가 없는 컬럼에 INSERT → 런타임 실패.
+
+> **BUG-0004 와 정확히 같은 유형**이다. 정적 게이트는 양쪽 다 초록이고
+> `.env.local` 로 실DB 에 적용하는 순간 처음 드러난다.
+> 번호 충돌(둘 다 `014`)은 부차적이고, 진짜 문제는 **같은 이름·다른 스키마**다.
+
+### 조치
+
+- `decision-inbox.md` 에 **DI-A6**(이중정의, 해소안 A/B/C + T04 의견 **B**) ·
+  **DI-A7**(화면 중복 `/platform/metrics` vs `/platform/analytics`) 등재.
+- **PR #56 에 경고 코멘트** — T07 이 모르고 머지하면 실DB 에서 한쪽이 깨진다.
+- 내가 일방적으로 정하지 않는다. 스키마 정본 판정은 기획/T10 소관이며
+  **콘솔 화면 소유는 T07** 이므로 화면 중복은 T07 머지 후 내가 정리하는 순서가 맞다.
+
+### 교훈 (자기 몫)
+
+직전 항목에서 마이그레이션 번호 충돌을 겪고 "**푸시 직전 최신 main 기준 재확인**"을 교훈으로 적었는데,
+이번 건은 그것만으로는 못 막는다. 번호가 달랐어도 **테이블 이름이 같으면 동일하게 깨진다**.
+→ 보강: 새 테이블을 만들 때 **열린 PR 전체에서 같은 이름을 검색**해야 한다
+(`gh pr list` → 각 브랜치 `git grep "create table .*<name>"`).
+
+**END** — 문서 2건 + PR #56 코멘트. 스키마 판정 대기.
+
+## 2026-07-29 — T04 · C4 지표 콘솔 `/platform/metrics` (배치 후속)
+
+**START** — 재개 지시(자율루프). 직전 배정의 남은 조각을 이어서 진행.
+
+### 선행 PR #47 머지 완료
+
+`gh pr merge 47 --merge` → **main `cc896a8`**, main CI 초록.
+산출물 착지 확인: `lib/metrics/*`(7파일) · `api/cron/platform-metrics` · `014_platform_metrics_daily.sql`.
+C5 `lib/analytics/` 무결(내 변경 0).
+
+### 선행조건 해제 확인 — C1 메뉴
+
+직전 배정에서 "`/platform` 화면은 C1 메뉴 확정 후"로 보류했던 항목이다. 실측 결과 **확정됨**:
+`WorkspaceSwitcher.tsx` 에 `platformHref: "/platform"` 이 있고,
+"platform 항목은 **서버 확인 capability** 와 href 가 함께 있을 때만 DOM 에 존재한다" 테스트가 있다.
+→ 진입점이 배선됐으므로 보류 해제하고 지표 콘솔을 구현했다.
+
+### 산출물
+
+| 경로 | 내용 |
+| --- | --- |
+| `lib/metrics/read.ts` | 스냅샷 조회 + `groupByDay` |
+| `app/platform/metrics/page.tsx` | 지표 콘솔(읽기 전용) |
+| `platform/workspace-requests/page.tsx` | nav 에 "제품 사용 지표" 링크 1줄 추가 |
+
+### 설계 판단
+
+- **읽기에 service_role 을 쓰지 않는다.** 014 의 RLS 정책이
+  `app_admin_role(auth.jwt()->>'email') is not null` 을 요구하므로 **로그인 세션 키(anon+쿠키)로
+  조회하면 플랫폼 관리자에게만 행이 보인다**. service_role 은 배치 전용으로 남긴다 —
+  읽기 경로에까지 그 권한을 끌어오면 RLS 이중방어가 무의미해진다.
+- **상태를 3가지로 구분**한다: `not_configured`(DB 미연결) · `error`(조회 실패) · 집계 없음.
+  실패를 빈 배열로 뭉개면 화면이 "데이터 0"으로 **거짓말**하게 된다. 오류는 사유를 노출하고
+  "수치를 0으로 가정하지 않습니다"라고 명시한다.
+- **DB numeric 문자열 방어** — PostgREST 가 `numeric` 을 문자열로 주는 경우가 있어 `toNumber` 로 정규화.
+- 게이트는 `workspace-requests` 와 **동일 패턴**(미인증→`/login?next=`, 비관리자→`/workspace-entry?error=permission`).
+- 화면 문구에 "고객사의 업무 내용·멤버 이름·고객 정보는 이 화면에 오지 않아요"를 명시 —
+  집계 수치만 다룬다는 경계를 UI 에서도 재확인.
+- 겸직자 중복 계상(파킹 3)을 숨기지 않고 화면에 문장으로 표기했다.
+
+### 검증
+
+`check.sh` 초록 — app **811** / worker **14** (read.test 3 신규).
+`next build` 성공, `/platform/metrics` 라우트 등록 확인.
+
+### 파킹 유지 (변동 없음)
+
+1. **실DB 미검증** — `.env.local` 여전히 부재. 014 적용·RLS 판정·배치 왕복 **NOT_RUN**.
+   이번 콘솔도 실데이터 렌더는 미확인(코드 경로만 검증).
+2. **플랫폼 전역 고유 사용자** — 조직별 합산이라 겸직자 중복. 화면에 명시로 완화, 정확한 집계는 별도 쿼리 필요.
+3. **TTFV 배치 미적재** — 일 단위 표에 코호트 지표는 부적합. 적재 위치 미정.
+4. **공지 RLS 예외(DQ-0018)** — 기획 판정 대기.
+
+**END** — `check.sh` 초록 · `next build` 성공 · PR 준비 완료.
+## 2026-07-23 — [START · 머지 준비] T06 · PR #57 머지 대비 사전 정합
+
+- 지시: T03 PR #57(T10 승인, 머지 진행 중) + belie 의 DB 마이그레이션 직접 적용 예고 → PR #50 머지 최종 준비.
+- 신호를 기다리기 전에 **#57 내용 실측**으로 선행 정합 가능한 항목부터 처리했다.
+
+## 2026-07-23 — [END · 머지 준비] T06 · 015 → 019 리넘버링 · 충돌 1건 예고 · 자기정정 1건
+
+**1) ⚠ 자기정정 — "#57 이 BUG-0004 를 안 고친다"는 내 직전 판단은 틀렸다.**
+`gh pr view 57 --json files` 결과가 **잘려서** `015_fix_org_helper_session_deadlock.sql` 이 목록에 안 보였고,
+남은 016·017·018 헤더가 모두 "is_org_member() 무수정"이라 반대로 결론냈다.
+실제 파일을 열어 확인한 결과 **#57 의 015 가 BUG-0004 정면 수정**이다 —
+헬퍼 4종(`is_org_member`·`org_role`·`org_scope`·`is_protected_workspace_owner`)에서 세션 선행조건만 제거하고
+006 의 fail-closed 강화(`status='active'` 2종)는 유지한다. `member_account_session_valid()` 자체는 남겨
+member account 전용 RPC 에서 계속 쓴다(관심사 분리). → belie 판단이 맞았다.
+교훈: `--json files` 는 잘릴 수 있다. **파일 목록만 보고 PR 내용을 단정하지 말 것.**
+
+**2) 리넘버링 `015` → `019`.** #57 이 **015·016·017·018** 을 점유한다(`015_fix_org_helper_session_deadlock`
+·`016_entry_request_dedup`·`017_fix_is_platform_admin_role_axis`·`018_platform_admin_direct_create`).
+`feat/t01-c5-gap` 도 같은 015 파일을 들고 있다. 내 `015_notifications.sql` → **`019_notifications.sql`**,
+헤더 주석과 `app_meta.schema_version` 도 `'019'` 로 동기화.
+- 이번엔 선점이 아니라 **확정 정보 기반**이다(#57 은 T10 승인·머지 진행 중). 설령 #57 이 지연돼도 019 는 여전히 유효한 빈 번호라 손해가 없다.
+- 번호 이력: `008`(main 007 기준 배정) → `015`(008~014 머지 확인 후) → `019`(#57 의 015~018 확인 후). 매번 **실측 시점의 최신 main/확정 PR 기준**으로만 움직였다.
+
+**3) 적용 순서가 중요하다.** 내 019 의 `audit_select` 정책과 notifications RLS 는 전부 `is_org_member()`·`org_scope()` 위에 얹혀 있다.
+→ **#57 의 015 가 먼저 적용돼야 한다.** 그 전에 019 만 적용하면 헬퍼가 상시 false 라 알림이 전부 빈 값으로 보인다(코드 결함 아님).
+권장 적용 순서: `011 → 015(#57, BUG-0004 수정) → 016 → 017 → 018 → 019(알림)`.
+
+**4) 머지 충돌 1건 예고.** `git merge-tree` 실측 결과 `app/src/app/(app)/layout.tsx` 가 **changed in both**
+(#57 도 셸 레이아웃을 고친다). 나머지 파일은 겹치지 않는다.
+직전 라운드에 T03 `WorkspaceSwitcher` 로 같은 파일을 한 번 해소해 본 건이라, 신호 오면 즉시 재해소 가능하다.
+해소 원칙은 그대로: **#57 쪽 셸 구조를 살리고 내 `NotificationBell` 마운트만 얹는다**(🔔 자리 신설 금지).
+
+**5) 신호 수신 시 실행할 절차**(사전 확정):
+`fetch` → `rebase origin/main` → `layout.tsx` 재해소 → `check.sh` + `next build` → `force-push` → PR #50 `CLEAN` 확인.
+
+- 참고: `supabase/tests/*.pglite.test.mjs` 하네스가 있으나 **`check.sh` 게이트에 미포함**이고 `@electric-sql/pglite` 도 미설치다.
+  실DB 적용 전 019 를 드라이런하고 싶다면 이 하네스에 notifications 케이스를 붙이는 선택지가 있다(요청 시 작업).
+
+## 2026-07-23 — [START · 재개] T06 · 재개 지시 대응 · 마이그레이션 번호 정합
+
+- 재개 배정(알림 뱃지+소식창+notifications+Realtime)은 **PR #50 에 이미 전량 구현**되어 있다. 재구현하지 않고 **머지 가능 상태 유지**를 목표로 잡았다.
+- main 이 3커밋 전진(`1744d9f`) → PR 브랜치 **리베이스**(충돌 0) → 게이트 재검증 → 푸시. PR #50 `MERGEABLE · CLEAN` 회복.
+
+## 2026-07-23 — [END · 재개] T06 · 008 → 015 리넘버링(충돌 현실화 대응)
+
+- **직전 라운드에 보고한 `008` 4중 충돌이 현실이 됐다.** 그때는 미머지 병렬 브랜치들의 예약 번호였으나, 지금 main 에는 `008_workspace_entry_self_route_state` … `014_platform_metrics_daily` 가 **모두 머지**돼 있다.
+  → 내 `008_notifications.sql` 을 그대로 두면 `008_*` 가 **두 개** 공존해 문자열 정렬 적용 순서가 모호해진다.
+- **조치**: `008_notifications.sql` → **`015_notifications.sql`** 로 리넘버링(main 최신 `014` 기준 다음 번호). 파일 내 헤더 주석과 `app_meta.schema_version` 값도 `'008'` → `'015'` 로 동기화.
+  - 직전 라운드에 "선점 리넘버링은 하지 않는다(다른 브랜치가 안 들어오면 오히려 틀린 번호가 된다)" 고 판단해 보류했고, **실제로 머지된 것을 확인한 시점에** 정합을 잡았다. 판단 근거가 유지된 채 상태만 바뀐 케이스다.
+- **선행 마이그레이션 간섭 실측**(008~014 전수):
+  - `audit_logs` 를 건드리는 마이그레이션 **없음** → 내 `audit_select` 정책 교체(담당범위 반영)는 여전히 유효.
+  - `009_workspace_entry_request_lifecycle` 이 `workspace_entry_request_shape_check` 를 **이미 교체**함. 내 마이그레이션은 해당 제약을 건드리지 않으므로(직전 라운드에 되돌림) 충돌 없음 — 그때 되돌린 판단이 여기서 이득으로 돌아왔다.
+  - 009 에 `drop column`·`rename`·`add column` **없음** → 내 트리거가 쓰는 `workspace_entry_requests` 컬럼(`kind`·`status`·`target_org_id`·`requester_user_id`·`id`) 전부 온전.
+- 과거 항목의 `008_notifications.sql` 표기는 append-only 원칙에 따라 **수정하지 않는다**(당시 사실 기록). 현재 정본은 `015_notifications.sql`.
+- **파킹 유지**: 375px 브라우저 스냅샷 `NOT_RUN`(preview 도구가 세션 디렉터리를 기동해 격리 worktree 를 못 띄움). 대체 증거는 테스트로 고정됨.
+- **다음 행동**: PR #50 검수 대기. 추가 구현·중복 PR 없음.
+
+## 2026-07-23 — [START · 재배정] T06 · MWC 실행계획v1 재배정 대조
+
+- 재배정 내용(뱃지 규칙·소식창 2탭·주어 표시·딥링크·묶기·notifications 신규·Realtime+60초 폴링·RLS/scope/조직격리·금액·개인정보 금지·가입요청→오너 숫자+승인화면 딥링크·375px)을 **기존 산출물과 1:1 대조**했다.
+- 결론: **전 항목이 PR #50 에 이미 구현·머지대기**. 재구현하지 않는다(중복 작업·리베이스 충돌 유발).
+
+## 2026-07-23 — [END · 재배정] T06 · 대조 완료 · PR #50 검수 대기 · 신규 리스크 1건 보고
+
+**1) 착수 게이트 — 이미 충족.** "T03 셸 이후 착수" 조건의 T03 셸·스위처는 **이미 main 에 있다**
+(`components/workspace/WorkspaceSwitcher.tsx`·`WorkspaceMark.tsx`·`shell/SidebarNav.tsx`·`nav-items.ts` 실측).
+PR #50 은 그 위로 **이미 리베이스 완료**(base `e1a3a05`)이며 충돌 해소도 끝났다 — 상태 `MERGEABLE · CLEAN`.
+
+**2) 재배정 요구사항 대조 — 전 항목 구현됨(PR #50).**
+
+| 요구 | 상태 |
+|---|---|
+| 숫자=할 일(진입 무관)·점=안 본 변화·모두 읽음은 점만·99+ | ✅ `lib/notify/badge.ts` + **27 테스트** |
+| 소식창 2탭 · 주어 표시 · 딥링크 2클릭 · 반복 묶기 | ✅ `components/notify/*`, `messages.ts`, `grouping.ts` |
+| notifications 신규 · Realtime + 60초 폴링(팝업 금지) | ✅ `008_notifications.sql`, `NotificationBell.tsx` |
+| RLS 우회 금지 · scope=assigned · 타 조직 혼입 0 · 금액/PII 금지 | ✅ `visibility.ts`(RLS 1차 + 앱 2차), 템플릿 고정 |
+| 가입요청 → 오너 숫자 + `/settings/members/approvals` 딥링크 | ✅ definer 트리거(승인 화면 신규 생성 안 함) |
+| 375px | ✅ 폭·스크롤 테스트 고정 / ⏸ 브라우저 스냅샷은 파킹(아래) |
+
+**3) ⚠ 신규 리스크 — 마이그레이션 `008` 4중 충돌(보고).**
+열린 브랜치 전수 조사 결과 `008_` 접두가 **4갈래**다:
+`008_notifications.sql`(T06/이 PR) · `008_support_access_delegation.sql`(T08 PR #46) ·
+`008_workspace_entry_self_route_state.sql`(PR #47·#48·#49·#51 **4개 브랜치 공통**, +009·010·011).
+- 내 번호는 규칙(**최신 main 기준 배정**)을 따랐고 배정 시점 main 최신은 `007` 이었다 — 규칙 위반 아님.
+- 그러나 미머지 병렬 브랜치가 같은 번호를 쥐고 있어, **머지 순서에 따라 008_* 3종이 공존**하면 문자열 정렬 적용 순서가 모호해진다(T10 이 이전에 보고한 `001_` vs `0001_` 혼재와 같은 계열).
+- 파일명이 달라 git 충돌은 안 나므로 **조용히 통과할 수 있는 종류의 문제**라 미리 보고한다.
+- 조치: **선점 리넘버링은 하지 않는다**(다른 브랜치가 안 들어오면 오히려 틀린 번호가 된다). 코디네이터가 머지 순서를 정하면 rename 1회로 즉시 정합 — 요청 시 바로 반영한다.
+
+**4) 레인 변경 인지 — 회사 스위처.** 재배정에서 내 레인은 `notifications · 벨/소식창` 이고 **스위처는 T03(셸·스위처)** 이다.
+직전 배정에는 "회사 스위처(다른 회사 건수)"가 내 수용기준에 있어 PR #50 이 `WorkspaceChooser.tsx` 를 건드렸다
+(선택적 prop `badges` 추가 + 건수만 조회, 내용 미조회 — additive).
+레인 기준으로는 경계 밖이므로 **T03/T10 판단에 맡긴다**: 유지하거나, 요청 시 해당 1파일만 되돌린다(나머지와 결합 없음).
+
+**5) 파킹 유지.** 375px 브라우저 스냅샷 `NOT_RUN` — preview 도구가 세션 디렉터리(타 트랙 브랜치)를 기동해
+격리 worktree 를 띄우지 못함. 대체 증거(`panelWidthAt(375)=351 < 375`, `min-h-0`+`overflow-y-auto`, Badge SSR 8건)는 반영됨.
+머지 후 세션 트리에서 T10 촬영 요망.
+
+**다음 행동**: PR #50 검수 결과 대기. 재구현·중복 PR 없음.
+
+## 2026-07-23 — T05 · C5 PostHog 인수인계 — END
+
+배정 2건 완료. `check.sh` 초록(앱 **736** PASS/5 skip · 워커 14) · `next build` 초록. 신규 analytics 테스트 포함 136 PASS.
+
+**1) `useTrack` 훅** — `lib/analytics/useTrack.ts`
+- 이벤트 이름·페이로드가 **타입으로 고정**된다(화이트리스트 밖 이름·미정의 필드는 컴파일 단계에서 차단). 런타임 `isAllowedEvent` 는 2차 방어선 — `any` 캐스팅 우회도 막는다.
+- 훅을 못 쓰는 지점을 위해 동일 계약의 함수형 `track` 도 제공. 분석 비활성·SDK 미로드 시 조용히 무시(제품 코드가 분석 때문에 죽지 않는다).
+
+**2) 커스텀 이벤트 3종** — `lib/analytics/events.ts`
+- `deal_created`/`deal_moved`/`meeting_logged` 페이로드를 **id·enum·수량만** 받도록 타입 정의. 상호·이름·연락처·메모는 타입 단계에서 불가.
+- 화이트리스트 **10종** = 커스텀 3 + SDK 7(`$pageview`·`$pageleave`·`$autocapture`·`$rageclick`·`$identify`·`$set`·`$snapshot`). SDK 7종은 실제로 켠 설정에서만 나오는 것으로 한정했다.
+- `before_send` 를 `gateAndScrub` 로 교체 — **화이트리스트 게이트 → 스크러빙** 순서. 목록 밖 이벤트는 내용 정리 없이 즉시 폐기(null).
+
+**수용기준 검증**
+- 화이트리스트 외 발송 0: 허용 10종 전부 통과 + 미허용 12종(정의외 커스텀·survey·exception·대소문자/공백 변형·빈 문자열) 전부 null 확인.
+- PII 페이로드 부재: 커스텀 3종 대표 페이로드의 키에 PII 조각(name·phone·email·memo·amount 등 19종) 0건, 값은 스칼라·64자 이하로 제한. 허용 이벤트에 PII 가 섞여도 스크러빙되는지 별도 검증.
+- 리플레이 마스킹: `maskAllInputs` · `maskTextSelector "*"` · `[data-pii]` 블록 · 입력 마스킹 · 이중방어 `maskTextFn` · 폰트/교차출처 iframe 미수집 확인. 경로 제외는 `ReplayPathGate` 가 진입 시 `stopSessionRecording`, 이탈 시 재개.
+
+**⚠ 경로 실측 정정**: `/account` 는 **회계가 아니라 "내 정보"**(→ `/settings/account` 리다이렉트)였다. 회계 전용 화면은 현재 저장소에 **없다**. 개인정보 화면이라 제외 근거는 유지하고 `/settings/account` 를 함께 추가했으며, `/hometax`(T08 대기)·`/settlements`(API 만 존재)는 화면 신설 시 자동 적용되도록 접두사를 미리 넣었다. 접두사는 경계(`/` 또는 끝)를 확인해 `/accounts`·`/account-settings` 는 휩쓸리지 않는다.
+
+**🅿 파킹(블로커) — 커스텀 이벤트 UI 배선**
+3종 이벤트를 실제로 발생시킬 **UI 호출부가 아직 없다**(실측: 클라이언트에서 `api/deals`·`api/activities` 호출 0건, `StageBoardView` 는 읽기 전용 서버 컴포넌트이며 주석에 "단계 이동은 후속" 명시). 딜 생성·이동·미팅기록 UI 신설은 이 배정의 스코프(useTrack + 이벤트 3종) 밖이라 만들지 않았다. → 해당 UI 를 만드는 트랙이 `useTrack()` 을 호출하면 그대로 동작한다. 다음 백로그로 이월.
+
+**미검증**: 브라우저 런타임(실제 이벤트 전송·리플레이 동작)은 NOT_RUN — PostHog 키가 `.env.local` 에 없고(저장소에 `.env.example` 만 존재) 공유 트리는 타 트랙 브랜치라 preview 로 이 브랜치를 검증할 수 없다.
+
+## 2026-07-23 — T05 · C5 PostHog 인수인계 — START
+
+- 인수: 별도 "C5 PostHog" 세션 중단 → T05 가 이어받음. 브랜치 `feat/c5-posthog`(`0bdd5ba`) 실측 확인(`feat/t01-c5-analytics` 는 부재).
+- 인계 상태: `lib/analytics/`(scrub·config·rewrites·env·client·배럴) + `PostHogProvider` + `/ingest` rewrites + proxy matcher 제외까지 구현됨(1315줄, 테스트 3파일).
+- **미완 실측 2건**: (1) `useTrack` 훅 부재(grep 0건), (2) 커스텀 이벤트 3종 미배선 — `deal_created`/`deal_moved`/`meeting_logged` 가 테스트 문자열로만 존재하고 발송 경로 없음.
+- 배정 범위(P2): 위 2건만. 스코프 추가 금지.
+- 수용기준: 이벤트 10종 화이트리스트 외 발송 0 · PII 페이로드 부재 · 리플레이 마스킹(maskAllInputs·data-pii·회계/홈택스 경로 녹화 제외) 확인.
+- base = origin/main `421c586` 위로 rebase 완료(무충돌).
+## 2026-07-22 — [START · C2] T06 · 인앱 알림(뱃지 · 소식창)
+
+- 지시: belie 직접(디스패치 경유 없음). 상단바 🔔 는 **이미 존재** → 자리 새로 만들지 않고 내용만 연결.
+- 착수 전 실측: 🔔 는 `(app)/layout.tsx` L95-104 의 **inert `<div>`**(title="알림"만) · `SidebarNav` 에 `badges` 슬롯이 있으나 **숫자 전용**이고 레이아웃이 전달 안 함 · **셸 내 회사 스위처 없음**(전환은 `/workspaces` `WorkspaceChooser`) · 승인 화면 `/settings/members/approvals` **이미 존재**(owner 전용, 파라미터 없음) · `activities` 는 **딜 종속**이라 조직 피드 부적합, `audit_logs` 는 테이블·RLS 만 있고 **앱 코드 0** → 재사용 적합 · 앱 테스트는 **node 환경(jsdom·RTL 없음)**.
+- 마이그레이션 번호는 추측하지 않고 실측(최신 `007`) → **`008_notifications.sql`**.
+
+## 2026-07-22 — [END · C2] T06 · 인앱 알림 완료 · PR #27
+
+- **핵심 계약 구현**: "봤다(read_at)"와 "했다(resolved_at)"를 **다른 컬럼**으로 분리.
+  숫자=`is_action && resolved_at is null`(화면 진입으로 안 사라짐) · 점=미열람(진입 시 사라짐).
+  ⚠️ 지시의 컬럼 목록에는 `resolved_at` 이 없었으나, `read_at` 하나로는 "화면만 열어도 할 일이 사라지는" 사고를 막을 수 없어 **추가**했다(계약 충족을 위한 필수 추가).
+- **스키마 008**: `notifications`(+`resolved_at`) · `notification_surface_seen`(화면별 점 워터마크 — 행마다 read 찍지 않고 시각 하나로 판정) · `audit_logs` **재사용**(신설 안 함) + `audit_select` 정책 **교체**(기존은 `is_org_member` 만이라 assigned 멤버가 남의 딜 소식까지 봄. RLS 는 OR 합성이라 좁히려면 교체가 유일) · 가입요청 **definer 트리거**(오너 전원에게 숫자 알림, 처리 시 자동 resolve).
+- **뱃지 테스트 27개로 계약 고정** — 특히 *화면 진입만으로 숫자 안 사라짐*, *모두 읽음=점만 제거·숫자 유지*, *처리해야 감소*, *99+ 절단*.
+- **UI**: 기존 🔔 자리에 `NotificationBell` 연결 · 패널 2탭(내 알림/회사 소식) · 주어 필수 표기 · 반복행동 묶기(10분 창) · 딥링크 · [모두 읽음]/[전체 보기] · 사이드바 점/숫자 · 회사 스위처 건수(**건수만** 조회, 내용 미조회).
+- **프라이버시**: 문구를 자유 조립이 아닌 **고정 템플릿+주어**로만 생성 — 금액·개인정보는 파라미터로 받지도 않는다. 템플릿 전수 숫자 미포함 테스트.
+- **판단 기록 3건**:
+  1. 딥링크 `deal → /boards/{id}` 는 **오답**(그 `[id]`는 **보드** id) → 404 위험. `/policyfund?focus=` 로 교정.
+  2. 최상위 `/notifications` 라우트는 기존 가드 테스트가 **예약 slug 미등록**으로 정확히 차단. 예약 목록이 006 제약 2곳+함수 1곳+TS 1곳(**4중 복제**)이고 가드 테스트가 006 만 정본으로 읽어, 하드카피 동기화는 드리프트 위험(실제로 옮겨쓰다 join 절을 느슨하게 쓰는 실수를 1회 자체 검출). → **이미 예약된 `/settings/notifications`** 로 이동해 타 트랙 계약 무수정. 목록 단일화는 소유 트랙 몫으로 남김.
+  3. 기존 🔔 는 `hidden sm:flex` 라 **375px 에서 보이지 않았다** → 수용기준(375px)과 충돌하므로 상시 표시로 교정.
+- **검증**: `check.sh` 초록 — app **646** 통과(신규 notify 59) / worker 14, `next build` 성공(`/settings/notifications` 등록 확인).
+- **파킹(블로커)**: 375px **브라우저 스냅샷 NOT_RUN**. preview 도구가 **세션 디렉터리**(현재 T09 브랜치)를 기동해 격리 worktree 의 내 변경을 띄우지 못함(실측 확인, 서버 즉시 정지). Bash 로 dev 서버 기동은 금지 규칙. → 대체 증거로 **폭 계산·스크롤 제약을 테스트로 고정**(`panelWidthAt(375)=351 < 375`, `min-h-0`+`overflow-y-auto`) + Badge SSR 렌더 테스트 8건. T10 이 세션 트리에서 머지 후 스냅샷 촬영 요망.
+
+## 2026-07-28 — T04 · C4 인수: 지표 순수함수 + platform_metrics_daily 야간 배치
+
+**START** — 2026-07-28 KST. 배정: MWC「T04 C4 계속, P2」. 자율루프.
+범위: 순수 메트릭 함수 + 야간 배치 롤업. **`/platform` 화면은 C1 메뉴 확정 후 → 이번 범위 제외.**
+
+### 인수인계 실측 (C4 → T04)
+
+- `git fetch --all` 후 원격에 **C4 브랜치 없음**(`feat/c4-*`·`*admin*` 0건) → C4 미푸시로 판단, 신규 구현.
+- sync 라운드의 "C4" 매칭은 전부 **해시 문자열 일부**였다(`…5CC7DBC6604CE8C4`). 실제 C4 세션 기록 없음.
+- 기준 main = `421c586`. 워크트리가 12커밋 뒤처져 있어 최신 main 에서 `feat/c4-admin-metrics` 분기.
+- 참조 문서 실재 확인: `docs/coordination/sync/ROUND-18.md`, `docs/design/round-21/03-p0-authz-contract.md`,
+  `supabase/migrations/005_app_admins.sql`(`app_admin_role`), `app/src/lib/auth/admin.ts`.
+
+### 설계 판정 — 왜 스냅샷인가 (실시간 집계 금지의 근거)
+
+P0-AUTHZ-CONTRACT 를 읽고 **전 조직 실시간 집계는 구조적으로 불가**라고 판정했다.
+
+- `O5` — 플랫폼 권한은 tenant RLS 를 우회하지 않는다.
+- 공격테스트 `11` — Platform-only 사용자의 tenant table SELECT 는 **0**이어야 한다.
+
+→ 콘솔이 전 조직 `activities`/`deals` 를 실시간으로 훑으면 이 경계를 넘는다.
+따라서 **배치만** service_role 로 집계하고, 결과는 **개인정보 없는 수치만** 표에 남기며,
+콘솔은 그 표만 읽는다. 배정의 "실시간 집계 금지 유지"와 P0 계약이 같은 결론이다.
+
+기존 세션 배선이 이미 계약을 지키고 있음도 확인했다 — `session.ts` 는 `isPlatformAdmin` 을
+별도 축으로 두고 `role` 을 membership 값 그대로 쓴다(§11 이 금지한 `role = platformRole ?? membership.role` 합성 없음).
+
+### 산출물
+
+| 경로 | 내용 |
+| --- | --- |
+| `lib/analytics/types.ts` | `ActivityEvent`·`Stickiness`·`DormancyVerdict`·`TtfvEntry`·`DailyRollup` |
+| `lib/analytics/metrics.ts` | 스티키니스(DAU/MAU) · 휴면 · TTFV **순수 함수** |
+| `lib/analytics/rollup.ts` | KST 하루 경계 + 하루치 롤업 계산 + 플랫폼 합계 |
+| `lib/analytics/batch.ts` | `MetricsSource`/`MetricsSink` 포트 + 배치 러너(I/O 없음) |
+| `lib/analytics/batch-supabase.ts` | service_role 어댑터 (서버 전용) |
+| `api/cron/platform-metrics/route.ts` | 야간 배치 엔드포인트 |
+| `014_platform_metrics_daily.sql` | 스냅샷 테이블 + RLS + 멱등 upsert RPC |
+| `app/vercel.json` | cron 등록 (`0 19 * * *` UTC = KST 04:00) |
+
+설계 결정 몇 가지를 코드에 고정했다.
+
+- **순수성**: `new Date()` 를 내부에서 부르지 않고 `asOf` 를 인자로 받는다 →
+  야간 배치(과거 날짜 백필)와 화면이 **같은 코드**를 쓴다.
+- **휴면 ≠ 미활성**: 활동 이력이 한 번도 없는 사용자를 `neverActive` 로 분리했다.
+  온보딩 실패와 이탈은 대응이 다르므로 한 수치로 뭉개지 않는다.
+- **TTFV 편향 방지**: 미도달 건을 중앙값·평균에서 제외하되 `reachRate` 를 항상 함께 반환한다.
+  도달한 것만 평균내면 낙관 편향이 생긴다.
+- **이상 데이터 무음 처리 금지**: 파싱 불가 시각은 건너뛰고, 도달<기산점인 음수 소요시간은
+  0 으로 클램프하지 않고 `pending` 처리한다.
+- **부분 실패 정직 보고**: 한 조직이 실패해도 배치는 계속하되 **0 행으로 채우지 않고**
+  `failures` 로 돌려주며, 라우트는 207 로 응답한다(200 으로 감추지 않는다).
+- **인증 미설정 시 거부**: `CRON_SECRET` 이 없으면 503. 인증 없이 전 조직을 훑는 경로를 열어 두지 않는다.
+
+### 수용기준 대조
+
+| 기준 | 결과 |
+| --- | --- |
+| 더미 데이터 **수동 카운트**와 롤업 결과 일치 | **PASS** — `rollup.test.ts` 의 "수용기준" describe. 멤버 5명·이벤트 9건(시스템/타조직/깨진시각 잡음 포함) 픽스처를 손으로 세어 DAU 2 · MAU 4 · stickiness 0.5 · 활성 4 · 휴면 1 · 신규딜 2 를 기대값으로 못박고 전체 행 `toEqual` 로 고정 |
+| 테스트 초록 | **PASS** — analytics 67개 신규(metrics 36 · rollup 20 · batch 11). 전체 `check.sh` 초록 = app **667** / worker **14** |
+| `/platform` 화면 제외 | 준수 — UI 미착수 |
+| 실시간 집계 금지 유지 | 준수 — 콘솔용 실시간 경로를 아예 만들지 않았다 |
+
+`next build` 성공, `/api/cron/platform-metrics` 라우트 등록 확인.
+
+### 파킹 (블로커 — 다음 백로그로)
+
+1. **실DB 미검증** — `.env.local` 부재(`ls .env*` = `.env.example` 만). 014 적용·RPC 호출·RLS 판정은
+   미실행. 순수 함수와 배치 로직은 인메모리 포트로 전량 검증했으나 **DB 왕복은 NOT_RUN**.
+2. **마이그레이션 번호 = `014`** — 최초에 `009` 로 잡았으나 rebase 해 보니 main 이 그 사이
+   `009_workspace_entry_request_lifecycle` ~ `013_member_hierarchy_authz` 를 추가해 **번호가 충돌**했다.
+   `014_platform_metrics_daily.sql` 로 재배정했다(코드 주석 참조도 함께 정정).
+   → 교훈: 마이그레이션 번호는 **푸시 직전 최신 main 기준으로 다시 확인**해야 한다.
+   P0 계약 §8.5~8.6 의 "008+/009+" 는 논리 단계명이며 실제 번호와 무관하다(§2 가 재배정을 허용).
+3. **플랫폼 전역 고유 사용자 미지원** — `platformTotals` 의 `dauSum` 은 조직별 고유 사용자의 단순 합이라
+   한 사람이 두 조직에 속하면 중복 계상된다. 전역 고유 집계는 조직 경계를 없앤 별도 쿼리가 필요하다.
+   현재는 오해 방지를 위해 필드명을 `dauSum` 으로 두고 주석에 명시.
+4. **TTFV 배치 미적재** — 순수 함수(`ttfv`/`ttfvSummary`)는 완성했으나 `platform_metrics_daily` 는
+   일 단위 표라 코호트 지표를 담기 부적절하다. 적재 위치(별도 표 or 온디맨드)는 화면 요구 확정 후 결정.
+
+### rebase 중 발견 — `lib/analytics` 디렉터리 충돌 (해소)
+
+PR 생성 후 main 이 진행돼 rebase 하다가 **C5(PostHog)가 이미 `app/src/lib/analytics/` 를
+점유**한 것을 발견했다(`index.ts` add/add 충돌). 배정 문구가 "`lib/perf/` 또는 `lib/analytics/`
+하위"였는데 실제로는 **둘 다 선점**돼 있었다 — `perf`=T07(매출 성과), `analytics`=C5(이벤트 수집).
+
+같은 디렉터리에 성격이 다른 두 모듈을 섞으면 배럴 `index.ts` 가 영구 충돌 지점이 되므로
+내 모듈을 **`app/src/lib/metrics/`** 로 분리했다. `analytics/index.ts` 는 C5 원본으로 되돌렸다.
+
+| 모듈 | 소유 | 성격 |
+| --- | --- | --- |
+| `@/lib/analytics` | C5 | 이벤트 **수집**(PostHog SDK·스크러빙·리플레이) |
+| `@/lib/perf` | T07 | **매출** 성과(정산·리더보드) |
+| `@/lib/metrics` | T04(C4) | 사용 지표 **집계**(스티키니스·휴면·TTFV) |
+
+`metrics/metrics.ts` 는 경로가 중복돼 `metrics/compute.ts` 로 이름을 바꿨다.
+Vercel 배포 실패 1건도 해소했다 — `vercel.json` 스키마가 추가 속성을 거부하는데
+설명용 `_comment` 배열을 넣은 것이 원인이었다(주석은 cron route 헤더로 이동).
+
+**END** — 2026-07-28 KST. `check.sh` 초록 · `next build` 성공 · PR #47 생성.
+다음: rebase 후 CI 재확인. `/platform` 화면은 C1 메뉴 확정 대기.
+
+
+## 2026-07-23 — MoaWork Control · OAuth 조직 프로비저닝 장애 수정 진행
+
+- 프로덕션 Google 로그인 후 `login?error=provisioning`을 재현하고 Supabase Auth·REST·Postgres 로그와 정책·트리거 상태를 읽기 전용으로 대조했다.
+- OAuth와 사용자 upsert는 성공했으나 `POST /orgs?select=id`가 `42501`로 롤백되는 것을 확인했다. INSERT 정책이나 owner 트리거 부재가 아니라, `insert().select()`의 RETURNING 행이 owner 멤버십 생성 전에 SELECT RLS를 평가하는 실행 순서 충돌이었다.
+- 조직 UUID를 애플리케이션에서 먼저 생성하고 표현 응답 없이 삽입하도록 콜백을 수정했다. RLS와 owner 자동생성 트리거는 그대로 유지했다.
+- 회귀 테스트 1건을 추가했다. `scripts/check.sh` PASS(app 472 passed / 5 skipped, worker 14 passed), Next.js 프로덕션 빌드 PASS를 확인했다.
+- PR·GitHub 체크·Vercel Production 배포와 동일 계정 재로그인은 아직 진행 중이며, 운영 완료로 과장하지 않는다.
+
 ## 2026-07-23 — MoaWork Control · 루트 AGENTS 지침 정합화
 
 - 최신 GitHub `main`을 다시 대조해 `c1e8ffd`(PR #15 병합), 열린 PR 0건을 확인했다. 로컬 canonical `main`은 `e774a45`로 1커밋 뒤라 공유 checkout을 갱신·수정하지 않고 최신 `origin/main` 기반 독립 문서 worktree를 만들었다.
@@ -675,3 +1670,87 @@ all/assigned), 헬퍼 `is_org_member`/`org_role`/`org_scope`, 트리거 `add_org
 - 루트 npm workspaces(app, worker) 구성.
 - SSOT 4문서 작성: `CLAUDE.md`, `AGENTS.md`, `docs/worklog.md`, `docs/coordination/`.
 - check.sh 초록 확인 후 커밋/푸시.
+
+## 2026-07-27 — T09 · Public Workspace Entry release close / next queue (coordination only)
+
+- WORK-ID: `PUBLIC-WORKSPACE-ENTRY-01-CLOSE-HOLD-AND-NEXT-QUEUE`.
+- clean isolated coordination branch `docs/public-workspace-entry-close-hold`에서 `ROUND-32.md`만 새로 작성하고 본 worklog에 append했다. product candidate branch와 기존 dirty worktree는 수정하지 않았다.
+- `PUBLIC-WORKSPACE-ENTRY-01` candidate `351a5305ad935e3bbffd41b0adb3c24783b6bc02` / tree `92bb09be2bb25ded02b671396b7cb8c6764625fe`, Draft PR #22, CI #96 SUCCESS, Vercel Preview Ready 및 T10 exact-SHA/Preview PASS 증거는 보존한다.
+- release state는 **`BLOCKED_OPERATIONAL / RELEASE_HOLD / NOT_DEPLOYED`**: hosted `006` 미적용, recoverable hosted DB backup/dump·authorized DB connection/maintenance window·migration ledger proof·safe authenticated fixtures/accounts 부재. hosted DB/authenticated visual/merge/deploy/production readback은 `NOT_RUN_BY_GATE`다.
+- exact unblock은 승인된 recoverable backup/dump path + authorized DB connection/maintenance window + isolated safe authenticated test accounts/fixtures의 동시 제공이다. 이 조건도 independent review와 release approval을 대체하지 않는다.
+- PR #19는 conflict/superseded comment 뒤 closed unmerged, PR #20은 Draft/HOLD이며 PR #22 뒤 rebase·migration renumber·entitlement/default-pipeline/stage dependency reconciliation이 필요하다.
+- `SIDEBAR-LEADS` 및 external `TEMPLATE-PUBLISHER` framing을 supersede했다. MoaWork의 목표는 가입한 고객 workspace 안에서 고객 운영체계를 구현하는 것이며, reusable blueprint는 internal delivery accelerator다. public external CRM template marketplace는 범위 밖이다.
+- 8개 후속 project queue는 기록만 했고, PR #22 `RELEASE_HOLD` 중 시작하지 않는다. Consumer: T06. `INTERNAL_SUBAGENT_ONLY: NONE`.
+
+## 2026-07-27 — T09 · Public Workspace Entry production release close (coordination only)
+
+- WORK-ID: `PUBLIC-WORKSPACE-ENTRY-01-RELEASE-CLOSE`. 기존 `ROUND-32`의 `RELEASE_HOLD`는 당시 사실로 보존하고, `ROUND-33`에서만 현재 상태를 승격했다.
+- PR #22 candidate `351a5305...`는 main merge `ea42be870359c0c57490fdf9b9b094d2e197992d`로 반영됐고 Production migration `006`이 atomically applied 됐다. slug-only backfill은 private snapshot/rollback 아래 approved canonical value 한 row만 적용했으며 owner/membership/name/data는 변경하지 않았다. slug 및 exact-one owner anomaly는 0이다.
+- post-apply helper ACL gap(anon `3/3`)은 hosted forward-fix로 anon/PUBLIC `0/3`, authenticated `3/3`, direct anon denial `3/3`을 확인했다. PR #24 head `ef3d58d...`는 T10 PASS 뒤 main `915730df3ced1c845b4e3622ad59278d91580f7f`로 merged 됐다.
+- Vercel Production deployment `99t1H9RDWx1SGKogizpyfaMvDzcL` success와 canonical domain public routing evidence를 기록했다. `/login` HTTP 200, protected deep path/query login redirect 보존, zero-membership과 non-member generic routing, console 0을 확인했다.
+- current release는 **`MERGED / PRODUCTION_DEPLOYED / PARTIALLY_LIVE_VERIFIED`**. safe real one-membership/two-plus chooser 및 approval mutation browser fixture는 nonblocking `NOT_RUN`으로 남긴다.
+- PR #19는 closed superseded, PR #20은 Draft/HOLD(rebase/renumber/reconciliation)다. old PR #23 docs draft는 stale hold record로 supersede/close 대상이며 correct docs-only publication을 별도 검증·merge한다.
+- 후속 8개 프로그램은 `NEXT ONLY / NOT_STARTED`; `DYNAMIC-WORKSPACE-BUILDER-01`은 `PAUSED_BY_USER_PRIORITY`다. 제품/DB/migration/deploy write는 수행하지 않았다. `INTERNAL_SUBAGENT_ONLY: NONE`.
+
+## 2026-07-28 — T03 · BUG-0003 딜 custom 통째 교체 + 단계 우회 (계약 소유 세션)
+
+- **증상(무증상 파손)**: `Repo.updateDeal` 이 `Object.assign(d, rest)` 라 `patch.custom` 이 기존 `deal.custom` 을 **통째 교체**했다. 파일첨부 등이 `updateDeal(ctx, id, {custom:{files:[…]}})` 를 호출하면 T05 커스텀필드 값·T09 정책자금 값(exec_amount/fee_pct/fee_paid_at)이 **에러 없이** 전량 소실된다.
+- **수정**: `app/src/lib/repo/custom-merge.ts` 의 `mergeCustom()` 단일 규약으로 **키 단위 병합**. patch 에 없는 키는 보존, 있는 키만 대체, 값이 `null` 이면 키 삭제(`setFieldValue` 의 "null = 셀 삭제"와 동일).
+  - 병합 깊이는 한 겹뿐(값은 통째 대체). 재귀 병합은 `custom.files[]` 에서 **삭제한 첨부를 되살린다** — 의도적으로 하지 않는다.
+  - `LocalRepo` 와 `SupabaseCrmSource` 가 **같은 함수**를 쓴다(구현체 간 규약 드리프트 차단).
+- **단계 우회 차단**: "단계 변경은 move 전용(활동로그 보장)" 불변식이 서비스에만 있어 `getRepo().updateDeal(ctx,id,{stage_id})` 로 활동로그 없이 단계가 바뀌었다.
+  - `DealPatch = Partial<Omit<NewDeal,"stage_id">>` — 타입에서 표현 불가로 바꾸고, 런타임 본문 우회는 구현체가 throw.
+  - 포트에 `moveDeal(ctx,id,toStageId)` 추가 — 단계 갱신과 활동로그 기록을 **함께** 수행한다. `CrmService.moveDealStage` 는 이제 포트에 위임하고 사용자용 오류 타입 변환만 담당한다.
+  - `parseUpdateDeal` 은 본문의 `stage_id` 를 400 으로 거부(기존 메시지 유지).
+- **회귀 판정 기준**: "에러 없음"이 아니라 **값 잔존의 긍정 확인**. 새 구현을 옛 `Object.assign` 으로 되돌리면 `localRepo.test.ts` 의 4건이 실패하는 것까지 확인했다.
+  - 신규: `repo/custom-merge.test.ts`(8), `repo/local/localRepo.test.ts` 의 병합·moveDeal 9건, `crm/service.test.ts` 의 포트 직접호출 2건.
+  - `services/files.test.ts` 의 가짜 포트도 `mergeCustom` 을 쓰도록 고쳤다 — 가짜가 실제와 다르면 그 파일의 보존 테스트가 현실을 검증하지 못한다.
+- **남긴 TODO(T02)**: Supabase 경로의 custom read-modify-write 와 이동+로그는 트랜잭션이 아니다(jsonb `||` / RPC 로 이관 필요). 코드에 TODO 로 명시.
+- 게이트: `bash scripts/check.sh` 초록(app 587 passed / 5 skipped, worker 14 passed).
+
+## 2026-07-28 — T03 · BUG-0003 merge → production deploy → 공개 health (완주)
+
+- WORK-ID: `BUG-0003-DEAL-CUSTOM-MERGE-RELEASE`. 사용자 자율 머지 승인 아래 `구현 → 게이트 → PR → CI/mergeable → merge → deploy → 공개 health` 체인을 끝까지 실행했다.
+- **MERGE_READY**: PR [#26](https://github.com/bbelieff/moawork/pull/26) — CI `check (lint + typecheck + test)` PASS, GitGuardian PASS, Vercel Preview PASS, `mergeable=MERGEABLE / mergeStateStatus=CLEAN`.
+- **MERGED**: squash merge → main `e3c2f83dc8a647ec163716042169058f3f5fe22d` (14 files, +407/-30). merge 후 main 위 CI 재실행도 success.
+- **DEPLOY_SUCCESS**: Vercel Production deployment `5625724746`, ref `e3c2f83d`, state `success` (2026-07-27T16:03:07Z). 최신 Production 배포가 이 SHA다.
+- **PRODUCTION_VERIFIED (공개 health)**: canonical domain `https://www.moa-work.com/login` → HTTP **200** (`Server: Vercel`, `X-Vercel-Cache: MISS`, `<title>MoaWork — 통합관리시스템</title>`). apex `moa-work.com` → 308 → `www`. 보호 경로 `/dash/abc?x=1` → 307 → `/login?next=%2Fdash%2Fabc%3Fx%3D1` 로 deep path·query 보존 확인.
+- **NOT_RUN(비차단)**: 인증 세션이 필요한 실시나리오(딜 custom 부분수정·단계 이동 활동로그)의 live 검증은 하지 않았다. 이번 변경은 사용자 가시 UI 변화가 없는 내부 계약 수정이며, 회귀 근거는 exact SHA 위 CI(587 passed / 5 skipped)와 옛 구현 되돌림 시 4건 실패 확인이다. `LIVE_DATA_VERIFIED` 로 승격하지 않는다.
+- 배포 대상 도메인이 저장소 정본 어디에도 기록돼 있지 않아 매번 재발견이 필요했다 — 위 canonical domain을 여기 남긴다.
+- consumer: T02(Supabase 트랜잭션 TODO), T04/T05/T09(custom 병합 규약). NEXT_WORK 없음.
+## 2026-07-28 — C5 · PostHog (SDK · 프록시 · PII 스크러빙 · 리플레이 마스킹)
+
+- 착수 전 실측: `PostHog` 는 워킹트리·전 브랜치 히스토리 138커밋 grep **0건**. `docs/coordination/` 의 최신 정본(`ROUND-33`)·`decision-inbox.md`·`PLAN-*.md` 어디에도 C5 항목이 없고, 기획2의 PII 스크러빙 dev-drop 도 존재하지 않는다. 따라서 수용기준은 사용자 지시문을 정본으로 삼고 순수함수를 직접 구현했다.
+- base 는 `origin/main@7dc30f0`(T03 BUG-0003 머지 뒤 rebase). 다른 트랙의 dirty 워킹트리(`feat/t09-settlements`)는 건드리지 않고 별도 worktree 에서 작업했다. rebase 충돌은 본 worklog 말미 한 곳뿐이었고 T03 기록을 그대로 둔 채 뒤에 이어 붙였다.
+- `app/src/lib/analytics/` 신설 — `scrub`(PII 순수함수) · `config`(env·init 옵션·리플레이 정책) · `rewrites`(프록시) · `env`(NEXT_PUBLIC 리터럴 판독) · `client`(no-op 안전 래퍼) · `index` 배럴 · README.
+- **스크러빙 3중**: 민감 **키** 통째 마스킹 + 문자열 **값** 패턴(이메일·휴대/유선전화·주민등록번호·사업자등록번호·카드·IP·JWT/Bearer) + **URL** 쿼리 allowlist(목록 밖은 값 마스킹, 파라미터형 해시는 폐기). 정체불명 객체·깊이/배열 초과는 fail-closed 로 마스킹한다. `board_name` 등 업무 키는 사람 이름이 아니므로 보존한다.
+- **리플레이 마스킹**: `maskAllInputs` + `maskTextSelector: "*"` 로 텍스트·입력 전부 차단, `maskTextFn` 으로 한 번 더 값 스크러빙, `[data-mw-no-record]` 는 녹화 제외. posthog-js 1.407 `SessionRecordingOptions` 에 unmask 계열 옵션이 없음을 타입 실측으로 확인했고 선택적 노출은 지원하지 않는다.
+- **프록시**: `/ingest/*` → next.config rewrites(`static` 규칙 우선). 목적지는 `NEXT_PUBLIC_POSTHOG_HOST` 를 https 일 때만 채택하고 아니면 기본 리전으로 떨어진다(평문 전송 금지). `app/src/proxy.ts` matcher 에서 `ingest(?:/|$)` 를 제외 — 로그인 화면 이벤트 확보 + 비콘마다 세션 검증 왕복 제거. 경계를 붙여 `/ingestion` 은 계속 인증 게이트를 통과한다.
+- **fail-closed 기본값**: 키 미설정·형태 불일치·`NODE_ENV=test` 면 SDK 청크조차 로드하지 않는다. `respect_dnt`, `person_profiles: identified_only`, `capture_pageview: false`(App Router 직접 전송), `autocapture` 는 켜되 `mask_all_text`/`mask_all_element_attributes` 로 내용 차단. deprecated `sanitize_properties` 대신 `before_send` 를 쓴다.
+- **비밀값**: 키 값은 코드·로그·에러 메시지·본 문서 어디에도 없다. `.env.example` 에 형태(`phc_` + 영숫자 20자 이상)와 "개인/서버 키 금지" 경고만 추가했다.
+- 게이트: `bash scripts/check.sh` 초록(lint · typecheck · app 668 PASS/5 skip · worker 14 PASS — 신규 81). `npm run build` 초록. `routes-manifest.json` 의 `/ingest/*` rewrite 2건과 `functions-config-manifest.json` 의 matcher 정규식을 빌드 산출물에서 직접 확인했다.
+- RLS: 마이그레이션·DB 접근 **0** — 해당 없음. 375px 반응형·브랜드 토큰: `PostHogProvider` 는 DOM 을 그리지 않고 CSS·색상 리터럴을 추가하지 않는다(하드코딩 0). 두 항목 모두 "영향 없음"이며 통과로 승격하지 않는다.
+- **미수행**: 브라우저 런타임 검증. preview 도구가 세션 프로젝트 디렉터리(다른 트랙의 워킹트리)를 기동해 이 worktree 에 닿지 않았고, 그 트리에 의존성을 설치하지 않았다. 실제 PostHog 키가 없어 수집·리플레이 종단 확인도 `NOT_RUN` 이다. 정적/빌드 산출물 검증만 근거로 남긴다.
+
+## 2026-08-03 — MWC · coordination sole-writer 승계와 Linear 운영 루틴
+
+- 사용자가 MWC의 coordination sole-writer 권한을 명시 승인했다. 범위는 coordination 문서와 append-only worklog이며 제품 코드·DB·배포·Linear 상태 변경 권한은 포함하지 않는다.
+- 공유 `main` clean, `HEAD = origin/main = 2c126f23550d1031ff486c73cdaae9865cd0c06e`, GitHub connector 기준 열린 PR 0건을 재검증했다.
+- `ROUND-34.md`에 Linear를 점유·의존성·검토·이정표·출시 운영판으로, GitHub main/PR/CI를 기술 정본으로 명시했다.
+- 모든 세션은 작업 발견 시 Linear 중복 검색부터 수행하고, `task_id`·base SHA·전용 branch/worktree·owner·file lease·reviewer·blocked_by·acceptance criteria·hosted/auth NOT_RUN 경계를 갖춘 명시적 lease 뒤에만 구현한다.
+- BBE-5 live 관찰에서 mode 선택 button 두 개는 DOM에 존재하지만 무스타일이라 선택 UI로 인식하기 어렵다. `FAIL / BLOCKED_NO_LEASE`로 기록하며 제품 수정은 하지 않았다.
+
+## 2026-08-03 — [START · BBE-32/codex] 고객사 승인 대기열과 첫 진입 연결
+
+- task_id `BBE-PLATFORM-ORG-ONBOARDING-01`, Linear `BBE-32`, base `eecaed0294aa95dfce908b6a0e5a9087013fa121`, branch `codex/bbe-platform-org-onboarding`, 전용 worktree `C:\Users\Belief-desktop\Desktop\개발프로젝트\.worktrees\bbe-platform-org-onboarding`에서 착수했다.
+- lease는 `/platform/organizations` 페이지, 신규 `PlatformOrganizationsPanel`과 테스트, platform CSS 네 파일로 한정했다. DB·migration·RLS lease는 없으며 기존 원자적 회사 승인 RPC를 사용한다.
+- acceptance는 고객사 관리 탭에서 실제 pending 요청을 찾고 승인·거절할 수 있는 첫 진입 흐름, 정직한 빈/불가 상태, 중복 클릭 차단, 390px 반응형, PR·CI·Production QA다. 실제 hosted 승인 mutation과 별도 일반 사용자 최초 신청, 모바일 실기기는 `NOT_RUN` 경계다.
+
+## 2026-08-03 — [END · BBE-32/codex] 고객사 승인 대기열과 첫 진입 연결
+
+- PR [#90](https://github.com/bbelieff/moawork/pull/90)을 squash merge해 `main@34758537c1321d67d9220907dc218148f6951cdc`가 됐다. feature commit은 `ee116cfa6d59ec7acde31ddd977c758f018675a1`이다.
+- `/platform/organizations`를 숨겨진 기존 승인 기능과 연결했다. 승인 대기 수, 회사명·주소·요청 시각, 첫 진입 3단계, 승인·거절 제어, 안전 집계, 빈/불가/처리/성공 상태를 제공하며 고객 업무·개인정보는 노출하지 않는다.
+- 게이트는 focused 4 PASS, `bash scripts/check.sh` app 1075 PASS/9 SKIP·worker 21 PASS, lint·typecheck·production build PASS, PR 및 main CI PASS다.
+- Vercel Production `dpl_BM2g6txphAHZ1iN2rVBuqZZU4iZd`가 exact merge SHA로 READY이고 canonical `https://www.moa-work.com/platform/organizations`에 연결됐다.
+- 독립 MWC Production QA는 `PASS_WITH_NOT_RUN_BOUNDARIES`(Linear receipt `a93e6bf7-49dd-43b1-822a-e752259cb314`): 실제 승인 대기 2건과 3단계 렌더, 사용자 모드의 관리자 DOM 비노출, 관리자 복귀, 390×844 무가로오버플로, console warning/error 0을 확인했다.
+- 실제 승인·거절 및 owner 멤버십 생성, 별도 일반 사용자 최초 신청, hosted DB/migration 변경, 모바일 실기기는 `NOT_RUN`이다. DB/schema/RLS 변경은 0이며 Linear `BBE-32`는 Done이다.

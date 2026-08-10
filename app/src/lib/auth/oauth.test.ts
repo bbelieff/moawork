@@ -14,4 +14,18 @@ describe("safeNextPath", () => {
     expect(safeNextPath("javascript:alert(1)")).toBe("/");
     expect(safeNextPath(null)).toBe("/");
   });
+
+  it("역슬래시·제어문자·인코딩 및 이중 인코딩 우회를 거부한다", () => {
+    for (const value of [
+      "/w/team\\admin",
+      "/w/team/%2f%2fevil.example",
+      "/w/team/%5cadmin",
+      "/w/team/%252fadmin",
+      "/w/team/%252e%252e/admin",
+      "/w/team/%25252e%25252e/admin",
+      "/w/team/%25252fapi",
+      "/w/team/%00admin",
+      "/w/team/%E0%A4%A",
+    ]) expect(safeNextPath(value, "/safe")).toBe("/safe");
+  });
 });

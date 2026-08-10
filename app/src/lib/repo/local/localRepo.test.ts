@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import type { Ctx, MemberRole, MemberScope } from "@/lib/types";
+import type { DealPatch } from "@/lib/repo";
 import { installPolicyfundPreset } from "@/lib/presets/policyfund";
 import { FEATURES, MVP_ENABLED_FEATURES } from "@/lib/product";
 import { LocalRepo } from "./localRepo";
@@ -100,6 +101,137 @@ describe("createOrg auto-owner", () => {
     // Phase 2(벤더) 기능은 여전히 잠겨 있어야 한다.
     expect(repo.isFeatureEnabled(org.id, FEATURES.notify)).toBe(false);
     expect(repo.isFeatureEnabled(org.id, FEATURES.hometax)).toBe(false);
+  });
+});
+
+// BUG-0003 회귀 방지 — updateDeal 이 custom 을 통째 교체하면 타 트랙 값이 **에러 없이**
+// 사라진다(무증상 파손). 그래서 판정은 "throw 안 함"이 아니라 값 잔존의 긍정 확인이다.
+describe("updateDeal — custom(jsonb) 키 단위 병합", () => {
+  beforeEach(() => resetDb());
+
+  /** T05 커스텀필드 · T09 정책자금 값이 이미 들어 있는 딜. */
+  function dealWithCustom() {
+    const repo = new LocalRepo();
+    const owner = ctxFor(SEED_USER_OWNER, "owner", "all");
+    const deal = repo.createDeal(owner, {
+      title: "정책자금 딜",
+      custom: {
+        contract_status: "written", // T05 커스텀필드
+        exec_amount: 100_000_000, // T09 정책자금
+        fee_pct: 3,
+        fee_paid_at: "2026-07-01",
+      },
+    });
+    return { repo, owner, deal };
+  }
+
+  it("파일첨부(custom.files)를 저장해도 T05·T09 값이 남아 있다", () => {
+    const { repo, owner, deal } = dealWithCustom();
+
+    // 파일 트랙이 자기 키만 담아 보내는 상황 — 이전에는 여기서 전량 소실됐다.
+    repo.updateDeal(owner, deal.id, {
+      custom: { files: [{ id: "f1", name: "계약서.pdf" }] },
+    });
+
+    const custom = repo.getDeal(owner, deal.id)?.custom ?? {};
+    expect(custom.contract_status).toBe("written");
+    expect(custom.exec_amount).toBe(100_000_000);
+    expect(custom.fee_pct).toBe(3);
+    expect(custom.fee_paid_at).toBe("2026-07-01");
+    expect(custom.files).toEqual([{ id: "f1", name: "계약서.pdf" }]);
+  });
+
+  it("같은 키만 대체하고 나머지는 유지한다", () => {
+    const { repo, owner, deal } = dealWithCustom();
+    repo.updateDeal(owner, deal.id, { custom: { fee_pct: 5 } });
+
+    const custom = repo.getDeal(owner, deal.id)?.custom ?? {};
+    expect(custom.fee_pct).toBe(5);
+    expect(custom.exec_amount).toBe(100_000_000);
+    expect(custom.contract_status).toBe("written");
+  });
+
+  it("null 값은 그 키만 지운다(다른 키는 그대로)", () => {
+    const { repo, owner, deal } = dealWithCustom();
+    repo.updateDeal(owner, deal.id, { custom: { fee_paid_at: null } });
+
+    const custom = repo.getDeal(owner, deal.id)?.custom ?? {};
+    expect("fee_paid_at" in custom).toBe(false);
+    expect(custom.exec_amount).toBe(100_000_000);
+  });
+
+  it("custom 이 없는 패치는 custom 을 건드리지 않는다", () => {
+    const { repo, owner, deal } = dealWithCustom();
+    repo.updateDeal(owner, deal.id, { title: "제목만 변경" });
+
+    const d = repo.getDeal(owner, deal.id);
+    expect(d?.title).toBe("제목만 변경");
+    expect(d?.custom.exec_amount).toBe(100_000_000);
+    expect(d?.custom.contract_status).toBe("written");
+  });
+
+  it("배열 값은 통째 대체된다 — 지운 첨부가 되살아나지 않는다", () => {
+    const { repo, owner, deal } = dealWithCustom();
+    repo.updateDeal(owner, deal.id, { custom: { files: [{ id: "f1" }, { id: "f2" }] } });
+    repo.updateDeal(owner, deal.id, { custom: { files: [{ id: "f2" }] } });
+
+    expect(repo.getDeal(owner, deal.id)?.custom.files).toEqual([{ id: "f2" }]);
+  });
+});
+
+// "단계 변경은 move 전용(활동로그 보장)" 불변식 — 서비스 계층이 아니라 **포트**에서 강제된다.
+describe("moveDeal — 단계 변경의 유일한 경로", () => {
+  beforeEach(() => resetDb());
+
+  function fixture() {
+    const repo = new LocalRepo();
+    const owner = ctxFor(SEED_USER_OWNER, "owner", "all");
+    const pipeline = repo.listPipelines(SEED_ORG_ID)[0];
+    const stages = repo.listStages(pipeline.id);
+    const deal = repo.createDeal(owner, {
+      title: "이동 대상",
+      pipeline_id: pipeline.id,
+      stage_id: stages[0].id,
+    });
+    return { repo, owner, stages, deal };
+  }
+
+  it("updateDeal 로 단계를 바꾸려 하면 throw 하고 단계도 그대로다", () => {
+    const { repo, owner, stages, deal } = fixture();
+    // 타입에는 stage_id 가 없다 — 런타임(JSON 본문) 우회를 흉내낸다.
+    const sneaky = { stage_id: stages[2].id } as unknown as DealPatch;
+
+    expect(() => repo.updateDeal(owner, deal.id, sneaky)).toThrow();
+    expect(repo.getDeal(owner, deal.id)?.stage_id).toBe(stages[0].id);
+    expect(repo.listActivities(owner, deal.id)).toHaveLength(0);
+  });
+
+  it("이동하면 stage_id 갱신 + 이동 활동로그(from → to)를 함께 남긴다", () => {
+    const { repo, owner, stages, deal } = fixture();
+    const moved = repo.moveDeal(owner, deal.id, stages[2].id);
+
+    expect(moved?.stage_id).toBe(stages[2].id);
+    const acts = repo.listActivities(owner, deal.id);
+    expect(acts).toHaveLength(1);
+    expect(acts[0].type).toBe("status");
+    expect(acts[0].content).toBe(`${stages[0].name} → ${stages[2].name}`);
+  });
+
+  it("존재하지 않는 단계면 throw 하고 아무것도 바뀌지 않는다", () => {
+    const { repo, owner, stages, deal } = fixture();
+    expect(() => repo.moveDeal(owner, deal.id, "ghost")).toThrow();
+    expect(repo.getDeal(owner, deal.id)?.stage_id).toBe(stages[0].id);
+    expect(repo.listActivities(owner, deal.id)).toHaveLength(0);
+  });
+
+  it("담당범위 밖의 딜은 undefined — 이동도 로그도 없다", () => {
+    const { repo, owner, stages, deal } = fixture();
+    // owner 가 만든 딜은 owner 담당 → member+assigned 에게는 보이지 않는다.
+    const member = ctxFor(SEED_USER_MEMBER, "member", "assigned");
+
+    expect(repo.moveDeal(member, deal.id, stages[2].id)).toBeUndefined();
+    expect(repo.getDeal(owner, deal.id)?.stage_id).toBe(stages[0].id);
+    expect(repo.listActivities(owner, deal.id)).toHaveLength(0);
   });
 });
 

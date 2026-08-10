@@ -27,12 +27,18 @@ export interface CrmSource {
   getCompany(ctx: Ctx, id: string): Promise<Company | undefined>;
   createCompany(ctx: Ctx, input: NewCompany): Promise<Company>;
   updateCompany(ctx: Ctx, id: string, patch: CompanyPatch): Promise<Company | undefined>;
+  /** 보이지 않는 리소스는 false(존재 유출 방지) — 공용 포트와 동일 규약. */
+  deleteCompany(ctx: Ctx, id: string): Promise<boolean>;
 
   // 딜 (담당범위 적용)
   listDeals(ctx: Ctx): Promise<Deal[]>;
   getDeal(ctx: Ctx, id: string): Promise<Deal | undefined>;
   createDeal(ctx: Ctx, input: NewDeal): Promise<Deal>;
+  /** 부분수정. `custom` 은 키 단위 병합(공용 `DealPatch` 규약과 동일). */
   updateDeal(ctx: Ctx, id: string, patch: DealPatch): Promise<Deal | undefined>;
+  /** 단계 이동 + 활동로그 — stage_id 를 바꾸는 유일한 경로(공용 `Repo.moveDeal` 과 동일). */
+  moveDeal(ctx: Ctx, id: string, toStageId: string): Promise<Deal | undefined>;
+  deleteDeal(ctx: Ctx, id: string): Promise<boolean>;
 
   // 활동기록
   listActivities(ctx: Ctx, dealId: string): Promise<Activity[]>;

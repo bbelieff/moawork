@@ -7,6 +7,8 @@ import type {
   NewCompany,
   NewDeal,
 } from "@/lib/repo";
+import { mergeCustom } from "@/lib/repo/custom-merge";
+import { ACTIVITY_TYPES, stageMoveContent } from "@/lib/crm/activity";
 import { canSeeAll, type CrmSource } from "./source";
 
 /**
@@ -208,6 +210,18 @@ export class SupabaseCrmSource implements CrmSource {
     return data ? toCompany(data) : undefined;
   }
 
+  async deleteCompany(ctx: Ctx, id: string): Promise<boolean> {
+    // 가시성 확인 후 삭제 — 안 보이는 리소스는 false(존재 유출 방지).
+    if (!(await this.getCompany(ctx, id))) return false;
+    const { error } = await this.db
+      .from("companies")
+      .delete()
+      .eq("org_id", ctx.org.id)
+      .eq("id", id);
+    if (error) this.fail("deleteCompany", error);
+    return true;
+  }
+
   // ── 딜 ──
 
   async listDeals(ctx: Ctx): Promise<Deal[]> {
@@ -254,10 +268,17 @@ export class SupabaseCrmSource implements CrmSource {
     id: string,
     patch: DealPatch,
   ): Promise<Deal | undefined> {
+    if ("stage_id" in patch) {
+      throw new Error("딜 수정 불가: 단계 변경은 moveDeal() 을 사용하세요");
+    }
     const current = await this.getDeal(ctx, id);
     if (!current) return undefined;
-    const { assigned_to, ...rest } = patch;
+    const { assigned_to, custom, ...rest } = patch;
     const next: Row = { ...rest, updated_at: new Date().toISOString() };
+    // custom 은 통째 교체 금지 — 읽은 값 위에 키 단위로 병합한다(BUG-0003, 로컬 구현과 동일 규약).
+    // TODO(T02): 동시 수정 시 read-modify-write 는 마지막 쓰기가 이긴다. 정확히 하려면
+    //   jsonb `||` 병합을 하는 RPC 로 옮긴다(단일 문장 원자성).
+    if (custom !== undefined) next.custom = mergeCustom(current.custom, custom);
     if (assigned_to !== undefined && canSeeAll(ctx)) next.assigned_to = assigned_to;
     const { data, error } = await this.db
       .from("deals")
@@ -268,6 +289,53 @@ export class SupabaseCrmSource implements CrmSource {
       .maybeSingle();
     if (error) this.fail("updateDeal", error);
     return data ? toDeal(data) : undefined;
+  }
+
+  async moveDeal(
+    ctx: Ctx,
+    id: string,
+    toStageId: string,
+  ): Promise<Deal | undefined> {
+    const current = await this.getDeal(ctx, id);
+    if (!current) return undefined;
+    const to = await this.getStage(toStageId);
+    if (!to) throw new Error(`단계 이동 불가: 존재하지 않는 단계 (${toStageId})`);
+    const from = current.stage_id ? await this.getStage(current.stage_id) : undefined;
+
+    const { data, error } = await this.db
+      .from("deals")
+      .update({
+        stage_id: to.id,
+        pipeline_id: current.pipeline_id ?? to.pipeline_id,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("org_id", ctx.org.id)
+      .eq("id", id)
+      .select("*")
+      .maybeSingle();
+    if (error) this.fail("moveDeal", error);
+    if (!data) return undefined;
+
+    // TODO(T02): 이동 UPDATE 와 활동로그 INSERT 가 한 트랜잭션이 아니다. 로그 INSERT 가
+    //   실패하면 로그 없는 이동이 남는다 — 004 이후 RPC(단일 트랜잭션)로 합친다.
+    await this.createActivity(ctx, {
+      deal_id: id,
+      type: ACTIVITY_TYPES.status,
+      content: stageMoveContent(from?.name ?? null, to.name),
+    });
+    return toDeal(data);
+  }
+
+  async deleteDeal(ctx: Ctx, id: string): Promise<boolean> {
+    if (!(await this.getDeal(ctx, id))) return false;
+    // activities 는 001 에서 on delete cascade — 별도 정리 불필요.
+    const { error } = await this.db
+      .from("deals")
+      .delete()
+      .eq("org_id", ctx.org.id)
+      .eq("id", id);
+    if (error) this.fail("deleteDeal", error);
+    return true;
   }
 
   // ── 활동기록 ──

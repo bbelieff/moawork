@@ -7,7 +7,10 @@ export * from "./types";
 export {
   NoticesService,
   NoticeRuleError,
+  NoticeForbiddenError,
   compareNotices,
   getNoticesService,
+  isNoticeVisibleTo,
+  noticeStatusOf,
   todayKst,
 } from "./service";

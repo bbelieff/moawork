@@ -11,7 +11,7 @@ export async function GET(_req: Request, { params }: Ctx): Promise<Response> {
   try {
     const ctx = await requireCtx();
     const { dealId } = await params;
-    return jsonOk(getCrmService().getDeal(ctx, dealId));
+    return jsonOk(await getCrmService().getDeal(ctx, dealId));
   } catch (err) {
     return toErrorResponse(err);
   }
@@ -22,7 +22,7 @@ export async function PATCH(req: Request, { params }: Ctx): Promise<Response> {
     const ctx = await requireCtx();
     const { dealId } = await params;
     const patch = parseUpdateDeal(await readJson(req));
-    return jsonOk(getCrmService().updateDeal(ctx, dealId, patch));
+    return jsonOk(await getCrmService().updateDeal(ctx, dealId, patch));
   } catch (err) {
     return toErrorResponse(err);
   }
@@ -32,7 +32,7 @@ export async function DELETE(_req: Request, { params }: Ctx): Promise<Response> 
   try {
     const ctx = await requireCtx();
     const { dealId } = await params;
-    getCrmService().deleteDeal(ctx, dealId);
+    await getCrmService().deleteDeal(ctx, dealId);
     return jsonOk({ deleted: true });
   } catch (err) {
     return toErrorResponse(err);

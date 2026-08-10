@@ -10,7 +10,7 @@ export async function GET(_req: Request, { params }: Ctx): Promise<Response> {
   try {
     const ctx = await requireCtx();
     const { dealId } = await params;
-    return jsonOk(getCrmService().listActivities(ctx, dealId));
+    return jsonOk(await getCrmService().listActivities(ctx, dealId));
   } catch (err) {
     return toErrorResponse(err);
   }
@@ -21,7 +21,7 @@ export async function POST(req: Request, { params }: Ctx): Promise<Response> {
     const ctx = await requireCtx();
     const { dealId } = await params;
     const input = parseCreateActivity(await readJson(req));
-    return jsonOk(getCrmService().createActivity(ctx, dealId, input), 201);
+    return jsonOk(await getCrmService().createActivity(ctx, dealId, input), 201);
   } catch (err) {
     return toErrorResponse(err);
   }

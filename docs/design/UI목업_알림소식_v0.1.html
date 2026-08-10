@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoaWork — 회사 아이콘 · 뱃지 · 소식창 목업 v0.1 (MWC)</title>
+<style>
+  :root{
+    --mw-blue:#3478F6; --mw-teal:#18A999; --mw-violet:#6B5CFF; --mw-coral:#F26B5E;
+    --ink:#191A1E; --surface:#FFFFFF; --bg:#F7F8FA;
+    --line:#E6E8EC; --muted:#6B7280; --hover:#F2F4F7; --dot:#98A2B3;
+    --radius:12px; --radius-sm:8px;
+  }
+  [data-theme="dark"]{
+    --mw-blue:#6EA0FF; --mw-teal:#47CFBC; --mw-violet:#8A7CFF; --mw-coral:#FF8A80;
+    --ink:#F7F8FA; --surface:#191A1E; --bg:#111216;
+    --line:#2A2C33; --muted:#9AA1AC; --hover:#22242B; --dot:#5B626E;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:Pretendard,-apple-system,'Segoe UI',Roboto,'Malgun Gothic',sans-serif}
+  .page{max-width:1400px;margin:0 auto;padding:24px}
+  h1{font-size:20px;margin:0 0 4px} h2{font-size:15px;margin:26px 0 8px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+  .btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);
+       padding:7px 12px;border-radius:999px;font-size:13px;cursor:pointer}
+  .btn.on{background:var(--mw-blue);border-color:var(--mw-blue);color:#fff}
+  .toolbar{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+  .cap{font-size:12px;color:var(--muted);line-height:1.6;margin:8px 0 16px}
+
+  .shell{display:flex;background:var(--surface);border:1px solid var(--line);
+         border-radius:var(--radius);overflow:hidden;min-height:600px;position:relative}
+  .side{width:236px;border-right:1px solid var(--line);display:flex;flex-direction:column;flex:0 0 236px}
+  .side-head{padding:12px;border-bottom:1px solid var(--line);position:relative}
+
+  .ws-trigger{width:100%;display:flex;align-items:center;gap:9px;background:transparent;
+    border:1px solid transparent;border-radius:var(--radius-sm);padding:8px;cursor:pointer;text-align:left}
+  .ws-trigger:hover{background:var(--hover);border-color:var(--line)}
+  /* ★ 회사 아이콘 — 이미지 or 이니셜 폴백 */
+  .ws-mark{width:32px;height:32px;border-radius:9px;flex:0 0 32px;display:grid;place-items:center;
+    color:#fff;font-weight:700;font-size:13px;background:var(--mw-blue);overflow:hidden;position:relative}
+  .ws-mark img{width:100%;height:100%;object-fit:cover;display:block}
+  .ws-mark.t{background:var(--mw-teal)} .ws-mark.v{background:var(--mw-violet)}
+  .ws-name{font-weight:600;font-size:14px;line-height:1.25}
+  .ws-sub{font-size:11px;color:var(--muted)}
+  .chev{margin-left:auto;color:var(--muted);font-size:11px}
+
+  /* ★ 뱃지 */
+  .badge{min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--mw-coral);
+    color:#fff;font-size:11px;font-weight:700;display:inline-grid;place-items:center;line-height:1}
+  .badge.n{background:#E5484D}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--dot);display:inline-block}
+  .mark-badge{position:absolute;top:-5px;right:-5px}
+
+  .ws-menu{position:absolute;top:calc(100% - 4px);left:10px;width:300px;z-index:40;
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:0 12px 32px rgba(16,24,40,.14);padding:6px;display:none}
+  .ws-menu.open{display:block}
+  .menu-label{font-size:11px;color:var(--muted);padding:8px 10px 6px}
+  .ws-item{width:100%;display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--radius-sm);
+    background:transparent;border:0;cursor:pointer;text-align:left;color:var(--ink);position:relative}
+  .ws-item:hover{background:var(--hover)}
+  .ws-item .r{margin-left:auto;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .ws-item.current{background:color-mix(in srgb,var(--mw-blue) 8%,transparent)}
+  .divider{height:1px;background:var(--line);margin:6px 4px}
+  .ws-action{width:100%;display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:var(--radius-sm);
+    background:transparent;border:0;cursor:pointer;text-align:left;color:var(--ink);font-size:13px}
+  .ws-action:hover{background:var(--hover)}
+  .plus{width:26px;height:26px;border-radius:7px;flex:0 0 26px;display:grid;place-items:center;
+    border:1px dashed var(--line);color:var(--mw-blue);font-size:15px;line-height:1}
+
+  .nav{padding:8px;flex:1;overflow:auto}
+  .nav a{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:var(--radius-sm);
+    color:var(--ink);text-decoration:none;font-size:13px}
+  .nav a:hover{background:var(--hover)}
+  .nav a.active{background:color-mix(in srgb,var(--mw-blue) 10%,transparent);color:var(--mw-blue);font-weight:600}
+  .nav .r{margin-left:auto;display:flex;align-items:center;gap:6px}
+
+  .main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .top{height:56px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:0 14px;position:relative}
+  .search{flex:1;max-width:360px;border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:12px;color:var(--muted);background:var(--bg)}
+  .icon-btn{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--surface);cursor:pointer;color:var(--ink);position:relative}
+  .icon-btn .mark-badge{top:-6px;right:-6px}
+  .acct{margin-left:auto;display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:5px 10px 5px 5px;background:var(--surface)}
+  .avatar{width:28px;height:28px;border-radius:50%;background:var(--mw-violet);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700;flex:0 0 28px}
+
+  /* ★ 소식창 패널 */
+  .news{position:absolute;top:52px;right:14px;width:392px;max-height:520px;z-index:50;background:var(--surface);
+    border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 16px 40px rgba(16,24,40,.16);
+    display:none;flex-direction:column;overflow:hidden}
+  .news.open{display:flex}
+  .news-head{padding:12px 14px 0;border-bottom:1px solid var(--line)}
+  .tabs{display:flex;gap:16px}
+  .tab{background:none;border:0;padding:8px 2px 10px;font-size:13px;color:var(--muted);cursor:pointer;
+    border-bottom:2px solid transparent;display:flex;align-items:center;gap:6px}
+  .tab.on{color:var(--ink);font-weight:600;border-bottom-color:var(--mw-blue)}
+  .news-body{overflow:auto;padding:6px}
+  .n-item{display:flex;gap:10px;padding:10px;border-radius:var(--radius-sm);cursor:pointer;align-items:flex-start}
+  .n-item:hover{background:var(--hover)}
+  .n-item.unread{background:color-mix(in srgb,var(--mw-blue) 5%,transparent)}
+  .n-ico{width:30px;height:30px;border-radius:8px;flex:0 0 30px;display:grid;place-items:center;font-size:14px;
+    background:var(--hover)}
+  .n-txt{font-size:13px;line-height:1.5}
+  .n-txt b{font-weight:600}
+  .n-meta{font-size:11px;color:var(--muted);margin-top:2px}
+  .n-dot{width:7px;height:7px;border-radius:50%;background:var(--mw-blue);margin-left:auto;flex:0 0 7px;margin-top:8px}
+  .news-foot{border-top:1px solid var(--line);padding:8px;display:flex;gap:8px}
+  .link{background:none;border:0;color:var(--mw-blue);font-size:12px;cursor:pointer;padding:6px 8px;border-radius:6px}
+  .link:hover{background:var(--hover)}
+
+  .body{padding:22px;flex:1}
+  .card{border:1px solid var(--line);border-radius:var(--radius);padding:16px;background:var(--surface);margin-bottom:14px}
+
+  /* 아이콘 업로드 */
+  .up{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  .drop{border:1.5px dashed var(--line);border-radius:var(--radius);padding:18px;text-align:center;
+    font-size:12px;color:var(--muted);flex:1;min-width:220px}
+  .prev{display:flex;gap:12px;align-items:center}
+  .prev .ws-mark{width:56px;height:56px;flex:0 0 56px;border-radius:14px;font-size:20px}
+  .sizes{display:flex;gap:8px;align-items:flex-end}
+  .sizes .ws-mark{border-radius:7px}
+  .s32{width:32px;height:32px;flex:0 0 32px;font-size:13px}
+  .s24{width:24px;height:24px;flex:0 0 24px;font-size:11px}
+  .s18{width:18px;height:18px;flex:0 0 18px;font-size:9px;border-radius:5px}
+  @media (max-width:900px){ .side{display:none} .news{right:8px;left:8px;width:auto} }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>회사 아이콘 · 업데이트 뱃지 · 소식창 — 목업 v0.1</h1>
+  <div class="sub">MWC 초안 · 2026-07-27 · 브랜드 v1.0 토큰 · <b>목업이며 제품 코드 아님</b></div>
+
+  <div class="toolbar">
+    <button class="btn on" id="t-light">라이트</button>
+    <button class="btn" id="t-dark">다크</button>
+    <button class="btn" id="b-ws">회사 메뉴 열기</button>
+    <button class="btn on" id="b-news">소식창 열기</button>
+  </div>
+
+  <div class="cap">
+    <b>한 줄 요약</b> — 아이콘은 <b>어디에</b>, 뱃지는 <b>무엇이</b>, 소식창은 <b>왜·누가</b>를 답한다.
+    셋 다 같은 축(회사=공간) 위에 얹혀 좌상단·상단바로 이어진다.
+  </div>
+
+  <div class="shell">
+    <aside class="side">
+      <div class="side-head">
+        <button class="ws-trigger" id="wsBtn">
+          <span class="ws-mark">
+            서
+            <span class="mark-badge badge n">2</span>
+          </span>
+          <span><span class="ws-name">서울경영지원센터</span><br><span class="ws-sub">오너 · 내 회사</span></span>
+          <span class="chev">▾</span>
+        </button>
+
+        <div class="ws-menu" id="wsMenu" role="menu" aria-label="회사 전환">
+          <div class="menu-label">내 회사</div>
+          <button class="ws-item current">
+            <span class="ws-mark">서</span>
+            <span><span class="ws-name">서울경영지원센터</span><br><span class="ws-sub">오너</span></span>
+            <span class="r"><span class="badge n">2</span> 사용 중</span>
+          </button>
+          <button class="ws-item">
+            <span class="ws-mark t">엘</span>
+            <span><span class="ws-name">엘에스파트너스</span><br><span class="ws-sub">관리자</span></span>
+            <span class="r"><span class="badge n">5</span> →</span>
+          </button>
+          <button class="ws-item">
+            <span class="ws-mark v">토</span>
+            <span><span class="ws-name">똑똑한개발자</span><br><span class="ws-sub">멤버</span></span>
+            <span class="r"><span class="dot"></span> →</span>
+          </button>
+          <div class="divider"></div>
+          <button class="ws-action"><span class="plus">+</span> 새 회사 만들기</button>
+          <button class="ws-action"><span class="plus">↳</span> 기존 회사에 합류하기</button>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <a href="#" class="active">◫ 대시보드</a>
+        <a href="#">🔥 신규업체 <span class="r"><span class="badge n">2</span></span></a>
+        <a href="#">📞 컨택업체 <span class="r"><span class="dot"></span></span></a>
+        <a href="#">🛠 업무관리</a>
+        <a href="#">🏢 업체관리</a>
+        <a href="#">📋 공지사항 <span class="r"><span class="dot"></span></span></a>
+        <a href="#">👥 멤버관리</a>
+        <a href="#">➕ 거래처등록</a>
+        <a href="#">🏆 이달의 계약회사</a>
+        <a href="#">₩ 회계</a>
+        <a href="#">🧩 추가서비스</a>
+      </nav>
+    </aside>
+
+    <div class="main">
+      <div class="top">
+        <div class="search">🔍 업체·담당자 검색…</div>
+        <button class="icon-btn" id="bell">🔔<span class="mark-badge badge n">3</span></button>
+        <button class="icon-btn">◐</button>
+        <div class="acct"><span class="avatar" style="width:24px;height:24px;font-size:11px">카</span>
+          <span style="font-size:13px">카뮈</span></div>
+
+        <!-- ★ 소식창 -->
+        <div class="news open" id="news">
+          <div class="news-head">
+            <div class="tabs">
+              <button class="tab on" data-tab="me">내 알림 <span class="badge n">3</span></button>
+              <button class="tab" data-tab="org">회사 소식 <span class="dot"></span></button>
+            </div>
+          </div>
+
+          <div class="news-body" id="tab-me">
+            <div class="n-item unread">
+              <span class="n-ico">✅</span>
+              <span class="n-txt"><b>박실장</b>님이 <b>가입 요청</b>을 보냈어요<div class="n-meta">멤버관리 · 12분 전</div></span>
+              <span class="n-dot"></span>
+            </div>
+            <div class="n-item unread">
+              <span class="n-ico">📌</span>
+              <span class="n-txt"><b>딜 2건</b>이 나에게 배정됐어요<div class="n-meta">신규업체 · 1시간 전</div></span>
+              <span class="n-dot"></span>
+            </div>
+            <div class="n-item unread">
+              <span class="n-ico">💬</span>
+              <span class="n-txt"><b>이대표</b>님이 댓글에서 나를 언급했어요<div class="n-meta">업무관리 · 3시간 전</div></span>
+              <span class="n-dot"></span>
+            </div>
+            <div class="n-item">
+              <span class="n-ico">✔️</span>
+              <span class="n-txt">정산 <b>승인 완료</b>됐어요<div class="n-meta">회계 · 어제</div></span>
+            </div>
+          </div>
+
+          <div class="news-body" id="tab-org" style="display:none">
+            <div class="n-item">
+              <span class="n-ico">↗️</span>
+              <span class="n-txt"><b>박실장</b>님이 딜 <b>5건</b>을 '계약' 단계로 옮겼어요<div class="n-meta">신규업체 · 2시간 전 · 묶음</div></span>
+            </div>
+            <div class="n-item">
+              <span class="n-ico">👥</span>
+              <span class="n-txt"><b>새 멤버</b>가 합류했어요<div class="n-meta">멤버관리 · 5시간 전</div></span>
+            </div>
+            <div class="n-item">
+              <span class="n-ico">📢</span>
+              <span class="n-txt"><b>이대표</b>님이 공지를 올렸어요<div class="n-meta">공지사항 · 어제</div></span>
+            </div>
+            <div class="n-item">
+              <span class="n-ico">🔓</span>
+              <span class="n-txt"><b>플랫폼 운영자</b>가 <b>고객지원</b> 사유로 열람했어요<div class="n-meta">2026-07-26 · 42분 · 기록 보기</div></span>
+            </div>
+          </div>
+
+          <div class="news-foot">
+            <button class="link">모두 읽음</button>
+            <button class="link" style="margin-left:auto">전체 보기 →</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="body">
+        <!-- 아이콘 업로드 -->
+        <div class="card">
+          <b>회사 아이콘</b>
+          <div class="cap" style="margin:6px 0 12px">오너·관리자만 변경 가능 · PNG/JPG/SVG/WebP · 2MB 이하 · 512×512 이상 권장</div>
+          <div class="up">
+            <div class="prev">
+              <span class="ws-mark">서</span>
+              <div>
+                <div style="font-size:13px;font-weight:600">현재: 이니셜 폴백</div>
+                <div class="ws-sub">이미지가 없으면 회사명 첫 글자 + 자동 배정 색</div>
+              </div>
+            </div>
+            <div class="drop">이미지를 끌어다 놓거나 <b>클릭해 선택</b><br><span style="font-size:11px">정사각으로 잘라 저장돼요</span></div>
+          </div>
+          <div style="margin-top:16px">
+            <div class="ws-sub" style="margin-bottom:6px">표시 크기 미리보기 (스위처 32 · 목록 24 · 뱃지옆 18)</div>
+            <div class="sizes">
+              <span class="ws-mark s32">서</span>
+              <span class="ws-mark t s24">엘</span>
+              <span class="ws-mark v s18">토</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 뱃지 규칙 -->
+        <div class="card">
+          <b>뱃지 규칙</b> — <span style="color:var(--muted);font-size:12px">아껴야 힘이 있다</span>
+          <div style="margin-top:10px;font-size:13px;line-height:2">
+            <span class="badge n">3</span> &nbsp;<b>숫자 = 내가 할 일</b> (배정·요청·멘션) — 처리해야 사라짐<br>
+            <span class="dot"></span> &nbsp;<b>점 = 안 본 변화</b> — 그 화면에 들어가면 사라짐<br>
+            <span style="opacity:.5">없음</span> &nbsp;<b>남의 일반 활동</b> — 소식창에만 쌓임
+          </div>
+          <div class="cap" style="margin-top:10px">
+            ⚠️ "봤다"와 "했다"를 섞지 않는다 — 화면에 들어가도 <b>숫자는 유지</b>된다. 안 그러면 할 일이 사라져 사고가 난다.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $=s=>document.querySelector(s);
+  const wsMenu=$('#wsMenu'), news=$('#news');
+  function toggle(el,btn){ el.classList.toggle('open'); if(btn) btn.classList.toggle('on', el.classList.contains('open')); }
+  $('#wsBtn').addEventListener('click',e=>{e.stopPropagation();wsMenu.classList.toggle('open');});
+  $('#b-ws').addEventListener('click',e=>{e.stopPropagation();wsMenu.classList.toggle('open');});
+  $('#bell').addEventListener('click',e=>{e.stopPropagation();toggle(news,$('#b-news'));});
+  $('#b-news').addEventListener('click',e=>{e.stopPropagation();toggle(news,$('#b-news'));});
+  document.addEventListener('click',()=>{wsMenu.classList.remove('open');});
+  [wsMenu,news].forEach(m=>m.addEventListener('click',e=>e.stopPropagation()));
+  document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');
+    const me=t.dataset.tab==='me';
+    $('#tab-me').style.display=me?'block':'none';
+    $('#tab-org').style.display=me?'none':'block';
+  }));
+  $('#t-light').addEventListener('click',()=>{document.documentElement.dataset.theme='light';$('#t-light').classList.add('on');$('#t-dark').classList.remove('on');});
+  $('#t-dark').addEventListener('click',()=>{document.documentElement.dataset.theme='dark';$('#t-dark').classList.add('on');$('#t-light').classList.remove('on');});
+</script>
+</body>
+</html>

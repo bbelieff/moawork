@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoaWork 어드민 셸 · 고객사 관리 — 목업 v0.1 (MWC)</title>
+<style>
+  :root{
+    --mw-blue:#3478F6; --mw-teal:#18A999; --mw-violet:#6B5CFF; --mw-coral:#F26B5E;
+    --ink:#191A1E; --surface:#FFFFFF; --bg:#F7F8FA;
+    --line:#E6E8EC; --muted:#6B7280; --hover:#F2F4F7;
+    --radius:12px; --radius-sm:8px;
+
+    /* ★ 어드민 평면 전용 — 같은 구조, 다른 색조 */
+    --adm-bg:#F4F3FF;                 /* 전체 배경 (연보라) */
+    --adm-side:#1E1B33;               /* 사이드바 (짙은 잉크·보라 기운) */
+    --adm-side-ink:#E8E6F7;
+    --adm-side-active:#6B5CFF;
+    --adm-accent:#6B5CFF;             /* Moa Violet = 운영 평면 */
+    --adm-band:#2A2547;               /* 상단 운영자 밴드 */
+  }
+  [data-theme="dark"]{
+    --ink:#F7F8FA; --surface:#191A1E; --bg:#111216;
+    --line:#2A2C33; --muted:#9AA1AC; --hover:#22242B;
+    --adm-bg:#15132A; --adm-side:#12101F; --adm-side-ink:#D9D5F5;
+    --adm-accent:#8A7CFF; --adm-band:#1D1935;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:Pretendard,-apple-system,'Segoe UI',Roboto,'Malgun Gothic',sans-serif}
+  .page{max-width:1440px;margin:0 auto;padding:22px}
+  h1{font-size:20px;margin:0 0 4px} h2{font-size:15px;margin:0 0 10px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+  .cap{font-size:12px;color:var(--muted);line-height:1.65;margin:10px 0 16px}
+  .btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);
+       padding:7px 12px;border-radius:999px;font-size:13px;cursor:pointer}
+  .btn.on{background:var(--adm-accent);border-color:var(--adm-accent);color:#fff}
+  .toolbar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+
+  /* ── 셸: 일반과 동일한 뼈대 ── */
+  .shell{display:flex;border:1px solid var(--line);border-radius:var(--radius);
+         overflow:hidden;min-height:640px;background:var(--adm-bg)}
+  .side{width:236px;flex:0 0 236px;background:var(--adm-side);color:var(--adm-side-ink);
+        display:flex;flex-direction:column}
+  .side-head{padding:12px;border-bottom:1px solid rgba(255,255,255,.09)}
+  .ws{display:flex;align-items:center;gap:9px;padding:8px;border-radius:var(--radius-sm);
+      background:rgba(255,255,255,.06)}
+  .mark{width:32px;height:32px;flex:0 0 32px;border-radius:9px;display:grid;place-items:center;
+        background:var(--adm-accent);color:#fff;font-weight:700;font-size:13px}
+  .ws-name{font-size:14px;font-weight:600;line-height:1.2}
+  .ws-sub{font-size:11px;opacity:.72}
+  .nav{padding:8px;flex:1}
+  .nav a{display:flex;align-items:center;gap:9px;padding:9px;border-radius:var(--radius-sm);
+         color:var(--adm-side-ink);text-decoration:none;font-size:13px;opacity:.86}
+  .nav a:hover{background:rgba(255,255,255,.08);opacity:1}
+  .nav a.active{background:var(--adm-side-active);color:#fff;opacity:1;font-weight:600}
+  .nav .r{margin-left:auto}
+  .badge{min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--mw-coral);
+         color:#fff;font-size:11px;font-weight:700;display:inline-grid;place-items:center}
+  .side-foot{padding:10px 12px;border-top:1px solid rgba(255,255,255,.09);font-size:11px;opacity:.72}
+
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  /* ★ 운영자 밴드 — 여기가 고객 화면이 아님을 항상 알림 */
+  .band{background:var(--adm-band);color:#fff;font-size:12px;padding:7px 14px;
+        display:flex;align-items:center;gap:8px}
+  .band .dot{width:7px;height:7px;border-radius:50%;background:var(--adm-accent)}
+  .top{height:56px;border-bottom:1px solid var(--line);background:var(--surface);
+       display:flex;align-items:center;gap:10px;padding:0 14px}
+  .search{flex:1;max-width:360px;border:1px solid var(--line);border-radius:999px;
+          padding:7px 12px;font-size:12px;color:var(--muted);background:var(--bg)}
+  .icon-btn{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);
+            background:var(--surface);cursor:pointer}
+  .avatar{width:28px;height:28px;border-radius:50%;background:var(--adm-accent);color:#fff;
+          display:grid;place-items:center;font-size:12px;font-weight:700}
+  .body{padding:20px;overflow:auto}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+        padding:16px;margin-bottom:16px}
+  .tabs{display:flex;gap:16px;border-bottom:1px solid var(--line);margin:-4px 0 14px}
+  .tab{background:none;border:0;padding:9px 2px 11px;font-size:13px;color:var(--muted);
+       cursor:pointer;border-bottom:2px solid transparent;display:flex;align-items:center;gap:6px}
+  .tab.on{color:var(--ink);font-weight:600;border-bottom-color:var(--adm-accent)}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-size:11px;color:var(--muted);font-weight:600;padding:8px 10px;
+     border-bottom:1px solid var(--line)}
+  td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  .co{display:flex;align-items:center;gap:9px}
+  .co .mark{width:28px;height:28px;flex:0 0 28px;font-size:12px;border-radius:8px}
+  .mk-b{background:var(--mw-blue)} .mk-t{background:var(--mw-teal)} .mk-v{background:var(--mw-violet)}
+  .muted{color:var(--muted);font-size:11px}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .pill.ok{color:var(--mw-teal);border-color:color-mix(in srgb,var(--mw-teal) 40%,var(--line))}
+  .pill.warn{color:#B7791F;border-color:#E5C07B}
+  .pill.risk{color:#C8372D;border-color:#EBA9A2}
+  .pill.internal{color:var(--adm-accent);border-color:color-mix(in srgb,var(--adm-accent) 45%,var(--line))}
+  .act{display:flex;gap:6px;justify-content:flex-end}
+  .b-approve{background:var(--adm-accent);border:0;color:#fff;padding:7px 12px;border-radius:8px;
+             font-size:12px;cursor:pointer;font-weight:600}
+  .b-reject{background:transparent;border:1px solid var(--line);color:var(--muted);
+            padding:7px 12px;border-radius:8px;font-size:12px;cursor:pointer}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px}
+  .kpi b{display:block;font-size:22px;margin-top:4px}
+  .toggle{margin-left:auto;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  @media (max-width:900px){ .side{display:none} .kpis{grid-template-columns:repeat(2,1fr)} }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>어드민 셸 · 고객사 관리 — 목업 v0.1</h1>
+  <div class="sub">MWC · 2026-07-27 · <b>일반 UI와 뼈대는 동일, 색조로 평면을 구분</b> · 목업이며 제품 코드 아님</div>
+  <div class="toolbar">
+    <button class="btn on" id="t-light">라이트</button>
+    <button class="btn" id="t-dark">다크</button>
+  </div>
+
+  <div class="cap">
+    <b>설계 원칙</b> — 사이드바·상단바·표 구조는 <b>고객 화면과 동일</b>(학습비용 0).
+    대신 <b>사이드바는 짙은 잉크, 전체 배경은 연보라(Moa Violet 계열)</b>로 바꿔
+    "여기는 운영자 평면"이 한눈에 보이게 한다. People Coral은 뱃지(알림)에만 쓴다.
+  </div>
+
+  <div class="shell">
+    <aside class="side">
+      <div class="side-head">
+        <div class="ws">
+          <span class="mark">M</span>
+          <span>
+            <span class="ws-name">MoaWork</span><br>
+            <span class="ws-sub">플랫폼 관리</span>
+          </span>
+        </div>
+      </div>
+      <nav class="nav">
+        <a href="#">◫ 개요</a>
+        <a href="#" class="active">🏢 고객사 관리 <span class="r"><span class="badge">3</span></span></a>
+        <a href="#">🔓 접근 기록</a>
+        <a href="#">💬 지원 문의 <span class="r"><span class="badge">2</span></span></a>
+        <a href="#">📈 지표</a>
+        <a href="#">⚙ 시스템</a>
+        <a href="#">👤 어드민 관리</a>
+      </nav>
+      <div class="side-foot">
+        카뮈 · 플랫폼 관리자<br>
+        <span style="opacity:.7">고객 회사에 자동 접근하지 않음</span>
+      </div>
+    </aside>
+
+    <div class="main">
+      <div class="band"><span class="dot"></span> 플랫폼 운영자 영역 — 고객 업무 데이터는 열람 권한을 받은 경우에만 보입니다</div>
+
+      <div class="top">
+        <div class="search">🔍 회사·요청자 검색…</div>
+        <button class="icon-btn">🔔</button>
+        <button class="icon-btn">◐</button>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+          <span class="avatar">카</span><span style="font-size:13px">카뮈</span>
+        </div>
+      </div>
+
+      <div class="body">
+        <div class="kpis">
+          <div class="kpi"><span class="muted">전체 회사</span><b>12</b></div>
+          <div class="kpi"><span class="muted">승인 대기</span><b style="color:var(--adm-accent)">3</b></div>
+          <div class="kpi"><span class="muted">활성 사용자(7일)</span><b>28</b></div>
+          <div class="kpi"><span class="muted">휴면 회사(14일)</span><b style="color:#C8372D">2</b></div>
+        </div>
+
+        <div class="card">
+          <div class="tabs">
+            <button class="tab on" data-t="wait">승인 대기 <span class="badge">3</span></button>
+            <button class="tab" data-t="list">회사 목록</button>
+            <button class="tab" data-t="done">처리 완료</button>
+            <span class="toggle"><input type="checkbox" id="inc"> <label for="inc">내부 조직 포함</label></span>
+          </div>
+
+          <!-- 승인 대기 보드 -->
+          <div id="p-wait">
+            <table>
+              <thead><tr><th>요청</th><th>요청자</th><th>종류</th><th>요청 시각</th><th style="text-align:right">처리</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><div class="co"><span class="mark mk-b">모</span><span><b>모아워크</b><br><span class="muted">/w/moawork 희망</span></span></div></td>
+                  <td>user1@example.com<br><span class="muted">플랫폼 관리자</span></td>
+                  <td><span class="pill">회사 만들기</span></td>
+                  <td>오늘 20:41</td>
+                  <td><div class="act"><button class="b-reject">승인하지 않기</button><button class="b-approve">회사 만들기 승인</button></div></td>
+                </tr>
+                <tr>
+                  <td><div class="co"><span class="mark mk-t">테</span><span><b>테스트</b><br><span class="muted">/w/test 희망</span></span></div></td>
+                  <td>user1@example.com<br><span class="muted">플랫폼 관리자</span></td>
+                  <td><span class="pill">회사 만들기</span></td>
+                  <td>오늘 20:42</td>
+                  <td><div class="act"><button class="b-reject">승인하지 않기</button><button class="b-approve">회사 만들기 승인</button></div></td>
+                </tr>
+                <tr>
+                  <td><div class="co"><span class="mark mk-v">서</span><span><b>서울경영지원센터</b><br><span class="muted">합류 요청</span></span></div></td>
+                  <td>user1@example.com<br><span class="muted">소속 없음</span></td>
+                  <td><span class="pill">합류</span></td>
+                  <td>3시간 전</td>
+                  <td><div class="act"><button class="b-reject">승인하지 않기</button><button class="b-approve">합류 승인</button></div></td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="cap" style="margin:12px 0 0">
+              승인은 서버가 현재 권한과 요청 상태를 다시 확인한 뒤 <b>한 번만</b> 반영해요.
+              거절 사유는 요청자에게 보이지 않아요. 14일이 지나면 자동 만료돼요.
+            </p>
+          </div>
+
+          <!-- 회사 목록 -->
+          <div id="p-list" style="display:none">
+            <table>
+              <thead><tr><th>회사</th><th>멤버</th><th>마지막 활동</th><th>7일 쓰기</th><th>활성/전체</th><th>상태</th></tr></thead>
+              <tbody>
+                <tr><td><div class="co"><span class="mark mk-v">서</span><b>서울경영지원센터</b></div></td>
+                    <td>4</td><td>12분 전</td><td>231</td><td>4/4</td><td><span class="pill ok">활발</span></td></tr>
+                <tr><td><div class="co"><span class="mark mk-b">모</span><b>모아워크</b> <span class="pill internal">내부</span></div></td>
+                    <td>1</td><td>방금</td><td>3</td><td>1/1</td><td><span class="pill ok">활발</span></td></tr>
+                <tr><td><div class="co"><span class="mark mk-t">테</span><b>테스트</b> <span class="pill internal">내부</span></div></td>
+                    <td>1</td><td>방금</td><td>0</td><td>1/1</td><td><span class="pill warn">둔화</span></td></tr>
+                <tr><td><div class="co"><span class="mark mk-t">엘</span><b>엘에스파트너스</b></div></td>
+                    <td>2</td><td>6일 전</td><td>8</td><td>1/2</td><td><span class="pill warn">둔화</span></td></tr>
+                <tr><td><div class="co"><span class="mark mk-b">가</span><b>가나다컨설팅</b></div></td>
+                    <td>3</td><td>21일 전</td><td>0</td><td>0/3</td><td><span class="pill risk">휴면</span></td></tr>
+              </tbody>
+            </table>
+            <p class="cap" style="margin:12px 0 0">
+              기본 정렬은 <b>위험순</b>(휴면 → 둔화 → 활발) — 아침에 열면 손봐야 할 회사가 맨 위에 와요.
+              <b>내부</b> 배지가 붙은 조직은 지표 집계에서 기본 제외돼요(상단 토글로 포함 가능).
+            </p>
+          </div>
+
+          <div id="p-done" style="display:none">
+            <table>
+              <thead><tr><th>회사</th><th>종류</th><th>결과</th><th>처리자</th><th>처리 시각</th></tr></thead>
+              <tbody>
+                <tr><td>ABC컨설팅</td><td><span class="pill">합류</span></td><td><span class="pill ok">승인</span></td><td>카뮈</td><td>어제 14:02</td></tr>
+                <tr><td>(주)무단요청</td><td><span class="pill">회사 만들기</span></td><td><span class="pill risk">거절</span></td><td>카뮈</td><td>2일 전</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cap">
+    <b>고객 화면과 다른 점은 색뿐</b> — 사이드바 위치·상단바·표·뱃지 규칙은 전부 동일하다.
+    운영자가 두 평면을 오갈 때 다시 배울 게 없고, 색만으로 "지금 어디에 있는지"를 안다.<br>
+    <b>상단 밴드</b>는 항상 붙어 있어 고객 데이터 열람 범위를 상기시킨다.
+  </div>
+
+  <!-- ══════════ 결제·매출 ══════════ -->
+  <h1 style="margin-top:34px">결제·매출 — 모아워크 자체 구독 매출</h1>
+  <div class="sub">고객사의 컨설팅 매출(정산)과는 <b>다른 장부</b>다. 여기는 모아워크가 받는 구독료.</div>
+
+  <div class="shell" style="min-height:680px">
+    <aside class="side">
+      <div class="side-head">
+        <div class="ws"><span class="mark">M</span>
+          <span><span class="ws-name">MoaWork</span><br><span class="ws-sub">플랫폼 관리</span></span></div>
+      </div>
+      <nav class="nav">
+        <a href="#">◫ 개요</a>
+        <a href="#">🏢 고객사 관리</a>
+        <a href="#" class="active">💳 결제·매출</a>
+        <a href="#">🔓 접근 기록</a>
+        <a href="#">💬 지원 문의</a>
+        <a href="#">📈 지표</a>
+        <a href="#">⚙ 시스템</a>
+        <a href="#">👤 어드민 관리</a>
+      </nav>
+      <div class="side-foot">카뮈 · 최고관리자</div>
+    </aside>
+
+    <div class="main">
+      <div class="band"><span class="dot"></span> 플랫폼 운영자 영역 — 내보내기(Export)는 전부 기록에 남습니다</div>
+      <div class="top">
+        <div class="search">🔍 회사·청구서 번호 검색…</div>
+        <button class="icon-btn">🔔</button>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+          <span class="avatar">카</span><span style="font-size:13px">카뮈</span></div>
+      </div>
+
+      <div class="body">
+        <!-- 핵심 지표 -->
+        <div class="kpis" style="grid-template-columns:repeat(4,1fr)">
+          <div class="kpi"><span class="muted">MRR (월 반복 매출)</span><b>₩1,240,000</b><span class="muted">전월 대비 +12.7%</span></div>
+          <div class="kpi"><span class="muted">ARR (연환산)</span><b>₩14,880,000</b><span class="muted">MRR×12</span></div>
+          <div class="kpi"><span class="muted">NRR (순매출유지율)</span><b style="color:var(--mw-teal)">108%</b><span class="muted">100% 넘으면 확장이 이탈을 이김</span></div>
+          <div class="kpi"><span class="muted">연체·미수</span><b style="color:#C8372D">₩180,000</b><span class="muted">2건 · 결제 실패</span></div>
+        </div>
+        <div class="kpis" style="grid-template-columns:repeat(4,1fr)">
+          <div class="kpi"><span class="muted">ARPA (계정당 평균)</span><b>₩103,300</b></div>
+          <div class="kpi"><span class="muted">고객 이탈률(월)</span><b>4.2%</b></div>
+          <div class="kpi"><span class="muted">체험→유료 전환</span><b>36%</b></div>
+          <div class="kpi"><span class="muted">유료 고객</span><b>12</b><span class="muted">체험 5 · 연체 2 · 해지예정 1</span></div>
+        </div>
+
+        <!-- MRR 무브먼트 -->
+        <div class="card">
+          <h2>이번달 MRR 변동 <span class="muted" style="font-weight:400">— 매출이 어디서 늘고 줄었나</span></h2>
+          <table>
+            <thead><tr><th>구분</th><th>금액</th><th>건수</th><th>설명</th></tr></thead>
+            <tbody>
+              <tr><td>시작 MRR</td><td>₩1,100,000</td><td>11</td><td class="muted">전월 말 기준</td></tr>
+              <tr><td><span class="pill ok">신규</span></td><td style="color:var(--mw-teal)">+₩190,000</td><td>2</td><td class="muted">신규 계약</td></tr>
+              <tr><td><span class="pill ok">확장</span></td><td style="color:var(--mw-teal)">+₩60,000</td><td>1</td><td class="muted">좌석 추가·상위 티어</td></tr>
+              <tr><td><span class="pill warn">축소</span></td><td style="color:#B7791F">−₩30,000</td><td>1</td><td class="muted">좌석 감소</td></tr>
+              <tr><td><span class="pill risk">이탈</span></td><td style="color:#C8372D">−₩80,000</td><td>1</td><td class="muted">해지</td></tr>
+              <tr style="font-weight:700"><td>종료 MRR</td><td>₩1,240,000</td><td>12</td><td class="muted">순증 +₩140,000</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 구독 목록 -->
+        <div class="card">
+          <div style="display:flex;align-items:center;margin-bottom:10px">
+            <h2 style="margin:0">구독 12건</h2>
+            <span style="margin-left:auto;display:flex;gap:6px">
+              <button class="btn" style="padding:5px 10px;font-size:12px">⬇ CSV</button>
+              <button class="btn" style="padding:5px 10px;font-size:12px">⬇ Excel</button>
+              <button class="btn" style="padding:5px 10px;font-size:12px">⬇ PDF</button>
+            </span>
+          </div>
+          <table>
+            <thead><tr><th>고객사</th><th>플랜</th><th>좌석</th><th>월 금액</th><th>상태</th><th>다음 결제</th><th>결제수단</th></tr></thead>
+            <tbody>
+              <tr><td><div class="co"><span class="mark mk-v" style="width:26px;height:26px;flex:0 0 26px;font-size:11px">서</span><b>서울경영지원센터</b></div></td>
+                  <td>4~7인</td><td>4/7</td><td>₩120,000</td><td><span class="pill ok">활성</span></td><td>08-21</td><td>카드 ****4321</td></tr>
+              <tr><td><div class="co"><span class="mark mk-t" style="width:26px;height:26px;flex:0 0 26px;font-size:11px">엘</span><b>엘에스파트너스</b></div></td>
+                  <td>1~3인</td><td>2/3</td><td>₩60,000</td><td><span class="pill ok">활성</span></td><td>08-14</td><td>카드 ****9902</td></tr>
+              <tr><td><div class="co"><span class="mark mk-b" style="width:26px;height:26px;flex:0 0 26px;font-size:11px">가</span><b>가나다컨설팅</b></div></td>
+                  <td>4~7인</td><td>3/7</td><td>₩120,000</td><td><span class="pill risk">연체</span></td><td>07-25 (실패 2회)</td><td>카드 만료</td></tr>
+              <tr><td><div class="co"><span class="mark mk-t" style="width:26px;height:26px;flex:0 0 26px;font-size:11px">A</span><b>ABC컨설팅</b></div></td>
+                  <td>1~3인</td><td>1/3</td><td>₩0</td><td><span class="pill warn">체험 D-6</span></td><td>08-02 첫 결제</td><td>미등록</td></tr>
+              <tr><td><div class="co"><span class="mark mk-v" style="width:26px;height:26px;flex:0 0 26px;font-size:11px">모</span><b>모아워크</b> <span class="pill internal">내부</span></div></td>
+                  <td>—</td><td>1</td><td>₩0</td><td><span class="pill internal">내부</span></td><td>—</td><td>—</td></tr>
+            </tbody>
+          </table>
+          <div class="cap" style="margin:10px 0 0">내부 조직은 매출 지표에서 기본 제외된다(고객사 관리와 동일 규칙).</div>
+        </div>
+
+        <!-- 청구·결제 내역 -->
+        <div class="card">
+          <div style="display:flex;align-items:center;margin-bottom:10px">
+            <h2 style="margin:0">청구·결제 내역</h2>
+            <span style="margin-left:auto;display:flex;gap:6px">
+              <button class="btn" style="padding:5px 10px;font-size:12px">기간: 2026-07 ▾</button>
+              <button class="btn" style="padding:5px 10px;font-size:12px">⬇ 내보내기</button>
+            </span>
+          </div>
+          <table>
+            <thead><tr><th>청구번호</th><th>고객사</th><th>기간</th><th>공급가</th><th>부가세</th><th>합계</th><th>상태</th><th>세금계산서</th></tr></thead>
+            <tbody>
+              <tr><td>INV-2026-0142</td><td>서울경영지원센터</td><td>07-21~08-20</td><td>₩109,091</td><td>₩10,909</td><td><b>₩120,000</b></td><td><span class="pill ok">결제완료</span></td><td><span class="pill ok">발행</span></td></tr>
+              <tr><td>INV-2026-0141</td><td>엘에스파트너스</td><td>07-14~08-13</td><td>₩54,545</td><td>₩5,455</td><td><b>₩60,000</b></td><td><span class="pill ok">결제완료</span></td><td><span class="pill ok">발행</span></td></tr>
+              <tr><td>INV-2026-0138</td><td>가나다컨설팅</td><td>07-25~08-24</td><td>₩109,091</td><td>₩10,909</td><td><b>₩120,000</b></td><td><span class="pill risk">결제실패</span></td><td><span class="pill">보류</span></td></tr>
+              <tr><td>INV-2026-0130</td><td>ㅇㅇ파트너스</td><td>06-30~07-29</td><td>₩54,545</td><td>₩5,455</td><td><b>₩60,000</b></td><td><span class="pill">환불</span></td><td><span class="pill">수정발행</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 연결 -->
+        <div class="card">
+          <h2>연결 <span class="muted" style="font-weight:400">— 나중에 붙일 자리를 미리 만든다</span></h2>
+          <table>
+            <thead><tr><th>대상</th><th>용도</th><th>상태</th><th style="text-align:right"></th></tr></thead>
+            <tbody>
+              <tr><td>PG (토스페이먼츠·포트원)</td><td>정기결제 빌링키·자동 청구</td><td><span class="pill">미연결</span></td><td class="act"><button class="b-reject">연결</button></td></tr>
+              <tr><td>전자세금계산서 (팝빌·바로빌)</td><td>발행·역발행·국세청 전송</td><td><span class="pill">미연결</span></td><td class="act"><button class="b-reject">연결</button></td></tr>
+              <tr><td>회계 프로그램</td><td>매출 전표 연동</td><td><span class="pill">미연결</span></td><td class="act"><button class="b-reject">연결</button></td></tr>
+              <tr><td>내보내기 스케줄</td><td>매월 1일 매출 리포트 자동 생성</td><td><span class="pill warn">설정 안 됨</span></td><td class="act"><button class="b-reject">설정</button></td></tr>
+            </tbody>
+          </table>
+          <div class="cap" style="margin:10px 0 0">
+            벤더 연결 전에도 <b>수기 입력·CSV 업로드</b>로 장부를 운영할 수 있어야 한다(무료 베타 기간용).
+          </div>
+        </div>
+
+        <!-- 내보내기 -->
+        <div class="card">
+          <h2>내보내기</h2>
+          <table>
+            <thead><tr><th>형식</th><th>내용</th><th>쓰임</th></tr></thead>
+            <tbody>
+              <tr><td><b>CSV</b></td><td>구독·청구·결제 원장</td><td class="muted">엑셀·회계 프로그램 업로드 (UTF-8 BOM — 한글 안 깨지게)</td></tr>
+              <tr><td><b>Excel</b></td><td>요약·구독·청구·결제 4개 시트</td><td class="muted">월말 결산·보고용</td></tr>
+              <tr><td><b>PDF</b></td><td>청구서 개별 / 월간 매출 리포트</td><td class="muted">고객 발송·투자자 보고</td></tr>
+            </tbody>
+          </table>
+          <div class="cap" style="margin:10px 0 0">
+            매출 원장은 민감 자료다. <b>누가·언제·어떤 범위를 내보냈는지 전부 기록</b>되고,
+            큰 파일은 백그라운드로 만든 뒤 <b>만료되는 링크</b>로 받는다.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ 어드민 관리 ══════════ -->
+  <h1 style="margin-top:34px">어드민 관리 — 누가 운영자 영역에 들어올 수 있는가</h1>
+  <div class="sub">belie가 직접 배정한다. 이메일만 등록해 두면 그 사람이 구글 로그인할 때 자동으로 권한이 붙는다.</div>
+
+  <div class="shell" style="min-height:560px">
+    <aside class="side">
+      <div class="side-head">
+        <div class="ws"><span class="mark">M</span>
+          <span><span class="ws-name">MoaWork</span><br><span class="ws-sub">플랫폼 관리</span></span></div>
+      </div>
+      <nav class="nav">
+        <a href="#">◫ 개요</a>
+        <a href="#">🏢 고객사 관리</a>
+        <a href="#">🔓 접근 기록</a>
+        <a href="#">💬 지원 문의</a>
+        <a href="#">📈 지표</a>
+        <a href="#">⚙ 시스템</a>
+        <a href="#" class="active">👤 어드민 관리</a>
+      </nav>
+      <div class="side-foot">카뮈 · 최고관리자</div>
+    </aside>
+
+    <div class="main">
+      <div class="band"><span class="dot"></span> 플랫폼 운영자 영역 — 어드민 추가·제거는 최고관리자만 할 수 있습니다</div>
+      <div class="top">
+        <div class="search">🔍 이메일 검색…</div>
+        <button class="icon-btn">🔔</button>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+          <span class="avatar">카</span><span style="font-size:13px">카뮈</span></div>
+      </div>
+
+      <div class="body">
+        <!-- 추가 -->
+        <div class="card">
+          <h2>어드민 추가</h2>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+            <div style="flex:1;min-width:240px">
+              <div class="muted" style="margin-bottom:5px">구글 계정 이메일</div>
+              <div style="border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:13px;color:var(--muted)">name@example.com</div>
+            </div>
+            <div style="min-width:170px">
+              <div class="muted" style="margin-bottom:5px">등급</div>
+              <div style="border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:13px">운영자 ▾</div>
+            </div>
+            <div style="flex:1;min-width:200px">
+              <div class="muted" style="margin-bottom:5px">메모(선택)</div>
+              <div style="border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:13px;color:var(--muted)">예: 정산 담당</div>
+            </div>
+            <button class="b-approve" style="height:38px">추가</button>
+          </div>
+          <div class="cap" style="margin:10px 0 0">
+            아직 가입 안 한 이메일도 등록할 수 있어요. <b>그 사람이 구글로 로그인하는 순간 권한이 붙습니다</b>(사전 예약).
+            초대 메일은 보내지 않아요 — 계정 생성은 본인이 합니다.
+          </div>
+        </div>
+
+        <!-- 등급 안내 -->
+        <div class="card">
+          <h2>등급 <span class="muted" style="font-weight:400">— 조회는 전원 동일, 차이는 '실행'에만</span></h2>
+          <div class="cap" style="margin:0 0 12px">
+            <b>belie 확정</b>: 운영진은 어드민 화면에 적힌 정보를 <b>전부 조회</b>할 수 있다.
+            결제 원장·매출·고객사 상세·지표·접근 기록·문의 — 등급과 무관하게 <b>보는 건 다 본다</b>.
+            등급은 <b>무엇을 바꿀 수 있는가</b>만 가른다.
+          </div>
+          <table>
+            <thead><tr><th style="width:120px">등급</th><th>조회</th><th>실행(쓰기)</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="pill internal">최고관리자</span></td>
+                <td><span class="pill ok">전부</span></td>
+                <td>아래 전부 + <b>어드민 추가·제거·등급 변경</b></td>
+              </tr>
+              <tr>
+                <td><span class="pill">운영자</span></td>
+                <td><span class="pill ok">전부</span></td>
+                <td>가입 승인/거절 · 요금제 변경 · 열람 요청·열람 · 문의 답변 · 내보내기</td>
+              </tr>
+              <tr>
+                <td><span class="pill">조회자</span></td>
+                <td><span class="pill ok">전부</span></td>
+                <td><span class="muted">없음 — 보기만</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="cap" style="margin:10px 0 0">
+            ※ 예외는 딱 둘 — <b>고객사의 고객 데이터</b>(업체 8,400건·홈택스)는 등급과 무관하게
+            <b>열람 권한(고객 허용/break-glass)</b>이 있어야 하고, <b>내보내기</b>는 운영자 이상이다.
+            (매출 원장 반출은 되돌릴 수 없어서 — 조회자에게도 열려면 말씀만 주세요.)
+          </div>
+        </div>
+
+        <!-- 목록 -->
+        <div class="card">
+          <h2>어드민 3명</h2>
+          <table>
+            <thead><tr><th>이메일</th><th>등급</th><th>상태</th><th>추가한 사람</th><th>마지막 접속</th><th style="text-align:right">관리</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><b>user1@example.com</b><br><span class="muted">belie · 창업자</span></td>
+                <td><span class="pill internal">최고관리자</span></td>
+                <td><span class="pill ok">활성</span></td>
+                <td>시스템(005 예약)</td>
+                <td>방금</td>
+                <td><div class="act"><span class="muted" style="align-self:center">본인 — 변경 불가</span></div></td>
+              </tr>
+              <tr>
+                <td>partner@example.com<br><span class="muted">이준우 · 동업자</span></td>
+                <td><span class="pill">운영자</span></td>
+                <td><span class="pill ok">활성</span></td>
+                <td>카뮈 · 07-27</td>
+                <td>3시간 전</td>
+                <td><div class="act"><button class="b-reject">등급 변경</button><button class="b-reject">제거</button></div></td>
+              </tr>
+              <tr>
+                <td>staff@example.com<br><span class="muted">정산 담당</span></td>
+                <td><span class="pill">조회자</span></td>
+                <td><span class="pill warn">로그인 대기</span></td>
+                <td>카뮈 · 07-27</td>
+                <td>—</td>
+                <td><div class="act"><button class="b-reject">등급 변경</button><button class="b-reject">제거</button></div></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="cap" style="margin:12px 0 0">
+            <b>로그인 대기</b> = 이메일은 등록됐지만 아직 그 계정으로 로그인한 적이 없는 상태.
+          </div>
+        </div>
+
+        <!-- 안전장치 -->
+        <div class="card" style="border-color:color-mix(in srgb,#7A2E22 30%,var(--line))">
+          <h2>🔒 안전장치</h2>
+          <div style="font-size:13px;line-height:2">
+            · <b>최고관리자는 항상 1명 이상</b> — 마지막 한 명은 제거·강등할 수 없다(잠금 사고 방지)<br>
+            · <b>본인 등급은 스스로 못 바꾼다</b> — 다른 최고관리자가 해야 한다<br>
+            · <b>제거하면 진행 중인 열람 권한도 즉시 회수</b>된다<br>
+            · 추가·제거·등급 변경은 <b>전부 감사로그</b>에 남는다(누가·언제·누구를·무엇으로)<br>
+            · 어드민 목록은 <b>외부에 노출되지 않는다</b> — RLS로 직접 조회를 막고 함수로만 읽는다
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ 고객사 상세 ══════════ -->
+  <h1 style="margin-top:34px">고객사 상세 — 계약 상대 정보는 전부 보인다</h1>
+  <div class="sub">고객사 관리 → 회사 클릭. <b>모아워크는 순수 SaaS가 아니라 동의된 컨설팅 관계</b>이므로 계약 당사자 정보는 가린 것이 없다.</div>
+
+  <div class="cap">
+    <b>두 층위를 구분한다</b> —
+    <b>①고객사(계약 상대)</b> 회사·대표자·요금제·결제·계약조건 → <b>전부 노출</b>(계약으로 동의된 관계).
+    <b>②고객사의 고객</b>(그 회사가 관리하는 업체들의 대표자·연락처·홈택스 서류) → 그 업체들은 모아워크와 계약한 적이 없다(재수탁). 여기만 열람 권한이 필요하다.
+  </div>
+
+  <div class="shell" style="min-height:600px">
+    <aside class="side">
+      <div class="side-head">
+        <div class="ws"><span class="mark">M</span>
+          <span><span class="ws-name">MoaWork</span><br><span class="ws-sub">플랫폼 관리</span></span></div>
+      </div>
+      <nav class="nav">
+        <a href="#">◫ 개요</a>
+        <a href="#" class="active">🏢 고객사 관리</a>
+        <a href="#">🔓 접근 기록</a>
+        <a href="#">💬 지원 문의 <span class="r"><span class="badge">2</span></span></a>
+        <a href="#">📈 지표</a>
+        <a href="#">⚙ 시스템</a>
+        <a href="#">👤 어드민 관리</a>
+      </nav>
+      <div class="side-foot">카뮈 · 플랫폼 관리자</div>
+    </aside>
+
+    <div class="main">
+      <div class="band"><span class="dot"></span> 플랫폼 운영자 영역 — 계약 정보는 전부, 고객사의 고객 데이터는 열람 권한이 있을 때만</div>
+      <div class="top">
+        <div class="search">🔍 회사 검색…</div>
+        <button class="icon-btn">🔔</button>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+          <span class="avatar">카</span><span style="font-size:13px">카뮈</span></div>
+      </div>
+
+      <div class="body">
+        <!-- 헤더 -->
+        <div class="card" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <span class="mark mk-v" style="width:52px;height:52px;flex:0 0 52px;border-radius:14px;font-size:20px">서</span>
+          <div>
+            <div style="font-size:17px;font-weight:700">서울경영지원센터</div>
+            <div class="muted">/w/seoul-management · 생성 2026-07-21 · 사용 7일차</div>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn">💬 문의 보기</button>
+            <button class="btn">🔓 열람 요청 보내기</button>
+            <button class="b-approve">요금제 변경</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <!-- 대표자·사업자 -->
+          <div class="card">
+            <h2>대표자 · 사업자</h2>
+            <table>
+              <tbody>
+                <tr><td class="muted" style="width:110px">대표자</td><td><b>이대표</b></td></tr>
+                <tr><td class="muted">연락처</td><td>010-****-1234 <button class="btn" style="padding:2px 8px;font-size:11px">전체 보기</button></td></tr>
+                <tr><td class="muted">이메일</td><td>user1@example.com</td></tr>
+                <tr><td class="muted">사업자번호</td><td>123-45-***** <button class="btn" style="padding:2px 8px;font-size:11px">전체 보기</button></td></tr>
+                <tr><td class="muted">업종</td><td>경영컨설팅업</td></tr>
+                <tr><td class="muted">주소</td><td>서울 영등포구 …</td></tr>
+              </tbody>
+            </table>
+            <div class="cap" style="margin:8px 0 0">
+              마스킹은 <b>어깨너머 노출 방지용</b>일 뿐 권한 제한이 아니다. [전체 보기]는 1클릭이며 조회 기록만 남는다.
+            </div>
+          </div>
+
+          <!-- 요금제·결제 -->
+          <div class="card">
+            <h2>요금제 · 결제</h2>
+            <table>
+              <tbody>
+                <tr><td class="muted" style="width:110px">플랜</td><td><b>4~7인 티어</b> <span class="pill ok">활성</span></td></tr>
+                <tr><td class="muted">좌석</td><td>4 / 7 사용</td></tr>
+                <tr><td class="muted">과금 시작</td><td>2026-07-21</td></tr>
+                <tr><td class="muted">다음 결제</td><td>2026-08-21 · 월 결제</td></tr>
+                <tr><td class="muted">결제수단</td><td>미등록 <span class="pill warn">무료 베타</span></td></tr>
+                <tr><td class="muted">애드온</td><td>홈택스 OFF · 알림톡 OFF</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 계약 -->
+          <div class="card">
+            <h2>계약</h2>
+            <table>
+              <tbody>
+                <tr><td class="muted" style="width:110px">계약 형태</td><td>컨설팅 파트너</td></tr>
+                <tr><td class="muted">계약일</td><td>2026-07-21</td></tr>
+                <tr><td class="muted">담당</td><td>카뮈(모아워크)</td></tr>
+                <tr><td class="muted">수수료 조건</td><td>실행액 3% · D+180 재접촉</td></tr>
+                <tr><td class="muted">계약서</td><td><button class="btn" style="padding:3px 9px;font-size:11px">📄 열기</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 사용 규모 -->
+          <div class="card">
+            <h2>사용 규모</h2>
+            <table>
+              <tbody>
+                <tr><td class="muted" style="width:110px">업체</td><td>8,404건</td></tr>
+                <tr><td class="muted">딜</td><td>412건 · 이번달 신규 37</td></tr>
+                <tr><td class="muted">정산</td><td>28건 · 총 매출 1.2억</td></tr>
+                <tr><td class="muted">저장 용량</td><td>1.8GB</td></tr>
+                <tr><td class="muted">7일 쓰기</td><td>231회 · 상태 <span class="pill ok">활발</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 멤버 -->
+        <div class="card">
+          <h2>멤버 4명</h2>
+          <table>
+            <thead><tr><th>이름</th><th>이메일</th><th>역할</th><th>담당범위</th><th>마지막 로그인</th><th style="text-align:right">관리</th></tr></thead>
+            <tbody>
+              <tr><td><b>이대표</b></td><td>user1@example.com</td><td><span class="pill">오너</span></td><td>전체</td><td>12분 전</td>
+                  <td><div class="act"><button class="b-reject">역할 변경</button></div></td></tr>
+              <tr><td>박실장</td><td>park@…</td><td><span class="pill">관리자</span></td><td>전체</td><td>2시간 전</td>
+                  <td><div class="act"><button class="b-reject">역할 변경</button></div></td></tr>
+              <tr><td>김담당</td><td>kim@…</td><td><span class="pill">멤버</span></td><td>본인 담당만</td><td>어제</td>
+                  <td><div class="act"><button class="b-reject">역할 변경</button></div></td></tr>
+              <tr><td>최담당</td><td>choi@…</td><td><span class="pill">멤버</span></td><td>본인 담당만</td><td>5일 전</td>
+                  <td><div class="act"><button class="b-reject">역할 변경</button></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 이력 -->
+        <div class="card">
+          <h2>이력</h2>
+          <table>
+            <thead><tr><th>시각</th><th>구분</th><th>내용</th><th>처리자</th></tr></thead>
+            <tbody>
+              <tr><td>오늘 21:0x</td><td><span class="pill">열람</span></td><td>고객지원(문의 #1042) · 보기 전용 2시간 · 고객 허용</td><td>카뮈</td></tr>
+              <tr><td>오늘 20:4x</td><td><span class="pill">문의</span></td><td>정산 수수료 0 증상</td><td>박실장</td></tr>
+              <tr><td>07-21</td><td><span class="pill ok">승인</span></td><td>회사 만들기 승인</td><td>카뮈</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 제한 구간 -->
+        <div class="card" style="border-color:color-mix(in srgb,#7A2E22 30%,var(--line))">
+          <h2>🔒 이 회사가 관리하는 업체 데이터</h2>
+          <div class="cap" style="margin:6px 0 0">
+            8,404개 업체의 대표자·연락처·홈택스 서류는 <b>그 업체들과 모아워크 사이의 계약이 아니다</b>(재수탁).
+            열람하려면 <b>고객 허용 또는 break-glass</b>가 필요하고, 홈택스 위임 서류는 어느 경우에도 열리지 않는다.
+            <br><span class="muted">현재 상태: 보기 전용 열람 중 · 남은 1시간 48분</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ 지원 문의 (고객사와의 채팅) ══════════ -->
+  <h1 style="margin-top:34px">지원 문의 — 고객사와의 채팅</h1>
+  <div class="sub">사이드바 <b>💬 지원 문의</b> 메뉴. 고객은 우측 하단 위젯에서, 운영자는 이 화면에서 같은 대화를 본다.</div>
+
+  <div class="shell" style="min-height:600px">
+    <aside class="side">
+      <div class="side-head">
+        <div class="ws"><span class="mark">M</span>
+          <span><span class="ws-name">MoaWork</span><br><span class="ws-sub">플랫폼 관리</span></span></div>
+      </div>
+      <nav class="nav">
+        <a href="#">◫ 개요</a>
+        <a href="#">🏢 고객사 관리 <span class="r"><span class="badge">3</span></span></a>
+        <a href="#">🔓 접근 기록</a>
+        <a href="#" class="active">💬 지원 문의 <span class="r"><span class="badge">2</span></span></a>
+        <a href="#">📈 지표</a>
+        <a href="#">⚙ 시스템</a>
+        <a href="#">👤 어드민 관리</a>
+      </nav>
+      <div class="side-foot">카뮈 · 플랫폼 관리자</div>
+    </aside>
+
+    <div class="main">
+      <div class="band"><span class="dot"></span> 플랫폼 운영자 영역 — 고객 업무 데이터는 열람 권한을 받은 경우에만 보입니다</div>
+      <div class="top">
+        <div class="search">🔍 회사·문의 내용 검색…</div>
+        <button class="icon-btn">🔔</button>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+          <span class="avatar">카</span><span style="font-size:13px">카뮈</span></div>
+      </div>
+
+      <div style="display:flex;flex:1;min-height:0">
+        <!-- 좌: 스레드 목록 -->
+        <div style="width:270px;flex:0 0 270px;border-right:1px solid var(--line);background:var(--surface);overflow:auto">
+          <div style="padding:10px 12px;border-bottom:1px solid var(--line);display:flex;gap:8px;font-size:12px">
+            <b style="color:var(--adm-accent)">미답변 2</b><span class="muted">· 전체 7</span>
+          </div>
+
+          <div style="padding:11px 12px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--adm-accent) 8%,transparent);cursor:pointer">
+            <div class="co" style="margin-bottom:4px">
+              <span class="mark mk-v" style="width:26px;height:26px;flex:0 0 26px;font-size:11px">서</span>
+              <b style="font-size:13px">서울경영지원센터</b>
+              <span style="margin-left:auto" class="badge">1</span>
+            </div>
+            <div class="muted">정산 화면에서 수수료가 0으로 나와요…</div>
+            <div class="muted" style="margin-top:3px">박실장 · 12분 전</div>
+          </div>
+
+          <div style="padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer">
+            <div class="co" style="margin-bottom:4px">
+              <span class="mark mk-t" style="width:26px;height:26px;flex:0 0 26px;font-size:11px">엘</span>
+              <b style="font-size:13px">엘에스파트너스</b>
+              <span style="margin-left:auto" class="badge">1</span>
+            </div>
+            <div class="muted">멤버 초대가 안 됩니다</div>
+            <div class="muted" style="margin-top:3px">이대표 · 2시간 전</div>
+          </div>
+
+          <div style="padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer;opacity:.72">
+            <div class="co" style="margin-bottom:4px">
+              <span class="mark mk-b" style="width:26px;height:26px;flex:0 0 26px;font-size:11px">가</span>
+              <b style="font-size:13px">가나다컨설팅</b>
+              <span style="margin-left:auto" class="pill ok">완료</span>
+            </div>
+            <div class="muted">감사합니다 해결됐어요</div>
+            <div class="muted" style="margin-top:3px">어제</div>
+          </div>
+        </div>
+
+        <!-- 중앙: 대화 -->
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--adm-bg)">
+          <div style="padding:11px 16px;border-bottom:1px solid var(--line);background:var(--surface);display:flex;align-items:center;gap:9px">
+            <span class="mark mk-v" style="width:28px;height:28px;flex:0 0 28px;font-size:12px">서</span>
+            <span><b style="font-size:13px">서울경영지원센터</b><br>
+              <span class="muted">박실장 · 관리자 · 문의 #1042</span></span>
+            <span style="margin-left:auto" class="pill warn">진행 중</span>
+          </div>
+
+          <div style="flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px">
+            <div style="max-width:74%">
+              <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px 12px 12px 4px;padding:11px 13px;font-size:13px;line-height:1.6">
+                정산 화면에서 실행액을 넣었는데 <b>수수료(원)이 0</b>으로 나와요.<br>수수료 %는 3으로 넣었습니다.
+              </div>
+              <div class="muted" style="margin-top:4px">박실장 · 12분 전</div>
+            </div>
+
+            <div style="max-width:74%;align-self:flex-end;text-align:right">
+              <div style="background:var(--adm-accent);color:#fff;border-radius:12px 12px 4px 12px;padding:11px 13px;font-size:13px;line-height:1.6;text-align:left">
+                확인해 볼게요. 화면을 직접 봐야 원인을 찾을 수 있을 것 같은데,<br>
+                <b>열람을 허용</b>해 주시겠어요? 오른쪽 아래 도움 버튼에서 승인하실 수 있어요.
+              </div>
+              <div class="muted" style="margin-top:4px">카뮈(운영자) · 8분 전</div>
+            </div>
+
+            <div style="align-self:center;font-size:11px;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:999px;padding:5px 12px">
+              🔓 박실장님이 <b>보기 전용</b> 열람을 허용했어요 · 2시간 · 남은 1시간 48분
+            </div>
+
+            <div style="max-width:74%">
+              <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px 12px 12px 4px;padding:11px 13px;font-size:13px;line-height:1.6">
+                허용했습니다. 화면 캡처도 같이 올려요.
+              </div>
+              <!-- ★ 이미지 첨부(고객) -->
+              <div style="margin-top:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px;max-width:280px">
+                <div style="background:linear-gradient(135deg,#E8EDFB,#DDE7FA);border-radius:8px;height:150px;display:grid;place-items:center;color:var(--muted);font-size:12px">
+                  🖼 정산화면_캡처.png
+                </div>
+                <div class="muted" style="padding:6px 4px 2px;display:flex;gap:8px">
+                  <span>PNG · 412KB</span><span style="margin-left:auto">저장</span>
+                </div>
+              </div>
+              <div class="muted" style="margin-top:4px">박실장 · 6분 전</div>
+            </div>
+
+            <!-- ★ 영상 첨부(운영자) -->
+            <div style="max-width:74%;align-self:flex-end">
+              <div style="background:var(--adm-accent);color:#fff;border-radius:12px 12px 4px 12px;padding:11px 13px;font-size:13px;line-height:1.6">
+                재현 영상 남겨요. 이 순서대로 하면 같은 증상이 납니다.
+              </div>
+              <div style="margin-top:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px;max-width:300px;margin-left:auto">
+                <div style="background:#15132A;border-radius:8px;height:160px;display:grid;place-items:center;color:#fff;font-size:26px;position:relative">
+                  ▶
+                  <span style="position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;padding:2px 6px;border-radius:4px">0:42</span>
+                </div>
+                <div class="muted" style="padding:6px 4px 2px;display:flex;gap:8px">
+                  <span>MP4 · 8.2MB</span><span style="margin-left:auto">저장</span>
+                </div>
+              </div>
+              <div class="muted" style="margin-top:4px;text-align:right">카뮈(운영자) · 방금</div>
+            </div>
+          </div>
+
+          <div style="border-top:1px solid var(--line);background:var(--surface);padding:10px 14px">
+            <!-- ★ 붙여넣기 대기 중인 첨부 미리보기 -->
+            <div style="display:flex;gap:8px;margin-bottom:8px">
+              <div style="position:relative;width:64px;height:64px;border:1px solid var(--line);border-radius:8px;background:linear-gradient(135deg,#EDE9FE,#E0E7FF);display:grid;place-items:center;font-size:11px;color:var(--muted)">
+                🖼
+                <button style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:11px;line-height:1">✕</button>
+              </div>
+              <div style="position:relative;width:64px;height:64px;border:1px solid var(--line);border-radius:8px;background:#15132A;display:grid;place-items:center;color:#fff;font-size:14px">
+                ▶
+                <button style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:11px;line-height:1">✕</button>
+              </div>
+              <div style="align-self:center" class="muted">2개 첨부됨 · 이미지 1 · 영상 1</div>
+            </div>
+
+            <div style="border:1px solid var(--adm-accent);border-radius:10px;padding:10px 12px;font-size:13px;color:var(--muted)">
+              답장을 입력하세요…  <span style="float:right;font-size:11px">Ctrl+V로 이미지 바로 붙여넣기 · 끌어다 놓기도 돼요</span>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+              <button class="btn" style="padding:6px 10px">📎 사진·영상</button>
+              <button class="btn" style="padding:6px 10px">🔓 열람 요청 보내기</button>
+              <button class="btn" style="padding:6px 10px">✔ 문의 완료</button>
+              <button class="b-approve" style="margin-left:auto">보내기</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 우: 컨텍스트 -->
+        <div style="width:250px;flex:0 0 250px;border-left:1px solid var(--line);background:var(--surface);padding:14px;overflow:auto">
+          <h2 style="font-size:12px;color:var(--muted)">지금 열람 상태</h2>
+          <div style="border:1px solid color-mix(in srgb,var(--adm-accent) 40%,var(--line));background:color-mix(in srgb,var(--adm-accent) 7%,transparent);border-radius:10px;padding:11px;font-size:12px;line-height:1.6">
+            🔓 <b>보기 전용</b> 열람 중<br>
+            남은 시간 <b>1시간 48분</b><br>
+            <span class="muted">허용: 박실장(관리자)</span>
+            <div style="display:flex;gap:6px;margin-top:9px">
+              <button class="b-approve" style="padding:6px 10px;font-size:11px">회사로 이동</button>
+              <button class="b-reject" style="padding:6px 10px;font-size:11px">열람 종료</button>
+            </div>
+          </div>
+
+          <h2 style="font-size:12px;color:var(--muted);margin-top:16px">회사</h2>
+          <div style="font-size:12px;line-height:1.9">
+            서울경영지원센터<br>
+            <span class="muted">/w/seoul-management</span><br>
+            멤버 4 · 활발 <span class="pill ok">활발</span>
+          </div>
+
+          <h2 style="font-size:12px;color:var(--muted);margin-top:16px">진단 정보 <span class="muted">(자동 첨부)</span></h2>
+          <div style="font-size:11px;color:var(--muted);line-height:1.85">
+            경로 /w/seoul-management/회계<br>
+            역할 관리자 · 담당범위 전체<br>
+            앱 v0.3.1 · Chrome 141 · Windows<br>
+            최근 오류 ID <code>err_9f2a</code>
+          </div>
+          <div class="cap" style="margin-top:10px">
+            고객사명·대표자명·연락처·금액은 <b>자동 첨부하지 않는다.</b>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cap">
+    <b>채팅과 열람이 한 흐름</b> — 대화 중 [🔓 열람 요청 보내기] → 고객이 위젯에서 승인 →
+    타임라인에 "허용했어요" 시스템 메시지 + 우측 패널에 남은 시간·[열람 종료]가 뜬다.
+    운영자가 임의로 문을 따는 대신 <b>고객이 열어주는 흐름</b>이 기본이다.<br>
+    <b>고객이 보는 화면</b>은 우측 하단 위젯 안의 같은 대화다(별도 목업: UI목업_알림소식_v0.1.html 계열).
+  </div>
+
+  <!-- ══════════ 열람 중: 고객사 워크스페이스로 이동한 상태 ══════════ -->
+  <h1 style="margin-top:34px">열람 중 — 고객사 워크스페이스로 이동한 화면</h1>
+  <div class="sub">채팅 우측 패널의 <b>[회사로 이동]</b> 1클릭. 어드민 보라색이 아니라 <b>고객이 보는 화면 그대로</b>다.</div>
+
+  <div class="cap">
+    <b>왜 어드민 색을 쓰지 않나</b> — 운영자가 확인해야 하는 건 "고객이 실제로 보는 화면"이다.
+    색을 바꾸면 재현이 달라진다. 대신 <b>상단 열람 배너</b>가 항상 붙어 "여기는 남의 회사"임을 알린다.
+  </div>
+
+  <div class="shell" style="min-height:520px;background:var(--bg)">
+    <aside class="side" style="background:var(--surface);color:var(--ink);border-right:1px solid var(--line)">
+      <div class="side-head" style="border-bottom:1px solid var(--line)">
+        <div class="ws" style="background:var(--hover)">
+          <span class="mark mk-v">서</span>
+          <span><span class="ws-name">서울경영지원센터</span><br>
+            <span class="ws-sub" style="color:var(--muted)">열람 중 · 소속 아님</span></span>
+        </div>
+      </div>
+      <nav class="nav">
+        <a href="#" class="active" style="background:color-mix(in srgb,var(--mw-blue) 12%,transparent);color:var(--mw-blue)">◫ 대시보드</a>
+        <a href="#" style="color:var(--ink);opacity:.9">🔥 신규업체</a>
+        <a href="#" style="color:var(--ink);opacity:.9">📞 컨택업체</a>
+        <a href="#" style="color:var(--ink);opacity:.9">🛠 업무관리</a>
+        <a href="#" style="color:var(--ink);opacity:.9">🏢 업체관리</a>
+        <a href="#" style="color:var(--ink);opacity:.9">📋 공지사항</a>
+        <a href="#" style="color:var(--ink);opacity:.9">👥 멤버관리</a>
+        <a href="#" style="color:var(--ink);opacity:.55">₩ 회계 <span class="r" style="font-size:11px">열람 제한</span></a>
+      </nav>
+      <div class="side-foot" style="border-top:1px solid var(--line);color:var(--muted)">
+        카뮈 · <b style="color:var(--adm-accent)">플랫폼 운영자</b><br>
+        <span style="opacity:.8">이 회사의 멤버가 아닙니다</span>
+      </div>
+    </aside>
+
+    <div class="main">
+      <!-- ★ 열람 배너 — 지워지지 않음 -->
+      <div style="background:#7A2E22;color:#fff;padding:9px 14px;display:flex;align-items:center;gap:10px;font-size:12px;flex-wrap:wrap">
+        <span>🔓</span>
+        <b>플랫폼 운영자 열람 중</b>
+        <span style="opacity:.9">· 사유: 고객지원(문의 #1042) · 보기 전용 · 남은 시간 <b>1시간 48분</b></span>
+        <span style="margin-left:auto;display:flex;gap:8px">
+          <button style="background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);color:#fff;padding:5px 10px;border-radius:7px;font-size:11px;cursor:pointer">← 문의로 돌아가기</button>
+          <button style="background:#fff;border:0;color:#7A2E22;padding:5px 10px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer">지금 종료</button>
+        </span>
+      </div>
+
+      <div class="top">
+        <div class="search">🔍 업체·담당자 검색…</div>
+        <button class="icon-btn">🔔</button>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+          <span class="avatar" style="background:var(--adm-accent)">카</span>
+          <span style="font-size:13px">카뮈 <span class="pill internal" style="margin-left:4px">운영자</span></span>
+        </div>
+      </div>
+
+      <div class="body" style="background:var(--bg)">
+        <div class="card">
+          <b>대시보드</b>
+          <div class="cap" style="margin:6px 0 0">이번달 계약 3건 · 수납 12,400,000원 · 파이프라인 24건 (목업)</div>
+        </div>
+        <div class="card">
+          <b>정산 — 문의 대상 화면</b>
+          <div class="cap" style="margin:6px 0 10px">고객이 신고한 "수수료(원)이 0" 증상을 여기서 확인한다.</div>
+          <table>
+            <thead><tr><th>업체</th><th>실행액</th><th>수수료%</th><th>수수료(원)</th><th>총매출</th></tr></thead>
+            <tbody>
+              <tr><td>ㅇㅇ상사</td><td>50,000,000</td><td>3</td><td style="color:#C8372D"><b>0</b></td><td>10,000,000</td></tr>
+              <tr><td>ㅁㅁ제조</td><td>30,000,000</td><td>3</td><td style="color:#C8372D"><b>0</b></td><td>5,000,000</td></tr>
+            </tbody>
+          </table>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="b-reject" disabled title="보기 전용 열람이라 수정할 수 없어요" style="opacity:.5;cursor:not-allowed">✏️ 수정</button>
+            <button class="b-reject" disabled title="보기 전용 열람이라 수정할 수 없어요" style="opacity:.5;cursor:not-allowed">＋ 정산 추가</button>
+            <span class="muted" style="align-self:center">보기 전용 — 쓰기 기능은 잠겨 있어요</span>
+          </div>
+        </div>
+        <div class="card" style="border-color:color-mix(in srgb,#7A2E22 30%,var(--line))">
+          <b>🔒 회계 · 홈택스 서류</b>
+          <div class="cap" style="margin:6px 0 0">
+            <b>열람 범위에서 항상 제외</b>됩니다 — 고객사의 고객(사업자) 개인정보라 운영자도 볼 수 없어요.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cap">
+    <b>이동·복귀 경로 (전부 1클릭)</b><br>
+    ① 문의 → [회사로 이동] → <code>/w/{slug}</code> ②
+    배너 [← 문의로 돌아가기] → 원래 스레드 ③ 배너 [지금 종료] → 즉시 권한 회수 후 어드민으로<br>
+    <b>만료되면</b> 자동 종료되고 어드민 평면으로 회수된다("열람 시간이 끝났어요. 다시 요청할까요?").<br>
+    <b>스위처에는 안 나온다</b> — 소속이 아니기 때문. 목록은 내 소속만 보여준다는 규칙을 깨지 않는다.
+    지금 어디 있는지는 <b>배너와 좌하단 "이 회사의 멤버가 아닙니다"</b>가 알려준다.
+  </div>
+</div>
+
+<script>
+  const $=s=>document.querySelector(s);
+  document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');
+    const k=t.dataset.t;
+    $('#p-wait').style.display = k==='wait'?'block':'none';
+    $('#p-list').style.display = k==='list'?'block':'none';
+    $('#p-done').style.display = k==='done'?'block':'none';
+  }));
+  $('#t-light').addEventListener('click',()=>{document.documentElement.dataset.theme='light';$('#t-light').classList.add('on');$('#t-dark').classList.remove('on');});
+  $('#t-dark').addEventListener('click',()=>{document.documentElement.dataset.theme='dark';$('#t-dark').classList.add('on');$('#t-light').classList.remove('on');});
+</script>
+</body>
+</html>

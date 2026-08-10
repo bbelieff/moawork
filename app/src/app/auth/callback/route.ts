@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { safeNextPath } from "@/lib/auth/oauth";
-import { parseAdminRole } from "@/lib/auth/admin";
 import { SESSION_COOKIE } from "@/lib/auth/session";
-
-type MembershipRow = { org_id: string; role: unknown };
+import {
+  decideWorkspaceDestination,
+  workspaceTargetFromNext,
+} from "@/lib/auth/workspace-routing";
+import { sanitizeModeNext } from "@/lib/mode/contract";
+import { modePreferenceCookie } from "@/lib/mode/preference";
 
 function loginError(request: Request, code: string) {
   const url = new URL("/login", request.url);
@@ -40,48 +42,51 @@ export async function GET(request: Request) {
   );
   if (profileError) return loginError(request, "profile");
 
-  const { data: adminRole, error: adminError } = user.email
-    ? await supabase.rpc("app_admin_role", { p_email: user.email })
-    : { data: null, error: null };
-  if (adminError) return loginError(request, "provisioning");
-  const platformRole = parseAdminRole(adminRole);
+  // The SECURITY DEFINER RPC binds the platform decision to auth.uid().
+  // A false, malformed, or unavailable result never grants the platform plane.
+  let isPlatformAdmin = false;
+  try {
+    const adminResult = await supabase.rpc("is_platform_admin");
+    isPlatformAdmin = !adminResult.error && adminResult.data === true;
+  } catch {
+    // Preserve ordinary verified membership routing when the guard is unavailable.
+  }
+
+  if (isPlatformAdmin) {
+    const destination = new URL("/mode", url.origin);
+    const next = sanitizeModeNext(url.searchParams.get("next"));
+    if (next) destination.searchParams.set("next", next);
+    const response = NextResponse.redirect(destination);
+    // A fresh OAuth login must not silently reuse an earlier mode preference.
+    response.cookies.delete(modePreferenceCookie.name);
+    response.cookies.delete(SESSION_COOKIE.org);
+    response.cookies.delete(SESSION_COOKIE.uid);
+    response.cookies.delete(SESSION_COOKIE.as);
+    return response;
+  }
 
   const { data: membershipData, error: membershipError } = await supabase
     .from("org_members")
-    .select("org_id, role")
+    .select(
+      "org_id, status, role, scope, orgs!inner(id, slug, status, name, plan_tier, created_at)",
+    )
     .eq("user_id", user.id);
-  if (membershipError) return loginError(request, "provisioning");
-
-  const memberships = (membershipData ?? []) as MembershipRow[];
-  let orgId = platformRole
-    ? memberships.find((membership) => membership.role === "owner")?.org_id
-    : memberships[0]?.org_id;
-
-  // 플랫폼 관리자는 자기 소유 조직이 반드시 있어야 한다. org insert 뒤의
-  // 001.trg_orgs_add_owner가 SECURITY DEFINER로 owner 멤버십을 원자적으로 만든다.
-  if (platformRole && !orgId) {
-    const { data: org, error: orgError } = await supabase
-      .from("orgs")
-      .insert({ name: "MoaWork 데모 조직" })
-      .select("id")
-      .single();
-    if (orgError || !org) return loginError(request, "provisioning");
-    orgId = org.id;
-  }
-
-  if (!orgId) return loginError(request, "membership");
-
-  const destination = new URL(
-    safeNextPath(url.searchParams.get("next")),
-    url.origin,
+  const decision = decideWorkspaceDestination(
+    membershipError ? null : membershipData,
+    workspaceTargetFromNext(url.searchParams.get("next")),
   );
-  const response = NextResponse.redirect(destination);
-  response.cookies.set(SESSION_COOKIE.org, orgId, {
-    path: "/",
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-  });
+
+  const response = NextResponse.redirect(new URL(decision.path, url.origin));
+  if (decision.kind === "workspace") {
+    response.cookies.set(SESSION_COOKIE.org, decision.orgId, {
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    });
+  } else {
+    response.cookies.delete(SESSION_COOKIE.org);
+  }
   response.cookies.delete(SESSION_COOKIE.uid);
   response.cookies.delete(SESSION_COOKIE.as);
   return response;

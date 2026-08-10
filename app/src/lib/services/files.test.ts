@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import type { Ctx, Deal } from "@/lib/types";
+import { mergeCustom } from "@/lib/repo/custom-merge";
 import type { DealFilesPort } from "./files";
 import {
   appendFileRef,
@@ -51,7 +52,11 @@ function makeDeal(id: string, orgId = "o1"): Deal {
   };
 }
 
-/** org 스코핑을 흉내내는 가짜 포트. 최소 포트만 구현하므로 Repo 전체 형태와 무관. */
+/**
+ * org 스코핑을 흉내내는 가짜 포트. 최소 포트만 구현하므로 Repo 전체 형태와 무관.
+ * custom 병합은 진짜 구현과 **같은 함수**(mergeCustom)를 쓴다 — 가짜가 실제보다
+ * 관대하면(혹은 엄격하면) 이 파일의 테스트가 현실을 검증하지 못한다.
+ */
 function fakeRepo(deals: Deal[]): DealFilesPort {
   const byId = new Map(deals.map((d) => [d.id, { ...d }]));
   return {
@@ -62,7 +67,10 @@ function fakeRepo(deals: Deal[]): DealFilesPort {
     updateDeal: (c, id, patch) => {
       const d = byId.get(id);
       if (!d || d.org_id !== c.org.id) return undefined;
-      const next = { ...d, ...(patch.custom ? { custom: patch.custom } : {}) };
+      const next = {
+        ...d,
+        ...(patch.custom ? { custom: mergeCustom(d.custom, patch.custom) } : {}),
+      };
       byId.set(id, next);
       return next;
     },
@@ -285,8 +293,9 @@ describe("attachFile", () => {
     expect(repo.getDeal(ctx, "d1")?.custom.contract_status).toBe("written");
   });
 
-  // ⚠ Repo.updateDeal 은 Object.assign(shallow merge)이라 patch.custom 이 통째 교체된다(T03 경고).
-  //   → 반드시 read-modify-write 로 다른 트랙 값(T05 커스텀필드 · T09 정책자금)을 보존해야 한다.
+  // BUG-0003 이후: Repo.updateDeal 이 custom 을 키 단위로 병합한다(통째 교체 아님).
+  //   여기서는 files 서비스가 그 위에서도 자기 몫(files[] 갱신)을 정확히 하는지 본다.
+  //   포트 자체의 병합 규약 회귀는 repo/local/localRepo.test.ts · repo/custom-merge.test.ts.
   it("타 트랙 custom 값(T05·T09)을 첨부/삭제 양쪽에서 보존한다", () => {
     const d = makeDeal("d1");
     d.custom = {

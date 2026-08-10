@@ -1,0 +1,11 @@
+schema_version: 1
+updated_at: "2026-07-21T01:31:00+09:00"
+active_controller:
+  provider: claude
+  session: "기획(오케스트레이터)"
+providers:
+  claude: { role: primary, status: active }
+  codex: { role: backup, status: active_single_task, scope: day0-harness-bootstrap }
+rules:
+  max_active_controllers: 1
+  unknown_values_are_not_inferred: true

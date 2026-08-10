@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { CrmService, NotFoundError } from "./service";
 import { ValidationError } from "./validation";
-import { getRepo } from "@/lib/repo";
+import { getRepo, type DealPatch } from "@/lib/repo";
 import { resetDb } from "@/lib/repo/local/store";
 import {
   SEED_ORG_ID,
@@ -89,11 +89,32 @@ describe("단계 이동", () => {
     expect(() => svc.moveDealStage(owner, deal.id, "ghost")).toThrow(ValidationError);
   });
 
+  // DealPatch 타입에는 stage_id 가 아예 없다(컴파일 단계 차단). 아래는 타입을 우회해
+  // 들어오는 런타임 본문(JSON)을 흉내낸 것 — 그 경로도 막히는지 확인한다.
   it("updateDeal 로 stage_id 를 바꾸려 하면 거부(=move 사용 유도)", () => {
     const deal = svc.createDeal(owner, { title: "x" });
-    expect(() => svc.updateDeal(owner, deal.id, { stage_id: "any" })).toThrow(
-      ValidationError,
-    );
+    const sneaky = { stage_id: "any" } as unknown as DealPatch;
+    expect(() => svc.updateDeal(owner, deal.id, sneaky)).toThrow(ValidationError);
+  });
+
+  // 서비스를 건너뛰고 포트를 직접 써도 로그 없는 단계 변경이 불가능해야 한다.
+  // (이전에는 불변식이 서비스에만 있어 getRepo() 직접 호출로 우회됐다.)
+  it("포트 직접 호출(getRepo)에서도 updateDeal 로는 단계를 못 바꾼다", () => {
+    const deal = svc.createDeal(owner, { title: "x" });
+    const sneaky = { stage_id: "any" } as unknown as DealPatch;
+    expect(() => getRepo().updateDeal(owner, deal.id, sneaky)).toThrow();
+  });
+
+  it("포트 직접 이동(moveDeal)도 활동로그를 남긴다", () => {
+    const deal = svc.createDeal(owner, { title: "x" });
+    const contract = svc.listPipelines(owner)[0].stages.find((s) => s.kind === "contract");
+    if (!contract) throw new Error("no contract stage");
+
+    const moved = getRepo().moveDeal(owner, deal.id, contract.id);
+    expect(moved?.stage_id).toBe(contract.id);
+    const acts = svc.listActivities(owner, deal.id);
+    expect(acts).toHaveLength(2); // 최초 배치 + 이동
+    expect(acts[0].content).toBe("마케팅 → 계약");
   });
 });
 

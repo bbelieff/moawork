@@ -503,6 +503,196 @@ PolicyfundBoard.tsx  ("use client")
 
 ---
 
+## 13. PR #57·#49 머지 · #48 반려 · DI-A6 판정 (main `db545e0`, 2026-07-30 · T10)
+
+### ✅ PR #57 (T03 R1 진입 UX) — 머지 (main `31dd84e`)
+T03 주장 **전부 사실 확인**: 006 `is_platform_admin()` 이 `role='admin'` 을 요구하는데
+005 는 belie 를 `role='owner'` 로 넣어 **실제 관리자가 false** 로 판정된다.
+
+**수용기준 7항목**
+| # | 기준 | 판정 |
+|---|---|---|
+| 5 | 승격 단방향 | ✅ 확증 — `if (!isPlatformAdmin && actorEmail)` 진입, `=true` 만. true 를 뒤집는 경로 없음 |
+| 6 | 017 없이 폴백 생존 | ✅ 확증 — `app_admin_role` 에 `revoke`/`grant` **0건** → 기본 `PUBLIC EXECUTE` 유지 → 호출 가능 |
+| 7 | 014 와 동일 패턴 | ✅ 확증 — `014:56` 이 `app_admin_role(auth.jwt()->>'email') is not null` 사용 |
+| 1~4 | 로그인·탈출구·역할·사이드바 | ⚠️ **코드상 성립, 런타임 미검증** — belie 계정 필요(자격증명 입력은 T10 이 하지 않는다) |
+
+**리베이스 정합 수정 1건**: main `366cf7b`(compact pending screen)이 "현재 요청 취소 후 새 회사 시작"
+버튼을 제거했는데 PR #57 테스트가 그 문구를 기대해 실패했다. **기능 회귀 아님** — 수용기준 2의
+탈출구(`⚙ 플랫폼 관리로 가기`)는 리베이스본에 그대로 있다. **핵심 보안 단언 2건**
+(`not.toContain('href="/platform"')`·`not.toContain("플랫폼 관리로 가기")`)은 손대지 않고
+부수 회귀확인 1줄만 갱신했다. UI 재설계 의도는 T03 소관이므로 사후 확인 요망.
+
+**발견(차단 아님)**: `app_admin_role(p_email text)` 이 `PUBLIC EXECUTE` 라 **누구나 임의 이메일로
+관리자 여부를 확인**할 수 있다. 005 주석의 "이메일 목록 노출 방지" 의도와 어긋난다(005 부터의 기존 상태, 014 도 사용).
+**단, 이 권한이 곧 폴백 동작 근거다** → 조이는 순서: ① 017 적용 → ② 폴백 코드 제거 → ③ 권한 조이기.
+순서를 바꾸면 폴백이 먼저 죽어 관리자가 다시 갇힌다.
+
+### ✅ PR #49 (T09 정산 화면 + G8) — 머지 (main `db545e0`)
+마이그레이션 0 · 계약파일 0 · 삭제 0(+812). worklog 단독 충돌 자동해소(1231 = main 1182 + 블록 49).
+리베이스본 check=0 build=0 **899 테스트**. 머지 후 main 동일.
+
+### ❌ PR #48 (T02 CRM 실DB 연결) — **반려**
+| # | 위반 | 근거 |
+|---|---|---|
+| 1 | **기존 마이그레이션 수정** | `006`(+8/-8)·`009`(+4/-4) 직접 편집. CLAUDE.md "새 파일 추가만, 기존 파일 수정 금지" 위반 |
+| 2 | **014 번호 충돌** | `014_reserve_crm_route_slugs.sql` 추가 — main 에 이미 `014_platform_metrics_daily.sql` 존재 |
+
+**①은 규칙 위반인 동시에 기능적으로 무효다.** 이미 적용된 DB 에서 006 은 재실행되지 않으므로
+예약 슬러그(`companies`·`deals`) 추가가 **프로덕션에 반영되지 않는다**. 신규 환경과 기존 환경의 스키마가 갈린다.
+→ **해소**: 슬러그 추가를 **새 마이그레이션(019+)** 으로 옮기고, 006·009 는 원상복구.
+
+### ★ DI-A6 판정 — `platform_metrics_daily` 이중 정의
+
+**정본 = main `014_platform_metrics_daily.sql` (T04). B안 채택.**
+
+| 근거 | 내용 |
+|---|---|
+| 1 | main 에 **이미 머지**돼 배포 경로에 있다(적용됐을 수 있음) |
+| 2 | `016_platform_console_metrics_alignment.sql` 이 이 테이블을 **5회 참조**해 정책·RPC 를 이미 정렬했다. 재정의하면 그것들이 어긋난다 |
+| 3 | **★결정적**: 양쪽 모두 `create table **if not exists**` 다 |
+
+**3번이 왜 결정적인가** — 정렬상 `014_platform_console.sql` < `014_platform_metrics_daily.sql`(c<m)이라
+T07 것이 **먼저** 실행되고, 그러면 main 014 가 `if not exists` 로 **조용히 건너뛴다**.
+에러도 경고도 없이 **스키마가 T07 버전이 되고**, 016 이 기대한 컬럼과 어긋난 채 동작한다.
+실패하면 차라리 드러나는데 이 경우는 **무증상**이다. BUG-0002·BUG-0004 와 같은 계열의 사각지대다.
+
+**패배 쪽(T07 PR #56) 수정 지시**
+1. `014_platform_console.sql` 에서 `create table ... platform_metrics_daily` **블록 제거**.
+2. 추가로 필요한 컬럼이 있으면 **새 번호(019+)** 파일에 `alter table public.platform_metrics_daily add column if not exists …` 로 **additive** 하게만 넣는다.
+3. 파일 번호를 **014 → 019+ 로 재배정**(main 에 이미 `014_platform_metrics_daily` 가 있다).
+4. 컬럼 기대가 main 정의(`day·org_id·dau·mau·stickiness·active_users·dormant_users·new_deals·computed_at`)와
+   다르면 코드를 정본에 맞추거나 ②의 additive 추가로 해소한다. **테이블 재정의는 금지.**
+
+### ⚠️ 번호 충돌 현황 — 규칙 8 재점검 필요
+main 에 **`016` 이 두 개** 존재한다: `016_entry_request_dedup`(#57) · `016_platform_console_metrics_alignment`.
+서로 다른 대상이라 실행은 되지만 번호 중복은 규칙 위반이고, 위 DI-A6 같은 사고의 온상이다.
+**권고**: 신규 마이그레이션은 **PR 생성 직전 `ls supabase/migrations | sort` 로 최신 main 기준 재확인** 후 번호 확정.
+
+---
+
+## 12. ✅ BUG-0004 해소 + 배포 검증 (main `dc0bdc5`, 2026-07-29 · T10)
+
+**PR #59 머지 완료 — 배포 차단 해제.**
+
+### 수정 내용 — `015_fix_org_helper_session_deadlock.sql`
+헬퍼 4종(`is_org_member`·`org_role`·`org_scope`·`is_protected_workspace_owner`)에서
+`member_account_session_valid()` **선행 조건만 제거**. 006 의 fail-closed 강화
+(`membership.status='active' AND organization.status='active'`)는 **유지** — 001 의 느슨한 정의로 돌아간 것이 아니다.
+
+- `member_account_session_valid()` **미삭제** — 세션 무효화는 member account 전용 RPC 에서 계속 유효.
+  조직 격리(RLS 기반)와 세션 수명은 다른 관심사이며, 후자를 전자의 전제로 삼아 테넌시 전체가 잠긴 것이 이번 사고다.
+- **권한 미변경** — 001·006·011 어디에도 이 4종에 `revoke`/`grant` 가 없어(기본 권한),
+  경계를 새로 그으면 무관한 경로를 깨뜨린다. 최소 변경 원칙.
+- **번호 재배정**: 작성 중 `014` 가 T04/C4 에 선점되어(`f85178a`) **015 로 변경**.
+  §8-A 가 경고한 병렬 번호 충돌이 실제로 발생 — 커밋 직전 `ls | sort` 재확인이 잡았다.
+
+### 검증
+| 항목 | 결과 |
+|---|---|
+| 브랜치 게이트 | check=0 · build=0 · **808 테스트** |
+| **머지 후 main** | check=0 · build=0 · **811 테스트** |
+| `is_org_member` 최종 정의 | `015_…sql` — 실행부 `session_valid` 호출 **0건** ✅ |
+| 마이그레이션 정렬 | `013 → 014_platform → 015_fix` — **015 가 최종 적용** ✅ |
+
+### 배포 검증 (G1 보완 — 이전에는 "빌드 초록"으로 갈음했던 항목)
+| 항목 | 결과 |
+|---|---|
+| `www.moa-work.com` | **200** |
+| 구글 OAuth 링크 | **1건** — Supabase Auth 실연결 |
+| PostHog(`#53`) | **1건** — 최신 커밋 반영 = 자동 배포 정상 |
+| **dev-session 우회** | **0건** — 프로덕션 비활성 ✅ (§7-B 보안 항목 **통과**) |
+| 인증 가드 | `/dash`·`/settings/members` 등 **전부 `/login?next=…` 리다이렉트** ✅ |
+
+> **⚠️ `/api/health`·`/api/version` 은 200 이지만 JSON 이 아니라 HTML 을 반환한다** — 라우트가 없는데
+> 로그인 리다이렉트로 흡수돼 200 이 된다. 미존재 라우트도 동일(404 미노출).
+> **"HTTP 200" 만으로 엔드포인트 존재를 판정하면 안 된다**는 실제 사례.
+
+### 남은 조건 — 코드 수정으로 끝나지 않는다
+- **프로덕션 DB 에 011·015 를 적용하는 것은 별개 작업이며 T10 권한 밖**이다.
+  015 가 011 의 데드락을 해제하므로 **둘을 함께 적용**해야 안전하다. 011 만 적용하면 전면 장애가 그대로 재현된다.
+- 적용 전 **스테이징에서 RLS 침투테스트**로 확인할 것(크리덴셜 주입 필요).
+- 현재 프로덕션이 살아 있다는 것은 **011 이 아직 미적용**이라는 정황 근거다(확증하려면
+  프로덕션에서 `select prosrc from pg_proc where proname='is_org_member'` 확인 — DB 접근 권한 필요).
+
+---
+
+## 11. ★ 실행계획v1 기준 main 검수 (main `e1a3a05`~`1744d9f`, 2026-07-29 · T10)
+
+> 배경: `613cc67` 이후 **37+커밋이 T10 검수 없이** main 에 누적(Codex 인수 Round 2, C0/C1 워크스페이스,
+> OAuth 정식 머지 `#15`, BUG-0003 수정 `#26` 등). 실행계획v1 규칙 8종 + 레인표 + G1~G4 로 실측 검수했다.
+
+### 🔴 BUG-0004 — `is_org_member()` 상시 `false`. **Supabase 연결 시 전면 장애** (배포 차단)
+
+`011_member_account_ops.sql` 이 헬퍼를 재정의하며 세션 검사를 선행 조건으로 걸었다(현재 **최종 정의**):
+```sql
+create or replace function public.is_org_member(p_org uuid) ... as $$
+  select public.member_account_session_valid() and exists (...)
+$$;
+```
+그 `member_account_session_valid()` 는 `current_setting('request.jwt.claim.session_id', true)` 가 비면 **즉시 false**.
+
+**그 클레임을 넣는 배선이 저장소에 없다** (실측, `1744d9f` 기준):
+
+| 확인 | 결과 |
+|---|---|
+| custom access token hook (`supabase/` 전체) | **0건** |
+| `session_id` 클레임을 **설정**하는 SQL | **0건** — 011 은 `current_setting` 으로 **읽기만** |
+| 앱의 JWT 클레임 주입 | **0건** — RPC 인자 `p_session_id` 는 JWT 와 무관 |
+| 011 이후 되돌린 마이그레이션 | **0건** (012·013 재정의 없음) |
+
+**파급**: `is_org_member()` 는 **RLS 활성 26 테이블의 기반 헬퍼**다. 상시 false 면 침입 차단이 아니라
+**정상 사용자 전원이 자기 조직 데이터조차 못 본다**. `org_role()` 도 같은 조건을 물어 역할 경로까지 막힌다.
+
+**왜 안 드러났나 — 게이트 사각지대**: 앱이 Supabase 미연결(인메모리 폴백)이라 이 SQL 이 실행되지 않는다.
+그래서 `check.sh` 초록·빌드 초록·스모크 PASS 가 나오고, RLS 침투테스트는 크리덴셜 부재로 **skip** 된다.
+**`.env.local` 을 넣는 순간 처음 드러난다.**
+
+**해소안(택1)**: ① custom access token hook 으로 `session_id` 클레임 주입 ② 011 의 세션 종속 제거.
+담당: 인증 레인 **T03** 또는 `access_grants`/위임 레인 **T08**.
+
+### 규칙 8 위반 — `is_org_member()` 수정 2건
+| 파일 | 날짜 | 내용 | 평가 |
+|---|---|---|---|
+| `006_public_workspace_entry.sql` | 07-27 | `status='active'` 조건 추가 | fail-closed 강화. 그 자체는 합리적 |
+| `011_member_account_ops.sql` | 07-28 | **세션 종속 도입** | **BUG-0004 원인** |
+
+두 건 모두 규칙 전달 이전 커밋이고 격리를 **조이는** 방향이었다. 문제는 011 이
+**실현 불가능한 전제(존재하지 않는 JWT 클레임)** 위에 격리 전체를 얹은 것.
+
+> **규칙 8 보강 권고**: "수정 금지"만으로는 이 사고를 막지 못한다(둘 다 선의의 강화였다).
+> **"헬퍼가 새 전제(JWT 클레임·세션 등)에 의존하게 만들면 그 전제를 채우는 배선을 같은 PR 에 포함"** 을 추가할 것.
+
+### 라운드 게이트
+| 게이트 | 결과 |
+|---|---|
+| **G1 배포** | ✅ check=0 · build=0 · **782 테스트 / 48 라우트** (`e1a3a05`) |
+| **G2 권한** | ❌ **BUG-0004 로 실패** — 실DB 적용 시 전면 차단 |
+| **G3 회귀** | ⚠️ 부분 — 정적/빌드는 초록, 실DB 회귀는 크리덴셜 부재로 불가 |
+| **G4 워크로그** | ✅ **START/END 규약 도입 확인**(T05 C5 항목). SYNC R1 시점 "미도입"에서 변경됨 |
+
+### 규칙 8종 실측
+| # | 규칙 | 상태 | 근거 |
+|---|---|---|---|
+| 1 | 스위처/어휘 "회사" | ⚠️ 부분 | `WorkspaceSwitcher.tsx` 존재. UI 어휘 '회사' 141 · **'조직' 15건 잔존** |
+| 2 | 뱃지 99+ 절단 | ✅ | `SidebarNav.tsx:66`, `layout.tsx:153`, 테스트 존재 |
+| 3 | 위임 2시간 · break-glass | ❌ **미구현** | 전 소스 0건 (T08 레인 미착수) |
+| 4 | 어드민 등급 super/operator/viewer | ❌ **미구현** | 전 소스 0건 |
+| 5 | 두 층위 · 홈택스 차단 | ⚠️ 부분 | 리플레이 제외목록에 `/hometax` 등재. 데이터 층위 분리는 T08 미착수 |
+| 6 | `orgs.is_internal` | ❌ **미구현** | 마이그레이션 0건 → 지표에서 내부 조직 미분리 |
+| 7 | PostHog | ✅ | US 리전 고정 · `/ingest` rewrites · `maskAllInputs:true`+`maskTextSelector:"*"` · PII scrub + 테스트 |
+| 8 | 토큰 하드코딩 / 마이그 번호 | ⚠️ 부분 | 번호 `006`~`013` 3자리 정렬 정상 ✅ / `#c4c4c4` **8곳**(status 팔레트 빈값 기본색 — 브랜드 토큰 아님, 경미) |
+
+### 레인 검사
+- `165af69` → `docs/` · `dev-drop/` — **MWC 레인 준수**, 코드영역(app/worker/supabase/scripts) **0건 접촉** ✅
+- `1744d9f`(PostHog #53) → `app/src/components/workspace` 포함 — **C5/분석 작업이 T03 셸 레인에 접촉**. 경미하나 레인표상 사전 조율 대상.
+
+### MWC 산출물 커밋 확인
+지시된 9파일(`docs/design/design-tokens.md` · `dev-drop/**`)은 **`165af69`(PR #52)로 이미 반영 완료**
+(88 files, +10376). 워킹트리 clean — T10 추가 커밋 불요.
+
+---
+
 ## 10. ★ 2차 머지큐 최종 판정 (main `6a57489`, 2026-07-22 · T10)
 
 **8개 PR 전량 머지 완료 · main 스모크 초록 → 완료 판정.** 열린 PR 0건.

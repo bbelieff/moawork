@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
+import Link from "next/link";
 import { PRODUCT_NAME } from "@/lib/product";
 
 // 브랜드 로고 — design-tokens.md §4·§5.
@@ -14,11 +15,13 @@ type Props = {
   /** 렌더 높이(px). 락업 기본 30 — 목업 v0.3 사이드바 기준. */
   height?: number;
   className?: string;
+  /** 지정하면 로고 전체가 안전한 홈 링크가 된다. */
+  href?: string;
 };
 
-export function Logo({ height = 30, className }: Props) {
-  return (
-    <span className={className} aria-label={`${PRODUCT_NAME} 로고`} role="img">
+export function Logo({ height = 30, className, href }: Props) {
+  const mark = (
+    <span aria-label={`${PRODUCT_NAME} 로고`} role="img">
       <img
         src="/brand/moawork-lockup-light.svg"
         alt=""
@@ -35,9 +38,17 @@ export function Logo({ height = 30, className }: Props) {
       />
     </span>
   );
+
+  return href ? (
+    <Link href={href} className={className} aria-label={`${PRODUCT_NAME} 홈`}>
+      {mark}
+    </Link>
+  ) : (
+    <span className={className}>{mark}</span>
+  );
 }
 
-export function Symbol({ height = 24, className }: Props) {
+export function Symbol({ height = 24, className }: Omit<Props, "href">) {
   return (
     <span className={className} aria-label={`${PRODUCT_NAME} 심볼`} role="img">
       <img

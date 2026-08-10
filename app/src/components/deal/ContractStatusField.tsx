@@ -36,10 +36,7 @@ export function ContractStatusField({
       <div className="flex flex-col gap-1">
         <span className="text-xs text-zinc-500">계약상황</span>
         <p className="text-sm text-zinc-400">
-          — 계약상황 필드가 아직 없습니다{" "}
-          <span className="text-zinc-300 dark:text-zinc-600">
-            (002 프리셋 로드 후 표시)
-          </span>
+          계약상황 항목이 준비되면 여기에서 선택할 수 있어요.
         </p>
       </div>
     );
@@ -61,7 +58,11 @@ export function ContractStatusField({
       try {
         await onChange(next === "" ? null : next);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "저장하지 못했습니다.");
+        setError(
+          e instanceof Error
+            ? e.message
+            : "저장하지 못했어요. 잠시 후 다시 시도해 주세요.",
+        );
       }
     });
   }
@@ -88,7 +89,7 @@ export function ContractStatusField({
           </option>
         ))}
       </select>
-      {pending ? <span className="text-xs text-zinc-400">저장 중…</span> : null}
+      {pending ? <span className="text-xs text-zinc-400">저장하고 있어요…</span> : null}
       {error ? <span className="text-xs text-red-600">{error}</span> : null}
     </div>
   );
