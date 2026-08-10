@@ -80,11 +80,11 @@ export class RejectionLedger {
 
     const latestByCompany = new Map<string, RejectionHistoryEntry>();
     for (const entry of this.#entries) {
-      if (entry.reapplyNoticeDate < from || entry.reapplyNoticeDate > through) continue;
       const previous = latestByCompany.get(entry.companyId);
       if (!previous || previous.rejectedAt <= entry.rejectedAt) latestByCompany.set(entry.companyId, entry);
     }
     return [...latestByCompany.values()]
+      .filter((entry) => entry.reapplyNoticeDate >= from && entry.reapplyNoticeDate <= through)
       .sort((a, b) => a.reapplyNoticeDate.localeCompare(b.reapplyNoticeDate) || a.companyId.localeCompare(b.companyId))
       .map((latestRejection) => ({ companyId: latestRejection.companyId, latestRejection: { ...latestRejection } }));
   }

@@ -45,6 +45,14 @@ describe("업체 마스터 부결 이력", () => {
     expect(targets[0].latestRejection.policyfundItemId).toBe("item-2");
   });
 
+  it("업체의 최신 부결이 기간 밖이면 과거 부결을 다시 노출하지 않는다", () => {
+    const ledger = new RejectionLedger();
+    ledger.record(rejection({ policyfundItemId: "old", rejectedAt: "2026-08-20", reapplyNoticeDate: "2027-08-20" }));
+    ledger.record(rejection({ policyfundItemId: "latest", rejectedAt: "2026-09-01", reapplyNoticeDate: "2027-09-01" }));
+
+    expect(ledger.reapplyTargets("2027-08-01", "2027-08-31")).toEqual([]);
+  });
+
   it("목록에서 고른 업체만 중복 없이 묶는다", () => {
     const ledger = new RejectionLedger();
     ledger.record(rejection());
