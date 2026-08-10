@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth/session";
+import { isManager } from "@/lib/auth/roles";
 import { getBoardsService, NotFoundError } from "@/lib/boards";
 import { parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
 import type { FieldOption } from "@/lib/types";
@@ -18,6 +19,12 @@ import type { CellError } from "@/lib/boards/service";
 import type { ItemPatch } from "@/lib/boards/store";
 import { groupKeyOf } from "@/components/board/layout";
 import { setGroupColumnOrder } from "./groupLayout";
+import { installStructurePack } from "@/lib/structure-packs";
+import {
+  PACK_INSTALL_FLASH_COOKIE,
+  PACK_INSTALL_FLASH_MAX_AGE,
+  encodePackInstallFlash,
+} from "./installFlash";
 import {
   CELL_FLASH_COOKIE,
   CELL_FLASH_MAX_AGE,
@@ -67,6 +74,30 @@ export async function createBoardAction(formData: FormData): Promise<void> {
   const detail = getBoardsService().createBoard(ctx, input);
   revalidatePath("/boards");
   redirect(`/boards/${detail.board.id}`);
+}
+
+/**
+ * 구조 팩(모아프리셋-정책자금1) 설치 — BBE-102.
+ *
+ * owner/admin 전용(공지 쓰기와 같은 게이트 — UI 뿐 아니라 여기서도 막는다).
+ * `installStructurePack()` 자체가 이미 있는 보드는 건너뛰므로 재실행해도 두 벌 생기지 않는다.
+ */
+export async function installStructurePackAction(): Promise<void> {
+  const ctx = await getSession();
+  if (!isManager(ctx.role)) {
+    throw new Error("구조 팩 설치는 관리자만 실행할 수 있습니다");
+  }
+
+  const result = installStructurePack(ctx);
+
+  const jar = await cookies();
+  jar.set(PACK_INSTALL_FLASH_COOKIE, encodePackInstallFlash(result), {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: PACK_INSTALL_FLASH_MAX_AGE,
+  });
+  revalidatePath("/boards");
 }
 
 export async function deleteBoardAction(formData: FormData): Promise<void> {
