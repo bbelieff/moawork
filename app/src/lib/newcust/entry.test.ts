@@ -68,7 +68,10 @@ describe("resolveExistingNewcustBoard", () => {
     const nav = readFileSync(resolve(process.cwd(), "src/components/shell/nav-items.ts"), "utf8");
     const page = readFileSync(resolve(process.cwd(), "src/app/(app)/newcust/page.tsx"), "utf8");
 
-    expect(nav).toContain('label: "신규업체", icon: "🔥", href: "/newcust"');
+    // icon 리터럴은 BBE-126(2026-08-10)에서 이모지 → SVG 심볼 키로 교체됐다(D43). 이 테스트가 지키는 계약은
+    // "신규업체 메뉴가 /newcust 로 연결됨"이므로 라벨·href만 고정하고 아이콘 표현 방식은 자유롭게 둔다.
+    expect(nav).toContain('label: "신규업체"');
+    expect(nav).toMatch(/label: "신규업체"[^}]*href: "\/newcust"/);
     expect(page).toContain('redirect(`/boards/${encodeURIComponent(result.boardId)}${query}`)');
     expect(page).toContain("GET 요청은 어떤 보드도 만들지 않는다");
     expect(page).not.toContain("StageBoardView");

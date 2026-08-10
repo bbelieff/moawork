@@ -1,0 +1,116 @@
+/* =====================================================================
+ * MoaWork 디자인 토큰 v2 — 밀도 · 타이포 · 간격 · 아이콘 · 테두리
+ * 정본: docs/design/design-tokens.md §7~§15 (v2 확장, 2026-08-10)
+ * 참조 구현(밀도 판정 기준): docs/design/UI목업_워크스페이스_최종_v6.html
+ *
+ * §1(색)은 app/src/app/globals.css 에 그대로 있다 — 이 파일은 §7~§13만 옮긴다.
+ * 값 변경은 정본 문서 + 이 파일에서만. 컴포넌트에서 새 임의값 추가 금지.
+ * ===================================================================== */
+:root {
+  /* §7 밀도 */
+  --mw-row-h: 32px; /* 표 행 높이(기본) */
+  --mw-row-h-loose: 36px; /* 표 행 높이(여유) */
+  --mw-row-head-h: 28px; /* 표 머리글 */
+  --mw-hit-min: 28px; /* 최소 클릭 영역(표 안) */
+  --mw-hit-min-loose: 30px; /* 최소 클릭 영역(표 밖 버튼) */
+
+  /* §8 간격 스케일 — 4px 배수만. 중간값(10·14·18px 등) 추가 금지 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  /* §9 타이포 스케일 */
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --fs-22: 22px;
+  --lh-ui: 1.35;
+  --lh-prose: 1.7;
+  --ls-tight: -0.01em; /* 14px 이상에만 적용 */
+  --fw-normal: 400;
+  --fw-semibold: 600; /* 굵기는 400/600 두 단계만 — 500·700 금지 */
+  --font-ui:
+    Pretendard, -apple-system, "Malgun Gothic", sans-serif;
+
+  /* §10 아이콘 — 이모지 금지. 16px · 선 굵기 1.6 · currentColor · monoline */
+  --mw-icon-size: 16px;
+  --mw-icon-stroke: 1.6;
+
+  /* §11 테두리 · 모서리 · 그림자 */
+  --mw-bd: #e7e5e0; /* 기본 실선 1px — 유일한 테두리색 */
+  --mw-bd-2: #d8d5ce; /* 강조·호버 */
+  --mw-r-1: 6px; /* 칩·배지·작은 버튼 */
+  --mw-r-2: 8px; /* 버튼·입력 */
+  --mw-r-3: 10px; /* 카드·패널 */
+  --mw-sh-pop:
+    0 8px 24px rgba(28, 25, 20, 0.1),
+    0 2px 6px rgba(28, 25, 20, 0.06); /* 떠 있는 것에만(팝오버·서랍·토스트) */
+
+  /* §12 중립색 — 따뜻한 회색 */
+  --mw-s-0: #faf9f7; /* 페이지 바탕 */
+  --mw-s-1: #f4f2ef; /* 옅은 면 */
+  --mw-s-2: #ffffff; /* 카드·표 */
+  --mw-t-1: #1c1a17; /* 본문 */
+  --mw-t-2: #5c574f; /* 보조 */
+  --mw-t-3: #8e877c; /* 라벨·힌트 */
+  --mw-t-4: #b5aea3; /* 비활성 */
+
+  /* 셸 전용 — UI목업_워크스페이스_최종_v6.html 실측(§7~13 미포함, 셸 고유 치수) */
+  --mw-shell-nav-w: 220px; /* .side { width: var(--nav) } */
+  --mw-shell-header-h: 48px; /* .top / .brand { height: 48px } */
+  --mw-shell-logo-size: 22px; /* .logo { width/height: 22px } */
+  --mw-shell-item-h: 34px; /* .nav button.it { height: 34px } */
+  --mw-shell-item-fs: 13.5px; /* .nav button.it { font-size: 13.5px } */
+  --mw-shell-badge-fs: 10.5px; /* .em, .cnt 계열 라벨 */
+  --mw-shell-avatar-size: 26px; /* .av { width/height: 26px } */
+  --mw-shell-iconbtn-size: 30px; /* .iconbtn { width/height: 30px } */
+}
+
+[data-theme="dark"] {
+  --mw-bd: #262932;
+  --mw-bd-2: #33384a;
+  --mw-s-0: #111216;
+  --mw-s-1: #1a1c22;
+  --mw-s-2: #16171c;
+  --mw-t-1: #f7f8fa;
+  --mw-t-2: #c6cad3;
+  --mw-t-3: #9aa0ac;
+  --mw-t-4: #5c616e;
+}
+
+/* §13 상태 배지 팔레트 — 보드 상태칩 전용. 브랜드색·UI 상태색과 절대 섞지 않는다. */
+:root {
+  --mw-badge-neutral-bg: #efede8;
+  --mw-badge-neutral-fg: #514c44;
+  --mw-badge-progress-bg: #e4effb;
+  --mw-badge-progress-fg: #1b4f86;
+  --mw-badge-review-bg: #edeafb;
+  --mw-badge-review-fg: #463c96;
+  --mw-badge-done-bg: #e6f1df;
+  --mw-badge-done-fg: #37600f;
+  --mw-badge-caution-bg: #faeeda;
+  --mw-badge-caution-fg: #7a4a0a;
+  --mw-badge-reject-bg: #fbe9e7;
+  --mw-badge-reject-fg: #8f2a22;
+}
+
+/* Tailwind 유틸에서 참조하기 위한 매핑(globals.css @theme inline 블록과 함께 사용) */
+@theme inline {
+  --color-mw-s-0: var(--mw-s-0);
+  --color-mw-s-1: var(--mw-s-1);
+  --color-mw-s-2: var(--mw-s-2);
+  --color-mw-t-1: var(--mw-t-1);
+  --color-mw-t-2: var(--mw-t-2);
+  --color-mw-t-3: var(--mw-t-3);
+  --color-mw-t-4: var(--mw-t-4);
+  --color-mw-bd: var(--mw-bd);
+  --color-mw-bd-2: var(--mw-bd-2);
+}
