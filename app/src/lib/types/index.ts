@@ -45,8 +45,6 @@ export interface Org {
   name: string;
   plan_tier: string;
   created_at: string;
-  /** 회사 로고 URL(BBE-116). 회사 설정에서 채운다 — 없으면 셸이 회사 이름으로 대체 표시. */
-  logo_url?: string | null;
 }
 
 export interface User {
