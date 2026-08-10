@@ -12,6 +12,27 @@ export const LEGACY_CUTOVER_REQUIRED_CAPABILITIES = [
 
 type MappingStatus = "ready" | "transform" | "decision_required";
 
+export type MondayAutomationDispositionKind =
+  | "supported_draft_only"
+  | "conditional_unsupported"
+  | "pipeline_translation_required"
+  | "unknown_not_imported";
+
+export interface MondayAutomationDisposition {
+  sourceAutomationId: number;
+  sourceColumn: string;
+  sourceLabelId: number | null;
+  disposition: MondayAutomationDispositionKind;
+  target: "draft_rule_after_identity_mapping" | null;
+  note: string;
+}
+
+export interface MondayCutoverGap {
+  id: "G1" | "G2" | "G3" | "G4" | "G5";
+  schemaState: string;
+  cutoverState: string;
+}
+
 export interface LegacyFieldMapping {
   source: string;
   target: string;
@@ -24,10 +45,57 @@ export interface LegacyCutoverPreflight {
   targetColumnCount: number;
   targetGroupCount: number;
   mappings: LegacyFieldMapping[];
+  sourceLabelIdentity: string;
+  automationDispositions: readonly MondayAutomationDisposition[];
+  gaps: readonly MondayCutoverGap[];
+  requiresFreshMondayCount: true;
+  migrationNumberGate: typeof MONDAY_MIGRATION_NUMBER_GATE;
   blockers: string[];
   requiresAdditiveMigration: true;
   migrationReason: string;
 }
+
+/**
+ * Monday `statusColumnValue.index` is the source label ID, not its display
+ * ordinal. The current 031 pack uses text option IDs, so none of these rows
+ * may activate a target rule until a future additive contract persists an
+ * explicit source-label-ID to target-option identity mapping.
+ */
+export const MONDAY_AUTOMATION_DISPOSITIONS: readonly MondayAutomationDisposition[] = [
+  { sourceAutomationId: 1585150, sourceColumn: "status", sourceLabelId: 0, disposition: "supported_draft_only", target: "draft_rule_after_identity_mapping", note: "보류 → 보류" },
+  { sourceAutomationId: 1585152, sourceColumn: "status", sourceLabelId: 2, disposition: "supported_draft_only", target: "draft_rule_after_identity_mapping", note: "거절 → 거절" },
+  { sourceAutomationId: 1585154, sourceColumn: "status", sourceLabelId: 3, disposition: "supported_draft_only", target: "draft_rule_after_identity_mapping", note: "1차 부재 → 1차 부재" },
+  { sourceAutomationId: 2373960, sourceColumn: "status", sourceLabelId: 4, disposition: "supported_draft_only", target: "draft_rule_after_identity_mapping", note: "2차 상담예약 → 2차 상담고객" },
+  { sourceAutomationId: 2422556, sourceColumn: "status", sourceLabelId: 6, disposition: "supported_draft_only", target: "draft_rule_after_identity_mapping", note: "해당안됨 → 해당안되는 업체" },
+  { sourceAutomationId: 2425994, sourceColumn: "status", sourceLabelId: 7, disposition: "supported_draft_only", target: "draft_rule_after_identity_mapping", note: "2차 후 고민 → 2차 후 고민" },
+  { sourceAutomationId: 3291483, sourceColumn: "status", sourceLabelId: 8, disposition: "supported_draft_only", target: "draft_rule_after_identity_mapping", note: "관리 → 관리" },
+  { sourceAutomationId: 5839527, sourceColumn: "status", sourceLabelId: 9, disposition: "supported_draft_only", target: "draft_rule_after_identity_mapping", note: "2차 부재 → 2차 부재" },
+  { sourceAutomationId: 17898633, sourceColumn: "status", sourceLabelId: 13, disposition: "supported_draft_only", target: "draft_rule_after_identity_mapping", note: "지원사업만 알아봄 → 지원사업만" },
+  { sourceAutomationId: 28213018, sourceColumn: "status", sourceLabelId: 12, disposition: "supported_draft_only", target: "draft_rule_after_identity_mapping", note: "제조업 1차부재 → 제조업 1차 부재" },
+  { sourceAutomationId: 28213171, sourceColumn: "status", sourceLabelId: 14, disposition: "supported_draft_only", target: "draft_rule_after_identity_mapping", note: "제조업 2차부재 → 제조업 2차 부재" },
+  { sourceAutomationId: 24895886, sourceColumn: "color_mkyf3jj6", sourceLabelId: 1, disposition: "conditional_unsupported", target: null, note: "담당자 조건 OWNER_A가 필요한 규칙" },
+  { sourceAutomationId: 25226879, sourceColumn: "color_mkyf3jj6", sourceLabelId: 1, disposition: "conditional_unsupported", target: null, note: "담당자 조건 OWNER_B가 필요한 규칙" },
+  { sourceAutomationId: 1585198, sourceColumn: "color_mkyf3bdg", sourceLabelId: 1, disposition: "pipeline_translation_required", target: null, note: "컨텍관리 보드 이동은 파이프라인 단계 전이 결정이 필요" },
+  { sourceAutomationId: 25147700, sourceColumn: "color", sourceLabelId: null, disposition: "unknown_not_imported", target: null, note: "recipe 135의 액션 미상" },
+  { sourceAutomationId: 25147729, sourceColumn: "dup__of_ai___", sourceLabelId: null, disposition: "unknown_not_imported", target: null, note: "recipe 135의 액션 미상" },
+  { sourceAutomationId: 25148161, sourceColumn: "dup__of_ai_2___", sourceLabelId: null, disposition: "unknown_not_imported", target: null, note: "recipe 135의 액션 미상" },
+  { sourceAutomationId: 30249627, sourceColumn: "color3", sourceLabelId: null, disposition: "unknown_not_imported", target: null, note: "recipe 135의 액션 미상" },
+  { sourceAutomationId: 32488853, sourceColumn: "color_mm3acc4d", sourceLabelId: null, disposition: "unknown_not_imported", target: null, note: "recipe 135의 액션 미상" },
+];
+
+export const MONDAY_CUTOVER_GAPS: readonly MondayCutoverGap[] = [
+  { id: "G1", schemaState: "SCHEMA_PRESENT", cutoverState: "CUTOVER_UNMAPPED: source subitem relationships are deferred" },
+  { id: "G2", schemaState: "SCHEMA_PRESENT", cutoverState: "CUTOVER_UNMAPPED: live view filters and per-user settings are not mapped" },
+  { id: "G3", schemaState: "PARTIAL_SCHEMA", cutoverState: "CUTOVER_UNMAPPED: source label IDs do not bind to status-text rules" },
+  { id: "G4", schemaState: "NO_PROVEN_MAPPING", cutoverState: "CUTOVER_UNMAPPED: five recipe-135 column-watch actions remain UNKNOWN" },
+  { id: "G5", schemaState: "SCHEMA_PRESENT", cutoverState: "CUTOVER_UNMAPPED: live width, order, and hidden-column state is not mapped" },
+];
+
+export const MONDAY_MIGRATION_NUMBER_GATE = {
+  migrationNumber: "unallocated",
+  minimumAfterFreshMergeInventory: 32,
+  old026: "forbidden",
+} as const;
 
 const EXPECTED_TARGETS = [
   ["deals.applied_on", "___1", "date", "ready"],
@@ -97,6 +165,12 @@ export function preflightLegacyCutover(): LegacyCutoverPreflight {
     targetColumnCount: SEOUL_NEWCUST_BOARD.columns.length,
     targetGroupCount: SEOUL_NEWCUST_BOARD.sections.length,
     mappings,
+    sourceLabelIdentity:
+      "Monday statusColumnValue.index is the source label ID, never the display ordinal(표시 순번); 031 option IDs are label text and require an explicit future identity mapping.",
+    automationDispositions: MONDAY_AUTOMATION_DISPOSITIONS,
+    gaps: MONDAY_CUTOVER_GAPS,
+    requiresFreshMondayCount: true,
+    migrationNumberGate: MONDAY_MIGRATION_NUMBER_GATE,
     blockers,
     requiresAdditiveMigration: true,
     migrationReason:
