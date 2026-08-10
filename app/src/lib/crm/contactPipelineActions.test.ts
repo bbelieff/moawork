@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  CONTACT_PIPELINE_ROLLOUT_BLOCKED_MESSAGE,
-  mutateContactPipeline,
-} from "./contactPipelineActions";
+import { mutateContactPipeline } from "./contactPipelineActions";
 
 describe("contact pipeline production rollout gate", () => {
   it("원자 request 저장소가 연결되기 전에는 성공을 만들지 않는다", async () => {
@@ -13,7 +10,7 @@ describe("contact pipeline production rollout gate", () => {
     form.set("kind", "lead_to_contact");
     await expect(mutateContactPipeline({ ok: false, message: "" }, form)).resolves.toEqual({
       ok: false,
-      message: CONTACT_PIPELINE_ROLLOUT_BLOCKED_MESSAGE,
+      message: "안전한 중복 요청 처리가 준비된 뒤 사용할 수 있습니다.",
     });
   });
 });

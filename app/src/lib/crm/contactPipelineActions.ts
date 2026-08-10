@@ -5,7 +5,7 @@ export type ContactPipelineActionState = Readonly<{
   message: string;
 }>;
 
-export const CONTACT_PIPELINE_ROLLOUT_BLOCKED_MESSAGE =
+const CONTACT_PIPELINE_ROLLOUT_BLOCKED_MESSAGE =
   "안전한 중복 요청 처리가 준비된 뒤 사용할 수 있습니다.";
 
 export async function mutateContactPipeline(
