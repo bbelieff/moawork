@@ -19,4 +19,4 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/release/check-feature-flags.mjs
-      - run: npm test --workspace app -- --run app/src/lib/feature-flags
+      - run: npm test --workspace app -- --run src/lib/feature-flags
