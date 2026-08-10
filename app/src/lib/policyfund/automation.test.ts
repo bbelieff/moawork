@@ -5,7 +5,9 @@ import {
   indexRules,
   decideMove,
   decideMoves,
+  evaluateMove,
   findRuleConflicts,
+  validateRule,
   type AutomationRule,
   type ItemStateChange,
 } from "./automation";
@@ -117,6 +119,58 @@ describe("자동이동 판정", () => {
     expect(decideMove(change({ status_value: " 심사 중 " }), idx)?.rule_id).toBe(
       "r-review",
     );
+  });
+});
+
+describe("AND 조건절", () => {
+  const conditional = rule({
+    id: "conditional",
+    trigger_label_id: "label:feedback-done",
+    conditions: [
+      { column_key: "assignee", operator: "is", value_kind: "user_id", value: "user:owner-a" },
+      { column_key: "seal", operator: "is_not", value_kind: "label_id", value: "label:pending" },
+    ],
+  });
+  const idx = indexRules([conditional]);
+
+  it("조건이 여러 개면 전부 맞을 때만 실행한다", () => {
+    const result = evaluateMove(change({
+      trigger_label_id: "label:feedback-done",
+      condition_values: { assignee: "user:owner-a", seal: "label:done" },
+    }), idx);
+    expect(result.decision?.rule_id).toBe("conditional");
+    expect(result.blocked_reasons).toEqual([]);
+  });
+
+  it("하나라도 맞지 않으면 실행하지 않고 모든 차단 사유를 남긴다", () => {
+    const result = evaluateMove(change({
+      trigger_label_id: "label:feedback-done",
+      condition_values: { assignee: "user:owner-b", seal: "label:pending" },
+    }), idx);
+    expect(result.decision).toBeNull();
+    expect(result.blocked_reasons).toHaveLength(2);
+    expect(result.blocked_reasons.join(" ")).toContain("assignee");
+    expect(result.blocked_reasons.join(" ")).toContain("seal");
+  });
+
+  it("조건 없는 기존 규칙은 그대로 실행한다", () => {
+    expect(evaluateMove(change(), indexRules([rule()])).decision?.rule_id).toBe("r1");
+  });
+
+  it("상태 라벨은 표시 순번이나 문구가 아니라 label id만 받는다", () => {
+    expect(validateRule(rule({ trigger_label_id: "2" }))).not.toHaveLength(0);
+    expect(validateRule(rule({ trigger_label_id: "피드백 완료" }))).not.toHaveLength(0);
+    expect(validateRule(rule({ trigger_label_id: "label:2" }))).toEqual([]);
+    expect(validateRule(rule({ conditions: [{ column_key: "seal", operator: "is", value_kind: "label_id", value: "완료" }] }))).not.toHaveLength(0);
+  });
+
+  it("추가 액션 유형을 손실 없이 표현한다", () => {
+    const actions = [
+      { kind: "move_board", board_id: "board-b", group_id: "group-b", field_mapping: { company: "company" } },
+      { kind: "set_field", column_key: "fee", value: 5 },
+      { kind: "button", command: "move_to_top" },
+    ] satisfies NonNullable<AutomationRule["action"]>[];
+    expect(actions.map((action) => action.kind)).toEqual(["move_board", "set_field", "button"]);
   });
 });
 
