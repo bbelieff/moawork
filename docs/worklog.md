@@ -4,6 +4,17 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [BEAT · BRANCH-SYNC/노트북CT] 2026-08-10 20:01 — 진행상황
+
+- 대상 15개 중: 미존재 6개(확인필요) · 처리 9개
+- [통과·PR] docs/mwc-agents-round3(#117) · feat/account-platform-product(#118)
+- [보류] feat/codex-t03-oauth(OAuth 이미 main #15로 병합, 브랜치 정리 후보) ·
+  feat/login-a-workspace(로그인 디자인 이미 #18 병합 + CSS 세부 충돌, 오너 판단 필요) ·
+  feat/first-lead-flow · feat/workspace-bootstrap(둘 다 entitlements fix #95 vs workspace bootstrap 실제 로직충돌) ·
+  feat/c1-workspace-switcher-main(스위처 이미 main #31/#39/#70로 더 진화됨, 구형 구현) ·
+  feat/public-workspace-entry-db(migration 006 자체는 거의 동일하나 main이 007~009 추가 적재 + 마감기한 7일vs14일 불일치, 추측 금지)
+- 남은 대상: verify/mwc-r1-posthog · feat/developer-mode-ring-integration-t04
+
 ## [FIX · PLAN-002/WO-1 (BBE-46)/claude] 2026-08-09 — PR #94 반려 2건 수정 (시드 확정 3건 반영)
 
 - 검수 반려(데탑 CT02 2026-08-09 · ✅5/❌2)에 대한 작성자 수정. 인수: 데탑 CT05(260809-2).
