@@ -17,6 +17,7 @@ export const RESERVED_WORKSPACE_SLUGS = new Set([
   "platform",
   "policyfund",
   "settings",
+  "settlements",
   "support",
   "w",
   "work",

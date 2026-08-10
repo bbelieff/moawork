@@ -45,8 +45,8 @@ describe("workspace entry request contract", () => {
     }
   });
 
-  it("matches the DB reserved slug contract exactly", () => {
-    const sql = readFileSync(join(process.cwd(), "..", "supabase", "migrations", "021_reserve_mode_workspace_slug.sql"), "utf8");
+  it("matches the latest DB reserved slug contract exactly", () => {
+    const sql = readFileSync(join(process.cwd(), "..", "supabase", "migrations", "033_settlement_ledger.sql"), "utf8");
     const blocks = Array.from(sql.matchAll(/slug not in \(([\s\S]*?)\)/g), (match) => match[1]);
     expect(blocks).toHaveLength(2);
     for (const block of blocks) {
