@@ -249,15 +249,48 @@ append-only 는 «내용 삭제 금지» 이지 «과거 실수의 흔적을 지
 
 ## [BLOCKED-INVESTIGATION · 모아워크 노트북 CT06(260810)/claude] 2026-08-11 — BBE-21 착수 전 6단계 실행 중 막힘
 
-- 배정: BBE-21(멤버 초대·역할·승인·세션 관리). base `origin/main` = `7520361c2f8620f4e40345098697cffbc571d5fb`(직접 실측, 마이그레이션 최신 034 확인 — 배정 문서 기재값과 일치).
-- **착수 전 6단계 ①②③ 전부 막힘** — 필요 파일이 저장소 전체(전 브랜치·히스토리)에 부재:
-  `docs/design/qa-mockup.mjs`(착수 게이트 75개) · `docs/design/dump-mockup.mjs`(목업 텍스트 덤프) · `docs/handoff/결정대장.md`(D30·D31).
-  Linear 문서 검색도 0건 — git 파일이 아직 미커밋인 것으로 보임. `docs/design/조직·보고체계_설계_v1.md`(BBE-119 설계 정본)도 동일하게 부재.
-- 우회 없이 대체 경로만 사용: 로컬 Downloads의 `UI목업_워크스페이스_최종_v6.html`을 Read 도구로 직접 읽음(`file://` 브라우저 접근은 이 세션에서도 타임아웃 — `00_정정-브라우저없이-목업읽기.md`가 설명한 증상과 일치). **보조 증거일 뿐 정본 아님**, 코드 착수 근거로 쓰지 않음.
-- **실제 코드 실측**: `member_role`/`member_scope`는 여전히 3역할(owner/admin/member)·2범위(all/assigned)뿐 — 목업의 4역할·부서스코프는 DB에 없음(BBE-119/BBE-122 몫, 둘 다 Backlog·BBE-122가 BBE-119에 blocked_by). 승인 파이프라인(`workspace_entry_requests`, `/settings/members/approvals`)과 세션 관리(`/settings/account/sessions`, 011 RPC 기반 revokeCurrent/revokeAll)는 **이미 상당 부분 구현돼 있음** — 갭은 개별기기 로그아웃·초대 재전송·last-owner 보호·자기권한상승 방지·권한변경 감사기록으로 보임(추정, 코드 미작성).
-- CT02 경계 제안(합의 요청 중): BBE-21은 현재 스키마 위에서 초대/승인/세션 완성, 4역할·부서스코프 신설은 BBE-119/122 몫으로 남김.
-- 산출물: Linear BBE-21·BBE-94 코멘트만(제품 코드 변경 0, 리스 미선언).
-- 상태: **착수 미도장.** CT02 응답 또는 belie 지시 대기.
+## [START · 모아워크 데탑 CT06(260810)/claude] 2026-08-10 — BBE-110 서류 체크리스트 + 완료율 + 상품별 프리셋
+
+- 배정 `docs/plans/배정-260810/06_데탑CT06.md`. 착수 전 6단계 완료: 목업 열람(서류
+  체크리스트는 온보딩 퀘스트로만 언급되고 실제 화면은 아직 없음을 확인) · `node docs/design/
+  qa-mockup.mjs` **75/75 통과** · `docs/handoff/결정대장.md` 대조(D52·D53은 이 카드와
+  직접 관련 없음을 확인 — 마스터 표 자체가 BBE-110을 "덮는 결정: —"로 기록. 실제 관련
+  결정은 D58 "업종이 상품 후보를 가른다") · `git fetch` 후 `origin/main` **7520361** 직접
+  실측(배정 문서 SHA를 그대로 믿지 않고 재측정) · 전용 worktree
+  `.worktrees/claude-bbe-110-checklist` 생성 · Linear BBE-110 원문 확인(설명·수용 기준·
+  참고문서 §3-5) — 배정 요약 한 줄보다 원 카드가 구체적이라 그 기준으로 구현.
+- 리스: `app/src/lib/policyfund/checklist/**`(신규) + `app/src/components/policyfund/**`
+  (신규 파일만 — 기존 `OptionSelect`·`PolicyfundBoard`·`SettlementForm` 3파일 무변경).
+  001 deals `custom`(JSONB)·T05 커스텀필드 엔진(13종 FieldType)에 얹지 않고 독립 저장소로
+  구현(2중 구현 금지 규약).
+- 완료율은 `engine.completionOf(items)` **하나만** 계산 지점으로 두고 상세 패널
+  (`ChecklistPanel`)과 표의 셀(`ChecklistCompletionCell`)이 둘 다 그 함수만 부른다 —
+  수용 기준 "완료율이 표의 셀과 상세에서 같은 값을 보인다"를 계산식 복제가 애초에
+  불가능한 구조로 보장했다.
+- PR [#129](https://github.com/bbelieff/moawork/pull/129) 오픈, 본문에 BBE-110 명시.
+  `bash scripts/check.sh` 초록(app 1259 통과 · worker 21 통과, 신규 29 테스트) · CI 초록
+  (`check (lint + typecheck + test)` pass 1m42s).
+- 딜 상세 페이지(`app/(app)/deals/[dealId]`)·실 표 연결은 리스 밖이라 보류(BBE-47의
+  `/newcust` 이월과 같은 패턴) — 세 컴포넌트 모두 props만 받으면 바로 동작하는 완결형.
+- **완주 조건 미충족 — [END] 아직 안 냄**: 검수자(노트북 CT07) 독립 검수 · squash merge ·
+  배포 확인 · `/login` 200이 전부 남아 있다.
+
+## [FIX · 모아워크 데탑 CT06(260810)/claude] 2026-08-11 — BBE-110 재배정 대조 — 상품 목록 59종 가정이 틀렸다
+
+- 재배정 지시: `node docs/design/dump-mockup.mjs` 로 목업을 텍스트로 실측하라 —
+  "상품 목록은 목업의 «진행 상품» 선택지를 그대로 쓴다. dump 출력에서 확인해라."
+- **실측 결과 — 앞선 START 항목의 가정이 틀렸다.** `lib/policyfund/presets.ts` 의
+  `product`(59종, `002_seed_policyfund.sql` 의 구 먼데이 실측 드롭다운)를 그대로 재사용했는데,
+  `dump-mockup.mjs work` 실측 결과 v6 목업의 실제 «진행 상품» 선택지는 **7종**뿐이다:
+  혁신성장 일반 · 혁신성장 혁신형 · 소공인 대리대출 · 기보 혁신리딩 · 신보 유동화 ·
+  경기신보 특례 · 벤처기업 인증. 두 목록은 다른 세대(59=구 스크레이핑 원본, 7=v6 재설계본)다.
+  `grep` 로 이 7종이 저장소 어디에도 코드화돼 있지 않음을 확인 — 다른 트랙이 아직 안 만듦.
+- 조치: 리스 안(`checklist/products.ts`, 신규)에 이 7종을 dump 출력 그대로 상수로 박고,
+  주석에 재실측 명령(`node docs/design/dump-mockup.mjs work`)을 남겨 목업이 또 바뀌면
+  다음 세션이 즉시 재대조할 수 있게 했다. `lib/policyfund/presets.ts`(리스 밖·59종·구세대)는
+  건드리지 않았다 — 별도 세대의 다른 데이터라 병합하지 않는다.
+- `qa-mockup.mjs` 재확인 75/75 · `origin/main` 재실측 `026b2ee`(rebase, 겹침 0) ·
+  D52·D53 재확인(무관, 위와 동일 판단 유지) · BBE-94 착수 도장 게시.
 
 ## [END · BBE-102(MoaWork)/claude] 2026-08-10 — 구조 팩 설치 진입점
 
