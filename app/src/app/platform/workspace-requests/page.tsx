@@ -19,7 +19,7 @@ export default async function PlatformWorkspaceRequestsPage() {
     <main className={styles.page}>
       <section className={`${styles.shell} ${styles.compactShell}`}>
         <header className={styles.protoTop}>
-          <Logo height={28} />
+          <Logo height={28} href="/platform" />
           <span>플랫폼 운영 영역</span>
         </header>
 
@@ -34,10 +34,17 @@ export default async function PlatformWorkspaceRequestsPage() {
 
           <nav aria-label="플랫폼 운영 탐색">
             <Link href="/platform/workspace-requests">회사 만들기 요청</Link>
+            <Link href="/platform/metrics">제품 사용 지표</Link>
             <Link href="/account">내 계정</Link>
             <Link href="/settings/account/sessions">로그인 기기</Link>
             <Link href="/settings/account/privacy">개인정보</Link>
           </nav>
+
+          <div className={styles.pendingExits} aria-label="플랫폼 운영 계정 행동">
+            <form action="/auth/signout" method="post">
+              <button type="submit">로그아웃</button>
+            </form>
+          </div>
 
           <section aria-labelledby="support-title">
             <h2 id="support-title">지원 접근</h2>

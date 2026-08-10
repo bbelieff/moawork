@@ -49,6 +49,9 @@ export class LocalCrmSource implements CrmSource {
   ): Promise<Company | undefined> {
     return this.repo.updateCompany(ctx, id, patch);
   }
+  async deleteCompany(ctx: Ctx, id: string): Promise<boolean> {
+    return this.repo.deleteCompany(ctx, id);
+  }
 
   async listDeals(ctx: Ctx): Promise<Deal[]> {
     return this.repo.listDeals(ctx);
@@ -72,6 +75,9 @@ export class LocalCrmSource implements CrmSource {
     toStageId: string,
   ): Promise<Deal | undefined> {
     return this.repo.moveDeal(ctx, id, toStageId);
+  }
+  async deleteDeal(ctx: Ctx, id: string): Promise<boolean> {
+    return this.repo.deleteDeal(ctx, id);
   }
 
   async listActivities(ctx: Ctx, dealId: string): Promise<Activity[]> {

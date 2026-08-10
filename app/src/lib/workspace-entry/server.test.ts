@@ -99,3 +99,73 @@ describe("workspace entry RPC adapter", () => {
     expect(result).toMatchObject({ status: 409, result: { ok: false, state: "unavailable" } });
   });
 });
+
+describe("플랫폼 관리자 판정 폴백 (마이그레이션 017 적용 전에도 동작)", () => {
+  const req = {
+    data: [] as unknown,
+    error: null as { code?: string } | null,
+  };
+
+  // 배포된 is_platform_admin()(006)은 app_admins.role='admin' 을 요구하는데 005 는
+  // 예약 관리자를 role='owner' 로 넣는다 → 실제 관리자가 false 로 나온다.
+  // 017 이 그 함수를 고치지만, 적용 전에도 관리자가 진입 화면에 갇히면 안 된다.
+  it("is_platform_admin 이 false 여도 app_admin_role 이 역할을 주면 관리자로 인정한다", async () => {
+    const rpc = client({
+      is_platform_admin: { data: false, error: null },
+      list_my_workspace_entry_requests: req,
+      app_admin_role: { data: "owner", error: null },
+      list_pending_workspace_create_requests: { data: [], error: null },
+    });
+    await expect(
+      readWorkspaceEntryContext(rpc, undefined, "beliefkimkim@gmail.com"),
+    ).resolves.toMatchObject({ kind: "ready", isPlatformAdmin: true });
+    expect(rpc.rpc).toHaveBeenCalledWith("app_admin_role", {
+      p_email: "beliefkimkim@gmail.com",
+    });
+  });
+
+  it("app_admin_role 이 null 이면 일반 사용자로 남는다", async () => {
+    const rpc = client({
+      is_platform_admin: { data: false, error: null },
+      list_my_workspace_entry_requests: req,
+      app_admin_role: { data: null, error: null },
+    });
+    await expect(
+      readWorkspaceEntryContext(rpc, undefined, "member@example.test"),
+    ).resolves.toMatchObject({ kind: "ready", isPlatformAdmin: false });
+  });
+
+  it("폴백 RPC 가 실패해도 컨텍스트를 깨뜨리지 않는다(관리자 아님으로 남김)", async () => {
+    const rpc = client({
+      is_platform_admin: { data: false, error: null },
+      list_my_workspace_entry_requests: req,
+      app_admin_role: { data: null, error: { code: "42501" } },
+    });
+    await expect(
+      readWorkspaceEntryContext(rpc, undefined, "member@example.test"),
+    ).resolves.toMatchObject({ kind: "ready", isPlatformAdmin: false });
+  });
+
+  it("이메일이 없으면 폴백을 시도하지 않는다", async () => {
+    const rpc = client({
+      is_platform_admin: { data: false, error: null },
+      list_my_workspace_entry_requests: req,
+    });
+    await expect(readWorkspaceEntryContext(rpc)).resolves.toMatchObject({
+      isPlatformAdmin: false,
+    });
+    expect(rpc.rpc).not.toHaveBeenCalledWith("app_admin_role", expect.anything());
+  });
+
+  it("017 적용 후처럼 is_platform_admin 이 true 면 폴백을 부르지 않는다", async () => {
+    const rpc = client({
+      is_platform_admin: { data: true, error: null },
+      list_my_workspace_entry_requests: req,
+      list_pending_workspace_create_requests: { data: [], error: null },
+    });
+    await expect(
+      readWorkspaceEntryContext(rpc, undefined, "beliefkimkim@gmail.com"),
+    ).resolves.toMatchObject({ isPlatformAdmin: true });
+    expect(rpc.rpc).not.toHaveBeenCalledWith("app_admin_role", expect.anything());
+  });
+});

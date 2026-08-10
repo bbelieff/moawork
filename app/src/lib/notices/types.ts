@@ -27,6 +27,8 @@ export const NOTICE_KEYS = {
   category: "category",
   pinned: "pinned",
   publishedAt: "published_at",
+  endedAt: "ended_at",
+  audience: "audience",
   author: "author",
 } as const;
 
@@ -36,6 +38,18 @@ export const NOTICE_CATEGORY_OPTIONS: FieldOption[] = [
   { id: "notice-important", label: "중요", color: "#e2445c", order: 1 },
   { id: "notice-event", label: "행사", color: "#00c875", order: 2 },
 ];
+
+/**
+ * 열람 대상 선택지 — 공지 1건이 조직 안에서 누구에게 보일지 정한다.
+ * 미지정(null)은 `notice-audience-all` 과 같게 다룬다(기존 공지 하위호환).
+ */
+export const NOTICE_AUDIENCE_OPTIONS: FieldOption[] = [
+  { id: "notice-audience-all", label: "구성원 전체", color: "#579bfc", order: 0 },
+  { id: "notice-audience-managers", label: "관리자만", color: "#e2445c", order: 1 },
+];
+
+export const NOTICE_AUDIENCE_ALL = "notice-audience-all";
+export const NOTICE_AUDIENCE_MANAGERS = "notice-audience-managers";
 
 /** 공지 보드 컬럼 정의(프로비저닝 정본). 시드와 ensureBoard 가 함께 참조한다. */
 export const NOTICE_COLUMNS: NewColumn[] = [
@@ -49,8 +63,28 @@ export const NOTICE_COLUMNS: NewColumn[] = [
   },
   { key: NOTICE_KEYS.pinned, label: "상단고정", type: "checkbox", width: 90 },
   { key: NOTICE_KEYS.publishedAt, label: "게시일", type: "date", width: 130 },
+  { key: NOTICE_KEYS.endedAt, label: "종료일", type: "date", width: 130 },
+  {
+    key: NOTICE_KEYS.audience,
+    label: "열람 대상",
+    type: "select",
+    options: NOTICE_AUDIENCE_OPTIONS,
+    width: 120,
+  },
   { key: NOTICE_KEYS.author, label: "작성자", type: "person", width: 120 },
 ];
+
+/**
+ * 게시 상태 — 게시일/종료일에서 파생한다(별도 셀로 저장하지 않는다).
+ * 두 날짜를 정본으로 두면 상태와 날짜가 어긋날 수 없다.
+ */
+export type NoticeStatus = "scheduled" | "published" | "ended";
+
+export const NOTICE_STATUS_LABEL: Record<NoticeStatus, string> = {
+  scheduled: "게시 예정",
+  published: "게시 중",
+  ended: "종료",
+};
 
 /** 화면/집계용 공지 뷰모델 — EAV 셀을 평탄화한 형태. */
 export interface Notice {
@@ -64,6 +98,13 @@ export interface Notice {
   pinned: boolean;
   /** YYYY-MM-DD. 미지정이면 null. */
   publishedAt: string | null;
+  /** YYYY-MM-DD. 이 날짜가 지나면 종료된다. 미지정이면 무기한. */
+  endedAt: string | null;
+  /** NOTICE_AUDIENCE_OPTIONS 의 option id. 미지정이면 전체 공람. */
+  audienceId: string | null;
+  audienceLabel: string | null;
+  /** 게시일·종료일에서 파생한 현재 상태. */
+  status: NoticeStatus;
   authorId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -77,6 +118,10 @@ export interface NewNotice {
   pinned?: boolean;
   /** 미지정이면 서비스가 오늘(KST) 로 채운다. */
   publishedAt?: string | null;
+  /** 미지정이면 무기한 게시. */
+  endedAt?: string | null;
+  /** 미지정이면 구성원 전체. */
+  audienceId?: string | null;
   authorId?: string | null;
 }
 

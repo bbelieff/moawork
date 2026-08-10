@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { getRepo } from "@/lib/repo";
-import { FeatureGate } from "@/components/auth/FeatureGate";
+import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
 import { FEATURES } from "@/lib/product";
 import { buildDashboard } from "@/lib/dash";
 import { formatCount, formatKrw, formatMonth, orEmpty } from "@/lib/dash/format";
@@ -17,6 +17,7 @@ import {
 import { RecentNotices } from "@/components/dash/RecentNotices";
 import { getNoticesService } from "@/lib/notices";
 import type { MemberRole } from "@/lib/types";
+import { PlatformAccessNotice } from "@/components/platform/PlatformAccessNotice";
 
 // 홈 = core.dash 메인 대시보드 (T04).
 // 수치는 전부 deals/stages/field_defs 에서 **파생**한다(이중저장 없음).
@@ -30,6 +31,7 @@ export default async function DashboardPage({
   const sp = await searchParams;
   const asParam = typeof sp.as === "string" ? sp.as : undefined;
   const month = typeof sp.month === "string" ? sp.month : undefined;
+  const accessError = typeof sp.error === "string" ? sp.error : undefined;
 
   const base = await getSession();
   const devToolsEnabled = process.env.NODE_ENV !== "production";
@@ -52,6 +54,7 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-col gap-6">
+      <PlatformAccessNotice error={accessError} />
       {/* 개발용 역할 전환 — 운영에서는 렌더하지 않는다. */}
       {devToolsEnabled ? (
         <section className="flex flex-wrap items-center gap-2">
@@ -75,21 +78,27 @@ export default async function DashboardPage({
         </section>
       ) : null}
 
-      <FeatureGate ctx={ctx} feature={FEATURES.dash} label="대시보드(core.dash)">
-        <div className="flex flex-col gap-6">
-          <header className="flex flex-wrap items-baseline justify-between gap-2">
-            <h1 className="text-lg font-semibold">대시보드</h1>
-            <span className="text-sm text-zinc-500">
-              기준 {formatMonth(dash.month)} (KST)
-            </span>
-          </header>
+      {/* 제목은 게이트 **밖**이다 — core.dash 가 잠겨도 화면이 잠금 문구 한 줄로
+          붕괴하지 않게 한다(P0 · 신규 회사 첫 진입). 잠금은 아래 영역에만 표시. */}
+      <header className="flex flex-wrap items-baseline justify-between gap-2">
+        <h1 className="text-lg font-semibold">대시보드</h1>
+        <span className="text-sm text-zinc-500">
+          기준 {formatMonth(dash.month)} (KST)
+        </span>
+      </header>
 
+      <FeatureGateServer
+        orgId={ctx.org.id}
+        feature={FEATURES.dash}
+        label="대시보드"
+      >
+        <div className="flex flex-col gap-6">
           {/* 상단 고정 요약 */}
           <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <StatCard label="전체 딜" value={formatCount(dash.totalDeals)} />
+            <StatCard label="전체 업무" value={formatCount(dash.totalDeals)} />
             <StatCard label="고객사" value={formatCount(dash.totalCompanies)} />
             <StatCard
-              label="이번달 신규 딜"
+              label="이번 달 신규 업무"
               value={formatCount(dash.newDealsThisMonth)}
               hint={formatMonth(dash.month)}
             />
@@ -135,14 +144,14 @@ export default async function DashboardPage({
 
             <Widget
               title="전환율"
-              subtitle="분모=전체 딜 · 분자=해당 단계 이상 도달"
+              subtitle="전체 업무 중 해당 단계 이상 도달한 비율"
             >
               <ConversionWidget rates={dash.conversions} />
             </Widget>
 
             <Widget
               title="계약상황"
-              subtitle="field_defs '계약상황' 프리셋 기준"
+              subtitle="등록된 계약상황 기준"
             >
               <ContractStatusWidget data={dash.contractStatus} />
             </Widget>
@@ -153,14 +162,14 @@ export default async function DashboardPage({
             >
               <SettlementWidget
                 data={dash.settlementThisMonth}
-                emptyHint="이번달 수납 건이 없습니다."
+                emptyHint="이번 달 수납 내역이 아직 없어요. 수수료입금일이 이번 달인 업무가 생기면 여기에 보여요."
               />
             </Widget>
 
             <Widget title="전체 정산" subtitle="전 기간 누적">
               <SettlementWidget
                 data={dash.settlementAll}
-                emptyHint="정산 입력(실행액·수수료율)이 있는 딜이 없습니다."
+                emptyHint="정산 정보가 있는 업무가 아직 없어요. 실행액과 수수료율이 입력된 업무가 생기면 여기에 보여요."
               />
             </Widget>
 
@@ -174,12 +183,19 @@ export default async function DashboardPage({
 
           {/* 오늘 할 일 — 내 담당 딜 (PLAN §3 core.dash "홈 = 오늘 할 일 + 이번달 요약") */}
           <section>
-            <h2 className="mb-2 text-sm font-semibold text-zinc-700 dark:text-zinc-200">
-              내 딜 ({formatCount(myDeals.length)})
-            </h2>
+            <div className="mb-2">
+              <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+                내 업무 ({formatCount(myDeals.length)})
+              </h2>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                업무는 업체와 진행하는 각각의 일입니다.
+              </p>
+            </div>
             <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
               {myDeals.length === 0 ? (
-                <li className="p-3 text-sm text-zinc-400">담당 딜이 없습니다.</li>
+                <li className="p-3 text-sm text-zinc-400">
+                  업무 담당자로 지정되면 여기에 보여요.
+                </li>
               ) : (
                 myDeals.map((d) => (
                   <li
@@ -218,7 +234,7 @@ export default async function DashboardPage({
             </ul>
           </section>
         </div>
-      </FeatureGate>
+      </FeatureGateServer>
     </div>
   );
 }

@@ -7,7 +7,7 @@ import type { StageBoardData } from "@/lib/crm/boardData";
  * 서버 컴포넌트(읽기 전용). 드래그 이동·인라인 편집은 후속(B2 이후) —
  * 단계 이동은 활동로그를 남겨야 해서 서비스(moveDealStage) 경유가 필수다.
  */
-export function StageBoardView({ data }: { data: StageBoardData }) {
+export function StageBoardView({ data, linksEnabled = true, onboardingCta = true, emptyHint }: { data: StageBoardData; linksEnabled?: boolean; onboardingCta?: boolean; emptyHint?: string }) {
   const { board, columns, total, companyById, sourceKind } = data;
 
   return (
@@ -35,9 +35,9 @@ export function StageBoardView({ data }: { data: StageBoardData }) {
       {columns.length === 0 ? (
         <EmptyState
           title="단계가 아직 없습니다"
-          hint="온보딩에서 정책자금 프리셋을 설치하면 파이프라인 단계가 생성됩니다."
-          href="/onboarding"
-          cta="온보딩으로 이동"
+          hint={emptyHint ?? "온보딩에서 정책자금 프리셋을 설치하면 파이프라인 단계가 생성됩니다."}
+          href={onboardingCta ? "/onboarding" : null}
+          cta={onboardingCta ? "온보딩으로 이동" : null}
         />
       ) : (
         <div className="flex gap-4 overflow-x-auto pb-2">
@@ -62,23 +62,27 @@ export function StageBoardView({ data }: { data: StageBoardData }) {
                       ? companyById.get(deal.company_id)
                       : undefined;
                     return (
-                      // 드릴인(딜 상세 /deals/[id])은 후속 — 아직 라우트가 없어 링크를 걸지 않는다
-                      // (없는 경로로 보내 404 를 만들지 않기 위함).
-                      <li
-                        key={deal.id}
-                        className="rounded-md bg-white p-3 shadow-sm"
-                      >
-                        <p className="text-sm font-medium">{deal.title}</p>
-                        {company && (
-                          <p className="mt-0.5 text-xs text-neutral-500">
-                            {company.name}
-                          </p>
-                        )}
-                        {deal.amount !== null && (
-                          <p className="mt-1 text-xs tabular-nums text-neutral-600">
-                            {deal.amount.toLocaleString("ko-KR")}원
-                          </p>
-                        )}
+                      <li key={deal.id}>
+                        {linksEnabled ? <Link
+                          href={`/deals/${deal.id}`}
+                          className="block rounded-md bg-white p-3 shadow-sm transition hover:shadow"
+                        >
+                          <p className="text-sm font-medium">{deal.title}</p>
+                          {company && (
+                            <p className="mt-0.5 text-xs text-neutral-500">
+                              {company.name}
+                            </p>
+                          )}
+                          {deal.amount !== null && (
+                            <p className="mt-1 text-xs tabular-nums text-neutral-600">
+                              {deal.amount.toLocaleString("ko-KR")}원
+                            </p>
+                          )}
+                        </Link> : <div className="block rounded-md bg-white p-3 shadow-sm">
+                          <p className="text-sm font-medium">{deal.title}</p>
+                          {company && <p className="mt-0.5 text-xs text-neutral-500">{company.name}</p>}
+                          {deal.amount !== null && <p className="mt-1 text-xs tabular-nums text-neutral-600">{deal.amount.toLocaleString("ko-KR")}원</p>}
+                        </div>}
                       </li>
                     );
                   })}
@@ -100,19 +104,19 @@ function EmptyState({
 }: {
   title: string;
   hint: string;
-  href: string;
-  cta: string;
+  href: string | null;
+  cta: string | null;
 }) {
   return (
     <div className="rounded-lg border border-dashed border-neutral-300 p-10 text-center">
       <p className="text-sm font-medium">{title}</p>
       <p className="mt-1 text-sm text-neutral-500">{hint}</p>
-      <Link
+      {href && cta ? <Link
         href={href}
         className="mt-4 inline-block rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white"
       >
         {cta}
-      </Link>
+      </Link> : null}
     </div>
   );
 }

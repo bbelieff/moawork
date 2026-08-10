@@ -150,3 +150,64 @@ describe("workspace routing", () => {
     ).toBe(false);
   });
 });
+
+describe("decideWorkspaceDestination — 플랫폼 관리자 분기", () => {
+  // 버그: 플랫폼 관리자가 소속 0이면 진입(신청) 화면에 갇혔다. 어드민으로 가는 링크는
+  // 회사 안 스위처(⚙)에만 있어서 회사에 못 들어가면 어드민에도 도달할 수 없었다.
+  it("소속 0 + 플랫폼 관리자 → /platform", () => {
+    expect(decideWorkspaceDestination([], { kind: "none" }, true)).toEqual({
+      kind: "platform",
+      path: "/platform",
+    });
+  });
+
+  it("소속 0 + 일반 사용자 → 기존대로 진입 화면(문구·흐름 불변)", () => {
+    expect(decideWorkspaceDestination([], { kind: "none" }, false)).toEqual({
+      kind: "entry",
+      path: "/workspace-entry",
+    });
+    // 기본값(미지정)도 일반 사용자와 동일해야 한다 — 호출부 누락이 권한 변화로 이어지면 안 된다.
+    expect(decideWorkspaceDestination([])).toEqual({
+      kind: "entry",
+      path: "/workspace-entry",
+    });
+  });
+
+  it("소속 1 + 플랫폼 관리자 → 회사로 (플랫폼 관리는 스위처 ⚙ 로)", () => {
+    expect(
+      decideWorkspaceDestination([row("org-1", "alpha-team")], { kind: "none" }, true),
+    ).toEqual({
+      kind: "workspace",
+      path: "/w/alpha-team",
+      orgId: "org-1",
+      slug: "alpha-team",
+    });
+  });
+
+  it("소속 여러 개 + 플랫폼 관리자 → 회사 선택 화면", () => {
+    expect(
+      decideWorkspaceDestination(
+        [row("org-1", "alpha-team"), row("org-2", "beta-team")],
+        { kind: "none" },
+        true,
+      ),
+    ).toEqual({ kind: "chooser", path: "/workspaces" });
+  });
+
+  it("플랫폼 관리자여도 멤버십 검증을 우회하지 않는다(계약 유지)", () => {
+    // 남의 회사 slug 를 next 로 넣어도 멤버십이 없으면 fail-closed 다.
+    expect(
+      decideWorkspaceDestination(
+        [row("org-1", "alpha-team")],
+        { kind: "workspace", slug: "other-team", path: "/w/other-team" },
+        true,
+      ),
+    ).toEqual({ kind: "fail-closed", path: "/workspace-entry?error=routing" });
+
+    // 파싱 불가한 행이면 관리자여도 fail-closed.
+    expect(decideWorkspaceDestination(null, { kind: "none" }, true)).toEqual({
+      kind: "fail-closed",
+      path: "/workspace-entry?error=routing",
+    });
+  });
+});

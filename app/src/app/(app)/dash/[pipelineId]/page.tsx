@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { getRepo } from "@/lib/repo";
-import { FeatureGate } from "@/components/auth/FeatureGate";
+import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
 import { FEATURES } from "@/lib/product";
 import {
   contractStatusBreakdown,
@@ -74,10 +74,17 @@ export default async function PipelineDashboardPage({
         <span className="text-zinc-700 dark:text-zinc-200">{pipeline.name}</span>
       </nav>
 
-      <FeatureGate ctx={ctx} feature={FEATURES.dash} label="대시보드(core.dash)">
+      <FeatureGateServer
+        orgId={ctx.org.id}
+        feature={FEATURES.dash}
+        label="대시보드"
+      >
         <div className="flex flex-col gap-6">
+          <p className="text-sm text-zinc-500">
+            업무는 업체와 진행하는 각각의 일입니다.
+          </p>
           <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <StatCard label="딜" value={formatCount(breakdown.total)} />
+            <StatCard label="업무" value={formatCount(breakdown.total)} />
             <StatCard label="단계" value={formatCount(ordered.length)} />
             <StatCard label="단계 미지정" value={formatCount(breakdown.unassigned)} />
             <StatCard label="금액 합계" value={formatKrw(sumAmounts(deals))} />
@@ -87,10 +94,10 @@ export default async function PipelineDashboardPage({
             <Widget title="단계별 현황" subtitle="이 보드 기준">
               <PipelineWidget data={breakdown} />
             </Widget>
-            <Widget title="전환율" subtitle="분모=이 보드 전체 딜">
+            <Widget title="전환율" subtitle="이 보드의 전체 업무 기준">
               <ConversionWidget rates={conversions} />
             </Widget>
-            <Widget title="계약상황" subtitle="field_defs 프리셋 기준">
+            <Widget title="계약상황" subtitle="등록된 계약상황 기준">
               <ContractStatusWidget data={contractStatus} />
             </Widget>
           </div>
@@ -98,7 +105,7 @@ export default async function PipelineDashboardPage({
           {/* 단계별 딜 목록 */}
           <section className="flex flex-col gap-4">
             <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
-              단계별 딜
+              단계별 업무
             </h2>
             {ordered.map((s) => {
               const list = dealsByStage.get(s.id) ?? [];
@@ -130,7 +137,7 @@ export default async function PipelineDashboardPage({
             ) : null}
           </section>
         </div>
-      </FeatureGate>
+      </FeatureGateServer>
     </div>
   );
 }
@@ -159,7 +166,7 @@ function DealList({
   if (deals.length === 0) {
     return (
       <p className="rounded border border-dashed border-zinc-200 p-3 text-xs text-zinc-400 dark:border-zinc-800">
-        딜 없음
+        이 단계에 업무가 등록되면 여기에 보여요.
       </p>
     );
   }

@@ -8,7 +8,7 @@ export async function GET(req: Request): Promise<Response> {
   try {
     const ctx = await requireCtx();
     const sp = new URL(req.url).searchParams;
-    const deals = getCrmService().listDeals(ctx, {
+    const deals = await getCrmService().listDeals(ctx, {
       stageId: sp.get("stageId") ?? undefined,
       companyId: sp.get("companyId") ?? undefined,
     });
@@ -22,7 +22,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const ctx = await requireCtx();
     const input = parseCreateDeal(await readJson(req));
-    return jsonOk(getCrmService().createDeal(ctx, input), 201);
+    return jsonOk(await getCrmService().createDeal(ctx, input), 201);
   } catch (err) {
     return toErrorResponse(err);
   }

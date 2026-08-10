@@ -4,6 +4,7 @@ export * from "./presets";
 export * from "./board";
 export * from "./settlement";
 export * from "./pipeline";
+export * from "./automation";
 
 // ⚠ `./settlements`(정산 업무로직)는 배럴에서 제외한다 — 서버 전용.
 //    @/lib/crm → auth/session.ts → next/headers 를 끌어오므로, 이 배럴을 쓰는

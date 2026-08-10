@@ -210,6 +210,18 @@ export class SupabaseCrmSource implements CrmSource {
     return data ? toCompany(data) : undefined;
   }
 
+  async deleteCompany(ctx: Ctx, id: string): Promise<boolean> {
+    // 가시성 확인 후 삭제 — 안 보이는 리소스는 false(존재 유출 방지).
+    if (!(await this.getCompany(ctx, id))) return false;
+    const { error } = await this.db
+      .from("companies")
+      .delete()
+      .eq("org_id", ctx.org.id)
+      .eq("id", id);
+    if (error) this.fail("deleteCompany", error);
+    return true;
+  }
+
   // ── 딜 ──
 
   async listDeals(ctx: Ctx): Promise<Deal[]> {
@@ -312,6 +324,18 @@ export class SupabaseCrmSource implements CrmSource {
       content: stageMoveContent(from?.name ?? null, to.name),
     });
     return toDeal(data);
+  }
+
+  async deleteDeal(ctx: Ctx, id: string): Promise<boolean> {
+    if (!(await this.getDeal(ctx, id))) return false;
+    // activities 는 001 에서 on delete cascade — 별도 정리 불필요.
+    const { error } = await this.db
+      .from("deals")
+      .delete()
+      .eq("org_id", ctx.org.id)
+      .eq("id", id);
+    if (error) this.fail("deleteDeal", error);
+    return true;
   }
 
   // ── 활동기록 ──

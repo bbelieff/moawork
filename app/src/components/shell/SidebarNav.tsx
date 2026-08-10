@@ -6,6 +6,8 @@ import {
   WorkspaceSwitcher,
   type WorkspaceSwitcherProps,
 } from "@/components/workspace/WorkspaceSwitcher";
+import { Badge } from "@/components/notify/Badge";
+import type { BadgeState } from "@/lib/notify/types";
 import { NAV_ITEMS, type NavBadgeKey } from "./nav-items";
 
 // 사이드바 메뉴 목록 — 활성 표시를 위해 클라이언트 컴포넌트.
@@ -16,10 +18,21 @@ type Props = {
   lockedFeatures: string[];
   /** 서버에서 범위 검증을 마친 배지만 받는다. 값이 없으면 숫자를 만들지 않는다. */
   badges?: Partial<Record<NavBadgeKey, number>>;
+  /**
+   * mod.notify 뱃지 — nav key → 숫자(내 할 일) 또는 점(안 본 변화).
+   * 위 `badges`(서버 검증 키 전용 계약)를 침범하지 않도록 별도 prop 으로 받는다.
+   * 숫자는 화면 진입만으로 사라지지 않고, 점은 진입하면 사라진다.
+   */
+  notifyBadges?: Record<string, BadgeState>;
   workspaceSwitcher?: Omit<WorkspaceSwitcherProps, "onNavigate">;
 };
 
-export function SidebarNav({ lockedFeatures, badges, workspaceSwitcher }: Props) {
+export function SidebarNav({
+  lockedFeatures,
+  badges,
+  notifyBadges,
+  workspaceSwitcher,
+}: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const locked = new Set(lockedFeatures);
@@ -34,7 +47,7 @@ export function SidebarNav({ lockedFeatures, badges, workspaceSwitcher }: Props)
           }}
         />
       ) : null}
-      <nav className="hidden flex-col gap-px md:flex" aria-label="주요 메뉴">
+      <nav className="hidden min-h-0 flex-1 flex-col gap-px overflow-y-auto md:flex" aria-label="주요 메뉴">
       {NAV_ITEMS.map((item) => {
         const isLocked = item.feature ? locked.has(item.feature) : false;
         // 실제 라우트가 있는 잠금 메뉴는 안내 화면에 도달할 수 있도록 링크를 유지한다.
@@ -49,6 +62,9 @@ export function SidebarNav({ lockedFeatures, badges, workspaceSwitcher }: Props)
         const visibleBadge = typeof badge === "number" && Number.isSafeInteger(badge) && badge > 0
           ? badge
           : null;
+        // 승인 대기 숫자(서버 검증)가 있으면 그것을 우선한다 — 알림 점이 덮지 않도록.
+        const notifyBadge = visibleBadge === null ? notifyBadges?.[item.key] : undefined;
+        const showNotifyBadge = notifyBadge !== undefined && notifyBadge.kind !== "none" && !isLocked;
 
         const inner = (
           <>
@@ -64,6 +80,10 @@ export function SidebarNav({ lockedFeatures, badges, workspaceSwitcher }: Props)
                 }}
               >
                 {visibleBadge > 99 ? "99+" : visibleBadge}
+              </span>
+            ) : showNotifyBadge ? (
+              <span className="ml-auto flex items-center">
+                <Badge state={notifyBadge} label={item.label} />
               </span>
             ) : null}
             {isLocked ? (

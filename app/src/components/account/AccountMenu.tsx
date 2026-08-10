@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { CurrentSessionLogout } from "./CurrentSessionLogout";
 import styles from "./account.module.css";
+import { DeveloperModeControl, type DeveloperModeAction } from "@/components/mode/DeveloperModeControl";
 
 export type AccountMenuProps = {
   displayName: string;
+  loginEmail: string;
   initial: string;
   /** 이전 호출부 호환용이며 계정 메뉴에는 회사명을 표시하지 않는다. */
   workspaceName?: string;
@@ -14,15 +16,21 @@ export type AccountMenuProps = {
   workspaceHref?: string;
   sessionsHref?: string;
   privacyHref?: string;
+  /** Server-confirmed capability and destination are supplied by a later adapter. */
+  serverConfirmedCanAccessPlatform?: boolean;
+  platformModeAction?: DeveloperModeAction;
 };
 
 export function AccountMenu({
   displayName,
+  loginEmail,
   initial,
   accountHref,
   workspaceHref,
   sessionsHref,
   privacyHref,
+  serverConfirmedCanAccessPlatform = false,
+  platformModeAction,
 }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -78,7 +86,7 @@ export function AccountMenu({
         </span>
         <span className={styles.menuIdentity}>
           <strong>{displayName}</strong>
-          <small>계정 및 설정</small>
+          <small>{loginEmail}</small>
         </span>
         <span aria-hidden="true">▾</span>
       </button>
@@ -105,7 +113,10 @@ export function AccountMenu({
       >
         <div className={styles.menuSummary}>
           <strong>{displayName}</strong>
-          <small>개인 계정</small>
+          <small>{loginEmail}</small>
+          {serverConfirmedCanAccessPlatform ? (
+            <span className={styles.modeBadge}>사용자 모드</span>
+          ) : null}
         </div>
         <ul className={styles.menuList}>
           <li>
@@ -157,6 +168,9 @@ export function AccountMenu({
                 개인정보와 데이터
               </Link>
             </li>
+          ) : null}
+          {serverConfirmedCanAccessPlatform && platformModeAction?.mode === "platform" ? (
+            <li><DeveloperModeControl mode="user" serverConfirmedPlatform action={platformModeAction} /></li>
           ) : null}
           <li>
             <CurrentSessionLogout className={styles.menuItem} menuItem />

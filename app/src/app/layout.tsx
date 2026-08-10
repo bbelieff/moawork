@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { PostHogProvider } from "@/components/analytics/PostHogProvider";
 import { PRODUCT_NAME } from "@/lib/product";
 
 const geistSans = Geist({
@@ -41,7 +42,10 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      {/* PostHogProvider 는 DOM 을 그리지 않는다 — 레이아웃·반응형에 영향 0. */}
+      <body className="min-h-full flex flex-col">
+        <PostHogProvider>{children}</PostHogProvider>
+      </body>
     </html>
   );
 }

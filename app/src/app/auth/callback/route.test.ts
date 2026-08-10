@@ -14,6 +14,9 @@ type Scenario = {
   userError?: unknown;
   profileError?: unknown;
   membershipError?: unknown;
+  /** Canonical auth.uid()-bound platform guard result. */
+  platformGranted?: boolean;
+  platformRpcError?: unknown;
 };
 
 function membership(
@@ -71,14 +74,21 @@ function setup(scenario: Scenario = {}) {
       }),
     },
     from,
-    rpc: vi.fn(),
+    rpc: vi.fn(async (name: string) => {
+      if (name === "is_platform_admin") {
+        return { data: scenario.platformGranted ?? false, error: scenario.platformRpcError ?? null };
+      }
+      throw new Error(`Unexpected rpc: ${name}`);
+    }),
   };
   mocks.createClient.mockResolvedValue(supabase);
   return { supabase, from, membershipSelect, membershipEq };
 }
 
-function callback(search = "code=test-code") {
-  return GET(new Request(`https://www.moa-work.com/auth/callback?${search}`));
+function callback(search = "code=test-code", cookie?: string) {
+  return GET(new Request(`https://www.moa-work.com/auth/callback?${search}`, {
+    headers: cookie ? { cookie } : undefined,
+  }));
 }
 
 function location(response: Response) {
@@ -116,7 +126,9 @@ describe("OAuth callback Workspace routing", () => {
       "https://www.moa-work.com/workspace-entry",
     );
     expect(response.headers.get("set-cookie")).toContain("mw_org=;");
-    expect(supabase.rpc).not.toHaveBeenCalled();
+    // Platform routing uses only the canonical auth.uid()-bound RPC.
+    expect(supabase.rpc).toHaveBeenCalledTimes(1);
+    expect(supabase.rpc).toHaveBeenCalledWith("is_platform_admin");
     expect(from).not.toHaveBeenCalledWith("orgs");
   });
 
@@ -211,5 +223,48 @@ describe("OAuth callback Workspace routing", () => {
     expect(location(await callback(`code=test-code&next=${encodeURIComponent("https://evil.example/w/alpha-team")}`))).toBe("https://www.moa-work.com/workspace-entry?error=routing");
     setup({ rows });
     expect(location(await callback(`code=test-code&next=${encodeURIComponent("/settings/account")}`))).toBe("https://www.moa-work.com/workspaces");
+  });
+});
+
+describe("OAuth callback 플랫폼 관리자 분기", () => {
+  // 버그: 플랫폼 관리자가 소속 0이면 진입 화면에 갇혔다. 어드민 링크는 회사 안
+  // 스위처(⚙)에만 있어 회사에 못 들어가면 어드민에도 도달할 수 없었다.
+  it("소속 0 + 확인된 플랫폼 운영자는 이전 선호를 지우고 /mode로 보낸다", async () => {
+    const { from } = setup({ rows: [], platformGranted: true });
+    const response = await callback(
+      `code=test-code&next=${encodeURIComponent("/account?tab=privacy")}`,
+      "mw_mode=v1.platform.stale-signature",
+    );
+    expect(location(response)).toBe("https://www.moa-work.com/mode?next=%2Faccount%3Ftab%3Dprivacy");
+    expect(response.headers.get("set-cookie")).toContain("mw_mode=;");
+    expect(from).not.toHaveBeenCalledWith("org_members");
+  });
+
+  it("소속 0 + 일반 사용자 → 기존대로 진입 화면", async () => {
+    setup({ rows: [], platformGranted: false });
+    expect(location(await callback())).toBe(
+      "https://www.moa-work.com/workspace-entry",
+    );
+  });
+
+  it("소속 1 + 플랫폼 관리자 → 회사로 (플랫폼 관리는 스위처 ⚙ 로)", async () => {
+    setup({ rows: [membership("org-1", "alpha-team")], platformGranted: false });
+    expect(location(await callback())).toBe(
+      "https://www.moa-work.com/w/alpha-team",
+    );
+  });
+
+  it("판정 RPC 가 실패하면 관리자 아님으로 수렴한다(장애가 권한 상승이 되지 않게)", async () => {
+    setup({ rows: [], platformGranted: true, platformRpcError: { message: "boom" } });
+    expect(location(await callback())).toBe(
+      "https://www.moa-work.com/workspace-entry",
+    );
+  });
+
+  it("알 수 없는 role 값은 관리자로 인정하지 않는다", async () => {
+    setup({ rows: [membership("org-1", "alpha-team"), membership("org-2", "beta-team")], platformGranted: false });
+    expect(location(await callback())).toBe(
+      "https://www.moa-work.com/workspaces",
+    );
   });
 });

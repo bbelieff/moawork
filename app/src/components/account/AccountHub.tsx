@@ -42,7 +42,7 @@ export function AccountHub({
             </div>
             <div>
               <dt>로그인 이메일</dt>
-              <dd>{account.maskedEmail}</dd>
+              <dd>{account.loginEmail}</dd>
             </div>
             <div>
               <dt>역할</dt>

@@ -49,7 +49,7 @@ describe("WorkspaceEntry B-3 state contract", () => {
     const html = renderToStaticMarkup(<WorkspaceEntry initialView="join" />);
 
     expect(html).toContain('data-entry-view="join-address"');
-    expect(html).toContain("합류할 영문 Workspace 주소는 무엇인가요?");
+    expect(html).toContain("합류할 회사 주소를 입력해 주세요.");
     expect((html.match(/<input/g) ?? [])).toHaveLength(1);
     expect(html).not.toContain("초대 코드");
     expect(nextWorkspaceEntryQuestion("join-address")).toBe("join-confirm");
@@ -60,15 +60,18 @@ describe("WorkspaceEntry B-3 state contract", () => {
     const html = renderToStaticMarkup(<WorkspaceEntry requests={[pendingJoin]} />);
 
     expect(html).toContain('data-entry-view="pending"');
+    expect(html).toContain('aria-label="대기 요청 상태"');
+    expect(html).toContain('aria-label="대기 요청 행동"');
     expect(html).toContain("검토 중 · 회사 접근 0곳");
     expect(html).toContain("대기 요청 요약");
     expect(html).toContain("회사 합류 요청");
     expect(html).toContain("취소하거나 다시 입력하기");
+    expect(html).toContain('aria-label="현재 질문 요약"');
     expect(html).toContain('href="/workspaces"');
-    expect(html).toContain("현재 요청 취소 후 새 회사 시작");
+    expect(html).not.toContain("현재 요청 취소 후 새 회사 시작");
     expect(html).toContain('action="/auth/signout"');
     expect(html).toContain("로그아웃");
-    expect((html.match(/<button/g) ?? [])).toHaveLength(3);
+    expect((html.match(/<button/g) ?? [])).toHaveLength(2);
     expect(html).not.toContain("취소하고 다시 입력할게요");
     expect(html).not.toContain("7일 이내");
     expect(html).not.toContain("자동 만료");
@@ -121,5 +124,39 @@ describe("WorkspaceEntry B-3 state contract", () => {
     expect(resolveWorkspaceEntryView({ initialView: "fork", hasPendingRequest: true, hasRejectedRequest: true, isPlatformAdmin: true })).toBe("operator");
     expect(workspaceEntryCopy("rejected").lead).toContain("안전한 다음 행동");
     expect(renderToStaticMarkup(<WorkspaceEntry initialView="rejected" />)).not.toContain("거절 사유");
+  });
+});
+
+describe("진입 화면 탈출구 — 플랫폼 관리자 전용", () => {
+  // 버그: 플랫폼 관리자가 소속 0이면 이 화면이 막다른 길이었다. 회사로 들어갈 수 없는데
+  // 어드민 링크는 회사 안 스위처(⚙)에만 있었다.
+  // 관리자는 pending 이 아니라 operator 뷰에 착지한다(resolveWorkspaceEntryView 가 우선 분기).
+  // 그래서 탈출구는 operator 뷰에 있어야 실제로 도달 가능하다.
+  it("플랫폼 관리자에게 현재 mode preference 전환과 로그아웃을 보여준다", () => {
+    const html = renderToStaticMarkup(
+      <WorkspaceEntry requests={[pendingJoin]} isPlatformAdmin />,
+    );
+    expect(html).toContain('data-entry-view="operator"');
+    expect(html).toContain('action="/mode/preference"');
+    expect(html).toContain('name="mode" value="platform"');
+    expect(html).toContain('name="next" value="/platform"');
+    expect(html).not.toContain('href="/platform"');
+    expect(html).toContain("플랫폼 관리로 가기");
+    expect(html).toContain('action="/auth/signout"');
+    expect(html).toContain("로그아웃");
+  });
+
+  it("일반 사용자에게는 플랫폼 링크가 존재조차 렌더되지 않는다", () => {
+    const html = renderToStaticMarkup(<WorkspaceEntry requests={[pendingJoin]} />);
+    // 존재를 노출하지 않는다 — 숨기는 게 아니라 마크업에 없어야 한다.
+    expect(html).not.toContain('action="/mode/preference"');
+    expect(html).not.toContain('name="mode" value="platform"');
+    expect(html).not.toContain('href="/platform"');
+    expect(html).not.toContain("플랫폼 관리로 가기");
+    // 기존 출구는 그대로(일반 사용자 흐름 불변).
+    // ※ "현재 요청 취소 후 새 회사 시작" 버튼은 main 366cf7b(compact pending screen)이
+    //    제거했다. 이 테스트의 검증 대상은 위의 플랫폼 링크 미노출이므로, 남은 출구로 확인한다.
+    expect(html).toContain('href="/workspaces"');
+    expect(html).toContain("로그아웃");
   });
 });

@@ -1,0 +1,35 @@
+schema_version: 1
+updated_at: "2026-07-22T20:30:00+09:00"
+# 2026-07-22 기획 세션 통합(belie 지시): planning + planning-cowork → planning(단일).
+# 기획 정본도 마스터기획서_v1.0.md 하나로 병합. 구 2세션은 merged_into로 이력 보존.
+sessions:
+  - track: planning
+    provider: claude
+    writer_session: "기획(통합)"
+    status: active
+    merged_from: ["기획(오케스트레이터)", "기획-Cowork(belie 메인채팅·디스패치)"]
+    file_leases:
+      - "docs/plans/active/마스터기획서_v1.0.md (기획 정본)"
+      - "docs/coordination/** (오케스트레이션 문서)"
+    checkpoint: "2026-07-22: 기획1+2 병합→마스터기획서_v1.0.md(v0.1·PLAN-v0.2 supersede), 구글 OAuth 발급(GCP moa-work·프로덕션 게시), B1b 구글로그인 UI 배정"
+    worklog: "docs/worklog.md"
+  - track: planning-cowork
+    provider: claude
+    writer_session: "기획-Cowork(belie 메인채팅·디스패치)"
+    status: merged
+    merged_into: planning
+    checkpoint: "2026-07-22 통합됨 → track: planning. (이력) 2026-07-21 로컬 백엔드 lib/** 구현·검증, D15 반영, 사건감사"
+    worklog: "docs/worklog/2026-07-21_cowork-local-backend.md"
+  - track: track-01
+    provider: codex
+    writer_session: "track-01 기반 (구 track-07 재귀속, 2026-07-21)"
+    status: ready_for_handoff
+    task_id: day0-harness-bootstrap
+    branch: chore/day0-harness
+    worktree: "통합관리시스템 (초기 저장소 bootstrap checkout)"
+    base_sha: null
+    head_sha: null
+    file_leases: ["통합관리시스템/**"]
+    do_not_modify: ["프로젝트 루트 원본", "마스터기획서_v0.1.md", "원격 서비스"]
+    checkpoint: "2026-07-21 02:18 KST: check and pre-commit PASS; concurrent writer files preserved; index clean; no commit; remote unknown"
+    worklog: "docs/worklog/2026-07-21_track-07.md"

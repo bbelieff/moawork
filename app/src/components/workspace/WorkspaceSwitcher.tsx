@@ -10,6 +10,7 @@ import {
 } from "react";
 import { WorkspaceMark } from "./WorkspaceMark";
 import styles from "./workspace-switcher.module.css";
+import { DeveloperModeControl } from "@/components/mode/DeveloperModeControl";
 
 export type WorkspaceRole = "owner" | "admin" | "member";
 export type WorkspaceMembershipStatus = "active" | "inactive" | "suspended";
@@ -318,10 +319,7 @@ export function WorkspaceSwitcher({
             {serverConfirmedCanAccessPlatform && destinations.platformHref ? (
               <>
                 <div className={styles.divider} />
-                <button type="button" className={styles.action} data-destination={destinations.platformHref} onClick={() => void navigate(destinations.platformHref!, "platform")} disabled={busyKey !== null}>
-                  <span className={styles.actionIcon} aria-hidden="true">⌘</span>
-                  플랫폼 관리
-                </button>
+                <DeveloperModeControl mode="user" serverConfirmedPlatform action={{ mode: "platform", next: destinations.platformHref }} />
               </>
             ) : null}
 

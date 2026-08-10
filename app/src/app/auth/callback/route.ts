@@ -5,6 +5,8 @@ import {
   decideWorkspaceDestination,
   workspaceTargetFromNext,
 } from "@/lib/auth/workspace-routing";
+import { sanitizeModeNext } from "@/lib/mode/contract";
+import { modePreferenceCookie } from "@/lib/mode/preference";
 
 function loginError(request: Request, code: string) {
   const url = new URL("/login", request.url);
@@ -39,6 +41,29 @@ export async function GET(request: Request) {
     { onConflict: "id" },
   );
   if (profileError) return loginError(request, "profile");
+
+  // The SECURITY DEFINER RPC binds the platform decision to auth.uid().
+  // A false, malformed, or unavailable result never grants the platform plane.
+  let isPlatformAdmin = false;
+  try {
+    const adminResult = await supabase.rpc("is_platform_admin");
+    isPlatformAdmin = !adminResult.error && adminResult.data === true;
+  } catch {
+    // Preserve ordinary verified membership routing when the guard is unavailable.
+  }
+
+  if (isPlatformAdmin) {
+    const destination = new URL("/mode", url.origin);
+    const next = sanitizeModeNext(url.searchParams.get("next"));
+    if (next) destination.searchParams.set("next", next);
+    const response = NextResponse.redirect(destination);
+    // A fresh OAuth login must not silently reuse an earlier mode preference.
+    response.cookies.delete(modePreferenceCookie.name);
+    response.cookies.delete(SESSION_COOKIE.org);
+    response.cookies.delete(SESSION_COOKIE.uid);
+    response.cookies.delete(SESSION_COOKIE.as);
+    return response;
+  }
 
   const { data: membershipData, error: membershipError } = await supabase
     .from("org_members")
