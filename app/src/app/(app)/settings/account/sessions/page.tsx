@@ -42,10 +42,10 @@ export default async function AccountSessionsPage() {
     <div className={styles.page}>
       <header className={styles.heading}>
         <h1>로그인 기기</h1>
-        <p>지금 사용하는 브라우저의 로그인을 안전하게 끝낼 수 있어요.</p>
+        <p>지금 사용하는 기기에서 안전하게 로그아웃할 수 있어요.</p>
       </header>
       <AccountNav current="sessions" items={NAV_ITEMS} />
-      {unavailable ? <AccountState kind="blocked" title="세션 정보를 불러오지 못했습니다" message="잠시 후 다시 시도해 주세요." /> : <section aria-label="로그인 세션"><p>활성 세션 {sessions.length}개</p>{sessions.map((session) => <form action={revokeCurrentSession} key={session.id}><input type="hidden" name="sessionId" value={session.id} /><p>{session.current_session ? "현재 세션" : "다른 세션"} · 마지막 사용 {session.last_seen_at}</p><button type="submit">이 세션 로그아웃</button></form>)}</section>}
+      {unavailable ? <AccountState kind="blocked" title="로그인한 기기 정보를 불러오지 못했어요" message="잠시 후 이 화면을 다시 열어 주세요." /> : <section aria-label="로그인 세션"><p>로그인한 기기 {sessions.length}개</p>{sessions.map((session) => <form action={revokeCurrentSession} key={session.id}><input type="hidden" name="sessionId" value={session.id} /><p>{session.current_session ? "지금 사용하는 기기" : "다른 기기"} · 마지막 사용 {session.last_seen_at}</p><button type="submit">이 기기에서 로그아웃</button></form>)}</section>}
       <div className={styles.actionRow}>
         <CurrentSessionLogout />
         {!unavailable && <form action={revokeAllSessions}><button type="submit">모든 기기에서 로그아웃</button></form>}
