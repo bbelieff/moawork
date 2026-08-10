@@ -3,11 +3,17 @@ import { notFound } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { getCrmService, NotFoundError } from "@/lib/crm";
 import { getRepo } from "@/lib/repo";
-import { listDealFiles } from "@/lib/services/files";
 import { DealInfoTab } from "@/components/deal/DealInfoTab";
-import { DealActivityTab } from "@/components/deal/DealActivityTab";
-import { DealFilesPanel } from "@/components/deal/DealFilesPanel";
+import { DealTimeline } from "@/components/deal/detail/DealTimeline";
+import { DealAssignee } from "@/components/deal/detail/DealAssignee";
+import { DealFollowupRequest } from "@/components/deal/detail/DealFollowupRequest";
+import { DealFiles } from "@/components/deal/detail/DealFiles";
 import { moveStageAction } from "./actions";
+import { listComments } from "@/lib/deal/comments";
+import { listDealFiles as listDealFilesAsync } from "@/lib/deal/files";
+import { buildDownloadUrl } from "@/lib/deal/fileSignedUrl";
+import { listOrgMemberOptions, toNameMap } from "@/lib/deal/members";
+import { mergeTimeline } from "@/lib/deal/timeline";
 import type { Stage } from "@/lib/types";
 
 /**
@@ -40,24 +46,30 @@ export default async function DealDetailPage({
     throw err;
   }
 
-  const [activities, pipelines, company] = await Promise.all([
+  const [activities, pipelines, company, comments, members, dealFiles] = await Promise.all([
     svc.listActivities(ctx, deal.id),
     svc.listPipelines(ctx),
     deal.company_id
       ? svc.getCompany(ctx, deal.company_id).catch(() => undefined)
       : Promise.resolve(undefined),
+    listComments(ctx, deal.id),
+    listOrgMemberOptions(ctx),
+    listDealFilesAsync(ctx, deal.id),
   ]);
 
   const allStages: Stage[] = pipelines.flatMap((p) => p.stages);
   const stage = allStages.find((s) => s.id === deal.stage_id);
 
-  // 커스텀필드 정의·사용자·첨부는 아직 동기 포트에서 읽는다(T05/T04 소유 영역).
+  // 커스텀필드 정의은 아직 동기 포트에서 읽는다(T05 소유 영역, BBE-16 범위 밖).
   const repo = getRepo();
   const contractStatusDef = repo
     .listFieldDefs(ctx.org.id, "deal")
     .find((d) => d.label === "계약상황" || d.key === "계약상황");
-  const userById = new Map(repo.listUsers().map((u) => [u.id, u]));
-  const files = listDealFiles(ctx, deal.id);
+
+  const nameById = toNameMap(members);
+  const timelineEntries = mergeTimeline(activities, comments);
+  const mentionCandidates = members.filter((m) => m.id !== ctx.user.id);
+  const downloadUrlById = new Map(dealFiles.map((f) => [f.id, buildDownloadUrl(deal.id, f.id)]));
 
   // 담당범위: 매니저이거나 본인 담당이면 편집 가능.
   const canEdit =
@@ -121,16 +133,36 @@ export default async function DealDetailPage({
         />
       </Section>
 
-      <Section title="활동">
-        <DealActivityTab
+      <Section title="담당자">
+        <div className="flex flex-wrap items-end gap-3">
+          <DealAssignee
+            dealId={deal.id}
+            currentAssigneeId={deal.assigned_to}
+            members={members}
+            disabled={!canEdit}
+          />
+          <DealFollowupRequest dealId={deal.id} />
+        </div>
+      </Section>
+
+      <Section title="타임라인 · 댓글">
+        <DealTimeline
           dealId={deal.id}
-          activities={activities}
-          userById={userById}
+          entries={timelineEntries}
+          nameById={nameById}
+          currentUserId={ctx.user.id}
+          canComment
+          mentionCandidates={mentionCandidates}
         />
       </Section>
 
-      <Section title={`첨부 (${files.length})`}>
-        <DealFilesPanel dealId={deal.id} files={files} canEdit={canEdit} />
+      <Section title={`첨부 (${dealFiles.length})`}>
+        <DealFiles
+          dealId={deal.id}
+          files={dealFiles}
+          downloadUrlById={downloadUrlById}
+          canEdit={canEdit}
+        />
       </Section>
     </div>
   );
