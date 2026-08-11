@@ -24,6 +24,9 @@ describe("039 feature flag lifecycle migration", () => {
 
   it("enforces ordered rollout and removal debt", () => {
     expect(sql).toContain("feature rollout must pass canary before stable");
+    expect(sql).toMatch(
+      /revoke execute on function public\.platform_set_feature_release\(uuid, text, text, boolean, text\)[\s\S]*from authenticated/,
+    );
     expect(sql).toContain("removal_due_at");
     expect(sql).toContain("list_feature_flag_debt");
     expect(sql).toContain("platform_retire_feature_flag");

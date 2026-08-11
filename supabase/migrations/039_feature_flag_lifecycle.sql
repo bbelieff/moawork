@@ -306,6 +306,10 @@ revoke all on function public.platform_advance_feature_flag(uuid, text, text) fr
 revoke all on function public.platform_emergency_disable_feature(uuid, text) from public, anon;
 revoke all on function public.platform_retire_feature_flag(uuid, text) from public, anon;
 revoke all on function public.list_feature_flag_debt() from public, anon;
+-- 020 exposed a boolean mutation that can enable stable directly. Retire its
+-- client execution path so every authenticated rollout uses the ordered API.
+revoke execute on function public.platform_set_feature_release(uuid, text, text, boolean, text)
+  from authenticated;
 grant execute on function public.platform_register_feature_flag(uuid, text, text, timestamptz) to authenticated;
 grant execute on function public.platform_advance_feature_flag(uuid, text, text) to authenticated;
 grant execute on function public.platform_emergency_disable_feature(uuid, text) to authenticated;

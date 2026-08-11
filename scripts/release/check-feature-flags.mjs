@@ -9,6 +9,7 @@ const migration = readFileSync(
 const required = [
   "platform_register_feature_flag",
   "platform_advance_feature_flag",
+  "revoke execute on function public.platform_set_feature_release(uuid, text, text, boolean, text)",
   "platform_emergency_disable_feature",
   "platform_retire_feature_flag",
   "list_feature_flag_debt",
