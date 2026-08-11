@@ -251,7 +251,7 @@ append-only 는 «내용 삭제 금지» 이지 «과거 실수의 흔적을 지
   - `app/src/lib/deal/notify.ts` — mention/보완요청 RPC 호출부
   - `app/src/components/deal/detail/{DealTimeline,DealAssignee,DealFollowupRequest,DealFiles}.tsx` — 신규 UI
   - `app/src/app/api/deals/[dealId]/files/[fileId]/route.ts` — 서명 다운로드 라우트
-  - `supabase/migrations/035_deal_collab_notify.sql` — assigned 트리거 + mention/requested RPC (001~034 무수정)
+  - `supabase/migrations/043_deal_collab_notify.sql` — assigned 트리거 + mention/requested RPC (001~034 무수정)
   - 기존 파일 additive 편집: `deals/[dealId]/actions.ts`(신규 액션 6개 추가, 기존 액션 무삭제) ·
     `deals/[dealId]/page.tsx`(컴포넌트 마운트 교체) · `lib/crm/activity.ts`(assignment 타입 추가) ·
     `lib/crm/asyncService.ts`(`reassignDeal` 메서드 추가)
@@ -262,7 +262,7 @@ append-only 는 «내용 삭제 금지» 이지 «과거 실수의 흔적을 지
      충돌을 못 잡는 테스트 실패 발견 → **정수 `version` 카운터**로 교체(타임스탬프 충돌 원천 차단).
 - **수용기준 대조**:
   - 활동/댓글 작성·수정이력 저장 — ✅ (comments.ts, edit_history[])
-  - 상태·담당자 변경이 타임라인+알림 반영 — ✅ (activity 자동기록 + 035 트리거)
+  - 상태·담당자 변경이 타임라인+알림 반영 — ✅ (activity 자동기록 + 043 트리거)
   - 파일 서명URL·조직경계, data URL 미저장 — ✅ (content_b64 내부전용 + HMAC 서명 라우트)
   - 동시수정 충돌·업로드실패 사용자 안내 — ✅ 댓글(ConcurrentEditError). ⚠ 딜 필드(제목/금액) 낙관적 잠금은 그
     폼이 CT05 소유(DealInfoTab)라 **범위 밖으로 명시 제외** — 후속 필요시 CT05 판단.
