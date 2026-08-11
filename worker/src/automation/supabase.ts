@@ -1,9 +1,4 @@
-import type {
-  AutomationJobData,
-  AutomationOutcome,
-  AutomationStorePort,
-  MoveDecision,
-} from "./types.js";
+import type { AutomationOutcome, AutomationStorePort } from "./types.js";
 
 interface RpcRow {
   status: AutomationOutcome["status"];
@@ -17,13 +12,9 @@ export interface SupabaseAutomationConfig {
   fetchImpl?: typeof fetch;
 }
 
-async function rpc(
-  config: SupabaseAutomationConfig,
-  name: string,
-  body: Record<string, unknown>,
-): Promise<RpcRow> {
+async function rpc(config: SupabaseAutomationConfig, executionKey: string): Promise<RpcRow> {
   const response = await (config.fetchImpl ?? fetch)(
-    `${config.url.replace(/\/$/u, "")}/rest/v1/rpc/${name}`,
+    `${config.url.replace(/\/$/u, "")}/rest/v1/rpc/execute_trusted_board_automation`,
     {
       method: "POST",
       headers: {
@@ -31,60 +22,25 @@ async function rpc(
         authorization: `Bearer ${config.serviceRoleKey}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ p_execution_key: executionKey }),
     },
   );
   if (!response.ok) throw new Error(`automation_rpc_${response.status}`);
   const rows = await response.json() as RpcRow[];
-  if (!rows[0]) throw new Error("automation_rpc_empty");
+  if (!rows[0] || !Array.isArray(rows[0].visited_rule_ids)) throw new Error("automation_rpc_invalid");
   return rows[0];
 }
 
-function outcome(
-  job: AutomationJobData,
-  decision: MoveDecision | null,
-  row: RpcRow,
-): AutomationOutcome {
+export function createSupabaseAutomationStore(config: SupabaseAutomationConfig): AutomationStorePort {
   return {
-    execution_key: job.execution_key,
-    org_id: job.org_id,
-    visited_rule_ids: row.visited_rule_ids,
-    rule_id: decision?.rule_id ?? null,
-    item_id: decision?.item_id ?? null,
-    status: row.status,
-    ...(row.error_code ? { error_code: row.error_code } : {}),
-    ...(!decision ? { blocked_reasons: job.evaluation.blocked_reasons } : {}),
-  };
-}
-
-export function createSupabaseAutomationStore(
-  config: SupabaseAutomationConfig,
-): AutomationStorePort {
-  return {
-    async executeMove(job) {
-      const decision = job.evaluation.decision;
-      const row = await rpc(config, "execute_board_automation_move", {
-        p_execution_key: job.execution_key,
-        p_org_id: job.org_id,
-        p_rule_id: decision.rule_id,
-        p_item_id: decision.item_id,
-        p_from_group_id: decision.from_group_id,
-        p_to_group_id: decision.to_group_id,
-        p_visited_rule_ids: job.visited_rule_ids,
-      });
-      return outcome(job, decision, row);
-    },
-    async recordBlocked(job) {
-      const decision = job.evaluation.decision;
-      const row = await rpc(config, "record_board_automation_blocked", {
-        p_execution_key: job.execution_key,
-        p_org_id: job.org_id,
-        p_rule_id: decision?.rule_id ?? null,
-        p_item_id: decision?.item_id ?? null,
-        p_blocked_reasons: job.evaluation.blocked_reasons,
-        p_visited_rule_ids: job.visited_rule_ids,
-      });
-      return outcome(job, decision, row);
+    async execute(executionKey) {
+      const row = await rpc(config, executionKey);
+      return {
+        execution_key: executionKey,
+        status: row.status,
+        visited_rule_ids: row.visited_rule_ids,
+        ...(row.error_code ? { error_code: row.error_code } : {}),
+      };
     },
   };
 }

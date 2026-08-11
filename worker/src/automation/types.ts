@@ -1,53 +1,28 @@
-/** GT04's pure-condition output consumed by the worker. */
-export interface MoveDecision {
-  item_id: string;
-  from_group_id: string | null;
-  to_group_id: string;
-  rule_id: string;
-}
-
-export interface AutomationEvaluation {
-  decision: MoveDecision | null;
-  blocked_reasons: readonly string[];
-}
-
-export interface AutomationTrace {
+/**
+ * Queue data is deliberately non-authoritative.  Only the database-issued
+ * execution key crosses the worker boundary; tenant, item, rule, decision
+ * and trace are re-derived inside the transactional RPC.
+ */
+export interface AutomationJobData {
   execution_key: string;
-  org_id: string;
+}
+
+export type ExecutionStatus = "succeeded" | "failed" | "blocked" | "duplicate" | "rejected";
+
+export interface AutomationOutcome {
+  execution_key: string;
+  status: ExecutionStatus;
+  error_code?: string;
   visited_rule_ids: readonly string[];
 }
 
-export interface AutomationJobData extends AutomationTrace {
-  evaluation: AutomationEvaluation;
-}
-
-export type ExecutionStatus = "succeeded" | "failed" | "blocked" | "duplicate";
-
-export interface AutomationOutcome extends AutomationTrace {
-  rule_id: string | null;
-  item_id: string | null;
-  status: ExecutionStatus;
-  error_code?: string;
-  blocked_reasons?: readonly string[];
-}
-
-/** Atomic persistence boundary implemented by migration 051. */
+/**
+ * The migration 056 RPC is the authority boundary.  It accepts no caller
+ * supplied organization, item, rule, target group, evaluation or trace.
+ */
 export interface AutomationStorePort {
-  executeMove(job: AutomationJobData & { evaluation: { decision: MoveDecision; blocked_reasons: readonly string[] } }): Promise<AutomationOutcome>;
-  recordBlocked(job: AutomationJobData): Promise<AutomationOutcome>;
+  execute(executionKey: string): Promise<AutomationOutcome>;
 }
 
-export function nextAutomationJob(
-  parent: AutomationJobData,
-  evaluation: AutomationEvaluation,
-): AutomationJobData {
-  const ruleId = parent.evaluation.decision?.rule_id;
-  return {
-    execution_key: parent.execution_key,
-    org_id: parent.org_id,
-    visited_rule_ids: ruleId
-      ? [...parent.visited_rule_ids, ruleId]
-      : [...parent.visited_rule_ids],
-    evaluation,
-  };
-}
+/** There is currently no product event producer for this queue. */
+export const AUTOMATION_PRODUCER_STATUS = "WORKER_REGISTERED_BUT_PRODUCER_NOT_READY" as const;
