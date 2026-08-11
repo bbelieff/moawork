@@ -10,6 +10,7 @@
  */
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 
 const FILE = path.join(import.meta.dirname, "UI목업_워크스페이스_최종_v6.html");
 const html = fs.readFileSync(FILE, "utf8");
@@ -41,7 +42,7 @@ global.clearTimeout = () => {}; global.setInterval = () => 1; global.clearInterv
 
 let api;
 try {
-  api = new Function(script + "\n;return {T,FIELD,PINR,HOT,MOVE2,NAV,COMPANIES,DEALS,LEDGER};")();
+  api = new Function(script + "\n;return {T,FIELD,PINR,HOT,MOVE,MOVE2,NAV,COMPANIES,DEALS,LEDGER};")();
 } catch (e) {
   console.error("목업 로드 실패:", e.message);
   process.exit(1);
@@ -66,6 +67,103 @@ const TYPE = {
   phone: "전화", text: "글", email: "메일", pill: "표시칩",
 };
 
+const CONTRACT_TAB_KEYS = ["new", "contact", "work", "notice"];
+
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** 목업 실행 결과가 비교 가능한 최소 구조를 빠짐없이 갖췄는지 확인한다. */
+export function validateMockupContractApi(sourceApi) {
+  for (const mapName of ["T", "FIELD", "HOT", "MOVE", "MOVE2", "PINR"]) {
+    if (!isRecord(sourceApi?.[mapName])) throw new Error(`목업 구조 맵 누락 또는 형식 오류: ${mapName}`);
+  }
+  if (!Array.isArray(sourceApi.NAV)) throw new Error("목업 구조 맵 누락 또는 형식 오류: NAV");
+
+  for (const key of CONTRACT_TAB_KEYS) {
+    const tab = sourceApi.T[key];
+    if (!isRecord(tab)) throw new Error(`목업 필수 탭 누락 또는 형식 오류: ${key}`);
+    if (typeof tab.label !== "string" || !Array.isArray(tab.cols) || !Array.isArray(tab.groups)) {
+      throw new Error(`목업 탭 구조 형식 오류: ${key}`);
+    }
+    if (!isRecord(sourceApi.FIELD[key])) throw new Error(`목업 필드 맵 누락 또는 형식 오류: ${key}`);
+    if (!isRecord(sourceApi.HOT[key])) throw new Error(`목업 선택지 맵 누락 또는 형식 오류: ${key}`);
+    if (!isRecord(sourceApi.MOVE[key])) throw new Error(`목업 이동 맵 누락 또는 형식 오류: ${key}`);
+    if (typeof sourceApi.PINR[key] !== "string") throw new Error(`목업 고정 조작 열 누락 또는 형식 오류: ${key}`);
+    if (!sourceApi.NAV.some((entry) => Array.isArray(entry?.[1]) && entry[1].includes(key))) {
+      throw new Error(`목업 탐색 위치 누락: ${key}`);
+    }
+
+    for (const label of tab.cols) {
+      const metadata = sourceApi.FIELD[key][label];
+      if (!Array.isArray(metadata) || typeof metadata[0] !== "string" || typeof metadata[1] !== "string") {
+        throw new Error(`목업 필드 메타데이터 누락 또는 형식 오류: ${key}.${label}`);
+      }
+      const choices = sourceApi.HOT[key][label];
+      if (choices !== undefined && !Array.isArray(choices)) {
+        throw new Error(`목업 선택지 메타데이터 형식 오류: ${key}.${label}`);
+      }
+    }
+  }
+}
+
+/**
+ * 목업 실행 결과를 다른 검사가 그대로 소비할 수 있는 구조 계약.
+ *
+ * 출력용 문자열을 다시 해석하지 않는다. `qa-app.mjs`는 이 함수의 원시 타입·출처·선택지·이동
+ * 규칙을 앱 구조 팩과 대조한다. 목업은 이 모듈의 유일한 입력이며, 여기서 앱 데이터를 섞지 않는다.
+ */
+export function extractMockupContract() {
+  validateMockupContractApi(api);
+  const interBoardTransitions = [
+    ...[...script.matchAll(/if\(tabKey==="new"\s*&&\s*col==="([^"]+)"\s*&&\s*val==="([^"]+)"\)\s*\{[\s\S]*?const c=T\.([a-z]+);/g)].map((match) => ({
+      from: "new", column: match[1], value: match[2], to: match[3], guard: null,
+    })),
+    ...[...script.matchAll(/if\(tabKey==="contact"\s*&&\s*col==="([^"]+)"\s*&&\s*val==="([^"]+)"\)\s*\{\s*const si=t\.cols\.indexOf\("([^"]+)"\)\+1;\s*if\(RULEON\.lock && rec\.r\[si\]!=="([^"]+)"\)[\s\S]*?const w=T\.([a-z]+);/g)].map((match) => ({
+      from: "contact", column: match[1], value: match[2], to: match[5], guard: { column: match[3], value: match[4] },
+    })),
+  ];
+  return {
+    tabs: CONTRACT_TAB_KEYS.map((key) => {
+      const tab = api.T[key];
+      const fields = api.FIELD[key];
+      const options = api.HOT[key];
+      const primaryMoves = api.MOVE[key];
+      const moves = api.MOVE2[key] || {};
+      const nav = api.NAV.find(([, keys]) => keys.includes(key));
+      return {
+        key,
+        label: tab.label,
+        nav: nav ? { section: nav[0], kind: nav[2]?.sub ? "sub" : "top" } : null,
+        groups: (tab.groups || []).map((group) => group.n),
+        columns: tab.cols.map((label) => ({
+          label,
+          type: fields[label][0],
+          source: fields[label][1],
+          options: options[label] ?? [],
+        })),
+        moves: [
+          ...Object.entries(primaryMoves).filter(([, groupIndex]) => groupIndex !== null).map(([value, groupIndex]) => ({
+            column: api.PINR[key] ?? null,
+            value,
+            group: groupIndex === null ? null : tab.groups?.[groupIndex]?.n ?? null,
+          })),
+          ...Object.entries(moves).flatMap(([column, values]) =>
+            Object.entries(values).map(([value, groupIndex]) => ({
+            column,
+            value,
+            group: tab.groups?.[groupIndex]?.n ?? null,
+            })),
+          ),
+        ],
+        transitions: interBoardTransitions.filter((transition) => transition.from === key),
+      };
+    }),
+  };
+}
+
+// CLI 실행일 때만 사람이 읽는 전체 덤프를 출력한다. import 소비자는 출력 없이 같은 추출 계약을 받는다.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
 const only = process.argv[2];
 const tabs = only ? [only] : ["new", "contact", "work", "notice"];
 
@@ -167,3 +265,4 @@ console.log(`  조달일 + 365 = 재신청 안내일 : ${d365 ? "있음" : "없�
 console.log(`\n${"═".repeat(72)}`);
 console.log("검사도 같이 돌려라 →  node docs/design/qa-mockup.mjs   (86개 전부 통과해야 착수)");
 console.log("═".repeat(72));
+}
