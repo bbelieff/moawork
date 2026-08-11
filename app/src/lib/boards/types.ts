@@ -60,6 +60,25 @@ export interface BoardColumn {
   options_jsonb: { options: FieldOption[] } | null;
   sort_order: number;
   width: number | null;
+  /**
+   * 아이템 자동 이동 규칙(D68~D70) — 「선택지 id → 이동할 그룹 id」 맵.
+   * 이 칸의 값이 바뀌어 매핑된 선택지가 되면 아이템이 해당 그룹으로 옮겨간다
+   * (먼데이의 "다음 단계로 넘기는 조작 열"·상태 변경 시 자동 이동과 동일 개념).
+   * select/status 계열 컬럼에서만 의미가 있다. null/undefined = 이동 안 함(일반 컬럼).
+   *
+   * ⚠ 선택 필드다(필수 아님) — components/board/**·lib/policyfund/** 등 이 타입을
+   * 리터럴로 구성하는 다른 트랙 소유 파일이 여럿이라, 필수로 만들면 그 파일들의
+   * 빌드가 깨진다(불가침 경계). 값이 없는 컬럼은 "이동 규칙 없음"으로 취급한다.
+   */
+  move_rule_jsonb?: Record<string, string> | null;
+  /**
+   * 손으로 못 고치는 칸(목업 개정 ④) — ƒ수식 결과(예: ƒ재신청 안내일·ƒ심사 D-day)처럼
+   * 다른 값에서 자동 계산되는 칸. true 면 setCells 가 이 키의 쓰기를 전부 거부한다
+   * (값의 «형식»이 아니라 «편집 자체»를 막는다 — isIntegrityField 와는 다른 축).
+   * 실제 계산은 이 모듈 소관이 아니다 — 계산 서비스가 자기 쓰기 경로로 채운다.
+   * 선택 필드(다른 트랙 소유 파일의 리터럴 생성부를 깨지 않기 위해 — 위 move_rule_jsonb 와 동일 이유).
+   */
+  is_readonly?: boolean;
 }
 
 /** 003 items — 임의 보드의 행. (001 deals 와 별개) */

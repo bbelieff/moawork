@@ -154,6 +154,8 @@ export class LocalBoardsRepo implements BoardsRepo {
       options_jsonb: input.options ? { options: input.options } : null,
       sort_order: existing.length,
       width: input.width ?? null,
+      move_rule_jsonb: input.moveRule ?? null,
+      is_readonly: input.readOnly ?? false,
     };
     db().boardColumns.push(col);
     return col;
@@ -169,6 +171,8 @@ export class LocalBoardsRepo implements BoardsRepo {
     if (patch.width !== undefined) c.width = patch.width;
     if (patch.options !== undefined)
       c.options_jsonb = patch.options ? { options: patch.options } : null;
+    if (patch.moveRule !== undefined) c.move_rule_jsonb = patch.moveRule;
+    if (patch.readOnly !== undefined) c.is_readonly = patch.readOnly;
     return c;
   }
 

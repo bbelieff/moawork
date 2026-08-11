@@ -32,6 +32,7 @@ import type {
   ItemWithValues,
 } from "./types";
 import { compareCells, isEmptyCell, validateCell } from "./cells";
+import { resolveMoveTarget } from "./moveRules";
 import { isIntegrityField } from "@/lib/custom/field-types";
 import { isSourceEditable } from "@/lib/field/source";
 import { pickDefaultView } from "@/lib/custom/views";
@@ -56,10 +57,25 @@ export interface CellError {
   message: string;
 }
 
+/**
+ * 되돌리기 스냅샷 — 편집 직전 상태. 그대로 `undoCells()` 에 넘기면 원복된다.
+ * 값 자체를 재검증해 이동 규칙을 다시 태우는 방식(재기입)이 아니라, 이전 group_id 를
+ * **명시적으로 복원**한다 — 재기입 방식은 "이동 규칙이 없던 값"(예: 빈 값)에서
+ * "규칙 있는 값"으로 바뀐 편집을 되돌릴 때 원래 그룹을 못 찾는 결함이 있다.
+ */
+export interface CellEditUndo {
+  /** 이번 호출에서 실제로 저장된 키들의 **편집 전** 값. */
+  values: Record<string, CellValue>;
+  /** 편집 전 group_id(이동이 없었어도 항상 채운다 — 복원은 그냥 대입이라 안전하다). */
+  group_id: string | null;
+}
+
 /** 셀 편집 결과 — 통과분은 저장됐고, 실패분은 errors 로 보고된다. */
 export interface SetCellsResult {
   item: ItemWithValues;
   errors: CellError[];
+  /** 저장된 값이 하나도 없으면(전부 실패) null. */
+  undo: CellEditUndo | null;
 }
 
 /** 새 보드에 기본 제공되는 컬럼(빈 보드가 바로 쓸 수 있도록). */
@@ -188,6 +204,14 @@ export class BoardsService {
   /**
    * 셀 인라인 편집 — 검증 훅 통과분만 저장하고, 실패분은 `errors` 로 돌려준다.
    * (관대 정책: 한 셀이 틀려도 나머지는 저장된다. 무결성 필드 오류만 throw.)
+   *
+   * D68~D70: 저장된 값이 "조작 열"(move_rule_jsonb 를 가진 컬럼)의 값이고 그 값이
+   * 이동 규칙에 걸리면, 값 저장과 **같은 호출 안에서** 아이템의 group_id 도 옮긴다
+   * (별도 API 왕복이 없다 — "저장했더니 카드가 안 옮겨갔다"는 사고를 원천 차단).
+   * 여러 조작 열이 한 번에 바뀌면 나중 키가 이긴다(패치 순서 = 마지막이 최종 상태).
+   *
+   * 되돌리기: 쓰기 **전** 값과 group_id 를 스냅샷해 `undo` 로 돌려준다.
+   * 호출부는 이걸 그대로 `undoCells()` 에 넘기면 된다.
    */
   setCells(
     ctx: Ctx,
@@ -196,10 +220,62 @@ export class BoardsService {
     patch: Record<string, CellValue>,
   ): SetCellsResult {
     const detail = this.requireEditableBoardDetail(ctx, boardId);
-    if (!this.repo.getItem(ctx, itemId)) throw new NotFoundError("아이템을 찾을 수 없습니다");
+    const before = this.getItem(ctx, boardId, itemId);
+
     const { values, errors } = this.validateValues(detail.columns, patch, true);
-    if (Object.keys(values).length > 0) this.repo.setValues(ctx, itemId, values);
-    return { item: this.getItem(ctx, boardId, itemId), errors };
+    const writtenKeys = Object.keys(values);
+    if (writtenKeys.length === 0) {
+      return { item: this.getItem(ctx, boardId, itemId), errors, undo: null };
+    }
+
+    // 되돌리기용 이전 값 스냅샷 — 실제 쓰기 전에 떠 둔다.
+    const beforeValues = this.getItem(ctx, boardId, itemId).values;
+    const undo: CellEditUndo = {
+      values: Object.fromEntries(writtenKeys.map((k) => [k, beforeValues[k] ?? null])),
+      group_id: before.group_id,
+    };
+
+    this.repo.setValues(ctx, itemId, values);
+
+    // 조작 열 이동 — 패치 순서상 나중 키가 최종 목적지를 정한다.
+    const byKey = new Map(detail.columns.map((c) => [c.key, c]));
+    let target: string | null = null;
+    for (const key of writtenKeys) {
+      const col = byKey.get(key);
+      if (!col) continue;
+      const resolved = resolveMoveTarget(col, values[key]);
+      if (resolved !== null) target = resolved;
+    }
+    if (target !== null && target !== before.group_id) {
+      this.repo.updateItem(ctx, itemId, { group_id: target });
+    }
+
+    return { item: this.getItem(ctx, boardId, itemId), errors, undo };
+  }
+
+  /**
+   * `setCells()` 가 돌려준 `undo` 를 그대로 적용해 편집 직전 상태로 되돌린다.
+   * 값·group_id 를 **명시 복원**한다(이동 규칙 재평가에 기대지 않는다 — 이유는
+   * `CellEditUndo` 주석 참고). 검증은 다시 하지 않는다 — 그 값들은 이미 한 번
+   * 통과한 값이다.
+   */
+  undoCells(
+    ctx: Ctx,
+    boardId: string,
+    itemId: string,
+    undo: CellEditUndo,
+  ): ItemWithValues {
+    this.requireEditableBoard(ctx, boardId);
+    this.getItem(ctx, boardId, itemId);
+    if (
+      undo.group_id !== null &&
+      !this.repo.listGroups(ctx, boardId).some((group) => group.id === undo.group_id)
+    ) {
+      throw new NotFoundError("그룹을 찾을 수 없습니다");
+    }
+    if (Object.keys(undo.values).length > 0) this.repo.setValues(ctx, itemId, undo.values);
+    this.repo.updateItem(ctx, itemId, { group_id: undo.group_id });
+    return this.getItem(ctx, boardId, itemId);
   }
 
   /**
@@ -322,6 +398,8 @@ export class BoardsService {
    * - ⛔ 조용히 null 로 수렴시키지 않는다(데이터 유실 금지).
    * - **엄격 예외 = 무결성 필드**(`isIntegrityField`): 정산 generated column 이 의존하므로
    *   틀린 값이면 흘리지 않고 하드 거부(throw)한다.
+   * - **읽기 전용 칸**(`col.is_readonly`, 목업 개정 ④): 값의 형식과 무관하게 **모든** 쓰기를
+   *   errors 로 되돌린다(throw 아님 — 사용자가 실수로 클릭했을 뿐 무결성 위협은 아니다).
    */
   private validateValues(
     columns: BoardColumn[],
@@ -337,6 +415,16 @@ export class BoardsService {
       if (!col) continue; // 정의되지 않은 컬럼은 무시(EAV 오염 방지)
       if (enforceReadOnlySource && !isSourceEditable(col.source)) {
         errors.push({ key, label: col.label, message: "자동으로 채워지는 칸은 직접 바꿀 수 없습니다" });
+        continue;
+      }
+      // 손으로 못 고치는 칸(목업 개정 ④) — 값의 형식과 무관하게 편집 자체를 막는다.
+      // isIntegrityField 와는 다른 축: 저건 "형식이 틀리면 거부", 이건 "형식과 무관하게 항상 거부".
+      if (col.is_readonly) {
+        errors.push({
+          key,
+          label: col.label,
+          message: "자동 계산되는 칸이라 손으로 고칠 수 없습니다",
+        });
         continue;
       }
       const options: FieldOption[] | null = col.options_jsonb?.options ?? null;
