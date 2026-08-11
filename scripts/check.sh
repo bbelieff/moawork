@@ -39,4 +39,16 @@ npm run typecheck --workspaces --if-present
 echo "▶ [3/3] test"
 npm run test --workspaces --if-present
 
+echo "▶ [4/4] 목업↔앱 대조"
+set +e
+node docs/design/qa-app.mjs
+qa_app_status=$?
+set -e
+if [[ "$qa_app_status" -eq 1 ]]; then
+  echo "⚠️ qa-app 차이 보고 완료 — 1단계에서는 check를 실패시키지 않습니다"
+elif [[ "$qa_app_status" -ne 0 ]]; then
+  echo "❌ qa-app 자체 실행 실패 — 차이 보고로 숨기지 않습니다"
+  exit "$qa_app_status"
+fi
+
 echo "✅ check 통과"
