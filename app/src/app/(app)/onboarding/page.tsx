@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession, SESSION_COOKIE } from "@/lib/auth/session";
 import { getRepo } from "@/lib/repo";
@@ -49,6 +50,14 @@ export default async function OnboardingPage() {
           {policyOn ? "설치됨" : "미설치"} · 딜 커스텀필드 {dealFields.length}개
         </p>
       </div>
+
+      <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+        <h2 className="text-sm font-semibold">연습 회사에서 퀘스트 해보기</h2>
+        <p className="mt-1 text-sm text-zinc-500">실제 회사와 분리된 공간에서 업무 조작을 연습해요.</p>
+        <Link className="mt-3 inline-flex min-h-11 items-center rounded border px-3 text-sm" href="/onboarding/practice">
+          연습 퀘스트 열기
+        </Link>
+      </section>
 
       <form
         action={createOrg}
