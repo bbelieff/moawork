@@ -5,6 +5,7 @@ import {
   registerAutomationWorker,
 } from "./automation/index.js";
 import { health } from "./health.js";
+import { registerOutboxFromEnv } from "./jobs/outbox/index.js";
 import { defaultProviders, registerNotifyWorker } from "./notify/index.js";
 import { pendingLoader, pendingSink } from "./notify/pending.js";
 
@@ -46,6 +47,12 @@ async function main(): Promise<void> {
     console.log("[worker] automation.execute registered");
   } else {
     console.warn("[worker] automation.execute disabled: Supabase service environment missing");
+  }
+  const outboxRuntime = await registerOutboxFromEnv(boss);
+  if (outboxRuntime) {
+    console.log("[worker] message-outbox.drain registered");
+  } else {
+    console.warn("[worker] message-outbox.drain disabled: constrained database or provider environment missing");
   }
 }
 
