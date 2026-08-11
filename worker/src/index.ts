@@ -29,6 +29,11 @@ async function main(): Promise<void> {
     providers: defaultProviders(),
     loader: pendingLoader,
     sink: pendingSink,
+    deliveryPolicy: {
+      timeZone: process.env.NOTIFY_TIME_ZONE ?? "Asia/Seoul",
+      quietHours: { startHour: 22, endHour: 7 },
+      bundleWindowMinutes: 60,
+    },
   });
   console.log("[worker] notify.send 등록됨 (스텁 — 실제 발송 없음)");
 }

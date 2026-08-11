@@ -7,6 +7,7 @@ import { bellBadge, sidebarBadges } from "./badge";
 import { groupFeed, type FeedGroup } from "./grouping";
 import { deepLink, feedLine, type FeedLine } from "./messages";
 import type { BadgeState, FeedItem, Notification, SurfaceKey, SurfaceSeen } from "./types";
+import { routeNotificationFeed, type NotificationRecipient, type NotificationRoutingPort } from "./recipients";
 import {
   myNotificationsFor,
   orgFeedFor,
@@ -22,7 +23,7 @@ export interface NotifySnapshot {
   bell: BadgeState;
   sidebar: Record<SurfaceKey, BadgeState>;
   mine: Array<{ notification: Notification; href: string | null }>;
-  org: Array<{ group: FeedGroup; line: FeedLine; href: string | null }>;
+  org: Array<{ group: FeedGroup; line: FeedLine; href: string | null; recipient: NotificationRecipient }>;
 }
 
 export const EMPTY_SNAPSHOT: NotifySnapshot = {
@@ -38,7 +39,7 @@ export const EMPTY_SNAPSHOT: NotifySnapshot = {
  * Supabase 미설정(로컬 골격)에서는 빈 스냅샷을 반환한다 — 벨은 조용히 비어 있고
  * 오류 팝업을 띄우지 않는다.
  */
-export async function loadNotifySnapshot(ctx: Ctx, now = new Date()): Promise<NotifySnapshot> {
+export async function loadNotifySnapshot(ctx: Ctx, now = new Date(), routingPort?: NotificationRoutingPort): Promise<NotifySnapshot> {
   if (!hasSupabaseEnv()) return EMPTY_SNAPSHOT;
 
   try {
@@ -75,20 +76,22 @@ export async function loadNotifySnapshot(ctx: Ctx, now = new Date()): Promise<No
     // RLS 가 1차 방어선이지만 앱에서도 같은 규칙을 다시 적용한다(다중 방어).
     const mine = myNotificationsFor(rawNotifications, ctx.org.id, ctx.user.id);
     const feed = orgFeedFor(rawFeed, ctx.org.id, scopeCtx);
+    const routedFeed = await routeFeedToCurrentUser(feed, ctx, routingPort ?? new CurrentMainRoutingPort(ctx.org.id, supabase));
 
     const actorNames = await loadActorNames(feed, mine, supabase);
 
     return {
       bell: bellBadge(mine),
-      sidebar: sidebarBadges(mine, feed, seen, surfaceOfNotification, surfaceOfFeedItem),
+      sidebar: sidebarBadges(mine, routedFeed.map((item) => item.feed), seen, surfaceOfNotification, surfaceOfFeedItem),
       mine: mine.map((notification) => ({
         notification,
         href: deepLink(notification.target_type, notification.target_id),
       })),
-      org: groupFeed(feed).map((group) => ({
+      org: groupFeed(routedFeed.map((item) => item.feed)).map((group) => ({
         group,
         line: feedLine(group.head, actorNames.get(group.head.actor ?? "") ?? null, now, group.count),
         href: deepLink(group.head.target_type, group.head.target_id),
+        recipient: routedFeed.find((item) => item.feed.id === group.head.id)!.recipient,
       })),
     };
   } catch {
@@ -96,6 +99,34 @@ export async function loadNotifySnapshot(ctx: Ctx, now = new Date()): Promise<No
     return EMPTY_SNAPSHOT;
   }
 }
+
+async function routeFeedToCurrentUser(
+  feed: readonly FeedItem[],
+  ctx: Ctx,
+  port: NotificationRoutingPort,
+): Promise<Array<{ feed: FeedItem; recipient: NotificationRecipient }>> {
+  const routes = await port.load(feed.flatMap((item) => item.target_id ? [item.target_id] : []));
+  return routeNotificationFeed(feed, ctx.user.id, routes, ctx.scope === "all");
+}
+
+class CurrentMainRoutingPort implements NotificationRoutingPort {
+  constructor(private orgId: string, private supabase: Awaited<ReturnType<typeof createClient>>) {}
+  async load(targetIds: readonly string[]) {
+    const [{ data: members }, { data: deals }] = await Promise.all([
+      this.supabase.from("org_members").select("user_id").eq("org_id", this.orgId).eq("status", "active"),
+      targetIds.length ? this.supabase.from("deals").select("id, assigned_to").eq("org_id", this.orgId).in("id", targetIds) : Promise.resolve({ data: [] }),
+    ]);
+    const teamMembers = (members ?? []).map((row: { user_id: string }) => row.user_id);
+    const routes = new Map<string, { assigneeId: string | null; teamMembers: string[] }>(
+      [["*", { assigneeId: null, teamMembers }], ...targetIds.map((id) => [id, { assigneeId: null, teamMembers }] as const)],
+    );
+    for (const row of (deals ?? []) as Array<{ id: string; assigned_to: string | null }>) {
+      routes.set(row.id, { assigneeId: row.assigned_to, teamMembers });
+    }
+    return routes;
+  }
+}
+
 
 /** 담당범위 판정에 필요한 '내 담당 딜' 집합을 만든다. */
 async function buildScopeContext(
