@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth/session";
 import { Logo } from "@/components/brand/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { SidebarNav } from "@/components/shell/SidebarNav";
+import { Icon, IconSprite } from "@/components/shell/icons";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { AnalyticsIdentity } from "@/components/analytics/AnalyticsIdentity";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
@@ -19,8 +20,8 @@ import { NotificationBell } from "@/components/notify/NotificationBell";
 import { loadNotifySnapshot } from "@/lib/notify/server";
 import { loadPlatformActor } from "@/lib/platform/actor";
 
-// 앱 셸 — UI목업_모아워크셸_v0.3 (1단 사이드바 232px + 상단바).
-// 색은 전부 globals.css 의 --mw-* 토큰 참조(하드코딩 hex 금지).
+// 앱 셸 — UI목업_워크스페이스_최종_v6 (1단 사이드바 220px + 상단바). BBE-126(2026-08-10) 밀도 개정.
+// 색·간격·글자 크기는 전부 globals.css/moawork-tokens.css 의 --mw-*·--sp-*·--fs-* 토큰 참조(하드코딩 hex·임의 px 금지).
 // getSession() 이 세션 없으면 /login 으로 보낸다(가드).
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const ctx = await getSession();
@@ -89,16 +90,21 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         role={ctx.role}
         planTier={ctx.org.plan_tier}
       />
+      {/* IconSprite 는 한 번만 마운트 — Icon 이 <use href="#i-…"> 로 여기 심볼을 참조한다. */}
+      <IconSprite />
       {/* ── 사이드바 ── */}
       <aside
-        className="relative flex h-auto w-full flex-none flex-col border-b px-3 py-3 md:sticky md:top-0 md:h-screen md:w-[232px] md:overflow-visible md:border-b-0 md:border-r md:py-[18px]"
+        className="relative flex h-auto w-full flex-none flex-col border-b px-[var(--sp-3)] py-[var(--sp-3)] md:sticky md:top-0 md:h-screen md:w-[var(--mw-shell-nav-w)] md:overflow-visible md:border-b-0 md:border-r md:py-[var(--sp-4)]"
         style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}
       >
-        <div className="px-2 pb-4 pt-1">
-          <Logo height={30} href={logoHref} />
+        <div
+          className="px-2 pb-4 pt-1"
+          style={{ height: "var(--mw-shell-header-h)", display: "flex", flexDirection: "column", justifyContent: "center" }}
+        >
+          <Logo height={22} href={logoHref} />
           <small
-            className="mt-1.5 block pl-0.5 text-[11px]"
-            style={{ color: "var(--mw-sub)" }}
+            className="mt-1.5 block pl-0.5"
+            style={{ color: "var(--mw-sub)", fontSize: "var(--fs-11)" }}
           >
             {ctx.org.name} · 워크스페이스
           </small>
@@ -130,23 +136,31 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
         {/* 하단 사용자 */}
         <div
-          className="mt-auto hidden items-center gap-2.5 border-t pl-2 pt-3 md:flex"
-          style={{ borderColor: "var(--mw-line)" }}
+          className="mt-auto hidden items-center border-t md:flex"
+          style={{
+            borderColor: "var(--mw-line)",
+            gap: "var(--sp-2)",
+            paddingLeft: "var(--sp-2)",
+            paddingTop: "var(--sp-3)",
+          }}
         >
           <span
-            className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-full text-[13px] font-bold"
+            className="flex flex-none items-center justify-center rounded-full font-bold"
             style={{
+              width: "var(--mw-shell-avatar-size)",
+              height: "var(--mw-shell-avatar-size)",
+              fontSize: "var(--fs-13)",
               background: "var(--mw-primary)",
               color: "var(--mw-on-accent)",
             }}
           >
             {initial}
           </span>
-          <div className="min-w-0 flex-1 text-[13px]">
+          <div className="min-w-0 flex-1" style={{ fontSize: "var(--fs-13)" }}>
             <div className="truncate">{ctx.user.name}</div>
             <small
-              className="block text-[11px]"
-              style={{ color: "var(--mw-sub)" }}
+              className="block"
+              style={{ color: "var(--mw-sub)", fontSize: "var(--fs-11)" }}
             >
               {account.roleLabel} · {account.scopeLabel}
             </small>
@@ -155,15 +169,24 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* ── 본문 ── */}
-      <div className="min-w-0 flex-1 px-4 py-4 sm:px-5 md:px-7 md:py-[22px]">
+      <div
+        className="min-w-0 flex-1 px-[var(--sp-4)] py-[var(--sp-4)] sm:px-[var(--sp-5)] md:px-[var(--sp-6)] md:py-[var(--sp-6)]"
+      >
         {/* 페이지 제목은 각 화면이 자기 <h1> 로 그린다 — 셸은 우측 액션만 소유. */}
-        <header className="mb-5 flex flex-wrap items-center gap-2 sm:gap-3">
-          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+        <header
+          className="mb-[var(--sp-5)] flex flex-wrap items-center"
+          style={{ gap: "var(--sp-2)" }}
+        >
+          <div className="ml-auto flex items-center" style={{ gap: "var(--sp-2)" }}>
             {workspaceApprovals && workspaceApprovals.pendingCount > 0 ? (
               <Link
                 href="/settings/members"
-                className="hidden rounded-xl border px-3 py-2 text-[12px] font-semibold sm:inline-flex"
+                className="hidden border font-semibold sm:inline-flex"
                 style={{
+                  borderRadius: "var(--mw-r-2)",
+                  paddingInline: "var(--sp-3)",
+                  paddingBlock: "var(--sp-2)",
+                  fontSize: "var(--fs-12)",
                   background: "var(--mw-tint-coral)",
                   borderColor: "var(--mw-line)",
                   color: "var(--mw-people)",
@@ -173,14 +196,21 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
               </Link>
             ) : null}
             <div
-              className="hidden w-[250px] rounded-xl border px-3.5 py-2 text-[13px] lg:block"
+              className="hidden items-center lg:flex"
               style={{
+                width: "250px",
+                borderRadius: "var(--mw-r-2)",
+                border: "1px solid var(--mw-line)",
+                paddingInline: "var(--sp-3)",
+                paddingBlock: "var(--sp-2)",
+                fontSize: "var(--fs-13)",
+                gap: "var(--sp-2)",
                 background: "var(--mw-card)",
-                borderColor: "var(--mw-line)",
                 color: "var(--mw-sub)",
               }}
             >
-              🔍 업체·담당자 검색…
+              <Icon name="search" />
+              업체·담당자 검색…
             </div>
             {/* 기존 🔔 자리에 그대로 연결한다(자리를 새로 만들지 않음).
                 모바일(375px)에서도 알림을 확인해야 하므로 sm 미만 숨김은 걷어낸다. */}

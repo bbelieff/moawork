@@ -8,6 +8,7 @@ import {
 } from "@/components/workspace/WorkspaceSwitcher";
 import { Badge } from "@/components/notify/Badge";
 import type { BadgeState } from "@/lib/notify/types";
+import { Icon } from "./icons";
 import { NAV_ITEMS, type NavBadgeKey } from "./nav-items";
 
 // 사이드바 메뉴 목록 — 활성 표시를 위해 클라이언트 컴포넌트.
@@ -68,15 +69,18 @@ export function SidebarNav({
 
         const inner = (
           <>
-            <span className="w-[18px] text-center">{item.icon}</span>
-            <span>{item.label}</span>
+            <Icon name={item.icon} />
+            <span className="flex-1 truncate">{item.label}</span>
             {visibleBadge !== null ? (
               <span
-                className="ml-auto rounded-lg px-[7px] py-[2px] text-[10.5px] font-bold"
+                className="ml-auto font-bold"
                 aria-label={`승인 대기 ${visibleBadge}건`}
                 style={{
                   background: "var(--mw-tint-coral)",
                   color: "var(--mw-people)",
+                  borderRadius: "var(--mw-r-1)",
+                  padding: "1px 7px",
+                  fontSize: "var(--mw-shell-badge-fs)",
                 }}
               >
                 {visibleBadge > 99 ? "99+" : visibleBadge}
@@ -88,16 +92,16 @@ export function SidebarNav({
             ) : null}
             {isLocked ? (
               <span
-                className="ml-auto text-[11px]"
-                style={{ color: "var(--mw-sub)" }}
+                className="ml-auto"
+                style={{ color: "var(--mw-sub)", fontSize: "var(--fs-11)" }}
                 title="이 조직에 켜져 있지 않은 기능입니다"
               >
-                🔒
+                <Icon name="lock" />
               </span>
             ) : !item.href ? (
               <span
-                className="ml-auto text-[10.5px]"
-                style={{ color: "var(--mw-sub)" }}
+                className="ml-auto"
+                style={{ color: "var(--mw-sub)", fontSize: "var(--mw-shell-badge-fs)" }}
                 title="담당 트랙에서 화면 준비 중"
               >
                 준비 중
@@ -106,8 +110,14 @@ export function SidebarNav({
           </>
         );
 
-        const base =
-          "flex items-center gap-2.5 rounded-[10px] px-3 py-[9px] text-[13.5px]";
+        const base = "flex items-center";
+        const baseStyle = {
+          gap: "var(--sp-2)",
+          height: "var(--mw-shell-item-h)",
+          borderRadius: "var(--mw-r-3)",
+          paddingInline: "var(--sp-3)",
+          fontSize: "var(--mw-shell-item-fs)",
+        } as const;
 
         if (unavailable) {
           return (
@@ -124,7 +134,7 @@ export function SidebarNav({
                 }
               }}
               className={`${base} cursor-not-allowed`}
-              style={{ color: "var(--mw-sub)" }}
+              style={{ ...baseStyle, color: "var(--mw-sub)" }}
             >
               {inner}
             </span>
@@ -142,10 +152,11 @@ export function SidebarNav({
             style={
               active
                 ? {
+                    ...baseStyle,
                     background: "var(--mw-record)",
                     color: "var(--mw-on-accent)",
                   }
-                : { color: isLocked ? "var(--mw-sub)" : "var(--mw-fg)" }
+                : { ...baseStyle, color: isLocked ? "var(--mw-sub)" : "var(--mw-fg)" }
             }
           >
             {inner}
