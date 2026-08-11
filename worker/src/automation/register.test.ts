@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Job } from "pg-boss";
-import { createAutomationHandler, enqueueAutomation } from "./register.js";
+import { automationSingletonKey, createAutomationHandler, enqueueAutomation } from "./register.js";
 import type { AutomationJobData, AutomationStorePort } from "./types.js";
 
 function queued(ruleId: string): Job<AutomationJobData> {
@@ -24,8 +24,31 @@ describe("automation pg-boss handler", () => {
     expect(send).toHaveBeenCalledWith(
       "automation.execute",
       data,
-      { singletonKey: "event-rule-a:rule-a" },
+      { singletonKey: '["org-1","event-rule-a","rule-a"]' },
     );
+  });
+
+  it("isolates singleton keys between companies", async () => {
+    const send = vi.fn().mockResolvedValue("job-id");
+    const first = queued("rule-a").data;
+    const second = { ...first, org_id: "org-2" };
+    await enqueueAutomation({ send } as never, first);
+    await enqueueAutomation({ send } as never, second);
+    expect(send.mock.calls.map((call) => call[2]?.singletonKey)).toEqual([
+      '["org-1","event-rule-a","rule-a"]',
+      '["org-2","event-rule-a","rule-a"]',
+    ]);
+  });
+
+  it("uses collision-safe canonical tuple encoding", () => {
+    const base = queued("d").data;
+    const left = { ...base, org_id: "a:b", execution_key: "c" };
+    const right = {
+      ...base,
+      org_id: "a",
+      execution_key: "b:c",
+    };
+    expect(automationSingletonKey(left)).not.toBe(automationSingletonKey(right));
   });
 
   it("persists job output and isolates one failed rule", async () => {

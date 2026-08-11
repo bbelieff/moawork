@@ -26,13 +26,21 @@ export function createAutomationHandler(deps: AutomationExecutorDeps) {
   };
 }
 
+export function automationSingletonKey(job: AutomationJobData): string {
+  return JSON.stringify([
+    job.org_id,
+    job.execution_key,
+    job.evaluation.decision?.rule_id ?? null,
+  ]);
+}
+
 /** Public hand-off used by the GT04 decision producer. */
 export async function enqueueAutomation(
   boss: PgBoss,
   job: AutomationJobData,
 ): Promise<string | null> {
   return boss.send(AUTOMATION_EXECUTE_QUEUE, job, {
-    singletonKey: `${job.execution_key}:${job.evaluation.decision?.rule_id ?? "blocked"}`,
+    singletonKey: automationSingletonKey(job),
   });
 }
 

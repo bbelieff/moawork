@@ -1,16 +1,22 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const sql = readFileSync(new URL("../../../supabase/migrations/045_automation_execution.sql", import.meta.url), "utf8");
+const sql = readFileSync(new URL("../../../supabase/migrations/051_automation_execution.sql", import.meta.url), "utf8");
 
-describe("045 automation execution contract", () => {
+describe("051 automation execution contract", () => {
   it("owns atomic claim, move and append-only history", () => {
-    expect(sql).toContain("unique (execution_key, rule_id)");
+    expect(sql).toContain("unique (org_id, execution_key, rule_id)");
+    expect(sql).toContain("on conflict (org_id, execution_key, rule_id)");
     expect(sql).toContain("attempt_count = public.board_automation_execution_claims.attempt_count + 1");
     expect(sql).toContain("claim_id uuid references public.board_automation_execution_claims");
     expect(sql).toContain("execute_board_automation_move");
     expect(sql).toContain("update public.items");
     expect(sql).toContain("status = 'succeeded'");
+  });
+
+  it("scopes an otherwise identical execution and rule to its company", () => {
+    expect(sql).toContain("unique (org_id, execution_key, rule_id)");
+    expect(sql).toContain("on conflict (org_id, execution_key, rule_id)");
   });
 
   it("is service-role only and does not alter GT04 condition storage", () => {

@@ -8,7 +8,7 @@ create table if not exists public.board_automation_execution_claims (
   rule_id uuid references public.board_automation_rules(id) on delete set null,
   status text not null check (status in ('running', 'succeeded', 'failed', 'blocked')),
   attempt_count integer not null default 1 check (attempt_count > 0),
-  unique (execution_key, rule_id)
+  unique (org_id, execution_key, rule_id)
 );
 
 create table if not exists public.board_automation_executions (
@@ -82,7 +82,7 @@ begin
     org_id, execution_key, rule_id, status
   ) values (
     p_org_id, p_execution_key, p_rule_id, 'running'
-  ) on conflict (execution_key, rule_id) do update
+  ) on conflict (org_id, execution_key, rule_id) do update
     set status = 'running',
         attempt_count = public.board_automation_execution_claims.attempt_count + 1
     where public.board_automation_execution_claims.status = 'failed'

@@ -31,7 +31,7 @@ export interface AutomationOutcome extends AutomationTrace {
   blocked_reasons?: readonly string[];
 }
 
-/** Atomic persistence boundary implemented by migration 045. */
+/** Atomic persistence boundary implemented by migration 051. */
 export interface AutomationStorePort {
   executeMove(job: AutomationJobData & { evaluation: { decision: MoveDecision; blocked_reasons: readonly string[] } }): Promise<AutomationOutcome>;
   recordBlocked(job: AutomationJobData): Promise<AutomationOutcome>;
