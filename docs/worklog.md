@@ -4,6 +4,45 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-08-12 — [총괄 지시 반영 · 눌러본 증거 · 모아워크 DC 02/claude] BBE-142 PR #166
+
+- **① 마이그레이션 번호 충돌 해소**: `origin/main` 이 그 사이 058 을 `outbox_delivery.sql`
+  (BBE-30, #143)로 선점. `origin/main` 위로 rebase(충돌 없음) 후 내 마이그레이션을
+  059(머지 직전 최신+1)로 재번호. 파일 자체엔 자기참조 파일명이 없어 안전하게 rename.
+  rebase로 새 outbox 코드가 들어오며 worker `pg` 타입 선언 누락 typecheck 에러가
+  났으나 원인은 lockfile-node_modules 불일치(BBE-30이 `pg`/`@types/pg` 버전을 올림) —
+  `npm install` 로 해소. 내 diff 와 무관.
+- **② BBE-103 잔여 1건**: `nav-items.ts` work 항목 `/policyfund` → `/work` 한 줄.
+  단, 이 값은 2026-08-11 MWC 가 "데이터 완성도"(31컬럼 vs 빈 데이터) 근거로 확정하며
+  테스트에 "임의 교체 금지"를 박아둔 값이었다 — 이번 총괄 지시("/policyfund 는 셸 밖
+  옛 미리보기, /work 는 셸 안의 새 화면. /policyfund 자체는 지우지 않는다")로 그 결정을
+  명시적으로 뒤집는 것이라 판단해 그대로 반영했다. `nav-items.test.ts` 가드 문구와
+  `app-tabs.ts` 의 canonicalHref(/work)·altHrefs(/policyfund 계열)도 새 결정에 맞춰
+  같이 갱신 — 안 그러면 `app-tabs-nav.test.ts` 드리프트 가드가 깨진다.
+- **③ 눌러본 증거**: 로컬 dev-session 쿠키(`mw_uid=usr00000-…-a1`)로 로그인 후
+  1440px·375px 양쪽에서 사이드바 "업무관리" **실제 클릭** → `/work` 진입, 셸(사이드바
+  11개 링크·상단바 알림/다크모드/계정) 유지 확인. 375px 가로 오버플로 0.
+  - **막힘 2건, 전부 우회하고 원인 기록**: (a) Windows 에서 Turbopack 이 먼저는
+    죽었다가 이번엔 살아있었다(비결정적, 이 세션 환경 이슈, 재확인만) — `--webpack`
+    강제 사용 없이 정상 기동. (b) `(app)/work/actions.ts` 가 `node:crypto` 를 직접
+    import 하는데, `--webpack` 강제 모드에서는 그걸 못 읽어 500 (Turbopack 에선 정상) —
+    내 diff 밖 기존 코드, 참고용으로만 남긴다. (c) `.env.local` 부재 시
+    `workspace-entry-server.ts:91`(`loadWorkspaceRoutingSnapshot`)가 `hasSupabaseEnv()`
+    분기 없이 무조건 `createClient()` 를 호출해 dev-session 모드에서도 500 — 로컬
+    검증용으로만 `supabase/server.ts` 를 임시 패치(더미 URL/키 폴백)해 우회했고, 검증
+    직후 `git checkout --` 로 완전히 원복해 커밋엔 안 들어갔다(diff 재확인 완료).
+    이 (c) 는 BBE-142 범위 밖의 앱 전역 이슈로 별도 카드감이다.
+  - `/work` 화면 자체는 "Work-management read RPC is unavailable — 로컬 데이터로
+    대체하지 않았습니다. BBE-29 데이터 계약 활성화 후 다시 시도해 주세요"라는 정직한
+    미구현 상태를 보여준다(가짜 데이터 없음) — 이 카드가 만드는 화면이 아니라 이미
+    있던 상태다.
+- 전체 게이트: `bash scripts/check.sh` 그린(app 184/1570·worker 16/57), rebase 후
+  재실행 포함 2회 그린 확인. `git push --force-with-lease`(rebase 후 필수) 로
+  `claude/bbe-142-app-shell` 갱신.
+- DG-01(1단 재확인)·NG-01(2단, migration 059) 검수 대기 — 여전히 셀프 머지하지 않는다.
+
+---
+
 ## 2026-08-12 — [1단 재검수 · 2단 승격 · 모아워크 DC 02/claude] BBE-142 PR #166
 
 - 초판(6탭 골격 + `/presets`)에 대한 1단 자체검수(무유도 서브에이전트)가 **FAIL**: `/presets`가
