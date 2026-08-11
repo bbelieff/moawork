@@ -68,8 +68,8 @@ export const SEOUL_CONTACT_BOARD: PackBoard = {
         { id: "계약취소", label: "계약취소", color: "#bb3354", order: 10 },
       ],
     },
-    // 시드 확정 ③: 선택지형 담당자(`color_mkx7de80` 담당자 구분 — 담당자 미정/박정화/
-    // 이대표)는 심지 않는다. 이 보드의 담당자는 위 `person` 멤버 컬럼 하나다.
+    // 시드 확정 ③: 선택지형 담당자(`color_mkx7de80` 담당자 구분 — 담당자 미정 + 직원 실명
+    // 2명)는 심지 않는다. 이 보드의 담당자는 위 `person` 멤버 컬럼 하나다.
     {
       key: "color_mm4td02",
       label: "이동",
@@ -127,8 +127,9 @@ export const SEOUL_CONTACT_BOARD: PackBoard = {
 
   sections: [
     { name: "컨텍관리-컨텍", groupName: "💰컨텍", color: "#a25ddc", order: 0 },
-    { name: "컨텍관리-이대표", groupName: "💰이대표", color: "#007eb5", order: 1 },
-    { name: "컨텍관리-박정화 실장", groupName: "💰박정화 실장", color: "#037f4c", order: 2 },
+    // 담당자별 그룹(D73) — 실명 대신 슬롯. 원본은 직원 실명 2명이 각 그룹명에 박혀 있었다.
+    { name: "컨텍관리-담당자별-1", groupName: "💰", color: "#007eb5", order: 1, assigneeSlot: 0 },
+    { name: "컨텍관리-담당자별-2", groupName: "💰", color: "#037f4c", order: 2, assigneeSlot: 1 },
     { name: "컨텍관리-계약보류", groupName: "💰계약보류(온/오프)", color: "#FFCB00", order: 3 },
     { name: "컨텍관리-미팅보류", groupName: "📍미팅보류", color: "#0086c0", order: 4 },
     { name: "컨텍관리-미팅취소", groupName: "📍미팅취소", color: "#FF158A", order: 5 },

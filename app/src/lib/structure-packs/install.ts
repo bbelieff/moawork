@@ -10,8 +10,16 @@
 import type { Ctx } from "@/lib/types";
 import type { BoardsRepo } from "@/lib/boards/store";
 import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { getRepo } from "@/lib/repo";
 import { SEOUL_STRUCTURE_PACK } from "./seoul-pack";
-import type { DeferredColumn, PackBoard, PackColumn, StructurePack } from "./types";
+import type { DeferredColumn, PackBoard, PackColumn, SectionPreset, StructurePack } from "./types";
+
+/** 담당자별 그룹(`assigneeSlot`)을 채우는 데 필요한 최소 정보. */
+export interface AssigneeMember {
+  userId: string;
+  /** 그룹 이름에 붙일 표시 이름. */
+  displayName: string;
+}
 
 export interface InstalledBoard {
   slug: string;
@@ -28,6 +36,63 @@ export interface InstalledBoard {
   viewIds: string[];
 }
 
+/** 담당자 멤버와 실제 그룹을 잇는 안정적인 연결점 — 표시명이 아니라 userId 로 식별한다. */
+export interface AssigneeGroupBinding {
+  boardSlug: string;
+  boardId: string;
+  groupId: string;
+  slot: number;
+  userId: string;
+}
+
+const ASSIGNEE_OWNER_MARKER = "\u2063";
+const ASSIGNEE_OWNER_ZERO = "\u200b";
+const ASSIGNEE_OWNER_ONE = "\u200c";
+
+function withAssigneeOwner(name: string, userId: string): string {
+  const bytes = new TextEncoder().encode(userId);
+  const bits = Array.from(bytes, (byte) =>
+    byte
+      .toString(2)
+      .padStart(8, "0")
+      .replaceAll("0", ASSIGNEE_OWNER_ZERO)
+      .replaceAll("1", ASSIGNEE_OWNER_ONE),
+  ).join("");
+  return `${name}${ASSIGNEE_OWNER_MARKER}${bits}`;
+}
+
+function assigneeOwnerFromGroupName(name: string): string | null {
+  const markerIndex = name.lastIndexOf(ASSIGNEE_OWNER_MARKER);
+  if (markerIndex < 0) return null;
+  const encoded = name.slice(markerIndex + ASSIGNEE_OWNER_MARKER.length);
+  if (!encoded || encoded.length % 8 !== 0) return null;
+  const bits = encoded
+    .replaceAll(ASSIGNEE_OWNER_ZERO, "0")
+    .replaceAll(ASSIGNEE_OWNER_ONE, "1");
+  if (!/^[01]+$/.test(bits)) return null;
+  const bytes = new Uint8Array(bits.match(/.{8}/g)!.map((byte) => Number.parseInt(byte, 2)));
+  try {
+    return new TextDecoder(undefined, { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+/** 사용자 화면에는 내부 소유자 표식을 노출하지 않고 원래 그룹명만 돌려준다. */
+export function assigneeGroupDisplayName(name: string): string {
+  const markerIndex = name.lastIndexOf(ASSIGNEE_OWNER_MARKER);
+  return markerIndex < 0 ? name : name.slice(0, markerIndex);
+}
+
+/** 담당자 자동 이동 소비자가 표시명 없이 userId 로 대상 그룹을 찾는다. */
+export function assigneeGroupIdForUser(
+  bindings: readonly AssigneeGroupBinding[],
+  boardSlug: string,
+  userId: string,
+): string | null {
+  return bindings.find((binding) => binding.boardSlug === boardSlug && binding.userId === userId)?.groupId ?? null;
+}
+
 export interface InstallResult {
   packKey: string;
   boards: InstalledBoard[];
@@ -35,6 +100,26 @@ export interface InstallResult {
   deferred: Array<DeferredColumn & { boardSlug: string }>;
   /** 이미 있어서 건너뛴 보드 slug. 재실행해도 중복 생성되지 않는다. */
   skipped: string[];
+  /** 멤버 초대/내보내기 reconcile 및 담당자 자동 이동이 재사용할 ID 기반 연결 정보. */
+  assigneeGroups: AssigneeGroupBinding[];
+}
+
+/**
+ * 설치를 요청한 조직의 담당자별 그룹 슬롯을 채울 멤버 목록.
+ *
+ * 가입순(= `created_at` 오름차순)으로 정렬해 `members[assigneeSlot]` 이 있으면
+ * 그 슬롯의 그룹을 만든다 — 결정대장 D73(BBE-130). 새 조직은 만든 사람 1명뿐이라
+ * 슬롯 0만 채워지고, 멤버를 초대할 때마다 다음 슬롯이 채워진다.
+ */
+function resolveAssignees(ctx: Ctx): AssigneeMember[] {
+  return getRepo()
+    .listMembers(ctx.org.id)
+    .slice()
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .map((member) => ({
+      userId: member.user_id,
+      displayName: member.user?.name?.trim() || member.user?.email?.trim() || "미배정",
+    }));
 }
 
 /**
@@ -46,28 +131,39 @@ export interface InstallResult {
  */
 export function installStructurePack(
   ctx: Ctx,
-  options: { repo?: BoardsRepo; pack?: StructurePack } = {},
+  options: {
+    repo?: BoardsRepo;
+    pack?: StructurePack;
+    assignees?: AssigneeMember[];
+  } = {},
 ): InstallResult {
   const repo = options.repo ?? getBoardsRepo();
   const pack = options.pack ?? SEOUL_STRUCTURE_PACK;
+  const assignees = options.assignees ?? resolveAssignees(ctx);
 
-  const existingNames = new Set(repo.listBoards(ctx).map((b) => b.name));
   const boards: InstalledBoard[] = [];
   const skipped: string[] = [];
   const deferred: Array<DeferredColumn & { boardSlug: string }> = [];
+  const assigneeGroups: AssigneeGroupBinding[] = [];
 
   for (const packBoard of pack.boards) {
     deferred.push(
       ...packBoard.deferredColumns.map((column) => ({ ...column, boardSlug: packBoard.slug })),
     );
-    if (existingNames.has(packBoard.name)) {
+    const existingBoard = repo.listBoards(ctx).find((board) => board.name === packBoard.name);
+    if (existingBoard) {
       skipped.push(packBoard.slug);
+      assigneeGroups.push(
+        ...reconcileAssigneeGroups(ctx, repo, existingBoard.id, packBoard, assignees),
+      );
       continue;
     }
-    boards.push(installBoard(ctx, repo, packBoard, pack));
+    const installed = installBoard(ctx, repo, packBoard, pack, assignees);
+    boards.push(installed.board);
+    assigneeGroups.push(...installed.assigneeGroups);
   }
 
-  return { packKey: pack.key, boards, deferred, skipped };
+  return { packKey: pack.key, boards, deferred, skipped, assigneeGroups };
 }
 
 /**
@@ -84,12 +180,115 @@ function resolveOptions(column: PackColumn, pack: StructurePack) {
   return set;
 }
 
+/**
+ * 그룹의 실제 이름을 정한다.
+ *
+ * `assigneeSlot` 이 없으면 팩에 적힌 이름 그대로(업무 상태 그룹). 있으면 그 슬롯 번호의
+ * 멤버를 붙인다 — 슬롯만큼 멤버가 없으면 `null`(그 그룹은 만들지 않는다, D73).
+ */
+function resolveSectionName(section: SectionPreset, assignees: AssigneeMember[]): string | null {
+  if (section.assigneeSlot === undefined) return section.groupName;
+  const assignee = assignees[section.assigneeSlot];
+  return assignee ? `${section.groupName}${assignee.displayName}` : null;
+}
+
+/**
+ * 이미 설치된 보드의 담당자별 그룹을 현재 멤버 슬롯과 맞춘다.
+ * 바인딩은 userId 를 정본으로 삼으므로 표시명 변경·동명이인이 그룹 동일성을 바꾸지 않는다.
+ */
+export function reconcileAssigneeGroups(
+  ctx: Ctx,
+  repo: BoardsRepo,
+  boardId: string,
+  packBoard: PackBoard,
+  assignees: readonly AssigneeMember[],
+): AssigneeGroupBinding[] {
+  const slotSections = packBoard.sections.filter(
+    (section): section is SectionPreset & { assigneeSlot: number } => section.assigneeSlot !== undefined,
+  );
+  const existingGroups = repo.listGroups(ctx, boardId);
+  const claimedGroupIds = new Set<string>();
+  const slotGroups = existingGroups.filter((group) =>
+    slotSections.some(
+      (section) =>
+        group.color?.toLowerCase() === section.color.toLowerCase() &&
+        group.name.startsWith(section.groupName),
+    ),
+  );
+  const groupForSection = (section: SectionPreset) =>
+    slotGroups.find(
+      (group) =>
+        !claimedGroupIds.has(group.id) &&
+        assigneeOwnerFromGroupName(group.name) === null &&
+        group.color?.toLowerCase() === section.color.toLowerCase() &&
+        group.name.startsWith(section.groupName),
+    );
+  const fallback = existingGroups.find(
+    (group) =>
+      !slotSections.some(
+        (section) =>
+          group.color?.toLowerCase() === section.color.toLowerCase() &&
+          group.name.startsWith(section.groupName),
+      ),
+  );
+  const next: AssigneeGroupBinding[] = [];
+
+  const moveItems = (fromGroupId: string, toGroupId: string) => {
+    for (const item of repo.listItems(ctx, boardId)) {
+      if (item.group_id === fromGroupId) repo.updateItem(ctx, item.id, { group_id: toGroupId });
+    }
+  };
+
+  for (const section of slotSections) {
+    const slot = section.assigneeSlot;
+    const assignee = assignees[slot];
+    const existing =
+      slotGroups.find(
+        (group) =>
+          !claimedGroupIds.has(group.id) &&
+          assigneeOwnerFromGroupName(group.name) === assignee?.userId,
+      ) ?? groupForSection(section);
+    if (existing) claimedGroupIds.add(existing.id);
+
+    if (!assignee) {
+      if (existing) {
+        if (!fallback) throw new Error(`담당자 그룹 아이템을 옮길 일반 그룹이 없습니다: ${packBoard.slug}`);
+        moveItems(existing.id, fallback.id);
+        repo.deleteGroup(ctx, existing.id);
+      }
+      continue;
+    }
+
+    const expectedName = withAssigneeOwner(`${section.groupName}${assignee.displayName}`, assignee.userId);
+    let group = existing;
+    if (!group || group.name !== expectedName) {
+      const replacement = repo.createGroup(ctx, boardId, { name: expectedName, color: section.color });
+      if (group) {
+        moveItems(group.id, replacement.id);
+        repo.deleteGroup(ctx, group.id);
+      }
+      group = replacement;
+    }
+
+    next.push({ boardSlug: packBoard.slug, boardId, groupId: group.id, slot, userId: assignee.userId });
+  }
+
+  for (const obsolete of slotGroups.filter((group) => !claimedGroupIds.has(group.id))) {
+    if (!fallback) throw new Error(`담당자 그룹 아이템을 옮길 일반 그룹이 없습니다: ${packBoard.slug}`);
+    moveItems(obsolete.id, fallback.id);
+    repo.deleteGroup(ctx, obsolete.id);
+  }
+
+  return next;
+}
+
 function installBoard(
   ctx: Ctx,
   repo: BoardsRepo,
   packBoard: PackBoard,
   pack: StructurePack,
-): InstalledBoard {
+  assignees: AssigneeMember[],
+): { board: InstalledBoard; assigneeGroups: AssigneeGroupBinding[] } {
   const board = repo.createBoard(ctx, {
     name: packBoard.name,
     description: packBoard.description,
@@ -108,9 +307,31 @@ function installBoard(
     return created.key;
   });
 
-  const groupIds = packBoard.sections.map(
-    (section) => repo.createGroup(ctx, board.id, { name: section.groupName, color: section.color }).id,
-  );
+  const groupIds: string[] = [];
+  const assigneeGroups: AssigneeGroupBinding[] = [];
+  for (const section of packBoard.sections) {
+    const name = resolveSectionName(section, assignees);
+    if (name === null) continue; // 담당자별 슬롯인데 채울 멤버가 아직 없음(D73)
+    const assignee =
+      section.assigneeSlot === undefined ? undefined : assignees[section.assigneeSlot];
+    const group = repo.createGroup(ctx, board.id, {
+      name: assignee ? withAssigneeOwner(name, assignee.userId) : name,
+      color: section.color,
+    });
+    groupIds.push(group.id);
+    if (section.assigneeSlot !== undefined) {
+      const assignee = assignees[section.assigneeSlot];
+      if (assignee) {
+        assigneeGroups.push({
+          boardSlug: packBoard.slug,
+          boardId: board.id,
+          groupId: group.id,
+          slot: section.assigneeSlot,
+          userId: assignee.userId,
+        });
+      }
+    }
+  }
 
   const viewIds = packBoard.views.map(
     (view) =>
@@ -124,11 +345,14 @@ function installBoard(
   );
 
   return {
-    slug: packBoard.slug,
-    boardId: board.id,
-    nameLabel: packBoard.nameColumn.label,
-    groupIds,
-    columnKeys,
-    viewIds,
+    board: {
+      slug: packBoard.slug,
+      boardId: board.id,
+      nameLabel: packBoard.nameColumn.label,
+      groupIds,
+      columnKeys,
+      viewIds,
+    },
+    assigneeGroups,
   };
 }

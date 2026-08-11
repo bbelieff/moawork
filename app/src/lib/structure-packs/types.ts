@@ -1,7 +1,7 @@
 /**
  * 구조 팩(structure pack) 도메인 타입 — PLAN-002/WO-1.
  *
- * SSOT: `supabase/migrations/031_newcust_structure_pack.sql` 의
+ * SSOT: `supabase/migrations/040_preset_depersonalize.sql`(031 의 행을 update)의
  * `structure_packs.pack_jsonb`. 이 파일은 그 JSONB 의 앱 표현이며,
  * 두 정의가 어긋나지 않는지는 `seoul-pack.test.ts` 가 고정한다.
  *
@@ -74,12 +74,31 @@ export interface DeferredColumn {
 export interface SectionPreset {
   /** 라이브러리 식별자. `탭-그룹` 형식. */
   name: string;
-  /** 화면에 뜨는 그룹 이름(이모지 포함 — 먼데이 원문 그대로). */
+  /**
+   * 화면에 뜨는 그룹 이름(이모지 포함 — 먼데이 원문 그대로).
+   *
+   * `assigneeSlot` 이 있는 항목은 여기 실명이 아니라 **이모지 접두사만** 담는다
+   * (예: `"♻️"`). 실제 그룹 이름은 설치 시 `${groupName}${멤버 표시명}` 으로 만든다.
+   */
   groupName: string;
   /** 그룹 헤더 밴드 색(hex). ui-guidelines 원칙 10 이 이 값을 쓴다. */
   color: string;
   /** 보드 안에서의 순서(0부터). 먼데이 position 오름차순을 그대로 옮긴다. */
   order: number;
+  /**
+   * 담당자별 그룹 슬롯 — 결정대장 D73 (2026-08-10 belie 교정 · BBE-130).
+   *
+   * 먼데이 원본은 "담당자별로 카드를 나눠 담는다"는 구조를 특정 직원 실명으로 심어 뒀다.
+   * 구조(담당자별 분류) 자체는 실제 업무 방식이라 남기지만,
+   * 실명은 전역 카탈로그에 박아 둘 수 없다(다른 회사가 설치하면 그 회사에 없는 사람 이름의
+   * 그룹이 생긴다). 그래서 이름 대신 **0부터 시작하는 슬롯 번호**만 남긴다.
+   *
+   * 설치 시 조직 멤버를 가입순으로 정렬해 `members[assigneeSlot]` 이 있으면 그 멤버 이름으로
+   * 그룹을 만들고, 없으면 그 슬롯은 만들지 않는다 — 새 조직(멤버 1명)은 슬롯 0만 채워져
+   * 아이템 1개, 초대할 때마다 다음 슬롯이 채워진다. 슬롯 수(=이 값을 가진 항목 수)는
+   * 원본의 담당자 수(2명)를 그대로 유지해 "아이템 종류 수" 를 불변으로 지킨다.
+   */
+  assigneeSlot?: number;
 }
 
 /** 보드 1개의 구조. */
