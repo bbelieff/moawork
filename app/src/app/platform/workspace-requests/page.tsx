@@ -4,14 +4,34 @@ import { Logo } from "@/components/brand/Logo";
 import { ApprovalQueue } from "@/components/workspace-entry/ApprovalQueue";
 import styles from "@/components/workspace-entry/workspace-entry.module.css";
 import { loadWorkspaceRoutingSnapshot } from "@/lib/auth/workspace-entry-server";
+import { decideAccessFailureDestination } from "@/lib/auth/routing/access-failure";
 import { loadWorkspaceEntryContext } from "@/lib/workspace-entry/server";
 import { getMySupportReadScope } from "@/lib/account/memberAccountOps";
 
 export default async function PlatformWorkspaceRequestsPage() {
   const routing = await loadWorkspaceRoutingSnapshot();
-  if (routing.kind === "unauthenticated") redirect("/login?next=/platform/workspace-requests");
+  if (routing.kind === "unauthenticated") {
+    redirect(decideAccessFailureDestination({
+      kind: "unauthenticated",
+      nextPath: "/platform/workspace-requests",
+      source: "platform-guard",
+    }).path);
+  }
   const context = await loadWorkspaceEntryContext();
-  if (context.kind === "error" || !context.isPlatformAdmin) redirect("/workspace-entry?error=permission");
+  if (context.kind === "error") {
+    redirect(decideAccessFailureDestination({
+      kind: "authenticated-denial",
+      reason: "membership-unavailable",
+      source: "platform-guard",
+    }).path);
+  }
+  if (!context.isPlatformAdmin) {
+    redirect(decideAccessFailureDestination({
+      kind: "authenticated-denial",
+      reason: "permission",
+      source: "platform-guard",
+    }).path);
+  }
   let supportScopes: Awaited<ReturnType<typeof getMySupportReadScope>> | null = null;
   try { supportScopes = await getMySupportReadScope(); } catch { supportScopes = null; }
 

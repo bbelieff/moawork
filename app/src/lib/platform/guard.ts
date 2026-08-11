@@ -1,4 +1,8 @@
 import { redirect } from "next/navigation";
+import {
+  decideAccessFailureDestination,
+  type AccessFailureDestination,
+} from "@/lib/auth/routing/access-failure";
 import { loadPlatformActor, type PlatformActor } from "./actor";
 
 export type PlatformAccess = { kind: "allowed" } | { kind: "denied"; reason: "unauthenticated" | "permission" | "unavailable" };
@@ -12,11 +16,25 @@ export function resolvePlatformAccess(actor: PlatformActor): PlatformAccess {
   return { kind: "denied", reason: actor.kind === "unavailable" ? "unavailable" : "permission" };
 }
 
-export function platformAccessFailurePath(access: PlatformAccess): string | null {
-  if (access.kind === "allowed" || access.reason === "unauthenticated") return null;
-  return access.reason === "unavailable"
-    ? "/?error=platform-unavailable"
-    : "/?error=platform-forbidden";
+export function decidePlatformAccessDestination(
+  access: PlatformAccess,
+  nextPath: string,
+): AccessFailureDestination | null {
+  if (access.kind === "allowed") return null;
+  if (access.reason === "unauthenticated") {
+    return decideAccessFailureDestination({
+      kind: "unauthenticated",
+      nextPath,
+      source: "platform-guard",
+    });
+  }
+  return decideAccessFailureDestination({
+    kind: "authenticated-denial",
+    reason: access.reason === "unavailable"
+      ? "membership-unavailable"
+      : "permission",
+    source: "platform-guard",
+  });
 }
 
 /**
@@ -25,12 +43,9 @@ export function platformAccessFailurePath(access: PlatformAccess): string | null
  */
 export async function requirePlatformAccess(nextPath: string): Promise<void> {
   const access = resolvePlatformAccess(await loadPlatformActor());
-  if (access.kind === "denied" && access.reason === "unauthenticated") {
-    redirect(`/login?next=${encodeURIComponent(nextPath)}`);
-  }
-  const failurePath = platformAccessFailurePath(access);
-  if (failurePath) {
+  const destination = decidePlatformAccessDestination(access, nextPath);
+  if (destination) {
     console.warn("[platform-access] denied", { reason: access.kind === "denied" ? access.reason : "unknown" });
-    redirect(failurePath);
+    redirect(destination.path);
   }
 }

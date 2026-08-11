@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { platformAccessFailurePath, resolvePlatformAccess } from "./guard";
+import {
+  decidePlatformAccessDestination,
+  resolvePlatformAccess,
+} from "./guard";
 
 describe("resolvePlatformAccess", () => {
   it("allows only a server-confirmed platform administrator", () => {
@@ -12,10 +15,38 @@ describe("resolvePlatformAccess", () => {
     expect(resolvePlatformAccess({ kind: "unavailable" })).toEqual({ kind: "denied", reason: "unavailable" });
   });
 
-  it("uses distinct local destinations for forbidden and unavailable outcomes", () => {
-    expect(platformAccessFailurePath({ kind: "allowed" })).toBeNull();
-    expect(platformAccessFailurePath({ kind: "denied", reason: "unauthenticated" })).toBeNull();
-    expect(platformAccessFailurePath({ kind: "denied", reason: "permission" })).toBe("/?error=platform-forbidden");
-    expect(platformAccessFailurePath({ kind: "denied", reason: "unavailable" })).toBe("/?error=platform-unavailable");
+  it("preserves a safe return path only for unauthenticated actors", () => {
+    expect(decidePlatformAccessDestination(
+      { kind: "denied", reason: "unauthenticated" },
+      "/platform/organizations?tab=active",
+    )).toEqual({
+      kind: "authenticate",
+      path: "/login?next=%2Fplatform%2Forganizations%3Ftab%3Dactive",
+    });
+  });
+
+  it.each(["https://attacker.invalid", "/login", "/auth/callback"])(
+    "sanitizes unsafe or looping platform return path %s",
+    (nextPath) => {
+      expect(decidePlatformAccessDestination(
+        { kind: "denied", reason: "unauthenticated" },
+        nextPath,
+      )).toEqual({
+        kind: "authenticate",
+        path: "/login?next=%2Fworkspace-entry",
+      });
+    },
+  );
+
+  it("converges forbidden and unavailable outcomes without changing allowed actors", () => {
+    expect(decidePlatformAccessDestination({ kind: "allowed" }, "/platform")).toBeNull();
+    expect(decidePlatformAccessDestination(
+      { kind: "denied", reason: "permission" },
+      "/platform",
+    )).toEqual({ kind: "fail-closed", path: "/workspace-entry?error=routing" });
+    expect(decidePlatformAccessDestination(
+      { kind: "denied", reason: "unavailable" },
+      "/platform",
+    )).toEqual({ kind: "fail-closed", path: "/workspace-entry?error=routing" });
   });
 });
