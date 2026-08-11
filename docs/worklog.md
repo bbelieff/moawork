@@ -4,6 +4,26 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [END · 모아워크 노트북 CT09(260810)/claude] 2026-08-11 — BBE-103 재작업: MWC 정정 반영 완료
+
+- 결과: **PASS**. 앞서 이 세션이 남긴 work→`/work` 변경을 MWC 프로덕션 실측 정정(C작업반장 정정 ①)에
+  따라 **철회**하고 company/notice/contact 3건만 확정.
+- base SHA 재고: `44b7ffd`(오늘 다수 병합분 — BBE-104 자동화 조건평가 등 포함). 순차 리베이스가
+  main 의 BBE-126 아이콘 리팩터(이모지→IconName SVG)와 계속 충돌해, 리베이스 대신 origin/main 위에
+  **재작성**(4개 구커밋 대체)으로 처리.
+- 산출물: `app/src/components/shell/nav-items.ts`(company→/companies·notice→/notices·
+  contact→/contract 추가, work 는 `/policyfund` 유지) + `nav-items.test.ts`(3 테스트, work=/policyfund
+  회귀 가드로 정정 사유 인라인 주석 포함).
+- 검증: 격리 워크트리 예정(다음 항목에 결과 별도 기록) · `nav-items.test.ts` 단독 3/3 PASS.
+- ⚠️ **정정하지 않은 사실 1건(기록용)**: 이전 세션에서 로컬 실측한 구조적 차이 —
+  `/work` 는 인증 게이트를 통과(→`/login?error=membership`, 코드상 `(app)` 라우트그룹 내부)하고
+  `/policyfund` 는 게이트 밖에서 200 직행(그룹 밖 페이지)한다는 것은 **여전히 사실**이다. 다만
+  프로덕션 콘텐츠 실측(31컬럼 렌더 vs 빈 데이터)이 이번 정정의 근거이므로 그 우선순위를 따른다.
+  추후 `/work` 데이터 시딩이 끝나면 재검토 대상.
+- 리스: `app/src/components/shell/nav-items.ts`+`nav-items.test.ts` — 반납.
+- 상대에게 필요한 것: 데탑 CT08 검수 → merge → 배포. 이 세션은 검수자가 아니라 merge 를 직접
+  수행하지 않음.
+
 ## [START · 모아워크 노트북 CT10(260810)/claude]
 - 무엇을: 검수 전담 — 데탑 CT01~CT10(claude/*) PR 독립 검수. 작성자 ≠ 검수자.
 - 잡는 파일(리스): PR 코멘트 + docs/coordination/T10-gate-checklist.md 만. 코드 수정 금지.
