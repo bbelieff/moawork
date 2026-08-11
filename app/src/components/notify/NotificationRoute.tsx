@@ -20,14 +20,14 @@ export function NotificationRoute({ recipient }: { recipient: NotificationRecipi
   const tone = notificationRouteTone(recipient.distance);
   const path = recipient.path?.join(" → ");
   return (
-    <div
+    <span
       data-notification-source={recipient.source}
-      className="rounded-r-lg border-l-4 px-3 py-2 text-[12px]"
+      className="block rounded-r-lg border-l-4 px-3 py-2 text-[12px]"
       style={{ borderLeftColor: tone.rail, background: tone.background }}
     >
       <span className="font-semibold">{labels[recipient.source]}</span>
       {recipient.locked ? <span aria-label="규칙에 따라 받는 사람"> · 잠김</span> : null}
       {path ? <span className="mt-1 block opacity-65">{path}</span> : null}
-    </div>
+    </span>
   );
 }

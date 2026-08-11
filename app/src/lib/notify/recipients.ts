@@ -108,7 +108,7 @@ export function routeNotificationFeed<T extends { id: string; actor: string | nu
   preserveAll = false,
 ): Array<{ feed: T; recipient: NotificationRecipient }> {
   return feed.flatMap((item) => {
-    const route = item.target_id ? routes.get(item.target_id) : undefined;
+    const route = (item.target_id ? routes.get(item.target_id) : undefined) ?? routes.get("*");
     const recipient = resolveNotificationRecipients({
       actorId: item.actor ?? undefined,
       assigneeId: route?.assigneeId,

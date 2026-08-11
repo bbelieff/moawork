@@ -21,4 +21,9 @@ describe("routeNotificationFeed", () => {
   it("전체 조회 범위는 선행 port가 비어도 기존 회사소식을 보존한다", () => {
     expect(routeNotificationFeed([feed("x")], "admin", new Map(), true)).toHaveLength(1);
   });
+  it("담당 범위 사용자에게도 비-deal 조직 소식을 기본 팀 route로 보존한다", () => {
+    const notice = { ...feed("notice"), target_type: "notice", target_id: null };
+    const routes = new Map([["*", { assigneeId: null, teamMembers: ["member"] }]]);
+    expect(routeNotificationFeed([notice], "member", routes, false)).toHaveLength(1);
+  });
 });

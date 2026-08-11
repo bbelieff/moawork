@@ -117,7 +117,13 @@ class CurrentMainRoutingPort implements NotificationRoutingPort {
       targetIds.length ? this.supabase.from("deals").select("id, assigned_to").eq("org_id", this.orgId).in("id", targetIds) : Promise.resolve({ data: [] }),
     ]);
     const teamMembers = (members ?? []).map((row: { user_id: string }) => row.user_id);
-    return new Map((deals ?? []).map((row: { id: string; assigned_to: string | null }) => [row.id, { assigneeId: row.assigned_to, teamMembers }]));
+    const routes = new Map<string, { assigneeId: string | null; teamMembers: string[] }>(
+      [["*", { assigneeId: null, teamMembers }], ...targetIds.map((id) => [id, { assigneeId: null, teamMembers }] as const)],
+    );
+    for (const row of (deals ?? []) as Array<{ id: string; assigned_to: string | null }>) {
+      routes.set(row.id, { assigneeId: row.assigned_to, teamMembers });
+    }
+    return routes;
   }
 }
 
