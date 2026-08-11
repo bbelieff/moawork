@@ -6,6 +6,7 @@ import { CELL_FLASH_COOKIE, decodeCellFlash } from "@/lib/boards/cellFlash";
 import { getBoardsService, NotFoundError } from "@/lib/boards";
 import { getRepo } from "@/lib/repo";
 import { loadPermGuard } from "@/lib/perm/guard";
+import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { GenericBoardKanban } from "@/components/boards/GenericBoardKanban";
 import { ColumnEditor } from "@/components/boards/ColumnEditor";
@@ -32,13 +33,18 @@ export default async function BoardPage({
   const { id } = await params;
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
-  const [itemUpsert, itemDelete, columnManage, sectionManage, boardDelete] = await Promise.all([
+  const viewTabs = await loadPermGuard(ctx.org.id, "work.view_tabs");
+  if (viewTabs.kind !== "allowed") notFound();
+  const [scopedItems, itemUpsert, itemDelete, columnManage, sectionManage, boardDelete] = await Promise.all([
+    loadPermissionScopedWorkItems(ctx.org.id),
     loadPermGuard(ctx.org.id, "work.item_upsert"),
     loadPermGuard(ctx.org.id, "work.item_delete"),
     loadPermGuard(ctx.org.id, "structure.column_manage"),
     loadPermGuard(ctx.org.id, "structure.section_manage"),
     loadPermGuard(ctx.org.id, "danger.bulk_edit_delete"),
   ]);
+  // Permission and D24 scope are resolved before any board metadata or item read.
+  if (!scopedItems.ok) notFound();
   const canEditItems = itemUpsert.kind === "allowed";
   const canDeleteItems = itemDelete.kind === "allowed";
   const canManageColumns = columnManage.kind === "allowed";
@@ -60,8 +66,16 @@ export default async function BoardPage({
     (c) => c.type === "select" || c.type === "multiselect",
   );
   const groupBy = sp.group && selectColumns.some((c) => c.key === sp.group) ? sp.group : "";
-  const items = svc.listItems(ctx, id);
-  const lanes = view === "kanban" ? svc.kanban(ctx, id, groupBy || undefined) : [];
+  const visibleItemIds = new Set(scopedItems.result.itemIds);
+  const boardItems = svc.listItems(ctx, id);
+  const items = boardItems.filter((item) => visibleItemIds.has(item.id));
+  const hiddenCount = boardItems.length - items.length;
+  const lanes = view === "kanban"
+    ? svc.kanban(ctx, id, groupBy || undefined).map((lane) => ({
+        ...lane,
+        items: lane.items.filter((item) => visibleItemIds.has(item.id)),
+      }))
+    : [];
 
   // 직전 셀 편집에서 저장되지 못한 값의 사유(1회성). 없으면 null.
   const cellFlash = decodeCellFlash((await cookies()).get(CELL_FLASH_COOKIE)?.value);
@@ -149,6 +163,9 @@ export default async function BoardPage({
   if (view === "kanban") {
     return (
       <div className="flex w-full flex-col gap-3">
+        {hiddenCount > 0 && (
+          <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p>
+        )}
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
           {backLink}
           <h1 className="flex shrink-0 items-center gap-1.5 text-base font-semibold text-mw-fg">
@@ -191,6 +208,9 @@ export default async function BoardPage({
 
   return (
     <div className="flex w-full flex-col gap-3">
+      {hiddenCount > 0 && (
+        <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p>
+      )}
       <BoardWorkspace
         board={board}
         columns={columns}
