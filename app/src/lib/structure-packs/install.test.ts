@@ -219,7 +219,6 @@ describe("재설치 안전성", () => {
 
     const afterInvite = installStructurePack(owner(), {
       assignees: [creator, invited],
-      assigneeGroups: first.assigneeGroups,
     });
     expect(afterInvite.boards).toHaveLength(0);
     expect(afterInvite.skipped).toEqual(["newcust", "contact", "work"]);
@@ -230,12 +229,21 @@ describe("재설치 안전성", () => {
     expect(assigneeGroupIdForUser(afterInvite.assigneeGroups, "newcust", invited.userId)).toBeTruthy();
     expect(assigneeGroupIdForUser(afterInvite.assigneeGroups, "newcust", "same-display-name")).toBeNull();
 
+    const invitedGroupId = assigneeGroupIdForUser(afterInvite.assigneeGroups, "newcust", invited.userId);
+    if (!invitedGroupId) throw new Error("초대 멤버 그룹 없음");
+    const newcustBoardId = first.boards.find((board) => board.slug === "newcust")?.boardId;
+    if (!newcustBoardId) throw new Error("신규업체 보드 없음");
+    const preservedItem = boards().createItem(owner(), newcustBoardId, {
+      title: "보존할 업체",
+      group_id: invitedGroupId,
+      values: { text_mm40jz80: "보존할 광고" },
+    });
+
     const groupCountAfterInvite = installedBoardIds.map(
       (boardId) => boards().getBoardDetail(owner(), boardId).groups.length,
     );
     const rerun = installStructurePack(owner(), {
       assignees: [creator, invited],
-      assigneeGroups: afterInvite.assigneeGroups,
     });
     expect(rerun.assigneeGroups.map((binding) => binding.groupId).sort()).toEqual(
       afterInvite.assigneeGroups.map((binding) => binding.groupId).sort(),
@@ -246,7 +254,6 @@ describe("재설치 안전성", () => {
 
     const afterRemoval = installStructurePack(owner(), {
       assignees: [creator],
-      assigneeGroups: rerun.assigneeGroups,
     });
     expect(afterRemoval.assigneeGroups).toHaveLength(2);
     expect(new Set(afterRemoval.assigneeGroups.map((binding) => binding.userId))).toEqual(
@@ -262,6 +269,11 @@ describe("재설치 안전성", () => {
           .groups.some((group) => group.id === binding.groupId),
       ).toBe(true);
     }
+    const migratedItem = boards().getItem(owner(), newcustBoardId, preservedItem.id);
+    expect(migratedItem.group_id).not.toBeNull();
+    expect(migratedItem.group_id).not.toBe(invitedGroupId);
+    expect(migratedItem.title).toBe("보존할 업체");
+    expect(migratedItem.values.text_mm40jz80).toBe("보존할 광고");
   });
 
   it("두 번 설치해도 보드가 두 벌 생기지 않는다", () => {

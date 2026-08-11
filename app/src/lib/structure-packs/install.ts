@@ -96,7 +96,6 @@ export function installStructurePack(
     repo?: BoardsRepo;
     pack?: StructurePack;
     assignees?: AssigneeMember[];
-    assigneeGroups?: readonly AssigneeGroupBinding[];
   } = {},
 ): InstallResult {
   const repo = options.repo ?? getBoardsRepo();
@@ -115,11 +114,9 @@ export function installStructurePack(
     const existingBoard = repo.listBoards(ctx).find((board) => board.name === packBoard.name);
     if (existingBoard) {
       skipped.push(packBoard.slug);
-      if (options.assigneeGroups) {
-        assigneeGroups.push(
-          ...reconcileAssigneeGroups(ctx, repo, existingBoard.id, packBoard, assignees, options.assigneeGroups),
-        );
-      }
+      assigneeGroups.push(
+        ...reconcileAssigneeGroups(ctx, repo, existingBoard.id, packBoard, assignees),
+      );
       continue;
     }
     const installed = installBoard(ctx, repo, packBoard, pack, assignees);
@@ -166,38 +163,61 @@ export function reconcileAssigneeGroups(
   boardId: string,
   packBoard: PackBoard,
   assignees: readonly AssigneeMember[],
-  previousBindings: readonly AssigneeGroupBinding[],
 ): AssigneeGroupBinding[] {
-  const existingGroupIds = new Set(repo.listGroups(ctx, boardId).map((group) => group.id));
-  const previousBySlot = new Map(
-    previousBindings
-      .filter((binding) => binding.boardId === boardId && binding.boardSlug === packBoard.slug)
-      .map((binding) => [binding.slot, binding]),
+  const slotSections = packBoard.sections.filter(
+    (section): section is SectionPreset & { assigneeSlot: number } => section.assigneeSlot !== undefined,
+  );
+  const existingGroups = repo.listGroups(ctx, boardId);
+  const claimedGroupIds = new Set<string>();
+  const groupForSection = (section: SectionPreset) =>
+    existingGroups.find(
+      (group) =>
+        !claimedGroupIds.has(group.id) &&
+        group.color?.toLowerCase() === section.color.toLowerCase() &&
+        group.name.startsWith(section.groupName),
+    );
+  const fallback = existingGroups.find(
+    (group) =>
+      !slotSections.some(
+        (section) =>
+          group.color?.toLowerCase() === section.color.toLowerCase() &&
+          group.name.startsWith(section.groupName),
+      ),
   );
   const next: AssigneeGroupBinding[] = [];
 
-  for (const section of packBoard.sections) {
-    if (section.assigneeSlot === undefined) continue;
+  const moveItems = (fromGroupId: string, toGroupId: string) => {
+    for (const item of repo.listItems(ctx, boardId)) {
+      if (item.group_id === fromGroupId) repo.updateItem(ctx, item.id, { group_id: toGroupId });
+    }
+  };
+
+  for (const section of slotSections) {
     const slot = section.assigneeSlot;
     const assignee = assignees[slot];
-    const previous = previousBySlot.get(slot);
-    const previousStillExists = previous !== undefined && existingGroupIds.has(previous.groupId);
+    const existing = groupForSection(section);
+    if (existing) claimedGroupIds.add(existing.id);
 
     if (!assignee) {
-      if (previousStillExists) repo.deleteGroup(ctx, previous.groupId);
+      if (existing) {
+        if (!fallback) throw new Error(`담당자 그룹 아이템을 옮길 일반 그룹이 없습니다: ${packBoard.slug}`);
+        moveItems(existing.id, fallback.id);
+        repo.deleteGroup(ctx, existing.id);
+      }
       continue;
     }
 
-    if (previousStillExists && previous.userId === assignee.userId) {
-      next.push(previous);
-      continue;
+    const expectedName = `${section.groupName}${assignee.displayName}`;
+    let group = existing;
+    if (!group || group.name !== expectedName) {
+      const replacement = repo.createGroup(ctx, boardId, { name: expectedName, color: section.color });
+      if (group) {
+        moveItems(group.id, replacement.id);
+        repo.deleteGroup(ctx, group.id);
+      }
+      group = replacement;
     }
 
-    if (previousStillExists) repo.deleteGroup(ctx, previous.groupId);
-    const group = repo.createGroup(ctx, boardId, {
-      name: `${section.groupName}${assignee.displayName}`,
-      color: section.color,
-    });
     next.push({ boardSlug: packBoard.slug, boardId, groupId: group.id, slot, userId: assignee.userId });
   }
 
