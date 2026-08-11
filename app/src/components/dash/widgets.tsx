@@ -4,7 +4,9 @@
 // 모든 위젯은 0건/미가용 상태에서 '—' 또는 0 을 표시한다(NaN·빈화면 금지).
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { EMPTY, formatCount, formatKrw, formatPercent } from "@/lib/dash/format";
+import type { FollowUpEntry } from "@/lib/dash/aggregate";
 import type {
   ContractStatusBreakdown,
   ConversionRate,
@@ -13,22 +15,45 @@ import type {
   SettlementSummary,
 } from "@/lib/dash/types";
 
-/** 상단 고정 요약 카드. */
+/**
+ * 상단 고정 요약 카드.
+ *
+ * `href` 를 주면 카드 전체가 그 숫자를 만든 목록으로 이동하는 링크가 된다(BBE-18 —
+ * "숫자만 있고 못 들어가면 쓸모가 없다"). 안 주면 지금처럼 정적 카드로 남는다
+ * (드릴다운 목록이 아직 없는 값 — 예: 합계 금액 — 은 href 없이 둔다).
+ */
 export function StatCard({
   label,
   value,
   hint,
+  href,
 }: {
   label: string;
   value: string | number;
   hint?: string;
+  href?: string;
 }) {
-  return (
-    <div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+  const body = (
+    <>
       <div className="text-xs text-zinc-500">{label}</div>
       <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
       {hint ? <div className="mt-1 text-xs text-zinc-400">{hint}</div> : null}
-    </div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="block rounded-lg border border-zinc-200 p-4 transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:border-zinc-600 dark:hover:bg-zinc-900"
+      >
+        {body}
+      </Link>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">{body}</div>
   );
 }
 
@@ -226,6 +251,43 @@ export function SettlementWidget({
         대상 {formatCount(data.count)}건
       </div>
     </dl>
+  );
+}
+
+const FOLLOW_UP_LABEL: Record<FollowUpEntry["kind"], string> = {
+  reContact: "재접촉",
+  reapply: "재신청 안내",
+};
+
+/**
+ * 「오늘 할 일」 — 재접촉(D+180)·재신청 안내(D+365) (BBE-18).
+ * D26: 이 목록은 보는 사람의 담당범위로 이미 걸러진 채로 들어온다(호출부 buildFollowUps).
+ * 사람마다 다른 목록이 나오는 이유가 여기 있는 게 아니라 그 상위(ctx)에 있다.
+ */
+export function FollowUpListWidget({
+  entries,
+  emptyHint,
+}: {
+  entries: FollowUpEntry[];
+  emptyHint: string;
+}) {
+  if (entries.length === 0) {
+    return <p className="text-sm text-zinc-400">{emptyHint}</p>;
+  }
+  return (
+    <ul className="divide-y divide-zinc-100 text-sm dark:divide-zinc-800">
+      {entries.map((e) => (
+        <li
+          key={`${e.kind}-${e.dealId}`}
+          className="flex items-center justify-between gap-2 py-2"
+        >
+          <span className="truncate text-zinc-700 dark:text-zinc-200">{e.title}</span>
+          <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+            {FOLLOW_UP_LABEL[e.kind]}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

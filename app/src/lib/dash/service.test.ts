@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Company, Ctx, Deal, FieldDef, Pipeline, Stage } from "@/lib/types";
 import type { Repo } from "@/lib/repo";
-import { buildDashboard, currentMonthKst } from "./service";
+import { buildDashboard, buildFollowUps, currentMonthKst } from "./service";
 
 // ── 가짜 Repo (buildDashboard 가 쓰는 메서드만 구현) ──────────
 
@@ -193,5 +193,54 @@ describe("buildDashboard", () => {
       now: () => new Date("2026-03-05T00:00:00Z"),
     });
     expect(got.month).toBe("2026-03");
+  });
+});
+
+// ── buildFollowUps (BBE-18 · 오늘 할 일) ──────────────────
+
+describe("buildFollowUps", () => {
+  const now = () => new Date("2026-07-24T02:00:00Z"); // 2026-07-24 11:00 KST
+
+  it("데이터가 없으면 오늘·내일 전부 빈 배열", () => {
+    const got = buildFollowUps(ctx, { repo: fakeRepo({}), now });
+    expect(got.today).toBe("2026-07-24");
+    expect(got.tomorrow).toBe("2026-07-25");
+    expect(got.dueToday).toEqual([]);
+    expect(got.dueTomorrow).toEqual([]);
+  });
+
+  it("오늘 도래하는 재접촉(D+180)을 오늘 할 일에 담는다", () => {
+    const repo = fakeRepo({
+      // fee_paid_at 2026-01-25 + 180일 = 2026-07-24(오늘)
+      deals: [deal("a", { title: "재접촉 대상", custom: { exec_amount: 1, fee_pct: 1, fee_paid_at: "2026-01-25" } })],
+    });
+    const got = buildFollowUps(ctx, { repo, now });
+    expect(got.dueToday).toEqual([
+      { dealId: "a", title: "재접촉 대상", kind: "reContact", dueDate: "2026-07-24" },
+    ]);
+    expect(got.dueTomorrow).toEqual([]);
+  });
+
+  it("내일 도래하는 건은 dueTomorrow 에만 담긴다", () => {
+    const repo = fakeRepo({
+      // + 180일 = 2026-07-25(내일)
+      deals: [deal("a", { custom: { exec_amount: 1, fee_pct: 1, fee_paid_at: "2026-01-26" } })],
+    });
+    const got = buildFollowUps(ctx, { repo, now });
+    expect(got.dueToday).toEqual([]);
+    expect(got.dueTomorrow).toHaveLength(1);
+  });
+
+  it("담당범위(ctx) 는 repo.listDeals 에 위임한다 — 여기서 이름을 고정하지 않는다(D26)", () => {
+    let seenCtx: Ctx | null = null;
+    const repo: Repo = {
+      ...fakeRepo({}),
+      listDeals: (c: Ctx) => {
+        seenCtx = c;
+        return [];
+      },
+    } as unknown as Repo;
+    buildFollowUps(ctx, { repo, now });
+    expect(seenCtx).toBe(ctx);
   });
 });

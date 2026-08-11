@@ -2,9 +2,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   ContractStatusWidget,
+  FollowUpListWidget,
   PipelineWidget,
   ReContactWidget,
   SettlementWidget,
+  StatCard,
 } from "./widgets";
 
 describe("dashboard widget UX writing", () => {
@@ -91,5 +93,64 @@ describe("dashboard widget UX writing", () => {
     expect(html).not.toContain("딜");
     expect(html).not.toContain("정산 원천");
     expect(html).not.toContain("amount");
+  });
+});
+
+// ── StatCard — 숫자를 누르면 목록으로 들어간다(BBE-18) ──────
+
+describe("StatCard", () => {
+  it("href 가 있으면 카드 전체가 링크(<a>)가 된다", () => {
+    const html = renderToStaticMarkup(
+      <StatCard label="전체 업무" value={12} href="/dash/all" />,
+    );
+    expect(html).toContain("<a ");
+    expect(html).toContain('href="/dash/all"');
+    expect(html).toContain("전체 업무");
+    expect(html).toContain("12");
+  });
+
+  it("href 가 없으면 링크를 만들지 않는다(드릴다운 목록이 없는 값)", () => {
+    const html = renderToStaticMarkup(<StatCard label="합계" value="1,000원" />);
+    expect(html).not.toContain("<a ");
+  });
+});
+
+// ── FollowUpListWidget — 오늘 할 일(BBE-18) ─────────────────
+
+describe("FollowUpListWidget", () => {
+  it("비어 있으면 안내 문구만 보여준다(에러 없음)", () => {
+    const html = renderToStaticMarkup(
+      <FollowUpListWidget entries={[]} emptyHint="오늘 재접촉·재신청 안내할 업무가 없어요." />,
+    );
+    expect(html).toContain("오늘 재접촉·재신청 안내할 업무가 없어요.");
+  });
+
+  it("재접촉과 재신청 안내를 구분해서 보여준다", () => {
+    const html = renderToStaticMarkup(
+      <FollowUpListWidget
+        entries={[
+          { dealId: "a", title: "㈜가나다", kind: "reContact", dueDate: "2026-07-24" },
+          { dealId: "b", title: "라마바 상사", kind: "reapply", dueDate: "2026-07-24" },
+        ]}
+        emptyHint="없음"
+      />,
+    );
+    expect(html).toContain("㈜가나다");
+    expect(html).toContain("재접촉");
+    expect(html).toContain("라마바 상사");
+    expect(html).toContain("재신청 안내");
+  });
+
+  it("같은 딜이 재접촉·재신청 안내 둘 다 해당하면 두 항목으로 각각 뜬다", () => {
+    const html = renderToStaticMarkup(
+      <FollowUpListWidget
+        entries={[
+          { dealId: "a", title: "겹침 업체", kind: "reContact", dueDate: "2026-07-24" },
+          { dealId: "a", title: "겹침 업체", kind: "reapply", dueDate: "2026-07-24" },
+        ]}
+        emptyHint="없음"
+      />,
+    );
+    expect(html.match(/겹침 업체/g)).toHaveLength(2);
   });
 });
