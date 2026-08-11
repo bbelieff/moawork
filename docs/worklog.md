@@ -4,6 +4,33 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [END · 모아워크 노트북 CT05(260811)/claude] 2026-08-11 10:45 — BBE-18 대시보드 드릴다운 완료(구현)
+
+- 결과: PASS(구현 완료, PR 오픈 예정). `bash scripts/check.sh` 초록(app 1279 PASS/9 skip · worker 35). `node docs/design/qa-mockup.mjs` 86/86. `npx next build`(실 npm ci, junction 아님) 초록 — `/dash/all` 라우트 등록 확인.
+- 반납하는 리스: `app/src/lib/dash/**` · `app/src/components/dash/**` — 이번 카드 마무리, 계속 점유 아님.
+- 구현: PR #108(codex/bbe-18-dashboard-drilldown)과 겹치지 않는 새 파일만 사용.
+  - `lib/dash/aggregate.ts`: `todayKst`·`addDaysKst`·`dayRangeKst`·`followUpsOn`(재접촉 D+180·재신청안내 D+365 를 지정일에 합쳐 반환, 기존 `reContactList`/`reContactDue` 재사용).
+  - `lib/dash/service.ts`: `buildFollowUps(ctx, opts)` — 오늘·내일 재료. 담당범위는 `repo.listDeals(ctx)` 위임(D26 — 여기서 이름 고정 안 함).
+  - `components/dash/widgets.tsx`: `StatCard` 에 선택적 `href`(주면 카드 전체가 링크) · `FollowUpListWidget` 신설.
+  - `app/(app)/page.tsx`: 상단 4개 StatCard 클릭 가능화(전체 업무→`/dash/all`, 고객사→기존 `/companies`, 이번달 신규→`/dash/all?range=month`, 이번달 수납→`/dash/all?range=month&paid=1`) · "오늘 할 일" 위젯 추가.
+  - `app/(app)/dash/all/page.tsx`(신규): 전체/이번달신규/이번달수납 드릴다운. `/dash/[pipelineId]` 의 DealList 경계(딜 상세 미링크, core.crm 소유)를 그대로 따름.
+- 테스트: aggregate 11건·service 4건·widgets 4건 신규(합 18) + 기존 전부 무변경 통과.
+- 스코프 밖(카드 acceptance criteria에서 명시적으로 이번 구현 제외, followup):
+  - **심사 D-day** — 백업 데이터(`review_period`)가 구조팩 RPC 스캐폴드뿐이라 실 아이템 없음(034 RPC 주석 "no work tables and no write RPC"). 지어내지 않음.
+  - PR #108 의 범용 오늘할일(`custom.dueDate`)과 내 재접촉/재신청 오늘할일은 현재 별개 위젯 — 병합은 #108 머지 이후 후속.
+- ⛔ 미검증(NOT_RUN, PASS 아님): 실제 화면 렌더·1440px/375px 스크린샷·프로덕션 배포·`/login` 200.
+  사유: `lib/supabase/env.ts` 의 `getSession()` 이 `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY` 를 무조건 요구(폴백 없음) — 이 워크트리는 물론 공유 메인 체크아웃에도 `app/.env.local` 이 없어 로컬 렌더 자체가 불가. 이 스레드의 다른 세션들(GT02·GT04·GT05 등)도 동일 사유로 "hosted DB/Production/실화면: NOT_RUN" 반복 보고 — 개별 세션이 풀 수 있는 문제가 아님. 자격증명을 지어내지 않음.
+- 다음: 데탑 CT07 독립 검수. 검수 통과 시 belie(또는 실 env 보유 세션)가 화면 스크린샷·배포 확인·완주 도장을 이어서 채워야 함.
+
+## [START · 모아워크 노트북 CT05(260811)/claude] 2026-08-11 10:20 — BBE-18 대시보드 드릴다운 재개
+
+- 착수 4단계 완료: dump-mockup(work) 정상, qa-mockup **86/86**, 결정대장 D24·D26 확인, origin/main=`c32e01e` 직접 실측.
+- 리스: `app/src/lib/dash/**` · `app/src/components/dash/**`.
+- PR #108(codex/bbe-18-dashboard-drilldown) diff 직접 확인 — 범용 오늘할일(custom.dueDate) + 클릭 드릴다운은 이미 구현됨(부분 중복). 정책자금 파생 3종(재신청안내일·D+180·심사D-day)은 #108에 없음 — 260810 개정 신규 요구.
+- 방침: #108 소유 파일(`dash/tasks/page.tsx`·`dash/drilldown.tsx`·`dash/drilldown/model.ts`) 미편집. 새 파일로 3종 날짜 소스만 추가해 이후 합류 가능하게 설계.
+- 스키마 실측: 재신청안내일=`Settlement.d365`(fee_paid_at+365, 목업 "조달일" 표기와 불일치 — followup), D+180=`Settlement.d180`, 심사D-day=`review_period` 종료−오늘(조회시점 계산). **재접촉일은 코드베이스 전체에 실 필드 없음**(구조팩/CRM grep 0건) → 이번 범위 제외, followup.
+- BBE-94 재개 도장 완료. 상세: BBE-94 코멘트 참조.
+
 ## [START · 모아워크 노트북 CT10(260810)/claude]
 - 무엇을: 검수 전담 — 데탑 CT01~CT10(claude/*) PR 독립 검수. 작성자 ≠ 검수자.
 - 잡는 파일(리스): PR 코멘트 + docs/coordination/T10-gate-checklist.md 만. 코드 수정 금지.

@@ -3,11 +3,12 @@ import { applyAs, getSession } from "@/lib/auth/session";
 import { getRepo } from "@/lib/repo";
 import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
 import { FEATURES } from "@/lib/product";
-import { buildDashboard } from "@/lib/dash";
+import { buildDashboard, buildFollowUps } from "@/lib/dash";
 import { formatCount, formatKrw, formatMonth, orEmpty } from "@/lib/dash/format";
 import {
   ContractStatusWidget,
   ConversionWidget,
+  FollowUpListWidget,
   PipelineWidget,
   ReContactWidget,
   SettlementWidget,
@@ -38,6 +39,7 @@ export default async function DashboardPage({
   const ctx = devToolsEnabled ? applyAs(base, asParam) : base;
 
   const dash = buildDashboard(ctx, { month });
+  const followUps = buildFollowUps(ctx);
   const repo = getRepo();
   const pipelines = repo.listPipelines(ctx.org.id);
 
@@ -93,14 +95,19 @@ export default async function DashboardPage({
         label="대시보드"
       >
         <div className="flex flex-col gap-6">
-          {/* 상단 고정 요약 */}
+          {/* 상단 고정 요약 — 숫자를 누르면 그 숫자를 만든 목록으로 들어간다(BBE-18). */}
           <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <StatCard label="전체 업무" value={formatCount(dash.totalDeals)} />
-            <StatCard label="고객사" value={formatCount(dash.totalCompanies)} />
+            <StatCard
+              label="전체 업무"
+              value={formatCount(dash.totalDeals)}
+              href="/dash/all"
+            />
+            <StatCard label="고객사" value={formatCount(dash.totalCompanies)} href="/companies" />
             <StatCard
               label="이번 달 신규 업무"
               value={formatCount(dash.newDealsThisMonth)}
               hint={formatMonth(dash.month)}
+              href="/dash/all?range=month"
             />
             <StatCard
               label="이번달 수납 총매출"
@@ -110,6 +117,7 @@ export default async function DashboardPage({
                 formatKrw,
               )}
               hint="수수료입금일 기준"
+              href="/dash/all?range=month&paid=1"
             />
           </section>
 
@@ -178,6 +186,16 @@ export default async function DashboardPage({
               subtitle="수수료입금일 + 180일 도래"
             >
               <ReContactWidget entries={dash.reContactThisMonth} />
+            </Widget>
+
+            <Widget
+              title={`오늘 할 일 (${formatCount(followUps.dueToday.length)})`}
+              subtitle={`재접촉(D+180)·재신청 안내(D+365) · 내일 ${formatCount(followUps.dueTomorrow.length)}건 예정`}
+            >
+              <FollowUpListWidget
+                entries={followUps.dueToday}
+                emptyHint="오늘 재접촉·재신청 안내할 업무가 없어요."
+              />
             </Widget>
           </div>
 

@@ -6,5 +6,5 @@
 export * from "./types";
 export * from "./aggregate";
 export * from "./format";
-export { buildDashboard, currentMonthKst } from "./service";
-export type { DashboardData, BuildOptions } from "./service";
+export { buildDashboard, buildFollowUps, currentMonthKst } from "./service";
+export type { DashboardData, BuildOptions, DashboardFollowUps, FollowUpOptions } from "./service";
