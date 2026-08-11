@@ -69,8 +69,8 @@ grant execute on function public.is_my_practice_workspace(uuid) to authenticated
 
 -- ---------------------------------------------------------------------------
 -- 연습 회사 확보 — 없으면 만들고, 있으면 그 org_id 를 돌려준다(멱등).
--- orgs 에 행을 넣으면 001 의 add_org_owner 트리거가 호출자를 자동으로 owner 로 만든다
--- (001 무수정 — 이미 있는 장치를 그대로 쓴다).
+-- 006 이후 공개 org insert의 auto-owner trigger는 제거됐다. 이 SECURITY DEFINER RPC가
+-- org와 보호 owner membership을 한 트랜잭션에서 함께 만들며 exact-one-owner를 지킨다.
 -- ---------------------------------------------------------------------------
 create or replace function public.ensure_my_practice_workspace()
 returns uuid
@@ -82,19 +82,29 @@ declare
   v_actor uuid := auth.uid();
   v_existing uuid;
   v_org uuid;
+  v_slug text;
 begin
   if v_actor is null then
     raise exception 'authenticated user required' using errcode = '42501';
   end if;
 
+  -- Workspace router가 모든 active membership에 canonical slug를 요구한다. 사용자의
+  -- UUID 전체 엔트로피를 md5로 보존한 40자 slug라 다른 회사와 충돌할 가능성이 없다.
+  v_slug := 'practice-' || left(md5(v_actor::text), 31);
+
   select org_id into v_existing
     from public.onboarding_practice_workspaces
    where owner_user_id = v_actor;
   if v_existing is not null then
+    update public.orgs
+       set slug = coalesce(slug, v_slug)
+     where id = v_existing;
     return v_existing;
   end if;
 
-  insert into public.orgs(name) values ('연습 회사') returning id into v_org;
+  insert into public.orgs(name, slug) values ('연습 회사', v_slug) returning id into v_org;
+  insert into public.org_members(org_id, user_id, role, scope, status)
+  values (v_org, v_actor, 'owner', 'all', 'active');
   insert into public.onboarding_practice_workspaces(org_id, owner_user_id)
   values (v_org, v_actor);
 
