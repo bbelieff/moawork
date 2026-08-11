@@ -1,5 +1,5 @@
 -- BBE-114: 상태 변경 부작용 메시징 outbox, 멱등성, 수신 거부, 묶음 집계.
--- 035 is concurrently leased by PR #121/#122; re-number against latest main before merge.
+-- Renumbered from the PR draft after main advanced through migration 039.
 
 alter table public.messages
   add column if not exists source_entity_id uuid,
@@ -39,18 +39,29 @@ create table if not exists public.messaging_opt_outs (
   primary key (org_id, phone_digits)
 );
 
+-- Both ids are globally unique today, but the composite keys make the tenant
+-- relationship enforceable by foreign keys instead of relying on trigger code.
+create unique index if not exists boards_org_id_id_uq
+  on public.boards(org_id, id);
+create unique index if not exists message_templates_org_id_id_uq
+  on public.message_templates(org_id, id);
+
 create table if not exists public.messaging_trigger_rules (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
-  board_id uuid not null references public.boards(id) on delete cascade,
+  board_id uuid not null,
   column_key text not null,
   trigger_value text not null,
   phone_column_key text not null,
   sender_digits text not null check (sender_digits ~ '^[0-9]{9,12}$'),
   sender_profile_id text,
-  template_id uuid not null references public.message_templates(id) on delete restrict,
+  template_id uuid not null,
   enabled boolean not null default true,
   created_at timestamptz not null default now(),
+  foreign key (org_id, board_id)
+    references public.boards(org_id, id) on delete cascade,
+  foreign key (org_id, template_id)
+    references public.message_templates(org_id, id) on delete restrict,
   unique (board_id, column_key, trigger_value)
 );
 
@@ -112,7 +123,10 @@ begin
   limit 1;
   if not found then return new; end if;
 
-  select * into v_template from public.message_templates where id = v_rule.template_id;
+  select * into v_template
+  from public.message_templates
+  where org_id = v_rule.org_id and id = v_rule.template_id;
+  if not found then return new; end if;
   select regexp_replace(public.messaging_text_value(value_jsonb), '[^0-9]', '', 'g') into v_phone
   from public.item_values
   where item_id = new.item_id and column_key = v_rule.phone_column_key;

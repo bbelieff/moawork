@@ -1,4 +1,11 @@
 export type MessagingChannel = "sms" | "alimtalk";
+export const MESSAGING_PROVIDER_FAILURE = {
+  retry: "provider_retry",
+  failed: "provider_failed",
+} as const;
+export type MessagingProviderFailure =
+  (typeof MESSAGING_PROVIDER_FAILURE)[keyof typeof MESSAGING_PROVIDER_FAILURE];
+
 export interface MessagingRecord {
   id: string;
   channel: MessagingChannel;
@@ -11,7 +18,7 @@ export interface MessagingRecord {
 
 export type ProviderResult =
   | { ok: true; providerMessageId: string }
-  | { ok: false; reason: string; retryable: boolean };
+  | { ok: false; reason: MessagingProviderFailure; retryable: boolean };
 
 export interface MessagingProvider {
   send(message: MessagingRecord): Promise<ProviderResult>;
@@ -19,4 +26,9 @@ export interface MessagingProvider {
 
 export type MessagingJobResult =
   | { outcome: "sent"; messageId: string; providerMessageId: string }
-  | { outcome: "failed"; messageId: string; reason: string; retryable: boolean };
+  | {
+      outcome: "failed";
+      messageId: string;
+      reason: MessagingProviderFailure;
+      retryable: boolean;
+    };

@@ -28,4 +28,26 @@ describe("SolapiProvider", () => {
       body: "안내",
     })).resolves.toEqual({ ok: true, providerMessageId: "provider-1" });
   });
+
+  it("discards provider status text and returns only a fixed internal code", async () => {
+    const sensitive = "https://provider.invalid/failure?token=private user@example.invalid";
+    const request = vi.fn(async () => new Response(JSON.stringify({
+      failedMessageList: [{ statusMessage: sensitive }],
+    }), { status: 400 }));
+    const provider = new SolapiProvider(
+      { apiKey: "key", apiSecret: "secret" },
+      request as typeof fetch,
+    );
+
+    const result = await provider.send({
+      id: "m1",
+      channel: "sms",
+      toDigits: "01012345678",
+      fromDigits: "0212345678",
+      body: "안내",
+    });
+
+    expect(result).toEqual({ ok: false, reason: "provider_failed", retryable: false });
+    expect(JSON.stringify(result)).not.toContain(sensitive);
+  });
 });

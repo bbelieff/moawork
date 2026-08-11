@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const sql = readFileSync(fileURLToPath(new URL("../../../../supabase/migrations/036_messaging.sql", import.meta.url)), "utf8");
+const sql = readFileSync(fileURLToPath(new URL("../../../../supabase/migrations/041_messaging.sql", import.meta.url)), "utf8");
 
 describe("messaging migration contract", () => {
   it("adds idempotency, opt-out, batch counts, failure and state-change outbox trigger", () => {
@@ -12,6 +12,9 @@ describe("messaging migration contract", () => {
     expect(sql).toMatch(/failed_count/i);
     expect(sql).toMatch(/item_values_enqueue_message_transition/i);
     expect(sql).toMatch(/md5\(concat_ws\(':', new\.org_id, new\.item_id, new\.column_key, v_value\)\)/i);
+    expect(sql).toMatch(/foreign key \(org_id, board_id\)[\s\S]*references public\.boards\(org_id, id\)/i);
+    expect(sql).toMatch(/foreign key \(org_id, template_id\)[\s\S]*references public\.message_templates\(org_id, id\)/i);
+    expect(sql).toMatch(/where org_id = v_rule\.org_id and id = v_rule\.template_id/i);
     expect(sql).not.toMatch(/txid_current|claimed_at|attempt_count|retry_failed_messages/i);
   });
 

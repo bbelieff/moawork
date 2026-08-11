@@ -1,5 +1,10 @@
 import { createHmac, randomBytes } from "node:crypto";
-import type { MessagingProvider, MessagingRecord, ProviderResult } from "./types.js";
+import {
+  MESSAGING_PROVIDER_FAILURE,
+  type MessagingProvider,
+  type MessagingRecord,
+  type ProviderResult,
+} from "./types.js";
 
 export interface SolapiCredentials {
   apiKey: string;
@@ -21,10 +26,14 @@ function formatPhone(digits: string): string {
   return digits.replace(/\D/g, "");
 }
 
-function failureReason(body: unknown): string {
-  if (!body || typeof body !== "object") return "솔라피 발송 요청이 거부됐어요.";
-  const failed = (body as { failedMessageList?: Array<{ statusMessage?: unknown }> }).failedMessageList?.[0]?.statusMessage;
-  return typeof failed === "string" && failed ? failed.slice(0, 300) : "솔라피 발송 요청이 거부됐어요.";
+function failed(retryable: boolean): ProviderResult {
+  return {
+    ok: false,
+    reason: retryable
+      ? MESSAGING_PROVIDER_FAILURE.retry
+      : MESSAGING_PROVIDER_FAILURE.failed,
+    retryable,
+  };
 }
 
 export class SolapiProvider implements MessagingProvider {
@@ -54,13 +63,13 @@ export class SolapiProvider implements MessagingProvider {
         body: JSON.stringify({ messages: [payload] }),
       });
       const body: unknown = await response.json().catch(() => null);
-      if (!response.ok) return { ok: false, reason: failureReason(body), retryable: response.status >= 500 || response.status === 429 };
+      if (!response.ok) return failed(response.status >= 500 || response.status === 429);
 
       const first = (body as { messageList?: Array<{ messageId?: unknown }> } | null)?.messageList?.[0]?.messageId;
-      if (typeof first !== "string" || !first) return { ok: false, reason: failureReason(body), retryable: false };
+      if (typeof first !== "string" || !first) return failed(false);
       return { ok: true, providerMessageId: first };
     } catch {
-      return { ok: false, reason: "솔라피에 연결하지 못했어요.", retryable: true };
+      return failed(true);
     }
   }
 }

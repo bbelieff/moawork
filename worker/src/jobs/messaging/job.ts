@@ -1,4 +1,9 @@
-import type { MessagingJobResult, MessagingProvider, MessagingRecord } from "./types.js";
+import {
+  MESSAGING_PROVIDER_FAILURE,
+  type MessagingJobResult,
+  type MessagingProvider,
+  type MessagingRecord,
+} from "./types.js";
 
 /** One delivery attempt. Claim, retry, and persistence belong to the outbox executor. */
 export async function processMessagingJob(
@@ -17,7 +22,11 @@ export async function processMessagingJob(
   return {
     outcome: "failed",
     messageId: message.id,
-    reason: result.reason,
+    // Provider adapters are an external boundary. Never persist or return their
+    // original error text even if a future adapter violates the TypeScript port.
+    reason: result.retryable
+      ? MESSAGING_PROVIDER_FAILURE.retry
+      : MESSAGING_PROVIDER_FAILURE.failed,
     retryable: result.retryable,
   };
 }
