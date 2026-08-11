@@ -96,6 +96,16 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     expect(html).toContain('name="columnKey" value="incol"');
   });
 
+  it("날짜와 날짜·시각은 브라우저 기본 picker를 백스톱으로 사용한다", () => {
+    const columns = [
+      col({ key: "date", label: "신청일", source: "in", type: "date" }),
+      col({ key: "datetime", label: "재통화 일시", source: "in", type: "datetime" }),
+    ];
+    const html = renderTable(columns, [row()]);
+    expect(html).toContain('type="date"');
+    expect(html).toContain('type="datetime-local"');
+  });
+
   it("money 타입은 우측 정렬·천단위로 표시된다", () => {
     const columns = [col({ key: "amt", label: "계약금", source: "lk", type: "money" })];
     const html = renderTable(columns, [row({ amt: 1200000 })]);

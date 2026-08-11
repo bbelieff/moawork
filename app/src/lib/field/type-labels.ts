@@ -7,6 +7,32 @@
  */
 import type { FieldType } from "@/lib/types";
 
+/** 목업 FTYPE의 제품 정본 15종. legacy URL/multiselect는 저장 호환용으로만 유지한다. */
+export const PRODUCT_FIELD_TYPES = [
+  "text", "sel", "status", "person", "people", "phone", "email", "date",
+  "dt", "money", "num", "file", "doc", "check", "calc",
+] as const;
+
+export type ProductFieldType = (typeof PRODUCT_FIELD_TYPES)[number];
+
+export const PRODUCT_FIELD_TYPE_TO_STORAGE: Record<ProductFieldType, FieldType> = {
+  text: "text",
+  sel: "select",
+  status: "status",
+  person: "person",
+  people: "people",
+  phone: "phone",
+  email: "email",
+  date: "date",
+  dt: "datetime",
+  money: "money",
+  num: "number",
+  file: "file",
+  doc: "longtext",
+  check: "checkbox",
+  calc: "calc",
+};
+
 export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   text: "텍스트",
   longtext: "문서",
