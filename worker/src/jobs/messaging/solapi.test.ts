@@ -19,6 +19,13 @@ describe("SolapiProvider", () => {
       return new Response(JSON.stringify({ messageList: [{ messageId: "provider-1" }] }), { status: 200 });
     });
     const provider = new SolapiProvider({ apiKey: "key", apiSecret: "secret" }, request as typeof fetch);
-    await expect(provider.send({ id: "m1", status: "sending", channel: "sms", toDigits: "010-1234-5678", fromDigits: "02-1234-5678", body: "안내" })).resolves.toEqual({ ok: true, providerMessageId: "provider-1" });
+
+    await expect(provider.send({
+      id: "m1",
+      channel: "sms",
+      toDigits: "010-1234-5678",
+      fromDigits: "02-1234-5678",
+      body: "안내",
+    })).resolves.toEqual({ ok: true, providerMessageId: "provider-1" });
   });
 });

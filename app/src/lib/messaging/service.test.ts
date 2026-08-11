@@ -12,16 +12,40 @@ const command = (count: number): MessageBatchCommand => ({
   targets: Array.from({ length: count }, (_, index) => ({
     entityId: `item-${index}`,
     phone: "010-1234-5678",
-    transitionId: `revision-${index}`,
   })),
 });
 
 describe("MessagingService", () => {
   it("stores digits only and makes retries of one transition idempotent", () => {
     expect(phoneDigits("010-1234-5678")).toBe("01012345678");
-    const key = messageIdempotencyKey({ orgId: "o", entityId: "e", columnKey: "c", value: "v", transitionId: "t" });
-    expect(key).toBe(messageIdempotencyKey({ orgId: "o", entityId: "e", columnKey: "c", value: "v", transitionId: "t" }));
-    expect(key).not.toBe(messageIdempotencyKey({ orgId: "o", entityId: "e", columnKey: "c", value: "v", transitionId: "next" }));
+    const key = messageIdempotencyKey({ orgId: "o", entityId: "e", columnKey: "c", value: "v" });
+    expect(key).toBe(messageIdempotencyKey({ orgId: "o", entityId: "e", columnKey: "c", value: "v" }));
+    expect(key).not.toBe(messageIdempotencyKey({ orgId: "o", entityId: "next", columnKey: "c", value: "v" }));
+  });
+
+  it("deduplicates the same business action across different requests", async () => {
+    const seen = new Set<string>();
+    const reserve = vi.fn(async (input) => {
+      const outcome = seen.has(input.idempotencyKey) ? "duplicate" as const : "queued" as const;
+      seen.add(input.idempotencyKey);
+      return { outcome, messageId: "m1" };
+    });
+    const outbox: MessageOutboxPort = {
+      reserve,
+      markQueueFailed: vi.fn(async () => undefined),
+      finishBatch: vi.fn(async () => "batch-id"),
+    };
+    const queue = { enqueue: vi.fn(async () => undefined) };
+    const first = command(1);
+    const second = {
+      ...command(1),
+      batchKey: "another-request",
+      targets: command(1).targets,
+    };
+
+    await expect(new MessagingService(outbox, queue).enqueueBatch(first)).resolves.toMatchObject({ queued: 1, duplicate: 0 });
+    await expect(new MessagingService(outbox, queue).enqueueBatch(second)).resolves.toMatchObject({ queued: 0, duplicate: 1 });
+    expect(queue.enqueue).toHaveBeenCalledTimes(1);
   });
 
   it.each([1, 1000])("routes %i targets through the same batch function", async (count) => {

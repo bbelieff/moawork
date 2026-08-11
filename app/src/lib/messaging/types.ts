@@ -16,7 +16,6 @@ export type MessageChannel = "sms" | "alimtalk";
 export interface MessageTarget {
   entityId: string;
   phone: string;
-  transitionId: string;
 }
 
 export interface MessageBatchCommand {

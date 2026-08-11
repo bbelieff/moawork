@@ -12,9 +12,7 @@ alter table public.messages
   add column if not exists trigger_column_key text,
   add column if not exists trigger_value text,
   add column if not exists provider_message_id text,
-  add column if not exists excluded_reason text,
-  add column if not exists claimed_at timestamptz,
-  add column if not exists attempt_count integer not null default 0;
+  add column if not exists excluded_reason text;
 
 create unique index if not exists messages_org_idempotency_uq
   on public.messages(org_id, idempotency_key)
@@ -119,7 +117,8 @@ begin
   from public.item_values
   where item_id = new.item_id and column_key = v_rule.phone_column_key;
 
-  v_key := md5(concat_ws(':', new.org_id, new.item_id, new.column_key, v_value, txid_current()));
+  -- Stable across transactions: one business item + column + value can reserve only once.
+  v_key := md5(concat_ws(':', new.org_id, new.item_id, new.column_key, v_value));
   insert into public.messaging_batches(org_id, batch_key, requested_count)
   values (new.org_id, 'transition:' || v_key, 1)
   on conflict (org_id, batch_key) do update set requested_count = public.messaging_batches.requested_count
@@ -164,19 +163,3 @@ drop trigger if exists item_values_enqueue_message_transition on public.item_val
 create trigger item_values_enqueue_message_transition
 after insert or update of value_jsonb on public.item_values
 for each row execute function public.enqueue_message_transition();
-
-create or replace function public.retry_failed_messages(p_message_ids uuid[])
-returns integer
-language plpgsql
-security invoker
-set search_path = public
-as $$
-declare v_count integer;
-begin
-  update public.messages
-  set status = 'queued', error = null
-  where id = any(p_message_ids) and status = 'failed' and public.is_org_member(org_id);
-  get diagnostics v_count = row_count;
-  return v_count;
-end;
-$$;

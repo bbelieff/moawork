@@ -11,7 +11,8 @@ describe("messaging migration contract", () => {
     expect(sql).toMatch(/excluded_count/i);
     expect(sql).toMatch(/failed_count/i);
     expect(sql).toMatch(/item_values_enqueue_message_transition/i);
-    expect(sql).toMatch(/retry_failed_messages/i);
+    expect(sql).toMatch(/md5\(concat_ws\(':', new\.org_id, new\.item_id, new\.column_key, v_value\)\)/i);
+    expect(sql).not.toMatch(/txid_current|claimed_at|attempt_count|retry_failed_messages/i);
   });
 
   it("does not weaken organization membership helpers or read app_admins", () => {

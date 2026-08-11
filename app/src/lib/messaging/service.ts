@@ -16,10 +16,9 @@ export function messageIdempotencyKey(input: {
   entityId: string;
   columnKey: string;
   value: string;
-  transitionId: string;
 }): string {
   return createHash("sha256")
-    .update([input.orgId, input.entityId, input.columnKey, input.value, input.transitionId].join("\u001f"))
+    .update([input.orgId, input.entityId, input.columnKey, input.value].join("\u001f"))
     .digest("hex");
 }
 
@@ -48,7 +47,6 @@ export class MessagingService {
           entityId: target.entityId,
           columnKey: command.columnKey,
           value: command.value,
-          transitionId: target.transitionId,
         }),
         columnKey: command.columnKey,
         value: command.value,
