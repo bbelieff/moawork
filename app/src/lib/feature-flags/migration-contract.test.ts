@@ -7,10 +7,10 @@ const repositoryRoot = existsSync(resolve(process.cwd(), "supabase"))
   : resolve(process.cwd(), "..");
 const sql = readFileSync(resolve(
   repositoryRoot,
-  "supabase/migrations/032_feature_flag_lifecycle.sql",
+  "supabase/migrations/039_feature_flag_lifecycle.sql",
 ), "utf8");
 
-describe("032 feature flag lifecycle migration", () => {
+describe("039 feature flag lifecycle migration", () => {
   it("keeps writes operator-only and client table access revoked", () => {
     expect(sql).toContain("release_rings_require_operator()");
     expect(sql).toMatch(/revoke all on table public\.feature_flag_registry[\s\S]*authenticated/);

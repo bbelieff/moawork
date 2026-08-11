@@ -1,4 +1,4 @@
--- BBE-9: additive lifecycle controls for the release-ring foundation in 020.
+-- BBE-9 migration 039: additive lifecycle controls for the release-ring foundation in 020.
 -- Feature access remains default OFF unless an explicit ring control is true.
 
 create table if not exists public.feature_flag_registry (

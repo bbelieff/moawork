@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const migration = readFileSync(
-  resolve(process.cwd(), "supabase/migrations/032_feature_flag_lifecycle.sql"),
+  resolve(process.cwd(), "supabase/migrations/039_feature_flag_lifecycle.sql"),
   "utf8",
 );
 

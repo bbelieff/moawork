@@ -5,7 +5,7 @@ on:
     paths:
       - "app/src/lib/feature-flags/**"
       - "scripts/release/**"
-      - "supabase/migrations/032_*"
+      - "supabase/migrations/039_*"
       - ".github/workflows/bbe-9-feature-flags.yml"
 
 jobs:
