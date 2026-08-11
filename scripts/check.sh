@@ -40,6 +40,7 @@ echo "▶ [3/3] test"
 npm run test --workspaces --if-present
 
 echo "▶ [4/4] 목업↔앱 대조"
+node docs/design/qa-app.mjs --self-test
 set +e
 node docs/design/qa-app.mjs
 qa_app_status=$?

@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { extractMockupContract } from "./dump-mockup.mjs";
+import { extractMockupContract, validateMockupContractApi } from "./dump-mockup.mjs";
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(import.meta.dirname, "../..");
@@ -195,8 +195,40 @@ function main() {
   process.exitCode = differences ? 1 : 0;
 }
 
+function regressionFixture() {
+  const keys = ["new", "contact", "work", "notice"];
+  return {
+    T: Object.fromEntries(keys.map((key) => [key, { label: key, cols: ["필드"], groups: [{ n: "그룹" }] }])),
+    FIELD: Object.fromEntries(keys.map((key) => [key, { 필드: ["text", "in"] }])),
+    HOT: Object.fromEntries(keys.map((key) => [key, {}])),
+    MOVE: Object.fromEntries(keys.map((key) => [key, {}])),
+    MOVE2: {},
+    PINR: Object.fromEntries(keys.map((key) => [key, "필드"])),
+    NAV: [["검증", keys, { top: 1 }]],
+  };
+}
+
+function expectContractError(mutator, expectedText) {
+  const fixture = regressionFixture();
+  mutator(fixture);
+  try {
+    validateMockupContractApi(fixture);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes(expectedText)) return;
+    throw error;
+  }
+  throw new Error(`회귀 실패: ${expectedText} 누락을 허용했습니다.`);
+}
+
+function runRegressions() {
+  expectContractError((fixture) => { delete fixture.T.notice; }, "필수 탭");
+  expectContractError((fixture) => { delete fixture.FIELD.new["필드"]; }, "필드 메타데이터");
+  console.log("qa-app 누락 회귀 2 / 2 통과");
+}
+
 try {
-  main();
+  if (process.argv[2] === "--self-test") runRegressions();
+  else main();
 } catch (error) {
   console.error(`qa-app 실행 실패: ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 2;
