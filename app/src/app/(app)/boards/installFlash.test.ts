@@ -8,6 +8,7 @@ function result(overrides: Partial<InstallResult> = {}): InstallResult {
     boards: [],
     deferred: [],
     skipped: [],
+    assigneeGroups: [],
     ...overrides,
   };
 }
