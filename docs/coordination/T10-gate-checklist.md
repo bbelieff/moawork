@@ -10,6 +10,10 @@
 
 ## 0. 공통 게이트 (모든 트랙 머지에 매번 적용)
 
+- [ ] **동일 기기 검수 레인**: 데탑 구현은 다른 데탑 LLM, 노트북 구현은 다른 노트북 LLM이 검수했다. 작성자와 검수자는 다르다.
+- [ ] **동일 기기 후속 연계**: 선행 결과를 소비하는 후속 구현·재검수·merge/deploy 추적도 선행 작업과 같은 기기 레인에 배정됐다. 기기 간 hand-off는 사용자의 명시적 예외 승인 없이는 완료 게이트로 쓰지 않는다.
+- [ ] **판정 직접 전달**: 총괄이 reviewer 세션을 직접 호출했고, PASS/REQUEST_CHANGES 판정 ID를 확인한 뒤 owner 세션을 직접 다시 호출했다. Linear/GitHub 댓글 게시만으로 `검수 요청 완료`로 간주하지 않는다.
+- [ ] **부재 시 재배차**: 지정 reviewer가 부재·미응답·identity mismatch이면 같은 기기의 다른 작성자 아닌 세션으로 즉시 재배차했다.
 - [ ] **품질 게이트**: `bash scripts/check.sh` → 초록(exit 0). lint + typecheck(app/worker `tsc --noEmit`) + test(vitest) 전부 통과.
 - [ ] **마이그레이션 규칙**: Supabase 변경은 **새 파일 추가만**(기존 `0001`/`001`/`0002`/`002` 수정 금지). 파일명 순번 단조 증가.
 - [ ] **비밀값 부재**: diff에 키·토큰·비밀번호·연결문자열 없음. `.env.example` 형태만. (`git diff | grep -iE 'key|secret|password|token|postgres://'` 육안 확인.)
