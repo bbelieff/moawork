@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const sql = readFileSync(fileURLToPath(new URL("../../../../supabase/migrations/038_outbox.sql", import.meta.url)), "utf8");
+const sql = readFileSync(fileURLToPath(new URL("../../../../supabase/migrations/046_outbox_delivery.sql", import.meta.url)), "utf8");
 
 describe("BBE-30 outbox migration", () => {
   it("owns an atomic leased claim with a bounded batch", () => {

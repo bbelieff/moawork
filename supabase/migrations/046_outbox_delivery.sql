@@ -1,5 +1,5 @@
 -- BBE-30: provider-neutral message dispatch outbox.
--- 038 is the first number after currently leased 037; re-number against fresh main before merge.
+-- 046 is reserved by G총괄 for BBE-30; 041-045 are outside this lease.
 
 create table public.message_outbox (
   id uuid primary key default gen_random_uuid(),
