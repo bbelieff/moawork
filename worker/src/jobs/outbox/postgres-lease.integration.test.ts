@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const migration = readFileSync(
-  fileURLToPath(new URL("../../../../supabase/migrations/052_outbox_delivery.sql", import.meta.url)),
+  fileURLToPath(new URL("../../../../supabase/migrations/058_outbox_delivery.sql", import.meta.url)),
   "utf8",
 );
 

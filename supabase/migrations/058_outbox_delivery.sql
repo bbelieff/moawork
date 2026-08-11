@@ -1,5 +1,5 @@
 -- BBE-30: provider-neutral message dispatch outbox.
--- 046 is reserved by G총괄 for BBE-30; 041-045 are outside this lease.
+-- 058 follows fresh origin/main migration 057; existing migrations are untouched.
 
 create table public.message_outbox (
   id uuid primary key default gen_random_uuid(),
