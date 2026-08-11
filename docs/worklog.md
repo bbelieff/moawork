@@ -4,6 +4,42 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [START · 모아워크 노트북 CT03(260811)] BBE-14 사용자 보드 핵심 조작과 저장
+
+- 무엇을: 표 셀 편집·저장 + D68~D70 아이템 자동 이동 + 되돌리기 + ƒ수식 칸 읽기전용.
+- 잡는 파일(리스): `app/src/lib/boards/**`, `app/src/lib/repo/local/boardsRepo.ts`(포트 구현체),
+  `supabase/migrations/035_board_column_move_rule.sql`(신규).
+- 안 만지는 것: `components/board/**`·`lib/field/**`(데탑CT03/BBE-123) — 읽기 전용 참조만.
+  `lib/view/**`(데탑CT09)·`lib/filter/**`(노트북GT02)·`codex/*` 전부.
+- 착수 전 5단계: ① `dump-mockup.mjs new` 명세 확보 ② `qa-mockup.mjs` 86/86 통과
+  ③ 결정대장 D12~D23·D68~D75 정독 ④ 경계 제안 BBE-94 게시(CT03 회신 대기 중 진행)
+  ⑤ base `origin/main` 재실측.
+- 산출물: PR #146 · check.sh 초록(app 1282 pass/9 skip, worker 35) · CI 3종 pass.
+- 상대에게 필요한 것: 데탑CT01 독립 검수.
+
+## [END · 모아워크 노트북 CT03(260811)] BBE-14 사용자 보드 핵심 조작과 저장
+
+- 결과: PASS(정적 검증). PR #146, 브랜치 `claude/bbe-14-board-core`, 헤드 `4e84646`.
+- 기저 사실(정직 기록): "셀 고치면 저장 + 새로고침해도 남음 + 동시편집이 안 깨짐"은
+  003 EAV per-key 저장 구조 덕에 **이 PR 이전부터 이미 동작**했다. 이번 델타는 3가지:
+  ① `move_rule_jsonb` — 값 저장과 같은 호출에서 아이템 그룹 이동(하드코딩 없이 순수함수).
+  ② 되돌리기 — 편집 전 값+group_id 를 **명시 스냅샷**(이동규칙 재평가 방식은
+     "빈 값→규칙있는 값" 편집 되돌릴 때 원래 그룹을 못 찾는 결함이 있어 회피).
+  ③ `is_readonly` — ƒ수식 결과 칸은 형식과 무관하게 편집 자체를 거부(계산 로직은
+     이 모듈 소관 아님, 차단 메커니즘만 제공).
+- 타입 확장(`move_rule_jsonb?`·`is_readonly?`)은 전부 **선택 필드** — `options_jsonb` 처럼
+  필수로 하면 `components/board/**`·`lib/policyfund/**` 등 불가침 파일의 리터럴 생성부가 깨짐.
+- 반납하는 파일: `app/src/lib/boards/**`(안정), 리스 종료.
+- 이어받을 것: 데탑CT01 독립 검수 → merge → 배포. 프리셋/구조팩(BBE-46 등)이
+  `move_rule_jsonb`·`is_readonly` 값을 실제로 채워야 화면에서 관찰 가능해짐(이 PR 은
+  메커니즘만, 데이터 배선은 범위 밖 — PR 본문에 명시).
+- 발견한 리스크: 없음. Supabase 어댑터(003)는 기존부터 로컬 저장소만 구현돼 있어
+  이 PR 도 그 경계를 유지(hosted 미반영, 기존 상태와 동일).
+- 스크린샷: 해당 없음 — `components/board/**` 무변경이라 이 PR 만으로는 관찰 가능한
+  화면 차이가 없음(PR 본문에 명시, "화면이 바뀌면" 조건 미충족).
+
+---
+
 ## [START · 모아워크 노트북 CT10(260810)/claude]
 - 무엇을: 검수 전담 — 데탑 CT01~CT10(claude/*) PR 독립 검수. 작성자 ≠ 검수자.
 - 잡는 파일(리스): PR 코멘트 + docs/coordination/T10-gate-checklist.md 만. 코드 수정 금지.
