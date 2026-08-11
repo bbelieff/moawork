@@ -19,6 +19,12 @@ export function retryDelayMs(attempt: number, random = Math.random): number {
   return base + Math.floor(base * 0.2 * random());
 }
 
+/** Provider 오류가 수신번호를 되비쳐도 outbox 감사 데이터에 남기지 않는다. */
+export function safeFailureReason(reason: string): string {
+  const scrubbed = reason.replace(/\d[\d\s()+-]{7,}\d/g, "[redacted]").trim();
+  return (scrubbed || "발송 처리 중 오류가 발생했어요.").slice(0, 300);
+}
+
 export async function executeOutboxBatch(
   store: OutboxStore,
   adapter: DeliveryAdapter,
@@ -45,14 +51,14 @@ export async function executeOutboxBatch(
         summary.delivered += 1;
       } else if (result.retryable && job.attempt < maxAttempts) {
         const next = new Date(now().getTime() + retryDelayMs(job.attempt, random));
-        await store.markRetry(job.outboxId, result.reason, next);
+        await store.markRetry(job.outboxId, safeFailureReason(result.reason), next);
         summary.retrying += 1;
       } else {
-        await store.markDead(job.outboxId, result.reason);
+        await store.markDead(job.outboxId, safeFailureReason(result.reason));
         summary.dead += 1;
       }
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "발송 처리 중 알 수 없는 오류가 발생했어요.";
+      const reason = safeFailureReason(error instanceof Error ? error.message : "발송 처리 중 알 수 없는 오류가 발생했어요.");
       if (job.attempt < maxAttempts) {
         const next = new Date(now().getTime() + retryDelayMs(job.attempt, random));
         await store.markRetry(job.outboxId, reason, next);

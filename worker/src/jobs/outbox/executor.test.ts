@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { executeOutboxBatch, retryDelayMs } from "./executor.js";
+import { executeOutboxBatch, retryDelayMs, safeFailureReason } from "./executor.js";
 import { businessMessageKey } from "./idempotency.js";
 import type { DeliveryAdapter, OutboxDelivery, OutboxStore } from "./types.js";
 
@@ -45,5 +45,9 @@ describe("message outbox", () => {
     const summary = await executeOutboxBatch(store, adapter, { workerId: "w", wait: async () => undefined, random: () => 0 });
     expect(summary).toEqual({ claimed: 2, delivered: 0, retrying: 1, dead: 1 });
     expect(retryDelayMs(2, () => 0)).toBe(2_000);
+  });
+
+  it("removes a recipient number echoed by a provider error", () => {
+    expect(safeFailureReason("recipient 010-1234-5678 rejected")).toBe("recipient [redacted] rejected");
   });
 });
