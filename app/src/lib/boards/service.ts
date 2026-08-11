@@ -33,6 +33,7 @@ import type {
 } from "./types";
 import { compareCells, isEmptyCell, validateCell } from "./cells";
 import { isIntegrityField } from "@/lib/custom/field-types";
+import { isSourceEditable } from "@/lib/field/source";
 import { pickDefaultView } from "@/lib/custom/views";
 
 export class NotFoundError extends Error {
@@ -196,7 +197,7 @@ export class BoardsService {
   ): SetCellsResult {
     const detail = this.requireEditableBoardDetail(ctx, boardId);
     if (!this.repo.getItem(ctx, itemId)) throw new NotFoundError("아이템을 찾을 수 없습니다");
-    const { values, errors } = this.validateValues(detail.columns, patch);
+    const { values, errors } = this.validateValues(detail.columns, patch, true);
     if (Object.keys(values).length > 0) this.repo.setValues(ctx, itemId, values);
     return { item: this.getItem(ctx, boardId, itemId), errors };
   }
@@ -325,6 +326,7 @@ export class BoardsService {
   private validateValues(
     columns: BoardColumn[],
     patch: Record<string, CellValue>,
+    enforceReadOnlySource = false,
   ): { values: Record<string, CellValue>; errors: CellError[] } {
     const byKey = new Map(columns.map((c) => [c.key, c]));
     const values: Record<string, CellValue> = {};
@@ -333,6 +335,10 @@ export class BoardsService {
     for (const [key, raw] of Object.entries(patch)) {
       const col = byKey.get(key);
       if (!col) continue; // 정의되지 않은 컬럼은 무시(EAV 오염 방지)
+      if (enforceReadOnlySource && !isSourceEditable(col.source)) {
+        errors.push({ key, label: col.label, message: "자동으로 채워지는 칸은 직접 바꿀 수 없습니다" });
+        continue;
+      }
       const options: FieldOption[] | null = col.options_jsonb?.options ?? null;
       const res = validateCell(col.type, raw, options);
 

@@ -9,7 +9,7 @@
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { GroupTable } from "./GroupTable";
+import { GroupTable, cellInputValue } from "./GroupTable";
 import type { BoardColumn, CellValue, ItemWithValues } from "@/lib/boards/types";
 
 function col(over: Partial<BoardColumn> = {}): BoardColumn {
@@ -101,9 +101,14 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
       col({ key: "date", label: "신청일", source: "in", type: "date" }),
       col({ key: "datetime", label: "재통화 일시", source: "in", type: "datetime" }),
     ];
-    const html = renderTable(columns, [row()]);
+    const html = renderTable(columns, [row({
+      date: "2026-08-11",
+      datetime: "2026-08-11T03:45:00.000Z",
+    })]);
     expect(html).toContain('type="date"');
     expect(html).toContain('type="datetime-local"');
+    expect(html).toContain('value="2026-08-11T03:45"');
+    expect(cellInputValue("datetime", "2026-08-11T03:45:00.000Z")).toBe("2026-08-11T03:45");
   });
 
   it("money 타입은 우측 정렬·천단위로 표시된다", () => {

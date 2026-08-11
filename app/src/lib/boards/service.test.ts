@@ -96,6 +96,28 @@ describe("아이템 · 셀 인라인 편집 (EAV)", () => {
     expect(again.values.note).toBe("수정됨");
   });
 
+  it("연동·수식 출처는 직접 server 호출로도 덮어쓸 수 없다", () => {
+    const linked = svc.addColumn(owner, SEED_BOARD_TASKS, {
+      label: "업체 연동값",
+      type: "text",
+      source: "lk",
+    });
+    const calculated = svc.addColumn(owner, SEED_BOARD_TASKS, {
+      label: "자동 계산값",
+      type: "calc",
+      source: "calc",
+    });
+    const item = svc.createItem(owner, SEED_BOARD_TASKS, { title: "x" });
+    const result = svc.setCells(owner, SEED_BOARD_TASKS, item.id, {
+      [linked.key]: "우회 변경",
+      [calculated.key]: 100,
+    });
+
+    expect(result.errors.map((error) => error.key)).toEqual([linked.key, calculated.key]);
+    expect(result.item.values[linked.key]).toBeUndefined();
+    expect(result.item.values[calculated.key]).toBeUndefined();
+  });
+
   // [정책 변경 — 기획2 판정 2026-07-21] 기본은 관대 + 인라인 피드백.
   // 잘못된 값은 던지지 않고 저장도 하지 않으며, errors 로 사유를 돌려준다.
   it("허용되지 않은 선택지는 저장하지 않고 errors 로 보고", () => {

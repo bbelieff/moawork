@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FIELD_TYPES } from "@/lib/types";
+import { FIELD_SOURCES, getFieldSourceSpec } from "./source";
 import {
   PRODUCT_FIELD_TYPES,
   PRODUCT_FIELD_TYPE_TO_STORAGE,
@@ -12,6 +13,17 @@ describe("field/type-labels — 타입 15종+ 표시 이름 완전성(D09 미정
     expect(Object.keys(PRODUCT_FIELD_TYPE_TO_STORAGE)).toEqual([...PRODUCT_FIELD_TYPES]);
     for (const type of PRODUCT_FIELD_TYPES) {
       expect(fieldTypeLabel(PRODUCT_FIELD_TYPE_TO_STORAGE[type])).toBeTruthy();
+    }
+  });
+
+  it("15종 × 출처 6종의 90개 조합이 모두 정의된다", () => {
+    const matrix = PRODUCT_FIELD_TYPES.flatMap((type) =>
+      FIELD_SOURCES.map((source) => ({ type, source })),
+    );
+    expect(matrix).toHaveLength(90);
+    for (const { type, source } of matrix) {
+      expect(fieldTypeLabel(PRODUCT_FIELD_TYPE_TO_STORAGE[type])).toBeTruthy();
+      expect(getFieldSourceSpec(source).label).toBeTruthy();
     }
   });
   it("001 enum(13종)+BBE-123 신규 4종 전부 라벨이 있다", () => {

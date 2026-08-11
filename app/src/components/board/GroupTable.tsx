@@ -17,7 +17,7 @@
  */
 
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
-import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
+import type { BoardColumn, CellValue, ItemWithValues } from "@/lib/boards/types";
 import { formatCell } from "@/lib/boards/cells";
 import { findCellError, type CellFlash } from "@/lib/boards/cellFlash";
 import { getFieldSourceSpec, isSourceEditable, sourceRequiresConfirm } from "@/lib/field/source";
@@ -57,6 +57,16 @@ function inputTypeOf(type: BoardColumn["type"]): string {
     default:
       return "text";
   }
+}
+
+export function cellInputValue(type: BoardColumn["type"], value: CellValue): string | number {
+  if (value === null) return "";
+  if (type === "datetime" && typeof value === "string") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? value.slice(0, 16) : parsed.toISOString().slice(0, 16);
+  }
+  if (type === "date" && typeof value === "string") return value.slice(0, 10);
+  return typeof value === "number" ? value : String(value);
 }
 
 /**
@@ -174,7 +184,7 @@ function BoardCell({
           <input
             type={inputTypeOf(column.type)}
             name="value"
-            defaultValue={value === null ? "" : String(value)}
+            defaultValue={cellInputValue(column.type, value)}
             placeholder="—"
             aria-label={column.label}
             className={`${CELL_INPUT} ${numeric ? "text-right tabular-nums" : ""}`}
