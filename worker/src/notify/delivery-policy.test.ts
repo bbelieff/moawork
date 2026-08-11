@@ -11,7 +11,7 @@ describe("planNotificationDelivery", () => {
         createdAt: "2026-08-11T12:00:00.000Z",
         urgency: "normal" as const,
       })),
-      { now: "2026-08-11T12:30:00.000Z" },
+      { now: "2026-08-11T12:30:00.000Z", timeZone: "Asia/Seoul" },
     );
     expect(batches).toHaveLength(1);
     expect(batches[0]?.notificationIds).toEqual(["n1", "n2"]);
@@ -21,12 +21,26 @@ describe("planNotificationDelivery", () => {
     const common = { userId: "u1", eventKey: "event", createdAt: "2026-08-11T22:00:00+09:00" };
     const normal = planNotificationDelivery(
       [{ ...common, notificationId: "n1", urgency: "normal" }],
-      { now: "2026-08-11T23:00:00+09:00", quietHours: { startHour: 22, endHour: 7 }, bundleWindowMinutes: 0 },
+      { now: "2026-08-11T23:00:00+09:00", timeZone: "Asia/Seoul", quietHours: { startHour: 22, endHour: 7 }, bundleWindowMinutes: 0 },
     );
     const high = planNotificationDelivery(
       [{ ...common, notificationId: "n2", urgency: "high" }],
-      { now: "2026-08-11T23:00:00+09:00", quietHours: { startHour: 22, endHour: 7 }, bundleWindowMinutes: 0 },
+      { now: "2026-08-11T23:00:00+09:00", timeZone: "Asia/Seoul", quietHours: { startHour: 22, endHour: 7 }, bundleWindowMinutes: 0 },
     );
     expect(new Date(normal[0]!.deliverAfter).getTime()).toBeGreaterThan(new Date(high[0]!.deliverAfter).getTime());
+  });
+
+  it("같은 사건의 긴급 알림을 일반 알림과 별도 묶음으로 보낸다", () => {
+    const batches = planNotificationDelivery(
+      ["normal", "high"].map((urgency) => ({
+        notificationId: urgency,
+        userId: "u1",
+        eventKey: "event",
+        createdAt: "2026-08-11T22:00:00+09:00",
+        urgency: urgency as "normal" | "high",
+      })),
+      { now: "2026-08-11T23:00:00+09:00", timeZone: "Asia/Seoul", quietHours: { startHour: 22, endHour: 7 }, bundleWindowMinutes: 0 },
+    );
+    expect(batches).toHaveLength(2);
   });
 });
