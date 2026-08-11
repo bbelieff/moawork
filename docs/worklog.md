@@ -8,7 +8,7 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 - 무엇을: 표 셀 편집·저장 + D68~D70 아이템 자동 이동 + 되돌리기 + ƒ수식 칸 읽기전용.
 - 잡는 파일(리스): `app/src/lib/boards/**`, `app/src/lib/repo/local/boardsRepo.ts`(포트 구현체),
-  `supabase/migrations/035_board_column_move_rule.sql`(신규).
+  `supabase/migrations/043_board_column_move_rule.sql`(신규).
 - 안 만지는 것: `components/board/**`·`lib/field/**`(데탑CT03/BBE-123) — 읽기 전용 참조만.
   `lib/view/**`(데탑CT09)·`lib/filter/**`(노트북GT02)·`codex/*` 전부.
 - 착수 전 5단계: ① `dump-mockup.mjs new` 명세 확보 ② `qa-mockup.mjs` 86/86 통과
