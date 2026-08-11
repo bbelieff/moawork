@@ -1,2 +1,5 @@
-import { PlatformConsolePage } from "@/components/platform/PlatformConsolePage";
-export default function PlatformSupportPage() { return <PlatformConsolePage section="support" pathname="/platform/support" />; }
+import { PlatformOperationPage } from "../_components/PlatformOperationPage";
+
+export default function PlatformSupportPage() {
+  return <PlatformOperationPage section="support" pathname="/platform/support" />;
+}
