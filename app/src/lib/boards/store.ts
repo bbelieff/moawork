@@ -36,12 +36,18 @@ export interface NewColumn {
   type: FieldType;
   options?: FieldOption[] | null;
   width?: number | null;
+  /** D68~D70 이동 규칙. types.ts 의 BoardColumn.move_rule_jsonb 참고. */
+  moveRule?: Record<string, string> | null;
+  /** 손으로 못 고치는 칸. types.ts 의 BoardColumn.is_readonly 참고. */
+  readOnly?: boolean;
 }
 export interface ColumnPatch {
   label?: string;
   options?: FieldOption[] | null;
   sort_order?: number;
   width?: number | null;
+  moveRule?: Record<string, string> | null;
+  readOnly?: boolean;
 }
 
 export interface NewGroup {

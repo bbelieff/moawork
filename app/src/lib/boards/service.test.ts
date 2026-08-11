@@ -213,3 +213,192 @@ describe("보드 삭제", () => {
     expect(() => svc.getItem(owner, detail.board.id, item.id)).toThrow(NotFoundError);
   });
 });
+
+describe("셀 편집 → 아이템 자동 이동 (BBE-14 · D68~D70)", () => {
+  // 다른 세션(BBE-123)이 잡은 lib/field/**·components/board/** 는 건드리지 않는다.
+  // 여기서는 서비스 계층만으로 이동 규칙을 검증한다(컬럼에 move_rule 을 직접 설정).
+  function setupMoveBoard() {
+    const detail = svc.createBoard(owner, { name: "이동테스트" });
+    const g대기 = svc.addGroup(owner, detail.board.id, { name: "대기" });
+    const g완료 = svc.addGroup(owner, detail.board.id, { name: "완료" });
+    const g보류 = svc.addGroup(owner, detail.board.id, { name: "보류" });
+    const col = svc.addColumn(owner, detail.board.id, {
+      label: "상담 상황",
+      type: "select",
+      options: [
+        { id: "opt-wait", label: "상담 전", color: "#ccc", order: 0 },
+        { id: "opt-done", label: "완료", color: "#0c0", order: 1 },
+        { id: "opt-hold", label: "보류", color: "#fa0", order: 2 },
+      ],
+      moveRule: { "opt-done": g완료.id, "opt-hold": g보류.id },
+    });
+    const item = svc.createItem(owner, detail.board.id, {
+      title: "테스트건",
+      group_id: g대기.id,
+    });
+    return { boardId: detail.board.id, col, item, g대기, g완료, g보류 };
+  }
+
+  it("★ 값을 규칙에 매핑된 선택지로 바꾸면 아이템이 해당 그룹으로 옮겨간다", () => {
+    const { boardId, col, item, g완료 } = setupMoveBoard();
+    const res = svc.setCells(owner, boardId, item.id, { [col.key]: "opt-done" });
+    expect(res.item.group_id).toBe(g완료.id);
+    expect(res.item.values[col.key]).toBe("opt-done");
+  });
+
+  it("규칙에 없는 값으로 바꾸면 그룹은 그대로다(빈 값·미매핑 선택지)", () => {
+    const { boardId, col, item, g대기 } = setupMoveBoard();
+    // 이 컬럼엔 opt-wait 에 대한 이동 규칙이 없다 — 매핑 안 된 선택지.
+    svc.setCells(owner, boardId, item.id, { [col.key]: "opt-wait" });
+    const again = svc.getItem(owner, boardId, item.id);
+    expect(again.group_id).toBe(g대기.id);
+  });
+
+  it("이동 규칙이 없는 일반 컬럼은 아이템을 옮기지 않는다", () => {
+    const { boardId, item, g대기 } = setupMoveBoard();
+    svc.setCells(owner, boardId, item.id, { title: "이름만 바뀜" }); // 정의 안 된 키 → 무시되지만 그룹도 불변 확인
+    const detail2 = svc.createBoard(owner, { name: "일반컬럼용" });
+    const plainCol = svc.addColumn(owner, detail2.board.id, { label: "메모", type: "text" });
+    const item2 = svc.createItem(owner, detail2.board.id, { title: "x" });
+    svc.setCells(owner, detail2.board.id, item2.id, { [plainCol.key]: "아무값" });
+    expect(svc.getItem(owner, detail2.board.id, item2.id).group_id).toBeNull();
+    expect(svc.getItem(owner, boardId, item.id).group_id).toBe(g대기.id);
+  });
+
+  it("★★ 되돌리기 — 값과 그룹이 편집 직전 상태로 복원된다", () => {
+    const { boardId, col, item, g대기, g완료 } = setupMoveBoard();
+    const res = svc.setCells(owner, boardId, item.id, { [col.key]: "opt-done" });
+    expect(res.item.group_id).toBe(g완료.id);
+    expect(res.undo).not.toBeNull();
+
+    const restored = svc.undoCells(owner, boardId, item.id, res.undo!);
+    expect(restored.group_id).toBe(g대기.id);
+    // EAV 행 자체는 존재하고 값이 null 로 복원된다(행 삭제가 아니라 값 복원) — undefined 아님.
+    expect(restored.values[col.key]).toBeNull();
+  });
+
+  it("되돌리기는 «빈 값 → 규칙 있는 값» 편집도 정확히 원상복구한다(재기입 방식이면 실패하는 경우)", () => {
+    // 이전 값이 규칙에 없는 상태(null)에서 규칙 있는 값으로 바뀐 경우,
+    // 그냥 이전 값을 다시 넣기만 해서는(재평가) 원래 그룹을 못 찾는다 — group_id 를 명시 복원해야 한다.
+    const { boardId, col, item, g대기, g완료 } = setupMoveBoard();
+    const first = svc.setCells(owner, boardId, item.id, { [col.key]: "opt-done" });
+    expect(first.item.group_id).toBe(g완료.id);
+
+    const back = svc.undoCells(owner, boardId, item.id, first.undo!);
+    expect(back.group_id).toBe(g대기.id); // 명시 복원이라 정확히 되돌아간다
+  });
+
+  it("여러 조작 열이 한 번에 바뀌면 패치의 마지막 키가 최종 목적지를 정한다", () => {
+    const detail = svc.createBoard(owner, { name: "이중조작" });
+    const gA = svc.addGroup(owner, detail.board.id, { name: "A" });
+    const gB = svc.addGroup(owner, detail.board.id, { name: "B" });
+    const gC = svc.addGroup(owner, detail.board.id, { name: "C" });
+    const col1 = svc.addColumn(owner, detail.board.id, {
+      label: "열1", type: "select",
+      options: [{ id: "x", label: "x", color: "#000", order: 0 }],
+      moveRule: { x: gB.id },
+    });
+    const col2 = svc.addColumn(owner, detail.board.id, {
+      label: "열2", type: "select",
+      options: [{ id: "y", label: "y", color: "#000", order: 0 }],
+      moveRule: { y: gC.id },
+    });
+    const item = svc.createItem(owner, detail.board.id, { title: "z", group_id: gA.id });
+    // patch 순회는 Object.entries 순서 = 선언 순서(JS 스펙) → col2 가 마지막.
+    const res = svc.setCells(owner, detail.board.id, item.id, {
+      [col1.key]: "x",
+      [col2.key]: "y",
+    });
+    expect(res.item.group_id).toBe(gC.id);
+  });
+
+  it("동시 편집 — 서로 다른 컬럼을 동시에 고쳐도 서로를 지우지 않는다", () => {
+    const detail = svc.createBoard(owner, { name: "동시편집" });
+    const colA = svc.addColumn(owner, detail.board.id, { label: "A", type: "text" });
+    const colB = svc.addColumn(owner, detail.board.id, { label: "B", type: "text" });
+    const item = svc.createItem(owner, detail.board.id, { title: "z" });
+
+    // "동시" = 서로 다른 셀에 대한 두 쓰기가 인터리브되는 것을 순차 호출로 재현.
+    // (member 액터로 재현하려 했으나 scope=assigned + 미배정 아이템이라 003 담당범위 규칙에
+    //  가로막혀 NotFoundError 였다 — 그건 리포의 정상 동작이지 버그가 아니다. 여기서 검증할 것은
+    //  "필드별 EAV 행이 서로 다른 쓰기에 의해 지워지지 않는다"이므로 액터를 owner 로 통일한다.)
+    svc.setCells(owner, detail.board.id, item.id, { [colA.key]: "편집1 값" });
+    svc.setCells(owner, detail.board.id, item.id, { [colB.key]: "편집2 값" });
+
+    const final = svc.getItem(owner, detail.board.id, item.id);
+    expect(final.values[colA.key]).toBe("편집1 값"); // 이후 편집이 이 필드를 지우지 않음
+    expect(final.values[colB.key]).toBe("편집2 값");
+  });
+
+  it("서로 다른 두 실사용자(오너·멤버)가 같은 아이템의 다른 셀을 고쳐도 안 깨진다", () => {
+    const detail = svc.createBoard(owner, { name: "다중사용자편집" });
+    const colA = svc.addColumn(owner, detail.board.id, { label: "A", type: "text" });
+    const colB = svc.addColumn(owner, detail.board.id, { label: "B", type: "text" });
+    // member(scope=assigned)가 이 아이템을 보려면 자기 담당이어야 한다(003 담당범위 규칙).
+    const item = svc.createItem(owner, detail.board.id, {
+      title: "z",
+      assigned_to: SEED_USER_MEMBER,
+    });
+
+    svc.setCells(owner, detail.board.id, item.id, { [colA.key]: "오너가 쓴 값" });
+    svc.setCells(member, detail.board.id, item.id, { [colB.key]: "멤버가 쓴 값" });
+
+    const final = svc.getItem(owner, detail.board.id, item.id);
+    expect(final.values[colA.key]).toBe("오너가 쓴 값");
+    expect(final.values[colB.key]).toBe("멤버가 쓴 값");
+  });
+});
+
+describe("읽기 전용 칸 — ƒ수식 결과는 손으로 못 고친다 (목업 개정 ④)", () => {
+  it("read_only 컬럼은 값의 형식과 무관하게 항상 errors 로 거부되고 저장되지 않는다", () => {
+    const detail = svc.createBoard(owner, { name: "수식보드" });
+    const formula = svc.addColumn(owner, detail.board.id, {
+      label: "ƒ재신청 안내일",
+      type: "date",
+      readOnly: true,
+    });
+    const item = svc.createItem(owner, detail.board.id, { title: "x" });
+
+    // 형식은 완벽히 유효한 날짜값이지만, read_only 라 그 자체로 거부돼야 한다.
+    const res = svc.setCells(owner, detail.board.id, item.id, {
+      [formula.key]: "2027-01-01",
+    });
+
+    expect(res.errors).toHaveLength(1);
+    expect(res.errors[0].key).toBe(formula.key);
+    expect(res.item.values[formula.key]).toBeUndefined();
+  });
+
+  it("읽기 전용 칸이 껴 있어도 같은 요청의 다른 정상 칸은 저장된다(관대 정책 유지)", () => {
+    const detail = svc.createBoard(owner, { name: "수식보드2" });
+    const formula = svc.addColumn(owner, detail.board.id, {
+      label: "ƒ심사 D-day",
+      type: "text",
+      readOnly: true,
+    });
+    const normal = svc.addColumn(owner, detail.board.id, { label: "메모", type: "text" });
+    const item = svc.createItem(owner, detail.board.id, { title: "x" });
+
+    const res = svc.setCells(owner, detail.board.id, item.id, {
+      [formula.key]: "손으로 써봄",
+      [normal.key]: "정상 메모",
+    });
+
+    expect(res.errors.map((e) => e.key)).toEqual([formula.key]);
+    expect(res.item.values[normal.key]).toBe("정상 메모");
+    expect(res.item.values[formula.key]).toBeUndefined();
+  });
+
+  it("columnPatch 로 기존 컬럼을 읽기 전용으로 전환할 수 있다", () => {
+    const detail = svc.createBoard(owner, { name: "전환테스트" });
+    const col = svc.addColumn(owner, detail.board.id, { label: "메모", type: "text" });
+    const item = svc.createItem(owner, detail.board.id, { title: "x" });
+    svc.setCells(owner, detail.board.id, item.id, { [col.key]: "전환 전엔 됨" });
+    expect(svc.getItem(owner, detail.board.id, item.id).values[col.key]).toBe("전환 전엔 됨");
+
+    svc.updateColumn(owner, detail.board.id, col.id, { readOnly: true });
+    const res = svc.setCells(owner, detail.board.id, item.id, { [col.key]: "전환 후엔 막힘" });
+    expect(res.errors).toHaveLength(1);
+    expect(svc.getItem(owner, detail.board.id, item.id).values[col.key]).toBe("전환 전엔 됨"); // 기존 값 보존
+  });
+});
