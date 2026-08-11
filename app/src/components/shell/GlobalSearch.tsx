@@ -2,10 +2,43 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { SearchKind, SearchResponse, SearchResult } from "@/lib/search/types";
+import { SEARCH_KINDS, type SearchKind, type SearchResponse, type SearchResult } from "@/lib/search/types";
 
 const RECENT_KEY = "mw:recent-search:v1";
 const KIND_LABEL: Record<SearchKind, string> = { board: "보드", deal: "업무", company: "회사", notice: "공지" };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isSearchResult(value: unknown): value is SearchResult {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string"
+    && typeof value.title === "string"
+    && typeof value.description === "string"
+    && typeof value.href === "string"
+    && value.href.startsWith("/")
+    && !value.href.startsWith("//")
+    && !value.href.startsWith("/\\")
+    && SEARCH_KINDS.includes(value.kind as SearchKind);
+}
+
+/** `jsonOk()`의 성공 envelope을 명시적으로 해제한다. 형식이 다르면 화면 이동을 하지 않는다. */
+export function unwrapSearchResponse(payload: unknown): SearchResponse {
+  const data = isRecord(payload) ? payload.data : undefined;
+  if (!isRecord(data) || typeof data.query !== "string" || !Array.isArray(data.results) || !Array.isArray(data.recent)
+    || !data.results.every(isSearchResult) || !data.recent.every(isSearchResult)) {
+    throw new Error("검색 결과 형식을 확인하지 못했어요");
+  }
+  return data as SearchResponse;
+}
+
+/** 빠른 만들기 성공도 같은 envelope 안의 상대 경로 결과만 허용한다. */
+export function unwrapCreatedSearchResult(payload: unknown): SearchResult {
+  const data = isRecord(payload) ? payload.data : undefined;
+  if (!isSearchResult(data)) throw new Error("만든 항목을 확인하지 못했어요");
+  return data;
+}
 
 function readRecent(): Array<Pick<SearchResult, "kind" | "id">> {
   try {
@@ -35,7 +68,7 @@ export function GlobalSearch() {
     const recent = readRecent().map((item) => `${item.kind}:${item.id}`).join(",");
     const response = await fetch(`/api/search?q=${encodeURIComponent(value)}&recent=${encodeURIComponent(recent)}`, { cache: "no-store" });
     if (!response.ok) throw new Error("검색 결과를 불러오지 못했어요");
-    setData(await response.json() as SearchResponse);
+    setData(unwrapSearchResponse(await response.json() as unknown));
   }, []);
 
   useEffect(() => {
@@ -65,9 +98,12 @@ export function GlobalSearch() {
     setBusy(true); setError("");
     try {
       const response = await fetch("/api/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: createKind, title }) });
-      const result = await response.json() as SearchResult & { error?: string };
-      if (!response.ok) throw new Error(result.error ?? "만들지 못했어요");
-      visit(result);
+      const payload = await response.json() as unknown;
+      if (!response.ok) {
+        const message = isRecord(payload) && typeof payload.error === "string" ? payload.error : "만들지 못했어요";
+        throw new Error(message);
+      }
+      visit(unwrapCreatedSearchResult(payload));
     } catch (reason) { setError(reason instanceof Error ? reason.message : "만들지 못했어요"); }
     finally { setBusy(false); }
   };
