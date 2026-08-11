@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { BoardColumn, BoardGroup, ItemWithValues } from "@/lib/boards/types";
 import {
+  clampWidth,
+  COLUMN_MAX_WIDTH,
+  COLUMN_MIN_WIDTH,
   groupKeyOf,
   moveWithin,
   reorderColumnKeys,
@@ -25,6 +28,8 @@ function col(key: string, over: Partial<BoardColumn> = {}): BoardColumn {
     key,
     label: key.toUpperCase(),
     type: "text",
+    source: "in",
+    rightPinned: false,
     options_jsonb: null,
     sort_order: 0,
     width: null,
@@ -88,6 +93,19 @@ describe("resolveColumnOrder — 그룹별 배치 오버라이드", () => {
     const gB = resolveColumnOrder(COLUMNS, undefined).map((c) => c.key);
     expect(gA).toEqual(["c", "b", "a"]);
     expect(gB).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("clampWidth — 컬럼 폭 조절 한계(D12, 64~560px)", () => {
+  it("범위 안 값은 반올림만", () => {
+    expect(clampWidth(200.4)).toBe(200);
+    expect(clampWidth(200.6)).toBe(201);
+  });
+  it("최소·최대를 벗어나면 경계로 붙는다", () => {
+    expect(clampWidth(10)).toBe(COLUMN_MIN_WIDTH);
+    expect(clampWidth(9999)).toBe(COLUMN_MAX_WIDTH);
+    expect(clampWidth(COLUMN_MIN_WIDTH)).toBe(COLUMN_MIN_WIDTH);
+    expect(clampWidth(COLUMN_MAX_WIDTH)).toBe(COLUMN_MAX_WIDTH);
   });
 });
 

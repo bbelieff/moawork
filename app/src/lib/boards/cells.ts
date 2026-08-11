@@ -83,6 +83,7 @@ export function formatCell(
 ): string {
   if (isEmptyCell(value)) return "";
   if (type === "checkbox") return value ? "✓" : "";
+  if (type === "money" && typeof value === "number") return value.toLocaleString("ko-KR");
   if (hasOptions(type) && options) {
     const label = (id: string) => options.find((o) => o.id === id)?.label ?? id;
     if (Array.isArray(value)) return value.map(label).join(", ");

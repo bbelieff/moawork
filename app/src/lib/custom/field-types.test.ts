@@ -157,3 +157,44 @@ describe("field-types: validateValue (비-throw 계약)", () => {
     expect(isIntegrityField("memo")).toBe(false);
   });
 });
+
+// BBE-123 — 001 enum 밖 신규 4종(status/people/money/calc).
+describe("field-types: status (범주와 저장은 같지만 옵션 검증 동일 적용)", () => {
+  it("옵션 id 문자열을 받고 빈 값은 null", () => {
+    expect(normalizeValue("status", "opt-a", { options: opts })).toBe("opt-a");
+    expect(normalizeValue("status", "")).toBeNull();
+  });
+  it("주어진 옵션 목록에 없는 id 는 거부", () => {
+    expect(() => normalizeValue("status", "opt-z", { options: opts })).toThrow(ValidationError);
+  });
+});
+
+describe("field-types: people (person 과 달리 배열만 허용)", () => {
+  it("user id 배열을 정규화하고 중복이 아닌 것만 남긴다", () => {
+    expect(normalizeValue("people", ["u1", "u2"])).toEqual(["u1", "u2"]);
+    expect(normalizeValue("people", [])).toBeNull();
+    expect(normalizeValue("people", null)).toBeNull();
+  });
+  it("배열이 아니면 거부(person 과의 차이)", () => {
+    expect(() => normalizeValue("people", "u1")).toThrow(ValidationError);
+  });
+});
+
+describe("field-types: money (number 와 저장 규칙 동일 · 표시만 다름)", () => {
+  it("콤마·원화기호 섞인 입력을 숫자로", () => {
+    expect(normalizeValue("money", "1,200,000")).toBe(1200000);
+    expect(normalizeValue("money", "₩500")).toBe(500);
+  });
+  it("숫자가 아니면 거부", () => {
+    expect(() => normalizeValue("money", "abc")).toThrow(ValidationError);
+  });
+});
+
+describe("field-types: calc (읽기 전용 — 폼 입력 경로로 절대 쓰지 않는다)", () => {
+  it("빈 값은 통과하지만 실제 값을 넣으려 하면 항상 거부", () => {
+    expect(normalizeValue("calc", "")).toBeNull();
+    expect(normalizeValue("calc", null)).toBeNull();
+    expect(() => normalizeValue("calc", "D-51")).toThrow(ValidationError);
+    expect(() => normalizeValue("calc", 12345)).toThrow(ValidationError);
+  });
+});

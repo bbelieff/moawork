@@ -10,6 +10,7 @@
  */
 
 import type { FieldOption, FieldType } from "@/lib/types";
+import type { FieldSource } from "@/lib/field/source";
 
 /** 보드 뷰 종류 — 003 board_views.kind. */
 export const BOARD_VIEW_KINDS = ["table", "kanban"] as const;
@@ -48,6 +49,14 @@ export interface BoardColumn {
   key: string;
   label: string;
   type: FieldType;
+  /** 값이 어디서 오는가(D09) — 편집 가능 여부를 결정한다. 미지정 컬럼은 "in"(직접 입력)으로 본다. */
+  source: FieldSource;
+  /**
+   * 이 컬럼이 "아이템을 옮기는" 우측 고정 열인가(D11). 보드당 보통 0~1개.
+   * ⚠ 공지 보드의 데이터 컬럼 key `"pinned"`(상단고정 체크박스, T04)와는 무관 — 이름이 겹쳐
+   * `rightPinned` 로 분명히 뗐다.
+   */
+  rightPinned: boolean;
   options_jsonb: { options: FieldOption[] } | null;
   sort_order: number;
   width: number | null;

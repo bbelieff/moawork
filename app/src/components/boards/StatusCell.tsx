@@ -1,8 +1,10 @@
 /**
  * 상태(status) 컬럼 렌더링 — 먼데이 "상태" 컬럼 재현 (T05 · B3).
  *
- * 상태 = 001 field_type 의 `select`(단일) / `multiselect`(복수)를 **색 칩**으로 그리는 표현.
- * 별도 타입이 아니다 — 13종 enum 에 'status' 는 없고, 색은 `FieldOption.color` 에서 온다.
+ * `select`(단일) / `multiselect`(복수) / `status`(BBE-123 — 아이템을 옮기는 단계값)를
+ * 전부 **같은 색 칩**으로 그리는 표현이다. 셋 다 옵션 기반이라 렌더링을 나눌 이유가 없다
+ * — 편집 가능 여부·의미 차이는 타입·출처 레지스트리(`@/lib/custom/field-types`·
+ * `@/lib/field/source`)가 결정하고, 여기는 표시만 담당한다. 색은 `FieldOption.color` 에서 온다.
  *
  * 색·대비 계산은 `lib/boards/status-palette` 가 단독 담당(컴포넌트는 표시만).
  */

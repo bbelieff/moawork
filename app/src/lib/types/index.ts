@@ -26,6 +26,12 @@ export const FIELD_TYPES = [
   "person",
   "url",
   "checkbox",
+  // BBE-123 — V6 필드 타입 15종 중 001 enum(13종)에 없던 4종.
+  // people(사람 여럿)은 person 과 저장 형태(배열)는 같지만 표시·검증 축이 달라 분리했다.
+  "status",
+  "people",
+  "money",
+  "calc",
 ] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 

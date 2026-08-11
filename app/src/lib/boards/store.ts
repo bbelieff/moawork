@@ -12,6 +12,7 @@
  */
 
 import type { Ctx, FieldOption, FieldType } from "@/lib/types";
+import type { FieldSource } from "@/lib/field/source";
 import type {
   Board,
   BoardColumn,
@@ -34,11 +35,16 @@ export interface NewColumn {
   key?: string;
   label: string;
   type: FieldType;
+  /** 미지정이면 "in"(직접 입력) — BoardsRepo 가 기본값을 채운다. */
+  source?: FieldSource;
+  rightPinned?: boolean;
   options?: FieldOption[] | null;
   width?: number | null;
 }
 export interface ColumnPatch {
   label?: string;
+  source?: FieldSource;
+  rightPinned?: boolean;
   options?: FieldOption[] | null;
   sort_order?: number;
   width?: number | null;

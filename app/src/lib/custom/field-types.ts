@@ -336,6 +336,67 @@ const SPECS: Record<FieldType, FieldTypeSpec> = {
     isEmpty: emptyDefault,
     comparable: (v) => (Array.isArray(v) ? v.length : comparableDefault(v)),
   },
+
+  // ── BBE-123 신규 4종 (V6 필드 타입 15종 중 001 enum 밖) ──────
+
+  /** 범주(select)와 저장 형태는 같지만 "아이템을 옮기는 단계값"이라는 의미가 다르다 —
+   *  자동화(MOVE2)·우측 고정 열이 status 컬럼을 대상으로 삼는다. */
+  status: {
+    type: "status",
+    supportsOptions: true,
+    operators: SET_OPS,
+    normalize: (raw, ctx) => {
+      if (isBlank(raw)) return null;
+      if (typeof raw !== "string") throw new ValidationError("status: 옵션 id(문자열)여야 합니다");
+      assertOption(raw, ctx);
+      return raw;
+    },
+    isEmpty: emptyDefault,
+    comparable: comparableDefault,
+  },
+  /** person 은 담당자 1명(책임 소재), people 은 협업자·알림대상처럼 여럿이 정상인 칸 — D18. */
+  people: {
+    type: "people",
+    supportsOptions: false,
+    operators: ["contains", "is_empty", "is_not_empty"],
+    normalize: (raw) => {
+      if (raw === null || raw === undefined || raw === "") return null;
+      if (!Array.isArray(raw)) throw new ValidationError("people: user id 배열이어야 합니다");
+      const out = raw.filter((x): x is string => typeof x === "string" && x !== "");
+      return out.length === 0 ? null : out;
+    },
+    isEmpty: emptyDefault,
+    comparable: (v) => (Array.isArray(v) ? v.length : comparableDefault(v)),
+  },
+  /** number 와 저장은 같지만 표시는 오른쪽 정렬 + 천단위 고정(D09) — GroupTable 이 type 으로 분기. */
+  money: {
+    type: "money",
+    supportsOptions: false,
+    operators: NUM_OPS,
+    normalize: (raw) => {
+      if (isBlank(raw)) return null;
+      if (typeof raw !== "number" && typeof raw !== "string")
+        throw new ValidationError("money: 숫자여야 합니다");
+      const n = typeof raw === "number" ? raw : Number(raw.replace(/[,\s₩]/g, ""));
+      if (!Number.isFinite(n)) throw new ValidationError("money: 유효한 숫자가 아닙니다");
+      return n;
+    },
+    isEmpty: emptyDefault,
+    comparable: comparableDefault,
+  },
+  /** 수식(ƒ) — 계산 결과만 저장하는 읽기 전용 칸. 폼 입력 경로로는 절대 쓰지 않는다
+   *  (누가 UI 게이트를 우회해 setCellAction 을 직접 호출해도 여기서 막힌다). */
+  calc: {
+    type: "calc",
+    supportsOptions: false,
+    operators: NUM_OPS,
+    normalize: (raw) => {
+      if (isBlank(raw)) return null;
+      throw new ValidationError("calc: 수식 칸은 직접 입력할 수 없습니다");
+    },
+    isEmpty: emptyDefault,
+    comparable: comparableDefault,
+  },
 };
 
 // ── 비-throw 검증 계약 (기획2 판정 2026-07-21) ───────────────
