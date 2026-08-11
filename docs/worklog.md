@@ -1912,3 +1912,81 @@ all/assigned), 헬퍼 `is_org_member`/`org_role`/`org_scope`, 트리거 `add_org
 - lease: `app/src/components/brand/**`(신규 `WorkspaceBrand`) · `supabase/migrations/035_*.sql`(신규 파일, `orgs.logo_url` nullable 추가) · `app/src/lib/types/index.ts`(`Org.logo_url` 선택 필드) · `app/src/lib/auth/session.ts`(select·parseOrg 각 1줄). `app/(app)/layout.tsx`는 00_배정판에 소유자가 없어 BBE-94에 선언 후 2줄(import+JSX)만 접촉 — BBE-126(CT07)과 겹칠 가능성 대비.
 - acceptance: 로고 왼쪽 위·클릭 시 홈(기존 동작 유지) · 회사마다 다른 로고(구조적으로 가능, 값 채우는 관리 UI는 범위 밖) · 로고 없는 회사는 이름 대체(오늘 전 회사 해당).
 - Production QA·스크린샷은 로컬 preview가 이 worktree가 아닌 launch.json 디렉터리를 띄우는 기존 제약과 `(app)` 셸의 실 로그인 요구가 겹쳐 `NOT_RUN` — 정적 렌더로 갈음, PR #130 본문에 마크업 증거 첨부.
+
+## 2026-08-11 — [START · 모아워크 노트북 CT02(260810)/claude] BBE-112 온보딩 엔진 — 연습 회사 + 퀘스트 + 판정
+
+- task_id Linear `BBE-112`, base `origin/main@c32e01e56c209500835a7640a54b061726ee8e49`(`git fetch` 후 실측),
+  branch `claude/bbe-112-onboarding`, 전용 worktree `개발프로젝트\.worktrees\bbe-112-onboarding`.
+- 착수 전 6단계: `node docs/design/dump-mockup.mjs`(전체·new 탭) 열람 · `node docs/design/qa-mockup.mjs`
+  → **86/86 통과**(55도 75도 아님, 목업이 계속 개정 중) · `docs/evidence/온보딩녹취-실무흐름-01.md` 전문 열람.
+- **배정서 대 결정대장 불일치 발견**: 배정서 "덮는 결정: D58 D59 · H-4"이나, 결정대장을 실측하면
+  D58(→BBE-110·125)·D59(→BBE-122, 관찰만)는 §G/H-3 자체 카드 매핑상 BBE-112를 가리키지 않는다.
+  H-4는 "온보딩"이라는 단어가 겹치지만 **실제로는 컨설턴트가 고객사에 먼데이를 인계하는 녹취**(온보딩
+  엔진과 다른 뜻)이고, H-4의 개별 결정(D60~D68)은 전부 BBE-124·107·105·111·118·114·109로 매핑돼 있다.
+  **§G의 D45b("온보딩 = 자동화 규칙에서 퀘스트를 생성. 연습용 회사에서 실제 조작으로 판정") 가 §J 카드
+  대조표에서도 BBE-112·113으로 직접 매핑되는 유일한 정본 결정**이다. D45b + D71~D75(카드 본문에 이미
+  전문 인용)를 정본으로 진행한다. H-4는 실무 맥락 참고자료로는 읽었으나 판정 기준으로 쓰지 않는다.
+- **연계 확인**: D45b는 "규칙→퀘스트 생성"을 BBE-113(노트북 GT07 소유)에 맡긴다. 이 카드(BBE-112)는
+  **엔진**(연습 회사 격리 · 퀘스트 카탈로그 저장소 · 판정 방식)을 소유한다. GT07이 기다리는 "판정 방식"은
+  아래 판정 계약으로 확정해 BBE-94에 공개한다: 퀘스트는 `judge_kind`(고정 어휘, 자유 SQL 아님) +
+  `judge_params(jsonb)`로 정의되고, `onboarding_quest_defs` 테이블에 행으로 저장된다 — GT07은 자동화
+  규칙을 이 스키마의 행으로 변환해 넣기만 하면 된다(신규 judge_kind가 필요하면 별도 협의).
+- **아키텍처 결정** — 격리 방식: `orgs`/`org_members`(001)의 기존 RLS 경계를 그대로 재사용한다.
+  연습 회사 = 고유 `org_id` 하나의 진짜 `orgs` 행(신규 `orgs` 컬럼 추가 없음, 001 무수정) — 이러면 격리는
+  "모든 쿼리가 이미 org_id로 스코프된다"는 기존 불변식에 **공짜로 올라탄다.** 별도 필터 로직을
+  코드 전역에 추가할 필요가 없다(추가했다면 어디선가 빠뜨릴 위험 = "경계가 무너지면 카드 전체 무효").
+  신규 레지스트리 테이블(`onboarding_practice_workspaces`)이 "이 org_id는 연습용, 소유자는 누구"만 기록.
+- **실측 — 보드 데이터가 실제로 어디 사는지**: `app/src/lib/repo/local/boardsRepo.ts`의 `getBoardsRepo()`는
+  현재 **무조건 `LocalBoardsRepo`**(프로세스 전역 인메모리 싱글턴)를 반환한다 — Supabase 백엔드는 아직
+  없다(포트 주석 "Supabase 연결 시 같은 포트에 끼운다" = 미래형). `supabase/migrations/003_boards_engine.sql`의
+  `boards/items` 테이블은 **현재 런타임 경로에서 쓰이지 않는다.** 따라서 퀘스트 판정은 SQL로 `items`
+  테이블을 조회해선 안 되고(존재하지도 않는 상태를 볼 것), **`BoardsRepo` 포트(TS)를 통해** 실제 상태를
+  읽어야 한다 — 포트 추상화 덕에 나중에 Supabase 백엔드가 생겨도 판정 코드는 그대로 간다.
+- 리스: `app/src/lib/onboarding/**` · `app/src/components/onboarding/**` ·
+  `supabase/migrations/035_onboarding.sql`(작업명 — 034가 현재 최신, 단 BBE-116도 오늘 035를 문서에
+  적어놨다(`orgs.logo_url` 추가) — **번호 충돌은 머지 시점에 재확인**, 지금은 안전하게 035로 작업하고
+  PR 직전 `git fetch` 재실측 후 필요시 036으로 rename한다).
+
+## 2026-08-11 — [END · 모아워크 노트북 CT02(260810)/claude] BBE-112 온보딩 엔진 — 연습 회사 + 퀘스트 + 판정
+
+- PR 제출(머지는 검수자 데탑 CT03 승인 후). branch `claude/bbe-112-onboarding`, head 는 본 커밋.
+  base 재확인 `origin/main@c32e01e`(변동 없음, 착수 시와 동일) · 마이그레이션 최신 여전히 `034`
+  → `035_onboarding.sql` 번호 유지. BBE-116 과의 035 충돌 가능성은 검수자에게 별도 명시.
+- `supabase/migrations/035_onboarding.sql`: 001 무수정. 신규 3테이블
+  (`onboarding_practice_workspaces` 레지스트리 · `onboarding_quest_defs` 카탈로그 ·
+  `onboarding_quest_progress` 진행기록) + 5함수(`is_my_practice_workspace`·
+  `ensure_my_practice_workspace`·`list_onboarding_quests`·`record_quest_progress`·
+  `read_my_practice_progress`) + 씨드 퀘스트 3건. 격리는 새 컬럼·필터를 추가하지 않고
+  001의 기존 org_id RLS 경계에 올라탄다(연습 회사 = 진짜 orgs 행 하나, 001의 `add_org_owner`
+  트리거로 자동 owner화). **로컬 pglite 자체검증**(스크래치패드, 미커밋) 13개 시나리오
+  **13/13 통과** — 특히 ④~⑦·⑪이 "B가 A의 연습 회사를 못 보고, 진짜 org에는 판정 자체가
+  거부됨"을 직접 증명한다.
+- **판정 대상이 003 boards/items Postgres 테이블이 아님을 실측으로 확인**: `getBoardsRepo()`가
+  현재 무조건 `LocalBoardsRepo`(인메모리 싱글턴)를 반환해 003 스키마는 런타임에서 안 쓰인다.
+  그래서 판정은 SQL이 아니라 `BoardsRepo` 포트(TS)로 실제 상태를 읽는다 — 나중에 Supabase
+  백엔드가 붙어도 포트만 교체되면 판정 코드는 그대로 간다.
+- `app/src/lib/onboarding/quests.ts` — judge_kind 고정 어휘 3종(`item_created`·`item_in_group`·
+  `column_value_set`), 전부 `BoardsRepo` 상태 읽기(자유 SQL·코드실행 아님). 이것이 **BBE-113
+  (노트북 GT07)이 기다리던 판정 방식**이다 — GT07은 자동화 규칙을 `onboarding_quest_defs` 행으로
+  변환해 넣기만 하면 되고, 새 judge_kind가 필요하면 이 파일에 추가 협의한다. BBE-94에 공개함.
+- `app/src/lib/onboarding/server.ts` — `ensurePracticeWorkspace`(연습회사 확보 + 기존
+  `installStructurePack` 재사용으로 구조 설치, 아이템은 안 만듦=D71~D75와 동일 원리) ·
+  `evaluatePracticeQuests`(판정 후 최초 통과만 기록, 실패는 permission/unavailable로 구분).
+- `app/src/components/onboarding/OnboardingPanel.tsx` + `actions.ts` — 연습 시작 진입 화면 ·
+  퀘스트 목록(통과 N/전체) · 다시 확인 폼(FormData 기반 `"use server"`, notices/perm 관례 따름) ·
+  권한없음/장애 두 화면 분기.
+- 테스트 4파일 25건: `quests.test.ts`(12, 교차 조직 격리 증명 포함) ·
+  `OnboardingPanel.test.tsx`(7) · `seed-contract.test.ts`(2, 씨드 judge_kind ↔ JUDGES 어휘
+  드리프트 가드). 전부 값 긍정 확인(F12).
+- 수용 기준 대조: 연습 회사 생성·분리 — pglite ①②③④⑤⑥ 통과 · 퀘스트 목록·통과 — UI+judge
+  테스트 · 시스템이 실제 동작으로 판정 — judge_kind 3종이 checkbox 아닌 실제 BoardsRepo 상태
+  읽기 · 연습 데이터가 진짜 집계에 안 섞임 — org_id 격리가 구조적 보장(003 pipeline 새로 만들지
+  않음, 기존 RLS 불변식 그대로 재사용) + quests.test.ts 교차조직 테스트로 재확인.
+- 게이트: `bash scripts/check.sh` **PASS** — app 137 files/1284 tests(신규 25) · worker 35.
+  비밀값 스캔 0 · 하드코딩 hex 0(처음부터 `--mw-*` 토큰만 사용) · `app_admins` 직접 select 0 ·
+  변경 파일 = 리스 정확히 3패턴 + `docs/worklog.md`.
+- NOT_RUN: hosted DB 적용(F9, 로컬 비밀값 없음) · 화면 스크린샷(로컬 `(app)` 셸이 Supabase env
+  없이는 500이라는 기존 제약 — 로그인 우회 임시패치로 검증할 수도 있으나 이 카드는 라우트에
+  아직 연결돼 있지 않아 그 자체가 대상 화면이 없다. BBE-122와 같은 사유로 와이어링 후속 필요:
+  `OnboardingPanel`을 실제로 띄울 진입 라우트가 이 카드 리스 밖(설정 메뉴 등)이다).
+
