@@ -101,6 +101,8 @@ export function deepLink(targetType: string | null, targetId: string | null): st
     case "deal":
     case "settlement":
       return `/policyfund${focus}`;
+    case "work_item":
+      return targetId ? `/work?notification=${encodeURIComponent(targetId)}` : "/work";
     case "company":
       return `/boards${focus}`;
     case "notice":

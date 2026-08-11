@@ -32,6 +32,10 @@ export interface ResolveRecipientsInput {
   canReceive?: (userId: string) => boolean;
 }
 
+export interface NotificationRoutingPort {
+  load(targetIds: readonly string[]): Promise<ReadonlyMap<string, Omit<ResolveRecipientsInput, "actorId">>>;
+}
+
 const PRIORITY: Record<NotificationSource, number> = {
   assignment: 1,
   hierarchy: 1,
@@ -100,15 +104,20 @@ export function resolveNotificationRecipients(
 export function routeNotificationFeed<T extends { id: string; actor: string | null; target_id: string | null }>(
   feed: readonly T[],
   currentUserId: string,
-  teamMembers: readonly string[],
-  assignees: ReadonlyMap<string, string | null>,
+  routes: ReadonlyMap<string, Omit<ResolveRecipientsInput, "actorId">>,
+  preserveAll = false,
 ): Array<{ feed: T; recipient: NotificationRecipient }> {
   return feed.flatMap((item) => {
+    const route = item.target_id ? routes.get(item.target_id) : undefined;
     const recipient = resolveNotificationRecipients({
       actorId: item.actor ?? undefined,
-      assigneeId: item.target_id ? assignees.get(item.target_id) : null,
-      teamMembers,
+      assigneeId: route?.assigneeId,
+      teamMembers: route?.teamMembers ?? [],
+      ...route,
     }).find((candidate) => candidate.userId === currentUserId);
+    if (!recipient && preserveAll) {
+      return [{ feed: item, recipient: { userId: currentUserId, source: "team" as const, locked: false, sources: ["team" as const] } }];
+    }
     return recipient ? [{ feed: item, recipient }] : [];
   });
 }

@@ -10,10 +10,9 @@ export function NotificationWorkBoard({ snapshot, highlightedItemId }: { snapsho
   const root = useRef<HTMLDivElement>(null);
   const router = useRouter(); const searchParams = useSearchParams();
   useEffect(() => {
-    const title = highlightedNotificationTitle(snapshot, highlightedItemId);
-    if (!title || !root.current) return;
-    const trigger = [...root.current.querySelectorAll<HTMLButtonElement>("tbody button")].find((button) => button.textContent?.trim() === title);
-    const row = trigger?.closest("tr");
+    const rowIndex = highlightedNotificationRowIndex(snapshot, highlightedItemId);
+    if (rowIndex < 0 || !root.current) return;
+    const row = root.current.querySelectorAll<HTMLTableRowElement>(`tbody tr:not(.${styles.groupRow})`)[rowIndex];
     row?.classList.add(styles.notificationHighlight);
     row?.scrollIntoView({ block: "center", behavior: "smooth" });
     return () => row?.classList.remove(styles.notificationHighlight);
@@ -33,4 +32,9 @@ export function NotificationWorkBoard({ snapshot, highlightedItemId }: { snapsho
 
 export function highlightedNotificationTitle(snapshot: WorkBoardSnapshot, highlightedItemId: string | null): string | null {
   return snapshot.items.find((item) => item.id === highlightedItemId)?.title ?? null;
+}
+
+export function highlightedNotificationRowIndex(snapshot: WorkBoardSnapshot, highlightedItemId: string | null): number {
+  const ordered = snapshot.groups.flatMap((group) => snapshot.items.filter((item) => item.groupId === group.id));
+  return ordered.findIndex((item) => item.id === highlightedItemId);
 }

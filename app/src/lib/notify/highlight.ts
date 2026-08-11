@@ -1,8 +1,10 @@
 export const NOTIFICATION_HIGHLIGHT_PARAM = "notification";
 
 export function notificationTargetHref(href: string, notificationId: string): string {
-  const separator = href.includes("?") ? "&" : "?";
-  return `${href}${separator}${NOTIFICATION_HIGHLIGHT_PARAM}=${encodeURIComponent(notificationId)}`;
+  const [path, query = ""] = href.split("?", 2);
+  const params = new URLSearchParams(query);
+  params.set(NOTIFICATION_HIGHLIGHT_PARAM, notificationId);
+  return `${path}?${params}`;
 }
 export function isNotificationHighlighted(
   notificationId: string | null | undefined,
