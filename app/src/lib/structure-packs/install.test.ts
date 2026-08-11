@@ -5,7 +5,7 @@ import { SEED_ORG_ID, SEED_USER_OWNER } from "@/lib/repo/local/seed";
 import { BoardsService } from "@/lib/boards";
 import type { Ctx } from "@/lib/types";
 import { SEOUL_STRUCTURE_PACK } from "./seoul-pack";
-import { installStructurePack, type AssigneeMember } from "./install";
+import { assigneeGroupIdForUser, installStructurePack, type AssigneeMember } from "./install";
 import type { PackBoard } from "./types";
 
 function owner(): Ctx {
@@ -206,6 +206,64 @@ describe("유예 컬럼은 설치되지 않는다", () => {
 });
 
 describe("재설치 안전성", () => {
+  it("D73 — 최초 1명, 초대 증가, 내보내기 감소, 재실행 중복 0을 userId 바인딩으로 맞춘다", () => {
+    const creator: AssigneeMember = { userId: "user-creator", displayName: "만든사람" };
+    const invited: AssigneeMember = { userId: "user-invited", displayName: "초대된사람" };
+    const first = installStructurePack(owner(), { assignees: [creator] });
+    const installedBoardIds = first.boards.map((board) => board.boardId);
+
+    expect(first.assigneeGroups).toHaveLength(2);
+    expect(new Set(first.assigneeGroups.map((binding) => binding.userId))).toEqual(
+      new Set([creator.userId]),
+    );
+
+    const afterInvite = installStructurePack(owner(), {
+      assignees: [creator, invited],
+      assigneeGroups: first.assigneeGroups,
+    });
+    expect(afterInvite.boards).toHaveLength(0);
+    expect(afterInvite.skipped).toEqual(["newcust", "contact", "work"]);
+    expect(afterInvite.assigneeGroups).toHaveLength(4);
+    expect(new Set(afterInvite.assigneeGroups.map((binding) => binding.userId))).toEqual(
+      new Set([creator.userId, invited.userId]),
+    );
+    expect(assigneeGroupIdForUser(afterInvite.assigneeGroups, "newcust", invited.userId)).toBeTruthy();
+    expect(assigneeGroupIdForUser(afterInvite.assigneeGroups, "newcust", "same-display-name")).toBeNull();
+
+    const groupCountAfterInvite = installedBoardIds.map(
+      (boardId) => boards().getBoardDetail(owner(), boardId).groups.length,
+    );
+    const rerun = installStructurePack(owner(), {
+      assignees: [creator, invited],
+      assigneeGroups: afterInvite.assigneeGroups,
+    });
+    expect(rerun.assigneeGroups.map((binding) => binding.groupId).sort()).toEqual(
+      afterInvite.assigneeGroups.map((binding) => binding.groupId).sort(),
+    );
+    expect(
+      installedBoardIds.map((boardId) => boards().getBoardDetail(owner(), boardId).groups.length),
+    ).toEqual(groupCountAfterInvite);
+
+    const afterRemoval = installStructurePack(owner(), {
+      assignees: [creator],
+      assigneeGroups: rerun.assigneeGroups,
+    });
+    expect(afterRemoval.assigneeGroups).toHaveLength(2);
+    expect(new Set(afterRemoval.assigneeGroups.map((binding) => binding.userId))).toEqual(
+      new Set([creator.userId]),
+    );
+    expect(
+      installedBoardIds.map((boardId) => boards().getBoardDetail(owner(), boardId).groups.length),
+    ).toEqual(groupCountAfterInvite.map((count, index) => (index < 2 ? count - 1 : count)));
+    for (const binding of afterRemoval.assigneeGroups) {
+      expect(
+        boards()
+          .getBoardDetail(owner(), binding.boardId)
+          .groups.some((group) => group.id === binding.groupId),
+      ).toBe(true);
+    }
+  });
+
   it("두 번 설치해도 보드가 두 벌 생기지 않는다", () => {
     installStructurePack(owner());
     const before = boards().listBoards(owner()).length;

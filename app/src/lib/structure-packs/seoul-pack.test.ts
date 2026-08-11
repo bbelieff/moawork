@@ -15,7 +15,7 @@ const MIGRATION = join(
   "..",
   "supabase",
   "migrations",
-  "035_preset_depersonalize.sql",
+  "036_preset_depersonalize.sql",
 );
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -246,7 +246,7 @@ describe("유예 컬럼 — 구조만 기록하고 설치하지 않는다 (PLAN-
   });
 });
 
-describe("마이그레이션 035 과 앱 팩이 같은 데이터다 — 프리셋 실명 비우기(BBE-130)", () => {
+describe("마이그레이션 036 과 앱 팩이 같은 데이터다 — 프리셋 실명 비우기(BBE-130)", () => {
   // 팩이 SQL 과 TS 양쪽에 있으므로 한쪽만 고치면 조용히 어긋난다. 여기서 막는다.
   it("SQL 에 심긴 pack_jsonb 가 TS 팩과 완전히 일치한다", () => {
     const sql = readFileSync(MIGRATION, "utf8");
@@ -259,7 +259,7 @@ describe("마이그레이션 035 과 앱 팩이 같은 데이터다 — 프리�
     expect(embedded).toEqual(JSON.parse(JSON.stringify(SEOUL_STRUCTURE_PACK)));
   });
 
-  it("035 는 031 의 테이블을 새로 만들지 않고 기존 행만 update 한다 — 기존 마이그레이션 무수정", () => {
+  it("036 은 031 의 테이블을 새로 만들지 않고 기존 행만 update 한다 — 기존 마이그레이션 무수정", () => {
     const sql = readFileSync(MIGRATION, "utf8");
     // 031 이 이미 만든 테이블이다 — 재선언(create table)하지 않는다(F9/규칙 9: 기존 마이그레이션 수정 금지).
     expect(sql).not.toMatch(/create\s+table/i);

@@ -36,6 +36,24 @@ export interface InstalledBoard {
   viewIds: string[];
 }
 
+/** 담당자 멤버와 실제 그룹을 잇는 안정적인 연결점 — 표시명이 아니라 userId 로 식별한다. */
+export interface AssigneeGroupBinding {
+  boardSlug: string;
+  boardId: string;
+  groupId: string;
+  slot: number;
+  userId: string;
+}
+
+/** 담당자 자동 이동 소비자가 표시명 없이 userId 로 대상 그룹을 찾는다. */
+export function assigneeGroupIdForUser(
+  bindings: readonly AssigneeGroupBinding[],
+  boardSlug: string,
+  userId: string,
+): string | null {
+  return bindings.find((binding) => binding.boardSlug === boardSlug && binding.userId === userId)?.groupId ?? null;
+}
+
 export interface InstallResult {
   packKey: string;
   boards: InstalledBoard[];
@@ -43,6 +61,8 @@ export interface InstallResult {
   deferred: Array<DeferredColumn & { boardSlug: string }>;
   /** 이미 있어서 건너뛴 보드 slug. 재실행해도 중복 생성되지 않는다. */
   skipped: string[];
+  /** 멤버 초대/내보내기 reconcile 및 담당자 자동 이동이 재사용할 ID 기반 연결 정보. */
+  assigneeGroups: AssigneeGroupBinding[];
 }
 
 /**
@@ -72,29 +92,42 @@ function resolveAssignees(ctx: Ctx): AssigneeMember[] {
  */
 export function installStructurePack(
   ctx: Ctx,
-  options: { repo?: BoardsRepo; pack?: StructurePack; assignees?: AssigneeMember[] } = {},
+  options: {
+    repo?: BoardsRepo;
+    pack?: StructurePack;
+    assignees?: AssigneeMember[];
+    assigneeGroups?: readonly AssigneeGroupBinding[];
+  } = {},
 ): InstallResult {
   const repo = options.repo ?? getBoardsRepo();
   const pack = options.pack ?? SEOUL_STRUCTURE_PACK;
   const assignees = options.assignees ?? resolveAssignees(ctx);
 
-  const existingNames = new Set(repo.listBoards(ctx).map((b) => b.name));
   const boards: InstalledBoard[] = [];
   const skipped: string[] = [];
   const deferred: Array<DeferredColumn & { boardSlug: string }> = [];
+  const assigneeGroups: AssigneeGroupBinding[] = [];
 
   for (const packBoard of pack.boards) {
     deferred.push(
       ...packBoard.deferredColumns.map((column) => ({ ...column, boardSlug: packBoard.slug })),
     );
-    if (existingNames.has(packBoard.name)) {
+    const existingBoard = repo.listBoards(ctx).find((board) => board.name === packBoard.name);
+    if (existingBoard) {
       skipped.push(packBoard.slug);
+      if (options.assigneeGroups) {
+        assigneeGroups.push(
+          ...reconcileAssigneeGroups(ctx, repo, existingBoard.id, packBoard, assignees, options.assigneeGroups),
+        );
+      }
       continue;
     }
-    boards.push(installBoard(ctx, repo, packBoard, pack, assignees));
+    const installed = installBoard(ctx, repo, packBoard, pack, assignees);
+    boards.push(installed.board);
+    assigneeGroups.push(...installed.assigneeGroups);
   }
 
-  return { packKey: pack.key, boards, deferred, skipped };
+  return { packKey: pack.key, boards, deferred, skipped, assigneeGroups };
 }
 
 /**
@@ -123,13 +156,61 @@ function resolveSectionName(section: SectionPreset, assignees: AssigneeMember[])
   return assignee ? `${section.groupName}${assignee.displayName}` : null;
 }
 
+/**
+ * 이미 설치된 보드의 담당자별 그룹을 현재 멤버 슬롯과 맞춘다.
+ * 바인딩은 userId 를 정본으로 삼으므로 표시명 변경·동명이인이 그룹 동일성을 바꾸지 않는다.
+ */
+export function reconcileAssigneeGroups(
+  ctx: Ctx,
+  repo: BoardsRepo,
+  boardId: string,
+  packBoard: PackBoard,
+  assignees: readonly AssigneeMember[],
+  previousBindings: readonly AssigneeGroupBinding[],
+): AssigneeGroupBinding[] {
+  const existingGroupIds = new Set(repo.listGroups(ctx, boardId).map((group) => group.id));
+  const previousBySlot = new Map(
+    previousBindings
+      .filter((binding) => binding.boardId === boardId && binding.boardSlug === packBoard.slug)
+      .map((binding) => [binding.slot, binding]),
+  );
+  const next: AssigneeGroupBinding[] = [];
+
+  for (const section of packBoard.sections) {
+    if (section.assigneeSlot === undefined) continue;
+    const slot = section.assigneeSlot;
+    const assignee = assignees[slot];
+    const previous = previousBySlot.get(slot);
+    const previousStillExists = previous !== undefined && existingGroupIds.has(previous.groupId);
+
+    if (!assignee) {
+      if (previousStillExists) repo.deleteGroup(ctx, previous.groupId);
+      continue;
+    }
+
+    if (previousStillExists && previous.userId === assignee.userId) {
+      next.push(previous);
+      continue;
+    }
+
+    if (previousStillExists) repo.deleteGroup(ctx, previous.groupId);
+    const group = repo.createGroup(ctx, boardId, {
+      name: `${section.groupName}${assignee.displayName}`,
+      color: section.color,
+    });
+    next.push({ boardSlug: packBoard.slug, boardId, groupId: group.id, slot, userId: assignee.userId });
+  }
+
+  return next;
+}
+
 function installBoard(
   ctx: Ctx,
   repo: BoardsRepo,
   packBoard: PackBoard,
   pack: StructurePack,
   assignees: AssigneeMember[],
-): InstalledBoard {
+): { board: InstalledBoard; assigneeGroups: AssigneeGroupBinding[] } {
   const board = repo.createBoard(ctx, {
     name: packBoard.name,
     description: packBoard.description,
@@ -149,10 +230,24 @@ function installBoard(
   });
 
   const groupIds: string[] = [];
+  const assigneeGroups: AssigneeGroupBinding[] = [];
   for (const section of packBoard.sections) {
     const name = resolveSectionName(section, assignees);
     if (name === null) continue; // 담당자별 슬롯인데 채울 멤버가 아직 없음(D73)
-    groupIds.push(repo.createGroup(ctx, board.id, { name, color: section.color }).id);
+    const group = repo.createGroup(ctx, board.id, { name, color: section.color });
+    groupIds.push(group.id);
+    if (section.assigneeSlot !== undefined) {
+      const assignee = assignees[section.assigneeSlot];
+      if (assignee) {
+        assigneeGroups.push({
+          boardSlug: packBoard.slug,
+          boardId: board.id,
+          groupId: group.id,
+          slot: section.assigneeSlot,
+          userId: assignee.userId,
+        });
+      }
+    }
   }
 
   const viewIds = packBoard.views.map(
@@ -167,11 +262,14 @@ function installBoard(
   );
 
   return {
-    slug: packBoard.slug,
-    boardId: board.id,
-    nameLabel: packBoard.nameColumn.label,
-    groupIds,
-    columnKeys,
-    viewIds,
+    board: {
+      slug: packBoard.slug,
+      boardId: board.id,
+      nameLabel: packBoard.nameColumn.label,
+      groupIds,
+      columnKeys,
+      viewIds,
+    },
+    assigneeGroups,
   };
 }

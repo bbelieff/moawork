@@ -1,7 +1,7 @@
 /**
  * 구조 팩(structure pack) 도메인 타입 — PLAN-002/WO-1.
  *
- * SSOT: `supabase/migrations/035_preset_depersonalize.sql`(031 의 행을 update)의
+ * SSOT: `supabase/migrations/036_preset_depersonalize.sql`(031 의 행을 update)의
  * `structure_packs.pack_jsonb`. 이 파일은 그 JSONB 의 앱 표현이며,
  * 두 정의가 어긋나지 않는지는 `seoul-pack.test.ts` 가 고정한다.
  *
