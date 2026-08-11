@@ -1,0 +1,167 @@
+#!/usr/bin/env node
+/**
+ * 모아워크 V6 관제판 — 정적 생성기
+ *
+ * 왜 필요한가:
+ *   대시보드 원본은 Cowork 안에서만 돈다(window.cowork.callMcpTool 로 Linear 를 읽는다).
+ *   그래서 belie 화면에만 뜨고 데탑·노트북 세션은 못 본다.
+ *   이 스크립트는 같은 화면을 «파일 하나»로 구워서 레포에 넣는다.
+ *   그러면 git pull 만 하면 어느 기기든, 어느 세션이든 같은 것을 본다.
+ *
+ * 설계 원칙 — 디자인은 한 곳에서만 관리한다:
+ *   board.template.html 은 Cowork 판과 «같은 파일»이다. 렌더링 코드를 복사하지 않는다.
+ *   대신 window.cowork.callMcpTool 을 «구워둔 데이터를 돌려주는 가짜»로 갈아끼운다.
+ *   → 디자인을 고치면 템플릿만 바꾸면 되고, 두 판이 절대 갈라지지 않는다.
+ *
+ * 쓰는 법:
+ *   export LINEAR_API_KEY=lin_api_xxxxx        (레포에 절대 커밋하지 않는다)
+ *   node tools/board/build-board.mjs
+ *   → docs/dashboard/board.html  생성
+ *
+ * 언제 돌리나:
+ *   세션이 [START] / [END] 를 남길 때 1회. 반장은 배차 전에 1회.
+ *   자동 갱신이 아니다 — 파일 위쪽에 «언제 구운 판인지»가 찍힌다.
+ */
+
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const TEMPLATE = resolve(HERE, "board.template.html");
+const OUT = resolve(HERE, "../../docs/dashboard/board.html");
+const PROJECT = "MoaWork · 운영 안정화 및 어드민";
+
+const KEY = process.env.LINEAR_API_KEY;
+if (!KEY) {
+  console.error(`
+❌ LINEAR_API_KEY 가 없다.
+
+  1) Linear → Settings → Security & access → Personal API keys → 새 키 발급
+  2) export LINEAR_API_KEY=lin_api_xxxxx      (Windows: set LINEAR_API_KEY=...)
+  3) 다시 실행
+
+⚠️ 키를 레포에 커밋하지 않는다. .env 파일에 넣더라도 .gitignore 에 있는지 확인할 것.
+`);
+  process.exit(1);
+}
+
+async function gql(query, variables = {}) {
+  const r = await fetch("https://api.linear.app/graphql", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: KEY },
+    body: JSON.stringify({ query, variables }),
+  });
+  const j = await r.json();
+  if (j.errors) throw new Error(JSON.stringify(j.errors));
+  return j.data;
+}
+
+// ── 1. 이슈 (프로젝트 한정) ─────────────────────────────
+const Q_ISSUES = `
+query($after:String){
+  issues(first:100, after:$after, filter:{project:{name:{eq:"${PROJECT}"}}}){
+    pageInfo{ hasNextPage endCursor }
+    nodes{
+      identifier title updatedAt
+      state{ name }
+      priority
+      labels{ nodes{ name } }
+    }
+  }
+}`;
+
+const issues = [];
+let after = null;
+do {
+  const d = await gql(Q_ISSUES, { after });
+  const c = d.issues;
+  c.nodes.forEach((i) =>
+    issues.push({
+      id: i.identifier,
+      title: i.title,
+      status: i.state?.name ?? "Backlog",
+      updatedAt: i.updatedAt,
+      priority: { name: ["No priority", "Urgent", "High", "Medium", "Low"][i.priority] ?? "" },
+      labels: (i.labels?.nodes ?? []).map((l) => l.name),
+    })
+  );
+  after = c.pageInfo.hasNextPage ? c.pageInfo.endCursor : null;
+} while (after);
+
+console.log(`· 이슈 ${issues.length}건`);
+
+// ── 2. 도장 (진행 중 카드의 코멘트만) ────────────────────
+const DONE = ["Done", "Canceled", "Duplicate"];
+const live = issues.filter((i) => !DONE.includes(i.status));
+
+const Q_COMMENTS = `
+query($id:String!){
+  issue(id:$id){ comments(first:6, orderBy:createdAt){ nodes{ body } } }
+}`;
+
+const comments = {};
+let n = 0;
+for (const i of live) {
+  try {
+    const d = await gql(Q_COMMENTS, { id: i.id });
+    comments[i.id] = { comments: (d.issue?.comments?.nodes ?? []).map((c) => ({ body: c.body })) };
+  } catch {
+    comments[i.id] = { comments: [] };
+  }
+  if (++n % 10 === 0) process.stdout.write(`\r· 도장 ${n}/${live.length}`);
+}
+console.log(`\r· 도장 ${n}/${live.length} 읽음`);
+
+// ── 3. 굽기 ─────────────────────────────────────────────
+// 렌더링 코드는 손대지 않는다. callMcpTool 만 «구운 데이터를 주는 가짜»로 바꾼다.
+const shim = `
+<script>
+/* ── 정적 판 · ${new Date().toISOString()} 구움 ──
+   Cowork 판과 «같은 템플릿»이다. Linear 를 실시간으로 읽는 대신
+   구워둔 응답을 돌려준다. 렌더링 코드는 한 줄도 다르지 않다. */
+window.__BAKED__ = ${JSON.stringify({ issues, comments })};
+window.__BAKED_AT__ = ${JSON.stringify(new Date().toISOString())};
+window.cowork = {
+  async callMcpTool(tool, args){
+    const wrap = o => ({ isError:false, structuredContent:o, content:[{text:JSON.stringify(o)}] });
+    if (tool.endsWith("list_issues")) {
+      let out = window.__BAKED__.issues;
+      if (args && args.state) out = out.filter(i => i.status === args.state);
+      return wrap({ issues: out });
+    }
+    if (tool.endsWith("list_comments")) {
+      return wrap(window.__BAKED__.comments[args.issueId] || { comments: [] });
+    }
+    return wrap({});
+  }
+};
+</script>
+<div style="max-width:1200px;margin:0 auto 4px;padding:9px 14px;border-radius:10px;
+ background:#FEF6E7;border:1px solid #F6E0B8;color:#8A5A00;font:12px/1.5 -apple-system,Pretendard,sans-serif">
+ <b>구워둔 판이다 — 실시간이 아니다.</b>
+ <span id="bakedAt"></span> 기준.
+ 최신으로 보려면 <code style="background:#fff;padding:1px 5px;border-radius:4px">node tools/board/build-board.mjs</code> 를 다시 돌리고 커밋한다.
+</div>
+<script>
+(function(){ const d=new Date(window.__BAKED_AT__);
+  document.getElementById("bakedAt").textContent =
+   d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")
+   +" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+})();
+</script>
+`;
+
+let html = readFileSync(TEMPLATE, "utf8");
+if (!html.includes("<body>")) throw new Error("템플릿에 <body> 가 없다");
+html = html.replace("<body>", "<body>" + shim);
+html = html.replace(/<title>.*?<\/title>/, "<title>모아워크 V6 관제판 (구운 판)</title>");
+
+mkdirSync(dirname(OUT), { recursive: true });
+writeFileSync(OUT, html, "utf8");
+
+const done = issues.filter((i) => i.status === "Done").length;
+console.log(`\n✓ ${OUT}`);
+console.log(`  카드 ${issues.length} · 완주 ${done} · 진행 중 ${live.length}`);
+console.log(`\n  다음: git add docs/dashboard/board.html && git commit && git push`);
+console.log(`        다른 기기는 git pull 후 브라우저로 열면 같은 화면을 본다.`);

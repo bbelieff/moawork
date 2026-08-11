@@ -17,6 +17,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "check": "bash scripts/check.sh",
+    "dashboard": "node tools/dashboard-server.mjs",
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {

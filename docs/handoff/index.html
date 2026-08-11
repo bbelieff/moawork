@@ -53,11 +53,11 @@ th{font-size:11.5px;color:var(--t3);font-weight:600}
     <h1>MoaWork<span class="v">v6 확정</span></h1>
     <p>먼데이 워크스페이스를 대체하는 업무 시스템 — 설계 인계 관문</p>
     <div class="meta">
-      <span class="tag">확정 <b>48개</b></span>
-      <span class="tag">카드 <b>16장</b> + 신규 필요</span>
-      <span class="tag">자동 검사 <b>55개 통과</b></span>
+      <span class="tag">확정 <b>D1~D75</b></span>
+      <span class="tag">V6 카드 <b>29장</b> · 슬롯 <b>44칸</b></span>
+      <span class="tag">자동 검사 <b>86개 통과</b></span>
       <span class="tag">실측 자동화 <b>29건</b></span>
-      <span class="tag">2026-08-10</span>
+      <span class="tag">2026-08-11</span>
     </div>
   </div>
 </div>
@@ -66,15 +66,25 @@ th{font-size:11.5px;color:var(--t3);font-weight:600}
 <div class="ok">
   <b>목업이 명세다.</b> 문서가 아니라 <code>docs/design/UI목업_워크스페이스_최종_v6.html</code> 가 정본이다.<br>
   문서로 옮겨 적는 순간 어긋나기 시작한다. 그래서 이 인계 문서는 <b>«목업을 읽는 법»과 «목업에 담기지 않은 결정»</b>만 담는다.<br>
-  화면이 어떻게 생겼고 무엇이 어떻게 움직이는지는 <b>브라우저로 열어서</b> 확인한다.
+  화면이 어떻게 생겼고 무엇이 어떻게 움직이는지는 <b>글로 읽어서</b> 확인한다.
+</div>
+<div class="warn">
+  <b>⚠️ 2026-08-11 정정.</b> 「브라우저로 열어서 확인한다」는 잘못된 지시였다.
+  코덱스 세션은 <code>file://</code> 이 차단돼 열 수 없고 <b>우회는 금지</b>다.
+  목업은 그림이 아니라 명세다 — <b>글로 읽는다.</b><br>
+  <code>node docs/design/dump-mockup.mjs</code> (전체) · <code>node docs/design/dump-mockup.mjs new</code> (탭 하나)<br>
+  탭 · 아이템 · 컬럼 · 타입 · 값의 출처 · 선택지 · 아이템 자동 이동 · 탭 넘김 관문이 전부 나온다.
+  <b>이 출력이 정본 판정이다.</b> 브라우저가 되는 세션은 열어봐도 좋지만 판정은 이 출력으로 한다.
 </div>
 
 <h2><span class="n">02</span>착수 절차 — 이 순서를 지킨다</h2>
 <div class="card">
-  <div class="step"><div class="num">1</div><div><b>목업을 연다</b>
-    <div class="sub"><code>docs/design/UI목업_워크스페이스_최종_v6.html</code> — 자기 층에 해당하는 화면을 직접 눌러본다</div></div></div>
+  <div class="step"><div class="num">1</div><div><b>목업을 «글»로 읽는다 — 브라우저 필요 없다</b>
+    <div class="sub"><code>node docs/design/dump-mockup.mjs [탭]</code> — 탭·아이템·컬럼·타입·출처·선택지·이동규칙이 전부 나온다.
+    <b>file:// 로 목업을 열려고 하지 마라.</b> 막히면 우회하지 말고 이 명령을 쓴다</div></div></div>
   <div class="step"><div class="num">2</div><div><b>자동 검사를 돌린다</b>
-    <div class="sub"><code>node docs/design/qa-mockup.mjs</code> → 55개 통과 확인. 이게 «지금 확정된 동작»의 목록이다</div></div></div>
+    <div class="sub"><code>node docs/design/qa-mockup.mjs</code> → <b>86개</b> 통과 확인. 이게 «지금 확정된 동작»의 목록이다
+    <br><span style="opacity:.7">55·75 는 옛 수치다. 260810 개정 8건 + D68~D70 이 검사에 들어갔다</span></div></div></div>
   <div class="step"><div class="num">3</div><div><b>결정 대장에서 자기 항목을 찾는다</b>
     <div class="sub"><code>docs/handoff/결정대장.md</code> — D번호로 근거와 목업 좌표가 붙어 있다</div></div></div>
   <div class="step"><div class="num">4</div><div><b>리스를 좁게 선언하고 착수한다</b>
@@ -101,7 +111,7 @@ th{font-size:11.5px;color:var(--t3);font-weight:600}
   <h3>기능층 <span class="pill p2">병렬 가능</span></h3>
   <div class="d">바닥층이 끝난 뒤 탭별로 동시에 진행한다. 서로 파일이 겹치지 않는다.</div>
   <div class="grid">
-    <div class="mini"><b>F1 · 신규리드 관리</b><span>아이템 14 · 컬럼 20 · 상담 상황 이동 11건</span></div>
+    <div class="mini"><b>F1 · 신규리드 관리</b><span>아이템 5 · 컬럼 22 · 상담 상황 → 아이템 자동 이동 6건 (D70)</span></div>
     <div class="mini"><b>F2 · 리드컨택 관리</b><span>아이템 7 · 업무이동 7단계 · 이중 잠금</span></div>
     <div class="mini"><b>F3 · 계약업체 실무</b><span>컬럼 24 · 수식 5 · 진행기관/자금명 즉석 추가</span></div>
     <div class="mini"><b>F4 · 업체관리 현황</b><span>접힘 구조 · 담당자 필터 · 미수 표시</span></div>
@@ -135,7 +145,44 @@ th{font-size:11.5px;color:var(--t3);font-weight:600}
 <tr><td><b>C4 이관</b></td><td><code>컬럼표준·마이그레이션매핑_v1.md</code> 전체</td><td>—</td></tr>
 </table>
 
-<h2><span class="n">05</span>착수 전 belie 확인이 필요한 것</h2>
+<h2><span class="n">05</span>2026-08-11 개정 — 반드시 반영할 것</h2>
+<div class="warn">
+  <b>D71~D75 · 모아워크는 «제품» 이고 서울경영은 «첫 고객» 이다.</b><br>
+  이 문서의 옛 판(~08-10)은 「서울경영의 먼데이 보드를 복제하는 웹앱」을 전제했다. <b>틀렸다.</b>
+  여러 회사가 각자 워크스페이스를 만들어 쓰는 SaaS 다. 먼데이 실측은 «이 업종이 실제로 어떻게 일하는가» 를 아는 근거일 뿐이다.
+</div>
+<div class="card">
+  <div class="step"><div class="num">D71</div><div><b>제품 vs 첫 고객</b>
+    <div class="sub">서울경영 전용 앱을 만드는 것이 아니다</div></div></div>
+  <div class="step"><div class="num">D72</div><div><b>새 워크스페이스는 «빈 상태»</b>
+    <div class="sub">보드 0 · 업체 0 · 자금건 0 · 사람은 만든 사람 1명. 구조는 «프리셋을 설치» 해야 들어온다</div></div></div>
+  <div class="step"><div class="num">D73</div><div><b>프리셋은 «지운다» 가 아니라 «이름을 비운다»</b>
+    <div class="sub">컬럼 정의·타입·아이템 종류·자동 이동 규칙은 <b>하나도 지우지 않는다</b>.
+    담당자별 아이템 4종(♻️이대표 등)은 «담당자마다 하나씩 생기는 규칙» 으로 바꾸고, 이름은 멤버 계정에서 온다.
+    <b>구조가 줄어든 PR 은 검수에서 FAIL</b></div></div></div>
+  <div class="step"><div class="num">D74</div><div><b>담당자 «컬럼» 은 남는다</b>
+    <div class="sub">그 컬럼의 «값» 이 초대된 사람 목록에서 온다. 멤버가 없으면 «미배정» 하나 — 정상이다</div></div></div>
+  <div class="step"><div class="num">D75</div><div><b>목업의 이름·업체명·금액은 «예시»</b>
+    <div class="sub">명세인 것은 <b>구조·타입·동작</b>이지 «값» 이 아니다.
+    <code>dump-mockup.mjs</code> 출력 맨 위에 «그대로 둔다 / 이름만 비운다» 표가 있다</div></div></div>
+</div>
+<div class="ok">
+  <b>D68~D70 · 신규리드 이동 동선</b><br>
+  D68 이동 열 2개 → <b>«컨택 이동» 하나</b>로 통합(죽은 열 제거) ·
+  D69 우측 고정 = <b>다음으로 넘기는 버튼</b>(세 탭 공통) ·
+  D70 상담 상황 값 → <b>아이템 자동 이동</b> + 되돌리기
+</div>
+<div class="card">
+  <div class="step"><div class="num">📋</div><div><b>44칸 배정판 — 자기 슬롯 계약은 여기 있다</b>
+    <div class="sub"><code>docs/plans/배정-260810/00_배정판.md</code> — 발사 순서 · 경계 합의표 · 선행 대기<br>
+    <code>docs/plans/배정-260810/&lt;번호&gt;_&lt;슬롯&gt;.md</code> — 슬롯별 계약 전문 40개<br>
+    <code>docs/plans/dashboard.html</code> — 작업 대시보드(진행 현황)</div></div></div>
+  <div class="step"><div class="num">🔴</div><div><b>0번 관문 — BBE-102 / PR #113</b>
+    <div class="sub"><code>installStructurePack</code> 의 app 호출이 main 에 없다. 구조 팩을 심는 스위치가 없어서
+    V6 전체가 «화면에 안 뜨는 작업» 이 된다. 이것부터다</div></div></div>
+</div>
+
+<h2><span class="n">06</span>착수 전 belie 확인이 필요한 것</h2>
 <div class="warn">
   <b>Q1</b> 솔라피 템플릿 5~6종의 실제 문구와 발신번호 — 없으면 C3 착수 불가<br>
   <b>Q2</b> 서울경영도 모두싸인을 쓰는지<br>
@@ -144,7 +191,7 @@ th{font-size:11.5px;color:var(--t3);font-weight:600}
   <b>Q6</b> 먼데이 데이터 뒤바뀜 분포 — 읽기 전용 건수 조사
 </div>
 
-<h2><span class="n">06</span>절대 하지 말 것</h2>
+<h2><span class="n">07</span>절대 하지 말 것</h2>
 <div class="warn">
   <b>1.</b> <code>app_admins</code> 직접 select — RLS로 0건 → 권한 영구 고착. <code>app_admin_role()</code> 경유<br>
   <b>2.</b> 마이그레이션 번호 추측 — 머지 시점 최신+1 재확인<br>
