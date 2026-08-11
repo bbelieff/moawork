@@ -5,10 +5,11 @@
 // 강제로 하나로 합치지 않는다(D73: 줄이지 않는다). 대신 각 탭이 가리키는 대표 주소(canonical)와
 // 그 탭 안에 있다고 볼 수 있는 나머지 주소(legacy/alt)를 명시적으로 분류한다.
 //
-// new/work 탭의 canonicalHref는 BBE-103에서 이미 실측 근거로 확정된 값이다(재검토 안 함):
-//   work → /policyfund (MWC 실측: 31컬럼+선택지 전량 렌더, /work는 데이터 비어있음).
-//
 // 카드가 표기한 "주소 25개"는 실측 39개와 다르다 — 이 카드 착수 시점 재실측값으로 정정한다.
+//
+// work 탭의 canonicalHref는 2026-08-11 MWC 데이터-완성도 결정(→/policyfund, 재검토 안 함)을
+// 2026-08-12 총괄 지시(BBE-142 PR #166 인계)로 뒤집는다: /policyfund 는 앱 셸 밖 옛 미리보기,
+// /work 는 셸 안의 새 화면이다. /policyfund 페이지는 지우지 않는다 — 총괄이 후속 정리한다.
 
 export type AppTab = {
   key: string;
@@ -36,8 +37,8 @@ export const APP_TABS: readonly AppTab[] = [
   {
     key: "work",
     mockupLabel: "계약업체 실무",
-    canonicalHref: "/policyfund",
-    altHrefs: ["/policyfund/settlements", "/work"],
+    canonicalHref: "/work",
+    altHrefs: ["/policyfund", "/policyfund/settlements"],
   },
   {
     key: "company",

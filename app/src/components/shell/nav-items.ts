@@ -30,7 +30,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { key: "dash", label: "대시보드", icon: "grid", href: "/", feature: FEATURES.dash, owner: "T04" },
   { key: "new", label: "신규업체", icon: "new", href: "/newcust", feature: FEATURES.crm, owner: "BBE-26" },
   { key: "contact", label: "컨택업체", icon: "contact", href: "/contract", feature: FEATURES.crm, owner: "T02" },
-  { key: "work", label: "업무관리", icon: "work", href: "/policyfund", feature: FEATURES.policyfund, owner: "T09" },
+  { key: "work", label: "업무관리", icon: "work", href: "/work", feature: FEATURES.policyfund, owner: "T09" },
   { key: "company", label: "업체관리", icon: "company", href: "/companies", feature: FEATURES.crm, owner: "T02" },
   { key: "notice", label: "공지사항", icon: "notice", href: "/notices", owner: "미배정" },
   { key: "members", label: "멤버관리", icon: "org", href: "/settings/members", feature: FEATURES.org, owner: "T03", badgeKey: "workspaceApprovals" },
