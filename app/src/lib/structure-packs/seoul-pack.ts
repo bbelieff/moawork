@@ -1,7 +1,7 @@
 /**
  * 모아프리셋-정책자금1 — 서울경영지원센터 3보드 구조 팩 (PLAN-002/WO-1).
  *
- * SSOT 는 `supabase/migrations/036_preset_depersonalize.sql`(031 의 행을 update)이고 이 파일은
+ * SSOT 는 `supabase/migrations/040_preset_depersonalize.sql`(031 의 행을 update)이고 이 파일은
  * 앱이 쓰는 동일 데이터다. 둘이 어긋나면 `seoul-pack.test.ts` 가 실패한다.
  *
  * 이 팩이 WO-6 공용 프리셋 라이브러리의 초기 데이터가 된다
