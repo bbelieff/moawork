@@ -10,4 +10,5 @@ export * from "./types.js";
 export * from "./provider.js";
 export * from "./job.js";
 export * from "./register.js";
+export * from "./delivery-policy.js";
 export { StubProvider, defaultProviders } from "./providers/stub.js";

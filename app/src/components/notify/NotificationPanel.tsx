@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { NotifySnapshot } from "@/lib/notify/server";
 import { NOTIFY_TABS, type NotifyTab } from "@/lib/notify/types";
+import { notificationTargetHref } from "@/lib/notify/highlight";
 import {
   PANEL_HEIGHT_CLASS,
   PANEL_SCROLL_CLASS,
@@ -45,7 +46,11 @@ export function NotificationPanel({
   };
 
   /** 항목 클릭 = 딥링크 이동. 행동 필요 항목은 이동과 함께 '했다' 처리한다. */
-  const go = async (href: string | null, resolveId: string | null) => {
+  const go = async (
+    href: string | null,
+    resolveId: string | null,
+    notificationId?: string,
+  ) => {
     if (resolveId) {
       try {
         await fetch(`/api/notifications/${resolveId}/resolve`, { method: "POST" });
@@ -54,7 +59,7 @@ export function NotificationPanel({
       }
     }
     onClose();
-    if (href) router.push(href);
+    if (href) router.push(notificationId ? notificationTargetHref(href, notificationId) : href);
     void onChanged();
   };
 
@@ -84,7 +89,7 @@ export function NotificationPanel({
                 <li key={n.id}>
                   <button
                     type="button"
-                    onClick={() => void go(href, n.is_action ? n.id : null)}
+                    onClick={() => void go(href, n.is_action ? n.id : null, n.id)}
                     className="flex w-full items-start gap-2 border-b px-3 py-2.5 text-left transition-colors hover:opacity-80"
                     style={{ borderColor: "var(--mw-line)" }}
                   >

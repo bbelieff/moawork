@@ -12,3 +12,5 @@ export * from "./badge";
 export * from "./grouping";
 export * from "./messages";
 export * from "./visibility";
+export * from "./recipients";
+export * from "./highlight";
