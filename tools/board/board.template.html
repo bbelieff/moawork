@@ -206,10 +206,10 @@ tr.hot{background:#FFFBFA}
 <h2>층별 진행 <span class="hint">일 축 — 무엇이 무엇을 막나</span></h2>
 <div class="lay" id="layers"></div>
 
-<h2>상비 슬롯 <span class="hint">기기 2 × 공급자 2 × T01~T10 = 40칸</span></h2>
+<h2>상비 슬롯 <span class="hint" id="slotHint">기기 2 × 진영 2 × 5칸</span></h2>
 <div class="card grid" id="slots"><div class="load">…</div></div>
 
-<h2>40칸 슬롯표 <span class="hint">증거·비고까지 — 격자에서 안 보이는 것</span></h2>
+<h2 id="tableTitle">슬롯표 <span class="hint">증거·비고까지 — 격자에서 안 보이는 것</span></h2>
 <div class="card" style="overflow:hidden"><div id="table"><div class="load">…</div></div></div>
 
 <h2>세션별 지시 <span class="hint">복사해서 그 세션 창에 그대로 붙여넣는다</span></h2>
@@ -233,7 +233,9 @@ const T_ISSUES="mcp__4aa5fa08-0ae4-4bda-95f5-f1b700e15ee3__list_issues";
 const T_COMMENTS="mcp__4aa5fa08-0ae4-4bda-95f5-f1b700e15ee3__list_comments";
 const PROJECT="MoaWork · 운영 안정화 및 어드민";
 
-const CHAIN=[["BBE-102","관문","구조 팩 진입점"],["BBE-119","L1","조직·보고"],
+/* 2026-08-12 — 0번 관문이 «구조 팩 진입점(BBE-102, 완주)» 에서 «qa-app.mjs(BBE-140)» 로 바뀌었다.
+   앱이 목업과 같은지 검사하는 것이 0건이라, 그 전에 화면 카드를 더 발주하면 어긋남만 늘어난다. */
+const CHAIN=[["BBE-140","관문","앱↔목업 검사"],["BBE-119","L1","조직·보고"],
  ["BBE-122","L2","권한"],["BBE-123","L3","필드 타입"],["BBE-108","L4","원장 모델"],
  ["BBE-117","F5","뷰 시스템"],["BBE-104","C1","자동화 엔진"],["BBE-124","C2","알림 3층"],
  ["BBE-112","C5","온보딩"]];
@@ -246,19 +248,34 @@ const LAYERS=[
   ["BBE-104","BBE-20","BBE-124","BBE-114","BBE-115","BBE-109","BBE-112","BBE-113","BBE-111"]],
  ["운영층","배포·검색·정산·어드민·QA.",
   ["BBE-9","BBE-22","BBE-19","BBE-13","BBE-89","BBE-92","BBE-23","BBE-30","BBE-102","BBE-127","BBE-131"]]];
+/* 편제 2026-08-12 — 40칸 → 4반 × 5칸.  정본: docs/coordination/배정판.md
+   칸에 «카드» 를 못 박지 않는다. 칸은 «소유 영역» 이고 카드는 그 위를 흐른다.
+   옛 판은 칸=카드로 굳어 있어서, 같은 카드를 두 진영에 줘도 판이 알려주지 못했다(중복 8건). */
 const SLOTS=[
- ["데탑 C","클로드",[["BBE-119","조직·보고"],["BBE-122","권한"],["BBE-123","필드 타입"],
-  ["BBE-125","업체 마스터"],["BBE-102","구조 팩"],["BBE-110","서류 체크"],["BBE-126","셸·토큰"],
-  ["BBE-116","로고·브랜드"],["BBE-117","뷰 시스템"],["BBE-105","이중 잠금"]]],
- ["노트북 C","클로드",[["BBE-127","지역 분해"],["BBE-112","온보딩 엔진"],["BBE-14","보드 조작"],
-  ["BBE-16","딜 타임라인"],["BBE-18","대시 드릴다운"],["BBE-21","멤버 초대"],["BBE-23","모바일 QA"],
-  ["BBE-90","조용한 실패"],["BBE-103","사이드바 연결"],[null,"검수 전담"]]],
- ["데탑 G","지피티(코덱스)",[["BBE-9","링 배포"],["BBE-114","솔라피"],["BBE-22","통합 검색"],
-  ["BBE-104","자동화 조건절"],["BBE-106","연락처 정규화"],["BBE-108","원장 모델"],["BBE-124","알림 3층"],
-  ["BBE-111","부결·재신청"],["BBE-20","자동화 실행"],["BBE-30","컨택 outbox"]]],
- ["노트북 G","지피티(코덱스)",[["BBE-109","먼데이 가져오기"],["BBE-118","필터"],["BBE-28","컨택 파이프"],
-  ["BBE-19","정산·내보내기"],["BBE-13","어드민 운영"],["BBE-115","모두싸인"],["BBE-131","빈 상태 검증"],
-  ["BBE-89","비인가 라우팅"],["BBE-92","라이브 인증 QA"],[null,"검수 전담"]]]];
+ ["DC","데탑 클로드 · 조립",[
+  [null,"반장 겸 검수자 — 코드 금지 · DG 를 검수"],
+  ["BBE-103","앱 셸 · 사이드바 · 탭 골격"],
+  ["BBE-46","신규리드"],
+  ["BBE-127","리드컨택"],
+  ["BBE-16","딜 상세 · 상세 레이아웃"]]],
+ ["NC","노트북 클로드 · 조립·회수",[
+  [null,"반장 겸 검수자 — 코드 금지 · NG 를 검수"],
+  ["BBE-31","계약업체 실무"],
+  ["BBE-125","업체관리 현황 · 공지"],
+  ["BBE-117","프리셋 라이브러리 · 뷰"],
+  ["BBE-138","고아 파일 52개 회수"]]],
+ ["DG","데탑 코덱스 · 부품",[
+  [null,"반장 겸 검수자 — 코드 금지 · DC 를 검수"],
+  ["BBE-132","DB · 마이그레이션"],
+  ["BBE-30","자동화 · 발송"],
+  [null,"서버 계약 · 권한 (배정 대기)"],
+  ["BBE-19","업체 · 딜 데이터 계약"]]],
+ ["NG","노트북 코덱스 · 관문·검증",[
+  [null,"반장 겸 검수자 — 코드 금지 · NC 를 검수"],
+  ["BBE-140","★ 0번 관문 — qa-app.mjs"],
+  ["BBE-139","회귀 감시 · health"],
+  ["BBE-141","마이그레이션 · 테스트 정리"],
+  ["BBE-131","차이 → 카드 변환"]]]];
 
 const DONE=["Done","Canceled","Duplicate"];
 const TONE={"Done":["done","완주"],"Canceled":["idle","취소"],"Duplicate":["idle","중복"],
@@ -293,7 +310,16 @@ async function load(){
 
  const flat=[];
  SLOTS.forEach(([dev,eng,rows])=>rows.forEach(([id,what],i)=>
-  flat.push({dev,eng,i,slot:`${dev}T${String(i+1).padStart(2,"0")}`,id,what})));
+  flat.push({dev,eng,i,slot:`${dev}-${String(i+1).padStart(2,"0")}`,id,what})));
+ /* 칸 수는 «세어서» 쓴다. 손으로 박으면 편제가 바뀔 때마다 판이 거짓말을 한다
+    — 실제로 40칸→20칸 개편 뒤 머리글이 40으로 남아 있었다 (2026-08-12) */
+ { const nSlot=flat.length, nLead=SLOTS.length;          /* 반장은 각 반의 0번 칸 = 반 수 */
+   const nFree=flat.filter(f=>!f.id&&f.i>0).length;      /* 카드 없는 «작업원» 칸 */
+   const h=document.getElementById("slotHint");
+   if(h) h.textContent=`반 ${SLOTS.length} × 5칸 = ${nSlot}칸 · 반장 ${nLead} · 작업원 ${nSlot-nLead}`
+                       + (nFree?` (배정 대기 ${nFree})`:"");
+   const t=document.getElementById("tableTitle");
+   if(t) t.firstChild.textContent=`${nSlot}칸 슬롯표 `; }
  const live=flat.filter(f=>f.id&&by[f.id]&&!DONE.includes(by[f.id].status));
  let read=0;
  await Promise.all(live.map(async f=>{
