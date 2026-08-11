@@ -299,6 +299,25 @@ describe("셀 편집 → 아이템 자동 이동 (BBE-14 · D68~D70)", () => {
     expect(restored.values[col.key]).toBeNull();
   });
 
+  it("다른 보드 아이템은 되돌리기 전에 거부하고 값을 변경하지 않는다", () => {
+    const source = setupMoveBoard();
+    const other = svc.createBoard(owner, { name: "다른 보드" });
+    const otherColumn = svc.addColumn(owner, other.board.id, { label: "메모", type: "text" });
+    const otherItem = svc.createItem(owner, other.board.id, {
+      title: "보호할 아이템",
+      values: { [otherColumn.key]: "원래 값" },
+    });
+
+    expect(() =>
+      svc.undoCells(owner, source.boardId, otherItem.id, {
+        group_id: null,
+        values: { [otherColumn.key]: "변조 값" },
+      }),
+    ).toThrow(NotFoundError);
+
+    expect(svc.getItem(owner, other.board.id, otherItem.id).values[otherColumn.key]).toBe("원래 값");
+  });
+
   it("되돌리기는 «빈 값 → 규칙 있는 값» 편집도 정확히 원상복구한다(재기입 방식이면 실패하는 경우)", () => {
     // 이전 값이 규칙에 없는 상태(null)에서 규칙 있는 값으로 바뀐 경우,
     // 그냥 이전 값을 다시 넣기만 해서는(재평가) 원래 그룹을 못 찾는다 — group_id 를 명시 복원해야 한다.
