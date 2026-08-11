@@ -11,6 +11,8 @@ export interface OutboxDelivery {
   messageId: string;
   attempt: number;
   actor: OutboxActor;
+  workerId: string;
+  leaseToken: string;
 }
 
 export type DeliveryResult =
@@ -18,14 +20,14 @@ export type DeliveryResult =
   | { ok: false; reason: string; retryable: boolean };
 
 export interface DeliveryAdapter {
-  deliver(messageId: string): Promise<DeliveryResult>;
+  deliver(delivery: OutboxDelivery): Promise<DeliveryResult>;
 }
 
 export interface OutboxStore {
   claim(limit: number, workerId: string, leaseMs: number): Promise<readonly OutboxDelivery[]>;
-  markDelivered(outboxId: string, providerMessageId: string): Promise<void>;
-  markRetry(outboxId: string, reason: string, nextAttemptAt: Date): Promise<void>;
-  markDead(outboxId: string, reason: string): Promise<void>;
+  markDelivered(delivery: OutboxDelivery, providerMessageId: string): Promise<void>;
+  markRetry(delivery: OutboxDelivery, reason: string, nextAttemptAt: Date): Promise<void>;
+  markDead(delivery: OutboxDelivery, reason: string): Promise<void>;
 }
 
 export interface OutboxRunSummary {

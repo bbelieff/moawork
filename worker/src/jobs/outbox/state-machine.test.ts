@@ -13,6 +13,7 @@ interface Row extends OutboxDelivery {
 class ExecutableOutbox implements OutboxStore {
   private readonly rows = new Map<string, Row>();
   now = 0;
+  tokenSequence = 0;
 
   enqueue(input: BusinessMessageKey, messageId: string): { inserted: boolean; outboxId: string } {
     const key = businessMessageKey(input);
@@ -23,11 +24,12 @@ class ExecutableOutbox implements OutboxStore {
       key, outboxId, messageId, attempt: 0,
       actor: { kind: "automation", id: "rule" },
       status: "pending", nextAt: this.now, leaseUntil: 0,
+      workerId: "", leaseToken: "",
     });
     return { inserted: true, outboxId };
   }
 
-  async claim(limit: number, _workerId: string, leaseMs: number): Promise<readonly OutboxDelivery[]> {
+  async claim(limit: number, workerId: string, leaseMs: number): Promise<readonly OutboxDelivery[]> {
     const claimed: Row[] = [];
     for (const row of this.rows.values()) {
       const available = (row.status === "pending" || row.status === "retry") && row.nextAt <= this.now;
@@ -36,18 +38,28 @@ class ExecutableOutbox implements OutboxStore {
       row.status = "leased";
       row.leaseUntil = this.now + leaseMs;
       row.attempt += 1;
+      row.workerId = workerId;
+      row.leaseToken = `token-${++this.tokenSequence}`;
       claimed.push(row);
     }
-    return claimed.map(({ outboxId, messageId, attempt, actor }) => ({ outboxId, messageId, attempt, actor }));
+    return claimed.map(({ outboxId, messageId, attempt, actor, workerId: owner, leaseToken }) => ({ outboxId, messageId, attempt, actor, workerId: owner, leaseToken }));
   }
 
-  async markDelivered(id: string) { this.rows.get(id)!.status = "delivered"; }
-  async markRetry(id: string, _reason: string, next: Date) {
-    const row = this.rows.get(id)!;
+  private leased(delivery: OutboxDelivery): Row {
+    const row = this.rows.get(delivery.outboxId)!;
+    if (row.status !== "leased" || row.leaseUntil <= this.now || row.workerId !== delivery.workerId || row.leaseToken !== delivery.leaseToken) {
+      throw new Error("invalid_lease");
+    }
+    return row;
+  }
+
+  async markDelivered(delivery: OutboxDelivery, _providerMessageId?: string) { this.leased(delivery).status = "delivered"; }
+  async markRetry(delivery: OutboxDelivery, _reason: string, next: Date) {
+    const row = this.leased(delivery);
     row.status = "retry";
     row.nextAt = next.getTime();
   }
-  async markDead(id: string) { this.rows.get(id)!.status = "dead"; }
+  async markDead(delivery: OutboxDelivery, _reason?: string) { this.leased(delivery).status = "dead"; }
   status(id: string) { return this.rows.get(id)!.status; }
 }
 
@@ -65,7 +77,7 @@ describe("executable outbox state machine", () => {
     const result = await executeOutboxBatch(store, { deliver }, { workerId: "worker", wait: async () => undefined });
     expect(result).toEqual({ claimed: 1, delivered: 1, retrying: 0, dead: 0 });
     expect(deliver).toHaveBeenCalledOnce();
-    expect(deliver).toHaveBeenCalledWith("message-1");
+    expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ messageId: "message-1", workerId: "worker" }));
   });
 
   it("atomically gives a row to only one concurrent claimant", async () => {
@@ -96,5 +108,25 @@ describe("executable outbox state machine", () => {
     });
     expect(result.delivered).toBe(1);
     expect(deliver).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects worker/token mismatch, expiry, and all stale ACKs after re-claim", async () => {
+    const store = new ExecutableOutbox();
+    const { outboxId } = store.enqueue(key, "message-1");
+    const first = (await store.claim(1, "worker-a", 100))[0];
+    await expect(store.markDelivered({ ...first, workerId: "worker-x" }, "receipt")).rejects.toThrow("invalid_lease");
+    await expect(store.markRetry({ ...first, leaseToken: "wrong" }, "retry", new Date(200))).rejects.toThrow("invalid_lease");
+    store.now = 100;
+    await expect(store.markDead(first, "expired")).rejects.toThrow("invalid_lease");
+
+    const second = (await store.claim(1, "worker-b", 100))[0];
+    for (const stale of [
+      () => store.markDelivered(first, "receipt"),
+      () => store.markRetry(first, "retry", new Date(300)),
+      () => store.markDead(first, "dead"),
+    ]) await expect(stale()).rejects.toThrow("invalid_lease");
+    expect(store.status(outboxId)).toBe("leased");
+    await expect(store.markDelivered(second, "receipt")).resolves.toBeUndefined();
+    expect(store.status(outboxId)).toBe("delivered");
   });
 });

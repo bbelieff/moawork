@@ -45,26 +45,26 @@ export async function executeOutboxBatch(
     const job = jobs[index];
     if (index > 0) await wait(spacingMs);
     try {
-      const result = await adapter.deliver(job.messageId);
+      const result = await adapter.deliver(job);
       if (result.ok) {
-        await store.markDelivered(job.outboxId, result.providerMessageId);
+        await store.markDelivered(job, result.providerMessageId);
         summary.delivered += 1;
       } else if (result.retryable && job.attempt < maxAttempts) {
         const next = new Date(now().getTime() + retryDelayMs(job.attempt, random));
-        await store.markRetry(job.outboxId, safeFailureReason(result.reason), next);
+        await store.markRetry(job, safeFailureReason(result.reason), next);
         summary.retrying += 1;
       } else {
-        await store.markDead(job.outboxId, safeFailureReason(result.reason));
+        await store.markDead(job, safeFailureReason(result.reason));
         summary.dead += 1;
       }
     } catch (error) {
       const reason = safeFailureReason(error instanceof Error ? error.message : "발송 처리 중 알 수 없는 오류가 발생했어요.");
       if (job.attempt < maxAttempts) {
         const next = new Date(now().getTime() + retryDelayMs(job.attempt, random));
-        await store.markRetry(job.outboxId, reason, next);
+        await store.markRetry(job, reason, next);
         summary.retrying += 1;
       } else {
-        await store.markDead(job.outboxId, reason);
+        await store.markDead(job, reason);
         summary.dead += 1;
       }
     }

@@ -14,6 +14,7 @@ create table public.message_outbox (
   leased_at timestamptz,
   lease_expires_at timestamptz,
   leased_by text,
+  lease_token uuid,
   delivered_at timestamptz,
   provider_message_id text,
   last_error text,
@@ -160,7 +161,8 @@ returns table(
   message_id uuid,
   attempt_count integer,
   actor_kind text,
-  actor_id text
+  actor_id text,
+  lease_token uuid
 )
 language plpgsql
 security definer
@@ -189,10 +191,11 @@ begin
         leased_at = now(),
         lease_expires_at = now() + make_interval(secs => greatest(5, least(coalesce(p_lease_ms, 60000), 900000)) / 1000.0),
         leased_by = p_worker_id,
+        lease_token = gen_random_uuid(),
         updated_at = now()
     from candidates c
     where o.id = c.id
-    returning o.id, o.org_id, o.message_id, o.attempt_count, o.actor_kind, o.actor_id
+    returning o.id, o.org_id, o.message_id, o.attempt_count, o.actor_kind, o.actor_id, o.lease_token
   ), audited as (
     insert into public.message_outbox_audit(
       outbox_id, org_id, event, actor_kind, actor_id, worker_id, attempt_count
@@ -200,49 +203,61 @@ begin
     select c.id, c.org_id, 'claimed', c.actor_kind, c.actor_id, p_worker_id, c.attempt_count
     from claimed c
   )
-  select c.id, c.message_id, c.attempt_count, c.actor_kind, c.actor_id from claimed c;
+  select c.id, c.message_id, c.attempt_count, c.actor_kind, c.actor_id, c.lease_token from claimed c;
 end;
 $$;
 
-create or replace function public.complete_message_outbox(p_outbox_id uuid, p_provider_message_id text)
+create or replace function public.complete_message_outbox(
+  p_outbox_id uuid, p_provider_message_id text, p_worker_id text, p_lease_token uuid
+)
 returns void language plpgsql security definer set search_path = '' as $$
 declare v_row public.message_outbox%rowtype;
 begin
   update public.message_outbox set status='delivered', delivered_at=now(), provider_message_id=p_provider_message_id,
-    lease_expires_at=null, updated_at=now()
-  where id=p_outbox_id and status='leased' returning * into v_row;
-  if found then
-    insert into public.message_outbox_audit(outbox_id,org_id,event,actor_kind,actor_id,worker_id,attempt_count)
-    values(v_row.id,v_row.org_id,'delivered',v_row.actor_kind,v_row.actor_id,v_row.leased_by,v_row.attempt_count);
-  end if;
+    lease_expires_at=null, lease_token=null, updated_at=now()
+  where id=p_outbox_id and status='leased' and leased_by=p_worker_id
+    and lease_token=p_lease_token and lease_expires_at > now()
+  returning * into v_row;
+  if not found then raise exception '유효한 outbox lease가 아니에요.' using errcode='40001'; end if;
+  insert into public.message_outbox_audit(outbox_id,org_id,event,actor_kind,actor_id,worker_id,attempt_count)
+  values(v_row.id,v_row.org_id,'delivered',v_row.actor_kind,v_row.actor_id,p_worker_id,v_row.attempt_count);
 end $$;
 
-create or replace function public.retry_message_outbox(p_outbox_id uuid, p_reason text, p_next_attempt_at timestamptz)
+create or replace function public.retry_message_outbox(
+  p_outbox_id uuid, p_reason text, p_next_attempt_at timestamptz, p_worker_id text, p_lease_token uuid
+)
 returns void language plpgsql security definer set search_path = '' as $$
 declare v_row public.message_outbox%rowtype;
 begin
   update public.message_outbox set status='retry', next_attempt_at=p_next_attempt_at, last_error=left(p_reason,300),
-    lease_expires_at=null, updated_at=now()
-  where id=p_outbox_id and status='leased' returning * into v_row;
-  if found then
-    insert into public.message_outbox_audit(outbox_id,org_id,event,actor_kind,actor_id,worker_id,attempt_count)
-    values(v_row.id,v_row.org_id,'retry_scheduled',v_row.actor_kind,v_row.actor_id,v_row.leased_by,v_row.attempt_count);
-  end if;
+    lease_expires_at=null, lease_token=null, updated_at=now()
+  where id=p_outbox_id and status='leased' and leased_by=p_worker_id
+    and lease_token=p_lease_token and lease_expires_at > now()
+  returning * into v_row;
+  if not found then raise exception '유효한 outbox lease가 아니에요.' using errcode='40001'; end if;
+  insert into public.message_outbox_audit(outbox_id,org_id,event,actor_kind,actor_id,worker_id,attempt_count)
+  values(v_row.id,v_row.org_id,'retry_scheduled',v_row.actor_kind,v_row.actor_id,p_worker_id,v_row.attempt_count);
 end $$;
 
-create or replace function public.fail_message_outbox(p_outbox_id uuid, p_reason text)
+create or replace function public.fail_message_outbox(
+  p_outbox_id uuid, p_reason text, p_worker_id text, p_lease_token uuid
+)
 returns void language plpgsql security definer set search_path = '' as $$
 declare v_row public.message_outbox%rowtype;
 begin
-  update public.message_outbox set status='dead', last_error=left(p_reason,300), lease_expires_at=null, updated_at=now()
-  where id=p_outbox_id and status='leased' returning * into v_row;
-  if found then
-    insert into public.message_outbox_audit(outbox_id,org_id,event,actor_kind,actor_id,worker_id,attempt_count)
-    values(v_row.id,v_row.org_id,'dead',v_row.actor_kind,v_row.actor_id,v_row.leased_by,v_row.attempt_count);
-  end if;
+  update public.message_outbox set status='dead', last_error=left(p_reason,300), lease_expires_at=null,
+    lease_token=null, updated_at=now()
+  where id=p_outbox_id and status='leased' and leased_by=p_worker_id
+    and lease_token=p_lease_token and lease_expires_at > now()
+  returning * into v_row;
+  if not found then raise exception '유효한 outbox lease가 아니에요.' using errcode='40001'; end if;
+  insert into public.message_outbox_audit(outbox_id,org_id,event,actor_kind,actor_id,worker_id,attempt_count)
+  values(v_row.id,v_row.org_id,'dead',v_row.actor_kind,v_row.actor_id,p_worker_id,v_row.attempt_count);
 end $$;
 
-create or replace function public.load_message_outbox_payload(p_message_id uuid, p_worker_id text)
+create or replace function public.load_message_outbox_payload(
+  p_message_id uuid, p_worker_id text, p_lease_token uuid
+)
 returns table(
   id uuid,
   channel public.message_channel,
@@ -264,6 +279,7 @@ as $$
   where o.message_id = p_message_id
     and o.status = 'leased'
     and o.leased_by = p_worker_id
+    and o.lease_token = p_lease_token
     and o.lease_expires_at > now()
 $$;
 
@@ -271,17 +287,17 @@ revoke all on public.message_outbox from anon;
 revoke all on public.message_outbox_audit from anon;
 revoke execute on function public.enqueue_message_outbox(uuid,uuid,uuid,text,text,uuid,public.message_channel,text,text) from public, anon;
 revoke execute on function public.claim_message_outbox(integer,text,integer) from public, anon, authenticated;
-revoke execute on function public.complete_message_outbox(uuid,text) from public, anon, authenticated;
-revoke execute on function public.retry_message_outbox(uuid,text,timestamptz) from public, anon, authenticated;
-revoke execute on function public.fail_message_outbox(uuid,text) from public, anon, authenticated;
-revoke execute on function public.load_message_outbox_payload(uuid,text) from public, anon, authenticated, service_role;
+revoke execute on function public.complete_message_outbox(uuid,text,text,uuid) from public, anon, authenticated;
+revoke execute on function public.retry_message_outbox(uuid,text,timestamptz,text,uuid) from public, anon, authenticated;
+revoke execute on function public.fail_message_outbox(uuid,text,text,uuid) from public, anon, authenticated;
+revoke execute on function public.load_message_outbox_payload(uuid,text,uuid) from public, anon, authenticated, service_role;
 revoke execute on function public.claim_message_outbox(integer,text,integer) from service_role;
-revoke execute on function public.complete_message_outbox(uuid,text) from service_role;
-revoke execute on function public.retry_message_outbox(uuid,text,timestamptz) from service_role;
-revoke execute on function public.fail_message_outbox(uuid,text) from service_role;
+revoke execute on function public.complete_message_outbox(uuid,text,text,uuid) from service_role;
+revoke execute on function public.retry_message_outbox(uuid,text,timestamptz,text,uuid) from service_role;
+revoke execute on function public.fail_message_outbox(uuid,text,text,uuid) from service_role;
 grant execute on function public.claim_message_outbox(integer,text,integer) to moawork_outbox_worker;
-grant execute on function public.complete_message_outbox(uuid,text) to moawork_outbox_worker;
-grant execute on function public.retry_message_outbox(uuid,text,timestamptz) to moawork_outbox_worker;
-grant execute on function public.fail_message_outbox(uuid,text) to moawork_outbox_worker;
-grant execute on function public.load_message_outbox_payload(uuid,text) to moawork_outbox_worker;
+grant execute on function public.complete_message_outbox(uuid,text,text,uuid) to moawork_outbox_worker;
+grant execute on function public.retry_message_outbox(uuid,text,timestamptz,text,uuid) to moawork_outbox_worker;
+grant execute on function public.fail_message_outbox(uuid,text,text,uuid) to moawork_outbox_worker;
+grant execute on function public.load_message_outbox_payload(uuid,text,uuid) to moawork_outbox_worker;
 grant execute on function public.enqueue_message_outbox(uuid,uuid,uuid,text,text,uuid,public.message_channel,text,text) to authenticated, service_role;

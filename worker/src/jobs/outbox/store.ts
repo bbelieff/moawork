@@ -10,6 +10,7 @@ interface ClaimedRow extends Record<string, unknown> {
   attempt_count: number;
   actor_kind: "person" | "automation";
   actor_id: string;
+  lease_token: string;
 }
 
 export class PostgresOutboxStore implements OutboxStore {
@@ -26,18 +27,20 @@ export class PostgresOutboxStore implements OutboxStore {
       messageId: row.message_id,
       attempt: row.attempt_count,
       actor: { kind: row.actor_kind, id: row.actor_id },
+      workerId,
+      leaseToken: row.lease_token,
     }));
   }
 
-  async markDelivered(outboxId: string, providerMessageId: string): Promise<void> {
-    await this.db.query("select public.complete_message_outbox($1,$2)", [outboxId, providerMessageId]);
+  async markDelivered(delivery: OutboxDelivery, providerMessageId: string): Promise<void> {
+    await this.db.query("select public.complete_message_outbox($1,$2,$3,$4)", [delivery.outboxId, providerMessageId, delivery.workerId, delivery.leaseToken]);
   }
 
-  async markRetry(outboxId: string, reason: string, nextAttemptAt: Date): Promise<void> {
-    await this.db.query("select public.retry_message_outbox($1,$2,$3)", [outboxId, reason.slice(0, 300), nextAttemptAt]);
+  async markRetry(delivery: OutboxDelivery, reason: string, nextAttemptAt: Date): Promise<void> {
+    await this.db.query("select public.retry_message_outbox($1,$2,$3,$4,$5)", [delivery.outboxId, reason.slice(0, 300), nextAttemptAt, delivery.workerId, delivery.leaseToken]);
   }
 
-  async markDead(outboxId: string, reason: string): Promise<void> {
-    await this.db.query("select public.fail_message_outbox($1,$2)", [outboxId, reason.slice(0, 300)]);
+  async markDead(delivery: OutboxDelivery, reason: string): Promise<void> {
+    await this.db.query("select public.fail_message_outbox($1,$2,$3,$4)", [delivery.outboxId, reason.slice(0, 300), delivery.workerId, delivery.leaseToken]);
   }
 }

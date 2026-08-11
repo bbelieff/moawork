@@ -11,12 +11,13 @@ class MemoryStore implements OutboxStore {
 
   enqueue(job: OutboxDelivery) { this.pending.set(job.outboxId, job); }
   async claim(limit: number) { return [...this.pending.values()].slice(0, limit); }
-  async markDelivered(id: string) { this.pending.delete(id); this.delivered += 1; }
-  async markRetry(id: string) { this.pending.delete(id); this.retrying += 1; }
-  async markDead(id: string) { this.pending.delete(id); this.dead += 1; }
+  async markDelivered(job: OutboxDelivery) { this.pending.delete(job.outboxId); this.delivered += 1; }
+  async markRetry(job: OutboxDelivery) { this.pending.delete(job.outboxId); this.retrying += 1; }
+  async markDead(job: OutboxDelivery) { this.pending.delete(job.outboxId); this.dead += 1; }
 }
 
 const actor = { kind: "automation", id: "rule-1" } as const;
+const lease = { workerId: "w", leaseToken: "token" } as const;
 
 describe("message outbox", () => {
   it("uses a transaction-independent business idempotency key", () => {
@@ -27,7 +28,7 @@ describe("message outbox", () => {
 
   it("keeps a 1,000 item ingress bounded to 100 claims and rate limits delivery", async () => {
     const store = new MemoryStore();
-    for (let index = 0; index < 1_000; index += 1) store.enqueue({ outboxId: `o-${index}`, messageId: `m-${index}`, attempt: 1, actor });
+    for (let index = 0; index < 1_000; index += 1) store.enqueue({ outboxId: `o-${index}`, messageId: `m-${index}`, attempt: 1, actor, ...lease });
     const waits: number[] = [];
     const adapter: DeliveryAdapter = { async deliver() { return { ok: true, providerMessageId: "accepted" }; } };
     const summary = await executeOutboxBatch(store, adapter, { workerId: "w", batchSize: 1_000, sendsPerSecond: 20, wait: async (ms) => { waits.push(ms); } });
@@ -39,9 +40,9 @@ describe("message outbox", () => {
 
   it("retries transient failures with backoff and stops permanent failures", async () => {
     const store = new MemoryStore();
-    store.enqueue({ outboxId: "retry", messageId: "m-1", attempt: 2, actor });
-    store.enqueue({ outboxId: "dead", messageId: "m-2", attempt: 1, actor });
-    const adapter: DeliveryAdapter = { async deliver(id) { return id === "m-1" ? { ok: false, reason: "busy", retryable: true } : { ok: false, reason: "invalid", retryable: false }; } };
+    store.enqueue({ outboxId: "retry", messageId: "m-1", attempt: 2, actor, ...lease });
+    store.enqueue({ outboxId: "dead", messageId: "m-2", attempt: 1, actor, ...lease });
+    const adapter: DeliveryAdapter = { async deliver(job) { return job.messageId === "m-1" ? { ok: false, reason: "busy", retryable: true } : { ok: false, reason: "invalid", retryable: false }; } };
     const summary = await executeOutboxBatch(store, adapter, { workerId: "w", wait: async () => undefined, random: () => 0 });
     expect(summary).toEqual({ claimed: 2, delivered: 0, retrying: 1, dead: 1 });
     expect(retryDelayMs(2, () => 0)).toBe(2_000);

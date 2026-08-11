@@ -10,6 +10,10 @@ const message: MessagingRecord = {
   fromDigits: "sender",
   body: "body",
 };
+const delivery = {
+  outboxId: "outbox-1", messageId: "message-1", attempt: 1,
+  actor: { kind: "person" as const, id: "actor-1" }, workerId: "worker-1", leaseToken: "token-1",
+};
 
 describe("outbox messaging boundary", () => {
   it("loads payload only through the leased-worker RPC", async () => {
@@ -17,11 +21,11 @@ describe("outbox messaging boundary", () => {
       id: "message-1", channel: "sms", to_addr: "recipient", from_addr: "sender",
       body_snapshot: "body", template_code: null, sender_profile_id: null,
     }] }));
-    const loader = new PostgresOutboxMessageLoader({ query } as unknown as QueryPort, "worker-1");
-    await expect(loader.load("message-1")).resolves.toEqual(message);
+    const loader = new PostgresOutboxMessageLoader({ query } as unknown as QueryPort);
+    await expect(loader.load("message-1", "worker-1", "token-1")).resolves.toEqual(message);
     expect(query).toHaveBeenCalledWith(
-      "select * from public.load_message_outbox_payload($1,$2)",
-      ["message-1", "worker-1"],
+      "select * from public.load_message_outbox_payload($1,$2,$3)",
+      ["message-1", "worker-1", "token-1"],
     );
   });
 
@@ -29,8 +33,8 @@ describe("outbox messaging boundary", () => {
     const loader: OutboxMessageLoader = { load: vi.fn(async () => message) };
     const send = vi.fn(async () => ({ ok: true as const, providerMessageId: "receipt-1" }));
     const adapter = createMessagingDeliveryAdapter(loader, { send });
-    await expect(adapter.deliver("message-1")).resolves.toEqual({ ok: true, providerMessageId: "receipt-1" });
-    expect(loader.load).toHaveBeenCalledWith("message-1");
+    await expect(adapter.deliver(delivery)).resolves.toEqual({ ok: true, providerMessageId: "receipt-1" });
+    expect(loader.load).toHaveBeenCalledWith("message-1", "worker-1", "token-1");
     expect(send).toHaveBeenCalledOnce();
   });
 
@@ -38,14 +42,14 @@ describe("outbox messaging boundary", () => {
     const loader: OutboxMessageLoader = { load: vi.fn(async () => message) };
     const provider = { send: vi.fn(async () => ({ ok: false as const, reason: "private provider text", retryable: true })) };
     const adapter = createMessagingDeliveryAdapter(loader, provider as unknown as MessagingProvider);
-    await expect(adapter.deliver("message-1")).resolves.toEqual({ ok: false, reason: "provider_retry", retryable: true });
+    await expect(adapter.deliver(delivery)).resolves.toEqual({ ok: false, reason: "provider_retry", retryable: true });
   });
 
   it("does not call the provider when the payload is missing", async () => {
     const loader: OutboxMessageLoader = { load: vi.fn(async () => null) };
     const send = vi.fn();
     const adapter = createMessagingDeliveryAdapter(loader, { send } as MessagingProvider);
-    await expect(adapter.deliver("missing")).resolves.toEqual({ ok: false, reason: "message_not_found", retryable: false });
+    await expect(adapter.deliver({ ...delivery, messageId: "missing" })).resolves.toEqual({ ok: false, reason: "message_not_found", retryable: false });
     expect(send).not.toHaveBeenCalled();
   });
 });

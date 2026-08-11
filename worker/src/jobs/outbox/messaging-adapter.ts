@@ -3,11 +3,11 @@ import {
   type MessagingProvider,
   type MessagingRecord,
 } from "../messaging/index.js";
-import type { DeliveryAdapter, DeliveryResult } from "./types.js";
+import type { DeliveryAdapter, DeliveryResult, OutboxDelivery } from "./types.js";
 import type { QueryPort } from "./store.js";
 
 export interface OutboxMessageLoader {
-  load(messageId: string): Promise<MessagingRecord | null>;
+  load(messageId: string, workerId: string, leaseToken: string): Promise<MessagingRecord | null>;
 }
 
 interface MessageRow extends Record<string, unknown> {
@@ -22,12 +22,12 @@ interface MessageRow extends Record<string, unknown> {
 
 /** Payload 조회만 담당한다. claim/attempt 상태는 PostgresOutboxStore만 변경한다. */
 export class PostgresOutboxMessageLoader implements OutboxMessageLoader {
-  constructor(private readonly db: QueryPort, private readonly workerId: string) {}
+  constructor(private readonly db: QueryPort) {}
 
-  async load(messageId: string): Promise<MessagingRecord | null> {
+  async load(messageId: string, workerId: string, leaseToken: string): Promise<MessagingRecord | null> {
     const result = await this.db.query<MessageRow>(
-      "select * from public.load_message_outbox_payload($1,$2)",
-      [messageId, this.workerId],
+      "select * from public.load_message_outbox_payload($1,$2,$3)",
+      [messageId, workerId, leaseToken],
     );
     const row = result.rows[0];
     return row ? {
@@ -48,8 +48,8 @@ export function createMessagingDeliveryAdapter(
   provider: MessagingProvider,
 ): DeliveryAdapter {
   return {
-    async deliver(messageId: string): Promise<DeliveryResult> {
-      const message = await loader.load(messageId);
+    async deliver(delivery: OutboxDelivery): Promise<DeliveryResult> {
+      const message = await loader.load(delivery.messageId, delivery.workerId, delivery.leaseToken);
       if (!message) return { ok: false, reason: "message_not_found", retryable: false };
       const result = await processMessagingJob(message, provider);
       return result.outcome === "sent"

@@ -7,15 +7,16 @@ describe("outbox drain handler", () => {
     const deliver = vi.fn(async () => ({ ok: true as const, providerMessageId: "provider-id" }));
     const markDelivered = vi.fn(async () => undefined);
     const store: OutboxStore = {
-      async claim() { return [{ outboxId: "outbox-id", messageId: "message-id", attempt: 1, actor: { kind: "person", id: "actor-id" } }]; },
+      async claim() { return [{ outboxId: "outbox-id", messageId: "message-id", attempt: 1, actor: { kind: "person", id: "actor-id" }, workerId: "worker-id", leaseToken: "lease-token" }]; },
       markDelivered,
       async markRetry() {},
       async markDead() {},
     };
     const adapter: DeliveryAdapter = { deliver };
     const result = await createOutboxHandler({ store, adapter, options: { workerId: "worker-id", wait: async () => undefined } })();
-    expect(deliver).toHaveBeenCalledWith("message-id");
-    expect(markDelivered).toHaveBeenCalledWith("outbox-id", "provider-id");
+    const claimed = { outboxId: "outbox-id", messageId: "message-id", attempt: 1, actor: { kind: "person", id: "actor-id" }, workerId: "worker-id", leaseToken: "lease-token" };
+    expect(deliver).toHaveBeenCalledWith(claimed);
+    expect(markDelivered).toHaveBeenCalledWith(claimed, "provider-id");
     expect(result.delivered).toBe(1);
   });
 });
