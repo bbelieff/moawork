@@ -20,6 +20,7 @@
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.4",
     "vitest": "^2.1.9"
   }
 }

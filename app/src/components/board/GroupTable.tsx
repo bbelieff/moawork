@@ -215,6 +215,8 @@ export function GroupTable({
   columns,
   rows,
   readOnly,
+  canDeleteItems = !readOnly,
+  canManageColumns = !readOnly,
   rowDragEnabled,
   cellFlash,
   onColumnDrop,
@@ -231,6 +233,8 @@ export function GroupTable({
   columns: readonly BoardColumn[];
   rows: readonly ItemWithValues[];
   readOnly: boolean;
+  canDeleteItems?: boolean;
+  canManageColumns?: boolean;
   /** 정렬이 켜져 있으면 부모가 false 를 준다 — 손잡이 자체를 감춰 헛짚을 자리를 없앤다. */
   rowDragEnabled: boolean;
   cellFlash: CellFlash | null;
@@ -356,7 +360,7 @@ export function GroupTable({
                 <th
                   key={col.id}
                   scope="col"
-                  draggable={!readOnly}
+                  draggable={canManageColumns}
                   onDragStart={() => {
                     dragColRef.current = col.key;
                     setDragColKey(col.key);
@@ -374,16 +378,16 @@ export function GroupTable({
                     if (dragged !== col.key) onColumnDrop(dragged, col.key);
                     clearColDrag();
                   }}
-                  title={readOnly ? cellTitle(col) : `${cellTitle(col)} — 끌어서 이 그룹의 컬럼 순서 변경`}
+                  title={!canManageColumns ? cellTitle(col) : `${cellTitle(col)} — 끌어서 이 그룹의 컬럼 순서 변경`}
                   style={width ? { width, minWidth: width } : undefined}
                   className={`relative sticky top-0 z-20 min-w-20 border-b border-mw-line bg-mw-card px-2 py-1.5 text-xs font-semibold text-mw-sub ${
-                    readOnly ? "" : "cursor-grab active:cursor-grabbing"
+                    !canManageColumns ? "" : "cursor-grab active:cursor-grabbing"
                   } ${isTarget ? "bg-mw-tint-blue text-mw-record" : ""} ${
                     dragColKey === col.key ? "opacity-50" : ""
                   } ${col.rightPinned ? "right-0 border-l-2 border-l-mw-primary" : ""}`}
                 >
                   <span className="flex items-center gap-1">
-                    {!readOnly && (
+                    {canManageColumns && (
                       <span aria-hidden="true" className="text-[0.6rem] opacity-40">
                         ⠿
                       </span>
@@ -391,14 +395,14 @@ export function GroupTable({
                     <SourceBadge source={col.source} />
                     <span className="truncate">{col.label}</span>
                   </span>
-                  <span
+                  {canManageColumns && <span
                     aria-hidden="true"
                     draggable={false}
                     onMouseDown={startResize(col.id)}
                     onDoubleClick={resetWidth(col.id)}
                     title="끌어서 폭 조절 · 두 번 누르면 원래대로"
                     className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-mw-record/40"
-                  />
+                  />}
                 </th>
               );
             })}
@@ -463,7 +467,7 @@ export function GroupTable({
                       </form>
                     )}
 
-                    {!readOnly && (
+                    {canDeleteItems && (
                       <form action={deleteItemAction} className="shrink-0">
                         <input type="hidden" name="boardId" value={boardId} />
                         <input type="hidden" name="itemId" value={row.id} />

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { isManager } from "@/lib/auth/roles";
+import { loadPermGuard } from "@/lib/perm/guard";
 import { getBoardsService } from "@/lib/boards";
 import { SEOUL_STRUCTURE_PACK } from "@/lib/structure-packs";
 import { NewBoardInline } from "./NewBoardInline";
@@ -21,6 +22,12 @@ export default async function BoardsPage({
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
   const boards = getBoardsService().listBoards(ctx);
+  const [tabPermission, presetPermission] = await Promise.all([
+    loadPermGuard(ctx.org.id, "structure.tab_manage"),
+    loadPermGuard(ctx.org.id, "structure.preset_edit"),
+  ]);
+  const canManageTabs = tabPermission.kind === "allowed";
+  const canEditPresets = presetPermission.kind === "allowed";
 
   const system = boards.filter((b) => b.is_system);
   const user = boards.filter((b) => !b.is_system);
@@ -29,7 +36,7 @@ export default async function BoardsPage({
   const packInstalled = SEOUL_STRUCTURE_PACK.boards.every((packBoard) =>
     boards.some((b) => b.name === packBoard.name),
   );
-  const canInstall = isManager(ctx.role);
+  const canInstall = isManager(ctx.role) && canEditPresets;
   const installFlash = decodePackInstallFlash(
     (await cookies()).get(PACK_INSTALL_FLASH_COOKIE)?.value,
   );
@@ -92,9 +99,7 @@ export default async function BoardsPage({
               </Link>
             </li>
           ))}
-          <li>
-            <NewBoardInline />
-          </li>
+          {canManageTabs && <li><NewBoardInline /></li>}
         </ul>
       </section>
     </div>

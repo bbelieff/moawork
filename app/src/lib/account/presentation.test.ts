@@ -43,7 +43,8 @@ describe("account presentation", () => {
 
   it.each([
     ["owner", "대표", true],
-    ["admin", "팀장", false],
+    ["admin", "관리자", false],
+    ["team_lead", "팀장", false],
     ["member", "사원", false],
   ] as const)("membership %s를 고객 역할로 번역한다", (role, label, canManage) => {
     const model = buildAccountViewModel(context({ role }));

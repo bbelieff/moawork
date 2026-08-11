@@ -29,8 +29,8 @@ export type MemberHierarchyRpc = {
     orgId: string,
     targetUserId: string,
     reportsToUserId: string | null,
-    role: "owner" | "admin" | "member",
-    scope: "all" | "assigned",
+    role: "owner" | "admin" | "team_lead" | "member",
+    scope: "all" | "department" | "assigned",
     requestId: string,
   ) => Promise<{ accepted: boolean; replayed: boolean }>;
   bind_workspace_lower_member_permission: (
@@ -61,7 +61,11 @@ export function normalizePermissionScopeKey(value: string): string | null {
 }
 
 function roleLabel(role: MemberSummaryRow["role"]) {
-  return role === "owner" ? "대표" : role === "admin" ? "팀장" : "사원";
+  return role === "owner" ? "대표" : role === "admin" ? "관리자" : role === "team_lead" ? "팀장" : "멤버";
+}
+
+function scopeLabel(scope: MemberSummaryRow["scope"]) {
+  return scope === "all" ? "회사 업무 전체" : scope === "department" ? "내 부서 이하" : "배정된 업무";
 }
 
 function teamLabel(teamKey: string | null) {
@@ -83,7 +87,7 @@ function MemberCard({ member, protectedOwner, isViewer, canEdit, onProfileEdit, 
         <div className="min-w-0">
           <p className="font-semibold">{member.displayName}{isViewer ? <span aria-label="지금 로그인한 계정" className="ml-2 rounded-full bg-zinc-900 px-2 py-0.5 text-xs font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900">나</span> : null}</p>
           <p className="mt-1 text-sm text-zinc-500">{member.title ?? "직책 미지정"} · {teamLabel(member.teamKey)}</p>
-          <p className="mt-1 text-xs text-zinc-500">{roleLabel(member.role)} · {member.scope === "all" ? "회사 업무 전체" : "배정된 업무"}</p>
+          <p className="mt-1 text-xs text-zinc-500">{roleLabel(member.role)} · {scopeLabel(member.scope)}</p>
         </div>
         {protectedOwner ? <span className="rounded-full bg-mw-tint-teal px-3 py-1 text-xs font-semibold text-mw-automation">보호된 대표</span> : canEdit ? (
           <div className="flex flex-wrap gap-2">
@@ -101,8 +105,8 @@ export function MemberOrganizationChart({ orgId, owner, admins, members, canEdit
   const [editor, setEditor] = useState<Editor>(null);
   const [title, setTitle] = useState("");
   const [teamKey, setTeamKey] = useState("");
-  const [role, setRole] = useState<"admin" | "member">("member");
-  const [scope, setScope] = useState<"all" | "assigned">("assigned");
+  const [role, setRole] = useState<"admin" | "team_lead" | "member">("member");
+  const [scope, setScope] = useState<"all" | "department" | "assigned">("assigned");
   const [reportsToUserId, setReportsToUserId] = useState("");
   const [permissionScopeKey, setPermissionScopeKey] = useState("");
   const [permissionDecision, setPermissionDecision] = useState<PermissionDecision>("allow");
@@ -235,8 +239,8 @@ export function MemberOrganizationChart({ orgId, owner, admins, members, canEdit
           <h2 className="font-semibold">{editor.member.displayName}의 업무 역할</h2>
           <p className="mt-1 text-sm text-zinc-500">대표 본인·다른 회사 구성원은 바꿀 수 없어요. 저장 시 서버가 세션, 대상, 순환 보고선을 다시 확인해요.</p>
           <form className="mt-4 grid gap-3" onSubmit={saveHierarchy}>
-            <label className="grid gap-1 text-sm font-medium">역할<select value={role} onChange={(event) => setRole(event.target.value as "admin" | "member")} className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="admin">팀장</option><option value="member">사원</option></select></label>
-            <label className="grid gap-1 text-sm font-medium">업무 범위<select value={scope} onChange={(event) => setScope(event.target.value as "all" | "assigned")} className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="assigned">배정된 업무</option><option value="all">회사 업무 전체</option></select></label>
+            <label className="grid gap-1 text-sm font-medium">역할<select value={role} onChange={(event) => setRole(event.target.value as "admin" | "team_lead" | "member")} className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="admin">관리자</option><option value="team_lead">팀장</option><option value="member">멤버</option></select></label>
+            <label className="grid gap-1 text-sm font-medium">업무 범위<select value={scope} onChange={(event) => setScope(event.target.value as "all" | "department" | "assigned")} className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="assigned">배정된 업무</option><option value="department">내 부서 이하</option><option value="all">회사 업무 전체</option></select></label>
             <label className="grid gap-1 text-sm font-medium">보고받는 사람<select value={reportsToUserId} onChange={(event) => setReportsToUserId(event.target.value)} className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="">지정하지 않음</option>{reportingLineCandidates.filter((candidate) => candidate.userId !== editor.member.userId).map((candidate) => <option key={candidate.userId} value={candidate.userId}>{candidate.displayName} · {roleLabel(candidate.role)}</option>)}</select></label>
             {state === "unavailable" ? <p role="alert" className="text-sm text-zinc-600">업무 역할 변경 기능을 아직 사용할 수 없어요. 서버 준비가 끝난 뒤 다시 시도해 주세요.</p> : null}
             {state === "error" ? <p role="alert" className="text-sm text-red-600">저장하지 못했어요. 본인·대표·다른 회사 구성원은 변경할 수 없고, 순환되는 보고선도 설정할 수 없어요.</p> : null}

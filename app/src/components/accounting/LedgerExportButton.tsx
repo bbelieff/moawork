@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { DealLedgerEntry } from "@/lib/accounting";
 import { createLedgerCsvExport } from "@/lib/accounting/export";
+import { authorizeLedgerCsvExport } from "@/lib/accounting/export/actions";
 import styles from "./accounting.module.css";
 
 export interface LedgerExportButtonProps {
@@ -16,8 +17,13 @@ export function LedgerExportButton({ entries, initialFrom, initialTo }: LedgerEx
   const [to, setTo] = useState(initialTo);
   const [message, setMessage] = useState<string | null>(null);
 
-  function download(): void {
+  async function download(): Promise<void> {
     try {
+      const authorization = await authorizeLedgerCsvExport();
+      if (!authorization.ok) {
+        setMessage(authorization.message);
+        return;
+      }
       const result = createLedgerCsvExport(entries, { from, to });
       const blob = new Blob([result.content], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
