@@ -318,6 +318,36 @@ describe("셀 편집 → 아이템 자동 이동 (BBE-14 · D68~D70)", () => {
     expect(svc.getItem(owner, other.board.id, otherItem.id).values[otherColumn.key]).toBe("원래 값");
   });
 
+  it("다른 보드 그룹은 되돌리기 전에 거부하고 값과 그룹을 변경하지 않는다", () => {
+    const source = setupMoveBoard();
+    const other = svc.createBoard(owner, { name: "다른 보드" });
+    const otherGroup = svc.addGroup(owner, other.board.id, { name: "다른 그룹" });
+    const before = svc.getItem(owner, source.boardId, source.item.id);
+
+    expect(() =>
+      svc.undoCells(owner, source.boardId, source.item.id, {
+        group_id: otherGroup.id,
+        values: { [source.col.key]: "opt-done" },
+      }),
+    ).toThrow(NotFoundError);
+
+    expect(svc.getItem(owner, source.boardId, source.item.id)).toEqual(before);
+  });
+
+  it("존재하지 않는 그룹은 되돌리기 전에 거부하고 값과 그룹을 변경하지 않는다", () => {
+    const source = setupMoveBoard();
+    const before = svc.getItem(owner, source.boardId, source.item.id);
+
+    expect(() =>
+      svc.undoCells(owner, source.boardId, source.item.id, {
+        group_id: "missing-group",
+        values: { [source.col.key]: "opt-done" },
+      }),
+    ).toThrow(NotFoundError);
+
+    expect(svc.getItem(owner, source.boardId, source.item.id)).toEqual(before);
+  });
+
   it("되돌리기는 «빈 값 → 규칙 있는 값» 편집도 정확히 원상복구한다(재기입 방식이면 실패하는 경우)", () => {
     // 이전 값이 규칙에 없는 상태(null)에서 규칙 있는 값으로 바뀐 경우,
     // 그냥 이전 값을 다시 넣기만 해서는(재평가) 원래 그룹을 못 찾는다 — group_id 를 명시 복원해야 한다.

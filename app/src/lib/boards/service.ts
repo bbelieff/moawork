@@ -267,6 +267,12 @@ export class BoardsService {
   ): ItemWithValues {
     this.requireEditableBoard(ctx, boardId);
     this.getItem(ctx, boardId, itemId);
+    if (
+      undo.group_id !== null &&
+      !this.repo.listGroups(ctx, boardId).some((group) => group.id === undo.group_id)
+    ) {
+      throw new NotFoundError("그룹을 찾을 수 없습니다");
+    }
     if (Object.keys(undo.values).length > 0) this.repo.setValues(ctx, itemId, undo.values);
     this.repo.updateItem(ctx, itemId, { group_id: undo.group_id });
     return this.getItem(ctx, boardId, itemId);
