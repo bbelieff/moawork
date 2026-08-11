@@ -101,6 +101,59 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 - 산출물: Linear BBE-21·BBE-94 코멘트만(제품 코드 변경 0, 리스 미선언).
 - 상태: **착수 미도장.** CT02 응답 또는 belie 지시 대기.
 
+## [END · BBE-102(MoaWork)/claude] 2026-08-10 — 구조 팩 설치 진입점
+
+- task_id: Linear `BBE-102`, P0. base `f0145a7`(origin/main 실측 — 지시된 `e5e8fa4`보다 2커밋 진행돼 있었다),
+  branch `claude/bbe-102-pack-install-entry`, 전용 worktree `개발프로젝트\.worktrees\bbe-102-pack-install-entry`.
+- 착수 전 확인: `git grep installStructurePack -- app/src/app` → 0건(진입점 없음 재확인).
+  PR #94(BBE-46)는 이미 `main`에 병합돼 있었다(`c1bd2cd`) — 구조 팩·설치 로직은 실재.
+- **선행 확인(①) — 031 hosted 적용 여부는 `NOT_RUN`이다.** 로컬 PC에 Supabase 자격증명이 없어
+  (`app/.env.local` 부재, CLI 부재 — F9) 객체 실물 조회를 실행하지 못했다. belie 확인용
+  읽기 전용 SQL: `select count(*) from structure_packs where key = 'pack.seoul.policyfund1';`
+- **다만 이 확인은 이 카드의 실행 여부와 무관하다는 것을 코드로 확인했다** —
+  `installStructurePack()`(`lib/structure-packs/install.ts:47`)은 `pack.jsonb`를 hosted
+  `structure_packs` 테이블에서 읽지 않고 **TS 상수 `SEOUL_STRUCTURE_PACK`을 그대로 쓴다**
+  (`options.pack ?? SEOUL_STRUCTURE_PACK`). 031의 hosted 적용 여부는 설치 버튼 동작에 영향이 없다.
+- **더 크고 별개인 발견(코드 실측, hosted 접근 불필요) — 003 보드 엔진에 Supabase 어댑터가 없다.**
+  `getBoardsRepo()`(`lib/repo/local/boardsRepo.ts:315`)는 조건 없이 `LocalBoardsRepo`(서버 프로세스
+  `globalThis` 인메모리)만 반환한다. `implements BoardsRepo` 구현체는 저장소 전체에 이것 하나뿐이다
+  (`grep -rn "implements BoardsRepo"` → 1건). 주석이 스스로 인정한다: "Supabase 연결 후
+  SupabaseBoardsRepo 로 교체(포트 뒤 스왑)" — 그 스왑이 아직 없다. `003_boards_engine.sql`이
+  Postgres 스키마(boards/board_columns/board_groups/board_items/board_views)는 만들어 두었지만
+  TS 계층이 거기 쓰지 않는다. **결과: 설치 버튼으로 만든 보드는 Vercel 서버리스 인스턴스 프로세스
+  메모리에만 존재**하고, 콜드스타트·재배포·다중 인스턴스 스케일링에서 사라질 수 있다. 이는 이번 카드가
+  만든 문제가 아니라(이미 병합된 BBE-26/47 `#112`의 `/newcust` 진입점도 같은 `getBoardsRepo()`에
+  의존해 이 가정을 전제로 만들어졌다) 선행 아키텍처 갭이며, `lib/boards/store.ts`·신규 Supabase
+  어댑터가 필요해 이 카드의 좁은 리스(반나절 S급) 밖이다. **후속 카드로 분리 제안**했다(스폰 완료).
+- **구현** — 리스 3파일 + 신규 2파일:
+  · `app/src/app/(app)/boards/actions.ts` — `installStructurePackAction()` 추가. owner/admin만
+    실행 가능(`isManager(ctx.role)` 게이트, 공지 쓰기 게이트와 같은 패턴). `installStructurePack(ctx)`
+    호출 후 결과를 flash 쿠키에 담고 `revalidatePath("/boards")`.
+  · `app/src/app/(app)/boards/page.tsx` — 3보드 이름이 모두 있는지로 설치 여부 판정,
+    미설치 + 관리자일 때만 설치 타일 노출. flash 쿠키를 디코드해 결과 배너로 표시.
+  · `app/src/app/(app)/boards/installFlash.ts`(신규) — 설치 결과(생성 보드 n·그룹 n·건너뜀 n)의
+    1회성 쿠키 전달. `cellFlash.ts`와 같은 이유·같은 방식: `actions.ts`는 `"use server"`라 동기
+    헬퍼를 export 할 수 없어 별도 모듈로 뺐다.
+  · `app/src/app/(app)/boards/InstallPackButton.tsx`(신규) — 설치 타일. `NewBoardInline`과 같은
+    격자 크기·스타일. 클라이언트 JS 불필요(서버 액션 폼, 이 화면의 기존 방식 유지).
+  · 재실행 안전은 새로 만들지 않았다 — `installStructurePack()`이 이미 있는 보드는 자체적으로
+    건너뛰는 계약(`InstallResult.skipped`)을 그대로 노출했을 뿐이다.
+  · `lib/newcust/**`·`components/newcust/**`·`shell/nav-items.ts` 무접촉(코덱스 BBE-26 점유 확인).
+- **검증**:
+  · `bash scripts/check.sh` PASS — app 1230 pass/9 skip(신규 3건 포함), worker 21 pass.
+  · `npm run build`(production) PASS — `/boards`·`/boards/[id]` 정상 컴파일(동적 라우트).
+  · **브라우저 클릭 실측은 `NOT_RUN`이다.** 로컬 `npm run dev`는 Supabase 환경변수 부재로
+    `(app)/layout.tsx`가 세션 로딩 단계에서 500(AGENTS §4 "로그인 필요 단계는 대신 진행 안 함" +
+    F9 로컬 비밀값 없음과 일치 — 결함 아님). 프로덕션(`www.moa-work.com`)은 이 세션 브라우저에
+    로그인 세션이 없어(Google OAuth, 사용자 동의 필요 단계라 대신 진행 안 함) 접근 불가.
+    **스크린샷 미첨부** — worker-onboarding §2 "촬영 불가는 머지 중단 사유가 아니다"에 따라
+    머지 자체는 막지 않되, PR에 belie/CT02 앞 재확인 요청을 명시했다.
+- **NOT_RUN 경계**: ① 031 hosted 적용 여부(자격증명 없음, 판단에 불필요함은 코드로 확인) ②
+  실제 클릭 → 보드 3개 생성 → `/boards/[id]` 렌더의 눈으로 본 확인(로그인 불가) ③ 콜드스타트/
+  재배포 이후 데이터 잔존 여부(별도 카드 대상 — 애초에 인메모리라 원천적으로 보장 안 됨).
+- 판정: 코드 완료·게이트 PASS. 눈으로 보는 확인과 hosted 031 상태는 belie/CT02 몫으로 남긴다.
+  자기보고로 PASS 승격하지 않는다.
+
 ## [FIX · PLAN-002/WO-1 (BBE-46)/claude] 2026-08-09 — PR #94 반려 2건 수정 (시드 확정 3건 반영)
 
 - 검수 반려(데탑 CT02 2026-08-09 · ✅5/❌2)에 대한 작성자 수정. 인수: 데탑 CT05(260809-2).
