@@ -10,8 +10,16 @@
 import type { Ctx } from "@/lib/types";
 import type { BoardsRepo } from "@/lib/boards/store";
 import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { getRepo } from "@/lib/repo";
 import { SEOUL_STRUCTURE_PACK } from "./seoul-pack";
-import type { DeferredColumn, PackBoard, PackColumn, StructurePack } from "./types";
+import type { DeferredColumn, PackBoard, PackColumn, SectionPreset, StructurePack } from "./types";
+
+/** 담당자별 그룹(`assigneeSlot`)을 채우는 데 필요한 최소 정보. */
+export interface AssigneeMember {
+  userId: string;
+  /** 그룹 이름에 붙일 표시 이름. */
+  displayName: string;
+}
 
 export interface InstalledBoard {
   slug: string;
@@ -38,6 +46,24 @@ export interface InstallResult {
 }
 
 /**
+ * 설치를 요청한 조직의 담당자별 그룹 슬롯을 채울 멤버 목록.
+ *
+ * 가입순(= `created_at` 오름차순)으로 정렬해 `members[assigneeSlot]` 이 있으면
+ * 그 슬롯의 그룹을 만든다 — 결정대장 D73(BBE-130). 새 조직은 만든 사람 1명뿐이라
+ * 슬롯 0만 채워지고, 멤버를 초대할 때마다 다음 슬롯이 채워진다.
+ */
+function resolveAssignees(ctx: Ctx): AssigneeMember[] {
+  return getRepo()
+    .listMembers(ctx.org.id)
+    .slice()
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .map((member) => ({
+      userId: member.user_id,
+      displayName: member.user?.name?.trim() || member.user?.email?.trim() || "미배정",
+    }));
+}
+
+/**
  * 팩을 조직에 설치한다.
  *
  * 같은 이름의 보드가 이미 있으면 그 보드는 건너뛴다 — 설치를 두 번 눌러도
@@ -46,10 +72,11 @@ export interface InstallResult {
  */
 export function installStructurePack(
   ctx: Ctx,
-  options: { repo?: BoardsRepo; pack?: StructurePack } = {},
+  options: { repo?: BoardsRepo; pack?: StructurePack; assignees?: AssigneeMember[] } = {},
 ): InstallResult {
   const repo = options.repo ?? getBoardsRepo();
   const pack = options.pack ?? SEOUL_STRUCTURE_PACK;
+  const assignees = options.assignees ?? resolveAssignees(ctx);
 
   const existingNames = new Set(repo.listBoards(ctx).map((b) => b.name));
   const boards: InstalledBoard[] = [];
@@ -64,7 +91,7 @@ export function installStructurePack(
       skipped.push(packBoard.slug);
       continue;
     }
-    boards.push(installBoard(ctx, repo, packBoard, pack));
+    boards.push(installBoard(ctx, repo, packBoard, pack, assignees));
   }
 
   return { packKey: pack.key, boards, deferred, skipped };
@@ -84,11 +111,24 @@ function resolveOptions(column: PackColumn, pack: StructurePack) {
   return set;
 }
 
+/**
+ * 그룹의 실제 이름을 정한다.
+ *
+ * `assigneeSlot` 이 없으면 팩에 적힌 이름 그대로(업무 상태 그룹). 있으면 그 슬롯 번호의
+ * 멤버를 붙인다 — 슬롯만큼 멤버가 없으면 `null`(그 그룹은 만들지 않는다, D73).
+ */
+function resolveSectionName(section: SectionPreset, assignees: AssigneeMember[]): string | null {
+  if (section.assigneeSlot === undefined) return section.groupName;
+  const assignee = assignees[section.assigneeSlot];
+  return assignee ? `${section.groupName}${assignee.displayName}` : null;
+}
+
 function installBoard(
   ctx: Ctx,
   repo: BoardsRepo,
   packBoard: PackBoard,
   pack: StructurePack,
+  assignees: AssigneeMember[],
 ): InstalledBoard {
   const board = repo.createBoard(ctx, {
     name: packBoard.name,
@@ -108,9 +148,12 @@ function installBoard(
     return created.key;
   });
 
-  const groupIds = packBoard.sections.map(
-    (section) => repo.createGroup(ctx, board.id, { name: section.groupName, color: section.color }).id,
-  );
+  const groupIds: string[] = [];
+  for (const section of packBoard.sections) {
+    const name = resolveSectionName(section, assignees);
+    if (name === null) continue; // 담당자별 슬롯인데 채울 멤버가 아직 없음(D73)
+    groupIds.push(repo.createGroup(ctx, board.id, { name, color: section.color }).id);
+  }
 
   const viewIds = packBoard.views.map(
     (view) =>

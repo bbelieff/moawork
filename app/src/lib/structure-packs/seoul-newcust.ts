@@ -61,7 +61,7 @@ export const SEOUL_NEWCUST_BOARD: PackBoard = {
       ],
     },
     // 시드 확정 ③: 담당자는 멤버(사람) 컬럼이다. 먼데이의 선택지형 담당자
-    // (`color_mkyeay16` — 이대표/박정화 실장/담당자 미정)는 멤버 계정이 없던 시절의
+    // (`color_mkyeay16` — 직원 실명 2명 + 담당자 미정)는 멤버 계정이 없던 시절의
     // 우회이므로 시드에서 제외한다. 선택지형이면 담당자 탭(WO-3)·복수 배정(WO-4)·
     // 알림이 사람에 붙지 않고, 전역 카탈로그에 특정 고객사 직원 실명이 박힌다.
     // key 는 먼데이에 대응 컬럼이 없어 MoaWork 신설분이다.
@@ -172,8 +172,9 @@ export const SEOUL_NEWCUST_BOARD: PackBoard = {
     { name: "신규업체-신규고객", groupName: "💡신규고객", color: "#FFCB00", order: 0 },
     { name: "신규업체-1차 부재", groupName: "🔇1차 부재", color: "#0086c0", order: 1 },
     { name: "신규업체-2차 상담고객", groupName: "🔍2차 상담고객", color: "#9CD326", order: 2 },
-    { name: "신규업체-박정화 실장", groupName: "♻️박정화 실장", color: "#757575", order: 3 },
-    { name: "신규업체-이대표", groupName: "♻️이대표", color: "#007eb5", order: 4 },
+    // 담당자별 그룹(D73) — 실명 대신 슬롯. 원본은 직원 실명 2명이 각 그룹명에 박혀 있었다.
+    { name: "신규업체-담당자별-1", groupName: "♻️", color: "#757575", order: 3, assigneeSlot: 0 },
+    { name: "신규업체-담당자별-2", groupName: "♻️", color: "#007eb5", order: 4, assigneeSlot: 1 },
     { name: "신규업체-제조업 1차 부재", groupName: "제조업 1차 부재", color: "#7f5347", order: 5 },
     { name: "신규업체-제조업 2차 부재", groupName: "제조업 2차 부재", color: "#7f5347", order: 6 },
     { name: "신규업체-2차 부재", groupName: "🔇2차 부재", color: "#579bfc", order: 7 },
@@ -185,7 +186,7 @@ export const SEOUL_NEWCUST_BOARD: PackBoard = {
     { name: "신규업체-지원사업만", groupName: "🔅지원사업만", color: "#9cd326", order: 13 },
   ],
 
-  // 담당자별 탭(전체·이대표·박정화 실장·미배정)은 WO-3 소유다. 시드 확정 ③ 으로
+  // 담당자별 탭(전체·담당자A·담당자B·미배정)은 WO-3 소유다. 시드 확정 ③ 으로
   // 담당자가 멤버 컬럼이 됐으므로 그 탭은 라벨이 아니라 멤버 id 로 걸어야 하고,
   // 멤버는 조직마다 다르다 — 전역 팩에 직원 실명을 박아 심을 수 없다.
   views: [{ name: "전체", kind: "table", shared: true }],

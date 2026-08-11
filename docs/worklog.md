@@ -14,6 +14,51 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 - 검수 순서: #113(BBE-102, 0번 관문) → #126(BBE-126) → #130(BBE-116) →
   나머지 claude/* 12건(#116·#120·#121·#123·#124·#125·#128·#129·#131·#136·#141·#142).
 
+## [START · BBE-130(MoaWork)/claude] 2026-08-11 — 프리셋에서 실명 비우기
+
+- task_id: Linear `BBE-130`. base `origin/main = 2bb4a880e77b3a2c83fff7629022819eb5baa0b5`(실측),
+  branch `claude/bbe-130-depersonalize`, 전용 worktree `개발프로젝트\.worktrees\bbe-130-depersonalize`.
+- 근거: `docs/handoff/결정대장.md` L절 D71~D75(2026-08-10 belie 교정) — "지우는 게 아니라
+  비우는 것". 구조(컬럼·타입·업무 상태 아이템 28종·자동 이동 규칙·선택지 세트)는 전부 유지하고
+  담당자별 아이템 4종(신규업체 2·컨텍관리 2)의 실명만 비운다.
+- file lease: `app/src/lib/structure-packs/**` · `supabase/migrations/035_preset_depersonalize.sql`(신규,
+  머지 시점 최신 034 확인 → 035) · `docs/worklog.md`. `031`·`002`는 무수정.
+
+## [END · BBE-130(MoaWork)/claude] 2026-08-11 — 프리셋에서 실명 비우기
+
+- **설계** — `SectionPreset.assigneeSlot?: number` 신설. 담당자별 그룹 4종의 `groupName`을
+  실명에서 이모지 접두사만으로 바꾸고 슬롯 번호(0/1)를 달았다. 배열 길이·순서(order)는 그대로
+  둬 "아이템 프리셋 종류 수 32(=14+7+11) 불변"을 지켰다 — 항목을 지운 게 아니라 항목 안의
+  이름만 규칙으로 바꿨다.
+- **설치 동작** — `installStructurePack()`이 조직 멤버를 가입순(`created_at`)으로 정렬해
+  받고(`resolveAssignees()`, 기본값 `getRepo().listMembers(ctx.org.id)`, 테스트용 override 가능),
+  슬롯 번호만큼 멤버가 있으면 `${접두사}${멤버 표시명}`으로 그룹을 만든다. 멤버가 슬롯보다
+  적으면 그 슬롯은 만들지 않는다 — 새 조직(멤버 1명) → 담당자별 그룹 1개, 초대 → 슬롯만큼(최대 2)
+  증가. `InstalledBoard.groupIds`가 이제 `sections.length`보다 짧을 수 있다(미채움 슬롯 스킵) —
+  기존 코드에 이 배열을 소비하는 곳이 없음을 `git grep`으로 확인 후 반영.
+- **담당자 컬럼(D74)**: PR #94(BBE-46 수정)에서 이미 person 타입으로 전환 완료된 상태였다 —
+  이번 카드에서 추가로 손댈 게 없었다. 대신 테스트를 "특정 이름 목록에 없다"가 아니라
+  "person 컬럼은 정적 `options`를 갖지 않는다"는 구조적 불변식으로 강화했다(향후 다른 이름이
+  추가돼도 이 검사가 그대로 잡는다).
+- **마이그레이션** — `035_preset_depersonalize.sql` 신규. `031`이 만든 `structure_packs` 행을
+  `update ... where key = 'pack.seoul.policyfund1'`로만 갱신한다. 새 `create table` 없음(F9 규칙:
+  기존 마이그레이션 무수정 — 031은 그대로 두고 035가 그 위에 최신 내용을 얹는다).
+- **검증**(acceptance 항목별):
+  · `git grep -i '이대표\|박정화' -- app/src/lib/structure-packs/ supabase/migrations/035_*.sql`
+    → **0건**(코드·주석·마이그레이션 전부, 테스트 파일 포함 — 이름 목록 대신 구조 검사로 바꿔
+    테스트 자체에도 실명이 안 남게 했다).
+  · 아이템 프리셋 종류 수 — 착수 전/후 **32종(14+7+11) 동일**, `seoul-pack.test.ts` 기존 단언 유지.
+  · 새 워크스페이스 설치 → 담당자별 아이템 1개(`install.test.ts` "1명 → 1개" 테스트로 고정).
+  · 멤버 초대 → 아이템 늘어남(시드 3멤버로 슬롯 0·1 둘 다 채워짐을 확인).
+  · `담당자`/`협업자` 컬럼 살아 있음, `person` 타입 유지, 값은 멤버 계정에서 옴.
+  · 컬럼 수·타입·자동 이동 규칙 — **착수 전과 완전 동일**(컬럼 배열·유예 컬럼·뷰를 건드리지
+    않았으므로 숫자 변화 없음: 신규고객 24·컨텍관리 21·업무관리 24, 유예 9종, 뷰 신규고객1·
+    컨텍관리1·업무관리7 그대로).
+- 게이트: `bash scripts/check.sh` **PASS** — app 1268 pass/9 skip(신규 8건: seoul-pack 3 + install 3
+  net, region 무변화), worker 35 pass. 구조 팩 테스트 41 → **46건**.
+- 비주얼: **해당 없음**(마이그레이션 + lib + 테스트만, UI 파일 0건).
+- 판정: 코드 완료·게이트 PASS. 노트북 CT10 검수 대기. 자기보고로 PASS 승격하지 않는다.
+
 ## [END · 모아워크 노트북 CT08(260810)/claude] BBE-90 — 인증 QA 증거 보강 완료
 
 - **결과 PASS**: `PlatformAccessNotice`의 `platform-forbidden`/`platform-unavailable` 두 상태가

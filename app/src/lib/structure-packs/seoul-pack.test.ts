@@ -15,7 +15,7 @@ const MIGRATION = join(
   "..",
   "supabase",
   "migrations",
-  "031_newcust_structure_pack.sql",
+  "035_preset_depersonalize.sql",
 );
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -171,23 +171,46 @@ describe("시드 확정 3건 — 2026-08-05 MW-총괄 (PLAN-002 §5 WO-1)", () =
     }
   });
 
-  it("③ 설치 선택지에 직원 실명이 남아 있지 않다 — 전역 카탈로그 PII", () => {
-    // 그룹 이름(아이템 프리셋 32종)은 먼데이 원본이라 유지한다. 여기서 막는 건
-    // 조직마다 달라지는 사람을 컬럼 선택지에 박아 두는 것이다.
-    const STAFF = ["이대표", "박정화", "담당자 미정"];
+  it("③ person 컬럼은 정적 선택지를 갖지 않는다 — 값은 멤버 계정에서 온다", () => {
+    // person 타입에 옵션이 있으면 그 자체가 "실명을 카탈로그에 박아 뒀다"는 뜻이다.
+    // 이름 목록으로 검사하는 대신 타입으로 구조적으로 막는다 — 나중에 다른 이름이
+    // 추가돼도(예: 신입 직원) 이 검사가 그대로 잡아낸다.
     for (const board of SEOUL_STRUCTURE_PACK.boards) {
       for (const column of board.columns) {
-        for (const option of column.options ?? []) {
-          for (const name of STAFF) {
-            expect(option.label.includes(name), `${board.slug}.${column.key}=${option.label}`).toBe(
-              false,
-            );
-          }
-        }
+        if (column.type !== "person") continue;
+        expect(column.options, `${board.slug}.${column.key} person 컬럼에 정적 옵션 있음`).toBeUndefined();
       }
     }
     for (const view of [...newcust.views, ...contact.views, ...work.views]) {
       expect(view.filters ?? {}, `${view.name} 뷰 필터`).toEqual({});
+    }
+  });
+
+  it("D73 — 담당자별 그룹은 실명이 아니라 슬롯이다(BBE-130)", () => {
+    // groupName 은 이모지 접두사만 담아야 한다 — 문자·숫자(=이름 텍스트)가 섞여 있으면 FAIL.
+    // 이름 목록으로 검사하지 않는 이유는 위 person 컬럼 검사와 같다: 구조로 막는다.
+    for (const board of SEOUL_STRUCTURE_PACK.boards) {
+      for (const section of board.sections) {
+        if (section.assigneeSlot === undefined) continue;
+        expect(section.groupName, `${board.slug}.${section.name}`).toMatch(/^[^\p{L}\p{N}]*$/u);
+      }
+    }
+  });
+
+  it("D73 — 담당자별 슬롯 수는 원본 담당자 수와 같다(신규업체 2 · 컨텍관리 2 · 업무관리 0)", () => {
+    const counts = SEOUL_STRUCTURE_PACK.boards.map(
+      (board) => board.sections.filter((s) => s.assigneeSlot !== undefined).length,
+    );
+    expect(counts).toEqual([2, 2, 0]);
+  });
+
+  it("D73 — 슬롯 번호는 보드마다 0부터 중복 없이 이어진다", () => {
+    for (const board of SEOUL_STRUCTURE_PACK.boards) {
+      const slots = board.sections
+        .map((s) => s.assigneeSlot)
+        .filter((slot): slot is number => slot !== undefined)
+        .sort((a, b) => a - b);
+      expect(slots).toEqual(slots.map((_, index) => index));
     }
   });
 });
@@ -223,7 +246,7 @@ describe("유예 컬럼 — 구조만 기록하고 설치하지 않는다 (PLAN-
   });
 });
 
-describe("마이그레이션 031 과 앱 팩이 같은 데이터다", () => {
+describe("마이그레이션 035 과 앱 팩이 같은 데이터다 — 프리셋 실명 비우기(BBE-130)", () => {
   // 팩이 SQL 과 TS 양쪽에 있으므로 한쪽만 고치면 조용히 어긋난다. 여기서 막는다.
   it("SQL 에 심긴 pack_jsonb 가 TS 팩과 완전히 일치한다", () => {
     const sql = readFileSync(MIGRATION, "utf8");
@@ -236,10 +259,12 @@ describe("마이그레이션 031 과 앱 팩이 같은 데이터다", () => {
     expect(embedded).toEqual(JSON.parse(JSON.stringify(SEOUL_STRUCTURE_PACK)));
   });
 
-  it("마이그레이션이 기존 파일을 고치지 않는 additive 형태다", () => {
+  it("035 는 031 의 테이블을 새로 만들지 않고 기존 행만 update 한다 — 기존 마이그레이션 무수정", () => {
     const sql = readFileSync(MIGRATION, "utf8");
-    expect(sql).toContain("create table if not exists structure_packs");
-    expect(sql).toContain("enable row level security");
+    // 031 이 이미 만든 테이블이다 — 재선언(create table)하지 않는다(F9/규칙 9: 기존 마이그레이션 수정 금지).
+    expect(sql).not.toMatch(/create\s+table/i);
+    expect(sql).toMatch(/update\s+structure_packs/i);
+    expect(sql).toMatch(/where\s+key\s*=\s*'pack\.seoul\.policyfund1'/i);
     // 기존 테이블 변경·삭제가 없어야 한다.
     expect(sql).not.toMatch(/drop\s+table/i);
     expect(sql).not.toMatch(/alter\s+table\s+(boards|items|board_columns|board_groups)\b/i);
