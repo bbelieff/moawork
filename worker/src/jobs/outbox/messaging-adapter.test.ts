@@ -38,11 +38,11 @@ describe("outbox messaging boundary", () => {
     expect(send).toHaveBeenCalledOnce();
   });
 
-  it("passes only GT02 normalized failure codes into outbox retry", async () => {
+  it("persists only GT02 normalized failure codes and quarantines ambiguous retry advice", async () => {
     const loader: OutboxMessageLoader = { load: vi.fn(async () => message) };
     const provider = { send: vi.fn(async () => ({ ok: false as const, reason: "private provider text", retryable: true })) };
     const adapter = createMessagingDeliveryAdapter(loader, provider as unknown as MessagingProvider);
-    await expect(adapter.deliver(delivery)).resolves.toEqual({ ok: false, reason: "provider_retry", retryable: true });
+    await expect(adapter.deliver(delivery)).resolves.toEqual({ ok: false, reason: "provider_retry", retryable: false });
   });
 
   it("does not call the provider when the payload is missing", async () => {

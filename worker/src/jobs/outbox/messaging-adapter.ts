@@ -54,7 +54,14 @@ export function createMessagingDeliveryAdapter(
       const result = await processMessagingJob(message, provider);
       return result.outcome === "sent"
         ? { ok: true, providerMessageId: result.providerMessageId }
-        : { ok: false, reason: result.reason, retryable: result.retryable };
+        : {
+            ok: false,
+            reason: result.reason,
+            // GT02 owns provider result normalization. Until that contract can
+            // prove a failure was rejected before admission, outbox must treat
+            // it as ambiguous and prefer manual reconciliation over double cost.
+            retryable: false,
+          };
     },
   };
 }

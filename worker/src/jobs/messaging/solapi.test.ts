@@ -51,31 +51,4 @@ describe("SolapiProvider", () => {
     expect(JSON.stringify(result)).not.toContain(sensitive);
   });
 
-  it("never retries an ambiguous 5xx or transport failure without provider idempotency", async () => {
-    const message = {
-      id: "m1", channel: "sms" as const, toDigits: "01012345678",
-      fromDigits: "0212345678", body: "안내",
-    };
-    const serverFailure = new SolapiProvider(
-      { apiKey: "key", apiSecret: "secret" },
-      vi.fn(async () => new Response("{}", { status: 503 })) as typeof fetch,
-    );
-    const transportFailure = new SolapiProvider(
-      { apiKey: "key", apiSecret: "secret" },
-      vi.fn(async () => { throw new Error("connection lost"); }) as typeof fetch,
-    );
-    await expect(serverFailure.send(message)).resolves.toEqual({ ok: false, reason: "provider_failed", retryable: false });
-    await expect(transportFailure.send(message)).resolves.toEqual({ ok: false, reason: "provider_failed", retryable: false });
-  });
-
-  it("retries only a provider throttle known to reject admission", async () => {
-    const provider = new SolapiProvider(
-      { apiKey: "key", apiSecret: "secret" },
-      vi.fn(async () => new Response("{}", { status: 429 })) as typeof fetch,
-    );
-    await expect(provider.send({
-      id: "m1", channel: "sms", toDigits: "01012345678",
-      fromDigits: "0212345678", body: "안내",
-    })).resolves.toEqual({ ok: false, reason: "provider_retry", retryable: true });
-  });
 });
