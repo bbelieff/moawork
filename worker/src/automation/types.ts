@@ -11,33 +11,43 @@ export interface AutomationEvaluation {
   blocked_reasons: readonly string[];
 }
 
-export interface AutomationJobData {
-  evaluation: AutomationEvaluation;
-  /** Stable identifier for one originating item change. */
+export interface AutomationTrace {
   execution_key: string;
-  /** Rules already executed for this event chain. */
-  visited_rule_ids?: readonly string[];
+  org_id: string;
+  visited_rule_ids: readonly string[];
+}
+
+export interface AutomationJobData extends AutomationTrace {
+  evaluation: AutomationEvaluation;
 }
 
 export type ExecutionStatus = "succeeded" | "failed" | "blocked" | "duplicate";
 
-export interface ExecutionHistoryEntry {
-  execution_key: string;
+export interface AutomationOutcome extends AutomationTrace {
   rule_id: string | null;
   item_id: string | null;
   status: ExecutionStatus;
-  attempted_at: string;
-  finished_at: string;
   error_code?: string;
   blocked_reasons?: readonly string[];
 }
 
-export interface AutomationActionPort {
-  moveItem(decision: MoveDecision): Promise<void>;
+/** Atomic persistence boundary implemented by migration 045. */
+export interface AutomationStorePort {
+  executeMove(job: AutomationJobData & { evaluation: { decision: MoveDecision; blocked_reasons: readonly string[] } }): Promise<AutomationOutcome>;
+  recordBlocked(job: AutomationJobData): Promise<AutomationOutcome>;
 }
 
-export interface AutomationHistoryPort {
-  /** Must atomically return false when execution_key + rule_id was recorded already. */
-  claim(executionKey: string, ruleId: string): Promise<boolean>;
-  append(entry: ExecutionHistoryEntry): Promise<void>;
+export function nextAutomationJob(
+  parent: AutomationJobData,
+  evaluation: AutomationEvaluation,
+): AutomationJobData {
+  const ruleId = parent.evaluation.decision?.rule_id;
+  return {
+    execution_key: parent.execution_key,
+    org_id: parent.org_id,
+    visited_rule_ids: ruleId
+      ? [...parent.visited_rule_ids, ruleId]
+      : [...parent.visited_rule_ids],
+    evaluation,
+  };
 }

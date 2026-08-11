@@ -1,5 +1,9 @@
 import "dotenv/config";
 import PgBoss from "pg-boss";
+import {
+  createSupabaseAutomationStoreFromEnv,
+  registerAutomationWorker,
+} from "./automation/index.js";
 import { health } from "./health.js";
 import { defaultProviders, registerNotifyWorker } from "./notify/index.js";
 import { pendingLoader, pendingSink } from "./notify/pending.js";
@@ -36,6 +40,13 @@ async function main(): Promise<void> {
     },
   });
   console.log("[worker] notify.send 등록됨 (스텁 — 실제 발송 없음)");
+  const automationStore = createSupabaseAutomationStoreFromEnv();
+  if (automationStore) {
+    await registerAutomationWorker(boss, { store: automationStore });
+    console.log("[worker] automation.execute registered");
+  } else {
+    console.warn("[worker] automation.execute disabled: Supabase service environment missing");
+  }
 }
 
 main().catch((err: unknown) => {

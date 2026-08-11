@@ -18,8 +18,22 @@ export function createAutomationHandler(deps: AutomationExecutorDeps) {
   return async (jobs: Job<AutomationJobData>[]) => {
     // pg-boss persists the returned value as job output, in addition to the
     // injected history port's queryable audit records.
-    return executeAutomationBatch(deps, jobs.map((job) => job.data));
+    const outcomes = await executeAutomationBatch(deps, jobs.map((job) => job.data));
+    if (outcomes.some((outcome) => outcome.status === "failed")) {
+      throw new Error("automation_batch_retry");
+    }
+    return outcomes;
   };
+}
+
+/** Public hand-off used by the GT04 decision producer. */
+export async function enqueueAutomation(
+  boss: PgBoss,
+  job: AutomationJobData,
+): Promise<string | null> {
+  return boss.send(AUTOMATION_EXECUTE_QUEUE, job, {
+    singletonKey: `${job.execution_key}:${job.evaluation.decision?.rule_id ?? "blocked"}`,
+  });
 }
 
 export async function registerAutomationWorker(
