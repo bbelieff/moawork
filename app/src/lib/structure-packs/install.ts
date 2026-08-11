@@ -45,6 +45,45 @@ export interface AssigneeGroupBinding {
   userId: string;
 }
 
+const ASSIGNEE_OWNER_MARKER = "\u2063";
+const ASSIGNEE_OWNER_ZERO = "\u200b";
+const ASSIGNEE_OWNER_ONE = "\u200c";
+
+function withAssigneeOwner(name: string, userId: string): string {
+  const bytes = new TextEncoder().encode(userId);
+  const bits = Array.from(bytes, (byte) =>
+    byte
+      .toString(2)
+      .padStart(8, "0")
+      .replaceAll("0", ASSIGNEE_OWNER_ZERO)
+      .replaceAll("1", ASSIGNEE_OWNER_ONE),
+  ).join("");
+  return `${name}${ASSIGNEE_OWNER_MARKER}${bits}`;
+}
+
+function assigneeOwnerFromGroupName(name: string): string | null {
+  const markerIndex = name.lastIndexOf(ASSIGNEE_OWNER_MARKER);
+  if (markerIndex < 0) return null;
+  const encoded = name.slice(markerIndex + ASSIGNEE_OWNER_MARKER.length);
+  if (!encoded || encoded.length % 8 !== 0) return null;
+  const bits = encoded
+    .replaceAll(ASSIGNEE_OWNER_ZERO, "0")
+    .replaceAll(ASSIGNEE_OWNER_ONE, "1");
+  if (!/^[01]+$/.test(bits)) return null;
+  const bytes = new Uint8Array(bits.match(/.{8}/g)!.map((byte) => Number.parseInt(byte, 2)));
+  try {
+    return new TextDecoder(undefined, { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+/** 사용자 화면에는 내부 소유자 표식을 노출하지 않고 원래 그룹명만 돌려준다. */
+export function assigneeGroupDisplayName(name: string): string {
+  const markerIndex = name.lastIndexOf(ASSIGNEE_OWNER_MARKER);
+  return markerIndex < 0 ? name : name.slice(0, markerIndex);
+}
+
 /** 담당자 자동 이동 소비자가 표시명 없이 userId 로 대상 그룹을 찾는다. */
 export function assigneeGroupIdForUser(
   bindings: readonly AssigneeGroupBinding[],
@@ -169,10 +208,18 @@ export function reconcileAssigneeGroups(
   );
   const existingGroups = repo.listGroups(ctx, boardId);
   const claimedGroupIds = new Set<string>();
+  const slotGroups = existingGroups.filter((group) =>
+    slotSections.some(
+      (section) =>
+        group.color?.toLowerCase() === section.color.toLowerCase() &&
+        group.name.startsWith(section.groupName),
+    ),
+  );
   const groupForSection = (section: SectionPreset) =>
-    existingGroups.find(
+    slotGroups.find(
       (group) =>
         !claimedGroupIds.has(group.id) &&
+        assigneeOwnerFromGroupName(group.name) === null &&
         group.color?.toLowerCase() === section.color.toLowerCase() &&
         group.name.startsWith(section.groupName),
     );
@@ -195,7 +242,12 @@ export function reconcileAssigneeGroups(
   for (const section of slotSections) {
     const slot = section.assigneeSlot;
     const assignee = assignees[slot];
-    const existing = groupForSection(section);
+    const existing =
+      slotGroups.find(
+        (group) =>
+          !claimedGroupIds.has(group.id) &&
+          assigneeOwnerFromGroupName(group.name) === assignee?.userId,
+      ) ?? groupForSection(section);
     if (existing) claimedGroupIds.add(existing.id);
 
     if (!assignee) {
@@ -207,7 +259,7 @@ export function reconcileAssigneeGroups(
       continue;
     }
 
-    const expectedName = `${section.groupName}${assignee.displayName}`;
+    const expectedName = withAssigneeOwner(`${section.groupName}${assignee.displayName}`, assignee.userId);
     let group = existing;
     if (!group || group.name !== expectedName) {
       const replacement = repo.createGroup(ctx, boardId, { name: expectedName, color: section.color });
@@ -219,6 +271,12 @@ export function reconcileAssigneeGroups(
     }
 
     next.push({ boardSlug: packBoard.slug, boardId, groupId: group.id, slot, userId: assignee.userId });
+  }
+
+  for (const obsolete of slotGroups.filter((group) => !claimedGroupIds.has(group.id))) {
+    if (!fallback) throw new Error(`담당자 그룹 아이템을 옮길 일반 그룹이 없습니다: ${packBoard.slug}`);
+    moveItems(obsolete.id, fallback.id);
+    repo.deleteGroup(ctx, obsolete.id);
   }
 
   return next;
@@ -254,7 +312,12 @@ function installBoard(
   for (const section of packBoard.sections) {
     const name = resolveSectionName(section, assignees);
     if (name === null) continue; // 담당자별 슬롯인데 채울 멤버가 아직 없음(D73)
-    const group = repo.createGroup(ctx, board.id, { name, color: section.color });
+    const assignee =
+      section.assigneeSlot === undefined ? undefined : assignees[section.assigneeSlot];
+    const group = repo.createGroup(ctx, board.id, {
+      name: assignee ? withAssigneeOwner(name, assignee.userId) : name,
+      color: section.color,
+    });
     groupIds.push(group.id);
     if (section.assigneeSlot !== undefined) {
       const assignee = assignees[section.assigneeSlot];

@@ -5,7 +5,12 @@ import { SEED_ORG_ID, SEED_USER_OWNER } from "@/lib/repo/local/seed";
 import { BoardsService } from "@/lib/boards";
 import type { Ctx } from "@/lib/types";
 import { SEOUL_STRUCTURE_PACK } from "./seoul-pack";
-import { assigneeGroupIdForUser, installStructurePack, type AssigneeMember } from "./install";
+import {
+  assigneeGroupDisplayName,
+  assigneeGroupIdForUser,
+  installStructurePack,
+  type AssigneeMember,
+} from "./install";
 import type { PackBoard } from "./types";
 
 function owner(): Ctx {
@@ -66,7 +71,7 @@ describe("새 조직 설치 — acceptance (PLAN-002/WO-1)", () => {
       const detail = boards().getBoardDetail(owner(), result.boards[index].boardId);
       const ordered = [...detail.groups].sort((a, b) => a.sort_order - b.sort_order);
 
-      expect(ordered.map((g) => g.name), `${packBoard.slug} 그룹 이름·순서`).toEqual(
+      expect(ordered.map((g) => assigneeGroupDisplayName(g.name)), `${packBoard.slug} 그룹 이름·순서`).toEqual(
         expectedGroupNames(packBoard, assignees),
       );
       const expectedColors = packBoard.sections
@@ -82,7 +87,7 @@ describe("새 조직 설치 — acceptance (PLAN-002/WO-1)", () => {
     expect(assignees.length, "시드 조직 멤버 수").toBeGreaterThanOrEqual(2);
 
     const newcust = boards().getBoardDetail(owner(), result.boards[0].boardId);
-    const names = newcust.groups.map((g) => g.name);
+    const names = newcust.groups.map((g) => assigneeGroupDisplayName(g.name));
     expect(names).toContain(`♻️${assignees[0].displayName}`);
     expect(names).toContain(`♻️${assignees[1].displayName}`);
   });
@@ -96,7 +101,9 @@ describe("새 조직 설치 — acceptance (PLAN-002/WO-1)", () => {
       const definedSlots = packBoard.sections.filter((s) => s.assigneeSlot !== undefined);
       // 슬롯이 2개(원래 담당자 2명) 정의돼 있어도 멤버가 1명뿐이면 그룹은 1개만 생겨야 한다.
       const createdSlotGroups = detail.groups.filter((g) =>
-        definedSlots.some((s) => g.name === `${s.groupName}만든사람`),
+        definedSlots.some(
+          (s) => assigneeGroupDisplayName(g.name) === `${s.groupName}만든사람`,
+        ),
       );
       expect(createdSlotGroups, `${packBoard.slug} 담당자별 그룹 수(멤버 1명)`).toHaveLength(
         definedSlots.length === 0 ? 0 : 1,
@@ -231,12 +238,19 @@ describe("재설치 안전성", () => {
 
     const invitedGroupId = assigneeGroupIdForUser(afterInvite.assigneeGroups, "newcust", invited.userId);
     if (!invitedGroupId) throw new Error("초대 멤버 그룹 없음");
+    const creatorGroupId = assigneeGroupIdForUser(afterInvite.assigneeGroups, "newcust", creator.userId);
+    if (!creatorGroupId) throw new Error("최초 멤버 그룹 없음");
     const newcustBoardId = first.boards.find((board) => board.slug === "newcust")?.boardId;
     if (!newcustBoardId) throw new Error("신규업체 보드 없음");
     const preservedItem = boards().createItem(owner(), newcustBoardId, {
       title: "보존할 업체",
       group_id: invitedGroupId,
       values: { text_mm40jz80: "보존할 광고" },
+    });
+    const removedOwnerItem = boards().createItem(owner(), newcustBoardId, {
+      title: "내보낸 담당자의 업체",
+      group_id: creatorGroupId,
+      values: { text_mm40jz80: "일반 그룹으로 보존" },
     });
 
     const groupCountAfterInvite = installedBoardIds.map(
@@ -253,11 +267,11 @@ describe("재설치 안전성", () => {
     ).toEqual(groupCountAfterInvite);
 
     const afterRemoval = installStructurePack(owner(), {
-      assignees: [creator],
+      assignees: [invited],
     });
     expect(afterRemoval.assigneeGroups).toHaveLength(2);
     expect(new Set(afterRemoval.assigneeGroups.map((binding) => binding.userId))).toEqual(
-      new Set([creator.userId]),
+      new Set([invited.userId]),
     );
     expect(
       installedBoardIds.map((boardId) => boards().getBoardDetail(owner(), boardId).groups.length),
@@ -270,10 +284,22 @@ describe("재설치 안전성", () => {
       ).toBe(true);
     }
     const migratedItem = boards().getItem(owner(), newcustBoardId, preservedItem.id);
+    const remainingGroupId = assigneeGroupIdForUser(
+      afterRemoval.assigneeGroups,
+      "newcust",
+      invited.userId,
+    );
+    expect(remainingGroupId).toBeTruthy();
     expect(migratedItem.group_id).not.toBeNull();
-    expect(migratedItem.group_id).not.toBe(invitedGroupId);
+    expect(migratedItem.group_id).toBe(remainingGroupId);
     expect(migratedItem.title).toBe("보존할 업체");
     expect(migratedItem.values.text_mm40jz80).toBe("보존할 광고");
+    const fallbackItem = boards().getItem(owner(), newcustBoardId, removedOwnerItem.id);
+    expect(fallbackItem.group_id).not.toBeNull();
+    expect(fallbackItem.group_id).not.toBe(creatorGroupId);
+    expect(fallbackItem.group_id).not.toBe(remainingGroupId);
+    expect(fallbackItem.title).toBe("내보낸 담당자의 업체");
+    expect(fallbackItem.values.text_mm40jz80).toBe("일반 그룹으로 보존");
   });
 
   it("두 번 설치해도 보드가 두 벌 생기지 않는다", () => {

@@ -17,6 +17,7 @@ export { SEOUL_NEWCUST_BOARD } from "./seoul-newcust";
 export { SEOUL_CONTACT_BOARD } from "./seoul-contact";
 export { SEOUL_WORK_BOARD } from "./seoul-work";
 export {
+  assigneeGroupDisplayName,
   assigneeGroupIdForUser,
   installStructurePack,
   reconcileAssigneeGroups,
