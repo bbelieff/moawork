@@ -1,6 +1,6 @@
 // 퀘스트 판정 — D45b: «했다고 체크»가 아니라 실제 조작을 본다.
 //
-// judge_kind 는 고정 어휘다(자유 SQL/코드 실행 아님) — supabase/migrations/035_onboarding.sql
+// judge_kind 는 고정 어휘다(자유 SQL/코드 실행 아님) — supabase/migrations/048_onboarding.sql
 // 의 `onboarding_quest_defs.judge_kind` 값과 여기 JUDGES 의 key 가 1:1 이어야 한다.
 // BBE-113(GT07)이 자동화 규칙을 퀘스트로 바꿀 때도 이 어휘 안에서만 새 퀘스트 행을 만든다 —
 // 새 조작 종류가 필요하면 여기 새 judge_kind 를 추가하는 협의가 먼저다.

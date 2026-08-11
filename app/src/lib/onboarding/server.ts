@@ -61,6 +61,22 @@ export async function isMyPracticeWorkspace(orgId: string): Promise<boolean> {
   }
 }
 
+/** 페이지 진입 시 기존 연습 회사만 읽는다. 없으면 생성하지 않고 시작 화면을 반환한다. */
+export async function loadMyPracticeSnapshot(
+  user: User,
+): Promise<{ ok: true; snapshot: PracticeSnapshot | null } | { ok: false; reason: "permission" | "unavailable" }> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("read_my_practice_workspace");
+    if (error) return { ok: false, reason: "unavailable" };
+    if (data === null) return { ok: true, snapshot: null };
+    if (typeof data !== "string") return { ok: false, reason: "unavailable" };
+    return evaluatePracticeQuests(data, user);
+  } catch {
+    return { ok: false, reason: "unavailable" };
+  }
+}
+
 async function loadQuestDefs(): Promise<QuestDef[] | null> {
   try {
     const supabase = await createClient();

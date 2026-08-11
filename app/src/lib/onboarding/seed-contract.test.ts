@@ -5,9 +5,9 @@ import { JUDGES } from "./quests";
 
 // BBE-113(GT07)이 기다리는 판정 계약: 마이그레이션이 심는 judge_kind 는 전부
 // quests.ts 의 JUDGES 어휘 안에 있어야 한다. 어긋나면 씨드 퀘스트가 항상 미통과로 닫힌다.
-const MIGRATION = join(__dirname, "..", "..", "..", "..", "supabase", "migrations", "035_onboarding.sql");
+const MIGRATION = join(__dirname, "..", "..", "..", "..", "supabase", "migrations", "048_onboarding.sql");
 
-describe("035_onboarding.sql 의 씨드 퀘스트 judge_kind 가 quests.ts 어휘 안에 있다", () => {
+describe("048_onboarding.sql 의 씨드 퀘스트 judge_kind 가 quests.ts 어휘 안에 있다", () => {
   const sql = readFileSync(MIGRATION, "utf8");
   const seedBlock = sql.slice(sql.indexOf("insert into public.onboarding_quest_defs"));
   const rowPattern = /\('([a-z0-9:_-]+)', '[^']*', '[^']*', '([a-z_]+)',/g;

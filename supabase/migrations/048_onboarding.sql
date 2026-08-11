@@ -1,4 +1,4 @@
--- ONBOARDING-ENGINE-035 (BBE-112)
+-- ONBOARDING-ENGINE-048 (BBE-112)
 -- D45b: 온보딩 = 자동화 규칙에서 퀘스트를 생성. 연습용 회사에서 실제 조작으로 판정.
 -- D71~D75: 연습 회사도 «빈 상태에서 구조만 있는» 진짜 워크스페이스와 같은 원리를 따른다.
 --
@@ -99,6 +99,22 @@ end;
 $$;
 
 grant execute on function public.ensure_my_practice_workspace() to authenticated;
+
+-- 내 연습 회사가 있으면 그 org_id를 돌려준다. 조회는 생성과 분리해 페이지 진입만으로
+-- 연습 회사를 만들지 않는다.
+create or replace function public.read_my_practice_workspace()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select org_id
+    from public.onboarding_practice_workspaces
+   where owner_user_id = auth.uid();
+$$;
+
+grant execute on function public.read_my_practice_workspace() to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 퀘스트 카탈로그 조회 — 민감정보 아님(구조 메타데이터). 로그인만 있으면 된다.
