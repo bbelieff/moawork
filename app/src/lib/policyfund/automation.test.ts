@@ -5,7 +5,9 @@ import {
   indexRules,
   decideMove,
   decideMoves,
+  evaluateMove,
   findRuleConflicts,
+  validateRule,
   type AutomationRule,
   type ItemStateChange,
 } from "./automation";
@@ -117,6 +119,64 @@ describe("자동이동 판정", () => {
     expect(decideMove(change({ status_value: " 심사 중 " }), idx)?.rule_id).toBe(
       "r-review",
     );
+  });
+});
+
+describe("AND 조건과 안정 라벨", () => {
+  const conditional = rule({
+    id: "conditional",
+    trigger_label_id: "label:feedback-done",
+    conditions: [
+      { column_key: "assignee", operator: "is", value_kind: "user_id", value: "user:owner-a" },
+      { column_key: "seal", operator: "is_not", value_kind: "label_id", value: "label:pending" },
+    ],
+  });
+  const idx = indexRules([conditional]);
+
+  it("읽기 전용 규칙 index를 공개 소비 함수에 전달할 수 있다", () => {
+    const readonlyIndex: ReadonlyMap<string, AutomationRule> = idx;
+    expect(decideMove(change({ trigger_label_id: "label:feedback-done" }), readonlyIndex)).toBeNull();
+    expect(evaluateMove(change({ trigger_label_id: "label:feedback-done" }), readonlyIndex).decision).toBeNull();
+  });
+
+  it("조건이 여러 개면 전부 맞을 때만 이동 의도를 만든다", () => {
+    const result = evaluateMove(change({
+      trigger_label_id: "label:feedback-done",
+      condition_values: { assignee: "user:owner-a", seal: "label:done" },
+    }), idx);
+    expect(result.decision?.rule_id).toBe("conditional");
+    expect(result.blocked_reasons).toEqual([]);
+  });
+
+  it("하나라도 맞지 않으면 이동하지 않고 모든 차단 사유를 남긴다", () => {
+    const result = evaluateMove(change({
+      trigger_label_id: "label:feedback-done",
+      condition_values: { assignee: "user:owner-b", seal: "label:pending" },
+    }), idx);
+    expect(result.decision).toBeNull();
+    expect(result.blocked_reasons).toHaveLength(2);
+  });
+
+  it("is_not 조건도 값이 없으면 fail-closed 한다", () => {
+    const onlyIsNot = indexRules([rule({
+      trigger_label_id: "label:feedback-done",
+      conditions: [{ column_key: "seal", operator: "is_not", value_kind: "label_id", value: "label:pending" }],
+    })]);
+    for (const condition_values of [undefined, {}, { seal: null }]) {
+      const result = evaluateMove(change({
+        trigger_label_id: "label:feedback-done",
+        condition_values,
+      }), onlyIsNot);
+      expect(result.decision).toBeNull();
+      expect(result.blocked_reasons).toHaveLength(1);
+    }
+  });
+
+  it("표시 순번이나 문구가 아닌 안정 label id만 허용한다", () => {
+    expect(validateRule(rule({ trigger_label_id: "2" }))).not.toHaveLength(0);
+    expect(validateRule(rule({ trigger_label_id: "피드백 완료" }))).not.toHaveLength(0);
+    expect(validateRule(rule({ trigger_label_id: "label:2" }))).toEqual([]);
+    expect(validateRule(rule({ conditions: [{ column_key: "seal", operator: "is", value_kind: "label_id", value: "완료" }] }))).not.toHaveLength(0);
   });
 });
 
