@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getSessionOrNull } from "@/lib/auth/session";
+import { getSession } from "@/lib/auth/session";
 import { Logo } from "@/components/brand/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { SidebarNav } from "@/components/shell/SidebarNav";
@@ -10,10 +9,7 @@ import { AccountMenu } from "@/components/account/AccountMenu";
 import { AnalyticsIdentity } from "@/components/analytics/AnalyticsIdentity";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
 import { buildAccountViewModel } from "@/lib/account/presentation";
-import {
-  loadWorkspaceRoutingSnapshot,
-} from "@/lib/auth/workspace-entry-server";
-import { decideAppLayoutAccess } from "@/lib/auth/routing/app-layout";
+import { loadWorkspaceRoutingSnapshot } from "@/lib/auth/workspace-entry-server";
 import { loadLockedFeatures } from "@/lib/entitlements/server";
 import {
   loadWorkspaceApprovals,
@@ -26,14 +22,10 @@ import { loadPlatformActor } from "@/lib/platform/actor";
 
 // 앱 셸 — UI목업_워크스페이스_최종_v6 (1단 사이드바 220px + 상단바). BBE-126(2026-08-10) 밀도 개정.
 // 색·간격·글자 크기는 전부 globals.css/moawork-tokens.css 의 --mw-*·--sp-*·--fs-* 토큰 참조(하드코딩 hex·임의 px 금지).
+// getSession() 이 세션 없으면 /login 으로 보낸다(가드).
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const routingSnapshot = await loadWorkspaceRoutingSnapshot();
-  const session = routingSnapshot.kind === "ready" && routingSnapshot.memberships.length > 0
-    ? await getSessionOrNull()
-    : null;
-  const access = decideAppLayoutAccess(routingSnapshot, session);
-  if (access.kind !== "allowed") redirect(access.path);
-  const { ctx, routing } = access;
+  const ctx = await getSession();
+  const routing = await loadWorkspaceRoutingSnapshot();
   const currentWorkspace = routing.kind === "ready"
     ? routing.memberships.filter((membership) => membership.orgId === ctx.org.id)
     : [];
