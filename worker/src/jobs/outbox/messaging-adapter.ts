@@ -22,17 +22,12 @@ interface MessageRow extends Record<string, unknown> {
 
 /** Payload 조회만 담당한다. claim/attempt 상태는 PostgresOutboxStore만 변경한다. */
 export class PostgresOutboxMessageLoader implements OutboxMessageLoader {
-  constructor(private readonly db: QueryPort) {}
+  constructor(private readonly db: QueryPort, private readonly workerId: string) {}
 
   async load(messageId: string): Promise<MessagingRecord | null> {
     const result = await this.db.query<MessageRow>(
-      `select m.id,m.channel,m.to_addr,m.from_addr,m.body_snapshot,
-        t.code as template_code,m.sender_profile_id
-       from public.messages m
-       left join public.message_templates t
-         on t.id=m.template_id and t.org_id=m.org_id
-       where m.id=$1`,
-      [messageId],
+      "select * from public.load_message_outbox_payload($1,$2)",
+      [messageId, this.workerId],
     );
     const row = result.rows[0];
     return row ? {

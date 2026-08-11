@@ -23,11 +23,16 @@ describe("BBE-30 outbox migration", () => {
   it("records actor and delivery lifecycle without payload or phone data", () => {
     expect(sql).toContain("actor_kind text not null");
     expect(sql).toContain("'retry_scheduled'");
-    expect(sql).not.toMatch(/phone|to_addr|body_snapshot/);
+    const outboxTables = sql.slice(0, sql.indexOf("alter table public.message_outbox enable row level security"));
+    expect(outboxTables).not.toMatch(/phone|to_addr|body_snapshot/);
   });
 
   it("keeps worker mutations away from browser roles", () => {
     expect(sql).toContain("revoke execute on function public.claim_message_outbox(integer,text,integer) from public, anon, authenticated");
-    expect(sql).toContain("grant execute on function public.claim_message_outbox(integer,text,integer) to service_role");
+    expect(sql).toContain("create role moawork_outbox_worker login password null nobypassrls noinherit");
+    expect(sql).toContain("revoke execute on function public.claim_message_outbox(integer,text,integer) from service_role");
+    expect(sql).toContain("grant execute on function public.claim_message_outbox(integer,text,integer) to moawork_outbox_worker");
+    expect(sql).toContain("load_message_outbox_payload(p_message_id uuid, p_worker_id text)");
+    expect(sql).not.toContain("grant select, update on public.message_outbox to moawork_outbox_worker");
   });
 });

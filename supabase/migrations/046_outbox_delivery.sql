@@ -45,6 +45,12 @@ create index message_outbox_audit_outbox_idx
 alter table public.message_outbox enable row level security;
 alter table public.message_outbox_audit enable row level security;
 
+do $$ begin
+  if not exists (select 1 from pg_roles where rolname = 'moawork_outbox_worker') then
+    create role moawork_outbox_worker login password null nobypassrls noinherit;
+  end if;
+end $$;
+
 create policy message_outbox_read on public.message_outbox
   for select to authenticated
   using (public.is_org_member(org_id));
@@ -236,6 +242,31 @@ begin
   end if;
 end $$;
 
+create or replace function public.load_message_outbox_payload(p_message_id uuid, p_worker_id text)
+returns table(
+  id uuid,
+  channel public.message_channel,
+  to_addr text,
+  from_addr text,
+  body_snapshot text,
+  template_code text,
+  sender_profile_id text
+)
+language sql
+security definer
+set search_path = ''
+as $$
+  select m.id, m.channel, m.to_addr, m.from_addr, m.body_snapshot,
+    t.code, m.sender_profile_id
+  from public.message_outbox o
+  join public.messages m on m.id = o.message_id and m.org_id = o.org_id
+  left join public.message_templates t on t.id = m.template_id and t.org_id = m.org_id
+  where o.message_id = p_message_id
+    and o.status = 'leased'
+    and o.leased_by = p_worker_id
+    and o.lease_expires_at > now()
+$$;
+
 revoke all on public.message_outbox from anon;
 revoke all on public.message_outbox_audit from anon;
 revoke execute on function public.enqueue_message_outbox(uuid,uuid,uuid,text,text,uuid,public.message_channel,text,text) from public, anon;
@@ -243,8 +274,14 @@ revoke execute on function public.claim_message_outbox(integer,text,integer) fro
 revoke execute on function public.complete_message_outbox(uuid,text) from public, anon, authenticated;
 revoke execute on function public.retry_message_outbox(uuid,text,timestamptz) from public, anon, authenticated;
 revoke execute on function public.fail_message_outbox(uuid,text) from public, anon, authenticated;
-grant execute on function public.claim_message_outbox(integer,text,integer) to service_role;
-grant execute on function public.complete_message_outbox(uuid,text) to service_role;
-grant execute on function public.retry_message_outbox(uuid,text,timestamptz) to service_role;
-grant execute on function public.fail_message_outbox(uuid,text) to service_role;
+revoke execute on function public.load_message_outbox_payload(uuid,text) from public, anon, authenticated, service_role;
+revoke execute on function public.claim_message_outbox(integer,text,integer) from service_role;
+revoke execute on function public.complete_message_outbox(uuid,text) from service_role;
+revoke execute on function public.retry_message_outbox(uuid,text,timestamptz) from service_role;
+revoke execute on function public.fail_message_outbox(uuid,text) from service_role;
+grant execute on function public.claim_message_outbox(integer,text,integer) to moawork_outbox_worker;
+grant execute on function public.complete_message_outbox(uuid,text) to moawork_outbox_worker;
+grant execute on function public.retry_message_outbox(uuid,text,timestamptz) to moawork_outbox_worker;
+grant execute on function public.fail_message_outbox(uuid,text) to moawork_outbox_worker;
+grant execute on function public.load_message_outbox_payload(uuid,text) to moawork_outbox_worker;
 grant execute on function public.enqueue_message_outbox(uuid,uuid,uuid,text,text,uuid,public.message_channel,text,text) to authenticated, service_role;

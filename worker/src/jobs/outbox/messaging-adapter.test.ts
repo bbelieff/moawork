@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MessagingProvider, MessagingRecord } from "../messaging/index.js";
-import { createMessagingDeliveryAdapter, type OutboxMessageLoader } from "./messaging-adapter.js";
+import { createMessagingDeliveryAdapter, PostgresOutboxMessageLoader, type OutboxMessageLoader } from "./messaging-adapter.js";
+import type { QueryPort } from "./store.js";
 
 const message: MessagingRecord = {
   id: "message-1",
@@ -11,6 +12,19 @@ const message: MessagingRecord = {
 };
 
 describe("outbox messaging boundary", () => {
+  it("loads payload only through the leased-worker RPC", async () => {
+    const query = vi.fn(async () => ({ rows: [{
+      id: "message-1", channel: "sms", to_addr: "recipient", from_addr: "sender",
+      body_snapshot: "body", template_code: null, sender_profile_id: null,
+    }] }));
+    const loader = new PostgresOutboxMessageLoader({ query } as unknown as QueryPort, "worker-1");
+    await expect(loader.load("message-1")).resolves.toEqual(message);
+    expect(query).toHaveBeenCalledWith(
+      "select * from public.load_message_outbox_payload($1,$2)",
+      ["message-1", "worker-1"],
+    );
+  });
+
   it("loads a claimed payload and calls the GT02 provider exactly once", async () => {
     const loader: OutboxMessageLoader = { load: vi.fn(async () => message) };
     const send = vi.fn(async () => ({ ok: true as const, providerMessageId: "receipt-1" }));
