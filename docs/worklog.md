@@ -4,6 +4,26 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## 2026-08-12 — [1단 재검수 · 2단 승격 · 모아워크 DC 02/claude] BBE-142 PR #166
+
+- 초판(6탭 골격 + `/presets`)에 대한 1단 자체검수(무유도 서브에이전트)가 **FAIL**: `/presets`가
+  D02(설치된 보드 그룹 나열)와 D03(재사용 가능한 구조 템플릿 — 이름·출처보드·컬럼수·공식배지)을
+  혼동. 총 개수(32)만 우연히 목업과 일치했을 뿐 카드 형식 자체가 달랐다.
+- 커밋 `7c475b7`로 수정 — 목업 원문(`docs/design/UI목업_워크스페이스_최종_v6.html:1115`)의
+  카드 형식대로 재구현, 테스트 재작성(4/4 PASS), 전체 게이트 그린(app 184/1570·worker 16/57)
+  확인 후 `origin/claude/bbe-142-app-shell`에 push.
+- 수정본으로 1단 재검수를 다시 실행 — 이번엔 파일목록 확인 단계에서 이 카드가 새로 추가한
+  `supabase/migrations/058_reserve_presets_workspace_slug.sql`을 발견하고 **2단 승격 조항
+  ①**(마이그레이션 파일 추가)에 걸려 PASS/FAIL 판정 없이 중단. 부가로 리스(`layout.tsx`/
+  `components/shell/**`/`(app)/page.tsx`) 밖 파일 5건(`presets/page.tsx`·`.test.tsx`·
+  `workspace-entry/contracts.ts`·`.test.ts`·migration 058)도 함께 보고됨.
+- 원문 전체를 PR #166 코멘트와 BBE-94에 요약 없이 그대로 게시(subagent-review.md 규정).
+  BBE-142 카드에도 상태 코멘트 게시.
+- **다음**: DG-01(1단 재확인) · NG-01(2단, 마이그레이션 트리거) 인계. PR #166은 셀프 머지하지
+  않는다 — BBE-103(PR #116, 승격 조항 무해당)과 달리 이번엔 자율 완주(§8) 대상이 아니다.
+
+---
+
 ## [END · 모아워크 노트북 CT09(260810)/claude] 2026-08-11 — BBE-103 재작업: MWC 정정 반영 완료
 
 - 결과: **PASS**. 앞서 이 세션이 남긴 work→`/work` 변경을 MWC 프로덕션 실측 정정(C작업반장 정정 ①)에
