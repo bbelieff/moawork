@@ -40,4 +40,26 @@ alter table public.board_automation_rules
     check (jsonb_array_length(conditions) = 0 or trigger_label_id is not null);
 
 revoke all on function public.validate_automation_conditions(jsonb)
+  from public, anon;
+grant execute on function public.validate_automation_conditions(jsonb)
+  to authenticated;
+
+create or replace function public.require_stable_automation_trigger()
+returns trigger language plpgsql set search_path = public, pg_temp as $$
+begin
+  if new.trigger_label_id is null then
+    raise exception 'trigger_label_id is required for new automation rules'
+      using errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.require_stable_automation_trigger()
   from public, anon, authenticated;
+
+drop trigger if exists board_automation_require_stable_trigger
+  on public.board_automation_rules;
+create trigger board_automation_require_stable_trigger
+  before insert on public.board_automation_rules
+  for each row execute function public.require_stable_automation_trigger();

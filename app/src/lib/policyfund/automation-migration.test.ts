@@ -19,6 +19,13 @@ describe("035 automation AND contract", () => {
 
   it("keeps legacy condition-free rules valid", () => {
     expect(sql).toContain("jsonb_array_length(conditions) = 0 or trigger_label_id is not null");
+    expect(sql).toContain("before insert on public.board_automation_rules");
+    expect(sql).toContain("trigger_label_id is required for new automation rules");
+  });
+
+  it("lets authenticated owner/admin writes evaluate the pure validator", () => {
+    expect(sql).toContain("grant execute on function public.validate_automation_conditions(jsonb)");
+    expect(sql).toContain("to authenticated");
   });
 
   it("does not cross into GT09 execution or history ownership", () => {

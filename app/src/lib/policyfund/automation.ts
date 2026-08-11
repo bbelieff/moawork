@@ -133,7 +133,7 @@ export function indexRules(
  */
 export function decideMove(
   change: ItemStateChange,
-  index: Map<string, AutomationRule>,
+  index: ReadonlyMap<string, AutomationRule>,
 ): MoveDecision | null {
   return evaluateMove(change, index).decision;
 }
@@ -141,7 +141,7 @@ export function decideMove(
 /** Evaluate the trigger and every additional condition, retaining all block reasons. */
 export function evaluateMove(
   change: ItemStateChange,
-  index: Map<string, AutomationRule>,
+  index: ReadonlyMap<string, AutomationRule>,
 ): AutomationEvaluation {
   const value = changeTriggerKey(change);
   if (!value) return { decision: null, blocked_reasons: ["트리거 상태값이 없습니다."] };

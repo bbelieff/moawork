@@ -133,6 +133,12 @@ describe("AND 조건절", () => {
   });
   const idx = indexRules([conditional]);
 
+  it("읽기 전용 규칙 index를 공개 소비 함수에 전달할 수 있다", () => {
+    const readonlyIndex: ReadonlyMap<string, AutomationRule> = idx;
+    expect(decideMove(change({ trigger_label_id: "label:feedback-done" }), readonlyIndex)).toBeNull();
+    expect(evaluateMove(change({ trigger_label_id: "label:feedback-done" }), readonlyIndex).decision).toBeNull();
+  });
+
   it("조건이 여러 개면 전부 맞을 때만 실행한다", () => {
     const result = evaluateMove(change({
       trigger_label_id: "label:feedback-done",
