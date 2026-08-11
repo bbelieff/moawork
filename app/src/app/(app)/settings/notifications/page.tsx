@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
 import { loadNotifySnapshot } from "@/lib/notify/server";
+import { notificationTargetHref } from "@/lib/notify/highlight";
+import { NotificationRoute } from "@/components/notify/NotificationRoute";
 
 /**
  * 전체 보기 — 패널의 [전체 보기 →] 목적지.
@@ -26,7 +28,7 @@ export default async function NotificationsPage() {
             {snapshot.mine.map(({ notification: n, href }) => (
               <li key={n.id} className="border-b last:border-b-0" style={{ borderColor: "var(--mw-line)" }}>
                 <Link
-                  href={href ?? "#"}
+                  href={href ? notificationTargetHref(href, n.target_id ?? n.id) : "#"}
                   className="flex items-start gap-2 px-3 py-2.5 text-[13px] hover:opacity-80"
                 >
                   <span aria-hidden>{n.is_action ? "🔴" : "•"}</span>
@@ -50,11 +52,12 @@ export default async function NotificationsPage() {
           </p>
         ) : (
           <ul className="overflow-hidden rounded-xl border" style={{ borderColor: "var(--mw-line)" }}>
-            {snapshot.org.map(({ group, line, href }) => (
+            {snapshot.org.map(({ group, line, href, recipient }) => (
               <li key={group.head.id} className="border-b last:border-b-0" style={{ borderColor: "var(--mw-line)" }}>
                 <Link href={href ?? "#"} className="flex items-start gap-2 px-3 py-2.5 text-[13px] hover:opacity-80">
                   <span aria-hidden>{line.icon}</span>
                   <span className="min-w-0 flex-1">
+                    <NotificationRoute recipient={recipient} />
                     <span className="font-semibold">{line.actor}</span>
                     <span>님이 {line.verb}</span>
                     <span className="block text-[11.5px] opacity-60">

@@ -6,6 +6,7 @@ import { useState } from "react";
 import type { NotifySnapshot } from "@/lib/notify/server";
 import { NOTIFY_TABS, type NotifyTab } from "@/lib/notify/types";
 import { notificationTargetHref } from "@/lib/notify/highlight";
+import { NotificationRoute } from "./NotificationRoute";
 import {
   PANEL_HEIGHT_CLASS,
   PANEL_SCROLL_CLASS,
@@ -89,7 +90,7 @@ export function NotificationPanel({
                 <li key={n.id}>
                   <button
                     type="button"
-                    onClick={() => void go(href, n.is_action ? n.id : null, n.id)}
+                    onClick={() => void go(href, n.is_action ? n.id : null, n.target_id ?? n.id)}
                     className="flex w-full items-start gap-2 border-b px-3 py-2.5 text-left transition-colors hover:opacity-80"
                     style={{ borderColor: "var(--mw-line)" }}
                   >
@@ -111,7 +112,7 @@ export function NotificationPanel({
           <Empty>회사 소식이 없습니다</Empty>
         ) : (
           <ul>
-            {snapshot.org.map(({ group, line, href }) => (
+            {snapshot.org.map(({ group, line, href, recipient }) => (
               <li key={group.head.id}>
                 <button
                   type="button"
@@ -123,6 +124,7 @@ export function NotificationPanel({
                     {line.icon}
                   </span>
                   <span className={`${TEXT_CLAMP_CLASS} text-[13px]`}>
+                    <NotificationRoute recipient={recipient} />
                     {/* 주어를 반드시 먼저 보여준다. */}
                     <span className="font-semibold">{line.actor}</span>
                     <span>님이 {line.verb}</span>

@@ -20,5 +20,8 @@ export async function registerNotifyWorker(
   deps: NotifyHandlerDeps,
 ): Promise<void> {
   await boss.createQueue(NOTIFY_SEND_QUEUE, NOTIFY_QUEUE_OPTIONS);
-  await boss.work(NOTIFY_SEND_QUEUE, createNotifySendHandler(deps));
+  await boss.work(NOTIFY_SEND_QUEUE, createNotifySendHandler({
+    ...deps,
+    defer: deps.defer ?? (async (data, deliverAfter) => { await boss.send(NOTIFY_SEND_QUEUE, data, { startAfter: deliverAfter }); }),
+  }));
 }

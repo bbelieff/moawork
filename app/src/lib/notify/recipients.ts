@@ -96,3 +96,19 @@ export function resolveNotificationRecipients(
     (a, b) => PRIORITY[a.source] - PRIORITY[b.source] || a.userId.localeCompare(b.userId),
   );
 }
+
+export function routeNotificationFeed<T extends { id: string; actor: string | null; target_id: string | null }>(
+  feed: readonly T[],
+  currentUserId: string,
+  teamMembers: readonly string[],
+  assignees: ReadonlyMap<string, string | null>,
+): Array<{ feed: T; recipient: NotificationRecipient }> {
+  return feed.flatMap((item) => {
+    const recipient = resolveNotificationRecipients({
+      actorId: item.actor ?? undefined,
+      assigneeId: item.target_id ? assignees.get(item.target_id) : null,
+      teamMembers,
+    }).find((candidate) => candidate.userId === currentUserId);
+    return recipient ? [{ feed: item, recipient }] : [];
+  });
+}

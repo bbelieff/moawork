@@ -7,6 +7,7 @@ import { bellBadge, sidebarBadges } from "./badge";
 import { groupFeed, type FeedGroup } from "./grouping";
 import { deepLink, feedLine, type FeedLine } from "./messages";
 import type { BadgeState, FeedItem, Notification, SurfaceKey, SurfaceSeen } from "./types";
+import { routeNotificationFeed, type NotificationRecipient } from "./recipients";
 import {
   myNotificationsFor,
   orgFeedFor,
@@ -22,7 +23,7 @@ export interface NotifySnapshot {
   bell: BadgeState;
   sidebar: Record<SurfaceKey, BadgeState>;
   mine: Array<{ notification: Notification; href: string | null }>;
-  org: Array<{ group: FeedGroup; line: FeedLine; href: string | null }>;
+  org: Array<{ group: FeedGroup; line: FeedLine; href: string | null; recipient: NotificationRecipient }>;
 }
 
 export const EMPTY_SNAPSHOT: NotifySnapshot = {
@@ -75,20 +76,22 @@ export async function loadNotifySnapshot(ctx: Ctx, now = new Date()): Promise<No
     // RLS 가 1차 방어선이지만 앱에서도 같은 규칙을 다시 적용한다(다중 방어).
     const mine = myNotificationsFor(rawNotifications, ctx.org.id, ctx.user.id);
     const feed = orgFeedFor(rawFeed, ctx.org.id, scopeCtx);
+    const routedFeed = await routeFeedToCurrentUser(feed, ctx, supabase);
 
     const actorNames = await loadActorNames(feed, mine, supabase);
 
     return {
       bell: bellBadge(mine),
-      sidebar: sidebarBadges(mine, feed, seen, surfaceOfNotification, surfaceOfFeedItem),
+      sidebar: sidebarBadges(mine, routedFeed.map((item) => item.feed), seen, surfaceOfNotification, surfaceOfFeedItem),
       mine: mine.map((notification) => ({
         notification,
         href: deepLink(notification.target_type, notification.target_id),
       })),
-      org: groupFeed(feed).map((group) => ({
+      org: groupFeed(routedFeed.map((item) => item.feed)).map((group) => ({
         group,
         line: feedLine(group.head, actorNames.get(group.head.actor ?? "") ?? null, now, group.count),
         href: deepLink(group.head.target_type, group.head.target_id),
+        recipient: routedFeed.find((item) => item.feed.id === group.head.id)!.recipient,
       })),
     };
   } catch {
@@ -96,6 +99,25 @@ export async function loadNotifySnapshot(ctx: Ctx, now = new Date()): Promise<No
     return EMPTY_SNAPSHOT;
   }
 }
+
+async function routeFeedToCurrentUser(
+  feed: readonly FeedItem[],
+  ctx: Ctx,
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<Array<{ feed: FeedItem; recipient: NotificationRecipient }>> {
+  const [{ data: members }, { data: deals }] = await Promise.all([
+    supabase.from("org_members").select("user_id").eq("org_id", ctx.org.id).eq("status", "active"),
+    supabase
+      .from("deals")
+      .select("id, assigned_to")
+      .eq("org_id", ctx.org.id)
+      .in("id", feed.filter((item) => item.target_type === "deal" && item.target_id).map((item) => item.target_id!)),
+  ]);
+  const teamMembers = (members ?? []).map((row: { user_id: string }) => row.user_id);
+  const assignees = new Map((deals ?? []).map((row: { id: string; assigned_to: string | null }) => [row.id, row.assigned_to]));
+  return routeNotificationFeed(feed, ctx.user.id, teamMembers, assignees);
+}
+
 
 /** 담당범위 판정에 필요한 '내 담당 딜' 집합을 만든다. */
 async function buildScopeContext(

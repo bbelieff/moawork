@@ -1,6 +1,7 @@
 import type { Job } from "pg-boss";
 import type { MessageLoader, MessageStatusSink, NotificationProvider } from "./provider.js";
 import { resolveProvider } from "./provider.js";
+import { planNotificationDelivery, type DeliveryPolicy } from "./delivery-policy.js";
 
 /** 발송 큐 이름 (설계 §3.1). */
 export const NOTIFY_SEND_QUEUE = "notify.send";
@@ -11,6 +12,10 @@ export const NOTIFY_SEND_QUEUE = "notify.send";
  */
 export interface NotifySendJobData {
   messageId: string;
+  userId?: string;
+  eventKey?: string;
+  createdAt?: string;
+  urgency?: "normal" | "high";
 }
 
 /** 페이로드 형태 검증(외부에서 들어온 값이므로 신뢰하지 않는다). */
@@ -28,6 +33,8 @@ export interface NotifyHandlerDeps {
   loader: MessageLoader;
   sink: MessageStatusSink;
   log?: (message: string) => void;
+  deliveryPolicy?: Omit<DeliveryPolicy, "now">;
+  defer?: (data: NotifySendJobData, deliverAfter: string) => Promise<void>;
 }
 
 /** 잡 1건의 처리 결과 — 테스트/관측용. */
@@ -98,6 +105,14 @@ export async function processNotifyJob(
 export function createNotifySendHandler(deps: NotifyHandlerDeps) {
   return async (jobs: Job<NotifySendJobData>[]): Promise<void> => {
     for (const job of jobs) {
+      if (deps.deliveryPolicy && deps.defer && job.data.userId && job.data.eventKey && job.data.createdAt && job.data.urgency) {
+        const now = new Date().toISOString();
+        const batch = planNotificationDelivery([{ notificationId: job.data.messageId, userId: job.data.userId, eventKey: job.data.eventKey, createdAt: job.data.createdAt, urgency: job.data.urgency }], { ...deps.deliveryPolicy, now })[0];
+        if (batch && new Date(batch.deliverAfter).getTime() > new Date(now).getTime()) {
+          await deps.defer(job.data, batch.deliverAfter);
+          continue;
+        }
+      }
       await processNotifyJob(deps, job.data);
     }
   };
