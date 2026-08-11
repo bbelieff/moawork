@@ -2010,3 +2010,74 @@ all/assigned), 헬퍼 `is_org_member`/`org_role`/`org_scope`, 트리거 `add_org
   아직 연결돼 있지 않아 그 자체가 대상 화면이 없다. BBE-122와 같은 사유로 와이어링 후속 필요:
   `OnboardingPanel`을 실제로 띄울 진입 라우트가 이 카드 리스 밖(설정 메뉴 등)이다).
 
+## 2026-08-11 — [START · 모아워크 DC 02/claude] BBE-142 앱 셸 — 목업 「탭 6개 한 화면」 구조
+
+- task_id Linear `BBE-142`, base `origin/main@36a68353bf3812f706883e1ced8dd538583aec56`
+  (`git fetch` 후 실측 · 직전 내가 머지한 BBE-103(#116) 바로 다음 커밋), branch
+  `claude/bbe-142-app-shell`, 전용 worktree `개발프로젝트\.worktrees\bbe-142-app-shell`.
+- 발행 경위: BBE-103 완주 후 §8 반납 역제안이 그대로 카드가 됨(총괄 확인).
+- **BBE-140(qa-app.mjs) 참조**: 아직 미머지(`codex/bbe-140-qa-app`, NG-02). 지시대로 그 브랜치의
+  `docs/design/qa-app.mjs`·`dump-mockup.mjs` 갱신분을 **로컬 실행 전용으로만** 빌려 쓴다 —
+  내 브랜치에는 커밋하지 않는다(파일 소유는 NG-02, 내 리스 밖). 스크립트를 읽어보니 "탭 위치 차이"
+  체크는 `mockTab.nav` 존재 여부만으로 무조건 찍는 하드코딩이라(앱 쪽 비교 대상이 아직 없음),
+  내가 무엇을 만들어도 이 필드 자체는 안 줄어들 수 있다 — PR에 이 관찰을 그대로 적는다.
+- **주소 실측**: `find app/src/app -name page.tsx` = **39개**(카드 표기 "25개"와 다름 — 최근
+  BBE-46/BBE-16/온보딩 등 병합으로 늘어난 것으로 보임, 정정 기록). 목업 6탭 매핑:
+  신규리드→`/newcust`+`/boards`+`/boards/[id]` · 리드컨택→`/contract` · 계약업체 실무→`/policyfund`
+  (BBE-103에서 MWC가 실측 근거로 확정, 재검토 안 함)+`/work`(신규, 데이터 비어있음)+`/policyfund/settlements` ·
+  업체관리→`/companies`+`/companies/[companyId]` · 공지→`/notices`+`/notices/[noticeId]` ·
+  **프리셋 라이브러리 → 대응 주소 0건(신설 필요)**. 나머지(대시보드·설정·계정·플랫폼 어드민·온보딩·
+  워크스페이스 전환)는 카드가 명시한 대로 "탭 밖"으로 분류.
+- 리스: `app/src/app/(app)/layout.tsx` · `app/src/components/shell/**` ·
+  `app/src/app/(app)/page.tsx`(탭 진입 라우팅 한정). 프리셋 라이브러리 페이지 신설은 리스 밖 새 파일이라
+  "조립은 남의 부품을 만지는 일"(카드 본문) 원칙으로 진행하되 다른 세션 소유 흔적 없음을 확인했다.
+- 방침: 175건을 이 카드로 없애려 하지 않는다. new/work 탭의 기존 href(각 `/newcust`·`/policyfund`)는
+  이미 근거 있게 확정된 결정이라 재검토하지 않고 그대로 둔다 — "틀만 세운다"에 집중.
+
+## 2026-08-12 — [END · 모아워크 DC 02/claude] BBE-142 앱 셸 — 목업 「탭 6개 한 화면」 구조
+
+- PR 제출. branch `claude/bbe-142-app-shell`. base `origin/main@36a6835`(변동 없음).
+- `app/src/components/shell/app-tabs.ts`(신규) — 목업 6탭 ↔ 앱 주소 정본 매핑.
+  `canonicalHref`는 new/work 둘 다 BBE-103 확정값 그대로 유지(재검토 안 함) · 프리셋만 신규.
+  `OUT_OF_TAB_HREFS`로 대시보드·설정·계정·플랫폼 어드민·온보딩·인증 등 "탭 밖" 명시 분류.
+  드리프트 가드 테스트(`app-tabs.test.ts`)가 실제 파일시스템의 모든 `page.tsx`를 스캔해 6탭
+  또는 탭밖 목록 어디에도 없는 라우트가 생기면 실패한다 — 유령 주소·누락 주소 둘 다 막는다.
+- **주소 실측 정정**: 카드 표기 "25개" → 실측 **39개**(page.tsx 기준). 최근 병합(BBE-46/16/온보딩
+  등)으로 늘어난 것으로 보인다. worklog에 기록만 하고 카드 수치를 임의로 안 고쳤다.
+- `app/src/app/(app)/presets/page.tsx`(신규) — 프리셋 라이브러리, 이전엔 대응 주소 0건이었다.
+  `allSectionPresets()`/`SEOUL_STRUCTURE_PACK` 실데이터로 아이템 프리셋 32종을 보드별로 나열
+  (하드코딩 아님 — 테스트가 팩 실제 개수와 대조). 뷰 프리셋은 저장뷰 시스템과 미연결이라
+  가짜 개수를 만들지 않고 "아직 없음"으로 정직하게 표시. 편집기는 범위 밖(NG-05가 후속 카드로 쪼갠다).
+- `icons.tsx`에 `preset` 심볼 추가 — 목업 원본 `<symbol id="i-preset">` 그대로 포팅(D43).
+  `nav-items.ts`에 6번째 탭 연결(`/presets`), members 다음 위치 — 목업 자체 NAV 배열도
+  preset을 "업무" 그룹이 아니라 "설정" 그룹에 둬서(실측: `NAV=[...["설정",[...,"preset",...]]]`)
+  같은 취지로 배치했다(현재 nav-items.ts는 섹션 구분 없는 평면 목록이라 순서로만 근사).
+- **리스 밖 불가피한 접촉 1건**: `/presets` 신규 라우트가 001/006/021 계열의 예약 슬러그
+  가드(`RESERVED_WORKSPACE_SLUGS`)를 건드려 기존 테스트(`workspace-entry/contracts.test.ts`)가
+  실패했다. `contracts.ts`에 "presets" 한 줄 추가 + 새 마이그레이션
+  `058_reserve_presets_workspace_slug.sql`(021과 같은 패턴으로 drop/재생성, 021 파일 자체는
+  무수정) + DB-TS 대조 테스트를 "021 하드코딩"에서 "가장 최신 정의 파일 자동 탐색"으로 보강
+  (021 이후 006·009·014도 같은 제약을 순차 갱신해 온 이력을 실측하고서야 이 구조를 알았다).
+  전부 내가 새로 만든 라우트가 유발한 필연적 결과라 "조립은 남의 부품을 만지는 일"(카드 본문)
+  범위로 판단해 처리했다. 로컬 pglite로 `slug='presets'` 거부를 직접 확인(①PASS).
+- **BBE-140(qa-app.mjs) 실행 결과**: `codex/bbe-140-qa-app` 브랜치에서 스크립트 2개를 로컬에
+  임시로만 반입해 실행(커밋 안 함, 실행 후 원상복구 확인) — **차이 합계 175건, 카드 인용값과
+  일치**(같은 버전 확인). 다만 "탭 위치 차이"(new/contact/work 각 1건, 총 3건 — 카드가
+  줄어들길 기대한 항목)를 코드로 실측하니 `if(mockTab.nav)` 조건 하나로 **무조건** 찍히는
+  하드코딩이었다 — 앱 쪽 실제 nav 데이터를 아직 아무 것도 비교하지 않는다. 즉 이 3건은
+  내가 무엇을 만들어도 qa-app.mjs 자체가 앱 nav를 읽게 갱신되기 전까지는 줄지 않는
+  **구조적 한계**다. NG-02(BBE-140)에 그대로 넘긴다 — 내 카드의 실패가 아니라 측정 도구의
+  다음 확장 지점이다.
+- 화면 확인(1440px+375px, 로컬 webpack dev 서버 + 로그인 상태): `/presets` 렌더 확인(아이템
+  프리셋 32, 보드 3개 그룹, 뷰 프리셋 정직 미구현 표시) · 사이드바 `preset→/presets` href 실측 ·
+  375px 가로 오버플로 0 · 콘솔 앱 에러 0. **스크린샷 PNG는 이번에도 확보 못 함** — BBE-103과
+  동일한 컴포지팅 제약이 재현됨(재현성 재확인, 세션 탓 아니라 환경 탓으로 굳어지는 패턴).
+- 게이트: `bash scripts/check.sh` PASS — app 184 files/1569 tests(신규 15) · worker 57.
+  `npm run build` PASS(39개 라우트 전부, `/presets` 포함, 깨진 것 없음). `app_admins` 직접
+  select 0 · 하드코딩 hex 0 · 비밀값 0.
+- 변경 파일: 리스 3패턴(`layout.tsx` 무변경·`shell/**` 5개 신규/수정·`(app)/page.tsx` 무변경)
+  + 불가피 접촉 3개(`workspace-entry/contracts.ts`·`.test.ts`·신규 migration 058)
+  + `docs/worklog.md`. `layout.tsx`·`(app)/page.tsx`는 결과적으로 안 건드렸다 — 사이드바만
+  손대면 충분했다.
+
+

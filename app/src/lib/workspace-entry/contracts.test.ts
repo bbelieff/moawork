@@ -49,12 +49,22 @@ describe("workspace entry request contract", () => {
   });
 
   it("matches the DB reserved slug contract exactly", () => {
-    const sql = readFileSync(join(repoRoot, "supabase", "migrations", "021_reserve_mode_workspace_slug.sql"), "utf8");
+    // 021 defined this constraint first; later migrations (additive-only, never editing 021)
+    // may reissue it with an updated list via drop/re-add on the same tables. The DB's live
+    // truth is whichever such file is newest, so scan for all of them instead of hardcoding 021.
+    const migrationsDir = join(repoRoot, "supabase", "migrations");
+    const candidates = readdirSync(migrationsDir)
+      .filter((name) => name.endsWith(".sql"))
+      .filter((name) => /slug not in \(/.test(readFileSync(join(migrationsDir, name), "utf8")))
+      .sort();
+    expect(candidates.length).toBeGreaterThan(0);
+    const latest = candidates[candidates.length - 1];
+    const sql = readFileSync(join(migrationsDir, latest), "utf8");
     const blocks = Array.from(sql.matchAll(/slug not in \(([\s\S]*?)\)/g), (match) => match[1]);
     expect(blocks).toHaveLength(2);
     for (const block of blocks) {
       const dbReserved = new Set(Array.from(block.matchAll(/'([^']+)'/g), (match) => match[1]));
-      expect([...RESERVED_WORKSPACE_SLUGS].sort()).toEqual([...dbReserved].sort());
+      expect([...RESERVED_WORKSPACE_SLUGS].sort(), `DB source of truth: ${latest}`).toEqual([...dbReserved].sort());
     }
   });
 
