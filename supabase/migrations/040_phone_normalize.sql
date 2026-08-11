@@ -31,6 +31,36 @@ $$;
 revoke all on function public.normalize_phone(text) from public;
 grant execute on function public.normalize_phone(text) to authenticated, service_role;
 
+-- field_values does not store its field_entity. Resolve it from the owning row,
+-- and deliberately return null for missing or ambiguous IDs instead of guessing.
+create or replace function public.resolve_field_value_entity(p_org_id uuid, p_entity_id uuid)
+returns public.field_entity
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select case
+    when exists (
+      select 1 from public.companies c
+      where c.org_id = p_org_id and c.id = p_entity_id
+    ) and not exists (
+      select 1 from public.deals d
+      where d.org_id = p_org_id and d.id = p_entity_id
+    ) then 'company'::public.field_entity
+    when exists (
+      select 1 from public.deals d
+      where d.org_id = p_org_id and d.id = p_entity_id
+    ) and not exists (
+      select 1 from public.companies c
+      where c.org_id = p_org_id and c.id = p_entity_id
+    ) then 'deal'::public.field_entity
+    else null
+  end;
+$$;
+
+revoke all on function public.resolve_field_value_entity(uuid, uuid) from public;
+
 alter table public.companies
   add column if not exists phone_original text,
   add column if not exists phone_normalization_status text not null default 'normalized'
@@ -79,7 +109,9 @@ select 'field_values', fv.org_id, fv.entity_id, fv.field_key, fv.value_jsonb,
     then 'needs_review' else 'normalized' end
 from public.field_values fv
 join public.field_defs fd
-  on fd.org_id = fv.org_id and fd.key = fv.field_key
+  on fd.org_id = fv.org_id
+  and fd.entity = public.resolve_field_value_entity(fv.org_id, fv.entity_id)
+  and fd.key = fv.field_key
 where fd.type = 'phone'
   and jsonb_typeof(fv.value_jsonb) = 'string'
   and (fv.value_jsonb #>> '{}') is distinct from public.normalize_phone(fv.value_jsonb #>> '{}')
@@ -89,6 +121,7 @@ update public.field_values fv
 set value_jsonb = to_jsonb(public.normalize_phone(fv.value_jsonb #>> '{}'))
 from public.field_defs fd
 where fd.org_id = fv.org_id
+  and fd.entity = public.resolve_field_value_entity(fv.org_id, fv.entity_id)
   and fd.key = fv.field_key
   and fd.type = 'phone'
   and jsonb_typeof(fv.value_jsonb) = 'string'
@@ -160,11 +193,17 @@ set search_path = ''
 as $$
 declare
   v_raw text;
+  v_entity public.field_entity;
 begin
-  if jsonb_typeof(new.value_jsonb) <> 'string'
+  v_entity := public.resolve_field_value_entity(new.org_id, new.entity_id);
+  if v_entity is null
+    or jsonb_typeof(new.value_jsonb) <> 'string'
     or not exists (
       select 1 from public.field_defs fd
-      where fd.org_id = new.org_id and fd.key = new.field_key and fd.type = 'phone'
+      where fd.org_id = new.org_id
+        and fd.entity = v_entity
+        and fd.key = new.field_key
+        and fd.type = 'phone'
     ) then
     return new;
   end if;
@@ -264,3 +303,57 @@ begin
   raise notice 'phone normalization needs_review count: %', v_needs_review_count;
 end;
 $$;
+
+-- Hosted apply read-back (aggregate-only; never select phone contents):
+-- 1. Before apply, record counts from each active store.
+--    select 'companies' as source_table, count(*)::bigint as row_count
+--      from public.companies where phone is not null
+--    union all
+--    select 'field_values', count(*)::bigint
+--      from public.field_values fv
+--      join public.field_defs fd on fd.org_id = fv.org_id
+--       and fd.entity = public.resolve_field_value_entity(fv.org_id, fv.entity_id)
+--       and fd.key = fv.field_key and fd.type = 'phone'
+--    union all
+--    select 'item_values', count(*)::bigint
+--      from public.item_values iv
+--      join public.items i on i.id = iv.item_id and i.org_id = iv.org_id
+--      join public.board_columns bc on bc.board_id = i.board_id
+--       and bc.org_id = iv.org_id and bc.key = iv.column_key and bc.type = 'phone';
+-- 2. After apply, record review/backup counts without raw values.
+--    select source_table, normalization_status, count(*)::bigint as row_count
+--      from public.phone_normalization_originals
+--      group by source_table, normalization_status order by source_table, normalization_status;
+--    select count(*)::bigint as company_needs_review_count
+--      from public.companies where phone_normalization_status = 'needs_review';
+--    select count(*)::bigint as company_non_digit_count
+--      from public.companies where phone is not null and phone !~ '^[0-9]+$';
+-- 3. If rollback is required, execute the exact transaction below and verify
+--    the same aggregate counts from step 1. It restores only rows backed up by
+--    this migration and never exposes phone contents.
+-- begin;
+-- drop trigger if exists trg_companies_normalize_phone on public.companies;
+-- drop trigger if exists trg_field_values_normalize_phone on public.field_values;
+-- drop trigger if exists trg_item_values_normalize_phone on public.item_values;
+-- update public.companies set phone = phone_original
+--   where phone_original is not null;
+-- update public.field_values fv set value_jsonb = o.raw_value
+--   from public.phone_normalization_originals o
+--   where o.source_table = 'field_values' and o.org_id = fv.org_id
+--     and o.record_id = fv.entity_id and o.field_key = fv.field_key;
+-- update public.item_values iv set value_jsonb = o.raw_value
+--   from public.phone_normalization_originals o
+--   where o.source_table = 'item_values' and o.org_id = iv.org_id
+--     and o.record_id = iv.item_id and o.field_key = iv.column_key;
+-- drop view if exists public.phone_normalization_review_counts;
+-- drop function if exists public.normalize_company_phone();
+-- drop function if exists public.normalize_field_value_phone();
+-- drop function if exists public.normalize_item_value_phone();
+-- drop function if exists public.resolve_field_value_entity(uuid, uuid);
+-- drop function if exists public.normalize_phone(text);
+-- drop table if exists public.phone_normalization_originals;
+-- drop index if exists public.companies_org_phone_idx;
+-- alter table public.companies drop constraint if exists companies_phone_digits_only;
+-- alter table public.companies drop column if exists phone_normalization_status;
+-- alter table public.companies drop column if exists phone_original;
+-- commit;

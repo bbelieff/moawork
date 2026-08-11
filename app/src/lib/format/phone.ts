@@ -9,6 +9,8 @@ export type PhoneNormalization =
   | { status: "normalized"; normalized: string }
   | { status: "needs_review"; normalized: "" };
 
+export type PhoneNormalizationStatus = "normalized" | "needs_review";
+
 function isReadablePhone(digits: string): boolean {
   if (digits.startsWith("0")) return digits.length >= 9 && digits.length <= 11;
   return digits.length >= 8 && digits.length <= 15;
@@ -51,6 +53,20 @@ export function formatPhone(value: string | null | undefined): string {
   }
 
   return phone;
+}
+
+/**
+ * 저장소의 정규화 상태를 함께 읽는 화면 표시 계약.
+ *
+ * migration은 판독 불가능한 EAV 값을 null로 바꾸고 원본과 상태를 별도로
+ * 보존하므로, 화면 consumer는 값만 보고 빈 연락처로 오인하면 안 된다.
+ */
+export function presentPhone(
+  value: string | null | undefined,
+  normalizationStatus: PhoneNormalizationStatus = "normalized",
+): string {
+  if (normalizationStatus === "needs_review") return "확인 필요";
+  return formatPhone(value);
 }
 
 /** 입력 형식이 달라도 저장 정규형이 같으면 같은 번호다. */

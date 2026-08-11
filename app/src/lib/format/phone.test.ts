@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzePhone, formatPhone, isSamePhone, normalizePhone } from "./phone";
+import { analyzePhone, formatPhone, isSamePhone, normalizePhone, presentPhone } from "./phone";
 
 describe("phone format contract", () => {
   it.each([
@@ -44,5 +44,10 @@ describe("phone format contract", () => {
     expect(isSamePhone("010-1234-5678", "+82 10 1234 5678")).toBe(true);
     expect(isSamePhone("010-1234-5678", "010-9999-5678")).toBe(false);
     expect(isSamePhone("", "")).toBe(false);
+  });
+
+  it("presents normalized storage with hyphens and preserved review state explicitly", () => {
+    expect(presentPhone("01012345678", "normalized")).toBe("010-1234-5678");
+    expect(presentPhone(null, "needs_review")).toBe("확인 필요");
   });
 });

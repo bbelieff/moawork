@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(
-  resolve(process.cwd(), "../supabase/migrations/036_phone_normalize.sql"),
+  resolve(process.cwd(), "../supabase/migrations/040_phone_normalize.sql"),
   "utf8",
 );
 
@@ -23,6 +23,15 @@ describe("phone normalization migration contract", () => {
     expect(migration).toContain("companies_phone_digits_only");
   });
 
+  it("matches same-key field definitions by their resolved entity", () => {
+    expect(migration).toContain("public.resolve_field_value_entity(fv.org_id, fv.entity_id)");
+    expect(migration).toContain("fd.entity = public.resolve_field_value_entity");
+    expect(migration).toContain("fd.entity = v_entity");
+    expect(migration).toContain("from public.companies c");
+    expect(migration).toContain("from public.deals d");
+    expect(migration).toContain("v_entity is null");
+  });
+
   it("locks the raw-value audit table away from user roles", () => {
     expect(migration).toContain("enable row level security");
     expect(migration).toContain(
@@ -34,5 +43,13 @@ describe("phone normalization migration contract", () => {
     expect(migration).toContain("needs_review");
     expect(migration).toContain("phone_normalization_review_counts");
     expect(migration).toContain("phone normalization needs_review count: %");
+  });
+
+  it("documents aggregate read-back and exact raw-value rollback", () => {
+    expect(migration).toContain("Hosted apply read-back (aggregate-only");
+    expect(migration).toContain("company_non_digit_count");
+    expect(migration).toContain("update public.field_values fv set value_jsonb = o.raw_value");
+    expect(migration).toContain("update public.item_values iv set value_jsonb = o.raw_value");
+    expect(migration).toContain("update public.companies set phone = phone_original");
   });
 });
