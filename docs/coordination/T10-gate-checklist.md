@@ -503,6 +503,53 @@ PolicyfundBoard.tsx  ("use client")
 
 ---
 
+## 14. ★★ v6 체제 전환 — 260810 검수 라운드 (T10 = 노트북 CT10, 검수 전담)
+
+> **역할 재정의**: 이전 §1~§13 은 T10 이 코드 소유·머지 권한까지 가졌던 구체제 기록이다(보존만, 무효화 아님).
+> 260810 배정부터 T10 은 **검수 전담**이다 — 코드 수정·머지 금지, PR 코멘트 + 이 문서만.
+> 담당 라인: 데탑 CT01~CT10(`claude/*` 브랜치)만. `codex/*` 는 G 라인 소관, 리스 밖.
+> 판정 기준 정본: `docs/plans/배정-260810/30_노트북CT10.md` · `docs/handoff/결정대장.md` · BBE-73(도장 규정).
+> **제품 축 전환(D71~D75)**: 모아워크는 제품, 서울경영은 첫 고객. 신규 워크스페이스=빈 상태.
+> 지우는 게 아니라 비우는 것 — 구조(컬럼·타입·아이템·자동이동)를 지우는 PR 은 무조건 FAIL.
+
+### FAIL 기준 (배정 카드 원문)
+멤버 계정 담당범위 누수(D24) · 컬럼/아이템/자동이동 규칙 축소(D73) · 손타이핑 날짜 경로 잔존 ·
+375px 미확인 · NOT_RUN→PASS 은폐 · 근거 없는 PASS.
+**단, 375px 는 결정대장 D41("기준 뷰포트 1440px, 375/390px 검증 면제")과 충돌** — 배정 카드 boilerplate 가
+구버전 기준을 그대로 물려받은 것으로 판단, D41 을 우선 적용한다. Cowork 정리 요청 사항으로 별도 기록.
+
+### PR #113 (BBE-102 · 0번 관문) — **PASS(조건부)** · 검수 2026-08-10
+
+`feat(boards): 구조 팩 설치 진입점` — `installStructurePackAction` 서버액션 + `InstallPackButton` +
+`installFlash`(1회성 쿠키) + `/boards` 배선. owner/admin 게이트.
+
+**독립 검증**(origin/main `6026ca4` 기준 로컬 리베이스 재실행, PR 본문 수치를 그대로 믿지 않음):
+- `check.sh` PASS — app 1266 pass/9 skip(135파일) · worker 35 pass(7파일)
+- `npm run build` PASS — `/boards`·`/boards/[id]`·`/api/boards/[boardId]/views` 컴파일 확인
+- `isManager` 게이트 = `notices/page.tsx` 관리자 쓰기 패턴과 동일(서버 강제) 확인
+- `installStructurePack` 스킵 판정이 `listBoards(ctx)` 의 `org_id` 필터에 의존 → 교차조직 유출 없음 확인
+- 리스 준수: `lib/newcust/**`·`components/newcust/**`·`shell/nav-items.ts` 무접촉 확인(diff 실측)
+- 프리뷰 URL(`moawork-en0adzwe7-*.vercel.app`) 직접 접속 시도 → **Vercel SSO 배포보호로 302 차단**.
+  작성자의 "로그인 불가로 NOT_RUN" 주장을 독립적으로 재현·확증(자기보고 아님).
+
+**⚠️ 조건부 사유(코드 결함 아님 — 배포 순서 문제)**: 이 PR 이 설치하는 `SEOUL_STRUCTURE_PACK`(main 미변경 상태)에
+아직 실명이 남아 있다 — `seoul-newcust.ts:175-176`(♻️박정화 실장·♻️이대표) · `seoul-contact.ts:130-131`
+(💰이대표·💰박정화 실장). 결정대장 §L: *"D73·D74 는 BBE-102 머지 전에 하는 것이 싸다."* 단독 배포 시
+어느 회사든 설치 즉시 실명이 워크스페이스에 심긴다 — D71/D72 위반. `#142`(BBE-130 depersonalize)가 그 4종을 고친다.
+
+**판정**: 코드 PASS. **배포 조건**: `#142` 와 동시 또는 선행 머지. `#113` 단독 프로덕션 배포 보류 권고.
+**PR 코멘트**: https://github.com/bbelieff/moawork/pull/113#issuecomment-5247996855
+
+### 대기 중 — 데탑 CT 라인(claude/*) claude 브랜치 12건
+#116(BBE-103 사이드바) · #120(BBE-127 지역조사) · #121(BBE-117 뷰) · #123(BBE-119 조직) ·
+#124(BBE-105 이중잠금) · #125(BBE-122 권한) · #126(BBE-126 토큰·아이콘, 최우선 2순위) ·
+#128(BBE-123 필드타입) · #129(BBE-110 체크리스트) · #130(BBE-116 로고, 최우선 3순위) ·
+#131(BBE-125 업체마스터) · #136(목업v6 반영, 문서) · #141(BBE-16 딜상세) · #142(BBE-130 실명비우기, ★#113 와 순서 연동) · #96(문서)
+
+`codex/*` 브랜치(G 라인, #107~#110·#122·#127·#132·#134·#88 등)는 리스 밖 — 검수 대상 아님.
+
+---
+
 ## 13. PR #57·#49 머지 · #48 반려 · DI-A6 판정 (main `db545e0`, 2026-07-30 · T10)
 
 ### ✅ PR #57 (T03 R1 진입 UX) — 머지 (main `31dd84e`)
