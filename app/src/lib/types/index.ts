@@ -3,10 +3,10 @@
 // 산출물로 대체/정합한다. T02/T04 등 소비 트랙은 이 타입을 참조한다.
 
 // ── enum (001: member_role / member_scope / field_type / field_entity / stage_kind) ──
-export const MEMBER_ROLES = ["owner", "admin", "member"] as const;
+export const MEMBER_ROLES = ["owner", "admin", "team_lead", "member"] as const;
 export type MemberRole = (typeof MEMBER_ROLES)[number];
 
-export const MEMBER_SCOPES = ["all", "assigned"] as const;
+export const MEMBER_SCOPES = ["all", "department", "assigned"] as const;
 export type MemberScope = (typeof MEMBER_SCOPES)[number];
 
 export const FIELD_ENTITIES = ["company", "deal"] as const;

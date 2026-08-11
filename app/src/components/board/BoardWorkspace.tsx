@@ -101,6 +101,9 @@ export function BoardWorkspace({
   assigneeLabels,
   backSlot,
   viewSlot,
+  canEditItems = false,
+  canDeleteItems = false,
+  canManageColumns = false,
 }: {
   board: Board;
   columns: BoardColumn[];
@@ -114,6 +117,9 @@ export function BoardWorkspace({
   /** 헤더 1줄 안에 얹을 화면 고유 컨트롤(뒤로가기·뷰 전환) — 줄을 늘리지 않기 위한 슬롯. */
   backSlot?: ReactNode;
   viewSlot?: ReactNode;
+  canEditItems?: boolean;
+  canDeleteItems?: boolean;
+  canManageColumns?: boolean;
 }) {
   const [filters, setFilters] = useState<BoardFilterState>(EMPTY_FILTERS);
   /*
@@ -126,7 +132,7 @@ export function BoardWorkspace({
   const [optimisticRows, moveRowOptimistic] = useOptimistic(rows, rowMoveReducer);
   const [optimisticOrder, setOrderOptimistic] = useOptimistic(columnOrder, columnOrderReducer);
 
-  const readOnly = board.is_system;
+  const readOnly = board.is_system || !canEditItems;
   const sortActive = filters.sortKey !== "";
   const rowDragEnabled = !readOnly && !sortActive;
 
@@ -283,6 +289,8 @@ export function BoardWorkspace({
                 columns={shown}
                 rows={visibleRows}
                 readOnly={readOnly}
+                canDeleteItems={!board.is_system && canDeleteItems}
+                canManageColumns={!board.is_system && canManageColumns}
                 rowDragEnabled={rowDragEnabled}
                 cellFlash={cellFlash}
                 onColumnDrop={(draggedKey, targetKey) =>

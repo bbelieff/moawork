@@ -11,9 +11,11 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth/session";
 import { isManager } from "@/lib/auth/roles";
+import { loadPermGuard } from "@/lib/perm/guard";
+import { recordRiskyAction } from "@/lib/perm/server";
 import { getBoardsService, NotFoundError } from "@/lib/boards";
 import { parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
-import type { FieldOption } from "@/lib/types";
+import type { Ctx, FieldOption } from "@/lib/types";
 import type { CellValue, ItemWithValues } from "@/lib/boards/types";
 import type { CellError } from "@/lib/boards/service";
 import type { ItemPatch } from "@/lib/boards/store";
@@ -34,6 +36,14 @@ import {
 function str(fd: FormData, key: string): string {
   const v = fd.get(key);
   return typeof v === "string" ? v : "";
+}
+
+async function requirePermission(ctx: Ctx, scopeKey: string, riskKey?: "danger.bulk_edit_delete"): Promise<void> {
+  const permission = await loadPermGuard(ctx.org.id, scopeKey);
+  if (permission.kind !== "allowed") throw new Error(permission.reason === "permission" ? "이 업무를 실행할 권한이 없어요." : "권한을 확인하지 못했어요.");
+  if (riskKey && !(await recordRiskyAction(ctx.org.id, riskKey, { operation: scopeKey })).ok) {
+    throw new Error("위험 작업 기록을 남기지 못해 실행하지 않았어요.");
+  }
 }
 
 /**
@@ -66,6 +76,7 @@ function parseOptionsCsv(csv: string): FieldOption[] {
 
 export async function createBoardAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
+  await requirePermission(ctx, "structure.tab_manage");
   const input = parseNewBoard({
     name: str(formData, "name"),
     description: str(formData, "description"),
@@ -84,6 +95,7 @@ export async function createBoardAction(formData: FormData): Promise<void> {
  */
 export async function installStructurePackAction(): Promise<void> {
   const ctx = await getSession();
+  await requirePermission(ctx, "structure.preset_edit");
   if (!isManager(ctx.role)) {
     throw new Error("구조 팩 설치는 관리자만 실행할 수 있습니다");
   }
@@ -102,6 +114,7 @@ export async function installStructurePackAction(): Promise<void> {
 
 export async function deleteBoardAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
+  await requirePermission(ctx, "danger.bulk_edit_delete", "danger.bulk_edit_delete");
   getBoardsService().deleteBoard(ctx, str(formData, "boardId"));
   revalidatePath("/boards");
   redirect("/boards");
@@ -109,6 +122,7 @@ export async function deleteBoardAction(formData: FormData): Promise<void> {
 
 export async function addColumnAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
+  await requirePermission(ctx, "structure.column_manage");
   const boardId = str(formData, "boardId");
   const type = str(formData, "type");
   if (!isFieldType(type)) throw new Error("지원하지 않는 필드 타입입니다");
@@ -124,6 +138,7 @@ export async function addColumnAction(formData: FormData): Promise<void> {
 
 export async function deleteColumnAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
+  await requirePermission(ctx, "structure.column_manage");
   const boardId = str(formData, "boardId");
   getBoardsService().deleteColumn(ctx, boardId, str(formData, "columnId"));
   revalidatePath(`/boards/${boardId}`);
@@ -136,6 +151,7 @@ export async function deleteColumnAction(formData: FormData): Promise<void> {
  */
 export async function setColumnWidthAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
+  await requirePermission(ctx, "structure.column_manage");
   const boardId = str(formData, "boardId");
   const columnId = str(formData, "columnId");
   const raw = str(formData, "width");
@@ -146,6 +162,7 @@ export async function setColumnWidthAction(formData: FormData): Promise<void> {
 
 export async function addItemAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
+  await requirePermission(ctx, "work.item_upsert");
   const boardId = str(formData, "boardId");
   const groupId = str(formData, "groupId");
   const input = parseNewItem({
@@ -158,6 +175,7 @@ export async function addItemAction(formData: FormData): Promise<void> {
 
 export async function deleteItemAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
+  await requirePermission(ctx, "work.item_delete");
   const boardId = str(formData, "boardId");
   getBoardsService().deleteItem(ctx, boardId, str(formData, "itemId"));
   revalidatePath(`/boards/${boardId}`);
@@ -166,6 +184,7 @@ export async function deleteItemAction(formData: FormData): Promise<void> {
 /** 셀 인라인 편집 — 값 정규화·선택지 검증은 서비스가 수행. */
 export async function setCellAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
+  await requirePermission(ctx, "work.item_upsert");
   const boardId = str(formData, "boardId");
   const itemId = str(formData, "itemId");
   const columnKey = str(formData, "columnKey");
@@ -183,6 +202,7 @@ export async function setCellAction(formData: FormData): Promise<void> {
 /** 아이템 제목 수정. */
 export async function renameItemAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
+  await requirePermission(ctx, "work.item_upsert");
   const boardId = str(formData, "boardId");
   getBoardsService().updateItem(ctx, boardId, str(formData, "itemId"), {
     title: str(formData, "title"),
@@ -196,6 +216,7 @@ export async function renameItemAction(formData: FormData): Promise<void> {
  */
 export async function moveItemAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
+  await requirePermission(ctx, "work.item_upsert");
   const boardId = str(formData, "boardId");
   const itemId = str(formData, "itemId");
   const lane = str(formData, "lane");
@@ -214,6 +235,7 @@ export async function moveItemAction(formData: FormData): Promise<void> {
 
 export async function addGroupAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
+  await requirePermission(ctx, "structure.section_manage");
   const boardId = str(formData, "boardId");
   getBoardsService().addGroup(ctx, boardId, { name: str(formData, "name") });
   revalidatePath(`/boards/${boardId}`);
@@ -231,6 +253,7 @@ export async function addGroupAction(formData: FormData): Promise<void> {
  */
 export async function moveRowAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
+  await requirePermission(ctx, "work.item_upsert");
   const boardId = str(formData, "boardId");
   const itemId = str(formData, "itemId");
   const rawGroup = str(formData, "groupId");
@@ -273,6 +296,7 @@ export async function moveRowAction(formData: FormData): Promise<void> {
  */
 export async function setGroupColumnOrderAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
+  await requirePermission(ctx, "structure.column_manage");
   const boardId = str(formData, "boardId");
   const groupKey = str(formData, "groupKey");
 

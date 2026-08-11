@@ -5,6 +5,7 @@ import { applyAs, getSession } from "@/lib/auth/session";
 import { CELL_FLASH_COOKIE, decodeCellFlash } from "@/lib/boards/cellFlash";
 import { getBoardsService, NotFoundError } from "@/lib/boards";
 import { getRepo } from "@/lib/repo";
+import { loadPermGuard } from "@/lib/perm/guard";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { GenericBoardKanban } from "@/components/boards/GenericBoardKanban";
 import { ColumnEditor } from "@/components/boards/ColumnEditor";
@@ -31,6 +32,18 @@ export default async function BoardPage({
   const { id } = await params;
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
+  const [itemUpsert, itemDelete, columnManage, sectionManage, boardDelete] = await Promise.all([
+    loadPermGuard(ctx.org.id, "work.item_upsert"),
+    loadPermGuard(ctx.org.id, "work.item_delete"),
+    loadPermGuard(ctx.org.id, "structure.column_manage"),
+    loadPermGuard(ctx.org.id, "structure.section_manage"),
+    loadPermGuard(ctx.org.id, "danger.bulk_edit_delete"),
+  ]);
+  const canEditItems = itemUpsert.kind === "allowed";
+  const canDeleteItems = itemDelete.kind === "allowed";
+  const canManageColumns = columnManage.kind === "allowed";
+  const canManageSections = sectionManage.kind === "allowed";
+  const canDeleteBoard = boardDelete.kind === "allowed";
   const svc = getBoardsService();
 
   let detail;
@@ -96,15 +109,15 @@ export default async function BoardPage({
   );
 
   /** 구조 편집(컬럼·그룹·삭제) — 상시 노출하면 표 아래가 산만해져 접어 둔다(원칙 2·7). */
-  const boardSettings = !board.is_system && (
+  const boardSettings = !board.is_system && (canManageColumns || canManageSections || canDeleteBoard) && (
     <details className="rounded-xl border border-mw-line bg-mw-card">
       <summary className="cursor-pointer select-none px-3 py-2 text-xs text-mw-sub list-none [&::-webkit-details-marker]:hidden">
         ⚙ 보드 설정 — 컬럼·그룹·삭제
       </summary>
       <div className="flex flex-col gap-3 border-t border-mw-line p-3">
-        <ColumnEditor boardId={id} columns={columns} />
+        {canManageColumns && <ColumnEditor boardId={id} columns={columns} />}
 
-        <form action={addGroupAction} className="flex flex-wrap items-end gap-2">
+        {canManageSections && <form action={addGroupAction} className="flex flex-wrap items-end gap-2">
           <input type="hidden" name="boardId" value={id} />
           <label className="flex flex-col gap-1 text-xs">
             <span className="text-mw-sub">새 그룹</span>
@@ -121,14 +134,14 @@ export default async function BoardPage({
           >
             그룹 추가
           </button>
-        </form>
+        </form>}
 
-        <form action={deleteBoardAction}>
+        {canDeleteBoard && <form action={deleteBoardAction}>
           <input type="hidden" name="boardId" value={id} />
           <button type="submit" className="text-xs text-mw-sub hover:text-mw-error">
             이 보드 삭제
           </button>
-        </form>
+        </form>}
       </div>
     </details>
   );
@@ -168,7 +181,7 @@ export default async function BoardPage({
           boardId={id}
           lanes={lanes}
           groupBy={groupBy}
-          readOnly={board.is_system}
+          readOnly={board.is_system || !canEditItems}
         />
 
         {boardSettings}
@@ -188,6 +201,9 @@ export default async function BoardPage({
         assigneeLabels={assigneeLabels}
         backSlot={backLink}
         viewSlot={viewToggle}
+        canEditItems={canEditItems}
+        canDeleteItems={canDeleteItems}
+        canManageColumns={canManageColumns}
       />
 
       {boardSettings}

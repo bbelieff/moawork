@@ -14,12 +14,14 @@ export type AccountViewModel = {
 
 const ROLE_LABELS: Record<MemberRole, string> = {
   owner: "대표",
-  admin: "팀장",
+  admin: "관리자",
+  team_lead: "팀장",
   member: "사원",
 };
 
 const SCOPE_LABELS: Record<MemberScope, string> = {
   all: "회사 업무 전체",
+  department: "내 부서 이하",
   assigned: "내게 배정된 업무",
 };
 
