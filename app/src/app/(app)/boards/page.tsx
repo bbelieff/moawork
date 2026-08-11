@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
+import { notFound } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { isManager } from "@/lib/auth/roles";
 import { loadPermGuard } from "@/lib/perm/guard";
@@ -21,11 +22,14 @@ export default async function BoardsPage({
 }) {
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
-  const boards = getBoardsService().listBoards(ctx);
-  const [tabPermission, presetPermission] = await Promise.all([
+  const [viewPermission, tabPermission, presetPermission] = await Promise.all([
+    loadPermGuard(ctx.org.id, "work.view_tabs"),
     loadPermGuard(ctx.org.id, "structure.tab_manage"),
     loadPermGuard(ctx.org.id, "structure.preset_edit"),
   ]);
+  // Existence hiding: a denied or unavailable view permission must not reveal board metadata.
+  if (viewPermission.kind !== "allowed") notFound();
+  const boards = getBoardsService().listBoards(ctx);
   const canManageTabs = tabPermission.kind === "allowed";
   const canEditPresets = presetPermission.kind === "allowed";
 
