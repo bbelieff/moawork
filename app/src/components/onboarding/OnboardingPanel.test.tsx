@@ -57,6 +57,12 @@ describe("OnboardingPanel — 퀘스트 목록", () => {
     expect(formMatch).toBeTruthy();
   });
 
+  it("연습 회사의 실제 업무 화면으로 이동하는 진입 링크를 제공한다", () => {
+    const html = renderToStaticMarkup(<OnboardingPanel snapshot={snapshot()} />);
+    expect(html).toContain('href="/boards"');
+    expect(html).toContain("연습 업무 화면 열기");
+  });
+
   it("설명이 없는 퀘스트는 설명 블록을 렌더하지 않는다", () => {
     const html = renderToStaticMarkup(<OnboardingPanel snapshot={snapshot()} />);
     const q2Block = html.split('data-quest-key="q2"')[1]?.split("</li>")[0] ?? "";

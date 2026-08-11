@@ -25,7 +25,11 @@ create table if not exists public.onboarding_quest_defs (
   quest_key   text primary key check (quest_key ~ '^[a-z0-9][a-z0-9:_-]{0,95}$'),
   title       text not null,
   description text,
-  judge_kind  text not null,
+  judge_kind  text not null check (judge_kind in (
+    'item_created',
+    'item_in_group',
+    'column_value_set'
+  )),
   judge_params jsonb not null default '{}'::jsonb,
   sort_order  int not null default 0,
   created_at  timestamptz not null default now()

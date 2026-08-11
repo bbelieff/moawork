@@ -40,6 +40,11 @@ test("onboarding practice RPCs isolate owner org_id and reject foreign progress"
     for (const name of ["0001_init.sql", "001_schema_v1.sql", "048_onboarding.sql"]) {
       await db.exec(compatible(await readFile(path.join(root, "supabase", "migrations", name), "utf8")));
     }
+    await assert.rejects(
+      db.exec(`insert into public.onboarding_quest_defs
+        (quest_key,title,judge_kind) values ('invalid-kind','Invalid','free_sql')`),
+      /check constraint/iu,
+    );
     await db.exec(`
       insert into auth.users values
         ('${ownerA}','a@test.invalid','authenticated','authenticated'),

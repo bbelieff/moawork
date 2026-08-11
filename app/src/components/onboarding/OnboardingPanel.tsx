@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import Link from "next/link";
 import type { PracticeSnapshot } from "@/lib/onboarding/server";
 import { refreshQuestsAction, startPracticeAction } from "./actions";
 
@@ -89,6 +90,12 @@ export function OnboardingPanel({ snapshot, error, revalidatePath }: OnboardingP
           </li>
         ))}
       </ul>
+      <Link
+        className="mt-3 inline-flex min-h-11 items-center rounded border px-3 text-sm"
+        href="/boards"
+      >
+        연습 업무 화면 열기
+      </Link>
     </section>
   );
 }
