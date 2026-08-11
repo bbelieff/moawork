@@ -142,6 +142,22 @@ append-only 는 «내용 삭제 금지» 이지 «과거 실수의 흔적을 지
 
 — [모아워크 DC 04]
 
+## 2026-08-11 — 노트북 CT04 · BBE-16 rebase + 마이그레이션 재번호 + 목업 정본 재확인
+
+[접수 갱신 · 모아워크 노트북 CT04(260811)/claude] — MWC 관제 지시(CT03/CT04 관문통과) 대응
+
+- **rebase**: `git fetch && git rebase origin/main` 완료. base = `44b7ffd9`(BBE-104 반영분).
+  worklog.md 2차 충돌(다른 세션 동시 커밋) — 양쪽 보존 해소.
+- **실충돌 발견·해소**: `035_deal_collab_notify.sql` 이 그 사이 병합된 `035_ledger.sql`(BBE-108)과
+  번호 중복 — **043으로 재번호**(파일 내용 무변경, 참조 3곳 + worklog 갱신).
+- **착수 전 정본 재실행**: `dump-mockup.mjs`·`qa-mockup.mjs`·`결정대장.md` 가 이제 실재
+  (`bd4c0c7`, 원격 부재 해소). `qa-mockup.mjs` 86/86 통과. `dump-mockup.mjs`(243줄)에
+  "타임라인/댓글/첨부/상세" 언급 0건 — BBE-16 은 v6 목업 범위 밖. `결정대장.md` §J 카드대조표에
+  **BBE-16·BBE-14 둘 다 없음** 확인 — 10:30 CT03/CT04 동시정지의 공통원인 후보로 BBE-16
+  코멘트·BBE-94 하트비트에 보고.
+- **검증**: `check.sh` 초록(app 1404/worker 46) · `next build` 성공 · PR #141 CI 재검증 pass(CLEAN).
+- 리스·범위 변경 없음(이전 항목과 동일). 이어받을 것도 동일: CT05 검수 대기.
+
 ## [END · 모아워크 노트북 CT09(260810)/claude] 2026-08-11 — BBE-103 재작업: MWC 정정 반영 완료
 
 - 결과: **PASS**. 앞서 이 세션이 남긴 work→`/work` 변경을 MWC 프로덕션 실측 정정(C작업반장 정정 ①)에
