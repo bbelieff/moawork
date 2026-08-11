@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { RESERVED_WORKSPACE_SLUGS, normalizeWorkspaceSlug, parseWorkspaceEntryResume, parseWorkspaceRequest, validateWorkspaceSlug, workspaceEntryResumeValue } from "./contracts";
+
+const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 
 describe("workspace entry request contract", () => {
   it("normalizes and validates only lower-case ASCII slug candidates", () => {
@@ -29,7 +32,7 @@ describe("workspace entry request contract", () => {
   });
 
   it("reserves every current top-level route, including route-group children", () => {
-    const appRoot = join(process.cwd(), "src", "app");
+    const appRoot = join(repoRoot, "app", "src", "app");
     const topLevel = new Set<string>();
     for (const entry of readdirSync(appRoot, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
@@ -46,7 +49,7 @@ describe("workspace entry request contract", () => {
   });
 
   it("matches the DB reserved slug contract exactly", () => {
-    const sql = readFileSync(join(process.cwd(), "..", "supabase", "migrations", "021_reserve_mode_workspace_slug.sql"), "utf8");
+    const sql = readFileSync(join(repoRoot, "supabase", "migrations", "021_reserve_mode_workspace_slug.sql"), "utf8");
     const blocks = Array.from(sql.matchAll(/slug not in \(([\s\S]*?)\)/g), (match) => match[1]);
     expect(blocks).toHaveLength(2);
     for (const block of blocks) {
