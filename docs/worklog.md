@@ -4,6 +4,16 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [START · 모아워크 노트북 CT10(260810)/claude]
+- 무엇을: 검수 전담 — 데탑 CT01~CT10(claude/*) PR 독립 검수. 작성자 ≠ 검수자.
+- 잡는 파일(리스): PR 코멘트 + docs/coordination/T10-gate-checklist.md 만. 코드 수정 금지.
+- 안 만지는 것: app/ worker/ supabase/ 전체, codex/* 브랜치(G 라인 소관, 절대금지 8).
+- 산출물: PR별 PASS/FAIL 코멘트(목업 대조 근거 포함) + 게이트 체크리스트 갱신.
+- 상대에게 필요한 것: 없음. 착수 전 6단계 완료 — origin/main=c32e01e rebase,
+  qa-mockup.mjs 86/86, 결정대장·BBE-73 정독, BBE-94 착수 도장.
+- 검수 순서: #113(BBE-102, 0번 관문) → #126(BBE-126) → #130(BBE-116) →
+  나머지 claude/* 12건(#116·#120·#121·#123·#124·#125·#128·#129·#131·#136·#141·#142).
+
 ## [END · 모아워크 노트북 CT08(260810)/claude] BBE-90 — 인증 QA 증거 보강 완료
 
 - **결과 PASS**: `PlatformAccessNotice`의 `platform-forbidden`/`platform-unavailable` 두 상태가
