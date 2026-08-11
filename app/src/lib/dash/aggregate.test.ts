@@ -4,11 +4,14 @@ import { getRepo } from "@/lib/repo";
 import { SEED_ORG_ID, SEED_USER_OWNER } from "@/lib/repo/local/seed";
 import { installPolicyfundPreset } from "@/lib/presets/policyfund";
 import {
+  addDaysKst,
   contractStatusBreakdown,
   POLICYFUND_FIELD_KEYS,
   conversionRate,
   DEFAULT_SETTLEMENT_KEYS,
+  dayRangeKst,
   filterDealsByRange,
+  followUpsOn,
   inRange,
   monthRangeKst,
   pipelineBreakdown,
@@ -21,6 +24,7 @@ import {
   settlementSummary,
   sumAmounts,
   toDate,
+  todayKst,
   toNumber,
   toSettlementInputs,
 } from "./aggregate";
@@ -503,6 +507,66 @@ describe("reContactDue", () => {
     const list = reContactList(entries);
     expect(reContactDue(list, monthRangeKst("2027-01"), "dPlus365")).toHaveLength(1);
     expect(reContactDue(list, monthRangeKst("2026-07"), "dPlus365")).toHaveLength(0);
+  });
+});
+
+// ── 오늘 할 일 (BBE-18) ──────────────────────────────────
+
+describe("todayKst / addDaysKst / dayRangeKst", () => {
+  it("todayKst 는 KST 로 날짜가 넘어가는 시점을 반영한다", () => {
+    // 2026-07-31 15:30 UTC = 2026-08-01 00:30 KST → 8월 1일
+    expect(todayKst(new Date("2026-07-31T15:30:00Z"))).toBe("2026-08-01");
+    // 2026-07-31 14:30 UTC = 2026-07-31 23:30 KST → 7월 31일
+    expect(todayKst(new Date("2026-07-31T14:30:00Z"))).toBe("2026-07-31");
+  });
+
+  it("addDaysKst 는 월/년 경계를 넘긴다", () => {
+    expect(addDaysKst("2026-07-31", 1)).toBe("2026-08-01");
+    expect(addDaysKst("2026-12-31", 1)).toBe("2027-01-01");
+  });
+
+  it("dayRangeKst 는 그 하루(KST)만 담는 반열린 구간이다", () => {
+    const r = dayRangeKst("2026-07-24");
+    // 자정 KST = 전날 15:00 UTC
+    expect(r.start).toBe("2026-07-23T15:00:00.000Z");
+    expect(r.end).toBe("2026-07-24T15:00:00.000Z");
+  });
+
+  it("잘못된 형식은 던진다(추측하지 않는다)", () => {
+    expect(() => dayRangeKst("2026/07/24")).toThrow();
+    expect(() => addDaysKst("not-a-date", 1)).toThrow();
+  });
+});
+
+describe("followUpsOn", () => {
+  it("같은 날짜에 재접촉(D+180)과 재신청 안내(D+365) 가 겹치면 둘 다 나온다", () => {
+    const entries = reContactList(
+      toSettlementInputs([
+        // D+180 = 2026-07-24
+        deal("a", { title: "가", custom: { exec_amount: 1, fee_pct: 1, fee_paid_at: "2026-01-25" } }),
+      ]),
+    );
+    const got = followUpsOn(entries, "2026-07-24");
+    expect(got).toEqual([{ dealId: "a", title: "가", kind: "reContact", dueDate: "2026-07-24" }]);
+  });
+
+  it("재접촉·재신청 안내를 합쳐서 돌려준다 — 서로 다른 항목으로 병합하지 않는다", () => {
+    const entries = reContactList(
+      toSettlementInputs([
+        // fee_paid_at + 180 와 다른 딜의 + 365 가 같은 날에 맞도록 역산
+        deal("a", { title: "재접촉건", custom: { exec_amount: 1, fee_pct: 1, fee_paid_at: "2026-01-25" } }), // D+180=2026-07-24
+        deal("b", { title: "재신청건", custom: { exec_amount: 1, fee_pct: 1, fee_paid_at: "2025-07-25" } }), // D+365=2026-07-25
+      ]),
+    );
+    expect(followUpsOn(entries, "2026-07-24").map((e) => e.kind)).toEqual(["reContact"]);
+    expect(followUpsOn(entries, "2026-07-25").map((e) => e.kind)).toEqual(["reapply"]);
+  });
+
+  it("해당 날짜에 없으면 빈 배열(에러 없음)", () => {
+    const entries = reContactList(
+      toSettlementInputs([deal("a", { custom: { exec_amount: 1, fee_pct: 1, fee_paid_at: "2026-01-25" } })]),
+    );
+    expect(followUpsOn(entries, "2099-01-01")).toEqual([]);
   });
 });
 

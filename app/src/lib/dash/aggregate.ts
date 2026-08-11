@@ -385,3 +385,61 @@ export function reContactDue(
 ): ReContactEntry[] {
   return entries.filter((e) => inRange(e[which], range));
 }
+
+// ── 오늘 할 일 — 재접촉(D+180) · 재신청 안내(D+365) (BBE-18) ────────────
+
+/** 지정 날짜(YYYY-MM-DD, KST)의 [00:00, 24:00) 를 UTC ISO 구간으로. */
+export function dayRangeKst(dateKst: string): DateRange {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKst);
+  if (!m) throw new Error(`잘못된 날짜 형식(YYYY-MM-DD): ${dateKst}`);
+  const [, y, mo, d] = m.map(Number) as unknown as [never, number, number, number];
+  const startUtc = Date.UTC(y, mo - 1, d) - KST_OFFSET_MS;
+  return {
+    start: new Date(startUtc).toISOString(),
+    end: new Date(startUtc + 24 * 60 * 60 * 1000).toISOString(),
+  };
+}
+
+/** KST 기준 오늘(YYYY-MM-DD). now 를 주입하면 테스트에서 고정 가능. */
+export function todayKst(now: Date = new Date()): string {
+  return new Date(now.getTime() + KST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/** dateKst 로부터 KST 기준 n일 뒤(YYYY-MM-DD). */
+export function addDaysKst(dateKst: string, days: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKst);
+  if (!m) throw new Error(`잘못된 날짜 형식(YYYY-MM-DD): ${dateKst}`);
+  const [, y, mo, d] = m.map(Number) as unknown as [never, number, number, number];
+  return new Date(Date.UTC(y, mo - 1, d) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * "오늘 할 일" 재료 1건 — 재접촉(D+180) 또는 재신청 안내(D+365) 중 하나.
+ * D26: 호출부가 이미 담당범위(assigned) 로 걸러진 entries 를 넘긴다 — 보는 사람 기준 목록이 된다.
+ */
+export interface FollowUpEntry {
+  dealId: string;
+  title: string;
+  kind: "reContact" | "reapply";
+  dueDate: string;
+}
+
+/**
+ * 지정 날짜(KST)에 재접촉(D+180)·재신청 안내(D+365) 가 도래하는 건을 합쳐 돌려준다.
+ * 순서: 재접촉 먼저, 그다음 재신청. 같은 딜이 둘 다 해당하면 두 항목으로 각각 나온다
+ * (서로 다른 할 일이라 병합하지 않는다).
+ */
+export function followUpsOn(
+  entries: readonly ReContactEntry[],
+  dateKst: string,
+): FollowUpEntry[] {
+  const range = dayRangeKst(dateKst);
+  const out: FollowUpEntry[] = [];
+  for (const e of reContactDue(entries, range, "dPlus180")) {
+    out.push({ dealId: e.dealId, title: e.title, kind: "reContact", dueDate: dateKst });
+  }
+  for (const e of reContactDue(entries, range, "dPlus365")) {
+    out.push({ dealId: e.dealId, title: e.title, kind: "reapply", dueDate: dateKst });
+  }
+  return out;
+}

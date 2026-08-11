@@ -11,16 +11,20 @@
 import { getRepo, type Repo } from "@/lib/repo";
 import type { Ctx, Deal, Stage } from "@/lib/types";
 import {
+  addDaysKst,
   contractStatusBreakdown,
   conversionRate,
   filterDealsByRange,
+  followUpsOn,
   monthRangeKst,
   pipelineBreakdown,
   reContactDue,
   reContactList,
   settlementSummaryOrProvisional,
   sumAmounts,
+  todayKst,
   toSettlementInputs,
+  type FollowUpEntry,
 } from "./aggregate";
 import type {
   ContractStatusBreakdown,
@@ -135,5 +139,41 @@ export function buildDashboard(ctx: Ctx, opts: BuildOptions = {}): DashboardData
     ),
 
     reContactThisMonth: reContactDue(reContactList(settlementEntries), range),
+  };
+}
+
+/** 오늘/내일 「오늘 할 일」 — 재접촉(D+180)·재신청 안내(D+365). */
+export interface DashboardFollowUps {
+  today: string;
+  tomorrow: string;
+  dueToday: FollowUpEntry[];
+  dueTomorrow: FollowUpEntry[];
+}
+
+export interface FollowUpOptions {
+  now?: () => Date;
+  repo?: Repo;
+}
+
+/**
+ * 「오늘 할 일」의 재접촉·재신청 안내 재료를 만든다.
+ *
+ * D26(사람 조건은 동적이 기본): 여기서 이름을 고정하지 않는다 — repo.listDeals(ctx) 가
+ * ctx(요청자) 기준으로 담당범위를 걸러 넘기므로, 보는 사람이 바뀌면 결과도 자동으로 바뀐다.
+ */
+export function buildFollowUps(ctx: Ctx, opts: FollowUpOptions = {}): DashboardFollowUps {
+  const repo = opts.repo ?? getRepo();
+  const now = opts.now?.() ?? new Date();
+  const today = todayKst(now);
+  const tomorrow = addDaysKst(today, 1);
+
+  const deals = repo.listDeals(ctx);
+  const entries = reContactList(toSettlementInputs(deals));
+
+  return {
+    today,
+    tomorrow,
+    dueToday: followUpsOn(entries, today),
+    dueTomorrow: followUpsOn(entries, tomorrow),
   };
 }
