@@ -50,5 +50,4 @@ describe("SolapiProvider", () => {
     expect(result).toEqual({ ok: false, reason: "provider_failed", retryable: false });
     expect(JSON.stringify(result)).not.toContain(sensitive);
   });
-
 });
