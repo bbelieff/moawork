@@ -38,8 +38,16 @@ describe("BBE-30 outbox migration", () => {
   });
 
   it("atomically rejects mismatched, expired, and stale lease acknowledgements", () => {
-    expect(sql.match(/and leased_by=p_worker_id/g)).toHaveLength(3);
-    expect(sql.match(/and lease_token=p_lease_token and lease_expires_at > now\(\)/g)).toHaveLength(3);
+    expect(sql.match(/and leased_by=p_worker_id/g)).toHaveLength(4);
+    expect(sql.match(/and lease_token=p_lease_token and lease_expires_at > now\(\)/g)).toHaveLength(4);
     expect(sql.match(/raise exception '유효한 outbox lease가 아니에요.'/g)).toHaveLength(3);
+  });
+
+  it("quarantines an ambiguous paid call and makes provider receipts unique", () => {
+    expect(sql).toContain("create unique index message_outbox_provider_receipt_uidx");
+    expect(sql).toContain("delivery_started_at is not null");
+    expect(sql).toContain("'delivery_unknown'");
+    expect(sql).toContain("manual reconciliation required");
+    expect(sql).toContain("start_message_outbox_delivery");
   });
 });

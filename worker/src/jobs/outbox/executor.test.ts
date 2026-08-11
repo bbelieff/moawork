@@ -11,6 +11,7 @@ class MemoryStore implements OutboxStore {
 
   enqueue(job: OutboxDelivery) { this.pending.set(job.outboxId, job); }
   async claim(limit: number) { return [...this.pending.values()].slice(0, limit); }
+  async markDeliveryStarted() {}
   async markDelivered(job: OutboxDelivery) { this.pending.delete(job.outboxId); this.delivered += 1; }
   async markRetry(job: OutboxDelivery) { this.pending.delete(job.outboxId); this.retrying += 1; }
   async markDead(job: OutboxDelivery) { this.pending.delete(job.outboxId); this.dead += 1; }
@@ -50,5 +51,14 @@ describe("message outbox", () => {
 
   it("removes a recipient number echoed by a provider error", () => {
     expect(safeFailureReason("recipient 010-1234-5678 rejected")).toBe("recipient [redacted] rejected");
+  });
+
+  it("never retries an exception after the paid-delivery boundary", async () => {
+    const store = new MemoryStore();
+    store.enqueue({ outboxId: "ambiguous", messageId: "m-1", attempt: 1, actor, ...lease });
+    const adapter: DeliveryAdapter = { async deliver() { throw new Error("connection lost after acceptance"); } };
+    const summary = await executeOutboxBatch(store, adapter, { workerId: "w", wait: async () => undefined });
+    expect(summary).toEqual({ claimed: 1, delivered: 0, retrying: 0, dead: 1 });
+    expect(store.retrying).toBe(0);
   });
 });

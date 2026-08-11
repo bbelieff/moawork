@@ -20,11 +20,12 @@ describe("PostgresOutboxStore", () => {
     } };
     const store = new PostgresOutboxStore(db);
     const delivery = { outboxId: "o", messageId: "m", attempt: 1, actor: { kind: "person" as const, id: "u" }, workerId: "worker-1", leaseToken: "opaque-token" };
+    await store.markDeliveryStarted(delivery);
     await store.markDelivered(delivery, "provider-id");
     await store.markRetry(delivery, "retry", new Date(0));
     await store.markDead(delivery, "dead");
     expect(calls.map(({ values }) => values?.slice(-2))).toEqual([
-      ["worker-1", "opaque-token"], ["worker-1", "opaque-token"], ["worker-1", "opaque-token"],
+      ["worker-1", "opaque-token"], ["worker-1", "opaque-token"], ["worker-1", "opaque-token"], ["worker-1", "opaque-token"],
     ]);
   });
 });

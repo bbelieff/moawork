@@ -25,6 +25,7 @@ export interface DeliveryAdapter {
 
 export interface OutboxStore {
   claim(limit: number, workerId: string, leaseMs: number): Promise<readonly OutboxDelivery[]>;
+  markDeliveryStarted(delivery: OutboxDelivery): Promise<void>;
   markDelivered(delivery: OutboxDelivery, providerMessageId: string): Promise<void>;
   markRetry(delivery: OutboxDelivery, reason: string, nextAttemptAt: Date): Promise<void>;
   markDead(delivery: OutboxDelivery, reason: string): Promise<void>;

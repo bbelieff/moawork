@@ -15,6 +15,7 @@ create table public.message_outbox (
   lease_expires_at timestamptz,
   leased_by text,
   lease_token uuid,
+  delivery_started_at timestamptz,
   delivered_at timestamptz,
   provider_message_id text,
   last_error text,
@@ -28,11 +29,15 @@ create index message_outbox_claim_idx
   on public.message_outbox(next_attempt_at, created_at)
   where status in ('pending', 'retry', 'leased');
 
+create unique index message_outbox_provider_receipt_uidx
+  on public.message_outbox(provider_message_id)
+  where provider_message_id is not null;
+
 create table public.message_outbox_audit (
   id bigint generated always as identity primary key,
   outbox_id uuid not null references public.message_outbox(id) on delete cascade,
   org_id uuid not null references public.orgs(id) on delete cascade,
-  event text not null check (event in ('enqueued', 'duplicate_suppressed', 'claimed', 'delivered', 'retry_scheduled', 'dead')),
+  event text not null check (event in ('enqueued', 'duplicate_suppressed', 'claimed', 'delivery_started', 'delivery_unknown', 'delivered', 'retry_scheduled', 'dead')),
   actor_kind text not null check (actor_kind in ('person', 'automation')),
   actor_id text not null,
   worker_id text,
@@ -172,6 +177,20 @@ begin
   if nullif(trim(p_worker_id), '') is null then
     raise exception 'worker identity가 필요해요.' using errcode = '22023';
   end if;
+  -- Once a paid call may have started, an expired lease is ambiguous. Quarantine it
+  -- instead of replaying and risking a second charge.
+  with abandoned as (
+    update public.message_outbox o
+    set status='dead', last_error='delivery outcome unknown; manual reconciliation required',
+        lease_expires_at=null, lease_token=null, updated_at=now()
+    where o.status='leased' and o.lease_expires_at <= now() and o.delivery_started_at is not null
+    returning o.*
+  )
+  insert into public.message_outbox_audit(
+    outbox_id,org_id,event,actor_kind,actor_id,worker_id,attempt_count
+  )
+  select a.id,a.org_id,'delivery_unknown',a.actor_kind,a.actor_id,a.leased_by,a.attempt_count
+  from abandoned a;
   return query
   with candidates as (
     select o.id
@@ -179,7 +198,7 @@ begin
     where (
       o.status in ('pending', 'retry') and o.next_attempt_at <= now()
     ) or (
-      o.status = 'leased' and o.lease_expires_at <= now()
+      o.status = 'leased' and o.lease_expires_at <= now() and o.delivery_started_at is null
     )
     order by o.next_attempt_at, o.created_at
     for update skip locked
@@ -192,6 +211,7 @@ begin
         lease_expires_at = now() + make_interval(secs => greatest(5, least(coalesce(p_lease_ms, 60000), 900000)) / 1000.0),
         leased_by = p_worker_id,
         lease_token = gen_random_uuid(),
+        delivery_started_at = null,
         updated_at = now()
     from candidates c
     where o.id = c.id
@@ -207,6 +227,22 @@ begin
 end;
 $$;
 
+create or replace function public.start_message_outbox_delivery(
+  p_outbox_id uuid, p_worker_id text, p_lease_token uuid
+)
+returns void language plpgsql security definer set search_path = '' as $$
+declare v_row public.message_outbox%rowtype;
+begin
+  update public.message_outbox set delivery_started_at=now(), updated_at=now()
+  where id=p_outbox_id and status='leased' and leased_by=p_worker_id
+    and lease_token=p_lease_token and lease_expires_at > now()
+    and delivery_started_at is null
+  returning * into v_row;
+  if not found then raise exception 'delivery cannot be started for this lease' using errcode='40001'; end if;
+  insert into public.message_outbox_audit(outbox_id,org_id,event,actor_kind,actor_id,worker_id,attempt_count)
+  values(v_row.id,v_row.org_id,'delivery_started',v_row.actor_kind,v_row.actor_id,p_worker_id,v_row.attempt_count);
+end $$;
+
 create or replace function public.complete_message_outbox(
   p_outbox_id uuid, p_provider_message_id text, p_worker_id text, p_lease_token uuid
 )
@@ -216,7 +252,7 @@ begin
   update public.message_outbox set status='delivered', delivered_at=now(), provider_message_id=p_provider_message_id,
     lease_expires_at=null, lease_token=null, updated_at=now()
   where id=p_outbox_id and status='leased' and leased_by=p_worker_id
-    and lease_token=p_lease_token and lease_expires_at > now()
+    and lease_token=p_lease_token and lease_expires_at > now() and delivery_started_at is not null
   returning * into v_row;
   if not found then raise exception '유효한 outbox lease가 아니에요.' using errcode='40001'; end if;
   insert into public.message_outbox_audit(outbox_id,org_id,event,actor_kind,actor_id,worker_id,attempt_count)
@@ -230,7 +266,7 @@ returns void language plpgsql security definer set search_path = '' as $$
 declare v_row public.message_outbox%rowtype;
 begin
   update public.message_outbox set status='retry', next_attempt_at=p_next_attempt_at, last_error=left(p_reason,300),
-    lease_expires_at=null, lease_token=null, updated_at=now()
+    lease_expires_at=null, lease_token=null, delivery_started_at=null, updated_at=now()
   where id=p_outbox_id and status='leased' and leased_by=p_worker_id
     and lease_token=p_lease_token and lease_expires_at > now()
   returning * into v_row;
@@ -287,15 +323,18 @@ revoke all on public.message_outbox from anon;
 revoke all on public.message_outbox_audit from anon;
 revoke execute on function public.enqueue_message_outbox(uuid,uuid,uuid,text,text,uuid,public.message_channel,text,text) from public, anon;
 revoke execute on function public.claim_message_outbox(integer,text,integer) from public, anon, authenticated;
+revoke execute on function public.start_message_outbox_delivery(uuid,text,uuid) from public, anon, authenticated;
 revoke execute on function public.complete_message_outbox(uuid,text,text,uuid) from public, anon, authenticated;
 revoke execute on function public.retry_message_outbox(uuid,text,timestamptz,text,uuid) from public, anon, authenticated;
 revoke execute on function public.fail_message_outbox(uuid,text,text,uuid) from public, anon, authenticated;
 revoke execute on function public.load_message_outbox_payload(uuid,text,uuid) from public, anon, authenticated, service_role;
 revoke execute on function public.claim_message_outbox(integer,text,integer) from service_role;
+revoke execute on function public.start_message_outbox_delivery(uuid,text,uuid) from service_role;
 revoke execute on function public.complete_message_outbox(uuid,text,text,uuid) from service_role;
 revoke execute on function public.retry_message_outbox(uuid,text,timestamptz,text,uuid) from service_role;
 revoke execute on function public.fail_message_outbox(uuid,text,text,uuid) from service_role;
 grant execute on function public.claim_message_outbox(integer,text,integer) to moawork_outbox_worker;
+grant execute on function public.start_message_outbox_delivery(uuid,text,uuid) to moawork_outbox_worker;
 grant execute on function public.complete_message_outbox(uuid,text,text,uuid) to moawork_outbox_worker;
 grant execute on function public.retry_message_outbox(uuid,text,timestamptz,text,uuid) to moawork_outbox_worker;
 grant execute on function public.fail_message_outbox(uuid,text,text,uuid) to moawork_outbox_worker;

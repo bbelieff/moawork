@@ -32,6 +32,10 @@ export class PostgresOutboxStore implements OutboxStore {
     }));
   }
 
+  async markDeliveryStarted(delivery: OutboxDelivery): Promise<void> {
+    await this.db.query("select public.start_message_outbox_delivery($1,$2,$3)", [delivery.outboxId, delivery.workerId, delivery.leaseToken]);
+  }
+
   async markDelivered(delivery: OutboxDelivery, providerMessageId: string): Promise<void> {
     await this.db.query("select public.complete_message_outbox($1,$2,$3,$4)", [delivery.outboxId, providerMessageId, delivery.workerId, delivery.leaseToken]);
   }

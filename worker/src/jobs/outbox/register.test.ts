@@ -8,6 +8,7 @@ describe("outbox drain handler", () => {
     const markDelivered = vi.fn(async () => undefined);
     const store: OutboxStore = {
       async claim() { return [{ outboxId: "outbox-id", messageId: "message-id", attempt: 1, actor: { kind: "person", id: "actor-id" }, workerId: "worker-id", leaseToken: "lease-token" }]; },
+      async markDeliveryStarted() {},
       markDelivered,
       async markRetry() {},
       async markDead() {},

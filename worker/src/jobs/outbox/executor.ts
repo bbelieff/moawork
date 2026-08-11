@@ -43,8 +43,13 @@ export async function executeOutboxBatch(
 
   for (let index = 0; index < jobs.length; index += 1) {
     const job = jobs[index];
+    let deliveryStarted = false;
     if (index > 0) await wait(spacingMs);
     try {
+      // Persist the irreversible-send boundary before touching the paid provider.
+      // An expired lease beyond this point is quarantined instead of replayed.
+      await store.markDeliveryStarted(job);
+      deliveryStarted = true;
       const result = await adapter.deliver(job);
       if (result.ok) {
         await store.markDelivered(job, result.providerMessageId);
@@ -59,12 +64,12 @@ export async function executeOutboxBatch(
       }
     } catch (error) {
       const reason = safeFailureReason(error instanceof Error ? error.message : "발송 처리 중 알 수 없는 오류가 발생했어요.");
-      if (job.attempt < maxAttempts) {
+      if (!deliveryStarted && job.attempt < maxAttempts) {
         const next = new Date(now().getTime() + retryDelayMs(job.attempt, random));
         await store.markRetry(job, reason, next);
         summary.retrying += 1;
       } else {
-        await store.markDead(job, reason);
+        await store.markDead(job, deliveryStarted ? "delivery outcome unknown; manual reconciliation required" : reason);
         summary.dead += 1;
       }
     }

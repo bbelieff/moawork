@@ -63,13 +63,15 @@ export class SolapiProvider implements MessagingProvider {
         body: JSON.stringify({ messages: [payload] }),
       });
       const body: unknown = await response.json().catch(() => null);
-      if (!response.ok) return failed(response.status >= 500 || response.status === 429);
+      // Only a pre-admission throttle is safe to retry without provider-side
+      // idempotency. A 5xx or transport failure may have accepted the paid send.
+      if (!response.ok) return failed(response.status === 429);
 
       const first = (body as { messageList?: Array<{ messageId?: unknown }> } | null)?.messageList?.[0]?.messageId;
       if (typeof first !== "string" || !first) return failed(false);
       return { ok: true, providerMessageId: first };
     } catch {
-      return failed(true);
+      return failed(false);
     }
   }
 }

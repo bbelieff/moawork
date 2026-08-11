@@ -31,15 +31,19 @@ describe("outbox PostgreSQL lease acknowledgements", () => {
     await db.exec(`
       create table public.message_outbox (
         id uuid primary key, org_id uuid not null, message_id uuid not null,
+        idempotency_key text not null default 'stable-business-key',
         actor_kind text not null, actor_id text not null, status text not null,
         attempt_count integer not null, next_attempt_at timestamptz not null default now(),
         leased_at timestamptz, lease_expires_at timestamptz, leased_by text, lease_token uuid,
-        delivered_at timestamptz, provider_message_id text, last_error text, updated_at timestamptz not null default now()
+        delivery_started_at timestamptz, delivered_at timestamptz, provider_message_id text,
+        last_error text, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
       );
       create table public.message_outbox_audit (
         outbox_id uuid, org_id uuid, event text, actor_kind text, actor_id text,
         worker_id text, attempt_count integer
       );
+      ${functionSql("claim_message_outbox", "start_message_outbox_delivery")}
+      ${functionSql("start_message_outbox_delivery", "complete_message_outbox")}
       ${functionSql("complete_message_outbox", "retry_message_outbox")}
       ${functionSql("retry_message_outbox", "fail_message_outbox")}
       ${functionSql("fail_message_outbox", "load_message_outbox_payload")}
@@ -55,6 +59,7 @@ describe("outbox PostgreSQL lease acknowledgements", () => {
        values ($1,$2,$3,'person','actor','leased',1,$4,$5,now() + $6::interval)`,
       [outboxId, orgId, messageId, owner, token, lease],
     );
+    await db.query("update public.message_outbox set delivery_started_at=now() where id=$1", [outboxId]);
   }
 
   it("rejects worker mismatch, token mismatch, and an expired lease", async () => {
@@ -78,5 +83,16 @@ describe("outbox PostgreSQL lease acknowledgements", () => {
 
     await expect(db.query("select public.complete_message_outbox($1,'receipt-b','worker-b',$2)", [outboxId, tokenB])).resolves.toBeDefined();
     expect((await db.query<{ status: string }>("select status from public.message_outbox where id=$1", [outboxId])).rows[0]?.status).toBe("delivered");
+  });
+
+  it("quarantines a success-before-ack crash and never reclaims it for a second paid call", async () => {
+    await seed("worker-a", tokenA, "-1 second");
+    const reclaimed = await db.query("select * from public.claim_message_outbox(1,'worker-b',60000)");
+    expect(reclaimed.rows).toHaveLength(0);
+    const row = (await db.query<{ status: string; last_error: string }>(
+      "select status,last_error from public.message_outbox where id=$1", [outboxId],
+    )).rows[0];
+    expect(row?.status).toBe("dead");
+    expect(row?.last_error).toContain("outcome unknown");
   });
 });

@@ -8,6 +8,7 @@ interface Row extends OutboxDelivery {
   status: "pending" | "leased" | "retry" | "delivered" | "dead";
   nextAt: number;
   leaseUntil: number;
+  deliveryStarted: boolean;
 }
 
 class ExecutableOutbox implements OutboxStore {
@@ -25,6 +26,7 @@ class ExecutableOutbox implements OutboxStore {
       actor: { kind: "automation", id: "rule" },
       status: "pending", nextAt: this.now, leaseUntil: 0,
       workerId: "", leaseToken: "",
+      deliveryStarted: false,
     });
     return { inserted: true, outboxId };
   }
@@ -34,6 +36,10 @@ class ExecutableOutbox implements OutboxStore {
     for (const row of this.rows.values()) {
       const available = (row.status === "pending" || row.status === "retry") && row.nextAt <= this.now;
       const expired = row.status === "leased" && row.leaseUntil <= this.now;
+      if (expired && row.deliveryStarted) {
+        row.status = "dead";
+        continue;
+      }
       if ((!available && !expired) || claimed.length >= limit) continue;
       row.status = "leased";
       row.leaseUntil = this.now + leaseMs;
@@ -53,11 +59,18 @@ class ExecutableOutbox implements OutboxStore {
     return row;
   }
 
+  async markDeliveryStarted(delivery: OutboxDelivery) {
+    const row = this.leased(delivery);
+    if (row.deliveryStarted) throw new Error("delivery_already_started");
+    row.deliveryStarted = true;
+  }
+
   async markDelivered(delivery: OutboxDelivery, _providerMessageId?: string) { this.leased(delivery).status = "delivered"; }
   async markRetry(delivery: OutboxDelivery, _reason: string, next: Date) {
     const row = this.leased(delivery);
     row.status = "retry";
     row.nextAt = next.getTime();
+    row.deliveryStarted = false;
   }
   async markDead(delivery: OutboxDelivery, _reason?: string) { this.leased(delivery).status = "dead"; }
   status(id: string) { return this.rows.get(id)!.status; }
@@ -128,5 +141,21 @@ describe("executable outbox state machine", () => {
     expect(store.status(outboxId)).toBe("leased");
     await expect(store.markDelivered(second, "receipt")).resolves.toBeUndefined();
     expect(store.status(outboxId)).toBe("delivered");
+  });
+
+  it("never calls the paid provider again after success-before-ack crash", async () => {
+    const store = new ExecutableOutbox();
+    store.enqueue(key, "message-1");
+    const first = (await store.claim(1, "worker-a", 100))[0];
+    const provider = vi.fn(async (_delivery: OutboxDelivery) => ({ ok: true as const, providerMessageId: "receipt" }));
+
+    await store.markDeliveryStarted(first);
+    await provider(first); // process exits here, before markDelivered
+    store.now = 100;
+
+    const reclaimed = await store.claim(1, "worker-b", 100);
+    expect(reclaimed).toHaveLength(0);
+    expect(store.status(first.outboxId)).toBe("dead");
+    expect(provider).toHaveBeenCalledOnce();
   });
 });
