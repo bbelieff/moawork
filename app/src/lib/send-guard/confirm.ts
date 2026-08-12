@@ -1,8 +1,10 @@
 /**
  * 확인 게이트 — «확인 없이는 아무 요청도 나가지 않는다» 를 코드로 못박는 자리 (BBE-148).
  *
- * `SendRequest` 는 브랜드 타입이라 **객체 리터럴로는 만들 수 없다.** 이 파일의
- * `confirmSend()` 만이 그 타입을 만들 수 있고, 그 함수는 아래를 전부 통과해야만 만든다.
+ * `SendRequest` 는 브랜드 타입이라 **평범한 객체 리터럴로는 만들어지지 않는다.**
+ * (억지로 `as` 캐스팅하면 타입은 뚫린다 — 그래서 `verifySendRequest()` 로 런타임에서 한 번 더 센다.)
+ * 정상 경로에서 그 타입을 만드는 것은 이 파일의 `confirmSend()` 뿐이고,
+ * 그 함수는 아래를 전부 통과해야만 만든다.
  *
  *   ① 확인이 실제로 있었는가            (없으면 요청 없음)
  *   ② 확인한 계획과 지금 계획이 같은가    (사이에 대상·값·비용이 바뀌면 거부)
@@ -15,6 +17,7 @@
  * `assertDispatchAllowed()` 에서 **반드시 예외로 죽는다.** 조용히 나가는 길을 남기지 않는다.
  */
 
+import { planFingerprint } from "./plan";
 import type {
   SendConfirmation,
   SendGateResult,
@@ -35,14 +38,43 @@ export const DISPATCH_DISABLED_REASON =
   "발송 통로가 아직 활성화되지 않았습니다 (BBE-30 — 보존하되 활성화 금지).";
 
 /**
+ * 요청이 «확인 화면이 보여 준 그 계획» 그대로인지 실행 직전에 다시 센다.
+ *
+ * ⚠ 타입 브랜드는 **실수로 만드는 것**만 막는다. `as SendRequest` 로 억지로 캐스팅하면
+ * 타입은 뚫린다 — TypeScript 로 그것을 막을 방법은 없다. 그래서 런타임 검사를 따로 둔다.
+ * 확인 뒤에 대상 목록이나 비용이 바뀌어 있으면 지문이 안 맞아 여기서 걸린다.
+ *
+ * 다만 이것이 «사람이 확인했다» 를 증명하지는 못한다. 그 증명은 서버가
+ * `planSend()` 로 계획을 **새로 계산해** `confirmSend()` 에 넘기는 것으로만 성립한다 —
+ * 사람이 본 지문과 지금 지문이 같아야 통과하기 때문이다. 그것이 이 부품의 진짜 잠금이다.
+ */
+export function verifySendRequest(request: SendRequest): boolean {
+  return (
+    planFingerprint({
+      orgId: request.orgId,
+      boardId: request.boardId,
+      columnKey: request.columnKey,
+      value: request.value,
+      templateCode: request.templateCode,
+      itemIds: request.targets.map((t) => t.itemId),
+      estimatedCostKrw: request.estimatedCostKrw,
+    }) === request.planFingerprint && request.batchKey === request.planFingerprint.slice(0, 16)
+  );
+}
+
+/**
  * 실제 전송 직전에 부른다. 지금은 **항상 던진다.**
  *
  * 확인 절차를 다 통과한 요청이라도 이 문을 지나야 나간다. 통로를 붙이는 후속 카드가
  * 이 함수 하나만 열면 되고, 그전까지는 누가 실수로 배선해도 여기서 죽는다.
+ * 통로가 열린 뒤에도 «내용이 바뀐 요청» 은 여기서 다시 걸린다.
  */
-export function assertDispatchAllowed(): void {
+export function assertDispatchAllowed(request?: SendRequest): void {
   if (!SEND_DISPATCH_ENABLED) {
     throw new Error(DISPATCH_DISABLED_REASON);
+  }
+  if (request && !verifySendRequest(request)) {
+    throw new Error("발송 요청이 확인 화면의 계획과 다릅니다. 다시 확인하세요.");
   }
 }
 

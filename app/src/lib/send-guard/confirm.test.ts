@@ -11,10 +11,11 @@ import {
   confirmSend,
   DISPATCH_DISABLED_REASON,
   SEND_DISPATCH_ENABLED,
+  verifySendRequest,
 } from "./confirm";
 import { planSend } from "./plan";
 import { confirmRequestedEntry, requestedEntries } from "./history";
-import type { SendConfirmation, SendPlan, SendPlanInput, SendTarget } from "./types";
+import type { SendConfirmation, SendPlan, SendPlanInput, SendRequest, SendTarget } from "./types";
 
 function target(over: Partial<SendTarget> = {}): SendTarget {
   return {
@@ -126,6 +127,54 @@ describe("★ 발송 통로는 비활성이다 — BBE-30", () => {
 
   it("실제 전송을 붙이려 하면 반드시 예외로 죽는다 — 조용히 나가는 길이 없다", () => {
     expect(() => assertDispatchAllowed()).toThrowError(DISPATCH_DISABLED_REASON);
+  });
+});
+
+describe("요청 내용이 바뀌면 런타임에서 걸린다", () => {
+  it("정상 요청은 검증을 통과한다", () => {
+    const plan = makePlan();
+    const result = confirmSend(plan, confirmationFor(plan));
+    expect(result.ok && verifySendRequest(result.request)).toBe(true);
+  });
+
+  it("확인 뒤 대상이 바뀐 요청은 걸린다 — 타입 브랜드는 캐스팅으로 뚫리므로 값으로 센다", () => {
+    const plan = makePlan();
+    const result = confirmSend(plan, confirmationFor(plan));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const tampered = {
+      ...result.request,
+      targets: [{ ...result.request.targets[0], itemId: "몰래-바꾼-건" }],
+    } as SendRequest;
+    expect(verifySendRequest(tampered)).toBe(false);
+  });
+
+  it("비용만 바꿔치기해도 걸린다", () => {
+    const plan = makePlan();
+    const result = confirmSend(plan, confirmationFor(plan));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(verifySendRequest({ ...result.request, estimatedCostKrw: 1 } as SendRequest)).toBe(false);
+  });
+
+  it("게이트를 통째로 건너뛴 «지어낸» 요청은 걸린다", () => {
+    const forged = {
+      orgId: "org-1",
+      boardId: "board-1",
+      columnKey: "color8",
+      value: "보내기기",
+      templateCode: "meeting-confirmed",
+      channel: "sms",
+      targets: [
+        { itemId: "x", title: "몰래", phoneDigits: "01000000000", phoneMasked: "010-0000-••••", idempotencyKey: "k" },
+      ],
+      estimatedCostKrw: 22,
+      planFingerprint: "0".repeat(64),
+      confirmedBy: { actorId: "누구", actorName: "누구" },
+      confirmedAt: "2026-08-12T09:00:00.000Z",
+      batchKey: "0".repeat(16),
+    } as unknown as SendRequest;
+    expect(verifySendRequest(forged)).toBe(false);
   });
 });
 
