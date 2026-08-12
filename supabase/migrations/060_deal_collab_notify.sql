@@ -1,6 +1,6 @@
--- 043_deal_collab_notify.sql — 딜 협업 알림 (BBE-16)
+-- 060_deal_collab_notify.sql — 딜 협업 알림 (BBE-16)
 --
--- 001~042 무수정, additive. `019_notifications.sql`(notifications 표·RLS)이 이미 존재한다는
+-- 001~059 무수정, additive. `019_notifications.sql`(notifications 표·RLS)이 이미 존재한다는
 -- 전제 위에서, "담당자 배정"·"댓글 멘션"·"보완요청(되돌려보내기)" 세 발행 지점만 추가한다.
 --
 -- 019 의 원칙을 그대로 따른다:
@@ -128,7 +128,7 @@ grant execute on function public.request_deal_followup(uuid, uuid) to authentica
 -- 4. 스키마 버전 메타
 -- =====================================================================
 insert into public.app_meta (key, value)
-values ('schema_version', '035')
+values ('schema_version', '060')
 on conflict (key) do update
   set value = excluded.value,
       updated_at = now();
