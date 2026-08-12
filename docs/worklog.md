@@ -2474,3 +2474,65 @@ append-only 규칙에 따라 위 기록은 그대로 두고 여기에 덧붙인�
 - 탭 넘김 관문(«컨택 이동» → 리드컨택) — 계약만 정의하고 실행하지 않았다. 설계도 §4 순서상
   3번이고 이 카드는 2번이다. 지금 실행하면 갈 곳 없는 건을 만들어 리드를 잃는다.
 - ✉ 발송 3칸 실동작 — DC-04 의 BBE-148 안전장치 대기. 임시 발송 로직을 짜지 않았고 잠가 뒀다.
+
+## 2026-08-12 저녁 · BBE-145 셸 연결 — A′ 판정 반영 + BBE-142 머지 뒤 재개 (DC-03)
+
+- **base 갱신**: `origin/main@d4b93cd`(BBE-142 #166 squash 머지 반영) 위로 **rebase**
+  (`f94bbb5`·`56a6df6` 두 커밋 재적용). 충돌 3건 — `workspace-entry-server.ts`·
+  `workspace-entry/server.ts`(main 이 이미 같은 가드를 갖고 있어 main 판으로 정리) ·
+  `worklog.md`(단순 병렬 추가, 순서대로 이어붙임). 코드 충돌 0.
+
+### 선행 판단 — 실측 결과 **BBE-146 은 실행 의존이 아니었다**
+
+디스패치가 "DB 신규 컬럼 의존부는 분리하라" 고 지시했으나, 실측하니 분리할 대상이 없었다:
+
+```
+supabase/migrations/052·056  source·right_pinned·move_rule_jsonb·is_readonly 4개 전부 이미 정의됨
+                              (052 주석: "003 boards 엔진은 아직 Supabase 백엔드가 없다 —
+                               이 컬럼은 그 어댑터가 붙을 때를 대비한 스키마 준비")
+implements BoardsRepo         LocalBoardsRepo 하나뿐 (grep 재확인)
+```
+
+**보드 엔진 전체가 아직 인메모리(LocalRepo)뿐이라 이 카드의 어떤 부분도 hosted DB 에 안 닿는다.**
+BBE-146(DG-02) 은 hosted Postgres 실제 적용·SupabaseBoardsRepo 스왑을 다루는 것으로 보이고,
+그건 **이 카드가 이미 안고 있던 기존 갭**(전에 이미 도장에 적었다)이지 새로 생긴 차단이 아니다.
+→ **분리 대신 전체를 진행**하고, 이 근거를 그대로 남긴다(총괄이 다르게 보면 정정 요청).
+
+### ★ 셸 위 골격 — 진짜 문제를 찾았다
+
+`/newcust`(«new» 탭의 canonical 진입점, BBE-142 정본)가 **옛 구조 팩 이름**
+(`SEOUL_NEWCUST_BOARD.name` = "🔥신규고객")으로 보드를 찾고 있었다. 워크스페이스 생성 시
+실제로 서는 건 이 카드의 `NEW_LEAD_TAB`("신규리드 관리")다 — **이름이 안 맞아 영원히
+"missing" 판정**이 나고, 화면은 그 막다른 안내문을 띄운다. **belie 가 프로덕션에서 실제로
+본 화면이 바로 이것**(BBE-46 라운드에서 지목했던 문제의 근본 원인이 여기 있었다).
+
+- `lib/newcust/entry.ts` — `resolveExistingNewcustBoard` 조회 대상을
+  `SEOUL_NEWCUST_BOARD.name` → **`NEW_LEAD_TAB.name`** 으로 교체.
+  `legacy-cutover-contract.ts`(이관 매핑 사전)는 그대로 뒀다 — 그건 진짜로 옛 팩을 봐야
+  맞는 파일이다(8,413건 이관 계약).
+- `(app)/newcust/page.tsx` — 막다른 안내문에서 **「구조 팩 설치」 문구 제거**(AGENTS.md —
+  「구조 팩」이라는 말 자체 금지). D76 이후 이 분기는 «백필 전 워크스페이스» 에서만 나온다는
+  것을 주석으로 명시.
+- 회귀 가드 테스트 1건 추가(`entry.test.ts`) — `ensureDefaultTab()` 으로 실제로 심은 보드를
+  진입점이 찾는지 직접 검증. 이게 옛 이름 그대로였다면 이 테스트가 «missing» 을 돌려줬을
+  것이다 — 그 사실 자체를 주석으로 고정했다.
+- 곁가지: `entry.test.ts` 의 조직 컨텍스트가 시드 조직(`SEED_ORG_ID`)을 썼는데, 이제 그 시드가
+  «신규리드 관리» 데모 보드를 이미 갖고 있어(이전 라운드에 내가 추가) 테스트가 만드는 보드와
+  이름이 겹쳐 conflict 로 오판정됐다. 시드가 안 닿는 별도 조직 id 로 분리해 고쳤다.
+
+### DC-04 인터페이스(BBE-148) 회신 — 아직 안 옴
+
+`send-guard/catalog.ts` 는 main 에 이미 머지돼 있으나(#169, `7a764ac`) 발송 칸 key 는 여전히
+구조 팩 key 다(`color_mm3acc4d` 등) — 내가 BBE-94 에 남긴 불일치 지적이 아직 반영 전이다.
+그래서 이번 라운드에도 발송 3칸은 잠근 채(`readOnly` · `pendingReason`) 그대로 둔다.
+
+### 게이트
+
+`bash scripts/check.sh` **PASS** — app 1714 passed(신규 2건 · 기존 회귀 없음) · worker 85 passed.
+qa-app 차이 **175 변동 없음**(이유는 위 라운드 기록 — 측정기가 default-tabs 를 아직 안 읽는다).
+
+### 화면 확인 — 여전히 NOT_RUN, 사유는 그대로
+
+Google OAuth 문제(BBE-46 라운드에서 실측)가 그대로다. belie 눈/손 목록에 이미 올라가 있다(⑤).
+이번 라운드는 그 전제 위에서 **로직·라우팅을 코드+테스트로 고정**하는 데 집중했다 — 로그인이
+풀리면 바로 촬영할 수 있는 상태로 만들어 뒀다.
