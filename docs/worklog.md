@@ -2348,3 +2348,22 @@ append-only 규칙에 따라 위 기록은 그대로 두고 여기에 덧붙인�
 «구조 팩 컬럼·타입·**출처** 계약 P0»(BBE-94 조립순서 코멘트)이다. 위 기록이 남긴 후속 ③
 — 구조 팩 `PackColumn` 에 출처 메타가 없어 `qa-app` 이 «앱 출처 정의 없음» 을 17건 보고한다 —
 이 그 칸의 일이다. **`[NC-04]` 라벨이 붙으면 착수한다. 라벨 없이 착수하지 않는다(§4②).**
+
+## 2026-08-12 — BBE-146 DB 바닥 정합화 부품 납품 [모아워크 DG 02]
+
+- base `origin/main@7733876`, branch `codex/bbe-146-board-foundation-reconcile`.
+- hosted BBE-141 실측의 052 partial drift(`status`만 존재)를 전제로, 기존 migration을 수정·재실행하지 않고 provisional `059_board_foundation_reconcile.sql`을 append-only로 작성했다. 머지 직전 최신+1 재번호화가 필수다.
+- 순서: 052 정합화 → 054 → 055 → 056. `field_type`은 17종(001의 13종 + status/people/money/calc)으로 유지하며 multiselect/url을 삭제하지 않는다.
+- 적용 후 `board_columns.source/right_pinned/move_rule_jsonb/is_readonly`, `field_source` 6종, 권한 054/055 객체가 생긴다. 057/058 outbox·발송은 무접촉이다.
+- rollback SQL과 hosted 적용 전 체크리스트를 동봉했다. enum label은 PostgreSQL에서 안전한 DROP VALUE가 없어 rollback 후에도 보존한다.
+- PGlite partial-drift fixture에서 동일 migration 2회 실행 및 rollback PASS. 전체 `scripts/check.sh` PASS: app 1569 pass/9 skip, worker 85 pass. qa-app 기존 차이 175건은 보고 전용.
+- hosted 적용·고객 데이터 조회·비밀값 조회는 수행하지 않았다. 소비자 BBE-145 착수 전 hosted 적용은 별도 belie 승인과 DC-01, NC-01 2단 검수가 필요하다.
+
+## 2026-08-12 — BBE-146 범위 확장: BBE-107 상세 배치 저장 [모아워크 DG 02]
+
+- PR #166이 migration 059를 점유한 open 상태임을 재확인해 BBE-146 파일을 provisional 060으로 재키잉했다. 머지 직전 `origin/main` 최신+1 재확정은 그대로 필수다.
+- `boards.detail_layout_jsonb jsonb not null default '[]'`와 nullable `board_groups.detail_layout_jsonb`를 같은 정합화 migration에 포함했다. group NULL은 board 기본 상속, `[]`은 의도적 빈 배치로 구분한다.
+- `is_valid_detail_layout(jsonb)`와 CHECK로 배열 원소의 string `key` 및 `source=column|detail` 계약을 보장한다. `board_columns.sort_order`, 기존 값, 기존 migration, 057/058은 변경하지 않았다.
+- PGlite에서 known partial drift, migration 2회 실행, rollback, 이미 두 layout 컬럼이 있는 fixture, NULL/`[]` 회귀, 잘못된 JSON 거부를 실행형으로 검증했다.
+- hosted DB 적용·고객 데이터 조회·비밀값 조회는 0건이다.
+- 검증: node PGlite 2/2 PASS, 앱 focused 래퍼 1/1 PASS, 전체 `scripts/check.sh` PASS(app 1569 pass/9 skip, worker 85 pass, qa-app 보고용 diff 175). 앱 런타임 파일 변경이 없어 별도 production build는 불필요하다고 판정했다.
