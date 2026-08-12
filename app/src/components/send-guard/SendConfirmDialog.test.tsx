@@ -17,8 +17,8 @@ function makePlan(targets: SendTarget[]): SendPlan {
   return planSend({
     orgId: "org-1",
     boardId: "board-1",
-    column: { key: "color8", label: "미팅확정 메세지" },
-    value: "보내기기",
+    column: { key: "consult1_notice", label: "1차 상담 안내" },
+    value: "1차 상담완료",
     targets,
     senderName: "우리회사",
   })!;
@@ -50,8 +50,8 @@ describe("확인 화면이 반드시 보여 주는 것", () => {
 
   it("무엇이 바뀌는지 · 되돌릴 수 없다는 사실", () => {
     expect(html).toContain("되돌릴 수 없습니다");
-    expect(html).toContain("«미팅확정 메세지»");
-    expect(html).toContain("«보내기기»");
+    expect(html).toContain("«1차 상담 안내»");
+    expect(html).toContain("«1차 상담완료»");
   });
 
   it("누구에게 — 이름과 가린 번호", () => {

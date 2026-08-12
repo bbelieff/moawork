@@ -39,8 +39,8 @@ function makePlan(targets: SendTarget[]): SendPlan {
   return planSend({
     orgId: "org-1",
     boardId: "board-1",
-    column: { key: "color8", label: "미팅확정 메세지" },
-    value: "보내기기",
+    column: { key: "consult1_notice", label: "1차 상담 안내" },
+    value: "1차 상담완료",
     targets,
     senderName: "우리회사",
   })!;
@@ -59,7 +59,7 @@ describe("이력 항목", () => {
     expect(entry.event).toBe("확인 요청");
     expect(entry.occurredAt).toBe(AT);
     expect(entry.actorName).toBe("담당자");
-    expect(entry.summary).toContain("«미팅확정 메세지»");
+    expect(entry.summary).toContain("«1차 상담 안내»");
     expect(entry.summary).toContain("보낼 1건");
     expect(entry.summary).toContain("22원");
   });

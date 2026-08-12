@@ -89,8 +89,11 @@ async function bundle() {
       const plan = planSend({
         orgId: "org-preview",
         boardId: "board-preview",
-        column: { key: "color8", label: "미팅확정 메세지" },
-        value: "보내기기",
+        // BBE-145(default-tabs) 신규리드 탭의 실제 발송 칸 — 2026-08-12 A′ 이후 카탈로그가
+        // 이 key 로 등록돼 있다(catalog.ts). 예전엔 리드컨택 예시(color8/미팅확정 메세지)를
+        // 썼는데 그 탭이 default-tabs 에 아직 안 서서(BBE-149 대기) 자리를 옮겼다.
+        column: { key: "consult1_notice", label: "1차 상담 안내" },
+        value: "1차 상담완료",
         targets: scenario.targets,
         optedOutPhoneDigits: new Set(scenario.optedOut ?? []),
         senderName,

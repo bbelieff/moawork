@@ -25,7 +25,7 @@ export type SendChannel = "sms" | "alimtalk";
 export interface SendColumnSpec {
   /** `board_columns.key`. 라벨은 회사가 바꿀 수 있으므로 key 로 식별한다. */
   columnKey: string;
-  /** 목업 정본의 컬럼 이름. 앱 구조 팩의 라벨과 다를 수 있어 둘 다 남긴다. */
+  /** 목업 정본의 컬럼 이름. 실제 설치된 탭에서 회사가 라벨을 바꿀 수 있어 둘 다 남긴다. */
   mockupLabel: string;
   /** 이 값이면 문자가 나가지 않는다(«보내기 전» 류). 빈 값·null 은 항상 미발송이다. */
   idleValues: readonly string[];

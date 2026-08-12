@@ -20,8 +20,8 @@ function input(over: Partial<SendPlanInput> = {}): SendPlanInput {
   return {
     orgId: "org-1",
     boardId: "board-1",
-    column: { key: "color8", label: "미팅확정 메세지" },
-    value: "보내기기",
+    column: { key: "consult1_notice", label: "1차 상담 안내" },
+    value: "1차 상담완료",
     targets: [target()],
     senderName: "우리회사",
     ...over,
@@ -34,7 +34,7 @@ describe("발송 계획을 세우는 조건", () => {
   });
 
   it("발송을 일으키지 않는 값이면 계획이 없다", () => {
-    expect(planSend(input({ value: "미팅 미지정" }))).toBeNull();
+    expect(planSend(input({ value: "보내기 전" }))).toBeNull();
     expect(planSend(input({ value: null }))).toBeNull();
   });
 });
@@ -44,8 +44,8 @@ describe("누구에게 — 못 보내는 건을 따로 셈한다", () => {
     const sentKey = messageIdempotencyKey({
       orgId: "org-1",
       entityId: "item-5",
-      columnKey: "color8",
-      value: "보내기기",
+      columnKey: "consult1_notice",
+      value: "1차 상담완료",
     });
     const plan = planSend(
       input({
@@ -140,7 +140,7 @@ describe("건수 직접 입력 · 계획 지문", () => {
     expect(planSend(input({ targets: [target({ itemId: "other" })] }))!.fingerprint).not.toBe(base);
     expect(planSend(input({ unitCostKrw: 30 }))!.fingerprint).not.toBe(base);
     expect(
-      planSend(input({ column: { key: "color", label: "1차 상담 안내" }, value: "1차 상담완료" }))!
+      planSend(input({ column: { key: "confirm2_notice", label: "2차 확정 안내" }, value: "심사확정" }))!
         .fingerprint,
     ).not.toBe(base);
   });
