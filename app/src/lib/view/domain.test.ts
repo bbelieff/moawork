@@ -5,6 +5,7 @@ import {
   DEFAULT_SYSTEM_VIEW,
   dynamicBadge,
   hiddenByScopeCount,
+  missingColumnKeys,
   selectionTargetIds,
   splitByVisibility,
   type ViewApplyContext,
@@ -120,6 +121,50 @@ describe("applyView — 정렬", () => {
     const view = baseView({ sort: [{ columnKey: "마감일", direction: "asc" }] });
     const result = applyView(ROWS, view, ctx());
     expect(result.map((r) => r.id)).toEqual(["r2", "r1", "r3"]);
+  });
+});
+
+describe("applyView·missingColumnKeys — 참조 컬럼 소실 (MWC 질의 2026-08-12)", () => {
+  it("사라진 컬럼을 가리키는 필터가 있어도 전 행이 탈락하지 않는다 — 그 조건만 빠진다", () => {
+    const view = baseView({ filters: { 시도: ["서울"], 업종: ["제조업"] } }); // 업종 컬럼은 없다
+    const known = new Set(["시도", "시군구", "마감일"]);
+    const result = applyView(ROWS, view, ctx({ knownColumnKeys: known }));
+    // 옛 동작이면 cellOf(row,"업종")===null 이라 0건이었다. 사라진 조건은 빼고 시도만 적용된다.
+    expect(result.map((r) => r.id).sort()).toEqual(["r1", "r2"]);
+  });
+
+  it("sort 축도 사라졌으면 빼고 정렬한다", () => {
+    const view = baseView({ sort: [{ columnKey: "삭제됨", direction: "asc" }, { columnKey: "마감일", direction: "asc" }] });
+    const known = new Set(["시도", "시군구", "마감일"]);
+    const result = applyView(ROWS, view, ctx({ knownColumnKeys: known }));
+    expect(result.map((r) => r.id)).toEqual(["r2", "r1", "r3"]);
+  });
+
+  it("missingColumnKeys 가 사라진 조건을 보고한다 — 화면이 «확인 필요» 를 띄우는 근거", () => {
+    const view = baseView({
+      filters: { 시도: ["서울"], 업종: ["제조업"] },
+      sort: [{ columnKey: "삭제됨", direction: "asc" }],
+    });
+    const known = new Set(["시도", "시군구", "마감일"]);
+    expect(missingColumnKeys(view, known).sort()).toEqual(["삭제됨", "업종"]);
+  });
+
+  it("사라진 게 없으면 빈 배열 — 평소엔 확인 필요가 뜨지 않는다", () => {
+    const view = baseView({ filters: { 시도: ["서울"] } });
+    const known = new Set(["시도", "시군구", "마감일"]);
+    expect(missingColumnKeys(view, known)).toEqual([]);
+  });
+
+  it("시스템 뷰는 조건 자체가 없으므로 항상 빈 배열", () => {
+    expect(missingColumnKeys(DEFAULT_SYSTEM_VIEW, new Set())).toEqual([]);
+  });
+
+  it("knownColumnKeys 를 생략한 옛 호출부는 그대로 옛 동작 — 아무것도 사라진 것으로 안 본다", () => {
+    const view = baseView({ filters: { 업종: ["제조업"] } }); // 없는 컬럼인데도
+    const result = applyView(ROWS, view, ctx()); // knownColumnKeys 생략
+    // 옛 동작 그대로: cellOf 가 null 을 돌려주므로 전 행 탈락(회귀 없음 확인용 — 새 보호가 아니라 하위호환 확인)
+    expect(result).toEqual([]);
+    expect(missingColumnKeys(view)).toEqual([]); // 생략 시 "사라진 것 없음"으로 본다(보호가 꺼진 상태)
   });
 });
 

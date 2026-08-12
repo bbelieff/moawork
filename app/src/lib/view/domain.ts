@@ -10,6 +10,16 @@
  * D26 — «내 담당»/«내 팀 담당»은 저장된 사람이 아니라 **지금 보는 사람** 기준이다.
  *   personScope="viewer"|"team" 인 뷰는 ctx.currentUserId/teamMemberIds로 매 호출마다 계산한다.
  *   personScope="fixed"만 저장된 person_scope_user_id를 쓴다(예: 먼데이에서 가져온 고정 뷰).
+ *
+ * 참조 컬럼 소실(BBE-117 MWC 질의 2026-08-12) — 저장된 뷰는 `columnKey`로 필터·정렬 조건을
+ *   저장한다(D09 라벨 무관, contracts.ts 참고). 그런데 회사가 컬럼을 지우거나 BBE-154 재구축이
+ *   컬럼을 정리하면, 그 key는 더 이상 어느 컬럼도 가리키지 않는다. 예전 구현은 이때
+ *   `cellOf`가 모든 행에서 null을 돌려주므로 그 조건에 전 행이 걸려 **뷰가 조용히 0건**이 됐다 —
+ *   0건은 "이 조건에 맞는 데이터가 없다"처럼 보여서 뷰가 고장난 사실 자체가 안 보인다.
+ *   그래서 `ctx.knownColumnKeys`(지금 이 보드에 실제로 있는 컬럼 key 집합)를 받아, 사라진 컬럼을
+ *   참조하는 조건은 **적용하지 않고**(그 조건 없이 나머지 조건만으로 필터링) `missingColumnKeys`에
+ *   담아 돌려준다. 화면은 이 목록이 비어있지 않으면 "확인 필요"를 띄운다(카드 §범위의 가져오기
+ *   변환 불가 조건과 같은 원리를 컬럼 삭제에도 적용한 것).
  */
 
 import type { PersonScope, ResolvedView, TabView, ViewFilterMap, ViewSort } from "./contracts";
@@ -27,6 +37,14 @@ export interface ViewApplyContext<T> {
   readonly cellOf: (row: T, columnKey: string) => string | null;
   /** 행의 고유 id. 선택 발송 대상(D63) 산출에 쓰인다. */
   readonly idOf: (row: T) => string;
+  /**
+   * 지금 이 보드에 실제로 존재하는 컬럼 key 집합. 뷰가 참조하는 columnKey 중 여기 없는 것은
+   * "컬럼이 사라졌다"로 판정한다 — 값이 빈 것과 다른 상태다. 호출부(보드 조회 계층)가 넘긴다.
+   * **생략 가능** — 아직 컬럼 카탈로그를 못 넘기는 호출부를 깨뜨리지 않으려고 선택으로 뒀다.
+   * 생략하면 "전부 존재한다"로 보고 옛 동작(사라진 컬럼 감지 안 함)과 동일하게 움직인다 —
+   * 즉 이 옵션을 넘기지 않으면 그 보호가 조용히 꺼진다. 새로 붙이는 호출부는 반드시 넘겨라.
+   */
+  readonly knownColumnKeys?: ReadonlySet<string>;
 }
 
 function matchesPersonScope<T>(row: T, view: TabView, ctx: ViewApplyContext<T>): boolean {
@@ -37,6 +55,40 @@ function matchesPersonScope<T>(row: T, view: TabView, ctx: ViewApplyContext<T>):
   if (scope === "team") return owner !== null && ctx.teamMemberIds.includes(owner);
   // fixed
   return owner === view.personScopeUserId;
+}
+
+/**
+ * 뷰가 참조하는 조건 중 «지금 이 보드에 없는 컬럼» 을 가리키는 것들.
+ * filters·sort 둘 다 본다. hiddenColumns·columnOrder 는 존재 여부와 무관하게 안전한
+ * 힌트(사라진 key 는 렌더러가 그냥 무시)라 여기서 다루지 않는다.
+ * `knownColumnKeys` 를 생략하면(옛 호출부) "사라진 것 없음"으로 본다.
+ */
+export function missingColumnKeys(view: ResolvedView, knownColumnKeys?: ReadonlySet<string>): string[] {
+  if (isSystemView(view) || !knownColumnKeys) return [];
+  const missing = new Set<string>();
+  for (const columnKey of Object.keys(view.filters)) {
+    if (!knownColumnKeys.has(columnKey)) missing.add(columnKey);
+  }
+  for (const s of view.sort) {
+    if (!knownColumnKeys.has(s.columnKey)) missing.add(s.columnKey);
+  }
+  return [...missing];
+}
+
+/** 사라진 컬럼을 가리키는 필터 항목을 뺀 나머지만 남긴다 — 그 조건 자체가 없었던 것처럼 본다. */
+function usableFilters(filters: ViewFilterMap, knownColumnKeys?: ReadonlySet<string>): ViewFilterMap {
+  if (!knownColumnKeys) return filters;
+  const out: Record<string, readonly string[]> = {};
+  for (const [columnKey, values] of Object.entries(filters)) {
+    if (knownColumnKeys.has(columnKey)) out[columnKey] = values;
+  }
+  return out;
+}
+
+/** 사라진 컬럼을 가리키는 정렬 축을 뺀다 — 남은 축으로 계속 정렬한다. */
+function usableSort(sort: readonly ViewSort[], knownColumnKeys?: ReadonlySet<string>): readonly ViewSort[] {
+  if (!knownColumnKeys) return sort;
+  return sort.filter((s) => knownColumnKeys.has(s.columnKey));
 }
 
 function matchesFilters<T>(row: T, filters: ViewFilterMap, cellOf: ViewApplyContext<T>["cellOf"]): boolean {
@@ -68,13 +120,20 @@ function applySort<T>(rows: readonly T[], sort: readonly ViewSort[], cellOf: Vie
 /**
  * 뷰를 이미-범위필터된 행에 적용한다(필터 → 사람조건 → 정렬).
  * 시스템 뷰(보드/표/캘린더, 저장 안 됨)는 조건이 없어 scopedRows를 그대로(정렬 없이) 반환한다.
+ *
+ * 사라진 컬럼을 가리키는 조건은 **적용하지 않는다** — 그 조건 하나 때문에 전 행이 탈락해
+ * 뷰가 조용히 0건이 되는 것을 막는다(위 주석 참고). 그 조건이 있었다는 사실은 이 함수가 아니라
+ * `missingColumnKeys(view, ctx.knownColumnKeys)`가 알려준다 — 호출부가 둘을 나란히 불러
+ * 「N개 컬럼이 사라져 그 조건은 걸리지 않았습니다」를 사람에게 보여줘야 한다.
  */
 export function applyView<T>(scopedRows: readonly T[], view: ResolvedView, ctx: ViewApplyContext<T>): T[] {
   if (isSystemView(view)) return [...scopedRows];
+  const filters = usableFilters(view.filters, ctx.knownColumnKeys);
+  const sort = usableSort(view.sort, ctx.knownColumnKeys);
   const filtered = scopedRows.filter(
-    (row) => matchesPersonScope(row, view, ctx) && matchesFilters(row, view.filters, ctx.cellOf),
+    (row) => matchesPersonScope(row, view, ctx) && matchesFilters(row, filters, ctx.cellOf),
   );
-  return applySort(filtered, view.sort, ctx.cellOf);
+  return applySort(filtered, sort, ctx.cellOf);
 }
 
 /**

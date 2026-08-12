@@ -4,6 +4,43 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [인수+FIX · 모아워크 NC 04/claude] 2026-08-12 — BBE-117 뷰 시스템 인수 · 참조 컬럼 소실 방어
+
+- 카드: BBE-117 · PR #121(`claude/bbe-117-views`, 2026-08-10 착수 후 정지) 인수. 총괄 승인.
+  브랜치를 `feat/bbe-117-views` 로 다시 세워 `origin/main`(`6adff30`) 위 rebase — 충돌은
+  `docs/worklog.md` 1건(이 append-only 로그의 자연스러운 위치 충돌)뿐, 코드 충돌 0.
+- 인수 계기: MWC(BBE-154) 가 「뷰 저장 형식이 컬럼 «이름» 이 아니라 «안정적인 키» 를 참조하는가」
+  「참조 컬럼이 사라지면 뷰가 «확인 필요» 로 남는가」를 물었다. 실측 회신은 BBE-117 코멘트에 남김:
+  **① 키 참조 — ○** (`ViewFilterMap`·`ViewSort`·`hiddenColumns`·`columnOrder` 전부 `columnKey`.
+  라벨엔 저장 자리 자체가 없다) · **② 컬럼 소실 대응 — ✗** (`matchesFilters` 가 사라진 컬럼에서
+  `cellOf`→`null` 을 받아 그 조건에 전 행이 걸려 **뷰가 조용히 0건** 이 됐다 — 「이 조건엔
+  데이터가 없다」로 오독되는 실패 모드). ①이 ○ 라 BBE-154 판정을 기다리지 않고 ②를 지금 고쳤다
+  — 저장 형식을 바꾸지 않고 도메인 로직만 고치면 됐기 때문이다.
+- `app/src/lib/view/domain.ts` — `ViewApplyContext.knownColumnKeys?: ReadonlySet<string>` 신설
+  (선택 — 안 넘기면 옛 동작 그대로, 새 보호가 조용히 꺼진다는 것을 주석에 명시).
+  `missingColumnKeys(view, knownColumnKeys?)` 신규 export — 필터·정렬이 참조하는데 지금
+  보드에 없는 컬럼 key 목록. `applyView` 는 사라진 컬럼을 가리키는 조건을 **적용하지 않고**
+  (그 조건이 없었던 것처럼 나머지 조건만으로 필터·정렬) 계속 동작한다 — 0건으로 죽지 않는다.
+  화면은 `applyView` 결과와 `missingColumnKeys` 를 나란히 불러 후자가 비어있지 않으면
+  「확인 필요」를 띄우면 된다(카드 §범위의 가져오기 변환-불가 조건과 같은 원리를 컬럼 삭제에도
+  적용). `hiddenColumns`·`columnOrder` 는 사라진 key 가 있어도 렌더러가 안전하게 무시하는
+  힌트라 이 카드에서 다루지 않았다(소비 컴포넌트가 아직 없다 — F5 무지연 원칙에 따라 지금 있는
+  실패 모드만 고쳤다).
+- **마이그레이션 재번호** — `035_tab_views.sql` → **`059_tab_views.sql`**. `origin/main` 에 이미
+  `035_ledger.sql`(BBE-108, PR #121 오픈 이후 병합분) 이 있어 충돌. §9.1 대로 머지 직전
+  `origin/main` 최신(058)+1 로 재확정. `contracts.ts` 의 참조 주석 1곳도 함께 고쳤다.
+  ⚠️ **PR #166(BBE-142) 도 `059_reserve_presets_workspace_slug.sql` 을 쓴다** — 둘 다 미병합.
+  먼저 머지되는 쪽이 059 를 가져가고, 나중 쪽이 그때의 최신+1 로 다시 잡아야 한다(선점 아님).
+- 게이트: `bash scripts/check.sh` **PASS** · `node docs/design/qa-mockup.mjs` 86/86 ·
+  `qa-app.mjs` 175건(무변동 — 이 카드는 구조 팩을 건드리지 않는다). 신규 테스트 6건
+  (domain.test.ts, 14→20) — 사라진 필터/정렬 축이 전 행 탈락을 안 부르는 것 · `missingColumnKeys`
+  보고 · knownColumnKeys 생략 시 하위호환(회귀 없음) 을 값으로 확인.
+- 검수 라우팅 — 작성자 NC 이므로 §5 기준 평시 짝 **NG-01** · 2단(구조/D24 해당 시) **DG-01**.
+  이 카드는 저장 형식·도메인 로직만 건드려 2단 조항(돈·마이그레이션 파일추가·D24·구조정의)
+  ②(마이그레이션 파일 추가)에 해당 — DG-01 필요.
+- 다음: PR 재오픈(또는 #121 헤드 갱신) + 눈으로 본 확인(뷰 탭 전환·필터 복원) 은 이 카드 소비
+  화면(BBE-118·NC-05 고아 회수 이후)이 붙은 뒤 별도 카드로. 지금은 도메인·저장 계층까지다.
+
 ## [END · 모아워크 노트북 CT09(260810)/claude] 2026-08-11 — BBE-103 재작업: MWC 정정 반영 완료
 
 - 결과: **PASS**. 앞서 이 세션이 남긴 work→`/work` 변경을 MWC 프로덕션 실측 정정(C작업반장 정정 ①)에

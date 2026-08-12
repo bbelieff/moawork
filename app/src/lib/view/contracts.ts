@@ -1,7 +1,7 @@
 /**
  * 뷰 시스템 타입 (BBE-117, F-2). 저장 형식의 단일 소유자.
  *
- * DB: supabase/migrations/035_tab_views.sql (`tab_views`).
+ * DB: supabase/migrations/059_tab_views.sql (`tab_views`).
  * BBE-118(필터)은 이 형식의 `TabView`/`ViewFilterMap`을 읽기만 한다 — 새로 정의하지 않는다.
  */
 

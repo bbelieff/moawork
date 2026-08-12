@@ -18,6 +18,7 @@ export {
   applyView,
   dynamicBadge,
   hiddenByScopeCount,
+  missingColumnKeys,
   selectionTargetIds,
   splitByVisibility,
 } from "./domain";
