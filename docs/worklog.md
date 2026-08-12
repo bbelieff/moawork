@@ -2138,5 +2138,3 @@ all/assigned), 헬퍼 `is_org_member`/`org_role`/`org_scope`, 트리거 `add_org
   + 불가피 접촉 3개(`workspace-entry/contracts.ts`·`.test.ts`·신규 migration 058)
   + `docs/worklog.md`. `layout.tsx`·`(app)/page.tsx`는 결과적으로 안 건드렸다 — 사이드바만
   손대면 충분했다.
-
-
