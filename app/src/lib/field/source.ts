@@ -28,10 +28,13 @@ export interface FieldSourceSpec {
   /**
    * 배지 색 토큰. 새 hex 를 만들지 않고 기존 --mw-* 팔레트 중 의미가 맞는 것만 쓴다
    * (design-tokens.md — 하드코딩 금지). lk=연동은 --mw-automation, calc=수식은
-   * --mw-primary(보라, 결정대장 "수식 → 보라 배경"과 일치) — 둘만 전용 토큰이 있고
-   * 나머지 4종(auto·in·act·msg)은 전용 색이 없어 중립 톤 하나를 공유한다.
+   * --mw-primary(보라, 결정대장 "수식 → 보라 배경"과 일치).
+   *
+   * ★ msg(발송)만 danger 다 — BBE-148. 이 칸은 «되돌릴 수 없고 돈이 나가는» 유일한 칸이라
+   * 다른 칸과 눈에 띄게 달라야 한다. 중립 톤을 함께 쓰면 ✉ 가 ✎·▼ 와 같은 무게로 보인다.
+   * 나머지 3종(auto·in·act)은 전용 색이 없어 중립 톤 하나를 공유한다.
    */
-  tone: "neutral" | "automation" | "primary";
+  tone: "neutral" | "automation" | "primary" | "danger";
 }
 
 const SPECS: Record<FieldSource, FieldSourceSpec> = {
@@ -69,7 +72,7 @@ const SPECS: Record<FieldSource, FieldSourceSpec> = {
     description: "바꾸면 고객에게 문자가 나가고 비용이 듭니다",
     editable: true,
     confirmRequired: true,
-    tone: "neutral",
+    tone: "danger",
   },
   lk: {
     source: "lk",

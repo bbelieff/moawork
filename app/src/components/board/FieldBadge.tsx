@@ -7,12 +7,15 @@
  * 색은 새 hex 를 만들지 않고 기존 --mw-* 토큰만 쓴다 — lk(연동)=automation,
  * calc(수식)=primary(보라), 나머지 4종은 전용 색이 없어 중립 톤을 공유한다.
  */
-import { getFieldSourceSpec, type FieldSource } from "@/lib/field/source";
+import { getFieldSourceSpec, type FieldSource, type FieldSourceSpec } from "@/lib/field/source";
 
-const TONE_CLASS: Record<"neutral" | "automation" | "primary", string> = {
+const TONE_CLASS: Record<FieldSourceSpec["tone"], string> = {
   neutral: "text-mw-sub",
   automation: "bg-mw-tint-teal text-mw-automation",
   primary: "text-mw-primary",
+  // ✉ 발송만 테두리까지 준다 — BBE-148. 나머지 배지는 글자색만이라, 테두리 하나로
+  // 「이 칸은 성격이 다르다」가 스캔 한 번에 잡힌다.
+  danger: "bg-mw-tint-coral text-mw-error ring-1 ring-mw-error/40 font-semibold",
 };
 
 export function SourceBadge({ source }: { source: FieldSource }) {
