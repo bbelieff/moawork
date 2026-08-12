@@ -1,0 +1,62 @@
+import { describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { APP_TABS } from "./app-tabs";
+
+// 셸이 여섯 탭을 «실제로 그리는가». 위 app-tabs-runtime.test.ts 가 판정 로직을,
+// 이 파일이 그 판정이 DOM 으로 나오는지를 본다.
+
+const pathname = vi.hoisted(() => ({ current: "/presets" }));
+vi.mock("next/navigation", () => ({ usePathname: () => pathname.current }));
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
+    <a href={href} {...rest}>{children}</a>
+  ),
+}));
+
+async function render(path: string, lockedFeatures: string[] = []) {
+  pathname.current = path;
+  const { AppTabs } = await import("./AppTabs");
+  return renderToStaticMarkup(<AppTabs lockedFeatures={lockedFeatures} />);
+}
+
+describe("AppTabs — 목업 「탭 6개 한 화면」 탭 줄", () => {
+  it("탭 화면에서 여섯 탭을 모두 그린다 — 구조를 줄이지 않는다(D73)", async () => {
+    const html = await render("/presets");
+    for (const tab of APP_TABS) {
+      expect(html, `${tab.key} 탭이 없다`).toContain(`data-tab-key="${tab.key}"`);
+    }
+    expect((html.match(/data-tab-key=/g) ?? []).length).toBe(6);
+  });
+
+  it("지금 보고 있는 탭만 aria-current=page 다", async () => {
+    const html = await render("/presets");
+    const current = [...html.matchAll(/data-tab-key="([a-z]+)"[^>]*aria-current="page"/g)].map((m) => m[1]);
+    expect(current).toEqual(["preset"]);
+  });
+
+  it("상세 주소로 들어가도 탭 줄이 유지되고 부모 탭이 활성이다", async () => {
+    const html = await render("/companies/c-1");
+    expect(html).toContain('data-tab-key="company"');
+    expect(html).toMatch(/data-tab-key="company"[^>]*aria-current="page"/);
+  });
+
+  it("탭 밖 화면에서는 아무것도 그리지 않는다", async () => {
+    expect(await render("/settings/members")).toBe("");
+    expect(await render("/platform")).toBe("");
+    expect(await render("/")).toBe("");
+  });
+
+  it("각 탭이 자기 대표 주소로 링크된다 — 전환이 실제로 일어난다", async () => {
+    const html = await render("/presets");
+    for (const tab of APP_TABS) {
+      expect(html).toContain(`href="${tab.canonicalHref}"`);
+    }
+  });
+
+  it("잠긴 기능의 탭은 잠금으로 표시한다 — 엔타이틀먼트는 서버 진실", async () => {
+    const html = await render("/presets", ["core.crm"]);
+    expect(html).toMatch(/data-tab-key="new"[^>]*aria-disabled="true"/);
+    // 잠기지 않은 탭은 그대로다.
+    expect(html).not.toMatch(/data-tab-key="preset"[^>]*aria-disabled="true"/);
+  });
+});

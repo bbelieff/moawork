@@ -103,3 +103,40 @@ export const OUT_OF_TAB_HREFS: readonly string[] = [
 export function findTabByHref(href: string): AppTab | undefined {
   return APP_TABS.find((tab) => tab.canonicalHref === href || tab.altHrefs.includes(href));
 }
+
+/**
+ * 라우트 «패턴»(`/companies/[companyId]`)을 실제 «주소»(`/companies/c-1`)와 맞춰 보기 위한 정규식.
+ * 대괄호 세그먼트는 한 칸(`/` 없는 아무 값)으로 친다 — Next 의 동적 세그먼트 규칙과 같다.
+ */
+function hrefToPattern(href: string): RegExp {
+  const source = href
+    .split("/")
+    .map((segment) =>
+      segment.startsWith("[") && segment.endsWith("]")
+        ? "[^/]+"
+        : segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    )
+    .join("/");
+  return new RegExp(`^${source}$`);
+}
+
+/**
+ * 지금 열려 있는 주소가 «6탭 중 어느 탭인가». 셸의 탭 줄(AppTabs)이 활성 표시에 쓴다.
+ *
+ * findTabByHref 와 다르다 — 저쪽은 «패턴 문자열» 을 그대로 찾고(정적 분류표 조회),
+ * 이쪽은 «브라우저에 떠 있는 실제 경로» 를 판정한다. 탭 줄은 후자가 필요하다.
+ *
+ * 탭 밖(설정·계정·플랫폼 어드민 등)을 «먼저» 걸러낸다 — 그 화면들에서는 탭 줄을 그리지 않는다.
+ */
+export function matchTabByPathname(pathname: string | null | undefined): AppTab | undefined {
+  // 경로를 모르면 «탭이 아니다». usePathname() 은 라우터 문맥 밖(서버 렌더 테스트 등)에서
+  // null 을 준다 — 그때 셸이 터지면 안 된다. 탭 줄을 안 그리는 것이 옳은 결과다.
+  if (typeof pathname !== "string" || pathname.length === 0) return undefined;
+  const path = pathname !== "/" && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  if (OUT_OF_TAB_HREFS.some((href) => hrefToPattern(href).test(path))) return undefined;
+  return APP_TABS.find((tab) =>
+    [tab.canonicalHref, ...tab.altHrefs]
+      .filter((href): href is string => Boolean(href))
+      .some((href) => hrefToPattern(href).test(path)),
+  );
+}
