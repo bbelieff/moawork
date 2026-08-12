@@ -3,7 +3,7 @@
 /**
  * 담당자 재배정 (BBE-16). 변경 시 서비스가 타임라인에 자동 기록하고
  * (`AsyncCrmService.reassignDeal`), DB 트리거가 새 담당자에게 알림을 보낸다
- * (`043_deal_collab_notify.sql: trg_notify_deal_assigned`).
+ * (`060_deal_collab_notify.sql: trg_notify_deal_assigned`).
  */
 
 import { useTransition } from "react";
