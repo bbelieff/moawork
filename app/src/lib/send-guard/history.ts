@@ -8,7 +8,7 @@
  * `message_outbox_audit`(058)이든 붙일 곳은 소비하는 화면이 정한다.
  */
 
-import { exclusionCounts } from "./plan";
+import { exclusionCounts } from "./exclusions";
 import type { SendHistoryEntry, SendPlan, SendRejectionReason, SendRequest } from "./types";
 
 interface Actor {

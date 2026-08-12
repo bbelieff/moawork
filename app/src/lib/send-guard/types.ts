@@ -113,6 +113,11 @@ export interface SendPlan {
 
 /** 사람이 확인 화면에서 실제로 한 행동. */
 export interface SendConfirmation {
+  /**
+   * 확인 화면을 그릴 때 서버가 발급한 확인표 id — «사람이 실제로 그 화면을 지났다» 의 유일한 증거다.
+   * 지문은 요청 자기 필드로 계산되므로 위조자가 스스로 맞출 수 있다. 이 값은 서버 난수라 못 맞춘다.
+   */
+  ticketId: string;
   planFingerprint: string;
   /** 확인 화면이 보여 준 «보낼 건수» 를 그대로 되돌려준 값. */
   acknowledgedCount: number;
@@ -153,6 +158,7 @@ export interface SendRequest {
 /** 확인 게이트가 요청을 거부한 이유. */
 export type SendRejectionReason =
   | "확인 없음"
+  | "확인표 무효"
   | "지문 불일치"
   | "건수 불일치"
   | "건수 직접 입력 필요"

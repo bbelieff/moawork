@@ -1,11 +1,14 @@
 /**
  * 확인 게이트 — «확인 없이는 아무 요청도 나가지 않는다» 를 코드로 못박는 자리 (BBE-148).
  *
- * `SendRequest` 는 브랜드 타입이라 **평범한 객체 리터럴로는 만들어지지 않는다.**
- * (억지로 `as` 캐스팅하면 타입은 뚫린다 — 그래서 `verifySendRequest()` 로 런타임에서 한 번 더 센다.)
- * 정상 경로에서 그 타입을 만드는 것은 이 파일의 `confirmSend()` 뿐이고,
- * 그 함수는 아래를 전부 통과해야만 만든다.
+ * `SendRequest` 는 브랜드 타입이라 평범한 객체 리터럴로는 만들어지지 않는다. 다만
+ * **타입만으로는 부족하다** — 억지로 `as` 캐스팅하면 뚫리고, 지문은 요청 자기 필드로
+ * 계산되므로 위조자가 스스로 맞출 수 있다(2026-08-12 독립 검수 실측). 그래서 진짜 잠금은
+ * **확인표**다(`ticket.ts`) — 서버 난수이고 한 번 쓰면 태워진다.
  *
+ * 정상 경로에서 요청을 만드는 것은 이 파일의 `confirmSend()` 뿐이고, 아래를 전부 통과해야 만든다.
+ *
+ *   ⓪ ★ 확인표가 유효한가              (사람이 그 화면을 지났다는 유일한 증거 · 1회용)
  *   ① 확인이 실제로 있었는가            (없으면 요청 없음)
  *   ② 확인한 계획과 지금 계획이 같은가    (사이에 대상·값·비용이 바뀌면 거부)
  *   ③ 사람이 되돌려준 건수가 맞는가       (화면이 보여 준 수와 다르면 거부)
@@ -18,6 +21,7 @@
  */
 
 import { planFingerprint } from "./plan";
+import type { ConfirmationTicketStore } from "./ticket";
 import type {
   SendConfirmation,
   SendGateResult,
@@ -38,17 +42,17 @@ export const DISPATCH_DISABLED_REASON =
   "발송 통로가 아직 활성화되지 않았습니다 (BBE-30 — 보존하되 활성화 금지).";
 
 /**
- * 요청이 «확인 화면이 보여 준 그 계획» 그대로인지 실행 직전에 다시 센다.
+ * 요청의 **자가일관성**만 본다 — 내용과 지문이 서로 맞는지.
  *
- * ⚠ 타입 브랜드는 **실수로 만드는 것**만 막는다. `as SendRequest` 로 억지로 캐스팅하면
- * 타입은 뚫린다 — TypeScript 로 그것을 막을 방법은 없다. 그래서 런타임 검사를 따로 둔다.
- * 확인 뒤에 대상 목록이나 비용이 바뀌어 있으면 지문이 안 맞아 여기서 걸린다.
+ * ⚠ **이것은 위조 탐지기가 아니다.** 지문의 재료가 전부 요청 자기 필드라,
+ * `planFingerprint()` 를 부를 수 있는 쪽은 지문을 스스로 계산해 넣어 이 검사를 통과한다.
+ * 그래서 이름도 «검증» 이 아니라 «자가일관» 이다. 잡을 수 있는 것은 하나뿐이다 —
+ * 요청이 만들어진 뒤 **내용만 슬쩍 바뀐** 경우(대상 교체·비용 조작).
  *
- * 다만 이것이 «사람이 확인했다» 를 증명하지는 못한다. 그 증명은 서버가
- * `planSend()` 로 계획을 **새로 계산해** `confirmSend()` 에 넘기는 것으로만 성립한다 —
- * 사람이 본 지문과 지금 지문이 같아야 통과하기 때문이다. 그것이 이 부품의 진짜 잠금이다.
+ * «사람이 확인했다» 를 증명하는 것은 **확인표뿐이다**(`ticket.ts`). 그것은 서버 난수이고
+ * 한 번 쓰면 태워지므로 요청 본문만 보고 지어낼 수 없다. `confirmSend()` 가 그것을 센다.
  */
-export function verifySendRequest(request: SendRequest): boolean {
+export function isSelfConsistentRequest(request: SendRequest): boolean {
   return (
     planFingerprint({
       orgId: request.orgId,
@@ -73,7 +77,7 @@ export function assertDispatchAllowed(request?: SendRequest): void {
   if (!SEND_DISPATCH_ENABLED) {
     throw new Error(DISPATCH_DISABLED_REASON);
   }
-  if (request && !verifySendRequest(request)) {
+  if (request && !isSelfConsistentRequest(request)) {
     throw new Error("발송 요청이 확인 화면의 계획과 다릅니다. 다시 확인하세요.");
   }
 }
@@ -88,13 +92,34 @@ export function batchKeyFor(plan: SendPlan): string {
  *
  * `confirmation` 이 `null` 이면 «확인 화면을 아직 안 지났다» 는 뜻이다 — 그 경로로도
  * 요청이 나가지 않는다는 것을 타입이 아니라 실행으로도 증명하기 위해 명시적으로 받는다.
+ *
+ * ★ `plan` 은 **서버가 지금 다시 계산한 것**이어야 한다. 화면이 보낸 값을 그대로 믿고
+ * 여기 넣으면 지문 검사가 의미를 잃는다. 소비하는 화면이 지켜야 할 유일한 규칙이다.
+ * ★ `store` 는 확인 화면을 그릴 때 확인표를 발급한 그 저장소여야 한다(`defaultTicketStore()`).
  */
 export function confirmSend(
   plan: SendPlan,
   confirmation: SendConfirmation | null,
+  store: ConfirmationTicketStore,
+  nowMs: number,
 ): SendGateResult {
   if (!confirmation) {
     return { ok: false, reason: "확인 없음", detail: "확인 화면을 지나지 않은 요청입니다." };
+  }
+  // ★ 확인표부터 태운다. 이것만이 «사람이 그 화면을 지났다» 를 증명한다.
+  //    맞든 틀리든 한 번 손대면 태워지므로, 틀린 요청을 반복해 찔러 볼 수 없다.
+  const ticketOk = store.consume({
+    id: confirmation.ticketId,
+    planFingerprint: confirmation.planFingerprint,
+    actorId: confirmation.actorId,
+    nowMs,
+  });
+  if (!ticketOk) {
+    return {
+      ok: false,
+      reason: "확인표 무효",
+      detail: "확인 화면을 지나지 않았거나, 이미 쓴 확인표이거나, 시간이 지났습니다. 다시 확인하세요.",
+    };
   }
   if (confirmation.planFingerprint !== plan.fingerprint) {
     return {

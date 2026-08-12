@@ -5,6 +5,8 @@
  * (기존 갭 — GroupTable.test.tsx 가 같은 이유로 같은 방식을 쓴다). 그래서 컴포넌트를
  * 직접 렌더해 markup 으로 고정한다. 눈으로 본 증거는 별도 하네스로 촬영한다.
  */
+import fs from "node:fs";
+import path from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { planSend } from "@/lib/send-guard";
@@ -29,9 +31,17 @@ const one: SendTarget = {
   fields: { 대표자명: "홍길동" },
 };
 
+const TICKET = "ticket-0000-1111";
+
 function render(plan: SendPlan) {
   return renderToStaticMarkup(
-    <SendConfirmDialog plan={plan} sendAction="/send" cancelAction="/cancel" senderLabel="우리회사" />,
+    <SendConfirmDialog
+      plan={plan}
+      ticketId={TICKET}
+      sendAction="/send"
+      cancelAction="/cancel"
+      senderLabel="우리회사"
+    />,
   );
 }
 
@@ -94,7 +104,9 @@ describe("대량 — 한 겹 더", () => {
     expect(html).toContain('title="2 를 그대로 입력하세요"');
   });
 
-  it("확인 폼은 계획 지문과 건수를 그대로 되돌려준다 — 서버가 다시 맞춰 본다", () => {
+  it("확인 폼은 확인표·지문·건수를 그대로 되돌려준다 — 서버가 태우고 다시 맞춰 본다", () => {
+    expect(html).toContain('name="ticketId"');
+    expect(html).toContain(`value="${TICKET}"`);
     expect(html).toContain(`value="${plan.fingerprint}"`);
     expect(html).toContain('name="planFingerprint"');
     expect(html).toContain('name="acknowledgedCount"');
@@ -121,6 +133,32 @@ describe("보낼 건이 없으면 보낼 수 없다", () => {
   it("나가지 않을 문장을 «실제로 나갈 문장» 이라고 띄우지 않는다", () => {
     expect(html).toContain("보낼 건이 없어 나갈 문장이 없습니다");
     expect(html).not.toContain("실제로 나갈 문장");
+  });
+});
+
+describe("★ 이 화면은 클라이언트 번들에 들어가도 깨지지 않아야 한다", () => {
+  // 소비하는 쪽이 `"use client"` 안에서 이 화면을 그릴 수 있다. 그때 배럴이나 plan.ts 를
+  // 끌고 들어가면 `node:crypto` 때문에 빌드가 깨진다 — 임포트 자리에서 못박는다.
+  const source = fs.readFileSync(path.join(import.meta.dirname, "SendConfirmDialog.tsx"), "utf8");
+  // `[^;]` 은 줄바꿈도 포함하므로 여러 줄 import 도 잡힌다 (dotAll 플래그 불필요 — es2017 타깃).
+  const valueImports = [...source.matchAll(/^import (?!type )[^;]*?from "([^"]+)";/gm)].map(
+    (m) => m[1],
+  );
+
+  it("값을 가져오는 곳은 순수 모듈뿐이다", () => {
+    expect(valueImports.sort()).toEqual([
+      "@/lib/send-guard/exclusions",
+      "@/lib/send-guard/template",
+    ]);
+  });
+
+  it("서버 전용 모듈을 값으로 가져오지 않는다", () => {
+    for (const banned of ["@/lib/send-guard\"", "/plan\"", "/confirm\"", "/history\"", "node:"]) {
+      expect(
+        valueImports.some((i) => `${i}"`.includes(banned)),
+        `클라이언트에서 깨지는 import: ${banned}`,
+      ).toBe(false);
+    }
   });
 });
 

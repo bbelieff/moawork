@@ -13,8 +13,12 @@
  * 375px: 좌우 2열을 쓰지 않는다. 숫자 → 내역 → 문구 → 확인 순서로 한 줄씩 쌓인다.
  */
 
-import type { SendPlan } from "@/lib/send-guard";
-import { exclusionCounts, SMS_SHORT_LIMIT, templateLength } from "@/lib/send-guard";
+// ★ 배럴(`@/lib/send-guard`)로 가져오지 않는다. 배럴은 `plan.ts` 를 끌고 오고 그것은
+// `node:crypto` 를 부른다 — 소비하는 쪽이 이 화면을 `"use client"` 안에서 그리면 빌드가 깨진다.
+// 값은 순수한 두 모듈에서만 가져오고, 나머지는 타입으로만 받는다.
+import type { SendPlan } from "@/lib/send-guard/types";
+import { exclusionCounts } from "@/lib/send-guard/exclusions";
+import { SMS_SHORT_LIMIT, templateLength } from "@/lib/send-guard/template";
 
 type FormAction = string | ((formData: FormData) => void | Promise<void>);
 
@@ -35,11 +39,17 @@ function won(n: number): string {
  */
 export function SendConfirmDialog({
   plan,
+  ticketId,
   sendAction,
   cancelAction,
   senderLabel,
 }: {
   plan: SendPlan;
+  /**
+   * 이 화면을 그리기 직전에 서버가 발급한 확인표 id(`issueConfirmationTicket`).
+   * 폼이 이것을 그대로 되돌려주고, 서버가 태운다 — «사람이 이 화면을 지났다» 의 유일한 증거다.
+   */
+  ticketId: string;
   sendAction: FormAction;
   cancelAction?: FormAction;
   senderLabel?: string;
@@ -165,7 +175,9 @@ export function SendConfirmDialog({
 
         {/* ── 확인 ── */}
         <form action={sendAction} className="mt-4">
-          {/* 확인 화면이 보여 준 계획 그대로를 되돌려준다. 서버가 지문을 다시 맞춰 본다. */}
+          {/* 확인 화면이 보여 준 계획 그대로를 되돌려준다. 서버가 지문을 다시 맞춰 본다.
+              확인표는 서버가 태운다 — 이것 없이는 요청이 만들어지지 않는다. */}
+          <input type="hidden" name="ticketId" value={ticketId} />
           <input type="hidden" name="planFingerprint" value={plan.fingerprint} />
           <input type="hidden" name="acknowledgedCount" value={count} />
 

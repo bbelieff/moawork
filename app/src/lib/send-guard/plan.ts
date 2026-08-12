@@ -165,12 +165,3 @@ export function planSend(input: SendPlanInput): SendPlan | null {
     }),
   };
 }
-
-/** 확인 화면이 사유별로 셈해 보여줄 제외 건수. */
-export function exclusionCounts(plan: SendPlan): { reason: string; count: number }[] {
-  const counts = new Map<string, number>();
-  for (const item of plan.excluded) {
-    counts.set(item.reason, (counts.get(item.reason) ?? 0) + 1);
-  }
-  return [...counts.entries()].map(([reason, count]) => ({ reason, count }));
-}

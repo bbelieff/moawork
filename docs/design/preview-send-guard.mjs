@@ -61,12 +61,30 @@ const SCENARIOS = [
 /** 업체명·대표자명은 전부 «예시» 다 — 제품에 심는 값이 아니다(D71~D75). */
 const SENDER = "우리회사";
 
+/**
+ * esbuild·postcss 는 vite/tailwind 를 통해 들어오는 «간접» 의존이다.
+ * 호이스팅이 달라지면 못 찾을 수 있으므로, 그때 원인을 분명히 말해 준다 —
+ * 검수자가 「왜 안 되지」로 시간을 쓰게 두지 않는다.
+ */
+function need(name) {
+  try {
+    return require(name);
+  } catch {
+    throw new Error(
+      `«${name}» 를 찾지 못했습니다. 저장소 루트에서 \`npm install\` 을 먼저 돌리세요.\n` +
+        `(이 스크립트는 검증 도구라 제품 의존성에 추가하지 않습니다.)`,
+    );
+  }
+}
+
 async function bundle() {
-  const esbuild = require("esbuild");
+  const esbuild = need("esbuild");
   const entry = `
     import { renderToStaticMarkup } from "react-dom/server";
     import { planSend } from "@/lib/send-guard";
     import { SendConfirmDialog } from "@/components/send-guard/SendConfirmDialog";
+    /* 확인표 id 는 서버 난수라 그림마다 달라진다. 미리보기가 매번 바뀌지 않도록 고정값을 쓴다 —
+       이 하네스는 아무것도 제출하지 않으므로 실제 확인표가 필요 없다. */
     export function render(scenario, senderName) {
       const plan = planSend({
         orgId: "org-preview",
@@ -80,7 +98,13 @@ async function bundle() {
       if (!plan) throw new Error("발송 계획이 만들어지지 않았습니다: " + scenario.id);
       return {
         html: renderToStaticMarkup(
-          SendConfirmDialog({ plan, sendAction: "#", cancelAction: "#", senderLabel: senderName }),
+          SendConfirmDialog({
+            plan,
+            ticketId: "preview-ticket",
+            sendAction: "#",
+            cancelAction: "#",
+            senderLabel: senderName,
+          }),
         ),
         plan,
       };
@@ -100,8 +124,8 @@ async function bundle() {
 }
 
 async function compileCss() {
-  const postcss = require("postcss");
-  const tailwind = require("@tailwindcss/postcss");
+  const postcss = need("postcss");
+  const tailwind = need("@tailwindcss/postcss");
   // 제품이 실제로 쓰는 스타일시트를 그대로 컴파일한다. 여기서 별도 css 를 만들면
   // «미리보기에서만 예쁜» 그림이 되어 증거로서 값이 없다.
   const globals = path.join(appSrc, "app", "globals.css");
