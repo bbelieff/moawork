@@ -78,6 +78,9 @@
 .toggleCopy {
   display: grid;
   gap: 4px;
+  /* 375px 실측(BBE-105) — 이 없으면 좁은 화면에서 설명 텍스트가 안 줄어들고
+     옆의 켜짐/꺼짐 배지가 대신 눌려 "켜\n짐" 처럼 두 줄로 쪼개진다. */
+  min-width: 0;
 }
 
 .toggleCopy strong {
@@ -100,6 +103,8 @@
   font-size: 12px;
   font-weight: 750;
   cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .toggleSwitchOn {

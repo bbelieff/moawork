@@ -4,6 +4,45 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [인수+FIX · 모아워크 DC 04/claude] 2026-08-12 — BBE-105 이중 잠금 게이트 인수 · 화면 확인 증거
+
+- 카드: BBE-105 · PR #124(`claude/bbe-105-doublelock`, 2026-08-10 착수 후 정지) 인수.
+  belie 지시(§ 각자 이름 근본으로 원래 배정받은 카드로 복귀) — 배정판상 DC-04 소유
+  영역(리드컨택)의 두 후보 카드(BBE-127·BBE-105) 중 코드가 더 진척돼 있던 BBE-105 를
+  먼저 집었다.
+- 브랜치를 `feat/bbe-105-doublelock` 로 다시 세워 `origin/main`(`6adff30`) 위 rebase.
+  51커밋 뒤처져 있었다 — 충돌은 `docs/worklog.md` 1건(append-only 위치 충돌)뿐, 코드 충돌 0.
+- 블로커 재확인 — README(`lib/automation/lock/README.md`)가 "BBE-104(A-1) 완료 시 어댑터만
+  추가하면 된다"고 적어 둔 그 BBE-104 가 **지금은 Done** 이다. 다만 이 카드의 원래 수용
+  기준에 어댑터 통합이 없고(순수 판정 함수까지가 리스), 지금 확장하면 스코프가 커져
+  검수가 늦어진다 — **손대지 않고 README 의 경계를 그대로 존중했다.** 어댑터 연결은
+  후속 카드다.
+- **화면 확인 증거를 새로 만들었다** — 이전 라운드는 "보드가 없어 NOT_RUN"으로 남겼는데,
+  BBE-148·BBE-117 에서 쓴 것과 같은 렌더 하네스 패턴(제품 컴포넌트를 제품 스타일시트로
+  렌더)을 여기도 적용했다. `docs/design/preview-lock.mjs` 신규 — **1440px·375px 직접 촬영**.
+  증거: `docs/design/round-BBE-105/`.
+  - 이 컴포넌트는 Tailwind 유틸이 아니라 CSS Modules(`lock.module.css`)를 쓴다. esbuild 는
+    모듈 클래스명 해싱을 안 하므로 `*.module.css` → "클래스명을 자기 자신으로 매핑하는 객체"
+    로 치환하는 얕은 플러그인을 썼다(이 페이지 하나에서만 쓰이니 충돌 없음).
+  - 하네스 자체에서 버그 1건 잡음 — 컴포넌트를 `Component(props)` 처럼 **일반 함수로 직접
+    호출**하면 `useState` 가 React 렌더 컨텍스트 밖에서 실행돼 dispatcher 가 null 이라
+    즉시 죽는다. JSX(`<Component {...props} />`)로 고쳐서 해결.
+  - **375px 촬영에서 실제 컴포넌트 결함 1건 잡음** — 켜짐/꺼짐 배지가 좁은 화면에서
+    "켜\n짐" 두 줄로 쪼개졌다. `.toggleRow`(flex)에서 `.toggleCopy`(설명 텍스트)가
+    안 줄어들고 배지가 대신 눌린 것. `lock.module.css` 에 `.toggleCopy{min-width:0}` ·
+    `.toggleSwitch{flex-shrink:0;white-space:nowrap}` 추가로 고쳤다. 재촬영으로 확인.
+- 게이트: `bash scripts/check.sh` **PASS** · app **1596 passed/9 skipped**(188 files) ·
+  worker **85 passed**. `qa-app.mjs` 175건(무변동 — 이 카드는 구조 팩·자동화 조건 엔진
+  어느 쪽도 건드리지 않는다, `automation-presets/lock`·`lib/automation/lock` 만 변경).
+  마이그레이션 추가 없음. 하드코딩 hex 없음(`--mw-*` 토큰만).
+- 검수 라우팅 — 작성자 DC 이므로 §5 기준 평시 짝 **DG-01**. 이 카드는 발송·마이그레이션·
+  D24·구조정의 어느 2단 조항에도 해당하지 않아(순수 로직+컴포넌트, DB 무접촉) 2단
+  승격 불필요로 판단했다 — DG-01 이 1단에서 다르게 보면 스스로 2단 승격 표시할 것.
+- 판정 — **완주 아님, 부품 납품(§3)**. `LockBlockedDialog`·`LockToggleSettingsRow` 는
+  여전히 어떤 보드에도 안 붙어 있다(목업의 "리드컨택→업무이동" 화면이 app/src 에 없음).
+  후속: ① 그 보드가 머지되면 `onNavigateToCondition`·`onSubmit` 콜백 연결 ② BBE-104
+  조건 엔진 → `LockCondition[]` 어댑터 ③ D66 영속화(신규 마이그레이션, 이 카드 리스 밖).
+
 ## [END · 모아워크 노트북 CT09(260810)/claude] 2026-08-11 — BBE-103 재작업: MWC 정정 반영 완료
 
 - 결과: **PASS**. 앞서 이 세션이 남긴 work→`/work` 변경을 MWC 프로덕션 실측 정정(C작업반장 정정 ①)에
