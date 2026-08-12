@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
 import type { WorkspaceRequestInput, WorkspaceRequestResult } from "./contracts";
 import type { WorkspaceEntryOption } from "@/lib/auth/workspace-entry-server";
 import { isCanonicalWorkspaceSlug } from "@/lib/auth/workspace-routing";
@@ -167,6 +168,10 @@ export async function readWorkspaceApprovals(
 }
 
 export async function loadWorkspaceApprovals(ownerOrgId?: string): Promise<WorkspaceApprovals> {
+  // Supabase 미설정(로컬 dev)에서는 승인 대기 건수를 «셀 수 없다» — 0 건과 같은 화면이다.
+  // 던지면 (app) 레이아웃 전체가 500 이 된다. readWorkspaceApprovals 가 ownerOrgId 없을 때
+  // 돌려주는 값과 같은 모양을 쓴다.
+  if (!hasSupabaseEnv()) return { pendingCount: 0 };
   return readWorkspaceApprovals(await createClient() as unknown as WorkspaceEntryRpcClient, ownerOrgId);
 }
 
@@ -242,6 +247,8 @@ export async function readWorkspaceEntryContext(
 }
 
 export async function loadWorkspaceEntryContext(ownerOrgId?: string): Promise<WorkspaceEntryContext> {
+  // 위와 같은 이유. «조회 불가» 는 이미 있는 error 종류로 표현한다 — 호출부가 ready 만 소비한다.
+  if (!hasSupabaseEnv()) return { kind: "error" };
   const supabase = await createClient();
   // 폴백 판정용 이메일. 실패해도 진행한다 — 이메일이 없으면 폴백만 건너뛴다.
   let actorEmail: string | null = null;

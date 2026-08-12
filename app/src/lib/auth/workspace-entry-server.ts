@@ -1,5 +1,6 @@
 import { parseActiveMembershipRows } from "@/lib/auth/workspace-routing";
 import { createClient } from "@/lib/supabase/server";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
 
 export type WorkspaceEntryOption = {
   orgId: string;
@@ -88,6 +89,11 @@ export async function readWorkspaceRoutingSnapshot(
 }
 
 export async function loadWorkspaceRoutingSnapshot(): Promise<WorkspaceRoutingSnapshot> {
+  // Supabase 미설정(로컬 dev 세션)에서는 원격 조회 자체가 없다. 예전엔 여기서 createClient() 가
+  // 던져 (app) 레이아웃 전체가 500 이 났고, 그래서 로그인한 화면을 «눈으로 볼» 방법이 없었다
+  // — 여러 세션의 촬영 NOT_RUN 이 이 한 줄 때문이다. loadNotifySnapshot·loadLockedFeatures 와
+  // 같은 규약으로 «조회 불가» 스냅샷을 돌려준다. 호출부는 이미 ready 아님을 처리한다.
+  if (!hasSupabaseEnv()) return { kind: "unauthenticated" };
   const client = await createClient();
   return readWorkspaceRoutingSnapshot(client as unknown as WorkspaceAuthClient);
 }
