@@ -97,7 +97,13 @@ function BoardCell({
   const value = row.values[column.key] ?? null;
   const options = column.options_jsonb?.options ?? [];
   // 출처가 편집을 막는 칸(⇄ 연동·ƒ 수식)은 보드가 편집 가능해도 클릭해도 열리지 않는다 — D09 수용기준.
-  const cellReadOnly = readOnly || !isSourceEditable(column.source);
+  //
+  // `is_readonly` 도 같이 본다(BBE-145). 서비스는 이미 이 칸의 쓰기를 전부 거부하는데
+  // (`boards/service.ts` — "읽기 전용 칸") 표는 그걸 안 보고 편집창을 열어 줬다.
+  // 결과: 사용자가 고칠 수 있는 것처럼 보이고, 저장을 눌러야 거부당한다.
+  // ✉ 발송 칸에서는 더 나쁘다 — 안전장치(BBE-148)가 붙는 순간 «열려 있는 편집창» 이
+  // 곧 돈이 나가는 통로가 된다. 화면과 서버가 같은 답을 해야 한다.
+  const cellReadOnly = readOnly || !isSourceEditable(column.source) || column.is_readonly === true;
   const numeric = NUMERIC_TYPES.has(column.type);
   const title = cellTitle(column);
 
