@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const app = join(__dirname, "..", "..", "app", "(app)", "boards");
 
 describe("boards UI consumes effective permissions", () => {
-  it("gates board creation and preset installation", () => {
+  it("gates board creation and excludes the customer Monday pack", () => {
     const source = readFileSync(join(app, "page.tsx"), "utf8");
     expect(source).toContain('loadPermGuard(ctx.org.id, "work.view_tabs")');
     expect(source.indexOf('loadPermGuard(ctx.org.id, "work.view_tabs")')).toBeLessThan(
@@ -13,8 +13,9 @@ describe("boards UI consumes effective permissions", () => {
     );
     expect(source).toContain('if (viewPermission.kind !== "allowed") notFound()');
     expect(source).toContain('loadPermGuard(ctx.org.id, "structure.tab_manage")');
-    expect(source).toContain('loadPermGuard(ctx.org.id, "structure.preset_edit")');
     expect(source).toContain("canManageTabs && <li><NewBoardInline />");
+    expect(source).not.toContain("SEOUL_STRUCTURE_PACK");
+    expect(source).not.toContain("InstallPackButton");
   });
 
   it("gates item, structure, and destructive controls on a board", () => {

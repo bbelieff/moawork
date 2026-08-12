@@ -1,14 +1,9 @@
 import Link from "next/link";
-import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
-import { isManager } from "@/lib/auth/roles";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { getBoardsService } from "@/lib/boards";
-import { SEOUL_STRUCTURE_PACK } from "@/lib/structure-packs";
 import { NewBoardInline } from "./NewBoardInline";
-import { InstallPackButton } from "./InstallPackButton";
-import { PACK_INSTALL_FLASH_COOKIE, decodePackInstallFlash } from "./installFlash";
 
 /**
  * 보드 목록 (T02b · ADR-0003).
@@ -22,28 +17,17 @@ export default async function BoardsPage({
 }) {
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
-  const [viewPermission, tabPermission, presetPermission] = await Promise.all([
+  const [viewPermission, tabPermission] = await Promise.all([
     loadPermGuard(ctx.org.id, "work.view_tabs"),
     loadPermGuard(ctx.org.id, "structure.tab_manage"),
-    loadPermGuard(ctx.org.id, "structure.preset_edit"),
   ]);
   // Existence hiding: a denied or unavailable view permission must not reveal board metadata.
   if (viewPermission.kind !== "allowed") notFound();
   const boards = getBoardsService().listBoards(ctx);
   const canManageTabs = tabPermission.kind === "allowed";
-  const canEditPresets = presetPermission.kind === "allowed";
 
   const system = boards.filter((b) => b.is_system);
   const user = boards.filter((b) => !b.is_system);
-
-  // 구조 팩(모아프리셋-정책자금1) 설치 여부 — 3보드 이름이 전부 있어야 설치된 것으로 본다.
-  const packInstalled = SEOUL_STRUCTURE_PACK.boards.every((packBoard) =>
-    boards.some((b) => b.name === packBoard.name),
-  );
-  const canInstall = isManager(ctx.role) && canEditPresets;
-  const installFlash = decodePackInstallFlash(
-    (await cookies()).get(PACK_INSTALL_FLASH_COOKIE)?.value,
-  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -89,7 +73,6 @@ export default async function BoardsPage({
           )}
         </h2>
         <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {canInstall && !packInstalled && <InstallPackButton flash={installFlash} />}
           {user.map((b) => (
             <li key={b.id}>
               <Link

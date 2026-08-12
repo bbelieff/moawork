@@ -1,7 +1,5 @@
 import type { Ctx } from "@/lib/types";
 import type { BoardsRepo } from "@/lib/boards/store";
-import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
-import { SEOUL_NEWCUST_BOARD } from "@/lib/structure-packs";
 
 export type NewcustEntryResolution =
   | { kind: "ready"; boardId: string }
@@ -15,13 +13,11 @@ export type NewcustEntryResolution =
  * 수행해야 하며, 마지막 방문 기록이나 query/cookie는 보드 권한·선택 근거로 쓰지 않는다.
  */
 export function resolveExistingNewcustBoard(
-  ctx: Ctx,
-  repo: BoardsRepo = getBoardsRepo(),
+  _ctx: Ctx,
+  _repo?: BoardsRepo,
 ): NewcustEntryResolution {
-  const existing = repo
-    .listBoards(ctx)
-    .filter((board) => board.name === SEOUL_NEWCUST_BOARD.name);
-
-  if (existing.length === 1) return { kind: "ready", boardId: existing[0].id };
-  return { kind: existing.length === 0 ? "missing" : "conflict" };
+  void _ctx;
+  void _repo;
+  // BBE-156: 먼데이 복제 보드는 제품 기본 진입 대상으로 더 이상 추론하지 않는다.
+  return { kind: "missing" };
 }

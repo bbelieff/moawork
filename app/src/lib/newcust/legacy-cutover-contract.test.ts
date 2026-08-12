@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SEOUL_NEWCUST_BOARD } from "@/lib/structure-packs";
+import { SEOUL_NEWCUST_BOARD } from "@/lib/migration/monday-mapping";
 import {
   LEGACY_CUTOVER_REQUIRED_CAPABILITIES,
   MONDAY_AUTOMATION_DISPOSITIONS,
