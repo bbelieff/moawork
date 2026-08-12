@@ -239,15 +239,21 @@ const CHAIN=[["BBE-140","관문","앱↔목업 검사"],["BBE-119","L1","조직�
  ["BBE-122","L2","권한"],["BBE-123","L3","필드 타입"],["BBE-108","L4","원장 모델"],
  ["BBE-117","F5","뷰 시스템"],["BBE-104","C1","자동화 엔진"],["BBE-124","C2","알림 3층"],
  ["BBE-112","C5","온보딩"]];
+/* 2026-08-12 재구축 — 목적은 하나다: «목업을 구현한다».
+   화면 3,176줄은 버리고 목업 기준으로 다시 그린다. DB 는 남긴다.
+   근거: docs/coordination/진단-2026-08-12.md · 설계도: docs/design/목업스터디-재구축설계_v1.md
+   ★ 여섯 개를 동시에 시작하지 않는다. 하나를 끝까지 관통시킨다. */
 const LAYERS=[
- ["바닥층","먼저. 병렬 금지 — 공통 바닥을 여러 세션이 각자 다르게 만드는 게 지금까지의 실패 패턴이었다.",
-  ["BBE-119","BBE-122","BBE-123","BBE-106","BBE-107","BBE-108","BBE-125"]],
- ["기능층","바닥층 후 탭별 병렬. 바닥이 굳기 전에 시작하면 다시 만든다.",
-  ["BBE-14","BBE-16","BBE-18","BBE-117","BBE-118","BBE-103","BBE-116","BBE-126","BBE-110","BBE-105"]],
- ["연결층","자동화·알림·외부 연동·마이그레이션·온보딩. 밖과 잇는다.",
-  ["BBE-104","BBE-20","BBE-124","BBE-114","BBE-115","BBE-109","BBE-112","BBE-113","BBE-111"]],
- ["운영층","배포·검색·정산·어드민·QA.",
-  ["BBE-9","BBE-22","BBE-19","BBE-13","BBE-89","BBE-92","BBE-23","BBE-30","BBE-102","BBE-127","BBE-131"]]];
+ ["0 · 바닥","목업의 «출처 · 자동이동 · 읽기전용 · 고정열» 을 저장할 자리를 만든다. 이게 없으면 아무것도 못 얹는다.",
+  ["BBE-146","BBE-141"]],
+ ["1 · 틀","목업은 «탭 6개 한 화면» 인데 앱은 «주소 25개» 다. 틀을 먼저 세운다. 나머지가 여기 얹힌다.",
+  ["BBE-142","BBE-103"]],
+ ["2 · ★한 탭 관통","신규리드 하나를 목업대로 끝까지. 이게 되면 나머지 5탭은 복제다. 안 되면 나머지도 안 된다.",
+  ["BBE-145","BBE-148"]],
+ ["3 · 재는 자","앱이 목업과 같은지 «앱을 읽어» 검사한다. 차이를 카드로 쪼갠다.",
+  ["BBE-140","BBE-144","BBE-131","BBE-23"]],
+ ["대기 · 재구축 밖","목업 구현과 직결되지 않는다. 2번이 끝난 뒤 다시 본다.",
+  ["BBE-16","BBE-19","BBE-30","BBE-117","BBE-110","BBE-105","BBE-125","BBE-127","BBE-92","BBE-139"]]];
 /* 편제 2026-08-12 — 40칸 → 4반 × 5칸.  정본: docs/coordination/배정판.md
    칸에 «카드» 를 못 박지 않는다. 칸은 «소유 영역» 이고 카드는 그 위를 흐른다.
    옛 판은 칸=카드로 굳어 있어서, 같은 카드를 두 진영에 줘도 판이 알려주지 못했다(중복 8건). */
@@ -388,8 +394,8 @@ async function load(){
   "여기 쌓이면 만든 것이 배포되지 않는다."]);
  if(noStamp.length)out.push(["grey","🔍","도장 없이 진행 중",noStamp.length,
   noStamp.map(f=>`<li><b>${esc(f.id)}</b> ${esc(f.what)} <span style="color:var(--mute)">— ${esc(f.slot)}</span></li>`).join(""),
-  "Linear 담당자 칸은 belie 계정 하나뿐이라 도장 서명이 유일한 기명 수단이다. 접수 도장이 없으면 누가 언제 잡았는지 추적할 수 없다(BBE-73 §5 적발 대상)."]);
- if(stale.length)out.push(["grey","🕰","48시간 넘게 안 움직임",stale.length,
+  "Linear 담당자 칸은 belie 계정 하나뿐이라 도장 서명이 유일한 기명 수단이다. 착수 도장이 없으면 누가 언제 잡았는지 추적할 수 없다. Linear 를 직접 못 쓰는 세션은 자기 반 총괄에게 넘긴다 — 기록 생략은 없다(AGENTS.md §9.5)."]);
+ if(stale.length)out.push(["grey","🕰","24시간 넘게 안 움직임",stale.length,
   stale.map(f=>`<li><b>${esc(f.id)}</b> ${esc(f.what)} <span style="color:var(--mute)">— ${esc(f.slot)} · ${ago(by[f.id].updatedAt)}</span></li>`).join(""),
   "세션이 살아 있는지 확인하고, 응답 없으면 카드를 회수해 넘긴다."]);
  document.getElementById("blocked").innerHTML = out.length
@@ -441,28 +447,44 @@ async function load(){
  document.getElementById("slots").innerHTML=g;
 
  /* ── 세션마다 «지금 무엇을 해야 하나»를 규칙으로 정한다 ── */
+ /* 2026-08-12 개정 — AGENTS.md 8/12판에 맞춘다.
+    바뀐 것: 완료의 정의(화면 확인 필수) · 반납(blocked:) · 라벨이 곧 배정 · 반장은 코드 금지 */
  function nextFor(f){
   const c=f.id?by[f.id]:null;
-  if(!f.id) return {tag:"유휴",urgent:false,todo:
-   "지금 잡은 카드가 없다. 반장에게 배정을 요청하거나, Linear 에서 Todo·Backlog 중 아무도 안 잡은 카드를 하나 가져간다.",why:"빈 슬롯"};
-  if(!c) return {tag:"확인",urgent:true,todo:`카드 ${f.id} 를 Linear 에서 찾을 수 없다. 카드번호가 맞는지 확인한다.`,why:"카드 조회 실패"};
+  const isLead = f.i===0;                      /* 각 반의 0번 칸 = 반장 */
+  const blocked = (c?.labels||[]).find(l=>String(l).startsWith("blocked:"));
+
+  if(isLead) return {tag:"반장",urgent:false,why:"01 칸",
+   todo:"반장 겸 검수자다. 코드를 만들지 않는다(§5) — 만들면 검수가 멈춘다.\n짝 진영의 PR 을 «원격에서 받아서» 검수한다:  git fetch origin && git checkout <PR head SHA>\n자기 폴더로 검수하지 마라. 자기가 approve 하지 마라 — 판정과 근거만 낸다."};
+
+  if(!f.id) return {tag:"유휴",urgent:false,why:"라벨 없음",
+   todo:"잡은 카드가 없다. 배정판에서 네 반의 다음 착수 가능 카드를 «스스로» 집는다(§8.2).\n★ 라벨이 곧 배정이다. 라벨 없는 카드는 착수 금지 — 총괄에게 라벨을 요청한다.\n집을 게 없으면 «대기» 도장을 남긴다: 사유 · 재개 조건 · 확인 주체 · 무엇이 있으면 일할 수 있는가."};
+
+  if(!c) return {tag:"확인",urgent:true,why:"카드 조회 실패",
+   todo:`카드 ${f.id} 를 Linear 에서 찾을 수 없다. 카드번호와 라벨을 확인한다.`};
+
   const st=c.status, h=hrs(c.updatedAt);
-  if(DONE.includes(st)) return {tag:"유휴",urgent:false,
-   todo:"이 카드는 끝났다. worklog 에 [BEAT] 상태: 유휴 를 남기고 다음 배정을 받는다.",why:"완주"};
-  if(c.priority?.name==="Urgent") return {tag:"관문",urgent:true,
-   todo:"이건 관문이다. 다른 일보다 먼저 끝낸다. 막혀 있으면 무엇 때문인지 카드 코멘트에 적고 반장을 호출한다.",why:"Urgent"};
-  if(st==="In Review") return {tag:"검수대기",urgent:true,
-   todo:"검수자 응답을 기다리는 중이다. 24시간 넘게 답이 없으면 검수자 슬롯이 살아 있는지 확인하고, 없으면 다른 세션에 재배정을 요청한다.",why:"In Review"};
-  if(!f.stamp) return {tag:"도장없음",urgent:true,
-   todo:`진행 중으로 표시돼 있는데 접수 도장이 없다. 지금 바로 카드에 접수 도장을 남긴다:\n접수 — <세션명> · <날짜 시각>\n브랜치: <feat/xxx> · base SHA: <sha>\n착수 범위: <한 줄>`,
-   why:"BBE-73 §5 적발 대상"};
-  if(h>=48) return {tag:"정체",urgent:true,
-   todo:`${Math.floor(h/24)}일째 카드가 안 움직인다. 살아 있으면 [BEAT] 로 진척을 남기고, 막혔으면 무엇 때문인지·무엇이 필요한지 적는다. 응답이 없으면 카드를 회수한다.`,
-   why:"48시간 초과"};
-  if(["Todo","Backlog"].includes(st)) return {tag:"착수",urgent:false,
-   todo:"아직 착수 전이다. 착수 절차대로 목업을 글로 읽고, 결정대장에서 자기 항목을 찾고, 리스를 좁게 선언한 뒤 접수 도장을 남긴다.",why:st};
-  return {tag:"진행",urgent:false,
-   todo:"진행 중이다. 30분마다 [BEAT] 를 남기고, 게이트(check.sh · CI)를 통과하면 PR 을 올려 검수를 요청한다.",why:"In Progress"};
+
+  if(blocked) return {tag:"반납",urgent:true,why:String(blocked),
+   todo:`이 카드는 «${blocked}» 에 막혀 반납된 상태다.\n막는 쪽이 풀렸는지 총괄이 확인해 재배정한다. 세션이 안고 기다리지 않는다(§8.2).\n★ 막는 쪽이 완주하면 그쪽이 «해제» 를 알려야 한다(§8.3). 안 알리면 이 카드는 계속 서 있다.`};
+
+  if(DONE.includes(st)) return {tag:"완주",urgent:false,why:"완주",
+   todo:"끝났다. 멈추지 말고 다음을 해라(§8.3):\n① blocked:<내 약칭> 라벨이 붙은 카드가 있는지 찾는다 — 있으면 총괄에게 «해제» 를 알린다\n② 배정판에서 내 반의 다음 착수 가능 카드를 집는다\n③ 없으면 «무엇이 있으면 일할 수 있는가» 를 적은 대기 도장을 남긴다"};
+
+  if(st==="In Review") return {tag:"검수대기",urgent:true,why:"In Review",
+   todo:"검수 요청을 남기고 «다른 카드로 넘어가라»(§8.2). 안고 기다리지 마라.\n60분 무응답이면 같은 기기의 다른 유휴 세션으로 재배차하고,\n도장에 「지정 검수자 무응답 60분 → 보조 검수 <세션명>」을 남긴다."};
+
+  if(!f.stamp) return {tag:"도장없음",urgent:true,why:"BBE-94 미기록",
+   todo:"진행 중인데 착수 도장이 없다. 지금 BBE-94 에 남긴다:\n착수 — [모아워크 DC 03] · 카드 · 브랜치 · base SHA · 리스 · 착수범위\nLinear 를 직접 못 쓰면 네 반 총괄에게 넘겨라. 기록 생략은 없다."};
+
+  if(h>=24) return {tag:"정체",urgent:true,why:`${Math.floor(h/24)}일 무변동`,
+   todo:`${Math.floor(h/24)}일째 안 움직인다. 살아 있으면 진척을 남기고,\n막혔으면 §8.2 대로 «반납» 해라 — 라벨을 떼고 blocked:<막는 세션 약칭> 을 붙인다.\n★ 도장에 «누가» 를 이름으로 적어라 — 「[모아워크 DC 05] 가 진행 중인 PR #141」\n★ 「나는 무엇으로 넘어간다」가 없으면 그건 반납이 아니라 정지다.`};
+
+  if(["Todo","Backlog"].includes(st)) return {tag:"착수",urgent:c.priority?.name==="Urgent",why:st,
+   todo:"착수 전이다. 순서대로:\n① 카드에 내 라벨이 붙었는지 확인\n② node docs/design/dump-mockup.mjs [탭]  ← 목업을 글로 읽는다\n③ node docs/design/qa-app.mjs  ← 착수 전 차이 숫자를 기록\n④ 최신 origin/main 위 전용 worktree → BBE-94 에 착수 도장"};
+
+  return {tag:"진행",urgent:false,why:"In Progress",
+   todo:"진행 중이다. 완주 = 코드 + 테스트 + CI + «그 화면을 열어 눈으로 본 증거»(§3).\n★ 「목업 86/86 PASS」를 완주 근거로 쓰지 마라 — 앱을 증명하지 않는다.\n★ 화면이 없는 카드는 완주가 아니라 «부품 납품» 이다 — 어느 화면이 쓰는지 후속 카드를 남긴다.\nC 진영은 1440px·375px 스크린샷을 직접 찍는다. G 진영은 MWC 에 클릭스루를 의뢰한다."};
  }
 
  /* 슬롯표 */
@@ -505,16 +527,28 @@ async function load(){
    `## 다음에 할 일`,
    nx.todo,
    ``,
-   `## 규칙 (BBE-73)`,
-   `- 카드를 건드렸으면 자기 이름으로 도장을 남긴다. 무기명 변경 금지.`,
-   `- Linear 담당자 칸은 belie 계정 하나뿐이라 «코멘트 서명»이 유일한 기명 수단이다.`,
-   `- 도장을 안 찍으면 그 일은 대시보드에 존재하지 않는다. 아무리 일해도 «멈춰 있음»으로 보인다.`,
-   `- 상태 전환은 작업자가 직접 한다. 관제가 대신 찍지 않는다.`,
+   `## 규칙 (AGENTS.md 2026-08-12판)`,
+   `- 배정 = Linear 라벨. 라벨 없는 카드는 착수 금지 (§4)`,
+   `- 완주 = 코드 + 테스트 + CI + «그 화면을 열어 눈으로 본 증거» (§3)`,
+   `- 「목업 86/86 PASS」를 완주 근거로 쓰지 마라 — 목업 자기검사이지 앱을 증명하지 않는다`,
+   `- 막히면 기다리지 말고 «반납» 한다 — 라벨을 떼고 blocked:<막는 세션 약칭> (§8.2)`,
+   `  도장에 «누가» 를 이름으로 적어라. 「나는 무엇으로 넘어간다」가 없으면 정지다`,
+   `- 검수는 «원격에서 받아서» 본다:  git fetch origin && git checkout <PR head SHA> (§5)`,
+   `- 반장(01)은 코드를 만들지 않는다. 만들면 검수가 멈춘다`,
+   `- Linear 담당자 칸은 belie 계정 하나뿐이다. «코멘트 서명»이 유일한 기명 수단이다`,
+   ``,
+   `## 지금 목적 — 목업을 구현한다`,
+   `화면 3,176줄은 버리고 목업 기준으로 다시 그린다. DB 는 남긴다.`,
+   `순서: BBE-146 DB 바닥 → BBE-142 앱 셸 6탭 → ★BBE-145 신규리드 한 탭 관통 → 나머지 5탭 복제`,
+   `여섯 개를 동시에 시작하지 않는다. 하나를 끝까지 관통시킨다.`,
    ``,
    `## 착수 전 정본`,
-   `node docs/design/dump-mockup.mjs [탭]   ← 목업을 «글»로 읽는다 (file:// 금지)`,
-   `node docs/design/qa-mockup.mjs          ← 86개 전부 통과여야 한다`,
-   `docs/handoff/결정대장.md                 ← 자기 항목을 D번호로 찾는다`
+   `AGENTS.md                                ← 정본. 2026-08-12 전면 개정`,
+   `docs/design/목업스터디-재구축설계_v1.md    ← 재구축 설계도 · D76~D79`,
+   `docs/coordination/배정판.md               ← 칸별 소유`,
+   `node docs/design/dump-mockup.mjs [탭]     ← 목업을 «글»로 읽는다 (file:// 금지)`,
+   `node docs/design/qa-app.mjs               ← 앱↔목업 차이. 착수 전 숫자를 기록한다`,
+   `docs/handoff/결정대장.md                   ← 자기 항목을 D번호로 찾는다`
   ].join("\n");
  }
  async function copy(txt,btn){
