@@ -23,6 +23,18 @@ begin
     return new;
   end if;
 
+  -- 새 담당자가 그 딜의 «조직 멤버» 인지 확인한다.
+  -- deals.assigned_to 는 users(id) 참조일 뿐 조직 제약이 없어서, 타 조직 user_id 가
+  -- 들어오면 그 사람 앞으로 고아 notifications 행이 생긴다(019 의 select 정책이
+  -- 읽기는 막으므로 유출은 없지만 행은 남는다). 아래 두 함수(mention_org_members ·
+  -- request_deal_followup)는 이미 같은 검증을 하고 있다 — 여기만 빠져 있었다.
+  if not exists (
+    select 1 from org_members m
+     where m.org_id = new.org_id and m.user_id = new.assigned_to
+  ) then
+    return new;
+  end if;
+
   insert into notifications (org_id, user_id, type, title, body, target_type, target_id, actor_id, is_action)
   values (
     new.org_id,

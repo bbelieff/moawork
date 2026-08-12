@@ -142,6 +142,39 @@ append-only 는 «내용 삭제 금지» 이지 «과거 실수의 흔적을 지
 
 — [모아워크 DC 04]
 
+## [모아워크 DC 05] 2026-08-12 — BBE-16 재기동: 재번호 060 · 1단 검수 FAIL 3건 중 2건 수정
+
+- **rebase**: `origin/main` = `7733876` 위로 rebase 완료. 충돌은 `docs/worklog.md` **한 파일뿐**
+  (코드·마이그레이션 충돌 0). 양쪽 기록 모두 보존해 해소.
+- **마이그레이션 재번호 043 → 060**: main 최신이 058 이고 PR #166(DC-02)이 **059 를 이미 갖고 있어**
+  §9.1 «머지 직전 최신+1» 을 060 으로 확정. (배정서는 #166 을 058 이라 했으나 실측은 059 — 정정)
+  이전 035→043 재번호 때 놓친 `app_meta.schema_version` 값 `'035'` → `'060'` 도 바로잡음.
+  참조 갱신 3곳: `lib/deal/notify.ts` · `components/deal/detail/DealAssignee.tsx` · `lib/deal/members.ts`.
+- **1단 서브에이전트 자체 검수 실시** (docs/playbooks/subagent-review.md). 부모 결론 미주입.
+  판정 = **2단 승격 필요** + 자체 FAIL 3건. 그중 **내 리스 안 2건을 이 커밋에서 수정**:
+  - ★ **담당자 재배정 무음 실패** — 화면 게이트 `canEdit` 이 «본인이 담당자» 까지 열어 주는데
+    저장 계층(`localRepo`·`supabaseCrmSource`)은 `canSeeAll(ctx)` 가 아니면 `assigned_to` 를
+    **예외 없이 조용히 버린다**. 그래서 담당 멤버는 바꿔도 새로고침하면 되돌아가고 안내가 없었다.
+    → `lib/deal/permissions.ts` 의 `canReassignDeal()` 로 저장 계층과 같은 규칙을 한 곳에 못 박고
+      `permissions.test.ts` 5건으로 고정(저장 계층이 실제로 값을 버리는 것까지 테스트로 증명).
+  - **`notify_deal_assigned` 트리거 조직 경계 미검증** — 새 담당자가 그 org 멤버인지 확인하지 않아
+    타 조직 user_id 배정 시 고아 notifications 행이 생겼다. 같은 파일의 다른 두 함수는 이미
+    검증하고 있었다 → 트리거에도 `org_members` 확인 추가.
+- **남긴 FAIL 1건(리스 밖 — 손대지 않음)**: `lib/notify/messages.ts` 의 `deepLink` 가
+  `target_type='deal'` 을 `/policyfund?focus=<id>` 로 보낸다. 060 이 발행하는 알림 3종
+  (assigned·mention·requested)이 전부 이 PR 이 만든 `/deals/[dealId]` 가 아니라 보드 목록에 떨어진다.
+  `app/src/lib/notify/**` 는 DC-05 리스 밖이라 후속 카드로 넘긴다.
+- **검증**: `bash scripts/check.sh` **초록**(qa-app 175 DIFF 는 1단계 보고 전용, 이 PR 소산 아님) ·
+  `qa-mockup.mjs` 86/86 · `permissions.test.ts` 5/5.
+- **화면 확인**: `(app)` 라우트 그룹이 로컬에서 뜨지 않는다 —
+  `lib/auth/workspace-entry-server.ts:90` 의 `loadWorkspaceRoutingSnapshot()` 이
+  `hasSupabaseEnv()` 가드 없이 `createClient()` 를 불러 500. `getSessionOrNull()` 은 가드가 있는데
+  여기만 없다. **DC-05 리스 밖(DC-02·BBE-139 영역)이라 고치지 않았다.**
+  대신 BBE-16 컴포넌트 4종을 셸 밖 임시 라우트에서 렌더해 1440px·375px 실측
+  (가로 오버플로 0 · 되돌려보내기 버튼 · 병합 타임라인 · 멘션 강조 · 수정이력 · 서명 URL 확인).
+  임시 라우트는 커밋 전 삭제. **래스터 스크린샷은 브라우저 패널 미표시로 NOT_RUN.**
+- 리스: 변경 없음. 이어받을 것: 2단 검수(NG-01 — 마이그레이션·권한) · deepLink 후속 카드.
+
 ## 2026-08-11 — 노트북 CT04 · BBE-16 rebase + 마이그레이션 재번호 + 목업 정본 재확인
 
 [접수 갱신 · 모아워크 노트북 CT04(260811)/claude] — MWC 관제 지시(CT03/CT04 관문통과) 대응

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { getCrmService, NotFoundError } from "@/lib/crm";
 import { getRepo } from "@/lib/repo";
+import { canReassignDeal } from "@/lib/deal/permissions";
 import { DealInfoTab } from "@/components/deal/DealInfoTab";
 import { DealTimeline } from "@/components/deal/detail/DealTimeline";
 import { DealAssignee } from "@/components/deal/detail/DealAssignee";
@@ -78,6 +79,13 @@ export default async function DealDetailPage({
     ctx.scope === "all" ||
     deal.assigned_to === ctx.user.id;
 
+  // ★ 재배정만은 «본인 담당» 으로 열어 주면 안 된다.
+  // 저장 계층(localRepo·supabaseCrmSource)이 `canSeeAll(ctx)` 가 아니면 assigned_to 를
+  // 조용히 버린다(권한 상승 방지). canEdit 을 그대로 쓰면 담당 멤버에게 셀렉트가 열린 채
+  // 바꿔도 새로고침하면 되돌아가고 안내도 없다 — 무음 실패다.
+  // 그래서 화면 게이트를 저장 계층 규칙과 «같은 조건» 으로 맞춘다(permissions.test.ts 가 고정).
+  const canReassign = canReassignDeal(ctx);
+
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
@@ -139,7 +147,7 @@ export default async function DealDetailPage({
             dealId={deal.id}
             currentAssigneeId={deal.assigned_to}
             members={members}
-            disabled={!canEdit}
+            disabled={!canReassign}
           />
           <DealFollowupRequest dealId={deal.id} />
         </div>
