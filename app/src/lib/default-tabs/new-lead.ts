@@ -49,6 +49,7 @@
 import type { FieldOption } from "@/lib/types";
 import { CANONICAL_REGIONS } from "@/lib/structure-packs/region-options";
 import type { DefaultTab, DefaultTabColumn } from "./types";
+import { NEWCUST_BOARD_SOURCE } from "@/lib/newcust/entry";
 
 /** 목업 색을 그대로 옮긴다. 새 hex 를 만들지 않는다. */
 const GREY = "#c4c4c4";
@@ -244,6 +245,7 @@ const COLUMNS: DefaultTabColumn[] = [
 
 export const NEW_LEAD_TAB: DefaultTab = {
   key: "new",
+  source: NEWCUST_BOARD_SOURCE,
   name: "신규리드 관리",
   icon: "💡",
   description: "새로 들어온 리드를 상담 상황에 따라 자동으로 분류한다",

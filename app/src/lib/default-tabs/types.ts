@@ -75,6 +75,8 @@ export interface DefaultTabTransition {
 export interface DefaultTab {
   /** 목업 탭 key(`new`·`contact`·`work`·`notice`)와 같다 — 대조의 기준. */
   key: string;
+  /** Stable product identity stored in boards.source. Names remain user-editable. */
+  source: string;
   name: string;
   icon: string;
   description: string;

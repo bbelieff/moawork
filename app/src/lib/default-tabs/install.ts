@@ -47,36 +47,37 @@ export interface EnsuredTab {
  *   그 컬럼은 003 에 있고 채우는 경로가 `NewBoard` 계약에 없다 — 포트 확장은 DG 소유라
  *   여기서 바꾸지 않는다. 생성 시 1회 호출이라 실사용에서는 부딪히지 않는다. 후속 과제로 남긴다.
  */
-export function ensureDefaultTab(
+export async function ensureDefaultTab(
   ctx: Ctx,
   tab: DefaultTab,
   repo: BoardsRepo = getBoardsRepo(),
-): EnsuredTab {
-  const existing = repo.listBoards(ctx).find((board) => board.name === tab.name);
+): Promise<EnsuredTab> {
+  const existing = (await repo.listBoards(ctx)).find((board) => board.source === tab.source);
   if (existing) {
-    const groups = repo.listGroups(ctx, existing.id);
+    const groups = await repo.listGroups(ctx, existing.id);
     return {
       tabKey: tab.key,
       boardId: existing.id,
       created: false,
       groupIds: Object.fromEntries(groups.map((group) => [group.name, group.id])),
-      columnKeys: repo.listColumns(ctx, existing.id).map((column) => column.key),
+      columnKeys: (await repo.listColumns(ctx, existing.id)).map((column) => column.key),
     };
   }
 
-  const board = repo.createBoard(ctx, {
+  const board = await repo.createBoard(ctx, {
     name: tab.name,
     description: tab.description,
     icon: tab.icon,
+    source: tab.source,
   });
 
   // 그룹 먼저 — 이동 규칙이 group id 를 가리켜야 하기 때문이다.
   const groupIds: Record<string, string> = {};
   for (const group of tab.groups) {
-    groupIds[group.name] = repo.createGroup(ctx, board.id, {
+    groupIds[group.name] = (await repo.createGroup(ctx, board.id, {
       name: group.name,
       color: group.color,
-    }).id;
+    })).id;
   }
 
   const columnKeys: string[] = [];
@@ -92,7 +93,7 @@ export function ensureDefaultTab(
       readOnly: column.readOnly ?? false,
       moveRule: resolveMoveRule(column.moveTo, groupIds, tab, column.label),
     };
-    columnKeys.push(repo.createColumn(ctx, board.id, input).key);
+    columnKeys.push((await repo.createColumn(ctx, board.id, input)).key);
   }
 
   return { tabKey: tab.key, boardId: board.id, created: true, groupIds, columnKeys };
@@ -126,9 +127,9 @@ function resolveMoveRule(
 }
 
 /** 워크스페이스 생성 시 1회 호출. 이미 있는 탭은 건너뛴다. */
-export function ensureDefaultTabs(
+export async function ensureDefaultTabs(
   ctx: Ctx,
   repo: BoardsRepo = getBoardsRepo(),
-): EnsuredTab[] {
-  return DEFAULT_TABS.map((tab) => ensureDefaultTab(ctx, tab, repo));
+): Promise<EnsuredTab[]> {
+  return Promise.all(DEFAULT_TABS.map((tab) => ensureDefaultTab(ctx, tab, repo)));
 }
