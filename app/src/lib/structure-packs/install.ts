@@ -11,7 +11,6 @@ import type { Ctx } from "@/lib/types";
 import type { BoardsRepo } from "@/lib/boards/store";
 import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { getRepo } from "@/lib/repo";
-import { SEOUL_STRUCTURE_PACK } from "./seoul-pack";
 import type { DeferredColumn, PackBoard, PackColumn, SectionPreset, StructurePack } from "./types";
 
 /** 담당자별 그룹(`assigneeSlot`)을 채우는 데 필요한 최소 정보. */
@@ -133,12 +132,12 @@ export function installStructurePack(
   ctx: Ctx,
   options: {
     repo?: BoardsRepo;
-    pack?: StructurePack;
+    pack: StructurePack;
     assignees?: AssigneeMember[];
-  } = {},
+  },
 ): InstallResult {
   const repo = options.repo ?? getBoardsRepo();
-  const pack = options.pack ?? SEOUL_STRUCTURE_PACK;
+  const pack = options.pack;
   const assignees = options.assignees ?? resolveAssignees(ctx);
 
   const boards: InstalledBoard[] = [];

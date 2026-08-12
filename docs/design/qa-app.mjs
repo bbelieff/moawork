@@ -6,17 +6,12 @@
  * `scripts/check.sh`는 1단계에서 그 코드를 보고만 하고 실패로 바꾸지 않는다.
  */
 
-import fs from "node:fs";
-import path from "node:path";
-import { createRequire } from "node:module";
 import { extractMockupContract, validateMockupContractApi } from "./dump-mockup.mjs";
-
-const require = createRequire(import.meta.url);
-const root = path.resolve(import.meta.dirname, "../..");
-const packEntry = path.join(root, "app", "src", "lib", "structure-packs", "seoul-pack.ts");
 
 /** 목업 탭과 앱의 구조 팩 보드 slug. 공지사항은 현재 팩이 없어 목업 전용 차이로 남긴다. */
 const PACK_BY_TAB = { new: "newcust", contact: "contact", work: "work" };
+/** BBE-156: 제품 기본 구조 팩은 현재 없다. 먼데이 이관 사전은 앱 구조로 세지 않는다. */
+const PRODUCT_STRUCTURE_PACK = { boards: [], optionSets: {} };
 
 const APP_TYPE_TO_MOCKUP_TYPES = {
   text: ["text"],
@@ -35,6 +30,7 @@ const APP_TYPE_TO_MOCKUP_TYPES = {
   url: ["link"],
 };
 
+/* BBE-156 removed the TypeScript mapping loader from this runtime gate.
 function loadTypeScriptModule(entryPath) {
   let ts;
   try {
@@ -71,6 +67,7 @@ function loadTypeScriptModule(entryPath) {
   }
   return load(entryPath);
 }
+*/
 
 function appOptionLabels(column, optionSets) {
   const options = column.options ?? optionSets[column.optionRef] ?? [];
@@ -169,10 +166,6 @@ function compareTab(mockTab, packBoard, optionSets) {
 
 function main() {
   const mockup = extractMockupContract();
-  const { SEOUL_STRUCTURE_PACK } = loadTypeScriptModule(packEntry);
-  if (!SEOUL_STRUCTURE_PACK?.boards || !SEOUL_STRUCTURE_PACK?.optionSets) {
-    throw new Error("구조 팩을 읽지 못했습니다: SEOUL_STRUCTURE_PACK 계약이 없습니다.");
-  }
 
   console.log("═".repeat(72));
   console.log("모아워크 앱 ↔ 목업 구조 대조 (BBE-140 · 보고 전용)");
@@ -183,12 +176,12 @@ function main() {
   const consumedSlugs = new Set();
   for (const mockTab of mockup.tabs) {
     const slug = PACK_BY_TAB[mockTab.key];
-    const board = slug ? SEOUL_STRUCTURE_PACK.boards.find((candidate) => candidate.slug === slug) : null;
+    const board = slug ? PRODUCT_STRUCTURE_PACK.boards.find((candidate) => candidate.slug === slug) : null;
     if (slug) consumedSlugs.add(slug);
-    differences += compareTab(mockTab, board, SEOUL_STRUCTURE_PACK.optionSets);
+    differences += compareTab(mockTab, board, PRODUCT_STRUCTURE_PACK.optionSets);
   }
 
-  const appOnlyBoards = SEOUL_STRUCTURE_PACK.boards.filter((board) => !consumedSlugs.has(board.slug));
+  const appOnlyBoards = PRODUCT_STRUCTURE_PACK.boards.filter((board) => !consumedSlugs.has(board.slug));
   differences += list("\n목업에 대응 탭이 없는 앱 보드", appOnlyBoards.map((board) => board.slug));
   console.log(`\n차이 합계: ${differences}개`);
   console.log(differences ? "판정: DIFF (1단계 보고 전용)" : "판정: MATCH");

@@ -1,4 +1,4 @@
-import { SEOUL_NEWCUST_BOARD } from "@/lib/structure-packs";
+import { SEOUL_NEWCUST_BOARD } from "@/lib/migration/monday-mapping";
 
 export const LEGACY_CUTOVER_REQUIRED_CAPABILITIES = [
   "stable_legacy_key",

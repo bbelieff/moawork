@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
-import { installStructurePack } from "@/lib/structure-packs";
 import type { Ctx, MemberRole, MemberScope, User } from "@/lib/types";
+import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { judgeQuest, type QuestDef } from "./quests";
 
 export type QuestState = QuestDef & { completed: boolean };
@@ -21,6 +20,11 @@ function practiceCtx(orgId: string, user: User): Ctx {
 }
 
 /**
+ * BBE-156 계약: 연습 회사는 고객 전용 먼데이 구조를 제품 기본값으로 설치하지 않는다.
+ * 새 회사와 같은 빈 제품 상태를 유지한다.
+ */
+
+/**
  * 연습 회사를 확보하고(없으면 생성) 구조 팩까지 설치한다 — 처음 진입해도 클릭할
  * 구조가 바로 보여야 한다(카드 지시 "연습 회사도 개정된 목업과 같은 화면이어야 한다").
  * 실명·업체명은 심지 않는다 — `installStructurePack` 은 구조(보드·그룹·컬럼)만 만들고
@@ -30,21 +34,16 @@ function practiceCtx(orgId: string, user: User): Ctx {
  * 연습 회사도 조직 하나이므로 잘못 실패해서 화면이 열리면 안 된다.
  */
 export async function ensurePracticeWorkspace(
-  user: User,
+  _user: User,
 ): Promise<{ ok: true; orgId: string } | { ok: false }> {
+  void _user;
   try {
     const supabase = await createClient();
     const { data, error } = await supabase.rpc("ensure_my_practice_workspace");
     if (error || typeof data !== "string") {
       return { ok: false };
     }
-    const orgId = data;
-    try {
-      installStructurePack(practiceCtx(orgId, user), { repo: getBoardsRepo() });
-    } catch {
-      // 구조 설치 실패는 연습 회사 확보 자체를 무효화하지 않는다 — 재시도 가능한 후속 조작이다.
-    }
-    return { ok: true, orgId };
+    return { ok: true, orgId: data };
   } catch {
     return { ok: false };
   }

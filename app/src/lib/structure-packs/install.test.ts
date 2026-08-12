@@ -4,14 +4,19 @@ import { resetDb } from "@/lib/repo/local/store";
 import { SEED_ORG_ID, SEED_USER_OWNER } from "@/lib/repo/local/seed";
 import { BoardsService } from "@/lib/boards";
 import type { Ctx } from "@/lib/types";
-import { SEOUL_STRUCTURE_PACK } from "./seoul-pack";
+import { SEOUL_STRUCTURE_PACK } from "@/lib/migration/monday-mapping";
 import {
   assigneeGroupDisplayName,
   assigneeGroupIdForUser,
-  installStructurePack,
+  installStructurePack as installPack,
   type AssigneeMember,
 } from "./install";
-import type { PackBoard } from "./types";
+import type { PackBoard, StructurePack } from "./types";
+
+const installStructurePack = (
+  ctx: Ctx,
+  options: Omit<Parameters<typeof installPack>[1], "pack"> & { pack?: StructurePack } = {},
+) => installPack(ctx, { ...options, pack: options.pack ?? SEOUL_STRUCTURE_PACK });
 
 function owner(): Ctx {
   return {
