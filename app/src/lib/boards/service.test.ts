@@ -35,10 +35,13 @@ describe("보드 목록 — 시스템 + 사용자", () => {
   it("정책자금 파이프라인(시스템)과 사용자 보드가 함께 보인다", () => {
     const boards = svc.listBoards(owner);
     // 공지사항(core.notice)은 T04 가 003 보드 엔진 위에 얹은 시드 보드다.
+    // 「신규리드 관리」는 BBE-145 가 넣은 **기본 탭**이다(D76) — 설치가 아니라 기본값이라
+    // 시드 조직에도 처음부터 있다. `@/lib/default-tabs` 가 정의를 소유한다.
     expect(boards.map((b) => b.name)).toEqual([
       "정책자금 파이프라인",
       "업무 요청",
       "공지사항",
+      "신규리드 관리",
     ]);
     expect(boards[0].is_system).toBe(true);
     expect(boards[0].source).toBe("core.crm.pipeline");

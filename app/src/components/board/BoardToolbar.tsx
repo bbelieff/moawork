@@ -39,8 +39,14 @@ export function BoardToolbar({
   /** 담당자 선택지 — 헤더 탭과 같은 목록을 그대로 받는다(둘이 어긋나지 않게). */
   people: { value: string; label: string }[];
 }) {
+  // `status` 도 선택지 컬럼이다(BBE-145). BBE-123 이 타입 15종을 넣으면서 select 에서
+  // «상태»(버튼으로 바꾸는 단계값)를 분리했는데 이 필터 목록은 그때 같이 안 늘었다.
+  // 그래서 신규리드의 핵심 필터인 「상담 상황」·「컨택 이동」·「피드백 상황」이 전부
+  // 칩으로 뜨지 않았다 — 표에서는 StatusCell 로 잘 그리면서 필터에서만 빠져 있었다.
   const optionColumns = columns.filter(
-    (c) => (c.type === "select" || c.type === "multiselect") && c.options_jsonb?.options?.length,
+    (c) =>
+      (c.type === "select" || c.type === "multiselect" || c.type === "status") &&
+      c.options_jsonb?.options?.length,
   );
   const active = activeFilterCount(filters);
   const sortColumn = columns.find((c) => c.key === filters.sortKey);

@@ -1,5 +1,6 @@
 import type { Db } from "./store";
 import { MVP_ENABLED_FEATURES } from "@/lib/product";
+import { NEW_LEAD_TAB } from "@/lib/default-tabs/new-lead";
 
 // 로컬 개발용 시드 데이터. 고정 id 를 써서 ?as=member 스코프 데모 등이 재현 가능하게 한다.
 // 구성: 데모 조직 1개 · 사용자 3명(owner/admin/member) · 파이프라인 5단계 ·
@@ -18,6 +19,16 @@ export const SEED_BOARD_PIPELINE = "brd00000-0000-0000-0000-000000000001";
 export const SEED_BOARD_TASKS = "brd00000-0000-0000-0000-000000000002";
 // 공지사항 보드 (T04 · core.notice) — 003 보드 엔진 위에 저장, 전용 테이블 없음.
 export const SEED_BOARD_NOTICE = "brd00000-0000-0000-0000-000000000003";
+/** 기본 탭 «신규리드 관리» (BBE-145 · D76) — 구조는 `@/lib/default-tabs` 정의에서 생성한다. */
+export const SEED_BOARD_NEW_LEAD = "brd00000-0000-0000-0000-000000000004";
+
+/** 시드용 고정 id 생성기 — 재현 가능해야 하므로 randomUUID 를 쓰지 않는다. */
+function newLeadGroupId(index: number): string {
+  return `bgr00000-0000-0000-0000-00000000n${String(index + 1).padStart(3, "0")}`;
+}
+function newLeadColumnId(index: number): string {
+  return `bcl00000-0000-0000-0000-00000000n${String(index + 1).padStart(3, "0")}`;
+}
 
 export function seedDb(): Db {
   const users = [
@@ -186,12 +197,42 @@ export function seedDb(): Db {
       created_at: TS,
       updated_at: TS,
     },
+    {
+      // 기본 탭 «신규리드 관리» (BBE-145 · D76) — 새 워크스페이스에 처음부터 있는 탭.
+      // 시드에도 넣어 로컬 개발에서 바로 열어 볼 수 있게 한다. 구조 정의는 한 곳뿐이다
+      // (`@/lib/default-tabs/new-lead`) — 여기서 베껴 쓰지 않고 그것에서 생성한다.
+      id: SEED_BOARD_NEW_LEAD,
+      org_id: SEED_ORG_ID,
+      name: NEW_LEAD_TAB.name,
+      description: NEW_LEAD_TAB.description,
+      icon: NEW_LEAD_TAB.icon,
+      is_system: false,
+      source: null,
+      sort_order: 3,
+      created_by: SEED_USER_OWNER,
+      created_at: TS,
+      updated_at: TS,
+    },
   ];
 
   const boardGroups = [
     { id: "bgr00000-0000-0000-0000-000000000001", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, name: "이번 주", color: "#579bfc", sort_order: 0 },
     { id: "bgr00000-0000-0000-0000-000000000002", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, name: "다음 주", color: "#a25ddc", sort_order: 1 },
+    // 기본 탭 «신규리드» 의 아이템(그룹) 5개 — 목업 순서 그대로. 정의에서 생성한다.
+    ...NEW_LEAD_TAB.groups.map((group, index) => ({
+      id: newLeadGroupId(index),
+      org_id: SEED_ORG_ID,
+      board_id: SEED_BOARD_NEW_LEAD,
+      name: group.name,
+      color: group.color,
+      sort_order: index,
+    })),
   ];
+
+  /** 그룹 이름 → 시드 group id. 이동 규칙이 이걸로 해석된다. */
+  const newLeadGroupIdByName = new Map(
+    NEW_LEAD_TAB.groups.map((group, index) => [group.name, newLeadGroupId(index)]),
+  );
 
   const boardColumns = [
     {
@@ -324,6 +365,29 @@ export function seedDb(): Db {
       sort_order: 4,
       width: 120,
     },
+    // 기본 탭 «신규리드» 컬럼 22개 — 목업 순서 그대로. 정의에서 생성하므로 여기서 어긋날 수 없다.
+    ...NEW_LEAD_TAB.columns.map((column, index) => ({
+      id: newLeadColumnId(index),
+      org_id: SEED_ORG_ID,
+      board_id: SEED_BOARD_NEW_LEAD,
+      key: column.key,
+      label: column.label,
+      type: column.type,
+      source: column.source,
+      rightPinned: column.rightPinned ?? false,
+      options_jsonb: column.options ? { options: column.options } : null,
+      sort_order: index,
+      width: column.width ?? null,
+      is_readonly: column.readOnly ?? false,
+      move_rule_jsonb: column.moveTo
+        ? Object.fromEntries(
+            Object.entries(column.moveTo).map(([optionId, groupName]) => [
+              optionId,
+              newLeadGroupIdByName.get(groupName)!,
+            ]),
+          )
+        : null,
+    })),
   ];
 
   const boardItems = [
@@ -359,6 +423,55 @@ export function seedDb(): Db {
     { org_id: SEED_ORG_ID, item_id: noticeItems[2].id, column_key: "pinned", value_jsonb: false },
     { org_id: SEED_ORG_ID, item_id: noticeItems[2].id, column_key: "published_at", value_jsonb: "2026-07-20" },
     { org_id: SEED_ORG_ID, item_id: noticeItems[2].id, column_key: "author", value_jsonb: SEED_USER_ADMIN },
+  ];
+
+  /**
+   * 기본 탭 «신규리드» 데모 행 — 로컬 개발에서 표·자동이동·필터를 눈으로 보기 위한 것.
+   *
+   * ⚠ 업체명·사람 이름은 **전부 무의미한 자리표시자**다(D71~D75). 실제 고객 이름이 아니고,
+   *   제품 코드·프리셋·시드 어디에도 특정 회사의 고유값을 넣지 않는다.
+   *   각 행의 `상담 상황` 값은 자기가 담긴 그룹의 이동 규칙과 일치시켜 뒀다 —
+   *   그래야 «값을 바꾸면 옮겨간다» 를 눈으로 확인할 때 시작 상태가 모순이 아니다.
+   */
+  const newLeadItems = [
+    { id: "itm00000-0000-0000-0000-0000000000n1", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NEW_LEAD, group_id: newLeadGroupId(0), title: "가밸브 주식회사", assigned_to: SEED_USER_OWNER, sort_order: 0, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-0000000000n2", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NEW_LEAD, group_id: newLeadGroupId(0), title: "나물류 유한회사", assigned_to: SEED_USER_ADMIN, sort_order: 1, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-0000000000n3", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NEW_LEAD, group_id: newLeadGroupId(1), title: "다전자 주식회사", assigned_to: SEED_USER_MEMBER, sort_order: 2, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-0000000000n4", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NEW_LEAD, group_id: newLeadGroupId(2), title: "라건설 주식회사", assigned_to: SEED_USER_OWNER, sort_order: 3, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-0000000000n5", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NEW_LEAD, group_id: newLeadGroupId(4), title: "마포장 주식회사", assigned_to: SEED_USER_ADMIN, sort_order: 4, created_at: TS, updated_at: TS },
+  ];
+
+  const newLeadValues = [
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[0].id, column_key: "consult_status", value_jsonb: "상담 전" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[0].id, column_key: "contact_move", value_jsonb: "컨택 대기" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[0].id, column_key: "owner", value_jsonb: SEED_USER_OWNER },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[0].id, column_key: "applied_on", value_jsonb: "2026-08-03" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[0].id, column_key: "industry", value_jsonb: "제조업" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[0].id, column_key: "sido", value_jsonb: "경기" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[0].id, column_key: "biz_reg_type", value_jsonb: "법인" },
+
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[1].id, column_key: "consult_status", value_jsonb: "상담 전" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[1].id, column_key: "contact_move", value_jsonb: "컨택 대기" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[1].id, column_key: "owner", value_jsonb: SEED_USER_ADMIN },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[1].id, column_key: "industry", value_jsonb: "운수업" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[1].id, column_key: "sido", value_jsonb: "인천" },
+
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[2].id, column_key: "consult_status", value_jsonb: "1차 부재" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[2].id, column_key: "contact_move", value_jsonb: "컨택 대기" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[2].id, column_key: "owner", value_jsonb: SEED_USER_MEMBER },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[2].id, column_key: "industry", value_jsonb: "정보통신업" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[2].id, column_key: "sido", value_jsonb: "서울" },
+
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[3].id, column_key: "consult_status", value_jsonb: "2차 상담예약" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[3].id, column_key: "contact_move", value_jsonb: "컨택 대기" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[3].id, column_key: "owner", value_jsonb: SEED_USER_OWNER },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[3].id, column_key: "industry", value_jsonb: "건설업" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[3].id, column_key: "feedback_status", value_jsonb: "피드백 전" },
+
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[4].id, column_key: "consult_status", value_jsonb: "거절" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[4].id, column_key: "contact_move", value_jsonb: "거절" },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[4].id, column_key: "owner", value_jsonb: SEED_USER_ADMIN },
+    { org_id: SEED_ORG_ID, item_id: newLeadItems[4].id, column_key: "industry", value_jsonb: "도소매업" },
   ];
 
   const itemValues = [
@@ -425,8 +538,8 @@ export function seedDb(): Db {
     boards,
     boardGroups,
     boardColumns,
-    boardItems: [...boardItems, ...noticeItems],
-    itemValues: [...itemValues, ...noticeValues],
+    boardItems: [...boardItems, ...noticeItems, ...newLeadItems],
+    itemValues: [...itemValues, ...noticeValues, ...newLeadValues],
     boardViews: [],
   };
 }

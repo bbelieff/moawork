@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
 import type { WorkspaceRequestInput, WorkspaceRequestResult } from "./contracts";
 import type { WorkspaceEntryOption } from "@/lib/auth/workspace-entry-server";
 import { isCanonicalWorkspaceSlug } from "@/lib/auth/workspace-routing";
@@ -167,6 +168,10 @@ export async function readWorkspaceApprovals(
 }
 
 export async function loadWorkspaceApprovals(ownerOrgId?: string): Promise<WorkspaceApprovals> {
+  // env 없는 로컬 개발: createClient() 가 던져 (app) 레이아웃 전체가 500 이 된다.
+  // 승인 대기 건수는 Supabase 에만 있으므로 0 으로 본다 — ownerOrgId 가 없을 때와 같은 값이다.
+  // (자세한 사정은 `@/lib/auth/workspace-entry-server` 의 loadWorkspaceRoutingSnapshot 주석)
+  if (!hasSupabaseEnv()) return { pendingCount: 0 };
   return readWorkspaceApprovals(await createClient() as unknown as WorkspaceEntryRpcClient, ownerOrgId);
 }
 
@@ -242,6 +247,9 @@ export async function readWorkspaceEntryContext(
 }
 
 export async function loadWorkspaceEntryContext(ownerOrgId?: string): Promise<WorkspaceEntryContext> {
+  // env 없는 로컬 개발 — 위 loadWorkspaceApprovals 와 같은 이유. 이미 있는 "error" 를 쓴다
+  // («가입 요청 목록을 못 읽었다» 는 뜻이고 호출부가 이미 그 경우를 처리한다).
+  if (!hasSupabaseEnv()) return { kind: "error" };
   const supabase = await createClient();
   // 폴백 판정용 이메일. 실패해도 진행한다 — 이메일이 없으면 폴백만 건너뛴다.
   let actorEmail: string | null = null;
