@@ -114,4 +114,11 @@ describe("formatCell", () => {
     expect(formatCell("checkbox", true)).toBe("✓");
     expect(formatCell("checkbox", false)).toBe("");
   });
+  it("phone 은 하이픈 포맷 (BBE-138 — @/lib/format 소비)", () => {
+    expect(formatCell("phone", "01012345678")).toBe("010-1234-5678");
+    expect(formatCell("phone", "010-1234-5678")).toBe("010-1234-5678");
+  });
+  it("phone 판독 불가는 «확인 필요»", () => {
+    expect(formatCell("phone", "abc")).toBe("확인 필요");
+  });
 });

@@ -13,6 +13,10 @@
 
 import type { FieldOption, FieldType } from "@/lib/types";
 import { getFieldTypeSpec, validateValue } from "@/lib/custom/field-types";
+// `@/lib/format`(배럴)은 동명의 형제 파일 `lib/format.ts`(날짜 포맷 전용)에 가려 조용히
+// 엉뚱한 모듈로 리졸브된다(지금까지 이 배럴의 실제 소비자가 0곳이라 아무도 못 봤다) —
+// 파일을 직접 가리켜 우회한다.
+import { formatPhone } from "@/lib/format/phone";
 import type { CellValue } from "./types";
 
 /** 선택지를 갖는 타입. */
@@ -84,6 +88,7 @@ export function formatCell(
   if (isEmptyCell(value)) return "";
   if (type === "checkbox") return value ? "✓" : "";
   if (type === "money" && typeof value === "number") return value.toLocaleString("ko-KR");
+  if (type === "phone" && typeof value === "string") return formatPhone(value);
   if (hasOptions(type) && options) {
     const label = (id: string) => options.find((o) => o.id === id)?.label ?? id;
     if (Array.isArray(value)) return value.map(label).join(", ");
