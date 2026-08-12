@@ -21,7 +21,7 @@ import { APP_TABS } from "@/components/shell/app-tabs";
  * 고객 데이터가 아니다. 그래서 세션 조회 없이 정적 팩 정의를 그대로 읽는다.
  */
 
-/** 구조 팩 board.slug → app-tabs.ts 의 탭 key. 목업 표기 라벨을 그대로 쓰기 위한 다리. */
+/** 이관 매핑(BBE-154 A′ — 먼데이 복제분) board.slug → app-tabs.ts 의 탭 key. 목업 표기 라벨을 그대로 쓰기 위한 다리. */
 const BOARD_SLUG_TO_TAB_KEY: Record<string, string> = {
   newcust: "new",
   contact: "contact",
