@@ -2368,7 +2368,16 @@ append-only 규칙에 따라 위 기록은 그대로 두고 여기에 덧붙인�
 - hosted DB 적용·고객 데이터 조회·비밀값 조회는 0건이다.
 - 검증: node PGlite 2/2 PASS, 앱 focused 래퍼 1/1 PASS, 전체 `scripts/check.sh` PASS(app 1569 pass/9 skip, worker 85 pass, qa-app 보고용 diff 175). 앱 런타임 파일 변경이 없어 별도 production build는 불필요하다고 판정했다.
 
-## 2026-08-12 · BBE-145 신규리드 «한 탭» 관통 — 기본 탭 (DC-03)
+## 2026-08-12 · BBE-145 신규리드 «한 탭» 관통 — 기본 탭 (NC-03)
+
+> ⚠️ 세션명 정정 — 이 작업은 **[모아워크 NC 03]** 이 했다. 착수 시 배정서에 `DC-03` 으로
+> 잘못 적혀 있어 커밋·PR 초판·Linear 라벨이 전부 `DC-03` 으로 나갔다. belie 가 정정했다.
+> 검수 경로도 그에 따라 바뀐다 — **1단 NG-01 · 2단 DG-01 · 비상 DC-01**(AGENTS.md §5).
+>
+> ★ **다시 정정(같은 날 저녁) — 최종 확정은 DC-03 이다.** belie: *"내가 너 원격인지
+> 몰랐다. NC 는 따로 만들 것이니 너는 DC 03 으로 돌아가."* 위 두 문단은 그 사이의
+> 일시적 정정 기록이라 지우지 않고 남긴다(append-only). 검수 경로도 §5 DC 기준
+> (1단 DG-01 · 2단 NG-01 · 비상 NC-01)으로 되돌아갔다 — BBE-94 참고.
 
 - **base** `origin/main@7733876` · 브랜치 `worktree-bbe-145-newlead`
 - **착수 전 qa-app 차이 175개 / 완료 후 175개** (안 움직였다 — 이유는 아래 «측정» 항)
@@ -2442,14 +2451,19 @@ append-only 규칙에 따라 위 기록은 그대로 두고 여기에 덧붙인�
 ✉ 잠금 화면+서버 양쪽). BBE-123 이 같은 벽에서 택한 방식과 같다. **«눈으로 본 증거» 를
 대신하지 못한다 — 촬영 가능한 세션에 넘긴다.**
 
-### 리스 밖 접촉 3건 (검수자가 걷어내도 카드 본체는 산다)
+### 리스 밖 접촉 2건 (검수자가 걷어내도 카드 본체는 산다)
 
-- `lib/auth/workspace-entry-server.ts` · `lib/workspace-entry/server.ts` — env 없는 로컬에서
-  `createClient()` 가 던져 **(app) 아래 모든 화면이 500** 이었다. 이미 있는 반환값
-  (`unauthenticated`·`error`)으로 정상 저하시켰다. 프로덕션 영향 없음(env 가 항상 있다).
-  이것만으로 위 1번이 풀리지는 않는다 — 권한 게이트는 그대로다.
 - `components/board/GroupTable.tsx` · `BoardToolbar.tsx` — 위 «실동작 결함 2건».
 - `lib/boards/service.test.ts` — 시드 보드 목록 기대값에 「신규리드 관리」 추가(기본 탭이 늘었다).
+
+> **철회 1건 — env 가드 중복.** 처음엔 `lib/auth/workspace-entry-server.ts` ·
+> `lib/workspace-entry/server.ts` 에 `hasSupabaseEnv()` 가드를 넣었다(env 없는 로컬에서
+> `createClient()` 가 던져 (app) 아래 모든 화면이 500 이던 문제). 그런데 **PR #166(DC-02 ·
+> BBE-142)이 같은 두 파일에 같은 가드를 이미 넣어 뒀다** — `workspace-entry-server.ts:96`,
+> 전용 env-guard 테스트 2종 포함. 게다가 DG-01 이 #166 검수에서 그 4파일을 «리스 밖» 으로
+> 이미 지적한 상태다. 두 PR 이 같은 줄을 만들면 진단서가 지목한 중복 그 자체가 된다.
+> → **내 것을 걷어냈다.** 그 수정의 소유는 #166 이다. 내 카드는 그 가드 없이도 성립한다
+> (테스트가 `renderToStaticMarkup` 이라 (app) 레이아웃을 타지 않는다).
 
 ### NOT_RUN
 
