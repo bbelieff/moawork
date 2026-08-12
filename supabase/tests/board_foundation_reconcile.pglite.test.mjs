@@ -22,6 +22,7 @@ async function bootstrapPartialDrift(db, { existingLayoutColumns = false } = {})
       ('text','longtext','number','date','datetime','select','multiselect','phone','email','file','person','url','checkbox','status');
     create type public.member_role as enum ('owner','admin','member');
     create type public.member_scope as enum ('all','assigned');
+    ${existingLayoutColumns ? "create type public.field_source as enum ('auto','in','act','msg','lk','calc');" : ""}
     create table public.boards(
       id uuid primary key
       ${existingLayoutColumns ? ", detail_layout_jsonb jsonb not null default '[]'::jsonb" : ""}
@@ -34,6 +35,7 @@ async function bootstrapPartialDrift(db, { existingLayoutColumns = false } = {})
     create table public.board_columns(
       id uuid primary key, org_id uuid, type public.field_type not null,
       sort_order integer not null default 17
+      ${existingLayoutColumns ? ", source public.field_source not null default 'in', right_pinned boolean not null default false, move_rule_jsonb jsonb, is_readonly boolean not null default false" : ""}
     );
     create table public.orgs(id uuid primary key, status text not null default 'active');
     create table public.users(id uuid primary key);
@@ -135,7 +137,7 @@ test("BBE-146 reconciliation is safe on partial drift and on a second run", asyn
     `);
     const rolledBackNames = new Set(rolledBackColumns.rows.map((row) => row.column_name));
     for (const name of ["move_rule_jsonb", "is_readonly", "source", "right_pinned"]) {
-      assert.equal(rolledBackNames.has(name), false);
+      assert.equal(rolledBackNames.has(name), true);
     }
     const rolledBackLayouts = await db.query(`
       select table_name, column_name from information_schema.columns
@@ -146,8 +148,8 @@ test("BBE-146 reconciliation is safe on partial drift and on a second run", asyn
     assert.equal((await db.query("select count(*)::integer as count from pg_proc where proname='is_valid_detail_layout'")).rows[0].count, 0);
     assert.equal((await db.query(`select count(*)::integer as count from pg_constraint where conname in ('boards_detail_layout_jsonb_valid','board_groups_detail_layout_jsonb_valid')`)).rows[0].count, 0);
     assert.equal((await db.query(`select sort_order from public.board_columns where id=$1`, [preservedColumnId])).rows[0].sort_order, 91);
-    assert.equal((await db.query("select count(*)::integer as count from pg_type where typname='field_source'")).rows[0].count, 0);
-    assert.equal((await db.query("select count(*)::integer as count from pg_class where relname in ('org_role_permission_overrides','org_permission_audit')")).rows[0].count, 0);
+    assert.equal((await db.query("select count(*)::integer as count from pg_type where typname='field_source'")).rows[0].count, 1);
+    assert.equal((await db.query("select count(*)::integer as count from pg_class where relname in ('org_role_permission_overrides','org_permission_audit')")).rows[0].count, 2);
     assert.equal((await db.query(`select count(*)::integer as count from pg_enum e join pg_type t on t.oid=e.enumtypid where t.typname='field_type'`)).rows[0].count, 17);
   } finally {
     await db.close();
@@ -162,8 +164,10 @@ test("BBE-146 reconciliation is safe when detail layout columns already exist", 
     const groupId = "00000000-0000-0000-0000-000000000202";
     const existingBoardLayout = [{ key: "legacy-owner", source: "column" }];
     const existingGroupLayout = [{ key: "legacy-note", source: "detail" }];
+    const existingColumnId = "00000000-0000-0000-0000-000000000204";
     await db.query(`insert into public.boards(id, detail_layout_jsonb) values ($1, $2::jsonb)`, [boardId, JSON.stringify(existingBoardLayout)]);
     await db.query(`insert into public.board_groups(id, board_id, detail_layout_jsonb) values ($1, $2, $3::jsonb)`, [groupId, boardId, JSON.stringify(existingGroupLayout)]);
+    await db.query(`insert into public.board_columns(id, type, source, sort_order) values ($1, 'text', 'msg', 73)`, [existingColumnId]);
 
     const sql = await readFile(migrationPath, "utf8");
     await db.exec(sql);
@@ -182,6 +186,12 @@ test("BBE-146 reconciliation is safe when detail layout columns already exist", 
     await db.query(`insert into public.board_groups(id, board_id, detail_layout_jsonb) values ($1, $2, null)`, [nullGroupId, boardId]);
     assert.equal((await db.query(`select detail_layout_jsonb from public.board_groups where id=$1`, [nullGroupId])).rows[0].detail_layout_jsonb, null);
     assert.equal((await db.query(`select count(*)::integer as count from pg_constraint where conname in ('boards_detail_layout_jsonb_valid','board_groups_detail_layout_jsonb_valid')`)).rows[0].count, 2);
+
+    await db.exec(await readFile(rollbackPath, "utf8"));
+    const existingColumn = await db.query(`select source, sort_order from public.board_columns where id=$1`, [existingColumnId]);
+    assert.deepEqual(existingColumn.rows[0], { source: "msg", sort_order: 73 });
+    assert.equal((await db.query("select count(*)::integer as count from pg_type where typname='field_source'")).rows[0].count, 1);
+    assert.equal((await db.query(`select count(*)::integer as count from pg_constraint where conname in ('boards_detail_layout_jsonb_valid','board_groups_detail_layout_jsonb_valid')`)).rows[0].count, 0);
   } finally {
     await db.close();
   }
