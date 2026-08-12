@@ -4,6 +4,46 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [FIX · 모아워크 DC 04/claude] 2026-08-12 — BBE-148 후속: catalog key 를 default-tabs 기준으로 정정
+
+- 카드: BBE-148 후속(제보: DC-03). **새 카드 아님** — 방금 완주한 카드의 결함 수정.
+- 발단: `send-guard/catalog.ts` 가 발송 컬럼 6개를 `@/lib/structure-packs`(먼데이 2026-08-05
+  실측 id, 예: `color_mm3acc4d`·`color8`)로 등록해 뒀는데, A′ 판정(52a5e80·이 카드보다 나중에
+  들어옴) 이후 실제 워크스페이스가 쓰는 정본은 `@/lib/default-tabs`(BBE-145 · 목업 v6 을
+  그대로 옮긴 것)다 — 키 체계가 전혀 다르다. `resolveSendColumn` 의 `source==="msg"` 안전망
+  덕에 «모르는 칸» 취급으로 막히긴 했지만(자금 리스크는 없었다), 값별 템플릿 정밀도가
+  실제 발송 칸에서 전부 fallback 으로 떨어지는 상태였다.
+- **조사** — BBE-145(PR #170, DC-03, 미병합)의 실제 소스를 원격에서 직접 읽어 확인
+  (`git fetch origin claude/bbe-145-new-lead-tab`). 신규리드 탭의 발송 칸은 3개 —
+  `absence_notice`(부재 안내, 6값 단일 컬럼 — 구 실측은 2컬럼으로 쪼개져 있었다) ·
+  `consult1_notice`(1차 상담 안내) · `confirm2_notice`(2차 확정 안내). 컬럼 정의에
+  `readOnly: true` + `pendingReason: "발송 안전장치 대기 — BBE-148 (DC-04)"` 가 이미 박혀
+  있다 — DC-03 이 처음부터 이 카드를 기다리며 잠가 둔 것. `pendingReason` 은 아직 어느
+  컴포넌트도 안 읽는다(데이터 계약만 있고 소비자 없음 — grep 으로 확인) — 셀 자체가
+  `is_readonly` 로 완전히 잠겨 있어 `planSend` 가 호출되는 경로 자체가 없다.
+- **고친 것**:
+  - `catalog.ts` — 구 4키(신규리드분)를 새 3키로 교체. 리드컨택 «미팅확정 메세지» 는
+    default-tabs 에 아직 없어(BBE-149 대기) 등록하지 않고 `source==="msg"` 안전망에 맡긴다.
+    「3차 불가」(`dup__of_ai_2___`)는 default-tabs 에 대응 컬럼이 없어 드롭 — 목업에도
+    없던 먼데이 전용 칸이라 A′ 기준 이관 매핑 사전(`structure-packs`, 손 안 댐)에만 남는다.
+  - `types.ts` — 잔여 "구조 팩" 표현 정정(A′ 용어 금지).
+  - `catalog.test.ts` — `SEOUL_STRUCTURE_PACK` 대조 테스트를 제거하고(더는 정본이 아님)
+    default-tabs 신규리드 발송 칸 3개와의 대조로 교체. `@/lib/default-tabs/new-lead` 를
+    import 하지 못해(브랜치 미병합) 원격에서 직접 읽은 값을 하드코딩했다 — **#170 이
+    머지되면 살아있는 import 대조로 승격해야 한다**고 테스트 주석에 남겼다.
+  - `confirm.test.ts`·`history.test.ts`·`plan.test.ts`·`SendConfirmDialog.test.tsx`·
+    `preview-send-guard.mjs` — 전부 `color8`/"미팅확정 메세지" 픽스처를 쓰고 있었다
+    (카탈로그에서 빠지며 깨졌다) → `consult1_notice`/"1차 상담 안내" 로 교체. 지문 대조
+    테스트 1건은 base 와 같은 라벨이 될 뻔해 `confirm2_notice` 로 바꿨다.
+- 게이트: `bash scripts/check.sh` **PASS** — app 1663/9skip(195 files) · worker 85 ·
+  `qa-app` 175건 변동 없음(구조 무접촉, send-guard 만). 화면 증거 재촬영(1440·375 — 이제
+  "1차 상담 안내" 실제 default-tabs 문구로 렌더됨).
+- 실발송 0건 불변 — `SEND_DISPATCH_ENABLED=false` 그대로, 이 카드는 카탈로그 키만 고쳤다.
+- 인터페이스는 안 바뀐다 — `planSend`/`confirmSend`/`SendConfirmDialog` 시그니처 무변경.
+  DC-03 이 셀 편집 경로를 연결할 때 참고할 것은 **키가 이제 맞다는 사실 자체**다.
+
+— [모아워크 DC 04]
+
 ## 2026-08-12 — [총괄 지시 반영 · 눌러본 증거 · 모아워크 DC 02/claude] BBE-142 PR #166
 
 - **① 마이그레이션 번호 충돌 해소**: `origin/main` 이 그 사이 058 을 `outbox_delivery.sql`

@@ -1,12 +1,12 @@
 /**
  * BBE-148 — 발송 칸 판정. 여기서 틀리면 돈이 나가거나 안 나간다.
  *
- * 가장 중요한 것은 마지막 케이스다: **구조 팩에 실제로 심긴 발송 칸이 하나라도
- * 카탈로그 밖에 있으면 실패한다.** 목업 4칸만 보고 만들면 앱에 서 있는 2칸이 무방비가 된다.
+ * 2026-08-12 A′ 판정 이후 정본이 `@/lib/structure-packs`(먼데이 실측 — 이관 매핑 사전으로만
+ * 보존)에서 `@/lib/default-tabs`(BBE-145 · 목업 v6 를 그대로 옮긴 제품 기본 구조)로 바뀌었다.
+ * 이 파일도 그에 맞춰 검증 대상을 바꿨다 — 더는 구조 팩 발송 칸을 세지 않는다.
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_MESSAGE_TEMPLATE_CODES } from "@/lib/messaging";
-import { SEOUL_STRUCTURE_PACK } from "@/lib/structure-packs/seoul-pack";
 import {
   isSendColumn,
   labelLooksLikeSendColumn,
@@ -17,15 +17,18 @@ import {
 } from "./catalog";
 import { DEFAULT_TEMPLATE_BODIES } from "./template";
 
-const meetingSpec = sendColumnSpecs().find((s) => s.columnKey === "color8")!;
+const absenceSpec = sendColumnSpecs().find((s) => s.columnKey === "absence_notice")!;
 
 describe("발송 칸 판정", () => {
   it("카탈로그에 등록된 칸은 발송 칸이다", () => {
-    expect(isSendColumn({ key: "color8" })).toBe(true);
-    expect(isSendColumn({ key: "dup__of_ai___" })).toBe(true);
+    expect(isSendColumn({ key: "absence_notice" })).toBe(true);
+    expect(isSendColumn({ key: "consult1_notice" })).toBe(true);
+    expect(isSendColumn({ key: "confirm2_notice" })).toBe(true);
   });
 
-  it("출처 메타가 msg 면 카탈로그에 없어도 발송 칸이다", () => {
+  it("출처 메타가 msg 면 카탈로그에 없어도 발송 칸이다 — 리드컨택 «미팅확정 메세지» 가 이 경로다", () => {
+    // BBE-149(리드컨택 탭)가 아직 안 서서 실제 키를 모른다. 그때까지는 이 안전망이 잡는다.
+    expect(isSendColumn({ key: "meeting_confirm_notice", source: "msg" })).toBe(true);
     expect(isSendColumn({ key: "회사가_새로_만든_칸", source: "msg" })).toBe(true);
   });
 
@@ -51,25 +54,22 @@ describe("발송 칸 판정", () => {
 
 describe("어떤 값이 문자를 내보내는가", () => {
   it("null·빈 값·«보내기 전» 류는 나가지 않는다", () => {
-    expect(valueTriggersSend(meetingSpec, null)).toBe(false);
-    expect(valueTriggersSend(meetingSpec, "")).toBe(false);
-    expect(valueTriggersSend(meetingSpec, "   ")).toBe(false);
-    expect(valueTriggersSend(meetingSpec, "보내기 전")).toBe(false);
-  });
-
-  it("«미팅 미지정» 은 나가지 않는다 — 목업 setCell 이 빠뜨린 값이다", () => {
-    // 목업은 `val!=="보내기 전" && val!=="심사 전"` 만 보므로 미지정으로 되돌려도
-    // 발송으로 판정한다. 카탈로그가 이 칸의 idle 값을 따로 갖는 이유다.
-    expect(valueTriggersSend(meetingSpec, "미팅 미지정")).toBe(false);
-    expect(valueTriggersSend(meetingSpec, "보내기기")).toBe(true);
+    const spec = sendColumnSpecs().find((s) => s.columnKey === "consult1_notice")!;
+    expect(valueTriggersSend(spec, null)).toBe(false);
+    expect(valueTriggersSend(spec, "")).toBe(false);
+    expect(valueTriggersSend(spec, "   ")).toBe(false);
+    expect(valueTriggersSend(spec, "보내기 전")).toBe(false);
+    expect(valueTriggersSend(spec, "1차 상담완료")).toBe(true);
   });
 
   it("값별 템플릿 표가 있으면 표에 없는 값은 나가지 않는다", () => {
-    const absence = sendColumnSpecs().find((s) => s.columnKey === "color_mm3acc4d")!;
-    // 「1일 1회 전화」는 사내 처리 지침이지 고객에게 나가는 문구가 아니다.
-    expect(valueTriggersSend(absence, "1일 1회 전화")).toBe(false);
-    expect(valueTriggersSend(absence, "2번 부재")).toBe(true);
-    expect(templateCodeForValue(absence, "2번 부재")).toBe("absence-simple-2");
+    // absence_notice(부재 안내)는 default-tabs 에서 6개 값 전부가 실발송 값이다 —
+    // 「미입력(null)」이 유일한 idle 상태다(BBE-145 module 주석 근거).
+    expect(valueTriggersSend(absenceSpec, "간편 부재 3회")).toBe(true);
+    expect(valueTriggersSend(absenceSpec, "악성 부재")).toBe(true);
+    expect(valueTriggersSend(absenceSpec, "표에 없는 값")).toBe(false);
+    expect(templateCodeForValue(absenceSpec, "간편 부재 3회")).toBe("absence-simple-3");
+    expect(templateCodeForValue(absenceSpec, "악성 부재")).toBe("absence-malicious");
   });
 });
 
@@ -82,10 +82,8 @@ describe("카탈로그와 다른 정의의 대조", () => {
         s.fallbackTemplateCode,
       ]),
     );
-    // 겹치는 코드는 문자열이 같아야 한다. 새로 생긴 코드(consultation-rejected)는
-    // messaging 쪽에 아직 없으므로 «겹치는 것만» 본다.
     for (const code of used) {
-      if (code.startsWith("consultation-rejected") || code.startsWith("custom:")) continue;
+      if (code.startsWith("custom:")) continue;
       expect(known.has(code), `messaging 에 없는 코드: ${code}`).toBe(true);
     }
   });
@@ -99,17 +97,19 @@ describe("카탈로그와 다른 정의의 대조", () => {
     }
   });
 
-  it("★ 구조 팩에 심긴 발송 칸이 카탈로그 밖에 있으면 안 된다", () => {
-    const packSendColumns = SEOUL_STRUCTURE_PACK.boards.flatMap((board) =>
-      board.columns
-        .filter((column) => labelLooksLikeSendColumn(column.label))
-        .map((column) => ({ board: board.slug, key: column.key, label: column.label })),
-    );
-    // 목업은 4칸이라고 세지만 앱 팩에는 6칸이 심겨 있다. 그 차이가 이 테스트의 존재 이유다.
-    expect(packSendColumns.length).toBeGreaterThanOrEqual(4);
-
+  /**
+   * ★ default-tabs 신규리드 탭의 발송 칸 3개(BBE-145)가 카탈로그에 전부 있는가.
+   *
+   * BBE-145(PR #170)가 아직 미병합이라 `@/lib/default-tabs/new-lead`를 여기서 import 할
+   * 수 없다 — 파일이 이 브랜치 트리에 없다. 그래서 지금은 실제 소스(origin/
+   * claude/bbe-145-new-lead-tab, 2026-08-12 확인)에서 직접 읽은 key·값을 하드코딩해
+   * 대조한다. **#170 이 머지되면 이 테스트를 `default-tabs/new-lead`를 직접 import 하는
+   * 살아있는 대조로 승격해야 한다** — 지금의 하드코딩은 그 전까지의 임시 다리다.
+   */
+  it("★ default-tabs 신규리드 탭 발송 칸 3개가 카탈로그에 전부 있다 (BBE-145 대조)", () => {
+    const NEW_LEAD_SEND_KEYS = ["absence_notice", "consult1_notice", "confirm2_notice"];
     const registered = new Set(sendColumnSpecs().map((s) => s.columnKey));
-    const missing = packSendColumns.filter((c) => !registered.has(c.key));
+    const missing = NEW_LEAD_SEND_KEYS.filter((key) => !registered.has(key));
     expect(missing, `카탈로그에 없는 발송 칸: ${JSON.stringify(missing)}`).toEqual([]);
   });
 });

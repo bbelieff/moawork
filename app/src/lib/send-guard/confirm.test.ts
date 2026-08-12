@@ -45,8 +45,8 @@ function makePlan(targets: SendTarget[] = [target()]): SendPlan {
   const input: SendPlanInput = {
     orgId: "org-1",
     boardId: "board-1",
-    column: { key: "color8", label: "미팅확정 메세지" },
-    value: "보내기기",
+    column: { key: "consult1_notice", label: "1차 상담 안내" },
+    value: "1차 상담완료",
     targets,
     senderName: "우리회사",
   };
@@ -184,7 +184,7 @@ describe("확인을 다 지나면 요청이 만들어진다", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.request.targets).toHaveLength(1);
-    expect(result.request.templateCode).toBe("meeting-confirmed");
+    expect(result.request.templateCode).toBe("consultation-first");
     expect(result.request.estimatedCostKrw).toBe(plan.estimatedCostKrw);
     expect(result.request.confirmedBy).toEqual({ actorId: "user-1", actorName: "담당자" });
     expect(result.request.planFingerprint).toBe(plan.fingerprint);
@@ -238,18 +238,18 @@ describe("자가일관 검사는 «내용이 바뀐 것» 만 잡는다 — 위�
     const fp = planFingerprint({
       orgId: "org-1",
       boardId: "board-1",
-      columnKey: "color8",
-      value: "보내기기",
-      templateCode: "meeting-confirmed",
+      columnKey: "consult1_notice",
+      value: "1차 상담완료",
+      templateCode: "consultation-first",
       itemIds: ["몰래-넣은-건"],
       estimatedCostKrw: 22,
     });
     const forged = {
       orgId: "org-1",
       boardId: "board-1",
-      columnKey: "color8",
-      value: "보내기기",
-      templateCode: "meeting-confirmed",
+      columnKey: "consult1_notice",
+      value: "1차 상담완료",
+      templateCode: "consultation-first",
       channel: "sms",
       targets: [
         {
