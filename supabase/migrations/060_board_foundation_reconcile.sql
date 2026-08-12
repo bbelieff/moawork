@@ -1,10 +1,10 @@
 -- BBE-146: hosted partial-drift reconciliation for the board foundation.
 --
--- PROVISIONAL NUMBER: 059. Recompute origin/main latest+1 immediately before merge.
+-- PROVISIONAL NUMBER: 060. Recompute origin/main latest+1 immediately before merge.
 -- Hosted apply is intentionally NOT part of this change.
 --
 -- Dependency order in this single, rerunnable migration:
---   052 reconciliation -> 054 -> 055 -> 056
+--   052 reconciliation -> 054 -> 055 -> 056 -> BBE-107 detail layout
 --
 -- field_type has 17 product types: the 13 values from 001 plus
 -- status, people, money, and calc. The old 052 "15 types" comment is incorrect.
@@ -511,3 +511,70 @@ comment on column public.board_columns.move_rule_jsonb is
   'D68~D70: option id to target group id map. NULL means no automatic move rule.';
 comment on column public.board_columns.is_readonly is
   'True for calculated or linked values that user cell writes must not mutate.';
+
+-- BBE-107 lease expansion: detail-pane layouts live at the board/group floor.
+-- NULL on a group inherits the board layout; [] is an intentional empty layout.
+create or replace function public.is_valid_detail_layout(p_layout jsonb)
+returns boolean
+language sql
+immutable
+parallel safe
+set search_path = public, pg_temp
+as $$
+  select case
+    when jsonb_typeof(p_layout) <> 'array' then false
+    else not exists (
+      select 1
+      from jsonb_array_elements(p_layout) as entry
+      where jsonb_typeof(entry) <> 'object'
+         or not (entry ? 'key')
+         or not (entry ? 'source')
+         or jsonb_typeof(entry -> 'key') <> 'string'
+         or jsonb_typeof(entry -> 'source') <> 'string'
+         or entry ->> 'source' not in ('column', 'detail')
+    )
+  end;
+$$;
+
+alter table if exists public.boards
+  add column if not exists detail_layout_jsonb jsonb not null default '[]'::jsonb;
+
+alter table if exists public.boards
+  alter column detail_layout_jsonb set default '[]'::jsonb,
+  alter column detail_layout_jsonb set not null;
+
+alter table if exists public.board_groups
+  add column if not exists detail_layout_jsonb jsonb;
+
+alter table if exists public.board_groups
+  alter column detail_layout_jsonb drop not null,
+  alter column detail_layout_jsonb drop default;
+
+do $bbe_146_detail_layout$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'boards_detail_layout_jsonb_valid'
+      and conrelid = 'public.boards'::regclass
+  ) then
+    alter table public.boards
+      add constraint boards_detail_layout_jsonb_valid
+      check (public.is_valid_detail_layout(detail_layout_jsonb));
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'board_groups_detail_layout_jsonb_valid'
+      and conrelid = 'public.board_groups'::regclass
+  ) then
+    alter table public.board_groups
+      add constraint board_groups_detail_layout_jsonb_valid
+      check (detail_layout_jsonb is null or public.is_valid_detail_layout(detail_layout_jsonb));
+  end if;
+end
+$bbe_146_detail_layout$;
+
+comment on column public.boards.detail_layout_jsonb is
+  'Detail layout entries: [{"key":"...","source":"column"|"detail"}]. Defaults to an empty layout.';
+comment on column public.board_groups.detail_layout_jsonb is
+  'Group detail layout override. NULL inherits the board layout; [] is intentionally empty.';

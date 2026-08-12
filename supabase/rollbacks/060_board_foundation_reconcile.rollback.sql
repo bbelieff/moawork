@@ -1,7 +1,20 @@
--- BBE-146 rollback for 059_board_foundation_reconcile.sql.
+-- BBE-146 rollback for 060_board_foundation_reconcile.sql.
 -- Run only after the preflight snapshot confirms these objects were absent
 -- before reconciliation. This script is intentionally NOT auto-applied.
 begin;
+
+alter table if exists public.board_groups
+  drop constraint if exists board_groups_detail_layout_jsonb_valid;
+
+alter table if exists public.boards
+  drop constraint if exists boards_detail_layout_jsonb_valid;
+
+drop function if exists public.is_valid_detail_layout(jsonb);
+
+-- Layout columns are deliberately retained. This rollback also supports hosted
+-- states where either column predated BBE-146, so dropping them could destroy
+-- pre-existing values. Column removal requires a separately approved,
+-- preflight-backed destructive migration.
 
 drop function if exists public.read_permission_scoped_work_items(uuid, uuid);
 drop function if exists public.read_org_permission_matrix(uuid);
