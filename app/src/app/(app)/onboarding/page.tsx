@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getSession, SESSION_COOKIE } from "@/lib/auth/session";
 import { getRepo } from "@/lib/repo";
 import { installPolicyfundPreset } from "@/lib/presets/policyfund";
+import { bootstrapNewWorkspace } from "@/lib/workspace-bootstrap";
 import { FEATURES } from "@/lib/product";
 
 // 온보딩(흐름 A): 조직 생성 → 업종팩(정책자금) 선택 → 홈.
@@ -22,6 +23,10 @@ export default async function OnboardingPage() {
     const { org } = getRepo().createOrg({ name }, current.user);
     const jar = await cookies();
     jar.set(SESSION_COOKIE.org, org.id, { path: "/" });
+
+    // D76 — 새 워크스페이스는 «구조는 채워져 있고 데이터는 0» 이다. «설치» 단계는 없다.
+    // 체크박스 뒤에 두지 않는다: 고르는 것이 아니라 기본값이다(BBE-46).
+    bootstrapNewWorkspace({ user: current.user, org, role: "owner", scope: "all" });
 
     if (withPreset) {
       installPolicyfundPreset({
