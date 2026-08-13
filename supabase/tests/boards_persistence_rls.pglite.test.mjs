@@ -79,11 +79,23 @@ test("boards survive database restart and RLS isolates organizations", async () 
       insert into items values
         ('24000000-0000-4000-8000-000000000050','${orgA}','24000000-0000-4000-8000-000000000020','24000000-0000-4000-8000-000000000030','재시작 유지','${userA}'),
         ('24000000-0000-4000-8000-000000000051','${orgA}','24000000-0000-4000-8000-000000000020','24000000-0000-4000-8000-000000000030','assigned 범위에서 숨김',null),
-        ('24000000-0000-4000-8000-000000000052','${orgA}','24000000-0000-4000-8000-000000000022',null,'조직 공지',null);
+        ('24000000-0000-4000-8000-000000000052','${orgA}','24000000-0000-4000-8000-000000000022',null,'게시 중 전체 공지',null),
+        ('24000000-0000-4000-8000-000000000053','${orgA}','24000000-0000-4000-8000-000000000022',null,'관리자 전용 공지',null),
+        ('24000000-0000-4000-8000-000000000054','${orgA}','24000000-0000-4000-8000-000000000022',null,'예약 공지',null),
+        ('24000000-0000-4000-8000-000000000055','${orgA}','24000000-0000-4000-8000-000000000022',null,'종료 공지',null);
       insert into item_values values
         ('${orgA}','24000000-0000-4000-8000-000000000050','status','"ready"'),
         ('${orgA}','24000000-0000-4000-8000-000000000051','status','"hidden"'),
-        ('${orgA}','24000000-0000-4000-8000-000000000052','body','"organization-wide"');
+        ('${orgA}','24000000-0000-4000-8000-000000000052','body','"organization-wide"'),
+        ('${orgA}','24000000-0000-4000-8000-000000000052','published_at','"2000-01-01"'),
+        ('${orgA}','24000000-0000-4000-8000-000000000053','body','"manager-secret"'),
+        ('${orgA}','24000000-0000-4000-8000-000000000053','audience','"notice-audience-managers"'),
+        ('${orgA}','24000000-0000-4000-8000-000000000053','published_at','"2000-01-01"'),
+        ('${orgA}','24000000-0000-4000-8000-000000000054','body','"scheduled-secret"'),
+        ('${orgA}','24000000-0000-4000-8000-000000000054','published_at','"2999-01-01"'),
+        ('${orgA}','24000000-0000-4000-8000-000000000055','body','"ended-secret"'),
+        ('${orgA}','24000000-0000-4000-8000-000000000055','published_at','"2000-01-01"'),
+        ('${orgA}','24000000-0000-4000-8000-000000000055','ended_at','"2000-01-02"');
       insert into board_views values
         ('24000000-0000-4000-8000-000000000060','${orgA}','24000000-0000-4000-8000-000000000020','${userA}','내 뷰',false),
         ('24000000-0000-4000-8000-000000000061','${orgA}','24000000-0000-4000-8000-000000000020','24000000-0000-4000-8000-000000000002','공유 뷰',true),
@@ -120,17 +132,30 @@ test("boards survive database restart and RLS isolates organizations", async () 
     assert.equal((await db.query("select count(*)::int as n from board_columns")).rows[0].n, 1);
     assert.equal((await db.query("select count(*)::int as n from items")).rows[0].n, 2);
     assert.deepEqual(
-      (await db.query("select title from items where id='24000000-0000-4000-8000-000000000052'")).rows,
-      [{ title: "조직 공지" }],
+      (await db.query("select id,title from items where board_id='24000000-0000-4000-8000-000000000022' order by id")).rows,
+      [{ id: "24000000-0000-4000-8000-000000000052", title: "게시 중 전체 공지" }],
     );
     await assert.rejects(
       db.query("update items set assigned_to='24000000-0000-4000-8000-000000000002' where id='24000000-0000-4000-8000-000000000050' returning id"),
       /row-level security/i,
     );
-    assert.deepEqual(
-      (await db.query("select value_jsonb from item_values order by value_jsonb")).rows,
-      [{ value_jsonb: "organization-wide" }, { value_jsonb: "ready" }],
-    );
+    assert.deepEqual((await db.query(`
+      select item_id,column_key,value_jsonb
+        from item_values
+       where item_id >= '24000000-0000-4000-8000-000000000052'
+       order by item_id,column_key
+    `)).rows, [
+      { item_id: "24000000-0000-4000-8000-000000000052", column_key: "body", value_jsonb: "organization-wide" },
+      { item_id: "24000000-0000-4000-8000-000000000052", column_key: "published_at", value_jsonb: "2000-01-01" },
+    ]);
+    assert.equal((await db.query(`
+      select count(*)::int as n from item_values
+       where item_id in (
+         '24000000-0000-4000-8000-000000000053',
+         '24000000-0000-4000-8000-000000000054',
+         '24000000-0000-4000-8000-000000000055'
+       )
+    `)).rows[0].n, 0);
     assert.equal(
       (await db.query("update item_values set value_jsonb='\"blocked\"' where item_id='24000000-0000-4000-8000-000000000051' returning item_id")).rows.length,
       0,
@@ -168,6 +193,10 @@ test("boards survive database restart and RLS isolates organizations", async () 
       1,
     );
     assert.equal((await db.query(`select count(*)::int as n from boards where org_id='${orgB}'`)).rows[0].n, 0);
+    await db.exec("reset role");
+    await db.exec(`update org_members set role='owner' where org_id='${orgA}' and user_id='${userA}'`);
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub','${userA}',false)`);
+    assert.equal((await db.query("select count(*)::int as n from items")).rows[0].n, 6);
   } finally {
     await db.close().catch(() => {});
     await rm(dataDir, { recursive: true, force: true });

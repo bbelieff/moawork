@@ -1,6 +1,62 @@
 -- BBE-159: align board value/view RLS with the request-scoped BoardsRepo contract.
 -- Existing tables remain unchanged; only overly broad policies are replaced.
 
+create or replace function public.can_read_org_notice(
+  p_org_id uuid,
+  p_board_id uuid,
+  p_item_id uuid
+) returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1
+      from public.boards b
+     where b.id = p_board_id
+       and b.org_id = p_org_id
+       and public.is_org_member(p_org_id)
+       and (
+         b.source = 'core.notice'
+         or (b.source is null and b.name = '공지사항')
+       )
+       and coalesce((
+         select iv.value_jsonb #>> '{}'
+           from public.item_values iv
+          where iv.item_id = p_item_id
+            and iv.org_id = p_org_id
+            and iv.column_key = 'audience'
+       ), '') <> 'notice-audience-managers'
+       and coalesce((
+         select iv.value_jsonb #>> '{}'
+           from public.item_values iv
+          where iv.item_id = p_item_id
+            and iv.org_id = p_org_id
+            and iv.column_key = 'published_at'
+       ), '') <= to_char(current_timestamp at time zone 'Asia/Seoul', 'YYYY-MM-DD')
+       and (
+         coalesce((
+           select iv.value_jsonb #>> '{}'
+             from public.item_values iv
+            where iv.item_id = p_item_id
+              and iv.org_id = p_org_id
+              and iv.column_key = 'ended_at'
+         ), '') = ''
+         or (
+           select iv.value_jsonb #>> '{}'
+             from public.item_values iv
+            where iv.item_id = p_item_id
+              and iv.org_id = p_org_id
+              and iv.column_key = 'ended_at'
+         ) >= to_char(current_timestamp at time zone 'Asia/Seoul', 'YYYY-MM-DD')
+       )
+  )
+$$;
+
+revoke all on function public.can_read_org_notice(uuid, uuid, uuid) from public;
+grant execute on function public.can_read_org_notice(uuid, uuid, uuid) to authenticated;
+
 drop policy if exists items_rw on public.items;
 drop policy if exists items_visible on public.items;
 drop policy if exists items_insert_assigned_scope on public.items;
@@ -15,18 +71,7 @@ using (
     public.org_role(org_id) in ('owner', 'admin')
     or public.org_scope(org_id) = 'all'
     or assigned_to = auth.uid()
-    -- Notices are organization-wide reading material. Application-level
-    -- audience/date filtering still applies after this assignee-axis bypass.
-    or exists (
-      select 1
-        from public.boards b
-       where b.id = items.board_id
-         and b.org_id = items.org_id
-         and (
-           b.source = 'core.notice'
-           or (b.source is null and b.name = '공지사항')
-         )
-    )
+    or public.can_read_org_notice(org_id, board_id, id)
   )
 );
 
@@ -91,16 +136,7 @@ using (
          public.org_role(i.org_id) in ('owner', 'admin')
          or public.org_scope(i.org_id) = 'all'
          or i.assigned_to = auth.uid()
-         or exists (
-           select 1
-             from public.boards b
-            where b.id = i.board_id
-              and b.org_id = i.org_id
-              and (
-                b.source = 'core.notice'
-                or (b.source is null and b.name = '공지사항')
-              )
-         )
+         or public.can_read_org_notice(i.org_id, i.board_id, i.id)
        )
   )
 );
