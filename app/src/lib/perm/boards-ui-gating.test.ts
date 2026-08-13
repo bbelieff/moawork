@@ -14,7 +14,7 @@ describe("boards UI consumes effective permissions", () => {
     expect(source).toContain('if (viewPermission.kind !== "allowed") notFound()');
     expect(source).toContain('loadPermGuard(ctx.org.id, "structure.tab_manage")');
     expect(source).toContain("canManageTabs && <li><NewBoardInline />");
-    expect(source).not.toContain("SEOUL_STRUCTURE_PACK");
+    expect(source).not.toContain("POLICYFUND_STRUCTURE_PACK");
     expect(source).not.toContain("InstallPackButton");
   });
 

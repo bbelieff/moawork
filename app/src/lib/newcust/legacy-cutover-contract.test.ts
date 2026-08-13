@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SEOUL_NEWCUST_BOARD } from "@/lib/migration/monday-mapping";
+import { POLICYFUND_NEWCUST_BOARD } from "@/lib/migration/monday-mapping";
 import {
   LEGACY_CUTOVER_REQUIRED_CAPABILITIES,
   MONDAY_AUTOMATION_DISPOSITIONS,
@@ -12,7 +12,8 @@ describe("BBE-27 current-main cutover preflight", () => {
   it("031 신규업체 구조 팩과 exact key/type로 맞물린다", () => {
     const result = preflightLegacyCutover();
 
-    expect(result.targetColumnCount).toBe(SEOUL_NEWCUST_BOARD.columns.length);
+    expect(result.targetPack).toBe("pack.policyfund.v1/newcust");
+    expect(result.targetColumnCount).toBe(POLICYFUND_NEWCUST_BOARD.columns.length);
     expect(result.targetGroupCount).toBe(14);
     expect(result.blockers).toEqual([]);
   });

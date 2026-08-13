@@ -1,4 +1,4 @@
-import { SEOUL_NEWCUST_BOARD } from "@/lib/migration/monday-mapping";
+import { POLICYFUND_NEWCUST_BOARD } from "@/lib/migration/monday-mapping";
 
 export const LEGACY_CUTOVER_REQUIRED_CAPABILITIES = [
   "stable_legacy_key",
@@ -113,7 +113,7 @@ const EXPECTED_TARGETS = [
 ] as const;
 
 function targetColumns() {
-  return new Map(SEOUL_NEWCUST_BOARD.columns.map((column) => [column.key, column]));
+  return new Map(POLICYFUND_NEWCUST_BOARD.columns.map((column) => [column.key, column]));
 }
 
 /**
@@ -161,9 +161,9 @@ export function preflightLegacyCutover(): LegacyCutoverPreflight {
   );
 
   return {
-    targetPack: "pack.seoul.policyfund1/newcust",
-    targetColumnCount: SEOUL_NEWCUST_BOARD.columns.length,
-    targetGroupCount: SEOUL_NEWCUST_BOARD.sections.length,
+    targetPack: "pack.policyfund.v1/newcust",
+    targetColumnCount: POLICYFUND_NEWCUST_BOARD.columns.length,
+    targetGroupCount: POLICYFUND_NEWCUST_BOARD.sections.length,
     mappings,
     sourceLabelIdentity:
       "Monday statusColumnValue.index is the source label ID, never the display ordinal(표시 순번); 031 option IDs are label text and require an explicit future identity mapping.",

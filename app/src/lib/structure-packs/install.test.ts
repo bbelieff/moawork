@@ -4,7 +4,7 @@ import { resetDb } from "@/lib/repo/local/store";
 import { SEED_ORG_ID, SEED_USER_OWNER } from "@/lib/repo/local/seed";
 import { BoardsService } from "@/lib/boards";
 import type { Ctx } from "@/lib/types";
-import { SEOUL_STRUCTURE_PACK } from "@/lib/migration/monday-mapping";
+import { POLICYFUND_STRUCTURE_PACK } from "@/lib/migration/monday-mapping";
 import {
   assigneeGroupDisplayName,
   assigneeGroupIdForUser,
@@ -16,7 +16,7 @@ import type { PackBoard, StructurePack } from "./types";
 const installStructurePack = (
   ctx: Ctx,
   options: Omit<Parameters<typeof installPack>[1], "pack"> & { pack?: StructurePack } = {},
-) => installPack(ctx, { ...options, pack: options.pack ?? SEOUL_STRUCTURE_PACK });
+) => installPack(ctx, { ...options, pack: options.pack ?? POLICYFUND_STRUCTURE_PACK });
 
 function owner(): Ctx {
   return {
@@ -61,11 +61,11 @@ describe("새 조직 설치 — acceptance (PLAN-002/WO-1)", () => {
     expect(result.boards.map((b) => b.slug)).toEqual(["newcust", "contact", "work"]);
 
     const installed = await boards().listBoards(owner());
-    for (const packBoard of SEOUL_STRUCTURE_PACK.boards) {
+    for (const packBoard of POLICYFUND_STRUCTURE_PACK.boards) {
       const found = installed.find((b) => b.name === packBoard.name);
       expect(found, `${packBoard.name} 생성됨`).toBeDefined();
       expect(found?.icon).toBe(packBoard.icon);
-      expect(found?.source).toBe(`${SEOUL_STRUCTURE_PACK.key}/${packBoard.slug}`);
+      expect(found?.source).toBe(`${POLICYFUND_STRUCTURE_PACK.key}/${packBoard.slug}`);
     }
   });
 
@@ -73,7 +73,7 @@ describe("새 조직 설치 — acceptance (PLAN-002/WO-1)", () => {
     const result = await installStructurePack(owner());
     const assignees = seedAssignees();
 
-    for (const [index, packBoard] of SEOUL_STRUCTURE_PACK.boards.entries()) {
+    for (const [index, packBoard] of POLICYFUND_STRUCTURE_PACK.boards.entries()) {
       const detail = await boards().getBoardDetail(owner(), result.boards[index].boardId);
       const ordered = [...detail.groups].sort((a, b) => a.sort_order - b.sort_order);
 
@@ -102,7 +102,7 @@ describe("새 조직 설치 — acceptance (PLAN-002/WO-1)", () => {
     const oneMember: AssigneeMember[] = [{ userId: SEED_USER_OWNER, displayName: "만든사람" }];
     const result = await installStructurePack(owner(), { assignees: oneMember });
 
-    for (const [index, packBoard] of SEOUL_STRUCTURE_PACK.boards.entries()) {
+    for (const [index, packBoard] of POLICYFUND_STRUCTURE_PACK.boards.entries()) {
       const detail = await boards().getBoardDetail(owner(), result.boards[index].boardId);
       const definedSlots = packBoard.sections.filter((s) => s.assigneeSlot !== undefined);
       // 슬롯이 2개(원래 담당자 2명) 정의돼 있어도 멤버가 1명뿐이면 그룹은 1개만 생겨야 한다.
@@ -120,7 +120,7 @@ describe("새 조직 설치 — acceptance (PLAN-002/WO-1)", () => {
   it("컬럼이 key·라벨·타입·순서까지 팩 그대로 생성된다", async () => {
     const result = await installStructurePack(owner());
 
-    for (const [index, packBoard] of SEOUL_STRUCTURE_PACK.boards.entries()) {
+    for (const [index, packBoard] of POLICYFUND_STRUCTURE_PACK.boards.entries()) {
       const detail = await boards().getBoardDetail(owner(), result.boards[index].boardId);
       const ordered = [...detail.columns].sort((a, b) => a.sort_order - b.sort_order);
 
@@ -153,7 +153,7 @@ describe("새 조직 설치 — acceptance (PLAN-002/WO-1)", () => {
 
     const views = await boards().listViews(owner(), workBoardId);
     expect(views.map((v) => v.name)).toEqual(
-      SEOUL_STRUCTURE_PACK.boards[2].views.map((v) => v.name),
+      POLICYFUND_STRUCTURE_PACK.boards[2].views.map((v) => v.name),
     );
     expect(views).toHaveLength(7);
   });
@@ -319,7 +319,7 @@ describe("재설치 안전성", () => {
 
   it("일부만 있는 상태에서는 나머지만 채운다", async () => {
     const first = await installStructurePack(owner(), {
-      pack: { ...SEOUL_STRUCTURE_PACK, boards: [SEOUL_STRUCTURE_PACK.boards[0]] },
+      pack: { ...POLICYFUND_STRUCTURE_PACK, boards: [POLICYFUND_STRUCTURE_PACK.boards[0]] },
     });
     expect(first.boards).toHaveLength(1);
 

@@ -4,7 +4,7 @@ import { decodePackInstallFlash, encodePackInstallFlash } from "./installFlash";
 
 function result(overrides: Partial<InstallResult> = {}): InstallResult {
   return {
-    packKey: "pack.seoul.policyfund1",
+    packKey: "pack.policyfund.v1",
     boards: [],
     deferred: [],
     skipped: [],

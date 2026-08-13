@@ -6,8 +6,8 @@
  * 직접 불러 내 정의와 맞대 본다. 목업이 바뀌면 이 테스트가 먼저 깨진다.
  *
  * ── 왜 `qa-app.mjs` 로 재지 않는가 ──
- * `qa-app.mjs` 는 앱 쪽 정본으로 `structure-packs/seoul-pack.ts` 를 읽는다(하드코딩된 경로).
- * 그 팩은 **먼데이 실측 아카이브**라 내가 고칠 수 없다(`seoul-pack.test.ts` 가 컬럼 수를
+ * `qa-app.mjs` 는 앱 쪽 정본으로 `migration/monday-mapping/policyfund-pack.ts` 를 읽는다(하드코딩된 경로).
+ * 그 팩은 **먼데이 실측 아카이브**라 내가 고칠 수 없다(`policyfund-pack.test.ts` 가 컬럼 수를
  * [24,21,24] 로 못박고 마이그레이션 040 과 대조한다 · AGENTS.md §9.1 «기존 마이그레이션 수정 금지»).
  * 그래서 이 카드의 산출물은 qa-app 의 175 를 움직이지 못한다 — 재는 자가 다른 물건을 보고 있다.
  * qa-app 가 기본 탭도 읽게 넓히는 것은 **NG-02(BBE-140) 소유**라 손대지 않았다. 인계 사항이다.
