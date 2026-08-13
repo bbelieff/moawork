@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { NAV_ITEMS } from "./nav-items";
+import { NAV_ITEMS, NAV_SECTIONS, navItemsForSection } from "./nav-items";
 
 function hrefOf(key: string): string | undefined {
   return NAV_ITEMS.find((i) => i.key === key)?.href;
@@ -20,8 +20,40 @@ describe("BBE-103 — 사이드바 연결 누락 회귀 가드", () => {
   });
 
   it("미구현 항목은 그대로 잠금 유지 — 없는 화면으로 보내지 않는다", () => {
-    for (const key of ["vendor", "topco", "acct"]) {
+    for (const key of ["vendor", "topco", "acct", "addons"]) {
       expect(hrefOf(key)).toBeUndefined();
     }
+  });
+
+  it("목업 D05 계층·순서와 canonical href 를 함께 보존한다", () => {
+    expect(NAV_SECTIONS.map((section) => section.label)).toEqual([
+      "종합",
+      "계약 전",
+      "계약 후",
+      "준비 중",
+      "설정",
+    ]);
+    expect(NAV_SECTIONS[3].collapsible).toBe(true);
+    expect(navItemsForSection(NAV_SECTIONS[0]).map((item) => item.label)).toEqual([
+      "대시보드",
+      "알림",
+      "공지사항",
+    ]);
+    expect(navItemsForSection(NAV_SECTIONS[1]).map((item) => [item.label, item.href])).toEqual([
+      ["신규리드 관리", "/newcust"],
+      ["리드컨택 관리", "/contract"],
+    ]);
+    expect(navItemsForSection(NAV_SECTIONS[2]).map((item) => [item.label, item.href])).toEqual([
+      ["계약업체 실무", "/work"],
+      ["업체관리 현황", "/companies"],
+    ]);
+    expect(navItemsForSection(NAV_SECTIONS[4]).map((item) => [item.label, item.href])).toEqual([
+      ["탭 관리", "/settings/workspace-builder"],
+      ["자동화", "/settings/automations"],
+      ["조직관리", "/settings/members"],
+      ["프리셋", "/presets"],
+      ["내 프로필", "/account"],
+      ["온보딩", "/onboarding"],
+    ]);
   });
 });

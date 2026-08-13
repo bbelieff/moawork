@@ -77,4 +77,18 @@ describe("SidebarNav integration contract", () => {
     expect(html).toContain('name="next" value="/platform"');
     expect(html).not.toContain('href="/platform"');
   });
+
+  it("renders the D05 hierarchy and keeps coming-soon items collapsed by default", () => {
+    const html = renderToStaticMarkup(<SidebarNav lockedFeatures={[]} />);
+
+    for (const label of ["종합", "업무", "계약 전", "계약 후", "설정"]) {
+      expect(html).toContain(`>${label}<`);
+    }
+    expect(html).toContain('<details data-nav-section="coming-soon">');
+    expect(html).not.toContain('<details data-nav-section="coming-soon" open="">');
+    expect(html).toContain("신규리드 관리");
+    expect(html).toContain("리드컨택 관리");
+    expect(html).toContain("계약업체 실무");
+    expect(html).toContain("업체관리 현황");
+  });
 });
