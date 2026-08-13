@@ -26,14 +26,26 @@ export async function POST(request: Request): Promise<Response> {
   if (decision.kind === "forbidden") {
     return NextResponse.json({ error: "mode_forbidden" }, { status: 403 });
   }
-  const signed = decision.kind === "accepted" ? signModePreference(decision.mode) : null;
-  if (!signed) {
+  if (decision.kind === "invalid") {
     return NextResponse.json({ error: "mode_invalid" }, { status: 400 });
   }
 
   const url = new URL("/mode", request.url);
   const next = sanitizeModeNext(form.get("next"));
   if (next) url.searchParams.set("next", next);
+
+  const signed = signModePreference(decision.mode);
+  if (!signed) {
+    // MOAWORK_MODE_PREFERENCE_SECRET missing/misconfigured — a server setup
+    // problem, not a bad request. Previously this fell through to the same
+    // raw-JSON "mode_invalid" 400 as a genuinely malformed request, which is
+    // an unreachable dead end for a person clicking a real button (same
+    // shape as the 2026-08-11 P0: a working action with no reachable
+    // outcome). Send them to a page that explains it instead.
+    url.searchParams.set("error", "config");
+    return NextResponse.redirect(url);
+  }
+
   const response = NextResponse.redirect(url);
   response.cookies.set(modePreferenceCookie.name, signed, modePreferenceCookie.options);
   return response;
