@@ -74,7 +74,7 @@ set search_path = public, pg_temp
 as $$
 begin
   if public.bbe153_is_calculated_column(new.item_id, new.column_key)
-     and coalesce(current_setting('app.bbe153_internal_calculation', true), 'off') <> 'on' then
+     and current_user <> 'postgres' then
     raise exception 'calculated values are server read-only'
       using errcode = '42501';
   end if;
@@ -97,7 +97,6 @@ as $$
 declare
   v_now timestamptz := clock_timestamp();
 begin
-  perform set_config('app.bbe153_internal_calculation', 'on', true);
   -- 총 매출액은 카드 계약대로 보드의 수수료(원) 합계다. 한 번의 set-based
   -- upsert로 모든 행의 저장값과 계산시각을 맞춘다.
   with total as (
@@ -127,7 +126,6 @@ begin
         value_updated_at = excluded.value_updated_at,
         calculated_at = excluded.calculated_at,
         stale_after = excluded.stale_after;
-  perform set_config('app.bbe153_internal_calculation', 'off', true);
 end
 $$;
 
@@ -157,7 +155,6 @@ declare
   v_value jsonb;
   v_stale_after timestamptz;
 begin
-  perform set_config('app.bbe153_internal_calculation', 'on', true);
   select * into strict v_item from public.items where id = p_item_id;
 
   select max(case
@@ -244,7 +241,6 @@ begin
   if p_refresh_board_total then
     perform public.bbe153_refresh_board_total(v_item.board_id);
   end if;
-  perform set_config('app.bbe153_internal_calculation', 'off', true);
 end
 $$;
 
@@ -294,7 +290,6 @@ as $$
 declare
   v_count bigint := 0;
 begin
-  perform set_config('app.bbe153_internal_calculation', 'on', true);
   with candidates as (
     select i.id as item_id, i.org_id, c.key as column_key,
       public.bbe153_normalized_label(c.label) as label,
@@ -346,7 +341,6 @@ begin
     returning item_id
   )
   select count(distinct item_id) into v_count from upserted;
-  perform set_config('app.bbe153_internal_calculation', 'off', true);
   return v_count;
 end
 $$;

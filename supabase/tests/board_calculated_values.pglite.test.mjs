@@ -122,10 +122,22 @@ test("BBE-153 recalculates on source writes, rejects manual calc writes, records
       { column_key: "total", value_jsonb: 6_000_000 },
     ]);
 
+    await db.exec(`
+      grant usage on schema public to authenticated;
+      grant select, insert, update on public.item_values to authenticated;
+      grant select on public.items, public.board_columns to authenticated;
+      set role authenticated
+    `);
     await assert.rejects(
       db.query(`update public.item_values set value_jsonb='1'::jsonb where item_id=$1 and column_key='fee'`, [ITEM]),
       /calculated values are server read-only/,
     );
+    await db.exec(`select set_config('app.bbe153_internal_calculation','on',false)`);
+    await assert.rejects(
+      db.query(`update public.item_values set value_jsonb='1'::jsonb where item_id=$1 and column_key='fee'`, [ITEM]),
+      /calculated values are server read-only/,
+    );
+    await db.exec(`reset role`);
 
     const beforeDaily = await db.query(`select calculated_at from public.item_values where item_id=$1 and column_key='dday'`, [ITEM]);
     const daily = await db.query(`select public.bbe153_recalculate_daily('2026-08-14') as count`);
@@ -137,7 +149,7 @@ test("BBE-153 recalculates on source writes, rejects manual calc writes, records
     await db.exec(`
       create function public.zz_bbe153_force_failure() returns trigger language plpgsql as $$
       begin
-        if new.column_key='fee' and current_setting('app.bbe153_internal_calculation',true)='on'
+        if new.column_key='fee'
         then raise exception 'forced calculation failure'; end if;
         return new;
       end $$;
