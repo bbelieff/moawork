@@ -97,11 +97,17 @@ test("BBE-153 recalculates on source writes, rejects manual calc writes, records
       select
         has_function_privilege('authenticated', 'public.bbe153_calculate_item(uuid,date,boolean)', 'execute') as app_can_execute,
         has_function_privilege('service_role', 'public.bbe153_calculate_item(uuid,date,boolean)', 'execute') as service_can_execute,
+        has_function_privilege('public', 'public.bbe153_after_source_write()', 'execute') as public_can_execute_trigger,
+        has_function_privilege('authenticated', 'public.bbe153_after_source_write()', 'execute') as app_can_execute_trigger,
+        has_function_privilege('service_role', 'public.bbe153_after_source_write()', 'execute') as service_can_execute_trigger,
         has_table_privilege('service_role', 'public.board_calculation_failures', 'select') as service_can_read_failures
     `);
     assert.deepEqual(privileges.rows, [{
       app_can_execute: false,
       service_can_execute: false,
+      public_can_execute_trigger: false,
+      app_can_execute_trigger: false,
+      service_can_execute_trigger: false,
       service_can_read_failures: false,
     }]);
 

@@ -83,6 +83,8 @@ begin
 end
 $$;
 
+revoke all on function public.bbe153_guard_calculated_value_write() from public, anon, authenticated, service_role;
+
 drop trigger if exists bbe153_guard_calculated_value_write on public.item_values;
 create trigger bbe153_guard_calculated_value_write
 before insert or update of value_jsonb on public.item_values
@@ -274,6 +276,8 @@ exception when others then
   return new;
 end
 $$;
+
+revoke all on function public.bbe153_after_source_write() from public, anon, authenticated, service_role;
 
 drop trigger if exists bbe153_after_source_write on public.item_values;
 create trigger bbe153_after_source_write
