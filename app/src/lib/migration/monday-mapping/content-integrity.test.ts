@@ -1,22 +1,47 @@
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { POLICYFUND_STRUCTURE_PACK } from "./policyfund-pack";
 
-const HEADER = "/** 이것은 서울경영 먼데이 원본이다. 제품 기본 구조가 아니다. 정본은 docs/design/UI목업_워크스페이스_최종_v6.html. */\n";
-const ORIGINAL_SHA256: Record<string, string> = {
-  "seoul-newcust.ts": "ed3da8958e34d810564a8d77c48d68b4b9fa10ebf1bfc1e5fa47d2bf1e283d8c",
-  "seoul-contact.ts": "6eafb8eba4d96dc6cb0fd6bc4805774bbae85f654529f9a6b8e86d3ca2903749",
-  "seoul-work.ts": "d6733855995e8799040907299a0f1eeca0525a3ad9f71b2c32efcdc4881b61c3",
-  "seoul-pack.ts": "43d80f43eff3a775c897a0a94be9160924a8a9ef0d7b048a08fabb45464ccbfa",
-};
+const MIGRATION_040 = join(process.cwd(), "..", "supabase", "migrations", "040_preset_depersonalize.sql");
+
+function legacyPack() {
+  const sql = readFileSync(MIGRATION_040, "utf8");
+  const start = sql.indexOf("$json$");
+  const end = sql.lastIndexOf("$json$");
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  return JSON.parse(sql.slice(start + "$json$".length, end)) as Record<string, unknown>;
+}
+
+function mappingPayload(pack: Record<string, unknown>) {
+  const payload = { ...pack };
+  delete payload.key;
+  delete payload.source;
+  delete payload.legacyKeys;
+  return payload;
+}
 
 describe("Monday mapping source integrity (BBE-156)", () => {
-  for (const [file, expected] of Object.entries(ORIGINAL_SHA256)) {
-    it(`${file} keeps the origin/main payload unchanged`, () => {
-      const source = readFileSync(join(__dirname, file), "utf8").replace(/\r\n/g, "\n");
-      expect(source.startsWith(HEADER)).toBe(true);
-      expect(createHash("sha256").update(source.slice(HEADER.length)).digest("hex")).toBe(expected);
-    });
-  }
+  it("keeps every board, column, option, section, view, type, and rule from the historical mapping", () => {
+    expect(mappingPayload(JSON.parse(JSON.stringify(POLICYFUND_STRUCTURE_PACK)))).toEqual(
+      mappingPayload(legacyPack()),
+    );
+  });
+
+  it("keeps the original customer evidence as an explicitly non-exclusive source", () => {
+    const originalSource = String(legacyPack().source);
+    expect(POLICYFUND_STRUCTURE_PACK.source).toContain("실측 출처");
+    expect(POLICYFUND_STRUCTURE_PACK.source).toContain("특정 고객 전용 팩이 아님");
+    expect(POLICYFUND_STRUCTURE_PACK.source).toContain(originalSource);
+  });
+
+  it("uses neutral mapping filenames and exported identifiers", () => {
+    const files = readdirSync(__dirname);
+    expect(files.filter((file) => /seoul/i.test(file))).toEqual([]);
+    for (const file of files.filter((name) => name.endsWith(".ts"))) {
+      const source = readFileSync(join(__dirname, file), "utf8");
+      expect(source, file).not.toMatch(/\bSEOUL_[A-Z0-9_]+\b/);
+    }
+  });
 });

@@ -3,12 +3,17 @@
  * 제품 기본 구조가 아니며 제품 런타임에서는 이 배럴을 import하지 않는다.
  */
 export {
-  SEOUL_OPTION_SETS,
-  SEOUL_PACK_KEY,
-  SEOUL_PACK_NAME,
-  SEOUL_STRUCTURE_PACK,
+  POLICYFUND_OPTION_SETS,
+  POLICYFUND_PACK_KEY,
+  POLICYFUND_PACK_NAME,
+  POLICYFUND_STRUCTURE_PACK,
   allSectionPresets,
-} from "./seoul-pack";
-export { SEOUL_NEWCUST_BOARD } from "./seoul-newcust";
-export { SEOUL_CONTACT_BOARD } from "./seoul-contact";
-export { SEOUL_WORK_BOARD } from "./seoul-work";
+} from "./policyfund-pack";
+export {
+  LEGACY_POLICYFUND_PACK_KEYS,
+  canonicalPolicyfundPackKey,
+  resolvePolicyfundPack,
+} from "./policyfund-pack-key";
+export { POLICYFUND_NEWCUST_BOARD } from "./policyfund-newcust";
+export { POLICYFUND_CONTACT_BOARD } from "./policyfund-contact";
+export { POLICYFUND_WORK_BOARD } from "./policyfund-work";

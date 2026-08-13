@@ -1,4 +1,4 @@
-/** 이것은 서울경영 먼데이 원본이다. 제품 기본 구조가 아니다. 정본은 docs/design/UI목업_워크스페이스_최종_v6.html. */
+/** 정책자금 업종의 역사 이관 매핑 사전이다. 실측 출처는 서울경영지원센터 먼데이 원본이며, 제품 기본 구조의 정본은 docs/design/UI목업_워크스페이스_최종_v6.html 이다. */
 /**
  * 서울경영지원센터 `🔥업무관리` 보드 구조 — 먼데이 실측 2026-08-05.
  *
@@ -33,7 +33,7 @@ const PRODUCT_LABELS = [
   "신한금융 협약보증", "지역 특례보증(경북버팀금융)", "일시적경영애로",
 ];
 
-export const SEOUL_WORK_BOARD: PackBoard = {
+export const POLICYFUND_WORK_BOARD: PackBoard = {
   slug: "work",
   name: "🔥업무관리",
   icon: "🔥",

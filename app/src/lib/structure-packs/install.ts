@@ -147,11 +147,17 @@ export async function installStructurePack(
 
   for (const packBoard of pack.boards) {
     const source = `${pack.key}/${packBoard.slug}`;
+    const compatibleSources = new Set([
+      source,
+      ...(pack.legacyKeys ?? []).map((legacyKey) => `${legacyKey}/${packBoard.slug}`),
+    ]);
     deferred.push(
       ...packBoard.deferredColumns.map((column) => ({ ...column, boardSlug: packBoard.slug })),
     );
     const existingBoard = (await repo.listBoards(ctx)).find(
-      (board) => board.source === source || (board.source === null && board.name === packBoard.name),
+      (board) =>
+        (board.source !== null && compatibleSources.has(board.source)) ||
+        (board.source === null && board.name === packBoard.name),
     );
     if (existingBoard) {
       if (existingBoard.source !== source) {

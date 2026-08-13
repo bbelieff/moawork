@@ -3,7 +3,7 @@
  *
  * SSOT: `supabase/migrations/040_preset_depersonalize.sql`(031 의 행을 update)의
  * `structure_packs.pack_jsonb`. 이 파일은 그 JSONB 의 앱 표현이며,
- * 두 정의가 어긋나지 않는지는 `seoul-pack.test.ts` 가 고정한다.
+ * 두 정의가 어긋나지 않는지는 `policyfund-pack.test.ts` 가 고정한다.
  *
  * 용어(PLAN-002 §1 · 사용자 확정 2026-08-04): **아이템 = 탭 안의 그룹**이다.
  * 먼데이 API 의 item(행)과 다르므로 코드에서는 `sectionPreset` 으로 부른다.
@@ -133,6 +133,8 @@ export interface PackView {
 /** 팩 전체. */
 export interface StructurePack {
   key: string;
+  /** 이전 배포가 보드 source에 기록한 팩 키. 설치 시 canonical key로 승격한다. */
+  legacyKeys?: readonly string[];
   name: string;
   /** 실측 출처·시점을 팩 안에 남긴다(나중에 어디서 온 값인지 추적 가능하게). */
   source: string;

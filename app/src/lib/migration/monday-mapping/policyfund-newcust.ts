@@ -1,4 +1,4 @@
-/** 이것은 서울경영 먼데이 원본이다. 제품 기본 구조가 아니다. 정본은 docs/design/UI목업_워크스페이스_최종_v6.html. */
+/** 정책자금 업종의 역사 이관 매핑 사전이다. 실측 출처는 서울경영지원센터 먼데이 원본이며, 제품 기본 구조의 정본은 docs/design/UI목업_워크스페이스_최종_v6.html 이다. */
 /**
  * 서울경영지원센터 `🔥신규고객` 보드 구조 — 먼데이 실측 2026-08-05.
  *
@@ -14,7 +14,7 @@ import type { PackBoard } from "./types";
 /** 먼데이 grey — "값 없음" 자리의 공통 색. */
 const GREY = "#c4c4c4";
 
-export const SEOUL_NEWCUST_BOARD: PackBoard = {
+export const POLICYFUND_NEWCUST_BOARD: PackBoard = {
   slug: "newcust",
   name: "🔥신규고객",
   icon: "🔥",
