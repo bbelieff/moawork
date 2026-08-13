@@ -26,7 +26,7 @@ export default async function OnboardingPage() {
 
     // D76 — 새 워크스페이스에는 목업의 기본 탭이 «이미 있다». «설치» 라는 단계는 없다.
     // 구조는 채워져 있고 데이터는 0 이다(D72 와 충돌하지 않는다 — D73·D74 참고).
-    ensureDefaultTabs({ user: current.user, org, role: "owner", scope: "all" });
+    await ensureDefaultTabs({ user: current.user, org, role: "owner", scope: "all" });
 
     if (withPreset) {
       installPolicyfundPreset({

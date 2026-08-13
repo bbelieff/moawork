@@ -122,15 +122,15 @@ describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
    * NG-02(BBE-140)가 추출기를 고치면 이 테스트가 깨진다 → 그때 이 블록과
    * new-lead.ts 머리말 ⚠ 를 같이 지우면 된다. 조용히 넘어가지 않게 하는 장치다.
    */
-  it("[감시선] 추출기의 «컨택 이동» 유령 규칙 4개는 실재하지 않는 선택지를 가리킨다", () => {
+  it("[감시선] 추출기는 «컨택 이동» 유령 규칙을 보고하지 않는다", () => {
     const pinnedMoves = mock.moves.filter((move) => move.column === "컨택 이동");
-    expect(pinnedMoves.length, "NG-02 가 추출기를 고쳤다면 0 이 된다").toBe(4);
+    expect(pinnedMoves.length, "BBE-140 추출기 정본은 유령 규칙을 보고하지 않는다").toBe(0);
 
     const realOptions = new Set(
       (byLabel.get("컨택 이동")!.options ?? []).map((option) => option.id),
     );
     const phantom = pinnedMoves.filter((move) => !realOptions.has(move.value));
-    expect(phantom.map((move) => move.value)).toEqual(["1차 부재", "2차 상담예약", "보류"]);
+    expect(phantom).toEqual([]);
 
     // 그리고 그 값들은 전부 «상담 상황» 의 선택지다 — 컬럼이 잘못 붙었다는 증거.
     const consultOptions = new Set(

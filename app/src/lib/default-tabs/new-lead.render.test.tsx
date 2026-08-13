@@ -39,11 +39,11 @@ let repo: LocalBoardsRepo;
 let svc: BoardsService;
 let boardId: string;
 
-beforeEach(() => {
+beforeEach(async () => {
   resetDb();
   repo = new LocalBoardsRepo();
   svc = new BoardsService(repo);
-  boardId = ensureDefaultTab(ctx, NEW_LEAD_TAB, repo).boardId;
+  boardId = (await ensureDefaultTab(ctx, NEW_LEAD_TAB, repo)).boardId;
 });
 
 function emptyRow(): ItemWithValues {
@@ -153,26 +153,26 @@ describe("⑤ 필터는 칩 + 팝오버다 — 네이티브 select 나열 금지
 });
 
 describe("③ 셀을 고치면 저장되고 다시 읽어도 남는다", () => {
-  it("업종/업태를 저장하면 같은 값이 다시 읽힌다", () => {
+  it("업종/업태를 저장하면 같은 값이 다시 읽힌다", async () => {
     const item = repo.createItem(ctx, boardId, { title: "가밸브 주식회사" });
 
-    svc.setCells(ctx, boardId, item.id, { industry: "제조업" });
+    await svc.setCells(ctx, boardId, item.id, { industry: "제조업" });
 
     // 서비스를 새로 만들어 읽는다 — «새로고침» 에 해당하는 경로(저장소에서 다시 읽기).
-    const reread = new BoardsService(repo).getItem(ctx, boardId, item.id);
+    const reread = await new BoardsService(repo).getItem(ctx, boardId, item.id);
     expect(reread?.values.industry).toBe("제조업");
   });
 
-  it("여러 칸을 고쳐도 각각 남는다", () => {
+  it("여러 칸을 고쳐도 각각 남는다", async () => {
     const item = repo.createItem(ctx, boardId, { title: "나물류 유한회사" });
 
-    svc.setCells(ctx, boardId, item.id, {
+    await svc.setCells(ctx, boardId, item.id, {
       industry: "운수업",
       recontact_on: "2026-09-01",
       contract_fee: 1200000,
     });
 
-    const values = new BoardsService(repo).getItem(ctx, boardId, item.id)?.values;
+    const values = (await new BoardsService(repo).getItem(ctx, boardId, item.id))?.values;
     expect(values?.industry).toBe("운수업");
     expect(values?.recontact_on).toBe("2026-09-01");
     expect(values?.contract_fee).toBe(1200000);
@@ -183,22 +183,22 @@ describe("③ 셀을 고치면 저장되고 다시 읽어도 남는다", () => {
    * `⟳ auto`("광고 폼에서 들어옴")는 사람이 타이핑하는 칸이 아니라서 서버가 쓰기를 막는다.
    * 대표자명·연락처·시도가 여기 속한다. 화면에서 안 열리는 게 맞다.
    */
-  it("⟳ auto 칸은 손으로 못 고친다 — 광고 폼에서 들어오는 값이다", () => {
+  it("⟳ auto 칸은 손으로 못 고친다 — 광고 폼에서 들어오는 값이다", async () => {
     const item = repo.createItem(ctx, boardId, { title: "다전자 주식회사" });
 
-    const result = svc.setCells(ctx, boardId, item.id, { rep_name: "손입력" });
+    const result = await svc.setCells(ctx, boardId, item.id, { rep_name: "손입력" });
 
     expect(result.errors.length).toBeGreaterThan(0);
-    expect(new BoardsService(repo).getItem(ctx, boardId, item.id)?.values.rep_name).toBeUndefined();
+    expect((await new BoardsService(repo).getItem(ctx, boardId, item.id))?.values.rep_name).toBeUndefined();
   });
 
-  it("✉ 발송 칸은 서버에서도 쓰기가 거부된다 — 화면만 막으면 안 된다", () => {
+  it("✉ 발송 칸은 서버에서도 쓰기가 거부된다 — 화면만 막으면 안 된다", async () => {
     const item = repo.createItem(ctx, boardId, { title: "다전자 주식회사" });
 
-    const result = svc.setCells(ctx, boardId, item.id, { absence_notice: "악성 부재" });
+    const result = await svc.setCells(ctx, boardId, item.id, { absence_notice: "악성 부재" });
 
     expect(result.errors.length, "잠긴 칸인데 저장이 통과했다").toBeGreaterThan(0);
-    expect(new BoardsService(repo).getItem(ctx, boardId, item.id)?.values.absence_notice).toBeUndefined();
+    expect((await new BoardsService(repo).getItem(ctx, boardId, item.id))?.values.absence_notice).toBeUndefined();
   });
 });
 
@@ -213,36 +213,36 @@ describe("④ 「상담 상황」을 바꾸면 카드가 그 그룹으로 옮겨
   ];
 
   for (const [value, expectedGroup] of CASES) {
-    it(`상담 상황 = «${value}» → ${expectedGroup}`, () => {
+    it(`상담 상황 = «${value}» → ${expectedGroup}`, async () => {
       const item = repo.createItem(ctx, boardId, { title: "가밸브 주식회사" });
       const groupName = new Map(repo.listGroups(ctx, boardId).map((group) => [group.id, group.name]));
 
-      svc.setCells(ctx, boardId, item.id, { consult_status: value });
+      await svc.setCells(ctx, boardId, item.id, { consult_status: value });
 
       const moved = repo.getItem(ctx, item.id);
       expect(groupName.get(moved!.group_id!)).toBe(expectedGroup);
     });
   }
 
-  it("옮겨간 뒤에도 그때까지 쌓인 값은 그대로다 (D78 — 정보가 쌓인다)", () => {
+  it("옮겨간 뒤에도 그때까지 쌓인 값은 그대로다 (D78 — 정보가 쌓인다)", async () => {
     const item = repo.createItem(ctx, boardId, { title: "라건설 주식회사" });
-    svc.setCells(ctx, boardId, item.id, { industry: "건설업", contract_fee: 500000 });
+    await svc.setCells(ctx, boardId, item.id, { industry: "건설업", contract_fee: 500000 });
 
-    svc.setCells(ctx, boardId, item.id, { consult_status: "거절" });
+    await svc.setCells(ctx, boardId, item.id, { consult_status: "거절" });
 
-    const after = new BoardsService(repo).getItem(ctx, boardId, item.id);
+    const after = await new BoardsService(repo).getItem(ctx, boardId, item.id);
     expect(after?.values.industry).toBe("건설업");
     expect(after?.values.contract_fee).toBe(500000);
     expect(after?.values.consult_status).toBe("거절");
   });
 
-  it("이동 규칙이 없는 값은 카드를 옮기지 않는다", () => {
+  it("이동 규칙이 없는 값은 카드를 옮기지 않는다", async () => {
     const item = repo.createItem(ctx, boardId, { title: "마포장 주식회사" });
-    svc.setCells(ctx, boardId, item.id, { consult_status: "거절" });
+    await svc.setCells(ctx, boardId, item.id, { consult_status: "거절" });
     const rejected = repo.getItem(ctx, item.id)!.group_id;
 
     // 「컨택 이동」에는 그룹 이동 규칙이 없다 — 그 열의 일은 탭 넘김이다.
-    svc.setCells(ctx, boardId, item.id, { contact_move: "컨택 대기" });
+    await svc.setCells(ctx, boardId, item.id, { contact_move: "컨택 대기" });
 
     expect(repo.getItem(ctx, item.id)!.group_id).toBe(rejected);
   });
