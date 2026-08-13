@@ -2,14 +2,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Ctx } from "@/lib/types";
 import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
-import { SEED_ORG_ID, SEED_USER_OWNER } from "@/lib/repo/local/seed";
+import { SEED_USER_OWNER } from "@/lib/repo/local/seed";
 import { ensureDefaultTab, NEW_LEAD_TAB } from "@/lib/default-tabs";
 import { NEWCUST_BOARD_SOURCE, resolveExistingNewcustBoard } from "./entry";
 
 function owner(): Ctx {
   return {
     user: { id: SEED_USER_OWNER, email: "owner@example.test", name: "owner", avatar_url: null, created_at: "" },
-    org: { id: SEED_ORG_ID, name: "example", plan_tier: "t1_3", created_at: "" },
+    org: { id: "org-newcust-entry-test", name: "example", plan_tier: "t1_3", created_at: "" },
     role: "owner",
     scope: "all",
   } as Ctx;
