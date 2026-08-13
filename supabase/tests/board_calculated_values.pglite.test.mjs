@@ -100,6 +100,13 @@ test("BBE-153 recalculates on source writes, rejects manual calc writes, records
         has_function_privilege('public', 'public.bbe153_after_source_write()', 'execute') as public_can_execute_trigger,
         has_function_privilege('authenticated', 'public.bbe153_after_source_write()', 'execute') as app_can_execute_trigger,
         has_function_privilege('service_role', 'public.bbe153_after_source_write()', 'execute') as service_can_execute_trigger,
+        (select count(*)::integer
+           from pg_proc p
+           cross join unnest(array['public','anon','authenticated','service_role']) role_name
+          where p.pronamespace = 'public'::regnamespace
+            and p.proname like 'bbe153_%'
+            and p.prosecdef
+            and has_function_privilege(role_name, p.oid, 'execute')) as leaked_security_definer_grants,
         has_table_privilege('service_role', 'public.board_calculation_failures', 'select') as service_can_read_failures
     `);
     assert.deepEqual(privileges.rows, [{
@@ -108,6 +115,7 @@ test("BBE-153 recalculates on source writes, rejects manual calc writes, records
       public_can_execute_trigger: false,
       app_can_execute_trigger: false,
       service_can_execute_trigger: false,
+      leaked_security_definer_grants: 0,
       service_can_read_failures: false,
     }]);
 
