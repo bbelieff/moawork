@@ -1,12 +1,13 @@
 import type { Ctx } from "@/lib/types";
 import type { BoardsRepo } from "@/lib/boards/store";
+import { NEW_LEAD_TAB_SOURCE } from "@/lib/default-tabs/types";
 
 export type NewcustEntryResolution =
   | { kind: "ready"; boardId: string }
   | { kind: "missing" }
   | { kind: "conflict" };
 
-export const NEWCUST_BOARD_SOURCE = "pack.seoul.policyfund1/newcust";
+export const NEWCUST_BOARD_SOURCE = NEW_LEAD_TAB_SOURCE;
 
 /**
  * 현재 조직의 기존 031 신규업체 보드를 유일하게 찾는다.

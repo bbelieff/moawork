@@ -3,12 +3,13 @@ import type { Ctx } from "@/lib/types";
 import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
 import { SEED_ORG_ID, SEED_USER_OWNER } from "@/lib/repo/local/seed";
+import { ensureDefaultTab, NEW_LEAD_TAB } from "@/lib/default-tabs";
 import { NEWCUST_BOARD_SOURCE, resolveExistingNewcustBoard } from "./entry";
 
 function owner(): Ctx {
   return {
     user: { id: SEED_USER_OWNER, email: "owner@example.test", name: "owner", avatar_url: null, created_at: "" },
-    org: { id: SEED_ORG_ID, name: "example", plan_tier: "t1_3", created_at: "" },
+    org: { id: "org-newcust-entry-test", name: "example", plan_tier: "t1_3", created_at: "" },
     role: "owner",
     scope: "all",
   } as Ctx;
@@ -45,5 +46,54 @@ describe("resolveExistingNewcustBoard", () => {
     const before = repo.listBoards(ctx);
     expect(await resolveExistingNewcustBoard(ctx, toAsyncBoardsRepo(repo))).toEqual({ kind: "missing" });
     expect(repo.listBoards(ctx)).toEqual(before);
+  });
+  it("D76 기본 탭을 심으면 안정 source로 즉시 진입한다", async () => {
+    const ctx = owner();
+    const local = new LocalBoardsRepo();
+    const repo = toAsyncBoardsRepo(local);
+    const { boardId } = await ensureDefaultTab(ctx, NEW_LEAD_TAB, repo);
+
+    expect(await resolveExistingNewcustBoard(ctx, repo)).toEqual({ kind: "ready", boardId });
+    expect(local.listBoards(ctx).find((board) => board.id === boardId)?.source).toBe(
+      NEWCUST_BOARD_SOURCE,
+    );
+  });
+
+  it("legacy 이름만 같은 보드는 제품 기본 탭으로 오인하지 않는다", async () => {
+    const ctx = owner();
+    const local = new LocalBoardsRepo();
+    local.createBoard(ctx, { name: NEW_LEAD_TAB.name, source: null });
+
+    expect(await resolveExistingNewcustBoard(ctx, toAsyncBoardsRepo(local))).toEqual({
+      kind: "missing",
+    });
+  });
+
+  it("역사 structure-pack source만 있는 보드는 제품 기본 탭으로 오인하지 않는다", async () => {
+    const ctx = owner();
+    const local = new LocalBoardsRepo();
+    expect(NEWCUST_BOARD_SOURCE).not.toBe("pack.seoul.policyfund1/newcust");
+    local.createBoard(ctx, {
+      name: NEW_LEAD_TAB.name,
+      source: "pack.seoul.policyfund1/newcust",
+    });
+
+    expect(await resolveExistingNewcustBoard(ctx, toAsyncBoardsRepo(local))).toEqual({
+      kind: "missing",
+    });
+  });
+
+  it("로컬 seed의 제품 기본 탭은 즉시 진입 가능하다", async () => {
+    const ctx = { ...owner(), org: { ...owner().org, id: SEED_ORG_ID } };
+    const local = new LocalBoardsRepo();
+    const productBoard = local
+      .listBoards(ctx)
+      .find((board) => board.source === NEWCUST_BOARD_SOURCE);
+
+    expect(productBoard).toBeDefined();
+    expect(await resolveExistingNewcustBoard(ctx, toAsyncBoardsRepo(local))).toEqual({
+      kind: "ready",
+      boardId: productBoard?.id,
+    });
   });
 });

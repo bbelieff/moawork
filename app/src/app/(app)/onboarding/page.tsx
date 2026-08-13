@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getSession, SESSION_COOKIE } from "@/lib/auth/session";
 import { getRepo } from "@/lib/repo";
 import { installPolicyfundPreset } from "@/lib/presets/policyfund";
+import { ensureDefaultTabs } from "@/lib/default-tabs";
 import { FEATURES } from "@/lib/product";
 
 // 온보딩(흐름 A): 조직 생성 → 업종팩(정책자금) 선택 → 홈.
@@ -22,6 +23,10 @@ export default async function OnboardingPage() {
     const { org } = getRepo().createOrg({ name }, current.user);
     const jar = await cookies();
     jar.set(SESSION_COOKIE.org, org.id, { path: "/" });
+
+    // D76 — 새 워크스페이스에는 목업의 기본 탭이 «이미 있다». «설치» 라는 단계는 없다.
+    // 구조는 채워져 있고 데이터는 0 이다(D72 와 충돌하지 않는다 — D73·D74 참고).
+    await ensureDefaultTabs({ user: current.user, org, role: "owner", scope: "all" });
 
     if (withPreset) {
       installPolicyfundPreset({
