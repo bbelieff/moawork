@@ -44,7 +44,7 @@ export function slugifyKey(label: string): string {
   return base === "" ? "col" : base;
 }
 
-export class LocalBoardsRepo implements BoardsRepo {
+export class LocalBoardsRepo {
   // ── 보드 ──
   listBoards(ctx: Ctx): Board[] {
     return db()
@@ -65,7 +65,7 @@ export class LocalBoardsRepo implements BoardsRepo {
       description: input.description ?? null,
       icon: input.icon ?? null,
       is_system: false,
-      source: null,
+      source: input.source ?? null,
       sort_order: db().boards.filter((b) => b.org_id === ctx.org.id).length,
       created_by: ctx.user.id,
       created_at: ts,
@@ -182,7 +182,12 @@ export class LocalBoardsRepo implements BoardsRepo {
     if (!c) return false;
     d.boardColumns = d.boardColumns.filter((x) => x.id !== id);
     // 컬럼 삭제 시 해당 키의 셀 값 정리(EAV 고아 방지).
-    d.itemValues = d.itemValues.filter((v) => v.column_key !== c.key);
+    const boardItemIds = new Set(
+      d.boardItems.filter((item) => item.board_id === c.board_id).map((item) => item.id),
+    );
+    d.itemValues = d.itemValues.filter(
+      (v) => v.column_key !== c.key || !boardItemIds.has(v.item_id),
+    );
     return true;
   }
 
@@ -297,7 +302,12 @@ export class LocalBoardsRepo implements BoardsRepo {
   }
 
   updateView(ctx: Ctx, id: string, patch: ViewPatch): BoardView | undefined {
-    const v = this.getView(ctx, id);
+    const v = db().boardViews.find(
+      (candidate) =>
+        candidate.id === id &&
+        candidate.org_id === ctx.org.id &&
+        candidate.user_id === ctx.user.id,
+    );
     if (!v) return undefined;
     if (patch.name !== undefined) v.name = patch.name;
     if (patch.kind !== undefined) v.kind = patch.kind;
@@ -310,19 +320,39 @@ export class LocalBoardsRepo implements BoardsRepo {
 
   deleteView(ctx: Ctx, id: string): boolean {
     const d = db();
-    const v = d.boardViews.find((x) => x.id === id && x.org_id === ctx.org.id);
+    const v = d.boardViews.find(
+      (x) => x.id === id && x.org_id === ctx.org.id && x.user_id === ctx.user.id,
+    );
     if (!v) return false;
     d.boardViews = d.boardViews.filter((x) => x.id !== id);
     return true;
   }
 }
 
-// 프로세스 단일 인스턴스(공유 db() 사용).
+// 프로세스 단일 인스턴스(공유 db() 사용) — 환경 미설정 테스트/오프라인 전용.
 const globalBoardsRepo = globalThis as unknown as { __moaworkBoardsRepo?: BoardsRepo };
 
-export function getBoardsRepo(): BoardsRepo {
+/** Keep the deterministic local store synchronous while exposing the production async port. */
+export function toAsyncBoardsRepo(local: LocalBoardsRepo): BoardsRepo {
+  return new Proxy(local, {
+    get(target, property) {
+      const value = Reflect.get(target, property);
+      if (typeof value !== "function") return value;
+      return async (...args: unknown[]) => Reflect.apply(value, target, args);
+    },
+  }) as unknown as BoardsRepo;
+}
+
+export async function getBoardsRepo(): Promise<BoardsRepo> {
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    const [{ createClient }, { SupabaseBoardsRepo }] = await Promise.all([
+      import("@/lib/supabase/server"),
+      import("@/lib/repo/supabase/boardsRepo"),
+    ]);
+    return new SupabaseBoardsRepo(await createClient());
+  }
   if (!globalBoardsRepo.__moaworkBoardsRepo) {
-    globalBoardsRepo.__moaworkBoardsRepo = new LocalBoardsRepo();
+    globalBoardsRepo.__moaworkBoardsRepo = toAsyncBoardsRepo(new LocalBoardsRepo());
   }
   return globalBoardsRepo.__moaworkBoardsRepo;
 }

@@ -23,7 +23,7 @@ export default async function BoardsPage({
   ]);
   // Existence hiding: a denied or unavailable view permission must not reveal board metadata.
   if (viewPermission.kind !== "allowed") notFound();
-  const boards = getBoardsService().listBoards(ctx);
+  const boards = await getBoardsService().listBoards(ctx);
   const canManageTabs = tabPermission.kind === "allowed";
 
   const system = boards.filter((b) => b.is_system);

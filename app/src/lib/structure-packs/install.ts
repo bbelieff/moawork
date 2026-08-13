@@ -128,15 +128,15 @@ function resolveAssignees(ctx: Ctx): AssigneeMember[] {
  * 보드가 두 벌 생기지 않아야 한다. 부분 설치(1개만 있는 상태)에서도
  * 나머지만 채워진다.
  */
-export function installStructurePack(
+export async function installStructurePack(
   ctx: Ctx,
   options: {
     repo?: BoardsRepo;
     pack: StructurePack;
     assignees?: AssigneeMember[];
   },
-): InstallResult {
-  const repo = options.repo ?? getBoardsRepo();
+): Promise<InstallResult> {
+  const repo = options.repo ?? await getBoardsRepo();
   const pack = options.pack;
   const assignees = options.assignees ?? resolveAssignees(ctx);
 
@@ -146,18 +146,24 @@ export function installStructurePack(
   const assigneeGroups: AssigneeGroupBinding[] = [];
 
   for (const packBoard of pack.boards) {
+    const source = `${pack.key}/${packBoard.slug}`;
     deferred.push(
       ...packBoard.deferredColumns.map((column) => ({ ...column, boardSlug: packBoard.slug })),
     );
-    const existingBoard = repo.listBoards(ctx).find((board) => board.name === packBoard.name);
+    const existingBoard = (await repo.listBoards(ctx)).find(
+      (board) => board.source === source || (board.source === null && board.name === packBoard.name),
+    );
     if (existingBoard) {
+      if (existingBoard.source !== source) {
+        await repo.updateBoard(ctx, existingBoard.id, { source });
+      }
       skipped.push(packBoard.slug);
       assigneeGroups.push(
-        ...reconcileAssigneeGroups(ctx, repo, existingBoard.id, packBoard, assignees),
+        ...await reconcileAssigneeGroups(ctx, repo, existingBoard.id, packBoard, assignees),
       );
       continue;
     }
-    const installed = installBoard(ctx, repo, packBoard, pack, assignees);
+    const installed = await installBoard(ctx, repo, packBoard, pack, assignees);
     boards.push(installed.board);
     assigneeGroups.push(...installed.assigneeGroups);
   }
@@ -195,17 +201,17 @@ function resolveSectionName(section: SectionPreset, assignees: AssigneeMember[])
  * 이미 설치된 보드의 담당자별 그룹을 현재 멤버 슬롯과 맞춘다.
  * 바인딩은 userId 를 정본으로 삼으므로 표시명 변경·동명이인이 그룹 동일성을 바꾸지 않는다.
  */
-export function reconcileAssigneeGroups(
+export async function reconcileAssigneeGroups(
   ctx: Ctx,
   repo: BoardsRepo,
   boardId: string,
   packBoard: PackBoard,
   assignees: readonly AssigneeMember[],
-): AssigneeGroupBinding[] {
+): Promise<AssigneeGroupBinding[]> {
   const slotSections = packBoard.sections.filter(
     (section): section is SectionPreset & { assigneeSlot: number } => section.assigneeSlot !== undefined,
   );
-  const existingGroups = repo.listGroups(ctx, boardId);
+  const existingGroups = await repo.listGroups(ctx, boardId);
   const claimedGroupIds = new Set<string>();
   const slotGroups = existingGroups.filter((group) =>
     slotSections.some(
@@ -232,9 +238,9 @@ export function reconcileAssigneeGroups(
   );
   const next: AssigneeGroupBinding[] = [];
 
-  const moveItems = (fromGroupId: string, toGroupId: string) => {
-    for (const item of repo.listItems(ctx, boardId)) {
-      if (item.group_id === fromGroupId) repo.updateItem(ctx, item.id, { group_id: toGroupId });
+  const moveItems = async (fromGroupId: string, toGroupId: string) => {
+    for (const item of await repo.listItems(ctx, boardId)) {
+      if (item.group_id === fromGroupId) await repo.updateItem(ctx, item.id, { group_id: toGroupId });
     }
   };
 
@@ -252,8 +258,8 @@ export function reconcileAssigneeGroups(
     if (!assignee) {
       if (existing) {
         if (!fallback) throw new Error(`담당자 그룹 아이템을 옮길 일반 그룹이 없습니다: ${packBoard.slug}`);
-        moveItems(existing.id, fallback.id);
-        repo.deleteGroup(ctx, existing.id);
+        await moveItems(existing.id, fallback.id);
+        await repo.deleteGroup(ctx, existing.id);
       }
       continue;
     }
@@ -261,10 +267,10 @@ export function reconcileAssigneeGroups(
     const expectedName = withAssigneeOwner(`${section.groupName}${assignee.displayName}`, assignee.userId);
     let group = existing;
     if (!group || group.name !== expectedName) {
-      const replacement = repo.createGroup(ctx, boardId, { name: expectedName, color: section.color });
+      const replacement = await repo.createGroup(ctx, boardId, { name: expectedName, color: section.color });
       if (group) {
-        moveItems(group.id, replacement.id);
-        repo.deleteGroup(ctx, group.id);
+        await moveItems(group.id, replacement.id);
+        await repo.deleteGroup(ctx, group.id);
       }
       group = replacement;
     }
@@ -274,37 +280,39 @@ export function reconcileAssigneeGroups(
 
   for (const obsolete of slotGroups.filter((group) => !claimedGroupIds.has(group.id))) {
     if (!fallback) throw new Error(`담당자 그룹 아이템을 옮길 일반 그룹이 없습니다: ${packBoard.slug}`);
-    moveItems(obsolete.id, fallback.id);
-    repo.deleteGroup(ctx, obsolete.id);
+    await moveItems(obsolete.id, fallback.id);
+    await repo.deleteGroup(ctx, obsolete.id);
   }
 
   return next;
 }
 
-function installBoard(
+async function installBoard(
   ctx: Ctx,
   repo: BoardsRepo,
   packBoard: PackBoard,
   pack: StructurePack,
   assignees: AssigneeMember[],
-): { board: InstalledBoard; assigneeGroups: AssigneeGroupBinding[] } {
-  const board = repo.createBoard(ctx, {
+): Promise<{ board: InstalledBoard; assigneeGroups: AssigneeGroupBinding[] }> {
+  const board = await repo.createBoard(ctx, {
     name: packBoard.name,
     description: packBoard.description,
     icon: packBoard.icon,
+    source: `${pack.key}/${packBoard.slug}`,
   });
 
   // 배열 순서가 곧 sort_order 다 — 포트가 추가 순서대로 번호를 매긴다.
-  const columnKeys = packBoard.columns.map((column) => {
-    const created = repo.createColumn(ctx, board.id, {
+  const columnKeys: string[] = [];
+  for (const column of packBoard.columns) {
+    const created = await repo.createColumn(ctx, board.id, {
       key: column.key,
       label: column.label,
       type: column.type,
       options: resolveOptions(column, pack),
       width: column.width ?? null,
     });
-    return created.key;
-  });
+    columnKeys.push(created.key);
+  }
 
   const groupIds: string[] = [];
   const assigneeGroups: AssigneeGroupBinding[] = [];
@@ -313,7 +321,7 @@ function installBoard(
     if (name === null) continue; // 담당자별 슬롯인데 채울 멤버가 아직 없음(D73)
     const assignee =
       section.assigneeSlot === undefined ? undefined : assignees[section.assigneeSlot];
-    const group = repo.createGroup(ctx, board.id, {
+    const group = await repo.createGroup(ctx, board.id, {
       name: assignee ? withAssigneeOwner(name, assignee.userId) : name,
       color: section.color,
     });
@@ -332,16 +340,17 @@ function installBoard(
     }
   }
 
-  const viewIds = packBoard.views.map(
-    (view) =>
-      repo.createView(ctx, board.id, {
+  const viewIds: string[] = [];
+  for (const view of packBoard.views) {
+    const created = await repo.createView(ctx, board.id, {
         name: view.name,
         kind: view.kind,
         // 다중값 필터의 실제 적용은 WO-3 소유다. 여기서는 실측 조건을 담아만 둔다.
         filters: view.filters ?? {},
         shared: view.shared,
-      }).id,
-  );
+      });
+    viewIds.push(created.id);
+  }
 
   return {
     board: {

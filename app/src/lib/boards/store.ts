@@ -28,6 +28,7 @@ export interface NewBoard {
   name: string;
   description?: string | null;
   icon?: string | null;
+  source?: string | null;
 }
 export type BoardPatch = Partial<NewBoard> & { sort_order?: number };
 
@@ -88,38 +89,38 @@ export type ViewPatch = Partial<NewView>;
 
 export interface BoardsRepo {
   // 보드
-  listBoards(ctx: Ctx): Board[];
-  getBoard(ctx: Ctx, id: string): Board | undefined;
-  createBoard(ctx: Ctx, input: NewBoard): Board;
-  updateBoard(ctx: Ctx, id: string, patch: BoardPatch): Board | undefined;
-  deleteBoard(ctx: Ctx, id: string): boolean;
+  listBoards(ctx: Ctx): Promise<Board[]>;
+  getBoard(ctx: Ctx, id: string): Promise<Board | undefined>;
+  createBoard(ctx: Ctx, input: NewBoard): Promise<Board>;
+  updateBoard(ctx: Ctx, id: string, patch: BoardPatch): Promise<Board | undefined>;
+  deleteBoard(ctx: Ctx, id: string): Promise<boolean>;
 
   // 그룹(칸반 스윔레인)
-  listGroups(ctx: Ctx, boardId: string): BoardGroup[];
-  createGroup(ctx: Ctx, boardId: string, input: NewGroup): BoardGroup;
-  deleteGroup(ctx: Ctx, id: string): boolean;
+  listGroups(ctx: Ctx, boardId: string): Promise<BoardGroup[]>;
+  createGroup(ctx: Ctx, boardId: string, input: NewGroup): Promise<BoardGroup>;
+  deleteGroup(ctx: Ctx, id: string): Promise<boolean>;
 
   // 컬럼
-  listColumns(ctx: Ctx, boardId: string): BoardColumn[];
-  createColumn(ctx: Ctx, boardId: string, input: NewColumn): BoardColumn;
-  updateColumn(ctx: Ctx, id: string, patch: ColumnPatch): BoardColumn | undefined;
-  deleteColumn(ctx: Ctx, id: string): boolean;
+  listColumns(ctx: Ctx, boardId: string): Promise<BoardColumn[]>;
+  createColumn(ctx: Ctx, boardId: string, input: NewColumn): Promise<BoardColumn>;
+  updateColumn(ctx: Ctx, id: string, patch: ColumnPatch): Promise<BoardColumn | undefined>;
+  deleteColumn(ctx: Ctx, id: string): Promise<boolean>;
 
   // 아이템(담당범위 적용)
-  listItems(ctx: Ctx, boardId: string): BoardItem[];
-  getItem(ctx: Ctx, id: string): BoardItem | undefined;
-  createItem(ctx: Ctx, boardId: string, input: NewItem): BoardItem;
-  updateItem(ctx: Ctx, id: string, patch: ItemPatch): BoardItem | undefined;
-  deleteItem(ctx: Ctx, id: string): boolean;
+  listItems(ctx: Ctx, boardId: string): Promise<BoardItem[]>;
+  getItem(ctx: Ctx, id: string): Promise<BoardItem | undefined>;
+  createItem(ctx: Ctx, boardId: string, input: NewItem): Promise<BoardItem>;
+  updateItem(ctx: Ctx, id: string, patch: ItemPatch): Promise<BoardItem | undefined>;
+  deleteItem(ctx: Ctx, id: string): Promise<boolean>;
 
   // 셀 값(EAV)
-  listValues(ctx: Ctx, itemIds: string[]): ItemValue[];
-  setValues(ctx: Ctx, itemId: string, patch: Record<string, CellValue>): void;
+  listValues(ctx: Ctx, itemIds: string[]): Promise<ItemValue[]>;
+  setValues(ctx: Ctx, itemId: string, patch: Record<string, CellValue>): Promise<void>;
 
   // 뷰
-  listViews(ctx: Ctx, boardId: string): BoardView[];
-  getView(ctx: Ctx, id: string): BoardView | undefined;
-  createView(ctx: Ctx, boardId: string, input: NewView): BoardView;
-  updateView(ctx: Ctx, id: string, patch: ViewPatch): BoardView | undefined;
-  deleteView(ctx: Ctx, id: string): boolean;
+  listViews(ctx: Ctx, boardId: string): Promise<BoardView[]>;
+  getView(ctx: Ctx, id: string): Promise<BoardView | undefined>;
+  createView(ctx: Ctx, boardId: string, input: NewView): Promise<BoardView>;
+  updateView(ctx: Ctx, id: string, patch: ViewPatch): Promise<BoardView | undefined>;
+  deleteView(ctx: Ctx, id: string): Promise<boolean>;
 }

@@ -54,7 +54,7 @@ export default async function BoardPage({
 
   let detail;
   try {
-    detail = svc.getBoardDetail(ctx, id);
+    detail = await svc.getBoardDetail(ctx, id);
   } catch (err) {
     if (err instanceof NotFoundError) notFound();
     throw err;
@@ -67,11 +67,11 @@ export default async function BoardPage({
   );
   const groupBy = sp.group && selectColumns.some((c) => c.key === sp.group) ? sp.group : "";
   const visibleItemIds = new Set(scopedItems.result.itemIds);
-  const boardItems = svc.listItems(ctx, id);
+  const boardItems = await svc.listItems(ctx, id);
   const items = boardItems.filter((item) => visibleItemIds.has(item.id));
   const hiddenCount = boardItems.length - items.length;
   const lanes = view === "kanban"
-    ? svc.kanban(ctx, id, groupBy || undefined).map((lane) => ({
+    ? (await svc.kanban(ctx, id, groupBy || undefined)).map((lane) => ({
         ...lane,
         items: lane.items.filter((item) => visibleItemIds.has(item.id)),
       }))

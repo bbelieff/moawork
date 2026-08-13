@@ -80,10 +80,14 @@ export function isNoticeVisibleTo(notice: Notice, ctx: Ctx): boolean {
 }
 
 export class NoticesService {
+  private readonly repo: Promise<BoardsRepo>;
+
   constructor(
     private readonly boards: BoardsService = new BoardsService(),
-    private readonly repo: BoardsRepo = getBoardsRepo(),
-  ) {}
+    repo?: BoardsRepo,
+  ) {
+    this.repo = repo ? Promise.resolve(repo) : getBoardsRepo();
+  }
 
   // ── 보드 ──
 
@@ -91,8 +95,8 @@ export class NoticesService {
    * 공지 보드 조회. source='core.notice' 우선, 없으면 이름으로 폴백.
    * (런타임 생성 보드는 포트에 source 인자가 없어 null 로 저장되기 때문)
    */
-  findBoard(ctx: Ctx): Board | undefined {
-    const all = this.boards.listBoards(ctx);
+  async findBoard(ctx: Ctx): Promise<Board | undefined> {
+    const all = await this.boards.listBoards(ctx);
     return (
       all.find((b) => b.source === NOTICE_BOARD_SOURCE) ??
       all.find((b) => b.source === null && b.name === NOTICE_BOARD_NAME)
@@ -104,19 +108,20 @@ export class NoticesService {
    * BoardsService.createBoard 는 기본 컬럼(상태/담당/마감일)을 심으므로 쓰지 않고,
    * 포트로 직접 만들어 공지 전용 컬럼만 남긴다.
    */
-  ensureBoard(ctx: Ctx): Board {
-    const found = this.findBoard(ctx);
+  async ensureBoard(ctx: Ctx): Promise<Board> {
+    const found = await this.findBoard(ctx);
     if (found) {
-      this.ensureColumns(ctx, found.id);
+      await this.ensureColumns(ctx, found.id);
       return found;
     }
 
-    const board = this.repo.createBoard(ctx, {
+    const repo = await this.repo;
+    const board = await repo.createBoard(ctx, {
       name: NOTICE_BOARD_NAME,
       description: "조직 전체 공지 — 상단고정 공지가 먼저 보입니다",
       icon: "📢",
     });
-    for (const col of NOTICE_COLUMNS) this.repo.createColumn(ctx, board.id, col);
+    for (const col of NOTICE_COLUMNS) await repo.createColumn(ctx, board.id, col);
     return board;
   }
 
@@ -126,14 +131,15 @@ export class NoticesService {
    * 종료일·열람 대상은 나중에 추가된 컬럼이라, 먼저 만들어진 보드에는 없다.
    * 없는 컬럼에 셀을 쓰면 setCells 가 거부하므로 쓰기 전에 메운다.
    */
-  private ensureColumns(ctx: Ctx, boardId: string): void {
+  private async ensureColumns(ctx: Ctx, boardId: string): Promise<void> {
     const existing = new Set(
-      this.boards.getBoardDetail(ctx, boardId).columns.map((c) => c.key),
+      (await this.boards.getBoardDetail(ctx, boardId)).columns.map((c) => c.key),
     );
+    const repo = await this.repo;
     for (const col of NOTICE_COLUMNS) {
       // key 는 선택 필드다 — 생략되면 저장소가 라벨에서 파생한다. 같은 규칙으로 맞춘다.
       const key = col.key ?? slugifyKey(col.label);
-      if (!existing.has(key)) this.repo.createColumn(ctx, boardId, col);
+      if (!existing.has(key)) await repo.createColumn(ctx, boardId, col);
     }
   }
 
@@ -145,24 +151,24 @@ export class NoticesService {
    *
    * 예약·종료·관리자 전용 공지는 관리자에게만 보인다(isNoticeVisibleTo).
    */
-  list(ctx: Ctx, opts: { limit?: number; now?: Date } = {}): Notice[] {
-    const board = this.findBoard(ctx);
+  async list(ctx: Ctx, opts: { limit?: number; now?: Date } = {}): Promise<Notice[]> {
+    const board = await this.findBoard(ctx);
     if (!board) return [];
     const today = todayKst(opts.now);
-    const notices = this.boards
-      .listItems(this.readCtx(ctx), board.id)
+    const notices = (await this.boards
+      .listItems(this.readCtx(ctx), board.id))
       .map((item) => this.toNotice(board.id, item, today))
       .filter((notice) => isNoticeVisibleTo(notice, ctx))
       .sort(compareNotices);
     return opts.limit === undefined ? notices : notices.slice(0, Math.max(0, opts.limit));
   }
 
-  get(ctx: Ctx, noticeId: string, now?: Date): Notice {
-    const board = this.findBoard(ctx);
+  async get(ctx: Ctx, noticeId: string, now?: Date): Promise<Notice> {
+    const board = await this.findBoard(ctx);
     if (!board) throw new NotFoundError("공지 보드가 없습니다");
     const notice = this.toNotice(
       board.id,
-      this.boards.getItem(this.readCtx(ctx), board.id, noticeId),
+      await this.boards.getItem(this.readCtx(ctx), board.id, noticeId),
       todayKst(now),
     );
     // 볼 수 없는 공지는 "없는 것"으로 답한다 — 존재 여부까지 숨긴다.
@@ -170,14 +176,14 @@ export class NoticesService {
     return notice;
   }
 
-  create(ctx: Ctx, input: NewNotice): Notice {
+  async create(ctx: Ctx, input: NewNotice): Promise<Notice> {
     requireNoticeManager(ctx);
-    const board = this.ensureBoard(ctx);
+    const board = await this.ensureBoard(ctx);
     const title = input.title.trim();
     if (title === "") throw new NoticeRuleError("제목을 입력하세요");
     assertPeriod(input.publishedAt ?? todayKst(), input.endedAt ?? null);
 
-    const item = this.boards.createItem(ctx, board.id, {
+    const item = await this.boards.createItem(ctx, board.id, {
       title,
       // 공지는 조직 전체 공람 — 담당자를 지정하면 member+assigned 에게서 숨는다.
       assigned_to: null,
@@ -195,16 +201,16 @@ export class NoticesService {
   }
 
   /** 부분 갱신 — 전달된 키만 반영한다(미전달 셀은 보존). */
-  update(ctx: Ctx, noticeId: string, patch: NoticePatch): Notice {
+  async update(ctx: Ctx, noticeId: string, patch: NoticePatch): Promise<Notice> {
     requireNoticeManager(ctx);
-    const board = this.findBoard(ctx);
+    const board = await this.findBoard(ctx);
     if (!board) throw new NotFoundError("공지 보드가 없습니다");
-    this.ensureColumns(ctx, board.id);
+    await this.ensureColumns(ctx, board.id);
 
     // 기간은 부분 갱신이라도 최종 조합으로 검증한다(한쪽만 바꿔 뒤집히는 것 방지).
     const current = this.toNotice(
       board.id,
-      this.boards.getItem(this.readCtx(ctx), board.id, noticeId),
+      await this.boards.getItem(this.readCtx(ctx), board.id, noticeId),
       todayKst(),
     );
     assertPeriod(
@@ -215,7 +221,7 @@ export class NoticesService {
     if (patch.title !== undefined) {
       const title = patch.title.trim();
       if (title === "") throw new NoticeRuleError("제목을 입력하세요");
-      this.boards.updateItem(ctx, board.id, noticeId, { title });
+      await this.boards.updateItem(ctx, board.id, noticeId, { title });
     }
 
     const cells: Record<string, CellValue> = {};
@@ -232,22 +238,22 @@ export class NoticesService {
     // 검증 실패를 조용히 삼키지 않고 거부한다(잘못된 분류 id 등).
     let item: ItemWithValues;
     if (Object.keys(cells).length > 0) {
-      const res = this.boards.setCells(ctx, board.id, noticeId, cells);
+      const res = await this.boards.setCells(ctx, board.id, noticeId, cells);
       if (res.errors.length > 0) {
         throw new NoticeRuleError(res.errors.map((e) => `${e.label}: ${e.message}`).join(", "));
       }
       item = res.item;
     } else {
-      item = this.boards.getItem(ctx, board.id, noticeId);
+      item = await this.boards.getItem(ctx, board.id, noticeId);
     }
     return this.toNotice(board.id, item, todayKst());
   }
 
-  remove(ctx: Ctx, noticeId: string): void {
+  async remove(ctx: Ctx, noticeId: string): Promise<void> {
     requireNoticeManager(ctx);
-    const board = this.findBoard(ctx);
+    const board = await this.findBoard(ctx);
     if (!board) throw new NotFoundError("공지 보드가 없습니다");
-    this.boards.deleteItem(ctx, board.id, noticeId);
+    await this.boards.deleteItem(ctx, board.id, noticeId);
   }
 
   // ── 내부 ──

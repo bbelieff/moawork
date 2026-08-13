@@ -30,7 +30,7 @@ export default async function NoticesPage({
 }) {
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
-  const notices = getNoticesService().list(ctx);
+  const notices = await getNoticesService().list(ctx);
 
   // 공지 작성/수정은 관리자(owner/admin)만. member 는 읽기 전용.
   // (UI 를 숨기는 것과 별개로 서비스가 서버에서 같은 검사를 한다.)

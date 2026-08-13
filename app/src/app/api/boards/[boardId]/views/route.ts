@@ -19,9 +19,9 @@ export async function GET(req: Request, { params }: Params): Promise<Response> {
     const svc = getBoardsService();
 
     if (new URL(req.url).searchParams.get("default") === "1") {
-      return jsonOk(svc.getDefaultView(ctx, boardId));
+      return jsonOk(await svc.getDefaultView(ctx, boardId));
     }
-    return jsonOk(svc.listViews(ctx, boardId));
+    return jsonOk(await svc.listViews(ctx, boardId));
   } catch (err) {
     return toErrorResponse(err);
   }
@@ -32,7 +32,7 @@ export async function POST(req: Request, { params }: Params): Promise<Response> 
     const ctx = await requireCtx();
     const { boardId } = await params;
     const input = parseNewView(await readJson(req));
-    return jsonOk(getBoardsService().createView(ctx, boardId, input), 201);
+    return jsonOk(await getBoardsService().createView(ctx, boardId, input), 201);
   } catch (err) {
     return toErrorResponse(err);
   }

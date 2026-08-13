@@ -118,12 +118,12 @@ export async function evaluatePracticeQuests(
   }
 
   const ctx = practiceCtx(orgId, user);
-  const repo = getBoardsRepo();
+  const repo = await getBoardsRepo();
   const quests: QuestState[] = [];
 
   for (const def of defs) {
     const alreadyCompleted = completed.has(def.questKey);
-    const passesNow = alreadyCompleted || judgeQuest(ctx, repo, def);
+    const passesNow = alreadyCompleted || await judgeQuest(ctx, repo, def);
     if (passesNow && !alreadyCompleted) {
       try {
         const supabase = await createClient();

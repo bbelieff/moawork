@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { resolveExistingNewcustBoard } from "@/lib/newcust/entry";
+import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
 
 /**
  * 신규업체의 단일 제품 진입점(BBE-26).
@@ -15,7 +16,7 @@ export default async function NewCustomerPage({
 }) {
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
-  const result = resolveExistingNewcustBoard(ctx);
+  const result = await resolveExistingNewcustBoard(ctx, await getBoardsRepo());
   if (result.kind !== "ready") {
     const conflict = result.kind === "conflict";
     return (

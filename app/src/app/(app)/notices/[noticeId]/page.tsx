@@ -25,7 +25,7 @@ export default async function NoticeDetailPage({
 
   let notice;
   try {
-    notice = getNoticesService().get(ctx, noticeId);
+    notice = await getNoticesService().get(ctx, noticeId);
   } catch (err) {
     if (err instanceof NotFoundError) notFound();
     throw err;

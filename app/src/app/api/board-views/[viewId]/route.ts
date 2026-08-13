@@ -17,7 +17,7 @@ export async function PATCH(req: Request, { params }: Params): Promise<Response>
     const ctx = await requireCtx();
     const { viewId } = await params;
     const patch = parseViewPatch(await readJson(req));
-    return jsonOk(getBoardsService().updateView(ctx, viewId, patch));
+    return jsonOk(await getBoardsService().updateView(ctx, viewId, patch));
   } catch (err) {
     return toErrorResponse(err);
   }
@@ -27,7 +27,7 @@ export async function DELETE(_req: Request, { params }: Params): Promise<Respons
   try {
     const ctx = await requireCtx();
     const { viewId } = await params;
-    getBoardsService().deleteView(ctx, viewId);
+    await getBoardsService().deleteView(ctx, viewId);
     return jsonOk({ ok: true });
   } catch (err) {
     return toErrorResponse(err);
