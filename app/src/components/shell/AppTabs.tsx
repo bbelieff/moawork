@@ -21,10 +21,6 @@ const FEATURE_BY_TAB_KEY = new Map(
   NAV_ITEMS.map((item) => [item.key, item.feature] as const),
 );
 
-const LABEL_BY_TAB_KEY = new Map(
-  NAV_ITEMS.map((item) => [item.key, item.label] as const),
-);
-
 const ICON_BY_TAB_KEY = new Map(
   NAV_ITEMS.map((item) => [item.key, item.icon] as const),
 );
@@ -55,7 +51,6 @@ export function AppTabs({ lockedFeatures }: Props) {
         const feature = FEATURE_BY_TAB_KEY.get(tab.key);
         const isLocked = feature ? locked.has(feature) : false;
         const isActive = active.key === tab.key;
-        const label = LABEL_BY_TAB_KEY.get(tab.key) ?? tab.mockupLabel;
         const icon = ICON_BY_TAB_KEY.get(tab.key);
 
         return (
@@ -80,7 +75,7 @@ export function AppTabs({ lockedFeatures }: Props) {
             }}
           >
             {icon ? <Icon name={icon} /> : null}
-            <span>{label}</span>
+            <span>{tab.mockupLabel}</span>
             {isLocked ? (
               <span style={{ color: "var(--mw-sub)" }} title="이 조직에 켜져 있지 않은 기능입니다">
                 <Icon name="lock" />

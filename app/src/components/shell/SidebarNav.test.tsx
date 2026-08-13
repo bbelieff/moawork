@@ -1,5 +1,6 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { FEATURES } from "@/lib/product";
 import { SidebarNav } from "./SidebarNav";
@@ -76,5 +77,28 @@ describe("SidebarNav integration contract", () => {
     expect(html).toContain('name="mode" value="platform"');
     expect(html).toContain('name="next" value="/platform"');
     expect(html).not.toContain('href="/platform"');
+  });
+
+  it("renders the D05 hierarchy and keeps coming-soon items collapsed by default", () => {
+    const html = renderToStaticMarkup(<SidebarNav lockedFeatures={[]} />);
+
+    for (const label of ["종합", "업무", "계약 전", "계약 후", "설정"]) {
+      expect(html).toContain(`>${label}<`);
+    }
+    expect(html).toContain('<details data-nav-section="coming-soon">');
+    expect(html).not.toContain('<details data-nav-section="coming-soon" open="">');
+    expect(html).toContain("신규리드 관리");
+    expect(html).toContain("리드컨택 관리");
+    expect(html).toContain("계약업체 실무");
+    expect(html).toContain("업체관리 현황");
+  });
+
+  it("keeps sidebar spacing and colors on design tokens", () => {
+    const source = readFileSync(new URL("./SidebarNav.tsx", import.meta.url), "utf8");
+
+    expect(source).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(source).not.toMatch(/(?:^|["' :(,])\d+(?:\.\d+)?px\b/m);
+    expect(source).toContain('paddingBlock: "var(--sp-1)"');
+    expect(source).toContain('paddingInline: "var(--sp-2)"');
   });
 });

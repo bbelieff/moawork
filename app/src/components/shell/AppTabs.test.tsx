@@ -59,4 +59,14 @@ describe("AppTabs — 목업 「탭 6개 한 화면」 탭 줄", () => {
     // 잠기지 않은 탭은 그대로다.
     expect(html).not.toMatch(/data-tab-key="preset"[^>]*aria-disabled="true"/);
   });
+
+  it("상단 탭은 사이드바 축약명이 아니라 목업 정본명을 유지한다", async () => {
+    const html = await render("/presets");
+
+    for (const tab of APP_TABS) {
+      expect(html).toContain(`<span>${tab.mockupLabel}</span>`);
+    }
+    expect(html).toContain("프리셋 라이브러리");
+    expect(html).not.toMatch(/data-tab-key="preset"[^>]*>.*<span>프리셋<\/span>/);
+  });
 });

@@ -1,8 +1,9 @@
 import { FEATURES, type FeatureKey } from "@/lib/product";
 import type { IconName } from "./icons";
 
-// 사이드바 IA — belie 확정 11메뉴(2026-07-21), UI목업_워크스페이스_최종_v6 기준.
-// 순서·라벨은 목업과 1:1. 변경은 기획 확정 후에만.
+// 사이드바 IA — UI목업_워크스페이스_최종_v6 D05·D06 기준.
+// NAV_ITEMS 는 주소·기능·표시 이름의 단일 정본이고, NAV_SECTIONS 는 그 항목을 계층화한다.
+// 표시 이름을 바꾸더라도 href 는 canonical 주소로 유지해 저장 링크·자동화·프리셋을 보호한다.
 // 아이콘은 BBE-126(2026-08-10)에서 이모지 → SVG 심볼(D43)로 교체. 매핑은 목업 T.* 의 icon 키와 동일.
 //
 // href 가 없는 항목은 담당 트랙이 아직 화면을 만들지 않은 것 —
@@ -28,16 +29,56 @@ export type NavBadgeKey = "workspaceApprovals";
 
 export const NAV_ITEMS: readonly NavItem[] = [
   { key: "dash", label: "대시보드", icon: "grid", href: "/", feature: FEATURES.dash, owner: "T04" },
-  { key: "new", label: "신규업체", icon: "new", href: "/newcust", feature: FEATURES.crm, owner: "BBE-26" },
-  { key: "contact", label: "컨택업체", icon: "contact", href: "/contract", feature: FEATURES.crm, owner: "T02" },
-  { key: "work", label: "업무관리", icon: "work", href: "/work", feature: FEATURES.policyfund, owner: "T09" },
-  { key: "company", label: "업체관리", icon: "company", href: "/companies", feature: FEATURES.crm, owner: "T02" },
+  { key: "notifications", label: "알림", icon: "notice", href: "/settings/notifications", feature: FEATURES.notify, owner: "T06" },
   { key: "notice", label: "공지사항", icon: "notice", href: "/notices", owner: "미배정" },
-  { key: "members", label: "멤버관리", icon: "org", href: "/settings/members", feature: FEATURES.org, owner: "T03", badgeKey: "workspaceApprovals" },
-  { key: "preset", label: "프리셋 라이브러리", icon: "preset", href: "/presets", owner: "BBE-142" },
+  { key: "new", label: "신규리드 관리", icon: "new", href: "/newcust", feature: FEATURES.crm, owner: "BBE-26" },
+  { key: "contact", label: "리드컨택 관리", icon: "contact", href: "/contract", feature: FEATURES.crm, owner: "T02" },
+  { key: "work", label: "계약업체 실무", icon: "work", href: "/work", feature: FEATURES.policyfund, owner: "T09" },
+  { key: "company", label: "업체관리 현황", icon: "company", href: "/companies", feature: FEATURES.crm, owner: "T02" },
   { key: "vendor", label: "거래처등록", icon: "vendor", feature: FEATURES.crm, owner: "T02" },
   { key: "topco", label: "이달의 계약회사", icon: "topco", feature: FEATURES.dash, owner: "T04/B5" },
   { key: "acct", label: "회계", icon: "acct", owner: "T09" },
   // Phase 2 벤더 모듈 — MVP 엔타이틀먼트 OFF 라 기본 자물쇠.
   { key: "addons", label: "추가서비스", icon: "addons", feature: FEATURES.notify, owner: "T06/T08" },
+  { key: "tabs", label: "탭 관리", icon: "grid", href: "/settings/workspace-builder", feature: FEATURES.org, owner: "BBE-126" },
+  { key: "auto", label: "자동화", icon: "work", href: "/settings/automations", feature: FEATURES.policyfund, owner: "T06" },
+  { key: "members", label: "조직관리", icon: "org", href: "/settings/members", feature: FEATURES.org, owner: "T03", badgeKey: "workspaceApprovals" },
+  { key: "preset", label: "프리셋", icon: "preset", href: "/presets", owner: "BBE-142" },
+  { key: "profile", label: "내 프로필", icon: "org", href: "/account", owner: "T03" },
+  { key: "onboard", label: "온보딩", icon: "new", href: "/onboarding", owner: "BBE-112" },
 ] as const;
+
+export type NavSection = {
+  key: string;
+  label: string;
+  items: readonly NavItem["key"][];
+  /** 업무 아래 소분류는 들여써 큰 갈래와 구분한다. */
+  nested?: boolean;
+  /** 준비 중 묶음만 기본 접힘이며 사용자가 펼칠 수 있다. */
+  collapsible?: boolean;
+};
+
+/** 목업 D05: 종합 / 업무(계약 전·계약 후·준비 중) / 설정. */
+export const NAV_SECTIONS: readonly NavSection[] = [
+  { key: "overview", label: "종합", items: ["dash", "notifications", "notice"] },
+  { key: "before-contract", label: "계약 전", items: ["new", "contact"], nested: true },
+  { key: "after-contract", label: "계약 후", items: ["work", "company"], nested: true },
+  {
+    key: "coming-soon",
+    label: "준비 중",
+    items: ["vendor", "topco", "acct", "addons"],
+    nested: true,
+    collapsible: true,
+  },
+  { key: "settings", label: "설정", items: ["tabs", "auto", "members", "preset", "profile", "onboard"] },
+] as const;
+
+const NAV_ITEM_BY_KEY = new Map(NAV_ITEMS.map((item) => [item.key, item]));
+
+export function navItemsForSection(section: NavSection): readonly NavItem[] {
+  return section.items.map((key) => {
+    const item = NAV_ITEM_BY_KEY.get(key);
+    if (!item) throw new Error(`사이드바 항목을 찾을 수 없습니다: ${key}`);
+    return item;
+  });
+}
