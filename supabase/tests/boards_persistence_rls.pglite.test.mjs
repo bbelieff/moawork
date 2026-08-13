@@ -24,9 +24,15 @@ test("boards survive database restart and RLS isolates organizations", async () 
       create function auth.uid() returns uuid language sql stable as $$
         select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
       $$;
-      create table org_members(org_id uuid, user_id uuid, primary key(org_id,user_id));
+      create table org_members(org_id uuid, user_id uuid, role text not null, scope text not null, primary key(org_id,user_id));
       create function is_org_member(p_org_id uuid) returns boolean language sql stable security definer set search_path=public,pg_temp as $$
         select exists(select 1 from org_members where org_id=p_org_id and user_id=auth.uid())
+      $$;
+      create function org_role(p_org_id uuid) returns text language sql stable security definer set search_path=public,pg_temp as $$
+        select role from org_members where org_id=p_org_id and user_id=auth.uid()
+      $$;
+      create function org_scope(p_org_id uuid) returns text language sql stable security definer set search_path=public,pg_temp as $$
+        select scope from org_members where org_id=p_org_id and user_id=auth.uid()
       $$;
       create table boards(id uuid primary key,org_id uuid not null,name text not null,source text);
       create table board_groups(id uuid primary key,org_id uuid not null,board_id uuid not null,name text not null);
@@ -43,19 +49,27 @@ test("boards survive database restart and RLS isolates organizations", async () 
       create policy boards_rw on boards for all to authenticated using(is_org_member(org_id)) with check(is_org_member(org_id));
       create policy groups_rw on board_groups for all to authenticated using(is_org_member(org_id)) with check(is_org_member(org_id));
       create policy columns_rw on board_columns for all to authenticated using(is_org_member(org_id)) with check(is_org_member(org_id));
-      create policy items_rw on items for all to authenticated using(is_org_member(org_id)) with check(is_org_member(org_id));
+      create policy items_rw on items for all to authenticated using(
+        is_org_member(org_id) and (
+          org_role(org_id) in ('owner','admin')
+          or org_scope(org_id) = 'all'
+          or assigned_to = auth.uid()
+        )
+      ) with check(is_org_member(org_id));
       create policy values_rw on item_values for all to authenticated using(is_org_member(org_id)) with check(is_org_member(org_id));
       create policy views_rw on board_views for all to authenticated using(is_org_member(org_id)) with check(is_org_member(org_id));
       grant usage on schema public,auth to authenticated;
       grant select,insert,update,delete on boards,board_groups,board_columns,items,item_values,board_views to authenticated;
-      grant execute on function auth.uid(),is_org_member(uuid) to authenticated;
-      insert into org_members values('${orgA}','${userA}');
+      grant execute on function auth.uid(),is_org_member(uuid),org_role(uuid),org_scope(uuid) to authenticated;
+      insert into org_members values('${orgA}','${userA}','member','assigned');
       insert into boards values
         ('24000000-0000-4000-8000-000000000020','${orgA}','제품 보드','pack.seoul.policyfund1/newcust'),
         ('24000000-0000-4000-8000-000000000021','${orgB}','타 조직 보드','pack.seoul.policyfund1/newcust');
       insert into board_groups values('24000000-0000-4000-8000-000000000030','${orgA}','24000000-0000-4000-8000-000000000020','진행');
       insert into board_columns values('24000000-0000-4000-8000-000000000040','${orgA}','24000000-0000-4000-8000-000000000020','status','상태');
-      insert into items values('24000000-0000-4000-8000-000000000050','${orgA}','24000000-0000-4000-8000-000000000020','24000000-0000-4000-8000-000000000030','재시작 유지',null);
+      insert into items values
+        ('24000000-0000-4000-8000-000000000050','${orgA}','24000000-0000-4000-8000-000000000020','24000000-0000-4000-8000-000000000030','재시작 유지','${userA}'),
+        ('24000000-0000-4000-8000-000000000051','${orgA}','24000000-0000-4000-8000-000000000020','24000000-0000-4000-8000-000000000030','assigned 범위에서 숨김',null);
       insert into item_values values('${orgA}','24000000-0000-4000-8000-000000000050','status','"ready"');
       insert into board_views values('24000000-0000-4000-8000-000000000060','${orgA}','24000000-0000-4000-8000-000000000020','기본');
     `);

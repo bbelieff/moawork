@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { BoardsService, NotFoundError } from "./service";
-import { LocalBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
 import { SEED_ORG_ID, SEED_USER_OWNER, SEED_BOARD_TASKS } from "@/lib/repo/local/seed";
 import { getRepo } from "@/lib/repo";
@@ -25,7 +25,7 @@ let ctx: Ctx;
 
 beforeEach(async () => {
   resetDb();
-  svc = new BoardsService(new LocalBoardsRepo());
+  svc = new BoardsService(toAsyncBoardsRepo(new LocalBoardsRepo()));
   ctx = ownerCtx();
 });
 
@@ -79,6 +79,23 @@ describe("뷰 CRUD", () => {
 
   it("없는 보드의 뷰 목록은 404", async () => {
     await expect(async () => (await svc.listViews(ctx, "ghost-board"))).rejects.toThrow(NotFoundError);
+  });
+
+  it("다른 사용자는 공유 뷰도 수정하거나 삭제할 수 없다", async () => {
+    const view = await svc.createView(ctx, SEED_BOARD_TASKS, {
+      name: "owner view",
+      kind: "table",
+      shared: true,
+    });
+    const other = {
+      ...ctx,
+      user: { ...ctx.user, id: "same-org-other-user", email: "other@example.test" },
+    };
+
+    await expect(svc.updateView(other, view.id, { name: "stolen" })).rejects.toThrow(NotFoundError);
+    await expect(svc.deleteView(other, view.id)).rejects.toThrow(NotFoundError);
+    expect((await svc.listViews(ctx, SEED_BOARD_TASKS)).find((candidate) => candidate.id === view.id)?.name)
+      .toBe("owner view");
   });
 });
 

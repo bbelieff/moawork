@@ -87,42 +87,40 @@ export interface NewView {
 /** 뷰 부분 수정 — board_id/user_id 는 이동 불가(소유·소속 고정). */
 export type ViewPatch = Partial<NewView>;
 
-export type Awaitable<T> = T | Promise<T>;
-
 export interface BoardsRepo {
   // 보드
-  listBoards(ctx: Ctx): Awaitable<Board[]>;
-  getBoard(ctx: Ctx, id: string): Awaitable<Board | undefined>;
-  createBoard(ctx: Ctx, input: NewBoard): Awaitable<Board>;
-  updateBoard(ctx: Ctx, id: string, patch: BoardPatch): Awaitable<Board | undefined>;
-  deleteBoard(ctx: Ctx, id: string): Awaitable<boolean>;
+  listBoards(ctx: Ctx): Promise<Board[]>;
+  getBoard(ctx: Ctx, id: string): Promise<Board | undefined>;
+  createBoard(ctx: Ctx, input: NewBoard): Promise<Board>;
+  updateBoard(ctx: Ctx, id: string, patch: BoardPatch): Promise<Board | undefined>;
+  deleteBoard(ctx: Ctx, id: string): Promise<boolean>;
 
   // 그룹(칸반 스윔레인)
-  listGroups(ctx: Ctx, boardId: string): Awaitable<BoardGroup[]>;
-  createGroup(ctx: Ctx, boardId: string, input: NewGroup): Awaitable<BoardGroup>;
-  deleteGroup(ctx: Ctx, id: string): Awaitable<boolean>;
+  listGroups(ctx: Ctx, boardId: string): Promise<BoardGroup[]>;
+  createGroup(ctx: Ctx, boardId: string, input: NewGroup): Promise<BoardGroup>;
+  deleteGroup(ctx: Ctx, id: string): Promise<boolean>;
 
   // 컬럼
-  listColumns(ctx: Ctx, boardId: string): Awaitable<BoardColumn[]>;
-  createColumn(ctx: Ctx, boardId: string, input: NewColumn): Awaitable<BoardColumn>;
-  updateColumn(ctx: Ctx, id: string, patch: ColumnPatch): Awaitable<BoardColumn | undefined>;
-  deleteColumn(ctx: Ctx, id: string): Awaitable<boolean>;
+  listColumns(ctx: Ctx, boardId: string): Promise<BoardColumn[]>;
+  createColumn(ctx: Ctx, boardId: string, input: NewColumn): Promise<BoardColumn>;
+  updateColumn(ctx: Ctx, id: string, patch: ColumnPatch): Promise<BoardColumn | undefined>;
+  deleteColumn(ctx: Ctx, id: string): Promise<boolean>;
 
   // 아이템(담당범위 적용)
-  listItems(ctx: Ctx, boardId: string): Awaitable<BoardItem[]>;
-  getItem(ctx: Ctx, id: string): Awaitable<BoardItem | undefined>;
-  createItem(ctx: Ctx, boardId: string, input: NewItem): Awaitable<BoardItem>;
-  updateItem(ctx: Ctx, id: string, patch: ItemPatch): Awaitable<BoardItem | undefined>;
-  deleteItem(ctx: Ctx, id: string): Awaitable<boolean>;
+  listItems(ctx: Ctx, boardId: string): Promise<BoardItem[]>;
+  getItem(ctx: Ctx, id: string): Promise<BoardItem | undefined>;
+  createItem(ctx: Ctx, boardId: string, input: NewItem): Promise<BoardItem>;
+  updateItem(ctx: Ctx, id: string, patch: ItemPatch): Promise<BoardItem | undefined>;
+  deleteItem(ctx: Ctx, id: string): Promise<boolean>;
 
   // 셀 값(EAV)
-  listValues(ctx: Ctx, itemIds: string[]): Awaitable<ItemValue[]>;
-  setValues(ctx: Ctx, itemId: string, patch: Record<string, CellValue>): Awaitable<void>;
+  listValues(ctx: Ctx, itemIds: string[]): Promise<ItemValue[]>;
+  setValues(ctx: Ctx, itemId: string, patch: Record<string, CellValue>): Promise<void>;
 
   // 뷰
-  listViews(ctx: Ctx, boardId: string): Awaitable<BoardView[]>;
-  getView(ctx: Ctx, id: string): Awaitable<BoardView | undefined>;
-  createView(ctx: Ctx, boardId: string, input: NewView): Awaitable<BoardView>;
-  updateView(ctx: Ctx, id: string, patch: ViewPatch): Awaitable<BoardView | undefined>;
-  deleteView(ctx: Ctx, id: string): Awaitable<boolean>;
+  listViews(ctx: Ctx, boardId: string): Promise<BoardView[]>;
+  getView(ctx: Ctx, id: string): Promise<BoardView | undefined>;
+  createView(ctx: Ctx, boardId: string, input: NewView): Promise<BoardView>;
+  updateView(ctx: Ctx, id: string, patch: ViewPatch): Promise<BoardView | undefined>;
+  deleteView(ctx: Ctx, id: string): Promise<boolean>;
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { BoardsService, NotFoundError, BoardRuleError } from "./service";
-import { LocalBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
 import {
   SEED_ORG_ID,
@@ -26,7 +26,7 @@ let member: Ctx;
 
 beforeEach(async () => {
   resetDb();
-  svc = new BoardsService(new LocalBoardsRepo());
+  svc = new BoardsService(toAsyncBoardsRepo(new LocalBoardsRepo()));
   owner = ctxFor(SEED_USER_OWNER, "owner", "all");
   member = ctxFor(SEED_USER_MEMBER, "member", "assigned");
 });

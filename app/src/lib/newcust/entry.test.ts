@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Ctx } from "@/lib/types";
-import { LocalBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
 import { SEED_ORG_ID, SEED_USER_OWNER } from "@/lib/repo/local/seed";
 import { NEWCUST_BOARD_SOURCE, resolveExistingNewcustBoard } from "./entry";
@@ -21,14 +21,14 @@ describe("resolveExistingNewcustBoard", () => {
     const ctx = owner();
     const repo = new LocalBoardsRepo();
     repo.createBoard(ctx, { name: "🔥신규고객" });
-    expect(await resolveExistingNewcustBoard(ctx, repo)).toEqual({ kind: "missing" });
+    expect(await resolveExistingNewcustBoard(ctx, toAsyncBoardsRepo(repo))).toEqual({ kind: "missing" });
   });
 
   it("source 식별자가 유일하면 해당 보드를 연다", async () => {
     const ctx = owner();
     const repo = new LocalBoardsRepo();
     const target = repo.createBoard(ctx, { name: "이름 무관", source: NEWCUST_BOARD_SOURCE });
-    expect(await resolveExistingNewcustBoard(ctx, repo)).toEqual({ kind: "ready", boardId: target.id });
+    expect(await resolveExistingNewcustBoard(ctx, toAsyncBoardsRepo(repo))).toEqual({ kind: "ready", boardId: target.id });
   });
 
   it("source 식별자가 중복이면 임의 선택하지 않는다", async () => {
@@ -36,14 +36,14 @@ describe("resolveExistingNewcustBoard", () => {
     const repo = new LocalBoardsRepo();
     repo.createBoard(ctx, { name: "A", source: NEWCUST_BOARD_SOURCE });
     repo.createBoard(ctx, { name: "B", source: NEWCUST_BOARD_SOURCE });
-    expect(await resolveExistingNewcustBoard(ctx, repo)).toEqual({ kind: "conflict" });
+    expect(await resolveExistingNewcustBoard(ctx, toAsyncBoardsRepo(repo))).toEqual({ kind: "conflict" });
   });
 
   it("호출해도 구조 레코드를 만들지 않는다", async () => {
     const ctx = owner();
     const repo = new LocalBoardsRepo();
     const before = repo.listBoards(ctx);
-    expect(await resolveExistingNewcustBoard(ctx, repo)).toEqual({ kind: "missing" });
+    expect(await resolveExistingNewcustBoard(ctx, toAsyncBoardsRepo(repo))).toEqual({ kind: "missing" });
     expect(repo.listBoards(ctx)).toEqual(before);
   });
 });

@@ -71,7 +71,42 @@ export class SupabaseBoardsRepo implements BoardsRepo {
     return columnRow(one<Row>(q.data, q.error));
   }
   async updateColumn(ctx: Ctx, id: string, patch: ColumnPatch): Promise<BoardColumn | undefined> { const dbPatch: Row = {}; if (patch.label !== undefined) dbPatch.label=patch.label; if (patch.source !== undefined) dbPatch.source=patch.source; if (patch.rightPinned !== undefined) dbPatch.right_pinned=patch.rightPinned; if (patch.options !== undefined) dbPatch.options_jsonb=patch.options ? {options:patch.options}:null; if (patch.sort_order !== undefined) dbPatch.sort_order=patch.sort_order; if (patch.width !== undefined) dbPatch.width=patch.width; if (patch.moveRule !== undefined) dbPatch.move_rule_jsonb=patch.moveRule; if (patch.readOnly !== undefined) dbPatch.is_readonly=patch.readOnly; const q=await this.client.from("board_columns").update(dbPatch).eq("org_id",ctx.org.id).eq("id",id).select("*").maybeSingle(); if(q.error) throw new Error(q.error.message); return q.data ? columnRow(q.data as Row):undefined; }
-  async deleteColumn(ctx: Ctx, id: string): Promise<boolean> { const q=await this.client.from("board_columns").delete().eq("org_id",ctx.org.id).eq("id",id).select("id"); if(q.error) throw new Error(q.error.message); return (q.data?.length??0)>0; }
+  async deleteColumn(ctx: Ctx, id: string): Promise<boolean> {
+    const columnQuery = await this.client
+      .from("board_columns")
+      .select("board_id,key")
+      .eq("org_id", ctx.org.id)
+      .eq("id", id)
+      .maybeSingle();
+    if (columnQuery.error) throw new Error(columnQuery.error.message);
+    if (!columnQuery.data) return false;
+
+    const itemsQuery = await this.client
+      .from("items")
+      .select("id")
+      .eq("org_id", ctx.org.id)
+      .eq("board_id", columnQuery.data.board_id);
+    if (itemsQuery.error) throw new Error(itemsQuery.error.message);
+    const itemIds = (itemsQuery.data ?? []).map((item) => item.id);
+    if (itemIds.length > 0) {
+      const valuesQuery = await this.client
+        .from("item_values")
+        .delete()
+        .eq("org_id", ctx.org.id)
+        .eq("column_key", columnQuery.data.key)
+        .in("item_id", itemIds);
+      if (valuesQuery.error) throw new Error(valuesQuery.error.message);
+    }
+
+    const q = await this.client
+      .from("board_columns")
+      .delete()
+      .eq("org_id", ctx.org.id)
+      .eq("id", id)
+      .select("id");
+    if (q.error) throw new Error(q.error.message);
+    return (q.data?.length ?? 0) > 0;
+  }
 
   async listItems(ctx: Ctx, boardId: string): Promise<BoardItem[]> { const q=await this.client.from("items").select("*").eq("org_id",ctx.org.id).eq("board_id",boardId).order("sort_order"); return many<BoardItem>(q.data,q.error); }
   async getItem(ctx: Ctx,id:string):Promise<BoardItem|undefined>{const q=await this.client.from("items").select("*").eq("org_id",ctx.org.id).eq("id",id).maybeSingle();if(q.error)throw new Error(q.error.message);return(q.data??undefined)as BoardItem|undefined;}
@@ -84,6 +119,6 @@ export class SupabaseBoardsRepo implements BoardsRepo {
   async listViews(ctx:Ctx,boardId:string):Promise<BoardView[]>{const q=await this.client.from("board_views").select("*").eq("org_id",ctx.org.id).eq("board_id",boardId).or(`shared.eq.true,user_id.eq.${ctx.user.id},user_id.is.null`);return many<BoardView>(q.data,q.error);}
   async getView(ctx:Ctx,id:string):Promise<BoardView|undefined>{const q=await this.client.from("board_views").select("*").eq("org_id",ctx.org.id).eq("id",id).or(`shared.eq.true,user_id.eq.${ctx.user.id},user_id.is.null`).maybeSingle();if(q.error)throw new Error(q.error.message);return(q.data??undefined)as BoardView|undefined;}
   async createView(ctx:Ctx,boardId:string,input:NewView):Promise<BoardView>{const q=await this.client.from("board_views").insert({org_id:ctx.org.id,board_id:boardId,user_id:ctx.user.id,name:input.name,kind:input.kind,filters_jsonb:input.filters??{},sort_jsonb:input.sort??[],visible_columns_jsonb:input.visibleColumns??[],shared:input.shared??false}).select("*").single();return one<BoardView>(q.data,q.error);}
-  async updateView(ctx:Ctx,id:string,patch:ViewPatch):Promise<BoardView|undefined>{const dbPatch:Row={};if(patch.name!==undefined)dbPatch.name=patch.name;if(patch.kind!==undefined)dbPatch.kind=patch.kind;if(patch.filters!==undefined)dbPatch.filters_jsonb=patch.filters;if(patch.sort!==undefined)dbPatch.sort_jsonb=patch.sort;if(patch.visibleColumns!==undefined)dbPatch.visible_columns_jsonb=patch.visibleColumns;if(patch.shared!==undefined)dbPatch.shared=patch.shared;const q=await this.client.from("board_views").update(dbPatch).eq("org_id",ctx.org.id).eq("id",id).select("*").maybeSingle();if(q.error)throw new Error(q.error.message);return(q.data??undefined)as BoardView|undefined;}
-  async deleteView(ctx:Ctx,id:string):Promise<boolean>{const q=await this.client.from("board_views").delete().eq("org_id",ctx.org.id).eq("id",id).select("id");if(q.error)throw new Error(q.error.message);return(q.data?.length??0)>0;}
+  async updateView(ctx:Ctx,id:string,patch:ViewPatch):Promise<BoardView|undefined>{const dbPatch:Row={};if(patch.name!==undefined)dbPatch.name=patch.name;if(patch.kind!==undefined)dbPatch.kind=patch.kind;if(patch.filters!==undefined)dbPatch.filters_jsonb=patch.filters;if(patch.sort!==undefined)dbPatch.sort_jsonb=patch.sort;if(patch.visibleColumns!==undefined)dbPatch.visible_columns_jsonb=patch.visibleColumns;if(patch.shared!==undefined)dbPatch.shared=patch.shared;const q=await this.client.from("board_views").update(dbPatch).eq("org_id",ctx.org.id).eq("id",id).eq("user_id",ctx.user.id).select("*").maybeSingle();if(q.error)throw new Error(q.error.message);return(q.data??undefined)as BoardView|undefined;}
+  async deleteView(ctx:Ctx,id:string):Promise<boolean>{const q=await this.client.from("board_views").delete().eq("org_id",ctx.org.id).eq("id",id).eq("user_id",ctx.user.id).select("id");if(q.error)throw new Error(q.error.message);return(q.data?.length??0)>0;}
 }
