@@ -172,6 +172,10 @@ test("boards survive database restart and RLS isolates organizations", async () 
       (await db.query("update item_values set value_jsonb='\"blocked\"' where item_id='24000000-0000-4000-8000-000000000052' returning item_id")).rows.length,
       0,
     );
+    assert.equal(
+      (await db.query("delete from item_values where item_id='24000000-0000-4000-8000-000000000052' returning item_id")).rows.length,
+      0,
+    );
     assert.deepEqual(
       (await db.query("select name from board_views order by name")).rows,
       [{ name: "공유 뷰" }, { name: "기본 뷰" }, { name: "내 뷰" }],
@@ -193,6 +197,41 @@ test("boards survive database restart and RLS isolates organizations", async () 
       1,
     );
     assert.equal((await db.query(`select count(*)::int as n from boards where org_id='${orgB}'`)).rows[0].n, 0);
+    await db.exec("reset role");
+    await db.exec(`update org_members set scope='all' where org_id='${orgA}' and user_id='${userA}'`);
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub','${userA}',false)`);
+    assert.deepEqual(
+      (await db.query("select id,title from items where board_id='24000000-0000-4000-8000-000000000022' order by id")).rows,
+      [{ id: "24000000-0000-4000-8000-000000000052", title: "게시 중 전체 공지" }],
+    );
+    assert.equal((await db.query(`
+      select count(*)::int as n from item_values
+       where item_id in (
+         '24000000-0000-4000-8000-000000000053',
+         '24000000-0000-4000-8000-000000000054',
+         '24000000-0000-4000-8000-000000000055'
+       )
+    `)).rows[0].n, 0);
+    await assert.rejects(
+      db.query(`insert into items values ('24000000-0000-4000-8000-000000000056','${orgA}','24000000-0000-4000-8000-000000000022',null,'member+all 작성 차단','${userA}')`),
+      /row-level security/i,
+    );
+    assert.equal(
+      (await db.query("update items set title='member+all 수정 차단' where id='24000000-0000-4000-8000-000000000052' returning id")).rows.length,
+      0,
+    );
+    assert.equal(
+      (await db.query("delete from items where id='24000000-0000-4000-8000-000000000052' returning id")).rows.length,
+      0,
+    );
+    await assert.rejects(
+      db.query(`insert into item_values values ('${orgA}','24000000-0000-4000-8000-000000000052','blocked','"blocked"')`),
+      /row-level security/i,
+    );
+    assert.equal(
+      (await db.query("update item_values set value_jsonb='\"blocked\"' where item_id='24000000-0000-4000-8000-000000000052' returning item_id")).rows.length,
+      0,
+    );
     await db.exec("reset role");
     await db.exec(`update org_members set role='owner' where org_id='${orgA}' and user_id='${userA}'`);
     await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub','${userA}',false)`);

@@ -1,6 +1,29 @@
 -- BBE-159: align board value/view RLS with the request-scoped BoardsRepo contract.
 -- Existing tables remain unchanged; only overly broad policies are replaced.
 
+create or replace function public.is_org_notice_board(
+  p_org_id uuid,
+  p_board_id uuid
+) returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1 from public.boards b
+     where b.id = p_board_id
+       and b.org_id = p_org_id
+       and (
+         b.source = 'core.notice'
+         or (b.source is null and b.name = '공지사항')
+       )
+  )
+$$;
+
+revoke all on function public.is_org_notice_board(uuid, uuid) from public;
+grant execute on function public.is_org_notice_board(uuid, uuid) to authenticated;
+
 create or replace function public.can_read_org_notice(
   p_org_id uuid,
   p_board_id uuid,
@@ -69,9 +92,14 @@ using (
   public.is_org_member(org_id)
   and (
     public.org_role(org_id) in ('owner', 'admin')
-    or public.org_scope(org_id) = 'all'
-    or assigned_to = auth.uid()
     or public.can_read_org_notice(org_id, board_id, id)
+    or (
+      not public.is_org_notice_board(org_id, board_id)
+      and (
+        public.org_scope(org_id) = 'all'
+        or assigned_to = auth.uid()
+      )
+    )
   )
 );
 
@@ -81,8 +109,10 @@ with check (
   public.is_org_member(org_id)
   and (
     public.org_role(org_id) in ('owner', 'admin')
-    or public.org_scope(org_id) = 'all'
-    or assigned_to = auth.uid()
+    or (
+      not public.is_org_notice_board(org_id, board_id)
+      and (public.org_scope(org_id) = 'all' or assigned_to = auth.uid())
+    )
   )
 );
 
@@ -92,16 +122,20 @@ using (
   public.is_org_member(org_id)
   and (
     public.org_role(org_id) in ('owner', 'admin')
-    or public.org_scope(org_id) = 'all'
-    or assigned_to = auth.uid()
+    or (
+      not public.is_org_notice_board(org_id, board_id)
+      and (public.org_scope(org_id) = 'all' or assigned_to = auth.uid())
+    )
   )
 )
 with check (
   public.is_org_member(org_id)
   and (
     public.org_role(org_id) in ('owner', 'admin')
-    or public.org_scope(org_id) = 'all'
-    or assigned_to = auth.uid()
+    or (
+      not public.is_org_notice_board(org_id, board_id)
+      and (public.org_scope(org_id) = 'all' or assigned_to = auth.uid())
+    )
   )
 );
 
@@ -111,8 +145,10 @@ using (
   public.is_org_member(org_id)
   and (
     public.org_role(org_id) in ('owner', 'admin')
-    or public.org_scope(org_id) = 'all'
-    or assigned_to = auth.uid()
+    or (
+      not public.is_org_notice_board(org_id, board_id)
+      and (public.org_scope(org_id) = 'all' or assigned_to = auth.uid())
+    )
   )
 );
 
@@ -134,9 +170,14 @@ using (
        and i.org_id = item_values.org_id
        and (
          public.org_role(i.org_id) in ('owner', 'admin')
-         or public.org_scope(i.org_id) = 'all'
-         or i.assigned_to = auth.uid()
          or public.can_read_org_notice(i.org_id, i.board_id, i.id)
+         or (
+           not public.is_org_notice_board(i.org_id, i.board_id)
+           and (
+             public.org_scope(i.org_id) = 'all'
+             or i.assigned_to = auth.uid()
+           )
+         )
        )
   )
 );
@@ -151,8 +192,10 @@ with check (
        and i.org_id = item_values.org_id
        and (
          public.org_role(i.org_id) in ('owner', 'admin')
-         or public.org_scope(i.org_id) = 'all'
-         or i.assigned_to = auth.uid()
+         or (
+           not public.is_org_notice_board(i.org_id, i.board_id)
+           and (public.org_scope(i.org_id) = 'all' or i.assigned_to = auth.uid())
+         )
        )
   )
 );
@@ -167,8 +210,10 @@ using (
        and i.org_id = item_values.org_id
        and (
          public.org_role(i.org_id) in ('owner', 'admin')
-         or public.org_scope(i.org_id) = 'all'
-         or i.assigned_to = auth.uid()
+         or (
+           not public.is_org_notice_board(i.org_id, i.board_id)
+           and (public.org_scope(i.org_id) = 'all' or i.assigned_to = auth.uid())
+         )
        )
   )
 )
@@ -180,8 +225,10 @@ with check (
        and i.org_id = item_values.org_id
        and (
          public.org_role(i.org_id) in ('owner', 'admin')
-         or public.org_scope(i.org_id) = 'all'
-         or i.assigned_to = auth.uid()
+         or (
+           not public.is_org_notice_board(i.org_id, i.board_id)
+           and (public.org_scope(i.org_id) = 'all' or i.assigned_to = auth.uid())
+         )
        )
   )
 );
@@ -196,8 +243,10 @@ using (
        and i.org_id = item_values.org_id
        and (
          public.org_role(i.org_id) in ('owner', 'admin')
-         or public.org_scope(i.org_id) = 'all'
-         or i.assigned_to = auth.uid()
+         or (
+           not public.is_org_notice_board(i.org_id, i.board_id)
+           and (public.org_scope(i.org_id) = 'all' or i.assigned_to = auth.uid())
+         )
        )
   )
 );
