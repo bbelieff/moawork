@@ -2367,3 +2367,10 @@ append-only 규칙에 따라 위 기록은 그대로 두고 여기에 덧붙인�
 - PGlite에서 known partial drift, migration 2회 실행, rollback, 이미 두 layout 컬럼이 있는 fixture, NULL/`[]` 회귀, 잘못된 JSON 거부를 실행형으로 검증했다.
 - hosted DB 적용·고객 데이터 조회·비밀값 조회는 0건이다.
 - 검증: node PGlite 2/2 PASS, 앱 focused 래퍼 1/1 PASS, 전체 `scripts/check.sh` PASS(app 1569 pass/9 skip, worker 85 pass, qa-app 보고용 diff 175). 앱 런타임 파일 변경이 없어 별도 production build는 불필요하다고 판정했다.
+
+## 2026-08-13 — BBE-140 qa-app 실제 앱 정본 복구 착수
+
+- `qa-app.mjs`가 BBE-156 이후 빈 구조 팩을 앱으로 간주해 차이가 175→4로 축소된 회귀를 제거했다.
+- 목업은 `extractMockupContract()`를 재사용하고, 앱은 `default-tabs/**`의 실제 `DefaultTab` export와 셸 `APP_TABS`를 읽는다.
+- 제품 기본 탭이 아직 main에 없으면 그룹·컬럼·이동규칙을 0으로 숨기지 않고 `제품 기본 탭 상실`로 보고한다.
+- `MOVE2`가 있는 탭에서는 낡은 `MOVE`와 합치지 않아 신규리드 자동 이동 6규칙을 중복 계상하지 않는다.

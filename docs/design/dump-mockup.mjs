@@ -142,20 +142,22 @@ export function extractMockupContract() {
           source: fields[label][1],
           options: options[label] ?? [],
         })),
-        moves: [
-          ...Object.entries(primaryMoves).filter(([, groupIndex]) => groupIndex !== null).map(([value, groupIndex]) => ({
-            column: api.PINR[key] ?? null,
-            value,
-            group: groupIndex === null ? null : tab.groups?.[groupIndex]?.n ?? null,
-          })),
-          ...Object.entries(moves).flatMap(([column, values]) =>
-            Object.entries(values).map(([value, groupIndex]) => ({
-            column,
-            value,
-            group: tab.groups?.[groupIndex]?.n ?? null,
+        // MOVE2 is the newer, column-qualified table. When present it supersedes the
+        // legacy MOVE table; combining both double-counts the same rule and can even
+        // attach it to PINR's unrelated action column (the `new` tab did exactly that).
+        moves: Object.keys(moves).length
+          ? Object.entries(moves).flatMap(([column, values]) =>
+              Object.entries(values).map(([value, groupIndex]) => ({
+                column,
+                value,
+                group: tab.groups?.[groupIndex]?.n ?? null,
+              })),
+            )
+          : Object.entries(primaryMoves).filter(([, groupIndex]) => groupIndex !== null).map(([value, groupIndex]) => ({
+              column: api.PINR[key] ?? null,
+              value,
+              group: tab.groups?.[groupIndex]?.n ?? null,
             })),
-          ),
-        ],
         transitions: interBoardTransitions.filter((transition) => transition.from === key),
       };
     }),

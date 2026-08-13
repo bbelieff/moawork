@@ -1,92 +1,145 @@
 /*
- * 앱 구조 팩과 목업 정본의 차이를 재는 0번 관문(BBE-140).
+ * 목업 v6과 제품 기본 탭을 재는 0번 관문(BBE-140).
  *
- * 이 스크립트는 앱이나 목업을 고치지 않는다. 목업에서 추출한 구조와 구조 팩의 실제 정의를
- * 나란히 읽고, 조립 카드가 고칠 수 있도록 차이만 출력한다. 차이가 있으면 종료 코드 1이다.
- * `scripts/check.sh`는 1단계에서 그 코드를 보고만 하고 실패로 바꾸지 않는다.
+ * 앱 정본은 `app/src/lib/default-tabs/**`와 셸 분류표 `app-tabs.ts`다.
+ * 먼데이 이관 사전(`structure-packs`)이나 빈 배열을 대입해 차이를 줄이지 않는다.
  */
 
+import fs from "node:fs";
+import path from "node:path";
+import { createRequire } from "node:module";
 import { extractMockupContract, validateMockupContractApi } from "./dump-mockup.mjs";
 
-/** 목업 탭과 앱의 구조 팩 보드 slug. 공지사항은 현재 팩이 없어 목업 전용 차이로 남긴다. */
-const PACK_BY_TAB = { new: "newcust", contact: "contact", work: "work" };
-/** BBE-156: 제품 기본 구조 팩은 현재 없다. 먼데이 이관 사전은 앱 구조로 세지 않는다. */
-const PRODUCT_STRUCTURE_PACK = { boards: [], optionSets: {} };
+const require = createRequire(import.meta.url);
+const ts = require("typescript");
+const ROOT = path.resolve(import.meta.dirname, "../..");
+const APP_SRC = path.join(ROOT, "app/src");
+const DEFAULT_TABS_DIR = process.env.QA_APP_DEFAULT_TABS_DIR ?? path.join(APP_SRC, "lib/default-tabs");
+const APP_TABS_FILE = process.env.QA_APP_APP_TABS_FILE ?? path.join(APP_SRC, "components/shell/app-tabs.ts");
 
 const APP_TYPE_TO_MOCKUP_TYPES = {
-  text: ["text"],
-  longtext: ["text"],
-  number: ["num", "money"],
-  date: ["date"],
-  datetime: ["dt"],
-  phone: ["phone"],
-  email: ["email"],
-  checkbox: ["check"],
-  select: ["sel", "status"],
-  multiselect: ["sel"],
-  person: ["person"],
-  people: ["people"],
-  file: ["file"],
-  url: ["link"],
+  text: ["txt", "text"], longtext: ["txt", "text"], number: ["num", "money"],
+  money: ["money"], percentage: ["pct"], date: ["date"], datetime: ["dt"],
+  phone: ["tel", "phone"], email: ["mail", "email"], checkbox: ["chk", "check"],
+  select: ["sel", "status"], status: ["sel", "status"], multiselect: ["multi", "sel"],
+  person: ["user", "person"], people: ["people"], file: ["file"], url: ["link"], calc: ["calc"],
 };
 
-/* BBE-156 removed the TypeScript mapping loader from this runtime gate.
-function loadTypeScriptModule(entryPath) {
-  let ts;
-  try {
-    ts = require("typescript");
-  } catch {
-    throw new Error("typescript 의존성이 없습니다. 루트에서 npm install 뒤 다시 실행하세요.");
+function resolveTsFile(specifier, parent) {
+  let candidate;
+  if (specifier.startsWith("@/")) candidate = path.join(APP_SRC, specifier.slice(2));
+  else if (specifier.startsWith(".")) candidate = path.resolve(path.dirname(parent), specifier);
+  else return null;
+  for (const name of [candidate, `${candidate}.ts`, `${candidate}.tsx`, path.join(candidate, "index.ts")]) {
+    if (fs.existsSync(name) && fs.statSync(name).isFile()) return name;
   }
-
-  const cache = new Map();
-  function load(filePath) {
-    const absolute = path.resolve(filePath);
-    if (cache.has(absolute)) return cache.get(absolute).exports;
-    const source = fs.readFileSync(absolute, "utf8");
-    const module = { exports: {} };
-    cache.set(absolute, module);
-    const compiled = ts.transpileModule(source, {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-      fileName: absolute,
-    }).outputText;
-    const localRequire = (specifier) => {
-      if (!specifier.startsWith(".")) throw new Error(`지원하지 않는 구조 팩 import: ${specifier}`);
-      const candidate = path.resolve(path.dirname(absolute), specifier);
-      const resolved = fs.existsSync(candidate) ? candidate : `${candidate}.ts`;
-      return load(resolved);
-    };
-    new Function("exports", "module", "require", "__filename", "__dirname", compiled)(
-      module.exports,
-      module,
-      localRequire,
-      absolute,
-      path.dirname(absolute),
-    );
-    return module.exports;
-  }
-  return load(entryPath);
-}
-*/
-
-function appOptionLabels(column, optionSets) {
-  const options = column.options ?? optionSets[column.optionRef] ?? [];
-  return options.map((option) => option.label);
+  throw new Error(`TypeScript import를 찾지 못했습니다: ${specifier} (${parent})`);
 }
 
-function isPersonalChoice(column) {
+function loadTypeScriptModule(entryPath, cache = new Map()) {
+  const absolute = path.resolve(entryPath);
+  if (cache.has(absolute)) return cache.get(absolute).exports;
+  const module = { exports: {} };
+  cache.set(absolute, module);
+  const source = fs.readFileSync(absolute, "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      esModuleInterop: true,
+      jsx: ts.JsxEmit.ReactJSX,
+    },
+    fileName: absolute,
+  }).outputText;
+  const localRequire = (specifier) => {
+    const resolved = resolveTsFile(specifier, absolute);
+    return resolved ? loadTypeScriptModule(resolved, cache) : require(specifier);
+  };
+  new Function("exports", "module", "require", "__filename", "__dirname", compiled)(
+    module.exports, module, localRequire, absolute, path.dirname(absolute),
+  );
+  return module.exports;
+}
+
+function looksLikeDefaultTab(value) {
+  return value && typeof value === "object" && typeof value.key === "string"
+    && typeof value.name === "string" && Array.isArray(value.groups)
+    && Array.isArray(value.columns) && Array.isArray(value.transitions);
+}
+
+function validateShellTabs(tabs) {
+  if (!Array.isArray(tabs) || tabs.length === 0) throw new Error("앱 셸 정본 형식 오류: APP_TABS가 비었습니다");
+  const seen = new Set();
+  for (const [index, tab] of tabs.entries()) {
+    if (!tab || typeof tab !== "object" || typeof tab.key !== "string" || !tab.key
+      || typeof tab.mockupLabel !== "string" || !Array.isArray(tab.altHrefs)
+      || !(typeof tab.canonicalHref === "string" || tab.canonicalHref === null)
+      || tab.altHrefs.some((href) => typeof href !== "string")) {
+      throw new Error(`앱 셸 정본 형식 오류: APP_TABS[${index}]`);
+    }
+    if (seen.has(tab.key)) throw new Error(`앱 셸 탭 key 중복: ${tab.key}`);
+    seen.add(tab.key);
+  }
+}
+
+function validateDefaultTab(tab, source) {
+  const fail = (detail) => { throw new Error(`제품 기본 탭 형식 오류: ${source} ${detail}`); };
+  if (!looksLikeDefaultTab(tab)) fail("루트");
+  if (tab.groups.some((group) => !group || typeof group.name !== "string" || !group.name)) fail("groups");
+  const columnKeys = new Set();
+  for (const column of tab.columns) {
+    if (!column || typeof column.key !== "string" || !column.key || typeof column.label !== "string" || !column.label
+      || typeof column.type !== "string" || typeof column.source !== "string"
+      || (column.options !== undefined && (!Array.isArray(column.options)
+        || column.options.some((option) => !option || typeof option.label !== "string")))) fail("columns");
+    if (columnKeys.has(column.key)) fail(`column key 중복 ${column.key}`);
+    columnKeys.add(column.key);
+    if (column.moveTo !== undefined && (column.moveTo === null || typeof column.moveTo !== "object"
+      || Array.isArray(column.moveTo) || Object.entries(column.moveTo).some(([value, group]) => !value || typeof group !== "string"))) fail("moveTo");
+  }
+  for (const transition of tab.transitions) {
+    if (!transition || typeof transition.columnKey !== "string" || typeof transition.value !== "string"
+      || typeof transition.to !== "string" || !(transition.guard === null || (typeof transition.guard === "object"
+        && typeof transition.guard.columnKey === "string" && typeof transition.guard.value === "string"))) fail("transitions");
+  }
+}
+
+export function loadAppContract({ defaultTabsDir = DEFAULT_TABS_DIR, appTabsFile = APP_TABS_FILE } = {}) {
+  if (!fs.existsSync(appTabsFile)) throw new Error(`앱 셸 정본 상실: ${path.relative(ROOT, appTabsFile)}`);
+  const shell = loadTypeScriptModule(appTabsFile);
+  validateShellTabs(shell.APP_TABS);
+
+  const tabs = new Map();
+  const defaultTabsPresent = fs.existsSync(defaultTabsDir);
+  if (defaultTabsPresent) {
+    const files = fs.readdirSync(defaultTabsDir)
+      .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts") && !["index.ts", "install.ts", "types.ts"].includes(name));
+    if (files.length === 0) throw new Error("제품 기본 탭 정본 형식 오류: 정의 파일이 없습니다");
+    for (const file of files) {
+      const exports = loadTypeScriptModule(path.join(defaultTabsDir, file));
+      const candidates = Object.entries(exports).filter(([name]) => /_TAB$/.test(name));
+      if (candidates.length === 0) throw new Error(`제품 기본 탭 정본 형식 오류: ${file}에 *_TAB export가 없습니다`);
+      for (const [name, value] of candidates) {
+        validateDefaultTab(value, `${file}:${name}`);
+        if (tabs.has(value.key)) throw new Error(`제품 기본 탭 key 중복: ${value.key}`);
+        tabs.set(value.key, value);
+      }
+    }
+    if (tabs.size === 0) throw new Error("제품 기본 탭 정본 형식 오류: DefaultTab export를 찾지 못했습니다");
+  }
+  return { tabs, shellTabs: shell.APP_TABS, defaultTabsPresent };
+}
+
+function optionLabels(column) {
+  return (column.options ?? []).map((option) => option.label);
+}
+
+function isPersonal(column) {
   return /담당자|협업자/.test(column.label) || ["person", "people"].includes(column.type);
 }
 
-function optionsForReport(column, values) {
-  if (isPersonalChoice(column)) return values.length ? `${values.length}개(개인 선택지 숨김)` : "없음";
-  return values.join(", ") || "없음";
-}
-
-function list(label, values, render = (value) => value) {
-  if (!values.length) return 0;
-  console.log(`  ${label} ${values.length}개: ${values.map(render).join(" · ")}`);
-  return values.length;
+function safeOptions(column, values) {
+  return isPersonal(column) ? `${values.length}개(개인 선택지 숨김)` : values.join(", ") || "없음";
 }
 
 function difference(title, entries) {
@@ -96,117 +149,134 @@ function difference(title, entries) {
   return entries.length;
 }
 
-function compareTab(mockTab, packBoard, optionSets) {
-  console.log(`\n▣ ${mockTab.label} (${mockTab.key}) ↔ ${packBoard ? packBoard.name : "앱 팩 없음"}`);
-  if (!packBoard) return difference("앱 팩 없음", [`목업 탭 ${mockTab.key}`]);
-
+function compareTab(mockTab, appTab, shellTab) {
+  console.log(`\n▣ ${mockTab.label} (${mockTab.key}) ↔ ${appTab?.name ?? "제품 기본 탭 없음"}`);
   let differences = 0;
+  if (!shellTab) differences += difference("셸 탭 위치 차이", [`${mockTab.key}: APP_TABS 분류 없음`]);
+  else if (shellTab.mockupLabel !== mockTab.label) {
+    differences += difference("셸 탭 이름 차이", [`${mockTab.key}: 목업 ${mockTab.label} → 앱 ${shellTab.mockupLabel}`]);
+  }
+  if (!appTab) {
+    differences += difference("제품 기본 탭 상실", [`${mockTab.key}: DefaultTab 정의 없음`]);
+    differences += difference("앱에 없는 그룹", mockTab.groups.map((_, index) => `${mockTab.key} 그룹 #${index + 1} (이름은 고객 예시 보호를 위해 숨김)`));
+    differences += difference("앱에 없는 컬럼", mockTab.columns.map((column) => `${mockTab.key}.${column.label} (${column.type}/${column.source})`));
+    differences += difference("앱에 없는 선택지", mockTab.columns.flatMap((column) => {
+      const values = column.options.filter(Boolean);
+      if (!values.length) return [];
+      return [`${mockTab.key}.${column.label}: ${isPersonal(column) ? `${values.length}개(개인 선택지 숨김)` : values.join(", ")}`];
+    }));
+    differences += difference("앱에 없는 자동 이동", mockTab.moves.map((move) => {
+      const value = /담당자|협업자/.test(move.column) ? "개인 선택지 숨김" : move.value;
+      return `${mockTab.key}.${move.column}=${value} → 그룹 #${mockTab.groups.indexOf(move.group) + 1}`;
+    }));
+    differences += difference("앱에 없는 탭 이동", mockTab.transitions.map((item) => `${mockTab.key}.${item.column}=${item.value} → ${item.to}`));
+    return differences;
+  }
+  if (appTab.name !== mockTab.label) differences += difference("탭 이름 차이", [`목업 ${mockTab.label} → 앱 ${appTab.name}`]);
+
+  const groupEntries = [];
+  for (let i = 0; i < Math.max(mockTab.groups.length, appTab.groups.length); i += 1) {
+    const actual = appTab.groups[i]?.name;
+    if (mockTab.groups[i] !== actual) groupEntries.push(`#${i + 1}: 이름·순서 또는 존재 여부 불일치 (값 숨김)`);
+  }
+  differences += difference("그룹 차이", groupEntries);
+
   const mockColumns = new Map(mockTab.columns.map((column) => [column.label, column]));
-  const appColumns = new Map(packBoard.columns.map((column) => [column.label, column]));
-  differences += list("목업에만 있는 컬럼", [...mockColumns.keys()].filter((label) => !appColumns.has(label)));
-  differences += list("앱에만 있는 컬럼", [...appColumns.keys()].filter((label) => !mockColumns.has(label)));
-
-  const typeDifferences = [];
-  const sourceDifferences = [];
-  const optionDifferences = [];
+  const appColumns = new Map(appTab.columns.map((column) => [column.label, column]));
+  differences += difference("목업에만 있는 컬럼", [...mockColumns.keys()].filter((label) => !appColumns.has(label)));
+  differences += difference("앱에만 있는 컬럼", [...appColumns.keys()].filter((label) => !mockColumns.has(label)));
+  const typeEntries = [], sourceEntries = [], optionEntries = [];
   for (const [label, mockColumn] of mockColumns) {
-    const appColumn = appColumns.get(label);
-    if (!appColumn) continue;
-    const accepted = APP_TYPE_TO_MOCKUP_TYPES[appColumn.type] ?? [];
-    if (mockColumn.type && !accepted.includes(mockColumn.type)) {
-      typeDifferences.push(`${label}: 목업 ${mockColumn.type} → 앱 ${appColumn.type}`);
+    const column = appColumns.get(label);
+    if (!column) continue;
+    if (!(APP_TYPE_TO_MOCKUP_TYPES[column.type] ?? []).includes(mockColumn.type)) {
+      typeEntries.push(`${label}: 목업 ${mockColumn.type} → 앱 ${column.type}`);
     }
-    // 구조 팩에는 목업의 값 출처(in/auto/act 등)를 기록하는 필드가 없다. 빈 값으로 맞추지 않고 차이로 남긴다.
-    if (mockColumn.source) sourceDifferences.push(`${label}: 목업 ${mockColumn.source} → 앱 출처 정의 없음`);
-
-    const mockOptions = [...mockColumn.options];
-    const appOptions = appOptionLabels(appColumn, optionSets);
-    const mockOnly = mockOptions.filter((value) => !appOptions.includes(value));
-    const appOnly = appOptions.filter((value) => !mockOptions.includes(value));
+    if (mockColumn.source !== column.source) sourceEntries.push(`${label}: 목업 ${mockColumn.source} → 앱 ${column.source ?? "없음"}`);
+    const mockOptions = mockColumn.options.filter(Boolean);
+    const appOptions = optionLabels(column);
+    const subtract = (left, right) => {
+      const remaining = [...right];
+      return left.filter((value) => {
+        const index = remaining.indexOf(value);
+        if (index < 0) return true;
+        remaining.splice(index, 1);
+        return false;
+      });
+    };
+    const mockOnly = subtract(mockOptions, appOptions);
+    const appOnly = subtract(appOptions, mockOptions);
     if (mockOnly.length || appOnly.length) {
-      optionDifferences.push(`${label}: 목업만 [${optionsForReport(mockColumn, mockOnly)}] / 앱만 [${optionsForReport(appColumn, appOnly)}]`);
+      optionEntries.push(`${label}: 목업만 [${safeOptions(mockColumn, mockOnly)}] / 앱만 [${safeOptions(column, appOnly)}]`);
     }
   }
-  differences += difference("타입 차이", typeDifferences);
-  differences += difference("출처 차이", sourceDifferences);
-  differences += difference("선택지 차이", optionDifferences);
+  differences += difference("타입 차이", typeEntries);
+  differences += difference("출처 차이", sourceEntries);
+  differences += difference("선택지 차이", optionEntries);
 
-  // 그룹명에는 담당자 예시가 섞일 수 있으므로 값은 출력하지 않고, 순서와 구조만 대조한다.
-  const mockGroups = mockTab.groups;
-  const appGroups = packBoard.sections.map((section) => section.groupName);
-  const groupDifferences = mockGroups.length === appGroups.length ? [] : [`그룹 수: 목업 ${mockGroups.length}개 → 앱 ${appGroups.length}개`];
-  for (let index = 0; index < Math.max(mockGroups.length, appGroups.length); index += 1) {
-    if (mockGroups[index] !== appGroups[index]) {
-      groupDifferences.push(`그룹 #${index + 1}: 이름·순서 또는 존재 여부 불일치 (값 숨김)`);
-    }
-  }
-  differences += difference("그룹 구조 차이", groupDifferences);
-
-  // 구조 팩은 자동 이동 규칙을 아직 표현하지 않는다. 각 규칙은 이름이 아닌 필드·값·대상 그룹 인덱스로 남긴다.
-  if (mockTab.moves.length) {
-    const moveEntries = mockTab.moves.map((move, index) => {
-      const column = mockColumns.get(move.column);
-      const value = column && isPersonalChoice(column) ? "개인 선택지 숨김" : move.value;
-      return `${index + 1}. ${move.column}=${value} → 목업 그룹 #${mockTab.groups.indexOf(move.group) + 1}; 앱 정의 없음`;
-    });
-    differences += difference("자동 이동 규칙 차이", moveEntries);
-  }
-  if (mockTab.transitions.length) {
-    const transitionEntries = mockTab.transitions.map((transition, index) => {
-      const guard = transition.guard ? `; 잠금 ${transition.guard.column}=${transition.guard.value}` : "";
-      return `${index + 1}. ${transition.column}=${transition.value} → 목업 탭 ${transition.to}${guard}; 앱 정의 없음`;
-    });
-    differences += difference("탭 간 이동 관문 차이", transitionEntries);
-  }
-  if (mockTab.nav) {
-    differences += difference("탭 위치 차이", [`목업 ${mockTab.nav.kind} 탐색에 있음; 앱 구조 팩 탐색 정의 없음`]);
-  }
+  const appColumnByKey = new Map(appTab.columns.map((column) => [column.key, column]));
+  const appMoves = appTab.columns.flatMap((column) => Object.entries(column.moveTo ?? {}).map(([value, group]) => ({ column: column.label, value, group })));
+  const moveKey = (move) => `${move.column}\u001f${move.value}\u001f${move.group}`;
+  const mockMoveKeys = new Set(mockTab.moves.map(moveKey));
+  const appMoveKeys = new Set(appMoves.map(moveKey));
+  differences += difference("자동 이동 규칙 차이", [
+    ...mockTab.moves.filter((move) => !appMoveKeys.has(moveKey(move))).map((move) => `목업만: ${move.column}=${move.value} → ${move.group}`),
+    ...appMoves.filter((move) => !mockMoveKeys.has(moveKey(move))).map((move) => `앱만: ${move.column}=${move.value} → ${move.group}`),
+  ]);
+  const transitionKey = (transition) => {
+    const column = appColumnByKey.get(transition.columnKey)?.label ?? transition.column ?? transition.columnKey;
+    const guardColumn = transition.guard ? (appColumnByKey.get(transition.guard.columnKey)?.label ?? transition.guard.column ?? transition.guard.columnKey) : "";
+    return `${column}\u001f${transition.value}\u001f${transition.to}\u001f${guardColumn}\u001f${transition.guard?.value ?? ""}`;
+  };
+  const mockTransitions = new Set(mockTab.transitions.map(transitionKey));
+  const appTransitions = new Set(appTab.transitions.map(transitionKey));
+  differences += difference("탭 간 이동 관문 차이", [
+    ...mockTab.transitions.filter((item) => !appTransitions.has(transitionKey(item))).map((item) => `목업만: ${item.column}=${item.value} → ${item.to}`),
+    ...appTab.transitions.filter((item) => !mockTransitions.has(transitionKey(item))).map((item) => `앱만: ${appColumnByKey.get(item.columnKey)?.label ?? item.columnKey}=${item.value} → ${item.to}`),
+  ]);
   return differences;
 }
 
-function main() {
-  const mockup = extractMockupContract();
-
-  console.log("═".repeat(72));
-  console.log("모아워크 앱 ↔ 목업 구조 대조 (BBE-140 · 보고 전용)");
-  console.log("목업이 정본입니다. 이 출력은 앱이나 목업을 고치지 않습니다.");
-  console.log("═".repeat(72));
-
+export function compareContracts(mockup, app) {
   let differences = 0;
-  const consumedSlugs = new Set();
+  const mockKeys = new Set(mockup.tabs.map((tab) => tab.key));
   for (const mockTab of mockup.tabs) {
-    const slug = PACK_BY_TAB[mockTab.key];
-    const board = slug ? PRODUCT_STRUCTURE_PACK.boards.find((candidate) => candidate.slug === slug) : null;
-    if (slug) consumedSlugs.add(slug);
-    differences += compareTab(mockTab, board, PRODUCT_STRUCTURE_PACK.optionSets);
+    differences += compareTab(mockTab, app.tabs.get(mockTab.key), app.shellTabs.find((tab) => tab.key === mockTab.key));
   }
-
-  const appOnlyBoards = PRODUCT_STRUCTURE_PACK.boards.filter((board) => !consumedSlugs.has(board.slug));
-  differences += list("\n목업에 대응 탭이 없는 앱 보드", appOnlyBoards.map((board) => board.slug));
-  console.log(`\n차이 합계: ${differences}개`);
-  console.log(differences ? "판정: DIFF (1단계 보고 전용)" : "판정: MATCH");
-  process.exitCode = differences ? 1 : 0;
+  differences += difference("목업에 대응하지 않는 제품 기본 탭", [...app.tabs.keys()].filter((key) => !mockKeys.has(key)));
+  const totals = {
+    mockTabs: mockup.tabs.length,
+    appDefaultTabs: app.tabs.size,
+    shellTabs: app.shellTabs.length,
+    mockGroups: mockup.tabs.reduce((sum, tab) => sum + tab.groups.length, 0),
+    appGroups: [...app.tabs.values()].reduce((sum, tab) => sum + tab.groups.length, 0),
+    mockColumns: mockup.tabs.reduce((sum, tab) => sum + tab.columns.length, 0),
+    appColumns: [...app.tabs.values()].reduce((sum, tab) => sum + tab.columns.length, 0),
+    mockMoves: mockup.tabs.reduce((sum, tab) => sum + tab.moves.length, 0),
+    appMoves: [...app.tabs.values()].reduce((sum, tab) => sum + tab.columns.reduce((n, column) => n + Object.keys(column.moveTo ?? {}).length, 0), 0),
+  };
+  console.log("\n[구조 수치]");
+  console.log(`  탭: 목업 ${totals.mockTabs} · 제품 기본 ${totals.appDefaultTabs} · 셸 ${totals.shellTabs}`);
+  console.log(`  그룹: 목업 ${totals.mockGroups} · 앱 ${totals.appGroups}`);
+  console.log(`  컬럼: 목업 ${totals.mockColumns} · 앱 ${totals.appColumns}`);
+  console.log(`  자동이동: 목업 ${totals.mockMoves} · 앱 ${totals.appMoves}`);
+  return { differences, totals };
 }
 
 function regressionFixture() {
   const keys = ["new", "contact", "work", "notice"];
   return {
     T: Object.fromEntries(keys.map((key) => [key, { label: key, cols: ["필드"], groups: [{ n: "그룹" }] }])),
-    FIELD: Object.fromEntries(keys.map((key) => [key, { 필드: ["text", "in"] }])),
+    FIELD: Object.fromEntries(keys.map((key) => [key, { 필드: ["txt", "in"] }])),
     HOT: Object.fromEntries(keys.map((key) => [key, {}])),
-    MOVE: Object.fromEntries(keys.map((key) => [key, {}])),
-    MOVE2: {},
-    PINR: Object.fromEntries(keys.map((key) => [key, "필드"])),
-    NAV: [["검증", keys, { top: 1 }]],
+    MOVE: Object.fromEntries(keys.map((key) => [key, {}])), MOVE2: {},
+    PINR: Object.fromEntries(keys.map((key) => [key, "필드"])), NAV: [["검증", keys, { top: 1 }]],
   };
 }
 
 function expectContractError(mutator, expectedText) {
-  const fixture = regressionFixture();
-  mutator(fixture);
-  try {
-    validateMockupContractApi(fixture);
-  } catch (error) {
+  const fixture = regressionFixture(); mutator(fixture);
+  try { validateMockupContractApi(fixture); } catch (error) {
     if (error instanceof Error && error.message.includes(expectedText)) return;
     throw error;
   }
@@ -216,7 +286,47 @@ function expectContractError(mutator, expectedText) {
 function runRegressions() {
   expectContractError((fixture) => { delete fixture.T.notice; }, "필수 탭");
   expectContractError((fixture) => { delete fixture.FIELD.new["필드"]; }, "필드 메타데이터");
-  console.log("qa-app 누락 회귀 2 / 2 통과");
+  const temp = fs.mkdtempSync(path.join(process.env.TEMP ?? process.cwd(), "qa-app-"));
+  try {
+    const shell = path.join(temp, "app-tabs.ts");
+    fs.writeFileSync(shell, "export const APP_TABS=[];");
+    let failed = false;
+    try { loadAppContract({ defaultTabsDir: path.join(temp, "missing"), appTabsFile: shell }); } catch { failed = true; }
+    if (!failed) throw new Error("회귀 실패: 비어 있는 APP_TABS를 허용했습니다.");
+    fs.writeFileSync(shell, "export const APP_TABS=[{key:'new',mockupLabel:'신규리드 관리',canonicalHref:'/newcust',altHrefs:[]}];");
+    const missing = loadAppContract({ defaultTabsDir: path.join(temp, "missing"), appTabsFile: shell });
+    if (missing.defaultTabsPresent || missing.tabs.size !== 0) throw new Error("회귀 실패: 상실한 default-tabs를 실제 정의처럼 셌습니다.");
+    const definitions = path.join(temp, "default-tabs");
+    fs.mkdirSync(definitions);
+    fs.writeFileSync(path.join(definitions, "new.ts"), "export const NEW_TAB={key:'new',name:'신규리드 관리',groups:[],columns:[],transitions:[]};");
+    const loaded = loadAppContract({ defaultTabsDir: definitions, appTabsFile: shell });
+    if (!loaded.defaultTabsPresent || loaded.tabs.get("new")?.name !== "신규리드 관리") {
+      throw new Error("회귀 실패: 실제 DefaultTab export를 읽지 못했습니다.");
+    }
+    fs.writeFileSync(shell, "export const APP_TABS=[{bogus:true}];");
+    failed = false;
+    try { loadAppContract({ defaultTabsDir: definitions, appTabsFile: shell }); } catch { failed = true; }
+    if (!failed) throw new Error("회귀 실패: 잘못된 APP_TABS 항목을 허용했습니다.");
+    fs.writeFileSync(shell, "export const APP_TABS=[{key:'new',mockupLabel:'신규리드 관리',canonicalHref:'/newcust',altHrefs:[]}];");
+    fs.writeFileSync(path.join(definitions, "new.ts"), "export const NEW_TAB={key:'new',name:'신규리드 관리',groups:[],columns:[{key:'x'}],transitions:[]};");
+    failed = false;
+    try { loadAppContract({ defaultTabsDir: definitions, appTabsFile: shell }); } catch { failed = true; }
+    if (!failed) throw new Error("회귀 실패: 잘못된 DefaultTab 내부 형식을 허용했습니다.");
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+  console.log("qa-app 누락·대상상실·형식 회귀 7 / 7 통과");
+}
+
+function main() {
+  const mockup = extractMockupContract();
+  const app = loadAppContract();
+  console.log("═".repeat(72));
+  console.log("모아워크 앱 ↔ 목업 구조 대조 (BBE-140 · 보고 전용)");
+  console.log(`앱 정본: default-tabs ${app.defaultTabsPresent ? "존재" : "상실"} · app-tabs.ts ${app.shellTabs.length}탭`);
+  console.log("═".repeat(72));
+  const result = compareContracts(mockup, app);
+  console.log(`\n차이 합계: ${result.differences}개`);
+  console.log(result.differences ? "판정: DIFF (1단계 보고 전용)" : "판정: MATCH");
+  process.exitCode = result.differences ? 1 : 0;
 }
 
 try {
