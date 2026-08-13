@@ -2,9 +2,47 @@
 -- Existing tables remain unchanged; only overly broad policies are replaced.
 
 drop policy if exists items_rw on public.items;
+drop policy if exists items_visible on public.items;
+drop policy if exists items_insert_assigned_scope on public.items;
+drop policy if exists items_update_assigned_scope on public.items;
+drop policy if exists items_delete_assigned_scope on public.items;
 
-create policy items_rw on public.items
-for all to authenticated
+create policy items_visible on public.items
+for select to authenticated
+using (
+  public.is_org_member(org_id)
+  and (
+    public.org_role(org_id) in ('owner', 'admin')
+    or public.org_scope(org_id) = 'all'
+    or assigned_to = auth.uid()
+    -- Notices are organization-wide reading material. Application-level
+    -- audience/date filtering still applies after this assignee-axis bypass.
+    or exists (
+      select 1
+        from public.boards b
+       where b.id = items.board_id
+         and b.org_id = items.org_id
+         and (
+           b.source = 'core.notice'
+           or (b.source is null and b.name = '공지사항')
+         )
+    )
+  )
+);
+
+create policy items_insert_assigned_scope on public.items
+for insert to authenticated
+with check (
+  public.is_org_member(org_id)
+  and (
+    public.org_role(org_id) in ('owner', 'admin')
+    or public.org_scope(org_id) = 'all'
+    or assigned_to = auth.uid()
+  )
+);
+
+create policy items_update_assigned_scope on public.items
+for update to authenticated
 using (
   public.is_org_member(org_id)
   and (
@@ -22,16 +60,73 @@ with check (
   )
 );
 
+create policy items_delete_assigned_scope on public.items
+for delete to authenticated
+using (
+  public.is_org_member(org_id)
+  and (
+    public.org_role(org_id) in ('owner', 'admin')
+    or public.org_scope(org_id) = 'all'
+    or assigned_to = auth.uid()
+  )
+);
+
 drop policy if exists itemvals_rw on public.item_values;
 drop policy if exists item_values_assigned_scope on public.item_values;
+drop policy if exists item_values_visible on public.item_values;
+drop policy if exists item_values_insert_assigned_scope on public.item_values;
+drop policy if exists item_values_update_assigned_scope on public.item_values;
+drop policy if exists item_values_delete_assigned_scope on public.item_values;
 
-create policy item_values_assigned_scope on public.item_values
-for all to authenticated
+create policy item_values_visible on public.item_values
+for select to authenticated
 using (
   public.is_org_member(org_id)
   and exists (
     select 1
       from public.items i
+     where i.id = item_values.item_id
+       and i.org_id = item_values.org_id
+       and (
+         public.org_role(i.org_id) in ('owner', 'admin')
+         or public.org_scope(i.org_id) = 'all'
+         or i.assigned_to = auth.uid()
+         or exists (
+           select 1
+             from public.boards b
+            where b.id = i.board_id
+              and b.org_id = i.org_id
+              and (
+                b.source = 'core.notice'
+                or (b.source is null and b.name = '공지사항')
+              )
+         )
+       )
+  )
+);
+
+create policy item_values_insert_assigned_scope on public.item_values
+for insert to authenticated
+with check (
+  public.is_org_member(org_id)
+  and exists (
+    select 1 from public.items i
+     where i.id = item_values.item_id
+       and i.org_id = item_values.org_id
+       and (
+         public.org_role(i.org_id) in ('owner', 'admin')
+         or public.org_scope(i.org_id) = 'all'
+         or i.assigned_to = auth.uid()
+       )
+  )
+);
+
+create policy item_values_update_assigned_scope on public.item_values
+for update to authenticated
+using (
+  public.is_org_member(org_id)
+  and exists (
+    select 1 from public.items i
      where i.id = item_values.item_id
        and i.org_id = item_values.org_id
        and (
@@ -44,8 +139,23 @@ using (
 with check (
   public.is_org_member(org_id)
   and exists (
-    select 1
-      from public.items i
+    select 1 from public.items i
+     where i.id = item_values.item_id
+       and i.org_id = item_values.org_id
+       and (
+         public.org_role(i.org_id) in ('owner', 'admin')
+         or public.org_scope(i.org_id) = 'all'
+         or i.assigned_to = auth.uid()
+       )
+  )
+);
+
+create policy item_values_delete_assigned_scope on public.item_values
+for delete to authenticated
+using (
+  public.is_org_member(org_id)
+  and exists (
+    select 1 from public.items i
      where i.id = item_values.item_id
        and i.org_id = item_values.org_id
        and (
