@@ -7,7 +7,7 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { LocalBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
 import { resolveMoveTarget } from "@/lib/boards/moveRules";
 import type { Ctx } from "@/lib/types";
@@ -30,7 +30,7 @@ beforeEach(() => {
 
 describe("기본 탭 보장 (D76 — «설치» 단계 없이)", () => {
   it("신규리드 보드·그룹 5·컬럼 22 가 실제로 만들어진다", async () => {
-    const [result] = await ensureDefaultTabs(ctx, repo);
+    const [result] = await ensureDefaultTabs(ctx, toAsyncBoardsRepo(repo));
 
     expect(result.created).toBe(true);
     const board = repo.getBoard(ctx, result.boardId);
@@ -44,8 +44,8 @@ describe("기본 탭 보장 (D76 — «설치» 단계 없이)", () => {
   });
 
   it("두 번 불러도 두 벌 생기지 않는다 — 멱등", async () => {
-    const first = await ensureDefaultTab(ctx, NEW_LEAD_TAB, repo);
-    const second = await ensureDefaultTab(ctx, NEW_LEAD_TAB, repo);
+    const first = await ensureDefaultTab(ctx, NEW_LEAD_TAB, toAsyncBoardsRepo(repo));
+    const second = await ensureDefaultTab(ctx, NEW_LEAD_TAB, toAsyncBoardsRepo(repo));
 
     expect(second.created).toBe(false);
     expect(second.boardId).toBe(first.boardId);
@@ -54,20 +54,20 @@ describe("기본 탭 보장 (D76 — «설치» 단계 없이)", () => {
   });
 
   it("컬럼 순서가 정의 순서 그대로 심긴다 — 목업 순서가 화면 순서다", async () => {
-    const [result] = await ensureDefaultTabs(ctx, repo);
+    const [result] = await ensureDefaultTabs(ctx, toAsyncBoardsRepo(repo));
     expect(repo.listColumns(ctx, result.boardId).map((column) => column.key)).toEqual(
       NEW_LEAD_TAB.columns.map((column) => column.key),
     );
   });
 
   it("맨 오른쪽 고정 열은 «컨택 이동» 하나뿐이다", async () => {
-    const [result] = await ensureDefaultTabs(ctx, repo);
+    const [result] = await ensureDefaultTabs(ctx, toAsyncBoardsRepo(repo));
     const pinned = repo.listColumns(ctx, result.boardId).filter((column) => column.rightPinned);
     expect(pinned.map((column) => column.label)).toEqual(["컨택 이동"]);
   });
 
   it("출처(source)가 컬럼마다 심긴다 — 편집 가능 여부의 근거다", async () => {
-    const [result] = await ensureDefaultTabs(ctx, repo);
+    const [result] = await ensureDefaultTabs(ctx, toAsyncBoardsRepo(repo));
     const byKey = new Map(repo.listColumns(ctx, result.boardId).map((column) => [column.key, column]));
     for (const column of NEW_LEAD_TAB.columns) {
       expect(byKey.get(column.key)?.source, column.label).toBe(column.source);
@@ -75,7 +75,7 @@ describe("기본 탭 보장 (D76 — «설치» 단계 없이)", () => {
   });
 
   it("✉ 발송 3칸은 잠긴 채로 심긴다 — 안전장치 전까지 돈이 나가면 안 된다", async () => {
-    const [result] = await ensureDefaultTabs(ctx, repo);
+    const [result] = await ensureDefaultTabs(ctx, toAsyncBoardsRepo(repo));
     const send = repo.listColumns(ctx, result.boardId).filter((column) => column.source === "msg");
     expect(send).toHaveLength(3);
     for (const column of send) expect(column.is_readonly, column.label).toBe(true);
@@ -84,7 +84,7 @@ describe("기본 탭 보장 (D76 — «설치» 단계 없이)", () => {
 
 describe("자동 이동 — 값을 바꾸면 카드가 그 그룹으로 간다 (6규칙)", () => {
   it("이동 규칙이 실재하는 group id 를 가리킨다", async () => {
-    const [result] = await ensureDefaultTabs(ctx, repo);
+    const [result] = await ensureDefaultTabs(ctx, toAsyncBoardsRepo(repo));
     const groupIds = new Set(repo.listGroups(ctx, result.boardId).map((group) => group.id));
     const consult = repo
       .listColumns(ctx, result.boardId)
@@ -97,7 +97,7 @@ describe("자동 이동 — 값을 바꾸면 카드가 그 그룹으로 간다 (
   });
 
   it("6규칙 전부가 목업이 지정한 그룹으로 해석된다", async () => {
-    const [result] = await ensureDefaultTabs(ctx, repo);
+    const [result] = await ensureDefaultTabs(ctx, toAsyncBoardsRepo(repo));
     const groupName = new Map(
       repo.listGroups(ctx, result.boardId).map((group) => [group.id, group.name]),
     );
@@ -119,7 +119,7 @@ describe("자동 이동 — 값을 바꾸면 카드가 그 그룹으로 간다 (
   });
 
   it("보드 엔진의 이동 해석기가 이 규칙을 실제로 읽는다 — 규칙이 죽어 있지 않다", async () => {
-    const [result] = await ensureDefaultTabs(ctx, repo);
+    const [result] = await ensureDefaultTabs(ctx, toAsyncBoardsRepo(repo));
     const groupName = new Map(
       repo.listGroups(ctx, result.boardId).map((group) => [group.id, group.name]),
     );
@@ -135,7 +135,7 @@ describe("자동 이동 — 값을 바꾸면 카드가 그 그룹으로 간다 (
   });
 
   it("«컨택 이동» 에는 그룹 이동 규칙이 없다 — 그 열의 일은 탭 넘김이다", async () => {
-    const [result] = await ensureDefaultTabs(ctx, repo);
+    const [result] = await ensureDefaultTabs(ctx, toAsyncBoardsRepo(repo));
     const move = repo
       .listColumns(ctx, result.boardId)
       .find((column) => column.key === "contact_move")!;

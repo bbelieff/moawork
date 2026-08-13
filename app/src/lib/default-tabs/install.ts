@@ -50,21 +50,22 @@ export interface EnsuredTab {
 export async function ensureDefaultTab(
   ctx: Ctx,
   tab: DefaultTab,
-  repo: BoardsRepo = getBoardsRepo(),
+  repo?: BoardsRepo,
 ): Promise<EnsuredTab> {
-  const existing = (await repo.listBoards(ctx)).find((board) => board.source === tab.source);
+  const store = repo ?? await getBoardsRepo();
+  const existing = (await store.listBoards(ctx)).find((board) => board.source === tab.source);
   if (existing) {
-    const groups = await repo.listGroups(ctx, existing.id);
+    const groups = await store.listGroups(ctx, existing.id);
     return {
       tabKey: tab.key,
       boardId: existing.id,
       created: false,
       groupIds: Object.fromEntries(groups.map((group) => [group.name, group.id])),
-      columnKeys: (await repo.listColumns(ctx, existing.id)).map((column) => column.key),
+      columnKeys: (await store.listColumns(ctx, existing.id)).map((column) => column.key),
     };
   }
 
-  const board = await repo.createBoard(ctx, {
+  const board = await store.createBoard(ctx, {
     name: tab.name,
     description: tab.description,
     icon: tab.icon,
@@ -74,7 +75,7 @@ export async function ensureDefaultTab(
   // 그룹 먼저 — 이동 규칙이 group id 를 가리켜야 하기 때문이다.
   const groupIds: Record<string, string> = {};
   for (const group of tab.groups) {
-    groupIds[group.name] = (await repo.createGroup(ctx, board.id, {
+    groupIds[group.name] = (await store.createGroup(ctx, board.id, {
       name: group.name,
       color: group.color,
     })).id;
@@ -93,7 +94,7 @@ export async function ensureDefaultTab(
       readOnly: column.readOnly ?? false,
       moveRule: resolveMoveRule(column.moveTo, groupIds, tab, column.label),
     };
-    columnKeys.push((await repo.createColumn(ctx, board.id, input)).key);
+    columnKeys.push((await store.createColumn(ctx, board.id, input)).key);
   }
 
   return { tabKey: tab.key, boardId: board.id, created: true, groupIds, columnKeys };
@@ -129,7 +130,8 @@ function resolveMoveRule(
 /** 워크스페이스 생성 시 1회 호출. 이미 있는 탭은 건너뛴다. */
 export async function ensureDefaultTabs(
   ctx: Ctx,
-  repo: BoardsRepo = getBoardsRepo(),
+  repo?: BoardsRepo,
 ): Promise<EnsuredTab[]> {
-  return Promise.all(DEFAULT_TABS.map((tab) => ensureDefaultTab(ctx, tab, repo)));
+  const store = repo ?? await getBoardsRepo();
+  return Promise.all(DEFAULT_TABS.map((tab) => ensureDefaultTab(ctx, tab, store)));
 }

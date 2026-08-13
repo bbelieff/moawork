@@ -21,7 +21,7 @@ import { GroupTable } from "@/components/board/GroupTable";
 import { BoardToolbar } from "@/components/board/BoardToolbar";
 import { EMPTY_FILTERS } from "@/components/board/filters";
 import { BoardsService } from "@/lib/boards/service";
-import { LocalBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import type { Ctx } from "@/lib/types";
@@ -36,14 +36,16 @@ const ctx: Ctx = {
 } as unknown as Ctx;
 
 let repo: LocalBoardsRepo;
+let asyncRepo: ReturnType<typeof toAsyncBoardsRepo>;
 let svc: BoardsService;
 let boardId: string;
 
 beforeEach(async () => {
   resetDb();
   repo = new LocalBoardsRepo();
-  svc = new BoardsService(repo);
-  boardId = (await ensureDefaultTab(ctx, NEW_LEAD_TAB, repo)).boardId;
+  asyncRepo = toAsyncBoardsRepo(repo);
+  svc = new BoardsService(asyncRepo);
+  boardId = (await ensureDefaultTab(ctx, NEW_LEAD_TAB, asyncRepo)).boardId;
 });
 
 function emptyRow(): ItemWithValues {
@@ -159,7 +161,7 @@ describe("③ 셀을 고치면 저장되고 다시 읽어도 남는다", () => {
     await svc.setCells(ctx, boardId, item.id, { industry: "제조업" });
 
     // 서비스를 새로 만들어 읽는다 — «새로고침» 에 해당하는 경로(저장소에서 다시 읽기).
-    const reread = await new BoardsService(repo).getItem(ctx, boardId, item.id);
+    const reread = await new BoardsService(asyncRepo).getItem(ctx, boardId, item.id);
     expect(reread?.values.industry).toBe("제조업");
   });
 
@@ -172,7 +174,7 @@ describe("③ 셀을 고치면 저장되고 다시 읽어도 남는다", () => {
       contract_fee: 1200000,
     });
 
-    const values = (await new BoardsService(repo).getItem(ctx, boardId, item.id))?.values;
+    const values = (await new BoardsService(asyncRepo).getItem(ctx, boardId, item.id))?.values;
     expect(values?.industry).toBe("운수업");
     expect(values?.recontact_on).toBe("2026-09-01");
     expect(values?.contract_fee).toBe(1200000);
@@ -189,7 +191,7 @@ describe("③ 셀을 고치면 저장되고 다시 읽어도 남는다", () => {
     const result = await svc.setCells(ctx, boardId, item.id, { rep_name: "손입력" });
 
     expect(result.errors.length).toBeGreaterThan(0);
-    expect((await new BoardsService(repo).getItem(ctx, boardId, item.id))?.values.rep_name).toBeUndefined();
+    expect((await new BoardsService(asyncRepo).getItem(ctx, boardId, item.id))?.values.rep_name).toBeUndefined();
   });
 
   it("✉ 발송 칸은 서버에서도 쓰기가 거부된다 — 화면만 막으면 안 된다", async () => {
@@ -198,7 +200,7 @@ describe("③ 셀을 고치면 저장되고 다시 읽어도 남는다", () => {
     const result = await svc.setCells(ctx, boardId, item.id, { absence_notice: "악성 부재" });
 
     expect(result.errors.length, "잠긴 칸인데 저장이 통과했다").toBeGreaterThan(0);
-    expect((await new BoardsService(repo).getItem(ctx, boardId, item.id))?.values.absence_notice).toBeUndefined();
+    expect((await new BoardsService(asyncRepo).getItem(ctx, boardId, item.id))?.values.absence_notice).toBeUndefined();
   });
 });
 
@@ -230,7 +232,7 @@ describe("④ 「상담 상황」을 바꾸면 카드가 그 그룹으로 옮겨
 
     await svc.setCells(ctx, boardId, item.id, { consult_status: "거절" });
 
-    const after = await new BoardsService(repo).getItem(ctx, boardId, item.id);
+    const after = await new BoardsService(asyncRepo).getItem(ctx, boardId, item.id);
     expect(after?.values.industry).toBe("건설업");
     expect(after?.values.contract_fee).toBe(500000);
     expect(after?.values.consult_status).toBe("거절");
