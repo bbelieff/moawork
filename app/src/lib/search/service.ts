@@ -99,8 +99,10 @@ export async function searchWorkspace(
     crm.listDeals(ctx),
     crm.listCompanies(ctx),
   ]);
-  const boards = new BoardsService().listBoards(ctx);
-  const notices = getNoticesService().list(ctx);
+  const [boards, notices] = await Promise.all([
+    new BoardsService().listBoards(ctx),
+    getNoticesService().list(ctx),
+  ]);
   return buildSearchResponse({ boards, deals, companies, notices }, query, recentRefs);
 }
 

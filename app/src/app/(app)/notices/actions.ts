@@ -38,7 +38,7 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
     audienceId: orNull(str(formData, "audienceId")),
   });
   // 권한 검사는 서비스가 한다 — 폼을 숨기는 것만으로는 막히지 않는다.
-  getNoticesService().create(ctx, input);
+  await getNoticesService().create(ctx, input);
   revalidateNotices();
 }
 
@@ -53,28 +53,28 @@ export async function updateNoticeAction(formData: FormData): Promise<void> {
     endedAt: orNull(str(formData, "endedAt")),
     audienceId: orNull(str(formData, "audienceId")),
   });
-  getNoticesService().update(ctx, str(formData, "noticeId"), patch);
+  await getNoticesService().update(ctx, str(formData, "noticeId"), patch);
   revalidateNotices();
 }
 
 /** 게시 종료 — 오늘로 종료일을 찍는다(삭제하지 않고 이력을 남긴다). */
 export async function endNoticeAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
-  getNoticesService().update(ctx, str(formData, "noticeId"), { endedAt: todayKst() });
+  await getNoticesService().update(ctx, str(formData, "noticeId"), { endedAt: todayKst() });
   revalidateNotices();
 }
 
 /** 게시 재개 — 종료일을 지운다. */
 export async function resumeNoticeAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
-  getNoticesService().update(ctx, str(formData, "noticeId"), { endedAt: null });
+  await getNoticesService().update(ctx, str(formData, "noticeId"), { endedAt: null });
   revalidateNotices();
 }
 
 /** 상단고정 토글 — 목록에서 한 번에. */
 export async function toggleNoticePinAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
-  getNoticesService().update(ctx, str(formData, "noticeId"), {
+  await getNoticesService().update(ctx, str(formData, "noticeId"), {
     pinned: str(formData, "pinned") !== "true",
   });
   revalidateNotices();
@@ -82,6 +82,6 @@ export async function toggleNoticePinAction(formData: FormData): Promise<void> {
 
 export async function deleteNoticeAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
-  getNoticesService().remove(ctx, str(formData, "noticeId"));
+  await getNoticesService().remove(ctx, str(formData, "noticeId"));
   revalidateNotices();
 }

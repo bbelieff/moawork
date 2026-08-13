@@ -75,7 +75,7 @@ export async function createBoardAction(formData: FormData): Promise<void> {
     description: str(formData, "description"),
     icon: str(formData, "icon"),
   });
-  const detail = getBoardsService().createBoard(ctx, input);
+  const detail = await getBoardsService().createBoard(ctx, input);
   revalidatePath("/boards");
   redirect(`/boards/${detail.board.id}`);
 }
@@ -83,7 +83,7 @@ export async function createBoardAction(formData: FormData): Promise<void> {
 export async function deleteBoardAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   await requirePermission(ctx, "danger.bulk_edit_delete", "danger.bulk_edit_delete");
-  getBoardsService().deleteBoard(ctx, str(formData, "boardId"));
+  await getBoardsService().deleteBoard(ctx, str(formData, "boardId"));
   revalidatePath("/boards");
   redirect("/boards");
 }
@@ -100,7 +100,7 @@ export async function addColumnAction(formData: FormData): Promise<void> {
     type,
     options: optionsCsv ? parseOptionsCsv(optionsCsv) : undefined,
   });
-  getBoardsService().addColumn(ctx, boardId, input);
+  await getBoardsService().addColumn(ctx, boardId, input);
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -108,7 +108,7 @@ export async function deleteColumnAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   await requirePermission(ctx, "structure.column_manage");
   const boardId = str(formData, "boardId");
-  getBoardsService().deleteColumn(ctx, boardId, str(formData, "columnId"));
+  await getBoardsService().deleteColumn(ctx, boardId, str(formData, "columnId"));
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -124,7 +124,7 @@ export async function setColumnWidthAction(formData: FormData): Promise<void> {
   const columnId = str(formData, "columnId");
   const raw = str(formData, "width");
   const width = raw === "" ? null : clampWidth(Number(raw));
-  getBoardsService().updateColumn(ctx, boardId, columnId, { width });
+  await getBoardsService().updateColumn(ctx, boardId, columnId, { width });
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -137,7 +137,7 @@ export async function addItemAction(formData: FormData): Promise<void> {
     title: str(formData, "title"),
     group_id: groupId === "" ? null : groupId,
   });
-  getBoardsService().createItem(ctx, boardId, input);
+  await getBoardsService().createItem(ctx, boardId, input);
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -145,7 +145,7 @@ export async function deleteItemAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   await requirePermission(ctx, "work.item_delete");
   const boardId = str(formData, "boardId");
-  getBoardsService().deleteItem(ctx, boardId, str(formData, "itemId"));
+  await getBoardsService().deleteItem(ctx, boardId, str(formData, "itemId"));
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -160,7 +160,7 @@ export async function setCellAction(formData: FormData): Promise<void> {
   // 체크박스는 미체크 시 필드가 아예 없다 → false 로 수렴.
   const value: CellValue =
     str(formData, "kind") === "checkbox" ? raw === "on" || raw === "true" : (raw as CellValue);
-  const { errors } = getBoardsService().setCells(ctx, boardId, itemId, {
+  const { errors } = await getBoardsService().setCells(ctx, boardId, itemId, {
     [columnKey]: value,
   });
   await flashCellErrors(itemId, errors);
@@ -172,7 +172,7 @@ export async function renameItemAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   await requirePermission(ctx, "work.item_upsert");
   const boardId = str(formData, "boardId");
-  getBoardsService().updateItem(ctx, boardId, str(formData, "itemId"), {
+  await getBoardsService().updateItem(ctx, boardId, str(formData, "itemId"), {
     title: str(formData, "title"),
   });
   revalidatePath(`/boards/${boardId}`);
@@ -191,12 +191,12 @@ export async function moveItemAction(formData: FormData): Promise<void> {
   const groupBy = str(formData, "groupBy");
   const svc = getBoardsService();
   if (groupBy) {
-    const { errors } = svc.setCells(ctx, boardId, itemId, {
+    const { errors } = await svc.setCells(ctx, boardId, itemId, {
       [groupBy]: lane === "" ? null : lane,
     });
     await flashCellErrors(itemId, errors);
   } else {
-    svc.updateItem(ctx, boardId, itemId, { group_id: lane === "" ? null : lane });
+    await svc.updateItem(ctx, boardId, itemId, { group_id: lane === "" ? null : lane });
   }
   revalidatePath(`/boards/${boardId}`);
 }
@@ -205,7 +205,7 @@ export async function addGroupAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   await requirePermission(ctx, "structure.section_manage");
   const boardId = str(formData, "boardId");
-  getBoardsService().addGroup(ctx, boardId, { name: str(formData, "name") });
+  await getBoardsService().addGroup(ctx, boardId, { name: str(formData, "name") });
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -229,7 +229,7 @@ export async function moveRowAction(formData: FormData): Promise<void> {
   const requested = Number.parseInt(str(formData, "index"), 10);
 
   const svc = getBoardsService();
-  const items = svc.listItems(ctx, boardId);
+  const items = await svc.listItems(ctx, boardId);
   const moving = items.find((i) => i.id === itemId);
   if (!moving) throw new NotFoundError("아이템을 찾을 수 없습니다");
 
@@ -243,12 +243,12 @@ export async function moveRowAction(formData: FormData): Promise<void> {
     : Math.max(0, Math.min(requested, siblings.length));
   siblings.splice(at, 0, moving);
 
-  siblings.forEach((item, index) => {
+  await Promise.all(siblings.map(async (item, index) => {
     const patch: ItemPatch = { sort_order: index };
     // 그룹이 실제로 바뀐 행에만 group_id 를 싣는다(불필요한 쓰기 금지).
     if (item.id === itemId && groupKeyOf(item.group_id) !== targetKey) patch.group_id = groupId;
-    svc.updateItem(ctx, boardId, item.id, patch);
-  });
+    await svc.updateItem(ctx, boardId, item.id, patch);
+  }));
 
   revalidatePath(`/boards/${boardId}`);
 }
@@ -269,7 +269,7 @@ export async function setGroupColumnOrderAction(formData: FormData): Promise<voi
   const groupKey = str(formData, "groupKey");
 
   // 접근 권한 확인 겸 유효 컬럼 목록 확보.
-  const { columns } = getBoardsService().getBoardDetail(ctx, boardId);
+  const { columns } = await getBoardsService().getBoardDetail(ctx, boardId);
   const valid = new Set(columns.map((c) => c.key));
 
   const order = str(formData, "order")

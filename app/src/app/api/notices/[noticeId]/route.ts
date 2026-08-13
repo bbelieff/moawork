@@ -18,7 +18,7 @@ export async function GET(_req: Request, { params }: RouteCtx): Promise<Response
   try {
     const ctx = await requireCtx();
     const { noticeId } = await params;
-    return jsonOk(getNoticesService().get(ctx, noticeId));
+    return jsonOk(await getNoticesService().get(ctx, noticeId));
   } catch (err) {
     return toNoticeErrorResponse(err);
   }
@@ -29,7 +29,7 @@ export async function PATCH(req: Request, { params }: RouteCtx): Promise<Respons
     const ctx = await requireCtx();
     const { noticeId } = await params;
     const patch = parseNoticePatch(await readJson(req));
-    return jsonOk(getNoticesService().update(ctx, noticeId, patch));
+    return jsonOk(await getNoticesService().update(ctx, noticeId, patch));
   } catch (err) {
     return toNoticeErrorResponse(err);
   }
@@ -39,7 +39,7 @@ export async function DELETE(_req: Request, { params }: RouteCtx): Promise<Respo
   try {
     const ctx = await requireCtx();
     const { noticeId } = await params;
-    getNoticesService().remove(ctx, noticeId);
+    await getNoticesService().remove(ctx, noticeId);
     return jsonOk({ deleted: true });
   } catch (err) {
     return toNoticeErrorResponse(err);

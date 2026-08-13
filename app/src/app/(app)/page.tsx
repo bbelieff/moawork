@@ -44,7 +44,7 @@ export default async function DashboardPage({
   const pipelines = repo.listPipelines(ctx.org.id);
 
   // 최근 공지 — 003 보드 엔진(공지 보드)에서 파생. 상단고정 우선 정렬은 서비스가 적용.
-  const recentNotices = getNoticesService().list(ctx, { limit: 5 });
+  const recentNotices = await getNoticesService().list(ctx, { limit: 5 });
 
   // "오늘 할 일" 목록용 — 담당범위(assigned)는 repo.listDeals(ctx) 가 적용한다.
   const myDeals = repo.listDeals(ctx);

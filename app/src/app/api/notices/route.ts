@@ -19,7 +19,7 @@ export async function GET(req: Request): Promise<Response> {
     const parsed = raw === null ? undefined : Number(raw);
     const limit =
       parsed === undefined || !Number.isFinite(parsed) ? undefined : Math.trunc(parsed);
-    return jsonOk(getNoticesService().list(ctx, { limit }));
+    return jsonOk(await getNoticesService().list(ctx, { limit }));
   } catch (err) {
     return toNoticeErrorResponse(err);
   }
@@ -29,7 +29,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const ctx = await requireCtx();
     const input = parseNewNotice(await readJson(req));
-    return jsonOk(getNoticesService().create(ctx, input), 201);
+    return jsonOk(await getNoticesService().create(ctx, input), 201);
   } catch (err) {
     return toNoticeErrorResponse(err);
   }

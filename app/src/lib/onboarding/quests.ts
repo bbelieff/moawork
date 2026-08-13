@@ -21,11 +21,14 @@ export type QuestDef = {
   judgeParams: Record<string, unknown>;
 };
 
-export type QuestJudge = (ctx: Ctx, repo: BoardsRepo, params: Record<string, unknown>) => boolean;
+export type QuestJudge = (ctx: Ctx, repo: BoardsRepo, params: Record<string, unknown>) => Promise<boolean>;
 
 /** 아무 보드에나 항목을 하나 만들었는가. */
-function itemCreated(ctx: Ctx, repo: BoardsRepo): boolean {
-  return repo.listBoards(ctx).some((board) => repo.listItems(ctx, board.id).length > 0);
+async function itemCreated(ctx: Ctx, repo: BoardsRepo): Promise<boolean> {
+  for (const board of await repo.listBoards(ctx)) {
+    if ((await repo.listItems(ctx, board.id)).length > 0) return true;
+  }
+  return false;
 }
 
 /**
@@ -33,12 +36,12 @@ function itemCreated(ctx: Ctx, repo: BoardsRepo): boolean {
  * 이동 이력을 따로 기록하지 않으므로, 지금 그 그룹에 있다는 사실 자체로 판정한다
  * (첫 그룹이 sort_order 최솟값 — 목업의 «상담 전»·«준비단계» 같은 시작 상태와 대응).
  */
-function itemInNonDefaultGroup(ctx: Ctx, repo: BoardsRepo): boolean {
-  for (const board of repo.listBoards(ctx)) {
-    const groups = repo.listGroups(ctx, board.id);
+async function itemInNonDefaultGroup(ctx: Ctx, repo: BoardsRepo): Promise<boolean> {
+  for (const board of await repo.listBoards(ctx)) {
+    const groups = await repo.listGroups(ctx, board.id);
     if (groups.length === 0) continue;
     const defaultGroupId = groups.reduce((min, g) => (g.sort_order < min.sort_order ? g : min)).id;
-    const items = repo.listItems(ctx, board.id);
+    const items = await repo.listItems(ctx, board.id);
     if (items.some((item) => item.group_id !== null && item.group_id !== defaultGroupId)) {
       return true;
     }
@@ -47,11 +50,11 @@ function itemInNonDefaultGroup(ctx: Ctx, repo: BoardsRepo): boolean {
 }
 
 /** 어떤 항목이든 컬럼 값을 하나라도 채운 적이 있는가(빈 문자열·null 제외). */
-function columnValueSet(ctx: Ctx, repo: BoardsRepo): boolean {
-  for (const board of repo.listBoards(ctx)) {
-    const items = repo.listItems(ctx, board.id);
+async function columnValueSet(ctx: Ctx, repo: BoardsRepo): Promise<boolean> {
+  for (const board of await repo.listBoards(ctx)) {
+    const items = await repo.listItems(ctx, board.id);
     if (items.length === 0) continue;
-    const values = repo.listValues(ctx, items.map((i) => i.id));
+    const values = await repo.listValues(ctx, items.map((i) => i.id));
     if (values.some((v) => v.value_jsonb !== null && v.value_jsonb !== "" && v.value_jsonb !== undefined)) {
       return true;
     }
@@ -70,7 +73,7 @@ export function isKnownJudgeKind(judgeKind: string): boolean {
 }
 
 /** 퀘스트 하나를 판정한다. 알 수 없는 judge_kind 는 실패(false)로 닫는다 — 지어내지 않는다. */
-export function judgeQuest(ctx: Ctx, repo: BoardsRepo, quest: QuestDef): boolean {
+export async function judgeQuest(ctx: Ctx, repo: BoardsRepo, quest: QuestDef): Promise<boolean> {
   const judge = JUDGES[quest.judgeKind];
   if (!judge) return false;
   return judge(ctx, repo, quest.judgeParams);

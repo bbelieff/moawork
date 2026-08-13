@@ -65,7 +65,7 @@ export class LocalBoardsRepo implements BoardsRepo {
       description: input.description ?? null,
       icon: input.icon ?? null,
       is_system: false,
-      source: null,
+      source: input.source ?? null,
       sort_order: db().boards.filter((b) => b.org_id === ctx.org.id).length,
       created_by: ctx.user.id,
       created_at: ts,
@@ -317,10 +317,17 @@ export class LocalBoardsRepo implements BoardsRepo {
   }
 }
 
-// 프로세스 단일 인스턴스(공유 db() 사용).
+// 프로세스 단일 인스턴스(공유 db() 사용) — 환경 미설정 테스트/오프라인 전용.
 const globalBoardsRepo = globalThis as unknown as { __moaworkBoardsRepo?: BoardsRepo };
 
-export function getBoardsRepo(): BoardsRepo {
+export async function getBoardsRepo(): Promise<BoardsRepo> {
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    const [{ createClient }, { SupabaseBoardsRepo }] = await Promise.all([
+      import("@/lib/supabase/server"),
+      import("@/lib/repo/supabase/boardsRepo"),
+    ]);
+    return new SupabaseBoardsRepo(await createClient());
+  }
   if (!globalBoardsRepo.__moaworkBoardsRepo) {
     globalBoardsRepo.__moaworkBoardsRepo = new LocalBoardsRepo();
   }
