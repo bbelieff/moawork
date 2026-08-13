@@ -4,7 +4,10 @@ import { resetDb } from "@/lib/repo/local/store";
 import { SEED_ORG_ID, SEED_USER_OWNER } from "@/lib/repo/local/seed";
 import { BoardsService } from "@/lib/boards";
 import type { Ctx } from "@/lib/types";
-import { POLICYFUND_STRUCTURE_PACK } from "@/lib/migration/monday-mapping";
+import {
+  LEGACY_POLICYFUND_PACK_KEYS,
+  POLICYFUND_STRUCTURE_PACK,
+} from "@/lib/migration/monday-mapping";
 import {
   assigneeGroupDisplayName,
   assigneeGroupIdForUser,
@@ -219,6 +222,39 @@ describe("유예 컬럼은 설치되지 않는다", () => {
 });
 
 describe("재설치 안전성", () => {
+  it("legacy source 3보드를 재사용해 canonical source로 승격하고 재실행해도 중복 생성하지 않는다", async () => {
+    const legacyPack: StructurePack = {
+      ...POLICYFUND_STRUCTURE_PACK,
+      key: LEGACY_POLICYFUND_PACK_KEYS[0],
+      legacyKeys: [],
+    };
+    const legacyInstall = await installStructurePack(owner(), { pack: legacyPack });
+    expect(legacyInstall.boards).toHaveLength(3);
+
+    const canonicalInstall = await installStructurePack(owner());
+    expect(canonicalInstall.boards).toHaveLength(0);
+    expect(canonicalInstall.skipped).toEqual(["newcust", "contact", "work"]);
+
+    const canonicalBoards = (await boards().listBoards(owner())).filter((board) =>
+      board.source?.startsWith(`${POLICYFUND_STRUCTURE_PACK.key}/`),
+    );
+    expect(canonicalBoards).toHaveLength(3);
+    expect(canonicalBoards.map((board) => board.source).sort()).toEqual(
+      POLICYFUND_STRUCTURE_PACK.boards
+        .map((board) => `${POLICYFUND_STRUCTURE_PACK.key}/${board.slug}`)
+        .sort(),
+    );
+
+    const rerun = await installStructurePack(owner());
+    expect(rerun.boards).toHaveLength(0);
+    expect(rerun.skipped).toEqual(["newcust", "contact", "work"]);
+    expect(
+      (await boards().listBoards(owner())).filter((board) =>
+        board.source?.startsWith(`${POLICYFUND_STRUCTURE_PACK.key}/`),
+      ),
+    ).toHaveLength(3);
+  });
+
   it("D73 — 최초 1명, 초대 증가, 내보내기 감소, 재실행 중복 0을 userId 바인딩으로 맞춘다", async () => {
     const creator: AssigneeMember = { userId: "user-creator", displayName: "만든사람" };
     const invited: AssigneeMember = { userId: "user-invited", displayName: "초대된사람" };

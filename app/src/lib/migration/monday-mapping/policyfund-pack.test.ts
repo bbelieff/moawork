@@ -265,6 +265,7 @@ describe("마이그레이션 040 과 앱 팩의 내용이 같다 — BBE-130/132
     delete legacyPayload.source;
     delete canonicalPayload.key;
     delete canonicalPayload.source;
+    delete canonicalPayload.legacyKeys;
     expect(canonicalPayload).toEqual(legacyPayload);
     expect(canonicalSource).toContain(legacySource);
   });

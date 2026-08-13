@@ -133,6 +133,8 @@ export interface PackView {
 /** 팩 전체. */
 export interface StructurePack {
   key: string;
+  /** 이전 배포가 보드 source에 기록한 팩 키. 설치 시 canonical key로 승격한다. */
+  legacyKeys?: readonly string[];
   name: string;
   /** 실측 출처·시점을 팩 안에 남긴다(나중에 어디서 온 값인지 추적 가능하게). */
   source: string;

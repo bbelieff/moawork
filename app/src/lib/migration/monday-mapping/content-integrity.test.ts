@@ -18,6 +18,7 @@ function mappingPayload(pack: Record<string, unknown>) {
   const payload = { ...pack };
   delete payload.key;
   delete payload.source;
+  delete payload.legacyKeys;
   return payload;
 }
 

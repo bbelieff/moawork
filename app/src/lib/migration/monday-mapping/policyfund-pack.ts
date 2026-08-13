@@ -33,12 +33,14 @@ export const POLICYFUND_OPTION_SETS: Record<string, FieldOption[]> = {
 };
 
 export const POLICYFUND_PACK_KEY = "pack.policyfund.v1";
+export const LEGACY_POLICYFUND_PACK_KEYS = ["pack.seoul.policyfund1"] as const;
 
 /** PLAN-002 §5 WO-6 이 부르는 기본 제공 프리셋 컬렉션 이름. */
 export const POLICYFUND_PACK_NAME = "모아프리셋-정책자금1";
 
 export const POLICYFUND_STRUCTURE_PACK: StructurePack = {
   key: POLICYFUND_PACK_KEY,
+  legacyKeys: LEGACY_POLICYFUND_PACK_KEYS,
   name: POLICYFUND_PACK_NAME,
   source:
     "실측 출처(특정 고객 전용 팩이 아님): monday 서울경영지원센터(520253) 실측 2026-08-05 · boards 1816794539 / 1816794566 / 1814266449 · 시드 확정 3건 반영 2026-08-09",
