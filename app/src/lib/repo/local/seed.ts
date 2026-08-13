@@ -1,6 +1,7 @@
 import type { Db } from "./store";
 import { MVP_ENABLED_FEATURES } from "@/lib/product";
 import { NEW_LEAD_TAB } from "@/lib/default-tabs/new-lead";
+import { NEW_LEAD_TAB_SOURCE } from "@/lib/default-tabs/types";
 
 // 로컬 개발용 시드 데이터. 고정 id 를 써서 ?as=member 스코프 데모 등이 재현 가능하게 한다.
 // 구성: 데모 조직 1개 · 사용자 3명(owner/admin/member) · 파이프라인 5단계 ·
@@ -207,7 +208,7 @@ export function seedDb(): Db {
       description: NEW_LEAD_TAB.description,
       icon: NEW_LEAD_TAB.icon,
       is_system: false,
-      source: null,
+      source: NEW_LEAD_TAB_SOURCE,
       sort_order: 3,
       created_by: SEED_USER_OWNER,
       created_at: TS,

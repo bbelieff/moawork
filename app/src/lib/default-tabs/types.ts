@@ -21,6 +21,9 @@
 import type { FieldOption, FieldType } from "@/lib/types";
 import type { FieldSource } from "@/lib/field/source";
 
+/** Product-owned identity for the default new-lead tab. */
+export const NEW_LEAD_TAB_SOURCE = "core.default-tab/new-lead";
+
 /** 기본 탭의 컬럼 1개. */
 export interface DefaultTabColumn {
   /** `board_columns.key` — `item_values.column_key` 가 이걸 참조한다. 절대 바뀌면 안 된다. */
