@@ -28,6 +28,13 @@ describe("mode chooser presentation contract", () => {
     expect(styleSource).toContain("@media (max-width: 680px)");
   });
 
+  it("explains a signing-config failure as a readable notice, not a dead end", () => {
+    expect(pageSource).toContain('role="status"');
+    expect(pageSource).toContain("styles.notice");
+    expect(pageSource).toContain("이 선택을 기억해 두는 기능이 잠시 꺼져 있어요");
+    expect(styleSource).toContain(".notice");
+  });
+
   it("explains both outcomes without internal workspace language", () => {
     expect(pageSource).toContain("관리자 페이지 열기");
     expect(pageSource).toContain("릴리스 상태와 데모 회사를 확인해요.");

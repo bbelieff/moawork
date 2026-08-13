@@ -17,12 +17,20 @@ function modePath(next: string | null): string {
   return next ? `/mode?next=${encodeURIComponent(next)}` : "/mode";
 }
 
+const MODE_ERROR_MESSAGES: Record<string, string> = {
+  // MOAWORK_MODE_PREFERENCE_SECRET 미설정/오설정 시 /mode/preference 가 여기로 돌려보낸다.
+  // 서버 설정 문제이지 이 사람의 선택이 틀린 게 아니다 — login 의 error=config 와 같은 어법.
+  config: "이 선택을 기억해 두는 기능이 잠시 꺼져 있어요. 관리자에게 알려 주시면 곧 정상화돼요.",
+};
+
 export default async function ModePage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; error?: string }>;
 }) {
-  const next = sanitizeModeNext((await searchParams).next);
+  const params = await searchParams;
+  const next = sanitizeModeNext(params.next);
+  const errorMessage = params.error ? MODE_ERROR_MESSAGES[params.error] : undefined;
   const snapshot = await loadWorkspaceRoutingSnapshot();
   if (snapshot.kind === "unauthenticated") {
     redirect(`/login?next=${encodeURIComponent(modePath(next))}`);
@@ -61,6 +69,12 @@ export default async function ModePage({
             지금 할 일을 선택하면 권한이 확인된 화면으로 이동해요.
           </p>
         </div>
+
+        {errorMessage ? (
+          <p role="status" className={styles.notice}>
+            {errorMessage}
+          </p>
+        ) : null}
 
         <div className={styles.choices} role="group" aria-labelledby="mode-title">
           <form action="/mode/preference" method="post" className={styles.choiceForm}>
