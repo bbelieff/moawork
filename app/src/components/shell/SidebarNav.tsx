@@ -74,7 +74,8 @@ export function SidebarNav({
               background: "var(--mw-tint-coral)",
               color: "var(--mw-people)",
               borderRadius: "var(--mw-r-1)",
-              padding: "1px 7px",
+              paddingBlock: "var(--sp-1)",
+              paddingInline: "var(--sp-2)",
               fontSize: "var(--mw-shell-badge-fs)",
             }}
           >
