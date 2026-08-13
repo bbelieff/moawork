@@ -75,7 +75,7 @@ query($after:String){
   }
 }`;
 const Q_COMMENTS = `
-query($id:String!){ issue(id:$id){ comments(first:6, orderBy:createdAt){ nodes{ body } } } }`;
+query($id:String!){ issue(id:$id){ comments(first:20, orderBy:createdAt){ nodes{ body } } } }`;
 
 /* ── 스냅샷 — 45초에 한 번만 Linear 를 친다 ──────────────────
    화면은 카드마다 코멘트를 부른다(30~40회). 그때마다 Linear 를 치면

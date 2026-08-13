@@ -107,7 +107,7 @@ h2 .hint{font-weight:400;color:var(--faint);font-size:11.5px;letter-spacing:0}
 .grid{padding:16px 18px}
 .gsum{font-size:12px;color:var(--mute);margin-bottom:12px;display:flex;gap:14px;flex-wrap:wrap}
 .gsum b{color:var(--ink);font-weight:700}
-.grow{display:grid;grid-template-columns:88px repeat(10,1fr);gap:6px;margin-bottom:6px}
+.grow{display:grid;grid-template-columns:88px repeat(5,1fr);gap:6px;margin-bottom:6px}
 .glab{font-size:11.5px;font-weight:700;align-self:center;line-height:1.25}
 .glab span{display:block;font-weight:400;font-size:10px;color:var(--faint)}
 .ghead{font-size:10px;color:var(--faint);text-align:center;font-weight:700;letter-spacing:.03em}
@@ -170,7 +170,7 @@ tr.hot{background:#FFFBFA}
 @media(max-width:760px){
  body{padding:16px 11px 44px}
  .hero{grid-template-columns:1fr;justify-items:center;text-align:center;gap:16px}
- .hstats{width:100%} .grow{grid-template-columns:64px repeat(10,1fr);gap:4px}
+ .hstats{width:100%} .grow{grid-template-columns:64px repeat(5,1fr);gap:4px}
  .cl{min-height:54px;padding:5px 2px} .cl .c2{font-size:8.5px}
  .lay{grid-template-columns:1fr}
 }
@@ -235,7 +235,9 @@ const PROJECT="MoaWork · 운영 안정화 및 어드민";
 
 /* 2026-08-12 — 0번 관문이 «구조 팩 진입점(BBE-102, 완주)» 에서 «qa-app.mjs(BBE-140)» 로 바뀌었다.
    앱이 목업과 같은지 검사하는 것이 0건이라, 그 전에 화면 카드를 더 발주하면 어긋남만 늘어난다. */
-const CHAIN=[["BBE-140","관문","앱↔목업 검사"],["BBE-119","L1","조직·보고"],
+const CHAIN=[["BBE-159","관문","화면 회귀 가드"],["BBE-146","바닥","DB 바닥 복구"],
+ ["BBE-142","틀","앱 셸"],["BBE-145","관통","신규리드"],
+ ["BBE-140","측정","앱↔목업 검사"],["BBE-119","L1","조직·보고"],
  ["BBE-122","L2","권한"],["BBE-123","L3","필드 타입"],["BBE-108","L4","원장 모델"],
  ["BBE-117","F5","뷰 시스템"],["BBE-104","C1","자동화 엔진"],["BBE-124","C2","알림 3층"],
  ["BBE-112","C5","온보딩"]];
@@ -271,10 +273,10 @@ const SLOTS=[
   ["BBE-117","뷰 · 필터"],
   ["BBE-138","고아 파일 회수"]]],
  ["DG","데탑 코덱스 · 부품",[
+  ["BBE-140","qa-app 측정기 재구축"],
   ["BBE-132","제품 코드에서 고객 이름 빼기"],
-  ["BBE-146","★ DB 바닥 복구"],
   ["BBE-156","먼데이 복제분 → 이관 매핑 격하"],
-  [null,"배정 대기"],
+  ["BBE-159","화면 회귀 가드"],
   ["BBE-153","자동계산 6개"]]],
  ["NG","노트북 코덱스 · 관문·검증",[
   ["BBE-23","모바일 · 통합 수용 QA"],
@@ -293,8 +295,25 @@ function ago(i){const h=hrs(i); if(h<1)return"방금"; if(h<24)return h+"시간 
 async function call(t,a){const r=await window.cowork.callMcpTool(t,a);
  if(r.isError)throw new Error(r.content?.[0]?.text||"도구 오류");
  return r.structuredContent??JSON.parse(r.content[0].text);}
-const RE=/모아워크\s+(데탑|노트북)\s+([A-Za-z가-힣]{1,6}\d{0,2})/;
-function stampOf(b){const m=b.match(RE); return m?m[1]+" "+m[2]:null;}
+function assignedSlot(issue){
+ const labels=(issue?.labels||[]).map(x=>typeof x==="string"?x:(x?.name||""));
+ const m=labels.join(" ").match(/(?:^|\s)(DC|NC|DG|NG)[- ]?0?([1-5])(?:\s|$)/i);
+ return m?`${m[1].toUpperCase()}-${String(m[2]).padStart(2,"0")}`:null;
+}
+function stampOf(body,expected){
+ const b=String(body||"");
+ for(const re of [
+  /\[?모아워크\s+(DC|NC|DG|NG)[- ]?0?([1-5])(?:\([^\]]*\))?\]?/gi,
+  /\[(?:디스패치|총괄)[^\]]*?(DC|NC|DG|NG)[- ]?0?([1-5])\]/gi]){
+  for(const m of b.matchAll(re)){
+   const slot=`${m[1].toUpperCase()}-${String(m[2]).padStart(2,"0")}`;
+   if(!expected||slot===expected)return slot;
+  }
+ }
+ if(expected)return null;
+ const old=b.match(/모아워크\s+(데탑|노트북)\s+([A-Za-z가-힣]{1,6}\d{0,2})/);
+ return old?old[1]+" "+old[2]:null;
+}
 function countUp(el,to,suf){let s=null;const d=1100;
  function f(t){if(!s)s=t;const p=Math.min((t-s)/d,1);
   el.textContent=Math.round(to*(1-Math.pow(1-p,3)))+(suf||"");
@@ -312,25 +331,33 @@ async function load(){
  document.getElementById("stamp").innerHTML=
   `Linear <b>Bbelieff</b> · ${esc(PROJECT)} · 카드 ${all.length}건 · `+
   `${n.getMonth()+1}/${n.getDate()} ${String(n.getHours()).padStart(2,"0")}:${String(n.getMinutes()).padStart(2,"0")} 기준 · `+
-  `담당은 <b>카드 도장 서명</b>에서 자동 추출`;
+  `담당은 <b>Linear 라벨과 최신 도장</b>을 교차 확인`;
 
  const flat=[];
  SLOTS.forEach(([dev,eng,rows])=>rows.forEach(([id,what],i)=>
   flat.push({dev,eng,i,slot:`${dev}-${String(i+1).padStart(2,"0")}`,id,what})));
  /* 칸 수는 «세어서» 쓴다. 손으로 박으면 편제가 바뀔 때마다 판이 거짓말을 한다
     — 실제로 40칸→20칸 개편 뒤 머리글이 40으로 남아 있었다 (2026-08-12) */
- { const nSlot=flat.length, nLead=SLOTS.length;          /* 반장은 각 반의 0번 칸 = 반 수 */
-   const nFree=flat.filter(f=>!f.id&&f.i>0).length;      /* 카드 없는 «작업원» 칸 */
+ { const nSlot=flat.length;
+   const nFree=flat.filter(f=>!f.id).length;
    const h=document.getElementById("slotHint");
-   if(h) h.textContent=`반 ${SLOTS.length} × 5칸 = ${nSlot}칸 · 반장 ${nLead} · 작업원 ${nSlot-nLead}`
+   if(h) h.textContent=`반 ${SLOTS.length} × 5칸 = ${nSlot}칸 · 전 칸 구현·검수 자체완결`
                        + (nFree?` (배정 대기 ${nFree})`:"");
    const t=document.getElementById("tableTitle");
    if(t) t.firstChild.textContent=`${nSlot}칸 슬롯표 `; }
  const live=flat.filter(f=>f.id&&by[f.id]&&!DONE.includes(by[f.id].status));
+ let heartbeat=[];
+ try{heartbeat=(await call(T_COMMENTS,{issueId:"BBE-94",limit:20,orderBy:"createdAt"})).comments||[];}catch{}
  let read=0;
  await Promise.all(live.map(async f=>{
-  try{const c=await call(T_COMMENTS,{issueId:f.id,limit:6,orderBy:"createdAt"});
-   for(const cm of (c.comments||[])){const s=stampOf(cm.body||""); if(s){f.stamp=s;break;}}}catch{}
+  const expected=assignedSlot(by[f.id]);
+  if(!expected){read++; return;}
+  try{const c=await call(T_COMMENTS,{issueId:f.id,limit:20,orderBy:"createdAt"});
+   for(const cm of (c.comments||[])){const s=stampOf(cm.body||"",expected); if(s){f.stamp=s;break;}}}catch{}
+  if(!f.stamp)for(const cm of heartbeat){
+   const body=cm.body||"";
+   if(body.includes(f.id)){const s=stampOf(body,expected); if(s){f.stamp=s;break;}}
+  }
   read++; document.getElementById("slots").innerHTML=`<div class="load">도장 읽는 중… ${read}/${live.length}</div>`;}));
 
  const cards=flat.filter(f=>f.id).map(f=>by[f.id]).filter(Boolean);
@@ -338,7 +365,7 @@ async function load(){
  const doneN=cnt("Done"), pct=cards.length?Math.round(doneN/cards.length*100):0;
  const review=cards.filter(c=>c.status==="In Review");
  const ready=cards.filter(c=>["Todo","Backlog"].includes(c.status));
- const noStamp=live.filter(f=>!f.stamp);
+ const noStamp=live.filter(f=>["In Progress","In Review"].includes(by[f.id]?.status)&&!f.stamp);
  const stale=live.filter(f=>hrs(by[f.id].updatedAt)>=48);
  const empty=flat.filter(f=>!f.id);
 
@@ -421,7 +448,7 @@ async function load(){
  const aliveN=live.length, doneS=flat.filter(f=>f.id&&by[f.id]?.status==="Done").length;
  let g=`<div class="gsum"><span><b>${aliveN}</b> 가동</span><span><b>${doneS}</b> 완주</span>
   <span><b>${empty.length}</b> 미가동</span><span style="color:var(--faint)">칸에 마우스를 올리면 제목이 보인다</span></div>
-  <div class="grow"><div></div>${[...Array(10)].map((_,i)=>
+  <div class="grow"><div></div>${[...Array(5)].map((_,i)=>
    `<div class="ghead">T${String(i+1).padStart(2,"0")}</div>`).join("")}</div>`;
  SLOTS.forEach(([dev,eng,rows])=>{
   g+=`<div class="grow"><div class="glab">${esc(dev)}<span>${esc(eng)}</span></div>`;
@@ -443,19 +470,15 @@ async function load(){
  });
  g+=`<div class="gsum" style="margin:12px 0 0">
   <span><b>슬롯 밖</b> — MW-총괄 · MWC · MW-QA · MW-예비</span>
-  <span style="color:var(--faint)">Cowork·디스패치는 40슬롯 대상이 아니다(정상)</span></div>`;
+  <span style="color:var(--faint)">총괄·디스패치는 20슬롯 대상이 아니다(정상)</span></div>`;
  document.getElementById("slots").innerHTML=g;
 
  /* ── 세션마다 «지금 무엇을 해야 하나»를 규칙으로 정한다 ── */
  /* 2026-08-12 개정 — AGENTS.md 8/12판에 맞춘다.
-    바뀐 것: 완료의 정의(화면 확인 필수) · 반납(blocked:) · 라벨이 곧 배정 · 반장은 코드 금지 */
+    바뀐 것: 완료의 정의(화면 확인 필수) · 반납(blocked:) · 라벨이 곧 배정 · 반장 폐지 */
  function nextFor(f){
   const c=f.id?by[f.id]:null;
-  const isLead = f.i===0;                      /* 각 반의 0번 칸 = 반장 */
   const blocked = (c?.labels||[]).find(l=>String(l).startsWith("blocked:"));
-
-  if(isLead) return {tag:"반장",urgent:false,why:"01 칸",
-   todo:"반장 겸 검수자다. 코드를 만들지 않는다(§5) — 만들면 검수가 멈춘다.\n짝 진영의 PR 을 «원격에서 받아서» 검수한다:  git fetch origin && git checkout <PR head SHA>\n자기 폴더로 검수하지 마라. 자기가 approve 하지 마라 — 판정과 근거만 낸다."};
 
   if(!f.id) return {tag:"유휴",urgent:false,why:"라벨 없음",
    todo:"잡은 카드가 없다. 배정판에서 네 반의 다음 착수 가능 카드를 «스스로» 집는다(§8.2).\n★ 라벨이 곧 배정이다. 라벨 없는 카드는 착수 금지 — 총괄에게 라벨을 요청한다.\n집을 게 없으면 «대기» 도장을 남긴다: 사유 · 재개 조건 · 확인 주체 · 무엇이 있으면 일할 수 있는가."};
@@ -474,7 +497,7 @@ async function load(){
   if(st==="In Review") return {tag:"검수대기",urgent:true,why:"In Review",
    todo:"검수 요청을 남기고 «다른 카드로 넘어가라»(§8.2). 안고 기다리지 마라.\n60분 무응답이면 같은 기기의 다른 유휴 세션으로 재배차하고,\n도장에 「지정 검수자 무응답 60분 → 보조 검수 <세션명>」을 남긴다."};
 
-  if(!f.stamp) return {tag:"도장없음",urgent:true,why:"BBE-94 미기록",
+  if(st==="In Progress"&&!f.stamp) return {tag:"도장없음",urgent:true,why:"BBE-94 미기록",
    todo:"진행 중인데 착수 도장이 없다. 지금 BBE-94 에 남긴다:\n착수 — [모아워크 DC 03] · 카드 · 브랜치 · base SHA · 리스 · 착수범위\nLinear 를 직접 못 쓰면 네 반 총괄에게 넘겨라. 기록 생략은 없다."};
 
   if(h>=24) return {tag:"정체",urgent:true,why:`${Math.floor(h/24)}일 무변동`,
@@ -484,7 +507,7 @@ async function load(){
    todo:"착수 전이다. 순서대로:\n① 카드에 내 라벨이 붙었는지 확인\n② node docs/design/dump-mockup.mjs [탭]  ← 목업을 글로 읽는다\n③ node docs/design/qa-app.mjs  ← 착수 전 차이 숫자를 기록\n④ 최신 origin/main 위 전용 worktree → BBE-94 에 착수 도장"};
 
   return {tag:"진행",urgent:false,why:"In Progress",
-   todo:"진행 중이다. 완주 = 코드 + 테스트 + CI + «그 화면을 열어 눈으로 본 증거»(§3).\n★ 「목업 86/86 PASS」를 완주 근거로 쓰지 마라 — 앱을 증명하지 않는다.\n★ 화면이 없는 카드는 완주가 아니라 «부품 납품» 이다 — 어느 화면이 쓰는지 후속 카드를 남긴다.\nC 진영은 1440px·375px 스크린샷을 직접 찍는다. G 진영은 MWC 에 클릭스루를 의뢰한다."};
+  todo:"진행 중이다. 완주 = 코드 + 테스트 + CI + «그 화면을 열어 눈으로 본 증거»(§3).\n★ 「목업 86/86 PASS」를 완주 근거로 쓰지 마라 — 앱을 증명하지 않는다.\n★ 화면이 없는 카드는 완주가 아니라 «부품 납품» 이다 — 어느 화면이 쓰는지 후속 카드를 남긴다.\nUI 변경은 진영과 무관하게 로컬 화면 1440px 증거를 직접 남긴다."};
  }
 
  /* 슬롯표 */
@@ -534,7 +557,7 @@ async function load(){
    `- 막히면 기다리지 말고 «반납» 한다 — 라벨을 떼고 blocked:<막는 세션 약칭> (§8.2)`,
    `  도장에 «누가» 를 이름으로 적어라. 「나는 무엇으로 넘어간다」가 없으면 정지다`,
    `- 검수는 «원격에서 받아서» 본다:  git fetch origin && git checkout <PR head SHA> (§5)`,
-   `- 반장(01)은 코드를 만들지 않는다. 만들면 검수가 멈춘다`,
+   `- 01~05 모두 구현하며 검수는 작성자와 분리해 자체완결한다`,
    `- Linear 담당자 칸은 belie 계정 하나뿐이다. «코멘트 서명»이 유일한 기명 수단이다`,
    ``,
    `## 지금 목적 — 목업을 구현한다`,

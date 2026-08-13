@@ -19,7 +19,7 @@
  *   → docs/dashboard/board.html  생성
  *
  * 언제 돌리나:
- *   세션이 [START] / [END] 를 남길 때 1회. 반장은 배차 전에 1회.
+ *   세션이 착수/완주 도장을 남길 때 1회. 총괄은 배차 뒤 1회.
  *   자동 갱신이 아니다 — 파일 위쪽에 «언제 구운 판인지»가 찍힌다.
  */
 
@@ -97,7 +97,7 @@ const live = issues.filter((i) => !DONE.includes(i.status));
 
 const Q_COMMENTS = `
 query($id:String!){
-  issue(id:$id){ comments(first:6, orderBy:createdAt){ nodes{ body } } }
+  issue(id:$id){ comments(first:20, orderBy:createdAt){ nodes{ body } } }
 }`;
 
 const comments = {};
