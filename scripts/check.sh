@@ -7,6 +7,10 @@ set -euo pipefail
 # 리포지토리 루트로 이동 (스크립트 위치 기준)
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+echo "▶ [0/4] production repo boundary"
+node scripts/check-production-repo-boundaries.mjs --self-test
+node scripts/check-production-repo-boundaries.mjs
+
 # ── 편제 개편 공지 (2026-08-12) ───────────────────────────────────
 # 왜 여기 있나: 모든 세션이 커밋 전에 반드시 이 스크립트를 지난다.
 # Linear 댓글·디스패치 게시는 «도는 창» 을 깨우지 못한다. 이 배너만이 확실히 닿는다.
