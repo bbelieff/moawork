@@ -8,7 +8,7 @@ import { ContactPipelineAction } from "./ContactPipelineAction";
  * 서버 컴포넌트(읽기 전용). 드래그 이동·인라인 편집은 후속(B2 이후) —
  * 단계 이동은 활동로그를 남겨야 해서 서비스(moveDealStage) 경유가 필수다.
  */
-export function StageBoardView({ data, linksEnabled = true, onboardingCta = true, emptyHint, pipelineActionsEnabled = false }: { data: StageBoardData; linksEnabled?: boolean; onboardingCta?: boolean; emptyHint?: string; pipelineActionsEnabled?: boolean }) {
+export function StageBoardView({ data, linksEnabled = true, onboardingCta = true, emptyHint, pipelineActionsEnabled = true }: { data: StageBoardData; linksEnabled?: boolean; onboardingCta?: boolean; emptyHint?: string; pipelineActionsEnabled?: boolean }) {
   const { board, columns, total, companyById, sourceKind } = data;
 
   return (

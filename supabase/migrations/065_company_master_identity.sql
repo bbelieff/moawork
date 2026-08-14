@@ -95,8 +95,9 @@ create or replace function public.handoff_company_to_work(
   p_region_sigungu text default null,
   p_phone text default null,
   p_founded_on date default null,
-  p_revenue numeric default null
-) returns table(company_id uuid, mode text, duplicate_candidate_ids uuid[])
+  p_revenue numeric default null,
+  p_company_id uuid default null
+) returns table(deal_id uuid, company_id uuid, mode text, duplicate_candidate_ids uuid[])
 language plpgsql
 security definer
 set search_path = ''
@@ -106,6 +107,7 @@ declare
   v_role text;
   v_scope text;
   v_assigned_to uuid;
+  v_deal_id uuid := p_deal_id;
   v_company_id uuid;
   v_candidates uuid[] := '{}'::uuid[];
   v_biz_no text := nullif(regexp_replace(coalesce(p_biz_no, ''), '[^0-9]', '', 'g'), '');
@@ -134,16 +136,38 @@ begin
     raise exception 'active membership required' using errcode = '42501';
   end if;
 
-  select d.assigned_to
-    into v_assigned_to
-    from public.deals d
-   where d.id = p_deal_id
-     and d.org_id = p_org_id
-   for update;
-  if not found or not (
-    v_role in ('owner', 'admin') or v_scope = 'all' or v_assigned_to = v_actor
-  ) then
-    raise exception 'deal unavailable' using errcode = '42501';
+  if v_deal_id is null then
+    insert into public.deals(org_id, assigned_to, title)
+    values (p_org_id, v_actor, btrim(p_name))
+    returning id, assigned_to into v_deal_id, v_assigned_to;
+  else
+    select d.assigned_to
+      into v_assigned_to
+      from public.deals d
+     where d.id = v_deal_id
+       and d.org_id = p_org_id
+     for update;
+    if not found or not (
+      v_role in ('owner', 'admin') or v_scope = 'all' or v_assigned_to = v_actor
+    ) then
+      raise exception 'deal unavailable' using errcode = '42501';
+    end if;
+  end if;
+
+  if p_company_id is not null then
+    select c.id
+      into v_company_id
+      from public.companies c
+     where c.id = p_company_id
+       and c.org_id = p_org_id
+       and c.merged_into is null
+       and (v_role in ('owner', 'admin') or v_scope = 'all' or c.assigned_to = v_actor);
+    if not found then
+      raise exception 'company unavailable' using errcode = '42501';
+    end if;
+    update public.deals set company_id = v_company_id where id = v_deal_id and org_id = p_org_id;
+    return query select v_deal_id, v_company_id, 'existing'::text, v_candidates;
+    return;
   end if;
 
   if v_biz_no is not null then
@@ -169,8 +193,8 @@ begin
   end if;
 
   if v_company_id is not null then
-    update public.deals set company_id = v_company_id where id = p_deal_id and org_id = p_org_id;
-    return query select v_company_id, 'existing'::text, v_candidates;
+    update public.deals set company_id = v_company_id where id = v_deal_id and org_id = p_org_id;
+    return query select v_deal_id, v_company_id, 'existing'::text, v_candidates;
     return;
   end if;
 
@@ -217,8 +241,8 @@ begin
      order by c.created_at, c.id
      limit 1;
     if v_company_id is null then raise; end if;
-    update public.deals set company_id = v_company_id where id = p_deal_id and org_id = p_org_id;
-    return query select v_company_id, 'existing'::text, '{}'::uuid[];
+    update public.deals set company_id = v_company_id where id = v_deal_id and org_id = p_org_id;
+    return query select v_deal_id, v_company_id, 'existing'::text, '{}'::uuid[];
     return;
   end;
 
@@ -227,8 +251,9 @@ begin
     from unnest(v_candidates) candidate_id
   on conflict (source_company_id, candidate_company_id) do nothing;
 
-  update public.deals set company_id = v_company_id where id = p_deal_id and org_id = p_org_id;
+  update public.deals set company_id = v_company_id where id = v_deal_id and org_id = p_org_id;
   return query select
+    v_deal_id,
     v_company_id,
     case when cardinality(v_candidates) > 0 then 'created_needs_review' else 'created' end,
     v_candidates;
@@ -236,12 +261,12 @@ end;
 $$;
 
 revoke all on function public.handoff_company_to_work(
-  uuid, uuid, text, text, text, text, text, text, text, text, date, numeric
+  uuid, uuid, text, text, text, text, text, text, text, text, date, numeric, uuid
 ) from public, anon, service_role;
 grant execute on function public.handoff_company_to_work(
-  uuid, uuid, text, text, text, text, text, text, text, text, date, numeric
+  uuid, uuid, text, text, text, text, text, text, text, text, date, numeric, uuid
 ) to authenticated;
 
 comment on function public.handoff_company_to_work(
-  uuid, uuid, text, text, text, text, text, text, text, text, date, numeric
-) is 'BBE-125 atomic company upsert/link. Exact biz number reuses; ambiguous name+owner creates a separate review record and never auto-merges.';
+  uuid, uuid, text, text, text, text, text, text, text, text, date, numeric, uuid
+) is 'BBE-125 atomic deal create/company upsert/link. Exact biz number reuses; ambiguous name+owner creates a separate review record and never auto-merges.';

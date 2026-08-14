@@ -54,7 +54,8 @@ async function bootstrap(db) {
     );
     create table public.deals(
       id uuid primary key default gen_random_uuid(), org_id uuid not null references public.orgs(id),
-      company_id uuid references public.companies(id), assigned_to uuid references public.users(id)
+      company_id uuid references public.companies(id), assigned_to uuid references public.users(id),
+      title text not null default 'Fixture'
     );
     insert into public.orgs(id) values ('${ORG_A}'),('${ORG_B}');
     insert into public.users(id) values ('${USER}'),('${OTHER_USER}');
@@ -75,12 +76,13 @@ async function handoff(db, dealId, {
   phone = null,
   foundedOn = null,
   revenue = null,
+  companyId = null,
 } = {}, orgId = ORG_A) {
   await db.exec(`set role authenticated`);
   try {
-    return await db.query(`select * from public.handoff_company_to_work($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [
+    return await db.query(`select * from public.handoff_company_to_work($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [
       orgId, dealId, name, bizNo, ownerName, businessType, industry,
-      regionSido, regionSigungu, phone, foundedOn, revenue,
+      regionSido, regionSigungu, phone, foundedOn, revenue, companyId,
     ]);
   } finally {
     await db.exec(`reset role`);
@@ -105,7 +107,7 @@ test("BBE-125 handoff reuses exact identity and keeps suspected duplicates separ
     await db.exec(`grant usage on schema public to authenticated`);
 
     const exact = await handoff(db, dealExact, { name: "다른 표기", bizNo: "1234567890", ownerName: "다른대표" });
-    assert.deepEqual(exact.rows[0], { company_id: existing, mode: "existing", duplicate_candidate_ids: [] });
+    assert.deepEqual(exact.rows[0], { deal_id: dealExact, company_id: existing, mode: "existing", duplicate_candidate_ids: [] });
     assert.equal(Number((await db.query(`select count(*) from public.companies where org_id=$1`, [ORG_A])).rows[0].count), 1);
     assert.equal((await db.query(`select company_id from public.deals where id=$1`, [dealExact])).rows[0].company_id, existing);
 
@@ -163,6 +165,30 @@ test("BBE-125 handoff reuses exact identity and keeps suspected duplicates separ
   }
 });
 
+test("BBE-125 fresh handoff atomically creates one deal and can select an accessible company", async () => {
+  const db = new PGlite();
+  try {
+    await bootstrap(db);
+    await db.exec(await readFile(migrationPath, "utf8"));
+    await db.exec(`grant usage on schema public to authenticated`);
+
+    const fresh = await handoff(db, null, { name: "Fresh Company", ownerName: "Fresh Owner" });
+    assert.equal(fresh.rows[0].mode, "created");
+    assert.ok(fresh.rows[0].deal_id);
+    assert.equal(Number((await db.query(`select count(*) from public.deals`)).rows[0].count), 1);
+    assert.equal((await db.query(`select company_id from public.deals where id=$1`, [fresh.rows[0].deal_id])).rows[0].company_id, fresh.rows[0].company_id);
+
+    const nextDeal = "00000000-0000-4000-8000-000000000204";
+    await db.query(`insert into public.deals(id,org_id,assigned_to,title) values($1,$2,$3,'Next')`, [nextDeal, ORG_A, USER]);
+    const selected = await handoff(db, nextDeal, { name: "Ignored", companyId: fresh.rows[0].company_id });
+    assert.equal(selected.rows[0].company_id, fresh.rows[0].company_id);
+    assert.equal(selected.rows[0].mode, "existing");
+    assert.equal((await db.query(`select company_id from public.deals where id=$1`, [nextDeal])).rows[0].company_id, fresh.rows[0].company_id);
+  } finally {
+    await db.close();
+  }
+});
+
 test("BBE-125 handoff rejects cross-org access and exposes only the constrained RPC", async () => {
   const db = new PGlite();
   try {
@@ -184,9 +210,9 @@ test("BBE-125 handoff rejects cross-org access and exposes only the constrained 
 
     const privileges = await db.query(`
       select
-        has_function_privilege('public', 'public.handoff_company_to_work(uuid,uuid,text,text,text,text,text,text,text,text,date,numeric)', 'execute') as public_execute,
-        has_function_privilege('anon', 'public.handoff_company_to_work(uuid,uuid,text,text,text,text,text,text,text,text,date,numeric)', 'execute') as anon_execute,
-        has_function_privilege('authenticated', 'public.handoff_company_to_work(uuid,uuid,text,text,text,text,text,text,text,text,date,numeric)', 'execute') as authenticated_execute,
+        has_function_privilege('public', 'public.handoff_company_to_work(uuid,uuid,text,text,text,text,text,text,text,text,date,numeric,uuid)', 'execute') as public_execute,
+        has_function_privilege('anon', 'public.handoff_company_to_work(uuid,uuid,text,text,text,text,text,text,text,text,date,numeric,uuid)', 'execute') as anon_execute,
+        has_function_privilege('authenticated', 'public.handoff_company_to_work(uuid,uuid,text,text,text,text,text,text,text,text,date,numeric,uuid)', 'execute') as authenticated_execute,
         has_table_privilege('authenticated', 'public.company_duplicate_reviews', 'insert') as direct_insert,
         (select relrowsecurity from pg_class where oid='public.company_duplicate_reviews'::regclass) as rls_enabled
     `);

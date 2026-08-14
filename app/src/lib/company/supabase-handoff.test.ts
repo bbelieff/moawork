@@ -9,7 +9,7 @@ function client(data: unknown, error: { message?: string } | null = null) {
 describe("handoffCompanyWithSupabase (BBE-125)", () => {
   it("원자 RPC에 회사 입력을 전달하고 참조 id만 돌려준다", async () => {
     const { client: rpcClient, rpc } = client([
-      { company_id: "company-1", mode: "created", duplicate_candidate_ids: [] },
+      { deal_id: "deal-1", company_id: "company-1", mode: "created", duplicate_candidate_ids: [] },
     ]);
 
     const result = await handoffCompanyWithSupabase(rpcClient, "org-1", {
@@ -26,7 +26,7 @@ describe("handoffCompanyWithSupabase (BBE-125)", () => {
       revenue: "100000000",
     });
 
-    expect(result).toEqual({ companyId: "company-1", mode: "created", duplicateCandidateIds: [] });
+    expect(result).toEqual({ dealId: "deal-1", companyId: "company-1", mode: "created", duplicateCandidateIds: [] });
     expect(rpc).toHaveBeenCalledWith("handoff_company_to_work", expect.objectContaining({
       p_org_id: "org-1",
       p_deal_id: "deal-1",
@@ -39,6 +39,7 @@ describe("handoffCompanyWithSupabase (BBE-125)", () => {
   it("의심 중복은 후보 id 목록을 보존한다", async () => {
     const { client: rpcClient } = client([
       {
+        deal_id: "deal-1",
         company_id: "company-new",
         mode: "created_needs_review",
         duplicate_candidate_ids: ["company-old"],
@@ -49,6 +50,7 @@ describe("handoffCompanyWithSupabase (BBE-125)", () => {
       dealId: "deal-1",
       name: "새봄상사",
     })).resolves.toEqual({
+      dealId: "deal-1",
       companyId: "company-new",
       mode: "created_needs_review",
       duplicateCandidateIds: ["company-old"],
@@ -63,8 +65,8 @@ describe("handoffCompanyWithSupabase (BBE-125)", () => {
     })).rejects.toThrow("deal unavailable");
 
     const multiple = client([
-      { company_id: "a", mode: "existing", duplicate_candidate_ids: [] },
-      { company_id: "b", mode: "existing", duplicate_candidate_ids: [] },
+      { deal_id: "deal-1", company_id: "a", mode: "existing", duplicate_candidate_ids: [] },
+      { deal_id: "deal-1", company_id: "b", mode: "existing", duplicate_candidate_ids: [] },
     ]).client;
     await expect(handoffCompanyWithSupabase(multiple, "org-1", {
       dealId: "deal-1",
@@ -72,7 +74,7 @@ describe("handoffCompanyWithSupabase (BBE-125)", () => {
     })).rejects.toThrow("정확히 1건");
 
     const unknown = client([
-      { company_id: "a", mode: "merged", duplicate_candidate_ids: [] },
+      { deal_id: "deal-1", company_id: "a", mode: "merged", duplicate_candidate_ids: [] },
     ]).client;
     await expect(handoffCompanyWithSupabase(unknown, "org-1", {
       dealId: "deal-1",

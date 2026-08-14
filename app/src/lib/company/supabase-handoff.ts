@@ -3,6 +3,7 @@ import type { CompanyHandoffInput } from "./types";
 type HandoffMode = "created" | "existing" | "created_needs_review";
 
 interface HandoffRpcRow {
+  deal_id: string;
   company_id: string;
   mode: string;
   duplicate_candidate_ids: string[] | null;
@@ -16,6 +17,7 @@ export interface CompanyHandoffRpcClient {
 }
 
 export interface SupabaseCompanyHandoffResult {
+  dealId: string;
   companyId: string;
   mode: HandoffMode;
   duplicateCandidateIds: readonly string[];
@@ -30,7 +32,7 @@ function readSingleRow(data: unknown): HandoffRpcRow {
     throw new Error("업체 이관 결과가 정확히 1건이 아닙니다.");
   }
   const row = data[0] as Partial<HandoffRpcRow> | null;
-  if (!row || typeof row.company_id !== "string" || typeof row.mode !== "string" || !isMode(row.mode)) {
+  if (!row || typeof row.deal_id !== "string" || typeof row.company_id !== "string" || typeof row.mode !== "string" || !isMode(row.mode)) {
     throw new Error("업체 이관 결과 형식이 올바르지 않습니다.");
   }
   if (row.duplicate_candidate_ids !== null && !Array.isArray(row.duplicate_candidate_ids)) {
@@ -63,6 +65,7 @@ export async function handoffCompanyWithSupabase(
     p_phone: input.phone ?? null,
     p_founded_on: input.foundedOn ?? null,
     p_revenue: input.revenue ?? null,
+    p_company_id: input.existingCompanyId ?? null,
   });
   if (error) {
     throw new Error(error.message || "업체 이관에 실패했습니다.");
@@ -70,6 +73,7 @@ export async function handoffCompanyWithSupabase(
 
   const row = readSingleRow(data);
   return {
+    dealId: row.deal_id,
     companyId: row.company_id,
     mode: row.mode as HandoffMode,
     duplicateCandidateIds: row.duplicate_candidate_ids ?? [],

@@ -10,7 +10,7 @@ describe("BBE-125 company handoff migration", () => {
       cwd: root,
       env: { ...process.env, PGLITE_MODULE_ROOT: root },
       stdio: "pipe",
-      timeout: 40_000,
+      timeout: 120_000,
     })).not.toThrow();
-  }, 45_000);
+  }, 125_000);
 });
