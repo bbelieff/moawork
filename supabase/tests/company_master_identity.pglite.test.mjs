@@ -38,6 +38,14 @@ async function bootstrap(db) {
     set search_path='' as $$
       select exists(select 1 from public.org_members m where m.org_id=p_org and m.user_id=auth.uid() and m.status='active')
     $$;
+    create function public.org_role(p_org uuid) returns public.member_role language sql stable security definer
+    set search_path='' as $$
+      select m.role from public.org_members m where m.org_id=p_org and m.user_id=auth.uid() and m.status='active'
+    $$;
+    create function public.org_scope(p_org uuid) returns public.member_scope language sql stable security definer
+    set search_path='' as $$
+      select m.scope from public.org_members m where m.org_id=p_org and m.user_id=auth.uid() and m.status='active'
+    $$;
     create table public.companies(
       id uuid primary key default gen_random_uuid(), org_id uuid not null references public.orgs(id),
       name text not null, biz_type text, region text, owner_name text, phone text, email text,
@@ -189,6 +197,50 @@ test("BBE-125 handoff rejects cross-org access and exposes only the constrained 
       direct_insert: false,
       rls_enabled: true,
     });
+  } finally {
+    await db.close();
+  }
+});
+
+test("BBE-125 assigned scope neither links nor exposes another assignee's company", async () => {
+  const db = new PGlite();
+  try {
+    await bootstrap(db);
+    await db.exec(await readFile(migrationPath, "utf8"));
+    const foreignExact = "00000000-0000-4000-8000-000000000401";
+    const foreignSuspect = "00000000-0000-4000-8000-000000000402";
+    const dealExact = "00000000-0000-4000-8000-000000000403";
+    const dealSuspect = "00000000-0000-4000-8000-000000000404";
+    await db.query(`
+      insert into public.companies(id,org_id,name,biz_no,owner_name,assigned_to) values
+        ($1,$3,'Foreign Exact','333-44-55555','Other Owner',$4),
+        ($2,$3,'Foreign Suspect',null,'Other Owner',$4)
+    `, [foreignExact, foreignSuspect, ORG_A, OTHER_USER]);
+    await db.query(`
+      insert into public.company_duplicate_reviews(org_id,source_company_id,candidate_company_id)
+      values($1,$2,$3)
+    `, [ORG_A, foreignExact, foreignSuspect]);
+    await db.query(`insert into public.deals(id,org_id,assigned_to) values($1,$3,$4),($2,$3,$4)`, [dealExact, dealSuspect, ORG_A, USER]);
+    await db.exec(`grant usage on schema public to authenticated; grant select on public.companies to authenticated`);
+
+    await assert.rejects(
+      handoff(db, dealExact, { name: "Different", bizNo: "3334455555" }),
+      /company unavailable/,
+    );
+    assert.equal((await db.query(`select company_id from public.deals where id=$1`, [dealExact])).rows[0].company_id, null);
+
+    const suspect = await handoff(db, dealSuspect, { name: "Foreign Suspect", ownerName: "Other Owner" });
+    assert.equal(suspect.rows[0].mode, "created");
+    assert.deepEqual(suspect.rows[0].duplicate_candidate_ids, []);
+    assert.notEqual(suspect.rows[0].company_id, foreignSuspect);
+
+    await db.exec(`set role authenticated`);
+    try {
+      const visible = await db.query(`select source_company_id, candidate_company_id from public.company_duplicate_reviews`);
+      assert.deepEqual(visible.rows, []);
+    } finally {
+      await db.exec(`reset role`);
+    }
   } finally {
     await db.close();
   }

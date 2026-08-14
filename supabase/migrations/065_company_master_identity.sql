@@ -58,7 +58,27 @@ drop policy if exists company_duplicate_reviews_select on public.company_duplica
 create policy company_duplicate_reviews_select
   on public.company_duplicate_reviews for select
   to authenticated
-  using (public.is_org_member(org_id));
+  using (
+    public.is_org_member(org_id)
+    and (
+      public.org_role(org_id) in ('owner', 'admin')
+      or public.org_scope(org_id) = 'all'
+      or (
+        exists (
+          select 1 from public.companies source_company
+           where source_company.id = source_company_id
+             and source_company.org_id = org_id
+             and source_company.assigned_to = auth.uid()
+        )
+        and exists (
+          select 1 from public.companies candidate_company
+           where candidate_company.id = candidate_company_id
+             and candidate_company.org_id = org_id
+             and candidate_company.assigned_to = auth.uid()
+        )
+      )
+    )
+  );
 
 revoke all on table public.company_duplicate_reviews from public, anon, authenticated;
 grant select on table public.company_duplicate_reviews to authenticated;
@@ -133,8 +153,19 @@ begin
      where c.org_id = p_org_id
        and c.normalized_biz_no = v_biz_no
        and c.merged_into is null
+       and (v_role in ('owner', 'admin') or v_scope = 'all' or c.assigned_to = v_actor)
      order by c.created_at, c.id
      limit 1;
+
+    if v_company_id is null and exists (
+      select 1
+        from public.companies c
+       where c.org_id = p_org_id
+         and c.normalized_biz_no = v_biz_no
+         and c.merged_into is null
+    ) then
+      raise exception 'company unavailable' using errcode = '42501';
+    end if;
   end if;
 
   if v_company_id is not null then
@@ -150,7 +181,8 @@ begin
      where c.org_id = p_org_id
        and c.normalized_name = v_normalized_name
        and lower(btrim(c.owner_name)) = lower(btrim(p_owner_name))
-       and c.merged_into is null;
+       and c.merged_into is null
+       and (v_role in ('owner', 'admin') or v_scope = 'all' or c.assigned_to = v_actor);
   end if;
 
   begin
@@ -172,6 +204,7 @@ begin
      where c.org_id = p_org_id
        and c.normalized_biz_no = v_biz_no
        and c.merged_into is null
+       and (v_role in ('owner', 'admin') or v_scope = 'all' or c.assigned_to = v_actor)
      order by c.created_at, c.id
      limit 1;
     if v_company_id is null then raise; end if;
