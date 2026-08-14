@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { CONTACT_TAB, CONTACT_TAB_SOURCE, ensureDefaultTab } from "@/lib/default-tabs";
 import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
+import { getRepo } from "@/lib/repo";
 import type { Ctx } from "@/lib/types";
 import { resolveExistingContactBoard } from "./entry";
 
@@ -12,7 +13,16 @@ const ctx = {
   scope: "all",
 } as unknown as Ctx;
 
-beforeEach(() => resetDb());
+beforeEach(() => {
+  resetDb();
+  getRepo().addMember(ctx.org.id, {
+    id: ctx.user.id,
+    name: ctx.user.name,
+    email: ctx.user.email,
+    avatar_url: null,
+    created_at: "2026-08-14T00:00:00Z",
+  }, "owner", "all");
+});
 
 describe("resolveExistingContactBoard", () => {
   it("제품 source가 유일할 때만 연다", async () => {
@@ -38,9 +48,7 @@ describe("resolveExistingContactBoard", () => {
   it("기본 탭 보장 직후 같은 board id로 진입한다", async () => {
     const local = new LocalBoardsRepo();
     const repo = toAsyncBoardsRepo(local);
-    const result = await ensureDefaultTab(ctx, CONTACT_TAB, repo, {
-      assignees: [{ userId: ctx.user.id, displayName: ctx.user.name ?? "계정 A" }],
-    });
+    const result = await ensureDefaultTab(ctx, CONTACT_TAB, repo);
     expect(await resolveExistingContactBoard(ctx, repo)).toEqual({ kind: "ready", boardId: result.boardId });
   });
 

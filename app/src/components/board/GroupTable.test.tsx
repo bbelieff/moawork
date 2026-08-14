@@ -111,6 +111,25 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     expect(cellInputValue("datetime", "2026-08-11T03:45:00.000Z")).toBe("2026-08-11T03:45");
   });
 
+  it("person 컬럼은 조직 멤버 선택 UI와 미배정 값을 렌더한다", () => {
+    const columns = [col({
+      key: "owner",
+      label: "담당자",
+      type: "person",
+      source: "act",
+      options_jsonb: { options: [
+        { id: "member-a", label: "계정 A", order: 0 },
+        { id: "member-b", label: "계정 B", order: 1 },
+      ] },
+    })];
+    const html = renderTable(columns, [row({ owner: "member-b" })]);
+    expect(html).toContain('name="kind" value="person"');
+    expect(html).toContain('<select name="value"');
+    expect(html).toContain('<option value="">미배정</option>');
+    expect(html).toContain('<option value="member-b" selected="">계정 B</option>');
+    expect(html).not.toContain('type="text" name="value"');
+  });
+
   it("money 타입은 우측 정렬·천단위로 표시된다", () => {
     const columns = [col({ key: "amt", label: "계약금", source: "lk", type: "money" })];
     const html = renderTable(columns, [row({ amt: 1200000 })]);

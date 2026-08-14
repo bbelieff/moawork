@@ -7,6 +7,7 @@ import { BoardsService } from "@/lib/boards/service";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
+import { getRepo } from "@/lib/repo";
 import type { Ctx } from "@/lib/types";
 import { CONTACT_TAB } from "./contact";
 import { ensureDefaultTab } from "./install";
@@ -30,9 +31,16 @@ let boardId: string;
 
 beforeEach(async () => {
   resetDb();
+  assignees.forEach((assignee, index) => getRepo().addMember(ctx.org.id, {
+    id: assignee.userId,
+    name: assignee.displayName,
+    email: `${assignee.userId}@example.test`,
+    avatar_url: null,
+    created_at: `2026-08-14T00:00:0${index}Z`,
+  }, index === 0 ? "owner" : "member", "all"));
   repo = new LocalBoardsRepo();
   asyncRepo = toAsyncBoardsRepo(repo);
-  boardId = (await ensureDefaultTab(ctx, CONTACT_TAB, asyncRepo, { assignees })).boardId;
+  boardId = (await ensureDefaultTab(ctx, CONTACT_TAB, asyncRepo)).boardId;
 });
 
 function emptyRow(): ItemWithValues {

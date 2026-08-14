@@ -108,7 +108,7 @@ function BoardCell({
   const title = cellTitle(column);
 
   if (cellReadOnly) {
-    const display = column.type === "select" || column.type === "status" || column.type === "multiselect" ? (
+    const display = column.type === "select" || column.type === "status" || column.type === "person" || column.type === "multiselect" ? (
       <StatusCell value={value} options={options} />
     ) : (
       <span className={`truncate text-xs text-mw-body ${numeric ? "block text-right tabular-nums" : ""}`}>
@@ -172,6 +172,24 @@ function BoardCell({
             options={options}
             className={`${CELL_INPUT} cursor-pointer`}
           />
+        ) : column.type === "person" ? (
+          <>
+            <input type="hidden" name="kind" value="person" />
+            <select
+              name="value"
+              defaultValue={typeof value === "string" ? value : ""}
+              className={`${CELL_INPUT} cursor-pointer`}
+              aria-label={column.label}
+              onChange={(event) => event.currentTarget.form?.requestSubmit()}
+            >
+              <option value="">미배정</option>
+              {options.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </>
         ) : column.type === "multiselect" ? (
           <select
             name="value"
@@ -198,7 +216,7 @@ function BoardCell({
         )}
 
         {/* select/multiselect 는 변경만으로 저장되지 않으므로 명시 저장을 남긴다. */}
-        {(column.type === "select" || column.type === "status" || column.type === "multiselect") && (
+        {(column.type === "select" || column.type === "status" || column.type === "person" || column.type === "multiselect") && (
           <button type="submit" className="sr-only">
             {column.label} 저장
           </button>

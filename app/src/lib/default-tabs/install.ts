@@ -22,9 +22,9 @@
 import type { Ctx } from "@/lib/types";
 import type { BoardsRepo, NewColumn } from "@/lib/boards/store";
 import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
-import { getRepo } from "@/lib/repo";
 import { CONTACT_TAB } from "./contact";
 import { NEW_LEAD_TAB } from "./new-lead";
+import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import type { DefaultTab, DefaultTabAssignee, DefaultTabColumn } from "./types";
 
 /** 제품이 새 워크스페이스에 주는 기본 탭. 지금은 신규리드 하나 — 나머지 5탭은 복제 작업이다. */
@@ -53,21 +53,29 @@ export async function ensureDefaultTab(
   ctx: Ctx,
   tab: DefaultTab,
   repo?: BoardsRepo,
-  options: { assignees?: readonly DefaultTabAssignee[] } = {},
 ): Promise<EnsuredTab> {
   const store = repo ?? await getBoardsRepo();
   const needsAssignees = tab.groups.some((group) => group.assigneeSlot !== undefined)
     || tab.columns.some((column) => column.assigneeMove !== undefined);
-  const assignees = options.assignees ?? (needsAssignees ? resolveAssignees(ctx) : []);
+  const assignees = needsAssignees ? await loadDefaultTabAssignees(ctx) : [];
   const existing = (await store.listBoards(ctx)).find((board) => board.source === tab.source);
   if (existing) {
-    const groups = await store.listGroups(ctx, existing.id);
+    const groupIds = await reconcileAssigneeGroups(ctx, store, existing.id, tab, assignees);
+    const columns = await store.listColumns(ctx, existing.id);
+    for (const definition of tab.columns.filter((column) => column.assigneeMove)) {
+      const column = columns.find((candidate) => candidate.key === definition.key);
+      if (!column) continue;
+      await store.updateColumn(ctx, column.id, {
+        options: assigneeOptions(definition, assignees),
+        moveRule: resolveMoveRule(definition, groupIds, tab, assignees),
+      });
+    }
     return {
       tabKey: tab.key,
       boardId: existing.id,
       created: false,
-      groupIds: Object.fromEntries(groups.map((group) => [group.name, group.id])),
-      columnKeys: (await store.listColumns(ctx, existing.id)).map((column) => column.key),
+      groupIds,
+      columnKeys: columns.map((column) => column.key),
     };
   }
 
@@ -82,7 +90,8 @@ export async function ensureDefaultTab(
   const groupIds: Record<string, string> = {};
   for (const group of tab.groups) {
     const assignee = group.assigneeSlot === undefined ? undefined : assignees[group.assigneeSlot];
-    const name = assignee ? `${group.name.replace(/\s*\d+$/, "")} ${assignee.displayName}` : group.name;
+    if (group.assigneeSlot !== undefined && !assignee) continue;
+    const name = assignee ? assigneeGroupName(group.name, assignee) : group.name;
     groupIds[group.name] = (await store.createGroup(ctx, board.id, {
       name,
       color: group.color,
@@ -96,7 +105,7 @@ export async function ensureDefaultTab(
       label: column.label,
       type: column.type,
       source: column.source,
-      options: column.options ?? null,
+      options: assigneeOptions(column, assignees),
       width: column.width ?? null,
       rightPinned: column.rightPinned ?? false,
       readOnly: column.readOnly ?? false,
@@ -150,22 +159,147 @@ function resolveMoveRule(
   return rule;
 }
 
-function resolveAssignees(ctx: Ctx): DefaultTabAssignee[] {
-  const members = getRepo().listMembers(ctx.org.id).slice().sort((a, b) => a.created_at.localeCompare(b.created_at));
-  const resolved = members.map((member) => ({
-    userId: member.user_id,
-    displayName: member.user?.name?.trim() || member.user?.email?.trim() || "멤버",
+const ASSIGNEE_OWNER_MARKER = "\u2063";
+const ASSIGNEE_OWNER_ZERO = "\u200b";
+const ASSIGNEE_OWNER_ONE = "\u200c";
+
+function withAssigneeOwner(name: string, userId: string): string {
+  const bits = Array.from(new TextEncoder().encode(userId), (byte) =>
+    byte.toString(2).padStart(8, "0").replaceAll("0", ASSIGNEE_OWNER_ZERO).replaceAll("1", ASSIGNEE_OWNER_ONE),
+  ).join("");
+  return `${name}${ASSIGNEE_OWNER_MARKER}${bits}`;
+}
+
+function assigneeOwnerFromGroupName(name: string): string | null {
+  const markerIndex = name.lastIndexOf(ASSIGNEE_OWNER_MARKER);
+  if (markerIndex < 0) return null;
+  const encoded = name.slice(markerIndex + ASSIGNEE_OWNER_MARKER.length);
+  if (!encoded || encoded.length % 8 !== 0) return null;
+  const bits = encoded.replaceAll(ASSIGNEE_OWNER_ZERO, "0").replaceAll(ASSIGNEE_OWNER_ONE, "1");
+  if (!/^[01]+$/.test(bits)) return null;
+  try {
+    return new TextDecoder(undefined, { fatal: true }).decode(
+      new Uint8Array(bits.match(/.{8}/g)!.map((byte) => Number.parseInt(byte, 2))),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function assigneeGroupName(baseName: string, assignee: DefaultTabAssignee): string {
+  const visible = `${baseName.replace(/\s*\d+$/, "")} ${assignee.displayName}`;
+  return withAssigneeOwner(visible, assignee.userId);
+}
+
+function assigneeOptions(
+  column: DefaultTabColumn,
+  assignees: readonly DefaultTabAssignee[],
+) {
+  if (!column.assigneeMove) return column.options ?? null;
+  return assignees.map((assignee, order) => ({
+    id: assignee.userId,
+    label: assignee.displayName,
+    order,
   }));
-  if (resolved.some((member) => member.userId === ctx.user.id)) return resolved;
-  return [{ userId: ctx.user.id, displayName: ctx.user.name?.trim() || ctx.user.email?.trim() || "멤버" }, ...resolved];
+}
+
+async function reconcileAssigneeGroups(
+  ctx: Ctx,
+  store: BoardsRepo,
+  boardId: string,
+  tab: DefaultTab,
+  assignees: readonly DefaultTabAssignee[],
+): Promise<Record<string, string>> {
+  const groups = await store.listGroups(ctx, boardId);
+  const slotDefinitions = tab.groups.filter(
+    (group): group is typeof group & { assigneeSlot: number } => group.assigneeSlot !== undefined,
+  );
+  const groupIds: Record<string, string> = {};
+  for (const definition of tab.groups.filter((group) => group.assigneeSlot === undefined)) {
+    const existing = groups.find((group) => group.name === definition.name);
+    if (existing) groupIds[definition.name] = existing.id;
+  }
+
+  const assigneeDefinition = tab.columns.find((column) => column.assigneeMove);
+  const unassigned = assigneeDefinition?.assigneeMove?.unassignedGroup;
+  const existingAssigneeColumn = assigneeDefinition
+    ? (await store.listColumns(ctx, boardId)).find((column) => column.key === assigneeDefinition.key)
+    : undefined;
+  const priorUnassignedId = assigneeDefinition?.assigneeMove
+    ? existingAssigneeColumn?.move_rule_jsonb?.[assigneeDefinition.assigneeMove.unassignedValue]
+    : undefined;
+  if (unassigned && priorUnassignedId && groups.some((group) => group.id === priorUnassignedId)) {
+    groupIds[unassigned] = priorUnassignedId;
+  }
+  const fallbackId = unassigned ? groupIds[unassigned] : undefined;
+  if (!fallbackId && slotDefinitions.length > 0) {
+    throw new Error(`기본 탭 '${tab.name}'의 미배정 그룹을 찾을 수 없습니다.`);
+  }
+
+  const slotCandidates = groups.filter((group) =>
+    slotDefinitions.some((definition) => {
+      const prefix = definition.name.replace(/\s*\d+$/, "");
+      return assigneeOwnerFromGroupName(group.name) !== null
+        || (group.color?.toLowerCase() === definition.color.toLowerCase() && group.name.startsWith(prefix));
+    }),
+  );
+  const claimed = new Set<string>();
+  const moveItems = async (fromGroupId: string) => {
+    for (const item of await store.listItems(ctx, boardId)) {
+      if (item.group_id === fromGroupId) await store.updateItem(ctx, item.id, { group_id: fallbackId! });
+    }
+  };
+
+  for (const definition of slotDefinitions) {
+    const assignee = assignees[definition.assigneeSlot];
+    let current = slotCandidates.find(
+      (group) => !claimed.has(group.id) && assigneeOwnerFromGroupName(group.name) === assignee?.userId,
+    );
+    current ??= slotCandidates.find(
+      (group) =>
+        !claimed.has(group.id)
+        && group.color?.toLowerCase() === definition.color.toLowerCase()
+        && group.name.startsWith(definition.name.replace(/\s*\d+$/, "")),
+    );
+    if (current) claimed.add(current.id);
+
+    if (!assignee) {
+      if (current) {
+        await moveItems(current.id);
+        await store.deleteGroup(ctx, current.id);
+      }
+      continue;
+    }
+
+    const expectedName = assigneeGroupName(definition.name, assignee);
+    if (!current || current.name !== expectedName) {
+      const replacement = await store.createGroup(ctx, boardId, {
+        name: expectedName,
+        color: definition.color,
+      });
+      if (current) {
+        await moveItems(current.id);
+        await store.deleteGroup(ctx, current.id);
+      }
+      current = replacement;
+    }
+    groupIds[definition.name] = current.id;
+  }
+
+  for (const obsolete of slotCandidates.filter((group) => !claimed.has(group.id))) {
+    if ((await store.listGroups(ctx, boardId)).some((group) => group.id === obsolete.id)) {
+      await moveItems(obsolete.id);
+      await store.deleteGroup(ctx, obsolete.id);
+    }
+  }
+  return groupIds;
 }
 
 /** 워크스페이스 생성 시 1회 호출. 이미 있는 탭은 건너뛴다. */
 export async function ensureDefaultTabs(
   ctx: Ctx,
   repo?: BoardsRepo,
-  options: { assignees?: readonly DefaultTabAssignee[] } = {},
 ): Promise<EnsuredTab[]> {
   const store = repo ?? await getBoardsRepo();
-  return Promise.all(DEFAULT_TABS.map((tab) => ensureDefaultTab(ctx, tab, store, options)));
+  return Promise.all(DEFAULT_TABS.map((tab) => ensureDefaultTab(ctx, tab, store)));
 }
