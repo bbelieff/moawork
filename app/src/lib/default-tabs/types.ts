@@ -25,6 +25,8 @@ import type { FieldSource } from "@/lib/field/source";
 export const NEW_LEAD_TAB_SOURCE = "core.default-tab/new-lead";
 /** Product-owned identity for the default lead-contact tab. */
 export const CONTACT_TAB_SOURCE = "core.default-tab/contact";
+/** Product-owned identity for the default notices tab. */
+export const NOTICE_TAB_SOURCE = "core.default-tab/notice";
 
 export interface DefaultTabAssignee {
   userId: string;
