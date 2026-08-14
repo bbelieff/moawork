@@ -35,6 +35,15 @@ create unique index if not exists companies_org_biz_no_active_uidx
   on public.companies(org_id, normalized_biz_no)
   where normalized_biz_no is not null and merged_into is null;
 
+create unique index if not exists companies_org_id_uidx
+  on public.companies(org_id, id);
+
+alter table public.companies drop constraint if exists companies_merged_into_fkey;
+alter table public.companies drop constraint if exists companies_merged_into_same_org_fkey;
+alter table public.companies
+  add constraint companies_merged_into_same_org_fkey
+  foreign key (org_id, merged_into) references public.companies(org_id, id) on delete restrict;
+
 create index if not exists companies_org_normalized_name_owner_idx
   on public.companies(org_id, normalized_name, lower(btrim(owner_name)))
   where merged_into is null;
@@ -83,6 +92,19 @@ create policy company_duplicate_reviews_select
 revoke all on table public.company_duplicate_reviews from public, anon, authenticated;
 grant select on table public.company_duplicate_reviews to authenticated;
 
+create table if not exists public.company_handoff_requests (
+  org_id uuid not null references public.orgs(id) on delete cascade,
+  request_id uuid not null,
+  deal_id uuid not null references public.deals(id) on delete cascade,
+  company_id uuid not null references public.companies(id) on delete restrict,
+  mode text not null check (mode in ('created', 'existing', 'created_needs_review')),
+  duplicate_candidate_ids uuid[] not null default '{}',
+  created_at timestamptz not null default now(),
+  primary key (org_id, request_id)
+);
+alter table public.company_handoff_requests enable row level security;
+revoke all on table public.company_handoff_requests from public, anon, authenticated;
+
 create or replace function public.handoff_company_to_work(
   p_org_id uuid,
   p_deal_id uuid,
@@ -96,7 +118,8 @@ create or replace function public.handoff_company_to_work(
   p_phone text default null,
   p_founded_on date default null,
   p_revenue numeric default null,
-  p_company_id uuid default null
+  p_company_id uuid default null,
+  p_request_id uuid default null
 ) returns table(deal_id uuid, company_id uuid, mode text, duplicate_candidate_ids uuid[])
 language plpgsql
 security definer
@@ -115,6 +138,7 @@ declare
     replace(replace(replace(coalesce(p_name, ''), '주식회사', ''), '㈜', ''), '(주)', ''),
     '[[:space:]]+', '', 'g'
   ));
+  v_prior public.company_handoff_requests%rowtype;
 begin
   if v_actor is null then
     raise exception 'authentication required' using errcode = '42501';
@@ -134,6 +158,17 @@ begin
      and m.status = 'active';
   if not found then
     raise exception 'active membership required' using errcode = '42501';
+  end if;
+
+  if p_request_id is not null then
+    perform pg_advisory_xact_lock(hashtextextended(p_org_id::text || ':' || p_request_id::text, 0));
+    select * into v_prior
+      from public.company_handoff_requests r
+     where r.org_id = p_org_id and r.request_id = p_request_id;
+    if found then
+      return query select v_prior.deal_id, v_prior.company_id, v_prior.mode, v_prior.duplicate_candidate_ids;
+      return;
+    end if;
   end if;
 
   if v_deal_id is null then
@@ -166,6 +201,10 @@ begin
       raise exception 'company unavailable' using errcode = '42501';
     end if;
     update public.deals set company_id = v_company_id where id = v_deal_id and org_id = p_org_id;
+    if p_request_id is not null then
+      insert into public.company_handoff_requests(org_id, request_id, deal_id, company_id, mode, duplicate_candidate_ids)
+      values (p_org_id, p_request_id, v_deal_id, v_company_id, 'existing', v_candidates);
+    end if;
     return query select v_deal_id, v_company_id, 'existing'::text, v_candidates;
     return;
   end if;
@@ -194,6 +233,10 @@ begin
 
   if v_company_id is not null then
     update public.deals set company_id = v_company_id where id = v_deal_id and org_id = p_org_id;
+    if p_request_id is not null then
+      insert into public.company_handoff_requests(org_id, request_id, deal_id, company_id, mode, duplicate_candidate_ids)
+      values (p_org_id, p_request_id, v_deal_id, v_company_id, 'existing', v_candidates);
+    end if;
     return query select v_deal_id, v_company_id, 'existing'::text, v_candidates;
     return;
   end if;
@@ -242,6 +285,10 @@ begin
      limit 1;
     if v_company_id is null then raise; end if;
     update public.deals set company_id = v_company_id where id = v_deal_id and org_id = p_org_id;
+    if p_request_id is not null then
+      insert into public.company_handoff_requests(org_id, request_id, deal_id, company_id, mode, duplicate_candidate_ids)
+      values (p_org_id, p_request_id, v_deal_id, v_company_id, 'existing', '{}'::uuid[]);
+    end if;
     return query select v_deal_id, v_company_id, 'existing'::text, '{}'::uuid[];
     return;
   end;
@@ -252,6 +299,14 @@ begin
   on conflict (source_company_id, candidate_company_id) do nothing;
 
   update public.deals set company_id = v_company_id where id = v_deal_id and org_id = p_org_id;
+  if p_request_id is not null then
+    insert into public.company_handoff_requests(org_id, request_id, deal_id, company_id, mode, duplicate_candidate_ids)
+    values (
+      p_org_id, p_request_id, v_deal_id, v_company_id,
+      case when cardinality(v_candidates) > 0 then 'created_needs_review' else 'created' end,
+      v_candidates
+    );
+  end if;
   return query select
     v_deal_id,
     v_company_id,
@@ -261,12 +316,12 @@ end;
 $$;
 
 revoke all on function public.handoff_company_to_work(
-  uuid, uuid, text, text, text, text, text, text, text, text, date, numeric, uuid
+  uuid, uuid, text, text, text, text, text, text, text, text, date, numeric, uuid, uuid
 ) from public, anon, service_role;
 grant execute on function public.handoff_company_to_work(
-  uuid, uuid, text, text, text, text, text, text, text, text, date, numeric, uuid
+  uuid, uuid, text, text, text, text, text, text, text, text, date, numeric, uuid, uuid
 ) to authenticated;
 
 comment on function public.handoff_company_to_work(
-  uuid, uuid, text, text, text, text, text, text, text, text, date, numeric, uuid
+  uuid, uuid, text, text, text, text, text, text, text, text, date, numeric, uuid, uuid
 ) is 'BBE-125 atomic deal create/company upsert/link. Exact biz number reuses; ambiguous name+owner creates a separate review record and never auto-merges.';

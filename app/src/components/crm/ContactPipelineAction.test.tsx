@@ -33,10 +33,12 @@ describe("ContactPipelineAction", () => {
 
   it("renders a fresh contact-board handoff with its company name", () => {
     const html = renderToStaticMarkup(
-      <ContactPipelineAction dealId={null} kind="contact_to_work" requestId="00000000-0000-4000-8000-000000000030" initialCompanyName="모아 상사" />,
+      <ContactPipelineAction dealId={null} kind="contact_to_work" requestId="00000000-0000-4000-8000-000000000030" initialCompanyName="모아 상사" initialValues={{ bizNo: "1234567890", ceoName: "김대표" }} />,
     );
     expect(html).toContain('name="dealId" value=""');
     expect(html).toContain('value="모아 상사"');
     expect(html).toContain("업체 연결");
+    expect(html).toContain('name="bizNo" value="1234567890"');
+    expect(html).toContain('name="ceoName" value="김대표"');
   });
 });

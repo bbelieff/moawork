@@ -31,6 +31,7 @@ export async function mutateContactPipeline(
     const dealId = String(formData.get("dealId") ?? "").trim() || null;
     const selectedCompanyId = String(formData.get("selectedCompanyId") ?? "").trim() || null;
     const requestedName = String(formData.get("companyName") ?? "").trim();
+    const requestId = String(formData.get("requestId") ?? "").trim() || null;
     const service = getCrmService();
     const deal = dealId ? await service.getDeal(ctx, dealId) : undefined;
     const selected = selectedCompanyId
@@ -52,23 +53,28 @@ export async function mutateContactPipeline(
       }
       return null;
     };
+    const submitted = (key: string): string | null => {
+      const value = String(formData.get(key) ?? "").trim();
+      return value || null;
+    };
     const result = await handoffCompanyWithSupabase(
       await createClient() as unknown as CompanyHandoffRpcClient,
       ctx.org.id,
       {
         dealId,
+        requestId,
         existingCompanyId: selected?.id ?? null,
         name: selected?.name ?? (requestedName || deal?.title || ""),
-        bizNo: firstText("biz_no", "사업자등록번호", "사업자번호"),
-        ceoName: selected?.owner_name ?? text("대표자명"),
-        bizType: selected?.biz_type ?? text("사업자유형"),
-        industry: selected?.biz_type ?? text("업종/업태"),
-        regionSido: firstText("sido", "시도"),
-        regionSigungu: firstText("sigungu", "시군구"),
-        phone: selected?.phone ?? text("연락처"),
-        foundedOn: selected?.founded_on ?? text("창업년도"),
+        bizNo: submitted("bizNo") ?? firstText("biz_no", "사업자등록번호", "사업자번호"),
+        ceoName: selected?.owner_name ?? submitted("ceoName") ?? text("대표자명"),
+        bizType: selected?.biz_type ?? submitted("bizType") ?? text("사업자유형"),
+        industry: selected?.biz_type ?? submitted("industry") ?? text("업종/업태"),
+        regionSido: submitted("regionSido") ?? firstText("sido", "시도"),
+        regionSigungu: submitted("regionSigungu") ?? firstText("sigungu", "시군구"),
+        phone: selected?.phone ?? submitted("phone") ?? text("연락처"),
+        foundedOn: selected?.founded_on ?? submitted("foundedOn") ?? text("창업년도"),
         revenue: selected?.revenue === null || selected?.revenue === undefined
-          ? text("매출액")
+          ? submitted("revenue") ?? text("매출액")
           : String(selected.revenue),
       },
     );

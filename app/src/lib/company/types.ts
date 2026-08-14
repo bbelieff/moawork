@@ -62,6 +62,7 @@ export interface CompanyIdentityInput {
 /** 계약 이관에서 회사 마스터에 저장되는 값. */
 export interface CompanyHandoffInput extends CompanyIdentityInput {
   dealId: string;
+  requestId?: string | null;
   existingCompanyId?: string | null;
   bizType?: string | null;
   industry?: string | null;

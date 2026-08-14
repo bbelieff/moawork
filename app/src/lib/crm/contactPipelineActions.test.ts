@@ -89,6 +89,9 @@ describe("contact pipeline company handoff", () => {
     form.set("kind", "contact_to_work");
     form.set("dealId", "");
     form.set("companyName", "모아 상사");
+    form.set("requestId", "00000000-0000-4000-8000-000000000099");
+    form.set("bizNo", "1234567890");
+    form.set("ceoName", "김대표");
 
     await mutateContactPipeline({ ok: false, message: "" }, form);
 
@@ -96,7 +99,13 @@ describe("contact pipeline company handoff", () => {
     expect(handoffCompanyWithSupabase).toHaveBeenCalledWith(
       expect.anything(),
       "org-1",
-      expect.objectContaining({ dealId: null, name: "모아 상사" }),
+      expect.objectContaining({
+        dealId: null,
+        requestId: "00000000-0000-4000-8000-000000000099",
+        name: "모아 상사",
+        bizNo: "1234567890",
+        ceoName: "김대표",
+      }),
     );
   });
 

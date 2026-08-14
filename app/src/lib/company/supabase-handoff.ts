@@ -66,6 +66,7 @@ export async function handoffCompanyWithSupabase(
     p_founded_on: input.foundedOn ?? null,
     p_revenue: input.revenue ?? null,
     p_company_id: input.existingCompanyId ?? null,
+    p_request_id: input.requestId ?? null,
   });
   if (error) {
     throw new Error(error.message || "업체 이관에 실패했습니다.");

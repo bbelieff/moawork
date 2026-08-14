@@ -25,11 +25,13 @@ export function ContactPipelineAction({
   kind,
   requestId,
   initialCompanyName = "",
+  initialValues = {},
 }: Readonly<{
   dealId: string | null;
   kind: ContactTransitionKind;
   requestId: string;
   initialCompanyName?: string;
+  initialValues?: Readonly<Record<string, string>>;
 }>) {
   const [state, action, pending] = useActionState(mutateContactPipeline, INITIAL);
   const [companies, setCompanies] = useState<CompanyCandidate[]>([]);
@@ -72,6 +74,9 @@ export function ContactPipelineAction({
       <input type="hidden" name="kind" value={kind} />
       <input type="hidden" name="selectedCompanyId" value={selectedCompanyId} />
       <input type="hidden" name="companyName" value={query} />
+      {Object.entries(initialValues).map(([name, value]) => (
+        <input key={name} type="hidden" name={name} value={value} />
+      ))}
       {kind === "contact_to_work" ? (
         <CompanyPickerPanel
           companies={companies}

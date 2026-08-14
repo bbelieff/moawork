@@ -305,14 +305,25 @@ export function BoardWorkspace({
                 onRowDrop={(index) =>
                   handleRowDrop(block.group?.id ?? null, block.rows, visibleRows, index)
                 }
-                renderRowAction={board.source === CONTACT_TAB_SOURCE ? (row) => (
+                renderRowAction={board.source === CONTACT_TAB_SOURCE ? (row) => row.values.work_move === "업무관리 이동" ? (
                   <ContactPipelineAction
                     dealId={null}
                     kind="contact_to_work"
                     requestId={row.id}
                     initialCompanyName={row.title}
+                    initialValues={{
+                      bizNo: String(row.values.biz_no ?? row.values.biz_reg_no ?? ""),
+                      ceoName: String(row.values.rep_name ?? ""),
+                      bizType: String(row.values.biz_reg_type ?? ""),
+                      industry: String(row.values.industry ?? ""),
+                      regionSido: String(row.values.sido ?? ""),
+                      regionSigungu: String(row.values.sigungu ?? ""),
+                      phone: String(row.values.phone ?? ""),
+                      foundedOn: String(row.values.founded_year ?? ""),
+                      revenue: String(row.values.revenue ?? ""),
+                    }}
                   />
-                ) : undefined}
+                ) : null : undefined}
               />
             </GroupBlock>
           );

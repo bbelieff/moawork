@@ -77,12 +77,13 @@ async function handoff(db, dealId, {
   foundedOn = null,
   revenue = null,
   companyId = null,
+  requestId = null,
 } = {}, orgId = ORG_A) {
   await db.exec(`set role authenticated`);
   try {
-    return await db.query(`select * from public.handoff_company_to_work($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [
+    return await db.query(`select * from public.handoff_company_to_work($1::uuid,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::text,$8::text,$9::text,$10::text,$11::date,$12::numeric,$13::uuid,$14::uuid)`, [
       orgId, dealId, name, bizNo, ownerName, businessType, industry,
-      regionSido, regionSigungu, phone, foundedOn, revenue, companyId,
+      regionSido, regionSigungu, phone, foundedOn, revenue, companyId, requestId,
     ]);
   } finally {
     await db.exec(`reset role`);
@@ -170,13 +171,19 @@ test("BBE-125 fresh handoff atomically creates one deal and can select an access
   try {
     await bootstrap(db);
     await db.exec(await readFile(migrationPath, "utf8"));
+    await db.exec(await readFile(migrationPath, "utf8"));
     await db.exec(`grant usage on schema public to authenticated`);
 
-    const fresh = await handoff(db, null, { name: "Fresh Company", ownerName: "Fresh Owner" });
+    const requestId = "00000000-0000-4000-8000-000000000901";
+    const fresh = await handoff(db, null, { name: "Fresh Company", ownerName: "Fresh Owner", requestId });
     assert.equal(fresh.rows[0].mode, "created");
     assert.ok(fresh.rows[0].deal_id);
     assert.equal(Number((await db.query(`select count(*) from public.deals`)).rows[0].count), 1);
     assert.equal((await db.query(`select company_id from public.deals where id=$1`, [fresh.rows[0].deal_id])).rows[0].company_id, fresh.rows[0].company_id);
+    const retried = await handoff(db, null, { name: "Changed Name", requestId });
+    assert.deepEqual(retried.rows[0], fresh.rows[0]);
+    assert.equal(Number((await db.query(`select count(*) from public.deals`)).rows[0].count), 1);
+    assert.equal(Number((await db.query(`select count(*) from public.companies`)).rows[0].count), 1);
 
     const nextDeal = "00000000-0000-4000-8000-000000000204";
     await db.query(`insert into public.deals(id,org_id,assigned_to,title) values($1,$2,$3,'Next')`, [nextDeal, ORG_A, USER]);
@@ -199,6 +206,16 @@ test("BBE-125 handoff rejects cross-org access and exposes only the constrained 
     await db.query(`insert into public.deals(id,org_id,assigned_to) values($1,$2,$3)`, [foreignDeal, ORG_B, USER]);
     await db.query(`insert into public.deals(id,org_id,assigned_to) values($1,$2,$3)`, [inaccessibleDeal, ORG_A, OTHER_USER]);
     await db.exec(`grant usage on schema public to authenticated`);
+    const ownCompany = "00000000-0000-4000-8000-000000000391";
+    const foreignCompany = "00000000-0000-4000-8000-000000000392";
+    await db.query(`insert into public.companies(id,org_id,name,assigned_to) values($1,$2,'Own',$3),($4,$5,'Foreign',$3)`, [ownCompany, ORG_A, USER, foreignCompany, ORG_B]);
+    await db.exec(`grant select, update on public.companies to authenticated`);
+    await db.exec(`set role authenticated`);
+    await assert.rejects(
+      db.query(`update public.companies set merged_into=$1 where id=$2`, [foreignCompany, ownCompany]),
+      /companies_merged_into_same_org_fkey|foreign key/,
+    );
+    await db.exec(`reset role`);
     await assert.rejects(
       handoff(db, foreignDeal, { name: "침범" }, ORG_B),
       /active membership required/,
@@ -210,9 +227,9 @@ test("BBE-125 handoff rejects cross-org access and exposes only the constrained 
 
     const privileges = await db.query(`
       select
-        has_function_privilege('public', 'public.handoff_company_to_work(uuid,uuid,text,text,text,text,text,text,text,text,date,numeric,uuid)', 'execute') as public_execute,
-        has_function_privilege('anon', 'public.handoff_company_to_work(uuid,uuid,text,text,text,text,text,text,text,text,date,numeric,uuid)', 'execute') as anon_execute,
-        has_function_privilege('authenticated', 'public.handoff_company_to_work(uuid,uuid,text,text,text,text,text,text,text,text,date,numeric,uuid)', 'execute') as authenticated_execute,
+        has_function_privilege('public', 'public.handoff_company_to_work(uuid,uuid,text,text,text,text,text,text,text,text,date,numeric,uuid,uuid)', 'execute') as public_execute,
+        has_function_privilege('anon', 'public.handoff_company_to_work(uuid,uuid,text,text,text,text,text,text,text,text,date,numeric,uuid,uuid)', 'execute') as anon_execute,
+        has_function_privilege('authenticated', 'public.handoff_company_to_work(uuid,uuid,text,text,text,text,text,text,text,text,date,numeric,uuid,uuid)', 'execute') as authenticated_execute,
         has_table_privilege('authenticated', 'public.company_duplicate_reviews', 'insert') as direct_insert,
         (select relrowsecurity from pg_class where oid='public.company_duplicate_reviews'::regclass) as rls_enabled
     `);
