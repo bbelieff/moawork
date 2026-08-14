@@ -52,10 +52,20 @@ const ENV = { ...loadEnv(), ...process.env };
 const KEY = (ENV.LINEAR_API_KEY || "").trim();
 const PORT = Number(ENV.DASHBOARD_PORT || 8787);
 const KEY_OK = KEY.startsWith("lin_api_") && KEY.length > 20;
+const LINEAR_URL = (() => {
+  const fallback = "https://api.linear.app/graphql";
+  if (ENV.NODE_ENV !== "test" || !ENV.LINEAR_GRAPHQL_TEST_URL) return fallback;
+  try {
+    const candidate = new URL(ENV.LINEAR_GRAPHQL_TEST_URL);
+    return ["127.0.0.1", "localhost", "::1"].includes(candidate.hostname) ? candidate.href : fallback;
+  } catch {
+    return fallback;
+  }
+})();
 
 /* ── Linear ──────────────────────────────────────────────── */
 async function gql(query, variables = {}) {
-  const r = await fetch("https://api.linear.app/graphql", {
+  const r = await fetch(LINEAR_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: KEY },
     body: JSON.stringify({ query, variables }),
@@ -75,7 +85,73 @@ query($after:String){
   }
 }`;
 const Q_COMMENTS = `
-query($id:String!){ issue(id:$id){ comments(first:20, orderBy:createdAt){ nodes{ body } } } }`;
+query($id:String!,$first:Int!,$after:String){
+  issue(id:$id){
+    comments(first:$first,after:$after,orderBy:createdAt){
+      pageInfo{ hasNextPage endCursor }
+      nodes{ id createdAt updatedAt body }
+    }
+  }
+}`;
+
+/* 댓글 읽기는 build()의 active-card 필터 및 45초 snapshot과 독립한다.
+   반환 순서는 createdAt 내림차순, 같은 시각이면 id 오름차순으로 고정한다. */
+const COMMENT_DEFAULT_LIMIT = 20;
+const COMMENT_MAX_LIMIT = 100;
+const COMMENT_TTL = 10_000;
+const commentCache = new Map();
+const commentInFlight = new Map();
+
+function commentCacheKey(id, limit, after) {
+  return JSON.stringify([id, limit, after ?? null]);
+}
+
+async function getComments(id, limit, after) {
+  const key = commentCacheKey(id, limit, after);
+  const cached = commentCache.get(key);
+  if (cached && Date.now() - cached.at < COMMENT_TTL) return cached.data;
+  if (commentInFlight.has(key)) return commentInFlight.get(key);
+
+  const pending = (async () => {
+    const d = await gql(Q_COMMENTS, { id, first: limit, after });
+    const connection = d.issue?.comments;
+    const comments = (connection?.nodes ?? [])
+      .map(({ id: commentId, createdAt, updatedAt, body }) => ({
+        id: commentId,
+        createdAt,
+        updatedAt,
+        body,
+      }))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
+    const data = {
+      comments,
+      pageInfo: {
+        hasNextPage: Boolean(connection?.pageInfo?.hasNextPage),
+        endCursor: connection?.pageInfo?.endCursor ?? null,
+      },
+    };
+    commentCache.set(key, { at: Date.now(), data });
+    return data;
+  })();
+  commentInFlight.set(key, pending);
+  try {
+    return await pending;
+  } finally {
+    commentInFlight.delete(key);
+  }
+}
+
+function parseCommentRequest(url) {
+  const id = (url.searchParams.get("id") || "").trim();
+  if (!id) return { error: "MISSING_ID", message: "id가 필요하다." };
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit === null ? COMMENT_DEFAULT_LIMIT : Number(rawLimit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > COMMENT_MAX_LIMIT) {
+    return { error: "INVALID_LIMIT", message: `limit은 1~${COMMENT_MAX_LIMIT} 정수여야 한다.` };
+  }
+  const after = url.searchParams.get("after") || null;
+  return { id, limit, after };
+}
 
 /* ── 스냅샷 — 45초에 한 번만 Linear 를 친다 ──────────────────
    화면은 카드마다 코멘트를 부른다(30~40회). 그때마다 Linear 를 치면
@@ -107,7 +183,7 @@ async function build() {
   for (let k = 0; k < live.length; k += 6) {
     await Promise.all(live.slice(k, k + 6).map(async (i) => {
       try {
-        const d = await gql(Q_COMMENTS, { id: i.id });
+        const d = await gql(Q_COMMENTS, { id: i.id, first: COMMENT_DEFAULT_LIMIT, after: null });
         comments[i.id] = { comments: (d.issue?.comments?.nodes ?? []).map((c) => ({ body: c.body })) };
       } catch { comments[i.id] = { comments: [] }; }
     }));
@@ -152,7 +228,10 @@ window.cowork = {
       }
       if (tool.endsWith("list_comments")){
         const r = await fetch("/api/comments?id=" + encodeURIComponent(args.issueId));
-        if(!r.ok) return wrap({ comments: [] });
+        if(!r.ok){
+          const e = await r.json().catch(() => ({}));
+          return fail(e.message || ("HTTP "+r.status));
+        }
         return wrap(await r.json());
       }
       return wrap({});
@@ -198,8 +277,17 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/comments") {
       if (!KEY_OK) return send(res, 503, JSON.stringify(NO_KEY));
-      const d = await getSnap();
-      return send(res, 200, JSON.stringify(d.comments[url.searchParams.get("id")] || { comments: [] }));
+      const input = parseCommentRequest(url);
+      if (input.error) return send(res, 400, JSON.stringify(input));
+      try {
+        return send(res, 200, JSON.stringify(await getComments(input.id, input.limit, input.after)));
+      } catch {
+        /* upstream 오류 원문에는 본문·식별 정보가 섞일 수 있으므로 반사하지 않는다. */
+        return send(res, 502, JSON.stringify({
+          error: "LINEAR_COMMENTS_FAILED",
+          message: "Linear 댓글을 읽지 못했다.",
+        }));
+      }
     }
 
     if (url.pathname === "/" || url.pathname === "/index.html") {
