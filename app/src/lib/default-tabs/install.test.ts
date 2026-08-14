@@ -11,6 +11,7 @@ import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo"
 import { resetDb } from "@/lib/repo/local/store";
 import { resolveMoveTarget } from "@/lib/boards/moveRules";
 import type { Ctx } from "@/lib/types";
+import { CONTACT_GROUPS, CONTACT_TAB } from "./contact";
 import { NEW_LEAD_GROUPS, NEW_LEAD_TAB } from "./new-lead";
 import { ensureDefaultTab, ensureDefaultTabs } from "./install";
 
@@ -26,6 +27,51 @@ let repo: LocalBoardsRepo;
 beforeEach(() => {
   resetDb();
   repo = new LocalBoardsRepo();
+});
+
+describe("리드컨택 기본 탭 설치", () => {
+  const assignees = [
+    { userId: "member-account-a", displayName: "계정 A" },
+    { userId: "member-account-b", displayName: "계정 B" },
+    { userId: "member-account-c", displayName: "계정 C" },
+  ] as const;
+
+  it("그룹 7·컬럼 21·우측 고정 업무이동을 실제 보드로 만든다", async () => {
+    const result = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo), { assignees });
+    expect(repo.listGroups(ctx, result.boardId)).toHaveLength(7);
+    expect(repo.listColumns(ctx, result.boardId)).toHaveLength(21);
+    expect(repo.listColumns(ctx, result.boardId).filter((column) => column.rightPinned).map((column) => column.label)).toEqual(["업무이동"]);
+  });
+
+  it("담당자 그룹 이름과 이동 값은 멤버 계정에서 해석하며 4규칙을 만든다", async () => {
+    const result = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo), { assignees });
+    const groups = repo.listGroups(ctx, result.boardId);
+    const owner = repo.listColumns(ctx, result.boardId).find((column) => column.key === "owner")!;
+    const targetNames = Object.fromEntries(
+      Object.entries(owner.move_rule_jsonb ?? {}).map(([value, groupId]) => [
+        value,
+        groups.find((group) => group.id === groupId)?.name,
+      ]),
+    );
+    expect(Object.keys(targetNames)).toEqual(["미배정", ...assignees.map((member) => member.userId)]);
+    expect(targetNames["미배정"]).toBe(CONTACT_GROUPS.unassigned);
+    expect(targetNames[assignees[0].userId]).toContain(assignees[0].displayName);
+    expect(targetNames[assignees[1].userId]).toContain(assignees[1].displayName);
+    expect(targetNames[assignees[2].userId]).toContain(assignees[1].displayName);
+  });
+
+  it("연결 7컬럼은 DB와 화면 모두 쓰기 금지로 심긴다", async () => {
+    const result = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo), { assignees });
+    const linked = repo.listColumns(ctx, result.boardId).filter((column) => column.source === "lk");
+    expect(linked).toHaveLength(7);
+    for (const column of linked) expect(column.is_readonly, column.label).toBe(true);
+  });
+
+  it("업무이동에는 그룹 이동 규칙을 심지 않는다 — BBE-152 관문 실행 미포함", async () => {
+    const result = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo), { assignees });
+    const transition = repo.listColumns(ctx, result.boardId).find((column) => column.key === "work_move")!;
+    expect(transition.move_rule_jsonb).toBeNull();
+  });
 });
 
 describe("기본 탭 보장 (D76 — «설치» 단계 없이)", () => {

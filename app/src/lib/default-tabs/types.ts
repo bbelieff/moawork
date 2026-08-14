@@ -23,6 +23,21 @@ import type { FieldSource } from "@/lib/field/source";
 
 /** Product-owned identity for the default new-lead tab. */
 export const NEW_LEAD_TAB_SOURCE = "core.default-tab/new-lead";
+/** Product-owned identity for the default lead-contact tab. */
+export const CONTACT_TAB_SOURCE = "core.default-tab/contact";
+
+export interface DefaultTabAssignee {
+  userId: string;
+  displayName: string;
+}
+
+export interface DefaultTabAssigneeMove {
+  /** `null` assignment is stored as this stable rule key by the board UI. */
+  unassignedValue: string;
+  unassignedGroup: string;
+  /** Member slot -> assignee-group slot. Values are resolved to user ids at ensure time. */
+  assignments: ReadonlyArray<{ assigneeSlot: number; groupAssigneeSlot: number }>;
+}
 
 /** 기본 탭의 컬럼 1개. */
 export interface DefaultTabColumn {
@@ -49,6 +64,8 @@ export interface DefaultTabColumn {
    * 설치기가 그룹 이름을 실제 group id 로 바꿔 `board_columns.move_rule_jsonb` 에 넣는다.
    */
   moveTo?: Record<string, string>;
+  /** Person-column move rules whose values must come from workspace member accounts. */
+  assigneeMove?: DefaultTabAssigneeMove;
   /**
    * 이 칸이 아직 부품을 기다리는 중이면 그 사유. 화면이 이 문구를 그대로 보여준다.
    * 남의 카드를 임시 구현으로 때우지 않기 위한 자리다(AGENTS.md §3 «소비자 없는 부품»의 반대편).
@@ -60,6 +77,8 @@ export interface DefaultTabColumn {
 export interface DefaultTabGroup {
   name: string;
   color: string;
+  /** Replaces the generic group label with the matching workspace member display name. */
+  assigneeSlot?: number;
 }
 
 /** 탭을 넘기는 관문 — 이 값이 되면 «다른 보드» 로 건이 이동한다(설계도 §2-④). */

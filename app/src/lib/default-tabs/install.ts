@@ -22,11 +22,13 @@
 import type { Ctx } from "@/lib/types";
 import type { BoardsRepo, NewColumn } from "@/lib/boards/store";
 import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { getRepo } from "@/lib/repo";
+import { CONTACT_TAB } from "./contact";
 import { NEW_LEAD_TAB } from "./new-lead";
-import type { DefaultTab } from "./types";
+import type { DefaultTab, DefaultTabAssignee, DefaultTabColumn } from "./types";
 
 /** 제품이 새 워크스페이스에 주는 기본 탭. 지금은 신규리드 하나 — 나머지 5탭은 복제 작업이다. */
-export const DEFAULT_TABS: DefaultTab[] = [NEW_LEAD_TAB];
+export const DEFAULT_TABS: DefaultTab[] = [NEW_LEAD_TAB, CONTACT_TAB];
 
 export interface EnsuredTab {
   tabKey: string;
@@ -51,8 +53,12 @@ export async function ensureDefaultTab(
   ctx: Ctx,
   tab: DefaultTab,
   repo?: BoardsRepo,
+  options: { assignees?: readonly DefaultTabAssignee[] } = {},
 ): Promise<EnsuredTab> {
   const store = repo ?? await getBoardsRepo();
+  const needsAssignees = tab.groups.some((group) => group.assigneeSlot !== undefined)
+    || tab.columns.some((column) => column.assigneeMove !== undefined);
+  const assignees = options.assignees ?? (needsAssignees ? resolveAssignees(ctx) : []);
   const existing = (await store.listBoards(ctx)).find((board) => board.source === tab.source);
   if (existing) {
     const groups = await store.listGroups(ctx, existing.id);
@@ -75,8 +81,10 @@ export async function ensureDefaultTab(
   // 그룹 먼저 — 이동 규칙이 group id 를 가리켜야 하기 때문이다.
   const groupIds: Record<string, string> = {};
   for (const group of tab.groups) {
+    const assignee = group.assigneeSlot === undefined ? undefined : assignees[group.assigneeSlot];
+    const name = assignee ? `${group.name.replace(/\s*\d+$/, "")} ${assignee.displayName}` : group.name;
     groupIds[group.name] = (await store.createGroup(ctx, board.id, {
-      name: group.name,
+      name,
       color: group.color,
     })).id;
   }
@@ -92,7 +100,7 @@ export async function ensureDefaultTab(
       width: column.width ?? null,
       rightPinned: column.rightPinned ?? false,
       readOnly: column.readOnly ?? false,
-      moveRule: resolveMoveRule(column.moveTo, groupIds, tab, column.label),
+      moveRule: resolveMoveRule(column, groupIds, tab, assignees),
     };
     columnKeys.push((await store.createColumn(ctx, board.id, input)).key);
   }
@@ -108,30 +116,56 @@ export async function ensureDefaultTab(
  * 시드 단계에서 죽는 편이 훨씬 싸다.
  */
 function resolveMoveRule(
-  moveTo: Record<string, string> | undefined,
+  column: DefaultTabColumn,
   groupIds: Record<string, string>,
   tab: DefaultTab,
-  columnLabel: string,
+  assignees: readonly DefaultTabAssignee[],
 ): Record<string, string> | null {
-  if (!moveTo) return null;
+  const moveTo = column.moveTo;
+  const assigneeMove = column.assigneeMove;
+  if (!moveTo && !assigneeMove) return null;
   const rule: Record<string, string> = {};
-  for (const [optionId, groupName] of Object.entries(moveTo)) {
+  for (const [optionId, groupName] of Object.entries(moveTo ?? {})) {
     const groupId = groupIds[groupName];
     if (!groupId) {
       throw new Error(
-        `기본 탭 «${tab.name}» 의 컬럼 «${columnLabel}» 이동 규칙이 없는 그룹을 가리킵니다: ${groupName}`,
+        `기본 탭 «${tab.name}» 의 컬럼 «${column.label}» 이동 규칙이 없는 그룹을 가리킵니다: ${groupName}`,
       );
     }
     rule[optionId] = groupId;
   }
+  if (assigneeMove) {
+    const unassignedGroupId = groupIds[assigneeMove.unassignedGroup];
+    if (!unassignedGroupId) throw new Error(`기본 탭 «${tab.name}» 담당자 미배정 그룹이 없습니다`);
+    rule[assigneeMove.unassignedValue] = unassignedGroupId;
+    for (const assignment of assigneeMove.assignments) {
+      const assignee = assignees[assignment.assigneeSlot];
+      if (!assignee) continue;
+      const target = tab.groups.find((group) => group.assigneeSlot === assignment.groupAssigneeSlot);
+      const targetId = target ? groupIds[target.name] : undefined;
+      if (!targetId) throw new Error(`기본 탭 «${tab.name}» 담당자 그룹 슬롯이 없습니다: ${assignment.groupAssigneeSlot}`);
+      rule[assignee.userId] = targetId;
+    }
+  }
   return rule;
+}
+
+function resolveAssignees(ctx: Ctx): DefaultTabAssignee[] {
+  const members = getRepo().listMembers(ctx.org.id).slice().sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const resolved = members.map((member) => ({
+    userId: member.user_id,
+    displayName: member.user?.name?.trim() || member.user?.email?.trim() || "멤버",
+  }));
+  if (resolved.some((member) => member.userId === ctx.user.id)) return resolved;
+  return [{ userId: ctx.user.id, displayName: ctx.user.name?.trim() || ctx.user.email?.trim() || "멤버" }, ...resolved];
 }
 
 /** 워크스페이스 생성 시 1회 호출. 이미 있는 탭은 건너뛴다. */
 export async function ensureDefaultTabs(
   ctx: Ctx,
   repo?: BoardsRepo,
+  options: { assignees?: readonly DefaultTabAssignee[] } = {},
 ): Promise<EnsuredTab[]> {
   const store = repo ?? await getBoardsRepo();
-  return Promise.all(DEFAULT_TABS.map((tab) => ensureDefaultTab(ctx, tab, store)));
+  return Promise.all(DEFAULT_TABS.map((tab) => ensureDefaultTab(ctx, tab, store, options)));
 }
