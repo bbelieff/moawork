@@ -8,7 +8,7 @@
 //   - "이번달 수납"   = 실현 기준 (수수료입금일이 해당 월)
 //   두 수치는 다르다. 화면에서 라벨을 섞지 않는다.
 
-import { getRepo, type Repo } from "@/lib/repo";
+import type { Repo } from "@/lib/repo";
 import type { Company, Ctx, Deal, FieldDef, Settlement, Stage } from "@/lib/types";
 import {
   addDaysKst,
@@ -68,7 +68,7 @@ export interface BuildOptions {
   month?: string;
   /** 현재 시각 주입(테스트 결정성). */
   now?: () => Date;
-  /** Repo 주입(테스트). 기본은 getRepo(). */
+  /** 명시적 Repo 주입(테스트 전용 경계). */
   repo?: Repo;
 }
 
@@ -95,8 +95,8 @@ function allStages(repo: Repo, orgId: string): Stage[] {
  * 대시보드 데이터를 조립한다.
  * 담당범위(assigned) 격리는 repo.listDeals(ctx)/listCompanies(ctx) 가 적용한다.
  */
-export function buildDashboard(ctx: Ctx, opts: BuildOptions = {}): DashboardData {
-  const repo = opts.repo ?? getRepo();
+export function buildDashboard(ctx: Ctx, opts: BuildOptions & { repo: Repo }): DashboardData {
+  const repo = opts.repo;
   const settlements = typeof repo.listSettlements === "function"
     ? repo.listSettlements(ctx)
     : [];
@@ -197,8 +197,8 @@ export interface FollowUpOptions {
  * D26(사람 조건은 동적이 기본): 여기서 이름을 고정하지 않는다 — repo.listDeals(ctx) 가
  * ctx(요청자) 기준으로 담당범위를 걸러 넘기므로, 보는 사람이 바뀌면 결과도 자동으로 바뀐다.
  */
-export function buildFollowUps(ctx: Ctx, opts: FollowUpOptions = {}): DashboardFollowUps {
-  const repo = opts.repo ?? getRepo();
+export function buildFollowUps(ctx: Ctx, opts: FollowUpOptions & { repo: Repo }): DashboardFollowUps {
+  const repo = opts.repo;
   return buildFollowUpsFromDeals(repo.listDeals(ctx), opts.now?.() ?? new Date());
 }
 
