@@ -63,7 +63,7 @@ query($after:String){
   issues(first:100, after:$after, filter:{project:{name:{eq:"${PROJECT}"}}}){
     pageInfo{ hasNextPage endCursor }
     nodes{
-      identifier title updatedAt
+      identifier title createdAt updatedAt url
       state{ name }
       priority
       labels{ nodes{ name } }
@@ -80,8 +80,10 @@ do {
     issues.push({
       id: i.identifier,
       title: i.title,
+      createdAt: i.createdAt,
       status: i.state?.name ?? "Backlog",
       updatedAt: i.updatedAt,
+      url: i.url ?? null,
       priority: { name: ["No priority", "Urgent", "High", "Medium", "Low"][i.priority] ?? "" },
       labels: (i.labels?.nodes ?? []).map((l) => l.name),
     })

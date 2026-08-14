@@ -19,6 +19,10 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 const ROOT = path.join(import.meta.dirname, "..");
 /* 템플릿 찾기 — 저장소 안이든(데스크톱) 서버에 홀로 놓였든(VPS) 둘 다 된다 */
@@ -29,12 +33,11 @@ const TEMPLATE = [
 ].filter(Boolean).find((p) => fs.existsSync(p))
   || path.join(ROOT, "tools", "board", "board.template.html");
 const PROJECT = "MoaWork · 운영 안정화 및 어드민";
-const DONE = ["Done", "Canceled", "Duplicate"];
 
 /* ── .env 읽기 ───────────────────────────────────────────── */
 function loadEnv() {
   const out = {};
-  for (const f of [path.join(import.meta.dirname, ".env"), path.join(ROOT, ".env"), path.join(ROOT, ".env.local")]) {
+  for (const f of [process.env.DASHBOARD_ENV_FILE, path.join(import.meta.dirname, ".env"), path.join(ROOT, ".env"), path.join(ROOT, ".env.local")].filter(Boolean)) {
     if (!fs.existsSync(f)) continue;
     for (const line of fs.readFileSync(f, "utf8").split(/\r?\n/)) {
       const t = line.trim();
@@ -52,10 +55,21 @@ const ENV = { ...loadEnv(), ...process.env };
 const KEY = (ENV.LINEAR_API_KEY || "").trim();
 const PORT = Number(ENV.DASHBOARD_PORT || 8787);
 const KEY_OK = KEY.startsWith("lin_api_") && KEY.length > 20;
+const REPO_ROOT = path.resolve(ENV.MOAWORK_REPO_ROOT || ROOT);
+const LINEAR_URL = (() => {
+  const fallback = "https://api.linear.app/graphql";
+  if (ENV.NODE_ENV !== "test" || !ENV.LINEAR_GRAPHQL_TEST_URL) return fallback;
+  try {
+    const candidate = new URL(ENV.LINEAR_GRAPHQL_TEST_URL);
+    return ["127.0.0.1", "localhost", "::1"].includes(candidate.hostname) ? candidate.href : fallback;
+  } catch {
+    return fallback;
+  }
+})();
 
 /* ── Linear ──────────────────────────────────────────────── */
 async function gql(query, variables = {}) {
-  const r = await fetch("https://api.linear.app/graphql", {
+  const r = await fetch(LINEAR_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: KEY },
     body: JSON.stringify({ query, variables }),
@@ -71,11 +85,77 @@ const Q_ISSUES = `
 query($after:String){
   issues(first:100, after:$after, filter:{project:{name:{eq:"${PROJECT}"}}}){
     pageInfo{ hasNextPage endCursor }
-    nodes{ identifier title updatedAt state{ name } priority labels{ nodes{ name } } }
+    nodes{ identifier title createdAt updatedAt url state{ name } priority labels{ nodes{ name } } }
   }
 }`;
 const Q_COMMENTS = `
-query($id:String!){ issue(id:$id){ comments(first:20, orderBy:createdAt){ nodes{ body } } } }`;
+query($id:String!,$first:Int!,$after:String){
+  issue(id:$id){
+    comments(first:$first,after:$after,orderBy:createdAt){
+      pageInfo{ hasNextPage endCursor }
+      nodes{ id createdAt updatedAt body }
+    }
+  }
+}`;
+
+/* 댓글 읽기는 build()의 active-card 필터 및 45초 snapshot과 독립한다.
+   반환 순서는 createdAt 내림차순, 같은 시각이면 id 오름차순으로 고정한다. */
+const COMMENT_DEFAULT_LIMIT = 20;
+const COMMENT_MAX_LIMIT = 100;
+const COMMENT_TTL = 10_000;
+const commentCache = new Map();
+const commentInFlight = new Map();
+
+function commentCacheKey(id, limit, after) {
+  return JSON.stringify([id, limit, after ?? null]);
+}
+
+async function getComments(id, limit, after) {
+  const key = commentCacheKey(id, limit, after);
+  const cached = commentCache.get(key);
+  if (cached && Date.now() - cached.at < COMMENT_TTL) return cached.data;
+  if (commentInFlight.has(key)) return commentInFlight.get(key);
+
+  const pending = (async () => {
+    const d = await gql(Q_COMMENTS, { id, first: limit, after });
+    const connection = d.issue?.comments;
+    const comments = (connection?.nodes ?? [])
+      .map(({ id: commentId, createdAt, updatedAt, body }) => ({
+        id: commentId,
+        createdAt,
+        updatedAt,
+        body,
+      }))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
+    const data = {
+      comments,
+      pageInfo: {
+        hasNextPage: Boolean(connection?.pageInfo?.hasNextPage),
+        endCursor: connection?.pageInfo?.endCursor ?? null,
+      },
+    };
+    commentCache.set(key, { at: Date.now(), data });
+    return data;
+  })();
+  commentInFlight.set(key, pending);
+  try {
+    return await pending;
+  } finally {
+    commentInFlight.delete(key);
+  }
+}
+
+function parseCommentRequest(url) {
+  const id = (url.searchParams.get("id") || "").trim();
+  if (!id) return { error: "MISSING_ID", message: "id가 필요하다." };
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit === null ? COMMENT_DEFAULT_LIMIT : Number(rawLimit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > COMMENT_MAX_LIMIT) {
+    return { error: "INVALID_LIMIT", message: `limit은 1~${COMMENT_MAX_LIMIT} 정수여야 한다.` };
+  }
+  const after = url.searchParams.get("after") || null;
+  return { id, limit, after };
+}
 
 /* ── 스냅샷 — 45초에 한 번만 Linear 를 친다 ──────────────────
    화면은 카드마다 코멘트를 부른다(30~40회). 그때마다 Linear 를 치면
@@ -92,8 +172,10 @@ async function build() {
       issues.push({
         id: i.identifier,
         title: i.title,
+        createdAt: i.createdAt,
         status: i.state?.name ?? "Backlog",
         updatedAt: i.updatedAt,
+        url: i.url ?? null,
         priority: { name: ["No priority", "Urgent", "High", "Medium", "Low"][i.priority] ?? "" },
         labels: (i.labels?.nodes ?? []).map((l) => l.name),
       });
@@ -101,18 +183,7 @@ async function build() {
     after = d.issues.pageInfo.hasNextPage ? d.issues.pageInfo.endCursor : null;
   } while (after);
 
-  const live = issues.filter((i) => !DONE.includes(i.status));
-  const comments = {};
-  /* 6개씩 끊어서 — 한꺼번에 40개를 던지면 rate limit 에 걸린다 */
-  for (let k = 0; k < live.length; k += 6) {
-    await Promise.all(live.slice(k, k + 6).map(async (i) => {
-      try {
-        const d = await gql(Q_COMMENTS, { id: i.id });
-        comments[i.id] = { comments: (d.issue?.comments?.nodes ?? []).map((c) => ({ body: c.body })) };
-      } catch { comments[i.id] = { comments: [] }; }
-    }));
-  }
-  return { issues, comments, builtAt: new Date().toISOString() };
+  return { issues, builtAt: new Date().toISOString() };
 }
 
 async function getSnap(force = false) {
@@ -122,7 +193,7 @@ async function getSnap(force = false) {
     try {
       const d = await build();
       snap = { at: Date.now(), building: null, data: d, error: null };
-      console.log(`· 스냅샷 갱신 — 카드 ${d.issues.length} · 도장 ${Object.keys(d.comments).length}`);
+      console.log(`· 스냅샷 갱신 — 카드 ${d.issues.length}`);
       return d;
     } catch (e) {
       snap.building = null;
@@ -134,6 +205,112 @@ async function getSnap(force = false) {
 }
 
 /* ── 템플릿에 «실시간» 껍데기를 끼운다 ────────────────────── */
+/* ── Git/GitHub 운영 스냅샷 ────────────────────────────────────────────────
+   셸을 거치지 않고 read-only 명령만 실행한다. Linear 45초 캐시와 책임을 분리한다. */
+const OPS_TTL = 30_000;
+let operationsSnap = { at: 0, building: null, data: null };
+
+function safeToolError(error) {
+  const code = typeof error?.code === "string" ? error.code : "UNAVAILABLE";
+  return { code, message: "운영 상태를 읽지 못했습니다." };
+}
+
+async function runReadOnly(command, args) {
+  const { stdout } = await execFileAsync(command, args, {
+    cwd: REPO_ROOT,
+    windowsHide: true,
+    timeout: 15_000,
+    maxBuffer: 4 * 1024 * 1024,
+  });
+  return stdout.trim();
+}
+
+function checkSummary(checks = []) {
+  const summary = { success: 0, failing: 0, pending: 0, total: checks.length };
+  for (const check of checks) {
+    const conclusion = String(check.conclusion || "").toUpperCase();
+    const status = String(check.status || "").toUpperCase();
+    if (["FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED"].includes(conclusion)) summary.failing += 1;
+    else if (["SUCCESS", "NEUTRAL", "SKIPPED"].includes(conclusion)) summary.success += 1;
+    else if (status && status !== "COMPLETED") summary.pending += 1;
+    else summary.pending += 1;
+  }
+  return summary;
+}
+
+async function buildOperations() {
+  if (ENV.NODE_ENV === "test" && ENV.DASHBOARD_OPERATIONS_TEST_FIXTURE) {
+    return JSON.parse(ENV.DASHBOARD_OPERATIONS_TEST_FIXTURE);
+  }
+
+  const gitReads = await Promise.allSettled([
+    runReadOnly("git", ["rev-parse", "--abbrev-ref", "HEAD"]),
+    runReadOnly("git", ["rev-parse", "origin/main"]),
+    runReadOnly("git", ["status", "--porcelain=v1"]),
+    runReadOnly("git", ["rev-list", "--left-right", "--count", "HEAD...origin/main"]),
+  ]);
+  const repository = { available: gitReads.every((read) => read.status === "fulfilled") };
+  if (repository.available) {
+    const [branch, originMain, statusText, distanceText] = gitReads.map((read) => read.value);
+    const changes = statusText ? statusText.split(/\r?\n/).filter(Boolean) : [];
+    const [ahead = 0, behind = 0] = distanceText.split(/\s+/).map(Number);
+    Object.assign(repository, {
+      branch,
+      originMain,
+      originMainShort: originMain.slice(0, 8),
+      dirty: changes.length > 0,
+      dirtyCount: changes.length,
+      changes: changes.slice(0, 20),
+      ahead,
+      behind,
+    });
+  } else {
+    repository.error = safeToolError(gitReads.find((read) => read.status === "rejected")?.reason);
+  }
+
+  let pullRequests;
+  try {
+    const raw = await runReadOnly("gh", [
+      "pr", "list", "--repo", "bbelieff/moawork", "--state", "open", "--limit", "100",
+      "--json", "number,title,url,headRefName,baseRefName,isDraft,mergeStateStatus,updatedAt,statusCheckRollup,labels",
+    ]);
+    const rows = JSON.parse(raw || "[]");
+    pullRequests = {
+      available: true,
+      count: rows.length,
+      items: rows.map((pr) => ({
+        number: pr.number,
+        title: pr.title,
+        url: pr.url,
+        headRefName: pr.headRefName,
+        baseRefName: pr.baseRefName,
+        isDraft: Boolean(pr.isDraft),
+        mergeStateStatus: pr.mergeStateStatus || "UNKNOWN",
+        updatedAt: pr.updatedAt,
+        labels: (pr.labels || []).map((label) => label.name),
+        checks: checkSummary(pr.statusCheckRollup || []),
+      })),
+    };
+  } catch (error) {
+    pullRequests = { available: false, count: null, items: [], error: safeToolError(error) };
+  }
+
+  return { builtAt: new Date().toISOString(), repository, pullRequests };
+}
+
+async function getOperations(force = false) {
+  if (!force && operationsSnap.data && Date.now() - operationsSnap.at < OPS_TTL) return operationsSnap.data;
+  if (operationsSnap.building) return operationsSnap.building;
+  operationsSnap.building = buildOperations().then((data) => {
+    operationsSnap = { at: Date.now(), building: null, data };
+    return data;
+  }).catch((error) => {
+    operationsSnap.building = null;
+    throw error;
+  });
+  return operationsSnap.building;
+}
+
 function liveShim() {
   return `
 <script>
@@ -152,7 +329,10 @@ window.cowork = {
       }
       if (tool.endsWith("list_comments")){
         const r = await fetch("/api/comments?id=" + encodeURIComponent(args.issueId));
-        if(!r.ok) return wrap({ comments: [] });
+        if(!r.ok){
+          const e = await r.json().catch(() => ({}));
+          return fail(e.message || ("HTTP "+r.status));
+        }
         return wrap(await r.json());
       }
       return wrap({});
@@ -196,10 +376,30 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, JSON.stringify({ issues: d.issues }));
     }
 
+    if (url.pathname === "/api/operations") {
+      try {
+        return send(res, 200, JSON.stringify(await getOperations(url.searchParams.get("force") === "1")));
+      } catch {
+        return send(res, 502, JSON.stringify({
+          error: "OPERATIONS_FAILED",
+          message: "Git/GitHub 운영 상태를 읽지 못했습니다.",
+        }));
+      }
+    }
+
     if (url.pathname === "/api/comments") {
       if (!KEY_OK) return send(res, 503, JSON.stringify(NO_KEY));
-      const d = await getSnap();
-      return send(res, 200, JSON.stringify(d.comments[url.searchParams.get("id")] || { comments: [] }));
+      const input = parseCommentRequest(url);
+      if (input.error) return send(res, 400, JSON.stringify(input));
+      try {
+        return send(res, 200, JSON.stringify(await getComments(input.id, input.limit, input.after)));
+      } catch {
+        /* upstream 오류 원문에는 본문·식별 정보가 섞일 수 있으므로 반사하지 않는다. */
+        return send(res, 502, JSON.stringify({
+          error: "LINEAR_COMMENTS_FAILED",
+          message: "Linear 댓글을 읽지 못했다.",
+        }));
+      }
     }
 
     if (url.pathname === "/" || url.pathname === "/index.html") {
