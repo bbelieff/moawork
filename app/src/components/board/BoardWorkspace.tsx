@@ -61,6 +61,17 @@ interface RowMove {
   index: number;
 }
 
+export function companyFoundedOn(value: unknown): string {
+  const text = String(value ?? "").trim();
+  if (/^\d{4}$/.test(text)) return `${text}-01-01`;
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+}
+
+export function companyRevenue(value: unknown): string {
+  const text = String(value ?? "").trim().replaceAll(",", "");
+  return /^-?\d+(?:\.\d+)?$/.test(text) ? text : "";
+}
+
 /** 낙관적 행 이동 — 서버의 moveRowAction 과 같은 규칙(그룹 내 재색인)을 화면에서 미리 흉내낸다. */
 function rowMoveReducer(rows: ItemWithValues[], move: RowMove): ItemWithValues[] {
   const moving = rows.find((r) => r.id === move.itemId);
@@ -319,8 +330,8 @@ export function BoardWorkspace({
                       regionSido: String(row.values.sido ?? ""),
                       regionSigungu: String(row.values.sigungu ?? ""),
                       phone: String(row.values.phone ?? ""),
-                      foundedOn: String(row.values.founded_year ?? ""),
-                      revenue: String(row.values.revenue ?? ""),
+                      foundedOn: companyFoundedOn(row.values.founded_year),
+                      revenue: companyRevenue(row.values.revenue),
                     }}
                   />
                 ) : null : undefined}

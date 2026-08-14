@@ -6,8 +6,15 @@ vi.mock("@/lib/crm/contactPipelineActions", () => ({
 }));
 
 import { companyRowsFromResponse, ContactPipelineAction } from "./ContactPipelineAction";
+import { companyFoundedOn, companyRevenue } from "@/components/board/BoardWorkspace";
 
 describe("ContactPipelineAction", () => {
+  it("normalizes board year and revenue values for PostgreSQL types", () => {
+    expect(companyFoundedOn("2020")).toBe("2020-01-01");
+    expect(companyFoundedOn("2020년")).toBe("");
+    expect(companyRevenue("1,250,000")).toBe("1250000");
+    expect(companyRevenue("54억")).toBe("");
+  });
   it("unwraps the shared API data envelope for the company picker", () => {
     expect(companyRowsFromResponse({ data: [{ id: "company-1" }] })).toEqual([{ id: "company-1" }]);
     expect(companyRowsFromResponse([])).toEqual([]);
