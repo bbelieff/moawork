@@ -7,6 +7,7 @@ import { getCrmService } from "@/lib/crm";
 import {
   COMMENT_KINDS,
   CommentNotFoundError,
+  CommentPermissionError,
   CommentValidationError,
   ConcurrentEditError,
   addComment,
@@ -218,6 +219,24 @@ describe("editComment — 낙관적 잠금(동시수정 충돌, 정수 version �
     await expect(
       editComment(owner, deal.id, "없는id", { body: "x", expectedVersion: 1 }),
     ).rejects.toBeInstanceOf(CommentNotFoundError);
+  });
+
+  it("다른 작성자의 댓글은 딜을 볼 수 있어도 수정할 수 없다", async () => {
+    const deal = await getCrmService().createDeal(owner, {
+      title: "작성자 권한",
+      assigned_to: member.user.id,
+    });
+    const created = await addComment(owner, deal.id, { body: "오너 댓글" });
+
+    await expect(
+      editComment(member, deal.id, created.id, {
+        body: "멤버가 바꾼 내용",
+        expectedVersion: created.version,
+      }),
+    ).rejects.toBeInstanceOf(CommentPermissionError);
+
+    const [current] = await listComments(owner, deal.id);
+    expect(current.body).toBe("오너 댓글");
   });
 
   it("연속 수정: 두 번째 수정은 첫 번째 수정 이후의 version 을 기대해야 한다", async () => {

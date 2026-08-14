@@ -1,6 +1,6 @@
--- 060_deal_collab_notify.sql — 딜 협업 알림 (BBE-16)
+-- 064_deal_collab_notify.sql — 딜 협업 알림 (BBE-16)
 --
--- 001~059 무수정, additive. `019_notifications.sql`(notifications 표·RLS)이 이미 존재한다는
+-- 001~063 무수정, additive. `019_notifications.sql`(notifications 표·RLS)이 이미 존재한다는
 -- 전제 위에서, "담당자 배정"·"댓글 멘션"·"보완요청(되돌려보내기)" 세 발행 지점만 추가한다.
 --
 -- 019 의 원칙을 그대로 따른다:
@@ -27,7 +27,7 @@ begin
   -- deals.assigned_to 는 users(id) 참조일 뿐 조직 제약이 없어서, 타 조직 user_id 가
   -- 들어오면 그 사람 앞으로 고아 notifications 행이 생긴다(019 의 select 정책이
   -- 읽기는 막으므로 유출은 없지만 행은 남는다). 아래 두 함수(mention_org_members ·
-  -- request_deal_followup)는 이미 같은 검증을 하고 있다 — 여기만 빠져 있었다.
+  -- request_deal_followup)도 같은 검증을 수행한다.
   if not exists (
     select 1 from org_members m
      where m.org_id = new.org_id and m.user_id = new.assigned_to
@@ -125,6 +125,15 @@ begin
     return; -- 담당자 없음 또는 본인이 스스로 요청 — 알림 생략.
   end if;
 
+  -- 오래된 데이터나 직접 쿼리로 타 조직 사용자가 담당자에 들어가 있더라도
+  -- 알림 행을 만들지 않는다.
+  if not exists (
+    select 1 from org_members m
+     where m.org_id = p_org_id and m.user_id = v_assignee
+  ) then
+    return;
+  end if;
+
   insert into notifications (org_id, user_id, type, title, body, target_type, target_id, actor_id, is_action)
   values (
     p_org_id, v_assignee, 'requested',
@@ -137,10 +146,83 @@ revoke all on function public.request_deal_followup(uuid, uuid) from public;
 grant execute on function public.request_deal_followup(uuid, uuid) to authenticated;
 
 -- =====================================================================
--- 4. 스키마 버전 메타
+-- 4. 댓글 원자 편집 — version 비교와 jsonb 갱신을 단일 UPDATE로 수행
+-- =====================================================================
+create or replace function public.edit_deal_comment_atomic(
+  p_org_id uuid,
+  p_deal_id uuid,
+  p_comment_id text,
+  p_body text,
+  p_expected_version integer
+) returns boolean
+  language plpgsql security invoker set search_path = public, pg_temp as $$
+declare
+  v_updated integer;
+  v_now text := to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+begin
+  if p_body is null or length(btrim(p_body)) = 0 or length(btrim(p_body)) > 4000 then
+    raise exception 'invalid comment body' using errcode = '22023';
+  end if;
+  if p_expected_version < 1 then
+    raise exception 'invalid comment version' using errcode = '22023';
+  end if;
+
+  update public.deals d
+     set custom = jsonb_set(
+       coalesce(d.custom, '{}'::jsonb),
+       '{comments}',
+       (
+         select coalesce(jsonb_agg(
+           case when c->>'id' = p_comment_id then
+             jsonb_set(
+               jsonb_set(
+                 jsonb_set(
+                   jsonb_set(c, '{body}', to_jsonb(btrim(p_body)), true),
+                   '{edited_at}', to_jsonb(v_now), true
+                 ),
+                 '{edit_history}',
+                 coalesce(c->'edit_history', '[]'::jsonb) || jsonb_build_array(
+                   jsonb_build_object(
+                     'body', c->>'body',
+                     'at', coalesce(c->>'edited_at', c->>'created_at')
+                   )
+                 ),
+                 true
+               ),
+               '{version}', to_jsonb(p_expected_version + 1), true
+             )
+           else c end
+         ), '[]'::jsonb)
+         from jsonb_array_elements(coalesce(d.custom->'comments', '[]'::jsonb)) c
+       ),
+       true
+     ),
+     updated_at = now()
+   where d.id = p_deal_id
+     and d.org_id = p_org_id
+     and exists (
+       select 1
+         from jsonb_array_elements(coalesce(d.custom->'comments', '[]'::jsonb)) c
+        where c->>'id' = p_comment_id
+          and case
+            when c->>'version' ~ '^[0-9]+$' then (c->>'version')::integer
+            else 1
+          end = p_expected_version
+          and c->>'author_id' = auth.uid()::text
+     );
+
+  get diagnostics v_updated = row_count;
+  return v_updated = 1;
+end $$;
+
+revoke all on function public.edit_deal_comment_atomic(uuid, uuid, text, text, integer) from public;
+grant execute on function public.edit_deal_comment_atomic(uuid, uuid, text, text, integer) to authenticated;
+
+-- =====================================================================
+-- 5. 스키마 버전 메타
 -- =====================================================================
 insert into public.app_meta (key, value)
-values ('schema_version', '060')
+values ('schema_version', '064')
 on conflict (key) do update
   set value = excluded.value,
       updated_at = now();

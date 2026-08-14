@@ -81,14 +81,32 @@ function stripDataUrlPrefix(input: string): string {
   return m ? m[1] : input;
 }
 
+function validatedBase64(input: string, expectedBytes: number): string {
+  const payload = stripDataUrlPrefix(input).replace(/\s/g, "");
+  if (payload === "" || !/^[A-Za-z0-9+/]*={0,2}$/.test(payload)) {
+    throw new DealFileValidationError("파일 내용을 읽지 못했습니다.");
+  }
+  const buffer = Buffer.from(payload, "base64");
+  if (buffer.byteLength !== expectedBytes) {
+    throw new DealFileValidationError("파일 크기가 전송된 내용과 일치하지 않습니다.");
+  }
+  return buffer.toString("base64");
+}
+
 // ── 서비스(비동기) ─────────────────────────────────────────
 
 /** 딜 첨부 메타 목록(최신순). 바이트는 포함하지 않는다. */
 export async function listDealFiles(ctx: Ctx, dealId: string): Promise<DealFileMeta[]> {
   const deal = await getCrmService().getDeal(ctx, dealId);
   return readStoredFiles(deal.custom)
-    .map(toMeta)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
+    .map((file, index) => ({ file: toMeta(file), index }))
+    .sort(
+      (a, b) =>
+        b.file.created_at.localeCompare(a.file.created_at) ||
+        // 같은 millisecond에 연속 첨부돼도 JSON 배열의 뒤쪽(나중 append)을 최신으로 둔다.
+        b.index - a.index,
+    )
+    .map(({ file }) => file);
 }
 
 export interface NewDealFileInput {
@@ -121,6 +139,7 @@ export async function attachDealFile(
     throw new DealFileValidationError("파일이 너무 큽니다");
   }
 
+  const contentB64 = validatedBase64(input.data_url, input.size_bytes);
   const deal = await getCrmService().getDeal(ctx, dealId);
   const stored: StoredDealFile = {
     id: genId(),
@@ -129,7 +148,7 @@ export async function attachDealFile(
     size_bytes: input.size_bytes,
     uploaded_by: ctx.user.id,
     created_at: new Date().toISOString(),
-    content_b64: stripDataUrlPrefix(input.data_url),
+    content_b64: contentB64,
   };
 
   const nextList = [...readStoredFiles(deal.custom), stored];

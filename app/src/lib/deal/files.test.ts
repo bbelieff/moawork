@@ -32,6 +32,7 @@ beforeEach(() => {
 
 const SMALL_PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+const SMALL_PNG_SIZE = Buffer.from(SMALL_PNG_DATA_URL.split(",")[1], "base64").byteLength;
 
 describe("attachDealFile / listDealFiles", () => {
   it("첨부하면 메타 목록에 나타나고 바이트는 응답 객체에 없다", async () => {
@@ -39,7 +40,7 @@ describe("attachDealFile / listDealFiles", () => {
     const meta = await attachDealFile(owner, deal.id, {
       name: "설명.png",
       mime_type: "image/png",
-      size_bytes: 68,
+      size_bytes: SMALL_PNG_SIZE,
       data_url: SMALL_PNG_DATA_URL,
     });
 
@@ -56,12 +57,12 @@ describe("attachDealFile / listDealFiles", () => {
     const deal = await getCrmService().createDeal(owner, { title: "정렬 테스트" });
     await attachDealFile(owner, deal.id, {
       name: "a.png",
-      size_bytes: 10,
+      size_bytes: SMALL_PNG_SIZE,
       data_url: SMALL_PNG_DATA_URL,
     });
     await attachDealFile(owner, deal.id, {
       name: "b.png",
-      size_bytes: 10,
+      size_bytes: SMALL_PNG_SIZE,
       data_url: SMALL_PNG_DATA_URL,
     });
     const list = await listDealFiles(owner, deal.id);
@@ -86,12 +87,24 @@ describe("attachDealFile / listDealFiles", () => {
     ).rejects.toBeInstanceOf(DealFileValidationError);
   });
 
+  it("신고한 크기와 실제 바이트가 다르면 저장하지 않는다", async () => {
+    const deal = await getCrmService().createDeal(owner, { title: "크기 위조 차단" });
+    await expect(
+      attachDealFile(owner, deal.id, {
+        name: "a.png",
+        size_bytes: 1,
+        data_url: SMALL_PNG_DATA_URL,
+      }),
+    ).rejects.toBeInstanceOf(DealFileValidationError);
+    expect(await listDealFiles(owner, deal.id)).toHaveLength(0);
+  });
+
   it("다른 custom 값(댓글 등)을 지우지 않는다", async () => {
     const deal = await getCrmService().createDeal(owner, { title: "custom 보존" });
     await getCrmService().updateDeal(owner, deal.id, { custom: { 계약상황: "진행중" } });
     await attachDealFile(owner, deal.id, {
       name: "a.png",
-      size_bytes: 10,
+      size_bytes: SMALL_PNG_SIZE,
       data_url: SMALL_PNG_DATA_URL,
     });
     const after = await getCrmService().getDeal(owner, deal.id);
@@ -103,7 +116,7 @@ describe("attachDealFile / listDealFiles", () => {
     await expect(
       attachDealFile(member, deal.id, {
         name: "a.png",
-        size_bytes: 10,
+        size_bytes: SMALL_PNG_SIZE,
         data_url: SMALL_PNG_DATA_URL,
       }),
     ).rejects.toThrow();
@@ -115,7 +128,7 @@ describe("removeDealFile", () => {
     const deal = await getCrmService().createDeal(owner, { title: "삭제 테스트" });
     const meta = await attachDealFile(owner, deal.id, {
       name: "a.png",
-      size_bytes: 10,
+      size_bytes: SMALL_PNG_SIZE,
       data_url: SMALL_PNG_DATA_URL,
     });
     await removeDealFile(owner, deal.id, meta.id);
@@ -135,7 +148,7 @@ describe("readDealFileBytes — 다운로드 라우트 전용", () => {
     const deal = await getCrmService().createDeal(owner, { title: "바이트 복원" });
     const meta = await attachDealFile(owner, deal.id, {
       name: "a.png",
-      size_bytes: 10,
+      size_bytes: SMALL_PNG_SIZE,
       data_url: SMALL_PNG_DATA_URL,
     });
 
@@ -155,7 +168,7 @@ describe("readDealFileBytes — 다운로드 라우트 전용", () => {
     const deal = await getCrmService().createDeal(owner, { title: "오너 딜" });
     const meta = await attachDealFile(owner, deal.id, {
       name: "a.png",
-      size_bytes: 10,
+      size_bytes: SMALL_PNG_SIZE,
       data_url: SMALL_PNG_DATA_URL,
     });
     await expect(readDealFileBytes(member, deal.id, meta.id)).rejects.toThrow();

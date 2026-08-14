@@ -1,7 +1,7 @@
 /**
  * 딜 협업 알림 발행 — RPC 호출부 (BBE-16).
  *
- * `060_deal_collab_notify.sql` 의 `mention_org_members` / `request_deal_followup`
+ * `064_deal_collab_notify.sql` 의 `mention_org_members` / `request_deal_followup`
  * SECURITY DEFINER 함수를 부른다. 실제 검증(멤버십·조직 경계)은 함수 내부에서
  * 다시 하므로 여기서는 얇게 전달만 한다.
  *

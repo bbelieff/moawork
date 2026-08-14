@@ -17,7 +17,12 @@ const DEV_ONLY_FALLBACK_SECRET = "dev-only-insecure-file-url-secret";
 const DEFAULT_TTL_MS = 5 * 60 * 1000; // 5분
 
 function signingSecret(): string {
-  return process.env.SUPABASE_SERVICE_ROLE_KEY ?? DEV_ONLY_FALLBACK_SECRET;
+  const configured = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (configured) return configured;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("파일 다운로드 서명 설정이 없습니다.");
+  }
+  return DEV_ONLY_FALLBACK_SECRET;
 }
 
 function sign(payload: string): string {

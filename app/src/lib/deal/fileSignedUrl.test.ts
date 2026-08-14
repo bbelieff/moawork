@@ -62,6 +62,18 @@ describe("issueFileToken / verifyFileToken", () => {
     process.env.SUPABASE_SERVICE_ROLE_KEY = "different-secret";
     expect(verifyFileToken(token)).toBeNull();
   });
+
+  it("프로덕션에서 서버 서명 키가 없으면 고정 개발키로 폴백하지 않는다", () => {
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      expect(() => issueFileToken("deal-1", "file-1")).toThrow(
+        "파일 다운로드 서명 설정이 없습니다.",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe("buildDownloadUrl", () => {

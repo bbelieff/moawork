@@ -16,6 +16,8 @@
 
 import type { Ctx } from "@/lib/types";
 import { getCrmService } from "@/lib/crm";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { createClient } from "@/lib/supabase/server";
 
 const COMMENTS_CUSTOM_KEY = "comments";
 
@@ -65,6 +67,13 @@ export class ConcurrentEditError extends Error {
   constructor(message = "다른 사용자가 방금 이 댓글을 수정했습니다. 새로고침 후 다시 시도하세요.") {
     super(message);
     this.name = "ConcurrentEditError";
+  }
+}
+
+export class CommentPermissionError extends Error {
+  constructor(message = "본인이 작성한 댓글만 수정할 수 있습니다.") {
+    super(message);
+    this.name = "CommentPermissionError";
   }
 }
 
@@ -225,13 +234,29 @@ export async function editComment(
   const deal = await getCrmService().getDeal(ctx, dealId);
   const existing = readComments(deal.custom).find((c) => c.id === commentId);
   if (!existing) throw new CommentNotFoundError();
+  if (existing.author_id !== ctx.user.id) throw new CommentPermissionError();
 
   if (existing.version !== input.expectedVersion) throw new ConcurrentEditError();
 
   const now = new Date().toISOString();
-  await getCrmService().updateDeal(ctx, dealId, {
-    custom: applyCommentEdit(deal.custom, commentId, body, now),
-  });
+  if (hasSupabaseEnv()) {
+    // 프로덕션은 읽기→쓰기 사이 경쟁을 DB의 단일 UPDATE에서 판정한다. 앱에서 version을
+    // 먼저 비교하는 것만으로는 두 요청이 같은 값을 읽은 뒤 모두 성공할 수 있다.
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("edit_deal_comment_atomic", {
+      p_org_id: ctx.org.id,
+      p_deal_id: dealId,
+      p_comment_id: commentId,
+      p_body: body,
+      p_expected_version: input.expectedVersion,
+    });
+    if (error) throw new Error(`댓글을 저장하지 못했습니다: ${error.message}`);
+    if (data !== true) throw new ConcurrentEditError();
+  } else {
+    await getCrmService().updateDeal(ctx, dealId, {
+      custom: applyCommentEdit(deal.custom, commentId, body, now),
+    });
+  }
 
   return {
     ...existing,

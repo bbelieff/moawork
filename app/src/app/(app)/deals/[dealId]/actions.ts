@@ -11,7 +11,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
-import { getCrmService } from "@/lib/crm";
+import { getCrmService, ValidationError } from "@/lib/crm";
 import { attachFile, removeFile } from "@/lib/services/files";
 import { getRepo } from "@/lib/repo";
 import { addComment, editComment, type CommentKind } from "@/lib/deal/comments";
@@ -127,8 +127,11 @@ export async function addCommentAction(
   input: { body: string; mentionedIds?: string[]; kind?: CommentKind },
 ): Promise<void> {
   const ctx = await getSession();
-  await addComment(ctx, dealId, input);
-  if (input.mentionedIds?.length) await notifyMentions(ctx, dealId, input.mentionedIds);
+  const members = await listOrgMemberOptions(ctx);
+  const allowedIds = new Set(members.map((member) => member.id));
+  const mentionedIds = [...new Set(input.mentionedIds ?? [])].filter((id) => allowedIds.has(id));
+  await addComment(ctx, dealId, { ...input, mentionedIds });
+  if (mentionedIds.length) await notifyMentions(ctx, dealId, mentionedIds);
   revalidatePath(`/deals/${dealId}`);
 }
 
@@ -165,6 +168,9 @@ export async function reassignDealAction(
   const ctx = await getSession();
   const before = await getCrmService().getDeal(ctx, dealId);
   const members = await listOrgMemberOptions(ctx);
+  if (newAssignedTo && !members.some((member) => member.id === newAssignedTo)) {
+    throw new ValidationError("같은 회사의 멤버만 담당자로 지정할 수 있습니다.");
+  }
   const nameOf = (id: string | null) => (id ? (members.find((m) => m.id === id)?.name ?? null) : null);
 
   await getCrmService().reassignDeal(ctx, dealId, newAssignedTo, {
