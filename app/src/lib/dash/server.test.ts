@@ -38,6 +38,7 @@ function query(result: { data: unknown[] | null; error: unknown }) {
   const chain = {
     select: () => chain,
     eq: () => chain,
+    in: vi.fn(() => chain),
     order: () => chain,
     then: (resolve: (value: unknown) => unknown) => Promise.resolve(resolve(result)),
   };
@@ -63,6 +64,22 @@ function client(options: { fieldError?: boolean; settlementError?: boolean } = {
 }
 
 describe("loadDashboardPageData", () => {
+  it("constructs the CRM source and dashboard reads from the same request client", async () => {
+    const db = client();
+    const sourceFactory = vi.fn((received: SupabaseClient) => {
+      expect(received).toBe(db);
+      return source();
+    });
+
+    await loadDashboardPageData(ctx, {
+      supabaseConfigured: true,
+      clientFactory: async () => db,
+      sourceFactory,
+    });
+
+    expect(sourceFactory).toHaveBeenCalledOnce();
+  });
+
   it("uses request-scoped Supabase CRM and settlement rows instead of LocalRepo", async () => {
     const db = client();
     const result = await loadDashboardPageData(ctx, {
@@ -85,6 +102,21 @@ describe("loadDashboardPageData", () => {
     });
     expect(db.from).toHaveBeenCalledWith("field_defs");
     expect(db.from).toHaveBeenCalledWith("settlements");
+    const settlementQuery = vi.mocked(db.from).mock.results[1]?.value as { in: ReturnType<typeof vi.fn> };
+    expect(settlementQuery.in).toHaveBeenCalledWith("deal_id", ["deal-1"]);
+  });
+
+  it("does not query settlements when no deals are visible", async () => {
+    const db = client();
+    const emptySource = source();
+    vi.mocked(emptySource.listDeals).mockResolvedValue([]);
+
+    await loadDashboardPageData(ctx, {
+      source: emptySource,
+      clientFactory: async () => db,
+    });
+
+    expect(db.from).not.toHaveBeenCalledWith("settlements");
   });
 
   it("fails closed when the DB read fails instead of returning fake zeroes", async () => {

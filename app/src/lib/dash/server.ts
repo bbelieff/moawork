@@ -1,7 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Ctx, FieldDef, FieldOption, Settlement } from "@/lib/types";
 import { getRepo } from "@/lib/repo";
-import { getCrmSource, type CrmSource } from "@/lib/repo/supabase";
+import {
+  isSupabaseConfigured,
+  LocalCrmSource,
+  SupabaseCrmSource,
+  type CrmSource,
+} from "@/lib/repo/supabase";
 import { createClient } from "@/lib/supabase/server";
 import {
   buildDashboardFromInputs,
@@ -81,21 +86,25 @@ function settlement(row: Row): Settlement {
 async function loadSupabaseInputs(
   ctx: Ctx,
   visibleDealIds: ReadonlySet<string>,
-  clientFactory: () => Promise<SupabaseClient>,
+  client: SupabaseClient,
 ) {
-  const client = await clientFactory();
-  const [fieldsResult, settlementsResult] = await Promise.all([
-    client
-      .from("field_defs")
-      .select("id,org_id,entity,key,label,type,options_jsonb,module_key,sort_order")
-      .eq("org_id", ctx.org.id)
-      .eq("entity", "deal")
-      .order("sort_order"),
-    client
+  const fieldsPromise = client
+    .from("field_defs")
+    .select("id,org_id,entity,key,label,type,options_jsonb,module_key,sort_order")
+    .eq("org_id", ctx.org.id)
+    .eq("entity", "deal")
+    .order("sort_order");
+  const settlementsPromise = visibleDealIds.size === 0
+    ? Promise.resolve({ data: [], error: null })
+    : client
       .from("settlements")
       .select("id,org_id,deal_id,down_payment,down_paid_at,exec_amount,fee_pct,fee_paid_at,fee_amount,total_revenue,d180,d365,created_at")
       .eq("org_id", ctx.org.id)
-      .order("created_at", { ascending: false }),
+      .in("deal_id", [...visibleDealIds])
+      .order("created_at", { ascending: false });
+  const [fieldsResult, settlementsResult] = await Promise.all([
+    fieldsPromise,
+    settlementsPromise,
   ]);
   if (fieldsResult.error || !Array.isArray(fieldsResult.data)) {
     throw new DashboardReadError("field_defs");
@@ -105,9 +114,7 @@ async function loadSupabaseInputs(
   }
   return {
     fieldDefs: (fieldsResult.data as Row[]).map(fieldDef),
-    settlements: (settlementsResult.data as Row[])
-      .map(settlement)
-      .filter((row) => row.deal_id !== null && visibleDealIds.has(row.deal_id)),
+    settlements: (settlementsResult.data as Row[]).map(settlement),
   };
 }
 
@@ -118,9 +125,17 @@ export async function loadDashboardPageData(
     now?: () => Date;
     source?: CrmSource;
     clientFactory?: () => Promise<SupabaseClient>;
+    supabaseConfigured?: boolean;
+    sourceFactory?: (client: SupabaseClient) => CrmSource;
   } = {},
 ): Promise<DashboardPageData> {
-  const source = options.source ?? getCrmSource();
+  let requestClient: SupabaseClient | undefined;
+  let source = options.source;
+  if (!source && (options.supabaseConfigured ?? isSupabaseConfigured())) {
+    requestClient = await (options.clientFactory ?? createClient)();
+    source = (options.sourceFactory ?? ((client) => new SupabaseCrmSource(client)))(requestClient);
+  }
+  source ??= new LocalCrmSource();
   const [deals, companies, pipelines] = await Promise.all([
     source.listDeals(ctx),
     source.listCompanies(ctx),
@@ -131,7 +146,7 @@ export async function loadDashboardPageData(
     ? await loadSupabaseInputs(
         ctx,
         new Set(deals.map((deal) => deal.id)),
-        options.clientFactory ?? createClient,
+        requestClient ?? await (options.clientFactory ?? createClient)(),
       )
     : {
         fieldDefs: getRepo().listFieldDefs(ctx.org.id, "deal"),
