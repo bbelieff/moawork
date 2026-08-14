@@ -25,8 +25,8 @@ test("new DG lanes and the P0 handoff chain are visible without the retired 20-s
   assert.doesNotMatch(html, /USER CHECK/);
   assert.match(html, /로그인 1440×900\/375×812 실측/);
   assert.match(html, /PR #189 merge e593d7ee/);
-  assert.match(html, /qa-app DIFF는 75개/);
-  assert.match(html, /직전 기준 104개/);
+  assert.match(html, /qa-app DIFF는 52개/);
+  assert.match(html, /직전 75개 · 초기 104개/);
   assert.doesNotMatch(html, /기기 2 × 진영 2 × 5칸/);
   assert.doesNotMatch(html, /const SLOTS=/);
 });

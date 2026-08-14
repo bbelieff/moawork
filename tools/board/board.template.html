@@ -182,7 +182,7 @@ const FLOWS=[
 const HANDOFF_NOTES=[
  {issue:"BBE-160",title:"대시보드 DB read model 완주",body:"PR #188 · merge ce5ab1f9 · Production READY · /login 200 · DG-01 exact PASS · 로그인 1440×900/375×812 실측 · 실제 회사·딜·정산·공지 수치 및 console 0 확인. production strict getRepo/LocalRepo 0."},
  {issue:"BBE-161",title:"repo-wide 가드 재개",body:"BBE-160 strict 0과 BBE-149 후속 PR #189 merge e593d7ee를 소비한다. 최신 main rebase → AST guard green → baseline ratchet → PR/CI/검수/배포 순서로 닫는다."},
- {issue:null,title:"별도 P1 유지",body:"최신 main 실측 qa-app DIFF는 75개(직전 기준 104개)다. BBE-149 반영 뒤 줄었지만 대시보드 DB 연결과 다른 문제이므로 BBE-160 또는 BBE-161 완료 수치에 합산하지 않는다."}
+ {issue:null,title:"별도 P1 유지",body:"최신 main 실측 qa-app DIFF는 52개(직전 75개 · 초기 104개)다. BBE-149·BBE-150 반영 뒤 줄었지만 대시보드 DB 연결과 다른 문제이므로 BBE-160 또는 BBE-161 완료 수치에 합산하지 않는다."}
 ];
 const SPECIAL_ACTIONS={
  "BBE-161":"BBE-160 strict 잔존 0 확인 → AST 가드 green → baseline ratchet → PR/CI/검수/배포.",
@@ -339,7 +339,7 @@ function brief(){
  const lines=["[모아워크 의사결정 관제판 "+new Date().toLocaleString("ko-KR")+"]","",
   "오픈 "+state.open.length+"건 · 진행 "+state.open.filter((i)=>i.status==="In Progress").length+"건 · 검수 "+state.open.filter((i)=>i.status==="In Review").length+"건",""];
  state.decisions.forEach((d)=>lines.push("["+d.kind+"] "+d.title+" — "+d.body));
- lines.push("","핵심 직렬: BBE-160 → BBE-161 · BBE-125 → BBE-157 · BBE-153 → BBE-150","qa-app DIFF 75개는 별도 P1이며 대시보드 DB 연결 완료에 합산하지 않는다.");
+ lines.push("","핵심 직렬: BBE-160 → BBE-161 · BBE-125 → BBE-157 · BBE-153 → BBE-150","qa-app DIFF 52개는 별도 P1이며 대시보드 DB 연결 완료에 합산하지 않는다.");
  return lines.join("\n");
 }
 async function copyText(text,button){

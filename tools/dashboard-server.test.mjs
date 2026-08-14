@@ -216,7 +216,8 @@ test("missing id is rejected before GraphQL", async () => {
 });
 
 test("issues endpoint retains the existing 45-second snapshot contract", async () => {
-  const response = await fetch(`${dashboardUrl}/api/issues`);
+  const commentsBefore = [...commentCalls.values()].reduce((total, count) => total + count, 0);
+  const response = await fetch(`${dashboardUrl}/api/issues?force=1`);
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.deepEqual(body.issues.map((issue) => [issue.id, issue.status]), [["BBE-125", "In Progress"]]);
@@ -224,6 +225,8 @@ test("issues endpoint retains the existing 45-second snapshot contract", async (
     "2026-08-14T01:00:00.000Z",
     "https://linear.app/example/BBE-125",
   ]]);
+  const commentsAfter = [...commentCalls.values()].reduce((total, count) => total + count, 0);
+  assert.equal(commentsAfter, commentsBefore, "issue snapshot must not duplicate the direct comment reads");
 });
 
 test("operations endpoint exposes read-only repository and PR decision signals", async () => {

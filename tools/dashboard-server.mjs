@@ -33,7 +33,6 @@ const TEMPLATE = [
 ].filter(Boolean).find((p) => fs.existsSync(p))
   || path.join(ROOT, "tools", "board", "board.template.html");
 const PROJECT = "MoaWork · 운영 안정화 및 어드민";
-const DONE = ["Done", "Canceled", "Duplicate"];
 
 /* ── .env 읽기 ───────────────────────────────────────────── */
 function loadEnv() {
@@ -184,18 +183,7 @@ async function build() {
     after = d.issues.pageInfo.hasNextPage ? d.issues.pageInfo.endCursor : null;
   } while (after);
 
-  const live = issues.filter((i) => !DONE.includes(i.status));
-  const comments = {};
-  /* 6개씩 끊어서 — 한꺼번에 40개를 던지면 rate limit 에 걸린다 */
-  for (let k = 0; k < live.length; k += 6) {
-    await Promise.all(live.slice(k, k + 6).map(async (i) => {
-      try {
-        const d = await gql(Q_COMMENTS, { id: i.id, first: COMMENT_DEFAULT_LIMIT, after: null });
-        comments[i.id] = { comments: (d.issue?.comments?.nodes ?? []).map((c) => ({ body: c.body })) };
-      } catch { comments[i.id] = { comments: [] }; }
-    }));
-  }
-  return { issues, comments, builtAt: new Date().toISOString() };
+  return { issues, builtAt: new Date().toISOString() };
 }
 
 async function getSnap(force = false) {
@@ -205,7 +193,7 @@ async function getSnap(force = false) {
     try {
       const d = await build();
       snap = { at: Date.now(), building: null, data: d, error: null };
-      console.log(`· 스냅샷 갱신 — 카드 ${d.issues.length} · 도장 ${Object.keys(d.comments).length}`);
+      console.log(`· 스냅샷 갱신 — 카드 ${d.issues.length}`);
       return d;
     } catch (e) {
       snap.building = null;
