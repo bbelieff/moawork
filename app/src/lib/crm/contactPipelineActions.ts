@@ -28,13 +28,11 @@ export async function mutateContactPipeline(
 
   try {
     const ctx = await getSession();
-    const dealId = String(formData.get("dealId") ?? "").trim();
+    const dealId = String(formData.get("dealId") ?? "").trim() || null;
     const selectedCompanyId = String(formData.get("selectedCompanyId") ?? "").trim() || null;
     const requestedName = String(formData.get("companyName") ?? "").trim();
-    if (!dealId) return { ok: false, message: "업무 건을 확인할 수 없습니다." };
-
     const service = getCrmService();
-    const deal = await service.getDeal(ctx, dealId);
+    const deal = dealId ? await service.getDeal(ctx, dealId) : undefined;
     const selected = selectedCompanyId
       ? await service.getCompany(ctx, selectedCompanyId)
       : undefined;
@@ -42,7 +40,7 @@ export async function mutateContactPipeline(
       return { ok: false, message: "접근 가능한 업체를 다시 선택해 주세요." };
     }
 
-    const custom = deal.custom ?? {};
+    const custom = deal?.custom ?? {};
     const text = (key: string): string | null => {
       const value = custom[key];
       return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -60,7 +58,7 @@ export async function mutateContactPipeline(
       {
         dealId,
         existingCompanyId: selected?.id ?? null,
-        name: selected?.name ?? (requestedName || deal.title),
+        name: selected?.name ?? (requestedName || deal?.title || ""),
         bizNo: firstText("biz_no", "사업자등록번호", "사업자번호"),
         ceoName: selected?.owner_name ?? text("대표자명"),
         bizType: selected?.biz_type ?? text("사업자유형"),

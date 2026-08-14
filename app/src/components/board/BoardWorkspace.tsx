@@ -37,6 +37,8 @@ import { BoardHeader } from "./BoardHeader";
 import { BoardToolbar } from "./BoardToolbar";
 import { GroupBlock } from "./GroupBlock";
 import { GroupTable } from "./GroupTable";
+import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
+import { CONTACT_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { buildBlocks } from "./blocks";
 import {
   groupKeyOf,
@@ -303,6 +305,14 @@ export function BoardWorkspace({
                 onRowDrop={(index) =>
                   handleRowDrop(block.group?.id ?? null, block.rows, visibleRows, index)
                 }
+                renderRowAction={board.source === CONTACT_TAB_SOURCE ? (row) => (
+                  <ContactPipelineAction
+                    dealId={null}
+                    kind="contact_to_work"
+                    requestId={row.id}
+                    initialCompanyName={row.title}
+                  />
+                ) : undefined}
               />
             </GroupBlock>
           );

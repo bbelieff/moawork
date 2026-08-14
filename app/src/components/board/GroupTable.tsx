@@ -16,7 +16,7 @@
  * 낙관적 갱신(useOptimistic)은 부모(BoardWorkspace)가 담당하고 여기서는 이벤트만 올린다.
  */
 
-import { startTransition, useCallback, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { BoardColumn, CellValue, ItemWithValues } from "@/lib/boards/types";
 import { formatCell } from "@/lib/boards/cells";
 import { findCellError, type CellFlash } from "@/lib/boards/cellFlash";
@@ -249,6 +249,7 @@ export function GroupTable({
   onRowDragStart,
   onRowDragEnd,
   onRowDrop,
+  renderRowAction,
 }: {
   boardId: string;
   /** 이 그룹의 group_id. "그룹 없음" 블록은 null. */
@@ -271,6 +272,7 @@ export function GroupTable({
   onRowDragEnd: () => void;
   /** 이 그룹의 index 위치에 놓는다. */
   onRowDrop: (index: number) => void;
+  renderRowAction?: (row: ItemWithValues) => ReactNode;
 }) {
   /*
    * 드래그 중인 대상은 **ref 가 정본**이고 state 는 표시(반투명·강조)에만 쓴다.
@@ -505,6 +507,7 @@ export function GroupTable({
                       </form>
                     )}
                   </div>
+                  {renderRowAction?.(row)}
                 </td>
 
                 {columns.map((col) => (

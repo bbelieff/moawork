@@ -84,6 +84,22 @@ describe("contact pipeline company handoff", () => {
     );
   });
 
+  it("creates the deal atomically when invoked from a contact-board item", async () => {
+    const form = new FormData();
+    form.set("kind", "contact_to_work");
+    form.set("dealId", "");
+    form.set("companyName", "모아 상사");
+
+    await mutateContactPipeline({ ok: false, message: "" }, form);
+
+    expect(getDeal).not.toHaveBeenCalled();
+    expect(handoffCompanyWithSupabase).toHaveBeenCalledWith(
+      expect.anything(),
+      "org-1",
+      expect.objectContaining({ dealId: null, name: "모아 상사" }),
+    );
+  });
+
   it("rejects a selected company that is outside the visible scope", async () => {
     const form = new FormData();
     form.set("kind", "contact_to_work");

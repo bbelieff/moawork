@@ -24,14 +24,16 @@ export function ContactPipelineAction({
   dealId,
   kind,
   requestId,
+  initialCompanyName = "",
 }: Readonly<{
-  dealId: string;
+  dealId: string | null;
   kind: ContactTransitionKind;
   requestId: string;
+  initialCompanyName?: string;
 }>) {
   const [state, action, pending] = useActionState(mutateContactPipeline, INITIAL);
   const [companies, setCompanies] = useState<CompanyCandidate[]>([]);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialCompanyName);
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const label = kind === "lead_to_contact" ? CONTACT_MOVE_LABEL : "업체 연결";
 
@@ -64,7 +66,7 @@ export function ContactPipelineAction({
 
   return (
     <form action={action} className="mt-3 border-t border-neutral-100 pt-3" aria-busy={pending}>
-      <input type="hidden" name="dealId" value={dealId} />
+      <input type="hidden" name="dealId" value={dealId ?? ""} />
       <input type="hidden" name="requestId" value={requestId} />
       <input type="hidden" name="operation" value="move" />
       <input type="hidden" name="kind" value={kind} />
@@ -85,7 +87,7 @@ export function ContactPipelineAction({
           disabled={pending || (kind === "contact_to_work" && !selectedCompanyId && !query.trim())}
           className="min-h-11 rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-wait disabled:opacity-60"
         >
-          {pending ? "이동 중…" : label}
+          {pending ? (kind === "contact_to_work" ? "연결 중…" : "이동 중…") : label}
         </button>
       </div>
       {state.message ? (

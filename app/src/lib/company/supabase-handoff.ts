@@ -50,7 +50,7 @@ function readSingleRow(data: unknown): HandoffRpcRow {
 export async function handoffCompanyWithSupabase(
   client: CompanyHandoffRpcClient,
   orgId: string,
-  input: CompanyHandoffInput,
+  input: Omit<CompanyHandoffInput, "dealId"> & { dealId: string | null },
 ): Promise<SupabaseCompanyHandoffResult> {
   const { data, error } = await client.rpc("handoff_company_to_work", {
     p_org_id: orgId,
