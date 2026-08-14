@@ -1,4 +1,4 @@
-import type { BoardsRepo } from "@/lib/boards/store";
+import type { Board } from "@/lib/boards/types";
 import { CONTACT_TAB_SOURCE } from "@/lib/default-tabs/types";
 import type { Ctx } from "@/lib/types";
 
@@ -7,10 +7,14 @@ export type ContactEntryResolution =
   | { kind: "missing" }
   | { kind: "conflict" };
 
+export interface ContactBoardsReader {
+  listBoards(ctx: Ctx): Promise<Board[]>;
+}
+
 /** GET 진입점은 제품 source로 기존 보드를 고를 뿐 생성·이관을 실행하지 않는다. */
 export async function resolveExistingContactBoard(
   ctx: Ctx,
-  repo: BoardsRepo,
+  repo: ContactBoardsReader,
 ): Promise<ContactEntryResolution> {
   const matches = (await repo.listBoards(ctx)).filter((board) => board.source === CONTACT_TAB_SOURCE);
   if (matches.length === 0) return { kind: "missing" };

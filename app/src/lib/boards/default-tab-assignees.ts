@@ -1,6 +1,5 @@
 import type { Ctx } from "@/lib/types";
 import { loadMemberOrgSummary, type MemberOrgSummary } from "@/lib/auth/member-org-summary";
-import { getRepo } from "@/lib/repo";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import type { DefaultTabAssignee } from "@/lib/default-tabs/types";
 
@@ -23,14 +22,8 @@ export async function loadDefaultTabAssignees(ctx: Ctx): Promise<DefaultTabAssig
     return assignees;
   }
 
-  const members = getRepo()
-    .listMembers(ctx.org.id)
-    .slice()
-    .sort((a, b) => a.created_at.localeCompare(b.created_at))
-    .map((member) => ({
-      userId: member.user_id,
-      displayName: member.user?.name?.trim() || member.user?.email?.trim() || "멤버",
-    }));
+  const members = (await import("@/lib/repo/local/defaultTabAssignees"))
+    .loadLocalDefaultTabAssignees(ctx);
   if (members.some((member) => member.userId === ctx.user.id)) return members;
   return [
     { userId: ctx.user.id, displayName: ctx.user.name?.trim() || ctx.user.email?.trim() || "멤버" },
