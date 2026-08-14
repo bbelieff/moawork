@@ -47,6 +47,19 @@ export async function mutateContactPipeline(
       const value = custom[key];
       return typeof value === "string" && value.trim() ? value.trim() : null;
     };
+    const firstText = (...keys: string[]): string | null => {
+      for (const key of keys) {
+        const value = text(key);
+        if (value) return value;
+      }
+      return null;
+    };
+    const pipeline = (await service.listPipelines(ctx))
+      .find((candidate) => candidate.id === deal.pipeline_id);
+    const workStages = pipeline?.stages.filter((stage) => stage.kind === "work") ?? [];
+    if (workStages.length !== 1) {
+      return { ok: false, message: "업무관리 단계를 하나로 확인할 수 없습니다." };
+    }
     const result = await handoffCompanyWithSupabase(
       await createClient() as unknown as CompanyHandoffRpcClient,
       ctx.org.id,
@@ -54,9 +67,12 @@ export async function mutateContactPipeline(
         dealId,
         existingCompanyId: selected?.id ?? null,
         name: selected?.name ?? (requestedName || deal.title),
+        bizNo: firstText("biz_no", "사업자등록번호", "사업자번호"),
         ceoName: selected?.owner_name ?? text("대표자명"),
         bizType: selected?.biz_type ?? text("사업자유형"),
         industry: selected?.biz_type ?? text("업종/업태"),
+        regionSido: firstText("sido", "시도"),
+        regionSigungu: firstText("sigungu", "시군구"),
         phone: selected?.phone ?? text("연락처"),
         foundedOn: selected?.founded_on ?? text("창업년도"),
         revenue: selected?.revenue === null || selected?.revenue === undefined
@@ -64,6 +80,7 @@ export async function mutateContactPipeline(
           : String(selected.revenue),
       },
     );
+    await service.moveDealStage(ctx, dealId, workStages[0].id);
 
     return {
       ok: true,

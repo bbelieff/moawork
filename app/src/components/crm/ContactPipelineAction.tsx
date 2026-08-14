@@ -15,6 +15,12 @@ import {
 
 const INITIAL: ContactPipelineActionState = { ok: false, message: "" };
 
+export function companyRowsFromResponse(payload: unknown): Array<Record<string, unknown>> {
+  if (!payload || typeof payload !== "object") return [];
+  const data = (payload as { data?: unknown }).data;
+  return Array.isArray(data) ? data as Array<Record<string, unknown>> : [];
+}
+
 export function ContactPipelineAction({
   dealId,
   kind,
@@ -34,7 +40,7 @@ export function ContactPipelineAction({
     if (kind !== "contact_to_work") return;
     let active = true;
     void fetch("/api/companies", { cache: "no-store" })
-      .then(async (response) => response.ok ? await response.json() as Array<Record<string, unknown>> : [])
+      .then(async (response) => response.ok ? companyRowsFromResponse(await response.json()) : [])
       .then((rows) => {
         if (!active) return;
         setCompanies(rows.map((row) => ({
