@@ -15,7 +15,8 @@ import { recordRiskyAction } from "@/lib/perm/server";
 import { getBoardsService, NotFoundError } from "@/lib/boards";
 import { parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
 import type { Ctx, FieldOption } from "@/lib/types";
-import type { CellValue, ItemWithValues } from "@/lib/boards/types";
+import type { ItemWithValues } from "@/lib/boards/types";
+import { boardCellValueFromFormData } from "@/lib/boards/form-values";
 import type { CellError } from "@/lib/boards/service";
 import type { ItemPatch } from "@/lib/boards/store";
 import { clampWidth, groupKeyOf } from "@/components/board/layout";
@@ -156,10 +157,8 @@ export async function setCellAction(formData: FormData): Promise<void> {
   const boardId = str(formData, "boardId");
   const itemId = str(formData, "itemId");
   const columnKey = str(formData, "columnKey");
-  const raw = formData.get("value");
-  // 체크박스는 미체크 시 필드가 아예 없다 → false 로 수렴.
-  const value: CellValue =
-    str(formData, "kind") === "checkbox" ? raw === "on" || raw === "true" : (raw as CellValue);
+  // 체크박스 미체크와 담당자 미배정을 각 타입의 빈 값으로 정규화한다.
+  const value = boardCellValueFromFormData(formData);
   const { errors } = await getBoardsService().setCells(ctx, boardId, itemId, {
     [columnKey]: value,
   });

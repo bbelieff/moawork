@@ -15,12 +15,8 @@
  * 옛 먼데이 실측 id 는 지우지 않는다 — `@/lib/structure-packs` 자체가 그 이관 매핑
  * 사전이고 이미 보존돼 있다(A′). 이 카탈로그가 그걸 다시 들고 있을 필요는 없다.
  *
- * ## 아직 등록하지 않은 것 — 리드컨택 «미팅확정 메세지»
- *
- * `default-tabs` 에는 아직 신규리드 탭(`new-lead.ts`, BBE-145)만 있다. 리드컨택 탭은
- * BBE-149(DC-04) 가 만든다 — 그 탭이 서면 실제 키를 확인해 여기 추가한다. 그때까지는
- * `isSendColumn`/`resolveSendColumn` 의 «출처가 msg 면 발송으로 본다» 규칙이 안전망이다
- * (아래 판정 함수 설명 참고) — 안 등록됐다고 무방비는 아니다, 값별 템플릿 정밀도만 없다.
+ * BBE-149가 리드컨택 «미팅확정 메세지»의 제품 key를 확정했다. 이 카탈로그를 재사용해
+ * 별도 발송 통로를 만들지 않고 같은 확인·비용·제외·실행 기록 안전장치를 탄다.
  *
  * ## 왜 «값 그대로 하드코딩» 이 아니라 카탈로그인가
  *
@@ -84,8 +80,15 @@ const SPECS: readonly SendColumnSpec[] = [
     fallbackTemplateCode: "consultation-confirmed",
     channel: SMS,
   },
-  // ── 리드컨택 관리 — 아직 default-tabs 에 없다. BBE-149 가 세우면 실제 키로 추가한다.
-  //    그 전까지는 위 파일 주석의 안전망(출처=msg 판정)이 이 칸을 대신 잡는다.
+  // ── 리드컨택 관리 (`default-tabs/contact.ts`, BBE-149) ──
+  {
+    columnKey: "meeting_confirm_message",
+    mockupLabel: "미팅확정 메세지",
+    idleValues: UNIVERSAL_IDLE_VALUES,
+    templateByValue: { 보내기기: "meeting-confirmed" },
+    fallbackTemplateCode: "meeting-confirmed",
+    channel: SMS,
+  },
 ];
 
 const BY_KEY: ReadonlyMap<string, SendColumnSpec> = new Map(SPECS.map((s) => [s.columnKey, s]));
@@ -106,7 +109,7 @@ export function labelLooksLikeSendColumn(label: string): boolean {
  * ① 카탈로그 등록  ② 출처 메타가 `msg`  ③ 라벨에 📬·✉ 가 붙어 있음
  *
  * ②는 `board_columns.source` 다(BBE-123·D09, `default-tabs` 가 설치 시 그대로 심는다).
- * 카탈로그에 아직 없는 칸(리드컨택 미팅확정 메세지 등)은 이 축이 실질적인 주 판정이 된다.
+ * 카탈로그에 아직 없는 회사 자체 발송 칸은 이 축이 실질적인 주 판정이 된다.
  * 카탈로그는 «값별 템플릿» 을 아는 칸의 목록일 뿐, 발송 칸 여부의 유일한 판정자가 아니다.
  */
 export function isSendColumn(column: {

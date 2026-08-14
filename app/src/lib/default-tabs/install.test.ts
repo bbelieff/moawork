@@ -9,23 +9,145 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
+import { db } from "@/lib/repo/local/store";
+import { getRepo } from "@/lib/repo";
 import { resolveMoveTarget } from "@/lib/boards/moveRules";
 import type { Ctx } from "@/lib/types";
+import { CONTACT_GROUPS, CONTACT_TAB } from "./contact";
 import { NEW_LEAD_GROUPS, NEW_LEAD_TAB } from "./new-lead";
 import { ensureDefaultTab, ensureDefaultTabs } from "./install";
 
 const ctx: Ctx = {
   org: { id: "org-default-tabs", name: "테스트 회사" },
-  user: { id: "user-owner", name: "만든 사람", email: "owner@example.com" },
+  user: { id: "member-account-a", name: "계정 A", email: "a@example.test" },
   role: "owner",
   scope: "all",
 } as unknown as Ctx;
+
+const assignees = [
+  { userId: "member-account-a", displayName: "계정 A" },
+  { userId: "member-account-b", displayName: "계정 B" },
+  { userId: "member-account-c", displayName: "계정 C" },
+] as const;
 
 let repo: LocalBoardsRepo;
 
 beforeEach(() => {
   resetDb();
+  assignees.forEach((assignee, index) => {
+    getRepo().addMember(ctx.org.id, {
+      id: assignee.userId,
+      name: assignee.displayName,
+      email: `${assignee.userId}@example.test`,
+      avatar_url: null,
+      created_at: `2026-08-14T00:00:0${index}Z`,
+    }, index === 0 ? "owner" : "member", "all");
+  });
+  db().members
+    .filter((member) => member.org_id === ctx.org.id)
+    .forEach((member, index) => { member.created_at = `2026-08-14T00:00:0${index}Z`; });
   repo = new LocalBoardsRepo();
+});
+
+describe("리드컨택 기본 탭 설치", () => {
+  it("그룹 7·컬럼 21·우측 고정 업무이동을 실제 보드로 만든다", async () => {
+    const result = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo));
+    expect(repo.listGroups(ctx, result.boardId)).toHaveLength(7);
+    expect(repo.listColumns(ctx, result.boardId)).toHaveLength(21);
+    expect(repo.listColumns(ctx, result.boardId).filter((column) => column.rightPinned).map((column) => column.label)).toEqual(["업무이동"]);
+  });
+
+  it("담당자 그룹 이름과 이동 값은 멤버 계정에서 해석하며 4규칙을 만든다", async () => {
+    const result = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo));
+    const groups = repo.listGroups(ctx, result.boardId);
+    const owner = repo.listColumns(ctx, result.boardId).find((column) => column.key === "owner")!;
+    const targetNames = Object.fromEntries(
+      Object.entries(owner.move_rule_jsonb ?? {}).map(([value, groupId]) => [
+        value,
+        groups.find((group) => group.id === groupId)?.name,
+      ]),
+    );
+    expect(Object.keys(targetNames)).toEqual(["미배정", ...assignees.map((member) => member.userId)]);
+    expect(targetNames["미배정"]).toBe(CONTACT_GROUPS.unassigned);
+    expect(targetNames[assignees[0].userId]).toContain(assignees[0].displayName);
+    expect(targetNames[assignees[1].userId]).toContain(assignees[1].displayName);
+    expect(targetNames[assignees[2].userId]).toContain(assignees[1].displayName);
+  });
+
+  it("연결 7컬럼은 DB와 화면 모두 쓰기 금지로 심긴다", async () => {
+    const result = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo));
+    const linked = repo.listColumns(ctx, result.boardId).filter((column) => column.source === "lk");
+    expect(linked).toHaveLength(7);
+    for (const column of linked) expect(column.is_readonly, column.label).toBe(true);
+  });
+
+  it("업무이동에는 그룹 이동 규칙을 심지 않는다 — BBE-152 관문 실행 미포함", async () => {
+    const result = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo));
+    const transition = repo.listColumns(ctx, result.boardId).find((column) => column.key === "work_move")!;
+    expect(transition.move_rule_jsonb).toBeNull();
+  });
+
+  it("담당자 컬럼 선택지는 실제 조직 멤버 계정에서 만든다", async () => {
+    const result = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo));
+    const owner = repo.listColumns(ctx, result.boardId).find((column) => column.key === "owner")!;
+    expect(owner.options_jsonb?.options.map((option) => [option.id, option.label])).toEqual(
+      assignees.map((member) => [member.userId, member.displayName]),
+    );
+  });
+
+  it("기존 보드에 멤버를 초대하면 담당자 그룹·선택지·이동 규칙을 동기화한다", async () => {
+    db().members = db().members.filter(
+      (member) => member.org_id !== ctx.org.id || member.user_id === assignees[0].userId,
+    );
+    const first = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo));
+    expect(repo.listGroups(ctx, first.boardId)).toHaveLength(6);
+
+    getRepo().addMember(ctx.org.id, {
+      id: assignees[1].userId,
+      name: assignees[1].displayName,
+      email: "member-b@example.test",
+      avatar_url: null,
+      created_at: "2026-08-14T00:00:01Z",
+    }, "member", "all");
+    const second = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo));
+    const owner = repo.listColumns(ctx, second.boardId).find((column) => column.key === "owner")!;
+    expect(second.created).toBe(false);
+    expect(repo.listGroups(ctx, second.boardId)).toHaveLength(7);
+    expect(owner.options_jsonb?.options.map((option) => option.id)).toEqual([
+      assignees[0].userId,
+      assignees[1].userId,
+    ]);
+    expect(Object.keys(owner.move_rule_jsonb ?? {})).toEqual([
+      "미배정",
+      assignees[0].userId,
+      assignees[1].userId,
+    ]);
+  });
+
+  it("멤버 제거 시 담당자 그룹은 줄고 기존 아이템은 미배정 그룹에 보존한다", async () => {
+    const first = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo));
+    const owner = repo.listColumns(ctx, first.boardId).find((column) => column.key === "owner")!;
+    const removedGroupId = owner.move_rule_jsonb?.[assignees[1].userId];
+    const item = repo.createItem(ctx, first.boardId, {
+      title: "제거 멤버의 기존 리드",
+      group_id: removedGroupId,
+    });
+    db().members = db().members.filter(
+      (member) => member.org_id !== ctx.org.id || member.user_id === assignees[0].userId,
+    );
+
+    await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo));
+    const groups = repo.listGroups(ctx, first.boardId);
+    const refreshedOwner = repo.listColumns(ctx, first.boardId).find((column) => column.key === "owner")!;
+    expect(groups).toHaveLength(6);
+    expect(groups.some((group) => group.id === removedGroupId)).toBe(false);
+    expect(repo.getItem(ctx, item.id)?.group_id).toBe(
+      groups.find((group) => group.name === CONTACT_GROUPS.unassigned)?.id,
+    );
+    expect(refreshedOwner.options_jsonb?.options.map((option) => option.id)).toEqual([
+      assignees[0].userId,
+    ]);
+  });
 });
 
 describe("기본 탭 보장 (D76 — «설치» 단계 없이)", () => {

@@ -24,11 +24,10 @@ describe("발송 칸 판정", () => {
     expect(isSendColumn({ key: "absence_notice" })).toBe(true);
     expect(isSendColumn({ key: "consult1_notice" })).toBe(true);
     expect(isSendColumn({ key: "confirm2_notice" })).toBe(true);
+    expect(isSendColumn({ key: "meeting_confirm_message" })).toBe(true);
   });
 
-  it("출처 메타가 msg 면 카탈로그에 없어도 발송 칸이다 — 리드컨택 «미팅확정 메세지» 가 이 경로다", () => {
-    // BBE-149(리드컨택 탭)가 아직 안 서서 실제 키를 모른다. 그때까지는 이 안전망이 잡는다.
-    expect(isSendColumn({ key: "meeting_confirm_notice", source: "msg" })).toBe(true);
+  it("출처 메타가 msg 면 카탈로그에 없어도 발송 칸이다 — 회사가 만든 칸도 안전망이 잡는다", () => {
     expect(isSendColumn({ key: "회사가_새로_만든_칸", source: "msg" })).toBe(true);
   });
 
@@ -71,6 +70,14 @@ describe("어떤 값이 문자를 내보내는가", () => {
     expect(templateCodeForValue(absenceSpec, "간편 부재 3회")).toBe("absence-simple-3");
     expect(templateCodeForValue(absenceSpec, "악성 부재")).toBe("absence-malicious");
   });
+
+  it("리드컨택 미팅확정 값은 공용 meeting-confirmed 템플릿만 연다", () => {
+    const spec = sendColumnSpecs().find((s) => s.columnKey === "meeting_confirm_message")!;
+    expect(valueTriggersSend(spec, "미팅 미지정")).toBe(false);
+    expect(valueTriggersSend(spec, "보내기기")).toBe(true);
+    expect(valueTriggersSend(spec, "알 수 없는 값")).toBe(false);
+    expect(templateCodeForValue(spec, "보내기기")).toBe("meeting-confirmed");
+  });
 });
 
 describe("카탈로그와 다른 정의의 대조", () => {
@@ -111,5 +118,13 @@ describe("카탈로그와 다른 정의의 대조", () => {
     const registered = new Set(sendColumnSpecs().map((s) => s.columnKey));
     const missing = NEW_LEAD_SEND_KEYS.filter((key) => !registered.has(key));
     expect(missing, `카탈로그에 없는 발송 칸: ${JSON.stringify(missing)}`).toEqual([]);
+  });
+
+  it("★ default-tabs 리드컨택 발송 칸은 카탈로그에 등록돼 있다 (BBE-149 대조)", async () => {
+    const { CONTACT_TAB } = await import("@/lib/default-tabs/contact");
+    const sendKeys = CONTACT_TAB.columns.filter((column) => column.source === "msg").map((column) => column.key);
+    const registered = new Set(sendColumnSpecs().map((spec) => spec.columnKey));
+    expect(sendKeys).toEqual(["meeting_confirm_message"]);
+    expect(sendKeys.filter((key) => !registered.has(key))).toEqual([]);
   });
 });

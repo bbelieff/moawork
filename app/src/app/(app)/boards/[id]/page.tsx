@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { CELL_FLASH_COOKIE, decodeCellFlash } from "@/lib/boards/cellFlash";
 import { getBoardsService, NotFoundError } from "@/lib/boards";
-import { getRepo } from "@/lib/repo";
+import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
@@ -81,11 +81,9 @@ export default async function BoardPage({
   const cellFlash = decodeCellFlash((await cookies()).get(CELL_FLASH_COOKIE)?.value);
 
   // 담당자 탭·칩에 쓸 표시 이름. items.assigned_to 는 사용자 id 라서 이 맵이 없으면 UUID 가 노출된다.
-  const assigneeLabels: Record<string, string> = {};
-  for (const member of getRepo().listMembers(ctx.org.id)) {
-    const label = member.user?.name?.trim() || member.user?.email?.trim();
-    if (label) assigneeLabels[member.user_id] = label;
-  }
+  const assigneeLabels = Object.fromEntries(
+    (await loadDefaultTabAssignees(ctx)).map((member) => [member.userId, member.displayName]),
+  );
 
   const qs = (next: Record<string, string>) => {
     const p = new URLSearchParams();

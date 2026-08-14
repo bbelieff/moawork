@@ -22,11 +22,13 @@
 import type { Ctx } from "@/lib/types";
 import type { BoardsRepo, NewColumn } from "@/lib/boards/store";
 import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { CONTACT_TAB } from "./contact";
 import { NEW_LEAD_TAB } from "./new-lead";
-import type { DefaultTab } from "./types";
+import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
+import type { DefaultTab, DefaultTabAssignee, DefaultTabColumn } from "./types";
 
 /** 제품이 새 워크스페이스에 주는 기본 탭. 지금은 신규리드 하나 — 나머지 5탭은 복제 작업이다. */
-export const DEFAULT_TABS: DefaultTab[] = [NEW_LEAD_TAB];
+export const DEFAULT_TABS: DefaultTab[] = [NEW_LEAD_TAB, CONTACT_TAB];
 
 export interface EnsuredTab {
   tabKey: string;
@@ -53,15 +55,27 @@ export async function ensureDefaultTab(
   repo?: BoardsRepo,
 ): Promise<EnsuredTab> {
   const store = repo ?? await getBoardsRepo();
+  const needsAssignees = tab.groups.some((group) => group.assigneeSlot !== undefined)
+    || tab.columns.some((column) => column.assigneeMove !== undefined);
+  const assignees = needsAssignees ? await loadDefaultTabAssignees(ctx) : [];
   const existing = (await store.listBoards(ctx)).find((board) => board.source === tab.source);
   if (existing) {
-    const groups = await store.listGroups(ctx, existing.id);
+    const groupIds = await reconcileAssigneeGroups(ctx, store, existing.id, tab, assignees);
+    const columns = await store.listColumns(ctx, existing.id);
+    for (const definition of tab.columns.filter((column) => column.assigneeMove)) {
+      const column = columns.find((candidate) => candidate.key === definition.key);
+      if (!column) continue;
+      await store.updateColumn(ctx, column.id, {
+        options: assigneeOptions(definition, assignees),
+        moveRule: resolveMoveRule(definition, groupIds, tab, assignees),
+      });
+    }
     return {
       tabKey: tab.key,
       boardId: existing.id,
       created: false,
-      groupIds: Object.fromEntries(groups.map((group) => [group.name, group.id])),
-      columnKeys: (await store.listColumns(ctx, existing.id)).map((column) => column.key),
+      groupIds,
+      columnKeys: columns.map((column) => column.key),
     };
   }
 
@@ -75,8 +89,11 @@ export async function ensureDefaultTab(
   // 그룹 먼저 — 이동 규칙이 group id 를 가리켜야 하기 때문이다.
   const groupIds: Record<string, string> = {};
   for (const group of tab.groups) {
+    const assignee = group.assigneeSlot === undefined ? undefined : assignees[group.assigneeSlot];
+    if (group.assigneeSlot !== undefined && !assignee) continue;
+    const name = assignee ? assigneeGroupName(group.name, assignee) : group.name;
     groupIds[group.name] = (await store.createGroup(ctx, board.id, {
-      name: group.name,
+      name,
       color: group.color,
     })).id;
   }
@@ -88,11 +105,11 @@ export async function ensureDefaultTab(
       label: column.label,
       type: column.type,
       source: column.source,
-      options: column.options ?? null,
+      options: assigneeOptions(column, assignees),
       width: column.width ?? null,
       rightPinned: column.rightPinned ?? false,
       readOnly: column.readOnly ?? false,
-      moveRule: resolveMoveRule(column.moveTo, groupIds, tab, column.label),
+      moveRule: resolveMoveRule(column, groupIds, tab, assignees),
     };
     columnKeys.push((await store.createColumn(ctx, board.id, input)).key);
   }
@@ -108,23 +125,174 @@ export async function ensureDefaultTab(
  * 시드 단계에서 죽는 편이 훨씬 싸다.
  */
 function resolveMoveRule(
-  moveTo: Record<string, string> | undefined,
+  column: DefaultTabColumn,
   groupIds: Record<string, string>,
   tab: DefaultTab,
-  columnLabel: string,
+  assignees: readonly DefaultTabAssignee[],
 ): Record<string, string> | null {
-  if (!moveTo) return null;
+  const moveTo = column.moveTo;
+  const assigneeMove = column.assigneeMove;
+  if (!moveTo && !assigneeMove) return null;
   const rule: Record<string, string> = {};
-  for (const [optionId, groupName] of Object.entries(moveTo)) {
+  for (const [optionId, groupName] of Object.entries(moveTo ?? {})) {
     const groupId = groupIds[groupName];
     if (!groupId) {
       throw new Error(
-        `기본 탭 «${tab.name}» 의 컬럼 «${columnLabel}» 이동 규칙이 없는 그룹을 가리킵니다: ${groupName}`,
+        `기본 탭 «${tab.name}» 의 컬럼 «${column.label}» 이동 규칙이 없는 그룹을 가리킵니다: ${groupName}`,
       );
     }
     rule[optionId] = groupId;
   }
+  if (assigneeMove) {
+    const unassignedGroupId = groupIds[assigneeMove.unassignedGroup];
+    if (!unassignedGroupId) throw new Error(`기본 탭 «${tab.name}» 담당자 미배정 그룹이 없습니다`);
+    rule[assigneeMove.unassignedValue] = unassignedGroupId;
+    for (const assignment of assigneeMove.assignments) {
+      const assignee = assignees[assignment.assigneeSlot];
+      if (!assignee) continue;
+      const target = tab.groups.find((group) => group.assigneeSlot === assignment.groupAssigneeSlot);
+      const targetId = target ? groupIds[target.name] : undefined;
+      if (!targetId) throw new Error(`기본 탭 «${tab.name}» 담당자 그룹 슬롯이 없습니다: ${assignment.groupAssigneeSlot}`);
+      rule[assignee.userId] = targetId;
+    }
+  }
   return rule;
+}
+
+const ASSIGNEE_OWNER_MARKER = "\u2063";
+const ASSIGNEE_OWNER_ZERO = "\u200b";
+const ASSIGNEE_OWNER_ONE = "\u200c";
+
+function withAssigneeOwner(name: string, userId: string): string {
+  const bits = Array.from(new TextEncoder().encode(userId), (byte) =>
+    byte.toString(2).padStart(8, "0").replaceAll("0", ASSIGNEE_OWNER_ZERO).replaceAll("1", ASSIGNEE_OWNER_ONE),
+  ).join("");
+  return `${name}${ASSIGNEE_OWNER_MARKER}${bits}`;
+}
+
+function assigneeOwnerFromGroupName(name: string): string | null {
+  const markerIndex = name.lastIndexOf(ASSIGNEE_OWNER_MARKER);
+  if (markerIndex < 0) return null;
+  const encoded = name.slice(markerIndex + ASSIGNEE_OWNER_MARKER.length);
+  if (!encoded || encoded.length % 8 !== 0) return null;
+  const bits = encoded.replaceAll(ASSIGNEE_OWNER_ZERO, "0").replaceAll(ASSIGNEE_OWNER_ONE, "1");
+  if (!/^[01]+$/.test(bits)) return null;
+  try {
+    return new TextDecoder(undefined, { fatal: true }).decode(
+      new Uint8Array(bits.match(/.{8}/g)!.map((byte) => Number.parseInt(byte, 2))),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function assigneeGroupName(baseName: string, assignee: DefaultTabAssignee): string {
+  const visible = `${baseName.replace(/\s*\d+$/, "")} ${assignee.displayName}`;
+  return withAssigneeOwner(visible, assignee.userId);
+}
+
+function assigneeOptions(
+  column: DefaultTabColumn,
+  assignees: readonly DefaultTabAssignee[],
+) {
+  if (!column.assigneeMove) return column.options ?? null;
+  return assignees.map((assignee, order) => ({
+    id: assignee.userId,
+    label: assignee.displayName,
+    order,
+  }));
+}
+
+async function reconcileAssigneeGroups(
+  ctx: Ctx,
+  store: BoardsRepo,
+  boardId: string,
+  tab: DefaultTab,
+  assignees: readonly DefaultTabAssignee[],
+): Promise<Record<string, string>> {
+  const groups = await store.listGroups(ctx, boardId);
+  const slotDefinitions = tab.groups.filter(
+    (group): group is typeof group & { assigneeSlot: number } => group.assigneeSlot !== undefined,
+  );
+  const groupIds: Record<string, string> = {};
+  for (const definition of tab.groups.filter((group) => group.assigneeSlot === undefined)) {
+    const existing = groups.find((group) => group.name === definition.name);
+    if (existing) groupIds[definition.name] = existing.id;
+  }
+
+  const assigneeDefinition = tab.columns.find((column) => column.assigneeMove);
+  const unassigned = assigneeDefinition?.assigneeMove?.unassignedGroup;
+  const existingAssigneeColumn = assigneeDefinition
+    ? (await store.listColumns(ctx, boardId)).find((column) => column.key === assigneeDefinition.key)
+    : undefined;
+  const priorUnassignedId = assigneeDefinition?.assigneeMove
+    ? existingAssigneeColumn?.move_rule_jsonb?.[assigneeDefinition.assigneeMove.unassignedValue]
+    : undefined;
+  if (unassigned && priorUnassignedId && groups.some((group) => group.id === priorUnassignedId)) {
+    groupIds[unassigned] = priorUnassignedId;
+  }
+  const fallbackId = unassigned ? groupIds[unassigned] : undefined;
+  if (!fallbackId && slotDefinitions.length > 0) {
+    throw new Error(`기본 탭 '${tab.name}'의 미배정 그룹을 찾을 수 없습니다.`);
+  }
+
+  const slotCandidates = groups.filter((group) =>
+    slotDefinitions.some((definition) => {
+      const prefix = definition.name.replace(/\s*\d+$/, "");
+      return assigneeOwnerFromGroupName(group.name) !== null
+        || (group.color?.toLowerCase() === definition.color.toLowerCase() && group.name.startsWith(prefix));
+    }),
+  );
+  const claimed = new Set<string>();
+  const moveItems = async (fromGroupId: string) => {
+    for (const item of await store.listItems(ctx, boardId)) {
+      if (item.group_id === fromGroupId) await store.updateItem(ctx, item.id, { group_id: fallbackId! });
+    }
+  };
+
+  for (const definition of slotDefinitions) {
+    const assignee = assignees[definition.assigneeSlot];
+    let current = slotCandidates.find(
+      (group) => !claimed.has(group.id) && assigneeOwnerFromGroupName(group.name) === assignee?.userId,
+    );
+    current ??= slotCandidates.find(
+      (group) =>
+        !claimed.has(group.id)
+        && group.color?.toLowerCase() === definition.color.toLowerCase()
+        && group.name.startsWith(definition.name.replace(/\s*\d+$/, "")),
+    );
+    if (current) claimed.add(current.id);
+
+    if (!assignee) {
+      if (current) {
+        await moveItems(current.id);
+        await store.deleteGroup(ctx, current.id);
+      }
+      continue;
+    }
+
+    const expectedName = assigneeGroupName(definition.name, assignee);
+    if (!current || current.name !== expectedName) {
+      const replacement = await store.createGroup(ctx, boardId, {
+        name: expectedName,
+        color: definition.color,
+      });
+      if (current) {
+        await moveItems(current.id);
+        await store.deleteGroup(ctx, current.id);
+      }
+      current = replacement;
+    }
+    groupIds[definition.name] = current.id;
+  }
+
+  for (const obsolete of slotCandidates.filter((group) => !claimed.has(group.id))) {
+    if ((await store.listGroups(ctx, boardId)).some((group) => group.id === obsolete.id)) {
+      await moveItems(obsolete.id);
+      await store.deleteGroup(ctx, obsolete.id);
+    }
+  }
+  return groupIds;
 }
 
 /** 워크스페이스 생성 시 1회 호출. 이미 있는 탭은 건너뛴다. */
