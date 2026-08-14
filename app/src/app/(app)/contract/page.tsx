@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
+import { BoardsService } from "@/lib/boards/service";
 import { resolveExistingContactBoard } from "@/lib/contact/entry";
-import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
 
 /**
  * 리드컨택 기본 탭의 제품 진입점(BBE-149).
@@ -14,7 +14,7 @@ export default async function ContactBoardPage({
 }) {
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
-  const result = await resolveExistingContactBoard(ctx, await getBoardsRepo());
+  const result = await resolveExistingContactBoard(ctx, new BoardsService());
   if (result.kind !== "ready") {
     const conflict = result.kind === "conflict";
     return (
