@@ -1,21 +1,32 @@
-import { getSession } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
-import { WorkManagementSource, WorkManagementUnavailableError } from "@/lib/repo/supabase/workManagementSource";
-import { NotificationWorkBoard } from "@/components/work-management/NotificationWorkBoard";
-import styles from "@/components/work-management/work-management.module.css";
+import { redirect } from "next/navigation";
+import { applyAs, getSession } from "@/lib/auth/session";
+import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { resolveExistingContractWorkBoard } from "@/lib/work/entry";
 
-export default async function WorkBoardPage({ searchParams }: { searchParams: Promise<{ notification?: string }> }) {
-  const ctx = await getSession();
-  let result:
-    | { kind: "ready"; snapshot: Awaited<ReturnType<WorkManagementSource["load"]>> }
-    | { kind: "blocked"; message: string };
-  try {
-    const snapshot = await new WorkManagementSource(await createClient()).load(ctx.org.id);
-    result = { kind: "ready", snapshot };
-  } catch (error) {
-    const message = error instanceof WorkManagementUnavailableError ? error.message : "업무관리 화면을 불러오지 못했습니다.";
-    result = { kind: "blocked", message };
+/** Product entry for the installed contract-work default board (BBE-150). */
+export default async function ContractWorkBoardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ as?: string }>;
+}) {
+  const sp = await searchParams;
+  const ctx = applyAs(await getSession(), sp.as);
+  const result = await resolveExistingContractWorkBoard(ctx, await getBoardsRepo());
+  if (result.kind !== "ready") {
+    const conflict = result.kind === "conflict";
+    return (
+      <section className="rounded-xl border border-mw-line bg-mw-card p-5" aria-labelledby="work-entry-title">
+        <h1 id="work-entry-title" className="text-lg font-semibold text-mw-fg">
+          {conflict ? "계약업체 실무 보드를 하나로 확인하지 못했습니다" : "계약업체 실무 보드를 찾을 수 없습니다"}
+        </h1>
+        <p className="mt-2 text-sm text-mw-sub">
+          {conflict
+            ? "회사 관리자에게 보드 구성을 확인해 달라고 요청해 주세요."
+            : "회사 관리자에게 문의해 주세요. 새 워크스페이스에는 이 보드가 자동으로 들어 있습니다."}
+        </p>
+      </section>
+    );
   }
-  if (result.kind === "ready") return <NotificationWorkBoard snapshot={result.snapshot} highlightedItemId={(await searchParams).notification ?? null} />;
-  return <section className={styles.blocked} role="status"><span aria-hidden>🔥</span><h1>업무관리</h1><p>{result.message}</p><p className={styles.muted}>로컬 데이터로 대체하지 않았습니다. BBE-29 데이터 계약 활성화 후 다시 시도해 주세요.</p></section>;
+  const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
+  redirect(`/boards/${encodeURIComponent(result.boardId)}${query}`);
 }
