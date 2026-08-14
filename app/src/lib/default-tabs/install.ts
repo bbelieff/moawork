@@ -25,11 +25,12 @@ import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { CONTACT_TAB } from "./contact";
 import { CONTRACT_WORK_TAB } from "./contract-work";
 import { NEW_LEAD_TAB } from "./new-lead";
+import { NOTICE_TAB } from "./notice";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import type { DefaultTab, DefaultTabAssignee, DefaultTabColumn } from "./types";
 
 /** 제품이 새 워크스페이스에 주는 기본 탭. 지금은 신규리드 하나 — 나머지 5탭은 복제 작업이다. */
-export const DEFAULT_TABS: DefaultTab[] = [NEW_LEAD_TAB, CONTACT_TAB, CONTRACT_WORK_TAB];
+export const DEFAULT_TABS: DefaultTab[] = [NEW_LEAD_TAB, CONTACT_TAB, CONTRACT_WORK_TAB, NOTICE_TAB];
 
 export interface EnsuredTab {
   tabKey: string;
