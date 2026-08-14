@@ -153,7 +153,12 @@ test("BBE-153 recalculates on source writes, rejects manual calc writes, records
     );
     await db.exec(`reset role`);
 
-    const beforeDaily = await db.query(`select calculated_at from public.item_values where item_id=$1 and column_key='dday'`, [ITEM]);
+    // Source-write triggers intentionally use the database's current KST date.
+    // Re-anchor this separate daily-rollover assertion so it stays deterministic
+    // when the suite runs after the fixed fixture dates below.
+    await db.query(`select public.bbe153_calculate_item($1, '2026-08-13', true)`, [ITEM]);
+    const beforeDaily = await db.query(`select calculated_at,stale_after from public.item_values where item_id=$1 and column_key='dday'`, [ITEM]);
+    assert.equal(beforeDaily.rows[0].stale_after.toISOString(), "2026-08-13T15:00:00.000Z");
     const daily = await db.query(`select public.bbe153_recalculate_daily('2026-08-14') as count`);
     assert.equal(Number(daily.rows[0].count), 1);
     const afterDaily = await db.query(`select value_jsonb,calculated_at from public.item_values where item_id=$1 and column_key='dday'`, [ITEM]);
