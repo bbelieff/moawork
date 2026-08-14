@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
-import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 import { resolveExistingContractWorkBoard } from "@/lib/work/entry";
 import { createClient } from "@/lib/supabase/server";
 import { WorkManagementSource, WorkManagementUnavailableError } from "@/lib/repo/supabase/workManagementSource";
@@ -15,7 +15,11 @@ export default async function ContractWorkBoardPage({
 }) {
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
-  const result = await resolveExistingContractWorkBoard(ctx, await getBoardsRepo());
+  // The cookie-bound client is request scoped and shared by both the product
+  // board lookup and the legacy BBE-29 fallback. Production must never cross
+  // the environment-sensitive LocalBoardsRepo factory boundary here.
+  const client = await createClient();
+  const result = await resolveExistingContractWorkBoard(ctx, new SupabaseBoardsRepo(client));
   if (result.kind === "conflict") {
     return (
       <section className="rounded-xl border border-mw-line bg-mw-card p-5" aria-labelledby="work-entry-title">
@@ -39,7 +43,7 @@ export default async function ContractWorkBoardPage({
     | { kind: "ready"; snapshot: Awaited<ReturnType<WorkManagementSource["load"]>> }
     | { kind: "blocked"; message: string };
   try {
-    const snapshot = await new WorkManagementSource(await createClient()).load(ctx.org.id);
+    const snapshot = await new WorkManagementSource(client).load(ctx.org.id);
     legacy = { kind: "ready", snapshot };
   } catch (error) {
     const message = error instanceof WorkManagementUnavailableError
