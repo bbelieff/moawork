@@ -174,18 +174,17 @@ const LANE_ROLES={
  "DG-07":"대시보드 Supabase read model"
 };
 const FLOWS=[
- {type:"P0 직렬",title:"대시보드 수치 신뢰",ids:["BBE-160","BBE-161"],note:"BBE-160의 production LocalRepo 잔존이 0이 된 뒤 BBE-161 가드가 초록이어야 한다."},
+ {type:"P0 직렬",title:"대시보드 수치 신뢰",ids:["BBE-160","BBE-161"],note:"BBE-160의 request-scoped read model과 production strict 0은 완료됐다. BBE-161은 최신 main에서 repo-wide baseline ratchet을 닫는다."},
  {type:"P1 직렬",title:"회사 마스터 연결",ids:["BBE-125","BBE-157"],note:"회사 정본화가 끝나면 업체관리 소비 화면을 연결한다."},
  {type:"P1 해제됨",title:"자동계산 → 실무 탭",ids:["BBE-153","BBE-150"],note:"계산 엔진 완주를 소비해 계약업체 실무 탭을 닫는다."},
  {type:"후속 묶음",title:"리드컨택 다음 화면",ids:["BBE-149","BBE-152","BBE-151","BBE-158"],note:"BBE-149 완주 뒤 관문·공지·프리셋을 별도 카드로 진행한다."}
 ];
 const HANDOFF_NOTES=[
- {issue:"BBE-160",title:"코드·배포 완료 · 사용자 실화면 관문",body:"PR #188 · merge ce5ab1f9 · Production READY · DG-01 exact PASS · CI PASS. 남은 것은 사용자 OAuth 계정 선택, 로그인 후 실제 회사·딜·정산의 1440/375 증거, custom public URL health 확인이다."},
- {issue:"BBE-161",title:"새 P0 관문 재개",body:"DG-06은 ce5ab1f9를 소비한다. strict allowlist는 금지하고 production LocalRepo 잔존 0 → AST guard green → baseline ratchet 순서로 닫는다."},
+ {issue:"BBE-160",title:"대시보드 DB read model 완주",body:"PR #188 · merge ce5ab1f9 · Production READY · /login 200 · DG-01 exact PASS · 로그인 1440×900/375×812 실측 · 실제 회사·딜·정산·공지 수치 및 console 0 확인. production strict getRepo/LocalRepo 0."},
+ {issue:"BBE-161",title:"repo-wide 가드 재개",body:"BBE-160 strict 0과 BBE-149 후속 PR #189 merge e593d7ee를 소비한다. 최신 main rebase → AST guard green → baseline ratchet → PR/CI/검수/배포 순서로 닫는다."},
  {issue:null,title:"별도 P1 유지",body:"최신 main 실측 qa-app DIFF는 75개(직전 기준 104개)다. BBE-149 반영 뒤 줄었지만 대시보드 DB 연결과 다른 문제이므로 BBE-160 또는 BBE-161 완료 수치에 합산하지 않는다."}
 ];
 const SPECIAL_ACTIONS={
- "BBE-160":"production getRepo()/LocalRepo 0 · 동일 요청 Supabase 세션 · Boards/Notices/정산 조합 · 영역별 오류 · DB 종단·1440 화면을 닫는다.",
  "BBE-161":"BBE-160 strict 잔존 0 확인 → AST 가드 green → baseline ratchet → PR/CI/검수/배포.",
  "BBE-125":"BBE-16 머지 뒤 migration 최신+1 재확정 → 전체 gate → PR/검수/배포 → BBE-157 해제.",
  "BBE-150":"BBE-153 계산 엔진을 소비해 11그룹 업무 탭을 구현하고 실제 화면까지 완주.",
@@ -257,7 +256,6 @@ function buildDecisions(){
  const decisions=[];
  const urgent=state.open.filter((issue)=>issue.priority?.name==="Urgent");
  if(urgent.length)decisions.push({tone:"critical",kind:"P0 / URGENT",title:"긴급 카드 "+urgent.length+"건",body:urgent.map((i)=>i.id+" "+i.title).join(" · "),count:urgent.length});
- if(state.by["BBE-160"]?.status==="Done")decisions.push({tone:"info",kind:"USER CHECK",title:"Production 대시보드 실화면 확인",body:"OAuth 계정 3개 중 사용할 계정 선택 · 실제 회사/딜/정산 1440·375 증거 · custom public URL health 확인",count:1});
  const blocked=state.open.filter(blockerOf);
  if(blocked.length)decisions.push({tone:"critical",kind:"DEPENDENCY",title:"선행 해제 필요 "+blocked.length+"건",body:blocked.map((i)=>i.id+" "+blockerOf(i)).join(" · "),count:blocked.length});
  const review=state.open.filter((issue)=>issue.status==="In Review");
