@@ -95,6 +95,7 @@ grant select on table public.company_duplicate_reviews to authenticated;
 create table if not exists public.company_handoff_requests (
   org_id uuid not null references public.orgs(id) on delete cascade,
   request_id uuid not null,
+  actor_id uuid not null,
   deal_id uuid not null references public.deals(id) on delete cascade,
   company_id uuid not null references public.companies(id) on delete restrict,
   mode text not null check (mode in ('created', 'existing', 'created_needs_review')),
@@ -162,9 +163,14 @@ begin
 
   if p_request_id is not null then
     perform pg_advisory_xact_lock(hashtextextended(p_org_id::text || ':' || p_request_id::text, 0));
-    select * into v_prior
+    select r.* into v_prior
       from public.company_handoff_requests r
-     where r.org_id = p_org_id and r.request_id = p_request_id;
+      join public.deals d on d.id = r.deal_id and d.org_id = r.org_id
+      join public.companies c on c.id = r.company_id and c.org_id = r.org_id
+     where r.org_id = p_org_id
+       and r.request_id = p_request_id
+       and r.actor_id = v_actor
+       and (v_role in ('owner', 'admin') or v_scope = 'all' or (d.assigned_to = v_actor and c.assigned_to = v_actor));
     if found then
       return query select v_prior.deal_id, v_prior.company_id, v_prior.mode, v_prior.duplicate_candidate_ids;
       return;
@@ -202,8 +208,8 @@ begin
     end if;
     update public.deals set company_id = v_company_id where id = v_deal_id and org_id = p_org_id;
     if p_request_id is not null then
-      insert into public.company_handoff_requests(org_id, request_id, deal_id, company_id, mode, duplicate_candidate_ids)
-      values (p_org_id, p_request_id, v_deal_id, v_company_id, 'existing', v_candidates);
+      insert into public.company_handoff_requests(org_id, request_id, actor_id, deal_id, company_id, mode, duplicate_candidate_ids)
+      values (p_org_id, p_request_id, v_actor, v_deal_id, v_company_id, 'existing', v_candidates);
     end if;
     return query select v_deal_id, v_company_id, 'existing'::text, v_candidates;
     return;
@@ -234,8 +240,8 @@ begin
   if v_company_id is not null then
     update public.deals set company_id = v_company_id where id = v_deal_id and org_id = p_org_id;
     if p_request_id is not null then
-      insert into public.company_handoff_requests(org_id, request_id, deal_id, company_id, mode, duplicate_candidate_ids)
-      values (p_org_id, p_request_id, v_deal_id, v_company_id, 'existing', v_candidates);
+      insert into public.company_handoff_requests(org_id, request_id, actor_id, deal_id, company_id, mode, duplicate_candidate_ids)
+      values (p_org_id, p_request_id, v_actor, v_deal_id, v_company_id, 'existing', v_candidates);
     end if;
     return query select v_deal_id, v_company_id, 'existing'::text, v_candidates;
     return;
@@ -286,8 +292,8 @@ begin
     if v_company_id is null then raise; end if;
     update public.deals set company_id = v_company_id where id = v_deal_id and org_id = p_org_id;
     if p_request_id is not null then
-      insert into public.company_handoff_requests(org_id, request_id, deal_id, company_id, mode, duplicate_candidate_ids)
-      values (p_org_id, p_request_id, v_deal_id, v_company_id, 'existing', '{}'::uuid[]);
+      insert into public.company_handoff_requests(org_id, request_id, actor_id, deal_id, company_id, mode, duplicate_candidate_ids)
+      values (p_org_id, p_request_id, v_actor, v_deal_id, v_company_id, 'existing', '{}'::uuid[]);
     end if;
     return query select v_deal_id, v_company_id, 'existing'::text, '{}'::uuid[];
     return;
@@ -300,9 +306,9 @@ begin
 
   update public.deals set company_id = v_company_id where id = v_deal_id and org_id = p_org_id;
   if p_request_id is not null then
-    insert into public.company_handoff_requests(org_id, request_id, deal_id, company_id, mode, duplicate_candidate_ids)
+    insert into public.company_handoff_requests(org_id, request_id, actor_id, deal_id, company_id, mode, duplicate_candidate_ids)
     values (
-      p_org_id, p_request_id, v_deal_id, v_company_id,
+      p_org_id, p_request_id, v_actor, v_deal_id, v_company_id,
       case when cardinality(v_candidates) > 0 then 'created_needs_review' else 'created' end,
       v_candidates
     );

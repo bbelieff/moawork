@@ -185,6 +185,14 @@ test("BBE-125 fresh handoff atomically creates one deal and can select an access
     assert.equal(Number((await db.query(`select count(*) from public.deals`)).rows[0].count), 1);
     assert.equal(Number((await db.query(`select count(*) from public.companies`)).rows[0].count), 1);
 
+    await db.query(`insert into public.org_members(org_id,user_id,role,scope,status) values($1,$2,'member','assigned','active')`, [ORG_A, OTHER_USER]);
+    await db.query(`select set_config('request.jwt.claim.sub',$1,false)`, [OTHER_USER]);
+    await assert.rejects(
+      handoff(db, null, { name: "Replay Thief", requestId }),
+      /company_handoff_requests_pkey|duplicate key/,
+    );
+    await db.query(`select set_config('request.jwt.claim.sub',$1,false)`, [USER]);
+
     const nextDeal = "00000000-0000-4000-8000-000000000204";
     await db.query(`insert into public.deals(id,org_id,assigned_to,title) values($1,$2,$3,'Next')`, [nextDeal, ORG_A, USER]);
     const selected = await handoff(db, nextDeal, { name: "Ignored", companyId: fresh.rows[0].company_id });
