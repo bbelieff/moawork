@@ -11,9 +11,17 @@
 
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
-import { getCrmService } from "@/lib/crm";
+import { getCrmService, ValidationError } from "@/lib/crm";
 import { attachFile, removeFile } from "@/lib/services/files";
 import { getRepo } from "@/lib/repo";
+import { addComment, editComment, type CommentKind } from "@/lib/deal/comments";
+import { attachDealFile, removeDealFile, type NewDealFileInput } from "@/lib/deal/files";
+import { listOrgMemberOptions } from "@/lib/deal/members";
+import {
+  notifyFollowupRequested,
+  notifyMentions,
+  type FollowupNotificationOutcome,
+} from "@/lib/deal/notify";
 
 function str(fd: FormData, key: string): string {
   const v = fd.get(key);
@@ -109,4 +117,86 @@ export async function readDealCustomKey(
   const ctx = await getSession();
   const deal = getRepo().getDeal(ctx, dealId);
   return (deal?.custom ?? {}) as Record<string, unknown>;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// BBE-16 · 딜 상세 협업(타임라인·댓글·파일) — 비동기 경로(프로덕션 영속).
+// 위 uploadFileAction/removeFileAction(동기, 로컬 전용)과는 별개다 — 대체가 아니라
+// 새 화면(components/deal/detail/**)이 쓰는 새 경로. 기존 액션은 그대로 둔다.
+// ─────────────────────────────────────────────────────────────────
+
+/** 댓글 작성. mentionedIds 가 있으면 저장 후 해당 멤버에게 알림을 보낸다. */
+export async function addCommentAction(
+  dealId: string,
+  input: { body: string; mentionedIds?: string[]; kind?: CommentKind },
+): Promise<void> {
+  const ctx = await getSession();
+  const members = await listOrgMemberOptions(ctx);
+  const allowedIds = new Set(members.map((member) => member.id));
+  const mentionedIds = [...new Set(input.mentionedIds ?? [])].filter((id) => allowedIds.has(id));
+  await addComment(ctx, dealId, { ...input, mentionedIds });
+  if (mentionedIds.length) await notifyMentions(ctx, dealId, mentionedIds);
+  revalidatePath(`/deals/${dealId}`);
+}
+
+/** 댓글 수정. expectedVersion 불일치 시 ConcurrentEditError 가 그대로 던져진다. */
+export async function editCommentAction(
+  dealId: string,
+  commentId: string,
+  input: { body: string; expectedVersion: number },
+): Promise<void> {
+  const ctx = await getSession();
+  await editComment(ctx, dealId, commentId, input);
+  revalidatePath(`/deals/${dealId}`);
+}
+
+/**
+ * 되돌려보내기(보완요청). 사유를 "보완요청" 종류 댓글로 남기고, 현재 담당자에게
+ * `requested` 알림을 보낸다. 사유는 필수(빈 문자열이면 addComment 가 거부한다).
+ */
+export async function requestFollowupAction(
+  dealId: string,
+  reason: string,
+): Promise<FollowupNotificationOutcome> {
+  const ctx = await getSession();
+  await addComment(ctx, dealId, { body: reason, kind: "return_request" });
+  const outcome = await notifyFollowupRequested(ctx, dealId);
+  revalidatePath(`/deals/${dealId}`);
+  return outcome;
+}
+
+/**
+ * 담당자 재배정. 이름 표시는 이 액션이 조직 멤버 목록으로 직접 해석한다
+ * (클라이언트가 준 이름 문자열을 신뢰하지 않는다 — 활동로그 위조 방지).
+ */
+export async function reassignDealAction(
+  dealId: string,
+  newAssignedTo: string | null,
+): Promise<void> {
+  const ctx = await getSession();
+  const before = await getCrmService().getDeal(ctx, dealId);
+  const members = await listOrgMemberOptions(ctx);
+  if (newAssignedTo && !members.some((member) => member.id === newAssignedTo)) {
+    throw new ValidationError("같은 회사의 멤버만 담당자로 지정할 수 있습니다.");
+  }
+  const nameOf = (id: string | null) => (id ? (members.find((m) => m.id === id)?.name ?? null) : null);
+
+  await getCrmService().reassignDeal(ctx, dealId, newAssignedTo, {
+    fromName: nameOf(before.assigned_to),
+    toName: nameOf(newAssignedTo),
+  });
+  revalidatePath(`/deals/${dealId}`);
+}
+
+/** 첨부 업로드 — 비동기 경로(프로덕션에서도 영속). 서명 URL 로만 다운로드한다. */
+export async function attachDealFileAction(dealId: string, input: NewDealFileInput): Promise<void> {
+  const ctx = await getSession();
+  await attachDealFile(ctx, dealId, input);
+  revalidatePath(`/deals/${dealId}`);
+}
+
+export async function removeDealFileAction(dealId: string, fileId: string): Promise<void> {
+  const ctx = await getSession();
+  await removeDealFile(ctx, dealId, fileId);
+  revalidatePath(`/deals/${dealId}`);
 }

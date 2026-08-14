@@ -116,8 +116,8 @@ describe("★ 딥링크 — 2클릭 내 도달", () => {
     expect(deepLink("member_approval", "req1")).toBe("/settings/members/approvals");
   });
 
-  it("딜·정산은 정책자금 보드로 보낸다(보드 id 라우트로 오인 금지)", () => {
-    expect(deepLink("deal", "d1")).toBe("/policyfund?focus=d1");
+  it("딜은 상세 화면으로, 정산은 정책자금 보드로 보낸다", () => {
+    expect(deepLink("deal", "d1")).toBe("/deals/d1");
     expect(deepLink("settlement", "s1")).toBe("/policyfund?focus=s1");
   });
 

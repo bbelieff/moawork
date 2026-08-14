@@ -13,7 +13,7 @@
 import type { Activity, Company, Ctx, Deal, Pipeline, Stage } from "@/lib/types";
 import type { CompanyPatch, DealPatch, NewCompany, NewDeal } from "@/lib/repo";
 import { getCrmSource, type CrmSource } from "@/lib/repo/supabase";
-import { ACTIVITY_TYPES, stageMoveContent } from "./activity";
+import { ACTIVITY_TYPES, assignmentChangeContent, stageMoveContent } from "./activity";
 import { NotFoundError } from "./service";
 import { ValidationError } from "./validation";
 
@@ -135,6 +135,33 @@ export class AsyncCrmService {
 
     const updated = await this.source.moveDeal(ctx, id, toStageId);
     if (!updated) throw new NotFoundError("딜을 찾을 수 없습니다");
+    return updated;
+  }
+
+  /**
+   * 담당자 재배정 + 활동로그 (BBE-16). `moveDealStage` 와 같은 이유로 서비스 메서드로
+   * 둔다 — 배정 변경에 로그가 없는 경로가 생기지 않게 하기 위함. 이름 표시는
+   * 호출부(names 맵)가 넘겨준다(서비스는 조회 책임을 늘리지 않는다).
+   *
+   * 권한과 원자성은 소스의 단일 `reassignDealWithActivity` 포트가 방어한다.
+   */
+  async reassignDeal(
+    ctx: Ctx,
+    id: string,
+    newAssignedTo: string | null,
+    names: { fromName: string | null; toName: string | null },
+  ): Promise<Deal> {
+    await this.getDeal(ctx, id); // 가시성/존재 확인
+
+    const updated = await this.source.reassignDealWithActivity(
+      ctx,
+      id,
+      newAssignedTo,
+      assignmentChangeContent(names.fromName, names.toName),
+    );
+    if (!updated) throw new NotFoundError("딜을 찾을 수 없습니다");
+    // 변경+로그는 source 의 단일 원자 포트가 닫는다. 서비스가 별도 INSERT 를 하면
+    // 로그 실패 뒤 담당자만 바뀐 채 남는 부분 성공이 다시 생긴다.
     return updated;
   }
 

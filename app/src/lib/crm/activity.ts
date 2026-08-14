@@ -10,6 +10,7 @@ export const ACTIVITY_TYPES = {
   call: "call",
   meeting: "meeting",
   memo: "memo",
+  assignment: "assignment", // 담당자 변경 (BBE-16)
 } as const;
 
 export type ActivityType = (typeof ACTIVITY_TYPES)[keyof typeof ACTIVITY_TYPES];
@@ -20,4 +21,17 @@ export function stageMoveContent(
   toStageName: string,
 ): string {
   return fromStageName ? `${fromStageName} → ${toStageName}` : `→ ${toStageName}`;
+}
+
+/**
+ * 담당자 변경 로그 문구 (BBE-16).
+ * 이름을 알 수 없으면(조회 실패 등) "미지정"으로 수렴 — 개인정보(이메일 등)는 넣지 않는다.
+ */
+export function assignmentChangeContent(
+  fromName: string | null,
+  toName: string | null,
+): string {
+  const from = fromName ?? "미배정";
+  const to = toName ?? "미배정";
+  return `담당자: ${from} → ${to}`;
 }

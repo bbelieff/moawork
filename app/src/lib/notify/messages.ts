@@ -85,10 +85,9 @@ export function feedLine(
  * 딥링크 — 항목 클릭 시 대상 화면으로 바로 이동(벨 1클릭 + 항목 1클릭 = 2클릭).
  *
  * 실제 존재하는 라우트로만 보낸다(확인: /settings/members/approvals · /settings/members ·
- * /policyfund · /notices · /boards). 승인 화면은 이미 있으므로 그대로 쓴다.
+ * /deals/[dealId] · /policyfund · /notices · /boards). 승인 화면은 이미 있으므로 그대로 쓴다.
  * ⚠ /boards/[id] 의 [id] 는 **보드 id** 이지 딜 id 가 아니다 — 딜을 그리로 보내면 404 다.
- * 딜·정산은 정책자금 보드(업무관리)에서 렌더되므로 /policyfund 로 보낸다.
- * ?focus=<id> 는 상세 뷰가 생기면 쓸 힌트이며, 지금은 무시돼 무해하다.
+ * 딜은 실제 상세 화면으로, 정산은 정책자금 보드로 보낸다.
  */
 export function deepLink(targetType: string | null, targetId: string | null): string | null {
   if (!targetType) return null;
@@ -99,6 +98,7 @@ export function deepLink(targetType: string | null, targetId: string | null): st
     case "member":
       return "/settings/members";
     case "deal":
+      return targetId ? `/deals/${encodeURIComponent(targetId)}` : "/policyfund";
     case "settlement":
       return `/policyfund${focus}`;
     case "work_item":

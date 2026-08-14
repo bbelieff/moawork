@@ -8,6 +8,7 @@ import {
   type NewDeal,
 } from "@/lib/repo";
 import type { CrmSource } from "./source";
+import { canSeeAll } from "./source";
 
 /**
  * 공용 동기 `Repo`(인메모리) 를 비동기 포트에 맞춰 감싼 폴백 소스 (T02 · B2).
@@ -68,6 +69,36 @@ export class LocalCrmSource implements CrmSource {
     patch: DealPatch,
   ): Promise<Deal | undefined> {
     return this.repo.updateDeal(ctx, id, patch);
+  }
+  async reassignDealWithActivity(
+    ctx: Ctx,
+    id: string,
+    assignedTo: string | null,
+    activityContent: string,
+  ): Promise<Deal | undefined> {
+    const current = this.repo.getDeal(ctx, id);
+    if (!current || !canSeeAll(ctx) || current.assigned_to === assignedTo) return current;
+
+    // 로컬 저장소는 프로세스 메모리라 실패 지점이 없지만, 원격 RPC와 같은 단일 포트로
+    // 노출해 서비스가 update→log 두 단계 쓰기를 다시 만들지 못하게 한다.
+    const previousAssignedTo = current.assigned_to;
+    const previousUpdatedAt = current.updated_at;
+    const updated = this.repo.updateDeal(ctx, id, { assigned_to: assignedTo });
+    if (!updated) return undefined;
+    try {
+      this.repo.createActivity(ctx, {
+        deal_id: id,
+        type: "assignment",
+        content: activityContent,
+      });
+    } catch (error) {
+      // 메모리 어댑터도 포트의 원자성 계약을 지킨다. 활동 기록 실패를 주입한 테스트나
+      // 향후 로컬 저장 구현에서도 담당자만 바뀐 부분 성공을 남기지 않는다.
+      this.repo.updateDeal(ctx, id, { assigned_to: previousAssignedTo });
+      current.updated_at = previousUpdatedAt;
+      throw error;
+    }
+    return updated;
   }
   async moveDeal(
     ctx: Ctx,
