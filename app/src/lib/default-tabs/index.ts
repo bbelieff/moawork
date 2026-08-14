@@ -6,6 +6,7 @@
 export * from "./types";
 export { NEW_LEAD_TAB, NEW_LEAD_GROUPS, SEND_PENDING_REASON } from "./new-lead";
 export { CONTACT_TAB, CONTACT_GROUPS } from "./contact";
+export { CONTRACT_WORK_TAB, CONTRACT_WORK_TAB_SOURCE } from "./contract-work";
 export { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE } from "./types";
 export { DEFAULT_TABS, ensureDefaultTab, ensureDefaultTabs } from "./install";
 export type { EnsuredTab } from "./install";

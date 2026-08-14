@@ -1,21 +1,59 @@
-import { getSession } from "@/lib/auth/session";
+import { redirect } from "next/navigation";
+import { applyAs, getSession } from "@/lib/auth/session";
+import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { resolveExistingContractWorkBoard } from "@/lib/work/entry";
 import { createClient } from "@/lib/supabase/server";
 import { WorkManagementSource, WorkManagementUnavailableError } from "@/lib/repo/supabase/workManagementSource";
 import { NotificationWorkBoard } from "@/components/work-management/NotificationWorkBoard";
 import styles from "@/components/work-management/work-management.module.css";
 
-export default async function WorkBoardPage({ searchParams }: { searchParams: Promise<{ notification?: string }> }) {
-  const ctx = await getSession();
-  let result:
+/** Product entry for the installed contract-work default board (BBE-150). */
+export default async function ContractWorkBoardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ as?: string; notification?: string }>;
+}) {
+  const sp = await searchParams;
+  const ctx = applyAs(await getSession(), sp.as);
+  const result = await resolveExistingContractWorkBoard(ctx, await getBoardsRepo());
+  if (result.kind === "conflict") {
+    return (
+      <section className="rounded-xl border border-mw-line bg-mw-card p-5" aria-labelledby="work-entry-title">
+        <h1 id="work-entry-title" className="text-lg font-semibold text-mw-fg">
+          계약업체 실무 보드를 하나로 확인하지 못했습니다
+        </h1>
+        <p className="mt-2 text-sm text-mw-sub">
+          회사 관리자에게 보드 구성을 확인해 달라고 요청해 주세요.
+        </p>
+      </section>
+    );
+  }
+  if (result.kind === "ready") {
+    const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
+    redirect(`/boards/${encodeURIComponent(result.boardId)}${query}`);
+  }
+
+  // Existing organizations predate BBE-150. Preserve their BBE-29 screen until
+  // a separate reconciliation installs the product-owned default board.
+  let legacy:
     | { kind: "ready"; snapshot: Awaited<ReturnType<WorkManagementSource["load"]>> }
     | { kind: "blocked"; message: string };
   try {
     const snapshot = await new WorkManagementSource(await createClient()).load(ctx.org.id);
-    result = { kind: "ready", snapshot };
+    legacy = { kind: "ready", snapshot };
   } catch (error) {
-    const message = error instanceof WorkManagementUnavailableError ? error.message : "업무관리 화면을 불러오지 못했습니다.";
-    result = { kind: "blocked", message };
+    const message = error instanceof WorkManagementUnavailableError
+      ? error.message
+      : "업무관리 화면을 불러오지 못했습니다.";
+    legacy = { kind: "blocked", message };
   }
-  if (result.kind === "ready") return <NotificationWorkBoard snapshot={result.snapshot} highlightedItemId={(await searchParams).notification ?? null} />;
-  return <section className={styles.blocked} role="status"><span aria-hidden>🔥</span><h1>업무관리</h1><p>{result.message}</p><p className={styles.muted}>로컬 데이터로 대체하지 않았습니다. BBE-29 데이터 계약 활성화 후 다시 시도해 주세요.</p></section>;
+  if (legacy.kind === "ready") {
+    return <NotificationWorkBoard snapshot={legacy.snapshot} highlightedItemId={sp.notification ?? null} />;
+  }
+  return (
+    <section className={styles.blocked} role="status">
+      <span aria-hidden>🔥</span><h1>업무관리</h1><p>{legacy.message}</p>
+      <p className={styles.muted}>로컬 데이터로 대체하지 않았습니다. BBE-29 데이터 계약 활성화 후 다시 시도해 주세요.</p>
+    </section>
+  );
 }
