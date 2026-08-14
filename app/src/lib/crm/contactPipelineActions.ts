@@ -54,12 +54,6 @@ export async function mutateContactPipeline(
       }
       return null;
     };
-    const pipeline = (await service.listPipelines(ctx))
-      .find((candidate) => candidate.id === deal.pipeline_id);
-    const workStages = pipeline?.stages.filter((stage) => stage.kind === "work") ?? [];
-    if (workStages.length !== 1) {
-      return { ok: false, message: "업무관리 단계를 하나로 확인할 수 없습니다." };
-    }
     const result = await handoffCompanyWithSupabase(
       await createClient() as unknown as CompanyHandoffRpcClient,
       ctx.org.id,
@@ -80,8 +74,6 @@ export async function mutateContactPipeline(
           : String(selected.revenue),
       },
     );
-    await service.moveDealStage(ctx, dealId, workStages[0].id);
-
     return {
       ok: true,
       message: result.mode === "created_needs_review"

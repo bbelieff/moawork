@@ -9,7 +9,6 @@ import {
 } from "@/lib/crm/contactPipelineActions";
 import {
   CONTACT_MOVE_LABEL,
-  WORK_MOVE_LABEL,
   type ContactTransitionKind,
 } from "@/lib/crm/contactPipeline";
 
@@ -34,7 +33,7 @@ export function ContactPipelineAction({
   const [companies, setCompanies] = useState<CompanyCandidate[]>([]);
   const [query, setQuery] = useState("");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
-  const label = kind === "lead_to_contact" ? CONTACT_MOVE_LABEL : WORK_MOVE_LABEL;
+  const label = kind === "lead_to_contact" ? CONTACT_MOVE_LABEL : "업체 연결";
 
   useEffect(() => {
     if (kind !== "contact_to_work") return;
