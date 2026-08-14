@@ -17,7 +17,11 @@ import { getRepo } from "@/lib/repo";
 import { addComment, editComment, type CommentKind } from "@/lib/deal/comments";
 import { attachDealFile, removeDealFile, type NewDealFileInput } from "@/lib/deal/files";
 import { listOrgMemberOptions } from "@/lib/deal/members";
-import { notifyFollowupRequested, notifyMentions } from "@/lib/deal/notify";
+import {
+  notifyFollowupRequested,
+  notifyMentions,
+  type FollowupNotificationOutcome,
+} from "@/lib/deal/notify";
 
 function str(fd: FormData, key: string): string {
   const v = fd.get(key);
@@ -150,11 +154,15 @@ export async function editCommentAction(
  * 되돌려보내기(보완요청). 사유를 "보완요청" 종류 댓글로 남기고, 현재 담당자에게
  * `requested` 알림을 보낸다. 사유는 필수(빈 문자열이면 addComment 가 거부한다).
  */
-export async function requestFollowupAction(dealId: string, reason: string): Promise<void> {
+export async function requestFollowupAction(
+  dealId: string,
+  reason: string,
+): Promise<FollowupNotificationOutcome> {
   const ctx = await getSession();
   await addComment(ctx, dealId, { body: reason, kind: "return_request" });
-  await notifyFollowupRequested(ctx, dealId);
+  const outcome = await notifyFollowupRequested(ctx, dealId);
   revalidatePath(`/deals/${dealId}`);
+  return outcome;
 }
 
 /**

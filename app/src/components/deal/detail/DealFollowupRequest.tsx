@@ -10,6 +10,18 @@
 
 import { useState, useTransition } from "react";
 import { requestFollowupAction } from "@/app/(app)/deals/[dealId]/actions";
+import type { FollowupNotificationOutcome } from "@/lib/deal/notify";
+
+export function followupUiResult(outcome: FollowupNotificationOutcome): {
+  close: boolean;
+  clearReason: boolean;
+  sent: boolean;
+  error: string | null;
+} {
+  return outcome.status === "sent"
+    ? { close: true, clearReason: true, sent: true, error: null }
+    : { close: false, clearReason: false, sent: false, error: outcome.message };
+}
 
 export function DealFollowupRequest({ dealId }: { dealId: string }) {
   const [open, setOpen] = useState(false);
@@ -22,10 +34,11 @@ export function DealFollowupRequest({ dealId }: { dealId: string }) {
     setError(null);
     startTransition(async () => {
       try {
-        await requestFollowupAction(dealId, reason);
-        setReason("");
-        setOpen(false);
-        setSent(true);
+        const result = followupUiResult(await requestFollowupAction(dealId, reason));
+        if (result.clearReason) setReason("");
+        if (result.close) setOpen(false);
+        setSent(result.sent);
+        setError(result.error);
       } catch (e) {
         setError(e instanceof Error ? e.message : "보완요청을 보내지 못했습니다.");
       }

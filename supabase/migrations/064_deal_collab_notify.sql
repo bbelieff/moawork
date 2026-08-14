@@ -109,7 +109,7 @@ grant execute on function public.mention_org_members(uuid, uuid, uuid[]) to auth
 create or replace function public.request_deal_followup(
   p_org_id uuid,
   p_deal_id uuid
-) returns void
+) returns text
   language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   v_assignee uuid;
@@ -120,9 +120,15 @@ begin
 
   select assigned_to into v_assignee
     from deals where id = p_deal_id and org_id = p_org_id;
+  if not found then
+    raise exception 'deal not found in organization' using errcode = '42501';
+  end if;
 
-  if v_assignee is null or v_assignee = auth.uid() then
-    return; -- 담당자 없음 또는 본인이 스스로 요청 — 알림 생략.
+  if v_assignee is null then
+    return 'no_assignee';
+  end if;
+  if v_assignee = auth.uid() then
+    return 'self_assigned';
   end if;
 
   -- 오래된 데이터나 직접 쿼리로 타 조직 사용자가 담당자에 들어가 있더라도
@@ -131,7 +137,7 @@ begin
     select 1 from org_members m
      where m.org_id = p_org_id and m.user_id = v_assignee
   ) then
-    return;
+    return 'invalid_assignee';
   end if;
 
   insert into notifications (org_id, user_id, type, title, body, target_type, target_id, actor_id, is_action)
@@ -140,13 +146,80 @@ begin
     '보완 요청이 도착했습니다', '담당 딜에 보완이 필요합니다. 댓글에서 사유를 확인하세요.',
     'deal', p_deal_id, auth.uid(), true
   );
+  return 'sent';
 end $$;
 
 revoke all on function public.request_deal_followup(uuid, uuid) from public;
 grant execute on function public.request_deal_followup(uuid, uuid) to authenticated;
 
 -- =====================================================================
--- 4. 댓글 원자 편집 — version 비교와 jsonb 갱신을 단일 UPDATE로 수행
+-- 4. 담당자 변경 + 활동기록 — 하나의 DB 트랜잭션으로 수행
+-- =====================================================================
+create or replace function public.reassign_deal_with_activity(
+  p_org_id uuid,
+  p_deal_id uuid,
+  p_assigned_to uuid
+) returns public.deals
+  language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_deal public.deals%rowtype;
+  v_from_name text;
+  v_to_name text;
+begin
+  -- 담당자를 바꿀 수 있는 세션만 이 SECURITY DEFINER 경계를 통과한다.
+  if not exists (
+    select 1 from public.org_members m
+     where m.org_id = p_org_id
+       and m.user_id = auth.uid()
+       and (m.role::text in ('owner', 'admin') or m.scope::text = 'all')
+  ) then
+    raise exception 'deal reassignment is not allowed' using errcode = '42501';
+  end if;
+  if p_assigned_to is not null and not exists (
+    select 1 from public.org_members m
+     where m.org_id = p_org_id and m.user_id = p_assigned_to
+  ) then
+    raise exception 'assignee is not a member of this organization' using errcode = '42501';
+  end if;
+
+  select * into v_deal
+    from public.deals
+   where id = p_deal_id and org_id = p_org_id
+   for update;
+  if not found then
+    return null;
+  end if;
+  if v_deal.assigned_to is not distinct from p_assigned_to then
+    return v_deal;
+  end if;
+
+  select name into v_from_name from public.users where id = v_deal.assigned_to;
+  select name into v_to_name from public.users where id = p_assigned_to;
+
+  update public.deals
+     set assigned_to = p_assigned_to,
+         updated_at = now()
+   where id = p_deal_id and org_id = p_org_id
+   returning * into v_deal;
+
+  -- 이 INSERT가 실패하면 같은 함수 호출 안의 UPDATE와 배정 알림 트리거도 함께 롤백된다.
+  insert into public.activities (org_id, deal_id, type, content, actor)
+  values (
+    p_org_id,
+    p_deal_id,
+    'assignment',
+    '담당자: ' || coalesce(v_from_name, '미배정') || ' → ' || coalesce(v_to_name, '미배정'),
+    auth.uid()
+  );
+
+  return v_deal;
+end $$;
+
+revoke all on function public.reassign_deal_with_activity(uuid, uuid, uuid) from public;
+grant execute on function public.reassign_deal_with_activity(uuid, uuid, uuid) to authenticated;
+
+-- =====================================================================
+-- 5. 댓글 원자 편집 — version 비교와 jsonb 갱신을 단일 UPDATE로 수행
 -- =====================================================================
 create or replace function public.edit_deal_comment_atomic(
   p_org_id uuid,
@@ -219,7 +292,7 @@ revoke all on function public.edit_deal_comment_atomic(uuid, uuid, text, text, i
 grant execute on function public.edit_deal_comment_atomic(uuid, uuid, text, text, integer) to authenticated;
 
 -- =====================================================================
--- 5. 스키마 버전 메타
+-- 6. 스키마 버전 메타
 -- =====================================================================
 insert into public.app_meta (key, value)
 values ('schema_version', '064')

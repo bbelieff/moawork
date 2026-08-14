@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Ctx, MemberRole, MemberScope } from "@/lib/types";
 import { getRepo } from "@/lib/repo";
 import { resetDb } from "@/lib/repo/local/store";
@@ -157,8 +157,7 @@ describe("AsyncCrmService — 담당자 재배정 (BBE-16)", () => {
   });
 
   it("member(scope=assigned)가 자기 담당 딜을 남에게 재배정하려 하면 무시되고, 로그도 남기지 않는다", async () => {
-    // canSeeAll(ctx) 가 false 면 소스의 updateDeal 이 assigned_to 변경을 조용히 무시한다
-    // (repo 계약) — 서비스는 그 결과(실변경 없음)를 보고 활동로그를 남기지 않아야 한다.
+    // canSeeAll(ctx) 가 false 면 원자 재배정 포트가 변경을 조용히 무시한다.
     const deal = await svc.createDeal(member, { title: "권한 없는 재배정" }); // 자동으로 본인 배정
     const before = (await svc.listActivities(member, deal.id)).length;
 
@@ -169,6 +168,31 @@ describe("AsyncCrmService — 담당자 재배정 (BBE-16)", () => {
 
     expect(result.assigned_to).toBe(member.user.id); // 안 바뀜(권한 없음)
     expect(await svc.listActivities(member, deal.id)).toHaveLength(before);
+  });
+
+  it("로컬 활동로그 쓰기가 실패해도 담당자 변경을 롤백한다", async () => {
+    const deal = await svc.createDeal(owner, { title: "원자 재배정" });
+    const beforeAssignedTo = deal.assigned_to;
+    const beforeUpdatedAt = deal.updated_at;
+    const createActivity = vi
+      .spyOn(getRepo(), "createActivity")
+      .mockImplementation(() => {
+        throw new Error("forced activity failure");
+      });
+
+    try {
+      await expect(
+        svc.reassignDeal(owner, deal.id, member.user.id, {
+          fromName: "오너",
+          toName: "멤버",
+        }),
+      ).rejects.toThrow("forced activity failure");
+      const stored = await svc.getDeal(owner, deal.id);
+      expect(stored.assigned_to).toBe(beforeAssignedTo);
+      expect(stored.updated_at).toBe(beforeUpdatedAt);
+    } finally {
+      createActivity.mockRestore();
+    }
   });
 
   it("없는 딜이면 NotFoundError", async () => {

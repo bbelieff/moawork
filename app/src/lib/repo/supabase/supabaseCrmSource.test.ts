@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Ctx } from "@/lib/types";
 import { SupabaseCrmError, SupabaseCrmSource } from "./supabaseCrmSource";
@@ -56,7 +56,10 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: unknown }> {
   }
 }
 
-function fakeDb(byTable: Record<string, { data: unknown; error?: unknown }>) {
+function fakeDb(
+  byTable: Record<string, { data: unknown; error?: unknown }>,
+  rpcResult: { data: unknown; error?: unknown } = { data: null },
+) {
   const log: { table: string; filters: Filter[] }[] = [];
   const queries: FakeQuery[] = [];
   const db = {
@@ -66,8 +69,9 @@ function fakeDb(byTable: Record<string, { data: unknown; error?: unknown }>) {
       queries.push(q);
       return q;
     },
+    rpc: vi.fn().mockResolvedValue({ data: rpcResult.data, error: rpcResult.error ?? null }),
   } as unknown as SupabaseClient;
-  return { db, log, queries };
+  return { db, log, queries, rpc: db.rpc as ReturnType<typeof vi.fn> };
 }
 
 function ctxOf(role: Ctx["role"], scope: Ctx["scope"]): Ctx {
@@ -159,6 +163,22 @@ describe("SupabaseCrmSource — 가시성", () => {
 });
 
 describe("SupabaseCrmSource — 쓰기 규칙", () => {
+  it("담당자 변경은 활동기록과 묶인 단일 RPC만 호출한다", async () => {
+    const { db, rpc } = fakeDb({}, { data: { ...DEAL_ROW, assigned_to: "u2" } });
+    const updated = await new SupabaseCrmSource(db).reassignDealWithActivity(
+      ctxOf("owner", "all"),
+      "d1",
+      "u2",
+      "U1 → U2",
+    );
+    expect(rpc).toHaveBeenCalledWith("reassign_deal_with_activity", {
+      p_org_id: "o1",
+      p_deal_id: "d1",
+      p_assigned_to: "u2",
+    });
+    expect(updated?.assigned_to).toBe("u2");
+  });
+
   it("일반 멤버가 만든 딜은 본인 담당으로 고정된다", async () => {
     const { db, queries } = fakeDb({ deals: { data: DEAL_ROW } });
     await new SupabaseCrmSource(db).createDeal(ctxOf("member", "assigned"), {

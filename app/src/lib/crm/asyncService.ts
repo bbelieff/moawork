@@ -143,9 +143,7 @@ export class AsyncCrmService {
    * 둔다 — 배정 변경에 로그가 없는 경로가 생기지 않게 하기 위함. 이름 표시는
    * 호출부(names 맵)가 넘겨준다(서비스는 조회 책임을 늘리지 않는다).
    *
-   * 권한: 실제 반영 여부는 소스(`updateDeal`)가 `canSeeAll(ctx)` 로 이미 방어한다
-   * (member+assigned 는 조용히 무시됨) — 여기서는 결과를 재조회해 실제로 바뀌었을
-   * 때만 활동로그를 남긴다(권한 없는 시도로 빈 로그가 쌓이지 않도록).
+   * 권한과 원자성은 소스의 단일 `reassignDealWithActivity` 포트가 방어한다.
    */
   async reassignDeal(
     ctx: Ctx,
@@ -153,23 +151,17 @@ export class AsyncCrmService {
     newAssignedTo: string | null,
     names: { fromName: string | null; toName: string | null },
   ): Promise<Deal> {
-    // ⚠ 로컬 소스는 조회한 객체를 in-place 로 mutate 하고 그 참조를 돌려준다
-    // (`repo/local/localRepo.ts` — Object.assign(d, rest)). `before` 를 객체째로 들고
-    // 있으면 updateDeal 이 그 **같은 객체**를 바꿔버려 이후 비교가 항상 false 가 된다.
-    // 그래서 원시값(previousAssignedTo)만 미리 꺼내 스냅샷으로 둔다.
-    const before = await this.getDeal(ctx, id);
-    const previousAssignedTo = before.assigned_to;
+    await this.getDeal(ctx, id); // 가시성/존재 확인
 
-    const updated = await this.source.updateDeal(ctx, id, { assigned_to: newAssignedTo });
+    const updated = await this.source.reassignDealWithActivity(
+      ctx,
+      id,
+      newAssignedTo,
+      assignmentChangeContent(names.fromName, names.toName),
+    );
     if (!updated) throw new NotFoundError("딜을 찾을 수 없습니다");
-
-    if (updated.assigned_to !== previousAssignedTo) {
-      await this.source.createActivity(ctx, {
-        deal_id: id,
-        type: ACTIVITY_TYPES.assignment,
-        content: assignmentChangeContent(names.fromName, names.toName),
-      });
-    }
+    // 변경+로그는 source 의 단일 원자 포트가 닫는다. 서비스가 별도 INSERT 를 하면
+    // 로그 실패 뒤 담당자만 바뀐 채 남는 부분 성공이 다시 생긴다.
     return updated;
   }
 

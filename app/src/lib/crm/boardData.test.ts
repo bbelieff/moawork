@@ -49,6 +49,7 @@ function fakeSource(over: Partial<CrmSource> = {}): CrmSource {
     getDeal: async () => undefined,
     createDeal: async () => ({}) as Deal,
     updateDeal: async () => undefined,
+    reassignDealWithActivity: async () => undefined,
     moveDeal: async () => undefined,
     deleteDeal: async () => false,
     listActivities: async () => [],

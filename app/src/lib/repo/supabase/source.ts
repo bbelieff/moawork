@@ -36,6 +36,13 @@ export interface CrmSource {
   createDeal(ctx: Ctx, input: NewDeal): Promise<Deal>;
   /** 부분수정. `custom` 은 키 단위 병합(공용 `DealPatch` 규약과 동일). */
   updateDeal(ctx: Ctx, id: string, patch: DealPatch): Promise<Deal | undefined>;
+  /** 담당자 변경과 assignment 활동기록을 하나의 원자 작업으로 저장한다. */
+  reassignDealWithActivity(
+    ctx: Ctx,
+    id: string,
+    assignedTo: string | null,
+    activityContent: string,
+  ): Promise<Deal | undefined>;
   /** 단계 이동 + 활동로그 — stage_id 를 바꾸는 유일한 경로(공용 `Repo.moveDeal` 과 동일). */
   moveDeal(ctx: Ctx, id: string, toStageId: string): Promise<Deal | undefined>;
   deleteDeal(ctx: Ctx, id: string): Promise<boolean>;

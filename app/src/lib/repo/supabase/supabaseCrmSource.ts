@@ -291,6 +291,23 @@ export class SupabaseCrmSource implements CrmSource {
     return data ? toDeal(data) : undefined;
   }
 
+  async reassignDealWithActivity(
+    ctx: Ctx,
+    id: string,
+    assignedTo: string | null,
+    activityContent: string,
+  ): Promise<Deal | undefined> {
+    // 원격 DB는 조작 가능한 호출부 문자열 대신 users.name 으로 활동 문구를 직접 만든다.
+    void activityContent;
+    const { data, error } = await this.db.rpc("reassign_deal_with_activity", {
+      p_org_id: ctx.org.id,
+      p_deal_id: id,
+      p_assigned_to: assignedTo,
+    });
+    if (error) this.fail("reassignDealWithActivity", error);
+    return data ? toDeal(data as Row) : undefined;
+  }
+
   async moveDeal(
     ctx: Ctx,
     id: string,
