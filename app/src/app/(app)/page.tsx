@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { applyAs, getSession } from "@/lib/auth/session";
-import { getRepo } from "@/lib/repo";
 import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
 import { FEATURES } from "@/lib/product";
-import { buildDashboard, buildFollowUps } from "@/lib/dash";
+import { loadDashboardPageData } from "@/lib/dash/server";
 import { formatCount, formatKrw, formatMonth, orEmpty } from "@/lib/dash/format";
 import {
   ContractStatusWidget,
@@ -38,17 +37,18 @@ export default async function DashboardPage({
   const devToolsEnabled = process.env.NODE_ENV !== "production";
   const ctx = devToolsEnabled ? applyAs(base, asParam) : base;
 
-  const dash = buildDashboard(ctx, { month });
-  const followUps = buildFollowUps(ctx);
-  const repo = getRepo();
-  const pipelines = repo.listPipelines(ctx.org.id);
+  const {
+    dash,
+    followUps,
+    pipelines,
+    stages,
+    deals: myDeals,
+  } = await loadDashboardPageData(ctx, { month });
 
   // 최근 공지 — 003 보드 엔진(공지 보드)에서 파생. 상단고정 우선 정렬은 서비스가 적용.
   const recentNotices = await getNoticesService().list(ctx, { limit: 5 });
 
-  // "오늘 할 일" 목록용 — 담당범위(assigned)는 repo.listDeals(ctx) 가 적용한다.
-  const myDeals = repo.listDeals(ctx);
-  const stages = pipelines.flatMap((p) => repo.listStages(p.id));
+  // "오늘 할 일" 목록용 — 요청 결속 CRM source가 담당범위(assigned)를 적용한다.
   const stageName = (id: string | null) =>
     stages.find((s) => s.id === id)?.name ?? "-";
 
