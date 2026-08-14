@@ -19,6 +19,10 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 const ROOT = path.join(import.meta.dirname, "..");
 /* 템플릿 찾기 — 저장소 안이든(데스크톱) 서버에 홀로 놓였든(VPS) 둘 다 된다 */
@@ -34,7 +38,7 @@ const DONE = ["Done", "Canceled", "Duplicate"];
 /* ── .env 읽기 ───────────────────────────────────────────── */
 function loadEnv() {
   const out = {};
-  for (const f of [path.join(import.meta.dirname, ".env"), path.join(ROOT, ".env"), path.join(ROOT, ".env.local")]) {
+  for (const f of [process.env.DASHBOARD_ENV_FILE, path.join(import.meta.dirname, ".env"), path.join(ROOT, ".env"), path.join(ROOT, ".env.local")].filter(Boolean)) {
     if (!fs.existsSync(f)) continue;
     for (const line of fs.readFileSync(f, "utf8").split(/\r?\n/)) {
       const t = line.trim();
@@ -52,6 +56,7 @@ const ENV = { ...loadEnv(), ...process.env };
 const KEY = (ENV.LINEAR_API_KEY || "").trim();
 const PORT = Number(ENV.DASHBOARD_PORT || 8787);
 const KEY_OK = KEY.startsWith("lin_api_") && KEY.length > 20;
+const REPO_ROOT = path.resolve(ENV.MOAWORK_REPO_ROOT || ROOT);
 const LINEAR_URL = (() => {
   const fallback = "https://api.linear.app/graphql";
   if (ENV.NODE_ENV !== "test" || !ENV.LINEAR_GRAPHQL_TEST_URL) return fallback;
@@ -81,7 +86,7 @@ const Q_ISSUES = `
 query($after:String){
   issues(first:100, after:$after, filter:{project:{name:{eq:"${PROJECT}"}}}){
     pageInfo{ hasNextPage endCursor }
-    nodes{ identifier title updatedAt state{ name } priority labels{ nodes{ name } } }
+    nodes{ identifier title createdAt updatedAt url state{ name } priority labels{ nodes{ name } } }
   }
 }`;
 const Q_COMMENTS = `
@@ -168,8 +173,10 @@ async function build() {
       issues.push({
         id: i.identifier,
         title: i.title,
+        createdAt: i.createdAt,
         status: i.state?.name ?? "Backlog",
         updatedAt: i.updatedAt,
+        url: i.url ?? null,
         priority: { name: ["No priority", "Urgent", "High", "Medium", "Low"][i.priority] ?? "" },
         labels: (i.labels?.nodes ?? []).map((l) => l.name),
       });
@@ -210,6 +217,112 @@ async function getSnap(force = false) {
 }
 
 /* ── 템플릿에 «실시간» 껍데기를 끼운다 ────────────────────── */
+/* ── Git/GitHub 운영 스냅샷 ────────────────────────────────────────────────
+   셸을 거치지 않고 read-only 명령만 실행한다. Linear 45초 캐시와 책임을 분리한다. */
+const OPS_TTL = 30_000;
+let operationsSnap = { at: 0, building: null, data: null };
+
+function safeToolError(error) {
+  const code = typeof error?.code === "string" ? error.code : "UNAVAILABLE";
+  return { code, message: "운영 상태를 읽지 못했습니다." };
+}
+
+async function runReadOnly(command, args) {
+  const { stdout } = await execFileAsync(command, args, {
+    cwd: REPO_ROOT,
+    windowsHide: true,
+    timeout: 15_000,
+    maxBuffer: 4 * 1024 * 1024,
+  });
+  return stdout.trim();
+}
+
+function checkSummary(checks = []) {
+  const summary = { success: 0, failing: 0, pending: 0, total: checks.length };
+  for (const check of checks) {
+    const conclusion = String(check.conclusion || "").toUpperCase();
+    const status = String(check.status || "").toUpperCase();
+    if (["FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED"].includes(conclusion)) summary.failing += 1;
+    else if (["SUCCESS", "NEUTRAL", "SKIPPED"].includes(conclusion)) summary.success += 1;
+    else if (status && status !== "COMPLETED") summary.pending += 1;
+    else summary.pending += 1;
+  }
+  return summary;
+}
+
+async function buildOperations() {
+  if (ENV.NODE_ENV === "test" && ENV.DASHBOARD_OPERATIONS_TEST_FIXTURE) {
+    return JSON.parse(ENV.DASHBOARD_OPERATIONS_TEST_FIXTURE);
+  }
+
+  const gitReads = await Promise.allSettled([
+    runReadOnly("git", ["rev-parse", "--abbrev-ref", "HEAD"]),
+    runReadOnly("git", ["rev-parse", "origin/main"]),
+    runReadOnly("git", ["status", "--porcelain=v1"]),
+    runReadOnly("git", ["rev-list", "--left-right", "--count", "HEAD...origin/main"]),
+  ]);
+  const repository = { available: gitReads.every((read) => read.status === "fulfilled") };
+  if (repository.available) {
+    const [branch, originMain, statusText, distanceText] = gitReads.map((read) => read.value);
+    const changes = statusText ? statusText.split(/\r?\n/).filter(Boolean) : [];
+    const [ahead = 0, behind = 0] = distanceText.split(/\s+/).map(Number);
+    Object.assign(repository, {
+      branch,
+      originMain,
+      originMainShort: originMain.slice(0, 8),
+      dirty: changes.length > 0,
+      dirtyCount: changes.length,
+      changes: changes.slice(0, 20),
+      ahead,
+      behind,
+    });
+  } else {
+    repository.error = safeToolError(gitReads.find((read) => read.status === "rejected")?.reason);
+  }
+
+  let pullRequests;
+  try {
+    const raw = await runReadOnly("gh", [
+      "pr", "list", "--repo", "bbelieff/moawork", "--state", "open", "--limit", "100",
+      "--json", "number,title,url,headRefName,baseRefName,isDraft,mergeStateStatus,updatedAt,statusCheckRollup,labels",
+    ]);
+    const rows = JSON.parse(raw || "[]");
+    pullRequests = {
+      available: true,
+      count: rows.length,
+      items: rows.map((pr) => ({
+        number: pr.number,
+        title: pr.title,
+        url: pr.url,
+        headRefName: pr.headRefName,
+        baseRefName: pr.baseRefName,
+        isDraft: Boolean(pr.isDraft),
+        mergeStateStatus: pr.mergeStateStatus || "UNKNOWN",
+        updatedAt: pr.updatedAt,
+        labels: (pr.labels || []).map((label) => label.name),
+        checks: checkSummary(pr.statusCheckRollup || []),
+      })),
+    };
+  } catch (error) {
+    pullRequests = { available: false, count: null, items: [], error: safeToolError(error) };
+  }
+
+  return { builtAt: new Date().toISOString(), repository, pullRequests };
+}
+
+async function getOperations(force = false) {
+  if (!force && operationsSnap.data && Date.now() - operationsSnap.at < OPS_TTL) return operationsSnap.data;
+  if (operationsSnap.building) return operationsSnap.building;
+  operationsSnap.building = buildOperations().then((data) => {
+    operationsSnap = { at: Date.now(), building: null, data };
+    return data;
+  }).catch((error) => {
+    operationsSnap.building = null;
+    throw error;
+  });
+  return operationsSnap.building;
+}
+
 function liveShim() {
   return `
 <script>
@@ -273,6 +386,17 @@ const server = http.createServer(async (req, res) => {
       if (!KEY_OK) return send(res, 503, JSON.stringify(NO_KEY));
       const d = await getSnap(url.searchParams.get("force") === "1");
       return send(res, 200, JSON.stringify({ issues: d.issues }));
+    }
+
+    if (url.pathname === "/api/operations") {
+      try {
+        return send(res, 200, JSON.stringify(await getOperations(url.searchParams.get("force") === "1")));
+      } catch {
+        return send(res, 502, JSON.stringify({
+          error: "OPERATIONS_FAILED",
+          message: "Git/GitHub 운영 상태를 읽지 못했습니다.",
+        }));
+      }
     }
 
     if (url.pathname === "/api/comments") {

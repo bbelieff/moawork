@@ -74,7 +74,9 @@ before(async () => {
           nodes: [{
             identifier: "BBE-125",
             title: "In Progress fixture",
+            createdAt: "2026-08-14T01:00:00.000Z",
             updatedAt: "2026-08-15T01:00:00.000Z",
+            url: "https://linear.app/example/BBE-125",
             state: { name: "In Progress" },
             priority: 2,
             labels: { nodes: [{ name: "fixture" }] },
@@ -96,6 +98,25 @@ before(async () => {
       LINEAR_API_KEY: "lin_api_fixture_only_not_a_secret",
       LINEAR_GRAPHQL_TEST_URL: `http://127.0.0.1:${upstreamPort}/graphql`,
       DASHBOARD_PORT: String(dashboardPort),
+      DASHBOARD_OPERATIONS_TEST_FIXTURE: JSON.stringify({
+        builtAt: "2026-08-15T03:00:00.000Z",
+        repository: {
+          available: true,
+          branch: "codex/dashboard-test",
+          originMain: "abcdef0123456789",
+          originMainShort: "abcdef01",
+          dirty: false,
+          dirtyCount: 0,
+          changes: [],
+          ahead: 1,
+          behind: 0,
+        },
+        pullRequests: {
+          available: true,
+          count: 1,
+          items: [{ number: 187, title: "fixture", checks: { success: 3, failing: 0, pending: 0, total: 3 } }],
+        },
+      }),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -199,4 +220,19 @@ test("issues endpoint retains the existing 45-second snapshot contract", async (
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.deepEqual(body.issues.map((issue) => [issue.id, issue.status]), [["BBE-125", "In Progress"]]);
+  assert.deepEqual(body.issues.map((issue) => [issue.createdAt, issue.url]), [[
+    "2026-08-14T01:00:00.000Z",
+    "https://linear.app/example/BBE-125",
+  ]]);
+});
+
+test("operations endpoint exposes read-only repository and PR decision signals", async () => {
+  const response = await fetch(`${dashboardUrl}/api/operations`);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.repository.originMainShort, "abcdef01");
+  assert.equal(body.repository.dirty, false);
+  assert.equal(body.pullRequests.count, 1);
+  assert.deepEqual(body.pullRequests.items[0].checks, { success: 3, failing: 0, pending: 0, total: 3 });
+  assert.equal(JSON.stringify(body).includes("lin_api_"), false);
 });

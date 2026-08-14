@@ -48,6 +48,9 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   echo "=============================================================="
   echo ""
 
+echo "▶ [0/4] decision dashboard"
+node --test tools/dashboard-server.test.mjs tools/board/board.template.test.mjs
+
 echo "▶ [1/3] lint"
 npm run lint --workspaces --if-present
 
