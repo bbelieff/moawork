@@ -9,7 +9,7 @@
 //   두 수치는 다르다. 화면에서 라벨을 섞지 않는다.
 
 import { getRepo, type Repo } from "@/lib/repo";
-import type { Ctx, Deal, Stage } from "@/lib/types";
+import type { Company, Ctx, Deal, FieldDef, Settlement, Stage } from "@/lib/types";
 import {
   addDaysKst,
   contractStatusBreakdown,
@@ -72,6 +72,14 @@ export interface BuildOptions {
   repo?: Repo;
 }
 
+export interface DashboardInputs {
+  deals: readonly Deal[];
+  companies: readonly Company[];
+  stages: readonly Stage[];
+  fieldDefs: readonly FieldDef[];
+  settlements?: readonly Settlement[];
+}
+
 /** KST 기준 현재 월(YYYY-MM). */
 export function currentMonthKst(now: Date = new Date()): string {
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
@@ -83,34 +91,62 @@ function allStages(repo: Repo, orgId: string): Stage[] {
   return repo.listPipelines(orgId).flatMap((p) => repo.listStages(p.id));
 }
 
-/** 수수료입금일이 구간에 드는 딜만. */
-function dealsPaidIn(deals: readonly Deal[], range: DateRange): Deal[] {
-  return toSettlementInputs(deals)
-    .filter((e) => e.input.feeDepositDate !== null)
-    .filter((e) => {
-      const t = e.input.feeDepositDate!.getTime();
-      return t >= Date.parse(range.start) && t < Date.parse(range.end);
-    })
-    .map((e) => e.deal);
-}
-
 /**
  * 대시보드 데이터를 조립한다.
  * 담당범위(assigned) 격리는 repo.listDeals(ctx)/listCompanies(ctx) 가 적용한다.
  */
 export function buildDashboard(ctx: Ctx, opts: BuildOptions = {}): DashboardData {
   const repo = opts.repo ?? getRepo();
+  const settlements = typeof repo.listSettlements === "function"
+    ? repo.listSettlements(ctx)
+    : [];
+  return buildDashboardFromInputs(ctx, {
+    deals: repo.listDeals(ctx),
+    companies: repo.listCompanies(ctx),
+    stages: allStages(repo, ctx.org.id),
+    fieldDefs: repo.listFieldDefs(ctx.org.id, "deal"),
+    settlements: settlements.length > 0 ? settlements : undefined,
+  }, opts);
+}
+
+function settlementEntriesFromRows(deals: readonly Deal[], rows: readonly Settlement[]) {
+  const byId = new Map(deals.map((deal) => [deal.id, deal]));
+  return rows.flatMap((row) => {
+    const deal = row.deal_id ? byId.get(row.deal_id) : undefined;
+    if (!deal) return [];
+    return [{
+      deal,
+      input: {
+        disbursedAmount: row.exec_amount,
+        feePercent: row.fee_pct,
+        downPayment: row.down_payment,
+        feeDepositDate: row.fee_paid_at ? new Date(`${row.fee_paid_at}T00:00:00.000Z`) : null,
+      },
+    }];
+  });
+}
+
+export function buildDashboardFromInputs(
+  ctx: Ctx,
+  inputs: DashboardInputs,
+  opts: Omit<BuildOptions, "repo"> = {},
+): DashboardData {
   const now = opts.now?.() ?? new Date();
   const month = opts.month ?? currentMonthKst(now);
   const range = monthRangeKst(month);
 
-  const deals = repo.listDeals(ctx);
-  const companies = repo.listCompanies(ctx);
-  const stages = allStages(repo, ctx.org.id);
-  const fieldDefs = repo.listFieldDefs(ctx.org.id, "deal");
+  const deals = [...inputs.deals];
+  const companies = [...inputs.companies];
+  const stages = [...inputs.stages];
+  const fieldDefs = [...inputs.fieldDefs];
 
-  const settlementEntries = toSettlementInputs(deals);
-  const paidThisMonth = dealsPaidIn(deals, range);
+  const settlementEntries = inputs.settlements
+    ? settlementEntriesFromRows(deals, inputs.settlements)
+    : toSettlementInputs(deals);
+  const paidThisMonth = settlementEntries.filter(({ input }) => {
+    const t = input.feeDepositDate?.getTime();
+    return t !== undefined && t >= Date.parse(range.start) && t < Date.parse(range.end);
+  });
 
   return {
     month,
@@ -130,10 +166,10 @@ export function buildDashboard(ctx: Ctx, opts: BuildOptions = {}): DashboardData
     contractStatus: contractStatusBreakdown(deals, fieldDefs),
 
     // 정산 원천(settlements)이 포트에 없어, 없으면 deal.amount 기반 임시 추정으로 폴백한다.
-    // TODO(T04): T03 포트 추가 → T09 구현 후 실측으로 교체(aggregate.ts 주석 참조).
+    // 정산 행이 제공되면 실측값, 없으면 기존 딜 필드 기반 계산/추정값을 사용한다.
     settlementAll: settlementSummaryOrProvisional(settlementEntries, deals),
     settlementThisMonth: settlementSummaryOrProvisional(
-      toSettlementInputs(paidThisMonth),
+      paidThisMonth,
       // 임시 추정의 "이번달" 기준은 생성일(수수료입금일을 알 수 없으므로).
       filterDealsByRange(deals, range),
     ),
@@ -163,12 +199,19 @@ export interface FollowUpOptions {
  */
 export function buildFollowUps(ctx: Ctx, opts: FollowUpOptions = {}): DashboardFollowUps {
   const repo = opts.repo ?? getRepo();
-  const now = opts.now?.() ?? new Date();
+  return buildFollowUpsFromDeals(repo.listDeals(ctx), opts.now?.() ?? new Date());
+}
+
+export function buildFollowUpsFromDeals(
+  deals: readonly Deal[],
+  now: Date = new Date(),
+  settlements?: readonly Settlement[],
+): DashboardFollowUps {
   const today = todayKst(now);
   const tomorrow = addDaysKst(today, 1);
-
-  const deals = repo.listDeals(ctx);
-  const entries = reContactList(toSettlementInputs(deals));
+  const entries = reContactList(
+    settlements ? settlementEntriesFromRows(deals, settlements) : toSettlementInputs(deals),
+  );
 
   return {
     today,
