@@ -2,8 +2,36 @@ import { describe, expect, it } from "vitest";
 import { calculateFields } from "@/lib/boards/calculations";
 import { POLICYFUND_WORK_BOARD } from "@/lib/migration/monday-mapping/policyfund-work";
 import { CONTRACT_WORK_TAB } from "./contract-work";
+import { DEFAULT_TABS, ensureDefaultTab } from "./install";
+import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import type { Ctx } from "@/lib/types";
 
 const byLabel = new Map(CONTRACT_WORK_TAB.columns.map((column) => [column.label, column]));
+
+it("registers the contract-work tab for default workspace installation", () => {
+  expect(DEFAULT_TABS.map((tab) => tab.key)).toContain("work");
+  expect(DEFAULT_TABS.find((tab) => tab.key === "work")).toBe(CONTRACT_WORK_TAB);
+});
+
+it("persists the 11 groups, 27 columns, and four resolved move targets", async () => {
+  const ctx = {
+    org: { id: "org-contract-work", name: "Test organization" },
+    user: { id: "owner-contract-work", name: "Owner", email: "owner@example.test" },
+    role: "owner",
+    scope: "all",
+  } as unknown as Ctx;
+  const local = new LocalBoardsRepo();
+  const result = await ensureDefaultTab(ctx, CONTRACT_WORK_TAB, toAsyncBoardsRepo(local));
+  const groups = local.listGroups(ctx, result.boardId);
+  const status = local.listColumns(ctx, result.boardId).find((column) => column.key === "progress_status");
+
+  expect(groups).toHaveLength(11);
+  expect(local.listColumns(ctx, result.boardId)).toHaveLength(27);
+  expect(Object.keys(status?.move_rule_jsonb ?? {})).toHaveLength(4);
+  expect(new Set(Object.values(status?.move_rule_jsonb ?? {}))).toEqual(
+    new Set(groups.filter((group) => Object.values(CONTRACT_WORK_TAB.columns.find((column) => column.key === "progress_status")!.moveTo!).includes(group.name)).map((group) => group.id)),
+  );
+});
 
 describe("BBE-150 계약업체 실무 기본 탭", () => {
   it("BBE-144 전량 구조를 축소하지 않는다", () => {
