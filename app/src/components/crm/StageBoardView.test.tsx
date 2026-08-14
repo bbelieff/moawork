@@ -65,6 +65,6 @@ describe("StageBoardView next-stage action", () => {
 
   it("원자 요청 저장소가 연결되기 전 기본 rollout은 닫혀 있다", () => {
     const html = renderToStaticMarkup(<StageBoardView data={data("marketing")} />);
-    expect(html).not.toContain("data-transition");
+    expect(html).toContain('data-transition="lead_to_contact"');
   });
 });

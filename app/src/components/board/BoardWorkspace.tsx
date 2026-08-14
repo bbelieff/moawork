@@ -37,6 +37,8 @@ import { BoardHeader } from "./BoardHeader";
 import { BoardToolbar } from "./BoardToolbar";
 import { GroupBlock } from "./GroupBlock";
 import { GroupTable } from "./GroupTable";
+import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
+import { CONTACT_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { buildBlocks } from "./blocks";
 import {
   groupKeyOf,
@@ -57,6 +59,17 @@ interface RowMove {
   groupId: string | null;
   /** 그룹 **전체** 기준 삽입 위치. */
   index: number;
+}
+
+export function companyFoundedOn(value: unknown): string {
+  const text = String(value ?? "").trim();
+  if (/^\d{4}$/.test(text)) return `${text}-01-01`;
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+}
+
+export function companyRevenue(value: unknown): string {
+  const text = String(value ?? "").trim().replaceAll(",", "");
+  return /^-?\d+(?:\.\d+)?$/.test(text) ? text : "";
 }
 
 /** 낙관적 행 이동 — 서버의 moveRowAction 과 같은 규칙(그룹 내 재색인)을 화면에서 미리 흉내낸다. */
@@ -303,6 +316,25 @@ export function BoardWorkspace({
                 onRowDrop={(index) =>
                   handleRowDrop(block.group?.id ?? null, block.rows, visibleRows, index)
                 }
+                renderRowAction={board.source === CONTACT_TAB_SOURCE ? (row) => row.values.work_move === "업무관리 이동" ? (
+                  <ContactPipelineAction
+                    dealId={null}
+                    kind="contact_to_work"
+                    requestId={row.id}
+                    initialCompanyName={row.title}
+                    initialValues={{
+                      bizNo: String(row.values.biz_no ?? row.values.biz_reg_no ?? ""),
+                      ceoName: String(row.values.rep_name ?? ""),
+                      bizType: String(row.values.biz_reg_type ?? ""),
+                      industry: String(row.values.industry ?? ""),
+                      regionSido: String(row.values.sido ?? ""),
+                      regionSigungu: String(row.values.sigungu ?? ""),
+                      phone: String(row.values.phone ?? ""),
+                      foundedOn: companyFoundedOn(row.values.founded_year),
+                      revenue: companyRevenue(row.values.revenue),
+                    }}
+                  />
+                ) : null : undefined}
               />
             </GroupBlock>
           );
