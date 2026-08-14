@@ -245,3 +245,33 @@ test("BBE-125 assigned scope neither links nor exposes another assignee's compan
     await db.close();
   }
 });
+
+test("BBE-125 concurrent handoffs retain a suspected duplicate review", async () => {
+  const db = new PGlite();
+  try {
+    await bootstrap(db);
+    await db.exec(await readFile(migrationPath, "utf8"));
+    const firstDeal = "00000000-0000-4000-8000-000000000501";
+    const secondDeal = "00000000-0000-4000-8000-000000000502";
+    await db.query(`insert into public.deals(id,org_id,assigned_to) values($1,$3,$4),($2,$3,$4)`, [firstDeal, secondDeal, ORG_A, USER]);
+    await db.exec(`grant usage on schema public to authenticated`);
+
+    const [first, second] = await Promise.all([
+      handoff(db, firstDeal, { name: "Race Company", ownerName: "Race Owner" }),
+      handoff(db, secondDeal, { name: "Race Company", ownerName: "Race Owner" }),
+    ]);
+
+    assert.deepEqual(
+      [first.rows[0].mode, second.rows[0].mode].sort(),
+      ["created", "created_needs_review"],
+    );
+    assert.equal(Number((await db.query(`select count(*) from public.companies where org_id=$1 and normalized_name='racecompany'`, [ORG_A])).rows[0].count), 2);
+    assert.equal(Number((await db.query(`select count(*) from public.company_duplicate_reviews where org_id=$1 and status='needs_review'`, [ORG_A])).rows[0].count), 1);
+    assert.equal(
+      first.rows[0].duplicate_candidate_ids.length + second.rows[0].duplicate_candidate_ids.length,
+      1,
+    );
+  } finally {
+    await db.close();
+  }
+});

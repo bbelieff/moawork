@@ -175,6 +175,15 @@ begin
   end if;
 
   if nullif(btrim(p_owner_name), '') is not null then
+    -- Serialize suspected-identity discovery across different deals. The deal row lock
+    -- above is insufficient because two handoffs can target different deals. Locking
+    -- the tenant row keeps D40's separate-company behavior while ensuring the second
+    -- transaction observes the first company and records a review relation.
+    perform 1
+      from public.orgs o
+     where o.id = p_org_id
+       for update;
+
     select coalesce(array_agg(c.id order by c.created_at, c.id), '{}'::uuid[])
       into v_candidates
       from public.companies c
