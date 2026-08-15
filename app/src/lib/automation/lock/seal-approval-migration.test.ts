@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const sql = readFileSync(resolve(process.cwd(), "../supabase/migrations/070_seal_approval_requests.sql"), "utf8");
+const aclSql = readFileSync(resolve(process.cwd(), "../supabase/migrations/071_seal_approval_rpc_acl.sql"), "utf8");
 describe("070 seal approval migration", () => {
   it("is tenant-idempotent, audited, permission checked and not public", () => {
     expect(sql).toMatch(/unique\s*\(org_id,\s*request_id\)/i);
@@ -13,5 +14,12 @@ describe("070 seal approval migration", () => {
     expect(sql).toMatch(/enable row level security/i);
     expect(sql).toMatch(/revoke all on function public\.request_deal_seal_approval[\s\S]*from public/i);
     expect(sql).toMatch(/grant execute[\s\S]*to authenticated/i);
+  });
+
+  it("removes Supabase default grants and preserves only authenticated execution", () => {
+    expect(aclSql).toMatch(/alter function public\.request_deal_seal_approval\(uuid, uuid, uuid\) owner to postgres/i);
+    expect(aclSql).toMatch(/security definer[\s\S]*set search_path = public, pg_temp/i);
+    expect(aclSql).toMatch(/revoke all on function public\.request_deal_seal_approval\(uuid, uuid, uuid\)[\s\S]*from public, anon, authenticated, service_role/i);
+    expect(aclSql).toMatch(/grant execute on function public\.request_deal_seal_approval\(uuid, uuid, uuid\)[\s\S]*to authenticated/i);
   });
 });
