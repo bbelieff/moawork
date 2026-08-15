@@ -12,6 +12,9 @@ import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
+import { SavedViewsController } from "@/components/view";
+import { applySavedKanbanView, parseSavedBoardLayout, parseSavedStringList } from "@/lib/view/board-saved";
+import { decodeBoardFilters } from "@/components/board/filters";
 import { GenericBoardKanban } from "@/components/boards/GenericBoardKanban";
 import { ColumnEditor } from "@/components/boards/ColumnEditor";
 import { addGroupAction, deleteBoardAction } from "../actions";
@@ -32,7 +35,7 @@ export default async function BoardPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ view?: string; group?: string; as?: string }>;
+  searchParams: Promise<{ view?: string; group?: string; as?: string; savedView?: string; mwLayout?: string; mwHidden?: string; mwOrder?: string; mwFilters?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -65,7 +68,7 @@ export default async function BoardPage({
   }
 
   const { board, columns, groups } = detail;
-  const view = sp.view === "kanban" ? "kanban" : "table";
+  const view = sp.view === "kanban" ? "kanban" : sp.view === "flat" ? "flat" : sp.view === "calendar" ? "calendar" : "table";
   const selectColumns = columns.filter(
     (c) => c.type === "select" || c.type === "multiselect",
   );
@@ -87,10 +90,10 @@ export default async function BoardPage({
   const items = boardItems.filter((item) => visibleItemIds.has(item.id));
   const hiddenCount = boardItems.length - items.length;
   const lanes = view === "kanban"
-    ? (await svc.kanban(ctx, id, groupBy || undefined)).map((lane) => ({
-        ...lane,
-        items: lane.items.filter((item) => visibleItemIds.has(item.id)),
-      }))
+    ? applySavedKanbanView(
+        (await svc.kanban(ctx, id, groupBy || undefined)).map((lane) => ({ ...lane, items: lane.items.filter((item) => visibleItemIds.has(item.id)) })),
+        items, columns, decodeBoardFilters(sp.mwFilters ?? null),
+      )
     : [];
 
   // 직전 셀 편집에서 저장되지 못한 값의 사유(1회성). 없으면 null.
@@ -100,6 +103,12 @@ export default async function BoardPage({
   const assigneeLabels = Object.fromEntries(
     (await loadDefaultTabAssignees(ctx)).map((member) => [member.userId, member.displayName]),
   );
+  const savedColumnOrder = getBoardColumnOrder(ctx.org.id, id);
+  const activeColumnOrder = Object.fromEntries(
+    Object.entries(parseSavedBoardLayout(sp.mwLayout) ?? savedColumnOrder).map(([groupId, keys]) => [groupId, [...keys]]),
+  );
+  const hiddenColumnKeys = new Set(parseSavedStringList(sp.mwHidden));
+  const visibleColumns = columns.filter((column) => !hiddenColumnKeys.has(column.key));
 
   const qs = (next: Record<string, string>) => {
     const p = new URLSearchParams();
@@ -180,6 +189,7 @@ export default async function BoardPage({
         {hiddenCount > 0 && (
           <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p>
         )}
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
           {backLink}
           <h1 className="flex shrink-0 items-center gap-1.5 text-base font-semibold text-mw-fg">
@@ -220,17 +230,32 @@ export default async function BoardPage({
     );
   }
 
+  if (view === "flat" || view === "calendar") {
+    return (
+      <div className="flex w-full flex-col gap-3">
+        {hiddenCount > 0 ? <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p> : null}
+        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
+          {backLink}
+          <h1 className="text-base font-semibold text-mw-fg">{board.icon ? <span aria-hidden="true">{board.icon}</span> : null} {board.name}</h1>
+        </div>
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} layout={activeColumnOrder} columns={visibleColumns} rows={items} renderMode={view} canEditItems={canEditItems} />
+        {boardSettings}
+      </div>
+    );
+  }
+
   return (
     <div className="flex w-full flex-col gap-3">
       {hiddenCount > 0 && (
         <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p>
       )}
+      <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
       <BoardWorkspace
         board={board}
-        columns={columns}
+        columns={visibleColumns}
         groups={groups}
         rows={items}
-        columnOrder={getBoardColumnOrder(ctx.org.id, id)}
+        columnOrder={activeColumnOrder}
         cellFlash={cellFlash}
         assigneeLabels={assigneeLabels}
         backSlot={backLink}
