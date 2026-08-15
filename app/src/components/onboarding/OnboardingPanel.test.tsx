@@ -68,4 +68,51 @@ describe("OnboardingPanel — 퀘스트 목록", () => {
     const q2Block = html.split('data-quest-key="q2"')[1]?.split("</li>")[0] ?? "";
     expect(q2Block).not.toContain("text-xs");
   });
+
+  it("규칙에서 생성된 퀘스트의 해설과 관리자 표시 설정을 실제 소비한다", () => {
+    const html = renderToStaticMarkup(<OnboardingPanel snapshot={snapshot({
+      quests: [
+        {
+          questKey: "automation-rule:r1",
+          ruleId: "r1",
+          title: "상담 상황을 2차 상담예약으로 바꾸기",
+          description: "2차 상담 고객 단계로 자동 이동해요.",
+          why: "승인자 인계 공백을 막아요.",
+          hidden: false,
+          source: "automation",
+          judgeKind: "automation_rule_succeeded",
+          judgeParams: { ruleId: "r1" },
+          completed: false,
+        },
+      ],
+    })} />);
+
+    expect(html).toContain("왜 필요한가요? 승인자 인계 공백을 막아요.");
+    expect(html).toContain("자동화 퀘스트 관리");
+    expect(html).toContain('name="ruleId" value="r1"');
+    expect(html).toContain("학습 목록에서 숨기기");
+  });
+
+  it("숨긴 자동화 퀘스트는 학습 분모와 목록에서 제외하되 관리 폼에는 남긴다", () => {
+    const html = renderToStaticMarkup(<OnboardingPanel snapshot={snapshot({
+      quests: [
+        {
+          questKey: "automation-rule:hidden",
+          ruleId: "hidden",
+          title: "숨긴 퀘스트 제목",
+          description: null,
+          why: null,
+          hidden: true,
+          source: "automation",
+          judgeKind: "automation_rule_succeeded",
+          judgeParams: { ruleId: "hidden" },
+          completed: false,
+        },
+      ],
+    })} />);
+
+    expect(html).toContain("0 / 0");
+    expect(html.match(/숨긴 퀘스트 제목/g)).toHaveLength(1);
+    expect(html).toContain('checked=""');
+  });
 });

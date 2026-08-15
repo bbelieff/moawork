@@ -1,9 +1,18 @@
 import { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Ctx, MemberRole, MemberScope, User } from "@/lib/types";
-import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
+import { parseAutomationQuestDefs, type AutomationQuestDef } from "./automation-quests";
 import { judgeQuest, type QuestDef } from "./quests";
 
-export type QuestState = QuestDef & { completed: boolean };
+export type QuestState = QuestDef & {
+  completed: boolean;
+  source?: "manual" | "automation";
+  ruleId?: string;
+  why?: string | null;
+  hidden?: boolean;
+  sortOrder?: number;
+};
 
 export type PracticeSnapshot = {
   orgId: string;
@@ -53,11 +62,15 @@ export async function ensurePracticeWorkspace(
 export async function isMyPracticeWorkspace(orgId: string): Promise<boolean> {
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase.rpc("is_my_practice_workspace", { p_org_id: orgId });
-    return !error && data === true;
+    return isPracticeWorkspaceWithClient(supabase, orgId);
   } catch {
     return false;
   }
+}
+
+async function isPracticeWorkspaceWithClient(client: SupabaseClient, orgId: string): Promise<boolean> {
+  const { data, error } = await client.rpc("is_my_practice_workspace", { p_org_id: orgId });
+  return !error && data === true;
 }
 
 /** 페이지 진입 시 기존 연습 회사만 읽는다. 없으면 생성하지 않고 시작 화면을 반환한다. */
@@ -70,16 +83,15 @@ export async function loadMyPracticeSnapshot(
     if (error) return { ok: false, reason: "unavailable" };
     if (data === null) return { ok: true, snapshot: null };
     if (typeof data !== "string") return { ok: false, reason: "unavailable" };
-    return evaluatePracticeQuests(data, user);
+    return evaluatePracticeQuestsWithClient(supabase, data, user);
   } catch {
     return { ok: false, reason: "unavailable" };
   }
 }
 
-async function loadQuestDefs(): Promise<QuestDef[] | null> {
+async function loadQuestDefs(client: SupabaseClient): Promise<QuestDef[] | null> {
   try {
-    const supabase = await createClient();
-    const { data, error } = await supabase.rpc("list_onboarding_quests");
+    const { data, error } = await client.rpc("list_onboarding_quests");
     if (error || !Array.isArray(data)) return null;
     return data as QuestDef[];
   } catch {
@@ -87,12 +99,21 @@ async function loadQuestDefs(): Promise<QuestDef[] | null> {
   }
 }
 
-async function loadCompletedKeys(orgId: string): Promise<Set<string> | null> {
+async function loadCompletedKeys(client: SupabaseClient, orgId: string): Promise<Set<string> | null> {
   try {
-    const supabase = await createClient();
-    const { data, error } = await supabase.rpc("read_my_practice_progress", { p_org_id: orgId });
+    const { data, error } = await client.rpc("read_my_practice_progress", { p_org_id: orgId });
     if (error || !Array.isArray(data)) return null;
     return new Set(data.map((row: { questKey: string }) => row.questKey));
+  } catch {
+    return null;
+  }
+}
+
+async function loadAutomationQuestDefs(client: SupabaseClient, orgId: string): Promise<AutomationQuestDef[] | null> {
+  try {
+    const { data, error } = await client.rpc("sync_my_automation_onboarding_quests", { p_org_id: orgId });
+    if (error) return null;
+    return parseAutomationQuestDefs(data);
   } catch {
     return null;
   }
@@ -107,18 +128,35 @@ export async function evaluatePracticeQuests(
   orgId: string,
   user: User,
 ): Promise<{ ok: true; snapshot: PracticeSnapshot } | { ok: false; reason: "permission" | "unavailable" }> {
-  const owns = await isMyPracticeWorkspace(orgId);
+  try {
+    const client = await createClient();
+    return evaluatePracticeQuestsWithClient(client, orgId, user);
+  } catch {
+    return { ok: false, reason: "unavailable" };
+  }
+}
+
+async function evaluatePracticeQuestsWithClient(
+  client: SupabaseClient,
+  orgId: string,
+  user: User,
+): Promise<{ ok: true; snapshot: PracticeSnapshot } | { ok: false; reason: "permission" | "unavailable" }> {
+  const owns = await isPracticeWorkspaceWithClient(client, orgId);
   if (!owns) {
     return { ok: false, reason: "permission" };
   }
 
-  const [defs, completed] = await Promise.all([loadQuestDefs(), loadCompletedKeys(orgId)]);
-  if (!defs || !completed) {
+  const [defs, completed, automationDefs] = await Promise.all([
+    loadQuestDefs(client),
+    loadCompletedKeys(client, orgId),
+    loadAutomationQuestDefs(client, orgId),
+  ]);
+  if (!defs || !completed || !automationDefs) {
     return { ok: false, reason: "unavailable" };
   }
 
   const ctx = practiceCtx(orgId, user);
-  const repo = await getBoardsRepo();
+  const repo = new SupabaseBoardsRepo(client);
   const quests: QuestState[] = [];
 
   for (const def of defs) {
@@ -126,14 +164,35 @@ export async function evaluatePracticeQuests(
     const passesNow = alreadyCompleted || await judgeQuest(ctx, repo, def);
     if (passesNow && !alreadyCompleted) {
       try {
-        const supabase = await createClient();
-        await supabase.rpc("record_quest_progress", { p_org_id: orgId, p_quest_key: def.questKey });
+        await client.rpc("record_quest_progress", { p_org_id: orgId, p_quest_key: def.questKey });
       } catch {
         // 기록 실패해도 이번 응답에서는 통과로 보여준다 — 다음 재판정에서 다시 기록을 시도한다.
       }
     }
-    quests.push({ ...def, completed: passesNow });
+    quests.push({ ...def, completed: passesNow, source: "manual" });
   }
 
+  quests.push(...automationDefs);
+
   return { ok: true, snapshot: { orgId, quests } };
+}
+
+export async function updateAutomationQuestPreferences(input: {
+  orgId: string;
+  ruleId: string;
+  hidden: boolean;
+  why: string;
+}): Promise<{ ok: true } | { ok: false }> {
+  try {
+    const client = await createClient();
+    const { error } = await client.rpc("update_my_automation_onboarding_quest", {
+      p_org_id: input.orgId,
+      p_rule_id: input.ruleId,
+      p_hidden: input.hidden,
+      p_why: input.why,
+    });
+    return error ? { ok: false } : { ok: true };
+  } catch {
+    return { ok: false };
+  }
 }
