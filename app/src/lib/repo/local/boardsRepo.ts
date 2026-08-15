@@ -15,6 +15,7 @@ import type {
   CellValue,
   ItemValue,
 } from "@/lib/boards/types";
+import { isSectionPresetSource } from "@/lib/presets/section-presets";
 import type {
   BoardPatch,
   BoardsRepo,
@@ -48,7 +49,13 @@ export class LocalBoardsRepo {
   // ── 보드 ──
   listBoards(ctx: Ctx): Board[] {
     return db()
-      .boards.filter((b) => b.org_id === ctx.org.id)
+      .boards.filter((b) => b.org_id === ctx.org.id && !isSectionPresetSource(b.source))
+      .sort((a, b) => a.sort_order - b.sort_order);
+  }
+
+  listSectionPresetBoards(ctx: Ctx): Board[] {
+    return db()
+      .boards.filter((b) => b.org_id === ctx.org.id && isSectionPresetSource(b.source))
       .sort((a, b) => a.sort_order - b.sort_order);
   }
 

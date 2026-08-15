@@ -1,19 +1,30 @@
-import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import PresetsPage from "./page";
 
-describe("PresetsPage (BBE-156)", () => {
-  it("먼데이 복제분을 제품 기본 프리셋으로 노출하지 않는다", () => {
-    const html = renderToStaticMarkup(<PresetsPage />);
+const page = readFileSync(join(process.cwd(), "src/app/(app)/presets/page.tsx"), "utf8");
+const actions = readFileSync(join(process.cwd(), "src/app/(app)/presets/actions.ts"), "utf8");
 
-    expect(html).toContain("아이템 프리셋 0");
-    expect(html).toContain("등록된 제품 기본 프리셋이 없습니다");
-    expect(html).toContain("이관 때만 사용하는 매핑 사전");
-    expect(html).not.toContain("data-preset-name");
+describe("BBE-158 프리셋 라이브러리", () => {
+  it("D76 탭 생성·이름 수정과 D77 마지막 탭 삭제·0개 상태를 노출한다", () => {
+    expect(page).toContain("+ 탭 만들기");
+    expect(page).toContain("이름 저장");
+    expect(page).toContain("아직 탭이 없어요");
+    expect(page).toContain("deleteTabAction");
   });
 
-  it("뷰 프리셋 미구현 상태를 유지한다", () => {
-    const html = renderToStaticMarkup(<PresetsPage />);
-    expect(html).toContain("뷰 프리셋 연결은 아직 없어요");
+  it("아이템 묶음 구조를 저장하고 다른 탭에서 재사용한다", () => {
+    expect(page).toContain("saveSectionPresetAction");
+    expect(page).toContain("applySectionPresetAction");
+    expect(actions).toContain("snapshotSectionPreset");
+    expect(actions).toContain("existingKeys");
+  });
+
+  it("설치 개념을 되살리지 않고 요청 결속 Supabase 어댑터만 쓴다", () => {
+    expect(page).not.toContain("구조 팩 설치");
+    expect(actions).toContain("new SupabaseBoardsRepo(client)");
+    expect(actions).not.toContain("getBoardsService");
+    expect(actions).not.toContain("LocalBoardsRepo");
+    expect(page).toContain("new SectionPresetRepo(boardsRepo)");
   });
 });

@@ -8,6 +8,7 @@ import type {
   NewGroup, NewItem, NewView, ViewPatch,
 } from "@/lib/boards/store";
 import { slugifyKey } from "@/lib/repo/local/boardsRepo";
+import { isSectionPresetSource } from "@/lib/presets/section-presets";
 
 type Row = Record<string, unknown>;
 
@@ -42,6 +43,10 @@ export class SupabaseBoardsRepo implements BoardsRepo {
 
   async listBoards(ctx: Ctx): Promise<Board[]> {
     const q = await this.client.from("boards").select("*").eq("org_id", ctx.org.id).order("sort_order");
+    return many<Board>(q.data, q.error).filter((board) => !isSectionPresetSource(board.source));
+  }
+  async listSectionPresetBoards(ctx: Ctx): Promise<Board[]> {
+    const q = await this.client.from("boards").select("*").eq("org_id", ctx.org.id).like("source", "user.section-preset/%").order("sort_order");
     return many<Board>(q.data, q.error);
   }
   async getBoard(ctx: Ctx, id: string): Promise<Board | undefined> {
