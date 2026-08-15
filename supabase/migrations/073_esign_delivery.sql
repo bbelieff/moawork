@@ -13,6 +13,7 @@ create table public.esign_requests (
   created_at timestamptz not null default now(),
   unique(org_id, deal_id, template_id)
 );
+create index esign_request_dispatch_idx on public.esign_requests(created_at) where status='queued';
 create table public.esign_event_receipts (
   org_id uuid not null references public.orgs(id) on delete cascade,
   event_id text not null,
@@ -44,6 +45,51 @@ begin
   return next;
 end $$;
 
+create or replace function public.list_queued_esign_requests(p_limit integer default 100)
+returns table(request_id uuid) language sql security definer set search_path='' as $$
+  select e.id from public.esign_requests e where e.status='queued' order by e.created_at limit least(greatest(p_limit,1),100)
+$$;
+create or replace function public.start_esign_delivery(p_request_id uuid)
+returns table(request_id uuid,org_id uuid,deal_id uuid,template_id text,signer_reference text)
+language sql security definer set search_path='' as $$
+  update public.esign_requests e set status='delivery_started'
+  where e.id=p_request_id and e.status='queued'
+  returning e.id,e.org_id,e.deal_id,e.template_id,e.signer_reference
+$$;
+create or replace function public.mark_esign_awaiting(p_request_id uuid,p_provider_document_id text)
+returns void language plpgsql security definer set search_path='' as $$
+begin
+  update public.esign_requests set status='awaiting_signature',provider_document_id=p_provider_document_id
+   where id=p_request_id and status='delivery_started';
+  if not found then raise exception '전자계약 delivery lease가 유효하지 않아요.' using errcode='40001'; end if;
+end $$;
+create or replace function public.mark_esign_delivery_unknown(p_request_id uuid,p_reason text)
+returns void language plpgsql security definer set search_path='' as $$
+begin
+  update public.esign_requests set status='delivery_unknown' where id=p_request_id and status='delivery_started';
+  if found then insert into public.audit_logs(org_id,actor,action,target_type,target_id,meta)
+    select org_id,null,'esign.delivery_unknown','deal',deal_id,jsonb_build_object('request_id',id,'reason',left(p_reason,100)) from public.esign_requests where id=p_request_id; end if;
+end $$;
+create or replace function public.enqueue_esign_signing_link(p_request_id uuid,p_message_template_id uuid,p_channel public.message_channel,p_sender text,p_signing_url text)
+returns table(outbox_id uuid,inserted boolean) language plpgsql security definer set search_path='' as $$
+declare v public.esign_requests%rowtype; v_message uuid:=gen_random_uuid(); v_outbox uuid; v_count integer; v_key text;
+begin
+  select * into v from public.esign_requests where id=p_request_id and status='delivery_started';
+  if not found or p_signing_url !~ '^https://' then raise exception '전자계약 링크를 전달할 수 없어요.' using errcode='22023'; end if;
+  insert into public.messages(id,org_id,template_id,to_addr,from_addr,body_snapshot,status,source_entity_id,channel,idempotency_key,trigger_column_key,trigger_value)
+  values(v_message,v.org_id,p_message_template_id,v.signer_reference,p_sender,'전자계약 서명 링크: '||p_signing_url,'queued',v.deal_id,p_channel,
+    encode(extensions.digest('esign'||v.org_id::text||v.id::text,'sha256'),'hex'),'esign_request',v.id::text)
+  on conflict(org_id,idempotency_key) do update set idempotency_key=excluded.idempotency_key returning id into v_message;
+  v_key:=encode(extensions.digest('esign'||v.org_id::text||v.id::text||p_message_template_id::text||p_channel::text,'sha256'),'hex');
+  insert into public.message_outbox(org_id,message_id,idempotency_key,actor_kind,actor_id)
+  values(v.org_id,v_message,v_key,'automation','esign:'||v.id::text)
+  on conflict(org_id,idempotency_key) do nothing returning id into v_outbox;
+  get diagnostics v_count=row_count;
+  if v_count=0 then select id into v_outbox from public.message_outbox where org_id=v.org_id and idempotency_key=v_key; end if;
+  if v_count=1 then insert into public.message_outbox_audit(outbox_id,org_id,event,actor_kind,actor_id,attempt_count) values(v_outbox,v.org_id,'enqueued','automation','esign:'||v.id::text,0); end if;
+  return query select v_outbox,(v_count=1);
+end $$;
+
 create or replace function public.apply_esign_signed_event(p_event_id text,p_provider_document_id text,p_signed_at timestamptz)
 returns text language plpgsql security definer set search_path='' as $$
 declare v_req public.esign_requests%rowtype; v_count integer;
@@ -68,3 +114,6 @@ revoke all on function public.enqueue_esign_request(uuid,text,text,uuid) from pu
 grant execute on function public.enqueue_esign_request(uuid,text,text,uuid) to authenticated;
 revoke all on function public.apply_esign_signed_event(text,text,timestamptz) from public,anon,authenticated,service_role;
 grant execute on function public.apply_esign_signed_event(text,text,timestamptz) to service_role;
+
+revoke all on function public.list_queued_esign_requests(integer),public.start_esign_delivery(uuid),public.mark_esign_awaiting(uuid,text),public.mark_esign_delivery_unknown(uuid,text),public.enqueue_esign_signing_link(uuid,uuid,public.message_channel,text,text) from public,anon,authenticated,service_role;
+grant execute on function public.list_queued_esign_requests(integer),public.start_esign_delivery(uuid),public.mark_esign_awaiting(uuid,text),public.mark_esign_delivery_unknown(uuid,text),public.enqueue_esign_signing_link(uuid,uuid,public.message_channel,text,text) to moawork_outbox_worker;

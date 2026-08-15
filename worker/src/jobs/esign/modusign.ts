@@ -13,7 +13,9 @@ export class ModusignProvider implements EsignProvider {
         method: "POST", headers: { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json", "idempotency-key": input.idempotencyKey },
         body: JSON.stringify({ templateId: input.templateId, signerReference: input.signerReference, metadata: { orgId: input.orgId, dealId: input.dealId } }),
       });
-      if (!response.ok) return { ok:false, retryable:response.status===429, error:`provider_${response.status}` };
+      // Provider-side idempotency is not assumed. Any admitted request is quarantined
+      // instead of automatically spending twice, including 429 responses.
+      if (!response.ok) return { ok:false, retryable:false, error:`provider_${response.status}` };
       const body=await response.json() as { documentId?:unknown; signingUrl?:unknown };
       if(typeof body.documentId!=="string" || typeof body.signingUrl!=="string" || !/^https:\/\//.test(body.signingUrl)) return {ok:false,retryable:false,error:"provider_invalid_response"};
       return {ok:true,providerDocumentId:body.documentId,signingUrl:body.signingUrl};
