@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { applyFilters, type BoardFilterState } from "@/components/board/filters";
+import { analyzePhone } from "@/lib/format/phone";
 import type {
   CampaignOptOutPort,
   CampaignOutboxPort,
@@ -34,8 +35,8 @@ export function filterSnapshotHash(filters: BoardFilterState): string {
 
 export function normalizeCampaignPhone(value: unknown): string | null {
   if (typeof value !== "string" && typeof value !== "number") return null;
-  const digits = String(value).replace(/\D/g, "");
-  return digits.length >= 9 && digits.length <= 12 ? digits : null;
+  const result = analyzePhone(String(value));
+  return result.status === "normalized" ? result.normalized : null;
 }
 
 export class RetargetingCampaignService {
@@ -70,7 +71,7 @@ export class RetargetingCampaignService {
     if (targets.length === 0) {
       return { filterSnapshotHash: hash, matched: matched.length, selected: selected.length,
         missingOrInvalid: selected.length - valid.length, optedOut: valid.length, eligible: 0,
-        estimatedCostKrw: 0, queued: 0, duplicate: 0 };
+        estimatedCostKrw: 0, queued: 0, duplicate: 0, failed: 0 };
     }
     const result = await this.outbox.enqueue({
       orgId: command.ctx.org.id,

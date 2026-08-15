@@ -9,7 +9,7 @@ const columns = [{ id: "phone-col", org_id: "org-a", board_id: "board-a", key: "
 const row = (id: string, phone: string, assigned = "user-a"): ItemWithValues => ({ id, org_id: "org-a", board_id: "board-a", group_id: null, title: id, assigned_to: assigned, sort_order: 0, created_at: "", updated_at: "", values: { phone } });
 
 function setup(rows: ItemWithValues[], options: { allowed?: boolean; blocked?: string[] } = {}) {
-  const enqueue = vi.fn(async (input) => ({ queued: input.targets.length, duplicate: 0 }));
+  const enqueue = vi.fn(async (input) => ({ queued: input.targets.length, duplicate: 0, failed: 0 }));
   const service = new RetargetingCampaignService(
     { loadScopedBoard: vi.fn(async () => ({ columns, rows })) },
     { canBulkSend: vi.fn(async () => options.allowed ?? true) },
@@ -47,6 +47,17 @@ describe("retargeting campaign producer", () => {
     const { service, command } = setup([row("ok", "01011112222"), row("bad", "x"), row("off", "01033334444")], { blocked: ["01033334444"] });
     const result = await service.enqueue({ ...command, confirmedCount: 1, unitCostKrw: 30 });
     expect(result).toMatchObject({ matched: 3, selected: 3, missingOrInvalid: 1, optedOut: 1, eligible: 1, estimatedCostKrw: 30 });
+  });
+
+  it("uses D10 canonical normalization for +82, spaces and hyphens before opt-out", async () => {
+    const { service, enqueue, command } = setup([
+      row("intl", "+82 10-1111-2222"), row("local", "010 3333 4444"), row("hyphen", "010-5555-6666"),
+    ], { blocked: ["01011112222"] });
+    const result = await service.enqueue({ ...command, confirmedCount: 2 });
+    expect(result).toMatchObject({ selected: 3, optedOut: 1, eligible: 2 });
+    expect(enqueue.mock.calls[0][0].targets).toEqual([
+      { itemId: "local", phoneDigits: "01033334444" }, { itemId: "hyphen", phoneDigits: "01055556666" },
+    ]);
   });
 
   it("does not call outbox for zero eligible rows", async () => {

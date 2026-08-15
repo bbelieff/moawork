@@ -52,7 +52,7 @@ export interface CampaignOutboxPort {
     campaignKey: string;
     filterSnapshotHash: string;
     targets: readonly CampaignOutboxTarget[];
-  }): Promise<{ queued: number; duplicate: number }>;
+  }): Promise<{ queued: number; duplicate: number; failed: number }>;
 }
 
 export interface RetargetingResult {
@@ -65,4 +65,5 @@ export interface RetargetingResult {
   estimatedCostKrw: number;
   queued: number;
   duplicate: number;
+  failed: number;
 }
