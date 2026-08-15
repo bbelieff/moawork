@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 const migration = readFileSync(resolve(process.cwd(), "../supabase/migrations/069_contact_pipeline_transitions.sql"), "utf8");
 const ids = {
   org:"00000000-0000-4000-8000-000000000001", other:"00000000-0000-4000-8000-000000000002",
-  user:"00000000-0000-4000-8000-000000000010", pipeline:"00000000-0000-4000-8000-000000000020",
+  user:"00000000-0000-4000-8000-000000000010", otherUser:"00000000-0000-4000-8000-000000000011", pipeline:"00000000-0000-4000-8000-000000000020",
   contact:"00000000-0000-4000-8000-000000000021", work:"00000000-0000-4000-8000-000000000022",
   board:"00000000-0000-4000-8000-000000000030", item:"00000000-0000-4000-8000-000000000031",
 };
@@ -36,8 +36,8 @@ describe("BBE-152 PostgreSQL gate", () => {
     `);
     await db.exec(migration);
     await db.exec(`
-      insert into orgs values('${ids.org}'),('${ids.other}'); insert into users values('${ids.user}');
-      insert into org_members values('${ids.org}','${ids.user}','member','assigned');
+      insert into orgs values('${ids.org}'),('${ids.other}'); insert into users values('${ids.user}'),('${ids.otherUser}');
+      insert into org_members values('${ids.org}','${ids.user}','member','assigned'),('${ids.org}','${ids.otherUser}','member','assigned');
       insert into pipelines(id,org_id) values('${ids.pipeline}','${ids.org}');
       insert into stages values('${ids.contact}','${ids.pipeline}','meeting'),('${ids.work}','${ids.pipeline}','work');
       insert into boards values('${ids.board}','${ids.org}','core.default-tab/contact');
@@ -45,13 +45,18 @@ describe("BBE-152 PostgreSQL gate", () => {
       insert into item_values values('${ids.org}','${ids.item}','work_move','"업무관리 이동"'),('${ids.org}','${ids.item}','seal_status','"대기"');
       select set_config('app.uid','${ids.user}',false);
     `);
-    const blocked=await db.query<{status:string;reason:string}>(`select status,reason from execute_contact_pipeline_transition('${ids.org}',null,'${ids.item}',gen_random_uuid(),'contact_to_work',null,'테스트 회사')`);
+    const request="00000000-0000-4000-8000-000000000099";
+    const blocked=await db.query<{status:string;reason:string}>(`select status,reason from execute_contact_pipeline_transition('${ids.org}',null,'${ids.item}','${request}','contact_to_work',null,'테스트 회사')`);
     expect(blocked.rows[0]).toMatchObject({status:"blocked",reason:"대표 직인 승인이 필요합니다. 현재 직인 완료 = 대기"});
     expect((await db.query<{n:number}>("select count(*)::int n from deals")).rows[0].n).toBe(0);
     await db.exec(`update item_values set value_jsonb='"완료"' where item_id='${ids.item}' and column_key='seal_status'`);
-    const committed=await db.query<{status:string;deal_id:string}>(`select status,deal_id from execute_contact_pipeline_transition('${ids.org}',null,'${ids.item}',gen_random_uuid(),'contact_to_work',null,'테스트 회사')`);
+    const committed=await db.query<{status:string;deal_id:string}>(`select status,deal_id from execute_contact_pipeline_transition('${ids.org}',null,'${ids.item}','${request}','contact_to_work',null,'테스트 회사')`);
     expect(committed.rows[0].status).toBe("committed");
     expect((await db.query<{kind:string}>(`select s.kind from deals d join stages s on s.id=d.stage_id where d.id='${committed.rows[0].deal_id}'`)).rows[0].kind).toBe("work");
+    expect((await db.query<{n:number}>(`select count(*)::int n from contact_pipeline_transitions where request_id='${request}'`)).rows[0].n).toBe(1);
+    await db.exec(`select set_config('app.uid','${ids.otherUser}',false)`);
+    await expect(db.query(`select * from execute_contact_pipeline_transition('${ids.org}',null,'${ids.item}','${request}','contact_to_work',null,'테스트 회사')`)).rejects.toThrow(/transition unavailable/);
+    await db.exec(`select set_config('app.uid','${ids.user}',false)`);
     await expect(db.query(`select * from execute_contact_pipeline_transition('${ids.other}','${committed.rows[0].deal_id}',null,gen_random_uuid(),'lead_to_contact')`)).rejects.toThrow(/transition unavailable/);
   });
 });

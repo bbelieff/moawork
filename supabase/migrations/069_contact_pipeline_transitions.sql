@@ -55,14 +55,6 @@ begin
     from public.org_members m where m.org_id=p_org_id and m.user_id=v_actor;
   if not found then raise exception 'transition unavailable' using errcode='42501'; end if;
 
-  select * into v_existing from public.contact_pipeline_transitions t
-    where t.org_id=p_org_id and t.request_id=p_request_id;
-  if found then
-    return query select v_existing.status, v_existing.deal_id,
-      (select d.company_id from public.deals d where d.id=v_existing.deal_id), v_existing.block_reason;
-    return;
-  end if;
-
   if p_deal_id is null and p_source_item_id is not null and p_kind='contact_to_work' then
     select i.assigned_to,i.title,
       (select iv.value_jsonb #>> '{}' from public.item_values iv where iv.item_id=i.id and iv.column_key='seal_status'),
@@ -73,11 +65,22 @@ begin
     if not found or not (v_role in ('owner','admin') or v_scope='all' or v_assigned=v_actor) then
       raise exception 'transition unavailable' using errcode='42501';
     end if;
+    select * into v_existing from public.contact_pipeline_transitions t
+      where t.org_id=p_org_id and t.request_id=p_request_id;
+    if found and (v_existing.kind<>p_kind or v_existing.source_item_id is distinct from p_source_item_id) then
+      raise exception 'transition request target mismatch' using errcode='22023';
+    end if;
+    if found and v_existing.status='committed' then
+      return query select v_existing.status,v_existing.deal_id,
+        (select d.company_id from public.deals d where d.id=v_existing.deal_id),null::text;
+      return;
+    end if;
     if coalesce(v_move,'') <> '업무관리 이동' then v_reason := '업무관리 이동을 먼저 선택해 주세요.';
     elsif coalesce(v_seal,'대기') <> '완료' then v_reason := '대표 직인 승인이 필요합니다. 현재 직인 완료 = ' || coalesce(v_seal,'대기'); end if;
     if v_reason is not null then
       insert into public.contact_pipeline_transitions(org_id,source_item_id,request_id,kind,actor_id,status,block_reason)
-      values(p_org_id,p_source_item_id,p_request_id,p_kind,v_actor,'blocked',v_reason);
+      values(p_org_id,p_source_item_id,p_request_id,p_kind,v_actor,'blocked',v_reason)
+      on conflict(org_id,request_id) do update set status='blocked',block_reason=excluded.block_reason,actor_id=excluded.actor_id;
       return query select 'blocked'::text,null::uuid,null::uuid,v_reason; return;
     end if;
     select p.id into v_pipeline from public.pipelines p where p.org_id=p_org_id
@@ -91,8 +94,10 @@ begin
     ) h;
     update public.deals set pipeline_id=v_pipeline,stage_id=v_to,updated_at=now() where id=p_deal_id and org_id=p_org_id;
     insert into public.activities(org_id,deal_id,type,content,actor) values(p_org_id,p_deal_id,'status','업무관리 이동',v_actor);
-    insert into public.contact_pipeline_transitions(org_id,deal_id,source_item_id,request_id,kind,to_stage_id,actor_id,status)
-    values(p_org_id,p_deal_id,p_source_item_id,p_request_id,p_kind,v_to,v_actor,'committed');
+    insert into public.contact_pipeline_transitions(org_id,deal_id,source_item_id,request_id,kind,to_stage_id,actor_id,status,block_reason)
+    values(p_org_id,p_deal_id,p_source_item_id,p_request_id,p_kind,v_to,v_actor,'committed',null)
+    on conflict(org_id,request_id) do update set deal_id=excluded.deal_id,to_stage_id=excluded.to_stage_id,
+      actor_id=excluded.actor_id,status='committed',block_reason=null;
     return query select 'committed'::text,p_deal_id,v_company,null::text; return;
   end if;
 
@@ -103,6 +108,14 @@ begin
     from public.deals d where d.id=p_deal_id and d.org_id=p_org_id for update;
   if not found or not (v_role in ('owner','admin') or v_scope='all' or v_assigned=v_actor) then
     raise exception 'transition unavailable' using errcode='42501';
+  end if;
+  select * into v_existing from public.contact_pipeline_transitions t
+    where t.org_id=p_org_id and t.request_id=p_request_id;
+  if found and (v_existing.kind<>p_kind or v_existing.deal_id is distinct from p_deal_id) then
+    raise exception 'transition request target mismatch' using errcode='22023';
+  end if;
+  if found and v_existing.status='committed' then
+    return query select v_existing.status,v_existing.deal_id,v_company,null::text; return;
   end if;
 
   v_expected_from := case p_kind when 'lead_to_contact' then 'marketing' else 'meeting' end;
@@ -119,7 +132,8 @@ begin
   end if;
   if v_reason is not null then
     insert into public.contact_pipeline_transitions(org_id,deal_id,request_id,kind,from_stage_id,actor_id,status,block_reason)
-    values(p_org_id,p_deal_id,p_request_id,p_kind,v_from,v_actor,'blocked',v_reason);
+    values(p_org_id,p_deal_id,p_request_id,p_kind,v_from,v_actor,'blocked',v_reason)
+    on conflict(org_id,request_id) do update set status='blocked',block_reason=excluded.block_reason,actor_id=excluded.actor_id;
     return query select 'blocked'::text,p_deal_id,v_company,v_reason; return;
   end if;
 
@@ -136,8 +150,10 @@ begin
   update public.deals set stage_id=v_to, updated_at=now() where id=p_deal_id and org_id=p_org_id;
   insert into public.activities(org_id,deal_id,type,content,actor)
   values(p_org_id,p_deal_id,'status',case p_kind when 'lead_to_contact' then '컨택 이동' else '업무관리 이동' end,v_actor);
-  insert into public.contact_pipeline_transitions(org_id,deal_id,request_id,kind,from_stage_id,to_stage_id,actor_id,status)
-  values(p_org_id,p_deal_id,p_request_id,p_kind,v_from,v_to,v_actor,'committed');
+  insert into public.contact_pipeline_transitions(org_id,deal_id,request_id,kind,from_stage_id,to_stage_id,actor_id,status,block_reason)
+  values(p_org_id,p_deal_id,p_request_id,p_kind,v_from,v_to,v_actor,'committed',null)
+  on conflict(org_id,request_id) do update set to_stage_id=excluded.to_stage_id,actor_id=excluded.actor_id,
+    status='committed',block_reason=null;
   return query select 'committed'::text,p_deal_id,v_company,null::text;
 end; $$;
 
