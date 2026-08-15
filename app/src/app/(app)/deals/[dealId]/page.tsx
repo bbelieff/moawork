@@ -16,6 +16,9 @@ import { buildDownloadUrl } from "@/lib/deal/fileSignedUrl";
 import { listOrgMemberOptions, toNameMap } from "@/lib/deal/members";
 import { mergeTimeline } from "@/lib/deal/timeline";
 import type { Stage } from "@/lib/types";
+import { ChecklistPanel } from "@/components/policyfund/ChecklistPanel";
+import { CHECKLIST_PRODUCT_CATEGORY, ChecklistService, SupabaseChecklistStore } from "@/lib/policyfund/checklist";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * 딜 상세 (T02 · core.crm).
@@ -85,6 +88,10 @@ export default async function DealDetailPage({
   // 바꿔도 새로고침하면 되돌아가고 안내도 없다 — 무음 실패다.
   // 그래서 화면 게이트를 저장 계층 규칙과 «같은 조건» 으로 맞춘다(permissions.test.ts 가 고정).
   const canReassign = canReassignDeal(ctx);
+  const checklist = await new ChecklistService(
+    ctx.org.id,
+    new SupabaseChecklistStore(await createClient()),
+  ).getDealChecklist(deal.id);
 
   return (
     <div className="flex flex-col gap-8">
@@ -170,6 +177,15 @@ export default async function DealDetailPage({
           files={dealFiles}
           downloadUrlById={downloadUrlById}
           canEdit={canEdit}
+        />
+      </Section>
+
+      <Section title="서류 체크리스트">
+        <ChecklistPanel
+          dealId={deal.id}
+          initialState={checklist}
+          productCategory={CHECKLIST_PRODUCT_CATEGORY}
+          readOnly={!canEdit}
         />
       </Section>
     </div>

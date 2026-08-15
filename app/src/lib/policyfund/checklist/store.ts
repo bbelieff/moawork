@@ -1,48 +1,32 @@
-/**
- * 서류 체크리스트 저장소 (BBE-110) — 서버 인메모리(globalThis), org 스코프.
- *
- * `@/lib/repo/local/*` 어댑터·BBE-47 의 `boards/groupLayout.ts` 와 같은 idiom이다.
- * 001 deals 테이블(T02 소유)이나 T05 커스텀필드 엔진에 얹지 않고 완전히 독립된 저장소를
- * 쓴다 — 그래서 이 파일 하나만 실 Supabase 어댑터로 갈아끼우면 되고, 다른 트랙의 파일을
- * 전혀 건드리지 않는다.
- *
- * ⚠ 인증·인가는 여기서 하지 않는다. 호출부(service)가 세션에서 얻은 orgId 만 넘기고,
- * 그 딜/조직에 대한 접근 권한 확인은 호출부(또는 향후 실 Supabase RLS)의 책임이다.
- */
-
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DealChecklistState, ProductChecklistPreset } from "./types";
 
-interface Store {
-  presets: Map<string, ProductChecklistPreset>;
-  deals: Map<string, DealChecklistState>;
+export interface ChecklistStore {
+  getPreset(orgId: string, productId: string): Promise<ProductChecklistPreset | null>;
+  savePreset(orgId: string, preset: ProductChecklistPreset): Promise<void>;
+  getDealChecklist(orgId: string, dealId: string): Promise<DealChecklistState | null>;
+  saveDealChecklist(orgId: string, state: DealChecklistState): Promise<void>;
 }
 
-const g = globalThis as unknown as { __moaworkChecklist?: Store };
+export class SupabaseChecklistStore implements ChecklistStore {
+  constructor(private readonly client: SupabaseClient) {}
 
-function store(): Store {
-  g.__moaworkChecklist ??= { presets: new Map(), deals: new Map() };
-  return g.__moaworkChecklist;
-}
-
-const SEP = "/";
-const presetKey = (orgId: string, productId: string) => `${orgId}${SEP}${productId}`;
-const dealKey = (orgId: string, dealId: string) => `${orgId}${SEP}${dealId}`;
-
-/** 상품 하나의 회사 공용 기본 체크리스트. 없으면 null(그 상품엔 아직 기본값이 없다는 뜻). */
-export function getPreset(orgId: string, productId: string): ProductChecklistPreset | null {
-  return store().presets.get(presetKey(orgId, productId)) ?? null;
-}
-
-/** 프리셋 저장(있으면 덮어씀) — 관리자 편집·"프리셋으로 저장" 양쪽이 쓴다. */
-export function savePreset(orgId: string, preset: ProductChecklistPreset): void {
-  store().presets.set(presetKey(orgId, preset.productId), preset);
-}
-
-/** 딜의 체크리스트 상태. 저장된 적 없으면 null(호출부가 빈 상태로 초기화해 돌려준다). */
-export function getDealChecklist(orgId: string, dealId: string): DealChecklistState | null {
-  return store().deals.get(dealKey(orgId, dealId)) ?? null;
-}
-
-export function saveDealChecklist(orgId: string, state: DealChecklistState): void {
-  store().deals.set(dealKey(orgId, state.dealId), state);
+  async getPreset(orgId: string, productId: string): Promise<ProductChecklistPreset | null> {
+    const { data, error } = await this.client.from("policyfund_checklist_presets").select("product_id,items_jsonb,updated_at").eq("org_id", orgId).eq("product_id", productId).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? { productId: data.product_id, items: data.items_jsonb, updatedAt: data.updated_at } : null;
+  }
+  async savePreset(orgId: string, preset: ProductChecklistPreset): Promise<void> {
+    const { error } = await this.client.from("policyfund_checklist_presets").upsert({ org_id: orgId, product_id: preset.productId, items_jsonb: preset.items, updated_at: preset.updatedAt }, { onConflict: "org_id,product_id" });
+    if (error) throw new Error(error.message);
+  }
+  async getDealChecklist(orgId: string, dealId: string): Promise<DealChecklistState | null> {
+    const { data, error } = await this.client.from("deal_document_checklists").select("deal_id,product_id,items_jsonb").eq("org_id", orgId).eq("deal_id", dealId).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? { dealId: data.deal_id, productId: data.product_id, items: data.items_jsonb } : null;
+  }
+  async saveDealChecklist(orgId: string, state: DealChecklistState): Promise<void> {
+    const { error } = await this.client.from("deal_document_checklists").upsert({ org_id: orgId, deal_id: state.dealId, product_id: state.productId, items_jsonb: state.items, updated_at: new Date().toISOString() }, { onConflict: "org_id,deal_id" });
+    if (error) throw new Error(error.message);
+  }
 }

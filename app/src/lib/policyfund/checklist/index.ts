@@ -2,7 +2,8 @@
 export * from "./types";
 export * from "./engine";
 export * from "./products";
-export { ChecklistService, NoProductSelectedError, getChecklistService } from "./service";
+export { ChecklistService, NoProductSelectedError } from "./service";
+export { SupabaseChecklistStore, type ChecklistStore } from "./store";
 
 // ⚠ `./actions`(서버 액션)는 배럴에서 제외 — "use server" 모듈은 클라이언트 컴포넌트가
 //   직접 `@/lib/policyfund/checklist/actions` 에서 import 한다(boards/actions.ts 와 동일 관례).

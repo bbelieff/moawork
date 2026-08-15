@@ -16,6 +16,8 @@
 
 import { getSession } from "@/lib/auth/session";
 import { ChecklistService } from "./service";
+import { SupabaseChecklistStore } from "./store";
+import { createClient } from "@/lib/supabase/server";
 import type { DealChecklistState, ProductChecklistPreset } from "./types";
 
 function str(fd: FormData, key: string): string {
@@ -25,34 +27,34 @@ function str(fd: FormData, key: string): string {
 
 async function service(): Promise<ChecklistService> {
   const ctx = await getSession();
-  return new ChecklistService(ctx.org.id);
+  return new ChecklistService(ctx.org.id, new SupabaseChecklistStore(await createClient()));
 }
 
 export async function applyProductAction(formData: FormData): Promise<DealChecklistState> {
   const svc = await service();
-  return svc.applyProduct(str(formData, "dealId"), str(formData, "productId"));
+  return await svc.applyProduct(str(formData, "dealId"), str(formData, "productId"));
 }
 
 export async function toggleChecklistItemAction(formData: FormData): Promise<DealChecklistState> {
   const svc = await service();
-  return svc.toggleItem(str(formData, "dealId"), str(formData, "itemId"));
+  return await svc.toggleItem(str(formData, "dealId"), str(formData, "itemId"));
 }
 
 export async function addChecklistItemAction(formData: FormData): Promise<DealChecklistState> {
   const svc = await service();
-  return svc.addItem(str(formData, "dealId"), str(formData, "label"));
+  return await svc.addItem(str(formData, "dealId"), str(formData, "label"));
 }
 
 export async function removeChecklistItemAction(formData: FormData): Promise<DealChecklistState> {
   const svc = await service();
-  return svc.removeItem(str(formData, "dealId"), str(formData, "itemId"));
+  return await svc.removeItem(str(formData, "dealId"), str(formData, "itemId"));
 }
 
 export async function saveChecklistAsPresetAction(
   formData: FormData,
 ): Promise<ProductChecklistPreset> {
   const svc = await service();
-  return svc.saveAsPreset(str(formData, "dealId"));
+  return await svc.saveAsPreset(str(formData, "dealId"));
 }
 
 /** 관리자 화면 — 상품 하나의 회사 공용 기본 체크리스트를 통째로 재설정. */
@@ -62,7 +64,7 @@ export async function setProductPresetAction(formData: FormData): Promise<void> 
   const labels = formData
     .getAll("label")
     .filter((v): v is string => typeof v === "string");
-  svc.setPreset(
+  await svc.setPreset(
     productId,
     labels.map((label) => ({ label })),
   );
