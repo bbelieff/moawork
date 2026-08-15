@@ -11,6 +11,7 @@
 
 import type { FieldOption, FieldType } from "@/lib/types";
 import type { FieldSource } from "@/lib/field/source";
+import type { DetailLayoutEntry } from "./detail-layout";
 
 /** 보드 뷰 종류 — 003 board_views.kind. */
 export const BOARD_VIEW_KINDS = ["table", "kanban"] as const;
@@ -30,6 +31,8 @@ export interface Board {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  /** 상세 패널의 보드 기본 배치. 빈 배열은 의도적으로 비어 있는 기본 배치다. */
+  detail_layout_jsonb?: DetailLayoutEntry[];
 }
 
 export interface BoardGroup {
@@ -39,6 +42,8 @@ export interface BoardGroup {
   name: string;
   color: string | null;
   sort_order: number;
+  /** null이면 보드 기본을 상속하고, 배열이면 이 그룹(제품의 아이템)만 오버라이드한다. */
+  detail_layout_jsonb?: DetailLayoutEntry[] | null;
 }
 
 export interface BoardColumn {

@@ -16,6 +16,7 @@ import type {
   ItemValue,
 } from "@/lib/boards/types";
 import { isSectionPresetSource } from "@/lib/presets/section-presets";
+import { normalizeDetailLayout, type DetailLayoutEntry } from "@/lib/boards/detail-layout";
 import type {
   BoardPatch,
   BoardsRepo,
@@ -104,6 +105,14 @@ export class LocalBoardsRepo {
     return true;
   }
 
+  setBoardDetailLayout(ctx: Ctx, id: string, layout: DetailLayoutEntry[]): Board | undefined {
+    const board = this.getBoard(ctx, id);
+    if (!board) return undefined;
+    board.detail_layout_jsonb = normalizeDetailLayout(layout);
+    board.updated_at = now();
+    return board;
+  }
+
   // ── 그룹 ──
   listGroups(ctx: Ctx, boardId: string): BoardGroup[] {
     return db()
@@ -132,6 +141,17 @@ export class LocalBoardsRepo {
     // 003: on delete set null
     for (const it of d.boardItems) if (it.group_id === id) it.group_id = null;
     return true;
+  }
+
+  setGroupDetailLayout(
+    ctx: Ctx,
+    id: string,
+    layout: DetailLayoutEntry[] | null,
+  ): BoardGroup | undefined {
+    const group = db().boardGroups.find((candidate) => candidate.id === id && candidate.org_id === ctx.org.id);
+    if (!group) return undefined;
+    group.detail_layout_jsonb = layout === null ? null : normalizeDetailLayout(layout);
+    return group;
   }
 
   // ── 컬럼 ──

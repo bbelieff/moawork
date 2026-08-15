@@ -9,6 +9,7 @@ import type {
 } from "@/lib/boards/store";
 import { slugifyKey } from "@/lib/repo/local/boardsRepo";
 import { isSectionPresetSource } from "@/lib/presets/section-presets";
+import { normalizeDetailLayout, type DetailLayoutEntry } from "@/lib/boards/detail-layout";
 
 type Row = Record<string, unknown>;
 
@@ -64,10 +65,20 @@ export class SupabaseBoardsRepo implements BoardsRepo {
     if (q.error) throw new Error(q.error.message); return (q.data ?? undefined) as Board | undefined;
   }
   async deleteBoard(ctx: Ctx, id: string): Promise<boolean> { const q = await this.client.from("boards").delete().eq("org_id", ctx.org.id).eq("id", id).select("id"); if (q.error) throw new Error(q.error.message); return (q.data?.length ?? 0) > 0; }
+  async setBoardDetailLayout(ctx: Ctx, id: string, layout: DetailLayoutEntry[]): Promise<Board | undefined> {
+    const q = await this.client.from("boards").update({ detail_layout_jsonb: normalizeDetailLayout(layout), updated_at: new Date().toISOString() }).eq("org_id", ctx.org.id).eq("id", id).select("*").maybeSingle();
+    if (q.error) throw new Error(q.error.message);
+    return (q.data ?? undefined) as Board | undefined;
+  }
 
   async listGroups(ctx: Ctx, boardId: string): Promise<BoardGroup[]> { const q = await this.client.from("board_groups").select("*").eq("org_id", ctx.org.id).eq("board_id", boardId).order("sort_order"); return many<BoardGroup>(q.data, q.error); }
   async createGroup(ctx: Ctx, boardId: string, input: NewGroup): Promise<BoardGroup> { const rows = await this.listGroups(ctx, boardId); const q = await this.client.from("board_groups").insert({ org_id: ctx.org.id, board_id: boardId, name: input.name, color: input.color ?? null, sort_order: rows.length }).select("*").single(); return one<BoardGroup>(q.data, q.error); }
   async deleteGroup(ctx: Ctx, id: string): Promise<boolean> { const q = await this.client.from("board_groups").delete().eq("org_id", ctx.org.id).eq("id", id).select("id"); if (q.error) throw new Error(q.error.message); return (q.data?.length ?? 0) > 0; }
+  async setGroupDetailLayout(ctx: Ctx, id: string, layout: DetailLayoutEntry[] | null): Promise<BoardGroup | undefined> {
+    const q = await this.client.from("board_groups").update({ detail_layout_jsonb: layout === null ? null : normalizeDetailLayout(layout) }).eq("org_id", ctx.org.id).eq("id", id).select("*").maybeSingle();
+    if (q.error) throw new Error(q.error.message);
+    return (q.data ?? undefined) as BoardGroup | undefined;
+  }
 
   async listColumns(ctx: Ctx, boardId: string): Promise<BoardColumn[]> { const q = await this.client.from("board_columns").select("*").eq("org_id", ctx.org.id).eq("board_id", boardId).order("sort_order"); return many<Row>(q.data, q.error).map(columnRow); }
   async createColumn(ctx: Ctx, boardId: string, input: NewColumn): Promise<BoardColumn> {

@@ -28,6 +28,12 @@ import {
   encodeCellFlash,
 } from "@/lib/boards/cellFlash";
 import { encodeNoticeFile, NOTICE_FILE_VALUE_PREFIX } from "@/lib/notices/official-file";
+import {
+  detailKeyFromLabel,
+  normalizeDetailLayout,
+  resolveDetailLayout,
+  type DetailLayoutEntry,
+} from "@/lib/boards/detail-layout";
 
 function str(fd: FormData, key: string): string {
   const v = fd.get(key);
@@ -296,5 +302,146 @@ export async function setGroupColumnOrderAction(formData: FormData): Promise<voi
     .filter((s) => s !== "" && valid.has(s));
 
   setGroupColumnOrder(ctx.org.id, boardId, groupKey, order);
+  revalidatePath(`/boards/${boardId}`);
+}
+
+function layoutFromFormData(formData: FormData): DetailLayoutEntry[] {
+  try {
+    return normalizeDetailLayout(JSON.parse(str(formData, "layout")));
+  } catch {
+    throw new Error("상세 필드 배치 형식이 올바르지 않습니다.");
+  }
+}
+
+/** 보드 기본 또는 그룹(제품 아이템) 오버라이드를 저장한다. 값 EAV는 전혀 변경하지 않는다. */
+export async function saveDetailLayoutAction(formData: FormData): Promise<void> {
+  const ctx = await getSession();
+  await requirePermission(ctx, "structure.column_manage");
+  const boardId = str(formData, "boardId");
+  const groupId = str(formData, "groupId");
+  const graph = await createRequestBoards();
+  const detail = await graph.service.getBoardDetail(ctx, boardId);
+  const columnKeys = new Set(detail.columns.map((column) => column.key));
+  const layout = layoutFromFormData(formData).filter(
+    (entry) => entry.source === "detail" || columnKeys.has(entry.key),
+  );
+  if (groupId) {
+    if (!detail.groups.some((group) => group.id === groupId)) throw new NotFoundError("아이템을 찾을 수 없습니다.");
+    await graph.repo.setGroupDetailLayout(ctx, groupId, layout);
+  } else {
+    await graph.repo.setBoardDetailLayout(ctx, boardId, layout);
+  }
+  revalidatePath(`/boards/${boardId}`);
+}
+
+export async function resetGroupDetailLayoutAction(formData: FormData): Promise<void> {
+  const ctx = await getSession();
+  await requirePermission(ctx, "structure.column_manage");
+  const boardId = str(formData, "boardId");
+  const groupId = str(formData, "groupId");
+  const graph = await createRequestBoards();
+  const detail = await graph.service.getBoardDetail(ctx, boardId);
+  if (!detail.groups.some((group) => group.id === groupId)) throw new NotFoundError("아이템을 찾을 수 없습니다.");
+  await graph.repo.setGroupDetailLayout(ctx, groupId, null);
+  revalidatePath(`/boards/${boardId}`);
+}
+
+export async function addDetailFieldAction(formData: FormData): Promise<void> {
+  const ctx = await getSession();
+  await requirePermission(ctx, "structure.column_manage");
+  const boardId = str(formData, "boardId");
+  const groupId = str(formData, "groupId");
+  const label = str(formData, "label").trim();
+  const type = str(formData, "type") || "text";
+  if (!label || !isFieldType(type)) throw new Error("상세 필드 이름과 타입을 확인해 주세요.");
+  const graph = await createRequestBoards();
+  const detail = await graph.service.getBoardDetail(ctx, boardId);
+  const group = groupId ? detail.groups.find((candidate) => candidate.id === groupId) : undefined;
+  if (groupId && !group) throw new NotFoundError("아이템을 찾을 수 없습니다.");
+  const current = resolveDetailLayout(detail.board.detail_layout_jsonb, group?.detail_layout_jsonb).entries;
+  const occupied = new Set([...detail.columns.map((column) => column.key), ...current.map((entry) => entry.key)]);
+  const base = detailKeyFromLabel(label);
+  let key = base;
+  for (let suffix = 2; occupied.has(key); suffix += 1) key = `${base}_${suffix}`.slice(0, 80);
+  const next = [...current, { key, source: "detail" as const, label, type }];
+  if (group) await graph.repo.setGroupDetailLayout(ctx, group.id, next);
+  else await graph.repo.setBoardDetailLayout(ctx, boardId, next);
+  revalidatePath(`/boards/${boardId}`);
+}
+
+/** 상세 전용 값은 현재 유효한 배치에 존재할 때만 쓴다. assigned scope는 getItem/RLS가 재검증한다. */
+export async function setDetailValueAction(formData: FormData): Promise<void> {
+  const ctx = await getSession();
+  await requirePermission(ctx, "work.item_upsert");
+  const boardId = str(formData, "boardId");
+  const itemId = str(formData, "itemId");
+  const key = str(formData, "fieldKey");
+  const graph = await createRequestBoards();
+  const [detail, item] = await Promise.all([
+    graph.service.getBoardDetail(ctx, boardId),
+    graph.repo.getItem(ctx, itemId),
+  ]);
+  if (!item || item.board_id !== boardId) throw new NotFoundError("아이템을 찾을 수 없습니다.");
+  const group = item.group_id ? detail.groups.find((candidate) => candidate.id === item.group_id) : undefined;
+  const entry = resolveDetailLayout(detail.board.detail_layout_jsonb, group?.detail_layout_jsonb).entries
+    .find((candidate) => candidate.key === key && candidate.source === "detail");
+  if (!entry) throw new Error("현재 상세 배치에 없는 필드입니다.");
+  await graph.repo.setValues(ctx, itemId, { [key]: str(formData, "value") });
+  revalidatePath(`/boards/${boardId}`);
+}
+
+/** 미배치 값의 키를 현재 그룹 배치에 다시 올린다. 값 자체는 읽기만 하며 그대로 보존한다. */
+export async function addUnplacedDetailEntryAction(formData: FormData): Promise<void> {
+  const ctx = await getSession();
+  await requirePermission(ctx, "structure.column_manage");
+  const boardId = str(formData, "boardId");
+  const groupId = str(formData, "groupId");
+  const key = str(formData, "fieldKey");
+  const graph = await createRequestBoards();
+  const detail = await graph.service.getBoardDetail(ctx, boardId);
+  const group = groupId ? detail.groups.find((candidate) => candidate.id === groupId) : undefined;
+  if (groupId && !group) throw new NotFoundError("아이템을 찾을 수 없습니다.");
+  const current = resolveDetailLayout(detail.board.detail_layout_jsonb, group?.detail_layout_jsonb).entries;
+  if (current.some((entry) => entry.key === key)) return;
+  const column = detail.columns.find((candidate) => candidate.key === key);
+  const next: DetailLayoutEntry[] = [
+    ...current,
+    column
+      ? { key, source: "column", label: column.label, type: column.type }
+      : { key, source: "detail", label: key, type: "text" },
+  ];
+  if (group) await graph.repo.setGroupDetailLayout(ctx, group.id, next);
+  else await graph.repo.setBoardDetailLayout(ctx, boardId, next);
+  revalidatePath(`/boards/${boardId}`);
+}
+
+/** 같은 EAV key로 표 컬럼을 만들기 때문에 승격 전후 값은 이동·복사 없이 유지된다. */
+export async function promoteDetailFieldAction(formData: FormData): Promise<void> {
+  const ctx = await getSession();
+  await requirePermission(ctx, "structure.column_manage");
+  const boardId = str(formData, "boardId");
+  const key = str(formData, "fieldKey");
+  const graph = await createRequestBoards();
+  const detail = await graph.service.getBoardDetail(ctx, boardId);
+  const layouts = [normalizeDetailLayout(detail.board.detail_layout_jsonb), ...detail.groups
+    .filter((group) => group.detail_layout_jsonb !== null && group.detail_layout_jsonb !== undefined)
+    .map((group) => normalizeDetailLayout(group.detail_layout_jsonb))];
+  const entry = layouts.flat().find((candidate) => candidate.key === key && candidate.source === "detail");
+  if (!entry) throw new Error("승격할 상세 전용 필드를 찾을 수 없습니다.");
+  if (!detail.columns.some((column) => column.key === key)) {
+    await graph.repo.createColumn(ctx, boardId, {
+      key,
+      label: entry.label ?? key,
+      type: entry.type && isFieldType(entry.type) ? entry.type : "text",
+    });
+  }
+  const promote = (layout: readonly DetailLayoutEntry[]) => layout.map((candidate) =>
+    candidate.key === key ? { ...candidate, source: "column" as const } : candidate,
+  );
+  await graph.repo.setBoardDetailLayout(ctx, boardId, promote(normalizeDetailLayout(detail.board.detail_layout_jsonb)));
+  await Promise.all(detail.groups.map(async (group) => {
+    if (group.detail_layout_jsonb === null || group.detail_layout_jsonb === undefined) return;
+    await graph.repo.setGroupDetailLayout(ctx, group.id, promote(normalizeDetailLayout(group.detail_layout_jsonb)));
+  }));
   revalidatePath(`/boards/${boardId}`);
 }

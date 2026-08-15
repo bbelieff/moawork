@@ -25,6 +25,8 @@ import { fieldTypeLabel } from "@/lib/field/type-labels";
 import { StatusCell, StatusSelect } from "@/components/boards/StatusCell";
 import { SourceBadge } from "./FieldBadge";
 import { clampWidth } from "./layout";
+import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
+import { ItemDetailPanel } from "./ItemDetailPanel";
 import {
   addItemAction,
   deleteItemAction,
@@ -242,6 +244,10 @@ export function GroupTable({
   boardId,
   groupId,
   columns,
+  detailColumns = [...columns],
+  boardDetailLayout = [],
+  detailLayout = [],
+  detailLayoutInherited = true,
   rows,
   readOnly,
   canDeleteItems = !readOnly,
@@ -261,6 +267,11 @@ export function GroupTable({
   groupId: string | null;
   /** 오버라이드·컬럼수까지 적용된 **최종 표시 순서**. */
   columns: readonly BoardColumn[];
+  /** 상세 패널은 표의 표시 제한과 무관하게 전체 컬럼 정의를 사용한다. */
+  detailColumns?: BoardColumn[];
+  boardDetailLayout?: DetailLayoutEntry[];
+  detailLayout?: DetailLayoutEntry[];
+  detailLayoutInherited?: boolean;
   rows: readonly ItemWithValues[];
   readOnly: boolean;
   canDeleteItems?: boolean;
@@ -497,6 +508,17 @@ export function GroupTable({
                         />
                       </form>
                     )}
+
+                    <ItemDetailPanel
+                      boardId={boardId}
+                      row={row}
+                      columns={detailColumns}
+                      boardLayout={boardDetailLayout}
+                      layout={detailLayout}
+                      inherited={detailLayoutInherited}
+                      canEditItems={!readOnly}
+                      canManageColumns={canManageColumns}
+                    />
 
                     {canDeleteItems && (
                       <form action={deleteItemAction} className="shrink-0">
