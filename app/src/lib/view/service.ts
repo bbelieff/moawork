@@ -24,6 +24,7 @@ function toRow(input: NewTabViewInput): Record<string, unknown> {
   return {
     org_id: input.orgId,
     board_key: input.boardKey,
+    board_id: input.boardId ?? input.boardKey,
     owner_id: input.ownerId,
     name: input.name,
     kind: input.kind,

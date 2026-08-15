@@ -83,6 +83,7 @@ export interface TabViewRow {
 export interface NewTabViewInput {
   readonly orgId: string;
   readonly boardKey: string;
+  readonly boardId?: string;
   readonly ownerId: string;
   readonly name: string;
   readonly kind: ViewKind;

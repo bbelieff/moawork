@@ -18,6 +18,7 @@ create table tab_views (
   id                    uuid primary key default gen_random_uuid(),
   org_id                uuid not null references orgs(id) on delete cascade,
   board_key             text not null,
+  board_id              uuid not null references boards(id) on delete cascade,
   owner_id              uuid references users(id) on delete cascade,
   name                  text not null,
   kind                  text not null default 'board'
@@ -32,6 +33,9 @@ create table tab_views (
   hidden_columns_jsonb  jsonb not null default '[]',
   column_order_jsonb    jsonb not null default '[]',
   calendar_field_key    text,
+  config_jsonb          jsonb not null default '{}',
+  is_default            boolean not null default false,
+  last_used_at          timestamptz,
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now(),
   -- fixed 조건은 대상 사람이 반드시 지정돼야 한다(D26 — 이름을 박은 뷰는 예외 취급).
@@ -41,6 +45,9 @@ create table tab_views (
   unique (org_id, board_key, owner_id, name)
 );
 create index on tab_views(org_id, board_key);
+create index on tab_views(org_id, board_id, last_used_at desc);
+create unique index tab_views_one_default_per_user_board
+  on tab_views(org_id, board_id, owner_id) where is_default;
 
 alter table tab_views enable row level security;
 
@@ -69,3 +76,23 @@ create policy tabviews_delete on tab_views for delete
     public.is_org_member(org_id)
     and (owner_id = auth.uid() or public.org_role(org_id) in ('owner','admin'))
   );
+
+revoke all on table tab_views from public, anon;
+grant select, insert, update, delete on table tab_views to authenticated;
+
+create or replace function set_tab_view_default(p_view_id uuid)
+returns void language plpgsql security invoker set search_path = '' as $$
+declare v_org uuid; v_board uuid; v_owner uuid;
+begin
+  select org_id, board_id, owner_id into v_org, v_board, v_owner
+    from public.tab_views where id = p_view_id for update;
+  if not found or v_owner is distinct from (select auth.uid()) then
+    raise exception 'view unavailable' using errcode = '42501';
+  end if;
+  update public.tab_views set is_default = false
+    where org_id = v_org and board_id = v_board and owner_id = v_owner and is_default;
+  update public.tab_views set is_default = true, last_used_at = now(), updated_at = now()
+    where id = p_view_id;
+end; $$;
+revoke all on function set_tab_view_default(uuid) from public, anon;
+grant execute on function set_tab_view_default(uuid) to authenticated;
