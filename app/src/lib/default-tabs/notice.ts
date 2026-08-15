@@ -43,7 +43,17 @@ export const NOTICE_TAB: DefaultTab = {
       width: 130,
       pendingReason: "서명 URL·만료·조직 경계가 적용된 파일 선택기로 연결됩니다.",
     },
-    { key: "summary", label: "내용 정리", type: "longtext", source: "in", width: 220 },
+    {
+      key: "summary",
+      label: "내용 정리",
+      // The mockup's `doc` means a multiline document cell. FieldType has no
+      // separate doc primitive, so the board engine persists it losslessly as
+      // longtext and renders the shared multiline editor rather than inventing
+      // a second storage contract.
+      type: "longtext",
+      source: "in",
+      width: 220,
+    },
     { key: "low_score_companies", label: "점수 미달인 업체", type: "select", source: "in", width: 150 },
     { key: "tax_delinquent_companies", label: "세금 미납인 업체", type: "select", source: "in", width: 150 },
     { key: "not_selected_companies", label: "미선정 업체", type: "select", source: "in", width: 140 },

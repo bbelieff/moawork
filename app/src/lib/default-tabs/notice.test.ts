@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { GroupTable } from "@/components/board/GroupTable";
 import { BoardsService } from "@/lib/boards/service";
+import { calculateFields } from "@/lib/boards/calculations";
+import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
 import type { Ctx } from "@/lib/types";
@@ -46,5 +51,53 @@ describe("BBE-151 notice default tab", () => {
 
   it("contains no customer-specific people or company values", () => {
     expect(JSON.stringify(NOTICE_TAB)).not.toMatch(/카뮈|이대표|박정화|대한정밀|미래로지스|우진산업/);
+  });
+
+  it("renders all ten columns through the shared board screen", async () => {
+    resetDb();
+    const local = new LocalBoardsRepo();
+    const repo = toAsyncBoardsRepo(local);
+    const installed = await ensureDefaultTab(ctx, NOTICE_TAB, repo);
+    const columns = local.listColumns(ctx, installed.boardId);
+    const row: ItemWithValues = {
+      id: "notice-row",
+      org_id: ctx.org.id,
+      board_id: installed.boardId,
+      group_id: installed.groupIds[NOTICE_GROUPS.monthlyRenewal],
+      title: "예시 공지",
+      assigned_to: null,
+      sort_order: 0,
+      created_at: "2026-08-15T00:00:00Z",
+      updated_at: "2026-08-15T00:00:00Z",
+      values: {},
+    };
+    const html = renderToStaticMarkup(createElement(GroupTable, {
+      boardId: installed.boardId,
+      groupId: row.group_id,
+      columns: columns as BoardColumn[],
+      rows: [row],
+      readOnly: false,
+      rowDragEnabled: false,
+      cellFlash: null,
+      onColumnDrop: () => {},
+      dragRowId: null,
+      canDropRow: () => false,
+      onRowDragStart: () => {},
+      onRowDragEnd: () => {},
+      onRowDrop: () => {},
+    }));
+    expect(columns).toHaveLength(10);
+    for (const column of NOTICE_TAB.columns) expect(html, column.label).toContain(`>${column.label}<`);
+    expect(html).toContain("sticky right-0");
+    expect(html).not.toContain('name="columnKey" value="read_count"');
+  });
+
+  it("reuses BBE-153 read calculation and keeps mockup doc as lossless longtext", () => {
+    expect(calculateFields({ targetIds: ["a", "b"], readerIds: ["b"] }).values.read_count).toBe(1);
+    expect(NOTICE_TAB.columns.find((column) => column.key === "summary")).toMatchObject({
+      label: "내용 정리",
+      type: "longtext",
+      source: "in",
+    });
   });
 });
