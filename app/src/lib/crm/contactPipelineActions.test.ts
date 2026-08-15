@@ -28,7 +28,10 @@ describe("BBE-152 contact pipeline actions", () => {
     const reason="대표 직인 승인이 필요합니다. 현재 직인 완료 = 대기";
     executeContactPipelineTransition.mockResolvedValue({status:"blocked",dealId:"deal-1",companyId:null,reason});
     const form=new FormData(); form.set("kind","contact_to_work"); form.set("dealId","deal-1"); form.set("requestId","00000000-0000-4000-8000-000000000099"); form.set("companyName","새봄상사");
-    await expect(mutateContactPipeline({ok:false,message:""},form)).resolves.toEqual({ok:false,message:reason});
+    await expect(mutateContactPipeline({ok:false,message:""},form)).resolves.toEqual({
+      ok:false,message:reason,
+      unmet:[{key:"seal_approval",label:"대표 직인 승인",satisfied:false,currentValueLabel:"대기"}],
+    });
   });
   it("passes a contact-board item as source identity instead of cloning a customer snapshot", async () => {
     const form=new FormData(); form.set("kind","contact_to_work"); form.set("sourceItemId","00000000-0000-4000-8000-000000000020"); form.set("requestId","00000000-0000-4000-8000-000000000099"); form.set("companyName","모아 상사");

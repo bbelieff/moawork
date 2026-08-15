@@ -1,6 +1,8 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
+import { LockBlockedDialog } from "@/components/automation-presets/lock";
+import { requestSealApprovalAction, type SealApprovalRequestResult } from "@/lib/automation/lock/actions";
 import { CompanyPickerPanel } from "@/components/company/CompanyPickerPanel";
 import type { CompanyCandidate } from "@/lib/company/types";
 import {
@@ -14,6 +16,13 @@ import {
 } from "@/lib/crm/contactPipeline";
 
 const INITIAL: ContactPipelineActionState = { ok: false, message: "" };
+
+export function availableLockActions(key: string, dealId: string | null) {
+  return {
+    canNavigate: key !== "seal_approval" || dealId !== null,
+    canRequestApproval: key === "seal_approval" && dealId !== null,
+  };
+}
 
 export function companyRowsFromResponse(payload: unknown): Array<Record<string, unknown>> {
   if (!payload || typeof payload !== "object") return [];
@@ -38,7 +47,26 @@ export function ContactPipelineAction({
   const [companies, setCompanies] = useState<CompanyCandidate[]>([]);
   const [query, setQuery] = useState(initialCompanyName);
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [dismissedMessage, setDismissedMessage] = useState<string | null>(null);
+  const [approvalFeedback, setApprovalFeedback] = useState<SealApprovalRequestResult | null>(null);
+  const [approvalPending, startApproval] = useTransition();
   const label = kind === "lead_to_contact" ? CONTACT_MOVE_LABEL : WORK_MOVE_LABEL;
+  const blocked = !state.ok && state.unmet?.length && dismissedMessage !== state.message
+    ? state.unmet
+    : [];
+
+  function goToCondition(key: string) {
+    if (!availableLockActions(key, dealId).canNavigate) return;
+    window.location.assign(key === "seal_approval" && dealId
+      ? `/deals/${dealId}#deal-approval-actions`
+      : "#contact-pipeline-action");
+  }
+
+  function requestApproval(key: string) {
+    if (!dealId || !availableLockActions(key, dealId).canRequestApproval) return;
+    setApprovalFeedback(null);
+    startApproval(async () => setApprovalFeedback(await requestSealApprovalAction(dealId, requestId)));
+  }
 
   useEffect(() => {
     if (kind !== "contact_to_work") return;
@@ -68,7 +96,7 @@ export function ContactPipelineAction({
   }, [kind]);
 
   return (
-    <form action={action} className="mt-3 border-t border-neutral-100 pt-3" aria-busy={pending}>
+    <form id="contact-pipeline-action" action={action} className="mt-3 border-t border-neutral-100 pt-3" aria-busy={pending}>
       <input type="hidden" name="dealId" value={dealId ?? ""} />
       <input type="hidden" name="sourceItemId" value={dealId ? "" : requestId} />
       <input type="hidden" name="requestId" value={requestId} />
@@ -102,11 +130,15 @@ export function ContactPipelineAction({
           {state.message}
         </p>
       ) : null}
-      {!state.ok && state.message.includes("대표 직인 승인") ? (
-        <a href={`/deals/${dealId}?request=seal-approval`} className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-mw-primary underline">
-          승인 요청 보내기
-        </a>
-      ) : null}
+      <LockBlockedDialog
+        unmet={blocked}
+        onNavigateToCondition={goToCondition}
+        canNavigateToCondition={(key) => availableLockActions(key, dealId).canNavigate}
+        onRequestApproval={blocked.some((condition) => availableLockActions(condition.key, dealId).canRequestApproval) ? requestApproval : undefined}
+        approvalPending={approvalPending}
+        approvalFeedback={approvalFeedback}
+        onClose={() => setDismissedMessage(state.message)}
+      />
     </form>
   );
 }
