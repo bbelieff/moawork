@@ -57,7 +57,11 @@ export async function processEsignSendJob(
     return { status: "ignored", requestId };
   }
 
-  const created = await deps.provider.createSigningRequest({
+  const created = request.providerDocumentId && request.signingUrl ? {
+    ok: true as const,
+    providerDocumentId: request.providerDocumentId,
+    signingUrl: request.signingUrl,
+  } : await deps.provider.createSigningRequest({
     idempotencyKey: requestId,
     orgId: request.orgId,
     dealId: request.dealId,
@@ -71,6 +75,10 @@ export async function processEsignSendJob(
     }
     await deps.sink.markFailed(requestId, ESIGN_ERROR.providerFailed);
     return { status: "failed", requestId, error: ESIGN_ERROR.providerFailed };
+  }
+
+  if (!request.providerDocumentId) {
+    await deps.sink.markProviderAccepted(requestId, created.providerDocumentId, created.signingUrl);
   }
 
   const delivered = await deps.delivery.sendSigningLink({

@@ -37,10 +37,14 @@ describe("BBE-115 DB contract", () => {
     const requestId = (await db.query<{ id: string }>("select id from esign_requests")).rows[0].id;
     expect((await db.query("select * from start_esign_delivery($1)", [requestId])).rows).toHaveLength(1);
     expect((await db.query("select * from start_esign_delivery($1)", [requestId])).rows).toHaveLength(0);
+    await db.query("select mark_esign_provider_accepted($1,$2,$3)", [requestId, "doc-1", "https://sandbox.example/sign"]);
+    const resumed = (await db.query<{ provider_document_id: string; provider_signing_url: string }>("select * from start_esign_delivery($1)", [requestId])).rows[0];
+    expect(resumed).toMatchObject({ provider_document_id: "doc-1", provider_signing_url: "https://sandbox.example/sign" });
     const handoff = `select * from enqueue_esign_signing_link('${requestId}','${id(5)}','sms','sender','https://sandbox.example/sign')`;
     expect((await db.query<{ inserted: boolean }>(handoff)).rows[0].inserted).toBe(true);
     expect((await db.query<{ inserted: boolean }>(handoff)).rows[0].inserted).toBe(false);
     expect(Number((await db.query<{ count: number }>("select count(*) count from message_outbox")).rows[0].count)).toBe(1);
+    expect((await db.query<{ provider_document_id: string }>("select provider_document_id from esign_requests where id=$1", [requestId])).rows[0].provider_document_id).toBe("doc-1");
     await db.query("select mark_esign_awaiting($1,$2)", [requestId, "doc-1"]);
     await db.exec("select set_config('app.role','service_role',false)");
     expect((await db.query<{ r: string }>("select apply_esign_signed_event('evt-1','doc-1','2026-08-15T15:30:00Z') r")).rows[0].r).toBe("applied");

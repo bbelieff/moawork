@@ -5,15 +5,16 @@ create table public.esign_requests (
   deal_id uuid not null references public.deals(id) on delete cascade,
   template_id text not null,
   signer_reference text not null,
-  status text not null default 'queued' check (status in ('queued','delivery_started','awaiting_signature','signed','delivery_unknown','failed')),
+  status text not null default 'queued' check (status in ('queued','delivery_started','provider_accepted','awaiting_signature','signed','delivery_unknown','failed')),
   provider_document_id text unique,
+  provider_signing_url text,
   signed_at timestamptz,
   contract_date date,
   created_by uuid not null references public.users(id),
   created_at timestamptz not null default now(),
   unique(org_id, deal_id, template_id)
 );
-create index esign_request_dispatch_idx on public.esign_requests(created_at) where status='queued';
+create index esign_request_dispatch_idx on public.esign_requests(created_at) where status in ('queued','provider_accepted');
 create table public.esign_event_receipts (
   org_id uuid not null references public.orgs(id) on delete cascade,
   event_id text not null,
@@ -47,20 +48,39 @@ end $$;
 
 create or replace function public.list_queued_esign_requests(p_limit integer default 100)
 returns table(request_id uuid) language sql security definer set search_path='' as $$
-  select e.id from public.esign_requests e where e.status='queued' order by e.created_at limit least(greatest(p_limit,1),100)
+  select e.id from public.esign_requests e where e.status in ('queued','provider_accepted') order by e.created_at limit least(greatest(p_limit,1),100)
 $$;
 create or replace function public.start_esign_delivery(p_request_id uuid)
-returns table(request_id uuid,org_id uuid,deal_id uuid,template_id text,signer_reference text)
+returns table(request_id uuid,org_id uuid,deal_id uuid,template_id text,signer_reference text,provider_document_id text,provider_signing_url text)
 language sql security definer set search_path='' as $$
-  update public.esign_requests e set status='delivery_started'
-  where e.id=p_request_id and e.status='queued'
-  returning e.id,e.org_id,e.deal_id,e.template_id,e.signer_reference
+  with claimed as (
+    update public.esign_requests e set status='delivery_started'
+    where e.id=p_request_id and e.status='queued'
+    returning e.id,e.org_id,e.deal_id,e.template_id,e.signer_reference,e.provider_document_id,e.provider_signing_url
+  )
+  select * from claimed
+  union all
+  select e.id,e.org_id,e.deal_id,e.template_id,e.signer_reference,e.provider_document_id,e.provider_signing_url
+  from public.esign_requests e where e.id=p_request_id and e.status='provider_accepted'
 $$;
+create or replace function public.mark_esign_provider_accepted(p_request_id uuid,p_provider_document_id text,p_signing_url text)
+returns void language plpgsql security definer set search_path='' as $$
+begin
+  if nullif(trim(p_provider_document_id),'') is null or p_signing_url !~ '^https://' then
+    raise exception '전자계약 provider 응답이 올바르지 않아요.' using errcode='22023';
+  end if;
+  update public.esign_requests set status='provider_accepted',provider_document_id=trim(p_provider_document_id),provider_signing_url=p_signing_url
+   where id=p_request_id and status='delivery_started';
+  if not found and not exists (
+    select 1 from public.esign_requests where id=p_request_id and status in ('provider_accepted','awaiting_signature','signed')
+      and provider_document_id=trim(p_provider_document_id) and provider_signing_url=p_signing_url
+  ) then raise exception '전자계약 provider 응답을 확정할 수 없어요.' using errcode='40001'; end if;
+end $$;
 create or replace function public.mark_esign_awaiting(p_request_id uuid,p_provider_document_id text)
 returns void language plpgsql security definer set search_path='' as $$
 begin
-  update public.esign_requests set status='awaiting_signature',provider_document_id=p_provider_document_id
-   where id=p_request_id and status='delivery_started';
+  update public.esign_requests set status='awaiting_signature'
+   where id=p_request_id and status='provider_accepted' and provider_document_id=p_provider_document_id;
   if not found then raise exception '전자계약 delivery lease가 유효하지 않아요.' using errcode='40001'; end if;
 end $$;
 create or replace function public.mark_esign_delivery_unknown(p_request_id uuid,p_reason text)
@@ -74,7 +94,7 @@ create or replace function public.enqueue_esign_signing_link(p_request_id uuid,p
 returns table(outbox_id uuid,inserted boolean) language plpgsql security definer set search_path='' as $$
 declare v public.esign_requests%rowtype; v_message uuid:=gen_random_uuid(); v_outbox uuid; v_count integer; v_key text;
 begin
-  select * into v from public.esign_requests where id=p_request_id and status='delivery_started';
+  select * into v from public.esign_requests where id=p_request_id and status='provider_accepted' and provider_signing_url=p_signing_url;
   if not found or p_signing_url !~ '^https://' then raise exception '전자계약 링크를 전달할 수 없어요.' using errcode='22023'; end if;
   insert into public.messages(id,org_id,template_id,to_addr,from_addr,body_snapshot,status,source_entity_id,channel,idempotency_key,trigger_column_key,trigger_value)
   values(v_message,v.org_id,p_message_template_id,v.signer_reference,p_sender,'전자계약 서명 링크: '||p_signing_url,'queued',v.deal_id,p_channel,
@@ -115,5 +135,5 @@ grant execute on function public.enqueue_esign_request(uuid,text,text,uuid) to a
 revoke all on function public.apply_esign_signed_event(text,text,timestamptz) from public,anon,authenticated,service_role;
 grant execute on function public.apply_esign_signed_event(text,text,timestamptz) to service_role;
 
-revoke all on function public.list_queued_esign_requests(integer),public.start_esign_delivery(uuid),public.mark_esign_awaiting(uuid,text),public.mark_esign_delivery_unknown(uuid,text),public.enqueue_esign_signing_link(uuid,uuid,public.message_channel,text,text) from public,anon,authenticated,service_role;
-grant execute on function public.list_queued_esign_requests(integer),public.start_esign_delivery(uuid),public.mark_esign_awaiting(uuid,text),public.mark_esign_delivery_unknown(uuid,text),public.enqueue_esign_signing_link(uuid,uuid,public.message_channel,text,text) to moawork_outbox_worker;
+revoke all on function public.list_queued_esign_requests(integer),public.start_esign_delivery(uuid),public.mark_esign_provider_accepted(uuid,text,text),public.mark_esign_awaiting(uuid,text),public.mark_esign_delivery_unknown(uuid,text),public.enqueue_esign_signing_link(uuid,uuid,public.message_channel,text,text) from public,anon,authenticated,service_role;
+grant execute on function public.list_queued_esign_requests(integer),public.start_esign_delivery(uuid),public.mark_esign_provider_accepted(uuid,text,text),public.mark_esign_awaiting(uuid,text),public.mark_esign_delivery_unknown(uuid,text),public.enqueue_esign_signing_link(uuid,uuid,public.message_channel,text,text) to moawork_outbox_worker;

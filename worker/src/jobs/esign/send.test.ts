@@ -21,6 +21,7 @@ function deps(overrides: Partial<EsignSendDeps> = {}): EsignSendDeps {
     },
     delivery: { sendSigningLink: vi.fn().mockResolvedValue({ ok: true }) },
     sink: {
+      markProviderAccepted: vi.fn().mockResolvedValue(undefined),
       markAwaitingSignature: vi.fn().mockResolvedValue(undefined),
       markFailed: vi.fn().mockResolvedValue(undefined),
     },
@@ -46,6 +47,11 @@ describe("processEsignSendJob", () => {
       deliveryReference: "contact_01",
       signingUrl: "https://sign.example.invalid/opaque-token",
     });
+    expect(current.sink.markProviderAccepted).toHaveBeenCalledWith(
+      "request_01",
+      "document_01",
+      "https://sign.example.invalid/opaque-token",
+    );
     expect(current.sink.markAwaitingSignature).toHaveBeenCalledWith(
       "request_01",
       "document_01",
