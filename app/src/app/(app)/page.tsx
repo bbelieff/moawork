@@ -22,6 +22,9 @@ import {
 } from "@/components/dash/DashboardSourceSummary";
 import type { MemberRole } from "@/lib/types";
 import { PlatformAccessNotice } from "@/components/platform/PlatformAccessNotice";
+import { ChecklistCompletionCell } from "@/components/policyfund/ChecklistCompletionCell";
+import { SupabaseChecklistStore } from "@/lib/policyfund/checklist";
+import { createClient } from "@/lib/supabase/server";
 
 // 홈 = core.dash 메인 대시보드. 모든 영역은 같은 요청의 쿠키 결속 Supabase
 // 클라이언트를 공유한다. 한 영역의 DB 실패를 0으로 바꾸지 않고 별도로 표시한다.
@@ -40,6 +43,15 @@ export default async function DashboardPage({
   const ctx = devToolsEnabled ? applyAs(base, asParam) : base;
   const model = await loadDashboardPageData(ctx, { month });
   const core = model.core.status === "ready" ? model.core.data : null;
+  const checklistStore = new SupabaseChecklistStore(await createClient());
+  const checklists = new Map(
+    await Promise.all(
+      (core?.deals ?? []).map(async (deal) => [
+        deal.id,
+        await checklistStore.getDealChecklist(ctx.org.id, deal.id),
+      ] as const),
+    ),
+  );
   const displayMonth = core?.dash.month ?? month ?? currentMonthKst();
   const stageName = (id: string | null) =>
     core?.stages.find((stage) => stage.id === id)?.name ?? "-";
@@ -159,16 +171,28 @@ export default async function DashboardPage({
                   </h2>
                   <p className="mt-0.5 text-xs text-zinc-500">업무는 업체와 진행하는 각각의 일입니다.</p>
                 </div>
-                <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-                  {core.deals.length === 0 ? (
-                    <li className="p-3 text-sm text-zinc-400">업무 담당자로 지정되면 여기에 보여요.</li>
-                  ) : core.deals.map((deal) => (
-                    <li key={deal.id} className="flex items-center justify-between gap-2 p-3 text-sm">
-                      <span className="truncate">{deal.title}</span>
-                      <span className="shrink-0 text-zinc-500">{stageName(deal.stage_id)}</span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+                  <table className="w-full text-sm">
+                    <thead className="bg-zinc-50 text-left text-xs text-zinc-500 dark:bg-zinc-900">
+                      <tr>
+                        <th className="p-3 font-medium">업무</th>
+                        <th className="p-3 font-medium">단계</th>
+                        <th className="p-3 font-medium">서류 준비</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                      {core.deals.length === 0 ? (
+                        <tr><td colSpan={3} className="p-3 text-zinc-400">업무 담당자로 지정되면 여기에 보여요.</td></tr>
+                      ) : core.deals.map((deal) => (
+                        <tr key={deal.id}>
+                          <td className="p-3"><Link href={`/deals/${deal.id}`} className="hover:underline">{deal.title}</Link></td>
+                          <td className="p-3 text-zinc-500">{stageName(deal.stage_id)}</td>
+                          <td className="p-3"><ChecklistCompletionCell items={checklists.get(deal.id)?.items ?? []} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </section>
 
               <section>
