@@ -69,6 +69,9 @@ declare
   v_result jsonb; v_version integer := 0; v_group uuid; v_column uuid; v_item uuid;
   v_position integer; v_key text; v_value jsonb;
 begin
+  if p_expected_version is null then
+    raise exception 'expected work item version is required' using errcode='22004';
+  end if;
   if v_actor is null or p_org_id is null or p_board_id is null or p_request_id is null
      or not public.is_org_member(p_org_id) then raise exception 'active workspace membership required' using errcode='42501'; end if;
   if not exists(select 1 from public.boards where id=p_board_id and org_id=p_org_id and source='core.default-tab/contract-work')

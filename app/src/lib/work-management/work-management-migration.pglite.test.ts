@@ -73,4 +73,30 @@ describe("068 work-management database boundary", () => {
     const count = await db.query<{ count: number }>("select count(*)::int count from work_command_outbox");
     expect(count.rows[0].count).toBe(0);
   }, 15_000);
+
+  it("rejects a null expected version before any state changes", async () => {
+    const db = await database(); opened.push(db);
+    const before = await db.query<{ title: string; values: number; versions: number; receipts: number; outbox: number; audit: number }>(
+      `select
+        (select title from items where id='${item}') title,
+        (select count(*)::int from item_values) values,
+        (select count(*)::int from work_item_versions) versions,
+        (select count(*)::int from work_command_receipts) receipts,
+        (select count(*)::int from work_command_outbox) outbox,
+        (select count(*)::int from audit_logs) audit`,
+    );
+    await expect(db.query(
+      `select execute_work_management_command('${org}','${board}','${item}','set_field',null,'00000000-0000-4000-8000-000000000009','{"field":"title","value":"Changed"}')`,
+    )).rejects.toThrow("expected work item version is required");
+    const after = await db.query<{ title: string; values: number; versions: number; receipts: number; outbox: number; audit: number }>(
+      `select
+        (select title from items where id='${item}') title,
+        (select count(*)::int from item_values) values,
+        (select count(*)::int from work_item_versions) versions,
+        (select count(*)::int from work_command_receipts) receipts,
+        (select count(*)::int from work_command_outbox) outbox,
+        (select count(*)::int from audit_logs) audit`,
+    );
+    expect(after.rows[0]).toEqual(before.rows[0]);
+  }, 15_000);
 });
