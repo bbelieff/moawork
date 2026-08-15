@@ -1,43 +1,145 @@
-/**
- * 제품 프리셋 라이브러리.
- * 서울경영 먼데이 복제분은 이관 매핑 사전이므로 제품 기본 프리셋으로 노출하지 않는다.
- */
-export default function PresetsPage() {
+import Link from "next/link";
+import { applyAs, getSession } from "@/lib/auth/session";
+import { loadPermGuard } from "@/lib/perm/guard";
+import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
+import { createClient } from "@/lib/supabase/server";
+import { SectionPresetRepo } from "@/lib/presets/section-presets";
+import {
+  applySectionPresetAction,
+  createTabAction,
+  deleteSectionPresetAction,
+  deleteTabAction,
+  renameTabAction,
+  saveSectionPresetAction,
+} from "./actions";
+
+export default async function PresetsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ as?: string }>;
+}) {
+  const sp = await searchParams;
+  const ctx = applyAs(await getSession(), sp.as);
+  const client = await createClient();
+  const boardsRepo = new SupabaseBoardsRepo(client);
+  const presetRepo = new SectionPresetRepo(boardsRepo);
+  const [boards, presets, tabPermission, presetPermission] = await Promise.all([
+    boardsRepo.listBoards(ctx),
+    presetRepo.list(ctx),
+    loadPermGuard(ctx.org.id, "structure.tab_manage"),
+    loadPermGuard(ctx.org.id, "structure.preset_edit"),
+  ]);
+  const canManageTabs = tabPermission.kind === "allowed";
+  const canEditPresets = presetPermission.kind === "allowed";
+
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+    <main className="flex flex-col gap-6" data-testid="preset-library">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">프리셋 라이브러리</h1>
-          <p className="text-sm text-zinc-500">아이템 프리셋(구조) · 뷰 프리셋(보기)</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-mw-primary">회사 구조 관리</p>
+          <h1 className="mt-1 text-xl font-semibold text-mw-fg">탭과 아이템 프리셋</h1>
+          <p className="mt-1 text-sm text-mw-sub">
+            탭은 회사가 직접 만들고 고치며 마지막 하나까지 지울 수 있어요. 아이템(그룹) 구조는 저장해 다른 탭에서 다시 씁니다.
+          </p>
         </div>
-        <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-          아이템 프리셋 0
+        <span className="rounded-full border border-mw-line bg-mw-card px-3 py-1 text-xs text-mw-sub">
+          탭 {boards.length} · 아이템 프리셋 {presets.length}
         </span>
       </header>
 
-      <section aria-labelledby="item-presets-heading" className="flex flex-col gap-3">
-        <h2 id="item-presets-heading" className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-          아이템 프리셋 · 구조
-        </h2>
-        <div className="rounded-lg border border-dashed border-zinc-300 p-6 text-center dark:border-zinc-700">
-          <p className="text-sm font-medium">등록된 제품 기본 프리셋이 없습니다</p>
-          <p className="mt-1 text-sm text-zinc-500">
-            먼데이 원본 구조는 데이터 이관 때만 사용하는 매핑 사전으로 보관됩니다.
-          </p>
+      <section className="rounded-xl border border-mw-line bg-mw-card p-4" aria-labelledby="tabs-heading">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 id="tabs-heading" className="font-semibold text-mw-fg">우리 회사 탭</h2>
+            <p className="text-sm text-mw-sub">목업 구조는 처음 시작할 때의 기본값이며, 이후 구조는 회사가 소유합니다.</p>
+          </div>
+          {canManageTabs && (
+            <form action={createTabAction} className="flex gap-2">
+              <input name="name" required placeholder="새 탭 이름" className="min-w-0 rounded-lg border border-mw-line bg-mw-bg px-3 py-2 text-sm text-mw-fg" />
+              <button className="rounded-lg bg-mw-primary px-3 py-2 text-sm font-semibold text-white">+ 탭 만들기</button>
+            </form>
+          )}
         </div>
+
+        {boards.length === 0 ? (
+          <div className="mt-4 rounded-lg border border-dashed border-mw-line p-8 text-center" data-testid="zero-tabs">
+            <p className="font-medium text-mw-fg">아직 탭이 없어요</p>
+            <p className="mt-1 text-sm text-mw-sub">빈 회사도 정상 상태입니다. 위의 + 탭 만들기로 첫 탭을 시작하세요.</p>
+          </div>
+        ) : (
+          <ul className="mt-4 grid gap-3 lg:grid-cols-2">
+            {boards.map((board) => (
+              <li key={board.id} className="rounded-lg border border-mw-line p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <Link href={`/boards/${board.id}`} className="font-semibold text-mw-fg underline-offset-4 hover:underline">
+                      {board.icon || "▦"} {board.name}
+                    </Link>
+                    <p className="mt-1 text-xs text-mw-sub">탭을 열어 컬럼·아이템·보기 구조를 수정할 수 있어요.</p>
+                  </div>
+                  {canManageTabs && (
+                    <form action={deleteTabAction}>
+                      <input type="hidden" name="boardId" value={board.id} />
+                      <button className="text-xs font-medium text-red-600">삭제</button>
+                    </form>
+                  )}
+                </div>
+                {canManageTabs && (
+                  <form action={renameTabAction} className="mt-3 flex gap-2">
+                    <input type="hidden" name="boardId" value={board.id} />
+                    <input name="name" defaultValue={board.name} required className="min-w-0 flex-1 rounded border border-mw-line bg-mw-bg px-2 py-1.5 text-sm text-mw-fg" />
+                    <button className="rounded border border-mw-line px-2 py-1.5 text-xs text-mw-fg">이름 저장</button>
+                  </form>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
-      <section aria-labelledby="view-presets-heading" className="flex flex-col gap-2">
-        <h2 id="view-presets-heading" className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-          뷰 프리셋 · 보기
-        </h2>
-        <div className="rounded-lg border border-dashed border-zinc-300 p-6 text-center dark:border-zinc-700">
-          <p className="text-sm font-medium">뷰 프리셋 연결은 아직 없어요</p>
-          <p className="mt-1 text-sm text-zinc-500">
-            저장한 뷰는 각 화면에서 만들 수 있지만, 이 라이브러리로는 아직 모이지 않아요.
-          </p>
-        </div>
+      <section className="rounded-xl border border-mw-line bg-mw-card p-4" aria-labelledby="presets-heading">
+        <h2 id="presets-heading" className="font-semibold text-mw-fg">아이템 프리셋 · 구조 묶음</h2>
+        <p className="text-sm text-mw-sub">한 탭의 아이템(그룹)과 컬럼 구조를 저장하고 다른 탭에 재사용합니다. 별도의 ‘설치’ 단계는 없습니다.</p>
+
+        {canEditPresets && boards.length > 0 && (
+          <form action={saveSectionPresetAction} className="mt-4 grid gap-2 rounded-lg bg-mw-bg p-3 md:grid-cols-[1fr_1fr_auto]">
+            <input name="name" required placeholder="프리셋 이름" className="rounded border border-mw-line bg-mw-card px-3 py-2 text-sm text-mw-fg" />
+            <select name="boardId" required className="rounded border border-mw-line bg-mw-card px-3 py-2 text-sm text-mw-fg">
+              <option value="">구조를 가져올 탭</option>
+              {boards.map((board) => <option key={board.id} value={board.id}>{board.name}</option>)}
+            </select>
+            <button className="rounded bg-mw-primary px-3 py-2 text-sm font-semibold text-white">구조 저장</button>
+          </form>
+        )}
+
+        {presets.length === 0 ? (
+          <div className="mt-4 rounded-lg border border-dashed border-mw-line p-6 text-center" data-testid="zero-presets">
+            <p className="font-medium text-mw-fg">저장한 아이템 프리셋이 없어요</p>
+            <p className="mt-1 text-sm text-mw-sub">업무에 맞게 고친 탭 구조를 저장하면 여기에 모입니다.</p>
+          </div>
+        ) : (
+          <ul className="mt-4 grid gap-3 lg:grid-cols-2">
+            {presets.map((preset) => (
+              <li key={preset.id} className="rounded-lg border border-mw-line p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div><strong className="text-sm text-mw-fg">{preset.name}</strong><p className="text-xs text-mw-sub">그룹 {preset.groups.length} · 컬럼 {preset.columns.length}</p></div>
+                  {canEditPresets && <form action={deleteSectionPresetAction}><input type="hidden" name="presetId" value={preset.id} /><button className="text-xs text-red-600">삭제</button></form>}
+                </div>
+                {canEditPresets && boards.length > 0 && (
+                  <form action={applySectionPresetAction} className="mt-3 flex gap-2">
+                    <input type="hidden" name="presetId" value={preset.id} />
+                    <select name="boardId" required className="min-w-0 flex-1 rounded border border-mw-line bg-mw-bg px-2 py-1.5 text-sm text-mw-fg">
+                      <option value="">재사용할 탭</option>
+                      {boards.map((board) => <option key={board.id} value={board.id}>{board.name}</option>)}
+                    </select>
+                    <button className="rounded border border-mw-line px-2 py-1.5 text-xs font-medium text-mw-fg">이 탭에 추가</button>
+                  </form>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
-    </div>
+    </main>
   );
 }
