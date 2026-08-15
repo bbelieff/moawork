@@ -7,6 +7,8 @@ export interface SavedBoardViewConfig {
   filters: BoardFilterState;
   groupBy: string;
   layout: Record<string, readonly string[]>;
+  hiddenColumns: readonly string[];
+  columnOrder: readonly string[];
   calendarFieldKey: string | null;
 }
 
@@ -60,6 +62,29 @@ export function parseSavedBoardViewConfig(value: unknown): SavedBoardViewConfig 
     },
     groupBy: typeof root.groupBy === "string" ? root.groupBy : "",
     layout: Object.fromEntries(Object.entries(rawLayout).map(([key, order]) => [key, strings(order)])),
+    hiddenColumns: strings(root.hiddenColumns),
+    columnOrder: strings(root.columnOrder),
     calendarFieldKey: typeof root.calendarFieldKey === "string" ? root.calendarFieldKey : null,
   };
+}
+
+export function savedViewUrl(view: SavedBoardView, current: string): string {
+  const url = new URL(current);
+  url.searchParams.set("savedView", view.id);
+  url.searchParams.set("view", view.config.kind === "board" ? "kanban" : view.config.kind === "calendar" ? "calendar" : "flat");
+  url.searchParams.set("mwLayout", JSON.stringify(view.config.layout));
+  if (view.config.groupBy) url.searchParams.set("group", view.config.groupBy);
+  else url.searchParams.delete("group");
+  return url.toString();
+}
+
+export function parseSavedBoardLayout(value: string | undefined): Record<string, readonly string[]> | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return Object.fromEntries(Object.entries(parsed as Record<string, unknown>).map(([key, order]) => [key, strings(order)]));
+  } catch {
+    return null;
+  }
 }

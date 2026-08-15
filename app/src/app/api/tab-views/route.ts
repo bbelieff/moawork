@@ -62,6 +62,8 @@ export async function POST(req: Request): Promise<Response> {
       person_scope: "viewer",
       filters_jsonb: config.filters.byColumn,
       sort_jsonb: config.filters.sortKey ? [{ columnKey: config.filters.sortKey, direction: config.filters.sortDir }] : [],
+      hidden_columns_jsonb: config.hiddenColumns,
+      column_order_jsonb: config.columnOrder,
       calendar_field_key: config.calendarFieldKey,
       config_jsonb: config,
       last_used_at: new Date().toISOString(),
