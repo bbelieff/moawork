@@ -25,5 +25,8 @@ describe("saved view production consumer", () => {
     expect(migration).toMatch(/owner_id = auth\.uid\(\) or public\.org_role/);
     expect(controller).toContain("savedViewUrl(saved, window.location.href)");
     expect(controller).not.toContain("touch: true");
+    expect(controller).toContain("selected: true");
+    expect(controller).toContain("<BoardCell");
+    expect(controller).toContain("changeCalendarField");
   });
 });

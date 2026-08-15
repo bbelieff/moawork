@@ -13,7 +13,7 @@ import { loadPermGuard } from "@/lib/perm/guard";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { SavedViewsController } from "@/components/view";
-import { parseSavedBoardLayout } from "@/lib/view/board-saved";
+import { parseSavedBoardLayout, parseSavedStringList } from "@/lib/view/board-saved";
 import { GenericBoardKanban } from "@/components/boards/GenericBoardKanban";
 import { ColumnEditor } from "@/components/boards/ColumnEditor";
 import { addGroupAction, deleteBoardAction } from "../actions";
@@ -34,7 +34,7 @@ export default async function BoardPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ view?: string; group?: string; as?: string; savedView?: string; mwLayout?: string }>;
+  searchParams: Promise<{ view?: string; group?: string; as?: string; savedView?: string; mwLayout?: string; mwHidden?: string; mwOrder?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -106,6 +106,8 @@ export default async function BoardPage({
   const activeColumnOrder = Object.fromEntries(
     Object.entries(parseSavedBoardLayout(sp.mwLayout) ?? savedColumnOrder).map(([groupId, keys]) => [groupId, [...keys]]),
   );
+  const hiddenColumnKeys = new Set(parseSavedStringList(sp.mwHidden));
+  const visibleColumns = columns.filter((column) => !hiddenColumnKeys.has(column.key));
 
   const qs = (next: Record<string, string>) => {
     const p = new URLSearchParams();
@@ -186,7 +188,7 @@ export default async function BoardPage({
         {hiddenCount > 0 && (
           <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p>
         )}
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} layout={activeColumnOrder} columns={columns} rows={items} />
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
           {backLink}
           <h1 className="flex shrink-0 items-center gap-1.5 text-base font-semibold text-mw-fg">
@@ -235,7 +237,7 @@ export default async function BoardPage({
           {backLink}
           <h1 className="text-base font-semibold text-mw-fg">{board.icon ? <span aria-hidden="true">{board.icon}</span> : null} {board.name}</h1>
         </div>
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} layout={activeColumnOrder} columns={columns} rows={items} renderMode={view} />
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} layout={activeColumnOrder} columns={visibleColumns} rows={items} renderMode={view} canEditItems={canEditItems} />
         {boardSettings}
       </div>
     );
@@ -246,10 +248,10 @@ export default async function BoardPage({
       {hiddenCount > 0 && (
         <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p>
       )}
-      <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} layout={activeColumnOrder} columns={columns} rows={items} />
+      <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
       <BoardWorkspace
         board={board}
-        columns={columns}
+        columns={visibleColumns}
         groups={groups}
         rows={items}
         columnOrder={activeColumnOrder}

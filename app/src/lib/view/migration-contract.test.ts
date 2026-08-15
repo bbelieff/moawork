@@ -25,4 +25,11 @@ describe("072 tab views persistence contract", () => {
     expect(sql).toMatch(/security invoker/);
     expect(sql).toMatch(/revoke all on function set_tab_view_default\(uuid\) from public, anon/);
   });
+
+  it("tracks last selection in a caller-owned row instead of updating a shared view", () => {
+    expect(sql).toMatch(/create table tab_view_selections/);
+    expect(sql).toMatch(/primary key \(org_id, board_id, user_id\)/);
+    expect(sql).toMatch(/user_id = auth\.uid\(\)/);
+    expect(sql).toMatch(/revoke all on table tab_view_selections from public, anon/);
+  });
 });

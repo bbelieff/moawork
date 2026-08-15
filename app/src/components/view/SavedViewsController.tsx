@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { applyFilters, BOARD_FILTER_QUERY_KEY, decodeBoardFilters, type BoardFilterState } from "@/components/board/filters";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards";
-import { formatCell } from "@/lib/boards/cells";
 import { DEFAULT_SYSTEM_VIEW, isSystemView, type NewTabViewInput, type ResolvedView, type TabView, type ViewKind } from "@/lib/view";
 import { savedViewUrl, type SavedBoardView, type SavedBoardViewConfig } from "@/lib/view/board-saved";
 import { CalendarView } from "./CalendarView";
@@ -11,6 +10,7 @@ import { SaveViewDialog } from "./SaveViewDialog";
 import { TableView, type TableColumn } from "./TableView";
 import { ViewPicker } from "./ViewPicker";
 import { ViewTabs } from "./ViewTabs";
+import { BoardCell } from "@/components/board/GroupTable";
 
 type SaveEvent = CustomEvent<{ version?: number; filters?: BoardFilterState }>;
 
@@ -38,11 +38,12 @@ function toTabView(view: SavedBoardView, orgId: string, boardId: string): TabVie
 }
 
 export function SavedViewsController({
-  boardId, orgId, currentUserId, layout = {}, columns = [], rows = [], renderMode = "controls",
+  boardId, orgId, currentUserId, layout = {}, columns = [], rows = [], renderMode = "controls", canEditItems = false,
 }: {
   boardId: string; orgId: string; currentUserId: string;
   layout?: Record<string, readonly string[]>; columns?: readonly BoardColumn[]; rows?: readonly ItemWithValues[];
   renderMode?: "controls" | "flat" | "calendar";
+  canEditItems?: boolean;
 }) {
   const [views, setViews] = useState<SavedBoardView[]>([]);
   const [pending, setPending] = useState<SavedBoardViewConfig | null>(null);
@@ -87,10 +88,19 @@ export function SavedViewsController({
     url.searchParams.set("view", kind === "board" ? "kanban" : kind === "cal" ? "calendar" : "flat");
     window.location.assign(url.toString());
   };
-  const selectResolved = (view: ResolvedView) => {
+  const selectResolved = async (view: ResolvedView) => {
     if (isSystemView(view)) return selectSystem(view.kind);
     const saved = views.find((candidate) => candidate.id === view.id);
-    if (saved) window.location.assign(savedViewUrl(saved, window.location.href));
+    if (saved) {
+      await request(`/api/tab-views/${saved.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ selected: true }) });
+      window.location.assign(savedViewUrl(saved, window.location.href));
+    }
+  };
+  const changeCalendarField = async (key: string) => {
+    if (!activeSaved) return;
+    const next: SavedBoardViewConfig = { ...activeSaved.config, calendarFieldKey: key };
+    await request(`/api/tab-views/${activeSaved.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ config: next }) });
+    setViews((currentViews) => currentViews.map((view) => view.id === activeSaved.id ? { ...view, config: next } : view));
   };
   const create = async (input: NewTabViewInput) => {
     if (!pending) return;
@@ -122,9 +132,14 @@ export function SavedViewsController({
       {renderMode === "flat" ? <TableView columns={tableColumns} rows={filteredRows} rowKey={(row) => row.id} renderCell={(row, column) => {
         if (column.key === "__title") return row.title;
         const definition = columns.find((candidate) => candidate.key === column.key);
-        return definition ? formatCell(definition.type, row.values[definition.key] ?? null, definition.options_jsonb?.options) : "";
+        return definition ? <BoardCell boardId={boardId} row={row} column={definition} readOnly={!canEditItems} /> : "";
       }} /> : null}
       {renderMode === "calendar" ? <>
+        <label className="flex items-center gap-2 text-sm text-mw-body">날짜 컬럼
+          <select value={dateColumn?.key ?? ""} disabled={!activeSaved} onChange={(event) => void changeCalendarField(event.target.value)} className="rounded border border-mw-line bg-mw-card px-2 py-1">
+            {columns.filter((column) => column.type === "date" || column.type === "datetime").map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}
+          </select>
+        </label>
         {!dateColumn ? <p role="status" className="text-sm text-mw-sub">달력에 표시할 날짜 컬럼이 없습니다.</p> : null}
         <CalendarView rows={filteredRows} rowKey={(row) => row.id} dateOf={(row) => dateColumn && typeof row.values[dateColumn.key] === "string" ? row.values[dateColumn.key] as string : null} renderItem={(row) => <span className="text-xs">{row.title}</span>} year={now.getFullYear()} month={now.getMonth() + 1} />
       </> : null}

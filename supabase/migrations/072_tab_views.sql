@@ -96,3 +96,18 @@ begin
 end; $$;
 revoke all on function set_tab_view_default(uuid) from public, anon;
 grant execute on function set_tab_view_default(uuid) to authenticated;
+
+create table tab_view_selections (
+  org_id uuid not null references orgs(id) on delete cascade,
+  board_id uuid not null references boards(id) on delete cascade,
+  user_id uuid not null references users(id) on delete cascade,
+  view_id uuid references tab_views(id) on delete set null,
+  selected_at timestamptz not null default now(),
+  primary key (org_id, board_id, user_id)
+);
+alter table tab_view_selections enable row level security;
+create policy tab_view_selections_own on tab_view_selections for all
+  using (public.is_org_member(org_id) and user_id = auth.uid())
+  with check (public.is_org_member(org_id) and user_id = auth.uid());
+revoke all on table tab_view_selections from public, anon;
+grant select, insert, update, delete on table tab_view_selections to authenticated;

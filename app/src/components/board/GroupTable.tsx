@@ -83,7 +83,7 @@ function cellTitle(column: BoardColumn): string {
 const NUMERIC_TYPES = new Set(["money", "number"]);
 
 /** 한 셀 — 읽기 전용이면 표시만, 아니면 셀 단위 서버 액션 폼. */
-function BoardCell({
+export function BoardCell({
   boardId,
   row,
   column,

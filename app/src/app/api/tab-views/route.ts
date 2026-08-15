@@ -1,21 +1,10 @@
 import { createRequestBoards } from "@/lib/boards/server";
 import { jsonOk, readJson, requireCtx, toErrorResponse } from "@/lib/boards/http";
 import { createClient } from "@/lib/supabase/server";
-import { parseSavedBoardViewConfig } from "@/lib/view/board-saved";
+import { parseSavedBoardViewConfig, savedBoardViewFromRow } from "@/lib/view/board-saved";
 
 const COLS = "id,name,visibility,owner_id,config_jsonb,is_default,last_used_at";
 
-function viewRow(row: Record<string, unknown>) {
-  return {
-    id: row.id,
-    name: row.name,
-    visibility: row.visibility,
-    ownerId: row.owner_id,
-    config: parseSavedBoardViewConfig(row.config_jsonb),
-    isDefault: row.is_default,
-    lastUsedAt: row.last_used_at,
-  };
-}
 
 async function assertBoardAccess(boardId: string) {
   const ctx = await requireCtx();
@@ -35,7 +24,7 @@ export async function GET(req: Request): Promise<Response> {
       .order("last_used_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: true });
     if (error) throw error;
-    return jsonOk((data ?? []).map((row) => viewRow(row as Record<string, unknown>)));
+    return jsonOk((data ?? []).map((row) => savedBoardViewFromRow(row as Record<string, unknown>)));
   } catch (error) {
     return toErrorResponse(error);
   }
@@ -69,7 +58,7 @@ export async function POST(req: Request): Promise<Response> {
       last_used_at: new Date().toISOString(),
     }).select(COLS).single();
     if (error) throw error;
-    return jsonOk(viewRow(data as Record<string, unknown>), 201);
+    return jsonOk(savedBoardViewFromRow(data as Record<string, unknown>), 201);
   } catch (error) {
     return toErrorResponse(error);
   }

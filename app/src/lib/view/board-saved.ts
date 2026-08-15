@@ -1,4 +1,4 @@
-import type { BoardFilterState } from "@/components/board/filters";
+import { encodeBoardFilters, type BoardFilterState } from "@/components/board/filters";
 
 export type SavedBoardViewKind = "board" | "table" | "calendar";
 
@@ -68,14 +68,32 @@ export function parseSavedBoardViewConfig(value: unknown): SavedBoardViewConfig 
   };
 }
 
+export function savedBoardViewFromRow(row: Record<string, unknown>): SavedBoardView {
+  return {
+    id: String(row.id), name: String(row.name),
+    visibility: row.visibility === "shared" ? "shared" : "private",
+    ownerId: String(row.owner_id), config: parseSavedBoardViewConfig(row.config_jsonb),
+    isDefault: row.is_default === true,
+    lastUsedAt: typeof row.last_used_at === "string" ? row.last_used_at : null,
+  };
+}
+
 export function savedViewUrl(view: SavedBoardView, current: string): string {
   const url = new URL(current);
   url.searchParams.set("savedView", view.id);
   url.searchParams.set("view", view.config.kind === "board" ? "kanban" : view.config.kind === "calendar" ? "calendar" : "flat");
   url.searchParams.set("mwLayout", JSON.stringify(view.config.layout));
+  url.searchParams.set("mwHidden", JSON.stringify(view.config.hiddenColumns));
+  url.searchParams.set("mwOrder", JSON.stringify(view.config.columnOrder));
+  url.searchParams.set("mwFilters", encodeBoardFilters(view.config.filters));
   if (view.config.groupBy) url.searchParams.set("group", view.config.groupBy);
   else url.searchParams.delete("group");
   return url.toString();
+}
+
+export function parseSavedStringList(value: string | undefined): readonly string[] {
+  if (!value) return [];
+  try { return strings(JSON.parse(value)); } catch { return []; }
 }
 
 export function parseSavedBoardLayout(value: string | undefined): Record<string, readonly string[]> | null {
