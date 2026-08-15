@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 import { resolveExistingContractWorkBoard } from "@/lib/work/entry";
@@ -32,13 +31,9 @@ export default async function ContractWorkBoardPage({
       </section>
     );
   }
-  if (result.kind === "ready") {
-    const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
-    redirect(`/boards/${encodeURIComponent(result.boardId)}${query}`);
-  }
-
-  // Existing organizations predate BBE-150. Preserve their BBE-29 screen until
-  // a separate reconciliation installs the product-owned default board.
+  // BBE-31 renders the product board through its table/calendar/gantt read
+  // model. The generic /boards route remains available, but /work must not
+  // bypass the work-management interaction contract after installation.
   let legacy:
     | { kind: "ready"; snapshot: Awaited<ReturnType<WorkManagementSource["load"]>> }
     | { kind: "blocked"; message: string };
