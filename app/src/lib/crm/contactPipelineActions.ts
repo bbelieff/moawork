@@ -3,35 +3,31 @@
 import { getSession } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { getCrmService } from "@/lib/crm";
-import {
-  handoffCompanyWithSupabase,
-  type CompanyHandoffRpcClient,
-} from "@/lib/company/supabase-handoff";
+import { executeContactPipelineTransition, type ContactPipelineRpcClient } from "./supabaseContactPipeline";
+import type { ContactTransitionKind } from "./contactPipeline";
 
 export type ContactPipelineActionState = Readonly<{
   ok: boolean;
   message: string;
 }>;
 
-const CONTACT_PIPELINE_ROLLOUT_BLOCKED_MESSAGE =
-  "이 이동 경로는 아직 사용할 수 없습니다.";
-
 export async function mutateContactPipeline(
   _previous: ContactPipelineActionState,
   formData: FormData,
 ): Promise<ContactPipelineActionState> {
   void _previous;
-  const kind = String(formData.get("kind") ?? "");
-  if (kind !== "contact_to_work") {
-    return { ok: false, message: CONTACT_PIPELINE_ROLLOUT_BLOCKED_MESSAGE };
-  }
+  const kind = String(formData.get("kind") ?? "") as ContactTransitionKind;
+  if (kind !== "lead_to_contact" && kind !== "contact_to_work")
+    return { ok: false, message: "이동 요청이 올바르지 않습니다." };
 
   try {
     const ctx = await getSession();
     const dealId = String(formData.get("dealId") ?? "").trim() || null;
+    const sourceItemId = String(formData.get("sourceItemId") ?? "").trim() || null;
+    const requestId = String(formData.get("requestId") ?? "").trim();
+    if ((!dealId && !sourceItemId) || !requestId) return { ok: false, message: "이동 요청을 다시 시작해 주세요." };
     const selectedCompanyId = String(formData.get("selectedCompanyId") ?? "").trim() || null;
     const requestedName = String(formData.get("companyName") ?? "").trim();
-    const requestId = String(formData.get("requestId") ?? "").trim() || null;
     const service = getCrmService();
     const deal = dealId ? await service.getDeal(ctx, dealId) : undefined;
     const selected = selectedCompanyId
@@ -57,32 +53,26 @@ export async function mutateContactPipeline(
       const value = String(formData.get(key) ?? "").trim();
       return value || null;
     };
-    const result = await handoffCompanyWithSupabase(
-      await createClient() as unknown as CompanyHandoffRpcClient,
-      ctx.org.id,
+    const result = await executeContactPipelineTransition(
+      await createClient() as unknown as ContactPipelineRpcClient,
       {
-        dealId,
-        requestId,
-        existingCompanyId: selected?.id ?? null,
-        name: selected?.name ?? (requestedName || deal?.title || ""),
+        orgId: ctx.org.id, dealId, sourceItemId, requestId, kind,
+        companyId: selected?.id ?? null,
+        companyName: selected?.name ?? (requestedName || deal?.title || ""),
         bizNo: submitted("bizNo") ?? firstText("biz_no", "사업자등록번호", "사업자번호"),
-        ceoName: selected?.owner_name ?? submitted("ceoName") ?? text("대표자명"),
-        bizType: selected?.biz_type ?? submitted("bizType") ?? text("사업자유형"),
+        ownerName: selected?.owner_name ?? submitted("ceoName") ?? text("대표자명"),
+        businessType: selected?.biz_type ?? submitted("bizType") ?? text("사업자유형"),
         industry: selected?.biz_type ?? submitted("industry") ?? text("업종/업태"),
         regionSido: submitted("regionSido") ?? firstText("sido", "시도"),
         regionSigungu: submitted("regionSigungu") ?? firstText("sigungu", "시군구"),
         phone: selected?.phone ?? submitted("phone") ?? text("연락처"),
         foundedOn: selected?.founded_on ?? submitted("foundedOn") ?? text("창업년도"),
-        revenue: selected?.revenue === null || selected?.revenue === undefined
-          ? submitted("revenue") ?? text("매출액")
-          : String(selected.revenue),
-      },
-    );
+        revenue: selected?.revenue == null ? submitted("revenue") ?? text("매출액") : String(selected.revenue),
+      });
+    if (result.status === "blocked") return { ok: false, message: result.reason ?? "이동 조건을 확인해 주세요." };
     return {
       ok: true,
-      message: result.mode === "created_needs_review"
-        ? "업체를 연결했고 중복 의심 검토 항목을 남겼습니다."
-        : "업체 마스터와 업무 건을 연결했습니다.",
+      message: kind === "lead_to_contact" ? "리드컨택으로 이동했습니다." : "업체 마스터를 연결하고 업무관리로 이동했습니다.",
     };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "업체 연결에 실패했습니다." };
