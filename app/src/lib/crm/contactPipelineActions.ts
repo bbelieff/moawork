@@ -5,10 +5,12 @@ import { createClient } from "@/lib/supabase/server";
 import { getCrmService } from "@/lib/crm";
 import { executeContactPipelineTransition, type ContactPipelineRpcClient } from "./supabaseContactPipeline";
 import type { ContactTransitionKind } from "./contactPipeline";
+import { conditionFromTransitionBlockReason, type LockCondition } from "@/lib/automation/lock";
 
 export type ContactPipelineActionState = Readonly<{
   ok: boolean;
   message: string;
+  unmet?: readonly LockCondition[];
 }>;
 
 export async function mutateContactPipeline(
@@ -69,7 +71,11 @@ export async function mutateContactPipeline(
         foundedOn: selected?.founded_on ?? submitted("foundedOn") ?? text("창업년도"),
         revenue: selected?.revenue == null ? submitted("revenue") ?? text("매출액") : String(selected.revenue),
       });
-    if (result.status === "blocked") return { ok: false, message: result.reason ?? "이동 조건을 확인해 주세요." };
+    if (result.status === "blocked") {
+      const message = result.reason ?? "이동 조건을 확인해 주세요.";
+      const condition = conditionFromTransitionBlockReason(message);
+      return { ok: false, message, unmet: condition ? [condition] : [] };
+    }
     return {
       ok: true,
       message: kind === "lead_to_contact" ? "리드컨택으로 이동했습니다." : "업체 마스터를 연결하고 업무관리로 이동했습니다.",

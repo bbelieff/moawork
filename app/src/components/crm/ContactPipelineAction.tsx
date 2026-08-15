@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import { LockBlockedDialog } from "@/components/automation-presets/lock";
 import { CompanyPickerPanel } from "@/components/company/CompanyPickerPanel";
 import type { CompanyCandidate } from "@/lib/company/types";
 import {
@@ -38,7 +39,18 @@ export function ContactPipelineAction({
   const [companies, setCompanies] = useState<CompanyCandidate[]>([]);
   const [query, setQuery] = useState(initialCompanyName);
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [dismissedMessage, setDismissedMessage] = useState<string | null>(null);
   const label = kind === "lead_to_contact" ? CONTACT_MOVE_LABEL : WORK_MOVE_LABEL;
+  const blocked = !state.ok && state.unmet?.length && dismissedMessage !== state.message
+    ? state.unmet
+    : [];
+
+  function goToCondition(key: string) {
+    const suffix = key === "seal_approval"
+      ? "?request=seal-approval#deal-collaboration"
+      : "#contact-pipeline-action";
+    window.location.assign(dealId ? `/deals/${dealId}${suffix}` : suffix);
+  }
 
   useEffect(() => {
     if (kind !== "contact_to_work") return;
@@ -68,7 +80,7 @@ export function ContactPipelineAction({
   }, [kind]);
 
   return (
-    <form action={action} className="mt-3 border-t border-neutral-100 pt-3" aria-busy={pending}>
+    <form id="contact-pipeline-action" action={action} className="mt-3 border-t border-neutral-100 pt-3" aria-busy={pending}>
       <input type="hidden" name="dealId" value={dealId ?? ""} />
       <input type="hidden" name="sourceItemId" value={dealId ? "" : requestId} />
       <input type="hidden" name="requestId" value={requestId} />
@@ -102,11 +114,12 @@ export function ContactPipelineAction({
           {state.message}
         </p>
       ) : null}
-      {!state.ok && state.message.includes("대표 직인 승인") ? (
-        <a href={`/deals/${dealId}?request=seal-approval`} className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-mw-primary underline">
-          승인 요청 보내기
-        </a>
-      ) : null}
+      <LockBlockedDialog
+        unmet={blocked}
+        onNavigateToCondition={goToCondition}
+        onRequestApproval={goToCondition}
+        onClose={() => setDismissedMessage(state.message)}
+      />
     </form>
   );
 }

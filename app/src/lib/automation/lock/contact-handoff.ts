@@ -18,6 +18,8 @@ export const SEAL_APPROVAL_KEY = "seal_approval";
 export const SEAL_APPROVAL_LABEL = "대표 직인 승인";
 export const SEAL_APPROVAL_COMPLETE_VALUE = "완료";
 export const HANDOFF_TRIGGER_VALUE = "업무관리 이동";
+export const HANDOFF_TRIGGER_KEY = "work_move";
+export const HANDOFF_TRIGGER_LABEL = "업무이동";
 
 /** 리드컨택 표의 현재 값 — 게이트 판정에 필요한 두 컬럼만. */
 export interface ContactHandoffFields {
@@ -41,4 +43,26 @@ export function buildContactHandoffConditions(
       currentValueLabel: fields.sealApprovalStatus ?? "미입력",
     },
   ];
+}
+
+/** DB가 기록한 BBE-152 차단 사유를 BBE-105 표시 계약으로 변환한다. */
+export function conditionFromTransitionBlockReason(reason: string): LockCondition | null {
+  const sealPrefix = "대표 직인 승인이 필요합니다. 현재 직인 완료 = ";
+  if (reason.startsWith(sealPrefix)) {
+    return {
+      key: SEAL_APPROVAL_KEY,
+      label: SEAL_APPROVAL_LABEL,
+      satisfied: false,
+      currentValueLabel: reason.slice(sealPrefix.length).trim() || "미입력",
+    };
+  }
+  if (reason === "업무관리 이동을 먼저 선택해 주세요.") {
+    return {
+      key: HANDOFF_TRIGGER_KEY,
+      label: HANDOFF_TRIGGER_LABEL,
+      satisfied: false,
+      currentValueLabel: "미선택",
+    };
+  }
+  return null;
 }

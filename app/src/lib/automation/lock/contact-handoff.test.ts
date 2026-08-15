@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { buildContactHandoffConditions } from "./contact-handoff";
+import { buildContactHandoffConditions, conditionFromTransitionBlockReason } from "./contact-handoff";
 import { evaluateLockGate } from "./evaluate";
 
 describe("buildContactHandoffConditions — D36", () => {
+  it("DB가 기록한 두 관문 사유를 현재값을 포함한 UI 조건으로만 변환한다", () => {
+    expect(conditionFromTransitionBlockReason("업무관리 이동을 먼저 선택해 주세요.")).toMatchObject({
+      key: "work_move", currentValueLabel: "미선택", satisfied: false,
+    });
+    expect(conditionFromTransitionBlockReason("대표 직인 승인이 필요합니다. 현재 직인 완료 = 대기")).toMatchObject({
+      key: "seal_approval", currentValueLabel: "대기", satisfied: false,
+    });
+    expect(conditionFromTransitionBlockReason("현재 단계에서는 이 관문을 넘을 수 없습니다.")).toBeNull();
+  });
   it("직인 완료 = 완료면 조건을 충족한다", () => {
     const [condition] = buildContactHandoffConditions({
       sealApprovalStatus: "완료",
