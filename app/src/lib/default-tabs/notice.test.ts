@@ -44,9 +44,10 @@ describe("BBE-151 notice default tab", () => {
   });
 
   it("marks calculated and automatic values read-only", () => {
-    for (const key of ["read_count", "author", "official_pdf", "created_on"]) {
+    for (const key of ["read_count", "author", "created_on"]) {
       expect(NOTICE_TAB.columns.find((column) => column.key === key)?.readOnly).toBe(true);
     }
+    expect(NOTICE_TAB.columns.find((column) => column.key === "official_pdf")?.readOnly).toBe(false);
   });
 
   it("contains no customer-specific people or company values", () => {

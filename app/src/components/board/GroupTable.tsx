@@ -153,7 +153,12 @@ function BoardCell({
         <input type="hidden" name="itemId" value={row.id} />
         <input type="hidden" name="columnKey" value={column.key} />
 
-        {column.type === "checkbox" ? (
+        {column.type === "file" ? (
+          <span className="flex items-center gap-1">
+            {typeof value === "string" && value.startsWith("/api/") ? <a href={value} className="text-xs underline">내려받기</a> : null}
+            <input type="file" name="value" aria-label={column.label} className={CELL_INPUT} />
+          </span>
+        ) : column.type === "checkbox" ? (
           <>
             <input type="hidden" name="kind" value="checkbox" />
             <input

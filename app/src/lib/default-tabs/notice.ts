@@ -39,7 +39,7 @@ export const NOTICE_TAB: DefaultTab = {
       label: "공문PDF",
       type: "file",
       source: "in",
-      readOnly: true,
+      readOnly: false,
       width: 130,
       pendingReason: "서명 URL·만료·조직 경계가 적용된 파일 선택기로 연결됩니다.",
     },

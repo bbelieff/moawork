@@ -3,7 +3,11 @@ import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { CELL_FLASH_COOKIE, decodeCellFlash } from "@/lib/boards/cellFlash";
-import { getBoardsService, NotFoundError } from "@/lib/boards";
+import { NotFoundError } from "@/lib/boards";
+import { createRequestBoards } from "@/lib/boards/server";
+import { markNoticeBoardRead } from "@/lib/notices/read-tracking";
+import { issueFileToken } from "@/lib/deal/fileSignedUrl";
+import { NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
@@ -50,7 +54,7 @@ export default async function BoardPage({
   const canManageColumns = columnManage.kind === "allowed";
   const canManageSections = sectionManage.kind === "allowed";
   const canDeleteBoard = boardDelete.kind === "allowed";
-  const svc = getBoardsService();
+  const { repo, service: svc } = await createRequestBoards();
 
   let detail;
   try {
@@ -61,13 +65,22 @@ export default async function BoardPage({
   }
 
   const { board, columns, groups } = detail;
+  await markNoticeBoardRead(ctx, board, repo);
   const view = sp.view === "kanban" ? "kanban" : "table";
   const selectColumns = columns.filter(
     (c) => c.type === "select" || c.type === "multiselect",
   );
   const groupBy = sp.group && selectColumns.some((c) => c.key === sp.group) ? sp.group : "";
   const visibleItemIds = new Set(scopedItems.result.itemIds);
-  const boardItems = await svc.listItems(ctx, id);
+  const loadedItems = await svc.listItems(ctx, id);
+  const boardItems = board.source === NOTICE_TAB_SOURCE
+    ? loadedItems.map((item) => {
+        const fileId = item.values.official_pdf;
+        if (typeof fileId !== "string" || !fileId) return item;
+        const token = issueFileToken(item.id, fileId);
+        return { ...item, values: { ...item.values, official_pdf: `/api/boards/items/${item.id}/files/${fileId}?token=${encodeURIComponent(token)}` } };
+      })
+    : loadedItems;
   const items = boardItems.filter((item) => visibleItemIds.has(item.id));
   const hiddenCount = boardItems.length - items.length;
   const lanes = view === "kanban"

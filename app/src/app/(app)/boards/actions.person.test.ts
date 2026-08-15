@@ -15,10 +15,7 @@ vi.mock("@/lib/auth/session", () => ({
 }));
 vi.mock("@/lib/perm/guard", () => ({ loadPermGuard: async () => ({ kind: "allowed" }) }));
 vi.mock("@/lib/perm/server", () => ({ recordRiskyAction: async () => ({ ok: true }) }));
-vi.mock("@/lib/boards", () => ({
-  getBoardsService: () => ({ setCells }),
-  NotFoundError: class NotFoundError extends Error {},
-}));
+vi.mock("@/lib/boards/server", () => ({ createRequestBoards: async () => ({ service: { setCells } }) }));
 
 import { setCellAction } from "./actions";
 
