@@ -4,6 +4,8 @@ export interface PendingEsignRequest {
   dealId: string;
   templateId: string;
   signerReference: string;
+  providerDocumentId?: string;
+  signingUrl?: string;
 }
 
 export interface EsignRequestLoader {
@@ -39,6 +41,7 @@ export interface SigningLinkDelivery {
 }
 
 export interface EsignRequestStatusSink {
+  markProviderAccepted(requestId: string, providerDocumentId: string, signingUrl: string): Promise<void>;
   markAwaitingSignature(requestId: string, providerDocumentId: string): Promise<void>;
   markFailed(requestId: string, error: string): Promise<void>;
 }
