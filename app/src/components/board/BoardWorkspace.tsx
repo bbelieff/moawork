@@ -58,6 +58,7 @@ import {
   limitColumns,
   type BoardFilterState,
 } from "./filters";
+import { normalizeDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
 
 interface RowMove {
   itemId: string;
@@ -309,6 +310,11 @@ export function BoardWorkspace({
           const fullColumns = resolveColumnOrder(columns, optimisticOrder[block.key]);
           const shown = limitColumns(fullColumns, filters.columnLimit);
           const visibleRows = applyFilters(block.rows, columns, filters);
+          const boardDetailLayout = normalizeDetailLayout(board.detail_layout_jsonb);
+          const resolvedDetailLayout = resolveDetailLayout(
+            board.detail_layout_jsonb,
+            block.group?.detail_layout_jsonb,
+          );
 
           return (
             <GroupBlock
@@ -324,6 +330,10 @@ export function BoardWorkspace({
                 boardId={board.id}
                 groupId={block.group?.id ?? null}
                 columns={shown}
+                detailColumns={[...columns]}
+                boardDetailLayout={boardDetailLayout}
+                detailLayout={resolvedDetailLayout.entries}
+                detailLayoutInherited={resolvedDetailLayout.inherited}
                 rows={visibleRows}
                 readOnly={readOnly}
                 canDeleteItems={!board.is_system && canDeleteItems}

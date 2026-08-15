@@ -23,6 +23,7 @@ import type {
   CellValue,
   ItemValue,
 } from "./types";
+import type { DetailLayoutEntry } from "./detail-layout";
 
 export interface NewBoard {
   name: string;
@@ -94,11 +95,13 @@ export interface BoardsRepo {
   createBoard(ctx: Ctx, input: NewBoard): Promise<Board>;
   updateBoard(ctx: Ctx, id: string, patch: BoardPatch): Promise<Board | undefined>;
   deleteBoard(ctx: Ctx, id: string): Promise<boolean>;
+  setBoardDetailLayout(ctx: Ctx, id: string, layout: DetailLayoutEntry[]): Promise<Board | undefined>;
 
   // 그룹(칸반 스윔레인)
   listGroups(ctx: Ctx, boardId: string): Promise<BoardGroup[]>;
   createGroup(ctx: Ctx, boardId: string, input: NewGroup): Promise<BoardGroup>;
   deleteGroup(ctx: Ctx, id: string): Promise<boolean>;
+  setGroupDetailLayout(ctx: Ctx, id: string, layout: DetailLayoutEntry[] | null): Promise<BoardGroup | undefined>;
 
   // 컬럼
   listColumns(ctx: Ctx, boardId: string): Promise<BoardColumn[]>;
