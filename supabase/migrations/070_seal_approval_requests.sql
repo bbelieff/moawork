@@ -29,7 +29,9 @@ declare
 begin
   if v_actor is null then raise exception 'seal approval unavailable' using errcode='42501'; end if;
   select m.role,m.scope into v_role,v_scope from public.org_members m
-   where m.org_id=p_org_id and m.user_id=v_actor;
+   join public.orgs o on o.id=m.org_id
+   where m.org_id=p_org_id and m.user_id=v_actor
+     and m.status='active' and o.status='active';
   select d.assigned_to into v_assigned from public.deals d
    where d.id=p_deal_id and d.org_id=p_org_id;
   if not found or v_role is null or not (v_role in ('owner','admin') or v_scope='all' or v_assigned=v_actor) then
@@ -37,7 +39,8 @@ begin
   end if;
 
   select m.user_id into v_approver from public.org_members m
-   where m.org_id=p_org_id and m.role in ('owner','admin') and m.user_id<>v_actor
+   where m.org_id=p_org_id and m.status='active'
+     and m.role in ('owner','admin') and m.user_id<>v_actor
    order by case m.role when 'owner' then 0 else 1 end,m.user_id limit 1;
   if v_approver is null then return 'no_approver'; end if;
 
