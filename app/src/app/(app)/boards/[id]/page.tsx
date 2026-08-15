@@ -72,7 +72,10 @@ export default async function BoardPage({
   const groupBy = sp.group && selectColumns.some((c) => c.key === sp.group) ? sp.group : "";
   const visibleItemIds = new Set(scopedItems.result.itemIds);
   const loadedItems = await svc.listItems(ctx, id);
-  if (board.source === NOTICE_TAB_SOURCE) await markNoticeItemsReadAtomic(ctx, loadedItems.map((item) => item.id), client);
+  if (board.source === NOTICE_TAB_SOURCE) {
+    const visibleNoticeIds = loadedItems.filter((item) => visibleItemIds.has(item.id)).map((item) => item.id);
+    await markNoticeItemsReadAtomic(ctx, visibleNoticeIds, client);
+  }
   const boardItems = board.source === NOTICE_TAB_SOURCE
     ? loadedItems.map((item) => {
         const fileId = item.values.official_pdf;

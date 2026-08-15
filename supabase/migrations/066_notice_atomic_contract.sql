@@ -61,12 +61,26 @@ create or replace function public.bbe151_mark_notice_read(p_org_id uuid, p_item_
 returns integer language plpgsql security definer set search_path=public,pg_temp
 as $$
 declare v_actor uuid:=auth.uid(); v_targets jsonb; v_readers jsonb; v_count integer;
+  v_scope jsonb; v_published text; v_ended text; v_status text; v_today text;
 begin
   if v_actor is null or not public.is_org_member(p_org_id) then raise exception 'organization membership required' using errcode='42501'; end if;
   if not exists(select 1 from public.items i join public.boards b on b.id=i.board_id where i.id=p_item_id and i.org_id=p_org_id and b.source='core.default-tab/notice') then raise exception 'notice item not found' using errcode='P0002'; end if;
+  v_scope := public.read_permission_scoped_work_items(p_org_id,null);
+  if not coalesce(v_scope->'itemIds','[]'::jsonb) ? p_item_id::text then return null; end if;
+  select
+    (select value_jsonb from public.item_values where org_id=p_org_id and item_id=p_item_id and column_key='audience'),
+    (select value_jsonb #>> '{}' from public.item_values where org_id=p_org_id and item_id=p_item_id and column_key='published_at'),
+    (select value_jsonb #>> '{}' from public.item_values where org_id=p_org_id and item_id=p_item_id and column_key='ended_at'),
+    (select value_jsonb #>> '{}' from public.item_values where org_id=p_org_id and item_id=p_item_id and column_key='status')
+  into v_targets,v_published,v_ended,v_status;
+  v_today := to_char(current_timestamp at time zone 'Asia/Seoul','YYYY-MM-DD');
+  if coalesce(v_published,'')>v_today or (coalesce(v_ended,'')<>'' and v_ended<v_today)
+     or coalesce(v_status,'') in ('ended','completed','공지완료') then return null; end if;
+  if jsonb_typeof(v_targets)='array' and not (v_targets ? v_actor::text) then return null; end if;
+  if jsonb_typeof(v_targets)='string' and v_targets #>> '{}'='notice-audience-managers'
+     and public.org_role(p_org_id) not in ('owner','admin') then return null; end if;
   perform pg_advisory_xact_lock(hashtextextended(p_item_id::text,0));
-  select value_jsonb into v_targets from public.item_values where org_id=p_org_id and item_id=p_item_id and column_key='audience';
-  if jsonb_typeof(v_targets)<>'array' or not (v_targets ? v_actor::text) then return null; end if;
+  if jsonb_typeof(v_targets)<>'array' then v_targets:=jsonb_build_array(v_actor::text); end if;
   select coalesce(value_jsonb,'[]'::jsonb) into v_readers from public.item_values where org_id=p_org_id and item_id=p_item_id and column_key='__notice_reader_ids';
   v_readers := coalesce(v_readers,'[]'::jsonb);
   select jsonb_agg(value order by value) into v_readers from (select distinct value from jsonb_array_elements_text(v_readers || jsonb_build_array(v_actor::text))) s;

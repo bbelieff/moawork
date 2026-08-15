@@ -16,6 +16,9 @@ describe("BBE-151 notice entry production boundary", () => {
     const boardPage = readFileSync(join(process.cwd(), "src/app/(app)/boards/[id]/page.tsx"), "utf8");
     const actions = readFileSync(join(process.cwd(), "src/app/(app)/boards/actions.ts"), "utf8");
     expect(boardPage).toContain("createRequestBoards");
+    expect(boardPage).toContain("loadedItems.filter((item) => visibleItemIds.has(item.id)).map((item) => item.id)");
+    expect(boardPage).toContain("markNoticeItemsReadAtomic(ctx, visibleNoticeIds, client)");
+    expect(boardPage).not.toContain("markNoticeItemsReadAtomic(ctx, loadedItems.map");
     expect(actions).toContain("createRequestBoards");
     expect(boardPage).not.toContain("getBoardsService");
     expect(actions).not.toContain("getBoardsService");
