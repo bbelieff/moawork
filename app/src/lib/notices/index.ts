@@ -4,6 +4,7 @@
  */
 
 export * from "./types";
+export { resolveExistingNoticeBoard, type NoticeEntryResolution } from "./entry";
 export {
   NoticesService,
   NoticeRuleError,

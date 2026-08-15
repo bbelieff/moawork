@@ -1,12 +1,18 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import {
-  getNoticesService,
+  NoticesService,
   NOTICE_AUDIENCE_OPTIONS,
   NOTICE_CATEGORY_OPTIONS,
+  resolveExistingNoticeBoard,
   todayKst,
 } from "@/lib/notices";
+import { BoardsService } from "@/lib/boards/service";
+import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
+import { createClient } from "@/lib/supabase/server";
 import { isManager } from "@/lib/auth/roles";
+import { ensureNoticeTabAtomic } from "@/lib/notices/atomic";
 import { NoticeCategoryBadge, PinnedBadge } from "@/components/notices/NoticeCategoryBadge";
 import { NoticeStatusBadge } from "@/components/notices/NoticeStatusBadge";
 import {
@@ -30,7 +36,35 @@ export default async function NoticesPage({
 }) {
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
-  const notices = await getNoticesService().list(ctx);
+  // One request-bound authenticated client owns both the product-tab lookup
+  // and the legacy notice fallback. Production never crosses an in-memory repo.
+  const client = await createClient();
+  const repo = new SupabaseBoardsRepo(client);
+  const productBoard = await resolveExistingNoticeBoard(ctx, repo);
+  if (productBoard.kind === "ready") {
+    const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
+    redirect(`/boards/${encodeURIComponent(productBoard.boardId)}${query}`);
+  }
+  if (productBoard.kind === "conflict") {
+    return (
+      <section className="rounded-xl border border-mw-line bg-mw-card p-5" aria-labelledby="notice-entry-title">
+        <h1 id="notice-entry-title" className="text-lg font-semibold text-mw-fg">
+          공지사항 보드를 하나로 확인하지 못했습니다
+        </h1>
+        <p className="mt-2 text-sm text-mw-sub">회사 관리자에게 보드 구성을 확인해 달라고 요청해 주세요.</p>
+      </section>
+    );
+  }
+  // D76 default tabs are guaranteed, not installed by a user-facing step.
+  // Reconciliation is idempotent by the stable product source and uses the
+  // same authenticated Supabase adapter as the lookup above.
+  const boardId = await ensureNoticeTabAtomic(ctx, client);
+  const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
+  redirect(`/boards/${encodeURIComponent(boardId)}${query}`);
+
+  // Existing organizations can keep consuming their pre-default-tab notice
+  // board until reconciliation installs the product-owned source.
+  const notices = await new NoticesService(new BoardsService(repo), repo).list(ctx);
 
   // 공지 작성/수정은 관리자(owner/admin)만. member 는 읽기 전용.
   // (UI 를 숨기는 것과 별개로 서비스가 서버에서 같은 검사를 한다.)

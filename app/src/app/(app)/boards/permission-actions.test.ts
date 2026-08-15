@@ -15,18 +15,16 @@ vi.mock("@/lib/auth/session", () => ({
 }));
 vi.mock("@/lib/perm/guard", () => ({ loadPermGuard: mocks.guard }));
 vi.mock("@/lib/perm/server", () => ({ recordRiskyAction: mocks.risky }));
-vi.mock("@/lib/boards", async (original) => {
-  const actual = await original<typeof import("@/lib/boards")>();
-  return {
-    ...actual,
-    getBoardsService: () => ({
+vi.mock("@/lib/boards/server", () => ({
+  createRequestBoards: async () => ({
+    service: {
       deleteBoard: (...args: unknown[]) => {
         mocks.order.push("delete");
         return mocks.deleteBoard(...args);
       },
-    }),
-  };
-});
+    },
+  }),
+}));
 
 import { deleteBoardAction } from "./actions";
 

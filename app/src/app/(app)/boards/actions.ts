@@ -12,7 +12,8 @@ import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth/session";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { recordRiskyAction } from "@/lib/perm/server";
-import { getBoardsService, NotFoundError } from "@/lib/boards";
+import { NotFoundError } from "@/lib/boards";
+import { createRequestBoards } from "@/lib/boards/server";
 import { parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
 import type { Ctx, FieldOption } from "@/lib/types";
 import type { ItemWithValues } from "@/lib/boards/types";
@@ -26,10 +27,15 @@ import {
   CELL_FLASH_MAX_AGE,
   encodeCellFlash,
 } from "@/lib/boards/cellFlash";
+import { encodeNoticeFile, NOTICE_FILE_VALUE_PREFIX } from "@/lib/notices/official-file";
 
 function str(fd: FormData, key: string): string {
   const v = fd.get(key);
   return typeof v === "string" ? v : "";
+}
+
+async function boardsService() {
+  return (await createRequestBoards()).service;
 }
 
 async function requirePermission(ctx: Ctx, scopeKey: string, riskKey?: "danger.bulk_edit_delete"): Promise<void> {
@@ -76,7 +82,7 @@ export async function createBoardAction(formData: FormData): Promise<void> {
     description: str(formData, "description"),
     icon: str(formData, "icon"),
   });
-  const detail = await getBoardsService().createBoard(ctx, input);
+  const detail = await (await boardsService()).createBoard(ctx, input);
   revalidatePath("/boards");
   redirect(`/boards/${detail.board.id}`);
 }
@@ -84,7 +90,7 @@ export async function createBoardAction(formData: FormData): Promise<void> {
 export async function deleteBoardAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   await requirePermission(ctx, "danger.bulk_edit_delete", "danger.bulk_edit_delete");
-  await getBoardsService().deleteBoard(ctx, str(formData, "boardId"));
+  await (await boardsService()).deleteBoard(ctx, str(formData, "boardId"));
   revalidatePath("/boards");
   redirect("/boards");
 }
@@ -101,7 +107,7 @@ export async function addColumnAction(formData: FormData): Promise<void> {
     type,
     options: optionsCsv ? parseOptionsCsv(optionsCsv) : undefined,
   });
-  await getBoardsService().addColumn(ctx, boardId, input);
+  await (await boardsService()).addColumn(ctx, boardId, input);
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -109,7 +115,7 @@ export async function deleteColumnAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   await requirePermission(ctx, "structure.column_manage");
   const boardId = str(formData, "boardId");
-  await getBoardsService().deleteColumn(ctx, boardId, str(formData, "columnId"));
+  await (await boardsService()).deleteColumn(ctx, boardId, str(formData, "columnId"));
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -125,7 +131,7 @@ export async function setColumnWidthAction(formData: FormData): Promise<void> {
   const columnId = str(formData, "columnId");
   const raw = str(formData, "width");
   const width = raw === "" ? null : clampWidth(Number(raw));
-  await getBoardsService().updateColumn(ctx, boardId, columnId, { width });
+  await (await boardsService()).updateColumn(ctx, boardId, columnId, { width });
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -138,7 +144,7 @@ export async function addItemAction(formData: FormData): Promise<void> {
     title: str(formData, "title"),
     group_id: groupId === "" ? null : groupId,
   });
-  await getBoardsService().createItem(ctx, boardId, input);
+  await (await boardsService()).createItem(ctx, boardId, input);
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -146,7 +152,7 @@ export async function deleteItemAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   await requirePermission(ctx, "work.item_delete");
   const boardId = str(formData, "boardId");
-  await getBoardsService().deleteItem(ctx, boardId, str(formData, "itemId"));
+  await (await boardsService()).deleteItem(ctx, boardId, str(formData, "itemId"));
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -158,10 +164,23 @@ export async function setCellAction(formData: FormData): Promise<void> {
   const itemId = str(formData, "itemId");
   const columnKey = str(formData, "columnKey");
   // 체크박스 미체크와 담당자 미배정을 각 타입의 빈 값으로 정규화한다.
-  const value = boardCellValueFromFormData(formData);
-  const { errors } = await getBoardsService().setCells(ctx, boardId, itemId, {
-    [columnKey]: value,
-  });
+  const graph = await createRequestBoards();
+  const svc = graph.service;
+  const raw = formData.get("value");
+  let patch: Record<string, import("@/lib/boards/types").CellValue>;
+  if (raw instanceof File && raw.size > 0) {
+    const column = (await svc.getBoardDetail(ctx, boardId)).columns.find((candidate) => candidate.key === columnKey);
+    if (column?.type !== "file") throw new Error("파일 컬럼이 아닙니다.");
+    const stored = await encodeNoticeFile(raw);
+    const item = await graph.repo.getItem(ctx, itemId);
+    if (!item || item.board_id !== boardId) throw new NotFoundError("아이템을 찾을 수 없습니다");
+    await graph.repo.setValues(ctx, itemId, { [columnKey]: stored.id, [`${NOTICE_FILE_VALUE_PREFIX}${columnKey}`]: JSON.stringify(stored) });
+    revalidatePath(`/boards/${boardId}`);
+    return;
+  } else {
+    patch = { [columnKey]: boardCellValueFromFormData(formData) };
+  }
+  const { errors } = await svc.setCells(ctx, boardId, itemId, patch);
   await flashCellErrors(itemId, errors);
   revalidatePath(`/boards/${boardId}`);
 }
@@ -171,7 +190,7 @@ export async function renameItemAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   await requirePermission(ctx, "work.item_upsert");
   const boardId = str(formData, "boardId");
-  await getBoardsService().updateItem(ctx, boardId, str(formData, "itemId"), {
+  await (await boardsService()).updateItem(ctx, boardId, str(formData, "itemId"), {
     title: str(formData, "title"),
   });
   revalidatePath(`/boards/${boardId}`);
@@ -188,7 +207,7 @@ export async function moveItemAction(formData: FormData): Promise<void> {
   const itemId = str(formData, "itemId");
   const lane = str(formData, "lane");
   const groupBy = str(formData, "groupBy");
-  const svc = getBoardsService();
+  const svc = await boardsService();
   if (groupBy) {
     const { errors } = await svc.setCells(ctx, boardId, itemId, {
       [groupBy]: lane === "" ? null : lane,
@@ -204,7 +223,7 @@ export async function addGroupAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   await requirePermission(ctx, "structure.section_manage");
   const boardId = str(formData, "boardId");
-  await getBoardsService().addGroup(ctx, boardId, { name: str(formData, "name") });
+  await (await boardsService()).addGroup(ctx, boardId, { name: str(formData, "name") });
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -227,7 +246,7 @@ export async function moveRowAction(formData: FormData): Promise<void> {
   const groupId = rawGroup === "" ? null : rawGroup;
   const requested = Number.parseInt(str(formData, "index"), 10);
 
-  const svc = getBoardsService();
+  const svc = await boardsService();
   const items = await svc.listItems(ctx, boardId);
   const moving = items.find((i) => i.id === itemId);
   if (!moving) throw new NotFoundError("아이템을 찾을 수 없습니다");
@@ -268,7 +287,7 @@ export async function setGroupColumnOrderAction(formData: FormData): Promise<voi
   const groupKey = str(formData, "groupKey");
 
   // 접근 권한 확인 겸 유효 컬럼 목록 확보.
-  const { columns } = await getBoardsService().getBoardDetail(ctx, boardId);
+  const { columns } = await (await boardsService()).getBoardDetail(ctx, boardId);
   const valid = new Set(columns.map((c) => c.key));
 
   const order = str(formData, "order")
