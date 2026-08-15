@@ -86,7 +86,7 @@ end $$;
 create or replace function public.mark_esign_delivery_unknown(p_request_id uuid,p_reason text)
 returns void language plpgsql security definer set search_path='' as $$
 begin
-  update public.esign_requests set status='delivery_unknown' where id=p_request_id and status='delivery_started';
+  update public.esign_requests set status='delivery_unknown' where id=p_request_id and status in ('delivery_started','provider_accepted');
   if found then insert into public.audit_logs(org_id,actor,action,target_type,target_id,meta)
     select org_id,null,'esign.delivery_unknown','deal',deal_id,jsonb_build_object('request_id',id,'reason',left(p_reason,100)) from public.esign_requests where id=p_request_id; end if;
 end $$;

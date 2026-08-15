@@ -3,8 +3,10 @@ import { PostgresEsignRuntime } from "./runtime.js";
 import { processEsignSendJob } from "./send.js";
 
 function runtimeFixture() {
-  let state: "queued" | "started" | "accepted" | "awaiting" = "queued";
+  let state: "queued" | "started" | "accepted" | "awaiting" | "delivery_unknown" = "queued";
   let outboxCount = 0;
+  let auditCount = 0;
+  let providerDocumentId: string | null = null;
   const calls: string[] = [];
   const db = {
     async query<T extends Record<string, unknown>>(sql: string) {
@@ -14,12 +16,13 @@ function runtimeFixture() {
         else if (state !== "accepted") return { rows: [] as T[] };
         return { rows: [{ request_id: "req", org_id: "org", deal_id: "deal", template_id: "tpl", signer_reference: "01000000000", provider_document_id: state === "accepted" ? "doc" : null, provider_signing_url: state === "accepted" ? "https://sandbox/sign" : null } as unknown as T] };
       }
-      if (sql.includes("mark_esign_provider_accepted")) state = "accepted";
+      if (sql.includes("mark_esign_provider_accepted")) { state = "accepted"; providerDocumentId = "doc"; }
       if (sql.includes("enqueue_esign_signing_link")) {
         outboxCount = 1;
         return { rows: [{ inserted: true } as unknown as T] };
       }
       if (sql.includes("mark_esign_awaiting")) state = "awaiting";
+      if (sql.includes("mark_esign_delivery_unknown") && (state === "started" || state === "accepted")) { state = "delivery_unknown"; auditCount += 1; }
       return { rows: [] as T[] };
     },
   };
@@ -27,6 +30,7 @@ function runtimeFixture() {
     runtime: new PostgresEsignRuntime(db, "00000000-0000-4000-8000-000000000001", "sms", "0212345678"),
     calls,
     outboxCount: () => outboxCount,
+    terminal: () => ({ state, auditCount, providerDocumentId }),
   };
 }
 
@@ -63,5 +67,16 @@ describe("BBE-115 executable chain", () => {
     expect(await processEsignSendJob({ loader: runtime, sink, delivery: runtime, provider: currentProvider }, { requestId: "req" })).toMatchObject({ status: "awaiting_signature" });
     expect(currentProvider.createSigningRequest).toHaveBeenCalledTimes(1);
     expect(outboxCount()).toBe(1);
+  });
+
+  it("isolates a nonretryable delivery failure after provider ack without requeueing", async () => {
+    const { runtime, outboxCount, terminal } = runtimeFixture();
+    const currentProvider = provider();
+    const failedDelivery = { sendSigningLink: vi.fn(async () => ({ ok: false as const, retryable: false, error: "rejected" })) };
+    expect(await processEsignSendJob({ loader: runtime, sink: runtime, delivery: failedDelivery, provider: currentProvider }, { requestId: "req" })).toMatchObject({ status: "failed", error: "delivery_failed" });
+    expect(await processEsignSendJob({ loader: runtime, sink: runtime, delivery: failedDelivery, provider: currentProvider }, { requestId: "req" })).toEqual({ status: "ignored", requestId: "req" });
+    expect(currentProvider.createSigningRequest).toHaveBeenCalledTimes(1);
+    expect(terminal()).toEqual({ state: "delivery_unknown", auditCount: 1, providerDocumentId: "doc" });
+    expect(outboxCount()).toBe(0);
   });
 });

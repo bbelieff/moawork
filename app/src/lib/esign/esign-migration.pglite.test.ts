@@ -46,6 +46,16 @@ describe("BBE-115 DB contract", () => {
     expect(Number((await db.query<{ count: number }>("select count(*) count from message_outbox")).rows[0].count)).toBe(1);
     expect((await db.query<{ provider_document_id: string }>("select provider_document_id from esign_requests where id=$1", [requestId])).rows[0].provider_document_id).toBe("doc-1");
     await db.query("select mark_esign_awaiting($1,$2)", [requestId, "doc-1"]);
+    await db.query(`select * from enqueue_esign_request('${id(3)}','tpl-fail','signer','${id(6)}')`);
+    const failedRequestId = (await db.query<{ id: string }>("select id from esign_requests where template_id='tpl-fail'")).rows[0].id;
+    await db.query("select * from start_esign_delivery($1)", [failedRequestId]);
+    await db.query("select mark_esign_provider_accepted($1,$2,$3)", [failedRequestId, "doc-fail", "https://sandbox.example/fail"]);
+    await db.query("select mark_esign_delivery_unknown($1,$2)", [failedRequestId, "delivery_failed"]);
+    await db.query("select mark_esign_delivery_unknown($1,$2)", [failedRequestId, "delivery_failed"]);
+    expect((await db.query<{ status: string; provider_document_id: string }>("select status,provider_document_id from esign_requests where id=$1", [failedRequestId])).rows[0]).toEqual({ status: "delivery_unknown", provider_document_id: "doc-fail" });
+    expect((await db.query("select * from list_queued_esign_requests(100)")).rows).toHaveLength(0);
+    expect(Number((await db.query<{ count: number }>("select count(*) count from audit_logs where action='esign.delivery_unknown' and meta->>'request_id'=$1", [failedRequestId])).rows[0].count)).toBe(1);
+    expect(Number((await db.query<{ count: number }>("select count(*) count from message_outbox")).rows[0].count)).toBe(1);
     await db.exec("select set_config('app.role','service_role',false)");
     expect((await db.query<{ r: string }>("select apply_esign_signed_event('evt-1','doc-1','2026-08-15T15:30:00Z') r")).rows[0].r).toBe("applied");
     expect((await db.query<{ r: string }>("select apply_esign_signed_event('evt-1','doc-1','2026-08-15T15:30:00Z') r")).rows[0].r).toBe("duplicate");
