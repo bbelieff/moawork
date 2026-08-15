@@ -26,19 +26,53 @@ export type CompaniesViewModel =
       dealsStatus: "ready" | "error";
     }>;
 
+export interface CompaniesViewSource {
+  loadCompanies(ctx: Ctx): Promise<readonly Company[]>;
+  loadDeals(ctx: Ctx): Promise<readonly Deal[]>;
+  loadLedger(ctx: Ctx, dealId: string): Promise<Readonly<{
+    total: number;
+    received: number;
+    outstanding: number;
+    fee: number;
+  }>>;
+}
+
+async function createCompaniesViewSource(
+  clientFactory: () => Promise<SupabaseClient>,
+): Promise<CompaniesViewSource> {
+  const client = await clientFactory();
+  const crm = new AsyncCrmService(new SupabaseCrmSource(client));
+  return {
+    loadCompanies: (ctx) => crm.listCompanies(ctx),
+    loadDeals: (ctx) => crm.listDeals(ctx),
+    async loadLedger(_ctx, dealId) {
+      const model = await loadDealLedger(dealId, async () => client);
+      const summary = summarizeDealLedger(dealId, model.entries);
+      return {
+        total: summary.ledgerTotal,
+        received: summary.receivedTotal,
+        outstanding: summary.outstandingTotal,
+        fee: summary.feeTotal,
+      };
+    },
+  };
+}
+
 /**
  * 요청에 결속된 Supabase 세션 하나로 회사·딜·원장을 읽는다.
  * RLS가 조직과 담당범위를 제한하며, 어떤 DB 오류도 빈 배열이나 0원으로 바꾸지 않는다.
  */
 export async function loadCompaniesView(
   ctx: Ctx,
-  clientFactory: () => Promise<SupabaseClient> = createClient,
+  options: Readonly<{
+    source?: CompaniesViewSource;
+    clientFactory?: () => Promise<SupabaseClient>;
+  }> = {},
 ): Promise<CompaniesViewModel> {
-  const client = await clientFactory();
-  const crm = new AsyncCrmService(new SupabaseCrmSource(client));
+  const source = options.source ?? await createCompaniesViewSource(options.clientFactory ?? createClient);
   const [companiesResult, dealsResult] = await Promise.allSettled([
-    crm.listCompanies(ctx),
-    crm.listDeals(ctx),
+    source.loadCompanies(ctx),
+    source.loadDeals(ctx),
   ]);
 
   if (companiesResult.status === "rejected") return { status: "error" };
@@ -64,16 +98,12 @@ export async function loadCompaniesView(
       const views = await Promise.all(
         deals.map(async (deal): Promise<CompanyDealView> => {
           try {
-            const model = await loadDealLedger(deal.id, async () => client);
-            const summary = summarizeDealLedger(deal.id, model.entries);
+            const summary = await source.loadLedger(ctx, deal.id);
             return {
               deal,
               ledger: {
                 status: "ready",
-                total: summary.ledgerTotal,
-                received: summary.receivedTotal,
-                outstanding: summary.outstandingTotal,
-                fee: summary.feeTotal,
+                ...summary,
               },
             };
           } catch {
