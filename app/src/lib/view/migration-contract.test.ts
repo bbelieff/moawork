@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const sql = readFileSync(resolve(process.cwd(), "../supabase/migrations/070_tab_views.sql"), "utf8");
+const sql = readFileSync(resolve(process.cwd(), "../supabase/migrations/072_tab_views.sql"), "utf8");
 
-describe("070 tab views persistence contract", () => {
+describe("072 tab views persistence contract", () => {
   it("binds saved views to an org and a real board with RLS", () => {
     expect(sql).toMatch(/org_id\s+uuid not null references orgs/);
     expect(sql).toMatch(/board_id\s+uuid not null references boards/);

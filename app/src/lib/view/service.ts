@@ -1,5 +1,5 @@
 /**
- * 저장된 뷰 CRUD (BBE-117). `tab_views`(035) 에 직접 붙는다.
+ * 저장된 뷰 CRUD (BBE-117). `tab_views`(072) 에 직접 붙는다.
  * RLS가 읽기 범위(공용|본인)를 걸러주므로 여기서는 org_id/board_key 로만 좁힌다.
  */
 
