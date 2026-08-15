@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 const migration = readFileSync(resolve(process.cwd(), "../supabase/migrations/070_seal_approval_requests.sql"), "utf8");
+const aclMigration = readFileSync(resolve(process.cwd(), "../supabase/migrations/071_seal_approval_rpc_acl.sql"), "utf8");
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
 describe("BBE-105 seal approval PostgreSQL contract", () => {
@@ -50,5 +51,33 @@ describe("BBE-105 seal approval PostgreSQL contract", () => {
     expect((await db.query<{ n: number }>("select count(*)::int n from notifications")).rows[0].n).toBe(1);
     await db.exec(`update org_members set status='active' where org_id='${id(1)}' and user_id='${id(11)}'; update orgs set status='suspended' where id='${id(1)}'`);
     await expect(db.query(`select request_deal_seal_approval('${id(1)}','${id(20)}',gen_random_uuid())`)).rejects.toThrow(/unavailable/);
+  });
+
+  it("allows only authenticated to execute the security-definer RPC", async () => {
+    const db = new PGlite(); opened.push(db);
+    await db.exec(`
+      create role anon; create role authenticated; create role service_role;
+      create schema auth; create function auth.uid() returns uuid language sql stable as $$select null::uuid$$;
+      create table orgs(id uuid primary key,status text not null); create table users(id uuid primary key);
+      create table org_members(org_id uuid,user_id uuid,role text,scope text,status text not null,primary key(org_id,user_id));
+      create table deals(id uuid primary key,org_id uuid,assigned_to uuid);
+      create table notifications(id uuid primary key default gen_random_uuid(),org_id uuid,user_id uuid,type text,title text,body text,target_type text,target_id uuid,actor_id uuid,is_action boolean);
+      alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
+    `);
+    await db.exec(migration);
+    await db.exec(aclMigration);
+    const [{ publicExec, anonExec, authenticatedExec, serviceExec }] = (await db.query<{
+      publicExec: boolean; anonExec: boolean; authenticatedExec: boolean; serviceExec: boolean;
+    }>(`select
+      has_function_privilege('public','public.request_deal_seal_approval(uuid,uuid,uuid)','execute') "publicExec",
+      has_function_privilege('anon','public.request_deal_seal_approval(uuid,uuid,uuid)','execute') "anonExec",
+      has_function_privilege('authenticated','public.request_deal_seal_approval(uuid,uuid,uuid)','execute') "authenticatedExec",
+      has_function_privilege('service_role','public.request_deal_seal_approval(uuid,uuid,uuid)','execute') "serviceExec"`)).rows;
+    expect({ publicExec, anonExec, authenticatedExec, serviceExec }).toEqual({
+      publicExec: false,
+      anonExec: false,
+      authenticatedExec: true,
+      serviceExec: false,
+    });
   });
 });
