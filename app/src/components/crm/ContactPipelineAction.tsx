@@ -9,6 +9,7 @@ import {
 } from "@/lib/crm/contactPipelineActions";
 import {
   CONTACT_MOVE_LABEL,
+  WORK_MOVE_LABEL,
   type ContactTransitionKind,
 } from "@/lib/crm/contactPipeline";
 
@@ -37,7 +38,7 @@ export function ContactPipelineAction({
   const [companies, setCompanies] = useState<CompanyCandidate[]>([]);
   const [query, setQuery] = useState(initialCompanyName);
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
-  const label = kind === "lead_to_contact" ? CONTACT_MOVE_LABEL : "업체 연결";
+  const label = kind === "lead_to_contact" ? CONTACT_MOVE_LABEL : WORK_MOVE_LABEL;
 
   useEffect(() => {
     if (kind !== "contact_to_work") return;
@@ -69,6 +70,7 @@ export function ContactPipelineAction({
   return (
     <form action={action} className="mt-3 border-t border-neutral-100 pt-3" aria-busy={pending}>
       <input type="hidden" name="dealId" value={dealId ?? ""} />
+      <input type="hidden" name="sourceItemId" value={dealId ? "" : requestId} />
       <input type="hidden" name="requestId" value={requestId} />
       <input type="hidden" name="operation" value="move" />
       <input type="hidden" name="kind" value={kind} />
@@ -99,6 +101,11 @@ export function ContactPipelineAction({
         <p role="status" className={`mt-2 text-xs ${state.ok ? "text-emerald-700" : "text-red-700"}`}>
           {state.message}
         </p>
+      ) : null}
+      {!state.ok && state.message.includes("대표 직인 승인") ? (
+        <a href={`/deals/${dealId}?request=seal-approval`} className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-mw-primary underline">
+          승인 요청 보내기
+        </a>
       ) : null}
     </form>
   );

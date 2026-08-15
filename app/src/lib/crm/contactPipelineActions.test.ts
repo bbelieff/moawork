@@ -1,124 +1,44 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const {
-  getSession,
-  createClient,
-  getDeal,
-  getCompany,
-  handoffCompanyWithSupabase,
-} = vi.hoisted(() => ({
-  getSession: vi.fn(),
-  createClient: vi.fn(),
-  getDeal: vi.fn(),
-  getCompany: vi.fn(),
-  handoffCompanyWithSupabase: vi.fn(),
+const { getSession, createClient, getDeal, getCompany, executeContactPipelineTransition } = vi.hoisted(() => ({
+  getSession: vi.fn(), createClient: vi.fn(), getDeal: vi.fn(), getCompany: vi.fn(), executeContactPipelineTransition: vi.fn(),
 }));
-
 vi.mock("@/lib/auth/session", () => ({ getSession }));
 vi.mock("@/lib/supabase/server", () => ({ createClient }));
-vi.mock("@/lib/crm", () => ({
-  getCrmService: () => ({ getDeal, getCompany }),
-}));
-vi.mock("@/lib/company/supabase-handoff", () => ({ handoffCompanyWithSupabase }));
+vi.mock("@/lib/crm", () => ({ getCrmService: () => ({ getDeal, getCompany }) }));
+vi.mock("./supabaseContactPipeline", () => ({ executeContactPipelineTransition }));
 
 import { mutateContactPipeline } from "./contactPipelineActions";
 
-describe("contact pipeline company handoff", () => {
+describe("BBE-152 contact pipeline actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    getSession.mockResolvedValue({ org: { id: "org-1" } });
-    createClient.mockResolvedValue({ rpc: vi.fn() });
-    getDeal.mockResolvedValue({
-      id: "deal-1",
-      pipeline_id: "pipeline-1",
-      title: "새봄상사",
-      custom: {
-        대표자명: "김대표",
-        사업자등록번호: "123-45-67890",
-        시도: "서울",
-        시군구: "강남구",
-      },
-    });
+    getSession.mockResolvedValue({ org:{id:"org-1"} });
+    createClient.mockResolvedValue({ rpc:vi.fn() });
+    getDeal.mockResolvedValue({id:"deal-1",title:"새봄상사",custom:{seal_approval:"완료"}});
     getCompany.mockResolvedValue(undefined);
-    handoffCompanyWithSupabase.mockResolvedValue({
-      dealId: "deal-1",
-      companyId: "company-1",
-      mode: "created",
-      duplicateCandidateIds: [],
-    });
+    executeContactPipelineTransition.mockResolvedValue({status:"committed",dealId:"deal-1",companyId:null,reason:null});
   });
-
-  it("keeps lead-to-contact closed outside the BBE-125 handoff", async () => {
-    const form = new FormData();
-    form.set("kind", "lead_to_contact");
-
-    await expect(mutateContactPipeline({ ok: false, message: "" }, form)).resolves.toEqual({
-      ok: false,
-      message: "이 이동 경로는 아직 사용할 수 없습니다.",
-    });
-    expect(handoffCompanyWithSupabase).not.toHaveBeenCalled();
+  it("executes lead to contact through the same atomic boundary", async () => {
+    const form=new FormData(); form.set("kind","lead_to_contact"); form.set("dealId","deal-1"); form.set("requestId","00000000-0000-4000-8000-000000000099");
+    await expect(mutateContactPipeline({ok:false,message:""},form)).resolves.toEqual({ok:true,message:"리드컨택으로 이동했습니다."});
+    expect(executeContactPipelineTransition).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({kind:"lead_to_contact",dealId:"deal-1",orgId:"org-1"}));
   });
-
-  it("links a contact-to-work move through the atomic company handoff", async () => {
-    const form = new FormData();
-    form.set("kind", "contact_to_work");
-    form.set("dealId", "deal-1");
-    form.set("companyName", "새봄상사");
-
-    await expect(mutateContactPipeline({ ok: false, message: "" }, form)).resolves.toEqual({
-      ok: true,
-      message: "업체 마스터와 업무 건을 연결했습니다.",
-    });
-    expect(handoffCompanyWithSupabase).toHaveBeenCalledWith(
-      expect.anything(),
-      "org-1",
-      expect.objectContaining({
-        dealId: "deal-1",
-        existingCompanyId: null,
-        name: "새봄상사",
-        bizNo: "123-45-67890",
-        ceoName: "김대표",
-        regionSido: "서울",
-        regionSigungu: "강남구",
-      }),
-    );
+  it("returns the recorded double-lock reason without pretending success", async () => {
+    const reason="대표 직인 승인이 필요합니다. 현재 직인 완료 = 대기";
+    executeContactPipelineTransition.mockResolvedValue({status:"blocked",dealId:"deal-1",companyId:null,reason});
+    const form=new FormData(); form.set("kind","contact_to_work"); form.set("dealId","deal-1"); form.set("requestId","00000000-0000-4000-8000-000000000099"); form.set("companyName","새봄상사");
+    await expect(mutateContactPipeline({ok:false,message:""},form)).resolves.toEqual({ok:false,message:reason});
   });
-
-  it("creates the deal atomically when invoked from a contact-board item", async () => {
-    const form = new FormData();
-    form.set("kind", "contact_to_work");
-    form.set("dealId", "");
-    form.set("companyName", "모아 상사");
-    form.set("requestId", "00000000-0000-4000-8000-000000000099");
-    form.set("bizNo", "1234567890");
-    form.set("ceoName", "김대표");
-
-    await mutateContactPipeline({ ok: false, message: "" }, form);
-
+  it("passes a contact-board item as source identity instead of cloning a customer snapshot", async () => {
+    const form=new FormData(); form.set("kind","contact_to_work"); form.set("sourceItemId","00000000-0000-4000-8000-000000000020"); form.set("requestId","00000000-0000-4000-8000-000000000099"); form.set("companyName","모아 상사");
+    await mutateContactPipeline({ok:false,message:""},form);
     expect(getDeal).not.toHaveBeenCalled();
-    expect(handoffCompanyWithSupabase).toHaveBeenCalledWith(
-      expect.anything(),
-      "org-1",
-      expect.objectContaining({
-        dealId: null,
-        requestId: "00000000-0000-4000-8000-000000000099",
-        name: "모아 상사",
-        bizNo: "1234567890",
-        ceoName: "김대표",
-      }),
-    );
+    expect(executeContactPipelineTransition).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({dealId:null,sourceItemId:"00000000-0000-4000-8000-000000000020"}));
   });
-
-  it("rejects a selected company that is outside the visible scope", async () => {
-    const form = new FormData();
-    form.set("kind", "contact_to_work");
-    form.set("dealId", "deal-1");
-    form.set("selectedCompanyId", "hidden-company");
-
-    await expect(mutateContactPipeline({ ok: false, message: "" }, form)).resolves.toEqual({
-      ok: false,
-      message: "접근 가능한 업체를 다시 선택해 주세요.",
-    });
-    expect(handoffCompanyWithSupabase).not.toHaveBeenCalled();
+  it("rejects a selected company outside the request scope", async () => {
+    const form=new FormData(); form.set("kind","contact_to_work"); form.set("dealId","deal-1"); form.set("requestId","00000000-0000-4000-8000-000000000099"); form.set("selectedCompanyId","hidden");
+    await expect(mutateContactPipeline({ok:false,message:""},form)).resolves.toEqual({ok:false,message:"접근 가능한 업체를 다시 선택해 주세요."});
+    expect(executeContactPipelineTransition).not.toHaveBeenCalled();
   });
 });

@@ -32,8 +32,7 @@ describe("ContactPipelineAction", () => {
     const html = renderToStaticMarkup(
       <ContactPipelineAction dealId="00000000-0000-4000-8000-000000000020" kind="contact_to_work" requestId="00000000-0000-4000-8000-000000000030" />,
     );
-    expect(html).toContain("업체 연결");
-    expect(html).not.toContain("업무관리 이동");
+    expect(html).toContain("업무관리 이동");
     expect(html).toContain("justify-end");
     expect(html).toContain("min-h-11");
   });
@@ -44,7 +43,7 @@ describe("ContactPipelineAction", () => {
     );
     expect(html).toContain('name="dealId" value=""');
     expect(html).toContain('value="모아 상사"');
-    expect(html).toContain("업체 연결");
+    expect(html).toContain("업무관리 이동");
     expect(html).toContain('name="bizNo" value="1234567890"');
     expect(html).toContain('name="ceoName" value="김대표"');
   });
