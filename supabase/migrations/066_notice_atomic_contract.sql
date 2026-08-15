@@ -4,39 +4,42 @@ create unique index if not exists boards_org_product_source_uq
   on public.boards(org_id, source)
   where source like 'core.default-tab/%';
 
-create or replace function public.bbe151_ensure_notice_tab(p_org_id uuid, p_definition jsonb)
+create or replace function public.bbe151_ensure_notice_tab(p_org_id uuid)
 returns table(board_id uuid, created boolean)
 language plpgsql security definer set search_path = public, pg_temp
 as $$
 declare
   v_actor uuid := auth.uid(); v_board uuid; v_created boolean := false;
-  v_group jsonb; v_column jsonb; v_group_ids jsonb := '{}'::jsonb; v_group_id uuid;
-  v_rule jsonb := '{}'::jsonb; v_pair record;
+  v_repair boolean; v_completed uuid;
 begin
   if v_actor is null or not public.is_org_member(p_org_id) then raise exception 'organization membership required' using errcode='42501'; end if;
-  if p_definition->>'source' <> 'core.default-tab/notice' then raise exception 'invalid notice source' using errcode='22023'; end if;
-  perform pg_advisory_xact_lock(hashtextextended(p_org_id::text || ':' || (p_definition->>'source'), 0));
-  select id into v_board from public.boards where org_id=p_org_id and source=p_definition->>'source';
+  perform pg_advisory_xact_lock(hashtextextended(p_org_id::text || ':core.default-tab/notice', 0));
+  select id into v_board from public.boards where org_id=p_org_id and source='core.default-tab/notice';
   if v_board is null then
     insert into public.boards(org_id,name,description,icon,source,sort_order,created_by)
-    values(p_org_id,p_definition->>'name',p_definition->>'description',p_definition->>'icon',p_definition->>'source',(select count(*) from public.boards where org_id=p_org_id),v_actor)
+    values(p_org_id,'공지사항','공문과 지원사업 공지를 그룹별로 관리합니다.','📢','core.default-tab/notice',(select count(*) from public.boards where org_id=p_org_id),v_actor)
     returning id into v_board;
     v_created := true;
-    for v_group in select value from jsonb_array_elements(p_definition->'groups') loop
-      insert into public.board_groups(org_id,board_id,name,color,sort_order)
-      values(p_org_id,v_board,v_group->>'name',v_group->>'color',coalesce((v_group->>'order')::int,0)) returning id into v_group_id;
-      v_group_ids := v_group_ids || jsonb_build_object(v_group->>'name',v_group_id::text);
-    end loop;
-    for v_column in select value from jsonb_array_elements(p_definition->'columns') loop
-      v_rule := '{}'::jsonb;
-      for v_pair in select key,value from jsonb_each_text(coalesce(v_column->'moveTo','{}'::jsonb)) loop
-        v_rule := v_rule || jsonb_build_object(v_pair.key,v_group_ids->>v_pair.value);
-      end loop;
-      insert into public.board_columns(org_id,board_id,key,label,type,source,options_jsonb,sort_order,width,right_pinned,move_rule_jsonb,is_readonly)
-      values(p_org_id,v_board,v_column->>'key',v_column->>'label',(v_column->>'type')::public.field_type,(v_column->>'source')::public.field_source,
-        case when jsonb_typeof(v_column->'options')='array' then jsonb_build_object('options',v_column->'options') else null end,
-        coalesce((v_column->>'order')::int,0),nullif(v_column->>'width','')::int,coalesce((v_column->>'rightPinned')::boolean,false),nullif(v_rule,'{}'::jsonb),coalesce((v_column->>'readOnly')::boolean,false));
-    end loop;
+  end if;
+  select v_created or (select count(*) from public.board_groups bg where bg.board_id=v_board)<5 or (select count(*) from public.board_columns bc where bc.board_id=v_board)<10 into v_repair;
+  if v_repair then
+    insert into public.board_groups(org_id,board_id,name,color,sort_order)
+    select p_org_id,v_board,x.name,x.color,x.ord from (values
+      ('📂 매 월 공문리뉴얼','#0073a8',0),('소상공인 직대 접수 대기 업체','#8348b8',1),('특례보증','#00796b',2),('지원사업','#fdab3d',3),('공지 완료','#ffcb00',4)
+    ) x(name,color,ord) where not exists(select 1 from public.board_groups g where g.board_id=v_board and g.name=x.name);
+    select bg.id into v_completed from public.board_groups bg where bg.board_id=v_board and bg.name='공지 완료' order by bg.sort_order,bg.id limit 1;
+    insert into public.board_columns(org_id,board_id,key,label,type,source,options_jsonb,sort_order,width,right_pinned,move_rule_jsonb,is_readonly) values
+      (p_org_id,v_board,'audience','대상','people','act',null,0,140,false,null,false),
+      (p_org_id,v_board,'read_count','읽음','calc','calc',null,1,90,false,null,true),
+      (p_org_id,v_board,'author','작성자','person','auto',null,2,110,false,null,true),
+      (p_org_id,v_board,'official_pdf','공문PDF','file','in',null,3,130,false,null,false),
+      (p_org_id,v_board,'summary','내용 정리','longtext','in',null,4,220,false,null,false),
+      (p_org_id,v_board,'low_score_companies','점수 미달인 업체','select','in',null,5,150,false,null,false),
+      (p_org_id,v_board,'tax_delinquent_companies','세금 미납인 업체','select','in',null,6,150,false,null,false),
+      (p_org_id,v_board,'not_selected_companies','미선정 업체','select','in',null,7,140,false,null,false),
+      (p_org_id,v_board,'status','상태','status','act','{"options":[{"id":"작업 중","label":"작업 중","order":0,"color":"#c4c4c4"},{"id":"공지완료","label":"공지완료","order":1,"color":"#ffcb00"}]}'::jsonb,8,110,true,jsonb_build_object('공지완료',v_completed::text),false),
+      (p_org_id,v_board,'created_on','작성일','date','auto',null,9,120,false,null,true)
+    on conflict on constraint board_columns_board_id_key_key do update set label=excluded.label,type=excluded.type,source=excluded.source,options_jsonb=excluded.options_jsonb,sort_order=excluded.sort_order,width=excluded.width,right_pinned=excluded.right_pinned,move_rule_jsonb=excluded.move_rule_jsonb,is_readonly=excluded.is_readonly;
   end if;
   return query select v_board,v_created;
 end $$;
@@ -60,7 +63,7 @@ begin
   return v_count;
 end $$;
 
-revoke all on function public.bbe151_ensure_notice_tab(uuid,jsonb) from public,anon;
+revoke all on function public.bbe151_ensure_notice_tab(uuid) from public,anon;
 revoke all on function public.bbe151_mark_notice_read(uuid,uuid) from public,anon;
-grant execute on function public.bbe151_ensure_notice_tab(uuid,jsonb) to authenticated;
+grant execute on function public.bbe151_ensure_notice_tab(uuid) to authenticated;
 grant execute on function public.bbe151_mark_notice_read(uuid,uuid) to authenticated;
