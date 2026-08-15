@@ -11,9 +11,15 @@
  * 다른 보드에서도 같은 도구줄이 그 보드의 어휘로 나온다.
  */
 
-import type { BoardColumn } from "@/lib/boards/types";
+import { useMemo, useState } from "react";
+import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { CheckOption, FilterChip, RadioOption } from "./FilterChip";
-import { activeFilterCount, EMPTY_FILTERS, type BoardFilterState } from "./filters";
+import {
+  activeFilterCount,
+  EMPTY_FILTERS,
+  savedViewFilterPayload,
+  type BoardFilterState,
+} from "./filters";
 
 /** 컬럼수 칩의 선택지 — 0 = 전부. */
 const COLUMN_LIMITS = [0, 8, 12, 16] as const;
@@ -22,8 +28,50 @@ function toggle(list: readonly string[], value: string): string[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }
 
+function OptionPicker({
+  options,
+  picked,
+  counts,
+  onToggle,
+}: {
+  options: { id: string; label: string }[];
+  picked: readonly string[];
+  counts: Readonly<Record<string, number>>;
+  onToggle: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const visible = options.filter((option) =>
+    option.label.toLocaleLowerCase("ko").includes(query.trim().toLocaleLowerCase("ko")),
+  );
+  return (
+    <div className="flex flex-col gap-1">
+      <input
+        type="search"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="값 검색"
+        aria-label="필터 값 검색"
+        className="h-8 rounded-lg border border-mw-line bg-mw-card px-2 text-xs outline-none focus:border-mw-record"
+      />
+      {visible.length === 0 ? (
+        <p className="px-2 py-3 text-xs text-mw-sub">일치하는 값이 없습니다.</p>
+      ) : (
+        visible.map((option) => (
+          <CheckOption
+            key={option.id}
+            label={`${option.label} (${counts[option.id] ?? 0})`}
+            checked={picked.includes(option.id)}
+            onToggle={() => onToggle(option.id)}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
 export function BoardToolbar({
   columns,
+  rows = [],
   filters,
   onChange,
   matched,
@@ -32,6 +80,7 @@ export function BoardToolbar({
 }: {
   /** 보드 전체 컬럼(그룹 오버라이드 적용 전) — 필터·정렬 대상은 보드 전역이다. */
   columns: readonly BoardColumn[];
+  rows?: readonly ItemWithValues[];
   filters: BoardFilterState;
   onChange: (next: BoardFilterState) => void;
   matched: number;
@@ -52,6 +101,37 @@ export function BoardToolbar({
   const sortColumn = columns.find((c) => c.key === filters.sortKey);
 
   const patch = (p: Partial<BoardFilterState>) => onChange({ ...filters, ...p });
+  const optionCounts = useMemo(() => {
+    const counts: Record<string, Record<string, number>> = {};
+    for (const column of optionColumns) {
+      const perValue: Record<string, number> = {};
+      for (const row of rows) {
+        const raw = row.values[column.key];
+        const values = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+        for (const value of new Set(values.map(String))) {
+          perValue[value] = (perValue[value] ?? 0) + 1;
+        }
+      }
+      counts[column.key] = perValue;
+    }
+    return counts;
+  }, [optionColumns, rows]);
+  const peopleCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const row of rows) {
+      const value = row.assigned_to ?? "__unassigned__";
+      counts[value] = (counts[value] ?? 0) + 1;
+    }
+    return counts;
+  }, [rows]);
+
+  const requestSaveView = () => {
+    window.dispatchEvent(
+      new CustomEvent("moawork:save-board-view", {
+        detail: savedViewFilterPayload(filters),
+      }),
+    );
+  };
 
   return (
     <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1">
@@ -76,18 +156,22 @@ export function BoardToolbar({
       {people.length > 0 && (
         <FilterChip
           label="담당자"
-          summary={filters.assignees.length > 0 ? `${filters.assignees.length}` : undefined}
+          summary={
+            filters.assignees.length === 1
+              ? people.find((person) => person.value === filters.assignees[0])?.label
+              : filters.assignees.length > 1
+                ? `${filters.assignees.length}개`
+                : undefined
+          }
           active={filters.assignees.length > 0}
           onClear={() => patch({ assignees: [] })}
         >
-          {people.map((p) => (
-            <CheckOption
-              key={p.value}
-              label={p.label}
-              checked={filters.assignees.includes(p.value)}
-              onToggle={() => patch({ assignees: toggle(filters.assignees, p.value) })}
-            />
-          ))}
+          <OptionPicker
+            options={people.map((person) => ({ id: person.value, label: person.label }))}
+            picked={filters.assignees}
+            counts={peopleCounts}
+            onToggle={(id) => patch({ assignees: toggle(filters.assignees, id) })}
+          />
         </FilterChip>
       )}
 
@@ -97,20 +181,24 @@ export function BoardToolbar({
           <FilterChip
             key={col.id}
             label={col.label}
-            summary={picked.length > 0 ? `${picked.length}` : undefined}
+            summary={
+              picked.length === 1
+                ? col.options_jsonb?.options?.find((option) => option.id === picked[0])?.label
+                : picked.length > 1
+                  ? `${picked.length}개`
+                  : undefined
+            }
             active={picked.length > 0}
             onClear={() => patch({ byColumn: { ...filters.byColumn, [col.key]: [] } })}
           >
-            {(col.options_jsonb?.options ?? []).map((o) => (
-              <CheckOption
-                key={o.id}
-                label={o.label}
-                checked={picked.includes(o.id)}
-                onToggle={() =>
-                  patch({ byColumn: { ...filters.byColumn, [col.key]: toggle(picked, o.id) } })
-                }
-              />
-            ))}
+            <OptionPicker
+              options={col.options_jsonb?.options ?? []}
+              picked={picked}
+              counts={optionCounts[col.key] ?? {}}
+              onToggle={(id) =>
+                patch({ byColumn: { ...filters.byColumn, [col.key]: toggle(picked, id) } })
+              }
+            />
           </FilterChip>
         );
       })}
@@ -183,6 +271,14 @@ export function BoardToolbar({
           초기화
         </button>
       )}
+
+      <button
+        type="button"
+        onClick={requestSaveView}
+        className="h-7 shrink-0 rounded-full border border-mw-line bg-mw-card px-3 text-xs text-mw-body hover:border-mw-record hover:text-mw-record"
+      >
+        뷰로 저장
+      </button>
 
       {/* 필터가 걸린 동안에는 "몇 건이 숨겨졌는지"가 보여야 한다 — 조용한 누락 방지. */}
       <span className="ml-auto shrink-0 pl-2 text-xs text-mw-sub">

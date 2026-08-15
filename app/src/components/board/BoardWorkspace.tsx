@@ -21,6 +21,7 @@
 import {
   startTransition,
   useCallback,
+  useEffect,
   useMemo,
   useOptimistic,
   useRef,
@@ -48,7 +49,11 @@ import {
 } from "./layout";
 import {
   applyFilters,
+  activeFilterCount,
   assigneeOptions,
+  BOARD_FILTER_QUERY_KEY,
+  decodeBoardFilters,
+  encodeBoardFilters,
   EMPTY_FILTERS,
   limitColumns,
   type BoardFilterState,
@@ -135,6 +140,24 @@ export function BoardWorkspace({
   canManageColumns?: boolean;
 }) {
   const [filters, setFilters] = useState<BoardFilterState>(EMPTY_FILTERS);
+  const [filterUrlReady, setFilterUrlReady] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams(window.location.search);
+      setFilters(decodeBoardFilters(params.get(BOARD_FILTER_QUERY_KEY)));
+      setFilterUrlReady(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!filterUrlReady) return;
+    const url = new URL(window.location.href);
+    if (activeFilterCount(filters) === 0) url.searchParams.delete(BOARD_FILTER_QUERY_KEY);
+    else url.searchParams.set(BOARD_FILTER_QUERY_KEY, encodeBoardFilters(filters));
+    window.history.replaceState(window.history.state, "", url);
+  }, [filterUrlReady, filters]);
   /*
    * 끌고 있는 행: ref 가 정본(드롭 판정), state 는 표시(반투명·드롭 안내문)용.
    * dragstart 와 drop 사이에 리렌더가 끼지 않아도 드롭이 성립해야 한다.
@@ -256,6 +279,7 @@ export function BoardWorkspace({
 
       <BoardToolbar
         columns={columns}
+        rows={optimisticRows}
         filters={filters}
         onChange={setFilters}
         matched={matched}

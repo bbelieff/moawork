@@ -37,6 +37,52 @@ export const EMPTY_FILTERS: BoardFilterState = {
   columnLimit: 0,
 };
 
+export const BOARD_FILTER_QUERY_KEY = "mwFilters";
+
+/**
+ * 필터 URL 계약. 저장 뷰(BBE-117)의 영속 포맷과 분리된, 새로고침 복원용 계약이다.
+ * 알 수 없는/깨진 입력은 빈 필터로 닫아 화면과 권한 필터를 우회하지 않는다.
+ */
+export function encodeBoardFilters(filters: BoardFilterState): string {
+  return JSON.stringify(filters);
+}
+
+export function decodeBoardFilters(value: string | null): BoardFilterState {
+  if (!value) return EMPTY_FILTERS;
+  try {
+    const parsed = JSON.parse(value) as Partial<BoardFilterState>;
+    const byColumn = Object.fromEntries(
+      Object.entries(parsed.byColumn ?? {}).filter(
+        (entry): entry is [string, string[]] =>
+          Array.isArray(entry[1]) && entry[1].every((item) => typeof item === "string"),
+      ),
+    );
+    return {
+      q: typeof parsed.q === "string" ? parsed.q : "",
+      assignees: Array.isArray(parsed.assignees)
+        ? parsed.assignees.filter((item): item is string => typeof item === "string")
+        : [],
+      byColumn,
+      sortKey: typeof parsed.sortKey === "string" ? parsed.sortKey : "",
+      sortDir: parsed.sortDir === "desc" ? "desc" : "asc",
+      columnLimit:
+        typeof parsed.columnLimit === "number" && Number.isFinite(parsed.columnLimit)
+          ? Math.max(0, Math.floor(parsed.columnLimit))
+          : 0,
+    };
+  } catch {
+    return EMPTY_FILTERS;
+  }
+}
+
+/** BBE-117이 수신할 저장 뷰 handoff payload. 이 모듈은 영속화를 수행하지 않는다. */
+export function savedViewFilterPayload(filters: BoardFilterState) {
+  return {
+    version: 1 as const,
+    filters: decodeBoardFilters(encodeBoardFilters(filters)),
+  };
+}
+
 /** 활성 필터 개수 — 칩 accent 틴트와 "필터 초기화" 노출 판정에 쓴다. */
 export function activeFilterCount(f: BoardFilterState): number {
   let n = 0;
