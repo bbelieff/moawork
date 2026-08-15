@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decodeBoardFilters } from "@/components/board/filters";
-import { parseSavedBoardViewConfig, savedBoardViewFromRow, savedViewUrl } from "./board-saved";
+import { applySavedKanbanView, parseSavedBoardViewConfig, savedBoardViewFromRow, savedViewUrl, systemViewUrl } from "./board-saved";
 
 describe("parseSavedBoardViewConfig", () => {
   it("keeps filter, sort, grouping, and layout state", () => {
@@ -39,6 +39,21 @@ describe("parseSavedBoardViewConfig", () => {
       id: "v2", name: "fallback", visibility: "shared", ownerId: "u2", isDefault: true,
       config: { kind: "table" }, lastUsedAt: "2026-08-16T00:00:00Z",
     });
+  });
+
+  it("clears every saved-view parameter when returning to a system view", () => {
+    const url = new URL(systemViewUrl("board", "https://example.test/boards/b1?savedView=v1&mwFilters=x&mwLayout=x&mwHidden=x&mwOrder=x&group=status&sort=date&calendarField=due"));
+    expect(url.searchParams.get("view")).toBe("kanban");
+    expect([...url.searchParams.keys()]).toEqual(["view"]);
+  });
+
+  it("applies saved filters and sort to actual kanban card ids, count and order", () => {
+    const column = { id: "c1", org_id: "o1", board_id: "b1", key: "score", label: "점수", type: "number", source: "in", rightPinned: false, options_jsonb: null, sort_order: 0, width: null } as const;
+    const item = (id: string, score: number) => ({ id, org_id: "o1", board_id: "b1", group_id: "g1", title: id, assigned_to: null, sort_order: 0, created_at: "", updated_at: "", values: { score } });
+    const rows = [item("low", 1), item("high", 9), item("mid", 5)];
+    const result = applySavedKanbanView([{ id: "lane", items: rows }], rows, [column], { q: "", assignees: [], byColumn: {}, sortKey: "score", sortDir: "desc", columnLimit: 0 });
+    expect(result[0].items.map((row) => row.id)).toEqual(["high", "mid", "low"]);
+    expect(result[0].items).toHaveLength(3);
   });
 
   it("rejects malformed values without widening the contract", () => {

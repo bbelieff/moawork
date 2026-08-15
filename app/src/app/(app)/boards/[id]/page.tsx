@@ -13,7 +13,8 @@ import { loadPermGuard } from "@/lib/perm/guard";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { SavedViewsController } from "@/components/view";
-import { parseSavedBoardLayout, parseSavedStringList } from "@/lib/view/board-saved";
+import { applySavedKanbanView, parseSavedBoardLayout, parseSavedStringList } from "@/lib/view/board-saved";
+import { decodeBoardFilters } from "@/components/board/filters";
 import { GenericBoardKanban } from "@/components/boards/GenericBoardKanban";
 import { ColumnEditor } from "@/components/boards/ColumnEditor";
 import { addGroupAction, deleteBoardAction } from "../actions";
@@ -34,7 +35,7 @@ export default async function BoardPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ view?: string; group?: string; as?: string; savedView?: string; mwLayout?: string; mwHidden?: string; mwOrder?: string }>;
+  searchParams: Promise<{ view?: string; group?: string; as?: string; savedView?: string; mwLayout?: string; mwHidden?: string; mwOrder?: string; mwFilters?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -89,10 +90,10 @@ export default async function BoardPage({
   const items = boardItems.filter((item) => visibleItemIds.has(item.id));
   const hiddenCount = boardItems.length - items.length;
   const lanes = view === "kanban"
-    ? (await svc.kanban(ctx, id, groupBy || undefined)).map((lane) => ({
-        ...lane,
-        items: lane.items.filter((item) => visibleItemIds.has(item.id)),
-      }))
+    ? applySavedKanbanView(
+        (await svc.kanban(ctx, id, groupBy || undefined)).map((lane) => ({ ...lane, items: lane.items.filter((item) => visibleItemIds.has(item.id)) })),
+        items, columns, decodeBoardFilters(sp.mwFilters ?? null),
+      )
     : [];
 
   // 직전 셀 편집에서 저장되지 못한 값의 사유(1회성). 없으면 null.

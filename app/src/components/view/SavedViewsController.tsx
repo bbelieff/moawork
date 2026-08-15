@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { applyFilters, BOARD_FILTER_QUERY_KEY, decodeBoardFilters, type BoardFilterState } from "@/components/board/filters";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards";
 import { DEFAULT_SYSTEM_VIEW, isSystemView, type NewTabViewInput, type ResolvedView, type TabView, type ViewKind } from "@/lib/view";
-import { savedViewUrl, type SavedBoardView, type SavedBoardViewConfig } from "@/lib/view/board-saved";
+import { savedViewUrl, systemViewUrl, type SavedBoardView, type SavedBoardViewConfig } from "@/lib/view/board-saved";
 import { CalendarView } from "./CalendarView";
 import { SaveViewDialog } from "./SaveViewDialog";
 import { TableView, type TableColumn } from "./TableView";
@@ -83,10 +83,7 @@ export function SavedViewsController({
   }, [currentConfig]);
 
   const selectSystem = (kind: ViewKind) => {
-    const url = new URL(window.location.href);
-    url.searchParams.delete("savedView");
-    url.searchParams.set("view", kind === "board" ? "kanban" : kind === "cal" ? "calendar" : "flat");
-    window.location.assign(url.toString());
+    window.location.assign(systemViewUrl(kind, window.location.href));
   };
   const selectResolved = async (view: ResolvedView) => {
     if (isSystemView(view)) return selectSystem(view.kind);

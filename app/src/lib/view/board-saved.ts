@@ -1,4 +1,5 @@
-import { encodeBoardFilters, type BoardFilterState } from "@/components/board/filters";
+import { applyFilters, encodeBoardFilters, type BoardFilterState } from "@/components/board/filters";
+import type { BoardColumn, ItemWithValues } from "@/lib/boards";
 
 export type SavedBoardViewKind = "board" | "table" | "calendar";
 
@@ -89,6 +90,26 @@ export function savedViewUrl(view: SavedBoardView, current: string): string {
   if (view.config.groupBy) url.searchParams.set("group", view.config.groupBy);
   else url.searchParams.delete("group");
   return url.toString();
+}
+
+export function systemViewUrl(kind: "board" | "flat" | "cal", current: string): string {
+  const url = new URL(current);
+  for (const key of ["savedView", "mwFilters", "mwLayout", "mwHidden", "mwOrder", "group", "sort", "calendarField"]) {
+    url.searchParams.delete(key);
+  }
+  url.searchParams.set("view", kind === "board" ? "kanban" : kind === "cal" ? "calendar" : "flat");
+  return url.toString();
+}
+
+export function applySavedKanbanView<T extends { items: readonly ItemWithValues[] }>(
+  lanes: readonly T[], rows: readonly ItemWithValues[], columns: readonly BoardColumn[], filters: BoardFilterState,
+): Array<T & { items: ItemWithValues[] }> {
+  const filtered = applyFilters(rows, columns, filters);
+  const rank = new Map(filtered.map((item, index) => [item.id, index]));
+  return lanes.map((lane) => ({
+    ...lane,
+    items: lane.items.filter((item) => rank.has(item.id)).sort((a, b) => (rank.get(a.id) ?? 1e9) - (rank.get(b.id) ?? 1e9)),
+  }));
 }
 
 export function parseSavedStringList(value: string | undefined): readonly string[] {
