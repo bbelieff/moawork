@@ -40,6 +40,11 @@ describe("validateCell — 정상 정규화(위임)", () => {
     expect(validateCell("text", "   ").value).toBeNull();
     expect(validateCell("email", "a@b.com").value).toBe("a@b.com");
   });
+  it("phone 입력 형식은 같은 숫자 저장값으로 정규화", () => {
+    expect(validateCell("phone", "010-1234-5678")).toEqual({ ok: true, value: "01012345678" });
+    expect(validateCell("phone", "010 1234 5678")).toEqual({ ok: true, value: "01012345678" });
+    expect(validateCell("phone", "+82 10-1234-5678")).toEqual({ ok: true, value: "01012345678" });
+  });
 });
 
 describe("validateCell — 형식 오류는 null 수렴이 아니라 ok:false", () => {
@@ -58,6 +63,12 @@ describe("validateCell — 형식 오류는 null 수렴이 아니라 ok:false", 
   });
   it("이메일 형식 오류", () => {
     expect(validateCell("email", "not-an-email").ok).toBe(false);
+  });
+  it("판독 불가능한 phone 입력은 저장하지 않고 명시적으로 거부", () => {
+    const result = validateCell("phone", "123");
+    expect(result.ok).toBe(false);
+    expect(result.value).toBeNull();
+    expect(result.error).toContain("확인");
   });
 });
 

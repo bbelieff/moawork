@@ -31,6 +31,26 @@ beforeEach(async () => {
   member = ctxFor(SEED_USER_MEMBER, "member", "assigned");
 });
 
+describe("BBE-138 phone consumer persistence", () => {
+  it("normalizes hyphen, whitespace, and +82 forms before the repository write", async () => {
+    const detail = await svc.createBoard(owner, { name: "연락처 입력 검증" });
+    const phone = await svc.addColumn(owner, detail.board.id, { label: "연락처", type: "phone" });
+    const item = await svc.createItem(owner, detail.board.id, { title: "회사" });
+
+    for (const input of ["010-1234-5678", "010 1234 5678", "+82 10-1234-5678"]) {
+      const result = await svc.setCells(owner, detail.board.id, item.id, { [phone.key]: input });
+      expect(result.errors).toEqual([]);
+      expect(result.item.values[phone.key]).toBe("01012345678");
+    }
+  });
+
+  it("does not leak a board item through a foreign organization context", async () => {
+    const detail = await svc.createBoard(owner, { name: "조직 경계 검증" });
+    const foreign: Ctx = { ...owner, org: { ...owner.org, id: "org-foreign" } };
+    await expect(svc.getBoardDetail(foreign, detail.board.id)).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
 describe("보드 목록 — 시스템 + 사용자", () => {
   it("정책자금 파이프라인(시스템)과 사용자 보드가 함께 보인다", async () => {
     const boards = await svc.listBoards(owner);

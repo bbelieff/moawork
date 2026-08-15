@@ -16,7 +16,7 @@ import { getFieldTypeSpec, validateValue } from "@/lib/custom/field-types";
 // `@/lib/format`(배럴)은 동명의 형제 파일 `lib/format.ts`(날짜 포맷 전용)에 가려 조용히
 // 엉뚱한 모듈로 리졸브된다(지금까지 이 배럴의 실제 소비자가 0곳이라 아무도 못 봤다) —
 // 파일을 직접 가리켜 우회한다.
-import { formatPhone } from "@/lib/format/phone";
+import { analyzePhone, formatPhone } from "@/lib/format/phone";
 import type { CellValue } from "./types";
 
 /** 선택지를 갖는 타입. */
@@ -51,9 +51,19 @@ export function validateCell(
   options?: FieldOption[] | null,
 ): CellValidation {
   const res = validateValue(type, raw, options ? { options } : undefined);
-  return res.ok
-    ? { ok: true, value: toCellValue(res.normalized) }
-    : { ok: false, value: null, error: res.error };
+  if (!res.ok) return { ok: false, value: null, error: res.error };
+
+  // This board adapter is the shared write consumer for both local fixtures
+  // and the request-scoped Supabase repository. Normalize before persistence.
+  if (type === "phone" && typeof res.normalized === "string") {
+    const phone = analyzePhone(res.normalized);
+    if (phone.status === "needs_review") {
+      return { ok: false, value: null, error: "phone: 확인이 필요한 전화번호입니다" };
+    }
+    return { ok: true, value: phone.normalized || null };
+  }
+
+  return { ok: true, value: toCellValue(res.normalized) };
 }
 
 /** 빈 셀 판정(필터 is_empty 등). 타입 무관 공통 규약. */
