@@ -5,7 +5,7 @@ import { applyAs, getSession } from "@/lib/auth/session";
 import { CELL_FLASH_COOKIE, decodeCellFlash } from "@/lib/boards/cellFlash";
 import { NotFoundError } from "@/lib/boards";
 import { createRequestBoards } from "@/lib/boards/server";
-import { markNoticeBoardRead } from "@/lib/notices/read-tracking";
+import { markNoticeItemsReadAtomic } from "@/lib/notices/atomic";
 import { issueFileToken } from "@/lib/deal/fileSignedUrl";
 import { NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
@@ -54,7 +54,7 @@ export default async function BoardPage({
   const canManageColumns = columnManage.kind === "allowed";
   const canManageSections = sectionManage.kind === "allowed";
   const canDeleteBoard = boardDelete.kind === "allowed";
-  const { repo, service: svc } = await createRequestBoards();
+  const { client, repo, service: svc } = await createRequestBoards();
 
   let detail;
   try {
@@ -65,7 +65,6 @@ export default async function BoardPage({
   }
 
   const { board, columns, groups } = detail;
-  await markNoticeBoardRead(ctx, board, repo);
   const view = sp.view === "kanban" ? "kanban" : "table";
   const selectColumns = columns.filter(
     (c) => c.type === "select" || c.type === "multiselect",
@@ -73,6 +72,7 @@ export default async function BoardPage({
   const groupBy = sp.group && selectColumns.some((c) => c.key === sp.group) ? sp.group : "";
   const visibleItemIds = new Set(scopedItems.result.itemIds);
   const loadedItems = await svc.listItems(ctx, id);
+  if (board.source === NOTICE_TAB_SOURCE) await markNoticeItemsReadAtomic(ctx, loadedItems.map((item) => item.id), client);
   const boardItems = board.source === NOTICE_TAB_SOURCE
     ? loadedItems.map((item) => {
         const fileId = item.values.official_pdf;

@@ -12,7 +12,7 @@ import { BoardsService } from "@/lib/boards/service";
 import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 import { createClient } from "@/lib/supabase/server";
 import { isManager } from "@/lib/auth/roles";
-import { ensureDefaultTab, NOTICE_TAB } from "@/lib/default-tabs";
+import { ensureNoticeTabAtomic } from "@/lib/notices/atomic";
 import { NoticeCategoryBadge, PinnedBadge } from "@/components/notices/NoticeCategoryBadge";
 import { NoticeStatusBadge } from "@/components/notices/NoticeStatusBadge";
 import {
@@ -58,9 +58,9 @@ export default async function NoticesPage({
   // D76 default tabs are guaranteed, not installed by a user-facing step.
   // Reconciliation is idempotent by the stable product source and uses the
   // same authenticated Supabase adapter as the lookup above.
-  const ensured = await ensureDefaultTab(ctx, NOTICE_TAB, repo);
+  const boardId = await ensureNoticeTabAtomic(ctx, client);
   const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
-  redirect(`/boards/${encodeURIComponent(ensured.boardId)}${query}`);
+  redirect(`/boards/${encodeURIComponent(boardId)}${query}`);
 
   // Existing organizations can keep consuming their pre-default-tab notice
   // board until reconciliation installs the product-owned source.
