@@ -1,0 +1,8 @@
+import { createHmac } from "node:crypto";
+import { describe,expect,it,vi } from "vitest";
+import { ModusignProvider,ModusignWebhookVerifier } from "./modusign.js";
+describe("Modusign sandbox adapters",()=>{
+ it("passes stable idempotency without exposing credentials",async()=>{let init:RequestInit|undefined;const fetcher=vi.fn(async(_url:URL|string|Request,next?:RequestInit)=>{init=next;return new Response(JSON.stringify({documentId:"doc-1",signingUrl:"https://sandbox.test/sign"}),{status:200});}); const p=new ModusignProvider("https://sandbox.test","secret",fetcher as typeof fetch); expect(await p.createSigningRequest({idempotencyKey:"request-1",orgId:"org-1",dealId:"deal-1",templateId:"tpl-1",signerReference:"signer-1"})).toMatchObject({ok:true,providerDocumentId:"doc-1"}); expect(init?.headers).toMatchObject({"idempotency-key":"request-1"});});
+ it("never retries ambiguous transport failures",async()=>{const p=new ModusignProvider("https://sandbox.test","secret",vi.fn(async()=>{throw new Error("phone +8210");}) as typeof fetch); expect(await p.createSigningRequest({idempotencyKey:"r",orgId:"o",dealId:"d",templateId:"t",signerReference:"s"})).toEqual({ok:false,retryable:false,error:"provider_transport_unknown"});});
+ it("verifies signed payloads and rejects replay tampering",async()=>{const raw=JSON.stringify({eventType:"document.signed",eventId:"evt-1",documentId:"doc-1",signedAt:"2026-08-15T00:00:00Z"});const sig=createHmac("sha256","secret").update(raw).digest("hex");const v=new ModusignWebhookVerifier("secret");expect(await v.verify({rawBody:raw,signature:`sha256=${sig}`})).toMatchObject({kind:"signed",eventId:"evt-1"});expect(await v.verify({rawBody:raw+" ",signature:sig})).toBeNull();});
+});
