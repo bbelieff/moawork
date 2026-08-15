@@ -77,4 +77,21 @@ describe("LockBlockedDialog", () => {
     expect(html).toContain("B조건 채우러 가기");
     expect(html).toContain("조건 2개가 모두 충족돼야");
   });
+
+  it("유효한 대상이 없으면 이동을 막고 mutation 실패를 alert로 보여준다", () => {
+    const html = renderToStaticMarkup(
+      <LockBlockedDialog
+        unmet={[condition()]}
+        onNavigateToCondition={vi.fn()}
+        canNavigateToCondition={() => false}
+        onRequestApproval={vi.fn()}
+        approvalFeedback={{ ok: false, message: "승인 요청 실패" }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(html).toContain("대표 직인 승인 대상 없음");
+    expect(html).toContain("disabled");
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("승인 요청 실패");
+  });
 });

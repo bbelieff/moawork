@@ -5,10 +5,15 @@ vi.mock("@/lib/crm/contactPipelineActions", () => ({
   mutateContactPipeline: vi.fn(),
 }));
 
-import { companyRowsFromResponse, ContactPipelineAction } from "./ContactPipelineAction";
+import { availableLockActions, companyRowsFromResponse, ContactPipelineAction } from "./ContactPipelineAction";
 import { companyFoundedOn, companyRevenue } from "@/components/board/BoardWorkspace";
 
 describe("ContactPipelineAction", () => {
+  it("allows real deal targets only and never exposes approval CTA for work_move", () => {
+    expect(availableLockActions("seal_approval", null)).toEqual({ canNavigate: false, canRequestApproval: false });
+    expect(availableLockActions("seal_approval", "deal-1")).toEqual({ canNavigate: true, canRequestApproval: true });
+    expect(availableLockActions("work_move", "deal-1")).toEqual({ canNavigate: true, canRequestApproval: false });
+  });
   it("normalizes board year and revenue values for PostgreSQL types", () => {
     expect(companyFoundedOn("2020")).toBe("2020-01-01");
     expect(companyFoundedOn("2020년")).toBe("");

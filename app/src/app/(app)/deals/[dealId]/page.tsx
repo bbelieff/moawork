@@ -149,7 +149,7 @@ export default async function DealDetailPage({
       </Section>
 
       <Section title="담당자">
-        <div className="flex flex-wrap items-end gap-3">
+        <div id="deal-approval-actions" className="flex flex-wrap items-end gap-3">
           <DealAssignee
             dealId={deal.id}
             currentAssigneeId={deal.assigned_to}

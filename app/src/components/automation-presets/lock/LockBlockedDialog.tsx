@@ -20,6 +20,9 @@ export interface LockBlockedDialogProps {
   onNavigateToCondition: (key: string) => void;
   /** 있으면 조건별로 "요청 보내기" 보조 액션을 추가로 보여준다(목업의 «직인 승인 요청 보내기»). */
   onRequestApproval?: (key: string) => void;
+  canNavigateToCondition?: (key: string) => boolean;
+  approvalPending?: boolean;
+  approvalFeedback?: { ok: boolean; message: string } | null;
   onClose: () => void;
 }
 
@@ -27,6 +30,9 @@ export function LockBlockedDialog({
   unmet,
   onNavigateToCondition,
   onRequestApproval,
+  canNavigateToCondition = () => true,
+  approvalPending = false,
+  approvalFeedback = null,
   onClose,
 }: Readonly<LockBlockedDialogProps>) {
   if (unmet.length === 0) return null;
@@ -56,16 +62,18 @@ export function LockBlockedDialog({
                 type="button"
                 className={styles.btn}
                 onClick={() => onNavigateToCondition(condition.key)}
+                disabled={!canNavigateToCondition(condition.key)}
               >
-                {condition.label} 채우러 가기
+                {canNavigateToCondition(condition.key) ? `${condition.label} 채우러 가기` : `${condition.label} 대상 없음`}
               </button>
               {onRequestApproval ? (
                 <button
                   type="button"
                   className={`${styles.btn} ${styles.btnPrimary}`}
                   onClick={() => onRequestApproval(condition.key)}
+                  disabled={approvalPending}
                 >
-                  {condition.label} 요청 보내기
+                  {approvalPending ? "요청 보내는 중…" : `${condition.label} 요청 보내기`}
                 </button>
               ) : null}
             </div>
@@ -76,6 +84,11 @@ export function LockBlockedDialog({
           조건 {unmet.length}개가 모두 충족돼야 다음 단계로 넘어갑니다. 채운 뒤 같은 버튼을
           다시 누르면 통과합니다.
         </p>
+        {approvalFeedback ? (
+          <p role={approvalFeedback.ok ? "status" : "alert"} className={approvalFeedback.ok ? styles.success : styles.error}>
+            {approvalFeedback.message}
+          </p>
+        ) : null}
 
         <div className={styles.actions}>
           <button type="button" className={styles.btn} onClick={onClose}>

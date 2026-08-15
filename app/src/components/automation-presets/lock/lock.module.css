@@ -131,6 +131,17 @@
   font-size: 12px;
 }
 
+.success {
+  margin: 8px 0 0;
+  color: var(--mw-success);
+  font-size: 12px;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .audit {
   margin: 10px 0 0;
   padding-top: 10px;
