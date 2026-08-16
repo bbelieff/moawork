@@ -4,8 +4,25 @@ import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 import type { Ctx, MemberRole, MemberScope, Org, User } from "@/lib/types";
 import { assigneesFromMemberSummary } from "@/lib/boards/default-tab-assignees";
 import { loadMemberOrgSummaryWithClient } from "@/lib/auth/member-org-summary";
+import type { BoardsRepo } from "@/lib/boards/store";
 
 type Row = Record<string, unknown>;
+const BOOTSTRAP_LEASE_ATTEMPTS = 40;
+const BOOTSTRAP_LEASE_WAIT_MS = 250;
+const BOOTSTRAP_LEASE_HEARTBEAT_MS = 10_000;
+
+function guardedRepo(repo: BoardsRepo, assertLease: () => Promise<void>): BoardsRepo {
+  return new Proxy(repo, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (typeof value !== "function") return value;
+      return async (...args: unknown[]) => {
+        await assertLease();
+        return value.apply(target, args);
+      };
+    },
+  }) as BoardsRepo;
+}
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
@@ -61,11 +78,51 @@ export async function bootstrapApprovedWorkspace(client: SupabaseClient, slug: s
   const ctx: Ctx = { user, org, role: memberRole, scope: memberScope };
   const assignees = assigneesFromMemberSummary(await loadMemberOrgSummaryWithClient(client, ctx));
   if (assignees.length === 0) throw new Error("workspace bootstrap assignees unavailable");
-  await ensureDefaultTabs(
-    ctx,
-    new SupabaseBoardsRepo(client),
-    assignees,
-  );
+  const holder = crypto.randomUUID();
+  let acquired = false;
+  for (let attempt = 0; attempt < BOOTSTRAP_LEASE_ATTEMPTS; attempt += 1) {
+    const result = await client.rpc("acquire_workspace_bootstrap_lease", {
+      p_org_id: orgId,
+      p_holder: holder,
+    });
+    if (result.error) throw new Error("workspace bootstrap lease unavailable");
+    if (result.data === true) {
+      acquired = true;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, BOOTSTRAP_LEASE_WAIT_MS));
+  }
+  if (!acquired) throw new Error("workspace bootstrap lease unavailable");
+  let leaseLost = false;
+  let renewing = false;
+  const renew = async () => {
+    if (leaseLost) throw new Error("workspace bootstrap lease lost");
+    const result = await client.rpc("renew_workspace_bootstrap_lease", {
+      p_org_id: orgId,
+      p_holder: holder,
+    });
+    if (result.error || result.data !== true) {
+      leaseLost = true;
+      throw new Error("workspace bootstrap lease lost");
+    }
+  };
+  const heartbeat = setInterval(() => {
+    if (renewing || leaseLost) return;
+    renewing = true;
+    void renew().catch(() => undefined).finally(() => { renewing = false; });
+  }, BOOTSTRAP_LEASE_HEARTBEAT_MS);
+  try {
+    await renew();
+    await ensureDefaultTabs(ctx, guardedRepo(new SupabaseBoardsRepo(client), renew), assignees);
+    await renew();
+  } finally {
+    clearInterval(heartbeat);
+    const released = await client.rpc("release_workspace_bootstrap_lease", {
+      p_org_id: orgId,
+      p_holder: holder,
+    });
+    if (released.error) throw new Error("workspace bootstrap lease release unavailable");
+  }
 }
 
 /**

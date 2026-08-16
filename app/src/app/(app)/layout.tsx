@@ -20,6 +20,27 @@ import {
 import { NotificationBell } from "@/components/notify/NotificationBell";
 import { loadNotifySnapshot } from "@/lib/notify/server";
 import { loadPlatformActor } from "@/lib/platform/actor";
+import { ensureApprovedWorkspaceOnEntry } from "@/lib/workspace-entry/bootstrap";
+import { createClient } from "@/lib/supabase/server";
+
+function WorkspaceBootstrapUnavailable({ slug }: { slug: string }) {
+  return (
+    <main className="mx-auto flex min-h-screen max-w-xl items-center px-[var(--sp-5)]">
+      <section role="alert" className="w-full rounded-[var(--mw-r-3)] border border-[var(--mw-line)] bg-[var(--mw-card)] p-[var(--sp-6)]">
+        <h1 className="text-xl font-semibold">회사 기본 구조를 불러오지 못했습니다</h1>
+        <p className="mt-[var(--sp-2)] text-sm text-[var(--mw-sub)]">
+          빈 회사로 표시하지 않았습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.
+        </p>
+        <a
+          className="mt-[var(--sp-4)] inline-flex rounded-[var(--mw-r-2)] bg-[var(--mw-primary)] px-[var(--sp-4)] py-[var(--sp-2)] font-semibold text-[var(--mw-on-accent)]"
+          href={`/w/${slug}`}
+        >
+          다시 시도
+        </a>
+      </section>
+    </main>
+  );
+}
 
 // 앱 셸 — UI목업_워크스페이스_최종_v6 (1단 사이드바 220px + 상단바). BBE-126(2026-08-10) 밀도 개정.
 // 색·간격·글자 크기는 전부 globals.css/moawork-tokens.css 의 --mw-*·--sp-*·--fs-* 토큰 참조(하드코딩 hex·임의 px 금지).
@@ -30,6 +51,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const currentWorkspace = routing.kind === "ready"
     ? routing.memberships.filter((membership) => membership.orgId === ctx.org.id)
     : [];
+  if (ctx.role === "owner" && currentWorkspace.length === 1) {
+    try {
+      await ensureApprovedWorkspaceOnEntry(await createClient(), currentWorkspace[0].slug);
+    } catch {
+      return <WorkspaceBootstrapUnavailable slug={currentWorkspace[0].slug} />;
+    }
+  }
   const logoHref = currentWorkspace.length === 1
     ? `/w/${currentWorkspace[0].slug}`
     : "/workspaces";
