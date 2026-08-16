@@ -10,6 +10,10 @@ const automationFoundationRepair = readFileSync(
   new URL("../../../../supabase/migrations/078_automation_conditions_foundation_repair.sql", import.meta.url),
   "utf8",
 );
+const automationAcl = readFileSync(
+  new URL("../../../../supabase/migrations/079_automation_onboarding_acl.sql", import.meta.url),
+  "utf8",
+);
 
 const id = (value: number): string => `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 
@@ -68,6 +72,7 @@ describe("BBE-113 automation onboarding migration", () => {
     await db.exec(automationFoundationRepair);
     await db.exec(automationFoundationRepair);
     await db.exec(migration);
+    await db.exec(automationAcl);
     await db.exec(`
       insert into public.users values ('${id(1)}'),('${id(2)}');
       insert into public.orgs values ('${id(10)}'),('${id(20)}');
@@ -88,6 +93,30 @@ describe("BBE-113 automation onboarding migration", () => {
     `);
     return db;
   }
+
+  it("exposes only the caller RPCs to authenticated and keeps trigger execution private", async () => {
+    const db = await setup();
+    const acl = await db.query<{
+      trigger_public: boolean; trigger_auth: boolean; trigger_service: boolean;
+      sync_public: boolean; sync_anon: boolean; sync_auth: boolean; sync_service: boolean;
+      update_auth: boolean; update_service: boolean;
+    }>(`select
+      has_function_privilege('public','public.reconcile_automation_onboarding_quest()','execute') trigger_public,
+      has_function_privilege('authenticated','public.reconcile_automation_onboarding_quest()','execute') trigger_auth,
+      has_function_privilege('service_role','public.reconcile_automation_onboarding_quest()','execute') trigger_service,
+      has_function_privilege('public','public.sync_my_automation_onboarding_quests(uuid)','execute') sync_public,
+      has_function_privilege('anon','public.sync_my_automation_onboarding_quests(uuid)','execute') sync_anon,
+      has_function_privilege('authenticated','public.sync_my_automation_onboarding_quests(uuid)','execute') sync_auth,
+      has_function_privilege('service_role','public.sync_my_automation_onboarding_quests(uuid)','execute') sync_service,
+      has_function_privilege('authenticated','public.update_my_automation_onboarding_quest(uuid,uuid,boolean,text)','execute') update_auth,
+      has_function_privilege('service_role','public.update_my_automation_onboarding_quest(uuid,uuid,boolean,text)','execute') update_service`);
+    expect(acl.rows[0]).toEqual({
+      trigger_public: false, trigger_auth: false, trigger_service: false,
+      sync_public: false, sync_anon: false, sync_auth: true, sync_service: false,
+      update_auth: true, update_service: false,
+    });
+    expect((await db.query<{ count: number }>("select count(*)::int count from public.onboarding_automation_quests")).rows[0].count).toBe(2);
+  });
 
   it("syncs, orders and replays without duplicate writes or loops", async () => {
     const db = await setup();
