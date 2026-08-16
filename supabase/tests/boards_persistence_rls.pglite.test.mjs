@@ -110,6 +110,19 @@ test("boards survive database restart and RLS isolates organizations", async () 
     ), "utf8");
     await db.exec(rlsMigration);
     await db.exec(rlsMigration);
+    await db.exec(`
+      alter table items add column sort_order integer not null default 0;
+      alter table items add column created_at timestamptz not null default now();
+      alter table items add column updated_at timestamptz not null default now();
+    `);
+    const trashMigration = await readFile(path.join(
+      root,
+      "supabase",
+      "migrations",
+      "084_board_item_trash.sql",
+    ), "utf8");
+    await db.exec(trashMigration);
+    await db.exec(trashMigration);
     await db.close();
 
     db = new PGlite(dataDir);
@@ -156,6 +169,39 @@ test("boards survive database restart and RLS isolates organizations", async () 
          '24000000-0000-4000-8000-000000000055'
        )
     `)).rows[0].n, 0);
+    assert.equal(
+      (await db.query(`
+        update items
+           set deleted_at=now(),deleted_by='${userA}'
+         where id='24000000-0000-4000-8000-000000000050'
+         returning id
+      `)).rows.length,
+      1,
+    );
+    assert.equal(
+      (await db.query("select count(*)::int as n from items where id='24000000-0000-4000-8000-000000000050' and deleted_at is null")).rows[0].n,
+      0,
+    );
+    assert.deepEqual(
+      (await db.query("select group_id,assigned_to,sort_order from items where id='24000000-0000-4000-8000-000000000050'")).rows,
+      [{ group_id: "24000000-0000-4000-8000-000000000030", assigned_to: userA, sort_order: 0 }],
+    );
+    assert.deepEqual(
+      (await db.query("select column_key,value_jsonb from item_values where item_id='24000000-0000-4000-8000-000000000050'")).rows,
+      [{ column_key: "status", value_jsonb: "ready" }],
+    );
+    assert.equal(
+      (await db.query("update items set deleted_at=now(),deleted_by=auth.uid() where id='24000000-0000-4000-8000-000000000051' returning id")).rows.length,
+      0,
+    );
+    assert.equal(
+      (await db.query("update items set deleted_at=null,deleted_by=null where id='24000000-0000-4000-8000-000000000050' returning id")).rows.length,
+      1,
+    );
+    assert.equal(
+      (await db.query("select count(*)::int as n from items where id='24000000-0000-4000-8000-000000000050' and deleted_at is null")).rows[0].n,
+      1,
+    );
     assert.equal(
       (await db.query("update item_values set value_jsonb='\"blocked\"' where item_id='24000000-0000-4000-8000-000000000051' returning item_id")).rows.length,
       0,

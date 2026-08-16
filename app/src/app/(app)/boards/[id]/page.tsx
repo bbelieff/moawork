@@ -12,6 +12,7 @@ import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
+import { BoardTrashPanel } from "@/components/board/BoardTrashPanel";
 import { SavedViewsController } from "@/components/view";
 import { applySavedKanbanView, parseSavedBoardLayout, parseSavedStringList } from "@/lib/view/board-saved";
 import { decodeBoardFilters } from "@/components/board/filters";
@@ -57,7 +58,7 @@ export default async function BoardPage({
   const canManageColumns = columnManage.kind === "allowed";
   const canManageSections = sectionManage.kind === "allowed";
   const canDeleteBoard = boardDelete.kind === "allowed";
-  const { client, repo, service: svc } = await createRequestBoards();
+  const { client, service: svc } = await createRequestBoards();
 
   let detail;
   try {
@@ -75,6 +76,9 @@ export default async function BoardPage({
   const groupBy = sp.group && selectColumns.some((c) => c.key === sp.group) ? sp.group : "";
   const visibleItemIds = new Set(scopedItems.result.itemIds);
   const loadedItems = await svc.listItems(ctx, id);
+  const deletedItems = !board.is_system && canDeleteItems
+    ? await svc.listDeletedItems(ctx, id)
+    : [];
   if (board.source === NOTICE_TAB_SOURCE) {
     const visibleNoticeIds = loadedItems.filter((item) => visibleItemIds.has(item.id)).map((item) => item.id);
     await markNoticeItemsReadAtomic(ctx, visibleNoticeIds, client);
@@ -183,6 +187,10 @@ export default async function BoardPage({
     </details>
   );
 
+  const trashPanel = (
+    <BoardTrashPanel boardId={id} items={deletedItems} groups={groups} />
+  );
+
   if (view === "kanban") {
     return (
       <div className="flex w-full flex-col gap-3">
@@ -225,6 +233,7 @@ export default async function BoardPage({
           readOnly={board.is_system || !canEditItems}
         />
 
+        {trashPanel}
         {boardSettings}
       </div>
     );
@@ -239,6 +248,7 @@ export default async function BoardPage({
           <h1 className="text-base font-semibold text-mw-fg">{board.icon ? <span aria-hidden="true">{board.icon}</span> : null} {board.name}</h1>
         </div>
         <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} layout={activeColumnOrder} columns={visibleColumns} rows={items} renderMode={view} canEditItems={canEditItems} />
+        {trashPanel}
         {boardSettings}
       </div>
     );
@@ -265,6 +275,7 @@ export default async function BoardPage({
         canManageColumns={canManageColumns}
       />
 
+      {trashPanel}
       {boardSettings}
     </div>
   );

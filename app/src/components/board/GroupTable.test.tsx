@@ -44,7 +44,7 @@ function row(values: Record<string, CellValue> = {}): ItemWithValues {
   };
 }
 
-function renderTable(columns: BoardColumn[], rows: ItemWithValues[]) {
+function renderTable(columns: BoardColumn[], rows: ItemWithValues[], canDeleteItems = false) {
   return renderToStaticMarkup(
     <GroupTable
       boardId="b1"
@@ -60,6 +60,7 @@ function renderTable(columns: BoardColumn[], rows: ItemWithValues[]) {
       onRowDragStart={() => {}}
       onRowDragEnd={() => {}}
       onRowDrop={() => {}}
+      canDeleteItems={canDeleteItems}
     />,
   );
 }
@@ -150,5 +151,13 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     const columns = [col({ key: "a", label: "일반", rightPinned: false })];
     const html = renderTable(columns, [row()]);
     expect(html).not.toContain("sticky right-0");
+  });
+
+  it("삭제 권한이 있으면 hard delete 대신 휴지통 서버 액션을 렌더한다", () => {
+    const html = renderTable([col({ key: "a", label: "일반" })], [row()], true);
+    expect(html).toContain('name="boardId" value="b1"');
+    expect(html).toContain('name="itemId" value="row-1"');
+    expect(html).toContain("행1 휴지통으로 이동");
+    expect(html).toContain("삭제");
   });
 });
