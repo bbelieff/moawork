@@ -120,6 +120,9 @@ describe("WorkspaceEntry B-3 state contract", () => {
 
   it("applies fail-closed initial-state precedence deterministically", () => {
     expect(resolveWorkspaceEntryView({ initialView: "fork", hasPendingRequest: true, hasRejectedRequest: true, isPlatformAdmin: false })).toBe("pending");
+    expect(resolveWorkspaceEntryView({ initialView: "fork", hasPendingRequest: true, hasRejectedRequest: true, isPlatformAdmin: false, freshStart: true })).toBe("pending");
+    expect(resolveWorkspaceEntryView({ initialView: "fork", hasPendingRequest: false, hasRejectedRequest: true, isPlatformAdmin: false, freshStart: true })).toBe("fork");
+    expect(resolveWorkspaceEntryView({ initialView: "fork", hasPendingRequest: false, hasRejectedRequest: true, isPlatformAdmin: false })).toBe("rejected");
     expect(resolveWorkspaceEntryView({ initialView: "create", hasPendingRequest: false, hasRejectedRequest: false, isPlatformAdmin: false })).toBe("create-name");
     expect(resolveWorkspaceEntryView({ initialView: "fork", hasPendingRequest: true, hasRejectedRequest: true, isPlatformAdmin: true })).toBe("operator");
     expect(workspaceEntryCopy("rejected").lead).toContain("안전한 다음 행동");
