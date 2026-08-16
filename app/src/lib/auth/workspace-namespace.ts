@@ -10,7 +10,7 @@ export type WorkspaceNamespaceDecision =
 
 const WORKSPACE_PAGE_SEGMENTS = new Set([
   "account", "boards", "companies", "contract", "dash", "deals", "newcust",
-  "notices", "onboarding", "policyfund", "presets", "settings", "work",
+  "notices", "onboarding", "policyfund", "presets", "settings", "settlements", "work",
 ]);
 
 function aliasFromPath(pathname: string): string | null {
