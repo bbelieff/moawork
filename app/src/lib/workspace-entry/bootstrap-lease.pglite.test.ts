@@ -20,6 +20,8 @@ async function setup() {
   `);
   const sql = readFileSync(resolve(process.cwd(), "../supabase/migrations/080_workspace_bootstrap_lease.sql"), "utf8");
   await db.exec(sql);
+  const probeSql = readFileSync(resolve(process.cwd(), "../supabase/migrations/081_workspace_bootstrap_approval_probe.sql"), "utf8");
+  await db.exec(probeSql);
   return db;
 }
 
@@ -72,5 +74,35 @@ describe("workspace bootstrap lease migration", () => {
       from pg_proc p where p.oid='public.acquire_workspace_bootstrap_lease(uuid,uuid)'::regprocedure
     `);
     expect(publicGrant.rows[0].open).toBe(false);
+
+    const probePrivileges = await db.query<{role_name:string;exec_ok:boolean}>(`
+      select role_name,
+        has_function_privilege(role_name,'public.is_my_approved_workspace_creator(uuid)','execute') exec_ok
+      from (values ('anon'),('authenticated'),('service_role')) r(role_name)
+      order by role_name
+    `);
+    expect(probePrivileges.rows).toEqual([
+      { role_name: "anon", exec_ok: false },
+      { role_name: "authenticated", exec_ok: true },
+      { role_name: "service_role", exec_ok: false },
+    ]);
+  });
+
+  it("reveals only whether the active owner is the approved creator", async () => {
+    const db = await setup();
+    const orgA = "00000000-0000-0000-0000-000000000001";
+    const orgB = "00000000-0000-0000-0000-000000000002";
+    const owner = "00000000-0000-0000-0000-000000000011";
+    const other = "00000000-0000-0000-0000-000000000012";
+    await db.query("insert into orgs values($1),($2)", [orgA, orgB]);
+    await db.query("insert into org_members values($1,$2,'owner','active'),($1,$3,'member','active')", [orgA, owner, other]);
+    await db.query("insert into workspace_entry_requests values($1,$2,'create','approved')", [orgA, owner]);
+    await db.query("select set_config('app.user_id',$1,false)", [owner]);
+    expect((await db.query<{ok:boolean}>("select is_my_approved_workspace_creator($1) ok", [orgA])).rows[0].ok).toBe(true);
+    expect((await db.query<{ok:boolean}>("select is_my_approved_workspace_creator($1) ok", [orgB])).rows[0].ok).toBe(false);
+    await db.query("update org_members set status='suspended' where org_id=$1 and user_id=$2", [orgA, owner]);
+    expect((await db.query<{ok:boolean}>("select is_my_approved_workspace_creator($1) ok", [orgA])).rows[0].ok).toBe(false);
+    await db.query("select set_config('app.user_id',$1,false)", [other]);
+    expect((await db.query<{ok:boolean}>("select is_my_approved_workspace_creator($1) ok", [orgA])).rows[0].ok).toBe(false);
   });
 });
