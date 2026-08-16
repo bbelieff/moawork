@@ -235,7 +235,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         </header>
         {/* 목업 「탭 6개 한 화면」 — 여섯 업무 탭을 셸의 «같은 자리»에 그린다(BBE-142).
             탭 밖 화면(설정·계정·플랫폼)에서는 AppTabs 가 스스로 아무것도 그리지 않는다. */}
-        <AppTabs lockedFeatures={lockedFeatures} />
+        <AppTabs
+          lockedFeatures={lockedFeatures}
+          workspaceBasePath={currentWorkspace.length === 1 ? `/w/${currentWorkspace[0].slug}` : undefined}
+        />
         <main>{children}</main>
       </div>
     </div>
