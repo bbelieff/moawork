@@ -5,10 +5,48 @@
 alter type public.member_role add value if not exists 'team_lead';
 alter type public.member_scope add value if not exists 'department';
 
+-- Hosted environments that predate 013 still need the two private guards used
+-- by the canonical 050/055 functions. Keep these byte-equivalent in behavior
+-- to 013 and never grant them to an API role.
+create or replace function public.member_hierarchy_authz_require_owner(p_org_id uuid)
+returns uuid language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_actor uuid := auth.uid();
+begin
+  if v_actor is null
+     or not public.member_account_session_valid()
+     or not public.is_protected_workspace_owner(p_org_id) then
+    raise exception 'protected workspace owner with valid session required' using errcode = '42501';
+  end if;
+  return v_actor;
+end;
+$$;
+
+create or replace function public.member_hierarchy_authz_require_active_nonowner(
+  p_org_id uuid, p_target_user_id uuid, p_actor_user_id uuid
+) returns void language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if p_target_user_id is null or p_target_user_id = p_actor_user_id then
+    raise exception 'self or missing target is not mutable' using errcode = '42501';
+  end if;
+  if not exists (
+    select 1
+      from public.org_members m join public.orgs o on o.id = m.org_id
+     where m.org_id = p_org_id and m.user_id = p_target_user_id
+       and m.status = 'active' and m.role <> 'owner' and o.status = 'active'
+  ) then
+    raise exception 'active non-owner member required' using errcode = '42501';
+  end if;
+end;
+$$;
+
+revoke all on function public.member_hierarchy_authz_require_owner(uuid) from public, anon, authenticated, service_role;
+revoke all on function public.member_hierarchy_authz_require_active_nonowner(uuid,uuid,uuid) from public, anon, authenticated, service_role;
+
 do $policy_repair$
 begin
   if to_regclass('public.departments') is not null then
     execute 'drop policy if exists departments_read on public.departments';
+    execute 'drop trigger if exists departments_prevent_cycle_trg on public.departments';
   end if;
   if to_regclass('public.department_members') is not null then
     execute 'drop policy if exists department_members_read on public.department_members';

@@ -12,6 +12,10 @@ describe("permission read foundation repair", () => {
     expect(sql).toContain(permissions);
     expect(sql).toContain("alter type public.member_role add value if not exists 'team_lead'");
     expect(sql).toContain("alter type public.member_scope add value if not exists 'department'");
+    expect(sql).toContain("drop trigger if exists departments_prevent_cycle_trg on public.departments");
+    expect(sql).toContain("create or replace function public.member_hierarchy_authz_require_owner(p_org_id uuid)");
+    expect(sql).toContain("create or replace function public.member_hierarchy_authz_require_active_nonowner(");
+    expect(sql).toContain("revoke all on function public.member_hierarchy_authz_require_owner(uuid) from public, anon, authenticated, service_role");
     expect(sql).toContain("revoke all on function public.effective_permission(uuid, text) from service_role");
     expect(sql).toContain("revoke all on function public.read_permission_scoped_work_items(uuid, uuid) from service_role");
   });
