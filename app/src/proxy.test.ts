@@ -59,6 +59,11 @@ describe("proxy workspace namespace", () => {
       headers: { cookie: "mw_workspace_slug=acme; mw_org=org-acme" },
     }));
     expect(settings.headers.get("location")).toBe("https://www.moa-work.com/w/acme/settings/account");
+
+    const settlements = await proxy(new NextRequest("https://www.moa-work.com/settlements?dealId=deal-1", {
+      headers: { cookie: "mw_workspace_slug=acme; mw_org=org-acme" },
+    }));
+    expect(settlements.headers.get("location")).toBe("https://www.moa-work.com/w/acme/settlements?dealId=deal-1");
   });
 
   it("fails closed for a protected root link without a verified workspace slug", async () => {

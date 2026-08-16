@@ -12,6 +12,12 @@ describe("workspace namespace", () => {
     expect(decideWorkspaceNamespace("/w/acme/deals/123?tab=notes", [row("org-acme", "acme")])).toEqual({ kind: "rewrite", canonical: "/w/acme/deals/123?tab=notes", internal: "/deals/123?tab=notes", orgId: "org-acme" });
     expect(decideWorkspaceNamespace("/w/acme/companies", [row("org-acme", "acme")])).toEqual({ kind: "rewrite", canonical: "/w/acme/companies", internal: "/companies", orgId: "org-acme" });
     expect(decideWorkspaceNamespace("/w/acme/presets", [row("org-acme", "acme")])).toEqual({ kind: "rewrite", canonical: "/w/acme/presets", internal: "/presets", orgId: "org-acme" });
+    expect(decideWorkspaceNamespace("/w/acme/settlements?dealId=deal-1", [row("org-acme", "acme")])).toEqual({
+      kind: "rewrite",
+      canonical: "/w/acme/settlements?dealId=deal-1",
+      internal: "/policyfund/settlements?dealId=deal-1",
+      orgId: "org-acme",
+    });
   });
 
   it("lets an exact target win among multiple memberships", () => {
@@ -21,6 +27,7 @@ describe("workspace namespace", () => {
   it("validates aliases against active membership and never aliases static routes", () => {
     expect(decideWorkspaceNamespace("/alpha-team?tab=work", [row("org-1", "alpha-team")])).toEqual({ kind: "alias", canonical: "/w/alpha-team?tab=work", orgId: "org-1" });
     expect(decideWorkspaceNamespace("/settings", [row("org-1", "settings")])).toEqual({ kind: "none" });
+    expect(decideWorkspaceNamespace("/settlements", [row("org-1", "settlements")])).toEqual({ kind: "none" });
   });
 
   it("converges unknown, nonmember, revoked, and encoded escape probes", () => {

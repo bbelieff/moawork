@@ -13,10 +13,18 @@ const WORKSPACE_PAGE_SEGMENTS = new Set([
   "notices", "onboarding", "policyfund", "presets", "settings", "settlements", "work",
 ]);
 
+const WORKSPACE_INTERNAL_ALIASES = new Map<string, string>([
+  ["/settlements", "/policyfund/settlements"],
+]);
+
 function aliasFromPath(pathname: string): string | null {
   const match = pathname.match(/^\/([^/]+)$/);
   const alias = match?.[1];
-  return alias && isCanonicalWorkspaceSlug(alias) && !RESERVED_WORKSPACE_SLUGS.has(alias) ? alias : null;
+  return alias && isCanonicalWorkspaceSlug(alias)
+    && !RESERVED_WORKSPACE_SLUGS.has(alias)
+    && !WORKSPACE_PAGE_SEGMENTS.has(alias)
+    ? alias
+    : null;
 }
 
 export function isWorkspaceNamespaceCandidate(pathname: string): boolean {
@@ -33,7 +41,7 @@ export function workspaceInternalPathFromCanonical(pathWithSearch: string, slug:
   if (suffix === "/w" || suffix.startsWith("/w/")) return null;
   const firstSegment = suffix.split("/").filter(Boolean)[0];
   if (firstSegment && !WORKSPACE_PAGE_SEGMENTS.has(firstSegment)) return null;
-  return `${suffix}${url.search}`;
+  return `${WORKSPACE_INTERNAL_ALIASES.get(suffix) ?? suffix}${url.search}`;
 }
 
 export function decideWorkspaceNamespace(pathWithSearch: string, rows: unknown): WorkspaceNamespaceDecision {
