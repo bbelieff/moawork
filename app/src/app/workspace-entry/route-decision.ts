@@ -35,6 +35,12 @@ export function decideWorkspaceEntryPage({
     }
   }
 
+  if (mode === "new") {
+    return selfState === "eligible"
+      ? { kind: "render", view: "entry" }
+      : { kind: "render", view: "blocked" };
+  }
+
   if (memberships.length === 1) {
     return isCanonicalWorkspaceSlug(memberships[0].slug)
       ? { kind: "redirect", path: `/w/${memberships[0].slug}` }
