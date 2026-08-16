@@ -1,5 +1,5 @@
 -- BBE-113: derive company-specific onboarding quests from automation rules.
--- 075 is provisional until the BBE-115 (073) and BBE-30 successor (074)
+-- 077 follows the merged 075 board-column repair and 076 permission foundation repair.
 -- migrations are merged. Reconfirm latest+1 before publishing this branch.
 
 alter table public.board_automation_rules
