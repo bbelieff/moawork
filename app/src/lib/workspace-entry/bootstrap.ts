@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { DEFAULT_TABS, ensureDefaultTabs } from "@/lib/default-tabs";
+import { ensureDefaultTabs } from "@/lib/default-tabs";
 import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 import type { Ctx, MemberRole, MemberScope, Org, User } from "@/lib/types";
 
@@ -74,15 +74,6 @@ export async function ensureApprovedWorkspaceOnEntry(client: SupabaseClient, slu
   const orgResult = await client.from("orgs").select("id").eq("slug", slug).maybeSingle();
   const orgId = text((orgResult.data as Row | null)?.id);
   if (orgResult.error || !orgId) throw new Error("workspace bootstrap context unavailable");
-
-  const boardResult = await client
-    .from("boards")
-    .select("source")
-    .eq("org_id", orgId)
-    .in("source", DEFAULT_TABS.map((tab) => tab.source));
-  if (boardResult.error || !Array.isArray(boardResult.data)) throw new Error("workspace bootstrap state unavailable");
-  const sources = new Set((boardResult.data as Row[]).map((row) => text(row.source)).filter(Boolean));
-  if (DEFAULT_TABS.every((tab) => sources.has(tab.source))) return;
 
   const requestResult = await client
     .from("workspace_entry_requests")

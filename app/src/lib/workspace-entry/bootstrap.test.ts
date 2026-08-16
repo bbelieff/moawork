@@ -69,7 +69,7 @@ describe("bootstrapApprovedWorkspace", () => {
     expect(ensureDefaultTabs).not.toHaveBeenCalled();
   });
 
-  it("repairs only an approved create request and becomes a no-op after reload", async () => {
+  it("reconciles an approved create request again on reload without trusting board shells", async () => {
     let installed = false;
     ensureDefaultTabs.mockImplementation(async () => { installed = true; return []; });
     const client = {
@@ -92,7 +92,7 @@ describe("bootstrapApprovedWorkspace", () => {
     await ensureApprovedWorkspaceOnEntry(client as never, "qa-company");
     expect(ensureDefaultTabs).toHaveBeenCalledOnce();
     await ensureApprovedWorkspaceOnEntry(client as never, "qa-company");
-    expect(ensureDefaultTabs).toHaveBeenCalledOnce();
+    expect(ensureDefaultTabs).toHaveBeenCalledTimes(2);
   });
 
   it("does not backfill a legacy workspace without its creator's approved request", async () => {
