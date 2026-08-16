@@ -221,13 +221,20 @@ export class LocalBoardsRepo {
   // ── 아이템(담당범위) ──
   listItems(ctx: Ctx, boardId: string): BoardItem[] {
     const all = db()
-      .boardItems.filter((i) => i.org_id === ctx.org.id && i.board_id === boardId)
+      .boardItems.filter((i) => i.org_id === ctx.org.id && i.board_id === boardId && !i.deleted_at)
       .sort((a, b) => a.sort_order - b.sort_order);
     return canSeeAll(ctx) ? all : all.filter((i) => i.assigned_to === ctx.user.id);
   }
 
+  listDeletedItems(ctx: Ctx, boardId: string): BoardItem[] {
+    const all = db()
+      .boardItems.filter((i) => i.org_id === ctx.org.id && i.board_id === boardId && Boolean(i.deleted_at))
+      .sort((a, b) => String(b.deleted_at).localeCompare(String(a.deleted_at)));
+    return canSeeAll(ctx) ? all : all.filter((i) => i.assigned_to === ctx.user.id);
+  }
+
   getItem(ctx: Ctx, id: string): BoardItem | undefined {
-    const i = db().boardItems.find((x) => x.id === id && x.org_id === ctx.org.id);
+    const i = db().boardItems.find((x) => x.id === id && x.org_id === ctx.org.id && !x.deleted_at);
     if (!i) return undefined;
     return canSeeAll(ctx) || i.assigned_to === ctx.user.id ? i : undefined;
   }
@@ -244,6 +251,8 @@ export class LocalBoardsRepo {
       title: input.title,
       assigned_to: assigned,
       sort_order: db().boardItems.filter((i) => i.board_id === boardId).length,
+      deleted_at: null,
+      deleted_by: null,
       created_at: ts,
       updated_at: ts,
     };
@@ -262,13 +271,28 @@ export class LocalBoardsRepo {
     return i;
   }
 
-  deleteItem(ctx: Ctx, id: string): boolean {
+  deleteItem(ctx: Ctx, boardId: string, id: string): boolean {
     const i = this.getItem(ctx, id);
+    if (i?.board_id !== boardId) return false;
     if (!i) return false;
-    const d = db();
-    d.boardItems = d.boardItems.filter((x) => x.id !== id);
-    d.itemValues = d.itemValues.filter((v) => v.item_id !== id);
+    i.deleted_at = now();
+    i.deleted_by = ctx.user.id;
+    i.updated_at = now();
     return true;
+  }
+
+  restoreItem(ctx: Ctx, boardId: string, id: string): BoardItem | undefined {
+    const i = db().boardItems.find(
+      (candidate) => candidate.id === id
+        && candidate.board_id === boardId
+        && candidate.org_id === ctx.org.id
+        && Boolean(candidate.deleted_at),
+    );
+    if (!i || (!canSeeAll(ctx) && i.assigned_to !== ctx.user.id)) return undefined;
+    i.deleted_at = null;
+    i.deleted_by = null;
+    i.updated_at = now();
+    return i;
   }
 
   // ── 셀 값 ──

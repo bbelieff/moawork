@@ -111,10 +111,12 @@ export interface BoardsRepo {
 
   // 아이템(담당범위 적용)
   listItems(ctx: Ctx, boardId: string): Promise<BoardItem[]>;
+  listDeletedItems(ctx: Ctx, boardId: string): Promise<BoardItem[]>;
   getItem(ctx: Ctx, id: string): Promise<BoardItem | undefined>;
   createItem(ctx: Ctx, boardId: string, input: NewItem): Promise<BoardItem>;
   updateItem(ctx: Ctx, id: string, patch: ItemPatch): Promise<BoardItem | undefined>;
-  deleteItem(ctx: Ctx, id: string): Promise<boolean>;
+  deleteItem(ctx: Ctx, boardId: string, id: string): Promise<boolean>;
+  restoreItem(ctx: Ctx, boardId: string, id: string): Promise<BoardItem | undefined>;
 
   // 셀 값(EAV)
   listValues(ctx: Ctx, itemIds: string[]): Promise<ItemValue[]>;

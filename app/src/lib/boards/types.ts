@@ -96,6 +96,10 @@ export interface BoardItem {
   /** 담당범위(scope) 규칙의 기준 — deals 와 동일. */
   assigned_to: string | null;
   sort_order: number;
+  /** Recoverable deletion marker. Active item reads always exclude non-null rows. */
+  deleted_at?: string | null;
+  /** User who moved the item to trash. Values/group/assignee/order remain untouched. */
+  deleted_by?: string | null;
   created_at: string;
   updated_at: string;
 }

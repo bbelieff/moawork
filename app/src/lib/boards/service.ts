@@ -167,6 +167,12 @@ export class BoardsService {
     return this.compose(ctx, items, detail.columns);
   }
 
+  async listDeletedItems(ctx: Ctx, boardId: string): Promise<ItemWithValues[]> {
+    const detail = await this.getBoardDetail(ctx, boardId);
+    const items = await (await this.repo).listDeletedItems(ctx, boardId);
+    return this.compose(ctx, items, detail.columns);
+  }
+
   async getItem(ctx: Ctx, boardId: string, itemId: string): Promise<ItemWithValues> {
     const detail = await this.getBoardDetail(ctx, boardId);
     const item = await (await this.repo).getItem(ctx, itemId);
@@ -201,7 +207,20 @@ export class BoardsService {
 
   async deleteItem(ctx: Ctx, boardId: string, itemId: string): Promise<void> {
     await this.requireEditableBoard(ctx, boardId);
-    if (!await (await this.repo).deleteItem(ctx, itemId)) throw new NotFoundError("아이템을 찾을 수 없습니다");
+    const repo = await this.repo;
+    if (await repo.deleteItem(ctx, boardId, itemId)) return;
+    const alreadyDeleted = (await repo.listDeletedItems(ctx, boardId)).some((item) => item.id === itemId);
+    if (!alreadyDeleted) throw new NotFoundError("아이템을 찾을 수 없습니다");
+  }
+
+  async restoreItem(ctx: Ctx, boardId: string, itemId: string): Promise<ItemWithValues> {
+    await this.requireEditableBoard(ctx, boardId);
+    const repo = await this.repo;
+    const restored = await repo.restoreItem(ctx, boardId, itemId);
+    if (restored) return this.getItem(ctx, boardId, itemId);
+    const active = await repo.getItem(ctx, itemId);
+    if (!active || active.board_id !== boardId) throw new NotFoundError("휴지통에서 항목을 찾을 수 없습니다");
+    return this.getItem(ctx, boardId, itemId);
   }
 
   /**

@@ -27,9 +27,9 @@ import { SourceBadge } from "./FieldBadge";
 import { clampWidth } from "./layout";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
 import { ItemDetailPanel } from "./ItemDetailPanel";
+import { TrashItemButton } from "./ItemTrashControls";
 import {
   addItemAction,
-  deleteItemAction,
   renameItemAction,
   setCellAction,
   setColumnWidthAction,
@@ -521,17 +521,7 @@ export function GroupTable({
                     />
 
                     {canDeleteItems && (
-                      <form action={deleteItemAction} className="shrink-0">
-                        <input type="hidden" name="boardId" value={boardId} />
-                        <input type="hidden" name="itemId" value={row.id} />
-                        <button
-                          type="submit"
-                          aria-label={`${row.title} 삭제`}
-                          className="px-1 text-xs text-mw-sub opacity-0 hover:text-mw-error group-hover:opacity-100"
-                        >
-                          ×
-                        </button>
-                      </form>
+                      <TrashItemButton boardId={boardId} itemId={row.id} title={row.title} />
                     )}
                   </div>
                   {renderRowAction?.(row)}
