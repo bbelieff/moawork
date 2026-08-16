@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { ensureDefaultTabs, repoClients } = vi.hoisted(() => ({
+const { ensureDefaultTabs, repoClients, loadMemberOrgSummaryWithClient } = vi.hoisted(() => ({
   ensureDefaultTabs: vi.fn(),
   repoClients: [] as unknown[],
+  loadMemberOrgSummaryWithClient: vi.fn(),
 }));
 
 vi.mock("@/lib/default-tabs", () => ({
@@ -14,6 +15,7 @@ vi.mock("@/lib/repo/supabase/boardsRepo", () => ({
     constructor(client: unknown) { repoClients.push(client); }
   },
 }));
+vi.mock("@/lib/auth/member-org-summary", () => ({ loadMemberOrgSummaryWithClient }));
 
 import { bootstrapApprovedWorkspace, ensureApprovedWorkspaceOnEntry } from "./bootstrap";
 
@@ -33,6 +35,12 @@ describe("bootstrapApprovedWorkspace", () => {
   beforeEach(() => {
     ensureDefaultTabs.mockReset().mockResolvedValue([]);
     repoClients.length = 0;
+    loadMemberOrgSummaryWithClient.mockResolvedValue({
+      kind: "ready",
+      owner: { userId: "user-1", displayName: "QA 생성자" },
+      admins: [],
+      members: [],
+    });
   });
 
   it("uses one authenticated client and includes the creator owner as an assignee", async () => {
@@ -55,6 +63,28 @@ describe("bootstrapApprovedWorkspace", () => {
       scope: "all",
     });
     expect(ensureDefaultTabs.mock.calls[0][2]).toEqual([{ userId: "user-1", displayName: "QA 생성자" }]);
+  });
+
+  it("passes every active member from the same request client to reconciliation", async () => {
+    loadMemberOrgSummaryWithClient.mockResolvedValue({
+      kind: "ready",
+      owner: { userId: "user-1", displayName: "Owner" },
+      admins: [{ userId: "user-2", displayName: "Admin" }],
+      members: [{ userId: "user-3", displayName: "Member" }],
+    });
+    const client = {
+      auth: { getUser: async () => ({ data: { user: { id: "user-1", created_at: "2026-08-16", user_metadata: {} } } }) },
+      from: (table: string) => table === "orgs"
+        ? query({ data: { id: "org-1", name: "QA", plan_tier: "free", created_at: "2026-08-16" }, error: null })
+        : query({ data: { role: "owner", scope: "all", status: "active" }, error: null }),
+    };
+    await bootstrapApprovedWorkspace(client as never, "qa-company");
+    expect(loadMemberOrgSummaryWithClient).toHaveBeenCalledWith(client, expect.objectContaining({ org: { id: "org-1", name: "QA", plan_tier: "free", created_at: "2026-08-16" } }));
+    expect(ensureDefaultTabs.mock.calls[0][2]).toEqual([
+      { userId: "user-1", displayName: "Owner" },
+      { userId: "user-2", displayName: "Admin" },
+      { userId: "user-3", displayName: "Member" },
+    ]);
   });
 
   it("fails closed when the request actor lacks an active membership", async () => {

@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureDefaultTabs } from "@/lib/default-tabs";
 import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 import type { Ctx, MemberRole, MemberScope, Org, User } from "@/lib/types";
+import { assigneesFromMemberSummary } from "@/lib/boards/default-tab-assignees";
+import { loadMemberOrgSummaryWithClient } from "@/lib/auth/member-org-summary";
 
 type Row = Record<string, unknown>;
 
@@ -57,10 +59,12 @@ export async function bootstrapApprovedWorkspace(client: SupabaseClient, slug: s
     created_at: text(orgRow.created_at) ?? new Date(0).toISOString(),
   };
   const ctx: Ctx = { user, org, role: memberRole, scope: memberScope };
+  const assignees = assigneesFromMemberSummary(await loadMemberOrgSummaryWithClient(client, ctx));
+  if (assignees.length === 0) throw new Error("workspace bootstrap assignees unavailable");
   await ensureDefaultTabs(
     ctx,
     new SupabaseBoardsRepo(client),
-    [{ userId: user.id, displayName: user.name?.trim() || user.email?.trim() || "멤버" }],
+    assignees,
   );
 }
 
