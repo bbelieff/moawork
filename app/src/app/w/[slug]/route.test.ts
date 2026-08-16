@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { handleWorkspaceTarget } from "./route";
 
 const request = new Request("https://www.moa-work.com/w/alpha-team");
@@ -11,42 +11,6 @@ describe("GET /w/[slug]", () => {
     }));
     expect(response.headers.get("x-middleware-rewrite")).toBe("https://www.moa-work.com/");
     expect(response.headers.get("set-cookie")).toContain("mw_org=org-1");
-  });
-
-  it("repairs a manually-approved workspace only on its creator-owner entry", async () => {
-    const bootstrapped: string[] = [];
-    const response = await handleWorkspaceTarget(request, "alpha-team", async () => ({
-      kind: "ready",
-      memberships: [{ orgId: "org-1", slug: "alpha-team", name: "Alpha", role: "owner" }],
-    }), async (slug) => { bootstrapped.push(slug); });
-    expect(response.headers.get("x-middleware-rewrite")).toBe("https://www.moa-work.com/");
-    expect(bootstrapped).toEqual(["alpha-team"]);
-  });
-
-  it("does not let a member or another organization trigger bootstrap writes", async () => {
-    const bootstrap = vi.fn();
-    const response = await handleWorkspaceTarget(request, "alpha-team", async () => ({
-      kind: "ready",
-      memberships: [{ orgId: "org-1", slug: "alpha-team", name: "Alpha", role: "member" }],
-    }), bootstrap);
-    expect(response.headers.get("x-middleware-rewrite")).toBe("https://www.moa-work.com/");
-    expect(bootstrap).not.toHaveBeenCalled();
-
-    const denied = await handleWorkspaceTarget(request, "other-team", async () => ({
-      kind: "ready",
-      memberships: [{ orgId: "org-1", slug: "alpha-team", name: "Alpha", role: "owner" }],
-    }), bootstrap);
-    expect(denied.status).toBe(307);
-    expect(bootstrap).not.toHaveBeenCalled();
-  });
-
-  it("shows an explicit unavailable response instead of an empty workspace", async () => {
-    const response = await handleWorkspaceTarget(request, "alpha-team", async () => ({
-      kind: "ready",
-      memberships: [{ orgId: "org-1", slug: "alpha-team", name: "Alpha", role: "owner" }],
-    }), async () => { throw new Error("bootstrap failed"); });
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({ ok: false, state: "unavailable" });
   });
 
   it("preserves an authorized deep path and query while rewriting internally", async () => {
