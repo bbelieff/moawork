@@ -3,13 +3,16 @@
 -- delivery snapshot columns, while fresh databases already receive them from 041.
 alter table public.messages
   add column if not exists source_entity_id uuid,
+  add column if not exists batch_id uuid,
   add column if not exists channel public.message_channel,
   add column if not exists from_addr text,
   add column if not exists body_snapshot text,
   add column if not exists sender_profile_id text,
   add column if not exists idempotency_key text,
   add column if not exists trigger_column_key text,
-  add column if not exists trigger_value text;
+  add column if not exists trigger_value text,
+  add column if not exists provider_message_id text,
+  add column if not exists excluded_reason text;
 
 -- Migration 073 uses an unqualified ON CONFLICT(org_id,idempotency_key).
 -- A full unique index is required; the historical 041 partial index cannot be

@@ -7,8 +7,9 @@ const sql = readFileSync(fileURLToPath(new URL("../../../../supabase/migrations/
 
 describe("BBE-30 hosted message compatibility", () => {
   it("is additive and does not fabricate customer delivery snapshots", () => {
-    expect(sql.match(/add column if not exists/g)).toHaveLength(8);
+    expect(sql.match(/add column if not exists/g)).toHaveLength(11);
     expect(sql).toContain("source_entity_id uuid");
+    expect(sql).toContain("batch_id uuid");
     expect(sql).toContain("channel public.message_channel");
     expect(sql).toContain("from_addr text");
     expect(sql).toContain("body_snapshot text");
@@ -16,6 +17,8 @@ describe("BBE-30 hosted message compatibility", () => {
     expect(sql).toContain("idempotency_key text");
     expect(sql).toContain("trigger_column_key text");
     expect(sql).toContain("trigger_value text");
+    expect(sql).toContain("provider_message_id text");
+    expect(sql).toContain("excluded_reason text");
     expect(sql).toMatch(/unique index if not exists messages_org_idempotency_full_uq/i);
     expect(sql).not.toMatch(/update\s+public\.messages/i);
     expect(sql).toContain("not valid");
