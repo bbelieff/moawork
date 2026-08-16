@@ -3,14 +3,19 @@ import { loadWorkspaceRoutingSnapshot, type WorkspaceRoutingSnapshot } from "@/l
 import { parseWorkspaceRequest, workspaceEntryResumeValue, WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
 import { createClient } from "@/lib/supabase/server";
 import { executeWorkspaceRequest, type WorkspaceEntryRpcClient } from "@/lib/workspace-entry/server";
+import { bootstrapApprovedWorkspace } from "@/lib/workspace-entry/bootstrap";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 type SnapshotLoader = () => Promise<WorkspaceRoutingSnapshot>;
 type RpcClientLoader = () => Promise<WorkspaceEntryRpcClient>;
+type WorkspaceBootstrapper = (client: WorkspaceEntryRpcClient, slug: string) => Promise<void>;
 
 export async function handleWorkspaceRequest(
   request: Request,
   loadSnapshot: SnapshotLoader = loadWorkspaceRoutingSnapshot,
   loadRpcClient: RpcClientLoader = async () => await createClient() as unknown as WorkspaceEntryRpcClient,
+  bootstrapWorkspace: WorkspaceBootstrapper = async (client, slug) =>
+    bootstrapApprovedWorkspace(client as unknown as SupabaseClient, slug),
 ): Promise<Response> {
   let payload: unknown;
   try {
@@ -43,7 +48,21 @@ export async function handleWorkspaceRequest(
     });
   }
 
-  const { result, status } = await executeWorkspaceRequest(await loadRpcClient(), parsed.input);
+  const rpcClient = await loadRpcClient();
+  const { result, status } = await executeWorkspaceRequest(rpcClient, parsed.input);
+  if (parsed.input.kind === "create" && result.ok && result.state === "approved" && result.redirectTo) {
+    const slug = result.redirectTo.startsWith("/w/") ? result.redirectTo.slice(3) : "";
+    try {
+      if (!slug) throw new Error("invalid workspace redirect");
+      await bootstrapWorkspace(rpcClient, slug);
+    } catch {
+      return NextResponse.json({
+        ok: false,
+        state: "unavailable",
+        message: "회사 기본 구조를 준비하지 못했습니다. 같은 요청으로 다시 시도해 주세요.",
+      }, { status: 503 });
+    }
+  }
   const response = NextResponse.json(result, { status });
   if (result.ok && (parsed.input.kind === "create" || parsed.input.kind === "join")) {
     const resume = workspaceEntryResumeValue(parsed.input.kind, parsed.input.requestId!);

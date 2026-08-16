@@ -29,6 +29,46 @@ describe("POST /api/workspace-requests", () => {
     }
   });
 
+  it("bootstraps an auto-approved workspace before returning its redirect", async () => {
+    const calls: string[] = [];
+    const client = rpcClient({ accepted: true, status: "approved", auto_approved: true, slug: "new-team" });
+    const response = await handleWorkspaceRequest(
+      new Request("https://www.moa-work.com/api/workspace-requests", {
+        method: "POST",
+        body: JSON.stringify({ kind: "create", displayName: "새 회사", slug: "new-team", requestId: "11000000-0000-4000-8000-000000000001" }),
+      }),
+      async () => ({ kind: "ready", memberships: [] }),
+      async () => client,
+      async (received, slug) => {
+        expect(received).toBe(client);
+        calls.push(slug);
+      },
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ ok: true, redirectTo: "/w/new-team" });
+    expect(calls).toEqual(["new-team"]);
+  });
+
+  it("fails closed when approved workspace bootstrap is incomplete and allows request replay", async () => {
+    const input = () => new Request("https://www.moa-work.com/api/workspace-requests", {
+      method: "POST",
+      body: JSON.stringify({ kind: "create", displayName: "새 회사", slug: "new-team", requestId: "12000000-0000-4000-8000-000000000001" }),
+    });
+    const client = rpcClient({ accepted: true, status: "approved", auto_approved: true, slug: "new-team" });
+    let attempt = 0;
+    const bootstrap = async () => {
+      attempt += 1;
+      if (attempt === 1) throw new Error("partial bootstrap");
+    };
+    const first = await handleWorkspaceRequest(input(), async () => ({ kind: "ready", memberships: [] }), async () => client, bootstrap);
+    expect(first.status).toBe(503);
+    await expect(first.json()).resolves.toMatchObject({ ok: false, state: "unavailable" });
+    const replay = await handleWorkspaceRequest(input(), async () => ({ kind: "ready", memberships: [] }), async () => client, bootstrap);
+    expect(replay.status).toBe(200);
+    await expect(replay.json()).resolves.toMatchObject({ ok: true, redirectTo: "/w/new-team" });
+    expect(attempt).toBe(2);
+  });
+
   it("binds every resume helper to the 14-day server review window", async () => {
     const cases = [
       [{ kind: "create", displayName: "모아", slug: "moa-team", requestId: "60000000-0000-4000-8000-000000000006" }, "create.60000000-0000-4000-8000-000000000006", "1209600"],

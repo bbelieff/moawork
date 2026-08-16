@@ -49,6 +49,32 @@ beforeEach(() => {
   repo = new LocalBoardsRepo();
 });
 
+it("repairs a partially-created product board on request replay", async () => {
+  const partial = repo.createBoard(ctx, {
+    name: NEW_LEAD_TAB.name,
+    description: NEW_LEAD_TAB.description,
+    icon: NEW_LEAD_TAB.icon,
+    source: NEW_LEAD_TAB.source,
+  });
+  repo.createGroup(ctx, partial.id, {
+    name: NEW_LEAD_TAB.groups[0].name,
+    color: NEW_LEAD_TAB.groups[0].color,
+  });
+  repo.createColumn(ctx, partial.id, {
+    key: NEW_LEAD_TAB.columns[0].key,
+    label: NEW_LEAD_TAB.columns[0].label,
+    type: NEW_LEAD_TAB.columns[0].type,
+    source: NEW_LEAD_TAB.columns[0].source,
+  });
+
+  const result = await ensureDefaultTab(ctx, NEW_LEAD_TAB, toAsyncBoardsRepo(repo), assignees);
+  expect(result.created).toBe(false);
+  expect(repo.listGroups(ctx, partial.id)).toHaveLength(NEW_LEAD_TAB.groups.length);
+  expect(repo.listColumns(ctx, partial.id)).toHaveLength(NEW_LEAD_TAB.columns.length);
+  expect(new Set(repo.listColumns(ctx, partial.id).map((column) => column.key)).size)
+    .toBe(NEW_LEAD_TAB.columns.length);
+});
+
 describe("리드컨택 기본 탭 설치", () => {
   it("그룹 7·컬럼 21·우측 고정 업무이동을 실제 보드로 만든다", async () => {
     const result = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo));

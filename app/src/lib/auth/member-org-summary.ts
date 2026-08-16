@@ -1,6 +1,7 @@
 import type { Ctx, MemberRole, MemberScope } from "@/lib/types";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type MemberSummaryRow = {
   orgId: string;
@@ -115,7 +116,14 @@ export function applyMemberProfiles(
 /** Authenticated RLS read only. This module never mutates org_members. */
 export async function loadMemberOrgSummary(ctx: Ctx): Promise<MemberOrgSummary> {
   if (!hasSupabaseEnv()) return { kind: "unavailable" };
-  const supabase = await createClient();
+  return loadMemberOrgSummaryWithClient(await createClient(), ctx);
+}
+
+/** Same request-scoped client variant for bootstrap and other atomic request graphs. */
+export async function loadMemberOrgSummaryWithClient(
+  supabase: SupabaseClient,
+  ctx: Ctx,
+): Promise<MemberOrgSummary> {
   const { data, error } = await supabase
     .from("org_members")
     .select("org_id, user_id, role, scope, created_at, users!inner(name)")
