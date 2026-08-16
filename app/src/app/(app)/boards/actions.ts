@@ -28,6 +28,7 @@ import {
   encodeCellFlash,
 } from "@/lib/boards/cellFlash";
 import { encodeNoticeFile, NOTICE_FILE_VALUE_PREFIX } from "@/lib/notices/official-file";
+import { notifyBoardItemMoved } from "@/lib/notify/board-actions";
 import {
   detailKeyFromLabel,
   normalizeDetailLayout,
@@ -38,6 +39,13 @@ import {
 function str(fd: FormData, key: string): string {
   const v = fd.get(key);
   return typeof v === "string" ? v : "";
+}
+
+function moveEventKey(formData: FormData): string {
+  const value = str(formData, "eventKey");
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : crypto.randomUUID();
 }
 
 async function boardsService() {
@@ -213,7 +221,8 @@ export async function moveItemAction(formData: FormData): Promise<void> {
   const itemId = str(formData, "itemId");
   const lane = str(formData, "lane");
   const groupBy = str(formData, "groupBy");
-  const svc = await boardsService();
+  const graph = await createRequestBoards();
+  const svc = graph.service;
   if (groupBy) {
     const { errors } = await svc.setCells(ctx, boardId, itemId, {
       [groupBy]: lane === "" ? null : lane,
@@ -222,6 +231,11 @@ export async function moveItemAction(formData: FormData): Promise<void> {
   } else {
     await svc.updateItem(ctx, boardId, itemId, { group_id: lane === "" ? null : lane });
   }
+  await notifyBoardItemMoved(graph.client, ctx, {
+    boardId,
+    itemId,
+    eventKey: moveEventKey(formData),
+  });
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -252,7 +266,8 @@ export async function moveRowAction(formData: FormData): Promise<void> {
   const groupId = rawGroup === "" ? null : rawGroup;
   const requested = Number.parseInt(str(formData, "index"), 10);
 
-  const svc = await boardsService();
+  const graph = await createRequestBoards();
+  const svc = graph.service;
   const items = await svc.listItems(ctx, boardId);
   const moving = items.find((i) => i.id === itemId);
   if (!moving) throw new NotFoundError("아이템을 찾을 수 없습니다");
@@ -273,6 +288,12 @@ export async function moveRowAction(formData: FormData): Promise<void> {
     if (item.id === itemId && groupKeyOf(item.group_id) !== targetKey) patch.group_id = groupId;
     await svc.updateItem(ctx, boardId, item.id, patch);
   }));
+
+  await notifyBoardItemMoved(graph.client, ctx, {
+    boardId,
+    itemId,
+    eventKey: moveEventKey(formData),
+  });
 
   revalidatePath(`/boards/${boardId}`);
 }

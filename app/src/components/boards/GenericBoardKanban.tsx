@@ -1,5 +1,6 @@
 import type { ItemWithValues } from "@/lib/boards/types";
 import { moveItemAction } from "@/app/(app)/boards/actions";
+import { randomUUID } from "node:crypto";
 
 /**
  * 범용 보드 칸반 (T02b) — 레인 = board_groups 또는 select 컬럼 옵션.
@@ -59,6 +60,7 @@ export function GenericBoardKanban({
                     <input type="hidden" name="boardId" value={boardId} />
                     <input type="hidden" name="itemId" value={it.id} />
                     <input type="hidden" name="groupBy" value={groupBy} />
+                    <input type="hidden" name="eventKey" value={randomUUID()} />
                     <select
                       name="lane"
                       defaultValue={lane.key}
