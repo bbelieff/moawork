@@ -13,11 +13,11 @@ vi.mock("next/navigation", () => ({
 describe("SidebarNav integration contract", () => {
   it("keeps a locked real route as an aria-disabled guidance link", () => {
     const html = renderToStaticMarkup(
-      <SidebarNav lockedFeatures={[FEATURES.org]} badges={{ workspaceApprovals: 4 }} />,
+      <SidebarNav lockedFeatures={[FEATURES.org]} badges={{ workspaceApprovals: 4 }} workspaceBasePath="/w/sample-lab" />,
     );
 
     const membersLink = html.match(/<a[^>]*data-nav-key="members"[^>]*>/)?.[0] ?? "";
-    expect(membersLink).toContain('href="/settings/members"');
+    expect(membersLink).toContain('href="/w/sample-lab/settings/members"');
     expect(membersLink).toContain('aria-disabled="true"');
     expect(html).toContain("승인 대기 4건");
   });
@@ -31,6 +31,13 @@ describe("SidebarNav integration contract", () => {
     expect(html.match(/<a[^>]*data-nav-key="notice"[^>]*>/)?.[0]).toContain('href="/w/sample-lab/notices"');
     expect(html.match(/<a[^>]*data-nav-key="company"[^>]*>/)?.[0]).toContain('href="/w/sample-lab/companies"');
     expect(html.match(/<a[^>]*data-nav-key="contact"[^>]*>/)?.[0]).toContain('href="/w/sample-lab/contract"');
+  });
+
+  it("fails closed when the server cannot verify one active workspace", () => {
+    const html = renderToStaticMarkup(<SidebarNav lockedFeatures={[]} />);
+    expect(html.match(/<a[^>]*data-nav-key="dash"[^>]*>/)?.[0]).toContain('href="/workspace-entry?error=routing"');
+    expect(html.match(/<a[^>]*data-nav-key="notice"[^>]*>/)?.[0]).toContain('href="/workspace-entry?error=routing"');
+    expect(html).not.toContain('href="/notices"');
   });
 
   it("shows only a caller-supplied, safe approval count", () => {

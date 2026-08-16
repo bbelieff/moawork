@@ -13,7 +13,8 @@ describe("workspaceHref", () => {
   });
 
   it("fails closed for an unverified base and never accepts protocol-relative hrefs", () => {
-    expect(workspaceHref("/w/test/../other", "/notices")).toBe("/notices");
-    expect(workspaceHref("/w/test", "//evil.invalid/path")).toBe("//evil.invalid/path");
+    expect(workspaceHref(undefined, "/notices")).toBe("/workspace-entry?error=routing");
+    expect(workspaceHref("/w/test/../other", "/notices")).toBe("/workspace-entry?error=routing");
+    expect(workspaceHref("/w/test", "//evil.invalid/path")).toBe("/workspace-entry?error=routing");
   });
 });
