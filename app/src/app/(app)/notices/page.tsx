@@ -13,6 +13,8 @@ import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 import { createClient } from "@/lib/supabase/server";
 import { isManager } from "@/lib/auth/roles";
 import { ensureNoticeTabAtomic } from "@/lib/notices/atomic";
+import { loadVerifiedWorkspaceBasePath } from "@/lib/auth/workspace-href-server";
+import { workspaceHref } from "@/components/shell/workspace-href";
 import { NoticeCategoryBadge, PinnedBadge } from "@/components/notices/NoticeCategoryBadge";
 import { NoticeStatusBadge } from "@/components/notices/NoticeStatusBadge";
 import {
@@ -39,13 +41,14 @@ export default async function NoticesPage({
   // One request-bound authenticated client owns both the product-tab lookup
   // and the legacy notice fallback. Production never crosses an in-memory repo.
   const client = await createClient();
+  const workspaceBasePath = await loadVerifiedWorkspaceBasePath();
   const repo = new SupabaseBoardsRepo(client);
   let noticeEntryState: "conflict" | "unavailable" | null = null;
   try {
     const productBoard = await resolveExistingNoticeBoard(ctx, repo);
     if (productBoard.kind === "ready") {
       const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
-      redirect(`/boards/${encodeURIComponent(productBoard.boardId)}${query}`);
+      redirect(workspaceHref(workspaceBasePath, `/boards/${encodeURIComponent(productBoard.boardId)}${query}`));
     }
     if (productBoard.kind === "conflict") {
       noticeEntryState = "conflict";
@@ -55,7 +58,7 @@ export default async function NoticesPage({
       // same authenticated Supabase adapter as the lookup above.
       const boardId = await ensureNoticeTabAtomic(ctx, client);
       const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
-      redirect(`/boards/${encodeURIComponent(boardId)}${query}`);
+      redirect(workspaceHref(workspaceBasePath, `/boards/${encodeURIComponent(boardId)}${query}`));
     }
   } catch (error) {
     // Preserve redirects and other Next.js control-flow errors.
@@ -216,7 +219,7 @@ export default async function NoticesPage({
                 <NoticeStatusBadge status={n.status} />
                 <NoticeCategoryBadge categoryId={n.categoryId} label={n.categoryLabel} />
                 <Link
-                  href={`/notices/${n.id}`}
+                  href={workspaceHref(workspaceBasePath, `/notices/${n.id}`)}
                   className="min-w-0 flex-1 truncate text-sm font-medium hover:underline"
                 >
                   {n.title}

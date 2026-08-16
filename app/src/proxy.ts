@@ -16,6 +16,16 @@ import { WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
 // 다른 트랙이 추가하는 앱 페이지는 이 계약에 따라 "인증된 사용자" 를 전제로 한다.
 
 const PUBLIC_PATHS = ["/login", "/auth"];
+const WORKSPACE_SLUG_COOKIE = "mw_workspace_slug";
+const WORKSPACE_PROTECTED_ROOTS = new Set([
+  "boards", "notices", "companies", "contract", "newcust", "work",
+  "presets", "dash", "deals", "settlements", "onboarding", "settings",
+]);
+
+function protectedWorkspacePath(pathname: string): boolean {
+  const first = pathname.split("/").filter(Boolean)[0];
+  return first ? WORKSPACE_PROTECTED_ROOTS.has(first) : false;
+}
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some(
@@ -111,8 +121,27 @@ export async function proxy(request: NextRequest) {
     }
     for (const cookie of refreshedCookies) namespaceResponse.cookies.set(cookie.name, cookie.value, cookie.options);
     namespaceResponse.cookies.set(SESSION_COOKIE.org, decision.orgId, { path: "/", httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
+    const verifiedSlug = decision.canonical.match(/^\/w\/([^/?]+)/)?.[1];
+    if (verifiedSlug) namespaceResponse.cookies.set(WORKSPACE_SLUG_COOKIE, verifiedSlug, { path: "/", httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
     namespaceResponse.cookies.delete(WORKSPACE_ENTRY_RESUME_COOKIE);
     return namespaceResponse;
+  }
+
+  // Old product consumers may still emit an internal root-relative URL. Once
+  // a workspace has been verified, never render that URL outside its tenant
+  // namespace: canonicalize it before the protected route executes.
+  if (user && protectedWorkspacePath(pathname)) {
+    const slug = request.cookies.get(WORKSPACE_SLUG_COOKIE)?.value;
+    if (slug && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(slug)) {
+      const canonical = request.nextUrl.clone();
+      canonical.pathname = `/w/${slug}${pathname}`;
+      return NextResponse.redirect(canonical);
+    }
+    const denied = request.nextUrl.clone();
+    denied.pathname = "/workspace-entry";
+    denied.search = "";
+    denied.searchParams.set("error", "routing");
+    return NextResponse.redirect(denied);
   }
 
   return response;

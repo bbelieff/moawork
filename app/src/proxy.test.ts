@@ -43,4 +43,27 @@ describe("proxy workspace namespace", () => {
     const reserved = await proxy(new NextRequest("https://www.moa-work.com/settings"));
     expect(reserved.headers.get("location")).toBe("https://www.moa-work.com/login?next=%2Fsettings");
   });
+
+  it("canonicalizes legacy protected root links to the verified workspace", async () => {
+    setup({ id: "user-1" }, [membership("org-acme", "acme")]);
+    const namespaced = await proxy(new NextRequest("https://www.moa-work.com/w/acme/notices"));
+    expect(namespaced.headers.get("set-cookie")).toContain("mw_workspace_slug=acme");
+
+    const request = new NextRequest("https://www.moa-work.com/boards/board-1?view=table", {
+      headers: { cookie: "mw_workspace_slug=acme; mw_org=org-acme" },
+    });
+    const response = await proxy(request);
+    expect(response.headers.get("location")).toBe("https://www.moa-work.com/w/acme/boards/board-1?view=table");
+
+    const settings = await proxy(new NextRequest("https://www.moa-work.com/settings/account", {
+      headers: { cookie: "mw_workspace_slug=acme; mw_org=org-acme" },
+    }));
+    expect(settings.headers.get("location")).toBe("https://www.moa-work.com/w/acme/settings/account");
+  });
+
+  it("fails closed for a protected root link without a verified workspace slug", async () => {
+    setup({ id: "user-1" }, [membership("org-acme", "acme")]);
+    const response = await proxy(new NextRequest("https://www.moa-work.com/notices"));
+    expect(response.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+  });
 });
