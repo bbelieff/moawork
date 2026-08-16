@@ -136,16 +136,10 @@ export async function ensureApprovedWorkspaceOnEntry(client: SupabaseClient, slu
   const orgId = text((orgResult.data as Row | null)?.id);
   if (orgResult.error || !orgId) throw new Error("workspace bootstrap context unavailable");
 
-  const requestResult = await client
-    .from("workspace_entry_requests")
-    .select("id")
-    .eq("target_org_id", orgId)
-    .eq("requester_user_id", auth.user.id)
-    .eq("kind", "create")
-    .eq("status", "approved")
-    .limit(1)
-    .maybeSingle();
+  const requestResult = await client.rpc("is_my_approved_workspace_creator", {
+    p_org_id: orgId,
+  });
   if (requestResult.error) throw new Error("workspace bootstrap approval unavailable");
-  if (!requestResult.data) return;
+  if (requestResult.data !== true) return;
   await bootstrapApprovedWorkspace(client, slug);
 }

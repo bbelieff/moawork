@@ -109,14 +109,15 @@ describe("bootstrapApprovedWorkspace", () => {
     let installed = false;
     ensureDefaultTabs.mockImplementation(async () => { installed = true; return []; });
     const client = {
-      rpc: leaseRpc,
+      rpc: async (name: string) => name === "is_my_approved_workspace_creator"
+        ? { data: true, error: null }
+        : leaseRpc(),
       auth: { getUser: async () => ({ data: { user: {
         id: "user-1", email: "owner@example.test", created_at: "2026-08-16T00:00:00Z", user_metadata: { name: "Owner" },
       } } }) },
       from: (table: string) => {
         if (table === "orgs") return query({ data: { id: "org-1", name: "QA", plan_tier: "free", created_at: "2026-08-16T00:00:00Z" }, error: null });
         if (table === "org_members") return query({ data: { role: "owner", scope: "all", status: "active" }, error: null });
-        if (table === "workspace_entry_requests") return query({ data: { id: "request-1" }, error: null });
         if (table === "boards") return query({
           data: installed
             ? ["new-lead", "contact", "contract-work", "notice"].map((key) => ({ source: `core.default-tab/${key}` }))
@@ -134,12 +135,13 @@ describe("bootstrapApprovedWorkspace", () => {
 
   it("does not backfill a legacy workspace without its creator's approved request", async () => {
     const client = {
-      rpc: leaseRpc,
+      rpc: async (name: string) => name === "is_my_approved_workspace_creator"
+        ? { data: false, error: null }
+        : leaseRpc(),
       auth: { getUser: async () => ({ data: { user: { id: "user-1" } } }) },
       from: (table: string) => {
         if (table === "orgs") return query({ data: { id: "org-1" }, error: null });
         if (table === "boards") return query({ data: [], error: null });
-        if (table === "workspace_entry_requests") return query({ data: null, error: null });
         throw new Error(`unexpected table ${table}`);
       },
     };
