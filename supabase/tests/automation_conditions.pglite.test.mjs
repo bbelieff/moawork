@@ -32,6 +32,7 @@ test("automation condition writes preserve legacy rows and deny unauthorized or 
       create schema auth;
       create role anon nologin;
       create role authenticated nologin;
+      create role service_role nologin;
       create function auth.uid() returns uuid language sql stable as $$
         select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
       $$;
@@ -92,6 +93,9 @@ test("automation condition writes preserve legacy rows and deny unauthorized or 
       "migrations",
       "042_automation_conditions.sql",
     ), "utf8"));
+    const repair = await readFile(path.join(root, "supabase", "migrations", "078_automation_conditions_foundation_repair.sql"), "utf8");
+    await db.exec(repair);
+    await db.exec(repair);
 
     const acl = await db.query(`select
       has_function_privilege('public', 'public.validate_automation_conditions(jsonb)', 'execute') as public_execute,
