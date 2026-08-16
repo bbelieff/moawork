@@ -4,7 +4,11 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession, SESSION_COOKIE } from "@/lib/auth/session";
-import { ensurePracticeWorkspace, evaluatePracticeQuests } from "@/lib/onboarding/server";
+import {
+  ensurePracticeWorkspace,
+  evaluatePracticeQuests,
+  updateAutomationQuestPreferences,
+} from "@/lib/onboarding/server";
 
 function revalidate(formData: FormData): void {
   const path = formData.get("path");
@@ -33,5 +37,20 @@ export async function refreshQuestsAction(formData: FormData): Promise<void> {
   if (typeof orgId !== "string" || orgId === "") return;
   const ctx = await getSession();
   await evaluatePracticeQuests(orgId, ctx.user);
+  revalidate(formData);
+}
+
+/** 관리자의 표시 설정만 바꾼다. 자동화 규칙의 실행 여부·조건·대상은 건드리지 않는다. */
+export async function updateAutomationQuestAction(formData: FormData): Promise<void> {
+  const orgId = formData.get("orgId");
+  const ruleId = formData.get("ruleId");
+  if (typeof orgId !== "string" || orgId === "" || typeof ruleId !== "string" || ruleId === "") return;
+
+  await updateAutomationQuestPreferences({
+    orgId,
+    ruleId,
+    hidden: formData.getAll("hidden").includes("true"),
+    why: typeof formData.get("why") === "string" ? String(formData.get("why")) : "",
+  });
   revalidate(formData);
 }

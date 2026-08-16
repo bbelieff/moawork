@@ -24,7 +24,6 @@
     { "file": "app/src/lib/entitlements.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 2, "owner": "BBE-122 owner", "followUp": "BBE-122", "expiresOn": "2026-08-31" },
     { "file": "app/src/lib/entitlements/server.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "BBE-122 owner", "followUp": "BBE-122", "expiresOn": "2026-08-31" },
     { "file": "app/src/lib/notices/service.ts", "symbol": "getBoardsRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "BBE-17 owner", "followUp": "BBE-17", "expiresOn": "2026-08-31" },
-    { "file": "app/src/lib/onboarding/server.ts", "symbol": "getBoardsRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "BBE-131 owner", "followUp": "BBE-131", "expiresOn": "2026-08-31" },
     { "file": "app/src/lib/perf/service.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 3, "owner": "BBE-23 owner", "followUp": "BBE-23", "expiresOn": "2026-08-31" },
     { "file": "app/src/lib/policyfund/settlements.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "BBE-19 owner", "followUp": "BBE-19", "expiresOn": "2026-08-31" },
     { "file": "app/src/lib/presets/policyfund.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "BBE-110 owner", "followUp": "BBE-110", "expiresOn": "2026-08-31" },
