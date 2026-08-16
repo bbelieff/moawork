@@ -6,6 +6,10 @@ const migration = readFileSync(
   new URL("../../../../supabase/migrations/077_automation_onboarding_quests.sql", import.meta.url),
   "utf8",
 );
+const automationFoundationRepair = readFileSync(
+  new URL("../../../../supabase/migrations/078_automation_conditions_foundation_repair.sql", import.meta.url),
+  "utf8",
+);
 
 const id = (value: number): string => `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 
@@ -22,6 +26,7 @@ describe("BBE-113 automation onboarding migration", () => {
         $$ select nullif(current_setting('app.uid', true), '')::uuid $$;
       create role anon;
       create role authenticated;
+      create role service_role;
       create table public.users(id uuid primary key);
       create table public.orgs(id uuid primary key);
       create table public.org_members(org_id uuid, user_id uuid, role text, status text, primary key(org_id,user_id));
@@ -38,8 +43,6 @@ describe("BBE-113 automation onboarding migration", () => {
         board_id uuid not null references public.boards(id),
         status_column_key text not null,
         status_value text not null,
-        trigger_label_id text,
-        conditions jsonb not null default '[]'::jsonb,
         to_group_id uuid not null references public.board_groups(id),
         enabled boolean not null default true,
         created_at timestamptz not null default now()
@@ -62,6 +65,8 @@ describe("BBE-113 automation onboarding migration", () => {
         at timestamptz not null default now()
       );
     `);
+    await db.exec(automationFoundationRepair);
+    await db.exec(automationFoundationRepair);
     await db.exec(migration);
     await db.exec(`
       insert into public.users values ('${id(1)}'),('${id(2)}');
