@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ensureDefaultTabs } from "@/lib/default-tabs";
+import { DEFAULT_TABS, ensureDefaultTabs } from "@/lib/default-tabs";
 import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 import type { Ctx, MemberRole, MemberScope, Org, User } from "@/lib/types";
 
@@ -62,4 +62,38 @@ export async function bootstrapApprovedWorkspace(client: SupabaseClient, slug: s
     new SupabaseBoardsRepo(client),
     [{ userId: user.id, displayName: user.name?.trim() || user.email?.trim() || "멤버" }],
   );
+}
+
+/**
+ * Repairs a manually-approved workspace when its creator first enters it.
+ * Legacy/customer workspaces without an approved create request are never backfilled.
+ */
+export async function ensureApprovedWorkspaceOnEntry(client: SupabaseClient, slug: string): Promise<void> {
+  const { data: auth } = await client.auth.getUser();
+  if (!auth.user) throw new Error("workspace bootstrap context unavailable");
+  const orgResult = await client.from("orgs").select("id").eq("slug", slug).maybeSingle();
+  const orgId = text((orgResult.data as Row | null)?.id);
+  if (orgResult.error || !orgId) throw new Error("workspace bootstrap context unavailable");
+
+  const boardResult = await client
+    .from("boards")
+    .select("source")
+    .eq("org_id", orgId)
+    .in("source", DEFAULT_TABS.map((tab) => tab.source));
+  if (boardResult.error || !Array.isArray(boardResult.data)) throw new Error("workspace bootstrap state unavailable");
+  const sources = new Set((boardResult.data as Row[]).map((row) => text(row.source)).filter(Boolean));
+  if (DEFAULT_TABS.every((tab) => sources.has(tab.source))) return;
+
+  const requestResult = await client
+    .from("workspace_entry_requests")
+    .select("id")
+    .eq("target_org_id", orgId)
+    .eq("requester_user_id", auth.user.id)
+    .eq("kind", "create")
+    .eq("status", "approved")
+    .limit(1)
+    .maybeSingle();
+  if (requestResult.error) throw new Error("workspace bootstrap approval unavailable");
+  if (!requestResult.data) return;
+  await bootstrapApprovedWorkspace(client, slug);
 }
