@@ -254,6 +254,7 @@ export function BoardWorkspace({
       fd.set("itemId", itemId);
       fd.set("groupId", groupId ?? "");
       fd.set("index", String(index));
+      fd.set("eventKey", crypto.randomUUID());
       await moveRowAction(fd);
     });
   };
