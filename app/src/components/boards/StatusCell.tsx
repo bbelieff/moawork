@@ -101,6 +101,7 @@ export function StatusSelect({
     <select
       name={name}
       defaultValue={current}
+      onChange={(event) => event.currentTarget.form?.requestSubmit()}
       className={className}
       style={
         chip ? { backgroundColor: chip.background, color: chip.color, fontWeight: 500 } : undefined

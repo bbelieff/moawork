@@ -47,3 +47,24 @@ describe("setCellAction person selection", () => {
     expect(setCells).toHaveBeenCalledWith(expect.anything(), "board-1", "item-1", { owner: null });
   });
 });
+
+describe("setCellAction status selection", () => {
+  beforeEach(() => setCells.mockClear());
+
+  it("passes the exact selected option id to the request-scoped board service", async () => {
+    const form = new FormData();
+    form.set("boardId", "board-1");
+    form.set("itemId", "item-1");
+    form.set("columnKey", "status");
+    form.set("value", "opt-doing");
+
+    await setCellAction(form);
+
+    expect(setCells).toHaveBeenCalledWith(
+      expect.objectContaining({ org: expect.objectContaining({ id: "org-1" }) }),
+      "board-1",
+      "item-1",
+      { status: "opt-doing" },
+    );
+  });
+});
