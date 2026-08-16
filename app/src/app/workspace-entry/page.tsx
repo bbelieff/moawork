@@ -29,5 +29,5 @@ export default async function WorkspaceEntryPage({ searchParams }: { searchParam
   if (decision.kind === "redirect") redirect(decision.path);
   if (decision.view === "blocked") return <WorkspaceEntry initialView="blocked" />;
   if (decision.view === "operator") return <WorkspaceEntry isPlatformAdmin platformRequests={context.platformCreateRequests} />;
-  return <WorkspaceEntry requests={context.requests} />;
+  return <WorkspaceEntry requests={context.requests} freshStart={mode === "new"} />;
 }

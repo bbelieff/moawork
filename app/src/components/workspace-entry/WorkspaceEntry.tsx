@@ -31,6 +31,7 @@ type Props = {
   requests?: MyWorkspaceEntryRequest[];
   isPlatformAdmin?: boolean;
   platformRequests?: PlatformCreateRequest[];
+  freshStart?: boolean;
 };
 
 export function resolveWorkspaceEntryView({
@@ -38,15 +39,17 @@ export function resolveWorkspaceEntryView({
   hasPendingRequest,
   hasRejectedRequest,
   isPlatformAdmin,
+  freshStart = false,
 }: {
   initialView?: InitialView;
   hasPendingRequest: boolean;
   hasRejectedRequest: boolean;
   isPlatformAdmin: boolean;
+  freshStart?: boolean;
 }): WorkspaceEntryView {
   if (isPlatformAdmin) return "operator";
   if (hasPendingRequest) return "pending";
-  if (hasRejectedRequest) return "rejected";
+  if (hasRejectedRequest && !freshStart) return "rejected";
   if (initialView === "create") return "create-name";
   if (initialView === "join") return "join-address";
   return initialView;
@@ -86,7 +89,7 @@ export function workspaceEntryPendingSummary(request: MyWorkspaceEntryRequest | 
   };
 }
 
-export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatformAdmin = false, platformRequests = [] }: Props) {
+export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatformAdmin = false, platformRequests = [], freshStart = false }: Props) {
   const currentRequest = useMemo(() => requests.find((request) => request.status === "pending") ?? null, [requests]);
   const router = useRouter();
   const latestNotApproved = useMemo(() => requests.find((request) => request.decisionState === "not_approved") ?? null, [requests]);
@@ -95,6 +98,7 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
     hasPendingRequest: currentRequest !== null,
     hasRejectedRequest: latestNotApproved !== null,
     isPlatformAdmin,
+    freshStart,
   }));
   const [activeRequest, setActiveRequest] = useState(currentRequest);
   const [draftName, setDraftName] = useState("");
