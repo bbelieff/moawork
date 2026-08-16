@@ -55,29 +55,52 @@ export async function ensureDefaultTab(
   ctx: Ctx,
   tab: DefaultTab,
   repo?: BoardsRepo,
+  assigneesOverride?: readonly DefaultTabAssignee[],
 ): Promise<EnsuredTab> {
   const store = repo ?? await getBoardsRepo();
   const needsAssignees = tab.groups.some((group) => group.assigneeSlot !== undefined)
     || tab.columns.some((column) => column.assigneeMove !== undefined);
-  const assignees = needsAssignees ? await loadDefaultTabAssignees(ctx) : [];
+  const assignees = needsAssignees
+    ? assigneesOverride ?? await loadDefaultTabAssignees(ctx)
+    : [];
   const existing = (await store.listBoards(ctx)).find((board) => board.source === tab.source);
   if (existing) {
+    const currentGroups = await store.listGroups(ctx, existing.id);
+    for (const definition of tab.groups.filter((group) => group.assigneeSlot === undefined)) {
+      if (!currentGroups.some((group) => group.name === definition.name)) {
+        await store.createGroup(ctx, existing.id, { name: definition.name, color: definition.color });
+      }
+    }
     const groupIds = await reconcileAssigneeGroups(ctx, store, existing.id, tab, assignees);
     const columns = await store.listColumns(ctx, existing.id);
-    for (const definition of tab.columns.filter((column) => column.assigneeMove)) {
+    for (const definition of tab.columns) {
       const column = columns.find((candidate) => candidate.key === definition.key);
-      if (!column) continue;
-      await store.updateColumn(ctx, column.id, {
-        options: assigneeOptions(definition, assignees),
-        moveRule: resolveMoveRule(definition, groupIds, tab, assignees),
-      });
+      if (!column) {
+        await store.createColumn(ctx, existing.id, {
+          key: definition.key,
+          label: definition.label,
+          type: definition.type,
+          source: definition.source,
+          options: assigneeOptions(definition, assignees),
+          width: definition.width ?? null,
+          rightPinned: definition.rightPinned ?? false,
+          readOnly: definition.readOnly ?? false,
+          moveRule: resolveMoveRule(definition, groupIds, tab, assignees),
+        });
+      } else if (definition.assigneeMove) {
+        await store.updateColumn(ctx, column.id, {
+          options: assigneeOptions(definition, assignees),
+          moveRule: resolveMoveRule(definition, groupIds, tab, assignees),
+        });
+      }
     }
+    const reconciledColumns = await store.listColumns(ctx, existing.id);
     return {
       tabKey: tab.key,
       boardId: existing.id,
       created: false,
       groupIds,
-      columnKeys: columns.map((column) => column.key),
+      columnKeys: reconciledColumns.map((column) => column.key),
     };
   }
 
@@ -301,7 +324,12 @@ async function reconcileAssigneeGroups(
 export async function ensureDefaultTabs(
   ctx: Ctx,
   repo?: BoardsRepo,
+  assigneesOverride?: readonly DefaultTabAssignee[],
 ): Promise<EnsuredTab[]> {
   const store = repo ?? await getBoardsRepo();
-  return Promise.all(DEFAULT_TABS.map((tab) => ensureDefaultTab(ctx, tab, store)));
+  const ensured: EnsuredTab[] = [];
+  for (const tab of DEFAULT_TABS) {
+    ensured.push(await ensureDefaultTab(ctx, tab, store, assigneesOverride));
+  }
+  return ensured;
 }
