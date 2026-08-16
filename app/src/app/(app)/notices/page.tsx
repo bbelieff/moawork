@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import {
   NoticesService,
@@ -40,12 +40,29 @@ export default async function NoticesPage({
   // and the legacy notice fallback. Production never crosses an in-memory repo.
   const client = await createClient();
   const repo = new SupabaseBoardsRepo(client);
-  const productBoard = await resolveExistingNoticeBoard(ctx, repo);
-  if (productBoard.kind === "ready") {
-    const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
-    redirect(`/boards/${encodeURIComponent(productBoard.boardId)}${query}`);
+  let noticeEntryState: "conflict" | "unavailable" | null = null;
+  try {
+    const productBoard = await resolveExistingNoticeBoard(ctx, repo);
+    if (productBoard.kind === "ready") {
+      const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
+      redirect(`/boards/${encodeURIComponent(productBoard.boardId)}${query}`);
+    }
+    if (productBoard.kind === "conflict") {
+      noticeEntryState = "conflict";
+    } else {
+      // D76 default tabs are guaranteed, not installed by a user-facing step.
+      // Reconciliation is idempotent by the stable product source and uses the
+      // same authenticated Supabase adapter as the lookup above.
+      const boardId = await ensureNoticeTabAtomic(ctx, client);
+      const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
+      redirect(`/boards/${encodeURIComponent(boardId)}${query}`);
+    }
+  } catch (error) {
+    // Preserve redirects and other Next.js control-flow errors.
+    unstable_rethrow(error);
+    noticeEntryState = "unavailable";
   }
-  if (productBoard.kind === "conflict") {
+  if (noticeEntryState === "conflict") {
     return (
       <section className="rounded-xl border border-mw-line bg-mw-card p-5" aria-labelledby="notice-entry-title">
         <h1 id="notice-entry-title" className="text-lg font-semibold text-mw-fg">
@@ -55,12 +72,20 @@ export default async function NoticesPage({
       </section>
     );
   }
-  // D76 default tabs are guaranteed, not installed by a user-facing step.
-  // Reconciliation is idempotent by the stable product source and uses the
-  // same authenticated Supabase adapter as the lookup above.
-  const boardId = await ensureNoticeTabAtomic(ctx, client);
-  const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
-  redirect(`/boards/${encodeURIComponent(boardId)}${query}`);
+  if (noticeEntryState === "unavailable") {
+    return (
+      <section
+        className="rounded-xl border border-red-200 bg-mw-card p-5"
+        aria-labelledby="notice-entry-title"
+        data-testid="notice-load-error"
+      >
+        <h1 id="notice-entry-title" className="text-lg font-semibold text-mw-fg">
+          공지사항을 불러오지 못했습니다
+        </h1>
+        <p className="mt-2 text-sm text-mw-sub">잠시 후 다시 시도해 주세요. 문제가 계속되면 회사 관리자에게 알려 주세요.</p>
+      </section>
+    );
+  }
 
   // Existing organizations can keep consuming their pre-default-tab notice
   // board until reconciliation installs the product-owned source.

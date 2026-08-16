@@ -22,6 +22,17 @@ describe("SidebarNav integration contract", () => {
     expect(html).toContain("승인 대기 4건");
   });
 
+  it("renders shell tabs in the verified workspace namespace", () => {
+    const html = renderToStaticMarkup(
+      <SidebarNav lockedFeatures={[]} workspaceBasePath="/w/sample-lab" />,
+    );
+
+    expect(html.match(/<a[^>]*data-nav-key="dash"[^>]*>/)?.[0]).toContain('href="/w/sample-lab"');
+    expect(html.match(/<a[^>]*data-nav-key="notice"[^>]*>/)?.[0]).toContain('href="/w/sample-lab/notices"');
+    expect(html.match(/<a[^>]*data-nav-key="company"[^>]*>/)?.[0]).toContain('href="/w/sample-lab/companies"');
+    expect(html.match(/<a[^>]*data-nav-key="contact"[^>]*>/)?.[0]).toContain('href="/w/sample-lab/contract"');
+  });
+
   it("shows only a caller-supplied, safe approval count", () => {
     const visible = renderToStaticMarkup(
       <SidebarNav lockedFeatures={[]} badges={{ workspaceApprovals: 120 }} />,

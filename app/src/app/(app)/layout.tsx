@@ -113,6 +113,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
         <div className="flex min-h-0 flex-1 flex-col">
           <SidebarNav
+            workspaceBasePath={currentWorkspace.length === 1 ? `/w/${currentWorkspace[0].slug}` : undefined}
             lockedFeatures={lockedFeatures}
             badges={workspaceApprovals
               ? { workspaceApprovals: workspaceApprovals.pendingCount }
