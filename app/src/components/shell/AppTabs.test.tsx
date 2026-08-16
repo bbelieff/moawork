@@ -13,15 +13,15 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-async function render(path: string, lockedFeatures: string[] = []) {
+async function render(path: string, lockedFeatures: string[] = [], workspaceBasePath: string | null = "/w/sample-lab") {
   pathname.current = path;
   const { AppTabs } = await import("./AppTabs");
-  return renderToStaticMarkup(<AppTabs lockedFeatures={lockedFeatures} />);
+  return renderToStaticMarkup(<AppTabs lockedFeatures={lockedFeatures} workspaceBasePath={workspaceBasePath ?? undefined} />);
 }
 
 describe("AppTabs — 목업 「탭 6개 한 화면」 탭 줄", () => {
   it("탭 화면에서 여섯 탭을 모두 그린다 — 구조를 줄이지 않는다(D73)", async () => {
-    const html = await render("/presets");
+    const html = await render("/w/sample-lab/presets");
     for (const tab of APP_TABS) {
       expect(html, `${tab.key} 탭이 없다`).toContain(`data-tab-key="${tab.key}"`);
     }
@@ -29,39 +29,45 @@ describe("AppTabs — 목업 「탭 6개 한 화면」 탭 줄", () => {
   });
 
   it("지금 보고 있는 탭만 aria-current=page 다", async () => {
-    const html = await render("/presets");
+    const html = await render("/w/sample-lab/presets");
     const current = [...html.matchAll(/data-tab-key="([a-z]+)"[^>]*aria-current="page"/g)].map((m) => m[1]);
     expect(current).toEqual(["preset"]);
   });
 
   it("상세 주소로 들어가도 탭 줄이 유지되고 부모 탭이 활성이다", async () => {
-    const html = await render("/companies/c-1");
+    const html = await render("/w/sample-lab/companies/c-1");
     expect(html).toContain('data-tab-key="company"');
     expect(html).toMatch(/data-tab-key="company"[^>]*aria-current="page"/);
   });
 
   it("탭 밖 화면에서는 아무것도 그리지 않는다", async () => {
-    expect(await render("/settings/members")).toBe("");
-    expect(await render("/platform")).toBe("");
-    expect(await render("/")).toBe("");
+    expect(await render("/w/sample-lab/settings/members")).toBe("");
+    expect(await render("/w/sample-lab/platform")).toBe("");
+    expect(await render("/w/sample-lab")).toBe("");
   });
 
   it("각 탭이 자기 대표 주소로 링크된다 — 전환이 실제로 일어난다", async () => {
-    const html = await render("/presets");
+    const html = await render("/w/sample-lab/presets");
     for (const tab of APP_TABS) {
-      expect(html).toContain(`href="${tab.canonicalHref}"`);
+      expect(html).toContain(`href="/w/sample-lab${tab.canonicalHref}"`);
     }
   });
 
+  it("fails every tab closed when the workspace namespace is unavailable", async () => {
+    const html = await render("/presets", [], null);
+    expect((html.match(/href="\/workspace-entry\?error=routing"/g) ?? []).length).toBe(6);
+    expect(html).not.toMatch(/href="\/(?:newcust|contract|work|companies|notices|presets)"/);
+  });
+
   it("잠긴 기능의 탭은 잠금으로 표시한다 — 엔타이틀먼트는 서버 진실", async () => {
-    const html = await render("/presets", ["core.crm"]);
+    const html = await render("/w/sample-lab/presets", ["core.crm"]);
     expect(html).toMatch(/data-tab-key="new"[^>]*aria-disabled="true"/);
     // 잠기지 않은 탭은 그대로다.
     expect(html).not.toMatch(/data-tab-key="preset"[^>]*aria-disabled="true"/);
   });
 
   it("상단 탭은 사이드바 축약명이 아니라 목업 정본명을 유지한다", async () => {
-    const html = await render("/presets");
+    const html = await render("/w/sample-lab/presets");
 
     for (const tab of APP_TABS) {
       expect(html).toContain(`<span>${tab.mockupLabel}</span>`);

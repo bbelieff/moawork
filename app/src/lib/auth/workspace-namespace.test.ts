@@ -10,6 +10,8 @@ describe("workspace namespace", () => {
     expect(decideWorkspaceNamespace("/w/alpha-team", [row("org-1", "alpha-team")])).toEqual({ kind: "rewrite", canonical: "/w/alpha-team", internal: "/", orgId: "org-1" });
     expect(decideWorkspaceNamespace("/w/alpha-team/settings/account?tab=privacy", [row("org-1", "alpha-team")])).toEqual({ kind: "rewrite", canonical: "/w/alpha-team/settings/account?tab=privacy", internal: "/settings/account?tab=privacy", orgId: "org-1" });
     expect(decideWorkspaceNamespace("/w/acme/deals/123?tab=notes", [row("org-acme", "acme")])).toEqual({ kind: "rewrite", canonical: "/w/acme/deals/123?tab=notes", internal: "/deals/123?tab=notes", orgId: "org-acme" });
+    expect(decideWorkspaceNamespace("/w/acme/companies", [row("org-acme", "acme")])).toEqual({ kind: "rewrite", canonical: "/w/acme/companies", internal: "/companies", orgId: "org-acme" });
+    expect(decideWorkspaceNamespace("/w/acme/presets", [row("org-acme", "acme")])).toEqual({ kind: "rewrite", canonical: "/w/acme/presets", internal: "/presets", orgId: "org-acme" });
   });
 
   it("lets an exact target win among multiple memberships", () => {

@@ -9,8 +9,8 @@ export type WorkspaceNamespaceDecision =
   | { kind: "rewrite"; canonical: `/w/${string}`; internal: string; orgId: string };
 
 const WORKSPACE_PAGE_SEGMENTS = new Set([
-  "account", "boards", "contract", "dash", "deals", "newcust", "notices",
-  "onboarding", "policyfund", "settings", "work",
+  "account", "boards", "companies", "contract", "dash", "deals", "newcust",
+  "notices", "onboarding", "policyfund", "presets", "settings", "work",
 ]);
 
 function aliasFromPath(pathname: string): string | null {

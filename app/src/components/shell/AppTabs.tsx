@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Icon } from "./icons";
 import { APP_TABS, matchTabByPathname } from "./app-tabs";
 import { NAV_ITEMS } from "./nav-items";
+import { workspaceHref } from "./workspace-href";
 
 // 목업 「탭 6개 한 화면」의 탭 줄 — BBE-142.
 //
@@ -28,11 +29,17 @@ const ICON_BY_TAB_KEY = new Map(
 type Props = {
   /** 서버가 계산한 잠긴 기능키 — 사이드바와 같은 진실을 쓴다(엔타이틀먼트는 서버 소유). */
   lockedFeatures: string[];
+  /** Verified active-membership namespace, for example `/w/acme`. */
+  workspaceBasePath?: string;
 };
 
-export function AppTabs({ lockedFeatures }: Props) {
+export function AppTabs({ lockedFeatures, workspaceBasePath }: Props) {
   const pathname = usePathname();
-  const active = matchTabByPathname(pathname);
+  const internalPathname = workspaceBasePath && pathname &&
+    (pathname === workspaceBasePath || pathname.startsWith(`${workspaceBasePath}/`))
+    ? pathname.slice(workspaceBasePath.length) || "/"
+    : pathname;
+  const active = matchTabByPathname(internalPathname);
   // 탭 밖 화면에서는 탭 줄 자체가 없다. 여섯 탭 중 하나를 보고 있을 때만 그린다.
   if (!active) return null;
 
@@ -46,8 +53,9 @@ export function AppTabs({ lockedFeatures }: Props) {
       style={{ gap: "var(--sp-1, 4px)", borderBottom: "1px solid var(--mw-line)", paddingBottom: "var(--sp-2)" }}
     >
       {APP_TABS.map((tab) => {
-        const href = tab.canonicalHref;
-        if (!href) return null;
+        const canonicalHref = tab.canonicalHref;
+        if (!canonicalHref) return null;
+        const href = workspaceHref(workspaceBasePath, canonicalHref);
         const feature = FEATURE_BY_TAB_KEY.get(tab.key);
         const isLocked = feature ? locked.has(feature) : false;
         const isActive = active.key === tab.key;

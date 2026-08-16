@@ -16,6 +16,7 @@ import {
   type NavItem,
 } from "./nav-items";
 import { GlobalSearch } from "./GlobalSearch";
+import { workspaceHref } from "./workspace-href";
 
 // 사이드바 메뉴 목록 — 활성 표시를 위해 클라이언트 컴포넌트.
 // 잠금/미구현 판정은 서버(레이아웃)에서 내려받는다(엔타이틀먼트는 서버 진실).
@@ -32,6 +33,8 @@ type Props = {
    */
   notifyBadges?: Record<string, BadgeState>;
   workspaceSwitcher?: Omit<WorkspaceSwitcherProps, "onNavigate">;
+  /** Verified active-membership namespace, for example `/w/acme`. */
+  workspaceBasePath?: string;
 };
 
 export function SidebarNav({
@@ -39,6 +42,7 @@ export function SidebarNav({
   badges,
   notifyBadges,
   workspaceSwitcher,
+  workspaceBasePath,
 }: Props) {
   const pathname = usePathname();
   const router = useRouter();
@@ -48,11 +52,12 @@ export function SidebarNav({
     const isLocked = item.feature ? locked.has(item.feature) : false;
     // 실제 라우트가 있는 잠금 메뉴는 안내 화면에 도달할 수 있도록 링크를 유지한다.
     const unavailable = !item.href;
+    const resolvedHref = item.href ? workspaceHref(workspaceBasePath, item.href) : undefined;
     const active =
       !isLocked && !unavailable &&
-      (item.href === "/"
-        ? pathname === "/"
-        : pathname.startsWith(item.href!));
+      (resolvedHref === workspaceBasePath
+        ? pathname === resolvedHref
+        : pathname.startsWith(resolvedHref!));
 
     const badge = item.badgeKey ? badges?.[item.badgeKey] : undefined;
     const visibleBadge = typeof badge === "number" && Number.isSafeInteger(badge) && badge > 0
@@ -140,7 +145,7 @@ export function SidebarNav({
       <Link
         key={item.key}
         data-nav-key={item.key}
-        href={item.href!}
+        href={resolvedHref!}
         aria-disabled={isLocked ? "true" : undefined}
         aria-current={active ? "page" : undefined}
         className={`${base} ${active ? "font-semibold" : "hover:bg-[var(--mw-bg)]"} ${isLocked ? "cursor-help" : ""}`}

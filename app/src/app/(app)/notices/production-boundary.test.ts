@@ -11,6 +11,8 @@ describe("BBE-151 notice entry production boundary", () => {
     expect(source).toContain("new NoticesService(new BoardsService(repo), repo)");
     expect(source).not.toMatch(/\bgetBoardsRepo\s*\(/);
     expect(source).not.toContain("LocalBoardsRepo");
+    expect(source).toContain('data-testid="notice-load-error"');
+    expect(source).toContain("unstable_rethrow(error)");
   });
   it("keeps the redirected board screen and writes on the same request-scoped graph", () => {
     const boardPage = readFileSync(join(process.cwd(), "src/app/(app)/boards/[id]/page.tsx"), "utf8");
