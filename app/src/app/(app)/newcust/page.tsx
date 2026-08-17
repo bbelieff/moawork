@@ -1,7 +1,8 @@
-import { redirect } from "next/navigation";
+﻿import { redirect } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { repairNewcustBoardOnEntry } from "@/lib/newcust/entry";
 import { createClient } from "@/lib/supabase/server";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
 
 /**
  * 신규업체(신규리드)의 단일 제품 진입점(BBE-26 · BBE-145).
@@ -15,6 +16,29 @@ import { createClient } from "@/lib/supabase/server";
  * 전역 백필은 하지 않고 현재 요청 조직만 복구한다. 문구가 «구조 팩 설치» 를 말하면 안 된다
  * (AGENTS.md — 「구조 팩」이라는 말 자체 금지, D76 이 그 개념을 폐기했다).
  */
+/**
+ * 워크스페이스 DB 미연결 — 오류가 아니라 «아직 연결 안 됨» 이다.
+ * 「보드를 찾을 수 없다」로 위장하지 않는다: 못 찾은 것과 아직 못 물어본 것은 다른 사실이고,
+ * 회사 관리자에게 문의하라고 잘못 안내하게 된다.
+ */
+function NewcustNotConnected() {
+  return (
+    <section
+      className="rounded-xl border border-mw-line bg-mw-card p-5"
+      aria-labelledby="newcust-entry-title"
+      role="status"
+      data-testid="newcust-not-connected"
+    >
+      <h1 id="newcust-entry-title" className="text-lg font-semibold text-mw-fg">
+        워크스페이스 데이터에 아직 연결되지 않았습니다
+      </h1>
+      <p className="mt-2 text-sm text-mw-sub">
+        신규리드 보드는 워크스페이스 데이터베이스에서 옵니다. 연결되면 여기에서 바로 접수를 시작할 수 있어요.
+      </p>
+    </section>
+  );
+}
+
 export default async function NewCustomerPage({
   searchParams,
 }: {
@@ -22,6 +46,12 @@ export default async function NewCustomerPage({
 }) {
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
+  // ★ 환경변수가 없으면(로컬 시드 모드) `createClient()` 가 곧바로 throw 해서 이 화면이
+  // 500 이었다(lib/supabase/env.ts). 먼저 갈라 «아직 연결 안 됨» 을 보여준다.
+  // 로컬 어댑터로 우회하지 않는다 — 페이지가 로컬 repo 를 부르는 것은 프로덕션 경계
+  // 정책이 막는 일이다(scripts/check-production-repo-boundaries.mjs). BBE-190 과 같은 패턴.
+  if (!hasSupabaseEnv()) return <NewcustNotConnected />;
+
   const result = await repairNewcustBoardOnEntry(ctx, await createClient());
   if (result.kind !== "ready") {
     const conflict = result.kind === "conflict";
