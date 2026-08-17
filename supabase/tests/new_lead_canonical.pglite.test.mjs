@@ -8,7 +8,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const dependencyRoot = process.env.PGLITE_MODULE_ROOT ?? root;
 const { PGlite } = await import(pathToFileURL(path.join(dependencyRoot, "node_modules", "@electric-sql", "pglite", "dist", "index.js")).href);
 const mainMigration041 = await readFile(path.join(root, "supabase", "migrations", "041_messaging.sql"), "utf8");
-const migration = await readFile(path.join(root, "supabase", "migrations", "086_new_lead_canonical.sql"), "utf8");
+const dashboardMigration086 = await readFile(path.join(root, "supabase", "migrations", "086_dashboard_daily_read_model.sql"), "utf8");
+const migration = await readFile(path.join(root, "supabase", "migrations", "087_new_lead_canonical.sql"), "utf8");
 
 const A = "10000000-0000-4000-8000-000000000001";
 const B = "10000000-0000-4000-8000-000000000002";
@@ -42,6 +43,8 @@ async function setup(db) {
     create table public.board_columns(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),key text,label text,type public.field_type,sort_order int default 0,width int,source text,is_readonly boolean default false,unique(board_id,key));
     create table public.items(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),group_id uuid references public.board_groups(id),title text,assigned_to uuid references public.users(id),deleted_at timestamptz);
     create table public.item_values(org_id uuid references public.orgs(id),item_id uuid references public.items(id),column_key text,value_jsonb jsonb,primary key(item_id,column_key));
+    create table public.work_item_versions(org_id uuid references public.orgs(id),item_id uuid references public.items(id),due_date date,workflow_status text);
+    create table public.notifications(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),user_id uuid references public.users(id),type text,title text,body text,target_type text,target_id uuid,is_action boolean,read_at timestamptz,created_at timestamptz default now(),resolved_at timestamptz);
     create table public.message_templates(
       id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),
       channel public.message_channel,code text,name text,body text,status text
@@ -70,6 +73,7 @@ async function setup(db) {
     select set_config('request.jwt.claim.sub','${USER}',false);
   `);
   await db.exec(mainMigration041);
+  await db.exec(dashboardMigration086);
   await db.exec(migration);
   await db.exec(migration);
   await db.exec("grant usage on schema public to authenticated");
