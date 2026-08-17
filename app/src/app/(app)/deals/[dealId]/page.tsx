@@ -19,6 +19,7 @@ import type { Stage } from "@/lib/types";
 import { ChecklistPanel } from "@/components/policyfund/ChecklistPanel";
 import { CHECKLIST_PRODUCT_CATEGORY, ChecklistService, SupabaseChecklistStore } from "@/lib/policyfund/checklist";
 import { createClient } from "@/lib/supabase/server";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { EsignPanel } from "@/components/deal/EsignPanel";
 
 /**
@@ -89,13 +90,22 @@ export default async function DealDetailPage({
   // 바꿔도 새로고침하면 되돌아가고 안내도 없다 — 무음 실패다.
   // 그래서 화면 게이트를 저장 계층 규칙과 «같은 조건» 으로 맞춘다(permissions.test.ts 가 고정).
   const canReassign = canReassignDeal(ctx);
-  const supabase = await createClient();
-  const checklist = await new ChecklistService(
-    ctx.org.id,
-    new SupabaseChecklistStore(supabase),
-  ).getDealChecklist(deal.id);
-  const esign = await supabase.from("esign_requests").select("status")
-    .eq("org_id", ctx.org.id).eq("deal_id", deal.id).maybeSingle();
+  // ★ BBE-203 — 이 화면의 «본문» 은 위에서 getRepo() 로 이미 다 읽었다. 체크리스트와
+  //   전자계약은 부수 정보인데, 예전엔 그 둘 때문에 createClient() 가 던져
+  //   **페이지 전체가 500** 이었다. 로컬 시드에서 업무 상세를 못 본 이유가 이 두 줄이다.
+  //   env 가 있으면 동작은 예전과 완전히 같다.
+  const supabase = canUseLocalSeedFallback() ? null : await createClient();
+  const checklist = supabase
+    ? await new ChecklistService(ctx.org.id, new SupabaseChecklistStore(supabase)).getDealChecklist(deal.id)
+    : { dealId: deal.id, productId: null, items: [] };
+  const esignRow = supabase
+    ? await supabase.from("esign_requests").select("status")
+        .eq("org_id", ctx.org.id).eq("deal_id", deal.id).maybeSingle()
+    : null;
+  // 로컬에는 전자계약 백엔드가 없다. 「아직 요청하지 않았어요」로 보이면 «거짓 빈 상태» 다(§3).
+  // 「불러오지 못했어요」가 사실이므로 조회 불가로 넘긴다.
+  const esignStatus = esignRow?.data?.status ?? null;
+  const esignUnavailable = esignRow ? Boolean(esignRow.error) : true;
 
   return (
     <div className="flex flex-col gap-8">
@@ -194,7 +204,7 @@ export default async function DealDetailPage({
       </Section>
 
       <Section title="전자계약">
-        <EsignPanel dealId={deal.id} initialStatus={esign.data?.status ?? null} initialError={Boolean(esign.error)} canEdit={canEdit} />
+        <EsignPanel dealId={deal.id} initialStatus={esignStatus} initialError={esignUnavailable} canEdit={canEdit} />
       </Section>
     </div>
   );
