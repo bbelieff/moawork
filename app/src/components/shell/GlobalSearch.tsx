@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SEARCH_KINDS, type SearchKind, type SearchResponse, type SearchResult } from "@/lib/search/types";
+import { Icon } from "./icons";
 
 const RECENT_KEY = "mw:recent-search:v1";
 const KIND_LABEL: Record<SearchKind, string> = { board: "보드", deal: "업무", company: "회사", notice: "공지" };
@@ -109,12 +110,29 @@ export function GlobalSearch() {
   };
 
   return <>
-    <button type="button" onClick={() => setOpen(true)} className="mx-2 mb-2 flex min-h-11 items-center gap-2 rounded-xl border border-[var(--mw-border)] bg-[var(--mw-bg)] px-3 text-left text-sm text-[var(--mw-sub)]" aria-haspopup="dialog">
-      <span aria-hidden>⌕</span><span className="flex-1">검색하거나 빠르게 만들기</span><kbd className="hidden rounded border px-1.5 py-0.5 text-[10px] md:inline">Ctrl K</kbd>
+    {/* 상단바 트리거 — 목업 v6 `.top > .search` (260px · 높이 30px · 「전체 검색」).
+        lg 미만에서는 아이콘만 남겨 벨·테마·계정 자리를 뺏지 않는다(375px 에서도 눌린다).
+        예전 문구 「검색하거나 빠르게 만들기」는 사이드바 220px 안에서 «만들 / 기» 로
+        잘렸다 — 목업 문구가 4글자라 그 줄바꿈이 구조적으로 사라진다(BBE-194). */}
+    <button type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-label="전체 검색"
+      className="flex flex-none items-center justify-center border lg:w-[var(--mw-shell-search-w)] lg:justify-start"
+      style={{
+        height: "var(--mw-shell-iconbtn-size)",
+        minWidth: "var(--mw-shell-iconbtn-size)",
+        gap: "var(--sp-2)",
+        paddingInline: "var(--sp-2)",
+        borderRadius: "var(--mw-r-2)",
+        borderColor: "var(--mw-line)",
+        background: "var(--mw-card)",
+        color: "var(--mw-sub)",
+        fontSize: "var(--fs-13)",
+      }}>
+      <Icon name="search" /><span className="hidden flex-1 text-left lg:inline">전체 검색</span>
+      <kbd className="hidden border lg:inline" style={{ borderColor: "var(--mw-line)", borderRadius: "var(--mw-r-1)", paddingInline: "var(--sp-1)", fontSize: "var(--mw-shell-badge-fs)" }}>Ctrl K</kbd>
     </button>
     {open ? <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/35 p-0 md:p-8" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
       <section role="dialog" aria-modal="true" aria-label="통합 검색" className="flex h-full w-full flex-col bg-[var(--mw-card)] text-[var(--mw-fg)] shadow-2xl md:h-auto md:max-h-[78vh] md:max-w-2xl md:rounded-2xl">
-        <div className="flex items-center gap-2 border-b border-[var(--mw-border)] p-3">
+        <div className="flex items-center gap-2 border-b border-[var(--mw-line)] p-3">
           <input ref={inputRef} value={query} onChange={(event) => { setQuery(event.target.value); setActive(0); }} onKeyDown={(event) => {
             if (event.key === "ArrowDown") { event.preventDefault(); setActive((value) => Math.min(value + 1, shown.length - 1)); }
             if (event.key === "ArrowUp") { event.preventDefault(); setActive((value) => Math.max(value - 1, 0)); }
@@ -128,7 +146,7 @@ export function GlobalSearch() {
             <span className="w-10 shrink-0 text-xs font-semibold text-[var(--mw-sub)]">{KIND_LABEL[result.kind]}</span><span className="min-w-0"><span className="block truncate font-medium">{result.title}</span><span className="block truncate text-xs text-[var(--mw-sub)]">{result.description}</span></span>
           </button>)}
           {!shown.length ? <p className="rounded-xl bg-[var(--mw-bg)] p-4 text-sm text-[var(--mw-sub)]">{query.trim() ? "일치하는 항목이 없어요. 아래에서 바로 만들 수 있어요." : "최근 본 항목이 없어요."}</p> : null}
-          {query.trim() ? <div className="mt-4 border-t border-[var(--mw-border)] pt-3"><p className="mb-2 text-xs font-semibold text-[var(--mw-sub)]">빠른 만들기</p><div className="flex flex-wrap gap-2"><select value={createKind} onChange={(event) => setCreateKind(event.target.value as "deal" | "company")} className="min-h-11 rounded-xl border border-[var(--mw-border)] bg-[var(--mw-card)] px-3"><option value="deal">업무</option><option value="company">회사</option></select><button type="button" disabled={busy} onClick={() => void create()} className="min-h-11 flex-1 rounded-xl bg-[var(--mw-record)] px-4 font-semibold text-[var(--mw-on-accent)] disabled:opacity-60">{busy ? "만드는 중…" : `“${query.trim()}” 만들기`}</button></div></div> : null}
+          {query.trim() ? <div className="mt-4 border-t border-[var(--mw-line)] pt-3"><p className="mb-2 text-xs font-semibold text-[var(--mw-sub)]">빠른 만들기</p><div className="flex flex-wrap gap-2"><select value={createKind} onChange={(event) => setCreateKind(event.target.value as "deal" | "company")} className="min-h-11 rounded-xl border border-[var(--mw-line)] bg-[var(--mw-card)] px-3"><option value="deal">업무</option><option value="company">회사</option></select><button type="button" disabled={busy} onClick={() => void create()} className="min-h-11 flex-1 rounded-xl bg-[var(--mw-record)] px-4 font-semibold text-[var(--mw-on-accent)] disabled:opacity-60">{busy ? "만드는 중…" : `“${query.trim()}” 만들기`}</button></div></div> : null}
           {error ? <p role="alert" className="mt-3 text-sm text-[var(--mw-people)]">{error}</p> : null}
         </div>
       </section>

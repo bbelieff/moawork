@@ -72,6 +72,7 @@
   --mw-shell-badge-fs: 10.5px; /* .em, .cnt 계열 라벨 */
   --mw-shell-avatar-size: 26px; /* .av { width/height: 26px } */
   --mw-shell-iconbtn-size: 30px; /* .iconbtn { width/height: 30px } */
+  --mw-shell-search-w: 260px; /* .top .search { width: 260px } — 상단바 전체 검색 */
 }
 
 [data-theme="dark"] {
