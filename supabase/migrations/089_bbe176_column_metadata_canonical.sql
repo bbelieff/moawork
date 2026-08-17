@@ -12,16 +12,50 @@ alter table public.board_columns
   add column if not exists archived_at timestamptz,
   add column if not exists deleted_by uuid;
 
+create or replace function public.board_column_access_policy_is_valid(p_policy jsonb)
+returns boolean language plpgsql immutable security invoker set search_path=public,pg_temp as $$
+begin
+  if jsonb_typeof(p_policy)<>'object'
+     or exists(select 1 from jsonb_object_keys(p_policy) k where k not in ('roles','scopes','userIds')) then return false; end if;
+  if p_policy?'roles' and (jsonb_typeof(p_policy->'roles')<>'array' or exists(select 1 from jsonb_array_elements(p_policy->'roles') x where jsonb_typeof(x)<>'string' or x#>>'{}' not in ('owner','admin','team_lead','member'))) then return false; end if;
+  if p_policy?'scopes' and (jsonb_typeof(p_policy->'scopes')<>'array' or exists(select 1 from jsonb_array_elements(p_policy->'scopes') x where jsonb_typeof(x)<>'string' or x#>>'{}' not in ('all','department','assigned'))) then return false; end if;
+  if p_policy?'userIds' and (jsonb_typeof(p_policy->'userIds')<>'array' or exists(select 1 from jsonb_array_elements(p_policy->'userIds') x where jsonb_typeof(x)<>'string' or not ((x#>>'{}') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'))) then return false; end if;
+  return true;
+end $$;
+
+create or replace function public.board_column_validation_is_valid(p_validation jsonb)
+returns boolean language plpgsql immutable security invoker set search_path=public,pg_temp as $$
+begin
+  if jsonb_typeof(p_validation)<>'object'
+     or exists(select 1 from jsonb_object_keys(p_validation) k where k not in ('minLength','maxLength','min','max','pattern','allowedValues')) then return false; end if;
+  if p_validation?'minLength' and (jsonb_typeof(p_validation->'minLength')<>'number' or (p_validation->>'minLength')::numeric<0 or trunc((p_validation->>'minLength')::numeric)<>(p_validation->>'minLength')::numeric) then return false; end if;
+  if p_validation?'maxLength' and (jsonb_typeof(p_validation->'maxLength')<>'number' or (p_validation->>'maxLength')::numeric<0 or trunc((p_validation->>'maxLength')::numeric)<>(p_validation->>'maxLength')::numeric) then return false; end if;
+  if p_validation?'minLength' and p_validation?'maxLength' and (p_validation->>'minLength')::numeric>(p_validation->>'maxLength')::numeric then return false; end if;
+  if p_validation?'min' and jsonb_typeof(p_validation->'min')<>'number' then return false; end if;
+  if p_validation?'max' and jsonb_typeof(p_validation->'max')<>'number' then return false; end if;
+  if p_validation?'min' and p_validation?'max' and (p_validation->>'min')::numeric>(p_validation->>'max')::numeric then return false; end if;
+  if p_validation?'pattern' and (jsonb_typeof(p_validation->'pattern')<>'string' or char_length(p_validation->>'pattern')>500) then return false; end if;
+  if p_validation?'allowedValues' and (jsonb_typeof(p_validation->'allowedValues')<>'array' or exists(select 1 from jsonb_array_elements(p_validation->'allowedValues') x where jsonb_typeof(x) not in ('string','number','boolean'))) then return false; end if;
+  return true;
+end $$;
+
+create or replace function public.board_column_metadata_is_valid(p_validation jsonb,p_edit_policy jsonb,p_view_policy jsonb)
+returns boolean language sql immutable security invoker set search_path=public,pg_temp as $$
+  select public.board_column_validation_is_valid(p_validation)
+     and public.board_column_access_policy_is_valid(p_edit_policy)
+     and public.board_column_access_policy_is_valid(p_view_policy)
+$$;
+
 do $$ begin
   alter table public.board_columns add constraint board_columns_wrap_mode
     check (wrap_mode in ('truncate','wrap'));
 exception when duplicate_object then null; end $$;
-do $$ begin
-  alter table public.board_columns add constraint board_columns_policy_objects
-    check (jsonb_typeof(validation_jsonb)='object' and jsonb_typeof(edit_policy_jsonb)='object' and jsonb_typeof(view_policy_jsonb)='object');
-exception when duplicate_object then null; end $$;
+alter table public.board_columns drop constraint if exists board_columns_policy_objects;
+alter table public.board_columns add constraint board_columns_policy_objects
+  check (public.board_column_metadata_is_valid(validation_jsonb,edit_policy_jsonb,view_policy_jsonb));
 
-create index if not exists board_columns_active_order_idx
+drop index if exists public.board_columns_active_order_idx;
+create unique index board_columns_active_order_idx
   on public.board_columns(org_id,board_id,sort_order) where archived_at is null;
 
 create table if not exists public.board_column_command_receipts (
@@ -150,7 +184,7 @@ create or replace function public.execute_board_column_command(
   p_org_id uuid,p_board_id uuid,p_column_id uuid,p_operation text,p_request_id uuid,p_payload jsonb default '{}'::jsonb
 ) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
 declare v_actor uuid:=auth.uid(); v_role text; v_hash text; v_prior public.board_column_command_receipts; v_col public.board_columns;
-  v_before jsonb; v_after jsonb; v_result jsonb; v_position int; v_new_id uuid; v_new_key text; v_dry jsonb;
+  v_before jsonb; v_after jsonb; v_result jsonb; v_position int; v_active_count int; v_new_id uuid; v_new_key text; v_dry jsonb;
 begin
   if p_request_id is null or p_operation is null or jsonb_typeof(coalesce(p_payload,'{}'))<>'object' then raise exception 'invalid column command' using errcode='22023'; end if;
   select m.role::text into v_role from public.org_members m join public.orgs o on o.id=m.org_id
@@ -158,22 +192,33 @@ begin
   if v_role not in ('owner','admin') then raise exception 'column structure permission denied' using errcode='42501'; end if;
   if not exists(select 1 from public.boards where id=p_board_id and org_id=p_org_id) then raise exception 'board not found' using errcode='P0002'; end if;
   v_hash:=encode(digest(p_operation||':'||coalesce(p_column_id::text,'')||':'||coalesce(p_payload,'{}')::text,'sha256'),'hex');
-  perform pg_advisory_xact_lock(hashtextextended(p_org_id::text||':'||p_request_id::text,0));
+  perform pg_advisory_xact_lock(hashtextextended(p_org_id::text||':'||p_board_id::text,0));
   select * into v_prior from public.board_column_command_receipts where org_id=p_org_id and request_id=p_request_id;
   if found then
     if v_prior.payload_hash<>v_hash then raise exception 'request_id payload mismatch' using errcode='22023'; end if;
     return v_prior.result_jsonb||jsonb_build_object('replayed',true);
   end if;
   if p_column_id is not null then select * into strict v_col from public.board_columns where id=p_column_id and org_id=p_org_id and board_id=p_board_id for update; v_before:=to_jsonb(v_col); end if;
+  if p_operation not in ('create_at','restore') and p_column_id is not null and v_col.archived_at is not null then raise exception 'active column required' using errcode='22023'; end if;
+  if p_operation in ('create_at','settings') and not public.board_column_metadata_is_valid(
+    coalesce(p_payload->'validation',v_col.validation_jsonb,'{}'::jsonb),
+    coalesce(p_payload->'editPolicy',v_col.edit_policy_jsonb,'{}'::jsonb),
+    coalesce(p_payload->'viewPolicy',v_col.view_policy_jsonb,'{}'::jsonb)
+  ) then raise exception 'invalid column metadata policy' using errcode='22023'; end if;
   case p_operation
     when 'create_at' then
-      v_position:=greatest(0,least(coalesce((p_payload->>'position')::int,(select count(*) from public.board_columns where board_id=p_board_id and archived_at is null)),(select count(*) from public.board_columns where board_id=p_board_id and archived_at is null)));
-      update public.board_columns set sort_order=sort_order+1 where org_id=p_org_id and board_id=p_board_id and archived_at is null and sort_order>=v_position;
+      select count(*) into v_active_count from public.board_columns where org_id=p_org_id and board_id=p_board_id and archived_at is null;
+      v_position:=greatest(0,least(coalesce((p_payload->>'position')::int,v_active_count),v_active_count));
+      update public.board_columns set sort_order=sort_order+v_active_count+1 where org_id=p_org_id and board_id=p_board_id and archived_at is null and sort_order>=v_position;
+      update public.board_columns set sort_order=sort_order-v_active_count where org_id=p_org_id and board_id=p_board_id and archived_at is null and sort_order>=v_position+v_active_count+1;
       v_new_key:=coalesce(nullif(p_payload->>'key',''),'custom_'||substr(replace(gen_random_uuid()::text,'-',''),1,12));
       insert into public.board_columns(org_id,board_id,key,label,type,source,sort_order,description,is_required,validation_jsonb,edit_policy_jsonb,view_policy_jsonb,summary_hidden,wrap_mode)
       values(p_org_id,p_board_id,v_new_key,nullif(btrim(p_payload->>'label'),''),(p_payload->>'type')::public.field_type,coalesce((p_payload->>'source')::public.field_source,'in'),v_position,p_payload->>'description',coalesce((p_payload->>'required')::boolean,false),coalesce(p_payload->'validation','{}'),coalesce(p_payload->'editPolicy','{}'),coalesce(p_payload->'viewPolicy','{}'),coalesce((p_payload->>'summaryHidden')::boolean,false),coalesce(p_payload->>'wrapMode','truncate')) returning id into v_new_id;
     when 'duplicate' then
-      v_position:=coalesce((p_payload->>'position')::int,v_col.sort_order+1); update public.board_columns set sort_order=sort_order+1 where org_id=p_org_id and board_id=p_board_id and archived_at is null and sort_order>=v_position;
+      select count(*) into v_active_count from public.board_columns where org_id=p_org_id and board_id=p_board_id and archived_at is null;
+      v_position:=greatest(0,least(coalesce((p_payload->>'position')::int,v_col.sort_order+1),v_active_count));
+      update public.board_columns set sort_order=sort_order+v_active_count+1 where org_id=p_org_id and board_id=p_board_id and archived_at is null and sort_order>=v_position;
+      update public.board_columns set sort_order=sort_order-v_active_count where org_id=p_org_id and board_id=p_board_id and archived_at is null and sort_order>=v_position+v_active_count+1;
       v_new_key:=coalesce(nullif(p_payload->>'key',''),v_col.key||'_copy_'||substr(replace(gen_random_uuid()::text,'-',''),1,6));
       insert into public.board_columns(org_id,board_id,key,label,type,options_jsonb,sort_order,width,source,right_pinned,move_rule_jsonb,is_readonly,description,is_required,validation_jsonb,edit_policy_jsonb,view_policy_jsonb,summary_hidden,wrap_mode)
       select org_id,board_id,v_new_key,coalesce(nullif(p_payload->>'label',''),label||' copy'),type,options_jsonb,v_position,width,source,right_pinned,move_rule_jsonb,is_readonly,description,is_required,validation_jsonb,edit_policy_jsonb,view_policy_jsonb,summary_hidden,wrap_mode from public.board_columns where id=p_column_id returning id into v_new_id;
@@ -181,13 +226,17 @@ begin
     when 'rename' then update public.board_columns set label=nullif(btrim(p_payload->>'label'),'') where id=p_column_id;
     when 'settings' then update public.board_columns set description=case when p_payload?'description' then p_payload->>'description' else description end,is_required=case when p_payload?'required' then (p_payload->>'required')::boolean else is_required end,validation_jsonb=coalesce(p_payload->'validation',validation_jsonb),edit_policy_jsonb=coalesce(p_payload->'editPolicy',edit_policy_jsonb),view_policy_jsonb=coalesce(p_payload->'viewPolicy',view_policy_jsonb),summary_hidden=case when p_payload?'summaryHidden' then (p_payload->>'summaryHidden')::boolean else summary_hidden end,wrap_mode=coalesce(p_payload->>'wrapMode',wrap_mode) where id=p_column_id;
     when 'reorder' then
-      v_position:=greatest(0,least((p_payload->>'position')::int,(select greatest(count(*)-1,0) from public.board_columns where board_id=p_board_id and archived_at is null)));
+      select count(*) into v_active_count from public.board_columns where org_id=p_org_id and board_id=p_board_id and archived_at is null;
+      v_position:=greatest(0,least((p_payload->>'position')::int,greatest(v_active_count-1,0)));
+      update public.board_columns set archived_at='-infinity'::timestamptz where id=p_column_id;
       if v_position<v_col.sort_order then
-        update public.board_columns set sort_order=sort_order+1 where org_id=p_org_id and board_id=p_board_id and archived_at is null and id<>p_column_id and sort_order>=v_position and sort_order<v_col.sort_order;
+        update public.board_columns set sort_order=sort_order+v_active_count+1 where org_id=p_org_id and board_id=p_board_id and archived_at is null and sort_order>=v_position and sort_order<v_col.sort_order;
+        update public.board_columns set sort_order=sort_order-v_active_count where org_id=p_org_id and board_id=p_board_id and archived_at is null and sort_order>=v_position+v_active_count+1 and sort_order<v_col.sort_order+v_active_count+1;
       elsif v_position>v_col.sort_order then
-        update public.board_columns set sort_order=sort_order-1 where org_id=p_org_id and board_id=p_board_id and archived_at is null and id<>p_column_id and sort_order>v_col.sort_order and sort_order<=v_position;
+        update public.board_columns set sort_order=sort_order+v_active_count+1 where org_id=p_org_id and board_id=p_board_id and archived_at is null and sort_order>v_col.sort_order and sort_order<=v_position;
+        update public.board_columns set sort_order=sort_order-v_active_count-2 where org_id=p_org_id and board_id=p_board_id and archived_at is null and sort_order>v_col.sort_order+v_active_count+1 and sort_order<=v_position+v_active_count+1;
       end if;
-      update public.board_columns set sort_order=v_position where id=p_column_id;
+      update public.board_columns set sort_order=v_position,archived_at=null where id=p_column_id;
     when 'type_commit' then
       perform 1 from public.item_values where org_id=p_org_id and column_key=v_col.key and item_id in(select id from public.items where board_id=p_board_id and org_id=p_org_id) for update;
       v_dry:=public.board_column_type_dry_run(p_org_id,p_board_id,p_column_id,(p_payload->>'targetType')::public.field_type);
@@ -196,10 +245,26 @@ begin
       if p_payload->>'targetType' in ('number','money') then update public.item_values set value_jsonb=to_jsonb(trim(both '"' from value_jsonb::text)::numeric) where org_id=p_org_id and column_key=v_col.key and value_jsonb is not null and value_jsonb<>'null'::jsonb and jsonb_typeof(value_jsonb)='string' and item_id in(select id from public.items where board_id=p_board_id and org_id=p_org_id); end if;
       if p_payload->>'targetType' in ('text','longtext','url','email','phone') then update public.item_values set value_jsonb=to_jsonb(trim(both '"' from value_jsonb::text)) where org_id=p_org_id and column_key=v_col.key and value_jsonb is not null and value_jsonb<>'null'::jsonb and jsonb_typeof(value_jsonb)<>'string' and item_id in(select id from public.items where board_id=p_board_id and org_id=p_org_id); end if;
       update public.board_columns set type=(p_payload->>'targetType')::public.field_type where id=p_column_id;
-    when 'archive' then update public.board_columns set archived_at=now(),deleted_by=v_actor where id=p_column_id and archived_at is null;
-    when 'restore' then update public.board_columns set archived_at=null,deleted_by=null where id=p_column_id and archived_at is not null;
+    when 'archive' then
+      update public.board_columns set archived_at=now(),deleted_by=v_actor where id=p_column_id and archived_at is null;
+      select count(*) into v_active_count from public.board_columns where org_id=p_org_id and board_id=p_board_id and archived_at is null;
+      update public.board_columns set sort_order=sort_order+v_active_count+1 where org_id=p_org_id and board_id=p_board_id and archived_at is null and sort_order>v_col.sort_order;
+      update public.board_columns set sort_order=sort_order-v_active_count-2 where org_id=p_org_id and board_id=p_board_id and archived_at is null and sort_order>v_col.sort_order+v_active_count+1;
+    when 'restore' then
+      if v_col.archived_at is null then raise exception 'archived column required' using errcode='22023'; end if;
+      select count(*) into v_active_count from public.board_columns where org_id=p_org_id and board_id=p_board_id and archived_at is null;
+      v_position:=greatest(0,least(coalesce((p_payload->>'position')::int,v_active_count),v_active_count));
+      update public.board_columns set sort_order=sort_order+v_active_count+1 where org_id=p_org_id and board_id=p_board_id and archived_at is null and sort_order>=v_position;
+      update public.board_columns set sort_order=sort_order-v_active_count where org_id=p_org_id and board_id=p_board_id and archived_at is null and sort_order>=v_position+v_active_count+1;
+      update public.board_columns set archived_at=null,deleted_by=null,sort_order=v_position where id=p_column_id;
     else raise exception 'unsupported column operation' using errcode='22023';
   end case;
+  if exists(
+    select 1 from (
+      select count(*) n,count(distinct sort_order) distinct_n,coalesce(min(sort_order),0) min_order,coalesce(max(sort_order),-1) max_order
+      from public.board_columns where org_id=p_org_id and board_id=p_board_id and archived_at is null
+    ) s where distinct_n<>n or (n>0 and (min_order<>0 or max_order<>n-1))
+  ) then raise exception 'board column ordering invariant violated' using errcode='40001'; end if;
   select to_jsonb(c) into v_after from public.board_columns c where c.id=coalesce(v_new_id,p_column_id);
   v_result:=jsonb_build_object('accepted',true,'replayed',false,'operation',p_operation,'columnId',coalesce(v_new_id,p_column_id),'column',v_after);
   insert into public.board_column_command_receipts values(p_org_id,p_request_id,v_actor,p_board_id,p_operation,v_hash,v_result,now());
@@ -210,6 +275,6 @@ end $$;
 revoke all on public.board_column_command_receipts,public.board_column_audit from public,anon,authenticated;
 grant select on public.board_column_command_receipts,public.board_column_audit to authenticated;
 revoke insert,update,delete on public.board_columns from public,anon,authenticated;
-revoke all on function public.board_column_policy_allows(uuid,jsonb),public.board_column_value_visible(uuid,uuid,text),public.board_column_value_editable(uuid,uuid,text),public.board_column_type_dry_run(uuid,uuid,uuid,public.field_type),public.execute_board_column_command(uuid,uuid,uuid,text,uuid,jsonb) from public,anon;
+revoke all on function public.board_column_access_policy_is_valid(jsonb),public.board_column_validation_is_valid(jsonb),public.board_column_metadata_is_valid(jsonb,jsonb,jsonb),public.board_column_policy_allows(uuid,jsonb),public.board_column_value_visible(uuid,uuid,text),public.board_column_value_editable(uuid,uuid,text),public.board_column_type_dry_run(uuid,uuid,uuid,public.field_type),public.execute_board_column_command(uuid,uuid,uuid,text,uuid,jsonb) from public,anon;
 grant execute on function public.board_column_type_dry_run(uuid,uuid,uuid,public.field_type),public.execute_board_column_command(uuid,uuid,uuid,text,uuid,jsonb) to authenticated;
 grant execute on function public.board_column_policy_allows(uuid,jsonb),public.board_column_value_visible(uuid,uuid,text),public.board_column_value_editable(uuid,uuid,text) to authenticated;

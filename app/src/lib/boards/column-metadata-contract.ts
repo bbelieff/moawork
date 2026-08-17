@@ -19,6 +19,15 @@ export type BoardColumnPolicy = {
   userIds?: string[];
 };
 
+export type BoardColumnValidation = {
+  minLength?: number;
+  maxLength?: number;
+  min?: number;
+  max?: number;
+  pattern?: string;
+  allowedValues?: Array<string | number | boolean>;
+};
+
 export type BoardColumnCommandArgs = {
   p_org_id: string;
   p_board_id: string;

@@ -46,6 +46,11 @@ async function database({ healthy=false }={}) {
 }
 async function auth(db,user) { await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub','${user}',false)`); }
 async function resetAuth(db) { await db.exec("reset role; select set_config('request.jwt.claim.sub','',false)"); }
+async function rejectsCode(promise, code) { await assert.rejects(promise,(error) => error?.code===code); }
+async function assertContiguous(db) {
+  const row=(await db.query("select count(*)::int n,count(distinct sort_order)::int d,coalesce(min(sort_order),0)::int lo,coalesce(max(sort_order),-1)::int hi from board_columns where archived_at is null")).rows[0];
+  assert.equal(row.d,row.n); if(row.n>0) assert.deepEqual([row.lo,row.hi],[0,row.n-1]);
+}
 
 test("089 installs twice from missing and healthy schemas without customer UPDATE", async () => {
   for (const healthy of [false,true]) {
@@ -96,5 +101,48 @@ test("create-at, duplicate, settings, rename, and reorder preserve a contiguous 
   await assert.rejects(db.exec("insert into board_columns(org_id,board_id,key,label,type) values('"+id(1)+"','"+id(20)+"','direct','Direct','text')"),/permission denied/);
   await db.exec("reset role"); await auth(db,id(11));
   assert.equal((await db.query("select count(*)::int n from board_columns where key='amount_copy'")).rows[0].n,0);
+  await db.close();
+});
+
+test("board serialization keeps archive/create/restore, clamped duplicate, and distinct requests contiguous", async () => {
+  const db=await database(); await db.exec(migration); await auth(db,id(10));
+  await db.query("select execute_board_column_command($1,$2,$3,'archive',$4,'{}')",[id(1),id(20),id(30),id(120)]);
+  const created=(await db.query("select execute_board_column_command($1,$2,null,'create_at',$3,$4) result",[id(1),id(20),id(121),{position:0,key:"between",label:"Between",type:"text"}])).rows[0].result;
+  await db.query("select execute_board_column_command($1,$2,$3,'restore',$4,$5)",[id(1),id(20),id(30),id(122),{position:0}]);
+  assert.deepEqual((await db.query("select key,sort_order from board_columns where archived_at is null order by sort_order")).rows,[{key:"amount",sort_order:0},{key:"between",sort_order:1}]);
+  await db.query("select execute_board_column_command($1,$2,$3,'duplicate',$4,$5)",[id(1),id(20),id(30),id(123),{position:-20,key:"negative"}]);
+  await db.query("select execute_board_column_command($1,$2,$3,'duplicate',$4,$5)",[id(1),id(20),id(30),id(124),{position:999,key:"oversized"}]);
+  await assertContiguous(db);
+  const concurrent=await Promise.all([
+    db.query("select execute_board_column_command($1,$2,null,'create_at',$3,$4)",[id(1),id(20),id(125),{position:1,key:"parallel_a",label:"A",type:"text"}]),
+    db.query("select execute_board_column_command($1,$2,null,'create_at',$3,$4)",[id(1),id(20),id(126),{position:1,key:"parallel_b",label:"B",type:"text"}]),
+  ]);
+  assert.equal(concurrent.length,2); await assertContiguous(db);
+  await Promise.all([
+    db.query("select execute_board_column_command($1,$2,$3,'reorder',$4,$5)",[id(1),id(20),created.columnId,id(127),{position:0}]),
+    db.query("select execute_board_column_command($1,$2,$3,'reorder',$4,$5)",[id(1),id(20),id(30),id(128),{position:999}]),
+  ]);
+  await assertContiguous(db); await db.close();
+});
+
+test("invalid metadata allowlists fail atomically with SQLSTATE 22023", async () => {
+  const db=await database(); await db.exec(migration); await auth(db,id(10));
+  const invalidPayloads=[
+    {validation:{unknown:true}},
+    {validation:{minLength:-1}},
+    {validation:{min:10,max:2}},
+    {validation:{allowedValues:[{"nested":true}]}},
+    {editPolicy:{roles:["superadmin"]}},
+    {editPolicy:{roles:"owner"}},
+    {viewPolicy:{scopes:["global"]}},
+    {viewPolicy:{userIds:["not-a-uuid"]}},
+    {viewPolicy:{unknown:[]}},
+  ];
+  for (let index=0;index<invalidPayloads.length;index++) {
+    await rejectsCode(db.query("select execute_board_column_command($1,$2,$3,'settings',$4,$5)",[id(1),id(20),id(30),id(140+index),invalidPayloads[index]]),"22023");
+  }
+  assert.deepEqual((await db.query("select validation_jsonb,edit_policy_jsonb,view_policy_jsonb from board_columns where id=$1",[id(30)])).rows,[{validation_jsonb:{},edit_policy_jsonb:{},view_policy_jsonb:{}}]);
+  assert.equal((await db.query("select count(*)::int n from board_column_audit where request_id::text like '10000000-0000-4000-8000-00000000014%'")).rows[0].n,0);
+  assert.equal((await db.query("select count(*)::int n from board_column_command_receipts where request_id::text like '10000000-0000-4000-8000-00000000014%'")).rows[0].n,0);
   await db.close();
 });
