@@ -18,6 +18,7 @@ export function SaveViewDialog({
   filters,
   sort,
   calendarFieldKey,
+  dateColumns = [],
   people,
   onSubmit,
   onCancel,
@@ -29,6 +30,7 @@ export function SaveViewDialog({
   filters: ViewFilterMap;
   sort?: readonly ViewSort[];
   calendarFieldKey?: string | null;
+  dateColumns?: readonly { key: string; label: string }[];
   /** personScope="fixed" 선택 시 고를 사람 목록. 조직도는 이 컴포넌트 소관이 아니라 호출부가 넘긴다. */
   people?: readonly { id: string; name: string }[];
   onSubmit: (input: NewTabViewInput) => void;
@@ -38,9 +40,14 @@ export function SaveViewDialog({
   const [personScope, setPersonScope] = useState<PersonScope>("viewer");
   const [fixedPersonId, setFixedPersonId] = useState<string>(people?.[0]?.id ?? "");
   const [visibility, setVisibility] = useState<Visibility>("private");
+  const [selectedKind, setSelectedKind] = useState<ViewKind>(kind);
+  const [selectedCalendarField, setSelectedCalendarField] = useState(calendarFieldKey ?? dateColumns[0]?.key ?? "");
 
   const filterCount = Object.keys(filters).length;
-  const canSubmit = name.trim().length > 0 && (personScope !== "fixed" || fixedPersonId);
+  const canSubmit =
+    name.trim().length > 0 &&
+    (personScope !== "fixed" || fixedPersonId) &&
+    (selectedKind !== "cal" || selectedCalendarField.length > 0);
 
   function submit() {
     if (!canSubmit) return;
@@ -49,13 +56,13 @@ export function SaveViewDialog({
       boardKey,
       ownerId,
       name: name.trim(),
-      kind,
+      kind: selectedKind,
       visibility,
       personScope,
       personScopeUserId: personScope === "fixed" ? fixedPersonId : null,
       filters,
       sort,
-      calendarFieldKey: kind === "cal" ? (calendarFieldKey ?? null) : null,
+      calendarFieldKey: selectedKind === "cal" ? selectedCalendarField : null,
     });
   }
 
@@ -63,8 +70,32 @@ export function SaveViewDialog({
     <div className={styles.dialog} role="dialog" aria-label="새 뷰 만들기">
       <h3>새 뷰 만들기</h3>
       <p className={styles.pickerHint}>
-        지금 저장될 조건 — 보는 방식 <b>{KIND_LABEL[kind]}</b> · 필터 <b>{filterCount}개</b>
+        지금 저장될 조건 — 보는 방식 <b>{KIND_LABEL[selectedKind]}</b> · 필터 <b>{filterCount}개</b>
       </p>
+
+      <div className={styles.field}>
+        <label htmlFor="view-kind">보기 방식</label>
+        <select id="view-kind" value={selectedKind} onChange={(event) => setSelectedKind(event.target.value as ViewKind)}>
+          <option value="flat">표</option>
+          <option value="board">보드</option>
+          <option value="cal" disabled={dateColumns.length === 0}>
+            캘린더
+          </option>
+        </select>
+        {selectedKind === "cal" ? (
+          <select
+            aria-label="캘린더 날짜 컬럼"
+            value={selectedCalendarField}
+            onChange={(event) => setSelectedCalendarField(event.target.value)}
+          >
+            {dateColumns.map((column) => (
+              <option key={column.key} value={column.key}>
+                {column.label}
+              </option>
+            ))}
+          </select>
+        ) : null}
+      </div>
 
       <div className={styles.field}>
         <label htmlFor="view-name">이름</label>

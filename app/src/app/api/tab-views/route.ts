@@ -1,9 +1,10 @@
 import { createRequestBoards } from "@/lib/boards/server";
 import { jsonOk, readJson, requireCtx, toErrorResponse } from "@/lib/boards/http";
 import { createClient } from "@/lib/supabase/server";
-import { parseSavedBoardViewConfig, savedBoardViewFromRow } from "@/lib/view/board-saved";
+import { parsePersonScopeInput, parseSavedBoardViewConfig, savedBoardViewFromRow } from "@/lib/view/board-saved";
+import { requireActiveFixedPerson } from "@/lib/view/server";
 
-const COLS = "id,name,visibility,owner_id,config_jsonb,is_default,last_used_at";
+const COLS = "id,name,visibility,owner_id,person_scope,person_scope_user_id,config_jsonb,is_default,last_used_at";
 
 
 async function assertBoardAccess(boardId: string) {
@@ -24,7 +25,11 @@ export async function GET(req: Request): Promise<Response> {
       .order("last_used_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: true });
     if (error) throw error;
-    return jsonOk((data ?? []).map((row) => savedBoardViewFromRow(row as Record<string, unknown>)));
+    const canManageShared = ctx.role === "owner" || ctx.role === "admin";
+    return jsonOk((data ?? []).map((row) => savedBoardViewFromRow(
+      row as Record<string, unknown>,
+      row.owner_id === ctx.user.id || canManageShared,
+    )));
   } catch (error) {
     return toErrorResponse(error);
   }
@@ -39,7 +44,13 @@ export async function POST(req: Request): Promise<Response> {
     if (!name || !boardId) return Response.json({ error: "boardId와 이름이 필요합니다." }, { status: 400 });
     const ctx = await assertBoardAccess(boardId);
     const config = parseSavedBoardViewConfig(body.config);
+    const scope = parsePersonScopeInput(body.personScope, body.personScopeUserId);
     const db = await createClient();
+    await requireActiveFixedPerson(ctx.org.id, scope, async (orgId, userId) => {
+      const { data, error } = await db.from("org_members").select("user_id").eq("org_id", orgId).eq("user_id", userId).eq("status", "active").maybeSingle();
+      if (error) throw error;
+      return { active: data?.user_id === userId };
+    });
     const { data, error } = await db.from("tab_views").insert({
       org_id: ctx.org.id,
       board_id: boardId,
@@ -48,9 +59,10 @@ export async function POST(req: Request): Promise<Response> {
       name,
       kind: config.kind === "table" ? "flat" : config.kind === "calendar" ? "cal" : "board",
       visibility,
-      person_scope: "viewer",
+      person_scope: scope.personScope,
+      person_scope_user_id: scope.personScopeUserId,
       filters_jsonb: config.filters.byColumn,
-      sort_jsonb: config.filters.sortKey ? [{ columnKey: config.filters.sortKey, direction: config.filters.sortDir }] : [],
+      sort_jsonb: config.sorts,
       hidden_columns_jsonb: config.hiddenColumns,
       column_order_jsonb: config.columnOrder,
       calendar_field_key: config.calendarFieldKey,
@@ -58,7 +70,7 @@ export async function POST(req: Request): Promise<Response> {
       last_used_at: new Date().toISOString(),
     }).select(COLS).single();
     if (error) throw error;
-    return jsonOk(savedBoardViewFromRow(data as Record<string, unknown>), 201);
+    return jsonOk(savedBoardViewFromRow(data as Record<string, unknown>, true), 201);
   } catch (error) {
     return toErrorResponse(error);
   }

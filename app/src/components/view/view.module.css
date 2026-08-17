@@ -1,5 +1,5 @@
-.tabs{display:flex;gap:2px;border-bottom:1px solid var(--mw-line,#d0d4e4)}
-.tabs button{display:flex;align-items:center;gap:6px;min-height:38px;border:0;border-bottom:3px solid transparent;background:transparent;padding:7px 12px;color:var(--mw-sub,#676879);font-weight:600}
+.tabs{display:flex;gap:2px;max-width:100%;overflow-x:auto;border-bottom:1px solid var(--mw-line,#d0d4e4)}
+.tabs button{display:flex;flex:none;align-items:center;gap:6px;min-height:38px;border:0;border-bottom:3px solid transparent;background:transparent;padding:7px 12px;color:var(--mw-sub,#676879);font-weight:600;white-space:nowrap}
 .tabs button:hover{background:#f0f4ff}
 .tabs button[aria-current=page]{border-bottom-color:#6161ff;color:#3535a8}
 
@@ -35,6 +35,9 @@
 .tableWrap table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}
 .tableWrap th,.tableWrap td{border-right:1px solid #e6e9ef;border-bottom:1px solid #e6e9ef;padding:7px;text-align:left;background:#fff}
 .tableWrap thead th{position:sticky;top:0;background:#f6f7fb;z-index:1}
+.singleCell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:20rem}
+.wrapCell{white-space:normal;overflow-wrap:anywhere}
+.tableWrap [data-view-focus="true"]{background:var(--mw-tint-blue,#eef0ff)}
 .tableEmpty{text-align:center;border:1px dashed #c3c6d4;border-radius:12px;padding:36px 20px;color:var(--mw-sub,#676879)}
 
 .calGrid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid #d0d4e4;border-radius:10px;overflow:hidden}
@@ -45,5 +48,5 @@
 
 @media(max-width:720px){
   .pickerMenu{left:auto;right:0;min-width:230px}
-  .tabs button span{display:none}
+  .tabs button span[aria-hidden]{display:none}
 }

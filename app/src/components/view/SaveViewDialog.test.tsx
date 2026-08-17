@@ -36,4 +36,23 @@ describe("SaveViewDialog", () => {
     const html = renderToStaticMarkup(<SaveViewDialog orgId="org-1" boardKey="new" ownerId="카뮈" kind="board" filters={{}} onSubmit={() => {}} />);
     expect(html).toContain("뷰는 권한이 아닙니다");
   });
+
+  it("creates only supported real view kinds and enables calendar when a date column exists", () => {
+    const html = renderToStaticMarkup(
+      <SaveViewDialog
+        orgId="org-1"
+        boardKey="new"
+        ownerId="u1"
+        kind="flat"
+        filters={{}}
+        dateColumns={[{ key: "due", label: "예정일" }]}
+        onSubmit={() => {}}
+      />,
+    );
+    expect(html).toContain("보기 방식");
+    expect(html).toContain("표");
+    expect(html).toContain("보드");
+    expect(html).toContain("캘린더");
+    expect(html).not.toContain('value="cal" disabled');
+  });
 });

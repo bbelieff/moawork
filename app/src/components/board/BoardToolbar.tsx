@@ -98,7 +98,15 @@ export function BoardToolbar({
       c.options_jsonb?.options?.length,
   );
   const active = activeFilterCount(filters);
-  const sortColumn = columns.find((c) => c.key === filters.sortKey);
+  const activeSorts = filters.sorts?.length
+    ? filters.sorts
+    : filters.sortKey
+      ? [{ columnKey: filters.sortKey, direction: filters.sortDir }]
+      : [];
+  const sortSummary = activeSorts.map((sort) => {
+    const column = columns.find((candidate) => candidate.key === sort.columnKey);
+    return `${column?.label ?? sort.columnKey} ${sort.direction === "asc" ? "↑" : "↓"}`;
+  }).join(" · ");
 
   const patch = (p: Partial<BoardFilterState>) => onChange({ ...filters, ...p });
   const optionCounts = useMemo(() => {
@@ -205,39 +213,45 @@ export function BoardToolbar({
 
       <FilterChip
         label="정렬"
-        summary={
-          sortColumn ? `${sortColumn.label} ${filters.sortDir === "asc" ? "↑" : "↓"}` : undefined
-        }
-        active={filters.sortKey !== ""}
-        onClear={() => patch({ sortKey: "", sortDir: "asc" })}
+        summary={sortSummary || undefined}
+        active={activeSorts.length > 0}
+        onClear={() => patch({ sortKey: "", sortDir: "asc", sorts: [] })}
       >
         <RadioOption
           label="기본 순서(직접 배치)"
-          checked={filters.sortKey === ""}
-          onPick={() => patch({ sortKey: "" })}
+          checked={activeSorts.length === 0}
+          onPick={() => patch({ sortKey: "", sortDir: "asc", sorts: [] })}
         />
-        {columns.map((c) => (
-          <RadioOption
-            key={c.id}
-            label={c.label}
-            checked={filters.sortKey === c.key}
-            onPick={() => patch({ sortKey: c.key })}
-          />
-        ))}
-        {filters.sortKey !== "" && (
-          <div className="mt-1 flex gap-1 border-t border-mw-line pt-1">
-            <RadioOption
-              label="오름차순 ↑"
-              checked={filters.sortDir === "asc"}
-              onPick={() => patch({ sortDir: "asc" })}
-            />
-            <RadioOption
-              label="내림차순 ↓"
-              checked={filters.sortDir === "desc"}
-              onPick={() => patch({ sortDir: "desc" })}
-            />
-          </div>
-        )}
+        {columns.map((column) => {
+          const index = activeSorts.findIndex((sort) => sort.columnKey === column.key);
+          const selected = index >= 0;
+          const direction = selected ? activeSorts[index].direction : "asc";
+          return (
+            <div key={column.id} className="flex items-center gap-1">
+              <RadioOption
+                label={`${selected ? `${index + 1}. ` : ""}${column.label}`}
+                checked={selected}
+                onPick={() => patch({
+                  sortKey: "",
+                  sortDir: "asc",
+                  sorts: selected
+                    ? activeSorts.filter((sort) => sort.columnKey !== column.key)
+                    : [...activeSorts, { columnKey: column.key, direction: "asc" }],
+                })}
+              />
+              {selected ? (
+                <button
+                  type="button"
+                  className="rounded px-1 text-xs text-mw-sub hover:bg-mw-hover"
+                  aria-label={`${column.label} 정렬 방향`}
+                  onClick={() => patch({ sorts: activeSorts.map((sort) => sort.columnKey === column.key ? { ...sort, direction: direction === "asc" ? "desc" : "asc" } : sort) })}
+                >
+                  {direction === "asc" ? "↑" : "↓"}
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
       </FilterChip>
 
       {/*

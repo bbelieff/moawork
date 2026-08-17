@@ -1,9 +1,10 @@
 import { jsonOk, readJson, requireCtx, toErrorResponse } from "@/lib/boards/http";
 import { createClient } from "@/lib/supabase/server";
-import { parseSavedBoardViewConfig, savedBoardViewFromRow } from "@/lib/view/board-saved";
+import { parsePersonScopeInput, parseSavedBoardViewConfig, savedBoardViewFromRow } from "@/lib/view/board-saved";
+import { requireActiveFixedPerson } from "@/lib/view/server";
 
 type Params = { params: Promise<{ viewId: string }> };
-const COLS = "id,name,visibility,owner_id,config_jsonb,is_default,last_used_at,board_id";
+const COLS = "id,name,visibility,owner_id,person_scope,person_scope_user_id,config_jsonb,is_default,last_used_at,board_id";
 
 export async function PATCH(req: Request, { params }: Params): Promise<Response> {
   try {
@@ -29,12 +30,31 @@ export async function PATCH(req: Request, { params }: Params): Promise<Response>
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (typeof body.name === "string" && body.name.trim()) patch.name = body.name.trim();
     if (body.visibility === "private" || body.visibility === "shared") patch.visibility = body.visibility;
-    if (body.config !== undefined) patch.config_jsonb = parseSavedBoardViewConfig(body.config);
+    if (body.personScope !== undefined || body.personScopeUserId !== undefined) {
+      const scope = parsePersonScopeInput(body.personScope, body.personScopeUserId);
+      await requireActiveFixedPerson(ctx.org.id, scope, async (orgId, userId) => {
+        const { data, error } = await db.from("org_members").select("user_id").eq("org_id", orgId).eq("user_id", userId).eq("status", "active").maybeSingle();
+        if (error) throw error;
+        return { active: data?.user_id === userId };
+      });
+      patch.person_scope = scope.personScope;
+      patch.person_scope_user_id = scope.personScopeUserId;
+    }
+    if (body.config !== undefined) {
+      const config = parseSavedBoardViewConfig(body.config);
+      patch.config_jsonb = config;
+      patch.kind = config.kind === "table" ? "flat" : config.kind === "calendar" ? "cal" : "board";
+      patch.filters_jsonb = config.filters.byColumn;
+      patch.sort_jsonb = config.sorts;
+      patch.hidden_columns_jsonb = config.hiddenColumns;
+      patch.column_order_jsonb = config.columnOrder;
+      patch.calendar_field_key = config.calendarFieldKey;
+    }
     if (body.touch === true) patch.last_used_at = new Date().toISOString();
     const { data, error } = await db.from("tab_views").update(patch)
       .eq("id", viewId).eq("org_id", ctx.org.id).select(COLS).single();
     if (error) throw error;
-    return jsonOk(data);
+    return jsonOk(savedBoardViewFromRow(data as Record<string, unknown>, true));
   } catch (error) {
     return toErrorResponse(error);
   }

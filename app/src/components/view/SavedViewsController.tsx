@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { applyFilters, BOARD_FILTER_QUERY_KEY, decodeBoardFilters, type BoardFilterState } from "@/components/board/filters";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards";
-import { DEFAULT_SYSTEM_VIEW, isSystemView, type NewTabViewInput, type ResolvedView, type TabView, type ViewKind } from "@/lib/view";
-import { savedViewUrl, systemViewUrl, type SavedBoardView, type SavedBoardViewConfig } from "@/lib/view/board-saved";
+import { type NewTabViewInput, type ViewKind } from "@/lib/view";
+import { applySavedPersonScope, parseSavedStringList, savedViewUrl, systemViewUrl, type SavedBoardView, type SavedBoardViewConfig } from "@/lib/view/board-saved";
 import { CalendarView } from "./CalendarView";
 import { SaveViewDialog } from "./SaveViewDialog";
 import { TableView, type TableColumn } from "./TableView";
@@ -25,22 +25,11 @@ function kindOf(config: SavedBoardViewConfig): ViewKind {
   return config.kind === "calendar" ? "cal" : config.kind === "table" ? "flat" : "board";
 }
 
-function toTabView(view: SavedBoardView, orgId: string, boardId: string): TabView {
-  return {
-    id: view.id, orgId, boardKey: boardId, ownerId: view.ownerId, name: view.name,
-    kind: kindOf(view.config), visibility: view.visibility, personScope: "viewer", personScopeUserId: null,
-    filters: view.config.filters.byColumn,
-    sort: view.config.filters.sortKey ? [{ columnKey: view.config.filters.sortKey, direction: view.config.filters.sortDir }] : [],
-    hiddenColumns: view.config.hiddenColumns, columnOrder: view.config.columnOrder,
-    calendarFieldKey: view.config.calendarFieldKey,
-    createdAt: view.lastUsedAt ?? "1970-01-01T00:00:00.000Z", updatedAt: view.lastUsedAt ?? "1970-01-01T00:00:00.000Z",
-  };
-}
-
 export function SavedViewsController({
-  boardId, orgId, currentUserId, layout = {}, columns = [], rows = [], renderMode = "controls", canEditItems = false,
+  boardId, orgId, currentUserId, teamMemberIds = [], layout = {}, columns = [], rows = [], renderMode = "controls", canEditItems = false,
 }: {
   boardId: string; orgId: string; currentUserId: string;
+  teamMemberIds?: readonly string[];
   layout?: Record<string, readonly string[]>; columns?: readonly BoardColumn[]; rows?: readonly ItemWithValues[];
   renderMode?: "controls" | "flat" | "calendar";
   canEditItems?: boolean;
@@ -49,10 +38,6 @@ export function SavedViewsController({
   const [pending, setPending] = useState<SavedBoardViewConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now] = useState(() => new Date());
-  const reload = useCallback(async () => {
-    try { setViews(await request(`/api/tab-views?boardId=${encodeURIComponent(boardId)}`)); setError(null); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "저장된 뷰를 불러오지 못했습니다."); }
-  }, [boardId]);
   useEffect(() => {
     request<SavedBoardView[]>(`/api/tab-views?boardId=${encodeURIComponent(boardId)}`)
       .then((loaded) => { setViews(loaded); setError(null); })
@@ -62,17 +47,24 @@ export function SavedViewsController({
   const activeId = typeof window === "undefined" ? null : new URL(window.location.href).searchParams.get("savedView");
   const activeSaved = views.find((view) => view.id === activeId) ?? null;
   const activeKind: ViewKind = activeSaved ? kindOf(activeSaved.config) : renderMode === "calendar" ? "cal" : renderMode === "flat" ? "flat" : "board";
-  const current: ResolvedView = activeSaved ? toTabView(activeSaved, orgId, boardId) : { ...DEFAULT_SYSTEM_VIEW, kind: activeKind };
 
-  const currentConfig = useCallback((filters?: BoardFilterState): SavedBoardViewConfig => {
-    const url = new URL(window.location.href);
+  const currentConfig = useCallback((filtersOverride?: BoardFilterState): SavedBoardViewConfig => {
+    const url = new URL(typeof window === "undefined" ? "http://localhost" : window.location.href);
+    const filters = filtersOverride ?? decodeBoardFilters(url.searchParams.get(BOARD_FILTER_QUERY_KEY));
     return {
       kind: activeKind === "cal" ? "calendar" : activeKind === "flat" ? "table" : "board",
-      filters: filters ?? decodeBoardFilters(url.searchParams.get(BOARD_FILTER_QUERY_KEY)),
+      filters,
       groupBy: url.searchParams.get("group") ?? "", layout,
-      hiddenColumns: activeSaved?.config.hiddenColumns ?? [],
-      columnOrder: activeSaved?.config.columnOrder ?? Object.values(layout).flat(),
-      calendarFieldKey: activeSaved?.config.calendarFieldKey ?? columns.find((column) => column.type === "date")?.key ?? null,
+      hiddenColumns: url.searchParams.has("mwHidden")
+        ? parseSavedStringList(url.searchParams.get("mwHidden") ?? undefined)
+        : activeSaved?.config.hiddenColumns ?? [],
+      columnOrder: url.searchParams.has("mwOrder")
+        ? parseSavedStringList(url.searchParams.get("mwOrder") ?? undefined)
+        : activeSaved?.config.columnOrder ?? Object.values(layout).flat(),
+      calendarFieldKey: url.searchParams.get("calendarField") ?? activeSaved?.config.calendarFieldKey ?? columns.find((column) => column.type === "date")?.key ?? null,
+      sorts: filters.sorts ?? activeSaved?.config.sorts ?? (filters.sortKey ? [{ columnKey: filters.sortKey, direction: filters.sortDir }] : []),
+      textMode: url.searchParams.has("mwText") ? (url.searchParams.get("mwText") === "wrap" ? "wrap" : "single") : activeSaved?.config.textMode ?? "single",
+      focusColumnKey: url.searchParams.has("mwFocus") ? url.searchParams.get("mwFocus") : activeSaved?.config.focusColumnKey ?? null,
     };
   }, [activeKind, activeSaved, columns, layout]);
 
@@ -82,16 +74,12 @@ export function SavedViewsController({
     return () => window.removeEventListener("moawork:save-board-view", onSave);
   }, [currentConfig]);
 
-  const selectSystem = (kind: ViewKind) => {
-    window.location.assign(systemViewUrl(kind, window.location.href));
+  const selectSystem = () => {
+    window.location.assign(systemViewUrl("flat", window.location.href));
   };
-  const selectResolved = async (view: ResolvedView) => {
-    if (isSystemView(view)) return selectSystem(view.kind);
-    const saved = views.find((candidate) => candidate.id === view.id);
-    if (saved) {
-      await request(`/api/tab-views/${saved.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ selected: true }) });
-      window.location.assign(savedViewUrl(saved, window.location.href));
-    }
+  const selectSaved = async (saved: SavedBoardView) => {
+    await request(`/api/tab-views/${saved.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ selected: true }) });
+    window.location.assign(savedViewUrl(saved, window.location.href));
   };
   const changeCalendarField = async (key: string) => {
     if (!activeSaved) return;
@@ -101,15 +89,32 @@ export function SavedViewsController({
   };
   const create = async (input: NewTabViewInput) => {
     if (!pending) return;
-    await request("/api/tab-views", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+    const created = await request<SavedBoardView>("/api/tab-views", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
       boardId, name: input.name, visibility: input.visibility,
+      personScope: input.personScope, personScopeUserId: input.personScopeUserId ?? null,
       config: { ...pending, kind: input.kind === "cal" ? "calendar" : input.kind === "flat" ? "table" : "board", calendarFieldKey: input.calendarFieldKey },
     }) });
-    setPending(null); await reload();
+    setPending(null);
+    window.location.assign(savedViewUrl(created, window.location.href));
+  };
+  const rename = async (name: string) => {
+    if (!activeSaved) return;
+    await request(`/api/tab-views/${activeSaved.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
+    setViews((currentViews) => currentViews.map((view) => view.id === activeSaved.id ? { ...view, name } : view));
+  };
+  const remove = async () => {
+    if (!activeSaved) return;
+    const result = await request<{ deleted: true; fallback: SavedBoardView | null }>(`/api/tab-views/${activeSaved.id}`, { method: "DELETE" });
+    window.location.assign(result.fallback ? savedViewUrl(result.fallback, window.location.href) : systemViewUrl("flat", window.location.href));
   };
 
   const config = activeSaved?.config ?? currentConfig();
-  const filteredRows = useMemo(() => applyFilters(rows, columns, config.filters), [rows, columns, config.filters]);
+  const personColumnKey = columns.find((column) => column.type === "person")?.key ?? null;
+  const personScopedRows = useMemo(
+    () => applySavedPersonScope(rows, activeSaved, currentUserId, personColumnKey, teamMemberIds),
+    [rows, activeSaved, currentUserId, personColumnKey, teamMemberIds],
+  );
+  const filteredRows = useMemo(() => applyFilters(personScopedRows, columns, config.filters), [personScopedRows, columns, config.filters]);
   const orderedColumns = useMemo(() => {
     const hidden = new Set(config.hiddenColumns);
     const rank = new Map(config.columnOrder.map((key, index) => [key, index]));
@@ -121,12 +126,12 @@ export function SavedViewsController({
   return (
     <section aria-label="저장된 뷰" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <ViewTabs kind={activeKind} onSelect={selectSystem} />
-        <ViewPicker views={views.map((view) => toTabView(view, orgId, boardId))} current={current} currentUserId={currentUserId} onSelect={selectResolved} onRequestSave={() => setPending(currentConfig())} />
+        <ViewTabs views={views} activeId={activeSaved?.id ?? null} onSelectMain={selectSystem} onSelect={(view) => void selectSaved(view)} onRequestCreate={() => setPending(currentConfig())} />
+        <ViewPicker view={activeSaved} editable={activeSaved?.canEdit ?? activeSaved?.ownerId === currentUserId} onRename={(name) => void rename(name)} onDelete={() => void remove()} />
         {error ? <span role="alert" className="text-xs text-mw-error">{error}</span> : null}
       </div>
-      {pending ? <SaveViewDialog orgId={orgId} boardKey={boardId} ownerId={currentUserId} kind={kindOf(pending)} filters={pending.filters.byColumn} sort={pending.filters.sortKey ? [{ columnKey: pending.filters.sortKey, direction: pending.filters.sortDir }] : []} calendarFieldKey={pending.calendarFieldKey} onSubmit={(input) => void create(input)} onCancel={() => setPending(null)} /> : null}
-      {renderMode === "flat" ? <TableView columns={tableColumns} rows={filteredRows} rowKey={(row) => row.id} renderCell={(row, column) => {
+      {pending ? <SaveViewDialog orgId={orgId} boardKey={boardId} ownerId={currentUserId} kind={kindOf(pending)} filters={pending.filters.byColumn} sort={pending.sorts} calendarFieldKey={pending.calendarFieldKey} dateColumns={columns.filter((column) => column.type === "date" || column.type === "datetime").map((column) => ({ key: column.key, label: column.label }))} onSubmit={(input) => void create(input)} onCancel={() => setPending(null)} /> : null}
+      {renderMode === "flat" ? <TableView columns={tableColumns} rows={filteredRows} textMode={config.textMode} focusColumnKey={config.focusColumnKey} rowKey={(row) => row.id} renderCell={(row, column) => {
         if (column.key === "__title") return row.title;
         const definition = columns.find((candidate) => candidate.key === column.key);
         return definition ? <BoardCell boardId={boardId} row={row} column={definition} readOnly={!canEditItems} /> : "";

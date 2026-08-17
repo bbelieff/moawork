@@ -44,6 +44,12 @@ describe("AppTabs — 목업 「탭 6개 한 화면」 탭 줄", () => {
     expect(await render("/w/sample-lab/settings/members")).toBe("");
     expect(await render("/w/sample-lab/platform")).toBe("");
     expect(await render("/w/sample-lab")).toBe("");
+    expect(await render("/w/sample-lab/boards/board-1")).toBe("");
+  });
+
+  it("보드 본문에서는 사이드바 복제 탭을 숨겨 저장 뷰 헤더와 경쟁하지 않는다", async () => {
+    const html = await render("/w/sample-lab/boards/board-1?view=flat");
+    expect(html).toBe("");
   });
 
   it("각 탭이 자기 대표 주소로 링크된다 — 전환이 실제로 일어난다", async () => {
