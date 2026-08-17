@@ -101,12 +101,22 @@ export async function runWorkspaceSelection(
     return;
   }
 
-  const notice = workspaceSelectionNotice(result);
-  if (!result.ok || !result.redirectTo) {
+  if (!result.ok) {
     // 실패는 다시 시도할 수 있어야 하므로 잠금을 푼다. 이동은 하지 않는다.
-    fx.setView({ notice, locked: false });
+    fx.setView({ notice: workspaceSelectionNotice(result), locked: false });
     return;
   }
+
+  if (!result.redirectTo) {
+    // 성공인데 갈 곳이 없는 경우. 오늘 이 화면에서는 도달할 수 없다 — `select_workspace` 는
+    // `route.ts:43-48` 에서 `redirectTo` 를 항상 함께 준다. 그래도 «성공» 으로 칠하지 않는다:
+    // 서버 문구가 「안전하게 이동할게요」인데 이동이 없으면 초록 배너로 거짓말을 하게 된다.
+    // 카드 계약의 「실패가 성공처럼 보이는 경우 0」은 도달 불가 경로에도 적용한다.
+    fx.setView({ notice: { tone: "error", text: WORKSPACE_REDIRECT_FAILED }, locked: false });
+    return;
+  }
+
+  const notice = workspaceSelectionNotice(result);
 
   // 이동 시작 — 화면이 바뀔 때까지 잠가 둔다.
   fx.setView({ notice, locked: true });
@@ -117,6 +127,30 @@ export async function runWorkspaceSelection(
     // 이 카드가 없애려던 «성공인데 오류로 보이는» 증상이 반대 모습으로 되살아나므로 되돌린다.
     fx.setView({ notice: { tone: "error", text: WORKSPACE_REDIRECT_FAILED }, locked: false });
   }
+}
+
+/**
+ * 브라우저에서 쓰는 진짜 배선. **컴포넌트 안에 두지 않는 이유가 있다.**
+ *
+ * 흐름(`runWorkspaceSelection`)은 효과를 주입받으므로 테스트가 전부 가짜로 갈아끼운다.
+ * 그러면 「진짜 배선이 무엇을 부르는가」는 아무도 안 보게 된다 — 실제로 이 배선만 끊어도
+ * (`assign` 을 빈 함수로, `getView` 를 stale state 로) 테스트가 전부 초록이었다.
+ * export 된 순수 함수로 떼어 두면 배선 자체를 직접 검사할 수 있다.
+ */
+export function browserSelectionEffects(
+  viewRef: { current: WorkspaceChooserView },
+  setView: (view: WorkspaceChooserView) => void,
+): WorkspaceSelectionEffects {
+  return {
+    // state 는 같은 tick 안에서 갱신되지 않는다. 연타 차단은 ref 의 «지금» 값을 봐야 한다.
+    getView: () => viewRef.current,
+    setView: (next) => {
+      viewRef.current = next;
+      setView(next);
+    },
+    submit: (workspaceId) => submitWorkspaceRequest({ kind: "select_workspace", workspaceId }),
+    assign: (url) => window.location.assign(url),
+  };
 }
 
 /** 상태를 갖지 않는 회사 선택 화면. 렌더 결과 전체가 `view` 하나로 결정된다. */
@@ -150,18 +184,8 @@ export function WorkspaceChooser({
     track("workspace_entry_state", { state: "chooser" });
   }, [track]);
 
-  function setView(next: WorkspaceChooserView) {
-    viewRef.current = next;
-    setViewState(next);
-  }
-
   function onSelect(workspaceId: string) {
-    void runWorkspaceSelection(workspaceId, {
-      getView: () => viewRef.current,
-      setView,
-      submit: (id) => submitWorkspaceRequest({ kind: "select_workspace", workspaceId: id }),
-      assign: (url) => window.location.assign(url),
-    });
+    void runWorkspaceSelection(workspaceId, browserSelectionEffects(viewRef, setViewState));
   }
 
   return <WorkspaceChooserView workspaces={workspaces} badges={badges} view={view} onSelect={onSelect} />;

@@ -24,16 +24,20 @@ import {
   WORKSPACE_CHOOSER_IDLE,
   WORKSPACE_REDIRECT_FAILED,
   WORKSPACE_REQUEST_FAILED,
+  WorkspaceChooser,
   WorkspaceChooserView,
   WorkspaceSelectionNotice,
+  browserSelectionEffects,
   runWorkspaceSelection,
   workspaceNoticeRole,
   workspaceSelectionNotice,
   type WorkspaceChooserView as View,
 } from "./WorkspaceChooser";
+import { submitWorkspaceRequest } from "@/lib/workspace-entry/contracts";
 import styles from "./workspace-entry.module.css";
 
 vi.mock("@/lib/analytics/useTrack", () => ({ useTrack: () => () => {} }));
+vi.mock("@/lib/workspace-entry/contracts", () => ({ submitWorkspaceRequest: vi.fn() }));
 
 /** 운영에서 실제로 돌아오는 성공 응답 (route.ts select_workspace 분기). */
 const SUCCESS: WorkspaceRequestResult = {
@@ -267,5 +271,75 @@ describe("BBE-183 ④ 흐름 — 이동 횟수와 연타", () => {
     expect(h.view.locked).toBe(false);
     // 요청 실패와 이동 실패는 사용자가 할 일이 달라서 문구가 같으면 안 된다.
     expect(WORKSPACE_REDIRECT_FAILED).not.toBe(WORKSPACE_REQUEST_FAILED);
+  });
+
+  // 오늘 도달 불가하지만(route.ts:43-48 이 redirectTo 를 항상 준다) 계약으로 고정한다.
+  // 「안전하게 이동할게요」를 초록으로 띄우고 이동하지 않으면 그게 곧 거짓 성공이다.
+  it("성공인데 갈 곳이 없으면 초록으로 칠하지 않는다", async () => {
+    const h = harness(async () => ({ ok: true, state: "selection_revalidation", message: SUCCESS.message }));
+
+    await runWorkspaceSelection("org-1", h.fx);
+
+    expect(h.view.notice?.tone).toBe("error");
+    expect(h.view.notice?.text).toBe(WORKSPACE_REDIRECT_FAILED);
+    expect(h.assigned).toEqual([]);
+    expect(h.view.locked).toBe(false);
+  });
+});
+
+describe("BBE-183 ⑤ 배선 — 화면이 실제로 부르는 것", () => {
+  // 아래 셋은 «주입을 전부 가짜로 갈아끼우는» 검사 방식이 놓치는 지점이다.
+  // 흐름과 뷰가 아무리 촘촘해도 이 배선이 끊기면 사용자에게는 아무 일도 일어나지 않는다.
+
+  it("getView 는 setView 직후 즉시 새 값을 준다 — state 가 아니라 ref 를 본다", () => {
+    const ref = { current: WORKSPACE_CHOOSER_IDLE };
+    const pushed: View[] = [];
+    const fx = browserSelectionEffects(ref, (next) => pushed.push(next));
+    const next: View = { notice: { tone: "success", text: "m" }, locked: true };
+
+    fx.setView(next);
+
+    // ref 를 안 쓰면 같은 tick 에서 여전히 IDLE 이 보이고 연타 차단이 뚫린다.
+    expect(fx.getView()).toEqual(next);
+    // React state 갱신도 같이 일어나야 화면이 다시 그려진다.
+    expect(pushed).toEqual([next]);
+  });
+
+  it("assign 은 window.location.assign 을 실제로 부른다", () => {
+    const ref = { current: WORKSPACE_CHOOSER_IDLE };
+    const fx = browserSelectionEffects(ref, () => {});
+    const assigned: string[] = [];
+    const globals = globalThis as { window?: unknown };
+    const original = globals.window;
+    globals.window = { location: { assign: (url: string) => assigned.push(url) } };
+
+    try {
+      fx.assign("/w/seoul");
+    } finally {
+      globals.window = original;
+    }
+
+    // 배선을 빈 함수로 바꾸면 화면은 «이동할게요» 를 띄운 채 영영 멈춘다.
+    expect(assigned).toEqual(["/w/seoul"]);
+  });
+
+  it("submit 은 select_workspace 로 서버에 묻는다", () => {
+    const ref = { current: WORKSPACE_CHOOSER_IDLE };
+    const fx = browserSelectionEffects(ref, () => {});
+    vi.mocked(submitWorkspaceRequest).mockResolvedValue(SUCCESS);
+
+    void fx.submit("org-1");
+
+    expect(submitWorkspaceRequest).toHaveBeenCalledWith({ kind: "select_workspace", workspaceId: "org-1" });
+  });
+
+  it("/workspaces 가 렌더하는 래퍼가 실제로 화면을 그린다", () => {
+    // 래퍼가 return null 이어도 뷰·흐름 테스트는 전부 초록이었다. 여기서 막는다.
+    const html = renderToStaticMarkup(<WorkspaceChooser workspaces={WORKSPACES} />);
+
+    expect(html).toContain("서울");
+    expect(html).toContain("/w/seoul");
+    expect(html).toContain("<button");
+    expect(html).toContain("들어갈 회사를 골라 주세요.");
   });
 });
