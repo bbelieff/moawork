@@ -220,7 +220,9 @@ describe("BBE-193 성공/실패 표현 계약", () => {
     ])("%s 는 소비처가 실제로 화면에 붙인다", (name, consumer) => {
       const source = sourceOf(consumer);
       expect(source).toContain(`import { ${name} }`);
-      expect(source).toContain(`<${name}`);
+      // ★ 요소 경계까지 본다. `toContain()` 로 하면 <XxxRemoved 같은 이름에도
+      // 그대로 통과해 «화면에서 떼어냈다» 를 놓친다 — 뮤테이션 ⑬ 이 실제로 뚫었던 구멍이다.
+      expect(source).toMatch(new RegExp("<" + name + "[\\s/>]"));
     });
 
     // ★ 이 둘은 붙는 화면이 없다(AGENTS §1.3 의 «52개 파일» 문제).
