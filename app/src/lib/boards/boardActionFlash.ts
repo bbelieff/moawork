@@ -14,6 +14,38 @@
 // ★ 여기에 담는 문장은 «사용자에게 보여줄 말» 이다. 원본 예외 메시지를 그대로 넣지 마라 —
 //   DB 오류 문구에는 내부 구조가 섞인다. 분류해서 사람 말로 바꾼 뒤 담는다.
 
+import { ValidationError } from "./validation";
+
+/**
+ * 사용자에게 «그대로 보여줘도 되는» 문장을 담은 오류 (BBE-201).
+ *
+ * 이 표시가 없으면 호출부는 「이 메시지를 화면에 띄워도 안전한가」를 알 수 없어
+ * 전부 일반 문구로 뭉개거나, 반대로 DB 원문을 그대로 노출하게 된다.
+ *
+ * ★ 여기(순수 모듈)에 둔다. 서버 액션 파일(`"use server"`)은 **모든 export 가
+ *   async 함수여야** 하므로 클래스를 export 하면 `next build` 가 깨진다.
+ *   `tsc`·vitest 는 그 규칙을 모른다 — 빌드에서만 드러난다.
+ */
+export class UserFacingActionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UserFacingActionError";
+  }
+}
+
+/**
+ * 실패를 «화면에 쓸 문장» 으로 바꾼다 (BBE-201).
+ *
+ * ★ 원본 예외 메시지를 그대로 쓰지 않는다. DB 오류 문구에는 테이블명·정책명·SQLSTATE 가
+ *   섞여 있어 사용자에게 아무 도움이 안 되고 내부 구조만 드러낸다.
+ *   우리가 «사람에게 하는 말로» 쓴 것만 통과시킨다.
+ */
+export function userFacingMessage(error: unknown): string {
+  if (error instanceof UserFacingActionError) return error.message;
+  if (error instanceof ValidationError) return `입력을 확인해 주세요 — ${error.message}`;
+  return "항목을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.";
+}
+
 /** 플래시 쿠키 이름. */
 export const BOARD_ACTION_FLASH_COOKIE = "mw_board_err";
 

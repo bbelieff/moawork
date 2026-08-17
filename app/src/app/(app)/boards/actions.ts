@@ -14,7 +14,7 @@ import { loadPermGuard } from "@/lib/perm/guard";
 import { recordRiskyAction } from "@/lib/perm/server";
 import { NotFoundError } from "@/lib/boards";
 import { createRequestBoards } from "@/lib/boards/server";
-import { parseNewBoard, parseNewColumn, parseNewItem, isFieldType, ValidationError } from "@/lib/boards/validation";
+import { parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
 import type { Ctx, FieldOption } from "@/lib/types";
 import type { ItemWithValues } from "@/lib/boards/types";
 import { boardCellValueFromFormData } from "@/lib/boards/form-values";
@@ -31,6 +31,8 @@ import {
   BOARD_ACTION_FLASH_COOKIE,
   BOARD_ACTION_FLASH_MAX_AGE,
   encodeBoardActionFlash,
+  UserFacingActionError,
+  userFacingMessage,
 } from "@/lib/boards/boardActionFlash";
 import { encodeNoticeFile, NOTICE_FILE_VALUE_PREFIX } from "@/lib/notices/official-file";
 import { notifyBoardItemMoved } from "@/lib/notify/board-actions";
@@ -58,19 +60,6 @@ async function boardsService() {
   return (await createRequestBoards()).service;
 }
 
-/**
- * 사용자에게 «그대로 보여줘도 되는» 문장을 담은 오류 (BBE-201).
- *
- * 이 표시가 없으면 호출부는 「이 메시지를 화면에 띄워도 안전한가」를 알 수 없어
- * 전부 일반 문구로 뭉개거나, 반대로 DB 원문을 그대로 노출하게 된다.
- */
-export class UserFacingActionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "UserFacingActionError";
-  }
-}
-
 async function requirePermission(ctx: Ctx, scopeKey: string, riskKey?: "danger.bulk_edit_delete"): Promise<void> {
   const permission = await loadPermGuard(ctx.org.id, scopeKey);
   // ★ 「권한이 없다」와 「권한을 확인하지 못했다」는 사용자에게 다른 사실이다(BBE-204 와 같은 족보).
@@ -83,19 +72,6 @@ async function requirePermission(ctx: Ctx, scopeKey: string, riskKey?: "danger.b
   if (riskKey && !(await recordRiskyAction(ctx.org.id, riskKey, { operation: scopeKey })).ok) {
     throw new UserFacingActionError("위험 작업 기록을 남기지 못해 실행하지 않았어요.");
   }
-}
-
-/**
- * 실패를 «화면에 쓸 문장» 으로 바꾼다 (BBE-201).
- *
- * ★ 원본 예외 메시지를 그대로 쓰지 않는다. DB 오류 문구에는 테이블명·정책명·SQLSTATE 가
- *   섞여 있어 사용자에게 아무 도움이 안 되고 내부 구조만 드러낸다.
- *   우리가 «사람에게 하는 말로» 쓴 것(UserFacingActionError·ValidationError)만 통과시킨다.
- */
-function userFacingMessage(error: unknown): string {
-  if (error instanceof UserFacingActionError) return error.message;
-  if (error instanceof ValidationError) return `입력을 확인해 주세요 — ${error.message}`;
-  return "항목을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.";
 }
 
 /**
