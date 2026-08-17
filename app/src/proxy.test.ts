@@ -140,9 +140,21 @@ describe("proxy carries refreshed session cookies out of every exit (BBE-200)", 
     expect(response.headers.get("location")).toBeNull();
     expect(response.headers.get("x-middleware-next")).toBe("1");
 
-    const source = readFileSync(new URL("./proxy.ts", import.meta.url), "utf8");
-    const start = source.indexOf("async function routeRequest(");
-    expect(start).toBeGreaterThanOrEqual(0);
+    // ★ 줄바꿈 정규화. 이 저장소는 CRLF 와 LF 가 «섞여» 있다 —
+    //   `.gitattributes` 는 *.sh · *.mjs · .githooks 만 eol=lf 로 고정하고 **.ts 는 안 덮는다.**
+    //   core.autocrlf=true 라서 Windows 에서 새로 checkout 하면 이 파일은 CRLF 로 내려온다.
+    //   즉 «누가 어떻게 저장했는가» 에 따라 디스크의 바이트가 달라진다. 문자열로 소스를
+    //   훑는 검사는 그 차이에 조용히 무력화될 수 있으므로 읽자마자 LF 로 통일한다.
+    //   (2026-08-18 DC-15 가 변이 검사에서 CRLF 때문에 앵커가 안 맞아 「변이 생존 = 테스트가
+    //    가짜」로 잘못 적을 뻔했다. 같은 뿌리다.)
+    const source = readFileSync(new URL("./proxy.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+    const anchor = "async function routeRequest(";
+    // ★ 앵커는 «정확히 1회» 매치해야 한다 (팀 규칙 — 다중 매치는 중단 사유다).
+    //   0회·2회를 «한 단언» 으로 잡는다. indexOf === lastIndexOf 로 쓰면 0회일 때
+    //   -1 === -1 로 통과해서(fail-open) 방어가 «옆 줄이 살아 있는지» 에 기대게 된다.
+    //   방어가 이웃에 의존하면, 이웃을 지우는 사람이 방어를 지운 줄 모른다.
+    expect(source.split(anchor).length - 1).toBe(1);
+    const start = source.indexOf(anchor);
     let depth = 0;
     let end = -1;
     for (let i = source.indexOf("{", start); i < source.length; i += 1) {
