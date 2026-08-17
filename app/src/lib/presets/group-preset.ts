@@ -43,6 +43,25 @@ import {
 } from "./section-presets";
 
 /**
+ * **사용자에게 그대로 보여도 되는** 오류.
+ *
+ * 서버 액션의 `catch` 는 무엇이 던져졌는지 모른다. 그래서 `error.message` 를 그대로 화면에
+ * 띄우면 저장소가 던진 원문이 새어 나간다 — `repo/supabase/boardsRepo.ts` 는 여러 곳에서
+ * `throw new Error(q.error.message)` 로 **Supabase 원문**을 던지므로,
+ * `duplicate key value violates unique constraint "board_columns_board_id_key_key"` 같은 문장이
+ * 사용자에게 보일 수 있다. 행동할 수 없는 안내이고 스키마가 드러난다(§9.2).
+ *
+ * 그래서 «내가 사용자에게 하려던 말» 만 이 타입으로 던진다. 액션은 이 타입일 때만 문장을
+ * 그대로 쓰고, 나머지는 일반 문구로 수렴시킨 뒤 원문은 서버 로그로만 남긴다.
+ */
+export class PresetActionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PresetActionError";
+  }
+}
+
+/**
  * 프리셋 칩·저장 기본값에 쓰는 이름 — `탭-그룹` 형식(PLAN-002 §5 WO-6 명명 규칙).
  *
  * 화면과 저장이 **같은 함수**를 부르게 해 둔다. 예전에는 `BoardWorkspace` 가 이 문자열을
