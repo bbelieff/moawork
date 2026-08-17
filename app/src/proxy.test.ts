@@ -140,9 +140,20 @@ describe("proxy carries refreshed session cookies out of every exit (BBE-200)", 
     expect(response.headers.get("location")).toBeNull();
     expect(response.headers.get("x-middleware-next")).toBe("1");
 
-    const source = readFileSync(new URL("./proxy.ts", import.meta.url), "utf8");
-    const start = source.indexOf("async function routeRequest(");
+    // ★ 줄바꿈 정규화. 이 저장소는 CRLF 와 LF 가 «섞여» 있다 —
+    //   `.gitattributes` 는 *.sh · *.mjs · .githooks 만 eol=lf 로 고정하고 **.ts 는 안 덮는다.**
+    //   core.autocrlf=true 라서 Windows 에서 새로 checkout 하면 이 파일은 CRLF 로 내려온다.
+    //   즉 «누가 어떻게 저장했는가» 에 따라 디스크의 바이트가 달라진다. 문자열로 소스를
+    //   훑는 검사는 그 차이에 조용히 무력화될 수 있으므로 읽자마자 LF 로 통일한다.
+    //   (2026-08-18 DC-15 가 변이 검사에서 CRLF 때문에 앵커가 안 맞아 「변이 생존 = 테스트가
+    //    가짜」로 잘못 적을 뻔했다. 같은 뿌리다.)
+    const source = readFileSync(new URL("./proxy.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+    const anchor = "async function routeRequest(";
+    const start = source.indexOf(anchor);
     expect(start).toBeGreaterThanOrEqual(0);
+    // ★ 앵커는 «정확히 1회» 매치해야 한다. 두 곳에 맞으면 엉뚱한 본문을 떠내고도
+    //   검사는 초록으로 통과한다(팀 규칙 — 앵커 다중 매치는 중단 사유다).
+    expect(source.indexOf(anchor)).toBe(source.lastIndexOf(anchor));
     let depth = 0;
     let end = -1;
     for (let i = source.indexOf("{", start); i < source.length; i += 1) {
