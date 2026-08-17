@@ -1,5 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
-import type { Role } from "./matrix";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { getSession } from "@/lib/auth/session";
+import { BoardsService } from "@/lib/boards/service";
+import { roleDefaultAllowed } from "./resolve";
+import { isRole, type Role } from "./matrix";
 
 export type PermMatrixRow = {
   group: string;
@@ -36,6 +40,24 @@ export async function loadPermissionScopedWorkItems(
   orgId: string,
   viewAssignee: string | null = null,
 ): Promise<{ ok: true; result: ScopedWorkItems } | { ok: false; reason: "permission" | "unavailable" }> {
+  // ★ BBE-207 — 개발 빌드 + Supabase 없음. 여기도 createClient() 가 던져 «판정 불능» 이 됐고
+  //   boards/[id] 가 그걸 404 로 접었다. 권한(위)만 고쳐서는 이 화면이 안 열린다.
+  //
+  //   ★ 넓히지 않는다. 조회 범위가 «회사 전체»(scope: all) 인 경우에만 로컬에서 계산하고,
+  //     좁은 범위(assigned 등)는 **로컬에서 계산하지 않고 닫아 둔다** — D24 범위를 손으로
+  //     흉내 내다 틀리면 그게 곧 정보 노출이다. 모르면 닫는다.
+  if (process.env.NODE_ENV !== "production" && !hasSupabaseEnv()) {
+    const ctx = await getSession();
+    if (ctx.scope !== "all") return { ok: false, reason: "unavailable" };
+    const boards = new BoardsService();
+    const visible = await boards.listBoards(ctx);
+    const perBoard = await Promise.all(visible.map((board) => boards.listItems(ctx, board.id)));
+    return {
+      ok: true,
+      result: { itemIds: perBoard.flat().map((item) => item.id), hiddenCount: 0 },
+    };
+  }
+
   try {
     const supabase = await createClient();
     const { data, error } = await supabase.rpc("read_permission_scoped_work_items", {
@@ -68,6 +90,24 @@ export async function loadEffectivePermission(
   orgId: string,
   scopeKey: string,
 ): Promise<{ allowed: boolean; ok: true } | { ok: false }> {
+  // ★ BBE-207 — 개발 빌드 + Supabase 없음에서만 로컬 시드 역할로 «판정» 한다.
+  //
+  //   그동안 이 경로는 createClient() 가 던져 { ok:false } → denied/unavailable 이 됐고,
+  //   그래서 로컬에서 보드 화면이 열리지 않았다(권한 조회가 «실패» 하니 통과할 방법이 없었다).
+  //
+  //   ★ 전부 허용하지 않는다. `roleDefaultAllowed` 로 **역할 기본값을 그대로 계산**한다 —
+  //     운영에서 쓰는 것과 같은 표(matrix.ts)이고, 모르는 scopeKey 는 false(닫힘)다.
+  //     즉 로컬에서도 member 는 여전히 owner 전용 기능을 못 연다. fail-closed 는 유지된다.
+  //
+  //   ★ 조건을 여기 «인라인» 으로 적는다. 함수로 감싸면 경계 검사기
+  //     (scripts/check-production-repo-boundaries.mjs 의 isInsideExplicitDevGuard)가
+  //     읽지 못해 운영 위반으로 세어진다 — 그 문법 자체가 「운영에서 도달 불가」의 증명이다.
+  if (process.env.NODE_ENV !== "production" && !hasSupabaseEnv()) {
+    const ctx = await getSession();
+    if (!isRole(ctx.role)) return { ok: false };
+    return { ok: true, allowed: roleDefaultAllowed(ctx.role, scopeKey) };
+  }
+
   try {
     const supabase = await createClient();
     const { data, error }: RpcResult<boolean> = await supabase.rpc("effective_permission", {
