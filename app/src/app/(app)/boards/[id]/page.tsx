@@ -11,6 +11,7 @@ import { NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
+import { SectionPresetRepo } from "@/lib/presets/section-presets";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { BoardTrashPanel } from "@/components/board/BoardTrashPanel";
 import { SavedViewsController } from "@/components/view";
@@ -44,13 +45,14 @@ export default async function BoardPage({
   const ctx = applyAs(await getSession(), sp.as);
   const viewTabs = await loadPermGuard(ctx.org.id, "work.view_tabs");
   if (viewTabs.kind !== "allowed") notFound();
-  const [scopedItems, itemUpsert, itemDelete, columnManage, sectionManage, boardDelete] = await Promise.all([
+  const [scopedItems, itemUpsert, itemDelete, columnManage, sectionManage, boardDelete, presetEdit] = await Promise.all([
     loadPermissionScopedWorkItems(ctx.org.id),
     loadPermGuard(ctx.org.id, "work.item_upsert"),
     loadPermGuard(ctx.org.id, "work.item_delete"),
     loadPermGuard(ctx.org.id, "structure.column_manage"),
     loadPermGuard(ctx.org.id, "structure.section_manage"),
     loadPermGuard(ctx.org.id, "danger.bulk_edit_delete"),
+    loadPermGuard(ctx.org.id, "structure.preset_edit"),
   ]);
   // Permission and D24 scope are resolved before any board metadata or item read.
   if (!scopedItems.ok) notFound();
@@ -59,7 +61,8 @@ export default async function BoardPage({
   const canManageColumns = columnManage.kind === "allowed";
   const canManageSections = sectionManage.kind === "allowed";
   const canDeleteBoard = boardDelete.kind === "allowed";
-  const { client, service: svc } = await createRequestBoards();
+  const canEditPresets = presetEdit.kind === "allowed";
+  const { client, repo, service: svc } = await createRequestBoards();
 
   let detail;
   try {
@@ -129,6 +132,15 @@ export default async function BoardPage({
   const assigneeLabels = Object.fromEntries(
     (await loadDefaultTabAssignees(ctx)).map((member) => [member.userId, member.displayName]),
   );
+  /*
+   * 그룹 메뉴의 «다른 프리셋 적용» 목록 (BBE-174).
+   * 프리셋 라이브러리 화면과 **같은 저장소**를 읽는다 — 그룹에서 저장한 것이 라이브러리에
+   * 그대로 뜨고, 라이브러리에서 지우면 여기서도 사라진다. 정본이 하나뿐이라는 뜻이다.
+   * 권한이 없으면 목록 자체를 만들지 않는다(볼 수 없는 것을 실어 보내지 않는다).
+   */
+  const presets = canEditPresets && !board.is_system
+    ? await new SectionPresetRepo(repo).list(ctx)
+    : [];
   const savedColumnOrder = getBoardColumnOrder(ctx.org.id, id);
   const activeColumnOrder = Object.fromEntries(
     Object.entries(parseSavedBoardLayout(sp.mwLayout) ?? savedColumnOrder).map(([groupId, keys]) => [groupId, [...keys]]),
@@ -295,6 +307,8 @@ export default async function BoardPage({
         canEditItems={canEditItems}
         canDeleteItems={canDeleteItems}
         canManageColumns={canManageColumns}
+        canEditPresets={canEditPresets}
+        presets={presets}
       />
 
       {trashPanel}

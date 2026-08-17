@@ -21,6 +21,12 @@ export interface SectionPresetRecord {
   groups: SectionPresetGroup[];
   columns: SectionPresetColumn[];
   created_at: string;
+  /**
+   * 이 프리셋을 담고 있는 템플릿 보드의 `source`(항상 `SECTION_PRESET_SOURCE` 로 시작).
+   * 저장 요청마다 **결정적인** 값을 넣어 두면 같은 요청의 재전송을 여기서 알아볼 수 있다
+   * (BBE-174 멱등성 — `lib/presets/group-preset.ts` 의 `groupPresetRequestSource`).
+   */
+  source: string | null;
 }
 
 export function snapshotSectionPreset(name: string, groups: BoardGroup[], columns: BoardColumn[]) {
@@ -52,6 +58,7 @@ export class SectionPresetRepo {
       groups: (await this.boards.listGroups(ctx, board.id)).map(({ name, color }) => ({ name, color })),
       columns: (await this.boards.listColumns(ctx, board.id)).map((column) => snapshotSectionPreset("", [], [column]).columns[0]),
       created_at: board.created_at,
+      source: board.source ?? null,
     })));
   }
 
@@ -64,14 +71,33 @@ export class SectionPresetRepo {
       groups: (await this.boards.listGroups(ctx, id)).map(({ name, color }) => ({ name, color })),
       columns: (await this.boards.listColumns(ctx, id)).map((column) => snapshotSectionPreset("", [], [column]).columns[0]),
       created_at: board.created_at,
+      source: board.source ?? null,
     };
   }
 
-  async create(ctx: Ctx, input: ReturnType<typeof snapshotSectionPreset>): Promise<void> {
+  /**
+   * 같은 `source` 로 이미 저장된 프리셋. 저장 요청의 재전송(replay)을 알아보는 데 쓴다.
+   * source 는 조직 안에서만 의미가 있으므로 조직 밖은 애초에 목록에 들어오지 않는다.
+   */
+  async findBySource(ctx: Ctx, source: string): Promise<SectionPresetRecord | undefined> {
+    const templates = await this.boards.listSectionPresetBoards(ctx);
+    const match = templates.find((board) => board.source === source);
+    return match ? this.get(ctx, match.id) : undefined;
+  }
+
+  /**
+   * `source` 를 주면 그 값을 그대로 쓴다(멱등 저장). 주지 않으면 예전처럼 임의 UUID —
+   * 기존 호출부(탭 단위 저장)의 동작을 바꾸지 않기 위해서다.
+   */
+  async create(
+    ctx: Ctx,
+    input: ReturnType<typeof snapshotSectionPreset>,
+    source?: string,
+  ): Promise<void> {
     const template = await this.boards.createBoard(ctx, {
       name: input.name,
       description: "아이템 프리셋 구조",
-      source: `${SECTION_PRESET_SOURCE}${crypto.randomUUID()}`,
+      source: source ?? `${SECTION_PRESET_SOURCE}${crypto.randomUUID()}`,
     });
     for (const group of input.groups) await this.boards.createGroup(ctx, template.id, group);
     for (const column of input.columns) await this.boards.createColumn(ctx, template.id, {
