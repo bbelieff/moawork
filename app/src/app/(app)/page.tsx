@@ -25,6 +25,7 @@ import { PlatformAccessNotice } from "@/components/platform/PlatformAccessNotice
 import { ChecklistCompletionCell } from "@/components/policyfund/ChecklistCompletionCell";
 import { SupabaseChecklistStore } from "@/lib/policyfund/checklist";
 import { createClient } from "@/lib/supabase/server";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 
 // 홈 = core.dash 메인 대시보드. 모든 영역은 같은 요청의 쿠키 결속 Supabase
 // 클라이언트를 공유한다. 한 영역의 DB 실패를 0으로 바꾸지 않고 별도로 표시한다.
@@ -43,14 +44,19 @@ export default async function DashboardPage({
   const ctx = devToolsEnabled ? applyAs(base, asParam) : base;
   const model = await loadDashboardPageData(ctx, { month });
   const core = model.core.status === "ready" ? model.core.data : null;
-  const checklistStore = new SupabaseChecklistStore(await createClient());
+  // ★ BBE-203 — 체크리스트는 홈의 «덤» 인데 예전엔 이 한 줄의 createClient() 가 던져
+  //   홈 전체가 500 이었다. 로컬 시드에는 체크리스트 저장소가 없으므로 빈 지도를 쓴다.
+  //   env 가 있으면 예전과 동일하다.
+  const checklistStore = canUseLocalSeedFallback() ? null : new SupabaseChecklistStore(await createClient());
   const checklists = new Map(
-    await Promise.all(
-      (core?.deals ?? []).map(async (deal) => [
-        deal.id,
-        await checklistStore.getDealChecklist(ctx.org.id, deal.id),
-      ] as const),
-    ),
+    checklistStore
+      ? await Promise.all(
+          (core?.deals ?? []).map(async (deal) => [
+            deal.id,
+            await checklistStore.getDealChecklist(ctx.org.id, deal.id),
+          ] as const),
+        )
+      : [],
   );
   const displayMonth = core?.dash.month ?? month ?? currentMonthKst();
   const stageName = (id: string | null) =>
@@ -187,7 +193,7 @@ export default async function DashboardPage({
                         <tr key={deal.id}>
                           <td className="p-3"><Link href={`/deals/${deal.id}`} className="hover:underline">{deal.title}</Link></td>
                           <td className="p-3 text-zinc-500">{stageName(deal.stage_id)}</td>
-                          <td className="p-3"><ChecklistCompletionCell items={checklists.get(deal.id)?.items ?? []} /></td>
+                          <td className="p-3"><ChecklistCompletionCell items={checklists.get(deal.id)?.items ?? []} unavailable={checklistStore === null} /></td>
                         </tr>
                       ))}
                     </tbody>
