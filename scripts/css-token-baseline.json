@@ -1,21 +1,5 @@
 {
   "_why": "정의된 적 없는 CSS 변수 참조 중 «이미 다른 PR 이 고치고 있는» 것만 담는다. 새 항목을 여기 넣어 통과시키지 마라 — 고쳐라.",
   "_ratchet": "여기 적힌 항목이 «더 이상 위반이 아니면» 게이트가 실패한다. 원인이 사라지면 예외도 반드시 지워진다. 영구 면죄부가 되지 않게 하는 장치다.",
-  "known": [
-    {
-      "file": "app/src/components/workspace/workspace-switcher.module.css",
-      "token": "--moawork-action-primary",
-      "note": "PR #253(BBE-199)이 --mw-primary 로 고친다. 머지되면 이 항목을 지워라."
-    },
-    {
-      "file": "app/src/components/workspace/workspace-switcher.module.css",
-      "token": "--moawork-record",
-      "note": "PR #253(BBE-199)이 --mw-record 로 고친다. 머지되면 이 항목을 지워라."
-    },
-    {
-      "file": "app/src/components/workspace/workspace-switcher.module.css",
-      "token": "--moawork-automation",
-      "note": "PR #253(BBE-199)이 --mw-automation 으로 고친다. 머지되면 이 항목을 지워라."
-    }
-  ]
+  "known": []
 }

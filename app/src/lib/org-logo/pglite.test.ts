@@ -8,12 +8,14 @@ describe("org logo executable database contract", () => {
   it("runs the PGlite org-logo RLS suite from the normal app test gate", () => {
     const repoRoot = join(__dirname, "..", "..", "..", "..");
     const testFile = join(repoRoot, "supabase", "tests", "bbe199_org_logo.pglite.test.mjs");
-    const output = execFileSync(process.execPath, ["--test", testFile], {
+    // TAP 리포터를 쓰고 «정확한 숫자» 로 단언한다.
+    // toContain("pass 14") 같은 부분문자열은 "pass 140" 에도 매치해서 개수를 보장하지 못한다.
+    const output = execFileSync(process.execPath, ["--test", "--test-reporter=tap", testFile], {
       cwd: repoRoot,
       encoding: "utf8",
       env: { ...process.env, PGLITE_MODULE_ROOT: repoRoot },
     });
-    expect(output).toContain("pass 14");
-    expect(output).toContain("fail 0");
+    expect(output).toMatch(/^# pass 15$/mu);
+    expect(output).toMatch(/^# fail 0$/mu);
   }, 120_000);
 });

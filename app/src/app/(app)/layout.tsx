@@ -24,6 +24,7 @@ import { loadPlatformActor } from "@/lib/platform/actor";
 import { ensureApprovedWorkspaceOnEntry } from "@/lib/workspace-entry/bootstrap";
 import { createClient } from "@/lib/supabase/server";
 import { loadOrgLogoSignedUrls } from "@/lib/org-logo/server";
+import { buildSwitcherWorkspaces } from "@/lib/org-logo/switcher";
 
 function WorkspaceBootstrapUnavailable({ slug }: { slug: string }) {
   return (
@@ -75,14 +76,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     ? await loadOrgLogoSignedUrls(routing.memberships.map((membership) => membership.orgId))
     : new Map<string, string>();
   const switcherWorkspaces = routing.kind === "ready"
-    ? routing.memberships.map((membership) => ({
-        orgId: membership.orgId,
-        slug: membership.slug,
-        name: membership.name,
-        role: membership.role,
-        status: "active" as const,
-        signedImageUrl: orgLogoUrls.get(membership.orgId) ?? null,
-      }))
+    ? buildSwitcherWorkspaces(routing.memberships, orgLogoUrls)
     : [];
   const switcherPendingRequests = workspaceEntryContext.kind === "ready"
     ? workspaceEntryContext.requests
