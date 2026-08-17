@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,10 +10,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * 왜 필요한가: 지금까지 화면이 500 이 나도 `check.sh` 는 초록이었다. 회사·공지가 로컬 시드
  * 모드에서 죽어 있었는데 아무 테스트도 빨개지지 않았다. 그래서 §3 «화면 확인» 이 막혔다.
  *
- * 이 파일이 빨개지는 조건 — 전부 실제 회귀다:
- *  ① 페이지가 `hasSupabaseEnv()` 가드 없이 `createClient()` 를 부른다 → 렌더가 throw
- *  ② 미연결 상태를 «빈 목록» 으로 위장한다 → 문구 단언에서 걸린다
- *  ③ 미연결을 «오류» 라고 말한다 → 두 문구를 갈라 단언한다
+ * ★ 이 파일은 «검사 목록» 이 아니라 **«(app) 라우트 전수 목록»** 이다.
+ *   1차 판은 고친 화면 둘만 배열에 담았다. 그러면 **배열에서 한 줄을 지우는 것만으로 커버리지가
+ *   사라지고**(독립 검수가 프로브로 실증), 무엇보다 **아직 안 고친 화면이 아무 데도 안 보였다.**
+ *   실제로 그 시점에 `/`·`/newcust`·`/presets`·`/work` 가 500 이었는데 목록에 없었다.
+ *   → 전수 목록 + 아직 죽은 것은 `known-500` 으로 **명시적 skip**. 그러면 둘 다 보인다:
+ *     · 화면이 목록에서 빠지면 «전수 일치» 가 잡는다
+ *     · 남은 일이 skip 목록으로 뜬다 (총괄 배분표가 된다)
  */
 
 vi.mock("@/lib/auth/session", () => ({
@@ -37,6 +43,93 @@ vi.mock("./notices/actions", () => ({
 import CompaniesPage from "./companies/page";
 import NoticesPage from "./notices/page";
 
+type Coverage =
+  /** 이 테스트가 **직접 렌더해서** 잰다. 주장은 여기까지만 하는 것이 정직하다. */
+  | {
+      status: "verified";
+      render: () => Promise<string>;
+      notConnected: string;
+      mustNotSay: readonly string[];
+    }
+  /** 로컬 시드 모드에서 **아직 500** 이다. 고치면 `verified` 로 올린다. */
+  | { status: "known-500"; owner: string }
+  /** 200 인 것은 확인했지만 이 테스트가 렌더하지는 않는다(관측 기록이지 단언이 아니다). */
+  | { status: "measured-ok" }
+  /** 파라미터·리다이렉트라 이 방식으로 잴 수 없다. */
+  | { status: "not-measurable"; why: string };
+
+const renderCompanies = async () =>
+  renderToStaticMarkup(await CompaniesPage({ searchParams: Promise.resolve({}) }));
+const renderNotices = async () =>
+  renderToStaticMarkup(await NoticesPage({ searchParams: Promise.resolve({}) }));
+
+/**
+ * `(app)` 그룹의 page 라우트 전수. 아래 «전수 일치» 테스트가 파일시스템과 대조한다.
+ *
+ * 상태는 2026-08-18 로컬 시드 모드 실측이다(dev 서버 + 시드 owner 쿠키).
+ */
+const SCREENS: Readonly<Record<string, Coverage>> = {
+  "/companies": {
+    status: "verified",
+    render: renderCompanies,
+    notConnected: "아직 연결되지 않았습니다",
+    mustNotSay: ["등록된 회사가 없습니다", "회사 정보를 불러오지 못했습니다"],
+  },
+  "/notices": {
+    status: "verified",
+    render: renderNotices,
+    notConnected: "아직 연결되지 않았습니다",
+    mustNotSay: ["공지사항을 불러오지 못했습니다"],
+  },
+
+  // ── 아직 죽어 있다. 이 목록이 곧 남은 일이다 ──────────────────────────────
+  "/": { status: "known-500", owner: "BBE-186 (PR #246 에서 고쳤다 · 미머지)" },
+  "/newcust": { status: "known-500", owner: "BBE-171" },
+  "/presets": { status: "known-500", owner: "미배정" },
+  "/work": { status: "known-500", owner: "미배정" },
+
+  // ── 200 확인됨 ─────────────────────────────────────────────────────────
+  "/contract": { status: "measured-ok" },
+  "/dash/all": { status: "measured-ok" },
+  "/dash/tasks": { status: "measured-ok" },
+  "/onboarding": { status: "measured-ok" },
+  "/onboarding/practice": { status: "measured-ok" },
+  "/settings/account": { status: "measured-ok" },
+  "/settings/account/privacy": { status: "measured-ok" },
+  "/settings/account/sessions": { status: "measured-ok" },
+  "/settings/automations": { status: "measured-ok" },
+  "/settings/members": { status: "measured-ok" },
+  "/settings/members/approvals": { status: "measured-ok" },
+  "/settings/notifications": { status: "measured-ok" },
+  "/settings/workspace-builder": { status: "measured-ok" },
+
+  // ── 이 방식으로 잴 수 없는 것 ───────────────────────────────────────────
+  "/account": { status: "not-measurable", why: "307 리다이렉트" },
+  "/boards": { status: "not-measurable", why: "404 — 2층 권한 fail-closed. 별도 카드" },
+  "/boards/[id]": { status: "not-measurable", why: "동적 파라미터" },
+  "/companies/[companyId]": { status: "not-measurable", why: "동적 파라미터" },
+  "/dash/[pipelineId]": { status: "not-measurable", why: "동적 파라미터" },
+  "/deals/[dealId]": { status: "not-measurable", why: "동적 파라미터" },
+  "/notices/[noticeId]": { status: "not-measurable", why: "동적 파라미터" },
+};
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+
+/** 디스크에 실재하는 `(app)` page 라우트. 라우트 그룹 `(...)` 세그먼트는 주소에 안 들어간다. */
+function actualRoutes(dir = here, base: string[] = []): string[] {
+  const found: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const isGroup = entry.name.startsWith("(") && entry.name.endsWith(")");
+      found.push(...actualRoutes(full, isGroup ? base : [...base, entry.name]));
+    } else if (entry.name === "page.tsx") {
+      found.push(`/${base.join("/")}`.replace(/\/$/, "") || "/");
+    }
+  }
+  return found;
+}
+
 const ENV_KEYS = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"] as const;
 const saved: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
 
@@ -54,47 +147,50 @@ afterEach(() => {
   }
 });
 
-type Screen = {
-  route: string;
-  render: () => Promise<string>;
-  /** 미연결일 때 반드시 보여야 하는 말. */
-  notConnected: string;
-  /** 미연결을 이 말로 부르면 안 된다 — 오류도 아니고 «0건» 도 아니다. */
-  mustNotSay: readonly string[];
-};
+describe("(app) 라우트 전수 목록", () => {
+  it("실재하는 라우트가 전부 목록에 있고, 목록에 유령 주소가 없다", () => {
+    // ★ 이 단언이 «배열에서 한 줄 지우기» 를 막는다. 새 화면이 생겨도 여기서 걸린다.
+    const actual = [...new Set(actualRoutes())].sort();
+    const listed = Object.keys(SCREENS).sort();
+    expect(listed).toEqual(actual);
+  });
 
-const screens: readonly Screen[] = [
-  {
-    route: "/companies",
-    render: async () =>
-      renderToStaticMarkup(await CompaniesPage({ searchParams: Promise.resolve({}) })),
-    notConnected: "아직 연결되지 않았습니다",
-    mustNotSay: ["등록된 회사가 없습니다", "회사 정보를 불러오지 못했습니다"],
-  },
-  {
-    route: "/notices",
-    render: async () =>
-      renderToStaticMarkup(await NoticesPage({ searchParams: Promise.resolve({}) })),
-    notConnected: "아직 연결되지 않았습니다",
-    mustNotSay: ["공지사항을 불러오지 못했습니다"],
-  },
-];
+  it("아직 고치지 못한 화면을 숨기지 않는다", () => {
+    // 남은 일이 0 이 되면 이 테스트를 지운다. 그때까지는 목록이 보여야 한다.
+    const remaining = Object.entries(SCREENS)
+      .filter(([, coverage]) => coverage.status === "known-500")
+      .map(([route]) => route);
+    expect(remaining.length).toBeGreaterThan(0);
+    expect(remaining).toEqual(["/", "/newcust", "/presets", "/work"]);
+  });
+});
 
 describe("로컬 시드 모드에서 주요 화면이 뜬다 (BBE-190 1층)", () => {
-  for (const screen of screens) {
-    describe(screen.route, () => {
+  for (const [route, coverage] of Object.entries(SCREENS)) {
+    if (coverage.status !== "verified") {
+      const reason =
+        coverage.status === "known-500"
+          ? `아직 500 — 소유: ${coverage.owner}`
+          : coverage.status === "measured-ok"
+            ? "200 확인됨 · 이 테스트가 렌더하진 않는다"
+            : coverage.why;
+      it.skip(`${route} — ${reason}`, () => undefined);
+      continue;
+    }
+
+    describe(route, () => {
       it("환경변수 없이도 렌더가 실패하지 않는다", async () => {
         // 가드가 없으면 여기서 «Supabase 환경변수 누락…» 이 그대로 터진다.
-        await expect(screen.render()).resolves.toBeTypeOf("string");
+        await expect(coverage.render()).resolves.toBeTypeOf("string");
       });
 
       it("«아직 연결 안 됨» 을 말한다", async () => {
-        expect(await screen.render()).toContain(screen.notConnected);
+        expect(await coverage.render()).toContain(coverage.notConnected);
       });
 
       it("미연결을 빈 목록이나 오류로 위장하지 않는다", async () => {
-        const html = await screen.render();
-        for (const phrase of screen.mustNotSay) expect(html).not.toContain(phrase);
+        const html = await coverage.render();
+        for (const phrase of coverage.mustNotSay) expect(html).not.toContain(phrase);
       });
     });
   }
