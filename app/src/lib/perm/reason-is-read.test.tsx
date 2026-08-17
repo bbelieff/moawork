@@ -32,11 +32,17 @@ describe("BBE-204 권한 판정 근거를 화면이 읽는다", () => {
   // ★ 되돌리면 빨개진다: 권한 없음(permission)까지 PermissionUnavailable 로 보여주기.
   // 그러면 존재 숨김이 깨지고 «권한 없는 사용자에게 자원이 있다는 사실» 이 새어 나간다.
   // 「전부 친절하게」로 도망가는 것도 막는다.
+  //
+  // ★ 파일에 notFound() 가 «있는지» 만 보면 안 된다(검수 지적).
+  //   boards/[id] 에는 notFound() 가 셋이다 — 권한 46행 · scopedItems · NotFoundError.
+  //   그래서 권한 분기만 PermissionUnavailable 로 바꿔도 나머지 둘 때문에 초록이었다.
+  //   방어가 이웃 테스트에 얹혀 있으면, 이웃을 정당하게 리팩터하는 사람이
+  //   자기가 존재 숨김 방어를 걷어냈다는 걸 모른다. **그 줄 자체**를 단언한다.
   it.each([
-    ["boards/page.tsx", boardsList],
-    ["boards/[id]/page.tsx", boardDetail],
-  ])("%s 는 권한 없음을 여전히 notFound() 로 숨긴다", (_name, url) => {
-    expect(source(url)).toContain('notFound()');
+    ["boards/page.tsx", boardsList, 'if (viewPermission.kind !== "allowed") notFound();'],
+    ["boards/[id]/page.tsx", boardDetail, 'if (viewTabs.kind !== "allowed") notFound();'],
+  ])("%s 는 권한 없음을 여전히 notFound() 로 숨긴다", (_name, url, line) => {
+    expect(source(url)).toContain(line);
   });
 
   // 되돌리면 빨개진다: 실패 화면에서 role="alert" 를 떼거나 성공 표현으로 바꾸기
