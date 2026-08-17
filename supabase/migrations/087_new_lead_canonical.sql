@@ -307,17 +307,67 @@ begin
   return query select p_deal_id,v_changed,false;
 end $$;
 
+do $$
+begin
+  if to_regprocedure('public.execute_contact_pipeline_transition(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text,text,text,text,date,numeric)') is not null
+     and to_regprocedure('public.execute_contact_pipeline_transition_legacy_069(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text,text,text,text,date,numeric)') is null then
+    alter function public.execute_contact_pipeline_transition(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text,text,text,text,date,numeric)
+      rename to execute_contact_pipeline_transition_legacy_069;
+  end if;
+end $$;
+
+create or replace function public.execute_contact_pipeline_transition(
+  p_org_id uuid, p_deal_id uuid, p_source_item_id uuid, p_request_id uuid, p_kind text,
+  p_company_id uuid default null, p_company_name text default null,
+  p_biz_no text default null, p_owner_name text default null,
+  p_business_type text default null, p_industry text default null,
+  p_region_sido text default null, p_region_sigungu text default null,
+  p_phone text default null, p_founded_on date default null,
+  p_revenue numeric default null
+) returns table(status text,deal_id uuid,company_id uuid,reason text)
+language plpgsql security definer set search_path='' as $$
+declare v_actor uuid:=auth.uid();
+begin
+  if v_actor is null or not exists(
+    select 1 from public.org_members m join public.orgs o on o.id=m.org_id
+     where m.org_id=p_org_id and m.user_id=v_actor and m.status='active' and o.status='active'
+  ) or not public.effective_permission(p_org_id,'work.item_upsert') then
+    raise exception 'transition unavailable' using errcode='42501';
+  end if;
+  return query select * from public.execute_contact_pipeline_transition_legacy_069(
+    p_org_id,p_deal_id,p_source_item_id,p_request_id,p_kind,p_company_id,p_company_name,
+    p_biz_no,p_owner_name,p_business_type,p_industry,p_region_sido,p_region_sigungu,
+    p_phone,p_founded_on,p_revenue
+  );
+end $$;
+
 create or replace function public.advance_new_lead_to_contact(p_org_id uuid,p_deal_id uuid,p_request_id uuid)
 returns table(status text,deal_id uuid,company_id uuid,reason text)
-language sql security invoker set search_path='' as $$
-  select * from public.execute_contact_pipeline_transition(
+language plpgsql security definer set search_path='' as $$
+declare
+  v_actor uuid:=auth.uid(); v_role text; v_scope text; v_assigned uuid;
+begin
+  select m.role::text,m.scope::text,d.assigned_to into v_role,v_scope,v_assigned
+    from public.org_members m
+    join public.orgs o on o.id=m.org_id
+    join public.deals d on d.org_id=m.org_id and d.id=p_deal_id
+   where m.org_id=p_org_id and m.user_id=v_actor and m.status='active' and o.status='active';
+  if not found or not public.effective_permission(p_org_id,'work.item_upsert')
+     or not (v_role in ('owner','admin') or v_scope='all' or v_assigned=v_actor) then
+    raise exception 'new lead advance denied' using errcode='42501';
+  end if;
+  return query select * from public.execute_contact_pipeline_transition(
     p_org_id,p_deal_id,null,p_request_id,'lead_to_contact',null,null,null,null,null,null,null,null,null,null,null
-  )
+  );
+end
 $$;
 
 revoke all on function public.create_new_lead(uuid,uuid,uuid,uuid,text,text,text,text,text,text,text,text,text,text,text,text,uuid) from public,anon,service_role;
 revoke all on function public.update_new_lead_fields(uuid,uuid,uuid,jsonb,text) from public,anon,service_role;
 revoke all on function public.advance_new_lead_to_contact(uuid,uuid,uuid) from public,anon,service_role;
+revoke all on function public.execute_contact_pipeline_transition(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text,text,text,text,date,numeric) from public,anon,service_role;
+revoke all on function public.execute_contact_pipeline_transition_legacy_069(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text,text,text,text,date,numeric) from public,anon,authenticated,service_role;
 grant execute on function public.create_new_lead(uuid,uuid,uuid,uuid,text,text,text,text,text,text,text,text,text,text,text,text,uuid) to authenticated;
 grant execute on function public.update_new_lead_fields(uuid,uuid,uuid,jsonb,text) to authenticated;
 grant execute on function public.advance_new_lead_to_contact(uuid,uuid,uuid) to authenticated;
+grant execute on function public.execute_contact_pipeline_transition(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text,text,text,text,date,numeric) to authenticated;

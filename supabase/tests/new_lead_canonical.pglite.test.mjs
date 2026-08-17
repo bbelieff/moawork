@@ -8,6 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const dependencyRoot = process.env.PGLITE_MODULE_ROOT ?? root;
 const { PGlite } = await import(pathToFileURL(path.join(dependencyRoot, "node_modules", "@electric-sql", "pglite", "dist", "index.js")).href);
 const mainMigration041 = await readFile(path.join(root, "supabase", "migrations", "041_messaging.sql"), "utf8");
+const transitionMigration069 = await readFile(path.join(root, "supabase", "migrations", "069_contact_pipeline_transitions.sql"), "utf8");
 const dashboardMigration086 = await readFile(path.join(root, "supabase", "migrations", "086_dashboard_daily_read_model.sql"), "utf8");
 const migration = await readFile(path.join(root, "supabase", "migrations", "087_new_lead_canonical.sql"), "utf8");
 
@@ -15,6 +16,10 @@ const A = "10000000-0000-4000-8000-000000000001";
 const B = "10000000-0000-4000-8000-000000000002";
 const USER = "10000000-0000-4000-8000-000000000010";
 const OTHER = "10000000-0000-4000-8000-000000000011";
+const OWNER = "10000000-0000-4000-8000-000000000012";
+const ADMIN = "10000000-0000-4000-8000-000000000013";
+const ALL = "10000000-0000-4000-8000-000000000014";
+const INACTIVE = "10000000-0000-4000-8000-000000000015";
 const BOARD = "10000000-0000-4000-8000-000000000020";
 const GROUP = "10000000-0000-4000-8000-000000000021";
 
@@ -34,15 +39,16 @@ async function setup(db) {
     create function public.is_org_member(p uuid) returns boolean language sql stable security definer set search_path='' as $$select exists(select 1 from public.org_members m where m.org_id=p and m.user_id=auth.uid() and m.status='active')$$;
     create function public.org_role(p uuid) returns public.member_role language sql stable security definer set search_path='' as $$select role from public.org_members where org_id=p and user_id=auth.uid() and status='active'$$;
     create function public.org_scope(p uuid) returns public.member_scope language sql stable security definer set search_path='' as $$select scope from public.org_members where org_id=p and user_id=auth.uid() and status='active'$$;
-    create function public.effective_permission(p uuid,k text) returns boolean language sql stable security definer set search_path='' as $$select public.is_org_member(p) and k='work.item_upsert'$$;
+    create function public.effective_permission(p uuid,k text) returns boolean language sql stable security definer set search_path='' as $$select public.is_org_member(p) and k='work.item_upsert' and coalesce(nullif(current_setting('request.test.permission',true),''),'on')='on'$$;
     create table public.pipelines(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),created_at timestamptz default now());
     create table public.stages(id uuid primary key default gen_random_uuid(),pipeline_id uuid references public.pipelines(id),kind public.stage_kind,sort_order int default 0);
-    create table public.deals(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),company_id uuid,pipeline_id uuid references public.pipelines(id),stage_id uuid references public.stages(id),assigned_to uuid references public.users(id),title text,created_at timestamptz default now(),updated_at timestamptz default now());
+    create table public.deals(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),company_id uuid,pipeline_id uuid references public.pipelines(id),stage_id uuid references public.stages(id),assigned_to uuid references public.users(id),title text,custom jsonb not null default '{}'::jsonb,created_at timestamptz default now(),updated_at timestamptz default now());
     create table public.boards(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),source text);
     create table public.board_groups(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),name text);
     create table public.board_columns(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),key text,label text,type public.field_type,sort_order int default 0,width int,source text,is_readonly boolean default false,unique(board_id,key));
     create table public.items(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),group_id uuid references public.board_groups(id),title text,assigned_to uuid references public.users(id),deleted_at timestamptz);
     create table public.item_values(org_id uuid references public.orgs(id),item_id uuid references public.items(id),column_key text,value_jsonb jsonb,primary key(item_id,column_key));
+    create table public.activities(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),deal_id uuid references public.deals(id),type text,content text,actor uuid references public.users(id),created_at timestamptz default now());
     create table public.work_item_versions(org_id uuid references public.orgs(id),item_id uuid references public.items(id),due_date date,workflow_status text);
     create table public.notifications(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),user_id uuid references public.users(id),type text,title text,body text,target_type text,target_id uuid,is_action boolean,read_at timestamptz,created_at timestamptz default now(),resolved_at timestamptz);
     create table public.message_templates(
@@ -54,14 +60,12 @@ async function setup(db) {
       template_id uuid references public.message_templates(id),to_addr text,
       status public.message_status,error text
     );
-    create function public.execute_contact_pipeline_transition(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text,text,text,text,date,numeric)
-    returns table(status text,deal_id uuid,company_id uuid,reason text) language plpgsql security definer set search_path='' as $$
-    declare d alias for $2; target uuid;
-    begin select s.id into target from public.stages s join public.deals x on x.pipeline_id=s.pipeline_id where x.id=d and s.kind='meeting';
-      update public.deals set stage_id=target where id=d; return query select 'committed'::text,d,null::uuid,null::text; end$$;
     insert into public.orgs(id) values('${A}'),('${B}');
-    insert into public.users(id) values('${USER}'),('${OTHER}');
-    insert into public.org_members values('${A}','${USER}','member','assigned','active'),('${A}','${OTHER}','member','assigned','active');
+    insert into public.users(id) values('${USER}'),('${OTHER}'),('${OWNER}'),('${ADMIN}'),('${ALL}'),('${INACTIVE}');
+    insert into public.org_members values
+      ('${A}','${USER}','member','assigned','active'),('${A}','${OTHER}','member','assigned','active'),
+      ('${A}','${OWNER}','owner','all','active'),('${A}','${ADMIN}','admin','all','active'),
+      ('${A}','${ALL}','member','all','active'),('${A}','${INACTIVE}','member','assigned','inactive');
     insert into public.pipelines(id,org_id) values('10000000-0000-4000-8000-000000000030','${A}');
     insert into public.stages(id,pipeline_id,kind,sort_order) values
       ('10000000-0000-4000-8000-000000000031','10000000-0000-4000-8000-000000000030','marketing',0),
@@ -73,6 +77,7 @@ async function setup(db) {
     select set_config('request.jwt.claim.sub','${USER}',false);
   `);
   await db.exec(mainMigration041);
+  await db.exec(transitionMigration069);
   await db.exec(dashboardMigration086);
   await db.exec(migration);
   await db.exec(migration);
@@ -156,26 +161,87 @@ test("BBE-173 rejects cross-tenant targets, rolls back failed creates, and expos
     await db.exec("set role authenticated");
     await assert.rejects(db.query("select * from public.create_new_lead($1,$2,$3,$4,$5)",[B,BOARD,GROUP,"10000000-0000-4000-8000-000000000122","Cross"]),/permission denied/);
     await db.exec("reset role");
-    const p=await db.query(`select
-      has_function_privilege('public','public.create_new_lead(uuid,uuid,uuid,uuid,text,text,text,text,text,text,text,text,text,text,text,text,uuid)','execute') public_exec,
-      has_function_privilege('anon','public.create_new_lead(uuid,uuid,uuid,uuid,text,text,text,text,text,text,text,text,text,text,text,text,uuid)','execute') anon_exec,
-      has_function_privilege('service_role','public.create_new_lead(uuid,uuid,uuid,uuid,text,text,text,text,text,text,text,text,text,text,text,text,uuid)','execute') service_exec,
-      has_function_privilege('authenticated','public.create_new_lead(uuid,uuid,uuid,uuid,text,text,text,text,text,text,text,text,text,text,text,text,uuid)','execute') auth_exec,
-      (select relrowsecurity from pg_class where oid='public.deal_intake'::regclass) rls`);
-    assert.deepEqual(p.rows[0],{public_exec:false,anon_exec:false,service_exec:false,auth_exec:true,rls:true});
+    const signatures = [
+      "public.create_new_lead(uuid,uuid,uuid,uuid,text,text,text,text,text,text,text,text,text,text,text,text,uuid)",
+      "public.update_new_lead_fields(uuid,uuid,uuid,jsonb,text)",
+      "public.advance_new_lead_to_contact(uuid,uuid,uuid)",
+      "public.execute_contact_pipeline_transition(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text,text,text,text,date,numeric)",
+    ];
+    for (const signature of signatures) {
+      const p=await db.query(`select
+        has_function_privilege('public',$1,'execute') public_exec,
+        has_function_privilege('anon',$1,'execute') anon_exec,
+        has_function_privilege('service_role',$1,'execute') service_exec,
+        has_function_privilege('authenticated',$1,'execute') auth_exec`,[signature]);
+      assert.deepEqual(p.rows[0],{public_exec:false,anon_exec:false,service_exec:false,auth_exec:true});
+    }
+    const legacyAcl=await db.query(`select
+      has_function_privilege('public','public.execute_contact_pipeline_transition_legacy_069(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text,text,text,text,date,numeric)','execute') public_exec,
+      has_function_privilege('anon','public.execute_contact_pipeline_transition_legacy_069(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text,text,text,text,date,numeric)','execute') anon_exec,
+      has_function_privilege('service_role','public.execute_contact_pipeline_transition_legacy_069(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text,text,text,text,date,numeric)','execute') service_exec,
+      has_function_privilege('authenticated','public.execute_contact_pipeline_transition_legacy_069(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text,text,text,text,date,numeric)','execute') auth_exec`);
+    assert.deepEqual(legacyAcl.rows[0],{public_exec:false,anon_exec:false,service_exec:false,auth_exec:false});
+    assert.equal((await db.query("select relrowsecurity from pg_class where oid='public.deal_intake'::regclass")).rows[0].relrowsecurity,true);
   } finally { await db.close(); }
 });
 
-test("BBE-173 advances the canonical deal and tenant composite FKs reject drift", async () => {
+test("BBE-173 advance enforces active membership, permission, tenant, role, and scope before delegation", async () => {
   const db = new PGlite();
   try {
     await setup(db);
     const created=await createLead(db,"10000000-0000-4000-8000-000000000131"), deal=created.rows[0].deal_id;
     await db.exec("set role authenticated");
-    const advanced=await db.query("select * from public.advance_new_lead_to_contact($1,$2,$3)",[A,deal,"10000000-0000-4000-8000-000000000132"]);
-    assert.equal(advanced.rows[0].status,"committed");
+    const marketing="10000000-0000-4000-8000-000000000031";
+    const advance=async(actor,request)=>{
+      await db.query("select set_config('request.jwt.claim.sub',$1,false)",[actor]);
+      return db.query("select * from public.advance_new_lead_to_contact($1,$2,$3)",[A,deal,request]);
+    };
+    const reset=async(assigned=OTHER)=>{
+      await db.exec("reset role");
+      await db.query("update public.deals set stage_id=$1,assigned_to=$2 where id=$3",[marketing,assigned,deal]);
+      await db.exec("set role authenticated");
+    };
+
+    await reset(USER);
+    const firstRequest="10000000-0000-4000-8000-000000000132";
+    assert.equal((await advance(USER,firstRequest)).rows[0].status,"committed","assigned member may advance");
+    assert.equal((await advance(USER,firstRequest)).rows[0].status,"committed","same request replays the committed transition");
     await db.exec("reset role");
-    assert.equal((await db.query("select s.kind::text kind from public.deals d join public.stages s on s.id=d.stage_id where d.id=$1",[deal])).rows[0].kind,"meeting");
+    assert.equal(Number((await db.query("select count(*) from public.contact_pipeline_transitions where org_id=$1 and request_id=$2",[A,firstRequest])).rows[0].count),1);
+    assert.equal(Number((await db.query("select count(*) from public.activities where org_id=$1 and deal_id=$2 and actor=$3",[A,deal,USER])).rows[0].count),1);
+    await db.exec("set role authenticated");
+    await reset(OTHER);
+    await assert.rejects(advance(USER,"10000000-0000-4000-8000-000000000133"),/new lead advance denied/);
+
+    for (const [actor,request,label] of [
+      [ALL,"10000000-0000-4000-8000-000000000134","all-scope member"],
+      [OWNER,"10000000-0000-4000-8000-000000000135","owner"],
+      [ADMIN,"10000000-0000-4000-8000-000000000136","admin"],
+    ]) {
+      await reset(OTHER);
+      assert.equal((await advance(actor,request)).rows[0].status,"committed",`${label} may advance another assignee`);
+    }
+
+    await reset(INACTIVE);
+    await assert.rejects(advance(INACTIVE,"10000000-0000-4000-8000-000000000137"),/new lead advance denied/);
+    await assert.rejects(db.query("select * from public.execute_contact_pipeline_transition($1,$2,null,$3,'lead_to_contact')",[A,deal,"10000000-0000-4000-8000-000000000142"]),/transition unavailable/);
+    await reset(OTHER);
+    await db.exec("reset role");
+    await db.exec(`delete from public.org_members where org_id='${A}' and user_id='${OTHER}'`);
+    await db.exec("set role authenticated");
+    await assert.rejects(advance(OTHER,"10000000-0000-4000-8000-000000000141"),/new lead advance denied/);
+    await reset(USER);
+    await db.exec("select set_config('request.test.permission','off',false)");
+    await assert.rejects(advance(USER,"10000000-0000-4000-8000-000000000138"),/new lead advance denied/);
+    await assert.rejects(db.query("select * from public.execute_contact_pipeline_transition($1,$2,null,$3,'lead_to_contact')",[A,deal,"10000000-0000-4000-8000-000000000143"]),/transition unavailable/);
+    await db.exec("select set_config('request.test.permission','on',false)");
+    await assert.rejects(db.query("select * from public.advance_new_lead_to_contact($1,$2,$3)",[B,deal,"10000000-0000-4000-8000-000000000139"]),/new lead advance denied/);
+    await db.exec("reset role");
+    await db.exec(`update public.orgs set status='inactive' where id='${A}'`);
+    await db.exec("set role authenticated");
+    await assert.rejects(advance(USER,"10000000-0000-4000-8000-000000000140"),/new lead advance denied/);
+    await db.exec("reset role");
+    await db.exec(`update public.orgs set status='active' where id='${A}'`);
     await assert.rejects(db.query("insert into public.items(org_id,board_id,group_id,title,deal_id) values($1,$2,$3,'drift',$4)",[B,BOARD,GROUP,deal]),/foreign key/);
   } finally { await db.close(); }
 });
