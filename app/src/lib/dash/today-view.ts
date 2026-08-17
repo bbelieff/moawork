@@ -1,0 +1,91 @@
+// BBE-186 · 홈 «오늘» 화면의 표시 규칙(순수 · 조회 없음).
+//
+// 왜 별도 파일인가: 수용기준 3(«과잉 위젯 홈 잔존 0»)과 KPI 5종은 **기계가 재야 하는 계약**이다.
+// 화면 컴포넌트 안에 문자열로 흩어 두면 테스트가 «렌더가 안 터졌다» 만 증명한다(BBE-183 교훈).
+// 순서·라벨·파생 규칙을 여기 한 곳에 두고, 테스트는 이 상수를 직접 검사한다.
+
+import { NAV_ITEMS } from "@/components/shell/nav-items";
+import { formatCount, formatKrw } from "./format";
+import type { TodayDashboardSnapshot, TodayDashboardTask } from "./today";
+
+/** KPI 카드 5장 — V6 목업 `UI목업_워크스페이스_최종_v6.html:1534~1538` 의 순서·라벨 그대로. */
+export const HOME_KPIS = [
+  { key: "todayConsultations", label: "오늘 상담할 곳", unit: "count" },
+  { key: "callbacks", label: "재통화 대기", unit: "count" },
+  { key: "contractsWaiting", label: "계약 대기", unit: "count" },
+  { key: "contractDeposits", label: "이번 달 계약금", unit: "krw" },
+  { key: "fees", label: "이번 달 수수료", unit: "krw" },
+] as const satisfies readonly {
+  key: keyof TodayDashboardSnapshot["kpis"];
+  label: string;
+  unit: "count" | "krw";
+}[];
+
+export type HomeKpi = (typeof HOME_KPIS)[number];
+
+export function formatKpi(kpi: HomeKpi, kpis: TodayDashboardSnapshot["kpis"]): string {
+  return kpi.unit === "krw" ? formatKrw(kpis[kpi.key]) : formatCount(kpis[kpi.key]);
+}
+
+/**
+ * 할 일이 어느 탭의 것인지 — `task.href` 의 첫 구간으로 되짚는다.
+ *
+ * 표시 이름은 지어내지 않고 사이드바 정본(`nav-items.ts`)에서 가져온다. 거기서 이름을 바꾸면
+ * 홈도 같이 바뀐다. 정본에 없는 주소면 '-' 로 두고 링크만 살린다(빈칸 대신 NaN 금지 규칙과 같다).
+ */
+export function taskTabLabel(href: string): string {
+  const path = href.split("?")[0];
+  const match = NAV_ITEMS.filter((item) => item.href && item.href !== "/")
+    .filter((item) => path === item.href || path.startsWith(`${item.href}/`))
+    // 가장 긴 일치를 고른다 — '/settings' 와 '/settings/members' 가 함께 있을 때를 위해서다.
+    .sort((a, b) => (b.href?.length ?? 0) - (a.href?.length ?? 0))[0];
+  return match?.label ?? "-";
+}
+
+const TASK_KIND_LABEL: Record<TodayDashboardTask["kind"], string> = {
+  work_due: "기한 도래 업무",
+  follow_up: "후속 연락",
+  assign_owner: "담당자 지정",
+  decide: "결정 대기",
+  reconcile_payment: "입금 확인",
+};
+
+const TASK_STATUS_LABEL: Record<TodayDashboardTask["status"], string> = {
+  not_started: "시작 전",
+  in_progress: "진행 중",
+  blocked: "막힘",
+};
+
+/**
+ * «할 일» 칸 문구.
+ *
+ * BBE-185 계약에는 자유 서술 필드가 없다(today.ts:13~21 — kind·status 뿐). 그래서 문장을
+ * 지어내지 않고 그 둘을 사람 말로 옮기기만 한다. 목업의 «1차 통화 (재 유선상담 …)» 같은
+ * 문구는 read model 이 주지 않는 값이라 **만들지 않는다**(샘플 고객명·가짜 문구 0).
+ */
+export function taskWhat(task: TodayDashboardTask): string {
+  return `${TASK_KIND_LABEL[task.kind]} · ${TASK_STATUS_LABEL[task.status]}`;
+}
+
+export type DueTone = "overdue" | "today" | "upcoming";
+
+/** 기한 배지 — 지남 / 오늘 / 그 밖(날짜 그대로). 문자열 비교로 충분하다(둘 다 YYYY-MM-DD·KST). */
+export function dueBadge(dueOn: string, today: string): { tone: DueTone; label: string } {
+  if (dueOn < today) return { tone: "overdue", label: "지남" };
+  if (dueOn === today) return { tone: "today", label: "오늘" };
+  return { tone: "upcoming", label: dueOn };
+}
+
+/**
+ * 바로 가기 — 정적 링크다. read model 을 늘리지 않는다(카드 금지: dashboard DB·RPC 자체 구현).
+ *
+ * 앞 셋은 V6 목업 `:1563~1565`. 마지막 «업무 분석» 은 목업에 없는 **의도된 1건 추가**다 —
+ * 분석 화면(/dash·/dash/all·/dash/tasks)이 사이드바에 없어서 홈이 유일한 진입점이기 때문이다.
+ * 이 링크를 빼면 그 화면들이 어느 화면에도 닿지 않게 된다(진단 §1.3).
+ */
+export const HOME_SHORTCUTS = [
+  { label: "신규리드 관리", href: "/newcust" },
+  { label: "자동화 규칙", href: "/settings/automations" },
+  { label: "온보딩 이어하기", href: "/onboarding" },
+  { label: "업무 분석", href: "/dash" },
+] as const;
