@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { decodeBoardFilters } from "@/components/board/filters";
-import { applySavedKanbanView, parseSavedBoardViewConfig, savedBoardViewFromRow, savedViewUrl, systemViewUrl } from "./board-saved";
+import { applySavedKanbanView, parsePersonScopeInput, parseSavedBoardViewConfig, savedBoardViewFromRow, savedViewUrl, systemViewUrl } from "./board-saved";
 
 describe("parseSavedBoardViewConfig", () => {
+  it("round-trips viewer, team and fixed person scopes without silently widening them", () => {
+    expect(parsePersonScopeInput("viewer", null)).toEqual({ personScope: "viewer", personScopeUserId: null });
+    expect(parsePersonScopeInput("team", "ignored")).toEqual({ personScope: "team", personScopeUserId: null });
+    expect(parsePersonScopeInput("fixed", "member-2")).toEqual({ personScope: "fixed", personScopeUserId: "member-2" });
+    expect(() => parsePersonScopeInput("fixed", null)).toThrow("requires a user");
+  });
   it("keeps filter, sort, grouping, and layout state", () => {
     const parsed = parseSavedBoardViewConfig({
       kind: "calendar",

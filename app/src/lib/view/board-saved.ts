@@ -1,5 +1,6 @@
 import { applyFilters, encodeBoardFilters, type BoardFilterState } from "@/components/board/filters";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards";
+import type { PersonScope } from "./contracts";
 
 export type SavedBoardViewKind = "board" | "table" | "calendar";
 
@@ -22,6 +23,8 @@ export interface SavedBoardView {
   name: string;
   visibility: "private" | "shared";
   ownerId: string;
+  personScope?: PersonScope;
+  personScopeUserId?: string | null;
   config: SavedBoardViewConfig;
   isDefault: boolean;
   lastUsedAt: string | null;
@@ -47,6 +50,15 @@ function sorts(value: unknown): Array<{ columnKey: string; direction: "asc" | "d
       ? [{ columnKey: row.columnKey, direction: row.direction }]
       : [];
   });
+}
+
+export function parsePersonScopeInput(value: unknown, fixedUserId: unknown): {
+  personScope: PersonScope; personScopeUserId: string | null;
+} {
+  const personScope: PersonScope = value === "none" || value === "team" || value === "fixed" ? value : "viewer";
+  const personScopeUserId = personScope === "fixed" && typeof fixedUserId === "string" && fixedUserId.trim() ? fixedUserId.trim() : null;
+  if (personScope === "fixed" && !personScopeUserId) throw new Error("fixed person scope requires a user");
+  return { personScope, personScopeUserId };
 }
 
 function strings(value: unknown): string[] {
@@ -99,6 +111,7 @@ export function savedBoardViewFromRow(row: Record<string, unknown>, canEdit?: bo
     id: String(row.id), name: String(row.name),
     visibility: row.visibility === "shared" ? "shared" : "private",
     ownerId: String(row.owner_id), config: parseSavedBoardViewConfig(row.config_jsonb),
+    ...parsePersonScopeInput(row.person_scope, row.person_scope_user_id),
     isDefault: row.is_default === true,
     lastUsedAt: typeof row.last_used_at === "string" ? row.last_used_at : null,
     ...(canEdit === undefined ? {} : { canEdit }),

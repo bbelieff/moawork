@@ -20,6 +20,8 @@ describe("saved view production consumer", () => {
     expect(controller).toContain("config.calendarFieldKey");
     expect(controller).toContain("parseSavedStringList");
     expect(controller).toContain("filters.sorts");
+    expect(controller).toContain("textMode={config.textMode}");
+    expect(controller).toContain("focusColumnKey={config.focusColumnKey}");
     expect(page).toContain('view === "flat" || view === "calendar"');
     expect(page).toContain("parseSavedBoardLayout(sp.mwLayout)");
   });
@@ -38,7 +40,11 @@ describe("saved view production consumer", () => {
     expect(collectionRoute).toContain('ctx.role === "owner" || ctx.role === "admin"');
     expect(collectionRoute).toContain("row.owner_id === ctx.user.id || canManageShared");
     expect(collectionRoute).toContain("sort_jsonb: config.sorts");
+    expect(collectionRoute).toContain("person_scope: scope.personScope");
+    expect(collectionRoute).toContain("person_scope_user_id: scope.personScopeUserId");
+    expect(controller).toContain("personScope: input.personScope");
     expect(itemRoute).toContain("patch.sort_jsonb = config.sorts");
+    expect(itemRoute).toContain("patch.person_scope = scope.personScope");
     expect(itemRoute).toContain("patch.hidden_columns_jsonb = config.hiddenColumns");
     expect(itemRoute).toContain("patch.column_order_jsonb = config.columnOrder");
     expect(migration).toMatch(/public\.is_org_member\(org_id\)/);

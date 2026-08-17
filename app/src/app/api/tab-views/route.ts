@@ -1,9 +1,9 @@
 import { createRequestBoards } from "@/lib/boards/server";
 import { jsonOk, readJson, requireCtx, toErrorResponse } from "@/lib/boards/http";
 import { createClient } from "@/lib/supabase/server";
-import { parseSavedBoardViewConfig, savedBoardViewFromRow } from "@/lib/view/board-saved";
+import { parsePersonScopeInput, parseSavedBoardViewConfig, savedBoardViewFromRow } from "@/lib/view/board-saved";
 
-const COLS = "id,name,visibility,owner_id,config_jsonb,is_default,last_used_at";
+const COLS = "id,name,visibility,owner_id,person_scope,person_scope_user_id,config_jsonb,is_default,last_used_at";
 
 
 async function assertBoardAccess(boardId: string) {
@@ -43,6 +43,7 @@ export async function POST(req: Request): Promise<Response> {
     if (!name || !boardId) return Response.json({ error: "boardId와 이름이 필요합니다." }, { status: 400 });
     const ctx = await assertBoardAccess(boardId);
     const config = parseSavedBoardViewConfig(body.config);
+    const scope = parsePersonScopeInput(body.personScope, body.personScopeUserId);
     const db = await createClient();
     const { data, error } = await db.from("tab_views").insert({
       org_id: ctx.org.id,
@@ -52,7 +53,8 @@ export async function POST(req: Request): Promise<Response> {
       name,
       kind: config.kind === "table" ? "flat" : config.kind === "calendar" ? "cal" : "board",
       visibility,
-      person_scope: "viewer",
+      person_scope: scope.personScope,
+      person_scope_user_id: scope.personScopeUserId,
       filters_jsonb: config.filters.byColumn,
       sort_jsonb: config.sorts,
       hidden_columns_jsonb: config.hiddenColumns,

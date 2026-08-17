@@ -1,9 +1,9 @@
 import { jsonOk, readJson, requireCtx, toErrorResponse } from "@/lib/boards/http";
 import { createClient } from "@/lib/supabase/server";
-import { parseSavedBoardViewConfig, savedBoardViewFromRow } from "@/lib/view/board-saved";
+import { parsePersonScopeInput, parseSavedBoardViewConfig, savedBoardViewFromRow } from "@/lib/view/board-saved";
 
 type Params = { params: Promise<{ viewId: string }> };
-const COLS = "id,name,visibility,owner_id,config_jsonb,is_default,last_used_at,board_id";
+const COLS = "id,name,visibility,owner_id,person_scope,person_scope_user_id,config_jsonb,is_default,last_used_at,board_id";
 
 export async function PATCH(req: Request, { params }: Params): Promise<Response> {
   try {
@@ -29,6 +29,11 @@ export async function PATCH(req: Request, { params }: Params): Promise<Response>
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (typeof body.name === "string" && body.name.trim()) patch.name = body.name.trim();
     if (body.visibility === "private" || body.visibility === "shared") patch.visibility = body.visibility;
+    if (body.personScope !== undefined || body.personScopeUserId !== undefined) {
+      const scope = parsePersonScopeInput(body.personScope, body.personScopeUserId);
+      patch.person_scope = scope.personScope;
+      patch.person_scope_user_id = scope.personScopeUserId;
+    }
     if (body.config !== undefined) {
       const config = parseSavedBoardViewConfig(body.config);
       patch.config_jsonb = config;
@@ -43,7 +48,7 @@ export async function PATCH(req: Request, { params }: Params): Promise<Response>
     const { data, error } = await db.from("tab_views").update(patch)
       .eq("id", viewId).eq("org_id", ctx.org.id).select(COLS).single();
     if (error) throw error;
-    return jsonOk(data);
+    return jsonOk(savedBoardViewFromRow(data as Record<string, unknown>, true));
   } catch (error) {
     return toErrorResponse(error);
   }

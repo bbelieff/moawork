@@ -261,6 +261,8 @@ export function GroupTable({
   onRowDragEnd,
   onRowDrop,
   renderRowAction,
+  textMode = "single",
+  focusColumnKey = null,
 }: {
   boardId: string;
   /** 이 그룹의 group_id. "그룹 없음" 블록은 null. */
@@ -289,6 +291,8 @@ export function GroupTable({
   /** 이 그룹의 index 위치에 놓는다. */
   onRowDrop: (index: number) => void;
   renderRowAction?: (row: ItemWithValues) => ReactNode;
+  textMode?: "single" | "wrap";
+  focusColumnKey?: string | null;
 }) {
   /*
    * 드래그 중인 대상은 **ref 가 정본**이고 state 는 표시(반투명·강조)에만 쓴다.
@@ -422,7 +426,8 @@ export function GroupTable({
                   }}
                   title={!canManageColumns ? cellTitle(col) : `${cellTitle(col)} — 끌어서 이 그룹의 컬럼 순서 변경`}
                   style={width ? { width, minWidth: width } : undefined}
-                  className={`relative sticky top-0 z-20 min-w-20 border-b border-mw-line bg-mw-card px-2 py-1.5 text-xs font-semibold text-mw-sub ${
+                  data-view-focus={col.key === focusColumnKey || undefined}
+                  className={`relative sticky top-0 z-20 min-w-20 border-b border-mw-line px-2 py-1.5 text-xs font-semibold text-mw-sub ${col.key === focusColumnKey ? "bg-mw-tint-blue" : "bg-mw-card"} ${
                     !canManageColumns ? "" : "cursor-grab active:cursor-grabbing"
                   } ${isTarget ? "bg-mw-tint-blue text-mw-record" : ""} ${
                     dragColKey === col.key ? "opacity-50" : ""
@@ -530,7 +535,8 @@ export function GroupTable({
                 {columns.map((col) => (
                   <td
                     key={col.id}
-                    className={`border-b border-mw-line px-2 align-middle group-hover:bg-mw-bg ${
+                    data-view-focus={col.key === focusColumnKey || undefined}
+                    className={`border-b border-mw-line px-2 align-middle group-hover:bg-mw-bg ${textMode === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
                       col.rightPinned ? "sticky right-0 z-10 border-l-2 border-l-mw-primary bg-mw-card" : ""
                     }`}
                   >

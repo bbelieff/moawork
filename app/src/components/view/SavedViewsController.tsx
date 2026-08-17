@@ -90,6 +90,7 @@ export function SavedViewsController({
     if (!pending) return;
     const created = await request<SavedBoardView>("/api/tab-views", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
       boardId, name: input.name, visibility: input.visibility,
+      personScope: input.personScope, personScopeUserId: input.personScopeUserId ?? null,
       config: { ...pending, kind: input.kind === "cal" ? "calendar" : input.kind === "flat" ? "table" : "board", calendarFieldKey: input.calendarFieldKey },
     }) });
     setPending(null);
@@ -124,7 +125,7 @@ export function SavedViewsController({
         {error ? <span role="alert" className="text-xs text-mw-error">{error}</span> : null}
       </div>
       {pending ? <SaveViewDialog orgId={orgId} boardKey={boardId} ownerId={currentUserId} kind={kindOf(pending)} filters={pending.filters.byColumn} sort={pending.sorts} calendarFieldKey={pending.calendarFieldKey} dateColumns={columns.filter((column) => column.type === "date" || column.type === "datetime").map((column) => ({ key: column.key, label: column.label }))} onSubmit={(input) => void create(input)} onCancel={() => setPending(null)} /> : null}
-      {renderMode === "flat" ? <TableView columns={tableColumns} rows={filteredRows} rowKey={(row) => row.id} renderCell={(row, column) => {
+      {renderMode === "flat" ? <TableView columns={tableColumns} rows={filteredRows} textMode={config.textMode} focusColumnKey={config.focusColumnKey} rowKey={(row) => row.id} renderCell={(row, column) => {
         if (column.key === "__title") return row.title;
         const definition = columns.find((candidate) => candidate.key === column.key);
         return definition ? <BoardCell boardId={boardId} row={row} column={definition} readOnly={!canEditItems} /> : "";

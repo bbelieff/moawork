@@ -142,11 +142,13 @@ export function BoardWorkspace({
 }) {
   const [filters, setFilters] = useState<BoardFilterState>(EMPTY_FILTERS);
   const [filterUrlReady, setFilterUrlReady] = useState(false);
+  const [savedPresentation, setSavedPresentation] = useState<{ textMode: "single" | "wrap"; focusColumnKey: string | null }>({ textMode: "single", focusColumnKey: null });
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const params = new URLSearchParams(window.location.search);
       setFilters(decodeBoardFilters(params.get(BOARD_FILTER_QUERY_KEY)));
+      setSavedPresentation({ textMode: params.get("mwText") === "wrap" ? "wrap" : "single", focusColumnKey: params.get("mwFocus") });
       setFilterUrlReady(true);
     }, 0);
     return () => window.clearTimeout(timer);
@@ -336,6 +338,8 @@ export function BoardWorkspace({
                 detailLayout={resolvedDetailLayout.entries}
                 detailLayoutInherited={resolvedDetailLayout.inherited}
                 rows={visibleRows}
+                textMode={savedPresentation.textMode}
+                focusColumnKey={savedPresentation.focusColumnKey}
                 readOnly={readOnly}
                 canDeleteItems={!board.is_system && canDeleteItems}
                 canManageColumns={!board.is_system && canManageColumns}

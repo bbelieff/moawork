@@ -35,6 +35,9 @@
 .tableWrap table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}
 .tableWrap th,.tableWrap td{border-right:1px solid #e6e9ef;border-bottom:1px solid #e6e9ef;padding:7px;text-align:left;background:#fff}
 .tableWrap thead th{position:sticky;top:0;background:#f6f7fb;z-index:1}
+.singleCell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:20rem}
+.wrapCell{white-space:normal;overflow-wrap:anywhere}
+.tableWrap [data-view-focus="true"]{background:var(--mw-tint-blue,#eef0ff)}
 .tableEmpty{text-align:center;border:1px dashed #c3c6d4;border-radius:12px;padding:36px 20px;color:var(--mw-sub,#676879)}
 
 .calGrid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid #d0d4e4;border-radius:10px;overflow:hidden}

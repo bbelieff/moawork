@@ -15,12 +15,16 @@ export function TableView<T>({
   rows,
   rowKey,
   renderCell,
+  textMode = "single",
+  focusColumnKey = null,
   emptyLabel = "조건에 맞는 항목이 없습니다.",
 }: {
   columns: readonly TableColumn[];
   rows: readonly T[];
   rowKey: (row: T) => string;
   renderCell: (row: T, column: TableColumn) => ReactNode;
+  textMode?: "single" | "wrap";
+  focusColumnKey?: string | null;
   emptyLabel?: string;
 }) {
   if (!rows.length) return <div className={styles.tableEmpty}>{emptyLabel}</div>;
@@ -30,7 +34,7 @@ export function TableView<T>({
         <thead>
           <tr>
             {columns.map((c) => (
-              <th key={c.key}>{c.label}</th>
+              <th key={c.key} data-view-focus={c.key === focusColumnKey || undefined}>{c.label}</th>
             ))}
           </tr>
         </thead>
@@ -38,7 +42,7 @@ export function TableView<T>({
           {rows.map((row) => (
             <tr key={rowKey(row)}>
               {columns.map((c) => (
-                <td key={c.key}>{renderCell(row, c)}</td>
+                <td key={c.key} data-view-focus={c.key === focusColumnKey || undefined} className={textMode === "wrap" ? styles.wrapCell : styles.singleCell}>{renderCell(row, c)}</td>
               ))}
             </tr>
           ))}
