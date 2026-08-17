@@ -2623,3 +2623,17 @@ append-only 규칙에 따라 위 기록은 그대로 두고 여기에 덧붙인�
 - `CLAUDE.md`·`AGENTS.md`·coordination 기록·관제판은 main 정본을 유지했다. 기존 migration은 수정하지 않고 신규 098~106만 연속 보존했다.
 - DG03 BBE-171과 겹치는 `app/src/components/board/GroupTable.tsx`는 active writer lease를 우선해 제외했다. DG03 확정 head 뒤에 필요한 통합분을 직렬 재대조한다.
 - 고객 고유값 검사에서 발견된 구 값 재유입 경로는 main 비개인화 정본으로 복원했다. hosted 적용과 merge는 독립 검수 PASS 전까지 0이다.
+## 2026-08-18 — BBE-199 회사 로고 업로드 (DB·Storage·화면) [모아워크 DC 15]
+
+- base `origin/main@e8c9427`, branch `claude/bbe-199-org-logo`.
+- 착수 전 실측 2건: 「계정설정 › 회사와 팀」 화면은 `settings/members/page.tsx` 로 **실재**한다(새 화면 불필요). Supabase Storage 사용처는 저장소 전체에 **0건**이라 버킷부터 만들었다.
+- 마이그레이션은 `098_bbe199_org_logo.sql` · predecessor `095`. PR #251 의 096·097 은 아직 main 에 없어 predecessor 를 097 로 쓸 수 없다(`check-migration-guards.mjs:68` 이 정렬 인접 파일로 강제). 파일명 충돌을 피해 번호만 098 로 띄웠고, #251 머지 시 rebase 하며 predecessor·digest 를 재확정한다.
+- `orgs` 에 `logo_path/logo_mime/logo_bytes/logo_updated_at/logo_updated_by` 추가(additive·nullable·기존 row UPDATE 0). `logo_url` 이 아니라 **경로**를 저장한다 — 공개 URL 로는 「타 조직 읽기 0」을 RLS 로 만들 수 없다.
+- `orgs` 의 UPDATE 정책을 열지 않았다. 006 이 이미 authenticated 의 orgs UPDATE 를 회수해 뒀고, RLS 는 컬럼 단위로 못 막아 열면 `plan_tier` 까지 열린다. 대신 security definer RPC `set_org_logo`/`clear_org_logo` 를 유일한 문으로 두고 owner/admin 을 판정한다. 감사는 `org_logo_audit` 에 같은 트랜잭션으로 남는다.
+- 경로 위조 방어 3겹: 서버가 `ctx.org.id` 로 경로 조립 → RPC 가 `org_logo_object_org(p_path) = p_org_id` 검증 → DB CHECK `orgs_logo_path_org_scoped`. 형식·용량도 RPC + CHECK + 버킷 설정으로 겹쳐 막는다.
+- 비공개 버킷 `org-logos`(1MiB · png/jpeg/svg) + `storage.objects` 정책 4개. storage 스키마가 없으면 `raise warning` 으로 소리내어 건너뛰고, 적용 확인은 `org_logo_storage_installed()` 로 한다.
+- 화면은 대부분 **배선**이었다. `WorkspaceMark` 가 이미 signedImageUrl → 이니셜 폴백을 구현하고 `WorkspaceSwitcher` 가 이미 회사명 왼쪽에 두고 있는데 `layout.tsx` 가 `signedImageUrl: null` 로 끊어 놨다(089/BBE-197 과 같은 「부품은 있고 배선이 없다」 형태).
+- 검증: PGlite 실행형 14 tests(실제 RLS·제약·트랜잭션) + 앱 40 tests. 변이 20종 전부 RED — DB 9 + 화면·액션 11. `bash scripts/check.sh` PASS.
+- 변이 하니스가 처음에 「전부 초록」으로 거짓 보고한 것을 잡아 고쳤다(예외를 삼키고 출력을 파싱 → 파싱 실패가 성공으로 보임). 「판정 불능은 통과가 아니라 빨간불」 판정을 넣었다. 기존 공유 pglite 래퍼는 종료코드 기반이라 정상임을 일부러 깨뜨려 확인했다.
+- 기존 `WorkspaceMark.test.ts` 는 순수함수만 불러 이니셜 폴백을 지워도 초록이었다. 렌더 테스트를 추가해 실제 화면 출력으로 잡는다.
+- hosted 적용·고객 데이터 쓰기·비밀값 조회는 0건이다.
