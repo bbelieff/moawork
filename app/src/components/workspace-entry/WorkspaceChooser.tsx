@@ -23,6 +23,29 @@ export function workspaceNoticeRole(tone: WorkspaceChooserNotice["tone"]): "stat
   return tone === "error" ? "alert" : "status";
 }
 
+/**
+ * 결과 배너. 색·아이콘·live region 을 tone 하나로 함께 결정한다.
+ *
+ * 왜 별도 컴포넌트인가: 이 매핑이 BBE-183 의 버그 지점이다. 배너는 요청이 끝난 뒤에만
+ * 나타나서 `WorkspaceChooser` 를 그대로 렌더해서는 검사할 수 없었고, 그래서 회귀가
+ * 테스트를 그냥 통과했다. 여기로 떼어 두면 성공 배너에 오류 스타일이 붙는 순간
+ * 테스트가 실패한다.
+ */
+export function WorkspaceSelectionNotice({ notice }: { notice: WorkspaceChooserNotice | null }) {
+  if (!notice) return null;
+  const isError = notice.tone === "error";
+  return (
+    <p
+      role={workspaceNoticeRole(notice.tone)}
+      aria-live={isError ? "assertive" : "polite"}
+      className={isError ? styles.error : styles.status}
+      data-tone={notice.tone}
+    >
+      <span aria-hidden="true">{isError ? "!" : "✓"}</span> {notice.text}
+    </p>
+  );
+}
+
 export function WorkspaceChooser({
   workspaces,
   /** 회사별 내 할 일 건수(mod.notify). 건수만 받고 내용은 받지 않는다. */
@@ -57,13 +80,5 @@ export function WorkspaceChooser({
       setBusy(false);
     }
   }
-  const noticeNode = notice
-    ? <p
-        role={workspaceNoticeRole(notice.tone)}
-        aria-live={notice.tone === "error" ? "assertive" : "polite"}
-        className={notice.tone === "error" ? styles.error : styles.status}
-        data-tone={notice.tone}
-      ><span aria-hidden="true">{notice.tone === "error" ? "!" : "✓"}</span> {notice.text}</p>
-    : null;
-  return <main className={styles.page}><section className={`${styles.shell} ${styles.compactShell}`} aria-labelledby="workspace-chooser-title"><header className={styles.protoTop}><Logo height={28} href="/" /><span>회사 선택</span></header><div className={styles.compactHub}><div className={styles.guideHead}><span className={styles.guideAvatar} aria-hidden="true">M</span><div><strong>모아 가이드</strong><small>들어갈 수 있는 회사만 보여드려요.</small></div></div><div className={styles.bubble}><h1 id="workspace-chooser-title">들어갈 회사를 골라 주세요.</h1><small>회사를 선택할 때 접근 권한을 한 번 더 확인해요.</small></div>{noticeNode}<ul className={styles.chooserList}>{workspaces.map((workspace) => <li key={workspace.orgId}><button type="button" onClick={() => selectWorkspace(workspace.orgId)} disabled={busy || redirecting}><span className={styles.workspaceMark} aria-hidden="true">{workspace.name.slice(0, 1)}</span><span><strong>{workspace.name}</strong><small>/w/{workspace.slug}</small></span>{badges?.[workspace.orgId] ? <Badge state={badges[workspace.orgId]!} label={workspace.name} /> : null}<b aria-hidden="true">→</b></button></li>)}</ul><div className={styles.quick}><Link href="/workspace-entry?mode=new">새 회사를 시작하거나 다른 회사에 합류하기</Link></div><p className={styles.safety}>최근에 이용한 회사라는 이유만으로 자동으로 들어가지는 않아요.</p></div></section></main>;
+  return <main className={styles.page}><section className={`${styles.shell} ${styles.compactShell}`} aria-labelledby="workspace-chooser-title"><header className={styles.protoTop}><Logo height={28} href="/" /><span>회사 선택</span></header><div className={styles.compactHub}><div className={styles.guideHead}><span className={styles.guideAvatar} aria-hidden="true">M</span><div><strong>모아 가이드</strong><small>들어갈 수 있는 회사만 보여드려요.</small></div></div><div className={styles.bubble}><h1 id="workspace-chooser-title">들어갈 회사를 골라 주세요.</h1><small>회사를 선택할 때 접근 권한을 한 번 더 확인해요.</small></div><WorkspaceSelectionNotice notice={notice} /><ul className={styles.chooserList}>{workspaces.map((workspace) => <li key={workspace.orgId}><button type="button" onClick={() => selectWorkspace(workspace.orgId)} disabled={busy || redirecting}><span className={styles.workspaceMark} aria-hidden="true">{workspace.name.slice(0, 1)}</span><span><strong>{workspace.name}</strong><small>/w/{workspace.slug}</small></span>{badges?.[workspace.orgId] ? <Badge state={badges[workspace.orgId]!} label={workspace.name} /> : null}<b aria-hidden="true">→</b></button></li>)}</ul><div className={styles.quick}><Link href="/workspace-entry?mode=new">새 회사를 시작하거나 다른 회사에 합류하기</Link></div><p className={styles.safety}>최근에 이용한 회사라는 이유만으로 자동으로 들어가지는 않아요.</p></div></section></main>;
 }
