@@ -127,7 +127,6 @@ export function GroupBlock({
                   <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-mw-primary" />
                 )}
                 {presetName}
-                {presetChanged && <span className="text-mw-primary">변경됨</span>}
               </span>
             )}
           </span>
