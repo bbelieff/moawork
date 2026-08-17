@@ -35,6 +35,7 @@ import {
   resolveDetailLayout,
   type DetailLayoutEntry,
 } from "@/lib/boards/detail-layout";
+import { advanceNewLeadToContact, NewLeadAdvanceError } from "@/lib/new-lead/advance";
 
 function str(fd: FormData, key: string): string {
   const v = fd.get(key);
@@ -181,6 +182,37 @@ export async function setCellAction(formData: FormData): Promise<void> {
   const graph = await createRequestBoards();
   const svc = graph.service;
   const raw = formData.get("value");
+  if (columnKey === "contact_move" && raw === "컨택 이동") {
+    const suppliedRequestId = str(formData, "requestId");
+    const requestId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(suppliedRequestId)
+      ? suppliedRequestId
+      : crypto.randomUUID();
+    try {
+      const result = await advanceNewLeadToContact(graph.client, { itemId, requestId });
+      if (result.status !== "committed") {
+        await flashCellErrors(itemId, [{
+          key: columnKey,
+          label: "컨택 이동",
+          message: result.reason ?? "컨택 이동이 차단되었습니다.",
+        }]);
+        revalidatePath(`/boards/${boardId}`);
+        return;
+      }
+    } catch (error) {
+      await flashCellErrors(itemId, [{
+        key: columnKey,
+        label: "컨택 이동",
+        message: error instanceof NewLeadAdvanceError
+          ? error.message
+          : "컨택 이동을 완료하지 못했습니다. 다시 시도해 주세요.",
+      }]);
+      revalidatePath(`/boards/${boardId}`);
+      return;
+    }
+    revalidatePath(`/boards/${boardId}`);
+    revalidatePath("/contract");
+    redirect("/contract");
+  }
   let patch: Record<string, import("@/lib/boards/types").CellValue>;
   if (raw instanceof File && raw.size > 0) {
     const column = (await svc.getBoardDetail(ctx, boardId)).columns.find((candidate) => candidate.key === columnKey);
