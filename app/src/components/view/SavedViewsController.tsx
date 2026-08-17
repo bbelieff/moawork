@@ -48,7 +48,7 @@ export function SavedViewsController({
   const activeKind: ViewKind = activeSaved ? kindOf(activeSaved.config) : renderMode === "calendar" ? "cal" : renderMode === "flat" ? "flat" : "board";
 
   const currentConfig = useCallback((filtersOverride?: BoardFilterState): SavedBoardViewConfig => {
-    const url = new URL(window.location.href);
+    const url = new URL(typeof window === "undefined" ? "http://localhost" : window.location.href);
     const filters = filtersOverride ?? decodeBoardFilters(url.searchParams.get(BOARD_FILTER_QUERY_KEY));
     return {
       kind: activeKind === "cal" ? "calendar" : activeKind === "flat" ? "table" : "board",
