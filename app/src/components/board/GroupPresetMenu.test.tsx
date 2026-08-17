@@ -142,6 +142,30 @@ describe("BBE-174 GroupBlock 프리셋 칩", () => {
     expect(html).not.toContain("WO-6");
   });
 
+  it("카드 전체를 자르지 않는다 — 자르면 머리말의 팝오버가 잘려 안 보인다", () => {
+    const html = renderToStaticMarkup(
+      <GroupBlock
+        name="1차 부재"
+        color={null}
+        columns={columns}
+        rows={[]}
+        presetName="p"
+        presetChanged={false}
+        presetMenu={<span>메뉴</span>}
+      >
+        <div>본문</div>
+      </GroupBlock>,
+    );
+
+    const section = html.slice(0, html.indexOf(">") + 1);
+    // Chrome 실측: <section> 에 overflow-hidden 이 있으면 그 section 이 팝오버를 자른다.
+    expect(section).toContain("<section");
+    expect(section).not.toContain("overflow-hidden");
+    // 대신 본문 래퍼가 아래쪽 모서리를 자른다 — 카드 모양은 그대로다.
+    expect(html).toContain("overflow-hidden rounded-b-xl");
+    expect(html).toContain("rounded-t-xl");
+  });
+
   it("메뉴가 없어도 대기 문구로 돌아가지 않는다", () => {
     const html = renderToStaticMarkup(
       <GroupBlock

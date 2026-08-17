@@ -69,10 +69,22 @@ export function GroupBlock({
   const sum = sumOfFirstNumberColumn(columns, rows);
 
   return (
-    <section className="overflow-hidden rounded-xl border border-mw-line bg-mw-card">
+    /*
+     * 모서리를 자르는 `overflow-hidden` 은 **카드 전체가 아니라 본문에만** 건다.
+     *
+     * 전에는 이 <section> 이 통째로 `overflow-hidden` 이었다. 그때는 머리말에 «표시» 만
+     * 있었으니 문제가 없었지만, 프리셋 메뉴(BBE-174)가 들어오면서 머리말에서 아래로 펼쳐지는
+     * 팝오버가 생겼다 — 자르는 조상이 있으면 팝오버가 카드 경계에서 **잘려 안 보인다.**
+     * (Chrome 에서 실측했다: section 에 overflow-hidden 이 있으면 패널을 자르는 조상이 그
+     * section 이고, 본문 래퍼로 옮기면 자르는 조상이 없다.)
+     *
+     * 그래서 머리말은 자기 위쪽 모서리를, 본문 래퍼는 자기 아래쪽 모서리를 각각 둥글린다.
+     * 카드 모양은 그대로이고 팝오버만 밖으로 나올 수 있다.
+     */
+    <section className="rounded-xl border border-mw-line bg-mw-card">
       <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
         <summary
-          className="flex cursor-pointer select-none items-center gap-2 px-3 py-2 list-none [&::-webkit-details-marker]:hidden"
+          className="flex cursor-pointer select-none items-center gap-2 rounded-t-xl px-3 py-2 list-none [&::-webkit-details-marker]:hidden"
           style={{
             backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)`,
             borderLeft: `3px solid ${accent}`,
@@ -121,7 +133,7 @@ export function GroupBlock({
           </span>
         </summary>
 
-        {children}
+        <div className="overflow-hidden rounded-b-xl">{children}</div>
       </details>
     </section>
   );
