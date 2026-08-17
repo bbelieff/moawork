@@ -353,12 +353,10 @@ export function BoardWorkspace({
                     groupKey={block.key}
                     savable={block.group !== null}
                     presetName={groupPresetName(board.name, block.name)}
-                    changed={isGroupPresetChanged(optimisticOrder[block.key])}
                     columns={fullColumns}
                     order={optimisticOrder[block.key]}
                     presets={presets}
                     canEditPresets={canEditPresets}
-                    canManageColumns={canManageColumns}
                   />
                 )
               }

@@ -17,7 +17,7 @@
  * ② **권한이 없으면 버튼을 감추지 않고 이유를 적는다.** 사라진 버튼은 사용자가 «고장» 으로
  *    읽는다. 서버 액션도 독립적으로 다시 막으므로 여기 표시는 안내이지 방어선이 아니다.
  *
- * ③ **요청 id 는 폼이 열릴 때 한 번만 만든다.** 저장 버튼을 두 번 눌러도 같은 id 가 가서
+ * ② **요청 id 는 폼이 열릴 때 한 번만 만든다.** 저장 버튼을 두 번 눌러도 같은 id 가 가서
  *    프리셋이 하나만 생긴다(`groupPresetRequestSource`). 제출할 때마다 새로 만들면
  *    멱등성이 그 자리에서 무너진다.
  *
@@ -30,8 +30,6 @@ import type { BoardColumn } from "@/lib/boards/types";
 import type { SectionPresetRecord } from "@/lib/presets/section-presets";
 import { previewGroupPresetApply } from "@/lib/presets/group-preset";
 import {
-  applyGroupPresetAction,
-  resetGroupPresetAction,
   saveGroupPresetAction,
   INITIAL_GROUP_PRESET_STATE,
 } from "@/app/(app)/boards/preset-actions";
@@ -44,8 +42,6 @@ interface GroupPresetMenuProps {
   savable: boolean;
   /** 칩에 보이는 `탭-그룹` 이름 = 저장 기본값. */
   presetName: string;
-  /** 이 그룹에 배치 오버라이드가 저장돼 있는가. */
-  changed: boolean;
   /** 이 그룹에서 지금 보이는 순서의 컬럼(= 적용 대상). */
   columns: readonly BoardColumn[];
   /** 이 그룹의 배치 오버라이드(현재 저장분). */
@@ -53,7 +49,6 @@ interface GroupPresetMenuProps {
   /** 회사에 저장돼 있는 아이템 프리셋 목록. */
   presets: readonly SectionPresetRecord[];
   canEditPresets: boolean;
-  canManageColumns: boolean;
 }
 
 export function GroupPresetMenu({
@@ -61,12 +56,10 @@ export function GroupPresetMenu({
   groupKey,
   savable,
   presetName,
-  changed,
   columns,
   order,
   presets,
   canEditPresets,
-  canManageColumns,
 }: GroupPresetMenuProps) {
   const panelId = useId();
   // ③ 폼 수명 동안 고정되는 요청 id — 재제출이 두 번째 프리셋을 만들지 않게 한다.
@@ -74,8 +67,6 @@ export function GroupPresetMenu({
   const [selectedPresetId, setSelectedPresetId] = useState("");
 
   const [saveState, save, saving] = useActionState(saveGroupPresetAction, INITIAL_GROUP_PRESET_STATE);
-  const [applyState, apply, applying] = useActionState(applyGroupPresetAction, INITIAL_GROUP_PRESET_STATE);
-  const [resetState, reset, resetting] = useActionState(resetGroupPresetAction, INITIAL_GROUP_PRESET_STATE);
 
   const selected = presets.find((preset) => preset.id === selectedPresetId);
   // ① 적용 전 미리보기 — 서버가 실행할 것과 같은 계산.
@@ -84,7 +75,6 @@ export function GroupPresetMenu({
     [selected, columns, order],
   );
 
-  const canApply = canEditPresets && canManageColumns;
 
   return (
     <details
@@ -96,9 +86,7 @@ export function GroupPresetMenu({
         aria-label={`${presetName} 아이템 프리셋 메뉴`}
         className="flex cursor-pointer list-none items-center gap-1 rounded-full border border-mw-line px-2 py-0.5 hover:bg-mw-bg [&::-webkit-details-marker]:hidden"
       >
-        {changed && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-mw-primary" />}
         <span>{presetName}</span>
-        {changed && <span className="text-mw-primary">변경됨</span>}
         <span aria-hidden="true" className="text-[0.6rem] text-mw-sub">▾</span>
       </summary>
 
@@ -108,16 +96,12 @@ export function GroupPresetMenu({
       >
         <div>
           <p className="font-semibold text-mw-fg">아이템 프리셋 — 구조</p>
-          <p className="mt-0.5 text-mw-sub">
-            {changed
-              ? "이 아이템은 기본 배치에서 변경됐습니다."
-              : "이 아이템은 기본 배치를 쓰고 있습니다."}
-          </p>
+          <p className="mt-0.5 text-mw-sub">이 아이템의 컬럼 구조를 저장하고, 다른 프리셋과 견줘 봅니다.</p>
         </div>
 
         {!canEditPresets && (
           <p role="note" className="rounded-lg bg-mw-tint-blue px-2 py-1.5 text-mw-body">
-            아이템 프리셋을 저장하거나 적용하려면 «프리셋 편집» 권한이 필요합니다. 회사 관리자에게 요청해 주세요.
+            아이템 프리셋을 저장하려면 «프리셋 편집» 권한이 필요합니다. 회사 관리자에게 요청해 주세요.
           </p>
         )}
 
@@ -151,11 +135,11 @@ export function GroupPresetMenu({
           </form>
         )}
 
-        {/* ── 적용 (미리보기 후) ── */}
+        {/* ── 미리보기 ── */}
         {canEditPresets && (
           <div className="flex flex-col gap-1.5 border-t border-mw-line pt-3">
             <label className="font-medium text-mw-body" htmlFor={`${panelId}-preset`}>
-              다른 프리셋 적용
+              다른 프리셋과 견주기
             </label>
             {presets.length === 0 ? (
               <p className="text-mw-sub">저장된 아이템 프리셋이 없습니다. 위에서 이 아이템 구조를 먼저 저장해 보세요.</p>
@@ -177,7 +161,7 @@ export function GroupPresetMenu({
 
             {selected && preview && (
               <div className="flex flex-col gap-1.5 rounded-lg bg-mw-bg p-2">
-                <p className="font-medium text-mw-body">미리보기</p>
+                <p className="font-medium text-mw-body">이 프리셋을 적용하면</p>
                 <PreviewLine
                   label="추가되는 컬럼"
                   count={preview.added.length}
@@ -195,46 +179,11 @@ export function GroupPresetMenu({
                 />
                 <p className="text-mw-sub">컬럼과 입력된 값은 하나도 지워지지 않습니다.</p>
 
-                {!canManageColumns && (
-                  <p role="note" className="text-mw-body">
-                    적용하려면 «컬럼 추가·삭제» 권한도 필요합니다.
-                  </p>
-                )}
-
-                <form action={apply}>
-                  <input type="hidden" name="boardId" value={boardId} />
-                  <input type="hidden" name="groupKey" value={groupKey} />
-                  <input type="hidden" name="presetId" value={selected.id} />
-                  <button
-                    type="submit"
-                    disabled={applying || !canApply || preview.noop}
-                    className="w-full rounded-lg bg-mw-primary px-2.5 py-1.5 font-semibold text-white disabled:opacity-50"
-                  >
-                    {applying ? "적용 중…" : preview.noop ? "이미 이 구조입니다" : "이 아이템에 적용"}
-                  </button>
-                </form>
               </div>
             )}
-            <ActionMessage state={applyState} />
           </div>
         )}
 
-        {/* ── 되돌리기 ── */}
-        {changed && canManageColumns && (
-          <form action={reset} className="flex flex-col gap-1.5 border-t border-mw-line pt-3">
-            <input type="hidden" name="boardId" value={boardId} />
-            <input type="hidden" name="groupKey" value={groupKey} />
-            <button
-              type="submit"
-              disabled={resetting}
-              className="rounded-lg border border-mw-line px-2.5 py-1.5 font-medium text-mw-body hover:bg-mw-bg disabled:opacity-50"
-            >
-              {resetting ? "되돌리는 중…" : "기본으로 되돌리기"}
-            </button>
-            <p className="text-mw-sub">이 아이템의 컬럼 배치만 비웁니다. 컬럼도 값도 그대로 남습니다.</p>
-            <ActionMessage state={resetState} />
-          </form>
-        )}
       </div>
     </details>
   );

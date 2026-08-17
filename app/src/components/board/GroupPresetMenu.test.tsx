@@ -23,6 +23,7 @@ vi.mock("@/app/(app)/boards/preset-actions", () => ({
 
 const { GroupPresetMenu } = await import("./GroupPresetMenu");
 const { GroupBlock } = await import("./GroupBlock");
+const { BoardWorkspace } = await import("./BoardWorkspace");
 
 function column(key: string, label: string): BoardColumn {
   return {
@@ -50,12 +51,10 @@ function menu(overrides: Partial<Parameters<typeof GroupPresetMenu>[0]> = {}) {
       groupKey="group-1"
       savable
       presetName="신규리드 관리-1차 부재"
-      changed={false}
       columns={columns}
       order={undefined}
       presets={[preset]}
       canEditPresets
-      canManageColumns
       {...overrides}
     />,
   );
@@ -70,7 +69,7 @@ describe("BBE-174 GroupPresetMenu", () => {
     expect(html).not.toContain("연결됩니다");
 
     expect(html).toContain("현재 구조를 프리셋으로 저장");
-    expect(html).toContain("다른 프리셋 적용");
+    expect(html).toContain("다른 프리셋과 견주기");
     expect(html).toContain("신규리드 관리-1차 부재");
   });
 
@@ -88,17 +87,13 @@ describe("BBE-174 GroupPresetMenu", () => {
     const html = menu();
 
     expect(html).toContain("프리셋을 고르면 미리보기가 나옵니다");
-    expect(html).not.toContain("이 아이템에 적용");
   });
 
-  it("변경됨이면 «되돌리기» 가 나오고, 무엇이 비워지는지 적는다", () => {
-    const changed = menu({ changed: true, order: ["phone", "owner"] });
-
-    expect(changed).toContain("기본으로 되돌리기");
-    expect(changed).toContain("컬럼도 값도 그대로 남습니다");
-    expect(changed).toContain("변경됨");
-
-    expect(menu()).not.toContain("기본으로 되돌리기");
+  it("«변경됨»·«되돌리기» 를 그리지 않는다 — 근거인 배치가 휘발하기 때문이다", () => {
+    // 배치 오버라이드가 서버 인메모리라 새로고침에 사라진다. 남겨 두면 사라지는 배지가 된다.
+    const html = menu();
+    expect(html).not.toContain("기본으로 되돌리기");
+    expect(html).not.toContain("변경됨");
   });
 
   it("권한이 없으면 버튼을 감추는 대신 이유를 적는다", () => {
@@ -106,15 +101,15 @@ describe("BBE-174 GroupPresetMenu", () => {
 
     expect(html).toContain("«프리셋 편집» 권한이 필요합니다");
     expect(html).not.toContain("현재 구조를 프리셋으로 저장");
-    expect(html).not.toContain("다른 프리셋 적용");
+    expect(html).not.toContain("다른 프리셋과 견주기");
   });
 
   it("가상 «그룹 없음» 블록에는 저장을 걸지 않는다 — 저장할 그룹이 없다", () => {
     const html = menu({ savable: false, groupKey: "__ungrouped__" });
 
     expect(html).not.toContain("현재 구조를 프리셋으로 저장");
-    // 적용·되돌리기는 배치만 다루므로 가상 블록에서도 의미가 있다.
-    expect(html).toContain("다른 프리셋 적용");
+    // 미리보기는 저장 대상이 없어도 의미가 있다.
+    expect(html).toContain("다른 프리셋과 견주기");
   });
 
   it("저장된 프리셋이 없으면 «먼저 저장해 보세요» 로 안내한다 (원칙 5 — 빈 상태 한 줄 + 다음 행동)", () => {
@@ -182,6 +177,81 @@ describe("BBE-174 GroupBlock 프리셋 칩", () => {
 
     expect(html).not.toContain("WO-6");
     expect(html).not.toContain("연결됩니다");
-    expect(html).toContain("변경됨");
+    // 원래 있던 «변경됨» 점(●)은 그대로 둔다 — 이 PR 이 추가한 텍스트만 뺐다(구조 축소 금지).
+    expect(html).toContain("bg-mw-primary");
+  });
+});
+
+/*
+ * W1·W2 — 배선을 잰다.
+ *
+ * 검수에서 나온 구멍: `GroupPresetMenu` 를 **직접** 렌더하는 테스트와 `GroupBlock` 이 메뉴를
+ * **주입받아** 렌더하는 테스트만 있었다. 그래서 «보드 화면이 그 메뉴를 실제로 다는가» 와
+ * «버튼이 어떤 액션에 물려 있는가» 는 아무도 보지 않았다 —
+ * `BoardWorkspace` 가 `presetMenu` 를 아예 안 넘겨도 109건이 전부 초록이었다.
+ */
+describe("BBE-174 배선 — BoardWorkspace 가 메뉴를 실제로 단다 (W1)", () => {
+  const board = {
+    id: "board-1", org_id: "org-1", name: "신규리드 관리", description: null, icon: null,
+    is_system: false, source: null, sort_order: 0, created_by: null,
+    created_at: "2026-08-17T00:00:00Z", updated_at: "2026-08-17T00:00:00Z",
+  };
+  const group = { id: "group-1", org_id: "org-1", board_id: "board-1", name: "1차 부재", color: null, sort_order: 0 };
+  const row = {
+    id: "item-1", org_id: "org-1", board_id: "board-1", group_id: "group-1", title: "행",
+    assigned_to: null, sort_order: 0, created_at: "2026-08-17T00:00:00Z",
+    updated_at: "2026-08-17T00:00:00Z", values: {},
+  };
+
+  function workspace(overrides: Record<string, unknown> = {}) {
+    return renderToStaticMarkup(
+      <BoardWorkspace
+        board={board}
+        columns={columns}
+        groups={[group]}
+        rows={[row]}
+        columnOrder={{}}
+        cellFlash={null}
+        assigneeLabels={{}}
+        canEditItems
+          canEditPresets
+        presets={[preset]}
+        {...overrides}
+      />,
+    );
+  }
+
+  it("일반 보드에는 프리셋 메뉴가 붙는다", () => {
+    const html = workspace();
+    expect(html).toContain("아이템 프리셋 메뉴");
+    expect(html).toContain("현재 구조를 프리셋으로 저장");
+    expect(html).not.toContain("WO-6");
+  });
+
+  it("시스템 보드에는 붙이지 않는다 — 구조 편집이 막힌 화면이다", () => {
+    const html = workspace({ board: { ...board, is_system: true } });
+    expect(html).not.toContain("아이템 프리셋 메뉴");
+    expect(html).not.toContain("현재 구조를 프리셋으로 저장");
+  });
+});
+
+describe("BBE-174 배선 — 이 슬라이스가 그리는 액션 (W2)", () => {
+  it("저장 폼 하나만 그린다 — 적용·되돌리기 버튼은 없다", () => {
+    const html = menu();
+
+    // 저장은 실제로 있다.
+    expect(html).toContain("현재 구조를 프리셋으로 저장");
+    expect(html).toContain('name="requestId"');
+
+    // 적용·되돌리기는 이 PR 에서 그리지 않는다(배치가 인메모리라 안 남는다 — BBE-195).
+    expect(html).not.toContain("이 아이템에 적용");
+    expect(html).not.toContain("기본으로 되돌리기");
+    // 제출 버튼이 하나뿐이라는 것 = 잘못된 액션에 물릴 자리가 없다는 것.
+    expect(html.match(/type="submit"/g) ?? []).toHaveLength(1);
+  });
+
+  it("미리보기는 남는다 — 적용하면 무엇이 되는지는 보여준다", () => {
+    const html = menu();
+    expect(html).toContain("다른 프리셋과 견주기");
   });
 });
