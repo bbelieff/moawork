@@ -95,3 +95,23 @@ test("squad coverage rejects missing BBE-174 and duplicate labels with a fixed g
   assert.deepEqual(duplicate.duplicate, [{ id: "BBE-174", labels: ["squad:new-lead", "squad:column-preset"] }]);
   assert.equal(duplicate.ok, false);
 });
+
+test("owner coverage requires exactly one C/G owner and ignores blocked labels", async () => {
+  const logic = await boardLogic();
+  const goals = ["BBE-171", "BBE-172", "BBE-183", "BBE-184"];
+  const result = logic.ownerCoverage([
+    { id: "BBE-171", labels: ["DC-03", "squad:new-lead"] },
+    { id: "BBE-172", labels: ["blocked:DG-02", "squad:new-lead"] },
+    { id: "BBE-183", labels: ["DC-03", "DC-06", "blocked:DG-02"] },
+    { id: "BBE-184", labels: ["DG-04", "squad:new-lead"] },
+  ], goals);
+
+  assert.deepEqual(result, {
+    missing: ["BBE-172"],
+    collision: [{ id: "BBE-183", labels: ["DC-03", "DC-06"] }],
+    covered: 2,
+    total: 4,
+    ok: false,
+  });
+  assert.deepEqual(logic.ownerLabels({ labels: ["NC-04", "DG-02", "blocked:DC-03"] }), ["NC-04", "DG-02"]);
+});
