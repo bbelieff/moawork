@@ -13,10 +13,19 @@ export interface ChecklistCompletionCellProps {
   items: readonly ChecklistItem[];
   /** 표는 좁아서 텍스트를 줄이고 싶을 때. 기본은 "N/M · X%". */
   compact?: boolean;
+  /**
+   * 조회 자체를 못 했을 때. «항목이 없다»(—) 와 «확인 못 했다» 는 다른 사실이라 다르게 그린다.
+   * 둘을 같은 — 로 그리면 사용자는 체크리스트가 비었다고 오해한다(BBE-203 · §3 거짓 빈 상태 금지).
+   */
+  unavailable?: boolean;
 }
 
-export function ChecklistCompletionCell({ items, compact }: ChecklistCompletionCellProps) {
+export function ChecklistCompletionCell({ items, compact, unavailable }: ChecklistCompletionCellProps) {
   const { checked, total, percent } = completionOf(items);
+
+  if (unavailable) {
+    return <span className="text-xs" style={{ color: "var(--mw-error)" }} title="서류 체크리스트를 불러오지 못했어요">확인 못 함</span>;
+  }
 
   if (total === 0) {
     return <span className="text-xs text-mw-sub">—</span>;

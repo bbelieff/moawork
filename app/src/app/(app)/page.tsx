@@ -193,7 +193,7 @@ export default async function DashboardPage({
                         <tr key={deal.id}>
                           <td className="p-3"><Link href={`/deals/${deal.id}`} className="hover:underline">{deal.title}</Link></td>
                           <td className="p-3 text-zinc-500">{stageName(deal.stage_id)}</td>
-                          <td className="p-3"><ChecklistCompletionCell items={checklists.get(deal.id)?.items ?? []} /></td>
+                          <td className="p-3"><ChecklistCompletionCell items={checklists.get(deal.id)?.items ?? []} unavailable={checklistStore === null} /></td>
                         </tr>
                       ))}
                     </tbody>

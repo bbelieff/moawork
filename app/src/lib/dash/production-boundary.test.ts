@@ -6,8 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 //
 // 이 경계가 지키는 것은 한 줄이다: **운영에서 조용한 시드 노출 0.**
 //
-// 예전 검사: 파일에 `getRepo(` 라는 글자가 없다.
-//   → 이름만 감싸면(`const r = getRepo; r()`) 그대로 통과한다. 아래 마지막 테스트가 그걸 보인다.
+// 예전 검사: **이 테스트 파일이** 대상 소스를 문자열로 훑어 `getRepo(` 가 없는지만 봤다.
+//   → 이름만 감싸면(`const r = getRepo; r()`) 그 «문자열 검사» 는 그대로 통과한다.
+//   ★ 오해 금지 — 경계 «검사기»(scripts/check-production-repo-boundaries.mjs)는 AST 로 별칭을
+//     추적해 그 우회를 잡는다. 약했던 것은 검사기가 아니라 이 테스트의 문자열 검사다.
 // 지금 검사: 아래 «네 줄» 을 행위로 단언한다. 감싸든 말든 빨개진다.
 //
 //   운영 빌드 + env 있음 → Supabase   (종전과 동일)
@@ -133,14 +135,17 @@ describe("dashboard production repository boundary", () => {
     expect(model.ledger.status).toBe("unavailable");
   });
 
-  // ── ★ 「행위 가드가 구문 가드보다 강하다」를 주장이 아니라 «측정» 으로 남긴다 ──
-  // 구문 가드는 `getRepo(` 라는 글자만 봤다. 아래처럼 이름을 한 번 감싸면 글자가 사라진다.
-  // 즉 구문 가드는 이 우회를 통과시킨다 — 그래서 교체가 필요했다.
-  // (위 ①②④ 가 «행위» 를 보므로, 감싸서 부르든 직접 부르든 로컬을 건드리면 빨개진다.)
-  it("구문 가드는 이름 감싸기로 우회된다 — 행위 가드는 그렇지 않다", () => {
+  // ── ★ 「행위 검사가 이 파일의 «옛 문자열 검사» 보다 강하다」를 주장이 아니라 측정으로 남긴다 ──
+  // 옛 검사는 `getRepo(` 라는 글자만 봤다. 아래처럼 이름을 한 번 감싸면 글자가 사라진다.
+  // (위 ①②④ 는 «행위» 를 보므로 감싸서 부르든 직접 부르든 로컬을 건드리면 빨개진다.)
+  //
+  // ★ 비교 대상은 **경계 검사기(scripts/check-production-repo-boundaries.mjs)가 아니다.**
+  //   검사기는 AST 로 별칭까지 추적해 이 우회를 잡는다 — 심어 보면 strict 1 로 exit 1 이 된다.
+  //   약했던 것은 검사기가 아니라 «이 테스트 파일이 쓰던 문자열 검사» 다. 검사기는 손대지 않았다.
+  it("옛 문자열 검사는 이름 감싸기로 우회된다 — 행위 검사는 그렇지 않다", () => {
     const bypass = "const wrapped = getRepo;\nconst repo = wrapped();";
-    // 예전 구문 가드의 정규식 그대로.
-    expect(bypass).not.toMatch(/\bgetRepo\s*\(/); // ← 우회 성공(구문 가드 통과)
+    // 이 파일이 예전에 쓰던 정규식 그대로.
+    expect(bypass).not.toMatch(/\bgetRepo\s*\(/); // ← 우회 성공(옛 문자열 검사 통과)
     expect(bypass).toContain("getRepo"); // ← 그런데 실제로는 LocalRepo 를 부른다
   });
 });
