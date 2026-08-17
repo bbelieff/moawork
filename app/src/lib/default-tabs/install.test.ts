@@ -178,6 +178,21 @@ describe("리드컨택 기본 탭 설치", () => {
     );
   });
 
+  it("healthy 담당자 컬럼 replay는 동일 options와 이동 규칙을 다시 쓰지 않는다", async () => {
+    const first = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo), assignees);
+    const originalUpdate = repo.updateColumn.bind(repo);
+    let updates = 0;
+    repo.updateColumn = (...args) => {
+      updates += 1;
+      return originalUpdate(...args);
+    };
+
+    const second = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo), assignees);
+
+    expect(second).toMatchObject({ created: false, boardId: first.boardId });
+    expect(updates).toBe(0);
+  });
+
   it("기존 보드에 멤버를 초대하면 담당자 그룹·선택지·이동 규칙을 동기화한다", async () => {
     db().members = db().members.filter(
       (member) => member.org_id !== ctx.org.id || member.user_id === assignees[0].userId,
