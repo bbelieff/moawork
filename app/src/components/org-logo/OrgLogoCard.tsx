@@ -77,14 +77,16 @@ export function OrgLogoCard({ orgName, logo, canManage }: OrgLogoCardProps) {
 
       {canManage ? (
         <div className="mt-4 flex flex-col gap-3">
-          <form action={upload} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <form action={upload} className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+            {/* 375px: 파일 입력은 «파일 선택 / 선택된 파일 없음» 때문에 고유 너비가 넓다.
+                w-full + min-w-0 이 없으면 카드의 min-content 가 뷰포트를 넘어 가로 스크롤이 생긴다. */}
             <input
               type="file"
               name="logo"
               accept={ACCEPT}
               required
               aria-label="회사 로고 파일"
-              className="max-w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-100 file:px-3 file:py-2 file:text-sm dark:file:bg-zinc-800"
+              className="w-full min-w-0 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-100 file:px-3 file:py-2 file:text-sm dark:file:bg-zinc-800"
             />
             <button
               type="submit"
