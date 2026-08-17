@@ -15,7 +15,6 @@ import {
   type NavBadgeKey,
   type NavItem,
 } from "./nav-items";
-import { GlobalSearch } from "./GlobalSearch";
 import { workspaceHref } from "./workspace-href";
 
 // 사이드바 메뉴 목록 — 활성 표시를 위해 클라이언트 컴포넌트.
@@ -170,7 +169,8 @@ export function SidebarNav({
           }}
         />
       ) : null}
-      <GlobalSearch />
+      {/* 통합 검색은 여기 없다 — 목업 v6 는 검색을 상단바(`.top > .search`)에 둔다.
+          트리거는 셸 상단바(app/layout.tsx)로 옮겼다(BBE-194). 기능은 그대로다. */}
       <nav className="hidden min-h-0 flex-1 flex-col gap-px overflow-y-auto md:flex" aria-label="주요 메뉴">
         <div
           className="border-b"

@@ -111,6 +111,19 @@ describe("SidebarNav integration contract", () => {
     expect(html).toContain("업체관리 현황");
   });
 
+  // BBE-194 — 되돌리면 빨개진다: SidebarNav 에 <GlobalSearch /> 를 다시 넣으면 실패.
+  // 목업 v6 사이드바는 brand → wsbtn → nav → me 뿐이고 검색은 상단바에 있다.
+  it("사이드바는 검색 트리거를 그리지 않는다 — 검색 자리는 상단바다", () => {
+    const html = renderToStaticMarkup(<SidebarNav lockedFeatures={[]} workspaceBasePath="/w/sample-lab" />);
+
+    expect(html).not.toContain("전체 검색");
+    expect(html).not.toContain("검색하거나 빠르게 만들기");
+    expect(html).not.toContain('aria-haspopup="dialog"');
+    // 사이드바 자체가 GlobalSearch 를 import 하지 않는다(자리를 되돌리는 것 자체를 막는다).
+    expect(readFileSync(new URL("./SidebarNav.tsx", import.meta.url), "utf8"))
+      .not.toMatch(/^import .*GlobalSearch/m);
+  });
+
   it("keeps sidebar spacing and colors on design tokens", () => {
     const source = readFileSync(new URL("./SidebarNav.tsx", import.meta.url), "utf8");
 
