@@ -1,10 +1,23 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Ctx } from "@/lib/types";
 import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
 import { SEED_ORG_ID, SEED_USER_OWNER } from "@/lib/repo/local/seed";
 import { ensureDefaultTab, NEW_LEAD_TAB } from "@/lib/default-tabs";
-import { NEWCUST_BOARD_SOURCE, resolveExistingNewcustBoard } from "./entry";
+
+const { loadMemberOrgSummaryWithClient } = vi.hoisted(() => ({
+  loadMemberOrgSummaryWithClient: vi.fn(),
+}));
+vi.mock("@/lib/auth/member-org-summary", () => ({ loadMemberOrgSummaryWithClient }));
+vi.mock("@/lib/repo/supabase/boardsRepo", () => ({
+  SupabaseBoardsRepo: class {
+    constructor(client: { repo: Record<PropertyKey, unknown> }) {
+      return new Proxy(this, { get: (_target, property) => client.repo[property] });
+    }
+  },
+}));
+
+import { NEWCUST_BOARD_SOURCE, repairNewcustBoardOnEntry, resolveExistingNewcustBoard } from "./entry";
 
 function owner(): Ctx {
   return {
@@ -15,7 +28,15 @@ function owner(): Ctx {
   } as Ctx;
 }
 
-beforeEach(() => resetDb());
+beforeEach(() => {
+  resetDb();
+  loadMemberOrgSummaryWithClient.mockReset().mockResolvedValue({
+    kind: "ready",
+    owner: { userId: SEED_USER_OWNER, displayName: "Owner" },
+    admins: [],
+    members: [],
+  });
+});
 
 describe("resolveExistingNewcustBoard", () => {
   it("제품 경로에서 이름이 같은 보드를 먼데이 원본으로 추론하지 않는다", async () => {
@@ -95,5 +116,89 @@ describe("resolveExistingNewcustBoard", () => {
       kind: "ready",
       boardId: productBoard?.id,
     });
+  });
+});
+
+describe("repairNewcustBoardOnEntry", () => {
+  function client(repo: ReturnType<typeof toAsyncBoardsRepo>) {
+    let holder: string | null = null;
+    return {
+      repo,
+      rpc: vi.fn(async (name: string, args: { p_holder: string }) => {
+        if (name === "acquire_default_tab_repair_lease") {
+          if (holder === null || holder === args.p_holder) {
+            holder = args.p_holder;
+            return { data: true, error: null };
+          }
+          return { data: false, error: null };
+        }
+        if (name === "renew_default_tab_repair_lease") {
+          return { data: holder === args.p_holder, error: null };
+        }
+        if (holder === args.p_holder) holder = null;
+        return { data: true, error: null };
+      }),
+    };
+  }
+
+  it("does not mutate for a member and returns a clear permission result", async () => {
+    const repo = toAsyncBoardsRepo(new LocalBoardsRepo());
+    const request = client(repo);
+    const result = await repairNewcustBoardOnEntry({ ...owner(), role: "member", scope: "assigned" }, request as never);
+    expect(result).toEqual({ kind: "permission" });
+    expect(request.rpc).not.toHaveBeenCalled();
+    expect(await repo.listBoards(owner())).toEqual([]);
+  });
+
+  it("lets a member enter an existing canonical board without acquiring a mutation lease", async () => {
+    const local = new LocalBoardsRepo();
+    const board = local.createBoard(owner(), { name: "신규리드", source: NEWCUST_BOARD_SOURCE });
+    const request = client(toAsyncBoardsRepo(local));
+    const result = await repairNewcustBoardOnEntry(
+      { ...owner(), role: "member", scope: "assigned" },
+      request as never,
+    );
+    expect(result).toEqual({ kind: "ready", boardId: board.id });
+    expect(request.rpc).not.toHaveBeenCalled();
+  });
+
+  it("repairs the exact org for owner/admin and includes the BBE-173 industry column", async () => {
+    const local = new LocalBoardsRepo();
+    const repo = toAsyncBoardsRepo(local);
+    const request = client(repo);
+    const result = await repairNewcustBoardOnEntry(owner(), request as never);
+    expect(result.kind).toBe("ready");
+    const boardId = result.kind === "ready" ? result.boardId : "";
+    expect(local.listBoards(owner()).filter((board) => board.source === NEWCUST_BOARD_SOURCE)).toHaveLength(1);
+    expect(local.listColumns(owner(), boardId).some((column) => column.key === "industry")).toBe(true);
+    expect(request.rpc.mock.calls.map(([name]) => name)).toEqual([
+      "acquire_default_tab_repair_lease",
+      "renew_default_tab_repair_lease",
+      "renew_default_tab_repair_lease",
+      "release_default_tab_repair_lease",
+    ]);
+  });
+
+  it("fails closed when multiple canonical candidates are observed", async () => {
+    const local = new LocalBoardsRepo();
+    local.createBoard(owner(), { name: "A", source: NEWCUST_BOARD_SOURCE });
+    local.createBoard(owner(), { name: "B", source: NEWCUST_BOARD_SOURCE });
+    const result = await repairNewcustBoardOnEntry(owner(), client(toAsyncBoardsRepo(local)) as never);
+    expect(result).toEqual({ kind: "conflict" });
+    expect(local.listBoards(owner())).toHaveLength(2);
+  });
+
+  it("serializes concurrent entry repair and converges on one complete board", async () => {
+    const local = new LocalBoardsRepo();
+    const repo = toAsyncBoardsRepo(local);
+    const request = client(repo);
+    const [first, second] = await Promise.all([
+      repairNewcustBoardOnEntry(owner(), request as never),
+      repairNewcustBoardOnEntry(owner(), request as never),
+    ]);
+    expect(first).toEqual(second);
+    const board = local.listBoards(owner()).find((candidate) => candidate.source === NEWCUST_BOARD_SOURCE)!;
+    expect(local.listGroups(owner(), board.id)).toHaveLength(NEW_LEAD_TAB.groups.length);
+    expect(local.listColumns(owner(), board.id)).toHaveLength(NEW_LEAD_TAB.columns.length);
   });
 });

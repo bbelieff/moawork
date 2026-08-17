@@ -15,7 +15,7 @@ import { resolveMoveTarget } from "@/lib/boards/moveRules";
 import type { Ctx } from "@/lib/types";
 import { CONTACT_GROUPS, CONTACT_TAB } from "./contact";
 import { NEW_LEAD_GROUPS, NEW_LEAD_TAB } from "./new-lead";
-import { ensureDefaultTab, ensureDefaultTabs } from "./install";
+import { ensureDefaultTab, ensureDefaultTabAdditive, ensureDefaultTabs } from "./install";
 
 const ctx: Ctx = {
   org: { id: "org-default-tabs", name: "테스트 회사" },
@@ -73,6 +73,63 @@ it("repairs a partially-created product board on request replay", async () => {
   expect(repo.listColumns(ctx, partial.id)).toHaveLength(NEW_LEAD_TAB.columns.length);
   expect(new Set(repo.listColumns(ctx, partial.id).map((column) => column.key)).size)
     .toBe(NEW_LEAD_TAB.columns.length);
+});
+
+describe("BBE-184 additive existing-workspace repair", () => {
+  it("fills only missing structure and preserves every existing row and value", async () => {
+    const partial = repo.createBoard(ctx, {
+      name: NEW_LEAD_TAB.name,
+      source: NEW_LEAD_TAB.source,
+    });
+    const existingGroup = repo.createGroup(ctx, partial.id, {
+      name: NEW_LEAD_TAB.groups[0].name,
+      color: NEW_LEAD_TAB.groups[0].color,
+    });
+    repo.createColumn(ctx, partial.id, {
+      key: NEW_LEAD_TAB.columns[0].key,
+      label: "기존 고객 라벨",
+      type: NEW_LEAD_TAB.columns[0].type,
+      source: NEW_LEAD_TAB.columns[0].source,
+    });
+    const item = repo.createItem(ctx, partial.id, {
+      title: "기존 신규리드",
+      group_id: existingGroup.id,
+      values: { [NEW_LEAD_TAB.columns[0].key]: "기존 값" },
+    });
+    const other = repo.createBoard(ctx, { name: "다른 보드", source: "user.board/other" });
+    repo.createItem(ctx, other.id, { title: "다른 보드 행" });
+    const beforeItems = structuredClone(db().boardItems);
+    const beforeValues = structuredClone(db().itemValues);
+    const beforeOther = structuredClone(repo.getBoard(ctx, other.id));
+
+    const first = await ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, toAsyncBoardsRepo(repo), assignees);
+    const second = await ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, toAsyncBoardsRepo(repo), assignees);
+
+    expect(first.created).toBe(false);
+    expect(second).toMatchObject({ created: false, boardId: partial.id });
+    expect(repo.listGroups(ctx, partial.id)).toHaveLength(NEW_LEAD_TAB.groups.length);
+    expect(repo.listColumns(ctx, partial.id)).toHaveLength(NEW_LEAD_TAB.columns.length);
+    expect(repo.listColumns(ctx, partial.id).some((column) => column.key === "industry")).toBe(true);
+    expect(repo.listColumns(ctx, partial.id).find((column) => column.key === NEW_LEAD_TAB.columns[0].key)?.label)
+      .toBe("기존 고객 라벨");
+    expect(repo.getItem(ctx, item.id)?.group_id).toBe(existingGroup.id);
+    expect(db().boardItems).toEqual(beforeItems);
+    expect(db().itemValues).toEqual(beforeValues);
+    expect(repo.getBoard(ctx, other.id)).toEqual(beforeOther);
+  });
+
+  it("creates one canonical board and replays without duplicate groups or columns", async () => {
+    const first = await ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, toAsyncBoardsRepo(repo), assignees);
+    const firstGroups = repo.listGroups(ctx, first.boardId).map((group) => group.id);
+    const firstColumns = repo.listColumns(ctx, first.boardId).map((column) => column.id);
+    const second = await ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, toAsyncBoardsRepo(repo), assignees);
+
+    expect(first.created).toBe(true);
+    expect(second).toMatchObject({ created: false, boardId: first.boardId });
+    expect(repo.listBoards(ctx).filter((board) => board.source === NEW_LEAD_TAB.source)).toHaveLength(1);
+    expect(repo.listGroups(ctx, first.boardId).map((group) => group.id)).toEqual(firstGroups);
+    expect(repo.listColumns(ctx, first.boardId).map((column) => column.id)).toEqual(firstColumns);
+  });
 });
 
 describe("리드컨택 기본 탭 설치", () => {

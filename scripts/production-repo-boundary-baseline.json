@@ -12,7 +12,6 @@
     { "file": "app/src/app/(app)/dash/all/page.tsx", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "BBE-18 owner", "followUp": "BBE-18", "expiresOn": "2026-08-31" },
     { "file": "app/src/app/(app)/deals/[dealId]/actions.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "BBE-16 owner", "followUp": "BBE-16", "expiresOn": "2026-08-31" },
     { "file": "app/src/app/(app)/deals/[dealId]/page.tsx", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "BBE-16 owner", "followUp": "BBE-16", "expiresOn": "2026-08-31" },
-    { "file": "app/src/app/(app)/newcust/page.tsx", "symbol": "getBoardsRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "BBE-145 owner", "followUp": "BBE-145", "expiresOn": "2026-08-31" },
     { "file": "app/src/app/(app)/onboarding/page.tsx", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 2, "owner": "BBE-32 owner", "followUp": "BBE-32", "expiresOn": "2026-08-31" },
     { "file": "app/src/lib/auth/session.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "BBE-5 owner", "followUp": "BBE-5", "expiresOn": "2026-08-31" },
     { "file": "app/src/lib/boards/default-tab-assignees.ts", "symbol": "import(\"@/lib/repo/local/defaultTabAssignees\")", "reason": "dynamic-local-repo-import", "maxCount": 1, "owner": "BBE-149 owner", "followUp": "BBE-149", "expiresOn": "2026-08-31" },
