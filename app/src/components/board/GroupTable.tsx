@@ -427,6 +427,7 @@ export function GroupTable({
                   title={!canManageColumns ? cellTitle(col) : `${cellTitle(col)} — 끌어서 이 그룹의 컬럼 순서 변경`}
                   style={width ? { width, minWidth: width } : undefined}
                   data-view-focus={col.key === focusColumnKey || undefined}
+                  data-column-key={col.key}
                   className={`relative sticky top-0 z-20 min-w-20 border-b border-mw-line px-2 py-1.5 text-xs font-semibold text-mw-sub ${col.key === focusColumnKey ? "bg-mw-tint-blue" : "bg-mw-card"} ${
                     !canManageColumns ? "" : "cursor-grab active:cursor-grabbing"
                   } ${isTarget ? "bg-mw-tint-blue text-mw-record" : ""} ${
@@ -536,6 +537,7 @@ export function GroupTable({
                   <td
                     key={col.id}
                     data-view-focus={col.key === focusColumnKey || undefined}
+                    data-column-key={col.key}
                     className={`border-b border-mw-line px-2 align-middle group-hover:bg-mw-bg ${textMode === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
                       col.rightPinned ? "sticky right-0 z-10 border-l-2 border-l-mw-primary bg-mw-card" : ""
                     }`}

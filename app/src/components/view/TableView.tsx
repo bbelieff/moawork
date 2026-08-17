@@ -34,7 +34,7 @@ export function TableView<T>({
         <thead>
           <tr>
             {columns.map((c) => (
-              <th key={c.key} data-view-focus={c.key === focusColumnKey || undefined}>{c.label}</th>
+              <th key={c.key} data-column-key={c.key} data-view-focus={c.key === focusColumnKey || undefined}>{c.label}</th>
             ))}
           </tr>
         </thead>
@@ -42,7 +42,7 @@ export function TableView<T>({
           {rows.map((row) => (
             <tr key={rowKey(row)}>
               {columns.map((c) => (
-                <td key={c.key} data-view-focus={c.key === focusColumnKey || undefined} className={textMode === "wrap" ? styles.wrapCell : styles.singleCell}>{renderCell(row, c)}</td>
+                <td key={c.key} data-column-key={c.key} data-view-focus={c.key === focusColumnKey || undefined} className={textMode === "wrap" ? styles.wrapCell : styles.singleCell}>{renderCell(row, c)}</td>
               ))}
             </tr>
           ))}
