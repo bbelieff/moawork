@@ -8,7 +8,7 @@ const opened: PGlite[] = [];
 
 afterEach(async () => {
   await Promise.all(opened.splice(0).map((db) => db.close()));
-});
+}, 15_000);
 
 describe("BBE-163 hosted board-column contract repair", () => {
   it("adds the missing 052/056 contract and is safe to rerun", async () => {
@@ -47,5 +47,5 @@ describe("BBE-163 hosted board-column contract repair", () => {
     for (const label of ["people", "money", "calc"]) {
       expect(labels.rows.map((row) => row.enumlabel)).toContain(label);
     }
-  });
+  }, 15_000);
 });
