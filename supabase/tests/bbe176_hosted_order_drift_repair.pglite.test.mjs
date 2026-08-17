@@ -141,6 +141,34 @@ test("090 source limits persistent customer mutation to board column sort_order"
   assert.doesNotMatch(repair, /delete\s+from\s+public\./i);
 });
 
+test("repair mapping survives column lifecycle deletion and replay", async () => {
+  const db = await database({ corrupted: true });
+  await db.exec(repair);
+  const beforeDelete = (await db.query(`
+    select org_id,board_id,column_id,old_sort_order,new_sort_order,order_basis,column_created_at,repaired_at
+      from board_column_order_repair_audit
+     where column_id='${id(31)}'
+  `)).rows[0];
+
+  await db.exec(`delete from board_columns where id='${id(31)}'`);
+  await db.exec(repair);
+
+  assert.deepEqual((await db.query(`
+    select org_id,board_id,column_id,old_sort_order,new_sort_order,order_basis,column_created_at,repaired_at
+      from board_column_order_repair_audit
+     where column_id='${id(31)}'
+  `)).rows, [beforeDelete]);
+  assert.equal((await db.query("select count(*)::int n from board_column_order_repair_audit")).rows[0].n, 3);
+  assert.deepEqual((await db.query(`
+    select confrelid::regclass::text target
+      from pg_constraint
+     where conrelid='public.board_column_order_repair_audit'::regclass
+       and contype='f'
+     order by target
+  `)).rows, [{ target: "orgs" }]);
+  await db.close();
+});
+
 test("healthy 089 environment replays 090 twice with zero layout or customer change", async () => {
   const db = await database();
   await db.exec(canonical);

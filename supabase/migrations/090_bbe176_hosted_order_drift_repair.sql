@@ -5,8 +5,11 @@
 create table if not exists public.board_column_order_repair_audit (
   repair_version text not null,
   org_id uuid not null references public.orgs(id) on delete cascade,
-  board_id uuid not null references public.boards(id) on delete cascade,
-  column_id uuid not null references public.board_columns(id) on delete cascade,
+  -- Board and column IDs are immutable snapshots, not lifecycle-bound FKs. Historical
+  -- migrations include hard-delete paths, so retaining these plain UUIDs preserves the
+  -- only reversible old/new mapping after a board or column is removed.
+  board_id uuid not null,
+  column_id uuid not null,
   old_sort_order integer not null,
   new_sort_order integer not null,
   order_basis text not null,
@@ -95,4 +98,3 @@ begin
    where c.id = r.column_id;
 end
 $repair$;
-
