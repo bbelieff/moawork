@@ -45,6 +45,7 @@ export function GroupBlock({
   rows,
   presetName,
   presetChanged,
+  presetMenu,
   children,
 }: {
   name: string;
@@ -56,6 +57,11 @@ export function GroupBlock({
   presetName: string;
   /** 이 그룹에 컬럼 배치 오버라이드가 저장돼 있으면 true(v5 3-5 "변경됨" 점). */
   presetChanged: boolean;
+  /**
+   * 프리셋 칩 자리에 들어갈 실행형 메뉴(BBE-174 `GroupPresetMenu`).
+   * 없으면 이름만 보여 주는 칩으로 되돌아간다.
+   */
+  presetMenu?: ReactNode;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(true);
@@ -89,23 +95,29 @@ export function GroupBlock({
               </span>
             )}
             {/*
-              프리셋 칩 — 이 그룹의 컬럼 구성을 가리키는 아이템 프리셋 이름.
-              라이브러리(저장·적용·CSV)는 PLAN-002 WO-6 범위라 여기서는 **표시만** 한다.
+              프리셋 칩 — 이 그룹의 컬럼 구성을 가리키는 아이템 프리셋.
               점(●)은 이 그룹이 프리셋 기본값에서 벗어난 배치 오버라이드를 갖고 있다는 표시.
+
+              BBE-174 전까지 여기는 「저장·적용은 WO-6에서 연결됩니다」라는 안내 문구만 단
+              `<span>` 이었다. 지금은 `presetMenu` 슬롯이 있으면 그것을 그린다 — 저장·미리보기·
+              적용·되돌리기를 실제로 실행하는 메뉴다(`GroupPresetMenu`).
+
+              슬롯으로 받는 이유: 메뉴는 서버 액션과 프리셋 목록을 알아야 하는데, 이 컴포넌트는
+              «색 헤더 밴드를 가진 카드» 라는 표현만 책임진다. 주입해 두면 프리셋을 실을 수 없는
+              화면(읽기 전용 시스템 보드 등)에서도 이 블록을 그대로 쓸 수 있다.
             */}
-            <span
-              title={
-                presetChanged
-                  ? "이 그룹은 프리셋 기본 배치에서 변경됨 — 저장·적용은 WO-6에서 연결됩니다"
-                  : "아이템 프리셋 — 저장·적용은 WO-6에서 연결됩니다"
-              }
-              className="flex items-center gap-1 rounded-full border border-mw-line px-2 py-0.5"
-            >
-              {presetChanged && (
-                <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-mw-primary" />
-              )}
-              {presetName}
-            </span>
+            {presetMenu ?? (
+              <span
+                title="아이템 프리셋 — 이 아이템의 컬럼 구조"
+                className="flex items-center gap-1 rounded-full border border-mw-line px-2 py-0.5"
+              >
+                {presetChanged && (
+                  <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-mw-primary" />
+                )}
+                {presetName}
+                {presetChanged && <span className="text-mw-primary">변경됨</span>}
+              </span>
+            )}
           </span>
         </summary>
 
