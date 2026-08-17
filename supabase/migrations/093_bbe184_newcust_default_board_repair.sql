@@ -1,5 +1,5 @@
 -- BBE-184: serialize additive repair for the exact workspace entered by an active manager.
--- Provisional 090: BBE-176 owns active 089; renumber against latest main before merge.
+-- Migration 093: follows BBE-176 migrations 089, 091, and 092; hosted 090 was never recorded.
 
 create or replace function public.acquire_default_tab_repair_lease(
   p_org_id uuid,

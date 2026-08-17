@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const { PGlite } = await import(pathToFileURL(path.join(root, "node_modules", "@electric-sql", "pglite", "dist", "index.js")).href);
-const migration = readFileSync(path.join(root, "supabase/migrations/090_bbe184_newcust_default_board_repair.sql"), "utf8");
+const migration = readFileSync(path.join(root, "supabase/migrations/093_bbe184_newcust_default_board_repair.sql"), "utf8");
 const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
 
 async function database() {
