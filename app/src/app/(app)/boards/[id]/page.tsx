@@ -10,6 +10,7 @@ import { issueFileToken } from "@/lib/deal/fileSignedUrl";
 import { NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import { loadPermGuard } from "@/lib/perm/guard";
+import { PermissionUnavailable } from "@/components/perm/PermissionUnavailable";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { BoardTrashPanel } from "@/components/board/BoardTrashPanel";
@@ -43,6 +44,10 @@ export default async function BoardPage({
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
   const viewTabs = await loadPermGuard(ctx.org.id, "work.view_tabs");
+  // 판정 «불능» 은 「없음」이 아니다(BBE-204). 권한 없음만 404 로 남긴다 — 존재 숨김 유지.
+  if (viewTabs.kind === "denied" && viewTabs.reason === "unavailable") {
+    return <PermissionUnavailable />;
+  }
   if (viewTabs.kind !== "allowed") notFound();
   const [scopedItems, itemUpsert, itemDelete, columnManage, sectionManage, boardDelete] = await Promise.all([
     loadPermissionScopedWorkItems(ctx.org.id),
