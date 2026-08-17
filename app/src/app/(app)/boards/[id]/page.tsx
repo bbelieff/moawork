@@ -14,7 +14,8 @@ import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { BoardTrashPanel } from "@/components/board/BoardTrashPanel";
 import { SavedViewsController } from "@/components/view";
-import { applySavedKanbanView, parseSavedBoardLayout, parseSavedStringList } from "@/lib/view/board-saved";
+import { applySavedKanbanView, applySavedPersonScope, parseSavedBoardLayout, parseSavedStringList } from "@/lib/view/board-saved";
+import { resolveSavedPersonRuntime } from "@/lib/view/server";
 import { decodeBoardFilters } from "@/components/board/filters";
 import { GenericBoardKanban } from "@/components/boards/GenericBoardKanban";
 import { ColumnEditor } from "@/components/boards/ColumnEditor";
@@ -91,8 +92,29 @@ export default async function BoardPage({
         return { ...item, values: { ...item.values, official_pdf: `/api/boards/items/${item.id}/files/${fileId}?token=${encodeURIComponent(token)}` } };
       })
     : loadedItems;
-  const items = boardItems.filter((item) => visibleItemIds.has(item.id));
-  const hiddenCount = boardItems.length - items.length;
+  const permissionItems = boardItems.filter((item) => visibleItemIds.has(item.id));
+  const personRuntime = await resolveSavedPersonRuntime(
+    ctx.org.id, id, sp.savedView ?? null, ctx.user.id,
+    async (orgId, boardId, viewId) => {
+      const { data, error } = await client.from("tab_views").select("person_scope,person_scope_user_id")
+        .eq("org_id", orgId).eq("board_id", boardId).eq("id", viewId).maybeSingle();
+      if (error) throw error;
+      return data ? { personScope: data.person_scope, personScopeUserId: data.person_scope_user_id } : null;
+    },
+    async (orgId) => {
+      const { data, error } = await client.from("org_members").select("user_id").eq("org_id", orgId).eq("status", "active");
+      if (error) throw error;
+      return (data ?? []).map((member) => member.user_id);
+    },
+    async (orgId, userId) => {
+      const { data, error } = await client.rpc("get_member_account_profile", { p_org_id: orgId, p_target_user_id: userId });
+      if (error) throw error;
+      return data && typeof data === "object" && !Array.isArray(data) && typeof data.team_key === "string" ? data.team_key : null;
+    },
+  );
+  const personColumnKey = columns.find((column) => column.type === "person")?.key ?? null;
+  const items = applySavedPersonScope(permissionItems, personRuntime.view, ctx.user.id, personColumnKey, personRuntime.memberIds);
+  const hiddenCount = boardItems.length - permissionItems.length;
   const lanes = view === "kanban"
     ? applySavedKanbanView(
         (await svc.kanban(ctx, id, groupBy || undefined)).map((lane) => ({ ...lane, items: lane.items.filter((item) => visibleItemIds.has(item.id)) })),
@@ -197,7 +219,7 @@ export default async function BoardPage({
         {hiddenCount > 0 && (
           <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p>
         )}
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
           {backLink}
           <h1 className="flex shrink-0 items-center gap-1.5 text-base font-semibold text-mw-fg">
@@ -247,7 +269,7 @@ export default async function BoardPage({
           {backLink}
           <h1 className="text-base font-semibold text-mw-fg">{board.icon ? <span aria-hidden="true">{board.icon}</span> : null} {board.name}</h1>
         </div>
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} layout={activeColumnOrder} columns={visibleColumns} rows={items} renderMode={view} canEditItems={canEditItems} />
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} renderMode={view} canEditItems={canEditItems} />
         {trashPanel}
         {boardSettings}
       </div>
@@ -259,7 +281,7 @@ export default async function BoardPage({
       {hiddenCount > 0 && (
         <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p>
       )}
-      <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
+      <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
       <BoardWorkspace
         board={board}
         columns={visibleColumns}

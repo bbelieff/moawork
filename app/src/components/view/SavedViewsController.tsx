@@ -26,9 +26,10 @@ function kindOf(config: SavedBoardViewConfig): ViewKind {
 }
 
 export function SavedViewsController({
-  boardId, orgId, currentUserId, layout = {}, columns = [], rows = [], renderMode = "controls", canEditItems = false,
+  boardId, orgId, currentUserId, teamMemberIds = [], layout = {}, columns = [], rows = [], renderMode = "controls", canEditItems = false,
 }: {
   boardId: string; orgId: string; currentUserId: string;
+  teamMemberIds?: readonly string[];
   layout?: Record<string, readonly string[]>; columns?: readonly BoardColumn[]; rows?: readonly ItemWithValues[];
   renderMode?: "controls" | "flat" | "calendar";
   canEditItems?: boolean;
@@ -110,8 +111,8 @@ export function SavedViewsController({
   const config = activeSaved?.config ?? currentConfig();
   const personColumnKey = columns.find((column) => column.type === "person")?.key ?? null;
   const personScopedRows = useMemo(
-    () => applySavedPersonScope(rows, activeSaved, currentUserId, personColumnKey),
-    [rows, activeSaved, currentUserId, personColumnKey],
+    () => applySavedPersonScope(rows, activeSaved, currentUserId, personColumnKey, teamMemberIds),
+    [rows, activeSaved, currentUserId, personColumnKey, teamMemberIds],
   );
   const filteredRows = useMemo(() => applyFilters(personScopedRows, columns, config.filters), [personScopedRows, columns, config.filters]);
   const orderedColumns = useMemo(() => {

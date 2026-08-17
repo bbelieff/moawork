@@ -31,7 +31,8 @@ describe("boards UI consumes effective permissions", () => {
       source.indexOf("svc.getBoardDetail(ctx, id)"),
     );
     expect(source).toContain("visibleItemIds.has(item.id)");
-    expect(source).toContain("const hiddenCount = boardItems.length - items.length");
+    expect(source).toContain("const permissionItems = boardItems.filter");
+    expect(source).toContain("const hiddenCount = boardItems.length - permissionItems.length");
     expect(source).toContain("권한 밖 {hiddenCount}건 숨김");
     for (const key of [
       "work.item_upsert",

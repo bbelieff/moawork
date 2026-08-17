@@ -22,7 +22,10 @@ describe("saved view production consumer", () => {
     expect(controller).toContain("filters.sorts");
     expect(controller).toContain("textMode={config.textMode}");
     expect(controller).toContain("focusColumnKey={config.focusColumnKey}");
-    expect(controller).toContain("applySavedPersonScope(rows, activeSaved, currentUserId, personColumnKey)");
+    expect(controller).toContain("applySavedPersonScope(rows, activeSaved, currentUserId, personColumnKey, teamMemberIds)");
+    expect(page).toContain("const items = applySavedPersonScope(permissionItems, personRuntime.view");
+    expect(page).toContain("teamMemberIds={personRuntime.memberIds}");
+    expect(page).toContain("applySavedKanbanView(");
     expect(page).toContain('view === "flat" || view === "calendar"');
     expect(page).toContain("parseSavedBoardLayout(sp.mwLayout)");
   });

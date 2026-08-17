@@ -78,14 +78,28 @@ describe("parseSavedBoardViewConfig", () => {
       assigned_to: null, sort_order: 0, created_at: "", updated_at: "", values: { owner },
     });
     const rows = [item("mine", "u1"), item("team", ["u2", "u3"]), item("other", "u4")];
-    expect(applySavedPersonScope(rows, { personScope: "viewer", personScopeUserId: null }, "u1", "owner").map((row) => row.id)).toEqual(["mine"]);
+    expect(applySavedPersonScope(rows, { personScope: "viewer", personScopeUserId: null }, "u1", "owner", ["u1"]).map((row) => row.id)).toEqual(["mine"]);
     expect(applySavedPersonScope(rows, { personScope: "team", personScopeUserId: null }, "u1", "owner", ["u1", "u2"]).map((row) => row.id)).toEqual(["mine", "team"]);
-    expect(applySavedPersonScope(rows, { personScope: "fixed", personScopeUserId: "u4" }, "u1", "owner").map((row) => row.id)).toEqual(["other"]);
+    expect(applySavedPersonScope(rows, { personScope: "fixed", personScopeUserId: "u4" }, "u1", "owner", ["u4"]).map((row) => row.id)).toEqual(["other"]);
   });
 
-  it("fails closed when a scoped view has no person column or fixed member", () => {
-    const rows = [{ id: "mine", org_id: "o1", board_id: "b1", group_id: "g1", title: "mine", assigned_to: null, sort_order: 0, created_at: "", updated_at: "", values: { owner: "u1" } }];
-    expect(applySavedPersonScope(rows, { personScope: "viewer", personScopeUserId: null }, "u1", null)).toEqual([]);
+  it.each([
+    ["viewer", null, ["u1"], ["mine"]],
+    ["team", null, ["u1", "u2"], ["mine", "team"]],
+    ["fixed", "u4", ["u4"], ["other"]],
+  ] as const)("keeps table, calendar and kanban ids/counts equal for %s scope", (personScope, personScopeUserId, memberIds, expected) => {
+    const item = (id: string, owner: string | string[]) => ({ id, org_id: "o1", board_id: "b1", group_id: "g1", title: id, assigned_to: null, sort_order: 0, created_at: "", updated_at: "", values: { owner } });
+    const rows = [item("mine", "u1"), item("team", ["u2"]), item("other", "u4")];
+    const scoped = applySavedPersonScope(rows, { personScope, personScopeUserId }, "u1", "owner", memberIds);
+    const kanban = applySavedKanbanView([{ id: "lane", items: rows }], scoped, [], { q: "", assignees: [], byColumn: {}, sortKey: "", sortDir: "asc", columnLimit: 0 });
+    expect(scoped.map((row) => row.id)).toEqual(expected);
+    expect(kanban[0].items.map((row) => row.id)).toEqual(expected);
+    expect(kanban[0].items).toHaveLength(scoped.length);
+  });
+
+  it("uses canonical assigned_to without a person column and fails closed for an unverified fixed member", () => {
+    const rows = [{ id: "mine", org_id: "o1", board_id: "b1", group_id: "g1", title: "mine", assigned_to: "u1", sort_order: 0, created_at: "", updated_at: "", values: { owner: "u1" } }];
+    expect(applySavedPersonScope(rows, { personScope: "viewer", personScopeUserId: null }, "u1", null, ["u1"])).toEqual(rows);
     expect(applySavedPersonScope(rows, { personScope: "fixed", personScopeUserId: null }, "u1", "owner")).toEqual([]);
   });
 

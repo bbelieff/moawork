@@ -66,16 +66,15 @@ export function applySavedPersonScope(
   view: Pick<SavedBoardView, "personScope" | "personScopeUserId"> | null,
   currentUserId: string,
   personColumnKey: string | null,
-  teamMemberIds: readonly string[] = [currentUserId],
+  teamMemberIds: readonly string[] = [],
 ): ItemWithValues[] {
   if (!view || !view.personScope || view.personScope === "none") return [...rows];
-  if (!personColumnKey) return [];
   const expected = view.personScope === "fixed"
-    ? (view.personScopeUserId ? [view.personScopeUserId] : [])
-    : view.personScope === "team" ? teamMemberIds : [currentUserId];
+    ? (view.personScopeUserId && teamMemberIds.includes(view.personScopeUserId) ? [view.personScopeUserId] : [])
+    : view.personScope === "team" ? teamMemberIds : teamMemberIds.includes(currentUserId) ? [currentUserId] : [];
   if (!expected.length) return [];
   return rows.filter((row) => {
-    const value = row.values[personColumnKey];
+    const value = personColumnKey ? row.values[personColumnKey] : row.assigned_to;
     return typeof value === "string"
       ? expected.includes(value)
       : Array.isArray(value) && value.some((memberId) => typeof memberId === "string" && expected.includes(memberId));
