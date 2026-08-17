@@ -230,8 +230,11 @@ function checkSummary(checks = []) {
   for (const check of checks) {
     const conclusion = String(check.conclusion || "").toUpperCase();
     const status = String(check.status || "").toUpperCase();
+    const state = String(check.state || "").toUpperCase();
     if (["FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED"].includes(conclusion)) summary.failing += 1;
+    else if (["FAILURE", "ERROR"].includes(state)) summary.failing += 1;
     else if (["SUCCESS", "NEUTRAL", "SKIPPED"].includes(conclusion)) summary.success += 1;
+    else if (state === "SUCCESS") summary.success += 1;
     else if (status && status !== "COMPLETED") summary.pending += 1;
     else summary.pending += 1;
   }
@@ -272,7 +275,7 @@ async function buildOperations() {
   try {
     const raw = await runReadOnly("gh", [
       "pr", "list", "--repo", "bbelieff/moawork", "--state", "open", "--limit", "100",
-      "--json", "number,title,url,headRefName,baseRefName,isDraft,mergeStateStatus,updatedAt,statusCheckRollup,labels",
+      "--json", "number,title,url,headRefName,headRefOid,baseRefName,isDraft,mergeStateStatus,updatedAt,statusCheckRollup,labels",
     ]);
     const rows = JSON.parse(raw || "[]");
     pullRequests = {
@@ -283,6 +286,8 @@ async function buildOperations() {
         title: pr.title,
         url: pr.url,
         headRefName: pr.headRefName,
+        headRefOid: pr.headRefOid,
+        headRefShort: pr.headRefOid?.slice(0, 8) || null,
         baseRefName: pr.baseRefName,
         isDraft: Boolean(pr.isDraft),
         mergeStateStatus: pr.mergeStateStatus || "UNKNOWN",
@@ -408,7 +413,7 @@ const server = http.createServer(async (req, res) => {
       let html = fs.readFileSync(TEMPLATE, "utf8");
       if (!html.includes("<body>")) return send(res, 500, "템플릿에 &lt;body&gt; 가 없다", "text/html; charset=utf-8");
       html = html.replace("<body>", "<body>" + liveShim());
-      html = html.replace(/<title>.*?<\/title>/, "<title>모아워크 V6 관제판 (실시간)</title>");
+      html = html.replace(/<title>.*?<\/title>/, "<title>공동작업 관제판 : 신규리드·보드뷰·컬럼메뉴·대시보드 완주</title>");
       return send(res, 200, html, "text/html; charset=utf-8");
     }
 
