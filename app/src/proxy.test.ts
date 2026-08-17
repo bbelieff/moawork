@@ -149,11 +149,12 @@ describe("proxy carries refreshed session cookies out of every exit (BBE-200)", 
     //    가짜」로 잘못 적을 뻔했다. 같은 뿌리다.)
     const source = readFileSync(new URL("./proxy.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
     const anchor = "async function routeRequest(";
+    // ★ 앵커는 «정확히 1회» 매치해야 한다 (팀 규칙 — 다중 매치는 중단 사유다).
+    //   0회·2회를 «한 단언» 으로 잡는다. indexOf === lastIndexOf 로 쓰면 0회일 때
+    //   -1 === -1 로 통과해서(fail-open) 방어가 «옆 줄이 살아 있는지» 에 기대게 된다.
+    //   방어가 이웃에 의존하면, 이웃을 지우는 사람이 방어를 지운 줄 모른다.
+    expect(source.split(anchor).length - 1).toBe(1);
     const start = source.indexOf(anchor);
-    expect(start).toBeGreaterThanOrEqual(0);
-    // ★ 앵커는 «정확히 1회» 매치해야 한다. 두 곳에 맞으면 엉뚱한 본문을 떠내고도
-    //   검사는 초록으로 통과한다(팀 규칙 — 앵커 다중 매치는 중단 사유다).
-    expect(source.indexOf(anchor)).toBe(source.lastIndexOf(anchor));
     let depth = 0;
     let end = -1;
     for (let i = source.indexOf("{", start); i < source.length; i += 1) {
