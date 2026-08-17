@@ -203,18 +203,16 @@ export class LocalBoardsRepo {
     return c;
   }
 
+  /**
+   * 컬럼 정의만 지운다 — 셀 값(`itemValues`)은 남긴다 (BBE-177).
+   * 근거와 배경은 supabase 어댑터의 같은 메서드 주석에 적었다. 두 어댑터가 어긋나면
+   * 로컬 폴백에서만 값이 사라져 재현이 안 되는 차이가 생기므로 동작을 맞춰 둔다.
+   */
   deleteColumn(ctx: Ctx, id: string): boolean {
     const d = db();
     const c = d.boardColumns.find((x) => x.id === id && x.org_id === ctx.org.id);
     if (!c) return false;
     d.boardColumns = d.boardColumns.filter((x) => x.id !== id);
-    // 컬럼 삭제 시 해당 키의 셀 값 정리(EAV 고아 방지).
-    const boardItemIds = new Set(
-      d.boardItems.filter((item) => item.board_id === c.board_id).map((item) => item.id),
-    );
-    d.itemValues = d.itemValues.filter(
-      (v) => v.column_key !== c.key || !boardItemIds.has(v.item_id),
-    );
     return true;
   }
 

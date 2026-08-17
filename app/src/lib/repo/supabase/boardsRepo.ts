@@ -87,33 +87,19 @@ export class SupabaseBoardsRepo implements BoardsRepo {
     return columnRow(one<Row>(q.data, q.error));
   }
   async updateColumn(ctx: Ctx, id: string, patch: ColumnPatch): Promise<BoardColumn | undefined> { const dbPatch: Row = {}; if (patch.label !== undefined) dbPatch.label=patch.label; if (patch.source !== undefined) dbPatch.source=patch.source; if (patch.rightPinned !== undefined) dbPatch.right_pinned=patch.rightPinned; if (patch.options !== undefined) dbPatch.options_jsonb=patch.options ? {options:patch.options}:null; if (patch.sort_order !== undefined) dbPatch.sort_order=patch.sort_order; if (patch.width !== undefined) dbPatch.width=patch.width; if (patch.moveRule !== undefined) dbPatch.move_rule_jsonb=patch.moveRule; if (patch.readOnly !== undefined) dbPatch.is_readonly=patch.readOnly; const q=await this.client.from("board_columns").update(dbPatch).eq("org_id",ctx.org.id).eq("id",id).select("*").maybeSingle(); if(q.error) throw new Error(q.error.message); return q.data ? columnRow(q.data as Row):undefined; }
+  /**
+   * 컬럼 정의만 지운다 — 셀 값(`item_values`)은 건드리지 않는다 (BBE-177).
+   *
+   * 전에는 여기서 그 key 의 `item_values` 를 먼저 DELETE 했다. DB 가 시킨 일이 아니었다:
+   * `item_values` 는 `board_columns` 를 FK 로 참조하지 않고 `(item_id, column_key)` 만 쥔다
+   * (`003_boards_engine.sql`). 애플리케이션이 스스로 고른 물리 삭제였고, 그래서 컬럼을 한 번
+   * 지우면 그 열의 값이 영구 소실됐다 — 되돌릴 근거가 DB 에 남지 않았다.
+   *
+   * 값을 남겨도 화면에 새지 않는다. `BoardsService.compose` 가 정의된 컬럼 key 만 싣고 나머지는
+   * 버린다. 남은 값은 잠들어 있다가 같은 key 로 컬럼이 돌아오면 다시 붙는다 — 조인이 컬럼 id 가
+   * 아니라 key 로 일어나기 때문이다.
+   */
   async deleteColumn(ctx: Ctx, id: string): Promise<boolean> {
-    const columnQuery = await this.client
-      .from("board_columns")
-      .select("board_id,key")
-      .eq("org_id", ctx.org.id)
-      .eq("id", id)
-      .maybeSingle();
-    if (columnQuery.error) throw new Error(columnQuery.error.message);
-    if (!columnQuery.data) return false;
-
-    const itemsQuery = await this.client
-      .from("items")
-      .select("id")
-      .eq("org_id", ctx.org.id)
-      .eq("board_id", columnQuery.data.board_id);
-    if (itemsQuery.error) throw new Error(itemsQuery.error.message);
-    const itemIds = (itemsQuery.data ?? []).map((item) => item.id);
-    if (itemIds.length > 0) {
-      const valuesQuery = await this.client
-        .from("item_values")
-        .delete()
-        .eq("org_id", ctx.org.id)
-        .eq("column_key", columnQuery.data.key)
-        .in("item_id", itemIds);
-      if (valuesQuery.error) throw new Error(valuesQuery.error.message);
-    }
-
     const q = await this.client
       .from("board_columns")
       .delete()

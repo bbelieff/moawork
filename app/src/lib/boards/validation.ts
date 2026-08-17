@@ -6,6 +6,18 @@ import { FIELD_TYPES, type FieldOption, type FieldType } from "@/lib/types";
 import { BOARD_VIEW_KINDS, type BoardViewKind, type CellValue } from "./types";
 import type { NewBoard, NewColumn, NewGroup, NewItem, NewView, ViewPatch } from "./store";
 
+/**
+ * 컬럼 삭제 확인 토큰 (BBE-177).
+ *
+ * 화면의 hidden 값과 서버의 검사가 «같은 출처» 를 쓰게 하려고 상수로 뺐다. 양쪽에
+ * 리터럴을 따로 적어 두면 한쪽만 바꿔도 아무것도 빨개지지 않고 삭제 버튼만 조용히
+ * 죽는다. 값 자체에는 의미가 없다 — 중요한 것은 두 곳이 하나를 본다는 사실이다.
+ *
+ * 서버 액션 파일(`boards/actions.ts`)은 "use server" 라서 async 함수 말고는 export
+ * 할 수 없다. 그래서 이미 그 파일이 import 하고 있는 이 모듈에 둔다.
+ */
+export const COLUMN_DELETE_CONFIRM = "delete";
+
 export class ValidationError extends Error {
   constructor(message: string) {
     super(message);

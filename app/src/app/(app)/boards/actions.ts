@@ -14,7 +14,7 @@ import { loadPermGuard } from "@/lib/perm/guard";
 import { recordRiskyAction } from "@/lib/perm/server";
 import { NotFoundError } from "@/lib/boards";
 import { createRequestBoards } from "@/lib/boards/server";
-import { parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
+import { COLUMN_DELETE_CONFIRM, parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
 import type { Ctx, FieldOption } from "@/lib/types";
 import type { ItemWithValues } from "@/lib/boards/types";
 import { boardCellValueFromFormData } from "@/lib/boards/form-values";
@@ -125,10 +125,22 @@ export async function addColumnAction(formData: FormData): Promise<void> {
   revalidatePath(`/boards/${boardId}`);
 }
 
+/**
+ * 컬럼 삭제 — 확인 단계를 서버가 강제한다 (BBE-177).
+ *
+ * 확인을 화면에서만 두면 폼을 직접 만들어 보내는 것으로 그냥 우회된다. 컬럼 삭제는
+ * 그 열을 표에서 없애는 조작이고 되돌리는 화면이 아직 없으므로, `confirm=delete` 가
+ * 실린 요청만 받는다.
+ *
+ * 셀 값은 더 이상 지우지 않는다 — 근거는 `SupabaseBoardsRepo.deleteColumn` 주석.
+ */
 export async function deleteColumnAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   await requirePermission(ctx, "structure.column_manage");
   const boardId = str(formData, "boardId");
+  if (str(formData, "confirm") !== COLUMN_DELETE_CONFIRM) {
+    throw new Error("컬럼 삭제는 확인 단계를 거쳐야 합니다");
+  }
   await (await boardsService()).deleteColumn(ctx, boardId, str(formData, "columnId"));
   revalidatePath(`/boards/${boardId}`);
 }
