@@ -10,6 +10,9 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 echo "▶ [0/4] production repo boundary"
 node scripts/check-production-repo-boundaries.mjs --self-test
 node scripts/check-production-repo-boundaries.mjs
+node --test scripts/check-migration-guards.test.mjs
+node --test scripts/hosted-migration-runbook.test.mjs
+node scripts/check-migration-guards.mjs
 
 # ── 편제 개편 공지 (2026-08-12) ───────────────────────────────────
 # 왜 여기 있나: 모든 세션이 커밋 전에 반드시 이 스크립트를 지난다.
