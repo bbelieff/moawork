@@ -1,15 +1,17 @@
 -- BBE-173: one canonical new-lead record, with board rows as projections only.
 -- Additive and intentionally free of customer-row backfills.
 
-alter table public.deals
-  add constraint deals_org_id_id_uq unique (org_id, id);
-alter table public.boards
-  add constraint boards_org_id_id_uq unique (org_id, id);
-alter table public.board_groups
-  add constraint board_groups_org_board_id_uq unique (org_id, board_id, id);
-alter table public.items
-  add constraint items_org_id_id_uq unique (org_id, id),
-  add column deal_id uuid;
+create unique index if not exists deals_org_id_id_uq
+  on public.deals(org_id, id);
+-- Migration 041 already owns boards_org_id_id_uq. Keep its unique index as the
+-- referenced key instead of trying to create a same-named constraint relation.
+create unique index if not exists boards_org_id_id_uq
+  on public.boards(org_id, id);
+create unique index if not exists board_groups_org_board_id_uq
+  on public.board_groups(org_id, board_id, id);
+create unique index if not exists items_org_id_id_uq
+  on public.items(org_id, id);
+alter table public.items add column if not exists deal_id uuid;
 
 alter table public.board_groups drop constraint if exists board_groups_org_board_fkey;
 alter table public.board_groups add constraint board_groups_org_board_fkey
@@ -21,17 +23,18 @@ alter table public.items drop constraint if exists items_org_board_group_fkey;
 alter table public.items add constraint items_org_board_group_fkey
   foreign key (org_id, board_id, group_id)
   references public.board_groups(org_id, board_id, id) on delete set null (group_id);
+alter table public.items drop constraint if exists items_org_deal_fkey;
 alter table public.items add constraint items_org_deal_fkey
   foreign key (org_id, deal_id) references public.deals(org_id, id) on delete cascade;
 alter table public.item_values drop constraint if exists item_values_org_item_fkey;
 alter table public.item_values add constraint item_values_org_item_fkey
   foreign key (org_id, item_id) references public.items(org_id, id) on delete cascade;
 
-create unique index items_active_deal_projection_uq
+create unique index if not exists items_active_deal_projection_uq
   on public.items(org_id, deal_id)
   where deal_id is not null and deleted_at is null;
 
-create table public.deal_intake (
+create table if not exists public.deal_intake (
   deal_id uuid primary key,
   org_id uuid not null references public.orgs(id) on delete cascade,
   representative_name text,
@@ -54,15 +57,15 @@ create table public.deal_intake (
   check (email_normalized is null or email_normalized = lower(email_normalized))
 );
 
-create unique index deal_intake_org_phone_uq on public.deal_intake(org_id, phone_normalized)
+create unique index if not exists deal_intake_org_phone_uq on public.deal_intake(org_id, phone_normalized)
   where phone_normalized is not null;
-create unique index deal_intake_org_email_uq on public.deal_intake(org_id, email_normalized)
+create unique index if not exists deal_intake_org_email_uq on public.deal_intake(org_id, email_normalized)
   where email_normalized is not null;
-create unique index deal_intake_org_external_uq
+create unique index if not exists deal_intake_org_external_uq
   on public.deal_intake(org_id, acquisition_source, source_external_id)
   where acquisition_source is not null and source_external_id is not null;
 
-create table public.deal_intake_field_audit (
+create table if not exists public.deal_intake_field_audit (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   deal_id uuid not null,
@@ -77,7 +80,7 @@ create table public.deal_intake_field_audit (
   unique (org_id, request_id, field_key)
 );
 
-create table public.new_lead_requests (
+create table if not exists public.new_lead_requests (
   org_id uuid not null references public.orgs(id) on delete cascade,
   request_id uuid not null,
   operation text not null check (operation in ('create','update')),
@@ -95,12 +98,14 @@ alter table public.deal_intake enable row level security;
 alter table public.deal_intake_field_audit enable row level security;
 alter table public.new_lead_requests enable row level security;
 
+drop policy if exists deal_intake_select on public.deal_intake;
 create policy deal_intake_select on public.deal_intake for select to authenticated using (
   public.is_org_member(org_id) and exists (
     select 1 from public.deals d where d.org_id=deal_intake.org_id and d.id=deal_intake.deal_id
       and (public.org_role(org_id) in ('owner','admin') or public.org_scope(org_id)='all' or d.assigned_to=auth.uid())
   )
 );
+drop policy if exists deal_intake_audit_select on public.deal_intake_field_audit;
 create policy deal_intake_audit_select on public.deal_intake_field_audit for select to authenticated using (
   public.is_org_member(org_id) and exists (
     select 1 from public.deals d where d.org_id=deal_intake_field_audit.org_id and d.id=deal_intake_field_audit.deal_id
@@ -130,12 +135,19 @@ revoke all on function public.guard_new_lead_projection_write() from public,anon
 
 -- Existing workspaces gain the missing structural column only. No item/value row is updated.
 insert into public.board_columns(org_id, board_id, key, label, type, sort_order, width, source, is_readonly)
-select b.org_id, b.id, 'industry', '업종/업태', 'status'::public.field_type,
+select b.org_id, b.id, 'industry', '업종', 'text'::public.field_type,
        coalesce((select max(c.sort_order)+1 from public.board_columns c where c.board_id=b.id),0),
        140, 'manual', false
 from public.boards b
 where b.source='core.default-tab/new-lead'
   and not exists(select 1 from public.board_columns c where c.board_id=b.id and c.key='industry');
+
+update public.board_columns c
+set label='업종', type='text'::public.field_type, is_readonly=false
+from public.boards b
+where b.id=c.board_id and b.org_id=c.org_id
+  and b.source='core.default-tab/new-lead' and c.key='industry'
+  and (c.label is distinct from '업종' or c.type is distinct from 'text'::public.field_type or c.is_readonly);
 
 create or replace function public.create_new_lead(
   p_org_id uuid, p_board_id uuid, p_group_id uuid, p_request_id uuid, p_title text,
@@ -203,9 +215,11 @@ begin
     values(p_org_id,p_request_id,'create',v_deal,v_item,v_actor,v_payload);
   perform set_config('moawork.new_lead_projection_write','on',true);
   insert into public.item_values(org_id,item_id,column_key,value_jsonb)
-  select p_org_id,v_item,x.key,x.value from jsonb_each(jsonb_build_object(
-    'rep_name',to_jsonb(p_representative_name),'phone',to_jsonb(p_phone),'email',to_jsonb(p_email),
-    'industry',to_jsonb(p_industry),'region_sido',to_jsonb(p_region_sido),'region_sigungu',to_jsonb(p_region_sigungu))) x
+  select p_org_id,v_item,x.key,x.value
+  from public.deal_intake i
+  cross join lateral jsonb_each(jsonb_build_object(
+    'rep_name',to_jsonb(i.representative_name),'phone',to_jsonb(i.phone_display),'email',to_jsonb(i.email_normalized),
+    'industry',to_jsonb(i.industry),'region_sido',to_jsonb(i.region_sido),'region_sigungu',to_jsonb(i.region_sigungu))) x
   join public.board_columns c on c.board_id=p_board_id and c.key=x.key where x.value<>'null'::jsonb;
   return query select v_deal,v_item,false;
 end $$;
@@ -216,7 +230,8 @@ create or replace function public.update_new_lead_fields(
 language plpgsql security definer set search_path='' as $$
 declare
   v_actor uuid:=auth.uid(); v_role text; v_scope text; v_assigned uuid; v_item uuid; v_board uuid;
-  v_payload jsonb; v_prior public.new_lead_requests%rowtype; v_key text; v_old jsonb; v_new jsonb; v_changed text[]:='{}';
+  v_payload jsonb; v_patch jsonb; v_prior public.new_lead_requests%rowtype;
+  v_key text; v_old jsonb; v_new jsonb; v_changed text[]:='{}';
   v_allowed constant text[]:=array['representative_name','phone','email','business_registration_type','industry','industry_code','revenue_band','region_sido','region_sigungu','acquisition_source','source_external_id'];
 begin
   if v_actor is null or p_request_id is null or jsonb_typeof(p_patch)<>'object' or p_value_source not in ('manual','automation','import') then
@@ -225,6 +240,14 @@ begin
   if exists(select 1 from jsonb_object_keys(p_patch) k where not (k=any(v_allowed))) then
     raise exception 'new lead field unsupported' using errcode='22023';
   end if;
+  select coalesce(jsonb_object_agg(e.key,
+    case
+      when e.value='null'::jsonb then 'null'::jsonb
+      when e.key='email' then coalesce(to_jsonb(nullif(lower(btrim(e.value#>>'{}')),'')),'null'::jsonb)
+      else coalesce(to_jsonb(nullif(btrim(e.value#>>'{}'),'')),'null'::jsonb)
+    end
+  ),'{}'::jsonb) into v_patch
+  from jsonb_each(p_patch) e;
   select m.role::text,m.scope::text,d.assigned_to into v_role,v_scope,v_assigned
     from public.org_members m join public.orgs o on o.id=m.org_id
     join public.deals d on d.org_id=m.org_id and d.id=p_deal_id
@@ -236,7 +259,7 @@ begin
   select i.id,i.board_id into v_item,v_board from public.items i join public.boards b on b.id=i.board_id
     where i.org_id=p_org_id and i.deal_id=p_deal_id and i.deleted_at is null and b.source='core.default-tab/new-lead' for update;
   if not found then raise exception 'new lead projection unavailable' using errcode='22023'; end if;
-  v_payload:=jsonb_build_object('deal_id',p_deal_id,'patch',p_patch,'value_source',p_value_source);
+  v_payload:=jsonb_build_object('deal_id',p_deal_id,'patch',v_patch,'value_source',p_value_source);
   perform pg_advisory_xact_lock(hashtextextended(p_org_id::text||':'||p_request_id::text,0));
   select * into v_prior from public.new_lead_requests r where r.org_id=p_org_id and r.request_id=p_request_id;
   if found then
@@ -244,13 +267,14 @@ begin
       raise exception 'new lead idempotency key reuse' using errcode='22023'; end if;
     return query select p_deal_id,array(select a.field_key from public.deal_intake_field_audit a where a.org_id=p_org_id and a.request_id=p_request_id order by a.field_key),true; return;
   end if;
-  for v_key,v_new in select key,value from jsonb_each(p_patch) loop
+  for v_key,v_new in select key,value from jsonb_each(v_patch) loop
     if p_value_source='automation' and exists(select 1 from public.deal_intake_field_audit a
        where a.org_id=p_org_id and a.deal_id=p_deal_id and a.field_key=v_key and a.value_source='manual') then
       raise exception 'manual correction conflict: %',v_key using errcode='40001';
     end if;
     select case v_key
-      when 'phone' then to_jsonb(phone_display) when 'email' then to_jsonb(email_normalized)
+      when 'phone' then coalesce(to_jsonb(phone_display),'null'::jsonb)
+      when 'email' then coalesce(to_jsonb(email_normalized),'null'::jsonb)
       else to_jsonb(i)->v_key end into v_old from public.deal_intake i where i.org_id=p_org_id and i.deal_id=p_deal_id;
     if v_old is distinct from v_new then
       insert into public.deal_intake_field_audit(org_id,deal_id,field_key,old_value,new_value,value_source,actor_id,request_id)
@@ -259,23 +283,23 @@ begin
     end if;
   end loop;
   update public.deal_intake i set
-    representative_name=case when p_patch?'representative_name' then nullif(btrim(p_patch->>'representative_name'),'') else i.representative_name end,
-    phone_normalized=case when p_patch?'phone' then nullif(regexp_replace(p_patch->>'phone','[^0-9]','','g'),'') else i.phone_normalized end,
-    phone_display=case when p_patch?'phone' then nullif(btrim(p_patch->>'phone'),'') else i.phone_display end,
-    email_normalized=case when p_patch?'email' then nullif(lower(btrim(p_patch->>'email')),'') else i.email_normalized end,
-    business_registration_type=case when p_patch?'business_registration_type' then nullif(btrim(p_patch->>'business_registration_type'),'') else i.business_registration_type end,
-    industry=case when p_patch?'industry' then nullif(btrim(p_patch->>'industry'),'') else i.industry end,
-    industry_code=case when p_patch?'industry_code' then nullif(btrim(p_patch->>'industry_code'),'') else i.industry_code end,
-    revenue_band=case when p_patch?'revenue_band' then nullif(btrim(p_patch->>'revenue_band'),'') else i.revenue_band end,
-    region_sido=case when p_patch?'region_sido' then nullif(btrim(p_patch->>'region_sido'),'') else i.region_sido end,
-    region_sigungu=case when p_patch?'region_sigungu' then nullif(btrim(p_patch->>'region_sigungu'),'') else i.region_sigungu end,
-    acquisition_source=case when p_patch?'acquisition_source' then nullif(btrim(p_patch->>'acquisition_source'),'') else i.acquisition_source end,
-    source_external_id=case when p_patch?'source_external_id' then nullif(btrim(p_patch->>'source_external_id'),'') else i.source_external_id end,
+    representative_name=case when v_patch?'representative_name' then v_patch->>'representative_name' else i.representative_name end,
+    phone_normalized=case when v_patch?'phone' then nullif(regexp_replace(v_patch->>'phone','[^0-9]','','g'),'') else i.phone_normalized end,
+    phone_display=case when v_patch?'phone' then v_patch->>'phone' else i.phone_display end,
+    email_normalized=case when v_patch?'email' then v_patch->>'email' else i.email_normalized end,
+    business_registration_type=case when v_patch?'business_registration_type' then v_patch->>'business_registration_type' else i.business_registration_type end,
+    industry=case when v_patch?'industry' then v_patch->>'industry' else i.industry end,
+    industry_code=case when v_patch?'industry_code' then v_patch->>'industry_code' else i.industry_code end,
+    revenue_band=case when v_patch?'revenue_band' then v_patch->>'revenue_band' else i.revenue_band end,
+    region_sido=case when v_patch?'region_sido' then v_patch->>'region_sido' else i.region_sido end,
+    region_sigungu=case when v_patch?'region_sigungu' then v_patch->>'region_sigungu' else i.region_sigungu end,
+    acquisition_source=case when v_patch?'acquisition_source' then v_patch->>'acquisition_source' else i.acquisition_source end,
+    source_external_id=case when v_patch?'source_external_id' then v_patch->>'source_external_id' else i.source_external_id end,
     updated_at=now() where i.org_id=p_org_id and i.deal_id=p_deal_id;
   perform set_config('moawork.new_lead_projection_write','on',true);
   insert into public.item_values(org_id,item_id,column_key,value_jsonb)
   select p_org_id,v_item,case x.key when 'representative_name' then 'rep_name' else x.key end,x.value
-    from jsonb_each(p_patch) x join public.board_columns c on c.board_id=v_board and c.key=case x.key when 'representative_name' then 'rep_name' else x.key end
+    from jsonb_each(v_patch) x join public.board_columns c on c.board_id=v_board and c.key=case x.key when 'representative_name' then 'rep_name' else x.key end
   where x.key in ('representative_name','phone','email','industry','region_sido','region_sigungu')
   on conflict(item_id,column_key) do update set value_jsonb=excluded.value_jsonb,org_id=excluded.org_id;
   insert into public.new_lead_requests(org_id,request_id,operation,deal_id,item_id,actor_id,payload)

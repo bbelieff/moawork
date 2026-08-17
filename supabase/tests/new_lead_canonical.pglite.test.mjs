@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const dependencyRoot = process.env.PGLITE_MODULE_ROOT ?? root;
 const { PGlite } = await import(pathToFileURL(path.join(dependencyRoot, "node_modules", "@electric-sql", "pglite", "dist", "index.js")).href);
+const mainMigration041 = await readFile(path.join(root, "supabase", "migrations", "041_messaging.sql"), "utf8");
 const migration = await readFile(path.join(root, "supabase", "migrations", "086_new_lead_canonical.sql"), "utf8");
 
 const A = "10000000-0000-4000-8000-000000000001";
@@ -23,6 +24,8 @@ async function setup(db) {
     create type public.member_scope as enum('all','department','assigned');
     create type public.stage_kind as enum('marketing','meeting','work','done','lost');
     create type public.field_type as enum('text','number','date','status','people','money','calc');
+    create type public.message_channel as enum('sms','alimtalk');
+    create type public.message_status as enum('queued','sent','failed','canceled');
     create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
     create table public.orgs(id uuid primary key,status text not null default 'active');
     create table public.users(id uuid primary key);
@@ -39,6 +42,15 @@ async function setup(db) {
     create table public.board_columns(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),key text,label text,type public.field_type,sort_order int default 0,width int,source text,is_readonly boolean default false,unique(board_id,key));
     create table public.items(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),group_id uuid references public.board_groups(id),title text,assigned_to uuid references public.users(id),deleted_at timestamptz);
     create table public.item_values(org_id uuid references public.orgs(id),item_id uuid references public.items(id),column_key text,value_jsonb jsonb,primary key(item_id,column_key));
+    create table public.message_templates(
+      id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),
+      channel public.message_channel,code text,name text,body text,status text
+    );
+    create table public.messages(
+      id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),
+      template_id uuid references public.message_templates(id),to_addr text,
+      status public.message_status,error text
+    );
     create function public.execute_contact_pipeline_transition(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text,text,text,text,date,numeric)
     returns table(status text,deal_id uuid,company_id uuid,reason text) language plpgsql security definer set search_path='' as $$
     declare d alias for $2; target uuid;
@@ -57,6 +69,8 @@ async function setup(db) {
       ('${A}','${BOARD}','rep_name','representative','text'),('${A}','${BOARD}','phone','phone','text'),('${A}','${BOARD}','email','email','text');
     select set_config('request.jwt.claim.sub','${USER}',false);
   `);
+  await db.exec(mainMigration041);
+  await db.exec(migration);
   await db.exec(migration);
   await db.exec("grant usage on schema public to authenticated");
 }
@@ -80,7 +94,10 @@ test("BBE-173 creates one company-less deal and one linked projection, then repl
     const state = await db.query("select d.company_id,d.stage_id,i.deal_id,x.industry,x.phone_normalized,x.email_normalized from public.deals d join public.items i on i.deal_id=d.id join public.deal_intake x on x.deal_id=d.id");
     assert.deepEqual(state.rows[0],{company_id:null,stage_id:"10000000-0000-4000-8000-000000000031",deal_id:first.rows[0].deal_id,industry:"manufacturing",phone_normalized:"01012345678",email_normalized:"lead@example.com"});
     assert.equal(Number((await db.query("select count(*) from public.deals")).rows[0].count),1);
-    assert.equal(Number((await db.query("select count(*) from public.board_columns where board_id=$1 and key='industry'",[BOARD])).rows[0].count),1);
+    assert.deepEqual(
+      (await db.query("select label,type::text,is_readonly from public.board_columns where board_id=$1 and key='industry'",[BOARD])).rows,
+      [{label:"업종",type:"text",is_readonly:false}],
+    );
     await assert.rejects(
       db.query("update public.item_values set value_jsonb='\"shadow\"'::jsonb where item_id=$1 and column_key='industry'",[first.rows[0].item_id]),
       /canonical new lead fields require update_new_lead_fields/,
@@ -96,13 +113,32 @@ test("BBE-173 update is field-audited, replay-safe, and automation cannot overwr
     const created = await createLead(db,"10000000-0000-4000-8000-000000000111");
     const deal=created.rows[0].deal_id, request="10000000-0000-4000-8000-000000000112";
     await db.exec("set role authenticated");
-    const first=await db.query("select * from public.update_new_lead_fields($1,$2,$3,$4::jsonb,'manual')",[A,deal,request,JSON.stringify({industry:"logistics"})]);
-    const replay=await db.query("select * from public.update_new_lead_fields($1,$2,$3,$4::jsonb,'manual')",[A,deal,request,JSON.stringify({industry:"logistics"})]);
+    const normalizedPatch={industry:"  logistics  ",phone:" 010-9999-8888 ",email:"  LEAD+EDIT@EXAMPLE.COM "};
+    const first=await db.query("select * from public.update_new_lead_fields($1,$2,$3,$4::jsonb,'manual')",[A,deal,request,JSON.stringify(normalizedPatch)]);
+    const replay=await db.query("select * from public.update_new_lead_fields($1,$2,$3,$4::jsonb,'manual')",[A,deal,request,JSON.stringify({industry:"logistics",phone:"010-9999-8888",email:"lead+edit@example.com"})]);
     assert.equal(first.rows[0].replayed,false); assert.equal(replay.rows[0].replayed,true);
     await assert.rejects(db.query("select * from public.update_new_lead_fields($1,$2,$3,$4::jsonb,'automation')",[A,deal,"10000000-0000-4000-8000-000000000113",JSON.stringify({industry:"retail"})]),/manual correction conflict/);
     await db.exec("reset role");
-    assert.equal(Number((await db.query("select count(*) from public.deal_intake_field_audit where deal_id=$1",[deal])).rows[0].count),1);
-    assert.equal((await db.query("select industry from public.deal_intake where deal_id=$1",[deal])).rows[0].industry,"logistics");
+    assert.deepEqual(
+      (await db.query("select field_key,new_value from public.deal_intake_field_audit where deal_id=$1 order by field_key",[deal])).rows,
+      [
+        {field_key:"email",new_value:"lead+edit@example.com"},
+        {field_key:"industry",new_value:"logistics"},
+        {field_key:"phone",new_value:"010-9999-8888"},
+      ],
+    );
+    assert.deepEqual(
+      (await db.query("select industry,phone_display,phone_normalized,email_normalized from public.deal_intake where deal_id=$1",[deal])).rows[0],
+      {industry:"logistics",phone_display:"010-9999-8888",phone_normalized:"01099998888",email_normalized:"lead+edit@example.com"},
+    );
+    assert.deepEqual(
+      (await db.query("select column_key,value_jsonb from public.item_values where item_id=$1 and column_key in ('industry','phone','email') order by column_key",[created.rows[0].item_id])).rows,
+      [
+        {column_key:"email",value_jsonb:"lead+edit@example.com"},
+        {column_key:"industry",value_jsonb:"logistics"},
+        {column_key:"phone",value_jsonb:"010-9999-8888"},
+      ],
+    );
   } finally { await db.close(); }
 });
 
