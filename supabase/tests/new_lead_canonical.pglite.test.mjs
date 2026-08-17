@@ -11,6 +11,7 @@ const mainMigration041 = await readFile(path.join(root, "supabase", "migrations"
 const transitionMigration069 = await readFile(path.join(root, "supabase", "migrations", "069_contact_pipeline_transitions.sql"), "utf8");
 const dashboardMigration086 = await readFile(path.join(root, "supabase", "migrations", "086_dashboard_daily_read_model.sql"), "utf8");
 const migration = await readFile(path.join(root, "supabase", "migrations", "087_new_lead_canonical.sql"), "utf8");
+const detailLayoutMigration088 = await readFile(path.join(root, "supabase", "migrations", "088_bbe175_detail_layout_drift_repair.sql"), "utf8");
 
 const A = "10000000-0000-4000-8000-000000000001";
 const B = "10000000-0000-4000-8000-000000000002";
@@ -30,6 +31,7 @@ async function setup(db) {
     create type public.member_scope as enum('all','department','assigned');
     create type public.stage_kind as enum('marketing','meeting','work','done','lost');
     create type public.field_type as enum('text','number','date','status','people','money','calc');
+    create type public.field_source as enum('auto','in','act','msg','lk','calc');
     create type public.message_channel as enum('sms','alimtalk');
     create type public.message_status as enum('queued','sent','failed','canceled');
     create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
@@ -45,7 +47,7 @@ async function setup(db) {
     create table public.deals(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),company_id uuid,pipeline_id uuid references public.pipelines(id),stage_id uuid references public.stages(id),assigned_to uuid references public.users(id),title text,custom jsonb not null default '{}'::jsonb,created_at timestamptz default now(),updated_at timestamptz default now());
     create table public.boards(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),source text);
     create table public.board_groups(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),name text);
-    create table public.board_columns(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),key text,label text,type public.field_type,sort_order int default 0,width int,source text,is_readonly boolean default false,unique(board_id,key));
+    create table public.board_columns(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),key text,label text,type public.field_type,sort_order int default 0,width int,source public.field_source not null default 'in',is_readonly boolean default false,unique(board_id,key));
     create table public.items(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),group_id uuid references public.board_groups(id),title text,assigned_to uuid references public.users(id),deleted_at timestamptz);
     create table public.item_values(org_id uuid references public.orgs(id),item_id uuid references public.items(id),column_key text,value_jsonb jsonb,primary key(item_id,column_key));
     create table public.activities(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),deal_id uuid references public.deals(id),type text,content text,actor uuid references public.users(id),created_at timestamptz default now());
@@ -81,6 +83,21 @@ async function setup(db) {
   await db.exec(dashboardMigration086);
   await db.exec(migration);
   await db.exec(migration);
+  const customerRowsBefore088 = {
+    boards: (await db.query("select id,org_id,source from public.boards order by id")).rows,
+    groups: (await db.query("select id,org_id,board_id,name from public.board_groups order by id")).rows,
+    columns: (await db.query("select id,org_id,board_id,key,label,type::text,sort_order,width,source::text,is_readonly from public.board_columns order by id")).rows,
+  };
+  await db.exec(detailLayoutMigration088);
+  await db.exec(detailLayoutMigration088);
+  assert.deepEqual(
+    {
+      boards: (await db.query("select id,org_id,source from public.boards order by id")).rows,
+      groups: (await db.query("select id,org_id,board_id,name from public.board_groups order by id")).rows,
+      columns: (await db.query("select id,org_id,board_id,key,label,type::text,sort_order,width,source::text,is_readonly from public.board_columns order by id")).rows,
+    },
+    customerRowsBefore088,
+  );
   await db.exec("grant usage on schema public to authenticated");
 }
 
@@ -106,6 +123,18 @@ test("BBE-173 creates one company-less deal and one linked projection, then repl
     assert.deepEqual(
       (await db.query("select label,type::text,is_readonly from public.board_columns where board_id=$1 and key='industry'",[BOARD])).rows,
       [{label:"업종",type:"text",is_readonly:false}],
+    );
+    assert.deepEqual(
+      (await db.query("select source::text from public.board_columns where board_id=$1 and key='industry'",[BOARD])).rows,
+      [{source:"in"}],
+    );
+    assert.deepEqual(
+      (await db.query("select detail_layout_jsonb from public.boards where id=$1",[BOARD])).rows,
+      [{detail_layout_jsonb:[]}],
+    );
+    assert.deepEqual(
+      (await db.query("select detail_layout_jsonb from public.board_groups where id=$1",[GROUP])).rows,
+      [{detail_layout_jsonb:null}],
     );
     await assert.rejects(
       db.query("update public.item_values set value_jsonb='\"shadow\"'::jsonb where item_id=$1 and column_key='industry'",[first.rows[0].item_id]),
