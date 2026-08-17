@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { BOARD_ACTION_FLASH_COOKIE, decodeBoardActionFlash } from "@/lib/boards/boardActionFlash";
+import { BOARD_ACTION_FLASH_COOKIE, decodeBoardActionFlash, findBoardActionError } from "@/lib/boards/boardActionFlash";
 import { CELL_FLASH_COOKIE, decodeCellFlash } from "@/lib/boards/cellFlash";
 
 // BBE-201 — 「새 항목 + 필드 채우기」 실패가 «전면 오류 화면» 으로 튀지 않는다.
@@ -46,6 +46,15 @@ function form(title = "새 항목"): FormData {
 function flashed() {
   const call = [...cookieSet.mock.calls].reverse().find(([name]) => name === BOARD_ACTION_FLASH_COOKIE);
   return call ? decodeBoardActionFlash(call[1] as string) : null;
+}
+
+/**
+ * «지금 화면에 그려질» 오류 — 마지막으로 쓰인 쿠키 값을 화면과 같은 방식으로 읽는다.
+ * 성공이 이전 실패를 지웠는지 보려면 «새로 심긴 것» 이 아니라 «남아 있는 것» 을 봐야 한다.
+ */
+function surviving(): string | null {
+  const call = [...cookieSet.mock.calls].reverse().find(([name]) => name === BOARD_ACTION_FLASH_COOKIE);
+  return call ? findBoardActionError(decodeBoardActionFlash(call[1] as string), "board-1") : null;
 }
 
 describe("BBE-201 addItemAction 은 실패를 화면 안에서 말한다", () => {
@@ -106,11 +115,24 @@ describe("BBE-201 addItemAction 은 실패를 화면 안에서 말한다", () =>
     expect(message).not.toContain("item_values");
   });
 
-  // 되돌리면 빨개진다: 위험 작업 기록 실패를 조용히 넘기기
-  it("⑤ 성공하면 아무 오류도 남기지 않는다", async () => {
+  // ★ 되돌리면 빨개진다: 성공 경로에서 clearFlashCookie 호출을 지우기
+  //
+  //   이 테스트의 첫 판은 이름은 「성공하면 아무 오류도 남기지 않는다」인데 단언은
+  //   «새로 심긴 게 없다» 만 봤다 — «이미 심긴 게 남는지» 는 안 봤다(DC-15 지적).
+  //   이름이 단언보다 넓으면 그 테스트는 이름값을 못 한다. 그래서 실제 사용자 순서
+  //   (실패 → 고침 → 재시도)를 그대로 재현해 «화면에 남는 것» 을 본다.
+  it("⑤ 성공하면 «이전 실패까지» 지운다 — 고친 뒤에 옛 오류가 다시 그려지지 않는다", async () => {
+    guard.kind = "denied";
+    guard.reason = "permission";
     await addItemAction(form());
+    expect(surviving()).toContain("권한이 없어요"); // 실패는 남아야 한다
+
+    guard.kind = "allowed";
+    delete guard.reason;
+    await addItemAction(form());
+
     expect(createItem).toHaveBeenCalled();
-    expect(flashed()).toBeNull();
+    expect(surviving()).toBeNull(); // ★ 성공 뒤에는 화면에 아무 오류도 없어야 한다
   });
 });
 
@@ -165,5 +187,22 @@ describe("BBE-201 setCellAction 도 실패를 화면 안에서 말한다", () =>
     expect(message).toBeTruthy();
     expect(message).not.toContain("42501");
     expect(message).not.toContain("update_new_lead_fields");
+  });
+
+  // ★ 되돌리면 빨개진다: flashCellErrors 의 «담을 것 없으면 지운다» 를 return 으로 되돌리기
+  //
+  //   이건 이 PR 이 만든 회귀가 아니라 «원래 있던» 성질이다. 그래도 같이 고친다 —
+  //   같은 모양의 쿠키를 하나 더 들이면서 기존 것의 같은 결함을 두면
+  //   다음 사람은 「원래 그런가 보다」로 읽는다.
+  it("성공하면 그 셀의 이전 오류도 지운다", async () => {
+    setCells.mockImplementation(async () => {
+      throw new Error("일시적 저장 실패");
+    });
+    await setCellAction(cellForm());
+    expect(cellFlashed()?.errors[0]?.message).toBeTruthy(); // 실패는 남는다
+
+    setCells.mockImplementation(async () => ({ errors: [] }));
+    await setCellAction(cellForm());
+    expect(cellFlashed()).toBeNull(); // ★ 성공 뒤에는 셀 아래에 아무것도 없어야 한다
   });
 });

@@ -75,6 +75,17 @@ async function requirePermission(ctx: Ctx, scopeKey: string, riskKey?: "danger.b
 }
 
 /**
+ * 1회성 플래시 쿠키를 즉시 지운다 (BBE-201).
+ *
+ * ★ 성공은 «이전 실패» 를 지워야 한다. TTL 로 스스로 사라지길 기다리면,
+ *   사용자가 오류를 보고 고쳐서 다시 누르는 «10초 안» 에 성공했는데도
+ *   방금 전 오류가 화면에 다시 그려진다. 그게 총괄이 겪는 시나리오다.
+ */
+async function clearFlashCookie(name: string): Promise<void> {
+  (await cookies()).set(name, "", { path: "/", maxAge: 0 });
+}
+
+/**
  * 보드 단위 실패를 다음 렌더에 알린다(1회성 쿠키).
  *
  * 이것이 없으면 서버 액션의 throw 가 Next 오류 경계로 올라가 **화면이 통째로 덮인다**
@@ -103,7 +114,13 @@ async function flashBoardActionError(boardId: string, error: unknown): Promise<v
  */
 async function flashCellErrors(itemId: string, errors: CellError[]): Promise<void> {
   const encoded = encodeCellFlash({ itemId, errors });
-  if (!encoded) return;
+  // ★ 담을 것이 없다 = 이번엔 성공했다. 그러면 «이전 실패» 를 지워야 한다(BBE-201).
+  //   그냥 return 하면 직전 오류 쿠키가 TTL 동안 살아남아, 성공한 뒤에도 화면이
+  //   「권한이 없어요」를 다시 그린다 — 판정은 성공인데 표현은 실패다.
+  if (!encoded) {
+    await clearFlashCookie(CELL_FLASH_COOKIE);
+    return;
+  }
   const jar = await cookies();
   jar.set(CELL_FLASH_COOKIE, encoded, {
     httpOnly: true,
@@ -204,6 +221,8 @@ export async function addItemAction(formData: FormData): Promise<void> {
       group_id: groupId === "" ? null : groupId,
     });
     await (await boardsService()).createItem(ctx, boardId, input);
+    // 성공했으면 직전 실패를 지운다 — 안 지우면 고쳐서 성공한 뒤에도 옛 오류가 다시 그려진다.
+    await clearFlashCookie(BOARD_ACTION_FLASH_COOKIE);
   } catch (error) {
     await flashBoardActionError(boardId, error);
   }
