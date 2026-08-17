@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { BoardsRepo, ColumnPatch, NewBoard, NewColumn, NewGroup } from "@/lib/boards/store";
 import type { Board, BoardColumn, BoardGroup } from "@/lib/boards/types";
 import type { Ctx } from "@/lib/types";
-import { DEFAULT_TABS, ensureDefaultTabs } from "./install";
+import { DEFAULT_TABS, ensureDefaultTabAdditive, ensureDefaultTabs } from "./install";
+import { NEW_LEAD_TAB } from "./new-lead";
 import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 
 const opened: PGlite[] = [];
@@ -15,6 +16,8 @@ async function setup() {
     create table boards(id text primary key default gen_random_uuid()::text,org_id text not null,name text not null,description text,icon text,source text,sort_order int not null default 0,created_by text,is_system boolean default false,detail_layout_jsonb jsonb,created_at timestamptz default now(),updated_at timestamptz default now(),unique(org_id,source));
     create table board_groups(id text primary key default gen_random_uuid()::text,org_id text not null,board_id text not null,name text not null,color text,sort_order int not null default 0,detail_layout_jsonb jsonb);
     create table board_columns(id text primary key default gen_random_uuid()::text,org_id text not null,board_id text not null,key text not null,label text not null,type text not null,source text,options_jsonb jsonb,width int,right_pinned boolean default false,is_readonly boolean default false,move_rule_jsonb jsonb,sort_order int not null default 0,unique(board_id,key));
+    create table items(id text primary key,org_id text not null,board_id text not null,group_id text,title text,updated_at timestamptz default now());
+    create table item_values(org_id text not null,item_id text not null,column_key text not null,value_jsonb jsonb,primary key(item_id,column_key));
     create role authenticated;
     grant usage on schema public to authenticated;
     grant select,insert,update,delete on boards,board_groups,board_columns to authenticated;
@@ -78,6 +81,28 @@ function pgliteRepo(db: PGlite): BoardsRepo {
 const owner=(orgId:string):Ctx=>({org:{id:orgId,name:orgId,plan_tier:"free",created_at:"2026-08-16"},user:{id:"creator",name:"Creator",email:null,avatar_url:null,created_at:"2026-08-16"},role:"owner",scope:"all"});
 
 describe("default-tab bootstrap PGlite boundary",()=>{
+  it("BBE-184 additive repair preserves persisted rows/values and fills industry",async()=>{
+    const db=await setup();const ctx=owner("org-a");const repo=pgliteRepo(db);
+    const partial=await repo.createBoard(ctx,{name:NEW_LEAD_TAB.name,source:NEW_LEAD_TAB.source});
+    const group=await repo.createGroup(ctx,partial.id,{name:NEW_LEAD_TAB.groups[0].name,color:NEW_LEAD_TAB.groups[0].color});
+    await repo.createColumn(ctx,partial.id,{key:NEW_LEAD_TAB.columns[0].key,label:"customer label",type:NEW_LEAD_TAB.columns[0].type,source:NEW_LEAD_TAB.columns[0].source});
+    const other=await repo.createBoard(ctx,{name:"other",source:"user.board/other"});
+    await db.query("insert into items values($1,$2,$3,$4,$5,now())",["item-a",ctx.org.id,partial.id,group.id,"keep"]);
+    await db.query("insert into item_values values($1,$2,$3,$4::jsonb)",[ctx.org.id,"item-a",NEW_LEAD_TAB.columns[0].key,JSON.stringify({keep:true})]);
+    const beforeRows=(await db.query("select * from items order by id")).rows;
+    const beforeValues=(await db.query("select * from item_values order by item_id,column_key")).rows;
+    const beforeOther=(await db.query("select * from boards where id=$1",[other.id])).rows;
+    await ensureDefaultTabAdditive(ctx,NEW_LEAD_TAB,repo,[{userId:"creator",displayName:"Creator"}]);
+    const firstCount=(await db.query<{n:number}>("select ((select count(*) from board_groups where board_id=$1)+(select count(*) from board_columns where board_id=$1))::int n",[partial.id])).rows[0].n;
+    await ensureDefaultTabAdditive(ctx,NEW_LEAD_TAB,pgliteRepo(db),[{userId:"creator",displayName:"Creator"}]);
+    const secondCount=(await db.query<{n:number}>("select ((select count(*) from board_groups where board_id=$1)+(select count(*) from board_columns where board_id=$1))::int n",[partial.id])).rows[0].n;
+    expect(secondCount).toBe(firstCount);
+    expect((await db.query("select key from board_columns where board_id=$1 and key='industry'",[partial.id])).rows).toHaveLength(1);
+    expect(await db.query("select * from items order by id").then(result=>result.rows)).toEqual(beforeRows);
+    expect(await db.query("select * from item_values order by item_id,column_key").then(result=>result.rows)).toEqual(beforeValues);
+    expect(await db.query("select * from boards where id=$1",[other.id]).then(result=>result.rows)).toEqual(beforeOther);
+  });
+
   it("repairs four persisted shells, reloads idempotently, and isolates tenant/member",async()=>{
     const db=await setup(); const ctx=owner("org-a"); const first=pgliteRepo(db);
     for(const tab of DEFAULT_TABS) await first.createBoard(ctx,{name:tab.name,source:tab.source});

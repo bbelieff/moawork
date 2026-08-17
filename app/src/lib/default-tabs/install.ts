@@ -44,6 +44,74 @@ export interface EnsuredTab {
 }
 
 /**
+ * Repairs one product tab without rewriting customer-owned structure.
+ *
+ * Unlike the workspace bootstrap reconciler, this path is intentionally additive:
+ * existing boards, groups, columns, items and values are never updated or deleted.
+ * The caller must serialize it with the database repair lease.
+ */
+export async function ensureDefaultTabAdditive(
+  ctx: Ctx,
+  tab: DefaultTab,
+  store: BoardsRepo,
+  assignees: readonly DefaultTabAssignee[],
+): Promise<EnsuredTab> {
+  const matches = (await store.listBoards(ctx)).filter((board) => board.source === tab.source);
+  if (matches.length > 1) throw new Error("default tab source conflict");
+  const created = matches.length === 0;
+  const board = matches[0] ?? await store.createBoard(ctx, {
+    name: tab.name,
+    description: tab.description,
+    icon: tab.icon,
+    source: tab.source,
+  });
+
+  const groups = await store.listGroups(ctx, board.id);
+  const groupIds: Record<string, string> = {};
+  for (const definition of tab.groups) {
+    const assignee = definition.assigneeSlot === undefined
+      ? undefined
+      : assignees[definition.assigneeSlot];
+    if (definition.assigneeSlot !== undefined && !assignee) continue;
+    const expectedName = assignee ? assigneeGroupName(definition.name, assignee) : definition.name;
+    const existing = groups.find((group) => assignee
+      ? assigneeOwnerFromGroupName(group.name) === assignee.userId
+      : group.name === definition.name);
+    const group = existing ?? await store.createGroup(ctx, board.id, {
+      name: expectedName,
+      color: definition.color,
+    });
+    groupIds[definition.name] = group.id;
+    if (!existing) groups.push(group);
+  }
+
+  const columns = await store.listColumns(ctx, board.id);
+  for (const definition of tab.columns) {
+    if (columns.some((column) => column.key === definition.key)) continue;
+    const column = await store.createColumn(ctx, board.id, {
+      key: definition.key,
+      label: definition.label,
+      type: definition.type,
+      source: definition.source,
+      options: assigneeOptions(definition, assignees),
+      width: definition.width ?? null,
+      rightPinned: definition.rightPinned ?? false,
+      readOnly: definition.readOnly ?? false,
+      moveRule: resolveMoveRule(definition, groupIds, tab, assignees),
+    });
+    columns.push(column);
+  }
+
+  return {
+    tabKey: tab.key,
+    boardId: board.id,
+    created,
+    groupIds,
+    columnKeys: columns.map((column) => column.key),
+  };
+}
+
+/**
  * 탭 하나를 보장한다. 같은 이름의 보드가 이미 있으면 아무것도 만들지 않는다(멱등).
  *
  * ⚠ 멱등 판정을 «이름» 으로 한다. 회사가 탭 이름을 바꾸면(D76 이 허용한다) 같은 탭을 다시
