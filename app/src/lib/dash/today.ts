@@ -3,9 +3,16 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export type TodayDashboardStatus = "ready" | "empty" | "partial";
 export type TodayDashboardRole = "owner" | "admin" | "member";
 export type TodayDashboardScope = "all" | "assigned";
+export type TodayDashboardActionKind =
+  | "work_due"
+  | "follow_up"
+  | "assign_owner"
+  | "decide"
+  | "reconcile_payment";
 
 export interface TodayDashboardTask {
-  kind: "work_due";
+  /** BBE-185 reserves all five daily-action kinds; current canonical task rows are work_due. */
+  kind: TodayDashboardActionKind;
   itemId: string;
   title: string;
   dueOn: string;
@@ -34,7 +41,7 @@ export interface TodayDashboardSnapshot {
   timezone: "Asia/Seoul";
   period: { today: string; monthStart: string; monthEndExclusive: string };
   status: TodayDashboardStatus;
-  missingSources: ("crm" | "work")[];
+  missingSources: ("new-lead" | "contact" | "work")[];
   kpis: {
     todayConsultations: number;
     callbacks: number;
@@ -74,7 +81,7 @@ export function parseTodayDashboard(value: unknown): TodayDashboardSnapshot {
   if (row.version !== 1) throw new Error("Unsupported dashboard version.");
   const tasks = array(row.tasks).map((value): TodayDashboardTask => {
     const task = object(value);
-    return { kind: oneOf(task.kind, ["work_due"]), itemId: string(task.itemId), title: string(task.title),
+    return { kind: oneOf(task.kind, ["work_due", "follow_up", "assign_owner", "decide", "reconcile_payment"]), itemId: string(task.itemId), title: string(task.title),
       dueOn: string(task.dueOn), status: oneOf(task.status, ["not_started", "in_progress", "blocked"]), href: string(task.href) };
   });
   const notifications = array(row.notifications).map((value): TodayDashboardNotification => {
@@ -91,7 +98,7 @@ export function parseTodayDashboard(value: unknown): TodayDashboardSnapshot {
     asOf: string(row.asOf), timezone: oneOf(row.timezone, ["Asia/Seoul"]),
     period: { today: string(period.today), monthStart: string(period.monthStart), monthEndExclusive: string(period.monthEndExclusive) },
     status: oneOf(row.status, ["ready", "empty", "partial"]),
-    missingSources: array(row.missingSources).map((source) => oneOf(source, ["crm", "work"])),
+    missingSources: array(row.missingSources).map((source) => oneOf(source, ["new-lead", "contact", "work"])),
     kpis: { todayConsultations: number(kpis.todayConsultations), callbacks: number(kpis.callbacks),
       contractsWaiting: number(kpis.contractsWaiting), contractDeposits: number(kpis.contractDeposits), fees: number(kpis.fees) },
     tasks, notifications,

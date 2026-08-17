@@ -11,4 +11,10 @@ describe("today dashboard parser", () => {
     expect(() => parseTodayDashboard({ ...valid, status: "unavailable" })).toThrow();
     expect(() => parseTodayDashboard({ ...valid, tasks: Array(6).fill({ kind: "work_due", itemId: "i", title: "t", dueOn: "2026-08-17", status: "in_progress", href: "/work" }) })).toThrow(/limit/u);
   });
+  it("reserves the complete five-kind action taxonomy for downstream consumers", () => {
+    for (const kind of ["work_due", "follow_up", "assign_owner", "decide", "reconcile_payment"]) {
+      const parsed = parseTodayDashboard({ ...valid, tasks: [{ kind, itemId: "i", title: "t", dueOn: "2026-08-17", status: "in_progress", href: "/work?notification=i" }] });
+      expect(parsed.tasks[0].kind).toBe(kind);
+    }
+  });
 });

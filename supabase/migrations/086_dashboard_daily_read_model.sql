@@ -42,9 +42,11 @@ begin
     raise exception 'dashboard read permission required' using errcode = '42501';
   end if;
 
-  if not exists (select 1 from public.boards where org_id = p_org_id and source = 'core.default-tab/new-lead')
-     and not exists (select 1 from public.boards where org_id = p_org_id and source = 'core.default-tab/contact') then
-    v_missing := array_append(v_missing, 'crm');
+  if not exists (select 1 from public.boards where org_id = p_org_id and source = 'core.default-tab/new-lead') then
+    v_missing := array_append(v_missing, 'new-lead');
+  end if;
+  if not exists (select 1 from public.boards where org_id = p_org_id and source = 'core.default-tab/contact') then
+    v_missing := array_append(v_missing, 'contact');
   end if;
   if not exists (select 1 from public.boards where org_id = p_org_id and source = 'core.default-tab/contract-work') then
     v_missing := array_append(v_missing, 'work');
@@ -117,7 +119,7 @@ begin
       select jsonb_build_object(
         'kind', 'work_due', 'itemId', item.id, 'title', item.title,
         'dueOn', version.due_date, 'status', version.workflow_status,
-        'href', '/work?item=' || item.id::text
+        'href', '/work?notification=' || item.id::text
       ) row,
       case when version.due_date < v_today then 10 else 20 end rank,
       version.due_date due_on, item.id item_id

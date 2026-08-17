@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { parseTodayDashboard } from "./today";
 
 const migration = readFileSync(
-  new URL("../../../../supabase/migrations/20260817070917_dashboard_daily_read_model.sql", import.meta.url),
+  new URL("../../../../supabase/migrations/086_dashboard_daily_read_model.sql", import.meta.url),
   "utf8",
 );
 const id = (value: number): string => `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
@@ -39,7 +39,8 @@ describe("BBE-185 today dashboard RPC", () => {
         ('${id(1)}','${id(12)}','member','all','active'),('${id(2)}','${id(13)}','owner','all','active');
       insert into boards values
         ('${id(20)}','${id(1)}','core.default-tab/contact'),('${id(21)}','${id(1)}','core.default-tab/contract-work'),
-        ('${id(22)}','${id(2)}','core.default-tab/contact'),('${id(23)}','${id(2)}','core.default-tab/contract-work');
+        ('${id(22)}','${id(2)}','core.default-tab/contact'),('${id(23)}','${id(2)}','core.default-tab/contract-work'),
+        ('${id(24)}','${id(1)}','core.default-tab/new-lead'),('${id(25)}','${id(2)}','core.default-tab/new-lead');
       insert into items values
         ('${id(30)}','${id(1)}','${id(20)}','Owner contact','${id(10)}'),
         ('${id(31)}','${id(1)}','${id(20)}','Member contact','${id(11)}'),
@@ -81,7 +82,18 @@ describe("BBE-185 today dashboard RPC", () => {
     expect(parsed.kpis).toEqual({ todayConsultations: 2, callbacks: 2, contractsWaiting: 2, contractDeposits: 1000, fees: 200 });
     expect(parsed.tasks.map((task) => task.itemId)).toEqual([id(32), id(33)]);
     expect(parsed.notifications.map((notification) => notification.title)).toEqual(["Own alert"]);
+    expect(parsed.tasks.every((task) => task.href.startsWith("/work?notification="))).toBe(true);
     expect(parsed.period).toEqual({ today: "2026-08-17", monthStart: "2026-08-01", monthEndExclusive: "2026-09-01" });
+  });
+
+  it("marks a snapshot partial when either independent CRM source is missing", async () => {
+    const db = await setup();
+    await db.exec(`delete from boards where id='${id(24)}'`);
+    const parsed = parseTodayDashboard((await db.query<{ snapshot: unknown }>(
+      `select public.read_today_dashboard('${id(1)}','2026-08-17T03:00:00Z') snapshot`,
+    )).rows[0].snapshot);
+    expect(parsed.status).toBe("partial");
+    expect(parsed.missingSources).toEqual(["new-lead"]);
   });
 
   it("enforces assigned/all scope and cross-organization isolation", async () => {
