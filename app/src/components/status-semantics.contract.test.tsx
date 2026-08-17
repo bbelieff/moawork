@@ -229,7 +229,10 @@ describe("BBE-193 성공/실패 표현 계약", () => {
     // 고쳐는 뒀지만 ⑦ 화면 확인이 원천적으로 불가능하다는 사실을 테스트로 «드러내» 둔다.
     // 소비처가 생기면 이 테스트가 빨개진다 → 그때 위 목록으로 옮기고 화면 증거를 남기면 된다.
     it("회계 두 곳은 아직 어느 화면에도 붙지 않는다 — 붙는 순간 빨개진다", () => {
-      const appDir = fileURLToPath(new URL("../app", import.meta.url));
+      // ★ src 전체를 훑는다. 예전엔 "../app" 이라 app/ 만 봤는데, 이 두 부품이 실제로 붙을
+      //   자리는 components/ 다 — 이 파일 위쪽이 소비처로 적은 BoardWorkspace 부터가 components/ 다.
+      //   즉 «소비처가 생기는 바로 그 자리» 가 사각지대였다(검수 지적).
+      const appDir = fileURLToPath(new URL("..", import.meta.url));
       const sources: string[] = [];
       const walk = (dir: string) => {
         for (const name of readdirSync(dir)) {
