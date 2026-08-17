@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decodeBoardFilters } from "@/components/board/filters";
-import { applySavedKanbanView, applySavedPersonScope, parsePersonScopeInput, parseSavedBoardViewConfig, savedBoardViewFromRow, savedViewUrl, systemViewUrl } from "./board-saved";
+import { applySavedKanbanView, applySavedPersonScope, boardViewSwitchUrl, parsePersonScopeInput, parseSavedBoardViewConfig, savedBoardViewFromRow, savedViewUrl, systemViewUrl } from "./board-saved";
 
 describe("parseSavedBoardViewConfig", () => {
   it("round-trips viewer, team and fixed person scopes without silently widening them", () => {
@@ -58,6 +58,29 @@ describe("parseSavedBoardViewConfig", () => {
     const url = new URL(systemViewUrl("board", "https://example.test/boards/b1?savedView=v1&mwFilters=x&mwLayout=x&mwHidden=x&mwOrder=x&mwSort=x&mwText=wrap&mwFocus=status&group=status&sort=date&calendarField=due"));
     expect(url.searchParams.get("view")).toBe("kanban");
     expect([...url.searchParams.keys()]).toEqual(["view"]);
+  });
+
+  it.each(["table", "kanban", "calendar"] as const)("preserves the unified saved-view codec when switching to %s", (kind) => {
+    const current = "https://example.test/boards/b1?as=admin&savedView=v1&mwFilters=filters&mwLayout=layout&mwHidden=hidden&mwOrder=order&mwSort=sorts&mwText=wrap&mwFocus=owner&group=status&calendarField=due";
+    const url = new URL(boardViewSwitchUrl(kind, current), "https://example.test");
+    expect(url.pathname).toBe("/boards/b1");
+    expect(url.searchParams.get("view")).toBe(kind);
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({
+      as: "admin", savedView: "v1", mwFilters: "filters", mwLayout: "layout",
+      mwHidden: "hidden", mwOrder: "order", mwSort: "sorts", mwText: "wrap",
+      mwFocus: "owner", group: "status", calendarField: "due",
+    });
+  });
+
+  it("changes kanban grouping without dropping saved-view or person-scope identity", () => {
+    const current = "https://example.test/boards/b1?savedView=team-view&mwFilters=filters&group=status";
+    const grouped = new URL(boardViewSwitchUrl("kanban", current, "owner"), "https://example.test");
+    expect(grouped.searchParams.get("savedView")).toBe("team-view");
+    expect(grouped.searchParams.get("mwFilters")).toBe("filters");
+    expect(grouped.searchParams.get("group")).toBe("owner");
+    const ungrouped = new URL(boardViewSwitchUrl("kanban", grouped.toString(), ""), "https://example.test");
+    expect(ungrouped.searchParams.get("savedView")).toBe("team-view");
+    expect(ungrouped.searchParams.has("group")).toBe(false);
   });
 
   it("applies saved filters and sort to actual kanban card ids, count and order", () => {
