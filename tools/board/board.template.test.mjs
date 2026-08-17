@@ -64,6 +64,13 @@ test("cross-squad detector catches the old graph and accepts the refreshed Linea
   assert.deepEqual(logic.crossDependencies(issues, currentGraph, "BBE-182", squads), []);
 });
 
+test("BBE-172 no longer waits for the unrelated BBE-171 form work", async () => {
+  const html = await readFile(templateUrl, "utf8");
+  assert.match(html, /"BBE-172":\["BBE-173"\]/);
+  assert.doesNotMatch(html, /"BBE-172":\["BBE-173","BBE-171"\]/);
+  assert.doesNotMatch(html, /"BBE-172":"[^"]*171 Done/);
+});
+
 test("BBE-182 release gate exposes WAITING, READY/OPEN, RUNNING, and COMPLETE", async () => {
   const logic = await boardLogic();
   assert.equal(logic.releaseState("Todo", 1, 0, true), "WAITING");
