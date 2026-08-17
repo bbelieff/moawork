@@ -2,6 +2,7 @@ import { createRequestBoards } from "@/lib/boards/server";
 import { jsonOk, readJson, requireCtx, toErrorResponse } from "@/lib/boards/http";
 import { createClient } from "@/lib/supabase/server";
 import { parsePersonScopeInput, parseSavedBoardViewConfig, savedBoardViewFromRow } from "@/lib/view/board-saved";
+import { requireActiveFixedPerson } from "@/lib/view/server";
 
 const COLS = "id,name,visibility,owner_id,person_scope,person_scope_user_id,config_jsonb,is_default,last_used_at";
 
@@ -45,6 +46,11 @@ export async function POST(req: Request): Promise<Response> {
     const config = parseSavedBoardViewConfig(body.config);
     const scope = parsePersonScopeInput(body.personScope, body.personScopeUserId);
     const db = await createClient();
+    await requireActiveFixedPerson(ctx.org.id, scope, async (orgId, userId) => {
+      const { data, error } = await db.from("org_members").select("user_id").eq("org_id", orgId).eq("user_id", userId).eq("status", "active").maybeSingle();
+      if (error) throw error;
+      return { active: data?.user_id === userId };
+    });
     const { data, error } = await db.from("tab_views").insert({
       org_id: ctx.org.id,
       board_id: boardId,

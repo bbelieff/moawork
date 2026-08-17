@@ -1,6 +1,7 @@
 import { jsonOk, readJson, requireCtx, toErrorResponse } from "@/lib/boards/http";
 import { createClient } from "@/lib/supabase/server";
 import { parsePersonScopeInput, parseSavedBoardViewConfig, savedBoardViewFromRow } from "@/lib/view/board-saved";
+import { requireActiveFixedPerson } from "@/lib/view/server";
 
 type Params = { params: Promise<{ viewId: string }> };
 const COLS = "id,name,visibility,owner_id,person_scope,person_scope_user_id,config_jsonb,is_default,last_used_at,board_id";
@@ -31,6 +32,11 @@ export async function PATCH(req: Request, { params }: Params): Promise<Response>
     if (body.visibility === "private" || body.visibility === "shared") patch.visibility = body.visibility;
     if (body.personScope !== undefined || body.personScopeUserId !== undefined) {
       const scope = parsePersonScopeInput(body.personScope, body.personScopeUserId);
+      await requireActiveFixedPerson(ctx.org.id, scope, async (orgId, userId) => {
+        const { data, error } = await db.from("org_members").select("user_id").eq("org_id", orgId).eq("user_id", userId).eq("status", "active").maybeSingle();
+        if (error) throw error;
+        return { active: data?.user_id === userId };
+      });
       patch.person_scope = scope.personScope;
       patch.person_scope_user_id = scope.personScopeUserId;
     }

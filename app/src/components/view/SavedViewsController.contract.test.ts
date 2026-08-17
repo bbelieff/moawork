@@ -22,6 +22,7 @@ describe("saved view production consumer", () => {
     expect(controller).toContain("filters.sorts");
     expect(controller).toContain("textMode={config.textMode}");
     expect(controller).toContain("focusColumnKey={config.focusColumnKey}");
+    expect(controller).toContain("applySavedPersonScope(rows, activeSaved, currentUserId, personColumnKey)");
     expect(page).toContain('view === "flat" || view === "calendar"');
     expect(page).toContain("parseSavedBoardLayout(sp.mwLayout)");
   });
@@ -45,6 +46,10 @@ describe("saved view production consumer", () => {
     expect(controller).toContain("personScope: input.personScope");
     expect(itemRoute).toContain("patch.sort_jsonb = config.sorts");
     expect(itemRoute).toContain("patch.person_scope = scope.personScope");
+    expect(collectionRoute).toContain("requireActiveFixedPerson(ctx.org.id, scope");
+    expect(itemRoute).toContain("requireActiveFixedPerson(ctx.org.id, scope");
+    expect(collectionRoute).toContain('.eq("org_id", orgId).eq("user_id", userId).eq("status", "active")');
+    expect(itemRoute).toContain('.eq("org_id", orgId).eq("user_id", userId).eq("status", "active")');
     expect(itemRoute).toContain("patch.hidden_columns_jsonb = config.hiddenColumns");
     expect(itemRoute).toContain("patch.column_order_jsonb = config.columnOrder");
     expect(migration).toMatch(/public\.is_org_member\(org_id\)/);

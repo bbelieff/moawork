@@ -61,6 +61,27 @@ export function parsePersonScopeInput(value: unknown, fixedUserId: unknown): {
   return { personScope, personScopeUserId };
 }
 
+export function applySavedPersonScope(
+  rows: readonly ItemWithValues[],
+  view: Pick<SavedBoardView, "personScope" | "personScopeUserId"> | null,
+  currentUserId: string,
+  personColumnKey: string | null,
+  teamMemberIds: readonly string[] = [currentUserId],
+): ItemWithValues[] {
+  if (!view || !view.personScope || view.personScope === "none") return [...rows];
+  if (!personColumnKey) return [];
+  const expected = view.personScope === "fixed"
+    ? (view.personScopeUserId ? [view.personScopeUserId] : [])
+    : view.personScope === "team" ? teamMemberIds : [currentUserId];
+  if (!expected.length) return [];
+  return rows.filter((row) => {
+    const value = row.values[personColumnKey];
+    return typeof value === "string"
+      ? expected.includes(value)
+      : Array.isArray(value) && value.some((memberId) => typeof memberId === "string" && expected.includes(memberId));
+  });
+}
+
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }

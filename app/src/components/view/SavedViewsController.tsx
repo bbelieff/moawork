@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { applyFilters, BOARD_FILTER_QUERY_KEY, decodeBoardFilters, type BoardFilterState } from "@/components/board/filters";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards";
 import { type NewTabViewInput, type ViewKind } from "@/lib/view";
-import { parseSavedStringList, savedViewUrl, systemViewUrl, type SavedBoardView, type SavedBoardViewConfig } from "@/lib/view/board-saved";
+import { applySavedPersonScope, parseSavedStringList, savedViewUrl, systemViewUrl, type SavedBoardView, type SavedBoardViewConfig } from "@/lib/view/board-saved";
 import { CalendarView } from "./CalendarView";
 import { SaveViewDialog } from "./SaveViewDialog";
 import { TableView, type TableColumn } from "./TableView";
@@ -108,7 +108,12 @@ export function SavedViewsController({
   };
 
   const config = activeSaved?.config ?? currentConfig();
-  const filteredRows = useMemo(() => applyFilters(rows, columns, config.filters), [rows, columns, config.filters]);
+  const personColumnKey = columns.find((column) => column.type === "person")?.key ?? null;
+  const personScopedRows = useMemo(
+    () => applySavedPersonScope(rows, activeSaved, currentUserId, personColumnKey),
+    [rows, activeSaved, currentUserId, personColumnKey],
+  );
+  const filteredRows = useMemo(() => applyFilters(personScopedRows, columns, config.filters), [personScopedRows, columns, config.filters]);
   const orderedColumns = useMemo(() => {
     const hidden = new Set(config.hiddenColumns);
     const rank = new Map(config.columnOrder.map((key, index) => [key, index]));

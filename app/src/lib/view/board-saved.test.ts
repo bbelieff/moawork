@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decodeBoardFilters } from "@/components/board/filters";
-import { applySavedKanbanView, parsePersonScopeInput, parseSavedBoardViewConfig, savedBoardViewFromRow, savedViewUrl, systemViewUrl } from "./board-saved";
+import { applySavedKanbanView, applySavedPersonScope, parsePersonScopeInput, parseSavedBoardViewConfig, savedBoardViewFromRow, savedViewUrl, systemViewUrl } from "./board-saved";
 
 describe("parseSavedBoardViewConfig", () => {
   it("round-trips viewer, team and fixed person scopes without silently widening them", () => {
@@ -70,6 +70,23 @@ describe("parseSavedBoardViewConfig", () => {
     const result = applySavedKanbanView([{ id: "lane", items: rows }], rows, [...columns], { q: "", assignees: [], byColumn: {}, sortKey: "", sortDir: "asc", sorts: [{ columnKey: "stage", direction: "asc" }, { columnKey: "score", direction: "desc" }], columnLimit: 0 });
     expect(result[0].items.map((row) => row.id)).toEqual(["a-high", "a-low", "b-low"]);
     expect(result[0].items).toHaveLength(3);
+  });
+
+  it("applies viewer, team and fixed person scopes to the actual rendered row set", () => {
+    const item = (id: string, owner: string | string[] | null) => ({
+      id, org_id: "o1", board_id: "b1", group_id: "g1", title: id,
+      assigned_to: null, sort_order: 0, created_at: "", updated_at: "", values: { owner },
+    });
+    const rows = [item("mine", "u1"), item("team", ["u2", "u3"]), item("other", "u4")];
+    expect(applySavedPersonScope(rows, { personScope: "viewer", personScopeUserId: null }, "u1", "owner").map((row) => row.id)).toEqual(["mine"]);
+    expect(applySavedPersonScope(rows, { personScope: "team", personScopeUserId: null }, "u1", "owner", ["u1", "u2"]).map((row) => row.id)).toEqual(["mine", "team"]);
+    expect(applySavedPersonScope(rows, { personScope: "fixed", personScopeUserId: "u4" }, "u1", "owner").map((row) => row.id)).toEqual(["other"]);
+  });
+
+  it("fails closed when a scoped view has no person column or fixed member", () => {
+    const rows = [{ id: "mine", org_id: "o1", board_id: "b1", group_id: "g1", title: "mine", assigned_to: null, sort_order: 0, created_at: "", updated_at: "", values: { owner: "u1" } }];
+    expect(applySavedPersonScope(rows, { personScope: "viewer", personScopeUserId: null }, "u1", null)).toEqual([]);
+    expect(applySavedPersonScope(rows, { personScope: "fixed", personScopeUserId: null }, "u1", "owner")).toEqual([]);
   });
 
   it("rejects malformed values without widening the contract", () => {
