@@ -137,7 +137,7 @@ revoke all on function public.guard_new_lead_projection_write() from public,anon
 insert into public.board_columns(org_id, board_id, key, label, type, sort_order, width, source, is_readonly)
 select b.org_id, b.id, 'industry', '업종', 'text'::public.field_type,
        coalesce((select max(c.sort_order)+1 from public.board_columns c where c.board_id=b.id),0),
-       140, 'manual', false
+       140, 'in', false
 from public.boards b
 where b.source='core.default-tab/new-lead'
   and not exists(select 1 from public.board_columns c where c.board_id=b.id and c.key='industry');
