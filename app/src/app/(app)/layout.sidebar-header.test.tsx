@@ -140,18 +140,31 @@ describe("BBE-194 사이드바 머리", () => {
     expect(aside).not.toContain("워크스페이스");
   });
 
-  // 되돌리면 빨개진다: <Logo height={40}> 을 22(또는 40 미만)로 되돌리면 실패
-  it("락업 로고가 브랜드 최소 너비 120px 를 실제로 채운다", async () => {
+  // 되돌리면 빨개진다: <Logo height={40}> 을 22(또는 40 미만)로 되돌리면 실패.
+  // ★ Logo.tsx 의 minWidth 를 200 으로 올려도 실패한다 — 아래 «관계» 를 고정하기 때문이다.
+  it("락업 로고가 찌그러지지 않는다 — min-width 가 자연 너비를 넘지 않는다", async () => {
     const aside = asideOf(await renderShell());
 
-    const heights = [...aside.matchAll(/<img[^>]*\bheight="(\d+)"/g)].map((match) => Number(match[1]));
-    expect(heights.length).toBeGreaterThan(0);
+    // 렌더된 인라인 스타일에서 실제 값을 읽는다(소스 문자열이 아니라 «그려진 것» 을 본다).
+    const imgs = [...aside.matchAll(/<img[^>]*style="([^"]*)"[^>]*>/g)].map((match) => match[1]);
+    expect(imgs.length).toBeGreaterThan(0);
 
-    for (const height of heights) {
-      // 락업 SVG 는 viewBox 2400×800 = 3:1. 자연 너비 = height × 3.
-      // design-tokens §5 「락업 최소 너비 120px」→ height 는 40 이상이어야 한다.
-      // 40 미만이면 Logo 의 minWidth:120 이 가로로 잡아늘여 로고가 찌그러진다.
-      expect(height * 3).toBeGreaterThanOrEqual(120);
+    for (const style of imgs) {
+      const height = Number(/height:\s*(\d+(?:\.\d+)?)px/.exec(style)?.[1]);
+      const minWidth = Number(/min-width:\s*(\d+(?:\.\d+)?)px/.exec(style)?.[1]);
+      expect(Number.isFinite(height)).toBe(true);
+      expect(Number.isFinite(minWidth)).toBe(true);
+
+      // 락업 SVG 는 viewBox 2400×800 = 정확히 3:1 → 자연 너비 = height × 3.
+      const naturalWidth = height * 3;
+
+      // ① design-tokens §5 「락업 최소 너비 120px」
+      expect(naturalWidth).toBeGreaterThanOrEqual(120);
+
+      // ② ★ 그리고 min-width 가 자연 너비보다 크면 브라우저가 가로로 «잡아늘인다».
+      //    height 만 고정하면 이쪽이 안 잡힌다 — 원래 결함이 정확히 이 관계가 깨진 것이었다
+      //    (height 22 → 자연 너비 66 인데 min-width 120 이라 비율 3.0 → 5.45 로 왜곡).
+      expect(minWidth).toBeLessThanOrEqual(naturalWidth);
     }
   });
 
