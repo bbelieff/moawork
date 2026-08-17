@@ -158,8 +158,13 @@ export default async function DashAnalysisPage({
                 <Widget title="이번달 재접촉" subtitle="수수료입금일 + 180일 도래">
                   <ReContactWidget entries={core.dash.reContactThisMonth} />
                 </Widget>
+                {/*
+                  홈의 «내 할 일»(BBE-185 tasks)과 **이름만 같고 다른 물건**이라 여기서 이름을 바꿨다.
+                  이건 재접촉(D+180)·재신청 안내(D+365) 도래 목록이고, 홈 쪽은 기한 도래 업무다.
+                  같은 이름이 두 화면에 있으면 사용자도 다음 세션도 헷갈린다.
+                */}
                 <Widget
-                  title={`오늘 할 일 (${formatCount(core.followUps.dueToday.length)})`}
+                  title={`재접촉·재신청 대상 (${formatCount(core.followUps.dueToday.length)})`}
                   subtitle={`재접촉(D+180)·재신청 안내(D+365) · 내일 ${formatCount(core.followUps.dueTomorrow.length)}건 예정`}
                 >
                   <FollowUpListWidget entries={core.followUps.dueToday} emptyHint="오늘 재접촉·재신청 안내할 업무가 없어요." />

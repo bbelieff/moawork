@@ -59,6 +59,13 @@ describe("BBE-186 · 홈에서 분석 화면으로의 이동", () => {
     }
   });
 
+  it("두 화면이 «할 일» 이름을 나눠 갖지 않는다", () => {
+    // 홈의 «내 할 일» = BBE-185 tasks(기한 도래 업무).
+    // 분석의 «재접촉·재신청 대상» = followUps(D+180 · D+365). 이름만 같았지 다른 물건이라 갈랐다.
+    expect(analysis).toContain("재접촉·재신청 대상");
+    expect(analysis).not.toContain("오늘 할 일");
+  });
+
   it("홈에서 분석 화면으로 돌아갈 길이 있다", () => {
     const shortcuts = read("../../lib/dash/today-view.ts");
     expect(shortcuts).toContain('href: "/dash"');
