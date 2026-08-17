@@ -190,17 +190,54 @@ const SQUADS=[
 const DEPENDENCIES={
  "BBE-171":["BBE-173","BBE-184"],
  "BBE-172":["BBE-173","BBE-171"],
- "BBE-175":["BBE-173"],
- "BBE-176":["BBE-173","BBE-175"],
- "BBE-177":["BBE-171","BBE-176"],
+ "BBE-175":[],
+ "BBE-176":["BBE-175"],
+ "BBE-177":["BBE-176"],
  "BBE-178":["BBE-174","BBE-177"],
- "BBE-179":["BBE-172","BBE-176","BBE-177","BBE-184"],
+ "BBE-179":[],
  "BBE-180":["BBE-174","BBE-176","BBE-177"],
  "BBE-184":["BBE-173"],
- "BBE-185":["BBE-172","BBE-173"],
+ "BBE-185":[],
  "BBE-186":["BBE-185"],
  "BBE-182":["BBE-171","BBE-172","BBE-173","BBE-174","BBE-175","BBE-176","BBE-177","BBE-178","BBE-179","BBE-180","BBE-183","BBE-184","BBE-185","BBE-186"]
 };
+/* BOARD_LOGIC_START */
+const BOARD_LOGIC=(()=>{
+ const squadLabels=(issue,allowed)=>((issue?.labels)||[]).filter((label)=>allowed.includes(label));
+ const coverage=(issues,goalIds,allowed)=>{
+  const by=Object.fromEntries(issues.map((issue)=>[issue.id,issue]));
+  const missing=[]; const duplicate=[];
+  for(const id of goalIds){
+   const labels=squadLabels(by[id],allowed);
+   if(labels.length===0)missing.push(id);
+   else if(labels.length>1)duplicate.push({id,labels});
+  }
+  return {missing,duplicate,covered:goalIds.length-missing.length-duplicate.length,total:goalIds.length,ok:missing.length===0&&duplicate.length===0};
+ };
+ const crossDependencies=(issues,dependencies,releaseId,allowed)=>{
+  const by=Object.fromEntries(issues.map((issue)=>[issue.id,issue]));
+  const found=[];
+  for(const [issueId,dependencyIds] of Object.entries(dependencies)){
+   if(issueId===releaseId)continue;
+   const sourceLabels=squadLabels(by[issueId],allowed);
+   if(sourceLabels.length!==1)continue;
+   for(const dependencyId of dependencyIds){
+    const targetLabels=squadLabels(by[dependencyId],allowed);
+    if(targetLabels.length!==1)continue;
+    if(sourceLabels[0]!==targetLabels[0])found.push({issueId,dependencyId,source:sourceLabels[0],target:targetLabels[0]});
+   }
+  }
+  return found;
+ };
+ const releaseState=(releaseStatus,prerequisiteCount,crossCount,coverageOk)=>{
+  if(prerequisiteCount>0||crossCount>0||!coverageOk)return "WAITING";
+  if(releaseStatus==="Done")return "COMPLETE";
+  if(releaseStatus==="In Progress"||releaseStatus==="In Review")return "RUNNING";
+  return "READY / OPEN";
+ };
+ return {squadLabels,coverage,crossDependencies,releaseState};
+})();
+/* BOARD_LOGIC_END */
 const DONE_STATES=new Set(["Done","Canceled","Duplicate"]);
 const ACTIVE_STATES=new Set(["In Progress","In Review"]);
 const STATUS_ORDER={"In Progress":0,"In Review":1,"Todo":2,"Backlog":3,"Done":4,"Canceled":5,"Duplicate":6};
@@ -267,7 +304,8 @@ function nextAction(issue){
  return "완주 도장과 downstream 해제 통지를 확인한다.";
 }
 function pendingDeps(issue){return (DEPENDENCIES[issue.id]||[]).filter((id)=>state.by[id]?.status!=="Done")}
-const squadLabelOf=(issue)=>(issue?.labels||[]).find((label)=>SQUADS.some((squad)=>squad.label===label))||null;
+const SQUAD_LABELS=SQUADS.map((squad)=>squad.label);
+const squadLabelOf=(issue)=>BOARD_LOGIC.squadLabels(issue,SQUAD_LABELS)[0]||null;
 const squadNameOf=(issue)=>SQUADS.find((squad)=>squad.label===squadLabelOf(issue))?.name||"미분류";
 /* needs-hosted는 read model 검증에도 붙으므로 migration writer 판정에 쓰지 않는다. */
 const isMigrationCard=(issue)=>Boolean(issue&&/(?:migration|schema|DB 정본|컬럼 메뉴 DB)/i.test(issue.title||""));
@@ -280,15 +318,7 @@ function prCiText(issue){
  return prs.map((pr)=>"#"+pr.number+" "+(pr.headRefShort||"exact?")+" · "+(pr.checks?.failing?"CI FAIL":pr.checks?.pending?"CI 대기":"CI PASS")).join(" / ");
 }
 function crossDependencies(){
- const found=[];
- for(const issue of state.open){
-  const source=squadLabelOf(issue); if(!source)continue;
-  for(const label of issue.labels||[]){
-   const match=String(label).match(/^(?:blocked|depends):squad:(.+)$/); if(!match)continue;
-   const target="squad:"+match[1]; if(target!==source)found.push({issue,source,target});
-  }
- }
- return found;
+ return BOARD_LOGIC.crossDependencies(GOAL_IDS.map((id)=>state.by[id]).filter(Boolean),DEPENDENCIES,"BBE-182",SQUAD_LABELS);
 }
 async function mcp(tool,args={}){
  if(!window.cowork?.callMcpTool)throw new Error("데이터 브리지가 없습니다.");
@@ -348,8 +378,13 @@ function buildDecisions(){
  if(repo?.available&&(repo.dirty||repo.behind>0))decisions.push({tone:"review",kind:"WORKTREE",title:"관제 서버 Git 상태 확인",body:(repo.dirty?"tracked/untracked "+repo.dirtyCount+"건 · ":"")+(repo.behind?"origin/main보다 "+repo.behind+" 뒤":"최신 main"),count:repo.dirtyCount||repo.behind});
  const badPr=(state.operations?.pullRequests?.items||[]).filter((pr)=>pr.checks?.failing>0||["DIRTY","BLOCKED"].includes(pr.mergeStateStatus));
  if(badPr.length)decisions.push({tone:"critical",kind:"PR GATE",title:"충돌·실패 PR "+badPr.length+"건",body:badPr.slice(0,8).map((pr)=>"#"+pr.number+" "+pr.mergeStateStatus).join(" · "),count:badPr.length});
+ const coverage=BOARD_LOGIC.coverage(GOAL_IDS.map((id)=>state.by[id]).filter(Boolean),GOAL_IDS,SQUAD_LABELS);
+ if(!coverage.ok){
+  const gaps=[coverage.missing.length?"UNSQUADDED "+coverage.missing.join(","):"",coverage.duplicate.length?"DUPLICATE "+coverage.duplicate.map((item)=>item.id+"["+item.labels.join(",")+"]").join(" · "):""].filter(Boolean);
+  decisions.push({tone:"critical",kind:"P0 SQUAD COVERAGE",title:"목표 "+coverage.total+"건 exact coverage 오류",body:gaps.join(" · "),count:coverage.missing.length+coverage.duplicate.length});
+ }
  const cross=crossDependencies();
- if(cross.length)decisions.push({tone:"critical",kind:"P0 CROSS-SQUAD",title:"작업반 간 교차 의존 "+cross.length+"건",body:cross.map((x)=>x.issue.id+" "+x.source+"→"+x.target).join(" · "),count:cross.length});
+ if(cross.length)decisions.push({tone:"critical",kind:"P0 CROSS-SQUAD",title:"작업반 간 교차 의존 "+cross.length+"건",body:cross.map((x)=>x.issueId+"←"+x.dependencyId+" "+x.source+"←"+x.target).join(" · "),count:cross.length});
  const migrationActive=state.open.filter((issue)=>isMigrationCard(issue)&&ACTIVE_STATES.has(issue.status));
  if(migrationActive.length>1)decisions.push({tone:"critical",kind:"P0 MIGRATION SERIAL",title:"동시 migration writer "+migrationActive.length+"건",body:migrationActive.map((issue)=>issue.id+" "+(laneOf(issue)||"owner 없음")).join(" · "),count:migrationActive.length});
  state.decisions=decisions;
@@ -385,10 +420,13 @@ function renderSharedGates(){
  const cross=crossDependencies();
  const release=state.by["BBE-182"];
  const prereqs=GOAL_IDS.filter((id)=>id!=="BBE-182").filter((id)=>state.by[id]?.status!=="Done");
- const releaseOpen=Boolean(release&&release.status==="Done"&&!prereqs.length&&!cross.length);
+ const coverage=BOARD_LOGIC.coverage(GOAL_IDS.map((id)=>state.by[id]).filter(Boolean),GOAL_IDS,SQUAD_LABELS);
+ const gateState=BOARD_LOGIC.releaseState(release?.status,prereqs.length,cross.length,coverage.ok);
+ const releaseOpen=gateState!=="WAITING";
  const gate=document.getElementById("releaseGate");
  gate.className="card gate"+(releaseOpen?"":" closed");
- gate.innerHTML='<h3>BBE-182 Global Release Gate · '+(releaseOpen?'OPEN':'CLOSED')+'</h3><p>전체 합산: '+state.issues.filter((i)=>i.status==="Done").length+' / '+GOAL_IDS.length+' Done</p><p>선행 미완료: '+esc(prereqs.join(" · ")||"0")+'</p><p>Cross-dependency: <b class="'+(cross.length?'cross-p0':'cross-ok')+'">'+cross.length+(cross.length?' · P0 RED':' · 정상')+'</b></p><p>Release PR·CI: '+esc(prCiText(release))+'</p>';
+ const coverageText=coverage.ok?'15 / 15 exact':'UNSQUADDED '+coverage.missing.join(",")+(coverage.duplicate.length?' · DUPLICATE '+coverage.duplicate.map((item)=>item.id).join(","):"");
+ gate.innerHTML='<h3>BBE-182 Global Release Gate · '+gateState+'</h3><p>전체 합산: '+state.issues.filter((i)=>i.status==="Done").length+' / '+GOAL_IDS.length+' Done</p><p>Squad coverage: <b class="'+(coverage.ok?'cross-ok':'cross-p0')+'">'+esc(coverageText)+'</b></p><p>선행 미완료: '+esc(prereqs.join(" · ")||"0")+'</p><p>Cross-dependency: <b class="'+(cross.length?'cross-p0':'cross-ok')+'">'+cross.length+(cross.length?' · P0 RED':' · 정상')+'</b></p><p>Release PR·CI: '+esc(prCiText(release))+'</p>';
  const queue=state.issues.filter(isMigrationCard).filter((issue)=>issue.status!=="Done").sort((a,b)=>GOAL_IDS.indexOf(a.id)-GOAL_IDS.indexOf(b.id));
  const activeMigrations=queue.filter((issue)=>ACTIVE_STATES.has(issue.status));
  document.getElementById("migrationQueue").innerHTML='<div class="section-title">Migration shared-resource queue <span class="hint">제품 blocker와 별도</span></div>'+(activeMigrations.length>1?'<div class="squad-line hot"><b>P0 SERIAL CONFLICT</b>'+esc(activeMigrations.map((i)=>i.id).join(" · "))+'</div>':'')+'<div class="queue">'+(queue.length?queue.map((issue,index)=>'<div class="queue-item"><b>'+(index+1)+'</b><div><p>'+issue.id+' · '+esc(issue.title)+'</p><small>'+esc(laneOf(issue)||blockerOf(issue)||"미배정")+' · '+esc(issue.status)+'</small></div><small>'+esc(index===0?"active/latest+1":"serial wait")+'</small></div>').join(""):'<div class="empty">migration queue 없음</div>')+'</div>';

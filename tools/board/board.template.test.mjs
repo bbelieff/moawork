@@ -39,3 +39,59 @@ test("decision metrics derive from the full live issue inventory", async () => {
   assert.match(html, /서명 도장 미확인/);
   assert.match(html, /취소\/중복 제외/);
 });
+
+async function boardLogic() {
+  const html = await readFile(templateUrl, "utf8");
+  const match = html.match(/\/\* BOARD_LOGIC_START \*\/([\s\S]*?)\/\* BOARD_LOGIC_END \*\//);
+  assert.ok(match, "pure board logic block must remain executable in focused tests");
+  return new Function(`${match[1]}; return BOARD_LOGIC;`)();
+}
+
+test("cross-squad detector catches the old graph and accepts the refreshed Linear graph", async () => {
+  const logic = await boardLogic();
+  const squads = ["squad:new-lead", "squad:column-preset", "squad:release-gate"];
+  const issues = [
+    { id: "BBE-173", labels: ["squad:new-lead"] },
+    { id: "BBE-175", labels: ["squad:column-preset"] },
+    { id: "BBE-176", labels: ["squad:column-preset"] },
+    { id: "BBE-182", labels: ["squad:release-gate"] },
+  ];
+
+  const oldGraph = { "BBE-176": ["BBE-173"], "BBE-182": ["BBE-173", "BBE-176"] };
+  assert.deepEqual(logic.crossDependencies(issues, oldGraph, "BBE-182", squads).map((edge) => [edge.issueId, edge.dependencyId]), [["BBE-176", "BBE-173"]]);
+
+  const currentGraph = { "BBE-176": ["BBE-175"], "BBE-182": ["BBE-173", "BBE-176"] };
+  assert.deepEqual(logic.crossDependencies(issues, currentGraph, "BBE-182", squads), []);
+});
+
+test("BBE-182 release gate exposes WAITING, READY/OPEN, RUNNING, and COMPLETE", async () => {
+  const logic = await boardLogic();
+  assert.equal(logic.releaseState("Todo", 1, 0, true), "WAITING");
+  assert.equal(logic.releaseState("Todo", 0, 0, true), "READY / OPEN");
+  assert.equal(logic.releaseState("In Progress", 0, 0, true), "RUNNING");
+  assert.equal(logic.releaseState("Done", 0, 0, true), "COMPLETE");
+  assert.equal(logic.releaseState("Todo", 0, 1, true), "WAITING");
+  assert.equal(logic.releaseState("Todo", 0, 0, false), "WAITING");
+});
+
+test("squad coverage rejects missing BBE-174 and duplicate labels with a fixed goal denominator", async () => {
+  const logic = await boardLogic();
+  const goals = ["BBE-173", "BBE-174", "BBE-175"];
+  const squads = ["squad:new-lead", "squad:column-preset"];
+  const missing = logic.coverage([
+    { id: "BBE-173", labels: ["squad:new-lead"] },
+    { id: "BBE-174", labels: [] },
+    { id: "BBE-175", labels: ["squad:column-preset"] },
+  ], goals, squads);
+  assert.deepEqual(missing, { missing: ["BBE-174"], duplicate: [], covered: 2, total: 3, ok: false });
+
+  const duplicate = logic.coverage([
+    { id: "BBE-173", labels: ["squad:new-lead"] },
+    { id: "BBE-174", labels: ["squad:new-lead", "squad:column-preset"] },
+    { id: "BBE-175", labels: ["squad:column-preset"] },
+  ], goals, squads);
+  assert.equal(duplicate.total, 3);
+  assert.deepEqual(duplicate.missing, []);
+  assert.deepEqual(duplicate.duplicate, [{ id: "BBE-174", labels: ["squad:new-lead", "squad:column-preset"] }]);
+  assert.equal(duplicate.ok, false);
+});
