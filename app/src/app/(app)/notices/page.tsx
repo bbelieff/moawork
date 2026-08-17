@@ -11,6 +11,7 @@ import {
 import { BoardsService } from "@/lib/boards/service";
 import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 import { createClient } from "@/lib/supabase/server";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { isManager } from "@/lib/auth/roles";
 import { ensureNoticeTabAtomic } from "@/lib/notices/atomic";
 import { loadVerifiedWorkspaceBasePath } from "@/lib/auth/workspace-href-server";
@@ -31,6 +32,28 @@ import {
  * 저장은 003 보드 엔진(boards/items/item_values) — 전용 테이블 없음(ADR-0002).
  * 목록 정렬: 상단고정 → 게시일 최신순.
  */
+/**
+ * 워크스페이스 DB 미연결 — 오류가 아니라 «아직 연결 안 됨» 이다.
+ * 빈 공지 목록으로 위장하지 않는다(0건과 «못 읽었다» 는 다른 사실이다).
+ */
+function NoticesNotConnected() {
+  return (
+    <section
+      className="rounded-xl border border-mw-line bg-mw-card p-5"
+      aria-labelledby="notice-entry-title"
+      role="status"
+      data-testid="notice-not-connected"
+    >
+      <h1 id="notice-entry-title" className="text-lg font-semibold text-mw-fg">
+        워크스페이스 데이터에 아직 연결되지 않았습니다
+      </h1>
+      <p className="mt-2 text-sm text-mw-sub">
+        공지사항은 워크스페이스 데이터베이스에서 옵니다. 연결되면 여기에 목록이 바로 나옵니다.
+      </p>
+    </section>
+  );
+}
+
 export default async function NoticesPage({
   searchParams,
 }: {
@@ -40,6 +63,13 @@ export default async function NoticesPage({
   const ctx = applyAs(await getSession(), sp.as);
   // One request-bound authenticated client owns both the product-tab lookup
   // and the legacy notice fallback. Production never crosses an in-memory repo.
+  //
+  // ★ 환경변수가 없으면(로컬 시드 모드) `createClient()` 가 곧바로 throw 해서 이 화면 전체가
+  // 500 이었다. 여기서 먼저 갈라 «아직 연결 안 됨» 을 보여준다 — 오류가 아니라 상태다.
+  // 로컬 어댑터로 우회하지 않는다: 페이지에서 로컬 repo 를 부르는 것은 프로덕션 경계 정책이
+  // 막는 일이다(scripts/check-production-repo-boundaries.mjs).
+  if (!hasSupabaseEnv()) return <NoticesNotConnected />;
+
   const client = await createClient();
   const workspaceBasePath = await loadVerifiedWorkspaceBasePath();
   const repo = new SupabaseBoardsRepo(client);

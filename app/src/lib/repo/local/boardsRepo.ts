@@ -6,6 +6,7 @@
 
 import type { Ctx } from "@/lib/types";
 import { isManager } from "@/lib/auth/roles";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
 import type {
   Board,
   BoardColumn,
@@ -395,7 +396,10 @@ export function toAsyncBoardsRepo(local: LocalBoardsRepo): BoardsRepo {
 }
 
 export async function getBoardsRepo(): Promise<BoardsRepo> {
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  // ★ 반드시 `hasSupabaseEnv()` 와 같은 조건이어야 한다.
+  // 전에는 URL 하나만 봤다. ANON_KEY 없이 URL 만 설정된 상태에서는 이 분기가 Supabase 쪽으로
+  // 가고 `createClient()` 가 곧바로 throw 한다 — 가드를 세워 둔 화면까지 500 이 된다.
+  if (hasSupabaseEnv()) {
     const [{ createClient }, { SupabaseBoardsRepo }] = await Promise.all([
       import("@/lib/supabase/server"),
       import("@/lib/repo/supabase/boardsRepo"),
