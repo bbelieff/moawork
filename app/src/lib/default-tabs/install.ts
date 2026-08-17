@@ -43,6 +43,21 @@ export interface EnsuredTab {
   columnKeys: string[];
 }
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "undefined";
+}
+
+function sameJson(left: unknown, right: unknown): boolean {
+  return canonicalJson(left) === canonicalJson(right);
+}
+
 /**
  * Repairs one product tab without rewriting customer-owned structure.
  *
@@ -156,10 +171,12 @@ export async function ensureDefaultTab(
           moveRule: resolveMoveRule(definition, groupIds, tab, assignees),
         });
       } else if (definition.assigneeMove) {
-        await store.updateColumn(ctx, column.id, {
-          options: assigneeOptions(definition, assignees),
-          moveRule: resolveMoveRule(definition, groupIds, tab, assignees),
-        });
+        const options = assigneeOptions(definition, assignees);
+        const moveRule = resolveMoveRule(definition, groupIds, tab, assignees);
+        if (!sameJson(column.options_jsonb?.options ?? null, options)
+          || !sameJson(column.move_rule_jsonb ?? null, moveRule)) {
+          await store.updateColumn(ctx, column.id, { options, moveRule });
+        }
       }
     }
     const reconciledColumns = await store.listColumns(ctx, existing.id);
