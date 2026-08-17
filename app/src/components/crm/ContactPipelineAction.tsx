@@ -125,8 +125,14 @@ export function ContactPipelineAction({
           {pending ? (kind === "contact_to_work" ? "연결 중…" : "이동 중…") : label}
         </button>
       </div>
+      {/* 판정 근거(state.ok)로 «시각과 role 을 함께» 분기한다 — 하나만 분기하면 거짓말이 된다.
+          이동 실패를 role="status" 로 알리면 보조기술 사용자는 «옮겨졌다» 고 듣는다(BBE-193).
+          같은 결론에 이미 도달한 곳: LockBlockedDialog:88 · AccountState:22. */}
       {state.message ? (
-        <p role="status" className={`mt-2 text-xs ${state.ok ? "text-emerald-700" : "text-red-700"}`}>
+        <p
+          role={state.ok ? "status" : "alert"}
+          className={`mt-2 text-xs ${state.ok ? "text-[var(--mw-success)]" : "text-[var(--mw-error)]"}`}
+        >
           {state.message}
         </p>
       ) : null}
