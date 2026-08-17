@@ -188,6 +188,8 @@ export async function setCellAction(formData: FormData): Promise<void> {
       ? suppliedRequestId
       : crypto.randomUUID();
     try {
+      // 로컬 시드에는 원본 Supabase 클라이언트가 없다. 조용히 넘기면 「눌렀는데 아무 일도 안 일어남」이 된다(BBE-209).
+      if (!graph.client) throw new Error("컨택 이동: 이 동작은 연결된 워크스페이스가 필요합니다.");
       const result = await advanceNewLeadToContact(graph.client, { itemId, requestId });
       if (result.status !== "committed") {
         await flashCellErrors(itemId, [{
@@ -263,6 +265,7 @@ export async function moveItemAction(formData: FormData): Promise<void> {
   } else {
     await svc.updateItem(ctx, boardId, itemId, { group_id: lane === "" ? null : lane });
   }
+  if (!graph.client) throw new Error("항목 이동 알림: 이 동작은 연결된 워크스페이스가 필요합니다.");
   await notifyBoardItemMoved(graph.client, ctx, {
     boardId,
     itemId,
@@ -321,6 +324,7 @@ export async function moveRowAction(formData: FormData): Promise<void> {
     await svc.updateItem(ctx, boardId, item.id, patch);
   }));
 
+  if (!graph.client) throw new Error("항목 이동 알림: 이 동작은 연결된 워크스페이스가 필요합니다.");
   await notifyBoardItemMoved(graph.client, ctx, {
     boardId,
     itemId,

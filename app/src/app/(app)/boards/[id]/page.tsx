@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { CELL_FLASH_COOKIE, decodeCellFlash } from "@/lib/boards/cellFlash";
 import { NotFoundError } from "@/lib/boards";
-import { createRequestBoards } from "@/lib/boards/server";
+import { createRequestBoards, requireRequestClient } from "@/lib/boards/server";
 import { markNoticeItemsReadAtomic } from "@/lib/notices/atomic";
 import { issueFileToken } from "@/lib/deal/fileSignedUrl";
 import { NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
@@ -85,7 +85,9 @@ export default async function BoardPage({
   const deletedItems = !board.is_system && canDeleteItems
     ? await svc.listDeletedItems(ctx, id)
     : [];
-  if (board.source === NOTICE_TAB_SOURCE) {
+  // 읽음 표시는 «쓰기» 다. 로컬 시드에는 그 저장소가 없어 건너뛴다 —
+  // 화면에 표시되는 내용은 달라지지 않는다(BBE-209).
+  if (board.source === NOTICE_TAB_SOURCE && client) {
     const visibleNoticeIds = loadedItems.filter((item) => visibleItemIds.has(item.id)).map((item) => item.id);
     await markNoticeItemsReadAtomic(ctx, visibleNoticeIds, client);
   }
@@ -98,21 +100,37 @@ export default async function BoardPage({
       })
     : loadedItems;
   const permissionItems = boardItems.filter((item) => visibleItemIds.has(item.id));
+  // ★ 사람 범위(personScope)는 «보이는 항목을 좁히는» 규칙이다.
+  //   로컬에서 그 조회를 건너뛰면 좁힘이 사라져 «더 많이 보이는» fail-OPEN 이 된다.
+  //   그래서 저장된 보기로 들어온 경우에는 화면을 열지 않는다 — 모르면 닫는다(BBE-207 D24 와 같은 판단).
+  if (!client && sp.savedView) {
+    return (
+      <section className="rounded-xl border border-mw-line bg-mw-card p-5" role="status" aria-labelledby="saved-view-unavailable">
+        <h1 id="saved-view-unavailable" className="text-lg font-semibold text-mw-fg">
+          저장된 보기는 연결된 워크스페이스가 필요합니다
+        </h1>
+        <p className="mt-2 text-sm text-mw-sub">
+          이 보기는 «담당자 범위» 규칙을 함께 적용합니다. 그 규칙을 확인할 수 없어 화면을 열지 않았습니다.
+        </p>
+      </section>
+    );
+  }
   const personRuntime = await resolveSavedPersonRuntime(
-    ctx.org.id, id, sp.savedView ?? null, ctx.user.id,
+    ctx.org.id, id, client ? (sp.savedView ?? null) : null, ctx.user.id,
     async (orgId, boardId, viewId) => {
-      const { data, error } = await client.from("tab_views").select("person_scope,person_scope_user_id")
+      // 위 분기에서 savedView 가 있으면 client 가 반드시 있다. 그래도 단정하지 않고 확인한다.
+      const { data, error } = await requireRequestClient(client, "저장된 보기 조회").from("tab_views").select("person_scope,person_scope_user_id")
         .eq("org_id", orgId).eq("board_id", boardId).eq("id", viewId).maybeSingle();
       if (error) throw error;
       return data ? { personScope: data.person_scope, personScopeUserId: data.person_scope_user_id } : null;
     },
     async (orgId) => {
-      const { data, error } = await client.from("org_members").select("user_id").eq("org_id", orgId).eq("status", "active");
+      const { data, error } = await requireRequestClient(client, "구성원 조회").from("org_members").select("user_id").eq("org_id", orgId).eq("status", "active");
       if (error) throw error;
       return (data ?? []).map((member) => member.user_id);
     },
     async (orgId, userId) => {
-      const { data, error } = await client.rpc("get_member_account_profile", { p_org_id: orgId, p_target_user_id: userId });
+      const { data, error } = await requireRequestClient(client, "담당자 팀 조회").rpc("get_member_account_profile", { p_org_id: orgId, p_target_user_id: userId });
       if (error) throw error;
       return data && typeof data === "object" && !Array.isArray(data) && typeof data.team_key === "string" ? data.team_key : null;
     },
