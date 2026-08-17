@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=098_bbe199_org_logo predecessor=095_bbe172_new_lead_contact_transition digest=9072b2d0ea99a5533db3e0c9be774bc9d392423537a307560c301d7bd0690f43 foundation=false
+-- moa-migration-guard: logical_key=098_bbe199_org_logo predecessor=095_bbe172_new_lead_contact_transition digest=04b21bb5bf897849a4b00d0d8aa2c280a6ae1c69c325610f2e1cf8a35ff034e8 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '098_bbe199_org_logo',
   p_file_name => '098_bbe199_org_logo.sql',
-  p_file_digest => '9072b2d0ea99a5533db3e0c9be774bc9d392423537a307560c301d7bd0690f43',
+  p_file_digest => '04b21bb5bf897849a4b00d0d8aa2c280a6ae1c69c325610f2e1cf8a35ff034e8',
   p_expected_predecessor => '095_bbe172_new_lead_contact_transition',
   p_executor => 'DC-15',
   p_thread_id => '22103fbd-0deb-43e6-8948-7adda95b6063',
@@ -43,10 +43,9 @@ alter table public.orgs drop constraint if exists orgs_logo_bytes_limit;
 alter table public.orgs add constraint orgs_logo_bytes_limit
   check (logo_bytes is null or (logo_bytes > 0 and logo_bytes <= 1048576));
 
--- 조직 필터: 한 조직의 row 는 «자기 폴더» 만 가리킬 수 있다.
-alter table public.orgs drop constraint if exists orgs_logo_path_org_scoped;
-alter table public.orgs add constraint orgs_logo_path_org_scoped
-  check (logo_path is null or logo_path like id::text || '/%');
+-- 조직 필터 제약은 §3 의 org_logo_object_org() 를 쓰므로 함수를 만든 «뒤» 에 건다.
+-- (접두사만 보는 like 로는 <org>/../<남의org>/x 같은 경로 탈출을 못 거른다.
+--  RPC 와 «같은 판정» 이어야 3겹이 실제로 3겹이다.)
 
 -- 반쯤 설정된 상태를 만들지 않는다 — 셋 다 있거나 셋 다 없다.
 alter table public.orgs drop constraint if exists orgs_logo_complete;
@@ -91,6 +90,11 @@ create policy org_logo_audit_select on public.org_logo_audit
 -- 오브젝트 이름의 첫 폴더가 org_id 다.  <org_id>/<파일명>
 -- uuid 모양이 아니면 null 을 돌려준다 — 정책에서 null 은 «통과 안 함» 이다.
 -- 이것을 제거하면 남의 조직 폴더를 지목할 수 있게 된다.
+--
+-- ★ 「폴더 하나 + 파일명 하나」만 허용한다. 슬래시가 더 있으면 매치되지 않으므로
+--   <org>/../<남의org>/x · <org>/a/../../<남의org>/x 같은 경로 탈출이 전부 걸러진다.
+--   파일명이 '.' 이나 '..' 인 것도 막는다 — 영숫자를 최소 한 글자 요구한다.
+--   이 함수 하나가 RPC · Storage 정책 · orgs CHECK 세 곳의 «같은» 판정이 된다.
 
 create or replace function public.org_logo_object_org(p_name text)
 returns uuid
@@ -99,7 +103,8 @@ immutable
 set search_path = public, pg_temp
 as $function$
   select case
-    when p_name ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/[A-Za-z0-9._-]{1,128}$'
+    when p_name ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/[A-Za-z0-9._-]*[A-Za-z0-9][A-Za-z0-9._-]*$'
+      and length(p_name) <= 200
       then split_part(p_name, '/', 1)::uuid
     else null
   end;
@@ -108,6 +113,19 @@ $function$;
 alter function public.org_logo_object_org(text) owner to postgres;
 revoke all on function public.org_logo_object_org(text) from public, anon, authenticated, service_role;
 grant execute on function public.org_logo_object_org(text) to authenticated;
+
+-- ★ 조직 필터 3겹째. RPC(2겹)와 «문자 그대로 같은 판정» 을 쓴다.
+--   전에는 `logo_path like id::text || '/%'` 였는데 접두사만 고정해서
+--   <org>/../<남의org>/logo.png 가 통과했다. 두 겹의 강도가 달랐다.
+--   같은 함수를 쓰면 한쪽만 약해질 수가 없다.
+--   ★★ `= id` 가 아니라 `is not distinct from id` 인 이유 (여기서 한 번 틀렸다):
+--      경로 탈출이면 org_logo_object_org() 는 null 을 돌려준다. 그런데 `null = id` 는
+--      false 가 아니라 **null** 이고, CHECK 는 결과가 null 이면 «통과» 시킨다.
+--      즉 `= id` 로 쓰면 이 3겹은 «있지만 아무것도 막지 않는» 장식이 된다.
+--      is not distinct from 은 null 을 false 로 접어서 실제로 막는다.
+alter table public.orgs drop constraint if exists orgs_logo_path_org_scoped;
+alter table public.orgs add constraint orgs_logo_path_org_scoped
+  check (logo_path is null or public.org_logo_object_org(logo_path) is not distinct from id);
 
 -- =====================================================================
 -- 4. 유일한 쓰기 문 — set_org_logo / clear_org_logo
@@ -330,11 +348,23 @@ begin
   execute $q$select exists (select 1 from storage.buckets b where b.id = 'org-logos' and b.public = false)$q$
     into v_bucket_ok;
 
+  -- ★ 이름만 세지 않는다. 이름이 org_logos_insert 인데 for select 로 만들어져 있으면
+  --   개수만 세는 검사는 통과한다. 명령(cmd)까지 맞춰 본다.
   select count(*) into v_policy_num
     from pg_policies p
    where p.schemaname = 'storage'
      and p.tablename = 'objects'
-     and p.policyname in ('org_logos_read', 'org_logos_insert', 'org_logos_update', 'org_logos_delete');
+     and (p.policyname, p.cmd) in (
+       ('org_logos_read', 'SELECT'),
+       ('org_logos_insert', 'INSERT'),
+       ('org_logos_update', 'UPDATE'),
+       ('org_logos_delete', 'DELETE')
+     );
+
+  -- RLS 가 꺼져 있으면 정책은 장식이다. 그것도 확인한다.
+  if not coalesce((select c.relrowsecurity from pg_class c where c.oid = 'storage.objects'::regclass), false) then
+    return false;
+  end if;
 
   return v_bucket_ok and v_policy_num = 4;
 end;

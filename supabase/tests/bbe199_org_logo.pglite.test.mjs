@@ -296,7 +296,17 @@ test("★ 남의 조직 경로를 자기 조직 로고로 저장할 수 없다 �
       db.query(`select * from public.set_org_logo('${ids.orgA}','${pathB}','image/png',2048)`),
       /org logo path rejected/,
     );
-    for (const bad of ["logo.png", "../" + ids.orgA + "/logo.png", ids.orgA, `${ids.orgA}/sub/logo.png`, "not-a-uuid/logo.png"]) {
+    for (const bad of [
+      "logo.png",
+      "../" + ids.orgA + "/logo.png",
+      ids.orgA,
+      `${ids.orgA}/sub/logo.png`,
+      "not-a-uuid/logo.png",
+      `${ids.orgA}/../${ids.orgB}/logo.png`,
+      `${ids.orgA}/a/../../${ids.orgB}/logo.png`,
+      `${ids.orgA}/..`,
+      `${ids.orgA}/.`,
+    ]) {
       await assert.rejects(
         db.query(`select * from public.set_org_logo('${ids.orgA}',$1,'image/png',2048)`, [bad]),
         /org logo path rejected/,
@@ -305,6 +315,42 @@ test("★ 남의 조직 경로를 자기 조직 로고로 저장할 수 없다 �
     }
     await asPostgres(db);
     assert.equal((await db.query(`select logo_path from public.orgs where id = '${ids.orgA}'`)).rows[0].logo_path, null);
+  } finally {
+    await db.close();
+  }
+});
+
+test("★ 3겹째(DB CHECK)가 «혼자서도» 경로 탈출을 막는다 — RPC 를 우회해도", async () => {
+  const db = new PGlite();
+  try {
+    await bootstrap(db);
+    await asPostgres(db);
+    // RPC(2겹)를 통째로 건너뛰고 postgres 로 직접 쓴다.
+    // 3겹이 2겹보다 약하면 여기서 저장돼 버린다 (DC-16 이 실제로 뚫은 경로들).
+    for (const bad of [
+      `${ids.orgB}/logo.png`,
+      `${ids.orgA}/../${ids.orgB}/logo.png`,
+      `${ids.orgA}/a/../../${ids.orgB}/logo.png`,
+      `${ids.orgA}/sub/logo.png`,
+      `${ids.orgA}/..`,
+      `${ids.orgA}/.`,
+      "logo.png",
+    ]) {
+      await assert.rejects(
+        db.query(
+          `update public.orgs set logo_path = $1, logo_mime = 'image/png', logo_bytes = 10 where id = '${ids.orgA}'`,
+          [bad],
+        ),
+        /orgs_logo_path_org_scoped/,
+        `DB CHECK 가 통과시키면 안 되는 경로: ${bad}`,
+      );
+    }
+    // 정상 경로는 통과한다.
+    await db.query(
+      `update public.orgs set logo_path = $1, logo_mime = 'image/png', logo_bytes = 10 where id = '${ids.orgA}'`,
+      [pathA],
+    );
+    assert.equal((await db.query(`select logo_path from public.orgs where id = '${ids.orgA}'`)).rows[0].logo_path, pathA);
   } finally {
     await db.close();
   }
