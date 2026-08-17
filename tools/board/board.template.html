@@ -204,6 +204,17 @@ const DEPENDENCIES={
 /* BOARD_LOGIC_START */
 const BOARD_LOGIC=(()=>{
  const squadLabels=(issue,allowed)=>((issue?.labels)||[]).filter((label)=>allowed.includes(label));
+ const ownerLabels=(issue)=>((issue?.labels)||[]).filter((label)=>/^(DG|DC|NG|NC)-\d{2}$/.test(label));
+ const ownerCoverage=(issues,goalIds)=>{
+  const by=Object.fromEntries(issues.map((issue)=>[issue.id,issue]));
+  const missing=[]; const collision=[];
+  for(const id of goalIds){
+   const labels=ownerLabels(by[id]);
+   if(labels.length===0)missing.push(id);
+   else if(labels.length>1)collision.push({id,labels});
+  }
+  return {missing,collision,covered:goalIds.length-missing.length-collision.length,total:goalIds.length,ok:missing.length===0&&collision.length===0};
+ };
  const coverage=(issues,goalIds,allowed)=>{
   const by=Object.fromEntries(issues.map((issue)=>[issue.id,issue]));
   const missing=[]; const duplicate=[];
@@ -235,7 +246,7 @@ const BOARD_LOGIC=(()=>{
   if(releaseStatus==="In Progress"||releaseStatus==="In Review")return "RUNNING";
   return "READY / OPEN";
  };
- return {squadLabels,coverage,crossDependencies,releaseState};
+ return {squadLabels,ownerLabels,ownerCoverage,coverage,crossDependencies,releaseState};
 })();
 /* BOARD_LOGIC_END */
 const DONE_STATES=new Set(["Done","Canceled","Duplicate"]);
@@ -285,7 +296,8 @@ const esc=(value)=>String(value??"").replace(/[&<>"']/g,(char)=>({"&":"&amp;","<
 const cssKey=(value)=>String(value||"").replace(/\s+/g,"-");
 const hours=(value)=>Math.max(0,(Date.now()-new Date(value).getTime())/36e5);
 const ago=(value)=>{const h=hours(value);if(h<1)return Math.max(1,Math.round(h*60))+"분 전";if(h<24)return Math.floor(h)+"시간 전";return Math.floor(h/24)+"일 전"};
-const laneOf=(issue)=>(issue.labels||[]).find((label)=>/^(DG|DC|NC|NG)-\d{2}$/.test(label))||null;
+const ownerLabelsOf=(issue)=>BOARD_LOGIC.ownerLabels(issue);
+const laneOf=(issue)=>ownerLabelsOf(issue)[0]||null;
 const blockerOf=(issue)=>(issue.labels||[]).find((label)=>String(label).startsWith("blocked:"))||null;
 const issueUrl=(issue)=>issue.url||("https://linear.app/bbelieff/issue/"+issue.id);
 const statusPill=(issue)=>'<span class="pill st-'+cssKey(issue.status)+'">'+esc(issue.status)+'</span>';
@@ -383,6 +395,11 @@ function buildDecisions(){
   const gaps=[coverage.missing.length?"UNSQUADDED "+coverage.missing.join(","):"",coverage.duplicate.length?"DUPLICATE "+coverage.duplicate.map((item)=>item.id+"["+item.labels.join(",")+"]").join(" · "):""].filter(Boolean);
   decisions.push({tone:"critical",kind:"P0 SQUAD COVERAGE",title:"목표 "+coverage.total+"건 exact coverage 오류",body:gaps.join(" · "),count:coverage.missing.length+coverage.duplicate.length});
  }
+ const ownerCoverage=BOARD_LOGIC.ownerCoverage(GOAL_IDS.map((id)=>state.by[id]).filter(Boolean),GOAL_IDS);
+ if(!ownerCoverage.ok){
+  const gaps=[ownerCoverage.missing.length?"MISSING_OWNER "+ownerCoverage.missing.join(","):"",ownerCoverage.collision.length?"OWNER_COLLISION "+ownerCoverage.collision.map((item)=>item.id+"["+item.labels.join(",")+"]").join(" · "):""].filter(Boolean);
+  decisions.push({tone:"critical",kind:"P0 OWNER COVERAGE",title:"목표 "+ownerCoverage.total+"건 owner exact-1 오류",body:gaps.join(" · "),count:ownerCoverage.missing.length+ownerCoverage.collision.length});
+ }
  const cross=crossDependencies();
  if(cross.length)decisions.push({tone:"critical",kind:"P0 CROSS-SQUAD",title:"작업반 간 교차 의존 "+cross.length+"건",body:cross.map((x)=>x.issueId+"←"+x.dependencyId+" "+x.source+"←"+x.target).join(" · "),count:cross.length});
  const migrationActive=state.open.filter((issue)=>isMigrationCard(issue)&&ACTIVE_STATES.has(issue.status));
@@ -410,10 +427,11 @@ function renderSquads(){
   const current=cards.filter((issue)=>ACTIVE_STATES.has(issue.status));
   const next=cards.filter((issue)=>["Todo","Backlog"].includes(issue.status)&&!blockerOf(issue)&&!pendingDeps(issue).length);
   const bottleneck=cards.filter((issue)=>!DONE_STATES.has(issue.status)&&(blockerOf(issue)||pendingDeps(issue).length));
-  const owners=[...new Set(cards.map(laneOf).filter(Boolean))];
+  const owners=[...new Set(cards.flatMap(ownerLabelsOf))];
+  const ownerAllocation=cards.map((issue)=>issue.id+":"+(ownerLabelsOf(issue).join("+")||"MISSING_OWNER"));
   const prText=current.length?current.map((issue)=>issue.id+" "+prCiText(issue)).join(" · "):"활성 PR 없음";
   const contribution=GOAL_IDS.length?Math.round(cards.length/GOAL_IDS.length*100):0;
-  return '<article class="card squad"><div class="squad-head"><b>'+esc(squad.name)+'</b><span>'+done+'/'+cards.length+' · 전체 기여율 '+contribution+'%</span></div><div class="squad-progress"><i style="width:'+pct+'%"></i></div><div class="squad-meta"><div><b>'+pct+'%</b><span>진행률</span></div><div><b>'+esc(owners.join(", ")||"미배정")+'</b><span>owner</span></div><div><b>'+current.length+'</b><span>current</span></div></div><div class="squad-line"><b>current</b>'+esc(current.map((i)=>i.id).join(" · ")||"없음")+'</div><div class="squad-line"><b>next</b>'+esc(next.map((i)=>i.id).join(" · ")||"없음")+'</div><div class="squad-line '+(bottleneck.length?'hot':'')+'"><b>내부 병목</b>'+esc(bottleneck.map((i)=>i.id+"←"+(pendingDeps(i).join(",")||blockerOf(i))).join(" · ")||"없음")+'</div><div class="squad-line"><b>PR·CI</b>'+esc(prText)+'</div></article>';
+  return '<article class="card squad"><div class="squad-head"><b>'+esc(squad.name)+'</b><span>'+done+'/'+cards.length+' · 전체 기여율 '+contribution+'%</span></div><div class="squad-progress"><i style="width:'+pct+'%"></i></div><div class="squad-meta"><div><b>'+pct+'%</b><span>진행률</span></div><div><b>'+esc(owners.join(", ")||"미배정")+'</b><span>owner</span></div><div><b>'+current.length+'</b><span>current</span></div></div><div class="squad-line"><b>owner·기여</b>'+esc(ownerAllocation.join(" · ")||"없음")+'</div><div class="squad-line"><b>current</b>'+esc(current.map((i)=>i.id).join(" · ")||"없음")+'</div><div class="squad-line"><b>next</b>'+esc(next.map((i)=>i.id).join(" · ")||"없음")+'</div><div class="squad-line '+(bottleneck.length?'hot':'')+'"><b>내부 병목</b>'+esc(bottleneck.map((i)=>i.id+"←"+(pendingDeps(i).join(",")||blockerOf(i))).join(" · ")||"없음")+'</div><div class="squad-line"><b>PR·CI</b>'+esc(prText)+'</div></article>';
  }).join("");
 }
 function renderSharedGates(){
@@ -421,12 +439,14 @@ function renderSharedGates(){
  const release=state.by["BBE-182"];
  const prereqs=GOAL_IDS.filter((id)=>id!=="BBE-182").filter((id)=>state.by[id]?.status!=="Done");
  const coverage=BOARD_LOGIC.coverage(GOAL_IDS.map((id)=>state.by[id]).filter(Boolean),GOAL_IDS,SQUAD_LABELS);
- const gateState=BOARD_LOGIC.releaseState(release?.status,prereqs.length,cross.length,coverage.ok);
+ const ownerCoverage=BOARD_LOGIC.ownerCoverage(GOAL_IDS.map((id)=>state.by[id]).filter(Boolean),GOAL_IDS);
+ const gateState=BOARD_LOGIC.releaseState(release?.status,prereqs.length,cross.length,coverage.ok&&ownerCoverage.ok);
  const releaseOpen=gateState!=="WAITING";
  const gate=document.getElementById("releaseGate");
  gate.className="card gate"+(releaseOpen?"":" closed");
  const coverageText=coverage.ok?'15 / 15 exact':'UNSQUADDED '+coverage.missing.join(",")+(coverage.duplicate.length?' · DUPLICATE '+coverage.duplicate.map((item)=>item.id).join(","):"");
- gate.innerHTML='<h3>BBE-182 Global Release Gate · '+gateState+'</h3><p>전체 합산: '+state.issues.filter((i)=>i.status==="Done").length+' / '+GOAL_IDS.length+' Done</p><p>Squad coverage: <b class="'+(coverage.ok?'cross-ok':'cross-p0')+'">'+esc(coverageText)+'</b></p><p>선행 미완료: '+esc(prereqs.join(" · ")||"0")+'</p><p>Cross-dependency: <b class="'+(cross.length?'cross-p0':'cross-ok')+'">'+cross.length+(cross.length?' · P0 RED':' · 정상')+'</b></p><p>Release PR·CI: '+esc(prCiText(release))+'</p>';
+ const ownerCoverageText=ownerCoverage.ok?'15 / 15 exact':'MISSING_OWNER '+ownerCoverage.missing.join(",")+(ownerCoverage.collision.length?' · OWNER_COLLISION '+ownerCoverage.collision.map((item)=>item.id+"["+item.labels.join("+")+"]").join(","):"");
+ gate.innerHTML='<h3>BBE-182 Global Release Gate · '+gateState+'</h3><p>전체 합산: '+state.issues.filter((i)=>i.status==="Done").length+' / '+GOAL_IDS.length+' Done</p><p>Squad coverage: <b class="'+(coverage.ok?'cross-ok':'cross-p0')+'">'+esc(coverageText)+'</b></p><p>Owner coverage: <b class="'+(ownerCoverage.ok?'cross-ok':'cross-p0')+'">'+esc(ownerCoverageText)+'</b></p><p>선행 미완료: '+esc(prereqs.join(" · ")||"0")+'</p><p>Cross-dependency: <b class="'+(cross.length?'cross-p0':'cross-ok')+'">'+cross.length+(cross.length?' · P0 RED':' · 정상')+'</b></p><p>Release PR·CI: '+esc(prCiText(release))+'</p>';
  const queue=state.issues.filter(isMigrationCard).filter((issue)=>issue.status!=="Done").sort((a,b)=>GOAL_IDS.indexOf(a.id)-GOAL_IDS.indexOf(b.id));
  const activeMigrations=queue.filter((issue)=>ACTIVE_STATES.has(issue.status));
  document.getElementById("migrationQueue").innerHTML='<div class="section-title">Migration shared-resource queue <span class="hint">제품 blocker와 별도</span></div>'+(activeMigrations.length>1?'<div class="squad-line hot"><b>P0 SERIAL CONFLICT</b>'+esc(activeMigrations.map((i)=>i.id).join(" · "))+'</div>':'')+'<div class="queue">'+(queue.length?queue.map((issue,index)=>'<div class="queue-item"><b>'+(index+1)+'</b><div><p>'+issue.id+' · '+esc(issue.title)+'</p><small>'+esc(laneOf(issue)||blockerOf(issue)||"미배정")+' · '+esc(issue.status)+'</small></div><small>'+esc(index===0?"active/latest+1":"serial wait")+'</small></div>').join(""):'<div class="empty">migration queue 없음</div>')+'</div>';
