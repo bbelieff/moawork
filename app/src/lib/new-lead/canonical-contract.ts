@@ -72,4 +72,3 @@ export type AdvanceNewLeadRow = Readonly<{
   company_id: string | null;
   reason: string | null;
 }>;
-
