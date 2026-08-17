@@ -296,6 +296,90 @@ describe("그룹 프리셋 액션 — 값 유실 0", () => {
     });
   });
 
+  /*
+   * 원문 유출은 «컬럼 추가» 말고도 여러 경로에서 난다 — getBoardDetail·presets.get/create 는
+   * 저장소가 던진 것을 그대로 올려보낸다. 아래 세 경로를 각각 건드려, failure() 가 그 전부를
+   * 일반 문구로 수렴시키는지 본다. (컬럼 추가 경로는 루프가 먼저 잡으므로 여기 포함하지 않는다.)
+   */
+  const RAW = 'duplicate key value violates unique constraint "board_columns_board_id_key_key"';
+
+  it("보드 조회가 던진 저장소 원문을 사용자에게 보여주지 않는다", async () => {
+    mocks.getBoardDetail.mockRejectedValue(new Error(RAW));
+
+    const state = await applyGroupPresetAction(INITIAL_GROUP_PRESET_STATE, form(APPLY));
+
+    expect(state.ok).toBe(false);
+    expect(state.message).not.toContain("constraint");
+    expect(state.message).not.toContain("board_columns");
+    expect(state.message).toContain("잠시 후 다시 시도");
+  });
+
+  it("프리셋 조회가 던진 원문도 마찬가지다", async () => {
+    mocks.presetGet.mockRejectedValue(new Error(RAW));
+
+    const state = await applyGroupPresetAction(INITIAL_GROUP_PRESET_STATE, form(APPLY));
+
+    expect(state.ok).toBe(false);
+    expect(state.message).not.toContain("constraint");
+  });
+
+  it("저장(create)이 던진 원문도 마찬가지다", async () => {
+    mocks.presetFindBySource.mockResolvedValue(undefined);
+    mocks.getBoardDetail.mockResolvedValue({ columns: [], groups: [{ id: "group-a", name: "g", color: null }] });
+    mocks.presetCreate.mockRejectedValue(new Error(RAW));
+
+    const state = await saveGroupPresetAction(INITIAL_GROUP_PRESET_STATE, form(SAVE));
+
+    expect(state.ok).toBe(false);
+    expect(state.message).not.toContain("constraint");
+    expect(state.message).toContain("잠시 후 다시 시도");
+  });
+
+  it("내가 쓴 문장(권한 거부)은 그대로 보여준다 — 전부 뭉개지 않는다", async () => {
+    allow("structure.preset_edit");
+
+    const state = await applyGroupPresetAction(INITIAL_GROUP_PRESET_STATE, form(APPLY));
+
+    expect(state.ok).toBe(false);
+    expect(state.message).toContain("권한이 없습니다");
+  });
+
+  it("부분 적용이 남으면 그 사실을 숨기지 않고 «이어서 진행» 을 안내한다", async () => {
+    mocks.getBoardDetail.mockResolvedValue({ columns: [], groups: [] });
+    mocks.presetGet.mockResolvedValue({
+      id: "preset-a",
+      name: "P",
+      columns: [presetColumn("a"), presetColumn("b"), presetColumn("c")],
+      groups: [],
+    });
+    // 첫 둘은 만들어지고 셋째에서 실패한다.
+    mocks.addColumn
+      .mockResolvedValueOnce(column("a"))
+      .mockResolvedValueOnce(column("b"))
+      .mockRejectedValueOnce(new Error("boom"));
+
+    const state = await applyGroupPresetAction(INITIAL_GROUP_PRESET_STATE, form(APPLY));
+
+    expect(state.ok).toBe(false);
+    expect(state.message).toContain("2개는 이미 추가");
+    expect(state.message).toContain("다시");
+    // 배치는 저장되지 않는다 — 절반 적용된 순서를 정본으로 굳히지 않는다.
+    expect(mocks.setGroupColumnOrder).not.toHaveBeenCalled();
+    // 되돌리려고 컬럼을 지우지 않는다(그게 값 파손 경로다).
+    expect(mocks.deleteColumn).not.toHaveBeenCalled();
+  });
+
+  it("아무것도 못 만들고 실패하면 «바뀐 것 없음» 으로 말한다", async () => {
+    mocks.getBoardDetail.mockResolvedValue({ columns: [], groups: [] });
+    mocks.presetGet.mockResolvedValue({ id: "preset-a", name: "P", columns: [presetColumn("a")], groups: [] });
+    mocks.addColumn.mockRejectedValue(new Error("boom"));
+
+    const state = await applyGroupPresetAction(INITIAL_GROUP_PRESET_STATE, form(APPLY));
+
+    expect(state.ok).toBe(false);
+    expect(state.message).toContain("바뀐 것은 없습니다");
+  });
+
   it("되돌리기는 배치만 비우고 컬럼은 건드리지 않는다", async () => {
     mocks.getBoardDetail.mockResolvedValue({ columns: [column("a")], groups: [] });
 

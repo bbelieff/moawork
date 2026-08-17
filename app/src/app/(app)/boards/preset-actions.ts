@@ -24,6 +24,7 @@ import { createRequestBoards } from "@/lib/boards/server";
 import { SectionPresetRepo } from "@/lib/presets/section-presets";
 import {
   appliedColumnOrder,
+  PresetActionError,
   groupPresetRequestSource,
   previewGroupPresetApply,
   snapshotGroupPreset,
@@ -52,24 +53,28 @@ const DENIED = {
 async function requirePermission(ctx: Ctx, scopeKey: keyof typeof DENIED): Promise<void> {
   const guard = await loadPermGuard(ctx.org.id, `structure.${scopeKey}`);
   if (guard.kind === "allowed") return;
-  throw new Error(
+  throw new PresetActionError(
     guard.reason === "permission" ? DENIED[scopeKey] : "권한을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.",
   );
 }
 
 function required(formData: FormData, key: string): string {
   const value = String(formData.get(key) ?? "").trim();
-  if (!value) throw new Error("요청 정보가 올바르지 않습니다.");
+  if (!value) throw new PresetActionError("요청 정보가 올바르지 않습니다.");
   return value;
 }
 
+/**
+ * 오류를 화면 상태로 바꾼다.
+ *
+ * **내가 쓴 문장만 사용자에게 보여준다**(`PresetActionError`). 그 밖의 것은 저장소·네트워크가
+ * 던진 원문일 수 있어, 그대로 띄우면 스키마가 새고(§9.2) 사용자는 할 수 있는 일이 없다.
+ * 원문을 버리지는 않고 **서버 로그로만** 남긴다 — 디버깅에는 필요하고 화면에는 필요 없다.
+ */
 function failure(error: unknown): GroupPresetActionState {
-  return {
-    ok: false,
-    message: error instanceof Error && error.message
-      ? error.message
-      : "아이템 프리셋을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.",
-  };
+  if (error instanceof PresetActionError) return { ok: false, message: error.message };
+  console.error("[BBE-174] 아이템 프리셋 처리 실패", error);
+  return { ok: false, message: "아이템 프리셋을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." };
 }
 
 /**
@@ -120,7 +125,7 @@ export async function saveGroupPresetAction(
 
     const detail = await service.getBoardDetail(ctx, boardId);
     const group = detail.groups.find((candidate) => candidate.id === groupKey);
-    if (!group) throw new Error("이 아이템을 찾을 수 없습니다.");
+    if (!group) throw new PresetActionError("이 아이템을 찾을 수 없습니다.");
 
     const ordered = resolveColumnOrder(detail.columns, getBoardColumnOrder(ctx.org.id, boardId)[groupKey]);
     await presets.create(ctx, snapshotGroupPreset(name, group, ordered), source);
@@ -164,7 +169,7 @@ export async function applyGroupPresetAction(
 
     const { service, presets } = await deps();
     const preset = await presets.get(ctx, presetId);
-    if (!preset) throw new Error("프리셋을 찾을 수 없습니다.");
+    if (!preset) throw new PresetActionError("프리셋을 찾을 수 없습니다.");
 
     const before = await service.getBoardDetail(ctx, boardId);
     const preview = previewGroupPresetApply(
@@ -182,27 +187,48 @@ export async function applyGroupPresetAction(
     const existingKeys = new Set(before.columns.map((column) => column.key));
     const resolvedKeys: string[] = [];
     const seen = new Set<string>();
+    let createdCount = 0;
 
-    for (const column of preset.columns) {
-      if (seen.has(column.key)) continue;
-      seen.add(column.key);
+    /*
+     * ⚠ 이 루프는 **원자적이지 않다.** 컬럼을 하나씩 만들기 때문에, 도중에 실패하면 앞의 몇 개는
+     * 이미 보드에 만들어져 있고 배치 저장(아래)에는 닿지 못한다.
+     *
+     * 되돌리지 않는다 — 되돌리려면 `deleteColumn` 을 불러야 하는데 그것이 이 카드에서 유일한
+     * 값 파손 경로다(그 key 의 `item_values` 를 함께 지운다). **절반 남기더라도 값은 지킨다.**
+     *
+     * 대신 **절반 남았다는 사실을 사용자에게 그대로 말한다.** 다시 «적용» 을 누르면 이미 있는
+     * key 는 위에서 건너뛰므로 **이어하기가 안전하다** — 중복 컬럼이 생기지 않는다.
+     */
+    try {
+      for (const column of preset.columns) {
+        if (seen.has(column.key)) continue;
+        seen.add(column.key);
 
-      if (existingKeys.has(column.key)) {
-        resolvedKeys.push(column.key);
-        continue;
+        if (existingKeys.has(column.key)) {
+          resolvedKeys.push(column.key);
+          continue;
+        }
+        const created = await service.addColumn(ctx, boardId, {
+          key: column.key,
+          label: column.label,
+          type: column.type,
+          source: column.source,
+          rightPinned: column.rightPinned,
+          options: column.options,
+          width: column.width,
+          moveRule: column.move_rule_jsonb,
+          readOnly: column.is_readonly,
+        });
+        resolvedKeys.push(created.key);
+        createdCount += 1;
       }
-      const created = await service.addColumn(ctx, boardId, {
-        key: column.key,
-        label: column.label,
-        type: column.type,
-        source: column.source,
-        rightPinned: column.rightPinned,
-        options: column.options,
-        width: column.width,
-        moveRule: column.move_rule_jsonb,
-        readOnly: column.is_readonly,
-      });
-      resolvedKeys.push(created.key);
+    } catch (error) {
+      console.error("[BBE-174] 프리셋 적용 중 컬럼 추가 실패", error);
+      throw new PresetActionError(
+        createdCount > 0
+          ? `적용을 마치지 못했습니다. 컬럼 ${createdCount}개는 이미 추가됐고 배치는 아직 바뀌지 않았습니다. 다시 «적용» 하면 이어서 진행합니다.`
+          : "적용을 마치지 못했습니다. 바뀐 것은 없습니다. 잠시 후 다시 시도해 주세요.",
+      );
     }
 
     setGroupColumnOrder(ctx.org.id, boardId, groupKey, appliedColumnOrder(resolvedKeys, before.columns));
