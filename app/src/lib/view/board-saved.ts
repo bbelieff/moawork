@@ -164,6 +164,23 @@ export function systemViewUrl(kind: "board" | "flat" | "cal", current: string): 
   return url.toString();
 }
 
+export function boardViewSwitchUrl(
+  kind: "table" | "kanban" | "calendar",
+  current: string,
+  groupBy?: string,
+): string {
+  const url = new URL(current);
+  url.searchParams.set("view", kind);
+  if (groupBy === undefined) {
+    // Keep the current grouping while changing only the renderer.
+  } else if (groupBy) {
+    url.searchParams.set("group", groupBy);
+  } else {
+    url.searchParams.delete("group");
+  }
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
 export function applySavedKanbanView<T extends { items: readonly ItemWithValues[] }>(
   lanes: readonly T[], rows: readonly ItemWithValues[], columns: readonly BoardColumn[], filters: BoardFilterState,
 ): Array<T & { items: ItemWithValues[] }> {

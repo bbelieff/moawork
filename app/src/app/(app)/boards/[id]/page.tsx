@@ -14,7 +14,7 @@ import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { BoardTrashPanel } from "@/components/board/BoardTrashPanel";
 import { SavedViewsController } from "@/components/view";
-import { applySavedKanbanView, applySavedPersonScope, parseSavedBoardLayout, parseSavedStringList } from "@/lib/view/board-saved";
+import { applySavedKanbanView, applySavedPersonScope, boardViewSwitchUrl, parseSavedBoardLayout, parseSavedStringList } from "@/lib/view/board-saved";
 import { resolveSavedPersonRuntime } from "@/lib/view/server";
 import { decodeBoardFilters } from "@/components/board/filters";
 import { GenericBoardKanban } from "@/components/boards/GenericBoardKanban";
@@ -37,7 +37,7 @@ export default async function BoardPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ view?: string; group?: string; as?: string; savedView?: string; mwLayout?: string; mwHidden?: string; mwOrder?: string; mwFilters?: string }>;
+  searchParams: Promise<{ view?: string; group?: string; as?: string; savedView?: string; mwLayout?: string; mwHidden?: string; mwOrder?: string; mwFilters?: string; mwSort?: string; mwText?: string; mwFocus?: string; calendarField?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -136,13 +136,11 @@ export default async function BoardPage({
   const hiddenColumnKeys = new Set(parseSavedStringList(sp.mwHidden));
   const visibleColumns = columns.filter((column) => !hiddenColumnKeys.has(column.key));
 
-  const qs = (next: Record<string, string>) => {
-    const p = new URLSearchParams();
-    if (sp.as) p.set("as", sp.as);
-    for (const [k, v] of Object.entries(next)) if (v) p.set(k, v);
-    const s = p.toString();
-    return s ? `?${s}` : "";
-  };
+  const currentQuery = new URLSearchParams(
+    Object.entries(sp).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
+  const switchView = (nextView: "table" | "kanban" | "calendar", nextGroup?: string) =>
+    boardViewSwitchUrl(nextView, `https://app.local/boards/${id}?${currentQuery}`, nextGroup);
 
   const backLink = (
     <Link
@@ -157,13 +155,13 @@ export default async function BoardPage({
   const viewToggle = (
     <div className="flex shrink-0 items-center rounded-full border border-mw-line p-0.5 text-xs">
       <Link
-        href={`/boards/${id}${qs({ view: "table", group: groupBy })}`}
+        href={switchView("table", groupBy)}
         className={`rounded-full px-2.5 py-1 ${view === "table" ? "bg-mw-tint-blue font-semibold text-mw-record" : "text-mw-sub hover:text-mw-fg"}`}
       >
         테이블
       </Link>
       <Link
-        href={`/boards/${id}${qs({ view: "kanban", group: groupBy })}`}
+        href={switchView("kanban", groupBy)}
         className={`rounded-full px-2.5 py-1 ${view === "kanban" ? "bg-mw-tint-blue font-semibold text-mw-record" : "text-mw-sub hover:text-mw-fg"}`}
       >
         칸반
@@ -232,7 +230,7 @@ export default async function BoardPage({
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto text-xs">
           <span className="shrink-0 text-mw-sub">그룹 기준</span>
           <Link
-            href={`/boards/${id}${qs({ view: "kanban" })}`}
+            href={switchView("kanban", "")}
             className={`shrink-0 rounded-full border px-2.5 py-1 ${groupBy === "" ? "border-mw-record bg-mw-tint-blue text-mw-record" : "border-mw-line text-mw-body"}`}
           >
             그룹
@@ -240,7 +238,7 @@ export default async function BoardPage({
           {selectColumns.map((c) => (
             <Link
               key={c.id}
-              href={`/boards/${id}${qs({ view: "kanban", group: c.key })}`}
+              href={switchView("kanban", c.key)}
               className={`shrink-0 rounded-full border px-2.5 py-1 ${groupBy === c.key ? "border-mw-record bg-mw-tint-blue text-mw-record" : "border-mw-line text-mw-body"}`}
             >
               {c.label}
