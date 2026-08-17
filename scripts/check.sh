@@ -14,6 +14,12 @@ node --test scripts/check-migration-guards.test.mjs
 node --test scripts/hosted-migration-runbook.test.mjs
 node scripts/check-migration-guards.mjs
 
+# BBE-206 — 정의된 적 없는 CSS 변수 참조를 막는다.
+# var(--없는토큰) 은 조용히 무효가 되어 «화면에서만» 티가 난다(BBE-199 의 이니셜 마크가
+# 안 보이던 결함). 사람 눈에만 보이던 것 중 «기계가 셀 수 있는» 부분을 여기서 잡는다.
+node scripts/check-css-token-references.mjs --self-test
+node scripts/check-css-token-references.mjs
+
 # ── 편제 개편 공지 (2026-08-12) ───────────────────────────────────
 # 왜 여기 있나: 모든 세션이 커밋 전에 반드시 이 스크립트를 지난다.
 # Linear 댓글·디스패치 게시는 «도는 창» 을 깨우지 못한다. 이 배너만이 확실히 닿는다.
