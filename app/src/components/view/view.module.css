@@ -1,5 +1,5 @@
-.tabs{display:flex;gap:2px;border-bottom:1px solid var(--mw-line,#d0d4e4)}
-.tabs button{display:flex;align-items:center;gap:6px;min-height:38px;border:0;border-bottom:3px solid transparent;background:transparent;padding:7px 12px;color:var(--mw-sub,#676879);font-weight:600}
+.tabs{display:flex;gap:2px;max-width:100%;overflow-x:auto;border-bottom:1px solid var(--mw-line,#d0d4e4)}
+.tabs button{display:flex;flex:none;align-items:center;gap:6px;min-height:38px;border:0;border-bottom:3px solid transparent;background:transparent;padding:7px 12px;color:var(--mw-sub,#676879);font-weight:600;white-space:nowrap}
 .tabs button:hover{background:#f0f4ff}
 .tabs button[aria-current=page]{border-bottom-color:#6161ff;color:#3535a8}
 
@@ -45,5 +45,5 @@
 
 @media(max-width:720px){
   .pickerMenu{left:auto;right:0;min-width:230px}
-  .tabs button span{display:none}
+  .tabs button span[aria-hidden]{display:none}
 }

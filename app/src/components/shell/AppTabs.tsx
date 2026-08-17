@@ -39,6 +39,9 @@ export function AppTabs({ lockedFeatures, workspaceBasePath }: Props) {
     (pathname === workspaceBasePath || pathname.startsWith(`${workspaceBasePath}/`))
     ? pathname.slice(workspaceBasePath.length) || "/"
     : pathname;
+  // 보드 본문에는 앱 전역 경로가 아니라 해당 보드의 저장 뷰 탭만 둔다(BBE-179).
+  // 사이드바가 이미 앱 이동을 소유하므로 이 줄을 반복하면 saved view와 app nav가 혼동된다.
+  if (internalPathname?.startsWith("/boards/")) return null;
   const active = matchTabByPathname(internalPathname);
   // 탭 밖 화면에서는 탭 줄 자체가 없다. 여섯 탭 중 하나를 보고 있을 때만 그린다.
   if (!active) return null;

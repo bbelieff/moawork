@@ -1,13 +1,37 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import type { SavedBoardView } from "@/lib/view/board-saved";
 import { ViewTabs } from "./ViewTabs";
 
+const config = {
+  kind: "table" as const,
+  filters: { q: "", assignees: [], byColumn: {}, sortKey: "", sortDir: "asc" as const, columnLimit: 0 },
+  groupBy: "",
+  layout: {},
+  hiddenColumns: [],
+  columnOrder: [],
+  calendarFieldKey: null,
+  sorts: [],
+  textMode: "single" as const,
+  focusColumnKey: null,
+};
+
+const views: SavedBoardView[] = [
+  { id: "shared", name: "오늘 연락", visibility: "shared", ownerId: "u2", config, isDefault: true, lastUsedAt: null },
+  { id: "private", name: "내 후속", visibility: "private", ownerId: "u1", config, isDefault: false, lastUsedAt: null },
+];
+
 describe("ViewTabs", () => {
-  it("보드·표·캘린더 3개를 렌더하고 현재 kind에 aria-current를 붙인다", () => {
-    const html = renderToStaticMarkup(<ViewTabs kind="flat" onSelect={() => {}} />);
-    expect(html).toContain("보드");
-    expect(html).toContain("표");
-    expect(html).toContain("캘린더");
+  it("renders system and persisted views as actual tabs rather than route navigation", () => {
+    const html = renderToStaticMarkup(
+      <ViewTabs views={views} activeId="private" onSelectMain={() => {}} onSelect={() => {}} onRequestCreate={() => {}} />,
+    );
+    expect(html).toContain("메인 테이블");
+    expect(html).toContain("오늘 연락");
+    expect(html).toContain("내 후속");
+    expect(html).toContain("공용");
+    expect(html).toContain("나만");
     expect(html).toContain('aria-current="page"');
+    expect(html).not.toContain("고객관리");
   });
 });

@@ -24,6 +24,8 @@ export interface BoardFilterState {
   /** 정렬 기준 컬럼 key. "" = 기본(드래그로 정한 sort_order). */
   sortKey: string;
   sortDir: "asc" | "desc";
+  /** 저장 뷰용 다중 정렬. 비어 있으면 위 legacy 단일 정렬을 사용한다. */
+  sorts?: Array<{ columnKey: string; direction: "asc" | "desc" }>;
   /** 표시할 컬럼 개수(원칙 8 의 "컬럼수" 칩). 0 = 전부. */
   columnLimit: number;
 }
@@ -65,6 +67,16 @@ export function decodeBoardFilters(value: string | null): BoardFilterState {
       byColumn,
       sortKey: typeof parsed.sortKey === "string" ? parsed.sortKey : "",
       sortDir: parsed.sortDir === "desc" ? "desc" : "asc",
+      ...(Array.isArray(parsed.sorts)
+        ? { sorts: parsed.sorts.flatMap((entry) => {
+            if (!entry || typeof entry !== "object") return [];
+            const row = entry as { columnKey?: unknown; direction?: unknown };
+            return typeof row.columnKey === "string" && row.columnKey !== ""
+              && (row.direction === "asc" || row.direction === "desc")
+              ? [{ columnKey: row.columnKey, direction: row.direction }]
+              : [];
+          }) }
+        : {}),
       columnLimit:
         typeof parsed.columnLimit === "number" && Number.isFinite(parsed.columnLimit)
           ? Math.max(0, Math.floor(parsed.columnLimit))
@@ -89,7 +101,7 @@ export function activeFilterCount(f: BoardFilterState): number {
   if (f.q.trim() !== "") n += 1;
   if (f.assignees.length > 0) n += 1;
   for (const picked of Object.values(f.byColumn)) if (picked.length > 0) n += 1;
-  if (f.sortKey !== "") n += 1;
+  if ((f.sorts?.length ?? 0) > 0 || f.sortKey !== "") n += 1;
   if (f.columnLimit > 0) n += 1;
   return n;
 }
@@ -142,12 +154,23 @@ export function applyFilters(
   f: BoardFilterState,
 ): ItemWithValues[] {
   const kept = rows.filter((r) => rowMatches(r, columns, f));
-  if (f.sortKey === "") return kept;
+  const sorts = f.sorts?.length
+    ? f.sorts
+    : f.sortKey
+      ? [{ columnKey: f.sortKey, direction: f.sortDir }]
+      : [];
+  if (sorts.length === 0) return kept;
 
-  const dir = f.sortDir === "desc" ? -1 : 1;
-  return [...kept].sort(
-    (a, b) => dir * compareCells(a.values[f.sortKey] ?? null, b.values[f.sortKey] ?? null),
-  );
+  return kept.map((row, index) => ({ row, index })).sort((a, b) => {
+    for (const sort of sorts) {
+      const compared = compareCells(
+        a.row.values[sort.columnKey] ?? null,
+        b.row.values[sort.columnKey] ?? null,
+      );
+      if (compared !== 0) return sort.direction === "desc" ? -compared : compared;
+    }
+    return a.index - b.index;
+  }).map(({ row }) => row);
 }
 
 /** 원칙 8 의 "컬럼수" 칩 — 앞에서 N개만 남긴다. 0 이면 전부. */

@@ -24,7 +24,11 @@ export async function GET(req: Request): Promise<Response> {
       .order("last_used_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: true });
     if (error) throw error;
-    return jsonOk((data ?? []).map((row) => savedBoardViewFromRow(row as Record<string, unknown>)));
+    const canManageShared = ctx.role === "owner" || ctx.role === "admin";
+    return jsonOk((data ?? []).map((row) => savedBoardViewFromRow(
+      row as Record<string, unknown>,
+      row.owner_id === ctx.user.id || canManageShared,
+    )));
   } catch (error) {
     return toErrorResponse(error);
   }
@@ -50,7 +54,7 @@ export async function POST(req: Request): Promise<Response> {
       visibility,
       person_scope: "viewer",
       filters_jsonb: config.filters.byColumn,
-      sort_jsonb: config.filters.sortKey ? [{ columnKey: config.filters.sortKey, direction: config.filters.sortDir }] : [],
+      sort_jsonb: config.sorts,
       hidden_columns_jsonb: config.hiddenColumns,
       column_order_jsonb: config.columnOrder,
       calendar_field_key: config.calendarFieldKey,
@@ -58,7 +62,7 @@ export async function POST(req: Request): Promise<Response> {
       last_used_at: new Date().toISOString(),
     }).select(COLS).single();
     if (error) throw error;
-    return jsonOk(savedBoardViewFromRow(data as Record<string, unknown>), 201);
+    return jsonOk(savedBoardViewFromRow(data as Record<string, unknown>, true), 201);
   } catch (error) {
     return toErrorResponse(error);
   }

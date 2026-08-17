@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 const controller = readFileSync(resolve(process.cwd(), "src/components/view/SavedViewsController.tsx"), "utf8");
 const page = readFileSync(resolve(process.cwd(), "src/app/(app)/boards/[id]/page.tsx"), "utf8");
 const migration = readFileSync(resolve(process.cwd(), "../supabase/migrations/072_tab_views.sql"), "utf8");
+const collectionRoute = readFileSync(resolve(process.cwd(), "src/app/api/tab-views/route.ts"), "utf8");
+const itemRoute = readFileSync(resolve(process.cwd(), "src/app/api/tab-views/[viewId]/route.ts"), "utf8");
 
 describe("saved view production consumer", () => {
   it("mounts all three view kinds and restores saved presentation state", () => {
@@ -16,6 +18,8 @@ describe("saved view production consumer", () => {
     expect(controller).toContain("config.hiddenColumns");
     expect(controller).toContain("config.columnOrder");
     expect(controller).toContain("config.calendarFieldKey");
+    expect(controller).toContain("parseSavedStringList");
+    expect(controller).toContain("filters.sorts");
     expect(page).toContain('view === "flat" || view === "calendar"');
     expect(page).toContain("parseSavedBoardLayout(sp.mwLayout)");
   });
@@ -28,5 +32,16 @@ describe("saved view production consumer", () => {
     expect(controller).toContain("selected: true");
     expect(controller).toContain("<BoardCell");
     expect(controller).toContain("changeCalendarField");
+  });
+
+  it("keeps normalized DB columns in sync and exposes editability without weakening RLS", () => {
+    expect(collectionRoute).toContain('ctx.role === "owner" || ctx.role === "admin"');
+    expect(collectionRoute).toContain("row.owner_id === ctx.user.id || canManageShared");
+    expect(collectionRoute).toContain("sort_jsonb: config.sorts");
+    expect(itemRoute).toContain("patch.sort_jsonb = config.sorts");
+    expect(itemRoute).toContain("patch.hidden_columns_jsonb = config.hiddenColumns");
+    expect(itemRoute).toContain("patch.column_order_jsonb = config.columnOrder");
+    expect(migration).toMatch(/public\.is_org_member\(org_id\)/);
+    expect(migration).toMatch(/owner_id = auth\.uid\(\) or public\.org_role/);
   });
 });

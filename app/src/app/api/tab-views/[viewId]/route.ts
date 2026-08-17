@@ -29,7 +29,16 @@ export async function PATCH(req: Request, { params }: Params): Promise<Response>
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (typeof body.name === "string" && body.name.trim()) patch.name = body.name.trim();
     if (body.visibility === "private" || body.visibility === "shared") patch.visibility = body.visibility;
-    if (body.config !== undefined) patch.config_jsonb = parseSavedBoardViewConfig(body.config);
+    if (body.config !== undefined) {
+      const config = parseSavedBoardViewConfig(body.config);
+      patch.config_jsonb = config;
+      patch.kind = config.kind === "table" ? "flat" : config.kind === "calendar" ? "cal" : "board";
+      patch.filters_jsonb = config.filters.byColumn;
+      patch.sort_jsonb = config.sorts;
+      patch.hidden_columns_jsonb = config.hiddenColumns;
+      patch.column_order_jsonb = config.columnOrder;
+      patch.calendar_field_key = config.calendarFieldKey;
+    }
     if (body.touch === true) patch.last_used_at = new Date().toISOString();
     const { data, error } = await db.from("tab_views").update(patch)
       .eq("id", viewId).eq("org_id", ctx.org.id).select(COLS).single();

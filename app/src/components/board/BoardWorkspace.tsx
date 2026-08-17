@@ -170,7 +170,7 @@ export function BoardWorkspace({
   const [optimisticOrder, setOrderOptimistic] = useOptimistic(columnOrder, columnOrderReducer);
 
   const readOnly = board.is_system || !canEditItems;
-  const sortActive = filters.sortKey !== "";
+  const sortActive = filters.sortKey !== "" || (filters.sorts?.length ?? 0) > 0;
   const rowDragEnabled = !readOnly && !sortActive;
 
   const blocks = useMemo(() => buildBlocks(groups, optimisticRows), [groups, optimisticRows]);

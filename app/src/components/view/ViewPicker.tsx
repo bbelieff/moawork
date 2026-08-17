@@ -1,81 +1,39 @@
 "use client";
 
-import { dynamicBadge, isSystemView, splitByVisibility, type ResolvedView, type TabView } from "@/lib/view";
+import { useState } from "react";
+import type { SavedBoardView } from "@/lib/view/board-saved";
 import styles from "./view.module.css";
 
-/**
- * «화면» 드롭다운(D25) — 회사 공용 / 나만 보기로 갈라 보여준다.
- * D26: dynamicBadge 로 «나»/«내 팀» 표시 — 보는 사람에 따라 결과가 달라진다는 신호.
- * 목록 자체는 이미 RLS로 걸러져 들어온다(나만 뷰는 본인 것만) — 여기서 다시 권한 판단을 하지 않는다.
- */
+/** 활성 저장 뷰의 관리 메뉴. 앱 이동이나 뷰 선택을 다시 복제하지 않는다. */
 export function ViewPicker({
-  views,
-  current,
-  currentUserId,
-  hiddenCount,
-  onSelect,
-  onRequestSave,
+  view,
+  editable,
+  onRename,
+  onDelete,
 }: {
-  views: readonly TabView[];
-  current: ResolvedView;
-  currentUserId: string;
-  /** 조회 범위 밖이라 숨겨진 건수(D24). 0 또는 undefined면 배지를 안 보여준다. */
-  hiddenCount?: number;
-  onSelect: (view: ResolvedView) => void;
-  onRequestSave: () => void;
+  view: SavedBoardView | null;
+  editable: boolean;
+  onRename: (name: string) => void;
+  onDelete: () => void;
 }) {
-  const { shared, private: mine } = splitByVisibility(views, currentUserId);
-  const label = isSystemView(current) ? "전체" : current.name;
-
-  const row = (view: TabView) => {
-    const badge = dynamicBadge(view);
-    const isCurrent = !isSystemView(current) && current.id === view.id;
-    return (
-      <button key={view.id} type="button" className={styles.pickerItem} aria-current={isCurrent} onClick={() => onSelect(view)}>
-        <span style={{ flex: 1 }}>
-          {view.name}
-          {badge ? <span className={styles.pickerBadge}>{badge}</span> : null}
-        </span>
-        {isCurrent ? <span aria-hidden>✓</span> : null}
-      </button>
-    );
-  };
-
+  const [name, setName] = useState(view?.name ?? "");
+  if (!view) return null;
   return (
     <details className={styles.picker}>
-      <summary>
-        <span className={styles.pickerLabel}>화면</span>
-        {label}
-      </summary>
+      <summary aria-label={`${view.name} 뷰 관리`}>뷰 관리</summary>
       <div className={styles.pickerMenu}>
-        <button type="button" className={styles.pickerItem} onClick={() => onSelect({ system: true, kind: isSystemView(current) ? current.kind : "board", name: "전체" })}>
-          <span style={{ flex: 1 }}>
-            전체
-            <span className={styles.pickerHint}>조건 없이 모두</span>
-          </span>
-          {isSystemView(current) ? <span aria-hidden>✓</span> : null}
-        </button>
-        {shared.length ? (
+        <label className={styles.field}>
+          <span>이름</span>
+          <input value={name} disabled={!editable} onChange={(event) => setName(event.target.value)} />
+        </label>
+        {editable ? (
           <>
-            <div className={styles.pickerGroup}>회사 공용</div>
-            {shared.map(row)}
+            <button type="button" className={styles.pickerItem} disabled={!name.trim()} onClick={() => onRename(name.trim())}>이름 저장</button>
+            <button type="button" className={styles.pickerNew} onClick={onDelete}>뷰 삭제</button>
           </>
         ) : null}
-        {mine.length ? (
-          <>
-            <div className={styles.pickerGroup}>나만 보기</div>
-            {mine.map(row)}
-          </>
-        ) : null}
-        <button type="button" className={styles.pickerNew} onClick={onRequestSave}>
-          + 지금 조건을 저장
-        </button>
+        {!editable ? <p className={styles.pickerHint}>공용 뷰는 만든 사람 또는 회사 관리자가 편집합니다.</p> : null}
       </div>
-      {hiddenCount ? (
-        <span className={styles.hiddenNotice} role="status">
-          🔒 권한 밖 {hiddenCount}건 숨김
-        </span>
-      ) : null}
     </details>
   );
 }
