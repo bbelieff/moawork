@@ -4,14 +4,18 @@ import { MemberOrganizationChart } from "@/components/member-organization/Member
 import { PermissionMatrix } from "@/components/member-organization/perm/PermissionMatrix";
 import { loadPermissionMatrix } from "@/lib/perm/server";
 import { isRole, type Role } from "@/lib/perm/matrix";
+import { isManager } from "@/lib/auth/roles";
+import { OrgLogoCard } from "@/components/org-logo/OrgLogoCard";
+import { loadOrgLogoView } from "@/lib/org-logo/server";
 
 export default async function MembersPage({ searchParams }: { searchParams: Promise<{ role?: string }> }) {
   const ctx = await getSession();
   const requestedRole = (await searchParams).role;
   const activeRole: Role = requestedRole && isRole(requestedRole) ? requestedRole : "member";
-  const [summary, permission] = await Promise.all([
+  const [summary, permission, logo] = await Promise.all([
     loadMemberOrgSummary(ctx),
     loadPermissionMatrix(ctx.org.id),
+    loadOrgLogoView(ctx.org.id),
   ]);
   const viewerRole: Role = ctx.role === "owner" || ctx.role === "admin" ? ctx.role : "member";
   const permissionAccess = permission.ok
@@ -24,6 +28,8 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
         <h1 className="text-xl font-semibold">우리 회사와 팀</h1>
         <p className="mt-1 text-sm text-zinc-500">{ctx.org.name}에서 함께 일하는 사람과 업무 범위를 확인해요.</p>
       </header>
+
+      <OrgLogoCard orgName={ctx.org.name} logo={logo} canManage={isManager(ctx.role)} />
 
       {summary.kind === "ready" ? (
         <MemberOrganizationChart

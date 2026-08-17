@@ -22,6 +22,7 @@ import { loadNotifySnapshot } from "@/lib/notify/server";
 import { loadPlatformActor } from "@/lib/platform/actor";
 import { ensureApprovedWorkspaceOnEntry } from "@/lib/workspace-entry/bootstrap";
 import { createClient } from "@/lib/supabase/server";
+import { loadOrgLogoSignedUrls } from "@/lib/org-logo/server";
 
 function WorkspaceBootstrapUnavailable({ slug }: { slug: string }) {
   return (
@@ -67,6 +68,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     : null;
   const workspaceEntryContext = await loadWorkspaceEntryContext();
   const platformActor = await loadPlatformActor();
+  // BBE-199 회사 로고. 로고가 하나도 없으면 Storage 왕복 0 — 그때는 이니셜 마크가 나온다.
+  // 로고가 있으면 워크스페이스가 N개라도 createSignedUrls 로 «한 번» 에 받는다.
+  const orgLogoUrls = routing.kind === "ready"
+    ? await loadOrgLogoSignedUrls(routing.memberships.map((membership) => membership.orgId))
+    : new Map<string, string>();
   const switcherWorkspaces = routing.kind === "ready"
     ? routing.memberships.map((membership) => ({
         orgId: membership.orgId,
@@ -74,7 +80,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         name: membership.name,
         role: membership.role,
         status: "active" as const,
-        signedImageUrl: null,
+        signedImageUrl: orgLogoUrls.get(membership.orgId) ?? null,
       }))
     : [];
   const switcherPendingRequests = workspaceEntryContext.kind === "ready"
