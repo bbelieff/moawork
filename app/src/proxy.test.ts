@@ -144,7 +144,7 @@ describe("proxy carries refreshed session cookies out of every exit (BBE-200)", 
     const start = source.indexOf("async function routeRequest(");
     expect(start).toBeGreaterThanOrEqual(0);
     let depth = 0;
-    let end = source.length;
+    let end = -1;
     for (let i = source.indexOf("{", start); i < source.length; i += 1) {
       if (source[i] === "{") depth += 1;
       if (source[i] === "}") {
@@ -152,7 +152,18 @@ describe("proxy carries refreshed session cookies out of every exit (BBE-200)", 
         if (depth === 0) { end = i; break; }
       }
     }
-    expect(source.slice(start, end).match(/NextResponse\s*\./g) ?? []).toHaveLength(0);
+    const body = source.slice(start, end);
+
+    // ★ fail-closed. 이 중괄호 카운터는 문자열·주석 안의 중괄호를 구분하지 못한다.
+    //   그런 게 들어와 본문이 «조기에» 잘리면 아래 NextResponse 단언이 «공허하게»
+    //   통과한다 — 계측 도구가 «판정 불능» 을 «통과» 로 접는 것이다. 그래서 먼저
+    //   «본문을 통째로 제대로 떠냈는지» 를 검사한다. 못 떠냈으면 그 자체가 빨간불이다.
+    expect(end).toBeGreaterThan(start);
+    for (const marker of ["getSupabaseEnv", "decideWorkspaceNamespace", "protectedWorkspacePath", "return { kind: \"pass\" };"]) {
+      expect(body).toContain(marker);
+    }
+
+    expect(body.match(/NextResponse\s*\./g) ?? []).toHaveLength(0);
   });
 
   it("⑦ keeps every setAll batch when Supabase writes chunked cookies", async () => {
@@ -163,7 +174,11 @@ describe("proxy carries refreshed session cookies out of every exit (BBE-200)", 
     expect(cookieOn(response, ROTATED_1.name)?.value).toBe(ROTATED_1.value);
   });
 
-  it("⑧ logout: 지워진 세션 쿠키를 되살리지 않는다", async () => {
+  it("⑧ 회귀 가드 — 출구가 요청 쿠키를 되살리지 않는다 (로그아웃이 되살아나면 안 된다)", async () => {
+    // ★ 이 테스트는 «이 PR 이 고친 버그» 를 재현하지 않는다. 수정 전 코드에서도 통과한다.
+    //   막는 대상은 앞으로의 회귀다 — 출구가 «요청 쿠키를 응답에 되싣는» 식으로 바뀌면
+    //   삭제 지시가 옛 값으로 덮여 로그아웃이 되살아난다. 출구는 ssr 이 준 것만 싣는다.
+    //   (이 PR 의 증거로 오해하지 마라. 증거는 ①~⑦ 과 변이표다.)
     setupRotating(null, [], clearSession);
     const response = await proxy(new NextRequest("https://www.moa-work.com/auth/signout", {
       headers: { cookie: "sb-fake-auth-token.0=stale-fake-value" },
@@ -172,6 +187,40 @@ describe("proxy carries refreshed session cookies out of every exit (BBE-200)", 
     expect(cleared?.value).toBe("");
     expect(cleared?.maxAge).toBe(0);
     expect(response.headers.get("set-cookie") ?? "").not.toContain("stale-fake-value");
+  });
+
+  it("⑨ 접근 거부 응답은 mw_org 를 삭제한다 (갱신 쿠키에 덮이지 않는다)", async () => {
+    // 이번 리팩터가 «순서를 옮긴 바로 그 지점». 구·신 테스트 모두 단언이 없었다.
+    setupRotating({ id: "user-1" }, [membership("org-acme", "acme")], rotateOnce);
+    const response = await proxy(new NextRequest("https://www.moa-work.com/w/not-mine/deals/123", {
+      headers: { cookie: "mw_org=org-acme" },
+    }));
+    const org = cookieOn(response, "mw_org");
+    expect(org?.value).toBe("");
+    expect(cookieOn(response, ROTATED_0.name)?.value).toBe(ROTATED_0.value);
+  });
+
+  it("⑩ alias 리다이렉트(/acme → /w/acme)도 갱신 쿠키·mw_org·slug 를 싣는다", async () => {
+    setupRotating({ id: "user-1" }, [membership("org-acme", "acme")], rotateOnce);
+    const response = await proxy(new NextRequest("https://www.moa-work.com/acme?tab=notes"));
+    expect(response.headers.get("location")).toBe("https://www.moa-work.com/w/acme?tab=notes");
+    expect(cookieOn(response, ROTATED_0.name)?.value).toBe(ROTATED_0.value);
+    expect(cookieOn(response, "mw_org")?.value).toBe("org-acme");
+    expect(cookieOn(response, "mw_workspace_slug")?.value).toBe("acme");
+  });
+
+  it("⑪ Set-Cookie 순서 고정 — 갱신 세션 쿠키가 라우팅 쿠키보다 «먼저»", async () => {
+    // ★ 주석으로만 적어두면 다음 사람이 «정리» 하다 뒤집는다. 실제로 헤더가 달라지는데
+    //   (DC-12 가 변이로 실측) 아무 테스트도 안 잡던 자리다 — 「지키지 않는 것을
+    //   지킨다고 적어둔 상태」였다. 이름 충돌은 오늘 없지만, 순서 자체를 못박는다.
+    setupRotating({ id: "user-1" }, [membership("org-acme", "acme")], rotateOnce);
+    const response = await proxy(new NextRequest("https://www.moa-work.com/w/acme/deals/123"));
+    const setCookie = response.headers.get("set-cookie") ?? "";
+    const refreshedAt = setCookie.indexOf(`${ROTATED_0.name}=`);
+    const routingAt = setCookie.indexOf("mw_org=");
+    expect(refreshedAt).toBeGreaterThanOrEqual(0);
+    expect(routingAt).toBeGreaterThanOrEqual(0);
+    expect(refreshedAt).toBeLessThan(routingAt);
   });
 });
 

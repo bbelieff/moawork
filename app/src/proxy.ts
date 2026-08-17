@@ -23,13 +23,20 @@ import { WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
 //   (lib/supabase/server.ts:21-24) proxy 가 «유일한 갱신 지점» 이다.
 //
 //   그래서 이 파일은 분기마다 쿠키를 손으로 복사하지 않는다. 우회를 «테스트로 세는»
-//   대신 «타입으로 불가능하게» 만든다:
+//   대신 «타입 + 테스트로» 막는다:
 //
 //     routeRequest()  라우팅 «판단» 만 한다. 반환형이 RouteDecision 이라
 //                     응답 객체를 만들 수도, 돌려줄 수도 없다 (tsc 가 막는다).
 //     buildResponse() 응답을 만드는 유일한 곳. 갱신 세션 쿠키를 여기서 싣는다.
 //
-//   ★ routeRequest 안에서 NextResponse 를 만들지 마라. 반환하려는 순간 타입 오류다.
+//   ★ 방어의 «정체» 를 정확히 알아둬라 — 타입만으로는 충분하지 않다.
+//     DC-12 가 세 방향으로 뚫어본 실측:
+//       · routeRequest 가 NextResponse 를 return       → tsc 가 막는다 (TS2322)
+//       · `as any` 로 우회                              → eslint + 테스트 2건이 막는다
+//       · proxy() 가 buildResponse 를 건너뛰고 «새 출구»  → 타입은 못 막는다.
+//                                                        테스트 11건이 막는다
+//     세 번째가 진짜 회귀 모양이다(「새 출구가 생긴다」). 그러니 이 파일의 테스트를
+//     지우면 방어가 사라진다. 「타입이 막으니 안전하다」고 믿지 마라.
 
 const PUBLIC_PATHS = ["/login", "/auth"];
 const WORKSPACE_SLUG_COOKIE = "mw_workspace_slug";
@@ -40,9 +47,20 @@ const WORKSPACE_PROTECTED_ROOTS = new Set([
 
 type RefreshedCookie = { name: string; value: string; options: Record<string, unknown> };
 
+// 손으로 쓰는 워크스페이스 쿠키의 옵션. ★ Record<string, unknown> 로 두지 마라 —
+// 그러면 `sameSite: "Lax"`(대문자)나 `httponly` 같은 오타가 «조용히 무시된다».
+// 쿠키 보안 속성이 소리 없이 빠지는 유형이라, 구체 타입으로 좁혀 tsc 가 잡게 한다.
+// (갱신 세션 쿠키 쪽은 @supabase/ssr 이 «만들어» 주므로 오타 위험이 없다.)
+type WorkspaceCookieOptions = {
+  path: string;
+  httpOnly: boolean;
+  sameSite: "lax";
+  secure: boolean;
+};
+
 /** 라우팅이 응답에 요구하는 쿠키 조작(세션 갱신 쿠키와는 별개다). */
 type CookieOp =
-  | { op: "set"; name: string; value: string; options: Record<string, unknown> }
+  | { op: "set"; name: string; value: string; options: WorkspaceCookieOptions }
   | { op: "delete"; name: string };
 
 /** 응답 «판단». 응답 «객체» 가 아니다 — 그래서 우회 return 이 만들어지지 않는다. */
@@ -56,7 +74,7 @@ type RouteDecision =
       cookies?: CookieOp[];
     };
 
-function workspaceCookieOptions(): Record<string, unknown> {
+function workspaceCookieOptions(): WorkspaceCookieOptions {
   return { path: "/", httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" };
 }
 
@@ -178,8 +196,11 @@ async function routeRequest(
     if (decision.kind === "alias") {
       return { kind: "redirect", to: new URL(decision.canonical, request.url), cookies };
     }
-    // 갱신된 쿠키를 rewrite 대상 요청에 실어 보낸다. 이게 빠지면 응답 쿠키는
-    // 살아도 그 요청을 처리하는 서버 컴포넌트가 옛 쿠키를 읽는다.
+    // rewrite 대상 요청이 갱신된 쿠키를 들고 가게 한다.
+    // ★ 실제로 그 일을 하는 줄은 여기가 아니라 위 setAll 의 `request.cookies.set()` 이다.
+    //   (DC-12 가 아래 두 줄을 지우고 헤더를 바이트 단위로 비교했더니 동일했다.)
+    //   아래 두 줄은 무해한 이중 방어로 남긴다 — 지워도 오늘은 같지만, 갱신 값이
+    //   요청에 실리는 경로를 명시적으로 두는 쪽이 읽는 사람에게 안전하다.
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("cookie", request.cookies.toString());
     return { kind: "rewrite", to: new URL(decision.internal, request.url), requestHeaders, cookies };
@@ -216,7 +237,12 @@ function buildResponse(request: NextRequest, decision: RouteDecision, jar: Retur
         : NextResponse.next({ request });
 
   // 세션 갱신 쿠키가 먼저, 라우팅이 요구한 쿠키 조작이 그 위에.
-  // (이름이 겹치면 라우팅 의도가 이긴다 — 예: 접근 거부 시 mw_org 삭제)
+  //
+  // ★ 순서를 뒤집지 마라. 다만 «오늘의 이름 공간에서는 실재하는 충돌 사례가 없다» —
+  //   라우팅 쿠키는 전부 `mw_*` 이고 갱신 세션 쿠키는 `sb-*-auth-token[.N]` 이라
+  //   이름이 겹칠 수가 없다. 이건 앞으로 겹치게 될 때를 위한 방어이고,
+  //   그때는 라우팅 의도가 이겨야 한다(예: 접근 거부 응답의 삭제 지시).
+  //   ※ 없는 충돌 사례를 찾다가 이 규칙을 지우지 마라. 지금 안 겹치는 게 맞다.
   jar.applyTo(response);
   for (const cookie of decision.cookies ?? []) {
     if (cookie.op === "delete") response.cookies.delete(cookie.name);
