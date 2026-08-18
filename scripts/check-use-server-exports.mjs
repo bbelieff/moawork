@@ -42,7 +42,18 @@ const normalize = (source) => source.split("\r\n").join("\n");
  * 함수 본문 안의 "use server" 는 그 함수 하나에만 걸리는 인라인 지시어라 대상이 아니다.
  */
 export function isUseServerFile(source) {
-  const head = normalize(source).replace(/^﻿/, "").trimStart();
+  let head = normalize(source).replace(/^﻿/, "").trimStart();
+  // ★ 선행 «주석» 도 벗긴다 (DC-16 검수 지적).
+  //   JS 지시자 프롤로그는 주석 뒤에 와도 유효하다. 주석을 안 벗기면
+  //   「// 설명」 한 줄이 붙은 파일이 «대상 집합에서 조용히 빠진다».
+  //   그러면 이 검사기의 「위반 0」이 «깨끗하다» 가 아니라 «안 봤다» 가 된다.
+  //   export 판정에서는 「판정 불능을 통과로 접지 마라」를 지켰는데
+  //   파일 «분류» 에서만 놓쳤던 자리다.
+  for (;;) {
+    const before = head;
+    head = head.replace(/^\/\*[\s\S]*?\*\//, "").replace(/^\/\/[^\n]*\n?/, "").trimStart();
+    if (head === before) break;
+  }
   return /^(["'])use server\1\s*;?/.test(head);
 }
 
@@ -100,6 +111,26 @@ function selfTest() {
     [
       "함수 «안» 의 지시어는 파일 규칙이 아니다",
       () => isUseServerFile('export function f() {\n  "use server";\n}\n') === false,
+    ],
+    [
+      "★ 줄주석이 먼저 와도 대상이다 (JS 프롤로그는 주석 뒤를 허용한다)",
+      () => isUseServerFile('// 이 파일의 서버 액션들\n"use server";\n') === true,
+    ],
+    [
+      "★ 블록주석이 먼저 와도 대상이다",
+      () => isUseServerFile('/* 머리주석\n   여러 줄 */\n"use server";\n') === true,
+    ],
+    [
+      "★★ 주석 «안» 에만 use server 가 있고 실제 지시자는 없으면 대상이 아니다",
+      // 주석을 벗기게 만들면서 생긴 반대방향 위험이다 — 벗긴 뒤 판정하므로 false 여야 한다.
+      () => isUseServerFile('// "use server" 를 쓰지 않는다\nexport const a = 1;\n') === false,
+    ],
+    [
+      "★ 주석이 앞서도 위반을 찾는다 (분류와 탐지가 이어져 있는지)",
+      () => {
+        const src = '// 머리주석\n"use server";\nexport const A = 1;\n';
+        return isUseServerFile(src) === true && findBadExports(src)[0]?.kind === "violation";
+      },
     ],
     ["async 함수만 있으면 깨끗하다", () => findBadExports('"use server";\nexport async function a() {}').length === 0],
     [
