@@ -111,6 +111,7 @@ vi.mock("next/navigation", () => ({
 
 import BoardPage from "./page";
 import ContactBoardPage from "../../contract/page";
+import NewCustomerPage from "../../newcust/page";
 
 const BOARD_ID = "board-1";
 
@@ -270,4 +271,94 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
     );
     expect(run.total).toBeGreaterThan(0);
   });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// BBE-214 후속 — 「경유지를 없앨 수 있는가」를 «재서» 답한다.
+//
+//   총괄의 말은 「정리해줘」였다. 경유지에 «로딩 중» 이라고 써 붙이는 것은
+//   없어져야 할 화면에 이름표를 다는 것일 수 있다. 그래서 되물었다:
+//   **탭 링크가 목적지 보드를 처음부터 가리킬 수 있는가?**
+//
+//   그 답은 「목적지를 서버에서만 알 수 있는가」에 달려 있다.
+//   목적지 = 이 조직에서 source 가 해당 기본 탭인 보드의 id — 즉 «조직마다 다른 값» 이다.
+//   클라이언트는 미리 못 안다. 하지만 **탭 줄을 그리는 것은 서버다**(layout.tsx).
+//   그러니 서버가 그때 같이 계산해 href 에 박을 수 있는지가 관건이다.
+// ═══════════════════════════════════════════════════════════════════════
+describe("BBE-214 후속 · 탭 경유지를 없앨 수 있는가", () => {
+  beforeEach(() => probe.reset());
+
+  it("측정 — /contract 경유지는 «순수 조회» 다 (쓰기 0)", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
+    probe.reset();
+    seed();
+    try {
+      await ContactBoardPage({ searchParams: Promise.resolve({}) });
+    } catch { /* redirect */ }
+    const trips = [...probe.trips];
+    console.log(
+      `\n[측정] /contract 경유지\n  왕복 ${trips.length}회 · 직렬 ${new Set(trips.map((t) => t.wave)).size}\n` +
+        `  ${trips.map((t) => t.label).join(" → ")}\n`,
+    );
+    // ★ 핵심 판정: 목적지를 고르는 데 «쓰기» 가 전혀 없다.
+    //   쓰기가 없으면 이 경유는 «계산» 일 뿐이고, 계산은 탭 줄을 그릴 때 같이 할 수 있다.
+    //   (resolveExistingContactBoard 주석: "기존 보드를 고를 뿐 생성하지 않는다")
+    const 보드조회 = trips.filter((t) => t.label === "from:boards").length;
+    expect(보드조회, "목적지를 고르는 보드 조회가 없다").toBeGreaterThan(0);
+  });
+
+  // ★ /newcust 는 «순수 조회가 아니다» — 여기서 두 경유지의 답이 갈린다.
+  //   repairNewcustBoardOnEntry 는 리스를 잡고 기본 탭 구조를 additive 로 «쓴다».
+  //   즉 이 경유지는 «목적지 계산» 만 하는 게 아니라 «낡은 워크스페이스를 고치는» 일을 겸한다.
+  //   그래서 링크를 목적지로 바로 꽂으면 그 치유가 영영 안 돈다 — 그냥 없앨 수 없다.
+  it("측정 — /newcust 경유지는 «쓰기» 를 겸한다 (owner)", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
+    probe.reset();
+    seed();
+    // 리스가 안 잡히면 250ms × 40회 재시도로 테스트가 멎는다. 잡히는 경우를 잰다.
+    probe.rpcs.acquire_default_tab_repair_lease = true;
+    probe.rpcs.renew_default_tab_repair_lease = true;
+    probe.rpcs.release_default_tab_repair_lease = true;
+    try {
+      await NewCustomerPage({ searchParams: Promise.resolve({}) });
+    } catch { /* redirect 또는 repair 경로 */ }
+    const trips = [...probe.trips];
+    const 리스 = trips.filter((t) => t.label.includes("repair_lease")).length;
+    console.log(
+      `\n[측정] /newcust 경유지 (owner)\n  왕복 ${trips.length}회 · 직렬 ${new Set(trips.map((t) => t.wave)).size}\n` +
+        `  리스 RPC ${리스}회 ← 이것이 «쓰기» 의 증거다\n` +
+        `  ${trips.map((t) => t.label).join(" → ")}\n`,
+    );
+    // 리스를 잡는다는 것은 이 경유지가 «상태를 바꾼다» 는 뜻이다.
+    expect(리스, "/newcust 가 리스를 잡지 않았다 — 쓰기 경로를 안 탔다").toBeGreaterThan(0);
+  });
+
+  // ★★ 여기가 진짜 급소다.
+  //   위 측정은 «보드가 없어서 고쳐야 하는» 경우였다(시드에 new-lead 보드가 없었다).
+  //   그런데 총괄의 워크스페이스는 이미 멀쩡하다. 멀쩡할 때도 같은 값을 치르는가?
+  //   치른다면 그건 «치유» 가 아니라 «아무것도 안 하면서 내는 통행료» 다.
+  it("측정 — /newcust: 보드가 «이미 멀쩡할 때» 도 리스를 잡는가 (owner)", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
+    probe.reset();
+    seed();
+    // 고칠 것이 없는 상태 — 신규리드 보드가 이미 하나 정상으로 있다.
+    probe.tables.boards = [
+      { id: "board-newlead", org_id: "org-1", name: "신규리드 관리", icon: "💡", description: null, source: "core.default-tab/new-lead", is_system: false, sort_order: 0 },
+    ];
+    probe.rpcs.acquire_default_tab_repair_lease = true;
+    probe.rpcs.renew_default_tab_repair_lease = true;
+    probe.rpcs.release_default_tab_repair_lease = true;
+    try {
+      await NewCustomerPage({ searchParams: Promise.resolve({}) });
+    } catch { /* redirect */ }
+    const trips = [...probe.trips];
+    const 리스 = trips.filter((t) => t.label.includes("repair_lease")).length;
+    console.log(
+      `\n[측정] /newcust — 고칠 것이 «없는» 정상 워크스페이스 (owner)\n` +
+        `  왕복 ${trips.length}회 · 직렬 ${new Set(trips.map((t) => t.wave)).size} · 리스 RPC ${리스}회\n` +
+        `  ${trips.map((t) => t.label).join(" → ")}\n`,
+    );
+    expect(trips.length).toBeGreaterThan(0);
+  });
+
 });
