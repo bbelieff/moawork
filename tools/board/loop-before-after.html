@@ -291,49 +291,70 @@ footer { margin-top:46px; padding-top:18px; border-top:1px solid var(--line);
   <p class="sub">총괄이 정의한 여정 위에 지금 상태를 얹으면 이렇게 된다.</p>
 
   <figure>
-    <svg viewBox="0 0 820 230" role="img"
-      aria-label="엑셀 등록, 고객사 등록, 실무 플로우 진행, 수금 네 단계 중 수금 단계는 settlements 테이블에 쓰는 코드 경로가 존재하지 않아 끊겨 있다">
+    <svg viewBox="0 0 820 300" role="img"
+      aria-label="네 단계 중 엑셀 등록은 실사용자용 코드가 없고, 실무 진입은 신규리드만 보드에 투영되며, 실무 진행은 완전히 동작하고, 수금은 컬럼과 계산이 다 있으나 실무 보드에 행을 만드는 경로가 없어 3단계와 4단계 사이가 끊겨 있다">
       <defs>
         <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
           <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
         </marker>
+        <marker id="a4r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/>
+        </marker>
       </defs>
 
-      <rect x="26" y="52" width="170" height="58" rx="9" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <text x="111" y="78" font-size="13.5" text-anchor="middle" fill="currentColor" font-weight="600">① 엑셀로 등록</text>
-      <text x="111" y="97" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">고객사 일괄 입력</text>
+      <rect x="20" y="56" width="176" height="66" rx="9" fill="none" stroke="#DC2626" stroke-width="2"/>
+      <text x="108" y="80" font-size="13.5" text-anchor="middle" fill="currentColor" font-weight="600">① 엑셀로 등록</text>
+      <text x="108" y="98" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">고객사 일괄 입력</text>
+      <text x="108" y="114" font-size="11.5" text-anchor="middle" fill="#DC2626" font-weight="700">없다</text>
 
-      <line x1="198" y1="81" x2="230" y2="81" stroke="currentColor" stroke-width="1.5" marker-end="url(#a4)"/>
+      <line x1="198" y1="89" x2="226" y2="89" stroke="currentColor" stroke-width="1.5" marker-end="url(#a4)"/>
 
-      <rect x="232" y="52" width="170" height="58" rx="9" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <text x="317" y="78" font-size="13.5" text-anchor="middle" fill="currentColor" font-weight="600">② 실무 플로우 진입</text>
-      <text x="317" y="97" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">보드·탭에 올라감</text>
+      <rect x="228" y="56" width="176" height="66" rx="9" fill="none" stroke="#D97706" stroke-width="2"/>
+      <text x="316" y="80" font-size="13.5" text-anchor="middle" fill="currentColor" font-weight="600">② 실무 진입</text>
+      <text x="316" y="98" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">보드에 행이 생김</text>
+      <text x="316" y="114" font-size="11.5" text-anchor="middle" fill="#D97706" font-weight="700">반쪽 — 신규리드만</text>
 
-      <line x1="404" y1="81" x2="436" y2="81" stroke="currentColor" stroke-width="1.5" marker-end="url(#a4)"/>
+      <line x1="406" y1="89" x2="434" y2="89" stroke="currentColor" stroke-width="1.5" marker-end="url(#a4)"/>
 
-      <rect x="438" y="52" width="170" height="58" rx="9" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <text x="523" y="78" font-size="13.5" text-anchor="middle" fill="currentColor" font-weight="600">③ 실무 진행</text>
-      <text x="523" y="97" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">단계 이동·담당·상태</text>
+      <rect x="436" y="56" width="176" height="66" rx="9" fill="none" stroke="#16A34A" stroke-width="2"/>
+      <text x="524" y="80" font-size="13.5" text-anchor="middle" fill="currentColor" font-weight="600">③ 실무 진행</text>
+      <text x="524" y="98" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">단계 이동·셀 저장</text>
+      <text x="524" y="114" font-size="11.5" text-anchor="middle" fill="#16A34A" font-weight="700">있다</text>
 
-      <line x1="610" y1="81" x2="642" y2="81" stroke="#DC2626" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#a4)"/>
+      <line x1="614" y1="89" x2="642" y2="89" stroke="#DC2626" stroke-width="2.5" stroke-dasharray="5 4" marker-end="url(#a4r)"/>
+      <line x1="622" y1="76" x2="638" y2="102" stroke="#DC2626" stroke-width="2.5"/>
+      <line x1="638" y1="76" x2="622" y2="102" stroke="#DC2626" stroke-width="2.5"/>
 
-      <rect x="644" y="52" width="150" height="58" rx="9" fill="none" stroke="#DC2626" stroke-width="2"/>
-      <text x="719" y="78" font-size="13.5" text-anchor="middle" fill="#DC2626" font-weight="700">④ 수금</text>
-      <text x="719" y="97" font-size="11" text-anchor="middle" fill="#DC2626">입금 확인·수납 완료</text>
+      <rect x="644" y="56" width="156" height="66" rx="9" fill="none" stroke="#16A34A" stroke-width="2"/>
+      <text x="722" y="80" font-size="13.5" text-anchor="middle" fill="currentColor" font-weight="600">④ 수금</text>
+      <text x="722" y="98" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">수수료·입금일·집계</text>
+      <text x="722" y="114" font-size="11.5" text-anchor="middle" fill="#16A34A" font-weight="700">부품은 다 있다</text>
 
-      <path d="M719,118 L719,140" stroke="#DC2626" stroke-width="1.5"/>
-      <text x="719" y="158" font-size="11.5" text-anchor="middle" fill="#DC2626" font-weight="700">여기가 끊겨 있다</text>
-      <text x="719" y="176" font-size="10.5" text-anchor="middle" fill="#DC2626" opacity=".9">settlements 에 «쓰는»</text>
-      <text x="719" y="190" font-size="10.5" text-anchor="middle" fill="#DC2626" opacity=".9">코드 경로가 0건</text>
+      <path d="M630,132 L630,158" stroke="#DC2626" stroke-width="1.6"/>
+      <text x="630" y="176" font-size="13" text-anchor="middle" fill="#DC2626" font-weight="700">여기가 진짜 급소다</text>
+      <text x="630" y="195" font-size="11" text-anchor="middle" fill="#DC2626">「업무관리 이동」이 deals.stage_id 만 바꾼다</text>
+      <text x="630" y="211" font-size="11" text-anchor="middle" fill="#DC2626">계약업체 실무 보드에 «행» 을 안 만든다</text>
+      <text x="630" y="227" font-size="10.5" text-anchor="middle" fill="currentColor" opacity=".65">→ 수금 컬럼이 있는 보드가 영원히 빈다</text>
 
-      <text x="317" y="150" font-size="11.5" text-anchor="middle" fill="#D97706" font-weight="600">①②③ 은 조사 중 — 「있다」와 「반쪽」을 가리는 중</text>
-      <text x="317" y="170" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">UI 는 있는데 저장 경로가 인메모리인 자리가 여럿 있다</text>
-      <text x="317" y="186" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">그건 «있다» 로 세지 않는다</text>
+      <text x="108" y="150" font-size="11" text-anchor="middle" fill="currentColor" opacity=".65">.xlsx 파서 0건</text>
+      <text x="108" y="166" font-size="11" text-anchor="middle" fill="currentColor" opacity=".65">CSV 는 /platform/demo</text>
+      <text x="108" y="182" font-size="11" text-anchor="middle" fill="currentColor" opacity=".65">관리자 전용에만 있다</text>
+
+      <line x1="30" y1="252" x2="790" y2="252" stroke="currentColor" stroke-width="1" opacity=".16"/>
+      <text x="410" y="276" font-size="12" text-anchor="middle" fill="currentColor" opacity=".8" font-weight="600">
+        ① 은 «입구가 없다» — 손으로 등록하면 우회된다
+      </text>
+      <text x="410" y="293" font-size="12" text-anchor="middle" fill="#DC2626" font-weight="650">
+        ③→④ 는 «길이 끊겼다» — 우회하면 딜과 보드 행이 서로 모른다
+      </text>
     </svg>
     <figcaption>
-      <b>④ 수금이 끊긴 것은 오늘 코드로 확인된 사실이다</b>(Linear <code>BBE-231</code>).
-      <code>settlements</code> 테이블을 읽는 코드는 한 곳 있지만, 행을 넣는 경로가 저장소 전체에 없다 —
-      마이그레이션의 INSERT 0건, Supabase 어댑터 참조 0건. 「지금 비어 있다」가 아니라 <b>「채울 방법이 없다」</b>다.
+      <b>★ 정정 — 처음에 나는 「④가 <code>settlements</code> 때문에 끊겼다」고 그렸는데 틀렸다.</b>
+      이 여정은 <code>settlements</code> 를 쓰지 않는다. <code>item_values</code> 를 쓴다.
+      수금 컬럼(<code>fee_percent</code>·<code>fee_paid_on</code>·<code>contract_deposit</code>…)도,
+      수수료 자동계산 트리거도, 「이번 달 실현액」 집계 RPC 도 <b>전부 이미 있고 키까지 일치한다.</b>
+      끊긴 곳은 ④ 안이 아니라 <b>③과 ④ 사이</b>다 — 코드가 스스로 적어 뒀다:
+      <code>// "업무관리 이동" 이 업무관리 보드로 넘기는 트리거다(WO-5). 구조만 심는다.</code>
     </figcaption>
   </figure>
 </section>
@@ -465,12 +486,54 @@ footer { margin-top:46px; padding-top:18px; border-top:1px solid var(--line);
 <section>
   <div class="note bad">
     <span class="h">이번 루프의 정직한 결산</span>
-    <b>제품은 한 발짝도 안 나갔다.</b> 출시를 막는 카드는 그대로고, 그중 <code>BBE-196</code>
-    (컬럼 삭제가 다른 보드의 컬럼을 지운다 · Urgent)은 아직 주인조차 없다.
+    <b>제품은 한 발짝도 안 나갔다.</b> 지목된 카드 8장 전부 주인이 없고, 그중 7장은 착수 도장조차 0건이다.
+    <code>BBE-196</code>(컬럼 삭제가 다른 보드의 컬럼을 지운다 · Urgent)은 생성 이후 1초도 갱신되지 않았다.
+    <br><br>
+    다만 정체의 원인은 밝혀졌다 — <code>BBE-189</code>가 <b>「8/20 전에는 신규 배차를 열지 않는다」</b>고
+    적어 뒀다. 크레딧 제한에 따른 <b>계획된 동결</b>이고, <b>내일 풀린다.</b>
+    그 동결이 Urgent 까지 덮은 것은 예상 못 한 부작용이다.
     <br><br>
     이번에 만든 것은 <b>「안 나갔다」고 말할 수 있는 자리</b>다. 그 자리가 없었기 때문에
-    지난 이틀 동안 아무도 그 사실을 몰랐다. 다음 루프의 첫 일은 이 판을 다시 만드는 것이 아니라,
-    <b>총괄이 정의한 여정에서 끊긴 곳을 잇는 것</b>이다.
+    지난 이틀 동안 아무도 그 사실을 몰랐다.
+  </div>
+</section>
+
+<section>
+  <h2>다음 루프의 첫 일</h2>
+  <p class="sub">판을 더 만드는 것이 아니라, 끊긴 곳을 잇는 것.</p>
+  <div class="tbl">
+    <table>
+      <thead><tr><th style="width:14%">크기</th><th style="width:44%">할 일</th><th style="width:42%">왜 이 크기인가</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b style="color:var(--bad)">반나절</b></td>
+          <td class="now">③→④ 투영 — 「업무관리 이동」이 계약업체 실무 보드에 행을 만들게 한다</td>
+          <td class="was"><code>087</code> 의 <code>create_new_lead</code> 가 이미 「딜 → 보드 항목」을
+            정확히 그렇게 한다. <b>본보기를 베끼면 된다</b></td>
+        </tr>
+        <tr>
+          <td><b>반나절</b></td>
+          <td class="now">CSV 일괄 등록 최소판 — <code>CsvImportDialog</code> 를 <code>/companies</code> 에 재마운트</td>
+          <td class="was">파서와 UI 가 이미 동작한다. <b>마운트 지점만 데모 전용이다</b></td>
+        </tr>
+        <tr>
+          <td><b>하루</b></td>
+          <td class="now">그 CSV 를 RPC 로 내려 트랜잭션·멱등·부분실패 격리</td>
+          <td class="was">멱등키 규약은 <code>025</code> RPC 것을 복제하면 된다</td>
+        </tr>
+        <tr>
+          <td><b>하루~며칠</b></td>
+          <td class="now"><code>.xlsx</code> 지원</td>
+          <td class="was">파서 의존성 도입 판단 필요 — <b>1차는 CSV 로 좁히는 것을 권한다</b></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note bad" style="margin-top:14px">
+    <span class="h">★ 판에 없는 것</span>
+    <b>③→④ 투영에 해당하는 Linear 카드가 없다.</b> 코드 주석에 <code>WO-5</code> 로만 언급되고
+    카드가 만들어진 적이 없다. <b>MVP 의 진짜 P0 인데 판에 존재하지 않는다</b> —
+    그래서 어떤 관제판으로도 볼 수 없었다.
   </div>
 </section>
 

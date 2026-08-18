@@ -397,27 +397,38 @@ const OBSERVER = {
    ═══════════════════════════════════════════════════════════════ */
 const LAUNCH = {
   at: "2026-08-19",
-  status: "초안 — 총괄 확인 대기",
-  basis: "docs/coordination/디스패치-루프.md §7 + 2026-08-18 실측 결함",
+  status: "총괄 정의 반영",
+  basis: "총괄 원문 2026-08-19 + 코드 경로 실측",
+  goal: "고객사를 엑셀로 등록해 실무 플로우를 따라 수금까지 완료한다",
+  // state: none(없다) · half(반쪽) · ok(있다) — 사람이 코드를 읽고 판정한다.
+  // blockers 는 «카드가 있는 것» 만. 카드가 없으면 gap 에 적는다.
   criteria: [
-    { k: "데이터를 잃지 않는다",
-      why: "쓰다가 데이터가 사라지면 그 뒤 기능이 아무리 좋아도 못 쓴다. 유일한 «출시 불가» 조건.",
-      blockers: ["BBE-196","BBE-191","BBE-221","BBE-195"] },
-    { k: "새 워크스페이스가 «비어 있되 쓸 수 있다»",
-      why: "만들자마자 탭이 있고 데이터는 0 — 제품의 첫인상 전부.",
-      blockers: ["BBE-184","BBE-171"] },
-    { k: "여섯 탭이 목업대로 «눈으로 확인» 된다",
-      why: "테스트 초록은 화면을 증명하지 않는다. 사람이 본 증거가 필요하다.",
-      blockers: ["BBE-182"] },
-    { k: "로그인이 유지된다",
-      why: "여기가 깨지면 나머지를 아무도 못 본다.",
-      blockers: ["BBE-200","BBE-163"] },
+    { k: "① 엑셀로 고객사 일괄 등록", state: "none",
+      why: ".xlsx 파서가 저장소에 0건. CSV UI 는 실제로 동작하지만 /platform/demo 의 플랫폼 관리자 전용이라 일반 사용자가 도달할 수 없다.",
+      gap: "CsvImportDialog 를 /companies 에 재마운트 + createCompany 반복 (반나절)",
+      blockers: [] },
+    { k: "② 실무 보드 진입", state: "half",
+      why: "고객사·딜 쓰기는 운영 Supabase 경로로 제대로 간다. 그런데 보드 투영은 신규리드 전용 — 빠른 만들기로 만든 고객사는 어느 보드에도 행이 안 생긴다.",
+      gap: "",
+      blockers: ["BBE-171"] },
+    { k: "③ 실무 진행", state: "ok",
+      why: "보드 엔진이 운영 backed 다. 셀 저장·항목 추가·단계 이동·기본 탭 프로비저닝 전부 Supabase 로 간다.",
+      gap: "",
+      blockers: [] },
+    { k: "④ 수금", state: "half",
+      why: "수금 컬럼 5종·수수료 자동계산 트리거·이번달 실현액 집계 RPC 가 전부 이미 있고 키까지 맞는다. 그런데 계약업체 실무 보드에 «행» 이 생기는 자동 경로가 없다.",
+      gap: "★ 진짜 P0 — 「업무관리 이동」이 deals.stage_id 만 바꾸고 items INSERT 를 안 한다. 087 의 create_new_lead 가 본보기 (반나절)",
+      blockers: [] },
   ],
-  // 아직 «조건에 넣을지 판단 못 한» 것 — 비워두지 않고 적어둔다.
+  // ★ 판에 «없는» 것. 비워두면 다음 사람이 「다 카드화됐다」로 읽는다.
+  nocard: "③→④ 투영(WO-5) — MVP 의 진짜 P0 인데 Linear 카드가 없다. 코드 주석에만 있다.",
   undecided: [
-    "정산/수납 축의 세 출처 통합 (BBE-230·231·234) — 출시 전인가 후인가",
-    "성능 예산 (BBE-214 후속 BBE-222·223·226) — 느린 채로 나가도 되는가",
-  ]
+    "「출시」가 첫 고객 인도인가 공개 SaaS 인가 — 둘은 최소조건이 다르다",
+    "settlements 처리 (BBE-231) — 이 여정 «밖» 임이 확정됐다. 출시 후로 미룰 수 있는가",
+    "성능 예산 (BBE-222·223·226) — 느린 채로 나가도 되는가",
+  ],
+  // 여정이 굴러간 «뒤» 지킬 것. 초판이 출시조건으로 잘못 올렸던 것들.
+  gates: ["BBE-196","BBE-191","BBE-221","BBE-195","BBE-129","BBE-182"]
 };
 
 /* ─── Linear 계약 ───
@@ -631,64 +642,72 @@ function render() {
   /* 출시 — 조건은 손으로, 상태는 실시간 */
   const byId = {};
   RAW.forEach((i) => { byId[i.id] = i; });
-  let metCount = 0, blockOpen = [];
+  const STATE = {
+    none: { c: "var(--bad)",   t: "없다",   n: 0 },
+    half: { c: "var(--warn)",  t: "반쪽",   n: 0.5 },
+    ok:   { c: "var(--ok)",    t: "있다",   n: 1 },
+  };
+  let done = 0;
   const critHtml = LAUNCH.criteria.map((c) => {
-    const cards = c.blockers.map((id) => byId[id]).filter(Boolean);
-    const missing = c.blockers.filter((id) => !byId[id]);
-    const stillOpen = cards.filter(isOpen);
-    stillOpen.forEach((i) => { if (!blockOpen.includes(i)) blockOpen.push(i); });
-    const met = stillOpen.length === 0 && missing.length === 0;
-    if (met) metCount++;
-    const dot = met ? "var(--ok)" : stillOpen.some((i) => i.priority?.name === "Urgent") ? "var(--bad)" : "var(--warn)";
+    const st = STATE[c.state] || STATE.none;
+    done += st.n;
     const chips = c.blockers.map((id) => {
       const i = byId[id];
       if (!i) return `<span class="tag none" title="이 판이 못 찾은 카드">${esc(id)} ?</span>`;
-      const done = !isOpen(i);
-      const col = done ? "var(--ok)" : i.priority?.name === "Urgent" ? "var(--bad)" : "var(--warn)";
+      const shut = !isOpen(i);
+      const col = shut ? "var(--ok)" : i.priority?.name === "Urgent" ? "var(--bad)" : "var(--warn)";
       return `<a href="${esc(i.url||"#")}" target="_blank" rel="noopener"
         style="display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11.5px;
                text-decoration:none;padding:3px 8px;border-radius:6px;border:1px solid ${col};
                color:${col};background:color-mix(in srgb, ${col} 9%, transparent)"
-        title="${esc(i.title)}">${done ? "✓" : "●"} ${esc(id)}</a>`;
+        title="${esc(i.title)}">${shut ? "✓" : "●"} ${esc(id)}</a>`;
     }).join(" ");
-    return `<div style="padding:14px 0;border-bottom:1px solid var(--line-soft)">
-      <div style="display:flex;align-items:baseline;gap:9px">
-        <span style="width:9px;height:9px;border-radius:50%;background:${dot};flex:none;transform:translateY(-1px)"></span>
+    return `<div style="padding:15px 0;border-bottom:1px solid var(--line-soft)">
+      <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+        <span style="width:9px;height:9px;border-radius:50%;background:${st.c};flex:none;transform:translateY(-1px)"></span>
         <b style="font-size:14.5px;letter-spacing:-.01em">${esc(c.k)}</b>
-        <span style="font-family:var(--mono);font-size:11px;color:var(--ink-4);margin-left:auto;white-space:nowrap">
-          ${c.blockers.length - stillOpen.length}/${c.blockers.length}</span>
+        <span style="font-size:11.5px;font-weight:700;color:${st.c};padding:1px 8px;border-radius:5px;
+                     background:color-mix(in srgb, ${st.c} 12%, transparent)">${st.t}</span>
       </div>
-      <div style="font-size:12.5px;color:var(--ink-3);margin:5px 0 9px;padding-left:18px;line-height:1.6">${esc(c.why)}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;padding-left:18px">${chips}</div>
+      <div style="font-size:12.5px;color:var(--ink-3);margin:6px 0 0;padding-left:18px;line-height:1.62">${esc(c.why)}</div>
+      ${c.gap ? `<div style="font-size:12.5px;color:${st.c};margin-top:7px;padding-left:18px;line-height:1.6;font-weight:600">→ ${esc(c.gap)}</div>` : ""}
+      ${chips ? `<div style="display:flex;flex-wrap:wrap;gap:6px;padding-left:18px;margin-top:9px">${chips}</div>` : ""}
     </div>`;
   }).join("");
 
-  // 기일 — 최근 처리 속도로 «거칠게» 환산한다. 약속이 아니라 눈금이다.
-  const rate7 = shut7 / 7;
-  const eta = rate7 > 0 ? Math.ceil(blockOpen.length / rate7) : null;
   const critTotal = LAUNCH.criteria.length;
+  const gateCards = (LAUNCH.gates || []).map((id) => byId[id]).filter(Boolean);
+  const gateOpen = gateCards.filter(isOpen);
 
   $("launch").innerHTML =
-    `<div style="display:flex;flex-wrap:wrap;gap:18px 26px;align-items:baseline;margin-bottom:6px">
+    `<div style="font-size:13.5px;color:var(--ink-2);margin-bottom:14px;padding:11px 14px;
+                 border-radius:10px;background:var(--panel-2);border:1px solid var(--line);line-height:1.6">
+       <b style="color:var(--ink)">목표</b> — ${esc(LAUNCH.goal)}
+       <div style="font-size:11.5px;color:var(--ink-4);margin-top:4px">총괄 정의 · ${esc(LAUNCH.at)}</div>
+     </div>
+     <div style="display:flex;flex-wrap:wrap;gap:18px 26px;align-items:baseline;margin-bottom:6px">
        <div><span style="font-family:var(--mono);font-size:30px;font-weight:700;letter-spacing:-.03em;
-            color:${metCount===critTotal?"var(--ok)":"var(--ink)"}">${metCount}<span style="color:var(--ink-4);font-size:20px">/${critTotal}</span></span>
-            <span style="font-size:12px;color:var(--ink-3);margin-left:7px">조건 충족</span></div>
+            color:${done===critTotal?"var(--ok)":"var(--warn)"}">${done}<span style="color:var(--ink-4);font-size:20px">/${critTotal}</span></span>
+            <span style="font-size:12px;color:var(--ink-3);margin-left:7px">단계 완성</span></div>
        <div><span style="font-family:var(--mono);font-size:30px;font-weight:700;letter-spacing:-.03em;
-            color:${blockOpen.length?"var(--warn)":"var(--ok)"}">${blockOpen.length}</span>
-            <span style="font-size:12px;color:var(--ink-3);margin-left:7px">막는 카드</span></div>
-       <div><span style="font-family:var(--mono);font-size:30px;font-weight:700;letter-spacing:-.03em">${eta!=null?"~"+eta:"—"}</span>
-            <span style="font-size:12px;color:var(--ink-3);margin-left:7px">일 (지금 속도 기준)</span></div>
+            color:${gateOpen.length?"var(--warn)":"var(--ok)"}">${gateOpen.length}</span>
+            <span style="font-size:12px;color:var(--ink-3);margin-left:7px">품질 게이트 미해결</span></div>
        <span style="flex:1"></span>
        <span class="tag none">${esc(LAUNCH.status)}</span>
      </div>
      <div style="font-size:12px;color:var(--ink-4);margin-bottom:10px;line-height:1.6">
-       기일은 <b style="color:var(--ink-3)">약속이 아니라 눈금</b> 입니다 —
-       최근 7일 처리 속도(${rate7.toFixed(1)}장/일)로 나눈 값이고, 새 카드가 계속 들어오는 것은 안 셉니다.
-       <b style="color:var(--ink-3)">줄어들고 있는지</b> 만 보십시오.
+       <b style="color:var(--ink-3)">「반쪽」은 0.5로 셉니다</b> — UI 는 있는데 저장 경로가 없거나,
+       관리자 전용이거나, 인메모리인 것은 «있다» 로 세지 않습니다.
      </div>
      ${critHtml}
-     <div class="correction" style="margin-top:16px">
-       <span class="h">아직 «조건인지» 정하지 못한 것</span>
+     ${LAUNCH.nocard ? `<div class="correction" style="margin-top:16px;border-color:var(--bad)">
+       <span class="h" style="color:var(--bad)">★ 판에 «없는» 것</span>
+       ${esc(LAUNCH.nocard)}
+       <br><br><b>판에 없는 것은 어떤 관제판으로도 볼 수 없습니다.</b>
+       이 줄이 그것을 대신합니다 — 카드가 생기면 지웁니다.
+     </div>` : ""}
+     <div class="correction" style="margin-top:12px">
+       <span class="h">아직 정하지 못한 것</span>
        ${LAUNCH.undecided.map((u) => `· ${esc(u)}`).join("<br>")}
        <br><br><b>비워두지 않고 적어 둡니다.</b> 이게 비어 있으면 다음 사람은 «다 정해졌다» 로 읽습니다.
        근거: ${esc(LAUNCH.basis)}
