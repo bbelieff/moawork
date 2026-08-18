@@ -40,7 +40,7 @@ import { createClient } from "@/lib/supabase/server";
  * ★ 0 을 «세 상태» 로 가른다. 그냥 0 만 보여주면 「수납이 없다」와 「아무도 입금일을 안 채웠다」가
  *   같은 화면이 된다 — 그건 다른 사실이고, 사용자가 할 일도 다르다.
  *     · 탭이 없다        → missingSources 에 'work'
- *     · 입금일 미입력     → unfilledColumns 에 그 컬럼 이름 (DC-12 가 088 에서 내보낸다)
+ *     · 입금일 미입력     → unfilledColumns 에 그 컬럼 이름 (098 이 내보낸다)
  *     · 진짜 0           → 위 둘 다 아님
  */
 function MonthlyCollection({ today }: { today: TodayHomeState }) {

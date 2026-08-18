@@ -89,9 +89,13 @@ export function dueBadge(dueOn: string, today: string): { tone: DueTone; label: 
 /**
  * 바로 가기 — 정적 링크다. read model 을 늘리지 않는다(카드 금지: dashboard DB·RPC 자체 구현).
  *
- * 앞 셋은 V6 목업 `:1563~1565`. 마지막 «업무 분석» 은 목업에 없는 **의도된 1건 추가**다 —
- * 분석 화면(/dash·/dash/all·/dash/tasks)이 사이드바에 없어서 홈이 유일한 진입점이기 때문이다.
- * 이 링크를 빼면 그 화면들이 어느 화면에도 닿지 않게 된다(진단 §1.3).
+ * V6 목업 `:1563~1565` 의 셋. **지금은 목업과 같다.**
+ *
+ * ★ 이력 — BBE-186 에서 «업무 분석» 을 넷째로 «추가했다가» BBE-215 에서 «뺐다».
+ *   추가한 이유: 분석 화면(/dash·/dash/all·/dash/tasks)이 사이드바에 없어 홈이 유일한 진입점이었다.
+ *   뺀 이유: 총괄 결정으로 그 위젯들이 «홈 아래 회사 현황 절» 로 옮겨왔다 — 같은 화면이라 링크가 무의미하다.
+ *   ★ 다만 «원래 걱정» 은 사라지지 않았다. 자식 화면으로 가는 링크를 이제 그 절이 들고 있고,
+ *     `app/(app)/company-status-placement.test.ts` 가 그것을 못 박는다. 아래 주석 참조.
  */
 export const HOME_SHORTCUTS = [
   { label: "신규리드 관리", href: "/newcust" },
