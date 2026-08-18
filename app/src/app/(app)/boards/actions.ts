@@ -116,13 +116,22 @@ function isNextControlFlow(error: unknown): boolean {
  *   액션 본문 전체가 이 한 곳을 지나게 해서 «빠뜨릴 자리» 를 없앤다.
  */
 async function runBoardAction(formData: FormData, run: () => Promise<void>): Promise<void> {
+  // ★ «이전 실패» 를 먼저 지운다 — 경로를 나누지 않는다 (BBE-220).
+  //
+  //   전에는 run() «뒤» 에서 지웠다. 그러면 성공 시 redirect() 를 던지는 액션
+  //   (deleteBoardAction · createBoardAction 등)은 그 줄에 **도달하지 못한다** —
+  //   redirect 는 예외로 구현된 제어 흐름이라 아래 catch 로 빠져 되던져지기 때문이다.
+  //   즉 「성공하면 이전 실패를 지운다」가 리다이렉트하는 액션에서는 성립하지 않았다.
+  //
+  //   ★ 그런데 테스트는 초록이었다. 그 테스트가 redirect 를 목으로 바꿔 «던지지 않는 세계»
+  //     에서 쟀기 때문이다 — 목이 운영보다 좁았다(BBE-200 에서 겪은 것과 같은 모양).
+  //
+  //   여기서 지우면 성공·실패·리다이렉트 어느 경로든 지워진다. 실패는 아래 catch 가
+  //   다시 쓰므로 사유는 그대로 남는다. **예외 경로를 하나 더 막는 대신 경로를 안 나눈다** —
+  //   앞엣것은 새 종료 경로가 생기면 또 빠진다.
+  await clearFlashCookie(BOARD_ACTION_FLASH_COOKIE);
   try {
     await run();
-    // ★ 성공은 «이전 실패» 를 지운다(BBE-201 에서 배운 것).
-    //   안 지우면 MAX_AGE(10초) 안에 «실패 → 고침 → 성공» 한 사용자가 성공한 뒤에도
-    //   방금 전 배너를 다시 본다. 판정은 성공인데 화면은 실패다.
-    //   래퍼로 올리면서 이 성질이 addItemAction 에만 남아 있었다 — 19개 중 1개.
-    await clearFlashCookie(BOARD_ACTION_FLASH_COOKIE);
   } catch (error) {
     if (isNextControlFlow(error)) throw error;
     const boardId = str(formData, "boardId");
