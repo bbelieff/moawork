@@ -98,4 +98,38 @@ describe("board action permission boundary", () => {
     expect(last, "성공 경로가 쿠키를 건드리지 않았다").toBeDefined();
     expect(String(last?.[1] ?? "")).toBe("");
   });
+
+  // ★ 되돌리면 빨개진다: clearFlashCookie 를 다시 run() «뒤» 로 옮기기 (BBE-220)
+  //
+  //   앞의 테스트는 성공 경로를 재지만, redirect 를 목으로 바꿔 «던지지 않는 세계» 에서 잰다.
+  //   운영에서 deleteBoardAction 은 성공하면 redirect() 를 «던진다» — 그러면 run() 뒤의
+  //   삭제 줄에 도달하지 못하고, 「성공하면 이전 실패를 지운다」가 성립하지 않았다.
+  //   목이 운영보다 좁아서 초록이 나온 자리다(DC-12 지적).
+  //
+  //   그래서 여기서는 운영과 «같은 모양» 으로 잰다 — 실제로 던지는 제어 흐름을 넣는다.
+  it("★ 성공이 redirect 를 던져도 이전 실패는 지워진다", async () => {
+    mocks.guard.mockResolvedValue({ kind: "denied", reason: "permission" });
+    await deleteBoardAction(input());
+    expect(flashedMessage()).toContain("권한이 없어요"); // 실패가 남았다
+
+    cookieSet.mockClear();
+    mocks.guard.mockResolvedValue({ kind: "allowed" });
+    mocks.risky.mockResolvedValue({ ok: true });
+    // Next 의 redirect() 와 같은 모양: digest 를 든 예외를 던진다.
+    mocks.deleteBoard.mockImplementation(() => {
+      const error = new Error("NEXT_REDIRECT") as Error & { digest: string };
+      error.digest = "NEXT_REDIRECT;replace;/boards;307;";
+      throw error;
+    });
+
+    // 제어 흐름이므로 그대로 올라와야 한다 — 삼키면 이동이 죽는다.
+    await expect(deleteBoardAction(input())).rejects.toMatchObject({
+      digest: expect.stringContaining("NEXT_REDIRECT"),
+    });
+
+    // ★ 그런데도 이전 실패는 지워져 있어야 한다.
+    const last = [...cookieSet.mock.calls].reverse().find(([name]) => name === "mw_board_err");
+    expect(last, "성공(리다이렉트) 경로가 쿠키를 건드리지 않았다").toBeDefined();
+    expect(String(last?.[1] ?? "")).toBe("");
+  });
 });
