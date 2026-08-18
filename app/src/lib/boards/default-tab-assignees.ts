@@ -1,6 +1,6 @@
 import type { Ctx } from "@/lib/types";
 import { loadMemberOrgSummary, type MemberOrgSummary } from "@/lib/auth/member-org-summary";
-import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import type { DefaultTabAssignee } from "@/lib/default-tabs/types";
 
 export function assigneesFromMemberSummary(summary: MemberOrgSummary): DefaultTabAssignee[] {
@@ -13,7 +13,9 @@ export function assigneesFromMemberSummary(summary: MemberOrgSummary): DefaultTa
 
 /** Loads active workspace members through authenticated org_members in production. */
 export async function loadDefaultTabAssignees(ctx: Ctx): Promise<DefaultTabAssignee[]> {
-  if (hasSupabaseEnv()) {
+  // ★ BBE-203 — 아래 else 는 로컬 시드 담당자를 돌려준다. env 유무«만» 보면 운영에서
+  //   env 가 빠졌을 때 시드 담당자가 조용히 기본 탭에 박힌다. 운영에서는 시끄럽게 실패한다.
+  if (!canUseLocalSeedFallback()) {
     const summary = await loadMemberOrgSummary(ctx);
     const assignees = assigneesFromMemberSummary(summary);
     if (summary.kind !== "ready" || assignees.length === 0) {

@@ -10,10 +10,26 @@ import { describe, expect, it } from "vitest";
 // 네 줄 규칙 자체는 `local-fallback.test.ts` 가 행위로 고정한다. 여기서는 «배선» 만 본다.
 // (페이지는 서버 컴포넌트 + redirect 라 행위 테스트 비용이 과해서 배선으로 고정한다 — 한계를 그대로 적는다.)
 
+// ★ 이 목록이 «전부» 인지 2026-08-18 에 전수로 셌다(BBE-203 후속).
+//   목록에 `boardsRepo.ts` 가 빠져 있었고, 세어 보니 **빠진 게 하나가 아니라 넷**이었다.
+//   기준: 「env 로 갈리고, 그 갈림의 한쪽이 로컬 시드 «데이터» 를 준다」.
+//
+//   목록 밖인 것과 그 이유(다음 사람이 다시 안 세도 되게 적는다):
+//   · auth/session.ts       — 폴백 대상 `getDevSession()` 안에 자체 NODE_ENV 가드가 있다(fail-closed)
+//   · perm/server.ts ×2     — 규칙을 «인라인» 으로 적어야 한다. 함수로 감싸면 경계 검사기의
+//                             isInsideExplicitDevGuard 가 못 읽어 운영 위반으로 세어진다(그 파일 주석)
+//   · companies/server.ts · notify/* · metrics/read.ts · platform/server.ts ·
+//     entitlements/server.ts · workspace-entry/* · member-org-summary.ts
+//                           — 시드가 아니라 «빈 값·미연결 상태» 를 준다. 위험 등급이 다르다
 const callSites = [
   "../dash/server.ts",
   "../../app/(app)/page.tsx",
   "../../app/(app)/deals/[dealId]/page.tsx",
+  // ── 2026-08-18 추가. 전부 «운영에서 env 가 빠지면 시드가 조용히 새는» 자리였다 ──
+  "../repo/local/boardsRepo.ts",
+  "../boards/default-tab-assignees.ts",
+  "../deal/members.ts",
+  "../deal/comments.ts",
 ];
 
 describe("local seed fallback call sites", () => {
