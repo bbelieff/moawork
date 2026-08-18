@@ -59,6 +59,100 @@ function sameJson(left: unknown, right: unknown): boolean {
 }
 
 /**
+ * 「이 그룹 정의가 이미 있는가」 — ensureDefaultTabAdditive 와 드리프트 판정이 **같은 눈**을 쓰게 한다.
+ *
+ * ★ 왜 함수로 뽑았나 (BBE-214): 판정과 치유가 각자 자기 기준을 가지면
+ *   「없다고 판정 → 그런데 치유는 있다고 보고 안 만듦」 같은 어긋남이 생긴다.
+ *   그 어긋남은 정상 케이스만 테스트하면 절대 안 보인다. 한 눈을 공유하면 어긋날 수가 없다.
+ */
+function findExistingGroup<TGroup extends { id: string; name: string }>(
+  definition: DefaultTab["groups"][number],
+  groups: readonly TGroup[],
+  assignees: readonly DefaultTabAssignee[],
+): TGroup | undefined {
+  const assignee = definition.assigneeSlot === undefined ? undefined : assignees[definition.assigneeSlot];
+  return groups.find((group) => assignee
+    ? assigneeOwnerFromGroupName(group.name) === assignee.userId
+    : group.name === definition.name);
+}
+
+/** 「이 컬럼 정의가 이미 있는가」 — 위와 같은 이유로 공유한다. */
+function findExistingColumn(
+  definition: DefaultTabColumn,
+  columns: readonly { key: string }[],
+) {
+  return columns.find((column) => column.key === definition.key);
+}
+
+export type DefaultTabDrift = {
+  /** 보드 자체가 없다 — 통째로 만들어야 한다. */
+  boardMissing: boolean;
+  missingGroupNames: string[];
+  missingColumnKeys: string[];
+  /** 하나라도 만들 것이 있는가. false 면 ensureDefaultTabAdditive 는 «아무것도 쓰지 않는다». */
+  hasWork: boolean;
+};
+
+/**
+ * 읽기만으로 「고칠 것이 있는가」를 판정한다 — BBE-214.
+ *
+ * ★ 왜 필요한가: `/newcust` 는 owner/admin 이 열 때마다 분산 리스를 잡고
+ *   `ensureDefaultTabAdditive` 를 돌렸다. 그런데 실측하니 **고칠 것이 하나도 없어도**
+ *   왕복 14회 · 리스 RPC 4회를 치르고 «구조 쓰기는 0» 이었다. 락을 잡고 아무것도 안 하고 놓았다.
+ *   owner 만 그 값을 낸다(멤버는 role 검사에서 조기 반환한다).
+ *
+ * ★ 이것이 치유를 약화시키지 않는 이유:
+ *   이 판정은 «건너뛸 때만» 쓴다. 조금이라도 만들 것이 있으면 예전과 똑같이 리스를 잡고,
+ *   **쓰기는 여전히 리스 «안에서» 다시 읽고 다시 판정한 뒤에만** 일어난다.
+ *   즉 이 함수가 틀려서 hasWork 를 true 로 잘못 말해도 결과는 예전과 같고,
+ *   false 로 잘못 말할 수 있는 경우는 «읽은 순간 정말로 빠진 것이 없을 때» 뿐이다.
+ *   그래서 이 함수는 «쓰기 경로의 진실» 이 아니라 «건너뛰기의 근거» 다.
+ */
+export async function readDefaultTabDrift(
+  ctx: Ctx,
+  tab: DefaultTab,
+  store: BoardsRepo,
+  assignees: readonly DefaultTabAssignee[],
+): Promise<DefaultTabDrift> {
+  const matches = (await store.listBoards(ctx)).filter((board) => board.source === tab.source);
+  if (matches.length > 1) throw new Error("default tab source conflict");
+  const board = matches[0];
+  if (!board) {
+    return {
+      boardMissing: true,
+      missingGroupNames: tab.groups.map((group) => group.name),
+      missingColumnKeys: tab.columns.map((column) => column.key),
+      hasWork: true,
+    };
+  }
+
+  const [groups, columns] = await Promise.all([
+    store.listGroups(ctx, board.id),
+    store.listColumns(ctx, board.id),
+  ]);
+
+  const missingGroupNames = tab.groups
+    .filter((definition) => {
+      // ensure 가 «건너뛰는» 정의는 여기서도 건너뛴다 — 같은 눈이어야 한다.
+      const assignee = definition.assigneeSlot === undefined ? undefined : assignees[definition.assigneeSlot];
+      if (definition.assigneeSlot !== undefined && !assignee) return false;
+      return !findExistingGroup(definition, groups, assignees);
+    })
+    .map((definition) => definition.name);
+
+  const missingColumnKeys = tab.columns
+    .filter((definition) => !findExistingColumn(definition, columns))
+    .map((definition) => definition.key);
+
+  return {
+    boardMissing: false,
+    missingGroupNames,
+    missingColumnKeys,
+    hasWork: missingGroupNames.length > 0 || missingColumnKeys.length > 0,
+  };
+}
+
+/**
  * Repairs one product tab without rewriting customer-owned structure.
  *
  * Unlike the workspace bootstrap reconciler, this path is intentionally additive:
@@ -89,9 +183,8 @@ export async function ensureDefaultTabAdditive(
       : assignees[definition.assigneeSlot];
     if (definition.assigneeSlot !== undefined && !assignee) continue;
     const expectedName = assignee ? assigneeGroupName(definition.name, assignee) : definition.name;
-    const existing = groups.find((group) => assignee
-      ? assigneeOwnerFromGroupName(group.name) === assignee.userId
-      : group.name === definition.name);
+    // 판정(readDefaultTabDrift)과 «같은 눈» 을 쓴다 — 어긋나면 「없다고 보고 안 만드는」 구멍이 생긴다.
+    const existing = findExistingGroup(definition, groups, assignees);
     const group = existing ?? await store.createGroup(ctx, board.id, {
       name: expectedName,
       color: definition.color,
@@ -102,7 +195,8 @@ export async function ensureDefaultTabAdditive(
 
   const columns = await store.listColumns(ctx, board.id);
   for (const definition of tab.columns) {
-    if (columns.some((column) => column.key === definition.key)) continue;
+    // 위와 같은 이유로 판정과 같은 눈을 쓴다.
+    if (findExistingColumn(definition, columns)) continue;
     const column = await store.createColumn(ctx, board.id, {
       key: definition.key,
       label: definition.label,
