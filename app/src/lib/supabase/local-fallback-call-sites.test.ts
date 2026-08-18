@@ -60,7 +60,10 @@ const callSites = [
   "../boards/server.ts",
   "../dash/server.ts",
   "../dash/today-server.ts",
-  "../../app/(app)/dash/page.tsx",
+  // ★ BBE-215 — 「업무 분석」이 홈의 «회사 현황» 절이 되면서 이 가드가 그 컴포넌트로 옮겨갔다.
+  //   (app)/dash/page.tsx 는 이제 redirect 뿐이라 폴백 규칙으로 갈리지 않는다.
+  //   못 박는 자리는 «코드를 따라간다» — 지우는 게 아니다. 자리 수는 12 그대로다.
+  "../../components/dash/CompanyStatusSection.tsx",
   "../../app/(app)/deals/[dealId]/page.tsx",
   // ── 2026-08-18 추가 ① 시드가 조용히 새던 자리 (BBE-203 후속) ──
   "../repo/local/boardsRepo.ts",

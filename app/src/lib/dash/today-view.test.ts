@@ -106,8 +106,15 @@ describe("바로 가기", () => {
     }
   });
 
-  it("옮겨 간 분석 화면으로 가는 길을 반드시 하나 남긴다", () => {
-    // 이 링크가 사라지면 /dash·/dash/all·/dash/tasks 가 어느 화면에도 닿지 않는다(진단 §1.3).
-    expect(HOME_SHORTCUTS.some((shortcut) => shortcut.href === "/dash")).toBe(true);
+  // ★ BBE-215 로 방향이 뒤집혔다. 전에는 「/dash 로 가는 링크를 반드시 남겨라」였는데,
+  //   「회사 현황」이 홈 아래 절이 되면서 그 링크는 «자기 화면을 가리키는 링크» 가 됐다.
+  //
+  //   ★ 다만 «원래 걱정» 은 그대로 살아 있다 — 자식 화면(/dash/all·/dash/[pipelineId]·/dash/tasks)이
+  //     어디에도 안 닿는 상태가 되는 것. 그건 이제 절이 그 링크들을 들고 있는지로 지킨다:
+  //     app/src/app/(app)/company-status-placement.test.ts 의
+  //     「★ 자식 화면으로 가는 길이 살아 있다」.
+  //   걱정을 «지운» 게 아니라 «지키는 자리를 옮겼다».
+  it("같은 화면을 가리키는 바로가기를 두지 않는다", () => {
+    expect(HOME_SHORTCUTS.some((shortcut) => (shortcut.href as string) === "/dash")).toBe(false);
   });
 });

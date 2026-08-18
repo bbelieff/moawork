@@ -97,10 +97,10 @@ export const HOME_SHORTCUTS = [
   { label: "신규리드 관리", href: "/newcust" },
   { label: "자동화 규칙", href: "/settings/automations" },
   { label: "온보딩 이어하기", href: "/onboarding" },
-  // ★ BBE-215: 「업무 분석」을 빼라는 지시가 있었으나 «아직» 뺄 수 없다.
-  //   총괄이 «회사 현황을 홈 아래로» 로 정했지만 그 이사는 아직 안 했다. 지금 이 링크를 빼면
-  //   /dash · /dash/all · /dash/tasks · /dash/[pipelineId] 네 화면이 «어디에서도 못 닿는» 상태가 된다 —
-  //   app-tabs.ts:69 OUT_OF_TAB_HREFS 가 그 넷을 사이드바 밖으로 두고 «홈 바로 가기» 를 유일한
-  //   진입점으로 지정하고 있다. 위젯이 홈으로 실제로 옮겨간 «뒤» 에 이 줄을 지워야 한다.
-  { label: "업무 분석", href: "/dash" },
+  // ★ BBE-215: 「업무 분석」 바로가기는 «이사가 끝난 뒤» 에 뺐다.
+  //   DC-12 가 이 자리에 「위젯이 홈으로 실제로 옮겨간 뒤에 지워라」고 조건을 적어 뒀고,
+  //   그 조건이 충족됐다 — 위젯은 이제 홈 아래 「회사 현황」 절에 있고,
+  //   자식 화면(/dash/all · /dash/[pipelineId] · /dash/tasks)으로 가는 링크도 그 절이 들고 있다.
+  //   `company-status-placement.test.ts` 가 그 링크가 살아 있는지를 못 박는다.
+  //   `/dash` 자체는 지우지 않고 redirect("/") 로 남겼다 — 북마크·OUT_OF_TAB_HREFS·isGated 가 가리킨다.
 ] as const;

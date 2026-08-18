@@ -4,6 +4,7 @@ import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
 import { FEATURES } from "@/lib/product";
 import { loadTodayHome } from "@/lib/dash/today-server";
 import { TodayHome } from "@/components/dash/TodayHome";
+import { CompanyStatusSection } from "@/components/dash/CompanyStatusSection";
 import type { MemberRole } from "@/lib/types";
 import { PlatformAccessNotice } from "@/components/platform/PlatformAccessNotice";
 
@@ -11,9 +12,16 @@ import { PlatformAccessNotice } from "@/components/platform/PlatformAccessNotice
 // 정본: docs/design/UI목업_워크스페이스_최종_v6.html:1528~1570 —
 //   "보드가 아니라 «오늘 뭘 해야 하나»가 먼저 나와야 한다."
 //
-// ★ 여기에 분석 위젯을 다시 붙이지 마라. 파이프라인·전환율·계약상황·정산·재접촉·후속연락은
-//   BBE-186 에서 /dash 로 옮겼다. 홈은 KPI 5 · 내 할 일 · 최근 알림 · 바로 가기 넷뿐이다.
-//   (지운 게 아니라 옮긴 것이다 — §9.3 «비우기지 지우기가 아니다»)
+// ★ 2026-08-18 총괄 확정으로 «되돌렸다». BBE-186 은 분석 위젯을 /dash 로 내보냈고 이 자리에
+//   「다시 붙이지 마라」고 적어 뒀는데, 총괄이 목업 부제의 «회사 현황» 이 맞다고 판단해
+//   **별도 화면이 아니라 홈 한 화면 아래** 로 넣기로 했다(BBE-215).
+//
+//   그래서 홈은 이제 두 층이다:
+//     위  — 오늘: KPI 줄 · 내 할 일 · 최근 알림 · 바로 가기
+//     아래 — 회사 현황: 파이프라인·전환율·계약상황·수납·정산·재접촉·후속연락
+//
+//   ★ 옛 지시를 «지우지 않고» 뒤집힌 경위를 남긴다. 안 그러면 다음 사람이 이 절을 보고
+//     「BBE-186 을 어겼네」로 읽고 되돌린다. 규칙이 바뀐 것이지 어긴 것이 아니다.
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -22,6 +30,7 @@ export default async function DashboardPage({
   const sp = await searchParams;
   const asParam = typeof sp.as === "string" ? sp.as : undefined;
   const accessError = typeof sp.error === "string" ? sp.error : undefined;
+  const month = typeof sp.month === "string" ? sp.month : undefined;
 
   const base = await getSession();
   const devToolsEnabled = process.env.NODE_ENV !== "production";
@@ -64,6 +73,9 @@ export default async function DashboardPage({
       <FeatureGateServer orgId={ctx.org.id} feature={FEATURES.dash} label="대시보드">
         <TodayHome state={today} />
       </FeatureGateServer>
+
+      {/* ── 아래 절: 회사 현황 (BBE-215) ── */}
+      <CompanyStatusSection ctx={ctx} month={month} />
     </div>
   );
 }

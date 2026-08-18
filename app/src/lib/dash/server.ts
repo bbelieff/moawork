@@ -315,12 +315,24 @@ export async function loadDashboardPageData(
       : canUseLocalSeedFallback()
         ? createLocalDashboardSource()
         : createSupabaseDashboardSource(await createClient()));
-  const crm = await capture("crm", () => source.loadCrm(ctx));
+  // ★ BBE-215 — 물결을 «의존이 허락하는 만큼만» 줄인다.
+  //   boards·notices 는 시그니처가 (ctx) 뿐이라 crm 결과를 안 쓴다. 그런데 예전에는
+  //   crm → inputs → [boards·notices·ledger] 로 «맨 뒤» 물결에 묶여 있었다.
+  //   앞으로 당기면 crm 과 같은 물결에 실린다 — 왕복 수는 그대로고 직렬 단계만 줄어든다.
+  //   ledger 는 crm.data.deals 가 «입력» 이라 못 당긴다. 그건 진짜 의존이다.
+  const [crm, boardsSegment, noticesSegment] = await Promise.all([
+    capture("crm", () => source.loadCrm(ctx)),
+    capture("boards", () => source.loadBoards(ctx)),
+    capture("notices", () => source.loadNotices(ctx)),
+  ]);
   const now = options.now?.() ?? new Date();
 
-  const core = crm.status === "unavailable"
-    ? unavailable<DashboardCoreData>(crm.operation)
-    : await capture("dashboard", async () => {
+  //   ★ core(=inputs) 와 ledger 는 «둘 다» crm.data.deals 만 입력으로 쓴다. 서로는 무관하다.
+  //     그러니 crm 뒤의 «한 물결» 에 같이 실어야 한다 — 줄 세우면 단계가 하나 더 는다.
+  const [core, ledgerSegment] = await Promise.all([
+    crm.status === "unavailable"
+    ? Promise.resolve(unavailable<DashboardCoreData>(crm.operation))
+    : capture("dashboard", async () => {
         const input = await source.loadDashboardInputs(
           ctx,
           new Set(crm.data.deals.map((deal) => deal.id)),
@@ -337,11 +349,7 @@ export async function loadDashboardPageData(
           stages: crm.data.stages,
           deals: crm.data.deals,
         };
-      });
-
-  const [boardsSegment, noticesSegment, ledgerSegment] = await Promise.all([
-    capture("boards", () => source.loadBoards(ctx)),
-    capture("notices", () => source.loadNotices(ctx)),
+      }),
     crm.status === "unavailable"
       ? Promise.resolve(unavailable<DashboardLedgerData>(crm.operation))
       : capture("ledger", () => source.loadLedger(ctx, crm.data.deals.map((deal) => deal.id))),

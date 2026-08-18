@@ -8,7 +8,9 @@ import { ContractStatusField } from "../../components/deal/ContractStatusField";
 // BBE-186: 홈에 있던 분석 위젯이 /dash 로 옮겨 갔다. 그 위젯들이 지고 있던 문구 보증도
 // 같이 옮긴다 — 홈에서 지우고 끝내면 «옮김» 이 아니라 «유실» 이 된다(수용기준 3).
 const homePage = new URL("./page.tsx", import.meta.url);
-const analysisPage = new URL("./dash/page.tsx", import.meta.url);
+// ★ BBE-215 — 「업무 분석」이 홈 아래 「회사 현황」 절이 됐다. 단언은 그대로고 «대상 파일» 만 따라간다.
+//   (app)/dash/page.tsx 는 이제 redirect 뿐이라 문구가 없다. 문구는 절과 함께 옮겨갔다.
+const analysisPage = new URL("../../components/dash/CompanyStatusSection.tsx", import.meta.url);
 const pipelinePage = new URL("./dash/[pipelineId]/page.tsx", import.meta.url);
 const todayHome = new URL("../../components/dash/TodayHome.tsx", import.meta.url);
 
