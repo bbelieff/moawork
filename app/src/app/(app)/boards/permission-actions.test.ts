@@ -76,4 +76,26 @@ describe("board action permission boundary", () => {
     expect(mocks.risky).toHaveBeenCalledWith("org-a", "danger.bulk_edit_delete", { operation: "danger.bulk_edit_delete" });
     expect(mocks.order).toEqual(["guard", "audit", "delete"]);
   });
+
+  // ★ 되돌리면 빨개진다: runBoardAction 의 «성공하면 지운다» 한 줄을 지우기
+  //
+  //   #258 에서 DC-15 가 잡아 준 성질인데, 래퍼로 올리면서 addItemAction 에만 남아
+  //   19개 중 1개만 지우고 있었다. MAX_AGE 10초라 «실패 → 고침 → 성공» 이 그 안에 들어가면
+  //   성공한 뒤에도 방금 전 배너가 다시 그려진다 — 판정은 성공인데 화면은 실패다.
+  it("성공하면 «이전 실패» 를 지운다 — 고친 뒤 옛 배너가 다시 그려지지 않는다", async () => {
+    mocks.guard.mockResolvedValue({ kind: "denied", reason: "permission" });
+    await deleteBoardAction(input());
+    expect(flashedMessage()).toContain("권한이 없어요"); // 실패는 남아야 한다
+
+    cookieSet.mockClear();
+    mocks.guard.mockResolvedValue({ kind: "allowed" });
+    mocks.risky.mockResolvedValue({ ok: true });
+    mocks.deleteBoard.mockResolvedValue(undefined);
+    await deleteBoardAction(input());
+
+    // 성공 뒤 마지막으로 쓰인 값이 «빈 값(삭제)» 여야 한다.
+    const last = [...cookieSet.mock.calls].reverse().find(([name]) => name === "mw_board_err");
+    expect(last, "성공 경로가 쿠키를 건드리지 않았다").toBeDefined();
+    expect(String(last?.[1] ?? "")).toBe("");
+  });
 });

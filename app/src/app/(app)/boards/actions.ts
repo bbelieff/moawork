@@ -118,6 +118,11 @@ function isNextControlFlow(error: unknown): boolean {
 async function runBoardAction(formData: FormData, run: () => Promise<void>): Promise<void> {
   try {
     await run();
+    // ★ 성공은 «이전 실패» 를 지운다(BBE-201 에서 배운 것).
+    //   안 지우면 MAX_AGE(10초) 안에 «실패 → 고침 → 성공» 한 사용자가 성공한 뒤에도
+    //   방금 전 배너를 다시 본다. 판정은 성공인데 화면은 실패다.
+    //   래퍼로 올리면서 이 성질이 addItemAction 에만 남아 있었다 — 19개 중 1개.
+    await clearFlashCookie(BOARD_ACTION_FLASH_COOKIE);
   } catch (error) {
     if (isNextControlFlow(error)) throw error;
     const boardId = str(formData, "boardId");
@@ -174,6 +179,15 @@ function parseOptionsCsv(csv: string): FieldOption[] {
     .map((label, i) => ({ id: `opt-${i + 1}-${label.replace(/\s+/g, "")}`, label, order: i }));
 }
 
+/**
+ * 새 보드 만들기.
+ *
+ * ★ 이 액션만 runBoardAction 을 «일부러» 안 쓴다 — 빠뜨린 게 아니다.
+ *   래퍼는 실패 사유를 `/boards/{boardId}` 화면에 붙이는데, 여기는 보드를 «만드는 중» 이라
+ *   붙일 boardId 자체가 없다. 지금은 실패하면 전면 오류가 난다.
+ *   제대로 고치려면 보드 «목록» 화면에 붙이는 자리가 따로 필요하다(후속 카드).
+ *   actions.guard.test.ts 의 예외 목록에 같은 이유가 적혀 있고, 그 목록은 개수까지 고정돼 있다.
+ */
 export async function createBoardAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   await requirePermission(ctx, "structure.tab_manage");

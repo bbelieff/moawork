@@ -43,6 +43,15 @@ function actions(): Action[] {
 }
 
 describe("BBE-213 보드 액션은 전면 오류로 새지 않는다", () => {
+  // ★ 예외 목록은 «개수까지» 고정한다.
+  //   래퍼는 「새 액션이 래퍼를 안 쓰는 것」을 막지 못한다 — 예외 목록에 이름 하나만 더하면
+  //   그대로 빠져나간다. 그러면 이 카드가 진단한 문제가 «한 겹 위로» 옮겨간 것뿐이다.
+  //   개수를 박아 두면 목록을 늘리는 순간 빨개지고, 늘리려는 사람이 이유를 적게 된다.
+  //   (BBE-208 에서 「목록이 면제부가 되지 않게」 한 처치와 같다.)
+  it("★ 예외 목록이 조용히 늘지 않는다", () => {
+    expect([...OWN_GUARD].sort()).toEqual(["addItemAction", "createBoardAction", "setCellAction"]);
+  });
+
   it("★ 액션을 실제로 찾아낸다 — 0개를 훑고 통과하는 일이 없게", () => {
     expect(actions().length).toBeGreaterThanOrEqual(19);
   });
