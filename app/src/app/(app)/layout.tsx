@@ -5,7 +5,8 @@ import { Logo } from "@/components/brand/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { SidebarNav } from "@/components/shell/SidebarNav";
 import { AppTabs } from "@/components/shell/AppTabs";
-import { Icon, IconSprite } from "@/components/shell/icons";
+import { IconSprite } from "@/components/shell/icons";
+import { GlobalSearch } from "@/components/shell/GlobalSearch";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { AnalyticsIdentity } from "@/components/analytics/AnalyticsIdentity";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
@@ -126,17 +127,17 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         className="relative flex h-auto w-full flex-none flex-col border-b px-[var(--sp-3)] py-[var(--sp-3)] md:sticky md:top-0 md:h-screen md:w-[var(--mw-shell-nav-w)] md:overflow-visible md:border-b-0 md:border-r md:py-[var(--sp-4)]"
         style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}
       >
+        {/* 목업 v6 `.brand` — 로고 한 덩이만. 높이 48px · 좌우 --sp-3 · 아래 경계선.
+            회사명은 여기 적지 않는다: 바로 아래 WorkspaceSwitcher 가 같은 이름을
+            «누를 수 있는» 형태로(회사 전환 + 역할) 보여준다. 둘 다 그리면 중복이다(BBE-194).
+            로고 height 40 = 락업 최소 너비 120px(design-tokens §5)을 만족하는 최소 높이.
+            락업 viewBox 는 2400×800(3:1)이라 22 로 그리면 자연 너비가 66px 뿐이어서
+            Logo 의 minWidth:120 이 가로로 1.8배 잡아늘였다 — 그 찌그러짐도 같이 없어진다. */}
         <div
-          className="px-2 pb-4 pt-1"
-          style={{ height: "var(--mw-shell-header-h)", display: "flex", flexDirection: "column", justifyContent: "center" }}
+          className="flex items-center border-b px-[var(--sp-3)]"
+          style={{ height: "var(--mw-shell-header-h)", borderColor: "var(--mw-line)" }}
         >
-          <Logo height={22} href={logoHref} />
-          <small
-            className="mt-1.5 block pl-0.5"
-            style={{ color: "var(--mw-sub)", fontSize: "var(--fs-11)" }}
-          >
-            {ctx.org.name} · 워크스페이스
-          </small>
+          <Logo height={40} href={logoHref} />
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col">
@@ -225,23 +226,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
                 승인 대기 {workspaceApprovals.pendingCount > 99 ? "99+" : workspaceApprovals.pendingCount}건
               </Link>
             ) : null}
-            <div
-              className="hidden items-center lg:flex"
-              style={{
-                width: "250px",
-                borderRadius: "var(--mw-r-2)",
-                border: "1px solid var(--mw-line)",
-                paddingInline: "var(--sp-3)",
-                paddingBlock: "var(--sp-2)",
-                fontSize: "var(--fs-13)",
-                gap: "var(--sp-2)",
-                background: "var(--mw-card)",
-                color: "var(--mw-sub)",
-              }}
-            >
-              <Icon name="search" />
-              업체·담당자 검색…
-            </div>
+            {/* 목업 v6 `.top > .search` 자리 — 여기가 검색의 정본 위치다.
+                예전엔 같은 자리에 「업체·담당자 검색…」 이라고 쓴 <div> 가 있었는데
+                onClick 도 button 도 없는 «죽은 장식»이었다(PR #14 셸 목업의 잔재).
+                진짜 통합 검색(BBE-22)은 사이드바에 처박혀 있어서 «정체불명»으로 보였다.
+                기능을 지운 게 아니라 그 진짜 트리거를 이 자리로 옮긴 것이다(BBE-194). */}
+            <GlobalSearch />
             {/* 기존 🔔 자리에 그대로 연결한다(자리를 새로 만들지 않음).
                 모바일(375px)에서도 알림을 확인해야 하므로 sm 미만 숨김은 걷어낸다. */}
             <NotificationBell initial={notify} />

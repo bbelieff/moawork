@@ -13,7 +13,8 @@ function ActionForm({ snapshot, item, operation, field, children }: { snapshot: 
     <input type="hidden" name="operation" value={operation}/><input type="hidden" name="boardId" value={snapshot.board.id}/>
     <input type="hidden" name="itemId" value={item?.id ?? ""}/><input type="hidden" name="expectedVersion" value={item?.version ?? 0}/>
     {field ? <input type="hidden" name="field" value={field}/> : null}{children}
-    {state.message ? <small role="status" className={state.ok ? styles.success : styles.error}>{state.message}</small> : null}
+    {/* 셀 저장 실패가 조용히 지나가지 않도록 role 도 state.ok 로 분기한다(BBE-193). */}
+    {state.message ? <small role={state.ok ? "status" : "alert"} className={state.ok ? styles.success : styles.error}>{state.message}</small> : null}
   </form>;
 }
 

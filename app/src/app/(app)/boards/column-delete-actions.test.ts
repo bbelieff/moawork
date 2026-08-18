@@ -78,7 +78,13 @@ describe("BBE-177 컬럼 삭제 확인 관문", () => {
 
   it("권한이 없으면 확인을 받았어도 지우지 않는다", async () => {
     mocks.guard.mockResolvedValue({ kind: "denied", reason: "permission" });
-    await expect(deleteColumnAction(form(COLUMN_DELETE_CONFIRM))).rejects.toThrow();
+
+    // ★ «던지는가» 가 아니라 «지우는가» 를 잰다.
+    //   BBE-213(#263)이 보드 액션 실패를 배너로 바꿨다(runBoardAction 이 잡고 다시 안 던진다).
+    //   그래서 권한 거부는 더 이상 호출자에게 throw 로 오지 않는다 — «경로» 가 바뀐 것이지
+    //   «막는가» 가 바뀐 것이 아니다. 이 테스트가 지키는 성질은 뒤의 두 줄이고 그건 그대로다.
+    //   되돌리면 빨개진다: requirePermission 을 지우거나 deleteColumn 뒤로 옮기기.
+    await expect(deleteColumnAction(form(COLUMN_DELETE_CONFIRM))).resolves.toBeUndefined();
     expect(mocks.guard).toHaveBeenCalledWith("org-a", "structure.column_manage");
     expect(mocks.deleteColumn).not.toHaveBeenCalled();
   });

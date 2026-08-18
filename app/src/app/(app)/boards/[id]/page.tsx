@@ -3,13 +3,19 @@ import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { CELL_FLASH_COOKIE, decodeCellFlash } from "@/lib/boards/cellFlash";
+import {
+  BOARD_ACTION_FLASH_COOKIE,
+  decodeBoardActionFlash,
+  findBoardActionError,
+} from "@/lib/boards/boardActionFlash";
 import { NotFoundError } from "@/lib/boards";
-import { createRequestBoards } from "@/lib/boards/server";
+import { createRequestBoards, requireRequestClient } from "@/lib/boards/server";
 import { markNoticeItemsReadAtomic } from "@/lib/notices/atomic";
 import { issueFileToken } from "@/lib/deal/fileSignedUrl";
 import { NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import { loadPermGuard } from "@/lib/perm/guard";
+import { PermissionUnavailable } from "@/components/perm/PermissionUnavailable";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { BoardTrashPanel } from "@/components/board/BoardTrashPanel";
@@ -43,6 +49,10 @@ export default async function BoardPage({
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
   const viewTabs = await loadPermGuard(ctx.org.id, "work.view_tabs");
+  // 판정 «불능» 은 「없음」이 아니다(BBE-204). 권한 없음만 404 로 남긴다 — 존재 숨김 유지.
+  if (viewTabs.kind === "denied" && viewTabs.reason === "unavailable") {
+    return <PermissionUnavailable />;
+  }
   if (viewTabs.kind !== "allowed") notFound();
   const [scopedItems, itemUpsert, itemDelete, columnManage, sectionManage, boardDelete] = await Promise.all([
     loadPermissionScopedWorkItems(ctx.org.id),
@@ -80,7 +90,9 @@ export default async function BoardPage({
   const deletedItems = !board.is_system && canDeleteItems
     ? await svc.listDeletedItems(ctx, id)
     : [];
-  if (board.source === NOTICE_TAB_SOURCE) {
+  // 읽음 표시는 «쓰기» 다. 로컬 시드에는 그 저장소가 없어 건너뛴다 —
+  // 화면에 표시되는 내용은 달라지지 않는다(BBE-209).
+  if (board.source === NOTICE_TAB_SOURCE && client) {
     const visibleNoticeIds = loadedItems.filter((item) => visibleItemIds.has(item.id)).map((item) => item.id);
     await markNoticeItemsReadAtomic(ctx, visibleNoticeIds, client);
   }
@@ -93,21 +105,37 @@ export default async function BoardPage({
       })
     : loadedItems;
   const permissionItems = boardItems.filter((item) => visibleItemIds.has(item.id));
+  // ★ 사람 범위(personScope)는 «보이는 항목을 좁히는» 규칙이다.
+  //   로컬에서 그 조회를 건너뛰면 좁힘이 사라져 «더 많이 보이는» fail-OPEN 이 된다.
+  //   그래서 저장된 보기로 들어온 경우에는 화면을 열지 않는다 — 모르면 닫는다(BBE-207 D24 와 같은 판단).
+  if (!client && sp.savedView) {
+    return (
+      <section className="rounded-xl border border-mw-line bg-mw-card p-5" role="status" aria-labelledby="saved-view-unavailable">
+        <h1 id="saved-view-unavailable" className="text-lg font-semibold text-mw-fg">
+          저장된 보기는 연결된 워크스페이스가 필요합니다
+        </h1>
+        <p className="mt-2 text-sm text-mw-sub">
+          이 보기는 «담당자 범위» 규칙을 함께 적용합니다. 그 규칙을 확인할 수 없어 화면을 열지 않았습니다.
+        </p>
+      </section>
+    );
+  }
   const personRuntime = await resolveSavedPersonRuntime(
-    ctx.org.id, id, sp.savedView ?? null, ctx.user.id,
+    ctx.org.id, id, client ? (sp.savedView ?? null) : null, ctx.user.id,
     async (orgId, boardId, viewId) => {
-      const { data, error } = await client.from("tab_views").select("person_scope,person_scope_user_id")
+      // 위 분기에서 savedView 가 있으면 client 가 반드시 있다. 그래도 단정하지 않고 확인한다.
+      const { data, error } = await requireRequestClient(client, "저장된 보기 조회").from("tab_views").select("person_scope,person_scope_user_id")
         .eq("org_id", orgId).eq("board_id", boardId).eq("id", viewId).maybeSingle();
       if (error) throw error;
       return data ? { personScope: data.person_scope, personScopeUserId: data.person_scope_user_id } : null;
     },
     async (orgId) => {
-      const { data, error } = await client.from("org_members").select("user_id").eq("org_id", orgId).eq("status", "active");
+      const { data, error } = await requireRequestClient(client, "구성원 조회").from("org_members").select("user_id").eq("org_id", orgId).eq("status", "active");
       if (error) throw error;
       return (data ?? []).map((member) => member.user_id);
     },
     async (orgId, userId) => {
-      const { data, error } = await client.rpc("get_member_account_profile", { p_org_id: orgId, p_target_user_id: userId });
+      const { data, error } = await requireRequestClient(client, "담당자 팀 조회").rpc("get_member_account_profile", { p_org_id: orgId, p_target_user_id: userId });
       if (error) throw error;
       return data && typeof data === "object" && !Array.isArray(data) && typeof data.team_key === "string" ? data.team_key : null;
     },
@@ -123,7 +151,14 @@ export default async function BoardPage({
     : [];
 
   // 직전 셀 편집에서 저장되지 못한 값의 사유(1회성). 없으면 null.
-  const cellFlash = decodeCellFlash((await cookies()).get(CELL_FLASH_COOKIE)?.value);
+  const jar = await cookies();
+  const cellFlash = decodeCellFlash(jar.get(CELL_FLASH_COOKIE)?.value);
+  // 직전 «항목 추가» 실패의 사유(1회성). 없으면 null.
+  // 이게 없으면 실패가 전면 오류 화면으로 튄다 — 그게 BBE-201 의 본체였다.
+  const boardActionError = findBoardActionError(
+    decodeBoardActionFlash(jar.get(BOARD_ACTION_FLASH_COOKIE)?.value),
+    id,
+  );
 
   // 담당자 탭·칩에 쓸 표시 이름. items.assigned_to 는 사용자 id 라서 이 맵이 없으면 UUID 가 노출된다.
   const assigneeLabels = Object.fromEntries(
@@ -217,7 +252,6 @@ export default async function BoardPage({
         {hiddenCount > 0 && (
           <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p>
         )}
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
           {backLink}
           <h1 className="flex shrink-0 items-center gap-1.5 text-base font-semibold text-mw-fg">
@@ -226,6 +260,8 @@ export default async function BoardPage({
           </h1>
           <div className="ml-auto">{viewToggle}</div>
         </div>
+        {/* 보드 이름 아래 — 목업 head() 순서(이름 → 보기). 테이블 뷰와 같은 위계다(BBE-214). */}
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
 
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto text-xs">
           <span className="shrink-0 text-mw-sub">그룹 기준</span>
@@ -279,7 +315,21 @@ export default async function BoardPage({
       {hiddenCount > 0 && (
         <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p>
       )}
-      <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
+      {/* 항목 추가 실패는 «화면 안에서» 말한다. 전면 오류 화면으로 덮으면
+          사용자는 무엇이 왜 안 됐는지 모르고 입력하던 것도 잃는다(BBE-201). */}
+      {boardActionError ? (
+        <p
+          role="alert"
+          data-testid="board-action-error"
+          className="rounded-lg border px-3 py-2 text-sm"
+          style={{ borderColor: "var(--mw-error)", color: "var(--mw-fg)", background: "var(--mw-card)" }}
+        >
+          {boardActionError}
+        </p>
+      ) : null}
+      {/* 저장된 뷰 줄은 «보드 이름 아래» 다 — 목업 head() 순서(이름 → 보기 → 필터).
+          예전엔 BoardWorkspace «앞» 에 있어서 보드 이름보다 위에 그려졌고,
+          뷰가 자기 소속처보다 위에 오니 위계가 뒤집혀 보였다(BBE-214). */}
       <BoardWorkspace
         board={board}
         columns={visibleColumns}
@@ -290,6 +340,9 @@ export default async function BoardPage({
         assigneeLabels={assigneeLabels}
         backSlot={backLink}
         viewSlot={viewToggle}
+        savedViewsSlot={
+          <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
+        }
         canEditItems={canEditItems}
         canDeleteItems={canDeleteItems}
         canManageColumns={canManageColumns}

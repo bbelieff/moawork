@@ -7,7 +7,9 @@ import { NoticesService } from "@/lib/notices/service";
 import { loadDealLedger } from "@/lib/accounting/server";
 import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 import { SupabaseCrmSource } from "@/lib/repo/supabase/supabaseCrmSource";
+import { getRepo } from "@/lib/repo";
 import { createClient } from "@/lib/supabase/server";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import {
   buildDashboardFromInputs,
   buildFollowUpsFromDeals,
@@ -63,7 +65,10 @@ type DashboardInputs = Readonly<{
 /**
  * One request's dashboard readers. Production constructs this once from the
  * cookie-bound Supabase server client. Tests/dev fixtures may inject this
- * contract explicitly; there is no implicit repository fallback.
+ * contract explicitly.
+ *
+ * 폴백 규칙(BBE-203): 주입이 없고 **Supabase env 도 없을 때만** 로컬 시드 구현을 쓴다.
+ * env 가 있으면 언제나 Supabase 다 — 암묵 폴백은 여전히 없다. 갈림길은 env 하나뿐이다.
  */
 export interface DashboardSource {
   loadCrm(ctx: Ctx): Promise<CrmInputs>;
@@ -204,6 +209,77 @@ function createSupabaseDashboardSource(client: SupabaseClient): DashboardSource 
   };
 }
 
+/**
+ * Supabase 가 없는 로컬 시드 모드용 읽기 구현 (BBE-203).
+ *
+ * ★ 새로 만드는 게 거의 없다 — 아래 세 공장은 **이미 env 를 보고 로컬로 떨어진다**:
+ *     getCrmSource()   → LocalCrmSource      (repo/supabase/index.ts:22)
+ *     getBoardsRepo()  → LocalBoardsRepo     (repo/local/boardsRepo.ts:396)
+ *     getRepo()        → LocalRepo
+ *   `AsyncCrmService`·`BoardsService`·`NoticesService` 는 인자를 안 주면 그 공장을 쓴다.
+ *   이 파일만 `new SupabaseCrmSource(client)` 로 **그 배선을 건너뛰고 있었다** — 그래서
+ *   로컬에서 홈·업무분석이 통째로 500 이 났다. 여기서는 기본 생성자를 그대로 쓴다.
+ *
+ * 원장(ledger)만 로컬 구현이 없다. 조용히 0 으로 채우지 않고 던져서
+ * `capture()` 가 «조회 불가» 로 표시하게 둔다 — 없는 숫자를 있는 척하지 않는다.
+ */
+function createLocalDashboardSource(): DashboardSource {
+  const crm = new AsyncCrmService();
+  const boards = new BoardsService();
+  const notices = new NoticesService(boards);
+
+  return {
+    async loadCrm(ctx) {
+      const [deals, companies, pipelines] = await Promise.all([
+        crm.listDeals(ctx),
+        crm.listCompanies(ctx),
+        crm.listPipelines(ctx),
+      ]);
+      return {
+        deals,
+        companies,
+        pipelines,
+        stages: pipelines.flatMap((pipeline) => pipeline.stages),
+      };
+    },
+
+    async loadDashboardInputs(ctx, visibleDealIds) {
+      // ★ 인메모리 저장소는 «운영 빌드에서 도달할 수 없는 자리» 에서만 만진다.
+      //   조건을 여기 그대로 적는 이유: 경계 검사기(scripts/check-production-repo-boundaries.mjs)가
+      //   이 형태의 dev 가드를 읽고 «운영 호출 그래프가 아니다» 로 판정한다.
+      //   함수로 감싸면 검사기가 못 읽어 운영 위반으로 세어진다 — 즉 이 문법이 곧 증명이다.
+      if (process.env.NODE_ENV !== "production") {
+        const repo = getRepo();
+        return {
+          fieldDefs: repo.listFieldDefs(ctx.org.id, "deal"),
+          settlements: repo
+            .listSettlements(ctx)
+            .filter((row) => row.deal_id !== null && visibleDealIds.has(row.deal_id)),
+        };
+      }
+      // 여기 닿았다는 것은 운영 빌드가 로컬 소스를 골랐다는 뜻이다 — 있을 수 없다. 조용히 넘기지 않는다.
+      throw new DashboardReadError("dashboard");
+    },
+
+    async loadBoards(ctx) {
+      const visibleBoards = await boards.listBoards(ctx);
+      const items = await Promise.all(visibleBoards.map((board) => boards.listItems(ctx, board.id)));
+      return {
+        boardCount: visibleBoards.length,
+        itemCount: items.reduce((sum, rows) => sum + rows.length, 0),
+      };
+    },
+
+    loadNotices(ctx) {
+      return notices.list(ctx, { limit: 5 });
+    },
+
+    async loadLedger() {
+      throw new DashboardReadError("ledger");
+    },
+  };
+}
+
 function unavailable<T>(operation: string): DashboardSegment<T> {
   return { status: "unavailable", operation };
 }
@@ -227,8 +303,18 @@ export async function loadDashboardPageData(
 ): Promise<DashboardPageData> {
   // createClient is cookie-bound. It must run once per page request and that
   // exact client is shared by every adapter below.
+  //
+  // ★ 폴백은 «암묵» 이 아니라 env 로만 갈린다(BBE-203).
+  //   env 가 있으면 예전과 한 글자도 다르지 않게 Supabase 경로를 탄다.
+  //   env 가 없을 때만 로컬 시드로 떨어진다 — 예전엔 여기서 createClient() 가 던져
+  //   capture() 밖이라 페이지가 통째로 500 이었다(홈·업무분석 촬영 NOT_RUN 의 원인).
+  //   명시 주입(source·clientFactory)은 언제나 최우선이다 — 테스트가 env 에 안 끌려간다.
   const source = options.source
-    ?? createSupabaseDashboardSource(await (options.clientFactory ?? createClient)());
+    ?? (options.clientFactory
+      ? createSupabaseDashboardSource(await options.clientFactory())
+      : canUseLocalSeedFallback()
+        ? createLocalDashboardSource()
+        : createSupabaseDashboardSource(await createClient()));
   const crm = await capture("crm", () => source.loadCrm(ctx));
   const now = options.now?.() ?? new Date();
 

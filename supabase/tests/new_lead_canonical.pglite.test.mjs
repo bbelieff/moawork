@@ -12,6 +12,8 @@ const transitionMigration069 = await readFile(path.join(root, "supabase", "migra
 const dashboardMigration086 = await readFile(path.join(root, "supabase", "migrations", "086_dashboard_daily_read_model.sql"), "utf8");
 const migration = await readFile(path.join(root, "supabase", "migrations", "087_new_lead_canonical.sql"), "utf8");
 const detailLayoutMigration088 = await readFile(path.join(root, "supabase", "migrations", "088_bbe175_detail_layout_drift_repair.sql"), "utf8");
+const migrationGuard094 = await readFile(path.join(root, "supabase", "migrations", "094_migration_apply_guard.sql"), "utf8");
+const contactMoveMigration095 = await readFile(path.join(root, "supabase", "migrations", "095_bbe172_new_lead_contact_transition.sql"), "utf8");
 
 const A = "10000000-0000-4000-8000-000000000001";
 const B = "10000000-0000-4000-8000-000000000002";
@@ -46,9 +48,9 @@ async function setup(db) {
     create table public.stages(id uuid primary key default gen_random_uuid(),pipeline_id uuid references public.pipelines(id),kind public.stage_kind,sort_order int default 0);
     create table public.deals(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),company_id uuid,pipeline_id uuid references public.pipelines(id),stage_id uuid references public.stages(id),assigned_to uuid references public.users(id),title text,custom jsonb not null default '{}'::jsonb,created_at timestamptz default now(),updated_at timestamptz default now());
     create table public.boards(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),source text);
-    create table public.board_groups(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),name text);
+    create table public.board_groups(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),name text,sort_order int default 0);
     create table public.board_columns(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),key text,label text,type public.field_type,sort_order int default 0,width int,source public.field_source not null default 'in',is_readonly boolean default false,unique(board_id,key));
-    create table public.items(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),group_id uuid references public.board_groups(id),title text,assigned_to uuid references public.users(id),deleted_at timestamptz);
+    create table public.items(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),board_id uuid references public.boards(id),group_id uuid references public.board_groups(id),title text,assigned_to uuid references public.users(id),deleted_at timestamptz,updated_at timestamptz default now());
     create table public.item_values(org_id uuid references public.orgs(id),item_id uuid references public.items(id),column_key text,value_jsonb jsonb,primary key(item_id,column_key));
     create table public.activities(id uuid primary key default gen_random_uuid(),org_id uuid references public.orgs(id),deal_id uuid references public.deals(id),type text,content text,actor uuid references public.users(id),created_at timestamptz default now());
     create table public.work_item_versions(org_id uuid references public.orgs(id),item_id uuid references public.items(id),due_date date,workflow_status text);
@@ -90,6 +92,8 @@ async function setup(db) {
   };
   await db.exec(detailLayoutMigration088);
   await db.exec(detailLayoutMigration088);
+  await db.exec(migrationGuard094);
+  await db.exec(contactMoveMigration095);
   assert.deepEqual(
     {
       boards: (await db.query("select id,org_id,source from public.boards order by id")).rows,
@@ -101,11 +105,31 @@ async function setup(db) {
   await db.exec("grant usage on schema public to authenticated");
 }
 
-async function createLead(db, request, title = "Lead") {
+async function createLead(db, request, title = "Lead", uniqueSuffix = "") {
   await db.exec("set role authenticated");
   try {
-    return await db.query("select * from public.create_new_lead($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", [A,BOARD,GROUP,request,title,"Representative","010-1234-5678","Lead@Example.COM","corporate","manufacturing"]);
+    const phone = uniqueSuffix ? `010-1234-${uniqueSuffix.padStart(4, "0")}` : "010-1234-5678";
+    const email = uniqueSuffix ? `lead-${uniqueSuffix}@example.com` : "Lead@Example.COM";
+    return await db.query("select * from public.create_new_lead($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", [A,BOARD,GROUP,request,title,"Representative",phone,email,"corporate","manufacturing"]);
   } finally { await db.exec("reset role"); }
+}
+
+async function installContactDestination(db, org = A, suffix = "201") {
+  const board = `10000000-0000-4000-8000-000000000${suffix}`;
+  const group = `10000000-0000-4000-8000-000000000${Number(suffix) + 1}`;
+  await db.query("insert into public.boards(id,org_id,source) values($1,$2,'core.default-tab/contact')", [board, org]);
+  await db.query("insert into public.board_groups(id,org_id,board_id,name) values($1,$2,$3,'unassigned')", [group, org, board]);
+  return { board, group };
+}
+
+async function advanceItem(db, actor, itemId, requestId) {
+  await db.exec("set role authenticated");
+  try {
+    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [actor]);
+    return await db.query("select * from public.advance_new_lead_to_contact($1,$2)", [itemId, requestId]);
+  } finally {
+    await db.exec("reset role");
+  }
 }
 
 test("BBE-173 creates one company-less deal and one linked projection, then replays exactly", async () => {
@@ -272,5 +296,128 @@ test("BBE-173 advance enforces active membership, permission, tenant, role, and 
     await db.exec("reset role");
     await db.exec(`update public.orgs set status='active' where id='${A}'`);
     await assert.rejects(db.query("insert into public.items(org_id,board_id,group_id,title,deal_id) values($1,$2,$3,'drift',$4)",[B,BOARD,GROUP,deal]),/foreign key/);
+  } finally { await db.close(); }
+});
+
+test("BBE-172 atomically moves the linked item to contact and replays with field, receipt, and activity delta zero", async () => {
+  const db = new PGlite();
+  try {
+    await setup(db);
+    const destination = await installContactDestination(db);
+    const created = await createLead(db, "10000000-0000-4000-8000-000000000201");
+    const { item_id: item, deal_id: deal } = created.rows[0];
+    const before = {
+      intake: (await db.query("select to_jsonb(i) value from public.deal_intake i where deal_id=$1", [deal])).rows[0].value,
+      values: (await db.query("select column_key,value_jsonb from public.item_values where item_id=$1 order by column_key", [item])).rows,
+    };
+    const request = "10000000-0000-4000-8000-000000000202";
+
+    const first = await advanceItem(db, USER, item, request);
+    assert.equal(first.rows[0].status, "committed");
+    assert.deepEqual(
+      (await db.query("select board_id,group_id,deal_id from public.items where id=$1", [item])).rows[0],
+      { board_id: destination.board, group_id: destination.group, deal_id: deal },
+    );
+    assert.equal(
+      (await db.query("select s.kind::text kind from public.deals d join public.stages s on s.id=d.stage_id where d.id=$1", [deal])).rows[0].kind,
+      "meeting",
+    );
+    assert.deepEqual(
+      (await db.query("select count(*)::int receipts,count(*) filter(where source_item_id=$1)::int linked from public.contact_pipeline_transitions where request_id=$2", [item, request])).rows[0],
+      { receipts: 1, linked: 1 },
+    );
+    assert.equal((await db.query("select count(*)::int n from public.activities where deal_id=$1", [deal])).rows[0].n, 1);
+
+    const replay = await advanceItem(db, USER, item, request);
+    assert.equal(replay.rows[0].status, "committed");
+    assert.equal((await db.query("select count(*)::int n from public.contact_pipeline_transitions where request_id=$1", [request])).rows[0].n, 1);
+    assert.equal((await db.query("select count(*)::int n from public.activities where deal_id=$1", [deal])).rows[0].n, 1);
+    assert.deepEqual(
+      {
+        intake: (await db.query("select to_jsonb(i) value from public.deal_intake i where deal_id=$1", [deal])).rows[0].value,
+        values: (await db.query("select column_key,value_jsonb from public.item_values where item_id=$1 order by column_key", [item])).rows,
+      },
+      before,
+    );
+  } finally { await db.close(); }
+});
+
+test("BBE-172 fails closed before every write when destination structure is ambiguous", async () => {
+  const db = new PGlite();
+  try {
+    await setup(db);
+    await installContactDestination(db, A, "211");
+    await installContactDestination(db, A, "213");
+    const created = await createLead(db, "10000000-0000-4000-8000-000000000215");
+    const request = "10000000-0000-4000-8000-000000000216";
+    await assert.rejects(advanceItem(db, USER, created.rows[0].item_id, request), /contact destination unavailable/);
+    assert.equal((await db.query("select count(*)::int n from public.contact_pipeline_transitions where request_id=$1", [request])).rows[0].n, 0);
+    assert.equal((await db.query("select count(*)::int n from public.activities where deal_id=$1", [created.rows[0].deal_id])).rows[0].n, 0);
+    assert.equal((await db.query("select board_id from public.items where id=$1", [created.rows[0].item_id])).rows[0].board_id, BOARD);
+  } finally { await db.close(); }
+});
+
+test("BBE-172 item overload permits assigned/all/owner/admin and denies inactive, out-of-scope, cross-org, and direct roles", async () => {
+  const db = new PGlite();
+  try {
+    await setup(db);
+    await installContactDestination(db);
+    let ordinal = 220;
+    const created = await createLead(db, `10000000-0000-4000-8000-000000000${ordinal++}`, "ACL lead", String(ordinal));
+    const item = created.rows[0].item_id;
+    const deal = created.rows[0].deal_id;
+    const reset = async (assigned) => {
+      await db.query("update public.items set board_id=$1,group_id=$2,assigned_to=$3 where id=$4", [BOARD, GROUP, assigned, item]);
+      await db.query("update public.deals set stage_id='10000000-0000-4000-8000-000000000031',assigned_to=$1 where id=$2", [assigned, deal]);
+    };
+    for (const [actor, assigned, label] of [
+      [USER, USER, "assigned member"],
+      [ALL, OTHER, "all-scope member"],
+      [OWNER, OTHER, "owner"],
+      [ADMIN, OTHER, "admin"],
+    ]) {
+      await reset(assigned);
+      const result = await advanceItem(db, actor, item, `10000000-0000-4000-8000-000000000${ordinal++}`);
+      assert.equal(result.rows[0].status, "committed", label);
+    }
+
+    await reset(OTHER);
+    await assert.rejects(
+      advanceItem(db, USER, item, `10000000-0000-4000-8000-000000000${ordinal++}`),
+      /new lead advance denied/,
+    );
+    await assert.rejects(
+      advanceItem(db, INACTIVE, item, `10000000-0000-4000-8000-000000000${ordinal++}`),
+      /new lead advance denied/,
+    );
+
+    const crossItem = "10000000-0000-4000-8000-000000000260";
+    await db.exec(`
+      insert into public.pipelines(id,org_id) values('10000000-0000-4000-8000-000000000261','${B}');
+      insert into public.stages(id,pipeline_id,kind,sort_order) values('10000000-0000-4000-8000-000000000262','10000000-0000-4000-8000-000000000261','marketing',0);
+      insert into public.deals(id,org_id,pipeline_id,stage_id,assigned_to,title) values('10000000-0000-4000-8000-000000000263','${B}','10000000-0000-4000-8000-000000000261','10000000-0000-4000-8000-000000000262','${USER}','Cross');
+      insert into public.boards(id,org_id,source) values('10000000-0000-4000-8000-000000000264','${B}','core.default-tab/new-lead');
+      insert into public.board_groups(id,org_id,board_id,name) values('10000000-0000-4000-8000-000000000265','${B}','10000000-0000-4000-8000-000000000264','incoming');
+      insert into public.items(id,org_id,board_id,group_id,title,assigned_to,deal_id) values('${crossItem}','${B}','10000000-0000-4000-8000-000000000264','10000000-0000-4000-8000-000000000265','Cross','${USER}','10000000-0000-4000-8000-000000000263');
+    `);
+    await assert.rejects(
+      advanceItem(db, USER, crossItem, `10000000-0000-4000-8000-000000000${ordinal++}`),
+      /new lead advance denied/,
+    );
+
+    await db.exec("set role authenticated");
+    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [USER]);
+    await assert.rejects(
+      db.query("select * from public.advance_new_lead_to_contact($1,$2)", ["10000000-0000-4000-8000-000000000999", `10000000-0000-4000-8000-000000000${ordinal++}`]),
+      /new lead item unavailable/,
+    );
+    await db.exec("reset role");
+
+    const acl = await db.query(`select
+      has_function_privilege('public','public.advance_new_lead_to_contact(uuid,uuid)','execute') public_exec,
+      has_function_privilege('anon','public.advance_new_lead_to_contact(uuid,uuid)','execute') anon_exec,
+      has_function_privilege('service_role','public.advance_new_lead_to_contact(uuid,uuid)','execute') service_exec,
+      has_function_privilege('authenticated','public.advance_new_lead_to_contact(uuid,uuid)','execute') auth_exec`);
+    assert.deepEqual(acl.rows[0], { public_exec: false, anon_exec: false, service_exec: false, auth_exec: true });
   } finally { await db.close(); }
 });

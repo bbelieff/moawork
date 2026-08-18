@@ -71,7 +71,12 @@ export function AppTabs({ lockedFeatures, workspaceBasePath }: Props) {
             data-tab-key={tab.key}
             aria-current={isActive ? "page" : undefined}
             aria-disabled={isLocked ? "true" : undefined}
-            title={tab.mockupLabel}
+            // ⚠ 네이티브 `title` 툴팁을 여기 달지 마라 (BBE-214).
+            //    이 <nav> 는 «레이아웃» 에 있어서 화면을 옮겨도 언마운트되지 않는다
+            //    (app/(app)/layout.tsx — 바뀌는 것은 <main>{children}</main> 뿐이다).
+            //    그래서 탭을 누르면 본문만 비고 탭 줄은 그대로 남는데, 브라우저가 그린
+            //    title 툴팁은 «앱이 지울 수 없어» 이미 떠난 화면 위에 계속 떠 있었다.
+            //    게다가 이 툴팁은 바로 옆 <span> 의 라벨과 «같은 글자» 라 알려주는 것도 없었다.
             className={`flex flex-none items-center ${isActive ? "font-semibold" : "hover:bg-[var(--mw-bg)]"}`}
             style={{
               gap: "var(--sp-2)",
@@ -88,7 +93,10 @@ export function AppTabs({ lockedFeatures, workspaceBasePath }: Props) {
             {icon ? <Icon name={icon} /> : null}
             <span>{tab.mockupLabel}</span>
             {isLocked ? (
-              <span style={{ color: "var(--mw-sub)" }} title="이 조직에 켜져 있지 않은 기능입니다">
+              // title 이 아니라 aria-label 이다 (BBE-214): 이 <nav> 는 화면을 옮겨도
+              // 언마운트되지 않아서, 네이티브 title 툴팁이 떠 있으면 새 화면 위에 그대로 남는다.
+              // aria-label 은 툴팁을 만들지 않으므로 잔상이 없고, 뜻은 보조기기에 그대로 전달된다.
+              <span style={{ color: "var(--mw-sub)" }} aria-label="이 조직에 켜져 있지 않은 기능입니다">
                 <Icon name="lock" />
               </span>
             ) : null}
