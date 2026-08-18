@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import type { WorkspaceOpsAction } from "@/lib/dynamic-workspace/workspace-ops-actions";
 import { STAGE_BOARDS } from "@/lib/crm/stageBoards";
+import { noticeLive, noticeRole, type ResultNotice } from "@/lib/ui/result-notice";
 import styles from "./builder-workspace.module.css";
 
 export type CsvRow = Readonly<{ title: string; values: Record<string, string> }>;
@@ -51,23 +52,24 @@ export function CsvImportDialog({ activeBoard, importCsv }: Readonly<{
   const [fileName, setFileName] = useState("");
   const [rows, setRows] = useState<CsvRow[]>([]);
   const [quarantined, setQuarantined] = useState(0);
-  const [notice, setNotice] = useState("합성·테스트 데이터만 업로드해 주세요. 실제 고객 개인정보는 사용할 수 없어요.");
+  // BBE-208: 안내와 «실패» 를 한 문자열로 뭉개지 않는다. ok 가 role·색을 함께 가른다.
+  const [notice, setNotice] = useState<ResultNotice>({ ok: true, message: "합성·테스트 데이터만 업로드해 주세요. 실제 고객 개인정보는 사용할 수 없어요." });
   const [busy, setBusy] = useState(false);
   const resetFile = () => { setFileName(""); setRows([]); setQuarantined(0); requestIdRef.current = crypto.randomUUID(); };
   const close = () => { dialogRef.current?.close(); triggerRef.current?.focus(); };
   const readFile = async (file?: File) => {
     resetFile();
-    if (!file) { setNotice("CSV 파일을 선택해 주세요."); return; }
-    if (file.size > 1024 * 1024) { setNotice("CSV 파일은 1MB 이하만 가져올 수 있어요."); return; }
+    if (!file) { setNotice({ ok: false, message: "CSV 파일을 선택해 주세요." }); return; }
+    if (file.size > 1024 * 1024) { setNotice({ ok: false, message: "CSV 파일은 1MB 이하만 가져올 수 있어요." }); return; }
     const parsed = parseDeidentifiedCsv(await file.text());
     setFileName(file.name); setRows(parsed.rows); setQuarantined(parsed.quarantined);
-    setNotice(`${parsed.rows.length}개 행을 읽었어요. 가져오면 현재 데모 CRM에 바로 저장됩니다.`);
+    setNotice({ ok: true, message: `${parsed.rows.length}개 행을 읽었어요. 가져오면 현재 데모 CRM에 바로 저장됩니다.` });
   };
   const submit = async () => {
     if (busy || rows.length === 0) return;
     setBusy(true);
-    try { const result = await importCsv(boardSlug, rows, requestIdRef.current); setNotice(result.message); if (result.ok) resetFile(); }
-    catch { setNotice("저장 여부를 확인할 수 없어요. 다시 시도해도 중복 저장되지 않아요."); }
+    try { const result = await importCsv(boardSlug, rows, requestIdRef.current); setNotice({ ok: result.ok, message: result.message }); if (result.ok) resetFile(); }
+    catch { setNotice({ ok: false, message: "저장 여부를 확인할 수 없어요. 다시 시도해도 중복 저장되지 않아요." }); }
     finally { setBusy(false); }
   };
   return <>
@@ -77,7 +79,7 @@ export function CsvImportDialog({ activeBoard, importCsv }: Readonly<{
       <div className={styles.dialogContent}>
         <label>가져올 CRM 보드<select value={boardSlug} onChange={(event) => setBoardSlug(event.target.value)}>{STAGE_BOARDS.map((board) => <option key={board.slug} value={board.slug}>{board.title}</option>)}</select></label>
         <label className={styles.fileDrop}>CSV 파일 선택<input type="file" accept=".csv,text/csv" onChange={(event) => void readFile(event.target.files?.[0])} /><span>{fileName || "첫 번째 열은 항목 이름으로 사용됩니다 · 최대 1MB"}</span></label>
-        <p className={styles.notice} role="status">{notice}</p>{fileName ? <p className={styles.preview}>{rows.length}개 행 · 격리 {quarantined}개</p> : null}
+        <p className={notice.ok ? styles.notice : styles.noticeError} role={noticeRole(notice.ok)} aria-live={noticeLive(notice.ok)}>{notice.message}</p>{fileName ? <p className={styles.preview}>{rows.length}개 행 · 격리 {quarantined}개</p> : null}
       </div>
       <div className={styles.dialogActions}><button type="button" className={styles.secondary} onClick={close}>취소</button><button type="button" className={styles.primary} onClick={submit} disabled={busy || rows.length === 0}>{busy ? "가져오는 중…" : "CRM으로 가져오기"}</button></div>
     </dialog>

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { noticeLive, noticeRole, type ResultNotice } from "@/lib/ui/result-notice";
 import styles from "./platform.module.css";
 import type { PlatformAggregateState } from "@/lib/platform/contracts";
 import type { PlatformCreateRequest } from "@/lib/workspace-entry/server";
@@ -30,22 +31,23 @@ function requestedAt(value: string): string {
 export function PlatformOrganizationsPanel({ requests, aggregate }: Props) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<ResultNotice | null>(null);
   const connectedCount = connectedWorkspaceCount(aggregate);
 
   async function decide(requestId: string, approve: boolean) {
     setBusyId(requestId);
-    setMessage(null);
+    setNotice(null);
     try {
       const result = await submitWorkspaceRequest({
         kind: "resolve_create",
         requestId,
         approve,
       });
-      setMessage(result.message);
+      // 판정을 «표현» 까지 데려간다 — 조직 처리 실패가 「처리됐다」로 읽히면 안 된다(BBE-208).
+      setNotice({ ok: result.ok, message: result.message });
       if (result.ok) router.refresh();
     } catch {
-      setMessage("처리하지 못했어요. 요청 목록을 새로 확인한 뒤 다시 시도해 주세요.");
+      setNotice({ ok: false, message: "처리하지 못했어요. 요청 목록을 새로 확인한 뒤 다시 시도해 주세요." });
     } finally {
       setBusyId(null);
     }
@@ -77,7 +79,7 @@ export function PlatformOrganizationsPanel({ requests, aggregate }: Props) {
         <li><span>3</span><div><strong>회사 업무 시작</strong><small>요청자가 대표로 연결되어 사용자 모드로 들어가요.</small></div></li>
       </ol>
 
-      {message ? <p className={styles.organizationStatus} role="status" aria-live="polite">{message}</p> : null}
+      {notice ? <p className={notice.ok ? styles.organizationStatus : styles.organizationError} role={noticeRole(notice.ok)} aria-live={noticeLive(notice.ok)}>{notice.message}</p> : null}
 
       {requests === null ? (
         <section className={styles.organizationUnavailable} aria-labelledby="organization-unavailable-title">

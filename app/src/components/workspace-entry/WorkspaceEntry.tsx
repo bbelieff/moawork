@@ -9,6 +9,7 @@ import { normalizeWorkspaceSlug, submitWorkspaceRequest, validateWorkspaceSlug }
 import { ApprovalQueue } from "./ApprovalQueue";
 import { useTrack } from "@/lib/analytics/useTrack";
 import type { WorkspaceEntryState } from "@/lib/analytics/events";
+import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
 import styles from "./workspace-entry.module.css";
 
 type InitialView = "fork" | "create" | "join" | "pending" | "rejected" | "blocked";
@@ -221,7 +222,7 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
 
   return (
     <EntryShell eyebrow={view === "operator" ? "운영 영역" : "처음 오셨군요"} title={copy.title} lead={copy.lead} view={view} headingRef={headingRef}>
-      {notice ? <p role="status" aria-live="polite" className={notice.tone === "error" ? styles.error : styles.status}>{notice.message}</p> : null}
+      {notice ? <p role={noticeRole(notice.tone !== "error")} aria-live={noticeLive(notice.tone !== "error")} className={notice.tone === "error" ? styles.error : styles.status}>{notice.message}</p> : null}
       <div className={styles.messages} aria-live="polite">
         {view === "fork" ? <>
           <div className={styles.bubble}><strong>새 회사를 시작할까요, 기존 회사에 합류할까요?</strong><small>지금 고른 뒤에도 요청 전에는 언제든 돌아올 수 있어요.</small></div>
