@@ -13,7 +13,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-type Trip = { label: string; wave: number };
+type Trip = { label: string; wave: number; origin?: string };
 
 const probe = vi.hoisted(() => {
   let wave = 0;
@@ -21,8 +21,29 @@ const probe = vi.hoisted(() => {
   let scheduled = false;
   const trips: Trip[] = [];
 
+  // 어느 «호출부» 가 이 왕복을 냈는지 붙인다. 중복을 없애려면 «누가 중복하는지» 를 알아야 한다.
+  function originOf(): string {
+    const stack = new Error().stack ?? "";
+    const NL = String.fromCharCode(10);
+    const BS = String.fromCharCode(92);
+    for (const raw of stack.split(NL).slice(2)) {
+      const line = raw.split(BS).join("/");
+      for (const key of ["src/lib/", "src/app/"]) {
+        const at = line.indexOf(key);
+        if (at < 0) continue;
+        const rest = line.slice(at + 4);
+        const cut = rest.indexOf(":");
+        let file = cut < 0 ? rest : rest.slice(0, cut);
+        if (file.endsWith(")")) file = file.slice(0, -1);
+        if (file.includes("roundtrips.test")) continue;
+        return file;
+      }
+    }
+    return "?";
+  }
+
   function roundtrip<T>(label: string, value: T): Promise<T> {
-    trips.push({ label, wave });
+    trips.push({ label, wave, origin: originOf() });
     return new Promise<T>((resolve) => {
       queue.push(() => resolve(value));
       if (scheduled) return;
@@ -487,6 +508,10 @@ describe("BBE-214 후속 · 탭 경유지를 없앨 수 있는가", () => {
     for (const t of trips) byLabel.set(t.label, (byLabel.get(t.label) ?? 0) + 1);
     console.log("[측정] (app) 레이아웃 1회 — 왕복 " + trips.length + "회 · 직렬 " + new Set(trips.map((t) => t.wave)).size + " · 종료: " + (threw ?? "정상 반환"));
     console.log("  내역: " + [...byLabel.entries()].map(([l, n]) => n + "x " + l).join(" | "));
+    const byOrigin = new Map<string, number>();
+    for (const t of trips) byOrigin.set((t.origin ?? "?") + " " + t.label, (byOrigin.get((t.origin ?? "?") + " " + t.label) ?? 0) + 1);
+    console.log("  호출부별:");
+    for (const [k, n] of [...byOrigin.entries()].sort((a, b) => b[1] - a[1])) console.log("    " + n + "x  " + k);
     // 하니스 자체 검증 — 레이아웃이 «끝까지» 돌았을 때의 값이어야 한다.
     // 중간에 터진 실행을 기준선으로 쓰면 +1 의 비중을 과대평가한다.
     expect(threw, "레이아웃이 정상 반환하지 않았다 — 이 값은 기준선이 아니다").toBe(null);
