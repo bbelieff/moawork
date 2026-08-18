@@ -168,12 +168,12 @@ export default async function BoardPage({
     (await loadDefaultTabAssignees(ctx)).map((member) => [member.userId, member.displayName]),
   );
   /*
-   * 그룹 메뉴의 «다른 프리셋 적용» 목록 — 이 PR 에서는 «비운다» (BBE-174 / BBE-222).
+   * 그룹 메뉴의 «다른 프리셋 적용» 목록 — 이 PR 에서는 «비운다» (BBE-174 / BBE-223).
    *
    * ★ 여기서 라이브러리를 읽으면 보드 렌더마다 boards → board_groups → board_columns 가
    *   꼬리에 붙어 BBE-214 예산(직렬 13)을 넘긴다. 실측 15, 그리고 「세 읽기가 한 물결」도 깨진다.
    *   예산을 올리는 것은 처치가 아니다 — 갓 세운 가드를 첫 손님이 무력화한다.
-   *   목록은 «그룹 메뉴를 열 때» 만 필요하므로 렌더에서 읽지 않는 것이 옳다(BBE-222).
+   *   목록은 «그룹 메뉴를 열 때» 만 필요하므로 렌더에서 읽지 않는 것이 옳다(BBE-223).
    *   저장·미리보기는 이 PR 로 동작하고, 「다른 프리셋 적용」 목록만 그 카드에서 잇는다.
    */
   const presets: SectionPresetRecord[] = [];
