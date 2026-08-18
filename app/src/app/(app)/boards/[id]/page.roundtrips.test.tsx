@@ -78,6 +78,29 @@ const probe = vi.hoisted(() => {
     return q;
   }
 
+  // ★ RPC 도 읽기/쓰기를 갈라야 한다 — 테이블 질의만 가르면 절반만 갈린 것이다.
+  //   다음 단계가 「무엇을 줄일까」이기 때문이다: 읽기는 병렬화·캐시로 줄이고, 쓰기는 못 줄인다.
+  //   내역이 둘을 합쳐 놓으면 «줄일 수 없는 것을 줄이려» 하거나 «줄일 수 있는 것을 못 본다».
+  //
+  //   ★ 목록에 «없는» RPC 는 읽기로 «가정하지 않는다» — `rpc?:` 로 찍어 모른다는 것을 드러낸다.
+  //     가정하면 「분류에서 뺀 것」과 「분류를 빠뜨린 것」이 구분되지 않는다.
+  const READ_RPCS = new Set([
+    "app_admin_role",
+    "effective_permission",
+    "read_permission_scoped_work_items",
+    "get_member_account_profile",
+  ]);
+  const WRITE_RPCS = new Set([
+    "acquire_default_tab_repair_lease",
+    "renew_default_tab_repair_lease",
+    "release_default_tab_repair_lease",
+  ]);
+  function rpcLabel(name: string): string {
+    if (READ_RPCS.has(name)) return `rpc:${name}`;
+    if (WRITE_RPCS.has(name)) return `rpc-write:${name}`;
+    return `rpc?:${name}`;
+  }
+
   const client = {
     auth: {
       getUser: () =>
@@ -87,7 +110,7 @@ const probe = vi.hoisted(() => {
         }),
     },
     from: (table: string) => makeQuery(table),
-    rpc: (name: string) => thenable(`rpc:${name}`, () => rpcs[name] ?? null),
+    rpc: (name: string) => thenable(rpcLabel(name), () => rpcs[name] ?? null),
   };
 
   return {
@@ -385,7 +408,7 @@ describe("BBE-214 후속 · 탭 경유지를 없앨 수 있는가", () => {
       threw,
       total: trips.length,
       stages: new Set(trips.map((t) => t.wave)).size,
-      leases: trips.filter((t) => t.label.includes("repair_lease")).length,
+      leases: trips.filter((t) => /^rpc-write:.*repair_lease/.test(t.label)).length,
       // «쓰기» 만 센다. 읽기(select:)를 같이 세면 치유가 죽어도 listGroups 읽기 때문에 초록이 된다.
       writes: trips.filter((t) => /^(insert|update|upsert|delete):/.test(t.label)).length,
     };
