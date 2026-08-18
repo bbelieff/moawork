@@ -57,7 +57,8 @@ describe("BBE-107 action permission/value preservation", () => {
 
   it("권한이 없으면 layout 저장소를 호출하지 않는다", async () => {
     mocks.guard.mockResolvedValue({ kind: "denied", reason: "permission" });
-    await expect(saveDetailLayoutAction(form({ boardId: "board-a", groupId: "group-a", layout: "[]" }))).rejects.toThrow();
+    // BBE-213: 던지지 않는다. 보안 성질(저장소 미호출)은 아래에서 그대로 단언한다.
+    await expect(saveDetailLayoutAction(form({ boardId: "board-a", groupId: "group-a", layout: "[]" }))).resolves.toBeUndefined();
     expect(mocks.setGroupLayout).not.toHaveBeenCalled();
   });
 

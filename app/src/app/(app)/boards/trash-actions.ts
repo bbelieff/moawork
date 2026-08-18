@@ -5,13 +5,10 @@ import { getSession } from "@/lib/auth/session";
 import { createRequestBoards } from "@/lib/boards/server";
 import { loadPermGuard } from "@/lib/perm/guard";
 import type { Ctx } from "@/lib/types";
+// ★ 상태 모양은 순수 모듈에 있다. "use server" 파일은 async 함수 외에는 export 할 수 없고,
+//   여기서 re-export 만 해도 같은 이유로 터진다. 화면 쪽은 그 파일에서 직접 가져간다.
+import type { TrashActionState } from "./trash-action-state";
 
-export interface TrashActionState {
-  ok: boolean;
-  message: string | null;
-}
-
-export const INITIAL_TRASH_ACTION_STATE: TrashActionState = { ok: true, message: null };
 
 async function requirePermission(ctx: Ctx): Promise<void> {
   const permission = await loadPermGuard(ctx.org.id, "work.item_delete");

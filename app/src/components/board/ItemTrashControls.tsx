@@ -1,11 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import {
-  INITIAL_TRASH_ACTION_STATE,
-  restoreItemAction,
-  trashItemAction,
-} from "@/app/(app)/boards/trash-actions";
+import { restoreItemAction, trashItemAction } from "@/app/(app)/boards/trash-actions";
+import { INITIAL_TRASH_ACTION_STATE } from "@/app/(app)/boards/trash-action-state";
 
 interface ItemActionProps {
   boardId: string;

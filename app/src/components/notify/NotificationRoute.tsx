@@ -11,7 +11,10 @@ const labels = {
 } as const;
 
 export function notificationRouteTone(distance = 0) {
-  if (distance <= 1) return { rail: "var(--mw-people)", background: "var(--mw-soft)" };
+  // BBE-206: --mw-soft 는 정의된 적 없는 토큰이라 배경이 «투명» 으로 떨어져 있었다.
+  // 직속(distance<=1)만 배경으로 강조하려던 의도인데 강조가 아예 안 보였다.
+  // 정본은 --mw-people(코랄)의 옅은 톤인 --mw-tint-coral 이다(다크 모드 값도 정의돼 있다).
+  if (distance <= 1) return { rail: "var(--mw-people)", background: "var(--mw-tint-coral)" };
   if (distance === 2) return { rail: "color-mix(in srgb, var(--mw-people) 55%, transparent)", background: "transparent" };
   return { rail: "color-mix(in srgb, var(--mw-people) 30%, transparent)", background: "transparent" };
 }

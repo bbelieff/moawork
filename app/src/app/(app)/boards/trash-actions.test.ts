@@ -27,10 +27,10 @@ vi.mock("@/lib/boards/server", () => ({
 }));
 
 import {
-  INITIAL_TRASH_ACTION_STATE,
   restoreItemAction,
   trashItemAction,
 } from "./trash-actions";
+import { INITIAL_TRASH_ACTION_STATE } from "./trash-action-state";
 
 function input(): FormData {
   const form = new FormData();

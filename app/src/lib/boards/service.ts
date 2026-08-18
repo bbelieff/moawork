@@ -103,15 +103,19 @@ export class BoardsService {
     return (await this.repo).listBoards(ctx);
   }
 
+  // BBE-214 — 세 읽기는 서로를 «입력으로 쓰지 않는다». 줄 세우면 왕복 지연이 3배로 쌓인다.
+  // 실측(page.roundtrips.test.tsx): 이 메서드가 한 화면에서 3번 불리므로 직렬 3단계 × 3 = 9단계였다.
+  // 병렬로 바꿔도 관측되는 동작은 같다 — 보드가 없으면 여전히 NotFoundError 를 던진다.
+  // (없는 보드에도 columns·groups 질의가 나가지만 org 범위 안의 빈 결과라 부작용이 없다.)
   async getBoardDetail(ctx: Ctx, boardId: string): Promise<BoardDetail> {
     const repo = await this.repo;
-    const board = await repo.getBoard(ctx, boardId);
+    const [board, columns, groups] = await Promise.all([
+      repo.getBoard(ctx, boardId),
+      repo.listColumns(ctx, boardId),
+      repo.listGroups(ctx, boardId),
+    ]);
     if (!board) throw new NotFoundError("보드를 찾을 수 없습니다");
-    return {
-      board,
-      columns: await repo.listColumns(ctx, boardId),
-      groups: await repo.listGroups(ctx, boardId),
-    };
+    return { board, columns, groups };
   }
 
   /** 사용자 보드 생성 — 기본 컬럼 2~3개를 함께 프로비저닝. */
@@ -161,15 +165,21 @@ export class BoardsService {
   }
 
   // ── 아이템 + 셀 ──
+  // BBE-214 — 보드 메타(컬럼)와 아이템 목록은 서로 독립이다. 같이 발행한다.
+  // 보드가 없으면 getBoardDetail 이 거부하므로 NotFoundError 는 그대로 나간다.
   async listItems(ctx: Ctx, boardId: string): Promise<ItemWithValues[]> {
-    const detail = await this.getBoardDetail(ctx, boardId);
-    const items = await (await this.repo).listItems(ctx, boardId);
+    const [detail, items] = await Promise.all([
+      this.getBoardDetail(ctx, boardId),
+      this.repo.then((repo) => repo.listItems(ctx, boardId)),
+    ]);
     return this.compose(ctx, items, detail.columns);
   }
 
   async listDeletedItems(ctx: Ctx, boardId: string): Promise<ItemWithValues[]> {
-    const detail = await this.getBoardDetail(ctx, boardId);
-    const items = await (await this.repo).listDeletedItems(ctx, boardId);
+    const [detail, items] = await Promise.all([
+      this.getBoardDetail(ctx, boardId),
+      this.repo.then((repo) => repo.listDeletedItems(ctx, boardId)),
+    ]);
     return this.compose(ctx, items, detail.columns);
   }
 

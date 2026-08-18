@@ -83,13 +83,21 @@ const SCREENS: Readonly<Record<string, Coverage>> = {
   },
 
   // ── 아직 죽어 있다. 이 목록이 곧 남은 일이다 ──────────────────────────────
-  "/": { status: "known-500", owner: "BBE-186 (PR #246 에서 고쳤다 · 미머지)" },
   "/newcust": { status: "known-500", owner: "BBE-171" },
   "/presets": { status: "known-500", owner: "미배정" },
   "/work": { status: "known-500", owner: "미배정" },
 
   // ── 200 확인됨 ─────────────────────────────────────────────────────────
+  // ★ BBE-186(PR #246)이 홈을 V6 «오늘» 로 재구성하면서 500 을 없앴다. 2026-08-18 실측 200 ·
+  //   「워크스페이스 데이터에 아직 연결되지 않았습니다」 표시. `loadTodayHome` 이
+  //   `hasSupabaseEnv()` 가드 + try/catch 로 막는다(dash/today-server.ts:31).
+  //   ※ `verified` 로 올리지 못한 이유: 홈 트리에 async 서버 컴포넌트(FeatureGateServer)가
+  //     중첩돼 있어 `renderToStaticMarkup` 하네스로는 못 민다. 별도 카드감이다.
+  "/": { status: "measured-ok" },
   "/contract": { status: "measured-ok" },
+  // BBE-186 이 홈에서 옮겨온 «업무 분석». 홈과 같은 `hasSupabaseEnv()` 가드가
+  // `createClient()` 앞에 있어(dash/page.tsx:63) 미연결에서도 죽지 않는다.
+  "/dash": { status: "measured-ok" },
   "/dash/all": { status: "measured-ok" },
   "/dash/tasks": { status: "measured-ok" },
   "/onboarding": { status: "measured-ok" },
@@ -161,7 +169,7 @@ describe("(app) 라우트 전수 목록", () => {
       .filter(([, coverage]) => coverage.status === "known-500")
       .map(([route]) => route);
     expect(remaining.length).toBeGreaterThan(0);
-    expect(remaining).toEqual(["/", "/newcust", "/presets", "/work"]);
+    expect(remaining).toEqual(["/newcust", "/presets", "/work"]);
   });
 });
 

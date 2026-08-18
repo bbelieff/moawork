@@ -127,7 +127,8 @@ export function OnboardingPanel({ snapshot, error, revalidatePath, showManagemen
                     className="mt-1 min-h-20 w-full rounded border bg-transparent px-2 py-1.5 text-sm"
                     defaultValue={quest.why ?? ""}
                     name="why"
-                    style={{ borderColor: "var(--mw-line)", color: "var(--mw-text)" }}
+                    /* BBE-206: --mw-text 는 정의된 적 없어 글자색이 부모색으로 새고 있었다. 정본은 --mw-fg. */
+                    style={{ borderColor: "var(--mw-line)", color: "var(--mw-fg)" }}
                   />
                 </label>
                 <label className="mt-2 flex min-h-11 items-center gap-2 text-sm">

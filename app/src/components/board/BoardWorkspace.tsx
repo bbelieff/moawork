@@ -120,6 +120,7 @@ export function BoardWorkspace({
   assigneeLabels,
   backSlot,
   viewSlot,
+  savedViewsSlot,
   canEditItems = false,
   canDeleteItems = false,
   canManageColumns = false,
@@ -136,6 +137,13 @@ export function BoardWorkspace({
   /** 헤더 1줄 안에 얹을 화면 고유 컨트롤(뒤로가기·뷰 전환) — 줄을 늘리지 않기 위한 슬롯. */
   backSlot?: ReactNode;
   viewSlot?: ReactNode;
+  /**
+   * 저장된 뷰 줄 — 목업 순서상 «보드 이름 아래 · 필터 위» 다 (BBE-214).
+   * 근거: UI목업_워크스페이스_최종_v6.html 의 head() —
+   *   :1810 `.hrow > .h1` 보드 이름 → :1821 `.vrow` 보기 → :1841 filterbar 필터.
+   * 뷰는 «보드에 속한 것» 이라 소속처보다 위에 두면 위계가 뒤집혀 보인다.
+   */
+  savedViewsSlot?: ReactNode;
   canEditItems?: boolean;
   canDeleteItems?: boolean;
   canManageColumns?: boolean;
@@ -280,6 +288,9 @@ export function BoardWorkspace({
         backSlot={backSlot}
         viewSlot={viewSlot}
       />
+
+      {/* 보드 이름 «아래» · 필터 «위» — 목업 head() 의 `.vrow` 자리다 (BBE-214). */}
+      {savedViewsSlot}
 
       <BoardToolbar
         columns={columns}
