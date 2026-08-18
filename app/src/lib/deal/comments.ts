@@ -16,7 +16,7 @@
 
 import type { Ctx } from "@/lib/types";
 import { getCrmService } from "@/lib/crm";
-import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { createClient } from "@/lib/supabase/server";
 
 const COMMENTS_CUSTOM_KEY = "comments";
@@ -239,7 +239,9 @@ export async function editComment(
   if (existing.version !== input.expectedVersion) throw new ConcurrentEditError();
 
   const now = new Date().toISOString();
-  if (hasSupabaseEnv()) {
+  // ★ BBE-203 — 아래 else 는 로컬 시드 저장소에 «쓴다». env 유무«만» 보면 운영에서 env 가
+  //   빠졌을 때 사용자의 댓글이 인메모리 시드로 들어가고 재시작하면 사라진다. 조용한 데이터 유실이다.
+  if (!canUseLocalSeedFallback()) {
     // 프로덕션은 읽기→쓰기 사이 경쟁을 DB의 단일 UPDATE에서 판정한다. 앱에서 version을
     // 먼저 비교하는 것만으로는 두 요청이 같은 값을 읽은 뒤 모두 성공할 수 있다.
     const supabase = await createClient();
