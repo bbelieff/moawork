@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
-import { repairNewcustBoardOnEntry } from "@/lib/newcust/entry";
+import { repairNewcustBoardOnEntry, resolveExistingNewcustBoard } from "@/lib/newcust/entry";
 import { createClient } from "@/lib/supabase/server";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
+import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
 
 /**
  * 신규업체(신규리드)의 단일 제품 진입점(BBE-26 · BBE-145).
@@ -22,7 +24,20 @@ export default async function NewCustomerPage({
 }) {
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
-  const result = await repairNewcustBoardOnEntry(ctx, await createClient());
+  // ★ BBE-171 — 개발 빌드 + Supabase 없음에서만 로컬 시드 보드로 «찾기만» 한다
+  //   (BBE-203 #255 · BBE-202 #259 와 같은 규약. 이 라우트가 세 번째 적용이다).
+  //
+  //   조건을 «인라인» 으로 적어야 한다. 경계 검사기(check-production-repo-boundaries.mjs 의
+  //   isInsideExplicitDevGuard)가 조건식을 «구문으로» 읽기 때문에, canUseLocalSeedFallback()
+  //   안에 같은 NODE_ENV 검사가 있어도 함수 뒤에 숨으면 못 읽고 getBoardsRepo 를 운영 위반으로
+  //   센다. 중복처럼 보이지만 지우면 게이트가 실패한다.
+  //
+  //   ★ 복구(repair)는 하지 않고 조회만 한다. repairNewcustBoardOnEntry 는 «이 변경 이전에
+  //   만들어진 기존 워크스페이스» 를 위한 운영 경로다(리스·ensure 포함). 로컬 시드에는 이 보드가
+  //   이미 있으므로 복구할 대상이 없고, 흉내 내면 운영 전용 절차를 두 벌로 만드는 셈이 된다.
+  const result = process.env.NODE_ENV !== "production" && canUseLocalSeedFallback()
+    ? await resolveExistingNewcustBoard(ctx, await getBoardsRepo())
+    : await repairNewcustBoardOnEntry(ctx, await createClient());
   if (result.kind !== "ready") {
     const conflict = result.kind === "conflict";
     const permission = result.kind === "permission";

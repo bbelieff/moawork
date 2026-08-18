@@ -28,8 +28,8 @@ import { clampWidth } from "./layout";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import { TrashItemButton } from "./ItemTrashControls";
+import { AddItemForm } from "./AddItemForm";
 import {
-  addItemAction,
   renameItemAction,
   setCellAction,
   setColumnWidthAction,
@@ -562,20 +562,13 @@ export function GroupTable({
                 colSpan={colSpan}
                 className={`px-2 py-1 ${overRowIndex === rows.length ? "bg-mw-tint-blue" : ""}`}
               >
-                <form action={addItemAction} className="flex items-center gap-1">
-                  <input type="hidden" name="boardId" value={boardId} />
-                  <input type="hidden" name="groupId" value={groupId ?? ""} />
-                  <span aria-hidden="true" className="text-xs text-mw-sub">
-                    ＋
-                  </span>
-                  <input
-                    name="title"
-                    required
-                    placeholder="새 항목"
-                    aria-label="새 항목 이름"
-                    className={`${CELL_INPUT} max-w-64`}
-                  />
-                </form>
+                {/* BBE-171 — 공용 AddItemForm. 컬럼이 22개든 5개든 같은 규칙으로 동작한다. */}
+                <AddItemForm
+                  boardId={boardId}
+                  variant="inline"
+                  groupId={groupId}
+                  inputClassName={`${CELL_INPUT} max-w-64`}
+                />
               </td>
             </tr>
           )}

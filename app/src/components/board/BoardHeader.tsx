@@ -15,7 +15,7 @@
 
 import type { ReactNode } from "react";
 import type { BoardGroup } from "@/lib/boards/types";
-import { addItemAction } from "@/app/(app)/boards/actions";
+import { AddItemForm } from "./AddItemForm";
 
 export function BoardHeader({
   boardId,
@@ -101,37 +101,8 @@ export function BoardHeader({
             ＋ 새 항목
           </summary>
 
-          <form
-            action={addItemAction}
-            className="absolute right-0 top-full z-30 mt-1 flex w-64 flex-col gap-2 rounded-xl border border-mw-line bg-mw-card p-2 shadow-lg"
-          >
-            <input type="hidden" name="boardId" value={boardId} />
-            <input
-              name="title"
-              required
-              placeholder="항목 이름"
-              aria-label="항목 이름"
-              className="h-9 rounded-lg border border-mw-line bg-mw-card px-2 text-xs text-mw-fg outline-none focus:border-mw-record"
-            />
-            <select
-              name="groupId"
-              defaultValue={groups[0]?.id ?? ""}
-              aria-label="그룹"
-              className="h-9 rounded-lg border border-mw-line bg-mw-card px-2 text-xs text-mw-fg outline-none focus:border-mw-record"
-            >
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              className="h-9 rounded-lg bg-mw-primary text-xs font-semibold text-mw-on-accent"
-            >
-              추가
-            </button>
-          </form>
+          {/* BBE-171 — 입력·검증·오류 표시는 모든 보드가 공유하는 AddItemForm 이 맡는다. */}
+          <AddItemForm boardId={boardId} variant="popover" groups={groups} />
         </details>
       )}
       </div>
