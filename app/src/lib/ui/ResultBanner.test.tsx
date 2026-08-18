@@ -52,3 +52,25 @@ describe("ResultBanner — 그려진 결과에서 판정을 읽는다", () => {
     expect(pass.includes('role="status"') && pass.includes('class="ok"')).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★ 이 PR 이 «고친 두 자리» 를 못으로 박는다 (DC-18 지적)
+//
+//   사각을 정직하게 적은 것과, 그 사각에 «방금 고친 것» 이 들어 있는 것은 다른 문제다.
+//   두 수정 모두 전수 검사기가 «원리적으로 못 보는» 범위(prop 판정 부품 · 빈 문자열 관용구)에
+//   있어서, 되돌려도 스위트 전체가 초록이었다 — 실측 2404 passed · 실패 0.
+//   검사기가 못 보는 자리는 «그려진 마크업» 을 직접 단언하는 것만이 답이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { DashboardUnavailable } from "@/components/dash/DashboardSourceSummary";
+
+describe("고친 자리 ① DashboardUnavailable — 실패 부품이므로 alert 고정", () => {
+  // 되돌리면 빨개진다: role 을 "status" 로 되돌리기
+  it("★ 조회 실패를 alert 로 그린다 — status 로 두면 보조기술이 놓친다", () => {
+    const html = renderToStaticMarkup(<DashboardUnavailable label="보드" />);
+
+    expect(html).toContain('role="alert"');
+    expect(html).not.toContain('role="status"');
+    expect(html).toContain("불러오지 못함");
+  });
+});

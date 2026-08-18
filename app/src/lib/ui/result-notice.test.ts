@@ -146,6 +146,10 @@ const VERDICT_BANNERS: Array<[string, RegExp]> = [
   ["components/workspace-builder/CsvImportDialog.tsx", /notice\.ok \? styles\.notice : styles\.noticeError/],
   ["components/workspace-builder/BuilderWorkspaceSurface.tsx", /notice\.ok \? styles\.notice : styles\.noticeError/],
   ["components/workspace-entry/WorkspaceEntry.tsx", /notice\.tone === "error" \? styles\.error : styles\.status/],
+  // ③ WorkspaceSwitcher 의 라이브영역은 «내부 state» 라 정적 렌더로는 실패쪽을 만들 수 없다.
+  //    성공쪽(navigationError 없음 → status)은 WorkspaceSwitcher.test.tsx 가 «그려서» 재고,
+  //    실패쪽(있음 → alert)은 여기서 배선을 못 박는다. role 을 상수로 되돌리면 빨개진다.
+  ["components/workspace/WorkspaceSwitcher.tsx", /role=\{noticeRole\(!navigationError\)\}\s*\n\s*aria-live=\{noticeLive\(!navigationError\)\}/],
 ];
 
 describe("전수 — 판정을 안 읽는 결과 배너", () => {
