@@ -27,6 +27,13 @@ import {
   CELL_FLASH_MAX_AGE,
   encodeCellFlash,
 } from "@/lib/boards/cellFlash";
+import {
+  BOARD_ACTION_FLASH_COOKIE,
+  BOARD_ACTION_FLASH_MAX_AGE,
+  encodeBoardActionFlash,
+  UserFacingActionError,
+  userFacingMessage,
+} from "@/lib/boards/boardActionFlash";
 import { encodeNoticeFile, NOTICE_FILE_VALUE_PREFIX } from "@/lib/notices/official-file";
 import { notifyBoardItemMoved } from "@/lib/notify/board-actions";
 import {
@@ -55,10 +62,47 @@ async function boardsService() {
 
 async function requirePermission(ctx: Ctx, scopeKey: string, riskKey?: "danger.bulk_edit_delete"): Promise<void> {
   const permission = await loadPermGuard(ctx.org.id, scopeKey);
-  if (permission.kind !== "allowed") throw new Error(permission.reason === "permission" ? "이 업무를 실행할 권한이 없어요." : "권한을 확인하지 못했어요.");
-  if (riskKey && !(await recordRiskyAction(ctx.org.id, riskKey, { operation: scopeKey })).ok) {
-    throw new Error("위험 작업 기록을 남기지 못해 실행하지 않았어요.");
+  // ★ 「권한이 없다」와 「권한을 확인하지 못했다」는 사용자에게 다른 사실이다(BBE-204 와 같은 족보).
+  //   여기서 문장을 나눠 만들어 두고 호출부가 그걸 화면에 쓴다.
+  if (permission.kind !== "allowed") {
+    throw new UserFacingActionError(
+      permission.reason === "permission" ? "이 업무를 실행할 권한이 없어요." : "권한을 확인하지 못했어요.",
+    );
   }
+  if (riskKey && !(await recordRiskyAction(ctx.org.id, riskKey, { operation: scopeKey })).ok) {
+    throw new UserFacingActionError("위험 작업 기록을 남기지 못해 실행하지 않았어요.");
+  }
+}
+
+/**
+ * 1회성 플래시 쿠키를 즉시 지운다 (BBE-201).
+ *
+ * ★ 성공은 «이전 실패» 를 지워야 한다. TTL 로 스스로 사라지길 기다리면,
+ *   사용자가 오류를 보고 고쳐서 다시 누르는 «10초 안» 에 성공했는데도
+ *   방금 전 오류가 화면에 다시 그려진다. 그게 총괄이 겪는 시나리오다.
+ */
+async function clearFlashCookie(name: string): Promise<void> {
+  (await cookies()).set(name, "", { path: "/", maxAge: 0 });
+}
+
+/**
+ * 보드 단위 실패를 다음 렌더에 알린다(1회성 쿠키).
+ *
+ * 이것이 없으면 서버 액션의 throw 가 Next 오류 경계로 올라가 **화면이 통째로 덮인다**
+ * ("This page couldn't load"). 사용자는 무엇이 왜 안 됐는지 모르고 입력하던 것도 잃는다.
+ */
+async function flashBoardActionError(boardId: string, error: unknown): Promise<void> {
+  // 원인 자체는 서버 로그에 남긴다 — 화면에서 감춘다고 조사까지 못 하게 하면 안 된다.
+  console.error("[board action]", boardId, error);
+  const encoded = encodeBoardActionFlash({ boardId, message: userFacingMessage(error) });
+  if (!encoded) return;
+  const jar = await cookies();
+  jar.set(BOARD_ACTION_FLASH_COOKIE, encoded, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: BOARD_ACTION_FLASH_MAX_AGE,
+  });
 }
 
 /**
@@ -70,7 +114,13 @@ async function requirePermission(ctx: Ctx, scopeKey: string, riskKey?: "danger.b
  */
 async function flashCellErrors(itemId: string, errors: CellError[]): Promise<void> {
   const encoded = encodeCellFlash({ itemId, errors });
-  if (!encoded) return;
+  // ★ 담을 것이 없다 = 이번엔 성공했다. 그러면 «이전 실패» 를 지워야 한다(BBE-201).
+  //   그냥 return 하면 직전 오류 쿠키가 TTL 동안 살아남아, 성공한 뒤에도 화면이
+  //   「권한이 없어요」를 다시 그린다 — 판정은 성공인데 표현은 실패다.
+  if (!encoded) {
+    await clearFlashCookie(CELL_FLASH_COOKIE);
+    return;
+  }
   const jar = await cookies();
   jar.set(CELL_FLASH_COOKIE, encoded, {
     httpOnly: true,
@@ -150,16 +200,32 @@ export async function setColumnWidthAction(formData: FormData): Promise<void> {
   revalidatePath(`/boards/${boardId}`);
 }
 
+/**
+ * 새 항목 추가 (BBE-201).
+ *
+ * ★ 여기서 던지면 Next 오류 경계가 화면을 통째로 덮는다 — 사용자는 무엇이 왜 안 됐는지
+ *   모르고 입력하던 것도 잃는다. 권한 없음·확인 불가·입력 오류·저장 실패는 «서로 다른
+ *   사실» 이므로 각각 화면 안에서 말한다.
+ *
+ * ★ getSession() 은 try 밖에 둔다. 미인증이면 그 안에서 redirect() 가 일어나는데,
+ *   Next 의 redirect 는 «예외로 구현된 제어 흐름» 이라 catch 로 삼키면 로그인 이동이 죽는다.
+ */
 export async function addItemAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
-  await requirePermission(ctx, "work.item_upsert");
   const boardId = str(formData, "boardId");
-  const groupId = str(formData, "groupId");
-  const input = parseNewItem({
-    title: str(formData, "title"),
-    group_id: groupId === "" ? null : groupId,
-  });
-  await (await boardsService()).createItem(ctx, boardId, input);
+  try {
+    await requirePermission(ctx, "work.item_upsert");
+    const groupId = str(formData, "groupId");
+    const input = parseNewItem({
+      title: str(formData, "title"),
+      group_id: groupId === "" ? null : groupId,
+    });
+    await (await boardsService()).createItem(ctx, boardId, input);
+    // 성공했으면 직전 실패를 지운다 — 안 지우면 고쳐서 성공한 뒤에도 옛 오류가 다시 그려진다.
+    await clearFlashCookie(BOARD_ACTION_FLASH_COOKIE);
+  } catch (error) {
+    await flashBoardActionError(boardId, error);
+  }
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -174,10 +240,18 @@ export async function deleteItemAction(formData: FormData): Promise<void> {
 /** 셀 인라인 편집 — 값 정규화·선택지 검증은 서비스가 수행. */
 export async function setCellAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
-  await requirePermission(ctx, "work.item_upsert");
   const boardId = str(formData, "boardId");
   const itemId = str(formData, "itemId");
   const columnKey = str(formData, "columnKey");
+  // 권한 없음·확인 불가도 화면 안에서 말한다(BBE-201). 셀이 특정되므로 셀 아래에 붙인다.
+  try {
+    await requirePermission(ctx, "work.item_upsert");
+  } catch (error) {
+    console.error("[board cell]", boardId, itemId, columnKey, error);
+    await flashCellErrors(itemId, [{ key: columnKey, label: columnKey, message: userFacingMessage(error) }]);
+    revalidatePath(`/boards/${boardId}`);
+    return;
+  }
   // 체크박스 미체크와 담당자 미배정을 각 타입의 빈 값으로 정규화한다.
   const graph = await createRequestBoards();
   const svc = graph.service;
@@ -215,21 +289,30 @@ export async function setCellAction(formData: FormData): Promise<void> {
     revalidatePath("/contract");
     redirect("/contract");
   }
-  let patch: Record<string, import("@/lib/boards/types").CellValue>;
-  if (raw instanceof File && raw.size > 0) {
-    const column = (await svc.getBoardDetail(ctx, boardId)).columns.find((candidate) => candidate.key === columnKey);
-    if (column?.type !== "file") throw new Error("파일 컬럼이 아닙니다.");
-    const stored = await encodeNoticeFile(raw);
-    const item = await graph.repo.getItem(ctx, itemId);
-    if (!item || item.board_id !== boardId) throw new NotFoundError("아이템을 찾을 수 없습니다");
-    await graph.repo.setValues(ctx, itemId, { [columnKey]: stored.id, [`${NOTICE_FILE_VALUE_PREFIX}${columnKey}`]: JSON.stringify(stored) });
-    revalidatePath(`/boards/${boardId}`);
-    return;
-  } else {
-    patch = { [columnKey]: boardCellValueFromFormData(formData) };
+  // ★ 여기서부터는 던지지 않는다(BBE-201). 저장 실패는 «그 셀 아래» 사유로 보여준다 —
+  //   던지면 Next 오류 경계가 화면을 통째로 덮어 사용자가 입력하던 것까지 잃는다.
+  //   (위 contact_move 분기는 자체 try/catch 와 redirect 를 갖고 있어 건드리지 않는다.
+  //    redirect 는 예외로 구현된 제어 흐름이라 catch 로 삼키면 이동이 죽는다.)
+  try {
+    if (raw instanceof File && raw.size > 0) {
+      const column = (await svc.getBoardDetail(ctx, boardId)).columns.find((candidate) => candidate.key === columnKey);
+      if (column?.type !== "file") throw new UserFacingActionError("파일 컬럼이 아니에요.");
+      const stored = await encodeNoticeFile(raw);
+      const item = await graph.repo.getItem(ctx, itemId);
+      if (!item || item.board_id !== boardId) throw new NotFoundError("아이템을 찾을 수 없습니다");
+      await graph.repo.setValues(ctx, itemId, { [columnKey]: stored.id, [`${NOTICE_FILE_VALUE_PREFIX}${columnKey}`]: JSON.stringify(stored) });
+      revalidatePath(`/boards/${boardId}`);
+      return;
+    }
+    const patch: Record<string, import("@/lib/boards/types").CellValue> = {
+      [columnKey]: boardCellValueFromFormData(formData),
+    };
+    const { errors } = await svc.setCells(ctx, boardId, itemId, patch);
+    await flashCellErrors(itemId, errors);
+  } catch (error) {
+    console.error("[board cell]", boardId, itemId, columnKey, error);
+    await flashCellErrors(itemId, [{ key: columnKey, label: columnKey, message: userFacingMessage(error) }]);
   }
-  const { errors } = await svc.setCells(ctx, boardId, itemId, patch);
-  await flashCellErrors(itemId, errors);
   revalidatePath(`/boards/${boardId}`);
 }
 

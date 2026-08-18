@@ -3,6 +3,11 @@ import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { CELL_FLASH_COOKIE, decodeCellFlash } from "@/lib/boards/cellFlash";
+import {
+  BOARD_ACTION_FLASH_COOKIE,
+  decodeBoardActionFlash,
+  findBoardActionError,
+} from "@/lib/boards/boardActionFlash";
 import { NotFoundError } from "@/lib/boards";
 import { createRequestBoards, requireRequestClient } from "@/lib/boards/server";
 import { markNoticeItemsReadAtomic } from "@/lib/notices/atomic";
@@ -146,7 +151,14 @@ export default async function BoardPage({
     : [];
 
   // 직전 셀 편집에서 저장되지 못한 값의 사유(1회성). 없으면 null.
-  const cellFlash = decodeCellFlash((await cookies()).get(CELL_FLASH_COOKIE)?.value);
+  const jar = await cookies();
+  const cellFlash = decodeCellFlash(jar.get(CELL_FLASH_COOKIE)?.value);
+  // 직전 «항목 추가» 실패의 사유(1회성). 없으면 null.
+  // 이게 없으면 실패가 전면 오류 화면으로 튄다 — 그게 BBE-201 의 본체였다.
+  const boardActionError = findBoardActionError(
+    decodeBoardActionFlash(jar.get(BOARD_ACTION_FLASH_COOKIE)?.value),
+    id,
+  );
 
   // 담당자 탭·칩에 쓸 표시 이름. items.assigned_to 는 사용자 id 라서 이 맵이 없으면 UUID 가 노출된다.
   const assigneeLabels = Object.fromEntries(
@@ -302,6 +314,18 @@ export default async function BoardPage({
       {hiddenCount > 0 && (
         <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p>
       )}
+      {/* 항목 추가 실패는 «화면 안에서» 말한다. 전면 오류 화면으로 덮으면
+          사용자는 무엇이 왜 안 됐는지 모르고 입력하던 것도 잃는다(BBE-201). */}
+      {boardActionError ? (
+        <p
+          role="alert"
+          data-testid="board-action-error"
+          className="rounded-lg border px-3 py-2 text-sm"
+          style={{ borderColor: "var(--mw-error)", color: "var(--mw-fg)", background: "var(--mw-card)" }}
+        >
+          {boardActionError}
+        </p>
+      ) : null}
       <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
       <BoardWorkspace
         board={board}
