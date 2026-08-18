@@ -538,11 +538,12 @@ const LAUNCH = {
   undecided: [
     // 「출시」의 뜻(첫 고객 인도 vs 공개 SaaS) — 2026-08-19 총괄 확인으로 해소.
     // MVP 정의 자체가 «자기 조직 운영 흐름»(엑셀·수금)을 가리켜 첫 고객 인도로 확정.
+    // 성능 예산 — 2026-08-19 총괄 결정: 「아니요」(느린 채로 못 나간다). gates 로 승격.
     "settlements 처리 (BBE-231) — 이 여정 «밖» 임이 확정됐다. 출시 후로 미룰 수 있는가",
-    "성능 예산 (BBE-222·223·226) — 느린 채로 나가도 되는가",
   ],
   // 여정이 굴러간 «뒤» 지킬 것. 초판이 출시조건으로 잘못 올렸던 것들.
-  gates: ["BBE-196","BBE-191","BBE-221","BBE-195","BBE-129","BBE-182"]
+  // + 성능 예산(BBE-222·223·226) — 2026-08-19 총괄 결정으로 미룰 수 없는 게이트가 됨.
+  gates: ["BBE-196","BBE-191","BBE-221","BBE-195","BBE-129","BBE-182","BBE-222","BBE-223","BBE-226"]
 };
 
 /* ═══════════════════════════════════════════════════════════════
@@ -619,14 +620,21 @@ function deriveAsks(items, byId) {
     }));
 
   // ③ hosted 자격증명이 필요하다고 스스로 라벨을 붙인 카드
+  //   ★ 라벨만으로는 «지금 준비됐는지» 를 못 가린다(이 판이 PR 검수 진행률을 모른다).
+  //   In Progress 인 것은 아직 세션이 손보고 있을 확률이 높다 — 경고만 달아 보낸다.
   open.filter((i) => (i.labels || []).includes("needs-hosted")).slice(0, 3)
-    .forEach((i) => out.push({
-      k: `${i.id} — hosted 확인이 필요합니다`, cost: "가변", kind: "자격증명",
-      why: `<code>needs-hosted</code> 라벨 — ${esc(i.title.slice(0, 46))}. 제겐 운영 Supabase 접근이 없습니다.`,
-      fix: "카드 본문에 적힌 확인·적용을 총괄이 hosted 에서 직접 해야 다음 단계로 갑니다.",
-      steps: ["아래 링크로 카드 열기 → 본문의 요청 사항대로"],
-      card: i.id
-    }));
+    .forEach((i) => {
+      const mid = i.statusType === "started";
+      out.push({
+        k: `${i.id} — hosted 확인이 필요합니다`, cost: "가변", kind: "자격증명",
+        why: `<code>needs-hosted</code> 라벨 — ${esc(i.title.slice(0, 46))}. 제겐 운영 Supabase 접근이 없습니다.` +
+             (mid ? `<br><span style="color:var(--warn)">⚠ 카드가 아직 «In Progress» 입니다 — PR 검수가 안 끝났으면
+               지금은 준비되지 않았을 수 있습니다. 카드를 열어 최신 코멘트를 먼저 확인해 주세요.</span>` : ""),
+        fix: "카드 본문에 적힌 확인·적용을 총괄이 hosted 에서 직접 해야 다음 단계로 갑니다.",
+        steps: ["아래 링크로 카드 열기 → 최신 코멘트로 «준비됐는지» 확인 → 본문의 요청 사항대로"],
+        card: i.id
+      });
+    });
 
   // ④ 절차 맵 급소인데 그 급소를 미는 카드가 없다
   if (LAUNCH.nocard) out.push({
