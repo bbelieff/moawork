@@ -10,6 +10,8 @@
 // empty·partial 을 여기서 다시 판정하지 않는다 — 서버가 이미 판정해서 준다(today.ts:43).
 
 import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
+import { UserFacingActionError, userFacingMessage } from "@/lib/boards/boardActionFlash";
+import { ValidationError } from "@/lib/boards/validation";
 import { createClient } from "@/lib/supabase/server";
 import { readTodayDashboard, type TodayDashboardSnapshot } from "./today";
 
@@ -39,10 +41,20 @@ export async function loadTodayHome(
     const snapshot = await readTodayDashboard(client, orgId, options.asOf ?? new Date());
     return { kind: "ready", snapshot };
   } catch (error) {
-    // 원문 메시지에는 접속 정보가 섞일 수 있다. 사람이 읽을 한 줄만 남긴다(§9.2).
+    // ★ 원문을 그대로 내보내지 않는다. 위 주석은 «한 줄만 남긴다» 고 약속했는데 코드는
+    //   `error.message` 를 그대로 돌려주고 있었고, TodayHome 이 그것을 「사유:」로 그렸다.
+    //   그래서 로그인 후 첫 화면에 `env.ts` 의 「Supabase 환경변수 누락: NEXT_PUBLIC_… (app/.env.local)」
+    //   이 그대로 떴다 — BBE-209(#261)에서 `/api/tab-views` 가 흘리던 «같은 문자열» 이다.
+    //
+    //   허용목록은 새로 만들지 않고 BBE-201/#258 의 `userFacingMessage()` 를 쓴다.
+    //   다만 그 기본 문장은 «저장» 실패용이라, 읽기 화면인 여기서는 읽기 문장을 쓴다
+    //   — 아무것도 저장하지 않았는데 「저장하지 못했어요」라고 말하면 그것도 거짓이다.
+    const allowed = error instanceof UserFacingActionError || error instanceof ValidationError;
     return {
       kind: "error",
-      reason: error instanceof Error && error.message ? error.message : "알 수 없는 오류",
+      reason: allowed
+        ? userFacingMessage(error)
+        : "오늘 지표를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
     };
   }
 }
