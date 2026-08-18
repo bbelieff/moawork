@@ -1,5 +1,7 @@
 "use client";
 
+import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
+
 import {
   useCallback,
   useEffect,
@@ -233,7 +235,14 @@ export function WorkspaceSwitcher({
         <span className={styles.chevron} aria-hidden="true">⌄</span>
       </button>
 
-      <span className={styles.visuallyHidden} role="status" aria-live="polite">
+      {/* ★ 실패를 status 로 읽어주면 보조기술 사용자는 «이동됐다» 로 듣는다(BBE-208).
+          바로 아래 254행은 색으로 실패를 «보여주고» 있었는데 이 라이브 리전만 판정을 안 읽었다 —
+          같은 화면이 두 사용자에게 다른 사실을 말하던 자리다. */}
+      <span
+        className={styles.visuallyHidden}
+        role={noticeRole(!navigationError)}
+        aria-live={noticeLive(!navigationError)}
+      >
         {navigationError}
       </span>
 

@@ -38,8 +38,30 @@ describe("noticeRole·noticeLive — 양방향", () => {
 const SRC = resolve(process.cwd(), "src");
 
 /** 아직 «판정을 안 읽는» 채로 남아 있는 자리 — 각 항목에 «누가 처리 중인지» 를 적는다. */
+/**
+ * 아직 «판정을 안 읽는» 채로 남아 있는 자리 — 이 검사 기준으로 훑은 범위 안에서.
+ *
+ * ★★ 「저장소에 없다」가 아니다. **「이 기준으로 훑은 범위엔 없다」** 이다.
+ *    처음엔 「이 모양의 결함이 저장소에 없다」고 적었는데 그건 사실이 아니었다 —
+ *    DC-18 이 살아 있는 두 곳을 찾아냈고(그중 하나는 이 PR 이 «교과서» 라 부른
+ *    WorkspaceEntry 와 같은 형태였다), 원인은 결함이 아니라 **이 검사기의 사거리** 였다.
+ *
+ * ★ 이 검사기가 «안 보는» 것 — 다음 사람이 여기 기대지 않도록 적어 둔다:
+ *
+ *   1) 판정을 **prop 으로 받는** 표현 전용 부품.
+ *      아래 verdictStates() 는 파일 안의 setX(result…) 로 판정 상태를 찾는다.
+ *      못 찾으면 파일을 통째로 건너뛴다 — 그런데 배너는 보통 그런 부품에 산다.
+ *      (예: DashboardUnavailable 은 label 만 받아 그리므로 이 검사에 안 걸린다.)
+ *   2) 판정이 **result.ok/tone 이 아닌** 형태로 표현되는 경우.
+ *      예: setNavigationError("...") 처럼 «빈 문자열이면 성공» 인 관용구.
+ *      WorkspaceSwitcher 가 그랬고, 이 검사기로는 영원히 안 걸린다.
+ *   3) role 을 **변수로** 넘기는 경우(role={x}) — 그 x 가 판정을 읽는지는 안 본다.
+ *
+ * 그래서 이 목록이 비어 있다는 것은 «안심해도 된다» 가 아니라
+ * «이 기준으로는 더 못 찾는다» 는 뜻이다. 새로 만들 때는 사람이 봐야 한다.
+ */
 const KNOWN_REMAINING: Record<string, string> = {
-  // 비어 있다 = 이 모양의 결함이 저장소에 없다.
+  // 이 기준으로 훑은 범위 안에서는 남은 자리가 없다.
   //
   // ★ 이 목록은 «스스로 청소됐다». WorkspaceChooser 가 여기 있었는데,
   //   PR #242(BBE-183)가 머지되자 CI 가 「남음: [] vs 목록: [1건]」으로 빨개져
@@ -87,12 +109,19 @@ function findUnreadVerdicts(): string[] {
     const states = verdictStates(source);
     if (states.size === 0) continue;
 
-    source.split("\n").forEach((line) => {
+    const lines = source.split("\n");
+    lines.forEach((line, index) => {
       // 양방향이다. status 고정도, alert 고정도 둘 다 «판정을 안 읽는» 것이다.
       // 성공까지 alert 로 칠하면 경고가 의미를 잃는다 — 그 도망도 여기서 막힌다.
       if (!/role="(status|alert)"/.test(line)) return;
+
+      // ★ 한 줄만 보면 «평범한 포매팅» 에 뚫린다(DC-18 이 프로브로 잰 사각).
+      //     <p role="status" className="banner">\n  {notice}\n</p>
+      //   role 과 상태 표시가 다른 줄에 있으면 옛 방식은 그냥 통과시켰다.
+      //   그래서 같은 JSX 요소로 볼 만한 창(뒤 6줄)까지 함께 본다.
+      const window = lines.slice(index, index + 7).join("\n");
       for (const name of states) {
-        if (new RegExp(`\\{\\s*${name}\\b`).test(line)) {
+        if (new RegExp(`\\{\\s*${name}\\b`).test(window)) {
           found.push(file.slice(SRC.length + 1).replace(/\\/g, "/"));
           break;
         }

@@ -6,10 +6,17 @@ import type {
 } from "@/lib/dash/server";
 import { StatCard } from "./widgets";
 
+/**
+ * 조회 실패 배너 (BBE-208).
+ *
+ * ★ 이 부품은 «실패만» 표현한다 — 성공 모양이 없다. 그래서 role 은 고정 alert 이 맞다.
+ *   판정에 따라 갈리는 배너(ResultBanner)와 다른 종류다. 「불러오지 못함」을 status 로
+ *   두면 보조기술 사용자는 그 사실을 놓친다 — 실제로 /dash 에서 렌더되는 살아 있는 경로다.
+ */
 export function DashboardUnavailable({ label }: { label: string }) {
   return (
     <div
-      role="status"
+      role="alert"
       className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"
     >
       {label} 데이터를 불러오지 못함
