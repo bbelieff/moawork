@@ -9,7 +9,14 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
-vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ set: vi.fn() })) }));
+const cookieSet = vi.fn();
+vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ set: cookieSet })) }));
+
+/** 이번 호출에서 사용자에게 «보여줄» 사유가 실제로 남았는지. */
+function flashedMessage(): string {
+  const call = [...cookieSet.mock.calls].reverse().find(([name]) => name === "mw_board_err");
+  return call ? decodeURIComponent(String(call[1])) : "";
+}
 vi.mock("@/lib/auth/session", () => ({
   getSession: vi.fn(async () => ({ org: { id: "org-a" }, role: "owner" })),
 }));
@@ -50,13 +57,16 @@ describe("board action permission boundary", () => {
 
   it("does not call the board store when permission is denied", async () => {
     mocks.guard.mockResolvedValue({ kind: "denied", reason: "permission" });
-    await expect(deleteBoardAction(input())).rejects.toThrow("권한이 없어요");
+    // BBE-213: 던지지 않는다(전면 오류 금지). 대신 화면에 사유가 남고, 저장소는 안 불린다.
+    await expect(deleteBoardAction(input())).resolves.toBeUndefined();
+    expect(flashedMessage()).toContain("권한이 없어요");
     expect(mocks.deleteBoard).not.toHaveBeenCalled();
   });
 
   it("does not delete when the mandatory risk audit fails", async () => {
     mocks.risky.mockResolvedValue({ ok: false });
-    await expect(deleteBoardAction(input())).rejects.toThrow("기록을 남기지 못해");
+    await expect(deleteBoardAction(input())).resolves.toBeUndefined();
+    expect(flashedMessage()).toContain("기록을 남기지 못해");
     expect(mocks.deleteBoard).not.toHaveBeenCalled();
   });
 
