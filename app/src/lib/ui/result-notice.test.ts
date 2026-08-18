@@ -39,9 +39,14 @@ const SRC = resolve(process.cwd(), "src");
 
 /** 아직 «판정을 안 읽는» 채로 남아 있는 자리 — 각 항목에 «누가 처리 중인지» 를 적는다. */
 const KNOWN_REMAINING: Record<string, string> = {
-  // PR #242(BBE-183) 가 이미 고쳤고 머지만 남았다. §9.1 한 파일 한 writer 라 손대지 않는다.
-  // ★ #242 가 머지되면 이 테스트가 빨개진다 — 그때 이 줄을 지워라.
-  "components/workspace-entry/WorkspaceChooser.tsx": "PR #242 (BBE-183) 처리 중 · 미머지",
+  // 비어 있다 = 이 모양의 결함이 저장소에 없다.
+  //
+  // ★ 이 목록은 «스스로 청소됐다». WorkspaceChooser 가 여기 있었는데,
+  //   PR #242(BBE-183)가 머지되자 CI 가 「남음: [] vs 목록: [1건]」으로 빨개져
+  //   이 줄을 지우라고 말했다. 설계가 실제로 그렇게 동작했다(2026-08-18).
+  //
+  // 새 위반이 생기면 여기가 아니라 «테스트가» 먼저 알려준다. 손으로 추가하지 마라 —
+  // 추가하려는 순간이 바로 그 결함을 고쳐야 하는 순간이다.
 };
 
 function walk(dir: string): string[] {
@@ -105,8 +110,10 @@ function findUnreadVerdicts(): string[] {
  *   한 채널만으로는 부족하다 — 같은 화면이 두 사용자에게 다른 사실을 말하게 된다.
  */
 const VERDICT_BANNERS: Array<[string, RegExp]> = [
-  ["components/workspace-entry/ApprovalQueue.tsx", /notice\.ok \? styles\.status : styles\.error/],
-  ["components/platform/PlatformOrganizationsPanel.tsx", /notice\.ok \? styles\.organizationStatus : styles\.organizationError/],
+  // ①② 는 ResultBanner 로 그린다 — «그려진 마크업» 은 ResultBanner.test.tsx 가 재고,
+  //    여기서는 «성공/실패 색을 실제로 넘기는가»(배선)를 본다. 둘 다 있어야 한다.
+  ["components/workspace-entry/ApprovalQueue.tsx", /<ResultBanner notice=\{notice\} okClassName=\{styles\.status\} errorClassName=\{styles\.error\}/],
+  ["components/platform/PlatformOrganizationsPanel.tsx", /<ResultBanner notice=\{notice\} okClassName=\{styles\.organizationStatus\} errorClassName=\{styles\.organizationError\}/],
   ["components/workspace-builder/CsvImportDialog.tsx", /notice\.ok \? styles\.notice : styles\.noticeError/],
   ["components/workspace-builder/BuilderWorkspaceSurface.tsx", /notice\.ok \? styles\.notice : styles\.noticeError/],
   ["components/workspace-entry/WorkspaceEntry.tsx", /notice\.tone === "error" \? styles\.error : styles\.status/],

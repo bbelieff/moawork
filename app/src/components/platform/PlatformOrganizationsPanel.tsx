@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { noticeLive, noticeRole, type ResultNotice } from "@/lib/ui/result-notice";
+import { type ResultNotice } from "@/lib/ui/result-notice";
+import { ResultBanner } from "@/lib/ui/ResultBanner";
 import styles from "./platform.module.css";
 import type { PlatformAggregateState } from "@/lib/platform/contracts";
 import type { PlatformCreateRequest } from "@/lib/workspace-entry/server";
@@ -79,7 +80,7 @@ export function PlatformOrganizationsPanel({ requests, aggregate }: Props) {
         <li><span>3</span><div><strong>회사 업무 시작</strong><small>요청자가 대표로 연결되어 사용자 모드로 들어가요.</small></div></li>
       </ol>
 
-      {notice ? <p className={notice.ok ? styles.organizationStatus : styles.organizationError} role={noticeRole(notice.ok)} aria-live={noticeLive(notice.ok)}>{notice.message}</p> : null}
+      {notice ? <ResultBanner notice={notice} okClassName={styles.organizationStatus} errorClassName={styles.organizationError} /> : null}
 
       {requests === null ? (
         <section className={styles.organizationUnavailable} aria-labelledby="organization-unavailable-title">

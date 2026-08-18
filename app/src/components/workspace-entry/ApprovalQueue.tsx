@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { OwnerJoinRequest, PlatformCreateRequest } from "@/lib/workspace-entry/server";
 import { submitWorkspaceRequest } from "@/lib/workspace-entry/contracts";
-import { noticeLive, noticeRole, type ResultNotice } from "@/lib/ui/result-notice";
+import { type ResultNotice } from "@/lib/ui/result-notice";
+import { ResultBanner } from "@/lib/ui/ResultBanner";
 import styles from "./workspace-entry.module.css";
 
 type Props =
@@ -44,7 +45,7 @@ export function ApprovalQueue(props: Props) {
           <small>{props.mode === "platform" ? "플랫폼 운영 영역이에요. 고객 회사 내부 권한은 생기지 않아요." : "이 회사의 보호된 대표만 결정할 수 있어요."}</small>
         </div>
       </div>
-      {notice ? <p className={notice.ok ? styles.status : styles.error} role={noticeRole(notice.ok)} aria-live={noticeLive(notice.ok)}>{notice.message}</p> : null}
+      {notice ? <ResultBanner notice={notice} okClassName={styles.status} errorClassName={styles.error} /> : null}
       {props.requests.length === 0 ? (
         <div className={styles.bubble}><strong>지금 검토할 요청이 없어요.</strong><small>새 요청이 오면 이 목록에서 확인할 수 있어요.</small></div>
       ) : (
