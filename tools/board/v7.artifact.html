@@ -272,6 +272,22 @@ footer code { font-family:var(--mono); font-size:11.5px; }
 
   <div class="hero" id="hero" hidden></div>
 
+  <section id="asksWrap" hidden style="margin-top:22px">
+    <div class="shead"><h2>총괄님이 뚫어야 할 것</h2><span class="n">여기서만 사람이 필요합니다</span></div>
+    <p class="how">아래는 <b>제가 대신 못 하는 것</b>만 모았습니다 — 결정·승인·자격증명이 필요한 자리입니다.
+      나머지는 전부 세션이 처리합니다. 각 항목에 <b>무엇이 풀리는지</b>를 적었으니
+      급한 것부터 골라 뚫어 주시면 됩니다.</p>
+    <div id="asks"></div>
+  </section>
+
+  <section id="goalWrap" hidden style="margin-top:30px">
+    <div class="shead"><h2>추천하는 다음 골</h2><span class="n">NEXT GOAL</span></div>
+    <p class="how">골은 <b>필터</b>입니다 — 이걸 미는 카드가 아니면 다음 라운드에서 열지 않습니다.
+      그래야 «바쁘기만 한 라운드»가 안 나옵니다. 아래 프롬프트를 복사해서 쓰시면
+      라운드가 이 골로 돌고, 끝나면 전후 브리핑이 나옵니다.</p>
+    <div id="goal"></div>
+  </section>
+
   <div class="thesis" id="thesis">
     <span class="k">지금 읽어야 할 한 줄</span>
     <p id="thesisLine">데이터를 읽는 중입니다.</p>
@@ -513,6 +529,153 @@ const LAUNCH = {
   ],
   // 여정이 굴러간 «뒤» 지킬 것. 초판이 출시조건으로 잘못 올렸던 것들.
   gates: ["BBE-196","BBE-191","BBE-221","BBE-195","BBE-129","BBE-182"]
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   총괄만 할 수 있는 것 — 결정·승인·자격증명.
+   card 가 붙은 항목은 그 카드가 닫히면 «자동으로 해결됨» 으로 바뀐다.
+   그래서 이 목록은 손으로 지울 필요가 없다.
+   ═══════════════════════════════════════════════════════════════ */
+const ASKS = [
+  {
+    k: "「출시」가 무엇인지 한 줄로 정해 주십시오",
+    cost: "10초",
+    kind: "결정",
+    why: "서울경영지원센터 «첫 고객 인도» 와 «공개 SaaS 출시» 는 최소조건이 다릅니다. " +
+         "지금 절차 맵 4단계는 전자를 가정하고 그렸습니다.",
+    fix: "이게 확정되면 절차 맵이 «초안» 을 뗍니다. 그 뒤 모든 라운드가 같은 목표를 봅니다 — " +
+         "지금은 각 세션이 «출시» 를 다르게 상상한 채 일하고 있습니다.",
+    steps: ["여기 채팅에 「첫 고객 인도」 또는 「공개 SaaS」 한 마디"],
+    card: null
+  },
+  {
+    k: "① 엑셀 vs CSV — 1차 범위를 정해 주십시오",
+    cost: "10초",
+    kind: "결정",
+    why: ".xlsx 파서는 저장소에 없어서 의존성 도입 판단이 필요합니다(며칠). " +
+         "CSV 는 파서도 업로드 UI 도 이미 동작합니다 — 마운트 지점만 데모 전용입니다(반나절).",
+    fix: "절차 맵 ① 이 «착수 가능» 이 됩니다. 지금은 무엇을 만들지 몰라서 카드를 못 엽니다. " +
+         "CSV 로 좁히면 첫 칸이 반나절 만에 켜지고, 사용자 완주가 0 에서 처음 움직입니다.",
+    steps: ["「1차는 CSV」 또는 「엑셀이어야 한다」 한 마디"],
+    card: null
+  },
+  {
+    k: "③→④ 투영 카드를 만들어도 될지 승인해 주십시오",
+    cost: "10초",
+    kind: "승인",
+    why: "MVP 사슬의 급소인데 <b>Linear 카드가 존재하지 않습니다.</b> " +
+         "코드 주석에 WO-5 로만 적혀 있어서 어떤 관제판으로도 볼 수 없습니다.",
+    fix: "「업무관리 이동」이 계약업체 실무 보드에 행을 만들게 됩니다. " +
+         "이게 없으면 수금 컬럼이 있는 보드가 <b>영원히 빕니다</b> — 부품 3칸이 완성돼 있어도 소용없습니다. " +
+         "087 의 create_new_lead 가 똑같은 일을 이미 하고 있어 <b>본보기를 베끼면 됩니다(반나절)</b>.",
+    steps: ["「만들어라」 한 마디 — 제가 카드를 개설하고 본문·수용기준까지 씁니다"],
+    card: null
+  },
+  {
+    k: "BBE-196 에 담당 세션을 붙여 주십시오",
+    cost: "30초",
+    kind: "배정",
+    why: "Urgent 인데 <b>생성 이후 단 1초도 갱신되지 않았습니다.</b> " +
+         "결정이 필요한 카드가 아닙니다 — 원인 위치(boards/service.ts:152-155)와 처치가 이미 다 적혀 있고 재현도 끝났습니다.",
+    fix: "권한 있는 사용자가 <b>다른 보드의 컬럼을 지울 수 있고, 지워진 쪽은 화면이 갱신 안 돼 알아채지도 못하는</b> 결함이 " +
+         "실제로 움직이기 시작합니다. ③④ 가 쌓은 값을 지키는 자리입니다.",
+    steps: [
+      "아래 링크로 카드 열기",
+      "오른쪽 <b>Labels</b> → 유휴 세션 라벨(예: DC-12) 추가",
+      "그 세션 창에 「BBE-196 착수」 전달 — <b>댓글만 남기면 아무도 안 옵니다</b>"
+    ],
+    card: "BBE-196"
+  },
+  {
+    k: "PR #273 의 값 분포 SQL 을 한 번 돌려 주십시오",
+    cost: "2분",
+    kind: "자격증명",
+    why: "제게 운영 Supabase 자격증명이 없습니다(.env 없음). " +
+         "#274 가 #273 위에 쌓여 있어서 <b>#273 이 안 풀리면 두 장이 같이 멈춥니다.</b>",
+    fix: "PR 두 장이 머지 경로에 오릅니다. 대시보드 KPI 정의가 확정되고 " +
+         "BBE-215(총괄이 지적하신 「대시보드 정보 이상함」)가 닫힙니다.",
+    steps: [
+      "아래 PR 본문에서 SQL 블록 복사",
+      "Supabase → <b>SQL Editor</b> → 붙여넣고 <b>Run</b>",
+      "결과를 PR 코멘트에 붙여넣기"
+    ],
+    link: { url: "https://github.com/bbelieff/moawork/pull/273", t: "PR #273 열기" },
+    card: null
+  },
+  {
+    k: "BBE-129 에 프로젝트를 지정해 주십시오",
+    cost: "20초",
+    kind: "정리",
+    why: "Urgent 인데 <b>8일째 멈춰 있습니다.</b> 그리고 이 카드만 Linear <b>프로젝트가 비어 있어서</b> " +
+         "프로젝트 단위로 보는 모든 화면에서 <b>존재하지 않습니다.</b>",
+    fix: "판에 «보이기» 시작합니다. 안 보이는 카드는 아무도 안 잡습니다 — " +
+         "8일 방치의 원인이 게으름이 아니라 이것입니다.",
+    steps: [
+      "아래 링크로 카드 열기",
+      "오른쪽 <b>Project</b> → <b>MoaWork · 운영 안정화 및 어드민</b> 선택"
+    ],
+    card: "BBE-129"
+  },
+  {
+    k: "BBE-198 — 회계 원장 부품을 어떻게 할지 정해 주십시오",
+    cost: "30초",
+    kind: "결정",
+    why: "부품 2개가 어느 화면에도 안 닿습니다. <b>이미 두 번 올라갔는데 두 번 다 답이 없었습니다</b> — " +
+         "그래서 세 번째로 올립니다.",
+    fix: "결정이 나면 이 카드가 즉시 배차 가능해집니다. 지금은 «누구 잘못도 아닌» 이유로 영원히 대기합니다.",
+    steps: ["아래 링크로 카드 열기", "「붙인다 / 접는다 / 폐기한다」 중 하나를 코멘트로"],
+    card: "BBE-198"
+  },
+];
+
+/* ═══════════════════════════════════════════════════════════════
+   다음 골 제안 — 관측자가 라운드마다 다시 판단한다.
+   ★ 「각 단계를 100% 채운다」가 아니라 «한 줄을 끝까지 뚫는다» 로 잡았다.
+   여정은 사슬이라 부분 완성은 사용자에게 0 이기 때문이다.
+   ═══════════════════════════════════════════════════════════════ */
+const NEXTGOAL = {
+  k: "수직 한 줄 — 고객사 한 건이 «등록에서 수금까지» 끊김 없이 간다",
+  why: "지금 부품은 71% 있는데 사용자 완주는 0 입니다. 각 단계를 골고루 채우는 방식으로는 " +
+       "이 0 이 안 움직입니다 — 사슬은 한 칸만 끊겨도 전체가 끊긴 것이기 때문입니다. " +
+       "그래서 «폭» 이 아니라 «한 줄의 깊이» 를 목표로 잡습니다.",
+  scope: [
+    { t: "CSV 가져오기 화면을 /companies 에 연다", d: "CsvImportDialog 재마운트 — 파서·UI 는 이미 동작한다", size: "반나절" },
+    { t: "가져온 행을 companies 에 쓰는 경로", d: "import_companies_csv RPC · 멱등키는 025 규약 복제", size: "하루" },
+    { t: "등록분이 보드 항목으로 투영", d: "087 의 create_new_lead 와 같은 형태", size: "반나절" },
+    { t: "「업무관리 이동」이 실무 보드에 행 생성", d: "069 의 contact_to_work 분기에 items INSERT", size: "반나절" },
+  ],
+  before: { pct: 71, parts: "12/17", reach: "0/4", say: "부품은 있는데 사용자는 시작조차 못 한다" },
+  after:  { pct: 100, parts: "17/17", reach: "4/4", say: "고객사를 넣으면 수금까지 한 번에 간다 — MVP 완료" },
+  risk: "hosted 에 087·098·062 가 실제로 적용됐는지 미확인(.env 없음). " +
+        "BBE-175 가 hosted 스키마 드리프트 전례라, 착수 전 한 번 확인해야 합니다.",
+  prompt:
+`/round
+
+다음 골: 「수직 한 줄 — 고객사 한 건이 CSV 등록에서 수금까지 끊김 없이 간다」
+
+이 골로 라운드를 돌리고, 끝나면 아래를 브리핑해라.
+
+1. 이 골이 무엇을 바꾸는가
+   - 지금 사용자가 못 하는 것 → 이 골 뒤에 할 수 있게 되는 것을 «사용자 문장» 으로
+   - 기술 용어 말고 「고객사 30개를 엑셀로 넣고 수금 현황을 본다」 같은 말로
+
+2. 전후 수치
+   - 부품 진행도  __/17 → __/17  (__% → __%)
+   - 사용자 완주  __/4  → __/4
+   - 처음 끊기는 곳  <전> → <후>
+   ★ 며칠 걸린다는 말은 쓰지 마라. 통제 못 하는 변수다
+
+3. 이번에 켠 체크포인트를 이름으로 나열하고, 각각 어느 파일:줄이 근거인지
+
+4. 못 켠 것과 그 이유
+   - 「안 했다」와 「못 했다」를 구분해라
+   - 내 결정이 필요해서 멈춘 것이 있으면 «질문» 이 아니라 «제안» 으로 올려라
+
+5. 이 골을 하면서 새로 드러난 것
+   - 착수 전에 몰랐던 사실 · 가정이 틀렸던 자리
+   - 특히 「같은 모양이니 금방」이라고 봤다가 아니었던 것
+
+마지막에 관제판(LAUNCH.history)에 라운드를 한 줄 추가하고 재게시해라.`
 };
 
 /* ─── Linear 계약 ───
@@ -962,6 +1125,137 @@ function render() {
        <br><br><b>비워두지 않고 적어 둡니다.</b> 이게 비어 있으면 다음 사람은 «다 정해졌다» 로 읽습니다.
        근거: ${esc(LAUNCH.basis)}
      </div>`;
+
+  /* 총괄이 뚫어야 할 것 — 카드가 닫히면 자동으로 «해결됨» 이 된다 */
+  {
+    const KIND = {
+      "결정":   "var(--violet)",
+      "승인":   "var(--violet)",
+      "배정":   "var(--bad)",
+      "자격증명": "var(--warn)",
+      "정리":   "var(--teal)",
+    };
+    const live = [], solved = [];
+    ASKS.forEach((a) => {
+      const c = a.card ? byId[a.card] : null;
+      (c && !isOpen(c) ? solved : live).push({ a, c });
+    });
+
+    const row = ({ a, c }, n) => {
+      const col = KIND[a.kind] || "var(--ink-3)";
+      const link = a.link || (c ? { url: c.url, t: `${a.card} 열기` } : null);
+      return `<div style="display:grid;grid-template-columns:30px 1fr;gap:13px;padding:16px 0;
+                   border-bottom:1px solid var(--line-soft)">
+        <span style="width:26px;height:26px;border-radius:8px;background:${col};color:#fff;flex:none;
+                     font-size:12.5px;font-weight:700;display:flex;align-items:center;justify-content:center;
+                     font-family:var(--mono)">${n}</span>
+        <div>
+          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+            <b style="font-size:14.5px;letter-spacing:-.01em">${esc(a.k)}</b>
+            <span style="font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;color:${col};
+                         background:color-mix(in srgb, ${col} 13%, transparent)">${esc(a.kind)}</span>
+            <span style="font-size:11.5px;color:var(--ink-4);font-family:var(--mono)">${esc(a.cost)}</span>
+          </div>
+
+          <div style="font-size:12.5px;color:var(--ink-3);margin-top:6px;line-height:1.65">${a.why}</div>
+
+          <div style="margin-top:10px;padding:10px 13px;border-radius:9px;
+                      background:color-mix(in srgb, var(--ok) 7%, transparent);
+                      border-left:3px solid var(--ok);font-size:12.5px;line-height:1.65;color:var(--ink-2)">
+            <b style="color:var(--ok);font-size:11px;letter-spacing:.05em">이걸 하면</b><br>${a.fix}
+          </div>
+
+          <ol style="margin:11px 0 0;padding-left:19px;font-size:12.5px;color:var(--ink-2);line-height:1.85">
+            ${a.steps.map((s) => `<li>${s}</li>`).join("")}
+          </ol>
+
+          ${link ? `<a href="${esc(link.url)}" target="_blank" rel="noopener"
+              style="display:inline-flex;align-items:center;gap:6px;margin-top:11px;font-size:12.5px;
+                     font-weight:650;text-decoration:none;padding:7px 13px;border-radius:8px;
+                     background:${col};color:#fff">${esc(link.t)} →</a>` : ""}
+        </div>
+      </div>`;
+    };
+
+    $("asksWrap").hidden = false;
+    $("asks").innerHTML =
+      `<div class="panel" style="padding:4px 20px 8px">
+         ${live.map(row).join("")}
+         ${solved.length ? `<div style="padding:14px 0 4px;font-size:12.5px;color:var(--ok)">
+            <b>해결됨 ${solved.length}건</b> —
+            ${solved.map((x) => `<span style="font-family:var(--mono);font-size:11.5px">${esc(x.a.card)}</span>`).join(" · ")}
+            <span style="color:var(--ink-4)">카드가 닫혀서 목록에서 내렸습니다.</span>
+          </div>` : ""}
+       </div>`;
+  }
+
+  /* 다음 골 */
+  {
+    const G = NEXTGOAL;
+    const ba = (lab, b, a, hot) =>
+      `<div style="display:flex;align-items:baseline;gap:9px;padding:6px 0">
+         <span style="font-size:12px;color:var(--ink-3);min-width:88px">${esc(lab)}</span>
+         <span style="font-family:var(--mono);font-size:14px;color:var(--ink-4)">${esc(b)}</span>
+         <span style="color:var(--ink-4)">→</span>
+         <span style="font-family:var(--mono);font-size:16px;font-weight:700;
+                      color:${hot?"var(--ok)":"var(--ink)"}">${esc(a)}</span>
+       </div>`;
+
+    $("goalWrap").hidden = false;
+    $("goal").innerHTML =
+      `<div class="panel">
+         <div style="font-size:16.5px;font-weight:750;letter-spacing:-.015em;line-height:1.45">${esc(G.k)}</div>
+         <div style="font-size:13px;color:var(--ink-2);margin-top:9px;line-height:1.7">${esc(G.why)}</div>
+
+         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:18px">
+           <div style="padding:14px 16px;border-radius:11px;background:var(--panel-2);border:1px solid var(--line)">
+             <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+                         color:var(--ink-4);margin-bottom:6px">지금</div>
+             ${ba("진행도", G.before.pct+"%", G.before.parts, false)}
+             ${ba("사용자 완주", "", G.before.reach, false).replace("<span style=\"color:var(--ink-4)\">→</span>","")}
+             <div style="font-size:12px;color:var(--ink-3);margin-top:8px;line-height:1.6">${esc(G.before.say)}</div>
+           </div>
+           <div style="padding:14px 16px;border-radius:11px;
+                       background:color-mix(in srgb, var(--ok) 7%, transparent);
+                       border:1px solid color-mix(in srgb, var(--ok) 32%, var(--line))">
+             <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+                         color:var(--ok);margin-bottom:6px">이 골이 끝나면</div>
+             ${ba("진행도", G.before.pct+"%", G.after.pct+"% · "+G.after.parts, true)}
+             ${ba("사용자 완주", G.before.reach, G.after.reach, true)}
+             <div style="font-size:12px;color:var(--ink-2);margin-top:8px;line-height:1.6;font-weight:600">${esc(G.after.say)}</div>
+           </div>
+         </div>
+
+         <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+                     color:var(--ink-4);margin:20px 0 8px">이 골이 켜는 체크포인트 ${G.scope.length}칸</div>
+         ${G.scope.map((s,i) => `
+           <div style="display:grid;grid-template-columns:20px 1fr auto;gap:11px;padding:8px 0;
+                       border-bottom:1px solid var(--line-soft);align-items:baseline">
+             <span style="font-family:var(--mono);font-size:11.5px;color:var(--ink-4)">${i+1}</span>
+             <div>
+               <div style="font-size:13.5px;font-weight:600;line-height:1.5">${esc(s.t)}</div>
+               <div style="font-size:11.5px;color:var(--ink-4);font-family:var(--mono);margin-top:2px;line-height:1.5">${esc(s.d)}</div>
+             </div>
+             <span style="font-size:11.5px;color:var(--ink-3);white-space:nowrap">${esc(s.size)}</span>
+           </div>`).join("")}
+
+         <div style="margin-top:16px;padding:12px 14px;border-radius:10px;
+                     background:color-mix(in srgb, var(--warn) 8%, transparent);
+                     font-size:12.5px;color:var(--ink-2);line-height:1.65">
+           <b style="color:var(--warn)">착수 전 확인</b> — ${esc(G.risk)}
+         </div>
+
+         <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+                     color:var(--ink-4);margin:22px 0 8px">그대로 복사해서 쓰는 프롬프트</div>
+         <div style="font-size:12px;color:var(--ink-3);margin-bottom:9px;line-height:1.6">
+           이 골로 라운드를 돌리고 <b style="color:var(--ink-2)">전후 브리핑</b>까지 받는 프롬프트입니다.
+         </div>
+         <pre style="margin:0;padding:15px 17px;border-radius:11px;background:var(--panel-2);
+                     border:1px solid var(--line);font-family:var(--mono);font-size:11.5px;
+                     line-height:1.75;color:var(--ink-2);white-space:pre-wrap;word-break:break-word;
+                     max-height:340px;overflow:auto">${esc(G.prompt)}</pre>
+       </div>`;
+  }
 
   /* 대사 */
   $("metab").innerHTML = drawMetabolism(rows);
