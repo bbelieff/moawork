@@ -93,6 +93,47 @@ body {
 .livedot.on i { background:var(--ok); box-shadow:0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
 .livedot.err i { background:var(--bad); box-shadow:0 0 0 3px color-mix(in srgb, var(--bad) 22%, transparent); }
 
+/* ── 초입: 출시 진행도 ── */
+.hero { margin:20px 0 16px; padding:22px 24px; border-radius:16px; background:var(--panel);
+        border:1px solid var(--line); box-shadow:var(--shadow); }
+.hero .cap { font-size:11px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+             color:var(--violet); margin-bottom:14px; }
+.delta { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+.delta .from { font-family:var(--mono); font-size:26px; font-weight:700; color:var(--ink-4);
+               letter-spacing:-.03em; }
+.delta .arw { font-size:20px; color:var(--ink-4); }
+.delta .to { font-family:var(--mono); font-size:44px; font-weight:800; letter-spacing:-.04em;
+             line-height:1; color:var(--violet); }
+.delta .diff { font-size:13px; font-weight:700; padding:3px 10px; border-radius:999px; }
+.delta .lab { font-size:12.5px; color:var(--ink-3); }
+
+.trackbar { height:12px; border-radius:999px; background:var(--line-soft); overflow:hidden;
+            display:flex; margin:14px 0 6px; }
+.trackbar i { display:block; height:100%; }
+
+.pairs { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-top:16px; }
+.pair { padding:12px 14px; border-radius:11px; background:var(--panel-2); border:1px solid var(--line); }
+.pair .t { font-size:11.5px; color:var(--ink-3); font-weight:600; }
+.pair .v { font-family:var(--mono); font-size:19px; font-weight:700; margin-top:4px;
+           letter-spacing:-.02em; display:flex; align-items:baseline; gap:7px; }
+.pair .v small { font-size:12px; color:var(--ink-4); font-weight:600; }
+.pair .n { font-size:11px; color:var(--ink-4); margin-top:3px; line-height:1.45; }
+
+/* 전체에서 부분 조명 */
+.scopemap { margin-top:18px; padding-top:16px; border-top:1px solid var(--line); }
+.scopemap .h { font-size:11px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+               color:var(--ink-4); margin-bottom:10px; }
+.stagerow { display:flex; gap:10px; flex-wrap:wrap; }
+.stagegrp { flex:1 1 130px; min-width:118px; }
+.stagegrp .nm { font-size:11.5px; color:var(--ink-3); font-weight:600; margin-bottom:5px;
+                white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cells { display:flex; gap:3px; }
+.cells b { flex:1; height:26px; border-radius:4px; display:block; }
+.cells b.tch { outline:2px solid var(--violet); outline-offset:1px; }
+.metarow { display:flex; gap:7px; flex-wrap:wrap; margin-top:12px; }
+.metarow span { font-size:11.5px; font-weight:650; padding:4px 10px; border-radius:7px;
+                background:color-mix(in srgb, var(--teal) 13%, transparent); color:var(--teal); }
+
 /* ── 논지 ── */
 .thesis {
   margin:20px 0 26px; padding:20px 22px; border-radius:14px;
@@ -228,6 +269,8 @@ footer code { font-family:var(--mono); font-size:11.5px; }
       <button id="scopeAll" aria-pressed="false">전체</button>
     </span>
   </div>
+
+  <div class="hero" id="hero" hidden></div>
 
   <div class="thesis" id="thesis">
     <span class="k">지금 읽어야 할 한 줄</span>
@@ -447,6 +490,20 @@ const LAUNCH = {
         { s: "none", t: "★ 계약업체 실무 보드에 «행» 이 생김", d: "069 의 쓰기 목록에 items INSERT 가 없다 — 급소" },
       ]},
   ],
+  /* ── 이력 — 라운드마다 «맨 뒤에» 한 줄 붙인다. 앞엣것을 고치지 않는다. ──
+     parts  : 켜진 체크포인트 합 (반쪽 0.5)
+     reach  : 끝까지 갈 수 있는 단계 수
+     touched: 이번 라운드에 «상태가 바뀐» 체크포인트 이름. 안 바뀌었으면 빈 배열
+     meta   : 제품이 아닌 층에서 만든 것 (관측·문서·도구)
+     ★ 제품을 안 건드린 라운드는 touched 를 비워라. 채우면 거짓이 된다. */
+  history: [
+    { id: "R0", label: "기준선 — 관측 체계 신설",
+      parts: 12, total: 17, reach: 0,
+      touched: [],
+      meta: ["관제판 V7", "관측자", "출시 최소조건", "총괄 니즈 기록", "라운드 스킬"],
+      note: "절차 맵이 처음 생겼다. 이전에는 진행도를 «잴 수 없었다» — 0% 였던 게 아니라 측정 자체가 없었다." },
+  ],
+
   // ★ 판에 «없는» 것. 비워두면 다음 사람이 「다 카드화됐다」로 읽는다.
   nocard: "③→④ 투영(WO-5) — MVP 의 진짜 P0 인데 Linear 카드가 없다. 코드 주석에만 있다.",
   undecided: [
@@ -744,6 +801,108 @@ function render() {
 
   const gateOpen = (LAUNCH.gates || []).map((id) => byId[id]).filter(Boolean).filter(isOpen);
   const pct = Math.round(cpDone / cpTotal * 100);
+
+  /* ── 초입: 진행도가 «몇%에서 몇%로» + 이번 범위를 전체 위에 조명 ── */
+  {
+    const H = LAUNCH.history || [];
+    const now = H[H.length - 1] || { parts: cpDone, total: cpTotal, reach, touched: [], meta: [], label: "", note: "" };
+    const prev = H.length > 1 ? H[H.length - 2] : null;
+    // ★ 이력은 손으로 적는다. 체크포인트를 고치고 이력을 안 고치면 판이 «거짓말» 을 한다.
+    //    그래서 어긋나면 숨기지 않고 화면에 띄운다.
+    const drift = (now.parts !== cpDone || now.total !== cpTotal || now.reach !== reach)
+      ? `실제 ${cpDone}/${cpTotal}·완주 ${reach} ↔ 이력 ${now.parts}/${now.total}·완주 ${now.reach}`
+      : null;
+
+    const nowPct = Math.round(now.parts / now.total * 100);
+    const prevPct = prev ? Math.round(prev.parts / prev.total * 100) : null;
+    const dPts = prev ? now.parts - prev.parts : null;
+    const dReach = prev ? now.reach - prev.reach : null;
+    const touched = new Set(now.touched || []);
+
+    const diffChip = (d, unit) => {
+      if (d === null) return "";
+      const col = d > 0 ? "var(--ok)" : d < 0 ? "var(--bad)" : "var(--ink-4)";
+      const txt = d > 0 ? `+${d}${unit}` : d < 0 ? `${d}${unit}` : `변화 없음`;
+      return `<span class="diff" style="color:${col};background:color-mix(in srgb, ${col} 13%, transparent)">${txt}</span>`;
+    };
+
+    // 전체 17칸을 단계별로 늘어놓고, 이번에 «바뀐» 칸만 강조한다.
+    const stages = LAUNCH.criteria.map((c) => {
+      const cells = c.steps.map((s) => {
+        const col = s.s === "ok" ? "var(--ok)" : s.s === "half" ? "var(--warn)" : "var(--line)";
+        const hit = touched.has(s.t) ? " tch" : "";
+        return `<b class="${hit.trim()}" style="background:${col}" title="${esc(s.t)}"></b>`;
+      }).join("");
+      return `<div class="stagegrp">
+        <div class="nm">${esc(c.k)}</div>
+        <div class="cells">${cells}</div>
+      </div>`;
+    }).join("");
+
+    const okW = LAUNCH.criteria.reduce((a,c)=>a+c.steps.filter(s=>s.s==="ok").length,0);
+    const hfW = LAUNCH.criteria.reduce((a,c)=>a+c.steps.filter(s=>s.s==="half").length,0);
+
+    $("hero").hidden = false;
+    $("hero").innerHTML =
+      `<div class="cap">출시까지 진행도</div>
+       ${drift ? `<div style="margin:-4px 0 14px;padding:10px 13px;border-radius:9px;
+            background:color-mix(in srgb, var(--bad) 9%, transparent);
+            border:1px solid color-mix(in srgb, var(--bad) 35%, var(--line));
+            font-size:12.5px;color:var(--bad);line-height:1.6">
+            <b>이력과 실제 체크포인트가 어긋났습니다</b> — ${esc(drift)}<br>
+            <span style="color:var(--ink-3)">절차 맵은 고쳤는데 <code style="font-family:var(--mono)">LAUNCH.history</code> 를
+            안 고친 것입니다. 아래 % 는 이력 기준이라 지금 실제와 다릅니다.</span>
+          </div>` : ""}
+       <div class="delta">
+         ${prevPct !== null
+            ? `<span class="from">${prevPct}%</span><span class="arw">→</span>`
+            : `<span class="from" style="font-size:19px">측정 없음</span><span class="arw">→</span>`}
+         <span class="to">${nowPct}%</span>
+         ${diffChip(dPts !== null ? Math.round((now.parts-prev.parts)/now.total*100) : null, "%p")}
+         <span class="lab">체크포인트 <b style="color:var(--ink-2);font-family:var(--mono)">${now.parts}/${now.total}</b> · ${esc(now.label)}</span>
+       </div>
+
+       <div class="trackbar">
+         <i style="width:${okW/cpTotal*100}%;background:var(--ok)"></i>
+         <i style="width:${hfW/cpTotal*100}%;background:var(--warn)"></i>
+       </div>
+       <div style="font-size:11.5px;color:var(--ink-4);line-height:1.6">
+         ${okW}칸 완료 · ${hfW}칸 반쪽 · ${cpTotal-okW-hfW}칸 없음.
+         ${prevPct === null ? `<b style="color:var(--ink-3)">이전 값이 «0%» 가 아니라 «측정 없음» 인 이유</b> — 절차 맵이 이번에 처음 생겼습니다. 0%였던 게 아니라 잴 자리가 없었습니다.` : ""}
+       </div>
+
+       <div class="pairs">
+         <div class="pair">
+           <div class="t">사용자 완주</div>
+           <div class="v" style="color:${now.reach ? "var(--ok)" : "var(--bad)"}">
+             ${prev ? `${prev.reach} → ` : ""}${now.reach}<small>/ ${LAUNCH.criteria.length} 단계</small>
+             ${dReach !== null && dReach === 0 ? `<small style="color:var(--ink-4)">변화 없음</small>` : ""}
+           </div>
+           <div class="n">사슬이 끊기기 전까지 갈 수 있는 거리</div>
+         </div>
+         <div class="pair">
+           <div class="t">이번 루프가 켠 체크포인트</div>
+           <div class="v" style="color:${touched.size ? "var(--ok)" : "var(--bad)"}">${touched.size}<small>칸</small></div>
+           <div class="n">${touched.size ? [...touched].map(esc).join(" · ") : "제품 코드 0줄 — 관측 층만 만들었습니다"}</div>
+         </div>
+         <div class="pair">
+           <div class="t">품질 게이트 미해결</div>
+           <div class="v" style="color:${gateOpen.length ? "var(--warn)" : "var(--ok)"}">${gateOpen.length}<small>장</small></div>
+           <div class="n">여정이 굴러간 «뒤» 지킬 것</div>
+         </div>
+       </div>
+
+       <div class="scopemap">
+         <div class="h">이번 루프의 범위 — 전체 ${cpTotal}칸 중 어디였나</div>
+         <div class="stagerow">${stages}</div>
+         ${(now.meta || []).length ? `<div class="metarow">${now.meta.map((m)=>`<span>＋ ${esc(m)}</span>`).join("")}</div>
+         <div style="font-size:12px;color:var(--ink-3);margin-top:10px;line-height:1.65">
+           ${esc(now.note)}
+           <br><b style="color:var(--ink-2)">위 ${cpTotal}칸 중 강조된 칸이 없다는 것이 이번 루프의 정직한 결과입니다</b> —
+           만든 것은 전부 «제품을 보는 층» 이지 제품 자체가 아닙니다.
+         </div>` : ""}
+       </div>`;
+  }
 
   $("launch").innerHTML =
     `<div style="font-size:13.5px;color:var(--ink-2);margin-bottom:16px;padding:11px 14px;
