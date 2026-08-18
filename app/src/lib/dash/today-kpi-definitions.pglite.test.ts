@@ -191,4 +191,50 @@ describe("BBE-215 · 홈 KPI 정의 (098)", () => {
     // 없는 숫자를 지어내지 않는다 — 화면이 「(0/0)」을 그리면 그것도 거짓이다.
     expect((await read(db)).onboarding).toBeNull();
   });
+
+  // ★ BBE-215 / 회사 현황 통합(A안) — 「이번 달 수납 0」이 두 가지 뜻이 되는 것을 막는다.
+  //   회사 현황 위젯이 이 RPC 값을 «그대로» 받아 쓰기로 했으므로(출처 하나),
+  //   0 이 「이번 달에 없다」인지 「아무도 입금일을 안 채웠다」인지 소비자가 갈라야 한다.
+  //   ★ 새 필드를 만들지 않고 unfilledColumns 를 재사용한다 — 같은 것을 두 방법으로 말하면
+  //     둘 다 맞게 유지하는 일이 영원히 남는다.
+  it("★ 입금일이 통째로 비면 unfilledColumns 가 그 컬럼을 말한다", async () => {
+    const db = await setup();
+    // 계약업체 실무 항목은 있는데 입금일이 하나도 없다.
+    await db.exec(`
+      insert into items values ('${id(500)}','${ORG}','${id(21)}','w','${OWNER}');
+      insert into item_values values
+        ('${ORG}','${id(500)}','contract_deposit','1000'),
+        ('${ORG}','${id(500)}','fee_amount','200');
+    `);
+
+    const snapshot = await read(db);
+    const kpis = snapshot.kpis as unknown as Record<string, number>;
+    const unfilled = snapshot.unfilledColumns as unknown as string[];
+
+    expect(Number(kpis.contractDeposits), "금액은 0 이다").toBe(0);
+    expect(Number(kpis.fees)).toBe(0);
+    // ★ 그 0 은 「없다」가 아니라 「미입력」이다.
+    expect(unfilled).toContain("contract_deposit_paid_on");
+    expect(unfilled).toContain("fee_paid_on");
+  });
+
+  it("★ 입금일이 «채워져» 있으면 이번 달이 아니어도 미입력이 아니다 — 그건 진짜 0 이다", async () => {
+    const db = await setup();
+    await db.exec(`
+      insert into items values ('${id(510)}','${ORG}','${id(21)}','w','${OWNER}');
+      insert into item_values values
+        ('${ORG}','${id(510)}','contract_deposit','1000'),
+        ('${ORG}','${id(510)}','contract_deposit_paid_on','"2026-07-05"'),
+        ('${ORG}','${id(510)}','fee_amount','200'),
+        ('${ORG}','${id(510)}','fee_paid_on','"2026-07-31"');
+    `);
+
+    const snapshot = await read(db);
+    const unfilled = snapshot.unfilledColumns as unknown as string[];
+
+    // 지난 달 수납이라 이번 달 숫자는 0 이지만, 입력은 돼 있다.
+    expect(Number((snapshot.kpis as unknown as Record<string, number>).fees)).toBe(0);
+    expect(unfilled).not.toContain("fee_paid_on");
+    expect(unfilled).not.toContain("contract_deposit_paid_on");
+  });
 });

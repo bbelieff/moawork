@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=098_bbe215_today_kpi_definitions predecessor=097_bbe201_new_lead_field_write_restore digest=cafbffd697384f0e80a0c42445330a7a8917880372cad1969daa1efe340fb7d5 foundation=false
+-- moa-migration-guard: logical_key=098_bbe215_today_kpi_definitions predecessor=097_bbe201_new_lead_field_write_restore digest=574e35fae8acd5bbec27a0ed43dfceb0aa833843c291249c392179503b194a61 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '098_bbe215_today_kpi_definitions',
   p_file_name => '098_bbe215_today_kpi_definitions.sql',
-  p_file_digest => 'cafbffd697384f0e80a0c42445330a7a8917880372cad1969daa1efe340fb7d5',
+  p_file_digest => '574e35fae8acd5bbec27a0ed43dfceb0aa833843c291249c392179503b194a61',
   p_expected_predecessor => '097_bbe201_new_lead_field_write_restore',
   p_executor => 'DC-12',
   p_thread_id => '019fe8b1-4c2a-7d31-9f60-2a7c51d4e8c1',
@@ -96,6 +96,9 @@ declare
   v_lead_filled integer;
   v_contact_items integer;
   v_contact_filled integer;
+  v_work_items integer;
+  v_fee_paid_filled integer;
+  v_deposit_paid_filled integer;
 begin
   if v_actor is null or p_org_id is null or p_as_of is null then
     raise exception 'authenticated dashboard request required' using errcode = '42501';
@@ -193,8 +196,21 @@ begin
   count(*) filter (
     where source = 'core.default-tab/contact'
       and coalesce(contract_status, '') <> ''
+  ),
+  -- ★ 금액 두 축의 «입력 여부» — 월 조건을 «뺀» 개수다(DC-18 요청).
+  --   (A) 안으로 회사 현황 위젯이 이 RPC 값을 그대로 받아 쓰는데, 그때 0 이
+  --   「이번 달 수납이 없다」인지 「아무도 입금일을 안 채웠다」인지 갈라야 한다.
+  count(*) filter (where source = 'core.default-tab/contract-work'),
+  count(*) filter (
+    where source = 'core.default-tab/contract-work'
+      and fee_paid_on ~ '^\d{4}-\d{2}-\d{2}$'
+  ),
+  count(*) filter (
+    where source = 'core.default-tab/contract-work'
+      and deposit_paid_on ~ '^\d{4}-\d{2}-\d{2}$'
   )
-  into v_kpis, v_lead_items, v_lead_filled, v_contact_items, v_contact_filled
+  into v_kpis, v_lead_items, v_lead_filled, v_contact_items, v_contact_filled,
+       v_work_items, v_fee_paid_filled, v_deposit_paid_filled
   from values_typed;
 
   if v_lead_items > 0 and v_lead_filled = 0 then
@@ -202,6 +218,15 @@ begin
   end if;
   if v_contact_items > 0 and v_contact_filled = 0 then
     v_unfilled := array_append(v_unfilled, 'contract_status');
+  end if;
+  -- ★ 금액 축도 같은 신호로 말한다. «새 필드» 를 따로 만들지 않는다 —
+  --   같은 것을 두 가지 방법으로 말하면 둘 다 맞게 유지하는 일이 영원히 남는다.
+  --   소비자(회사 현황 위젯)는 unfilledColumns 에 이 이름이 있는지만 보면 된다.
+  if v_work_items > 0 and v_deposit_paid_filled = 0 then
+    v_unfilled := array_append(v_unfilled, 'contract_deposit_paid_on');
+  end if;
+  if v_work_items > 0 and v_fee_paid_filled = 0 then
+    v_unfilled := array_append(v_unfilled, 'fee_paid_on');
   end if;
 
   select coalesce(jsonb_agg(row order by rank, due_on, item_id), '[]'::jsonb)

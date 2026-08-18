@@ -38,6 +38,8 @@ const SOURCE_LABEL: Record<TodayDashboardSnapshot["missingSources"][number], str
 const UNFILLED_COLUMN_LABEL: Record<string, string> = {
   consult_status: "상담 상황",
   contract_status: "계약상황",
+  contract_deposit_paid_on: "계약금 수납일",
+  fee_paid_on: "수수료 수납일",
 };
 
 const DUE_TONE_CLASS: Record<DueTone, string> = {
