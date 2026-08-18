@@ -14,6 +14,12 @@ node --test scripts/check-migration-guards.test.mjs
 node --test scripts/hosted-migration-runbook.test.mjs
 node scripts/check-migration-guards.mjs
 
+# BBE-206 — 정의된 적 없는 CSS 변수 참조를 막는다.
+# var(--없는토큰) 은 조용히 무효가 되어 «화면에서만» 티가 난다(BBE-199 의 이니셜 마크가
+# 안 보이던 결함). 사람 눈에만 보이던 것 중 «기계가 셀 수 있는» 부분을 여기서 잡는다.
+node scripts/check-css-token-references.mjs --self-test
+node scripts/check-css-token-references.mjs
+
 # "use server" 파일은 async 함수만 export 할 수 있다. 어기면 그 페이지의 서버 액션이
 # «전부» 시작조차 못 하고 전면 오류가 된다. tsc·vitest·next build 가 형태에 따라 놓치므로
 # (실측: export class 는 빌드가 잡고 export const 는 통과) 여기서 따로 센다.
