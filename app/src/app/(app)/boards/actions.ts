@@ -238,6 +238,10 @@ export async function addColumnAction(formData: FormData): Promise<void> {
  *
  * 셀 값은 더 이상 지우지 않는다 — 근거는 `SupabaseBoardsRepo.deleteColumn` 주석.
  */
+// ★ 이 액션의 호출부를 늘리면 confirm 을 «반드시» 실어라.
+//    확인 관문은 래퍼 «밖» 에서 던진다 — UI 를 거친 요청은 항상 confirm 을 싣기 때문이다
+//    (ColumnEditor.tsx · ColumnEditor.test.tsx:80,88-89 가 그 결합을 못 박는다).
+//    confirm 없이 부르는 호출부가 생기면 «정당한 사용자» 가 전면 오류 화면을 본다 — BBE-201 재발.
 export async function deleteColumnAction(formData: FormData): Promise<void> {
   // ★ 확인 관문은 래퍼 «밖» 이다 (BBE-177 + BBE-213 병합).
   //   BBE-213 의 runBoardAction 은 실패를 «배너» 로 바꾼다(다시 던지지 않는다). 그런데 이 검사는

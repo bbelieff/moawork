@@ -10,7 +10,7 @@
  * 클라이언트가 준 목록을 신뢰하지 않는다.
  */
 
-import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { createClient } from "@/lib/supabase/server";
 import { getRepo } from "@/lib/repo";
 import type { Ctx } from "@/lib/types";
@@ -22,7 +22,9 @@ export interface OrgMemberOption {
 
 /** 조직 멤버 목록(이름 표시용 — 이메일 등 개인정보는 가져오지 않는다). */
 export async function listOrgMemberOptions(ctx: Ctx): Promise<OrgMemberOption[]> {
-  if (!hasSupabaseEnv()) {
+  // ★ BBE-203 — 이 분기는 로컬 시드 멤버 이름을 돌려준다. env 유무«만» 보면 운영에서
+  //   env 가 빠졌을 때 시드 사람 이름이 «우리 회사 멤버» 로 조용히 뜬다.
+  if (canUseLocalSeedFallback()) {
     return getRepo()
       .listMembers(ctx.org.id)
       .map((m) => ({ id: m.user_id, name: m.user?.name ?? null }));

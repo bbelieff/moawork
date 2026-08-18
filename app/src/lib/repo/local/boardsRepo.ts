@@ -6,7 +6,7 @@
 
 import type { Ctx } from "@/lib/types";
 import { isManager } from "@/lib/auth/roles";
-import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import type {
   Board,
   BoardColumn,
@@ -394,10 +394,10 @@ export function toAsyncBoardsRepo(local: LocalBoardsRepo): BoardsRepo {
 }
 
 export async function getBoardsRepo(): Promise<BoardsRepo> {
-  // ★ 반드시 `hasSupabaseEnv()` 와 같은 조건이어야 한다.
-  // 전에는 URL 하나만 봤다. ANON_KEY 없이 URL 만 설정된 상태에서는 이 분기가 Supabase 쪽으로
-  // 가고 `createClient()` 가 곧바로 throw 한다 — 가드를 세워 둔 화면까지 500 이 된다.
-  if (hasSupabaseEnv()) {
+  // ★ 조건은 `canUseLocalSeedFallback()` 이다(BBE-203). env 유무«만» 보면 안 된다 —
+  //   운영에서 ANON_KEY 가 빠지면 이 분기가 아래 LocalBoardsRepo(시드)로 가고,
+  //   사용자는 시드 보드를 «자기 회사 데이터» 로 본다. 운영에서는 시끄럽게 실패해야 한다.
+  if (!canUseLocalSeedFallback()) {
     const [{ createClient }, { SupabaseBoardsRepo }] = await Promise.all([
       import("@/lib/supabase/server"),
       import("@/lib/repo/supabase/boardsRepo"),

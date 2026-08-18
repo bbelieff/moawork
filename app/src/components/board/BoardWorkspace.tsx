@@ -37,7 +37,10 @@ import {
 import { BoardHeader } from "./BoardHeader";
 import { BoardToolbar } from "./BoardToolbar";
 import { GroupBlock } from "./GroupBlock";
+import { GroupPresetMenu } from "./GroupPresetMenu";
 import { GroupTable } from "./GroupTable";
+import type { SectionPresetRecord } from "@/lib/presets/section-presets";
+import { groupPresetName, isGroupPresetChanged } from "@/lib/presets/group-preset";
 import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
 import { CONTACT_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { buildBlocks } from "./blocks";
@@ -124,6 +127,8 @@ export function BoardWorkspace({
   canEditItems = false,
   canDeleteItems = false,
   canManageColumns = false,
+  canEditPresets = false,
+  presets = [],
 }: {
   board: Board;
   columns: BoardColumn[];
@@ -147,6 +152,10 @@ export function BoardWorkspace({
   canEditItems?: boolean;
   canDeleteItems?: boolean;
   canManageColumns?: boolean;
+  /** `structure.preset_edit` — 아이템 프리셋 저장·적용(회사 공용 구조를 바꾼다). */
+  canEditPresets?: boolean;
+  /** 회사에 저장된 아이템 프리셋. 그룹 메뉴의 «적용» 목록과 미리보기가 이것을 읽는다. */
+  presets?: readonly SectionPresetRecord[];
 }) {
   const [filters, setFilters] = useState<BoardFilterState>(EMPTY_FILTERS);
   const [filterUrlReady, setFilterUrlReady] = useState(false);
@@ -337,8 +346,31 @@ export function BoardWorkspace({
               color={block.color}
               columns={shown}
               rows={visibleRows}
-              presetName={`${board.name}-${block.name}`}
-              presetChanged={Boolean(optimisticOrder[block.key]?.length)}
+              presetName={groupPresetName(board.name, block.name)}
+              presetChanged={isGroupPresetChanged(optimisticOrder[block.key])}
+              presetMenu={
+                /*
+                 * BBE-174 — 프리셋 칩을 «표시» 에서 «실행» 으로 바꾼다.
+                 * 시스템 보드는 구조 편집 자체가 막혀 있으므로 메뉴를 달지 않는다 —
+                 * 누를 수 없는 버튼을 보여 주는 편이 더 헷갈린다.
+                 *
+                 * 넘기는 컬럼은 `shown`(컬럼수 제한 적용분)이 아니라 `fullColumns` 다.
+                 * 도구줄에서 «컬럼 8개만 보기» 를 켠 채 저장하면 프리셋이 나머지 컬럼을
+                 * 통째로 잃는다 — 그건 구조 축소다(AGENTS.md §9.3).
+                 */
+                board.is_system ? undefined : (
+                  <GroupPresetMenu
+                    boardId={board.id}
+                    groupKey={block.key}
+                    savable={block.group !== null}
+                    presetName={groupPresetName(board.name, block.name)}
+                    columns={fullColumns}
+                    order={optimisticOrder[block.key]}
+                    presets={presets}
+                    canEditPresets={canEditPresets}
+                  />
+                )
+              }
             >
               <GroupTable
                 boardId={board.id}
