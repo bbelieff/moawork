@@ -55,14 +55,26 @@ const probe = vi.hoisted(() => {
     "limit", "range", "contains", "overlaps", "match", "throwOnError", "returns",
   ];
 
+  // ★ 읽기와 쓰기를 «구분해서» 기록한다.
+  //   구분하지 않으면 「드리프트를 고쳤다」는 테스트가 listGroups «읽기» 만 보고도 초록이 된다 —
+  //   치유가 죽어도 안 빨개진다. 이름이 주장하는 것을 관측할 수 있어야 한다.
+  const WRITE_OPS = new Set(["insert", "update", "upsert", "delete"]);
+
   function makeQuery(table: string) {
     const rows = () => tables[table] ?? [];
     const q: Record<string, unknown> = {};
-    for (const method of CHAIN) q[method] = () => q;
-    q.single = () => thenable(`from:${table}`, () => rows()[0] ?? null);
-    q.maybeSingle = () => thenable(`from:${table}`, () => rows()[0] ?? null);
+    let op = "select";
+    for (const method of CHAIN) {
+      q[method] = () => {
+        if (WRITE_OPS.has(method)) op = method;
+        return q;
+      };
+    }
+    const label = () => `${op}:${table}`;
+    q.single = () => thenable(label(), () => rows()[0] ?? null);
+    q.maybeSingle = () => thenable(label(), () => rows()[0] ?? null);
     q.then = (onOk: (v: unknown) => unknown, onErr?: (e: unknown) => unknown) =>
-      roundtrip(`from:${table}`, { data: rows(), error: null, count: rows().length }).then(onOk, onErr);
+      roundtrip(label(), { data: rows(), error: null, count: rows().length }).then(onOk, onErr);
     return q;
   }
 
@@ -112,6 +124,7 @@ vi.mock("next/navigation", () => ({
 import BoardPage from "./page";
 import ContactBoardPage from "../../contract/page";
 import NewCustomerPage from "../../newcust/page";
+import { NEW_LEAD_TAB } from "@/lib/default-tabs/new-lead";
 
 const BOARD_ID = "board-1";
 
@@ -186,8 +199,8 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
   it("하니스가 실제 데이터 경로를 탄다 — 조기 이탈이 아니다", async () => {
     const run = await renderBoard();
     expect(run.countOf("auth.getUser")).toBe(1);
-    expect(run.countOf("from:boards")).toBeGreaterThan(0);
-    expect(run.countOf("from:items")).toBeGreaterThan(0);
+    expect(run.countOf("select:boards")).toBeGreaterThan(0);
+    expect(run.countOf("select:items")).toBeGreaterThan(0);
   });
 
   it("측정 — 기본 테이블 뷰 (savedView 없음)", async () => {
@@ -250,9 +263,9 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
     const run = await renderBoard();
     // boards · board_columns · board_groups 는 서로 독립이다. 같은 물결에 있어야 한다.
     const waveOf = (label: string) => run.trips.filter((t) => t.label === label).map((t) => t.wave);
-    const boards = waveOf("from:boards");
-    const columns = waveOf("from:board_columns");
-    const groups = waveOf("from:board_groups");
+    const boards = waveOf("select:boards");
+    const columns = waveOf("select:board_columns");
+    const groups = waveOf("select:board_groups");
     expect(boards.length, "보드 메타 읽기를 못 찾았다").toBeGreaterThan(0);
     expect(boards.length).toBe(columns.length);
     for (let i = 0; i < boards.length; i += 1) {
@@ -303,7 +316,7 @@ describe("BBE-214 후속 · 탭 경유지를 없앨 수 있는가", () => {
     // ★ 핵심 판정: 목적지를 고르는 데 «쓰기» 가 전혀 없다.
     //   쓰기가 없으면 이 경유는 «계산» 일 뿐이고, 계산은 탭 줄을 그릴 때 같이 할 수 있다.
     //   (resolveExistingContactBoard 주석: "기존 보드를 고를 뿐 생성하지 않는다")
-    const 보드조회 = trips.filter((t) => t.label === "from:boards").length;
+    const 보드조회 = trips.filter((t) => t.label === "select:boards").length;
     expect(보드조회, "목적지를 고르는 보드 조회가 없다").toBeGreaterThan(0);
   });
 
@@ -333,32 +346,101 @@ describe("BBE-214 후속 · 탭 경유지를 없앨 수 있는가", () => {
     expect(리스, "/newcust 가 리스를 잡지 않았다 — 쓰기 경로를 안 탔다").toBeGreaterThan(0);
   });
 
-  // ★★ 여기가 진짜 급소다.
-  //   위 측정은 «보드가 없어서 고쳐야 하는» 경우였다(시드에 new-lead 보드가 없었다).
-  //   그런데 총괄의 워크스페이스는 이미 멀쩡하다. 멀쩡할 때도 같은 값을 치르는가?
-  //   치른다면 그건 «치유» 가 아니라 «아무것도 안 하면서 내는 통행료» 다.
-  it("측정 — /newcust: 보드가 «이미 멀쩡할 때» 도 리스를 잡는가 (owner)", async () => {
-    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
-    probe.reset();
-    seed();
-    // 고칠 것이 없는 상태 — 신규리드 보드가 이미 하나 정상으로 있다.
+  // ★★ 진짜 급소 — «고칠 것이 하나도 없는» 워크스페이스도 같은 값을 치르는가.
+  //
+  //   ⚠ 처음 쟀을 때 이 시드가 틀렸다. 보드만 넣고 그룹·컬럼을 비워 뒀는데,
+  //     그건 «정상» 이 아니라 «그룹 5개·컬럼 21개가 통째로 빠진 심한 드리프트» 였다.
+  //     그래서 그때의 14왕복은 정상 케이스 값이 아니었다. 여기서 바로잡는다.
+  //
+  //   시드는 NEW_LEAD_TAB 정의에서 «직접» 만든다 — 손으로 적으면 정의가 바뀔 때
+  //   시드만 낡아서 «정상이 아닌 것» 을 정상이라 부르게 된다.
+  function seedHealthyNewLead() {
     probe.tables.boards = [
-      { id: "board-newlead", org_id: "org-1", name: "신규리드 관리", icon: "💡", description: null, source: "core.default-tab/new-lead", is_system: false, sort_order: 0 },
+      { id: "board-newlead", org_id: "org-1", name: NEW_LEAD_TAB.name, icon: NEW_LEAD_TAB.icon ?? null, description: NEW_LEAD_TAB.description ?? null, source: NEW_LEAD_TAB.source, is_system: false, sort_order: 0 },
     ];
+    probe.tables.board_groups = NEW_LEAD_TAB.groups.map((group, index) => ({
+      id: `grp-${index}`, org_id: "org-1", board_id: "board-newlead", name: group.name, color: group.color, sort_order: index,
+    }));
+    probe.tables.board_columns = NEW_LEAD_TAB.columns.map((column, index) => ({
+      id: `col-${index}`, org_id: "org-1", board_id: "board-newlead", key: column.key, label: column.label,
+      type: column.type, source: column.source ?? "in", sort_order: index,
+      options_jsonb: null, move_rule_jsonb: null, right_pinned: false, is_readonly: false, width: null,
+    }));
     probe.rpcs.acquire_default_tab_repair_lease = true;
     probe.rpcs.renew_default_tab_repair_lease = true;
     probe.rpcs.release_default_tab_repair_lease = true;
+  }
+
+  async function runNewcust() {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
+    let threw: string | null = null;
     try {
       await NewCustomerPage({ searchParams: Promise.resolve({}) });
-    } catch { /* redirect */ }
+    } catch (err) {
+      threw = (err as Error).message;
+    }
     const trips = [...probe.trips];
-    const 리스 = trips.filter((t) => t.label.includes("repair_lease")).length;
+    return {
+      trips,
+      threw,
+      total: trips.length,
+      stages: new Set(trips.map((t) => t.wave)).size,
+      leases: trips.filter((t) => t.label.includes("repair_lease")).length,
+      // «쓰기» 만 센다. 읽기(select:)를 같이 세면 치유가 죽어도 listGroups 읽기 때문에 초록이 된다.
+      writes: trips.filter((t) => /^(insert|update|upsert|delete):/.test(t.label)).length,
+    };
+  }
+
+  it("정상 워크스페이스에서는 락을 «잡지 않는다» (owner) — BBE-214 후속 1", async () => {
+    probe.reset();
+    seed();
+    seedHealthyNewLead();
+    const run = await runNewcust();
     console.log(
       `\n[측정] /newcust — 고칠 것이 «없는» 정상 워크스페이스 (owner)\n` +
-        `  왕복 ${trips.length}회 · 직렬 ${new Set(trips.map((t) => t.wave)).size} · 리스 RPC ${리스}회\n` +
-        `  ${trips.map((t) => t.label).join(" → ")}\n`,
+        `  왕복 ${run.total}회 · 직렬 ${run.stages} · 리스 RPC ${run.leases}회\n` +
+        `  종료: ${run.threw ?? "정상 반환"}\n` +
+        `  ${run.trips.map((t) => t.label).join(" → ")}\n`,
     );
-    expect(trips.length).toBeGreaterThan(0);
+    // 하니스 자체 검증 — «정상» 이라면 리다이렉트로 끝나야 한다.
+    // 중간에 터졌다면 정상 케이스를 잰 게 아니다(처음에 내가 그렇게 틀렸다).
+    expect(run.threw, "정상 워크스페이스인데 리다이렉트로 끝나지 않았다 — 시드가 «정상» 이 아니다")
+      .toBe("HARNESS_REDIRECT");
+    // 고칠 것이 없으면 분산 락을 잡지 않는다 (측정 전: 리스 4회 · 왕복 14 → 후: 0회 · 왕복 9).
+    expect(run.leases, "고칠 것이 없는데 분산 락을 잡았다 — 통행료가 되돌아왔다").toBe(0);
+    // 그리고 애초에 쓸 것이 없었다는 사실도 함께 못 박는다.
+    expect(run.writes, "고칠 것이 없는데 구조를 썼다").toBe(0);
   });
 
+  // ★ DC-00 의 「이사 중 성질 유실」 잣대 — 빠른 길만 재고 느린 길을 안 재면
+  //   최적화가 치유를 죽였는데 정상 케이스만 초록이라 못 본다.
+  //   ensureDefaultTabAdditive 가 지고 있는 성질: 「드리프트가 있으면 반드시 고친다」.
+  //   리스를 조건부로 만들 때 이 성질이 새면 아래가 빨개진다.
+  it("성질 고정 — 컬럼 하나가 빠지면 락을 잡고 «고친다»", async () => {
+    probe.reset();
+    seed();
+    seedHealthyNewLead();
+    const dropped = probe.tables.board_columns.pop() as { key: string };
+    const run = await runNewcust();
+    console.log(
+      `\n[성질] /newcust — 컬럼 «${dropped.key}» 가 빠진 워크스페이스 (owner)\n` +
+        `  왕복 ${run.total}회 · 직렬 ${run.stages} · 리스 ${run.leases}회 · 구조 쓰기 ${run.writes}회\n`,
+    );
+    expect(run.leases, "드리프트가 있는데 리스를 안 잡았다 — 치유가 직렬화되지 않는다").toBeGreaterThan(0);
+    expect(run.writes, "드리프트가 있는데 구조를 쓰지 않았다 — 치유가 죽었다").toBeGreaterThan(0);
+  });
+
+  it("성질 고정 — 그룹 하나가 빠지면 락을 잡고 «고친다»", async () => {
+    probe.reset();
+    seed();
+    seedHealthyNewLead();
+    const dropped = probe.tables.board_groups.pop() as { name: string };
+    const run = await runNewcust();
+    console.log(
+      `\n[성질] /newcust — 그룹 «${dropped.name}» 가 빠진 워크스페이스 (owner)\n` +
+        `  왕복 ${run.total}회 · 직렬 ${run.stages} · 리스 ${run.leases}회 · 구조 쓰기 ${run.writes}회\n`,
+    );
+    expect(run.leases, "드리프트가 있는데 리스를 안 잡았다").toBeGreaterThan(0);
+    expect(run.writes, "드리프트가 있는데 구조를 쓰지 않았다 — 치유가 죽었다").toBeGreaterThan(0);
+  });
 });

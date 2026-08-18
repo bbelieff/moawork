@@ -2,7 +2,7 @@ import type { Ctx } from "@/lib/types";
 import type { BoardsRepo } from "@/lib/boards/store";
 import { NEW_LEAD_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { NEW_LEAD_TAB } from "@/lib/default-tabs/new-lead";
-import { ensureDefaultTabAdditive } from "@/lib/default-tabs/install";
+import { ensureDefaultTabAdditive, readDefaultTabDrift } from "@/lib/default-tabs/install";
 import { assigneesFromMemberSummary } from "@/lib/boards/default-tab-assignees";
 import { loadMemberOrgSummaryWithClient } from "@/lib/auth/member-org-summary";
 import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
@@ -53,6 +53,22 @@ export async function repairNewcustBoardOnEntry(
   const assignees = assigneesFromMemberSummary(summary);
   if (summary.kind !== "ready" || assignees.length === 0) {
     throw new Error("newcust repair members unavailable");
+  }
+
+  // ★ BBE-214 — 고칠 것이 없으면 리스를 잡지 않는다.
+  //
+  //   실측: owner 가 이 탭을 열 때마다 왕복 14회 · 리스 RPC 4회를 치렀는데
+  //   **정상 워크스페이스에서는 구조 쓰기가 0회** 였다. 분산 락을 잡고 아무것도 안 고치고 놓았다.
+  //   멤버는 위 role 검사에서 조기 반환하므로 이 값을 owner/admin 만 냈다.
+  //
+  //   ⚠ 이것은 «건너뛰기» 전용 판정이다. 치유를 약하게 만들지 않는다:
+  //     조금이라도 만들 것이 있으면 아래 리스 경로로 그대로 내려가고,
+  //     **쓰기는 여전히 리스 «안에서» 다시 읽고 다시 판정한 뒤에만** 일어난다.
+  //     즉 여기서 잘못 «있다» 고 말하면 예전과 똑같이 동작할 뿐이고,
+  //     «없다» 고 말할 수 있는 경우는 읽은 순간 정말로 빠진 것이 없을 때뿐이다.
+  if (existing.kind === "ready") {
+    const drift = await readDefaultTabDrift(ctx, NEW_LEAD_TAB, repo, assignees);
+    if (!drift.hasWork) return existing;
   }
 
   const holder = crypto.randomUUID();
