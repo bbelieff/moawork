@@ -17,7 +17,7 @@ import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { PermissionUnavailable } from "@/components/perm/PermissionUnavailable";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
-import { SectionPresetRepo, type SectionPresetBoardsRepo } from "@/lib/presets/section-presets";
+import { type SectionPresetRecord } from "@/lib/presets/section-presets";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { BoardTrashPanel } from "@/components/board/BoardTrashPanel";
 import { SavedViewsController } from "@/components/view";
@@ -39,17 +39,6 @@ import { getBoardColumnOrder } from "../groupLayout";
  * 뒤로가기·뷰 전환은 셸의 **헤더 슬롯**에 넣는다 — 별도 줄을 만들면 원칙 3(헤더 1줄)이 깨진다.
  * 칸반 뷰는 기존 화면을 그대로 둔다(이번 WO 범위 밖).
  */
-/**
- * 프리셋 저장소가 요구하는 좁은 포트로 받는다 (BBE-209 이후 · presets/page.tsx 와 같은 방식).
- * 두 구현은 갖고 있는데 포트 타입에 선언이 없어서, 확인하고 좁혀 받는다.
- */
-function asSectionPresetRepoForPage(repo: unknown): SectionPresetBoardsRepo {
-  if (typeof (repo as Partial<SectionPresetBoardsRepo>).listSectionPresetBoards !== "function") {
-    throw new Error("보드 저장소가 listSectionPresetBoards 를 제공하지 않습니다");
-  }
-  return repo as SectionPresetBoardsRepo;
-}
-
 export default async function BoardPage({
   params,
   searchParams,
@@ -179,14 +168,15 @@ export default async function BoardPage({
     (await loadDefaultTabAssignees(ctx)).map((member) => [member.userId, member.displayName]),
   );
   /*
-   * 그룹 메뉴의 «다른 프리셋 적용» 목록 (BBE-174).
-   * 프리셋 라이브러리 화면과 **같은 저장소**를 읽는다 — 그룹에서 저장한 것이 라이브러리에
-   * 그대로 뜨고, 라이브러리에서 지우면 여기서도 사라진다. 정본이 하나뿐이라는 뜻이다.
-   * 권한이 없으면 목록 자체를 만들지 않는다(볼 수 없는 것을 실어 보내지 않는다).
+   * 그룹 메뉴의 «다른 프리셋 적용» 목록 — 이 PR 에서는 «비운다» (BBE-174 / BBE-222).
+   *
+   * ★ 여기서 라이브러리를 읽으면 보드 렌더마다 boards → board_groups → board_columns 가
+   *   꼬리에 붙어 BBE-214 예산(직렬 13)을 넘긴다. 실측 15, 그리고 「세 읽기가 한 물결」도 깨진다.
+   *   예산을 올리는 것은 처치가 아니다 — 갓 세운 가드를 첫 손님이 무력화한다.
+   *   목록은 «그룹 메뉴를 열 때» 만 필요하므로 렌더에서 읽지 않는 것이 옳다(BBE-222).
+   *   저장·미리보기는 이 PR 로 동작하고, 「다른 프리셋 적용」 목록만 그 카드에서 잇는다.
    */
-  const presets = canEditPresets && !board.is_system
-    ? await new SectionPresetRepo(asSectionPresetRepoForPage(repo)).list(ctx)
-    : [];
+  const presets: SectionPresetRecord[] = [];
   const savedColumnOrder = getBoardColumnOrder(ctx.org.id, id);
   const activeColumnOrder = Object.fromEntries(
     Object.entries(parseSavedBoardLayout(sp.mwLayout) ?? savedColumnOrder).map(([groupId, keys]) => [groupId, [...keys]]),
