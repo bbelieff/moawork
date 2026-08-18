@@ -521,9 +521,11 @@ const LAUNCH = {
   ],
 
   // ★ 판에 «없는» 것. 비워두면 다음 사람이 「다 카드화됐다」로 읽는다.
-  nocard: "③→④ 투영(WO-5) — MVP 의 진짜 P0 인데 Linear 카드가 없다. 코드 주석에만 있다.",
+  //   2026-08-19 라운드: BBE-235 로 개설 완료 — nocard 는 null 로 닫는다.
+  nocard: null,
   undecided: [
-    "「출시」가 첫 고객 인도인가 공개 SaaS 인가 — 둘은 최소조건이 다르다",
+    // 「출시」의 뜻(첫 고객 인도 vs 공개 SaaS) — 2026-08-19 총괄 확인으로 해소.
+    // MVP 정의 자체가 «자기 조직 운영 흐름»(엑셀·수금)을 가리켜 첫 고객 인도로 확정.
     "settlements 처리 (BBE-231) — 이 여정 «밖» 임이 확정됐다. 출시 후로 미룰 수 있는가",
     "성능 예산 (BBE-222·223·226) — 느린 채로 나가도 되는가",
   ],
@@ -536,97 +538,104 @@ const LAUNCH = {
    card 가 붙은 항목은 그 카드가 닫히면 «자동으로 해결됨» 으로 바뀐다.
    그래서 이 목록은 손으로 지울 필요가 없다.
    ═══════════════════════════════════════════════════════════════ */
-const ASKS = [
-  {
-    k: "「출시」가 무엇인지 한 줄로 정해 주십시오",
-    cost: "10초",
-    kind: "결정",
-    why: "서울경영지원센터 «첫 고객 인도» 와 «공개 SaaS 출시» 는 최소조건이 다릅니다. " +
-         "지금 절차 맵 4단계는 전자를 가정하고 그렸습니다.",
-    fix: "이게 확정되면 절차 맵이 «초안» 을 뗍니다. 그 뒤 모든 라운드가 같은 목표를 봅니다 — " +
-         "지금은 각 세션이 «출시» 를 다르게 상상한 채 일하고 있습니다.",
-    steps: ["여기 채팅에 「첫 고객 인도」 또는 「공개 SaaS」 한 마디"],
-    card: null
-  },
-  {
-    k: "① 엑셀 vs CSV — 1차 범위를 정해 주십시오",
-    cost: "10초",
-    kind: "결정",
-    why: ".xlsx 파서는 저장소에 없어서 의존성 도입 판단이 필요합니다(며칠). " +
-         "CSV 는 파서도 업로드 UI 도 이미 동작합니다 — 마운트 지점만 데모 전용입니다(반나절).",
-    fix: "절차 맵 ① 이 «착수 가능» 이 됩니다. 지금은 무엇을 만들지 몰라서 카드를 못 엽니다. " +
-         "CSV 로 좁히면 첫 칸이 반나절 만에 켜지고, 사용자 완주가 0 에서 처음 움직입니다.",
-    steps: ["「1차는 CSV」 또는 「엑셀이어야 한다」 한 마디"],
-    card: null
-  },
-  {
-    k: "③→④ 투영 카드를 만들어도 될지 승인해 주십시오",
-    cost: "10초",
-    kind: "승인",
-    why: "MVP 사슬의 급소인데 <b>Linear 카드가 존재하지 않습니다.</b> " +
-         "코드 주석에 WO-5 로만 적혀 있어서 어떤 관제판으로도 볼 수 없습니다.",
-    fix: "「업무관리 이동」이 계약업체 실무 보드에 행을 만들게 됩니다. " +
-         "이게 없으면 수금 컬럼이 있는 보드가 <b>영원히 빕니다</b> — 부품 3칸이 완성돼 있어도 소용없습니다. " +
-         "087 의 create_new_lead 가 똑같은 일을 이미 하고 있어 <b>본보기를 베끼면 됩니다(반나절)</b>.",
-    steps: ["「만들어라」 한 마디 — 제가 카드를 개설하고 본문·수용기준까지 씁니다"],
-    card: null
-  },
-  {
-    k: "BBE-196 에 담당 세션을 붙여 주십시오",
-    cost: "30초",
-    kind: "배정",
-    why: "Urgent 인데 <b>생성 이후 단 1초도 갱신되지 않았습니다.</b> " +
-         "결정이 필요한 카드가 아닙니다 — 원인 위치(boards/service.ts:152-155)와 처치가 이미 다 적혀 있고 재현도 끝났습니다.",
-    fix: "권한 있는 사용자가 <b>다른 보드의 컬럼을 지울 수 있고, 지워진 쪽은 화면이 갱신 안 돼 알아채지도 못하는</b> 결함이 " +
-         "실제로 움직이기 시작합니다. ③④ 가 쌓은 값을 지키는 자리입니다.",
-    steps: [
-      "아래 링크로 카드 열기",
-      "오른쪽 <b>Labels</b> → 유휴 세션 라벨(예: DC-12) 추가",
-      "그 세션 창에 「BBE-196 착수」 전달 — <b>댓글만 남기면 아무도 안 옵니다</b>"
-    ],
-    card: "BBE-196"
-  },
+/* ═══════════════════════════════════════════════════════════════
+   총괄이 뚫을 것 — 이제 두 층이다.
+   ① MANUAL_ASKS — Linear 로 표현이 안 되는 «일회성 수동 작업».
+      SQL 을 대신 실행해 줄 방법이 없는 것처럼, 코드로 유도할 수 없는 항목만 여기 남긴다.
+      해결되면 여기서 손으로 지운다 — 이 배열이 커지면 그게 문제 신호다.
+   ② deriveAsks() — 매 렌더마다 Linear 실측에서 «다시 계산» 한다.
+      2026-08-19 라운드에서 손으로 적었던 5건(출시 정의·CSV 범위·③→④ 카드·BBE-196 배정·
+      BBE-198 결정)이 전부 총괄 답변으로 풀려서, 그 자리를 대신할 «규칙» 으로 바꿨다.
+      다음에 같은 모양(우선순위 높은데 주인 없음 · hosted 자격증명 필요 · 카드 없는 급소)이
+      또 생기면 손대지 않아도 여기 다시 뜬다.
+   ═══════════════════════════════════════════════════════════════ */
+const MANUAL_ASKS = [
   {
     k: "PR #273 의 값 분포 SQL 을 한 번 돌려 주십시오",
     cost: "2분",
     kind: "자격증명",
     why: "제게 운영 Supabase 자격증명이 없습니다(.env 없음). " +
-         "#274 가 #273 위에 쌓여 있어서 <b>#273 이 안 풀리면 두 장이 같이 멈춥니다.</b>",
+         "#274 가 #273 위에 쌓여 있어서 <b>#273 이 안 풀리면 두 장이 같이 멈춥니다.</b><br>" +
+         "<span style='color:var(--warn)'>★ 정정 — 지난 판에서 「PR 본문에」라고 드렸는데 " +
+         "실제로는 <b>PR 코멘트</b>에 있었습니다. 아래는 그 코멘트로 바로 가는 링크입니다.</span>",
     fix: "PR 두 장이 머지 경로에 오릅니다. 대시보드 KPI 정의가 확정되고 " +
          "BBE-215(총괄이 지적하신 「대시보드 정보 이상함」)가 닫힙니다.",
     steps: [
-      "아래 PR 본문에서 SQL 블록 복사",
-      "Supabase → <b>SQL Editor</b> → 붙여넣고 <b>Run</b>",
-      "결과를 PR 코멘트에 붙여넣기"
+      "아래 <b>SQL 코멘트</b> 링크에서 세 블록 복사(값 분포 ①②③)",
+      "아래 <b>Supabase SQL Editor</b> 링크 → 붙여넣고 <b>Run</b> (⚠️ SELECT 뿐, 데이터 안 바뀝니다)",
+      "결과를 PR #273 코멘트로 붙여넣기"
     ],
-    link: { url: "https://github.com/bbelieff/moawork/pull/273", t: "PR #273 열기" },
+    links: [
+      { url: "https://github.com/bbelieff/moawork/pull/273#issuecomment-5323742779", t: "SQL 코멘트 열기" },
+      { url: "https://supabase.com/dashboard/project/srtvmpcosekduvsscsyz/sql/new", t: "Supabase SQL Editor 열기" }
+    ],
     card: null
   },
-  {
-    k: "BBE-129 에 프로젝트를 지정해 주십시오",
-    cost: "20초",
-    kind: "정리",
-    why: "Urgent 인데 <b>8일째 멈춰 있습니다.</b> 그리고 이 카드만 Linear <b>프로젝트가 비어 있어서</b> " +
-         "프로젝트 단위로 보는 모든 화면에서 <b>존재하지 않습니다.</b>",
-    fix: "판에 «보이기» 시작합니다. 안 보이는 카드는 아무도 안 잡습니다 — " +
-         "8일 방치의 원인이 게으름이 아니라 이것입니다.",
-    steps: [
-      "아래 링크로 카드 열기",
-      "오른쪽 <b>Project</b> → <b>MoaWork · 운영 안정화 및 어드민</b> 선택"
-    ],
-    card: "BBE-129"
-  },
-  {
-    k: "BBE-198 — 회계 원장 부품을 어떻게 할지 정해 주십시오",
-    cost: "30초",
-    kind: "결정",
-    why: "부품 2개가 어느 화면에도 안 닿습니다. <b>이미 두 번 올라갔는데 두 번 다 답이 없었습니다</b> — " +
-         "그래서 세 번째로 올립니다.",
-    fix: "결정이 나면 이 카드가 즉시 배차 가능해집니다. 지금은 «누구 잘못도 아닌» 이유로 영원히 대기합니다.",
-    steps: ["아래 링크로 카드 열기", "「붙인다 / 접는다 / 폐기한다」 중 하나를 코멘트로"],
-    card: "BBE-198"
-  },
 ];
+
+const OWNER_RE_ASK = /^(DG|DC|NG|NC)-\d{2}$/;
+
+/* 매번 다시 계산 — 손으로 추가·삭제하지 않는다. */
+function deriveAsks(items, byId) {
+  const open = items.filter(isOpen);
+  const out = [];
+
+  // ① 급한데 주인이 없다 — BBE-196 이 이 모양이었다. 규칙으로 승격.
+  open.filter((i) => (i.priority?.name === "Urgent" || i.priority?.name === "High")
+      && !(i.labels || []).some((l) => OWNER_RE_ASK.test(l)))
+    .sort((a, b) => (a.priority?.value ?? 9) - (b.priority?.value ?? 9))
+    .slice(0, 4)
+    .forEach((i) => out.push({
+      k: `${i.id} 에 담당 세션을 붙여 주십시오`, cost: "30초", kind: "배정",
+      why: `<b>${i.priority.name}</b> 인데 주인 라벨이 없습니다 — ${esc(i.title.slice(0, 46))}`,
+      fix: "이 카드가 배차 가능해집니다. 라벨 없는 우선순위 카드는 다음 라운드가 «유휴» 로 분류하지만, " +
+           "그것만으로는 아무도 안 옵니다 — 실제로 사람이 세션 창을 불러야 합니다.",
+      steps: ["아래 링크로 카드 열기", "<b>Labels</b> → 유휴 세션 라벨 추가 (없으면 DC-00 산하로 배정)",
+              "그 세션 창에 착수 지시 — <b>댓글만 남기면 아무도 안 옵니다</b>"],
+      card: i.id
+    }));
+
+  // ② 프로젝트가 비어서 판에서 안 보인다 — BBE-129 가 이 모양이었다.
+  open.filter((i) => (i.priority?.name === "Urgent" || i.priority?.name === "High") && !i.project)
+    .slice(0, 3)
+    .forEach((i) => out.push({
+      k: `${i.id} 에 프로젝트를 지정해 주십시오`, cost: "20초", kind: "정리",
+      why: `<b>${i.priority.name}</b> 인데 Linear 프로젝트가 비어 있습니다 — 프로젝트 단위로 보는 화면에서 <b>존재하지 않습니다.</b>`,
+      fix: "판에 «보이기» 시작합니다. 안 보이는 카드는 방치 원인이 게으름이 아니라 이것입니다.",
+      steps: ["아래 링크로 카드 열기", "<b>Project</b> → <b>MoaWork · 운영 안정화 및 어드민</b> 선택"],
+      card: i.id
+    }));
+
+  // ③ hosted 자격증명이 필요하다고 스스로 라벨을 붙인 카드
+  open.filter((i) => (i.labels || []).includes("needs-hosted")).slice(0, 3)
+    .forEach((i) => out.push({
+      k: `${i.id} — hosted 확인이 필요합니다`, cost: "가변", kind: "자격증명",
+      why: `<code>needs-hosted</code> 라벨 — ${esc(i.title.slice(0, 46))}. 제겐 운영 Supabase 접근이 없습니다.`,
+      fix: "카드 본문에 적힌 확인·적용을 총괄이 hosted 에서 직접 해야 다음 단계로 갑니다.",
+      steps: ["아래 링크로 카드 열기 → 본문의 요청 사항대로"],
+      card: i.id
+    }));
+
+  // ④ 절차 맵 급소인데 그 급소를 미는 카드가 없다
+  if (LAUNCH.nocard) out.push({
+    k: "MVP 급소에 카드가 없습니다 — 개설해도 될지 확인해 주십시오", cost: "10초", kind: "승인",
+    why: LAUNCH.nocard,
+    fix: "카드가 생기면 다음 라운드가 그 급소를 «필터 통과» 대상으로 잡습니다. 지금은 어떤 관제판에도 안 잡힙니다.",
+    steps: ["「만들어라」 한 마디 — 본문·수용기준까지 채워서 개설합니다"],
+    card: null
+  });
+
+  // ⑤ 아직 정하지 못한 것 — 출시-최소조건.md 의 undecided 그대로
+  (LAUNCH.undecided || []).forEach((u) => out.push({
+    k: u, cost: "가변", kind: "결정",
+    why: "정하지 못한 채로 <code>출시-최소조건.md</code> 에 적혀 있습니다.",
+    fix: "정해지면 절차 맵 또는 품질 게이트 어느 쪽에 속하는지가 확정되고, 다음 라운드가 그 판단을 따릅니다.",
+    steps: ["여기 채팅에 한 마디로 정해 주시면 문서·판에 바로 반영합니다"],
+    card: null
+  }));
+
+  return out;
+}
 
 /* ═══════════════════════════════════════════════════════════════
    다음 골 제안 — 관측자가 라운드마다 다시 판단한다.
@@ -1135,15 +1144,19 @@ function render() {
       "자격증명": "var(--warn)",
       "정리":   "var(--teal)",
     };
+    // ★ MANUAL_ASKS 는 손으로 관리, 나머지는 매번 다시 계산한다 — 손대지 않아도
+    //   새 병목이 뜨고, 풀리면 저절로 빠진다(카드는 닫힘으로, 파생 항목은 조건 불성립으로).
+    // 범위 토글(MoaWork/전체)을 그대로 따른다 — «경영일지» 를 보고 있지 않으면 그쪽 병목은 안 낸다.
+    const ALL_ASKS = MANUAL_ASKS.concat(deriveAsks(all, byId));
     const live = [], solved = [];
-    ASKS.forEach((a) => {
+    ALL_ASKS.forEach((a) => {
       const c = a.card ? byId[a.card] : null;
       (c && !isOpen(c) ? solved : live).push({ a, c });
     });
 
     const row = ({ a, c }, n) => {
       const col = KIND[a.kind] || "var(--ink-3)";
-      const link = a.link || (c ? { url: c.url, t: `${a.card} 열기` } : null);
+      const links = a.links || (a.link ? [a.link] : (c ? [{ url: c.url, t: `${a.card} 열기` }] : []));
       return `<div style="display:grid;grid-template-columns:30px 1fr;gap:13px;padding:16px 0;
                    border-bottom:1px solid var(--line-soft)">
         <span style="width:26px;height:26px;border-radius:8px;background:${col};color:#fff;flex:none;
@@ -1169,24 +1182,29 @@ function render() {
             ${a.steps.map((s) => `<li>${s}</li>`).join("")}
           </ol>
 
-          ${link ? `<a href="${esc(link.url)}" target="_blank" rel="noopener"
-              style="display:inline-flex;align-items:center;gap:6px;margin-top:11px;font-size:12.5px;
+          ${links.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:11px">
+            ${links.map((lk) => `<a href="${esc(lk.url)}" target="_blank" rel="noopener"
+              style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;
                      font-weight:650;text-decoration:none;padding:7px 13px;border-radius:8px;
-                     background:${col};color:#fff">${esc(link.t)} →</a>` : ""}
+                     background:${col};color:#fff">${esc(lk.t)} →</a>`).join("")}
+          </div>` : ""}
         </div>
       </div>`;
     };
 
     $("asksWrap").hidden = false;
-    $("asks").innerHTML =
-      `<div class="panel" style="padding:4px 20px 8px">
-         ${live.map(row).join("")}
-         ${solved.length ? `<div style="padding:14px 0 4px;font-size:12.5px;color:var(--ok)">
-            <b>해결됨 ${solved.length}건</b> —
-            ${solved.map((x) => `<span style="font-family:var(--mono);font-size:11.5px">${esc(x.a.card)}</span>`).join(" · ")}
-            <span style="color:var(--ink-4)">카드가 닫혀서 목록에서 내렸습니다.</span>
-          </div>` : ""}
-       </div>`;
+    $("asks").innerHTML = live.length === 0
+      ? `<div class="panel" style="text-align:center;padding:22px;color:var(--ok);font-size:13.5px">
+           지금은 총괄님 손이 필요한 항목이 없습니다. 다음 병목이 생기면 여기 자동으로 뜹니다.
+         </div>`
+      : `<div class="panel" style="padding:4px 20px 8px">
+           ${live.map(row).join("")}
+           ${solved.length ? `<div style="padding:14px 0 4px;font-size:12.5px;color:var(--ok)">
+              <b>해결됨 ${solved.length}건</b> —
+              ${solved.map((x) => `<span style="font-family:var(--mono);font-size:11.5px">${esc(x.a.card)}</span>`).join(" · ")}
+              <span style="color:var(--ink-4)">카드가 닫혀서 목록에서 내렸습니다.</span>
+            </div>` : ""}
+         </div>`;
   }
 
   /* 다음 골 */
