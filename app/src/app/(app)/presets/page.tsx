@@ -24,6 +24,9 @@ export default async function PresetsPage({
   const ctx = applyAs(await getSession(), sp.as);
   // ★ BBE-202 — 개발 빌드 + Supabase 없음에서만 로컬 보드로 읽는다(BBE-203 과 같은 규약).
   //   조건을 인라인으로 적어야 경계 검사기(isInsideExplicitDevGuard)가 «운영 그래프 아님» 으로 읽는다.
+  //   ★ 앞의 NODE_ENV 검사는 canUseLocalSeedFallback() 안의 같은 검사와 «중복이 아니다» — 지우지 마라.
+  //     검사기는 조건식을 «구문» 으로 읽어서 함수 뒤에 숨은 검사를 못 본다. 실측(DC-15):
+  //     이 줄을 지우면(논리는 동일) check 가 exit 1 · new violation not baselined: presets/page.tsx getBoardsRepo.
   //   운영에서는 종전과 한 글자도 다르지 않다 — env 가 없으면 createClient() 가 그대로 던진다.
   //   반환 타입 BoardsRepo 에는 listSectionPresetBoards 가 «선언» 돼 있지 않지만 두 구현
   //   (LocalBoardsRepo:57 · SupabaseBoardsRepo:49) 모두 갖고 있고 toAsyncBoardsRepo 프록시가 그대로 넘긴다.
