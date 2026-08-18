@@ -29,10 +29,8 @@ import { useActionState, useId, useMemo, useState } from "react";
 import type { BoardColumn } from "@/lib/boards/types";
 import type { SectionPresetRecord } from "@/lib/presets/section-presets";
 import { previewGroupPresetApply } from "@/lib/presets/group-preset";
-import {
-  saveGroupPresetAction,
-  INITIAL_GROUP_PRESET_STATE,
-} from "@/app/(app)/boards/preset-actions";
+import { saveGroupPresetAction } from "@/app/(app)/boards/preset-actions";
+import { INITIAL_GROUP_PRESET_STATE } from "@/app/(app)/boards/group-preset-state";
 
 interface GroupPresetMenuProps {
   boardId: string;

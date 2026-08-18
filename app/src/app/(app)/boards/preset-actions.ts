@@ -21,7 +21,7 @@ import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { createRequestBoards } from "@/lib/boards/server";
-import { SectionPresetRepo } from "@/lib/presets/section-presets";
+import { SectionPresetRepo, type SectionPresetBoardsRepo } from "@/lib/presets/section-presets";
 import {
   appliedColumnOrder,
   PresetActionError,
@@ -33,12 +33,9 @@ import { resolveColumnOrder } from "@/components/board/layout";
 import type { Ctx } from "@/lib/types";
 import { getBoardColumnOrder, setGroupColumnOrder } from "./groupLayout";
 
-export interface GroupPresetActionState {
-  ok: boolean;
-  message: string | null;
-}
-
-export const INITIAL_GROUP_PRESET_STATE: GroupPresetActionState = { ok: true, message: null };
+// 상태 모양은 순수 모듈에 있다 — "use server" 파일은 async 함수만 export 할 수 있다.
+// (BBE-217. 상수를 여기 두면 이 페이지의 액션이 «전부» 시작조차 못 한다.)
+import type { GroupPresetActionState } from "./group-preset-state";
 
 const DENIED = {
   preset_edit: "아이템 프리셋을 저장하거나 적용할 권한이 없습니다. 회사 관리자에게 요청해 주세요.",
@@ -85,9 +82,24 @@ function failure(error: unknown): GroupPresetActionState {
  * `getBoardsRepo()` 를 직접 부르면 `scripts/check-production-repo-boundaries.mjs` 의
  * 프로덕션 경계(로컬 저장소가 화면 체인에 새로 섞이는 것)를 새로 위반하게 된다.
  */
+/**
+ * 프리셋 저장소가 요구하는 좁은 포트로 받는다 (BBE-209 이후).
+ *
+ * ★ 두 구현(LocalBoardsRepo · SupabaseBoardsRepo)은 listSectionPresetBoards 를 갖고 있는데
+ *   포트 타입 BoardsRepo 에는 «선언» 이 없다. 포트를 넓히는 것은 이 카드 범위 밖이라,
+ *   presets/page.tsx(BBE-202)와 «같은 방식» 으로 좁혀 받되 정말 있는지 확인하고 받는다.
+ *   확인 없이 캐스팅하면 로컬 시드에서만 런타임에 터진다 — 그건 조용한 실패다.
+ */
+function asSectionPresetRepo(repo: unknown): SectionPresetBoardsRepo {
+  if (typeof (repo as Partial<SectionPresetBoardsRepo>).listSectionPresetBoards !== "function") {
+    throw new Error("보드 저장소가 listSectionPresetBoards 를 제공하지 않습니다");
+  }
+  return repo as SectionPresetBoardsRepo;
+}
+
 async function deps() {
   const { repo, service } = await createRequestBoards();
-  return { service, presets: new SectionPresetRepo(repo) };
+  return { service, presets: new SectionPresetRepo(asSectionPresetRepo(repo)) };
 }
 
 /**

@@ -17,7 +17,7 @@ import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { PermissionUnavailable } from "@/components/perm/PermissionUnavailable";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
-import { SectionPresetRepo } from "@/lib/presets/section-presets";
+import { SectionPresetRepo, type SectionPresetBoardsRepo } from "@/lib/presets/section-presets";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { BoardTrashPanel } from "@/components/board/BoardTrashPanel";
 import { SavedViewsController } from "@/components/view";
@@ -39,6 +39,17 @@ import { getBoardColumnOrder } from "../groupLayout";
  * 뒤로가기·뷰 전환은 셸의 **헤더 슬롯**에 넣는다 — 별도 줄을 만들면 원칙 3(헤더 1줄)이 깨진다.
  * 칸반 뷰는 기존 화면을 그대로 둔다(이번 WO 범위 밖).
  */
+/**
+ * 프리셋 저장소가 요구하는 좁은 포트로 받는다 (BBE-209 이후 · presets/page.tsx 와 같은 방식).
+ * 두 구현은 갖고 있는데 포트 타입에 선언이 없어서, 확인하고 좁혀 받는다.
+ */
+function asSectionPresetRepoForPage(repo: unknown): SectionPresetBoardsRepo {
+  if (typeof (repo as Partial<SectionPresetBoardsRepo>).listSectionPresetBoards !== "function") {
+    throw new Error("보드 저장소가 listSectionPresetBoards 를 제공하지 않습니다");
+  }
+  return repo as SectionPresetBoardsRepo;
+}
+
 export default async function BoardPage({
   params,
   searchParams,
@@ -174,7 +185,7 @@ export default async function BoardPage({
    * 권한이 없으면 목록 자체를 만들지 않는다(볼 수 없는 것을 실어 보내지 않는다).
    */
   const presets = canEditPresets && !board.is_system
-    ? await new SectionPresetRepo(repo).list(ctx)
+    ? await new SectionPresetRepo(asSectionPresetRepoForPage(repo)).list(ctx)
     : [];
   const savedColumnOrder = getBoardColumnOrder(ctx.org.id, id);
   const activeColumnOrder = Object.fromEntries(

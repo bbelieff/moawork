@@ -55,10 +55,10 @@ vi.mock("./groupLayout", () => ({
 
 import {
   applyGroupPresetAction,
-  INITIAL_GROUP_PRESET_STATE,
   resetGroupPresetAction,
   saveGroupPresetAction,
 } from "./preset-actions";
+import { INITIAL_GROUP_PRESET_STATE } from "./group-preset-state";
 
 function form(values: Record<string, string>): FormData {
   const data = new FormData();
