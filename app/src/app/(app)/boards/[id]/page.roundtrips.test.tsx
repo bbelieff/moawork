@@ -127,6 +127,7 @@ const probe = vi.hoisted(() => {
   };
 });
 
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => probe.client }));
 vi.mock("@/lib/supabase/env", () => ({
   hasSupabaseEnv: () => true,
@@ -148,6 +149,7 @@ import BoardPage from "./page";
 import ContactBoardPage from "../../contract/page";
 import NewCustomerPage from "../../newcust/page";
 import { NEW_LEAD_TAB } from "@/lib/default-tabs/new-lead";
+import AppLayout from "../../layout";
 
 const BOARD_ID = "board-1";
 
@@ -465,5 +467,29 @@ describe("BBE-214 후속 · 탭 경유지를 없앨 수 있는가", () => {
     );
     expect(run.leases, "드리프트가 있는데 리스를 안 잡았다").toBeGreaterThan(0);
     expect(run.writes, "드리프트가 있는데 구조를 쓰지 않았다 — 치유가 죽었다").toBeGreaterThan(0);
+  });
+
+  // ★ 후속2 착수 전 비용 확인 — 레이아웃은 «경로를 모른다».
+  //   AppTabs 는 탭 화면에서만 그려지는데 레이아웃은 서버 컴포넌트라 usePathname 이 없다.
+  //   그래서 탭 목적지를 레이아웃에서 풀면 «탭이 아닌 화면» 의 하드 로드에도 +1 왕복이 붙는다.
+  //   그 +1 이 기존 비용 대비 얼마인지 알아야 판단할 수 있다 — 추측하지 않는다.
+  it("측정 — (app) 레이아웃 한 번의 왕복 (후속2 비용 기준선)", async () => {
+    probe.reset();
+    seed();
+    let threw: string | null = null;
+    try {
+      await AppLayout({ children: null });
+    } catch (err) {
+      threw = (err as Error).message;
+    }
+    const trips = [...probe.trips];
+    const byLabel = new Map<string, number>();
+    for (const t of trips) byLabel.set(t.label, (byLabel.get(t.label) ?? 0) + 1);
+    console.log("[측정] (app) 레이아웃 1회 — 왕복 " + trips.length + "회 · 직렬 " + new Set(trips.map((t) => t.wave)).size + " · 종료: " + (threw ?? "정상 반환"));
+    console.log("  내역: " + [...byLabel.entries()].map(([l, n]) => n + "x " + l).join(" | "));
+    // 하니스 자체 검증 — 레이아웃이 «끝까지» 돌았을 때의 값이어야 한다.
+    // 중간에 터진 실행을 기준선으로 쓰면 +1 의 비중을 과대평가한다.
+    expect(threw, "레이아웃이 정상 반환하지 않았다 — 이 값은 기준선이 아니다").toBe(null);
+    expect(trips.length).toBeGreaterThan(0);
   });
 });
