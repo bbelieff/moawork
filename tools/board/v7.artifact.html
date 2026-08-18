@@ -420,8 +420,13 @@ const LAUNCH = {
   ]
 };
 
-/* ─── Linear 계약 ─── */
-const SERVER = "claude_ai_Linear";
+/* ─── Linear 계약 ───
+   ★ 커넥터 «표시 이름» 을 하드코딩하지 않는다.
+   매니페스트에는 도구 접두사(claude_ai_Linear)를 적지만, 게시 시점에 표시 이름으로
+   해석된다. 그런데 watchTool 에 넘기는 server 인자는 «표시 이름» 이어야 한다 —
+   접두사를 그대로 넘기면 not_in_manifest 로 떨어진다(초판이 그렇게 실패했다).
+   그래서 listTools() 로 «실제 이름» 을 물어서 쓴다. 추측하지 않는다. */
+const SERVER_HINT = "claude_ai_Linear";
 const TOOL = "list_issues";
 const INPUT = {
   team: "Bbelieff",
@@ -884,7 +889,26 @@ $("scopeAll").addEventListener("click", () => {
     return;
   }
 
-  mcp.watchTool(SERVER, TOOL, INPUT, (ev) => {
+  // 이름을 물어서 쓴다. 실패해도 힌트로 계속 시도한다 — 물어보다 죽지 않게.
+  let server = SERVER_HINT;
+  try {
+    const r = await mcp.listTools();
+    const servers = r?.servers || [];
+    const hit = servers.find((s) => (s.tools || []).some((t) => t.name === TOOL))
+             || servers.find((s) => /linear/i.test(s.server));
+    if (hit) {
+      server = hit.server;
+    } else if (servers.length) {
+      setLive("err", "커넥터 없음");
+      showState("Linear 를 부를 수 없습니다",
+        "이 화면에 붙은 커넥터 중 <code>list_issues</code> 를 가진 것이 없습니다.");
+      const h = await diagnose(mcp);
+      if (h) $("state").insertAdjacentHTML("beforeend", h);
+      return;
+    }
+  } catch { /* listTools 가 없거나 실패하면 힌트로 그냥 간다 */ }
+
+  mcp.watchTool(server, TOOL, INPUT, (ev) => {
     if (ev.type === "error") { onError(ev.error, mcp); return; }
     const p = ev.result?.payload;
     const issues = Array.isArray(p?.issues) ? p.issues : null;
