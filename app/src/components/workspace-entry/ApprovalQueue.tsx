@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { OwnerJoinRequest, PlatformCreateRequest } from "@/lib/workspace-entry/server";
 import { submitWorkspaceRequest } from "@/lib/workspace-entry/contracts";
+import { type ResultNotice } from "@/lib/ui/result-notice";
+import { ResultBanner } from "@/lib/ui/ResultBanner";
 import styles from "./workspace-entry.module.css";
 
 type Props =
@@ -13,21 +15,22 @@ type Props =
 export function ApprovalQueue(props: Props) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<ResultNotice | null>(null);
 
   async function decide(requestId: string, approve: boolean) {
     setBusyId(requestId);
-    setMessage(null);
+    setNotice(null);
     try {
       const result = await submitWorkspaceRequest({
         kind: props.mode === "platform" ? "resolve_create" : "resolve_join",
         requestId,
         approve,
       });
-      setMessage(result.message);
+      // 판정을 «표현» 까지 데려간다 — ok 를 여기서 버리면 실패가 「처리됐다」로 읽힌다(BBE-208).
+      setNotice({ ok: result.ok, message: result.message });
       if (result.ok) router.refresh();
     } catch {
-      setMessage("처리하지 못했어요. 목록을 새로 확인한 뒤 다시 시도해 주세요.");
+      setNotice({ ok: false, message: "처리하지 못했어요. 목록을 새로 확인한 뒤 다시 시도해 주세요." });
     } finally {
       setBusyId(null);
     }
@@ -42,7 +45,7 @@ export function ApprovalQueue(props: Props) {
           <small>{props.mode === "platform" ? "플랫폼 운영 영역이에요. 고객 회사 내부 권한은 생기지 않아요." : "이 회사의 보호된 대표만 결정할 수 있어요."}</small>
         </div>
       </div>
-      {message ? <p className={styles.status} role="status" aria-live="polite">{message}</p> : null}
+      {notice ? <ResultBanner notice={notice} okClassName={styles.status} errorClassName={styles.error} /> : null}
       {props.requests.length === 0 ? (
         <div className={styles.bubble}><strong>지금 검토할 요청이 없어요.</strong><small>새 요청이 오면 이 목록에서 확인할 수 있어요.</small></div>
       ) : (
