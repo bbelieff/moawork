@@ -14,6 +14,12 @@ node --test scripts/check-migration-guards.test.mjs
 node --test scripts/hosted-migration-runbook.test.mjs
 node scripts/check-migration-guards.mjs
 
+# "use server" 파일은 async 함수만 export 할 수 있다. 어기면 그 페이지의 서버 액션이
+# «전부» 시작조차 못 하고 전면 오류가 된다. tsc·vitest·next build 가 형태에 따라 놓치므로
+# (실측: export class 는 빌드가 잡고 export const 는 통과) 여기서 따로 센다.
+node scripts/check-use-server-exports.mjs --self-test
+node scripts/check-use-server-exports.mjs
+
 # ── 편제 개편 공지 (2026-08-12) ───────────────────────────────────
 # 왜 여기 있나: 모든 세션이 커밋 전에 반드시 이 스크립트를 지난다.
 # Linear 댓글·디스패치 게시는 «도는 창» 을 깨우지 못한다. 이 배너만이 확실히 닿는다.
