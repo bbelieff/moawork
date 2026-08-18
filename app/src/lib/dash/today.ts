@@ -112,10 +112,14 @@ const array = (value: unknown): unknown[] => {
 };
 
 export function parseTodayDashboard(value: unknown): TodayDashboardSnapshot {
-  const row = object(value); const viewer = object(row.viewer); const period = object(row.period); const kpis = object(row.kpis);
-  // ★ 필드를 읽기 «전» 에 버전부터 본다. 뒤에 두면 없는 필드에서 먼저 죽어
+  const row = object(value);
+  // ★ 다른 필드를 읽기 «전» 에 버전부터 본다. 뒤에 두면 없는 필드에서 먼저 죽어
   //   원인이 「형식 오류」로 뭉개지고, 정작 「마이그레이션이 아직」이라는 사실이 안 보인다.
+  //   ※ 이 줄이 viewer·period·kpis 를 «읽기 전» 이어야 주석과 코드가 같다(DC-18 검수).
+  //     v1 도 그 셋은 갖고 있어 순서를 바꿔도 지금 동작은 같지만, 「전에 본다」고 적어 놓고
+  //     뒤에서 읽으면 다음 사람이 그 문장을 믿고 필드를 더 얹는다.
   if (number(row.version) < 2) throw new TodayDashboardVersionError();
+  const viewer = object(row.viewer); const period = object(row.period); const kpis = object(row.kpis);
   const tasks = array(row.tasks).map((value): TodayDashboardTask => {
     const task = object(value);
     return { kind: oneOf(task.kind, ["work_due", "follow_up", "assign_owner", "decide", "reconcile_payment"]), itemId: string(task.itemId), title: string(task.title),
