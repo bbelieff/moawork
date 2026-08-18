@@ -2,6 +2,7 @@ import { applyAs, getSession } from "@/lib/auth/session";
 import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 import { resolveExistingContractWorkBoard } from "@/lib/work/entry";
 import { createClient } from "@/lib/supabase/server";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { WorkManagementSource, WorkManagementUnavailableError } from "@/lib/repo/supabase/workManagementSource";
 import { NotificationWorkBoard } from "@/components/work-management/NotificationWorkBoard";
 import styles from "@/components/work-management/work-management.module.css";
@@ -14,6 +15,24 @@ export default async function ContractWorkBoardPage({
 }) {
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
+  // ★ BBE-202 — 이 화면은 로컬 시드로 «뜨지 않는다». WorkManagementSource 가 Supabase 전용이고
+  //   로컬 대응물이 존재하지 않기 때문이다(로컬 소스 신설은 BBE-210 으로 분리했다).
+  //   그래서 여기서는 500 만 없앤다 — 흰 오류 화면 대신 사유가 보이는 화면을 낸다.
+  //   ★ BBE-150 의 경계(LocalBoardsRepo 금지 · createClient 1회)는 그대로 지킨다.
+  //     로컬 repo 를 들이지 않고 «먼저 돌아설» 뿐이다.
+  if (canUseLocalSeedFallback()) {
+    return (
+      <section className="rounded-xl border border-mw-line bg-mw-card p-5" role="status" aria-labelledby="work-unconfigured-title">
+        <h1 id="work-unconfigured-title" className="text-lg font-semibold text-mw-fg">
+          워크스페이스 데이터에 아직 연결되지 않았습니다
+        </h1>
+        <p className="mt-2 text-sm text-mw-sub">
+          계약업체 실무 보드는 워크스페이스 데이터베이스에서 옵니다. 연결되면 여기에 바로 나옵니다.
+        </p>
+      </section>
+    );
+  }
+
   // The cookie-bound client is request scoped and shared by both the product
   // board lookup and the legacy BBE-29 fallback. Production must never cross
   // the environment-sensitive LocalBoardsRepo factory boundary here.
