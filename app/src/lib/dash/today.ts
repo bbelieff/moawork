@@ -1,6 +1,25 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type TodayDashboardStatus = "ready" | "empty" | "partial";
+export type TodayDashboardStatus = "ready" | "empty" | "partial" | "unfilled";
+
+/**
+ * ★ BBE-215 — 읽기 모델 «버전» 이 앱보다 낮을 때 쓰는 오류.
+ *
+ *   배포 순서가 어긋날 수 있다: 앱은 머지되면 Vercel 이 «자동으로» 올리는데,
+ *   마이그레이션은 총괄이 SQL 편집기에서 «손으로» 적용한다(운영 직접 적용 금지 규약).
+ *   그 사이에는 v1 payload 가 v2 파서에 들어온다.
+ *
+ *   그때 「Invalid dashboard list」 같은 파싱 오류로 죽으면 원인을 아무도 모른다.
+ *   그리고 «옛 숫자를 새 이름 아래 그리는 것» 은 더 나쁘다 — 「오늘 상담할 곳」(미팅 오늘)을
+ *   「전화예정」(상담 전)이라고 부르게 되고, 그건 이 카드가 고치려던 바로 그 거짓이다.
+ *   그래서 조용히 넘기지도, 잘못 보여주지도 않고 «무엇이 안 됐는지» 를 말한다.
+ */
+export class TodayDashboardVersionError extends Error {
+  constructor() {
+    super("오늘 지표 정의가 아직 적용되지 않았습니다. 관리자에게 098 마이그레이션 적용을 요청해 주세요.");
+    this.name = "TodayDashboardVersionError";
+  }
+}
 export type TodayDashboardRole = "owner" | "admin" | "member";
 export type TodayDashboardScope = "all" | "assigned";
 export type TodayDashboardActionKind =
@@ -34,7 +53,7 @@ export interface TodayDashboardNotification {
 }
 
 export interface TodayDashboardSnapshot {
-  version: 1;
+  version: 2;
   orgId: string;
   viewer: { userId: string; role: TodayDashboardRole; scope: TodayDashboardScope };
   asOf: string;
@@ -42,13 +61,29 @@ export interface TodayDashboardSnapshot {
   period: { today: string; monthStart: string; monthEndExclusive: string };
   status: TodayDashboardStatus;
   missingSources: ("new-lead" | "contact" | "work")[];
+  /**
+   * ★ BBE-215 — 총괄 확정 정의(098). 앞의 셋은 상담 상황의 «서로 다른 값» 하나씩이라
+   *   같은 건이 두 칸에서 세어질 수 없다(겹침이 구조적으로 불가능).
+   */
   kpis: {
-    todayConsultations: number;
+    /** 전화예정 — 상담 상황 「상담 전」 */
+    calls: number;
+    /** 재통화 대기 — 상담 상황 「1차 부재」 */
     callbacks: number;
+    /** 미팅예정 — 상담 상황 「2차 상담예약」 */
+    meetings: number;
+    /** 계약 대기 — 계약상황 「계약서 요청」·「계약서 작성완료」 만 */
     contractsWaiting: number;
     contractDeposits: number;
     fees: number;
   };
+  /**
+   * ★ 「0」이 «없음» 인지 «아직 안 채움» 인지 가르는 신호(098).
+   *   비어 있지 않으면 그 컬럼을 아무도 안 채운 것이다 — 0 을 「없음」으로 그리면 거짓이 된다.
+   */
+  unfilledColumns: string[];
+  /** 온보딩 진행률. 정의가 하나도 없으면 null — 「(0/0)」을 지어내지 않는다. */
+  onboarding: { completed: number; total: number } | null;
   tasks: TodayDashboardTask[];
   notifications: TodayDashboardNotification[];
 }
@@ -78,7 +113,9 @@ const array = (value: unknown): unknown[] => {
 
 export function parseTodayDashboard(value: unknown): TodayDashboardSnapshot {
   const row = object(value); const viewer = object(row.viewer); const period = object(row.period); const kpis = object(row.kpis);
-  if (row.version !== 1) throw new Error("Unsupported dashboard version.");
+  // ★ 필드를 읽기 «전» 에 버전부터 본다. 뒤에 두면 없는 필드에서 먼저 죽어
+  //   원인이 「형식 오류」로 뭉개지고, 정작 「마이그레이션이 아직」이라는 사실이 안 보인다.
+  if (number(row.version) < 2) throw new TodayDashboardVersionError();
   const tasks = array(row.tasks).map((value): TodayDashboardTask => {
     const task = object(value);
     return { kind: oneOf(task.kind, ["work_due", "follow_up", "assign_owner", "decide", "reconcile_payment"]), itemId: string(task.itemId), title: string(task.title),
@@ -93,14 +130,18 @@ export function parseTodayDashboard(value: unknown): TodayDashboardSnapshot {
   });
   if (tasks.length > 5 || notifications.length > 5) throw new Error("Dashboard row limit exceeded.");
   return {
-    version: 1, orgId: string(row.orgId),
+    version: 2, orgId: string(row.orgId),
     viewer: { userId: string(viewer.userId), role: oneOf(viewer.role, ["owner", "admin", "member"]), scope: oneOf(viewer.scope, ["all", "assigned"]) },
     asOf: string(row.asOf), timezone: oneOf(row.timezone, ["Asia/Seoul"]),
     period: { today: string(period.today), monthStart: string(period.monthStart), monthEndExclusive: string(period.monthEndExclusive) },
-    status: oneOf(row.status, ["ready", "empty", "partial"]),
+    status: oneOf(row.status, ["ready", "empty", "partial", "unfilled"]),
     missingSources: array(row.missingSources).map((source) => oneOf(source, ["new-lead", "contact", "work"])),
-    kpis: { todayConsultations: number(kpis.todayConsultations), callbacks: number(kpis.callbacks),
+    unfilledColumns: array(row.unfilledColumns).map((column) => string(column)),
+    kpis: { calls: number(kpis.calls), callbacks: number(kpis.callbacks), meetings: number(kpis.meetings),
       contractsWaiting: number(kpis.contractsWaiting), contractDeposits: number(kpis.contractDeposits), fees: number(kpis.fees) },
+    onboarding: row.onboarding == null
+      ? null
+      : { completed: number(object(row.onboarding).completed), total: number(object(row.onboarding).total) },
     tasks, notifications,
   };
 }

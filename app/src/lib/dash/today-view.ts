@@ -8,10 +8,20 @@ import { NAV_ITEMS } from "@/components/shell/nav-items";
 import { formatCount, formatKrw } from "./format";
 import type { TodayDashboardSnapshot, TodayDashboardTask } from "./today";
 
-/** KPI 카드 5장 — V6 목업 `UI목업_워크스페이스_최종_v6.html:1534~1538` 의 순서·라벨 그대로. */
+/**
+ * KPI 카드 6장 — BBE-215 총괄 확정(2026-08-18).
+ *
+ * 목업(`:1534~1538`)은 5장이었고 첫 칸이 「오늘 상담할 곳」이었다. 총괄이 그것을
+ * **행동의 종류**로 갈라 「전화예정 / 미팅예정」으로 바꿨다 — 전화를 걸 곳과 만나러 갈 곳은
+ * 준비도 시간도 다르기 때문이다. 6칸이 되는 것은 총괄이 허용했다.
+ *
+ * ★ 앞의 셋은 상담 상황의 «서로 다른 값» 하나씩이라 **같은 건이 두 칸에서 세어질 수 없다.**
+ *   순서도 그 흐름을 따른다 — 걸어야 할 곳 → 다시 걸 곳 → 만날 곳 → 계약 → 돈.
+ */
 export const HOME_KPIS = [
-  { key: "todayConsultations", label: "오늘 상담할 곳", unit: "count" },
+  { key: "calls", label: "전화예정", unit: "count" },
   { key: "callbacks", label: "재통화 대기", unit: "count" },
+  { key: "meetings", label: "미팅예정", unit: "count" },
   { key: "contractsWaiting", label: "계약 대기", unit: "count" },
   { key: "contractDeposits", label: "이번 달 계약금", unit: "krw" },
   { key: "fees", label: "이번 달 수수료", unit: "krw" },
@@ -87,5 +97,10 @@ export const HOME_SHORTCUTS = [
   { label: "신규리드 관리", href: "/newcust" },
   { label: "자동화 규칙", href: "/settings/automations" },
   { label: "온보딩 이어하기", href: "/onboarding" },
+  // ★ BBE-215: 「업무 분석」을 빼라는 지시가 있었으나 «아직» 뺄 수 없다.
+  //   총괄이 «회사 현황을 홈 아래로» 로 정했지만 그 이사는 아직 안 했다. 지금 이 링크를 빼면
+  //   /dash · /dash/all · /dash/tasks · /dash/[pipelineId] 네 화면이 «어디에서도 못 닿는» 상태가 된다 —
+  //   app-tabs.ts:69 OUT_OF_TAB_HREFS 가 그 넷을 사이드바 밖으로 두고 «홈 바로 가기» 를 유일한
+  //   진입점으로 지정하고 있다. 위젯이 홈으로 실제로 옮겨간 «뒤» 에 이 줄을 지워야 한다.
   { label: "업무 분석", href: "/dash" },
 ] as const;

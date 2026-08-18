@@ -27,17 +27,22 @@ const task = (over: Partial<TodayDashboardTask> = {}): TodayDashboardTask => ({
 });
 
 describe("홈 KPI 계약", () => {
-  it("V6 목업의 5장을 순서까지 그대로 유지한다", () => {
+  // ★ BBE-215(2026-08-18) 로 계약이 바뀌었다 — 목업 5장이 «틀려서» 가 아니라 총괄이 바꿔서다.
+  //   「오늘 상담할 곳」을 «행동의 종류» 로 갈라 「전화예정 / 미팅예정」으로 만들었다.
+  //   그래서 이 단언은 목업이 아니라 «그 결정» 을 정본으로 삼는다.
+  it("총괄 확정 6장을 순서까지 그대로 유지한다 (BBE-215)", () => {
     expect(HOME_KPIS.map((kpi) => kpi.label)).toEqual([
-      "오늘 상담할 곳",
+      "전화예정",
       "재통화 대기",
+      "미팅예정",
       "계약 대기",
       "이번 달 계약금",
       "이번 달 수수료",
     ]);
     expect(HOME_KPIS.map((kpi) => kpi.key)).toEqual([
-      "todayConsultations",
+      "calls",
       "callbacks",
+      "meetings",
       "contractsWaiting",
       "contractDeposits",
       "fees",
@@ -46,8 +51,9 @@ describe("홈 KPI 계약", () => {
 
   it("건수는 건수로, 금액은 원화로 — 0 도 '—' 가 아니라 0 으로 보여준다", () => {
     const kpis = {
-      todayConsultations: 0,
+      calls: 0,
       callbacks: 12,
+      meetings: 4,
       contractsWaiting: 3,
       contractDeposits: 8_000_000,
       fees: 21_600_000,
@@ -55,6 +61,7 @@ describe("홈 KPI 계약", () => {
     expect(HOME_KPIS.map((kpi) => formatKpi(kpi, kpis))).toEqual([
       "0",
       "12",
+      "4",
       "3",
       "8,000,000원",
       "21,600,000원",

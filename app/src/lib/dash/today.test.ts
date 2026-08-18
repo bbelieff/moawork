@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { parseTodayDashboard } from "./today";
 
-const valid = { version: 1, orgId: "org", viewer: { userId: "user", role: "member", scope: "assigned" },
+const valid = { version: 2, orgId: "org", viewer: { userId: "user", role: "member", scope: "assigned" },
   asOf: "2026-08-17T00:00:00Z", timezone: "Asia/Seoul", period: { today: "2026-08-17", monthStart: "2026-08-01", monthEndExclusive: "2026-09-01" },
-  status: "empty", missingSources: [], kpis: { todayConsultations: 0, callbacks: 0, contractsWaiting: 0, contractDeposits: 0, fees: 0 }, tasks: [], notifications: [] };
+  status: "empty", missingSources: [], unfilledColumns: [],
+  kpis: { calls: 0, callbacks: 0, meetings: 0, contractsWaiting: 0, contractDeposits: 0, fees: 0 },
+  onboarding: null, tasks: [], notifications: [] };
 
 describe("today dashboard parser", () => {
   it("accepts the versioned empty contract without turning unavailable into zero", () => expect(parseTodayDashboard(valid)).toEqual(valid));

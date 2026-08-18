@@ -30,6 +30,16 @@ const SOURCE_LABEL: Record<TodayDashboardSnapshot["missingSources"][number], str
   work: "계약업체 실무",
 };
 
+/**
+ * ★ BBE-215 — 「0」이 «없음» 인지 «아직 안 채움» 인지 화면이 갈라 말하기 위한 사전.
+ *   `missingSources` 가 «탭 이름» 을 말하듯 이건 «컬럼 이름» 을 말한다.
+ *   「아직 안 채워졌습니다」만 뜨면 사용자는 무엇을 해야 할지 모른다.
+ */
+const UNFILLED_COLUMN_LABEL: Record<string, string> = {
+  consult_status: "상담 상황",
+  contract_status: "계약상황",
+};
+
 const DUE_TONE_CLASS: Record<DueTone, string> = {
   overdue: "bg-[var(--mw-badge-reject-bg)] text-[var(--mw-badge-reject-fg)]",
   today: "bg-[var(--mw-badge-caution-bg)] text-[var(--mw-badge-caution-fg)]",
@@ -212,6 +222,18 @@ export function TodayHome({ state }: { state: TodayHomeState }) {
           className="rounded-[var(--mw-r-2)] border border-[var(--mw-bd)] bg-[var(--mw-s-1)] px-[var(--sp-3)] py-[var(--sp-2)] text-[length:var(--fs-12)] text-[var(--mw-t-2)]"
         >
           일부 탭이 아직 없어 그만큼은 빠진 숫자입니다 — {snapshot.missingSources.map((s) => SOURCE_LABEL[s]).join(" · ")}
+        </p>
+      ) : null}
+
+      {/* ★ 0 을 「없음」으로 그리면 거짓이 되는 경우다 — 항목은 있는데 그 컬럼이 통째로 비었다. */}
+      {snapshot.status === "unfilled" && snapshot.unfilledColumns.length > 0 ? (
+        <p
+          role="status"
+          className="rounded-[var(--mw-r-2)] border border-[var(--mw-bd)] bg-[var(--mw-s-1)] px-[var(--sp-3)] py-[var(--sp-2)] text-[length:var(--fs-12)] text-[var(--mw-t-2)]"
+        >
+          아래 숫자는 «없다» 가 아니라 «아직 안 채웠다» 입니다 —{" "}
+          {snapshot.unfilledColumns.map((column) => UNFILLED_COLUMN_LABEL[column] ?? column).join(" · ")}
+          을(를) 채우면 숫자가 나옵니다.
         </p>
       ) : null}
 
