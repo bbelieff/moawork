@@ -9,7 +9,7 @@
 //   ready         스냅샷을 받았다. 그 안의 status 가 다시 ready/empty/partial 로 갈린다.
 // empty·partial 을 여기서 다시 판정하지 않는다 — 서버가 이미 판정해서 준다(today.ts:43).
 
-import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { createClient } from "@/lib/supabase/server";
 import { readTodayDashboard, type TodayDashboardSnapshot } from "./today";
 
@@ -23,12 +23,17 @@ export type TodayHomeState =
  *
  * `createClient()` 는 환경변수가 없으면 throw 한다(lib/supabase/env.ts:12). 그것을 잡지 않으면
  * 홈 전체가 500 이 된다 — 실제로 e28925c 기준 로컬 시드 모드에서 그랬다. 가드가 여기 있는 이유다.
+ *
+ * ★ 가드 조건은 `canUseLocalSeedFallback()` 이어야 한다(BBE-203). env 유무«만» 보는 느슨한 규칙으로
+ *   갈리면 **운영에서 env 가 빠졌을 때도 같은 분기가 돌아** 「아직 연결 안 됨」을 조용히 보여준다.
+ *   운영에서는 시끄럽게 실패해야 한다 — 이 홈 분기는 BBE-186 이 page.tsx 에서 여기로 «옮긴» 것이고,
+ *   옮길 때 규칙까지 같이 와야 한다(§9.3 «비우기지 지우기가 아니다»).
  */
 export async function loadTodayHome(
   orgId: string,
   options: { asOf?: Date; clientFactory?: typeof createClient } = {},
 ): Promise<TodayHomeState> {
-  if (!hasSupabaseEnv()) return { kind: "unconfigured" };
+  if (canUseLocalSeedFallback()) return { kind: "unconfigured" };
   try {
     const client = await (options.clientFactory ?? createClient)();
     const snapshot = await readTodayDashboard(client, orgId, options.asOf ?? new Date());

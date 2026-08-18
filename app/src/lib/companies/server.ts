@@ -4,6 +4,7 @@ import { loadDealLedger } from "@/lib/accounting/server";
 import { AsyncCrmService } from "@/lib/crm/asyncService";
 import { SupabaseCrmSource } from "@/lib/repo/supabase/supabaseCrmSource";
 import { createClient } from "@/lib/supabase/server";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
 import type { Company, Ctx, Deal } from "@/lib/types";
 
 export type CompanyDealView = Readonly<{
@@ -19,6 +20,8 @@ export type CompanyView = Readonly<{
 }>;
 
 export type CompaniesViewModel =
+  /** 워크스페이스 DB 미연결. «못 읽었다»(error) 와 다른 사실이라 상태를 갈라 둔다. */
+  | Readonly<{ status: "unconfigured" }>
   | Readonly<{ status: "error" }>
   | Readonly<{
       status: "ready";
@@ -69,6 +72,12 @@ export async function loadCompaniesView(
     clientFactory?: () => Promise<SupabaseClient>;
   }> = {},
 ): Promise<CompaniesViewModel> {
+  // ★ `createClient()` 는 환경변수가 없으면 throw 한다(lib/supabase/env.ts). 잡지 않으면
+  // 이 화면 전체가 500 이 된다 — 로컬 시드 모드에서 실제로 그랬다. 주입된 source 가 있으면
+  // 그쪽이 우선이라 테스트·프로덕션 경로는 이 분기를 지나지 않는다.
+  if (!options.source && !options.clientFactory && !hasSupabaseEnv()) {
+    return { status: "unconfigured" };
+  }
   const source = options.source ?? await createCompaniesViewSource(options.clientFactory ?? createClient);
   const [companiesResult, dealsResult] = await Promise.allSettled([
     source.loadCompanies(ctx),

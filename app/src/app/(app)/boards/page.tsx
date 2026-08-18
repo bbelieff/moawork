@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { loadPermGuard } from "@/lib/perm/guard";
+import { PermissionUnavailable } from "@/components/perm/PermissionUnavailable";
 import { getBoardsService } from "@/lib/boards";
 import { NewBoardInline } from "./NewBoardInline";
 
@@ -21,7 +22,13 @@ export default async function BoardsPage({
     loadPermGuard(ctx.org.id, "work.view_tabs"),
     loadPermGuard(ctx.org.id, "structure.tab_manage"),
   ]);
-  // Existence hiding: a denied or unavailable view permission must not reveal board metadata.
+  // 판정 «불능» 은 「없음」이 아니다 — 장애를 404 로 접으면 사용자는 보드가 사라진 줄 안다(BBE-204).
+  //   이 화면은 자원에 대해 아무것도 말하지 않으므로 존재 숨김은 그대로 유지된다.
+  if (viewPermission.kind === "denied" && viewPermission.reason === "unavailable") {
+    return <PermissionUnavailable />;
+  }
+  // Existence hiding: a denied view permission must not reveal board metadata.
+  //   권한 없음은 종전 그대로 404 다. 접근 허용 범위는 한 글자도 넓히지 않는다.
   if (viewPermission.kind !== "allowed") notFound();
   const boards = await getBoardsService().listBoards(ctx);
   const canManageTabs = tabPermission.kind === "allowed";

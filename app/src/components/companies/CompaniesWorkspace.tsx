@@ -30,6 +30,16 @@ function DealRow({ row }: { row: CompanyDealView }) {
 }
 
 export function CompaniesWorkspace({ model }: { model: CompaniesViewModel }) {
+  if (model.status === "unconfigured") {
+    // 오류가 아니라 «아직 연결 안 됨». 빈 회사 목록으로 위장하지 않는다.
+    return (
+      <section role="status" className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-800 dark:bg-zinc-900">
+        <h1 className="text-xl font-semibold">워크스페이스 데이터에 아직 연결되지 않았습니다</h1>
+        <p className="mt-2 text-sm text-zinc-500">회사 목록은 워크스페이스 데이터베이스에서 옵니다. 연결되면 여기에 바로 나옵니다.</p>
+      </section>
+    );
+  }
+
   if (model.status === "error") {
     return (
       <section role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100">

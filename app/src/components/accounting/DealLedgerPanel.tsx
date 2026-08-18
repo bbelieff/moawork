@@ -33,8 +33,11 @@ export function DealLedgerPanel({ dealId, state }: DealLedgerPanelProps) {
     return <section aria-label="업무 원장" className={styles.notice}>원장을 불러오는 중이에요.</section>;
   }
 
+  // role="alert" 은 원래 맞았다. 틀린 것은 «보이는 쪽» 이었다 — 로딩·오류·정합성깨짐·빈상태가
+  // 전부 같은 회색 .notice 라서, 눈으로 보는 사용자에게는 경고가 안내문과 구별되지 않았다.
+  // 판정 근거(state.kind)로 role 과 시각을 «함께» 분기한다(BBE-193).
   if (state.kind === "error") {
-    return <section role="alert" aria-label="업무 원장" className={styles.notice}>원장을 불러오지 못했어요. 잠시 후 다시 확인해 주세요.</section>;
+    return <section role="alert" aria-label="업무 원장" className={`${styles.notice} ${styles.noticeFailed}`}>원장을 불러오지 못했어요. 잠시 후 다시 확인해 주세요.</section>;
   }
 
   const entries = state.entries.filter((entry) => entry.dealId === dealId);
@@ -42,7 +45,7 @@ export function DealLedgerPanel({ dealId, state }: DealLedgerPanelProps) {
   try {
     assertFeeLedgerTotal(state.expectedFeeTotal, summary);
   } catch {
-    return <section role="alert" aria-label="업무 원장" className={styles.notice}>수수료 합계와 원장 합계가 맞지 않아 보여줄 수 없어요. 원장 데이터를 확인해 주세요.</section>;
+    return <section role="alert" aria-label="업무 원장" className={`${styles.notice} ${styles.noticeFailed}`}>수수료 합계와 원장 합계가 맞지 않아 보여줄 수 없어요. 원장 데이터를 확인해 주세요.</section>;
   }
 
   if (entries.length === 0) {

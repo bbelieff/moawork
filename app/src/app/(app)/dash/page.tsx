@@ -2,7 +2,7 @@ import Link from "next/link";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
 import { FEATURES } from "@/lib/product";
-import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { loadDashboardPageData } from "@/lib/dash/server";
 import { currentMonthKst } from "@/lib/dash/service";
 import { formatCount, formatKrw, formatMonth, orEmpty } from "@/lib/dash/format";
@@ -60,7 +60,10 @@ export default async function DashAnalysisPage({
   );
 
   // 홈과 같은 이유로 가드가 필요하다 — createClient() 는 환경변수가 없으면 throw 한다.
-  if (!hasSupabaseEnv()) {
+  // ★ 조건은 `canUseLocalSeedFallback()` 이다(BBE-203). 이 아래 체크리스트 블록은 BBE-203 이
+  //   홈에서 고쳐 둔 바로 그 코드를 BBE-186 이 여기로 옮긴 것이라, 규칙도 같이 와야 한다.
+  //   env 유무«만» 보는 느슨한 규칙으로 갈리면 운영에서 env 가 빠졌을 때 조용히 «불러오지 못함» 만 뜬다.
+  if (canUseLocalSeedFallback()) {
     return (
       <div className="flex flex-col gap-[var(--sp-4)]">
         {header}
