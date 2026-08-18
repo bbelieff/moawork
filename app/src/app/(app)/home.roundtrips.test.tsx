@@ -240,7 +240,7 @@ describe("BBE-215 · 홈 직렬 단계 예산", () => {
     probe.reset();
     seedRows();
     try {
-      await CompanyStatusSection({ ctx, month: undefined });
+      await CompanyStatusSection({ ctx, month: undefined, today: { kind: "unconfigured" } });
     } catch { /* redirect 없음 */ }
     const stages = new Set(probe.trips.map((t) => t.wave)).size;
     // 실측 2. 여유 1 만 둔다 — 병렬 하나만 풀려도 3 을 넘는다.

@@ -3,6 +3,7 @@ import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
 import { FEATURES } from "@/lib/product";
 import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import type { Ctx } from "@/lib/types";
+import type { TodayHomeState } from "@/lib/dash/today-server";
 import { loadDashboardPageData } from "@/lib/dash/server";
 import { currentMonthKst } from "@/lib/dash/service";
 import { formatCount, formatKrw, formatMonth, orEmpty } from "@/lib/dash/format";
@@ -31,13 +32,69 @@ import { createClient } from "@/lib/supabase/server";
 // 후속연락·내 업무 목록은 **버리지 않고 여기로 옮겼다**(§9.3 «비우기지 지우기가 아니다»).
 // 위젯·데이터·문구는 옮기기 전 홈과 같은 것을 그대로 쓴다 — 옮김이지 다시 만든 게 아니다.
 //
-// 진입점: 홈의 «바로 가기 › 업무 분석». 사이드바(nav-items.ts)는 목업 D05 정본이라 건드리지 않았다.
+// 진입점: 없다 — 홈 한 화면의 아래 절이라 «가는 링크» 가 필요 없다(BBE-215 로 바로가기를 뺐다).
+//   사이드바(nav-items.ts)는 목업 D05 정본이라 건드리지 않았다.
+/**
+ * 「이번달 수납」 — RPC 가 정본이다(BBE-215 (A)).
+ *
+ * ★ 0 을 «세 상태» 로 가른다. 그냥 0 만 보여주면 「수납이 없다」와 「아무도 입금일을 안 채웠다」가
+ *   같은 화면이 된다 — 그건 다른 사실이고, 사용자가 할 일도 다르다.
+ *     · 탭이 없다        → missingSources 에 'work'
+ *     · 입금일 미입력     → unfilledColumns 에 그 컬럼 이름 (DC-12 가 088 에서 내보낸다)
+ *     · 진짜 0           → 위 둘 다 아님
+ */
+function MonthlyCollection({ today }: { today: TodayHomeState }) {
+  if (today.kind !== "ready") {
+    return <DashboardUnavailable label="이번달 수납" />;
+  }
+  const { kpis, unfilledColumns, missingSources } = today.snapshot;
+  const total = kpis.contractDeposits + kpis.fees;
+
+  if (missingSources.includes("work")) {
+    return (
+      <p className="text-[length:var(--fs-12)] text-[var(--mw-t-3)]">
+        계약업체 실무 탭이 아직 없어요. 탭을 만들면 이번 달 수납이 여기에 보여요.
+      </p>
+    );
+  }
+  const unfilled = ["contract_deposit_paid_on", "fee_paid_on"].filter((column) =>
+    unfilledColumns.includes(column),
+  );
+  if (total === 0 && unfilled.length > 0) {
+    return (
+      <p className="text-[length:var(--fs-12)] text-[var(--mw-t-3)]">
+        입금일이 아직 입력되지 않았어요. 계약업체 실무 탭에서 «계약금 수납일 · 수수료 수납일» 을
+        채우면 이번 달 수납이 여기에 보여요.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-[var(--sp-1)]">
+      <p className="text-[length:var(--fs-18)] font-semibold text-[var(--mw-t-1)]">{formatKrw(total)}</p>
+      <p className="text-[length:var(--fs-12)] text-[var(--mw-t-3)]">
+        계약금 {formatKrw(kpis.contractDeposits)} · 수수료 {formatKrw(kpis.fees)}
+      </p>
+      {total === 0 ? (
+        <p className="text-[length:var(--fs-12)] text-[var(--mw-t-3)]">
+          이번 달 수납이 아직 없어요.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export async function CompanyStatusSection({
   ctx,
   month,
+  today,
 }: {
   ctx: Ctx;
   month?: string;
+  /**
+   * ★ 홈이 이미 부른 `loadTodayHome` 결과를 «받아서» 쓴다. 여기서 다시 부르지 않는다 —
+   *   같은 RPC 를 두 번 부르면 왕복이 늘고, 무엇보다 «같은 화면의 두 숫자» 가 갈릴 수 있다.
+   */
+  today: TodayHomeState;
 }) {
 
   const header = (
@@ -59,7 +116,7 @@ export async function CompanyStatusSection({
     return (
       <div className="flex flex-col gap-[var(--sp-4)]">
         {header}
-        <DashboardUnavailable label="업무 분석" />
+        <DashboardUnavailable label="회사 현황" />
       </div>
     );
   }
@@ -138,11 +195,12 @@ export async function CompanyStatusSection({
                 <Widget title="계약상황" subtitle="등록된 계약상황 기준">
                   <ContractStatusWidget data={core.dash.contractStatus} />
                 </Widget>
-                <Widget title="이번달 수납" subtitle="수수료입금일이 이번달인 건 (실현 기준)">
-                  <SettlementWidget
-                    data={core.dash.settlementThisMonth}
-                    emptyHint="이번 달 수납 내역이 아직 없어요. 수수료입금일이 이번 달인 업무가 생기면 여기에 보여요."
-                  />
+                {/* ★ BBE-215 (A) — 이 축만은 «앱이 계산하지 않는다». RPC 값을 그대로 받는다.
+                     같은 화면 위쪽 KPI 줄의 「이번 달 수수료」와 «같은 출처» 여야 두 숫자가 안 갈린다.
+                     예전에는 앱이 settlements+deals 로 따로 계산했고, settlements 에 쓰는 코드가
+                     없어서(BBE-231) 사실상 «항상 deal.amount 추정치» 였다. 추정 → 실현으로 바뀐다. */}
+                <Widget title="이번달 수납" subtitle="수수료입금일·계약금입금일이 이번달인 건 (실현 기준)">
+                  <MonthlyCollection today={today} />
                 </Widget>
                 <Widget title="전체 정산" subtitle="전 기간 누적">
                   <SettlementWidget

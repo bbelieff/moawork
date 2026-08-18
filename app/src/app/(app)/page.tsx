@@ -75,7 +75,7 @@ export default async function DashboardPage({
       </FeatureGateServer>
 
       {/* ── 아래 절: 회사 현황 (BBE-215) ── */}
-      <CompanyStatusSection ctx={ctx} month={month} />
+      <CompanyStatusSection ctx={ctx} month={month} today={today} />
     </div>
   );
 }

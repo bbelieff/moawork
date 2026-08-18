@@ -63,9 +63,13 @@ describe("BBE-96 core CRM UX writing", () => {
       "계약상황 항목이 준비되면 여기에서 선택할 수 있어요.",
     );
     expect(read(pipelinePage)).toContain("이 단계에 업무가 등록되면 여기에 보여요.");
-    expect(read(analysisPage)).toContain(
-      'emptyHint="이번 달 수납 내역이 아직 없어요. 수수료입금일이 이번 달인 업무가 생기면 여기에 보여요."',
-    );
+    // ★ BBE-215 — 「이번달 수납」이 RPC 정본으로 바뀌면서 이 자리는 «한 문장» 이 아니라
+    //   «세 상태» 가 됐다. 걱정(빈 화면에 실제 조건을 말하라)은 그대로고, 문구가 늘었다.
+    //   0 을 그냥 0 으로 두면 「수납이 없다」와 「입금일을 안 채웠다」가 같은 화면이 된다.
+    const section = read(analysisPage);
+    expect(section, "탭이 없는 경우를 안 말한다").toContain("계약업체 실무 탭이 아직 없어요");
+    expect(section, "미입력을 안 말한다").toContain("입금일이 아직 입력되지 않았어요");
+    expect(section, "진짜 0 을 안 말한다").toContain("이번 달 수납이 아직 없어요");
     expect(read(analysisPage)).toContain("업무 담당자로 지정되면 여기에 보여요.");
   });
 
