@@ -105,16 +105,32 @@ const probe = vi.hoisted(() => {
   //
   //   ★ 목록에 «없는» RPC 는 읽기로 «가정하지 않는다» — `rpc?:` 로 찍어 모른다는 것을 드러낸다.
   //     가정하면 「분류에서 뺀 것」과 「분류를 빠뜨린 것」이 구분되지 않는다.
+  //   분류 근거는 «이름» 이 아니라 마이그레이션의 «함수 본문» 이다.
+  //   Postgres 의 volatility 표시(stable = 쓰기 없음)와 본문의 update/insert 유무로 판정한다.
   const READ_RPCS = new Set([
     "app_admin_role",
     "effective_permission",
     "read_permission_scoped_work_items",
     "get_member_account_profile",
+    // 017: language sql · stable · select 전용
+    "is_platform_admin",
+    // 008: plpgsql · stable · 본문에 update/insert 없음
+    "workspace_entry_self_route_state",
+    // 009:267 본문이 select count(*) 뿐이다.
+    //   ※ volatility 표시가 «없어» Postgres 기본값 VOLATILE 로 선언돼 있다 —
+    //     선언은 느슨한데 실제는 읽기다. 선언만 보고는 판정할 수 없어 본문을 읽었다.
+    "count_pending_workspace_join_requests",
   ]);
   const WRITE_RPCS = new Set([
     "acquire_default_tab_repair_lease",
     "renew_default_tab_repair_lease",
     "release_default_tab_repair_lease",
+    // ★★ 009:345 — 이름은 「list」인데 «쓴다».
+    //   기한 지난 요청을 update ... set status='rejected' 하고
+    //   workspace_entry_events 에 insert 한다.
+    //   ★ 이름으로 분류했으면 읽기로 셌을 것이고, 누가 캐시했으면
+    //     «기한 만료 처리가 조용히 멈춘다». rpc?: 가 막아 준 자리가 정확히 여기다.
+    "list_my_workspace_entry_requests",
   ]);
   function rpcLabel(name: string): string {
     if (READ_RPCS.has(name)) return `rpc:${name}`;
