@@ -14,7 +14,7 @@ import { loadPermGuard } from "@/lib/perm/guard";
 import { recordRiskyAction } from "@/lib/perm/server";
 import { NotFoundError } from "@/lib/boards";
 import { createRequestBoards } from "@/lib/boards/server";
-import { parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
+import { COLUMN_DELETE_CONFIRM, parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
 import type { Ctx, FieldOption } from "@/lib/types";
 import type { ItemWithValues } from "@/lib/boards/types";
 import { boardCellValueFromFormData } from "@/lib/boards/form-values";
@@ -229,7 +229,29 @@ export async function addColumnAction(formData: FormData): Promise<void> {
   });
 }
 
+/**
+ * 컬럼 삭제 — 확인 단계를 서버가 강제한다 (BBE-177).
+ *
+ * 확인을 화면에서만 두면 폼을 직접 만들어 보내는 것으로 그냥 우회된다. 컬럼 삭제는
+ * 그 열을 표에서 없애는 조작이고 되돌리는 화면이 아직 없으므로, `confirm=delete` 가
+ * 실린 요청만 받는다.
+ *
+ * 셀 값은 더 이상 지우지 않는다 — 근거는 `SupabaseBoardsRepo.deleteColumn` 주석.
+ */
+// ★ 이 액션의 호출부를 늘리면 confirm 을 «반드시» 실어라.
+//    확인 관문은 래퍼 «밖» 에서 던진다 — UI 를 거친 요청은 항상 confirm 을 싣기 때문이다
+//    (ColumnEditor.tsx · ColumnEditor.test.tsx:80,88-89 가 그 결합을 못 박는다).
+//    confirm 없이 부르는 호출부가 생기면 «정당한 사용자» 가 전면 오류 화면을 본다 — BBE-201 재발.
 export async function deleteColumnAction(formData: FormData): Promise<void> {
+  // ★ 확인 관문은 래퍼 «밖» 이다 (BBE-177 + BBE-213 병합).
+  //   BBE-213 의 runBoardAction 은 실패를 «배너» 로 바꾼다(다시 던지지 않는다). 그런데 이 검사는
+  //   «사용자의 조작 실패» 가 아니라 «확인 단계를 건너뛴 요청» 이다 — 화면을 거친 사용자에게는
+  //   애초에 일어나지 않고, 폼을 직접 만들어 보낼 때만 걸린다. 배너로 접으면 그 우회가
+  //   «조용히 거절» 되어 서버 로그 말고는 흔적이 없다. 그래서 던진다.
+  //   그리고 반드시 서비스 호출 «앞» 이다 — 뒤로 옮기면 이미 지운 뒤가 된다(M5 가 이것을 잡는다).
+  if (str(formData, "confirm") !== COLUMN_DELETE_CONFIRM) {
+    throw new Error("컬럼 삭제는 확인 단계를 거쳐야 합니다");
+  }
   return runBoardAction(formData, async () => {
     const ctx = await getSession();
     await requirePermission(ctx, "structure.column_manage");

@@ -184,13 +184,53 @@ describe("아이템 · 셀 인라인 편집 (EAV)", () => {
     expect(item.values.nope).toBeUndefined();
   });
 
-  it("컬럼 삭제 시 해당 셀 값도 사라진다", async () => {
-    const detail = await svc.getBoardDetail(owner, SEED_BOARD_TASKS);
-    const noteCol = detail.columns.find((c) => c.key === "note");
-    if (!noteCol) throw new Error("note 컬럼 없음");
-    await svc.deleteColumn(owner, SEED_BOARD_TASKS, noteCol.id);
-    const items = await svc.listItems(owner, SEED_BOARD_TASKS);
-    expect(items.every((i) => i.values.note === undefined)).toBe(true);
+  /**
+   * BBE-177 — 「화면에서는 사라지고 저장소에는 남는다」의 양쪽을 다 고정한다.
+   *
+   * 전에는 컬럼을 지울 때 그 key 의 item_values 를 물리 삭제했다. DB 가 시킨 일이
+   * 아니었다 — item_values 는 board_columns 를 FK 로 참조하지 않는다. 그래서 한 번
+   * 지우면 그 열의 값이 영구 소실됐고 되돌릴 근거가 남지 않았다.
+   *
+   * 무엇을 깨뜨리면 이 묶음이 빨개지는가:
+   *  ① repo.deleteColumn 이 다시 값을 지우면        → 2·3번이 실패한다
+   *  ② compose 의 잔여값 필터를 빼면                 → 1번이 실패한다(지운 열이 화면에 다시 뜬다)
+   *  ③ createColumn 의 key 산출이 label 과 무관해지면 → 3번이 실패한다
+   *
+   * ①만 막으면 값이 새고, ②만 막으면 값이 죽는다. 둘 다 있어야 의미가 있다.
+   */
+  describe("BBE-177 컬럼 삭제와 값 보존", () => {
+    const VALUE = "보존되어야 하는 값";
+
+    async function boardWithOneValue() {
+      const detail = await svc.createBoard(owner, { name: "컬럼 삭제 보존" });
+      const boardId = detail.board.id;
+      const col = await svc.addColumn(owner, boardId, { label: "메모", type: "text" });
+      const item = await svc.createItem(owner, boardId, { title: "행", values: { [col.key]: VALUE } });
+      return { boardId, itemId: item.id, col };
+    }
+
+    it("삭제한 컬럼의 값은 화면에서 사라진다", async () => {
+      const { boardId, itemId, col } = await boardWithOneValue();
+      await svc.deleteColumn(owner, boardId, col.id);
+      const items = await svc.listItems(owner, boardId);
+      expect(items.find((i) => i.id === itemId)?.values[col.key]).toBeUndefined();
+    });
+
+    it("삭제해도 저장된 셀 값 자체는 남는다", async () => {
+      const { boardId, itemId, col } = await boardWithOneValue();
+      await svc.deleteColumn(owner, boardId, col.id);
+      const rows = new LocalBoardsRepo().listValues(owner, [itemId]);
+      expect(rows.find((v) => v.column_key === col.key)?.value_jsonb).toBe(VALUE);
+    });
+
+    it("같은 key 로 컬럼을 다시 만들면 값이 그대로 돌아온다", async () => {
+      const { boardId, itemId, col } = await boardWithOneValue();
+      await svc.deleteColumn(owner, boardId, col.id);
+      const again = await svc.addColumn(owner, boardId, { label: "메모", type: "text" });
+      expect(again.key).toBe(col.key);
+      const items = await svc.listItems(owner, boardId);
+      expect(items.find((i) => i.id === itemId)?.values[again.key]).toBe(VALUE);
+    });
   });
 });
 
