@@ -262,6 +262,8 @@ export async function setCellAction(formData: FormData): Promise<void> {
       ? suppliedRequestId
       : crypto.randomUUID();
     try {
+      // 로컬 시드에는 원본 Supabase 클라이언트가 없다. 조용히 넘기면 「눌렀는데 아무 일도 안 일어남」이 된다(BBE-209).
+      if (!graph.client) throw new Error("컨택 이동: 이 동작은 연결된 워크스페이스가 필요합니다.");
       const result = await advanceNewLeadToContact(graph.client, { itemId, requestId });
       if (result.status !== "committed") {
         await flashCellErrors(itemId, [{
@@ -346,11 +348,20 @@ export async function moveItemAction(formData: FormData): Promise<void> {
   } else {
     await svc.updateItem(ctx, boardId, itemId, { group_id: lane === "" ? null : lane });
   }
-  await notifyBoardItemMoved(graph.client, ctx, {
-    boardId,
-    itemId,
-    eventKey: moveEventKey(formData),
-  });
+  // 이동 «알림» 은 연결된 워크스페이스에서만 존재한다(BBE-209).
+  //   notify_board_item_moved 는 Supabase RPC 이고 수신자·중복방지 판정을 DB 가 소유한다.
+  //   로컬 시드에는 그 저장소가 «없으므로» 보낼 알림도 있을 수 없다 — /api/tab-views 와 같은 사실이다.
+  //   ★ 여기서 던지면 안 된다. 위의 이동 쓰기(setCells/updateItem)가 «이미 커밋됐다» —
+  //     던지는 순간 실제로 이동은 됐는데 화면은 오류 경계로 덮인다. 성공을 실패로 표시하는 것이고
+  //     BBE-183·BBE-193·BBE-201 이 반복해서 잡아 온 바로 그 결함이다.
+  //   공지 읽음 표시와 같은 분류다 — «쓰기 부작용이고 표시되는 것이 아니다».
+  if (graph.client) {
+    await notifyBoardItemMoved(graph.client, ctx, {
+      boardId,
+      itemId,
+      eventKey: moveEventKey(formData),
+    });
+  }
   revalidatePath(`/boards/${boardId}`);
 }
 
@@ -404,11 +415,20 @@ export async function moveRowAction(formData: FormData): Promise<void> {
     await svc.updateItem(ctx, boardId, item.id, patch);
   }));
 
-  await notifyBoardItemMoved(graph.client, ctx, {
-    boardId,
-    itemId,
-    eventKey: moveEventKey(formData),
-  });
+  // 이동 «알림» 은 연결된 워크스페이스에서만 존재한다(BBE-209).
+  //   notify_board_item_moved 는 Supabase RPC 이고 수신자·중복방지 판정을 DB 가 소유한다.
+  //   로컬 시드에는 그 저장소가 «없으므로» 보낼 알림도 있을 수 없다 — /api/tab-views 와 같은 사실이다.
+  //   ★ 여기서 던지면 안 된다. 위의 이동 쓰기(setCells/updateItem)가 «이미 커밋됐다» —
+  //     던지는 순간 실제로 이동은 됐는데 화면은 오류 경계로 덮인다. 성공을 실패로 표시하는 것이고
+  //     BBE-183·BBE-193·BBE-201 이 반복해서 잡아 온 바로 그 결함이다.
+  //   공지 읽음 표시와 같은 분류다 — «쓰기 부작용이고 표시되는 것이 아니다».
+  if (graph.client) {
+    await notifyBoardItemMoved(graph.client, ctx, {
+      boardId,
+      itemId,
+      eventKey: moveEventKey(formData),
+    });
+  }
 
   revalidatePath(`/boards/${boardId}`);
 }
