@@ -91,6 +91,46 @@ async function clearFlashCookie(name: string): Promise<void> {
  * 이것이 없으면 서버 액션의 throw 가 Next 오류 경계로 올라가 **화면이 통째로 덮인다**
  * ("This page couldn't load"). 사용자는 무엇이 왜 안 됐는지 모르고 입력하던 것도 잃는다.
  */
+/**
+ * Next 의 redirect()/notFound() 는 «예외로 구현된 제어 흐름» 이다 (BBE-213).
+ *
+ * ★ catch 로 삼키면 로그인 이동·페이지 이동이 죽는다. 반드시 그대로 올려보낸다.
+ *   BBE-201 에서는 getSession() 을 try 밖에 두는 방식으로 피했는데, 그러면
+ *   «밖에 둔 줄» 이 무방비로 남는다(총괄이 본 흰 화면이 그 자리였다).
+ *   제어 흐름을 «알아보고 되던지는» 쪽이 안전하다 — 밖에 둘 이유가 없어진다.
+ */
+function isNextControlFlow(error: unknown): boolean {
+  const digest = (error as { digest?: unknown } | null | undefined)?.digest;
+  return typeof digest === "string"
+    && (digest.startsWith("NEXT_REDIRECT") || digest === "NEXT_NOT_FOUND");
+}
+
+/**
+ * 모든 보드 서버 액션의 «단일 출구» (BBE-213).
+ *
+ * ★ 던지면 Next 오류 경계가 화면을 통째로 덮는다("This page couldn't load").
+ *   사용자는 무엇이 왜 안 됐는지 모르고 입력하던 것까지 잃는다.
+ *
+ * ★ 분기마다 try/catch 를 손으로 넣지 않는다. BBE-201 이 19개 중 2개만 덮었고
+ *   그 2개도 일부만 덮여 있었다 — 손으로 넣으면 다음 액션에서 또 빠진다.
+ *   액션 본문 전체가 이 한 곳을 지나게 해서 «빠뜨릴 자리» 를 없앤다.
+ */
+async function runBoardAction(formData: FormData, run: () => Promise<void>): Promise<void> {
+  try {
+    await run();
+    // ★ 성공은 «이전 실패» 를 지운다(BBE-201 에서 배운 것).
+    //   안 지우면 MAX_AGE(10초) 안에 «실패 → 고침 → 성공» 한 사용자가 성공한 뒤에도
+    //   방금 전 배너를 다시 본다. 판정은 성공인데 화면은 실패다.
+    //   래퍼로 올리면서 이 성질이 addItemAction 에만 남아 있었다 — 19개 중 1개.
+    await clearFlashCookie(BOARD_ACTION_FLASH_COOKIE);
+  } catch (error) {
+    if (isNextControlFlow(error)) throw error;
+    const boardId = str(formData, "boardId");
+    await flashBoardActionError(boardId, error);
+    revalidatePath(`/boards/${boardId}`);
+  }
+}
+
 async function flashBoardActionError(boardId: string, error: unknown): Promise<void> {
   // 원인 자체는 서버 로그에 남긴다 — 화면에서 감춘다고 조사까지 못 하게 하면 안 된다.
   console.error("[board action]", boardId, error);
@@ -139,6 +179,15 @@ function parseOptionsCsv(csv: string): FieldOption[] {
     .map((label, i) => ({ id: `opt-${i + 1}-${label.replace(/\s+/g, "")}`, label, order: i }));
 }
 
+/**
+ * 새 보드 만들기.
+ *
+ * ★ 이 액션만 runBoardAction 을 «일부러» 안 쓴다 — 빠뜨린 게 아니다.
+ *   래퍼는 실패 사유를 `/boards/{boardId}` 화면에 붙이는데, 여기는 보드를 «만드는 중» 이라
+ *   붙일 boardId 자체가 없다. 지금은 실패하면 전면 오류가 난다.
+ *   제대로 고치려면 보드 «목록» 화면에 붙이는 자리가 따로 필요하다(후속 카드).
+ *   actions.guard.test.ts 의 예외 목록에 같은 이유가 적혀 있고, 그 목록은 개수까지 고정돼 있다.
+ */
 export async function createBoardAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   await requirePermission(ctx, "structure.tab_manage");
@@ -153,35 +202,41 @@ export async function createBoardAction(formData: FormData): Promise<void> {
 }
 
 export async function deleteBoardAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "danger.bulk_edit_delete", "danger.bulk_edit_delete");
-  await (await boardsService()).deleteBoard(ctx, str(formData, "boardId"));
-  revalidatePath("/boards");
-  redirect("/boards");
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "danger.bulk_edit_delete", "danger.bulk_edit_delete");
+    await (await boardsService()).deleteBoard(ctx, str(formData, "boardId"));
+    revalidatePath("/boards");
+    redirect("/boards");
+  });
 }
 
 export async function addColumnAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "structure.column_manage");
-  const boardId = str(formData, "boardId");
-  const type = str(formData, "type");
-  if (!isFieldType(type)) throw new Error("지원하지 않는 필드 타입입니다");
-  const optionsCsv = str(formData, "options");
-  const input = parseNewColumn({
-    label: str(formData, "label"),
-    type,
-    options: optionsCsv ? parseOptionsCsv(optionsCsv) : undefined,
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.column_manage");
+    const boardId = str(formData, "boardId");
+    const type = str(formData, "type");
+    if (!isFieldType(type)) throw new Error("지원하지 않는 필드 타입입니다");
+    const optionsCsv = str(formData, "options");
+    const input = parseNewColumn({
+      label: str(formData, "label"),
+      type,
+      options: optionsCsv ? parseOptionsCsv(optionsCsv) : undefined,
+    });
+    await (await boardsService()).addColumn(ctx, boardId, input);
+    revalidatePath(`/boards/${boardId}`);
   });
-  await (await boardsService()).addColumn(ctx, boardId, input);
-  revalidatePath(`/boards/${boardId}`);
 }
 
 export async function deleteColumnAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "structure.column_manage");
-  const boardId = str(formData, "boardId");
-  await (await boardsService()).deleteColumn(ctx, boardId, str(formData, "columnId"));
-  revalidatePath(`/boards/${boardId}`);
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.column_manage");
+    const boardId = str(formData, "boardId");
+    await (await boardsService()).deleteColumn(ctx, boardId, str(formData, "columnId"));
+    revalidatePath(`/boards/${boardId}`);
+  });
 }
 
 /**
@@ -190,14 +245,16 @@ export async function deleteColumnAction(formData: FormData): Promise<void> {
  * 클라이언트가 이미 clampWidth 를 거쳤어도 여기서 한 번 더 좁힌다(직접 폼 제출 방어).
  */
 export async function setColumnWidthAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "structure.column_manage");
-  const boardId = str(formData, "boardId");
-  const columnId = str(formData, "columnId");
-  const raw = str(formData, "width");
-  const width = raw === "" ? null : clampWidth(Number(raw));
-  await (await boardsService()).updateColumn(ctx, boardId, columnId, { width });
-  revalidatePath(`/boards/${boardId}`);
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.column_manage");
+    const boardId = str(formData, "boardId");
+    const columnId = str(formData, "columnId");
+    const raw = str(formData, "width");
+    const width = raw === "" ? null : clampWidth(Number(raw));
+    await (await boardsService()).updateColumn(ctx, boardId, columnId, { width });
+    revalidatePath(`/boards/${boardId}`);
+  });
 }
 
 /**
@@ -230,11 +287,13 @@ export async function addItemAction(formData: FormData): Promise<void> {
 }
 
 export async function deleteItemAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "work.item_delete");
-  const boardId = str(formData, "boardId");
-  await (await boardsService()).deleteItem(ctx, boardId, str(formData, "itemId"));
-  revalidatePath(`/boards/${boardId}`);
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "work.item_delete");
+    const boardId = str(formData, "boardId");
+    await (await boardsService()).deleteItem(ctx, boardId, str(formData, "itemId"));
+    revalidatePath(`/boards/${boardId}`);
+  });
 }
 
 /** 셀 인라인 편집 — 값 정규화·선택지 검증은 서비스가 수행. */
@@ -244,8 +303,15 @@ export async function setCellAction(formData: FormData): Promise<void> {
   const itemId = str(formData, "itemId");
   const columnKey = str(formData, "columnKey");
   // 권한 없음·확인 불가도 화면 안에서 말한다(BBE-201). 셀이 특정되므로 셀 아래에 붙인다.
+  //
+  // ★ BBE-213 — createRequestBoards() 가 이 try «밖» 에 있어서 전면 오류가 났다.
+  //   그 함수는 createClient() 를 부르고, 그게 던지면 Next 오류 경계로 곧장 올라갔다.
+  //   BBE-201 이 «저장 실패» 는 덮었는데 «클라이언트를 만들다 실패» 는 못 덮고 있었다.
+  //   총괄이 운영에서 본 흰 화면이 이 자리다.
+  let graph: Awaited<ReturnType<typeof createRequestBoards>>;
   try {
     await requirePermission(ctx, "work.item_upsert");
+    graph = await createRequestBoards();
   } catch (error) {
     console.error("[board cell]", boardId, itemId, columnKey, error);
     await flashCellErrors(itemId, [{ key: columnKey, label: columnKey, message: userFacingMessage(error) }]);
@@ -253,7 +319,6 @@ export async function setCellAction(formData: FormData): Promise<void> {
     return;
   }
   // 체크박스 미체크와 담당자 미배정을 각 타입의 빈 값으로 정규화한다.
-  const graph = await createRequestBoards();
   const svc = graph.service;
   const raw = formData.get("value");
   if (columnKey === "contact_move" && raw === "컨택 이동") {
@@ -318,13 +383,15 @@ export async function setCellAction(formData: FormData): Promise<void> {
 
 /** 아이템 제목 수정. */
 export async function renameItemAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "work.item_upsert");
-  const boardId = str(formData, "boardId");
-  await (await boardsService()).updateItem(ctx, boardId, str(formData, "itemId"), {
-    title: str(formData, "title"),
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "work.item_upsert");
+    const boardId = str(formData, "boardId");
+    await (await boardsService()).updateItem(ctx, boardId, str(formData, "itemId"), {
+      title: str(formData, "title"),
+    });
+    revalidatePath(`/boards/${boardId}`);
   });
-  revalidatePath(`/boards/${boardId}`);
 }
 
 /**
@@ -332,45 +399,49 @@ export async function renameItemAction(formData: FormData): Promise<void> {
  * (dnd 라이브러리 도입 전까지 폼 기반 이동 — 결과는 동일)
  */
 export async function moveItemAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "work.item_upsert");
-  const boardId = str(formData, "boardId");
-  const itemId = str(formData, "itemId");
-  const lane = str(formData, "lane");
-  const groupBy = str(formData, "groupBy");
-  const graph = await createRequestBoards();
-  const svc = graph.service;
-  if (groupBy) {
-    const { errors } = await svc.setCells(ctx, boardId, itemId, {
-      [groupBy]: lane === "" ? null : lane,
-    });
-    await flashCellErrors(itemId, errors);
-  } else {
-    await svc.updateItem(ctx, boardId, itemId, { group_id: lane === "" ? null : lane });
-  }
-  // 이동 «알림» 은 연결된 워크스페이스에서만 존재한다(BBE-209).
-  //   notify_board_item_moved 는 Supabase RPC 이고 수신자·중복방지 판정을 DB 가 소유한다.
-  //   로컬 시드에는 그 저장소가 «없으므로» 보낼 알림도 있을 수 없다 — /api/tab-views 와 같은 사실이다.
-  //   ★ 여기서 던지면 안 된다. 위의 이동 쓰기(setCells/updateItem)가 «이미 커밋됐다» —
-  //     던지는 순간 실제로 이동은 됐는데 화면은 오류 경계로 덮인다. 성공을 실패로 표시하는 것이고
-  //     BBE-183·BBE-193·BBE-201 이 반복해서 잡아 온 바로 그 결함이다.
-  //   공지 읽음 표시와 같은 분류다 — «쓰기 부작용이고 표시되는 것이 아니다».
-  if (graph.client) {
-    await notifyBoardItemMoved(graph.client, ctx, {
-      boardId,
-      itemId,
-      eventKey: moveEventKey(formData),
-    });
-  }
-  revalidatePath(`/boards/${boardId}`);
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "work.item_upsert");
+    const boardId = str(formData, "boardId");
+    const itemId = str(formData, "itemId");
+    const lane = str(formData, "lane");
+    const groupBy = str(formData, "groupBy");
+    const graph = await createRequestBoards();
+    const svc = graph.service;
+    if (groupBy) {
+      const { errors } = await svc.setCells(ctx, boardId, itemId, {
+        [groupBy]: lane === "" ? null : lane,
+      });
+      await flashCellErrors(itemId, errors);
+    } else {
+      await svc.updateItem(ctx, boardId, itemId, { group_id: lane === "" ? null : lane });
+    }
+    // 이동 «알림» 은 연결된 워크스페이스에서만 존재한다(BBE-209).
+    //   notify_board_item_moved 는 Supabase RPC 이고 수신자·중복방지 판정을 DB 가 소유한다.
+    //   로컬 시드에는 그 저장소가 «없으므로» 보낼 알림도 있을 수 없다 — /api/tab-views 와 같은 사실이다.
+    //   ★ 여기서 던지면 안 된다. 위의 이동 쓰기(setCells/updateItem)가 «이미 커밋됐다» —
+    //     던지는 순간 실제로 이동은 됐는데 화면은 오류 경계로 덮인다. 성공을 실패로 표시하는 것이고
+    //     BBE-183·BBE-193·BBE-201 이 반복해서 잡아 온 바로 그 결함이다.
+    //   공지 읽음 표시와 같은 분류다 — «쓰기 부작용이고 표시되는 것이 아니다».
+    if (graph.client) {
+      await notifyBoardItemMoved(graph.client, ctx, {
+        boardId,
+        itemId,
+        eventKey: moveEventKey(formData),
+      });
+    }
+    revalidatePath(`/boards/${boardId}`);
+  });
 }
 
 export async function addGroupAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "structure.section_manage");
-  const boardId = str(formData, "boardId");
-  await (await boardsService()).addGroup(ctx, boardId, { name: str(formData, "name") });
-  revalidatePath(`/boards/${boardId}`);
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.section_manage");
+    const boardId = str(formData, "boardId");
+    await (await boardsService()).addGroup(ctx, boardId, { name: str(formData, "name") });
+    revalidatePath(`/boards/${boardId}`);
+  });
 }
 
 /**
@@ -384,53 +455,55 @@ export async function addGroupAction(formData: FormData): Promise<void> {
  * 정수로 다시 세운다. 그룹당 행 수 규모에서는 이 비용이 문제되지 않는다.
  */
 export async function moveRowAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "work.item_upsert");
-  const boardId = str(formData, "boardId");
-  const itemId = str(formData, "itemId");
-  const rawGroup = str(formData, "groupId");
-  const groupId = rawGroup === "" ? null : rawGroup;
-  const requested = Number.parseInt(str(formData, "index"), 10);
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "work.item_upsert");
+    const boardId = str(formData, "boardId");
+    const itemId = str(formData, "itemId");
+    const rawGroup = str(formData, "groupId");
+    const groupId = rawGroup === "" ? null : rawGroup;
+    const requested = Number.parseInt(str(formData, "index"), 10);
 
-  const graph = await createRequestBoards();
-  const svc = graph.service;
-  const items = await svc.listItems(ctx, boardId);
-  const moving = items.find((i) => i.id === itemId);
-  if (!moving) throw new NotFoundError("아이템을 찾을 수 없습니다");
+    const graph = await createRequestBoards();
+    const svc = graph.service;
+    const items = await svc.listItems(ctx, boardId);
+    const moving = items.find((i) => i.id === itemId);
+    if (!moving) throw new NotFoundError("아이템을 찾을 수 없습니다");
 
-  const targetKey = groupKeyOf(groupId);
-  const siblings: ItemWithValues[] = items
-    .filter((i) => i.id !== itemId && groupKeyOf(i.group_id) === targetKey)
-    .sort((a, b) => a.sort_order - b.sort_order);
+    const targetKey = groupKeyOf(groupId);
+    const siblings: ItemWithValues[] = items
+      .filter((i) => i.id !== itemId && groupKeyOf(i.group_id) === targetKey)
+      .sort((a, b) => a.sort_order - b.sort_order);
 
-  const at = Number.isNaN(requested)
-    ? siblings.length
-    : Math.max(0, Math.min(requested, siblings.length));
-  siblings.splice(at, 0, moving);
+    const at = Number.isNaN(requested)
+      ? siblings.length
+      : Math.max(0, Math.min(requested, siblings.length));
+    siblings.splice(at, 0, moving);
 
-  await Promise.all(siblings.map(async (item, index) => {
-    const patch: ItemPatch = { sort_order: index };
-    // 그룹이 실제로 바뀐 행에만 group_id 를 싣는다(불필요한 쓰기 금지).
-    if (item.id === itemId && groupKeyOf(item.group_id) !== targetKey) patch.group_id = groupId;
-    await svc.updateItem(ctx, boardId, item.id, patch);
-  }));
+    await Promise.all(siblings.map(async (item, index) => {
+      const patch: ItemPatch = { sort_order: index };
+      // 그룹이 실제로 바뀐 행에만 group_id 를 싣는다(불필요한 쓰기 금지).
+      if (item.id === itemId && groupKeyOf(item.group_id) !== targetKey) patch.group_id = groupId;
+      await svc.updateItem(ctx, boardId, item.id, patch);
+    }));
 
-  // 이동 «알림» 은 연결된 워크스페이스에서만 존재한다(BBE-209).
-  //   notify_board_item_moved 는 Supabase RPC 이고 수신자·중복방지 판정을 DB 가 소유한다.
-  //   로컬 시드에는 그 저장소가 «없으므로» 보낼 알림도 있을 수 없다 — /api/tab-views 와 같은 사실이다.
-  //   ★ 여기서 던지면 안 된다. 위의 이동 쓰기(setCells/updateItem)가 «이미 커밋됐다» —
-  //     던지는 순간 실제로 이동은 됐는데 화면은 오류 경계로 덮인다. 성공을 실패로 표시하는 것이고
-  //     BBE-183·BBE-193·BBE-201 이 반복해서 잡아 온 바로 그 결함이다.
-  //   공지 읽음 표시와 같은 분류다 — «쓰기 부작용이고 표시되는 것이 아니다».
-  if (graph.client) {
-    await notifyBoardItemMoved(graph.client, ctx, {
-      boardId,
-      itemId,
-      eventKey: moveEventKey(formData),
-    });
-  }
+    // 이동 «알림» 은 연결된 워크스페이스에서만 존재한다(BBE-209).
+    //   notify_board_item_moved 는 Supabase RPC 이고 수신자·중복방지 판정을 DB 가 소유한다.
+    //   로컬 시드에는 그 저장소가 «없으므로» 보낼 알림도 있을 수 없다 — /api/tab-views 와 같은 사실이다.
+    //   ★ 여기서 던지면 안 된다. 위의 이동 쓰기(setCells/updateItem)가 «이미 커밋됐다» —
+    //     던지는 순간 실제로 이동은 됐는데 화면은 오류 경계로 덮인다. 성공을 실패로 표시하는 것이고
+    //     BBE-183·BBE-193·BBE-201 이 반복해서 잡아 온 바로 그 결함이다.
+    //   공지 읽음 표시와 같은 분류다 — «쓰기 부작용이고 표시되는 것이 아니다».
+    if (graph.client) {
+      await notifyBoardItemMoved(graph.client, ctx, {
+        boardId,
+        itemId,
+        eventKey: moveEventKey(formData),
+      });
+    }
 
-  revalidatePath(`/boards/${boardId}`);
+    revalidatePath(`/boards/${boardId}`);
+  });
 }
 
 /**
@@ -443,22 +516,24 @@ export async function moveRowAction(formData: FormData): Promise<void> {
  * 그 보드를 볼 수 있는지 확인하고(없으면 NotFoundError), 통과한 조직 id 로만 키를 만든다.
  */
 export async function setGroupColumnOrderAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "structure.column_manage");
-  const boardId = str(formData, "boardId");
-  const groupKey = str(formData, "groupKey");
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.column_manage");
+    const boardId = str(formData, "boardId");
+    const groupKey = str(formData, "groupKey");
 
-  // 접근 권한 확인 겸 유효 컬럼 목록 확보.
-  const { columns } = await (await boardsService()).getBoardDetail(ctx, boardId);
-  const valid = new Set(columns.map((c) => c.key));
+    // 접근 권한 확인 겸 유효 컬럼 목록 확보.
+    const { columns } = await (await boardsService()).getBoardDetail(ctx, boardId);
+    const valid = new Set(columns.map((c) => c.key));
 
-  const order = str(formData, "order")
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s !== "" && valid.has(s));
+    const order = str(formData, "order")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s !== "" && valid.has(s));
 
-  setGroupColumnOrder(ctx.org.id, boardId, groupKey, order);
-  revalidatePath(`/boards/${boardId}`);
+    setGroupColumnOrder(ctx.org.id, boardId, groupKey, order);
+    revalidatePath(`/boards/${boardId}`);
+  });
 }
 
 function layoutFromFormData(formData: FormData): DetailLayoutEntry[] {
@@ -471,133 +546,145 @@ function layoutFromFormData(formData: FormData): DetailLayoutEntry[] {
 
 /** 보드 기본 또는 그룹(제품 아이템) 오버라이드를 저장한다. 값 EAV는 전혀 변경하지 않는다. */
 export async function saveDetailLayoutAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "structure.column_manage");
-  const boardId = str(formData, "boardId");
-  const groupId = str(formData, "groupId");
-  const graph = await createRequestBoards();
-  const detail = await graph.service.getBoardDetail(ctx, boardId);
-  const columnKeys = new Set(detail.columns.map((column) => column.key));
-  const layout = layoutFromFormData(formData).filter(
-    (entry) => entry.source === "detail" || columnKeys.has(entry.key),
-  );
-  if (groupId) {
-    if (!detail.groups.some((group) => group.id === groupId)) throw new NotFoundError("아이템을 찾을 수 없습니다.");
-    await graph.repo.setGroupDetailLayout(ctx, groupId, layout);
-  } else {
-    await graph.repo.setBoardDetailLayout(ctx, boardId, layout);
-  }
-  revalidatePath(`/boards/${boardId}`);
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.column_manage");
+    const boardId = str(formData, "boardId");
+    const groupId = str(formData, "groupId");
+    const graph = await createRequestBoards();
+    const detail = await graph.service.getBoardDetail(ctx, boardId);
+    const columnKeys = new Set(detail.columns.map((column) => column.key));
+    const layout = layoutFromFormData(formData).filter(
+      (entry) => entry.source === "detail" || columnKeys.has(entry.key),
+    );
+    if (groupId) {
+      if (!detail.groups.some((group) => group.id === groupId)) throw new NotFoundError("아이템을 찾을 수 없습니다.");
+      await graph.repo.setGroupDetailLayout(ctx, groupId, layout);
+    } else {
+      await graph.repo.setBoardDetailLayout(ctx, boardId, layout);
+    }
+    revalidatePath(`/boards/${boardId}`);
+  });
 }
 
 export async function resetGroupDetailLayoutAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "structure.column_manage");
-  const boardId = str(formData, "boardId");
-  const groupId = str(formData, "groupId");
-  const graph = await createRequestBoards();
-  const detail = await graph.service.getBoardDetail(ctx, boardId);
-  if (!detail.groups.some((group) => group.id === groupId)) throw new NotFoundError("아이템을 찾을 수 없습니다.");
-  await graph.repo.setGroupDetailLayout(ctx, groupId, null);
-  revalidatePath(`/boards/${boardId}`);
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.column_manage");
+    const boardId = str(formData, "boardId");
+    const groupId = str(formData, "groupId");
+    const graph = await createRequestBoards();
+    const detail = await graph.service.getBoardDetail(ctx, boardId);
+    if (!detail.groups.some((group) => group.id === groupId)) throw new NotFoundError("아이템을 찾을 수 없습니다.");
+    await graph.repo.setGroupDetailLayout(ctx, groupId, null);
+    revalidatePath(`/boards/${boardId}`);
+  });
 }
 
 export async function addDetailFieldAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "structure.column_manage");
-  const boardId = str(formData, "boardId");
-  const groupId = str(formData, "groupId");
-  const label = str(formData, "label").trim();
-  const type = str(formData, "type") || "text";
-  if (!label || !isFieldType(type)) throw new Error("상세 필드 이름과 타입을 확인해 주세요.");
-  const graph = await createRequestBoards();
-  const detail = await graph.service.getBoardDetail(ctx, boardId);
-  const group = groupId ? detail.groups.find((candidate) => candidate.id === groupId) : undefined;
-  if (groupId && !group) throw new NotFoundError("아이템을 찾을 수 없습니다.");
-  const current = resolveDetailLayout(detail.board.detail_layout_jsonb, group?.detail_layout_jsonb).entries;
-  const occupied = new Set([...detail.columns.map((column) => column.key), ...current.map((entry) => entry.key)]);
-  const base = detailKeyFromLabel(label);
-  let key = base;
-  for (let suffix = 2; occupied.has(key); suffix += 1) key = `${base}_${suffix}`.slice(0, 80);
-  const next = [...current, { key, source: "detail" as const, label, type }];
-  if (group) await graph.repo.setGroupDetailLayout(ctx, group.id, next);
-  else await graph.repo.setBoardDetailLayout(ctx, boardId, next);
-  revalidatePath(`/boards/${boardId}`);
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.column_manage");
+    const boardId = str(formData, "boardId");
+    const groupId = str(formData, "groupId");
+    const label = str(formData, "label").trim();
+    const type = str(formData, "type") || "text";
+    if (!label || !isFieldType(type)) throw new Error("상세 필드 이름과 타입을 확인해 주세요.");
+    const graph = await createRequestBoards();
+    const detail = await graph.service.getBoardDetail(ctx, boardId);
+    const group = groupId ? detail.groups.find((candidate) => candidate.id === groupId) : undefined;
+    if (groupId && !group) throw new NotFoundError("아이템을 찾을 수 없습니다.");
+    const current = resolveDetailLayout(detail.board.detail_layout_jsonb, group?.detail_layout_jsonb).entries;
+    const occupied = new Set([...detail.columns.map((column) => column.key), ...current.map((entry) => entry.key)]);
+    const base = detailKeyFromLabel(label);
+    let key = base;
+    for (let suffix = 2; occupied.has(key); suffix += 1) key = `${base}_${suffix}`.slice(0, 80);
+    const next = [...current, { key, source: "detail" as const, label, type }];
+    if (group) await graph.repo.setGroupDetailLayout(ctx, group.id, next);
+    else await graph.repo.setBoardDetailLayout(ctx, boardId, next);
+    revalidatePath(`/boards/${boardId}`);
+  });
 }
 
 /** 상세 전용 값은 현재 유효한 배치에 존재할 때만 쓴다. assigned scope는 getItem/RLS가 재검증한다. */
 export async function setDetailValueAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "work.item_upsert");
-  const boardId = str(formData, "boardId");
-  const itemId = str(formData, "itemId");
-  const key = str(formData, "fieldKey");
-  const graph = await createRequestBoards();
-  const [detail, item] = await Promise.all([
-    graph.service.getBoardDetail(ctx, boardId),
-    graph.repo.getItem(ctx, itemId),
-  ]);
-  if (!item || item.board_id !== boardId) throw new NotFoundError("아이템을 찾을 수 없습니다.");
-  const group = item.group_id ? detail.groups.find((candidate) => candidate.id === item.group_id) : undefined;
-  const entry = resolveDetailLayout(detail.board.detail_layout_jsonb, group?.detail_layout_jsonb).entries
-    .find((candidate) => candidate.key === key && candidate.source === "detail");
-  if (!entry) throw new Error("현재 상세 배치에 없는 필드입니다.");
-  await graph.repo.setValues(ctx, itemId, { [key]: str(formData, "value") });
-  revalidatePath(`/boards/${boardId}`);
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "work.item_upsert");
+    const boardId = str(formData, "boardId");
+    const itemId = str(formData, "itemId");
+    const key = str(formData, "fieldKey");
+    const graph = await createRequestBoards();
+    const [detail, item] = await Promise.all([
+      graph.service.getBoardDetail(ctx, boardId),
+      graph.repo.getItem(ctx, itemId),
+    ]);
+    if (!item || item.board_id !== boardId) throw new NotFoundError("아이템을 찾을 수 없습니다.");
+    const group = item.group_id ? detail.groups.find((candidate) => candidate.id === item.group_id) : undefined;
+    const entry = resolveDetailLayout(detail.board.detail_layout_jsonb, group?.detail_layout_jsonb).entries
+      .find((candidate) => candidate.key === key && candidate.source === "detail");
+    if (!entry) throw new Error("현재 상세 배치에 없는 필드입니다.");
+    await graph.repo.setValues(ctx, itemId, { [key]: str(formData, "value") });
+    revalidatePath(`/boards/${boardId}`);
+  });
 }
 
 /** 미배치 값의 키를 현재 그룹 배치에 다시 올린다. 값 자체는 읽기만 하며 그대로 보존한다. */
 export async function addUnplacedDetailEntryAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "structure.column_manage");
-  const boardId = str(formData, "boardId");
-  const groupId = str(formData, "groupId");
-  const key = str(formData, "fieldKey");
-  const graph = await createRequestBoards();
-  const detail = await graph.service.getBoardDetail(ctx, boardId);
-  const group = groupId ? detail.groups.find((candidate) => candidate.id === groupId) : undefined;
-  if (groupId && !group) throw new NotFoundError("아이템을 찾을 수 없습니다.");
-  const current = resolveDetailLayout(detail.board.detail_layout_jsonb, group?.detail_layout_jsonb).entries;
-  if (current.some((entry) => entry.key === key)) return;
-  const column = detail.columns.find((candidate) => candidate.key === key);
-  const next: DetailLayoutEntry[] = [
-    ...current,
-    column
-      ? { key, source: "column", label: column.label, type: column.type }
-      : { key, source: "detail", label: key, type: "text" },
-  ];
-  if (group) await graph.repo.setGroupDetailLayout(ctx, group.id, next);
-  else await graph.repo.setBoardDetailLayout(ctx, boardId, next);
-  revalidatePath(`/boards/${boardId}`);
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.column_manage");
+    const boardId = str(formData, "boardId");
+    const groupId = str(formData, "groupId");
+    const key = str(formData, "fieldKey");
+    const graph = await createRequestBoards();
+    const detail = await graph.service.getBoardDetail(ctx, boardId);
+    const group = groupId ? detail.groups.find((candidate) => candidate.id === groupId) : undefined;
+    if (groupId && !group) throw new NotFoundError("아이템을 찾을 수 없습니다.");
+    const current = resolveDetailLayout(detail.board.detail_layout_jsonb, group?.detail_layout_jsonb).entries;
+    if (current.some((entry) => entry.key === key)) return;
+    const column = detail.columns.find((candidate) => candidate.key === key);
+    const next: DetailLayoutEntry[] = [
+      ...current,
+      column
+        ? { key, source: "column", label: column.label, type: column.type }
+        : { key, source: "detail", label: key, type: "text" },
+    ];
+    if (group) await graph.repo.setGroupDetailLayout(ctx, group.id, next);
+    else await graph.repo.setBoardDetailLayout(ctx, boardId, next);
+    revalidatePath(`/boards/${boardId}`);
+  });
 }
 
 /** 같은 EAV key로 표 컬럼을 만들기 때문에 승격 전후 값은 이동·복사 없이 유지된다. */
 export async function promoteDetailFieldAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
-  await requirePermission(ctx, "structure.column_manage");
-  const boardId = str(formData, "boardId");
-  const key = str(formData, "fieldKey");
-  const graph = await createRequestBoards();
-  const detail = await graph.service.getBoardDetail(ctx, boardId);
-  const layouts = [normalizeDetailLayout(detail.board.detail_layout_jsonb), ...detail.groups
-    .filter((group) => group.detail_layout_jsonb !== null && group.detail_layout_jsonb !== undefined)
-    .map((group) => normalizeDetailLayout(group.detail_layout_jsonb))];
-  const entry = layouts.flat().find((candidate) => candidate.key === key && candidate.source === "detail");
-  if (!entry) throw new Error("승격할 상세 전용 필드를 찾을 수 없습니다.");
-  if (!detail.columns.some((column) => column.key === key)) {
-    await graph.repo.createColumn(ctx, boardId, {
-      key,
-      label: entry.label ?? key,
-      type: entry.type && isFieldType(entry.type) ? entry.type : "text",
-    });
-  }
-  const promote = (layout: readonly DetailLayoutEntry[]) => layout.map((candidate) =>
-    candidate.key === key ? { ...candidate, source: "column" as const } : candidate,
-  );
-  await graph.repo.setBoardDetailLayout(ctx, boardId, promote(normalizeDetailLayout(detail.board.detail_layout_jsonb)));
-  await Promise.all(detail.groups.map(async (group) => {
-    if (group.detail_layout_jsonb === null || group.detail_layout_jsonb === undefined) return;
-    await graph.repo.setGroupDetailLayout(ctx, group.id, promote(normalizeDetailLayout(group.detail_layout_jsonb)));
-  }));
-  revalidatePath(`/boards/${boardId}`);
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.column_manage");
+    const boardId = str(formData, "boardId");
+    const key = str(formData, "fieldKey");
+    const graph = await createRequestBoards();
+    const detail = await graph.service.getBoardDetail(ctx, boardId);
+    const layouts = [normalizeDetailLayout(detail.board.detail_layout_jsonb), ...detail.groups
+      .filter((group) => group.detail_layout_jsonb !== null && group.detail_layout_jsonb !== undefined)
+      .map((group) => normalizeDetailLayout(group.detail_layout_jsonb))];
+    const entry = layouts.flat().find((candidate) => candidate.key === key && candidate.source === "detail");
+    if (!entry) throw new Error("승격할 상세 전용 필드를 찾을 수 없습니다.");
+    if (!detail.columns.some((column) => column.key === key)) {
+      await graph.repo.createColumn(ctx, boardId, {
+        key,
+        label: entry.label ?? key,
+        type: entry.type && isFieldType(entry.type) ? entry.type : "text",
+      });
+    }
+    const promote = (layout: readonly DetailLayoutEntry[]) => layout.map((candidate) =>
+      candidate.key === key ? { ...candidate, source: "column" as const } : candidate,
+    );
+    await graph.repo.setBoardDetailLayout(ctx, boardId, promote(normalizeDetailLayout(detail.board.detail_layout_jsonb)));
+    await Promise.all(detail.groups.map(async (group) => {
+      if (group.detail_layout_jsonb === null || group.detail_layout_jsonb === undefined) return;
+      await graph.repo.setGroupDetailLayout(ctx, group.id, promote(normalizeDetailLayout(group.detail_layout_jsonb)));
+    }));
+    revalidatePath(`/boards/${boardId}`);
+  });
 }
