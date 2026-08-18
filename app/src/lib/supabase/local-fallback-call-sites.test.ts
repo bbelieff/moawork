@@ -10,9 +10,14 @@ import { describe, expect, it } from "vitest";
 // 네 줄 규칙 자체는 `local-fallback.test.ts` 가 행위로 고정한다. 여기서는 «배선» 만 본다.
 // (페이지는 서버 컴포넌트 + redirect 라 행위 테스트 비용이 과해서 배선으로 고정한다 — 한계를 그대로 적는다.)
 
+// ★ BBE-186(PR #246) 이후 홈의 env 분기는 `(app)/page.tsx` 에 없다. 홈이 V6 «오늘» 로 바뀌면서
+//   그 분기가 `lib/dash/today-server.ts` 로, 옛 대시보드 블록(체크리스트 포함)은 `(app)/dash/page.tsx`
+//   로 **옮겨갔다.** 그래서 못 박는 자리도 같이 옮긴다 — 규칙을 «푸는» 게 아니라 «따라가는» 것이다.
+//   자리 수는 3 → 4 로 늘었다. 줄었으면 그건 경계를 깎은 것이다.
 const callSites = [
   "../dash/server.ts",
-  "../../app/(app)/page.tsx",
+  "../dash/today-server.ts",
+  "../../app/(app)/dash/page.tsx",
   "../../app/(app)/deals/[dealId]/page.tsx",
 ];
 

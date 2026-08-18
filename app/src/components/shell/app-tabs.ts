@@ -69,6 +69,8 @@ export const APP_TABS: readonly AppTab[] = [
 export const OUT_OF_TAB_HREFS: readonly string[] = [
   "/",
   "/login",
+  // BBE-186: 홈에서 옮겨 온 업무 분석. 6탭이 아니라 홈의 «바로 가기» 로 들어간다.
+  "/dash",
   "/dash/[pipelineId]",
   "/dash/all",
   "/dash/tasks",
