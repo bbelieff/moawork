@@ -215,6 +215,7 @@
     background:var(--mw-tint-coral); color:var(--mw-body); font-size:13px;
   }
   .ocreality b{color:var(--mw-error)}
+  .ocdead{display:inline-block; margin-left:6px; font-size:10px; font-weight:800; color:var(--mw-error); vertical-align:middle}
   @media (max-width:640px){ .ocgrid, .ocresults{grid-template-columns:1fr 1fr} }
 
   @media (max-width:640px){
@@ -521,8 +522,8 @@
           <label class="ocfield"><span class="lbl">수수료율 (%)</span><input value="3" readonly/><span class="hint">정수 퍼센트 (3 = 3%)</span></label>
           <label class="ocfield"><span class="lbl">계약금 (원)</span><input value="500000" readonly/></label>
           <label class="ocfield"><span class="lbl">수수료 입금일</span><input value="2026-08-19" readonly/><span class="hint">D+180 · D+365 기산일</span></label>
-          <label class="ocfield"><span class="lbl">진행상품</span><select><option>진행상품 선택</option></select></label>
-          <label class="ocfield"><span class="lbl">진행기관</span><select><option>진행기관 선택</option></select></label>
+          <label class="ocfield"><span class="lbl">진행상품<span class="ocdead">● 저장 안 됨</span></span><select><option>진행상품 선택</option></select></label>
+          <label class="ocfield"><span class="lbl">진행기관<span class="ocdead">● 저장 안 됨</span></span><select><option>진행기관 선택</option></select></label>
         </div>
 
         <button class="ocbtn" type="button">정산 계산</button>
@@ -539,6 +540,12 @@
           겉보기엔 멀쩡해 보이지만 <b>「정산 계산」을 눌러도 저장이 안 됩니다.</b> 서버로 보내는 곳(<code>getRepo()</code>)이
           메모리(<code>LocalRepo</code>)라 새로고침하면 방금 계산한 결과가 그대로 사라집니다. 어떤 회사·딜과도 연결돼 있지 않아서
           여기서 계산해도 ①③ 어느 원장에도 남지 않습니다 — 계산기 흉내만 내는 화면입니다.
+          <br/><br/>
+          <b>진행상품·진행기관은 고르는 시늉만 합니다.</b> 서버로 보내는 페이로드(<code>toCreatePayload()</code>)를
+          직접 확인했는데 이 두 값을 담는 필드 자체가 없습니다 — 골라도 그냥 버려집니다. 게다가 옵션 목록도
+          이 화면 전용 하드코딩 프리셋(<code>002_seed</code>)에서 오는 거라, <b>계약업체 실무 보드가 실제로 쓰는
+          진행기관·진행 상품 컬럼(실제 저장됨)과는 다른 목록</b>입니다 — 총괄님이 지적하신 그대로,
+          이미 매칭 끝난 걸 여기서 다시 고르라고 하면서 그마저 버려지는 이중 낭비입니다.
         </div>
       </div>
     </div>
