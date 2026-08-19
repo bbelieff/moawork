@@ -9,7 +9,7 @@ const columns: BoardColumn[] = [{
 }];
 const row: ItemWithValues = {
   id: "item-a", org_id: "org-a", board_id: "board-a", group_id: "group-a", title: "대한정밀",
-  assigned_to: "user-a", sort_order: 0, created_at: "2026-08-16T00:00:00Z", updated_at: "2026-08-16T00:00:00Z",
+  assigned_to: "user-a", deal_id: null, sort_order: 0, created_at: "2026-08-16T00:00:00Z", updated_at: "2026-08-16T00:00:00Z",
   values: { company: "대한정밀", hidden_legacy: "보존값" },
 };
 

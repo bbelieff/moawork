@@ -199,7 +199,7 @@ describe("BBE-174 배선 — BoardWorkspace 가 메뉴를 실제로 단다 (W1)"
   const group = { id: "group-1", org_id: "org-1", board_id: "board-1", name: "1차 부재", color: null, sort_order: 0 };
   const row = {
     id: "item-1", org_id: "org-1", board_id: "board-1", group_id: "group-1", title: "행",
-    assigned_to: null, sort_order: 0, created_at: "2026-08-17T00:00:00Z",
+    assigned_to: null, deal_id: null, sort_order: 0, created_at: "2026-08-17T00:00:00Z",
     updated_at: "2026-08-17T00:00:00Z", values: {},
   };
 

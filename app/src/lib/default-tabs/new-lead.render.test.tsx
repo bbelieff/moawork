@@ -56,6 +56,7 @@ function emptyRow(): ItemWithValues {
     group_id: null,
     title: "가밸브 주식회사",
     assigned_to: null,
+    deal_id: null,
     sort_order: 0,
     created_at: "2026-08-12T00:00:00Z",
     updated_at: "2026-08-12T00:00:00Z",

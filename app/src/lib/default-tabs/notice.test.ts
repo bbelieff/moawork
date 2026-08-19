@@ -67,6 +67,7 @@ describe("BBE-151 notice default tab", () => {
       group_id: installed.groupIds[NOTICE_GROUPS.monthlyRenewal],
       title: "예시 공지",
       assigned_to: null,
+      deal_id: null,
       sort_order: 0,
       created_at: "2026-08-15T00:00:00Z",
       updated_at: "2026-08-15T00:00:00Z",

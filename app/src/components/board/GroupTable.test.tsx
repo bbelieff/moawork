@@ -29,7 +29,7 @@ function col(over: Partial<BoardColumn> = {}): BoardColumn {
   };
 }
 
-function row(values: Record<string, CellValue> = {}): ItemWithValues {
+function row(values: Record<string, CellValue> = {}, dealId: string | null = null): ItemWithValues {
   return {
     id: "row-1",
     org_id: "org",
@@ -37,6 +37,7 @@ function row(values: Record<string, CellValue> = {}): ItemWithValues {
     group_id: null,
     title: "행1",
     assigned_to: null,
+    deal_id: dealId,
     sort_order: 0,
     created_at: "2026-08-10T00:00:00Z",
     updated_at: "2026-08-10T00:00:00Z",
@@ -159,5 +160,13 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     expect(html).toContain('name="itemId" value="row-1"');
     expect(html).toContain("행1 휴지통으로 이동");
     expect(html).toContain("삭제");
+  });
+
+  it("BBE-240 · deal_id 가 있는 행에만 원장 버튼이 뜬다", () => {
+    const columns = [col({ key: "a", label: "일반" })];
+    const withDeal = renderTable(columns, [row({}, "deal-1")]);
+    expect(withDeal).toContain("📒 원장");
+    const withoutDeal = renderTable(columns, [row()]);
+    expect(withoutDeal).not.toContain("📒 원장");
   });
 });

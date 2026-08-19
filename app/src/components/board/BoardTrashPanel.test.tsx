@@ -19,6 +19,7 @@ const item: ItemWithValues = {
   group_id: group.id,
   title: "복구할 항목",
   assigned_to: "user-1",
+  deal_id: null,
   sort_order: 3,
   deleted_at: "2026-08-17T01:00:00Z",
   deleted_by: "user-1",

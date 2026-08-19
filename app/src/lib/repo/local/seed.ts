@@ -395,18 +395,18 @@ export function seedDb(): Db {
   ];
 
   const boardItems = [
-    { id: "itm00000-0000-0000-0000-000000000001", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, group_id: boardGroups[0].id, title: "사업자등록증 수집", assigned_to: SEED_USER_MEMBER, sort_order: 0, created_at: TS, updated_at: TS },
-    { id: "itm00000-0000-0000-0000-000000000002", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, group_id: boardGroups[0].id, title: "재무제표 검토", assigned_to: SEED_USER_ADMIN, sort_order: 1, created_at: TS, updated_at: TS },
-    { id: "itm00000-0000-0000-0000-000000000003", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, group_id: boardGroups[1].id, title: "보증서 발급 문의", assigned_to: SEED_USER_MEMBER, sort_order: 2, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-000000000001", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, group_id: boardGroups[0].id, title: "사업자등록증 수집", assigned_to: SEED_USER_MEMBER, deal_id: null, sort_order: 0, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-000000000002", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, group_id: boardGroups[0].id, title: "재무제표 검토", assigned_to: SEED_USER_ADMIN, deal_id: null, sort_order: 1, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-000000000003", org_id: SEED_ORG_ID, board_id: SEED_BOARD_TASKS, group_id: boardGroups[1].id, title: "보증서 발급 문의", assigned_to: SEED_USER_MEMBER, deal_id: null, sort_order: 2, created_at: TS, updated_at: TS },
   ];
 
   // 공지사항 아이템 (T04). assigned_to=null — 공지는 개인이 아니라 조직에 속한다.
   // ⚠ 003 items RLS/로컬 repo 는 member+scope='assigned' 에게 assigned_to=본인 인 행만 보여준다
   //    → 그 사용자에게는 공지가 보이지 않는다(DQ-0018 로 기획 판정 요청 중).
   const noticeItems = [
-    { id: "itm00000-0000-0000-0000-000000000011", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NOTICE, group_id: null, title: "7월 정책자금 상담 일정 안내", assigned_to: null, sort_order: 0, created_at: TS, updated_at: TS },
-    { id: "itm00000-0000-0000-0000-000000000012", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NOTICE, group_id: null, title: "[중요] 계약서 양식 개정 (7/25 시행)", assigned_to: null, sort_order: 1, created_at: TS, updated_at: TS },
-    { id: "itm00000-0000-0000-0000-000000000013", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NOTICE, group_id: null, title: "하반기 워크숍 참가 신청", assigned_to: null, sort_order: 2, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-000000000011", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NOTICE, group_id: null, title: "7월 정책자금 상담 일정 안내", assigned_to: null, deal_id: null, sort_order: 0, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-000000000012", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NOTICE, group_id: null, title: "[중요] 계약서 양식 개정 (7/25 시행)", assigned_to: null, deal_id: null, sort_order: 1, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-000000000013", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NOTICE, group_id: null, title: "하반기 워크숍 참가 신청", assigned_to: null, deal_id: null, sort_order: 2, created_at: TS, updated_at: TS },
   ];
 
   const noticeValues = [
@@ -438,11 +438,11 @@ export function seedDb(): Db {
    *   그래야 «값을 바꾸면 옮겨간다» 를 눈으로 확인할 때 시작 상태가 모순이 아니다.
    */
   const newLeadItems = [
-    { id: "itm00000-0000-0000-0000-0000000000n1", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NEW_LEAD, group_id: newLeadGroupId(0), title: "가밸브 주식회사", assigned_to: SEED_USER_OWNER, sort_order: 0, created_at: TS, updated_at: TS },
-    { id: "itm00000-0000-0000-0000-0000000000n2", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NEW_LEAD, group_id: newLeadGroupId(0), title: "나물류 유한회사", assigned_to: SEED_USER_ADMIN, sort_order: 1, created_at: TS, updated_at: TS },
-    { id: "itm00000-0000-0000-0000-0000000000n3", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NEW_LEAD, group_id: newLeadGroupId(1), title: "다전자 주식회사", assigned_to: SEED_USER_MEMBER, sort_order: 2, created_at: TS, updated_at: TS },
-    { id: "itm00000-0000-0000-0000-0000000000n4", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NEW_LEAD, group_id: newLeadGroupId(2), title: "라건설 주식회사", assigned_to: SEED_USER_OWNER, sort_order: 3, created_at: TS, updated_at: TS },
-    { id: "itm00000-0000-0000-0000-0000000000n5", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NEW_LEAD, group_id: newLeadGroupId(4), title: "마포장 주식회사", assigned_to: SEED_USER_ADMIN, sort_order: 4, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-0000000000n1", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NEW_LEAD, group_id: newLeadGroupId(0), title: "가밸브 주식회사", assigned_to: SEED_USER_OWNER, deal_id: null, sort_order: 0, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-0000000000n2", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NEW_LEAD, group_id: newLeadGroupId(0), title: "나물류 유한회사", assigned_to: SEED_USER_ADMIN, deal_id: null, sort_order: 1, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-0000000000n3", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NEW_LEAD, group_id: newLeadGroupId(1), title: "다전자 주식회사", assigned_to: SEED_USER_MEMBER, deal_id: null, sort_order: 2, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-0000000000n4", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NEW_LEAD, group_id: newLeadGroupId(2), title: "라건설 주식회사", assigned_to: SEED_USER_OWNER, deal_id: null, sort_order: 3, created_at: TS, updated_at: TS },
+    { id: "itm00000-0000-0000-0000-0000000000n5", org_id: SEED_ORG_ID, board_id: SEED_BOARD_NEW_LEAD, group_id: newLeadGroupId(4), title: "마포장 주식회사", assigned_to: SEED_USER_ADMIN, deal_id: null, sort_order: 4, created_at: TS, updated_at: TS },
   ];
 
   const newLeadValues = [

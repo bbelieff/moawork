@@ -32,6 +32,7 @@ const row: ItemWithValues = {
   group_id: null,
   title: "",
   assigned_to: null,
+  deal_id: null,
   sort_order: 0,
   values: {},
   created_at: "2026-08-15T00:00:00.000Z",

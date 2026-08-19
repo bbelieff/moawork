@@ -4,6 +4,46 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [모아워크 DC-00] 2026-08-19 — BBE-240 프런트: 원장 버튼을 실제 화면에 꽂았다
+
+- 백엔드(커밋 445d412) 위에 목업 ①②를 실제로 붙였다. `DealLedgerButton.tsx`/
+  `LedgerEntryModal.tsx` 는 이미 완성돼 있었지만(백엔드 트랙 산출물) 어느 화면에도
+  안 붙어 있었다 — 이번에 두 곳에 꽂았다.
+- **계약업체 실무 등 보드(주 진입점)**: `GroupTable.tsx` 행에 `row.deal_id` 가 있을 때만
+  「📒 원장」 버튼을 조건부 렌더(BBE-239 의 `canDeleteRow` 패턴과 동일한 자리 —
+  `ItemDetailPanel` 다음, `TrashItemButton` 앞). `BoardItem.deal_id` 필드가
+  타입에 아예 없어서(BBE-235 트리거가 099 로 실제 컬럼은 채우고 있었는데 TS 타입만
+  못 따라갔다) `boards/types.ts` 에 추가 — Supabase 리포는 `select("*")` 라 코드 변경
+  없이 바로 나오고, 로컬 리포는 `createItem` 에서 `deal_id: null` 고정(로컬은 BBE-235
+  트리거가 없어 자금건 연결이 원천적으로 불가능 — 의도된 제약, 로컬/데모에서는 원장
+  버튼이 안 뜬다). 타입을 필수 필드로 만든 파장으로 `assigned_to` 있는 자리마다
+  `deal_id` 없는 기존 픽스처 13개가 깨져서 전부 `deal_id: null` 로 채웠다(seed.ts 포함).
+- **딜 상세페이지(보조 경로)**: `/deals/[dealId]` 에 "회계 원장" 섹션 신설("담당자"
+  다음, "타임라인·댓글" 앞) — 같은 `DealLedgerButton` 재사용(포크 안 함, 지시대로).
+- **수납종료 배지**: `DealLedgerButton` 마운트 시점에 `loadDealLedgerAction` 을
+  미리 호출해서(행을 열어보지 않아도 바로 보이게) 계약금·수수료 둘 다 있고 전부
+  완납이면 배지를 보여준다 — 저장 컬럼이 아니라 로드된 entries 에서 매번 계산
+  (`isSettlementClosed`, export 해서 순수 함수로 단위테스트 6건).
+  이 eager useEffect 가 처음엔 `react-hooks/set-state-in-effect` 에 걸렸다 —
+  `refresh()` 를 이펙트 본문에서 그대로 부르면 동기 setState 라 걸린다는 걸
+  lint 가 실제로 잡아냈다. 비동기 콜백에서만 setState 하도록 고쳐서 해결.
+- **테스트**: `GroupTable.test.tsx`(deal_id 있는/없는 행 원장 버튼 노출 차이),
+  `DealLedgerButton.test.ts`(수납종료 판정 6케이스 — 둘 다 완납/수수료만 미수/계약금만
+  있고 수수료 없음/빈 원장/부가세 초과입금도 완납으로 침/로딩·오류 상태),
+  `LedgerEntryModal.test.tsx`(계약금 이미 받음 → 버튼 비활성화+안내문·계약조건
+  참고텍스트 노출 조건 5건). `status-semantics.contract.test.tsx` 의 무소비처
+  가드가 정확히 의도대로 빨개져서(BBE-183 패턴) `DealLedgerButton` 을 소비처
+  목록으로 옮기고 코멘트 갱신 — `LedgerExportButton`(CSV 내보내기)은 이번 범위
+  밖이라 여전히 무소비처로 남겨둠.
+- `bash scripts/check.sh` PASS(app 전체 + worker 97/97, lint 0 error). hosted 적용 0건.
+- **못 한 것 — 후속 필요**: ⑦ 실제 화면을 열어 눈으로 본 증거는 없다(이 worktree 에
+  Supabase env 가 없어 로컬 서버로 실 데이터를 못 본다 — 기존에도 있던 갭). 딜
+  상세페이지에서는 목업이 "항상 보이는 인라인 패널"이었는데, 여기선 "📒 원장" 버튼
+  뒤에 숨겼다(컴포넌트 재사용을 우선시한 판단 — 포크해서 인라인 버전을 새로 만들지
+  않았다). 연도별 전체 원장(③, 신규 화면)은 이 커밋 범위 밖 — 별도 트랙.
+
+---
+
 ## [모아워크 DC-00] 2026-08-19 — BBE-240 병렬 프런트 2개 머지 시도 — 둘 다 무커밋으로 되돌아옴, 백엔드만 커밋
 
 - 총괄 지시: 보드+딜상세 담당·연도별 원장 담당 두 에이전트가 각자 worktree 에서 병렬로

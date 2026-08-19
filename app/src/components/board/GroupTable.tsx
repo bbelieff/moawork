@@ -26,6 +26,7 @@ import { StatusCell, StatusSelect } from "@/components/boards/StatusCell";
 import { SourceBadge } from "./FieldBadge";
 import { clampWidth } from "./layout";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
+import { DealLedgerButton } from "./DealLedgerButton";
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import { TrashItemButton } from "./ItemTrashControls";
 import {
@@ -535,6 +536,10 @@ export function GroupTable({
                       canEditItems={!readOnly}
                       canManageColumns={canManageColumns}
                     />
+
+                    {/* BBE-240 — 자금건과 연결된 행(BBE-235 프로젝션 트리거가 채운 deal_id)에만
+                        뜬다. 컬럼이 아니라 행 자체에 조건부로 붙인다 — TrashItemButton 과 같은 자리. */}
+                    {row.deal_id && <DealLedgerButton dealId={row.deal_id} />}
 
                     {canDeleteRow && (
                       <TrashItemButton boardId={boardId} itemId={row.id} title={row.title} />
