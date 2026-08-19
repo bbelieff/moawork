@@ -17,6 +17,12 @@ const APP_SRC = path.join(ROOT, "app/src");
 const DEFAULT_TABS_DIR = process.env.QA_APP_DEFAULT_TABS_DIR ?? path.join(APP_SRC, "lib/default-tabs");
 const APP_TABS_FILE = process.env.QA_APP_APP_TABS_FILE ?? path.join(APP_SRC, "components/shell/app-tabs.ts");
 
+// ratchet — 2026-08-19 총괄 지적: "1단계 보고 전용"이라 아무도 안 막아서 차이가 조용히
+// 쌓였다(35개까지). 기존 35개는 빚으로 인정하고 통과시키되, 이 숫자를 넘기면 즉시 막는다.
+// 실제로 줄이면(계약업체 실무 그룹 정리 등) 이 상수도 «반드시 같이» 낮춘다 — production
+// -repo-boundary-baseline.json 의 BASELINE_CEILING 과 같은 패턴(내려가기만 하는 천장).
+const REGRESSION_CEILING = 35;
+
 const APP_TYPE_TO_MOCKUP_TYPES = {
   text: ["txt", "text"], longtext: ["txt", "text"], number: ["num", "money"],
   money: ["money"], percentage: ["pct"], date: ["date"], datetime: ["dt"],
@@ -324,9 +330,23 @@ function main() {
   console.log(`앱 정본: default-tabs ${app.defaultTabsPresent ? "존재" : "상실"} · app-tabs.ts ${app.shellTabs.length}탭`);
   console.log("═".repeat(72));
   const result = compareContracts(mockup, app);
-  console.log(`\n차이 합계: ${result.differences}개`);
-  console.log(result.differences ? "판정: DIFF (1단계 보고 전용)" : "판정: MATCH");
-  process.exitCode = result.differences ? 1 : 0;
+  console.log(`\n차이 합계: ${result.differences}개 (천장 ${REGRESSION_CEILING})`);
+  if (result.differences > REGRESSION_CEILING) {
+    console.log(`판정: REGRESSION — 목업과의 차이가 ${REGRESSION_CEILING} → ${result.differences} 로 늘었습니다.`);
+    console.log("목업이 기준입니다(총괄 지시 2026-08-19). 목업을 따르도록 고치거나,");
+    console.log("총괄이 직접 지시해 목업보다 우선하는 변경이라면 qa-app.mjs 의 REGRESSION_CEILING 을");
+    console.log("«근거를 커밋 메시지에 적고» 올리십시오 — 조용히 늘리는 것은 금지입니다.");
+    process.exitCode = 2;
+    return;
+  }
+  if (result.differences < REGRESSION_CEILING) {
+    console.log(`판정: IMPROVED — 차이가 천장(${REGRESSION_CEILING})보다 적습니다.`);
+    console.log(`★ REGRESSION_CEILING 을 ${result.differences} 로 낮춰 주십시오(래칫은 내려가기만 합니다).`);
+    process.exitCode = 2;
+    return;
+  }
+  console.log(result.differences ? "판정: DIFF (천장 이내 — 기존 빚)" : "판정: MATCH");
+  process.exitCode = 0;
 }
 
 try {

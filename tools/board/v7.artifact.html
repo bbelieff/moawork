@@ -272,6 +272,37 @@ footer code { font-family:var(--mono); font-size:11.5px; }
 
   <div class="hero" id="hero" hidden></div>
 
+  <section id="mockupGapWrap" style="margin-top:22px">
+    <div class="shead"><h2>🎯 목업 구현 미션 — 목업↔앱 대조</h2><span class="n">qa-app.mjs · 2026-08-19 실측</span></div>
+    <p class="how"><b>차이 35개.</b> 오늘 처음 이 숫자를 뜯어봤습니다 — 이 세션(BBE-238~240)은 정산·공지사항
+      쪽이라 이 숫자를 <b>한 번도 안 건드렸습니다.</b> 「왜 목업에 안 가까워지나」의 답은 방치가 아니라
+      <b>이 지표를 맡은 사람이 아직 없었다</b>는 것입니다. 아래가 그 35개를 실제로 뜯어본 결과입니다.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:14px 0">
+      <div style="border:1px solid var(--ink-4);border-radius:12px;padding:12px 14px">
+        <div style="font-size:11px;color:var(--ink-4)">진짜 고칠 것 — 그룹 구조 불일치</div>
+        <div style="font-size:22px;font-weight:800;color:var(--bad)">13<small style="font-size:12px;font-weight:600;color:var(--ink-4)">/35</small></div>
+        <div style="font-size:11.5px;color:var(--ink-4);margin-top:3px">계약업체 실무 11 · 리드컨택관리 2 — 그룹 이름·순서가 어긋남</div>
+      </div>
+      <div style="border:1px solid var(--ink-4);border-radius:12px;padding:12px 14px">
+        <div style="font-size:11px;color:var(--ink-4)">재조사 필요 — 목업이 낡았을 수도</div>
+        <div style="font-size:22px;font-weight:800;color:var(--warn)">1<small style="font-size:12px;font-weight:600;color:var(--ink-4)">/35</small></div>
+        <div style="font-size:11.5px;color:var(--ink-4);margin-top:3px">계약업체실무.진행상품 — 목업 7개, 앱 ~60개, 겹치는 이름이 거의 없음. 앱 쪽이 몬데이 실측(8/19)과 더 가까움 — 목업이 구식일 가능성</div>
+      </div>
+      <div style="border:1px solid var(--ink-4);border-radius:12px;padding:12px 14px">
+        <div style="font-size:11px;color:var(--ink-4)">정책 판단 필요 — 앱이 목업보다 많음</div>
+        <div style="font-size:22px;font-weight:800">13<small style="font-size:12px;font-weight:600;color:var(--ink-4)">/35</small></div>
+        <div style="font-size:11.5px;color:var(--ink-4);margin-top:3px">사업자유형·시군구·시도·업종업태 등 — 목업엔 없는데 앱엔 있음. 지울지 유지할지는 제품 판단(D76 자유 편집 원칙과 상충 가능)</div>
+      </div>
+      <div style="border:1px solid var(--ink-4);border-radius:12px;padding:12px 14px">
+        <div style="font-size:11px;color:var(--ink-4)">영원히 0 안 됨 — 맞추면 규칙 위반</div>
+        <div style="font-size:22px;font-weight:800;color:var(--ok)">4<small style="font-size:12px;font-weight:600;color:var(--ink-4)">/35</small></div>
+        <div style="font-size:11.5px;color:var(--ink-4);margin-top:3px">담당자·협업자 실명 3개(목업은 예시 이름을 하드코딩, 앱은 CLAUDE.md "고객 고유값 금지"라 못함) + 공지사항 타입 표기차 1개(doc↔longtext, 의미는 같음)</div>
+      </div>
+    </div>
+    <p class="how" style="margin-top:2px"><b>다음 순서 제안</b> — ① 계약업체 실무 그룹 11개(제일 큼) ② 진행상품 리스트 재조사(목업 vs 몬데이 실측 중 뭐가 맞는지 먼저 판정) ③ 리드컨택관리 그룹 2개 ④ "앱이 더 많이 가진 것" 13개 지울지 결정.
+      자동이동규칙(담당자 기준 라우팅) 4개는 값 자체는 실명이라 못 맞추지만, "담당자 기준 자동 이동"이라는 <b>기능</b> 자체는 없어서 별도로 확인이 필요합니다.</p>
+  </section>
+
   <section id="asksWrap" hidden style="margin-top:22px">
     <div class="shead"><h2>총괄님이 뚫어야 할 것</h2><span class="n">여기서만 사람이 필요합니다</span></div>
     <p class="how">아래는 <b>제가 대신 못 하는 것</b>만 모았습니다 — 결정·승인·자격증명이 필요한 자리입니다.
@@ -562,29 +593,10 @@ const LAUNCH = {
       다음에 같은 모양(우선순위 높은데 주인 없음 · hosted 자격증명 필요 · 카드 없는 급소)이
       또 생기면 손대지 않아도 여기 다시 뜬다.
    ═══════════════════════════════════════════════════════════════ */
-const MANUAL_ASKS = [
-  {
-    k: "PR #273 의 값 분포 SQL 을 한 번 돌려 주십시오",
-    cost: "2분",
-    kind: "자격증명",
-    why: "제게 운영 Supabase 자격증명이 없습니다(.env 없음). " +
-         "#274 가 #273 위에 쌓여 있어서 <b>#273 이 안 풀리면 두 장이 같이 멈춥니다.</b><br>" +
-         "<span style='color:var(--warn)'>★ 정정 — 지난 판에서 「PR 본문에」라고 드렸는데 " +
-         "실제로는 <b>PR 코멘트</b>에 있었습니다. 아래는 그 코멘트로 바로 가는 링크입니다.</span>",
-    fix: "PR 두 장이 머지 경로에 오릅니다. 대시보드 KPI 정의가 확정되고 " +
-         "BBE-215(총괄이 지적하신 「대시보드 정보 이상함」)가 닫힙니다.",
-    steps: [
-      "아래 <b>SQL 코멘트</b> 링크에서 세 블록 복사(값 분포 ①②③)",
-      "아래 <b>Supabase SQL Editor</b> 링크 → 붙여넣고 <b>Run</b> (⚠️ SELECT 뿐, 데이터 안 바뀝니다)",
-      "결과를 PR #273 코멘트로 붙여넣기"
-    ],
-    links: [
-      { url: "https://github.com/bbelieff/moawork/pull/273#issuecomment-5323742779", t: "SQL 코멘트 열기" },
-      { url: "https://supabase.com/dashboard/project/srtvmpcosekduvsscsyz/sql/new", t: "Supabase SQL Editor 열기" }
-    ],
-    card: null
-  },
-];
+/* ★ 손으로 넣는 항목 — 해결되는 즉시 이 자리에서 지운다(미루면 대시보드가 거짓말을 한다).
+   2026-08-19: PR #273 SQL 요청은 총괄이 그날 바로 실행·결과 공유·PR 코멘트 게시까지
+   끝내서 제거함 — 오래 떠 있던 게 이번 "왜 해결한 게 계속 보이냐" 지적의 원인이었다. */
+const MANUAL_ASKS = [];
 
 const OWNER_RE_ASK = /^(DG|DC|NG|NC)-\d{2}$/;
 

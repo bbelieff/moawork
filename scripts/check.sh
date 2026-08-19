@@ -85,10 +85,11 @@ set +e
 node docs/design/qa-app.mjs
 qa_app_status=$?
 set -e
-if [[ "$qa_app_status" -eq 1 ]]; then
-  echo "⚠️ qa-app 차이 보고 완료 — 1단계에서는 check를 실패시키지 않습니다"
-elif [[ "$qa_app_status" -ne 0 ]]; then
-  echo "❌ qa-app 자체 실행 실패 — 차이 보고로 숨기지 않습니다"
+# 2026-08-19 총괄 지적으로 «보고 전용» 을 폐기했다 — 경고만 뜨고 아무도 안 막으니
+# 차이가 35개까지 조용히 쌓였다. 이제 천장(qa-app.mjs REGRESSION_CEILING)을 넘으면 막고,
+# 줄어들어도 막는다(래칫을 안 내리면 다음 회귀를 못 잡으므로).
+if [[ "$qa_app_status" -ne 0 ]]; then
+  echo "❌ 목업↔앱 대조 실패 — 위 판정 줄을 읽고 조치하십시오(목업이 기준입니다)"
   exit "$qa_app_status"
 fi
 
