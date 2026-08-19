@@ -42,7 +42,8 @@ import { GroupTable } from "./GroupTable";
 import type { SectionPresetRecord } from "@/lib/presets/section-presets";
 import { groupPresetName, isGroupPresetChanged } from "@/lib/presets/group-preset";
 import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
-import { CONTACT_TAB_SOURCE } from "@/lib/default-tabs/types";
+import { CONTACT_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
+import { NOTICE_KEYS } from "@/lib/notices/types";
 import { buildBlocks } from "./blocks";
 import {
   groupKeyOf,
@@ -129,6 +130,7 @@ export function BoardWorkspace({
   canManageColumns = false,
   canEditPresets = false,
   presets = [],
+  currentUserId,
 }: {
   board: Board;
   columns: BoardColumn[];
@@ -156,7 +158,12 @@ export function BoardWorkspace({
   canEditPresets?: boolean;
   /** 회사에 저장된 아이템 프리셋. 그룹 메뉴의 «적용» 목록과 미리보기가 이것을 읽는다. */
   presets?: readonly SectionPresetRecord[];
+  /** BBE-239 — 공지사항에서 작성자 본인 삭제 예외를 판정하는 데 쓴다. */
+  currentUserId?: string;
 }) {
+  // BBE-239 — 공지사항 한정 「작성자는 자기 글 삭제 가능」 예외. 다른 보드는 undefined 라
+  // GroupTable 의 조건에서 항상 꺼진다.
+  const authorColumnKey = board.source === NOTICE_TAB_SOURCE ? NOTICE_KEYS.author : undefined;
   const [filters, setFilters] = useState<BoardFilterState>(EMPTY_FILTERS);
   const [filterUrlReady, setFilterUrlReady] = useState(false);
   const [savedPresentation, setSavedPresentation] = useState<{ textMode: "single" | "wrap"; focusColumnKey: string | null }>({ textMode: "single", focusColumnKey: null });
@@ -385,6 +392,8 @@ export function BoardWorkspace({
                 focusColumnKey={savedPresentation.focusColumnKey}
                 readOnly={readOnly}
                 canDeleteItems={!board.is_system && canDeleteItems}
+                authorColumnKey={authorColumnKey}
+                viewerUserId={currentUserId}
                 canManageColumns={!board.is_system && canManageColumns}
                 rowDragEnabled={rowDragEnabled}
                 cellFlash={cellFlash}

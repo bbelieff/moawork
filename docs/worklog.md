@@ -4,6 +4,38 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [모아워크 DC-00] 2026-08-19 — BBE-239: 공지사항 작성자 삭제 예외 + 첨부파일 Supabase Storage 이관
+
+- **Part A — 작성자 삭제 예외(공지사항 한정)**: `work.item_delete` 는 role 기반뿐(owner/admin)
+  이라 작성자 본인도 자기 글을 못 지웠다. `deleteItemAction`(`boards/actions.ts`)에
+  `canDeleteAsNoticeAuthor()` 를 추가 — role 권한이 없어도 보드 source 가
+  `core.default-tab/notice` 이고 그 아이템의 `author` 값이 `ctx.user.id` 와 같으면 허용한다.
+  서버가 실제 관문이고, `GroupTable`/`BoardWorkspace`/`boards/[id]/page.tsx` 에는 UI 표시
+  일치용으로 `authorColumnKey`/`viewerUserId` 를 얹어 작성자에게도 삭제 버튼이 보이게 했다
+  (버튼만 보이고 서버가 막으면 허위 UI가 되므로 반드시 같이 갔다). 다른 보드에는
+  적용 안 됨(보드 source 로 좁힘). `actions.notice-delete.test.ts` 4건
+  (작성자 허용·타인 거부·owner/admin 은 그대로 허용·비공지 보드엔 예외 미적용).
+  `perm/boards-ui-gating.test.ts` 의 문자열 검사도 `canDeleteRow`/`canDeleteItems ||` 로 갱신
+  (role 권한이 작성자 예외로 대체되지 않는지 계속 지킨다).
+- **Part B — 첨부파일을 base64 jsonb 에서 Supabase Storage 로**: `encodeNoticeFile()` 이
+  base64 대신 Storage 버킷(`board-item-files`)에 업로드하고 `{id,name,mimeType,size,
+  storagePath}` 를 반환한다(`client` 없는 로컬 시드는 기존 base64 로 폴백 — 의도적 타협).
+  경로 규약 `{orgId}/{boardId}/{itemId}/{fileId}__{filename}`. **하위호환**: `parseNoticeFile`
+  이 레거시 `contentB64` 행과 신규 `storagePath` 행을 둘 다 읽고, `loadNoticeFileBytes()` 가
+  분기해서 바이트를 낸다 — 기존에 이미 올라간 공문도 계속 열린다(백필 안 함, 의도적으로
+  범위 밖). 다운로드 라우트(`/api/boards/items/[itemId]/files/[fileId]`)는 기존 서명 토큰
+  관문(`fileSignedUrl.ts`, 5분 TTL)을 그대로 두고 바이트 소스만 갈아 끼웠다.
+  마이그레이션 `102_bbe239_board_item_files_storage.sql` — 버킷 생성 + `storage.objects`
+  RLS 3종(select/insert/delete, `storage.foldername(name)[1]` 을 orgId 로 보고
+  `is_org_member` 로 격리). PGlite 로 **실제 RLS 강제**(role authenticated 전환)까지 검증
+  (`board-item-files-storage.pglite.test.ts` 4건 — 버킷 생성·같은 org 전체 허용·다른 org
+  insert 거부·다른 org 파일 select/delete 도 조용히 0행). `official-file.test.ts` 9건
+  (업로드 경로 규약·업로드 실패 전파·레거시/신규 파싱·바이트 로드 양쪽).
+- 기존 base64 첨부 일괄 이관(백필)은 이 카드 범위 밖 — 신규 업로드부터 우선 전환.
+- `bash scripts/check.sh` PASS(app 348 파일/2532 테스트, worker 28/97, lint 0 error).
+
+---
+
 ## [모아워크 DC-00] 2026-08-19 — BBE-238 되돌림: 공지사항 is_system=false + 몬데이 실측으로 확장 설계
 
 - 총괄 확인: `is_system=true` 를 넣은 의도적 사유가 **전혀 없었다**("전혀 없지 여기에 대해서는

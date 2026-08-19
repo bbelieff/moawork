@@ -251,6 +251,8 @@ export function GroupTable({
   rows,
   readOnly,
   canDeleteItems = !readOnly,
+  authorColumnKey,
+  viewerUserId,
   canManageColumns = !readOnly,
   rowDragEnabled,
   cellFlash,
@@ -277,6 +279,9 @@ export function GroupTable({
   rows: readonly ItemWithValues[];
   readOnly: boolean;
   canDeleteItems?: boolean;
+  /** BBE-239 — 이 키가 있으면 그 컬럼 값이 `viewerUserId` 와 같은 행은 role 권한 없이도 삭제 버튼을 보여준다(작성자 예외, 공지사항 한정). 서버가 다시 검증한다 — 여긴 표시 전용. */
+  authorColumnKey?: string;
+  viewerUserId?: string;
   canManageColumns?: boolean;
   /** 정렬이 켜져 있으면 부모가 false 를 준다 — 손잡이 자체를 감춰 헛짚을 자리를 없앤다. */
   rowDragEnabled: boolean;
@@ -473,6 +478,11 @@ export function GroupTable({
           )}
 
           {rows.map((row, index) => {
+            const canDeleteRow =
+              canDeleteItems ||
+              (authorColumnKey !== undefined &&
+                viewerUserId !== undefined &&
+                row.values[authorColumnKey] === viewerUserId);
             return (
               <tr
                 key={row.id}
@@ -526,7 +536,7 @@ export function GroupTable({
                       canManageColumns={canManageColumns}
                     />
 
-                    {canDeleteItems && (
+                    {canDeleteRow && (
                       <TrashItemButton boardId={boardId} itemId={row.id} title={row.title} />
                     )}
                   </div>
