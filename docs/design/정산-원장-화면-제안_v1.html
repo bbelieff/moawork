@@ -129,6 +129,8 @@
   }
   .kindtoggle button.active.deposit{border-color:var(--mw-record); background:var(--mw-tint-blue); color:var(--mw-record)}
   .kindtoggle button.active.fee{border-color:var(--mw-people-coral); background:var(--mw-tint-coral); color:var(--mw-people-coral)}
+  .kindtoggle button:disabled{opacity:.45; cursor:not-allowed}
+  .kindalready{margin:-9px 0 16px; font-size:11.5px; color:var(--mw-sub)}
 
   .field{display:flex; flex-direction:column; gap:5px; margin-bottom:13px}
   .field label{font-size:12px; font-weight:700; color:var(--mw-sub)}
@@ -171,6 +173,24 @@
     color:var(--mw-body); font-size:13.5px;
   }
   .decision4 b{color:var(--mw-error)}
+
+  /* ---- 시퀀스 ---- */
+  .seqwrap{margin-left:32px}
+  .seqstep{display:grid; grid-template-columns:28px 1fr; gap:16px; position:relative; padding-bottom:26px}
+  .seqstep:last-child{padding-bottom:0}
+  .seqstep:not(:last-child)::before{content:""; position:absolute; left:13px; top:28px; bottom:-26px; width:2px; background:var(--mw-line)}
+  .seqdot{width:28px; height:28px; border-radius:999px; background:var(--mw-primary); color:var(--mw-on-accent); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; z-index:1; flex:none}
+  .seqdot.done{background:var(--mw-success)}
+  .seqbody{background:var(--mw-card); border:1px solid var(--mw-line); border-radius:12px; padding:14px 16px}
+  .seqbody h4{margin:0 0 4px; font-size:14.5px; font-weight:800}
+  .seqbody p{margin:0; font-size:12.5px; color:var(--mw-sub)}
+  .seqrow-preview{margin-top:10px; display:flex; align-items:center; gap:9px; font-size:12px; background:var(--mw-bg); border-radius:8px; padding:9px 11px; font-variant-numeric:tabular-nums}
+  .seqcases{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:11px}
+  .seqcase{background:var(--mw-bg); border:1px solid var(--mw-line); border-radius:10px; padding:11px}
+  .seqcase b{display:block; margin-bottom:5px; color:var(--mw-fg); font-size:12px}
+  .seqcase span{display:block; font-size:11px; color:var(--mw-sub); line-height:1.5}
+  .seqcase .seqamt{margin-top:6px; font-size:12.5px; font-weight:800; color:var(--mw-record); font-variant-numeric:tabular-nums}
+  @media (max-width:640px){ .seqcases{grid-template-columns:1fr} .seqwrap{margin-left:0} }
 
   /* ---- 보드 행 + 원장 버튼 ---- */
   .subroute{margin:0 0 8px 32px; font-size:11.5px; font-weight:800; color:var(--mw-flow-teal); text-transform:uppercase; letter-spacing:.03em}
@@ -298,9 +318,9 @@
         <text x="800" y="41" text-anchor="middle" style="font-size:12px; font-weight:800; fill:var(--mw-primary)">③ 원장(신규 제안)</text>
         <text x="800" y="55" text-anchor="middle" style="font-size:9.5px; fill:var(--mw-sub)">사이드바 6번째 탭 · org 전체</text>
 
-        <!-- 회사 관리 → 회사 상세 -->
+        <!-- 업체관리 현황(실제 탭 이름, app-tabs.ts 확인) → 회사 상세 -->
         <rect x="150" y="112" width="150" height="44" rx="10" style="fill:var(--mw-bg); stroke:var(--mw-line)"/>
-        <text x="225" y="131" text-anchor="middle" style="font-size:12px; font-weight:700; fill:var(--mw-fg)">회사 관리</text>
+        <text x="225" y="131" text-anchor="middle" style="font-size:12px; font-weight:700; fill:var(--mw-fg)">업체관리 현황</text>
         <text x="225" y="145" text-anchor="middle" style="font-size:9.5px; fill:var(--mw-sub)">/companies</text>
 
         <rect x="150" y="204" width="150" height="44" rx="10" style="fill:var(--mw-bg); stroke:var(--mw-line)"/>
@@ -334,6 +354,68 @@
       <div class="maplegend">
         <span><i class="real"></i> 실제 있는 이동 경로</span>
         <span><i class="gap"></i> 코드에 없는 연결(확인 필요)</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="q" id="seq">
+    <div class="qtitle"><h2>⏱ 시퀀스 — 자금건 하나가 태어나서 끝날 때까지</h2></div>
+    <p class="qhint">한 자금건 안에서 무슨 일이 벌어지는 «순서»입니다. 계약금·수수료는 각각 «따로» 돈이 들어온 순간에 원장 행 1건씩 생겨요 — 미리 계산해서 만드는 게 아닙니다.</p>
+
+    <div class="seqwrap">
+      <div class="seqstep">
+        <div class="seqdot">1</div>
+        <div class="seqbody">
+          <h4>계약 체결</h4>
+          <p>회사와 조건을 정합니다. 이 시점엔 원장에 아직 아무것도 안 생겨요.</p>
+        </div>
+      </div>
+
+      <div class="seqstep">
+        <div class="seqdot">2</div>
+        <div class="seqbody">
+          <h4>계약금 수납</h4>
+          <p>돈이 들어온 «그 순간» 원장에 계약금 행이 1건 생깁니다 — 이 건에 대한 첫 번째 수납건.</p>
+          <div class="seqrow-preview"><span class="kindtag deposit">계약금</span><span>1,000,000원</span><span class="muted">· 2026-03-05 입금</span></div>
+        </div>
+      </div>
+
+      <div class="seqstep">
+        <div class="seqdot">3</div>
+        <div class="seqbody">
+          <h4>실행(집행) — 실행액 확정 + 계약조건을 적어둠</h4>
+          <p>실행액이 정해지고, 수수료를 어떻게 받기로 했는지도 이때 같이 적습니다. <b style="color:var(--mw-fg)">%로 계약한 게 아니거나 할인이 껴도 그대로 적으면 됩니다</b> — 아래 세 경우 다 다음 단계(수납)에서 하는 일은 똑같아요.</p>
+          <div class="seqcases">
+            <div class="seqcase"><b>정률로 계약</b><span>계약조건: "실행액의 10%"</span><span class="seqamt">→ 수납 시 입력: 5,000,000원</span></div>
+            <div class="seqcase"><b>정액으로 계약</b><span>계약조건: "정액 500만원 · 집행일=잔금일"</span><span class="seqamt">→ 수납 시 입력: 5,000,000원</span></div>
+            <div class="seqcase"><b>할인 적용</b><span>계약조건: "10%에서 20% 할인 → 8%"</span><span class="seqamt">→ 수납 시 입력: 4,000,000원</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="seqstep">
+        <div class="seqdot">4</div>
+        <div class="seqbody">
+          <h4>수수료 수납</h4>
+          <p>돈이 들어온 «그 순간» 원장에 수수료 행이 1건 생깁니다 — 위 어느 케이스든 <b style="color:var(--mw-fg)">실행액과 자동으로 곱하지 않고, 계약조건을 참고해서 사람이 금액을 직접 입력</b>합니다. 계약금은 이미 2단계에서 끝났으니 <b style="color:var(--mw-fg)">여기서 다시 계약금을 고르게 하지 않습니다</b> — 입력 폼이 이미 받은 걸 알고 수수료로 자동 고정합니다(②에서 직접 확인 가능).</p>
+          <div class="seqrow-preview"><span class="kindtag fee">수수료</span><span>5,000,000원</span><span class="muted">· 2026-05-20 입금</span></div>
+        </div>
+      </div>
+
+      <div class="seqstep">
+        <div class="seqdot done">✓</div>
+        <div class="seqbody">
+          <h4>수납종료</h4>
+          <p>계약금·수수료 둘 다 미수금 0 → 이 자금건은 <span class="donebadge" style="margin:0 0 0 2px">✅ 수납종료</span>로 찍힙니다.</p>
+        </div>
+      </div>
+
+      <div class="seqstep">
+        <div class="seqdot">6</div>
+        <div class="seqbody">
+          <h4>회사 상세(업체관리현황) — 이 회사의 전부를 한곳에</h4>
+          <p>이 회사가 가진 자금건이 1건이든 여러 건이든, 그 회사 정보 + 모든 자금건의 수납건을 한 화면에 몰아서 봅니다. 끝난 건도 진행 중인 건도 같이요 — 아래 <a href="#map">전체 지도</a>의 「회사 상세」가 바로 이 화면입니다.</p>
+        </div>
       </div>
     </div>
   </section>
@@ -403,7 +485,7 @@
                 <h2>업무 원장</h2>
                 <p>계약금과 수수료는 이 원장에서만 합산해요.</p>
               </div>
-              <button class="addbtn" onclick="openLedgerModal()">+ 입력</button>
+              <button class="addbtn" onclick="openLedgerModal(true)">+ 입력</button>
             </div>
 
             <dl class="summary">
@@ -596,11 +678,10 @@
   </section>
 
   <section class="q" id="q4">
-    <div class="qtitle"><span class="qnum">4</span><h2>구 <code>/policyfund/settlements</code> 화면 — 지금 지울까요?</h2></div>
-    <p class="qhint">실제 모습은 바로 위 <a href="#old">「지금 있는 구 화면」</a>에서 보셨습니다 — 여기서는 언제 지울지만 정하면 됩니다.</p>
-    <div class="decision4">
-      새로고침하면 사라지는 <b>가짜 데이터</b>라 지금 당장 지워도 잃을 게 없습니다. 다만 ①②가 실제로 배포되기 전까지는 「그나마 입력 화면 흉내라도 있는」 유일한 화면이기도 합니다.
-      바로 지울지, ①②가 배포된 뒤에 지울지만 답해주시면 됩니다.
+    <div class="qtitle"><span class="qnum">4</span><h2>구 <code>/policyfund/settlements</code> 화면 — 결정됨: 즉시 제거</h2></div>
+    <p class="qhint">실제 모습은 바로 위 <a href="#old">「지금 있는 구 화면」</a>에서 보셨습니다.</p>
+    <div class="decision4" style="border-color:var(--mw-success); background:var(--mw-tint-teal); color:var(--mw-body)">
+      <b style="color:var(--mw-success)">총괄 결정 — 지금 바로 제거.</b> 페이지·폼·API 라우트·백엔드 서비스 코드까지 전부 삭제 진행 중입니다.
     </div>
   </section>
 
@@ -647,7 +728,7 @@
     </table>
 
     <div style="display:flex; justify-content:flex-end; margin-top:16px">
-      <button class="addbtn" onclick="closeLedgerView(); openLedgerModal()">+ 입력</button>
+      <button class="addbtn" onclick="closeLedgerView(); openLedgerModal(true)">+ 입력</button>
     </div>
   </div>
 </div>
@@ -666,6 +747,7 @@
       <button id="kindDeposit" class="active deposit" onclick="setKind('deposit')">계약금</button>
       <button id="kindFee" class="fee" onclick="setKind('fee')">수수료</button>
     </div>
+    <p id="kindAlready" class="kindalready" style="display:none">계약금은 이미 2026-03-05에 받았어요 — 그래서 자동으로 수수료가 선택됐어요. 다시 계약금을 고를 순 없어요(한 건당 한 번뿐이라).</p>
 
     <div id="feeHint" class="hintchip" style="display:none">
       <span>📎 계약조건(자유기재) — 정액 500만원 · 집행일=잔금일 · 계약금 포함 차액 수령</span>
@@ -719,13 +801,21 @@
 </div>
 
 <script>
-  function openLedgerModal(){ document.getElementById('overlay').classList.add('open'); }
+  function openLedgerModal(depositAlreadyReceived){
+    var dep=document.getElementById('kindDeposit'), already=document.getElementById('kindAlready');
+    if(depositAlreadyReceived){
+      dep.disabled=true; already.style.display='block'; setKind('fee');
+    } else {
+      dep.disabled=false; already.style.display='none'; setKind('deposit');
+    }
+    document.getElementById('overlay').classList.add('open');
+  }
   function closeLedgerModal(){ document.getElementById('overlay').classList.remove('open'); }
   function openLedgerView(){ document.getElementById('ledgerViewOverlay').classList.add('open'); }
   function closeLedgerView(){ document.getElementById('ledgerViewOverlay').classList.remove('open'); }
   function setKind(kind){
     var dep=document.getElementById('kindDeposit'), fee=document.getElementById('kindFee'), hint=document.getElementById('feeHint');
-    if(kind==='deposit'){ dep.classList.add('active'); fee.classList.remove('active'); hint.style.display='none'; }
+    if(kind==='deposit' && !dep.disabled){ dep.classList.add('active'); fee.classList.remove('active'); hint.style.display='none'; }
     else { fee.classList.add('active'); dep.classList.remove('active'); hint.style.display='flex'; }
   }
   function toggleVat(checked){
