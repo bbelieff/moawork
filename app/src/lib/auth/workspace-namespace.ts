@@ -13,9 +13,7 @@ const WORKSPACE_PAGE_SEGMENTS = new Set([
   "notices", "onboarding", "policyfund", "presets", "settings", "settlements", "work",
 ]);
 
-const WORKSPACE_INTERNAL_ALIASES = new Map<string, string>([
-  ["/settlements", "/policyfund/settlements"],
-]);
+const WORKSPACE_INTERNAL_ALIASES = new Map<string, string>([]);
 
 function aliasFromPath(pathname: string): string | null {
   const match = pathname.match(/^\/([^/]+)$/);

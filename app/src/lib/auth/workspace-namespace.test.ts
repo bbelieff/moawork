@@ -12,12 +12,6 @@ describe("workspace namespace", () => {
     expect(decideWorkspaceNamespace("/w/acme/deals/123?tab=notes", [row("org-acme", "acme")])).toEqual({ kind: "rewrite", canonical: "/w/acme/deals/123?tab=notes", internal: "/deals/123?tab=notes", orgId: "org-acme" });
     expect(decideWorkspaceNamespace("/w/acme/companies", [row("org-acme", "acme")])).toEqual({ kind: "rewrite", canonical: "/w/acme/companies", internal: "/companies", orgId: "org-acme" });
     expect(decideWorkspaceNamespace("/w/acme/presets", [row("org-acme", "acme")])).toEqual({ kind: "rewrite", canonical: "/w/acme/presets", internal: "/presets", orgId: "org-acme" });
-    expect(decideWorkspaceNamespace("/w/acme/settlements?dealId=deal-1", [row("org-acme", "acme")])).toEqual({
-      kind: "rewrite",
-      canonical: "/w/acme/settlements?dealId=deal-1",
-      internal: "/policyfund/settlements?dealId=deal-1",
-      orgId: "org-acme",
-    });
   });
 
   it("lets an exact target win among multiple memberships", () => {

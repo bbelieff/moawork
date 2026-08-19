@@ -4,6 +4,35 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [모아워크 DC-00] 2026-08-19 — 구 `/policyfund/settlements` 제거(총괄 직접 지시)
+
+- 총괄 지시: "지금있는 구 화면을 보고 내가 화내고 있었네 이건 빨리 지워버려" — 정산 원장
+  화면 기획 중 이 화면을 실제로 재현한 목업을 보고 즉시 제거 결정.
+- 제거 근거(이번 기획 과정에서 확정): `getRepo()`가 메모리 `LocalRepo` 로 가서 저장이
+  전혀 안 됨(새로고침하면 사라짐) · 어떤 회사·딜과도 연결 안 됨 · 진행상품/진행기관
+  select 는 `toCreatePayload()` 페이로드에 필드 자체가 없어 골라도 버려지는 순수
+  UI 장식이었음.
+- 삭제: `app/policyfund/settlements/page.tsx`, `components/policyfund/SettlementForm.tsx`,
+  `lib/policyfund/settlements.ts`(+test), `lib/policyfund/settlement-form.ts`(+test),
+  `api/settlements/route.ts`, `api/settlements/[settlementId]/route.ts`.
+- **건드리지 않은 것**(이름이 비슷해서 헷갈리기 쉬움): `lib/policyfund/settlement.ts`
+  (단수, `computeSettlement`)는 대시보드 `lib/dash/aggregate.ts` 가 실제로 쓰는
+  별개의 살아있는 모듈 — 그대로 둠. `app/policyfund/page.tsx`(정책자금 보드 화면)도
+  별개 화면이라 그대로 둠. `@/lib/repo` 의 `Settlement`/`NewSettlement` 리포 포트
+  (인터페이스·`LocalRepo` 구현)도 안 건드림 — 죽은 화면이 쓰던 응용 계층만 지웠고,
+  그 아래 리포 인터페이스 자체를 걷어내는 건 범위 밖(더 큰 판단이 필요함).
+- 흔적 정리: `app-tabs.ts`(work 탭 altHrefs 에서 `/policyfund/settlements` 제거,
+  `/policyfund` 는 유지 — 별도 존치 결정 있음), `workspace-namespace.ts`
+  (`/w/{slug}/settlements` → `/policyfund/settlements` 별칭 제거, 예약어 세트는 안 건드림 —
+  bare-path alias 차단이라는 별개 역할이 있어서), `policyfund/index.ts`(죽은 파일을
+  가리키던 배럴 주석 제거). 관련 테스트 3개(`app-tabs-runtime.test.ts`,
+  `workspace-namespace.test.ts`, `w/[slug]/route.test.ts`) 갱신.
+- `production-repo-boundary-baseline.json` 에서 settlements.ts 항목 제거 +
+  `check-production-repo-boundaries.mjs` 의 `BASELINE_CEILING` 31→30(합법적 감소를
+  ratchet 스크립트가 명시적 확인을 요구함).
+- `bash scripts/check.sh` PASS(app 2502 passed/36 skipped, worker 97/97, qa-app 보고 전용
+  기존 35건 그대로).
+
 ## [모아워크 DC-00] 2026-08-19 — 정산 원장 화면 제안(비주얼 목업, 코드 변경 0)
 
 - 총괄이 이전 텍스트 질문 3개("입력 화면 위치가 어디인지 모르겠다, 비주얼로 제안해봐")에

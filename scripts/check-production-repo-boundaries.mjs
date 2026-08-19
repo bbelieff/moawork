@@ -12,7 +12,7 @@ const REPO_ROOT = path.resolve(path.dirname(SCRIPT_PATH), "..");
 const APP_SOURCE_ROOT = path.join(REPO_ROOT, "app", "src");
 const BASELINE_PATH = path.join(REPO_ROOT, "scripts", "production-repo-boundary-baseline.json");
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
-const BASELINE_CEILING = 31;
+const BASELINE_CEILING = 30;
 
 const TEST_OR_FIXTURE_PATH = /(?:^|\/)(?:__tests__|__fixtures__|fixtures|test-fixtures|dev-fixtures)(?:\/|$)|\.(?:test|spec|stories)\.[jt]sx?$/;
 const ENTRYPOINT_PATH = /\/app\/.*\/(?:page|layout|route|actions)\.[jt]sx?$/;

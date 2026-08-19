@@ -38,7 +38,7 @@ export const APP_TABS: readonly AppTab[] = [
     key: "work",
     mockupLabel: "계약업체 실무",
     canonicalHref: "/work",
-    altHrefs: ["/policyfund", "/policyfund/settlements"],
+    altHrefs: ["/policyfund"],
   },
   {
     key: "company",
