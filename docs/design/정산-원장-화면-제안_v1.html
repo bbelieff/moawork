@@ -1,0 +1,456 @@
+<title>정산 원장 화면 제안</title>
+<style>
+  :root{
+    --mw-work-blue:#3478f6; --mw-flow-teal:#18a999; --mw-moa-violet:#6b5cff; --mw-people-coral:#f26b5e;
+    --mw-fg:#191a1e; --mw-surface:#fff;
+    --mw-primary:var(--mw-moa-violet); --mw-record:var(--mw-work-blue);
+    --mw-success:#16a34a; --mw-warning:#d97706; --mw-error:#dc2626;
+    --mw-bg:#f7f8fa; --mw-card:#fff; --mw-sub:#6b7280; --mw-line:#e8eaef; --mw-body:#3f4249;
+    --mw-on-accent:#fff; --mw-tint-blue:#eaf0fe; --mw-tint-teal:#eaf7f4; --mw-tint-coral:#fdecea;
+    --mw-radius:14px;
+    --page-max:920px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --mw-work-blue:#6ea0ff; --mw-flow-teal:#47cfbc; --mw-moa-violet:#8a7cff; --mw-people-coral:#ff8a80;
+      --mw-fg:#f7f8fa; --mw-surface:#111216;
+      --mw-success:#4ade80; --mw-warning:#fbbf24; --mw-error:#f87171;
+      --mw-bg:#111216; --mw-card:#1a1c22; --mw-sub:#9aa0ac; --mw-line:#262932; --mw-body:#c6cad3;
+      --mw-on-accent:#10131a; --mw-tint-blue:rgba(110,160,255,.14); --mw-tint-teal:rgba(71,207,188,.14); --mw-tint-coral:rgba(255,138,128,.15);
+    }
+  }
+  :root[data-theme="dark"]{
+    --mw-work-blue:#6ea0ff; --mw-flow-teal:#47cfbc; --mw-moa-violet:#8a7cff; --mw-people-coral:#ff8a80;
+    --mw-fg:#f7f8fa; --mw-surface:#111216;
+    --mw-success:#4ade80; --mw-warning:#fbbf24; --mw-error:#f87171;
+    --mw-bg:#111216; --mw-card:#1a1c22; --mw-sub:#9aa0ac; --mw-line:#262932; --mw-body:#c6cad3;
+    --mw-on-accent:#10131a; --mw-tint-blue:rgba(110,160,255,.14); --mw-tint-teal:rgba(71,207,188,.14); --mw-tint-coral:rgba(255,138,128,.15);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--mw-bg); color:var(--mw-fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;
+    line-height:1.5;
+  }
+  .wrap{max-width:var(--page-max); margin:0 auto; padding:28px 20px 96px}
+  .intro{display:flex; flex-direction:column; gap:10px; padding-bottom:20px; border-bottom:1px solid var(--mw-line); margin-bottom:28px}
+  .intro h1{margin:0; font-size:22px; letter-spacing:-.02em; text-wrap:balance}
+  .intro p{margin:0; color:var(--mw-sub); font-size:14px; max-width:64ch}
+  .nav{display:flex; flex-wrap:wrap; gap:8px; margin-top:6px}
+  .nav a{
+    font-size:12px; font-weight:700; color:var(--mw-primary); text-decoration:none;
+    background:var(--mw-tint-blue); padding:6px 11px; border-radius:999px;
+  }
+  .nav a:hover{text-decoration:underline}
+
+  .qnum{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:22px; height:22px; border-radius:999px; background:var(--mw-primary); color:var(--mw-on-accent);
+    font-size:12px; font-weight:800; flex:none;
+  }
+  .qtitle{display:flex; align-items:center; gap:10px; margin:0 0 4px}
+  .qtitle h2{margin:0; font-size:17px; letter-spacing:-.01em}
+  .qhint{margin:0 0 16px 32px; color:var(--mw-sub); font-size:13px; max-width:60ch}
+  section.q{margin-bottom:52px; scroll-margin-top:20px}
+
+  .routelabel{
+    display:inline-block; font-size:11px; font-weight:700; color:var(--mw-sub);
+    background:var(--mw-card); border:1px solid var(--mw-line); border-radius:8px;
+    padding:3px 8px; margin:0 0 12px 32px; font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;
+  }
+
+  /* ---- 화면 재현 프레임 ---- */
+  .screen{
+    margin-left:32px; border:1px solid var(--mw-line); border-radius:16px; background:var(--mw-card);
+    overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,.04);
+  }
+  .screen-body{padding:22px 22px 26px}
+  .fadehint{
+    text-align:center; font-size:11px; color:var(--mw-sub); padding:10px 0 4px; border-top:1px dashed var(--mw-line); margin-top:4px;
+  }
+
+  header.dealhead{display:flex; flex-direction:column; gap:10px; margin-bottom:22px}
+  .backlink{font-size:12px; color:var(--mw-sub)}
+  .dealtop{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px}
+  .dealtop h3{margin:0; font-size:18px; font-weight:700}
+  .stagebadge{border-radius:999px; background:var(--mw-tint-teal); color:var(--mw-flow-teal); padding:5px 11px; font-size:11px; font-weight:800}
+
+  .ghostsection{display:flex; flex-direction:column; gap:6px; margin-bottom:20px; opacity:.55}
+  .ghostsection h4{margin:0; font-size:12px; font-weight:700; color:var(--mw-sub)}
+  .ghostrow{height:10px; border-radius:5px; background:var(--mw-line); width:70%}
+  .ghostrow.short{width:38%}
+
+  .ledgersection h4{margin:0 0 10px; font-size:12px; font-weight:700; color:var(--mw-sub)}
+  .panel{border:1px solid var(--mw-line); border-radius:var(--mw-radius); background:var(--mw-bg); padding:20px}
+  .panelhead{display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:16px}
+  .panelhead .eyebrow{margin:0 0 4px; color:var(--mw-primary); font-size:11px; font-weight:800; letter-spacing:.02em}
+  .panelhead h2{margin:0; font-size:18px; letter-spacing:-.01em}
+  .panelhead p{margin:4px 0 0; color:var(--mw-sub); font-size:12.5px}
+  .addbtn{
+    display:inline-flex; align-items:center; gap:6px; border:0; border-radius:11px; cursor:pointer;
+    background:var(--mw-primary); color:var(--mw-on-accent); font:inherit; font-size:13px; font-weight:800;
+    padding:10px 16px; white-space:nowrap;
+  }
+  .addbtn:hover{filter:brightness(1.06)}
+
+  .summary{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:16px}
+  .summary div{background:var(--mw-card); border-radius:12px; padding:11px 12px}
+  .summary dt{margin:0; color:var(--mw-sub); font-size:11.5px}
+  .summary dd{margin:5px 0 0; font-size:15px; font-weight:800; font-variant-numeric:tabular-nums}
+
+  table.ledger{width:100%; border-collapse:collapse; font-size:13px; background:var(--mw-card); border-radius:12px; overflow:hidden}
+  table.ledger th, table.ledger td{padding:11px 12px; text-align:left; white-space:nowrap}
+  table.ledger th{color:var(--mw-sub); font-size:11.5px; font-weight:700; border-bottom:1px solid var(--mw-line)}
+  table.ledger td{border-top:1px solid var(--mw-line); font-variant-numeric:tabular-nums}
+  .kindtag{border-radius:999px; padding:3px 9px; font-size:11.5px; font-weight:800}
+  .kindtag.deposit{background:var(--mw-tint-blue); color:var(--mw-record)}
+  .kindtag.fee{background:var(--mw-tint-coral); color:var(--mw-people-coral)}
+  .muted{color:var(--mw-sub)}
+
+  /* ---- 모달 ---- */
+  .overlay{
+    position:fixed; inset:0; background:rgba(10,10,14,.42); display:none; align-items:center; justify-content:center;
+    padding:20px; z-index:50;
+  }
+  .overlay.open{display:flex}
+  .modal{
+    width:100%; max-width:440px; background:var(--mw-card); border-radius:18px; border:1px solid var(--mw-line);
+    padding:22px; box-shadow:0 24px 48px rgba(0,0,0,.22); max-height:88vh; overflow:auto;
+  }
+  .modalhead{display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:16px}
+  .modalhead h2{margin:0; font-size:17px}
+  .modalhead p{margin:4px 0 0; color:var(--mw-sub); font-size:12.5px}
+  .closex{border:0; background:none; color:var(--mw-sub); font-size:18px; cursor:pointer; line-height:1; padding:2px}
+
+  .kindtoggle{display:flex; gap:8px; margin-bottom:16px}
+  .kindtoggle button{
+    flex:1; border:1.5px solid var(--mw-line); background:var(--mw-bg); color:var(--mw-body);
+    border-radius:11px; padding:10px; font:inherit; font-size:13px; font-weight:700; cursor:pointer;
+  }
+  .kindtoggle button.active.deposit{border-color:var(--mw-record); background:var(--mw-tint-blue); color:var(--mw-record)}
+  .kindtoggle button.active.fee{border-color:var(--mw-people-coral); background:var(--mw-tint-coral); color:var(--mw-people-coral)}
+
+  .field{display:flex; flex-direction:column; gap:5px; margin-bottom:13px}
+  .field label{font-size:12px; font-weight:700; color:var(--mw-sub)}
+  .field input, .field textarea{
+    border:1px solid var(--mw-line); border-radius:10px; padding:10px 11px; font:inherit; font-size:13.5px;
+    background:var(--mw-bg); color:var(--mw-fg); font-variant-numeric:tabular-nums;
+  }
+  .field input:focus, .field textarea:focus, .kindtoggle button:focus-visible, .addbtn:focus-visible{
+    outline:2.5px solid var(--mw-primary); outline-offset:1px;
+  }
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+  .hintchip{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--mw-tint-coral); color:var(--mw-people-coral); border-radius:10px; padding:9px 11px;
+    font-size:12px; font-weight:700; margin:-4px 0 13px;
+  }
+  .hintchip button{border:0; background:var(--mw-people-coral); color:#fff; border-radius:7px; padding:5px 9px; font:inherit; font-size:11px; font-weight:800; cursor:pointer; white-space:nowrap}
+  .checkline{display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--mw-sub); margin:-4px 0 13px}
+  .modalfoot{display:flex; justify-content:flex-end; gap:8px; margin-top:6px}
+  .btnghost{border:1px solid var(--mw-line); background:none; color:var(--mw-body); border-radius:10px; padding:9px 15px; font:inherit; font-size:13px; font-weight:700; cursor:pointer}
+  .btnprimary{border:0; background:var(--mw-primary); color:var(--mw-on-accent); border-radius:10px; padding:9px 17px; font:inherit; font-size:13px; font-weight:800; cursor:pointer}
+
+  /* ---- 연도별 원장 ---- */
+  .yearpage-head{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px}
+  .yearpage-head h3{margin:0; font-size:18px}
+  .yeartabs{display:flex; gap:6px; background:var(--mw-bg); padding:4px; border-radius:11px; border:1px solid var(--mw-line)}
+  .yeartabs button{border:0; background:none; color:var(--mw-sub); font:inherit; font-size:12.5px; font-weight:700; padding:7px 14px; border-radius:8px; cursor:pointer}
+  .yeartabs button.active{background:var(--mw-card); color:var(--mw-fg); box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  .yearpanel{display:none}
+  .yearpanel.active{display:block}
+  .monthgroup{margin-bottom:18px}
+  .monthgroup h5{margin:0 0 8px; font-size:12.5px; font-weight:800; color:var(--mw-sub)}
+  .yeartotal-strip{display:flex; gap:20px; flex-wrap:wrap; margin-bottom:18px; padding:14px 16px; border-radius:12px; background:var(--mw-bg); border:1px solid var(--mw-line)}
+  .yeartotal-strip div{display:flex; flex-direction:column; gap:3px}
+  .yeartotal-strip dt{font-size:11px; color:var(--mw-sub)}
+  .yeartotal-strip dd{margin:0; font-size:15px; font-weight:800; font-variant-numeric:tabular-nums}
+
+  .decision4{
+    margin-left:32px; border:1.5px dashed var(--mw-warning); border-radius:14px; padding:16px 18px; background:var(--mw-tint-coral);
+    color:var(--mw-body); font-size:13.5px;
+  }
+  .decision4 b{color:var(--mw-error)}
+
+  @media (max-width:640px){
+    .summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .row2{grid-template-columns:1fr}
+    .screen, .routelabel, .qhint, .decision4{margin-left:0}
+    .yeartotal-strip{gap:14px}
+  }
+</style>
+
+<div class="wrap">
+
+  <div class="intro">
+    <h1>정산 원장 화면 제안</h1>
+    <p>말씀하신 세 가지(입력 화면 위치·입력 폼·연도별 전체 원장)를 실제 화면으로 만들었습니다. ①의 「+ 입력」을 눌러보시면 ②가 그 자리에서 열립니다 — 실제로 이렇게 동작합니다.</p>
+    <div class="nav">
+      <a href="#q1">① 딜 상세 — 원장 섹션</a>
+      <a href="#q2">② 입력 폼</a>
+      <a href="#q3">③ 연도별 전체 원장</a>
+      <a href="#q4">④ 구 화면 정리 시점</a>
+    </div>
+  </div>
+
+  <section class="q" id="q1">
+    <div class="qtitle"><span class="qnum">1</span><h2>딜 상세페이지 — 회계 원장 섹션</h2></div>
+    <p class="qhint">이미 만들어져 있던 <code>DealLedgerPanel</code>을 실제로 붙이면 이렇게 보입니다. 「정보 → 담당자」 다음, 「타임라인」 앞에 새 섹션으로 낍니다.</p>
+    <div class="routelabel">/deals/[dealId] 안의 한 섹션</div>
+
+    <div class="screen">
+      <div class="screen-body">
+        <header class="dealhead">
+          <span class="backlink">← 업무 보드로</span>
+          <div class="dealtop">
+            <h3>㈜예시상사 — 소상공인 정책자금</h3>
+            <span class="stagebadge">실행 완료</span>
+          </div>
+        </header>
+
+        <div class="ghostsection">
+          <h4>정보</h4>
+          <div class="ghostrow"></div>
+          <div class="ghostrow short"></div>
+        </div>
+        <div class="ghostsection">
+          <h4>담당자</h4>
+          <div class="ghostrow short"></div>
+        </div>
+
+        <div class="ledgersection">
+          <h4>회계 원장 — 신설 섹션</h4>
+          <div class="panel">
+            <div class="panelhead">
+              <div>
+                <p class="eyebrow">회계 원장</p>
+                <h2>업무 원장</h2>
+                <p>계약금과 수수료는 이 원장에서만 합산해요.</p>
+              </div>
+              <button class="addbtn" onclick="openLedgerModal()">+ 입력</button>
+            </div>
+
+            <dl class="summary">
+              <div><dt>원장 합계</dt><dd>6,000,000원</dd></div>
+              <div><dt>수수료 원장 합계</dt><dd>5,000,000원</dd></div>
+              <div><dt>수수료 합계(예상)</dt><dd>5,000,000원</dd></div>
+              <div><dt>미수금</dt><dd>0원</dd></div>
+            </dl>
+
+            <table class="ledger">
+              <thead><tr><th>구분</th><th>발생일</th><th>금액</th><th>입금액</th><th>미수금</th><th>입금일</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><span class="kindtag deposit">계약금</span></td>
+                  <td class="muted">2026-03-05</td>
+                  <td>1,000,000원</td>
+                  <td>1,000,000원</td>
+                  <td>0원</td>
+                  <td>2026-03-05</td>
+                </tr>
+                <tr>
+                  <td><span class="kindtag fee">수수료</span></td>
+                  <td class="muted">2026-05-20</td>
+                  <td>5,000,000원</td>
+                  <td>5,000,000원</td>
+                  <td>0원</td>
+                  <td>2026-05-20</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="ghostsection" style="margin-top:20px">
+          <h4>타임라인 · 댓글</h4>
+          <div class="ghostrow"></div>
+        </div>
+      </div>
+      <p class="fadehint">↓ 아래는 실제 화면이 아니라 위치 설명용으로 흐리게 처리했습니다</p>
+    </div>
+  </section>
+
+  <section class="q" id="q2">
+    <div class="qtitle"><span class="qnum">2</span><h2>입력 폼 — 「+ 입력」을 누르면</h2></div>
+    <p class="qhint">구분(계약금/수수료)을 먼저 고르면 폼이 그에 맞게 바뀝니다. 수수료를 고르면 실행액×수수료율로 미리 계산된 예상 금액을 힌트로 보여주고, 버튼 한 번으로 채울 수 있게 했습니다.</p>
+    <div class="routelabel">①의 「+ 입력」 버튼 → 팝업</div>
+    <div class="screen">
+      <div class="screen-body" style="display:flex; justify-content:center; padding:34px 22px">
+        <button class="addbtn" onclick="openLedgerModal()">여기를 눌러 입력 폼 열기</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="q" id="q3">
+    <div class="qtitle"><span class="qnum">3</span><h2>연도별 전체 원장 — 신규 화면</h2></div>
+    <p class="qhint">지금 앱엔 없는 화면입니다. 몬데이의 24/25/26년 구조를 그대로 가져와, 연도 탭 안에서 월별로 묶었습니다. 기본안은 사이드바 새 탭(가칭 「원장」)이고, 대시보드 하위 탭으로 넣는 안도 가능합니다 — 아래에서 연도를 눌러보세요.</p>
+    <div class="routelabel">제안: /ledger (사이드바 새 탭) — 대안: 대시보드 하위</div>
+    <div class="screen">
+      <div class="screen-body">
+        <div class="yearpage-head">
+          <h3>연도별 원장</h3>
+          <div class="yeartabs">
+            <button class="active" onclick="showYear(this,'y2024')">2024년</button>
+            <button onclick="showYear(this,'y2025')">2025년</button>
+            <button onclick="showYear(this,'y2026')">2026년</button>
+          </div>
+        </div>
+
+        <div id="y2024" class="yearpanel active">
+          <div class="yeartotal-strip">
+            <div><dt>총매출액</dt><dd>4,200,000원</dd></div>
+            <div><dt>계약금 합계</dt><dd>800,000원</dd></div>
+            <div><dt>수수료 합계</dt><dd>3,400,000원</dd></div>
+            <div><dt>미수금</dt><dd>0원</dd></div>
+          </div>
+          <div class="monthgroup">
+            <h5>2024년 9월</h5>
+            <table class="ledger">
+              <thead><tr><th>업체</th><th>구분</th><th>금액</th><th>입금일</th><th>담당자</th></tr></thead>
+              <tbody>
+                <tr><td>㈜새싹기업</td><td><span class="kindtag deposit">계약금</span></td><td>800,000원</td><td class="muted">09-11</td><td>박정화</td></tr>
+                <tr><td>㈜새싹기업</td><td><span class="kindtag fee">수수료</span></td><td>3,400,000원</td><td class="muted">09-29</td><td>박정화</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="y2025" class="yearpanel">
+          <div class="yeartotal-strip">
+            <div><dt>총매출액</dt><dd>9,650,000원</dd></div>
+            <div><dt>계약금 합계</dt><dd>2,150,000원</dd></div>
+            <div><dt>수수료 합계</dt><dd>7,500,000원</dd></div>
+            <div><dt>미수금</dt><dd>1,200,000원</dd></div>
+          </div>
+          <div class="monthgroup">
+            <h5>2025년 4월</h5>
+            <table class="ledger">
+              <thead><tr><th>업체</th><th>구분</th><th>금액</th><th>입금일</th><th>담당자</th></tr></thead>
+              <tbody>
+                <tr><td>㈜모아상사</td><td><span class="kindtag deposit">계약금</span></td><td>1,150,000원</td><td class="muted">04-08</td><td>김수현</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="monthgroup">
+            <h5>2025년 11월</h5>
+            <table class="ledger">
+              <thead><tr><th>업체</th><th>구분</th><th>금액</th><th>입금일</th><th>담당자</th></tr></thead>
+              <tbody>
+                <tr><td>㈜모아상사</td><td><span class="kindtag fee">수수료</span></td><td>6,300,000원</td><td class="muted">11-02</td><td>김수현</td></tr>
+                <tr><td>㈜늘봄푸드</td><td><span class="kindtag deposit">계약금</span></td><td>1,000,000원</td><td>-</td><td>이대표</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="y2026" class="yearpanel">
+          <div class="yeartotal-strip">
+            <div><dt>총매출액</dt><dd>6,000,000원</dd></div>
+            <div><dt>계약금 합계</dt><dd>1,000,000원</dd></div>
+            <div><dt>수수료 합계</dt><dd>5,000,000원</dd></div>
+            <div><dt>미수금</dt><dd>0원</dd></div>
+          </div>
+          <div class="monthgroup">
+            <h5>2026년 3월</h5>
+            <table class="ledger">
+              <thead><tr><th>업체</th><th>구분</th><th>금액</th><th>입금일</th><th>담당자</th></tr></thead>
+              <tbody>
+                <tr><td>㈜예시상사</td><td><span class="kindtag deposit">계약금</span></td><td>1,000,000원</td><td class="muted">03-05</td><td>박정화</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="monthgroup">
+            <h5>2026년 5월</h5>
+            <table class="ledger">
+              <thead><tr><th>업체</th><th>구분</th><th>금액</th><th>입금일</th><th>담당자</th></tr></thead>
+              <tbody>
+                <tr><td>㈜예시상사</td><td><span class="kindtag fee">수수료</span></td><td>5,000,000원</td><td class="muted">05-20</td><td>박정화</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="q" id="q4">
+    <div class="qtitle"><span class="qnum">4</span><h2>구 <code>/policyfund/settlements</code> 화면 — 지금 지울까요?</h2></div>
+    <p class="qhint">이건 화면으로 보여드릴 게 없는, 순수 타이밍 결정이라 그대로 글로 여쭤봅니다.</p>
+    <div class="decision4">
+      새로고침하면 사라지는 <b>가짜 데이터</b>라 지금 당장 지워도 잃을 게 없습니다. 다만 ①②가 실제로 배포되기 전까지는 「그나마 입력 화면 흉내라도 있는」 유일한 화면이기도 합니다.
+      바로 지울지, ①②가 배포된 뒤에 지울지만 답해주시면 됩니다.
+    </div>
+  </section>
+
+</div>
+
+<div class="overlay" id="overlay" onclick="if(event.target===this)closeLedgerModal()">
+  <div class="modal">
+    <div class="modalhead">
+      <div>
+        <h2>원장에 기록하기</h2>
+        <p>㈜예시상사 — 소상공인 정책자금</p>
+      </div>
+      <button class="closex" onclick="closeLedgerModal()" aria-label="닫기">✕</button>
+    </div>
+
+    <div class="kindtoggle">
+      <button id="kindDeposit" class="active deposit" onclick="setKind('deposit')">계약금</button>
+      <button id="kindFee" class="fee" onclick="setKind('fee')">수수료</button>
+    </div>
+
+    <div id="feeHint" class="hintchip" style="display:none">
+      <span>예상 수수료 5,000,000원 = 실행액 50,000,000 × 10%</span>
+      <button onclick="fillFeeAmount()">적용</button>
+    </div>
+
+    <div class="field">
+      <label for="amt">금액</label>
+      <input id="amt" type="text" inputmode="numeric" value="1,000,000" />
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label for="recv">입금액(부분납 가능)</label>
+        <input id="recv" type="text" inputmode="numeric" value="1,000,000" />
+      </div>
+      <div class="field">
+        <label for="occ">발생일</label>
+        <input id="occ" type="date" value="2026-08-19" />
+      </div>
+    </div>
+    <div class="field">
+      <label for="paid">입금일</label>
+      <input id="paid" type="date" value="2026-08-19" />
+    </div>
+    <label class="checkline"><input type="checkbox" onchange="document.getElementById('paid').disabled=this.checked" /> 아직 입금 전이에요</label>
+    <div class="field">
+      <label for="memo">메모(선택)</label>
+      <textarea id="memo" rows="2" placeholder="예: 2회 분할 입금 중 1회차"></textarea>
+    </div>
+
+    <div class="modalfoot">
+      <button class="btnghost" onclick="closeLedgerModal()">취소</button>
+      <button class="btnprimary" onclick="closeLedgerModal()">원장에 저장</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function openLedgerModal(){ document.getElementById('overlay').classList.add('open'); }
+  function closeLedgerModal(){ document.getElementById('overlay').classList.remove('open'); }
+  function setKind(kind){
+    var dep=document.getElementById('kindDeposit'), fee=document.getElementById('kindFee'), hint=document.getElementById('feeHint');
+    if(kind==='deposit'){ dep.classList.add('active'); fee.classList.remove('active'); hint.style.display='none'; }
+    else { fee.classList.add('active'); dep.classList.remove('active'); hint.style.display='flex'; }
+  }
+  function fillFeeAmount(){
+    document.getElementById('amt').value='5,000,000';
+    document.getElementById('recv').value='5,000,000';
+  }
+  function showYear(btn, id){
+    document.querySelectorAll('.yeartabs button').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    document.querySelectorAll('.yearpanel').forEach(function(p){ p.classList.remove('active'); });
+    document.getElementById(id).classList.add('active');
+  }
+</script>
