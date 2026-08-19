@@ -494,7 +494,7 @@
               <div><dt>수수료 합계(예상)</dt><dd>5,000,000원</dd></div>
               <div><dt>미수금</dt><dd>0원</dd></div>
             </dl>
-            <p class="vatnote">※ 위 숫자는 전부 공급가(부가세 제외) 기준이에요 — 부가세 포함액이 있어도 매출 계산엔 안 들어가요.</p>
+            <p class="vatnote">※ 「금액(공급가)」만 매출로 인식해요. 「입금액」은 통장에 실제로 들어온 전액(부가세 포함이면 포함된 채로) 그대로 기록하고, 미수금은 부가세가 있으면 청구총액(공급가+부가세) 기준으로, 없으면 공급가 기준으로 계산해요.</p>
 
             <table class="ledger">
               <thead><tr><th>구분</th><th>발생일</th><th>금액(공급가)</th><th>입금액</th><th>미수금</th><th>입금일</th></tr></thead>
@@ -510,9 +510,9 @@
                 <tr>
                   <td><span class="kindtag fee">수수료</span></td>
                   <td class="muted">2026-05-20</td>
-                  <td>5,000,000원<span class="vatbadge">VAT포함 5,500,000원 입금 · <b>계산서 발행✓</b></span></td>
                   <td>5,000,000원</td>
-                  <td>0원</td>
+                  <td>5,500,000원<span class="vatbadge">VAT포함 전액 입금 · <b>계산서 발행✓</b></span></td>
+                  <td>0원<span class="vatbadge">청구총액 5,500,000 − 입금 5,500,000</span></td>
                   <td>2026-05-20</td>
                 </tr>
               </tbody>
@@ -761,7 +761,7 @@
 
     <div class="row2">
       <div class="field">
-        <label for="recv">입금액(부분납 가능)</label>
+        <label for="recv">입금액(실제 받은 전액)</label>
         <input id="recv" type="text" inputmode="numeric" value="1,000,000" />
       </div>
       <div class="field">
@@ -769,6 +769,8 @@
         <input id="occ" type="date" value="2026-08-19" />
       </div>
     </div>
+    <p class="vatnote" style="margin:-9px 0 14px">부가세가 포함됐으면 <b style="color:var(--mw-fg)">받은 전체 금액을 그대로</b> 적어요 — 매출은 위 금액(공급가)만으로 계산되니 여기 숫자는 매출에 영향 없어요.</p>
+
     <div class="field">
       <label for="paid">입금일</label>
       <input id="paid" type="date" value="2026-08-19" />
@@ -779,11 +781,7 @@
     <div id="vatBlock" style="display:none">
       <div class="hintchip" style="background:var(--mw-tint-blue); color:var(--mw-record)">
         <span>부가세 포함 예상액 1,100,000원 = 공급가 × 1.1</span>
-        <button style="background:var(--mw-record)" onclick="fillVatAmount()">적용</button>
-      </div>
-      <div class="field">
-        <label for="vatAmt">부가세포함 총 입금액</label>
-        <input id="vatAmt" type="text" inputmode="numeric" value="1,100,000" />
+        <button style="background:var(--mw-record)" onclick="fillVatAmount()">입금액에 채우기</button>
       </div>
       <label class="checkline"><input type="checkbox" id="taxInvoice" /> 세금계산서 발행함</label>
     </div>
@@ -822,7 +820,7 @@
     document.getElementById('vatBlock').style.display = checked ? 'block' : 'none';
   }
   function fillVatAmount(){
-    document.getElementById('vatAmt').value='1,100,000';
+    document.getElementById('recv').value='1,100,000';
   }
   function showYear(btn, id){
     document.querySelectorAll('.yeartabs button').forEach(function(b){ b.classList.remove('active'); });
