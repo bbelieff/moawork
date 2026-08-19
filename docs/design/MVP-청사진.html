@@ -1,0 +1,356 @@
+<title>MVP 청사진</title>
+
+<style>
+:root {
+  --violet:#6B5CFF; --blue:#3478F6; --teal:#18A999; --coral:#F26B5E;
+  --ok:#16A34A; --warn:#D97706; --bad:#DC2626;
+  --ground:#F6F6FB; --panel:#FFFFFF; --panel-2:#FBFAFE;
+  --line:#E4E3EF; --line-soft:#EFEEF7;
+  --ink:#1A1A26; --ink-2:#4A4960; --ink-3:#7C7B93; --ink-4:#A9A8BC;
+  --shadow:0 1px 2px rgba(26,26,38,.05), 0 8px 24px -12px rgba(26,26,38,.14);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --violet:#8E82FF; --blue:#5B94FF; --teal:#2FC4B2; --coral:#FF8073;
+    --ok:#34C759; --warn:#F0A030; --bad:#FF5A52;
+    --ground:#111119; --panel:#1A1A24; --panel-2:#20202C;
+    --line:#2E2E3D; --line-soft:#262633;
+    --ink:#EFEFF6; --ink-2:#B9B8CC; --ink-3:#87869C; --ink-4:#5E5D72;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"] {
+  --violet:#8E82FF; --blue:#5B94FF; --teal:#2FC4B2; --coral:#FF8073;
+  --ok:#34C759; --warn:#F0A030; --bad:#FF5A52;
+  --ground:#111119; --panel:#1A1A24; --panel-2:#20202C;
+  --line:#2E2E3D; --line-soft:#262633;
+  --ink:#EFEFF6; --ink-2:#B9B8CC; --ink-3:#87869C; --ink-4:#5E5D72;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+}
+:root {
+  --sans: Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic",
+          "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  --mono: "SF Mono", "Cascadia Mono", Consolas, "D2Coding", monospace;
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans);
+       font-size:15px; line-height:1.65; -webkit-font-smoothing:antialiased; }
+.wrap { max-width:980px; margin:0 auto; padding:32px 20px 90px; }
+
+h1 { font-size:28px; font-weight:800; letter-spacing:-.025em; margin:0 0 6px; }
+.deck { color:var(--ink-3); font-size:14px; margin:0 0 22px; }
+
+.hero { padding:22px 24px; border-radius:16px; background:var(--panel);
+        border:1px solid var(--line); box-shadow:var(--shadow); margin-bottom:10px; }
+.hero .row { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
+.hero .pct0, .hero .pct100 { font-family:var(--mono); font-weight:800; letter-spacing:-.03em; }
+.hero .pct0 { font-size:26px; color:var(--ink-4); }
+.hero .pct100 { font-size:44px; color:var(--violet); }
+.hero .arrow { font-size:20px; color:var(--ink-4); }
+.hero .claim { margin-top:12px; font-size:16.5px; font-weight:650; line-height:1.55; }
+.hero .sub { margin-top:6px; font-size:13px; color:var(--ink-3); line-height:1.6; }
+
+.spine { display:flex; gap:6px; margin:22px 0 4px; }
+.spine a { flex:1; text-decoration:none; }
+.spine .seg { height:8px; border-radius:5px; background:var(--line-soft); overflow:hidden; }
+.spine .seg i { display:block; height:100%; background:var(--ok); }
+.spine .lab { font-size:11.5px; color:var(--ink-3); margin-top:6px; text-align:center; font-weight:600; }
+
+nav.toc { display:flex; flex-wrap:wrap; gap:8px; margin:26px 0 6px; }
+nav.toc a { font-size:12.5px; font-weight:600; text-decoration:none; color:var(--ink-2);
+            padding:6px 12px; border-radius:8px; background:var(--panel); border:1px solid var(--line); }
+nav.toc a:hover { border-color:var(--violet); color:var(--violet); }
+
+section.stage { margin:44px 0 0; scroll-margin-top:20px; }
+.stagehead { display:flex; align-items:center; gap:14px; margin-bottom:6px; }
+.stagehead .num { width:34px; height:34px; border-radius:10px; display:flex; align-items:center;
+                   justify-content:center; font-weight:800; font-size:15px; color:#fff; flex:none; }
+.stagehead h2 { margin:0; font-size:20px; font-weight:800; letter-spacing:-.02em; }
+.stagehead .frac { margin-left:auto; font-family:var(--mono); font-size:13px; font-weight:700; color:var(--ink-3); }
+.stageintro { font-size:13.5px; color:var(--ink-3); margin:0 0 16px; padding-left:48px; line-height:1.65; }
+
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+@media (max-width:680px) { .grid { grid-template-columns:1fr; } }
+
+.card { border-radius:14px; padding:17px 19px; box-shadow:var(--shadow); border:1px solid var(--line); background:var(--panel); }
+.card.done { border-left:4px solid var(--ok); }
+.card.todo { border-left:4px solid var(--bad); background:color-mix(in srgb, var(--bad) 4%, var(--panel)); }
+.card .top { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+.card .badge { font-size:10.5px; font-weight:750; letter-spacing:.04em; padding:2px 8px; border-radius:5px; }
+.card.done .badge { color:var(--ok); background:color-mix(in srgb, var(--ok) 14%, transparent); }
+.card.todo .badge { color:var(--bad); background:color-mix(in srgb, var(--bad) 14%, transparent); }
+.card .name { font-size:14.5px; font-weight:700; letter-spacing:-.008em; }
+.card .issue { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--ink-4); }
+.card .ba { display:grid; grid-template-columns:20px 1fr; gap:8px; margin-top:11px; }
+.card .ba .m { font-size:12px; font-weight:800; line-height:1.6; }
+.card .ba.b0 .m { color:var(--ink-4); }
+.card .ba.b1 .m { color:var(--ok); }
+.card .ba .t { font-size:12.5px; color:var(--ink-2); line-height:1.55; }
+.card .ba .l { font-size:11px; color:var(--ink-4); margin-top:8px; padding-top:8px; border-top:1px dashed var(--line-soft); }
+.card code { font-family:var(--mono); font-size:10.5px; background:var(--panel-2); padding:1px 4px; border-radius:4px; border:1px solid var(--line); }
+
+.crosscut { margin:20px 0; padding:18px 20px; border-radius:14px;
+            background:color-mix(in srgb, var(--warn) 8%, var(--panel)); border:1.5px solid color-mix(in srgb, var(--warn) 35%, var(--line)); }
+.crosscut .h { font-size:11px; font-weight:750; letter-spacing:.06em; text-transform:uppercase; color:var(--warn); margin-bottom:8px; }
+.crosscut p { margin:0; font-size:13.5px; color:var(--ink-2); line-height:1.7; }
+
+.gatesgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:11px; margin-top:14px; }
+.gate { padding:13px 15px; border-radius:11px; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); }
+.gate .id { font-family:var(--mono); font-size:11.5px; color:var(--violet); font-weight:700; }
+.gate .t { font-size:12.5px; color:var(--ink-2); margin-top:4px; line-height:1.5; }
+.gate .st { display:inline-block; margin-top:8px; font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:5px; }
+.gate .st.fixed { color:var(--ok); background:color-mix(in srgb, var(--ok) 14%, transparent); }
+.gate .st.open { color:var(--bad); background:color-mix(in srgb, var(--bad) 14%, transparent); }
+
+.fork { padding:19px 21px; border-radius:14px; background:var(--panel); border:1.5px solid color-mix(in srgb, var(--violet) 34%, var(--line)); box-shadow:var(--shadow); }
+.fork .h { font-size:11px; font-weight:750; letter-spacing:.06em; text-transform:uppercase; color:var(--violet); margin-bottom:8px; }
+.fork p { margin:0 0 10px; font-size:13.5px; color:var(--ink-2); line-height:1.7; }
+.fork p:last-child { margin-bottom:0; }
+
+.story { padding:22px 24px; border-radius:16px; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); }
+.story ol { margin:0; padding-left:22px; }
+.story li { font-size:14px; color:var(--ink-2); line-height:1.85; margin-bottom:6px; }
+.story li b { color:var(--ink); }
+.story li .why { display:block; font-size:12px; color:var(--ink-4); margin-top:1px; }
+
+footer { margin-top:48px; padding-top:18px; border-top:1px solid var(--line);
+         font-size:12px; color:var(--ink-4); line-height:1.75; }
+</style>
+
+<div class="wrap">
+
+<h1>MVP 청사진</h1>
+<p class="deck">절차 맵 17칸이 0%에서 100%가 되면 무엇이 새로 되는가 — 이슈·로직 단위로 전부</p>
+
+<div class="hero">
+  <div class="row">
+    <span class="pct0">0%</span><span class="arrow">→</span><span class="pct100">100%</span>
+  </div>
+  <div class="claim">고객사를 엑셀(CSV)로 등록하면, 실무 진행을 거쳐 수금까지 한 번도 끊기지 않고 이어진다.</div>
+  <div class="sub">지금(2026-08-19 R1 기준) 16/17 칸이 켜져 있다. 이 문서는 «각 칸이 켜지기 전엔 무엇이 안 됐고,
+    켜진 뒤엔 정확히 무엇이 되는지» 를 전부 적은 것이다 — 검토·교정용이다.</div>
+</div>
+
+<div class="spine">
+  <a href="#s1"><div class="seg"><i style="width:100%"></i></div><div class="lab">① 등록 4/4</div></a>
+  <a href="#s2"><div class="seg"><i style="width:75%"></i></div><div class="lab">② 진입 3/4</div></a>
+  <a href="#s3"><div class="seg"><i style="width:100%"></i></div><div class="lab">③ 진행 5/5</div></a>
+  <a href="#s4"><div class="seg"><i style="width:100%"></i></div><div class="lab">④ 수금 4/4</div></a>
+</div>
+
+<nav class="toc">
+  <a href="#cross">조직 전제조건</a>
+  <a href="#gates">품질 게이트</a>
+  <a href="#fork">미정 갈림길</a>
+  <a href="#story">100%의 하루</a>
+</nav>
+
+<!-- ① -->
+<section class="stage" id="s1">
+  <div class="stagehead">
+    <span class="num" style="background:var(--violet)">①</span>
+    <h2>엑셀로 고객사 일괄 등록</h2>
+    <span class="frac" style="color:var(--ok)">4 / 4 완료</span>
+  </div>
+  <p class="stageintro">사용자가 엑셀에서 뽑은 고객사 목록을 한 번에 넣는 입구. 오늘 전부 켜졌다.</p>
+  <div class="grid">
+    <div class="card done">
+      <div class="top"><span class="badge">완료</span><span class="name">파일 파서</span><span class="issue">기존</span></div>
+      <div class="ba b0"><span class="m">0%</span><span class="t">CSV 를 읽는 코드가 <code>/platform/demo</code>(플랫폼 관리자 전용) 안에 갇혀 있었다.</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">그 파서(<code>CsvImportDialog.tsx</code>)를 그대로 재사용 — 새로 안 만들었다.</span></div>
+    </div>
+    <div class="card done">
+      <div class="top"><span class="badge">완료</span><span class="name">일반 사용자 도달 화면</span><span class="issue">BBE-236*</span></div>
+      <div class="ba b0"><span class="m">0%</span><span class="t">일반 owner/admin 은 CSV 업로드 화면에 갈 방법이 없었다.</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t"><code>/companies</code> 에 「CSV 가져오기」 버튼이 생겼다. 눌러서 파일을 고르면 미리보기가 뜬다.</span></div>
+      <div class="l"><code>companies/page.tsx</code> · <code>CompanyCsvImport.tsx</code></div>
+    </div>
+    <div class="card done">
+      <div class="top"><span class="badge">완료</span><span class="name">일괄 쓰기 경로</span><span class="issue">BBE-236*</span></div>
+      <div class="ba b0"><span class="m">0%</span><span class="t">일반 사용자가 부를 수 있는 「여러 건 한꺼번에 등록」 서버 로직이 없었다(있던 것은 관리자 전용 RPC).</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">서버 액션이 행 수만큼 <code>createCompany</code> 를 호출 — RLS·담당범위 규칙을 그대로 통과한다.</span></div>
+      <div class="l"><code>companies/actions.ts</code></div>
+    </div>
+    <div class="card done">
+      <div class="top"><span class="badge">완료</span><span class="name">재시도 멱등</span><span class="issue">BBE-236*</span></div>
+      <div class="ba b0"><span class="m">0%</span><span class="t">네트워크가 끊겨 다시 누르면 <b>같은 행이 두 번 들어갈 수 있었다.</b></span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">같은 요청 ID 를 두 번 보내면 DB 가 <code>23505</code> 로 자동 거절한다 — 앱이 아니라 DB 가 막는다.</span></div>
+      <div class="l"><code>100_bbe236_company_csv_import.sql</code> · <code>company_import_requests</code> PK</div>
+    </div>
+  </div>
+</section>
+
+<!-- ② -->
+<section class="stage" id="s2">
+  <div class="stagehead">
+    <span class="num" style="background:var(--blue)">②</span>
+    <h2>실무 보드에 «행» 이 생김</h2>
+    <span class="frac" style="color:var(--warn)">3 / 4</span>
+  </div>
+  <p class="stageintro">고객사 정보가 «목록」에만 남지 않고 «작업할 수 있는 화면(보드)」에 나타나는 단계.</p>
+  <div class="grid">
+    <div class="card done">
+      <div class="top"><span class="badge">완료</span><span class="name">고객사 생성 → 운영 DB</span><span class="issue">기존</span></div>
+      <div class="ba b0"><span class="m">0%</span><span class="t">—</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">고객사를 만들면 Supabase 의 <code>companies</code> 테이블에 실제로 쓰인다(로컬 메모리가 아니다).</span></div>
+      <div class="l"><code>supabaseCrmSource.ts:177</code></div>
+    </div>
+    <div class="card done">
+      <div class="top"><span class="badge">완료</span><span class="name">딜 생성</span><span class="issue">기존</span></div>
+      <div class="ba b0"><span class="m">0%</span><span class="t">—</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">고객사에 딸린 거래(딜)가 같은 방식으로 Supabase 에 생긴다.</span></div>
+      <div class="l"><code>supabaseCrmSource.ts:248</code></div>
+    </div>
+    <div class="card done">
+      <div class="top"><span class="badge">완료</span><span class="name">신규리드 → 보드 투영</span><span class="issue">087</span></div>
+      <div class="ba b0"><span class="m">0%</span><span class="t">—</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">신규리드 화면에서 만든 고객은 그 즉시 보드에 «행」으로 보인다. 같은 딜이 두 번 안 생긴다(유니크 제약).</span></div>
+      <div class="l"><code>087_new_lead_canonical.sql:205-217</code></div>
+    </div>
+    <div class="card todo">
+      <div class="top"><span class="badge">남음</span><span class="name">그 외 입구도 보드로</span><span class="issue">BBE-171</span></div>
+      <div class="ba b0"><span class="m">0%</span><span class="t"><b>지금 여기다.</b> CSV 로 넣었거나 「빠른 만들기」로 넣은 고객사는 <code>companies</code> 테이블에만 남는다 —
+        <b>어느 보드에도 행이 안 생긴다.</b> 사용자가 만든 고객이 화면에서 실종된 것처럼 보인다.</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">CSV·빠른만들기로 만든 고객도 신규리드와 같은 방식으로 즉시 보드 행이 생긴다 — <b>지금 이 절차 맵에서 처음 끊기는 곳이다.</b></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ③ -->
+<section class="stage" id="s3">
+  <div class="stagehead">
+    <span class="num" style="background:var(--teal)">③</span>
+    <h2>실무 진행</h2>
+    <span class="frac" style="color:var(--ok)">5 / 5 완료</span>
+  </div>
+  <p class="stageintro">보드에 올라온 뒤 실제로 일을 진행하는 단계 — 전부 이미 운영에서 동작한다.</p>
+  <div class="grid">
+    <div class="card done">
+      <div class="top"><span class="badge">완료</span><span class="name">보드 엔진이 운영 backed</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">보드 데이터가 서버 프로세스 메모리가 아니라 Supabase 에 남는다 — 재배포해도 안 사라진다.</span></div>
+      <div class="l"><code>boardsRepo.ts:396-406</code></div>
+    </div>
+    <div class="card done">
+      <div class="top"><span class="badge">완료</span><span class="name">셀 값 저장</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">보드 안 아무 칸이나 클릭해서 값을 입력하면 <code>item_values</code> 에 즉시 저장된다.</span></div>
+      <div class="l"><code>boardsRepo.ts:121</code></div>
+    </div>
+    <div class="card done">
+      <div class="top"><span class="badge">완료</span><span class="name">항목 추가·수정</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">「+ 항목」으로 행을 늘리거나 기존 행을 고칠 수 있다.</span></div>
+      <div class="l"><code>boards/actions.ts:301,331</code></div>
+    </div>
+    <div class="card done">
+      <div class="top"><span class="badge">완료</span><span class="name">단계 이동</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">「상담 전 → 계약서 요청 → …」처럼 단계를 옮기면 <code>deals.stage_id</code> 가 바뀐다.</span></div>
+      <div class="l"><code>069:95,150</code></div>
+    </div>
+    <div class="card done">
+      <div class="top"><span class="badge">완료</span><span class="name">기본 탭 프로비저닝</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">새 워크스페이스에 신규리드·컨택·업무·공지 4탭이 자동으로 준비된다(<b>단, 새 워크스페이스에서만</b> — 아래 «조직 전제조건」 참조).</span></div>
+      <div class="l"><code>workspace-entry/bootstrap.ts:116</code></div>
+    </div>
+  </div>
+</section>
+
+<!-- ④ -->
+<section class="stage" id="s4">
+  <div class="stagehead">
+    <span class="num" style="background:var(--coral)">④</span>
+    <h2>수금</h2>
+    <span class="frac" style="color:var(--ok)">4 / 4 완료</span>
+  </div>
+  <p class="stageintro">여정의 종점 — 계약금·수수료가 실제로 들어왔는지 기록하고 집계하는 단계. 오늘 마지막 칸이 켜졌다.</p>
+  <div class="grid">
+    <div class="card done">
+      <div class="top"><span class="badge">완료</span><span class="name">수금 컬럼 5종</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">수수료(%) · 수수료(원) · 수수료 입금일 · 계약금 · 계약금 입금일 — 실무 보드에 이미 있다.</span></div>
+      <div class="l"><code>contract-work.ts:91-99</code></div>
+    </div>
+    <div class="card done">
+      <div class="top"><span class="badge">완료</span><span class="name">수수료 자동계산</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">수수료%를 넣으면 <b>사람이 계산 안 해도</b> 수수료(원)이 자동으로 채워진다. 손으로 고칠 수 없다(오답 방지).</span></div>
+      <div class="l"><code>062:196,283,89</code></div>
+    </div>
+    <div class="card done">
+      <div class="top"><span class="badge">완료</span><span class="name">이번달 실현액 집계</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">입금일이 이번 달인 것만 골라 홈 화면 「이번달 수납」 KPI 에 정확히 잡힌다.</span></div>
+      <div class="l"><code>098:145-184</code></div>
+    </div>
+    <div class="card done">
+      <div class="top"><span class="badge">오늘 완료</span><span class="name">★ 계약업체 실무 보드에 행이 생김</span><span class="issue">BBE-235</span></div>
+      <div class="ba b0"><span class="m">0%</span><span class="t"><b>이게 오늘 아침까지 여정 전체의 급소였다.</b> 「업무관리 이동」을 눌러도 딜의 상태만 바뀌고,
+        수금 컬럼이 있는 보드엔 <b>행이 안 생겼다.</b> 부품(컬럼·계산·집계)은 다 있는데 값을 넣을 자리가 없었다.</span></div>
+      <div class="ba b1"><span class="m">100%</span><span class="t">「업무관리 이동」을 누르면 그 즉시 계약업체 실무 보드에 그 딜의 행이 생긴다.
+        이제 그 자리에서 수수료·입금일을 적으면 <b>홈 화면까지 한 번에 이어진다.</b></span></div>
+      <div class="l"><code>099_bbe235_work_board_projection.sql:94</code> — 트리거</div>
+    </div>
+  </div>
+</section>
+
+<!-- 조직 전제조건 -->
+<div class="crosscut" id="cross">
+  <div class="h">⚠ 조직 전제조건 — 절차 맵과 별개로 걸리는 것</div>
+  <p>
+    위 17칸이 전부 100%여도, <b>실제 조직에 4개 기본 탭(신규리드·컨택관리·계약업체 실무·공지)이
+    설치돼 있어야</b> ②③④가 «보인다». 오늘 실측 확인 — 서울경영지원센터(첫 고객) 워크스페이스에는
+    <b>신규리드 1탭뿐이다.</b> 나머지 3탭을 채우는 진입점이 코드에 없다(<b>BBE-236</b>, 새로 발견·개설).
+    이건 절차 맵의 18번째 칸이 아니라 <b>모든 칸이 「그 조직에서 실제로 작동하기 위한」 전제조건</b>이다 —
+    이게 안 풀리면 17/17 이어도 이 고객은 여전히 아무것도 못 본다.
+  </p>
+</div>
+
+<!-- 품질 게이트 -->
+<section id="gates">
+  <h2 style="margin-bottom:6px">품질 게이트 — 여정과 별개로 지켜야 할 것</h2>
+  <p class="stageintro" style="padding-left:0">이 항목들은 «새 기능」이 아니다. 여정이 쌓은 값을 지키는 안전장치다 — 하나라도 뚫리면 위 17칸이 무의미해진다.</p>
+  <div class="gatesgrid">
+    <div class="gate"><div class="id">BBE-196</div><div class="t">다른 보드 컬럼이 삭제될 수 있었다</div><span class="st fixed">오늘 수정됨</span></div>
+    <div class="gate"><div class="id">BBE-191</div><div class="t">커스텀필드 정의 삭제 시 값 영구 소실</div><span class="st open">미해결</span></div>
+    <div class="gate"><div class="id">BBE-221</div><div class="t">컬럼을 같은 key 로 재생성하면 지운 값이 되살아남</div><span class="st open">미해결</span></div>
+    <div class="gate"><div class="id">BBE-195</div><div class="t">그룹 컬럼 배치가 서버 메모리에만 있음</div><span class="st open">미해결</span></div>
+    <div class="gate"><div class="id">BBE-129</div><div class="t">새 워크스페이스 «빈 상태» 실증(읽기 전용 감사)</div><span class="st open">미착수</span></div>
+    <div class="gate"><div class="id">BBE-182</div><div class="t">여섯 탭 목업 대조 QA</div><span class="st open">미착수</span></div>
+    <div class="gate"><div class="id">BBE-222·223·226</div><div class="t">성능 예산(총괄 결정: 느리면 못 나감)</div><span class="st open">미해결</span></div>
+  </div>
+</section>
+
+<!-- 갈림길 -->
+<section id="fork">
+  <h2 style="margin-bottom:12px">미정 갈림길</h2>
+  <div class="fork">
+    <div class="h">BBE-231 · settlements — 쓴다 vs 안 쓴다</div>
+    <p><b>결정 전이라 절차 맵에 안 넣었다.</b> 「정산 계산기」 화면이 따로 있는데 저장이 안 된다(서버 메모리).
+      완성할지 걷어낼지에 따라 작업 방향이 정반대다 — 별도 비교 문서 참고.</p>
+    <p style="font-size:12px;color:var(--ink-4)">자세한 비교: <code>settlements-갈림길.html</code> (같은 폴더)</p>
+  </div>
+</section>
+
+<!-- 100%의 하루 -->
+<section id="story">
+  <h2 style="margin-bottom:12px">100%가 되면 — 서울경영지원센터 실무자의 하루</h2>
+  <div class="story">
+    <ol>
+      <li><b>먼데이에서 내려받은 엑셀을 <code>/companies</code>에 올린다.</b>
+        <span class="why">「30건 중 28건 들어감, 2건은 전화번호 형식이 이상해 건너뜀」이 미리 보인다.</span></li>
+      <li><b>가져온 고객사가 신규리드 보드에 바로 줄로 뜬다.</b>
+        <span class="why">엑셀 파일과 화면을 오가지 않아도 된다.</span></li>
+      <li><b>상담을 진행하며 상태를 바꾼다 — 상담 전 → 1차 부재 → 상담 완료.</b>
+        <span class="why">셀 하나 클릭해서 바꾸면 즉시 저장된다.</span></li>
+      <li><b>계약이 되면 「업무관리 이동」을 누른다.</b>
+        <span class="why">계약업체 실무 보드에 그 고객의 행이 자동으로 생긴다 — 오늘 이전엔 여기서 끊겼다.</span></li>
+      <li><b>그 행에서 계약금·수수료%·입금일을 적는다.</b>
+        <span class="why">수수료(원)은 손으로 계산 안 해도 자동으로 나온다.</span></li>
+      <li><b>홈 화면을 연다 — 「이번달 수납」 숫자에 방금 적은 금액이 잡혀 있다.</b>
+        <span class="why">엑셀 등록부터 여기까지, 화면을 벗어나지 않고 끝났다.</span></li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+  근거 — 이 문서의 모든 칸은 <code>tools/board/v7.artifact.html</code> 의 <code>LAUNCH.criteria</code> 와
+  1:1 대응한다(같은 이름·같은 상태). 어긋나면 어느 한쪽이 낡은 것이다.
+  체크포인트 상태·파일 좌표는 2026-08-19 R1 라운드 실측 기준.
+</footer>
+
+</div>
