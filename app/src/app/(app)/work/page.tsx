@@ -1,6 +1,5 @@
 import { applyAs, getSession } from "@/lib/auth/session";
-import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
-import { resolveExistingContractWorkBoard } from "@/lib/work/entry";
+import { repairContractWorkBoardOnEntry } from "@/lib/work/entry";
 import { createClient } from "@/lib/supabase/server";
 import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { WorkManagementSource, WorkManagementUnavailableError } from "@/lib/repo/supabase/workManagementSource";
@@ -37,15 +36,18 @@ export default async function ContractWorkBoardPage({
   // board lookup and the legacy BBE-29 fallback. Production must never cross
   // the environment-sensitive LocalBoardsRepo factory boundary here.
   const client = await createClient();
-  const result = await resolveExistingContractWorkBoard(ctx, new SupabaseBoardsRepo(client));
-  if (result.kind === "conflict") {
+  const result = await repairContractWorkBoardOnEntry(ctx, client);
+  if (result.kind === "conflict" || result.kind === "permission") {
+    const permission = result.kind === "permission";
     return (
       <section className="rounded-xl border border-mw-line bg-mw-card p-5" aria-labelledby="work-entry-title">
         <h1 id="work-entry-title" className="text-lg font-semibold text-mw-fg">
-          계약업체 실무 보드를 하나로 확인하지 못했습니다
+          {permission ? "계약업체 실무 보드 복구 권한이 없습니다" : "계약업체 실무 보드를 하나로 확인하지 못했습니다"}
         </h1>
         <p className="mt-2 text-sm text-mw-sub">
-          회사 관리자에게 보드 구성을 확인해 달라고 요청해 주세요.
+          {permission
+            ? "활성 owner 또는 admin에게 이 워크스페이스의 기본 보드 복구를 요청해 주세요."
+            : "회사 관리자에게 보드 구성을 확인해 달라고 요청해 주세요."}
         </p>
       </section>
     );

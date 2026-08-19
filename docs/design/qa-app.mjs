@@ -113,7 +113,7 @@ export function loadAppContract({ defaultTabsDir = DEFAULT_TABS_DIR, appTabsFile
   const defaultTabsPresent = fs.existsSync(defaultTabsDir);
   if (defaultTabsPresent) {
     const files = fs.readdirSync(defaultTabsDir)
-      .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts") && !["index.ts", "install.ts", "types.ts"].includes(name));
+      .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts") && !["index.ts", "install.ts", "types.ts", "repair-on-entry.ts"].includes(name));
     if (files.length === 0) throw new Error("제품 기본 탭 정본 형식 오류: 정의 파일이 없습니다");
     for (const file of files) {
       const exports = loadTypeScriptModule(path.join(defaultTabsDir, file));
