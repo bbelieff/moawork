@@ -186,6 +186,37 @@
   .vatbadge{display:block; margin-top:3px; font-size:10.5px; color:var(--mw-sub)}
   .vatbadge b{color:var(--mw-success); font-weight:800}
 
+  /* ---- 구 /policyfund/settlements 재현(다른 스타일계 — 실제로 다른 톤을 그대로 씀) ---- */
+  .oldscreen{ --oc-card:#fff; --oc-border:#d4d4d8; --oc-border2:#e4e4e7; --oc-fg:#18181b; --oc-sub:#71717a; --oc-hint:#a1a1aa; --oc-btnbg:#18181b; --oc-btnfg:#fff; --oc-amber:#d97706; }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .oldscreen{ --oc-card:#18181b; --oc-border:#52525b; --oc-border2:#3f3f46; --oc-fg:#fafafa; --oc-sub:#a1a1aa; --oc-hint:#a1a1aa; --oc-btnbg:#f4f4f5; --oc-btnfg:#18181b; --oc-amber:#f59e0b; } }
+  :root[data-theme="dark"] .oldscreen{ --oc-card:#18181b; --oc-border:#52525b; --oc-border2:#3f3f46; --oc-fg:#fafafa; --oc-sub:#a1a1aa; --oc-hint:#a1a1aa; --oc-btnbg:#f4f4f5; --oc-btnfg:#18181b; --oc-amber:#f59e0b; }
+  .oldscreen{ background:var(--oc-card); border-radius:12px; padding:22px 24px; color:var(--oc-fg) }
+  .oldscreen h3{margin:0 0 2px; font-size:19px; font-weight:700; letter-spacing:-.01em}
+  .oldscreen .ocsub{margin:0; font-size:13px; color:var(--oc-sub)}
+  .oldscreen .ocamber{margin:6px 0 0; font-size:11px; color:var(--oc-amber)}
+  .ocgrid{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:20px 0}
+  .ocfield{display:flex; flex-direction:column; gap:5px; font-size:13px}
+  .ocfield span.lbl{font-weight:600}
+  .ocfield input, .ocfield select{
+    border:1px solid var(--oc-border); border-radius:7px; padding:8px 10px; font:inherit; font-size:13.5px;
+    background:var(--oc-card); color:var(--oc-fg); font-variant-numeric:tabular-nums;
+  }
+  .ocfield span.hint{font-size:10.5px; color:var(--oc-hint)}
+  .ocbtn{border:0; border-radius:7px; background:var(--oc-btnbg); color:var(--oc-btnfg); font:inherit; font-size:13.5px; font-weight:600; padding:9px 17px; cursor:pointer}
+  .ocresulthead{font-size:13px; font-weight:600; margin:22px 0 8px}
+  .ocresulthead span{margin-left:8px; font-size:10.5px; font-weight:400; color:var(--oc-hint)}
+  .ocresults{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:11px}
+  .occell{display:flex; flex-direction:column; gap:5px; border:1px solid var(--oc-border2); border-radius:9px; padding:11px}
+  .occell .oclabel{font-size:11px; color:var(--oc-sub)}
+  .occell .ocvalue{font-size:16.5px; font-weight:700; font-variant-numeric:tabular-nums}
+  .occell .ochint{font-size:10px; color:var(--oc-hint)}
+  .ocreality{
+    margin-top:18px; border:1.5px dashed var(--mw-warning); border-radius:12px; padding:14px 16px;
+    background:var(--mw-tint-coral); color:var(--mw-body); font-size:13px;
+  }
+  .ocreality b{color:var(--mw-error)}
+  @media (max-width:640px){ .ocgrid, .ocresults{grid-template-columns:1fr 1fr} }
+
   @media (max-width:640px){
     .summary{grid-template-columns:repeat(2,minmax(0,1fr))}
     .row2{grid-template-columns:1fr}
@@ -204,6 +235,7 @@
       <a href="#q1">① 딜 상세 — 원장 섹션</a>
       <a href="#q2">② 입력 폼</a>
       <a href="#q3">③ 연도별 전체 원장</a>
+      <a href="#old">지금 있는 구 화면</a>
       <a href="#q4">④ 구 화면 정리 시점</a>
     </div>
   </div>
@@ -473,9 +505,48 @@
     </div>
   </section>
 
+  <section class="q" id="old">
+    <div class="qtitle"><h2>지금 있는 구 화면 — 코드 그대로 재현</h2></div>
+    <p class="qhint">「지금 지울까요?」라고 물었던 그 화면입니다. 상상이 아니라 <code>app/src/app/policyfund/settlements/page.tsx</code> · <code>SettlementForm.tsx</code>를 그대로 옮긴 겁니다 — 문구·필드·버튼 전부 실제 코드와 같습니다. (①③과 스타일이 다른 건 실수가 아니라, 실제로 다른 디자인 톤을 그대로 쓰고 있어서입니다.)</p>
+    <div class="routelabel">/policyfund/settlements — 지금 실제로 켜져 있는 화면</div>
+
+    <div class="screen">
+      <div class="screen-body oldscreen">
+        <h3>정산 계산</h3>
+        <p class="ocsub">실행액·수수료율 입력 → 수수료 · 총매출 · D+180 · D+365 산출. 진행상품 59종 · 진행기관 18종 (002_seed 프리셋)</p>
+        <p class="ocamber">파생값은 DB generated column 산출값입니다 — 화면에서 재계산하지 않습니다.</p>
+
+        <div class="ocgrid">
+          <label class="ocfield"><span class="lbl">실행액 (원)</span><input value="100000000" readonly/></label>
+          <label class="ocfield"><span class="lbl">수수료율 (%)</span><input value="3" readonly/><span class="hint">정수 퍼센트 (3 = 3%)</span></label>
+          <label class="ocfield"><span class="lbl">계약금 (원)</span><input value="500000" readonly/></label>
+          <label class="ocfield"><span class="lbl">수수료 입금일</span><input value="2026-08-19" readonly/><span class="hint">D+180 · D+365 기산일</span></label>
+          <label class="ocfield"><span class="lbl">진행상품</span><select><option>진행상품 선택</option></select></label>
+          <label class="ocfield"><span class="lbl">진행기관</span><select><option>진행기관 선택</option></select></label>
+        </div>
+
+        <button class="ocbtn" type="button">정산 계산</button>
+
+        <p class="ocresulthead">정산 결과<span>서버(DB generated column) 값 — 화면 재계산 없음</span></p>
+        <div class="ocresults">
+          <div class="occell"><span class="oclabel">수수료</span><span class="ocvalue">3,000,000원</span><span class="ochint">round(실행액 × % / 100)</span></div>
+          <div class="occell"><span class="oclabel">총매출</span><span class="ocvalue">3,500,000원</span><span class="ochint">계약금 + 수수료</span></div>
+          <div class="occell"><span class="oclabel">D+180</span><span class="ocvalue" style="font-size:13.5px">2027-02-15</span><span class="ochint">수수료입금일 + 180일</span></div>
+          <div class="occell"><span class="oclabel">D+365</span><span class="ocvalue" style="font-size:13.5px">2027-08-19</span><span class="ochint">수수료입금일 + 365일</span></div>
+        </div>
+
+        <div class="ocreality">
+          겉보기엔 멀쩡해 보이지만 <b>「정산 계산」을 눌러도 저장이 안 됩니다.</b> 서버로 보내는 곳(<code>getRepo()</code>)이
+          메모리(<code>LocalRepo</code>)라 새로고침하면 방금 계산한 결과가 그대로 사라집니다. 어떤 회사·딜과도 연결돼 있지 않아서
+          여기서 계산해도 ①③ 어느 원장에도 남지 않습니다 — 계산기 흉내만 내는 화면입니다.
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="q" id="q4">
     <div class="qtitle"><span class="qnum">4</span><h2>구 <code>/policyfund/settlements</code> 화면 — 지금 지울까요?</h2></div>
-    <p class="qhint">이건 화면으로 보여드릴 게 없는, 순수 타이밍 결정이라 그대로 글로 여쭤봅니다.</p>
+    <p class="qhint">실제 모습은 바로 위 <a href="#old">「지금 있는 구 화면」</a>에서 보셨습니다 — 여기서는 언제 지울지만 정하면 됩니다.</p>
     <div class="decision4">
       새로고침하면 사라지는 <b>가짜 데이터</b>라 지금 당장 지워도 잃을 게 없습니다. 다만 ①②가 실제로 배포되기 전까지는 「그나마 입력 화면 흉내라도 있는」 유일한 화면이기도 합니다.
       바로 지울지, ①②가 배포된 뒤에 지울지만 답해주시면 됩니다.
