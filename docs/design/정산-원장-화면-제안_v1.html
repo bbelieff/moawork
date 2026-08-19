@@ -172,6 +172,24 @@
   }
   .decision4 b{color:var(--mw-error)}
 
+  /* ---- 보드 행 + 원장 버튼 ---- */
+  .subroute{margin:0 0 8px 32px; font-size:11.5px; font-weight:800; color:var(--mw-flow-teal); text-transform:uppercase; letter-spacing:.03em}
+  .subroute.alt{color:var(--mw-sub); margin-top:26px}
+  table.boardrow{width:100%; border-collapse:collapse; font-size:12.5px; background:var(--mw-card); border-radius:12px; overflow:hidden}
+  table.boardrow th, table.boardrow td{padding:10px 11px; text-align:left; white-space:nowrap}
+  table.boardrow th{color:var(--mw-sub); font-size:11px; font-weight:700; border-bottom:1px solid var(--mw-line)}
+  table.boardrow td{border-top:1px solid var(--mw-line); font-variant-numeric:tabular-nums}
+  .ledgerbtn{
+    display:inline-flex; align-items:center; gap:5px; border:1.5px solid var(--mw-primary); cursor:pointer;
+    background:var(--mw-tint-blue); color:var(--mw-primary); border-radius:8px; padding:6px 11px; font:inherit; font-size:11.5px; font-weight:800;
+  }
+  .ledgerbtn:hover{filter:brightness(1.05)}
+  .ledgerbtn:focus-visible{outline:2.5px solid var(--mw-primary); outline-offset:1px}
+  .donebadge{
+    display:inline-flex; align-items:center; gap:5px; border-radius:999px; padding:5px 10px; margin-right:6px;
+    background:var(--mw-tint-teal); color:var(--mw-success); font-size:11px; font-weight:800; white-space:nowrap;
+  }
+
   /* ---- 전체 지도 ---- */
   .mapwrap{margin-left:32px; border:1px solid var(--mw-line); border-radius:16px; background:var(--mw-card); padding:18px 20px 14px}
   .mapwrap svg{width:100%; height:auto; display:block}
@@ -289,34 +307,29 @@
         <text x="225" y="223" text-anchor="middle" style="font-size:12px; font-weight:700; fill:var(--mw-fg)">회사 상세</text>
         <text x="225" y="237" text-anchor="middle" style="font-size:9.5px; fill:var(--mw-sub)">/companies/[id]</text>
 
-        <!-- 딜 상세 (강조) -->
-        <rect x="150" y="300" width="210" height="60" rx="12" style="fill:var(--mw-tint-teal); stroke:var(--mw-flow-teal); stroke-width:2"/>
-        <text x="255" y="325" text-anchor="middle" style="font-size:13.5px; font-weight:800; fill:var(--mw-fg)">딜 상세</text>
-        <text x="255" y="341" text-anchor="middle" style="font-size:9.5px; fill:var(--mw-sub)">/deals/[dealId]</text>
-        <text x="255" y="353" text-anchor="middle" style="font-size:9px; fill:var(--mw-sub)">정보 · 담당자 · 타임라인 · 서류…</text>
+        <!-- 딜 상세 (보조) -->
+        <rect x="150" y="300" width="210" height="60" rx="12" style="fill:var(--mw-bg); stroke:var(--mw-line); stroke-width:1.5"/>
+        <text x="255" y="322" text-anchor="middle" style="font-size:13px; font-weight:800; fill:var(--mw-fg)">딜 상세</text>
+        <text x="255" y="337" text-anchor="middle" style="font-size:9.5px; fill:var(--mw-sub)">/deals/[dealId]</text>
+        <text x="255" y="352" text-anchor="middle" style="font-size:9px; fill:var(--mw-sub)">여기도 같은 원장(보조 경로)</text>
 
-        <!-- ①② 배지 -->
-        <rect x="390" y="298" width="170" height="28" rx="8" style="fill:var(--mw-tint-blue); stroke:var(--mw-primary)"/>
-        <text x="475" y="317" text-anchor="middle" style="font-size:11.5px; font-weight:800; fill:var(--mw-primary)">① 회계 원장 섹션</text>
-        <rect x="390" y="334" width="170" height="28" rx="8" style="fill:var(--mw-tint-blue); stroke:var(--mw-primary)"/>
-        <text x="475" y="353" text-anchor="middle" style="font-size:11.5px; font-weight:800; fill:var(--mw-primary)">② 입력 팝업</text>
-        <path d="M475,326 L475,334" style="stroke:var(--mw-primary); stroke-width:2" marker-end="url(#arrowReal)"/>
-        <path d="M360,318 L390,312" style="stroke:var(--mw-primary); stroke-width:2; fill:none" marker-end="url(#arrowReal)"/>
+        <!-- 계약업체 실무 → 원장 버튼(주 진입점) -->
+        <rect x="410" y="300" width="200" height="56" rx="12" style="fill:var(--mw-tint-teal); stroke:var(--mw-flow-teal); stroke-width:2"/>
+        <text x="510" y="322" text-anchor="middle" style="font-size:13px; font-weight:800; fill:var(--mw-fg)">① 원장 버튼(주)</text>
+        <text x="510" y="337" text-anchor="middle" style="font-size:9.5px; fill:var(--mw-sub)">행마다 「📒 원장」 컬럼</text>
+        <text x="510" y="350" text-anchor="middle" style="font-size:9px; fill:var(--mw-sub)">item.deal_id 로 바로 조회</text>
+        <path d="M475,64 L500,300" style="stroke:var(--mw-flow-teal); stroke-width:2.5; fill:none" marker-end="url(#arrowReal)"/>
+        <text x="500" y="190" style="font-size:9.5px; font-weight:700; fill:var(--mw-flow-teal)">클릭 → 팝업</text>
 
         <!-- 회사 관리 → 회사 상세 → 딜 상세 -->
-        <path d="M225,156 L225,204" style="stroke:var(--mw-primary); stroke-width:2; fill:none" marker-end="url(#arrowReal)"/>
+        <path d="M225,156 L225,204" style="stroke:var(--mw-sub); stroke-width:1.5; fill:none" marker-end="url(#arrowReal)"/>
         <text x="235" y="184" style="font-size:9.5px; fill:var(--mw-sub)">클릭</text>
-        <path d="M225,248 L225,300" style="stroke:var(--mw-primary); stroke-width:2; fill:none" marker-end="url(#arrowReal)"/>
+        <path d="M225,248 L225,300" style="stroke:var(--mw-sub); stroke-width:1.5; fill:none" marker-end="url(#arrowReal)"/>
         <text x="235" y="278" style="font-size:9.5px; fill:var(--mw-sub)">딜 클릭</text>
 
         <!-- 대시보드 → 딜 상세 -->
-        <path d="M75,64 C75,190 130,190 150,318" style="stroke:var(--mw-primary); stroke-width:2; fill:none" marker-end="url(#arrowReal)"/>
+        <path d="M75,64 C75,190 130,190 150,318" style="stroke:var(--mw-sub); stroke-width:1.5; fill:none" marker-end="url(#arrowReal)"/>
         <text x="46" y="190" style="font-size:9.5px; fill:var(--mw-sub)">바로가기</text>
-
-        <!-- 계약업체 실무 → 딜 상세 : 링크 없음(gap) -->
-        <path d="M460,64 C420,180 330,230 300,300" style="stroke:var(--mw-warning); stroke-width:2; stroke-dasharray:6 5; fill:none" marker-end="url(#arrowGap)"/>
-        <text x="330" y="200" style="font-size:10px; font-weight:700; fill:var(--mw-warning)">지금은 링크 없음</text>
-        <text x="330" y="213" style="font-size:9px; fill:var(--mw-sub)">(별도 판단 필요)</text>
       </svg>
       <div class="maplegend">
         <span><i class="real"></i> 실제 있는 이동 경로</span>
@@ -326,8 +339,39 @@
   </section>
 
   <section class="q" id="q1">
-    <div class="qtitle"><span class="qnum">1</span><h2>딜 상세페이지 — 회계 원장 섹션</h2></div>
-    <p class="qhint">이미 만들어져 있던 <code>DealLedgerPanel</code>을 실제로 붙이면 이렇게 보입니다. 「정보 → 담당자」 다음, 「타임라인」 앞에 새 섹션으로 낍니다.</p>
+    <div class="qtitle"><span class="qnum">1</span><h2>원장이 나타나는 곳</h2></div>
+    <p class="qhint">B안으로 갑니다 — 계약업체 실무 아이템(자금건)이 <code>deal_id</code>로 같은 딜과 연결돼 있으니, 매일 보는 그 보드에서 바로 열립니다. 각 건이 끝나면(계약금·수수료 둘 다 입금 완료) 「수납종료」로 찍히는 것도 반영했습니다 — 아래 둘째 행이 그 상태입니다.</p>
+
+    <div class="subroute">주 진입점 — 계약업체 실무 보드, 컬럼 버튼</div>
+    <div class="routelabel">/work 안, 각 행의 「원장」 컬럼</div>
+    <div class="screen">
+      <div class="screen-body" style="padding:16px 16px 22px">
+        <table class="boardrow">
+          <thead><tr><th>업체</th><th>담당자</th><th>진행기관</th><th>진행 상품</th><th>실행액</th><th>원장</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>㈜새싹기업</td>
+              <td>김수현</td>
+              <td>재단_경기사이버보증</td>
+              <td>소공인특화자금</td>
+              <td>30,000,000원</td>
+              <td><button class="ledgerbtn" onclick="openLedgerView()">📒 원장</button></td>
+            </tr>
+            <tr>
+              <td>㈜예시상사</td>
+              <td>박정화</td>
+              <td>직접_미소</td>
+              <td>일반운전자금</td>
+              <td>50,000,000원</td>
+              <td><span class="donebadge">✅ 수납종료</span><button class="ledgerbtn" onclick="openLedgerView()">📒 원장</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="vatnote" style="margin-left:32px">「수납종료」는 계약금·수수료 둘 다 입금 완료(미수금 0)일 때 자동으로 붙는 상태예요 — 진행상항 컬럼에 실제로 저장할지, 화면에서만 계산해 보여줄지는 별도로 정해야 합니다.</p>
+
+    <div class="subroute alt">보조 — 회사 상세를 거쳐 딜 상세페이지로 와도 같은 원장</div>
     <div class="routelabel">/deals/[dealId] 안의 한 섹션</div>
 
     <div class="screen">
@@ -562,6 +606,52 @@
 
 </div>
 
+<div class="overlay" id="ledgerViewOverlay" onclick="if(event.target===this)closeLedgerView()">
+  <div class="modal" style="max-width:560px">
+    <div class="modalhead">
+      <div>
+        <h2>업무 원장</h2>
+        <p>㈜새싹기업 — 소공인특화자금 (재단_경기사이버보증)</p>
+      </div>
+      <button class="closex" onclick="closeLedgerView()" aria-label="닫기">✕</button>
+    </div>
+
+    <dl class="summary">
+      <div><dt>원장 합계</dt><dd>3,900,000원</dd></div>
+      <div><dt>수수료 원장 합계</dt><dd>2,700,000원</dd></div>
+      <div><dt>수수료 합계(예상)</dt><dd>3,000,000원</dd></div>
+      <div><dt>미수금</dt><dd>300,000원</dd></div>
+    </dl>
+    <p class="vatnote">※ 공급가 기준. 수수료가 예상보다 덜 들어와서 미수금이 남아 있어요 — 그래서 이 건은 아직 「수납종료」가 아니에요.</p>
+
+    <table class="ledger">
+      <thead><tr><th>구분</th><th>발생일</th><th>금액(공급가)</th><th>입금액</th><th>미수금</th><th>입금일</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="kindtag deposit">계약금</span></td>
+          <td class="muted">2026-06-02</td>
+          <td>1,200,000원</td>
+          <td>1,200,000원</td>
+          <td>0원</td>
+          <td>2026-06-02</td>
+        </tr>
+        <tr>
+          <td><span class="kindtag fee">수수료</span></td>
+          <td class="muted">2026-07-15</td>
+          <td>3,000,000원</td>
+          <td>2,700,000원</td>
+          <td>300,000원</td>
+          <td class="muted">아직 입금되지 않았어요</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="display:flex; justify-content:flex-end; margin-top:16px">
+      <button class="addbtn" onclick="closeLedgerView(); openLedgerModal()">+ 입력</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="overlay" onclick="if(event.target===this)closeLedgerModal()">
   <div class="modal">
     <div class="modalhead">
@@ -578,15 +668,14 @@
     </div>
 
     <div id="feeHint" class="hintchip" style="display:none">
-      <span>예상 수수료 5,000,000원 = 실행액 50,000,000 × 10%</span>
-      <button onclick="fillFeeAmount()">적용</button>
+      <span>📎 계약조건(자유기재) — 정액 500만원 · 집행일=잔금일 · 계약금 포함 차액 수령</span>
     </div>
 
     <div class="field">
       <label for="amt">금액(공급가)</label>
       <input id="amt" type="text" inputmode="numeric" value="1,000,000" />
     </div>
-    <p class="vatnote" style="margin:-9px 0 14px">매출·수수료 계산은 이 금액(공급가)만 기준으로 해요.</p>
+    <p class="vatnote" style="margin:-9px 0 14px">매출·수수료 계산은 이 금액(공급가)만 기준으로 해요. 위 계약조건은 참고용일 뿐 — %든 정액이든 계약조건에 자유롭게 적어두고, 금액은 매번 직접 입력해요(자동계산 안 함, 수금 방식이 바뀌어도 안전하게).</p>
 
     <div class="row2">
       <div class="field">
@@ -632,14 +721,12 @@
 <script>
   function openLedgerModal(){ document.getElementById('overlay').classList.add('open'); }
   function closeLedgerModal(){ document.getElementById('overlay').classList.remove('open'); }
+  function openLedgerView(){ document.getElementById('ledgerViewOverlay').classList.add('open'); }
+  function closeLedgerView(){ document.getElementById('ledgerViewOverlay').classList.remove('open'); }
   function setKind(kind){
     var dep=document.getElementById('kindDeposit'), fee=document.getElementById('kindFee'), hint=document.getElementById('feeHint');
     if(kind==='deposit'){ dep.classList.add('active'); fee.classList.remove('active'); hint.style.display='none'; }
     else { fee.classList.add('active'); dep.classList.remove('active'); hint.style.display='flex'; }
-  }
-  function fillFeeAmount(){
-    document.getElementById('amt').value='5,000,000';
-    document.getElementById('recv').value='5,000,000';
   }
   function toggleVat(checked){
     document.getElementById('vatBlock').style.display = checked ? 'block' : 'none';
