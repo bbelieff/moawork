@@ -183,7 +183,7 @@ describe("BBE-193 성공/실패 표현 계약", () => {
   // ── 4순위. 정합성 깨짐 경고가 «회색 안내문» 이던 곳 ──
   describe("DealLedgerPanel — 원장 정합성", () => {
     const entries = [
-      { id: "fee-1", dealId: "deal-1", kind: "fee" as const, amount: 50_000, receivedAmount: 20_000, occurredOn: "2026-08-02", paidOn: null, attributionMonth: "2026-08-01" },
+      { id: "fee-1", dealId: "deal-1", kind: "fee" as const, amount: 50_000, receivedAmount: 20_000, occurredOn: "2026-08-02", paidOn: null, attributionMonth: "2026-08-01", vatIncluded: false, taxInvoiceIssued: false },
     ];
 
     // 되돌리면 빨개진다: noticeFailed 를 떼고 회색 .notice 만 남기기
@@ -217,6 +217,8 @@ describe("BBE-193 성공/실패 표현 계약", () => {
       ["ContactPipelineAction", "./board/BoardWorkspace.tsx"],
       ["EsignPanel", "../app/(app)/deals/[dealId]/page.tsx"],
       ["WorkBoardSurface", "./work-management/NotificationWorkBoard.tsx"],
+      // BBE-240: DealLedgerPanel 이 처음으로 소비처를 얻었다 — 보드 행 원장 팝업(DealLedgerButton).
+      ["DealLedgerPanel", "./board/DealLedgerButton.tsx"],
     ])("%s 는 소비처가 실제로 화면에 붙인다", (name, consumer) => {
       const source = sourceOf(consumer);
       expect(source).toContain(`import { ${name} }`);
@@ -228,8 +230,13 @@ describe("BBE-193 성공/실패 표현 계약", () => {
     // ★ 이 둘은 붙는 화면이 없다(AGENTS §1.3 의 «52개 파일» 문제).
     // 고쳐는 뒀지만 ⑦ 화면 확인이 원천적으로 불가능하다는 사실을 테스트로 «드러내» 둔다.
     // 소비처가 생기면 이 테스트가 빨개진다 → 그때 위 목록으로 옮기고 화면 증거를 남기면 된다.
-    it("회계 두 곳은 아직 어느 화면에도 붙지 않는다 — 붙는 순간 빨개진다", () => {
-      // ★ src 전체를 훑는다. 예전엔 "../app" 이라 app/ 만 봤는데, 이 두 부품이 실제로 붙을
+    //
+    // BBE-240: DealLedgerPanel 은 위 it.each 로 옮겼다(소비처=DealLedgerButton, source 검사만—
+    // ⑦ 실제 화면 확인은 아직 없다. DealLedgerButton 자체가 아직 어느 보드 행에도 마운트되지
+    // 않았기 때문이다 — 이 카드는 백엔드+부품까지이고, 보드 행에 버튼을 꽂는 건 프런트 트랙 몫이다).
+    // DealLedgerButton 이 그 자리를 이어받아 여전히 무소비처 상태를 드러낸다.
+    it("LedgerExportButton·DealLedgerButton 은 아직 어느 화면에도 붙지 않는다 — 붙는 순간 빨개진다", () => {
+      // ★ src 전체를 훑는다. 예전엔 "../app" 이라 app/ 만 봤는데, 이 부품들이 실제로 붙을
       //   자리는 components/ 다 — 이 파일 위쪽이 소비처로 적은 BoardWorkspace 부터가 components/ 다.
       //   즉 «소비처가 생기는 바로 그 자리» 가 사각지대였다(검수 지적).
       const appDir = fileURLToPath(new URL("..", import.meta.url));
@@ -243,7 +250,7 @@ describe("BBE-193 성공/실패 표현 계약", () => {
       };
       walk(appDir);
 
-      for (const orphan of ["LedgerExportButton", "DealLedgerPanel"]) {
+      for (const orphan of ["LedgerExportButton", "DealLedgerButton"]) {
         const mountedBy = sources.filter((source) => source.includes(`<${orphan}`));
         expect(mountedBy, `${orphan} 의 소비처가 생겼다면 ⑦ 증거를 남기고 이 목록을 갱신해라`).toHaveLength(0);
       }

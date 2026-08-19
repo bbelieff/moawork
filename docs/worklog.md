@@ -4,6 +4,152 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [모아워크 DC-00] 2026-08-19 — BBE-240 병렬 프런트 2개 머지 시도 — 둘 다 무커밋으로 되돌아옴, 백엔드만 커밋
+
+- 총괄 지시: 보드+딜상세 담당·연도별 원장 담당 두 에이전트가 각자 worktree 에서 병렬로
+  BBE-240 프런트를 만들었다는 전제로, 그 둘을 review-274 워킹 브랜치에 머지·검증하라는
+  것이었다. **실제로는 둘 다 파일을 한 줄도 안 썼다** — 확인 결과:
+  - 보드+딜상세 담당(worktree `worktree-wf_0513d517-07a-3`)과 연도별 원장 담당
+    (`worktree-wf_0513d517-07a-4`) 은 이 세션에서 이미 정리돼 `git worktree list` 에
+    남아있지 않았고, 그 브랜치 이름 자체도 `git branch -a` 에 없다 — 만든 적이 없거나
+    커밋 없이 지워졌다는 뜻.
+  - 두 에이전트의 구조화 리포트(둘 다 `filesChanged: []`)가 이걸 그대로 증언한다: 둘 다
+    "Backend is done — build against this" 라는 전제를 받았는데 실제로는 그 시점에 백엔드가
+    존재하지 않아(9-인자 RPC·`fee_terms`·`vatIncluded`/`taxInvoiceIssued` 전부 부재) 시작
+    전에 멈췄다고 각자 보고했다.
+  - 비교 대조군으로 `worktree-agent-a1e322a7b5e693e2a`(`b07bb30`)를 확인 — `origin/main`
+    과 완전히 동일(커밋 0개, diff 0). "두 프런트가 이미 커밋되어 있다" 는 전제 자체가
+    이 세션에서는 틀렸다.
+  - **따라서 이번 라운드에서 실제로 병합할 프런트 코드가 없다** — 머지 스텝은 스킵하고
+    (지어내지 않는다), 그 대신 이미 이 워킹 트리(review-274, 지금 이 브랜치)에 **커밋 안 된
+    채로** 얹혀 있던 백엔드 구현(아래 항목, 세션 스레드 `54ccb210-…`)을 검증·정리해 커밋했다.
+
+- **백엔드 커밋 전 발견·수정한 것들** (전부 hosted 미적용 상태에서, 커밋 전에 잡음):
+  - 마이그레이션 파일명이 `bbe274` 로 잘못 채번돼 있었다(Linear 실제 카드번호 BBE-240 을
+    `mcp__claude_ai_Linear__get_issue`로 직접 조회해 확인). 확인 도중 파일명·logical_key·
+    predecessor·주석·`migration-103.test.ts` 의 경로 문자열이 실시간으로 `bbe240` 으로
+    정정되는 것도 같은 워킹 트리에서 목격했다(동시 편집 — 다른 트랙이 같은 워킹 디렉터리를
+    쓰고 있었다). 재확인 결과 rename 은 완결됐고 `node scripts/check-migration-guards.mjs`
+    체인 검증 PASS.
+  - 수용 기준 중 "계약금 중복 입력 방지가 서버측에서도 강제됨(우회 가능하면 안 됨)" 이
+    최초 버전엔 없었다 — `add_deal_ledger_entry` 에 `p_kind='contract_deposit'` 존재 검사
+    + `raise exception 'contract deposit already recorded for this deal'` 가 붙는 것과,
+    이를 PGlite 로 실행형 검증하는 `app/src/lib/accounting/deal-ledger-vat.pglite.test.ts`
+    가 새로 생기는 것도 같은 방식으로 실시간 관찰 — 지금은 있다.
+  - `rm -rf app/.next && bash scripts/check.sh` 를 여러 차례 재실행하며 확정: 최초 2회는
+    위 두 가지가 완결되지 않은 중간 상태(다이제스트 불일치, `분할 입금` PGlite 테스트가
+    VAT 미포함 부분입금에 `paid_on` 을 채워 constraint 위반)라 실패했고, 안정화된 뒤
+    **최종 재실행은 PASS**: app 348 files/2520 tests(2 skip, 무관) · worker 28 files/97
+    tests · migration guard 11-chain PASS(foundation=094) · qa-app 차이 보고는 기존
+    카테고리, 논-fatal.
+
+- **BBE-240 수용 기준 대조** (Linear 원문 기준, 이 시점 review-274 상태로):
+  - ①②③ 전부 실제 데이터로 동작 — **FAIL**. 백엔드(마이그레이션·RPC·서버 액션·읽기 경로)와
+    부품 컴포넌트(`DealLedgerButton`/`LedgerEntryModal`)는 있지만, `/work` 보드 행에도
+    `/deals/[dealId]` 페이지에도 어디에도 마운트되지 않았다(`grep -rn "DealLedgerButton"
+    app/src` → 자기 자신과 contract 테스트 가드 1곳뿐). `/ledger` 신규 라우트도 존재하지
+    않는다(`app/src/app/(app)` 아래 `ledger` 없음). 이건 지어내지 않는다 — 이번 라운드
+    프런트 담당 2명이 둘 다 무커밋으로 끝났으니 화면 배선은 다음 라운드로 넘어간다.
+  - 계약금 중복 입력 서버측 강제 — **PASS**(위 항목, RPC 예외 + PGlite 실행형 테스트).
+  - 미수금 계산이 VAT 유무에 따라 정확 — **PASS**: `summarizeDealLedger` 가 entry 단위
+    `max(0, amount-received)` 로 계산해 입금액이 금액을 넘어도 음수가 안 나오고,
+    `DealLedgerPanel` 의 미수금 `<td>` 도 동일 공식으로 바꼈다.
+  - `bash scripts/check.sh` PASS — **PASS**(위).
+  - 기존 `deal_ledger_entries`/`add_deal_ledger_entry` 재사용(재발명 금지) — **PASS**:
+    035 원문 무수정, 7→9 인자 확장만(구 오버로드는 명시적으로 drop).
+  - 종합: **BBE-240 은 미완료.** 백엔드(마이그레이션 103/104 + `accounting/actions.ts` +
+    `DealLedgerButton`/`LedgerEntryModal` 부품)만 이번에 review-274 에 커밋됐고, 화면
+    배선(① 보드 행 버튼, ①-보조 딜상세 섹션, ③ `/ledger` 신규 라우트+사이드바 탭) 은
+    프런트 담당 재실행이 필요하다. hosted 적용 없음, push 안 함 — 총괄 리뷰 후 push.
+
+---
+
+## [모아워크 DC-00] 2026-08-19 — BBE-240 원장 VAT 배선 + 계약조건(deals.fee_terms) 백엔드
+
+- 워크플로 실행 중 파일명·로직키가 `bbe274` 로 잘못 채번됐다(worktree 이름 `review-274` 와
+  혼동된 것으로 추정 — 실제 Linear 카드는 BBE-240, `bbe274` 는 존재하지 않는 카드번호였다).
+  hosted 미적용 상태에서 즉시 발견해 정정: 마이그레이션 파일 2개 rename +
+  logical_key·predecessor·다이제스트 재계산 + 관련 주석·테스트 경로 전부 `bbe240` 으로
+  교정. `node scripts/check-migration-guards.mjs` 체인 검증 통과(11 guarded, foundation=094).
+
+- **마이그레이션 2건(신규, append-only)**
+  - `supabase/migrations/103_bbe240_deal_ledger_vat_wiring.sql` (predecessor=102) —
+    `deal_ledger_entries` 에 `vat_included`·`tax_invoice_issued` 컬럼을 얹고, 035 의
+    두 CHECK(`received_amount between 0 and amount` · `paid_on` 일치식)를 `pg_constraint`
+    이름 조회로 찾아 교체했다(하드코딩 제약명 금지 — 지시대로). VAT 미포함 행은 035 원래
+    의미 그대로, VAT 포함 행만 `amount` 초과 입금과 "조금이라도 입금되면 paid_on 존재"로
+    완화했다. `add_deal_ledger_entry` 는 7-인자 버전을 `drop function if exists` 로 지우고
+    9-인자(+`p_vat_included`,`p_tax_invoice_issued`) 로 재정의했다 — Postgres 는 함수를
+    전체 타입 시그니처로 식별해서 안 지우면 두 오버로드가 모호하게 공존한다. 035 자체는
+    한 글자도 안 건드렸다(migration.test.ts 가 원문을 고정). `delete_deal_ledger_entry`·
+    `deal_ledger_summary` 도 무접촉(지시대로 — outstanding_total 을 VAT-aware 로 안 만든
+    이유는 앱이 그 컬럼을 안 쓰기 때문. 미수금은 애플리케이션 레이어에서 계산한다 — 이게
+    옛 `/policyfund/settlements` 를 틀리게 만든 바로 그 실수를 반복 안 하는 지점).
+  - `supabase/migrations/104_bbe240_deals_fee_terms.sql` (predecessor=103) —
+    `deals.fee_terms text`, additive, 제약·기본값 없음(065 선례와 동일 패턴).
+  - 두 파일 다 `node scripts/check-migration-guards.mjs --write <file>` 로 다이제스트를
+    파일 완성 후에 계산해 채웠다. `node scripts/check-migration-guards.mjs`(인자 없음)로
+    체인 검증 PASS(11 guarded, foundation=094). hosted 적용·고객 데이터 조회는 0건.
+  - **계약금 중복 입력 방지는 서버측에서 강제된다**(수용기준 — UI 비활성화는 힌트일 뿐):
+    `add_deal_ledger_entry` 안에서 `p_kind='contract_deposit'` 이고 같은 딜에 기존
+    `contract_deposit` 행이 있으면 `raise exception 'contract deposit already recorded
+    for this deal'`. 새 실행형 테스트 `app/src/lib/accounting/deal-ledger-vat.pglite.test.ts`
+    가 035+103 을 PGlite 로 실제 실행해 이 거부·VAT 상한 완화·`fee` 분할입금 허용을 검증한다
+    (문자열만 고정하는 `migration-103.test.ts` 와 역할이 다르다).
+
+- **계약조건 배선(6곳, 목업·설계 그대로)** — `Deal.fee_terms`(types/index.ts) →
+  `NewDeal.fee_terms`(repo/index.ts, `DealPatch` 자동 상속) → `toDeal()`(supabaseCrmSource) →
+  `createDeal()`(localRepo, `updateDeal()` 은 이미 제네릭 patch 라 무수정) →
+  `DealInfoTab` 에 "계약조건" 필드(상태 메모 다음) → `updateDealAction` 에
+  `fee_terms: str(formData,"fee_terms")||null` 한 줄.
+
+- **`app/src/lib/accounting/` 배선** — `ledger.ts`: `DealLedgerEntry` 에
+  `vatIncluded`/`taxInvoiceIssued`, `summarizeDealLedger` 의 오버페이 가드를
+  `!vatIncluded && received>amount` 로, `outstandingTotal` 을 순합계(`ledgerTotal-receivedTotal`)
+  에서 entry 단위 `max(0, amount-received)` 누적으로 바꿨다(VAT 초과입금 entry 가 다른
+  entry 의 진짜 미수금을 가리지 않게). `server.ts`: select 문·`LedgerRow`·`ledgerEntry()` 에
+  두 불리언 추가(둘 다 `typeof !== "boolean"` 이면 `DealLedgerReadError`). 새 파일
+  `actions.ts`("use server") — `loadDealLedgerAction`(원장+`deals.fee_terms` 를 한 번에 읽음,
+  RLS 로만 접근 제한) · `addDealLedgerEntryAction`(035/103 RPC 호출, `attribution_month` 는
+  항상 `occurredOn` 에서 서버가 파생 — 클라이언트 값 불신).
+  `DealLedgerPanel.tsx`: 미수금 `<td>` 를 `max(0, amount-received)` 로, VAT 뱃지 추가.
+
+- **새 클라이언트 컴포넌트 2개** — `components/board/DealLedgerButton.tsx`(📒 원장 버튼 +
+  패널 오버레이, `loadDealLedgerAction` 으로 열 때마다 새로고침) ·
+  `components/board/LedgerEntryModal.tsx`(`docs/design/정산-원장-화면-제안_v1.html` 의
+  `#overlay` 문구 그대로 — 구분 토글·부가세 포함 체크 시 "입금액에 채우기"·메모는
+  이번 범위 밖이라 안 만듦). **어느 보드 행에도 아직 안 붙었다** — 이 카드는 백엔드+부품
+  까지고, 화면(page.tsx/보드 컬럼)은 C 진영(DC·NC) 몫이라 여기서 안 건드렸다.
+  `status-semantics.contract.test.tsx` 의 "붙는 순간 빨개진다" 가드를 갱신했다 —
+  `DealLedgerPanel` 은 이제 소비처(DealLedgerButton)가 있어 it.each 로 옮겼고,
+  `DealLedgerButton` 자신이 그 자리를 이어받아 무소비처 상태를 계속 드러낸다.
+
+- 기존 스냅샷 테스트 다수(`Deal` 리터럴에 `fee_terms` 없어서 타입에러 난 곳들 — dash·
+  perf·crm·companies·services·seed.ts 등 20여 파일)에 `fee_terms: null` 을 채워 넣었다.
+  새 pin 테스트 `app/src/lib/accounting/migration-103.test.ts`(migration.test.ts 스타일 —
+  103 원문에서 컬럼·제약·DROP+CREATE OR REPLACE 문자열을 고정).
+
+- `rm -rf app/.next && bash scripts/check.sh` PASS — app 348 files/2520 tests pass(2 skip
+  파일 무관), worker 28 files/97 tests 전체 PASS, qa-app 차이 보고는 기존 카테고리 전용
+  (이 변경과 무관, 1단계에서 check 를 실패시키지 않음). hosted 적용·고객 데이터 조회·
+  비밀값 조회 0건.
+
+- **프런트 트랙에 필요한 계약**
+  - 마이그레이션: `103_bbe240_deal_ledger_vat_wiring.sql`(predecessor 102) →
+    `104_bbe240_deals_fee_terms.sql`(predecessor 103).
+  - RPC: `add_deal_ledger_entry(p_deal_id uuid, p_kind text, p_amount numeric,
+    p_received_amount numeric, p_occurred_on date, p_paid_on date, p_attribution_month date,
+    p_vat_included boolean default false, p_tax_invoice_issued boolean default false)
+    returns uuid`(구 7-인자 버전은 삭제됨).
+  - 서버 액션: `loadDealLedgerAction(dealId: string): Promise<LedgerPopupState>`,
+    `addDealLedgerEntryAction(input: AddLedgerEntryInput): Promise<AddLedgerEntryResult>`
+    (둘 다 `app/src/lib/accounting/actions.ts`).
+  - `deals` 컬럼: `fee_terms text null`. `Deal.fee_terms: string | null`.
+  - 아직 안 한 일: `DealLedgerButton` 을 실제 보드 행(계약업체 실무 등)에 꽂는 것,
+    ⑦ 화면 확인 증거 남기기 — 다음 프런트 카드 몫.
+
+---
+
 ## [모아워크 DC-00] 2026-08-19 — 구 `/policyfund/settlements` 제거(총괄 직접 지시)
 
 - 총괄 지시: "지금있는 구 화면을 보고 내가 화내고 있었네 이건 빨리 지워버려" — 정산 원장

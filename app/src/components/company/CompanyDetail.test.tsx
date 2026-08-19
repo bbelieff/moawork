@@ -29,6 +29,7 @@ const deal: Deal = {
   title: "정책자금 상담",
   amount: 30000000,
   status_note: null,
+  fee_terms: null,
   applied_on: null,
   custom: {},
   created_at: "2026-01-01T00:00:00.000Z",

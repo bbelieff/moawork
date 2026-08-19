@@ -11,6 +11,8 @@ const row = (patch: Partial<DealLedgerEntry> = {}): DealLedgerEntry => ({
   occurredOn: "2026-08-12",
   paidOn: null,
   attributionMonth: "2026-08-01",
+  vatIncluded: false,
+  taxInvoiceIssued: false,
   ...patch,
 });
 

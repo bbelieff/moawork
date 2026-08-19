@@ -47,6 +47,7 @@ export interface NewDeal {
   assigned_to?: string | null;
   amount?: number | null;
   status_note?: string | null;
+  fee_terms?: string | null;
   applied_on?: string | null;
   custom?: Record<string, unknown>;
 }

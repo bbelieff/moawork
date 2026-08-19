@@ -23,6 +23,7 @@ function deal(id: string, stage_id: string | null): Deal {
     title: id,
     amount: null,
     status_note: null,
+    fee_terms: null,
     applied_on: null,
     custom: {},
     created_at: "2026-07-21T00:00:00Z",

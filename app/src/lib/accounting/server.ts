@@ -11,6 +11,8 @@ type LedgerRow = Readonly<{
   occurred_on: unknown;
   paid_on: unknown;
   attribution_month: unknown;
+  vat_included: unknown;
+  tax_invoice_issued: unknown;
 }>;
 
 type LedgerSummaryRow = Readonly<{
@@ -51,6 +53,11 @@ function won(value: unknown): number {
   return parsed;
 }
 
+function requiredBoolean(value: unknown): boolean {
+  if (typeof value !== "boolean") throw new DealLedgerReadError();
+  return value;
+}
+
 function ledgerEntry(row: LedgerRow, requestedDealId: string): DealLedgerEntry {
   const dealId = requiredString(row.deal_id);
   if (dealId !== requestedDealId) throw new DealLedgerReadError();
@@ -59,7 +66,9 @@ function ledgerEntry(row: LedgerRow, requestedDealId: string): DealLedgerEntry {
   }
   const amount = won(row.amount);
   const receivedAmount = won(row.received_amount);
-  if (receivedAmount > amount) throw new DealLedgerReadError();
+  const vatIncluded = requiredBoolean(row.vat_included);
+  const taxInvoiceIssued = requiredBoolean(row.tax_invoice_issued);
+  if (!vatIncluded && receivedAmount > amount) throw new DealLedgerReadError();
 
   return {
     id: requiredString(row.id),
@@ -70,6 +79,8 @@ function ledgerEntry(row: LedgerRow, requestedDealId: string): DealLedgerEntry {
     occurredOn: requiredString(row.occurred_on),
     paidOn: nullableString(row.paid_on),
     attributionMonth: requiredString(row.attribution_month),
+    vatIncluded,
+    taxInvoiceIssued,
   };
 }
 
@@ -85,7 +96,9 @@ export async function loadDealLedger(
 
   const rowsResult = await client
     .from("deal_ledger_entries")
-    .select("id,deal_id,kind,amount,received_amount,occurred_on,paid_on,attribution_month")
+    .select(
+      "id,deal_id,kind,amount,received_amount,occurred_on,paid_on,attribution_month,vat_included,tax_invoice_issued",
+    )
     .eq("deal_id", dealId)
     .order("occurred_on", { ascending: true });
 

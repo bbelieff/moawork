@@ -71,6 +71,7 @@ function toDeal(r: Row): Deal {
     title: String(r.title),
     amount: num(r.amount),
     status_note: str(r.status_note),
+    fee_terms: str(r.fee_terms),
     applied_on: str(r.applied_on),
     // 001: jsonb not null default '{}'
     custom: (r.custom as Record<string, unknown> | null) ?? {},

@@ -85,6 +85,16 @@ export function DealInfoTab({
           />
         </Field>
 
+        <Field label="계약조건">
+          <textarea
+            name="fee_terms"
+            rows={2}
+            defaultValue={deal.fee_terms ?? ""}
+            disabled={!canEdit}
+            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm disabled:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:disabled:bg-zinc-800"
+          />
+        </Field>
+
         {canEdit && (
           <div>
             <button

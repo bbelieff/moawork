@@ -5,4 +5,6 @@
    권한 거부와 성공이 글자 크기까지 똑같았다. 색은 브랜드 토큰만 쓴다. */
 .exportOk{color:var(--mw-success)}
 .exportFailed{color:var(--mw-error)}
-.noticeFailed{color:var(--mw-error);border-color:var(--mw-error)}@media (prefers-reduced-motion:reduce){.period button{transition:none}}@media (max-width:640px){.panel,.export{padding:16px}.summary{grid-template-columns:repeat(2,minmax(0,1fr))}.period{align-items:stretch}.period label,.period button{width:100%}}
+.noticeFailed{color:var(--mw-error);border-color:var(--mw-error)}
+.vatBadge{margin-top:2px;color:var(--mw-primary);font-size:11px;font-weight:700;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.period button{transition:none}}@media (max-width:640px){.panel,.export{padding:16px}.summary{grid-template-columns:repeat(2,minmax(0,1fr))}.period{align-items:stretch}.period label,.period button{width:100%}}

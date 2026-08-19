@@ -121,6 +121,7 @@ export interface Deal {
   title: string;
   amount: number | null;
   status_note: string | null;
+  fee_terms: string | null;
   applied_on: string | null;
   custom: Record<string, unknown>;
   created_at: string;

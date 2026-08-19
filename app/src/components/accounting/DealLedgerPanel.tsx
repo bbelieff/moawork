@@ -78,8 +78,15 @@ export function DealLedgerPanel({ dealId, state }: DealLedgerPanelProps) {
               <td>{KIND_LABEL[entry.kind]}</td>
               <td>{entry.occurredOn}</td>
               <td>{won(entry.amount)}</td>
-              <td>{won(entry.receivedAmount)}</td>
-              <td>{won(entry.amount - entry.receivedAmount)}</td>
+              <td>
+                {won(entry.receivedAmount)}
+                {entry.vatIncluded ? (
+                  <div className={styles.vatBadge}>
+                    VAT포함 전액 입금{entry.taxInvoiceIssued ? " · 계산서 발행✓" : ""}
+                  </div>
+                ) : null}
+              </td>
+              <td>{won(Math.max(0, entry.amount - entry.receivedAmount))}</td>
               <td><DateValue value={entry.paidOn} /></td>
             </tr>
           ))}</tbody>

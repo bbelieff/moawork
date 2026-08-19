@@ -63,6 +63,7 @@ export async function updateDealAction(formData: FormData): Promise<void> {
   await getCrmService().updateDeal(ctx, dealId, {
     title: str(formData, "title") || undefined,
     status_note: str(formData, "status_note") || null,
+    fee_terms: str(formData, "fee_terms") || null,
     amount: rawAmount === "" ? null : Number(rawAmount.replace(/[,\s]/g, "")),
   });
   revalidatePath(`/deals/${dealId}`);
