@@ -75,6 +75,8 @@ export const OUT_OF_TAB_HREFS: readonly string[] = [
   "/dash/all",
   "/dash/tasks",
   "/deals/[dealId]",
+  // BBE-240: 연도별 전체 원장 — 사이드바(nav-items.ts "acct")에는 있지만 6탭엔 안 낀다.
+  "/ledger",
   "/mode",
   "/onboarding",
   "/onboarding/practice",

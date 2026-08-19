@@ -7,4 +7,14 @@
 .exportFailed{color:var(--mw-error)}
 .noticeFailed{color:var(--mw-error);border-color:var(--mw-error)}
 .vatBadge{margin-top:2px;color:var(--mw-primary);font-size:11px;font-weight:700;white-space:nowrap}
+
+/* BBE-240 — 연도별 전체 원장(③). 기존 .summary/.tableWrap 톤을 그대로 잇는다. */
+.yearHead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.yearHead h1{margin:0;font-size:20px;letter-spacing:-.02em}
+.yearTabs{display:flex;gap:6px;background:var(--mw-bg);padding:4px;border-radius:11px;border:1px solid var(--mw-line)}
+.yearTabs button{border:0;background:none;color:var(--mw-sub);font:inherit;font-size:13px;font-weight:700;padding:7px 14px;border-radius:8px;cursor:pointer}
+.yearTabs button[aria-selected="true"]{background:var(--mw-card);color:var(--mw-fg);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.yearTabs button:focus-visible{outline:2.5px solid var(--mw-primary);outline-offset:1px}
+.monthGroup{margin-bottom:18px}
+.monthGroup h2{margin:0 0 8px;font-size:13px;font-weight:800;color:var(--mw-sub)}
 @media (prefers-reduced-motion:reduce){.period button{transition:none}}@media (max-width:640px){.panel,.export{padding:16px}.summary{grid-template-columns:repeat(2,minmax(0,1fr))}.period{align-items:stretch}.period label,.period button{width:100%}}

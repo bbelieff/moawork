@@ -8,6 +8,7 @@ export const RESERVED_WORKSPACE_SLUGS = new Set([
   "contract",
   "dash",
   "deals",
+  "ledger",
   "login",
   "logout",
   "mode",

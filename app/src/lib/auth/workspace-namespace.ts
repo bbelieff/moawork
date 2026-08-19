@@ -9,7 +9,7 @@ export type WorkspaceNamespaceDecision =
   | { kind: "rewrite"; canonical: `/w/${string}`; internal: string; orgId: string };
 
 const WORKSPACE_PAGE_SEGMENTS = new Set([
-  "account", "boards", "companies", "contract", "dash", "deals", "newcust",
+  "account", "boards", "companies", "contract", "dash", "deals", "ledger", "newcust",
   "notices", "onboarding", "policyfund", "presets", "settings", "settlements", "work",
 ]);
 
