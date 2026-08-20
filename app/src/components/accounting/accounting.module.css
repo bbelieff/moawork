@@ -17,4 +17,46 @@
 .yearTabs button:focus-visible{outline:2.5px solid var(--mw-primary);outline-offset:1px}
 .monthGroup{margin-bottom:18px}
 .monthGroup h2{margin:0 0 8px;font-size:13px;font-weight:800;color:var(--mw-sub)}
-@media (prefers-reduced-motion:reduce){.period button{transition:none}}@media (max-width:640px){.panel,.export{padding:16px}.summary{grid-template-columns:repeat(2,minmax(0,1fr))}.period{align-items:stretch}.period label,.period button{width:100%}}
+/* BBE-198 — 정산 리포트(정산-리포트-시안_v1.html §②). 시안의 필터바·리포트머리·소계/합계 톤 그대로. */
+.modeTabs{display:flex;gap:6px;background:var(--mw-bg);padding:4px;border-radius:11px;border:1px solid var(--mw-line);align-self:flex-start}
+.modeTabs button{border:0;background:none;color:var(--mw-sub);font:inherit;font-size:13px;font-weight:700;padding:7px 16px;border-radius:8px;cursor:pointer}
+.modeTabs button[aria-selected="true"]{background:var(--mw-card);color:var(--mw-fg);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.modeTabs button:focus-visible{outline:2.5px solid var(--mw-primary);outline-offset:1px}
+.report{display:block}
+.filters{display:flex;flex-wrap:wrap;gap:9px;align-items:end;padding:14px 16px;background:var(--mw-bg);border:1px solid var(--mw-line);border-radius:12px;margin-bottom:14px}
+.filters label{display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mw-sub)}
+.filters input,.filters select{min-height:36px;padding:7px 9px;border:1px solid var(--mw-line);border-radius:9px;background:var(--mw-card);color:var(--mw-fg);font:inherit;font-size:12.5px}
+.filters input:focus-visible,.filters select:focus-visible{outline:2.5px solid var(--mw-primary);outline-offset:1px}
+.exports{display:flex;align-items:center;gap:8px;margin-left:auto}
+.exportControl{display:inline-flex;align-items:center;gap:8px}
+.exportControl button,.printButton{min-height:36px;padding:8px 14px;border:0;border-radius:9px;background:var(--mw-primary);color:var(--mw-on-accent);font:inherit;font-size:12.5px;font-weight:800;cursor:pointer;white-space:nowrap}
+.ghostButton{background:var(--mw-card);color:var(--mw-body);border:1px solid var(--mw-line)}
+.exportControl button:focus-visible,.printButton:focus-visible{outline:2.5px solid var(--mw-primary);outline-offset:1px}
+.reportHead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding-bottom:12px;border-bottom:2px solid var(--mw-fg);margin-bottom:4px}
+.reportHead h2{margin:0;font-size:17px;letter-spacing:-.01em}
+.reportCondition{margin:5px 0 0;font-size:11.5px;color:var(--mw-sub)}
+.reportStamp{margin:0;font-size:11px;color:var(--mw-sub);text-align:right;white-space:nowrap}
+.reportWrap{overflow-x:auto}
+.reportTable{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+.reportTable th,.reportTable td{padding:8px 9px;text-align:left;white-space:nowrap}
+.reportTable thead th{font-size:10.5px;color:var(--mw-sub);font-weight:700;border-bottom:1px solid var(--mw-line);letter-spacing:.02em}
+.reportTable td{border-bottom:1px solid var(--mw-line)}
+.reportTable .num{text-align:right}
+.groupRow td{background:var(--mw-bg);font-weight:800;font-size:12px;border-top:1px solid var(--mw-line)}
+.subtotalRow td{background:var(--mw-tint-blue);font-weight:800;color:var(--mw-record);font-size:12px}
+.totalRow td{background:var(--mw-fg);color:var(--mw-card);font-weight:800;font-size:13px}
+.tagDeposit,.tagFee{display:inline-block;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:5px}
+.tagDeposit{background:var(--mw-tint-blue);color:var(--mw-record)}
+.tagFee{background:var(--mw-tint-coral);color:var(--mw-people-coral)}
+@media (prefers-reduced-motion:reduce){.period button{transition:none}}@media (max-width:640px){.panel,.export{padding:16px}.summary{grid-template-columns:repeat(2,minmax(0,1fr))}.period{align-items:stretch}.period label,.period button{width:100%}.exports{margin-left:0;width:100%}}
+/* 인쇄 — A4 가로. 표만 남긴다. 페이지 넘김에서 한 줄이 반으로 잘리지 않게 행 단위로 끊는다. */
+@media print{
+  .filters,.modeTabs{display:none!important}
+  .report{border:0}
+  .reportWrap{overflow:visible}
+  .reportTable{font-size:10.5px}
+  .reportTable tr{break-inside:avoid}
+  .reportTable thead{display:table-header-group}
+  .totalRow td{background:none;color:var(--mw-fg);border-top:2px solid var(--mw-fg)}
+  .subtotalRow td,.groupRow td{background:none;border-top:1px solid var(--mw-fg)}
+}

@@ -6,7 +6,7 @@
  * 합계에는 안 들어간다(DealLedgerPanel/원장 입력 폼과 동일 원칙, BBE-240).
  */
 
-import type { LedgerKind } from "./ledger";
+import { entryOutstanding, type LedgerKind } from "./ledger";
 
 export interface YearlyLedgerRow {
   id: string;
@@ -57,7 +57,7 @@ function totalsOf(rows: readonly YearlyLedgerRow[]): YearlyLedgerYearTotals {
     totalRevenue += row.amount;
     if (row.kind === "contract_deposit") depositTotal += row.amount;
     else feeTotal += row.amount;
-    outstandingTotal += Math.max(0, row.amount - row.receivedAmount);
+    outstandingTotal += entryOutstanding(row);
   }
   return { totalRevenue, depositTotal, feeTotal, outstandingTotal };
 }

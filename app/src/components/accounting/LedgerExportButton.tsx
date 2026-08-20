@@ -1,15 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import type { DealLedgerEntry } from "@/lib/accounting";
-import { createLedgerCsvExport } from "@/lib/accounting/export";
+import type { LedgerCsvExport } from "@/lib/accounting/export";
 import { authorizeLedgerCsvExport } from "@/lib/accounting/export/actions";
 import styles from "./accounting.module.css";
 
 export interface LedgerExportButtonProps {
-  entries: readonly DealLedgerEntry[];
-  initialFrom: string;
-  initialTo: string;
+  /**
+   * 눌린 «그 순간» 의 화면을 CSV 로 만든다. 미리 만들어 둔 문자열을 받지 않는 이유:
+   * 필터가 바뀌어도 버튼이 옛 파일을 뱉는 사고를 구조적으로 막기 위해서다.
+   */
+  build: () => LedgerCsvExport;
+  label?: string;
+  className?: string;
 }
 
 /** 화면에 무엇을 보여줄지 정하는 «판정». 성공이면 ok:true, 그 외 전부 ok:false. */
@@ -35,16 +38,22 @@ export async function resolveLedgerExportFeedback(
   }
 }
 
-export function LedgerExportButton({ entries, initialFrom, initialTo }: LedgerExportButtonProps) {
-  const [from, setFrom] = useState(initialFrom);
-  const [to, setTo] = useState(initialTo);
+/**
+ * 원장 CSV 내려받기 버튼 (BBE-198).
+ *
+ * 권한(`danger.csv_export`) 확인과 위험행동 기록은 서버 액션이 한다 —
+ * 감사 기록에 실패하면 파일을 «만들지 않는다»(authorizeLedgerCsvExport).
+ * 기간 입력은 여기 없다: 리포트 화면의 필터바가 조건의 정본이고, 이 버튼은 그 화면을
+ * 그대로 파일로 옮길 뿐이다(총괄 승인 — 「화면 리포트를 정본으로」).
+ */
+export function LedgerExportButton({ build, label = "CSV", className }: LedgerExportButtonProps) {
   // 판정 근거를 문구와 «함께» 들고 다닌다. 예전엔 message 만 저장해서 authorization.ok 가
   // 그 자리에서 버려졌고, 권한 거부가 성공과 똑같이 보였다(BBE-193).
   const [feedback, setFeedback] = useState<LedgerExportFeedback | null>(null);
 
   async function download(): Promise<void> {
     setFeedback(await resolveLedgerExportFeedback(authorizeLedgerCsvExport, () => {
-      const result = createLedgerCsvExport(entries, { from, to });
+      const result = build();
       const blob = new Blob([result.content], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -57,24 +66,16 @@ export function LedgerExportButton({ entries, initialFrom, initialTo }: LedgerEx
   }
 
   return (
-    <section className={styles.export} aria-labelledby="ledger-export-title">
-      <div>
-        <h2 id="ledger-export-title">기간별 내보내기</h2>
-        <p>발생일 기준으로 고른 기간만 엑셀용 CSV로 내려받아요.</p>
-      </div>
-      <div className={styles.period}>
-        <label>시작일<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
-        <label>종료일<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
-        <button type="button" onClick={download}>엑셀용 CSV 내려받기</button>
-      </div>
+    <span className={styles.exportControl}>
+      <button type="button" className={className} onClick={download}>{label}</button>
       {feedback ? (
-        <p
+        <span
           className={`${styles.exportMessage} ${feedback.ok ? styles.exportOk : styles.exportFailed}`}
           role={feedback.ok ? "status" : "alert"}
         >
           {feedback.message}
-        </p>
+        </span>
       ) : null}
-    </section>
+    </span>
   );
 }
