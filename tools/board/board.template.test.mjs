@@ -12,6 +12,12 @@ test("decision dashboard script compiles and keeps the live data bridge contract
   assert.match(html, /callMcpTool/);
   assert.match(html, /\/api\/operations/);
   assert.match(html, /전체 오픈 작업/);
+  assert.match(html, /지금 도는 워커/);
+  assert.match(html, /멈춤 의심/);
+  assert.match(html, /목업 차이/);
+  assert.match(html, /층별 달성도/);
+  assert.match(html, /연료/);
+  assert.match(html, /측정 실패/);
 });
 
 test("new DG lanes and the P0 handoff chain are visible without the retired 20-slot board", async () => {

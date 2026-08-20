@@ -70,6 +70,11 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
 .feed{display:grid;gap:6px;max-height:300px;overflow:auto}.event{border-left:3px solid var(--blue);padding:6px 9px;background:#fafbfc}
 .event b{font-size:10.5px}.event p{margin:2px 0 0;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .event time{font-size:9.5px;color:var(--faint)}
+.live-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.worker-list,.layer-list{display:grid;gap:7px}
+.worker,.layer{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:10px}
+.worker.stalled{border-color:#efb7b0;background:var(--red-bg)}.worker p,.layer p{margin:0;font-size:11px}.worker small,.layer small{display:block;color:var(--faint);font-size:9.5px}
+.ops-list{display:grid;gap:6px;max-height:260px;overflow:auto}.ops-item{padding:8px;border-left:3px solid var(--teal);background:#fafbfc;font-size:10.5px}
+.fuel{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}.fuel>div{padding:11px;border-radius:10px;background:#f7f9fa}.fuel b{display:block;font-size:20px}.fuel span{font-size:10px;color:var(--muted)}
 .context{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.memo{padding:13px}.memo b{font-size:12px}.memo p{margin:5px 0 0;font-size:11px;color:var(--muted)}
 .squads{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.squad{padding:14px;min-width:0}.squad-head{display:flex;justify-content:space-between;gap:8px}.squad-head b{font-size:13px}.squad-head span{font-size:10px;color:var(--muted)}
 .squad-progress{height:6px;border-radius:8px;background:#edf0f3;overflow:hidden;margin:9px 0}.squad-progress i{display:block;height:100%;background:var(--blue)}.squad-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.squad-meta div{padding:7px;border-radius:8px;background:#f7f9fa}.squad-meta b{display:block;font-size:12px}.squad-meta span{font-size:9px;color:var(--faint)}
@@ -90,7 +95,7 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
 @media(max-width:760px){
   .wrap{padding:14px 10px 40px}.top{display:block}.actions{justify-content:flex-start;margin-top:10px}
   .hero{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}
-  .decision-grid,.two,.context,.gate-grid,.squads{grid-template-columns:1fr}.flow-grid{grid-template-columns:1fr}
+  .decision-grid,.two,.context,.gate-grid,.squads,.live-grid{grid-template-columns:1fr}.flow-grid{grid-template-columns:1fr}
   .lanes{grid-template-columns:repeat(2,minmax(160px,1fr))}.repo-grid{grid-template-columns:repeat(2,1fr)}
   .inventory .next{min-width:240px}
 }
@@ -119,6 +124,21 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
       <div class="progress"><i id="progressBar"></i></div>
     </div>
     <div class="kpis" id="kpis"><div class="loading">집계 중…</div></div>
+  </section>
+
+  <h2>지금 도는 워커 <span class="hint">Orca task·dispatch 실측 · 5분 무활동이면 멈춤 의심</span></h2>
+  <section class="card section-card" id="workers"><div class="loading">Orca 워커 읽는 중…</div></section>
+
+  <h2>전체와 부분 <span class="hint">층별 Linear 상태 · 선행 층 미완료 시 잠김</span></h2>
+  <section class="live-grid">
+    <div class="card section-card" id="layers"><div class="loading">층별 달성도 계산 중…</div></div>
+    <div class="card section-card" id="handNeeded"><div class="loading">손이 필요한 것 계산 중…</div></div>
+  </section>
+
+  <h2>오늘 한 것·연료 <span class="hint">Linear+git 실측 · 연료는 belie 입력만 표시</span></h2>
+  <section class="live-grid">
+    <div class="card section-card" id="today"><div class="loading">오늘 기록 모으는 중…</div></div>
+    <div class="card section-card" id="fuel"><div class="loading">연료 입력 확인 중…</div></div>
   </section>
 
   <h2>지금 판단할 것 <span class="hint">긴급·막힘·검수·소유 공백을 자동 계산</span></h2>
@@ -291,7 +311,7 @@ const SPECIAL_ACTIONS={
  "BBE-186":"BBE-185 뒤 C가 V6 기준 홈을 구현하고 과잉 위젯은 별도 분석 화면에 보존한다.",
  "BBE-182":"활성 14건 Done 뒤 G가 Monday→V6→Production·DB 전수 QA와 fixture cleanup을 수행한다."
 };
-let state={issues:[],open:[],by:{},operations:null,stamps:new Map(),decisions:[]};
+let state={all:[],issues:[],open:[],by:{},operations:null,stamps:new Map(),decisions:[]};
 const esc=(value)=>String(value??"").replace(/[&<>"']/g,(char)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
 const cssKey=(value)=>String(value||"").replace(/\s+/g,"-");
 const hours=(value)=>Math.max(0,(Date.now()-new Date(value).getTime())/36e5);
@@ -466,6 +486,46 @@ function renderOperations(){
  const items=[...(prs.items||[])].sort((a,b)=>(a.checks?.failing?0:["DIRTY","BLOCKED"].includes(a.mergeStateStatus)?1:a.checks?.pending?2:3)-(b.checks?.failing?0:["DIRTY","BLOCKED"].includes(b.mergeStateStatus)?1:b.checks?.pending?2:3)||new Date(b.updatedAt)-new Date(a.updatedAt));
  prEl.innerHTML='<div class="section-title">열린 PR '+prs.count+'건</div><div class="pr-list">'+(items.length?items.slice(0,12).map((pr)=>'<a class="pr" href="'+esc(pr.url)+'" target="_blank"><b>#'+pr.number+'</b><div><p>'+esc(pr.title)+'</p><small>'+esc(pr.headRefName)+' · '+ago(pr.updatedAt)+'</small></div><div class="merge-'+esc(pr.mergeStateStatus)+'"><b>'+esc(pr.mergeStateStatus)+'</b><small>✓'+(pr.checks?.success||0)+' !'+(pr.checks?.failing||0)+' …'+(pr.checks?.pending||0)+'</small></div></a>').join(""):'<div class="empty">열린 PR 없음</div>')+'</div>';
 }
+const LAYERS=[
+ {n:0,name:"바닥",ids:["BBE-146"]},{n:1,name:"틀",ids:["BBE-142"]},{n:2,name:"관통",ids:["BBE-145","BBE-148"]},
+ {n:3,name:"복제 · 병렬",ids:["BBE-149","BBE-150","BBE-151"]},{n:4,name:"관문",ids:["BBE-152"]},
+ {n:5,name:"계산",ids:["BBE-153"]},{n:6,name:"뷰",ids:["BBE-117"]},{n:7,name:"정리",ids:[]},{n:8,name:"검증",ids:["BBE-131"]}
+];
+const LAYER_DEPS={"BBE-145":["BBE-146","BBE-142"],"BBE-149":["BBE-145"],"BBE-150":["BBE-145"],"BBE-151":["BBE-145"],"BBE-152":["BBE-149","BBE-150","BBE-151"],"BBE-153":["BBE-149","BBE-150","BBE-151"],"BBE-117":["BBE-149","BBE-150","BBE-151"],"__layer7":["BBE-117"],"BBE-131":["__layer7"]};
+function measured(value){return value===null||value===undefined?"측정 실패":value}
+function renderLiveBoard(){
+ const ops=state.operations||{};
+ const metrics=ops.metrics||{};
+ const qa=metrics.qaDifference;
+ document.getElementById("kpis").innerHTML=[
+  ["목업 차이",qa?.available?qa.value:"측정 실패",qa?.measuredAt?"측정 "+ago(qa.measuredAt)+" · 5분 캐시":"qa-app 측정 실패",qa?.available?"":"hot"],
+  ["Urgent 잔량",measured(metrics.urgentRemaining),"미완료 카드","hot"],
+  ["손 필요",measured(metrics.handNeeded),"라벨+Blocked","warn"],
+  ["완주율",metrics.completion?metrics.completion.percent+"%":"측정 실패",metrics.completion?metrics.completion.done+" / "+metrics.completion.total:"Linear 측정 실패","go"]
+ ].map(([label,value,note,kind])=>'<div class="kpi '+kind+'"><b>'+esc(value)+'</b><span>'+esc(label)+' · '+esc(note)+'</span></div>').join("");
+
+ const workers=ops.workers;
+ document.getElementById("workers").innerHTML='<div class="section-title">활성 워커 '+(workers?.available?workers.items.length:"측정 실패")+'</div><div class="worker-list">'+
+  (!workers?.available?'<div class="empty">Orca 측정 실패</div>':workers.items.length?workers.items.map((w)=>'<div class="worker '+(w.stalled?'stalled':'')+'"><b>'+esc(w.cardId||"카드 측정 실패")+'</b><p><b>'+esc(w.engine)+'</b> · '+esc(w.status)+'<small>'+esc(w.worktree||"워크트리 측정 실패")+' · 마지막 '+(w.lastActivityAt?ago(w.lastActivityAt):"측정 실패")+'</small></p><span class="pill '+(w.stalled?'prio-Urgent':'st-In-Progress')+'">'+(w.stalled?'멈춤 의심':'활동 중')+'</span></div>').join(""):'<div class="empty">지금 도는 워커 없음</div>')+'</div>';
+
+ document.getElementById("layers").innerHTML='<div class="section-title">층별 달성도 · 3층은 2층 완료 뒤 병렬</div><div class="layer-list">'+LAYERS.map((layer)=>{
+  const cards=layer.ids.map((id)=>state.by[id]).filter(Boolean); const measuredAll=cards.length===layer.ids.length;
+  const done=layer.ids.length>0&&measuredAll&&cards.every((i)=>i.status==="Done");
+  const keys=layer.ids.length?layer.ids:["__layer7"];
+  const isDone=(id)=>id==="__layer7"?false:state.by[id]?.status==="Done";
+  const lockedCount=keys.filter((id)=>(LAYER_DEPS[id]||[]).some((dep)=>!isDone(dep))).length;
+  const lockText=lockedCount===keys.length?"잠김":lockedCount?"부분 잠김":done?"완료":"진행 가능";
+  const cardStates=layer.ids.length?layer.ids.map((id)=>{const card=state.by[id];const cardLocked=(LAYER_DEPS[id]||[]).some((dep)=>!isDone(dep));return '<span class="pill '+(cardLocked?'prio-Urgent':'st-'+cssKey(card?.status||"Todo"))+'">'+esc(id)+' · '+(cardLocked?'잠김':esc(card?.status||"측정 실패"))+'</span>'}).join(" "):'<span class="pill '+(lockedCount?'prio-Urgent':'st-Todo')+'">신규 카드 미배정</span>';
+  return '<div class="layer"><b>'+layer.n+'</b><p><b>'+esc(layer.name)+'</b><small>'+cardStates+'</small></p><span class="pill '+(lockedCount?'prio-Urgent':done?'st-Done':'st-Todo')+'">'+lockText+'</span></div>';
+ }).join("")+'</div>';
+
+ const hands=ops.handNeeded;
+ document.getElementById("handNeeded").innerHTML='<div class="section-title">손이 필요한 것</div><div class="ops-list">'+(Array.isArray(hands)?hands.length?hands.map((i)=>'<a class="ops-item" href="'+esc(i.url||issueUrl(i))+'" target="_blank"><b>'+esc(i.id)+'</b> · '+esc(i.title)+'<br><small>'+esc(i.priority?.name||"우선순위 없음")+' · '+esc(i.status)+'</small></a>').join(""):'<div class="empty">현재 없음</div>':'<div class="empty">측정 실패</div>')+'</div>';
+ const today=ops.today;
+ document.getElementById("today").innerHTML='<div class="section-title">오늘 한 것</div><div class="ops-list">'+(Array.isArray(today)?today.length?today.slice(0,30).map((i)=>'<div class="ops-item"><b>'+esc(i.type==='git'?i.id:i.id)+'</b> · '+esc(i.title)+'<br><small>'+new Date(i.at).toLocaleString("ko-KR")+'</small></div>').join(""):'<div class="empty">오늘 기록 없음</div>':'<div class="empty">측정 실패</div>')+'</div>';
+ const fuel=ops.fuel;
+ document.getElementById("fuel").innerHTML='<div class="section-title">연료 · '+(fuel?.updatedAt?'입력 '+ago(fuel.updatedAt):'미입력')+'</div><div class="fuel"><div><b>'+esc(fuel?.claude??"미입력")+(fuel?.claude!=null?'%':'')+'</b><span>클로드 · 일요일 충전</span></div><div><b>'+esc(fuel?.codex??"미입력")+(fuel?.codex!=null?'%':'')+'</b><span>코덱스 · 수요일 충전</span></div></div>';
+}
 function renderContext(){
  const recent=state.open.filter((issue)=>issue.createdAt&&hours(issue.createdAt)<=168).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,4);
  const notes=[...HANDOFF_NOTES];
@@ -516,15 +576,18 @@ async function load(){
  const error=document.getElementById("error");error.style.display="none";
  document.getElementById("refresh").disabled=true;
  try{
-  const [issueData,operations]=await Promise.all([mcp(T_ISSUES,{project:PROJECT}),fetchOperations()]);
+  const [issueRead,operationsRead]=await Promise.allSettled([mcp(T_ISSUES,{project:PROJECT}),fetchOperations()]);
+  const issueData=issueRead.status==="fulfilled"?issueRead.value:{issues:[]};
+  const operations=operationsRead.status==="fulfilled"?operationsRead.value:{};
+  if(issueRead.status!=="fulfilled"){error.style.display="block";error.textContent="Linear 측정 실패 — Orca·Git·연료 판은 계속 표시합니다."}
   const all=(issueData.issues||[]).map((issue)=>({...issue,labels:Array.isArray(issue.labels)?issue.labels:[]}));
-  state.by=Object.fromEntries(all.map((issue)=>[issue.id,issue]));
+  state.all=all;state.by=Object.fromEntries(all.map((issue)=>[issue.id,issue]));
   state.issues=all.filter((issue)=>GOAL_SET.has(issue.id));
   state.open=state.issues.filter((issue)=>!DONE_STATES.has(issue.status));
   state.operations=operations;
   const active=state.open.filter((issue)=>ACTIVE_STATES.has(issue.status));
   state.stamps=new Map(await Promise.all(active.map(fetchStamp)));
-  renderHero();buildDecisions();renderFlows();renderLanes();renderSquads();renderSharedGates();renderOperations();renderContext();initFilters();renderInventory();renderFeed();
+  renderHero();renderLiveBoard();buildDecisions();renderFlows();renderLanes();renderSquads();renderSharedGates();renderOperations();renderContext();initFilters();renderInventory();renderFeed();
   document.getElementById("stamp").textContent="갱신 "+new Date().toLocaleString("ko-KR")+" · Linear 전체 "+all.length+"건 · 공동목표 "+state.issues.length+"건 · 오픈 "+state.open.length+"건 · 캐시 45초";
  }catch(err){
   error.style.display="block";error.textContent="관제 데이터를 불러오지 못했습니다. "+String(err.message||err);

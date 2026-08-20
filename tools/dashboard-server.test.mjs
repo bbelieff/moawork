@@ -116,6 +116,11 @@ before(async () => {
           count: 1,
           items: [{ number: 187, title: "fixture", checks: { success: 3, failing: 0, pending: 0, total: 3 } }],
         },
+        workers: { available: true, staleAfterMs: 300000, items: [{ cardId: "BBE-256", engine: "DG", status: "dispatched", worktree: "C:/work/MoaWork", lastActivityAt: "2026-08-15T03:00:00.000Z", stalled: false }] },
+        metrics: { qaDifference: { available: true, value: 35, measuredAt: "2026-08-15T03:00:00.000Z", ttlMs: 300000 }, urgentRemaining: 2, handNeeded: 1, completion: { done: 8, total: 10, percent: 80 } },
+        handNeeded: [{ id: "BBE-1", title: "fixture", status: "Blocked", priority: { name: "Urgent" } }],
+        today: [{ type: "git", id: "abcdef01", at: "2026-08-15T03:00:00.000Z", title: "fixture commit" }],
+        fuel: { available: false, claude: null, codex: null, updatedAt: null },
       }),
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -237,5 +242,9 @@ test("operations endpoint exposes read-only repository and PR decision signals",
   assert.equal(body.repository.dirty, false);
   assert.equal(body.pullRequests.count, 1);
   assert.deepEqual(body.pullRequests.items[0].checks, { success: 3, failing: 0, pending: 0, total: 3 });
+  assert.deepEqual(body.workers.items[0], { cardId: "BBE-256", engine: "DG", status: "dispatched", worktree: "C:/work/MoaWork", lastActivityAt: "2026-08-15T03:00:00.000Z", stalled: false });
+  assert.equal(body.metrics.qaDifference.value, 35);
+  assert.equal(body.metrics.completion.percent, 80);
+  assert.equal(body.fuel.available, false);
   assert.equal(JSON.stringify(body).includes("lin_api_"), false);
 });
