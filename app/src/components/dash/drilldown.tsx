@@ -65,7 +65,8 @@ export function DashboardStateNotice({
   result: string | null;
   overdueCount: number;
 }) {
-  if (result === "partial") return <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">업무는 저장됐지만 활동 기록 일부를 남기지 못했어요. 업무 값은 새로고침해 확인해 주세요.</p>;
+  // BBE-208: 부분 실패는 성공이 아니다. status 로 접으면 「일부 못 남겼다」를 보조기술 사용자가 놓친다.
+  if (result === "partial") return <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">업무는 저장됐지만 활동 기록 일부를 남기지 못했어요. 업무 값은 새로고침해 확인해 주세요.</p>;
   if (result === "failed") return <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">변경을 저장하지 못했어요. 권한과 연결 상태를 확인하고 다시 시도해 주세요.</p>;
   if (result) return <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">변경 내용을 저장했어요.</p>;
   if (overdueCount > 0) return <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">기한이 지난 업무가 {overdueCount}건 있어요. 아래 근거 목록에서 바로 확인할 수 있어요.</p>;

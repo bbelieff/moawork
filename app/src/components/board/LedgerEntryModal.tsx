@@ -9,6 +9,8 @@
 import { useState, useTransition } from "react";
 import { addDealLedgerEntryAction, type AddLedgerEntryInput } from "@/lib/accounting/actions";
 import type { LedgerKind } from "@/lib/accounting/ledger";
+import { ResultBanner } from "@/lib/ui/ResultBanner";
+import type { ResultNotice } from "@/lib/ui/result-notice";
 
 export interface LedgerEntryModalProps {
   dealId: string;
@@ -45,7 +47,9 @@ export function LedgerEntryModal({
   const [notYetPaid, setNotYetPaid] = useState(false);
   const [vatIncluded, setVatIncluded] = useState(false);
   const [taxInvoiceIssued, setTaxInvoiceIssued] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  // ★ BBE-208 — 판정(`ok`)을 «상태에» 담는다. 문자열만 담아 두고 표현을 빨간 alert 로
+  //   못박아 두면, 나중에 성공 메시지가 이 자리에 들어오는 순간 성공이 오류로 읽힌다.
+  const [notice, setNotice] = useState<ResultNotice | null>(null);
   const [pending, startTransition] = useTransition();
 
   const vatFillAmount = (() => {
@@ -54,11 +58,11 @@ export function LedgerEntryModal({
   })();
 
   function submit(): void {
-    setMessage(null);
+    setNotice(null);
     const parsedAmount = parseWon(amount);
     const parsedReceived = parseWon(receivedAmount);
     if (!Number.isFinite(parsedAmount) || !Number.isFinite(parsedReceived)) {
-      setMessage("금액과 입금액을 숫자로 입력해 주세요.");
+      setNotice({ ok: false, message: "금액과 입금액을 숫자로 입력해 주세요." });
       return;
     }
     const input: AddLedgerEntryInput = {
@@ -74,7 +78,7 @@ export function LedgerEntryModal({
     startTransition(() => {
       void addDealLedgerEntryAction(input).then((result) => {
         if (!result.ok) {
-          setMessage(result.message);
+          setNotice({ ok: false, message: result.message });
           return;
         }
         onSaved();
@@ -208,8 +212,12 @@ export function LedgerEntryModal({
           </div>
         )}
 
-        {message && (
-          <p role="alert" className="mt-3 text-xs font-semibold text-mw-error">{message}</p>
+        {notice && (
+          <ResultBanner
+            notice={notice}
+            okClassName="mt-3 text-xs font-semibold text-mw-success"
+            errorClassName="mt-3 text-xs font-semibold text-mw-error"
+          />
         )}
 
         <div className="mt-4 flex justify-end gap-2">

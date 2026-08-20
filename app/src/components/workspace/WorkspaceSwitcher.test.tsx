@@ -87,3 +87,37 @@ describe("WorkspaceSwitcher", () => {
     expect(html).not.toContain("성공했어요");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★ #262 — «되돌리면 빨개지는가» 를 보장하는 자리 (DC-18 지적)
+//
+//   BBE-208 에서 이 라이브 리전을 role="status" 고정에서 판정 파생으로 바꿨는데,
+//   되돌려도 스위트 전체가 초록이었다. navigationError 는 테스트 어디에도 없었다.
+//   전수 검사기는 role={변수} 를 원리적으로 못 읽으므로 «그려서» 재는 수밖에 없다.
+//
+//   실패쪽(navigationError 있음 → alert)은 내부 state 라 정적 렌더로 못 만든다.
+//   그쪽은 result-notice.test.ts 의 VERDICT_BANNERS 가 배선을 못 박는다.
+//   여기서 성공쪽을 못 박아야 «전부 alert 로 칠하는 도망» 이 막힌다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("WorkspaceSwitcher 라이브 리전 — 판정 파생", () => {
+  const html = renderToStaticMarkup(
+    <WorkspaceSwitcher
+      currentOrgId="org-a"
+      workspaces={active}
+      destinations={destinations}
+      onNavigate={async () => {}}
+    />,
+  );
+
+  // 되돌리면 빨개진다: role={noticeRole(!navigationError)} → role="alert"
+  it("★ 이동 실패가 «없을» 때는 status 다 — 전부 alert 로 칠하면 빨개진다", () => {
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-live="polite"');
+  });
+
+  // 되돌리면 빨개진다: role={noticeRole(!navigationError)} → role="alert"
+  it("★ 조용한 화면을 alert 로 떠들지 않는다", () => {
+    expect(html).not.toContain('role="alert"');
+    expect(html).not.toContain('aria-live="assertive"');
+  });
+});
