@@ -1,0 +1,306 @@
+<title>정산 리포트 시안</title>
+<style>
+  :root{
+    --mw-work-blue:#3478f6; --mw-flow-teal:#18a999; --mw-moa-violet:#6b5cff; --mw-people-coral:#f26b5e;
+    --mw-fg:#191a1e; --mw-primary:var(--mw-moa-violet); --mw-record:var(--mw-work-blue);
+    --mw-success:#16a34a; --mw-warning:#d97706; --mw-error:#dc2626;
+    --mw-bg:#f7f8fa; --mw-card:#fff; --mw-sub:#6b7280; --mw-line:#e8eaef; --mw-body:#3f4249;
+    --mw-on-accent:#fff; --mw-tint-blue:#eaf0fe; --mw-tint-teal:#eaf7f4; --mw-tint-coral:#fdecea;
+  }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+    --mw-work-blue:#6ea0ff; --mw-flow-teal:#47cfbc; --mw-moa-violet:#8a7cff; --mw-people-coral:#ff8a80;
+    --mw-fg:#f7f8fa; --mw-success:#4ade80; --mw-warning:#fbbf24; --mw-error:#f87171;
+    --mw-bg:#111216; --mw-card:#1a1c22; --mw-sub:#9aa0ac; --mw-line:#262932; --mw-body:#c6cad3;
+    --mw-on-accent:#10131a; --mw-tint-blue:rgba(110,160,255,.14); --mw-tint-teal:rgba(71,207,188,.14); --mw-tint-coral:rgba(255,138,128,.15);
+  }}
+  :root[data-theme="dark"]{
+    --mw-work-blue:#6ea0ff; --mw-flow-teal:#47cfbc; --mw-moa-violet:#8a7cff; --mw-people-coral:#ff8a80;
+    --mw-fg:#f7f8fa; --mw-success:#4ade80; --mw-warning:#fbbf24; --mw-error:#f87171;
+    --mw-bg:#111216; --mw-card:#1a1c22; --mw-sub:#9aa0ac; --mw-line:#262932; --mw-body:#c6cad3;
+    --mw-on-accent:#10131a; --mw-tint-blue:rgba(110,160,255,.14); --mw-tint-teal:rgba(71,207,188,.14); --mw-tint-coral:rgba(255,138,128,.15);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--mw-bg);color:var(--mw-fg);line-height:1.55;
+    font-family:-apple-system,BlinkMacSystemFont,"Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif}
+  .wrap{max-width:1040px;margin:0 auto;padding:28px 20px 90px}
+  .intro{display:flex;flex-direction:column;gap:9px;padding-bottom:18px;border-bottom:1px solid var(--mw-line);margin-bottom:26px}
+  .intro h1{margin:0;font-size:22px;letter-spacing:-.02em}
+  .intro p{margin:0;color:var(--mw-sub);font-size:14px;max-width:72ch}
+  .nav{display:flex;flex-wrap:wrap;gap:8px;margin-top:5px}
+  .nav a{font-size:12px;font-weight:700;color:var(--mw-primary);text-decoration:none;background:var(--mw-tint-blue);padding:6px 11px;border-radius:999px}
+
+  section.q{margin-bottom:50px;scroll-margin-top:16px}
+  .qtitle{display:flex;align-items:center;gap:10px;margin:0 0 4px}
+  .qnum{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;
+    background:var(--mw-primary);color:var(--mw-on-accent);font-size:12px;font-weight:800;flex:none}
+  .qtitle h2{margin:0;font-size:17.5px;letter-spacing:-.01em}
+  .qhint{margin:0 0 15px 34px;color:var(--mw-sub);font-size:13px;max-width:70ch}
+  .qhint b{color:var(--mw-fg)}
+  .body{margin-left:34px}
+
+  .screen{border:1px solid var(--mw-line);border-radius:16px;background:var(--mw-card);overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .screen-body{padding:18px 20px 22px}
+  .routelabel{display:inline-block;font-size:11px;font-weight:700;color:var(--mw-sub);background:var(--mw-card);
+    border:1px solid var(--mw-line);border-radius:8px;padding:3px 8px;margin-bottom:11px;font-family:ui-monospace,Menlo,monospace}
+
+  table.cmp3{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--mw-card);
+    border:1px solid var(--mw-line);border-radius:12px;overflow:hidden}
+  table.cmp3 th,table.cmp3 td{padding:11px 12px;text-align:left;vertical-align:top;border-top:1px solid var(--mw-line)}
+  table.cmp3 th{color:var(--mw-sub);font-size:11px;font-weight:700;border-top:0;background:var(--mw-bg)}
+  table.cmp3 td:first-child{font-weight:700;white-space:nowrap}
+  .pick{background:var(--mw-tint-teal);color:var(--mw-flow-teal);font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:5px;white-space:nowrap}
+
+  /* 필터바 */
+  .filters{display:flex;flex-wrap:wrap;gap:9px;align-items:end;padding:14px 16px;background:var(--mw-bg);
+    border:1px solid var(--mw-line);border-radius:12px;margin-bottom:14px}
+  .filters label{display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mw-sub)}
+  .filters input,.filters select{min-height:36px;padding:7px 9px;border:1px solid var(--mw-line);border-radius:9px;
+    background:var(--mw-card);color:var(--mw-fg);font:inherit;font-size:12.5px}
+  .btn{min-height:36px;padding:8px 14px;border:0;border-radius:9px;background:var(--mw-primary);color:var(--mw-on-accent);
+    font:inherit;font-size:12.5px;font-weight:800;cursor:pointer;white-space:nowrap}
+  .btn.ghost{background:var(--mw-card);color:var(--mw-body);border:1px solid var(--mw-line)}
+  .btn:focus-visible{outline:2.5px solid var(--mw-primary);outline-offset:1px}
+  .exports{display:flex;gap:8px;margin-left:auto}
+
+  /* 리포트 */
+  .rephead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding-bottom:12px;
+    border-bottom:2px solid var(--mw-fg);margin-bottom:4px}
+  .rephead h3{margin:0;font-size:17px;letter-spacing:-.01em}
+  .rephead .cond{margin:5px 0 0;font-size:11.5px;color:var(--mw-sub)}
+  .rephead .stamp{font-size:11px;color:var(--mw-sub);text-align:right;white-space:nowrap}
+  .repwrap{overflow-x:auto}
+  table.rep{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+  table.rep th,table.rep td{padding:8px 9px;text-align:left;white-space:nowrap}
+  table.rep thead th{font-size:10.5px;color:var(--mw-sub);font-weight:700;border-bottom:1px solid var(--mw-line);
+    text-transform:none;letter-spacing:.02em}
+  table.rep td{border-bottom:1px solid var(--mw-line)}
+  table.rep .num{text-align:right}
+  tr.grp td{background:var(--mw-bg);font-weight:800;font-size:12px;border-top:1px solid var(--mw-line)}
+  tr.sub td{background:var(--mw-tint-blue);font-weight:800;color:var(--mw-record);font-size:12px}
+  tr.total td{background:var(--mw-fg);color:var(--mw-card);font-weight:800;font-size:13px}
+  .tag{font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:5px}
+  .tag.dep{background:var(--mw-tint-blue);color:var(--mw-record)}
+  .tag.fee{background:var(--mw-tint-coral);color:var(--mw-people-coral)}
+  .muted{color:var(--mw-sub)}
+
+  .note{margin-top:14px;padding:13px 15px;border-radius:11px;font-size:12.5px;line-height:1.65}
+  .note.warn{background:var(--mw-tint-coral);color:var(--mw-body);border:1.5px dashed var(--mw-warning)}
+  .note.warn b{color:var(--mw-error)}
+  .note.ok{background:var(--mw-tint-teal);color:var(--mw-body);border:1px solid var(--mw-flow-teal)}
+
+  /* 상품 입력 */
+  .combo{max-width:430px}
+  .combobox{display:flex;align-items:center;gap:7px;border:1.5px solid var(--mw-primary);border-radius:10px;
+    padding:8px 11px;background:var(--mw-card);font-size:13.5px}
+  .combobox input{border:0;outline:0;flex:1;background:none;color:var(--mw-fg);font:inherit;font-size:13.5px}
+  .cbmenu{border:1px solid var(--mw-line);border-top:0;border-radius:0 0 10px 10px;background:var(--mw-card);
+    max-height:210px;overflow-y:auto}
+  .cbrow{padding:8px 12px;font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer}
+  .cbrow:hover{background:var(--mw-bg)}
+  .cbrow .hit{color:var(--mw-primary);font-weight:800}
+  .cbrow .why{margin-left:auto;font-size:10.5px;color:var(--mw-sub)}
+  .cbrow.add{border-top:1px solid var(--mw-line);color:var(--mw-flow-teal);font-weight:800}
+  .cbsec{padding:6px 12px;font-size:10.5px;font-weight:800;color:var(--mw-sub);background:var(--mw-bg)}
+
+  @media (max-width:760px){ .body,.qhint{margin-left:0} .exports{margin-left:0;width:100%} }
+</style>
+
+<div class="wrap">
+
+  <div class="intro">
+    <h1>정산 리포트 시안</h1>
+    <p>세 가지 답변입니다 — ① 진행 상품을 «앱 정본 + 직접 추가» 로 ② CSV·엑셀·PDF 중 무엇으로 뽑을지와 리포트 시안 ③ 체크리스트 관리자 위치 제 선택.</p>
+    <div class="nav">
+      <a href="#q1">① 상품 입력 방식</a>
+      <a href="#q2">② 리포트 — 형식 결정</a>
+      <a href="#q3">③ 체크리스트 위치</a>
+    </div>
+  </div>
+
+  <section class="q" id="q1">
+    <div class="qtitle"><span class="qnum">1</span><h2>진행 상품 — 앱 59종을 정본으로, 직접 추가 가능하게</h2></div>
+    <p class="qhint">고르는 것도 되고, <b>쳐서 넣으면 비슷한 걸 찾아 매칭</b>해 주고, 목록에 아예 없으면 <b>그 자리에서 새로 추가</b>됩니다. 목업의 7개 중 대응이 있던 3개는 이미 앱에 있으므로 자동으로 매칭됩니다.</p>
+    <div class="body">
+      <div class="screen">
+        <div class="screen-body">
+          <div class="combo">
+            <div class="combobox">
+              <span class="muted">진행 상품</span>
+              <input value="혁신성장 일반" />
+            </div>
+            <div class="cbmenu">
+              <div class="cbsec">비슷한 상품 — 이걸 말씀하신 건가요?</div>
+              <div class="cbrow"><span><span class="hit">혁신성장</span>_<span class="hit">일반</span>형</span><span class="why">띄어쓰기·접미사만 다름</span></div>
+              <div class="cbrow"><span><span class="hit">혁신성장</span>_혁신형</span><span class="why">앞부분 일치</span></div>
+              <div class="cbrow"><span><span class="hit">혁신성장</span>지원</span><span class="why">앞부분 일치</span></div>
+              <div class="cbsec">전체 목록 (59)</div>
+              <div class="cbrow">개발기술사업화</div>
+              <div class="cbrow">제조현장스마트화</div>
+              <div class="cbrow add">＋ 「혁신성장 일반」을 새 상품으로 추가</div>
+            </div>
+          </div>
+
+          <div class="note ok" style="margin-top:16px">
+            <b>매칭 규칙</b> — 띄어쓰기·언더바·「형/자금」 같은 접미사를 무시하고 비교합니다. 그래서 <code>혁신성장 일반</code> 을 치면 <code>혁신성장_일반형</code> 이 맨 위에 뜹니다.
+            새로 추가한 상품은 <b>그 회사 워크스페이스에만</b> 생깁니다(다른 회사엔 안 보임) — 제품 코드에 특정 회사 값을 박지 않는다는 규칙 그대로입니다.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="q" id="q2">
+    <div class="qtitle"><span class="qnum">2</span><h2>CSV·엑셀·PDF — 무엇으로 뽑나</h2></div>
+    <p class="qhint">먼저 셋의 차이부터. <b>내부 확인용</b>이고 <b>가독성·구분</b>이 목적이라는 전제로 골랐습니다.</p>
+    <div class="body">
+      <table class="cmp3">
+        <thead><tr><th style="width:15%">형식</th><th style="width:31%">되는 것</th><th style="width:31%">안 되는 것</th><th>이 용도에</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>CSV</td>
+            <td>어디서나 열림. 엑셀로 열어 피벗·정렬 자유. 파일 작음. <b>추가 개발 0</b>(이미 만들어져 있음)</td>
+            <td>서식이 하나도 없음 — 금액이 <code>5000000</code> 으로 보임. 색·열너비·소계 없음. 그룹 구분 안 됨</td>
+            <td>「데이터를 더 주무를 때」</td>
+          </tr>
+          <tr>
+            <td>엑셀 .xlsx</td>
+            <td>₩ 서식·열너비·틀고정·자동필터·여러 시트. 받는 사람이 <b>거기서 더 걸러볼 수</b> 있음</td>
+            <td><b>새 라이브러리 필요</b>(지금 저장소에 없음). 용량 크고, 서버에서 만들면 느려짐</td>
+            <td>「받아서 또 만질 때」</td>
+          </tr>
+          <tr>
+            <td>PDF</td>
+            <td>레이아웃 그대로 고정. 인쇄·결재·보관·증빙에 적합. 아무도 못 고침</td>
+            <td>정렬·필터 불가. 데이터를 다시 쓸 수 없음</td>
+            <td>「그대로 남기거나 올릴 때」</td>
+          </tr>
+          <tr style="background:var(--mw-tint-teal)">
+            <td>★ 화면 리포트</td>
+            <td>소계·그룹·색으로 <b>구분이 제일 잘 됨</b>. 조건 바꾸면 즉시 다시 그림. 브라우저 인쇄로 <b>PDF 저장이 그냥 됨</b>(라이브러리 0)</td>
+            <td>파일로 주고받으려면 인쇄를 한 번 거쳐야 함</td>
+            <td><span class="pick">이걸 주력으로</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="note ok" style="margin-bottom:18px">
+        <b>제 제안</b> — 화면 리포트를 정본으로 만들고, 거기서 <b>「인쇄(PDF로 저장)」 + 「CSV 내려받기」</b> 두 개만 답니다.
+        내부에서 눈으로 확인하는 게 목적이면 <b>화면이 제일 낫고</b>, PDF 는 브라우저 인쇄로 공짜로 얻어집니다.
+        엑셀(.xlsx)은 라이브러리를 새로 들여야 해서 <b>「엑셀로 또 가공해야 한다」는 요구가 실제로 나오면</b> 그때 붙이는 게 맞다고 봅니다(CSV 로 대부분 대체됩니다).
+      </div>
+
+      <div class="routelabel">제안 위치: /ledger (연도별 전체 원장) — 지금 있는 연도 탭 위에 「리포트」 탭 추가</div>
+      <div class="screen">
+        <div class="screen-body">
+          <div class="filters">
+            <label>기간<input type="date" value="2026-01-01" /></label>
+            <label>&nbsp;<input type="date" value="2026-06-30" /></label>
+            <label>업체<select><option>전체</option><option>㈜예시상사</option></select></label>
+            <label>담당자<select><option>전체</option><option>박정화</option></select></label>
+            <label>진행기관<select><option>전체</option><option>직접_미소</option></select></label>
+            <label>구분<select><option>전체</option><option>계약금</option><option>수수료</option></select></label>
+            <label>묶기<select><option>업체별</option><option>담당자별</option><option>기관별</option><option>월별</option></select></label>
+            <span class="exports">
+              <button class="btn ghost">CSV</button>
+              <button class="btn">🖨 인쇄 · PDF 저장</button>
+            </span>
+          </div>
+
+          <div class="rephead">
+            <div>
+              <h3>업무 원장 — 업체별</h3>
+              <p class="cond">2026-01-01 ~ 2026-06-30 · 전체 담당자 · 전체 기관 · 전체 구분</p>
+            </div>
+            <div class="stamp">모아워크<br/>출력 2026-08-20 · 카뮈</div>
+          </div>
+
+          <div class="repwrap">
+            <table class="rep">
+              <thead>
+                <tr>
+                  <th>업체</th><th>담당자</th><th>진행기관</th><th>진행 상품</th>
+                  <th>구분</th><th>발생일</th><th>입금일</th>
+                  <th class="num">금액(공급가)</th><th class="num">입금액</th><th class="num">미수금</th><th>계산서</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="grp"><td colspan="11">㈜예시상사 — 소상공인 정책자금</td></tr>
+                <tr>
+                  <td class="muted">㈜예시상사</td><td>박정화</td><td>직접_미소</td><td>일반운전자금</td>
+                  <td><span class="tag dep">계약금</span></td><td>2026-03-05</td><td>2026-03-05</td>
+                  <td class="num">1,000,000</td><td class="num">1,000,000</td><td class="num">0</td><td class="muted">—</td>
+                </tr>
+                <tr>
+                  <td class="muted">㈜예시상사</td><td>박정화</td><td>직접_미소</td><td>일반운전자금</td>
+                  <td><span class="tag fee">수수료</span></td><td>2026-05-20</td><td>2026-05-20</td>
+                  <td class="num">5,000,000</td><td class="num">5,500,000</td><td class="num">0</td><td>발행✓</td>
+                </tr>
+                <tr class="sub"><td colspan="7">소계 — ㈜예시상사</td><td class="num">6,000,000</td><td class="num">6,500,000</td><td class="num">0</td><td></td></tr>
+
+                <tr class="grp"><td colspan="11">㈜새싹기업 — 소공인특화자금</td></tr>
+                <tr>
+                  <td class="muted">㈜새싹기업</td><td>김수현</td><td>재단_경기사이버보증</td><td>소공인특화자금</td>
+                  <td><span class="tag dep">계약금</span></td><td>2026-06-02</td><td>2026-06-02</td>
+                  <td class="num">1,200,000</td><td class="num">1,200,000</td><td class="num">0</td><td class="muted">—</td>
+                </tr>
+                <tr>
+                  <td class="muted">㈜새싹기업</td><td>김수현</td><td>재단_경기사이버보증</td><td>소공인특화자금</td>
+                  <td><span class="tag fee">수수료</span></td><td>2026-06-28</td><td class="muted">미입금</td>
+                  <td class="num">3,000,000</td><td class="num">2,700,000</td><td class="num">300,000</td><td class="muted">—</td>
+                </tr>
+                <tr class="sub"><td colspan="7">소계 — ㈜새싹기업</td><td class="num">4,200,000</td><td class="num">3,900,000</td><td class="num">300,000</td><td></td></tr>
+
+                <tr class="total"><td colspan="7">합계 — 2건 업체 · 4건 수납</td><td class="num">10,200,000</td><td class="num">10,400,000</td><td class="num">300,000</td><td></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="note ok">
+            <b>육하원칙으로 바꿨습니다</b> — 업무 ID·원장 ID 를 빼고 <b>누가(담당자) · 어디(업체·진행기관) · 무엇(진행 상품) · 언제(발생일·입금일) · 얼마(금액·입금액·미수금) · 어떻게(구분·계산서)</b> 로 채웠습니다.
+            매출은 <b>공급가</b> 기준, 입금액은 <b>실제 받은 전액</b>(부가세 포함이면 포함된 채) 그대로입니다.
+          </div>
+
+          <div class="note warn">
+            <b>먼저 정해야 할 게 하나 있습니다 — 「진행기관·진행 상품」은 원장에 없습니다.</b><br/>
+            이 둘은 딜이 아니라 <b>계약업체 실무 보드의 컬럼</b>에 저장됩니다. 그래서 리포트가 그 값을 쓰려면 보드 행을 타고 들어가야 하는데,
+            <b>회사가 컬럼을 자유롭게 고치거나 지울 수 있습니다</b>(공지사항 자유편집과 같은 원칙). 「진행기관」 컬럼을 지우거나 이름을 바꾸면 그 열이 빈칸이 됩니다.
+            <br/><br/>세 갈래입니다 — ⓐ 빈칸으로 두고 「이 컬럼이 있어야 채워집니다」라고 안내 · ⓑ 이 두 값만 딜에 같이 저장(보드에서 바꾸면 딜에도 반영) · ⓒ 기관·상품 필터를 이번엔 빼고 기간·업체·담당자·구분 넷만.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="q" id="q3">
+    <div class="qtitle"><span class="qnum">3</span><h2>체크리스트 관리자 위치 — 제 선택</h2></div>
+    <p class="qhint">고르라고 하셔서 골랐습니다.</p>
+    <div class="body">
+      <table class="cmp3">
+        <thead><tr><th style="width:26%">후보</th><th style="width:37%">좋은 점</th><th>문제</th></tr></thead>
+        <tbody>
+          <tr style="background:var(--mw-tint-teal)">
+            <td>프리셋 라이브러리에 「서류」 탭 <span class="pick">선택</span></td>
+            <td>이미 <b>「미리 정해두고 재사용하는 것」이 모이는 곳</b>입니다(아이템 프리셋·뷰 프리셋). 서류 체크리스트도 정확히 그것 — 상품별로 미리 정해두고 새 업무마다 자동으로 깔립니다. 사용자가 「미리 정하는 건 저기」 한 곳만 기억하면 됩니다</td>
+            <td>목업에 탭이 둘뿐이라 <b>세 번째를 새로 만드는 것</b>이 목업과의 차이가 됩니다(총괄 승인 필요 — 그래서 여쭙는 것)</td>
+          </tr>
+          <tr>
+            <td>계정설정 › 회사와 팀</td>
+            <td>목업 변경 없음. 관리자 설정끼리 모임</td>
+            <td>여긴 <b>「누가 쓰는가」</b>(멤버·권한·로고)를 정하는 곳입니다. 서류 체크리스트는 <b>「업무 내용의 기본값」</b>이라 성격이 다릅니다. 정책자금 전용 항목이 일반 설정 사이에 끼면 다른 업종 회사에겐 뜬금없어 보입니다</td>
+          </tr>
+          <tr>
+            <td>계약업체 실무 보드 안</td>
+            <td>쓰는 자리 바로 옆</td>
+            <td>보드는 <b>회사가 자유롭게 편집하는 데이터 영역</b>입니다. 거기에 관리자 설정을 섞으면 「이건 지워도 되나」가 헷갈립니다</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="note ok" style="margin-top:14px">
+        <b>제 선택은 ①(프리셋 라이브러리 「서류」 탭)</b> 입니다. 이유는 하나 — <b>서류 체크리스트는 프리셋입니다.</b>
+        「상품별로 미리 정해두고 새 업무마다 재사용」이 프리셋의 정의 그대로고, 아이템·뷰 프리셋이 이미 그 자리에 있습니다.
+        목업에 없는 탭을 하나 늘리는 게 유일한 비용인데, 이건 <b>목업이 그 기능을 안 그렸을 뿐</b>이지 목업과 충돌하는 게 아닙니다.
+      </div>
+    </div>
+  </section>
+
+</div>
