@@ -38,7 +38,7 @@ describe("BBE-150 계약업체 실무 기본 탭", () => {
     expect(CONTRACT_WORK_TAB.groups).toHaveLength(11);
     expect(byLabel.get("진행기관")?.options).toHaveLength(18);
     expect(byLabel.get("세부명칭")?.options).toHaveLength(59);
-    expect(byLabel.get("진행상항")?.options).toHaveLength(14);
+    expect(byLabel.get("진행상황")?.options).toHaveLength(14);
   });
 
   it("전량 선택지와 그룹은 이관 매핑 사전과 내용·순서가 같다", () => {
@@ -52,22 +52,27 @@ describe("BBE-150 계약업체 실무 기본 탭", () => {
     expect(byLabel.get("세부명칭")?.options?.map((option) => option.label)).toEqual(
       mapped("진행 상품").options?.map((option) => option.label),
     );
-    expect(byLabel.get("진행상항")?.options?.map((option) => option.label)).toEqual(
+    // 좌변은 제품 라벨(«진행상황»), 우변은 먼데이 사전의 조회 키(«진행상항») 다. 이 한 줄이
+    // 두 어휘가 만나는 이음매이며, 우변을 «고치면» 사전 조회가 깨진다.
+    expect(byLabel.get("진행상황")?.options?.map((option) => option.label)).toEqual(
       mapped("진행상항").options?.map((option) => option.label),
     );
   });
 
   // 2026-08-20 총괄 직접 지시: 맨 앞에 «구분» 이 붙고 자금명→상품명칭 · 진행 상품→세부명칭 으로
   // 이름이 바뀌었다(28컬럼). key 는 그대로다 — 아래 key 배열이 그 사실을 못박는다.
+  // 같은 날 지시 3건이 더 얹혔다: 담당자를 맨 앞으로, 세부명칭을 상품명칭 바로 뒤로,
+  // 라벨 «진행상항»→«진행상황». 14번 자리(진행상황)와 그 뒤 순서는 그대로다 — 4·13번을 빼서
+  // 1·5번에 다시 꽂았을 뿐이라 뒤쪽은 밀리지 않는다.
   it("총괄 지시 순서의 28컬럼과 고정열을 보존한다", () => {
     expect(CONTRACT_WORK_TAB.columns.map((column) => column.label)).toEqual([
-      "구분", "진행기관", "상품명칭", "담당자", "사업자유형", "창업년도", "연 매출액", "대표자명",
-      "전화번호", "업종/업태", "시도", "시군구", "세부명칭", "진행상항", "방문 및 신청 일",
+      "담당자", "구분", "진행기관", "상품명칭", "세부명칭", "사업자유형", "창업년도", "연 매출액",
+      "대표자명", "전화번호", "업종/업태", "시도", "시군구", "진행상황", "방문 및 신청 일",
       "실사일", "예상 심사 종료", "ƒ심사 D-day", "실행액", "수수료(%)", "ƒ수수료(원)",
       "수수료_입금일", "ƒ총 매출액", "조달일", "ƒ재신청 안내일", "ƒD+180", "계약금", "계약금_입금일",
     ]);
     expect(CONTRACT_WORK_TAB.columns).toHaveLength(28);
-    expect(CONTRACT_WORK_TAB.columns.filter((column) => column.rightPinned).map((column) => column.label)).toEqual(["진행상항"]);
+    expect(CONTRACT_WORK_TAB.columns.filter((column) => column.rightPinned).map((column) => column.label)).toEqual(["진행상황"]);
   });
 
   it("이름이 바뀌어도 key 는 얼어 있다 — key 를 바꾸면 기존 셀 값이 고아가 된다", () => {
@@ -79,7 +84,10 @@ describe("BBE-150 계약업체 실무 기본 탭", () => {
     expect(byKey.get("institution")).toBe("진행기관");
     // 새로 붙은 «구분» 만 새 key 다 — 되살릴 기존 값이 없으므로 고아 걱정이 없다.
     expect(byKey.get("engagement_kind")).toBe("구분");
-    expect(CONTRACT_WORK_TAB.columns[0]?.key).toBe("engagement_kind");
+    // 2026-08-20 지시로 «담당자» 가 맨 앞이고 «구분» 이 그 다음이다. 둘 다 key 는 그대로다.
+    expect(CONTRACT_WORK_TAB.columns[0]?.key).toBe("owner");
+    expect(CONTRACT_WORK_TAB.columns[1]?.key).toBe("engagement_kind");
+    expect(CONTRACT_WORK_TAB.columns[4]?.key).toBe("product");
     expect(byLabel.get("구분")?.options?.map((option) => option.label)).toEqual(["자금", "지원금", "인증", "기타용역"]);
   });
 
@@ -93,8 +101,8 @@ describe("BBE-150 계약업체 실무 기본 탭", () => {
     for (const column of [...linked, ...calculated]) expect(column.readOnly, column.label).toBe(true);
   });
 
-  it("진행상항 자동 이동 4규칙이 전량 그룹을 가리킨다", () => {
-    const moveTo = byLabel.get("진행상항")?.moveTo;
+  it("진행상황 자동 이동 4규칙이 전량 그룹을 가리킨다", () => {
+    const moveTo = byLabel.get("진행상황")?.moveTo;
     expect(Object.keys(moveTo ?? {})).toEqual(["진행중", "심사 중", "승인", "불가"]);
     const groups = new Set(CONTRACT_WORK_TAB.groups.map((group) => group.name));
     for (const target of Object.values(moveTo ?? {})) expect(groups.has(target), target).toBe(true);
