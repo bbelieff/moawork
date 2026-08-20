@@ -56,6 +56,7 @@ const KEY = (ENV.LINEAR_API_KEY || "").trim();
 const PORT = Number(ENV.DASHBOARD_PORT || 8787);
 const KEY_OK = KEY.startsWith("lin_api_") && KEY.length > 20;
 const REPO_ROOT = path.resolve(ENV.MOAWORK_REPO_ROOT || ROOT);
+const FUEL_FILE = path.join(ROOT, "tools", "board", "fuel.json");
 const LINEAR_URL = (() => {
   const fallback = "https://api.linear.app/graphql";
   if (ENV.NODE_ENV !== "test" || !ENV.LINEAR_GRAPHQL_TEST_URL) return fallback;
@@ -209,20 +210,101 @@ async function getSnap(force = false) {
    셸을 거치지 않고 read-only 명령만 실행한다. Linear 45초 캐시와 책임을 분리한다. */
 const OPS_TTL = 30_000;
 let operationsSnap = { at: 0, building: null, data: null };
+const QA_TTL = 5 * 60_000;
+let qaSnap = { at: 0, data: null };
 
 function safeToolError(error) {
   const code = typeof error?.code === "string" ? error.code : "UNAVAILABLE";
   return { code, message: "운영 상태를 읽지 못했습니다." };
 }
 
-async function runReadOnly(command, args) {
+async function runReadOnly(command, args, timeout = 15_000) {
   const { stdout } = await execFileAsync(command, args, {
     cwd: REPO_ROOT,
     windowsHide: true,
-    timeout: 15_000,
+    timeout,
     maxBuffer: 4 * 1024 * 1024,
   });
   return stdout.trim();
+}
+
+async function readQaDifference() {
+  if (qaSnap.data && Date.now() - qaSnap.at < QA_TTL) return qaSnap.data;
+  try {
+    let output;
+    try {
+      output = await runReadOnly(process.execPath, ["docs/design/qa-app.mjs"], 120_000);
+    } catch (error) {
+      /* qa-app은 차이가 있으면 보고값을 stdout에 남기고 exit 1 한다. 이는 측정 성공이다. */
+      output = String(error?.stdout || "");
+      if (!output) throw error;
+    }
+    const match = output.match(/차이 합계:\s*(\d+)개/);
+    if (!match) throw new Error("difference marker missing");
+    qaSnap = { at: Date.now(), data: { available: true, value: Number(match[1]), measuredAt: new Date().toISOString(), ttlMs: QA_TTL } };
+  } catch (error) {
+    qaSnap = { at: Date.now(), data: { available: false, value: null, measuredAt: new Date().toISOString(), ttlMs: QA_TTL, error: safeToolError(error) } };
+  }
+  return qaSnap.data;
+}
+
+function readFuel() {
+  try {
+    const value = JSON.parse(fs.readFileSync(FUEL_FILE, "utf8"));
+    return { available: true, claude: value.claude ?? null, codex: value.codex ?? null, updatedAt: value.updatedAt ?? fs.statSync(FUEL_FILE).mtime.toISOString() };
+  } catch {
+    return { available: false, claude: null, codex: null, updatedAt: null };
+  }
+}
+
+function unwrap(result, key) {
+  const parsed = JSON.parse(result || "{}");
+  if (!parsed.ok) throw new Error(parsed.error?.code || "orca failed");
+  return parsed.result?.[key];
+}
+
+function inferEngine(task, dispatch) {
+  const text = [task.task_title, task.display_name, dispatch.process_incarnation].filter(Boolean).join(" ");
+  return text.match(/(?:^|[^A-Z])(DC|DG|NC|NG)(?:-\d{2})?(?:[^A-Z]|$)/i)?.[1]?.toUpperCase() || "측정 실패";
+}
+
+function worktreeOf(dispatch) {
+  const value = String(dispatch.process_incarnation || "");
+  const match = value.match(/::(.+?)@@/);
+  return match?.[1] || null;
+}
+
+async function readWorkers() {
+  try {
+    const runs = unwrap(await runReadOnly("orca", ["orchestration", "run-list", "--json"]), "runs") || [];
+    const taskGroups = await Promise.all(runs.filter((run) => !run.legacy).map(async (run) => {
+      const tasks = unwrap(await runReadOnly("orca", ["orchestration", "task-list", "--run", run.id, "--json"]), "tasks") || [];
+      return tasks.filter((task) => task.status === "dispatched").map((task) => ({ run, task }));
+    }));
+    const active = taskGroups.flat();
+    const rows = await Promise.all(active.map(async ({ run, task }) => {
+      const dispatch = unwrap(await runReadOnly("orca", ["orchestration", "dispatch-show", "--task", task.id, "--json"]), "dispatch") || {};
+      const lastActivityAt = dispatch.last_heartbeat_at || dispatch.dispatched_at || task.created_at || null;
+      const ageMs = lastActivityAt ? Date.now() - new Date(lastActivityAt.replace(" ", "T") + (lastActivityAt.includes("Z") ? "" : "Z")).getTime() : null;
+      return {
+        taskId: task.id, dispatchId: dispatch.id || task.dispatch_id, runId: run.id,
+        cardId: task.task_title?.match(/BBE-\d+/)?.[0] || null,
+        engine: inferEngine(task, dispatch), status: dispatch.status || task.status,
+        worktree: worktreeOf(dispatch), lastActivityAt,
+        stalled: ageMs === null || ageMs > 5 * 60_000,
+      };
+    }));
+    return { available: true, items: rows, measuredAt: new Date().toISOString(), staleAfterMs: 5 * 60_000 };
+  } catch (error) {
+    return { available: false, items: [], measuredAt: new Date().toISOString(), error: safeToolError(error) };
+  }
+}
+
+async function readTodayGit() {
+  try {
+    const raw = await runReadOnly("git", ["log", "--since=midnight", "--date=iso-strict", "--pretty=format:%H%x09%ad%x09%s"]);
+    return raw ? raw.split(/\r?\n/).map((line) => { const [sha, at, ...subject] = line.split("\t"); return { type: "git", id: sha.slice(0, 8), at, title: subject.join("\t") }; }) : [];
+  } catch { return null; }
 }
 
 function checkSummary(checks = []) {
@@ -300,7 +382,30 @@ async function buildOperations() {
     pullRequests = { available: false, count: null, items: [], error: safeToolError(error) };
   }
 
-  return { builtAt: new Date().toISOString(), repository, pullRequests };
+  const [linearRead, qaRead, workersRead, gitTodayRead] = await Promise.allSettled([getSnap(), readQaDifference(), readWorkers(), readTodayGit()]);
+  const issues = linearRead.status === "fulfilled" ? (linearRead.value.issues || []) : null;
+  const qaDifference = qaRead.status === "fulfilled" ? qaRead.value : { available: false, value: null, measuredAt: new Date().toISOString(), ttlMs: QA_TTL };
+  const workers = workersRead.status === "fulfilled" ? workersRead.value : { available: false, items: [], measuredAt: new Date().toISOString() };
+  const gitToday = gitTodayRead.status === "fulfilled" ? gitTodayRead.value : null;
+  const measuredIssues = issues || [];
+  const completed = measuredIssues.filter((issue) => issue.status === "Done").length;
+  const handLabels = new Set(["belie결정", "blocked-external", "needs-hosted", "needs-auth-qa"]);
+  const handNeeded = issues && measuredIssues.filter((issue) => issue.status === "Blocked" || issue.labels.some((label) => handLabels.has(label)))
+    .sort((a, b) => ({ Urgent: 0, High: 1, Medium: 2, Low: 3 }[a.priority?.name] ?? 4) - ({ Urgent: 0, High: 1, Medium: 2, Low: 3 }[b.priority?.name] ?? 4));
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+  const linearToday = measuredIssues.filter((issue) => new Date(issue.updatedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === today)
+    .map((issue) => ({ type: "linear", id: issue.id, at: issue.updatedAt, title: issue.title }));
+  const todayItems = gitToday === null ? null : [...linearToday, ...gitToday].sort((a, b) => new Date(b.at) - new Date(a.at));
+  return {
+    builtAt: new Date().toISOString(), repository, pullRequests, workers, fuel: readFuel(),
+    metrics: {
+      qaDifference,
+      urgentRemaining: issues ? measuredIssues.filter((issue) => issue.priority?.name === "Urgent" && !["Done", "Canceled", "Duplicate"].includes(issue.status)).length : null,
+      handNeeded: handNeeded ? handNeeded.length : null,
+      completion: issues?.length ? { done: completed, total: issues.length, percent: Math.round(completed / issues.length * 100) } : null,
+    },
+    handNeeded, today: todayItems,
+  };
 }
 
 async function getOperations(force = false) {
