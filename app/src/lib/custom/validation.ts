@@ -15,6 +15,9 @@ import {
 import type { NewFieldDef } from "./store";
 import type { ViewConfig, ViewFilter, ViewSort } from "./views";
 
+/** 필드 정의 삭제 요청이 서버 확인 관문을 통과했음을 나타내는 값. */
+export const CUSTOM_FIELD_DELETE_CONFIRM = "delete";
+
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }

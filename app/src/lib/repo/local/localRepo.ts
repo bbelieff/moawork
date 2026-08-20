@@ -461,36 +461,35 @@ export class LocalRepo implements Repo {
     const def = this.getFieldDef(orgId, defId);
     if (!def) return false;
     d.fieldDefs = d.fieldDefs.filter((f) => f.id !== defId);
-    // 값 정리(EAV 고아 방지) — 같은 org 의 이 field_key 값 제거.
-    d.fieldValues = d.fieldValues.filter(
-      (v) => !(v.org_id === orgId && v.field_key === def.key),
-    );
+    // field_values 는 field_defs FK가 없고 key로 느슨하게 연결된다. 값을 남겨 두면
+    // 같은 key 정의를 재생성했을 때 기존 값이 다시 보인다(BBE-191).
     return true;
   }
 
   // ── 커스텀필드 값 (PK: entity_id + field_key) ──
-  getFieldValues(orgId: string, entityId: string): Record<string, unknown> {
+  getFieldValues(orgId: string, entity: FieldEntity, entityId: string): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     for (const v of db().fieldValues)
-      if (v.org_id === orgId && v.entity_id === entityId) out[v.field_key] = v.value_jsonb;
+      if (v.org_id === orgId && v.entity === entity && v.entity_id === entityId) out[v.field_key] = v.value_jsonb;
     return out;
   }
 
-  setFieldValue(orgId: string, entityId: string, fieldKey: string, value: unknown): void {
+  setFieldValue(orgId: string, entity: FieldEntity, entityId: string, fieldKey: string, value: unknown): void {
     const d = db();
     if (value === null) {
       d.fieldValues = d.fieldValues.filter(
-        (v) => !(v.org_id === orgId && v.entity_id === entityId && v.field_key === fieldKey),
+        (v) => !(v.org_id === orgId && v.entity === entity && v.entity_id === entityId && v.field_key === fieldKey),
       );
       return;
     }
     const existing = d.fieldValues.find(
-      (v) => v.org_id === orgId && v.entity_id === entityId && v.field_key === fieldKey,
+      (v) => v.org_id === orgId && v.entity === entity && v.entity_id === entityId && v.field_key === fieldKey,
     );
     if (existing) existing.value_jsonb = value;
     else
       d.fieldValues.push({
         org_id: orgId,
+        entity,
         entity_id: entityId,
         field_key: fieldKey,
         value_jsonb: value,

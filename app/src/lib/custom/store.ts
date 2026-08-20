@@ -55,12 +55,12 @@ export interface CustomStore {
   createDef(orgId: string, def: NewFieldDef): Promise<FieldDef>;
   updateDef(orgId: string, defId: string, patch: FieldDefPatch): Promise<FieldDef | null>;
   reorderDefs(orgId: string, entity: FieldEntity, orderedIds: string[]): Promise<void>;
-  /** 정의 삭제 + 해당 field_key 의 값 정리(고아 방지). */
+  /** 정의만 삭제한다. 값은 같은 key 정의가 복구될 때 다시 연결되도록 보존한다. */
   deleteDef(orgId: string, defId: string): Promise<boolean>;
 
   // field_values (entity_id = company.id | deal.id)
-  getValues(orgId: string, entityId: string): Promise<Record<string, JsonValue | null>>;
-  setValue(orgId: string, entityId: string, fieldKey: string, value: JsonValue | null): Promise<void>;
+  getValues(orgId: string, entity: FieldEntity, entityId: string): Promise<Record<string, JsonValue | null>>;
+  setValue(orgId: string, entity: FieldEntity, entityId: string, fieldKey: string, value: JsonValue | null): Promise<void>;
 
   // saved_views
   listViews(orgId: string, userId: string | null, entity?: FieldEntity): Promise<SavedView[]>;
@@ -78,7 +78,7 @@ export interface InMemoryOptions {
 export class InMemoryCustomStore implements CustomStore {
   private defs = new Map<string, FieldDef>();
   private views = new Map<string, SavedView>();
-  /** field_values PK(entity_id, field_key) → 값. */
+  /** field_values PK(entity, entity_id, field_key) → 값. */
   private values = new Map<string, { orgId: string; value: JsonValue | null }>();
 
   private seq = 0;
@@ -88,8 +88,8 @@ export class InMemoryCustomStore implements CustomStore {
     this.genId = opts.genId ?? (() => `id-${++this.seq}`);
   }
 
-  private valKey(entityId: string, fieldKey: string): string {
-    return `${entityId}::${fieldKey}`;
+  private valKey(entity: FieldEntity, entityId: string, fieldKey: string): string {
+    return `${entity}::${entityId}::${fieldKey}`;
   }
 
   async listDefs(orgId: string, entity?: FieldEntity): Promise<FieldDef[]> {
@@ -153,17 +153,12 @@ export class InMemoryCustomStore implements CustomStore {
     const d = await this.getDef(orgId, defId);
     if (!d) return false;
     this.defs.delete(defId);
-    // 값 정리(고아 방지) — 같은 org 의 이 field_key 값 제거.
-    for (const [k, v] of this.values) {
-      if (v.orgId !== orgId) continue;
-      if (k.endsWith(`::${d.key}`)) this.values.delete(k);
-    }
     return true;
   }
 
-  async getValues(orgId: string, entityId: string): Promise<Record<string, JsonValue | null>> {
+  async getValues(orgId: string, entity: FieldEntity, entityId: string): Promise<Record<string, JsonValue | null>> {
     const out: Record<string, JsonValue | null> = {};
-    const prefix = `${entityId}::`;
+    const prefix = `${entity}::${entityId}::`;
     for (const [k, v] of this.values) {
       if (v.orgId !== orgId || !k.startsWith(prefix)) continue;
       out[k.slice(prefix.length)] = v.value;
@@ -173,11 +168,12 @@ export class InMemoryCustomStore implements CustomStore {
 
   async setValue(
     orgId: string,
+    entity: FieldEntity,
     entityId: string,
     fieldKey: string,
     value: JsonValue | null,
   ): Promise<void> {
-    const k = this.valKey(entityId, fieldKey);
+    const k = this.valKey(entity, entityId, fieldKey);
     if (value === null) this.values.delete(k); // null = 빈 셀 = 삭제
     else this.values.set(k, { orgId, value });
   }

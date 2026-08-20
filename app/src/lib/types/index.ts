@@ -160,6 +160,7 @@ export interface FieldDef {
 
 export interface FieldValue {
   org_id: string;
+  entity: FieldEntity;
   entity_id: string;
   field_key: string;
   value_jsonb: unknown;

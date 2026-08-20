@@ -27,7 +27,7 @@ describe("repo-store: 공용 Repo 위 엔진 동작", () => {
 
     // "42"(문자열) → 42(숫자)로 정규화되어 저장되어야 한다.
     expect(await svc.setValues(org, "deal", "deal-1", { score: "42" })).toEqual({ score: 42 });
-    expect(await svc.getValues(org, "deal-1")).toEqual({ score: 42 });
+    expect(await svc.getValues(org, "deal", "deal-1")).toEqual({ score: 42 });
   });
 
   it("select 옵션 id 검증이 공용 저장소 경로에서도 적용된다", async () => {
@@ -57,15 +57,19 @@ describe("repo-store: 공용 Repo 위 엔진 동작", () => {
     expect(await svc.listFields(b, "deal")).toEqual([]);
   });
 
-  it("정의 삭제 시 해당 값이 프루닝된다", async () => {
+  it("정의 삭제 후 값이 남고 같은 key 재생성 시 재노출된다", async () => {
     const org = orgId();
     const svc = makeService();
     const def = await svc.createField(org, { entity: "deal", label: "Temp", type: "text" });
     await svc.setValues(org, "deal", "d1", { [def.key]: "x" });
-    expect(await svc.getValues(org, "d1")).toEqual({ [def.key]: "x" });
+    expect(await svc.getValues(org, "deal", "d1")).toEqual({ [def.key]: "x" });
 
     expect(await svc.deleteField(org, def.id)).toBe(true);
-    expect(await svc.getValues(org, "d1")).toEqual({});
+    expect(await svc.getValues(org, "deal", "d1")).toEqual({});
+    const reloaded = new CustomService(new RepoCustomStore(), () => "reload-option");
+    expect(await reloaded.getValues(org, "deal", "d1")).toEqual({});
+    await reloaded.createField(org, { entity: "deal", key: def.key, label: "Temp restored", type: "text" });
+    expect(await reloaded.getValues(org, "deal", "d1")).toEqual({ [def.key]: "x" });
   });
 
   it("저장뷰 — 개인/공유 가시성 + 기본뷰 규약(shared 우선)", async () => {

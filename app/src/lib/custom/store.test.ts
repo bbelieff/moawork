@@ -47,25 +47,30 @@ describe("store: values (PK entity_id+field_key)", () => {
   });
 
   it("upserts and reads per entity", async () => {
-    await store.setValue(ORG, "deal-1", "a", "hello");
-    await store.setValue(ORG, "deal-1", "b", 42);
-    await store.setValue(ORG, "deal-2", "a", "other");
-    expect(await store.getValues(ORG, "deal-1")).toEqual({ a: "hello", b: 42 });
-    expect(await store.getValues(ORG, "deal-2")).toEqual({ a: "other" });
+    await store.setValue(ORG, "deal", "deal-1", "a", "hello");
+    await store.setValue(ORG, "deal", "deal-1", "b", 42);
+    await store.setValue(ORG, "deal", "deal-2", "a", "other");
+    expect(await store.getValues(ORG, "deal", "deal-1")).toEqual({ a: "hello", b: 42 });
+    expect(await store.getValues(ORG, "deal", "deal-2")).toEqual({ a: "other" });
   });
 
   it("null deletes the cell", async () => {
-    await store.setValue(ORG, "deal-1", "a", "hello");
-    await store.setValue(ORG, "deal-1", "a", null);
-    expect(await store.getValues(ORG, "deal-1")).toEqual({});
+    await store.setValue(ORG, "deal", "deal-1", "a", "hello");
+    await store.setValue(ORG, "deal", "deal-1", "a", null);
+    expect(await store.getValues(ORG, "deal", "deal-1")).toEqual({});
   });
 
-  it("deleteDef prunes its values", async () => {
+  it("deleteDef preserves values and same-key recreation reveals them", async () => {
     const def = await store.createDef(ORG, { entity: "deal", key: "a", label: "A", type: "text" });
-    await store.setValue(ORG, "deal-1", "a", "x");
-    await store.setValue(ORG, "deal-1", "keep", "y");
+    await store.setValue(ORG, "deal", "deal-1", "a", "x");
+    await store.setValue(ORG, "deal", "deal-1", "keep", "y");
     expect(await store.deleteDef(ORG, def.id)).toBe(true);
-    expect(await store.getValues(ORG, "deal-1")).toEqual({ keep: "y" });
+    expect(await store.getValues(ORG, "deal", "deal-1")).toEqual({ a: "x", keep: "y" });
+    await store.createDef(ORG, { entity: "deal", key: "a", label: "A restored", type: "text" });
+    expect(await store.getValues(ORG, "deal", "deal-1")).toEqual({ a: "x", keep: "y" });
+
+    await store.createDef(ORG, { entity: "company", key: "a", label: "Company A", type: "text" });
+    expect(await store.getValues(ORG, "company", "deal-1")).toEqual({});
   });
 });
 

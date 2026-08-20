@@ -3,7 +3,7 @@
  */
 
 import {
-  getCustomService,
+  createRequestCustomService,
   requireCtx,
   parseViewConfig,
   ValidationError,
@@ -34,7 +34,7 @@ export async function PATCH(req: Request, { params }: RouteCtx): Promise<Respons
     }
     if (b.config !== undefined) patch.config = parseViewConfig(b.config);
     if (Object.keys(patch).length === 0) throw new ValidationError("변경할 필드가 없습니다");
-    return jsonOk(await getCustomService().updateView(ctx.org.id, viewId, patch));
+    return jsonOk(await (await createRequestCustomService()).updateView(ctx.org.id, viewId, patch));
   } catch (err) {
     return toErrorResponse(err);
   }
@@ -44,7 +44,7 @@ export async function DELETE(_req: Request, { params }: RouteCtx): Promise<Respo
   try {
     const ctx = await requireCtx();
     const { viewId } = await params;
-    return jsonOk({ deleted: await getCustomService().deleteView(ctx.org.id, viewId) });
+    return jsonOk({ deleted: await (await createRequestCustomService()).deleteView(ctx.org.id, viewId) });
   } catch (err) {
     return toErrorResponse(err);
   }

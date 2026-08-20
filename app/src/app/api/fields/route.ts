@@ -4,7 +4,7 @@
  */
 
 import {
-  getCustomService,
+  createRequestCustomService,
   requireCtx,
   parseCreateFieldDef,
   jsonOk,
@@ -23,7 +23,7 @@ function entityParam(req: Request): FieldEntity | undefined {
 export async function GET(req: Request): Promise<Response> {
   try {
     const ctx = await requireCtx();
-    return jsonOk(await getCustomService().listFields(ctx.org.id, entityParam(req)));
+    return jsonOk(await (await createRequestCustomService()).listFields(ctx.org.id, entityParam(req)));
   } catch (err) {
     return toErrorResponse(err);
   }
@@ -33,7 +33,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const ctx = await requireCtx();
     const input = parseCreateFieldDef(await readJson(req));
-    return jsonOk(await getCustomService().createField(ctx.org.id, input), 201);
+    return jsonOk(await (await createRequestCustomService()).createField(ctx.org.id, input), 201);
   } catch (err) {
     return toErrorResponse(err);
   }
