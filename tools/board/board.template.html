@@ -204,7 +204,7 @@ const DEPENDENCIES={
 /* BOARD_LOGIC_START */
 const BOARD_LOGIC=(()=>{
  const squadLabels=(issue,allowed)=>((issue?.labels)||[]).filter((label)=>allowed.includes(label));
- const ownerLabels=(issue)=>((issue?.labels)||[]).filter((label)=>/^(DG|DC|NG|NC)-\d{2}$/.test(label));
+ const ownerLabels=(issue)=>((issue?.labels)||[]).filter((label)=>/^(DG|DC|NG|NC)(-\d{2})?$/.test(label));
  const ownerCoverage=(issues,goalIds)=>{
   const by=Object.fromEntries(issues.map((issue)=>[issue.id,issue]));
   const missing=[]; const collision=[];

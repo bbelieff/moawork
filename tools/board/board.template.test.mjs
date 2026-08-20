@@ -121,4 +121,9 @@ test("owner coverage requires exactly one C/G owner and ignores blocked labels",
     ok: false,
   });
   assert.deepEqual(logic.ownerLabels({ labels: ["NC-04", "DG-02", "blocked:DC-03"] }), ["NC-04", "DG-02"]);
+  // 2026-08-20: 칸 번호를 떼었다(§4.2). 번호 없는 반 라벨도 소유 라벨로 읽힌다 —
+  // 그러면서 기존 번호 라벨 49개도 그대로 읽혀야 한다. blocked: 접두는 여전히 제외된다.
+  assert.deepEqual(logic.ownerLabels({ labels: ["DC", "DG", "blocked:DC"] }), ["DC", "DG"]);
+  assert.deepEqual(logic.ownerLabels({ labels: ["NC", "NG-02"] }), ["NC", "NG-02"]);
+  assert.deepEqual(logic.ownerLabels({ labels: ["DCX", "D", "dc", "DC-3"] }), []);
 });

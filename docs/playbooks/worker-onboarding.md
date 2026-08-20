@@ -43,6 +43,7 @@
 - 스택 Next.js(`app`) · Supabase(DB·Auth) · Node worker(pg-boss) · Vercel 배포
 - canonical 도메인 `https://www.moa-work.com` (apex 는 www 로 308)
 - 새 워크트리에는 `node_modules` 가 없다 → **루트에서 `npm install`** 부터
+  (그래서 워크트리 하나하나가 실제 디스크 용량을 먹는다 — 다 쓰면 반드시 지운다, F15)
 - `app/` 의 Next.js 는 **학습 데이터와 다를 수 있다.** `app/AGENTS.md` 가 그렇게 경고하고 있고,
   그건 자동 생성된 것이니 고치지 마라. 확실하지 않으면 `node_modules/next/dist/docs/` 를 읽는다.
 
@@ -66,6 +67,8 @@
 | F12 | **PR 충돌은 십중팔구 `docs/worklog.md` 다.** 코드 충돌이 아니다. `git merge-tree` 로 먼저 확인 |
 | F13 | 워크트리에서 `git fetch origin <브랜치>` 는 `origin/<브랜치>` 를 갱신하지 **않는다** (refspec 이 `main` 에만 좁혀져 있다). 검수는 **`gh pr checkout`** 으로 받는다 |
 | F14 | 브랜치 보호가 없다 — **승인 0건으로도 머지된다.** 「머지됐으니 검수를 통과한 것」이 아니다 |
+| F15 | **다 쓴 워크트리를 방치하지 마라.** 머지·폐기 즉시 `git worktree remove <경로>`. `rm -rf` 로 폴더만 지우면 git 목록에 유령 항목만 남는다(2026-08-20 기준 264개 적발, 다수가 자체 `node_modules` 보유 — 실제 용량 문제였다). 워크트리 수명은 원칙적으로 24시간 |
+| F16 | **`npm run dev` 를 띄웠으면 끝날 때 반드시 꺼라.** 2026-08-20 실측: 8/15~8/16 워커들이 `next dev` 를 띄운 채 죽어 node 프로세스 42개가 닷새간 남아 있었다. 결과는 «게이트가 아예 안 도는 것» — `spawnSync ETIMEDOUT` 과 `0xC0000142`(프로세스 생성 실패)로 `check.sh` 가 두 번 연속 터졌다. 메모리가 아니라 **프로세스·핸들 수**가 말랐다 |
 
 ---
 
@@ -86,4 +89,6 @@
 - [ ] UI 어휘 「회사」 · 브랜드 토큰 하드코딩 0
 - [ ] 회귀 3항목: 나갈 수 있나 · 홈 갈 수 있나 · 내 할 일이 보이나
 - [ ] 머지 → 배포 확인 → `/login` 200
+- [ ] **띄운 `npm run dev` 를 껐다** (F16) — 안 끄면 다음 워커가 게이트를 못 돈다
+- [ ] **워크트리 삭제** — `git worktree remove <내 워크트리 경로>` (F15). `rm -rf` 아님
 - [ ] Linear 완주 도장 + 코디네이터에게 완료 보고 (`AGENTS.md §8.3`)
