@@ -149,8 +149,8 @@ export class BoardsService {
   // BBE-196 — requireEditableBoard 는 «boardId 를 편집할 수 있는가» 만 본다.
   // columnId 가 «그 boardId 소속인가» 는 별개 질문이라, 편집 가능한 보드 아무거나 하나만
   // 있으면 그것을 통행증 삼아 다른 보드의 컬럼을 지울 수 있었다(실증됨). 삭제 전에
-  // 반드시 소속을 확인한다 — repo 층이 board_id 없이 id 만으로 지우기 때문에 이 층이
-  // 유일한 방어선이다.
+  // 반드시 소속을 확인한다. repo 층에도 org+board+column 조건을 넘겨 두 층이 같은
+  // 소유권 경계를 지키게 한다 — 어느 한쪽만 우회돼도 다른 쪽이 삭제를 막는다.
   private async requireColumnInBoard(ctx: Ctx, boardId: string, columnId: string): Promise<void> {
     const columns = await (await this.repo).listColumns(ctx, boardId);
     if (!columns.some((c) => c.id === columnId))
@@ -168,7 +168,7 @@ export class BoardsService {
   async deleteColumn(ctx: Ctx, boardId: string, columnId: string): Promise<void> {
     await this.requireEditableBoard(ctx, boardId);
     await this.requireColumnInBoard(ctx, boardId, columnId);
-    if (!await (await this.repo).deleteColumn(ctx, columnId)) throw new NotFoundError("컬럼을 찾을 수 없습니다");
+    if (!await (await this.repo).deleteColumn(ctx, boardId, columnId)) throw new NotFoundError("컬럼을 찾을 수 없습니다");
   }
 
   // ── 그룹 ──

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { BoardsService, NotFoundError, BoardRuleError } from "./service";
 import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
@@ -270,6 +270,18 @@ describe("아이템 · 셀 인라인 편집 (EAV)", () => {
       await svc.deleteColumn(owner, boardB, colOfB.id);
       const detail = await svc.getBoardDetail(owner, boardB);
       expect(detail.columns.some((c) => c.id === colOfB.id)).toBe(false);
+    });
+
+    it("삭제는 repo의 org+board+column 안전 경로를 반드시 소비한다", async () => {
+      const local = new LocalBoardsRepo();
+      const deleteColumn = vi.spyOn(local, "deleteColumn");
+      const isolated = new BoardsService(toAsyncBoardsRepo(local));
+      const detail = await isolated.createBoard(owner, { name: "안전 경로" });
+      const column = await isolated.addColumn(owner, detail.board.id, { label: "삭제 대상", type: "text" });
+
+      await isolated.deleteColumn(owner, detail.board.id, column.id);
+
+      expect(deleteColumn).toHaveBeenCalledWith(owner, detail.board.id, column.id);
     });
   });
 });
