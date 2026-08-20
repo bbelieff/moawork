@@ -4,6 +4,44 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [모아워크 DC-00] 2026-08-20 — 검수: 컬럼 재편(95d1b4a) + 정산 리포트(134b503) 재실측 — 게이트 PASS, 미결 4건
+
+- 두 커밋을 **직접 다시 재서** 검수했다(에이전트 보고를 그대로 믿지 않았다).
+  `rm -rf app/.next && bash scripts/check.sh` 재실행 결과 **exit 0** — lint 0 error(기존 경고 3건:
+  `boards/[id]/page.tsx:75 repo` · `home.roundtrips.test.tsx:203 measure` · `bootstrap.pglite.test.ts:43 _columns`,
+  이번 변경과 무관) · typecheck 통과 · app 355 파일 통과 / 2 skip · worker 28 통과.
+- **래칫 재확인**: `node docs/design/qa-app.mjs` 단독 실행 = `차이 합계: 39개 (천장 39) · 판정: DIFF · exit 0`.
+  qa-app 은 «넘어도 막고 줄어도 막는» 양방향 래칫이라(`:341` REGRESSION / `:349` IMPROVED, 둘 다 exitCode 2)
+  천장 39 가 실측 39 와 **정확히 일치**한다는 것이 확인됐다 — 안 내린 천장이 숨어 있지 않다.
+  올린 근거는 커밋 메시지 본문에 있다(«REGRESSION_CEILING 35 → 39» + 목업에만 2 · 앱에만 3 · −1 부작용의 산식).
+- **커밋 범위 확인**: 95d1b4a 는 5파일(contract-work.ts/test/render.test · qa-app.mjs · worklog),
+  134b503 은 17파일(전부 accounting/ledger 계열 + globals.css + status-semantics + worklog).
+  **딸려 들어온 무관 파일 없음.** 작업 트리 clean.
+- **총괄 지시 7항 대조 — 7건 전부 코드에 있다**: ① 「구분」 신설(자금·지원금·인증·기타용역) 맨 앞
+  (`contract-work.ts:66`, `columns[0].key === "engagement_kind"` 를 테스트가 못박는다) ② 자금명→상품명칭
+  (key `fund_name` 유지) ③ 진행 상품→세부명칭(key `product` 유지) ④ 리포트에 「상품명칭(세부명칭)」 괄호 표기
+  (`ledgerProductLabel`) ⑤ 필터 4축뿐 — 기간·업체·담당자·수납구분(기관·상품 필터 없음; 「묶기」는 필터가 아닌
+  그룹 축이다) ⑥ 출구 2개 — 「🖨 인쇄 · PDF 저장」 + 「CSV」(xlsx 없음) ⑦ 육하원칙 11열, 업무 ID·원장 ID 없음.
+- **다만 ①②③ 은 «새 워크스페이스에서만» 지시대로다.** 이미 쓰고 있는 회사에서는
+  ②③ 이름이 아예 안 바뀌고(`ensureDefaultTabAdditive` 에 `updateColumn` 없음),
+  ① 「구분」은 맨 앞이 아니라 **28번째**로 붙으며(`boardsRepo.ts:85` `sort_order: existing.length`)
+  owner/admin 이 `/work` 를 한 번 열어야 나타난다(`repair-on-entry.ts:38-40`).
+  「내일 서울경영 화면에 상품명칭이 떠 있어야 한다」가 지시의 뜻이었다면 **이 두 커밋으로는 안 된다** —
+  일회성 데이터 마이그레이션(rename + sort_order)이 따로 필요하고, 그건 회사가 스스로 바꾼 이름·순서를
+  덮어쓸 위험이 있어 총괄 판단 대기 중이다.
+- 검수 중 추가로 확인한 미결 3건: ⓐ `work-management/template.ts:16` 이 `legacy("product","진행 상품")`·
+  `legacy("institution","진행 기관")` 을 따로 선언하고 「구분」이 없다 — `/work` 가 같은 데이터를 보이는지
+  미검증(BBE-210)이라 이름이 반쪽일 수 있다. ⓑ `ChecklistPanel.tsx:153` 의 placeholder 가 아직
+  「진행 상품 선택」 이다(`/deals/[dealId]` 에 실제로 붙어 있는 화면 문구다). ⓒ 리포트는 CSV 에 「발행」,
+  화면에 「발행✓」 로 계산서 표기가 미세하게 다르다(의도로 보이나 기록해 둔다).
+- 검수 소견 2건(막지 않음): 「출구는 둘뿐」 테스트는 두 버튼의 «존재» 와 xlsx 부재만 단언하고 버튼 «개수» 를
+  세지는 않는다 — 세 번째 출구가 붙어도 안 빨개진다. 그리고 위 두 커밋이 남긴 개별 기록이 이 파일 **맨 아래**에
+  붙어 있다 — 이 파일 규칙은 「최신을 위에」다. 지우지 않고 이 항목으로 위에 묶는다.
+- 두 커밋 모두 `review-274-fix` 에 있고 **push 하지 않았다.** 실 화면을 열어 본 증거(⑦)는 여전히 없다 —
+  이 worktree 에 Supabase env 가 없다(기존부터 있던 갭).
+
+---
+
 ## [모아워크 DC-00] 2026-08-19 — BBE-240 프런트: 원장 버튼을 실제 화면에 꽂았다
 
 - 백엔드(커밋 445d412) 위에 목업 ①②를 실제로 붙였다. `DealLedgerButton.tsx`/
