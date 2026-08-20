@@ -4,6 +4,67 @@ append-only 작업 로그. 최신 항목을 위에 추가한다. 한 항목 = �
 
 ---
 
+## [START · 모아워크 데탑T0X(260820)/claude] 2026-08-20 — BBE-255 디스크 정리(누적 worktree)
+
+- **카드**: BBE-255 — belie PC 하드디스크 반복 포화. 누적 git worktree 안전 정리.
+- **잡는 파일(리스)**: **없음.** 소스코드 무변경. `docs/worklog.md` 만 추가 기입.
+- **착수 실측**: `C:` 476G 중 여유 **23G(96%)**. `git worktree list` = **264개**(전부 MoaWork 단일 레포).
+  그중 **193개에 `node_modules`**(개당 ~700MB) — 용량의 96%가 이것.
+
+## [END · 모아워크 데탑T0X(260820)/claude] 2026-08-21 — BBE-255 완료 · **90.51 GB 확보**
+
+- **결과: PASS.** worktree **264 → 62** (202개 정리). 소스코드 무변경 · **브랜치 0개 삭제**.
+- **확보 용량 = 90.51 GB** (8개 루트 삭제 전/후 재측정 차분).
+
+| 경로 | 전(GB) | 후(GB) | 확보(GB) |
+| --- | ---: | ---: | ---: |
+| `.codex\worktrees` | 77.20 | 9.81 | **67.39** |
+| `.codex\visualizations` | 20.06 | 8.29 | **11.77** |
+| `개발프로젝트\.worktrees` | 2.85 | 1.37 | 1.48 |
+| `C:\mw142` | 1.49 | 0.00 | 1.49 |
+| `C:\mw70` | 0.52 | (삭제) | 0.52 |
+| `C:\mwevid` | 0.01 | 0.01 | 0 (보류) |
+| `MoaWork\.worktrees` | 0.01 | 0.00 | 0.01 |
+| `MoaWork\.claude\worktrees` | 31.86 | 24.01 | 7.85 |
+| **합계** | **134.00** | **43.49** | **90.51** |
+
+- **`df` 는 근거로 쓰지 않았다.** 여유공간이 23 → 47 GB 로 «내가 아무것도 안 지웠을 때» 저절로 늘었다
+  (원인 미확인 · 다른 세션 또는 Windows 정리로 추정). 그래서 확보량은 df 델타가 아니라
+  **동일 8개 루트 재측정 차분**으로 냈다. 참고로 df 기준 여유는 23 → 143 GB.
+- **삭제 근거 3종**(전부 «내용이 이미 main 에 있다» 실증분만): merge-tree 결과 = main 트리 74 ·
+  브랜치 PR 머지됨 58 · detached SHA 가 머지 PR 소속 77.
+- **보류 62건**: 미머지 25 · detached 인데 소속 PR 없음(로컬 전용 커밋) 12 · dirty 10 ·
+  미추적 산출물 보유 5 · SHA 가 GitHub 에 없음 3 · 열린 PR 4(#247·#273·#276) · 메인+현 세션 2 · 상태조회실패 2.
+  `C:\mwevid` 는 `evidence/bbe-142` 에 머지 PR 이 없고 `shots/` 증거를 들고 있어 보류.
+
+### 이어받을 것 / 리스크
+
+1. **남은 `node_modules` 32.87 GB (164개 디렉터리, worktree 62개)** — 지우면 즉시 회수되고
+   `npm install` 로 복구되지만, **보류 worktree 중 실제로 돌고 있는 것이 있다**(실측: `review-274` 의
+   eslint · 메인 레포의 vitest 워커 7개가 실행 중이었다). "보류 = 유휴" 가 아니다. 일괄 삭제 전
+   `node.exe` 프로세스 실측 필수.
+2. **빈 껍데기 3개** — `C:\mw142` · `.codex\worktrees\bbe170-owner-guard` ·
+   `.codex\worktrees\review-pr185-base-b798699`. 파일 0개(용량 회수 완료), 디렉터리 핸들만 잠김
+   ("Device or resource busy" — 어떤 프로세스의 cwd). 재부팅 후 정리 가능.
+3. **`.git/worktrees/MoaWork*` 관리 항목 14개 prune 실패**(Permission denied). `git worktree list`
+   에는 안 잡히므로 기능 영향 없음(용량도 KB). 잠금 해제 후 `git worktree prune` 재실행 권장.
+4. **스코프 밖 2건 미처리** — 다른 세션(`e133ca21`) 의 Temp 스크래치패드 worktree 2개가 삭제 후보에
+   섞여 있었으나 §B 6개 경로 밖이라 손대지 않았다.
+5. **오르카 영향 미확인** — 오르카는 MoaWork worktree 관제탑이라 202개가 목록에서 사라진다.
+   브랜치는 전부 살아 있어 재생성 가능하지만 오르카 쪽 동작은 확인하지 못했다.
+6. **재발 방지 미착수** — 세션이 worktree 를 만들고 안 치우는 것이 근본 원인. 종료 시 회수 규칙이나
+   주기적 정리가 없으면 다시 찬다. 별도 카드 필요.
+
+### 판정 방식 (재사용 가능)
+
+이 레포는 squash merge 라 `merge-base --is-ancestor` 가 **항상 거짓**이다(머지돼도 조상이 아님).
+대신 `git merge-tree --write-tree origin/main <HEAD>` 결과가 `origin/main^{tree}` 와 같은지로 판정했다.
+기머지 2건(BBE-220 #271 · BBE-208 #262)으로 방식을 먼저 검증한 뒤 전수 적용.
+`git worktree remove` 는 **브랜치·커밋을 지우지 않는다** — 정리 후 로컬 브랜치 240개
+(`codex/*` 115 · `claude/*` 46) 전수 잔존 확인. `git branch -D` 는 실행하지 않았다.
+
+---
+
 ## [FIX · 모아워크 DC 04/claude] 2026-08-12 — BBE-148 후속: catalog key 를 default-tabs 기준으로 정정
 
 - 카드: BBE-148 후속(제보: DC-03). **새 카드 아님** — 방금 완주한 카드의 결함 수정.
