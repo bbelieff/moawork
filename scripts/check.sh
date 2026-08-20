@@ -62,7 +62,8 @@ echo "▶ [2/3] typecheck"
 npm run typecheck --workspaces --if-present
 
 echo "▶ [3/3] test"
-npm run test --workspaces --if-present
+npm run test:gate --workspace app
+npm run test --workspace worker --if-present
 
 echo "▶ [4/4] 목업↔앱 대조"
 node docs/design/qa-app.mjs --self-test

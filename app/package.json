@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:gate": "vitest run --exclude src/lib/boards/calculations.pglite.test.ts && vitest run src/lib/boards/calculations.pglite.test.ts --no-file-parallelism"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
