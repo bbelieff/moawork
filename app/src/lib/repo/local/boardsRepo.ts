@@ -209,11 +209,27 @@ export class LocalBoardsRepo {
    * 근거와 배경은 supabase 어댑터의 같은 메서드 주석에 적었다. 두 어댑터가 어긋나면
    * 로컬 폴백에서만 값이 사라져 재현이 안 되는 차이가 생기므로 동작을 맞춰 둔다.
    */
-  deleteColumn(ctx: Ctx, id: string): boolean {
+  deleteColumn(ctx: Ctx, id: string): boolean;
+  deleteColumn(ctx: Ctx, boardId: string, id: string): boolean;
+  deleteColumn(ctx: Ctx, boardIdOrId: string, columnId?: string): boolean {
     const d = db();
-    const c = d.boardColumns.find((x) => x.id === id && x.org_id === ctx.org.id);
+    const id = columnId ?? boardIdOrId;
+    const boardId = columnId === undefined ? undefined : boardIdOrId;
+    if (boardId !== undefined) {
+      const board = d.boards.find((candidate) =>
+        candidate.id === boardId && candidate.org_id === ctx.org.id,
+      );
+      if (!board || board.is_system) return false;
+    }
+    const c = d.boardColumns.find((x) =>
+      x.id === id &&
+      x.org_id === ctx.org.id &&
+      (boardId === undefined || x.board_id === boardId),
+    );
     if (!c) return false;
-    d.boardColumns = d.boardColumns.filter((x) => x.id !== id);
+    d.boardColumns = d.boardColumns.filter((x) =>
+      !(x.id === id && x.org_id === ctx.org.id && x.board_id === c.board_id),
+    );
     return true;
   }
 

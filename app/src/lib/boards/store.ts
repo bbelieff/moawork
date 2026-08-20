@@ -108,6 +108,7 @@ export interface BoardsRepo {
   createColumn(ctx: Ctx, boardId: string, input: NewColumn): Promise<BoardColumn>;
   updateColumn(ctx: Ctx, id: string, patch: ColumnPatch): Promise<BoardColumn | undefined>;
   deleteColumn(ctx: Ctx, id: string): Promise<boolean>;
+  deleteColumn(ctx: Ctx, boardId: string, id: string): Promise<boolean>;
 
   // 아이템(담당범위 적용)
   listItems(ctx: Ctx, boardId: string): Promise<BoardItem[]>;
