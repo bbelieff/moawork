@@ -129,8 +129,21 @@ export class CustomService {
 
   // ── 값 ───────────────────────────────────────────────────
 
-  async getValues(orgId: string, entityId: string): Promise<Record<string, JsonValue | null>> {
-    return this.store.getValues(orgId, entityId);
+  private definedOnly(
+    values: Record<string, JsonValue | null>,
+    defs: FieldDef[],
+  ): Record<string, JsonValue | null> {
+    const known = new Set(defs.map((def) => def.key));
+    return Object.fromEntries(Object.entries(values).filter(([key]) => known.has(key)));
+  }
+
+  async getValues(
+    orgId: string,
+    entity: FieldEntity,
+    entityId: string,
+  ): Promise<Record<string, JsonValue | null>> {
+    const defs = await this.store.listDefs(orgId, entity);
+    return this.definedOnly(await this.store.getValues(orgId, entity, entityId), defs);
   }
 
   /**
@@ -152,9 +165,9 @@ export class CustomService {
       if (!def) continue; // 정의 없는 key 무시
       const options = def.options_jsonb?.options ?? [];
       const value = getFieldTypeSpec(def.type).normalize(raw, { options });
-      await this.store.setValue(orgId, entityId, key, value);
+      await this.store.setValue(orgId, entity, entityId, key, value);
     }
-    return this.store.getValues(orgId, entityId);
+    return this.definedOnly(await this.store.getValues(orgId, entity, entityId), defs);
   }
 
   /**
@@ -185,7 +198,7 @@ export class CustomService {
       const options = def.options_jsonb?.options ?? [];
       const result = validateValue(def.type, raw, { options });
       if (result.ok) {
-        await this.store.setValue(orgId, entityId, key, result.normalized);
+        await this.store.setValue(orgId, entity, entityId, key, result.normalized);
         continue;
       }
       // 무결성 필드는 관대 정책의 예외 — 하드 거부.
@@ -196,7 +209,7 @@ export class CustomService {
 
     return {
       ok: Object.keys(errors).length === 0,
-      values: await this.store.getValues(orgId, entityId),
+      values: this.definedOnly(await this.store.getValues(orgId, entity, entityId), defs),
       errors,
     };
   }

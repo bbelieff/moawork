@@ -63,17 +63,18 @@ export class RepoCustomStore implements CustomStore {
   }
 
   // ── field_values ──
-  async getValues(orgId: string, entityId: string): Promise<Record<string, JsonValue | null>> {
-    return this.repo.getFieldValues(orgId, entityId) as Record<string, JsonValue | null>;
+  async getValues(orgId: string, entity: FieldEntity, entityId: string): Promise<Record<string, JsonValue | null>> {
+    return this.repo.getFieldValues(orgId, entity, entityId) as Record<string, JsonValue | null>;
   }
 
   async setValue(
     orgId: string,
+    entity: FieldEntity,
     entityId: string,
     fieldKey: string,
     value: JsonValue | null,
   ): Promise<void> {
-    this.repo.setFieldValue(orgId, entityId, fieldKey, value);
+    this.repo.setFieldValue(orgId, entity, entityId, fieldKey, value);
   }
 
   // ── saved_views ──

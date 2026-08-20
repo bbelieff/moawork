@@ -60,6 +60,7 @@ const callSites = [
   "../boards/server.ts",
   "../dash/server.ts",
   "../dash/today-server.ts",
+  "../custom/server.ts",
   "../../app/(app)/dash/page.tsx",
   "../../app/(app)/deals/[dealId]/page.tsx",
   // ── 2026-08-18 추가 ① 시드가 조용히 새던 자리 (BBE-203 후속) ──

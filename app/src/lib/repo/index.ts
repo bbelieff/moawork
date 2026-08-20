@@ -184,13 +184,13 @@ export interface Repo {
   createFieldDef(input: Omit<FieldDef, "id">): FieldDef;
   updateFieldDef(orgId: string, defId: string, patch: FieldDefPatch): FieldDef | undefined;
   reorderFieldDefs(orgId: string, entity: FieldEntity, orderedIds: string[]): void;
-  /** 정의 삭제 + 해당 field_key 값 정리(EAV 고아 방지). */
+  /** 정의만 삭제한다. 해당 field_key 값은 재생성 복구를 위해 보존한다. */
   deleteFieldDef(orgId: string, defId: string): boolean;
 
   // 커스텀필드 값 (entity_id = company.id | deal.id, PK(entity_id, field_key))
-  getFieldValues(orgId: string, entityId: string): Record<string, unknown>;
+  getFieldValues(orgId: string, entity: FieldEntity, entityId: string): Record<string, unknown>;
   /** value === null 이면 셀 삭제(빈 값). */
-  setFieldValue(orgId: string, entityId: string, fieldKey: string, value: unknown): void;
+  setFieldValue(orgId: string, entity: FieldEntity, entityId: string, fieldKey: string, value: unknown): void;
 
   // 저장뷰 (가시성: 공유 뷰 ∪ 본인 개인 뷰)
   listSavedViews(orgId: string, userId: string | null, entity?: FieldEntity): SavedView[];

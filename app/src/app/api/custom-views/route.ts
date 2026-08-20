@@ -4,7 +4,7 @@
  */
 
 import {
-  getCustomService,
+  createRequestCustomService,
   requireCtx,
   parseCreateView,
   jsonOk,
@@ -22,7 +22,7 @@ export async function GET(req: Request): Promise<Response> {
       raw && (FIELD_ENTITIES as readonly string[]).includes(raw)
         ? (raw as FieldEntity)
         : undefined;
-    const svc = getCustomService();
+    const svc = await createRequestCustomService();
     if (sp.get("default") === "1") {
       if (!entity) return jsonOk(null);
       return jsonOk(await svc.getDefaultView(ctx.org.id, ctx.user.id, entity));
@@ -37,7 +37,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const ctx = await requireCtx();
     const input = parseCreateView(await readJson(req));
-    return jsonOk(await getCustomService().createView(ctx.org.id, ctx.user.id, input), 201);
+    return jsonOk(await (await createRequestCustomService()).createView(ctx.org.id, ctx.user.id, input), 201);
   } catch (err) {
     return toErrorResponse(err);
   }

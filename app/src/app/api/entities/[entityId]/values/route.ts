@@ -9,7 +9,7 @@
  */
 
 import {
-  getCustomService,
+  createRequestCustomService,
   requireCtx,
   parseValuesPatch,
   ValidationError,
@@ -28,11 +28,11 @@ function requireEntity(req: Request): FieldEntity {
   return raw as FieldEntity;
 }
 
-export async function GET(_req: Request, { params }: RouteCtx): Promise<Response> {
+export async function GET(req: Request, { params }: RouteCtx): Promise<Response> {
   try {
     const ctx = await requireCtx();
     const { entityId } = await params;
-    return jsonOk(await getCustomService().getValues(ctx.org.id, entityId));
+    return jsonOk(await (await createRequestCustomService()).getValues(ctx.org.id, requireEntity(req), entityId));
   } catch (err) {
     return toErrorResponse(err);
   }
@@ -45,7 +45,7 @@ export async function PUT(req: Request, { params }: RouteCtx): Promise<Response>
     const entity = requireEntity(req);
     const patch = parseValuesPatch(await readJson(req));
     // { ok, values, errors } — errors 가 있어도 200(인라인 피드백용), ok 로 판별한다.
-    return jsonOk(await getCustomService().applyValues(ctx.org.id, entity, entityId, patch));
+    return jsonOk(await (await createRequestCustomService()).applyValues(ctx.org.id, entity, entityId, patch));
   } catch (err) {
     return toErrorResponse(err);
   }

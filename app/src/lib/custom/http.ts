@@ -19,6 +19,20 @@ export class UnauthorizedError extends Error {
   }
 }
 
+export class ForbiddenError extends Error {
+  constructor(message = "권한이 없습니다") {
+    super(message);
+    this.name = "ForbiddenError";
+  }
+}
+
+export class ServiceUnavailableError extends Error {
+  constructor(message = "권한을 확인할 수 없습니다") {
+    super(message);
+    this.name = "ServiceUnavailableError";
+  }
+}
+
 /** 현재 요청의 세션 컨텍스트. 없으면 401. */
 export async function requireCtx(): Promise<Ctx> {
   const ctx = await getSessionOrNull();
@@ -37,6 +51,8 @@ export function jsonError(message: string, status: number): Response {
 export function toErrorResponse(err: unknown): Response {
   if (err instanceof ValidationError) return jsonError(err.message, 400);
   if (err instanceof UnauthorizedError) return jsonError(err.message, 401);
+  if (err instanceof ForbiddenError) return jsonError(err.message, 403);
+  if (err instanceof ServiceUnavailableError) return jsonError(err.message, 503);
   // 프리셋 락·없는 정의 등 도메인 규칙 위반 → 409(충돌).
   if (err instanceof CustomFieldError) return jsonError(err.message, 409);
   const message = err instanceof Error ? err.message : "알 수 없는 오류";

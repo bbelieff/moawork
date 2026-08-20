@@ -193,3 +193,30 @@ describe("service: 정본 key (한글 라벨을 조회 key 로 쓰지 않기)", 
     ).rejects.toBeInstanceOf(CustomFieldError);
   });
 });
+
+describe("service: deleted definition value visibility", () => {
+  it("hides preserved values until the same key is recreated", async () => {
+    const { store, svc } = makeService();
+    const def = await svc.createField(ORG, {
+      entity: "deal",
+      key: "memo",
+      label: "메모",
+      type: "text",
+    });
+    await svc.applyValues(ORG, "deal", "deal-1", { memo: "kept" });
+
+    await svc.deleteField(ORG, def.id);
+    expect(await store.getValues(ORG, "deal", "deal-1")).toEqual({ memo: "kept" });
+    expect(await svc.getValues(ORG, "deal", "deal-1")).toEqual({});
+
+    await svc.createField(ORG, {
+      entity: "deal",
+      key: "memo",
+      label: "메모 복구",
+      type: "text",
+    });
+    expect(await svc.getValues(ORG, "deal", "deal-1")).toEqual({ memo: "kept" });
+    await svc.createField(ORG, { entity: "company", key: "memo", label: "회사 메모", type: "text" });
+    expect(await svc.getValues(ORG, "company", "deal-1")).toEqual({});
+  });
+});
