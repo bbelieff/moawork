@@ -37,7 +37,33 @@ const APP_TABS_FILE = process.env.QA_APP_APP_TABS_FILE ?? path.join(APP_SRC, "co
 // 대조가 건너뛴 부작용). 같은 날 함께 들어간 컬럼 순서 재배치(담당자 맨 앞 · 세부명칭을
 // 상품명칭 뒤로)는 0건이다 — qa-app 은 컬럼을 라벨 Map 으로만 대조하고 위치는 보지 않는다
 // (:196-220). 새 구조 빚이 아니다.
-const REGRESSION_CEILING = 48;
+// 48 → 39 (2026-08-20, 같은 날 후속): 위 9건은 전부 «가짜» 였다. 실제 출력을 열어 보니
+// 자동이동 8건이 «목업만: 진행상항=진행중 → ▶️ 진행중» 과 «앱만: 진행상황=진행중 → ▶️ 진행중»
+// 처럼 **같은 규칙 4개를 두 번씩** 센 것이었다. 규칙 내용은 글자 하나 안 다르다.
+// 제품이 나빠진 게 아니라 대조기가 짝을 못 찾은 것이다 — 아래 MOCKUP_LABEL_ALIASES 로
+// «목업의 이름 ↔ 앱의 이름» 을 이어 준다. 지표를 낮추려고 계산을 바꾼 게 아니라,
+// 조인 키가 깨진 것을 고친 것이다. 저장소에 이미 같은 선례가 있다 —
+// `app/src/lib/work-management/template.ts:14` 의 `sourceAliases: ["진행상항"]`.
+const REGRESSION_CEILING = 39;
+
+/**
+ * 목업 라벨 → 앱 라벨. **같은 컬럼인데 이름만 다른 것** 만 넣는다.
+ *
+ * ⚠ 넣기 전에 스스로 물어라: 「이게 «같은 것을 다르게 부른 것» 인가, 「다른 것」 인가?」
+ *   다른 것을 여기 넣으면 진짜 차이가 숨는다 — 이 표는 게이트에 구멍을 뚫는 도구다.
+ *   같은 것일 때만, 그리고 왜 이름이 갈렸는지 한 줄 근거와 함께 넣어라.
+ */
+const MOCKUP_LABEL_ALIASES = {
+  // 목업 v6 과 먼데이 원본이 「진행상항」(오탈자 — 狀況 이 맞다). 총괄이 2026-08-20 에
+  // 제품 라벨만 「진행상황」 으로 고치라고 지시했고, 목업은 그 문자열을 자기 내부 조회 키로
+  // ~10곳에서 쓰므로 건드리지 않았다. 즉 같은 컬럼이 양쪽에서 다르게 불리는 게 «의도» 다.
+  진행상항: "진행상황",
+};
+
+/** 목업 라벨을 앱 라벨 기준으로 정규화한다(별칭이 없으면 그대로). */
+function alias(label) {
+  return MOCKUP_LABEL_ALIASES[label] ?? label;
+}
 
 const APP_TYPE_TO_MOCKUP_TYPES = {
   text: ["txt", "text"], longtext: ["txt", "text"], number: ["num", "money"],
@@ -203,7 +229,8 @@ function compareTab(mockTab, appTab, shellTab) {
   }
   differences += difference("그룹 차이", groupEntries);
 
-  const mockColumns = new Map(mockTab.columns.map((column) => [column.label, column]));
+  // 조인 키는 «앱 라벨» 로 통일한다 — 목업 쪽만 alias() 를 거친다(MOCKUP_LABEL_ALIASES 주석 참고).
+  const mockColumns = new Map(mockTab.columns.map((column) => [alias(column.label), column]));
   const appColumns = new Map(appTab.columns.map((column) => [column.label, column]));
   differences += difference("목업에만 있는 컬럼", [...mockColumns.keys()].filter((label) => !appColumns.has(label)));
   differences += difference("앱에만 있는 컬럼", [...appColumns.keys()].filter((label) => !mockColumns.has(label)));
@@ -238,7 +265,9 @@ function compareTab(mockTab, appTab, shellTab) {
 
   const appColumnByKey = new Map(appTab.columns.map((column) => [column.key, column]));
   const appMoves = appTab.columns.flatMap((column) => Object.entries(column.moveTo ?? {}).map(([value, group]) => ({ column: column.label, value, group })));
-  const moveKey = (move) => `${move.column}\u001f${move.value}\u001f${move.group}`;
+  // 컬럼과 같은 이유로 여기도 alias 를 태운다 — 안 그러면 라벨 한 글자 차이가 «같은 규칙» 을
+  // 목업만/앱만으로 갈라 두 배로 센다(2026-08-20 에 실제로 4규칙이 8건으로 부풀었다).
+  const moveKey = (move) => `${alias(move.column)}\u001f${move.value}\u001f${move.group}`;
   const mockMoveKeys = new Set(mockTab.moves.map(moveKey));
   const appMoveKeys = new Set(appMoves.map(moveKey));
   differences += difference("자동 이동 규칙 차이", [
