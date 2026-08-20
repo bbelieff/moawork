@@ -1,10 +1,10 @@
--- moa-migration-guard: logical_key=104_bbe240_deals_fee_terms predecessor=103_bbe240_deal_ledger_vat_wiring digest=8b864d7609a18ea78eb59f04f038112c57f5a42ef7cb0f27f637296b84920205 foundation=false
+-- moa-migration-guard: logical_key=105_bbe240_deals_fee_terms predecessor=104_bbe240_deal_ledger_vat_wiring digest=502a12df31278cd80219a22af8ec018ebbdef76158abf35dd9b6b1726de58bea foundation=false
 
 select public.begin_guarded_migration(
-  p_logical_key => '104_bbe240_deals_fee_terms',
-  p_file_name => '104_bbe240_deals_fee_terms.sql',
-  p_file_digest => '8b864d7609a18ea78eb59f04f038112c57f5a42ef7cb0f27f637296b84920205',
-  p_expected_predecessor => '103_bbe240_deal_ledger_vat_wiring',
+  p_logical_key => '105_bbe240_deals_fee_terms',
+  p_file_name => '105_bbe240_deals_fee_terms.sql',
+  p_file_digest => '502a12df31278cd80219a22af8ec018ebbdef76158abf35dd9b6b1726de58bea',
+  p_expected_predecessor => '104_bbe240_deal_ledger_vat_wiring',
   p_executor => 'DC-00',
   p_thread_id => '54ccb210-7be2-4b40-bcea-8cf0d99047ee',
   p_foundation => false

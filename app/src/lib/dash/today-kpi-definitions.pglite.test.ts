@@ -20,7 +20,7 @@ const base = readFileSync(
   "utf8",
 );
 const migration = readFileSync(
-  new URL("../../../../supabase/migrations/098_bbe215_today_kpi_definitions.sql", import.meta.url),
+  new URL("../../../../supabase/migrations/099_bbe215_today_kpi_definitions.sql", import.meta.url),
   "utf8",
 );
 const id = (value: number): string => `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;

@@ -15,7 +15,7 @@ const transitions = readFileSync(
   "utf8",
 );
 const projection = readFileSync(
-  resolve(process.cwd(), "../supabase/migrations/099_bbe235_work_board_projection.sql"),
+  resolve(process.cwd(), "../supabase/migrations/100_bbe235_work_board_projection.sql"),
   "utf8",
 );
 

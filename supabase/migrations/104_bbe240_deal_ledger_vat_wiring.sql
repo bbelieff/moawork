@@ -1,10 +1,10 @@
--- moa-migration-guard: logical_key=103_bbe240_deal_ledger_vat_wiring predecessor=102_bbe239_board_item_files_storage digest=866de2fb1741325d0f95b53c1160b0b05cbf3f90ba2a03f1a13bb2e60fcd4f0b foundation=false
+-- moa-migration-guard: logical_key=104_bbe240_deal_ledger_vat_wiring predecessor=103_bbe239_board_item_files_storage digest=ae1bd8f5a42693def9b870e41ff48c391dff80a1c7721250a1f63fd32a9a3d47 foundation=false
 
 select public.begin_guarded_migration(
-  p_logical_key => '103_bbe240_deal_ledger_vat_wiring',
-  p_file_name => '103_bbe240_deal_ledger_vat_wiring.sql',
-  p_file_digest => '866de2fb1741325d0f95b53c1160b0b05cbf3f90ba2a03f1a13bb2e60fcd4f0b',
-  p_expected_predecessor => '102_bbe239_board_item_files_storage',
+  p_logical_key => '104_bbe240_deal_ledger_vat_wiring',
+  p_file_name => '104_bbe240_deal_ledger_vat_wiring.sql',
+  p_file_digest => 'ae1bd8f5a42693def9b870e41ff48c391dff80a1c7721250a1f63fd32a9a3d47',
+  p_expected_predecessor => '103_bbe239_board_item_files_storage',
   p_executor => 'DC-00',
   p_thread_id => '54ccb210-7be2-4b40-bcea-8cf0d99047ee',
   p_foundation => false

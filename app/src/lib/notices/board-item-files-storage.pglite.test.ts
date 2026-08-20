@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
  * select/insert/delete 전부 막혀야 한다 — 하나라도 새면 다른 회사 공문을 볼 수 있다.
  */
 const migration = readFileSync(
-  resolve(process.cwd(), "../supabase/migrations/102_bbe239_board_item_files_storage.sql"),
+  resolve(process.cwd(), "../supabase/migrations/103_bbe239_board_item_files_storage.sql"),
   "utf8",
 );
 

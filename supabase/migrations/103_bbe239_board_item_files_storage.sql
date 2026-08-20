@@ -1,10 +1,10 @@
--- moa-migration-guard: logical_key=102_bbe239_board_item_files_storage predecessor=101_bbe238_notice_board_unlock digest=555518005c270ce5ea9141fb13e1ded35f641144ac41863448fda32ad3811c38 foundation=false
+-- moa-migration-guard: logical_key=103_bbe239_board_item_files_storage predecessor=102_bbe238_notice_board_unlock digest=2f9a7b7430c27b217441d10be1dd50ca4175c0bc3e1b76d4c6718162115d326c foundation=false
 
 select public.begin_guarded_migration(
-  p_logical_key => '102_bbe239_board_item_files_storage',
-  p_file_name => '102_bbe239_board_item_files_storage.sql',
-  p_file_digest => '555518005c270ce5ea9141fb13e1ded35f641144ac41863448fda32ad3811c38',
-  p_expected_predecessor => '101_bbe238_notice_board_unlock',
+  p_logical_key => '103_bbe239_board_item_files_storage',
+  p_file_name => '103_bbe239_board_item_files_storage.sql',
+  p_file_digest => '2f9a7b7430c27b217441d10be1dd50ca4175c0bc3e1b76d4c6718162115d326c',
+  p_expected_predecessor => '102_bbe238_notice_board_unlock',
   p_executor => 'DC-00',
   p_thread_id => '2bc3b632-23c9-44af-82b2-45d6096fbbf3',
   p_foundation => false

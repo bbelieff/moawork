@@ -1,10 +1,10 @@
--- moa-migration-guard: logical_key=105_bbe240_reserve_ledger_workspace_slug predecessor=104_bbe240_deals_fee_terms digest=3d36f8d3eea65fa91c8354b78de620eb6b3aa73f8e5194c1bc19672aa5a6ca95 foundation=false
+-- moa-migration-guard: logical_key=106_bbe240_reserve_ledger_workspace_slug predecessor=105_bbe240_deals_fee_terms digest=80c31af9e5549d3b7e099e272d71bb94438f8b19e124f8a3a06df5ff3907b1a1 foundation=false
 
 select public.begin_guarded_migration(
-  p_logical_key => '105_bbe240_reserve_ledger_workspace_slug',
-  p_file_name => '105_bbe240_reserve_ledger_workspace_slug.sql',
-  p_file_digest => '3d36f8d3eea65fa91c8354b78de620eb6b3aa73f8e5194c1bc19672aa5a6ca95',
-  p_expected_predecessor => '104_bbe240_deals_fee_terms',
+  p_logical_key => '106_bbe240_reserve_ledger_workspace_slug',
+  p_file_name => '106_bbe240_reserve_ledger_workspace_slug.sql',
+  p_file_digest => '80c31af9e5549d3b7e099e272d71bb94438f8b19e124f8a3a06df5ff3907b1a1',
+  p_expected_predecessor => '105_bbe240_deals_fee_terms',
   p_executor => 'DC-00',
   p_thread_id => '54ccb210-7be2-4b40-bcea-8cf0d99047ee',
   p_foundation => false

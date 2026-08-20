@@ -16,7 +16,7 @@ const notice066 = readFileSync(
   "utf8",
 );
 const notice101 = readFileSync(
-  resolve(process.cwd(), "../supabase/migrations/101_bbe238_notice_board_unlock.sql"),
+  resolve(process.cwd(), "../supabase/migrations/102_bbe238_notice_board_unlock.sql"),
   "utf8",
 );
 

@@ -1,10 +1,10 @@
--- moa-migration-guard: logical_key=106_bbe242_board_column_check_execute_restore predecessor=105_bbe240_reserve_ledger_workspace_slug digest=8f0c1215c0d87045490c09312fd73caa114c9eca7e90119b77dbc72cb9d06791 foundation=false
+-- moa-migration-guard: logical_key=107_bbe242_board_column_check_execute_restore predecessor=106_bbe240_reserve_ledger_workspace_slug digest=3709bdc8f649bf16ac1fc57160dd30c55d18f3049ae53d2570b531291b25f73a foundation=false
 
 select public.begin_guarded_migration(
-  p_logical_key => '106_bbe242_board_column_check_execute_restore',
-  p_file_name => '106_bbe242_board_column_check_execute_restore.sql',
-  p_file_digest => '8f0c1215c0d87045490c09312fd73caa114c9eca7e90119b77dbc72cb9d06791',
-  p_expected_predecessor => '105_bbe240_reserve_ledger_workspace_slug',
+  p_logical_key => '107_bbe242_board_column_check_execute_restore',
+  p_file_name => '107_bbe242_board_column_check_execute_restore.sql',
+  p_file_digest => '3709bdc8f649bf16ac1fc57160dd30c55d18f3049ae53d2570b531291b25f73a',
+  p_expected_predecessor => '106_bbe240_reserve_ledger_workspace_slug',
   p_executor => 'DC-00',
   p_thread_id => '019fe9c3-7a41-7e52-b8d0-3c6a92f5d7b1',
   p_foundation => false

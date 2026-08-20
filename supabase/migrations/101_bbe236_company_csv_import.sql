@@ -1,10 +1,10 @@
--- moa-migration-guard: logical_key=100_bbe236_company_csv_import predecessor=099_bbe235_work_board_projection digest=386eb1b07c46900a781e614864f563094193d9afe313c3a1427a267adf0cfd75 foundation=false
+-- moa-migration-guard: logical_key=101_bbe236_company_csv_import predecessor=100_bbe235_work_board_projection digest=51e889463ead2b8c89ccd45ad4dc5533a0f4ab2f169654bbdf775b99c5e4aeab foundation=false
 
 select public.begin_guarded_migration(
-  p_logical_key => '100_bbe236_company_csv_import',
-  p_file_name => '100_bbe236_company_csv_import.sql',
-  p_file_digest => '386eb1b07c46900a781e614864f563094193d9afe313c3a1427a267adf0cfd75',
-  p_expected_predecessor => '099_bbe235_work_board_projection',
+  p_logical_key => '101_bbe236_company_csv_import',
+  p_file_name => '101_bbe236_company_csv_import.sql',
+  p_file_digest => '51e889463ead2b8c89ccd45ad4dc5533a0f4ab2f169654bbdf775b99c5e4aeab',
+  p_expected_predecessor => '100_bbe235_work_board_projection',
   p_executor => 'DC-00',
   p_thread_id => '019fe9c2-5d3b-7e42-a071-3b8d62e5f9d3',
   p_foundation => false

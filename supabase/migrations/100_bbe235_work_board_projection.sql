@@ -1,10 +1,10 @@
--- moa-migration-guard: logical_key=099_bbe235_work_board_projection predecessor=098_bbe215_today_kpi_definitions digest=a289e67cad159ccc6937dfb6505d248993451d1b62c2ae12c204408ac5dbd6e8 foundation=false
+-- moa-migration-guard: logical_key=100_bbe235_work_board_projection predecessor=099_bbe215_today_kpi_definitions digest=bc26990446e84c642cbe3c1c39a79a393eeedf115090bb23836df586e36b5aac foundation=false
 
 select public.begin_guarded_migration(
-  p_logical_key => '099_bbe235_work_board_projection',
-  p_file_name => '099_bbe235_work_board_projection.sql',
-  p_file_digest => 'a289e67cad159ccc6937dfb6505d248993451d1b62c2ae12c204408ac5dbd6e8',
-  p_expected_predecessor => '098_bbe215_today_kpi_definitions',
+  p_logical_key => '100_bbe235_work_board_projection',
+  p_file_name => '100_bbe235_work_board_projection.sql',
+  p_file_digest => 'bc26990446e84c642cbe3c1c39a79a393eeedf115090bb23836df586e36b5aac',
+  p_expected_predecessor => '099_bbe215_today_kpi_definitions',
   p_executor => 'DC-00',
   p_thread_id => '019fe9c2-5d3b-7e42-a071-3b8d62e5f9d2',
   p_foundation => false

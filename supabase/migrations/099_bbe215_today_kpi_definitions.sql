@@ -1,10 +1,10 @@
--- moa-migration-guard: logical_key=098_bbe215_today_kpi_definitions predecessor=097_bbe201_new_lead_field_write_restore digest=574e35fae8acd5bbec27a0ed43dfceb0aa833843c291249c392179503b194a61 foundation=false
+-- moa-migration-guard: logical_key=099_bbe215_today_kpi_definitions predecessor=098_bbe191_field_value_entity digest=58def9b090123c2b238e7ba27aca5ab601fdcf69bcb12cc21459b753ec0dd6a9 foundation=false
 
 select public.begin_guarded_migration(
-  p_logical_key => '098_bbe215_today_kpi_definitions',
-  p_file_name => '098_bbe215_today_kpi_definitions.sql',
-  p_file_digest => '574e35fae8acd5bbec27a0ed43dfceb0aa833843c291249c392179503b194a61',
-  p_expected_predecessor => '097_bbe201_new_lead_field_write_restore',
+  p_logical_key => '099_bbe215_today_kpi_definitions',
+  p_file_name => '099_bbe215_today_kpi_definitions.sql',
+  p_file_digest => '58def9b090123c2b238e7ba27aca5ab601fdcf69bcb12cc21459b753ec0dd6a9',
+  p_expected_predecessor => '098_bbe191_field_value_entity',
   p_executor => 'DC-12',
   p_thread_id => '019fe8b1-4c2a-7d31-9f60-2a7c51d4e8c1',
   p_foundation => false

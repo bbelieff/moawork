@@ -10,7 +10,7 @@ const migration = readFileSync(
 // ★ BBE-215: 086 뒤에 098 을 얹어 «현재» 읽기 모델을 잰다.
 //   086 만 심으면 이 파일은 «이미 갈아치운 정의» 를 지키게 되고, 그건 지나간 계약이다.
 const migration215 = readFileSync(
-  new URL("../../../../supabase/migrations/098_bbe215_today_kpi_definitions.sql", import.meta.url),
+  new URL("../../../../supabase/migrations/099_bbe215_today_kpi_definitions.sql", import.meta.url),
   "utf8",
 );
 const id = (value: number): string => `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;

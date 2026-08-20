@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
  *   앱 코드만 보면 그 주장이 참인지 알 수 없다 — 두 요청이 동시에 오면 앱의 검사는 통과한다.
  */
 const migration = readFileSync(
-  resolve(process.cwd(), "../supabase/migrations/100_bbe236_company_csv_import.sql"),
+  resolve(process.cwd(), "../supabase/migrations/101_bbe236_company_csv_import.sql"),
   "utf8",
 );
 

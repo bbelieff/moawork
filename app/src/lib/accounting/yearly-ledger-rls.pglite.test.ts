@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from "vitest";
  */
 const ledger035 = readFileSync(resolve(process.cwd(), "../supabase/migrations/035_ledger.sql"), "utf8");
 const vatWiring103 = readFileSync(
-  resolve(process.cwd(), "../supabase/migrations/103_bbe240_deal_ledger_vat_wiring.sql"),
+  resolve(process.cwd(), "../supabase/migrations/104_bbe240_deal_ledger_vat_wiring.sql"),
   "utf8",
 );
 
