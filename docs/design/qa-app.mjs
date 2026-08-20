@@ -21,7 +21,14 @@ const APP_TABS_FILE = process.env.QA_APP_APP_TABS_FILE ?? path.join(APP_SRC, "co
 // 쌓였다(35개까지). 기존 35개는 빚으로 인정하고 통과시키되, 이 숫자를 넘기면 즉시 막는다.
 // 실제로 줄이면(계약업체 실무 그룹 정리 등) 이 상수도 «반드시 같이» 낮춘다 — production
 // -repo-boundary-baseline.json 의 BASELINE_CEILING 과 같은 패턴(내려가기만 하는 천장).
-const REGRESSION_CEILING = 35;
+//
+// 35 → 39 (2026-08-20): 총괄 직접 지시로 «계약업체 실무» 컬럼을 구분·진행기관·상품명칭·
+// 세부명칭으로 재편했다. CLAUDE.md 「기준의 우선순위」 1번(총괄 직접 지시)이 2번(목업)보다
+// 우선하므로 목업의 «자금명·진행 상품» 을 따르지 않는다. 늘어난 4건은 전부 이 지시로 인한
+// 라벨 차이이며 새 구조 빚이 아니다 — 목업에만 2(자금명·진행 상품) + 앱에만 3(구분·상품명칭·
+// 세부명칭) − 1(«진행 상품» 선택지 차이가 라벨 불일치로 사라짐). 그 −1 은 개선이 아니라
+// 라벨 기준 대조(:189-191)의 부작용이다. 39 를 «문제 3건 늘었다» 로 읽지 말 것.
+const REGRESSION_CEILING = 39;
 
 const APP_TYPE_TO_MOCKUP_TYPES = {
   text: ["txt", "text"], longtext: ["txt", "text"], number: ["num", "money"],
