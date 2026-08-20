@@ -10,9 +10,7 @@ describe("BBE-153 persisted calculations", () => {
       cwd: root,
       env: { ...process.env, PGLITE_MODULE_ROOT: root },
       stdio: "pipe",
-      // BBE-219: representative concurrent PGlite load measured
-      // 16.114s / 43.963s / 20.914s; max x 1.5 = 65.945s.
-      timeout: 66_000,
+      timeout: 40_000,
     })).not.toThrow();
-  }, 71_000);
+  }, 45_000);
 });

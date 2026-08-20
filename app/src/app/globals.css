@@ -177,3 +177,42 @@ header {
     color 0.18s ease,
     border-color 0.18s ease;
 }
+
+/* ── 인쇄 (BBE-198) ────────────────────────────────────────────────
+   총괄 승인 설계에서 PDF 는 «브라우저 인쇄» 로만 얻는다(라이브러리 0). 그러려면
+   종이에 앱 셸이 같이 찍히면 안 된다 — 사이드바·상단바·조작 도구를 여기서 걷어낸다.
+   `[data-print="hide"]` 는 화면별로 「이건 종이에 남기지 않는다」를 표시하는 공용 표식이다.
+   색은 강제로 밝게 되돌린다: 다크 테마로 인쇄하면 종이 한 장이 통째로 검게 나온다. */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+
+  aside,
+  header,
+  [data-print="hide"] {
+    display: none !important;
+  }
+
+  :root,
+  :root[data-theme="dark"] {
+    --mw-bg: #ffffff;
+    --mw-card: #ffffff;
+    --mw-fg: #191a1e;
+    --mw-body: #3f4249;
+    --mw-sub: #6b7280;
+    --mw-line: #d5d8de;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #191a1e;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+}

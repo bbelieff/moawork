@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { handleWorkspaceAlias } from "./route";
+import { handleWorkspaceAlias } from "./handler";
 
 describe("top-level workspace alias", () => {
   it("redirects a verified canonical user alias to the /w namespace with query intact", async () => {

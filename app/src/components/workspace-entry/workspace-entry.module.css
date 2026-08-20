@@ -108,7 +108,7 @@
 .quick button, .quick a { color: var(--entry-violet); border-color: color-mix(in srgb, var(--entry-violet) 45%, var(--entry-line)); background: var(--entry-surface); }
 .quick .dangerChoice { color: var(--entry-danger); border-color: color-mix(in srgb, var(--entry-danger) 45%, var(--entry-line)); }
 .quick button:hover, .actions button:hover, .inlineActions button:hover { transform: translateY(-1px); }
-button:disabled { opacity: .58; cursor: wait; transform: none; }
+.quick button:disabled, .actions button:disabled, .inlineActions button:disabled, .form button:disabled { opacity: .58; cursor: wait; transform: none; }
 
 .form { display: grid; width: min(100%, 560px); gap: 13px; }
 .form label { display: grid; gap: 7px; color: var(--entry-on-accent); font-size: 14px; font-weight: 800; }
@@ -190,7 +190,7 @@ button:disabled { opacity: .58; cursor: wait; transform: none; }
 .workspaceMark { display: grid; width: 38px; height: 38px; flex: none; place-items: center; border-radius: 12px; color: var(--entry-on-accent); background: var(--entry-blue); font-weight: 900; }
 .chooserList b { color: var(--entry-violet); }
 
-.form input:focus-visible, button:focus-visible, a:focus-visible, summary:focus-visible {
+.form input:focus-visible, .page button:focus-visible, .page a:focus-visible, .page summary:focus-visible {
   outline: 3px solid var(--entry-violet);
   outline-offset: 3px;
 }

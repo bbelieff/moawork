@@ -249,6 +249,9 @@ export class LocalBoardsRepo {
       group_id: input.group_id ?? null,
       title: input.title,
       assigned_to: assigned,
+      // BBE-235 트리거(099)는 hosted 전용 — 로컬 repo 로 만든 아이템은 자금건과 연결될 방법이
+      // 없으니 항상 null(= BBE-240 원장 버튼은 로컬/데모에서는 안 뜬다, 의도된 제약).
+      deal_id: null,
       sort_order: db().boardItems.filter((i) => i.board_id === boardId).length,
       deleted_at: null,
       deleted_by: null,

@@ -95,6 +95,9 @@ export interface BoardItem {
   title: string;
   /** 담당범위(scope) 규칙의 기준 — deals 와 동일. */
   assigned_to: string | null;
+  /** BBE-235 프로젝션 트리거(099)가 채운다 — 응용 코드는 이 필드를 직접 안 쓴다.
+   *  이 값이 있으면 BBE-240 「원장」 버튼이 뜬다(자금건과 연결된 행이라는 뜻). */
+  deal_id: string | null;
   sort_order: number;
   /** Recoverable deletion marker. Active item reads always exclude non-null rows. */
   deleted_at?: string | null;

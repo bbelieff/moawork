@@ -26,10 +26,11 @@ import { StatusCell, StatusSelect } from "@/components/boards/StatusCell";
 import { SourceBadge } from "./FieldBadge";
 import { clampWidth } from "./layout";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
+import { DealLedgerButton } from "./DealLedgerButton";
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import { TrashItemButton } from "./ItemTrashControls";
+import { AddItemForm } from "./AddItemForm";
 import {
-  addItemAction,
   renameItemAction,
   setCellAction,
   setColumnWidthAction,
@@ -251,6 +252,8 @@ export function GroupTable({
   rows,
   readOnly,
   canDeleteItems = !readOnly,
+  authorColumnKey,
+  viewerUserId,
   canManageColumns = !readOnly,
   rowDragEnabled,
   cellFlash,
@@ -277,6 +280,9 @@ export function GroupTable({
   rows: readonly ItemWithValues[];
   readOnly: boolean;
   canDeleteItems?: boolean;
+  /** BBE-239 — 이 키가 있으면 그 컬럼 값이 `viewerUserId` 와 같은 행은 role 권한 없이도 삭제 버튼을 보여준다(작성자 예외, 공지사항 한정). 서버가 다시 검증한다 — 여긴 표시 전용. */
+  authorColumnKey?: string;
+  viewerUserId?: string;
   canManageColumns?: boolean;
   /** 정렬이 켜져 있으면 부모가 false 를 준다 — 손잡이 자체를 감춰 헛짚을 자리를 없앤다. */
   rowDragEnabled: boolean;
@@ -473,6 +479,11 @@ export function GroupTable({
           )}
 
           {rows.map((row, index) => {
+            const canDeleteRow =
+              canDeleteItems ||
+              (authorColumnKey !== undefined &&
+                viewerUserId !== undefined &&
+                row.values[authorColumnKey] === viewerUserId);
             return (
               <tr
                 key={row.id}
@@ -526,7 +537,11 @@ export function GroupTable({
                       canManageColumns={canManageColumns}
                     />
 
-                    {canDeleteItems && (
+                    {/* BBE-240 — 자금건과 연결된 행(BBE-235 프로젝션 트리거가 채운 deal_id)에만
+                        뜬다. 컬럼이 아니라 행 자체에 조건부로 붙인다 — TrashItemButton 과 같은 자리. */}
+                    {row.deal_id && <DealLedgerButton dealId={row.deal_id} />}
+
+                    {canDeleteRow && (
                       <TrashItemButton boardId={boardId} itemId={row.id} title={row.title} />
                     )}
                   </div>
@@ -562,20 +577,12 @@ export function GroupTable({
                 colSpan={colSpan}
                 className={`px-2 py-1 ${overRowIndex === rows.length ? "bg-mw-tint-blue" : ""}`}
               >
-                <form action={addItemAction} className="flex items-center gap-1">
-                  <input type="hidden" name="boardId" value={boardId} />
-                  <input type="hidden" name="groupId" value={groupId ?? ""} />
-                  <span aria-hidden="true" className="text-xs text-mw-sub">
-                    ＋
-                  </span>
-                  <input
-                    name="title"
-                    required
-                    placeholder="새 항목"
-                    aria-label="새 항목 이름"
-                    className={`${CELL_INPUT} max-w-64`}
-                  />
-                </form>
+                <AddItemForm
+                  boardId={boardId}
+                  variant="inline"
+                  groupId={groupId}
+                  inputClassName={`${CELL_INPUT} max-w-64`}
+                />
               </td>
             </tr>
           )}

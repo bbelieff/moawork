@@ -25,6 +25,7 @@ const deal: Deal = {
   title: "샘플 업체",
   amount: null,
   status_note: null,
+  fee_terms: null,
   applied_on: null,
   custom: {},
   created_at: "2026-01-01",

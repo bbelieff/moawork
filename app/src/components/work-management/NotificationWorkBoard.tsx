@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { WorkBoardSnapshot } from "@/lib/work-management";
+import type { WorkBoardSnapshot } from "@/lib/work-management/contracts";
 import { WorkBoardSurface } from "./WorkBoardSurface";
 import styles from "./work-management.module.css";
 

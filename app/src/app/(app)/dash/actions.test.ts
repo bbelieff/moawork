@@ -44,6 +44,7 @@ const existingDeal = {
   title: "테스트 업무",
   amount: null,
   status_note: null,
+  fee_terms: null,
   applied_on: null,
   custom: { preserved: "keep", due_date: "2026-08-11" },
   created_at: "2026-08-11T00:00:00.000Z",

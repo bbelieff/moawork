@@ -24,7 +24,6 @@ describe("matchTabByPathname — 셸이 «지금 어느 탭인가» 를 판정�
 
   it("옛 주소로 들어와도 해당 탭으로 읽는다 — 기존 주소를 깨지 않는다", () => {
     expect(matchTabByPathname("/policyfund")?.key).toBe("work");
-    expect(matchTabByPathname("/policyfund/settlements")?.key).toBe("work");
     expect(matchTabByPathname("/boards")?.key).toBe("new");
   });
 

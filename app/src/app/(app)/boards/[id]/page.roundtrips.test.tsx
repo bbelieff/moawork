@@ -182,6 +182,32 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
+// BBE-236 — repairContactBoardOnEntry/repairNewcustBoardOnEntry 둘 다 진입에서
+// loadMemberOrgSummaryWithClient 를 부른다. 이 파일은 그 결과를 이미 seed() 의
+// org_members 행(user-1 · owner · "멤버")으로 표현해 뒀으므로, 실제 쿼리 대신 같은
+// 값을 바로 돌려준다 — 별도 조회 경로를 하나 더 흉내 낼 필요가 없다.
+// ⚠ readDefaultTabDrift 는 절대 여기서 고정하지 않는다 — 「성질 고정」 테스트들(아래
+//   describe)이 바로 이 함수가 «드리프트를 진짜로 찾아내는가» 를 검증한다. 고정하면
+//   그 테스트들이 검증하는 성질 자체가 사라진다.
+vi.mock("@/lib/auth/member-org-summary", async (importOriginal) => {
+  // BoardPage 자체도 이 모듈의 loadMemberOrgSummary(ctx 전용, WithClient 아님)를
+  // loadDefaultTabAssignees 경유로 쓴다 — 통째로 갈아치우면 그쪽이 undefined 가 된다.
+  const actual = await importOriginal<typeof import("@/lib/auth/member-org-summary")>();
+  return {
+    ...actual,
+    loadMemberOrgSummaryWithClient: async () => ({
+      kind: "ready",
+      owner: { userId: "user-1", displayName: "멤버" },
+      admins: [],
+      members: [],
+    }),
+  };
+});
+
+import type { Ctx } from "@/lib/types";
+import { CONTACT_TAB } from "@/lib/default-tabs";
+import { ensureDefaultTabAdditive } from "@/lib/default-tabs/install";
+import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import BoardPage from "./page";
 import ContactBoardPage from "../../contract/page";
 import NewCustomerPage from "../../newcust/page";
@@ -285,6 +311,40 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
     probe.reset();
     seed();
+    // BBE-236 — 이 측정은 «이미 건강한 컨택 보드로 곧장 들어가는» 값을 재려는 것이지
+    // additive repair 자체를 재려는 게 아니다(그건 contact/entry.test.ts 가 전담). seed()
+    // 는 boards 행 하나만 최소로 채워서 CONTACT_TAB 의 실제 컬럼·그룹과는 다르다 — 그대로
+    // 재면 readDefaultTabDrift 가 드리프트를 «진짜로» 찾아내 리스 경로를 타 버린다.
+    //
+    // ★ probe 는 «왕복 횟수를 세는» 가짜라 insert 를 실제로 저장하지 않는다(select 만
+    //   흉내 낸다) — 그래서 reconciler 를 probe 에 직접 돌릴 수 없다. 대신 진짜 저장이
+    //   되는 LocalBoardsRepo 에 reconciler 를 한 번 돌려 CONTACT_TAB 의 실제 그룹·컬럼
+    //   (담당자 그룹 이름 인코딩 포함)을 만들고, 그 결과 행을 probe 테이블로 옮겨 심는다.
+    const setupCtx = {
+      org: { id: "org-1", name: "우리 회사" },
+      user: { id: "user-1", name: "멤버", email: "member@example.test" },
+      role: "owner",
+      scope: "all",
+    } as unknown as Ctx;
+    const setupLocal = new LocalBoardsRepo();
+    const ensured = await ensureDefaultTabAdditive(
+      setupCtx,
+      CONTACT_TAB,
+      toAsyncBoardsRepo(setupLocal),
+      [{ userId: "user-1", displayName: "멤버" }],
+    );
+    const healthyGroups = setupLocal.listGroups(setupCtx, ensured.boardId);
+    const healthyColumns = setupLocal.listColumns(setupCtx, ensured.boardId);
+    probe.tables.board_groups = healthyGroups.map((g, index) => ({
+      id: g.id, org_id: "org-1", board_id: BOARD_ID, name: g.name, color: g.color, sort_order: index,
+    }));
+    probe.tables.board_columns = healthyColumns.map((c, index) => ({
+      id: c.id, org_id: "org-1", board_id: BOARD_ID, key: c.key, label: c.label, type: c.type,
+      source: c.source, sort_order: index, options_jsonb: c.options_jsonb,
+      move_rule_jsonb: c.move_rule_jsonb ?? null, right_pinned: c.rightPinned,
+      is_readonly: c.is_readonly ?? false, width: c.width,
+    }));
+    probe.reset();
     let redirected = false;
     try {
       await ContactBoardPage({ searchParams: Promise.resolve({}) });

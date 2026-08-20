@@ -93,6 +93,7 @@ const DEAL_ROW = {
   title: "딜",
   amount: "1500000", // numeric 이 문자열로 오는 경우
   status_note: null,
+  fee_terms: null,
   applied_on: "2026-07-01",
   custom: null, // null 이면 {} 로 수렴해야 한다
   created_at: "2026-07-21T00:00:00Z",

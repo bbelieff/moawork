@@ -32,6 +32,7 @@ const row: ItemWithValues = {
   group_id: null,
   title: "",
   assigned_to: null,
+  deal_id: null,
   sort_order: 0,
   values: {},
   created_at: "2026-08-15T00:00:00.000Z",
@@ -59,7 +60,7 @@ function renderTable() {
 }
 
 describe("BBE-150 계약업체 실무 렌더", () => {
-  it("27개 컬럼을 목업 순서로 그리고 진행상항을 우측 고정한다", () => {
+  it("28개 컬럼을 정의 순서로 그리고 진행상황을 우측 고정한다", () => {
     const html = renderTable();
     const positions = CONTRACT_WORK_TAB.columns.map((column) => html.indexOf(`>${column.label}<`));
     expect(positions.every((position) => position >= 0)).toBe(true);
@@ -88,6 +89,6 @@ describe("BBE-150 계약업체 실무 렌더", () => {
     );
     expect(html).not.toContain("<select");
     expect(html).toContain("<details");
-    for (const label of ["진행기관", "진행 상품", "진행상항"]) expect(html).toContain(label);
+    for (const label of ["진행기관", "세부명칭", "진행상황"]) expect(html).toContain(label);
   });
 });

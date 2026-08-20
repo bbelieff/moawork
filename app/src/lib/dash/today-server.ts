@@ -13,7 +13,7 @@ import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { UserFacingActionError, userFacingMessage } from "@/lib/boards/boardActionFlash";
 import { ValidationError } from "@/lib/boards/validation";
 import { createClient } from "@/lib/supabase/server";
-import { readTodayDashboard, type TodayDashboardSnapshot } from "./today";
+import { readTodayDashboard, TodayDashboardVersionError, type TodayDashboardSnapshot } from "./today";
 
 export type TodayHomeState =
   | { kind: "ready"; snapshot: TodayDashboardSnapshot }
@@ -49,10 +49,16 @@ export async function loadTodayHome(
     //   허용목록은 새로 만들지 않고 BBE-201/#258 의 `userFacingMessage()` 를 쓴다.
     //   다만 그 기본 문장은 «저장» 실패용이라, 읽기 화면인 여기서는 읽기 문장을 쓴다
     //   — 아무것도 저장하지 않았는데 「저장하지 못했어요」라고 말하면 그것도 거짓이다.
-    const allowed = error instanceof UserFacingActionError || error instanceof ValidationError;
+    //   ★ BBE-215: 버전 불일치는 «사람이 읽을 문장» 을 이미 갖고 있다. 그대로 보여준다 —
+    //     그래야 관리자가 「098 을 적용하면 된다」를 바로 안다.
+    const allowed = error instanceof UserFacingActionError
+      || error instanceof ValidationError
+      || error instanceof TodayDashboardVersionError;
     return {
       kind: "error",
-      reason: allowed
+      reason: error instanceof TodayDashboardVersionError
+        ? error.message
+        : allowed
         ? userFacingMessage(error)
         : "오늘 지표를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
     };

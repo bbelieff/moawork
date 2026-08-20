@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { WorkBoardSnapshot } from "@/lib/work-management";
-import { WORK_COLUMNS, WORK_TEMPLATE } from "@/lib/work-management";
+import type { WorkBoardSnapshot } from "@/lib/work-management/contracts";
+import { WORK_COLUMNS, WORK_TEMPLATE } from "@/lib/work-management/template";
 
 vi.mock("@/app/(app)/work/actions", () => ({ mutateWork: async () => ({ ok: false, message: "" }) }));
 

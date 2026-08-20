@@ -32,6 +32,7 @@ function row(index: number): ItemWithValues {
     group_id: null,
     title: `회사 ${index}`,
     assigned_to: index % 2 === 0 ? "u1" : "u2",
+    deal_id: null,
     sort_order: index,
     created_at: "2026-08-16T00:00:00.000Z",
     updated_at: "2026-08-16T00:00:00.000Z",

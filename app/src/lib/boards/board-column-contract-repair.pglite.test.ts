@@ -47,5 +47,5 @@ describe("BBE-163 hosted board-column contract repair", () => {
     for (const label of ["people", "money", "calc"]) {
       expect(labels.rows.map((row) => row.enumlabel)).toContain(label);
     }
-  }, 30_000);
+  }, 15_000);
 });

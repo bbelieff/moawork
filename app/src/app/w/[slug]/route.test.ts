@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { handleWorkspaceTarget } from "./route";
+import { handleWorkspaceTarget } from "./handler";
 
 const request = new Request("https://www.moa-work.com/w/alpha-team");
 
@@ -20,15 +20,6 @@ describe("GET /w/[slug]", () => {
       { orgId: "org-acme", slug: "acme", name: "에크미", role: "member" },
     ] }));
     expect(response.headers.get("x-middleware-rewrite")).toBe("https://www.moa-work.com/deals/123?tab=notes");
-    expect(response.headers.get("set-cookie")).toContain("mw_org=org-acme");
-  });
-
-  it("keeps the workspace canonical settlement URL while serving the existing settlement screen", async () => {
-    const settlementRequest = new Request("https://www.moa-work.com/w/acme/settlements?dealId=deal-1");
-    const response = await handleWorkspaceTarget(settlementRequest, "acme", async () => ({ kind: "ready", memberships: [
-      { orgId: "org-acme", slug: "acme", name: "Acme", role: "member" },
-    ] }));
-    expect(response.headers.get("x-middleware-rewrite")).toBe("https://www.moa-work.com/policyfund/settlements?dealId=deal-1");
     expect(response.headers.get("set-cookie")).toContain("mw_org=org-acme");
   });
 

@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { WorkManagementSource } from "@/lib/repo/supabase/workManagementSource";
-import { parseWorkCommand, type WorkViewKind } from "@/lib/work-management";
+import type { WorkViewKind } from "@/lib/work-management/contracts";
+import { parseWorkCommand } from "@/lib/work-management/rpc-contract";
 
 export type WorkActionState = { ok: boolean; message: string };
 const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();

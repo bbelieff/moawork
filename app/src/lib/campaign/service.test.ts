@@ -6,7 +6,7 @@ import { CampaignConfirmationError, CampaignPermissionError, filterSnapshotHash,
 
 const ctx = { user: { id: "user-a", email: "a@example.test", name: "A" }, org: { id: "org-a", name: "A" }, role: "member", scope: "assigned" } as Ctx;
 const columns = [{ id: "phone-col", org_id: "org-a", board_id: "board-a", key: "phone", label: "연락처", type: "phone", source: "in", rightPinned: false, options_jsonb: null, sort_order: 0, width: null }] as BoardColumn[];
-const row = (id: string, phone: string, assigned = "user-a"): ItemWithValues => ({ id, org_id: "org-a", board_id: "board-a", group_id: null, title: id, assigned_to: assigned, sort_order: 0, created_at: "", updated_at: "", values: { phone } });
+const row = (id: string, phone: string, assigned = "user-a"): ItemWithValues => ({ id, org_id: "org-a", board_id: "board-a", group_id: null, title: id, assigned_to: assigned, deal_id: null, sort_order: 0, created_at: "", updated_at: "", values: { phone } });
 
 function setup(rows: ItemWithValues[], options: { allowed?: boolean; blocked?: string[] } = {}) {
   const enqueue = vi.fn(async (input) => ({ queued: input.targets.length, duplicate: 0, failed: 0 }));

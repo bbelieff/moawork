@@ -2616,3 +2616,10 @@ append-only 규칙에 따라 위 기록은 그대로 두고 여기에 덧붙인�
 `supabase/migrations/` 에 `014` 번호 중복 2건(`014_platform_metrics_daily` · `014_reserve_crm_route_slugs`).
 
 **제품 코드·Linear 카드는 건드리지 않았다.** 문서 전용.
+
+## 2026-08-21 — PR #276 C→G 통합 복구 인계
+
+- latest `origin/main`에서 `codex/bbe-215-integration-recovery`를 만들고 PR #276 exact head `3a51a4e`의 제품 변경을 최종 트리 기준으로 salvage했다.
+- `CLAUDE.md`·`AGENTS.md`·coordination 기록·관제판은 main 정본을 유지했다. 기존 migration은 수정하지 않고 신규 098~106만 연속 보존했다.
+- DG03 BBE-171과 겹치는 `app/src/components/board/GroupTable.tsx`는 active writer lease를 우선해 제외했다. DG03 확정 head 뒤에 필요한 통합분을 직렬 재대조한다.
+- 고객 고유값 검사에서 발견된 구 값 재유입 경로는 main 비개인화 정본으로 복원했다. hosted 적용과 merge는 독립 검수 PASS 전까지 0이다.

@@ -2,7 +2,8 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { mutateWork, type WorkActionState } from "@/app/(app)/work/actions";
-import { calendarBuckets, canManageStructure, canMutateField, visibleItems, type WorkBoardSnapshot, type WorkColumnContract, type WorkItemSnapshot, type WorkViewKind } from "@/lib/work-management";
+import { calendarBuckets, visibleItems } from "@/lib/work-management/domain";
+import { canManageStructure, canMutateField, type WorkBoardSnapshot, type WorkColumnContract, type WorkItemSnapshot, type WorkViewKind } from "@/lib/work-management/contracts";
 import styles from "./work-management.module.css";
 
 const actionInitial: WorkActionState = { ok: false, message: "" };

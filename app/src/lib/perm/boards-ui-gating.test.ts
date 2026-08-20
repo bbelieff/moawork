@@ -47,6 +47,9 @@ describe("boards UI consumes effective permissions", () => {
     expect(source).toContain("canDeleteBoard && <form action={deleteBoardAction}");
     const table = readFileSync(join(__dirname, "..", "..", "components", "board", "GroupTable.tsx"), "utf8");
     expect(table).toContain("{canManageColumns && <span");
-    expect(table).toContain("{canDeleteItems && (");
+    // BBE-239 — 공지사항 작성자 예외로 canDeleteRow 가 됐지만, role 권한(canDeleteItems)은
+    // 여전히 그 계산식 안에 있어야 한다(작성자 예외가 role 권한을 대체하면 안 된다).
+    expect(table).toContain("{canDeleteRow && (");
+    expect(table).toContain("canDeleteItems ||");
   });
 });

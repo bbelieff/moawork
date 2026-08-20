@@ -35,6 +35,8 @@ import {
   userFacingMessage,
 } from "@/lib/boards/boardActionFlash";
 import { encodeNoticeFile, NOTICE_FILE_VALUE_PREFIX } from "@/lib/notices/official-file";
+import { NOTICE_KEYS } from "@/lib/notices/types";
+import { NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { notifyBoardItemMoved } from "@/lib/notify/board-actions";
 import {
   detailKeyFromLabel,
@@ -317,12 +319,40 @@ export async function addItemAction(formData: FormData): Promise<void> {
   revalidatePath(`/boards/${boardId}`);
 }
 
+/**
+ * 공지사항 한정 삭제 예외(BBE-239) — 작성자는 role 권한 없이도 «자기 글» 을 지울 수 있다.
+ * 다른 보드에는 적용하지 않는다(보드 source 로 좁힘). 조회 실패는 전부 false 로 수렴한다
+ * — 예외를 못 확인하면 기존 role 권한 판정 그대로 막힌다(모르면 닫는다).
+ */
+async function canDeleteAsNoticeAuthor(
+  ctx: Ctx,
+  svc: Awaited<ReturnType<typeof boardsService>>,
+  boardId: string,
+  itemId: string,
+): Promise<boolean> {
+  try {
+    const detail = await svc.getBoardDetail(ctx, boardId);
+    if (detail.board.source !== NOTICE_TAB_SOURCE) return false;
+    const item = await svc.getItem(ctx, boardId, itemId);
+    return item.values[NOTICE_KEYS.author] === ctx.user.id;
+  } catch {
+    return false;
+  }
+}
+
 export async function deleteItemAction(formData: FormData): Promise<void> {
   return runBoardAction(formData, async () => {
     const ctx = await getSession();
-    await requirePermission(ctx, "work.item_delete");
     const boardId = str(formData, "boardId");
-    await (await boardsService()).deleteItem(ctx, boardId, str(formData, "itemId"));
+    const itemId = str(formData, "itemId");
+    const svc = await boardsService();
+    const permission = await loadPermGuard(ctx.org.id, "work.item_delete");
+    if (permission.kind !== "allowed" && !(await canDeleteAsNoticeAuthor(ctx, svc, boardId, itemId))) {
+      throw new UserFacingActionError(
+        permission.reason === "permission" ? "이 업무를 실행할 권한이 없어요." : "권한을 확인하지 못했어요.",
+      );
+    }
+    await svc.deleteItem(ctx, boardId, itemId);
     revalidatePath(`/boards/${boardId}`);
   });
 }
@@ -393,9 +423,12 @@ export async function setCellAction(formData: FormData): Promise<void> {
     if (raw instanceof File && raw.size > 0) {
       const column = (await svc.getBoardDetail(ctx, boardId)).columns.find((candidate) => candidate.key === columnKey);
       if (column?.type !== "file") throw new UserFacingActionError("파일 컬럼이 아니에요.");
-      const stored = await encodeNoticeFile(raw);
       const item = await graph.repo.getItem(ctx, itemId);
       if (!item || item.board_id !== boardId) throw new NotFoundError("아이템을 찾을 수 없습니다");
+      const stored = await encodeNoticeFile(
+        raw,
+        graph.client ? { client: graph.client, orgId: ctx.org.id, boardId, itemId } : undefined,
+      );
       await graph.repo.setValues(ctx, itemId, { [columnKey]: stored.id, [`${NOTICE_FILE_VALUE_PREFIX}${columnKey}`]: JSON.stringify(stored) });
       revalidatePath(`/boards/${boardId}`);
       return;
