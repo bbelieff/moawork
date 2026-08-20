@@ -1,7 +1,7 @@
 // T09 · 정책자금 업종팩(ind.policyfund) 도메인 타입.
 //
 // SSOT: supabase/migrations/002_seed_policyfund.sql 의 industry_modules.presets_jsonb
-// (서울경영지원센터 먼데이 전수추출 v1). 여기 타입은 그 JSONB 구조와 앱 도메인 표현.
+// (첫 고객의 먼데이 전수추출 v1). 여기 타입은 그 JSONB 구조와 앱 도메인 표현.
 
 // ── 원본 프리셋 JSONB 구조 (industry_modules.presets_jsonb) ────────────
 

@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: `${PRODUCT_NAME} — 통합관리시스템`,
-  description: "서울경영지원센터 업무 통합관리 — 영업·업무·정산을 한곳에서.",
+  description: "업무 통합관리 — 영업·업무·정산을 한곳에서.",
   icons: {
     icon: "/favicon.ico",
     apple: "/icons/moawork-app-icon-light-transparent-512.png",

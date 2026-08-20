@@ -2,7 +2,7 @@
 -- 040_preset_depersonalize.sql -- 프리셋에서 직원 실명 비우기 (BBE-130)
 --
 -- 근거 : docs/handoff/결정대장.md L절 D71~D75 (2026-08-10 belie 교정)
---        "모아워크는 제품이고 서울경영은 첫 고객이다." 새 워크스페이스는 빈 상태여야 한다.
+--        모아워크는 제품이고 특정 업체는 제품이 아니다. 새 워크스페이스는 빈 상태여야 한다.
 --        프리셋은 지우는 게 아니라 이름을 비우는 것 -- 구조(컬럼 정의 전부 -- 타입 15종 --
 --        출처 6종 -- 업무 상태 아이템 28종 -- 담당자별 아이템 "구조" -- 자동 이동 규칙 --
 --        선택지 세트)는 하나도 지우지 않는다. 바뀌는 것은 "누구"가 들어가느냐뿐이다.
@@ -23,7 +23,7 @@ set pack_jsonb = $json$
 {
   "key": "pack.seoul.policyfund1",
   "name": "모아프리셋-정책자금1",
-  "source": "monday 서울경영지원센터(520253) 실측 2026-08-05 · boards 1816794539 / 1816794566 / 1814266449 · 시드 확정 3건 반영 2026-08-09",
+  "source": "첫 고객의 monday 구조 실측 2026-08-05 · 시드 확정 3건 반영 2026-08-09",
   "optionSets": {
     "region": [
       {
@@ -1176,7 +1176,6 @@ set pack_jsonb = $json$
       "name": "🔥신규고객",
       "icon": "🔥",
       "description": "신규 상담 원장 — 유입부터 컨텍관리 이동까지",
-      "mondayBoardId": "1816794539",
       "nameColumn": {
         "label": "업체명",
         "mondayLabel": "Name"
@@ -1584,7 +1583,7 @@ set pack_jsonb = $json$
           "key": "______",
           "label": "하위 아이템",
           "kind": "subtasks",
-          "source": "monday subtasks board 1816856300"
+          "source": "monday subtasks board"
         },
         {
           "key": "_____",
@@ -1693,7 +1692,6 @@ set pack_jsonb = $json$
       "name": "🔥컨텍관리",
       "icon": "🔥",
       "description": "계약 직전 단계 — 미팅·계약금·업무관리 인계",
-      "mondayBoardId": "1816794566",
       "nameColumn": {
         "label": "업체명",
         "mondayLabel": "Name"
@@ -2098,7 +2096,6 @@ set pack_jsonb = $json$
       "name": "🔥업무관리",
       "icon": "🔥",
       "description": "실행 단계 — 기관·상품별 진행과 수수료 정산",
-      "mondayBoardId": "1814266449",
       "nameColumn": {
         "label": "업체명",
         "mondayLabel": "이름"

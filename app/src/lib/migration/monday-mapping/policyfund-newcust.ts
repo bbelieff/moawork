@@ -1,8 +1,8 @@
-/** 정책자금 업종의 역사 이관 매핑 사전이다. 실측 출처는 서울경영지원센터 먼데이 원본이며, 제품 기본 구조의 정본은 docs/design/UI목업_워크스페이스_최종_v6.html 이다. */
+/** 정책자금 업종의 역사 이관 매핑 사전이다. 실측 출처는 첫 고객의 먼데이 원본이며, 제품 기본 구조의 정본은 docs/design/UI목업_워크스페이스_최종_v6.html 이다. */
 /**
- * 서울경영지원센터 `🔥신규고객` 보드 구조 — 먼데이 실측 2026-08-05.
+ * 첫 고객의 `🔥신규고객` 보드 구조 — 먼데이 실측 2026-08-05.
  *
- * 원본: monday board `1816794539`. 컬럼 key 는 먼데이 컬럼 id 를 그대로 쓴다
+ * 원본 식별자는 `docs/design/먼데이-전체스키마-v1.md` 에만 보관한다. 컬럼 key 는 먼데이 컬럼 id 를 그대로 쓴다
  * (라벨을 slug 로 바꾸면 먼데이 쪽에서 라벨이 바뀔 때 대응이 끊긴다).
  * 선택지 id 는 라벨 그대로 — 002 팩의 확립된 규약이다(먼데이는 라벨=값).
  *
@@ -19,8 +19,6 @@ export const POLICYFUND_NEWCUST_BOARD: PackBoard = {
   name: "🔥신규고객",
   icon: "🔥",
   description: "신규 상담 원장 — 유입부터 컨텍관리 이동까지",
-  mondayBoardId: "1816794539",
-
   // 시드 확정 ①: Name = 업체명. 먼데이의 중복 `회사명`(text_mm2czkqg) 컬럼은 심지 않는다
   // → 먼데이 28컬럼 = 팩 27(Name 1 + 설치 24 + 유예 2) + 제거 1.
   nameColumn: { label: "업체명", mondayLabel: "Name" },
@@ -165,7 +163,7 @@ export const POLICYFUND_NEWCUST_BOARD: PackBoard = {
   ],
 
   deferredColumns: [
-    { key: "______", label: "하위 아이템", kind: "subtasks", source: "monday subtasks board 1816856300" },
+    { key: "______", label: "하위 아이템", kind: "subtasks", source: "monday subtasks board" },
     { key: "_____", label: "생성 로그", kind: "creation_log" },
   ],
 

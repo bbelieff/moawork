@@ -109,7 +109,6 @@ export interface PackBoard {
   icon: string;
   description: string;
   /** 먼데이 원본 보드 id — 실측 추적성 확보용(앱 동작에는 쓰지 않는다). */
-  mondayBoardId: string;
   /** Name(제목) 칸의 의미. 시드 확정 ① — 업체명. */
   nameColumn: PackNameColumn;
   /** 설치할 컬럼. 배열 순서가 곧 `sort_order` 다. */
