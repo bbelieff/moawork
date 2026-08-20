@@ -29,7 +29,7 @@ test("BBE-132 keeps the old pack key as an idempotent alias with exact content p
     const legacy = {
       key: "pack.seoul.policyfund1",
       name: "모아프리셋-정책자금1",
-      source: "monday 서울경영지원센터 실측 2026-08-05",
+      source: "첫 고객의 monday 구조 실측 2026-08-05",
       optionSets: { region: [{ id: "서울_강남구", label: "서울_강남구", order: 0 }] },
       boards: [{ slug: "newcust", columns: [{ key: "date", type: "date" }], sections: [] }],
     };

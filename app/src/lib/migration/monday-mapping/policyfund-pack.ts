@@ -1,4 +1,4 @@
-/** 정책자금 업종의 역사 이관 매핑 사전이다. 실측 출처는 서울경영지원센터 먼데이 원본이며, 제품 기본 구조의 정본은 docs/design/UI목업_워크스페이스_최종_v6.html 이다. */
+/** 정책자금 업종의 역사 이관 매핑 사전이다. 실측 출처는 첫 고객의 먼데이 원본이며, 제품 기본 구조의 정본은 docs/design/UI목업_워크스페이스_최종_v6.html 이다. */
 /**
  * 모아프리셋-정책자금1 — 정책자금 업종 3보드 이관 매핑 팩 (PLAN-002/WO-1).
  *
@@ -43,7 +43,7 @@ export const POLICYFUND_STRUCTURE_PACK: StructurePack = {
   legacyKeys: LEGACY_POLICYFUND_PACK_KEYS,
   name: POLICYFUND_PACK_NAME,
   source:
-    "실측 출처(특정 고객 전용 팩이 아님): monday 서울경영지원센터(520253) 실측 2026-08-05 · boards 1816794539 / 1816794566 / 1814266449 · 시드 확정 3건 반영 2026-08-09",
+    "실측 출처(특정 고객 전용 팩이 아님): 첫 고객의 monday 구조 실측 2026-08-05 · 시드 확정 3건 반영 2026-08-09",
   optionSets: POLICYFUND_OPTION_SETS,
   boards: [POLICYFUND_NEWCUST_BOARD, POLICYFUND_CONTACT_BOARD, POLICYFUND_WORK_BOARD],
 };

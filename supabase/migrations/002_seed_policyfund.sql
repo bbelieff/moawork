@@ -1,12 +1,12 @@
 -- =====================================================================
 -- 002_seed_policyfund.sql — 정책자금(ind.policyfund) 업종팩 프리셋
--- 원칙: 컬럼·선택지는 **서울경영지원센터 먼데이 보드를 그대로 따름**(board_columns).
+-- 원칙: 컬럼·선택지는 **첫 고객의 먼데이 보드 구조를 그대로 따름**(board_columns).
 -- 실제 고객데이터(공지사항 업체명 등) 제외. 선행: 001_schema_v1.sql
 -- 조직이 팩 설치 시 앱이 board_columns→field_defs, field_presets→선택지로 복사.
 -- =====================================================================
 update industry_modules set name='정책자금(1호)',
    presets_jsonb = $json${
-  "_meta": "서울경영지원센터 먼데이 전수추출 v1 기반 · 컬럼은 서울경영 보드를 그대로 따름 · 실제 고객데이터 제외",
+  "_meta": "첫 고객의 먼데이 전수추출 v1 기반 · 컬럼은 원본 보드 구조를 그대로 따름 · 실제 고객데이터 제외",
   "pipeline_stages": [
     {
       "name": "신규고객",
@@ -1205,7 +1205,7 @@ update industry_modules set name='정책자금(1호)',
  where key='ind.policyfund';
 insert into industry_modules(key,name,presets_jsonb)
 select 'ind.policyfund','정책자금(1호)', $json${
-  "_meta": "서울경영지원센터 먼데이 전수추출 v1 기반 · 컬럼은 서울경영 보드를 그대로 따름 · 실제 고객데이터 제외",
+  "_meta": "첫 고객의 먼데이 전수추출 v1 기반 · 컬럼은 원본 보드 구조를 그대로 따름 · 실제 고객데이터 제외",
   "pipeline_stages": [
     {
       "name": "신규고객",

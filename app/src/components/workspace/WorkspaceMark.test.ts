@@ -3,7 +3,7 @@ import { workspaceInitial, workspaceNameHash, workspaceTone } from "./WorkspaceM
 
 describe("WorkspaceMark", () => {
   it("한글은 한 글자, 영문은 두 글자 이니셜을 만든다", () => {
-    expect(workspaceInitial("서울경영지원센터")).toBe("서");
+    expect(workspaceInitial("가나다 주식회사")).toBe("가");
     expect(workspaceInitial("MoaWork Lab")).toBe("MO");
   });
 

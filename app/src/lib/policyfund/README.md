@@ -1,6 +1,6 @@
 # ind.policyfund — 정책자금 업종팩 (T09)
 
-서울경영지원센터 먼데이 보드(정책자금)를 재현하는 도메인 로직 계층.
+첫 고객의 먼데이 보드에서 확인한 정책자금 구조를 재현하는 도메인 로직 계층.
 SSOT: `supabase/migrations/002_seed_policyfund.sql`(industry_modules.presets_jsonb) · `docs/PLAN-v0.2.md`.
 
 ## 구성

@@ -7,6 +7,10 @@ set -euo pipefail
 # 리포지토리 루트로 이동 (스크립트 위치 기준)
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+echo "🔎 customer-specific values"
+node scripts/check-customer-specific-values.mjs --self-test
+node scripts/check-customer-specific-values.mjs
+
 echo "▶ [0/4] production repo boundary"
 node scripts/check-production-repo-boundaries.mjs --self-test
 node scripts/check-production-repo-boundaries.mjs

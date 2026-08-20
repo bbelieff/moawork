@@ -1,12 +1,11 @@
 -- =====================================================================
--- 031_newcust_structure_pack.sql — 서울경영 3보드 구조 팩 (PLAN-002/WO-1)
+-- 031_newcust_structure_pack.sql — 첫 고객 3보드 구조 팩 (PLAN-002/WO-1)
 --
 -- 성격 : 003 boards 엔진 위에 additive. 기존 마이그레이션 무수정.
 --        전역 카탈로그 1개 추가 + 팩 1행 시드. 조직 데이터는 만들지 않는다.
 -- 원칙 : 먼데이 워크스페이스는 **구조만 복제**한다(PLAN-002 §1).
 --        실데이터 8,413건 이관은 목표가 아니다.
--- 출처 : monday 서울경영지원센터(520253) 실측 2026-08-05
---        boards 1816794539(신규고객) / 1816794566(컨텍관리) / 1814266449(업무관리)
+-- 출처 : 첫 고객의 monday 구조 실측 2026-08-05
 -- 용어 : **아이템 = 탭 안의 그룹**(PLAN-002 §1, 사용자 확정 2026-08-04).
 --        먼데이 API 의 item(행)과 다르다. 팩은 보드 통짜가 아니라 그룹 단위
 --        아이템 프리셋 32종(신규업체 14 + 컨텍관리 7 + 업무관리 11)으로 분해돼 있고,
@@ -45,7 +44,7 @@ values (
 {
   "key": "pack.seoul.policyfund1",
   "name": "모아프리셋-정책자금1",
-  "source": "monday 서울경영지원센터(520253) 실측 2026-08-05 · boards 1816794539 / 1816794566 / 1814266449 · 시드 확정 3건 반영 2026-08-09",
+  "source": "첫 고객의 monday 구조 실측 2026-08-05 · 시드 확정 3건 반영 2026-08-09",
   "optionSets": {
     "region": [
       {
@@ -1198,7 +1197,6 @@ values (
       "name": "🔥신규고객",
       "icon": "🔥",
       "description": "신규 상담 원장 — 유입부터 컨텍관리 이동까지",
-      "mondayBoardId": "1816794539",
       "nameColumn": {
         "label": "업체명",
         "mondayLabel": "Name"
@@ -1606,7 +1604,7 @@ values (
           "key": "______",
           "label": "하위 아이템",
           "kind": "subtasks",
-          "source": "monday subtasks board 1816856300"
+          "source": "monday subtasks board"
         },
         {
           "key": "_____",
@@ -1713,7 +1711,6 @@ values (
       "name": "🔥컨텍관리",
       "icon": "🔥",
       "description": "계약 직전 단계 — 미팅·계약금·업무관리 인계",
-      "mondayBoardId": "1816794566",
       "nameColumn": {
         "label": "업체명",
         "mondayLabel": "Name"
@@ -2116,7 +2113,6 @@ values (
       "name": "🔥업무관리",
       "icon": "🔥",
       "description": "실행 단계 — 기관·상품별 진행과 수수료 정산",
-      "mondayBoardId": "1814266449",
       "nameColumn": {
         "label": "업체명",
         "mondayLabel": "이름"
