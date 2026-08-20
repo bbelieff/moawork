@@ -232,6 +232,46 @@ describe("아이템 · 셀 인라인 편집 (EAV)", () => {
       expect(items.find((i) => i.id === itemId)?.values[again.key]).toBe(VALUE);
     });
   });
+
+  // BBE-196 — 실증됨: requireEditableBoard 는 «boardId 를 편집할 수 있는가» 만 보고
+  // columnId 가 그 boardId 소속인지는 안 봤다. 편집 가능한 보드 하나만 있으면 그것을
+  // 통행증 삼아 다른 보드의 컬럼을 지우거나 고칠 수 있었다.
+  describe("BBE-196 컬럼 삭제·수정은 «그 보드 소속» 만 허용한다", () => {
+    async function twoBoardsWithColumnOnB() {
+      const a = await svc.createBoard(owner, { name: "보드 A" });
+      const b = await svc.createBoard(owner, { name: "보드 B" });
+      const colOfB = await svc.addColumn(owner, b.board.id, { label: "B전용", type: "text" });
+      return { boardA: a.board.id, boardB: b.board.id, colOfB };
+    }
+
+    it("A 를 편집 권한으로 B 의 컬럼을 지울 수 없다", async () => {
+      const { boardA, boardB, colOfB } = await twoBoardsWithColumnOnB();
+      await expect(async () =>
+        svc.deleteColumn(owner, boardA, colOfB.id),
+      ).rejects.toThrow(NotFoundError);
+      // B 의 컬럼 수는 그대로다 — 실제로 안 지워졌는지 확인한다
+      const stillThere = await svc.getBoardDetail(owner, boardB);
+      expect(stillThere.columns.some((c) => c.id === colOfB.id)).toBe(true);
+    });
+
+    it("A 를 편집 권한으로 B 의 컬럼을 고칠 수 없다", async () => {
+      const { boardA, boardB, colOfB } = await twoBoardsWithColumnOnB();
+      await expect(async () =>
+        svc.updateColumn(owner, boardA, colOfB.id, { label: "탈취된 이름" }),
+      ).rejects.toThrow(NotFoundError);
+      const stillThere = await svc.getBoardDetail(owner, boardB);
+      expect(stillThere.columns.find((c) => c.id === colOfB.id)?.label).toBe("B전용");
+    });
+
+    it("같은 보드 소속이면 그대로 지워지고 고쳐진다(회귀 방지)", async () => {
+      const { boardB, colOfB } = await twoBoardsWithColumnOnB();
+      const patched = await svc.updateColumn(owner, boardB, colOfB.id, { label: "고친 이름" });
+      expect(patched.label).toBe("고친 이름");
+      await svc.deleteColumn(owner, boardB, colOfB.id);
+      const detail = await svc.getBoardDetail(owner, boardB);
+      expect(detail.columns.some((c) => c.id === colOfB.id)).toBe(false);
+    });
+  });
 });
 
 describe("칸반 그룹핑", () => {
@@ -281,6 +321,19 @@ describe("시스템 보드 가드 — 정책자금은 deals 소유", () => {
       await svc.createItem(owner, SEED_BOARD_PIPELINE, { title: "x" }),
     ).rejects.toThrow(BoardRuleError);
     await expect(async () => (await svc.deleteBoard(owner, SEED_BOARD_PIPELINE))).rejects.toThrow(BoardRuleError);
+  });
+
+  // BBE-196 검수에서 나온 인접 공백 — requireEditableBoard 를 deleteColumn/updateColumn
+  // 에서 지워도 이 두 테스트가 없으면 아무것도 안 빨개졌다(실증: 223 tests + typecheck 통과).
+  it("시스템 보드는 컬럼을 지울 수도 고칠 수도 없다", async () => {
+    // requireEditableBoard 가 컬럼 소속 확인보다 «먼저» 돈다 — 시스템 보드면
+    // columnId 가 실재하든 안 하든 여기서 막혀야 한다(순서 자체가 방어의 일부).
+    await expect(async () =>
+      svc.deleteColumn(owner, SEED_BOARD_PIPELINE, "no-such-column"),
+    ).rejects.toThrow(BoardRuleError);
+    await expect(async () =>
+      svc.updateColumn(owner, SEED_BOARD_PIPELINE, "no-such-column", { label: "탈취" }),
+    ).rejects.toThrow(BoardRuleError);
   });
 
   it("시스템 보드도 목록/상세 조회는 된다(메타)", async () => {

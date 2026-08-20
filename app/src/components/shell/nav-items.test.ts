@@ -20,9 +20,13 @@ describe("BBE-103 — 사이드바 연결 누락 회귀 가드", () => {
   });
 
   it("미구현 항목은 그대로 잠금 유지 — 없는 화면으로 보내지 않는다", () => {
-    for (const key of ["vendor", "topco", "acct", "addons"]) {
+    for (const key of ["vendor", "topco", "addons"]) {
       expect(hrefOf(key)).toBeUndefined();
     }
+  });
+
+  it("회계(acct)는 BBE-240 으로 실화면이 생겨 잠금 해제됐다 — /ledger 로 연결", () => {
+    expect(hrefOf("acct")).toBe("/ledger");
   });
 
   it("목업 D05 계층·순서와 canonical href 를 함께 보존한다", () => {
@@ -46,6 +50,7 @@ describe("BBE-103 — 사이드바 연결 누락 회귀 가드", () => {
     expect(navItemsForSection(NAV_SECTIONS[2]).map((item) => [item.label, item.href])).toEqual([
       ["계약업체 실무", "/work"],
       ["업체관리 현황", "/companies"],
+      ["회계", "/ledger"], // BBE-240 — 연도별 전체 원장.
     ]);
     expect(navItemsForSection(NAV_SECTIONS[4]).map((item) => [item.label, item.href])).toEqual([
       ["탭 관리", "/settings/workspace-builder"],

@@ -18,6 +18,7 @@ function deal(id: string, patch: Partial<Deal> = {}): Deal {
     title: id,
     amount: null,
     status_note: null,
+    fee_terms: null,
     applied_on: null,
     custom: {},
     created_at: "2026-08-10T00:00:00.000Z",

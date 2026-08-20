@@ -51,6 +51,7 @@ function emptyRow(): ItemWithValues {
     group_id: null,
     title: "예시 회사",
     assigned_to: null,
+    deal_id: null,
     sort_order: 0,
     created_at: "2026-08-14T00:00:00Z",
     updated_at: "2026-08-14T00:00:00Z",

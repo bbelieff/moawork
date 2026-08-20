@@ -9,6 +9,7 @@ import { DealTimeline } from "@/components/deal/detail/DealTimeline";
 import { DealAssignee } from "@/components/deal/detail/DealAssignee";
 import { DealFollowupRequest } from "@/components/deal/detail/DealFollowupRequest";
 import { DealFiles } from "@/components/deal/detail/DealFiles";
+import { DealLedgerButton } from "@/components/board/DealLedgerButton";
 import { moveStageAction } from "./actions";
 import { listComments } from "@/lib/deal/comments";
 import { listDealFiles as listDealFilesAsync } from "@/lib/deal/files";
@@ -174,6 +175,10 @@ export default async function DealDetailPage({
           />
           <DealFollowupRequest dealId={deal.id} />
         </div>
+      </Section>
+
+      <Section title="회계 원장">
+        <DealLedgerButton dealId={deal.id} />
       </Section>
 
       <Section title="타임라인 · 댓글">

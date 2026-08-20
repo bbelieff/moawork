@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { handleWorkspaceRequest, POST } from "./route";
+import { handleWorkspaceRequest } from "./handler";
+import { POST } from "./route";
 import type { WorkspaceEntryRpcClient } from "@/lib/workspace-entry/server";
 
 function rpcClient(data: unknown = { accepted: true, status: "pending" }): WorkspaceEntryRpcClient {

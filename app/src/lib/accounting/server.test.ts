@@ -12,6 +12,8 @@ function row(patch: Record<string, unknown> = {}) {
     occurred_on: "2026-08-12",
     paid_on: null,
     attribution_month: "2026-08-01",
+    vat_included: false,
+    tax_invoice_issued: false,
     ...patch,
   };
 }
@@ -85,11 +87,21 @@ describe("deal ledger server read model", () => {
     { amount: "1.5" },
     { amount: "9007199254740992" },
     { amount: "100", received_amount: "101" },
+    { vat_included: "not-a-boolean" },
+    { tax_invoice_issued: null },
   ])("rejects unsafe or invalid money instead of coercing it", async (patch) => {
     const mock = client({ rows: [row(patch)] });
     await expect(loadDealLedger("deal-1", async () => mock.client)).rejects.toBeInstanceOf(
       DealLedgerReadError,
     );
+  });
+
+  it("allows a VAT-included row's received amount to exceed the supply amount", async () => {
+    const mock = client({
+      rows: [row({ amount: "100", received_amount: "110", vat_included: true, paid_on: "2026-08-12" })],
+    });
+    const result = await loadDealLedger("deal-1", async () => mock.client);
+    expect(result.entries[0]).toMatchObject({ receivedAmount: 110, vatIncluded: true, taxInvoiceIssued: false });
   });
 
   it("does not disguise a table or RLS failure as an empty ledger", async () => {

@@ -45,6 +45,7 @@ function row(id: string, over: Partial<ItemWithValues> = {}): ItemWithValues {
     group_id: null,
     title: id,
     assigned_to: null,
+    deal_id: null,
     sort_order: 0,
     created_at: "2026-08-09T00:00:00Z",
     updated_at: "2026-08-09T00:00:00Z",

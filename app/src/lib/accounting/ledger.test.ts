@@ -18,6 +18,8 @@ function entry(
     occurredOn: "2026-08-11",
     paidOn: null,
     attributionMonth: "2026-08-01",
+    vatIncluded: false,
+    taxInvoiceIssued: false,
     ...patch,
   };
 }
@@ -63,5 +65,22 @@ describe("deal ledger", () => {
     expect(() =>
       summarizeDealLedger("deal-1", [entry("fee", { amount: 100, receivedAmount: 101 })]),
     ).toThrow("receivedAmount cannot exceed amount");
+  });
+
+  it("allows a VAT-included entry's received amount to exceed the supply amount", () => {
+    expect(() =>
+      summarizeDealLedger("deal-1", [
+        entry("fee", { amount: 100, receivedAmount: 110, vatIncluded: true }),
+      ]),
+    ).not.toThrow();
+  });
+
+  it("does not let a VAT-overpaid entry mask another entry's real outstanding balance", () => {
+    const summary = summarizeDealLedger("deal-1", [
+      entry("vat", { amount: 100, receivedAmount: 110, vatIncluded: true }),
+      entry("unpaid", { amount: 50, receivedAmount: 0 }),
+    ]);
+    // 순합계(150-110=40)였다면 50 미수가 가려진다 — entry 단위 합만 정답이다.
+    expect(summary.outstandingTotal).toBe(50);
   });
 });

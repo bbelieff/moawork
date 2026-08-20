@@ -7,6 +7,12 @@ const migration = readFileSync(
   new URL("../../../../supabase/migrations/086_dashboard_daily_read_model.sql", import.meta.url),
   "utf8",
 );
+// ★ BBE-215: 086 뒤에 098 을 얹어 «현재» 읽기 모델을 잰다.
+//   086 만 심으면 이 파일은 «이미 갈아치운 정의» 를 지키게 되고, 그건 지나간 계약이다.
+const migration215 = readFileSync(
+  new URL("../../../../supabase/migrations/098_bbe215_today_kpi_definitions.sql", import.meta.url),
+  "utf8",
+);
 const id = (value: number): string => `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 
 describe("BBE-185 today dashboard RPC", () => {
@@ -29,6 +35,12 @@ describe("BBE-185 today dashboard RPC", () => {
       create table work_item_versions(org_id uuid, item_id uuid primary key, due_date date, workflow_status text);
       create table notifications(id uuid primary key, org_id uuid, user_id uuid, type text, title text, body text,
         target_type text, target_id uuid, is_action boolean, read_at timestamptz, resolved_at timestamptz, created_at timestamptz);
+      create table onboarding_quest_defs(quest_key text primary key, sort_order int default 0);
+      create table onboarding_quest_progress(org_id uuid, quest_key text, completed_at timestamptz default now(), primary key(org_id, quest_key));
+      create function begin_guarded_migration(
+        p_logical_key text, p_file_name text, p_file_digest text,
+        p_expected_predecessor text, p_executor text, p_thread_id text, p_foundation boolean
+      ) returns void language sql as $$ select $$;
       create function effective_permission(p_org uuid, p_key text) returns boolean language sql stable as $$
         select p_key='work.view_tabs' and exists(select 1 from org_members where org_id=p_org and user_id=auth.uid() and status='active') $$;
       grant usage on schema public to authenticated;
@@ -69,7 +81,8 @@ describe("BBE-185 today dashboard RPC", () => {
         ('${id(42)}','${id(2)}','${id(13)}','work','Foreign alert',null,null,null,false,null,null,'2026-08-17T00:02:00Z');
       select set_config('app.uid','${id(10)}',false);
     `);
-    await db.exec(migration); return db;
+    await db.exec(migration);
+    await db.exec(migration215); return db;
   }
 
   it("returns an exact owner snapshot, KST month boundary, canonical notifications, and replay-safe reads", async () => {
@@ -79,7 +92,14 @@ describe("BBE-185 today dashboard RPC", () => {
     const second = (await db.query<{ snapshot: unknown }>(sql)).rows[0].snapshot;
     expect(second).toEqual(first);
     const parsed = parseTodayDashboard(first);
-    expect(parsed.kpis).toEqual({ todayConsultations: 2, callbacks: 2, contractsWaiting: 2, contractDeposits: 1000, fees: 200 });
+    // ★ BBE-215 로 정의가 바뀌었다. 이 픽스처는 consult_status 를 안 심고 contract_status 가
+    //   "waiting"(새 허용목록 「계약서 요청」·「계약서 작성완료」 밖) 이라 앞의 넷이 0 이다.
+    //   금액 둘은 정의가 안 바뀌었으므로 그대로다 — 그게 「안 바꿨다」의 증거다.
+    expect(parsed.kpis).toEqual({
+      calls: 0, callbacks: 0, meetings: 0, contractsWaiting: 0, contractDeposits: 1000, fees: 200,
+    });
+    expect(parsed.status, "consult_status 가 통째로 비었다").toBe("unfilled");
+    expect(parsed.unfilledColumns).toContain("consult_status");
     expect(parsed.tasks.map((task) => task.itemId)).toEqual([id(32), id(33)]);
     expect(parsed.notifications.map((notification) => notification.title)).toEqual(["Own alert"]);
     expect(parsed.tasks.every((task) => task.href.startsWith("/work?notification="))).toBe(true);
@@ -102,7 +122,7 @@ describe("BBE-185 today dashboard RPC", () => {
     const assigned = parseTodayDashboard((await db.query<{ snapshot: unknown }>(
       `select public.read_today_dashboard('${id(1)}','2026-08-17T03:00:00Z') snapshot`,
     )).rows[0].snapshot);
-    expect(assigned.kpis).toMatchObject({ todayConsultations: 1, callbacks: 1, contractsWaiting: 1, contractDeposits: 0, fees: 0 });
+    expect(assigned.kpis).toMatchObject({ calls: 0, callbacks: 0, meetings: 0, contractsWaiting: 0, contractDeposits: 0, fees: 0 });
     expect(assigned.tasks.map((task) => task.itemId)).toEqual([id(33)]);
     expect(JSON.stringify(assigned)).not.toContain(id(32));
     await expect(db.query(`select public.read_today_dashboard('${id(2)}','2026-08-17T03:00:00Z')`)).rejects.toThrow(/membership|required/u);

@@ -183,7 +183,7 @@ describe("BBE-193 성공/실패 표현 계약", () => {
   // ── 4순위. 정합성 깨짐 경고가 «회색 안내문» 이던 곳 ──
   describe("DealLedgerPanel — 원장 정합성", () => {
     const entries = [
-      { id: "fee-1", dealId: "deal-1", kind: "fee" as const, amount: 50_000, receivedAmount: 20_000, occurredOn: "2026-08-02", paidOn: null, attributionMonth: "2026-08-01" },
+      { id: "fee-1", dealId: "deal-1", kind: "fee" as const, amount: 50_000, receivedAmount: 20_000, occurredOn: "2026-08-02", paidOn: null, attributionMonth: "2026-08-01", vatIncluded: false, taxInvoiceIssued: false },
     ];
 
     // 되돌리면 빨개진다: noticeFailed 를 떼고 회색 .notice 만 남기기
@@ -217,6 +217,16 @@ describe("BBE-193 성공/실패 표현 계약", () => {
       ["ContactPipelineAction", "./board/BoardWorkspace.tsx"],
       ["EsignPanel", "../app/(app)/deals/[dealId]/page.tsx"],
       ["WorkBoardSurface", "./work-management/NotificationWorkBoard.tsx"],
+      // BBE-240: DealLedgerPanel 이 처음으로 소비처를 얻었다 — 보드 행 원장 팝업(DealLedgerButton).
+      ["DealLedgerPanel", "./board/DealLedgerButton.tsx"],
+      // BBE-240: DealLedgerButton 도 이제 소비처가 있다 — 계약업체 실무 등 보드 행(deal_id
+      // 있는 행에만 조건부 렌더, GroupTable.tsx). /deals/[dealId] 페이지에도 같은 컴포넌트가
+      // 「회계 원장」 섹션으로 붙었다(대표 소비처 하나만 여기 적는다, 위 패턴과 동일).
+      ["DealLedgerButton", "./board/GroupTable.tsx"],
+      // BBE-198: LedgerExportButton 이 드디어 소비처를 얻었다 — /ledger 「리포트」 탭의
+      // 필터바 오른쪽 두 버튼 중 하나(다른 하나는 window.print()). 총괄 승인 설계가
+      // 「화면 리포트를 정본으로, 거기서 인쇄 + CSV 두 개만」 이었고 그 CSV 가 이것이다.
+      ["LedgerExportButton", "./accounting/LedgerReportView.tsx"],
     ])("%s 는 소비처가 실제로 화면에 붙인다", (name, consumer) => {
       const source = sourceOf(consumer);
       expect(source).toContain(`import { ${name} }`);
@@ -225,11 +235,17 @@ describe("BBE-193 성공/실패 표현 계약", () => {
       expect(source).toMatch(new RegExp("<" + name + "[\\s/>]"));
     });
 
-    // ★ 이 둘은 붙는 화면이 없다(AGENTS §1.3 의 «52개 파일» 문제).
+    // ★ 이건 아직 붙는 화면이 없다(AGENTS §1.3 의 «52개 파일» 문제).
     // 고쳐는 뒀지만 ⑦ 화면 확인이 원천적으로 불가능하다는 사실을 테스트로 «드러내» 둔다.
     // 소비처가 생기면 이 테스트가 빨개진다 → 그때 위 목록으로 옮기고 화면 증거를 남기면 된다.
-    it("회계 두 곳은 아직 어느 화면에도 붙지 않는다 — 붙는 순간 빨개진다", () => {
-      // ★ src 전체를 훑는다. 예전엔 "../app" 이라 app/ 만 봤는데, 이 두 부품이 실제로 붙을
+    //
+    // BBE-240: DealLedgerPanel·DealLedgerButton 둘 다 위 it.each 로 옮겼다(소비처가 생겼으므로).
+    // BBE-198: LedgerExportButton 도 위로 옮겼다 — /ledger 리포트 탭이 소비처다.
+    //   그래서 이 목록은 «지금» 비어 있다. 테스트를 지우지 않고 남겨 둔다: 새 무소비처
+    //   부품이 생기면 이름 한 줄만 넣으면 되고, 목록이 비었다는 사실도 같이 확인한다
+    //   (빈 배열이라 조용히 통과하는 상태를 «비었다» 라고 명시적으로 못 박는다).
+    it("무소비처 부품 목록은 비어 있다 — 새 고아가 생기면 여기 이름을 넣어라", () => {
+      // ★ src 전체를 훑는다. 예전엔 "../app" 이라 app/ 만 봤는데, 이 부품들이 실제로 붙을
       //   자리는 components/ 다 — 이 파일 위쪽이 소비처로 적은 BoardWorkspace 부터가 components/ 다.
       //   즉 «소비처가 생기는 바로 그 자리» 가 사각지대였다(검수 지적).
       const appDir = fileURLToPath(new URL("..", import.meta.url));
@@ -243,10 +259,14 @@ describe("BBE-193 성공/실패 표현 계약", () => {
       };
       walk(appDir);
 
-      for (const orphan of ["LedgerExportButton", "DealLedgerPanel"]) {
+      const orphans: string[] = [];
+      for (const orphan of orphans) {
         const mountedBy = sources.filter((source) => source.includes(`<${orphan}`));
         expect(mountedBy, `${orphan} 의 소비처가 생겼다면 ⑦ 증거를 남기고 이 목록을 갱신해라`).toHaveLength(0);
       }
+      expect(orphans, "무소비처 목록이 다시 늘었다면 ⑦ 화면 증거가 없는 부품이 생겼다는 뜻이다").toHaveLength(0);
+      // 훑기 자체가 죽어 «전부 통과» 하는 것을 막는다 — sources 가 비면 위 루프는 무의미하다.
+      expect(sources.length).toBeGreaterThan(0);
     });
   });
 });

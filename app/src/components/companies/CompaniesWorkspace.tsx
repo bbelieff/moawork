@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import type { CompaniesViewModel, CompanyDealView } from "@/lib/companies/server";
 
 const won = new Intl.NumberFormat("ko-KR");
@@ -29,7 +30,7 @@ function DealRow({ row }: { row: CompanyDealView }) {
   );
 }
 
-export function CompaniesWorkspace({ model }: { model: CompaniesViewModel }) {
+export function CompaniesWorkspace({ model, importSlot }: { model: CompaniesViewModel; importSlot?: ReactNode }) {
   if (model.status === "unconfigured") {
     // 오류가 아니라 «아직 연결 안 됨». 빈 회사 목록으로 위장하지 않는다.
     return (
@@ -57,7 +58,10 @@ export function CompaniesWorkspace({ model }: { model: CompaniesViewModel }) {
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">회사별 업무와 원장</h1>
           <p className="mt-2 max-w-2xl text-sm text-zinc-500">회사를 펼치면 연결된 딜과 원장 정본 금액을 한 번에 확인할 수 있습니다.</p>
         </div>
-        <span className="rounded-full bg-zinc-100 px-3 py-1 text-sm text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{model.companies.length}개 회사</span>
+        <div className="flex items-center gap-3">
+          {importSlot}
+          <span className="rounded-full bg-zinc-100 px-3 py-1 text-sm text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{model.companies.length}개 회사</span>
+        </div>
       </header>
 
       {model.dealsStatus === "error" ? (
@@ -69,7 +73,8 @@ export function CompaniesWorkspace({ model }: { model: CompaniesViewModel }) {
       {model.companies.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-zinc-300 p-10 text-center dark:border-zinc-700">
           <p className="font-medium">등록된 회사가 없습니다</p>
-          <p className="mt-1 text-sm text-zinc-500">계약업체 실무에서 회사를 연결하면 여기에 표시됩니다.</p>
+          {/* 막다른 길 방지 — «어떻게 넣는가» 를 여기서 알려준다. 빈 화면으로 끝내지 않는다. */}
+          <p className="mt-1 text-sm text-zinc-500">위 <b>CSV로 가져오기</b>로 한 번에 등록하거나, 계약업체 실무에서 회사를 연결하면 여기에 표시됩니다.</p>
         </div>
       ) : (
         <div className="grid gap-3">

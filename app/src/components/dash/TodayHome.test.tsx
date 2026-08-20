@@ -10,7 +10,7 @@ import type { TodayHomeState } from "@/lib/dash/today-server";
 //  · 화면에 스냅샷이 주지 않은 숫자·업체명이 새로 생길 때
 
 const snapshot = (over: Partial<TodayDashboardSnapshot> = {}): TodayDashboardSnapshot => ({
-  version: 1,
+  version: 2,
   orgId: "org-1",
   viewer: { userId: "user-1", role: "owner", scope: "all" },
   asOf: "2026-08-17T09:00:00.000Z",
@@ -19,12 +19,15 @@ const snapshot = (over: Partial<TodayDashboardSnapshot> = {}): TodayDashboardSna
   status: "ready",
   missingSources: [],
   kpis: {
-    todayConsultations: 4,
+    calls: 4,
     callbacks: 2,
+    meetings: 1,
     contractsWaiting: 3,
     contractDeposits: 8_000_000,
     fees: 21_600_000,
   },
+  unfilledColumns: [],
+  onboarding: null,
   tasks: [
     {
       kind: "work_due",
@@ -65,8 +68,10 @@ const render = (state: TodayHomeState) => renderToStaticMarkup(<TodayHome state=
 describe("홈 «오늘» — 정상", () => {
   const html = render({ kind: "ready", snapshot: snapshot() });
 
-  it("KPI 5장을 목업 순서대로 보여준다", () => {
-    const order = ["오늘 상담할 곳", "재통화 대기", "계약 대기", "이번 달 계약금", "이번 달 수수료"];
+  // ★ BBE-215(2026-08-18): 총괄이 「오늘 상담할 곳」을 «행동의 종류» 로 갈라
+  //   「전화예정 / 미팅예정」으로 바꿨다. 정본은 목업이 아니라 그 결정이다.
+  it("KPI 6장을 총괄 확정 순서대로 보여준다", () => {
+    const order = ["전화예정", "재통화 대기", "미팅예정", "계약 대기", "이번 달 계약금", "이번 달 수수료"];
     const positions = order.map((label) => html.indexOf(label));
     expect(positions.every((index) => index >= 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
@@ -103,7 +108,7 @@ describe("홈 «오늘» — 비어있음 · 부분 · 오류", () => {
       kind: "ready",
       snapshot: snapshot({
         status: "empty",
-        kpis: { todayConsultations: 0, callbacks: 0, contractsWaiting: 0, contractDeposits: 0, fees: 0 },
+        kpis: { calls: 0, callbacks: 0, meetings: 0, contractsWaiting: 0, contractDeposits: 0, fees: 0 },
         tasks: [],
         notifications: [],
       }),
@@ -133,5 +138,45 @@ describe("홈 «오늘» — 비어있음 · 부분 · 오류", () => {
     const html = render({ kind: "error", reason: "Today dashboard is unavailable." });
     expect(html).toContain("불러오지 못했습니다");
     expect(html).toContain("Today dashboard is unavailable.");
+  });
+
+  // ★ BBE-215 — 「0」과 「아직 안 채움」을 화면이 갈라 말하는가.
+  //   098 이 unfilledColumns 를 주더라도 화면이 안 그리면 사용자에게는 «그냥 0» 이다.
+  //   읽기 모델과 화면 «둘 다» 있어야 이 구분이 성립한다.
+  it("★ 컬럼이 통째로 비면 0 을 «없음» 으로 그리지 않고 컬럼 이름을 말한다", () => {
+    const html = renderToStaticMarkup(
+      <TodayHome
+        state={{
+          kind: "ready",
+          snapshot: snapshot({
+            status: "unfilled",
+            unfilledColumns: ["consult_status"],
+            kpis: { calls: 0, callbacks: 0, meetings: 0, contractsWaiting: 0, contractDeposits: 0, fees: 0 },
+          }),
+        }}
+      />,
+    );
+
+    expect(html).toContain("아직 안 채웠다");
+    // ★ 무엇을 채워야 하는지 «이름» 으로 말해야 한다 — 안 그러면 사용자가 할 일을 모른다.
+    expect(html).toContain("상담 상황");
+    expect(html).toContain('role="status"');
+  });
+
+  it("★ 채워져 있는데 조건에 안 맞는 진짜 0 에는 그 문구가 «안» 뜬다", () => {
+    const html = renderToStaticMarkup(
+      <TodayHome
+        state={{
+          kind: "ready",
+          snapshot: snapshot({
+            status: "empty",
+            unfilledColumns: [],
+            kpis: { calls: 0, callbacks: 0, meetings: 0, contractsWaiting: 0, contractDeposits: 0, fees: 0 },
+          }),
+        }}
+      />,
+    );
+
+    expect(html).not.toContain("아직 안 채웠다");
   });
 });

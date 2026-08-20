@@ -54,6 +54,7 @@ function fixtureSource(options: {
         title: `Deal ${index}`,
         amount: 1000,
         status_note: null,
+        fee_terms: null,
         applied_on: null,
         custom: {},
         created_at: "2026-08-01T00:00:00Z",

@@ -361,6 +361,7 @@ export default async function BoardPage({
         canManageColumns={canManageColumns}
         canEditPresets={canEditPresets}
         presets={presets}
+        currentUserId={ctx.user.id}
       />
 
       {trashPanel}

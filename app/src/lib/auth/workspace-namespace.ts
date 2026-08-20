@@ -9,13 +9,11 @@ export type WorkspaceNamespaceDecision =
   | { kind: "rewrite"; canonical: `/w/${string}`; internal: string; orgId: string };
 
 const WORKSPACE_PAGE_SEGMENTS = new Set([
-  "account", "boards", "companies", "contract", "dash", "deals", "newcust",
+  "account", "boards", "companies", "contract", "dash", "deals", "ledger", "newcust",
   "notices", "onboarding", "policyfund", "presets", "settings", "settlements", "work",
 ]);
 
-const WORKSPACE_INTERNAL_ALIASES = new Map<string, string>([
-  ["/settlements", "/policyfund/settlements"],
-]);
+const WORKSPACE_INTERNAL_ALIASES = new Map<string, string>([]);
 
 function aliasFromPath(pathname: string): string | null {
   const match = pathname.match(/^\/([^/]+)$/);

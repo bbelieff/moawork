@@ -19,7 +19,8 @@ test("dashboard and detail both consume the request-scoped persisted checklist",
   const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
   const [dashboard, detail, cell, panel] = await Promise.all([
     // BBE-186: 서류 준비 칸은 홈에서 «업무 분석»(/dash)으로 옮겨 갔다. 보증도 따라 옮긴다.
-    readFile(path.join(appRoot, "app", "(app)", "dash", "page.tsx"), "utf8"),
+    // ★ BBE-215 — 대시보드 쪽 소비자는 「회사 현황」 절로 옮겨갔다. 단언은 그대로다.
+    readFile(path.join(appRoot, "components", "dash", "CompanyStatusSection.tsx"), "utf8"),
     readFile(path.join(appRoot, "app", "(app)", "deals", "[dealId]", "page.tsx"), "utf8"),
     readFile(path.join(appRoot, "components", "policyfund", "ChecklistCompletionCell.tsx"), "utf8"),
     readFile(path.join(appRoot, "components", "policyfund", "ChecklistPanel.tsx"), "utf8"),

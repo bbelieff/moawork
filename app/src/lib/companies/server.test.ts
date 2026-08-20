@@ -11,7 +11,7 @@ const company = {
 const deal = {
   id: "deal-1", org_id: "org-1", company_id: "company-1", title: "정책자금 업무",
   pipeline_id: null, stage_id: null, assigned_to: "user-1", amount: null, custom: {},
-  status_note: null, applied_on: null,
+  status_note: null, fee_terms: null, applied_on: null,
   created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z",
 };
 

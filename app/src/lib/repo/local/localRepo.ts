@@ -331,6 +331,7 @@ export class LocalRepo implements Repo {
       title: input.title,
       amount: input.amount ?? null,
       status_note: input.status_note ?? null,
+      fee_terms: input.fee_terms ?? null,
       applied_on: input.applied_on ?? null,
       custom: input.custom ?? {},
       created_at: ts,

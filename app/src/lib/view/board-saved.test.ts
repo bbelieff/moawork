@@ -88,7 +88,7 @@ describe("parseSavedBoardViewConfig", () => {
       { id: "c1", org_id: "o1", board_id: "b1", key: "stage", label: "단계", type: "text", source: "in", rightPinned: false, options_jsonb: null, sort_order: 0, width: null },
       { id: "c2", org_id: "o1", board_id: "b1", key: "score", label: "점수", type: "number", source: "in", rightPinned: false, options_jsonb: null, sort_order: 1, width: null },
     ] as const;
-    const item = (id: string, stage: string, score: number) => ({ id, org_id: "o1", board_id: "b1", group_id: "g1", title: id, assigned_to: null, sort_order: 0, created_at: "", updated_at: "", values: { stage, score } });
+    const item = (id: string, stage: string, score: number) => ({ id, org_id: "o1", board_id: "b1", group_id: "g1", title: id, assigned_to: null, deal_id: null, sort_order: 0, created_at: "", updated_at: "", values: { stage, score } });
     const rows = [item("b-low", "B", 1), item("a-low", "A", 1), item("a-high", "A", 9)];
     const result = applySavedKanbanView([{ id: "lane", items: rows }], rows, [...columns], { q: "", assignees: [], byColumn: {}, sortKey: "", sortDir: "asc", sorts: [{ columnKey: "stage", direction: "asc" }, { columnKey: "score", direction: "desc" }], columnLimit: 0 });
     expect(result[0].items.map((row) => row.id)).toEqual(["a-high", "a-low", "b-low"]);
@@ -98,7 +98,7 @@ describe("parseSavedBoardViewConfig", () => {
   it("applies viewer, team and fixed person scopes to the actual rendered row set", () => {
     const item = (id: string, owner: string | string[] | null) => ({
       id, org_id: "o1", board_id: "b1", group_id: "g1", title: id,
-      assigned_to: null, sort_order: 0, created_at: "", updated_at: "", values: { owner },
+      assigned_to: null, deal_id: null, sort_order: 0, created_at: "", updated_at: "", values: { owner },
     });
     const rows = [item("mine", "u1"), item("team", ["u2", "u3"]), item("other", "u4")];
     expect(applySavedPersonScope(rows, { personScope: "viewer", personScopeUserId: null }, "u1", "owner", ["u1"]).map((row) => row.id)).toEqual(["mine"]);
@@ -111,7 +111,7 @@ describe("parseSavedBoardViewConfig", () => {
     ["team", null, ["u1", "u2"], ["mine", "team"]],
     ["fixed", "u4", ["u4"], ["other"]],
   ] as const)("keeps table, calendar and kanban ids/counts equal for %s scope", (personScope, personScopeUserId, memberIds, expected) => {
-    const item = (id: string, owner: string | string[]) => ({ id, org_id: "o1", board_id: "b1", group_id: "g1", title: id, assigned_to: null, sort_order: 0, created_at: "", updated_at: "", values: { owner } });
+    const item = (id: string, owner: string | string[]) => ({ id, org_id: "o1", board_id: "b1", group_id: "g1", title: id, assigned_to: null, deal_id: null, sort_order: 0, created_at: "", updated_at: "", values: { owner } });
     const rows = [item("mine", "u1"), item("team", ["u2"]), item("other", "u4")];
     const scoped = applySavedPersonScope(rows, { personScope, personScopeUserId }, "u1", "owner", memberIds);
     const kanban = applySavedKanbanView([{ id: "lane", items: rows }], scoped, [], { q: "", assignees: [], byColumn: {}, sortKey: "", sortDir: "asc", columnLimit: 0 });
@@ -121,7 +121,7 @@ describe("parseSavedBoardViewConfig", () => {
   });
 
   it("uses canonical assigned_to without a person column and fails closed for an unverified fixed member", () => {
-    const rows = [{ id: "mine", org_id: "o1", board_id: "b1", group_id: "g1", title: "mine", assigned_to: "u1", sort_order: 0, created_at: "", updated_at: "", values: { owner: "u1" } }];
+    const rows = [{ id: "mine", org_id: "o1", board_id: "b1", group_id: "g1", title: "mine", assigned_to: "u1", deal_id: null, sort_order: 0, created_at: "", updated_at: "", values: { owner: "u1" } }];
     expect(applySavedPersonScope(rows, { personScope: "viewer", personScopeUserId: null }, "u1", null, ["u1"])).toEqual(rows);
     expect(applySavedPersonScope(rows, { personScope: "fixed", personScopeUserId: null }, "u1", "owner")).toEqual([]);
   });
