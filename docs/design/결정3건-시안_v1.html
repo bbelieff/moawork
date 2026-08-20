@@ -1,0 +1,313 @@
+<title>결정 3건 시안</title>
+<style>
+  :root{
+    --mw-work-blue:#3478f6; --mw-flow-teal:#18a999; --mw-moa-violet:#6b5cff; --mw-people-coral:#f26b5e;
+    --mw-fg:#191a1e; --mw-surface:#fff;
+    --mw-primary:var(--mw-moa-violet); --mw-record:var(--mw-work-blue);
+    --mw-success:#16a34a; --mw-warning:#d97706; --mw-error:#dc2626;
+    --mw-bg:#f7f8fa; --mw-card:#fff; --mw-sub:#6b7280; --mw-line:#e8eaef; --mw-body:#3f4249;
+    --mw-on-accent:#fff; --mw-tint-blue:#eaf0fe; --mw-tint-teal:#eaf7f4; --mw-tint-coral:#fdecea;
+    --mw-radius:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --mw-work-blue:#6ea0ff; --mw-flow-teal:#47cfbc; --mw-moa-violet:#8a7cff; --mw-people-coral:#ff8a80;
+      --mw-fg:#f7f8fa; --mw-surface:#111216;
+      --mw-success:#4ade80; --mw-warning:#fbbf24; --mw-error:#f87171;
+      --mw-bg:#111216; --mw-card:#1a1c22; --mw-sub:#9aa0ac; --mw-line:#262932; --mw-body:#c6cad3;
+      --mw-on-accent:#10131a; --mw-tint-blue:rgba(110,160,255,.14); --mw-tint-teal:rgba(71,207,188,.14); --mw-tint-coral:rgba(255,138,128,.15);
+    }
+  }
+  :root[data-theme="dark"]{
+    --mw-work-blue:#6ea0ff; --mw-flow-teal:#47cfbc; --mw-moa-violet:#8a7cff; --mw-people-coral:#ff8a80;
+    --mw-fg:#f7f8fa; --mw-surface:#111216;
+    --mw-success:#4ade80; --mw-warning:#fbbf24; --mw-error:#f87171;
+    --mw-bg:#111216; --mw-card:#1a1c22; --mw-sub:#9aa0ac; --mw-line:#262932; --mw-body:#c6cad3;
+    --mw-on-accent:#10131a; --mw-tint-blue:rgba(110,160,255,.14); --mw-tint-teal:rgba(71,207,188,.14); --mw-tint-coral:rgba(255,138,128,.15);
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--mw-bg); color:var(--mw-fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; line-height:1.55}
+  .wrap{max-width:1000px; margin:0 auto; padding:28px 20px 90px}
+  .intro{display:flex; flex-direction:column; gap:10px; padding-bottom:20px; border-bottom:1px solid var(--mw-line); margin-bottom:26px}
+  .intro h1{margin:0; font-size:22px; letter-spacing:-.02em}
+  .intro p{margin:0; color:var(--mw-sub); font-size:14px; max-width:70ch}
+  .nav{display:flex; flex-wrap:wrap; gap:8px; margin-top:6px}
+  .nav a{font-size:12px; font-weight:700; color:var(--mw-primary); text-decoration:none;
+    background:var(--mw-tint-blue); padding:6px 11px; border-radius:999px}
+  .nav a:hover{text-decoration:underline}
+
+  section.q{margin-bottom:52px; scroll-margin-top:16px}
+  .qtitle{display:flex; align-items:center; gap:10px; margin:0 0 4px}
+  .qnum{display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px;
+    border-radius:999px; background:var(--mw-primary); color:var(--mw-on-accent); font-size:12px; font-weight:800; flex:none}
+  .qtitle h2{margin:0; font-size:17.5px; letter-spacing:-.01em}
+  .qhint{margin:0 0 16px 34px; color:var(--mw-sub); font-size:13px; max-width:68ch}
+  .qhint b{color:var(--mw-fg)}
+  .routelabel{display:inline-block; font-size:11px; font-weight:700; color:var(--mw-sub);
+    background:var(--mw-card); border:1px solid var(--mw-line); border-radius:8px;
+    padding:3px 8px; margin:0 0 12px 34px; font-family:ui-monospace,Menlo,monospace}
+
+  .screen{margin-left:34px; border:1px solid var(--mw-line); border-radius:16px; background:var(--mw-card);
+    overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .screen-body{padding:20px 22px 24px}
+
+  /* 목록 비교 */
+  .cmp{display:grid; grid-template-columns:1fr 1.4fr; gap:14px; margin-left:34px}
+  .cmpcol{border:1px solid var(--mw-line); border-radius:14px; background:var(--mw-card); padding:14px 16px; min-width:0}
+  .cmpcol h3{margin:0 0 3px; font-size:14px}
+  .cmpcol .meta{margin:0 0 10px; font-size:11.5px; color:var(--mw-sub)}
+  .chips{display:flex; flex-wrap:wrap; gap:5px}
+  .chip{font-size:11.5px; padding:3px 8px; border-radius:6px; background:var(--mw-bg); border:1px solid var(--mw-line); white-space:nowrap}
+  .chip.match{background:var(--mw-tint-teal); border-color:var(--mw-flow-teal); color:var(--mw-flow-teal); font-weight:700}
+  .chip.gone{background:var(--mw-tint-coral); border-color:var(--mw-people-coral); color:var(--mw-people-coral); font-weight:700}
+  .legend{display:flex; flex-wrap:wrap; gap:14px; margin:10px 0 0 34px; font-size:11.5px; color:var(--mw-sub)}
+  .legend i{display:inline-block; width:11px; height:11px; border-radius:3px; vertical-align:-1px; margin-right:5px}
+
+  /* 매핑표 */
+  table.map{width:100%; border-collapse:collapse; font-size:12.5px; margin-left:0}
+  table.map th, table.map td{padding:9px 10px; text-align:left; border-top:1px solid var(--mw-line); vertical-align:top}
+  table.map th{color:var(--mw-sub); font-size:11px; font-weight:700; border-top:0}
+  .verdict{font-size:11px; font-weight:800; padding:2px 7px; border-radius:5px; white-space:nowrap}
+  .v-same{background:var(--mw-tint-teal); color:var(--mw-flow-teal)}
+  .v-none{background:var(--mw-tint-coral); color:var(--mw-people-coral)}
+
+  /* CSV 시안 */
+  .panel{border:1px solid var(--mw-line); border-radius:var(--mw-radius); background:var(--mw-bg); padding:18px 20px}
+  .panelhead{display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:14px}
+  .panelhead h2{margin:0; font-size:17px}
+  .panelhead p{margin:4px 0 0; color:var(--mw-sub); font-size:12.5px}
+  .eyebrow{margin:0 0 4px; color:var(--mw-primary); font-size:11px; font-weight:800; letter-spacing:.02em}
+  .period{display:flex; flex-wrap:wrap; align-items:end; gap:10px; margin-top:4px}
+  .period label{display:grid; gap:5px; color:var(--mw-sub); font-size:12px; font-weight:700}
+  .period input, .period select{min-height:40px; padding:8px 10px; border:1px solid var(--mw-line);
+    border-radius:11px; background:var(--mw-card); color:var(--mw-fg); font:inherit; font-size:13.5px}
+  .btn{min-height:40px; padding:9px 16px; border:0; border-radius:11px; background:var(--mw-primary);
+    color:var(--mw-on-accent); font:inherit; font-size:13px; font-weight:800; cursor:pointer}
+  .btn.ghost{background:var(--mw-card); color:var(--mw-body); border:1px solid var(--mw-line)}
+  .btn:focus-visible, .period input:focus-visible{outline:2.5px solid var(--mw-primary); outline-offset:1px}
+  .preview{margin-top:14px; border:1px solid var(--mw-line); border-radius:11px; background:var(--mw-card); overflow-x:auto}
+  table.csv{border-collapse:collapse; font-size:12px; width:100%; white-space:nowrap}
+  table.csv th, table.csv td{padding:8px 11px; text-align:left; border-bottom:1px solid var(--mw-line); font-variant-numeric:tabular-nums}
+  table.csv th{color:var(--mw-sub); font-size:10.5px; font-weight:700; background:var(--mw-bg)}
+  .filename{font-family:ui-monospace,Menlo,monospace; font-size:11.5px; color:var(--mw-sub); margin-top:9px}
+  .guardnote{display:flex; gap:9px; align-items:flex-start; margin-top:13px; padding:10px 12px;
+    border-radius:10px; background:var(--mw-tint-coral); color:var(--mw-people-coral); font-size:12px; font-weight:600}
+
+  /* 체크리스트 시안 */
+  .ckwrap{display:grid; grid-template-columns:210px 1fr; gap:0; border:1px solid var(--mw-line); border-radius:14px; overflow:hidden}
+  .cklist{background:var(--mw-bg); border-right:1px solid var(--mw-line); padding:10px; max-height:330px; overflow-y:auto}
+  .cksearch{width:100%; min-height:34px; padding:6px 9px; border:1px solid var(--mw-line); border-radius:9px;
+    background:var(--mw-card); color:var(--mw-fg); font:inherit; font-size:12.5px; margin-bottom:8px}
+  .ckitem{display:flex; align-items:center; justify-content:space-between; gap:6px; padding:7px 9px;
+    border-radius:8px; font-size:12.5px; cursor:pointer; color:var(--mw-body)}
+  .ckitem:hover{background:var(--mw-card)}
+  .ckitem.on{background:var(--mw-primary); color:var(--mw-on-accent); font-weight:700}
+  .ckitem .n{font-size:10.5px; opacity:.8; font-variant-numeric:tabular-nums}
+  .ckitem.on .n{opacity:.95}
+  .ckedit{padding:16px 18px; background:var(--mw-card)}
+  .ckedit h3{margin:0 0 2px; font-size:14.5px}
+  .ckedit .sub{margin:0 0 14px; font-size:12px; color:var(--mw-sub)}
+  .docrow{display:flex; align-items:center; gap:9px; padding:8px 10px; border:1px solid var(--mw-line);
+    border-radius:10px; margin-bottom:7px; font-size:13px; background:var(--mw-bg)}
+  .docrow .grip{color:var(--mw-sub); cursor:grab; font-size:12px}
+  .docrow .x{margin-left:auto; border:0; background:none; color:var(--mw-sub); cursor:pointer; font-size:13px; padding:2px 4px}
+  .docrow .x:hover{color:var(--mw-error)}
+  .addrow{display:flex; gap:8px; margin-top:10px}
+  .addrow input{flex:1; min-height:38px; padding:8px 11px; border:1px solid var(--mw-line);
+    border-radius:10px; background:var(--mw-bg); color:var(--mw-fg); font:inherit; font-size:13px}
+  .ckfoot{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:14px;
+    padding-top:12px; border-top:1px solid var(--mw-line)}
+  .dirty{font-size:11.5px; color:var(--mw-warning); font-weight:700}
+  .placenote{margin:14px 0 0 34px; padding:14px 16px; border:1.5px dashed var(--mw-warning);
+    border-radius:12px; background:var(--mw-tint-coral); color:var(--mw-body); font-size:13px}
+  .placenote b{color:var(--mw-error)}
+  .opts{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin-top:11px}
+  .opt{background:var(--mw-card); border:1px solid var(--mw-line); border-radius:10px; padding:11px 13px; font-size:12.5px}
+  .opt b{display:block; margin-bottom:4px; font-size:12.5px}
+  .opt span{color:var(--mw-sub); font-size:11.5px}
+
+  @media (max-width:760px){
+    .cmp{grid-template-columns:1fr}
+    .ckwrap{grid-template-columns:1fr}
+    .cklist{border-right:0; border-bottom:1px solid var(--mw-line); max-height:200px}
+    .screen,.routelabel,.qhint,.cmp,.legend,.placenote{margin-left:0}
+  }
+</style>
+
+<div class="wrap">
+
+  <div class="intro">
+    <h1>결정 3건 시안</h1>
+    <p>물어보신 세 가지입니다 — ① 진행 상품 목록 양쪽 전문 비교 ② 원장 CSV 내보내기 시안 ③ 서류 체크리스트 관리자 시안.
+      ②③은 <b>어디에 둘지 정하시면 그대로 붙일 수 있게</b> 실제 코드(이미 만들어져 있는 것)의 필드·동작 그대로 그렸습니다.</p>
+    <div class="nav">
+      <a href="#q1">① 진행 상품 7 vs 59</a>
+      <a href="#q2">② 원장 CSV 내보내기</a>
+      <a href="#q3">③ 서류 체크리스트 관리자</a>
+    </div>
+  </div>
+
+  <section class="q" id="q1">
+    <div class="qtitle"><span class="qnum">1</span><h2>진행 상품 — 목업 7개 vs 앱 59개</h2></div>
+    <p class="qhint">앱 목록은 <b>몬데이 「진행 상품」 드롭다운을 실측한 59종</b>입니다(코드 주석에 그렇게 적혀 있고, 순서도 원본 id 순). 목업 7개는 그중 일부와 <b>이름 규칙만 다른 같은 상품</b>으로 보입니다.</p>
+
+    <div class="cmp">
+      <div class="cmpcol">
+        <h3>목업 (7)</h3>
+        <p class="meta">UI목업_워크스페이스_최종_v6.html · HOT 표</p>
+        <div class="chips">
+          <span class="chip match">혁신성장 일반</span>
+          <span class="chip match">혁신성장 혁신형</span>
+          <span class="chip gone">소공인 대리대출</span>
+          <span class="chip gone">기보 혁신리딩</span>
+          <span class="chip gone">신보 유동화</span>
+          <span class="chip gone">경기신보 특례</span>
+          <span class="chip match">벤처기업 인증</span>
+        </div>
+      </div>
+      <div class="cmpcol">
+        <h3>앱 (59)</h3>
+        <p class="meta">policyfund-work.ts · 「먼데이 진행 상품 드롭다운 실측 59종」</p>
+        <div class="chips">
+          <span class="chip">개발기술사업화</span><span class="chip">제조현장스마트화</span><span class="chip">Net-Zero유망기업</span><span class="chip">스케일업 금융</span><span class="chip">내수기업 수출기업화</span><span class="chip">수출기업글로벌화</span><span class="chip">긴급경영안정</span><span class="chip">사업전환</span><span class="chip">매출채권팩토링</span><span class="chip">동반성장네트워크론</span><span class="chip">창업기반지원</span><span class="chip">혁신성장지원</span><span class="chip">구조개선전용</span><span class="chip">소공인특화자금</span><span class="chip">일반자금</span><span class="chip">긴급경영안정자금(재해피해)</span><span class="chip">긴급경영안정자금(일시적 경영애로)</span><span class="chip">장애인기업지원자금</span><span class="chip">청년고용연계자금</span><span class="chip">대환대출</span><span class="chip match">혁신성장_일반형</span><span class="chip match">혁신성장_혁신형</span><span class="chip">민간투자연계형매칭융자</span><span class="chip">신용취약소상공인자금</span><span class="chip">재도전특별자금(일반형)</span><span class="chip">재도전특별자금(희망형)</span><span class="chip">재도전특별자금(도약형)</span><span class="chip">상생성장지원자금</span><span class="chip">수출바우처</span><span class="chip">제조바우처</span><span class="chip">혁신바우처</span><span class="chip">예비창업패키지</span><span class="chip">초기창업패키지</span><span class="chip">청년창업패키지</span><span class="chip">청년창업사관학교</span><span class="chip">희망리턴_재창업</span><span class="chip">희망리턴_경영개선</span><span class="chip">일반운전자금</span><span class="chip">시설자금</span><span class="chip">재단 안심통장_1천</span><span class="chip">특례보증</span><span class="chip">지역금융 협약보증</span><span class="chip">ISO 9001</span><span class="chip">ISO 14001</span><span class="chip">ISO 45001</span><span class="chip">연구소개발전담부서</span><span class="chip match">벤처기업인증(혁신)</span><span class="chip">이노비즈인증</span><span class="chip">메인비즈인증</span><span class="chip match">벤처기업인증(연구)</span><span class="chip match">벤처기업인증(투자)</span><span class="chip">혁신성장_혁신형_수출</span><span class="chip">혁신성장_혁신형_매출</span><span class="chip">혁신성장_혁신형_스마트공장</span><span class="chip">혁신성장_졸업후보</span><span class="chip">취약계층 희망드림 특례보증</span><span class="chip">신한금융 협약보증</span><span class="chip">지역 특례보증(경북버팀금융)</span><span class="chip">일시적경영애로</span>
+        </div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--mw-tint-teal);border:1px solid var(--mw-flow-teal)"></i>이름만 다른 같은 상품</span>
+      <span><i style="background:var(--mw-tint-coral);border:1px solid var(--mw-people-coral)"></i>앱에 대응이 없음</span>
+    </div>
+
+    <div class="screen" style="margin-top:16px">
+      <div class="screen-body">
+        <table class="map">
+          <thead><tr><th style="width:23%">목업</th><th style="width:32%">앱에서 대응</th><th style="width:13%">판정</th><th>메모</th></tr></thead>
+          <tbody>
+            <tr><td>혁신성장 일반</td><td>혁신성장_일반형</td><td><span class="verdict v-same">같음</span></td><td>띄어쓰기 ↔ 언더바 + 「형」 접미사</td></tr>
+            <tr><td>혁신성장 혁신형</td><td>혁신성장_혁신형</td><td><span class="verdict v-same">같음</span></td><td>앱엔 세부형(수출·매출·스마트공장)까지 더 있음</td></tr>
+            <tr><td>벤처기업 인증</td><td>벤처기업인증(혁신) · (연구) · (투자)</td><td><span class="verdict v-same">같음</span></td><td>앱이 <b>3종으로 세분화</b> — 몬데이 실제 구조</td></tr>
+            <tr><td>소공인 대리대출</td><td>—</td><td><span class="verdict v-none">없음</span></td><td>앱 「진행기관」에 <code>간접_소공인_대리</code> 가 있음 — <b>기관 축으로 옮겨간 듯</b></td></tr>
+            <tr><td>기보 혁신리딩</td><td>—</td><td><span class="verdict v-none">없음</span></td><td>기보(기술보증기금) 상품. 몬데이 실측 목록엔 없음</td></tr>
+            <tr><td>신보 유동화</td><td>—</td><td><span class="verdict v-none">없음</span></td><td>신보(신용보증기금) 상품. 몬데이 실측 목록엔 없음</td></tr>
+            <tr><td>경기신보 특례</td><td>특례보증 · 지역금융 협약보증</td><td><span class="verdict v-none">없음</span></td><td>비슷한 게 있지만 <b>「경기」 지역 특정이 빠짐.</b> 앱엔 지역 특정으로 <code>지역 특례보증(경북버팀금융)</code> 만 있음</td></tr>
+          </tbody>
+        </table>
+        <p class="qhint" style="margin:14px 0 0"><b>정리</b> — 목업 7개 중 3개는 이름만 다른 같은 상품(앱이 더 세분화), 4개는 앱에 대응이 없습니다.
+          그 4개도 「누락」이라기보다 <b>몬데이 실제 드롭다운에 없는 것</b>입니다. 목업이 만들어진 시점의 예시였을 가능성이 높습니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="q" id="q2">
+    <div class="qtitle"><span class="qnum">2</span><h2>원장 CSV 내보내기 — 시안</h2></div>
+    <p class="qhint">코드는 <b>이미 다 만들어져 있습니다</b>(권한 검사·위험행동 기록·수식 주입 방어까지). 붙일 화면과 모양만 정하면 됩니다.
+      아래는 실제 코드의 컬럼·파일명 규칙 그대로입니다.</p>
+    <div class="routelabel">제안 위치: /ledger (연도별 전체 원장) 상단</div>
+
+    <div class="screen">
+      <div class="screen-body">
+        <div class="panel">
+          <div class="panelhead">
+            <div>
+              <p class="eyebrow">회계 원장</p>
+              <h2>기간별 내보내기</h2>
+              <p>발생일 기준으로 고른 기간만 엑셀용 CSV로 내려받아요.</p>
+            </div>
+          </div>
+          <div class="period">
+            <label>시작일<input type="date" value="2026-01-01" /></label>
+            <label>종료일<input type="date" value="2026-12-31" /></label>
+            <label>구분<select><option>전체</option><option>계약금만</option><option>수수료만</option></select></label>
+            <button class="btn">엑셀용 CSV 내려받기</button>
+          </div>
+
+          <div class="preview">
+            <table class="csv">
+              <thead><tr><th>업무 ID</th><th>원장 ID</th><th>구분</th><th>발생일</th><th>귀속월</th><th>금액</th><th>입금액</th><th>미수금</th><th>입금일</th></tr></thead>
+              <tbody>
+                <tr><td>deal-0a1b…</td><td>led-77c2…</td><td>계약금</td><td>2026-03-05</td><td>2026-03-01</td><td>1,000,000</td><td>1,000,000</td><td>0</td><td>2026-03-05</td></tr>
+                <tr><td>deal-0a1b…</td><td>led-9f31…</td><td>수수료</td><td>2026-05-20</td><td>2026-05-01</td><td>5,000,000</td><td>5,500,000</td><td>0</td><td>2026-05-20</td></tr>
+                <tr><td>deal-4d7e…</td><td>led-2b05…</td><td>계약금</td><td>2026-06-02</td><td>2026-06-01</td><td>1,200,000</td><td>1,200,000</td><td>0</td><td>2026-06-02</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="filename">파일명: 업무원장_2026-01-01_2026-12-31.csv &nbsp;·&nbsp; 3건</p>
+
+          <div class="guardnote">
+            <span>🔒</span>
+            <span><b>위험 권한입니다.</b> 「CSV 내보내기」 권한이 있는 사람만 누를 수 있고, 누가 언제 어떤 기간을 받아갔는지 <b>실행 기록이 남습니다</b>(고객 금액 정보가 파일로 나가므로). 권한 없으면 버튼 자체가 안 보입니다.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="placenote">
+      <b>정할 것 하나</b> — 위치입니다. 지금 시안은 <code>/ledger</code>(연도별 전체 원장) 상단에 뒀습니다.
+      다른 후보: 딜 상세페이지 「회계 원장」 섹션 안(그 딜 것만) · 둘 다.
+      <div class="opts">
+        <div class="opt"><b>A. /ledger 상단 (시안)</b><span>회사 전체를 기간으로 뽑음. 회계·세무 제출용에 맞음</span></div>
+        <div class="opt"><b>B. 딜 상세 안</b><span>그 자금건 하나만. 업체별 정산 확인용</span></div>
+        <div class="opt"><b>C. 둘 다</b><span>같은 부품 두 곳에 재사용 — 추가 비용 거의 없음</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="q" id="q3">
+    <div class="qtitle"><span class="qnum">3</span><h2>서류 체크리스트 관리자 — 시안</h2></div>
+    <p class="qhint">「이 상품은 기본 서류가 이것들이다」를 관리자가 미리 정해두면, 업무 상세의 체크리스트가 그걸 기본값으로 깔아줍니다.
+      <b>편집기 코드는 이미 있고</b>(상품 하나씩 편집·저장 전까지 서버 안 건드림), 담을 화면만 없습니다.</p>
+    <div class="routelabel">왼쪽 = 상품 고르기(호스트 화면 몫) · 오른쪽 = 기존 편집기 컴포넌트</div>
+
+    <div class="screen">
+      <div class="screen-body">
+        <div class="ckwrap">
+          <div class="cklist">
+            <input class="cksearch" placeholder="상품 검색 (59종)" />
+            <div class="ckitem">개발기술사업화 <span class="n">4</span></div>
+            <div class="ckitem on">소공인특화자금 <span class="n">5</span></div>
+            <div class="ckitem">일반자금 <span class="n">4</span></div>
+            <div class="ckitem">혁신성장_일반형 <span class="n">6</span></div>
+            <div class="ckitem">혁신성장_혁신형 <span class="n">6</span></div>
+            <div class="ckitem">신용취약소상공인자금 <span class="n">—</span></div>
+            <div class="ckitem">대환대출 <span class="n">—</span></div>
+            <div class="ckitem">특례보증 <span class="n">3</span></div>
+          </div>
+          <div class="ckedit">
+            <h3>소공인특화자금 — 기본 서류</h3>
+            <p class="sub">5종 · 이 상품으로 새 업무를 만들면 아래가 자동으로 깔립니다</p>
+
+            <div class="docrow"><span class="grip">⠿</span>사업자등록증<button class="x">✕</button></div>
+            <div class="docrow"><span class="grip">⠿</span>부가세과세표준증명원<button class="x">✕</button></div>
+            <div class="docrow"><span class="grip">⠿</span>소상공인 확인서<button class="x">✕</button></div>
+            <div class="docrow"><span class="grip">⠿</span>임대차계약서<button class="x">✕</button></div>
+            <div class="docrow"><span class="grip">⠿</span>4대보험 가입자명부<button class="x">✕</button></div>
+
+            <div class="addrow">
+              <input placeholder="서류 이름 입력 후 추가" />
+              <button class="btn ghost">추가</button>
+            </div>
+
+            <div class="ckfoot">
+              <span class="dirty">● 저장 안 된 변경이 있습니다</span>
+              <span style="display:flex;gap:8px">
+                <button class="btn ghost">되돌리기</button>
+                <button class="btn">저장</button>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="placenote">
+      <b>정할 것 하나</b> — 위치입니다. 목업의 프리셋 라이브러리엔 탭이 <b>아이템·뷰 둘뿐</b>이라 자리가 없습니다.
+      <div class="opts">
+        <div class="opt"><b>A. 프리셋 라이브러리에 3번째 탭</b><span>「서류」 탭 신설. 프리셋끼리 모여 있어 찾기 쉬움</span></div>
+        <div class="opt"><b>B. 계정설정 › 회사와 팀 아래</b><span>관리자 설정끼리 모임. 목업 변경 없음</span></div>
+        <div class="opt"><b>C. 계약업체 실무 보드 안</b><span>쓰는 자리 바로 옆. 다만 보드는 회사가 자유 편집하는 영역이라 섞이면 헷갈림</span></div>
+      </div>
+    </div>
+  </section>
+
+</div>
