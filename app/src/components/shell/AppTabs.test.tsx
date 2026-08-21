@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
 import { APP_TABS } from "./app-tabs";
 
 // 셸이 여섯 탭을 «실제로 그리는가». 위 app-tabs-runtime.test.ts 가 판정 로직을,
@@ -65,6 +66,12 @@ describe("AppTabs — 목업 「탭 6개 한 화면」 탭 줄", () => {
     expect(contactTag).toContain('href="/w/sample-lab/boards/contact-board"');
     expect(html).toContain('href="/w/sample-lab/newcust"');
     expect(contactTag).not.toContain('href="/w/sample-lab/contract"');
+  });
+
+  it("uses document navigation so the server layout refreshes its direct destinations", () => {
+    const source = readFileSync(new URL("./AppTabs.tsx", import.meta.url), "utf8");
+    expect(source).not.toContain('from "next/link"');
+    expect(source).toContain("<a\n");
   });
 
   it("fails every tab closed when the workspace namespace is unavailable", async () => {

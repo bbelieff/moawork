@@ -263,7 +263,9 @@ describe("proxy workspace namespace", () => {
     expect(response.headers.get("x-middleware-request-cookie")).toContain("mw_org=org-acme");
     expect(cookieOn(response, ROTATED_0.name)?.value).toBe(ROTATED_0.value);
 
-    const deepLink = await proxy(new NextRequest("https://www.moa-work.com/w/acme/deals/123"));
+    const deepLink = await proxy(new NextRequest("https://www.moa-work.com/w/acme/deals/123", {
+      headers: { "x-mw-app-tab": "1" },
+    }));
     expect(deepLink.headers.get("x-middleware-request-x-mw-app-tab")).toBeNull();
     expect(deepLink.headers.get("x-middleware-rewrite")).toBe("https://www.moa-work.com/deals/123");
   });

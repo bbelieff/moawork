@@ -254,11 +254,14 @@ function buildResponse(request: NextRequest, decision: RouteDecision, jar: Retur
 export async function proxy(request: NextRequest) {
   const jar = createRefreshedCookieJar();
   const decision = await routeRequest(request, jar);
-  // BBE-222: this is a path hint only. Authentication, cookies, namespace,
-  // redirects, and the rewrite target are decided unchanged above.
-  if (decision.kind === "rewrite" && /^\/w\/[^/]+\/(?:newcust|contract|work|companies|notices|presets)(?:\/|$)/.test(request.nextUrl.pathname)) {
+  if (decision.kind === "rewrite") {
     const requestHeaders = new Headers(decision.requestHeaders);
-    requestHeaders.set("x-mw-app-tab", "1");
+    // BBE-222: this is a trusted path hint only. Strip any caller-supplied
+    // value, then derive it after authentication and namespace verification.
+    requestHeaders.delete("x-mw-app-tab");
+    if (/^\/w\/[^/]+\/(?:newcust|contract|work|companies|notices|presets)(?:\/|$)/.test(request.nextUrl.pathname)) {
+      requestHeaders.set("x-mw-app-tab", "1");
+    }
     return buildResponse(request, { ...decision, requestHeaders }, jar);
   }
   return buildResponse(request, decision, jar);

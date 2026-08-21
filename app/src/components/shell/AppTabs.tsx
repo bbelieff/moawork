@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "./icons";
 import { APP_TABS, matchTabByPathname } from "./app-tabs";
@@ -67,7 +66,7 @@ export function AppTabs({ lockedFeatures, workspaceBasePath, directHrefs }: Prop
         const icon = ICON_BY_TAB_KEY.get(tab.key);
 
         return (
-          <Link
+          <a
             key={tab.key}
             href={href}
             data-tab-key={tab.key}
@@ -102,7 +101,7 @@ export function AppTabs({ lockedFeatures, workspaceBasePath, directHrefs }: Prop
                 <Icon name="lock" />
               </span>
             ) : null}
-          </Link>
+          </a>
         );
       })}
     </nav>
