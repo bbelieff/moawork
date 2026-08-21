@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/purity -- Async Server Component timing is emitted only to an operational log, never rendered. */
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";

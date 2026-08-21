@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/purity -- Async Server Component timing is emitted only to an operational log, never rendered. */
 import { redirect } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { repairNewcustBoardOnEntry } from "@/lib/newcust/entry";
