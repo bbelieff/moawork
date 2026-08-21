@@ -12,6 +12,7 @@ import {
   orgLogoObjectPath,
   orgLogoReasonFromRpcError,
   validateOrgLogoUpload,
+  validateOrgLogoContent,
   type OrgLogoFailureReason,
 } from "@/lib/org-logo/contracts";
 
@@ -59,6 +60,13 @@ export async function uploadOrgLogoAction(
   // ★ 서버측 형식·용량 검증. 화면의 accept 속성은 «안내» 일 뿐 관문이 아니다.
   const validation = validateOrgLogoUpload({ mime: file.type, bytes: file.size });
   if (!validation.ok) return failure(validation.reason);
+  let content: Uint8Array;
+  try {
+    content = new Uint8Array(await file.arrayBuffer());
+  } catch {
+    return failure("bad_format");
+  }
+  if (!validateOrgLogoContent(validation.mime, content)) return failure("bad_format");
 
   let supabase;
   try {

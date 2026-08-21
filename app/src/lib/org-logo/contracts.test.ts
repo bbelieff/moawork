@@ -6,6 +6,7 @@ import {
   orgLogoObjectPath,
   orgLogoReasonFromRpcError,
   validateOrgLogoUpload,
+  validateOrgLogoContent,
 } from "./contracts";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -27,6 +28,24 @@ describe("validateOrgLogoUpload", () => {
     expect(validateOrgLogoUpload({ mime: "image/png", bytes: ORG_LOGO_MAX_BYTES }).ok).toBe(true);
     expect(validateOrgLogoUpload({ mime: "image/png", bytes: ORG_LOGO_MAX_BYTES + 1 }).ok).toBe(false);
     expect(ORG_LOGO_MAX_BYTES).toBe(1048576);
+  });
+});
+
+describe("validateOrgLogoContent", () => {
+  it("accepts real PNG/JPEG signatures and rejects spoofed declarations", () => {
+    expect(validateOrgLogoContent("image/png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
+    expect(validateOrgLogoContent("image/jpeg", new Uint8Array([0xff, 0xd8, 0xff, 0xd9]))).toBe(true);
+    expect(validateOrgLogoContent("image/png", new TextEncoder().encode("<html>not an image</html>"))).toBe(false);
+  });
+
+  it("accepts inert SVG and rejects active or externally referenced SVG", () => {
+    expect(validateOrgLogoContent("image/svg+xml", new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>'))).toBe(true);
+    for (const svg of [
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://evil.example/x"/></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg"><foreignObject/></svg>',
+    ]) expect(validateOrgLogoContent("image/svg+xml", new TextEncoder().encode(svg)), svg).toBe(false);
   });
 });
 

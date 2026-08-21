@@ -47,13 +47,8 @@ export function isOrgLogoMime(value: unknown): value is OrgLogoMime {
  *
  * 화면에도 accept·크기 안내가 있지만 그것은 «안내» 다. 관문은 여기와 RPC 와 DB 제약이다.
  *
- * ★ 정확히 말하면 이것은 «선언된» 형식을 강제하는 것이다 — «내용» 검사가 아니다.
- *   input.mime 은 File.type, 즉 브라우저(=클라이언트)가 선언한 content-type 이고
- *   Storage 버킷의 allowed_mime_types 도 업로드 요청의 content-type 헤더를 본다.
- *   따라서 실제 내용이 다른 파일을 image/png 로 «선언» 해 올리는 것은 막지 못한다.
- *   매직바이트(파일 시그니처) 검증은 후속 과제다.
- *
- *   용량(bytes)은 선언이 아니라 실제 크기라서 이 한계가 없다.
+ * 이 함수는 선언값·용량의 1차 관문이다. 실제 파일 바이트는
+ * validateOrgLogoContent()가 별도로 확인한다. 둘 중 하나라도 실패하면 업로드하지 않는다.
  */
 export function validateOrgLogoUpload(input: { mime: string; bytes: number }): OrgLogoValidation {
   if (!Number.isFinite(input.bytes) || input.bytes <= 0) return { ok: false, reason: "empty" };
@@ -61,6 +56,35 @@ export function validateOrgLogoUpload(input: { mime: string; bytes: number }): O
   if (!isOrgLogoMime(input.mime)) return { ok: false, reason: "bad_format" };
   if (input.bytes > ORG_LOGO_MAX_BYTES) return { ok: false, reason: "too_large" };
   return { ok: true, mime: input.mime };
+}
+
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
+
+function startsWithBytes(bytes: Uint8Array, signature: readonly number[]): boolean {
+  return signature.every((value, index) => bytes[index] === value);
+}
+
+/** 클라이언트가 선언한 MIME이 아니라 서버가 읽은 실제 바이트를 판정한다. */
+export function validateOrgLogoContent(mime: OrgLogoMime, bytes: Uint8Array): boolean {
+  if (mime === "image/png") {
+    return bytes.length >= PNG_SIGNATURE.length && startsWithBytes(bytes, PNG_SIGNATURE);
+  }
+  if (mime === "image/jpeg") {
+    return bytes.length >= 4
+      && bytes[0] === 0xff && bytes[1] === 0xd8
+      && bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9;
+  }
+
+  // SVG는 실행 가능한 XML이다. 최소한의 태그 확인만으로 허용하지 않고 위험한
+  // active-content·외부참조·이벤트 속성을 전부 거부한다.
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes).trim();
+  } catch {
+    return false;
+  }
+  if (!/^<svg(?:\s|>)/iu.test(text) || !/<\/svg>\s*$/iu.test(text)) return false;
+  return !/(?:<\s*(?:script|foreignObject|iframe|object|embed|style)\b|<!DOCTYPE|<!ENTITY|\son[a-z]+\s*=|(?:href|src)\s*=|url\s*\()/iu.test(text);
 }
 
 /**

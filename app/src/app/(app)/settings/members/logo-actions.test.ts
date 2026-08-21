@@ -29,7 +29,9 @@ const ORG = "11111111-1111-4111-8111-111111111111";
 const OTHER_ORG = "22222222-2222-4222-8222-222222222222";
 
 function pngFile(bytes: number, type = "image/png", name = "logo.png") {
-  return new File([new Uint8Array(bytes)], name, { type });
+  const content = new Uint8Array(bytes);
+  if (bytes >= 8) content.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  return new File([content], name, { type });
 }
 
 function formWith(file: unknown, extra: Record<string, string> = {}) {
@@ -115,6 +117,14 @@ describe("uploadOrgLogoAction — 서버측 검증 (화면 제한을 믿지 않�
       expect(result.message).toContain("PNG");
     }
     expect(mocks.upload).not.toHaveBeenCalled();
+  });
+
+  it("★ image/png 로 위장한 HTML 바이트를 서버가 거부한다", async () => {
+    const spoofed = new File(["<html>not an image</html>"], "fake.png", { type: "image/png" });
+    const result = await uploadOrgLogoAction(ORG_LOGO_IDLE, formWith(spoofed));
+    expect(result.reason).toBe("bad_format");
+    expect(mocks.upload).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
   it("빈 파일과 파일 없음은 형식·용량과 다른 사유다", async () => {
