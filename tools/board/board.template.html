@@ -31,11 +31,14 @@ h1{font-size:25px;letter-spacing:-.035em;margin:2px 0 2px}.sub{color:var(--muted
 .score .label{font-size:11px;opacity:.78}.score .value{font-size:44px;font-weight:850;letter-spacing:-.05em;line-height:1.05;margin:5px 0}
 .score .caption{font-size:11px;opacity:.82}.progress{height:7px;border-radius:8px;background:rgba(255,255,255,.18);overflow:hidden;margin-top:14px}
 .progress i{display:block;height:100%;width:0;background:#6ee7ce;border-radius:8px;transition:width .8s ease}
-.kpis{display:grid;grid-template-columns:repeat(4,minmax(110px,1fr));gap:9px}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(110px,1fr));gap:9px}
 .kpi{border:1px solid var(--line);border-radius:11px;padding:12px;background:#fafbfc}
 .kpi b{display:block;font-size:24px;line-height:1.1;letter-spacing:-.035em}.kpi span{font-size:11px;color:var(--muted)}
 .kpi.hot{background:var(--red-bg);border-color:#f1c4be}.kpi.go{background:var(--teal-bg);border-color:#bde8dc}
 .kpi.warn{background:var(--amber-bg);border-color:#f0d79b}
+.pipeline{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.pipe{padding:13px;border-top:4px solid var(--blue)}
+.pipe b{display:block;font-size:24px}.pipe span{display:block;font-size:11px;color:var(--muted)}.pipe.complete{border-color:var(--teal);background:var(--teal-bg)}
+.pipe.wait{border-color:var(--amber);background:var(--amber-bg)}.freshness.stale{color:var(--red);font-weight:800}
 h2{font-size:14px;margin:25px 0 10px;display:flex;align-items:baseline;gap:7px}
 h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
 .decision-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
@@ -94,7 +97,7 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
 @media(max-width:1100px){.lanes{grid-template-columns:repeat(4,minmax(170px,1fr))}.flow-grid{grid-template-columns:repeat(2,1fr)}.squads{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){
   .wrap{padding:14px 10px 40px}.top{display:block}.actions{justify-content:flex-start;margin-top:10px}
-  .hero{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}
+  .hero{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}.pipeline{grid-template-columns:1fr}
   .decision-grid,.two,.context,.gate-grid,.squads,.live-grid{grid-template-columns:1fr}.flow-grid{grid-template-columns:1fr}
   .lanes{grid-template-columns:repeat(2,minmax(160px,1fr))}.repo-grid{grid-template-columns:repeat(2,1fr)}
   .inventory .next{min-width:240px}
@@ -107,7 +110,7 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
     <div>
       <div class="eyebrow">MoaWork C × G Shared Control Room</div>
       <h1>공동작업 관제판 : 신규리드·보드뷰·컬럼메뉴·대시보드 완주</h1>
-      <div class="sub" id="stamp">Linear · GitHub · Git 상태를 불러오는 중…</div>
+      <div class="sub freshness" id="stamp">Linear · GitHub · Vercel 상태를 불러오는 중…</div>
     </div>
     <div class="actions">
       <button class="btn" id="copyBrief">판단 요약 복사</button>
@@ -118,12 +121,21 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
 
   <section class="card hero">
     <div class="score">
-      <div class="label">BBE-170 활성 하위 15건 완료율 · AI 범위 제외 · 사용자 첨부 4화면 반영</div>
+      <div class="label">Production 완주율 · PR PASS는 분자에서 제외</div>
       <div class="value" id="progressValue">—</div>
       <div class="caption" id="progressCaption">실측 대기</div>
       <div class="progress"><i id="progressBar"></i></div>
     </div>
     <div class="kpis" id="kpis"><div class="loading">집계 중…</div></div>
+  </section>
+
+  <h2>5단계 파이프라인 <span class="hint">작업/검수 → merge 대기 → 배포 대기 → Production 완주 · hosted는 별도 관문</span></h2>
+  <section class="pipeline" id="deliveryPipeline"><div class="card loading">Production 근거 측정 중…</div></section>
+
+  <h2>제품 단계 · DB 반영 · Production 완주 <span class="hint">merge SHA와 배포 SHA가 같아야 완주</span></h2>
+  <section class="live-grid">
+    <div class="card section-card" id="productStage"><div class="loading">제품 단계 계산 중…</div></div>
+    <div class="card section-card" id="productionDone"><div class="loading">배포 근거 확인 중…</div></div>
   </section>
 
   <h2>지금 도는 워커 <span class="hint">Orca task·dispatch 실측 · 5분 무활동이면 멈춤 의심</span></h2>
@@ -135,13 +147,13 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
     <div class="card section-card" id="handNeeded"><div class="loading">손이 필요한 것 계산 중…</div></div>
   </section>
 
-  <h2>오늘 한 것·연료 <span class="hint">Linear+git 실측 · 연료는 belie 입력만 표시</span></h2>
+  <h2>오늘 고친 것 · 오늘 끝낸 것 <span class="hint">Linear+git 및 Production 실측</span></h2>
   <section class="live-grid">
     <div class="card section-card" id="today"><div class="loading">오늘 기록 모으는 중…</div></div>
     <div class="card section-card" id="fuel"><div class="loading">연료 입력 확인 중…</div></div>
   </section>
 
-  <h2>지금 판단할 것 <span class="hint">긴급·막힘·검수·소유 공백을 자동 계산</span></h2>
+  <h2>총괄결정 · 막힌 것 <span class="hint">긴급·막힘·검수·소유 공백을 자동 계산</span></h2>
   <section class="decision-grid" id="decisions"><div class="card loading">판정 중…</div></section>
 
   <h2>핵심 흐름 <span class="hint">직렬 관문과 다음 해제 대상</span></h2>
@@ -150,7 +162,7 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
   <h2>C × G 실행 레인 <span class="hint">Linear lane 라벨이 배정의 정본 · 한 카드 한 수술대</span></h2>
   <section class="lanes" id="lanes"></section>
 
-  <h2>작업반별 기여 <span class="hint">Linear squad:* 라벨 SSOT · current / next / 내부 병목 / PR·CI</span></h2>
+  <h2>회사별 상태 · 다음 행동 <span class="hint">회사 데이터 소스가 없으면 측정 실패로 명시 · 제품 squad 상태 병기</span></h2>
   <section class="squads" id="squads"></section>
 
   <h2>전체 합산·공유 관문 <span class="hint">제품 blocker와 migration serial을 분리</span></h2>
@@ -266,7 +278,25 @@ const BOARD_LOGIC=(()=>{
   if(releaseStatus==="In Progress"||releaseStatus==="In Review")return "RUNNING";
   return "READY / OPEN";
  };
- return {squadLabels,ownerLabels,ownerCoverage,coverage,crossDependencies,releaseState};
+ const deliveryStage=({linearStatus,pr,deployment,loginStatus,runtimeErrorCount,hostedRequired=false,hostedApplied=false})=>{
+  const merged=Boolean(pr?.mergedAt&&pr?.mergeCommitSha);
+  const exactReady=Boolean(merged&&deployment?.state==="SUCCESS"&&deployment.sha===pr.mergeCommitSha);
+ const blockers=[];
+  if(hostedRequired)blockers.push("HOSTED_REQUIRED_UNVERIFIED");
+  if(linearStatus==="Done"&&!exactReady)blockers.push("LINEAR_DONE_WITHOUT_PRODUCTION");
+  if(merged&&deployment?.sha&&deployment.sha!==pr.mergeCommitSha)blockers.push("PRODUCTION_SHA_MISMATCH");
+  if(merged&&hostedRequired&&!hostedApplied)return {stage:"HOSTED_WAITING",complete:false,blockers};
+  if(exactReady&&loginStatus===200&&runtimeErrorCount===0)return {stage:"PRODUCTION_COMPLETE",complete:true,blockers};
+  if(merged)return {stage:"DEPLOYMENT_WAITING",complete:false,blockers};
+  if(pr&&!pr.isDraft&&pr.checks?.total>0&&pr.checks.failing===0&&pr.checks.pending===0)return {stage:"MERGE_WAITING",complete:false,blockers};
+  return {stage:"WORK_REVIEW",complete:false,blockers};
+ };
+ const boundedDeliveryIds=(issues,prs,today)=>{
+  const ids=new Set(issues.filter((issue)=>issue.status==="In Progress").map((issue)=>issue.id));
+  prs.filter((pr)=>pr.state==="OPEN"||String(pr.mergedAt||"").slice(0,10)===today).forEach((pr)=>{if(pr.cardId)ids.add(pr.cardId)});
+  return [...ids];
+ };
+ return {squadLabels,ownerLabels,ownerCoverage,coverage,crossDependencies,releaseState,deliveryStage,boundedDeliveryIds};
 })();
 /* BOARD_LOGIC_END */
 const DONE_STATES=new Set(["Done","Canceled","Duplicate"]);
@@ -359,8 +389,8 @@ async function mcp(tool,args={}){
  if(result?.structuredContent)return result.structuredContent;
  return JSON.parse(result?.content?.[0]?.text||"{}");
 }
-async function fetchOperations(){
- try{const response=await fetch("/api/operations");if(!response.ok)throw new Error("HTTP "+response.status);return await response.json()}
+async function fetchOperations(force=false){
+ try{const response=await fetch("/api/operations"+(force?"?force=1":""));if(!response.ok)throw new Error("HTTP "+response.status);return await response.json()}
  catch(error){return {repository:{available:false,error:{message:String(error.message||error)}},pullRequests:{available:false,items:[],count:null}}}
 }
 async function fetchStamp(issue){
@@ -373,12 +403,11 @@ async function fetchStamp(issue){
  }catch{return [issue.id,{state:"error",comment:null,lane:laneOf(issue)}]}
 }
 function renderHero(){
- const trackable=GOAL_IDS.map((id)=>state.by[id]).filter(Boolean).filter((issue)=>!["Canceled","Duplicate"].includes(issue.status));
- const done=trackable.filter((issue)=>issue.status==="Done").length;
- const pct=trackable.length?Math.round(done/trackable.length*100):0;
- document.getElementById("progressValue").textContent=pct+"%";
- document.getElementById("progressCaption").textContent=done+" / "+GOAL_IDS.length+" 하위 이슈 Done";
- requestAnimationFrame(()=>document.getElementById("progressBar").style.width=pct+"%");
+ const completion=state.operations?.metrics?.completion;
+ const pct=completion?.percent;
+ document.getElementById("progressValue").textContent=pct===null||pct===undefined?"측정 실패":pct+"%";
+ document.getElementById("progressCaption").textContent=completion?completion.done+" / "+completion.total+" Production 완주":"배포 근거를 읽지 못함";
+ requestAnimationFrame(()=>document.getElementById("progressBar").style.width=(pct||0)+"%");
  const active=state.open.filter((issue)=>issue.status==="In Progress").length;
  const review=state.open.filter((issue)=>issue.status==="In Review").length;
  const ready=state.open.filter((issue)=>["Todo","Backlog"].includes(issue.status)&&laneOf(issue)&&!blockerOf(issue)&&!pendingDeps(issue).length).length;
@@ -391,6 +420,24 @@ function renderHero(){
   ["긴급",urgent,urgent?"hot":""],["blocked",blocked,blocked?"hot":""],["owner 공백",unassigned,unassigned?"warn":""],["7일 내 신규",fresh,""]
  ];
  document.getElementById("kpis").innerHTML=values.map(([label,value,tone])=>'<div class="kpi '+tone+'"><b>'+value+'</b><span>'+label+'</span></div>').join("");
+}
+
+function renderDelivery(){
+ const delivery=state.operations?.delivery;
+ const stages=[
+  ["WORK_REVIEW","작업/검수 중"],["MERGE_WAITING","main merge 대기"],["DEPLOYMENT_WAITING","Production 배포 대기"],
+  ["PRODUCTION_COMPLETE","Production 완주"],["HOSTED_WAITING","hosted 적용 대기"]
+ ];
+ const pipeline=document.getElementById("deliveryPipeline");
+ if(!delivery?.available){
+  pipeline.innerHTML='<div class="card pipe wait"><b>측정 실패</b><span>Linear·GitHub·Vercel 근거 중 하나를 읽지 못했습니다. 이전 숫자로 덮지 않습니다.</span></div>';
+ }else{
+  pipeline.innerHTML=stages.map(([key,label])=>'<div class="card pipe '+(key==="PRODUCTION_COMPLETE"?'complete':key.includes("WAITING")?'wait':'')+'"><b>'+measured(key==="HOSTED_WAITING"?delivery.hostedRequiredCount:delivery.counts?.[key])+'</b><span>'+(key==="HOSTED_WAITING"?'hosted 적용 필요 / 대기':label)+'</span></div>').join("");
+ }
+ const complete=(delivery?.items||[]).filter((item)=>item.stage==="PRODUCTION_COMPLETE");
+ const waiting=(delivery?.items||[]).filter((item)=>item.stage!=="PRODUCTION_COMPLETE");
+ document.getElementById("productStage").innerHTML='<div class="section-title">진행률 / 제품 단계</div><div class="ops-list">'+(waiting.length?waiting.slice(0,20).map((item)=>'<div class="ops-item"><b>'+esc(item.cardId)+'</b> · '+esc(stages.find(([key])=>key===item.stage)?.[1]||item.stage)+'<br><small>'+esc((item.blockers||[]).join(" · ")||"다음 관문 대기")+'</small></div>').join(""):'<div class="empty">대기 작업 없음</div>')+'</div>';
+ document.getElementById("productionDone").innerHTML='<div class="section-title">DB 반영 · Production 완주</div><div class="ops-list">'+(complete.length?complete.slice(0,20).map((item)=>'<div class="ops-item"><b>'+esc(item.cardId)+'</b> · PR #'+esc(item.pr?.number||"측정 실패")+'<br><small>merge '+esc(item.pr?.mergeCommitSha?.slice(0,8)||"측정 실패")+' = deploy '+esc(item.deployment?.sha?.slice(0,8)||"측정 실패")+' · /login '+esc(delivery.loginStatus)+'</small></div>').join(""):'<div class="empty">Production 완주 0건</div>')+'</div>';
 }
 function buildDecisions(){
  const decisions=[];
@@ -499,9 +546,11 @@ function renderLiveBoard(){
  const qa=metrics.qaDifference;
  document.getElementById("kpis").innerHTML=[
   ["목업 차이",qa?.available?qa.value:"측정 실패",qa?.measuredAt?"측정 "+ago(qa.measuredAt)+" · 5분 캐시":"qa-app 측정 실패",qa?.available?"":"hot"],
-  ["Urgent 잔량",measured(metrics.urgentRemaining),"미완료 카드","hot"],
-  ["손 필요",measured(metrics.handNeeded),"라벨+Blocked","warn"],
-  ["완주율",metrics.completion?metrics.completion.percent+"%":"측정 실패",metrics.completion?metrics.completion.done+" / "+metrics.completion.total:"Linear 측정 실패","go"]
+ ["Urgent 잔량",measured(metrics.urgentRemaining),"미완료 카드","hot"],
+ ["손 필요",measured(metrics.handNeeded),"라벨+Blocked","warn"],
+  ["현재 Production 완주율",metrics.completion?metrics.completion.percent+"%":"측정 실패",metrics.completion?metrics.completion.done+" / "+metrics.completion.total:"배포 측정 실패","go"],
+  ["전역 Linear 완료율",metrics.linearCompletion?metrics.linearCompletion.percent+"%":"측정 실패",metrics.linearCompletion?metrics.linearCompletion.done+" / "+metrics.linearCompletion.total:"Linear 측정 실패",""],
+  ["오늘 Production",measured(metrics.todayProductionDone),"exact SHA READY · /login 200","go"]
  ].map(([label,value,note,kind])=>'<div class="kpi '+kind+'"><b>'+esc(value)+'</b><span>'+esc(label)+' · '+esc(note)+'</span></div>').join("");
 
  const workers=ops.workers;
@@ -553,7 +602,9 @@ function renderInventory(){
  document.getElementById("inventoryHint").textContent=rows.length+" / "+state.open.length+"건 표시";
  document.getElementById("inventory").innerHTML=rows.length?rows.map((issue)=>'<tr><td><a href="'+esc(issueUrl(issue))+'" target="_blank"><b style="color:var(--blue)">'+issue.id+'</b><div class="title">'+esc(issue.title)+'</div></a></td><td>'+statusPill(issue)+'</td><td>'+priorityPill(issue)+'</td><td>'+(esc(laneOf(issue)||"미배정"))+(blockerOf(issue)?'<br><span class="stamp-miss">'+esc(blockerOf(issue))+'</span>':'')+'</td><td>'+stampCell(issue)+'</td><td>'+ago(issue.updatedAt)+'</td><td class="next">'+esc(nextAction(issue))+'</td></tr>').join(""):'<tr><td colspan="7" class="empty">조건에 맞는 카드가 없습니다.</td></tr>';
 }
+let filtersInitialized=false;
 function initFilters(){
+ if(filtersInitialized)return; filtersInitialized=true;
  const unique=(values)=>[...new Set(values.filter(Boolean))].sort();
  const fill=(id,values)=>{const select=document.getElementById(id);select.innerHTML+=values.map((value)=>'<option value="'+esc(value)+'">'+esc(value)+'</option>').join("");select.onchange=renderInventory};
  fill("statusFilter",unique(state.open.map((issue)=>issue.status)));
@@ -572,11 +623,19 @@ async function copyText(text,button){
  try{await navigator.clipboard.writeText(text)}catch{const area=document.createElement("textarea");area.value=text;document.body.appendChild(area);area.select();document.execCommand("copy");area.remove()}
  const old=button.textContent;button.textContent="복사됨";setTimeout(()=>button.textContent=old,1100);
 }
-async function load(){
+let lastSuccessAt=0,nextRefreshAt=0,refreshTimer=null;
+function renderFreshness(){
+ const stamp=document.getElementById("stamp");
+ if(!lastSuccessAt){stamp.classList.add("stale");return}
+ const remaining=Math.max(0,Math.ceil((nextRefreshAt-Date.now())/1000));
+ stamp.textContent="마지막 조회 "+new Date(lastSuccessAt).toLocaleTimeString("ko-KR")+" · "+Math.floor((Date.now()-lastSuccessAt)/1000)+"초 전 · 다음 조회 "+remaining+"초";
+ stamp.classList.toggle("stale",Date.now()-lastSuccessAt>90_000);
+}
+async function load(force=true){
  const error=document.getElementById("error");error.style.display="none";
  document.getElementById("refresh").disabled=true;
  try{
-  const [issueRead,operationsRead]=await Promise.allSettled([mcp(T_ISSUES,{project:PROJECT}),fetchOperations()]);
+  const [issueRead,operationsRead]=await Promise.allSettled([mcp(T_ISSUES,{project:PROJECT,force}),fetchOperations(force)]);
   const issueData=issueRead.status==="fulfilled"?issueRead.value:{issues:[]};
   const operations=operationsRead.status==="fulfilled"?operationsRead.value:{};
   if(issueRead.status!=="fulfilled"){error.style.display="block";error.textContent="Linear 측정 실패 — Orca·Git·연료 판은 계속 표시합니다."}
@@ -587,15 +646,18 @@ async function load(){
   state.operations=operations;
   const active=state.open.filter((issue)=>ACTIVE_STATES.has(issue.status));
   state.stamps=new Map(await Promise.all(active.map(fetchStamp)));
-  renderHero();renderLiveBoard();buildDecisions();renderFlows();renderLanes();renderSquads();renderSharedGates();renderOperations();renderContext();initFilters();renderInventory();renderFeed();
-  document.getElementById("stamp").textContent="갱신 "+new Date().toLocaleString("ko-KR")+" · Linear 전체 "+all.length+"건 · 공동목표 "+state.issues.length+"건 · 오픈 "+state.open.length+"건 · 캐시 45초";
+  renderHero();renderDelivery();renderLiveBoard();buildDecisions();renderFlows();renderLanes();renderSquads();renderSharedGates();renderOperations();renderContext();initFilters();renderInventory();renderFeed();
+  if(issueRead.status==="fulfilled"&&operationsRead.status==="fulfilled"){lastSuccessAt=Date.now();nextRefreshAt=lastSuccessAt+60_000}
+  renderFreshness();
  }catch(err){
-  error.style.display="block";error.textContent="관제 데이터를 불러오지 못했습니다. "+String(err.message||err);
+  error.style.display="block";error.textContent="관제 데이터를 불러오지 못했습니다. 이전 값은 stale 상태로 남깁니다. "+String(err.message||err);
  }finally{document.getElementById("refresh").disabled=false}
 }
-document.getElementById("refresh").onclick=()=>location.reload();
+document.getElementById("refresh").onclick=()=>load(true);
 document.getElementById("copyBrief").onclick=(event)=>copyText(brief(),event.currentTarget);
-load();
+load(true);
+refreshTimer=setInterval(()=>{if(document.visibilityState==="visible"&&Date.now()>=nextRefreshAt)load(true);else renderFreshness()},1000);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&Date.now()-lastSuccessAt>=60_000)load(true)});
 </script>
 </body>
 </html>

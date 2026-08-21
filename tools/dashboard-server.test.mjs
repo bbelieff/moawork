@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import http from "node:http";
 
 const cwd = import.meta.dirname.replace(/[\\/]tools$/, "");
@@ -116,8 +117,16 @@ before(async () => {
           count: 1,
           items: [{ number: 187, title: "fixture", checks: { success: 3, failing: 0, pending: 0, total: 3 } }],
         },
+        production: { available: true, loginStatus: 200, measuredAt: "2026-08-15T03:00:00.000Z", items: [] },
+        delivery: {
+          available: true,
+          loginStatus: 200,
+          measuredAt: "2026-08-15T03:00:00.000Z",
+          counts: { WORK_REVIEW: 0, MERGE_WAITING: 1, DEPLOYMENT_WAITING: 0, PRODUCTION_COMPLETE: 0, HOSTED_WAITING: 0 },
+          items: [{ cardId: "BBE-125", linearStatus: "Done", stage: "MERGE_WAITING", complete: false, blockers: ["LINEAR_DONE_WITHOUT_PRODUCTION"], pr: { number: 187, checks: { success: 3, failing: 0, pending: 0, total: 3 } } }],
+        },
         workers: { available: true, staleAfterMs: 300000, items: [{ cardId: "BBE-256", engine: "DG", status: "dispatched", worktree: "C:/work/MoaWork", lastActivityAt: "2026-08-15T03:00:00.000Z", stalled: false }] },
-        metrics: { qaDifference: { available: true, value: 35, measuredAt: "2026-08-15T03:00:00.000Z", ttlMs: 300000 }, urgentRemaining: 2, handNeeded: 1, completion: { done: 8, total: 10, percent: 80 } },
+        metrics: { qaDifference: { available: true, value: 35, measuredAt: "2026-08-15T03:00:00.000Z", ttlMs: 300000 }, urgentRemaining: 2, handNeeded: 1, completion: { done: 0, total: 1, percent: 0, basis: "production" } },
         handNeeded: [{ id: "BBE-1", title: "fixture", status: "Blocked", priority: { name: "Urgent" } }],
         today: [{ type: "git", id: "abcdef01", at: "2026-08-15T03:00:00.000Z", title: "fixture commit" }],
         fuel: { available: false, claude: null, codex: null, updatedAt: null },
@@ -235,7 +244,7 @@ test("issues endpoint retains the existing 45-second snapshot contract", async (
 });
 
 test("operations endpoint exposes read-only repository and PR decision signals", async () => {
-  const response = await fetch(`${dashboardUrl}/api/operations`);
+  const response = await fetch(`${dashboardUrl}/api/operations?force=1`);
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.repository.originMainShort, "abcdef01");
@@ -244,7 +253,24 @@ test("operations endpoint exposes read-only repository and PR decision signals",
   assert.deepEqual(body.pullRequests.items[0].checks, { success: 3, failing: 0, pending: 0, total: 3 });
   assert.deepEqual(body.workers.items[0], { cardId: "BBE-256", engine: "DG", status: "dispatched", worktree: "C:/work/MoaWork", lastActivityAt: "2026-08-15T03:00:00.000Z", stalled: false });
   assert.equal(body.metrics.qaDifference.value, 35);
-  assert.equal(body.metrics.completion.percent, 80);
+  assert.equal(body.metrics.completion.percent, 0);
+  assert.equal(body.metrics.completion.basis, "production");
+  assert.equal(body.delivery.items[0].complete, false, "CI PASS plus Linear Done must not count as Production complete");
+  assert.equal(body.delivery.counts.MERGE_WAITING, 1);
   assert.equal(body.fuel.available, false);
   assert.equal(JSON.stringify(body).includes("lin_api_"), false);
+  assert.ok(JSON.stringify(body).length < 10_000, "bounded operations payload must not regress toward the measured 155KB response");
+  const startedAt = Date.now();
+  assert.equal((await fetch(`${dashboardUrl}/api/operations?force=1`)).status, 200);
+  assert.ok(Date.now() - startedAt < 5_000, "fresh forced reads reuse the 60-second live snapshot");
+});
+
+test("Production evidence fails closed for runtime logs and non-main merges", async () => {
+  const source = await readFile(new URL("./dashboard-server.mjs", import.meta.url), "utf8");
+  assert.match(source, /pr\?\.baseRefName === "main"/);
+  assert.match(source, /pr\?\.mainContainsMerge === true/);
+  assert.match(source, /"merge-base", "--is-ancestor"/);
+  assert.match(source, /runtimeErrorCount = deployment\?\.runtimeErrorCount \?\? null/);
+  assert.doesNotMatch(source, /deployment\?\.state === "SUCCESS" \? 0 : null/);
+  assert.match(source, /DASHBOARD_RUNTIME_EVIDENCE_JSON/);
 });
