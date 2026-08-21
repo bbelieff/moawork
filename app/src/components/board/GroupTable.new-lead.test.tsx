@@ -3,14 +3,14 @@ import { describe, expect, it } from "vitest";
 import { GroupTable } from "./GroupTable";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 
-const keys = ["rep_name", "phone", "email", "industry", "contact_move"] as const;
+const keys = ["owner", "collaborators", "applied_on", "rep_name", "phone", "email", "industry", "contact_move"] as const;
 const columns: BoardColumn[] = keys.map((key, index) => ({
   id: `c-${key}`,
   org_id: "org-a",
   board_id: "board-a",
   key,
   label: key === "industry" ? "업종" : key,
-  type: key === "phone" ? "phone" : "text",
+  type: key === "phone" ? "phone" : key === "owner" ? "person" : key === "collaborators" ? "people" : key === "applied_on" ? "date" : "text",
   source: key === "industry" ? "auto" : "in",
   rightPinned: key === "contact_move",
   options_jsonb: null,
@@ -65,5 +65,8 @@ describe("BBE-171 new-lead GroupTable wiring", () => {
     expect(html).toContain('name="dealId" value="deal-a"');
     expect(html).toContain('name="field" value="industry"');
     expect(html).toContain('name="value" value="기존 업종"');
+    expect(html).toContain('name="field" value="owner"');
+    expect(html).toContain('name="field" value="collaborators"');
+    expect(html).toContain('name="field" value="applied_on"');
   });
 });

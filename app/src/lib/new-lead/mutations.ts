@@ -7,6 +7,7 @@ import type {
   NewLeadValueSource,
   UpdateNewLeadRow,
   UpdateNewLeadTitleRow,
+  UpdateNewLeadMetaRow,
 } from "./canonical-contract";
 import { NEW_LEAD_RPC } from "./canonical-contract";
 
@@ -27,6 +28,17 @@ export async function updateCanonicalNewLeadTitle(
   });
   if (result.error) throw new NewLeadMutationError(messageFor(result.error.code), result.error.code);
   return oneRow<UpdateNewLeadTitleRow>(result.data, ["deal_id", "item_id", "replayed"]);
+}
+
+export async function updateCanonicalNewLeadMeta(
+  client: SupabaseClient,
+  input: Readonly<{ orgId: string; dealId: string; requestId: string; patch: Record<string, unknown> }>,
+): Promise<UpdateNewLeadMetaRow> {
+  const result = await client.rpc(NEW_LEAD_RPC.updateMeta, {
+    p_org_id: input.orgId, p_deal_id: input.dealId, p_request_id: input.requestId, p_patch: input.patch,
+  });
+  if (result.error) throw new NewLeadMutationError(messageFor(result.error.code), result.error.code);
+  return oneRow<UpdateNewLeadMetaRow>(result.data, ["deal_id", "item_id", "changed_fields", "replayed"]);
 }
 
 function messageFor(code: string | undefined): string {

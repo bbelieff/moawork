@@ -9,6 +9,10 @@ const projectionSql = migration.slice(
   migration.indexOf("create or replace function public.guard_new_lead_projection_write"),
   migration.indexOf("drop function if exists public.create_new_lead"),
 );
+const metaFunctionSql = migration.slice(
+  migration.indexOf("create or replace function public.update_new_lead_intake_meta"),
+  migration.indexOf("revoke all on function public.update_new_lead_intake_meta"),
+);
 const ids = {
   orgA: "00000000-0000-4000-8000-000000000001", orgB: "00000000-0000-4000-8000-000000000002",
   owner: "00000000-0000-4000-8000-000000000010", member: "00000000-0000-4000-8000-000000000011",
@@ -60,6 +64,7 @@ describe("BBE-273 atomic full new-lead intake", () => {
     `);
     await db.exec(projectionSql);
     await db.exec(functionSql);
+    await db.exec(metaFunctionSql);
     await actor(db, ids.owner);
   });
 
@@ -85,7 +90,7 @@ describe("BBE-273 atomic full new-lead intake", () => {
     expect(intake).toEqual({ region_sido: "서울", region_sigungu: "강남구", address_detail: "테헤란로", acquisition_source: "검색광고" });
     const values = Object.fromEntries((await db.query<{ column_key: string; value_jsonb: unknown }>("select column_key,value_jsonb from item_values")).rows.map((row) => [row.column_key,row.value_jsonb]));
     expect(values).toMatchObject({ biz_reg_type: "법인", sido: "서울", sigungu: "강남구", ad_name: "검색광고", consult_status: "상담 전", contact_move: "컨택 대기", absence_notice: "해당 없음" });
-    expect(Object.keys(values)).toHaveLength(18);
+    expect(Object.keys(values)).toHaveLength(19);
     const sources = (await db.query<{ field_key: string; value_source: string }>("select field_key,value_source from deal_intake_field_audit")).rows;
     expect(sources.find((row) => row.field_key === "title")?.value_source).toBe("manual");
     expect(sources.find((row) => row.field_key === "applied_on")?.value_source).toBe("system");
@@ -103,6 +108,19 @@ describe("BBE-273 atomic full new-lead intake", () => {
     await actor(db, ids.owner);
     await expect(db.query(`select * from create_new_lead('${ids.orgA}','${ids.boardA}','${ids.groupA}',gen_random_uuid(),'협업',null,null,null,null,null,null,null,null,null,null,null,null,null,array['${ids.outsider}']::uuid[])`)).rejects.toThrow(/collaborator unavailable/);
     expect((await db.query<{ n: number }>("select count(*)::int n from deals")).rows[0].n).toBe(0);
+  });
+
+  it("audits and replays post-create owner, collaborator, date, and address corrections", async () => {
+    const created = (await db.query<{ deal_id: string; item_id: string }>(`select * from create_new_lead('${ids.orgA}','${ids.boardA}','${ids.groupA}',gen_random_uuid(),'수정 리드')`)).rows[0];
+    const request = "00000000-0000-4000-8000-000000000199";
+    const call = `select * from update_new_lead_intake_meta('${ids.orgA}','${created.deal_id}','${request}',jsonb_build_object('owner','${ids.member}','collaborators',jsonb_build_array('${ids.owner}'),'applied_on','2026-08-22','address_detail','수정 주소'))`;
+    const first = await db.query<{ changed_fields: string[]; replayed: boolean }>(call);
+    const replay = await db.query<{ changed_fields: string[]; replayed: boolean }>(call);
+    expect(first.rows[0].changed_fields.sort()).toEqual(["address_detail","applied_on","collaborators","owner"]);
+    expect(replay.rows[0]).toEqual({ ...first.rows[0], replayed: true });
+    expect((await db.query<{ assigned_to: string; applied_on: string }>(`select assigned_to,applied_on::text from deals where id='${created.deal_id}'`)).rows[0]).toEqual({ assigned_to: ids.member, applied_on: "2026-08-22" });
+    expect((await db.query<{ address_detail: string }>(`select address_detail from deal_intake where deal_id='${created.deal_id}'`)).rows[0].address_detail).toBe("수정 주소");
+    expect((await db.query<{ n: number }>(`select count(*)::int n from deal_intake_field_audit where request_id='${request}'`)).rows[0].n).toBe(4);
   });
 
   it("turns red when the board-key projection guard is removed", async () => {

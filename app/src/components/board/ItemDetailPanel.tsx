@@ -15,6 +15,7 @@ import {
   setCellAction,
   setDetailValueAction,
 } from "@/app/(app)/boards/actions";
+import { updateNewLeadMetaAction } from "@/app/(app)/boards/new-lead-actions";
 
 function inputType(type: string | undefined): string {
   if (type === "number" || type === "money") return "number";
@@ -66,6 +67,7 @@ export function ItemDetailPanel({
   canEditItems,
   canManageColumns,
   defaultOpen = false,
+  canonicalNewLead = false,
 }: {
   boardId: string;
   row: ItemWithValues;
@@ -76,6 +78,7 @@ export function ItemDetailPanel({
   canEditItems: boolean;
   canManageColumns: boolean;
   defaultOpen?: boolean;
+  canonicalNewLead?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const columnsByKey = new Map(columns.map((column) => [column.key, column]));
@@ -113,6 +116,13 @@ export function ItemDetailPanel({
             </header>
 
             <div className="grid gap-3 py-5">
+              {canonicalNewLead && row.deal_id ? <form action={updateNewLeadMetaAction} className="grid gap-2 rounded-xl border border-mw-line p-3">
+                <input type="hidden" name="boardId" value={boardId} /><input type="hidden" name="itemId" value={row.id} />
+                <input type="hidden" name="dealId" value={row.deal_id} /><input type="hidden" name="field" value="address_detail" />
+                <label className="grid gap-1 text-xs font-semibold text-mw-body">상세 주소
+                  <input name="value" defaultValue={typeof row.values.address_detail === "string" ? row.values.address_detail : ""} placeholder="미정" className="min-h-11 rounded-lg border border-mw-line px-3 text-sm text-mw-fg" />
+                </label><button type="submit" className="min-h-9 justify-self-end rounded-lg border border-mw-line px-3 text-xs">상세 주소 저장</button>
+              </form> : null}
               {layout.length === 0 && <p className="rounded-xl border border-dashed border-mw-line p-4 text-sm text-mw-sub">배치된 상세 필드가 없습니다. 값이 있다면 아래 미배치 영역에서 다시 올릴 수 있습니다.</p>}
               {layout.map((entry) => {
                 const column = columnsByKey.get(entry.key);

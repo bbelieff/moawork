@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { canonicalAssignee, canonicalPhone, createCanonicalNewLead, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadTitle } from "./mutations";
+import { canonicalAssignee, canonicalPhone, createCanonicalNewLead, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadMeta, updateCanonicalNewLeadTitle } from "./mutations";
 
 describe("BBE-171 canonical new-lead mutations", () => {
   it("formats a Korean phone for display while the RPC owns normalized storage", () => {
@@ -43,6 +43,12 @@ describe("BBE-171 canonical new-lead mutations", () => {
     const rpc = vi.fn().mockResolvedValue({ data: [{ deal_id: "d1", item_id: "i1", replayed: false }], error: null });
     await updateCanonicalNewLeadTitle({ rpc } as never, { orgId: "o1", dealId: "d1", requestId: "r3", title: " 새 이름 ", valueSource: "manual" });
     expect(rpc).toHaveBeenCalledWith("update_new_lead_title", expect.objectContaining({ p_title: "새 이름", p_value_source: "manual" }));
+  });
+
+  it("routes owner, collaborators, applied date, and address corrections through the audited meta RPC", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: [{ deal_id: "d1", item_id: "i1", changed_fields: ["address_detail"], replayed: false }], error: null });
+    await updateCanonicalNewLeadMeta({ rpc } as never, { orgId: "o1", dealId: "d1", requestId: "r4", patch: { address_detail: "수정 주소" } });
+    expect(rpc).toHaveBeenCalledWith("update_new_lead_intake_meta", expect.objectContaining({ p_patch: { address_detail: "수정 주소" } }));
   });
 
   it("does not hide cross-org/permission rejection", async () => {

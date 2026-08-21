@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=120_bbe273_new_lead_full_intake predecessor=119_bbe272_new_lead_default_stage digest=60fcfbd93735ef2940f0f5d976fa1e662074eafcbee4e33aad8624f513b46f9a foundation=false
+-- moa-migration-guard: logical_key=120_bbe273_new_lead_full_intake predecessor=119_bbe272_new_lead_default_stage digest=ccd30d69d75a237405b2212e6f341acce381cf434e4854fc029bf14cc9f32066 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '120_bbe273_new_lead_full_intake',
   p_file_name => '120_bbe273_new_lead_full_intake.sql',
-  p_file_digest => '60fcfbd93735ef2940f0f5d976fa1e662074eafcbee4e33aad8624f513b46f9a',
+  p_file_digest => 'ccd30d69d75a237405b2212e6f341acce381cf434e4854fc029bf14cc9f32066',
   p_expected_predecessor => '119_bbe272_new_lead_default_stage',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -27,7 +27,7 @@ declare v_item uuid:=coalesce(new.item_id,old.item_id); v_key text:=coalesce(new
 begin
   if v_key in (
     'rep_name','phone','email','biz_reg_type','industry','revenue_band','sido','sigungu','ad_name',
-    'business_registration_type','industry_code','region_sido','region_sigungu','acquisition_source','source_external_id'
+    'business_registration_type','industry_code','region_sido','region_sigungu','acquisition_source','source_external_id','address_detail'
   ) and exists(select 1 from public.items i where i.id=v_item and i.deal_id is not null)
     and current_setting('moawork.new_lead_projection_write',true) is distinct from 'on' then
     raise exception 'canonical new lead fields require update_new_lead_fields' using errcode='42501';
@@ -63,8 +63,11 @@ begin
       'region_sido',to_jsonb(new.region_sido),'region_sigungu',to_jsonb(new.region_sigungu),
       'acquisition_source',to_jsonb(new.acquisition_source)
     )) x join public.board_columns c on c.org_id=new.org_id and c.board_id=v_board and c.key=x.key
-  on conflict(item_id,column_key) do update
+  on conflict on constraint item_values_pkey do update
     set value_jsonb=excluded.value_jsonb,org_id=excluded.org_id;
+  insert into public.item_values(org_id,item_id,column_key,value_jsonb)
+    values(new.org_id,v_item,'address_detail',to_jsonb(new.address_detail))
+  on conflict on constraint item_values_pkey do update set value_jsonb=excluded.value_jsonb,org_id=excluded.org_id;
   return new;
 end $$;
 revoke all on function public.sync_new_lead_intake_projection() from public,anon,authenticated,service_role;
@@ -194,6 +197,9 @@ begin
     )) x
     join public.board_columns c on c.org_id=p_org_id and c.board_id=p_board_id and c.key=x.key
    where x.value <> 'null'::jsonb;
+  insert into public.item_values(org_id,item_id,column_key,value_jsonb)
+    values(p_org_id,v_item,'address_detail',to_jsonb(nullif(btrim(coalesce(p_address_detail,'')),'')))
+  on conflict on constraint item_values_pkey do update set value_jsonb=excluded.value_jsonb,org_id=excluded.org_id;
 
   insert into public.deal_intake_field_audit(org_id,deal_id,field_key,old_value,new_value,value_source,actor_id,request_id)
   select p_org_id,v_deal,x.key,null,x.value,
@@ -227,3 +233,72 @@ revoke all on function public.create_new_lead(
 grant execute on function public.create_new_lead(
   uuid,uuid,uuid,uuid,text,text,text,text,text,text,text,text,text,text,text,text,uuid,text,uuid[]
 ) to authenticated;
+
+create or replace function public.update_new_lead_intake_meta(
+  p_org_id uuid, p_deal_id uuid, p_request_id uuid, p_patch jsonb
+) returns table(deal_id uuid,item_id uuid,changed_fields text[],replayed boolean)
+language plpgsql security definer set search_path='' as $$
+declare
+  v_actor uuid:=auth.uid(); v_role text; v_scope text; v_assigned uuid; v_item uuid; v_board uuid;
+  v_payload jsonb; v_prior public.new_lead_requests%rowtype;
+  v_owner uuid; v_collaborators uuid[]; v_applied date; v_address text;
+begin
+  if v_actor is null or p_request_id is null or jsonb_typeof(p_patch)<>'object'
+     or exists(select 1 from jsonb_object_keys(p_patch) k where k not in ('owner','collaborators','applied_on','address_detail')) then
+    raise exception 'new lead meta input invalid' using errcode='22023';
+  end if;
+  select m.role::text,m.scope::text,d.assigned_to,i.id,i.board_id
+    into v_role,v_scope,v_assigned,v_item,v_board
+    from public.org_members m join public.orgs o on o.id=m.org_id
+    join public.deals d on d.org_id=m.org_id and d.id=p_deal_id
+    join public.items i on i.org_id=d.org_id and i.deal_id=d.id and i.deleted_at is null
+    join public.boards b on b.org_id=i.org_id and b.id=i.board_id and b.source='core.default-tab/new-lead'
+   where m.org_id=p_org_id and m.user_id=v_actor and m.status='active' and o.status='active' for update of d,i;
+  if not found or not public.effective_permission(p_org_id,'work.item_upsert')
+     or not (v_role in ('owner','admin') or v_scope='all' or v_assigned=v_actor) then
+    raise exception 'new lead meta denied' using errcode='42501';
+  end if;
+  v_owner:=case when p_patch?'owner' and nullif(p_patch->>'owner','') is not null then (p_patch->>'owner')::uuid else v_assigned end;
+  if p_patch?'owner' and (v_owner<>v_actor and not (v_role in ('owner','admin') or v_scope='all')
+     or not exists(select 1 from public.org_members m where m.org_id=p_org_id and m.user_id=v_owner and m.status='active')) then
+    raise exception 'new lead owner unavailable' using errcode='42501';
+  end if;
+  if p_patch?'collaborators' then
+    if jsonb_typeof(p_patch->'collaborators')<>'array' then raise exception 'new lead collaborators invalid' using errcode='22023'; end if;
+    select coalesce(array_agg(distinct value::uuid order by value::uuid),'{}'::uuid[]) into v_collaborators from jsonb_array_elements_text(p_patch->'collaborators');
+    if exists(select 1 from unnest(v_collaborators) x where not exists(select 1 from public.org_members m where m.org_id=p_org_id and m.user_id=x and m.status='active')) then
+      raise exception 'new lead collaborator unavailable' using errcode='42501';
+    end if;
+  end if;
+  if p_patch?'applied_on' then v_applied:=nullif(p_patch->>'applied_on','')::date; end if;
+  if p_patch?'address_detail' then v_address:=nullif(btrim(coalesce(p_patch->>'address_detail','')),''); end if;
+  v_payload:=jsonb_build_object('deal_id',p_deal_id,'meta_patch',p_patch);
+  perform pg_advisory_xact_lock(hashtextextended(p_org_id::text||':'||p_request_id::text,0));
+  select * into v_prior from public.new_lead_requests r where r.org_id=p_org_id and r.request_id=p_request_id;
+  if found then
+    if v_prior.operation<>'update' or v_prior.payload<>v_payload or v_prior.actor_id<>v_actor then raise exception 'new lead idempotency key reuse' using errcode='22023'; end if;
+    return query select p_deal_id,v_item,array(select a.field_key from public.deal_intake_field_audit a where a.org_id=p_org_id and a.request_id=p_request_id order by a.field_key),true; return;
+  end if;
+  -- Audit explicitly per requested key; null before/after remain distinguishable JSON values.
+  insert into public.deal_intake_field_audit(org_id,deal_id,field_key,old_value,new_value,value_source,actor_id,request_id)
+  select p_org_id,p_deal_id,x.key,
+    case x.key when 'owner' then to_jsonb(v_assigned) when 'applied_on' then to_jsonb(d.applied_on) when 'address_detail' then to_jsonb(di.address_detail)
+      else coalesce((select iv.value_jsonb from public.item_values iv where iv.item_id=v_item and iv.column_key='collaborators'),'[]'::jsonb) end,
+    case x.key when 'owner' then to_jsonb(v_owner) when 'applied_on' then to_jsonb(v_applied) when 'address_detail' then to_jsonb(v_address) else to_jsonb(v_collaborators) end,
+    'manual',v_actor,p_request_id
+  from jsonb_each(p_patch) x cross join public.deals d join public.deal_intake di on di.deal_id=d.id and di.org_id=d.org_id
+  where d.id=p_deal_id and d.org_id=p_org_id;
+  update public.deals set assigned_to=case when p_patch?'owner' then v_owner else assigned_to end,
+    applied_on=case when p_patch?'applied_on' then v_applied else applied_on end where org_id=p_org_id and id=p_deal_id;
+  update public.items set assigned_to=case when p_patch?'owner' then v_owner else assigned_to end where org_id=p_org_id and id=v_item;
+  update public.deal_intake di set address_detail=case when p_patch?'address_detail' then v_address else di.address_detail end where di.org_id=p_org_id and di.deal_id=p_deal_id;
+  perform set_config('moawork.new_lead_projection_write','on',true);
+  insert into public.item_values(org_id,item_id,column_key,value_jsonb)
+  select p_org_id,v_item,x.key,case x.key when 'owner' then to_jsonb(v_owner) when 'collaborators' then to_jsonb(v_collaborators)
+    when 'applied_on' then to_jsonb(v_applied) else to_jsonb(v_address) end from jsonb_each(p_patch) x
+  on conflict on constraint item_values_pkey do update set value_jsonb=excluded.value_jsonb,org_id=excluded.org_id;
+  insert into public.new_lead_requests(org_id,request_id,operation,deal_id,item_id,actor_id,payload) values(p_org_id,p_request_id,'update',p_deal_id,v_item,v_actor,v_payload);
+  return query select p_deal_id,v_item,array(select a.field_key from public.deal_intake_field_audit a where a.org_id=p_org_id and a.request_id=p_request_id order by a.field_key),false;
+end $$;
+revoke all on function public.update_new_lead_intake_meta(uuid,uuid,uuid,jsonb) from public,anon,service_role;
+grant execute on function public.update_new_lead_intake_meta(uuid,uuid,uuid,jsonb) to authenticated;

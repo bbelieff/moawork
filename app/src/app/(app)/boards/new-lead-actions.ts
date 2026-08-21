@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth/session";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { createClient } from "@/lib/supabase/server";
-import { canonicalAssignee, createCanonicalNewLead, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadTitle } from "@/lib/new-lead/mutations";
+import { canonicalAssignee, createCanonicalNewLead, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadMeta, updateCanonicalNewLeadTitle } from "@/lib/new-lead/mutations";
 import type { NewLeadIntakeState } from "@/lib/new-lead/intake-state";
 import { CELL_FLASH_COOKIE, CELL_FLASH_MAX_AGE, encodeCellFlash } from "@/lib/boards/cellFlash";
 
@@ -93,6 +93,21 @@ export async function updateNewLeadFieldAction(formData: FormData): Promise<void
   } catch(error) { await flashCanonicalError(itemId,columnKey,error); }
   revalidatePath(`/boards/${boardId}`);
   revalidatePath("/newcust");
+}
+
+export async function updateNewLeadMetaAction(formData: FormData): Promise<void> {
+  const ctx = await getSession();
+  const boardId=text(formData,"boardId"),dealId=text(formData,"dealId"),itemId=text(formData,"itemId"),field=text(formData,"field");
+  const allowed = new Set(["owner","collaborators","applied_on","address_detail"]);
+  try {
+    if (!boardId || !dealId || !itemId || !allowed.has(field)) throw new NewLeadMutationError("신규리드 편집 대상을 확인해 주세요.","22023");
+    const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
+    if (permission.kind !== "allowed") throw new NewLeadMutationError("이 신규리드를 저장할 권한이 없습니다.","42501");
+    const value: unknown = field === "collaborators" ? textList(formData,"value") : text(formData,"value") || null;
+    await updateCanonicalNewLeadMeta(await createClient(), { orgId: ctx.org.id, dealId, requestId: text(formData,"requestId") || crypto.randomUUID(), patch: { [field]: value } });
+    await clearCanonicalError();
+  } catch(error) { await flashCanonicalError(itemId,field,error); }
+  revalidatePath(`/boards/${boardId}`); revalidatePath("/newcust");
 }
 
 export async function updateNewLeadTitleAction(formData: FormData): Promise<void> {

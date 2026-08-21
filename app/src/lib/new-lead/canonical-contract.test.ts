@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { NEW_LEAD_ERROR, NEW_LEAD_RPC, type CreateNewLeadArgs, type NewLeadFieldPatch } from "./canonical-contract";
 
 describe("BBE-173 canonical new-lead RPC contract", () => {
-  it("freezes the three consumer-facing RPC names and stable SQLSTATEs", () => {
+  it("freezes the consumer-facing RPC names and stable SQLSTATEs", () => {
     expect(NEW_LEAD_RPC).toEqual({
       create: "create_new_lead",
       update: "update_new_lead_fields",
       updateTitle: "update_new_lead_title",
+      updateMeta: "update_new_lead_intake_meta",
       advance: "advance_new_lead_to_contact",
     });
     expect(NEW_LEAD_ERROR).toEqual({ invalidInput: "22023", forbidden: "42501", manualCorrectionConflict: "40001" });
