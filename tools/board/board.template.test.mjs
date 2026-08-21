@@ -23,6 +23,8 @@ test("decision dashboard script compiles and keeps the live data bridge contract
   assert.match(html, /force/);
   assert.match(html, /다음 조회/);
   assert.match(html, /stale 상태로 남깁니다/);
+  assert.match(html, /measured\(delivery\.counts\?\.\[key\]\)/);
+  assert.doesNotMatch(html, /key==="HOSTED_WAITING"\?delivery\.hostedRequiredCount/);
 });
 
 test("Linear partial state names the rate limit and preserves the last-success contract", async () => {

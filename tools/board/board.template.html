@@ -434,7 +434,7 @@ function renderDelivery(){
  if(!delivery?.available){
   pipeline.innerHTML='<div class="card pipe wait"><b>측정 실패</b><span>Linear·GitHub·Vercel 근거 중 하나를 읽지 못했습니다. 이전 숫자로 덮지 않습니다.</span></div>';
  }else{
-  pipeline.innerHTML=stages.map(([key,label])=>'<div class="card pipe '+(key==="PRODUCTION_COMPLETE"?'complete':key.includes("WAITING")?'wait':'')+'"><b>'+measured(key==="HOSTED_WAITING"?delivery.hostedRequiredCount:delivery.counts?.[key])+'</b><span>'+(key==="HOSTED_WAITING"?'hosted 적용 필요 / 대기':label)+'</span></div>').join("");
+  pipeline.innerHTML=stages.map(([key,label])=>'<div class="card pipe '+(key==="PRODUCTION_COMPLETE"?'complete':key.includes("WAITING")?'wait':'')+'"><b>'+measured(delivery.counts?.[key])+'</b><span>'+(key==="HOSTED_WAITING"?'hosted 적용 필요 / 대기':label)+'</span></div>').join("");
  }
  const complete=(delivery?.items||[]).filter((item)=>item.stage==="PRODUCTION_COMPLETE");
  const waiting=(delivery?.items||[]).filter((item)=>item.stage!=="PRODUCTION_COMPLETE");
