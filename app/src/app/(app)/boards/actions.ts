@@ -587,7 +587,8 @@ export async function setGroupColumnOrderAction(formData: FormData): Promise<voi
     const groupKey = str(formData, "groupKey");
 
     // 접근 권한 확인 겸 유효 컬럼 목록 확보.
-    const { columns } = await (await boardsService()).getBoardDetail(ctx, boardId);
+    const graph = await createRequestBoards();
+    const { columns } = await graph.service.getBoardDetail(ctx, boardId);
     const valid = new Set(columns.map((c) => c.key));
 
     const order = str(formData, "order")
@@ -595,7 +596,7 @@ export async function setGroupColumnOrderAction(formData: FormData): Promise<voi
       .map((s) => s.trim())
       .filter((s) => s !== "" && valid.has(s));
 
-    setGroupColumnOrder(ctx.org.id, boardId, groupKey, order);
+    await setGroupColumnOrder(graph.repo, ctx, boardId, groupKey, order);
     revalidatePath(`/boards/${boardId}`);
   });
 }

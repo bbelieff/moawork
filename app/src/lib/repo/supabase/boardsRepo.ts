@@ -10,6 +10,12 @@ import type {
 import { slugifyKey } from "@/lib/repo/local/boardsRepo";
 import { isSectionPresetSource } from "@/lib/presets/section-presets";
 import { normalizeDetailLayout, type DetailLayoutEntry } from "@/lib/boards/detail-layout";
+import {
+  decodeGroupColumnOrder,
+  GROUP_LAYOUT_MARKER,
+  GROUP_LAYOUT_VIEW_NAME,
+  isGroupLayoutView,
+} from "@/lib/boards/group-layout-store";
 
 type Row = Record<string, unknown>;
 
@@ -140,9 +146,11 @@ export class SupabaseBoardsRepo implements BoardsRepo {
   async listValues(ctx:Ctx,itemIds:string[]):Promise<ItemValue[]>{if(itemIds.length===0)return[];const q=await this.client.from("item_values").select("*").eq("org_id",ctx.org.id).in("item_id",itemIds);return many<ItemValue>(q.data,q.error);}
   async setValues(ctx:Ctx,itemId:string,patch:Record<string,CellValue>):Promise<void>{if(!(await this.getItem(ctx,itemId)))return;const rows=Object.entries(patch).map(([column_key,value_jsonb])=>({org_id:ctx.org.id,item_id:itemId,column_key,value_jsonb}));if(rows.length===0)return;const q=await this.client.from("item_values").upsert(rows,{onConflict:"item_id,column_key"});if(q.error)throw new Error(q.error.message);const touch=await this.client.from("items").update({updated_at:new Date().toISOString()}).eq("org_id",ctx.org.id).eq("id",itemId);if(touch.error)throw new Error(touch.error.message);}
 
-  async listViews(ctx:Ctx,boardId:string):Promise<BoardView[]>{const q=await this.client.from("board_views").select("*").eq("org_id",ctx.org.id).eq("board_id",boardId).or(`shared.eq.true,user_id.eq.${ctx.user.id},user_id.is.null`);return many<BoardView>(q.data,q.error);}
-  async getView(ctx:Ctx,id:string):Promise<BoardView|undefined>{const q=await this.client.from("board_views").select("*").eq("org_id",ctx.org.id).eq("id",id).or(`shared.eq.true,user_id.eq.${ctx.user.id},user_id.is.null`).maybeSingle();if(q.error)throw new Error(q.error.message);return(q.data??undefined)as BoardView|undefined;}
+  async listViews(ctx:Ctx,boardId:string):Promise<BoardView[]>{const q=await this.client.from("board_views").select("*").eq("org_id",ctx.org.id).eq("board_id",boardId).or(`shared.eq.true,user_id.eq.${ctx.user.id},user_id.is.null`);return many<BoardView>(q.data,q.error).filter((view)=>!isGroupLayoutView(view));}
+  async getView(ctx:Ctx,id:string):Promise<BoardView|undefined>{const q=await this.client.from("board_views").select("*").eq("org_id",ctx.org.id).eq("id",id).or(`shared.eq.true,user_id.eq.${ctx.user.id},user_id.is.null`).maybeSingle();if(q.error)throw new Error(q.error.message);const view=(q.data??undefined)as BoardView|undefined;return view&&!isGroupLayoutView(view)?view:undefined;}
   async createView(ctx:Ctx,boardId:string,input:NewView):Promise<BoardView>{const q=await this.client.from("board_views").insert({org_id:ctx.org.id,board_id:boardId,user_id:ctx.user.id,name:input.name,kind:input.kind,filters_jsonb:input.filters??{},sort_jsonb:input.sort??[],visible_columns_jsonb:input.visibleColumns??[],shared:input.shared??false}).select("*").single();return one<BoardView>(q.data,q.error);}
   async updateView(ctx:Ctx,id:string,patch:ViewPatch):Promise<BoardView|undefined>{const dbPatch:Row={};if(patch.name!==undefined)dbPatch.name=patch.name;if(patch.kind!==undefined)dbPatch.kind=patch.kind;if(patch.filters!==undefined)dbPatch.filters_jsonb=patch.filters;if(patch.sort!==undefined)dbPatch.sort_jsonb=patch.sort;if(patch.visibleColumns!==undefined)dbPatch.visible_columns_jsonb=patch.visibleColumns;if(patch.shared!==undefined)dbPatch.shared=patch.shared;const q=await this.client.from("board_views").update(dbPatch).eq("org_id",ctx.org.id).eq("id",id).eq("user_id",ctx.user.id).select("*").maybeSingle();if(q.error)throw new Error(q.error.message);return(q.data??undefined)as BoardView|undefined;}
   async deleteView(ctx:Ctx,id:string):Promise<boolean>{const q=await this.client.from("board_views").delete().eq("org_id",ctx.org.id).eq("id",id).eq("user_id",ctx.user.id).select("id");if(q.error)throw new Error(q.error.message);return(q.data?.length??0)>0;}
+  async getGroupColumnOrder(ctx:Ctx,boardId:string):Promise<Record<string,string[]>>{const q=await this.client.from("board_views").select("visible_columns_jsonb,filters_jsonb,name").eq("org_id",ctx.org.id).eq("board_id",boardId).eq("name",GROUP_LAYOUT_VIEW_NAME).eq("filters_jsonb->>system",GROUP_LAYOUT_MARKER).maybeSingle();if(q.error)throw new Error(q.error.message);return decodeGroupColumnOrder(q.data?.visible_columns_jsonb);}
+  async setGroupColumnOrder(ctx:Ctx,boardId:string,groupKey:string,columnKeys:readonly string[]):Promise<void>{const q=await this.client.rpc("set_board_group_column_order",{p_board_id:boardId,p_group_key:groupKey,p_column_keys:[...columnKeys]});if(q.error)throw new Error(q.error.message);}
 }

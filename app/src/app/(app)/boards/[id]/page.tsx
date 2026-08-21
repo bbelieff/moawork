@@ -177,7 +177,7 @@ export default async function BoardPage({
    *   저장·미리보기는 이 PR 로 동작하고, 「다른 프리셋 적용」 목록만 그 카드에서 잇는다.
    */
   const presets: SectionPresetRecord[] = [];
-  const savedColumnOrder = getBoardColumnOrder(ctx.org.id, id);
+  const savedColumnOrder = await getBoardColumnOrder(repo, ctx, id);
   const activeColumnOrder = Object.fromEntries(
     Object.entries(parseSavedBoardLayout(sp.mwLayout) ?? savedColumnOrder).map(([groupId, keys]) => [groupId, [...keys]]),
   );
