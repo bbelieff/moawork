@@ -259,12 +259,8 @@ export default async function BoardPage({
     <BoardTrashPanel boardId={id} items={deletedItems} groups={groups} />
   );
 
-  if (view === "kanban") {
-    return (
-      <div className="flex w-full flex-col gap-3">
-        {hiddenCount > 0 && (
-          <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p>
-        )}
+  const boardContent = view === "kanban" ? (
+    <>
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
           {backLink}
           <h1 className="flex shrink-0 items-center gap-1.5 text-base font-semibold text-mw-fg">
@@ -301,27 +297,37 @@ export default async function BoardPage({
           groupBy={groupBy}
           readOnly={board.is_system || !canEditItems}
         />
-
-        {trashPanel}
-        {boardSettings}
-      </div>
-    );
-  }
-
-  if (view === "flat" || view === "calendar") {
-    return (
-      <div className="flex w-full flex-col gap-3">
-        {hiddenCount > 0 ? <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p> : null}
+    </>
+  ) : view === "flat" || view === "calendar" ? (
+    <>
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
           {backLink}
           <h1 className="text-base font-semibold text-mw-fg">{board.icon ? <span aria-hidden="true">{board.icon}</span> : null} {board.name}</h1>
         </div>
         <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} renderMode={view} canEditItems={canEditItems} />
-        {trashPanel}
-        {boardSettings}
-      </div>
-    );
-  }
+    </>
+  ) : (
+    <BoardWorkspace
+      board={board}
+      columns={visibleColumns}
+      groups={groups}
+      rows={items}
+      columnOrder={activeColumnOrder}
+      cellFlash={cellFlash}
+      assigneeLabels={assigneeLabels}
+      backSlot={backLink}
+      viewSlot={viewToggle}
+      savedViewsSlot={
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
+      }
+      canEditItems={canEditItems}
+      canDeleteItems={canDeleteItems}
+      canManageColumns={canManageColumns}
+      canEditPresets={canEditPresets}
+      presets={presets}
+      currentUserId={ctx.user.id}
+    />
+  );
 
   return (
     <div className="flex w-full flex-col gap-3">
@@ -340,29 +346,8 @@ export default async function BoardPage({
           {boardActionError}
         </p>
       ) : null}
-      {/* 저장된 뷰 줄은 «보드 이름 아래» 다 — 목업 head() 순서(이름 → 보기 → 필터).
-          예전엔 BoardWorkspace «앞» 에 있어서 보드 이름보다 위에 그려졌고,
-          뷰가 자기 소속처보다 위에 오니 위계가 뒤집혀 보였다(BBE-214). */}
-      <BoardWorkspace
-        board={board}
-        columns={visibleColumns}
-        groups={groups}
-        rows={items}
-        columnOrder={activeColumnOrder}
-        cellFlash={cellFlash}
-        assigneeLabels={assigneeLabels}
-        backSlot={backLink}
-        viewSlot={viewToggle}
-        savedViewsSlot={
-          <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
-        }
-        canEditItems={canEditItems}
-        canDeleteItems={canDeleteItems}
-        canManageColumns={canManageColumns}
-        canEditPresets={canEditPresets}
-        presets={presets}
-        currentUserId={ctx.user.id}
-      />
+      {/* 뷰별 내용은 이 공통 셸 안에만 들어간다. 새 뷰도 오류 배너를 자동 상속한다(BBE-212). */}
+      {boardContent}
 
       {trashPanel}
       {boardSettings}
