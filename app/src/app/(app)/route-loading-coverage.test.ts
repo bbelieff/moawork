@@ -36,7 +36,9 @@ function listFiles(directory: string): string[] {
 }
 
 function routeFor(file: string): string {
-  const directory = relative(APP_ROOT, file.slice(0, -"page.tsx".length)).split(sep).filter(Boolean);
+  const directory = relative(APP_ROOT, file.slice(0, -"page.tsx".length)).split(sep).filter(
+    (segment) => Boolean(segment) && !(segment.startsWith("(") && segment.endsWith(")")),
+  );
   return directory.length === 0 ? "/" : `/${directory.join("/")}`;
 }
 

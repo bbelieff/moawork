@@ -13,12 +13,12 @@ import { describe, expect, it } from "vitest";
 
 import BoardDetailLoading from "./boards/[id]/loading";
 import BoardsLoading from "./boards/loading";
-import CompaniesLoading from "./companies/loading";
-import ContactLoading from "./contract/loading";
-import NewCustomerLoading from "./newcust/loading";
-import NoticesLoading from "./notices/loading";
-import PresetsLoading from "./presets/loading";
-import WorkLoading from "./work/loading";
+import CompaniesLoading from "./(tabs)/companies/loading";
+import ContactLoading from "./(tabs)/contract/loading";
+import NewCustomerLoading from "./(tabs)/newcust/loading";
+import NoticesLoading from "./(tabs)/notices/loading";
+import PresetsLoading from "./(tabs)/presets/loading";
+import WorkLoading from "./(tabs)/work/loading";
 
 /** 화면에 실제로 남는 «읽을 수 있는 글자» 만 뽑는다 — 감춰진 것은 빼고 센다. */
 function visibleText(html: string): string {

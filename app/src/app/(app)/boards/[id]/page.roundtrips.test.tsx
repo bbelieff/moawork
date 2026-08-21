@@ -210,8 +210,8 @@ import { CONTACT_TAB } from "@/lib/default-tabs";
 import { ensureDefaultTabAdditive } from "@/lib/default-tabs/install";
 import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import BoardPage from "./page";
-import ContactBoardPage from "../../contract/page";
-import NewCustomerPage from "../../newcust/page";
+import ContactBoardPage from "../../(tabs)/contract/page";
+import NewCustomerPage from "../../(tabs)/newcust/page";
 import { NEW_LEAD_TAB } from "@/lib/default-tabs/new-lead";
 import AppLayout from "../../layout";
 

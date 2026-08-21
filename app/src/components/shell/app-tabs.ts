@@ -130,14 +130,13 @@ function hrefToPattern(href: string): RegExp {
  * findTabByHref 와 다르다 — 저쪽은 «패턴 문자열» 을 그대로 찾고(정적 분류표 조회),
  * 이쪽은 «브라우저에 떠 있는 실제 경로» 를 판정한다. 탭 줄은 후자가 필요하다.
  *
- * 탭 밖(설정·계정·플랫폼 어드민 등)을 «먼저» 걸러낸다 — 그 화면들에서는 탭 줄을 그리지 않는다.
+ * 탭 밖 주소는 어떤 탭도 활성화하지 않는다. 탭 줄의 존재 여부는 route group layout이 소유한다.
  */
 export function matchTabByPathname(pathname: string | null | undefined): AppTab | undefined {
   // 경로를 모르면 «탭이 아니다». usePathname() 은 라우터 문맥 밖(서버 렌더 테스트 등)에서
   // null 을 준다 — 그때 셸이 터지면 안 된다. 탭 줄을 안 그리는 것이 옳은 결과다.
   if (typeof pathname !== "string" || pathname.length === 0) return undefined;
   const path = pathname !== "/" && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
-  if (OUT_OF_TAB_HREFS.some((href) => hrefToPattern(href).test(path))) return undefined;
   return APP_TABS.find((tab) =>
     [tab.canonicalHref, ...tab.altHrefs]
       .filter((href): href is string => Boolean(href))

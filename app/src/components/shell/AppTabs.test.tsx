@@ -41,16 +41,14 @@ describe("AppTabs — 목업 「탭 6개 한 화면」 탭 줄", () => {
     expect(html).toMatch(/data-tab-key="company"[^>]*aria-current="page"/);
   });
 
-  it("탭 밖 화면에서는 아무것도 그리지 않는다", async () => {
-    expect(await render("/w/sample-lab/settings/members")).toBe("");
-    expect(await render("/w/sample-lab/platform")).toBe("");
-    expect(await render("/w/sample-lab")).toBe("");
-    expect(await render("/w/sample-lab/boards/board-1")).toBe("");
-  });
+  it("visibility를 pathname 분기로 숨기지 않는다 — route group layout이 소유한다", async () => {
+    const html = await render("/w/sample-lab/settings/members");
+    expect((html.match(/data-tab-key=/g) ?? []).length).toBe(6);
+    expect(html).not.toContain('aria-current="page"');
 
-  it("보드 본문에서는 사이드바 복제 탭을 숨겨 저장 뷰 헤더와 경쟁하지 않는다", async () => {
-    const html = await render("/w/sample-lab/boards/board-1?view=flat");
-    expect(html).toBe("");
+    const source = readFileSync(new URL("./AppTabs.tsx", import.meta.url), "utf8");
+    expect(source).not.toContain('startsWith("/boards/")');
+    expect(source).not.toContain("if (!active) return null");
   });
 
   it("각 탭이 자기 대표 주소로 링크된다 — 전환이 실제로 일어난다", async () => {

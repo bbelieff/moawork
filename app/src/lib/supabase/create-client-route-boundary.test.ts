@@ -15,9 +15,9 @@ function routeSources(dir = resolve(process.cwd(), "src/app")): string[] {
 }
 
 const guardedSurfaces = [
-  "src/app/(app)/presets/page.tsx",
-  "src/app/(app)/work/page.tsx",
-  "src/app/(app)/notices/page.tsx",
+  "src/app/(app)/(tabs)/presets/page.tsx",
+  "src/app/(app)/(tabs)/work/page.tsx",
+  "src/app/(app)/(tabs)/notices/page.tsx",
   "src/app/api/tab-views/route.ts",
   "src/app/api/tab-views/[viewId]/route.ts",
   "src/app/api/workspace-requests/handler.ts",
@@ -54,9 +54,9 @@ describe("BBE-216 createClient 화면·라우트 경계", () => {
 
   it("8개 판단 대상의 집합을 고정한다", () => {
     expect([...guardedSurfaces, ...productionOnlySurfaces]).toEqual([
-      "src/app/(app)/presets/page.tsx",
-      "src/app/(app)/work/page.tsx",
-      "src/app/(app)/notices/page.tsx",
+      "src/app/(app)/(tabs)/presets/page.tsx",
+      "src/app/(app)/(tabs)/work/page.tsx",
+      "src/app/(app)/(tabs)/notices/page.tsx",
       "src/app/api/tab-views/route.ts",
       "src/app/api/tab-views/[viewId]/route.ts",
       "src/app/api/workspace-requests/handler.ts",

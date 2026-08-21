@@ -40,8 +40,8 @@ vi.mock("./notices/actions", () => ({
   updateNoticeAction: vi.fn(),
 }));
 
-import CompaniesPage from "./companies/page";
-import NoticesPage from "./notices/page";
+import CompaniesPage from "./(tabs)/companies/page";
+import NoticesPage from "./(tabs)/notices/page";
 
 type Coverage =
   /** 이 테스트가 **직접 렌더해서** 잰다. 주장은 여기까지만 하는 것이 정직하다. */

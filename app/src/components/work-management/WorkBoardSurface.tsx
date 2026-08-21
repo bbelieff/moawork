@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useMemo, useState } from "react";
-import { mutateWork, type WorkActionState } from "@/app/(app)/work/actions";
+import { mutateWork, type WorkActionState } from "@/app/(app)/(tabs)/work/actions";
 import { calendarBuckets, visibleItems } from "@/lib/work-management/domain";
 import { canManageStructure, canMutateField, type WorkBoardSnapshot, type WorkColumnContract, type WorkItemSnapshot, type WorkViewKind } from "@/lib/work-management/contracts";
 import styles from "./work-management.module.css";

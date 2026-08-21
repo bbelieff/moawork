@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const workPage = new URL("../../app/(app)/work/page.tsx", import.meta.url);
+const workPage = new URL("../../app/(app)/(tabs)/work/page.tsx", import.meta.url);
 // BBE-236 — repairContractWorkBoardOnEntry() 가 SupabaseBoardsRepo 구성을 여기로 옮겼다.
 // «어디서 만드는가» 가 아니라 «로컬 repo 로 안 새는가» 가 이 계약의 본질이라 그쪽을 지킨다.
 const repairOnEntry = new URL("../../lib/default-tabs/repair-on-entry.ts", import.meta.url);

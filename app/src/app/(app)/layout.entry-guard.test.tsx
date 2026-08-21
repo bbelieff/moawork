@@ -56,8 +56,9 @@ vi.mock("@/components/shell/GlobalSearch", () => ({ GlobalSearch: () => null }))
 vi.mock("@/components/account/AccountMenu", () => ({ AccountMenu: () => null }));
 vi.mock("@/components/analytics/AnalyticsIdentity", () => ({ AnalyticsIdentity: () => null }));
 vi.mock("@/components/notify/NotificationBell", () => ({ NotificationBell: () => null }));
-vi.mock("@/components/shell/AppTabs", () => ({
-  AppTabs: ({ directHrefs }: { directHrefs?: { contact?: string } }) => createElement("div", { "data-contact-href": directHrefs?.contact ?? "fallback" }),
+vi.mock("@/components/shell/AppTabsLayoutData", () => ({
+  AppTabsLayoutDataProvider: ({ children, value }: { children: ReactNode; value: { directHrefs?: { contact?: string } } }) =>
+    createElement("div", { "data-contact-href": value.directHrefs?.contact ?? "fallback" }, children),
 }));
 vi.mock("@/lib/contact/entry", () => ({ resolveExistingContactBoard: mocks.resolveExistingContactBoard }));
 vi.mock("@/lib/repo/supabase/boardsRepo", () => ({ SupabaseBoardsRepo: class { constructor(public client: unknown) {} } }));

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 describe("BBE-151 notice entry production boundary", () => {
   it("shares one request-scoped Supabase adapter and keeps LocalBoardsRepo out", () => {
-    const source = readFileSync(join(process.cwd(), "src/app/(app)/notices/page.tsx"), "utf8");
+    const source = readFileSync(join(process.cwd(), "src/app/(app)/(tabs)/notices/page.tsx"), "utf8");
     expect(source).toContain("const client = await createClient()");
     expect(source).toContain("const repo = new SupabaseBoardsRepo(client)");
     expect(source).toContain("repairNoticeBoardOnEntry(ctx, client)");
