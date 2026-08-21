@@ -343,6 +343,15 @@ test("39-card regression fixture accepts only exact durable runtime and hosted e
   assert.equal(verdict.hostedApplied, true);
 });
 
+test("hand-needed excludes terminal cards even when historical labels remain", async () => {
+  process.env.DASHBOARD_NO_LISTEN = "1";
+  const { isHandNeeded } = await import("./dashboard-server.mjs?unit=hand-needed-terminal");
+  assert.equal(isHandNeeded({ status: "Done", labels: ["needs-hosted"] }), false);
+  assert.equal(isHandNeeded({ status: "Canceled", labels: ["needs-auth-qa"] }), false);
+  assert.equal(isHandNeeded({ status: "In Progress", labels: ["needs-hosted"] }), true);
+  assert.equal(isHandNeeded({ status: "Blocked", labels: [] }), true);
+});
+
 test("60 forced refreshes retain complete evidence and refresh only changed incomplete rows", async () => {
   process.env.DASHBOARD_NO_LISTEN = "1";
   const { readDeliveryCommentEvidence } = await import("./dashboard-server.mjs?unit=rate-limit-evidence");
