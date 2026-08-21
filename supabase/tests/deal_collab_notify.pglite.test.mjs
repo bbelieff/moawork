@@ -19,6 +19,7 @@ async function bootstrap(db) {
   await db.exec(`
     create role anon nologin;
     create role authenticated nologin;
+    create role service_role nologin;
     create schema auth;
     create function auth.uid() returns uuid language sql stable as
       $$ select nullif(current_setting('app.user_id', true), '')::uuid $$;
@@ -37,7 +38,7 @@ async function bootstrap(db) {
     create table public.notifications(
       id uuid primary key default gen_random_uuid(), org_id uuid not null, user_id uuid not null,
       type text not null, title text not null, body text, target_type text, target_id uuid,
-      actor_id uuid, is_action boolean not null default false
+      actor_id uuid, is_action boolean not null default false, dedupe_key text
     );
     create table public.activities(
       id uuid primary key default gen_random_uuid(), org_id uuid not null, deal_id uuid,
@@ -49,6 +50,10 @@ async function bootstrap(db) {
     create function public.is_org_member(p_org_id uuid) returns boolean
       language sql stable security invoker as
       $$ select exists(select 1 from public.org_members where org_id=p_org_id and user_id=auth.uid()) $$;
+    create function public.begin_guarded_migration(
+      p_logical_key text,p_file_name text,p_file_digest text,p_expected_predecessor text,
+      p_executor text,p_thread_id text,p_foundation boolean
+    ) returns void language sql as $$ select $$;
 
     alter table public.deals enable row level security;
     create policy deal_member_read on public.deals for select to authenticated
@@ -114,24 +119,36 @@ test("BBE-16 follow-up RPC reports no assignee, self, and sent as distinct outco
     await bootstrap(db);
     const sql = await readFile(path.join(root, "supabase", "migrations", "064_deal_collab_notify.sql"), "utf8");
     await db.exec(sql);
+    const dedupe = await readFile(path.join(root, "supabase", "migrations", "113_bbe232_notification_replay_dedupe.sql"), "utf8");
+    await db.exec(dedupe);
     await db.exec(`set role authenticated; select set_config('app.user_id','${AUTHOR}',false);`);
 
-    const none = await db.query("select public.request_deal_followup($1,$2) as outcome", [ORG, DEAL]);
+    const none = await db.query("select public.request_deal_followup($1,$2,$3) as outcome", [ORG, DEAL, "event-none"]);
     assert.equal(none.rows[0].outcome, "no_assignee");
 
     await db.query("update public.deals set assigned_to=$1 where id=$2", [AUTHOR, DEAL]);
-    const self = await db.query("select public.request_deal_followup($1,$2) as outcome", [ORG, DEAL]);
+    const self = await db.query("select public.request_deal_followup($1,$2,$3) as outcome", [ORG, DEAL, "event-self"]);
     assert.equal(self.rows[0].outcome, "self_assigned");
 
     await db.query("update public.deals set assigned_to=$1 where id=$2", [OTHER, DEAL]);
-    const sent = await db.query("select public.request_deal_followup($1,$2) as outcome", [ORG, DEAL]);
+    const sent = await db.query("select public.request_deal_followup($1,$2,$3) as outcome", [ORG, DEAL, "event-followup"]);
     assert.equal(sent.rows[0].outcome, "sent");
+    const replay = await db.query("select public.request_deal_followup($1,$2,$3) as outcome", [ORG, DEAL, "event-followup"]);
+    assert.equal(replay.rows[0].outcome, "duplicate");
+
+    await db.query("select public.mention_org_members($1,$2,$3,$4)", [ORG, DEAL, [OTHER, OTHER], "event-mention"]);
+    await db.query("select public.mention_org_members($1,$2,$3,$4)", [ORG, DEAL, [OTHER], "event-mention"]);
     await db.exec("reset role");
     const requested = await db.query(
       "select count(*)::int as n from public.notifications where type='requested' and user_id=$1",
       [OTHER],
     );
     assert.equal(requested.rows[0].n, 1);
+    const mentioned = await db.query(
+      "select count(*)::int as n from public.notifications where type='mention' and user_id=$1",
+      [OTHER],
+    );
+    assert.equal(mentioned.rows[0].n, 1);
   } finally {
     await db.close();
   }

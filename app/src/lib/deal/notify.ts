@@ -40,12 +40,14 @@ export async function notifyMentions(
   ctx: Ctx,
   dealId: string,
   mentionedUserIds: readonly string[],
+  eventKey: string,
 ): Promise<void> {
   if (mentionedUserIds.length === 0) return;
   await safeRpc("mention_org_members", {
     p_org_id: ctx.org.id,
     p_deal_id: dealId,
     p_user_ids: [...mentionedUserIds],
+    p_event_key: eventKey,
   });
 }
 
@@ -53,6 +55,7 @@ export async function notifyMentions(
 export async function notifyFollowupRequested(
   ctx: Ctx,
   dealId: string,
+  eventKey: string,
 ): Promise<FollowupNotificationOutcome> {
   if (!hasSupabaseEnv()) {
     return {
@@ -67,6 +70,7 @@ export async function notifyFollowupRequested(
     const { data, error } = await supabase.rpc("request_deal_followup", {
       p_org_id: ctx.org.id,
       p_deal_id: dealId,
+      p_event_key: eventKey,
     });
     if (error) {
       return {
@@ -77,7 +81,8 @@ export async function notifyFollowupRequested(
     }
 
     const result = typeof data === "string" ? data : "";
-    if (result === "sent") return { status: "sent" };
+    // 같은 댓글 이벤트의 재시도는 이미 영속 알림이 있으므로 사용자 관점에서는 성공이다.
+    if (result === "sent" || result === "duplicate") return { status: "sent" };
     const messages = {
       no_assignee: "담당자가 없어 보완 요청을 전달하지 못했습니다.",
       self_assigned: "현재 담당자가 요청자 본인이라 알림을 보내지 않았습니다.",

@@ -135,8 +135,8 @@ export async function addCommentAction(
   const members = await listOrgMemberOptions(ctx);
   const allowedIds = new Set(members.map((member) => member.id));
   const mentionedIds = [...new Set(input.mentionedIds ?? [])].filter((id) => allowedIds.has(id));
-  await addComment(ctx, dealId, { ...input, mentionedIds });
-  if (mentionedIds.length) await notifyMentions(ctx, dealId, mentionedIds);
+  const comment = await addComment(ctx, dealId, { ...input, mentionedIds });
+  if (mentionedIds.length) await notifyMentions(ctx, dealId, mentionedIds, comment.id);
   revalidatePath(`/deals/${dealId}`);
 }
 
@@ -160,8 +160,8 @@ export async function requestFollowupAction(
   reason: string,
 ): Promise<FollowupNotificationOutcome> {
   const ctx = await getSession();
-  await addComment(ctx, dealId, { body: reason, kind: "return_request" });
-  const outcome = await notifyFollowupRequested(ctx, dealId);
+  const comment = await addComment(ctx, dealId, { body: reason, kind: "return_request" });
+  const outcome = await notifyFollowupRequested(ctx, dealId, comment.id);
   revalidatePath(`/deals/${dealId}`);
   return outcome;
 }
