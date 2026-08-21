@@ -241,7 +241,9 @@ const BOARD_LOGIC=(()=>{
   const by=Object.fromEntries(issues.map((issue)=>[issue.id,issue]));
   const missing=[]; const collision=[];
   for(const id of goalIds){
-   const labels=ownerLabels(by[id]);
+   const issue=by[id];
+   if(["Done","Canceled","Duplicate"].includes(issue?.status))continue;
+   const labels=ownerLabels(issue);
    if(labels.length===0)missing.push(id);
    else if(labels.length>1)collision.push({id,labels});
   }
