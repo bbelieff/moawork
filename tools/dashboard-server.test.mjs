@@ -313,6 +313,14 @@ test("39-card regression fixture accepts only exact durable runtime and hosted e
   const mergeSha = "a".repeat(40);
   const comments = [{ body: `merge ${mergeSha}; Production exact READY; /login 200; runtime error/fatal 0; hosted migration applied; postflight PASS; customerDML0` }];
   assert.deepEqual(parseDeliveryCommentEvidence(comments, mergeSha), { runtimeZero: true, hostedApplied: true });
+  assert.equal(parseDeliveryCommentEvidence([{ body: `Production exact ${mergeSha}; /login 200; runtime error0` }], mergeSha).runtimeZero, true);
+  for (const unsafe of ["runtime error0 / fatal2", "runtime error 0; fatal 3", "runtime fatal0 / error2", "runtime error0 / fatal count 2", "runtime error0 / fatal code 2"]) {
+    assert.equal(parseDeliveryCommentEvidence([{ body: `merge ${mergeSha}; ${unsafe}` }], mergeSha).runtimeZero, false);
+  }
+  assert.equal(parseDeliveryCommentEvidence([
+    { body: `merge ${mergeSha}; runtime error0 / fatal0` },
+    { body: `merge ${mergeSha}; runtime fatal 2` },
+  ], mergeSha).runtimeZero, false);
   assert.deepEqual(parseDeliveryCommentEvidence([{ body: "Done; runtime error/fatal 0; hosted applied; postflight PASS; customerDML0" }], mergeSha), { runtimeZero: false, hostedApplied: false });
   assert.equal(parseDeliveryCommentEvidence([{ body: `merge ${mergeSha}; runtime errors 10` }], mergeSha).runtimeZero, false);
   const fixture = Array.from({ length: 39 }, (_, index) => index);
@@ -330,7 +338,7 @@ test("39-card regression fixture accepts only exact durable runtime and hosted e
   assert.equal(verdict.hostedApplied, true);
 });
 
-test("60 forced refreshes read durable evidence once per issue and merge SHA", async () => {
+test("60 forced refreshes retain complete evidence and refresh only changed incomplete rows", async () => {
   process.env.DASHBOARD_NO_LISTEN = "1";
   const { readDeliveryCommentEvidence } = await import("./dashboard-server.mjs?unit=rate-limit-evidence");
   const sha = "b".repeat(40);
@@ -343,7 +351,26 @@ test("60 forced refreshes read durable evidence once per issue and merge SHA", a
   for (let index = 0; index < 60; index += 1) await readDeliveryCommentEvidence([row], true, readComments);
   assert.equal(calls, 1);
   await readDeliveryCommentEvidence([{ ...row, issue: { ...row.issue, updatedAt: "2026-08-21T00:01:00Z" } }], true, readComments);
-  assert.equal(calls, 1, "an unrelated Linear update must not invalidate exact-SHA evidence");
+  assert.equal(calls, 1, "complete exact-SHA evidence remains durable across unrelated updates");
   await readDeliveryCommentEvidence([{ issue: row.issue, pr: { mergeCommitSha: "c".repeat(40) } }], true, readComments);
   assert.equal(calls, 2, "only a new merge SHA gets one new evidence read");
+
+  const pending = { issue: { id: "BBE-PENDING", updatedAt: "2026-08-21T00:00:00Z" }, pr: { mergeCommitSha: "d".repeat(40) } };
+  const pendingReads = async () => ({ comments: calls++ < 3 ? [] : [{ body: `merge ${"d".repeat(40)}; runtime error0` }] });
+  await readDeliveryCommentEvidence([pending], true, pendingReads);
+  for (let index = 0; index < 60; index += 1) await readDeliveryCommentEvidence([pending], true, pendingReads);
+  assert.equal(calls, 3, "unchanged incomplete evidence is not fanned out by force");
+  const advanced = { ...pending, issue: { ...pending.issue, updatedAt: "2026-08-21T00:01:00Z" } };
+  const refreshed = await readDeliveryCommentEvidence([advanced], true, pendingReads);
+  assert.equal(calls, 4, "one Linear update refreshes one incomplete row");
+  assert.equal(refreshed.get("BBE-PENDING").runtimeZero, true);
+
+  const failed = { issue: { id: "BBE-FAILED", updatedAt: "2026-08-21T00:00:00Z" }, pr: { mergeCommitSha: "e".repeat(40) } };
+  let failedCalls = 0;
+  const unavailable = async () => { failedCalls += 1; throw new Error("rate limited"); };
+  await readDeliveryCommentEvidence([failed], true, unavailable);
+  const failedAdvanced = { ...failed, issue: { ...failed.issue, updatedAt: "2026-08-21T00:01:00Z" } };
+  await readDeliveryCommentEvidence([failedAdvanced], true, unavailable);
+  for (let index = 0; index < 60; index += 1) await readDeliveryCommentEvidence([failedAdvanced], true, unavailable);
+  assert.equal(failedCalls, 2, "a failed refresh is negatively cached for the advanced issue snapshot");
 });

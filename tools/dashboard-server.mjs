@@ -376,20 +376,26 @@ function classifyDelivery({ issue, pr, deployment, loginStatus, commentEvidence 
 function parseDeliveryCommentEvidence(comments, mergeSha) {
   const exactSha = String(mergeSha || "").toLowerCase();
   let runtimeZero = false;
+  let runtimeNonzero = false;
   let hostedApplied = false;
   for (const comment of comments) {
     const body = String(comment.body || "");
     const normalized = body.toLowerCase().replace(/[`*_]/g, " ").replace(/\s+/g, " ");
     const bindsExactSha = exactSha.length === 40 && normalized.includes(exactSha);
-    const hasRuntimeZero = /runtime[^\n]{0,80}(?:error\s*\/?\s*fatal|error|fatal)[^\n]{0,40}(?:\b0\b|\bzero\b)/i.test(body)
-      || /runtime\s+(?:error0\s*\/\s*fatal0|error\/fatal\s*0)/i.test(normalized);
+    const runtimeLines = body.split(/\r?\n/).filter((line) => /runtime/i.test(line));
+    const hasRuntimeNonzero = runtimeLines.some((line) => /(?:error|fatal)s?(?:\s+(?:count|code))?\s*[:=]?\s*[1-9]\d*/i.test(line));
+    const hasRuntimeZero = !hasRuntimeNonzero && (
+      /runtime[^\n]{0,80}(?:error\s*\/?\s*fatal|error|fatal)[^\n]{0,40}(?:\b0\b|\bzero\b)/i.test(body)
+      || /runtime\s+(?:error0(?:\s*\/\s*fatal0)?|fatal0|error\/fatal\s*0)/i.test(normalized)
+    );
     if (bindsExactSha && hasRuntimeZero) runtimeZero = true;
+    if (bindsExactSha && hasRuntimeNonzero) runtimeNonzero = true;
     const hasHostedApply = /hosted[^\n]{0,100}(?:apply|applied|적용)/i.test(body);
     const hasPostflight = /postflight[^\n]{0,60}(?:pass|성공|완료|exact)/i.test(body);
     const hasCustomerDmlZero = /customer\s*dml\s*0|고객\s*dml\s*0/i.test(normalized);
     if (bindsExactSha && hasHostedApply && hasPostflight && hasCustomerDmlZero) hostedApplied = true;
   }
-  return { runtimeZero, hostedApplied };
+  return { runtimeZero: runtimeZero && !runtimeNonzero, hostedApplied };
 }
 
 async function mapWithConcurrency(values, concurrency, mapper) {
@@ -408,16 +414,25 @@ async function readDeliveryCommentEvidence(rows, force = false, readComments = g
   const entries = await mapWithConcurrency(rows, 4, async ({ issue, pr }) => {
     if (!pr?.mergeCommitSha) return [issue.id, { runtimeZero: false, hostedApplied: false }];
     const evidenceKey = JSON.stringify([issue.id, pr.mergeCommitSha]);
-    if (deliveryEvidenceCache.has(evidenceKey)) return [issue.id, deliveryEvidenceCache.get(evidenceKey)];
+    const cached = deliveryEvidenceCache.get(evidenceKey);
+    const issueUpdatedAt = issue.updatedAt || null;
+    const complete = cached?.evidence.runtimeZero
+      && (!issue.labels?.includes("needs-hosted") || cached.evidence.hostedApplied);
+    const retryDue = cached?.retryAfter && Date.now() >= cached.retryAfter;
+    const refreshIncomplete = force && cached && !complete
+      && (cached.issueUpdatedAt !== issueUpdatedAt || retryDue);
+    if (cached && !refreshIncomplete) return [issue.id, cached.evidence];
     try {
-      /* force는 issue 정본과 Production cache만 갱신한다. durable 댓글 증거는
-         issue+mergeSHA에 결속하며, 새 merge SHA가 생길 때만 다시 읽는다. */
+      /* 같은 issue+mergeSHA의 완성된 증거는 영구 재사용한다. 미완성 증거만
+         Linear updatedAt이 전진한 강제 갱신에서 한 번 다시 읽는다. */
       const page = await readComments(issue.id, COMMENT_MAX_LIMIT, null, false);
       const evidence = parseDeliveryCommentEvidence(page.comments, pr.mergeCommitSha);
-      deliveryEvidenceCache.set(evidenceKey, evidence);
+      deliveryEvidenceCache.set(evidenceKey, { evidence, issueUpdatedAt, retryAfter: null });
       return [issue.id, evidence];
     } catch {
-      return [issue.id, { runtimeZero: false, hostedApplied: false }];
+      const evidence = cached?.evidence || { runtimeZero: false, hostedApplied: false };
+      deliveryEvidenceCache.set(evidenceKey, { evidence, issueUpdatedAt, retryAfter: Date.now() + 60_000 });
+      return [issue.id, evidence];
     }
   });
   return new Map(entries);
@@ -426,7 +441,7 @@ async function readDeliveryCommentEvidence(rows, force = false, readComments = g
 function cachedDeliveryCommentEvidence(rows) {
   return new Map(rows.map(({ issue, pr }) => {
     const key = JSON.stringify([issue.id, pr?.mergeCommitSha || null]);
-    return [issue.id, deliveryEvidenceCache.get(key) || { runtimeZero: false, hostedApplied: false }];
+    return [issue.id, deliveryEvidenceCache.get(key)?.evidence || { runtimeZero: false, hostedApplied: false }];
   }));
 }
 
