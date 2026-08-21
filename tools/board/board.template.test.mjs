@@ -25,6 +25,14 @@ test("decision dashboard script compiles and keeps the live data bridge contract
   assert.match(html, /stale 상태로 남깁니다/);
 });
 
+test("Linear partial state names the rate limit and preserves the last-success contract", async () => {
+  const html = await readFile(templateUrl, "utf8");
+  assert.match(html, /Linear 조회 제한/);
+  assert.match(html, /마지막 성공/);
+  assert.match(html, /incoming\.length\?incoming:state\.all/);
+  assert.match(html, /GitHub·Production은 계속 갱신합니다/);
+});
+
 test("new DG lanes and the P0 handoff chain are visible without the retired 20-slot board", async () => {
   const html = await readFile(templateUrl, "utf8");
   for (const lane of ["DG-01", "DG-02", "DG-03", "DG-04", "DG-05", "DG-06", "DG-07"]) {

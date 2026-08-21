@@ -10,6 +10,7 @@ const commentCalls = new Map();
 let upstream;
 let dashboard;
 let dashboardUrl;
+let rateLimited = false;
 
 const listen = (server, port = 0) => new Promise((resolve, reject) => {
   server.once("error", reject);
@@ -67,6 +68,8 @@ before(async () => {
       if (id === "BBE-SLOW") await new Promise((resolve) => setTimeout(resolve, 80));
       return json(res, 200, { data: { issue: { comments: commentConnection(id) } } });
     }
+
+    if (rateLimited) return json(res, 200, { errors: [{ message: "Rate limit exceeded. private lin_api_must_not_leak" }] });
 
     return json(res, 200, {
       data: {
@@ -243,6 +246,32 @@ test("issues endpoint retains the existing 45-second snapshot contract", async (
   assert.equal(commentsAfter, commentsBefore, "issue snapshot must not duplicate the direct comment reads");
 });
 
+test("rate-limited issue refresh returns the last success as an explicit safe stale snapshot", async () => {
+  const callsBefore = requests.filter((request) => !request.variables?.id).length;
+  rateLimited = true;
+  const [response, concurrentResponse] = await Promise.all([
+    fetch(`${dashboardUrl}/api/issues?force=1`),
+    fetch(`${dashboardUrl}/api/issues?force=1`),
+  ]);
+  rateLimited = false;
+  assert.equal(response.status, 200);
+  assert.equal(concurrentResponse.status, 200);
+  assert.equal(
+    requests.filter((request) => !request.variables?.id).length - callsBefore,
+    1,
+    "simultaneous forced refreshes must share one upstream issue read",
+  );
+  const body = await response.json();
+  assert.equal(body.available, false);
+  assert.equal(body.stale, true);
+  assert.equal(body.error.code, "LINEAR_RATE_LIMITED");
+  assert.equal(body.issues[0].id, "BBE-125");
+  assert.ok(body.lastSuccessAt);
+  assert.ok(body.retryAt);
+  assert.equal(JSON.stringify(body).includes("private"), false);
+  assert.equal(JSON.stringify(body).includes("lin_api_"), false);
+});
+
 test("operations endpoint exposes read-only repository and PR decision signals", async () => {
   const response = await fetch(`${dashboardUrl}/api/operations?force=1`);
   assert.equal(response.status, 200);
@@ -299,4 +328,22 @@ test("39-card regression fixture accepts only exact durable runtime and hosted e
   assert.equal(verdict.stage, "PRODUCTION_COMPLETE");
   assert.equal(verdict.runtimeErrorCount, 0);
   assert.equal(verdict.hostedApplied, true);
+});
+
+test("60 forced refreshes read durable evidence once per issue and merge SHA", async () => {
+  process.env.DASHBOARD_NO_LISTEN = "1";
+  const { readDeliveryCommentEvidence } = await import("./dashboard-server.mjs?unit=rate-limit-evidence");
+  const sha = "b".repeat(40);
+  const row = { issue: { id: "BBE-RATE", updatedAt: "2026-08-21T00:00:00Z" }, pr: { mergeCommitSha: sha } };
+  let calls = 0;
+  const readComments = async () => {
+    calls += 1;
+    return { comments: [{ body: `merge ${sha}; runtime error/fatal 0` }] };
+  };
+  for (let index = 0; index < 60; index += 1) await readDeliveryCommentEvidence([row], true, readComments);
+  assert.equal(calls, 1);
+  await readDeliveryCommentEvidence([{ ...row, issue: { ...row.issue, updatedAt: "2026-08-21T00:01:00Z" } }], true, readComments);
+  assert.equal(calls, 1, "an unrelated Linear update must not invalidate exact-SHA evidence");
+  await readDeliveryCommentEvidence([{ issue: row.issue, pr: { mergeCommitSha: "c".repeat(40) } }], true, readComments);
+  assert.equal(calls, 2, "only a new merge SHA gets one new evidence read");
 });

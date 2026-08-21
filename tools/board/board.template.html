@@ -638,8 +638,14 @@ async function load(force=true){
   const [issueRead,operationsRead]=await Promise.allSettled([mcp(T_ISSUES,{project:PROJECT,force}),fetchOperations(force)]);
   const issueData=issueRead.status==="fulfilled"?issueRead.value:{issues:[]};
   const operations=operationsRead.status==="fulfilled"?operationsRead.value:{};
-  if(issueRead.status!=="fulfilled"){error.style.display="block";error.textContent="Linear 측정 실패 — Orca·Git·연료 판은 계속 표시합니다."}
-  const all=(issueData.issues||[]).map((issue)=>({...issue,labels:Array.isArray(issue.labels)?issue.labels:[]}));
+  const linearPartial=issueRead.status!=="fulfilled"||issueData.stale||issueData.available===false||operations.linear?.stale;
+  if(linearPartial){
+   const last=issueData.lastSuccessAt||operations.linear?.lastSuccessAt;
+   error.style.display="block";
+   error.textContent="Linear 조회 제한 · "+(last?"마지막 성공 "+new Date(last).toLocaleString("ko-KR"):"마지막 성공 시각 없음")+" · GitHub·Production은 계속 갱신합니다.";
+  }
+  const incoming=issueData.issues||[];
+  const all=(incoming.length?incoming:state.all).map((issue)=>({...issue,labels:Array.isArray(issue.labels)?issue.labels:[]}));
   state.all=all;state.by=Object.fromEntries(all.map((issue)=>[issue.id,issue]));
   state.issues=all.filter((issue)=>GOAL_SET.has(issue.id));
   state.open=state.issues.filter((issue)=>!DONE_STATES.has(issue.status));
@@ -647,7 +653,9 @@ async function load(force=true){
   const active=state.open.filter((issue)=>ACTIVE_STATES.has(issue.status));
   state.stamps=new Map(await Promise.all(active.map(fetchStamp)));
   renderHero();renderDelivery();renderLiveBoard();buildDecisions();renderFlows();renderLanes();renderSquads();renderSharedGates();renderOperations();renderContext();initFilters();renderInventory();renderFeed();
-  if(issueRead.status==="fulfilled"&&operationsRead.status==="fulfilled"){lastSuccessAt=Date.now();nextRefreshAt=lastSuccessAt+60_000}
+  if(issueRead.status==="fulfilled"&&!linearPartial&&operationsRead.status==="fulfilled"){lastSuccessAt=Date.now()}
+  else if(!lastSuccessAt&&(issueData.lastSuccessAt||operations.linear?.lastSuccessAt))lastSuccessAt=new Date(issueData.lastSuccessAt||operations.linear.lastSuccessAt).getTime();
+  nextRefreshAt=Date.now()+60_000;
   renderFreshness();
  }catch(err){
   error.style.display="block";error.textContent="관제 데이터를 불러오지 못했습니다. 이전 값은 stale 상태로 남깁니다. "+String(err.message||err);
