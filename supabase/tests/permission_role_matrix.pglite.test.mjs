@@ -36,6 +36,7 @@ test("permission matrix migrations enforce tenant, role, deny, audit, and scope-
       create schema auth;
       create role anon nologin;
       create role authenticated nologin;
+      create role service_role nologin;
       create function auth.uid() returns uuid language sql stable as $$
         select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
       $$;
@@ -72,11 +73,17 @@ test("permission matrix migrations enforce tenant, role, deny, audit, and scope-
         if not exists(select 1 from public.org_members where org_id=p_org_id and user_id=p_target and role<>'owner' and status='active')
         then raise exception 'active nonowner required' using errcode='42501'; end if;
       end $$;
+      create function public.begin_guarded_migration(
+        p_logical_key text,p_file_name text,p_file_digest text,p_expected_predecessor text,
+        p_executor text,p_thread_id text,p_foundation boolean
+      ) returns void language sql as $$ select $$;
       grant usage on schema public,auth to authenticated;
       grant execute on function auth.uid() to authenticated;
     `);
     await db.exec(await migration("054_permission_role_enums.sql"));
     await db.exec(await migration("055_permission_role_matrix.sql"));
+    await db.exec(await migration("114_bbe226_effective_permission_batch.sql"));
+    await db.exec(await migration("114_bbe226_effective_permission_batch.sql"));
     await db.exec(`
       insert into public.orgs(id) values ('${ids.org}'),('${ids.otherOrg}');
       insert into public.users(id) values ('${ids.owner}'),('${ids.admin}'),('${ids.lead}'),('${ids.member}'),('${ids.outsider}');
@@ -105,16 +112,44 @@ test("permission matrix migrations enforce tenant, role, deny, audit, and scope-
       has_function_privilege('anon','public.effective_permission(uuid,text)','execute') as anon_execute,
       has_function_privilege('authenticated','public.effective_permission(uuid,text)','execute') as authenticated_execute`);
     assert.deepEqual(acl.rows, [{ public_execute: false, anon_execute: false, authenticated_execute: true }]);
+    const batchAcl = await db.query(`select
+      has_function_privilege('public','public.effective_permissions(uuid,text[])','execute') as public_execute,
+      has_function_privilege('anon','public.effective_permissions(uuid,text[])','execute') as anon_execute,
+      has_function_privilege('service_role','public.effective_permissions(uuid,text[])','execute') as service_execute,
+      has_function_privilege('authenticated','public.effective_permissions(uuid,text[])','execute') as authenticated_execute`);
+    assert.deepEqual(batchAcl.rows, [{ public_execute: false, anon_execute: false, service_execute: false, authenticated_execute: true }]);
 
     await actor(db, ids.member);
     assert.equal((await db.query(`select public.effective_permission('${ids.org}','work.view_tabs') as allowed`)).rows[0].allowed, true);
+    assert.deepEqual(
+      (await db.query(`select public.effective_permissions('${ids.org}',array['work.view_tabs','work.item_delete','unknown.scope']) as value`)).rows[0].value,
+      { "unknown.scope": false, "work.item_delete": false, "work.view_tabs": true },
+    );
     await db.exec("reset role");
     await db.exec(`insert into public.member_scoped_permission_bindings values ('${ids.org}','${ids.member}','work.view_tabs','deny','viewer','${ids.owner}',now())`);
     await actor(db, ids.member);
     assert.equal((await db.query(`select public.effective_permission('${ids.org}','work.view_tabs') as allowed`)).rows[0].allowed, false);
+    assert.equal((await db.query(`select public.effective_permissions('${ids.org}',array['work.view_tabs']) as value`)).rows[0].value["work.view_tabs"], false);
 
     await actor(db, ids.outsider);
     assert.equal((await db.query(`select public.effective_permission('${ids.org}','work.view_tabs') as allowed`)).rows[0].allowed, false);
+    await assert.rejects(
+      db.query(`select public.effective_permissions('${ids.org}',array['work.view_tabs'])`),
+      /active workspace membership required/,
+    );
+
+    await db.exec("reset role");
+    await db.exec(`
+      insert into public.org_role_permission_overrides(org_id,role,scope_key,allowed,updated_by)
+      values ('${ids.org}','admin','work.item_delete',false,'${ids.owner}');
+      insert into public.member_scoped_permission_bindings values
+        ('${ids.org}','${ids.admin}','work.item_delete','allow','editor','${ids.owner}',now()),
+        ('${ids.org}','${ids.owner}','work.item_delete','deny','viewer','${ids.owner}',now());
+    `);
+    await actor(db, ids.admin);
+    assert.equal((await db.query(`select public.effective_permissions('${ids.org}',array['work.item_delete']) as value`)).rows[0].value["work.item_delete"], true);
+    await actor(db, ids.owner);
+    assert.equal((await db.query(`select public.effective_permissions('${ids.org}',array['work.item_delete']) as value`)).rows[0].value["work.item_delete"], true);
 
     await actor(db, ids.lead);
     const childView = (await db.query(`select public.read_permission_scoped_work_items('${ids.org}','${ids.member}') as value`)).rows[0].value;

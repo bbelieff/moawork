@@ -110,6 +110,7 @@ const probe = vi.hoisted(() => {
   const READ_RPCS = new Set([
     "app_admin_role",
     "effective_permission",
+    "effective_permissions",
     "read_permission_scoped_work_items",
     "get_member_account_profile",
     // 017: language sql · stable · select 전용
@@ -260,6 +261,15 @@ function seed() {
 
   probe.rpcs.app_admin_role = null;
   probe.rpcs.effective_permission = true;
+  probe.rpcs.effective_permissions = {
+    "work.view_tabs": true,
+    "work.item_upsert": true,
+    "work.item_delete": true,
+    "structure.column_manage": true,
+    "structure.section_manage": true,
+    "danger.bulk_edit_delete": true,
+    "structure.preset_edit": true,
+  };
   probe.rpcs.read_permission_scoped_work_items = { itemIds: ["item-1"], hiddenCount: 0 };
   probe.rpcs.get_member_account_profile = { id: "user-1", name: "멤버", title: null, team_key: "team-a" };
 }
@@ -302,6 +312,8 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
         "\n  순서: " + run.trips.map((t) => `${t.wave}:${t.label}`).join(" → ") + "\n",
     );
     expect(run.total).toBeGreaterThan(0);
+    expect(run.countOf("rpc:effective_permissions")).toBe(1);
+    expect(run.countOf("rpc:effective_permission")).toBe(0);
   });
 
   // ★ 총괄이 말한 「보드이동」은 «탭 이동» 으로 보인다 (BBE-214 부수 확인).

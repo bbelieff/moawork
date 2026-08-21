@@ -4,7 +4,7 @@
 // fail-closed: RPC 가 애매하거나 실패하면 **허용하지 않는다** — 판정 불능은 unavailable 이지
 // allowed 로 승격하지 않는다.
 
-import { loadEffectivePermission } from "./server";
+import { loadEffectivePermission, loadEffectivePermissions } from "./server";
 
 export type PermGuardResult =
   | { kind: "allowed" }
@@ -17,4 +17,17 @@ export async function loadPermGuard(orgId: string, scopeKey: string): Promise<Pe
     return { kind: "denied", reason: "unavailable" };
   }
   return result.allowed ? { kind: "allowed" } : { kind: "denied", reason: "permission" };
+}
+
+export async function loadPermGuards(
+  orgId: string,
+  scopeKeys: readonly string[],
+): Promise<Record<string, PermGuardResult>> {
+  const result = await loadEffectivePermissions(orgId, scopeKeys);
+  return Object.fromEntries(scopeKeys.map((scopeKey) => {
+    if (!result.ok) return [scopeKey, { kind: "denied", reason: "unavailable" } satisfies PermGuardResult];
+    return [scopeKey, result.permissions[scopeKey]
+      ? { kind: "allowed" }
+      : { kind: "denied", reason: "permission" } satisfies PermGuardResult];
+  }));
 }
