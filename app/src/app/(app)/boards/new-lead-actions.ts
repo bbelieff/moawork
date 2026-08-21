@@ -14,6 +14,10 @@ function text(formData: FormData, key: string): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function textList(formData: FormData, key: string): string[] {
+  return formData.getAll(key).flatMap((value) => typeof value === "string" && value.trim() ? [value.trim()] : []);
+}
+
 async function flashCanonicalError(itemId: string, key: string, error: unknown) {
   const message = error instanceof NewLeadMutationError ? error.message : "신규리드를 저장하지 못했습니다. 다시 시도해 주세요.";
   const encoded = encodeCellFlash({ itemId, errors: [{ key, label: key, message }] });
@@ -48,9 +52,15 @@ export async function createNewLeadAction(
       p_representative_name: text(formData, "representative_name") || null,
       p_phone: text(formData, "phone") || null,
       p_email: text(formData, "email") || null,
+      p_business_registration_type: text(formData, "business_registration_type") || null,
       p_industry: text(formData, "industry") || null,
+      p_revenue_band: text(formData, "revenue_band") || null,
       p_region_sido: text(formData, "region_sido") || null,
+      p_region_sigungu: text(formData, "region_sigungu") || null,
+      p_address_detail: text(formData, "address_detail") || null,
       p_acquisition_source: text(formData, "acquisition_source") || null,
+      p_assigned_to: text(formData, "assigned_to") || null,
+      p_collaborator_ids: textList(formData, "collaborator_ids"),
     });
     revalidatePath(`/boards/${boardId}`);
     revalidatePath("/newcust");

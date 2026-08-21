@@ -1,0 +1,105 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { PGlite } from "@electric-sql/pglite";
+import { beforeEach, describe, expect, it } from "vitest";
+
+const migration = readFileSync(resolve(process.cwd(), "../supabase/migrations/120_bbe273_new_lead_full_intake.sql"), "utf8");
+const functionSql = migration.slice(migration.indexOf("create function public.create_new_lead"), migration.indexOf("revoke all on function public.create_new_lead"));
+const projectionSql = migration.slice(
+  migration.indexOf("create or replace function public.guard_new_lead_projection_write"),
+  migration.indexOf("drop function if exists public.create_new_lead"),
+);
+const ids = {
+  orgA: "00000000-0000-4000-8000-000000000001", orgB: "00000000-0000-4000-8000-000000000002",
+  owner: "00000000-0000-4000-8000-000000000010", member: "00000000-0000-4000-8000-000000000011",
+  outsider: "00000000-0000-4000-8000-000000000012", boardA: "00000000-0000-4000-8000-000000000020",
+  boardB: "00000000-0000-4000-8000-000000000021", groupA: "00000000-0000-4000-8000-000000000030",
+  groupB: "00000000-0000-4000-8000-000000000031", request: "00000000-0000-4000-8000-000000000100",
+};
+
+async function actor(db: PGlite, userId: string) {
+  await db.exec(`select set_config('request.jwt.claim.sub','${userId}',false)`);
+}
+
+describe("BBE-273 atomic full new-lead intake", () => {
+  let db: PGlite;
+  beforeEach(async () => {
+    db = new PGlite();
+    await db.exec(`
+      create schema auth;
+      create role anon; create role authenticated; create role service_role;
+      create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+      create type public.stage_kind as enum ('marketing','meeting','contract','work','settle','post');
+      create table users(id uuid primary key); create table orgs(id uuid primary key,status text);
+      create table org_members(org_id uuid,user_id uuid,role text,scope text,status text,primary key(org_id,user_id));
+      create function effective_permission(p_org uuid,p_key text) returns boolean language sql stable as $$
+        select exists(select 1 from public.org_members where org_id=p_org and user_id=auth.uid() and status='active')$$;
+      create table boards(id uuid primary key,org_id uuid,source text);
+      create table board_groups(id uuid primary key,org_id uuid,board_id uuid);
+      create table board_columns(id uuid primary key default gen_random_uuid(),org_id uuid,board_id uuid,key text);
+      create table pipelines(id uuid primary key default gen_random_uuid(),org_id uuid,name text);
+      create table stages(id uuid primary key default gen_random_uuid(),pipeline_id uuid,name text,sort_order int,kind stage_kind);
+      create table deals(id uuid primary key default gen_random_uuid(),org_id uuid,company_id uuid,pipeline_id uuid,stage_id uuid,assigned_to uuid,title text,applied_on date);
+      create table deal_intake(deal_id uuid primary key,org_id uuid,representative_name text,phone_normalized text,phone_display text,email_normalized text,business_registration_type text,industry text,industry_code text,revenue_band text,region_sido text,region_sigungu text,address_detail text,acquisition_source text,source_external_id text);
+      create table items(id uuid primary key default gen_random_uuid(),org_id uuid,board_id uuid,group_id uuid,title text,assigned_to uuid,deal_id uuid,deleted_at timestamptz);
+      create table new_lead_requests(org_id uuid,request_id uuid,operation text,deal_id uuid,item_id uuid,actor_id uuid,payload jsonb,primary key(org_id,request_id));
+      create table item_values(org_id uuid,item_id uuid,column_key text,value_jsonb jsonb,primary key(item_id,column_key));
+      create table deal_intake_field_audit(id uuid primary key default gen_random_uuid(),org_id uuid,deal_id uuid,field_key text,old_value jsonb,new_value jsonb,value_source text,actor_id uuid,request_id uuid,unique(org_id,request_id,field_key));
+      insert into users values('${ids.owner}'),('${ids.member}'),('${ids.outsider}');
+      insert into orgs values('${ids.orgA}','active'),('${ids.orgB}','active');
+      insert into org_members values ('${ids.orgA}','${ids.owner}','owner','all','active'),('${ids.orgA}','${ids.member}','member','assigned','active'),('${ids.orgB}','${ids.outsider}','owner','all','active');
+      insert into boards values('${ids.boardA}','${ids.orgA}','core.default-tab/new-lead'),('${ids.boardB}','${ids.orgB}','core.default-tab/new-lead');
+      insert into board_groups values('${ids.groupA}','${ids.orgA}','${ids.boardA}'),('${ids.groupB}','${ids.orgB}','${ids.boardB}');
+      insert into board_columns(org_id,board_id,key) select '${ids.orgA}','${ids.boardA}',unnest(array[
+        'owner','collaborators','applied_on','phone','rep_name','biz_reg_type','industry','revenue_band','sido','sigungu','email','ad_name',
+        'absence_notice','consult1_notice','confirm2_notice','feedback_status','recall_at','meeting_at','recontact_on','contract_fee','consult_status','contact_move']);
+    `);
+    await db.exec(projectionSql);
+    await db.exec(`create trigger guard_new_lead_projection_write before insert or update or delete on item_values
+      for each row execute function guard_new_lead_projection_write()`);
+    await db.exec(functionSql);
+    await actor(db, ids.owner);
+  });
+
+  it("writes canonical facts, all immediate projections, exact audit sources, and stable replay", async () => {
+    const call = `select * from create_new_lead('${ids.orgA}','${ids.boardA}','${ids.groupA}','${ids.request}','테스트 회사','대표','01012345678','A@EXAMPLE.COM','법인','제조업',null,'10억','서울','강남구','검색광고',null,'${ids.member}','테헤란로',array['${ids.owner}']::uuid[])`;
+    const first = await db.query<{ deal_id: string; item_id: string; replayed: boolean }>(call);
+    const replay = await db.query<{ deal_id: string; item_id: string; replayed: boolean }>(call);
+    expect(replay.rows[0]).toEqual({ ...first.rows[0], replayed: true });
+    const deal = (await db.query<{ assigned_to: string; applied_on: string }>("select assigned_to,applied_on::text from deals")).rows[0];
+    expect(deal.assigned_to).toBe(ids.member); expect(deal.applied_on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const intake = (await db.query<{ region_sido: string; region_sigungu: string; address_detail: string; acquisition_source: string }>("select region_sido,region_sigungu,address_detail,acquisition_source from deal_intake")).rows[0];
+    expect(intake).toEqual({ region_sido: "서울", region_sigungu: "강남구", address_detail: "테헤란로", acquisition_source: "검색광고" });
+    const values = Object.fromEntries((await db.query<{ column_key: string; value_jsonb: unknown }>("select column_key,value_jsonb from item_values")).rows.map((row) => [row.column_key,row.value_jsonb]));
+    expect(values).toMatchObject({ biz_reg_type: "법인", sido: "서울", sigungu: "강남구", ad_name: "검색광고", consult_status: "상담 전", contact_move: "컨택 대기", absence_notice: "해당 없음" });
+    expect(Object.keys(values)).toHaveLength(18);
+    const sources = (await db.query<{ field_key: string; value_source: string }>("select field_key,value_source from deal_intake_field_audit")).rows;
+    expect(sources.find((row) => row.field_key === "title")?.value_source).toBe("manual");
+    expect(sources.find((row) => row.field_key === "applied_on")?.value_source).toBe("system");
+    expect(sources.find((row) => row.field_key === "owner")?.value_source).toBe("manual");
+    await db.exec("update deal_intake set region_sido='부산',region_sigungu='해운대구',acquisition_source='소개' where true");
+    const refreshed = Object.fromEntries((await db.query<{ column_key: string; value_jsonb: unknown }>("select column_key,value_jsonb from item_values where column_key in ('sido','sigungu','ad_name')")).rows.map((row) => [row.column_key,row.value_jsonb]));
+    expect(refreshed).toEqual({ ad_name: "소개", sido: "부산", sigungu: "해운대구" });
+    await expect(db.exec(`update item_values set value_jsonb='"조작"'::jsonb where column_key='sido'`)).rejects.toThrow(/require update_new_lead_fields/);
+  });
+
+  it("fails closed for cross-org targets, unauthorized assignment, and collaborator membership", async () => {
+    await expect(db.query(`select * from create_new_lead('${ids.orgA}','${ids.boardB}','${ids.groupB}',gen_random_uuid(),'교차')`)).rejects.toThrow(/projection target unavailable/);
+    await actor(db, ids.member);
+    await expect(db.query(`select * from create_new_lead('${ids.orgA}','${ids.boardA}','${ids.groupA}',gen_random_uuid(),'배정',null,null,null,null,null,null,null,null,null,null,null,'${ids.owner}')`)).rejects.toThrow(/assignee denied/);
+    await actor(db, ids.owner);
+    await expect(db.query(`select * from create_new_lead('${ids.orgA}','${ids.boardA}','${ids.groupA}',gen_random_uuid(),'협업',null,null,null,null,null,null,null,null,null,null,null,null,null,array['${ids.outsider}']::uuid[])`)).rejects.toThrow(/collaborator unavailable/);
+    expect((await db.query<{ n: number }>("select count(*)::int n from deals")).rows[0].n).toBe(0);
+  });
+
+  it("turns red when the board-key projection guard is removed", async () => {
+    const mutated = functionSql
+      .replace("create function public.create_new_lead", "create or replace function public.create_new_lead")
+      .replace("'biz_reg_type',to_jsonb", "'business_registration_type',to_jsonb");
+    await db.exec(mutated);
+    await db.query(`select * from create_new_lead('${ids.orgA}','${ids.boardA}','${ids.groupA}',gen_random_uuid(),'RED',null,null,null,'법인')`);
+    await expect(async () => {
+      expect((await db.query<{ n: number }>("select count(*)::int n from item_values where column_key='biz_reg_type'")).rows[0].n).toBe(1);
+    }).rejects.toThrow();
+  });
+});

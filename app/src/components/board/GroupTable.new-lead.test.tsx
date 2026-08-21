@@ -30,6 +30,8 @@ function render() {
     <GroupTable
       boardId="board-a" groupId="group-a" columns={columns} rows={[row]} readOnly={false}
       canonicalNewLead
+      newLeadMembers={[{ id: "user-a", label: "담당자 가" }]}
+      currentUserId="user-a"
       rowDragEnabled={false} cellFlash={null} onColumnDrop={() => {}} dragRowId={null}
       canDropRow={() => false} onRowDragStart={() => {}} onRowDragEnd={() => {}} onRowDrop={() => {}}
     />,
@@ -40,16 +42,22 @@ describe("BBE-171 new-lead GroupTable wiring", () => {
   it("shows the compact intake behind a New item disclosure with visible required copy", () => {
     const html = render();
     expect(html).toContain("＋ 새 항목");
-    expect(html).toContain("이름");
+    expect(html).toContain("회사명 / 이름");
     expect(html).toContain("필수");
-    expect(html).toContain("나머지는 지금 또는 등록 후 언제든 수정할 수 있어요");
+    for (const label of ["사업자 유형", "업종·업태", "매출 / 매출 구간", "시군구", "상세 주소", "담당자", "협업자"]) {
+      expect(html).toContain(label);
+    }
+    for (const value of ["오늘(KST)", "신규리드 · 컨택 대기", "미상담 · 상담 전", "해당 없음", "일정 없음", "등록 후 첨부"]) {
+      expect(html).toContain(value);
+    }
+    expect(html).toContain("담당자 가 (나)");
     expect(html).toContain("취소");
   });
 
   it("does not infer a canonical board from matching custom columns", () => {
     const html = renderToStaticMarkup(<GroupTable boardId="board-a" groupId="group-a" columns={columns} rows={[row]} readOnly={false} rowDragEnabled={false} cellFlash={null} onColumnDrop={() => {}} dragRowId={null} canDropRow={() => false} onRowDragStart={() => {}} onRowDragEnd={() => {}} onRowDrop={() => {}} />);
     expect(html).not.toContain('name="dealId"');
-    expect(html).not.toContain("나머지는 지금 또는 등록 후 언제든 수정할 수 있어요");
+    expect(html).not.toContain("등록과 동시에 준비되는 값");
   });
 
   it("keeps an auto-sourced canonical field editable through the audited deal RPC action", () => {

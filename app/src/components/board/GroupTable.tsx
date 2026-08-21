@@ -90,12 +90,23 @@ const NEW_LEAD_FIELD_KEYS: Readonly<Record<string, string>> = {
   rep_name: "representative_name",
   phone: "phone",
   email: "email",
-  business_registration_type: "business_registration_type",
+  biz_reg_type: "business_registration_type",
   industry: "industry",
   revenue_band: "revenue_band",
-  region_sido: "region_sido",
-  region_sigungu: "region_sigungu",
-  acquisition_source: "acquisition_source",
+  sido: "region_sido",
+  sigungu: "region_sigungu",
+  ad_name: "acquisition_source",
+};
+
+const NEW_LEAD_EMPTY_LABELS: Readonly<Record<string, string>> = {
+  absence_notice: "해당 없음",
+  consult1_notice: "해당 없음",
+  confirm2_notice: "해당 없음",
+  feedback_status: "미입력",
+  recall_at: "일정 없음",
+  meeting_at: "일정 없음",
+  recontact_on: "일정 없음",
+  contract_fee: "미정",
 };
 
 /** 한 셀 — 읽기 전용이면 표시만, 아니면 셀 단위 서버 액션 폼. */
@@ -128,13 +139,14 @@ export function BoardCell({
   const cellReadOnly = readOnly || (!auditedCanonicalEdit && !isSourceEditable(column.source)) || column.is_readonly === true;
   const numeric = NUMERIC_TYPES.has(column.type);
   const title = cellTitle(column);
+  const emptyLabel = canonicalNewLead && value === null ? NEW_LEAD_EMPTY_LABELS[column.key] : undefined;
 
   if (cellReadOnly) {
     const display = column.type === "select" || column.type === "status" || column.type === "person" || column.type === "multiselect" ? (
-      <StatusCell value={value} options={options} />
+      emptyLabel ? <span className="text-xs text-mw-sub">{emptyLabel}</span> : <StatusCell value={value} options={options} />
     ) : (
       <span className={`truncate text-xs text-mw-body ${numeric ? "block text-right tabular-nums" : ""}`}>
-        {formatCell(column.type, value, options) || "—"}
+        {formatCell(column.type, value, options) || emptyLabel || "—"}
         {column.source === "lk" && value !== null ? (
           <span aria-hidden="true" className="ml-1 text-mw-automation" title="업체 마스터에서 자동으로 채워집니다">
             ⇄
@@ -242,7 +254,7 @@ export function BoardCell({
             type={inputTypeOf(column.type)}
             name="value"
             defaultValue={cellInputValue(column.type, value)}
-            placeholder="—"
+            placeholder={emptyLabel ?? "—"}
             aria-label={column.label}
             className={`${CELL_INPUT} ${numeric ? "text-right tabular-nums" : ""}`}
           />
@@ -269,6 +281,8 @@ export function BoardCell({
 export function GroupTable({
   boardId,
   canonicalNewLead = false,
+  newLeadMembers = [],
+  currentUserId,
   groupId,
   columns,
   detailColumns = [...columns],
@@ -298,6 +312,8 @@ export function GroupTable({
 }: {
   boardId: string;
   canonicalNewLead?: boolean;
+  newLeadMembers?: readonly { id: string; label: string }[];
+  currentUserId?: string;
   /** 이 그룹의 group_id. "그룹 없음" 블록은 null. */
   groupId: string | null;
   /** 오버라이드·컬럼수까지 적용된 **최종 표시 순서**. */
@@ -620,7 +636,7 @@ export function GroupTable({
                 className={`px-2 py-1 ${overRowIndex === rows.length ? "bg-mw-tint-blue" : ""}`}
               >
                 {canonicalNewLead && groupId ? (
-                  <NewLeadIntakeForm boardId={boardId} groupId={groupId} />
+                  <NewLeadIntakeForm boardId={boardId} groupId={groupId} members={newLeadMembers} currentUserId={currentUserId} />
                 ) : (
                   <AddItemForm
                     boardId={boardId}

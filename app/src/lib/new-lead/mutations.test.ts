@@ -11,9 +11,15 @@ describe("BBE-171 canonical new-lead mutations", () => {
     const rpc = vi.fn().mockResolvedValue({ data: [{ deal_id: "d1", item_id: "i1", replayed: false }], error: null });
     const row = await createCanonicalNewLead({ rpc } as never, {
       p_org_id: "o1", p_board_id: "b1", p_group_id: "g1", p_request_id: "r1", p_title: "예시 리드", p_phone: "01012345678",
+      p_business_registration_type: "법인", p_revenue_band: "미정", p_region_sigungu: "강남구",
+      p_address_detail: "테헤란로", p_acquisition_source: "검색 광고", p_assigned_to: "u1", p_collaborator_ids: ["u2"],
     });
     expect(rpc).toHaveBeenCalledOnce();
     expect(rpc).toHaveBeenCalledWith("create_new_lead", expect.objectContaining({ p_phone: "010-1234-5678" }));
+    expect(rpc).toHaveBeenCalledWith("create_new_lead", expect.objectContaining({
+      p_business_registration_type: "법인", p_region_sigungu: "강남구", p_address_detail: "테헤란로",
+      p_acquisition_source: "검색 광고", p_assigned_to: "u1", p_collaborator_ids: ["u2"],
+    }));
     expect(row.item_id).toBe("i1");
   });
 

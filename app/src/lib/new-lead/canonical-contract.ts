@@ -11,7 +11,7 @@ export const NEW_LEAD_ERROR = {
   manualCorrectionConflict: "40001",
 } as const;
 
-export type NewLeadValueSource = "manual" | "automation" | "import";
+export type NewLeadValueSource = "manual" | "system" | "automation" | "import";
 
 export type NewLeadFieldPatch = Partial<Readonly<{
   representative_name: string | null;
@@ -42,9 +42,11 @@ export type CreateNewLeadArgs = Readonly<{
   p_revenue_band?: string | null;
   p_region_sido?: string | null;
   p_region_sigungu?: string | null;
+  p_address_detail?: string | null;
   p_acquisition_source?: string | null;
   p_source_external_id?: string | null;
   p_assigned_to?: string | null;
+  p_collaborator_ids?: string[] | null;
 }>;
 
 export type CreateNewLeadRow = Readonly<{
