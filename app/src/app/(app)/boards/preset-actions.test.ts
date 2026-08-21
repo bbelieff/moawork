@@ -285,18 +285,20 @@ describe("그룹 프리셋 액션 — 값 유실 0", () => {
     addColumnReturnsCreated();
   });
 
+  const targetGroup = { id: "group-a", name: "1차 부재", color: null };
+
   it("적용은 컬럼을 지우지도 고치지도 않는다 — 더하기와 재배치뿐이다", async () => {
     const existing = [
       column("consult_status", { type: "select", options_jsonb: { options: [{ id: "a", label: "A" }] }, move_rule_jsonb: { a: "g1" } }),
       column("private_memo"),
     ];
-    mocks.getBoardDetail.mockResolvedValue({ columns: existing, groups: [] });
+    mocks.getBoardDetail.mockResolvedValue({ columns: existing, groups: [targetGroup] });
     mocks.presetGet.mockResolvedValue({
       id: "preset-a",
       name: "표준 상담",
       // 같은 key 인데 타입이 다르다 — 덮어쓰면 그 key 에 쌓인 값이 형식을 잃는다.
       columns: [presetColumn("consult_status", { type: "text" }), presetColumn("callback_at", { type: "datetime" })],
-      groups: [],
+      groups: [targetGroup],
     });
 
     const state = await applyGroupPresetAction(INITIAL_GROUP_PRESET_STATE, form(APPLY));
@@ -312,7 +314,7 @@ describe("그룹 프리셋 액션 — 값 유실 0", () => {
   it("프리셋에 없는 기존 컬럼도 배치에 남는다 — 구조가 줄지 않는다", async () => {
     mocks.getBoardDetail.mockResolvedValue({
       columns: [column("keep_me"), column("shared")],
-      groups: [],
+      groups: [targetGroup],
     });
     mocks.presetGet.mockResolvedValue({ id: "preset-a", name: "P", columns: [presetColumn("shared")], groups: [] });
 
@@ -325,7 +327,7 @@ describe("그룹 프리셋 액션 — 값 유실 0", () => {
   });
 
   it("컬럼 메타데이터 7종을 그대로 실어 추가한다", async () => {
-    mocks.getBoardDetail.mockResolvedValue({ columns: [], groups: [] });
+    mocks.getBoardDetail.mockResolvedValue({ columns: [], groups: [targetGroup] });
     mocks.presetGet.mockResolvedValue({
       id: "preset-a",
       name: "P",
@@ -396,7 +398,7 @@ describe("그룹 프리셋 액션 — 값 유실 0", () => {
   });
 
   it("부분 적용이 남으면 그 사실을 숨기지 않고 «이어서 진행» 을 안내한다", async () => {
-    mocks.getBoardDetail.mockResolvedValue({ columns: [], groups: [] });
+    mocks.getBoardDetail.mockResolvedValue({ columns: [], groups: [targetGroup] });
     mocks.presetGet.mockResolvedValue({
       id: "preset-a",
       name: "P",
@@ -421,7 +423,7 @@ describe("그룹 프리셋 액션 — 값 유실 0", () => {
   });
 
   it("아무것도 못 만들고 실패하면 «바뀐 것 없음» 으로 말한다", async () => {
-    mocks.getBoardDetail.mockResolvedValue({ columns: [], groups: [] });
+    mocks.getBoardDetail.mockResolvedValue({ columns: [], groups: [targetGroup] });
     mocks.presetGet.mockResolvedValue({ id: "preset-a", name: "P", columns: [presetColumn("a")], groups: [] });
     mocks.addColumn.mockRejectedValue(new Error("boom"));
 
@@ -432,7 +434,7 @@ describe("그룹 프리셋 액션 — 값 유실 0", () => {
   });
 
   it("되돌리기는 배치만 비우고 컬럼은 건드리지 않는다", async () => {
-    mocks.getBoardDetail.mockResolvedValue({ columns: [column("a")], groups: [] });
+    mocks.getBoardDetail.mockResolvedValue({ columns: [column("a")], groups: [targetGroup] });
 
     const state = await resetGroupPresetAction(INITIAL_GROUP_PRESET_STATE, form({ boardId: "board-a", groupKey: "group-a" }));
 
@@ -454,7 +456,7 @@ describe("그룹 프리셋 액션 — 값 유실 0", () => {
      * key 를 그대로 배치에 박으면 보드에 없는 key 가 남아 그 컬럼이 배치에서 빠진다.
      * 실행부는 addColumn 이 돌려준 key 를 쓴다.
      */
-    mocks.getBoardDetail.mockResolvedValue({ columns: [column("a")], groups: [] });
+    mocks.getBoardDetail.mockResolvedValue({ columns: [column("a")], groups: [targetGroup] });
     mocks.addColumn.mockResolvedValue(column("b_2"));
     mocks.presetGet.mockResolvedValue({ id: "preset-a", name: "P", columns: [presetColumn("b")], groups: [] });
 
@@ -463,5 +465,31 @@ describe("그룹 프리셋 액션 — 값 유실 0", () => {
     const [, , , , order] = mocks.setGroupColumnOrder.mock.calls[0];
     expect(order).toEqual(["b_2", "a"]);
     expect(order).not.toContain("b");
+  });
+
+  it("삭제된 대상은 보드 공용 컬럼을 만들기 전에 거부한다", async () => {
+    mocks.getBoardDetail.mockResolvedValue({ columns: [], groups: [] });
+    mocks.presetGet.mockResolvedValue({ id: "preset-a", name: "P", columns: [presetColumn("a")], groups: [] });
+
+    const state = await applyGroupPresetAction(INITIAL_GROUP_PRESET_STATE, form(APPLY));
+
+    expect(state.ok).toBe(false);
+    expect(state.message).toContain("아이템을 찾을 수 없습니다");
+    expect(mocks.addColumn).not.toHaveBeenCalled();
+    expect(mocks.setGroupColumnOrder).not.toHaveBeenCalled();
+  });
+
+  it("컬럼 추가 뒤 배치 저장이 실패하면 부분 변경을 숨기지 않고 값을 지우지 않는다", async () => {
+    mocks.getBoardDetail.mockResolvedValue({ columns: [], groups: [targetGroup] });
+    mocks.presetGet.mockResolvedValue({ id: "preset-a", name: "P", columns: [presetColumn("a")], groups: [] });
+    mocks.setGroupColumnOrder.mockRejectedValue(new Error("layout unavailable"));
+
+    const state = await applyGroupPresetAction(INITIAL_GROUP_PRESET_STATE, form(APPLY));
+
+    expect(state.ok).toBe(false);
+    expect(state.message).toContain("1개는 보드에 추가");
+    expect(state.message).toContain("배치를 저장하지 못했습니다");
+    expect(mocks.deleteColumn).not.toHaveBeenCalled();
+    expect(mocks.updateColumn).not.toHaveBeenCalled();
   });
 });

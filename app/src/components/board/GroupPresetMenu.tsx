@@ -25,13 +25,16 @@
  * 공짜로 따라온다. 375px 에서는 화면 밖으로 나가지 않도록 오른쪽에 붙여 폭을 제한한다.
  */
 
-import { useActionState, useId, useMemo, useRef, useState } from "react";
+import { useActionState, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { BoardColumn } from "@/lib/boards/types";
 import type { SectionPresetRecord } from "@/lib/presets/section-presets";
 import { previewGroupPresetApply } from "@/lib/presets/group-preset";
 import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
 import {
   loadGroupPresetLibraryAction,
+  applyGroupPresetAction,
+  resetGroupPresetAction,
   saveGroupPresetAction,
   type GroupPresetLibraryState,
 } from "@/app/(app)/boards/preset-actions";
@@ -50,6 +53,7 @@ interface GroupPresetMenuProps {
   /** 이 그룹의 배치 오버라이드(현재 저장분). */
   order: readonly string[] | undefined;
   canEditPresets: boolean;
+  canManageColumns: boolean;
 }
 
 export function createPresetLibraryLoader(
@@ -67,7 +71,9 @@ export function GroupPresetMenu({
   columns,
   order,
   canEditPresets,
+  canManageColumns,
 }: GroupPresetMenuProps) {
+  const router = useRouter();
   const panelId = useId();
   // ③ 폼 수명 동안 고정되는 요청 id — 재제출이 두 번째 프리셋을 만들지 않게 한다.
   const [requestId] = useState(() => crypto.randomUUID());
@@ -78,6 +84,8 @@ export function GroupPresetMenu({
   const loader = useRef(createPresetLibraryLoader(() => loadGroupPresetLibraryAction(boardId)));
 
   const [saveState, save, saving] = useActionState(saveGroupPresetAction, INITIAL_GROUP_PRESET_STATE);
+  const [applyState, apply, applying] = useActionState(applyGroupPresetAction, INITIAL_GROUP_PRESET_STATE);
+  const [resetState, reset, resetting] = useActionState(resetGroupPresetAction, INITIAL_GROUP_PRESET_STATE);
 
   const selected = presets.find((preset) => preset.id === selectedPresetId);
   // ① 적용 전 미리보기 — 서버가 실행할 것과 같은 계산.
@@ -86,12 +94,38 @@ export function GroupPresetMenu({
     [selected, columns, order],
   );
 
+  useEffect(() => {
+    if ((applyState.ok && applyState.message) || (resetState.ok && resetState.message)) router.refresh();
+  }, [applyState, resetState, router]);
+
+  useEffect(() => {
+    if (!saveState.ok || !saveState.message) return;
+    let active = true;
+    const refreshed = createPresetLibraryLoader(() => loadGroupPresetLibraryAction(boardId));
+    loader.current = refreshed;
+    void refreshed.open().then((result) => {
+      if (!active) return;
+      setSelectedPresetId("");
+      setPresets(result.presets);
+      setLibraryMessage(result.message);
+      setLibraryState(result.ok ? "ready" : "error");
+    });
+    router.refresh();
+    return () => { active = false; };
+  }, [saveState, boardId, router]);
+
 
   return (
     <details
       className="relative"
       // 메뉴 안의 클릭이 그룹 머리말(<summary>)의 접기 토글로 새어 나가지 않게 막는다.
       onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        event.currentTarget.open = false;
+        event.currentTarget.querySelector("summary")?.focus();
+      }}
       onToggle={async (event) => {
         if (!event.currentTarget.open || !canEditPresets || libraryState !== "idle") return;
         setLibraryState("loading");
@@ -203,8 +237,60 @@ export function GroupPresetMenu({
                   names={preview.kept.map((column) => column.label)}
                 />
                 <p className="text-mw-sub">컬럼과 입력된 값은 하나도 지워지지 않습니다.</p>
-
+                {preview.added.length > 0 && (
+                  <p role="note" className="text-mw-sub">
+                    새 컬럼은 보드 공용이라 다른 아이템에도 나타납니다. 다른 아이템의 순서·설정·값은 바뀌지 않습니다.
+                  </p>
+                )}
+                {canManageColumns && savable ? (
+                  <form action={apply} className="mt-1 flex flex-col gap-1.5 border-t border-mw-line pt-2">
+                    <input type="hidden" name="boardId" value={boardId} />
+                    <input type="hidden" name="groupKey" value={groupKey} />
+                    <input type="hidden" name="presetId" value={selected.id} />
+                    <button
+                      type="submit"
+                      disabled={applying || preview.noop}
+                      className="rounded-lg bg-mw-primary px-2.5 py-1.5 font-semibold text-white disabled:opacity-50"
+                    >
+                      {applying ? "적용 중…" : preview.noop ? "이미 같은 배치입니다" : "이 아이템에 적용"}
+                    </button>
+                    <ActionMessage state={applyState} />
+                  </form>
+                ) : !savable ? (
+                  <p role="note" className="text-mw-sub">
+                    «그룹 없음» 영역은 저장 대상 아이템이 없어 프리셋을 적용할 수 없습니다.
+                  </p>
+                ) : (
+                  <p role="note" className="text-mw-sub">
+                    적용하려면 «컬럼 관리» 권한이 필요합니다. 회사 관리자에게 요청해 주세요.
+                  </p>
+                )}
               </div>
+            )}
+          </div>
+        )}
+
+        {order && order.length > 0 && (
+          <div className="flex flex-col gap-1.5 border-t border-mw-line pt-3">
+            <p className="font-medium text-mw-body">현재 이 아이템은 프리셋 배치에서 변경됨</p>
+            <p className="text-mw-sub">컬럼과 입력값은 남기고 보드의 기본 컬럼 순서로 돌아갑니다.</p>
+            {canManageColumns ? (
+              <form action={reset} className="flex flex-col gap-1.5">
+                <input type="hidden" name="boardId" value={boardId} />
+                <input type="hidden" name="groupKey" value={groupKey} />
+                <button
+                  type="submit"
+                  disabled={resetting}
+                  className="rounded-lg border border-mw-line px-2.5 py-1.5 font-semibold text-mw-body disabled:opacity-50"
+                >
+                  {resetting ? "되돌리는 중…" : "기본으로 되돌리기"}
+                </button>
+                <ActionMessage state={resetState} />
+              </form>
+            ) : (
+              <p role="note" className="text-mw-sub">
+                되돌리려면 «컬럼 관리» 권한이 필요합니다. 회사 관리자에게 요청해 주세요.
+              </p>
             )}
           </div>
         )}
