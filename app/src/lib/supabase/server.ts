@@ -4,11 +4,16 @@ import { getSupabaseEnv } from "./env";
 
 // 서버 컴포넌트 / 라우트 핸들러 / 서버 액션용 Supabase 클라이언트.
 // Next 16 에서 cookies() 는 비동기이므로 await 후 어댑터에 연결한다.
-export async function createClient() {
+export async function createClient(options: { noStore?: boolean } = {}) {
   const cookieStore = await cookies();
   const { url, anonKey } = getSupabaseEnv();
 
   return createServerClient(url, anonKey, {
+    global: options.noStore ? {
+      fetch(input, init) {
+        return fetch(input, { ...init, cache: "no-store" });
+      },
+    } : undefined,
     cookies: {
       getAll() {
         return cookieStore.getAll();

@@ -106,6 +106,7 @@ describe("BBE-139 root entry guard", () => {
 
     expect(mocks.getSession).toHaveBeenCalledOnce();
     expect(mocks.loadWorkspaceRoutingSnapshot).toHaveBeenCalledOnce();
+    expect(mocks.createClient).toHaveBeenCalledWith({ noStore: true });
     expect(mocks.ensureApprovedWorkspaceOnEntry).toHaveBeenCalledWith(
       { requestScoped: true },
       "test-company",

@@ -180,7 +180,7 @@ export class LocalBoardsRepo {
       source: input.source ?? "in",
       rightPinned: input.rightPinned ?? false,
       options_jsonb: input.options ? { options: input.options } : null,
-      sort_order: existing.length,
+      sort_order: input.sortOrder ?? existing.length,
       width: input.width ?? null,
       move_rule_jsonb: input.moveRule ?? null,
       is_readonly: input.readOnly ?? false,

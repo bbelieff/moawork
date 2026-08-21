@@ -84,6 +84,10 @@ function findExistingColumn(
   return columns.find((column) => column.key === definition.key);
 }
 
+function nextColumnSortOrder(columns: readonly { sort_order: number }[]): number {
+  return columns.reduce((next, column) => Math.max(next, column.sort_order + 1), 0);
+}
+
 export type DefaultTabDrift = {
   /** 보드 자체가 없다 — 통째로 만들어야 한다. */
   boardMissing: boolean;
@@ -194,6 +198,7 @@ export async function ensureDefaultTabAdditive(
   }
 
   const columns = await store.listColumns(ctx, board.id);
+  let nextSortOrder = nextColumnSortOrder(columns);
   for (const definition of tab.columns) {
     // 위와 같은 이유로 판정과 같은 눈을 쓴다.
     if (findExistingColumn(definition, columns)) continue;
@@ -207,8 +212,10 @@ export async function ensureDefaultTabAdditive(
       rightPinned: definition.rightPinned ?? false,
       readOnly: definition.readOnly ?? false,
       moveRule: resolveMoveRule(definition, groupIds, tab, assignees),
+      sortOrder: nextSortOrder,
     });
     columns.push(column);
+    nextSortOrder += 1;
   }
 
   return {
@@ -250,6 +257,7 @@ export async function ensureDefaultTab(
     }
     const groupIds = await reconcileAssigneeGroups(ctx, store, existing.id, tab, assignees);
     const columns = await store.listColumns(ctx, existing.id);
+    let nextSortOrder = nextColumnSortOrder(columns);
     for (const definition of tab.columns) {
       const column = columns.find((candidate) => candidate.key === definition.key);
       if (!column) {
@@ -263,7 +271,9 @@ export async function ensureDefaultTab(
           rightPinned: definition.rightPinned ?? false,
           readOnly: definition.readOnly ?? false,
           moveRule: resolveMoveRule(definition, groupIds, tab, assignees),
+          sortOrder: nextSortOrder,
         });
+        nextSortOrder += 1;
       } else if (definition.assigneeMove) {
         const options = assigneeOptions(definition, assignees);
         const moveRule = resolveMoveRule(definition, groupIds, tab, assignees);
@@ -303,6 +313,7 @@ export async function ensureDefaultTab(
   }
 
   const columnKeys: string[] = [];
+  let nextSortOrder = 0;
   for (const column of tab.columns) {
     const input: NewColumn = {
       key: column.key,
@@ -314,8 +325,10 @@ export async function ensureDefaultTab(
       rightPinned: column.rightPinned ?? false,
       readOnly: column.readOnly ?? false,
       moveRule: resolveMoveRule(column, groupIds, tab, assignees),
+      sortOrder: nextSortOrder,
     };
     columnKeys.push((await store.createColumn(ctx, board.id, input)).key);
+    nextSortOrder += 1;
   }
 
   return { tabKey: tab.key, boardId: board.id, created: true, groupIds, columnKeys };
