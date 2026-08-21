@@ -14,7 +14,7 @@ import type { PackBoard } from "./types";
 const GREY = "#c4c4c4";
 
 /** 먼데이 `진행 상품` 드롭다운 실측 59종. 순서는 원본 id 오름차순. */
-const PRODUCT_LABELS = [
+export const POLICYFUND_PRODUCT_LABELS = [
   "개발기술사업화", "제조현장스마트화", "Net-Zero유망기업", "스케일업 금융",
   "내수기업 수출기업화", "수출기업글로벌화", "긴급경영안정", "사업전환",
   "매출채권팩토링", "동반성장네트워크론", "창업기반지원", "혁신성장지원",
@@ -103,7 +103,7 @@ export const POLICYFUND_WORK_BOARD: PackBoard = {
       label: "진행 상품",
       type: "multiselect",
       width: 180,
-      options: PRODUCT_LABELS.map((label, order) => ({ id: label, label, order })),
+      options: POLICYFUND_PRODUCT_LABELS.map((label, order) => ({ id: label, label, order })),
     },
     {
       key: "color",

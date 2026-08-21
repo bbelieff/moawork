@@ -1,35 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { CHECKLIST_PRODUCT_CATEGORY, CHECKLIST_PRODUCT_LABELS } from "./products";
 
-// dump 원문(2026-08-11 실측, node docs/design/dump-mockup.mjs work):
-//   진행 상품 : 혁신성장 일반 · 혁신성장 혁신형 · 소공인 대리대출 · 기보 혁신리딩 ·
-//              신보 유동화 · 경기신보 특례 · 벤처기업 인증
 describe("CHECKLIST_PRODUCT_LABELS", () => {
-  it("v6 목업 dump 출력과 순서·개수가 정확히 같다(7종)", () => {
-    expect(CHECKLIST_PRODUCT_LABELS).toEqual([
-      "혁신성장 일반",
-      "혁신성장 혁신형",
-      "소공인 대리대출",
-      "기보 혁신리딩",
-      "신보 유동화",
-      "경기신보 특례",
-      "벤처기업 인증",
-    ]);
-  });
-
-  it("lib/policyfund/presets 의 구세대 59종과 다르다(섞이지 않았다)", () => {
-    expect(CHECKLIST_PRODUCT_LABELS.length).toBe(7);
-    expect(CHECKLIST_PRODUCT_LABELS.length).not.toBe(59);
+  it("BBE-261 결정에 따라 앱 업무관리의 59종 정본을 그대로 쓴다", () => {
+    expect(CHECKLIST_PRODUCT_LABELS).toHaveLength(59);
+    expect(CHECKLIST_PRODUCT_LABELS[0]).toBe("개발기술사업화");
+    expect(CHECKLIST_PRODUCT_LABELS.at(-1)).toBe("일시적경영애로");
   });
 });
 
 describe("CHECKLIST_PRODUCT_CATEGORY", () => {
   it("ChecklistPanel/ProductChecklistAdmin 이 바로 쓸 수 있는 OptionCategory 형태다", () => {
     expect(CHECKLIST_PRODUCT_CATEGORY.id).toBe("product");
-    expect(CHECKLIST_PRODUCT_CATEGORY.options).toHaveLength(7);
+    expect(CHECKLIST_PRODUCT_CATEGORY.options).toHaveLength(59);
     expect(CHECKLIST_PRODUCT_CATEGORY.options[0]).toEqual({
-      id: "혁신성장 일반",
-      label: "혁신성장 일반",
+      id: "개발기술사업화",
+      label: "개발기술사업화",
       order: 0,
     });
   });

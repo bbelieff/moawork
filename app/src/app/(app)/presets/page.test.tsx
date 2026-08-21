@@ -27,4 +27,11 @@ describe("BBE-158 프리셋 라이브러리", () => {
     expect(actions).not.toContain("LocalBoardsRepo");
     expect(page).toContain("new SectionPresetRepo(boardsRepo)");
   });
+
+  it("BBE-261 서류 탭이 실제 관리자와 조직별 저장 프리셋을 소비한다", () => {
+    expect(page).toContain('href="/presets?view=documents"');
+    expect(page).toContain("ProductChecklistAdmin");
+    expect(page).toContain("checklistService.listPresets()");
+    expect(page).toContain("CHECKLIST_PRODUCT_LABELS");
+  });
 });

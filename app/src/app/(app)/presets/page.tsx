@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { SectionPresetRepo, type SectionPresetBoardsRepo } from "@/lib/presets/section-presets";
+import { ChecklistService, CHECKLIST_PRODUCT_LABELS, SupabaseChecklistStore } from "@/lib/policyfund/checklist";
+import { ProductChecklistAdmin } from "@/components/policyfund/ProductChecklistAdmin";
 import {
   applySectionPresetAction,
   createTabAction,
@@ -18,7 +20,7 @@ import {
 export default async function PresetsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ as?: string }>;
+  searchParams: Promise<{ as?: string; view?: string; product?: string }>;
 }) {
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
@@ -50,6 +52,14 @@ export default async function PresetsPage({
   ]);
   const canManageTabs = tabPermission.kind === "allowed";
   const canEditPresets = presetPermission.kind === "allowed";
+  const view = sp.view === "documents" ? "documents" : "structure";
+  const checklistService = process.env.NODE_ENV !== "production" && canUseLocalSeedFallback()
+    ? null
+    : new ChecklistService(ctx.org.id, new SupabaseChecklistStore(await createClient()));
+  const documentPresets = checklistService ? await checklistService.listPresets() : [];
+  const productLabels = [...new Set([...CHECKLIST_PRODUCT_LABELS, ...documentPresets.map((preset) => preset.productId)])];
+  const selectedProduct = productLabels.includes(sp.product ?? "") ? sp.product! : productLabels[0];
+  const selectedPreset = documentPresets.find((preset) => preset.productId === selectedProduct);
 
   return (
     <main className="flex flex-col gap-6" data-testid="preset-library">
@@ -66,6 +76,12 @@ export default async function PresetsPage({
         </span>
       </header>
 
+      <nav aria-label="프리셋 종류" className="flex gap-2 border-b border-mw-line">
+        <Link href="/presets" aria-current={view === "structure" ? "page" : undefined} className="px-3 py-2 text-sm font-semibold text-mw-fg">구조</Link>
+        <Link href="/presets?view=documents" aria-current={view === "documents" ? "page" : undefined} className="px-3 py-2 text-sm font-semibold text-mw-fg">서류</Link>
+      </nav>
+
+      {view === "structure" ? <>
       <section className="rounded-xl border border-mw-line bg-mw-card p-4" aria-labelledby="tabs-heading">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -159,6 +175,21 @@ export default async function PresetsPage({
           </ul>
         )}
       </section>
+      </> : (
+        <section id="documents" className="rounded-xl border border-mw-line bg-mw-card p-4" aria-labelledby="documents-heading">
+          <h2 id="documents-heading" className="font-semibold text-mw-fg">상품별 기본 서류</h2>
+          <p className="mt-1 text-sm text-mw-sub">진행 상품을 고르거나 직접 입력해 회사 공용 체크리스트를 관리합니다.</p>
+          {checklistService && selectedProduct ? <>
+            <form method="get" className="my-4 flex gap-2">
+              <input type="hidden" name="view" value="documents" />
+              <input name="product" defaultValue={selectedProduct} list="document-products" aria-label="진행 상품" className="min-w-0 flex-1 rounded-lg border border-mw-line bg-mw-bg px-3 py-2 text-sm" />
+              <datalist id="document-products">{productLabels.map((label) => <option key={label} value={label} />)}</datalist>
+              <button className="rounded-lg border border-mw-line px-3 py-2 text-sm">불러오기</button>
+            </form>
+            {canEditPresets ? <ProductChecklistAdmin key={selectedProduct} productId={selectedProduct} productLabel={selectedProduct} initialItems={selectedPreset?.items.map((item) => item.label) ?? []} /> : <p className="text-sm text-mw-sub">서류 프리셋 편집 권한이 없습니다.</p>}
+          </> : <p role="alert" className="mt-4 text-sm text-mw-error">서류 프리셋 저장소를 사용할 수 없습니다.</p>}
+        </section>
+      )}
     </main>
   );
 }

@@ -14,17 +14,10 @@
  */
 
 import type { OptionCategory, PresetOption } from "@/lib/policyfund";
+import { POLICYFUND_PRODUCT_LABELS } from "@/lib/migration/monday-mapping/policyfund-work";
 
 /** v6 목업 "계약업체 실무" 탭 "진행 상품" 선택지 원문 순서 그대로. */
-export const CHECKLIST_PRODUCT_LABELS: readonly string[] = [
-  "혁신성장 일반",
-  "혁신성장 혁신형",
-  "소공인 대리대출",
-  "기보 혁신리딩",
-  "신보 유동화",
-  "경기신보 특례",
-  "벤처기업 인증",
-];
+export const CHECKLIST_PRODUCT_LABELS: readonly string[] = POLICYFUND_PRODUCT_LABELS;
 
 const OPTIONS: PresetOption[] = CHECKLIST_PRODUCT_LABELS.map((label, order) => ({
   id: label,
@@ -38,3 +31,8 @@ export const CHECKLIST_PRODUCT_CATEGORY: OptionCategory = {
   label: "진행 상품",
   options: OPTIONS,
 };
+
+export function checklistProductCategory(customLabels: readonly string[]): OptionCategory {
+  const labels = [...new Set([...CHECKLIST_PRODUCT_LABELS, ...customLabels.map((label) => label.trim()).filter(Boolean)])];
+  return { ...CHECKLIST_PRODUCT_CATEGORY, options: labels.map((label, order) => ({ id: label, label, order })) };
+}

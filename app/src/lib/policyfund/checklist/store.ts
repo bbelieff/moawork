@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DealChecklistState, ProductChecklistPreset } from "./types";
 
 export interface ChecklistStore {
+  listPresets(orgId: string): Promise<ProductChecklistPreset[]>;
   getPreset(orgId: string, productId: string): Promise<ProductChecklistPreset | null>;
   savePreset(orgId: string, preset: ProductChecklistPreset): Promise<void>;
   getDealChecklist(orgId: string, dealId: string): Promise<DealChecklistState | null>;
@@ -10,6 +11,12 @@ export interface ChecklistStore {
 
 export class SupabaseChecklistStore implements ChecklistStore {
   constructor(private readonly client: SupabaseClient) {}
+
+  async listPresets(orgId: string): Promise<ProductChecklistPreset[]> {
+    const { data, error } = await this.client.from("policyfund_checklist_presets").select("product_id,items_jsonb,updated_at").eq("org_id", orgId).order("product_id");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((row) => ({ productId: row.product_id, items: row.items_jsonb, updatedAt: row.updated_at }));
+  }
 
   async getPreset(orgId: string, productId: string): Promise<ProductChecklistPreset | null> {
     const { data, error } = await this.client.from("policyfund_checklist_presets").select("product_id,items_jsonb,updated_at").eq("org_id", orgId).eq("product_id", productId).maybeSingle();

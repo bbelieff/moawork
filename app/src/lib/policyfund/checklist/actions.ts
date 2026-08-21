@@ -18,6 +18,7 @@ import { getSession } from "@/lib/auth/session";
 import { ChecklistService } from "./service";
 import { SupabaseChecklistStore } from "./store";
 import { createClient } from "@/lib/supabase/server";
+import { loadPermGuard } from "@/lib/perm/guard";
 import type { DealChecklistState, ProductChecklistPreset } from "./types";
 
 function str(fd: FormData, key: string): string {
@@ -59,7 +60,10 @@ export async function saveChecklistAsPresetAction(
 
 /** 관리자 화면 — 상품 하나의 회사 공용 기본 체크리스트를 통째로 재설정. */
 export async function setProductPresetAction(formData: FormData): Promise<void> {
-  const svc = await service();
+  const ctx = await getSession();
+  const permission = await loadPermGuard(ctx.org.id, "structure.preset_edit");
+  if (permission.kind !== "allowed") throw new Error("서류 프리셋을 바꿀 권한이 없어요.");
+  const svc = new ChecklistService(ctx.org.id, new SupabaseChecklistStore(await createClient()));
   const productId = str(formData, "productId");
   const labels = formData
     .getAll("label")
