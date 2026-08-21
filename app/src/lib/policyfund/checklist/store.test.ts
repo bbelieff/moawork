@@ -9,6 +9,7 @@ function client(rows: Record<string, unknown> = {}) {
     const chain: any = {
       select: () => chain,
       eq: (key: string, value: unknown) => { calls.push([table, key, value]); return chain; },
+      order: async () => ({ data: rows[table] ?? [], error: null }),
       maybeSingle: async () => ({ data: rows[table] ?? null, error: null }),
       upsert: async (value: unknown) => { calls.push([table, "upsert", value]); return { error: null }; },
     };

@@ -39,7 +39,7 @@ import {
   saveChecklistAsPresetAction,
   toggleChecklistItemAction,
 } from "@/lib/policyfund/checklist/actions";
-import { OptionSelect } from "./OptionSelect";
+import { ProductCombobox } from "./ProductCombobox";
 
 export interface ChecklistPanelProps {
   dealId: string;
@@ -146,11 +146,10 @@ export function ChecklistPanel({
       {productCategory && !readOnly && (
         <div className={`flex items-end gap-2 ${productPending ? "opacity-60" : ""}`}>
           <div className="flex-1">
-            <OptionSelect
-              category={productCategory}
+            <ProductCombobox
+              labels={productCategory.options.map((option) => option.label)}
               value={state.productId ?? undefined}
-              onChange={selectProduct}
-              placeholder="진행 상품 선택"
+              onSelect={selectProduct}
               disabled={productPending}
             />
           </div>

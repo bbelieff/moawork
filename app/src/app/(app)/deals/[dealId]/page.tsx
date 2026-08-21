@@ -18,7 +18,7 @@ import { listOrgMemberOptions, toNameMap } from "@/lib/deal/members";
 import { mergeTimeline } from "@/lib/deal/timeline";
 import type { Stage } from "@/lib/types";
 import { ChecklistPanel } from "@/components/policyfund/ChecklistPanel";
-import { CHECKLIST_PRODUCT_CATEGORY, ChecklistService, SupabaseChecklistStore } from "@/lib/policyfund/checklist";
+import { checklistProductCategory, ChecklistService, SupabaseChecklistStore } from "@/lib/policyfund/checklist";
 import { createClient } from "@/lib/supabase/server";
 import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { EsignPanel } from "@/components/deal/EsignPanel";
@@ -98,9 +98,10 @@ export default async function DealDetailPage({
   const supabase = canUseLocalSeedFallback() ? null : await createClient();
   // 체크리스트도 전자계약과 «같은 규칙» 이다 — 못 불러온 것을 «항목이 없는 것» 으로 보여주지 않는다.
   //   빈 배열로 떨어뜨리면 촬영하는 사람이 그것을 진짜 빈 상태로 오해한다(§3 거짓 빈 상태 금지).
-  const checklist = supabase
-    ? await new ChecklistService(ctx.org.id, new SupabaseChecklistStore(supabase)).getDealChecklist(deal.id)
-    : null;
+  const checklistService = supabase ? new ChecklistService(ctx.org.id, new SupabaseChecklistStore(supabase)) : null;
+  const [checklist, checklistPresets] = checklistService
+    ? await Promise.all([checklistService.getDealChecklist(deal.id), checklistService.listPresets()])
+    : [null, []];
   const esignRow = supabase
     ? await supabase.from("esign_requests").select("status")
         .eq("org_id", ctx.org.id).eq("deal_id", deal.id).maybeSingle()
@@ -206,7 +207,7 @@ export default async function DealDetailPage({
           <ChecklistPanel
             dealId={deal.id}
             initialState={checklist}
-            productCategory={CHECKLIST_PRODUCT_CATEGORY}
+            productCategory={checklistProductCategory(checklistPresets.map((preset) => preset.productId))}
             readOnly={!canEdit}
           />
         ) : (
