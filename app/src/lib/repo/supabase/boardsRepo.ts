@@ -99,11 +99,21 @@ export class SupabaseBoardsRepo implements BoardsRepo {
    * 버린다. 남은 값은 잠들어 있다가 같은 key 로 컬럼이 돌아오면 다시 붙는다 — 조인이 컬럼 id 가
    * 아니라 key 로 일어나기 때문이다.
    */
-  async deleteColumn(ctx: Ctx, id: string): Promise<boolean> {
-    const q = await this.client
+  async deleteColumn(ctx: Ctx, id: string): Promise<boolean>;
+  async deleteColumn(ctx: Ctx, boardId: string, id: string): Promise<boolean>;
+  async deleteColumn(ctx: Ctx, boardIdOrId: string, columnId?: string): Promise<boolean> {
+    const id = columnId ?? boardIdOrId;
+    const boardId = columnId === undefined ? undefined : boardIdOrId;
+    if (boardId !== undefined) {
+      const board = await this.getBoard(ctx, boardId);
+      if (!board || board.is_system) return false;
+    }
+    let query = this.client
       .from("board_columns")
       .delete()
-      .eq("org_id", ctx.org.id)
+      .eq("org_id", ctx.org.id);
+    if (boardId !== undefined) query = query.eq("board_id", boardId);
+    const q = await query
       .eq("id", id)
       .select("id");
     if (q.error) throw new Error(q.error.message);

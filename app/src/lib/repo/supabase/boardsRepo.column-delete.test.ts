@@ -43,6 +43,24 @@ function clientReturning(data: unknown) {
   return { calls, from, client: { from } };
 }
 
+function guardedClient(board: unknown, deleted: unknown) {
+  const calls: Array<[string, string, ...unknown[]]> = [];
+  const from = vi.fn((table: string) => {
+    const result = { data: table === "boards" ? board : deleted, error: null };
+    const builder = new Proxy({} as Record<string, unknown>, {
+      get(_target, property) {
+        if (property === "then") return (resolve: (value: typeof result) => unknown) => resolve(result);
+        return (...args: unknown[]) => {
+          calls.push([table, String(property), ...args]);
+          return builder;
+        };
+      },
+    });
+    return builder;
+  });
+  return { calls, from, client: { from } };
+}
+
 describe("BBE-177 SupabaseBoardsRepo 컬럼 삭제", () => {
   it("board_columns 말고는 어떤 표도 건드리지 않는다", async () => {
     const c = clientReturning([{ id: "col-a" }]);
@@ -69,5 +87,43 @@ describe("BBE-177 SupabaseBoardsRepo 컬럼 삭제", () => {
 
     const one = clientReturning([{ id: "col-a" }]);
     await expect(new SupabaseBoardsRepo(one.client as never).deleteColumn(ctx, "col-a")).resolves.toBe(true);
+  });
+
+  it("org+board+column 세 조건이 맞을 때만 삭제 query를 만든다", async () => {
+    const c = guardedClient({ id: "board-a", org_id: "org-a", is_system: false }, [{ id: "col-a" }]);
+
+    await expect(new SupabaseBoardsRepo(c.client as never).deleteColumn(ctx, "board-a", "col-a")).resolves.toBe(true);
+
+    expect(c.calls).toContainEqual(["boards", "eq", "org_id", "org-a"]);
+    expect(c.calls).toContainEqual(["boards", "eq", "id", "board-a"]);
+    expect(c.calls).toContainEqual(["board_columns", "eq", "org_id", "org-a"]);
+    expect(c.calls).toContainEqual(["board_columns", "eq", "board_id", "board-a"]);
+    expect(c.calls).toContainEqual(["board_columns", "eq", "id", "col-a"]);
+  });
+
+  it("board A에 board B의 column id를 줘서 0행이면 false이고 추가 mutation이 없다", async () => {
+    const c = guardedClient({ id: "board-a", org_id: "org-a", is_system: false }, []);
+
+    await expect(new SupabaseBoardsRepo(c.client as never).deleteColumn(ctx, "board-a", "column-b")).resolves.toBe(false);
+
+    expect(c.from.mock.calls.map(([table]) => table)).toEqual(["boards", "board_columns"]);
+    expect(c.calls.filter(([table, name]) => table === "board_columns" && name === "delete")).toHaveLength(1);
+  });
+
+  it("시스템 보드는 column delete를 발행하지 않고 false를 돌려준다", async () => {
+    const c = guardedClient({ id: "board-system", org_id: "org-a", is_system: true }, [{ id: "col-a" }]);
+
+    await expect(new SupabaseBoardsRepo(c.client as never).deleteColumn(ctx, "board-system", "col-a")).resolves.toBe(false);
+
+    expect(c.from.mock.calls.map(([table]) => table)).toEqual(["boards"]);
+    expect(c.calls.some(([table, name]) => table === "board_columns" && name === "delete")).toBe(false);
+  });
+
+  it("없는 보드는 column delete를 발행하지 않고 false를 돌려준다", async () => {
+    const c = guardedClient(null, [{ id: "col-a" }]);
+
+    await expect(new SupabaseBoardsRepo(c.client as never).deleteColumn(ctx, "board-missing", "col-a")).resolves.toBe(false);
+
+    expect(c.from.mock.calls.map(([table]) => table)).toEqual(["boards"]);
   });
 });
