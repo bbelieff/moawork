@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=120_bbe273_new_lead_full_intake predecessor=119_bbe272_new_lead_default_stage digest=3f5d6fb3534a779ff0cb9b55239790945f943555e71e5fbed6f16d3a5a74a533 foundation=false
+-- moa-migration-guard: logical_key=120_bbe273_new_lead_full_intake predecessor=119_bbe272_new_lead_default_stage digest=89d371eb60436ab467d366efafda4b9ce43b2cf0b7f5047cf51aef9879afa781 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '120_bbe273_new_lead_full_intake',
   p_file_name => '120_bbe273_new_lead_full_intake.sql',
-  p_file_digest => '3f5d6fb3534a779ff0cb9b55239790945f943555e71e5fbed6f16d3a5a74a533',
+  p_file_digest => '89d371eb60436ab467d366efafda4b9ce43b2cf0b7f5047cf51aef9879afa781',
   p_expected_predecessor => '119_bbe272_new_lead_default_stage',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -53,6 +53,30 @@ begin
 exception when invalid_regular_expression then return false;
 end $$;
 
+create or replace function public.board_column_value_visible(p_org_id uuid,p_item_id uuid,p_column_key text)
+returns boolean language sql stable security definer set search_path=public,pg_temp as $$
+  select exists(
+    select 1 from public.items i join public.board_columns c
+      on c.org_id=i.org_id and c.board_id=i.board_id and c.key=p_column_key
+    join public.org_members m on m.org_id=i.org_id and m.user_id=auth.uid() and m.status='active'
+    join public.orgs o on o.id=i.org_id and o.status='active'
+    where i.org_id=p_org_id and i.id=p_item_id and c.archived_at is null
+      and public.effective_permission(p_org_id,'work.view_tabs')
+      and public.board_column_policy_allows(p_org_id,c.view_policy_jsonb)
+      and (m.role in ('owner','admin') or m.scope='all' or i.assigned_to=auth.uid())
+  ) or (
+    p_column_key='address_detail' and exists(
+      select 1 from public.items i join public.boards b on b.id=i.board_id and b.org_id=i.org_id
+      join public.org_members m on m.org_id=i.org_id and m.user_id=auth.uid() and m.status='active'
+      join public.orgs o on o.id=i.org_id and o.status='active'
+      where i.org_id=p_org_id and i.id=p_item_id and i.deal_id is not null and i.deleted_at is null
+        and b.source='core.default-tab/new-lead'
+        and public.effective_permission(p_org_id,'work.view_tabs')
+        and (m.role in ('owner','admin') or m.scope='all' or i.assigned_to=auth.uid())
+    )
+  )
+$$;
+
 -- The canonical write guard must name the keys that the two live 22-column
 -- board variants actually use. Keep legacy aliases guarded as well.
 create or replace function public.guard_new_lead_projection_write()
@@ -60,9 +84,13 @@ returns trigger language plpgsql security invoker set search_path='' as $$
 declare v_item uuid:=coalesce(new.item_id,old.item_id); v_key text:=coalesce(new.column_key,old.column_key);
 begin
   if v_key in (
+    'owner','collaborators','applied_on',
     'rep_name','phone','email','biz_reg_type','industry','revenue_band','sido','sigungu','ad_name',
     'business_registration_type','industry_code','region_sido','region_sigungu','acquisition_source','source_external_id','address_detail'
-  ) and exists(select 1 from public.items i where i.id=v_item and i.deal_id is not null)
+  ) and exists(
+    select 1 from public.items i join public.boards b on b.id=i.board_id and b.org_id=i.org_id
+     where i.id=v_item and i.deal_id is not null and b.source='core.default-tab/new-lead'
+  )
     and current_setting('moawork.new_lead_projection_write',true) is distinct from 'on' then
     raise exception 'canonical new lead fields require update_new_lead_fields' using errcode='42501';
   end if;

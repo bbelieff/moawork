@@ -50,7 +50,8 @@ describe("BBE-273 atomic full new-lead intake", () => {
         select exists(select 1 from public.org_members where org_id=p_org and user_id=auth.uid() and status='active')$$;
       create table boards(id uuid primary key,org_id uuid,source text);
       create table board_groups(id uuid primary key,org_id uuid,board_id uuid);
-      create table board_columns(id uuid primary key default gen_random_uuid(),org_id uuid,board_id uuid,key text,archived_at timestamptz,is_required boolean not null default false,validation_jsonb jsonb not null default '{}'::jsonb);
+      create function board_column_policy_allows(uuid,jsonb) returns boolean language sql stable as $$select true$$;
+      create table board_columns(id uuid primary key default gen_random_uuid(),org_id uuid,board_id uuid,key text,archived_at timestamptz,is_required boolean not null default false,validation_jsonb jsonb not null default '{}'::jsonb,view_policy_jsonb jsonb not null default '{}'::jsonb);
       create table pipelines(id uuid primary key default gen_random_uuid(),org_id uuid,name text);
       create table stages(id uuid primary key default gen_random_uuid(),pipeline_id uuid,name text,sort_order int,kind stage_kind);
       create table deals(id uuid primary key default gen_random_uuid(),org_id uuid,company_id uuid,pipeline_id uuid,stage_id uuid,assigned_to uuid,title text,applied_on date);
@@ -110,6 +111,19 @@ describe("BBE-273 atomic full new-lead intake", () => {
     const refreshed = Object.fromEntries((await db.query<{ column_key: string; value_jsonb: unknown }>("select column_key,value_jsonb from item_values where column_key in ('sido','sigungu','ad_name')")).rows.map((row) => [row.column_key,row.value_jsonb]));
     expect(refreshed).toEqual({ ad_name: "소개", sido: "부산", sigungu: "해운대구" });
     await expect(db.exec(`update item_values set value_jsonb='"조작"'::jsonb where column_key='sido'`)).rejects.toThrow(/require update_new_lead_fields/);
+    await expect(db.exec(`update item_values set value_jsonb='"${ids.owner}"'::jsonb where column_key='owner'`)).rejects.toThrow(/require update_new_lead_fields/);
+
+    const customBoard = "00000000-0000-4000-8000-000000000023";
+    const customGroup = "00000000-0000-4000-8000-000000000033";
+    const customItem = "00000000-0000-4000-8000-000000000043";
+    await db.exec(`
+      insert into boards values('${customBoard}','${ids.orgA}','customer.custom');
+      insert into board_groups values('${customGroup}','${ids.orgA}','${customBoard}');
+      insert into board_columns(org_id,board_id,key) values('${ids.orgA}','${customBoard}','rep_name');
+      insert into items(id,org_id,board_id,group_id,title,deal_id) values('${customItem}','${ids.orgA}','${customBoard}','${customGroup}','사용자 보드','${first.rows[0].deal_id}');
+      insert into item_values(org_id,item_id,column_key,value_jsonb) values('${ids.orgA}','${customItem}','rep_name','"독립 값"'::jsonb);
+    `);
+    expect((await db.query<{ value_jsonb: string }>(`select value_jsonb#>>'{}' value_jsonb from item_values where item_id='${customItem}'`)).rows[0].value_jsonb).toBe("독립 값");
   });
 
   it("fails closed for cross-org targets, unauthorized assignment, and collaborator membership", async () => {
