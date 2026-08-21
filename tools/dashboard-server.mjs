@@ -74,6 +74,7 @@ async function gql(query, variables = {}) {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: KEY },
     body: JSON.stringify({ query, variables }),
+    signal: AbortSignal.timeout(5_000),
   });
   const j = await r.json().catch(() => ({}));
   if (j.errors) throw new Error(j.errors.map((e) => e.message).join(" · "));
@@ -106,6 +107,7 @@ const COMMENT_MAX_LIMIT = 100;
 const COMMENT_TTL = 10_000;
 const commentCache = new Map();
 const commentInFlight = new Map();
+const deliveryEvidenceCache = new Map();
 
 function commentCacheKey(id, limit, after) {
   return JSON.stringify([id, limit, after ?? null]);
@@ -184,13 +186,22 @@ async function build() {
     after = d.issues.pageInfo.hasNextPage ? d.issues.pageInfo.endCursor : null;
   } while (after);
 
-  return { issues, builtAt: new Date().toISOString() };
+  const builtAt = new Date().toISOString();
+  return { issues, builtAt, lastSuccessAt: builtAt, available: true, stale: false, error: null };
+}
+
+function linearReadFailure(error) {
+  const rateLimited = /rate limit|too many requests|429/i.test(String(error?.message || error));
+  return {
+    code: rateLimited ? "LINEAR_RATE_LIMITED" : "LINEAR_UNAVAILABLE",
+    message: rateLimited ? "Linear 조회 제한에 도달했습니다." : "Linear 상태를 읽지 못했습니다.",
+    retryAt: new Date(Date.now() + 60_000).toISOString(),
+  };
 }
 
 async function getSnap(force = false) {
   if (!force && snap.data && Date.now() - snap.at < TTL) return snap.data;
-  if (!force && snap.building) return snap.building;          // 동시 요청은 한 번만 만든다
-  if (force && snap.building) await snap.building;
+  if (snap.building) return snap.building;          // 같은 refresh의 issues+operations는 한 번만 읽는다
   snap.building = (async () => {
     try {
       const d = await build();
@@ -199,8 +210,10 @@ async function getSnap(force = false) {
       return d;
     } catch (e) {
       snap.building = null;
-      snap.error = String(e.message || e);
-      throw e;
+      const error = linearReadFailure(e);
+      snap.error = error;
+      if (snap.data) return { ...snap.data, available: false, stale: true, error, lastSuccessAt: snap.data.lastSuccessAt || snap.data.builtAt };
+      return { issues: [], builtAt: null, lastSuccessAt: null, available: false, stale: true, error };
     }
   })();
   return snap.building;
@@ -391,17 +404,42 @@ async function mapWithConcurrency(values, concurrency, mapper) {
   return results;
 }
 
-async function readDeliveryCommentEvidence(rows, force = false) {
+async function readDeliveryCommentEvidence(rows, force = false, readComments = getComments) {
   const entries = await mapWithConcurrency(rows, 4, async ({ issue, pr }) => {
     if (!pr?.mergeCommitSha) return [issue.id, { runtimeZero: false, hostedApplied: false }];
+    const evidenceKey = JSON.stringify([issue.id, pr.mergeCommitSha]);
+    if (deliveryEvidenceCache.has(evidenceKey)) return [issue.id, deliveryEvidenceCache.get(evidenceKey)];
     try {
-      const page = await getComments(issue.id, COMMENT_MAX_LIMIT, null, force);
-      return [issue.id, parseDeliveryCommentEvidence(page.comments, pr.mergeCommitSha)];
+      /* force는 issue 정본과 Production cache만 갱신한다. durable 댓글 증거는
+         issue+mergeSHA에 결속하며, 새 merge SHA가 생길 때만 다시 읽는다. */
+      const page = await readComments(issue.id, COMMENT_MAX_LIMIT, null, false);
+      const evidence = parseDeliveryCommentEvidence(page.comments, pr.mergeCommitSha);
+      deliveryEvidenceCache.set(evidenceKey, evidence);
+      return [issue.id, evidence];
     } catch {
       return [issue.id, { runtimeZero: false, hostedApplied: false }];
     }
   });
   return new Map(entries);
+}
+
+function cachedDeliveryCommentEvidence(rows) {
+  return new Map(rows.map(({ issue, pr }) => {
+    const key = JSON.stringify([issue.id, pr?.mergeCommitSha || null]);
+    return [issue.id, deliveryEvidenceCache.get(key) || { runtimeZero: false, hostedApplied: false }];
+  }));
+}
+
+async function within(promise, timeoutMs, fallback) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((resolve) => { timer = setTimeout(() => resolve(fallback()), timeoutMs); }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function readProductionEvidence(force = false) {
@@ -534,13 +572,20 @@ async function buildOperations(force = false) {
     if (pr.cardId && (pr.state === "OPEN" || (pr.mergedAt && new Date(pr.mergedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === today))) deliveryIds.add(pr.cardId);
   }
   const deliveryRows = measuredIssues.filter((issue) => deliveryIds.has(issue.id)).map((issue) => ({ issue, pr: prsByCard.get(issue.id) || null }));
-  const commentEvidence = await readDeliveryCommentEvidence(deliveryRows, force);
+  const canReadLinearComments = linearRead.status === "fulfilled" && linearRead.value.available !== false;
+  const commentEvidence = canReadLinearComments
+    ? await within(readDeliveryCommentEvidence(deliveryRows, force), 5_000, () => cachedDeliveryCommentEvidence(deliveryRows))
+    : cachedDeliveryCommentEvidence(deliveryRows);
   const deliveryItems = deliveryRows.map(({ issue, pr }) => {
     const deployment = pr?.mergeCommitSha ? production.items.find((item) => item.sha === pr.mergeCommitSha) || null : null;
     return { cardId: issue.id, linearStatus: issue.status, pr, deployment, ...classifyDelivery({ issue, pr, deployment, loginStatus: production.loginStatus, commentEvidence: commentEvidence.get(issue.id) }) };
   });
   const delivery = {
-    available: Boolean(issues && pullRequests.available && production.available),
+    available: Boolean(issues && issues.length && pullRequests.available && production.available),
+    stale: Boolean(linearRead.status === "fulfilled" && linearRead.value.stale),
+    linearAvailable: Boolean(linearRead.status === "fulfilled" && linearRead.value.available !== false),
+    linearLastSuccessAt: linearRead.status === "fulfilled" ? linearRead.value.lastSuccessAt || null : snap.data?.lastSuccessAt || null,
+    linearError: linearRead.status === "fulfilled" ? linearRead.value.error || null : linearReadFailure(linearRead.reason),
     measuredAt: new Date().toISOString(),
     loginStatus: production.loginStatus,
     items: deliveryItems,
@@ -557,6 +602,12 @@ async function buildOperations(force = false) {
   const todayItems = gitToday === null ? null : [...linearToday, ...gitToday].sort((a, b) => new Date(b.at) - new Date(a.at));
   return {
     builtAt: new Date().toISOString(), repository, pullRequests, production, delivery, workers, fuel: readFuel(),
+    linear: {
+      available: Boolean(linearRead.status === "fulfilled" && linearRead.value.available !== false),
+      stale: Boolean(linearRead.status !== "fulfilled" || linearRead.value.stale),
+      lastSuccessAt: linearRead.status === "fulfilled" ? linearRead.value.lastSuccessAt || null : snap.data?.lastSuccessAt || null,
+      error: linearRead.status === "fulfilled" ? linearRead.value.error || null : linearReadFailure(linearRead.reason),
+    },
     metrics: {
       qaDifference,
       urgentRemaining: issues ? measuredIssues.filter((issue) => issue.priority?.name === "Urgent" && !["Done", "Canceled", "Duplicate"].includes(issue.status)).length : null,
@@ -571,8 +622,7 @@ async function buildOperations(force = false) {
 
 async function getOperations(force = false) {
   if (!force && operationsSnap.data && Date.now() - operationsSnap.at < OPS_TTL) return operationsSnap.data;
-  if (!force && operationsSnap.building) return operationsSnap.building;
-  if (force && operationsSnap.building) await operationsSnap.building;
+  if (operationsSnap.building) return operationsSnap.building;
   operationsSnap.building = buildOperations(force).then((data) => {
     operationsSnap = { at: Date.now(), building: null, data };
     return data;
@@ -645,7 +695,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/issues") {
       if (!KEY_OK) return send(res, 503, JSON.stringify(NO_KEY));
       const d = await getSnap(url.searchParams.get("force") === "1");
-      return send(res, 200, JSON.stringify({ issues: d.issues }));
+      return send(res, 200, JSON.stringify({ issues: d.issues, available: d.available, stale: d.stale, lastSuccessAt: d.lastSuccessAt, retryAt: d.error?.retryAt || null, error: d.error }));
     }
 
     if (url.pathname === "/api/operations") {
@@ -707,4 +757,4 @@ if (!ENV.DASHBOARD_NO_LISTEN) server.listen(PORT, () => {
   getOperations(true).catch(() => {});
 });
 
-export { classifyDelivery, mapWithConcurrency, parseDeliveryCommentEvidence };
+export { classifyDelivery, linearReadFailure, mapWithConcurrency, parseDeliveryCommentEvidence, readDeliveryCommentEvidence };
