@@ -18,8 +18,11 @@ const DELIVERY_READY = true;
 
 function policyMode(policy: Record<string, unknown> | undefined): "all" | "managers" | "preserve" {
   if (!policy || Object.keys(policy).length === 0) return "all";
+  const keys = Object.keys(policy);
   const roles = Array.isArray(policy?.roles) ? policy.roles : [];
-  return roles.length === 2 && roles.includes("owner") && roles.includes("admin") ? "managers" : "preserve";
+  return keys.length === 1 && keys[0] === "roles" && roles.length === 2 && roles.includes("owner") && roles.includes("admin")
+    ? "managers"
+    : "preserve";
 }
 
 function statusLabel(status: ColumnScheduleRow["status"]): string {

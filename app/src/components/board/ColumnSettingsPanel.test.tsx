@@ -40,6 +40,7 @@ describe("BBE-178 column settings UI preparation", () => {
     expect(panel).toContain('? "wrap" : "truncate"');
     expect(panel).toContain('<option value="truncate">한 줄</option>');
     expect(panel).toContain('return "all";');
+    expect(panel).toContain('keys.length === 1 && keys[0] === "roles"');
     expect(panel).toContain(': "preserve";');
     expect(panel).toContain('<option value="preserve">기존 제한 유지</option>');
     expect(actions).toContain('...(input.editPolicy ? { editPolicy:');
