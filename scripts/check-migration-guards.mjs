@@ -3,7 +3,7 @@ import { readFile, readdir, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const MARKER = /^-- moa-migration-guard: logical_key=(\S+) predecessor=(\S+) digest=([0-9a-f]{64}) foundation=(true|false)$/mu;
+const MARKER = /^-- moa-migration-guard: logical_key=(\S+) predecessor=(\S+) digest=([0-9a-f]{64}) foundation=(true|false)(?: bridge_repo_predecessor=(\S+))?$/mu;
 const DIGEST_ARGUMENT = /(p_file_digest\s*=>\s*')[0-9a-f]{64}(')/u;
 
 function namedText(sql, name) {
@@ -24,7 +24,7 @@ export function migrationDigest(sql) {
 export function inspectGuardedMigration(fileName, sql) {
   const marker = sql.match(MARKER);
   if (!marker) throw new Error(`${fileName}: missing migration guard marker`);
-  const [, logicalKey, predecessor, declaredDigest, foundationText] = marker;
+  const [, logicalKey, predecessor, declaredDigest, foundationText, bridgeRepoPredecessor = null] = marker;
   const expectedKey = basename(fileName, ".sql");
   if (logicalKey !== expectedKey) throw new Error(`${fileName}: logical key mismatch`);
   if ((sql.match(/select\s+public\.begin_guarded_migration\s*\(/giu) ?? []).length !== 1) throw new Error(`${fileName}: guard call count must be one`);
@@ -44,7 +44,8 @@ export function inspectGuardedMigration(fileName, sql) {
   } else if (!/select\s+pg_advisory_xact_lock\(1297040711,\s*188\)/iu.test(sql.slice(0, sql.indexOf("create table")))) {
     throw new Error(`${fileName}: foundation must lock before DDL`);
   }
-  return { fileName, logicalKey, predecessor, digest: actualDigest, foundation };
+  if (foundation && bridgeRepoPredecessor) throw new Error(`${fileName}: foundation cannot be a frontier bridge`);
+  return { fileName, logicalKey, predecessor, digest: actualDigest, foundation, bridgeRepoPredecessor };
 }
 
 export async function inspectMigrationDirectory(directory) {
@@ -62,13 +63,25 @@ export async function inspectMigrationDirectory(directory) {
     guarded.push({ ...metadata, index });
   }
   if (foundationIndex === -1) throw new Error("migration guard foundation missing");
+  let bridgeCount = 0;
   for (let index = foundationIndex + 1; index < names.length; index += 1) {
     const metadata = guarded.find((entry) => entry.index === index);
     if (!metadata) throw new Error(`${names[index]}: missing mandatory migration guard`);
     const expectedPredecessor = basename(names[index - 1], ".sql");
-    if (metadata.predecessor !== expectedPredecessor) throw new Error(`${names[index]}: predecessor gap`);
+    if (metadata.bridgeRepoPredecessor) {
+      bridgeCount += 1;
+      if (metadata.bridgeRepoPredecessor !== expectedPredecessor) throw new Error(`${names[index]}: bridge repository predecessor gap`);
+      if (metadata.predecessor === expectedPredecessor) throw new Error(`${names[index]}: bridge must join a distinct hosted predecessor`);
+      const keyNumber = Number.parseInt(metadata.logicalKey.slice(0, 3), 10);
+      const repoNumber = Number.parseInt(metadata.bridgeRepoPredecessor.slice(0, 3), 10);
+      const hostedNumber = Number.parseInt(metadata.predecessor.slice(0, 3), 10);
+      if (keyNumber !== repoNumber + 1 || hostedNumber !== repoNumber) throw new Error(`${names[index]}: bridge must join same-number frontiers at the next key`);
+    } else if (metadata.predecessor !== expectedPredecessor) {
+      throw new Error(`${names[index]}: predecessor gap`);
+    }
     if (metadata.foundation) throw new Error(`${names[index]}: only the first guarded migration may be foundation`);
   }
+  if (bridgeCount > 1) throw new Error("multiple migration frontier bridges");
   const foundation = guarded.find((entry) => entry.index === foundationIndex);
   const baseline = foundationIndex > 0 ? basename(names[foundationIndex - 1], ".sql") : null;
   if (foundation.predecessor !== baseline) throw new Error(`${foundation.fileName}: foundation predecessor gap`);
