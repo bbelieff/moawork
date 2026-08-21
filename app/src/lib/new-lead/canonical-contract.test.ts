@@ -6,6 +6,7 @@ describe("BBE-173 canonical new-lead RPC contract", () => {
     expect(NEW_LEAD_RPC).toEqual({
       create: "create_new_lead",
       update: "update_new_lead_fields",
+      updateTitle: "update_new_lead_title",
       advance: "advance_new_lead_to_contact",
     });
     expect(NEW_LEAD_ERROR).toEqual({ invalidInput: "22023", forbidden: "42501", manualCorrectionConflict: "40001" });

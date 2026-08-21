@@ -1,6 +1,7 @@
 export const NEW_LEAD_RPC = {
   create: "create_new_lead",
   update: "update_new_lead_fields",
+  updateTitle: "update_new_lead_title",
   advance: "advance_new_lead_to_contact",
 } as const;
 
@@ -65,6 +66,8 @@ export type UpdateNewLeadRow = Readonly<{
   changed_fields: string[];
   replayed: boolean;
 }>;
+
+export type UpdateNewLeadTitleRow = Readonly<{ deal_id: string; item_id: string; replayed: boolean }>;
 
 export type AdvanceNewLeadRow = Readonly<{
   status: "committed" | "blocked" | "rolled_back";

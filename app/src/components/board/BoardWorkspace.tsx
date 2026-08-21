@@ -379,6 +379,7 @@ export function BoardWorkspace({
             >
               <GroupTable
                 boardId={board.id}
+                canonicalNewLead={board.source === "core.default-tab/new-lead"}
                 groupId={block.group?.id ?? null}
                 columns={shown}
                 detailColumns={[...columns]}
