@@ -12,6 +12,7 @@ describe("BBE-150 /work production repository boundary", () => {
 
     expect(source).not.toMatch(/@\/lib\/repo\/local\/boardsRepo/);
     expect(source).not.toMatch(/\bgetBoardsRepo\s*\(/);
+    expect(source).not.toMatch(/import\s*\(.*repo\/local/);
     expect(source).toContain("const client = await createClient()");
     // BBE-236 이전엔 이 파일이 SupabaseBoardsRepo 를 직접 만들었다. 지금은 공용 진입 헬퍼
     // (repairContractWorkBoardOnEntry)에 client 를 그대로 넘긴다 — 아래 두 번째 테스트가
@@ -19,6 +20,7 @@ describe("BBE-150 /work production repository boundary", () => {
     expect(source).toContain("repairContractWorkBoardOnEntry(ctx, client)");
     expect(source).toContain("new WorkManagementSource(client)");
     expect(source.match(/await createClient\(\)/g)).toHaveLength(1);
+    expect(source).toContain("if (canUseLocalSeedFallback())");
   });
 
   it("the shared default-tab repair helper still builds SupabaseBoardsRepo, never a local one", () => {

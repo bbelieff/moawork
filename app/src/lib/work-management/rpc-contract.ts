@@ -29,7 +29,10 @@ export function parseWorkCommand(value: unknown): WorkCommand {
   const requestId = bounded(row.requestId, "requestId", 36); const expectedVersion = row.expectedVersion;
   if (!UUID.test(requestId) || typeof expectedVersion !== "number" || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0) throw new Error("Invalid command identity or version.");
   const itemId = row.itemId === undefined ? undefined : bounded(row.itemId, "itemId", 128);
-  const base = { operation, orgId, boardId, itemId, expectedVersion, requestId };
+  // Keep itemId absent rather than present-as-undefined. Commands cross the
+  // composition port and are intentionally parsed again by each adapter; an
+  // undefined own-property would fail the exact-field contract on that pass.
+  const base = { operation, orgId, boardId, expectedVersion, requestId, ...(itemId === undefined ? {} : { itemId }) };
   const requiresItem = () => { if (!itemId) throw new Error("This operation requires an item."); return itemId; };
   const forbidsItem = () => { if (itemId) throw new Error("This operation does not accept an item."); };
   switch (operation) {

@@ -5,6 +5,7 @@ import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { WorkManagementSource, WorkManagementUnavailableError } from "@/lib/repo/supabase/workManagementSource";
 import { NotificationWorkBoard } from "@/components/work-management/NotificationWorkBoard";
 import styles from "@/components/work-management/work-management.module.css";
+import { LocalWorkManagementSource } from "@/lib/work-management/local-source";
 
 /** Product entry for the installed contract-work default board (BBE-150). */
 export default async function ContractWorkBoardPage({
@@ -20,16 +21,8 @@ export default async function ContractWorkBoardPage({
   //   ★ BBE-150 의 경계(LocalBoardsRepo 금지 · createClient 1회)는 그대로 지킨다.
   //     로컬 repo 를 들이지 않고 «먼저 돌아설» 뿐이다.
   if (canUseLocalSeedFallback()) {
-    return (
-      <section className="rounded-xl border border-mw-line bg-mw-card p-5" role="status" aria-labelledby="work-unconfigured-title">
-        <h1 id="work-unconfigured-title" className="text-lg font-semibold text-mw-fg">
-          워크스페이스 데이터에 아직 연결되지 않았습니다
-        </h1>
-        <p className="mt-2 text-sm text-mw-sub">
-          계약업체 실무 보드는 워크스페이스 데이터베이스에서 옵니다. 연결되면 여기에 바로 나옵니다.
-        </p>
-      </section>
-    );
+    const snapshot = await new LocalWorkManagementSource(ctx).load(ctx.org.id);
+    return <NotificationWorkBoard snapshot={snapshot} highlightedItemId={sp.notification ?? null} />;
   }
 
   // The cookie-bound client is request scoped and shared by both the product
