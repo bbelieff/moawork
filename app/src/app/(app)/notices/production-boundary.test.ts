@@ -7,7 +7,8 @@ describe("BBE-151 notice entry production boundary", () => {
     const source = readFileSync(join(process.cwd(), "src/app/(app)/notices/page.tsx"), "utf8");
     expect(source).toContain("const client = await createClient()");
     expect(source).toContain("const repo = new SupabaseBoardsRepo(client)");
-    expect(source).toContain("resolveExistingNoticeBoard(ctx, repo)");
+    expect(source).toContain("repairNoticeBoardOnEntry(ctx, client)");
+    expect(source).not.toContain("ensureNoticeTabAtomic");
     expect(source).toContain("new NoticesService(new BoardsService(repo), repo)");
     expect(source).not.toMatch(/\bgetBoardsRepo\s*\(/);
     expect(source).not.toContain("LocalBoardsRepo");
