@@ -4,8 +4,13 @@ import type { Board, BoardColumn, BoardGroup } from "@/lib/boards/types";
 import type { BoardsRepo } from "@/lib/boards/store";
 
 export const SECTION_PRESET_SOURCE = "user.section-preset/";
+const COLUMN_TEMPLATE_SEGMENT = `${SECTION_PRESET_SOURCE}column-template/`;
 export function isSectionPresetSource(source: string | null | undefined): boolean {
   return Boolean(source?.startsWith(SECTION_PRESET_SOURCE));
+}
+
+function isGroupSectionPresetSource(source: string | null | undefined): boolean {
+  return Boolean(source?.startsWith(SECTION_PRESET_SOURCE) && !source.startsWith(COLUMN_TEMPLATE_SEGMENT));
 }
 
 export type SectionPresetBoardsRepo = BoardsRepo & { listSectionPresetBoards(ctx: Ctx): Promise<Board[]> };
@@ -51,7 +56,7 @@ export class SectionPresetRepo {
   constructor(private readonly boards: SectionPresetBoardsRepo) {}
 
   async list(ctx: Ctx): Promise<SectionPresetRecord[]> {
-    const templates = await this.boards.listSectionPresetBoards(ctx);
+    const templates = (await this.boards.listSectionPresetBoards(ctx)).filter((board) => isGroupSectionPresetSource(board.source));
     return Promise.all(templates.map(async (board) => ({
       id: board.id,
       name: board.name,
@@ -64,7 +69,7 @@ export class SectionPresetRepo {
 
   async get(ctx: Ctx, id: string): Promise<SectionPresetRecord | undefined> {
     const board = await this.boards.getBoard(ctx, id);
-    if (!board?.source?.startsWith(SECTION_PRESET_SOURCE)) return undefined;
+    if (!board || !isGroupSectionPresetSource(board.source)) return undefined;
     return {
       id: board.id,
       name: board.name,
@@ -80,7 +85,7 @@ export class SectionPresetRepo {
    * source 는 조직 안에서만 의미가 있으므로 조직 밖은 애초에 목록에 들어오지 않는다.
    */
   async findBySource(ctx: Ctx, source: string): Promise<SectionPresetRecord | undefined> {
-    const templates = await this.boards.listSectionPresetBoards(ctx);
+    const templates = (await this.boards.listSectionPresetBoards(ctx)).filter((board) => isGroupSectionPresetSource(board.source));
     const match = templates.find((board) => board.source === source);
     return match ? this.get(ctx, match.id) : undefined;
   }

@@ -26,6 +26,7 @@ import { resolveSavedPersonRuntime } from "@/lib/view/server";
 import { decodeBoardFilters } from "@/components/board/filters";
 import { GenericBoardKanban } from "@/components/boards/GenericBoardKanban";
 import { ColumnEditor } from "@/components/boards/ColumnEditor";
+import { ColumnTemplateLibrary } from "@/components/boards/ColumnTemplateLibrary";
 import { addGroupAction, deleteBoardAction } from "../actions";
 import { getBoardColumnOrder } from "../groupLayout";
 
@@ -232,6 +233,7 @@ export default async function BoardPage({
       </summary>
       <div className="flex flex-col gap-3 border-t border-mw-line p-3">
         {canManageColumns && <ColumnEditor boardId={id} columns={columns} />}
+        {canManageColumns && <ColumnTemplateLibrary boardId={id} columns={columns} />}
 
         {canManageSections && <form action={addGroupAction} className="flex flex-wrap items-end gap-2">
           <input type="hidden" name="boardId" value={id} />
