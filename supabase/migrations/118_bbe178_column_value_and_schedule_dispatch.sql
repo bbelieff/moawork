@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=118_bbe178_column_value_and_schedule_dispatch predecessor=117_bbe237_company_start_work digest=9c534f945429a1d878c0bfcf5571a76ccb453140cc4d820a7e6bc17de0426bac foundation=false
+-- moa-migration-guard: logical_key=118_bbe178_column_value_and_schedule_dispatch predecessor=117_bbe237_company_start_work digest=5bc9c2468389a80e9051f9da9f2e933ec4a5ae5c23f999296d98f52520c40a22 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '118_bbe178_column_value_and_schedule_dispatch',
   p_file_name => '118_bbe178_column_value_and_schedule_dispatch.sql',
-  p_file_digest => '9c534f945429a1d878c0bfcf5571a76ccb453140cc4d820a7e6bc17de0426bac',
+  p_file_digest => '5bc9c2468389a80e9051f9da9f2e933ec4a5ae5c23f999296d98f52520c40a22',
   p_expected_predecessor => '117_bbe237_company_start_work',
   p_executor => 'DG-06',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -150,8 +150,12 @@ do $$ declare v_parent record; begin
   if not exists(select 1 from pg_roles where rolname='moawork_date_schedule_worker') then
     create role moawork_date_schedule_worker login password null nobypassrls noinherit;
   end if;
-  alter role moawork_date_schedule_worker login nosuperuser nocreatedb nocreaterole
-    noinherit noreplication nobypassrls;
+  if exists(
+    select 1 from pg_roles where rolname='moawork_date_schedule_worker'
+      and (rolsuper or rolinherit or rolcreaterole or rolcreatedb or rolreplication or rolbypassrls or not rolcanlogin)
+  ) then
+    raise exception 'moawork_date_schedule_worker has unsafe role attributes';
+  end if;
   for v_parent in
     select parent.rolname
     from pg_auth_members membership
