@@ -129,7 +129,6 @@ export function BoardWorkspace({
   canDeleteItems = false,
   canManageColumns = false,
   canEditPresets = false,
-  presets = [],
   currentUserId,
 }: {
   board: Board;
@@ -156,7 +155,7 @@ export function BoardWorkspace({
   canManageColumns?: boolean;
   /** `structure.preset_edit` — 아이템 프리셋 저장·적용(회사 공용 구조를 바꾼다). */
   canEditPresets?: boolean;
-  /** 회사에 저장된 아이템 프리셋. 그룹 메뉴의 «적용» 목록과 미리보기가 이것을 읽는다. */
+  /** 첫 렌더 호환용 빈 목록. 실제 라이브러리는 GroupPresetMenu open 시 조회한다. */
   presets?: readonly SectionPresetRecord[];
   /** BBE-239 — 공지사항에서 작성자 본인 삭제 예외를 판정하는 데 쓴다. */
   currentUserId?: string;
@@ -373,7 +372,6 @@ export function BoardWorkspace({
                     presetName={groupPresetName(board.name, block.name)}
                     columns={fullColumns}
                     order={optimisticOrder[block.key]}
-                    presets={presets}
                     canEditPresets={canEditPresets}
                   />
                 )

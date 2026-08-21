@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   presetGet: vi.fn(),
   presetCreate: vi.fn(),
   presetFindBySource: vi.fn(),
+  presetList: vi.fn(),
   listSectionPresetBoards: vi.fn(async () => []),
   setGroupColumnOrder: vi.fn(),
   getBoardColumnOrder: vi.fn(() => ({})),
@@ -46,6 +47,7 @@ vi.mock("@/lib/presets/section-presets", async (importOriginal) => ({
     get = mocks.presetGet;
     create = mocks.presetCreate;
     findBySource = mocks.presetFindBySource;
+    list = mocks.presetList;
   },
 }));
 vi.mock("./groupLayout", () => ({
@@ -55,6 +57,7 @@ vi.mock("./groupLayout", () => ({
 
 import {
   applyGroupPresetAction,
+  loadGroupPresetLibraryAction,
   resetGroupPresetAction,
   saveGroupPresetAction,
 } from "./preset-actions";
@@ -68,6 +71,54 @@ function form(values: Record<string, string>): FormData {
 
 const SAVE = { boardId: "board-a", groupKey: "group-a", requestId: "req-1", name: "신규리드 관리-1차 부재" };
 const APPLY = { boardId: "board-a", groupKey: "group-a", presetId: "preset-a" };
+
+describe("BBE-223 그룹 프리셋 라이브러리 지연 조회", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    allow();
+    mocks.getBoardDetail.mockResolvedValue({ columns: [], groups: [] });
+    mocks.presetList.mockResolvedValue([{ id: "preset-a", name: "P", columns: [], groups: [] }]);
+  });
+
+  it("접근 가능한 보드를 먼저 확인한 뒤 조직 범위 프리셋을 한 번 읽는다", async () => {
+    const state = await loadGroupPresetLibraryAction("board-a");
+
+    expect(state.ok).toBe(true);
+    expect(mocks.getBoardDetail).toHaveBeenCalledWith(expect.objectContaining({ org: { id: "org-a" } }), "board-a");
+    expect(mocks.presetList).toHaveBeenCalledTimes(1);
+    expect(state.presets).toHaveLength(1);
+  });
+
+  it("권한이 없으면 보드와 라이브러리를 전혀 읽지 않는다", async () => {
+    allow("structure.preset_edit");
+    const state = await loadGroupPresetLibraryAction("board-a");
+
+    expect(state.ok).toBe(false);
+    expect(state.presets).toEqual([]);
+    expect(mocks.getBoardDetail).not.toHaveBeenCalled();
+    expect(mocks.presetList).not.toHaveBeenCalled();
+  });
+
+  it("다른 조직 보드처럼 보드 접근 확인이 실패하면 목록을 읽지 않고 원문을 숨긴다", async () => {
+    mocks.getBoardDetail.mockRejectedValue(new Error("row-level security board-b"));
+    const state = await loadGroupPresetLibraryAction("board-b");
+
+    expect(state.ok).toBe(false);
+    expect(state.presets).toEqual([]);
+    expect(state.message).not.toContain("row-level");
+    expect(mocks.presetList).not.toHaveBeenCalled();
+  });
+
+  it("저장소 오류는 빈 목록과 일반 문구로 fail-closed 한다", async () => {
+    mocks.presetList.mockRejectedValue(new Error("relation section_preset missing"));
+    const state = await loadGroupPresetLibraryAction("board-a");
+
+    expect(state.ok).toBe(false);
+    expect(state.presets).toEqual([]);
+    expect(state.message).toContain("잠시 후 다시 시도");
+    expect(state.message).not.toContain("relation");
+  });
+});
 
 /** 목업 신규리드에 있는 형태 — 이동규칙과 우측 고정 열이 붙은 실제에 가까운 컬럼. */
 function column(key: string, patch: Record<string, unknown> = {}) {
