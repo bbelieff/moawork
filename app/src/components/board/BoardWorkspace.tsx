@@ -65,6 +65,7 @@ import {
 import { normalizeDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
 import { runColumnCommandAction } from "@/app/(app)/boards/column-command-actions";
 import { INITIAL_COLUMN_COMMAND_STATE } from "@/app/(app)/boards/column-command-state";
+import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
 
 interface RowMove {
   itemId: string;
@@ -363,7 +364,7 @@ export function BoardWorkspace({
           >되돌리기</button>
         </div>
       ) : null}
-      {restoreError ? <p role="alert" className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{restoreError}</p> : null}
+      {restoreError ? <p role={noticeRole(false)} aria-live={noticeLive(false)} className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{restoreError}</p> : null}
 
       {blocks.length === 0 ? (
         /* 원칙 5 — 화면 전체를 차지하는 빈 상태 금지. 한 줄 + 다음 행동. */

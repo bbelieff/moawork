@@ -21,7 +21,7 @@ export function ColumnContextMenu({ boardId, column, slots = {}, children, onArc
 }) {
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<"duplicate" | "add" | "type" | "expand" | "rename" | null>(null);
-  const [state, action, pending] = useActionState(runColumnCommandAction, INITIAL_COLUMN_COMMAND_STATE);
+  const [state, action] = useActionState(runColumnCommandAction, INITIAL_COLUMN_COMMAND_STATE);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
