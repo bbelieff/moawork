@@ -1,5 +1,6 @@
 import { jsonOk, readJson, requireCtx, toErrorResponse } from "@/lib/boards/http";
 import { createClient } from "@/lib/supabase/server";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { parsePersonScopeInput, parseSavedBoardViewConfig, savedBoardViewFromRow } from "@/lib/view/board-saved";
 import { requireActiveFixedPerson } from "@/lib/view/server";
 
@@ -11,6 +12,9 @@ export async function PATCH(req: Request, { params }: Params): Promise<Response>
     const ctx = await requireCtx();
     const { viewId } = await params;
     const body = await readJson(req) as Record<string, unknown>;
+    if (process.env.NODE_ENV !== "production" && canUseLocalSeedFallback()) {
+      return Response.json({ error: "저장된 보기는 연결된 워크스페이스가 필요합니다." }, { status: 503 });
+    }
     const db = await createClient();
     if (body.selected === true) {
       const { data: selected, error: selectedError } = await db.from("tab_views").select(COLS)
@@ -64,6 +68,9 @@ export async function DELETE(_req: Request, { params }: Params): Promise<Respons
   try {
     const ctx = await requireCtx();
     const { viewId } = await params;
+    if (process.env.NODE_ENV !== "production" && canUseLocalSeedFallback()) {
+      return Response.json({ error: "저장된 보기는 연결된 워크스페이스가 필요합니다." }, { status: 503 });
+    }
     const db = await createClient();
     const { data: current, error: readError } = await db.from("tab_views")
       .select("board_id").eq("id", viewId).eq("org_id", ctx.org.id).single();

@@ -77,7 +77,10 @@ const callSites = [
   //      통째로 로컬 시드로 나간다. BBE-203 이 막으려던 바로 그 자리인데 못이 없었다.
   "../../app/(app)/presets/page.tsx",
   "../../app/(app)/work/page.tsx",
+  "../../app/(app)/notices/page.tsx",
   "../../app/api/tab-views/route.ts",
+  "../../app/api/tab-views/[viewId]/route.ts",
+  "../../app/api/workspace-requests/handler.ts",
 ];
 
 /** 규칙을 «정의» 하는 파일과 테스트는 사용처가 아니다. */

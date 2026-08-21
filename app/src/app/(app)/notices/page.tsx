@@ -11,7 +11,7 @@ import {
 import { BoardsService } from "@/lib/boards/service";
 import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 import { createClient } from "@/lib/supabase/server";
-import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { isManager } from "@/lib/auth/roles";
 import { ensureNoticeTabAtomic } from "@/lib/notices/atomic";
 import { loadVerifiedWorkspaceBasePath } from "@/lib/auth/workspace-href-server";
@@ -68,7 +68,7 @@ export default async function NoticesPage({
   // 500 이었다. 여기서 먼저 갈라 «아직 연결 안 됨» 을 보여준다 — 오류가 아니라 상태다.
   // 로컬 어댑터로 우회하지 않는다: 페이지에서 로컬 repo 를 부르는 것은 프로덕션 경계 정책이
   // 막는 일이다(scripts/check-production-repo-boundaries.mjs).
-  if (!hasSupabaseEnv()) return <NoticesNotConnected />;
+  if (canUseLocalSeedFallback()) return <NoticesNotConnected />;
 
   const client = await createClient();
   const workspaceBasePath = await loadVerifiedWorkspaceBasePath();

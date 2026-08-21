@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleWorkspaceRequest } from "./handler";
 import { POST } from "./route";
 import type { WorkspaceEntryRpcClient } from "@/lib/workspace-entry/server";
@@ -8,10 +8,25 @@ function rpcClient(data: unknown = { accepted: true, status: "pending" }): Works
 }
 
 describe("POST /api/workspace-requests", () => {
+  afterEach(() => vi.unstubAllEnvs());
   it("rejects invalid create input without revealing availability cause", async () => {
     const response = await POST(new Request("https://www.moa-work.com/api/workspace-requests", { method: "POST", body: JSON.stringify({ kind: "create", displayName: "모아", slug: "login" }) }));
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ ok: false, state: "invalid", message: "이 회사 주소는 사용할 수 없어요." });
+  });
+
+  it("fails closed with a public-safe response when the development workspace is not connected", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "");
+    const response = await POST(new Request("https://www.moa-work.com/api/workspace-requests", {
+      method: "POST",
+      body: JSON.stringify({ kind: "join", lookup: "alpha-team", requestId: "90000000-0000-4000-8000-000000000009" }),
+    }));
+    expect(response.status).toBe(503);
+    const body = JSON.stringify(await response.json());
+    expect(body).toContain("연결된 워크스페이스");
+    expect(body).not.toContain("NEXT_PUBLIC_");
+    expect(body).not.toContain(".env");
   });
 
   it("submits create and both neutral join lookup shapes through authenticated RPCs", async () => {
