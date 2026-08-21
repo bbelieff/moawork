@@ -82,7 +82,7 @@ export function cellInputValue(type: BoardColumn["type"], value: CellValue): str
  */
 function cellTitle(column: BoardColumn): string {
   const sourceSpec = getFieldSourceSpec(column.source);
-  return `${column.label} — ${fieldTypeLabel(column.type)} · ${sourceSpec.label}(${sourceSpec.description})`;
+  return `${column.label} — ${fieldTypeLabel(column.type)} · ${sourceSpec.label}(${sourceSpec.description})${column.description ? ` · ${column.description}` : ""}`;
 }
 
 const NUMERIC_TYPES = new Set(["money", "number"]);
@@ -594,7 +594,7 @@ export function GroupTable({
                     key={col.id}
                     data-view-focus={col.key === focusColumnKey || undefined}
                     data-column-key={col.key}
-                    className={`border-b border-mw-line px-2 align-middle group-hover:bg-mw-bg ${textMode === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
+                    className={`border-b border-mw-line px-2 align-middle group-hover:bg-mw-bg ${(col.wrap_mode ?? textMode) === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
                       col.rightPinned ? "sticky right-0 z-10 border-l-2 border-l-mw-primary bg-mw-card" : ""
                     }`}
                   >

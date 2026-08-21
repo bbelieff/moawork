@@ -35,6 +35,9 @@ async function runtime(boardId: string, columnId: string) {
 
 function failure(error: unknown): ColumnSettingsResult {
   console.error("[BBE-178 column settings]", error);
+  if ((error as { code?: string } | null)?.code === "23514") {
+    return { ok: false, message: "필수 또는 유효성 규칙에 맞지 않는 값이 있어 저장하지 않았습니다." };
+  }
   return { ok: false, message: boardColumnErrorMessage((error as { code?: string } | null)?.code) };
 }
 
@@ -43,6 +46,8 @@ export async function saveColumnSettingsAction(input: {
   columnId: string;
   requestId: string;
   description: string;
+  required: boolean;
+  validation: Record<string, unknown>;
   editPolicy: "all" | "managers";
   viewPolicy: "all" | "managers";
   summaryHidden: boolean;
@@ -64,7 +69,9 @@ export async function saveColumnSettingsAction(input: {
       p_operation: "settings",
       p_request_id: value(input.requestId),
       p_payload: {
-        description: input.description.trim(),
+        description: input.description.trim() || null,
+        required: Boolean(input.required),
+        validation: input.validation,
         editPolicy: input.editPolicy === "managers" ? { roles: ["owner", "admin"] } : {},
         viewPolicy: input.viewPolicy === "managers" ? { roles: ["owner", "admin"] } : {},
         summaryHidden: Boolean(input.summaryHidden),
@@ -130,6 +137,9 @@ export async function cancelColumnScheduleAction(boardId: string, columnId: stri
     if (result.error) throw result.error;
     return { ok: true, message: "예약을 취소했습니다." };
   } catch (error) {
+    if ((error as { code?: string } | null)?.code === "40001") {
+      return { ok: false, message: "이미 처리 중이거나 완료된 예약은 취소할 수 없어요." };
+    }
     return failure(error);
   }
 }

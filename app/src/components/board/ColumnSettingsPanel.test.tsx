@@ -18,11 +18,13 @@ describe("BBE-178 column settings UI preparation", () => {
     expect(menu).toContain("<ColumnSettingsPanel");
   });
 
-  it("keeps required/validation and new delivery fail-closed until migration118 and its worker are live", () => {
-    expect(panel).toContain("필수·유효성은 원자 저장과 서버 우회 차단 계약이 배포된 뒤 켤 수 있습니다");
-    expect(panel).toContain("<fieldset disabled");
-    expect(panel).toContain("const DELIVERY_READY = false");
-    expect(panel).toContain("실제 발송 연결 후 예약 가능");
+  it("enables required/validation and delivery only after migration118 and its constrained worker are live", () => {
+    expect(panel).toContain("기존 결손은 임의로 채우지 않으며");
+    expect(panel).toContain('name="required"');
+    expect(panel).toContain('name="dateMin"');
+    expect(panel).toContain("const DELIVERY_READY = true");
+    expect(panel).toContain("예약 저장");
+    expect(panel).toContain("외부 문자·이메일은 보내지 않습니다");
   });
 
   it("makes the recipient and timezone semantics explicit and supports status/cancel/error surfaces", () => {
@@ -38,6 +40,8 @@ describe("BBE-178 column settings UI preparation", () => {
     expect(actions).toContain('client.rpc(BOARD_COLUMN_RPC.command');
     expect(actions).toContain('client.rpc("set_board_column_date_schedule"');
     expect(actions).toContain('client.rpc("cancel_board_column_date_schedule"');
+    expect(actions).toContain("required: Boolean(input.required)");
+    expect(actions).toContain("validation: input.validation");
     expect(actions).toContain('loadPermGuard(ctx.org.id, "structure.column_manage")');
     expect(actions).toContain("service.getBoardDetail(ctx, boardId)");
     expect(actions).toContain('.eq("org_id", ctx.org.id).eq("board_id", boardId).eq("column_id", columnId)');
