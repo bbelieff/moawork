@@ -12,17 +12,19 @@ export type ColumnMenuSlots = {
   templates?: ReactNode;
 };
 
-export function ColumnContextMenu({ boardId, column, slots = {}, children }: {
+export function ColumnContextMenu({ boardId, column, slots = {}, children, onArchived }: {
   boardId: string;
   column: BoardColumn;
   slots?: ColumnMenuSlots;
   children?: ReactNode;
+  onArchived?: (columnId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<"duplicate" | "add" | "type" | "expand" | "rename" | null>(null);
   const [state, action, pending] = useActionState(runColumnCommandAction, INITIAL_COLUMN_COMMAND_STATE);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -34,6 +36,15 @@ export function ColumnContextMenu({ boardId, column, slots = {}, children }: {
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
   }, [open]);
+
+  useEffect(() => {
+    if (state.archivedColumnId) onArchived?.(state.archivedColumnId);
+  }, [onArchived, state.archivedColumnId]);
+
+  useEffect(() => {
+    if (!panel) return;
+    dialogRef.current?.querySelector<HTMLElement>("input,select,button")?.focus();
+  }, [panel]);
 
   const close = () => { setOpen(false); setPanel(null); triggerRef.current?.focus(); };
   const requestId = () => crypto.randomUUID();
@@ -68,7 +79,7 @@ export function ColumnContextMenu({ boardId, column, slots = {}, children }: {
       <MenuItem danger onClick={() => { if (window.confirm(`«${column.label}» 컬럼을 휴지통으로 옮길까요? 값은 보존됩니다.`)) submit("archive"); }}>삭제</MenuItem>
     </div> : null}
     {panel ? <div role="dialog" aria-modal="true" aria-label={`${column.label} 컬럼 변경`} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30" onKeyDown={(event) => { if (event.key === "Escape") close(); }}>
-      <div className="w-full max-w-md rounded bg-mw-card p-4 shadow-xl" onClick={(event) => event.stopPropagation()}>
+      <div ref={dialogRef} tabIndex={-1} className="w-full max-w-md rounded bg-mw-card p-4 shadow-xl" onClick={(event) => event.stopPropagation()}>
         <h2 className="mb-3 text-base font-semibold">{column.label}</h2>
         {panel === "duplicate" ? <SimpleForm submit={(data) => submit("duplicate", { copyValues: data.copyValues ?? "false" })} fields={<label className="flex items-start gap-2 text-sm"><input type="checkbox" name="copyValues" value="true" /><span>행 값도 복제<br /><span className="text-mw-sub">기본은 구조·설정만 복제하며 기존 행 값은 비어 있습니다.</span></span></label>} /> : null}
         {panel === "add" ? <SimpleForm submit={(data) => submit("create_at", data)} fields={<><input name="label" required placeholder="새 컬럼 이름" className="rounded border p-2" /><select name="type" defaultValue="text" className="rounded border p-2">{FIELD_TYPES.map((type) => <option key={type} value={type}>{fieldTypeLabel(type)}</option>)}</select></>} /> : null}
@@ -80,7 +91,6 @@ export function ColumnContextMenu({ boardId, column, slots = {}, children }: {
     </div> : null}
     {state.message ? <div role={state.ok ? "status" : "alert"} className={`fixed bottom-5 right-5 z-[70] rounded px-4 py-3 shadow ${state.ok ? "bg-mw-card" : "bg-red-50 text-red-700"}`}>
       {state.message}
-      {state.archivedColumnId ? <button disabled={pending} className="ml-3 underline" onClick={() => submit("restore", { columnId: state.archivedColumnId! })}>되돌리기</button> : null}
     </div> : null}
   </div>;
 }

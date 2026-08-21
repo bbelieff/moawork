@@ -23,5 +23,6 @@ describe("BBE-177 command boundary", () => {
     expect(source).toContain('operation === "archive"');
     expect(source).toContain("archivedColumnId");
     expect(source).toContain('operation === "restore"');
+    expect(source).toContain('if (operation !== "archive") revalidatePath');
   });
 });

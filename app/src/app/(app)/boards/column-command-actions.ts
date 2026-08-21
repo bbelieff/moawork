@@ -74,7 +74,9 @@ export async function runColumnCommandAction(
       ...(operation === "duplicate" ? { p_copy_values: data.get("copyValues") === "true" } : {}),
     });
     if (result.error) throw result.error;
-    revalidatePath(`/boards/${boardId}`);
+    // Archive keeps the current client tree alive long enough to hand its id to
+    // the board-level undo surface. Every other operation can refresh at once.
+    if (operation !== "archive") revalidatePath(`/boards/${boardId}`);
     return {
       ok: true,
       message: operation === "archive" ? "컬럼을 휴지통으로 옮겼습니다. 복구할 수 있습니다." : "컬럼 변경을 저장했습니다.",

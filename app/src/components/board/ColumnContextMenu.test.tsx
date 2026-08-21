@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./ColumnContextMenu.tsx", import.meta.url), "utf8");
+const workspace = readFileSync(new URL("./BoardWorkspace.tsx", import.meta.url), "utf8");
 
 describe("ColumnContextMenu structure contract", () => {
   it("keeps all six operations in the product discovery order", () => {
@@ -22,5 +23,13 @@ describe("ColumnContextMenu structure contract", () => {
     expect(source).toContain("data-column-template-slot");
     expect(source).toContain('submit("duplicate", { copyValues: data.copyValues ?? "false" })');
     expect(source).not.toContain('copyValues: "true"');
+  });
+
+  it("hands archive undo to the persistent board shell and moves focus into dialogs", () => {
+    expect(source).toContain("onArchived?.(state.archivedColumnId)");
+    expect(source).toContain('querySelector<HTMLElement>("input,select,button")?.focus()');
+    expect(workspace).toContain("archivedColumnIds");
+    expect(workspace).toContain("컬럼을 휴지통으로 옮겼습니다. 값과 설정은 보존됩니다.");
+    expect(workspace).toContain('data.set("operation", "restore")');
   });
 });
