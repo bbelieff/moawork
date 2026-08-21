@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
@@ -48,5 +49,30 @@ describe("BBE-107 실제 상세 패널", () => {
     expect(html).toContain("상세 전용");
     expect(html).toContain("표에도 보이기");
     expect(html).toContain("기본으로 되돌리기");
+  });
+
+  it("상속된 기본 필드가 있으면 빈 배치 안내 없이 편집 입력을 보여준다", () => {
+    const html = renderToStaticMarkup(<ItemDetailPanel
+      boardId="board-a"
+      row={{ ...row, values: {} }}
+      columns={columns}
+      boardLayout={[{ key: "company", source: "column", label: "회사명", type: "text" }]}
+      layout={[{ key: "company", source: "column", label: "회사명", type: "text" }]}
+      inherited
+      canEditItems
+      canManageColumns={false}
+      defaultOpen
+    />);
+    expect(html).toContain("보드 기본 배치를 상속 중");
+    expect(html).toContain('name="value"');
+    expect(html).not.toContain("배치된 상세 필드가 없습니다");
+    expect(html).toContain("이 화면에 배치되지 않은 항목 0개");
+  });
+
+  it("상세 drawer는 Escape 키로 닫히는 계약을 연결한다", () => {
+    const source = readFileSync(new URL("./ItemDetailPanel.tsx", import.meta.url), "utf8");
+    expect(source).toContain('event.key === "Escape"');
+    expect(source).toContain('window.addEventListener("keydown", closeOnEscape)');
+    expect(source).toContain('window.removeEventListener("keydown", closeOnEscape)');
   });
 });

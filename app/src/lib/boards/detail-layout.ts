@@ -1,5 +1,6 @@
-import type { CellValue } from "./types";
+import type { BoardColumn, CellValue } from "./types";
 import type { FieldType } from "@/lib/types";
+import { NEW_LEAD_TAB_SOURCE } from "@/lib/default-tabs/types";
 
 export type DetailLayoutSource = "column" | "detail";
 
@@ -32,6 +33,27 @@ export function normalizeDetailLayout(value: unknown): DetailLayoutEntry[] {
     });
   }
   return result;
+}
+
+/**
+ * Canonical 신규리드 보드는 설치된 활성 컬럼 자체가 제품 기본 상세 배치다.
+ * DB의 역사적 기본값 `[]`만으로는 "아직 초기화되지 않음"과 "사용자가 비움"을
+ * 구분할 수 없으므로 이 fallback은 canonical source에만 한정한다. 임의 보드의
+ * 빈 배열은 BBE-107 계약대로 계속 의도적인 빈 배치다.
+ */
+export function resolveBoardDetailLayout(
+  boardSource: string | null,
+  boardLayout: unknown,
+  activeColumns: readonly BoardColumn[],
+): DetailLayoutEntry[] {
+  const normalized = normalizeDetailLayout(boardLayout);
+  if (boardSource !== NEW_LEAD_TAB_SOURCE || normalized.length > 0) return normalized;
+  return activeColumns.map((column) => ({
+    key: column.key,
+    source: "column",
+    label: column.label,
+    type: column.type,
+  }));
 }
 
 /** null/undefined인 그룹만 보드 기본을 상속한다. []는 의도적인 빈 오버라이드다. */
