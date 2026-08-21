@@ -294,6 +294,11 @@ test("operations endpoint exposes read-only repository and PR decision signals",
   assert.ok(Date.now() - startedAt < 5_000, "forced fixture refresh remains bounded");
 });
 
+test("aggregate BBE-170 parent never becomes a delivery denominator", async () => {
+  const source = await readFile(new URL("./dashboard-server.mjs", import.meta.url), "utf8");
+  assert.match(source, /deliveryIds\.delete\("BBE-170"\)/);
+});
+
 test("Production evidence fails closed for runtime logs and non-main merges", async () => {
   const source = await readFile(new URL("./dashboard-server.mjs", import.meta.url), "utf8");
   assert.match(source, /pr\?\.baseRefName === "main"/);
