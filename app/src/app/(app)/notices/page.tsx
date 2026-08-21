@@ -5,7 +5,7 @@ import {
   NoticesService,
   NOTICE_AUDIENCE_OPTIONS,
   NOTICE_CATEGORY_OPTIONS,
-  resolveExistingNoticeBoard,
+  repairNoticeBoardOnEntry,
   todayKst,
 } from "@/lib/notices";
 import { BoardsService } from "@/lib/boards/service";
@@ -13,7 +13,6 @@ import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 import { createClient } from "@/lib/supabase/server";
 import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { isManager } from "@/lib/auth/roles";
-import { ensureNoticeTabAtomic } from "@/lib/notices/atomic";
 import { loadVerifiedWorkspaceBasePath } from "@/lib/auth/workspace-href-server";
 import { workspaceHref } from "@/components/shell/workspace-href";
 import { NoticeCategoryBadge, PinnedBadge } from "@/components/notices/NoticeCategoryBadge";
@@ -73,23 +72,14 @@ export default async function NoticesPage({
   const client = await createClient();
   const workspaceBasePath = await loadVerifiedWorkspaceBasePath();
   const repo = new SupabaseBoardsRepo(client);
-  let noticeEntryState: "conflict" | "unavailable" | null = null;
+  let noticeEntryState: "conflict" | "missing" | "permission" | "unavailable" | null = null;
   try {
-    const productBoard = await resolveExistingNoticeBoard(ctx, repo);
+    const productBoard = await repairNoticeBoardOnEntry(ctx, client);
     if (productBoard.kind === "ready") {
       const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
       redirect(workspaceHref(workspaceBasePath, `/boards/${encodeURIComponent(productBoard.boardId)}${query}`));
     }
-    if (productBoard.kind === "conflict") {
-      noticeEntryState = "conflict";
-    } else {
-      // D76 default tabs are guaranteed, not installed by a user-facing step.
-      // Reconciliation is idempotent by the stable product source and uses the
-      // same authenticated Supabase adapter as the lookup above.
-      const boardId = await ensureNoticeTabAtomic(ctx, client);
-      const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
-      redirect(workspaceHref(workspaceBasePath, `/boards/${encodeURIComponent(boardId)}${query}`));
-    }
+    noticeEntryState = productBoard.kind;
   } catch (error) {
     // Preserve redirects and other Next.js control-flow errors.
     unstable_rethrow(error);
@@ -102,6 +92,28 @@ export default async function NoticesPage({
           공지사항 보드를 하나로 확인하지 못했습니다
         </h1>
         <p className="mt-2 text-sm text-mw-sub">회사 관리자에게 보드 구성을 확인해 달라고 요청해 주세요.</p>
+      </section>
+    );
+  }
+  if (noticeEntryState === "permission") {
+    return (
+      <section className="rounded-xl border border-mw-line bg-mw-card p-5" aria-labelledby="notice-entry-title">
+        <h1 id="notice-entry-title" className="text-lg font-semibold text-mw-fg">
+          공지사항 보드 복구 권한이 없습니다
+        </h1>
+        <p className="mt-2 text-sm text-mw-sub">
+          활성 owner 또는 admin에게 이 워크스페이스의 기본 보드 복구를 요청해 주세요.
+        </p>
+      </section>
+    );
+  }
+  if (noticeEntryState === "missing") {
+    return (
+      <section className="rounded-xl border border-red-200 bg-mw-card p-5" aria-labelledby="notice-entry-title">
+        <h1 id="notice-entry-title" className="text-lg font-semibold text-mw-fg">
+          공지사항 보드를 복구하지 못했습니다
+        </h1>
+        <p className="mt-2 text-sm text-mw-sub">잠시 후 다시 시도해 주세요. 문제가 계속되면 회사 관리자에게 알려 주세요.</p>
       </section>
     );
   }
