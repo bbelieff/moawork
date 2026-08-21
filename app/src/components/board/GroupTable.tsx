@@ -30,6 +30,8 @@ import { DealLedgerButton } from "./DealLedgerButton";
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import { TrashItemButton } from "./ItemTrashControls";
 import { AddItemForm } from "./AddItemForm";
+import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
+import { updateNewLeadFieldAction } from "@/app/(app)/boards/new-lead-actions";
 import {
   renameItemAction,
   setCellAction,
@@ -82,6 +84,17 @@ function cellTitle(column: BoardColumn): string {
 }
 
 const NUMERIC_TYPES = new Set(["money", "number"]);
+const NEW_LEAD_FIELD_KEYS: Readonly<Record<string, string>> = {
+  rep_name: "representative_name",
+  phone: "phone",
+  email: "email",
+  business_registration_type: "business_registration_type",
+  industry: "industry",
+  revenue_band: "revenue_band",
+  region_sido: "region_sido",
+  region_sigungu: "region_sigungu",
+  acquisition_source: "acquisition_source",
+};
 
 /** 한 셀 — 읽기 전용이면 표시만, 아니면 셀 단위 서버 액션 폼. */
 export function BoardCell({
@@ -89,12 +102,14 @@ export function BoardCell({
   row,
   column,
   readOnly,
+  canonicalNewLead,
   error,
 }: {
   boardId: string;
   row: ItemWithValues;
   column: BoardColumn;
   readOnly: boolean;
+  canonicalNewLead?: boolean;
   error?: string | null;
 }) {
   const value = row.values[column.key] ?? null;
@@ -106,7 +121,9 @@ export function BoardCell({
   // 결과: 사용자가 고칠 수 있는 것처럼 보이고, 저장을 눌러야 거부당한다.
   // ✉ 발송 칸에서는 더 나쁘다 — 안전장치(BBE-148)가 붙는 순간 «열려 있는 편집창» 이
   // 곧 돈이 나가는 통로가 된다. 화면과 서버가 같은 답을 해야 한다.
-  const cellReadOnly = readOnly || !isSourceEditable(column.source) || column.is_readonly === true;
+  const canonicalField = canonicalNewLead ? NEW_LEAD_FIELD_KEYS[column.key] : undefined;
+  const auditedCanonicalEdit = Boolean(canonicalField && row.deal_id);
+  const cellReadOnly = readOnly || (!auditedCanonicalEdit && !isSourceEditable(column.source)) || column.is_readonly === true;
   const numeric = NUMERIC_TYPES.has(column.type);
   const title = cellTitle(column);
 
@@ -136,7 +153,7 @@ export function BoardCell({
   return (
     <div className="flex flex-col" title={title}>
       <form
-        action={setCellAction}
+        action={auditedCanonicalEdit ? updateNewLeadFieldAction : setCellAction}
         aria-describedby={errorId}
         onSubmit={
           needsConfirm
@@ -155,6 +172,12 @@ export function BoardCell({
         <input type="hidden" name="boardId" value={boardId} />
         <input type="hidden" name="itemId" value={row.id} />
         <input type="hidden" name="columnKey" value={column.key} />
+        {auditedCanonicalEdit ? (
+          <>
+            <input type="hidden" name="dealId" value={row.deal_id ?? ""} />
+            <input type="hidden" name="field" value={canonicalField} />
+          </>
+        ) : null}
 
         {column.type === "file" ? (
           <span className="flex items-center gap-1">
@@ -300,6 +323,9 @@ export function GroupTable({
   textMode?: "single" | "wrap";
   focusColumnKey?: string | null;
 }) {
+  const canonicalNewLead = ["rep_name", "phone", "email", "industry", "contact_move"].every((key) =>
+    columns.some((column) => column.key === key),
+  );
   /*
    * 드래그 중인 대상은 **ref 가 정본**이고 state 는 표시(반투명·강조)에만 쓴다.
    * dragstart → drop 사이에 리렌더가 반드시 일어난다고 가정하면 안 되기 때문이다
@@ -562,6 +588,7 @@ export function GroupTable({
                       row={row}
                       column={col}
                       readOnly={readOnly}
+                      canonicalNewLead={canonicalNewLead}
                       error={cellFlash ? findCellError(cellFlash, row.id, col.key) : null}
                     />
                   </td>
@@ -577,12 +604,16 @@ export function GroupTable({
                 colSpan={colSpan}
                 className={`px-2 py-1 ${overRowIndex === rows.length ? "bg-mw-tint-blue" : ""}`}
               >
-                <AddItemForm
-                  boardId={boardId}
-                  variant="inline"
-                  groupId={groupId}
-                  inputClassName={`${CELL_INPUT} max-w-64`}
-                />
+                {canonicalNewLead && groupId ? (
+                  <NewLeadIntakeForm boardId={boardId} groupId={groupId} />
+                ) : (
+                  <AddItemForm
+                    boardId={boardId}
+                    variant="inline"
+                    groupId={groupId}
+                    inputClassName={`${CELL_INPUT} max-w-64`}
+                  />
+                )}
               </td>
             </tr>
           )}
