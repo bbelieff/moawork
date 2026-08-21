@@ -1,10 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
-import { canonicalPhone, createCanonicalNewLead, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadTitle } from "./mutations";
+import { canonicalAssignee, canonicalPhone, createCanonicalNewLead, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadTitle } from "./mutations";
 
 describe("BBE-171 canonical new-lead mutations", () => {
   it("formats a Korean phone for display while the RPC owns normalized storage", () => {
     expect(canonicalPhone("01012345678")).toBe("010-1234-5678");
     expect(canonicalPhone("not a phone")).toBeNull();
+  });
+
+  it("keeps the actor-default assignment system-owned and sends only an explicit alternate", () => {
+    expect(canonicalAssignee("actor", "actor")).toBeNull();
+    expect(canonicalAssignee("actor", "")).toBeNull();
+    expect(canonicalAssignee("actor", "member")).toBe("member");
   });
 
   it("creates through the single atomic BBE-173 RPC", async () => {

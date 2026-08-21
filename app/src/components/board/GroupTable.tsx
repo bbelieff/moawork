@@ -91,11 +91,15 @@ const NEW_LEAD_FIELD_KEYS: Readonly<Record<string, string>> = {
   phone: "phone",
   email: "email",
   biz_reg_type: "business_registration_type",
+  business_registration_type: "business_registration_type",
   industry: "industry",
   revenue_band: "revenue_band",
   sido: "region_sido",
+  region_sido: "region_sido",
   sigungu: "region_sigungu",
+  region_sigungu: "region_sigungu",
   ad_name: "acquisition_source",
+  acquisition_source: "acquisition_source",
 };
 
 const NEW_LEAD_EMPTY_LABELS: Readonly<Record<string, string>> = {

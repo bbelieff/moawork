@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth/session";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { createClient } from "@/lib/supabase/server";
-import { createCanonicalNewLead, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadTitle } from "@/lib/new-lead/mutations";
+import { canonicalAssignee, createCanonicalNewLead, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadTitle } from "@/lib/new-lead/mutations";
 import type { NewLeadIntakeState } from "@/lib/new-lead/intake-state";
 import { CELL_FLASH_COOKIE, CELL_FLASH_MAX_AGE, encodeCellFlash } from "@/lib/boards/cellFlash";
 
@@ -59,7 +59,7 @@ export async function createNewLeadAction(
       p_region_sigungu: text(formData, "region_sigungu") || null,
       p_address_detail: text(formData, "address_detail") || null,
       p_acquisition_source: text(formData, "acquisition_source") || null,
-      p_assigned_to: text(formData, "assigned_to") || null,
+      p_assigned_to: canonicalAssignee(ctx.user.id, text(formData, "assigned_to")),
       p_collaborator_ids: textList(formData, "collaborator_ids"),
     });
     revalidatePath(`/boards/${boardId}`);

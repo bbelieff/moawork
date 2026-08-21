@@ -49,6 +49,11 @@ export function canonicalPhone(value: string | null | undefined): string | null 
   return formatted && formatted !== "확인 필요" ? formatted : null;
 }
 
+export function canonicalAssignee(actorId: string, selectedId: string | null | undefined): string | null {
+  const selected = selectedId?.trim();
+  return selected && selected !== actorId ? selected : null;
+}
+
 export async function createCanonicalNewLead(
   client: SupabaseClient,
   input: CreateNewLeadArgs,

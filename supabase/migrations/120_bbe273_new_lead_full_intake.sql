@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=120_bbe273_new_lead_full_intake predecessor=119_bbe272_new_lead_default_stage digest=e0d809e4066d9fb722cf021f680edac09c37204baf44443f075a47fc06843b7a foundation=false
+-- moa-migration-guard: logical_key=120_bbe273_new_lead_full_intake predecessor=119_bbe272_new_lead_default_stage digest=60fcfbd93735ef2940f0f5d976fa1e662074eafcbee4e33aad8624f513b46f9a foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '120_bbe273_new_lead_full_intake',
   p_file_name => '120_bbe273_new_lead_full_intake.sql',
-  p_file_digest => 'e0d809e4066d9fb722cf021f680edac09c37204baf44443f075a47fc06843b7a',
+  p_file_digest => '60fcfbd93735ef2940f0f5d976fa1e662074eafcbee4e33aad8624f513b46f9a',
   p_expected_predecessor => '119_bbe272_new_lead_default_stage',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -35,6 +35,9 @@ begin
   return case when tg_op='DELETE' then old else new end;
 end $$;
 revoke all on function public.guard_new_lead_projection_write() from public,anon,authenticated,service_role;
+drop trigger if exists guard_new_lead_projection_write on public.item_values;
+create trigger guard_new_lead_projection_write before insert or update or delete on public.item_values
+for each row execute function public.guard_new_lead_projection_write();
 
 -- Existing update_new_lead_fields remains the canonical/audited writer. This
 -- trigger corrects only its projection aliases after a canonical fact changes;
@@ -55,7 +58,10 @@ begin
       'rep_name',to_jsonb(new.representative_name),'phone',to_jsonb(new.phone_display),'email',to_jsonb(new.email_normalized),
       'biz_reg_type',to_jsonb(new.business_registration_type),'industry',to_jsonb(new.industry),
       'revenue_band',to_jsonb(new.revenue_band),'sido',to_jsonb(new.region_sido),'sigungu',to_jsonb(new.region_sigungu),
-      'ad_name',to_jsonb(new.acquisition_source)
+      'ad_name',to_jsonb(new.acquisition_source),
+      'business_registration_type',to_jsonb(new.business_registration_type),
+      'region_sido',to_jsonb(new.region_sido),'region_sigungu',to_jsonb(new.region_sigungu),
+      'acquisition_source',to_jsonb(new.acquisition_source)
     )) x join public.board_columns c on c.org_id=new.org_id and c.board_id=v_board and c.key=x.key
   on conflict(item_id,column_key) do update
     set value_jsonb=excluded.value_jsonb,org_id=excluded.org_id;
@@ -178,6 +184,10 @@ begin
       'industry',to_jsonb(nullif(btrim(coalesce(p_industry,'')),'')),'revenue_band',to_jsonb(nullif(btrim(coalesce(p_revenue_band,'')),'')),
       'sido',to_jsonb(nullif(btrim(coalesce(p_region_sido,'')),'')),'sigungu',to_jsonb(nullif(btrim(coalesce(p_region_sigungu,'')),'')),
       'email',to_jsonb(v_email),'ad_name',to_jsonb(nullif(btrim(coalesce(p_acquisition_source,'')),'')),
+      'business_registration_type',to_jsonb(nullif(btrim(coalesce(p_business_registration_type,'')),'')),
+      'region_sido',to_jsonb(nullif(btrim(coalesce(p_region_sido,'')),'')),
+      'region_sigungu',to_jsonb(nullif(btrim(coalesce(p_region_sigungu,'')),'')),
+      'acquisition_source',to_jsonb(nullif(btrim(coalesce(p_acquisition_source,'')),'')),
       'absence_notice',to_jsonb('해당 없음'::text),'consult1_notice',to_jsonb('해당 없음'::text),
       'confirm2_notice',to_jsonb('해당 없음'::text),'feedback_status',to_jsonb('미입력'::text),
       'consult_status',to_jsonb('상담 전'::text),'contact_move',to_jsonb('컨택 대기'::text)

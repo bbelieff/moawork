@@ -14,7 +14,8 @@ const ids = {
   owner: "00000000-0000-4000-8000-000000000010", member: "00000000-0000-4000-8000-000000000011",
   outsider: "00000000-0000-4000-8000-000000000012", boardA: "00000000-0000-4000-8000-000000000020",
   boardB: "00000000-0000-4000-8000-000000000021", groupA: "00000000-0000-4000-8000-000000000030",
-  groupB: "00000000-0000-4000-8000-000000000031", request: "00000000-0000-4000-8000-000000000100",
+  boardLegacy: "00000000-0000-4000-8000-000000000022", groupB: "00000000-0000-4000-8000-000000000031",
+  groupLegacy: "00000000-0000-4000-8000-000000000032", request: "00000000-0000-4000-8000-000000000100",
 };
 
 async function actor(db: PGlite, userId: string) {
@@ -48,17 +49,29 @@ describe("BBE-273 atomic full new-lead intake", () => {
       insert into users values('${ids.owner}'),('${ids.member}'),('${ids.outsider}');
       insert into orgs values('${ids.orgA}','active'),('${ids.orgB}','active');
       insert into org_members values ('${ids.orgA}','${ids.owner}','owner','all','active'),('${ids.orgA}','${ids.member}','member','assigned','active'),('${ids.orgB}','${ids.outsider}','owner','all','active');
-      insert into boards values('${ids.boardA}','${ids.orgA}','core.default-tab/new-lead'),('${ids.boardB}','${ids.orgB}','core.default-tab/new-lead');
-      insert into board_groups values('${ids.groupA}','${ids.orgA}','${ids.boardA}'),('${ids.groupB}','${ids.orgB}','${ids.boardB}');
+      insert into boards values('${ids.boardA}','${ids.orgA}','core.default-tab/new-lead'),('${ids.boardB}','${ids.orgB}','core.default-tab/new-lead'),('${ids.boardLegacy}','${ids.orgA}','core.default-tab/new-lead');
+      insert into board_groups values('${ids.groupA}','${ids.orgA}','${ids.boardA}'),('${ids.groupB}','${ids.orgB}','${ids.boardB}'),('${ids.groupLegacy}','${ids.orgA}','${ids.boardLegacy}');
       insert into board_columns(org_id,board_id,key) select '${ids.orgA}','${ids.boardA}',unnest(array[
         'owner','collaborators','applied_on','phone','rep_name','biz_reg_type','industry','revenue_band','sido','sigungu','email','ad_name',
         'absence_notice','consult1_notice','confirm2_notice','feedback_status','recall_at','meeting_at','recontact_on','contract_fee','consult_status','contact_move']);
+      insert into board_columns(org_id,board_id,key) select '${ids.orgA}','${ids.boardLegacy}',unnest(array[
+        'owner','collaborators','applied_on','phone','rep_name','business_registration_type','industry','revenue_band','region_sido','region_sigungu','email','acquisition_source',
+        'absence_notice','consult1_notice','confirm2_notice','feedback_status','recall_at','meeting_at','recontact_on','contract_fee','consult_status','contact_move']);
     `);
     await db.exec(projectionSql);
-    await db.exec(`create trigger guard_new_lead_projection_write before insert or update or delete on item_values
-      for each row execute function guard_new_lead_projection_write()`);
     await db.exec(functionSql);
     await actor(db, ids.owner);
+  });
+
+  it("projects and reloads the hosted legacy long-key structural variant", async () => {
+    const result = await db.query<{ item_id: string }>(
+      `select * from create_new_lead('${ids.orgA}','${ids.boardLegacy}','${ids.groupLegacy}',gen_random_uuid(),'레거시','대표',null,null,'법인',null,null,null,'서울','강남구','소개')`,
+    );
+    const values = Object.fromEntries((await db.query<{ column_key: string; value_jsonb: unknown }>(
+      `select column_key,value_jsonb from item_values where item_id='${result.rows[0].item_id}' and column_key in ('business_registration_type','region_sido','region_sigungu','acquisition_source')`,
+    )).rows.map((row) => [row.column_key,row.value_jsonb]));
+    expect(values).toEqual({ acquisition_source: "소개", business_registration_type: "법인", region_sigungu: "강남구", region_sido: "서울" });
+    expect((await db.query<{ value_source: string }>("select value_source from deal_intake_field_audit where field_key='owner'")).rows[0].value_source).toBe("system");
   });
 
   it("writes canonical facts, all immediate projections, exact audit sources, and stable replay", async () => {
