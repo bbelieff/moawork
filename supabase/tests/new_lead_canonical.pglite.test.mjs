@@ -14,6 +14,7 @@ const migration = await readFile(path.join(root, "supabase", "migrations", "087_
 const detailLayoutMigration088 = await readFile(path.join(root, "supabase", "migrations", "088_bbe175_detail_layout_drift_repair.sql"), "utf8");
 const migrationGuard094 = await readFile(path.join(root, "supabase", "migrations", "094_migration_apply_guard.sql"), "utf8");
 const contactMoveMigration095 = await readFile(path.join(root, "supabase", "migrations", "095_bbe172_new_lead_contact_transition.sql"), "utf8");
+const titleMigration110 = await readFile(path.join(root, "supabase", "migrations", "110_bbe171_new_lead_title_audit.sql"), "utf8");
 
 const A = "10000000-0000-4000-8000-000000000001";
 const B = "10000000-0000-4000-8000-000000000002";
@@ -94,6 +95,9 @@ async function setup(db) {
   await db.exec(detailLayoutMigration088);
   await db.exec(migrationGuard094);
   await db.exec(contactMoveMigration095);
+  await db.exec(`insert into public.migration_apply_guard(logical_key,file_name,file_digest,expected_predecessor,executor,thread_id,applied_at)
+    values('109_bbe268_migration_frontier_bridge','109_bbe268_migration_frontier_bridge.sql','${"1".repeat(64)}','108_bbe199_org_logo','test','test',clock_timestamp())`);
+  await db.exec(titleMigration110);
   assert.deepEqual(
     {
       boards: (await db.query("select id,org_id,source from public.boards order by id")).rows,
@@ -104,6 +108,25 @@ async function setup(db) {
   );
   await db.exec("grant usage on schema public to authenticated");
 }
+
+test("BBE-171 title update atomically synchronizes deal/item, audits, replays, and protects manual correction", async () => {
+  const db=new PGlite(); try {
+    await setup(db); const created=await createLead(db,"10000000-0000-4000-8000-000000000301");
+    await db.exec("set role authenticated"); await db.query("select set_config('request.jwt.claim.sub',$1,false)",[USER]);
+    const request="10000000-0000-4000-8000-000000000302";
+    const first=await db.query("select * from public.update_new_lead_title($1,$2,$3,$4,'manual')",[A,created.rows[0].deal_id,request,"수정 리드"]);
+    const replay=await db.query("select * from public.update_new_lead_title($1,$2,$3,$4,'manual')",[A,created.rows[0].deal_id,request,"수정 리드"]);
+    assert.equal(first.rows[0].replayed,false); assert.equal(replay.rows[0].replayed,true);
+    await db.exec("reset role");
+    assert.deepEqual((await db.query("select d.title deal_title,i.title item_title from public.deals d join public.items i on i.deal_id=d.id where d.id=$1",[created.rows[0].deal_id])).rows[0],{deal_title:"수정 리드",item_title:"수정 리드"});
+    const audit=(await db.query("select field_key,old_value,new_value,value_source,actor_id,request_id,changed_at is not null changed_at_set from public.deal_intake_field_audit where deal_id=$1 and field_key='title'",[created.rows[0].deal_id])).rows[0];
+    assert.deepEqual(audit,{field_key:"title",old_value:"Lead",new_value:"수정 리드",value_source:"manual",actor_id:USER,request_id:request,changed_at_set:true});
+    await db.exec("set role authenticated"); await db.query("select set_config('request.jwt.claim.sub',$1,false)",[USER]);
+    await assert.rejects(db.query("select * from public.update_new_lead_title($1,$2,$3,$4,'automation')",[A,created.rows[0].deal_id,"10000000-0000-4000-8000-000000000303","자동 덮기"]),/manual correction conflict/);
+    await assert.rejects(db.query("select * from public.update_new_lead_title($1,$2,$3,$4,'manual')",[B,created.rows[0].deal_id,"10000000-0000-4000-8000-000000000304","교차 조직"]),/denied/);
+    await db.exec("reset role");
+  } finally { await db.close(); }
+});
 
 async function createLead(db, request, title = "Lead", uniqueSuffix = "") {
   await db.exec("set role authenticated");
