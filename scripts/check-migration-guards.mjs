@@ -4,7 +4,7 @@ import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MARKER = /^-- moa-migration-guard: logical_key=(\S+) predecessor=(\S+) digest=([0-9a-f]{64}) foundation=(true|false)(?: bridge_repo_predecessor=(\S+))?$/mu;
-const DIGEST_ARGUMENT = /(p_file_digest\s*=>\s*')[0-9a-f]{64}(')/u;
+const DIGEST_ARGUMENT = /((?:p_file_digest\s*=>|v_file_digest\s+constant\s+text\s*:=)\s*')[0-9a-f]{64}(')/u;
 
 function namedText(sql, name) {
   return sql.match(new RegExp(`${name}\\s*=>\\s*'([^']+)'`, "u"))?.[1];
@@ -27,10 +27,13 @@ export function inspectGuardedMigration(fileName, sql) {
   const [, logicalKey, predecessor, declaredDigest, foundationText, bridgeRepoPredecessor = null] = marker;
   const expectedKey = basename(fileName, ".sql");
   if (logicalKey !== expectedKey) throw new Error(`${fileName}: logical key mismatch`);
-  if ((sql.match(/select\s+public\.begin_guarded_migration\s*\(/giu) ?? []).length !== 1) throw new Error(`${fileName}: guard call count must be one`);
-  if (namedText(sql, "p_logical_key") !== logicalKey) throw new Error(`${fileName}: guard logical key argument mismatch`);
-  if (namedText(sql, "p_file_name") !== fileName) throw new Error(`${fileName}: guard file name argument mismatch`);
-  if (namedText(sql, "p_expected_predecessor") !== predecessor) throw new Error(`${fileName}: guard predecessor argument mismatch`);
+  const guardCallCount = (sql.match(/select\s+public\.begin_guarded_migration\s*\(/giu) ?? []).length;
+  if (bridgeRepoPredecessor ? guardCallCount !== 0 : guardCallCount !== 1) throw new Error(`${fileName}: guard call count is invalid`);
+  if (bridgeRepoPredecessor && !/pg_advisory_xact_lock\(1297040711,\s*188\)/iu.test(sql)) throw new Error(`${fileName}: bridge must acquire migration lock`);
+  if (bridgeRepoPredecessor && (sql.match(/insert\s+into\s+public\.migration_apply_guard/giu) ?? []).length !== 1) throw new Error(`${fileName}: bridge must insert exactly one canonical guard row`);
+  if (!bridgeRepoPredecessor && namedText(sql, "p_logical_key") !== logicalKey) throw new Error(`${fileName}: guard logical key argument mismatch`);
+  if (!bridgeRepoPredecessor && namedText(sql, "p_file_name") !== fileName) throw new Error(`${fileName}: guard file name argument mismatch`);
+  if (!bridgeRepoPredecessor && namedText(sql, "p_expected_predecessor") !== predecessor) throw new Error(`${fileName}: guard predecessor argument mismatch`);
   const digestArgument = sql.match(DIGEST_ARGUMENT)?.[0].match(/[0-9a-f]{64}/u)?.[0];
   if (digestArgument !== declaredDigest) throw new Error(`${fileName}: digest argument mismatch`);
   const actualDigest = migrationDigest(sql);
@@ -38,9 +41,9 @@ export function inspectGuardedMigration(fileName, sql) {
   const foundation = foundationText === "true";
   if (!foundation) {
     const markerEnd = sql.indexOf("\n") + 1;
-    const guardStart = sql.search(/select\s+public\.begin_guarded_migration\s*\(/iu);
+    const guardStart = bridgeRepoPredecessor ? sql.search(/do\s+\$bridge\$/iu) : sql.search(/select\s+public\.begin_guarded_migration\s*\(/iu);
     if (sql.slice(markerEnd, guardStart).trim() !== "") throw new Error(`${fileName}: guard call must precede migration body`);
-    if (!/p_foundation\s*=>\s*false/iu.test(sql)) throw new Error(`${fileName}: future migration cannot claim foundation`);
+    if (!bridgeRepoPredecessor && !/p_foundation\s*=>\s*false/iu.test(sql)) throw new Error(`${fileName}: future migration cannot claim foundation`);
   } else if (!/select\s+pg_advisory_xact_lock\(1297040711,\s*188\)/iu.test(sql.slice(0, sql.indexOf("create table")))) {
     throw new Error(`${fileName}: foundation must lock before DDL`);
   }
