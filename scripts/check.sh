@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check.sh — moawork 품질 게이트
-# lint + typecheck + test 를 순서대로 실행한다. 하나라도 실패하면 즉시 중단(비정상 종료).
+# lint + typecheck + production build + test 를 순서대로 실행한다. 하나라도 실패하면 즉시 중단(비정상 종료).
 # CI 와 .githooks/pre-commit 이 공통으로 이 스크립트를 호출한다(단일 진실 게이트).
 set -euo pipefail
 
@@ -29,6 +29,7 @@ node scripts/check-css-token-references.mjs
 # (실측: export class 는 빌드가 잡고 export const 는 통과) 여기서 따로 센다.
 node scripts/check-use-server-exports.mjs --self-test
 node scripts/check-use-server-exports.mjs
+node --test scripts/check-build-gate.test.mjs
 
 # ── 규칙 공지 (2026-08-20 일원화) ───────────────────────
 # 왜 여기 있나: 모든 세션이 커밋 전에 반드시 이 스크립트를 지난다.
@@ -55,13 +56,17 @@ node scripts/check-use-server-exports.mjs
 echo "▶ [0/4] decision dashboard"
 node --test tools/dashboard-server.test.mjs tools/board/board.template.test.mjs
 
-echo "▶ [1/3] lint"
+echo "▶ [1/4] lint"
 npm run lint --workspaces --if-present
 
-echo "▶ [2/3] typecheck"
+echo "▶ [2/4] typecheck"
 npm run typecheck --workspaces --if-present
 
-echo "▶ [3/3] test"
+echo "▶ [3/4] production build"
+export NEXT_TELEMETRY_DISABLED=1
+npm run build --workspaces --if-present
+
+echo "▶ [4/4] test"
 npm run test:gate --workspace app
 npm run test --workspace worker --if-present
 

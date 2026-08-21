@@ -1,0 +1,32 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const checkScript = await readFile(new URL("./check.sh", import.meta.url), "utf8");
+
+test("the canonical quality gate runs the real workspace production build", () => {
+  const typecheckCommand = "npm run typecheck --workspaces --if-present";
+  const buildCommand = "npm run build --workspaces --if-present";
+  const testCommand = "npm run test:gate --workspace app";
+  const lines = checkScript.split(/\r?\n/u);
+
+  for (const command of [typecheckCommand, buildCommand, testCommand]) {
+    assert.equal(lines.filter((line) => line === command).length, 1, `${command} must appear exactly once`);
+  }
+
+  const typecheckAt = checkScript.indexOf(typecheckCommand);
+  const buildAt = checkScript.indexOf(buildCommand);
+  const testAt = checkScript.indexOf(testCommand);
+  assert.ok(typecheckAt >= 0 && buildAt >= 0 && testAt >= 0, "all gate anchors must exist");
+  assert.ok(typecheckAt < buildAt, "build must run after the cheaper static checks");
+  assert.ok(buildAt < testAt, "build must fail before the long database test suite");
+});
+
+test("CI and pre-commit keep consuming the one canonical check script", async () => {
+  const [workflow, hook] = await Promise.all([
+    readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
+    readFile(new URL("../.githooks/pre-commit", import.meta.url), "utf8"),
+  ]);
+  assert.match(workflow, /run:\s+bash scripts\/check\.sh/u);
+  assert.match(hook, /bash (?:"\$ROOT\/)?scripts\/check\.sh"?/u);
+});
