@@ -353,6 +353,11 @@ function isHandNeeded(issue) {
   return issue.status === "Blocked" || issue.labels.some((label) => HAND_NEEDED_LABELS.has(label));
 }
 
+function terminalIssueCompletion(issues) {
+  const done = issues.filter((issue) => TERMINAL_ISSUE_STATUSES.has(issue.status)).length;
+  return { done, total: issues.length, percent: issues.length ? Math.round(done / issues.length * 100) : 0 };
+}
+
 function cardIdFromPr(pr) {
   return [pr.title, pr.headRefName, ...(pr.labels || []).map((label) => label.name || label)].filter(Boolean).join(" ").match(/BBE-\d+/i)?.[0]?.toUpperCase() || null;
 }
@@ -617,7 +622,7 @@ async function buildOperations(force = false) {
     counts: Object.fromEntries(Object.values(DELIVERY_STAGE).map((stage) => [stage, deliveryItems.filter((item) => item.stage === stage).length])),
   };
   const completed = deliveryItems.filter((item) => item.complete).length;
-  const globalLinearDone = measuredIssues.filter((issue) => issue.status === "Done").length;
+  const globalLinearCompletion = terminalIssueCompletion(measuredIssues);
   const handNeeded = issues && measuredIssues.filter(isHandNeeded)
     .sort((a, b) => ({ Urgent: 0, High: 1, Medium: 2, Low: 3 }[a.priority?.name] ?? 4) - ({ Urgent: 0, High: 1, Medium: 2, Low: 3 }[b.priority?.name] ?? 4));
   const linearToday = measuredIssues.filter((issue) => new Date(issue.updatedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === today)
@@ -636,7 +641,7 @@ async function buildOperations(force = false) {
       urgentRemaining: issues ? measuredIssues.filter((issue) => issue.priority?.name === "Urgent" && !["Done", "Canceled", "Duplicate"].includes(issue.status)).length : null,
       handNeeded: handNeeded ? handNeeded.length : null,
       completion: delivery.available && deliveryItems.length ? { done: completed, total: deliveryItems.length, percent: Math.round(completed / deliveryItems.length * 100), basis: "production-bounded" } : null,
-      linearCompletion: issues?.length ? { done: globalLinearDone, total: issues.length, percent: Math.round(globalLinearDone / issues.length * 100) } : null,
+      linearCompletion: issues?.length ? globalLinearCompletion : null,
       todayProductionDone: delivery.available ? deliveryItems.filter((item) => item.complete && item.deployment?.updatedAt && new Date(item.deployment.updatedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === today).length : null,
     },
     handNeeded, today: todayItems,
@@ -780,4 +785,4 @@ if (!ENV.DASHBOARD_NO_LISTEN) server.listen(PORT, () => {
   getOperations(true).catch(() => {});
 });
 
-export { classifyDelivery, isHandNeeded, linearReadFailure, mapWithConcurrency, parseDeliveryCommentEvidence, readDeliveryCommentEvidence };
+export { classifyDelivery, isHandNeeded, linearReadFailure, mapWithConcurrency, parseDeliveryCommentEvidence, readDeliveryCommentEvidence, terminalIssueCompletion };

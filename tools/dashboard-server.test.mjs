@@ -352,6 +352,20 @@ test("hand-needed excludes terminal cards even when historical labels remain", a
   assert.equal(isHandNeeded({ status: "Blocked", labels: [] }), true);
 });
 
+test("global Linear completion counts every terminal status and no active status", async () => {
+  process.env.DASHBOARD_NO_LISTEN = "1";
+  const { terminalIssueCompletion } = await import("./dashboard-server.mjs?unit=terminal-completion");
+  const issues = [
+    ...Array.from({ length: 172 }, () => ({ status: "Done" })),
+    ...Array.from({ length: 5 }, () => ({ status: "Canceled" })),
+    { status: "Duplicate" },
+    { status: "In Progress" },
+  ];
+  assert.deepEqual(terminalIssueCompletion(issues), { done: 178, total: 179, percent: 99 });
+  issues.at(-1).status = "Done";
+  assert.deepEqual(terminalIssueCompletion(issues), { done: 179, total: 179, percent: 100 });
+});
+
 test("60 forced refreshes retain complete evidence and refresh only changed incomplete rows", async () => {
   process.env.DASHBOARD_NO_LISTEN = "1";
   const { readDeliveryCommentEvidence } = await import("./dashboard-server.mjs?unit=rate-limit-evidence");
