@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import http from "node:http";
 
 const cwd = import.meta.dirname.replace(/[\\/]tools$/, "");
@@ -262,4 +263,14 @@ test("operations endpoint exposes read-only repository and PR decision signals",
   const startedAt = Date.now();
   assert.equal((await fetch(`${dashboardUrl}/api/operations?force=1`)).status, 200);
   assert.ok(Date.now() - startedAt < 5_000, "fresh forced reads reuse the 60-second live snapshot");
+});
+
+test("Production evidence fails closed for runtime logs and non-main merges", async () => {
+  const source = await readFile(new URL("./dashboard-server.mjs", import.meta.url), "utf8");
+  assert.match(source, /pr\?\.baseRefName === "main"/);
+  assert.match(source, /pr\?\.mainContainsMerge === true/);
+  assert.match(source, /"merge-base", "--is-ancestor"/);
+  assert.match(source, /runtimeErrorCount = deployment\?\.runtimeErrorCount \?\? null/);
+  assert.doesNotMatch(source, /deployment\?\.state === "SUCCESS" \? 0 : null/);
+  assert.match(source, /DASHBOARD_RUNTIME_EVIDENCE_JSON/);
 });

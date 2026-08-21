@@ -338,9 +338,9 @@ function cardIdFromPr(pr) {
 function classifyDelivery({ issue, pr, deployment, loginStatus }) {
   const hostedRequired = issue.labels.includes("needs-hosted");
   const mergedSha = pr?.mergeCommitSha || null;
-  const mainMerged = Boolean(pr?.mergedAt && mergedSha);
+  const mainMerged = Boolean(pr?.baseRefName === "main" && pr?.mergedAt && mergedSha && pr?.mainContainsMerge === true);
   const exactReady = Boolean(mainMerged && deployment?.state === "SUCCESS" && deployment.sha === mergedSha);
-  const runtimeErrorCount = deployment?.state === "SUCCESS" ? 0 : null;
+  const runtimeErrorCount = deployment?.runtimeErrorCount ?? null;
   const blockers = [];
   if (hostedRequired) blockers.push("HOSTED_REQUIRED_UNVERIFIED");
   if (issue.status === "Done" && !exactReady) blockers.push("LINEAR_DONE_WITHOUT_PRODUCTION");
@@ -364,12 +364,22 @@ async function readProductionEvidence() {
     const query = `query { repository(owner:"bbelieff", name:"moawork") { deployments(first:10, environments:["Production"], orderBy:{field:CREATED_AT,direction:DESC}) { nodes { databaseId commitOid createdAt latestStatus { state environmentUrl updatedAt } } } } }`;
     const raw = await runReadOnly("gh", ["api", "graphql", "-f", `query=${query}`]);
     const deployments = JSON.parse(raw || "{}").data?.repository?.deployments?.nodes || [];
+    const runtimeEvidence = (() => {
+      try {
+        const rows = JSON.parse(ENV.DASHBOARD_RUNTIME_EVIDENCE_JSON || "[]");
+        return new Map(rows.filter((row) => row?.sha && Number.isInteger(row?.runtimeErrorCount)).map((row) => [row.sha, row]));
+      } catch {
+        return new Map();
+      }
+    })();
     const items = deployments.map((deployment) => ({
       id: deployment.databaseId,
       sha: deployment.commitOid,
       state: String(deployment.latestStatus?.state || "").toUpperCase(),
       url: deployment.latestStatus?.environmentUrl || null,
       updatedAt: deployment.latestStatus?.updatedAt || deployment.createdAt,
+      runtimeErrorCount: runtimeEvidence.get(deployment.commitOid)?.runtimeErrorCount ?? null,
+      runtimeMeasuredAt: runtimeEvidence.get(deployment.commitOid)?.measuredAt ?? null,
     }));
     let loginStatus = null;
     try {
@@ -423,11 +433,20 @@ async function buildOperations() {
     ]);
     const rows = JSON.parse(raw || "[]");
     const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
-    const currentRows = rows.filter((pr) => pr.state === "OPEN" || (pr.mergedAt && new Date(pr.mergedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === today));
+    const currentRows = rows.filter((pr) => pr.baseRefName === "main" && (pr.state === "OPEN" || (pr.mergedAt && new Date(pr.mergedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === today)));
+    const mainMembership = await Promise.all(currentRows.map(async (pr) => {
+      if (!pr.mergedAt || !pr.mergeCommit?.oid) return false;
+      try {
+        await runReadOnly("git", ["merge-base", "--is-ancestor", pr.mergeCommit.oid, "origin/main"]);
+        return true;
+      } catch {
+        return false;
+      }
+    }));
     pullRequests = {
       available: true,
       count: currentRows.filter((pr) => pr.state === "OPEN").length,
-      items: currentRows.map((pr) => ({
+      items: currentRows.map((pr, index) => ({
         number: pr.number,
         title: pr.title,
         cardId: cardIdFromPr(pr),
@@ -439,6 +458,7 @@ async function buildOperations() {
         headRefOid: pr.headRefOid,
         headRefShort: pr.headRefOid?.slice(0, 8) || null,
         baseRefName: pr.baseRefName,
+        mainContainsMerge: mainMembership[index],
         isDraft: Boolean(pr.isDraft),
         mergeStateStatus: pr.mergeStateStatus || "UNKNOWN",
         updatedAt: pr.updatedAt,
