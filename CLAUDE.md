@@ -109,6 +109,7 @@ bash scripts/check.sh      # lint + typecheck + test — 이것이 게이트다
 ## 그다음은 `AGENTS.md`
 
 편제 · 완료의 정의 · 배정 · 검수 · 자율 완주 · 안전 규칙 · 폐기 목록이 전부 거기 있다.
+Claude와 Codex 워커의 자체 서브에이전트 검수·finding 등급·강한 정지선도 `AGENTS.md §5` 한 곳을 같이 따른다.
 **규칙을 바꿔야 하면 `AGENTS.md` 를 고친다. 새 문서를 만들지 않는다** (`AGENTS.md §2.5`).
 
 ---

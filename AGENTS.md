@@ -444,6 +444,17 @@ DG   데탑 코덱스      NG   노트북 코덱스
 PASS 면 → 자기가 머지한다   승인을 기다리지 않는다
 ```
 
+**작성자와 검수자를 서로 다른 top-level 세션으로 나누지 않는다.** 워커가 자기 안에서 새 문맥의
+서브에이전트를 띄워 **PR 번호·exact head·카드 명세·diff** 만 주고 검수한다. 코디네이터가 별도
+reviewer 세션을 호출하거나 판정을 다시 writer에게 전달하는 단계는 없다. 이 규칙은 Claude와 Codex에 같다.
+
+- 서브에이전트 finding **P0/P1은 merge 중단**이다. 같은 워커가 같은 카드에서 고치고 exact head로 재검수한다.
+- **P2/P3와 시각 다듬기는 merge 비차단**이다. 누락하지 말고 Linear 후속 카드/PR 기록으로 남긴다.
+- focused test · `bash scripts/check.sh` · production build · CI는 종전대로 필수다.
+- 카드 번호·PR exact head·서브에이전트 판정 원문/ID를 PR과 Linear 완료 증거에 남긴다.
+- 인증·보안/권한 하향·발송/과금·비가역 고객 데이터 변경은 finding 등급과 무관한 **강한 정지선**이다.
+- **root 코디네이터는 서브에이전트를 띄우지 않는다.** 서브에이전트는 배정된 카드의 워커만 사용한다.
+
 **다른 창에 검수를 넘기는 순간 belie 가 그 창에 붙여넣어야 한다.**
 2026-08-12 에 그렇게 설계했다가 **belie 가 병목이 됐다.** 짝 반장 검수·2단 검수 모두 폐지했다(아래).
 
@@ -573,8 +584,8 @@ gh pr checkout <PR 번호>          # 권장 — 브랜치 이름표까지 정�
 ① git fetch → 최신 origin/main 위 rebase        충돌 시 임의 해결 금지 · 중단 보고
 ② 내 카드가 있는지 확인                          없으면 착수 금지 (§4)
 ③ bash scripts/check.sh 초록
-④ 서브에이전트 자체 검수                         docs/playbooks/subagent-review.md
-⑤ push → PR(본문에 카드번호) → CI 초록
+④ push → PR(본문에 카드번호) → CI 초록
+⑤ exact head 서브에이전트 자체 검수               docs/playbooks/subagent-review.md
 ⑥ ★ 화면 확인 — 그 주소를 열어 본 증거            못 보면 볼 수 있는 워커에게 넘긴다 (§2.2)
 ⑦ squash merge → 배포 → health 200
 ⑧ Linear 완주 도장 + 코디네이터에게 완료 보고
