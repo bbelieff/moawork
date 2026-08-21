@@ -317,6 +317,19 @@
   font-weight: 800;
 }
 
+.workspaceList { display: grid; gap: 10px; list-style: none; margin: 14px 0 0; padding: 0; }
+.workspaceRow { display: grid; gap: 10px; border: 1px solid var(--mw-line); border-radius: 12px; padding: 14px; }
+.workspaceRow small { display: block; margin-top: 4px; }
+.pendingWorkspace { border-left: 4px solid var(--mw-warning); }
+.deletionDetails { border-top: 1px dashed var(--mw-line); padding-top: 10px; }
+.deletionDetails summary { cursor: pointer; color: var(--mw-error); font-weight: 800; }
+.deletionDetails form { display: grid; gap: 10px; margin-top: 10px; }
+.deletionDetails label { display: grid; gap: 6px; }
+.deletionDetails input { min-height: 44px; border: 1px solid var(--mw-line); border-radius: 10px; background: var(--mw-card); color: var(--mw-fg); padding: 8px 10px; }
+.permissionReason, .errorText { margin: 0 !important; }
+.errorText { color: var(--mw-error) !important; }
+.workspaceError { border-left: 4px solid var(--mw-error); background: color-mix(in srgb, var(--mw-error) 8%, var(--mw-card)); padding: 14px; }
+
 .dialog {
   width: min(500px, calc(100% - 24px));
   border: 1px solid var(--mw-line);
