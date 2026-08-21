@@ -262,7 +262,7 @@ test("operations endpoint exposes read-only repository and PR decision signals",
   assert.ok(JSON.stringify(body).length < 10_000, "bounded operations payload must not regress toward the measured 155KB response");
   const startedAt = Date.now();
   assert.equal((await fetch(`${dashboardUrl}/api/operations?force=1`)).status, 200);
-  assert.ok(Date.now() - startedAt < 5_000, "fresh forced reads reuse the 60-second live snapshot");
+  assert.ok(Date.now() - startedAt < 5_000, "forced fixture refresh remains bounded");
 });
 
 test("Production evidence fails closed for runtime logs and non-main merges", async () => {
@@ -270,7 +270,33 @@ test("Production evidence fails closed for runtime logs and non-main merges", as
   assert.match(source, /pr\?\.baseRefName === "main"/);
   assert.match(source, /pr\?\.mainContainsMerge === true/);
   assert.match(source, /"merge-base", "--is-ancestor"/);
-  assert.match(source, /runtimeErrorCount = deployment\?\.runtimeErrorCount \?\? null/);
+  assert.match(source, /deployment\?\.runtimeErrorCount \?\? \(commentEvidence\?\.runtimeZero \? 0 : null\)/);
   assert.doesNotMatch(source, /deployment\?\.state === "SUCCESS" \? 0 : null/);
   assert.match(source, /DASHBOARD_RUNTIME_EVIDENCE_JSON/);
+  assert.match(source, /deployments\(first:100/);
+  assert.match(source, /if \(!force && operationsSnap\.data/);
+  assert.match(source, /readProductionEvidence\(force\)/);
+});
+
+test("39-card regression fixture accepts only exact durable runtime and hosted evidence", async () => {
+  process.env.DASHBOARD_NO_LISTEN = "1";
+  const { classifyDelivery, mapWithConcurrency, parseDeliveryCommentEvidence } = await import("./dashboard-server.mjs?unit=delivery-evidence");
+  const mergeSha = "a".repeat(40);
+  const comments = [{ body: `merge ${mergeSha}; Production exact READY; /login 200; runtime error/fatal 0; hosted migration applied; postflight PASS; customerDML0` }];
+  assert.deepEqual(parseDeliveryCommentEvidence(comments, mergeSha), { runtimeZero: true, hostedApplied: true });
+  assert.deepEqual(parseDeliveryCommentEvidence([{ body: "Done; runtime error/fatal 0; hosted applied; postflight PASS; customerDML0" }], mergeSha), { runtimeZero: false, hostedApplied: false });
+  assert.equal(parseDeliveryCommentEvidence([{ body: `merge ${mergeSha}; runtime errors 10` }], mergeSha).runtimeZero, false);
+  const fixture = Array.from({ length: 39 }, (_, index) => index);
+  assert.deepEqual(await mapWithConcurrency(fixture, 4, async (value) => value * 2), fixture.map((value) => value * 2));
+  const verdict = classifyDelivery({
+    issue: { status: "Done", labels: ["needs-hosted"] },
+    pr: { baseRefName: "main", mergedAt: "2026-08-21T00:00:00Z", mergeCommitSha: mergeSha, mainContainsMerge: true },
+    deployment: { state: "SUCCESS", sha: mergeSha, runtimeErrorCount: null },
+    loginStatus: 200,
+    commentEvidence: { runtimeZero: true, hostedApplied: true },
+  });
+  assert.equal(verdict.complete, true);
+  assert.equal(verdict.stage, "PRODUCTION_COMPLETE");
+  assert.equal(verdict.runtimeErrorCount, 0);
+  assert.equal(verdict.hostedApplied, true);
 });

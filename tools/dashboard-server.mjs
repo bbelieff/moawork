@@ -111,10 +111,10 @@ function commentCacheKey(id, limit, after) {
   return JSON.stringify([id, limit, after ?? null]);
 }
 
-async function getComments(id, limit, after) {
+async function getComments(id, limit, after, force = false) {
   const key = commentCacheKey(id, limit, after);
   const cached = commentCache.get(key);
-  if (cached && Date.now() - cached.at < COMMENT_TTL) return cached.data;
+  if (!force && cached && Date.now() - cached.at < COMMENT_TTL) return cached.data;
   if (commentInFlight.has(key)) return commentInFlight.get(key);
 
   const pending = (async () => {
@@ -189,7 +189,8 @@ async function build() {
 
 async function getSnap(force = false) {
   if (!force && snap.data && Date.now() - snap.at < TTL) return snap.data;
-  if (snap.building) return snap.building;          // 동시 요청은 한 번만 만든다
+  if (!force && snap.building) return snap.building;          // 동시 요청은 한 번만 만든다
+  if (force && snap.building) await snap.building;
   snap.building = (async () => {
     try {
       const d = await build();
@@ -335,21 +336,22 @@ function cardIdFromPr(pr) {
   return [pr.title, pr.headRefName, ...(pr.labels || []).map((label) => label.name || label)].filter(Boolean).join(" ").match(/BBE-\d+/i)?.[0]?.toUpperCase() || null;
 }
 
-function classifyDelivery({ issue, pr, deployment, loginStatus }) {
+function classifyDelivery({ issue, pr, deployment, loginStatus, commentEvidence }) {
   const hostedRequired = issue.labels.includes("needs-hosted");
   const mergedSha = pr?.mergeCommitSha || null;
   const mainMerged = Boolean(pr?.baseRefName === "main" && pr?.mergedAt && mergedSha && pr?.mainContainsMerge === true);
   const exactReady = Boolean(mainMerged && deployment?.state === "SUCCESS" && deployment.sha === mergedSha);
-  const runtimeErrorCount = deployment?.runtimeErrorCount ?? null;
+  const runtimeErrorCount = deployment?.runtimeErrorCount ?? (commentEvidence?.runtimeZero ? 0 : null);
+  const hostedApplied = !hostedRequired || commentEvidence?.hostedApplied === true;
   const blockers = [];
-  if (hostedRequired) blockers.push("HOSTED_REQUIRED_UNVERIFIED");
+  if (!hostedApplied) blockers.push("HOSTED_REQUIRED_UNVERIFIED");
   if (issue.status === "Done" && !exactReady) blockers.push("LINEAR_DONE_WITHOUT_PRODUCTION");
   if (mainMerged && deployment?.sha && deployment.sha !== mergedSha) blockers.push("PRODUCTION_SHA_MISMATCH");
   if (loginStatus !== 200) blockers.push(loginStatus === null ? "LOGIN_UNMEASURED" : "LOGIN_NOT_200");
   if (runtimeErrorCount !== 0) blockers.push("RUNTIME_UNMEASURED_OR_ERROR");
 
-  if (mainMerged && hostedRequired) return { stage: DELIVERY_STAGE.HOSTED_WAITING, complete: false, blockers, runtimeErrorCount, hostedRequired };
-  if (exactReady && loginStatus === 200 && runtimeErrorCount === 0) return { stage: DELIVERY_STAGE.PRODUCTION_COMPLETE, complete: true, blockers, runtimeErrorCount, hostedRequired };
+  if (mainMerged && !hostedApplied) return { stage: DELIVERY_STAGE.HOSTED_WAITING, complete: false, blockers, runtimeErrorCount, hostedRequired, hostedApplied };
+  if (exactReady && loginStatus === 200 && runtimeErrorCount === 0 && hostedApplied) return { stage: DELIVERY_STAGE.PRODUCTION_COMPLETE, complete: true, blockers, runtimeErrorCount, hostedRequired, hostedApplied };
   if (mainMerged) return { stage: DELIVERY_STAGE.DEPLOYMENT_WAITING, complete: false, blockers, runtimeErrorCount, hostedRequired };
   const checks = pr?.checks;
   if (pr && !pr.isDraft && checks?.total > 0 && checks.failing === 0 && checks.pending === 0) {
@@ -358,10 +360,54 @@ function classifyDelivery({ issue, pr, deployment, loginStatus }) {
   return { stage: DELIVERY_STAGE.WORK_REVIEW, complete: false, blockers, runtimeErrorCount, hostedRequired };
 }
 
-async function readProductionEvidence() {
-  if (readProductionEvidence.cache && Date.now() - readProductionEvidence.cache.at < 60_000) return readProductionEvidence.cache.data;
+function parseDeliveryCommentEvidence(comments, mergeSha) {
+  const exactSha = String(mergeSha || "").toLowerCase();
+  let runtimeZero = false;
+  let hostedApplied = false;
+  for (const comment of comments) {
+    const body = String(comment.body || "");
+    const normalized = body.toLowerCase().replace(/[`*_]/g, " ").replace(/\s+/g, " ");
+    const bindsExactSha = exactSha.length === 40 && normalized.includes(exactSha);
+    const hasRuntimeZero = /runtime[^\n]{0,80}(?:error\s*\/?\s*fatal|error|fatal)[^\n]{0,40}(?:\b0\b|\bzero\b)/i.test(body)
+      || /runtime\s+(?:error0\s*\/\s*fatal0|error\/fatal\s*0)/i.test(normalized);
+    if (bindsExactSha && hasRuntimeZero) runtimeZero = true;
+    const hasHostedApply = /hosted[^\n]{0,100}(?:apply|applied|적용)/i.test(body);
+    const hasPostflight = /postflight[^\n]{0,60}(?:pass|성공|완료|exact)/i.test(body);
+    const hasCustomerDmlZero = /customer\s*dml\s*0|고객\s*dml\s*0/i.test(normalized);
+    if (bindsExactSha && hasHostedApply && hasPostflight && hasCustomerDmlZero) hostedApplied = true;
+  }
+  return { runtimeZero, hostedApplied };
+}
+
+async function mapWithConcurrency(values, concurrency, mapper) {
+  const results = new Array(values.length);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+    while (cursor < values.length) {
+      const index = cursor++;
+      results[index] = await mapper(values[index], index);
+    }
+  }));
+  return results;
+}
+
+async function readDeliveryCommentEvidence(rows, force = false) {
+  const entries = await mapWithConcurrency(rows, 4, async ({ issue, pr }) => {
+    if (!pr?.mergeCommitSha) return [issue.id, { runtimeZero: false, hostedApplied: false }];
+    try {
+      const page = await getComments(issue.id, COMMENT_MAX_LIMIT, null, force);
+      return [issue.id, parseDeliveryCommentEvidence(page.comments, pr.mergeCommitSha)];
+    } catch {
+      return [issue.id, { runtimeZero: false, hostedApplied: false }];
+    }
+  });
+  return new Map(entries);
+}
+
+async function readProductionEvidence(force = false) {
+  if (!force && readProductionEvidence.cache && Date.now() - readProductionEvidence.cache.at < 60_000) return readProductionEvidence.cache.data;
   try {
-    const query = `query { repository(owner:"bbelieff", name:"moawork") { deployments(first:10, environments:["Production"], orderBy:{field:CREATED_AT,direction:DESC}) { nodes { databaseId commitOid createdAt latestStatus { state environmentUrl updatedAt } } } } }`;
+    const query = `query { repository(owner:"bbelieff", name:"moawork") { deployments(first:100, environments:["Production"], orderBy:{field:CREATED_AT,direction:DESC}) { nodes { databaseId commitOid createdAt latestStatus { state environmentUrl updatedAt } } } } }`;
     const raw = await runReadOnly("gh", ["api", "graphql", "-f", `query=${query}`]);
     const deployments = JSON.parse(raw || "{}").data?.repository?.deployments?.nodes || [];
     const runtimeEvidence = (() => {
@@ -394,12 +440,12 @@ async function readProductionEvidence() {
   }
 }
 
-async function buildOperations() {
+async function buildOperations(force = false) {
   if (ENV.NODE_ENV === "test" && ENV.DASHBOARD_OPERATIONS_TEST_FIXTURE) {
     return JSON.parse(ENV.DASHBOARD_OPERATIONS_TEST_FIXTURE);
   }
 
-  const productionPromise = readProductionEvidence();
+  const productionPromise = readProductionEvidence(force);
   const gitReads = await Promise.allSettled([
     runReadOnly("git", ["rev-parse", "--abbrev-ref", "HEAD"]),
     runReadOnly("git", ["rev-parse", "origin/main"]),
@@ -470,7 +516,7 @@ async function buildOperations() {
     pullRequests = { available: false, count: null, items: [], error: safeToolError(error) };
   }
 
-  const [linearRead, qaRead, workersRead, gitTodayRead, productionRead] = await Promise.allSettled([getSnap(), readQaDifference(), readWorkers(), readTodayGit(), productionPromise]);
+  const [linearRead, qaRead, workersRead, gitTodayRead, productionRead] = await Promise.allSettled([getSnap(force), readQaDifference(), readWorkers(), readTodayGit(), productionPromise]);
   const issues = linearRead.status === "fulfilled" ? (linearRead.value.issues || []) : null;
   const qaDifference = qaRead.status === "fulfilled" ? qaRead.value : { available: false, value: null, measuredAt: new Date().toISOString(), ttlMs: QA_TTL };
   const workers = workersRead.status === "fulfilled" ? workersRead.value : { available: false, items: [], measuredAt: new Date().toISOString() };
@@ -487,10 +533,11 @@ async function buildOperations() {
   for (const pr of pullRequests.items || []) {
     if (pr.cardId && (pr.state === "OPEN" || (pr.mergedAt && new Date(pr.mergedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === today))) deliveryIds.add(pr.cardId);
   }
-  const deliveryItems = measuredIssues.filter((issue) => deliveryIds.has(issue.id)).map((issue) => {
-    const pr = prsByCard.get(issue.id) || null;
+  const deliveryRows = measuredIssues.filter((issue) => deliveryIds.has(issue.id)).map((issue) => ({ issue, pr: prsByCard.get(issue.id) || null }));
+  const commentEvidence = await readDeliveryCommentEvidence(deliveryRows, force);
+  const deliveryItems = deliveryRows.map(({ issue, pr }) => {
     const deployment = pr?.mergeCommitSha ? production.items.find((item) => item.sha === pr.mergeCommitSha) || null : null;
-    return { cardId: issue.id, linearStatus: issue.status, pr, deployment, ...classifyDelivery({ issue, pr, deployment, loginStatus: production.loginStatus }) };
+    return { cardId: issue.id, linearStatus: issue.status, pr, deployment, ...classifyDelivery({ issue, pr, deployment, loginStatus: production.loginStatus, commentEvidence: commentEvidence.get(issue.id) }) };
   });
   const delivery = {
     available: Boolean(issues && pullRequests.available && production.available),
@@ -523,9 +570,10 @@ async function buildOperations() {
 }
 
 async function getOperations(force = false) {
-  if (operationsSnap.data && Date.now() - operationsSnap.at < OPS_TTL) return operationsSnap.data;
-  if (operationsSnap.building) return operationsSnap.building;
-  operationsSnap.building = buildOperations().then((data) => {
+  if (!force && operationsSnap.data && Date.now() - operationsSnap.at < OPS_TTL) return operationsSnap.data;
+  if (!force && operationsSnap.building) return operationsSnap.building;
+  if (force && operationsSnap.building) await operationsSnap.building;
+  operationsSnap.building = buildOperations(force).then((data) => {
     operationsSnap = { at: Date.now(), building: null, data };
     return data;
   }).catch((error) => {
@@ -644,7 +692,7 @@ const server = http.createServer(async (req, res) => {
 
 /* 호스트를 지정하지 않는다 — IPv4(127.0.0.1)와 IPv6(::1) 양쪽에서 열린다.
    "0.0.0.0" 으로 묶으면 크롬이 localhost 를 ::1 로 풀 때 연결이 거부된다. */
-server.listen(PORT, () => {
+if (!ENV.DASHBOARD_NO_LISTEN) server.listen(PORT, () => {
   const L = "─".repeat(58);
   console.log(L);
   console.log("  모아워크 V6 관제판 — 실시간");
@@ -658,3 +706,5 @@ server.listen(PORT, () => {
   console.log("  끄려면 Ctrl+C");
   getOperations(true).catch(() => {});
 });
+
+export { classifyDelivery, mapWithConcurrency, parseDeliveryCommentEvidence };
