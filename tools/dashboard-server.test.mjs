@@ -284,7 +284,7 @@ test("39-card regression fixture accepts only exact durable runtime and hosted e
   const mergeSha = "a".repeat(40);
   const comments = [{ body: `merge ${mergeSha}; Production exact READY; /login 200; runtime error/fatal 0; hosted migration applied; postflight PASS; customerDML0` }];
   assert.deepEqual(parseDeliveryCommentEvidence(comments, mergeSha), { runtimeZero: true, hostedApplied: true });
-  assert.deepEqual(parseDeliveryCommentEvidence([{ body: "Done; runtime error/fatal 0; hosted applied; postflight PASS; customerDML0" }], mergeSha), { runtimeZero: false, hostedApplied: true });
+  assert.deepEqual(parseDeliveryCommentEvidence([{ body: "Done; runtime error/fatal 0; hosted applied; postflight PASS; customerDML0" }], mergeSha), { runtimeZero: false, hostedApplied: false });
   assert.equal(parseDeliveryCommentEvidence([{ body: `merge ${mergeSha}; runtime errors 10` }], mergeSha).runtimeZero, false);
   const fixture = Array.from({ length: 39 }, (_, index) => index);
   assert.deepEqual(await mapWithConcurrency(fixture, 4, async (value) => value * 2), fixture.map((value) => value * 2));

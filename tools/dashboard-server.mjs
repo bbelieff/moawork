@@ -374,7 +374,7 @@ function parseDeliveryCommentEvidence(comments, mergeSha) {
     const hasHostedApply = /hosted[^\n]{0,100}(?:apply|applied|적용)/i.test(body);
     const hasPostflight = /postflight[^\n]{0,60}(?:pass|성공|완료|exact)/i.test(body);
     const hasCustomerDmlZero = /customer\s*dml\s*0|고객\s*dml\s*0/i.test(normalized);
-    if (hasHostedApply && hasPostflight && hasCustomerDmlZero) hostedApplied = true;
+    if (bindsExactSha && hasHostedApply && hasPostflight && hasCustomerDmlZero) hostedApplied = true;
   }
   return { runtimeZero, hostedApplied };
 }
