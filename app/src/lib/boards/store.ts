@@ -133,4 +133,13 @@ export interface BoardsRepo {
   createView(ctx: Ctx, boardId: string, input: NewView): Promise<BoardView>;
   updateView(ctx: Ctx, id: string, patch: ViewPatch): Promise<BoardView | undefined>;
   deleteView(ctx: Ctx, id: string): Promise<boolean>;
+
+  // 그룹별 컬럼 배치(board_views 의 예약된 조직 공용 행)
+  getGroupColumnOrder(ctx: Ctx, boardId: string): Promise<Record<string, string[]>>;
+  setGroupColumnOrder(
+    ctx: Ctx,
+    boardId: string,
+    groupKey: string,
+    columnKeys: readonly string[],
+  ): Promise<void>;
 }

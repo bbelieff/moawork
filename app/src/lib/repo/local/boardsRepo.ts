@@ -18,6 +18,13 @@ import type {
 } from "@/lib/boards/types";
 import { isSectionPresetSource } from "@/lib/presets/section-presets";
 import { normalizeDetailLayout, type DetailLayoutEntry } from "@/lib/boards/detail-layout";
+import {
+  decodeGroupColumnOrder,
+  encodeGroupColumnOrder,
+  GROUP_LAYOUT_MARKER,
+  GROUP_LAYOUT_VIEW_NAME,
+  isGroupLayoutView,
+} from "@/lib/boards/group-layout-store";
 import type {
   BoardPatch,
   BoardsRepo,
@@ -357,7 +364,8 @@ export class LocalBoardsRepo {
       (v) =>
         v.org_id === ctx.org.id &&
         v.board_id === boardId &&
-        (v.shared || v.user_id === ctx.user.id || v.user_id === null),
+        (v.shared || v.user_id === ctx.user.id || v.user_id === null) &&
+        !isGroupLayoutView(v),
     );
   }
 
@@ -367,7 +375,8 @@ export class LocalBoardsRepo {
       (v) =>
         v.id === id &&
         v.org_id === ctx.org.id &&
-        (v.shared || v.user_id === ctx.user.id || v.user_id === null),
+        (v.shared || v.user_id === ctx.user.id || v.user_id === null) &&
+        !isGroupLayoutView(v),
     );
   }
 
@@ -395,7 +404,7 @@ export class LocalBoardsRepo {
         candidate.org_id === ctx.org.id &&
         candidate.user_id === ctx.user.id,
     );
-    if (!v) return undefined;
+    if (!v || isGroupLayoutView(v)) return undefined;
     if (patch.name !== undefined) v.name = patch.name;
     if (patch.kind !== undefined) v.kind = patch.kind;
     if (patch.filters !== undefined) v.filters_jsonb = patch.filters;
@@ -410,9 +419,53 @@ export class LocalBoardsRepo {
     const v = d.boardViews.find(
       (x) => x.id === id && x.org_id === ctx.org.id && x.user_id === ctx.user.id,
     );
-    if (!v) return false;
+    if (!v || isGroupLayoutView(v)) return false;
     d.boardViews = d.boardViews.filter((x) => x.id !== id);
     return true;
+  }
+
+  getGroupColumnOrder(ctx: Ctx, boardId: string): Record<string, string[]> {
+    const view = db().boardViews.find(
+      (candidate) => candidate.org_id === ctx.org.id
+        && candidate.board_id === boardId
+        && isGroupLayoutView(candidate),
+    );
+    return decodeGroupColumnOrder(view?.visible_columns_jsonb);
+  }
+
+  setGroupColumnOrder(
+    ctx: Ctx,
+    boardId: string,
+    groupKey: string,
+    columnKeys: readonly string[],
+  ): void {
+    const rows = db().boardViews;
+    let view = rows.find(
+      (candidate) => candidate.org_id === ctx.org.id
+        && candidate.board_id === boardId
+        && isGroupLayoutView(candidate),
+    );
+    const next = decodeGroupColumnOrder(view?.visible_columns_jsonb);
+    if (columnKeys.length === 0) delete next[groupKey];
+    else next[groupKey] = [...columnKeys];
+
+    if (!view) {
+      view = {
+        id: crypto.randomUUID(),
+        org_id: ctx.org.id,
+        board_id: boardId,
+        user_id: null,
+        name: GROUP_LAYOUT_VIEW_NAME,
+        kind: "table",
+        filters_jsonb: { system: GROUP_LAYOUT_MARKER },
+        sort_jsonb: [],
+        visible_columns_jsonb: encodeGroupColumnOrder(next),
+        shared: true,
+      };
+      rows.push(view);
+      return;
+    }
+    view.visible_columns_jsonb = encodeGroupColumnOrder(next);
   }
 }
 

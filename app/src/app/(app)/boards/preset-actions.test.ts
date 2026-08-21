@@ -318,7 +318,7 @@ describe("그룹 프리셋 액션 — 값 유실 0", () => {
 
     await applyGroupPresetAction(INITIAL_GROUP_PRESET_STATE, form(APPLY));
 
-    const [, , , order] = mocks.setGroupColumnOrder.mock.calls[0];
+    const [, , , , order] = mocks.setGroupColumnOrder.mock.calls[0];
     expect(order).toContain("keep_me");
     expect(order).toContain("shared");
     expect(order).toHaveLength(2);
@@ -437,7 +437,13 @@ describe("그룹 프리셋 액션 — 값 유실 0", () => {
     const state = await resetGroupPresetAction(INITIAL_GROUP_PRESET_STATE, form({ boardId: "board-a", groupKey: "group-a" }));
 
     expect(state.ok).toBe(true);
-    expect(mocks.setGroupColumnOrder).toHaveBeenCalledWith("org-a", "board-a", "group-a", []);
+    expect(mocks.setGroupColumnOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ listSectionPresetBoards: mocks.listSectionPresetBoards }),
+      expect.objectContaining({ org: { id: "org-a" } }),
+      "board-a",
+      "group-a",
+      [],
+    );
     expect(mocks.deleteColumn).not.toHaveBeenCalled();
     expect(mocks.addColumn).not.toHaveBeenCalled();
   });
@@ -454,7 +460,7 @@ describe("그룹 프리셋 액션 — 값 유실 0", () => {
 
     await applyGroupPresetAction(INITIAL_GROUP_PRESET_STATE, form(APPLY));
 
-    const [, , , order] = mocks.setGroupColumnOrder.mock.calls[0];
+    const [, , , , order] = mocks.setGroupColumnOrder.mock.calls[0];
     expect(order).toEqual(["b_2", "a"]);
     expect(order).not.toContain("b");
   });

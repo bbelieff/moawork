@@ -105,7 +105,7 @@ function asSectionPresetRepo(repo: unknown): SectionPresetBoardsRepo {
 
 async function deps() {
   const { repo, service } = await createRequestBoards();
-  return { service, presets: new SectionPresetRepo(asSectionPresetRepo(repo)) };
+  return { repo, service, presets: new SectionPresetRepo(asSectionPresetRepo(repo)) };
 }
 
 /** 메뉴가 실제로 열릴 때만 호출하는 프리셋 라이브러리 조회(BBE-223). */
@@ -149,7 +149,7 @@ export async function saveGroupPresetAction(
     const requestId = required(formData, "requestId");
     const name = required(formData, "name");
 
-    const { service, presets } = await deps();
+    const { repo, service, presets } = await deps();
     const source = groupPresetRequestSource(ctx.org.id, boardId, groupKey, requestId);
 
     // 재전송이면 여기서 끝난다 — 아무것도 만들지 않고 «이미 저장됨» 으로 답한다.
@@ -162,7 +162,7 @@ export async function saveGroupPresetAction(
     const group = detail.groups.find((candidate) => candidate.id === groupKey);
     if (!group) throw new PresetActionError("이 아이템을 찾을 수 없습니다.");
 
-    const ordered = resolveColumnOrder(detail.columns, getBoardColumnOrder(ctx.org.id, boardId)[groupKey]);
+    const ordered = resolveColumnOrder(detail.columns, (await getBoardColumnOrder(repo, ctx, boardId))[groupKey]);
     await presets.create(ctx, snapshotGroupPreset(name, group, ordered), source);
 
     revalidatePath(`/boards/${boardId}`);
@@ -202,7 +202,7 @@ export async function applyGroupPresetAction(
     const groupKey = required(formData, "groupKey");
     const presetId = required(formData, "presetId");
 
-    const { service, presets } = await deps();
+    const { repo, service, presets } = await deps();
     const preset = await presets.get(ctx, presetId);
     if (!preset) throw new PresetActionError("프리셋을 찾을 수 없습니다.");
 
@@ -210,7 +210,7 @@ export async function applyGroupPresetAction(
     const preview = previewGroupPresetApply(
       preset.columns,
       before.columns,
-      getBoardColumnOrder(ctx.org.id, boardId)[groupKey],
+      (await getBoardColumnOrder(repo, ctx, boardId))[groupKey],
     );
 
     /*
@@ -266,7 +266,7 @@ export async function applyGroupPresetAction(
       );
     }
 
-    setGroupColumnOrder(ctx.org.id, boardId, groupKey, appliedColumnOrder(resolvedKeys, before.columns));
+    await setGroupColumnOrder(repo, ctx, boardId, groupKey, appliedColumnOrder(resolvedKeys, before.columns));
 
     revalidatePath(`/boards/${boardId}`);
     return {
@@ -299,10 +299,10 @@ export async function resetGroupPresetAction(
     const groupKey = required(formData, "groupKey");
 
     // 접근 권한 확인 겸 존재 확인 — 남의 조직 보드 id 로 오버라이드를 건드리지 못하게 한다.
-    const { service } = await deps();
+    const { repo, service } = await deps();
     await service.getBoardDetail(ctx, boardId);
 
-    setGroupColumnOrder(ctx.org.id, boardId, groupKey, []);
+    await setGroupColumnOrder(repo, ctx, boardId, groupKey, []);
     revalidatePath(`/boards/${boardId}`);
     return { ok: true, message: "이 아이템의 컬럼 배치를 기본으로 되돌렸습니다." };
   } catch (error) {
