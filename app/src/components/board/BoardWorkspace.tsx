@@ -171,6 +171,7 @@ export function BoardWorkspace({
   const [savedPresentation, setSavedPresentation] = useState<{ textMode: "single" | "wrap"; focusColumnKey: string | null }>({ textMode: "single", focusColumnKey: null });
   const [archivedColumnIds, setArchivedColumnIds] = useState<Set<string>>(() => new Set());
   const [restoring, setRestoring] = useState(false);
+  const [restoringColumnId, setRestoringColumnId] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const activeColumns = useMemo(() => columns.filter((column) => !archivedColumnIds.has(column.id)), [archivedColumnIds, columns]);
 
@@ -209,8 +210,8 @@ export function BoardWorkspace({
   const people = useMemo(() => assigneeOptions(rows, assigneeLabels), [rows, assigneeLabels]);
 
   const matched = useMemo(
-    () => applyFilters(optimisticRows, columns, filters).length,
-    [optimisticRows, columns, filters],
+    () => applyFilters(optimisticRows, activeColumns, filters).length,
+    [optimisticRows, activeColumns, filters],
   );
 
   /** 도구줄 담당자 필터 ↔ 헤더 담당자 탭의 단일 소스. null = 전체. */
@@ -346,6 +347,7 @@ export function BoardWorkspace({
             onClick={() => {
               const columnId = archivedColumnIds.values().next().value;
               if (!columnId) return;
+              setRestoringColumnId(columnId);
               const data = new FormData();
               data.set("boardId", board.id);
               data.set("columnId", columnId);
@@ -357,11 +359,16 @@ export function BoardWorkspace({
                 setRestoring(false);
                 if (result.ok) {
                   setRestoreError(null);
-                  setArchivedColumnIds(new Set());
+                  setArchivedColumnIds((current) => {
+                    const next = new Set(current);
+                    next.delete(columnId);
+                    return next;
+                  });
                 } else setRestoreError(result.message);
+                setRestoringColumnId(null);
               });
             }}
-          >되돌리기</button>
+          >{restoring && restoringColumnId ? "복구 중…" : "되돌리기"}</button>
         </div>
       ) : null}
       {restoreError ? <p role={noticeRole(false)} aria-live={noticeLive(false)} className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{restoreError}</p> : null}
