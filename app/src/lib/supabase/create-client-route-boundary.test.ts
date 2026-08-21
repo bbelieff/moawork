@@ -1,9 +1,17 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 function source(path: string): string {
   return readFileSync(resolve(process.cwd(), path), "utf8");
+}
+
+function routeSources(dir = resolve(process.cwd(), "src/app")): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = resolve(dir, name);
+    if (statSync(path).isDirectory()) return routeSources(path);
+    return name === "route.ts" ? [readFileSync(path, "utf8")] : [];
+  });
 }
 
 const guardedSurfaces = [
@@ -31,7 +39,12 @@ describe("BBE-216 createClient 화면·라우트 경계", () => {
     "src/app/api/tab-views/[viewId]/route.ts",
     "src/app/api/workspace-requests/handler.ts",
   ])("%s 의 새 쓰기 가드는 운영 조건을 호출부에 명시한다", (path) => {
-    expect(source(path)).toMatch(/process\.env\.NODE_ENV\s*!==\s*["']production["']/);
+    const body = source(path);
+    if (path.includes("tab-views")) {
+      expect(body.match(/if \(process\.env\.NODE_ENV !== "production" && canUseLocalSeedFallback\(\)\)/g)).toHaveLength(2);
+    } else {
+      expect(body).toMatch(/if \(loadRpcClient === defaultLoadRpcClient\s*&& process\.env\.NODE_ENV !== "production"\s*&& canUseLocalSeedFallback\(\)\)/);
+    }
   });
 
   it("PATCH·DELETE와 workspace 쓰기 각각의 guard 수를 고정한다", () => {
@@ -69,5 +82,13 @@ describe("BBE-216 createClient 화면·라우트 경계", () => {
     expect(thrown).toContain("서비스 연결 설정을 확인할 수 없습니다.");
     expect(thrown).not.toContain("NEXT_PUBLIC_");
     expect(thrown).not.toContain(".env");
+  });
+
+  it("모든 route 응답 문자열은 환경변수 이름과 로컬 env 경로를 노출하지 않는다", () => {
+    for (const body of routeSources()) {
+      const withoutComments = body.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+      const strings = withoutComments.match(/(["'`])(?:\\.|(?!\1)[^\\])*\1/g) ?? [];
+      expect(strings.filter((value) => /NEXT_PUBLIC_|\.env(?:\.|["'`])/.test(value))).toEqual([]);
+    }
   });
 });

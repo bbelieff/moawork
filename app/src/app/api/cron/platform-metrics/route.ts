@@ -61,7 +61,7 @@ export async function GET(req: Request): Promise<Response> {
 
   if (!hasBatchEnv()) {
     return json(
-      { error: "Supabase 배치 환경변수 미설정 (NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)" },
+      { error: "배치 서비스 연결 설정을 확인할 수 없습니다." },
       501,
     );
   }
