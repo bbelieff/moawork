@@ -107,10 +107,12 @@ export interface BoardsRepo {
 
   // 컬럼
   listColumns(ctx: Ctx, boardId: string): Promise<BoardColumn[]>;
+  listArchivedColumns(ctx: Ctx, boardId: string): Promise<BoardColumn[]>;
   createColumn(ctx: Ctx, boardId: string, input: NewColumn): Promise<BoardColumn>;
   updateColumn(ctx: Ctx, id: string, patch: ColumnPatch): Promise<BoardColumn | undefined>;
   deleteColumn(ctx: Ctx, id: string): Promise<boolean>;
   deleteColumn(ctx: Ctx, boardId: string, id: string): Promise<boolean>;
+  restoreColumn(ctx: Ctx, boardId: string, id: string): Promise<BoardColumn | undefined>;
 
   // 아이템(담당범위 적용)
   listItems(ctx: Ctx, boardId: string): Promise<BoardItem[]>;

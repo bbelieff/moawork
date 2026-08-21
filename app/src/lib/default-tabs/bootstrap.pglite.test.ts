@@ -15,7 +15,7 @@ async function setup() {
   await db.exec(`
     create table boards(id text primary key default gen_random_uuid()::text,org_id text not null,name text not null,description text,icon text,source text,sort_order int not null default 0,created_by text,is_system boolean default false,detail_layout_jsonb jsonb,created_at timestamptz default now(),updated_at timestamptz default now(),unique(org_id,source));
     create table board_groups(id text primary key default gen_random_uuid()::text,org_id text not null,board_id text not null,name text not null,color text,sort_order int not null default 0,detail_layout_jsonb jsonb);
-    create table board_columns(id text primary key default gen_random_uuid()::text,org_id text not null,board_id text not null,key text not null,label text not null,type text not null,source text,options_jsonb jsonb,width int,right_pinned boolean default false,is_readonly boolean default false,move_rule_jsonb jsonb,sort_order int not null default 0,unique(board_id,key));
+    create table board_columns(id text primary key default gen_random_uuid()::text,org_id text not null,board_id text not null,key text not null,label text not null,type text not null,source text,options_jsonb jsonb,width int,right_pinned boolean default false,is_readonly boolean default false,move_rule_jsonb jsonb,sort_order int not null default 0,archived_at timestamptz,deleted_by text,unique(board_id,key));
     create table items(id text primary key,org_id text not null,board_id text not null,group_id text,title text,updated_at timestamptz default now());
     create table item_values(org_id text not null,item_id text not null,column_key text not null,value_jsonb jsonb,primary key(item_id,column_key));
     create role authenticated;
@@ -32,7 +32,7 @@ async function setup() {
   return db;
 }
 
-type Filter = { column: string; value: unknown; operator: "eq" | "like" };
+type Filter = { column: string; value: unknown; operator: "eq" | "like" | "is" };
 class PgliteQuery {
   private action: "select"|"insert"|"update"|"delete" = "select";
   private payload: Record<string,unknown>|null = null;
@@ -46,13 +46,14 @@ class PgliteQuery {
   delete(){this.action="delete";return this;}
   eq(column:string,value:unknown){this.filters.push({column,value,operator:"eq"});return this;}
   like(column:string,value:unknown){this.filters.push({column,value,operator:"like"});return this;}
+  is(column:string,value:null){this.filters.push({column,value,operator:"is"});return this;}
   order(column:string){this.ordering=column;return this;}
   async single(){const result=await this.run();return {...result,data:Array.isArray(result.data)?result.data[0]??null:result.data};}
   async maybeSingle(){return this.single();}
   then(resolve:(value:{data:unknown;error:null;count?:number})=>unknown,reject?:(reason:unknown)=>unknown){return this.run().then(resolve,reject);}
   private async run(){
     const allowed=new Set(["boards","board_groups","board_columns"]);if(!allowed.has(this.table))throw new Error("table denied");
-    const values:unknown[]=[];const where=this.filters.length?" where "+this.filters.map(filter=>{values.push(filter.value);return `"${filter.column}" ${filter.operator==="eq"?"=":"like"} $${values.length}`;}).join(" and "):"";
+    const values:unknown[]=[];const where=this.filters.length?" where "+this.filters.map(filter=>{if(filter.operator==="is")return `"${filter.column}" is null`;values.push(filter.value);return `"${filter.column}" ${filter.operator==="eq"?"=":"like"} $${values.length}`;}).join(" and "):"";
     if(this.action==="select"){const result=await this.db.query<Record<string,unknown>>(`select * from ${this.table}${where}${this.ordering?` order by "${this.ordering}"`:""}`,values);return {data:this.head?null:result.rows,error:null,count:result.rows.length};}
     if(this.action==="insert"){const entries=Object.entries(this.payload??{});for(const [,value] of entries)values.push(value);const start=values.length-entries.length+1;const sql=`insert into ${this.table}(${entries.map(([key])=>`"${key}"`).join(",")}) values(${entries.map((_,i)=>`$${start+i}`).join(",")}) returning *`;return {data:(await this.db.query(sql,values)).rows,error:null};}
     if(this.action==="update"){const entries=Object.entries(this.payload??{});const setValues=entries.map(([,value])=>{values.push(value);return `$${values.length}`;});const sql=`update ${this.table} set ${entries.map(([key],i)=>`"${key}"=${setValues[i]}`).join(",")}${where} returning *`;return {data:(await this.db.query(sql,values)).rows,error:null};}

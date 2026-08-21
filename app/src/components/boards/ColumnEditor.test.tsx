@@ -69,7 +69,9 @@ describe("BBE-177 컬럼 삭제 확인 폼", () => {
   it("무엇이 사라지고 무엇이 남는지 먼저 말한다", () => {
     const rendered = text(tree);
     expect(rendered).toContain("컬럼을 삭제할까요?");
-    expect(rendered).toContain("이미 입력한 값 자체는 지워지지 않습니다");
+    expect(rendered).toContain("입력한 값은 보관됩니다");
+    expect(rendered).toContain("원본 컬럼을 복구할 때만 이전 값이 다시 보입니다");
+    expect(rendered).toContain("같은 이름으로 새 컬럼을 만들면 빈 컬럼으로 시작합니다");
   });
 
   it("삭제 폼은 서버가 요구하는 확인 값을 그대로 싣는다", () => {

@@ -158,12 +158,18 @@ export class LocalBoardsRepo {
   // ── 컬럼 ──
   listColumns(ctx: Ctx, boardId: string): BoardColumn[] {
     return db()
-      .boardColumns.filter((c) => c.org_id === ctx.org.id && c.board_id === boardId)
+      .boardColumns.filter((c) => c.org_id === ctx.org.id && c.board_id === boardId && !c.archived_at)
       .sort((a, b) => a.sort_order - b.sort_order);
   }
 
+  listArchivedColumns(ctx: Ctx, boardId: string): BoardColumn[] {
+    return db().boardColumns
+      .filter((c) => c.org_id === ctx.org.id && c.board_id === boardId && Boolean(c.archived_at))
+      .sort((a, b) => String(b.archived_at).localeCompare(String(a.archived_at)));
+  }
+
   createColumn(ctx: Ctx, boardId: string, input: NewColumn): BoardColumn {
-    const existing = this.listColumns(ctx, boardId);
+    const existing = db().boardColumns.filter((c) => c.org_id === ctx.org.id && c.board_id === boardId);
     // (board_id, key) unique — 충돌 시 접미사.
     const base = input.key?.trim() || slugifyKey(input.label);
     let key = base;
@@ -227,10 +233,22 @@ export class LocalBoardsRepo {
       (boardId === undefined || x.board_id === boardId),
     );
     if (!c) return false;
-    d.boardColumns = d.boardColumns.filter((x) =>
-      !(x.id === id && x.org_id === ctx.org.id && x.board_id === c.board_id),
-    );
+    c.archived_at = now();
+    c.deleted_by = ctx.user.id;
     return true;
+  }
+
+  restoreColumn(ctx: Ctx, boardId: string, id: string): BoardColumn | undefined {
+    const c = db().boardColumns.find((x) =>
+      x.id === id && x.org_id === ctx.org.id && x.board_id === boardId && Boolean(x.archived_at),
+    );
+    if (!c) return undefined;
+    const active = this.listColumns(ctx, boardId);
+    const nextPosition = active.length === 0 ? 0 : Math.max(...active.map((column) => column.sort_order)) + 1;
+    c.archived_at = null;
+    c.deleted_by = null;
+    c.sort_order = nextPosition;
+    return c;
   }
 
   // ── 아이템(담당범위) ──

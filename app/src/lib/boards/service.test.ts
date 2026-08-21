@@ -223,13 +223,23 @@ describe("아이템 · 셀 인라인 편집 (EAV)", () => {
       expect(rows.find((v) => v.column_key === col.key)?.value_jsonb).toBe(VALUE);
     });
 
-    it("같은 key 로 컬럼을 다시 만들면 값이 그대로 돌아온다", async () => {
+    it("같은 이름으로 새 컬럼을 만들면 새 key 세대로 시작하고 과거 값은 부활하지 않는다", async () => {
       const { boardId, itemId, col } = await boardWithOneValue();
       await svc.deleteColumn(owner, boardId, col.id);
       const again = await svc.addColumn(owner, boardId, { label: "메모", type: "text" });
-      expect(again.key).toBe(col.key);
+      expect(again.key).not.toBe(col.key);
       const items = await svc.listItems(owner, boardId);
-      expect(items.find((i) => i.id === itemId)?.values[again.key]).toBe(VALUE);
+      expect(items.find((i) => i.id === itemId)?.values[again.key]).toBeUndefined();
+    });
+
+    it("보관된 원본 컬럼을 복구할 때만 과거 값이 다시 보인다", async () => {
+      const { boardId, itemId, col } = await boardWithOneValue();
+      await svc.deleteColumn(owner, boardId, col.id);
+      expect((await svc.listArchivedColumns(owner, boardId)).map((c) => c.id)).toContain(col.id);
+      const restored = await svc.restoreColumn(owner, boardId, col.id);
+      expect(restored.key).toBe(col.key);
+      const items = await svc.listItems(owner, boardId);
+      expect(items.find((i) => i.id === itemId)?.values[col.key]).toBe(VALUE);
     });
   });
 

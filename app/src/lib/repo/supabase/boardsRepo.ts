@@ -80,15 +80,16 @@ export class SupabaseBoardsRepo implements BoardsRepo {
     return (q.data ?? undefined) as BoardGroup | undefined;
   }
 
-  async listColumns(ctx: Ctx, boardId: string): Promise<BoardColumn[]> { const q = await this.client.from("board_columns").select("*").eq("org_id", ctx.org.id).eq("board_id", boardId).order("sort_order"); return many<Row>(q.data, q.error).map(columnRow); }
+  async listColumns(ctx: Ctx, boardId: string): Promise<BoardColumn[]> { const q = await this.client.from("board_columns").select("*").eq("org_id", ctx.org.id).eq("board_id", boardId).is("archived_at",null).order("sort_order"); return many<Row>(q.data, q.error).map(columnRow); }
+  async listArchivedColumns(ctx: Ctx, boardId: string): Promise<BoardColumn[]> { const q = await this.client.from("board_columns").select("*").eq("org_id",ctx.org.id).eq("board_id",boardId).not("archived_at","is",null).order("archived_at",{ascending:false}); return many<Row>(q.data,q.error).map(columnRow); }
   async createColumn(ctx: Ctx, boardId: string, input: NewColumn): Promise<BoardColumn> {
-    const existing = await this.listColumns(ctx, boardId); const base = input.key?.trim() || slugifyKey(input.label); let key = base; let n = 2; while (existing.some((c) => c.key === key)) key = `${base}_${n++}`;
+    const all = await this.client.from("board_columns").select("key").eq("org_id",ctx.org.id).eq("board_id",boardId); const existing=many<{key:string}>(all.data,all.error); const base = input.key?.trim() || slugifyKey(input.label); let key = base; let n = 2; while (existing.some((c) => c.key === key)) key = `${base}_${n++}`;
     const q = await this.client.from("board_columns").insert({ org_id: ctx.org.id, board_id: boardId, key, label: input.label, type: input.type, source: input.source ?? "in", right_pinned: input.rightPinned ?? false, options_jsonb: input.options ? { options: input.options } : null, sort_order: input.sortOrder ?? existing.length, width: input.width ?? null, move_rule_jsonb: input.moveRule ?? null, is_readonly: input.readOnly ?? false }).select("*").single();
     return columnRow(one<Row>(q.data, q.error));
   }
   async updateColumn(ctx: Ctx, id: string, patch: ColumnPatch): Promise<BoardColumn | undefined> { const dbPatch: Row = {}; if (patch.label !== undefined) dbPatch.label=patch.label; if (patch.source !== undefined) dbPatch.source=patch.source; if (patch.rightPinned !== undefined) dbPatch.right_pinned=patch.rightPinned; if (patch.options !== undefined) dbPatch.options_jsonb=patch.options ? {options:patch.options}:null; if (patch.sort_order !== undefined) dbPatch.sort_order=patch.sort_order; if (patch.width !== undefined) dbPatch.width=patch.width; if (patch.moveRule !== undefined) dbPatch.move_rule_jsonb=patch.moveRule; if (patch.readOnly !== undefined) dbPatch.is_readonly=patch.readOnly; const q=await this.client.from("board_columns").update(dbPatch).eq("org_id",ctx.org.id).eq("id",id).select("*").maybeSingle(); if(q.error) throw new Error(q.error.message); return q.data ? columnRow(q.data as Row):undefined; }
   /**
-   * 컬럼 정의만 지운다 — 셀 값(`item_values`)은 건드리지 않는다 (BBE-177).
+   * 컬럼 정의를 보관한다 — 셀 값(`item_values`)과 원본 key를 모두 보존한다 (BBE-221).
    *
    * 전에는 여기서 그 key 의 `item_values` 를 먼저 DELETE 했다. DB 가 시킨 일이 아니었다:
    * `item_values` 는 `board_columns` 를 FK 로 참조하지 않고 `(item_id, column_key)` 만 쥔다
@@ -110,14 +111,23 @@ export class SupabaseBoardsRepo implements BoardsRepo {
     }
     let query = this.client
       .from("board_columns")
-      .delete()
+      .update({archived_at:new Date().toISOString(),deleted_by:ctx.user.id})
       .eq("org_id", ctx.org.id);
     if (boardId !== undefined) query = query.eq("board_id", boardId);
     const q = await query
       .eq("id", id)
+      .is("archived_at",null)
       .select("id");
     if (q.error) throw new Error(q.error.message);
     return (q.data?.length ?? 0) > 0;
+  }
+
+  async restoreColumn(ctx:Ctx,boardId:string,id:string):Promise<BoardColumn|undefined>{
+    const board=await this.getBoard(ctx,boardId);if(!board||board.is_system)return undefined;
+    const active=await this.listColumns(ctx,boardId);
+    const nextPosition=active.length===0?0:Math.max(...active.map((column)=>column.sort_order))+1;
+    const q=await this.client.from("board_columns").update({archived_at:null,deleted_by:null,sort_order:nextPosition}).eq("org_id",ctx.org.id).eq("board_id",boardId).eq("id",id).not("archived_at","is",null).select("*").maybeSingle();
+    if(q.error)throw new Error(q.error.message);return q.data?columnRow(q.data as Row):undefined;
   }
 
   async listItems(ctx: Ctx, boardId: string): Promise<BoardItem[]> { const q=await this.client.from("items").select("*").eq("org_id",ctx.org.id).eq("board_id",boardId).is("deleted_at",null).order("sort_order"); return many<BoardItem>(q.data,q.error); }
