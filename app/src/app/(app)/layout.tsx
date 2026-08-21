@@ -56,7 +56,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     : [];
   if (ctx.role === "owner" && currentWorkspace.length === 1) {
     try {
-      await ensureApprovedWorkspaceOnEntry(await createClient(), currentWorkspace[0].slug);
+      await ensureApprovedWorkspaceOnEntry(await createClient({ noStore: true }), currentWorkspace[0].slug);
     } catch {
       return <WorkspaceBootstrapUnavailable slug={currentWorkspace[0].slug} />;
     }

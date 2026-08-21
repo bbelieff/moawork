@@ -46,6 +46,8 @@ export interface NewColumn {
   moveRule?: Record<string, string> | null;
   /** 손으로 못 고치는 칸. types.ts 의 BoardColumn.is_readonly 참고. */
   readOnly?: boolean;
+  /** Reconcile callers pass the next durable position so repeated GETs cannot reuse a stale length. */
+  sortOrder?: number;
 }
 export interface ColumnPatch {
   label?: string;

@@ -13,6 +13,7 @@ import { db } from "@/lib/repo/local/store";
 import { getRepo } from "@/lib/repo";
 import { resolveMoveTarget } from "@/lib/boards/moveRules";
 import type { Ctx } from "@/lib/types";
+import type { BoardsRepo, NewColumn } from "@/lib/boards/store";
 import { CONTACT_GROUPS, CONTACT_TAB } from "./contact";
 import { NEW_LEAD_GROUPS, NEW_LEAD_TAB } from "./new-lead";
 import { ensureDefaultTab, ensureDefaultTabAdditive, ensureDefaultTabs } from "./install";
@@ -31,6 +32,34 @@ const assignees = [
 ] as const;
 
 let repo: LocalBoardsRepo;
+
+function memoizedColumnReads(store: LocalBoardsRepo): BoardsRepo {
+  const asyncStore = toAsyncBoardsRepo(store);
+  const snapshots = new Map<string, Awaited<ReturnType<BoardsRepo["listColumns"]>>>();
+  const occupied = new Map<string, Set<number>>();
+  return new Proxy(asyncStore, {
+    get(target, property, receiver) {
+      if (property === "listColumns") {
+        return async (_ctx: Ctx, boardId: string) => {
+          if (!snapshots.has(boardId)) snapshots.set(boardId, await target.listColumns(_ctx, boardId));
+          return structuredClone(snapshots.get(boardId)!);
+        };
+      }
+      if (property === "createColumn") {
+        return async (_ctx: Ctx, boardId: string, input: NewColumn) => {
+          const frozen = snapshots.get(boardId) ?? await target.listColumns(_ctx, boardId);
+          const sortOrder = input.sortOrder ?? frozen.length;
+          const positions = occupied.get(boardId) ?? new Set(frozen.map((column) => column.sort_order));
+          if (positions.has(sortOrder)) throw new Error("board_columns_active_order_idx");
+          positions.add(sortOrder);
+          occupied.set(boardId, positions);
+          return target.createColumn(_ctx, boardId, { ...input, sortOrder });
+        };
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+}
 
 beforeEach(() => {
   resetDb();
@@ -76,6 +105,36 @@ it("repairs a partially-created product board on request replay", async () => {
 });
 
 describe("BBE-184 additive existing-workspace repair", () => {
+  it("completes every missing column in one request even when GET is memoized", async () => {
+    const result = await ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, memoizedColumnReads(repo), assignees);
+    const columns = repo.listColumns(ctx, result.boardId);
+
+    expect(columns).toHaveLength(NEW_LEAD_TAB.columns.length);
+    expect(new Set(columns.map((column) => column.sort_order)).size).toBe(columns.length);
+    expect(columns.map((column) => column.sort_order)).toEqual(
+      NEW_LEAD_TAB.columns.map((_, index) => index),
+    );
+  });
+
+  it("continues after the maximum durable position instead of a gapped row count", async () => {
+    const partial = repo.createBoard(ctx, { name: NEW_LEAD_TAB.name, source: NEW_LEAD_TAB.source });
+    repo.createColumn(ctx, partial.id, {
+      key: NEW_LEAD_TAB.columns[0].key,
+      label: NEW_LEAD_TAB.columns[0].label,
+      type: NEW_LEAD_TAB.columns[0].type,
+      sortOrder: 7,
+    });
+
+    await ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, memoizedColumnReads(repo), assignees);
+    const columns = repo.listColumns(ctx, partial.id);
+
+    expect(columns).toHaveLength(NEW_LEAD_TAB.columns.length);
+    expect(columns[0].sort_order).toBe(7);
+    expect(columns.slice(1).map((column) => column.sort_order)).toEqual(
+      NEW_LEAD_TAB.columns.slice(1).map((_, index) => index + 8),
+    );
+  });
+
   it("fills only missing structure and preserves every existing row and value", async () => {
     const partial = repo.createBoard(ctx, {
       name: NEW_LEAD_TAB.name,
