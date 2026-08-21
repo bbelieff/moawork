@@ -46,19 +46,14 @@ export function NotificationPanel({
     }
   };
 
-  /** 항목 클릭 = 딥링크 이동. 행동 필요 항목은 이동과 함께 '했다' 처리한다. */
-  const go = async (
-    href: string | null,
-    resolveId: string | null,
-    notificationId?: string,
-  ) => {
-    if (resolveId) {
-      try {
-        await fetch(`/api/notifications/${resolveId}/resolve`, { method: "POST" });
-      } catch {
-        /* 조용히 */
-      }
-    }
+  /**
+   * 항목 클릭은 딥링크 이동만 한다.
+   *
+   * 승인 요청처럼 실제 업무 전이가 있는 알림은 그 전이를 소유한 DB 트리거가
+   * resolved_at 을 기록한다. 단순 열람을 "처리 완료"로 바꾸면 요청을 승인하지
+   * 않았는데도 할 일 숫자에서 사라지므로 여기서는 절대 resolve 하지 않는다.
+   */
+  const go = async (href: string | null, notificationId?: string) => {
     onClose();
     if (href) router.push(notificationId ? notificationTargetHref(href, notificationId) : href);
     void onChanged();
@@ -90,7 +85,7 @@ export function NotificationPanel({
                 <li key={n.id}>
                   <button
                     type="button"
-                    onClick={() => void go(href, n.is_action ? n.id : null, n.target_id ?? n.id)}
+                    onClick={() => void go(href, n.target_id ?? n.id)}
                     className="flex w-full items-start gap-2 border-b px-3 py-2.5 text-left transition-colors hover:opacity-80"
                     style={{ borderColor: "var(--mw-line)" }}
                   >
@@ -116,7 +111,7 @@ export function NotificationPanel({
               <li key={group.head.id}>
                 <button
                   type="button"
-                  onClick={() => void go(href, null)}
+                  onClick={() => void go(href)}
                   className="flex w-full items-start gap-2 border-b px-3 py-2.5 text-left transition-colors hover:opacity-80"
                   style={{ borderColor: "var(--mw-line)" }}
                 >
