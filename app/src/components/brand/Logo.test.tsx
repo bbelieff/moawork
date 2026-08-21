@@ -10,8 +10,8 @@ describe("Logo home-link contract", () => {
     expect(html).toContain('href="/w/moa-team"');
     expect(html).toContain('aria-label="MoaWork 홈"');
     expect(html).toContain('aria-label="MoaWork 로고"');
-    // BBE-116/D44: 마우스오버로 "홈" 임을 알 수 있어야 한다.
-    expect(html).toContain('title="홈"');
+    // 보이는 락업과 링크 이름이 목적을 전달한다. layout 에 남는 native title 은 쓰지 않는다.
+    expect(html).not.toMatch(/\stitle=/);
   });
 
   it("does not invent navigation when no home target is supplied", () => {

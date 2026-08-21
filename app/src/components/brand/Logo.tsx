@@ -40,7 +40,7 @@ export function Logo({ height = 30, className, href }: Props) {
   );
 
   return href ? (
-    <Link href={href} className={className} aria-label={`${PRODUCT_NAME} 홈`} title="홈">
+    <Link href={href} className={className} aria-label={`${PRODUCT_NAME} 홈`}>
       {mark}
     </Link>
   ) : (
