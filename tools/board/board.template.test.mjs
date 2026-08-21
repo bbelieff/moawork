@@ -33,6 +33,14 @@ test("Linear partial state names the rate limit and preserves the last-success c
   assert.match(html, /GitHub·Production은 계속 갱신합니다/);
 });
 
+test("slow initial load coalesces timer, visibility, and manual refresh fanout", async () => {
+  const html = await readFile(templateUrl, "utf8");
+  assert.match(html, /loadInFlight=null/);
+  assert.match(html, /if\(loadInFlight\)return loadInFlight/);
+  assert.match(html, /nextRefreshAt=Date\.now\(\)\+60_000;\s*loadInFlight=loadOnce\(force\)/);
+  assert.match(html, /finally\{loadInFlight=null\}/);
+});
+
 test("new DG lanes and the P0 handoff chain are visible without the retired 20-slot board", async () => {
   const html = await readFile(templateUrl, "utf8");
   for (const lane of ["DG-01", "DG-02", "DG-03", "DG-04", "DG-05", "DG-06", "DG-07"]) {

@@ -623,7 +623,7 @@ async function copyText(text,button){
  try{await navigator.clipboard.writeText(text)}catch{const area=document.createElement("textarea");area.value=text;document.body.appendChild(area);area.select();document.execCommand("copy");area.remove()}
  const old=button.textContent;button.textContent="복사됨";setTimeout(()=>button.textContent=old,1100);
 }
-let lastSuccessAt=0,nextRefreshAt=0,refreshTimer=null;
+let lastSuccessAt=0,nextRefreshAt=0,refreshTimer=null,loadInFlight=null;
 function renderFreshness(){
  const stamp=document.getElementById("stamp");
  if(!lastSuccessAt){stamp.classList.add("stale");return}
@@ -632,6 +632,12 @@ function renderFreshness(){
  stamp.classList.toggle("stale",Date.now()-lastSuccessAt>90_000);
 }
 async function load(force=true){
+ if(loadInFlight)return loadInFlight;
+ nextRefreshAt=Date.now()+60_000;
+ loadInFlight=loadOnce(force);
+ try{return await loadInFlight}finally{loadInFlight=null}
+}
+async function loadOnce(force=true){
  const error=document.getElementById("error");error.style.display="none";
  document.getElementById("refresh").disabled=true;
  try{
@@ -655,7 +661,6 @@ async function load(force=true){
   renderHero();renderDelivery();renderLiveBoard();buildDecisions();renderFlows();renderLanes();renderSquads();renderSharedGates();renderOperations();renderContext();initFilters();renderInventory();renderFeed();
   if(issueRead.status==="fulfilled"&&!linearPartial&&operationsRead.status==="fulfilled"){lastSuccessAt=Date.now()}
   else if(!lastSuccessAt&&(issueData.lastSuccessAt||operations.linear?.lastSuccessAt))lastSuccessAt=new Date(issueData.lastSuccessAt||operations.linear.lastSuccessAt).getTime();
-  nextRefreshAt=Date.now()+60_000;
   renderFreshness();
  }catch(err){
   error.style.display="block";error.textContent="관제 데이터를 불러오지 못했습니다. 이전 값은 stale 상태로 남깁니다. "+String(err.message||err);
