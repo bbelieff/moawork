@@ -6,6 +6,7 @@ import {
 } from "./automation/index.js";
 import { health } from "./health.js";
 import { registerOutboxFromEnv } from "./jobs/outbox/index.js";
+import { registerDateScheduleFromEnv } from "./jobs/date-schedule/runtime.js";
 import { registerEsignFromEnv } from "./jobs/esign/index.js";
 import { defaultProviders, registerNotifyWorker } from "./notify/index.js";
 import { pendingLoader, pendingSink } from "./notify/pending.js";
@@ -55,6 +56,9 @@ async function main(): Promise<void> {
   } else {
     console.warn("[worker] message-outbox.drain disabled: constrained database or provider environment missing");
   }
+  const dateScheduleRuntime = await registerDateScheduleFromEnv(boss);
+  if (dateScheduleRuntime) console.log("[worker] board-date-schedule.drain registered");
+  else console.warn("[worker] board-date-schedule.drain disabled: constrained database environment missing");
   const esignRuntime = await registerEsignFromEnv(boss);
   if (esignRuntime) console.log("[worker] esign.send registered");
   else console.warn("[worker] esign.send disabled: constrained DB or provider environment missing");

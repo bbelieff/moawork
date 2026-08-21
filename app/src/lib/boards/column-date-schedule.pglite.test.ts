@@ -11,7 +11,7 @@ describe("BBE-176 durable column date schedule database contract", () => {
       encoding: "utf8",
       env: { ...process.env, PGLITE_MODULE_ROOT: repoRoot },
     });
-    expect(output).toMatch(/^# pass 6$/mu);
+    expect(output).toMatch(/^# pass 8$/mu);
     expect(output).toMatch(/^# fail 0$/mu);
   }, 120_000);
 });
