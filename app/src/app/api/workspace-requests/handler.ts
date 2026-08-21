@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { loadWorkspaceRoutingSnapshot, type WorkspaceRoutingSnapshot } from "@/lib/auth/workspace-entry-server";
 import { parseWorkspaceRequest, workspaceEntryResumeValue, WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
 import { createClient } from "@/lib/supabase/server";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { executeWorkspaceRequest, type WorkspaceEntryRpcClient } from "@/lib/workspace-entry/server";
 import { bootstrapApprovedWorkspace } from "@/lib/workspace-entry/bootstrap";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -9,11 +10,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 type SnapshotLoader = () => Promise<WorkspaceRoutingSnapshot>;
 type RpcClientLoader = () => Promise<WorkspaceEntryRpcClient>;
 type WorkspaceBootstrapper = (client: WorkspaceEntryRpcClient, slug: string) => Promise<void>;
+const defaultLoadRpcClient: RpcClientLoader = async () => await createClient() as unknown as WorkspaceEntryRpcClient;
 
 export async function handleWorkspaceRequest(
   request: Request,
   loadSnapshot: SnapshotLoader = loadWorkspaceRoutingSnapshot,
-  loadRpcClient: RpcClientLoader = async () => await createClient() as unknown as WorkspaceEntryRpcClient,
+  loadRpcClient: RpcClientLoader = defaultLoadRpcClient,
   bootstrapWorkspace: WorkspaceBootstrapper = async (client, slug) =>
     bootstrapApprovedWorkspace(client as unknown as SupabaseClient, slug),
 ): Promise<Response> {
@@ -46,6 +48,18 @@ export async function handleWorkspaceRequest(
       message: "회사 접근을 다시 확인했어요. 안전하게 이동할게요.",
       redirectTo: `/w/${matches[0].slug}`,
     });
+  }
+
+  // 회사 생성·가입·취소는 영속 RPC가 필요한 쓰기다. 개발 미연결 상태에서 성공한 척하지 않고,
+  // 운영에서는 종전처럼 Supabase 설정 누락을 fail-closed로 유지한다.
+  if (loadRpcClient === defaultLoadRpcClient
+    && process.env.NODE_ENV !== "production"
+    && canUseLocalSeedFallback()) {
+    return NextResponse.json({
+      ok: false,
+      state: "unavailable",
+      message: "회사 요청은 연결된 워크스페이스가 필요합니다.",
+    }, { status: 503 });
   }
 
   const rpcClient = await loadRpcClient();
