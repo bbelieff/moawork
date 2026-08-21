@@ -48,10 +48,10 @@ export async function saveColumnSettingsAction(input: {
   description: string;
   required: boolean;
   validation: Record<string, unknown>;
-  editPolicy: "all" | "managers";
-  viewPolicy: "all" | "managers";
+  editPolicy?: "all" | "managers";
+  viewPolicy?: "all" | "managers";
   summaryHidden: boolean;
-  wrapMode: "single" | "wrap";
+  wrapMode: "truncate" | "wrap";
   dateSettings?: {
     includeTime: boolean;
     displayFormat: "yyyy-MM-dd" | "yyyy.MM.dd" | "MM/dd/yyyy";
@@ -72,8 +72,8 @@ export async function saveColumnSettingsAction(input: {
         description: input.description.trim() || null,
         required: Boolean(input.required),
         validation: input.validation,
-        editPolicy: input.editPolicy === "managers" ? { roles: ["owner", "admin"] } : {},
-        viewPolicy: input.viewPolicy === "managers" ? { roles: ["owner", "admin"] } : {},
+        ...(input.editPolicy ? { editPolicy: input.editPolicy === "managers" ? { roles: ["owner", "admin"] } : {} } : {}),
+        ...(input.viewPolicy ? { viewPolicy: input.viewPolicy === "managers" ? { roles: ["owner", "admin"] } : {} } : {}),
         summaryHidden: Boolean(input.summaryHidden),
         wrapMode: input.wrapMode,
         ...(input.dateSettings ? { dateSettings: input.dateSettings } : {}),

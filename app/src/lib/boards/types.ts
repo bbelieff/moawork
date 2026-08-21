@@ -94,7 +94,7 @@ export interface BoardColumn {
   edit_policy_jsonb?: Record<string, unknown>;
   view_policy_jsonb?: Record<string, unknown>;
   summary_hidden?: boolean;
-  wrap_mode?: "single" | "wrap";
+  wrap_mode?: "truncate" | "wrap";
   date_settings_jsonb?: {
     includeTime?: boolean;
     displayFormat?: "yyyy-MM-dd" | "yyyy.MM.dd" | "MM/dd/yyyy";

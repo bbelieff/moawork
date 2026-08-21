@@ -36,6 +36,16 @@ describe("BBE-178 column settings UI preparation", () => {
     expect(panel).toContain('role={message.ok ? "status" : "alert"}');
   });
 
+  it("uses the canonical wrap enum and preserves policies the two presets cannot represent", () => {
+    expect(panel).toContain('? "wrap" : "truncate"');
+    expect(panel).toContain('<option value="truncate">한 줄</option>');
+    expect(panel).toContain('return "all";');
+    expect(panel).toContain(': "preserve";');
+    expect(panel).toContain('<option value="preserve">기존 제한 유지</option>');
+    expect(actions).toContain('...(input.editPolicy ? { editPolicy:');
+    expect(actions).toContain('...(input.viewPolicy ? { viewPolicy:');
+  });
+
   it("uses only the hosted115 command/set/cancel contracts with tenant and board-column guards", () => {
     expect(actions).toContain('client.rpc(BOARD_COLUMN_RPC.command');
     expect(actions).toContain('client.rpc("set_board_column_date_schedule"');

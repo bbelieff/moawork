@@ -16,9 +16,10 @@ export type ColumnScheduleRecipientOption = { id: string; label: string };
 
 const DELIVERY_READY = true;
 
-function policyMode(policy: Record<string, unknown> | undefined): "all" | "managers" {
+function policyMode(policy: Record<string, unknown> | undefined): "all" | "managers" | "preserve" {
+  if (!policy || Object.keys(policy).length === 0) return "all";
   const roles = Array.isArray(policy?.roles) ? policy.roles : [];
-  return roles.length === 2 && roles.includes("owner") && roles.includes("admin") ? "managers" : "all";
+  return roles.length === 2 && roles.includes("owner") && roles.includes("admin") ? "managers" : "preserve";
 }
 
 function statusLabel(status: ColumnScheduleRow["status"]): string {
@@ -70,15 +71,17 @@ export function ColumnSettingsPanel({ boardId, column, items, recipients, onRequ
       }
       setPending(true);
       startTransition(async () => {
+        const editPolicy = String(data.get("editPolicy") ?? "preserve");
+        const viewPolicy = String(data.get("viewPolicy") ?? "preserve");
         const result = await saveColumnSettingsAction({
           boardId, columnId: column.id, requestId: crypto.randomUUID(),
           description: String(data.get("description") ?? ""),
           required: data.get("required") === "on",
           validation,
-          editPolicy: data.get("editPolicy") === "managers" ? "managers" : "all",
-          viewPolicy: data.get("viewPolicy") === "managers" ? "managers" : "all",
+          ...(editPolicy === "preserve" ? {} : { editPolicy: editPolicy === "managers" ? "managers" : "all" }),
+          ...(viewPolicy === "preserve" ? {} : { viewPolicy: viewPolicy === "managers" ? "managers" : "all" }),
           summaryHidden: data.get("summaryHidden") === "on",
-          wrapMode: data.get("wrapMode") === "wrap" ? "wrap" : "single",
+          wrapMode: data.get("wrapMode") === "wrap" ? "wrap" : "truncate",
           ...(isDate ? { dateSettings: {
             includeTime: data.get("includeTime") === "on",
             displayFormat: (data.get("displayFormat") ?? "yyyy-MM-dd") as "yyyy-MM-dd" | "yyyy.MM.dd" | "MM/dd/yyyy",
@@ -100,11 +103,11 @@ export function ColumnSettingsPanel({ boardId, column, items, recipients, onRequ
         {column.type === "select" || column.type === "multiselect" || column.type === "status" ? <label className="grid gap-1"><span>허용 값(쉼표 구분)</span><input name="allowedValues" defaultValue={Array.isArray(column.validation_jsonb?.allowedValues) ? column.validation_jsonb.allowedValues.join(", ") : ""} className="rounded border p-2" /></label> : null}
       </fieldset>
       <div className="grid grid-cols-2 gap-2">
-        <label className="grid gap-1 text-sm"><span>편집 가능</span><select name="editPolicy" defaultValue={policyMode(column.edit_policy_jsonb)} className="rounded border p-2"><option value="all">모든 구성원</option><option value="managers">관리자만</option></select></label>
-        <label className="grid gap-1 text-sm"><span>보기 가능</span><select name="viewPolicy" defaultValue={policyMode(column.view_policy_jsonb)} className="rounded border p-2"><option value="all">모든 구성원</option><option value="managers">관리자만</option></select></label>
+        <label className="grid gap-1 text-sm"><span>편집 가능</span><select name="editPolicy" defaultValue={policyMode(column.edit_policy_jsonb)} className="rounded border p-2"><option value="preserve">기존 제한 유지</option><option value="all">모든 구성원</option><option value="managers">관리자만</option></select></label>
+        <label className="grid gap-1 text-sm"><span>보기 가능</span><select name="viewPolicy" defaultValue={policyMode(column.view_policy_jsonb)} className="rounded border p-2"><option value="preserve">기존 제한 유지</option><option value="all">모든 구성원</option><option value="managers">관리자만</option></select></label>
       </div>
       <label className="text-sm"><input name="summaryHidden" type="checkbox" defaultChecked={column.summary_hidden ?? false} /> 컬럼 요약 숨기기</label>
-      {isText ? <label className="grid gap-1 text-sm"><span>텍스트 표시</span><select name="wrapMode" defaultValue={column.wrap_mode ?? "single"} className="rounded border p-2"><option value="single">한 줄</option><option value="wrap">줄 바꿈</option></select></label> : <input type="hidden" name="wrapMode" value={column.wrap_mode ?? "single"} />}
+      {isText ? <label className="grid gap-1 text-sm"><span>텍스트 표시</span><select name="wrapMode" defaultValue={column.wrap_mode ?? "truncate"} className="rounded border p-2"><option value="truncate">한 줄</option><option value="wrap">줄 바꿈</option></select></label> : <input type="hidden" name="wrapMode" value={column.wrap_mode ?? "truncate"} />}
       {isDate ? <fieldset className="grid gap-2 rounded border border-mw-line p-3 text-sm"><legend className="px-1 font-semibold">날짜 설정</legend>
         <label><input name="includeTime" type="checkbox" defaultChecked={date.includeTime ?? column.type === "datetime"} /> 시간 포함</label>
         <label className="grid gap-1"><span>표시 형식</span><select name="displayFormat" defaultValue={date.displayFormat ?? "yyyy-MM-dd"} className="rounded border p-2"><option value="yyyy-MM-dd">2026-08-21</option><option value="yyyy.MM.dd">2026.08.21</option><option value="MM/dd/yyyy">08/21/2026</option></select></label>
