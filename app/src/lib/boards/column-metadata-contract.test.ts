@@ -19,6 +19,13 @@ describe("BBE-176 board column RPC contract", () => {
     expect(command.p_operation).toBe("create_at");
   });
 
+  it("keeps duplicate value copying opt-in at the caller contract", () => {
+    const structureOnly = { p_org_id: "org", p_board_id: "board", p_column_id: "column", p_operation: "duplicate", p_request_id: "request", p_payload: {} } satisfies BoardColumnCommandArgs;
+    const confirmedCopy = { ...structureOnly, p_request_id: "request-2", p_copy_values: true } satisfies BoardColumnCommandArgs;
+    expect("p_copy_values" in structureOnly).toBe(false);
+    expect(confirmedCopy.p_copy_values).toBe(true);
+  });
+
   it("freezes metadata allowlist shapes", () => {
     const policy = { roles: ["owner"], scopes: ["all"], userIds: ["10000000-0000-4000-8000-000000000001"] } satisfies BoardColumnPolicy;
     const validation = { minLength: 1, maxLength: 30, min: 0, max: 100, pattern: "^[A-Z]", allowedValues: ["A", 1, true] } satisfies BoardColumnValidation;
