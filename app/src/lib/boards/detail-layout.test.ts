@@ -3,6 +3,7 @@ import {
   detailKeyFromLabel,
   moveDetailEntry,
   normalizeDetailLayout,
+  resolveBoardDetailLayout,
   resolveDetailLayout,
   unplacedDetailKeys,
 } from "./detail-layout";
@@ -40,5 +41,36 @@ describe("BBE-107 상세 필드 레이아웃", () => {
       null,
     ])).toEqual([{ key: "memo", source: "detail", label: "메모", type: "text" }]);
     expect(detailKeyFromLabel("상세 메모")).toBe("detail_상세_메모");
+  });
+
+  it("canonical 신규리드의 초기 빈 배치는 활성 컬럼 전체를 상속하되 임의 보드의 빈 배치는 보존한다", () => {
+    const columns = Array.from({ length: 22 }, (_, index) => ({
+      id: `column-${index}`,
+      org_id: "org-a",
+      board_id: "board-a",
+      key: `field_${index}`,
+      label: `필드 ${index + 1}`,
+      type: "text" as const,
+      source: "in" as const,
+      rightPinned: false,
+      options_jsonb: null,
+      sort_order: index,
+      width: null,
+    }));
+
+    const canonical = resolveBoardDetailLayout("core.default-tab/new-lead", [], columns);
+    expect(canonical).toHaveLength(22);
+    expect(canonical[0]).toEqual({ key: "field_0", source: "column", label: "필드 1", type: "text" });
+    expect(resolveDetailLayout(canonical, null)).toEqual({ entries: canonical, inherited: true });
+    expect(resolveBoardDetailLayout("custom.board", [], columns)).toEqual([]);
+  });
+
+  it("canonical 신규리드에 저장된 명시 배치가 있으면 컬럼 fallback으로 덮지 않는다", () => {
+    const columns = [{
+      id: "column-a", org_id: "org-a", board_id: "board-a", key: "company", label: "회사명",
+      type: "text" as const, source: "in" as const, rightPinned: false, options_jsonb: null,
+      sort_order: 0, width: null,
+    }];
+    expect(resolveBoardDetailLayout("core.default-tab/new-lead", board, columns)).toEqual(board);
   });
 });

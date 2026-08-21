@@ -42,7 +42,7 @@ import { GroupTable } from "./GroupTable";
 import type { SectionPresetRecord } from "@/lib/presets/section-presets";
 import { groupPresetName, isGroupPresetChanged } from "@/lib/presets/group-preset";
 import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
-import { CONTACT_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
+import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { NOTICE_KEYS } from "@/lib/notices/types";
 import { buildBlocks } from "./blocks";
 import {
@@ -62,7 +62,7 @@ import {
   limitColumns,
   type BoardFilterState,
 } from "./filters";
-import { normalizeDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
+import { resolveBoardDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
 import { runColumnCommandAction } from "@/app/(app)/boards/column-command-actions";
 import { INITIAL_COLUMN_COMMAND_STATE } from "@/app/(app)/boards/column-command-state";
 import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
@@ -383,9 +383,13 @@ export function BoardWorkspace({
           const fullColumns = resolveColumnOrder(activeColumns, optimisticOrder[block.key]);
           const shown = limitColumns(fullColumns, filters.columnLimit);
           const visibleRows = applyFilters(block.rows, activeColumns, filters);
-          const boardDetailLayout = normalizeDetailLayout(board.detail_layout_jsonb);
-          const resolvedDetailLayout = resolveDetailLayout(
+          const boardDetailLayout = resolveBoardDetailLayout(
+            board.source,
             board.detail_layout_jsonb,
+            activeColumns,
+          );
+          const resolvedDetailLayout = resolveDetailLayout(
+            boardDetailLayout,
             block.group?.detail_layout_jsonb,
           );
 
@@ -424,7 +428,7 @@ export function BoardWorkspace({
             >
               <GroupTable
                 boardId={board.id}
-                canonicalNewLead={board.source === "core.default-tab/new-lead"}
+                canonicalNewLead={board.source === NEW_LEAD_TAB_SOURCE}
                 groupId={block.group?.id ?? null}
                 columns={shown}
                 detailColumns={[...activeColumns]}

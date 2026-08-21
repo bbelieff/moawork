@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { BoardColumn, CellValue, ItemWithValues } from "@/lib/boards/types";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
 import { moveDetailEntry, unplacedDetailKeys } from "@/lib/boards/detail-layout";
@@ -80,6 +80,15 @@ export function ItemDetailPanel({
   const [open, setOpen] = useState(defaultOpen);
   const columnsByKey = new Map(columns.map((column) => [column.key, column]));
   const unplaced = unplacedDetailKeys(row.values, layout);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
 
   return (
     <>
