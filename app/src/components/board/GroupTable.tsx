@@ -30,6 +30,7 @@ import { DealLedgerButton } from "./DealLedgerButton";
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import { TrashItemButton } from "./ItemTrashControls";
 import { AddItemForm } from "./AddItemForm";
+import { ColumnContextMenu } from "./ColumnContextMenu";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
 import { updateNewLeadFieldAction, updateNewLeadTitleAction } from "@/app/(app)/boards/new-lead-actions";
 import {
@@ -471,8 +472,14 @@ export function GroupTable({
                         ⠿
                       </span>
                     )}
-                    <SourceBadge source={col.source} />
-                    <span className="truncate">{col.label}</span>
+                    {canManageColumns ? (
+                      <ColumnContextMenu boardId={boardId} column={col}>
+                        <SourceBadge source={col.source} />
+                        <span className="truncate">{col.label}</span>
+                      </ColumnContextMenu>
+                    ) : (
+                      <><SourceBadge source={col.source} /><span className="truncate">{col.label}</span></>
+                    )}
                   </span>
                   {canManageColumns && <span
                     aria-hidden="true"
