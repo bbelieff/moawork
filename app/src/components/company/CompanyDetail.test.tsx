@@ -39,7 +39,7 @@ const deal: Deal = {
 describe("CompanyDetail", () => {
   it("고객사 기본 정보와 관련 업무 링크를 표시한다", () => {
     const html = renderToStaticMarkup(
-      <CompanyDetail company={company} deals={[deal]} stageNames={new Map([["stage-1", "상담 중"]])} />,
+      <CompanyDetail company={company} deals={[deal]} stageNames={new Map([["stage-1", "상담 중"]])} workStartRequestId="request-1" startWorkAction={async () => {}} />,
     );
 
     expect(html).toContain("모아상사");
@@ -52,7 +52,7 @@ describe("CompanyDetail", () => {
 
   it("관련 업무가 없으면 명시적인 빈 상태를 표시한다", () => {
     const html = renderToStaticMarkup(
-      <CompanyDetail company={{ ...company, homepage: "javascript:alert(1)" }} deals={[]} stageNames={new Map()} />,
+      <CompanyDetail company={{ ...company, homepage: "javascript:alert(1)" }} deals={[]} stageNames={new Map()} workStartRequestId="request-1" startWorkAction={async () => {}} />,
     );
 
     expect(html).toContain("연결된 업무가 없습니다");

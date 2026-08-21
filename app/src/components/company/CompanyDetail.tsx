@@ -5,6 +5,10 @@ export interface CompanyDetailProps {
   company: Company;
   deals: Deal[];
   stageNames: ReadonlyMap<string, string>;
+  workStartRequestId: string;
+  workStartStatus?: "ok" | "failed" | "invalid";
+  startedDealId?: string;
+  startWorkAction: (formData: FormData) => Promise<void>;
 }
 
 function formatRevenue(value: number | null): string {
@@ -21,7 +25,7 @@ function safeHomepage(value: string | null): string | null {
   }
 }
 
-export function CompanyDetail({ company, deals, stageNames }: CompanyDetailProps) {
+export function CompanyDetail({ company, deals, stageNames, workStartRequestId, workStartStatus, startedDealId, startWorkAction }: CompanyDetailProps) {
   const homepage = safeHomepage(company.homepage);
 
   return (
@@ -74,10 +78,24 @@ export function CompanyDetail({ company, deals, stageNames }: CompanyDetailProps
       </section>
 
       <section aria-labelledby="company-deals-title" className="flex flex-col gap-3">
-        <div>
-          <h2 id="company-deals-title" className="font-semibold">관련 업무</h2>
-          <p className="mt-1 text-sm text-zinc-500">현재 접근 범위에서 확인할 수 있는 딜입니다.</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 id="company-deals-title" className="font-semibold">관련 업무</h2>
+            <p className="mt-1 text-sm text-zinc-500">회사는 그대로 두고, 필요할 때만 업무를 시작합니다.</p>
+          </div>
+          <form action={startWorkAction}>
+            <input type="hidden" name="companyId" value={company.id} />
+            <input type="hidden" name="requestId" value={workStartRequestId} />
+            <button type="submit" className="min-h-11 rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
+              업무 시작
+            </button>
+          </form>
         </div>
+        {workStartStatus === "ok" ? (
+          <p role="status" className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">업무를 시작했습니다. {startedDealId ? <Link className="font-semibold underline" href={`/deals/${startedDealId}`}>업무 열기</Link> : null}</p>
+        ) : workStartStatus ? (
+          <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">업무를 시작하지 못했습니다. 권한과 업무 보드 구성을 확인한 뒤 다시 시도해 주세요.</p>
+        ) : null}
         {deals.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-zinc-300 px-5 py-10 text-center dark:border-zinc-700">
             <p className="font-medium">연결된 업무가 없습니다</p>
