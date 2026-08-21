@@ -6,14 +6,13 @@ import type { Ctx } from "@/lib/types";
 import type { TodayHomeState } from "@/lib/dash/today-server";
 import { loadDashboardPageData } from "@/lib/dash/server";
 import { currentMonthKst } from "@/lib/dash/service";
-import { formatCount, formatKrw, formatMonth, orEmpty } from "@/lib/dash/format";
+import { formatCount, formatMonth } from "@/lib/dash/format";
 import {
   ContractStatusWidget,
   ConversionWidget,
   FollowUpListWidget,
   PipelineWidget,
   ReContactWidget,
-  SettlementWidget,
   StatCard,
   Widget,
 } from "@/components/dash/widgets";
@@ -25,6 +24,7 @@ import {
 import { ChecklistCompletionCell } from "@/components/policyfund/ChecklistCompletionCell";
 import { SupabaseChecklistStore } from "@/lib/policyfund/checklist";
 import { createClient } from "@/lib/supabase/server";
+import { MonthlyCollection } from "./MonthlyCollection";
 
 // 「회사 현황」 — 홈 한 화면의 아래쪽 절(총괄 확정, BBE-215).
 //
@@ -34,55 +34,6 @@ import { createClient } from "@/lib/supabase/server";
 //
 // 진입점: 없다 — 홈 한 화면의 아래 절이라 «가는 링크» 가 필요 없다(BBE-215 로 바로가기를 뺐다).
 //   사이드바(nav-items.ts)는 목업 D05 정본이라 건드리지 않았다.
-/**
- * 「이번달 수납」 — RPC 가 정본이다(BBE-215 (A)).
- *
- * ★ 0 을 «세 상태» 로 가른다. 그냥 0 만 보여주면 「수납이 없다」와 「아무도 입금일을 안 채웠다」가
- *   같은 화면이 된다 — 그건 다른 사실이고, 사용자가 할 일도 다르다.
- *     · 탭이 없다        → missingSources 에 'work'
- *     · 입금일 미입력     → unfilledColumns 에 그 컬럼 이름 (098 이 내보낸다)
- *     · 진짜 0           → 위 둘 다 아님
- */
-function MonthlyCollection({ today }: { today: TodayHomeState }) {
-  if (today.kind !== "ready") {
-    return <DashboardUnavailable label="이번달 수납" />;
-  }
-  const { kpis, unfilledColumns, missingSources } = today.snapshot;
-  const total = kpis.contractDeposits + kpis.fees;
-
-  if (missingSources.includes("work")) {
-    return (
-      <p className="text-[length:var(--fs-12)] text-[var(--mw-t-3)]">
-        계약업체 실무 탭이 아직 없어요. 탭을 만들면 이번 달 수납이 여기에 보여요.
-      </p>
-    );
-  }
-  const unfilled = ["contract_deposit_paid_on", "fee_paid_on"].filter((column) =>
-    unfilledColumns.includes(column),
-  );
-  if (total === 0 && unfilled.length > 0) {
-    return (
-      <p className="text-[length:var(--fs-12)] text-[var(--mw-t-3)]">
-        입금일이 아직 입력되지 않았어요. 계약업체 실무 탭에서 «계약금 수납일 · 수수료 수납일» 을
-        채우면 이번 달 수납이 여기에 보여요.
-      </p>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-[var(--sp-1)]">
-      <p className="text-[length:var(--fs-18)] font-semibold text-[var(--mw-t-1)]">{formatKrw(total)}</p>
-      <p className="text-[length:var(--fs-12)] text-[var(--mw-t-3)]">
-        계약금 {formatKrw(kpis.contractDeposits)} · 수수료 {formatKrw(kpis.fees)}
-      </p>
-      {total === 0 ? (
-        <p className="text-[length:var(--fs-12)] text-[var(--mw-t-3)]">
-          이번 달 수납이 아직 없어요.
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 export async function CompanyStatusSection({
   ctx,
   month,
@@ -173,16 +124,6 @@ export async function CompanyStatusSection({
                   hint={formatMonth(core.dash.month)}
                   href="/dash/all?range=month"
                 />
-                <StatCard
-                  label="이번달 수납 총매출"
-                  value={orEmpty(
-                    core.dash.settlementThisMonth.available,
-                    core.dash.settlementThisMonth.totalRevenueSum,
-                    formatKrw,
-                  )}
-                  hint="수수료입금일 기준"
-                  href="/dash/all?range=month&paid=1"
-                />
               </section>
 
               <div className="grid gap-4 lg:grid-cols-2">
@@ -201,12 +142,6 @@ export async function CompanyStatusSection({
                      없어서(BBE-231) 사실상 «항상 deal.amount 추정치» 였다. 추정 → 실현으로 바뀐다. */}
                 <Widget title="이번달 수납" subtitle="수수료입금일·계약금입금일이 이번달인 건 (실현 기준)">
                   <MonthlyCollection today={today} />
-                </Widget>
-                <Widget title="전체 정산" subtitle="전 기간 누적">
-                  <SettlementWidget
-                    data={core.dash.settlementAll}
-                    emptyHint="정산 정보가 있는 업무가 아직 없어요. 실행액과 수수료율이 입력된 업무가 생기면 여기에 보여요."
-                  />
                 </Widget>
                 <Widget title="이번달 재접촉" subtitle="수수료입금일 + 180일 도래">
                   <ReContactWidget entries={core.dash.reContactThisMonth} />
