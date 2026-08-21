@@ -3,6 +3,9 @@ import { AccountNav } from "@/components/account/AccountNav";
 import styles from "@/components/account/account.module.css";
 import { getSession } from "@/lib/auth/session";
 import { buildAccountViewModel } from "@/lib/account/presentation";
+import { loadWorkspaceRoutingSnapshot } from "@/lib/auth/workspace-entry-server";
+import { loadOwnerWorkspaceDeletionRows } from "@/lib/workspace-deletion/server";
+import type { ManagedWorkspace } from "@/components/account/WorkspaceManagementPanel";
 
 const NAV_ITEMS = [
   { key: "account", label: "내 정보", href: "/account" },
@@ -31,6 +34,21 @@ export default async function AccountPage({
   const ctx = await getSession();
   const account = buildAccountViewModel(ctx);
   const { error } = await searchParams;
+  const [routing, ownerResult] = await Promise.all([
+    loadWorkspaceRoutingSnapshot(),
+    loadOwnerWorkspaceDeletionRows().then((rows) => ({ ok: true as const, rows })).catch(() => ({ ok: false as const, rows: [] })),
+  ]);
+  const workspaceLoadError = routing.kind !== "ready" || !ownerResult.ok;
+  const workspaces: ManagedWorkspace[] = [];
+  if (!workspaceLoadError && routing.kind === "ready") {
+    const owners = new Map(ownerResult.rows.map((row) => [row.orgId, row]));
+    for (const membership of routing.memberships) {
+      const owner = owners.get(membership.orgId);
+      workspaces.push({ ...membership, status: "active", deletionRequestedAt: owner?.deletionRequestedAt ?? null });
+      owners.delete(membership.orgId);
+    }
+    for (const row of owners.values()) if (row.status === "pending_delete") workspaces.push(row);
+  }
 
   return (
     <div className={styles.page}>
@@ -49,6 +67,8 @@ export default async function AccountPage({
       <AccountNav current="account" items={NAV_ITEMS} />
       <AccountHub
         account={account}
+        workspaces={workspaces}
+        workspaceLoadError={workspaceLoadError}
         links={{
           workspace: "/settings/account#workspace",
           sessions: "/settings/account/sessions",

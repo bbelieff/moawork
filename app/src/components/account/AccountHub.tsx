@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { AccountViewModel } from "@/lib/account/presentation";
 import { CurrentSessionLogout } from "./CurrentSessionLogout";
 import styles from "./account.module.css";
+import { WorkspaceManagementPanel, type ManagedWorkspace } from "./WorkspaceManagementPanel";
 
 export type AccountHubLinks = {
   workspace?: string;
@@ -14,9 +15,13 @@ export type AccountHubLinks = {
 export function AccountHub({
   account,
   links = {},
+  workspaces = [],
+  workspaceLoadError = false,
 }: {
   account: AccountViewModel;
   links?: AccountHubLinks;
+  workspaces?: ManagedWorkspace[];
+  workspaceLoadError?: boolean;
 }) {
   return (
     <>
@@ -76,6 +81,8 @@ export function AccountHub({
           aria-labelledby="workspace-title"
         >
           <h2 id="workspace-title">내 회사와 팀</h2>
+          <p>접근할 수 있는 회사와 내 역할을 확인하고, 대표는 회사를 삭제 예정으로 바꾸거나 되돌릴 수 있어요.</p>
+          <WorkspaceManagementPanel workspaces={workspaces} loadError={workspaceLoadError} />
           <dl className={styles.definitionList}>
             <div>
               <dt>현재 회사</dt>

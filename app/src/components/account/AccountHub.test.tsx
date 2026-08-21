@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { AccountViewModel } from "@/lib/account/presentation";
 import { AccountHub } from "./AccountHub";
+import type { ManagedWorkspace } from "./WorkspaceManagementPanel";
 
 const account: AccountViewModel = {
   displayName: "테스트 사용자",
@@ -14,6 +15,22 @@ const account: AccountViewModel = {
   teamMessage: "아직 소속 팀이 없어요.",
   canManageCompany: false,
 };
+
+const workspaces: ManagedWorkspace[] = [{
+  orgId: "org-owner",
+  name: "대표 회사",
+  slug: "owner-company",
+  role: "owner",
+  status: "active",
+  deletionRequestedAt: null,
+}, {
+  orgId: "org-member",
+  name: "참여 회사",
+  slug: "member-company",
+  role: "member",
+  status: "active",
+  deletionRequestedAt: null,
+}];
 
 describe("AccountHub", () => {
   it("C안 핵심 정보와 현재 로그인만 렌더한다", () => {
@@ -50,5 +67,13 @@ describe("AccountHub", () => {
     expect(() =>
       renderToStaticMarkup(<AccountHub account={account} />),
     ).not.toThrow();
+  });
+
+  it("접근 가능한 회사 전체와 역할별 삭제 경계를 보여준다", () => {
+    const html = renderToStaticMarkup(<AccountHub account={account} workspaces={workspaces} />);
+    expect(html).toContain("대표 회사");
+    expect(html).toContain("참여 회사");
+    expect(html).toContain("확인을 위해");
+    expect(html).toContain("회사 삭제는 현재 대표만 요청할 수 있어요");
   });
 });
