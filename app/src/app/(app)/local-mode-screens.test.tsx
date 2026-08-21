@@ -30,6 +30,12 @@ vi.mock("@/lib/auth/session", () => ({
   applyAs: vi.fn((ctx: unknown) => ctx),
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+  redirect: vi.fn(),
+}));
+
 // 서버 액션 모듈은 렌더 대상이 아니다. 폼 action 자리만 채운다.
 vi.mock("./notices/actions", () => ({
   createNoticeAction: vi.fn(),
@@ -42,6 +48,7 @@ vi.mock("./notices/actions", () => ({
 
 import CompaniesPage from "./(tabs)/companies/page";
 import NoticesPage from "./(tabs)/notices/page";
+import WorkPage from "./(tabs)/work/page";
 
 type Coverage =
   /** 이 테스트가 **직접 렌더해서** 잰다. 주장은 여기까지만 하는 것이 정직하다. */
@@ -62,6 +69,8 @@ const renderCompanies = async () =>
   renderToStaticMarkup(await CompaniesPage({ searchParams: Promise.resolve({}) }));
 const renderNotices = async () =>
   renderToStaticMarkup(await NoticesPage({ searchParams: Promise.resolve({}) }));
+const renderWork = async () =>
+  renderToStaticMarkup(await WorkPage({ searchParams: Promise.resolve({}) }));
 
 /**
  * `(app)` 그룹의 page 라우트 전수. 아래 «전수 일치» 테스트가 파일시스템과 대조한다.
@@ -85,7 +94,12 @@ const SCREENS: Readonly<Record<string, Coverage>> = {
   // ── 아직 죽어 있다. 이 목록이 곧 남은 일이다 ──────────────────────────────
   "/newcust": { status: "known-500", owner: "BBE-171" },
   "/presets": { status: "known-500", owner: "미배정" },
-  "/work": { status: "known-500", owner: "미배정" },
+  "/work": {
+    status: "verified",
+    render: renderWork,
+    notConnected: "표시할 업무가 없습니다",
+    mustNotSay: ["워크스페이스 데이터에 아직 연결되지 않았습니다", "로컬 데이터로 대체하지 않았습니다"],
+  },
   // BBE-240 — deal_ledger_entries 는 의도적으로 로컬 폴백이 없다(가짜 돈 데이터를 안 만든다,
   // accounting/actions.ts·server.ts 와 동일 원칙) — createClient() 가 env 없이 그대로 터진다.
   "/ledger": { status: "known-500", owner: "BBE-240" },
@@ -172,7 +186,7 @@ describe("(app) 라우트 전수 목록", () => {
       .filter(([, coverage]) => coverage.status === "known-500")
       .map(([route]) => route);
     expect(remaining.length).toBeGreaterThan(0);
-    expect(remaining).toEqual(["/newcust", "/presets", "/work", "/ledger"]);
+    expect(remaining).toEqual(["/newcust", "/presets", "/ledger"]);
   });
 });
 

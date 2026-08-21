@@ -1,4 +1,5 @@
 import type { WorkBoardSnapshot, WorkCommand, WorkCommandResult } from "@/lib/work-management";
+import type { WorkManagementPort } from "@/lib/work-management/port";
 import { parseWorkCommand, parseCommandResult, WORK_RPC } from "@/lib/work-management";
 
 export interface WorkRpcClient {
@@ -40,7 +41,7 @@ function validProvenance(value: unknown): boolean { return isRecord(value) && st
 function validUpdate(value: unknown): boolean { return isRecord(value) && strings(value, ["id", "body", "createdAt"]); }
 function validActivity(value: unknown): boolean { return isRecord(value) && strings(value, ["id", "label", "at"]); }
 
-export class WorkManagementSource {
+export class WorkManagementSource implements WorkManagementPort {
   constructor(private readonly client: WorkRpcClient) {}
   async load(orgId: string): Promise<WorkBoardSnapshot> {
     if (!orgId) throw new WorkManagementUnavailableError();

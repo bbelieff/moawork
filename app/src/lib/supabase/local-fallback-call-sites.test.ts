@@ -77,6 +77,8 @@ const callSites = [
   //      통째로 로컬 시드로 나간다. BBE-203 이 막으려던 바로 그 자리인데 못이 없었다.
   "../../app/(app)/(tabs)/presets/page.tsx",
   "../../app/(app)/(tabs)/work/page.tsx",
+  // BBE-210 — render와 command가 같은 dev-only work source를 소비해야 저장 후 refresh가 보존된다.
+  "../../app/(app)/(tabs)/work/actions.ts",
   "../../app/(app)/(tabs)/notices/page.tsx",
   "../../app/api/tab-views/route.ts",
   "../../app/api/tab-views/[viewId]/route.ts",

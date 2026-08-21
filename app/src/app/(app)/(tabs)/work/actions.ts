@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/server";
 import { WorkManagementSource } from "@/lib/repo/supabase/workManagementSource";
 import type { WorkViewKind } from "@/lib/work-management/contracts";
 import { parseWorkCommand } from "@/lib/work-management/rpc-contract";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
+import { LocalWorkManagementSource } from "@/lib/work-management/local-source";
 
 export type WorkActionState = { ok: boolean; message: string };
 const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
@@ -36,7 +38,10 @@ export async function mutateWork(_: WorkActionState, form: FormData): Promise<Wo
       default: throw new Error("Unsupported work command.");
     }
     const command = parseWorkCommand({ ...common, payload });
-    const result = await new WorkManagementSource(await createClient()).execute(command);
+    const source = canUseLocalSeedFallback()
+      ? new LocalWorkManagementSource(ctx)
+      : new WorkManagementSource(await createClient());
+    const result = await source.execute(command);
     revalidatePath("/work");
     return { ok: true, message: result.replayed ? "Already applied." : "Saved." };
   } catch (error) { return { ok: false, message: error instanceof Error ? error.message : "Unable to save work." }; }
