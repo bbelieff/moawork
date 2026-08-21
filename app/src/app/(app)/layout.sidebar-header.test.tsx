@@ -32,6 +32,7 @@ vi.mock("next/link", () => ({
   default: ({ children, href }: { children: ReactNode; href: string }) =>
     createElement("a", { href }, children),
 }));
+vi.mock("next/headers", () => ({ headers: async () => ({ get: () => null }) }));
 vi.mock("@/lib/auth/session", () => ({ getSession: mocks.getSession }));
 vi.mock("@/lib/auth/workspace-entry-server", () => ({
   loadWorkspaceRoutingSnapshot: mocks.loadWorkspaceRoutingSnapshot,

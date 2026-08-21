@@ -255,6 +255,21 @@ describe("proxy workspace namespace", () => {
     expect(response.headers.get("set-cookie")).toContain("mw_org=org-acme");
   });
 
+  it("adds one app-tab signal without changing rewrite or refreshed cookies", async () => {
+    setupRotating({ id: "user-1" }, [membership("org-acme", "acme")], rotateOnce);
+    const response = await proxy(new NextRequest("https://www.moa-work.com/w/acme/work"));
+    expect(response.headers.get("x-middleware-rewrite")).toBe("https://www.moa-work.com/work");
+    expect(response.headers.get("x-middleware-request-x-mw-app-tab")).toBe("1");
+    expect(response.headers.get("x-middleware-request-cookie")).toContain("mw_org=org-acme");
+    expect(cookieOn(response, ROTATED_0.name)?.value).toBe(ROTATED_0.value);
+
+    const deepLink = await proxy(new NextRequest("https://www.moa-work.com/w/acme/deals/123", {
+      headers: { "x-mw-app-tab": "1" },
+    }));
+    expect(deepLink.headers.get("x-middleware-request-x-mw-app-tab")).toBeNull();
+    expect(deepLink.headers.get("x-middleware-rewrite")).toBe("https://www.moa-work.com/deals/123");
+  });
+
   it("canonicalizes an unauthenticated alias in login next without opening reserved routes", async () => {
     setup(null);
     const response = await proxy(new NextRequest("https://www.moa-work.com/acme?tab=notes"));

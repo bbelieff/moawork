@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
 import { APP_TABS } from "./app-tabs";
 
 // 셸이 여섯 탭을 «실제로 그리는가». 위 app-tabs-runtime.test.ts 가 판정 로직을,
@@ -13,10 +14,10 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-async function render(path: string, lockedFeatures: string[] = [], workspaceBasePath: string | null = "/w/sample-lab") {
+async function render(path: string, lockedFeatures: string[] = [], workspaceBasePath: string | null = "/w/sample-lab", directHrefs?: { contact?: string }) {
   pathname.current = path;
   const { AppTabs } = await import("./AppTabs");
-  return renderToStaticMarkup(<AppTabs lockedFeatures={lockedFeatures} workspaceBasePath={workspaceBasePath ?? undefined} />);
+  return renderToStaticMarkup(<AppTabs lockedFeatures={lockedFeatures} workspaceBasePath={workspaceBasePath ?? undefined} directHrefs={directHrefs} />);
 }
 
 describe("AppTabs — 목업 「탭 6개 한 화면」 탭 줄", () => {
@@ -57,6 +58,20 @@ describe("AppTabs — 목업 「탭 6개 한 화면」 탭 줄", () => {
     for (const tab of APP_TABS) {
       expect(html).toContain(`href="/w/sample-lab${tab.canonicalHref}"`);
     }
+  });
+
+  it("server-resolved contact destination bypasses /contract only", async () => {
+    const html = await render("/w/sample-lab/work", [], "/w/sample-lab", { contact: "/boards/contact-board" });
+    const contactTag = html.match(/<a[^>]*data-tab-key="contact"[^>]*>/)?.[0] ?? "";
+    expect(contactTag).toContain('href="/w/sample-lab/boards/contact-board"');
+    expect(html).toContain('href="/w/sample-lab/newcust"');
+    expect(contactTag).not.toContain('href="/w/sample-lab/contract"');
+  });
+
+  it("uses document navigation so the server layout refreshes its direct destinations", () => {
+    const source = readFileSync(new URL("./AppTabs.tsx", import.meta.url), "utf8");
+    expect(source).not.toContain('from "next/link"');
+    expect(source).toContain("<a\n");
   });
 
   it("fails every tab closed when the workspace namespace is unavailable", async () => {

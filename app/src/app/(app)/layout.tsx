@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { getSession } from "@/lib/auth/session";
 import { Logo } from "@/components/brand/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
@@ -25,6 +26,8 @@ import { ensureApprovedWorkspaceOnEntry } from "@/lib/workspace-entry/bootstrap"
 import { createClient } from "@/lib/supabase/server";
 import { loadOrgLogoSignedUrls } from "@/lib/org-logo/server";
 import { buildSwitcherWorkspaces } from "@/lib/org-logo/switcher";
+import { resolveExistingContactBoard } from "@/lib/contact/entry";
+import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 
 function WorkspaceBootstrapUnavailable({ slug }: { slug: string }) {
   return (
@@ -50,13 +53,18 @@ function WorkspaceBootstrapUnavailable({ slug }: { slug: string }) {
 // getSession() 이 세션 없으면 /login 으로 보낸다(가드).
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const ctx = await getSession();
+  const requestHeaders = await headers();
+  const appTabRequest = requestHeaders.get("x-mw-app-tab") === "1";
   const routing = await loadWorkspaceRoutingSnapshot();
   const currentWorkspace = routing.kind === "ready"
     ? routing.memberships.filter((membership) => membership.orgId === ctx.org.id)
     : [];
+  const requestClient = (ctx.role === "owner" && currentWorkspace.length === 1) || appTabRequest
+    ? await createClient({ noStore: true })
+    : undefined;
   if (ctx.role === "owner" && currentWorkspace.length === 1) {
     try {
-      await ensureApprovedWorkspaceOnEntry(await createClient({ noStore: true }), currentWorkspace[0].slug);
+      await ensureApprovedWorkspaceOnEntry(requestClient!, currentWorkspace[0].slug);
     } catch {
       return <WorkspaceBootstrapUnavailable slug={currentWorkspace[0].slug} />;
     }
@@ -103,6 +111,15 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // 항상 LocalRepo(인메모리 시드)를 돌려줘서 프로덕션의 실 org UUID 가 조회되지 않았고
   // 결과적으로 **전 메뉴가 잠겼다**(P0). 이제 환경에 맞는 소스를 골라 읽는다.
   const lockedFeatures = await loadLockedFeatures(ctx.org.id, features);
+  let contactDirectHref: string | undefined;
+  if (appTabRequest) {
+    try {
+      const contact = await resolveExistingContactBoard(ctx, new SupabaseBoardsRepo(requestClient!));
+      if (contact.kind === "ready") contactDirectHref = `/boards/${contact.boardId}`;
+    } catch {
+      // Keep /contract as the explicit unavailable/repair path. Never guess a board id.
+    }
+  }
 
   const initial = (ctx.user.name ?? "?").trim().charAt(0) || "?";
   const account = buildAccountViewModel(ctx);
@@ -256,6 +273,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         <AppTabs
           lockedFeatures={lockedFeatures}
           workspaceBasePath={currentWorkspace.length === 1 ? `/w/${currentWorkspace[0].slug}` : undefined}
+          directHrefs={contactDirectHref ? { contact: contactDirectHref } : undefined}
         />
         <main>{children}</main>
       </div>
