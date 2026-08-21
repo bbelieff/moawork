@@ -70,7 +70,8 @@ describe("BBE-177 SupabaseBoardsRepo 컬럼 삭제", () => {
     expect(tables).toEqual(["board_columns"]);
     expect(tables).not.toContain("item_values");
     expect(tables).not.toContain("items");
-    expect(c.calls.filter(([name]) => name === "delete")).toHaveLength(1);
+    expect(c.calls.filter(([name]) => name === "update")).toHaveLength(1);
+    expect(c.calls.filter(([name]) => name === "delete")).toHaveLength(0);
   });
 
   it("삭제는 그 조직의 그 컬럼 한 건으로 좁힌다", async () => {
@@ -107,7 +108,7 @@ describe("BBE-177 SupabaseBoardsRepo 컬럼 삭제", () => {
     await expect(new SupabaseBoardsRepo(c.client as never).deleteColumn(ctx, "board-a", "column-b")).resolves.toBe(false);
 
     expect(c.from.mock.calls.map(([table]) => table)).toEqual(["boards", "board_columns"]);
-    expect(c.calls.filter(([table, name]) => table === "board_columns" && name === "delete")).toHaveLength(1);
+    expect(c.calls.filter(([table, name]) => table === "board_columns" && name === "update")).toHaveLength(1);
   });
 
   it("시스템 보드는 column delete를 발행하지 않고 false를 돌려준다", async () => {
@@ -116,7 +117,7 @@ describe("BBE-177 SupabaseBoardsRepo 컬럼 삭제", () => {
     await expect(new SupabaseBoardsRepo(c.client as never).deleteColumn(ctx, "board-system", "col-a")).resolves.toBe(false);
 
     expect(c.from.mock.calls.map(([table]) => table)).toEqual(["boards"]);
-    expect(c.calls.some(([table, name]) => table === "board_columns" && name === "delete")).toBe(false);
+    expect(c.calls.some(([table, name]) => table === "board_columns" && name === "update")).toBe(false);
   });
 
   it("없는 보드는 column delete를 발행하지 않고 false를 돌려준다", async () => {

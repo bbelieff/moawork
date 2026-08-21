@@ -171,6 +171,18 @@ export class BoardsService {
     if (!await (await this.repo).deleteColumn(ctx, boardId, columnId)) throw new NotFoundError("컬럼을 찾을 수 없습니다");
   }
 
+  async listArchivedColumns(ctx: Ctx, boardId: string): Promise<BoardColumn[]> {
+    await this.requireEditableBoard(ctx, boardId);
+    return (await this.repo).listArchivedColumns(ctx, boardId);
+  }
+
+  async restoreColumn(ctx: Ctx, boardId: string, columnId: string): Promise<BoardColumn> {
+    await this.requireEditableBoard(ctx, boardId);
+    const restored = await (await this.repo).restoreColumn(ctx, boardId, columnId);
+    if (!restored) throw new NotFoundError("복구할 컬럼을 찾을 수 없습니다");
+    return restored;
+  }
+
   // ── 그룹 ──
   async addGroup(ctx: Ctx, boardId: string, input: NewGroup) {
     await this.requireEditableBoard(ctx, boardId);

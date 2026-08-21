@@ -2,6 +2,7 @@ import { FIELD_TYPES } from "@/lib/types";
 import type { BoardColumn } from "@/lib/boards/types";
 import { addColumnAction, deleteColumnAction } from "@/app/(app)/boards/actions";
 import { COLUMN_DELETE_CONFIRM } from "@/lib/boards/validation";
+import { ArchivedColumns } from "./ArchivedColumns";
 
 /**
  * 컬럼 추가/삭제 (T02b) — 001 field_type 13종 + select/multiselect 선택지.
@@ -91,7 +92,8 @@ export function ColumnEditor({
                     「{c.label}」 컬럼을 삭제할까요?
                   </p>
                   <p className="mt-1 text-zinc-500">
-                    표에서 이 열이 사라집니다. 이미 입력한 값 자체는 지워지지 않습니다.
+                    표에서만 사라지고 입력한 값은 보관됩니다. 원본 컬럼을 복구할 때만 이전 값이 다시 보입니다.
+                    같은 이름으로 새 컬럼을 만들면 빈 컬럼으로 시작합니다.
                   </p>
                   <form action={deleteColumnAction} className="mt-2">
                     <input type="hidden" name="boardId" value={boardId} />
@@ -109,6 +111,7 @@ export function ColumnEditor({
             </li>
           ))}
         </ul>
+        <ArchivedColumns boardId={boardId} />
       </div>
     </details>
   );

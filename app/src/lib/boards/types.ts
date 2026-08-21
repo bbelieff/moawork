@@ -52,6 +52,9 @@ export interface BoardColumn {
   board_id: string;
   /** 보드 내 유일. item_values.column_key 가 이 값을 참조(EAV). */
   key: string;
+  /** 삭제는 물리 삭제가 아니라 보관이다. null일 때만 현재 보드에 노출한다. */
+  archived_at?: string | null;
+  deleted_by?: string | null;
   label: string;
   type: FieldType;
   /** 값이 어디서 오는가(D09) — 편집 가능 여부를 결정한다. 미지정 컬럼은 "in"(직접 입력)으로 본다. */
