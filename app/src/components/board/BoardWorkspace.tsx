@@ -373,6 +373,7 @@ export function BoardWorkspace({
                     columns={fullColumns}
                     order={optimisticOrder[block.key]}
                     canEditPresets={canEditPresets}
+                    canManageColumns={canManageColumns}
                   />
                 )
               }

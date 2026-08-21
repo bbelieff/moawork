@@ -14,6 +14,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { BoardColumn } from "@/lib/boards/types";
 import type { SectionPresetRecord } from "@/lib/presets/section-presets";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+
 // 서버 액션은 렌더 계약과 무관하다. 실제 동작은 preset-actions.test.ts 가 검증한다.
 vi.mock("@/app/(app)/boards/preset-actions", () => ({
   loadGroupPresetLibraryAction: vi.fn(),
@@ -57,6 +61,7 @@ function menu(overrides: Partial<Parameters<typeof GroupPresetMenu>[0]> = {}) {
       columns={columns}
       order={undefined}
       canEditPresets
+      canManageColumns
       {...overrides}
     />,
   );
@@ -92,11 +97,12 @@ describe("BBE-174 GroupPresetMenu", () => {
     expect(html).not.toContain("이 아이템에 적용");
   });
 
-  it("«변경됨»·«되돌리기» 를 그리지 않는다 — 근거인 배치가 휘발하기 때문이다", () => {
-    // 배치 오버라이드가 서버 인메모리라 새로고침에 사라진다. 남겨 두면 사라지는 배지가 된다.
-    const html = menu();
-    expect(html).not.toContain("기본으로 되돌리기");
-    expect(html).not.toContain("변경됨");
+  it("durable 배치가 있으면 변경됨과 기본 되돌리기를 그린다", () => {
+    const html = menu({ order: ["phone", "owner"] });
+    expect(html).toContain("기본으로 되돌리기");
+    expect(html).toContain("변경됨");
+    expect(html).toContain('name="boardId"');
+    expect(html).toContain('name="groupKey"');
   });
 
   it("권한이 없으면 버튼을 감추는 대신 이유를 적는다", () => {
@@ -270,22 +276,38 @@ describe("BBE-223 메뉴 지연 조회", () => {
 });
 
 describe("BBE-174 배선 — 이 슬라이스가 그리는 액션 (W2)", () => {
-  it("저장 폼 하나만 그린다 — 적용·되돌리기 버튼은 없다", () => {
-    const html = menu();
+  it("저장과 durable 되돌리기 액션을 그린다", () => {
+    const html = menu({ order: ["phone", "owner"] });
 
     // 저장은 실제로 있다.
     expect(html).toContain("현재 구조를 프리셋으로 저장");
     expect(html).toContain('name="requestId"');
 
-    // 적용·되돌리기는 이 PR 에서 그리지 않는다(배치가 인메모리라 안 남는다 — BBE-195).
+    // 적용은 프리셋을 골라 미리보기를 본 뒤에만 나오고, durable 배치는 되돌릴 수 있다.
     expect(html).not.toContain("이 아이템에 적용");
-    expect(html).not.toContain("기본으로 되돌리기");
-    // 제출 버튼이 하나뿐이라는 것 = 잘못된 액션에 물릴 자리가 없다는 것.
-    expect(html.match(/type="submit"/g) ?? []).toHaveLength(1);
+    expect(html).toContain("기본으로 되돌리기");
+    expect(html.match(/type="submit"/g) ?? []).toHaveLength(2);
   });
 
   it("미리보기는 남는다 — 적용하면 무엇이 되는지는 보여준다", () => {
     const html = menu();
     expect(html).toContain("다른 프리셋과 견주기");
+  });
+
+  it("apply/reset 서버 액션과 새로고침·Escape 계약을 실제 소스에 고정한다", () => {
+    const source = readFileSync(new URL("./GroupPresetMenu.tsx", import.meta.url), "utf8");
+    expect(source).toContain("useActionState(applyGroupPresetAction");
+    expect(source).toContain("useActionState(resetGroupPresetAction");
+    expect(source).toContain('name="presetId"');
+    expect(source).toContain("router.refresh()");
+    expect(source).toContain("loader.current = refreshed");
+    expect(source).toContain('event.key !== "Escape"');
+    expect(source).toContain("새 컬럼은 보드 공용이라 다른 아이템에도 나타납니다");
+  });
+
+  it("컬럼 관리 권한이 없으면 적용·되돌리기 대신 이유를 보여준다", () => {
+    const html = menu({ order: ["phone", "owner"], canManageColumns: false });
+    expect(html).toContain("되돌리려면 «컬럼 관리» 권한이 필요합니다");
+    expect(html).not.toContain("기본으로 되돌리기");
   });
 });

@@ -183,8 +183,9 @@ export async function saveGroupPresetAction(
  * 컬럼을 지우지 않고(`deleteColumn` 을 부르지 않는다), 이미 있는 컬럼의 타입·선택지·
  * 이동규칙을 덮어쓰지도 않는다(`updateColumn` 을 부르지 않는다). 셀 값은
  * `item_values.column_key` 로 컬럼 key 에 매달려 있으므로, key 를 지우지도 바꾸지도
- * 않는 한 값은 건드려지지 않는다. 배치는 board_columns 가 아니라 오버라이드에 저장하니
- * 다른 그룹에도 영향이 없다.
+ * 않는 한 값은 건드려지지 않는다. 배치는 board_columns 가 아니라 이 그룹의 오버라이드에
+ * 저장한다. 새 컬럼 정의는 보드 공용이라 다른 그룹에도 나타나지만, 다른 그룹의 순서·
+ * 기존 컬럼 설정·값은 바꾸지 않는다.
  *
  * 미리보기와 결과가 갈라질 수 없도록, 화면이 계산한 결과를 받지 않고 **서버가 같은
  * 순수 함수를 다시 부른다.**
@@ -207,6 +208,9 @@ export async function applyGroupPresetAction(
     if (!preset) throw new PresetActionError("프리셋을 찾을 수 없습니다.");
 
     const before = await service.getBoardDetail(ctx, boardId);
+    if (!before.groups.some((group) => group.id === groupKey)) {
+      throw new PresetActionError("적용할 아이템을 찾을 수 없습니다. 화면을 새로고침한 뒤 다시 시도해 주세요.");
+    }
     const preview = previewGroupPresetApply(
       preset.columns,
       before.columns,
@@ -266,7 +270,16 @@ export async function applyGroupPresetAction(
       );
     }
 
-    await setGroupColumnOrder(repo, ctx, boardId, groupKey, appliedColumnOrder(resolvedKeys, before.columns));
+    try {
+      await setGroupColumnOrder(repo, ctx, boardId, groupKey, appliedColumnOrder(resolvedKeys, before.columns));
+    } catch (error) {
+      console.error("[BBE-174] 프리셋 배치 저장 실패", error);
+      throw new PresetActionError(
+        createdCount > 0
+          ? `컬럼 ${createdCount}개는 보드에 추가됐지만 이 아이템의 배치를 저장하지 못했습니다. 화면을 새로고침한 뒤 다시 적용해 주세요.`
+          : "이 아이템의 배치를 저장하지 못했습니다. 컬럼과 값은 바뀌지 않았습니다. 잠시 후 다시 시도해 주세요.",
+      );
+    }
 
     revalidatePath(`/boards/${boardId}`);
     return {
