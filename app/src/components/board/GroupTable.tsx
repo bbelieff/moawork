@@ -30,6 +30,7 @@ import { DealLedgerButton } from "./DealLedgerButton";
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import { TrashItemButton } from "./ItemTrashControls";
 import { AddItemForm } from "./AddItemForm";
+import { ColumnContextMenu } from "./ColumnContextMenu";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
 import { updateNewLeadFieldAction, updateNewLeadTitleAction } from "@/app/(app)/boards/new-lead-actions";
 import {
@@ -290,6 +291,7 @@ export function GroupTable({
   renderRowAction,
   textMode = "single",
   focusColumnKey = null,
+  onColumnArchived,
 }: {
   boardId: string;
   canonicalNewLead?: boolean;
@@ -324,6 +326,7 @@ export function GroupTable({
   renderRowAction?: (row: ItemWithValues) => ReactNode;
   textMode?: "single" | "wrap";
   focusColumnKey?: string | null;
+  onColumnArchived?: (columnId: string) => void;
 }) {
   /*
    * 드래그 중인 대상은 **ref 가 정본**이고 state 는 표시(반투명·강조)에만 쓴다.
@@ -471,8 +474,14 @@ export function GroupTable({
                         ⠿
                       </span>
                     )}
-                    <SourceBadge source={col.source} />
-                    <span className="truncate">{col.label}</span>
+                    {canManageColumns ? (
+                      <ColumnContextMenu boardId={boardId} column={col} onArchived={onColumnArchived}>
+                        <SourceBadge source={col.source} />
+                        <span className="truncate">{col.label}</span>
+                      </ColumnContextMenu>
+                    ) : (
+                      <><SourceBadge source={col.source} /><span className="truncate">{col.label}</span></>
+                    )}
                   </span>
                   {canManageColumns && <span
                     aria-hidden="true"

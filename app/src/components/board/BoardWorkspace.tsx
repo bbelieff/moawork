@@ -63,6 +63,9 @@ import {
   type BoardFilterState,
 } from "./filters";
 import { normalizeDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
+import { runColumnCommandAction } from "@/app/(app)/boards/column-command-actions";
+import { INITIAL_COLUMN_COMMAND_STATE } from "@/app/(app)/boards/column-command-state";
+import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
 
 interface RowMove {
   itemId: string;
@@ -166,6 +169,11 @@ export function BoardWorkspace({
   const [filters, setFilters] = useState<BoardFilterState>(EMPTY_FILTERS);
   const [filterUrlReady, setFilterUrlReady] = useState(false);
   const [savedPresentation, setSavedPresentation] = useState<{ textMode: "single" | "wrap"; focusColumnKey: string | null }>({ textMode: "single", focusColumnKey: null });
+  const [archivedColumnIds, setArchivedColumnIds] = useState<Set<string>>(() => new Set());
+  const [restoring, setRestoring] = useState(false);
+  const [restoringColumnId, setRestoringColumnId] = useState<string | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const activeColumns = useMemo(() => columns.filter((column) => !archivedColumnIds.has(column.id)), [archivedColumnIds, columns]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -202,8 +210,8 @@ export function BoardWorkspace({
   const people = useMemo(() => assigneeOptions(rows, assigneeLabels), [rows, assigneeLabels]);
 
   const matched = useMemo(
-    () => applyFilters(optimisticRows, columns, filters).length,
-    [optimisticRows, columns, filters],
+    () => applyFilters(optimisticRows, activeColumns, filters).length,
+    [optimisticRows, activeColumns, filters],
   );
 
   /** 도구줄 담당자 필터 ↔ 헤더 담당자 탭의 단일 소스. null = 전체. */
@@ -308,7 +316,7 @@ export function BoardWorkspace({
       {savedViewsSlot}
 
       <BoardToolbar
-        columns={columns}
+        columns={activeColumns}
         rows={optimisticRows}
         filters={filters}
         onChange={setFilters}
@@ -329,6 +337,42 @@ export function BoardWorkspace({
         </p>
       )}
 
+      {archivedColumnIds.size > 0 ? (
+        <div role="status" className="flex items-center justify-between rounded-lg border border-mw-line bg-mw-card px-3 py-2 text-sm shadow">
+          <span>컬럼을 휴지통으로 옮겼습니다. 값과 설정은 보존됩니다.</span>
+          <button
+            type="button"
+            disabled={restoring}
+            className="rounded border px-3 py-1 font-medium disabled:opacity-50"
+            onClick={() => {
+              const columnId = archivedColumnIds.values().next().value;
+              if (!columnId) return;
+              setRestoringColumnId(columnId);
+              const data = new FormData();
+              data.set("boardId", board.id);
+              data.set("columnId", columnId);
+              data.set("operation", "restore");
+              data.set("requestId", crypto.randomUUID());
+              startTransition(async () => {
+                setRestoring(true);
+                const result = await runColumnCommandAction(INITIAL_COLUMN_COMMAND_STATE, data);
+                setRestoring(false);
+                if (result.ok) {
+                  setRestoreError(null);
+                  setArchivedColumnIds((current) => {
+                    const next = new Set(current);
+                    next.delete(columnId);
+                    return next;
+                  });
+                } else setRestoreError(result.message);
+                setRestoringColumnId(null);
+              });
+            }}
+          >{restoring && restoringColumnId ? "복구 중…" : "되돌리기"}</button>
+        </div>
+      ) : null}
+      {restoreError ? <p role={noticeRole(false)} aria-live={noticeLive(false)} className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{restoreError}</p> : null}
+
       {blocks.length === 0 ? (
         /* 원칙 5 — 화면 전체를 차지하는 빈 상태 금지. 한 줄 + 다음 행동. */
         <p className="rounded-xl border border-dashed border-mw-line px-3 py-4 text-xs text-mw-sub">
@@ -336,9 +380,9 @@ export function BoardWorkspace({
         </p>
       ) : (
         blocks.map((block) => {
-          const fullColumns = resolveColumnOrder(columns, optimisticOrder[block.key]);
+          const fullColumns = resolveColumnOrder(activeColumns, optimisticOrder[block.key]);
           const shown = limitColumns(fullColumns, filters.columnLimit);
-          const visibleRows = applyFilters(block.rows, columns, filters);
+          const visibleRows = applyFilters(block.rows, activeColumns, filters);
           const boardDetailLayout = normalizeDetailLayout(board.detail_layout_jsonb);
           const resolvedDetailLayout = resolveDetailLayout(
             board.detail_layout_jsonb,
@@ -383,7 +427,7 @@ export function BoardWorkspace({
                 canonicalNewLead={board.source === "core.default-tab/new-lead"}
                 groupId={block.group?.id ?? null}
                 columns={shown}
-                detailColumns={[...columns]}
+                detailColumns={[...activeColumns]}
                 boardDetailLayout={boardDetailLayout}
                 detailLayout={resolvedDetailLayout.entries}
                 detailLayoutInherited={resolvedDetailLayout.inherited}
@@ -395,6 +439,7 @@ export function BoardWorkspace({
                 authorColumnKey={authorColumnKey}
                 viewerUserId={currentUserId}
                 canManageColumns={!board.is_system && canManageColumns}
+                onColumnArchived={(columnId) => setArchivedColumnIds((current) => new Set(current).add(columnId))}
                 rowDragEnabled={rowDragEnabled}
                 cellFlash={cellFlash}
                 onColumnDrop={(draggedKey, targetKey) =>
