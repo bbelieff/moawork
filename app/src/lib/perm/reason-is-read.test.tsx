@@ -67,8 +67,8 @@ describe("BBE-204 권한 판정 근거를 화면이 읽는다", () => {
   it("아직 reason 을 안 읽는 자리를 목록으로 고정한다", () => {
     const remaining = [
       // 능력(버튼 노출)만 가리는 자리 — 장애일 때 «권한이 없다» 처럼 보인다. 접근은 안 열린다.
-      ["../../app/(app)/presets/page.tsx", 'tabPermission.kind === "allowed"'],
-      ["../../app/(app)/presets/page.tsx", 'presetPermission.kind === "allowed"'],
+      ["../../app/(app)/(tabs)/presets/page.tsx", 'tabPermission.kind === "allowed"'],
+      ["../../app/(app)/(tabs)/presets/page.tsx", 'presetPermission.kind === "allowed"'],
       ["../campaign/server.ts", '.kind === "allowed"'],
     ] as const;
 

@@ -5,7 +5,7 @@ import { getSession } from "@/lib/auth/session";
 import { Logo } from "@/components/brand/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { SidebarNav } from "@/components/shell/SidebarNav";
-import { AppTabs } from "@/components/shell/AppTabs";
+import { AppTabsLayoutDataProvider } from "@/components/shell/AppTabsLayoutData";
 import { IconSprite } from "@/components/shell/icons";
 import { GlobalSearch } from "@/components/shell/GlobalSearch";
 import { AccountMenu } from "@/components/account/AccountMenu";
@@ -268,14 +268,15 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             />
           </div>
         </header>
-        {/* 목업 「탭 6개 한 화면」 — 여섯 업무 탭을 셸의 «같은 자리»에 그린다(BBE-142).
-            탭 밖 화면(설정·계정·플랫폼)에서는 AppTabs 가 스스로 아무것도 그리지 않는다. */}
-        <AppTabs
-          lockedFeatures={lockedFeatures}
-          workspaceBasePath={currentWorkspace.length === 1 ? `/w/${currentWorkspace[0].slug}` : undefined}
-          directHrefs={contactDirectHref ? { contact: contactDirectHref } : undefined}
-        />
-        <main>{children}</main>
+        <AppTabsLayoutDataProvider
+          value={{
+            lockedFeatures,
+            workspaceBasePath: currentWorkspace.length === 1 ? `/w/${currentWorkspace[0].slug}` : undefined,
+            directHrefs: contactDirectHref ? { contact: contactDirectHref } : undefined,
+          }}
+        >
+          <main>{children}</main>
+        </AppTabsLayoutDataProvider>
       </div>
     </div>
   );

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { WorkBoardSnapshot } from "@/lib/work-management/contracts";
 import { WORK_COLUMNS, WORK_TEMPLATE } from "@/lib/work-management/template";
 
-vi.mock("@/app/(app)/work/actions", () => ({ mutateWork: async () => ({ ok: false, message: "" }) }));
+vi.mock("@/app/(app)/(tabs)/work/actions", () => ({ mutateWork: async () => ({ ok: false, message: "" }) }));
 
 const base: WorkBoardSnapshot = {
   board: { id: "board-a", orgId: "org-a", title: "업무관리", icon: "🔥", templateKey: WORK_TEMPLATE.key, templateVersion: 1, baselineFingerprint: WORK_TEMPLATE.baselineFingerprint, currentFingerprint: "edited" },

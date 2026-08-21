@@ -75,9 +75,9 @@ const callSites = [
   //    ★ boards/server.ts 가 가장 무겁다 — createRequestBoards() 는 «보드 상세 화면과
   //      보드 액션 전부» 가 쓴다. 여기서 규칙이 느슨해지면 운영에서 보드 데이터가
   //      통째로 로컬 시드로 나간다. BBE-203 이 막으려던 바로 그 자리인데 못이 없었다.
-  "../../app/(app)/presets/page.tsx",
-  "../../app/(app)/work/page.tsx",
-  "../../app/(app)/notices/page.tsx",
+  "../../app/(app)/(tabs)/presets/page.tsx",
+  "../../app/(app)/(tabs)/work/page.tsx",
+  "../../app/(app)/(tabs)/notices/page.tsx",
   "../../app/api/tab-views/route.ts",
   "../../app/api/tab-views/[viewId]/route.ts",
   "../../app/api/workspace-requests/handler.ts",

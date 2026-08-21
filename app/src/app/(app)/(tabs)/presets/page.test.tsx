@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const page = readFileSync(join(process.cwd(), "src/app/(app)/presets/page.tsx"), "utf8");
-const actions = readFileSync(join(process.cwd(), "src/app/(app)/presets/actions.ts"), "utf8");
+const page = readFileSync(join(process.cwd(), "src/app/(app)/(tabs)/presets/page.tsx"), "utf8");
+const actions = readFileSync(join(process.cwd(), "src/app/(app)/(tabs)/presets/actions.ts"), "utf8");
 
 describe("BBE-158 프리셋 라이브러리", () => {
   it("D76 탭 생성·이름 수정과 D77 마지막 탭 삭제·0개 상태를 노출한다", () => {

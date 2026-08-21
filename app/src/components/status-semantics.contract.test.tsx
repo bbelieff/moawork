@@ -149,7 +149,7 @@ describe("BBE-193 성공/실패 표현 계약", () => {
   describe("WorkBoardSurface — 업무 셀 저장", () => {
     it("셀 저장 실패는 alert 로 알린다", async () => {
       vi.resetModules();
-      vi.doMock("@/app/(app)/work/actions", () => ({ mutateWork: async () => ({ ok: false, message: "" }) }));
+      vi.doMock("@/app/(app)/(tabs)/work/actions", () => ({ mutateWork: async () => ({ ok: false, message: "" }) }));
       mockActionState({ ok: false, message: "저장하지 못했어요." });
 
       const { WORK_COLUMNS, WORK_TEMPLATE } = await import("@/lib/work-management");

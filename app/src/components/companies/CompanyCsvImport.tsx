@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { parseDeidentifiedCsv } from "@/components/workspace-builder/CsvImportDialog";
 import { mapCsvToCompanies, IMPORT_ROW_CAP } from "@/lib/companies/csv-import";
-import type { CompanyImportResult } from "@/app/(app)/companies/csv-import-contract";
+import type { CompanyImportResult } from "@/app/(app)/(tabs)/companies/csv-import-contract";
 
 /**
  * 고객사 CSV 가져오기.

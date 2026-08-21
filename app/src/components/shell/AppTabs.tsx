@@ -25,7 +25,7 @@ const ICON_BY_TAB_KEY = new Map(
   NAV_ITEMS.map((item) => [item.key, item.icon] as const),
 );
 
-type Props = {
+export type AppTabsProps = {
   /** 서버가 계산한 잠긴 기능키 — 사이드바와 같은 진실을 쓴다(엔타이틀먼트는 서버 소유). */
   lockedFeatures: string[];
   /** Verified active-membership namespace, for example `/w/acme`. */
@@ -34,18 +34,13 @@ type Props = {
   directHrefs?: Partial<Record<(typeof APP_TABS)[number]["key"], string>>;
 };
 
-export function AppTabs({ lockedFeatures, workspaceBasePath, directHrefs }: Props) {
+export function AppTabs({ lockedFeatures, workspaceBasePath, directHrefs }: AppTabsProps) {
   const pathname = usePathname();
   const internalPathname = workspaceBasePath && pathname &&
     (pathname === workspaceBasePath || pathname.startsWith(`${workspaceBasePath}/`))
     ? pathname.slice(workspaceBasePath.length) || "/"
     : pathname;
-  // 보드 본문에는 앱 전역 경로가 아니라 해당 보드의 저장 뷰 탭만 둔다(BBE-179).
-  // 사이드바가 이미 앱 이동을 소유하므로 이 줄을 반복하면 saved view와 app nav가 혼동된다.
-  if (internalPathname?.startsWith("/boards/")) return null;
   const active = matchTabByPathname(internalPathname);
-  // 탭 밖 화면에서는 탭 줄 자체가 없다. 여섯 탭 중 하나를 보고 있을 때만 그린다.
-  if (!active) return null;
 
   const locked = new Set(lockedFeatures);
 
@@ -62,7 +57,7 @@ export function AppTabs({ lockedFeatures, workspaceBasePath, directHrefs }: Prop
         const href = workspaceHref(workspaceBasePath, canonicalHref);
         const feature = FEATURE_BY_TAB_KEY.get(tab.key);
         const isLocked = feature ? locked.has(feature) : false;
-        const isActive = active.key === tab.key;
+        const isActive = active?.key === tab.key;
         const icon = ICON_BY_TAB_KEY.get(tab.key);
 
         return (
