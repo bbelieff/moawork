@@ -120,17 +120,16 @@ const probe = vi.hoisted(() => {
     //   ※ volatility 표시가 «없어» Postgres 기본값 VOLATILE 로 선언돼 있다 —
     //     선언은 느슨한데 실제는 읽기다. 선언만 보고는 판정할 수 없어 본문을 읽었다.
     "count_pending_workspace_join_requests",
+    // 116: language sql stable, effective expiry is projected with CASE only.
+    // Durable expiry is a separate explicit mutation and never runs on hard-load GET.
+    "list_my_workspace_entry_requests",
   ]);
   const WRITE_RPCS = new Set([
     "acquire_default_tab_repair_lease",
     "renew_default_tab_repair_lease",
     "release_default_tab_repair_lease",
-    // ★★ 009:345 — 이름은 「list」인데 «쓴다».
-    //   기한 지난 요청을 update ... set status='rejected' 하고
-    //   workspace_entry_events 에 insert 한다.
-    //   ★ 이름으로 분류했으면 읽기로 셌을 것이고, 누가 캐시했으면
-    //     «기한 만료 처리가 조용히 멈춘다». rpc?: 가 막아 준 자리가 정확히 여기다.
-    "list_my_workspace_entry_requests",
+    // 116: durable expiry is deliberately explicit and must never be counted as a read.
+    "expire_my_workspace_entry_requests",
   ]);
   function rpcLabel(name: string): string {
     if (READ_RPCS.has(name)) return `rpc:${name}`;
@@ -199,19 +198,6 @@ function seedRows() {
   probe.tables.tab_views = [];
   probe.rpcs.app_admin_role = null;
   probe.rpcs.effective_permission = true;
-}
-
-async function measure(label: string, fn: () => Promise<unknown>) {
-  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
-  probe.reset();
-  seedRows();
-  try { await fn(); } catch { /* redirect */ }
-  const trips = [...probe.trips];
-  const stages = new Set(trips.map((t) => t.wave)).size;
-  console.log(`
-[MEASURE] ${label}  roundtrips ${trips.length} / serial ${stages}`);
-  console.log("  waves: " + trips.map((t) => `${t.wave}:${t.label}`).join(" "));
-  return { total: trips.length, stages };
 }
 
 import HomeTop from "./page";
