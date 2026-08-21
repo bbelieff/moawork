@@ -35,6 +35,8 @@ export type BoardColumnCommandArgs = {
   p_operation: BoardColumnCommandOperation;
   p_request_id: string;
   p_payload: Record<string, unknown>;
+  /** Duplicate only. Omitted callers are structure-only; value copy requires explicit true. */
+  p_copy_values?: boolean;
 };
 
 export type BoardColumnTypeDryRunArgs = {
