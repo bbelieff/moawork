@@ -18,6 +18,11 @@ test("decision dashboard script compiles and keeps the live data bridge contract
   assert.match(html, /층별 달성도/);
   assert.match(html, /연료/);
   assert.match(html, /측정 실패/);
+  assert.match(html, /60_000/);
+  assert.match(html, /visibilitychange/);
+  assert.match(html, /force/);
+  assert.match(html, /다음 조회/);
+  assert.match(html, /stale 상태로 남깁니다/);
 });
 
 test("new DG lanes and the P0 handoff chain are visible without the retired 20-slot board", async () => {
@@ -132,4 +137,52 @@ test("owner coverage requires exactly one C/G owner and ignores blocked labels",
   assert.deepEqual(logic.ownerLabels({ labels: ["DC", "DG", "blocked:DC"] }), ["DC", "DG"]);
   assert.deepEqual(logic.ownerLabels({ labels: ["NC", "NG-02"] }), ["NC", "NG-02"]);
   assert.deepEqual(logic.ownerLabels({ labels: ["DCX", "D", "dc", "DC-3"] }), []);
+});
+
+test("Production completion is fail-closed across PR, exact deployment, runtime, and hosted gates", async () => {
+  const { deliveryStage } = await boardLogic();
+  const passingPr = { isDraft: false, checks: { total: 3, failing: 0, pending: 0 } };
+  assert.deepEqual(deliveryStage({ linearStatus: "Done", pr: passingPr }), {
+    stage: "MERGE_WAITING", complete: false, blockers: ["LINEAR_DONE_WITHOUT_PRODUCTION"],
+  }, "CI PASS and Linear Done are still not a completed delivery");
+
+  const mergedPr = { ...passingPr, mergedAt: "2026-08-21T00:00:00Z", mergeCommitSha: "aaa" };
+  assert.deepEqual(deliveryStage({ linearStatus: "Done", pr: mergedPr, deployment: { state: "SUCCESS", sha: "bbb" }, loginStatus: 200, runtimeErrorCount: 0 }), {
+    stage: "DEPLOYMENT_WAITING", complete: false, blockers: ["LINEAR_DONE_WITHOUT_PRODUCTION", "PRODUCTION_SHA_MISMATCH"],
+  });
+  assert.equal(deliveryStage({ linearStatus: "Done", pr: mergedPr, deployment: { state: "SUCCESS", sha: "aaa" }, loginStatus: 200, runtimeErrorCount: 1 }).complete, false);
+  assert.deepEqual(deliveryStage({ linearStatus: "Done", pr: mergedPr, deployment: { state: "SUCCESS", sha: "aaa" }, loginStatus: 200, runtimeErrorCount: 0, hostedRequired: true, hostedApplied: false }), {
+    stage: "HOSTED_WAITING", complete: false, blockers: ["HOSTED_REQUIRED_UNVERIFIED"],
+  });
+  assert.deepEqual(deliveryStage({ linearStatus: "In Progress", pr: null, hostedRequired: true, hostedApplied: false }), {
+    stage: "WORK_REVIEW", complete: false, blockers: ["HOSTED_REQUIRED_UNVERIFIED"],
+  });
+  assert.deepEqual(deliveryStage({ linearStatus: "Done", pr: mergedPr, deployment: { state: "SUCCESS", sha: "aaa" }, loginStatus: 200, runtimeErrorCount: 0 }), {
+    stage: "PRODUCTION_COMPLETE", complete: true, blockers: [],
+  });
+});
+
+test("current pipeline excludes the measured 115 historical Done cards", async () => {
+  const { boundedDeliveryIds } = await boardLogic();
+  const historical = Array.from({ length: 115 }, (_, index) => ({ id: `OLD-${index}`, status: "Done", updatedAt: "2026-08-01T00:00:00Z" }));
+  const issues = [...historical,
+    { id: "BBE-266", status: "In Progress", updatedAt: "2026-08-21T01:00:00Z" },
+    { id: "BBE-267", status: "Backlog", updatedAt: "2026-08-21T01:00:00Z" },
+    { id: "BBE-191", status: "Done", updatedAt: "2026-08-21T01:00:00Z" },
+  ];
+  const ids = boundedDeliveryIds(issues, [
+    { cardId: "BBE-267", state: "OPEN", mergedAt: null },
+    { cardId: "BBE-191", state: "MERGED", mergedAt: "2026-08-21T02:00:00Z" },
+  ], "2026-08-21");
+  assert.deepEqual(ids.sort(), ["BBE-191", "BBE-266", "BBE-267"]);
+  assert.equal(ids.some((id) => id.startsWith("OLD-")), false);
+});
+
+test("bounded pipeline excludes Backlog and Done without PR evidence but keeps In Progress and open PR", async () => {
+  const { boundedDeliveryIds } = await boardLogic();
+  const issues = [
+    { id: "BACKLOG", status: "Backlog" }, { id: "DONE", status: "Done" },
+    { id: "ACTIVE", status: "In Progress" }, { id: "OPEN", status: "Todo" },
+  ];
+  assert.deepEqual(boundedDeliveryIds(issues, [{ cardId: "OPEN", state: "OPEN", mergedAt: null }], "2026-08-21").sort(), ["ACTIVE", "OPEN"]);
 });

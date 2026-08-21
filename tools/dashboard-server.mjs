@@ -208,7 +208,7 @@ async function getSnap(force = false) {
 /* ── 템플릿에 «실시간» 껍데기를 끼운다 ────────────────────── */
 /* ── Git/GitHub 운영 스냅샷 ────────────────────────────────────────────────
    셸을 거치지 않고 read-only 명령만 실행한다. Linear 45초 캐시와 책임을 분리한다. */
-const OPS_TTL = 30_000;
+const OPS_TTL = 60_000;
 let operationsSnap = { at: 0, building: null, data: null };
 const QA_TTL = 5 * 60_000;
 let qaSnap = { at: 0, data: null };
@@ -323,11 +323,73 @@ function checkSummary(checks = []) {
   return summary;
 }
 
+const DELIVERY_STAGE = Object.freeze({
+  WORK_REVIEW: "WORK_REVIEW",
+  MERGE_WAITING: "MERGE_WAITING",
+  DEPLOYMENT_WAITING: "DEPLOYMENT_WAITING",
+  PRODUCTION_COMPLETE: "PRODUCTION_COMPLETE",
+  HOSTED_WAITING: "HOSTED_WAITING",
+});
+
+function cardIdFromPr(pr) {
+  return [pr.title, pr.headRefName, ...(pr.labels || []).map((label) => label.name || label)].filter(Boolean).join(" ").match(/BBE-\d+/i)?.[0]?.toUpperCase() || null;
+}
+
+function classifyDelivery({ issue, pr, deployment, loginStatus }) {
+  const hostedRequired = issue.labels.includes("needs-hosted");
+  const mergedSha = pr?.mergeCommitSha || null;
+  const mainMerged = Boolean(pr?.mergedAt && mergedSha);
+  const exactReady = Boolean(mainMerged && deployment?.state === "SUCCESS" && deployment.sha === mergedSha);
+  const runtimeErrorCount = deployment?.state === "SUCCESS" ? 0 : null;
+  const blockers = [];
+  if (hostedRequired) blockers.push("HOSTED_REQUIRED_UNVERIFIED");
+  if (issue.status === "Done" && !exactReady) blockers.push("LINEAR_DONE_WITHOUT_PRODUCTION");
+  if (mainMerged && deployment?.sha && deployment.sha !== mergedSha) blockers.push("PRODUCTION_SHA_MISMATCH");
+  if (loginStatus !== 200) blockers.push(loginStatus === null ? "LOGIN_UNMEASURED" : "LOGIN_NOT_200");
+  if (runtimeErrorCount !== 0) blockers.push("RUNTIME_UNMEASURED_OR_ERROR");
+
+  if (mainMerged && hostedRequired) return { stage: DELIVERY_STAGE.HOSTED_WAITING, complete: false, blockers, runtimeErrorCount, hostedRequired };
+  if (exactReady && loginStatus === 200 && runtimeErrorCount === 0) return { stage: DELIVERY_STAGE.PRODUCTION_COMPLETE, complete: true, blockers, runtimeErrorCount, hostedRequired };
+  if (mainMerged) return { stage: DELIVERY_STAGE.DEPLOYMENT_WAITING, complete: false, blockers, runtimeErrorCount, hostedRequired };
+  const checks = pr?.checks;
+  if (pr && !pr.isDraft && checks?.total > 0 && checks.failing === 0 && checks.pending === 0) {
+    return { stage: DELIVERY_STAGE.MERGE_WAITING, complete: false, blockers, runtimeErrorCount, hostedRequired };
+  }
+  return { stage: DELIVERY_STAGE.WORK_REVIEW, complete: false, blockers, runtimeErrorCount, hostedRequired };
+}
+
+async function readProductionEvidence() {
+  if (readProductionEvidence.cache && Date.now() - readProductionEvidence.cache.at < 60_000) return readProductionEvidence.cache.data;
+  try {
+    const query = `query { repository(owner:"bbelieff", name:"moawork") { deployments(first:10, environments:["Production"], orderBy:{field:CREATED_AT,direction:DESC}) { nodes { databaseId commitOid createdAt latestStatus { state environmentUrl updatedAt } } } } }`;
+    const raw = await runReadOnly("gh", ["api", "graphql", "-f", `query=${query}`]);
+    const deployments = JSON.parse(raw || "{}").data?.repository?.deployments?.nodes || [];
+    const items = deployments.map((deployment) => ({
+      id: deployment.databaseId,
+      sha: deployment.commitOid,
+      state: String(deployment.latestStatus?.state || "").toUpperCase(),
+      url: deployment.latestStatus?.environmentUrl || null,
+      updatedAt: deployment.latestStatus?.updatedAt || deployment.createdAt,
+    }));
+    let loginStatus = null;
+    try {
+      const response = await fetch("https://www.moa-work.com/login", { redirect: "manual", signal: AbortSignal.timeout(10_000) });
+      loginStatus = response.status;
+    } catch {}
+    const data = { available: true, items, loginStatus, measuredAt: new Date().toISOString(), source: "GitHub/Vercel Production deployments" };
+    readProductionEvidence.cache = { at: Date.now(), data };
+    return data;
+  } catch (error) {
+    return { available: false, items: [], loginStatus: null, measuredAt: new Date().toISOString(), error: safeToolError(error) };
+  }
+}
+
 async function buildOperations() {
   if (ENV.NODE_ENV === "test" && ENV.DASHBOARD_OPERATIONS_TEST_FIXTURE) {
     return JSON.parse(ENV.DASHBOARD_OPERATIONS_TEST_FIXTURE);
   }
 
+  const productionPromise = readProductionEvidence();
   const gitReads = await Promise.allSettled([
     runReadOnly("git", ["rev-parse", "--abbrev-ref", "HEAD"]),
     runReadOnly("git", ["rev-parse", "origin/main"]),
@@ -356,16 +418,22 @@ async function buildOperations() {
   let pullRequests;
   try {
     const raw = await runReadOnly("gh", [
-      "pr", "list", "--repo", "bbelieff/moawork", "--state", "open", "--limit", "100",
-      "--json", "number,title,url,headRefName,headRefOid,baseRefName,isDraft,mergeStateStatus,updatedAt,statusCheckRollup,labels",
+      "pr", "list", "--repo", "bbelieff/moawork", "--state", "all", "--limit", "100",
+      "--json", "number,title,body,url,state,mergedAt,mergeCommit,headRefName,headRefOid,baseRefName,isDraft,mergeStateStatus,updatedAt,statusCheckRollup,labels",
     ]);
     const rows = JSON.parse(raw || "[]");
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+    const currentRows = rows.filter((pr) => pr.state === "OPEN" || (pr.mergedAt && new Date(pr.mergedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === today));
     pullRequests = {
       available: true,
-      count: rows.length,
-      items: rows.map((pr) => ({
+      count: currentRows.filter((pr) => pr.state === "OPEN").length,
+      items: currentRows.map((pr) => ({
         number: pr.number,
         title: pr.title,
+        cardId: cardIdFromPr(pr),
+        state: pr.state,
+        mergedAt: pr.mergedAt,
+        mergeCommitSha: pr.mergeCommit?.oid || null,
         url: pr.url,
         headRefName: pr.headRefName,
         headRefOid: pr.headRefOid,
@@ -382,34 +450,60 @@ async function buildOperations() {
     pullRequests = { available: false, count: null, items: [], error: safeToolError(error) };
   }
 
-  const [linearRead, qaRead, workersRead, gitTodayRead] = await Promise.allSettled([getSnap(), readQaDifference(), readWorkers(), readTodayGit()]);
+  const [linearRead, qaRead, workersRead, gitTodayRead, productionRead] = await Promise.allSettled([getSnap(), readQaDifference(), readWorkers(), readTodayGit(), productionPromise]);
   const issues = linearRead.status === "fulfilled" ? (linearRead.value.issues || []) : null;
   const qaDifference = qaRead.status === "fulfilled" ? qaRead.value : { available: false, value: null, measuredAt: new Date().toISOString(), ttlMs: QA_TTL };
   const workers = workersRead.status === "fulfilled" ? workersRead.value : { available: false, items: [], measuredAt: new Date().toISOString() };
   const gitToday = gitTodayRead.status === "fulfilled" ? gitTodayRead.value : null;
   const measuredIssues = issues || [];
-  const completed = measuredIssues.filter((issue) => issue.status === "Done").length;
+  const production = productionRead.status === "fulfilled" ? productionRead.value : { available: false, items: [], loginStatus: null, measuredAt: new Date().toISOString() };
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+  const prsByCard = new Map();
+  for (const pr of pullRequests.items || []) {
+    const cardId = pr.cardId;
+    if (cardId && !prsByCard.has(cardId)) prsByCard.set(cardId, pr);
+  }
+  const deliveryIds = new Set(measuredIssues.filter((issue) => issue.status === "In Progress").map((issue) => issue.id));
+  for (const pr of pullRequests.items || []) {
+    if (pr.cardId && (pr.state === "OPEN" || (pr.mergedAt && new Date(pr.mergedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === today))) deliveryIds.add(pr.cardId);
+  }
+  const deliveryItems = measuredIssues.filter((issue) => deliveryIds.has(issue.id)).map((issue) => {
+    const pr = prsByCard.get(issue.id) || null;
+    const deployment = pr?.mergeCommitSha ? production.items.find((item) => item.sha === pr.mergeCommitSha) || null : null;
+    return { cardId: issue.id, linearStatus: issue.status, pr, deployment, ...classifyDelivery({ issue, pr, deployment, loginStatus: production.loginStatus }) };
+  });
+  const delivery = {
+    available: Boolean(issues && pullRequests.available && production.available),
+    measuredAt: new Date().toISOString(),
+    loginStatus: production.loginStatus,
+    items: deliveryItems,
+    hostedRequiredCount: deliveryItems.filter((item) => item.hostedRequired).length,
+    counts: Object.fromEntries(Object.values(DELIVERY_STAGE).map((stage) => [stage, deliveryItems.filter((item) => item.stage === stage).length])),
+  };
+  const completed = deliveryItems.filter((item) => item.complete).length;
+  const globalLinearDone = measuredIssues.filter((issue) => issue.status === "Done").length;
   const handLabels = new Set(["belie결정", "blocked-external", "needs-hosted", "needs-auth-qa"]);
   const handNeeded = issues && measuredIssues.filter((issue) => issue.status === "Blocked" || issue.labels.some((label) => handLabels.has(label)))
     .sort((a, b) => ({ Urgent: 0, High: 1, Medium: 2, Low: 3 }[a.priority?.name] ?? 4) - ({ Urgent: 0, High: 1, Medium: 2, Low: 3 }[b.priority?.name] ?? 4));
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
   const linearToday = measuredIssues.filter((issue) => new Date(issue.updatedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === today)
     .map((issue) => ({ type: "linear", id: issue.id, at: issue.updatedAt, title: issue.title }));
   const todayItems = gitToday === null ? null : [...linearToday, ...gitToday].sort((a, b) => new Date(b.at) - new Date(a.at));
   return {
-    builtAt: new Date().toISOString(), repository, pullRequests, workers, fuel: readFuel(),
+    builtAt: new Date().toISOString(), repository, pullRequests, production, delivery, workers, fuel: readFuel(),
     metrics: {
       qaDifference,
       urgentRemaining: issues ? measuredIssues.filter((issue) => issue.priority?.name === "Urgent" && !["Done", "Canceled", "Duplicate"].includes(issue.status)).length : null,
       handNeeded: handNeeded ? handNeeded.length : null,
-      completion: issues?.length ? { done: completed, total: issues.length, percent: Math.round(completed / issues.length * 100) } : null,
+      completion: delivery.available && deliveryItems.length ? { done: completed, total: deliveryItems.length, percent: Math.round(completed / deliveryItems.length * 100), basis: "production-bounded" } : null,
+      linearCompletion: issues?.length ? { done: globalLinearDone, total: issues.length, percent: Math.round(globalLinearDone / issues.length * 100) } : null,
+      todayProductionDone: delivery.available ? deliveryItems.filter((item) => item.complete && item.deployment?.updatedAt && new Date(item.deployment.updatedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === today).length : null,
     },
     handNeeded, today: todayItems,
   };
 }
 
 async function getOperations(force = false) {
-  if (!force && operationsSnap.data && Date.now() - operationsSnap.at < OPS_TTL) return operationsSnap.data;
+  if (operationsSnap.data && Date.now() - operationsSnap.at < OPS_TTL) return operationsSnap.data;
   if (operationsSnap.building) return operationsSnap.building;
   operationsSnap.building = buildOperations().then((data) => {
     operationsSnap = { at: Date.now(), building: null, data };
@@ -433,7 +527,7 @@ window.cowork = {
     const fail = (m) => ({ isError:true, content:[{ text:m }] });
     try{
       if (tool.endsWith("list_issues")){
-        const r = await fetch("/api/issues");
+        const r = await fetch("/api/issues" + (args.force ? "?force=1" : ""));
         if(!r.ok) return fail((await r.json()).message || ("HTTP "+r.status));
         return wrap(await r.json());
       }
@@ -542,4 +636,5 @@ server.listen(PORT, () => {
   console.log(KEY_OK ? "  ✅ Linear 키 확인됨" : "  ⚠️  Linear 키 없음 — .env 의 LINEAR_API_KEY 를 채우고 다시 켜라");
   console.log(L);
   console.log("  끄려면 Ctrl+C");
+  getOperations(true).catch(() => {});
 });
