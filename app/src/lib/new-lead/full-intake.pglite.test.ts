@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 const migration = readFileSync(resolve(process.cwd(), "../supabase/migrations/120_bbe273_new_lead_full_intake.sql"), "utf8");
 const validationMigration = readFileSync(resolve(process.cwd(), "../supabase/migrations/118_bbe178_column_value_and_schedule_dispatch.sql"), "utf8");
+const noticeValidationMigration = readFileSync(resolve(process.cwd(), "../supabase/migrations/122_bbe236_notice_reader_system_value.sql"), "utf8");
+const finalValidationMigration = readFileSync(resolve(process.cwd(), "../supabase/migrations/123_bbe182_new_lead_address_projection_validation.sql"), "utf8");
 const legacyValidationSql = validationMigration.slice(
   validationMigration.indexOf("create or replace function public.board_column_value_is_valid"),
   validationMigration.indexOf("create or replace function public.enforce_required_values_on_item_create"),
@@ -12,6 +14,18 @@ const legacyValidationSql = validationMigration.slice(
 const hiddenProjectionValidationSql = migration.slice(
   migration.indexOf("create or replace function public.board_column_value_is_valid"),
   migration.indexOf("create or replace function public.guard_new_lead_projection_write"),
+);
+const noticeValidationSql = noticeValidationMigration.slice(
+  noticeValidationMigration.indexOf("create or replace function public.board_column_value_is_valid"),
+  noticeValidationMigration.indexOf("revoke all on function public.board_column_value_is_valid"),
+);
+const finalValidationSql = finalValidationMigration.slice(
+  finalValidationMigration.indexOf("create or replace function public.board_column_value_is_valid"),
+  finalValidationMigration.indexOf("revoke all on function public.board_column_value_is_valid"),
+);
+const finalGuardSql = finalValidationMigration.slice(
+  finalValidationMigration.indexOf("create or replace function public.guard_new_lead_projection_write"),
+  finalValidationMigration.indexOf("revoke all on function public.guard_new_lead_projection_write"),
 );
 const functionSql = migration.slice(migration.indexOf("create function public.create_new_lead"), migration.indexOf("revoke all on function public.create_new_lead"));
 const projectionSql = migration.slice(
@@ -74,7 +88,10 @@ describe("BBE-273 atomic full new-lead intake", () => {
     `);
     await db.exec(legacyValidationSql);
     await db.exec(hiddenProjectionValidationSql);
+    await db.exec(noticeValidationSql);
+    await db.exec(finalValidationSql);
     await db.exec(projectionSql);
+    await db.exec(finalGuardSql);
     await db.exec(functionSql);
     await db.exec(metaFunctionSql);
     await actor(db, ids.owner);
@@ -110,8 +127,10 @@ describe("BBE-273 atomic full new-lead intake", () => {
     await db.exec("update deal_intake set region_sido='부산',region_sigungu='해운대구',acquisition_source='소개' where true");
     const refreshed = Object.fromEntries((await db.query<{ column_key: string; value_jsonb: unknown }>("select column_key,value_jsonb from item_values where column_key in ('sido','sigungu','ad_name')")).rows.map((row) => [row.column_key,row.value_jsonb]));
     expect(refreshed).toEqual({ ad_name: "소개", sido: "부산", sigungu: "해운대구" });
+    await db.exec("grant usage on schema public to authenticated; grant select on items,boards,item_values to authenticated; grant update on item_values to authenticated; set role authenticated");
     await expect(db.exec(`update item_values set value_jsonb='"조작"'::jsonb where column_key='sido'`)).rejects.toThrow(/require update_new_lead_fields/);
     await expect(db.exec(`update item_values set value_jsonb='"${ids.owner}"'::jsonb where column_key='owner'`)).rejects.toThrow(/require update_new_lead_fields/);
+    await db.exec("reset role");
 
     const customBoard = "00000000-0000-4000-8000-000000000023";
     const customGroup = "00000000-0000-4000-8000-000000000033";
@@ -124,6 +143,27 @@ describe("BBE-273 atomic full new-lead intake", () => {
       insert into item_values(org_id,item_id,column_key,value_jsonb) values('${ids.orgA}','${customItem}','rep_name','"독립 값"'::jsonb);
     `);
     expect((await db.query<{ value_jsonb: string }>(`select value_jsonb#>>'{}' value_jsonb from item_values where item_id='${customItem}'`)).rows[0].value_jsonb).toBe("독립 값");
+  });
+
+  it("keeps the hidden address projection narrow after the notice validator replacement", async () => {
+    const created = (await db.query<{ item_id: string }>(
+      `select * from create_new_lead('${ids.orgA}','${ids.boardA}','${ids.groupA}',gen_random_uuid(),'주소 리드',null,null,null,null,null,null,null,null,null,null,null,null,'상세 주소')`,
+    )).rows[0];
+    expect((await db.query<{ value: string }>(
+      `select value_jsonb#>>'{}' value from item_values where item_id='${created.item_id}' and column_key='address_detail'`,
+    )).rows[0].value).toBe("상세 주소");
+    await db.exec("grant usage on schema public to authenticated; grant select on items,boards,item_values to authenticated; grant update on item_values to authenticated; set role authenticated");
+    await db.exec("select set_config('moawork.new_lead_projection_write','on',true)");
+    await expect(db.exec(`update item_values set value_jsonb='"조작"'::jsonb where item_id='${created.item_id}' and column_key='address_detail'`)).rejects.toThrow(/require update_new_lead_fields/);
+    await db.exec("reset role");
+  });
+
+  it("turns red when the address projection exception is removed", async () => {
+    await db.exec(finalValidationSql.replace("p_column_key='address_detail'", "p_column_key='address_detail_mutated'"));
+    await expect(db.query(
+      `select * from create_new_lead('${ids.orgA}','${ids.boardA}','${ids.groupA}',gen_random_uuid(),'RED 주소',null,null,null,null,null,null,null,null,null,null,null,null,'상세 주소')`,
+    )).rejects.toThrow(/column value validation failed/);
+    expect((await db.query<{ n: number }>("select count(*)::int n from deals")).rows[0].n).toBe(0);
   });
 
   it("fails closed for cross-org targets, unauthorized assignment, and collaborator membership", async () => {
