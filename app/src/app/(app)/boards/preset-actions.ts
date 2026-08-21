@@ -37,6 +37,12 @@ import { getBoardColumnOrder, setGroupColumnOrder } from "./groupLayout";
 // (BBE-217. 상수를 여기 두면 이 페이지의 액션이 «전부» 시작조차 못 한다.)
 import type { GroupPresetActionState } from "./group-preset-state";
 
+export interface GroupPresetLibraryState {
+  ok: boolean;
+  presets: Awaited<ReturnType<SectionPresetRepo["list"]>>;
+  message: string | null;
+}
+
 const DENIED = {
   preset_edit: "아이템 프리셋을 저장하거나 적용할 권한이 없습니다. 회사 관리자에게 요청해 주세요.",
   column_manage: "컬럼 구조를 바꿀 권한이 없습니다. 회사 관리자에게 요청해 주세요.",
@@ -100,6 +106,23 @@ function asSectionPresetRepo(repo: unknown): SectionPresetBoardsRepo {
 async function deps() {
   const { repo, service } = await createRequestBoards();
   return { service, presets: new SectionPresetRepo(asSectionPresetRepo(repo)) };
+}
+
+/** 메뉴가 실제로 열릴 때만 호출하는 프리셋 라이브러리 조회(BBE-223). */
+export async function loadGroupPresetLibraryAction(boardId: string): Promise<GroupPresetLibraryState> {
+  try {
+    const ctx = await getSession();
+    await requirePermission(ctx, "preset_edit");
+    if (!boardId.trim()) throw new PresetActionError("요청 정보가 올바르지 않습니다.");
+
+    const { service, presets } = await deps();
+    // 목록보다 먼저 보드를 읽어 현재 조직에서 접근 가능한 보드인지 확인한다.
+    await service.getBoardDetail(ctx, boardId);
+    return { ok: true, presets: await presets.list(ctx), message: null };
+  } catch (error) {
+    const failed = failure(error);
+    return { ok: false, presets: [], message: failed.message };
+  }
 }
 
 /**

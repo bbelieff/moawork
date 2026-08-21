@@ -25,11 +25,16 @@
  * 공짜로 따라온다. 375px 에서는 화면 밖으로 나가지 않도록 오른쪽에 붙여 폭을 제한한다.
  */
 
-import { useActionState, useId, useMemo, useState } from "react";
+import { useActionState, useId, useMemo, useRef, useState } from "react";
 import type { BoardColumn } from "@/lib/boards/types";
 import type { SectionPresetRecord } from "@/lib/presets/section-presets";
 import { previewGroupPresetApply } from "@/lib/presets/group-preset";
-import { saveGroupPresetAction } from "@/app/(app)/boards/preset-actions";
+import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
+import {
+  loadGroupPresetLibraryAction,
+  saveGroupPresetAction,
+  type GroupPresetLibraryState,
+} from "@/app/(app)/boards/preset-actions";
 import { INITIAL_GROUP_PRESET_STATE } from "@/app/(app)/boards/group-preset-state";
 
 interface GroupPresetMenuProps {
@@ -44,9 +49,14 @@ interface GroupPresetMenuProps {
   columns: readonly BoardColumn[];
   /** 이 그룹의 배치 오버라이드(현재 저장분). */
   order: readonly string[] | undefined;
-  /** 회사에 저장돼 있는 아이템 프리셋 목록. */
-  presets: readonly SectionPresetRecord[];
   canEditPresets: boolean;
+}
+
+export function createPresetLibraryLoader(
+  load: () => Promise<GroupPresetLibraryState>,
+): { open: () => Promise<GroupPresetLibraryState> } {
+  let request: Promise<GroupPresetLibraryState> | null = null;
+  return { open: () => (request ??= load()) };
 }
 
 export function GroupPresetMenu({
@@ -56,13 +66,16 @@ export function GroupPresetMenu({
   presetName,
   columns,
   order,
-  presets,
   canEditPresets,
 }: GroupPresetMenuProps) {
   const panelId = useId();
   // ③ 폼 수명 동안 고정되는 요청 id — 재제출이 두 번째 프리셋을 만들지 않게 한다.
   const [requestId] = useState(() => crypto.randomUUID());
   const [selectedPresetId, setSelectedPresetId] = useState("");
+  const [presets, setPresets] = useState<readonly SectionPresetRecord[]>([]);
+  const [libraryState, setLibraryState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [libraryMessage, setLibraryMessage] = useState<string | null>(null);
+  const loader = useRef(createPresetLibraryLoader(() => loadGroupPresetLibraryAction(boardId)));
 
   const [saveState, save, saving] = useActionState(saveGroupPresetAction, INITIAL_GROUP_PRESET_STATE);
 
@@ -79,6 +92,14 @@ export function GroupPresetMenu({
       className="relative"
       // 메뉴 안의 클릭이 그룹 머리말(<summary>)의 접기 토글로 새어 나가지 않게 막는다.
       onClick={(event) => event.stopPropagation()}
+      onToggle={async (event) => {
+        if (!event.currentTarget.open || !canEditPresets || libraryState !== "idle") return;
+        setLibraryState("loading");
+        const result = await loader.current.open();
+        setPresets(result.presets);
+        setLibraryMessage(result.message);
+        setLibraryState(result.ok ? "ready" : "error");
+      }}
     >
       <summary
         aria-label={`${presetName} 아이템 프리셋 메뉴`}
@@ -139,7 +160,13 @@ export function GroupPresetMenu({
             <label className="font-medium text-mw-body" htmlFor={`${panelId}-preset`}>
               다른 프리셋과 견주기
             </label>
-            {presets.length === 0 ? (
+            {libraryState === "idle" ? (
+              <p className="text-mw-sub">메뉴를 열면 저장된 프리셋을 불러옵니다.</p>
+            ) : libraryState === "loading" ? (
+              <p role={noticeRole(true)} aria-live={noticeLive(true)} className="text-mw-sub">프리셋을 불러오는 중…</p>
+            ) : libraryState === "error" ? (
+              <p role={noticeRole(false)} aria-live={noticeLive(false)} className="text-mw-error">{libraryMessage}</p>
+            ) : presets.length === 0 ? (
               <p className="text-mw-sub">저장된 아이템 프리셋이 없습니다. 위에서 이 아이템 구조를 먼저 저장해 보세요.</p>
             ) : (
               <select

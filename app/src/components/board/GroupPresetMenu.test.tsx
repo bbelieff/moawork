@@ -9,19 +9,22 @@
  */
 
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type { BoardColumn } from "@/lib/boards/types";
 import type { SectionPresetRecord } from "@/lib/presets/section-presets";
 
 // 서버 액션은 렌더 계약과 무관하다. 실제 동작은 preset-actions.test.ts 가 검증한다.
 vi.mock("@/app/(app)/boards/preset-actions", () => ({
-  INITIAL_GROUP_PRESET_STATE: { ok: true, message: null },
+  loadGroupPresetLibraryAction: vi.fn(),
   saveGroupPresetAction: vi.fn(),
   applyGroupPresetAction: vi.fn(),
   resetGroupPresetAction: vi.fn(),
 }));
 
-const { GroupPresetMenu } = await import("./GroupPresetMenu");
+import { loadGroupPresetLibraryAction } from "@/app/(app)/boards/preset-actions";
+
+const { createPresetLibraryLoader, GroupPresetMenu } = await import("./GroupPresetMenu");
 const { GroupBlock } = await import("./GroupBlock");
 const { BoardWorkspace } = await import("./BoardWorkspace");
 
@@ -53,7 +56,6 @@ function menu(overrides: Partial<Parameters<typeof GroupPresetMenu>[0]> = {}) {
       presetName="신규리드 관리-1차 부재"
       columns={columns}
       order={undefined}
-      presets={[preset]}
       canEditPresets
       {...overrides}
     />,
@@ -70,7 +72,7 @@ describe("BBE-174 GroupPresetMenu", () => {
 
     expect(html).toContain("현재 구조를 프리셋으로 저장");
     expect(html).toContain("다른 프리셋과 견주기");
-    expect(html).toContain("신규리드 관리-1차 부재");
+    expect(html).toContain("메뉴를 열면 저장된 프리셋을 불러옵니다");
   });
 
   it("저장 폼이 보드·그룹·요청 id 를 함께 보낸다 — 요청 id 가 멱등성의 근거다", () => {
@@ -86,7 +88,8 @@ describe("BBE-174 GroupPresetMenu", () => {
   it("프리셋을 고르기 전에는 적용 버튼이 없다 — 미리보기가 먼저다", () => {
     const html = menu();
 
-    expect(html).toContain("프리셋을 고르면 미리보기가 나옵니다");
+    expect(html).toContain("메뉴를 열면 저장된 프리셋을 불러옵니다");
+    expect(html).not.toContain("이 아이템에 적용");
   });
 
   it("«변경됨»·«되돌리기» 를 그리지 않는다 — 근거인 배치가 휘발하기 때문이다", () => {
@@ -112,8 +115,9 @@ describe("BBE-174 GroupPresetMenu", () => {
     expect(html).toContain("다른 프리셋과 견주기");
   });
 
-  it("저장된 프리셋이 없으면 «먼저 저장해 보세요» 로 안내한다 (원칙 5 — 빈 상태 한 줄 + 다음 행동)", () => {
-    expect(menu({ presets: [] })).toContain("저장된 아이템 프리셋이 없습니다");
+  it("렌더만으로는 라이브러리를 조회하지 않는다", () => {
+    menu();
+    expect(vi.mocked(loadGroupPresetLibraryAction)).not.toHaveBeenCalled();
   });
 });
 
@@ -215,7 +219,6 @@ describe("BBE-174 배선 — BoardWorkspace 가 메뉴를 실제로 단다 (W1)"
         assigneeLabels={{}}
         canEditItems
           canEditPresets
-        presets={[preset]}
         {...overrides}
       />,
     );
@@ -232,6 +235,37 @@ describe("BBE-174 배선 — BoardWorkspace 가 메뉴를 실제로 단다 (W1)"
     const html = workspace({ board: { ...board, is_system: true } });
     expect(html).not.toContain("아이템 프리셋 메뉴");
     expect(html).not.toContain("현재 구조를 프리셋으로 저장");
+  });
+});
+
+describe("BBE-223 메뉴 지연 조회", () => {
+  it("GroupPresetMenu 자신의 open 토글만 loader를 부른다 — GroupBlock 기본 open과 분리한다", () => {
+    const source = readFileSync(new URL("./GroupPresetMenu.tsx", import.meta.url), "utf8");
+    expect(source).toContain("onToggle={async (event) =>");
+    expect(source).toContain("event.currentTarget.open");
+    expect(source).toContain("loader.current.open()");
+  });
+
+  it("열기 전 0회, 열면 1회, 반복 열기에도 같은 요청을 재사용한다", async () => {
+    const fetchLibrary = vi.fn(async () => ({ ok: true, presets: [preset], message: null }));
+    const loader = createPresetLibraryLoader(fetchLibrary);
+    expect(fetchLibrary).toHaveBeenCalledTimes(0);
+
+    const first = await loader.open();
+    const second = await loader.open();
+
+    expect(fetchLibrary).toHaveBeenCalledTimes(1);
+    expect(second).toBe(first);
+  });
+
+  it("오류도 한 번만 조회하고 빈 목록으로 fail-closed 한다", async () => {
+    const failed = { ok: false, presets: [], message: "불러오지 못했습니다." };
+    const fetchLibrary = vi.fn(async () => failed);
+    const loader = createPresetLibraryLoader(fetchLibrary);
+
+    expect(await loader.open()).toEqual(failed);
+    expect(await loader.open()).toEqual(failed);
+    expect(fetchLibrary).toHaveBeenCalledTimes(1);
   });
 });
 
