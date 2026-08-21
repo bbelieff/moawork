@@ -24,7 +24,6 @@ const coreFlowFiles = [
   new URL("./deals/[dealId]/page.tsx", import.meta.url),
   new URL("../../components/dash/widgets.tsx", import.meta.url),
   new URL("../../components/deal/DealInfoTab.tsx", import.meta.url),
-  new URL("../../components/deal/DealActivityTab.tsx", import.meta.url),
   new URL("../../components/deal/ContractStatusField.tsx", import.meta.url),
 ];
 

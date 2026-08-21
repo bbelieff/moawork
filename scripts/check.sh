@@ -31,6 +31,7 @@ node scripts/check-use-server-exports.mjs --self-test
 node scripts/check-use-server-exports.mjs
 node --test scripts/check-build-gate.test.mjs
 node --test scripts/check-line-endings.test.mjs
+node scripts/check-unreachable-app-files.mjs
 
 # ── 규칙 공지 (2026-08-20 일원화) ───────────────────────
 # 왜 여기 있나: 모든 세션이 커밋 전에 반드시 이 스크립트를 지난다.
