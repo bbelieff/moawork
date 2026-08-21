@@ -586,6 +586,7 @@ async function buildOperations(force = false) {
   for (const pr of pullRequests.items || []) {
     if (pr.cardId && (pr.state === "OPEN" || (pr.mergedAt && new Date(pr.mergedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === today))) deliveryIds.add(pr.cardId);
   }
+  deliveryIds.delete("BBE-170"); // aggregate QA parent; child/release cards carry delivery evidence
   const deliveryRows = measuredIssues.filter((issue) => deliveryIds.has(issue.id)).map((issue) => ({ issue, pr: prsByCard.get(issue.id) || null }));
   const canReadLinearComments = linearRead.status === "fulfilled" && linearRead.value.available !== false;
   const commentEvidence = canReadLinearComments
