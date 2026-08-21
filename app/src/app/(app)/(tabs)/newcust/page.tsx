@@ -20,9 +20,18 @@ export default async function NewCustomerPage({
 }: {
   searchParams: Promise<{ as?: string }>;
 }) {
+  const startedAt = performance.now();
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
   const result = await repairNewcustBoardOnEntry(ctx, await createClient());
+  if (process.env.NODE_ENV === "production") {
+    console.info(JSON.stringify({
+      event: "mw.performance",
+      route: "newcust_entry",
+      outcome: result.kind,
+      total_ms: Math.round(performance.now() - startedAt),
+    }));
+  }
   if (result.kind !== "ready") {
     const conflict = result.kind === "conflict";
     const permission = result.kind === "permission";

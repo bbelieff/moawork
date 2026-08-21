@@ -388,9 +388,13 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
   // 시간을 단언하지 않으므로 기계·부하와 무관하게 결정적으로 빨개진다.
   it("보드 화면의 직렬 단계가 예산을 넘지 않는다 — 병렬을 직렬로 되돌리면 빨개진다", async () => {
     const run = await renderBoard();
-    // 측정값 12. 여유 1 만 둔다 — 병렬 하나만 풀려도 3 이상 늘어나므로 반드시 걸린다.
+    // BBE-214 R2 측정값 12. 권한·D24 판정을 다시 줄 세우면 13으로 되돌아간다.
     expect(run.serialStages, "보드 화면의 직렬 DB 단계가 늘었다 — 어디서 await 이 줄 섰는지 확인해라")
-      .toBeLessThanOrEqual(13);
+      .toBeLessThanOrEqual(12);
+    const permissionWave = run.trips.find((trip) => trip.label === "rpc:effective_permissions")?.wave;
+    const scopeWave = run.trips.find((trip) => trip.label === "rpc:read_permission_scoped_work_items")?.wave;
+    expect(permissionWave, "권한 판정 왕복을 못 찾았다").toBeTypeOf("number");
+    expect(scopeWave, "D24 범위 판정 왕복을 못 찾았다").toBe(permissionWave);
   });
 
   it("getBoardDetail 의 세 읽기가 한 물결로 나간다", async () => {
@@ -609,5 +613,9 @@ describe("BBE-214 후속 · 탭 경유지를 없앨 수 있는가", () => {
       "GET hard-load가 mutation RPC를 호출했다 — list/expire 분리가 되돌아갔다",
     ).toEqual([]);
     expect(trips.filter((trip) => trip.label === "rpc:list_my_workspace_entry_requests")).toHaveLength(1);
+    expect(
+      new Set(trips.map((trip) => trip.wave)).size,
+      "서로 독립인 셸 읽기가 다시 직렬화됐다",
+    ).toBeLessThanOrEqual(8);
   });
 });
