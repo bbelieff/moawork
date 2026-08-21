@@ -345,6 +345,14 @@ const DELIVERY_STAGE = Object.freeze({
   HOSTED_WAITING: "HOSTED_WAITING",
 });
 
+const TERMINAL_ISSUE_STATUSES = new Set(["Done", "Canceled", "Duplicate"]);
+const HAND_NEEDED_LABELS = new Set(["belie결정", "blocked-external", "needs-hosted", "needs-auth-qa"]);
+
+function isHandNeeded(issue) {
+  if (TERMINAL_ISSUE_STATUSES.has(issue.status)) return false;
+  return issue.status === "Blocked" || issue.labels.some((label) => HAND_NEEDED_LABELS.has(label));
+}
+
 function cardIdFromPr(pr) {
   return [pr.title, pr.headRefName, ...(pr.labels || []).map((label) => label.name || label)].filter(Boolean).join(" ").match(/BBE-\d+/i)?.[0]?.toUpperCase() || null;
 }
@@ -610,8 +618,7 @@ async function buildOperations(force = false) {
   };
   const completed = deliveryItems.filter((item) => item.complete).length;
   const globalLinearDone = measuredIssues.filter((issue) => issue.status === "Done").length;
-  const handLabels = new Set(["belie결정", "blocked-external", "needs-hosted", "needs-auth-qa"]);
-  const handNeeded = issues && measuredIssues.filter((issue) => issue.status === "Blocked" || issue.labels.some((label) => handLabels.has(label)))
+  const handNeeded = issues && measuredIssues.filter(isHandNeeded)
     .sort((a, b) => ({ Urgent: 0, High: 1, Medium: 2, Low: 3 }[a.priority?.name] ?? 4) - ({ Urgent: 0, High: 1, Medium: 2, Low: 3 }[b.priority?.name] ?? 4));
   const linearToday = measuredIssues.filter((issue) => new Date(issue.updatedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === today)
     .map((issue) => ({ type: "linear", id: issue.id, at: issue.updatedAt, title: issue.title }));
@@ -773,4 +780,4 @@ if (!ENV.DASHBOARD_NO_LISTEN) server.listen(PORT, () => {
   getOperations(true).catch(() => {});
 });
 
-export { classifyDelivery, linearReadFailure, mapWithConcurrency, parseDeliveryCommentEvidence, readDeliveryCommentEvidence };
+export { classifyDelivery, isHandNeeded, linearReadFailure, mapWithConcurrency, parseDeliveryCommentEvidence, readDeliveryCommentEvidence };
