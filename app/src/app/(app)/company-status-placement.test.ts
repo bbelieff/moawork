@@ -86,7 +86,6 @@ const MOVED = [
   { symbol: "PipelineWidget", render: "<PipelineWidget" },
   { symbol: "ConversionWidget", render: "<ConversionWidget" },
   { symbol: "ContractStatusWidget", render: "<ContractStatusWidget" },
-  { symbol: "SettlementWidget", render: "<SettlementWidget" },
   { symbol: "ReContactWidget", render: "<ReContactWidget" },
   { symbol: "FollowUpListWidget", render: "<FollowUpListWidget" },
   { symbol: "StatCard", render: "<StatCard" },
@@ -140,19 +139,31 @@ describe("BBE-215 · 「회사 현황」의 자리", () => {
   //   `/dash` 의 위젯이 자식 세 화면의 «유일한» 입구였다. 절이 홈으로 오면서 그 링크도 같이 왔다.
   //   여기서 끊기면 /dash/all · /dash/[pipelineId] · /dash/tasks 가 «어디에서도 안 열린다».
   it("★ 자식 화면으로 가는 길이 살아 있다 — 끊기면 세 화면이 도달 불능이다", () => {
-    // ★ 넷 «전부» 를 센다 — 옛 /dash 주석이 드릴다운 주소를 넷으로 적어 뒀는데
-    //   이관하면서 셋만 옮겨져 `&paid=1` 이 끊겨도 초록이었다(DC-12 변이 검수).
     for (const href of [
       "/dash/all",
       "/companies",
       "/dash/all?range=month",
-      "/dash/all?range=month&paid=1",
       "/deals/",
     ]) {
       expect(section, `자식 화면 링크가 끊겼다: ${href}`).toContain(href);
     }
     // 파이프라인 드릴다운은 템플릿 리터럴이라 형태로 본다.
     expect(section, "파이프라인 드릴다운 링크가 끊겼다").toContain("/dash/${pipeline.id}");
+  });
+
+  it("BBE-230/234 · Home의 돈 표시는 canonical 이번달 수납 하나뿐이다", () => {
+    expect(section.match(/<Widget title="이번달 수납"/g)).toHaveLength(1);
+    expect(section).toContain("<MonthlyCollection today={today}");
+    expect(section).not.toContain("전체 정산");
+    expect(section).not.toContain("settlementAll");
+    expect(section).not.toContain("settlementThisMonth");
+  });
+
+  it("재접촉·후속 공동 소비자는 제거하지 않는다", () => {
+    expect(section).toContain("<ReContactWidget");
+    expect(section).toContain("<FollowUpListWidget");
+    expect(section).toContain("core.dash.reContactThisMonth");
+    expect(section).toContain("core.followUps.dueToday");
   });
 
   it("한 화면 안에서 «할 일» 이름이 겹치지 않는다", () => {

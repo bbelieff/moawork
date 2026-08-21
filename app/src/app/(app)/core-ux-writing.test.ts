@@ -11,12 +11,14 @@ const homePage = new URL("./page.tsx", import.meta.url);
 // ★ BBE-215 — 「업무 분석」이 홈 아래 「회사 현황」 절이 됐다. 단언은 그대로고 «대상 파일» 만 따라간다.
 //   (app)/dash/page.tsx 는 이제 redirect 뿐이라 문구가 없다. 문구는 절과 함께 옮겨갔다.
 const analysisPage = new URL("../../components/dash/CompanyStatusSection.tsx", import.meta.url);
+const monthlyCollection = new URL("../../components/dash/MonthlyCollection.tsx", import.meta.url);
 const pipelinePage = new URL("./dash/[pipelineId]/page.tsx", import.meta.url);
 const todayHome = new URL("../../components/dash/TodayHome.tsx", import.meta.url);
 
 const coreFlowFiles = [
   homePage,
   analysisPage,
+  monthlyCollection,
   pipelinePage,
   todayHome,
   new URL("./deals/[dealId]/page.tsx", import.meta.url),
@@ -66,7 +68,7 @@ describe("BBE-96 core CRM UX writing", () => {
     // ★ BBE-215 — 「이번달 수납」이 RPC 정본으로 바뀌면서 이 자리는 «한 문장» 이 아니라
     //   «세 상태» 가 됐다. 걱정(빈 화면에 실제 조건을 말하라)은 그대로고, 문구가 늘었다.
     //   0 을 그냥 0 으로 두면 「수납이 없다」와 「입금일을 안 채웠다」가 같은 화면이 된다.
-    const section = read(analysisPage);
+    const section = read(monthlyCollection);
     expect(section, "탭이 없는 경우를 안 말한다").toContain("계약업체 실무 탭이 아직 없어요");
     expect(section, "미입력을 안 말한다").toContain("입금일이 아직 입력되지 않았어요");
     expect(section, "진짜 0 을 안 말한다").toContain("이번 달 수납이 아직 없어요");
