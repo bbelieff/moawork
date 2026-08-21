@@ -14,7 +14,7 @@ import { markNoticeItemsReadAtomic } from "@/lib/notices/atomic";
 import { issueFileToken } from "@/lib/deal/fileSignedUrl";
 import { NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
-import { loadPermGuard } from "@/lib/perm/guard";
+import { loadPermGuards } from "@/lib/perm/guard";
 import { PermissionUnavailable } from "@/components/perm/PermissionUnavailable";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
 import { type SectionPresetRecord } from "@/lib/presets/section-presets";
@@ -49,21 +49,28 @@ export default async function BoardPage({
   const { id } = await params;
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
-  const viewTabs = await loadPermGuard(ctx.org.id, "work.view_tabs");
+  const permissions = await loadPermGuards(ctx.org.id, [
+    "work.view_tabs",
+    "work.item_upsert",
+    "work.item_delete",
+    "structure.column_manage",
+    "structure.section_manage",
+    "danger.bulk_edit_delete",
+    "structure.preset_edit",
+  ]);
+  const viewTabs = permissions["work.view_tabs"];
   // 판정 «불능» 은 「없음」이 아니다(BBE-204). 권한 없음만 404 로 남긴다 — 존재 숨김 유지.
   if (viewTabs.kind === "denied" && viewTabs.reason === "unavailable") {
     return <PermissionUnavailable />;
   }
   if (viewTabs.kind !== "allowed") notFound();
-  const [scopedItems, itemUpsert, itemDelete, columnManage, sectionManage, boardDelete, presetEdit] = await Promise.all([
-    loadPermissionScopedWorkItems(ctx.org.id),
-    loadPermGuard(ctx.org.id, "work.item_upsert"),
-    loadPermGuard(ctx.org.id, "work.item_delete"),
-    loadPermGuard(ctx.org.id, "structure.column_manage"),
-    loadPermGuard(ctx.org.id, "structure.section_manage"),
-    loadPermGuard(ctx.org.id, "danger.bulk_edit_delete"),
-    loadPermGuard(ctx.org.id, "structure.preset_edit"),
-  ]);
+  const scopedItems = await loadPermissionScopedWorkItems(ctx.org.id);
+  const itemUpsert = permissions["work.item_upsert"];
+  const itemDelete = permissions["work.item_delete"];
+  const columnManage = permissions["structure.column_manage"];
+  const sectionManage = permissions["structure.section_manage"];
+  const boardDelete = permissions["danger.bulk_edit_delete"];
+  const presetEdit = permissions["structure.preset_edit"];
   // Permission and D24 scope are resolved before any board metadata or item read.
   if (!scopedItems.ok) notFound();
   const canEditItems = itemUpsert.kind === "allowed";

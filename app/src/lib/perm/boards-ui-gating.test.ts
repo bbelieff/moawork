@@ -20,7 +20,7 @@ describe("boards UI consumes effective permissions", () => {
 
   it("gates item, structure, and destructive controls on a board", () => {
     const source = readFileSync(join(app, "[id]", "page.tsx"), "utf8");
-    expect(source).toContain('loadPermGuard(ctx.org.id, "work.view_tabs")');
+    expect(source).toContain("loadPermGuards(ctx.org.id, [");
     expect(source).toContain("loadPermissionScopedWorkItems(ctx.org.id)");
     expect(source).toContain('if (viewTabs.kind !== "allowed") notFound()');
     expect(source.indexOf('if (viewTabs.kind !== "allowed") notFound()')).toBeLessThan(
@@ -40,7 +40,8 @@ describe("boards UI consumes effective permissions", () => {
       "structure.column_manage",
       "structure.section_manage",
       "danger.bulk_edit_delete",
-    ]) expect(source).toContain(`loadPermGuard(ctx.org.id, "${key}")`);
+    ]) expect(source).toContain(`"${key}"`);
+    expect(source).not.toContain("loadPermGuard(ctx.org.id");
     expect(source).toContain("canEditItems={canEditItems}");
     expect(source).toContain("canDeleteItems={canDeleteItems}");
     expect(source).toContain("canManageColumns={canManageColumns}");

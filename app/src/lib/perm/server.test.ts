@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseScopedWorkItems, permAccessReasonFromRpcError } from "./server";
+import { parseEffectivePermissions, parseScopedWorkItems, permAccessReasonFromRpcError } from "./server";
 
 describe("permAccessReasonFromRpcError — 권한 없음과 장애를 구분한다 (BBE-90 과 같은 규약)", () => {
   it("42501(insufficient_privilege) 은 permission", () => {
@@ -27,5 +27,20 @@ describe("parseScopedWorkItems", () => {
   it("형식이 틀리면 fail closed 한다", () => {
     expect(parseScopedWorkItems({ itemIds: [1], hiddenCount: 0 })).toBeNull();
     expect(parseScopedWorkItems({ itemIds: [], hiddenCount: -1 })).toBeNull();
+  });
+});
+
+describe("parseEffectivePermissions", () => {
+  const scopes = ["work.view_tabs", "work.item_upsert"];
+
+  it("요청한 모든 판정이 boolean일 때만 batch를 수용한다", () => {
+    expect(parseEffectivePermissions({ "work.view_tabs": true, "work.item_upsert": false }, scopes))
+      .toEqual({ "work.view_tabs": true, "work.item_upsert": false });
+  });
+
+  it("partial, extra, malformed 응답은 전부 fail closed 한다", () => {
+    expect(parseEffectivePermissions({ "work.view_tabs": true }, scopes)).toBeNull();
+    expect(parseEffectivePermissions({ "work.view_tabs": true, "work.item_upsert": false, extra: true }, scopes)).toBeNull();
+    expect(parseEffectivePermissions({ "work.view_tabs": true, "work.item_upsert": null }, scopes)).toBeNull();
   });
 });

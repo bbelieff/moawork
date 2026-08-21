@@ -74,6 +74,17 @@ export async function loadPermissionScopedWorkItems(
 
 type RpcResult<T> = { data: T | null; error: unknown };
 
+export function parseEffectivePermissions(
+  data: unknown,
+  scopeKeys: readonly string[],
+): Record<string, boolean> | null {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const row = data as Record<string, unknown>;
+  if (Object.keys(row).length !== scopeKeys.length
+    || scopeKeys.some((scopeKey) => typeof row[scopeKey] !== "boolean")) return null;
+  return row as Record<string, boolean>;
+}
+
 /** 42501(insufficient_privilege) = 권한 없음. 그 외 에러는 장애 — BBE-90 과 같은 분류 규약. */
 export function permAccessReasonFromRpcError(
   error: { code?: string | null } | null | undefined,
@@ -118,6 +129,34 @@ export async function loadEffectivePermission(
       return { ok: false };
     }
     return { ok: true, allowed: data };
+  } catch {
+    return { ok: false };
+  }
+}
+
+export async function loadEffectivePermissions(
+  orgId: string,
+  scopeKeys: readonly string[],
+): Promise<{ permissions: Record<string, boolean>; ok: true } | { ok: false }> {
+  if (scopeKeys.length === 0 || new Set(scopeKeys).size !== scopeKeys.length) return { ok: false };
+  if (process.env.NODE_ENV !== "production" && !hasSupabaseEnv()) {
+    const ctx = await getSession();
+    if (!isRole(ctx.role)) return { ok: false };
+    return {
+      ok: true,
+      permissions: Object.fromEntries(scopeKeys.map((scopeKey) => [scopeKey, roleDefaultAllowed(ctx.role, scopeKey)])),
+    };
+  }
+
+  try {
+    const supabase = await createClient();
+    const { data, error }: RpcResult<unknown> = await supabase.rpc("effective_permissions", {
+      p_org_id: orgId,
+      p_scope_keys: [...scopeKeys],
+    });
+    if (error) return { ok: false };
+    const permissions = parseEffectivePermissions(data, scopeKeys);
+    return permissions ? { ok: true, permissions } : { ok: false };
   } catch {
     return { ok: false };
   }
