@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { Icon } from "@/components/shell/icons";
+import { AccessibleTooltip } from "@/components/ui/AccessibleTooltip";
 
 // 다크/라이트 토글 — 목업 v0.3 상단바 우측 버튼.
 // 상태는 3가지: "light" | "dark" 확정, 또는 미지정(=OS prefers-color-scheme 추종).
@@ -61,23 +62,24 @@ export function ThemeToggle() {
 
   const isDark = theme === "dark";
   return (
-    <button
-      type="button"
-      onClick={toggle}
-      title="다크/라이트 전환"
-      aria-label="다크/라이트 전환"
-      aria-pressed={isDark}
-      className="flex items-center justify-center border"
-      style={{
-        width: "var(--mw-shell-iconbtn-size)",
-        height: "var(--mw-shell-iconbtn-size)",
-        borderRadius: "var(--mw-r-2)",
-        background: "var(--mw-card)",
-        borderColor: "var(--mw-line)",
-        color: "var(--mw-fg)",
-      }}
-    >
-      <Icon name={theme === null ? "circle-half" : isDark ? "sun" : "moon"} />
-    </button>
+    <AccessibleTooltip content="다크/라이트 전환" placement="bottom">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label="다크/라이트 전환"
+        aria-pressed={isDark}
+        className="flex items-center justify-center border"
+        style={{
+          width: "var(--mw-shell-iconbtn-size)",
+          height: "var(--mw-shell-iconbtn-size)",
+          borderRadius: "var(--mw-r-2)",
+          background: "var(--mw-card)",
+          borderColor: "var(--mw-line)",
+          color: "var(--mw-fg)",
+        }}
+      >
+        <Icon name={theme === null ? "circle-half" : isDark ? "sun" : "moon"} />
+      </button>
+    </AccessibleTooltip>
   );
 }

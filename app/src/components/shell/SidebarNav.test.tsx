@@ -19,7 +19,22 @@ describe("SidebarNav integration contract", () => {
     const membersLink = html.match(/<a[^>]*data-nav-key="members"[^>]*>/)?.[0] ?? "";
     expect(membersLink).toContain('href="/w/sample-lab/settings/members"');
     expect(membersLink).toContain('aria-disabled="true"');
+    expect(membersLink).toContain('aria-describedby=');
     expect(html).toContain("승인 대기 4건");
+  });
+
+  it("keeps lock and coming-soon explanations without native title tooltips", () => {
+    const html = renderToStaticMarkup(
+      <SidebarNav lockedFeatures={[FEATURES.org]} workspaceBasePath="/w/sample-lab" />,
+    );
+
+    expect(html).not.toMatch(/\stitle=/);
+    expect(html).toContain('aria-label="이 조직에 켜져 있지 않은 기능입니다"');
+    expect(html).toContain('aria-label="담당 트랙에서 화면 준비 중"');
+    expect(html).toContain('role="tooltip"');
+    expect(html).toMatch(/role="link"[^>]*aria-disabled="true"[^>]*aria-describedby=/);
+    expect(html).toContain("이 조직에 켜져 있지 않은 기능입니다");
+    expect(html).toContain("담당 트랙에서 화면 준비 중");
   });
 
   it("renders shell tabs in the verified workspace namespace", () => {

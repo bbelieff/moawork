@@ -7,6 +7,7 @@ import {
   type WorkspaceSwitcherProps,
 } from "@/components/workspace/WorkspaceSwitcher";
 import { Badge } from "@/components/notify/Badge";
+import { AccessibleTooltip } from "@/components/ui/AccessibleTooltip";
 import type { BadgeState } from "@/lib/notify/types";
 import { Icon } from "./icons";
 import {
@@ -93,16 +94,16 @@ export function SidebarNav({
         {isLocked ? (
           <span
             className="ml-auto"
+            aria-label="이 조직에 켜져 있지 않은 기능입니다"
             style={{ color: "var(--mw-sub)", fontSize: "var(--fs-11)" }}
-            title="이 조직에 켜져 있지 않은 기능입니다"
           >
             <Icon name="lock" />
           </span>
         ) : unavailable ? (
           <span
             className="ml-auto"
+            aria-label="담당 트랙에서 화면 준비 중"
             style={{ color: "var(--mw-sub)", fontSize: "var(--mw-shell-badge-fs)" }}
-            title="담당 트랙에서 화면 준비 중"
           >
             준비 중
           </span>
@@ -122,32 +123,37 @@ export function SidebarNav({
 
     if (unavailable) {
       return (
-        <span
+        <AccessibleTooltip
           key={item.key}
-          data-nav-key={item.key}
-          role="link"
-          aria-disabled="true"
-          tabIndex={0}
-          onClick={(event) => event.preventDefault()}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") event.preventDefault();
-          }}
-          className={`${base} cursor-not-allowed`}
-          style={{ ...baseStyle, color: "var(--mw-sub)" }}
+          content="담당 트랙에서 화면 준비 중"
+          fill
         >
-          {inner}
-        </span>
+          <span
+            data-nav-key={item.key}
+            role="link"
+            aria-disabled="true"
+            tabIndex={0}
+            onClick={(event) => event.preventDefault()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") event.preventDefault();
+            }}
+            className={`${base} w-full cursor-not-allowed`}
+            style={{ ...baseStyle, color: "var(--mw-sub)" }}
+          >
+            {inner}
+          </span>
+        </AccessibleTooltip>
       );
     }
 
-    return (
+    const link = (
       <Link
         key={item.key}
         data-nav-key={item.key}
         href={resolvedHref!}
         aria-disabled={isLocked ? "true" : undefined}
         aria-current={active ? "page" : undefined}
-        className={`${base} ${active ? "font-semibold" : "hover:bg-[var(--mw-bg)]"} ${isLocked ? "cursor-help" : ""}`}
+        className={`${base} w-full ${active ? "font-semibold" : "hover:bg-[var(--mw-bg)]"} ${isLocked ? "cursor-help" : ""}`}
         style={
           active
             ? { ...baseStyle, background: "var(--mw-record)", color: "var(--mw-on-accent)" }
@@ -157,6 +163,16 @@ export function SidebarNav({
         {inner}
       </Link>
     );
+
+    return isLocked ? (
+      <AccessibleTooltip
+        key={item.key}
+        content="이 조직에 켜져 있지 않은 기능입니다"
+        fill
+      >
+        {link}
+      </AccessibleTooltip>
+    ) : link;
   };
 
   return (
