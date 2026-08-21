@@ -13,10 +13,10 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-async function render(path: string, lockedFeatures: string[] = [], workspaceBasePath: string | null = "/w/sample-lab") {
+async function render(path: string, lockedFeatures: string[] = [], workspaceBasePath: string | null = "/w/sample-lab", directHrefs?: { contact?: string }) {
   pathname.current = path;
   const { AppTabs } = await import("./AppTabs");
-  return renderToStaticMarkup(<AppTabs lockedFeatures={lockedFeatures} workspaceBasePath={workspaceBasePath ?? undefined} />);
+  return renderToStaticMarkup(<AppTabs lockedFeatures={lockedFeatures} workspaceBasePath={workspaceBasePath ?? undefined} directHrefs={directHrefs} />);
 }
 
 describe("AppTabs — 목업 「탭 6개 한 화면」 탭 줄", () => {
@@ -57,6 +57,14 @@ describe("AppTabs — 목업 「탭 6개 한 화면」 탭 줄", () => {
     for (const tab of APP_TABS) {
       expect(html).toContain(`href="/w/sample-lab${tab.canonicalHref}"`);
     }
+  });
+
+  it("server-resolved contact destination bypasses /contract only", async () => {
+    const html = await render("/w/sample-lab/work", [], "/w/sample-lab", { contact: "/boards/contact-board" });
+    const contactTag = html.match(/<a[^>]*data-tab-key="contact"[^>]*>/)?.[0] ?? "";
+    expect(contactTag).toContain('href="/w/sample-lab/boards/contact-board"');
+    expect(html).toContain('href="/w/sample-lab/newcust"');
+    expect(contactTag).not.toContain('href="/w/sample-lab/contract"');
   });
 
   it("fails every tab closed when the workspace namespace is unavailable", async () => {

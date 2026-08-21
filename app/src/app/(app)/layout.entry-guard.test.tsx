@@ -12,12 +12,15 @@ const mocks = vi.hoisted(() => ({
   loadNotifySnapshot: vi.fn(),
   createClient: vi.fn(),
   ensureApprovedWorkspaceOnEntry: vi.fn(),
+  requestHeader: { value: null as string | null },
+  resolveExistingContactBoard: vi.fn(),
 }));
 
 vi.mock("next/link", () => ({
   default: ({ children, href }: { children: ReactNode; href: string }) =>
     createElement("a", { href }, children),
 }));
+vi.mock("next/headers", () => ({ headers: async () => ({ get: () => mocks.requestHeader.value }) }));
 vi.mock("@/lib/auth/session", () => ({ getSession: mocks.getSession }));
 vi.mock("@/lib/auth/workspace-entry-server", () => ({
   loadWorkspaceRoutingSnapshot: mocks.loadWorkspaceRoutingSnapshot,
@@ -53,6 +56,11 @@ vi.mock("@/components/shell/GlobalSearch", () => ({ GlobalSearch: () => null }))
 vi.mock("@/components/account/AccountMenu", () => ({ AccountMenu: () => null }));
 vi.mock("@/components/analytics/AnalyticsIdentity", () => ({ AnalyticsIdentity: () => null }));
 vi.mock("@/components/notify/NotificationBell", () => ({ NotificationBell: () => null }));
+vi.mock("@/components/shell/AppTabs", () => ({
+  AppTabs: ({ directHrefs }: { directHrefs?: { contact?: string } }) => createElement("div", { "data-contact-href": directHrefs?.contact ?? "fallback" }),
+}));
+vi.mock("@/lib/contact/entry", () => ({ resolveExistingContactBoard: mocks.resolveExistingContactBoard }));
+vi.mock("@/lib/repo/supabase/boardsRepo", () => ({ SupabaseBoardsRepo: class { constructor(public client: unknown) {} } }));
 
 import AppLayout from "./layout";
 
@@ -96,6 +104,8 @@ describe("BBE-139 root entry guard", () => {
     mocks.loadNotifySnapshot.mockResolvedValue({ sidebar: {} });
     mocks.createClient.mockResolvedValue({ requestScoped: true });
     mocks.ensureApprovedWorkspaceOnEntry.mockResolvedValue(undefined);
+    mocks.requestHeader.value = null;
+    mocks.resolveExistingContactBoard.mockResolvedValue({ kind: "ready", boardId: "contact-board" });
   });
 
   it("renders the root app shell for an owner with an active membership", async () => {
@@ -131,6 +141,15 @@ describe("BBE-139 root entry guard", () => {
     await AppLayout({ children: createElement("p", null, "member-dashboard") });
 
     expect(mocks.ensureApprovedWorkspaceOnEntry).not.toHaveBeenCalled();
+  });
+
+  it("resolves the contact target only for an app-tab request and reuses the request client", async () => {
+    mocks.requestHeader.value = "1";
+    const element = await AppLayout({ children: createElement("p", null, "tab") });
+    const html = renderToStaticMarkup(element);
+    expect(mocks.resolveExistingContactBoard).toHaveBeenCalledOnce();
+    expect(mocks.createClient.mock.calls.filter(([options]) => options?.noStore === true)).toHaveLength(1);
+    expect(html).toContain('data-contact-href="/boards/contact-board"');
   });
 
   it("fails explicitly without rendering children when bootstrap is unavailable", async () => {

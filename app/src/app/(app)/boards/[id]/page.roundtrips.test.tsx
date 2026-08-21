@@ -172,6 +172,7 @@ vi.mock("@/lib/supabase/env", () => ({
 }));
 vi.mock("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, getAll: () => [], set: () => {} }),
+  headers: async () => ({ get: () => null }),
 }));
 vi.mock("next/navigation", () => ({
   notFound: () => {

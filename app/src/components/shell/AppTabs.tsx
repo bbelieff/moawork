@@ -31,9 +31,11 @@ type Props = {
   lockedFeatures: string[];
   /** Verified active-membership namespace, for example `/w/acme`. */
   workspaceBasePath?: string;
+  /** Server-resolved destinations whose board id is tenant-specific. */
+  directHrefs?: Partial<Record<(typeof APP_TABS)[number]["key"], string>>;
 };
 
-export function AppTabs({ lockedFeatures, workspaceBasePath }: Props) {
+export function AppTabs({ lockedFeatures, workspaceBasePath, directHrefs }: Props) {
   const pathname = usePathname();
   const internalPathname = workspaceBasePath && pathname &&
     (pathname === workspaceBasePath || pathname.startsWith(`${workspaceBasePath}/`))
@@ -56,7 +58,7 @@ export function AppTabs({ lockedFeatures, workspaceBasePath }: Props) {
       style={{ gap: "var(--sp-1, 4px)", borderBottom: "1px solid var(--mw-line)", paddingBottom: "var(--sp-2)" }}
     >
       {APP_TABS.map((tab) => {
-        const canonicalHref = tab.canonicalHref;
+        const canonicalHref = directHrefs?.[tab.key] ?? tab.canonicalHref;
         if (!canonicalHref) return null;
         const href = workspaceHref(workspaceBasePath, canonicalHref);
         const feature = FEATURE_BY_TAB_KEY.get(tab.key);
