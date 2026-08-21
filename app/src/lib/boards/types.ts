@@ -87,6 +87,21 @@ export interface BoardColumn {
    * 선택 필드(다른 트랙 소유 파일의 리터럴 생성부를 깨지 않기 위해 — 위 move_rule_jsonb 와 동일 이유).
    */
   is_readonly?: boolean;
+  /** BBE-176 canonical settings columns. Optional keeps local/legacy fixtures compatible. */
+  description?: string | null;
+  is_required?: boolean;
+  validation_jsonb?: Record<string, unknown>;
+  edit_policy_jsonb?: Record<string, unknown>;
+  view_policy_jsonb?: Record<string, unknown>;
+  summary_hidden?: boolean;
+  wrap_mode?: "truncate" | "wrap";
+  date_settings_jsonb?: {
+    includeTime?: boolean;
+    displayFormat?: "yyyy-MM-dd" | "yyyy.MM.dd" | "MM/dd/yyyy";
+    notificationOffsetMinutes?: number;
+    deadline?: boolean;
+    reminderOffsetsMinutes?: number[];
+  };
 }
 
 /** 003 items — 임의 보드의 행. (001 deals 와 별개) */

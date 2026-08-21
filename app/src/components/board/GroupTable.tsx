@@ -31,6 +31,7 @@ import { ItemDetailPanel } from "./ItemDetailPanel";
 import { TrashItemButton } from "./ItemTrashControls";
 import { AddItemForm } from "./AddItemForm";
 import { ColumnContextMenu } from "./ColumnContextMenu";
+import type { ColumnScheduleItemOption, ColumnScheduleRecipientOption } from "./ColumnSettingsPanel";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
 import { updateNewLeadFieldAction, updateNewLeadTitleAction } from "@/app/(app)/boards/new-lead-actions";
 import {
@@ -81,7 +82,7 @@ export function cellInputValue(type: BoardColumn["type"], value: CellValue): str
  */
 function cellTitle(column: BoardColumn): string {
   const sourceSpec = getFieldSourceSpec(column.source);
-  return `${column.label} — ${fieldTypeLabel(column.type)} · ${sourceSpec.label}(${sourceSpec.description})`;
+  return `${column.label} — ${fieldTypeLabel(column.type)} · ${sourceSpec.label}(${sourceSpec.description})${column.description ? ` · ${column.description}` : ""}`;
 }
 
 const NUMERIC_TYPES = new Set(["money", "number"]);
@@ -292,6 +293,8 @@ export function GroupTable({
   textMode = "single",
   focusColumnKey = null,
   onColumnArchived,
+  scheduleItems = [],
+  scheduleRecipients = [],
 }: {
   boardId: string;
   canonicalNewLead?: boolean;
@@ -327,6 +330,8 @@ export function GroupTable({
   textMode?: "single" | "wrap";
   focusColumnKey?: string | null;
   onColumnArchived?: (columnId: string) => void;
+  scheduleItems?: readonly ColumnScheduleItemOption[];
+  scheduleRecipients?: readonly ColumnScheduleRecipientOption[];
 }) {
   /*
    * 드래그 중인 대상은 **ref 가 정본**이고 state 는 표시(반투명·강조)에만 쓴다.
@@ -475,7 +480,7 @@ export function GroupTable({
                       </span>
                     )}
                     {canManageColumns ? (
-                      <ColumnContextMenu boardId={boardId} column={col} onArchived={onColumnArchived}>
+                      <ColumnContextMenu boardId={boardId} column={col} scheduleItems={scheduleItems} scheduleRecipients={scheduleRecipients} onArchived={onColumnArchived}>
                         <SourceBadge source={col.source} />
                         <span className="truncate">{col.label}</span>
                       </ColumnContextMenu>
@@ -589,7 +594,7 @@ export function GroupTable({
                     key={col.id}
                     data-view-focus={col.key === focusColumnKey || undefined}
                     data-column-key={col.key}
-                    className={`border-b border-mw-line px-2 align-middle group-hover:bg-mw-bg ${textMode === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
+                    className={`border-b border-mw-line px-2 align-middle group-hover:bg-mw-bg ${(col.wrap_mode ?? textMode) === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
                       col.rightPinned ? "sticky right-0 z-10 border-l-2 border-l-mw-primary bg-mw-card" : ""
                     }`}
                   >

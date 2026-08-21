@@ -22,6 +22,7 @@ export function ColumnTemplateLibrary({ boardId, columns }: { boardId: string; c
 
   return (
     <details
+      id="column-template-library"
       className="rounded border border-zinc-200 dark:border-zinc-800"
       onToggle={(event) => {
         if (!event.currentTarget.open || loaded || loading) return;

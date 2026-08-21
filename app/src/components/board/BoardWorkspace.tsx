@@ -208,6 +208,11 @@ export function BoardWorkspace({
 
   const blocks = useMemo(() => buildBlocks(groups, optimisticRows), [groups, optimisticRows]);
   const people = useMemo(() => assigneeOptions(rows, assigneeLabels), [rows, assigneeLabels]);
+  const scheduleItems = useMemo(() => optimisticRows.map((row) => ({ id: row.id, label: row.title })), [optimisticRows]);
+  const scheduleRecipients = useMemo(
+    () => Object.entries(assigneeLabels).map(([id, label]) => ({ id, label: label || "이름 없는 구성원" })),
+    [assigneeLabels],
+  );
 
   const matched = useMemo(
     () => applyFilters(optimisticRows, activeColumns, filters).length,
@@ -444,6 +449,8 @@ export function BoardWorkspace({
                 viewerUserId={currentUserId}
                 canManageColumns={!board.is_system && canManageColumns}
                 onColumnArchived={(columnId) => setArchivedColumnIds((current) => new Set(current).add(columnId))}
+                scheduleItems={scheduleItems}
+                scheduleRecipients={scheduleRecipients}
                 rowDragEnabled={rowDragEnabled}
                 cellFlash={cellFlash}
                 onColumnDrop={(draggedKey, targetKey) =>

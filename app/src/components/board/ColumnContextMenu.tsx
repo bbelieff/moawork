@@ -6,21 +6,24 @@ import { FIELD_TYPES } from "@/lib/types";
 import { fieldTypeLabel } from "@/lib/field/type-labels";
 import { runColumnCommandAction } from "@/app/(app)/boards/column-command-actions";
 import { INITIAL_COLUMN_COMMAND_STATE } from "@/app/(app)/boards/column-command-state";
+import { ColumnSettingsPanel, type ColumnScheduleItemOption, type ColumnScheduleRecipientOption } from "./ColumnSettingsPanel";
 
 export type ColumnMenuSlots = {
   settings?: ReactNode;
   templates?: ReactNode;
 };
 
-export function ColumnContextMenu({ boardId, column, slots = {}, children, onArchived }: {
+export function ColumnContextMenu({ boardId, column, slots = {}, scheduleItems = [], scheduleRecipients = [], children, onArchived }: {
   boardId: string;
   column: BoardColumn;
   slots?: ColumnMenuSlots;
+  scheduleItems?: readonly ColumnScheduleItemOption[];
+  scheduleRecipients?: readonly ColumnScheduleRecipientOption[];
   children?: ReactNode;
   onArchived?: (columnId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [panel, setPanel] = useState<"duplicate" | "add" | "type" | "expand" | "rename" | null>(null);
+  const [panel, setPanel] = useState<"duplicate" | "add" | "type" | "expand" | "settings" | "rename" | null>(null);
   const [state, action] = useActionState(runColumnCommandAction, INITIAL_COLUMN_COMMAND_STATE);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -75,17 +78,19 @@ export function ColumnContextMenu({ boardId, column, slots = {}, children, onArc
       <MenuItem onClick={() => setPanel("add")}>오른쪽에 컬럼 추가</MenuItem>
       <MenuItem onClick={() => setPanel("type")}>컬럼 유형 변경</MenuItem>
       <MenuItem onClick={() => setPanel("expand")}>컬럼 확장</MenuItem>
+      <MenuItem onClick={() => setPanel("settings")}>컬럼 설정</MenuItem>
       <MenuItem onClick={() => setPanel("rename")}>이름 바꾸기</MenuItem>
       <MenuItem danger onClick={() => { if (window.confirm(`«${column.label}» 컬럼을 휴지통으로 옮길까요? 값은 보존됩니다.`)) submit("archive"); }}>삭제</MenuItem>
     </div> : null}
     {panel ? <div role="dialog" aria-modal="true" aria-label={`${column.label} 컬럼 변경`} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30" onKeyDown={(event) => { if (event.key === "Escape") close(); }}>
-      <div ref={dialogRef} tabIndex={-1} className="w-full max-w-md rounded bg-mw-card p-4 shadow-xl" onClick={(event) => event.stopPropagation()}>
+      <div ref={dialogRef} tabIndex={-1} className={`max-h-[90vh] w-full overflow-y-auto rounded bg-mw-card p-4 shadow-xl ${panel === "settings" ? "max-w-2xl" : "max-w-md"}`} onClick={(event) => event.stopPropagation()}>
         <h2 className="mb-3 text-base font-semibold">{column.label}</h2>
         {panel === "duplicate" ? <SimpleForm submit={(data) => submit("duplicate", { copyValues: data.copyValues ?? "false" })} fields={<label className="flex items-start gap-2 text-sm"><input type="checkbox" name="copyValues" value="true" /><span>행 값도 복제<br /><span className="text-mw-sub">기본은 구조·설정만 복제하며 기존 행 값은 비어 있습니다.</span></span></label>} /> : null}
         {panel === "add" ? <SimpleForm submit={(data) => submit("create_at", data)} fields={<><input name="label" required placeholder="새 컬럼 이름" className="rounded border p-2" /><select name="type" defaultValue="text" className="rounded border p-2">{FIELD_TYPES.map((type) => <option key={type} value={type}>{fieldTypeLabel(type)}</option>)}</select></>} /> : null}
         {panel === "rename" ? <SimpleForm submit={(data) => submit("rename", data)} fields={<input name="label" required defaultValue={column.label} className="rounded border p-2" />} /> : null}
         {panel === "type" ? <SimpleForm submit={(data) => submit("type_commit", { targetType: data.targetType })} fields={<><p className="text-sm text-mw-sub">현재 값을 먼저 검사하며 변환 불가 값이 있으면 아무것도 바꾸지 않습니다.</p><select name="targetType" defaultValue={column.type} className="rounded border p-2">{FIELD_TYPES.map((type) => <option key={type} value={type}>{fieldTypeLabel(type)}</option>)}</select></>} /> : null}
         {panel === "expand" ? <div className="grid gap-2 text-sm"><p><b>유형</b> {fieldTypeLabel(column.type)}</p><p><b>키</b> {column.key}</p><p><b>출처</b> {column.source}</p><div data-column-settings-slot>{slots.settings}</div><div data-column-template-slot>{slots.templates}</div></div> : null}
+        {panel === "settings" ? <ColumnSettingsPanel boardId={boardId} column={column} items={scheduleItems} recipients={scheduleRecipients} onRequestClose={close} /> : null}
         <button type="button" onClick={close} className="mt-4 rounded border px-3 py-1.5">닫기</button>
       </div>
     </div> : null}
