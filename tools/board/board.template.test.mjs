@@ -155,6 +155,33 @@ test("owner coverage requires exactly one C/G owner and ignores blocked labels",
   assert.deepEqual(logic.ownerLabels({ labels: ["DCX", "D", "dc", "DC-3"] }), []);
 });
 
+test("owner coverage ignores historical terminal owners but preserves active missing and collision", async () => {
+  const logic = await boardLogic();
+  const goals = ["BBE-DONE", "BBE-CANCELED", "BBE-ACTIVE", "BBE-BLOCKED"];
+  const terminal = logic.ownerCoverage([
+    { id: "BBE-DONE", status: "Done", labels: ["DC-16", "DC-07"] },
+    { id: "BBE-CANCELED", status: "Canceled", labels: [] },
+    { id: "BBE-ACTIVE", status: "In Progress", labels: ["DG"] },
+    { id: "BBE-BLOCKED", status: "Blocked", labels: ["DC-02"] },
+  ], goals);
+  assert.deepEqual(terminal, { missing: [], collision: [], covered: 4, total: 4, ok: true });
+
+  const activeFailures = logic.ownerCoverage([
+    { id: "BBE-DONE", status: "Done", labels: ["DC-16", "DC-07"] },
+    { id: "BBE-CANCELED", status: "Duplicate", labels: ["DG", "DC"] },
+    { id: "BBE-ACTIVE", status: "In Progress", labels: [] },
+    { id: "BBE-BLOCKED", status: "Blocked", labels: ["DC-02", "DG-03"] },
+  ], goals);
+  assert.deepEqual(activeFailures, {
+    missing: ["BBE-ACTIVE"],
+    collision: [{ id: "BBE-BLOCKED", labels: ["DC-02", "DG-03"] }],
+    covered: 2,
+    total: 4,
+    ok: false,
+  });
+  assert.equal(logic.releaseState("Done", 0, 0, terminal.ok), "COMPLETE");
+});
+
 test("Production completion is fail-closed across PR, exact deployment, runtime, and hosted gates", async () => {
   const { deliveryStage } = await boardLogic();
   const passingPr = { isDraft: false, checks: { total: 3, failing: 0, pending: 0 } };
