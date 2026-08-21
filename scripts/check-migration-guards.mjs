@@ -31,6 +31,15 @@ export function inspectGuardedMigration(fileName, sql) {
   if (bridgeRepoPredecessor ? guardCallCount !== 0 : guardCallCount !== 1) throw new Error(`${fileName}: guard call count is invalid`);
   if (bridgeRepoPredecessor && !/pg_advisory_xact_lock\(1297040711,\s*188\)/iu.test(sql)) throw new Error(`${fileName}: bridge must acquire migration lock`);
   if (bridgeRepoPredecessor && (sql.match(/insert\s+into\s+public\.migration_apply_guard/giu) ?? []).length !== 1) throw new Error(`${fileName}: bridge must insert exactly one canonical guard row`);
+  if (bridgeRepoPredecessor) {
+    const lockAt = sql.search(/pg_advisory_xact_lock\(1297040711,\s*188\)/iu);
+    const insertAt = sql.search(/insert\s+into\s+public\.migration_apply_guard/iu);
+    if (lockAt < 0 || insertAt < 0 || lockAt > insertAt) throw new Error(`${fileName}: bridge lock must precede its guard mutation`);
+    if (!new RegExp(`v_logical_key\\s+constant\\s+text\\s*:=\\s*'${logicalKey}'`, "u").test(sql)) throw new Error(`${fileName}: bridge logical key is not bound to marker`);
+    if (!new RegExp(`v_file_name\\s+constant\\s+text\\s*:=\\s*'${fileName}'`, "u").test(sql)) throw new Error(`${fileName}: bridge file name is not bound to marker`);
+    const predecessorChoice = new RegExp(`values\\s*\\(\\s*v_logical_key,\\s*v_file_name,\\s*v_file_digest,\\s*case\\s+when\\s+v_repo_ok\\s+then\\s+'${bridgeRepoPredecessor}'\\s+else\\s+'${predecessor}'\\s+end`, "isu");
+    if (!predecessorChoice.test(sql)) throw new Error(`${fileName}: bridge insert metadata is not structurally bound`);
+  }
   if (!bridgeRepoPredecessor && namedText(sql, "p_logical_key") !== logicalKey) throw new Error(`${fileName}: guard logical key argument mismatch`);
   if (!bridgeRepoPredecessor && namedText(sql, "p_file_name") !== fileName) throw new Error(`${fileName}: guard file name argument mismatch`);
   if (!bridgeRepoPredecessor && namedText(sql, "p_expected_predecessor") !== predecessor) throw new Error(`${fileName}: guard predecessor argument mismatch`);

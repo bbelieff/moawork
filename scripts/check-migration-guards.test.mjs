@@ -8,7 +8,7 @@ import { inspectMigrationDirectory, migrationDigest } from "./check-migration-gu
 function guarded(key, predecessor, foundation = false, body = "select 1;", bridgeRepoPredecessor = null) {
   const bridge = bridgeRepoPredecessor ? ` bridge_repo_predecessor=${bridgeRepoPredecessor}` : "";
   const guardedBody = bridgeRepoPredecessor
-    ? `do $bridge$ declare v_file_digest constant text := '${"0".repeat(64)}'; begin perform pg_advisory_xact_lock(1297040711, 188); insert into public.migration_apply_guard values ('${key}','${key}.sql',v_file_digest,'${predecessor}','test','test',clock_timestamp()); ${body} end; $bridge$;\n`
+    ? `do $bridge$ declare v_file_digest constant text := '${"0".repeat(64)}'; v_logical_key constant text := '${key}'; v_file_name constant text := '${key}.sql'; v_repo_ok boolean := true; begin perform pg_advisory_xact_lock(1297040711, 188); insert into public.migration_apply_guard values (v_logical_key,v_file_name,v_file_digest,case when v_repo_ok then '${bridgeRepoPredecessor}' else '${predecessor}' end,'test','test',clock_timestamp()); ${body} end; $bridge$;\n`
     : `select public.begin_guarded_migration(p_logical_key => '${key}', p_file_name => '${key}.sql', p_file_digest => '${"0".repeat(64)}', p_expected_predecessor => '${predecessor}', p_foundation => ${foundation});\n${body}\n`;
   let sql = `-- moa-migration-guard: logical_key=${key} predecessor=${predecessor} digest=${"0".repeat(64)} foundation=${foundation}${bridge}\n${foundation ? "select pg_advisory_xact_lock(1297040711, 188);\ncreate table guard_foundation(id int);\n" : ""}${guardedBody}`;
   const digest = migrationDigest(sql);
