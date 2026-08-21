@@ -4,3 +4,10 @@
 *.sh   text eol=lf
 *.mjs  text eol=lf
 .githooks/*  text eol=lf
+
+# 소스 문자열 검사와 변이 앵커는 checkout 환경에 따라 바이트가 달라지면 안 된다.
+.gitattributes  text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.json  text eol=lf
+*.css   text eol=lf
