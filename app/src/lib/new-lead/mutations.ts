@@ -7,6 +7,7 @@ import type {
   NewLeadValueSource,
   UpdateNewLeadRow,
   UpdateNewLeadTitleRow,
+  UpdateNewLeadMetaRow,
 } from "./canonical-contract";
 import { NEW_LEAD_RPC } from "./canonical-contract";
 
@@ -29,6 +30,17 @@ export async function updateCanonicalNewLeadTitle(
   return oneRow<UpdateNewLeadTitleRow>(result.data, ["deal_id", "item_id", "replayed"]);
 }
 
+export async function updateCanonicalNewLeadMeta(
+  client: SupabaseClient,
+  input: Readonly<{ orgId: string; dealId: string; requestId: string; patch: Record<string, unknown> }>,
+): Promise<UpdateNewLeadMetaRow> {
+  const result = await client.rpc(NEW_LEAD_RPC.updateMeta, {
+    p_org_id: input.orgId, p_deal_id: input.dealId, p_request_id: input.requestId, p_patch: input.patch,
+  });
+  if (result.error) throw new NewLeadMutationError(messageFor(result.error.code), result.error.code);
+  return oneRow<UpdateNewLeadMetaRow>(result.data, ["deal_id", "item_id", "changed_fields", "replayed"]);
+}
+
 function messageFor(code: string | undefined): string {
   if (code === "42501") return "이 신규리드를 저장할 권한이 없습니다.";
   if (code === "40001") return "직접 고친 값이 있어 자동 입력으로 덮어쓰지 않았습니다.";
@@ -47,6 +59,11 @@ function oneRow<T>(data: unknown, required: readonly string[]): T {
 export function canonicalPhone(value: string | null | undefined): string | null {
   const formatted = formatPhone(value);
   return formatted && formatted !== "확인 필요" ? formatted : null;
+}
+
+export function canonicalAssignee(actorId: string, selectedId: string | null | undefined): string | null {
+  const selected = selectedId?.trim();
+  return selected && selected !== actorId ? selected : null;
 }
 
 export async function createCanonicalNewLead(

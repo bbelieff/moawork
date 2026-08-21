@@ -33,7 +33,7 @@ import { AddItemForm } from "./AddItemForm";
 import { ColumnContextMenu } from "./ColumnContextMenu";
 import type { ColumnScheduleItemOption, ColumnScheduleRecipientOption } from "./ColumnSettingsPanel";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
-import { updateNewLeadFieldAction, updateNewLeadTitleAction } from "@/app/(app)/boards/new-lead-actions";
+import { updateNewLeadFieldAction, updateNewLeadMetaAction, updateNewLeadTitleAction } from "@/app/(app)/boards/new-lead-actions";
 import {
   renameItemAction,
   setCellAction,
@@ -90,13 +90,29 @@ const NEW_LEAD_FIELD_KEYS: Readonly<Record<string, string>> = {
   rep_name: "representative_name",
   phone: "phone",
   email: "email",
+  biz_reg_type: "business_registration_type",
   business_registration_type: "business_registration_type",
   industry: "industry",
   revenue_band: "revenue_band",
+  sido: "region_sido",
   region_sido: "region_sido",
+  sigungu: "region_sigungu",
   region_sigungu: "region_sigungu",
+  ad_name: "acquisition_source",
   acquisition_source: "acquisition_source",
 };
+
+const NEW_LEAD_EMPTY_LABELS: Readonly<Record<string, string>> = {
+  absence_notice: "해당 없음",
+  consult1_notice: "해당 없음",
+  confirm2_notice: "해당 없음",
+  feedback_status: "미입력",
+  recall_at: "일정 없음",
+  meeting_at: "일정 없음",
+  recontact_on: "일정 없음",
+  contract_fee: "미정",
+};
+const NEW_LEAD_META_KEYS = new Set(["owner", "collaborators", "applied_on"]);
 
 /** 한 셀 — 읽기 전용이면 표시만, 아니면 셀 단위 서버 액션 폼. */
 export function BoardCell({
@@ -125,16 +141,18 @@ export function BoardCell({
   // 곧 돈이 나가는 통로가 된다. 화면과 서버가 같은 답을 해야 한다.
   const canonicalField = canonicalNewLead ? NEW_LEAD_FIELD_KEYS[column.key] : undefined;
   const auditedCanonicalEdit = Boolean(canonicalField && row.deal_id);
-  const cellReadOnly = readOnly || (!auditedCanonicalEdit && !isSourceEditable(column.source)) || column.is_readonly === true;
+  const auditedMetaEdit = Boolean(canonicalNewLead && row.deal_id && NEW_LEAD_META_KEYS.has(column.key));
+  const cellReadOnly = readOnly || (!auditedCanonicalEdit && !auditedMetaEdit && !isSourceEditable(column.source)) || column.is_readonly === true;
   const numeric = NUMERIC_TYPES.has(column.type);
   const title = cellTitle(column);
+  const emptyLabel = canonicalNewLead && value === null ? NEW_LEAD_EMPTY_LABELS[column.key] : undefined;
 
   if (cellReadOnly) {
-    const display = column.type === "select" || column.type === "status" || column.type === "person" || column.type === "multiselect" ? (
-      <StatusCell value={value} options={options} />
+    const display = column.type === "select" || column.type === "status" || column.type === "person" || column.type === "multiselect" || column.type === "people" ? (
+      emptyLabel ? <span className="text-xs text-mw-sub">{emptyLabel}</span> : <StatusCell value={value} options={options} />
     ) : (
       <span className={`truncate text-xs text-mw-body ${numeric ? "block text-right tabular-nums" : ""}`}>
-        {formatCell(column.type, value, options) || "—"}
+        {formatCell(column.type, value, options) || emptyLabel || "—"}
         {column.source === "lk" && value !== null ? (
           <span aria-hidden="true" className="ml-1 text-mw-automation" title="업체 마스터에서 자동으로 채워집니다">
             ⇄
@@ -155,7 +173,7 @@ export function BoardCell({
   return (
     <div className="flex flex-col" title={title}>
       <form
-        action={auditedCanonicalEdit ? updateNewLeadFieldAction : setCellAction}
+        action={auditedCanonicalEdit ? updateNewLeadFieldAction : auditedMetaEdit ? updateNewLeadMetaAction : setCellAction}
         aria-describedby={errorId}
         onSubmit={
           needsConfirm
@@ -180,6 +198,7 @@ export function BoardCell({
             <input type="hidden" name="field" value={canonicalField} />
           </>
         ) : null}
+        {auditedMetaEdit ? <><input type="hidden" name="dealId" value={row.deal_id ?? ""} /><input type="hidden" name="field" value={column.key} /></> : null}
 
         {column.type === "file" ? (
           <span className="flex items-center gap-1">
@@ -223,7 +242,7 @@ export function BoardCell({
               ))}
             </select>
           </>
-        ) : column.type === "multiselect" ? (
+        ) : column.type === "multiselect" || column.type === "people" ? (
           <select
             name="value"
             multiple
@@ -242,14 +261,14 @@ export function BoardCell({
             type={inputTypeOf(column.type)}
             name="value"
             defaultValue={cellInputValue(column.type, value)}
-            placeholder="—"
+            placeholder={emptyLabel ?? "—"}
             aria-label={column.label}
             className={`${CELL_INPUT} ${numeric ? "text-right tabular-nums" : ""}`}
           />
         )}
 
         {/* select/multiselect 는 변경만으로 저장되지 않으므로 명시 저장을 남긴다. */}
-        {(column.type === "select" || column.type === "status" || column.type === "person" || column.type === "multiselect") && (
+        {(column.type === "select" || column.type === "status" || column.type === "person" || column.type === "multiselect" || column.type === "people") && (
           <button type="submit" className="sr-only">
             {column.label} 저장
           </button>
@@ -269,6 +288,8 @@ export function BoardCell({
 export function GroupTable({
   boardId,
   canonicalNewLead = false,
+  newLeadMembers = [],
+  currentUserId,
   groupId,
   columns,
   detailColumns = [...columns],
@@ -298,6 +319,8 @@ export function GroupTable({
 }: {
   boardId: string;
   canonicalNewLead?: boolean;
+  newLeadMembers?: readonly { id: string; label: string }[];
+  currentUserId?: string;
   /** 이 그룹의 group_id. "그룹 없음" 블록은 null. */
   groupId: string | null;
   /** 오버라이드·컬럼수까지 적용된 **최종 표시 순서**. */
@@ -576,6 +599,7 @@ export function GroupTable({
                       inherited={detailLayoutInherited}
                       canEditItems={!readOnly}
                       canManageColumns={canManageColumns}
+                      canonicalNewLead={canonicalNewLead}
                     />
 
                     {/* BBE-240 — 자금건과 연결된 행(BBE-235 프로젝션 트리거가 채운 deal_id)에만
@@ -620,7 +644,7 @@ export function GroupTable({
                 className={`px-2 py-1 ${overRowIndex === rows.length ? "bg-mw-tint-blue" : ""}`}
               >
                 {canonicalNewLead && groupId ? (
-                  <NewLeadIntakeForm boardId={boardId} groupId={groupId} />
+                  <NewLeadIntakeForm boardId={boardId} groupId={groupId} members={newLeadMembers} currentUserId={currentUserId} />
                 ) : (
                   <AddItemForm
                     boardId={boardId}

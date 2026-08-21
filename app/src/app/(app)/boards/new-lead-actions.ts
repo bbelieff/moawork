@@ -5,13 +5,17 @@ import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth/session";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { createClient } from "@/lib/supabase/server";
-import { createCanonicalNewLead, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadTitle } from "@/lib/new-lead/mutations";
+import { canonicalAssignee, createCanonicalNewLead, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadMeta, updateCanonicalNewLeadTitle } from "@/lib/new-lead/mutations";
 import type { NewLeadIntakeState } from "@/lib/new-lead/intake-state";
 import { CELL_FLASH_COOKIE, CELL_FLASH_MAX_AGE, encodeCellFlash } from "@/lib/boards/cellFlash";
 
 function text(formData: FormData, key: string): string {
   const value = formData.get(key);
   return typeof value === "string" ? value.trim() : "";
+}
+
+function textList(formData: FormData, key: string): string[] {
+  return formData.getAll(key).flatMap((value) => typeof value === "string" && value.trim() ? [value.trim()] : []);
 }
 
 async function flashCanonicalError(itemId: string, key: string, error: unknown) {
@@ -48,9 +52,15 @@ export async function createNewLeadAction(
       p_representative_name: text(formData, "representative_name") || null,
       p_phone: text(formData, "phone") || null,
       p_email: text(formData, "email") || null,
+      p_business_registration_type: text(formData, "business_registration_type") || null,
       p_industry: text(formData, "industry") || null,
+      p_revenue_band: text(formData, "revenue_band") || null,
       p_region_sido: text(formData, "region_sido") || null,
+      p_region_sigungu: text(formData, "region_sigungu") || null,
+      p_address_detail: text(formData, "address_detail") || null,
       p_acquisition_source: text(formData, "acquisition_source") || null,
+      p_assigned_to: canonicalAssignee(ctx.user.id, text(formData, "assigned_to")),
+      p_collaborator_ids: textList(formData, "collaborator_ids"),
     });
     revalidatePath(`/boards/${boardId}`);
     revalidatePath("/newcust");
@@ -83,6 +93,21 @@ export async function updateNewLeadFieldAction(formData: FormData): Promise<void
   } catch(error) { await flashCanonicalError(itemId,columnKey,error); }
   revalidatePath(`/boards/${boardId}`);
   revalidatePath("/newcust");
+}
+
+export async function updateNewLeadMetaAction(formData: FormData): Promise<void> {
+  const ctx = await getSession();
+  const boardId=text(formData,"boardId"),dealId=text(formData,"dealId"),itemId=text(formData,"itemId"),field=text(formData,"field");
+  const allowed = new Set(["owner","collaborators","applied_on","address_detail"]);
+  try {
+    if (!boardId || !dealId || !itemId || !allowed.has(field)) throw new NewLeadMutationError("신규리드 편집 대상을 확인해 주세요.","22023");
+    const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
+    if (permission.kind !== "allowed") throw new NewLeadMutationError("이 신규리드를 저장할 권한이 없습니다.","42501");
+    const value: unknown = field === "collaborators" ? textList(formData,"value") : text(formData,"value") || null;
+    await updateCanonicalNewLeadMeta(await createClient(), { orgId: ctx.org.id, dealId, requestId: text(formData,"requestId") || crypto.randomUUID(), patch: { [field]: value } });
+    await clearCanonicalError();
+  } catch(error) { await flashCanonicalError(itemId,field,error); }
+  revalidatePath(`/boards/${boardId}`); revalidatePath("/newcust");
 }
 
 export async function updateNewLeadTitleAction(formData: FormData): Promise<void> {

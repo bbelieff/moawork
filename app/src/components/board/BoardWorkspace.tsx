@@ -434,6 +434,8 @@ export function BoardWorkspace({
               <GroupTable
                 boardId={board.id}
                 canonicalNewLead={board.source === NEW_LEAD_TAB_SOURCE}
+                newLeadMembers={scheduleRecipients}
+                currentUserId={currentUserId}
                 groupId={block.group?.id ?? null}
                 columns={shown}
                 detailColumns={[...activeColumns]}
