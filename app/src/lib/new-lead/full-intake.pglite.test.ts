@@ -4,6 +4,15 @@ import { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
 
 const migration = readFileSync(resolve(process.cwd(), "../supabase/migrations/120_bbe273_new_lead_full_intake.sql"), "utf8");
+const validationMigration = readFileSync(resolve(process.cwd(), "../supabase/migrations/118_bbe178_column_value_and_schedule_dispatch.sql"), "utf8");
+const legacyValidationSql = validationMigration.slice(
+  validationMigration.indexOf("create or replace function public.board_column_value_is_valid"),
+  validationMigration.indexOf("create or replace function public.enforce_required_values_on_item_create"),
+);
+const hiddenProjectionValidationSql = migration.slice(
+  migration.indexOf("create or replace function public.board_column_value_is_valid"),
+  migration.indexOf("create or replace function public.guard_new_lead_projection_write"),
+);
 const functionSql = migration.slice(migration.indexOf("create function public.create_new_lead"), migration.indexOf("revoke all on function public.create_new_lead"));
 const projectionSql = migration.slice(
   migration.indexOf("create or replace function public.guard_new_lead_projection_write"),
@@ -41,7 +50,7 @@ describe("BBE-273 atomic full new-lead intake", () => {
         select exists(select 1 from public.org_members where org_id=p_org and user_id=auth.uid() and status='active')$$;
       create table boards(id uuid primary key,org_id uuid,source text);
       create table board_groups(id uuid primary key,org_id uuid,board_id uuid);
-      create table board_columns(id uuid primary key default gen_random_uuid(),org_id uuid,board_id uuid,key text);
+      create table board_columns(id uuid primary key default gen_random_uuid(),org_id uuid,board_id uuid,key text,archived_at timestamptz,is_required boolean not null default false,validation_jsonb jsonb not null default '{}'::jsonb);
       create table pipelines(id uuid primary key default gen_random_uuid(),org_id uuid,name text);
       create table stages(id uuid primary key default gen_random_uuid(),pipeline_id uuid,name text,sort_order int,kind stage_kind);
       create table deals(id uuid primary key default gen_random_uuid(),org_id uuid,company_id uuid,pipeline_id uuid,stage_id uuid,assigned_to uuid,title text,applied_on date);
@@ -62,6 +71,8 @@ describe("BBE-273 atomic full new-lead intake", () => {
         'owner','collaborators','applied_on','phone','rep_name','business_registration_type','industry','revenue_band','region_sido','region_sigungu','email','acquisition_source',
         'absence_notice','consult1_notice','confirm2_notice','feedback_status','recall_at','meeting_at','recontact_on','contract_fee','consult_status','contact_move']);
     `);
+    await db.exec(legacyValidationSql);
+    await db.exec(hiddenProjectionValidationSql);
     await db.exec(projectionSql);
     await db.exec(functionSql);
     await db.exec(metaFunctionSql);

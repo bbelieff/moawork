@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=120_bbe273_new_lead_full_intake predecessor=119_bbe272_new_lead_default_stage digest=ccd30d69d75a237405b2212e6f341acce381cf434e4854fc029bf14cc9f32066 foundation=false
+-- moa-migration-guard: logical_key=120_bbe273_new_lead_full_intake predecessor=119_bbe272_new_lead_default_stage digest=3f5d6fb3534a779ff0cb9b55239790945f943555e71e5fbed6f16d3a5a74a533 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '120_bbe273_new_lead_full_intake',
   p_file_name => '120_bbe273_new_lead_full_intake.sql',
-  p_file_digest => 'ccd30d69d75a237405b2212e6f341acce381cf434e4854fc029bf14cc9f32066',
+  p_file_digest => '3f5d6fb3534a779ff0cb9b55239790945f943555e71e5fbed6f16d3a5a74a533',
   p_expected_predecessor => '119_bbe272_new_lead_default_stage',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -18,6 +18,40 @@ alter table public.deal_intake_field_audit
 alter table public.deal_intake_field_audit
   add constraint deal_intake_field_audit_value_source_check
   check (value_source in ('manual','system','automation','import'));
+
+-- Detailed address is a canonical deal_intake fact, not a 23rd visible board
+-- column. Permit only that hidden projection on the canonical new-lead board;
+-- guard_new_lead_projection_write below still rejects generic/direct writes.
+create or replace function public.board_column_value_is_valid(
+  p_org_id uuid, p_item_id uuid, p_column_key text, p_value jsonb
+) returns boolean language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare v_col public.board_columns; v_missing boolean;
+begin
+  if p_column_key='address_detail' and exists(
+    select 1 from public.items i join public.boards b on b.id=i.board_id and b.org_id=i.org_id
+     where i.id=p_item_id and i.org_id=p_org_id and i.deal_id is not null
+       and i.deleted_at is null and b.source='core.default-tab/new-lead'
+  ) then
+    return p_value is null or p_value='null'::jsonb or jsonb_typeof(p_value)='string';
+  end if;
+  select c.* into v_col from public.items i join public.board_columns c
+    on c.org_id=i.org_id and c.board_id=i.board_id and c.key=p_column_key
+   where i.id=p_item_id and i.org_id=p_org_id and c.archived_at is null;
+  if not found then return false; end if;
+  v_missing:=p_value is null or p_value='null'::jsonb
+    or (jsonb_typeof(p_value)='string' and btrim(p_value#>>'{}')='');
+  if v_missing then return not v_col.is_required; end if;
+  if v_col.validation_jsonb?'minLength' and (jsonb_typeof(p_value)<>'string' or char_length(p_value#>>'{}')<(v_col.validation_jsonb->>'minLength')::int) then return false; end if;
+  if v_col.validation_jsonb?'maxLength' and (jsonb_typeof(p_value)<>'string' or char_length(p_value#>>'{}')>(v_col.validation_jsonb->>'maxLength')::int) then return false; end if;
+  if v_col.validation_jsonb?'min' and (jsonb_typeof(p_value)<>'number' or (p_value#>>'{}')::numeric<(v_col.validation_jsonb->>'min')::numeric) then return false; end if;
+  if v_col.validation_jsonb?'max' and (jsonb_typeof(p_value)<>'number' or (p_value#>>'{}')::numeric>(v_col.validation_jsonb->>'max')::numeric) then return false; end if;
+  if v_col.validation_jsonb?'pattern' and (jsonb_typeof(p_value)<>'string' or not (p_value#>>'{}') ~ (v_col.validation_jsonb->>'pattern')) then return false; end if;
+  if v_col.validation_jsonb?'allowedValues' and not (v_col.validation_jsonb->'allowedValues' @> jsonb_build_array(p_value)) then return false; end if;
+  if v_col.validation_jsonb?'dateMin' and (jsonb_typeof(p_value)<>'string' or (p_value#>>'{}')::timestamptz<(v_col.validation_jsonb->>'dateMin')::timestamptz) then return false; end if;
+  if v_col.validation_jsonb?'dateMax' and (jsonb_typeof(p_value)<>'string' or (p_value#>>'{}')::timestamptz>(v_col.validation_jsonb->>'dateMax')::timestamptz) then return false; end if;
+  return true;
+exception when invalid_regular_expression then return false;
+end $$;
 
 -- The canonical write guard must name the keys that the two live 22-column
 -- board variants actually use. Keep legacy aliases guarded as well.
