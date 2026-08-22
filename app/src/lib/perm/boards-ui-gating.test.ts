@@ -22,9 +22,12 @@ describe("boards UI consumes effective permissions", () => {
     const source = readFileSync(join(app, "[id]", "page.tsx"), "utf8");
     expect(source).toContain("loadPermGuards(ctx.org.id, [");
     expect(source).toContain("loadPermissionScopedWorkItems(ctx.org.id)");
+    expect(source).toMatch(
+      /await\s+Promise\.all\s*\(\s*\[[\s\S]*loadPermGuards\([\s\S]*loadPermissionScopedWorkItems\(/u,
+    );
     expect(source).toContain('if (viewTabs.kind !== "allowed") notFound()');
     expect(source.indexOf('if (viewTabs.kind !== "allowed") notFound()')).toBeLessThan(
-      source.indexOf("loadPermissionScopedWorkItems(ctx.org.id)"),
+      source.indexOf("svc.getBoardDetail(ctx, id)"),
     );
     expect(source).toContain("if (!scopedItems.ok) notFound()");
     expect(source.indexOf("if (!scopedItems.ok) notFound()")).toBeLessThan(
