@@ -1,0 +1,25 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const files = [
+  "src/app/(app)/(tabs)/newcust/page.tsx",
+  "src/app/(app)/boards/[id]/page.tsx",
+  "src/app/(app)/boards/new-lead-actions.ts",
+];
+
+describe("BBE-214 production performance logging", () => {
+  it("records only bounded route phases without tenant or customer payloads", () => {
+    const source = files.map((file) => readFileSync(resolve(process.cwd(), file), "utf8")).join("\n");
+    expect(source).toContain('event: "mw.performance"');
+    expect(source).toContain('route: "newcust_entry"');
+    expect(source).toContain('route: "board_detail"');
+    expect(source).toContain('route: "new_lead_create"');
+
+    const logBlocks = source.match(/console\.info\(JSON\.stringify\(\{[\s\S]*?\}\)\);/gu) ?? [];
+    expect(logBlocks).toHaveLength(3);
+    for (const block of logBlocks) {
+      expect(block).not.toMatch(/orgId|org_id|userId|user_id|boardId|board_id|title|slug|email|phone/u);
+    }
+  });
+});

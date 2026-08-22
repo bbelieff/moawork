@@ -73,16 +73,29 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     ? `/w/${currentWorkspace[0].slug}`
     : "/workspaces";
   const trustedOwnerOrgId = ctx.role === "owner" ? ctx.org.id : undefined;
-  const workspaceApprovals: WorkspaceApprovals | null = trustedOwnerOrgId
-    ? await loadWorkspaceApprovals(trustedOwnerOrgId)
-    : null;
-  const workspaceEntryContext = await loadWorkspaceEntryContext();
-  const platformActor = await loadPlatformActor();
-  // BBE-199 회사 로고. 로고가 하나도 없으면 Storage 왕복 0 — 그때는 이니셜 마크가 나온다.
-  // 로고가 있으면 워크스페이스가 N개라도 createSignedUrls 로 «한 번» 에 받는다.
-  const orgLogoUrls = routing.kind === "ready"
-    ? await loadOrgLogoSignedUrls(routing.memberships.map((membership) => membership.orgId))
-    : new Map<string, string>();
+  const features = Array.from(
+    new Set(
+      NAV_ITEMS.map((i) => i.feature).filter((f): f is NonNullable<typeof f> =>
+        Boolean(f),
+      ),
+    ),
+  );
+  // BBE-214 — bootstrap 뒤의 셸 읽기는 서로 결과에 의존하지 않는다. 각각을 직렬로
+  // 기다리면 모든 hard-load가 네트워크 지연을 그대로 합산한다. 같은 요청 안에서 함께
+  // 시작하되, auth/RLS 판정과 실패 의미는 각 loader가 계속 소유한다.
+  const [workspaceApprovals, workspaceEntryContext, platformActor, orgLogoUrls, lockedFeatures, notify, contact] = await Promise.all([
+    trustedOwnerOrgId ? loadWorkspaceApprovals(trustedOwnerOrgId) : Promise.resolve<WorkspaceApprovals | null>(null),
+    loadWorkspaceEntryContext(),
+    loadPlatformActor(),
+    routing.kind === "ready"
+      ? loadOrgLogoSignedUrls(routing.memberships.map((membership) => membership.orgId))
+      : Promise.resolve(new Map<string, string>()),
+    loadLockedFeatures(ctx.org.id, features),
+    loadNotifySnapshot(ctx),
+    appTabRequest
+      ? resolveExistingContactBoard(ctx, new SupabaseBoardsRepo(requestClient!)).catch(() => null)
+      : Promise.resolve(null),
+  ]);
   const switcherWorkspaces = routing.kind === "ready"
     ? buildSwitcherWorkspaces(routing.memberships, orgLogoUrls)
     : [];
@@ -99,33 +112,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // useful for pending requests, but it is never used to elevate this action.
   const canAccessPlatform = platformActor.kind === "granted";
 
-  // 엔타이틀먼트는 서버 진실 — 잠긴 기능키를 계산해 사이드바로 내린다.
-  const features = Array.from(
-    new Set(
-      NAV_ITEMS.map((i) => i.feature).filter((f): f is NonNullable<typeof f> =>
-        Boolean(f),
-      ),
-    ),
-  );
   // ⚠ 예전엔 getRepo().isFeatureEnabled 로 직접 판정했는데, getRepo() 는 환경과 무관하게
   // 항상 LocalRepo(인메모리 시드)를 돌려줘서 프로덕션의 실 org UUID 가 조회되지 않았고
   // 결과적으로 **전 메뉴가 잠겼다**(P0). 이제 환경에 맞는 소스를 골라 읽는다.
-  const lockedFeatures = await loadLockedFeatures(ctx.org.id, features);
-  let contactDirectHref: string | undefined;
-  if (appTabRequest) {
-    try {
-      const contact = await resolveExistingContactBoard(ctx, new SupabaseBoardsRepo(requestClient!));
-      if (contact.kind === "ready") contactDirectHref = `/boards/${contact.boardId}`;
-    } catch {
-      // Keep /contract as the explicit unavailable/repair path. Never guess a board id.
-    }
-  }
+  const contactDirectHref = contact?.kind === "ready" ? `/boards/${contact.boardId}` : undefined;
 
   const initial = (ctx.user.name ?? "?").trim().charAt(0) || "?";
   const account = buildAccountViewModel(ctx);
-
-  // 알림 스냅샷(벨 뱃지 + 사이드바 점/숫자). Supabase 미설정이면 빈 값이라 화면은 그대로 뜬다.
-  const notify = await loadNotifySnapshot(ctx);
 
   return (
     <div className="flex min-h-full flex-1 flex-col md:flex-row">

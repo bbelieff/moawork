@@ -30,15 +30,29 @@ export async function createNewLeadAction(
   _previous: NewLeadIntakeState,
   formData: FormData,
 ): Promise<NewLeadIntakeState> {
+  const startedAt = performance.now();
+  const record = (outcome: string, permissionMs?: number) => {
+    if (process.env.NODE_ENV !== "production") return;
+    console.info(JSON.stringify({
+      event: "mw.performance",
+      route: "new_lead_create",
+      outcome,
+      total_ms: Math.round(performance.now() - startedAt),
+      ...(permissionMs === undefined ? {} : { permission_ms: Math.round(permissionMs) }),
+    }));
+  };
   const ctx = await getSession();
   const title = text(formData, "title");
   const boardId = text(formData, "boardId");
   const groupId = text(formData, "groupId");
-  if (!title) return { ok: false, field: "title", message: "이름을 입력해 주세요. 나머지는 등록 후 채울 수 있어요." };
-  if (!boardId || !groupId) return { ok: false, field: "form", message: "신규리드 보드 구성을 확인해 주세요." };
+  if (!title) { record("invalid_title"); return { ok: false, field: "title", message: "이름을 입력해 주세요. 나머지는 등록 후 채울 수 있어요." }; }
+  if (!boardId || !groupId) { record("invalid_target"); return { ok: false, field: "form", message: "신규리드 보드 구성을 확인해 주세요." }; }
 
+  const permissionStartedAt = performance.now();
   const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
+  const permissionMs = performance.now() - permissionStartedAt;
   if (permission.kind !== "allowed") {
+    record(permission.reason === "permission" ? "denied" : "unavailable", permissionMs);
     return { ok: false, field: "form", message: permission.reason === "permission" ? "신규리드를 등록할 권한이 없습니다." : "권한을 확인하지 못했습니다." };
   }
 
@@ -64,8 +78,10 @@ export async function createNewLeadAction(
     });
     revalidatePath(`/boards/${boardId}`);
     revalidatePath("/newcust");
+    record(row.replayed ? "replayed" : "created", permissionMs);
     return { ok: true, message: "신규리드를 등록했습니다.", itemId: row.item_id };
   } catch (error) {
+    record("error", permissionMs);
     return {
       ok: false,
       field: "form",

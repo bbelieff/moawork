@@ -29,19 +29,18 @@ const layoutBody = layoutSource
 
 describe("사이드바 배선 — 로고 URL이 «값으로» 스위처까지 도달한다", () => {
   it("★ 로더 호출이 본문에 있다 (import 줄만으로는 통과하지 못한다)", () => {
-    expect(layoutBody).toMatch(/await\s+loadOrgLogoSignedUrls\s*\(/u);
+    expect(layoutBody).toMatch(/loadOrgLogoSignedUrls\s*\(/u);
   });
 
   it("★ 로더 결과가 «이름에 묶이고» 그 이름이 스위처 입력으로 흘러간다", () => {
-    // 로더 호출 결과가 묶인 변수 이름을 뽑는다.
-    const binding = layoutBody.match(/const\s+(\w+)\s*=[^;]*await\s+loadOrgLogoSignedUrls\s*\(/u);
-    expect(binding, "로더 호출 결과가 어떤 이름에도 묶여 있지 않다").not.toBeNull();
-    const name = binding![1];
+    // 병렬 shell read의 Promise.all 결과가 orgLogoUrls 이름에 묶여야 한다.
+    expect(layoutBody).toMatch(
+      /const\s+\[[^\]]*\borgLogoUrls\b[^\]]*\]\s*=\s*await\s+Promise\.all\s*\(/u,
+    );
 
     // 그 «바로 그 이름» 이 스위처 입력을 만드는 자리로 전달돼야 한다.
     // (다른 빈 Map 을 만들어 끼워 넣는 변이를 여기서 잡는다.)
-    const handoff = new RegExp(`buildSwitcherWorkspaces\\s*\\([^)]*\\b${name}\\b`, "u");
-    expect(layoutBody, `${name} 이 buildSwitcherWorkspaces 로 전달되지 않는다`).toMatch(handoff);
+    expect(layoutBody).toMatch(/buildSwitcherWorkspaces\s*\([^)]*\borgLogoUrls\b/u);
   });
 
   it("★ 로더에 실제 멤버십 목록을 넘긴다 (빈 배열로 바꿔치기 금지)", () => {

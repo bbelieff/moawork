@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/purity -- Async Server Component timing is emitted only to an operational log, never rendered. */
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
@@ -47,25 +48,32 @@ export default async function BoardPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ view?: string; group?: string; as?: string; savedView?: string; mwLayout?: string; mwHidden?: string; mwOrder?: string; mwFilters?: string; mwSort?: string; mwText?: string; mwFocus?: string; calendarField?: string }>;
 }) {
+  const startedAt = performance.now();
   const { id } = await params;
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
-  const permissions = await loadPermGuards(ctx.org.id, [
-    "work.view_tabs",
-    "work.item_upsert",
-    "work.item_delete",
-    "structure.column_manage",
-    "structure.section_manage",
-    "danger.bulk_edit_delete",
-    "structure.preset_edit",
+  const sessionMs = performance.now() - startedAt;
+  // BBE-214 — 두 판정은 같은 ctx만 소비하고 서로의 결과에 의존하지 않는다.
+  // 둘 다 통과하기 전에는 board metadata를 읽지 않으므로 fail-closed 순서는 유지한다.
+  const [permissions, scopedItems] = await Promise.all([
+    loadPermGuards(ctx.org.id, [
+      "work.view_tabs",
+      "work.item_upsert",
+      "work.item_delete",
+      "structure.column_manage",
+      "structure.section_manage",
+      "danger.bulk_edit_delete",
+      "structure.preset_edit",
+    ]),
+    loadPermissionScopedWorkItems(ctx.org.id),
   ]);
+  const guardsMs = performance.now() - startedAt - sessionMs;
   const viewTabs = permissions["work.view_tabs"];
   // 판정 «불능» 은 「없음」이 아니다(BBE-204). 권한 없음만 404 로 남긴다 — 존재 숨김 유지.
   if (viewTabs.kind === "denied" && viewTabs.reason === "unavailable") {
     return <PermissionUnavailable />;
   }
   if (viewTabs.kind !== "allowed") notFound();
-  const scopedItems = await loadPermissionScopedWorkItems(ctx.org.id);
   const itemUpsert = permissions["work.item_upsert"];
   const itemDelete = permissions["work.item_delete"];
   const columnManage = permissions["structure.column_manage"];
@@ -89,6 +97,7 @@ export default async function BoardPage({
     if (err instanceof NotFoundError) notFound();
     throw err;
   }
+  const detailMs = performance.now() - startedAt - sessionMs - guardsMs;
 
   const { board, columns, groups } = detail;
   const view = sp.view === "kanban" ? "kanban" : sp.view === "flat" ? "flat" : sp.view === "calendar" ? "calendar" : "table";
@@ -191,6 +200,20 @@ export default async function BoardPage({
   );
   const hiddenColumnKeys = new Set(parseSavedStringList(sp.mwHidden));
   const visibleColumns = columns.filter((column) => !hiddenColumnKeys.has(column.key));
+
+  if (process.env.NODE_ENV === "production") {
+    console.info(JSON.stringify({
+      event: "mw.performance",
+      route: "board_detail",
+      outcome: "ready",
+      total_ms: Math.round(performance.now() - startedAt),
+      phase_ms: {
+        session: Math.round(sessionMs),
+        guards: Math.round(guardsMs),
+        detail: Math.round(detailMs),
+      },
+    }));
+  }
 
   const currentQuery = new URLSearchParams(
     Object.entries(sp).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
