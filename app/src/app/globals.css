@@ -42,6 +42,12 @@
   --mw-tint-coral: #fdecea;
   --mw-radius: 14px;
 
+  /* 레이어 소유권 — 표 sticky 계층(10/20/30) 위에 전역 dialog를 둔다. */
+  --mw-layer-board-cell: 10;
+  --mw-layer-board-header: 20;
+  --mw-layer-board-corner: 30;
+  --mw-layer-dialog: 40;
+
   /* 로그인 브랜드 스토리 패널 — 테마와 무관하게 동일한 Dark 자산을 유지한다. */
   --mw-brand-panel: #111216;
   --mw-brand-panel-card: #20232b;
@@ -144,6 +150,10 @@
 body {
   background: var(--mw-bg);
   color: var(--mw-fg);
+}
+
+.mw-layer-dialog {
+  z-index: var(--mw-layer-dialog);
 }
 
 /* 테마별 자산 전환(로고 등) — 세 상태(light 확정 / dark 확정 / OS 추종)를 모두 덮는다. */

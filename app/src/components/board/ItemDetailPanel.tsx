@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { BoardColumn, CellValue, ItemWithValues } from "@/lib/boards/types";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
 import { moveDetailEntry, unplacedDetailKeys } from "@/lib/boards/detail-layout";
@@ -30,6 +31,24 @@ function inputType(type: string | undefined): string {
 function inputValue(value: CellValue | undefined): string | number {
   if (value === null || value === undefined) return "";
   return typeof value === "number" ? value : String(value);
+}
+
+function DialogPortal({ children }: { children: ReactNode }) {
+  return typeof document === "undefined" ? children : createPortal(children, document.body);
+}
+
+type FocusTarget = Pick<HTMLElement, "focus">;
+
+export function focusDetailPanelElement(target: FocusTarget | null) {
+  target?.focus();
+}
+
+export function restoreDetailPanelOpener(open: boolean, wasOpen: boolean, opener: FocusTarget | null) {
+  if (!open && wasOpen) opener?.focus();
+}
+
+export function isDetailPanelBackdrop(target: EventTarget | null, currentTarget: EventTarget) {
+  return target === currentTarget;
 }
 
 function SaveLayoutForm({
@@ -81,11 +100,15 @@ export function ItemDetailPanel({
   canonicalNewLead?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const wasOpenRef = useRef(open);
   const columnsByKey = new Map(columns.map((column) => [column.key, column]));
   const unplaced = unplacedDetailKeys(row.values, layout);
 
   useEffect(() => {
     if (!open) return;
+    focusDetailPanelElement(closeButtonRef.current);
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
@@ -93,9 +116,15 @@ export function ItemDetailPanel({
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [open]);
 
+  useEffect(() => {
+    restoreDetailPanelOpener(open, wasOpenRef.current, triggerRef.current);
+    wasOpenRef.current = open;
+  }, [open]);
+
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
         className="min-h-8 shrink-0 rounded-lg border border-mw-line px-2 text-xs font-semibold text-mw-record hover:bg-mw-tint-blue"
@@ -104,7 +133,16 @@ export function ItemDetailPanel({
         열기 ↗
       </button>
       {open && (
-        <div role="dialog" aria-modal="true" aria-label={`${row.title} 상세`} className="fixed inset-0 z-50 flex justify-end bg-black/40">
+        <DialogPortal>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${row.title} 상세`}
+          className="mw-layer-dialog fixed inset-0 flex justify-end bg-black/40"
+          onPointerDown={(event) => {
+            if (isDetailPanelBackdrop(event.target, event.currentTarget)) setOpen(false);
+          }}
+        >
           <section className="h-full w-full max-w-xl overflow-y-auto bg-mw-card p-4 shadow-2xl sm:p-6">
             <header className="flex items-start justify-between gap-4 border-b border-mw-line pb-4">
               <div>
@@ -112,7 +150,7 @@ export function ItemDetailPanel({
                 <h2 className="mt-1 text-xl font-bold text-mw-fg">{row.title}</h2>
                 <p className="mt-1 text-xs text-mw-sub">{inherited ? "보드 기본 배치를 상속 중" : "이 아이템만의 배치를 사용 중"}</p>
               </div>
-              <button type="button" onClick={() => setOpen(false)} aria-label="상세 닫기" className="min-h-11 min-w-11 rounded-full border border-mw-line text-mw-body">×</button>
+              <button ref={closeButtonRef} type="button" onClick={() => setOpen(false)} aria-label="상세 닫기" className="min-h-11 min-w-11 rounded-full border border-mw-line text-mw-body">×</button>
             </header>
 
             <div className="grid gap-3 py-5">
@@ -266,6 +304,7 @@ export function ItemDetailPanel({
             )}
           </section>
         </div>
+        </DialogPortal>
       )}
     </>
   );
