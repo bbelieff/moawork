@@ -9,13 +9,32 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 
-const columns: BoardColumn[] = [{
-  id: "col-company", org_id: "org-a", board_id: "board-a", key: "company", label: "회사명",
-  type: "text", source: "in", rightPinned: false, options_jsonb: null, sort_order: 0, width: null,
-}];
+const columns: BoardColumn[] = [
+  {
+    id: "col-company",
+    org_id: "org-a",
+    board_id: "board-a",
+    key: "company",
+    label: "회사명",
+    type: "text",
+    source: "in",
+    rightPinned: false,
+    options_jsonb: null,
+    sort_order: 0,
+    width: null,
+  },
+];
 const row: ItemWithValues = {
-  id: "item-a", org_id: "org-a", board_id: "board-a", group_id: "group-a", title: "대한정밀",
-  assigned_to: "user-a", deal_id: null, sort_order: 0, created_at: "2026-08-16T00:00:00Z", updated_at: "2026-08-16T00:00:00Z",
+  id: "item-a",
+  org_id: "org-a",
+  board_id: "board-a",
+  group_id: "group-a",
+  title: "대한정밀",
+  assigned_to: "user-a",
+  deal_id: null,
+  sort_order: 0,
+  created_at: "2026-08-16T00:00:00Z",
+  updated_at: "2026-08-16T00:00:00Z",
   values: { company: "대한정밀", hidden_legacy: "보존값" },
 };
 
@@ -23,7 +42,9 @@ type CloseChannel = "Escape" | "backdrop" | "close button";
 
 let mountedRoot: Root | null = null;
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(async () => {
   if (mountedRoot) {
@@ -39,24 +60,30 @@ async function renderInteractivePanel() {
   mountedRoot = createRoot(container);
 
   await act(async () => {
-    mountedRoot?.render(<ItemDetailPanel
-      boardId="board-a"
-      row={row}
-      columns={columns}
-      boardLayout={[{ key: "company", source: "column" }]}
-      layout={[{ key: "company", source: "column" }]}
-      inherited
-      canEditItems
-      canManageColumns
-    />);
+    mountedRoot?.render(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={row}
+        columns={columns}
+        boardLayout={[{ key: "company", source: "column" }]}
+        layout={[{ key: "company", source: "column" }]}
+        inherited
+        canEditItems
+        canManageColumns
+      />,
+    );
   });
 
-  const opener = document.querySelector<HTMLButtonElement>('[aria-label="대한정밀 상세 열기"]');
+  const opener = document.querySelector<HTMLButtonElement>(
+    '[aria-label="대한정밀 상세 열기"]',
+  );
   expect(opener).not.toBeNull();
   await act(async () => opener?.click());
 
   const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
-  const closeButton = document.querySelector<HTMLButtonElement>('[aria-label="상세 닫기"]');
+  const closeButton = document.querySelector<HTMLButtonElement>(
+    '[aria-label="상세 닫기"]',
+  );
   expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
   expect(dialog).not.toBeNull();
   expect(closeButton).not.toBeNull();
@@ -65,10 +92,16 @@ async function renderInteractivePanel() {
   return { opener: opener!, dialog: dialog!, closeButton: closeButton! };
 }
 
-async function closePanel(channel: CloseChannel, dialog: HTMLElement, closeButton: HTMLButtonElement) {
+async function closePanel(
+  channel: CloseChannel,
+  dialog: HTMLElement,
+  closeButton: HTMLButtonElement,
+) {
   await act(async () => {
     if (channel === "Escape") {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
     } else if (channel === "backdrop") {
       dialog.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     } else {
@@ -78,68 +111,96 @@ async function closePanel(channel: CloseChannel, dialog: HTMLElement, closeButto
 }
 
 function renderStaticPanel(element: ReactNode) {
-  const documentDescriptor = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const documentDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "document",
+  );
   Reflect.deleteProperty(globalThis, "document");
   try {
     return renderToStaticMarkup(element);
   } finally {
-    if (documentDescriptor) Object.defineProperty(globalThis, "document", documentDescriptor);
+    if (documentDescriptor)
+      Object.defineProperty(globalThis, "document", documentDescriptor);
   }
 }
 
-const sourcePath = resolve(process.cwd(), "src/components/board/ItemDetailPanel.tsx");
+const sourcePath = resolve(
+  process.cwd(),
+  "src/components/board/ItemDetailPanel.tsx",
+);
 
 describe("BBE-107 실제 상세 패널", () => {
   it("상속 상태와 미배치 값 회수, 1440/375 공통 반응형 패널 계약을 렌더한다", () => {
-    const html = renderStaticPanel(<ItemDetailPanel
-      boardId="board-a"
-      row={row}
-      columns={columns}
-      boardLayout={[{ key: "company", source: "column" }]}
-      layout={[{ key: "company", source: "column" }]}
-      inherited
-      canEditItems
-      canManageColumns
-      defaultOpen
-    />);
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={row}
+        columns={columns}
+        boardLayout={[{ key: "company", source: "column" }]}
+        layout={[{ key: "company", source: "column" }]}
+        inherited
+        canEditItems
+        canManageColumns
+        defaultOpen
+      />,
+    );
     expect(html).toContain("보드 기본 배치를 상속 중");
     expect(html).toContain("이 화면에 배치되지 않은 항목 1개");
     expect(html).toContain("hidden_legacy");
     expect(html).toContain("배치에 추가");
-    expect(html).toContain("w-full max-w-xl");
+    expect(html).toContain("w-full max-w-[74rem]");
+    expect(html).toContain(
+      "lg:grid-cols-[minmax(0,1.08fr)_minmax(22rem,.92fr)]",
+    );
   });
 
   it("상세 전용 필드는 표 승격 동작을 제공한다", () => {
-    const html = renderStaticPanel(<ItemDetailPanel
-      boardId="board-a"
-      row={{ ...row, values: { detail_note: "메모" } }}
-      columns={columns}
-      boardLayout={[]}
-      layout={[{ key: "detail_note", source: "detail", label: "상세 메모", type: "text" }]}
-      inherited={false}
-      canEditItems
-      canManageColumns
-      defaultOpen
-    />);
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={{ ...row, values: { detail_note: "메모" } }}
+        columns={columns}
+        boardLayout={[]}
+        layout={[
+          {
+            key: "detail_note",
+            source: "detail",
+            label: "상세 메모",
+            type: "text",
+          },
+        ]}
+        inherited={false}
+        canEditItems
+        canManageColumns
+        defaultOpen
+      />,
+    );
     expect(html).toContain("상세 전용");
     expect(html).toContain("표에도 보이기");
     expect(html).toContain("기본으로 되돌리기");
   });
 
   it("상속된 기본 필드가 있으면 빈 배치 안내 없이 편집 입력을 보여준다", () => {
-    const html = renderStaticPanel(<ItemDetailPanel
-      boardId="board-a"
-      row={{ ...row, values: {} }}
-      columns={columns}
-      boardLayout={[{ key: "company", source: "column", label: "회사명", type: "text" }]}
-      layout={[{ key: "company", source: "column", label: "회사명", type: "text" }]}
-      inherited
-      canEditItems
-      canManageColumns={false}
-      defaultOpen
-    />);
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={{ ...row, values: {} }}
+        columns={columns}
+        boardLayout={[
+          { key: "company", source: "column", label: "회사명", type: "text" },
+        ]}
+        layout={[
+          { key: "company", source: "column", label: "회사명", type: "text" },
+        ]}
+        inherited
+        canEditItems
+        canManageColumns={false}
+        defaultOpen
+      />,
+    );
     expect(html).toContain("보드 기본 배치를 상속 중");
-    expect(html).toContain('name="value"');
+    expect(html).toContain('id="item-a-company"');
+    expect(html).toContain("✓ 자동 저장됨");
     expect(html).not.toContain("배치된 상세 필드가 없습니다");
     expect(html).toContain("이 화면에 배치되지 않은 항목 0개");
   });
@@ -149,6 +210,44 @@ describe("BBE-107 실제 상세 패널", () => {
     expect(source).toContain("createPortal(children, document.body)");
     expect(source).toContain('className="mw-layer-dialog fixed inset-0');
     expect(source).not.toContain('className="fixed inset-0 z-50');
+  });
+
+  it("Issue 524의 업체 정보·첨부·내보내기·알림 대상·불변 히스토리 작성기를 한 drawer에 둔다", () => {
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={row}
+        columns={columns}
+        boardLayout={[{ key: "company", source: "column" }]}
+        layout={[{ key: "company", source: "column" }]}
+        inherited
+        canEditItems
+        canManageColumns
+        defaultOpen
+      />,
+    );
+    for (const copy of [
+      "업체 정보",
+      "첨부 · 링크",
+      "TXT 추출",
+      "CSV",
+      "이 건이 바뀌면 알게 되는 사람",
+      "히스토리",
+      "통화 기록",
+      "삭제 불가",
+    ]) {
+      expect(html).toContain(copy);
+    }
+    expect(html).toContain("✓ 저장됨");
+    expect(html).toContain('aria-label="메모 또는 통화 기록"');
+    expect(html).toContain("링크 복사");
+    expect(html).toContain("← 이전");
+    const source = readFileSync(sourcePath, "utf8");
+    expect(source).toContain("setTimeout(() => save(valueRef.current), 700)");
+    expect(source).toContain(
+      'window.addEventListener("hashchange", syncFromHash)',
+    );
+    expect(source).toContain("window.history.replaceState");
   });
 
   it.each<CloseChannel>(["Escape", "backdrop", "close button"])(
@@ -173,11 +272,19 @@ describe("BBE-107 실제 상세 패널", () => {
   it("Escape·pointer·ref가 실행형 helper에 실제로 결속돼 있다", () => {
     const source = readFileSync(sourcePath, "utf8");
     expect(source).toContain('event.key === "Escape"');
-    expect(source).toContain('window.addEventListener("keydown", closeOnEscape)');
-    expect(source).toContain('window.removeEventListener("keydown", closeOnEscape)');
-    expect(source).toContain("isDetailPanelBackdrop(event.target, event.currentTarget)");
+    expect(source).toContain(
+      'window.addEventListener("keydown", closeOnEscape)',
+    );
+    expect(source).toContain(
+      'window.removeEventListener("keydown", closeOnEscape)',
+    );
+    expect(source).toContain(
+      "isDetailPanelBackdrop(event.target, event.currentTarget)",
+    );
     expect(source).toContain("focusDetailPanelElement(closeButtonRef.current)");
     expect(source).toContain("ref={triggerRef}");
-    expect(source).toContain("restoreDetailPanelOpener(open, wasOpenRef.current, triggerRef.current)");
+    expect(source).toContain(
+      "restoreDetailPanelOpener(open, wasOpenRef.current, triggerRef.current)",
+    );
   });
 });
