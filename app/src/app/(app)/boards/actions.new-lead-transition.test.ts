@@ -25,7 +25,7 @@ vi.mock("@/lib/boards/server", () => ({
   createRequestBoards: async () => ({
     client: { rpc },
     repo: {},
-    service: { setCells },
+    service: { setCells, getBoardDetail: async () => ({ columns: [{ key: "contact_move", type: "select" }] }) },
   }),
 }));
 

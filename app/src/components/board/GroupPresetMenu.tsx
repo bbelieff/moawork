@@ -136,7 +136,7 @@ export function GroupPresetMenu({
       }}
     >
       <summary
-        aria-label={`${presetName} 아이템 프리셋 메뉴`}
+        aria-label={`${presetName} 업무 양식 메뉴`}
         className="flex cursor-pointer list-none items-center gap-1 rounded-full border border-mw-line px-2 py-0.5 hover:bg-mw-bg [&::-webkit-details-marker]:hidden"
       >
         <span>{presetName}</span>
@@ -148,8 +148,8 @@ export function GroupPresetMenu({
         className="absolute right-0 z-20 mt-1 flex w-[min(20rem,calc(100vw-2rem))] flex-col gap-3 rounded-xl border border-mw-line bg-mw-card p-3 text-left text-xs shadow-lg"
       >
         <div>
-          <p className="font-semibold text-mw-fg">아이템 프리셋 — 구조</p>
-          <p className="mt-0.5 text-mw-sub">이 아이템의 컬럼 구조를 저장하고, 다른 프리셋과 견줘 봅니다.</p>
+          <p className="font-semibold text-mw-fg">업무 양식</p>
+          <p className="mt-0.5 text-mw-sub">이 단계의 기록 항목 묶음을 저장하고, 적용 전에 결과를 미리 봅니다.</p>
         </div>
 
         {!canEditPresets && (

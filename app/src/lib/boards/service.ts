@@ -189,6 +189,14 @@ export class BoardsService {
     return (await this.repo).createGroup(ctx, boardId, input);
   }
 
+  async reorderGroups(ctx: Ctx, boardId: string, groupIds: readonly string[]) {
+    await this.requireEditableBoard(ctx, boardId);
+    if (groupIds.length === 0 || new Set(groupIds).size !== groupIds.length) {
+      throw new BoardRuleError("그룹 순서가 올바르지 않습니다");
+    }
+    return (await this.repo).reorderGroups(ctx, boardId, groupIds);
+  }
+
   // ── 아이템 + 셀 ──
   // BBE-214 — 보드 메타(컬럼)와 아이템 목록은 서로 독립이다. 같이 발행한다.
   // 보드가 없으면 getBoardDetail 이 거부하므로 NotFoundError 는 그대로 나간다.

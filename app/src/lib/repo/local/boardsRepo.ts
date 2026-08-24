@@ -129,16 +129,28 @@ export class LocalBoardsRepo {
   }
 
   createGroup(ctx: Ctx, boardId: string, input: NewGroup): BoardGroup {
+    const groups = this.listGroups(ctx, boardId);
     const group: BoardGroup = {
       id: crypto.randomUUID(),
       org_id: ctx.org.id,
       board_id: boardId,
       name: input.name,
       color: input.color ?? null,
-      sort_order: this.listGroups(ctx, boardId).length,
+      sort_order: input.sortOrder ?? (groups.length === 0 ? 0 : Math.max(...groups.map((group) => group.sort_order)) + 1),
     };
     db().boardGroups.push(group);
     return group;
+  }
+
+  reorderGroups(ctx: Ctx, boardId: string, groupIds: readonly string[]): BoardGroup[] {
+    const groups = this.listGroups(ctx, boardId);
+    if (groupIds.length !== groups.length || new Set(groupIds).size !== groups.length
+      || groups.some((group) => !groupIds.includes(group.id))) {
+      throw new Error("그룹 순서가 현재 보드와 일치하지 않습니다.");
+    }
+    const byId = new Map(groups.map((group) => [group.id, group]));
+    groupIds.forEach((id, index) => { byId.get(id)!.sort_order = index; });
+    return this.listGroups(ctx, boardId);
   }
 
   deleteGroup(ctx: Ctx, id: string): boolean {

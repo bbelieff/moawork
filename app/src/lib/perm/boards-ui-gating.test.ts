@@ -48,7 +48,12 @@ describe("boards UI consumes effective permissions", () => {
     expect(source).toContain("canEditItems={canEditItems}");
     expect(source).toContain("canDeleteItems={canDeleteItems}");
     expect(source).toContain("canManageColumns={canManageColumns}");
-    expect(source).toContain("canDeleteBoard && <form action={deleteBoardAction}");
+    expect(source).toContain("canManageSections={canManageSections}");
+    expect(source).toContain('id="board-work-forms"');
+    expect(source).toContain("groups.map((group) =>");
+    expect(source).toContain("<GroupPresetMenu key={group.id}");
+    expect(source).toContain('canDeleteBoard && <section className="rounded-xl border border-mw-error/40');
+    expect(source).toContain('<form action={deleteBoardAction}>');
     const table = readFileSync(join(__dirname, "..", "..", "components", "board", "GroupTable.tsx"), "utf8");
     expect(table).toMatch(/\{canManageColumns\s*&&\s*\(\s*<span/);
     // BBE-239 — 공지사항 작성자 예외로 canDeleteRow 가 됐지만, role 권한(canDeleteItems)은

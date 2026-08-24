@@ -30,7 +30,7 @@ vi.mock("@/lib/auth/session", () => ({
 }));
 vi.mock("@/lib/perm/guard", () => ({ loadPermGuard: async () => guard }));
 vi.mock("@/lib/perm/server", () => ({ recordRiskyAction: async () => risky }));
-vi.mock("@/lib/boards/server", () => ({ createRequestBoards: async () => ({ service: { createItem, setCells }, client: {}, repo: {} }) }));
+vi.mock("@/lib/boards/server", () => ({ createRequestBoards: async () => ({ service: { createItem, setCells, getBoardDetail: async () => ({ columns: [{ key: "industry", type: "text" }] }) }, client: {}, repo: {} }) }));
 
 import { addItemAction, setCellAction } from "./actions";
 

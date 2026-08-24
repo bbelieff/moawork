@@ -180,6 +180,7 @@ export async function ensureDefaultTabAdditive(
   });
 
   const groups = await store.listGroups(ctx, board.id);
+  let nextGroupOrder = groups.length === 0 ? 0 : Math.max(...groups.map((group) => group.sort_order)) + 1;
   const groupIds: Record<string, string> = {};
   for (const definition of tab.groups) {
     const assignee = definition.assigneeSlot === undefined
@@ -192,9 +193,10 @@ export async function ensureDefaultTabAdditive(
     const group = existing ?? await store.createGroup(ctx, board.id, {
       name: expectedName,
       color: definition.color,
+      sortOrder: nextGroupOrder,
     });
     groupIds[definition.name] = group.id;
-    if (!existing) groups.push(group);
+    if (!existing) { groups.push(group); nextGroupOrder += 1; }
   }
 
   const columns = await store.listColumns(ctx, board.id);
@@ -250,9 +252,11 @@ export async function ensureDefaultTab(
   const existing = (await store.listBoards(ctx)).find((board) => board.source === tab.source);
   if (existing) {
     const currentGroups = await store.listGroups(ctx, existing.id);
+    let nextGroupOrder = currentGroups.length === 0 ? 0 : Math.max(...currentGroups.map((group) => group.sort_order)) + 1;
     for (const definition of tab.groups.filter((group) => group.assigneeSlot === undefined)) {
       if (!currentGroups.some((group) => group.name === definition.name)) {
-        await store.createGroup(ctx, existing.id, { name: definition.name, color: definition.color });
+        await store.createGroup(ctx, existing.id, { name: definition.name, color: definition.color, sortOrder: nextGroupOrder });
+        nextGroupOrder += 1;
       }
     }
     const groupIds = await reconcileAssigneeGroups(ctx, store, existing.id, tab, assignees);
@@ -302,6 +306,7 @@ export async function ensureDefaultTab(
 
   // 그룹 먼저 — 이동 규칙이 group id 를 가리켜야 하기 때문이다.
   const groupIds: Record<string, string> = {};
+  let nextGroupOrder = 0;
   for (const group of tab.groups) {
     const assignee = group.assigneeSlot === undefined ? undefined : assignees[group.assigneeSlot];
     if (group.assigneeSlot !== undefined && !assignee) continue;
@@ -309,7 +314,9 @@ export async function ensureDefaultTab(
     groupIds[group.name] = (await store.createGroup(ctx, board.id, {
       name,
       color: group.color,
+      sortOrder: nextGroupOrder,
     })).id;
+    nextGroupOrder += 1;
   }
 
   const columnKeys: string[] = [];
@@ -490,9 +497,13 @@ async function reconcileAssigneeGroups(
 
     const expectedName = assigneeGroupName(definition.name, assignee);
     if (!current || current.name !== expectedName) {
+      const currentGroups = await store.listGroups(ctx, boardId);
+      const inheritedOrder = current?.sort_order
+        ?? (currentGroups.length === 0 ? 0 : Math.max(...currentGroups.map((group) => group.sort_order)) + 1);
       const replacement = await store.createGroup(ctx, boardId, {
         name: expectedName,
         color: definition.color,
+        sortOrder: inheritedOrder,
       });
       if (current) {
         await moveItems(current.id);

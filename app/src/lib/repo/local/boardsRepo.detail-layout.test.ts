@@ -43,4 +43,16 @@ describe("LocalBoardsRepo BBE-107 저장 계약", () => {
     expect(repo.listValues(ctx, [item.id])).toEqual(before);
     expect(repo.listValues(ctx, [item.id])).toHaveLength(2);
   });
+
+  it("그룹 생성은 max+1이며 재정렬은 같은 보드의 전체 집합만 허용한다", () => {
+    const repo = new LocalBoardsRepo();
+    const board = repo.createBoard(ctx, { name: "업무" });
+    const other = repo.createBoard(ctx, { name: "다른 업무" });
+    const a = repo.createGroup(ctx, board.id, { name: "A", sortOrder: 7 });
+    const b = repo.createGroup(ctx, board.id, { name: "B" });
+    const outside = repo.createGroup(ctx, other.id, { name: "외부" });
+    expect(b.sort_order).toBe(8);
+    expect(repo.reorderGroups(ctx, board.id, [b.id, a.id]).map((group) => group.id)).toEqual([b.id, a.id]);
+    expect(() => repo.reorderGroups(ctx, board.id, [a.id, outside.id])).toThrow(/현재 보드/u);
+  });
 });
