@@ -23,6 +23,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.4",
     "jsdom": "26.1.0",
+    "playwright-core": "^1.55.0",
     "vitest": "^2.1.9"
   }
 }

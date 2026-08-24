@@ -151,6 +151,7 @@ export function BoardCell({
   canonicalNewLead,
   members = [],
   error,
+  cellAction,
 }: {
   boardId: string;
   row: ItemWithValues;
@@ -159,6 +160,8 @@ export function BoardCell({
   canonicalNewLead?: boolean;
   members?: readonly { id: string; label: string }[];
   error?: string | null;
+  /** 결정론적 화면 검증에서만 저장소 경계를 바꾼다. 실제 셀 폼/제출 흐름은 그대로 둔다. */
+  cellAction?: (formData: FormData) => Promise<void>;
 }) {
   const value = row.values[column.key] ?? null;
   const options = column.options_jsonb?.options ?? [];
@@ -235,7 +238,7 @@ export function BoardCell({
             ? updateNewLeadFieldAction
             : auditedMetaEdit
               ? updateNewLeadMetaAction
-              : setCellAction
+              : cellAction ?? setCellAction
         }
         aria-describedby={errorId}
         onSubmit={
@@ -393,6 +396,7 @@ export function GroupTable({
   onColumnArchived,
   scheduleItems = [],
   scheduleRecipients = [],
+  cellAction,
 }: {
   boardId: string;
   canonicalNewLead?: boolean;
@@ -432,6 +436,7 @@ export function GroupTable({
   onColumnArchived?: (columnId: string) => void;
   scheduleItems?: readonly ColumnScheduleItemOption[];
   scheduleRecipients?: readonly ColumnScheduleRecipientOption[];
+  cellAction?: (formData: FormData) => Promise<void>;
 }) {
   /*
    * 드래그 중인 대상은 **ref 가 정본**이고 state 는 표시(반투명·강조)에만 쓴다.
@@ -538,7 +543,7 @@ export function GroupTable({
   };
 
   return (
-    <div className="max-h-[70vh] overflow-auto">
+    <div className="max-h-[70vh] min-w-0 max-w-full overflow-auto">
       <table className="w-full border-collapse text-left">
         <thead>
           <tr>
@@ -582,6 +587,7 @@ export function GroupTable({
                   style={width ? { width, minWidth: width } : undefined}
                   data-view-focus={col.key === focusColumnKey || undefined}
                   data-column-key={col.key}
+                  data-right-pinned={col.rightPinned || undefined}
                   className={`relative sticky top-0 z-20 min-w-20 border-b border-mw-line px-2 py-1.5 text-xs font-semibold text-mw-sub ${col.key === focusColumnKey ? "bg-mw-tint-blue" : "bg-mw-card"} ${
                     !canManageColumns
                       ? ""
@@ -774,6 +780,7 @@ export function GroupTable({
                     key={col.id}
                     data-view-focus={col.key === focusColumnKey || undefined}
                     data-column-key={col.key}
+                    data-right-pinned={col.rightPinned || undefined}
                     className={`border-b border-mw-line px-2 align-middle group-hover:bg-mw-bg ${(col.wrap_mode ?? textMode) === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
                       col.rightPinned
                         ? "sticky right-0 z-10 border-l-2 border-l-mw-primary bg-mw-card"
@@ -792,6 +799,7 @@ export function GroupTable({
                           ? findCellError(cellFlash, row.id, col.key)
                           : null
                       }
+                      cellAction={cellAction}
                     />
                   </td>
                 ))}

@@ -74,6 +74,7 @@
 
 - 기준 뷰포트 **1440px**. **375px 도 확인한다.**
 - 브랜드 토큰 하드코딩 금지 — `--mw-*` · `--sp-*` · `--fs-*` 를 참조한다.
+- 화면 변경은 `1440×900`·`375×812`에서 원자 블록의 위치·읽기 순서·sticky·겉보기부터 GREEN이어야 한다. 텍스트/컴포넌트가 코드에 존재하는 것만으로 UI 완료를 주장하지 않는다. machine-readable 계약과 실행 게이트는 `docs/design/visual-block-contract.json`·`docs/design/qa-visual-blocks.mjs`가 맡고, 작업 순서는 `AGENTS.md §3.1`을 따른다.
 - PostHog 는 US 리전 + 프록시.
 - `app_admins` 를 직접 select 하지 않는다 — `app_admin_role()` 을 쓴다.
 
