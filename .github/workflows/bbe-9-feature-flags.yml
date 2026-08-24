@@ -10,7 +10,9 @@ on:
 
 jobs:
   feature-flag-contract:
-    runs-on: ubuntu-latest
+    # ci.yml 과 같은 이유로 셀프호스티드다 — 근거는 그쪽 주석에 적었다.
+    runs-on: self-hosted
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
