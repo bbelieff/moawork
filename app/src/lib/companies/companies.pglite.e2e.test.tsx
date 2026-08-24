@@ -32,7 +32,24 @@ function source(db: PGlite): CompaniesViewSource {
         [ctx.org.id, dealId],
       );
       const row = result.rows[0];
-      return { total: row.total, received: row.received, outstanding: row.total - row.received, fee: row.fee };
+      // #531 — 표는 합계가 아니라 건별 계약금·수수료·수납일을 그린다. entry 원본도 같이 넘긴다.
+      const detail = await db.query<DbRow>(
+        "select * from ledger where org_id=$1 and deal_id=$2 order by id",
+        [ctx.org.id, dealId],
+      );
+      const entries = detail.rows.map((entry) => ({
+        id: String(entry.id),
+        dealId,
+        kind: entry.kind as "fee" | "contract_deposit",
+        amount: Number(entry.amount),
+        receivedAmount: Number(entry.received),
+        occurredOn: "2026-08-01",
+        paidOn: Number(entry.received) > 0 ? "2026-08-02" : null,
+        attributionMonth: "2026-08",
+        vatIncluded: false,
+        taxInvoiceIssued: false,
+      }));
+      return { total: row.total, received: row.received, outstanding: row.total - row.received, fee: row.fee, entries };
     },
   };
 }

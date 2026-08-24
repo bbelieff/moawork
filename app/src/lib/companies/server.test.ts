@@ -19,7 +19,7 @@ function source(overrides: Partial<CompaniesViewSource> = {}): CompaniesViewSour
   return {
     loadCompanies: vi.fn(async () => [company]),
     loadDeals: vi.fn(async () => [deal]),
-    loadLedger: vi.fn(async () => ({ total: 1000, received: 400, outstanding: 600, fee: 300 })),
+    loadLedger: vi.fn(async () => ({ total: 1000, received: 400, outstanding: 600, fee: 300, entries: [] })),
     ...overrides,
   } as CompaniesViewSource;
 }
