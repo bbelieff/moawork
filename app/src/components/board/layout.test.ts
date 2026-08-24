@@ -6,6 +6,7 @@ import {
   COLUMN_MIN_WIDTH,
   groupKeyOf,
   moveWithin,
+  pinActionColumnsRight,
   placeAdNameNearContact,
   reorderColumnKeys,
   resolveColumnOrder,
@@ -95,6 +96,13 @@ describe("resolveColumnOrder — 그룹별 배치 오버라이드", () => {
     const gB = resolveColumnOrder(COLUMNS, undefined).map((c) => c.key);
     expect(gA).toEqual(["c", "b", "a"]);
     expect(gB).toEqual(["a", "b", "c"]);
+  });
+
+  it("저장된 오버라이드가 관문을 앞으로 옮겨도 실제 맨 오른쪽에 고정한다", () => {
+    const columns = [col("name"), col("gate", { rightPinned: true }), col("phone")];
+    expect(resolveColumnOrder(columns, ["gate", "name", "phone"]).map((item) => item.key))
+      .toEqual(["name", "phone", "gate"]);
+    expect(pinActionColumnsRight(columns).at(-1)?.key).toBe("gate");
   });
 });
 

@@ -93,6 +93,7 @@ export type DefaultTabDrift = {
   boardMissing: boolean;
   missingGroupNames: string[];
   missingColumnKeys: string[];
+  definitionRevisionBehind: boolean;
   /** 하나라도 만들 것이 있는가. false 면 ensureDefaultTabAdditive 는 «아무것도 쓰지 않는다». */
   hasWork: boolean;
 };
@@ -126,6 +127,7 @@ export async function readDefaultTabDrift(
       boardMissing: true,
       missingGroupNames: tab.groups.map((group) => group.name),
       missingColumnKeys: tab.columns.map((column) => column.key),
+      definitionRevisionBehind: false,
       hasWork: true,
     };
   }
@@ -147,13 +149,77 @@ export async function readDefaultTabDrift(
   const missingColumnKeys = tab.columns
     .filter((definition) => !findExistingColumn(definition, columns))
     .map((definition) => definition.key);
+  const state = tab.revision !== undefined && store.getDefaultDefinitionState
+    ? await store.getDefaultDefinitionState(ctx, board.id)
+    : null;
+  const legacyPropertyNeedsReconcile = !state && tab.previousRevision
+    ? Object.entries(tab.previousRevision.columns).some(([key, baseline]) => {
+      const column = columns.find((candidate) => candidate.key === key);
+      const definition = tab.columns.find((candidate) => candidate.key === key);
+      if (!column || !definition) return false;
+      return (baseline.readOnly !== undefined
+          && Boolean(column.is_readonly) === baseline.readOnly
+          && baseline.readOnly !== Boolean(definition.readOnly))
+        || (baseline.rightPinned !== undefined
+          && column.rightPinned === baseline.rightPinned
+          && baseline.rightPinned !== Boolean(definition.rightPinned));
+    })
+    : false;
+  const definitionRevisionBehind = tab.revision !== undefined
+    && (state ? state.revision < tab.revision : legacyPropertyNeedsReconcile);
 
   return {
     boardMissing: false,
     missingGroupNames,
     missingColumnKeys,
-    hasWork: missingGroupNames.length > 0 || missingColumnKeys.length > 0,
+    definitionRevisionBehind,
+    hasWork: missingGroupNames.length > 0 || missingColumnKeys.length > 0 || definitionRevisionBehind,
   };
+}
+
+function desiredDefinitionState(tab: DefaultTab, columns: readonly { key: string; label: string; is_readonly?: boolean; rightPinned: boolean; sort_order: number }[]) {
+  return {
+    revision: tab.revision ?? 1,
+    columns: Object.fromEntries(columns.map((column) => [column.key, {
+      label: column.label,
+      readOnly: Boolean(column.is_readonly),
+      rightPinned: column.rightPinned,
+      sortOrder: column.sort_order,
+    }])),
+  };
+}
+
+async function reconcileDefaultDefinition(
+  ctx: Ctx,
+  tab: DefaultTab,
+  store: BoardsRepo,
+  boardId: string,
+): Promise<void> {
+  if (tab.revision === undefined && tab.previousRevision === undefined) return;
+  if (!store.getDefaultDefinitionState || !store.setDefaultDefinitionState) return;
+  const targetRevision = tab.revision ?? 1;
+  const priorState = await store.getDefaultDefinitionState(ctx, boardId);
+  const priorRevision = priorState?.revision ?? tab.previousRevision?.revision ?? targetRevision;
+  let columns = await store.listColumns(ctx, boardId);
+  if (priorRevision < targetRevision) {
+    for (const definition of tab.columns) {
+      const column = columns.find((candidate) => candidate.key === definition.key);
+      if (!column) continue;
+      const baseline = priorState?.columns[definition.key] ?? tab.previousRevision?.columns[definition.key];
+      if (!baseline) continue;
+      const patch: Parameters<BoardsRepo["updateColumn"]>[2] = {};
+      const desiredReadOnly = definition.readOnly ?? false;
+      if (baseline.readOnly !== undefined
+        && Boolean(column.is_readonly) === baseline.readOnly
+        && baseline.readOnly !== desiredReadOnly) patch.readOnly = desiredReadOnly;
+      if (baseline.rightPinned !== undefined
+        && column.rightPinned === baseline.rightPinned
+        && baseline.rightPinned !== Boolean(definition.rightPinned)) patch.rightPinned = Boolean(definition.rightPinned);
+      if (Object.keys(patch).length > 0) await store.updateColumn(ctx, column.id, patch);
+    }
+    columns = await store.listColumns(ctx, boardId);
+  }
+  await store.setDefaultDefinitionState(ctx, boardId, desiredDefinitionState(tab, columns));
 }
 
 /**
@@ -219,6 +285,8 @@ export async function ensureDefaultTabAdditive(
     columns.push(column);
     nextSortOrder += 1;
   }
+
+  await reconcileDefaultDefinition(ctx, tab, store, board.id);
 
   return {
     tabKey: tab.key,
@@ -288,6 +356,7 @@ export async function ensureDefaultTab(
       }
     }
     const reconciledColumns = await store.listColumns(ctx, existing.id);
+    await reconcileDefaultDefinition(ctx, tab, store, existing.id);
     return {
       tabKey: tab.key,
       boardId: existing.id,
@@ -337,6 +406,8 @@ export async function ensureDefaultTab(
     columnKeys.push((await store.createColumn(ctx, board.id, input)).key);
     nextSortOrder += 1;
   }
+
+  await reconcileDefaultDefinition(ctx, tab, store, board.id);
 
   return { tabKey: tab.key, boardId: board.id, created: true, groupIds, columnKeys };
 }

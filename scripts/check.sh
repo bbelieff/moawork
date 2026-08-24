@@ -35,7 +35,7 @@ node scripts/check-unreachable-app-files.mjs
 
 # ── 규칙 공지 (2026-08-20 일원화) ───────────────────────
 # 왜 여기 있나: 모든 세션이 커밋 전에 반드시 이 스크립트를 지난다.
-# Linear 댓글은 «도는 창» 을 깨우지 못한다. 이 배너만이 확실히 닿는다.
+# GitHub 댓글은 «도는 창» 을 깨우지 못한다. 이 배너만이 확실히 닿는다.
 #
 # ★ 이 배너에 규칙을 적지 마라. 가리키기만 한다.
 #   이전 판은 규칙 35줄을 여기 복사해 두었고, 그게 «정본을 자칭하는 여섯 번째 사본» 이 됐다.
@@ -52,7 +52,7 @@ node scripts/check-unreachable-app-files.mjs
   echo "      그것들은 «그때 그랬다» 는 기록이다. 폐기 목록은 AGENTS.md §10."
   echo ""
   echo "   바뀜 것: 반·칸·진영(DC/NC/DG/NG) 폐지 → «코디네이터 1 + 워커 N»"
-  echo "             배정의 정본은 Linear · 워커는 보고하고 턴을 끝난다(스스로 다음 카드를 집지 않는다)"
+  echo "             배정의 정본은 GitHub Issue + Project #1 · Linear는 READ_ONLY_ARCHIVE"
   echo "=============================================================="
   echo ""
 echo "▶ [0/4] decision dashboard"
@@ -74,15 +74,7 @@ npm run test --workspace worker --if-present
 
 echo "▶ [4/4] 목업↔앱 대조"
 node docs/design/qa-app.mjs --self-test
-set +e
 node docs/design/qa-app.mjs
-qa_app_status=$?
-set -e
-if [[ "$qa_app_status" -eq 1 ]]; then
-  echo "⚠️ qa-app 차이 보고 완료 — 1단계에서는 check를 실패시키지 않습니다"
-elif [[ "$qa_app_status" -ne 0 ]]; then
-  echo "❌ qa-app 자체 실행 실패 — 차이 보고로 숨기지 않습니다"
-  exit "$qa_app_status"
-fi
+node docs/design/qa-board-parity.mjs new contact
 
 echo "✅ check 통과"

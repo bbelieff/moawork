@@ -216,11 +216,11 @@ describe("리드컨택 기본 탭 설치", () => {
     expect(targetNames[assignees[2].userId]).toContain(assignees[1].displayName);
   });
 
-  it("연결 7컬럼은 DB와 화면 모두 쓰기 금지로 심긴다", async () => {
+  it("연결 7컬럼은 provenance를 보존하면서 DB와 화면 모두 편집 가능하게 심긴다", async () => {
     const result = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo));
     const linked = repo.listColumns(ctx, result.boardId).filter((column) => column.source === "lk");
     expect(linked).toHaveLength(7);
-    for (const column of linked) expect(column.is_readonly, column.label).toBe(true);
+    for (const column of linked) expect(column.is_readonly, column.label).toBe(false);
   });
 
   it("업무이동에는 그룹 이동 규칙을 심지 않는다 — BBE-152 관문 실행 미포함", async () => {

@@ -58,7 +58,7 @@ export function resolveColumnOrder(
   columns: readonly BoardColumn[],
   override: readonly string[] | undefined,
 ): BoardColumn[] {
-  if (!override || override.length === 0) return [...columns];
+  if (!override || override.length === 0) return pinActionColumnsRight(columns);
 
   const byKey = new Map(columns.map((c) => [c.key, c]));
   const ordered: BoardColumn[] = [];
@@ -74,7 +74,15 @@ export function resolveColumnOrder(
   for (const col of columns) {
     if (!taken.has(col.key)) ordered.push(col);
   }
-  return ordered;
+  return pinActionColumnsRight(ordered);
+}
+
+/** 업무 관문은 그룹별 사용자 배치와 무관하게 화면의 실제 맨 오른쪽에 남는다. */
+export function pinActionColumnsRight(columns: readonly BoardColumn[]): BoardColumn[] {
+  return [
+    ...columns.filter((column) => !column.rightPinned),
+    ...columns.filter((column) => column.rightPinned),
+  ];
 }
 
 /**

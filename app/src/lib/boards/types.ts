@@ -57,7 +57,7 @@ export interface BoardColumn {
   deleted_by?: string | null;
   label: string;
   type: FieldType;
-  /** 값이 어디서 오는가(D09) — 편집 가능 여부를 결정한다. 미지정 컬럼은 "in"(직접 입력)으로 본다. */
+  /** 값의 provenance(D09). 편집 가능 여부는 `is_readonly`가 별도로 결정한다. */
   source: FieldSource;
   /**
    * 이 컬럼이 "아이템을 옮기는" 우측 고정 열인가(D11). 보드당 보통 0~1개.

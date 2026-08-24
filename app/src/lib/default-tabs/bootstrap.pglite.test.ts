@@ -16,18 +16,21 @@ async function setup() {
     create table boards(id text primary key default gen_random_uuid()::text,org_id text not null,name text not null,description text,icon text,source text,sort_order int not null default 0,created_by text,is_system boolean default false,detail_layout_jsonb jsonb,created_at timestamptz default now(),updated_at timestamptz default now(),unique(org_id,source));
     create table board_groups(id text primary key default gen_random_uuid()::text,org_id text not null,board_id text not null,name text not null,color text,sort_order int not null default 0,detail_layout_jsonb jsonb);
     create table board_columns(id text primary key default gen_random_uuid()::text,org_id text not null,board_id text not null,key text not null,label text not null,type text not null,source text,options_jsonb jsonb,width int,right_pinned boolean default false,is_readonly boolean default false,move_rule_jsonb jsonb,sort_order int not null default 0,archived_at timestamptz,deleted_by text,unique(board_id,key));
+    create table board_views(id text primary key default gen_random_uuid()::text,org_id text not null,board_id text not null,user_id text,name text not null,kind text not null,filters_jsonb jsonb not null default '{}',sort_jsonb jsonb not null default '[]',visible_columns_jsonb jsonb not null default '[]',shared boolean not null default false,unique(board_id,name));
     create table items(id text primary key,org_id text not null,board_id text not null,group_id text,title text,updated_at timestamptz default now());
     create table item_values(org_id text not null,item_id text not null,column_key text not null,value_jsonb jsonb,primary key(item_id,column_key));
     create role authenticated;
     grant usage on schema public to authenticated;
-    grant select,insert,update,delete on boards,board_groups,board_columns to authenticated;
-    alter table boards enable row level security; alter table board_groups enable row level security; alter table board_columns enable row level security;
+    grant select,insert,update,delete on boards,board_groups,board_columns,board_views to authenticated;
+    alter table boards enable row level security; alter table board_groups enable row level security; alter table board_columns enable row level security; alter table board_views enable row level security;
     create policy boards_read on boards for select to authenticated using(org_id=current_setting('app.org_id',true));
     create policy boards_write on boards for all to authenticated using(org_id=current_setting('app.org_id',true) and current_setting('app.role',true) in ('owner','admin')) with check(org_id=current_setting('app.org_id',true) and current_setting('app.role',true) in ('owner','admin'));
     create policy groups_read on board_groups for select to authenticated using(org_id=current_setting('app.org_id',true));
     create policy groups_write on board_groups for all to authenticated using(org_id=current_setting('app.org_id',true) and current_setting('app.role',true) in ('owner','admin')) with check(org_id=current_setting('app.org_id',true) and current_setting('app.role',true) in ('owner','admin'));
     create policy columns_read on board_columns for select to authenticated using(org_id=current_setting('app.org_id',true));
     create policy columns_write on board_columns for all to authenticated using(org_id=current_setting('app.org_id',true) and current_setting('app.role',true) in ('owner','admin')) with check(org_id=current_setting('app.org_id',true) and current_setting('app.role',true) in ('owner','admin'));
+    create policy views_read on board_views for select to authenticated using(org_id=current_setting('app.org_id',true));
+    create policy views_write on board_views for all to authenticated using(org_id=current_setting('app.org_id',true) and current_setting('app.role',true) in ('owner','admin')) with check(org_id=current_setting('app.org_id',true) and current_setting('app.role',true) in ('owner','admin'));
   `);
   return db;
 }
@@ -52,7 +55,7 @@ class PgliteQuery {
   async maybeSingle(){return this.single();}
   then(resolve:(value:{data:unknown;error:null;count?:number})=>unknown,reject?:(reason:unknown)=>unknown){return this.run().then(resolve,reject);}
   private async run(){
-    const allowed=new Set(["boards","board_groups","board_columns"]);if(!allowed.has(this.table))throw new Error("table denied");
+    const allowed=new Set(["boards","board_groups","board_columns","board_views"]);if(!allowed.has(this.table))throw new Error("table denied");
     const values:unknown[]=[];const where=this.filters.length?" where "+this.filters.map(filter=>{if(filter.operator==="is")return `"${filter.column}" is null`;values.push(filter.value);return `"${filter.column}" ${filter.operator==="eq"?"=":"like"} $${values.length}`;}).join(" and "):"";
     if(this.action==="select"){const result=await this.db.query<Record<string,unknown>>(`select * from ${this.table}${where}${this.ordering?` order by "${this.ordering}"`:""}`,values);return {data:this.head?null:result.rows,error:null,count:result.rows.length};}
     if(this.action==="insert"){const entries=Object.entries(this.payload??{});for(const [,value] of entries)values.push(value);const start=values.length-entries.length+1;const sql=`insert into ${this.table}(${entries.map(([key])=>`"${key}"`).join(",")}) values(${entries.map((_,i)=>`$${start+i}`).join(",")}) returning *`;return {data:(await this.db.query(sql,values)).rows,error:null};}

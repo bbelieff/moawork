@@ -42,11 +42,11 @@ describe("리드컨택 기본 탭 — 목업 계약", () => {
     }
   });
 
-  it("회사명 제목 1칸 + 연결(lk) 7컬럼 = 이전 단계 연결 8칸이며 명시 컬럼은 전부 읽기 전용이다", () => {
+  it("회사명 제목 1칸 + 연결(lk) 7컬럼은 provenance를 보존하면서 직접 편집 가능하다", () => {
     const linked = CONTACT_TAB.columns.filter((column) => column.source === "lk");
     expect(linked).toHaveLength(7);
     expect(1 + linked.length).toBe(8);
-    for (const column of linked) expect(column.readOnly, column.label).toBe(true);
+    for (const column of linked) expect(column.readOnly, column.label).not.toBe(true);
   });
 
   it("담당자 값은 정적 사람 선택지가 아니라 멤버 계정 3슬롯 + 미배정의 4규칙이다", () => {

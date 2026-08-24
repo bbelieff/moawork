@@ -29,6 +29,7 @@ import type {
   BoardPatch,
   BoardsRepo,
   ColumnPatch,
+  DefaultDefinitionState,
   ItemPatch,
   NewBoard,
   NewColumn,
@@ -97,6 +98,27 @@ export class LocalBoardsRepo {
     Object.assign(b, patch);
     b.updated_at = now();
     return b;
+  }
+
+  getDefaultDefinitionState(ctx: Ctx, boardId: string): DefaultDefinitionState | null {
+    const view = db().boardViews.find((candidate) => candidate.org_id === ctx.org.id
+      && candidate.board_id === boardId && candidate.name === "__mw_default_definition__");
+    return ((view?.filters_jsonb as { state?: DefaultDefinitionState } | undefined)?.state) ?? null;
+  }
+
+  setDefaultDefinitionState(ctx: Ctx, boardId: string, state: DefaultDefinitionState): void {
+    const existing = db().boardViews.find((candidate) => candidate.org_id === ctx.org.id
+      && candidate.board_id === boardId && candidate.name === "__mw_default_definition__");
+    if (existing) {
+      existing.filters_jsonb = { system: "default-definition-state-v1", state };
+      return;
+    }
+    db().boardViews.push({
+      id: crypto.randomUUID(), org_id: ctx.org.id, board_id: boardId, user_id: null,
+      name: "__mw_default_definition__", kind: "table",
+      filters_jsonb: { system: "default-definition-state-v1", state }, sort_jsonb: [],
+      visible_columns_jsonb: [], shared: false,
+    });
   }
 
   deleteBoard(ctx: Ctx, id: string): boolean {
@@ -377,7 +399,8 @@ export class LocalBoardsRepo {
         v.org_id === ctx.org.id &&
         v.board_id === boardId &&
         (v.shared || v.user_id === ctx.user.id || v.user_id === null) &&
-        !isGroupLayoutView(v),
+        !isGroupLayoutView(v) &&
+        v.name !== "__mw_default_definition__",
     );
   }
 
@@ -388,7 +411,8 @@ export class LocalBoardsRepo {
         v.id === id &&
         v.org_id === ctx.org.id &&
         (v.shared || v.user_id === ctx.user.id || v.user_id === null) &&
-        !isGroupLayoutView(v),
+        !isGroupLayoutView(v) &&
+        v.name !== "__mw_default_definition__",
     );
   }
 

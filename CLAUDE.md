@@ -38,6 +38,16 @@
 > **2026-08-24 CUTOVER:** Linear는 `READ_ONLY_ARCHIVE`다. 과거 사실은 보존하지만 신규 이슈·댓글·상태·도장을
 > 쓰지 않는다. 실행 규칙과 최소 필드는 `AGENTS.md §4`가 소유한다.
 
+### 제품 판단 우선순위 — 아래로 갈수록 후순위
+
+1. 현재 작업에서 사용자가 명시한 최신 override
+2. `docs/design/board-parity-overrides.json`의 issue/date/rationale가 있는 machine-readable override
+3. 목업 v6의 구조·타입·행동·시각 위계
+4. 이 문서의 일반 제품 규칙
+5. 과거 이슈·주석·테스트·`docs/**` 기록
+
+후순위 자료의 `NOT_RUN`, 과거 ownership, 오래된 read-only 가정은 최신 계약을 이길 수 없다.
+
 ---
 
 ## 제품
@@ -106,6 +116,8 @@ bash scripts/check.sh      # lint + typecheck + test — 이것이 게이트다
 - `.githooks/pre-commit` 이 커밋 전에 같은 게이트를 실행한다.
   최초 1회 `git config core.hooksPath .githooks` (루트 `npm install` 시 자동).
 - CI(`.github/workflows/ci.yml`)가 push/PR 마다 같은 게이트를 재실행한다.
+- 새 제품 작업은 GitHub Issue + Project #1 범위와 재현 가능한 EVAL을 가져야 한다.
+- 완주는 CI가 아니라 main merge + Production exact + 실제 제품 화면 확인이다.
 
 ---
 

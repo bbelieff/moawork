@@ -47,7 +47,7 @@ export interface DefaultTabColumn {
   key: string;
   label: string;
   type: FieldType;
-  /** 값이 어디서 오는가(D09) — 편집 가능 여부를 정한다. */
+  /** 값의 provenance(D09). `lk`/`auto`는 출처 표시이며 그 자체로 편집 잠금이 아니다. */
   source: FieldSource;
   options?: FieldOption[];
   /** 맨 오른쪽 고정 열 — 가로로 스크롤해도 항상 보인다(설계도 §2-⑥). 탭당 1개. */
@@ -55,9 +55,8 @@ export interface DefaultTabColumn {
   /**
    * 손으로 못 고치는 칸.
    *
-   * ⚠ 두 가지 서로 다른 이유로 켜진다 — 도장에 구분해서 적는다.
-   *   ① 구조적 — ƒ자동계산·⇄연결(lk) 처럼 원래 사람이 못 고치는 칸
-   *   ② **임시 안전장치** — ✉발송 칸. 안전장치(BBE-148 · DC-04)가 오면 «풀린다»
+   * 계산 결과·발송·보안 경계처럼 사용자가 직접 덮어쓰면 안 되는 경우에만 켠다.
+   * `source: "lk" | "auto"`만으로 이 값을 켜면 안 된다.
    */
   readOnly?: boolean;
   width?: number | null;
@@ -108,4 +107,11 @@ export interface DefaultTab {
   /** 배열 순서가 곧 `sort_order` 이고, 목업 컬럼 순서와 같아야 한다. */
   columns: DefaultTabColumn[];
   transitions: DefaultTabTransition[];
+  /** Product definition generation. Installed snapshots reconcile only unchanged properties. */
+  revision?: number;
+  /** Previous product baseline for properties changed by this revision. */
+  previousRevision?: {
+    revision: number;
+    columns: Record<string, { readOnly?: boolean; rightPinned?: boolean }>;
+  };
 }
