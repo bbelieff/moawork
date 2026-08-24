@@ -207,9 +207,19 @@ export async function createBoardAction(formData: FormData): Promise<void> {
     description: str(formData, "description"),
     icon: str(formData, "icon"),
   });
-  const detail = await (await boardsService()).createBoard(ctx, input);
+  const detail = await (await boardsService()).createBoard(ctx, input, str(formData, "requestId") || crypto.randomUUID());
   revalidatePath("/boards");
   redirect(`/boards/${detail.board.id}`);
+}
+
+export async function reorderBoardsAction(formData: FormData): Promise<void> {
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.tab_manage");
+    const boardIds = formData.getAll("boardId").flatMap((value) => typeof value === "string" && value ? [value] : []);
+    await (await boardsService()).reorderBoards(ctx, boardIds, str(formData, "requestId") || crypto.randomUUID());
+    revalidatePath("/boards");
+  });
 }
 
 export async function deleteBoardAction(formData: FormData): Promise<void> {

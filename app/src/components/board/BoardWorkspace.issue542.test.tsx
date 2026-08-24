@@ -1,0 +1,58 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => <a href={href} {...rest}>{children}</a>,
+}));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/boards/board-new",
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+import { BoardWorkspace } from "./BoardWorkspace";
+import { NEW_LEAD_TAB_SOURCE } from "@/lib/default-tabs/types";
+
+const column = (key: string, label: string, sort_order: number) => ({
+  id: `col-${key}`,
+  org_id: "org-a",
+  board_id: "board-new",
+  key,
+  label,
+  type: "text",
+  source: "in",
+  rightPinned: false,
+  options_jsonb: null,
+  sort_order,
+  width: null,
+});
+
+describe("Issue #542 canonical new-lead projection", () => {
+  it("같은 레코드를 유지하면서 표에서 컨택 이동·협업자를 숨기고 상세 열기를 보존한다", () => {
+    const html = renderToStaticMarkup(
+      <BoardWorkspace
+        board={{ id: "board-new", org_id: "org-a", name: "신규리드", description: null, icon: null, source: NEW_LEAD_TAB_SOURCE, is_system: false, sort_order: 0 } as never}
+        columns={[
+          column("company", "업체명", 0),
+          column("consult_status", "상담상황", 1),
+          column("owner", "담당자", 2),
+          column("collaborators", "협업자", 3),
+          column("contact_move", "컨택 이동", 4),
+        ] as never}
+        groups={[{ id: "group-a", org_id: "org-a", board_id: "board-new", name: "새 리드", color: null, sort_order: 0 }] as never}
+        rows={[{ id: "item-a", org_id: "org-a", board_id: "board-new", group_id: "group-a", title: "대한정밀", assigned_to: "user-a", deal_id: "deal-a", sort_order: 0, created_at: "2026-08-25T00:00:00Z", updated_at: "2026-08-25T00:00:00Z", values: { company: "대한정밀", consult_status: "상담 대기", collaborators: ["user-b"], contact_move: "대기" } }] as never}
+        columnOrder={{}}
+        cellFlash={null}
+        assigneeLabels={{ "user-a": "김담당" }}
+        canEditItems
+      />,
+    );
+    expect(html).toContain("업체명");
+    expect(html).toContain("상담상황");
+    expect(html).toContain("담당자");
+    expect(html).toContain("대한정밀 상세 열기");
+    expect(html).not.toContain(">협업자<");
+    expect(html).not.toContain(">컨택 이동<");
+    expect(html).not.toContain("원장 열기");
+  });
+});

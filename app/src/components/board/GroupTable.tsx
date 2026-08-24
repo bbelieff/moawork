@@ -742,6 +742,7 @@ export function GroupTable({
                       canEditItems={!readOnly}
                       canManageColumns={canManageColumns}
                       canonicalNewLead={canonicalNewLead}
+                      memberOptions={newLeadMembers}
                       previousItem={
                         index > 0
                           ? {
@@ -762,7 +763,7 @@ export function GroupTable({
 
                     {/* BBE-240 — 자금건과 연결된 행(BBE-235 프로젝션 트리거가 채운 deal_id)에만
                         뜬다. 컬럼이 아니라 행 자체에 조건부로 붙인다 — TrashItemButton 과 같은 자리. */}
-                    {row.deal_id && <DealLedgerButton dealId={row.deal_id} />}
+                    {!canonicalNewLead && row.deal_id && <DealLedgerButton dealId={row.deal_id} />}
 
                     {canDeleteRow && (
                       <TrashItemButton

@@ -5,14 +5,24 @@ import { listOrgMemberOptions } from "@/lib/deal/members";
 import { createClient } from "@/lib/supabase/server";
 import {
   BOARD_ITEM_FILES_BUCKET,
+  boardItemStoragePath,
   encodeNoticeFile,
 } from "@/lib/notices/official-file";
+import { sanitizeFileName } from "@/lib/services/files";
 import { createRequestBoards } from "@/lib/boards/server";
 import { resolveDetailLayout } from "@/lib/boards/detail-layout";
 import { loadPermGuard } from "@/lib/perm/guard";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ITEM_DETAIL_LIMITS = {
+  fileBytes: 10 * 1024 * 1024,
+  fileCount: 5,
+  fileTotalBytes: 30 * 1024 * 1024,
+  linkCount: 20,
+  linkLabelChars: 100,
+  linkUrlChars: 2048,
+} as const;
 
 export type ItemDetailEvent = {
   id: string;
@@ -88,7 +98,7 @@ export async function loadItemDetailAction(
 ): Promise<ItemDetailSnapshot> {
   try {
     const { ctx, client, item } = await context(boardId, itemId);
-    const [eventsResult, linksResult, filesResult, orgMembers] =
+    const [eventsResult, linksResult, filesResult, collaboratorsResult, orgMembers] =
       await Promise.all([
         client
           .from("board_item_detail_events")
@@ -105,7 +115,7 @@ export async function loadItemDetailAction(
           .eq("board_id", boardId)
           .eq("item_id", itemId)
           .order("created_at", { ascending: false })
-          .limit(50),
+          .limit(ITEM_DETAIL_LIMITS.linkCount),
         client
           .from("board_item_detail_files")
           .select("id,name,mime_type,size_bytes,storage_path,created_at")
@@ -113,12 +123,19 @@ export async function loadItemDetailAction(
           .eq("board_id", boardId)
           .eq("item_id", itemId)
           .order("created_at", { ascending: false })
-          .limit(50),
+          .limit(ITEM_DETAIL_LIMITS.fileCount),
+        client
+          .from("item_values")
+          .select("value_jsonb")
+          .eq("org_id", ctx.org.id)
+          .eq("item_id", itemId)
+          .eq("column_key", "collaborators")
+          .maybeSingle(),
         ctx.role === "owner" || ctx.role === "admin" || ctx.scope === "all"
           ? listOrgMemberOptions(ctx)
           : Promise.resolve([]),
       ]);
-    if (eventsResult.error || linksResult.error || filesResult.error)
+    if (eventsResult.error || linksResult.error || filesResult.error || collaboratorsResult.error)
       throw new Error("상세 기록을 불러오지 못했습니다.");
     const files = await Promise.all(
       (
@@ -139,18 +156,12 @@ export async function loadItemDetailAction(
         };
       }),
     );
-    const members = orgMembers.filter(
-      (member) => member.id === item.assigned_to,
-    );
-    if (
-      item.assigned_to &&
-      !members.some((member) => member.id === item.assigned_to)
-    ) {
-      const assigned = orgMembers.find(
-        (member) => member.id === item.assigned_to,
-      );
-      members.push(assigned ?? { id: item.assigned_to, name: null });
-    }
+    const rawCollaborators = collaboratorsResult.data?.value_jsonb;
+    const collaboratorIds = Array.isArray(rawCollaborators)
+      ? rawCollaborators.filter((value): value is string => typeof value === "string" && UUID.test(value))
+      : [];
+    const memberIds = [...new Set([item.assigned_to, ...collaboratorIds].filter((value): value is string => Boolean(value)))];
+    const members = memberIds.map((id) => orgMembers.find((member) => member.id === id) ?? { id, name: null });
     return {
       ok: true,
       events: (eventsResult.data ?? []) as ItemDetailEvent[],
@@ -228,12 +239,27 @@ export async function addItemDetailLinkAction(input: {
     await requireItemMutationPermission(ctx.org.id);
     if (!UUID.test(input.requestId))
       throw new Error("요청 식별자가 올바르지 않습니다.");
+    const label = input.label.trim();
+    const url = input.url.trim();
+    if (!label || label.length > ITEM_DETAIL_LIMITS.linkLabelChars)
+      throw new Error("링크 이름은 100자 이내로 입력해 주세요.");
+    if (url.length > ITEM_DETAIL_LIMITS.linkUrlChars || !url.startsWith("https://"))
+      throw new Error("2048자 이내의 https:// 링크를 입력해 주세요.");
+    const existing = await client
+      .from("board_item_detail_links")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", ctx.org.id)
+      .eq("board_id", input.boardId)
+      .eq("item_id", input.itemId);
+    if (existing.error) throw new Error("링크 수를 확인하지 못했습니다.");
+    if ((existing.count ?? 0) >= ITEM_DETAIL_LIMITS.linkCount)
+      throw new Error("링크는 항목당 20개까지 연결할 수 있습니다.");
     const { error } = await client.rpc("add_board_item_detail_link", {
       p_org_id: ctx.org.id,
       p_board_id: input.boardId,
       p_item_id: input.itemId,
-      p_label: input.label,
-      p_url: input.url,
+      p_label: label,
+      p_url: url,
       p_request_id: input.requestId,
     });
     if (error)
@@ -262,21 +288,74 @@ export async function uploadItemDetailFileAction(
   formData: FormData,
 ): Promise<ItemDetailSnapshot> {
   let uploadedPath: string | undefined;
+  let reservation: { orgId: string; requestId: string } | undefined;
   try {
     const { ctx, client } = await context(boardId, itemId);
     await requireItemMutationPermission(ctx.org.id);
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0)
       throw new Error("올릴 파일을 선택해 주세요.");
+    const requestId = String(formData.get("requestId") ?? "");
+    if (!UUID.test(requestId))
+      throw new Error("첨부 요청을 다시 시작해 주세요.");
+    if (file.size > ITEM_DETAIL_LIMITS.fileBytes)
+      throw new Error("파일 한 개는 10MB까지 올릴 수 있습니다.");
+    const existing = await client
+      .from("board_item_detail_files")
+      .select("size_bytes")
+      .eq("org_id", ctx.org.id)
+      .eq("board_id", boardId)
+      .eq("item_id", itemId);
+    if (existing.error) throw new Error("첨부 용량을 확인하지 못했습니다.");
+    const existingFiles = existing.data ?? [];
+    if (existingFiles.length >= ITEM_DETAIL_LIMITS.fileCount)
+      throw new Error("파일은 항목당 5개까지 첨부할 수 있습니다.");
+    if (existingFiles.reduce((sum, row) => sum + Number(row.size_bytes || 0), 0) + file.size > ITEM_DETAIL_LIMITS.fileTotalBytes)
+      throw new Error("첨부 파일 전체 용량은 항목당 30MB까지입니다.");
+    const storedName = sanitizeFileName(file.name);
+    const mimeType = file.type || "application/octet-stream";
+    const storagePath = boardItemStoragePath(
+      ctx.org.id,
+      boardId,
+      itemId,
+      requestId,
+      storedName,
+    );
+    const reserved = await client.rpc("reserve_board_item_detail_file", {
+      p_org_id: ctx.org.id,
+      p_board_id: boardId,
+      p_item_id: itemId,
+      p_file_id: requestId,
+      p_name: storedName,
+      p_mime_type: mimeType,
+      p_size_bytes: file.size,
+      p_storage_path: storagePath,
+      p_request_id: requestId,
+    });
+    if (reserved.error)
+      throw new Error(
+        reserved.error.code === "42501"
+          ? "파일을 올릴 권한이 없습니다."
+          : "첨부 한도와 파일 정보를 확인해 주세요.",
+      );
+    const reservationRow = Array.isArray(reserved.data) ? reserved.data[0] : reserved.data;
+    const reservationState = reservationRow && typeof reservationRow === "object" && "state" in reservationRow
+      ? (reservationRow as { state?: unknown }).state
+      : null;
+    if (reservationState === "finalized") return loadItemDetailAction(boardId, itemId);
+    if (reservationState !== "pending") throw new Error("첨부 예약 상태를 확인하지 못했습니다.");
+    reservation = { orgId: ctx.org.id, requestId };
+    uploadedPath = storagePath;
     const stored = await encodeNoticeFile(file, {
       client,
       orgId: ctx.org.id,
       boardId,
       itemId,
+      fileId: requestId,
+      upsert: true,
     });
     if (!stored.storagePath)
       throw new Error("파일 저장소를 사용할 수 없습니다.");
-    uploadedPath = stored.storagePath;
     const { error } = await client.rpc("register_board_item_detail_file", {
       p_org_id: ctx.org.id,
       p_board_id: boardId,
@@ -286,7 +365,7 @@ export async function uploadItemDetailFileAction(
       p_mime_type: stored.mimeType,
       p_size_bytes: stored.size,
       p_storage_path: stored.storagePath,
-      p_request_id: stored.id,
+      p_request_id: requestId,
     });
     if (error)
       throw new Error(
@@ -296,12 +375,22 @@ export async function uploadItemDetailFileAction(
       );
     return loadItemDetailAction(boardId, itemId);
   } catch (error) {
-    if (uploadedPath) {
+    if (uploadedPath || reservation) {
       try {
         const client = await createClient();
-        await client.storage
-          .from(BOARD_ITEM_FILES_BUCKET)
-          .remove([uploadedPath]);
+        let cancelled = false;
+        if (reservation) {
+          const cancellation = await client.rpc("cancel_board_item_detail_file", {
+            p_org_id: reservation.orgId,
+            p_request_id: reservation.requestId,
+          });
+          cancelled = !cancellation.error && cancellation.data === true;
+        }
+        if (uploadedPath && cancelled) {
+          await client.storage
+            .from(BOARD_ITEM_FILES_BUCKET)
+            .remove([uploadedPath]);
+        }
       } catch {
         /* best-effort orphan prevention */
       }

@@ -19,7 +19,8 @@
  * v5 의 밀도 기준을 따른다.
  */
 
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 export function FilterChip({
   label,
@@ -36,6 +37,62 @@ export function FilterChip({
   onClear: () => void;
   children: ReactNode;
 }) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ left: 0, top: 0, maxHeight: 288, width: 224 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const close = useCallback((restoreFocus = true) => {
+    setOpen(false);
+    if (restoreFocus) queueMicrotask(() => triggerRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    const closeOther = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== id) close(false);
+    };
+    window.addEventListener("moawork:filter-open", closeOther);
+    return () => window.removeEventListener("moawork:filter-open", closeOther);
+  }, [close, id]);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(320, Math.max(224, window.innerWidth - 16));
+      const below = window.innerHeight - rect.bottom - 12;
+      const above = rect.top - 12;
+      const useAbove = below < 180 && above > below;
+      const maxHeight = Math.max(144, Math.min(320, useAbove ? above : below));
+      setPosition({
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+        top: useAbove ? Math.max(8, rect.top - maxHeight - 4) : rect.bottom + 4,
+        maxHeight,
+        width,
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    queueMicrotask(() => panelRef.current?.querySelector<HTMLElement>('input,button,[tabindex]:not([tabindex="-1"])')?.focus());
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [close, open]);
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [close, open]);
+
   return (
     <div
       className={`relative inline-flex shrink-0 items-center rounded-full border text-xs transition-colors ${
@@ -44,26 +101,52 @@ export function FilterChip({
           : "border-mw-line bg-mw-card text-mw-body hover:border-mw-sub"
       }`}
     >
-      <details name="mw-board-filter" className="relative">
-        <summary className="flex h-7 cursor-pointer select-none items-center gap-1 rounded-full px-2.5 outline-none list-none [&::-webkit-details-marker]:hidden">
+      <div className="relative">
+        <button
+          ref={triggerRef}
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={`${id}-panel`}
+          onClick={() => {
+            const next = !open;
+            setOpen(next);
+            if (next) window.dispatchEvent(new CustomEvent("moawork:filter-open", { detail: id }));
+          }}
+          className="flex min-h-11 cursor-pointer select-none items-center gap-1 rounded-full px-2.5 outline-none sm:min-h-7"
+        >
           <span>{label}</span>
           {summary && <span className="font-semibold">{summary}</span>}
           <span aria-hidden="true" className="text-[0.6rem] opacity-70">
             ▼
           </span>
-        </summary>
-
-        <div className="absolute left-0 top-full z-30 mt-1 max-h-72 min-w-56 overflow-auto rounded-xl border border-mw-line bg-mw-card p-2 text-mw-fg shadow-lg">
-          {children}
-        </div>
-      </details>
+        </button>
+        {typeof document !== "undefined" && open ? createPortal(
+          <div
+            className="mw-layer-dialog fixed inset-0"
+            onPointerDown={(event) => { if (event.target === event.currentTarget) close(); }}
+          >
+            <div
+              ref={panelRef}
+              id={`${id}-panel`}
+              role="dialog"
+              aria-label={`${label} 필터`}
+              style={{ left: position.left, top: position.top, maxHeight: position.maxHeight, width: position.width }}
+              className="fixed overflow-auto rounded-xl border border-mw-line bg-mw-card p-2 text-mw-fg shadow-lg"
+            >
+              {children}
+            </div>
+          </div>,
+          document.body,
+        ) : null}
+      </div>
 
       {active && (
         <button
           type="button"
           onClick={onClear}
           aria-label={`${label} 필터 해제`}
-          className="flex h-7 items-center pr-2 pl-0.5 text-sm leading-none opacity-70 hover:opacity-100"
+          className="flex min-h-11 min-w-11 items-center justify-center text-sm leading-none opacity-70 hover:opacity-100 sm:min-h-7 sm:min-w-0 sm:pr-2 sm:pl-0.5"
         >
           ×
         </button>
@@ -83,7 +166,7 @@ export function CheckOption({
   onToggle: () => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs hover:bg-mw-bg">
+    <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-2 text-xs hover:bg-mw-bg">
       <input type="checkbox" checked={checked} onChange={onToggle} className="h-3.5 w-3.5" />
       <span className="truncate">{label}</span>
     </label>
@@ -104,7 +187,7 @@ export function RadioOption({
     <button
       type="button"
       onClick={onPick}
-      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-mw-bg ${
+      className={`flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-left text-xs hover:bg-mw-bg ${
         checked ? "font-semibold text-mw-record" : ""
       }`}
     >

@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/server";
 import { canonicalAssignee, createCanonicalNewLead, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadMeta, updateCanonicalNewLeadTitle } from "@/lib/new-lead/mutations";
 import type { NewLeadIntakeState } from "@/lib/new-lead/intake-state";
 import { CELL_FLASH_COOKIE, CELL_FLASH_MAX_AGE, encodeCellFlash } from "@/lib/boards/cellFlash";
+import { NEW_LEAD_BUSINESS_TYPES } from "@/lib/new-lead/business-types";
+import { advanceNewLeadToContact, NewLeadAdvanceError } from "@/lib/new-lead/advance";
 
 function text(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -45,7 +47,12 @@ export async function createNewLeadAction(
   const title = text(formData, "title");
   const boardId = text(formData, "boardId");
   const groupId = text(formData, "groupId");
+  const businessType = text(formData, "business_registration_type");
   if (!title) { record("invalid_title"); return { ok: false, field: "title", message: "이름을 입력해 주세요. 나머지는 등록 후 채울 수 있어요." }; }
+  if (!NEW_LEAD_BUSINESS_TYPES.includes(businessType as (typeof NEW_LEAD_BUSINESS_TYPES)[number])) {
+    record("invalid_business_type");
+    return { ok: false, field: "business_registration_type", message: "사업자 구분을 선택해 주세요." };
+  }
   if (!boardId || !groupId) { record("invalid_target"); return { ok: false, field: "form", message: "신규리드 보드 구성을 확인해 주세요." }; }
 
   const permissionStartedAt = performance.now();
@@ -66,7 +73,7 @@ export async function createNewLeadAction(
       p_representative_name: text(formData, "representative_name") || null,
       p_phone: text(formData, "phone") || null,
       p_email: text(formData, "email") || null,
-      p_business_registration_type: text(formData, "business_registration_type") || null,
+      p_business_registration_type: businessType,
       p_industry: text(formData, "industry") || null,
       p_revenue_band: text(formData, "revenue_band") || null,
       p_region_sido: text(formData, "region_sido") || null,
@@ -87,6 +94,39 @@ export async function createNewLeadAction(
       field: "form",
       message: error instanceof NewLeadMutationError ? error.message : "신규리드를 저장하지 못했습니다. 다시 시도해 주세요.",
     };
+  }
+}
+
+export type AdvanceNewLeadState = Readonly<{ ok: boolean; message: string }>;
+
+export async function advanceNewLeadFromDetailAction(
+  _previous: AdvanceNewLeadState,
+  formData: FormData,
+): Promise<AdvanceNewLeadState> {
+  const ctx = await getSession();
+  const boardId = text(formData, "boardId");
+  const itemId = text(formData, "itemId");
+  if (!boardId || !itemId) return { ok: false, message: "전환할 신규리드를 확인해 주세요." };
+  const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
+  if (permission.kind !== "allowed") {
+    return { ok: false, message: permission.reason === "permission" ? "리드를 넘길 권한이 없습니다." : "권한을 확인하지 못했습니다." };
+  }
+  try {
+    const result = await advanceNewLeadToContact(await createClient(), {
+      itemId,
+      requestId: text(formData, "requestId") || crypto.randomUUID(),
+    });
+    if (result.status !== "committed") {
+      return {
+        ok: false,
+        message: result.reason || (result.status === "blocked" ? "리드컨택 전환 조건을 확인해 주세요." : "전환이 완료되지 않아 원래 상태로 되돌렸습니다."),
+      };
+    }
+    revalidatePath(`/boards/${boardId}`);
+    revalidatePath("/contract");
+    return { ok: true, message: "리드컨택으로 넘겼습니다." };
+  } catch (error) {
+    return { ok: false, message: error instanceof NewLeadAdvanceError ? error.message : "리드컨택으로 넘기지 못했습니다. 다시 시도해 주세요." };
   }
 }
 

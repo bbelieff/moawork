@@ -32,6 +32,6 @@ describe("ColumnContextMenu structure contract", () => {
     expect(workspace).toContain("컬럼을 휴지통으로 옮겼습니다. 값과 설정은 보존됩니다.");
     expect(workspace).toContain('data.set("operation", "restore")');
     expect(workspace).toContain("next.delete(columnId)");
-    expect(workspace).toContain("applyFilters(optimisticRows, activeColumns, filters)");
+    expect(workspace).toContain("applyFilters(optimisticRows, tableColumns, filters)");
   });
 });

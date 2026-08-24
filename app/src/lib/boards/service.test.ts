@@ -78,6 +78,30 @@ describe("보드 생성 — 기본 컬럼 프로비저닝", () => {
     expect(detail.columns[0].type).toBe("select");
     expect(detail.columns[0].options_jsonb?.options).toHaveLength(3);
   });
+
+  it("같은 생성 요청은 같은 보드와 기본 컬럼을 재사용하고 다른 payload는 거부", async () => {
+    const first = await svc.createBoard(owner, { name: "반복 안전" }, "request-create-1");
+    const replay = await svc.createBoard(owner, { name: "반복 안전" }, "request-create-1");
+    expect(replay.board.id).toBe(first.board.id);
+    expect(replay.columns.map((column) => column.key)).toEqual(["status", "owner", "due"]);
+    await expect(svc.createBoard(owner, { name: "다른 이름" }, "request-create-1"))
+      .rejects.toThrow("보드 생성 요청을 다시 확인해 주세요.");
+  });
+
+  it("보드 순서 요청은 전체 사용자 탭 집합만 받고 같은 요청을 안전하게 재생", async () => {
+    const first = await svc.createBoard(owner, { name: "순서 A" }, "request-create-a");
+    const second = await svc.createBoard(owner, { name: "순서 B" }, "request-create-b");
+    const editable = (await svc.listBoards(owner)).filter((board) => !board.is_system);
+    const reversed = [...editable.map((board) => board.id)].reverse();
+    expect((await svc.reorderBoards(owner, reversed, "request-order-1")).filter((board) => !board.is_system).map((board) => board.id))
+      .toEqual(reversed);
+    expect((await svc.reorderBoards(owner, reversed, "request-order-1")).filter((board) => !board.is_system).map((board) => board.id))
+      .toEqual(reversed);
+    await expect(svc.reorderBoards(owner, [first.board.id, second.board.id], "request-order-2"))
+      .rejects.toThrow("보드 순서를 저장할 대상을 찾을 수 없습니다");
+    await expect(svc.reorderBoards(owner, [...reversed].reverse(), "request-order-1"))
+      .rejects.toThrow("보드 순서 요청을 다시 확인해 주세요.");
+  });
 });
 
 describe("컬럼 추가 · key 유일성", () => {

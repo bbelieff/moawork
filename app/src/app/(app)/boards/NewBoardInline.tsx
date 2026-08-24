@@ -17,6 +17,7 @@ export function NewBoardInline() {
       </summary>
 
       <form action={createBoardAction} className="flex flex-col gap-2 p-3">
+        <input type="hidden" name="requestId" value={crypto.randomUUID()} />
         <label className="flex flex-col gap-1 text-xs">
           <span className="text-zinc-500">보드 이름</span>
           <input

@@ -39,25 +39,24 @@ function render() {
 }
 
 describe("BBE-171 new-lead GroupTable wiring", () => {
-  it("shows the compact intake behind a New item disclosure with visible required copy", () => {
+  it("shows the two-step quick intake with only the minimal required fields", () => {
     const html = render();
     expect(html).toContain("＋ 새 항목");
-    expect(html).toContain("회사명 / 이름");
+    expect(html).toContain("업체명");
     expect(html).toContain("필수");
-    for (const label of ["사업자 유형", "업종·업태", "매출 / 매출 구간", "시군구", "상세 주소", "담당자", "협업자"]) {
-      expect(html).toContain(label);
-    }
-    for (const value of ["오늘(KST)", "신규리드 · 컨택 대기", "미상담 · 상담 전", "해당 없음", "일정 없음", "등록 후 첨부"]) {
-      expect(html).toContain(value);
-    }
+    expect(html).toContain("사업자 구분");
+    expect(html).toContain("개인/일반");
+    expect(html).toContain("연락처");
     expect(html).toContain("담당자 가 (나)");
+    expect(html).toContain("상세 화면에서 대표자, 이메일, 지역, 협업자");
+    expect(html).not.toContain("등록과 동시에 준비되는 값");
     expect(html).toContain("취소");
   });
 
   it("does not infer a canonical board from matching custom columns", () => {
     const html = renderToStaticMarkup(<GroupTable boardId="board-a" groupId="group-a" columns={columns} rows={[row]} readOnly={false} rowDragEnabled={false} cellFlash={null} onColumnDrop={() => {}} dragRowId={null} canDropRow={() => false} onRowDragStart={() => {}} onRowDragEnd={() => {}} onRowDrop={() => {}} />);
     expect(html).not.toContain('name="dealId"');
-    expect(html).not.toContain("등록과 동시에 준비되는 값");
+    expect(html).not.toContain("새 업체 빠르게 등록");
   });
 
   it("keeps an auto-sourced canonical field editable through the audited deal RPC action", () => {
@@ -68,5 +67,11 @@ describe("BBE-171 new-lead GroupTable wiring", () => {
     expect(html).toContain('name="field" value="owner"');
     expect(html).toContain('name="field" value="collaborators"');
     expect(html).toContain('name="field" value="applied_on"');
+  });
+
+  it("keeps the deal ledger out of the new-lead row while preserving the detail opener", () => {
+    const html = render();
+    expect(html).toContain("열기");
+    expect(html).not.toContain("원장");
   });
 });

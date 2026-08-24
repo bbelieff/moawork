@@ -66,6 +66,17 @@ class PgliteQuery {
 function supabaseRepo(db:PGlite){return new SupabaseBoardsRepo({
   from:(table:string)=>new PgliteQuery(db,table),
   rpc:async(name:string,args:Record<string,unknown>)=>{
+    if(name==="create_workspace_board"){
+      const role=(await db.query<{role:string}>("select current_setting('app.role',true) role")).rows[0]?.role;
+      if(role!=="owner"&&role!=="admin") return {data:null,error:{message:"RLS denied"}};
+      const id=crypto.randomUUID();
+      const order=(await db.query<{n:number}>("select count(*)::int n from boards where org_id=$1",[args.p_org_id])).rows[0].n;
+      const result=await db.query(
+        "insert into boards(id,org_id,name,description,icon,source,sort_order) values($1,$2,$3,$4,$5,$6,$7) returning *",
+        [id,args.p_org_id,args.p_name,args.p_description,args.p_icon,args.p_source,order],
+      );
+      return {data:result.rows,error:null};
+    }
     if(name==="read_default_board_definition_state"){
       const result=await db.query<{state:unknown}>("select filters_jsonb->'state' state from board_views where org_id=$1 and board_id=$2 and user_id is null and name='__mw_default_definition__'",[args.p_org_id,args.p_board_id]);
       return {data:result.rows[0]?.state??null,error:null};

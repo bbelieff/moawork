@@ -242,6 +242,9 @@ const COLUMNS: DefaultTabColumn[] = [
   },
 ];
 
+/** These values remain durable, but belong to the item drawer instead of the table. */
+export const NEW_LEAD_DETAIL_ONLY_KEYS = new Set(["collaborators", "contact_move"]);
+
 export const NEW_LEAD_TAB: DefaultTab = {
   key: "new",
   source: NEW_LEAD_TAB_SOURCE,

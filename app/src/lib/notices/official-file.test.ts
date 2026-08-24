@@ -24,15 +24,15 @@ describe("notice official PDF boundary", () => {
 /** 가짜 Supabase Storage 클라이언트 — upload/download 만 흉내낸다. */
 function fakeStorageClient(opts: { uploadError?: string } = {}): {
   client: SupabaseClient;
-  uploaded: { path: string; contentType?: string }[];
+  uploaded: { path: string; contentType?: string; upsert?: boolean }[];
 } {
-  const uploaded: { path: string; contentType?: string }[] = [];
+  const uploaded: { path: string; contentType?: string; upsert?: boolean }[] = [];
   const client = {
     storage: {
       from: () => ({
-        upload: vi.fn(async (path: string, _file: unknown, options?: { contentType?: string }) => {
+        upload: vi.fn(async (path: string, _file: unknown, options?: { contentType?: string; upsert?: boolean }) => {
           if (opts.uploadError) return { data: null, error: { message: opts.uploadError } };
-          uploaded.push({ path, contentType: options?.contentType });
+          uploaded.push({ path, contentType: options?.contentType, upsert: options?.upsert });
           return { data: { path }, error: null };
         }),
         download: vi.fn(async (path: string) => {
@@ -62,6 +62,22 @@ describe("BBE-239 · Storage 경로 업로드/다운로드", () => {
   it("storagePath 경로는 storage.foldername(name)[1] 이 orgId 가 되는 규약을 지킨다", () => {
     const path = boardItemStoragePath("org-9", "board-9", "item-9", "file-9", "a.pdf");
     expect(path.split("/")[0]).toBe("org-9");
+  });
+
+  it("호출자가 준 안정 file id를 Storage 경로와 결과에 그대로 사용한다", async () => {
+    const { client, uploaded } = fakeStorageClient();
+    const file = new File([new Uint8Array([1])], "견적서.pdf", { type: "application/pdf" });
+    const stored = await encodeNoticeFile(file, {
+      client,
+      orgId: "org-1",
+      boardId: "board-1",
+      itemId: "item-1",
+      fileId: "00000000-0000-4000-8000-000000000777",
+      upsert: true,
+    });
+    expect(stored.id).toBe("00000000-0000-4000-8000-000000000777");
+    expect(uploaded[0].path).toContain("/00000000-0000-4000-8000-000000000777__");
+    expect(uploaded[0].upsert).toBe(true);
   });
 
   it("업로드 실패는 그대로 던진다(삼키지 않는다)", async () => {
