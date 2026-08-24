@@ -128,6 +128,7 @@ export function BoardWorkspace({
   backSlot,
   viewSlot,
   savedViewsSlot,
+  settingsSlot,
   canEditItems = false,
   canDeleteItems = false,
   canManageColumns = false,
@@ -153,6 +154,8 @@ export function BoardWorkspace({
    * 뷰는 «보드에 속한 것» 이라 소속처보다 위에 두면 위계가 뒤집혀 보인다.
    */
   savedViewsSlot?: ReactNode;
+  /** 보드 상단에서 즉시 발견되는 단일 설정 진입점. */
+  settingsSlot?: ReactNode;
   canEditItems?: boolean;
   canDeleteItems?: boolean;
   canManageColumns?: boolean;
@@ -352,6 +355,8 @@ export function BoardWorkspace({
 
       {/* 보드 이름 «아래» · 필터 «위» — 목업 head() 의 `.vrow` 자리다 (BBE-214). */}
       {savedViewsSlot}
+
+      {settingsSlot}
 
       <BoardToolbar
         columns={activeColumns}

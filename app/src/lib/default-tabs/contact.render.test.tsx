@@ -88,10 +88,10 @@ describe("리드컨택 공용 보드 화면", () => {
     expect(html).toContain("sticky right-0");
   });
 
-  it("연결(lk) 칸은 편집 폼이 없고 직접입력 칸은 있다", () => {
+  it("연결(lk) provenance 칸도 직접 편집 폼을 제공한다", () => {
     const html = renderTab(repo.listColumns(ctx, boardId));
     for (const key of ["ad_name", "applied_on", "phone", "industry", "rep_name", "revenue", "email"]) {
-      expect(html, key).not.toContain(`name="columnKey" value="${key}"`);
+      expect(html, key).toContain(`name="columnKey" value="${key}"`);
     }
     expect(html).toContain('name="columnKey" value="recontact_on"');
   });

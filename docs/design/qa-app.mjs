@@ -7,7 +7,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { extractMockupContract, validateMockupContractApi } from "./dump-mockup.mjs";
 
 const require = createRequire(import.meta.url);
@@ -16,6 +18,21 @@ const ROOT = path.resolve(import.meta.dirname, "../..");
 const APP_SRC = path.join(ROOT, "app/src");
 const DEFAULT_TABS_DIR = process.env.QA_APP_DEFAULT_TABS_DIR ?? path.join(APP_SRC, "lib/default-tabs");
 const APP_TABS_FILE = process.env.QA_APP_APP_TABS_FILE ?? path.join(APP_SRC, "components/shell/app-tabs.ts");
+const OVERRIDE_FILE = path.join(import.meta.dirname, "board-parity-overrides.json");
+
+export function loadParityOverrides(file = OVERRIDE_FILE) {
+  const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+  if (parsed.schemaVersion !== 1 || !Array.isArray(parsed.overrides)) throw new Error("override manifest 형식 오류");
+  for (const entry of parsed.overrides) {
+    if (!entry || typeof entry.scope !== "string" || !Number.isInteger(entry.issue)
+      || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date) || typeof entry.rationale !== "string" || entry.rationale.trim().length < 20
+      || !entry.differences || typeof entry.differences !== "object" || Array.isArray(entry.differences)
+      || Object.values(entry.differences).some((value) => !/^[0-9a-f]{64}$/.test(value))) {
+      throw new Error("override manifest는 scope/issue/date/rationale/differences를 모두 가져야 합니다");
+    }
+  }
+  return parsed.overrides;
+}
 
 const APP_TYPE_TO_MOCKUP_TYPES = {
   text: ["txt", "text"], longtext: ["txt", "text"], number: ["num", "money"],
@@ -142,14 +159,22 @@ function safeOptions(column, values) {
   return isPersonal(column) ? `${values.length}개(개인 선택지 숨김)` : values.join(", ") || "없음";
 }
 
+let activeOverride = null;
 function difference(title, entries) {
   if (!entries.length) return 0;
+  const fingerprint = createHash("sha256").update(JSON.stringify(entries)).digest("hex");
+  if (activeOverride?.differences?.[title] === fingerprint) {
+    console.log(`\n[${title}] exact override #${activeOverride.issue} (${entries.length}개, ${fingerprint.slice(0, 12)})`);
+    return 0;
+  }
   console.log(`\n[${title}] ${entries.length}개`);
+  if (activeOverride) console.log(`  override fingerprint actual: ${fingerprint}`);
   for (const entry of entries) console.log(`  - ${entry}`);
   return entries.length;
 }
 
-function compareTab(mockTab, appTab, shellTab) {
+function compareTab(mockTab, appTab, shellTab, override = null) {
+  activeOverride = override;
   console.log(`\n▣ ${mockTab.label} (${mockTab.key}) ↔ ${appTab?.name ?? "제품 기본 탭 없음"}`);
   let differences = 0;
   if (!shellTab) differences += difference("셸 탭 위치 차이", [`${mockTab.key}: APP_TABS 분류 없음`]);
@@ -237,12 +262,16 @@ function compareTab(mockTab, appTab, shellTab) {
   return differences;
 }
 
-export function compareContracts(mockup, app) {
+export function compareContracts(mockup, app, overrides = []) {
   let differences = 0;
   const mockKeys = new Set(mockup.tabs.map((tab) => tab.key));
   for (const mockTab of mockup.tabs) {
-    differences += compareTab(mockTab, app.tabs.get(mockTab.key), app.shellTabs.find((tab) => tab.key === mockTab.key));
+    const appTab = app.tabs.get(mockTab.key);
+    const shellTab = app.shellTabs.find((tab) => tab.key === mockTab.key);
+    const entry = overrides.find((candidate) => candidate.scope === mockTab.key);
+    differences += compareTab(mockTab, appTab, shellTab, entry);
   }
+  activeOverride = null;
   differences += difference("목업에 대응하지 않는 제품 기본 탭", [...app.tabs.keys()].filter((key) => !mockKeys.has(key)));
   const totals = {
     mockTabs: mockup.tabs.length,
@@ -320,19 +349,21 @@ function main() {
   const mockup = extractMockupContract();
   const app = loadAppContract();
   console.log("═".repeat(72));
-  console.log("모아워크 앱 ↔ 목업 구조 대조 (BBE-140 · 보고 전용)");
+  console.log("모아워크 앱 ↔ 목업 구조 대조 (unexplained DIFF는 실패)");
   console.log(`앱 정본: default-tabs ${app.defaultTabsPresent ? "존재" : "상실"} · app-tabs.ts ${app.shellTabs.length}탭`);
   console.log("═".repeat(72));
-  const result = compareContracts(mockup, app);
+  const result = compareContracts(mockup, app, loadParityOverrides());
   console.log(`\n차이 합계: ${result.differences}개`);
-  console.log(result.differences ? "판정: DIFF (1단계 보고 전용)" : "판정: MATCH");
+  console.log(result.differences ? "판정: UNEXPLAINED DIFF" : "판정: MATCH/EXPLAINED OVERRIDE");
   process.exitCode = result.differences ? 1 : 0;
 }
 
-try {
-  if (process.argv[2] === "--self-test") runRegressions();
-  else main();
-} catch (error) {
-  console.error(`qa-app 실행 실패: ${error instanceof Error ? error.message : String(error)}`);
-  process.exitCode = 2;
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    if (process.argv[2] === "--self-test") runRegressions();
+    else main();
+  } catch (error) {
+    console.error(`qa-app 실행 실패: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 2;
+  }
 }

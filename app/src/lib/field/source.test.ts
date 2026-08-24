@@ -18,9 +18,9 @@ describe("field/source — 출처 6종 완전성(D09 미정의 0)", () => {
     }
   });
 
-  it("수집 출처도 직접 정정할 수 있고 계산·연결 출처만 잠긴다", () => {
+  it("수집·연결 provenance는 직접 정정할 수 있고 계산 출처만 잠긴다", () => {
     expect(isSourceEditable("auto")).toBe(true);
-    expect(isSourceEditable("lk")).toBe(false);
+    expect(isSourceEditable("lk")).toBe(true);
     expect(isSourceEditable("calc")).toBe(false);
     expect(isSourceEditable("in")).toBe(true);
     expect(isSourceEditable("act")).toBe(true);

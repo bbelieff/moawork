@@ -77,12 +77,11 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     }
   });
 
-  it("⇄ 연동 칸은 폼(편집창) 없이 값 + 인라인 ⇄ 표시만 그린다", () => {
+  it("⇄ 연동 칸은 provenance 배지와 편집 폼을 함께 그린다", () => {
     const columns = [col({ key: "lkcol", label: "업체명", source: "lk", type: "text" })];
     const html = renderTable(columns, [row({ lkcol: "우진산업" })]);
     expect(html).toContain("우진산업");
-    // 편집 폼이 없어야 한다 — hidden input(columnKey) 이 이 컬럼 key 로 안 나온다.
-    expect(html).not.toContain('name="columnKey" value="lkcol"');
+    expect(html).toContain('name="columnKey" value="lkcol"');
   });
 
   it("ƒ 수식 칸도 편집창이 없다", () => {
@@ -134,7 +133,7 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
   });
 
   it("money 타입은 우측 정렬·천단위로 표시된다", () => {
-    const columns = [col({ key: "amt", label: "계약금", source: "lk", type: "money" })];
+    const columns = [col({ key: "amt", label: "계약금", source: "calc", type: "money" })];
     const html = renderTable(columns, [row({ amt: 1200000 })]);
     expect(html).toContain("1,200,000");
     expect(html).toContain("text-right");

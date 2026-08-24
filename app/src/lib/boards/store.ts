@@ -33,6 +33,16 @@ export interface NewBoard {
 }
 export type BoardPatch = Partial<NewBoard> & { sort_order?: number };
 
+export interface DefaultDefinitionState {
+  revision: number;
+  columns: Record<string, {
+    label: string;
+    readOnly: boolean;
+    rightPinned: boolean;
+    sortOrder: number;
+  }>;
+}
+
 export interface NewColumn {
   key?: string;
   label: string;
@@ -97,6 +107,9 @@ export interface BoardsRepo {
   getBoard(ctx: Ctx, id: string): Promise<Board | undefined>;
   createBoard(ctx: Ctx, input: NewBoard): Promise<Board>;
   updateBoard(ctx: Ctx, id: string, patch: BoardPatch): Promise<Board | undefined>;
+  /** Product-default baseline stored as system metadata, never as customer business values. */
+  getDefaultDefinitionState?(ctx: Ctx, boardId: string): Promise<DefaultDefinitionState | null>;
+  setDefaultDefinitionState?(ctx: Ctx, boardId: string, state: DefaultDefinitionState): Promise<void>;
   deleteBoard(ctx: Ctx, id: string): Promise<boolean>;
   setBoardDetailLayout(ctx: Ctx, id: string, layout: DetailLayoutEntry[]): Promise<Board | undefined>;
 

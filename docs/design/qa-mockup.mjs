@@ -1,4 +1,5 @@
-/* 목업 자동 QA — node docs/design/qa-mockup.mjs
+/* 목업 HTML 자기계약 QA — 실제 앱은 검사하지 않는다.
+ * node docs/design/qa-mockup.mjs
  *
  * 왜 필요한가: 이 목업은 손으로 문자열을 치환하며 키웠다.
  * 치환이 조용히 실패하거나 블록이 통째로 지워져도 «문법은 통과»한다.
@@ -276,5 +277,5 @@ if (api) {
 /* ── 결과 ── */
 const fail = R.filter((x) => !x[1]);
 console.log(R.map(([n, c, note]) => `${c ? "✓" : "✗"} ${n}${note ? `  → ${note}` : ""}`).join("\n"));
-console.log(`\n${R.length - fail.length} / ${R.length} 통과 · ${(html.length / 1024).toFixed(0)}KB`);
+console.log(`\n목업 HTML 자기계약 ${R.length - fail.length} / ${R.length} 통과 · 실제 앱 검증 아님 · ${(html.length / 1024).toFixed(0)}KB`);
 process.exit(fail.length ? 1 : 0);

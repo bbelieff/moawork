@@ -325,6 +325,7 @@ export default async function BoardPage({
         </div>
         {/* 보드 이름 아래 — 목업 head() 순서(이름 → 보기). 테이블 뷰와 같은 위계다(BBE-214). */}
         <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
+        {boardSettings}
 
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto text-xs">
           <span className="shrink-0 text-mw-sub">그룹 기준</span>
@@ -359,6 +360,7 @@ export default async function BoardPage({
           <h1 className="text-base font-semibold text-mw-fg">{board.icon ? <span aria-hidden="true">{board.icon}</span> : null} {board.name}</h1>
         </div>
         <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} renderMode={view} canEditItems={canEditItems} />
+        {boardSettings}
     </>
   ) : (
     <BoardWorkspace
@@ -374,6 +376,7 @@ export default async function BoardPage({
       savedViewsSlot={
         <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
       }
+      settingsSlot={boardSettings}
       canEditItems={canEditItems}
       canDeleteItems={canDeleteItems}
       canManageColumns={canManageColumns}
@@ -403,7 +406,6 @@ export default async function BoardPage({
       {boardContent}
 
       {trashPanel}
-      {boardSettings}
     </div>
   );
 }

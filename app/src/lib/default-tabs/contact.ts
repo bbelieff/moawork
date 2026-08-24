@@ -53,7 +53,7 @@ export const CONTACT_GROUPS = {
 } as const;
 
 const COLUMNS: DefaultTabColumn[] = [
-  { key: "ad_name", label: "광고 명", type: "text", source: "lk", readOnly: true, width: 130 },
+  { key: "ad_name", label: "광고 명", type: "text", source: "lk", width: 130 },
   {
     key: "owner",
     label: "담당자",
@@ -70,9 +70,9 @@ const COLUMNS: DefaultTabColumn[] = [
       ],
     },
   },
-  { key: "applied_on", label: "신청일", type: "date", source: "lk", readOnly: true, width: 120 },
-  { key: "phone", label: "연락처", type: "phone", source: "lk", readOnly: true, width: 130 },
-  { key: "industry", label: "업종/업태", type: "status", source: "lk", readOnly: true, width: 120 },
+  { key: "applied_on", label: "신청일", type: "date", source: "lk", width: 120 },
+  { key: "phone", label: "연락처", type: "phone", source: "lk", width: 130 },
+  { key: "industry", label: "업종/업태", type: "status", source: "lk", width: 120 },
   {
     key: "biz_reg_type",
     label: "사업자유형",
@@ -84,8 +84,8 @@ const COLUMNS: DefaultTabColumn[] = [
   { key: "founded_year", label: "창업년도", type: "number", source: "in", width: 100 },
   { key: "sido", label: "시도", type: "select", source: "in", options: options(...SIDO), width: 90 },
   { key: "sigungu", label: "시군구", type: "select", source: "in", options: sigunguOptions(), width: 110 },
-  { key: "rep_name", label: "대표자명", type: "text", source: "lk", readOnly: true, width: 110 },
-  { key: "revenue", label: "매출액", type: "text", source: "lk", readOnly: true, width: 110 },
+  { key: "rep_name", label: "대표자명", type: "text", source: "lk", width: 110 },
+  { key: "revenue", label: "매출액", type: "text", source: "lk", width: 110 },
   {
     key: "contract_status",
     label: "계약상황",
@@ -136,10 +136,17 @@ const COLUMNS: DefaultTabColumn[] = [
     rightPinned: true,
     width: 135,
   },
-  { key: "email", label: "이메일", type: "email", source: "lk", readOnly: true, width: 160 },
+  { key: "email", label: "이메일", type: "email", source: "lk", width: 160 },
 ];
 
 export const CONTACT_TAB: DefaultTab = {
+  revision: 2,
+  previousRevision: {
+    revision: 1,
+    columns: Object.fromEntries([
+      "ad_name", "applied_on", "phone", "industry", "rep_name", "revenue", "email",
+    ].map((key) => [key, { readOnly: true }])),
+  },
   key: "contact",
   source: CONTACT_TAB_SOURCE,
   name: "리드컨택 관리",
