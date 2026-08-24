@@ -56,7 +56,7 @@ export function BoardHeader({
     }`;
 
   return (
-    <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
+    <div data-visual-block="board-header" className="flex flex-nowrap items-center gap-2 overflow-x-auto">
       {backSlot}
 
       <h1 className="flex shrink-0 items-center gap-1.5 text-base font-semibold text-mw-fg">

@@ -383,6 +383,14 @@ belie 는 숫자를 되묻는다. 2026-08-20 에 「8,400건」이 무엇이냐�
 정의 완료는 코드 작성이나 PR 초록이 아니다. **main expected-head merge · Production exact SHA READY · 실제 화면 QA**가
 모두 끝나야 한다. docs-only처럼 제품 화면이 바뀌지 않은 작업만 화면 QA를 `N/A (docs-only)`로 기록한다.
 
+### 3.1 시각 작업은 원자 블록부터 닫는다
+
+화면 카드의 평가 순서는 **최신 사용자 지시 → issue/date/rationale가 있는 machine-readable visual override → 목업 v6 → 일반 제품 규칙 → 역사 기록**이다. 안전 경계는 이 순서로 낮출 수 없다.
+
+원자 블록은 파일이나 컴포넌트가 아니라 사용자가 보는 요소 하나와 그 요소의 상태·행동 하나다. 한 블록씩 동일 fixture와 `1440×900`·`375×812`에서 목업/제품을 대조하고, 위치·영역·상대 순서·크기·정렬·sticky·겹침·잘림·간격·타이포·색·테두리·밀도와 행동 피드백·reload를 측정한다. **블록 GREEN → 화면 조립 GREEN → Production exact GREEN** 순서를 건너뛰지 않는다.
+
+단순 문자열 존재는 보조 증거다. 위치가 다르거나, 필수 요소가 잘못된 영역/순서에 있거나, overlap/clipping이 있거나, 핵심 CTA가 고정되지 않으면 RED다. 시각 점수는 70점(구조·위치·순서·sticky 40 + 겉보기 30)이며 65점 미만은 총점과 무관하게 merge BLOCKED다. 행동 15·저장 10·반응형 5를 더해 100점으로 보고한다. 실행 정본은 `docs/design/visual-block-contract.json`, merge gate는 `node docs/design/qa-visual-blocks.mjs --self-test && node docs/design/qa-visual-blocks.mjs`다.
+
 - **화면이 없는 계약·부품 Issue는 «완주»가 아니라 «부품 납품»이다.**
   반드시 「어느 화면이 이것을 쓰는가」를 후속 Issue로 남긴다. **소비자 없는 부품은 만들지 않는다.**
 - **화면을 볼 수단이 없는 워커는 그 Issue를 끝낼 수 없다.** 코디네이터에게 보고하고,

@@ -76,5 +76,7 @@ echo "▶ [4/4] 목업↔앱 대조"
 node docs/design/qa-app.mjs --self-test
 node docs/design/qa-app.mjs
 node docs/design/qa-board-parity.mjs new contact
+node docs/design/qa-visual-blocks.mjs --self-test
+node docs/design/qa-visual-blocks.mjs
 
 echo "✅ check 통과"

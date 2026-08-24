@@ -134,6 +134,7 @@ export function BoardWorkspace({
   canManageColumns = false,
   canManageSections = false,
   currentUserId,
+  cellAction,
 }: {
   board: Board;
   columns: BoardColumn[];
@@ -162,6 +163,8 @@ export function BoardWorkspace({
   canManageSections?: boolean;
   /** BBE-239 — 공지사항에서 작성자 본인 삭제 예외를 판정하는 데 쓴다. */
   currentUserId?: string;
+  /** 시각 fixture가 제품 UI를 우회하지 않고 저장소 경계만 대체할 때 사용한다. */
+  cellAction?: (formData: FormData) => Promise<void>;
 }) {
   // BBE-239 — 공지사항 한정 「작성자는 자기 글 삭제 가능」 예외. 다른 보드는 undefined 라
   // GroupTable 의 조건에서 항상 꺼진다.
@@ -356,7 +359,7 @@ export function BoardWorkspace({
       {/* 보드 이름 «아래» · 필터 «위» — 목업 head() 의 `.vrow` 자리다 (BBE-214). */}
       {savedViewsSlot}
 
-      {settingsSlot}
+      {settingsSlot ? <div data-visual-block="board-settings">{settingsSlot}</div> : null}
 
       <BoardToolbar
         columns={activeColumns}
@@ -482,6 +485,7 @@ export function BoardWorkspace({
                 scheduleRecipients={scheduleRecipients}
                 rowDragEnabled={rowDragEnabled}
                 cellFlash={cellFlash}
+                cellAction={cellAction}
                 onColumnDrop={(draggedKey, targetKey) =>
                   handleColumnDrop(block.key, fullColumns, draggedKey, targetKey)
                 }
