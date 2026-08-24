@@ -16,11 +16,26 @@
  * 낙관적 갱신(useOptimistic)은 부모(BoardWorkspace)가 담당하고 여기서는 이벤트만 올린다.
  */
 
-import { startTransition, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import type { BoardColumn, CellValue, ItemWithValues } from "@/lib/boards/types";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import type {
+  BoardColumn,
+  CellValue,
+  ItemWithValues,
+} from "@/lib/boards/types";
 import { formatCell } from "@/lib/boards/cells";
 import { findCellError, type CellFlash } from "@/lib/boards/cellFlash";
-import { getFieldSourceSpec, isSourceEditable, sourceRequiresConfirm } from "@/lib/field/source";
+import {
+  getFieldSourceSpec,
+  isSourceEditable,
+  sourceRequiresConfirm,
+} from "@/lib/field/source";
 import { fieldTypeLabel } from "@/lib/field/type-labels";
 import { StatusCell, StatusSelect } from "@/components/boards/StatusCell";
 import { SourceBadge } from "./FieldBadge";
@@ -31,9 +46,16 @@ import { ItemDetailPanel } from "./ItemDetailPanel";
 import { TrashItemButton } from "./ItemTrashControls";
 import { AddItemForm } from "./AddItemForm";
 import { ColumnContextMenu } from "./ColumnContextMenu";
-import type { ColumnScheduleItemOption, ColumnScheduleRecipientOption } from "./ColumnSettingsPanel";
+import type {
+  ColumnScheduleItemOption,
+  ColumnScheduleRecipientOption,
+} from "./ColumnSettingsPanel";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
-import { updateNewLeadFieldAction, updateNewLeadMetaAction, updateNewLeadTitleAction } from "@/app/(app)/boards/new-lead-actions";
+import {
+  updateNewLeadFieldAction,
+  updateNewLeadMetaAction,
+  updateNewLeadTitleAction,
+} from "@/app/(app)/boards/new-lead-actions";
 import {
   renameItemAction,
   setCellAction,
@@ -66,11 +88,16 @@ function inputTypeOf(type: BoardColumn["type"]): string {
   }
 }
 
-export function cellInputValue(type: BoardColumn["type"], value: CellValue): string | number {
+export function cellInputValue(
+  type: BoardColumn["type"],
+  value: CellValue,
+): string | number {
   if (value === null) return "";
   if (type === "datetime" && typeof value === "string") {
     const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? value.slice(0, 16) : parsed.toISOString().slice(0, 16);
+    return Number.isNaN(parsed.getTime())
+      ? value.slice(0, 16)
+      : parsed.toISOString().slice(0, 16);
   }
   if (type === "date" && typeof value === "string") return value.slice(0, 10);
   return typeof value === "number" ? value : String(value);
@@ -139,27 +166,54 @@ export function BoardCell({
   // 결과: 사용자가 고칠 수 있는 것처럼 보이고, 저장을 눌러야 거부당한다.
   // ✉ 발송 칸에서는 더 나쁘다 — 안전장치(BBE-148)가 붙는 순간 «열려 있는 편집창» 이
   // 곧 돈이 나가는 통로가 된다. 화면과 서버가 같은 답을 해야 한다.
-  const canonicalField = canonicalNewLead ? NEW_LEAD_FIELD_KEYS[column.key] : undefined;
+  const canonicalField = canonicalNewLead
+    ? NEW_LEAD_FIELD_KEYS[column.key]
+    : undefined;
   const auditedCanonicalEdit = Boolean(canonicalField && row.deal_id);
-  const auditedMetaEdit = Boolean(canonicalNewLead && row.deal_id && NEW_LEAD_META_KEYS.has(column.key));
-  const cellReadOnly = readOnly || (!auditedCanonicalEdit && !auditedMetaEdit && !isSourceEditable(column.source)) || column.is_readonly === true;
+  const auditedMetaEdit = Boolean(
+    canonicalNewLead && row.deal_id && NEW_LEAD_META_KEYS.has(column.key),
+  );
+  const cellReadOnly =
+    readOnly ||
+    (!auditedCanonicalEdit &&
+      !auditedMetaEdit &&
+      !isSourceEditable(column.source)) ||
+    column.is_readonly === true;
   const numeric = NUMERIC_TYPES.has(column.type);
   const title = cellTitle(column);
-  const emptyLabel = canonicalNewLead && value === null ? NEW_LEAD_EMPTY_LABELS[column.key] : undefined;
+  const emptyLabel =
+    canonicalNewLead && value === null
+      ? NEW_LEAD_EMPTY_LABELS[column.key]
+      : undefined;
 
   if (cellReadOnly) {
-    const display = column.type === "select" || column.type === "status" || column.type === "person" || column.type === "multiselect" || column.type === "people" ? (
-      emptyLabel ? <span className="text-xs text-mw-sub">{emptyLabel}</span> : <StatusCell value={value} options={options} />
-    ) : (
-      <span className={`truncate text-xs text-mw-body ${numeric ? "block text-right tabular-nums" : ""}`}>
-        {formatCell(column.type, value, options) || emptyLabel || "—"}
-        {column.source === "lk" && value !== null ? (
-          <span aria-hidden="true" className="ml-1 text-mw-automation" title="업체 마스터에서 자동으로 채워집니다">
-            ⇄
-          </span>
-        ) : null}
-      </span>
-    );
+    const display =
+      column.type === "select" ||
+      column.type === "status" ||
+      column.type === "person" ||
+      column.type === "multiselect" ||
+      column.type === "people" ? (
+        emptyLabel ? (
+          <span className="text-xs text-mw-sub">{emptyLabel}</span>
+        ) : (
+          <StatusCell value={value} options={options} />
+        )
+      ) : (
+        <span
+          className={`truncate text-xs text-mw-body ${numeric ? "block text-right tabular-nums" : ""}`}
+        >
+          {formatCell(column.type, value, options) || emptyLabel || "—"}
+          {column.source === "lk" && value !== null ? (
+            <span
+              aria-hidden="true"
+              className="ml-1 text-mw-automation"
+              title="업체 마스터에서 자동으로 채워집니다"
+            >
+              ⇄
+            </span>
+          ) : null}
+        </span>
+      );
     return (
       <span title={title} className="block">
         {display}
@@ -173,7 +227,13 @@ export function BoardCell({
   return (
     <div className="flex flex-col" title={title}>
       <form
-        action={auditedCanonicalEdit ? updateNewLeadFieldAction : auditedMetaEdit ? updateNewLeadMetaAction : setCellAction}
+        action={
+          auditedCanonicalEdit
+            ? updateNewLeadFieldAction
+            : auditedMetaEdit
+              ? updateNewLeadMetaAction
+              : setCellAction
+        }
         aria-describedby={errorId}
         onSubmit={
           needsConfirm
@@ -198,12 +258,26 @@ export function BoardCell({
             <input type="hidden" name="field" value={canonicalField} />
           </>
         ) : null}
-        {auditedMetaEdit ? <><input type="hidden" name="dealId" value={row.deal_id ?? ""} /><input type="hidden" name="field" value={column.key} /></> : null}
+        {auditedMetaEdit ? (
+          <>
+            <input type="hidden" name="dealId" value={row.deal_id ?? ""} />
+            <input type="hidden" name="field" value={column.key} />
+          </>
+        ) : null}
 
         {column.type === "file" ? (
           <span className="flex items-center gap-1">
-            {typeof value === "string" && value.startsWith("/api/") ? <a href={value} className="text-xs underline">내려받기</a> : null}
-            <input type="file" name="value" aria-label={column.label} className={CELL_INPUT} />
+            {typeof value === "string" && value.startsWith("/api/") ? (
+              <a href={value} className="text-xs underline">
+                내려받기
+              </a>
+            ) : null}
+            <input
+              type="file"
+              name="value"
+              aria-label={column.label}
+              className={CELL_INPUT}
+            />
           </span>
         ) : column.type === "checkbox" ? (
           <>
@@ -268,7 +342,11 @@ export function BoardCell({
         )}
 
         {/* select/multiselect 는 변경만으로 저장되지 않으므로 명시 저장을 남긴다. */}
-        {(column.type === "select" || column.type === "status" || column.type === "person" || column.type === "multiselect" || column.type === "people") && (
+        {(column.type === "select" ||
+          column.type === "status" ||
+          column.type === "person" ||
+          column.type === "multiselect" ||
+          column.type === "people") && (
           <button type="submit" className="sr-only">
             {column.label} 저장
           </button>
@@ -277,7 +355,11 @@ export function BoardCell({
 
       {/* 관대 정책상 이 셀만 저장 실패했을 수 있다 — 그 사실을 그 자리에 드러낸다. */}
       {error && (
-        <p id={errorId} role="alert" className="px-1.5 text-[0.65rem] text-mw-error">
+        <p
+          id={errorId}
+          role="alert"
+          className="px-1.5 text-[0.65rem] text-mw-error"
+        >
           {error}
         </p>
       )}
@@ -380,7 +462,12 @@ export function GroupTable({
    * (mousemove 는 리렌더 사이클과 무관하게 계속 들어온다). state(liveWidths)는 화면
    * 갱신용이고, 서버 저장은 mouseup 에서 한 번만 나간다.
    */
-  const resizeRef = useRef<{ columnId: string; startX: number; startWidth: number; current: number } | null>(null);
+  const resizeRef = useRef<{
+    columnId: string;
+    startX: number;
+    startWidth: number;
+    current: number;
+  } | null>(null);
   const [liveWidths, setLiveWidths] = useState<Record<string, number>>({});
 
   const commitWidth = useCallback(
@@ -417,13 +504,19 @@ export function GroupTable({
     };
   }, [commitWidth]);
 
-  const startResize = (columnId: string) => (e: React.MouseEvent<HTMLSpanElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const th = e.currentTarget.closest("th");
-    const startWidth = th ? th.getBoundingClientRect().width : 160;
-    resizeRef.current = { columnId, startX: e.clientX, startWidth, current: startWidth };
-  };
+  const startResize =
+    (columnId: string) => (e: React.MouseEvent<HTMLSpanElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const th = e.currentTarget.closest("th");
+      const startWidth = th ? th.getBoundingClientRect().width : 160;
+      resizeRef.current = {
+        columnId,
+        startX: e.clientX,
+        startWidth,
+        current: startWidth,
+      };
+    };
 
   const resetWidth = (columnId: string) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -486,39 +579,59 @@ export function GroupTable({
                     if (dragged !== col.key) onColumnDrop(dragged, col.key);
                     clearColDrag();
                   }}
-                  title={!canManageColumns ? cellTitle(col) : `${cellTitle(col)} — 끌어서 이 그룹의 컬럼 순서 변경`}
+                  title={
+                    !canManageColumns
+                      ? cellTitle(col)
+                      : `${cellTitle(col)} — 끌어서 이 그룹의 컬럼 순서 변경`
+                  }
                   style={width ? { width, minWidth: width } : undefined}
                   data-view-focus={col.key === focusColumnKey || undefined}
                   data-column-key={col.key}
                   className={`relative sticky top-0 z-20 min-w-20 border-b border-mw-line px-2 py-1.5 text-xs font-semibold text-mw-sub ${col.key === focusColumnKey ? "bg-mw-tint-blue" : "bg-mw-card"} ${
-                    !canManageColumns ? "" : "cursor-grab active:cursor-grabbing"
+                    !canManageColumns
+                      ? ""
+                      : "cursor-grab active:cursor-grabbing"
                   } ${isTarget ? "bg-mw-tint-blue text-mw-record" : ""} ${
                     dragColKey === col.key ? "opacity-50" : ""
                   } ${col.rightPinned ? "right-0 border-l-2 border-l-mw-primary" : ""}`}
                 >
                   <span className="flex items-center gap-1">
                     {canManageColumns && (
-                      <span aria-hidden="true" className="text-[0.6rem] opacity-40">
+                      <span
+                        aria-hidden="true"
+                        className="text-[0.6rem] opacity-40"
+                      >
                         ⠿
                       </span>
                     )}
                     {canManageColumns ? (
-                      <ColumnContextMenu boardId={boardId} column={col} scheduleItems={scheduleItems} scheduleRecipients={scheduleRecipients} onArchived={onColumnArchived}>
+                      <ColumnContextMenu
+                        boardId={boardId}
+                        column={col}
+                        scheduleItems={scheduleItems}
+                        scheduleRecipients={scheduleRecipients}
+                        onArchived={onColumnArchived}
+                      >
                         <SourceBadge source={col.source} />
                         <span className="truncate">{col.label}</span>
                       </ColumnContextMenu>
                     ) : (
-                      <><SourceBadge source={col.source} /><span className="truncate">{col.label}</span></>
+                      <>
+                        <SourceBadge source={col.source} />
+                        <span className="truncate">{col.label}</span>
+                      </>
                     )}
                   </span>
-                  {canManageColumns && <span
-                    aria-hidden="true"
-                    draggable={false}
-                    onMouseDown={startResize(col.id)}
-                    onDoubleClick={resetWidth(col.id)}
-                    title="끌어서 폭 조절 · 두 번 누르면 원래대로"
-                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-mw-record/40"
-                  />}
+                  {canManageColumns && (
+                    <span
+                      aria-hidden="true"
+                      draggable={false}
+                      onMouseDown={startResize(col.id)}
+                      onDoubleClick={resetWidth(col.id)}
+                      title="끌어서 폭 조절 · 두 번 누르면 원래대로"
+                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-mw-record/40"
+                    />
+                  )}
                 </th>
               );
             })}
@@ -535,7 +648,9 @@ export function GroupTable({
                   overRowIndex === 0 ? "bg-mw-tint-blue" : ""
                 }`}
               >
-                {dragRowId ? "여기에 놓으면 이 그룹으로 이동합니다" : "행이 없습니다."}
+                {dragRowId
+                  ? "여기에 놓으면 이 그룹으로 이동합니다"
+                  : "행이 없습니다."}
               </td>
             </tr>
           )}
@@ -555,7 +670,9 @@ export function GroupTable({
                   dragRowId === row.id ? "opacity-40" : ""
                 } ${overRowIndex === index ? "border-t-2 border-t-mw-record" : ""}`}
               >
-                <td className={`${STICKY_FIRST} border-b border-mw-line px-2 group-hover:bg-mw-bg`}>
+                <td
+                  className={`${STICKY_FIRST} border-b border-mw-line px-2 group-hover:bg-mw-bg`}
+                >
                   <div className="flex items-center gap-1">
                     {rowDragEnabled && (
                       <span
@@ -574,20 +691,44 @@ export function GroupTable({
                     )}
 
                     {readOnly ? (
-                      <span className="truncate text-xs font-medium text-mw-fg">{row.title}</span>
+                      <span className="truncate text-xs font-medium text-mw-fg">
+                        {row.title}
+                      </span>
                     ) : (
-                      <><form action={canonicalNewLead && row.deal_id ? updateNewLeadTitleAction : renameItemAction} className="min-w-0 flex-1">
-                        <input type="hidden" name="boardId" value={boardId} />
-                        <input type="hidden" name="itemId" value={row.id} />
-                        {canonicalNewLead && row.deal_id ? <input type="hidden" name="dealId" value={row.deal_id} /> : null}
-                        <input
-                          name="title"
-                          defaultValue={row.title}
-                          aria-label="행 이름"
-                          className={`${CELL_INPUT} font-medium`}
-                        />
-                      </form>
-                      {findCellError(cellFlash, row.id, "title") ? <p role="alert" className="text-[0.65rem] text-mw-error">{findCellError(cellFlash, row.id, "title")}</p> : null}</>
+                      <>
+                        <form
+                          action={
+                            canonicalNewLead && row.deal_id
+                              ? updateNewLeadTitleAction
+                              : renameItemAction
+                          }
+                          className="min-w-0 flex-1"
+                        >
+                          <input type="hidden" name="boardId" value={boardId} />
+                          <input type="hidden" name="itemId" value={row.id} />
+                          {canonicalNewLead && row.deal_id ? (
+                            <input
+                              type="hidden"
+                              name="dealId"
+                              value={row.deal_id}
+                            />
+                          ) : null}
+                          <input
+                            name="title"
+                            defaultValue={row.title}
+                            aria-label="행 이름"
+                            className={`${CELL_INPUT} font-medium`}
+                          />
+                        </form>
+                        {findCellError(cellFlash, row.id, "title") ? (
+                          <p
+                            role="alert"
+                            className="text-[0.65rem] text-mw-error"
+                          >
+                            {findCellError(cellFlash, row.id, "title")}
+                          </p>
+                        ) : null}
+                      </>
                     )}
 
                     <ItemDetailPanel
@@ -600,6 +741,22 @@ export function GroupTable({
                       canEditItems={!readOnly}
                       canManageColumns={canManageColumns}
                       canonicalNewLead={canonicalNewLead}
+                      previousItem={
+                        index > 0
+                          ? {
+                              id: rows[index - 1].id,
+                              title: rows[index - 1].title,
+                            }
+                          : undefined
+                      }
+                      nextItem={
+                        index < rows.length - 1
+                          ? {
+                              id: rows[index + 1].id,
+                              title: rows[index + 1].title,
+                            }
+                          : undefined
+                      }
                     />
 
                     {/* BBE-240 — 자금건과 연결된 행(BBE-235 프로젝션 트리거가 채운 deal_id)에만
@@ -607,7 +764,11 @@ export function GroupTable({
                     {row.deal_id && <DealLedgerButton dealId={row.deal_id} />}
 
                     {canDeleteRow && (
-                      <TrashItemButton boardId={boardId} itemId={row.id} title={row.title} />
+                      <TrashItemButton
+                        boardId={boardId}
+                        itemId={row.id}
+                        title={row.title}
+                      />
                     )}
                   </div>
                   {renderRowAction?.(row)}
@@ -619,7 +780,9 @@ export function GroupTable({
                     data-view-focus={col.key === focusColumnKey || undefined}
                     data-column-key={col.key}
                     className={`border-b border-mw-line px-2 align-middle group-hover:bg-mw-bg ${(col.wrap_mode ?? textMode) === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
-                      col.rightPinned ? "sticky right-0 z-10 border-l-2 border-l-mw-primary bg-mw-card" : ""
+                      col.rightPinned
+                        ? "sticky right-0 z-10 border-l-2 border-l-mw-primary bg-mw-card"
+                        : ""
                     }`}
                   >
                     <BoardCell
@@ -628,7 +791,11 @@ export function GroupTable({
                       column={col}
                       readOnly={readOnly}
                       canonicalNewLead={canonicalNewLead}
-                      error={cellFlash ? findCellError(cellFlash, row.id, col.key) : null}
+                      error={
+                        cellFlash
+                          ? findCellError(cellFlash, row.id, col.key)
+                          : null
+                      }
                     />
                   </td>
                 ))}
@@ -638,13 +805,21 @@ export function GroupTable({
 
           {!readOnly && (
             /* 마지막 줄 = 새 항목 입력 + 그룹 맨 끝 드롭 자리(원칙 5). */
-            <tr onDragOver={acceptRow(rows.length)} onDrop={dropRow(rows.length)}>
+            <tr
+              onDragOver={acceptRow(rows.length)}
+              onDrop={dropRow(rows.length)}
+            >
               <td
                 colSpan={colSpan}
                 className={`px-2 py-1 ${overRowIndex === rows.length ? "bg-mw-tint-blue" : ""}`}
               >
                 {canonicalNewLead && groupId ? (
-                  <NewLeadIntakeForm boardId={boardId} groupId={groupId} members={newLeadMembers} currentUserId={currentUserId} />
+                  <NewLeadIntakeForm
+                    boardId={boardId}
+                    groupId={groupId}
+                    members={newLeadMembers}
+                    currentUserId={currentUserId}
+                  />
                 ) : (
                   <AddItemForm
                     boardId={boardId}
