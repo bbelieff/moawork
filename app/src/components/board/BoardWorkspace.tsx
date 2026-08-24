@@ -46,6 +46,7 @@ import { NOTICE_KEYS } from "@/lib/notices/types";
 import { buildBlocks } from "./blocks";
 import {
   groupKeyOf,
+  placeAdNameNearContact,
   reorderColumnKeys,
   resolveColumnOrder,
   type GroupColumnOrder,
@@ -169,7 +170,10 @@ export function BoardWorkspace({
   const [restoring, setRestoring] = useState(false);
   const [restoringColumnId, setRestoringColumnId] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
-  const activeColumns = useMemo(() => columns.filter((column) => !archivedColumnIds.has(column.id)), [archivedColumnIds, columns]);
+  const activeColumns = useMemo(() => {
+    const visible = columns.filter((column) => !archivedColumnIds.has(column.id));
+    return board.source === NEW_LEAD_TAB_SOURCE ? placeAdNameNearContact(visible) : visible;
+  }, [archivedColumnIds, board.source, columns]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -414,7 +418,11 @@ export function BoardWorkspace({
         </p>
       ) : (
         blocks.map((block) => {
-          const fullColumns = resolveColumnOrder(activeColumns, optimisticOrder[block.key]);
+          const resolvedColumns = resolveColumnOrder(activeColumns, optimisticOrder[block.key]);
+          // 과거에 저장된 그룹별 배치도 광고 명의 필수 유입정보 위치를 되돌리지 못하게 한다.
+          const fullColumns = board.source === NEW_LEAD_TAB_SOURCE
+            ? placeAdNameNearContact(resolvedColumns)
+            : resolvedColumns;
           const shown = limitColumns(fullColumns, filters.columnLimit);
           const visibleRows = applyFilters(block.rows, activeColumns, filters);
           const boardDetailLayout = resolveBoardDetailLayout(

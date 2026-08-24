@@ -29,6 +29,23 @@ export function groupKeyOf(groupId: string | null): string {
 export type GroupColumnOrder = Record<string, string[]>;
 
 /**
+ * 신규리드의 유입 출처는 연락처/대표자와 함께 확인하는 정보다.
+ * 기존 hosted 보드는 과거 sort_order를 유지하므로 기본 탭 정의만 고쳐서는 화면이
+ * 바뀌지 않는다. 값이나 저장 순서는 건드리지 않고 표시 배열에서만 광고 명을 연락처
+ * 바로 앞으로 옮긴다. 나머지 컬럼의 상대 순서와 컬럼 집합은 그대로 보존한다.
+ */
+export function placeAdNameNearContact(columns: readonly BoardColumn[]): BoardColumn[] {
+  const next = [...columns];
+  const adIndex = next.findIndex((column) => column.key === "ad_name");
+  const phoneIndex = next.findIndex((column) => column.key === "phone");
+  if (adIndex < 0 || phoneIndex < 0 || adIndex === phoneIndex - 1) return next;
+  const [adName] = next.splice(adIndex, 1);
+  const nextPhoneIndex = next.findIndex((column) => column.key === "phone");
+  next.splice(nextPhoneIndex, 0, adName);
+  return next;
+}
+
+/**
  * 오버라이드를 보드 기본 순서에 겹쳐 그룹의 최종 컬럼 순서를 만든다.
  *
  * - 오버라이드에 있고 보드에도 있는 컬럼 → 오버라이드 순서대로 앞에
