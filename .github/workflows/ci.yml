@@ -30,10 +30,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ★ `cache: npm` 을 뺀다 — 셀프호스티드(윈도우)에서 매번 이 경고가 났다:
+      #     ! Failed to save: "C:\Program failed with error: ... tar.exe failed with exit code 2
+      #   actions/toolkit 이 tar 경로의 공백(C:\Program Files\Git\...)을 못 다뤄서 나는 것이고,
+      #   빌드를 실패시키진 않지만 «CI 가 깨진 것처럼» 보여 다른 워커를 헷갈리게 한다.
+      #
+      #   빼도 손해가 없다 — 러너가 «같은 PC 에 계속 사는» 구조라 npm 자체 캐시(~/.npm)가
+      #   잡 사이에 그대로 남는다. GitHub 호스팅 러너(매번 새 VM)와 달리 따로 실어 나를 것이 없다.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Install dependencies
         run: npm ci
