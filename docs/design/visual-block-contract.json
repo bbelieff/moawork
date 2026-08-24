@@ -46,14 +46,14 @@
       "expected_icon_state": "gear + focus-visible button",
       "screen_region": "top-tools",
       "relative_order": { "after": "board-header-new-item", "before": "group-table-assembly" },
-      "bounding_box_constraints": { "desktop": { "top_max": 210, "width_min": 900 }, "mobile": { "top_max": 350, "width_min": 300 } },
+      "bounding_box_constraints": { "desktop": { "top_max": 210, "width_min": 900 }, "mobile": { "top_max": 350, "width_min": 300 }, "new": { "desktop": { "top_max": 430, "width_min": 900 }, "mobile": { "top_max": 500, "width_min": 300 } } },
       "sticky_pinned": false,
       "style_tokens": ["--mw-card", "--mw-line", "--mw-sub", "--sp-*"],
-      "comparison": { "y_delta_max": { "desktop": 0.02, "mobile": 0.02 }, "font_delta_max": 3.5, "color_delta_max": 20, "background_delta_max": 15, "border_delta_max": 20, "size_ratio_max": 4.3 },
+      "comparison": { "y_delta_max": { "desktop": 0.02, "mobile": 0.02, "new": { "desktop": 0.35, "mobile": 0.46 } }, "font_delta_max": 3.5, "color_delta_max": 20, "background_delta_max": 15, "border_delta_max": 20, "size_ratio_max": 4.3 },
       "interaction_feedback": "click opens settings; Escape returns focus",
       "persistence_reload": "entry remains at top after reload",
       "dependencies": ["board-header-new-item"],
-      "override": { "issue": 534, "date": "2026-08-24", "rationale": "설정을 모든 그룹 아래가 아닌 상단 도구 영역에서 즉시 발견한다." }
+      "override": { "issue": 542, "date": "2026-08-25", "rationale": "설정을 그룹 표보다 먼저 발견한다. 신규리드는 1회 시작 안내 다음, 리드컨택은 헤더 다음에 둔다." }
     },
     {
       "block_id": "group-table-assembly",
@@ -70,7 +70,7 @@
       "bounding_box_constraints": { "desktop": { "top_min": 140, "width_min": 1000 }, "mobile": { "top_min": 140, "width_min": 320 } },
       "sticky_pinned": false,
       "style_tokens": ["--mw-card", "--mw-line", "--mw-bg", "--fs-*"],
-      "comparison": { "y_delta_max": { "desktop": 0.13, "mobile": 0.53 }, "font_delta_max": 3.5, "color_delta_max": 20, "background_delta_max": 10, "border_delta_max": 365, "size_ratio_max": 5.5 },
+      "comparison": { "y_delta_max": { "desktop": 0.13, "mobile": 0.53, "new": { "desktop": 0.22, "mobile": 0.53 } }, "font_delta_max": 3.5, "color_delta_max": 20, "background_delta_max": 10, "border_delta_max": 365, "size_ratio_max": 5.5 },
       "interaction_feedback": "horizontal scroll preserves first and workflow columns",
       "persistence_reload": "column order and group order reload from fixture state",
       "dependencies": ["board-settings-top"],
@@ -79,12 +79,12 @@
     {
       "block_id": "workflow-gate-pinned",
       "route": "/w/fixture/{tab}",
-      "tab": ["new", "contact"],
+      "tab": ["contact"],
       "viewport": ["desktop", "mobile"],
       "mockup_anchor": "th:last-child",
       "product_anchor": "th[data-right-pinned='true']",
       "expected_text": ["컨택 이동", "업무이동"],
-      "expected_text_by_tab": { "new": ["컨택 이동"], "contact": ["업무이동"] },
+      "expected_text_by_tab": { "contact": ["업무이동"] },
       "expected_icon_state": "workflow state select + save feedback",
       "screen_region": "content-right-edge",
       "relative_order": { "inside": "group-table-assembly", "after": "all ordinary columns" },
@@ -95,7 +95,7 @@
       "interaction_feedback": "state change exposes explicit save/success/error feedback",
       "persistence_reload": "fixture transition persists and reloads; guard rejection preserves input",
       "dependencies": ["group-table-assembly"],
-      "override": { "issue": 534, "date": "2026-08-24", "rationale": "new/contact 핵심 전환 CTA는 수평 스크롤과 모바일에서도 오른쪽에 고정한다." }
+      "override": { "issue": 542, "date": "2026-08-25", "rationale": "신규리드의 컨택 이동 표 컬럼은 상세 CTA로 대체한다. 리드컨택의 업무이동 관문만 수평 스크롤과 모바일에서 오른쪽에 고정한다." }
     }
   ]
 }
