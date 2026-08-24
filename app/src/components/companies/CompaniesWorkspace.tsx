@@ -270,13 +270,18 @@ export function CompaniesWorkspace({ model, importSlot }: { model: CompaniesView
 
       {/* 필터 줄 — 목업과 같은 6개, 같은 순서. 네이티브 select 를 쓰지 않는다(집안 규약). */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-200 p-2 dark:border-zinc-800">
+        {/*
+          ★ 라벨과 플레이스홀더에 같은 말을 두 번 쓰지 않는다.
+            운영 화면에서 눈으로 보니 «회사명 검색   회사명» 으로 겹쳐 보였다 —
+            목업은 칩 하나(`🔍 회사명 검색`)다. 라벨을 남기고 플레이스홀더를 뺀다.
+            (배치 계약은 이걸 못 잡는다. 「존재하고 순서가 맞다」는 둘 다 참이었다.)
+        */}
         <label className={chip}>
           <span className="text-zinc-500">회사명 검색</span>
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="w-32 bg-transparent outline-none placeholder:text-zinc-400"
-            placeholder="회사명"
+            className="w-32 bg-transparent outline-none"
           />
         </label>
 
