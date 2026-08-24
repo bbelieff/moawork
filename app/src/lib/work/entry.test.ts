@@ -96,13 +96,16 @@ describe("repairContractWorkBoardOnEntry", () => {
     expect(request.rpc).not.toHaveBeenCalled();
   });
 
-  it("owner 진입에서 없는 보드가 additive로 생기고, 수수료 컬럼까지 포함한다", async () => {
+  it("owner 진입에서 없는 보드가 additive로 생기고, 계약조건 컬럼까지 포함한다", async () => {
     const local = new LocalBoardsRepo();
     const request = fakeClient(toAsyncBoardsRepo(local));
     const result = await repairContractWorkBoardOnEntry(ctx, request as never);
     expect(result.kind).toBe("ready");
     const boardId = result.kind === "ready" ? result.boardId : "";
-    expect(local.listColumns(ctx, boardId).some((c) => c.key === "fee_percent")).toBe(true);
+    const keys = local.listColumns(ctx, boardId).map((c) => c.key);
+    // ★ 2026-08-25(#544) — 「수수료율을 계약조건으로」. 자리는 그대로고 개념만 바뀌었다.
+    expect(keys).toContain("fee_terms");
+    expect(keys, "옛 % key 가 되살아나면 두 개념이 공존한다").not.toContain("fee_percent");
   });
 
   it("동시 진입 2회에도 보드가 하나로 수렴한다", async () => {

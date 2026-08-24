@@ -116,7 +116,20 @@ const columns: DefaultTabColumn[] = [
   { key: "expected_review_end", label: "예상 심사 종료", type: "date", source: "in", width: 130 },
   { key: "review_dday", label: "ƒ심사 D-day", type: "calc", source: "calc", readOnly: true, width: 120 },
   { key: "execution_amount", label: "실행액", type: "money", source: "in", width: 120 },
-  { key: "fee_percent", label: "수수료(%)", type: "number", source: "in", width: 110 },
+  // ★ 2026-08-25 총괄 직접 지시 — 「수수료율을 계약조건으로 하자」.
+  //   원문: 「수수료 %는 앞으로 변동이 생길 수 있는 이슈야. 그래서 수수료 개념을 굳이 %로
+  //   하기보다는 원래 %가 있던 계약조건을 빈필드로 놔두고 자유기재할 수 있도록 해줘」
+  //
+  //   ⚠ key 를 «일부러» 바꾼다 — 위 fund_name·product 와 정반대 판단이다.
+  //     그 둘은 «같은 것을 다르게 부르기» 라서 key 를 지켜 셀 값을 살렸다.
+  //     이건 «다른 것» 이다. 숫자 3(=3%)을 계약조건 텍스트로 읽으면 «3» 이라는 계약조건이
+  //     되어 조용히 거짓이 된다. 그래서 옛 값은 고아가 되는 편이 맞다.
+  //     (업체관리 현황이 읽는 `deals.fee_terms`(105_bbe240)와 같은 이름을 쓴다 —
+  //      두 화면이 같은 것을 같은 말로 부르게 한다.)
+  { key: "fee_terms", label: "계약조건", type: "text", source: "in", width: 180 },
+  // ƒ수수료(원) 은 «남긴다» — 구조 축소는 무조건 FAIL 이다(D73).
+  //   다만 근거가 바뀌었다: 실행액 × % 로는 더 이상 못 구한다. 금액의 정본은 **원장**이다
+  //   (목업 부제 「금액은 원장 합계」·업체관리 현황도 원장에서 읽는다). calculations.ts 참조.
   { key: "fee_amount", label: "ƒ수수료(원)", type: "calc", source: "calc", readOnly: true, width: 130 },
   { key: "fee_paid_on", label: "수수료_입금일", type: "date", source: "in", width: 130 },
   { key: "total_revenue", label: "ƒ총 매출액", type: "calc", source: "calc", readOnly: true, width: 130 },
