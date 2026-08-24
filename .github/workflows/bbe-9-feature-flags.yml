@@ -15,10 +15,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      # ci.yml 과 같은 이유로 `cache: npm` 을 뺐다 — 근거는 그쪽 주석에 적었다.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - run: npm ci
       - run: node scripts/release/check-feature-flags.mjs
       - run: npm test --workspace app -- --run src/lib/feature-flags
