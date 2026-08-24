@@ -8,7 +8,18 @@ export type CalculatedFieldKey =
 
 export interface CalculationInputs {
   executionAmount?: number | null;
-  feePercent?: number | null;
+  /**
+   * ★ 2026-08-25 — `feePercent` 를 대신한다.
+   *
+   * 총괄 직접 지시로 계약업체 실무의 «수수료(%)» 가 «계약조건»(자유기재) 이 됐다.
+   * 자유기재에서는 «실행액 × %» 를 뽑을 수 없다 — 그래서 근거를 바꾼다.
+   * 수수료 «금액» 의 정본은 **원장**이다(`ledger.kind = 'fee'` 합계).
+   * 목업 부제도 같은 말을 한다 — 「금액은 원장 합계」.
+   *
+   * ⚠ 이 값은 «못 읽었다» 와 «0원» 을 구분해야 한다. 못 읽었으면 null 을 넘긴다.
+   *   0 을 넘기면 화면이 «수수료 0원» 이라고 단언해 버린다.
+   */
+  ledgerFeeTotal?: number | null;
   fundedOn?: string | null;
   feePaidOn?: string | null;
   reviewEndsOn?: string | null;
@@ -56,9 +67,9 @@ function reviewDday(value: string | null | undefined, now: Date): string | null 
   return days > 0 ? `D-${days}` : days === 0 ? "오늘" : "지남";
 }
 
-function feeAmount(executionAmount?: number | null, feePercent?: number | null): number | null {
-  if (!Number.isFinite(executionAmount) || !Number.isFinite(feePercent)) return null;
-  return Math.round((executionAmount as number) * (feePercent as number) / 100);
+function feeAmount(ledgerFeeTotal?: number | null): number | null {
+  // 원장을 못 읽었으면 «0원» 이 아니라 «모른다» 다. 그 둘을 섞으면 미수금이 조용히 사라진다.
+  return Number.isFinite(ledgerFeeTotal) ? (ledgerFeeTotal as number) : null;
 }
 
 function readCount(targetIds?: readonly string[] | null, readerIds?: readonly string[] | null): number | null {
@@ -73,7 +84,7 @@ export function calculateFields(
   now: Date = new Date(),
   boardFeeTotal?: number | null,
 ): CalculatedFieldResult {
-  const fee = feeAmount(input.executionAmount, input.feePercent);
+  const fee = feeAmount(input.ledgerFeeTotal);
   const calculatedAt = now.toISOString();
   const staleAt = nextKstMidnight(now);
 

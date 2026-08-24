@@ -14,7 +14,15 @@ export const LEGACY_WORK_COLUMNS: readonly WorkColumnContract[] = [
   legacy("workflow_status", "진행상황", "select", 17, { sourceAliases: ["진행상항"] }),
   legacy("visit_application_date", "방문 및 신청 일", "date", 18), legacy("review_period", "예상 심사기간", "date_range", 19),
   legacy("inspection_date", "실사일", "date", 20), legacy("guidance", "지도내용", "longtext", 21), legacy("execution_amount", "실행액", "amount", 22),
-  legacy("fee_percent", "수수료(%)", "percent", 23), legacy("fee_amount", "수수료(원)", "amount", 24),
+  // ★ 2026-08-25 총괄 직접 지시(#544) — 「수수료율을 계약조건으로 하자」.
+  //   「수수료 %는 앞으로 변동이 생길 수 있는 이슈야 … 원래 %가 있던 계약조건을 빈필드로
+  //    놔두고 자유기재할 수 있도록 해줘」
+  //   ★ 이 화면(/work · 계약업체 실무)이 실제로 그리는 것이 이 배열이다. default-tabs 의
+  //     CONTRACT_WORK_TAB 만 고치면 화면에는 안 닿는다 — 실측으로 확인했다(work-management · v1).
+  //   먼데이 원본 이름은 `sourceAliases` 에 남긴다 — 진행상황←진행상항 과 같은 규약이라
+  //   「바깥 시스템이 뭐라고 적어 뒀는가」의 기록은 잃지 않는다. legacyOrder(23)도 그대로다.
+  legacy("fee_terms", "계약조건", "text", 23, { sourceAliases: ["수수료(%)"] }),
+  legacy("fee_amount", "수수료(원)", "amount", 24),
   legacy("fee_paid_on", "수수료 입금일", "date", 25, { sourceAliases: ["수수료_입금일"] }), legacy("total_revenue", "총 매출액", "amount", 26),
   legacy("reapply_date", "재신청 안내일", "date", 27), legacy("d180", "D+180", "date", 28), legacy("d365", "D+365", "date", 29),
   legacy("deposit", "계약금", "amount", 30), legacy("deposit_paid_on", "계약금 입금일", "date", 31, { sourceAliases: ["계약금_입금일"] }),
