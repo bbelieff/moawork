@@ -127,6 +127,7 @@ const COLUMNS: DefaultTabColumn[] = [
 
   // 3~12 회사·접수 정보
   { key: "applied_on", label: "신청일", type: "date", source: "auto", width: 120 },
+  { key: "ad_name", label: "광고 명", type: "text", source: "auto", width: 120 },
   { key: "phone", label: "연락처", type: "phone", source: "auto", width: 130 },
   { key: "rep_name", label: "대표자명", type: "text", source: "auto", width: 100 },
   {
@@ -173,7 +174,6 @@ const COLUMNS: DefaultTabColumn[] = [
   },
   { key: "sigungu", label: "시군구", type: "select", source: "in", options: sigunguOptions(), width: 110 },
   { key: "email", label: "이메일", type: "email", source: "auto", width: 160 },
-  { key: "ad_name", label: "광고 명", type: "text", source: "auto", width: 120 },
 
   // 13~15 ✉ 발송 — 돈이 나간다. DC-04 안전장치 대기(임시 잠금).
   sendColumn(
@@ -250,8 +250,8 @@ export const NEW_LEAD_TAB: DefaultTab = {
   description: "새로 들어온 리드를 상담 상황에 따라 자동으로 분류한다",
   groups: [
     { name: NEW_LEAD_GROUPS.fresh, color: "#FFCB00" },
-    { name: NEW_LEAD_GROUPS.absent1, color: "#0086c0" },
     { name: NEW_LEAD_GROUPS.consult2, color: "#9CD326" },
+    { name: NEW_LEAD_GROUPS.absent1, color: "#0086c0" },
     { name: NEW_LEAD_GROUPS.hold, color: "#FF642E" },
     { name: NEW_LEAD_GROUPS.rejected, color: "#FF158A" },
   ],

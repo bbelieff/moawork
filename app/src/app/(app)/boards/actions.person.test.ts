@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const setCells = vi.fn(async () => ({ errors: [] }));
+const activeMemberIds = new Set(["member-account-b"]);
+const memberQuery = {
+  select: vi.fn(() => memberQuery),
+  eq: vi.fn(() => memberQuery),
+  in: vi.fn(async (_column: string, ids: string[]) => ({
+    data: ids.filter((id) => activeMemberIds.has(id)).map((user_id) => ({ user_id })),
+    error: null,
+  })),
+};
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
@@ -15,7 +24,13 @@ vi.mock("@/lib/auth/session", () => ({
 }));
 vi.mock("@/lib/perm/guard", () => ({ loadPermGuard: async () => ({ kind: "allowed" }) }));
 vi.mock("@/lib/perm/server", () => ({ recordRiskyAction: async () => ({ ok: true }) }));
-vi.mock("@/lib/boards/server", () => ({ createRequestBoards: async () => ({ service: { setCells } }) }));
+vi.mock("@/lib/boards/server", () => ({ createRequestBoards: async () => ({
+  service: {
+    setCells,
+    getBoardDetail: async () => ({ columns: [{ key: "owner", type: "person" }, { key: "status", type: "status" }] }),
+  },
+  client: { from: vi.fn(() => memberQuery) },
+}) }));
 
 import { setCellAction } from "./actions";
 
@@ -45,6 +60,18 @@ describe("setCellAction person selection", () => {
   it("미배정 선택을 null로 저장한다", async () => {
     await setCellAction(personForm(""));
     expect(setCells).toHaveBeenCalledWith(expect.anything(), "board-1", "item-1", { owner: null });
+  });
+
+  it("현재 조직의 활성 멤버가 아닌 ID는 저장하지 않는다", async () => {
+    await setCellAction(personForm("other-org-member"));
+    expect(setCells).not.toHaveBeenCalled();
+  });
+
+  it("조작된 kind를 보내도 실제 person 컬럼의 멤버 경계를 우회하지 못한다", async () => {
+    const form = personForm("other-org-member");
+    form.set("kind", "text");
+    await setCellAction(form);
+    expect(setCells).not.toHaveBeenCalled();
   });
 });
 

@@ -67,14 +67,17 @@ describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
     expect(mock.columns.length).toBe(22);
   });
 
-  it("그룹 5개가 목업 순서·이름 그대로다", () => {
-    expect(NEW_LEAD_TAB.groups.map((group) => group.name)).toEqual(mock.groups);
+  it("그룹 5개는 사용자 확정 순서가 목업보다 우선한다", () => {
+    expect(NEW_LEAD_TAB.groups.map((group) => group.name)).toEqual([
+      "💡 신규고객", "🔍 2차 상담고객", "🔇 1차 부재", "📑 보류", "🚫 거절",
+    ]);
   });
 
-  it("컬럼 22개가 목업 순서 그대로다", () => {
-    expect(NEW_LEAD_TAB.columns.map((column) => column.label)).toEqual(
-      mock.columns.map((column) => column.label),
-    );
+  it("컬럼 22개를 보존하며 광고 명을 앞쪽 유입정보 영역에 둔다", () => {
+    const labels = NEW_LEAD_TAB.columns.map((column) => column.label);
+    expect(labels).toHaveLength(22);
+    expect(labels.slice(0, 6)).toEqual(["담당자", "협업자", "신청일", "광고 명", "연락처", "대표자명"]);
+    expect(new Set(labels)).toEqual(new Set(mock.columns.map((column) => column.label)));
   });
 
   it("컬럼 타입이 목업과 같다", () => {

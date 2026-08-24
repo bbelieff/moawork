@@ -18,7 +18,6 @@ import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import { loadPermGuards } from "@/lib/perm/guard";
 import { PermissionUnavailable } from "@/components/perm/PermissionUnavailable";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
-import { type SectionPresetRecord } from "@/lib/presets/section-presets";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { BoardTrashPanel } from "@/components/board/BoardTrashPanel";
 import { SavedViewsController } from "@/components/view";
@@ -27,7 +26,8 @@ import { resolveSavedPersonRuntime } from "@/lib/view/server";
 import { decodeBoardFilters } from "@/components/board/filters";
 import { GenericBoardKanban } from "@/components/boards/GenericBoardKanban";
 import { ColumnEditor } from "@/components/boards/ColumnEditor";
-import { ColumnTemplateLibrary } from "@/components/boards/ColumnTemplateLibrary";
+import { GroupPresetMenu } from "@/components/board/GroupPresetMenu";
+import { groupPresetName } from "@/lib/presets/group-preset";
 import { addGroupAction, deleteBoardAction } from "../actions";
 import { getBoardColumnOrder } from "../groupLayout";
 
@@ -193,7 +193,6 @@ export default async function BoardPage({
    *   목록은 «그룹 메뉴를 열 때» 만 필요하므로 렌더에서 읽지 않는 것이 옳다(BBE-223).
    *   저장·미리보기는 이 PR 로 동작하고, 「다른 프리셋 적용」 목록만 그 카드에서 잇는다.
    */
-  const presets: SectionPresetRecord[] = [];
   const savedColumnOrder = await getBoardColumnOrder(repo, ctx, id);
   const activeColumnOrder = Object.fromEntries(
     Object.entries(parseSavedBoardLayout(sp.mwLayout) ?? savedColumnOrder).map(([groupId, keys]) => [groupId, [...keys]]),
@@ -248,17 +247,35 @@ export default async function BoardPage({
     </div>
   );
 
-  /** 구조 편집(컬럼·그룹·삭제) — 상시 노출하면 표 아래가 산만해져 접어 둔다(원칙 2·7). */
+  /** 실무 목적별 보드 설정 — 기록 항목/업무 양식/그룹 순서/위험 구역. */
   const boardSettings = !board.is_system && (canManageColumns || canManageSections || canDeleteBoard) && (
-    <details className="rounded-xl border border-mw-line bg-mw-card">
+    <details id="board-settings" className="rounded-xl border border-mw-line bg-mw-card">
       <summary className="cursor-pointer select-none px-3 py-2 text-xs text-mw-sub list-none [&::-webkit-details-marker]:hidden">
-        ⚙ 보드 설정 — 컬럼·그룹·삭제
+        ⚙ 보드 설정
       </summary>
       <div className="flex flex-col gap-3 border-t border-mw-line p-3">
-        {canManageColumns && <ColumnEditor boardId={id} columns={columns} />}
-        {canManageColumns && <ColumnTemplateLibrary boardId={id} columns={columns} />}
+        {canManageColumns && <section className="rounded-xl border border-mw-line p-3" aria-labelledby="record-fields-heading">
+          <h2 id="record-fields-heading" className="font-semibold text-mw-fg">기록 항목(컬럼)</h2>
+          <p className="mb-3 text-xs text-mw-sub">이 보드가 기록하는 정보입니다. 추가하고, 각 머리말 메뉴에서 이름·타입·선택지·순서·숨김을 바꾸며 숨긴 항목은 여기서 복구합니다.</p>
+          <ColumnEditor boardId={id} columns={columns} />
+        </section>}
+        {(canManageColumns || canEditPresets) && <section id="board-work-forms" className="rounded-xl border border-mw-line p-3" aria-labelledby="work-form-heading">
+          <h2 id="work-form-heading" className="font-semibold text-mw-fg">업무 양식</h2>
+          <p className="mb-3 text-xs text-mw-sub">각 업무 단계의 현재 기록 항목 묶음을 저장해 회사에서 재사용합니다. 적용 전 추가·유지 항목과 값 보존을 미리 확인합니다.</p>
+          <div className="flex flex-wrap gap-2">
+            {groups.map((group) => {
+              const order = activeColumnOrder[group.id];
+              const rank = new Map((order ?? []).map((key, index) => [key, index]));
+              const formColumns = [...columns].sort((a, b) => (rank.get(a.key) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.key) ?? Number.MAX_SAFE_INTEGER) || a.sort_order - b.sort_order);
+              return <GroupPresetMenu key={group.id} boardId={id} groupKey={group.id} savable presetName={groupPresetName(board.name, group.name)} columns={formColumns} order={order} canEditPresets={canEditPresets} canManageColumns={canManageColumns} />;
+            })}
+          </div>
+        </section>}
 
-        {canManageSections && <form action={addGroupAction} className="flex flex-wrap items-end gap-2">
+        {canManageSections && <section className="rounded-xl border border-mw-line p-3" aria-labelledby="group-order-heading">
+          <h2 id="group-order-heading" className="font-semibold text-mw-fg">그룹 순서</h2>
+          <p className="mb-3 text-xs text-mw-sub">그룹은 상담·업무 단계입니다. 표의 그룹 머리말을 끌거나 ↑↓ 버튼으로 옮기면 즉시 회사 보드에 저장됩니다.</p>
+          <form action={addGroupAction} className="flex flex-wrap items-end gap-2">
           <input type="hidden" name="boardId" value={id} />
           <label className="flex flex-col gap-1 text-xs">
             <span className="text-mw-sub">새 그룹</span>
@@ -273,16 +290,21 @@ export default async function BoardPage({
             type="submit"
             className="h-9 rounded-lg border border-mw-line px-3 text-sm text-mw-body hover:bg-mw-bg"
           >
-            그룹 추가
+            새 업무 단계 추가
           </button>
-        </form>}
+          </form>
+        </section>}
 
-        {canDeleteBoard && <form action={deleteBoardAction}>
+        {canDeleteBoard && <section className="rounded-xl border border-mw-error/40 p-3" aria-labelledby="danger-heading">
+          <h2 id="danger-heading" className="font-semibold text-mw-error">위험 구역</h2>
+          <p className="mb-2 text-xs text-mw-sub">보드 전체를 삭제합니다. 기록 항목 숨김이나 그룹 순서 변경과는 별개입니다.</p>
+          <form action={deleteBoardAction}>
           <input type="hidden" name="boardId" value={id} />
           <button type="submit" className="text-xs text-mw-sub hover:text-mw-error">
             이 보드 삭제
           </button>
-        </form>}
+          </form>
+        </section>}
       </div>
     </details>
   );
@@ -355,8 +377,7 @@ export default async function BoardPage({
       canEditItems={canEditItems}
       canDeleteItems={canDeleteItems}
       canManageColumns={canManageColumns}
-      canEditPresets={canEditPresets}
-      presets={presets}
+      canManageSections={canManageSections}
       currentUserId={ctx.user.id}
     />
   );

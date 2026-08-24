@@ -181,18 +181,13 @@ describe("③ 셀을 고치면 저장되고 다시 읽어도 남는다", () => {
     expect(values?.contract_fee).toBe(1200000);
   });
 
-  /**
-   * 22칸 중 손으로 고칠 수 있는 것은 일부뿐이다 — 목업이 정한 «출처» 가 그것을 정한다.
-   * `⟳ auto`("광고 폼에서 들어옴")는 사람이 타이핑하는 칸이 아니라서 서버가 쓰기를 막는다.
-   * 대표자명·연락처·시도가 여기 속한다. 화면에서 안 열리는 게 맞다.
-   */
-  it("⟳ auto 칸은 손으로 못 고친다 — 광고 폼에서 들어오는 값이다", async () => {
+  it("⟳ 수집 칸은 출처를 보존하면서 사람이 정정해 저장할 수 있다", async () => {
     const item = repo.createItem(ctx, boardId, { title: "다전자 주식회사" });
 
     const result = await svc.setCells(ctx, boardId, item.id, { rep_name: "손입력" });
 
-    expect(result.errors.length).toBeGreaterThan(0);
-    expect((await new BoardsService(asyncRepo).getItem(ctx, boardId, item.id))?.values.rep_name).toBeUndefined();
+    expect(result.errors).toEqual([]);
+    expect((await new BoardsService(asyncRepo).getItem(ctx, boardId, item.id))?.values.rep_name).toBe("손입력");
   });
 
   it("✉ 발송 칸은 서버에서도 쓰기가 거부된다 — 화면만 막으면 안 된다", async () => {

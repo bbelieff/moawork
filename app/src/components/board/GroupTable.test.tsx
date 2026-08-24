@@ -126,9 +126,10 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     })];
     const html = renderTable(columns, [row({ owner: "member-b" })]);
     expect(html).toContain('name="kind" value="person"');
-    expect(html).toContain('<select name="value"');
-    expect(html).toContain('<option value="">미배정</option>');
-    expect(html).toContain('<option value="member-b" selected="">계정 B</option>');
+    expect(html).toContain('placeholder="멤버 검색"');
+    expect(html).toContain('type="hidden" name="value" value="member-b"');
+    expect(html).toContain('type="radio" checked=""');
+    expect(html).toContain("계정 B");
     expect(html).not.toContain('type="text" name="value"');
   });
 

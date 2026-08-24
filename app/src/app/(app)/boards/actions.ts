@@ -433,9 +433,23 @@ export async function setCellAction(formData: FormData): Promise<void> {
       revalidatePath(`/boards/${boardId}`);
       return;
     }
-    const patch: Record<string, import("@/lib/boards/types").CellValue> = {
-      [columnKey]: boardCellValueFromFormData(formData),
-    };
+    const normalized = boardCellValueFromFormData(formData);
+    if (graph.client) {
+      const column = (await svc.getBoardDetail(ctx, boardId)).columns.find((candidate) => candidate.key === columnKey);
+      if (!column) throw new UserFacingActionError("기록 항목을 찾을 수 없어요.");
+      if (column.type === "person" || column.type === "people") {
+        const ids = (Array.isArray(normalized) ? normalized : normalized ? [normalized] : [])
+          .filter((value): value is string => typeof value === "string");
+        if (ids.length > 0) {
+          const members = await graph.client.from("org_members").select("user_id")
+            .eq("org_id", ctx.org.id).eq("status", "active").in("user_id", ids);
+          if (members.error || new Set((members.data ?? []).map((member) => member.user_id)).size !== new Set(ids).size) {
+            throw new UserFacingActionError("현재 회사의 활성 멤버만 선택할 수 있어요.");
+          }
+        }
+      }
+    }
+    const patch: Record<string, import("@/lib/boards/types").CellValue> = { [columnKey]: normalized };
     const { errors } = await svc.setCells(ctx, boardId, itemId, patch);
     await flashCellErrors(itemId, errors);
   } catch (error) {
@@ -504,6 +518,24 @@ export async function addGroupAction(formData: FormData): Promise<void> {
     await requirePermission(ctx, "structure.section_manage");
     const boardId = str(formData, "boardId");
     await (await boardsService()).addGroup(ctx, boardId, { name: str(formData, "name") });
+    revalidatePath(`/boards/${boardId}`);
+  });
+}
+
+export async function reorderGroupsAction(formData: FormData): Promise<void> {
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.section_manage");
+    const boardId = str(formData, "boardId");
+    let groupIds: string[];
+    try {
+      const parsed: unknown = JSON.parse(str(formData, "groupIds"));
+      if (!Array.isArray(parsed) || parsed.some((id) => typeof id !== "string" || id.length === 0)) throw new Error();
+      groupIds = parsed;
+    } catch {
+      throw new UserFacingActionError("그룹 순서를 읽지 못했어요. 새로고침 후 다시 시도해 주세요.");
+    }
+    await (await boardsService()).reorderGroups(ctx, boardId, groupIds);
     revalidatePath(`/boards/${boardId}`);
   });
 }

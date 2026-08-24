@@ -32,14 +32,13 @@ import type { Board, BoardColumn, BoardGroup, ItemWithValues } from "@/lib/board
 import type { CellFlash } from "@/lib/boards/cellFlash";
 import {
   moveRowAction,
+  reorderGroupsAction,
   setGroupColumnOrderAction,
 } from "@/app/(app)/boards/actions";
 import { BoardHeader } from "./BoardHeader";
 import { BoardToolbar } from "./BoardToolbar";
 import { GroupBlock } from "./GroupBlock";
-import { GroupPresetMenu } from "./GroupPresetMenu";
 import { GroupTable } from "./GroupTable";
-import type { SectionPresetRecord } from "@/lib/presets/section-presets";
 import { groupPresetName, isGroupPresetChanged } from "@/lib/presets/group-preset";
 import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
@@ -131,7 +130,7 @@ export function BoardWorkspace({
   canEditItems = false,
   canDeleteItems = false,
   canManageColumns = false,
-  canEditPresets = false,
+  canManageSections = false,
   currentUserId,
 }: {
   board: Board;
@@ -156,10 +155,7 @@ export function BoardWorkspace({
   canEditItems?: boolean;
   canDeleteItems?: boolean;
   canManageColumns?: boolean;
-  /** `structure.preset_edit` — 아이템 프리셋 저장·적용(회사 공용 구조를 바꾼다). */
-  canEditPresets?: boolean;
-  /** 첫 렌더 호환용 빈 목록. 실제 라이브러리는 GroupPresetMenu open 시 조회한다. */
-  presets?: readonly SectionPresetRecord[];
+  canManageSections?: boolean;
   /** BBE-239 — 공지사항에서 작성자 본인 삭제 예외를 판정하는 데 쓴다. */
   currentUserId?: string;
 }) {
@@ -206,7 +202,40 @@ export function BoardWorkspace({
   const sortActive = filters.sortKey !== "" || (filters.sorts?.length ?? 0) > 0;
   const rowDragEnabled = !readOnly && !sortActive;
 
-  const blocks = useMemo(() => buildBlocks(groups, optimisticRows), [groups, optimisticRows]);
+  const [orderedGroups, setOrderedGroups] = useOptimistic(
+    [...groups].sort((a, b) => a.sort_order - b.sort_order),
+    (_current, next: BoardGroup[]) => next,
+  );
+  const draggedGroupRef = useRef<string | null>(null);
+  const persistGroupOrder = useCallback((next: BoardGroup[]) => {
+    startTransition(async () => {
+      setOrderedGroups(next);
+      const fd = new FormData();
+      fd.set("boardId", board.id);
+      fd.set("groupIds", JSON.stringify(next.map((group) => group.id)));
+      await reorderGroupsAction(fd);
+    });
+  }, [board.id, setOrderedGroups]);
+  const moveGroup = useCallback((groupId: string, delta: number) => {
+    const from = orderedGroups.findIndex((group) => group.id === groupId);
+    const to = Math.max(0, Math.min(orderedGroups.length - 1, from + delta));
+    if (from < 0 || from === to) return;
+    const next = [...orderedGroups];
+    const [moved] = next.splice(from, 1); next.splice(to, 0, moved);
+    persistGroupOrder(next);
+  }, [orderedGroups, persistGroupOrder]);
+  const dropGroup = useCallback((targetId: string) => {
+    const draggedId = draggedGroupRef.current; draggedGroupRef.current = null;
+    if (!draggedId || draggedId === targetId) return;
+    const next = [...orderedGroups];
+    const from = next.findIndex((group) => group.id === draggedId);
+    const to = next.findIndex((group) => group.id === targetId);
+    if (from < 0 || to < 0) return;
+    const [moved] = next.splice(from, 1); next.splice(to, 0, moved);
+    persistGroupOrder(next);
+  }, [orderedGroups, persistGroupOrder]);
+
+  const blocks = useMemo(() => buildBlocks(orderedGroups, optimisticRows), [orderedGroups, optimisticRows]);
   const people = useMemo(() => assigneeOptions(rows, assigneeLabels), [rows, assigneeLabels]);
   const scheduleItems = useMemo(() => optimisticRows.map((row) => ({ id: row.id, label: row.title })), [optimisticRows]);
   const scheduleRecipients = useMemo(
@@ -407,29 +436,14 @@ export function BoardWorkspace({
               rows={visibleRows}
               presetName={groupPresetName(board.name, block.name)}
               presetChanged={isGroupPresetChanged(optimisticOrder[block.key])}
-              presetMenu={
-                /*
-                 * BBE-174 — 프리셋 칩을 «표시» 에서 «실행» 으로 바꾼다.
-                 * 시스템 보드는 구조 편집 자체가 막혀 있으므로 메뉴를 달지 않는다 —
-                 * 누를 수 없는 버튼을 보여 주는 편이 더 헷갈린다.
-                 *
-                 * 넘기는 컬럼은 `shown`(컬럼수 제한 적용분)이 아니라 `fullColumns` 다.
-                 * 도구줄에서 «컬럼 8개만 보기» 를 켠 채 저장하면 프리셋이 나머지 컬럼을
-                 * 통째로 잃는다 — 그건 구조 축소다(AGENTS.md §9.3).
-                 */
-                board.is_system ? undefined : (
-                  <GroupPresetMenu
-                    boardId={board.id}
-                    groupKey={block.key}
-                    savable={block.group !== null}
-                    presetName={groupPresetName(board.name, block.name)}
-                    columns={fullColumns}
-                    order={optimisticOrder[block.key]}
-                    canEditPresets={canEditPresets}
-                    canManageColumns={canManageColumns}
-                  />
-                )
-              }
+              onOrderDragStart={block.group && canManageSections ? () => { draggedGroupRef.current = block.group!.id; } : undefined}
+              onOrderDrop={block.group && canManageSections ? () => dropGroup(block.group!.id) : undefined}
+              orderControls={block.group && canManageSections ? (
+                <span className="inline-flex" aria-label={`${block.name} 그룹 순서`}>
+                  <button type="button" aria-label={`${block.name} 위로 이동`} onClick={() => moveGroup(block.group!.id, -1)} className="rounded px-1 focus:outline-none focus:ring-2 focus:ring-mw-primary">↑</button>
+                  <button type="button" aria-label={`${block.name} 아래로 이동`} onClick={() => moveGroup(block.group!.id, 1)} className="rounded px-1 focus:outline-none focus:ring-2 focus:ring-mw-primary">↓</button>
+                </span>
+              ) : undefined}
             >
               <GroupTable
                 boardId={board.id}

@@ -16,3 +16,14 @@ describe("boardCellValueFromFormData person", () => {
     expect(boardCellValueFromFormData(form)).toBeNull();
   });
 });
+
+describe("boardCellValueFromFormData people", () => {
+  it("같은 picker의 다중 선택을 배열로 보존하고 미배정 값은 제외한다", () => {
+    const form = new FormData();
+    form.set("kind", "people");
+    form.append("value", "");
+    form.append("value", "member-a");
+    form.append("value", "member-b");
+    expect(boardCellValueFromFormData(form)).toEqual(["member-a", "member-b"]);
+  });
+});

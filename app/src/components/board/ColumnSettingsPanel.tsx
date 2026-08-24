@@ -118,7 +118,7 @@ export function ColumnSettingsPanel({ boardId, column, items, recipients, onRequ
         <label><input name="deadline" type="checkbox" defaultChecked={date.deadline ?? false} /> 데드라인으로 표시</label>
         <label className="grid gap-1"><span>리마인더(분, 쉼표 구분)</span><input name="reminderOffsetsMinutes" defaultValue={(date.reminderOffsetsMinutes ?? []).join(", ")} className="rounded border p-2" /></label>
       </fieldset> : null}
-      <button type="button" onClick={() => { onRequestClose?.(); window.requestAnimationFrame(() => { const library = document.getElementById("column-template-library"); library?.scrollIntoView({ behavior: "smooth", block: "center" }); (library as HTMLDetailsElement | null)?.setAttribute("open", ""); }); }} className="rounded border border-mw-line px-3 py-2 text-left text-sm">컬럼 템플릿 열기</button>
+      <button type="button" onClick={() => { onRequestClose?.(); window.requestAnimationFrame(() => { const settings = document.getElementById("board-settings") as HTMLDetailsElement | null; const forms = document.getElementById("board-work-forms"); settings?.setAttribute("open", ""); forms?.scrollIntoView({ behavior: "smooth", block: "center" }); forms?.querySelector<HTMLElement>("summary")?.focus(); }); }} className="rounded border border-mw-line px-3 py-2 text-left text-sm">업무 양식에서 재사용</button>
       <button disabled={pending} className="rounded bg-mw-primary px-3 py-2 text-white disabled:opacity-50">{pending ? "저장 중…" : "설정 저장"}</button>
     </form>
 

@@ -43,9 +43,10 @@ export function GroupBlock({
   color,
   columns,
   rows,
-  presetName,
-  presetChanged,
   presetMenu,
+  orderControls,
+  onOrderDragStart,
+  onOrderDrop,
   children,
 }: {
   name: string;
@@ -62,6 +63,9 @@ export function GroupBlock({
    * 없으면 이름만 보여 주는 칩으로 되돌아간다.
    */
   presetMenu?: ReactNode;
+  orderControls?: ReactNode;
+  onOrderDragStart?: () => void;
+  onOrderDrop?: () => void;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(true);
@@ -90,6 +94,11 @@ export function GroupBlock({
             borderLeft: `3px solid ${accent}`,
           }}
         >
+          {onOrderDragStart && (
+            <button type="button" draggable aria-label={`${name} 그룹 순서 끌기`}
+              onDragStart={onOrderDragStart} onDragOver={(event) => event.preventDefault()} onDrop={onOrderDrop}
+              className="cursor-grab rounded px-1 text-mw-sub focus:outline-none focus:ring-2 focus:ring-mw-primary">⠿</button>
+          )}
           <span aria-hidden="true" className="text-[0.6rem] text-mw-sub">
             {open ? "▼" : "▶"}
           </span>
@@ -101,6 +110,7 @@ export function GroupBlock({
           </span>
 
           <span className="ml-auto flex items-center gap-2 text-[0.65rem] text-mw-sub">
+            {orderControls}
             {sum && (
               <span>
                 {sum.label} 합계 <b className="text-mw-body">{sum.total.toLocaleString()}</b>
@@ -118,17 +128,7 @@ export function GroupBlock({
               «색 헤더 밴드를 가진 카드» 라는 표현만 책임진다. 주입해 두면 프리셋을 실을 수 없는
               화면(읽기 전용 시스템 보드 등)에서도 이 블록을 그대로 쓸 수 있다.
             */}
-            {presetMenu ?? (
-              <span
-                title="아이템 프리셋 — 이 아이템의 컬럼 구조"
-                className="flex items-center gap-1 rounded-full border border-mw-line px-2 py-0.5"
-              >
-                {presetChanged && (
-                  <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-mw-primary" />
-                )}
-                {presetName}
-              </span>
-            )}
+            {presetMenu}
           </span>
         </summary>
 

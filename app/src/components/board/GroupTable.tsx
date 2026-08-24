@@ -51,6 +51,7 @@ import type {
   ColumnScheduleRecipientOption,
 } from "./ColumnSettingsPanel";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
+import { MemberPicker } from "./MemberPicker";
 import {
   updateNewLeadFieldAction,
   updateNewLeadMetaAction,
@@ -148,6 +149,7 @@ export function BoardCell({
   column,
   readOnly,
   canonicalNewLead,
+  members = [],
   error,
 }: {
   boardId: string;
@@ -155,6 +157,7 @@ export function BoardCell({
   column: BoardColumn;
   readOnly: boolean;
   canonicalNewLead?: boolean;
+  members?: readonly { id: string; label: string }[];
   error?: string | null;
 }) {
   const value = row.values[column.key] ?? null;
@@ -301,22 +304,14 @@ export function BoardCell({
         ) : column.type === "person" ? (
           <>
             <input type="hidden" name="kind" value="person" />
-            <select
-              name="value"
-              defaultValue={typeof value === "string" ? value : ""}
-              className={`${CELL_INPUT} cursor-pointer`}
-              aria-label={column.label}
-              onChange={(event) => event.currentTarget.form?.requestSubmit()}
-            >
-              <option value="">미배정</option>
-              {options.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <MemberPicker label={column.label} members={members.length > 0 ? members : options.map(({ id, label }) => ({ id, label }))} value={typeof value === "string" ? value : null} multiple={false} />
           </>
-        ) : column.type === "multiselect" || column.type === "people" ? (
+        ) : column.type === "people" ? (
+          <>
+            <input type="hidden" name="kind" value="people" />
+            <MemberPicker label={column.label} members={members.length > 0 ? members : options.map(({ id, label }) => ({ id, label }))} value={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []} multiple />
+          </>
+        ) : column.type === "multiselect" ? (
           <select
             name="value"
             multiple
@@ -791,6 +786,7 @@ export function GroupTable({
                       column={col}
                       readOnly={readOnly}
                       canonicalNewLead={canonicalNewLead}
+                      members={newLeadMembers}
                       error={
                         cellFlash
                           ? findCellError(cellFlash, row.id, col.key)

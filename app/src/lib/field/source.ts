@@ -43,7 +43,7 @@ const SPECS: Record<FieldSource, FieldSourceSpec> = {
     mark: "⟳",
     label: "수집",
     description: "광고 폼에서 들어옴",
-    editable: false,
+    editable: true,
     confirmRequired: false,
     tone: "neutral",
   },

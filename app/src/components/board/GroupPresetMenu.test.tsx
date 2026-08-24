@@ -187,8 +187,8 @@ describe("BBE-174 GroupBlock 프리셋 칩", () => {
 
     expect(html).not.toContain("WO-6");
     expect(html).not.toContain("연결됩니다");
-    // 원래 있던 «변경됨» 점(●)은 그대로 둔다 — 이 PR 이 추가한 텍스트만 뺐다(구조 축소 금지).
-    expect(html).toContain("bg-mw-primary");
+    // 표시 전용 칩도 제거해 사용자가 두 번째 업무 양식 진입점으로 오해하지 않게 한다.
+    expect(html).not.toContain("신규리드 관리-1차 부재");
   });
 });
 
@@ -200,7 +200,7 @@ describe("BBE-174 GroupBlock 프리셋 칩", () => {
  * «버튼이 어떤 액션에 물려 있는가» 는 아무도 보지 않았다 —
  * `BoardWorkspace` 가 `presetMenu` 를 아예 안 넘겨도 109건이 전부 초록이었다.
  */
-describe("BBE-174 배선 — BoardWorkspace 가 메뉴를 실제로 단다 (W1)", () => {
+describe("Issue #530 배선 — 업무 양식 진입점은 보드 설정 한 곳에만 둔다", () => {
   const board = {
     id: "board-1", org_id: "org-1", name: "신규리드 관리", description: null, icon: null,
     is_system: false, source: null, sort_order: 0, created_by: null,
@@ -224,22 +224,20 @@ describe("BBE-174 배선 — BoardWorkspace 가 메뉴를 실제로 단다 (W1)"
         cellFlash={null}
         assigneeLabels={{}}
         canEditItems
-          canEditPresets
         {...overrides}
       />,
     );
   }
 
-  it("일반 보드에는 프리셋 메뉴가 붙는다", () => {
+  it("그룹 머리말에는 중복 업무 양식 메뉴를 붙이지 않는다", () => {
     const html = workspace();
-    expect(html).toContain("아이템 프리셋 메뉴");
-    expect(html).toContain("현재 구조를 프리셋으로 저장");
-    expect(html).not.toContain("WO-6");
+    expect(html).not.toContain("업무 양식 메뉴");
+    expect(html).not.toContain("현재 구조를 프리셋으로 저장");
   });
 
   it("시스템 보드에는 붙이지 않는다 — 구조 편집이 막힌 화면이다", () => {
     const html = workspace({ board: { ...board, is_system: true } });
-    expect(html).not.toContain("아이템 프리셋 메뉴");
+    expect(html).not.toContain("업무 양식 메뉴");
     expect(html).not.toContain("현재 구조를 프리셋으로 저장");
   });
 });
