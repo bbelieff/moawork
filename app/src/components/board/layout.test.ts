@@ -6,6 +6,7 @@ import {
   COLUMN_MIN_WIDTH,
   groupKeyOf,
   moveWithin,
+  placeAdNameNearContact,
   reorderColumnKeys,
   resolveColumnOrder,
   UNGROUPED_KEY,
@@ -94,6 +95,24 @@ describe("resolveColumnOrder — 그룹별 배치 오버라이드", () => {
     const gB = resolveColumnOrder(COLUMNS, undefined).map((c) => c.key);
     expect(gA).toEqual(["c", "b", "a"]);
     expect(gB).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("placeAdNameNearContact — 기존 신규리드 보드 표시 복구", () => {
+  it("광고 명만 연락처 앞으로 옮기고 22개 컬럼과 나머지 상대 순서를 보존한다", () => {
+    const original = [col("owner"), col("phone"), col("rep_name"), col("status"), col("ad_name"), ...Array.from({ length: 17 }, (_, index) => col(`extra-${index}`))];
+    const result = placeAdNameNearContact(original);
+    expect(result).toHaveLength(22);
+    expect(result.slice(0, 5).map((column) => column.key)).toEqual(["owner", "ad_name", "phone", "rep_name", "status"]);
+    expect(result.filter((column) => column.key !== "ad_name").map((column) => column.key))
+      .toEqual(original.filter((column) => column.key !== "ad_name").map((column) => column.key));
+    expect(original[4].key).toBe("ad_name");
+  });
+
+  it("필수 컬럼이 없거나 이미 올바른 위치면 복사본만 반환한다", () => {
+    const ordered = [col("ad_name"), col("phone"), col("rep_name")];
+    expect(placeAdNameNearContact(ordered).map((column) => column.key)).toEqual(["ad_name", "phone", "rep_name"]);
+    expect(placeAdNameNearContact([col("phone")]).map((column) => column.key)).toEqual(["phone"]);
   });
 });
 
