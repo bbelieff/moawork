@@ -567,7 +567,9 @@ async function reconcileAssigneeGroups(
     }
 
     const expectedName = assigneeGroupName(definition.name, assignee);
-    if (!current || current.name !== expectedName) {
+    const markerOwner = current ? assigneeOwnerFromGroupName(current.name) : null;
+    // Marker ownership proves identity. A different visible prefix is a user rename, not drift.
+    if (!current || (markerOwner === null && current.name !== expectedName)) {
       const currentGroups = await store.listGroups(ctx, boardId);
       const inheritedOrder = current?.sort_order
         ?? (currentGroups.length === 0 ? 0 : Math.max(...currentGroups.map((group) => group.sort_order)) + 1);

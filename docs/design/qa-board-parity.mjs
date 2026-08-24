@@ -1,7 +1,8 @@
 /* Actual app parity gate for product default boards. The mockup self-check lives in qa-mockup.mjs. */
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { loadAppContract, loadParityOverrides } from "./qa-app.mjs";
+import { compareContracts, loadAppContract, loadParityOverrides } from "./qa-app.mjs";
+import { extractMockupContract } from "./dump-mockup.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const requested = process.argv.slice(2);
@@ -37,6 +38,9 @@ for (const scope of scopes) {
   const pinned = tab.columns.filter((column) => column.rightPinned);
   if (pinned.length !== 1) failures.push(`${scope}: pinned workflow gate ${pinned.length}/1`);
 }
+
+const parity = compareContracts(extractMockupContract(), app, overrides);
+if (parity.differences !== 0) failures.push(`mockup/override: ${parity.differences} unexplained diff(s)`);
 
 if (failures.length) {
   console.error(failures.map((item) => `- ${item}`).join("\n"));

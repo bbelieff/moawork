@@ -7,6 +7,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { extractMockupContract, validateMockupContractApi } from "./dump-mockup.mjs";
@@ -24,8 +25,9 @@ export function loadParityOverrides(file = OVERRIDE_FILE) {
   if (parsed.schemaVersion !== 1 || !Array.isArray(parsed.overrides)) throw new Error("override manifest 형식 오류");
   for (const entry of parsed.overrides) {
     if (!entry || typeof entry.scope !== "string" || !Number.isInteger(entry.issue)
-      || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date) || typeof entry.rationale !== "string" || entry.rationale.trim().length < 20) {
-      throw new Error("override manifest는 scope/issue/date/rationale를 모두 가져야 합니다");
+      || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date) || typeof entry.rationale !== "string" || entry.rationale.trim().length < 20
+      || !/^[0-9a-f]{64}$/.test(entry.expectedFingerprint ?? "")) {
+      throw new Error("override manifest는 scope/issue/date/rationale/expectedFingerprint를 모두 가져야 합니다");
     }
   }
   return parsed.overrides;
@@ -253,16 +255,19 @@ function compareTab(mockTab, appTab, shellTab) {
 
 export function compareContracts(mockup, app, overrides = []) {
   let differences = 0;
-  const overriddenTabs = new Set(overrides.map((entry) => entry.scope));
   const mockKeys = new Set(mockup.tabs.map((tab) => tab.key));
   for (const mockTab of mockup.tabs) {
-    if (overriddenTabs.has(mockTab.key)) {
-      const entry = overrides.find((candidate) => candidate.scope === mockTab.key);
-      console.log(`\n▣ ${mockTab.label} (${mockTab.key}) — override #${entry.issue} (${entry.date})`);
-      console.log(`  ${entry.rationale}`);
+    const appTab = app.tabs.get(mockTab.key);
+    const shellTab = app.shellTabs.find((tab) => tab.key === mockTab.key);
+    const entry = overrides.find((candidate) => candidate.scope === mockTab.key);
+    const fingerprint = createHash("sha256").update(JSON.stringify({ mockTab, appTab, shellTab })).digest("hex");
+    if (entry?.expectedFingerprint === fingerprint) {
+      console.log(`\n▣ ${mockTab.label} (${mockTab.key}) — exact override #${entry.issue} (${entry.date})`);
+      console.log(`  ${entry.rationale} [${fingerprint.slice(0, 12)}]`);
       continue;
     }
-    differences += compareTab(mockTab, app.tabs.get(mockTab.key), app.shellTabs.find((tab) => tab.key === mockTab.key));
+    if (entry) console.log(`\n[override fingerprint 불일치] ${mockTab.key}: expected ${entry.expectedFingerprint}, actual ${fingerprint}`);
+    differences += compareTab(mockTab, appTab, shellTab);
   }
   differences += difference("목업에 대응하지 않는 제품 기본 탭", [...app.tabs.keys()].filter((key) => !mockKeys.has(key)));
   const totals = {

@@ -73,17 +73,23 @@ export class SupabaseBoardsRepo implements BoardsRepo {
     if (q.error) throw new Error(q.error.message); return (q.data ?? undefined) as Board | undefined;
   }
   async getDefaultDefinitionState(ctx: Ctx, boardId: string): Promise<DefaultDefinitionState | null> {
-    const q = await this.client.from("board_views").select("filters_jsonb").eq("org_id", ctx.org.id).eq("board_id", boardId).eq("name", DEFAULT_DEFINITION_VIEW).maybeSingle();
+    const q = await this.client.from("board_views").select("filters_jsonb").eq("org_id", ctx.org.id).eq("board_id", boardId).eq("user_id", ctx.user.id).eq("name", DEFAULT_DEFINITION_VIEW).maybeSingle();
     if (q.error) throw new Error(q.error.message);
     return (q.data?.filters_jsonb as { state?: DefaultDefinitionState } | undefined)?.state ?? null;
   }
   async setDefaultDefinitionState(ctx: Ctx, boardId: string, state: DefaultDefinitionState): Promise<void> {
-    const existing = await this.client.from("board_views").select("id").eq("org_id", ctx.org.id).eq("board_id", boardId).eq("name", DEFAULT_DEFINITION_VIEW).maybeSingle();
+    const existing = await this.client.from("board_views").select("id").eq("org_id", ctx.org.id).eq("board_id", boardId).eq("user_id", ctx.user.id).eq("name", DEFAULT_DEFINITION_VIEW).maybeSingle();
     if (existing.error) throw new Error(existing.error.message);
     const payload = { system: DEFAULT_DEFINITION_MARKER, state };
     const q = existing.data
       ? await this.client.from("board_views").update({ filters_jsonb: payload }).eq("org_id", ctx.org.id).eq("id", existing.data.id)
-      : await this.client.from("board_views").insert({ org_id: ctx.org.id, board_id: boardId, user_id: null, name: DEFAULT_DEFINITION_VIEW, kind: "table", filters_jsonb: payload, sort_jsonb: [], visible_columns_jsonb: [], shared: false });
+      : await this.client.from("board_views").insert({ org_id: ctx.org.id, board_id: boardId, user_id: ctx.user.id, name: DEFAULT_DEFINITION_VIEW, kind: "table", filters_jsonb: payload, sort_jsonb: [], visible_columns_jsonb: [], shared: false });
+    if (q.error?.code === "23505") {
+      const retry = await this.client.from("board_views").update({ filters_jsonb: payload })
+        .eq("org_id", ctx.org.id).eq("board_id", boardId).eq("user_id", ctx.user.id).eq("name", DEFAULT_DEFINITION_VIEW);
+      if (retry.error) throw new Error(retry.error.message);
+      return;
+    }
     if (q.error) throw new Error(q.error.message);
   }
   async deleteBoard(ctx: Ctx, id: string): Promise<boolean> { const q = await this.client.from("boards").delete().eq("org_id", ctx.org.id).eq("id", id).select("id"); if (q.error) throw new Error(q.error.message); return (q.data?.length ?? 0) > 0; }

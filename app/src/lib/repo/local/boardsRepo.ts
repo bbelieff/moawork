@@ -102,19 +102,21 @@ export class LocalBoardsRepo {
 
   getDefaultDefinitionState(ctx: Ctx, boardId: string): DefaultDefinitionState | null {
     const view = db().boardViews.find((candidate) => candidate.org_id === ctx.org.id
-      && candidate.board_id === boardId && candidate.name === "__mw_default_definition__");
+      && candidate.board_id === boardId && candidate.user_id === ctx.user.id
+      && candidate.name === "__mw_default_definition__");
     return ((view?.filters_jsonb as { state?: DefaultDefinitionState } | undefined)?.state) ?? null;
   }
 
   setDefaultDefinitionState(ctx: Ctx, boardId: string, state: DefaultDefinitionState): void {
     const existing = db().boardViews.find((candidate) => candidate.org_id === ctx.org.id
-      && candidate.board_id === boardId && candidate.name === "__mw_default_definition__");
+      && candidate.board_id === boardId && candidate.user_id === ctx.user.id
+      && candidate.name === "__mw_default_definition__");
     if (existing) {
       existing.filters_jsonb = { system: "default-definition-state-v1", state };
       return;
     }
     db().boardViews.push({
-      id: crypto.randomUUID(), org_id: ctx.org.id, board_id: boardId, user_id: null,
+      id: crypto.randomUUID(), org_id: ctx.org.id, board_id: boardId, user_id: ctx.user.id,
       name: "__mw_default_definition__", kind: "table",
       filters_jsonb: { system: "default-definition-state-v1", state }, sort_jsonb: [],
       visible_columns_jsonb: [], shared: false,

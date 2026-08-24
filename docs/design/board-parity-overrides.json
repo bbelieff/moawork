@@ -5,25 +5,29 @@
       "scope": "new",
       "issue": 530,
       "date": "2026-08-24",
-      "rationale": "사용자가 신규고객 → 2차 상담고객 → 1차 부재 → 보류 → 거절 순서와 광고 명의 유입정보 배치를 명시적으로 확정했다."
+      "rationale": "사용자가 신규고객 → 2차 상담고객 → 1차 부재 → 보류 → 거절 순서와 광고 명의 유입정보 배치를 명시적으로 확정했다.",
+      "expectedFingerprint": "2fa2866c58c8caa6499a89fca8770507da74d6a52fe1c882bccbf4c00beba49e"
     },
     {
       "scope": "contact",
       "issue": 534,
       "date": "2026-08-24",
-      "rationale": "실제 조직 멤버 수에 따라 담당 그룹이 동적으로 구성되고 linked provenance 필드도 직접 편집 가능해야 한다는 최신 사용자 계약이다."
+      "rationale": "실제 조직 멤버 수에 따라 담당 그룹이 동적으로 구성되고 linked provenance 필드도 직접 편집 가능해야 한다는 최신 사용자 계약이다.",
+      "expectedFingerprint": "83486085973899f9cd02b967a3d4a29d039b0296f3de313fad604ed33da100e0"
     },
     {
       "scope": "work",
       "issue": 534,
       "date": "2026-08-24",
-      "rationale": "현재 작업 범위 밖의 계약업체 보드는 실제 조직 멤버 기반 동적 그룹과 검증된 정본 용어·선택지를 보존하며 목업의 오탈자를 재도입하지 않는다."
+      "rationale": "현재 작업 범위 밖의 계약업체 보드는 실제 조직 멤버 기반 동적 그룹과 검증된 정본 용어·선택지를 보존하며 목업의 오탈자를 재도입하지 않는다.",
+      "expectedFingerprint": "979a18e819f780fb4e2b96ad355a7f3b856f5aea36ee972b4b0888be0f73c8ac"
     },
     {
       "scope": "notice",
       "issue": 534,
       "date": "2026-08-24",
-      "rationale": "공지 내용은 실제 앱의 longtext 저장 계약을 사용하며 목업의 비제품 타입 표기 doc을 저장 타입으로 발명하지 않는다."
+      "rationale": "공지 내용은 실제 앱의 longtext 저장 계약을 사용하며 목업의 비제품 타입 표기 doc을 저장 타입으로 발명하지 않는다.",
+      "expectedFingerprint": "6c4962bb341cbe63617c7bab2fa41a86e9368167af5c6eebe66f771d1f40b352"
     }
   ]
 }
