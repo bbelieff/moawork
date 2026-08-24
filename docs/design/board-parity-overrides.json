@@ -6,28 +6,43 @@
       "issue": 530,
       "date": "2026-08-24",
       "rationale": "사용자가 신규고객 → 2차 상담고객 → 1차 부재 → 보류 → 거절 순서와 광고 명의 유입정보 배치를 명시적으로 확정했다.",
-      "expectedFingerprint": "2fa2866c58c8caa6499a89fca8770507da74d6a52fe1c882bccbf4c00beba49e"
+      "differences": {
+        "그룹 차이": "88c0bbea99b26828d9cfdbba36c73956867077c64b2b7d93567eb7de66dbd6c2",
+        "선택지 차이": "477715a8595ee2cd9f2aab9603a285f2d28959032bd6dc31e0f6f96b8a1b5e5d"
+      }
     },
     {
       "scope": "contact",
       "issue": 534,
       "date": "2026-08-24",
       "rationale": "실제 조직 멤버 수에 따라 담당 그룹이 동적으로 구성되고 linked provenance 필드도 직접 편집 가능해야 한다는 최신 사용자 계약이다.",
-      "expectedFingerprint": "83486085973899f9cd02b967a3d4a29d039b0296f3de313fad604ed33da100e0"
+      "differences": {
+        "그룹 차이": "88c0bbea99b26828d9cfdbba36c73956867077c64b2b7d93567eb7de66dbd6c2",
+        "선택지 차이": "c4c8a1476dcdf4b150279b56932660a8b786368ed8c81bd17f62f990cdd87c3e",
+        "자동 이동 규칙 차이": "3926e2cc9c633fcda7f4dc54f2fbeecae7ba866b53f01693393be648f943a317"
+      }
     },
     {
       "scope": "work",
       "issue": 534,
       "date": "2026-08-24",
       "rationale": "현재 작업 범위 밖의 계약업체 보드는 실제 조직 멤버 기반 동적 그룹과 검증된 정본 용어·선택지를 보존하며 목업의 오탈자를 재도입하지 않는다.",
-      "expectedFingerprint": "979a18e819f780fb4e2b96ad355a7f3b856f5aea36ee972b4b0888be0f73c8ac"
+      "differences": {
+        "그룹 차이": "022768350d18b43de005cdb83905592fd32cf10835da604f046bfad43840cb91",
+        "목업에만 있는 컬럼": "b863701f040becb42e284eb571fc226dfe0bec202f5760dcfbcddfd826038102",
+        "앱에만 있는 컬럼": "485ac1ce0e81d3a319b9b4322a2b74d5158fd22b1d116e183e26a6637dc79156",
+        "선택지 차이": "70b8421c3b4046c4ff14b4b68671f049b1e29689b55972c787610bbbea9893c8",
+        "자동 이동 규칙 차이": "1743dc2d41d0fd35faa6c3bda65ada3e4e7ed350f026b238170a0f1a122007a0"
+      }
     },
     {
       "scope": "notice",
       "issue": 534,
       "date": "2026-08-24",
       "rationale": "공지 내용은 실제 앱의 longtext 저장 계약을 사용하며 목업의 비제품 타입 표기 doc을 저장 타입으로 발명하지 않는다.",
-      "expectedFingerprint": "6c4962bb341cbe63617c7bab2fa41a86e9368167af5c6eebe66f771d1f40b352"
+      "differences": {
+        "타입 차이": "bb632d0b23dbf4530d9da30e797a36476c4bf662e7a106eb637280efc2838aa1"
+      }
     }
   ]
 }

@@ -119,7 +119,7 @@ describe("아이템 · 셀 인라인 편집 (EAV)", () => {
     expect(again.values.note).toBe("수정됨");
   });
 
-  it("연동·수식 출처는 직접 server 호출로도 덮어쓸 수 없다", async () => {
+  it("연동 provenance는 저장하고 수식 출처만 server 호출로도 막는다", async () => {
     const linked = await svc.addColumn(owner, SEED_BOARD_TASKS, {
       label: "업체 연동값",
       type: "text",
@@ -136,8 +136,8 @@ describe("아이템 · 셀 인라인 편집 (EAV)", () => {
       [calculated.key]: 100,
     });
 
-    expect(result.errors.map((error) => error.key)).toEqual([linked.key, calculated.key]);
-    expect(result.item.values[linked.key]).toBeUndefined();
+    expect(result.errors.map((error) => error.key)).toEqual([calculated.key]);
+    expect(result.item.values[linked.key]).toBe("우회 변경");
     expect(result.item.values[calculated.key]).toBeUndefined();
   });
 

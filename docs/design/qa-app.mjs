@@ -26,8 +26,9 @@ export function loadParityOverrides(file = OVERRIDE_FILE) {
   for (const entry of parsed.overrides) {
     if (!entry || typeof entry.scope !== "string" || !Number.isInteger(entry.issue)
       || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date) || typeof entry.rationale !== "string" || entry.rationale.trim().length < 20
-      || !/^[0-9a-f]{64}$/.test(entry.expectedFingerprint ?? "")) {
-      throw new Error("override manifest는 scope/issue/date/rationale/expectedFingerprint를 모두 가져야 합니다");
+      || !entry.differences || typeof entry.differences !== "object" || Array.isArray(entry.differences)
+      || Object.values(entry.differences).some((value) => !/^[0-9a-f]{64}$/.test(value))) {
+      throw new Error("override manifest는 scope/issue/date/rationale/differences를 모두 가져야 합니다");
     }
   }
   return parsed.overrides;
@@ -158,14 +159,22 @@ function safeOptions(column, values) {
   return isPersonal(column) ? `${values.length}개(개인 선택지 숨김)` : values.join(", ") || "없음";
 }
 
+let activeOverride = null;
 function difference(title, entries) {
   if (!entries.length) return 0;
+  const fingerprint = createHash("sha256").update(JSON.stringify(entries)).digest("hex");
+  if (activeOverride?.differences?.[title] === fingerprint) {
+    console.log(`\n[${title}] exact override #${activeOverride.issue} (${entries.length}개, ${fingerprint.slice(0, 12)})`);
+    return 0;
+  }
   console.log(`\n[${title}] ${entries.length}개`);
+  if (activeOverride) console.log(`  override fingerprint actual: ${fingerprint}`);
   for (const entry of entries) console.log(`  - ${entry}`);
   return entries.length;
 }
 
-function compareTab(mockTab, appTab, shellTab) {
+function compareTab(mockTab, appTab, shellTab, override = null) {
+  activeOverride = override;
   console.log(`\n▣ ${mockTab.label} (${mockTab.key}) ↔ ${appTab?.name ?? "제품 기본 탭 없음"}`);
   let differences = 0;
   if (!shellTab) differences += difference("셸 탭 위치 차이", [`${mockTab.key}: APP_TABS 분류 없음`]);
@@ -260,15 +269,9 @@ export function compareContracts(mockup, app, overrides = []) {
     const appTab = app.tabs.get(mockTab.key);
     const shellTab = app.shellTabs.find((tab) => tab.key === mockTab.key);
     const entry = overrides.find((candidate) => candidate.scope === mockTab.key);
-    const fingerprint = createHash("sha256").update(JSON.stringify({ mockTab, appTab, shellTab })).digest("hex");
-    if (entry?.expectedFingerprint === fingerprint) {
-      console.log(`\n▣ ${mockTab.label} (${mockTab.key}) — exact override #${entry.issue} (${entry.date})`);
-      console.log(`  ${entry.rationale} [${fingerprint.slice(0, 12)}]`);
-      continue;
-    }
-    if (entry) console.log(`\n[override fingerprint 불일치] ${mockTab.key}: expected ${entry.expectedFingerprint}, actual ${fingerprint}`);
-    differences += compareTab(mockTab, appTab, shellTab);
+    differences += compareTab(mockTab, appTab, shellTab, entry);
   }
+  activeOverride = null;
   differences += difference("목업에 대응하지 않는 제품 기본 탭", [...app.tabs.keys()].filter((key) => !mockKeys.has(key)));
   const totals = {
     mockTabs: mockup.tabs.length,

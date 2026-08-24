@@ -9,6 +9,7 @@ import { resetDb } from "@/lib/repo/local/store";
 import type { Ctx } from "@/lib/types";
 import { CONTACT_TAB } from "./contact";
 import { ensureDefaultTabAdditive } from "./install";
+import { BoardsService } from "@/lib/boards/service";
 
 const ctx = { org: { id: "org-parity", name: "QA" }, user: { id: "user", name: "QA", email: "qa@example.test" }, role: "owner", scope: "all" } as Ctx;
 
@@ -43,6 +44,18 @@ describe("actual board rendering and definition reconciliation", () => {
     const reloaded = toAsyncBoardsRepo(new LocalBoardsRepo());
     expect((await reloaded.listColumns(ctx, board.id)).filter((column) => column.source === "lk").every((column) => !column.is_readonly)).toBe(true);
     expect((await reloaded.getDefaultDefinitionState?.(ctx, board.id))?.revision).toBe(2);
+  });
+
+  it("edits a linked provenance cell and reloads the persisted value through a fresh service", async () => {
+    const repo = toAsyncBoardsRepo(new LocalBoardsRepo());
+    const board = await repo.createBoard(ctx, { name: CONTACT_TAB.name, source: CONTACT_TAB.source });
+    await ensureDefaultTabAdditive(ctx, CONTACT_TAB, repo, []);
+    const service = new BoardsService(repo);
+    const item = await service.createItem(ctx, board.id, { title: "로컬 검증" });
+    const saved = await service.setCells(ctx, board.id, item.id, { rep_name: "수정 가능한 연결값" });
+    expect(saved.errors).toEqual([]);
+    const reloaded = await new BoardsService(toAsyncBoardsRepo(new LocalBoardsRepo())).getItem(ctx, board.id, item.id);
+    expect(reloaded.values.rep_name).toBe("수정 가능한 연결값");
   });
 
   it("preserves a customized property that differs from the stored baseline", async () => {

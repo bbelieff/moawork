@@ -47,7 +47,14 @@ if (failures.length) {
   process.exit(1);
 }
 
-const runtime = spawnSync(process.execPath, [path.join(ROOT, "node_modules/vitest/vitest.mjs"), "run", "src/lib/default-tabs/board-parity.contract.test.ts"], {
+const runtime = spawnSync(process.execPath, [path.join(ROOT, "node_modules/vitest/vitest.mjs"), "run",
+  "src/lib/default-tabs/board-parity.contract.test.ts",
+  "src/lib/default-tabs/new-lead.render.test.tsx",
+  "src/lib/default-tabs/contact.render.test.tsx",
+  "src/lib/default-tabs/contact.test.ts",
+  "src/components/board/MemberPicker.test.tsx",
+  "src/lib/crm/contactPipeline.test.ts",
+], {
   cwd: path.join(ROOT, "app"),
   stdio: "inherit",
   env: { ...process.env, QA_BOARD_SCOPES: scopes.join(",") },

@@ -63,7 +63,21 @@ class PgliteQuery {
     return {data:(await this.db.query(`delete from ${this.table}${where} returning *`,values)).rows,error:null};
   }
 }
-function supabaseRepo(db:PGlite){return new SupabaseBoardsRepo({from:(table:string)=>new PgliteQuery(db,table)} as never);}
+function supabaseRepo(db:PGlite){return new SupabaseBoardsRepo({
+  from:(table:string)=>new PgliteQuery(db,table),
+  rpc:async(name:string,args:Record<string,unknown>)=>{
+    if(name==="read_default_board_definition_state"){
+      const result=await db.query<{state:unknown}>("select filters_jsonb->'state' state from board_views where org_id=$1 and board_id=$2 and user_id is null and name='__mw_default_definition__'",[args.p_org_id,args.p_board_id]);
+      return {data:result.rows[0]?.state??null,error:null};
+    }
+    if(name==="write_default_board_definition_state"){
+      await db.query("delete from board_views where org_id=$1 and board_id=$2 and user_id is null and name='__mw_default_definition__'",[args.p_org_id,args.p_board_id]);
+      await db.query("insert into board_views(org_id,board_id,user_id,name,kind,filters_jsonb) values($1,$2,null,'__mw_default_definition__','table',jsonb_build_object('system','default-definition-state-v1','state',$3::jsonb))",[args.p_org_id,args.p_board_id,JSON.stringify(args.p_state)]);
+      return {data:null,error:null};
+    }
+    return {data:null,error:{message:`rpc denied: ${name}`}};
+  },
+} as never);}
 
 function pgliteRepo(db: PGlite): BoardsRepo {
   const writable = (ctx: Ctx) => { if (ctx.role !== "owner" && ctx.role !== "admin") throw new Error("RLS denied"); };
