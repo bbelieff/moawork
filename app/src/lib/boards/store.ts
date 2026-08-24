@@ -105,8 +105,9 @@ export interface BoardsRepo {
   // 보드
   listBoards(ctx: Ctx): Promise<Board[]>;
   getBoard(ctx: Ctx, id: string): Promise<Board | undefined>;
-  createBoard(ctx: Ctx, input: NewBoard): Promise<Board>;
+  createBoard(ctx: Ctx, input: NewBoard, requestId?: string): Promise<Board>;
   updateBoard(ctx: Ctx, id: string, patch: BoardPatch): Promise<Board | undefined>;
+  reorderBoards(ctx: Ctx, boardIds: readonly string[], requestId: string): Promise<Board[]>;
   /** Product-default baseline stored as system metadata, never as customer business values. */
   getDefaultDefinitionState?(ctx: Ctx, boardId: string): Promise<DefaultDefinitionState | null>;
   setDefaultDefinitionState?(ctx: Ctx, boardId: string, state: DefaultDefinitionState): Promise<void>;

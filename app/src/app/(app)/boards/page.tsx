@@ -5,6 +5,7 @@ import { loadPermGuard } from "@/lib/perm/guard";
 import { PermissionUnavailable } from "@/components/perm/PermissionUnavailable";
 import { getBoardsService } from "@/lib/boards";
 import { NewBoardInline } from "./NewBoardInline";
+import { reorderBoardsAction } from "./actions";
 
 /**
  * 보드 목록 (T02b · ADR-0003).
@@ -80,7 +81,15 @@ export default async function BoardsPage({
           )}
         </h2>
         <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {user.map((b) => (
+          {user.map((b, index) => {
+            const move = (offset: -1 | 1) => {
+              const ordered = user.map((board) => board.id);
+              const target = index + offset;
+              if (target < 0 || target >= ordered.length) return ordered;
+              [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
+              return ordered;
+            };
+            return (
             <li key={b.id}>
               <Link
                 href={`/boards/${b.id}`}
@@ -91,8 +100,21 @@ export default async function BoardsPage({
                 </span>
                 <span className="text-xs text-zinc-500">{b.description}</span>
               </Link>
+              {canManageTabs && user.length > 1 ? (
+                <div className="mt-1 flex justify-end gap-1" aria-label={`${b.name} 순서 이동`}>
+                  {([-1, 1] as const).map((offset) => (
+                    <form action={reorderBoardsAction} key={offset}>
+                      {move(offset).map((id) => <input key={id} type="hidden" name="boardId" value={id} />)}
+                      <input type="hidden" name="requestId" value={crypto.randomUUID()} />
+                      <button type="submit" disabled={offset === -1 ? index === 0 : index === user.length - 1} aria-label={`${b.name} ${offset === -1 ? "앞으로" : "뒤로"} 이동`} className="min-h-11 min-w-11 rounded border border-mw-line disabled:opacity-30">
+                        {offset === -1 ? "↑" : "↓"}
+                      </button>
+                    </form>
+                  ))}
+                </div>
+              ) : null}
             </li>
-          ))}
+          )})}
           {canManageTabs && <li><NewBoardInline /></li>}
         </ul>
       </section>

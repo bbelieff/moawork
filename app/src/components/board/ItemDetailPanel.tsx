@@ -2,12 +2,14 @@
 
 import {
   useCallback,
+  useActionState,
   useEffect,
   useRef,
   useState,
   useTransition,
   type ReactNode,
 } from "react";
+import Link from "next/link";
 import { createPortal } from "react-dom";
 import type {
   BoardColumn,
@@ -28,7 +30,10 @@ import {
   resetGroupDetailLayoutAction,
   saveDetailLayoutAction,
 } from "@/app/(app)/boards/actions";
-import { updateNewLeadMetaAction } from "@/app/(app)/boards/new-lead-actions";
+import {
+  advanceNewLeadFromDetailAction,
+  updateNewLeadMetaAction,
+} from "@/app/(app)/boards/new-lead-actions";
 import {
   addItemDetailEventAction,
   addItemDetailLinkAction,
@@ -219,6 +224,7 @@ export function ItemDetailPanel({
   canManageColumns,
   defaultOpen = false,
   canonicalNewLead = false,
+  memberOptions = [],
   previousItem,
   nextItem,
 }: {
@@ -232,6 +238,7 @@ export function ItemDetailPanel({
   canManageColumns: boolean;
   defaultOpen?: boolean;
   canonicalNewLead?: boolean;
+  memberOptions?: readonly { id: string; label: string }[];
   previousItem?: { id: string; title: string };
   nextItem?: { id: string; title: string };
 }) {
@@ -250,13 +257,21 @@ export function ItemDetailPanel({
   const [linkLabel, setLinkLabel] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
+  const [fileRequestId, setFileRequestId] = useState(() => crypto.randomUUID());
+  const [advanceState, advanceAction, advancePending] = useActionState(
+    advanceNewLeadFromDetailAction,
+    { ok: false, message: "" },
+  );
+  const [advanceRequestId] = useState(() => crypto.randomUUID());
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const wasOpenRef = useRef(open);
   const hashPushedRef = useRef(false);
   const columnsByKey = new Map(columns.map((column) => [column.key, column]));
-  const unplaced = unplacedDetailKeys(row.values, layout);
+  const unplaced = unplacedDetailKeys(row.values, layout).filter(
+    (key) => !canonicalNewLead || (key !== "contact_move" && key !== "consult_status"),
+  );
 
   const closeDrawer = useCallback(() => {
     setOpen(false);
@@ -527,6 +542,25 @@ export function ItemDetailPanel({
                   </div>
                   <div className="grid gap-3">
                     {canonicalNewLead && row.deal_id ? (
+                      <form action={advanceAction} className="rounded-xl border border-mw-record bg-mw-tint-blue p-3">
+                        <input type="hidden" name="boardId" value={boardId} />
+                        <input type="hidden" name="itemId" value={row.id} />
+                        <input type="hidden" name="requestId" value={advanceRequestId} />
+                        <button
+                          type="submit"
+                          disabled={!canEditItems || advancePending || advanceState.ok}
+                          className="min-h-11 w-full rounded-lg bg-mw-record px-4 text-sm font-bold text-white disabled:opacity-50"
+                        >
+                          {advancePending ? "넘기는 중…" : advanceState.ok ? "리드컨택으로 넘김" : "리드컨택으로 넘기기"}
+                        </button>
+                        {advanceState.message ? (
+                          <p role={advanceState.ok ? "status" : "alert"} className={`mt-2 text-xs ${advanceState.ok ? "text-mw-success" : "text-mw-error"}`}>
+                            {advanceState.message}{advanceState.ok ? <> <Link href="/contract" className="font-semibold underline">리드컨택 열기</Link></> : null}
+                          </p>
+                        ) : null}
+                      </form>
+                    ) : null}
+                    {canonicalNewLead && row.deal_id ? (
                       <form
                         action={updateNewLeadMetaAction}
                         className="grid gap-2 rounded-xl border border-mw-line p-3"
@@ -601,7 +635,25 @@ export function ItemDetailPanel({
                                 : "표 컬럼"}
                             </span>
                           </div>
-                          {editable ? (
+                          {canonicalNewLead && row.deal_id && entry.key === "collaborators" ? (
+                            <form action={updateNewLeadMetaAction} className="grid gap-2">
+                              <input type="hidden" name="boardId" value={boardId} />
+                              <input type="hidden" name="itemId" value={row.id} />
+                              <input type="hidden" name="dealId" value={row.deal_id} />
+                              <input type="hidden" name="field" value="collaborators" />
+                              <select
+                                id={`${row.id}-${entry.key}`}
+                                name="value"
+                                multiple
+                                defaultValue={Array.isArray(value) ? value.filter((candidate): candidate is string => typeof candidate === "string") : []}
+                                disabled={!canEditItems}
+                                className="min-h-24 rounded-lg border border-mw-line bg-mw-card px-3 py-2 text-sm"
+                              >
+                                {memberOptions.map((member) => <option key={member.id} value={member.id}>{member.label}</option>)}
+                              </select>
+                              {canEditItems ? <button type="submit" className="min-h-11 justify-self-end rounded-lg border border-mw-line px-3 text-xs font-semibold">협업자 저장</button> : null}
+                            </form>
+                          ) : editable ? (
                             <AutoSaveField
                               boardId={boardId}
                               itemId={row.id}
@@ -967,6 +1019,9 @@ export function ItemDetailPanel({
                     <h3 className="text-sm font-bold text-mw-fg">
                       첨부 · 링크
                     </h3>
+                    <p className="mt-1 text-xs text-mw-sub">
+                      파일은 10MB씩 5개, 합계 30MB까지 올릴 수 있어요. 외부 자료는 Google Drive, OneDrive, Dropbox, 웹하드 등의 https 링크를 20개까지 연결하고, 보는 사람에게 읽기 권한이 있는지 확인하세요.
+                    </p>
                     <div className="mt-3 grid gap-2">
                       {detail.files.map((file) =>
                         file.downloadUrl ? (
@@ -1011,18 +1066,15 @@ export function ItemDetailPanel({
                       {canEditItems && (
                         <form
                           action={(formData) => {
-                            startDetailTransition(async () =>
-                              refreshDetail(
-                                await uploadItemDetailFileAction(
-                                  boardId,
-                                  row.id,
-                                  formData,
-                                ),
-                              ),
-                            );
+                            startDetailTransition(async () => {
+                              const next = await uploadItemDetailFileAction(boardId, row.id, formData);
+                              refreshDetail(next);
+                              if (next.ok) setFileRequestId(crypto.randomUUID());
+                            });
                           }}
                           className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-mw-line p-3"
                         >
+                          <input type="hidden" name="requestId" value={fileRequestId} />
                           <input
                             aria-label="첨부 파일"
                             type="file"
@@ -1043,6 +1095,7 @@ export function ItemDetailPanel({
                         <div className="grid gap-2 sm:grid-cols-[10rem_1fr_auto]">
                           <input
                             aria-label="링크 이름"
+                            maxLength={100}
                             value={linkLabel}
                             onChange={(event) =>
                               setLinkLabel(event.target.value)
@@ -1053,6 +1106,7 @@ export function ItemDetailPanel({
                           <input
                             aria-label="https 링크"
                             type="url"
+                            maxLength={2048}
                             value={linkUrl}
                             onChange={(event) => setLinkUrl(event.target.value)}
                             placeholder="https://"
@@ -1109,9 +1163,6 @@ export function ItemDetailPanel({
                         ⬇ CSV
                       </button>
                     </div>
-                    <p className="mt-2 text-xs text-mw-sub">
-                      TXT에는 업체 정보와 히스토리가 함께 들어갑니다.
-                    </p>
                   </section>
                 </div>
 

@@ -60,15 +60,29 @@ export class SupabaseBoardsRepo implements BoardsRepo {
     const q = await this.client.from("boards").select("*").eq("org_id", ctx.org.id).eq("id", id).maybeSingle();
     if (q.error) throw new Error(q.error.message); return (q.data ?? undefined) as Board | undefined;
   }
-  async createBoard(ctx: Ctx, input: NewBoard): Promise<Board> {
-    const count = await this.client.from("boards").select("id", { count: "exact", head: true }).eq("org_id", ctx.org.id);
-    if (count.error) throw new Error(count.error.message);
-    const q = await this.client.from("boards").insert({ org_id: ctx.org.id, name: input.name, description: input.description ?? null, icon: input.icon ?? null, source: input.source ?? null, created_by: ctx.user.id, sort_order: count.count ?? 0 }).select("*").single();
-    return one<Board>(q.data, q.error);
+  async createBoard(ctx: Ctx, input: NewBoard, requestId = crypto.randomUUID()): Promise<Board> {
+    const q = await this.client.rpc("create_workspace_board", {
+      p_org_id: ctx.org.id,
+      p_name: input.name,
+      p_description: input.description ?? null,
+      p_icon: input.icon ?? null,
+      p_source: input.source ?? null,
+      p_request_id: requestId,
+    });
+    return one<Board>(Array.isArray(q.data) ? q.data[0] : q.data, q.error);
   }
   async updateBoard(ctx: Ctx, id: string, patch: BoardPatch): Promise<Board | undefined> {
     const q = await this.client.from("boards").update({ ...patch, updated_at: new Date().toISOString() }).eq("org_id", ctx.org.id).eq("id", id).select("*").maybeSingle();
     if (q.error) throw new Error(q.error.message); return (q.data ?? undefined) as Board | undefined;
+  }
+  async reorderBoards(ctx: Ctx, boardIds: readonly string[], requestId: string): Promise<Board[]> {
+    const q = await this.client.rpc("reorder_workspace_boards", {
+      p_org_id: ctx.org.id,
+      p_board_ids: boardIds,
+      p_request_id: requestId,
+    });
+    if (q.error) throw new Error(q.error.message);
+    return (q.data ?? []) as Board[];
   }
   async getDefaultDefinitionState(ctx: Ctx, boardId: string): Promise<DefaultDefinitionState | null> {
     const q = await this.client.rpc("read_default_board_definition_state", { p_org_id: ctx.org.id, p_board_id: boardId });

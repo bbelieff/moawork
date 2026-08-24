@@ -2,6 +2,7 @@ import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { CONTACT_TAB, NEW_LEAD_TAB } from "@/lib/default-tabs";
 import type { Board, BoardColumn, BoardGroup, ItemWithValues } from "@/lib/boards/types";
 import { VisualSettingsSlot } from "./VisualSettingsSlot";
+import { NewLeadOnboarding } from "@/components/board/NewLeadOnboarding";
 import { cookies } from "next/headers";
 import { visualSetCellAction } from "./actions";
 
@@ -25,7 +26,7 @@ function fixture(tabKey: string, workflowValue: string | null) {
   })) satisfies BoardColumn[];
   const row = {
     id: "visual-item", org_id: board.org_id, board_id: board.id, group_id: groups[0]?.id ?? null,
-    title: "마스킹된 예시 항목", assigned_to: null, deal_id: null, sort_order: 0,
+    title: "마스킹된 예시 항목", assigned_to: null, deal_id: tabKey === "new" ? "visual-deal" : null, sort_order: 0,
     created_at: "", updated_at: "", values: workflowValue ? { [tabKey === "contact" ? "work_move" : "contact_move"]: workflowValue } : {},
   } satisfies ItemWithValues;
   return { board, groups, columns, rows: [row] };
@@ -53,9 +54,11 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
         {...data}
         columnOrder={{}}
         cellFlash={error ? { itemId: "visual-item", errors: [{ key: "work_move", label: "업무이동", message: error }] } : null}
-        assigneeLabels={{}}
+        assigneeLabels={{ "visual-user": "예시 담당자" }}
         canEditItems
+        currentUserId="visual-user"
         settingsSlot={<VisualSettingsSlot />}
+        onboardingSlot={tab === "new" ? <NewLeadOnboarding key="issue-542-onboarding" boardId={data.board.id} autoOpen /> : undefined}
         cellAction={visualSetCellAction}
       />
     </main>

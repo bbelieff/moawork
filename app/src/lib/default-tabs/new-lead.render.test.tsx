@@ -139,8 +139,8 @@ describe("⑤ 필터는 칩 + 팝오버다 — 네이티브 select 나열 금지
   it("「상담 상황」이 필터 칩으로 뜬다 — 이 탭의 핵심 필터다", () => {
     const html = renderToolbar();
     expect(html).toContain("상담 상황");
-    // 팝오버 안에 선택지가 체크 옵션으로 들어 있다.
-    for (const option of ["상담 전", "1차 부재", "거절"]) expect(html, option).toContain(option);
+    // 선택지는 body portal을 열었을 때만 렌더된다. 닫힌 서버 마크업에 중복 노출하지 않는다.
+    for (const option of ["상담 전", "1차 부재", "거절"]) expect(html, option).not.toContain(option);
   });
 
   it("선택지를 가진 컬럼이 전부 칩이 된다 — status 타입도 포함", () => {
@@ -150,8 +150,11 @@ describe("⑤ 필터는 칩 + 팝오버다 — 네이티브 select 나열 금지
     }
   });
 
-  it("팝오버는 <details> 로 열고 닫는다 — 도구줄이 한 줄로 유지된다", () => {
-    expect(renderToolbar()).toContain("<details");
+  it("팝오버는 dialog portal로 열고 닫는다 — 도구줄이 한 줄로 유지된다", () => {
+    const html = renderToolbar();
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("<details");
   });
 });
 

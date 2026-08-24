@@ -119,11 +119,14 @@ export class BoardsService {
   }
 
   /** 사용자 보드 생성 — 기본 컬럼 2~3개를 함께 프로비저닝. */
-  async createBoard(ctx: Ctx, input: NewBoard): Promise<BoardDetail> {
+  async createBoard(ctx: Ctx, input: NewBoard, requestId = crypto.randomUUID()): Promise<BoardDetail> {
     const repo = await this.repo;
-    const board = await repo.createBoard(ctx, input);
-    for (const col of DEFAULT_NEW_BOARD_COLUMNS) {
-      await repo.createColumn(ctx, board.id, col);
+    const board = await repo.createBoard(ctx, input, requestId);
+    const existingColumns = await repo.listColumns(ctx, board.id);
+    if (existingColumns.length === 0) {
+      for (const col of DEFAULT_NEW_BOARD_COLUMNS) {
+        await repo.createColumn(ctx, board.id, col);
+      }
     }
     return this.getBoardDetail(ctx, board.id);
   }
@@ -133,6 +136,17 @@ export class BoardsService {
     const updated = await (await this.repo).updateBoard(ctx, board.id, patch);
     if (!updated) throw new NotFoundError("보드를 찾을 수 없습니다");
     return updated;
+  }
+
+  async reorderBoards(ctx: Ctx, boardIds: readonly string[], requestId: string): Promise<Board[]> {
+    if (!requestId || new Set(boardIds).size !== boardIds.length) throw new BoardRuleError("보드 순서를 다시 확인해 주세요");
+    const boards = await this.listBoards(ctx);
+    const editableIds = boards.filter((board) => !board.is_system).map((board) => board.id).sort();
+    const suppliedIds = [...boardIds].sort();
+    if (editableIds.length !== suppliedIds.length || editableIds.some((id, index) => id !== suppliedIds[index])) {
+      throw new NotFoundError("보드 순서를 저장할 대상을 찾을 수 없습니다");
+    }
+    return (await this.repo).reorderBoards(ctx, boardIds, requestId);
   }
 
   async deleteBoard(ctx: Ctx, boardId: string): Promise<void> {

@@ -37,11 +37,11 @@ export function boardItemStoragePath(
  */
 export async function encodeNoticeFile(
   file: File,
-  ctx?: { client: SupabaseClient; orgId: string; boardId: string; itemId: string },
+  ctx?: { client: SupabaseClient; orgId: string; boardId: string; itemId: string; fileId?: string; upsert?: boolean },
 ): Promise<StoredNoticeFile> {
   const verdict = validateUpload({ name: file.name, size_bytes: file.size });
   if (!verdict.ok) throw new Error(verdict.reason);
-  const id = crypto.randomUUID();
+  const id = ctx?.fileId ?? crypto.randomUUID();
   const name = sanitizeFileName(file.name);
   const mimeType = file.type || "application/octet-stream";
 
@@ -49,7 +49,7 @@ export async function encodeNoticeFile(
     const storagePath = boardItemStoragePath(ctx.orgId, ctx.boardId, ctx.itemId, id, name);
     const { error } = await ctx.client.storage
       .from(BOARD_ITEM_FILES_BUCKET)
-      .upload(storagePath, file, { contentType: mimeType, upsert: false });
+      .upload(storagePath, file, { contentType: mimeType, upsert: ctx.upsert ?? false });
     if (error) throw new Error(error.message);
     return { id, name, mimeType, size: file.size, storagePath };
   }

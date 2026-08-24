@@ -42,6 +42,7 @@ import { GroupTable } from "./GroupTable";
 import { groupPresetName, isGroupPresetChanged } from "@/lib/presets/group-preset";
 import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
+import { NEW_LEAD_DETAIL_ONLY_KEYS } from "@/lib/default-tabs/new-lead";
 import { NOTICE_KEYS } from "@/lib/notices/types";
 import { buildBlocks } from "./blocks";
 import {
@@ -129,6 +130,7 @@ export function BoardWorkspace({
   viewSlot,
   savedViewsSlot,
   settingsSlot,
+  onboardingSlot,
   canEditItems = false,
   canDeleteItems = false,
   canManageColumns = false,
@@ -157,6 +159,8 @@ export function BoardWorkspace({
   savedViewsSlot?: ReactNode;
   /** 보드 상단에서 즉시 발견되는 단일 설정 진입점. */
   settingsSlot?: ReactNode;
+  /** 서버가 판정한 신규리드 1회 온보딩. 권한 판정에는 사용하지 않는다. */
+  onboardingSlot?: ReactNode;
   canEditItems?: boolean;
   canDeleteItems?: boolean;
   canManageColumns?: boolean;
@@ -180,6 +184,18 @@ export function BoardWorkspace({
     const visible = columns.filter((column) => !archivedColumnIds.has(column.id));
     return board.source === NEW_LEAD_TAB_SOURCE ? placeAdNameNearContact(visible) : visible;
   }, [archivedColumnIds, board.source, columns]);
+  const tableColumns = useMemo(
+    () => board.source === NEW_LEAD_TAB_SOURCE
+      ? activeColumns.filter((column) => !NEW_LEAD_DETAIL_ONLY_KEYS.has(column.key))
+      : activeColumns,
+    [activeColumns, board.source],
+  );
+  const detailColumns = useMemo(
+    () => board.source === NEW_LEAD_TAB_SOURCE
+      ? activeColumns.filter((column) => column.key !== "contact_move" && column.key !== "consult_status")
+      : activeColumns,
+    [activeColumns, board.source],
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -254,8 +270,8 @@ export function BoardWorkspace({
   );
 
   const matched = useMemo(
-    () => applyFilters(optimisticRows, activeColumns, filters).length,
-    [optimisticRows, activeColumns, filters],
+    () => applyFilters(optimisticRows, tableColumns, filters).length,
+    [optimisticRows, tableColumns, filters],
   );
 
   /** 도구줄 담당자 필터 ↔ 헤더 담당자 탭의 단일 소스. null = 전체. */
@@ -357,12 +373,13 @@ export function BoardWorkspace({
       />
 
       {/* 보드 이름 «아래» · 필터 «위» — 목업 head() 의 `.vrow` 자리다 (BBE-214). */}
+      {onboardingSlot}
       {savedViewsSlot}
 
       {settingsSlot ? <div data-visual-block="board-settings">{settingsSlot}</div> : null}
 
       <BoardToolbar
-        columns={activeColumns}
+        columns={tableColumns}
         rows={optimisticRows}
         filters={filters}
         onChange={setFilters}
@@ -426,17 +443,17 @@ export function BoardWorkspace({
         </p>
       ) : (
         blocks.map((block) => {
-          const resolvedColumns = resolveColumnOrder(activeColumns, optimisticOrder[block.key]);
+          const resolvedColumns = resolveColumnOrder(tableColumns, optimisticOrder[block.key]);
           // 과거에 저장된 그룹별 배치도 광고 명의 필수 유입정보 위치를 되돌리지 못하게 한다.
           const fullColumns = board.source === NEW_LEAD_TAB_SOURCE
             ? placeAdNameNearContact(resolvedColumns)
             : resolvedColumns;
           const shown = limitColumns(fullColumns, filters.columnLimit);
-          const visibleRows = applyFilters(block.rows, activeColumns, filters);
+          const visibleRows = applyFilters(block.rows, tableColumns, filters);
           const boardDetailLayout = resolveBoardDetailLayout(
             board.source,
             board.detail_layout_jsonb,
-            activeColumns,
+            detailColumns,
           );
           const resolvedDetailLayout = resolveDetailLayout(
             boardDetailLayout,
@@ -468,9 +485,9 @@ export function BoardWorkspace({
                 currentUserId={currentUserId}
                 groupId={block.group?.id ?? null}
                 columns={shown}
-                detailColumns={[...activeColumns]}
+                detailColumns={[...detailColumns]}
                 boardDetailLayout={boardDetailLayout}
-                detailLayout={resolvedDetailLayout.entries}
+                detailLayout={resolvedDetailLayout.entries.filter((entry) => detailColumns.some((column) => column.key === entry.key))}
                 detailLayoutInherited={resolvedDetailLayout.inherited}
                 rows={visibleRows}
                 textMode={savedPresentation.textMode}

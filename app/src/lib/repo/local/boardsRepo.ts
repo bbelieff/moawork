@@ -56,6 +56,8 @@ export function slugifyKey(label: string): string {
 }
 
 export class LocalBoardsRepo {
+  private readonly createdBoardRequests = new Map<string, { input: string; boardId: string }>();
+  private readonly reorderedBoardRequests = new Map<string, string>();
   // ── 보드 ──
   listBoards(ctx: Ctx): Board[] {
     return db()
@@ -73,7 +75,16 @@ export class LocalBoardsRepo {
     return db().boards.find((b) => b.id === id && b.org_id === ctx.org.id);
   }
 
-  createBoard(ctx: Ctx, input: NewBoard): Board {
+  createBoard(ctx: Ctx, input: NewBoard, requestId = crypto.randomUUID()): Board {
+    const requestKey = `${ctx.org.id}:${requestId}`;
+    const payload = JSON.stringify(input);
+    const prior = this.createdBoardRequests.get(requestKey);
+    if (prior) {
+      if (prior.input !== payload) throw new Error("보드 생성 요청을 다시 확인해 주세요.");
+      const replayed = this.getBoard(ctx, prior.boardId);
+      if (!replayed) throw new Error("생성한 보드를 찾을 수 없습니다.");
+      return replayed;
+    }
     const ts = now();
     const board: Board = {
       id: crypto.randomUUID(),
@@ -89,6 +100,7 @@ export class LocalBoardsRepo {
       updated_at: ts,
     };
     db().boards.push(board);
+    this.createdBoardRequests.set(requestKey, { input: payload, boardId: board.id });
     return board;
   }
 
@@ -98,6 +110,26 @@ export class LocalBoardsRepo {
     Object.assign(b, patch);
     b.updated_at = now();
     return b;
+  }
+
+  reorderBoards(ctx: Ctx, boardIds: readonly string[], requestId: string): Board[] {
+    const requestKey = `${ctx.org.id}:${requestId}`;
+    const payload = JSON.stringify(boardIds);
+    const prior = this.reorderedBoardRequests.get(requestKey);
+    if (prior) {
+      if (prior !== payload) throw new Error("보드 순서 요청을 다시 확인해 주세요.");
+      return this.listBoards(ctx);
+    }
+    const editable = this.listBoards(ctx).filter((board) => !board.is_system);
+    const expected = editable.map((board) => board.id).sort();
+    const supplied = [...new Set(boardIds)].sort();
+    if (expected.length !== supplied.length || expected.some((id, index) => id !== supplied[index])) {
+      throw new Error("보드 순서를 저장할 대상을 다시 확인해 주세요.");
+    }
+    const rank = new Map(boardIds.map((id, index) => [id, index]));
+    for (const board of editable) board.sort_order = rank.get(board.id) ?? board.sort_order;
+    this.reorderedBoardRequests.set(requestKey, payload);
+    return this.listBoards(ctx);
   }
 
   getDefaultDefinitionState(ctx: Ctx, boardId: string): DefaultDefinitionState | null {

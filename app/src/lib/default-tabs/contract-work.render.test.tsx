@@ -88,7 +88,9 @@ describe("BBE-150 계약업체 실무 렌더", () => {
       />,
     );
     expect(html).not.toContain("<select");
-    expect(html).toContain("<details");
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("<details");
     for (const label of ["진행기관", "세부명칭", "진행상황"]) expect(html).toContain(label);
   });
 });
