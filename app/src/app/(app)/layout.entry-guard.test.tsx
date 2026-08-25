@@ -56,10 +56,8 @@ vi.mock("@/components/shell/GlobalSearch", () => ({ GlobalSearch: () => null }))
 vi.mock("@/components/account/AccountMenu", () => ({ AccountMenu: () => null }));
 vi.mock("@/components/analytics/AnalyticsIdentity", () => ({ AnalyticsIdentity: () => null }));
 vi.mock("@/components/notify/NotificationBell", () => ({ NotificationBell: () => null }));
-vi.mock("@/components/shell/AppTabsLayoutData", () => ({
-  AppTabsLayoutDataProvider: ({ children, value }: { children: ReactNode; value: { directHrefs?: { contact?: string } } }) =>
-    createElement("div", { "data-contact-href": value.directHrefs?.contact ?? "fallback" }, children),
-}));
+// AppTabsLayoutData 목은 없앴다 — 2026-08-25 가로 탭 줄과 함께 그 공급자도 사라졌다.
+// contact/entry 목은 «되살아나지 않았는지» 를 재기 위해 남긴다(위 테스트가 not.toHaveBeenCalled 로 본다).
 vi.mock("@/lib/contact/entry", () => ({ resolveExistingContactBoard: mocks.resolveExistingContactBoard }));
 vi.mock("@/lib/repo/supabase/boardsRepo", () => ({ SupabaseBoardsRepo: class { constructor(public client: unknown) {} } }));
 
@@ -144,13 +142,17 @@ describe("BBE-139 root entry guard", () => {
     expect(mocks.ensureApprovedWorkspaceOnEntry).not.toHaveBeenCalled();
   });
 
-  it("resolves the contact target only for an app-tab request and reuses the request client", async () => {
+  // 2026-08-25 — 계약이 «뒤집혔다». 전에는 앱탭 요청에서 리드컨택 보드 주소를 조회해
+  //   가로 탭 줄에 넘겼다. 총괄 지시로 그 줄을 없앴고, 그 값을 쓰는 곳이 사라졌다.
+  //   그래서 이제는 «조회하지 않는 것» 이 맞다 — 탭 화면을 열 때마다 돌던 읽기 한 번이 준다.
+  //   지킬 값은 남는다: 앱탭 요청에서 요청 클라이언트를 «한 번만» 만들어 재사용한다.
+  it("앱탭 요청에서 요청 클라이언트를 한 번만 만들고, 없어진 리드컨택 조회를 다시 하지 않는다", async () => {
     mocks.requestHeader.value = "1";
     const element = await AppLayout({ children: createElement("p", null, "tab") });
     const html = renderToStaticMarkup(element);
-    expect(mocks.resolveExistingContactBoard).toHaveBeenCalledOnce();
     expect(mocks.createClient.mock.calls.filter(([options]) => options?.noStore === true)).toHaveLength(1);
-    expect(html).toContain('data-contact-href="/boards/contact-board"');
+    expect(mocks.resolveExistingContactBoard, "쓰는 곳이 없는 조회가 되살아났다").not.toHaveBeenCalled();
+    expect(html).toContain("tab");
   });
 
   it("fails explicitly without rendering children when bootstrap is unavailable", async () => {

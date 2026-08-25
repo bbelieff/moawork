@@ -31,7 +31,13 @@ export interface WorkActivity { id: string; label: string; at: string }
 export interface WorkItemSnapshot {
   id: string;
   boardId: string;
-  groupId: string;
+  /**
+   * ★ #547 — null 을 허용한다. DB(`items.group_id`)가 원래 nullable 인데
+   *   읽는 쪽만 «반드시 문자열» 로 잡고 있어서, 그룹 없는 업무 한 건이 생기면
+   *   스냅샷 전체가 거부돼 **화면이 통째로 사라졌다.** 쓰기와 읽기의 계약이 어긋나 있었다.
+   *   그룹 없는 업무는 화면에서 «미분류» 묶음에 그린다 — 숨기지 않는다.
+   */
+  groupId: string | null;
   title: string;
   assignedTo: string | null;
   workflowStatus: WorkWorkflowStatus;
