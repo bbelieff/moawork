@@ -76,7 +76,9 @@ const callSites = [
   //      보드 액션 전부» 가 쓴다. 여기서 규칙이 느슨해지면 운영에서 보드 데이터가
   //      통째로 로컬 시드로 나간다. BBE-203 이 막으려던 바로 그 자리인데 못이 없었다.
   "../../app/(app)/(tabs)/presets/page.tsx",
-  "../../app/(app)/(tabs)/work/page.tsx",
+  // 2026-08-25(#551) — `(tabs)/work/page.tsx` 를 «뺐다». 조용히 지운 것이 아니다:
+  //   그 화면이 «그리는 페이지» 에서 «리다이렉트» 로 바뀌어(리드컨택과 같은 형태)
+  //   로컬 폴백을 판단할 자리 자체가 없어졌다. 목적지인 `/boards/[id]` 가 그 판단을 갖는다.
   // BBE-210 — render와 command가 같은 dev-only work source를 소비해야 저장 후 refresh가 보존된다.
   "../../app/(app)/(tabs)/work/actions.ts",
   "../../app/(app)/(tabs)/notices/page.tsx",
