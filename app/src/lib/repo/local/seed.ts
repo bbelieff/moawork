@@ -369,7 +369,7 @@ export function seedDb(): Db {
       sort_order: 4,
       width: 120,
     },
-    // 기본 탭 «신규리드» 컬럼 22개 — 목업 순서 그대로. 정의에서 생성하므로 여기서 어긋날 수 없다.
+    // 기본 탭 «신규리드» 컬럼 29개 — 최신 제품 정의에서 생성하므로 여기서 어긋날 수 없다.
     ...NEW_LEAD_TAB.columns.map((column, index) => ({
       id: newLeadColumnId(index),
       org_id: SEED_ORG_ID,

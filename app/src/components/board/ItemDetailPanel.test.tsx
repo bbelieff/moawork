@@ -148,7 +148,8 @@ describe("BBE-107 실제 상세 패널", () => {
     expect(html).toContain("이 화면에 배치되지 않은 항목 1개");
     expect(html).toContain("hidden_legacy");
     expect(html).toContain("배치에 추가");
-    expect(html).toContain("w-full max-w-[74rem]");
+    expect(html).toContain("h-full w-full overflow-y-auto");
+    expect(html).not.toContain("max-w-[74rem]");
     expect(html).toContain(
       "lg:grid-cols-[minmax(0,1.08fr)_minmax(22rem,.92fr)]",
     );
@@ -227,7 +228,7 @@ describe("BBE-107 실제 상세 패널", () => {
       />,
     );
     for (const copy of [
-      "업체 정보",
+      "회사 정보",
       "첨부 · 링크",
       "TXT 추출",
       "CSV",

@@ -98,6 +98,60 @@ export async function createNewLeadAction(
 }
 
 export type AdvanceNewLeadState = Readonly<{ ok: boolean; message: string }>;
+export type SaveNewLeadDetailFieldState = Readonly<{ ok: boolean; message: string }>;
+
+const DETAIL_FIELD_PATCH = {
+  rep_name: "representative_name",
+  phone: "phone",
+  email: "email",
+  biz_reg_type: "business_registration_type",
+  industry: "industry",
+  revenue_band: "revenue_band",
+  sido: "region_sido",
+  sigungu: "region_sigungu",
+  ad_name: "acquisition_source",
+} as const;
+
+/** 회사 상세의 자동 저장도 표와 같은 canonical deal/item/audit 경로를 관통한다. */
+export async function saveNewLeadDetailFieldAction(input: {
+  boardId: string;
+  itemId: string;
+  dealId: string;
+  fieldKey: string;
+  value: string;
+}): Promise<SaveNewLeadDetailFieldState> {
+  const ctx = await getSession();
+  const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
+  if (permission.kind !== "allowed") {
+    return { ok: false, message: permission.reason === "permission" ? "이 회사를 저장할 권한이 없습니다." : "권한을 확인하지 못했습니다." };
+  }
+  try {
+    const client = await createClient();
+    if (input.fieldKey === "applied_on" || input.fieldKey === "address_detail") {
+      await updateCanonicalNewLeadMeta(client, {
+        orgId: ctx.org.id,
+        dealId: input.dealId,
+        requestId: crypto.randomUUID(),
+        patch: { [input.fieldKey]: input.value || null },
+      });
+    } else {
+      const field = DETAIL_FIELD_PATCH[input.fieldKey as keyof typeof DETAIL_FIELD_PATCH];
+      if (!field) return { ok: false, message: "이 필드는 표에서 수정해 주세요." };
+      await updateCanonicalNewLead(client, {
+        orgId: ctx.org.id,
+        dealId: input.dealId,
+        requestId: crypto.randomUUID(),
+        patch: { [field]: input.value || null },
+        valueSource: "manual",
+      });
+    }
+    revalidatePath(`/boards/${input.boardId}`);
+    revalidatePath("/newcust");
+    return { ok: true, message: "✓ 자동 저장됨" };
+  } catch (error) {
+    return { ok: false, message: error instanceof NewLeadMutationError ? error.message : "저장하지 못했습니다. 다시 시도해 주세요." };
+  }
+}
 
 export async function advanceNewLeadFromDetailAction(
   _previous: AdvanceNewLeadState,

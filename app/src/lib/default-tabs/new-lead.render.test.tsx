@@ -10,7 +10,7 @@
  *      «눈으로 본 증거» 를 대신하지는 못한다. 도장에 NOT_RUN 으로 적고 넘긴다.
  *
  * 여기서 고정하는 것 — 관통 기준(설계도 §4-2) 중 기계로 잴 수 있는 전부:
- *   ② 컬럼 22개가 목업 순서 그대로 · 맨 오른쪽 «컨택 이동» 고정
+ *   ② 컬럼 29개가 최신 사용자·실측 순서로 표시 · 맨 오른쪽 «컨택 이동» 고정
  *   ③ 셀을 고치면 저장되고, 다시 읽어도 남는다
  *   ④ 「상담 상황」을 바꾸면 카드가 그 그룹으로 옮겨간다 (6규칙 전부)
  */
@@ -84,12 +84,12 @@ function renderTab(columns: BoardColumn[]) {
   );
 }
 
-describe("② 표 렌더 — 컬럼 22개와 고정 열", () => {
-  it("22개 컬럼 라벨이 목업 순서 그대로 화면에 나온다", () => {
+describe("② 표 렌더 — 업무 컬럼과 고정 열", () => {
+  it("29개 컬럼 라벨이 빠짐없이 화면에 나온다", () => {
     const columns = repo.listColumns(ctx, boardId);
     const html = renderTab(columns);
 
-    expect(columns).toHaveLength(22);
+    expect(columns).toHaveLength(29);
     // 마크업에서 라벨이 나타나는 순서가 목업 순서와 같아야 한다.
     const positions = NEW_LEAD_TAB.columns.map((column) => html.indexOf(`>${column.label}<`));
     for (const [index, position] of positions.entries()) {

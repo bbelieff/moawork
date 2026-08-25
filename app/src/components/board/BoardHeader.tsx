@@ -28,6 +28,7 @@ export function BoardHeader({
   groups,
   readOnly,
   backSlot,
+  helpSlot,
   viewSlot,
   addItemSlot,
 }: {
@@ -37,9 +38,11 @@ export function BoardHeader({
   description: string | null;
   /** 상위 화면으로 돌아가는 링크(서버에서 렌더해 내려준다). */
   backSlot?: ReactNode;
+  /** 제목 바로 옆의 짧은 도움말. */
+  helpSlot?: ReactNode;
   /** 뷰 전환 등 화면 고유 컨트롤. 헤더 줄 오른쪽 무리에 들어간다. */
   viewSlot?: ReactNode;
-  /** 보드별 기본 등록 폼. 신규리드는 업체명+사업자 구분을 함께 저장하는 전용 폼을 쓴다. */
+  /** 보드별 기본 등록 폼. 신규리드는 회사 기본 정보를 함께 저장하는 전용 폼을 쓴다. */
   addItemSlot?: ReactNode;
   /** 담당자 탭 선택지(도구줄과 동일 소스). */
   people: { value: string; label: string }[];
@@ -62,10 +65,11 @@ export function BoardHeader({
     <div data-visual-block="board-header" className="flex flex-nowrap items-center gap-2 overflow-x-auto">
       {backSlot}
 
-      <h1 className="flex shrink-0 items-center gap-1.5 text-base font-semibold text-mw-fg">
+      <h1 className="flex shrink-0 items-center gap-1.5 text-lg font-semibold text-mw-fg">
         {icon && <span aria-hidden="true">{icon}</span>}
         <span>{name}</span>
       </h1>
+      {helpSlot}
 
       {description && (
         <span className="shrink-0 truncate text-xs text-mw-sub" title={description}>

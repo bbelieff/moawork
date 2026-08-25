@@ -106,14 +106,14 @@ describe("resolveColumnOrder — 그룹별 배치 오버라이드", () => {
   });
 });
 
-describe("placeAdNameNearContact — 기존 신규리드 보드 표시 복구", () => {
-  it("광고 명만 연락처 앞으로 옮기고 22개 컬럼과 나머지 상대 순서를 보존한다", () => {
+describe("신규리드 — 실제 운영 먼데이 순서", () => {
+  it("유입·회사·상담 흐름 순으로 정렬하고 알 수 없는 사용자 컬럼은 보존한다", () => {
     const original = [col("owner"), col("phone"), col("rep_name"), col("status"), col("ad_name"), ...Array.from({ length: 17 }, (_, index) => col(`extra-${index}`))];
     const result = placeAdNameNearContact(original);
     expect(result).toHaveLength(22);
-    expect(result.slice(0, 5).map((column) => column.key)).toEqual(["owner", "ad_name", "phone", "rep_name", "status"]);
-    expect(result.filter((column) => column.key !== "ad_name").map((column) => column.key))
-      .toEqual(original.filter((column) => column.key !== "ad_name").map((column) => column.key));
+    expect(result.slice(0, 5).map((column) => column.key)).toEqual(["ad_name", "phone", "rep_name", "owner", "status"]);
+    expect(result.filter((column) => column.key.startsWith("extra-")).map((column) => column.key))
+      .toEqual(original.filter((column) => column.key.startsWith("extra-")).map((column) => column.key));
     expect(original[4].key).toBe("ad_name");
   });
 

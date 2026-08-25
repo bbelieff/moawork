@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 describe("Issue #549 new lead header CTA", () => {
-  it("일반 이름 한 칸이 아니라 전용 업체 등록 폼을 body portal로 연다", async () => {
+  it("일반 이름 한 칸이 아니라 전용 회사 등록 폼을 body portal로 연다", async () => {
     const host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
@@ -32,16 +32,17 @@ describe("Issue #549 new lead header CTA", () => {
         />,
       );
     });
-    const opener = [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("새 업체"))!;
+    const opener = [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("새 회사"))!;
     await act(async () => opener.click());
-    const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-label="새 업체 등록"]')!;
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-label="새 회사 등록"]')!;
     expect(dialog.parentElement).toBe(document.body);
     expect(dialog.querySelector('[name="title"]')).not.toBeNull();
     expect(dialog.querySelector('[name="business_registration_type"]')).not.toBeNull();
     expect(dialog.querySelector('[name="assigned_to"]')).not.toBeNull();
+    expect(dialog.querySelector('[name="collaborator_ids"]')).not.toBeNull();
     expect(document.activeElement).toBe(dialog.querySelector('[name="title"]'));
     await act(async () => dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-    expect(document.querySelector('[role="dialog"][aria-label="새 업체 등록"]')).toBeNull();
+    expect(document.querySelector('[role="dialog"][aria-label="새 회사 등록"]')).toBeNull();
     await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
     expect(document.activeElement).toBe(opener);
   });

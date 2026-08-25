@@ -14,7 +14,6 @@ import { createRequestBoards, requireRequestClient } from "@/lib/boards/server";
 import { markNoticeItemsReadAtomic } from "@/lib/notices/atomic";
 import { issueFileToken } from "@/lib/deal/fileSignedUrl";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
-import { loadNewLeadOnboardingState } from "@/lib/new-lead/onboarding";
 import { NewLeadOnboarding } from "@/components/board/NewLeadOnboarding";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import { loadPermGuards } from "@/lib/perm/guard";
@@ -102,9 +101,6 @@ export default async function BoardPage({
   const detailMs = performance.now() - startedAt - sessionMs - guardsMs;
 
   const { board, columns, groups } = detail;
-  const onboarding = board.source === NEW_LEAD_TAB_SOURCE
-    ? await loadNewLeadOnboardingState(client, ctx.org.id)
-    : null;
   const view = sp.view === "kanban" ? "kanban" : sp.view === "flat" ? "flat" : sp.view === "calendar" ? "calendar" : "table";
   const selectColumns = columns.filter(
     (c) => c.type === "select" || c.type === "multiselect",
@@ -409,7 +405,7 @@ export default async function BoardPage({
       }
       settingsSlot={boardSettings}
       onboardingSlot={board.source === NEW_LEAD_TAB_SOURCE ? (
-        <NewLeadOnboarding boardId={board.id} autoOpen={onboarding?.available === true && onboarding.state === null} />
+        <NewLeadOnboarding />
       ) : undefined}
       canEditItems={canEditItems}
       canDeleteItems={canDeleteItems}

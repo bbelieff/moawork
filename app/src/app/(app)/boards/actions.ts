@@ -392,7 +392,11 @@ export async function setCellAction(formData: FormData): Promise<void> {
   // 체크박스 미체크와 담당자 미배정을 각 타입의 빈 값으로 정규화한다.
   const svc = graph.service;
   const raw = formData.get("value");
-  if (columnKey === "contact_move" && raw === "컨택 이동") {
+  const requestsContactMove =
+    (columnKey === "contact_move" && raw === "컨택 이동") ||
+    (columnKey === "consult_status" && raw === "리드컨택으로 넘기기");
+  if (requestsContactMove) {
+    const moveLabel = columnKey === "consult_status" ? "상담 상황" : "컨택 이동";
     const suppliedRequestId = str(formData, "requestId");
     const requestId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(suppliedRequestId)
       ? suppliedRequestId
@@ -404,7 +408,7 @@ export async function setCellAction(formData: FormData): Promise<void> {
       if (result.status !== "committed") {
         await flashCellErrors(itemId, [{
           key: columnKey,
-          label: "컨택 이동",
+          label: moveLabel,
           message: result.reason ?? "컨택 이동이 차단되었습니다.",
         }]);
         revalidatePath(`/boards/${boardId}`);
@@ -413,7 +417,7 @@ export async function setCellAction(formData: FormData): Promise<void> {
     } catch (error) {
       await flashCellErrors(itemId, [{
         key: columnKey,
-        label: "컨택 이동",
+        label: moveLabel,
         message: error instanceof NewLeadAdvanceError
           ? error.message
           : "컨택 이동을 완료하지 못했습니다. 다시 시도해 주세요.",

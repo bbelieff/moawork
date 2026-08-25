@@ -32,6 +32,7 @@ import {
 } from "@/app/(app)/boards/actions";
 import {
   advanceNewLeadFromDetailAction,
+  saveNewLeadDetailFieldAction,
   updateNewLeadMetaAction,
 } from "@/app/(app)/boards/new-lead-actions";
 import {
@@ -51,6 +52,7 @@ function AutoSaveField({
   source,
   type,
   initialValue,
+  canonicalDealId,
 }: {
   boardId: string;
   itemId: string;
@@ -58,6 +60,7 @@ function AutoSaveField({
   source: "column" | "detail";
   type: string;
   initialValue: string | number;
+  canonicalDealId?: string | null;
 }) {
   const [value, setValue] = useState(String(initialValue));
   const [status, setStatus] = useState("✓ 자동 저장됨");
@@ -75,13 +78,15 @@ function AutoSaveField({
       queuedRef.current = null;
       if (next === savedRef.current) continue;
       setStatus("저장 중…");
-      const result = await saveItemDetailFieldAction({
-        boardId,
-        itemId,
-        fieldKey,
-        source,
-        value: next,
-      });
+      const result = canonicalDealId
+        ? await saveNewLeadDetailFieldAction({ boardId, itemId, dealId: canonicalDealId, fieldKey, value: next })
+        : await saveItemDetailFieldAction({
+            boardId,
+            itemId,
+            fieldKey,
+            source,
+            value: next,
+          });
       if (!result.ok) {
         setStatus(result.message);
         if (queuedRef.current === null && valueRef.current !== next) {
@@ -461,7 +466,7 @@ export function ItemDetailPanel({
                 closeDrawer();
             }}
           >
-            <section className="h-full w-full max-w-[74rem] overflow-y-auto bg-mw-card p-4 shadow-2xl sm:p-6">
+            <section className="h-full w-full overflow-y-auto bg-mw-card p-4 shadow-2xl sm:p-6">
               <header className="flex items-start justify-between gap-4 border-b border-mw-line pb-4">
                 <div>
                   <p className="text-xs font-semibold text-mw-record">
@@ -529,7 +534,7 @@ export function ItemDetailPanel({
               <div className="grid gap-6 py-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(22rem,.92fr)]">
                 <div className="min-w-0">
                   <div className="mb-3 flex items-center gap-2 border-b border-mw-line pb-3">
-                    <h3 className="font-bold text-mw-fg">업체 정보</h3>
+                    <h3 className="font-bold text-mw-fg">회사 정보</h3>
                     <span
                       className="ml-auto text-xs text-mw-success"
                       aria-live="polite"
@@ -657,6 +662,7 @@ export function ItemDetailPanel({
                               source={entry.source}
                               type={type}
                               initialValue={inputValue(value)}
+                              canonicalDealId={canonicalNewLead ? row.deal_id : null}
                             />
                           ) : (
                             <p className="min-h-11 rounded-lg bg-mw-bg px-3 py-3 text-sm text-mw-body">

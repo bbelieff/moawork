@@ -22,7 +22,7 @@ for (const scope of scopes) {
   const tab = app.tabs.get(scope);
   if (!tab) { failures.push(`${scope}: actual DefaultTab 없음`); continue; }
   if (scope === "new") {
-    if (tab.columns.length !== 22) failures.push(`new: columns ${tab.columns.length}/22`);
+    if (tab.columns.length !== 29) failures.push(`new: columns ${tab.columns.length}/29`);
     const visibleGroups = tab.groups.map((group) => group.name.replace(/^[^가-힣A-Za-z0-9]+\s*/, ""));
     if (visibleGroups.join("|") !== "신규고객|2차 상담고객|1차 부재|보류|거절") failures.push("new: explicit group order 불일치");
     if (Object.keys(tab.columns.find((column) => column.key === "consult_status")?.moveTo ?? {}).length !== 6) failures.push("new: move rules 6 아님");

@@ -203,11 +203,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
       {/* ── 본문 ── */}
       <div
-        className="min-w-0 flex-1 px-[var(--sp-4)] py-[var(--sp-4)] sm:px-[var(--sp-5)] md:px-[var(--sp-6)] md:py-[var(--sp-6)]"
+        className="min-w-0 max-w-full flex-1 overflow-x-hidden px-[var(--sp-4)] py-[var(--sp-3)] sm:px-[var(--sp-5)] md:px-[var(--sp-6)]"
       >
         {/* 페이지 제목은 각 화면이 자기 <h1> 로 그린다 — 셸은 우측 액션만 소유. */}
         <header
-          className="mb-[var(--sp-5)] flex flex-wrap items-center"
+          className="mb-[var(--sp-2)] flex flex-wrap items-center"
           style={{ gap: "var(--sp-2)" }}
         >
           <div className="ml-auto flex items-center" style={{ gap: "var(--sp-2)" }}>
@@ -253,7 +253,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             />
           </div>
         </header>
-        <main>{children}</main>
+        <main className="min-w-0 max-w-full">{children}</main>
       </div>
     </div>
   );

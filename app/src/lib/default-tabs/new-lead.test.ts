@@ -58,6 +58,7 @@ const DELIBERATE_OPTION_DIFFS: Record<string, string> = {
   시군구: "목업 12개는 샘플 잔재. 실측 지역 사전(222지)에서 시군구를 뽑아 쓴다. 종속 선택은 BBE-127",
   "매출 구간": "목업이 선택지를 비워 뒀다. 구간 기준은 회사가 정한다 — 지어내면 남의 회사 기준이 박힌다",
   "사업자 유형": "목업이 선택지를 비워 뒀다. 002 field_presets.biz_reg_type 6종을 재사용한다 — 국세 분류라 고객 고유값이 아니고, 구조 팩도 같은 6종을 쓴다(중복 정의 금지)",
+  "상담 상황": "상세 진입 없이 표에서 바로 리드컨택으로 넘기는 최신 사용자 확정 선택지를 추가했다",
 };
 
 describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
@@ -73,11 +74,14 @@ describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
     ]);
   });
 
-  it("컬럼 22개를 보존하며 광고 명을 앞쪽 유입정보 영역에 둔다", () => {
+  it("실제 운영 먼데이의 비AI 업무 컬럼을 보강하고 광고 명을 유입정보 앞단에 둔다", () => {
     const labels = NEW_LEAD_TAB.columns.map((column) => column.label);
-    expect(labels).toHaveLength(22);
-    expect(labels.slice(0, 6)).toEqual(["담당자", "협업자", "신청일", "광고 명", "연락처", "대표자명"]);
-    expect(new Set(labels)).toEqual(new Set(mock.columns.map((column) => column.label)));
+    expect(labels).toHaveLength(29);
+    expect(labels).toEqual(expect.arrayContaining(mock.columns.map((column) => column.label)));
+    expect(labels).toEqual(expect.arrayContaining([
+      "주소", "파일", "상담내용", "출동", "컨택여부", "상담지연 메시지", "악성부재 메시지전달",
+    ]));
+    expect(labels.indexOf("광고 명")).toBeLessThan(labels.indexOf("연락처"));
   });
 
   it("컬럼 타입이 목업과 같다", () => {
@@ -166,15 +170,11 @@ describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
     expect(NEW_LEAD_TAB.columns.at(-1)?.label).toBe("컨택 이동");
   });
 
-  it("탭 넘김 관문이 목업과 같다 (계약만 — 실행은 리드컨택 탭 이후)", () => {
-    expect(NEW_LEAD_TAB.transitions).toEqual(
-      mock.transitions.map((transition) => ({
-        columnKey: byLabel.get(transition.column)!.key,
-        value: transition.value,
-        to: transition.to,
-        guard: null,
-      })),
-    );
+  it("표의 상담 상황과 오른쪽 고정 관문 양쪽에서 같은 리드컨택 전환을 제공한다", () => {
+    expect(NEW_LEAD_TAB.transitions).toEqual([
+      { columnKey: "consult_status", value: "리드컨택으로 넘기기", to: "contact", guard: null },
+      { columnKey: "contact_move", value: "컨택 이동", to: "contact", guard: null },
+    ]);
   });
 });
 
@@ -193,9 +193,11 @@ describe("제품 규칙 — 목업을 그대로 옮기면 안 되는 곳", () =>
     for (const name of examples) expect(all, name).not.toContain(name);
   });
 
-  it("✉ 발송 3칸은 안전장치가 올 때까지 잠겨 있다 — 돈이 나가는 칸이다", () => {
+  it("✉ 발송 5칸은 안전장치가 올 때까지 잠겨 있다 — 돈이 나가는 칸이다", () => {
     const send = NEW_LEAD_TAB.columns.filter((column) => column.source === "msg");
-    expect(send.map((column) => column.label)).toEqual(["부재 안내", "1차 상담 안내", "2차 확정 안내"]);
+    expect(send.map((column) => column.label)).toEqual([
+      "부재 안내", "1차 상담 안내", "2차 확정 안내", "상담지연 메시지", "악성부재 메시지전달",
+    ]);
     for (const column of send) {
       expect(column.readOnly, `${column.label} 잠금`).toBe(true);
       expect(column.pendingReason).toBe(SEND_PENDING_REASON);
