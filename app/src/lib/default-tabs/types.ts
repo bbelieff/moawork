@@ -112,6 +112,15 @@ export interface DefaultTab {
   /** Previous product baseline for properties changed by this revision. */
   previousRevision?: {
     revision: number;
-    columns: Record<string, { readOnly?: boolean; rightPinned?: boolean }>;
+    /**
+     * ★ `label` 은 «설치된 스냅샷 기록이 아직 없는» 보드를 위한 대비책이다(#551).
+     *   보통은 `default_definition_state` 에 우리가 마지막으로 쓴 값이 남아 있어서
+     *   「그때 쓴 것과 지금 DB 가 같은가」로 «회사가 손댔는지» 를 가린다.
+     *   기록이 없는 옛 보드는 그 판단을 못 하므로, 여기 적어 둔 옛 이름과 같을 때만 옮긴다.
+     *
+     *   ⚠ `sortOrder` 는 여기 적지 «않는다». 옛 보드마다 뒤섞인 값이 제각각이라
+     *     코드에 하나로 적을 수 있는 값이 아니다 — 기록된 상태로만 판단한다.
+     */
+    columns: Record<string, { readOnly?: boolean; rightPinned?: boolean; label?: string }>;
   };
 }
