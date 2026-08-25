@@ -5,7 +5,7 @@
  * 실측: `node docs/design/dump-mockup.mjs new` · 기계 대조는 `new-lead.test.ts` 가
  *       `extractMockupContract()` 를 직접 import 해서 강제한다(사람이 옮겨 적은 값을 믿지 않는다).
  *
- * 아이템(그룹) 5 · 컬럼 22 · 자동 이동 6규칙 · 맨 오른쪽 고정 열 «컨택 이동».
+ * 아이템(그룹) 5 · 컬럼 29 · 자동 이동 6규칙 · 맨 오른쪽 고정 열 «컨택 이동».
  *
  * ⚠ **`extractMockupContract()` 는 이 탭의 이동 규칙을 10개로 보고한다. 6개가 맞다.**
  *   목업 안에 이동 표가 두 벌 있다.
@@ -174,6 +174,25 @@ const COLUMNS: DefaultTabColumn[] = [
   },
   { key: "sigungu", label: "시군구", type: "select", source: "in", options: sigunguOptions(), width: 110 },
   { key: "email", label: "이메일", type: "email", source: "auto", width: 160 },
+  { key: "address_detail", label: "주소", type: "text", source: "auto", width: 180 },
+  { key: "documents", label: "파일", type: "file", source: "in", width: 110 },
+  { key: "consult_notes", label: "상담내용", type: "text", source: "in", width: 220 },
+  {
+    key: "dispatch_status",
+    label: "출동",
+    type: "status",
+    source: "in",
+    options: opts(["미정", GREY], ["출동 예정", "#fdab3d"], ["출동 완료", "#00c875"]),
+    width: 110,
+  },
+  {
+    key: "contact_status",
+    label: "컨택여부",
+    type: "status",
+    source: "act",
+    options: opts(["미정", GREY], ["컨택 완료", "#00c875"]),
+    width: 110,
+  },
 
   // 13~15 ✉ 발송 — 돈이 나간다. DC-04 안전장치 대기(임시 잠금).
   sendColumn(
@@ -187,6 +206,8 @@ const COLUMNS: DefaultTabColumn[] = [
   ),
   sendColumn("consult1_notice", "1차 상담 안내", opts(["보내기 전", GREY], ["1차 상담완료", "#00c875"])),
   sendColumn("confirm2_notice", "2차 확정 안내", opts(["심사 전", GREY], ["심사확정", "#00c875"])),
+  sendColumn("delay_notice", "상담지연 메시지", opts(["보내기 전", GREY], ["전달 완료", "#00c875"])),
+  sendColumn("malicious_absence_notice", "악성부재 메시지전달", opts(["보내기 전", GREY], ["전달 완료", "#00c875"])),
 
   // 16 피드백
   {
@@ -216,6 +237,7 @@ const COLUMNS: DefaultTabColumn[] = [
     options: opts(
       ["상담 전", GREY], ["1차 부재", "#007eb5"], ["2차 상담예약", "#9d50dd"],
       ["2차 상담완료", "#66ccff"], ["보류", "#fdab3d"], ["거절", "#df2f4a"],
+      ["리드컨택으로 넘기기", "#00c875"],
     ),
     moveTo: {
       "상담 전": NEW_LEAD_GROUPS.fresh,
@@ -245,7 +267,7 @@ const COLUMNS: DefaultTabColumn[] = [
 /** These values remain durable, but belong to the item drawer instead of the table. */
 /** 협업자는 상세에서 담당자와 같은 사람 선택기로 편집한다. 컨택 이동은 최신 사용자
  * 확정에 따라 표 맨 오른쪽 고정 관문과 상세 CTA 양쪽에서 접근할 수 있어야 한다. */
-export const NEW_LEAD_DETAIL_ONLY_KEYS = new Set(["collaborators"]);
+export const NEW_LEAD_DETAIL_ONLY_KEYS = new Set<string>();
 
 export const NEW_LEAD_TAB: DefaultTab = {
   key: "new",
@@ -269,6 +291,7 @@ export const NEW_LEAD_TAB: DefaultTab = {
    *   리드컨택 탭이 선 뒤에 붙인다. 지금 실행하면 갈 곳이 없는 건을 만들어 리드를 잃는다.
    */
   transitions: [
+    { columnKey: "consult_status", value: "리드컨택으로 넘기기", to: "contact", guard: null },
     { columnKey: "contact_move", value: "컨택 이동", to: "contact", guard: null },
   ],
 };

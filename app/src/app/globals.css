@@ -147,6 +147,12 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   background: var(--mw-bg);
   color: var(--mw-fg);

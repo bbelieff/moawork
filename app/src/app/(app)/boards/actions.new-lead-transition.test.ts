@@ -31,11 +31,11 @@ vi.mock("@/lib/boards/server", () => ({
 
 import { setCellAction } from "./actions";
 
-function form(value: string, requestId = "00000000-0000-4000-8000-000000000172"): FormData {
+function form(value: string, requestId = "00000000-0000-4000-8000-000000000172", columnKey = "contact_move"): FormData {
   const data = new FormData();
   data.set("boardId", "board-new");
   data.set("itemId", "item-1");
-  data.set("columnKey", "contact_move");
+  data.set("columnKey", columnKey);
   data.set("value", value);
   data.set("requestId", requestId);
   return data;
@@ -63,6 +63,17 @@ describe("BBE-172 new-lead contact transition action", () => {
     expect(setCells).not.toHaveBeenCalled();
     expect(redirect).toHaveBeenCalledWith("/contract");
     expect(revalidatePath).toHaveBeenCalledWith("/contract");
+  });
+
+  it("상담 상황에서 선택해도 상세 화면 없이 같은 atomic 전환을 실행한다", async () => {
+    rpc.mockResolvedValue({
+      data: [{ status: "committed", deal_id: "deal-1", company_id: null, reason: null }],
+      error: null,
+    });
+    await expect(setCellAction(form("리드컨택으로 넘기기", undefined, "consult_status"))).rejects.toThrow("NEXT_REDIRECT");
+    expect(rpc).toHaveBeenCalledWith("advance_new_lead_to_contact", expect.objectContaining({ p_item_id: "item-1" }));
+    expect(setCells).not.toHaveBeenCalled();
+    expect(redirect).toHaveBeenCalledWith("/contract");
   });
 
   it("keeps non-transition values on the ordinary cell path with RPC zero", async () => {

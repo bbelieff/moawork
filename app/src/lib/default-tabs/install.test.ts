@@ -308,7 +308,7 @@ describe("리드컨택 기본 탭 설치", () => {
 });
 
 describe("기본 탭 보장 (D76 — «설치» 단계 없이)", () => {
-  it("신규리드 보드·그룹 5·컬럼 22 가 실제로 만들어진다", async () => {
+  it("신규리드 보드·그룹 5·컬럼 29 가 실제로 만들어진다", async () => {
     const [result] = await ensureDefaultTabs(ctx, toAsyncBoardsRepo(repo));
 
     expect(result.created).toBe(true);
@@ -329,7 +329,7 @@ describe("기본 탭 보장 (D76 — «설치» 단계 없이)", () => {
     expect(second.created).toBe(false);
     expect(second.boardId).toBe(first.boardId);
     expect(repo.listBoards(ctx).filter((board) => board.name === NEW_LEAD_TAB.name)).toHaveLength(1);
-    expect(repo.listColumns(ctx, first.boardId)).toHaveLength(22);
+    expect(repo.listColumns(ctx, first.boardId)).toHaveLength(29);
   });
 
   it("컬럼 순서가 정의 순서 그대로 심긴다 — 목업 순서가 화면 순서다", async () => {
@@ -353,10 +353,10 @@ describe("기본 탭 보장 (D76 — «설치» 단계 없이)", () => {
     }
   });
 
-  it("✉ 발송 3칸은 잠긴 채로 심긴다 — 안전장치 전까지 돈이 나가면 안 된다", async () => {
+  it("✉ 발송 5칸은 잠긴 채로 심긴다 — 안전장치 전까지 돈이 나가면 안 된다", async () => {
     const [result] = await ensureDefaultTabs(ctx, toAsyncBoardsRepo(repo));
     const send = repo.listColumns(ctx, result.boardId).filter((column) => column.source === "msg");
-    expect(send).toHaveLength(3);
+    expect(send).toHaveLength(5);
     for (const column of send) expect(column.is_readonly, column.label).toBe(true);
   });
 });

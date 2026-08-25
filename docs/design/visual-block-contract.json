@@ -20,8 +20,8 @@
       "viewport": ["desktop", "mobile"],
       "mockup_anchor": ".hrow > .h1",
       "product_anchor": "[data-visual-block='board-header']",
-      "expected_text": ["신규리드 관리", "리드컨택 관리", "＋ 새 항목"],
-      "expected_text_by_tab": { "new": ["신규리드 관리", "새 업체"], "contact": ["리드컨택 관리", "새 항목"] },
+      "expected_text": ["신규리드 관리", "리드컨택 관리", "새 회사", "새 항목"],
+      "expected_text_by_tab": { "new": ["신규리드 관리", "새 회사"], "contact": ["리드컨택 관리", "새 항목"] },
       "expected_icon_state": "board icon + enabled primary CTA",
       "screen_region": "top",
       "relative_order": { "before": "board-settings-top", "same_row": ["board title", "new item CTA"] },
@@ -32,7 +32,7 @@
       "interaction_feedback": "CTA hover/focus-visible and enabled state",
       "persistence_reload": "not applicable; route shell survives reload",
       "dependencies": [],
-      "override": { "issue": 549, "date": "2026-08-25", "rationale": "신규리드는 이름만 만드는 일반 항목 버튼 대신 업체명·사업자 구분을 함께 저장하는 전용 새 업체 CTA를 쓴다." }
+      "override": { "issue": 554, "date": "2026-08-25", "rationale": "신규리드는 이름만 만드는 일반 항목 버튼 대신 회사명·사업자 구분·즉시 표 입력값을 함께 저장하는 전용 새 회사 CTA를 쓴다." }
     },
     {
       "block_id": "board-settings-top",

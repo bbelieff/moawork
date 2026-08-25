@@ -48,7 +48,7 @@ import { NOTICE_KEYS } from "@/lib/notices/types";
 import { buildBlocks } from "./blocks";
 import {
   groupKeyOf,
-  placeAdNameNearContact,
+  orderNewLeadColumnsLikeMonday,
   reorderColumnKeys,
   resolveColumnOrder,
   type GroupColumnOrder,
@@ -183,7 +183,7 @@ export function BoardWorkspace({
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const activeColumns = useMemo(() => {
     const visible = columns.filter((column) => !archivedColumnIds.has(column.id));
-    return board.source === NEW_LEAD_TAB_SOURCE ? placeAdNameNearContact(visible) : visible;
+    return board.source === NEW_LEAD_TAB_SOURCE ? orderNewLeadColumnsLikeMonday(visible) : visible;
   }, [archivedColumnIds, board.source, columns]);
   const tableColumns = useMemo(
     () => board.source === NEW_LEAD_TAB_SOURCE
@@ -193,7 +193,7 @@ export function BoardWorkspace({
   );
   const detailColumns = useMemo(
     () => board.source === NEW_LEAD_TAB_SOURCE
-      ? activeColumns.filter((column) => column.key !== "contact_move" && column.key !== "consult_status")
+      ? activeColumns.filter((column) => column.key !== "contact_move" && column.key !== "consult_status" && column.key !== "address_detail")
       : activeColumns,
     [activeColumns, board.source],
   );
@@ -358,7 +358,7 @@ export function BoardWorkspace({
      * 원칙 2·8 — 인위적 max-width 없이 뷰포트 폭을 그대로 쓴다.
      * 세로 여백(gap-3)은 "그룹 사이 구획"이라는 위계 표현으로만 쓴다(원칙 10).
      */
-    <div className="flex w-full flex-col gap-3">
+    <div className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden">
       <BoardHeader
         boardId={board.id}
         icon={board.icon}
@@ -370,6 +370,7 @@ export function BoardWorkspace({
         groups={groups}
         readOnly={readOnly}
         backSlot={backSlot}
+        helpSlot={onboardingSlot}
         viewSlot={viewSlot}
         addItemSlot={board.source === NEW_LEAD_TAB_SOURCE && groups[0] ? (
           <NewLeadIntakeForm
@@ -383,7 +384,6 @@ export function BoardWorkspace({
       />
 
       {/* 보드 이름 «아래» · 필터 «위» — 목업 head() 의 `.vrow` 자리다 (BBE-214). */}
-      {onboardingSlot}
       {savedViewsSlot}
 
       {settingsSlot ? <div data-visual-block="board-settings">{settingsSlot}</div> : null}
@@ -456,7 +456,7 @@ export function BoardWorkspace({
           const resolvedColumns = resolveColumnOrder(tableColumns, optimisticOrder[block.key]);
           // 과거에 저장된 그룹별 배치도 광고 명의 필수 유입정보 위치를 되돌리지 못하게 한다.
           const fullColumns = board.source === NEW_LEAD_TAB_SOURCE
-            ? placeAdNameNearContact(resolvedColumns)
+            ? orderNewLeadColumnsLikeMonday(resolvedColumns)
             : resolvedColumns;
           const shown = limitColumns(fullColumns, filters.columnLimit);
           const visibleRows = applyFilters(block.rows, tableColumns, filters);

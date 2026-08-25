@@ -39,16 +39,20 @@ function render() {
 }
 
 describe("BBE-171 new-lead GroupTable wiring", () => {
-  it("shows the two-step quick intake with only the minimal required fields", () => {
+  it("보드 컬럼을 바로 채울 수 있는 회사 등록 필드와 동일한 사람 선택 UI를 보여준다", () => {
     const html = render();
     expect(html).toContain("＋ 새 항목");
-    expect(html).toContain("업체명");
+    expect(html).toContain("회사명");
     expect(html).toContain("필수");
     expect(html).toContain("사업자 구분");
     expect(html).toContain("개인/일반");
     expect(html).toContain("연락처");
     expect(html).toContain("담당자 가 (나)");
-    expect(html).toContain("상세 화면에서 대표자, 이메일, 지역, 협업자");
+    expect(html).toContain("대표자명");
+    expect(html).toContain("이메일");
+    expect(html).toContain("업종");
+    expect(html).toContain("담당자 1명");
+    expect(html).toContain("협업자 여러 명");
     expect(html).not.toContain("등록과 동시에 준비되는 값");
     expect(html).toContain("취소");
   });
@@ -56,7 +60,7 @@ describe("BBE-171 new-lead GroupTable wiring", () => {
   it("does not infer a canonical board from matching custom columns", () => {
     const html = renderToStaticMarkup(<GroupTable boardId="board-a" groupId="group-a" columns={columns} rows={[row]} readOnly={false} rowDragEnabled={false} cellFlash={null} onColumnDrop={() => {}} dragRowId={null} canDropRow={() => false} onRowDragStart={() => {}} onRowDragEnd={() => {}} onRowDrop={() => {}} />);
     expect(html).not.toContain('name="dealId"');
-    expect(html).not.toContain("새 업체 빠르게 등록");
+    expect(html).not.toContain("＋ 새 회사");
   });
 
   it("keeps an auto-sourced canonical field editable through the audited deal RPC action", () => {

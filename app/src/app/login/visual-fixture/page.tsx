@@ -60,7 +60,7 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
         canEditItems
         currentUserId="visual-user"
         settingsSlot={<VisualSettingsSlot />}
-        onboardingSlot={tab === "new" ? <NewLeadOnboarding key="issue-542-onboarding" boardId={data.board.id} autoOpen /> : undefined}
+        onboardingSlot={tab === "new" ? <NewLeadOnboarding key="issue-554-help" /> : undefined}
         cellAction={visualSetCellAction}
       />
     </main>

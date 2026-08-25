@@ -34,16 +34,51 @@ export type GroupColumnOrder = Record<string, string[]>;
  * 바뀌지 않는다. 값이나 저장 순서는 건드리지 않고 표시 배열에서만 광고 명을 연락처
  * 바로 앞으로 옮긴다. 나머지 컬럼의 상대 순서와 컬럼 집합은 그대로 보존한다.
  */
-export function placeAdNameNearContact(columns: readonly BoardColumn[]): BoardColumn[] {
-  const next = [...columns];
-  const adIndex = next.findIndex((column) => column.key === "ad_name");
-  const phoneIndex = next.findIndex((column) => column.key === "phone");
-  if (adIndex < 0 || phoneIndex < 0 || adIndex === phoneIndex - 1) return next;
-  const [adName] = next.splice(adIndex, 1);
-  const nextPhoneIndex = next.findIndex((column) => column.key === "phone");
-  next.splice(nextPhoneIndex, 0, adName);
-  return next;
+export const MONDAY_NEW_LEAD_COLUMN_ORDER = [
+  "applied_on",
+  "ad_name",
+  "biz_reg_type",
+  "revenue_band",
+  "phone",
+  "rep_name",
+  "address_detail",
+  "delay_notice",
+  "documents",
+  "dispatch_status",
+  "absence_notice",
+  "malicious_absence_notice",
+  "owner",
+  "collaborators",
+  "consult_notes",
+  "consult_status",
+  "consult1_notice",
+  "confirm2_notice",
+  "feedback_status",
+  "contact_status",
+  "recall_at",
+  "meeting_at",
+  "recontact_on",
+  "contract_fee",
+  "email",
+  "industry",
+  "sido",
+  "sigungu",
+  "contact_move",
+] as const;
+
+/** 실제 운영 먼데이에서 검증한 신규고객 흐름을 화면 순서의 정본으로 쓴다. */
+export function orderNewLeadColumnsLikeMonday(columns: readonly BoardColumn[]): BoardColumn[] {
+  const order = new Map<string, number>(MONDAY_NEW_LEAD_COLUMN_ORDER.map((key, index) => [key, index]));
+  return [...columns].sort((left, right) => {
+    const leftOrder = order.get(left.key) ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = order.get(right.key) ?? Number.MAX_SAFE_INTEGER;
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+    return left.sort_order - right.sort_order;
+  });
 }
+
+/** @deprecated 신규리드 전체 순서 정렬을 사용한다. */
+export const placeAdNameNearContact = orderNewLeadColumnsLikeMonday;
 
 /**
  * 오버라이드를 보드 기본 순서에 겹쳐 그룹의 최종 컬럼 순서를 만든다.

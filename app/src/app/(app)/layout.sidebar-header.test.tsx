@@ -184,4 +184,10 @@ describe("BBE-194 사이드바 머리", () => {
     const html = await renderShell();
     expect(html).not.toContain("업체·담당자 검색");
   });
+
+  it("넓은 보드가 페이지 폭을 밀지 않고 보드 내부 스크롤에만 남는다", async () => {
+    const html = await renderShell();
+    expect(html).toContain("max-w-full flex-1 overflow-x-hidden");
+    expect(html).toContain('<main class="min-w-0 max-w-full">');
+  });
 });
