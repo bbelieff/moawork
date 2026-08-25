@@ -1,12 +1,18 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BoardModalLayer } from "@/components/board/BoardDialogPortal";
 
 /** 실제 제품 모달과 같은 공통 레이어를 쓰는 비주얼 회귀 검증용 진입점. */
 export function VisualLayerProbe() {
   const [open, setOpen] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    document.documentElement.dataset.visualFixtureHydrated = "true";
+    return () => {
+      delete document.documentElement.dataset.visualFixtureHydrated;
+    };
+  }, []);
   const close = () => {
     setOpen(false);
     requestAnimationFrame(() => opener.current?.focus());
