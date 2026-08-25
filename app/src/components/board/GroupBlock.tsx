@@ -88,6 +88,11 @@ export function GroupBlock({
     <section data-visual-block="group-table" className="min-w-0 max-w-full rounded-xl border border-mw-line bg-mw-card">
       <details className="min-w-0 max-w-full" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
         <summary
+          onDragOver={onOrderDrop ? (event) => event.preventDefault() : undefined}
+          onDrop={onOrderDrop ? (event) => {
+            event.preventDefault();
+            onOrderDrop();
+          } : undefined}
           className="flex cursor-pointer select-none items-center gap-2 rounded-t-xl px-3 py-2 list-none [&::-webkit-details-marker]:hidden"
           style={{
             backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)`,
@@ -96,7 +101,7 @@ export function GroupBlock({
         >
           {onOrderDragStart && (
             <button type="button" draggable aria-label={`${name} 그룹 순서 끌기`}
-              onDragStart={onOrderDragStart} onDragOver={(event) => event.preventDefault()} onDrop={onOrderDrop}
+              onDragStart={onOrderDragStart}
               className="cursor-grab rounded px-1 text-mw-sub focus:outline-none focus:ring-2 focus:ring-mw-primary">⠿</button>
           )}
           <span aria-hidden="true" className="text-[0.6rem] text-mw-sub">

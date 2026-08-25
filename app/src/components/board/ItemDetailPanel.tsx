@@ -42,6 +42,7 @@ import {
   uploadItemDetailFileAction,
   type ItemDetailSnapshot,
 } from "@/app/(app)/boards/item-detail-actions";
+import { MemberPicker } from "./MemberPicker";
 
 function AutoSaveField({
   boardId,
@@ -635,23 +636,18 @@ export function ItemDetailPanel({
                                 : "표 컬럼"}
                             </span>
                           </div>
-                          {canonicalNewLead && row.deal_id && entry.key === "collaborators" ? (
+                          {canonicalNewLead && row.deal_id && entry.key === "collaborators" && canEditItems ? (
                             <form action={updateNewLeadMetaAction} className="grid gap-2">
                               <input type="hidden" name="boardId" value={boardId} />
                               <input type="hidden" name="itemId" value={row.id} />
                               <input type="hidden" name="dealId" value={row.deal_id} />
                               <input type="hidden" name="field" value="collaborators" />
-                              <select
-                                id={`${row.id}-${entry.key}`}
-                                name="value"
+                              <MemberPicker
+                                label={label}
+                                members={memberOptions}
+                                value={Array.isArray(value) ? value.filter((candidate): candidate is string => typeof candidate === "string") : []}
                                 multiple
-                                defaultValue={Array.isArray(value) ? value.filter((candidate): candidate is string => typeof candidate === "string") : []}
-                                disabled={!canEditItems}
-                                className="min-h-24 rounded-lg border border-mw-line bg-mw-card px-3 py-2 text-sm"
-                              >
-                                {memberOptions.map((member) => <option key={member.id} value={member.id}>{member.label}</option>)}
-                              </select>
-                              {canEditItems ? <button type="submit" className="min-h-11 justify-self-end rounded-lg border border-mw-line px-3 text-xs font-semibold">협업자 저장</button> : null}
+                              />
                             </form>
                           ) : editable ? (
                             <AutoSaveField

@@ -39,6 +39,7 @@ import { BoardHeader } from "./BoardHeader";
 import { BoardToolbar } from "./BoardToolbar";
 import { GroupBlock } from "./GroupBlock";
 import { GroupTable } from "./GroupTable";
+import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
 import { groupPresetName, isGroupPresetChanged } from "@/lib/presets/group-preset";
 import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
@@ -370,6 +371,15 @@ export function BoardWorkspace({
         readOnly={readOnly}
         backSlot={backSlot}
         viewSlot={viewSlot}
+        addItemSlot={board.source === NEW_LEAD_TAB_SOURCE && groups[0] ? (
+          <NewLeadIntakeForm
+            variant="header"
+            boardId={board.id}
+            groupId={groups[0].id}
+            members={scheduleRecipients}
+            currentUserId={currentUserId}
+          />
+        ) : undefined}
       />
 
       {/* 보드 이름 «아래» · 필터 «위» — 목업 head() 의 `.vrow` 자리다 (BBE-214). */}
