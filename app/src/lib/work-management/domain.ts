@@ -15,7 +15,8 @@ export function visibleItems(snapshot: WorkBoardSnapshot, query: string, status:
   return [...snapshot.items]
     .filter((item) => !needle || [item.title, item.companyDisplay ?? "", item.contactDisplay ?? ""].some((v) => v.toLocaleLowerCase("ko-KR").includes(needle)))
     .filter((item) => !status || item.workflowStatus === status)
-    .sort((a, b) => sort === "due" ? (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") : a.groupId.localeCompare(b.groupId));
+    // #547 — groupId 는 null 일 수 있다(그룹 없는 업무). 그때는 «미분류» 로 보고 맨 뒤로 민다.
+    .sort((a, b) => sort === "due" ? (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") : (a.groupId ?? "￿").localeCompare(b.groupId ?? "￿"));
 }
 
 export function calendarBuckets(snapshot: WorkBoardSnapshot) {

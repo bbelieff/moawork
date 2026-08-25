@@ -5,7 +5,6 @@ import { getSession } from "@/lib/auth/session";
 import { Logo } from "@/components/brand/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { SidebarNav } from "@/components/shell/SidebarNav";
-import { AppTabsLayoutDataProvider } from "@/components/shell/AppTabsLayoutData";
 import { IconSprite } from "@/components/shell/icons";
 import { GlobalSearch } from "@/components/shell/GlobalSearch";
 import { AccountMenu } from "@/components/account/AccountMenu";
@@ -26,8 +25,6 @@ import { ensureApprovedWorkspaceOnEntry } from "@/lib/workspace-entry/bootstrap"
 import { createClient } from "@/lib/supabase/server";
 import { loadOrgLogoSignedUrls } from "@/lib/org-logo/server";
 import { buildSwitcherWorkspaces } from "@/lib/org-logo/switcher";
-import { resolveExistingContactBoard } from "@/lib/contact/entry";
-import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 
 function WorkspaceBootstrapUnavailable({ slug }: { slug: string }) {
   return (
@@ -83,7 +80,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // BBE-214 — bootstrap 뒤의 셸 읽기는 서로 결과에 의존하지 않는다. 각각을 직렬로
   // 기다리면 모든 hard-load가 네트워크 지연을 그대로 합산한다. 같은 요청 안에서 함께
   // 시작하되, auth/RLS 판정과 실패 의미는 각 loader가 계속 소유한다.
-  const [workspaceApprovals, workspaceEntryContext, platformActor, orgLogoUrls, lockedFeatures, notify, contact] = await Promise.all([
+  const [workspaceApprovals, workspaceEntryContext, platformActor, orgLogoUrls, lockedFeatures, notify] = await Promise.all([
     trustedOwnerOrgId ? loadWorkspaceApprovals(trustedOwnerOrgId) : Promise.resolve<WorkspaceApprovals | null>(null),
     loadWorkspaceEntryContext(),
     loadPlatformActor(),
@@ -92,9 +89,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       : Promise.resolve(new Map<string, string>()),
     loadLockedFeatures(ctx.org.id, features),
     loadNotifySnapshot(ctx),
-    appTabRequest
-      ? resolveExistingContactBoard(ctx, new SupabaseBoardsRepo(requestClient!)).catch(() => null)
-      : Promise.resolve(null),
+    // 2026-08-25 — 「리드컨택 보드 직행 주소」 조회를 뺐다.
+    //   그 값을 쓰던 곳은 가로 탭 줄 하나뿐이었고, 총괄 지시로 그 줄을 없앴다.
+    //   덤으로 **탭 화면을 열 때마다 돌던 읽기 한 번이 사라진다.**
   ]);
   const switcherWorkspaces = routing.kind === "ready"
     ? buildSwitcherWorkspaces(routing.memberships, orgLogoUrls)
@@ -111,11 +108,6 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // Platform entry is a server-owned capability. Workspace-entry context is
   // useful for pending requests, but it is never used to elevate this action.
   const canAccessPlatform = platformActor.kind === "granted";
-
-  // ⚠ 예전엔 getRepo().isFeatureEnabled 로 직접 판정했는데, getRepo() 는 환경과 무관하게
-  // 항상 LocalRepo(인메모리 시드)를 돌려줘서 프로덕션의 실 org UUID 가 조회되지 않았고
-  // 결과적으로 **전 메뉴가 잠겼다**(P0). 이제 환경에 맞는 소스를 골라 읽는다.
-  const contactDirectHref = contact?.kind === "ready" ? `/boards/${contact.boardId}` : undefined;
 
   const initial = (ctx.user.name ?? "?").trim().charAt(0) || "?";
   const account = buildAccountViewModel(ctx);
@@ -261,15 +253,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             />
           </div>
         </header>
-        <AppTabsLayoutDataProvider
-          value={{
-            lockedFeatures,
-            workspaceBasePath: currentWorkspace.length === 1 ? `/w/${currentWorkspace[0].slug}` : undefined,
-            directHrefs: contactDirectHref ? { contact: contactDirectHref } : undefined,
-          }}
-        >
-          <main>{children}</main>
-        </AppTabsLayoutDataProvider>
+        <main>{children}</main>
       </div>
     </div>
   );
