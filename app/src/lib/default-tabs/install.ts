@@ -165,8 +165,18 @@ export async function readDefaultTabDrift(
           && baseline.rightPinned !== Boolean(definition.rightPinned));
     })
     : false;
+  // #551 — 기록이 없는 옛 보드도 «라벨이 옛 이름 그대로면» 고칠 일이 있다고 본다.
+  //   이게 없으면 리스를 안 잡아서 reconcile 이 영원히 안 돈다(hasWork 가 false 로 남는다).
+  const legacyLabelNeedsReconcile = !state && tab.previousRevision
+    ? Object.entries(tab.previousRevision.columns).some(([key, baseline]) => {
+      if (baseline.label === undefined) return false;
+      const column = columns.find((candidate) => candidate.key === key);
+      const definition = tab.columns.find((candidate) => candidate.key === key);
+      return Boolean(column && definition && column.label === baseline.label && column.label !== definition.label);
+    })
+    : false;
   const definitionRevisionBehind = tab.revision !== undefined
-    && (state ? state.revision < tab.revision : legacyPropertyNeedsReconcile);
+    && (state ? state.revision < tab.revision : legacyPropertyNeedsReconcile || legacyLabelNeedsReconcile);
 
   return {
     boardMissing: false,
@@ -187,6 +197,66 @@ function desiredDefinitionState(tab: DefaultTab, columns: readonly { key: string
       sortOrder: column.sort_order,
     }])),
   };
+}
+
+/**
+ * #551 — 정의 순서로 열을 되맞춘다.
+ *
+ * 왜 필요한가 — 실측(2026-08-25 운영): 계약업체 실무 보드의 `sort_order` 가 뒤섞여 있었다.
+ *   맨 앞이 «수수료_입금일» 이라 표를 열면 무엇이 무엇인지 읽을 수 없었다.
+ *   `types.ts` 가 못박은 대로 **배열 순서가 곧 sort_order 이고 목업 순서와 같아야 한다.**
+ *   설치 코드는 이미 정의 순서대로 매긴다 — 뒤섞인 것은 옛 데이터의 잔재다.
+ *
+ * 무엇을 «안» 하는가 — 회사가 직접 옮긴 순서는 건드리지 않는다.
+ *   우리가 마지막으로 기록한 `sort_order`(default_definition_state)와 지금 DB 가 «같을 때만»
+ *   옮긴다. 다르면 회사가 손댄 것이므로 그대로 둔다. readOnly·라벨과 같은 판단 방식이다.
+ *   기록이 아예 없으면 판단할 근거가 없으므로 **아무것도 하지 않는다** — 추측으로 남의 순서를 뒤집지 않는다.
+ *
+ * ⚠ 두 번에 나눠 쓴다. `(org_id, board_id, sort_order)` 가 유일 인덱스라
+ *   제자리에서 한 번에 옮기면 중간에 값이 겹쳐 23505 로 터진다.
+ *   먼저 전부 충돌하지 않는 높은 자리로 밀어 두고, 그다음 최종값을 준다.
+ */
+async function reorderToDefinition(
+  ctx: Ctx,
+  tab: DefaultTab,
+  store: BoardsRepo,
+  boardId: string,
+  columns: readonly { id: string; key: string; sort_order: number }[],
+  priorState: { columns: Record<string, { sortOrder?: number }> } | null,
+): Promise<void> {
+  const owned = tab.columns
+    .map((definition, index) => {
+      const column = columns.find((candidate) => candidate.key === definition.key);
+      return column ? { column, desired: index } : null;
+    })
+    .filter((entry): entry is { column: { id: string; key: string; sort_order: number }; desired: number } => entry !== null);
+
+  // ⚠ 정의 밖의 열이 하나라도 있으면 손대지 않는다.
+  //   회사가 직접 만든 열일 수 있고, 0..n-1 자리를 그 열이 쓰고 있으면 재배치가 충돌한다.
+  //   «구조를 줄이지 않는다»(D73)와 같은 뜻이다 — 남의 것을 밀어내지 않는다.
+  if (owned.length !== columns.length) return;
+
+  // 회사가 손댄 열이 하나라도 있으면 이 보드의 순서는 회사 것이다 — 통째로 손대지 않는다.
+  //
+  // ★ 기록이 «아예 없는» 보드는 판단 근거가 없다. 그때는 정의를 따른다. 근거:
+  //   · `types.ts` 가 못박았다 — 「배열 순서가 곧 sort_order 이고 목업 순서와 같아야 한다」
+  //   · `boards.source = core.default-tab/*` 인 보드는 «우리가» 만든 것이다. 회사가 만들 수 없다
+  //   · 실제로 운영이 읽을 수 없는 상태였다(맨 앞이 «수수료_입금일»). 확실한 손해 대 가능한 손해다
+  //   대가: 기록 기제가 생기기 «전» 에 회사가 순서를 옮겨 뒀다면 그 한 번은 되돌아간다.
+  //   위험은 딱 한 번뿐이다 — 이 실행이 끝나면 상태가 기록되고, 그 뒤 회사가 옮긴 것은
+  //   위 `untouched` 가 영원히 지켜 준다.
+  const untouched = !priorState
+    || owned.every((entry) => priorState.columns[entry.column.key]?.sortOrder === entry.column.sort_order);
+  if (!untouched) return;
+  if (owned.every((entry) => entry.column.sort_order === entry.desired)) return;
+
+  const parked = Math.max(...columns.map((column) => column.sort_order)) + 1;
+  for (const [offset, entry] of owned.entries()) {
+    await store.updateColumn(ctx, entry.column.id, { sort_order: parked + offset });
+  }
+  for (const entry of owned) {
+    await store.updateColumn(ctx, entry.column.id, { sort_order: entry.desired });
+  }
 }
 
 async function reconcileDefaultDefinition(
@@ -215,8 +285,16 @@ async function reconcileDefaultDefinition(
       if (baseline.rightPinned !== undefined
         && column.rightPinned === baseline.rightPinned
         && baseline.rightPinned !== Boolean(definition.rightPinned)) patch.rightPinned = Boolean(definition.rightPinned);
+      // #551 — 라벨도 «안 건드린 것만» 옮긴다. 회사가 이름을 바꿨으면 그대로 둔다.
+      //   기록된 상태가 있으면 그것과, 없으면 previousRevision 에 적어 둔 옛 이름과 견준다.
+      const baselineLabel = priorState?.columns[definition.key]?.label ?? baseline.label;
+      if (baselineLabel !== undefined && column.label === baselineLabel && column.label !== definition.label) {
+        patch.label = definition.label;
+      }
       if (Object.keys(patch).length > 0) await store.updateColumn(ctx, column.id, patch);
     }
+    columns = await store.listColumns(ctx, boardId);
+    await reorderToDefinition(ctx, tab, store, boardId, columns, priorState);
     columns = await store.listColumns(ctx, boardId);
   }
   await store.setDefaultDefinitionState(ctx, boardId, desiredDefinitionState(tab, columns));

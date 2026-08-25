@@ -141,6 +141,24 @@ const columns: DefaultTabColumn[] = [
 ];
 
 export const CONTRACT_WORK_TAB: DefaultTab = {
+  /*
+   * #551 — 이미 만들어진 보드가 옛 이름·뒤섞인 순서로 남아 있다(2026-08-25 운영 실측).
+   *   revision 을 올려야 진입 시 조정(reconcileDefaultDefinition)이 돈다.
+   *
+   *   아래 previousRevision 에 «우리가 예전에 심었던 이름» 을 적는다.
+   *   DB 라벨이 그것과 «같을 때만» 새 이름으로 옮긴다 — 회사가 직접 바꿔 놨으면 그대로 둔다.
+   *   순서는 여기 못 적는다(보드마다 뒤섞인 값이 다르다). 기록된 상태로만 판단한다.
+   */
+  revision: 2,
+  previousRevision: {
+    revision: 1,
+    columns: {
+      progress_status: { label: "진행상항" },  // 목업 오탈자를 그대로 심었던 자리
+      fund_name: { label: "자금명" },          // → 상품명칭 (2026-08-20 지시)
+      product: { label: "진행 상품" },          // → 세부명칭 (2026-08-20 지시)
+      fee_terms: { label: "수수료(%)" },        // → 계약조건 (#544 · 마이그레이션 127 이 key 를 옮겼다)
+    },
+  },
   key: "work",
   source: CONTRACT_WORK_TAB_SOURCE,
   name: "계약업체 실무",
