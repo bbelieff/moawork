@@ -28,7 +28,7 @@ const column = (key: string, label: string, sort_order: number) => ({
 });
 
 describe("Issue #542 canonical new-lead projection", () => {
-  it("같은 레코드를 유지하면서 표에서 컨택 이동·협업자를 숨기고 상세 열기를 보존한다", () => {
+  it("같은 레코드를 유지하면서 협업자는 상세로 두고 컨택 이동은 오른쪽 고정 관문으로 복구한다", () => {
     const html = renderToStaticMarkup(
       <BoardWorkspace
         board={{ id: "board-new", org_id: "org-a", name: "신규리드", description: null, icon: null, source: NEW_LEAD_TAB_SOURCE, is_system: false, sort_order: 0 } as never}
@@ -37,7 +37,7 @@ describe("Issue #542 canonical new-lead projection", () => {
           column("consult_status", "상담상황", 1),
           column("owner", "담당자", 2),
           column("collaborators", "협업자", 3),
-          column("contact_move", "컨택 이동", 4),
+          { ...column("contact_move", "컨택 이동", 4), type: "status", rightPinned: true, options_jsonb: { options: [{ id: "컨택 대기", label: "컨택 대기", color: "#999" }, { id: "컨택 이동", label: "컨택 이동", color: "#00c875" }] } },
         ] as never}
         groups={[{ id: "group-a", org_id: "org-a", board_id: "board-new", name: "새 리드", color: null, sort_order: 0 }] as never}
         rows={[{ id: "item-a", org_id: "org-a", board_id: "board-new", group_id: "group-a", title: "대한정밀", assigned_to: "user-a", deal_id: "deal-a", sort_order: 0, created_at: "2026-08-25T00:00:00Z", updated_at: "2026-08-25T00:00:00Z", values: { company: "대한정밀", consult_status: "상담 대기", collaborators: ["user-b"], contact_move: "대기" } }] as never}
@@ -52,7 +52,8 @@ describe("Issue #542 canonical new-lead projection", () => {
     expect(html).toContain("담당자");
     expect(html).toContain("대한정밀 상세 열기");
     expect(html).not.toContain(">협업자<");
-    expect(html).not.toContain(">컨택 이동<");
+    expect(html).toContain(">컨택 이동<");
+    expect(html).toContain('data-right-pinned="true"');
     expect(html).not.toContain("원장 열기");
   });
 });

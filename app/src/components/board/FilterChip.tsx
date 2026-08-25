@@ -39,7 +39,7 @@ export function FilterChip({
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ left: 0, top: 0, maxHeight: 288, width: 224 });
+  const [position, setPosition] = useState({ left: 0, top: 0, maxHeight: 360, width: 288 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -60,14 +60,15 @@ export function FilterChip({
     const place = () => {
       const rect = triggerRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const width = Math.min(320, Math.max(224, window.innerWidth - 16));
+      const width = Math.min(288, Math.max(240, window.innerWidth - 16));
       const below = window.innerHeight - rect.bottom - 12;
       const above = rect.top - 12;
       const useAbove = below < 180 && above > below;
-      const maxHeight = Math.max(144, Math.min(320, useAbove ? above : below));
+      const maxHeight = Math.max(196, Math.min(360, useAbove ? above : below));
+      const renderedHeight = Math.min(maxHeight, panelRef.current?.scrollHeight ?? maxHeight);
       setPosition({
         left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
-        top: useAbove ? Math.max(8, rect.top - maxHeight - 4) : rect.bottom + 4,
+        top: useAbove ? Math.max(8, rect.top - renderedHeight - 4) : rect.bottom + 4,
         maxHeight,
         width,
       });
@@ -75,7 +76,12 @@ export function FilterChip({
     place();
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
-    queueMicrotask(() => panelRef.current?.querySelector<HTMLElement>('input,button,[tabindex]:not([tabindex="-1"])')?.focus());
+    queueMicrotask(() => {
+      const panel = panelRef.current;
+      const target = panel?.querySelector<HTMLElement>("[data-filter-autofocus]")
+        ?? panel?.querySelector<HTMLElement>("[data-filter-option] input,button[data-filter-option],[data-filter-body] button");
+      target?.focus();
+    });
     return () => {
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
@@ -132,9 +138,42 @@ export function FilterChip({
               role="dialog"
               aria-label={`${label} 필터`}
               style={{ left: position.left, top: position.top, maxHeight: position.maxHeight, width: position.width }}
-              className="fixed overflow-auto rounded-xl border border-mw-line bg-mw-card p-2 text-mw-fg shadow-lg"
+              className="fixed flex flex-col overflow-hidden rounded-xl border border-mw-line bg-mw-card text-mw-fg shadow-xl"
             >
-              {children}
+              <div className="flex shrink-0 items-center gap-2 border-b border-mw-line px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-mw-fg">{label}</p>
+                  <p className="text-[0.68rem] text-mw-sub">
+                    {active ? `${summary ?? "값"} 선택 중` : "원하는 값을 여러 개 고를 수 있어요"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => close()}
+                  aria-label={`${label} 필터 닫기`}
+                  className="flex min-h-8 min-w-8 items-center justify-center rounded-lg text-mw-sub hover:bg-mw-bg hover:text-mw-fg"
+                >
+                  ✕
+                </button>
+              </div>
+              <div data-filter-body className="min-h-0 flex-1 overflow-y-auto p-2">{children}</div>
+              <div className="flex shrink-0 items-center gap-2 border-t border-mw-line px-2 py-2">
+                <button
+                  type="button"
+                  disabled={!active}
+                  onClick={onClear}
+                  className="min-h-9 rounded-lg px-3 text-xs text-mw-sub hover:bg-mw-bg hover:text-mw-fg disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  선택 해제
+                </button>
+                <button
+                  type="button"
+                  onClick={() => close()}
+                  className="ml-auto min-h-9 rounded-lg bg-mw-record px-4 text-xs font-semibold text-mw-on-accent"
+                >
+                  완료
+                </button>
+              </div>
             </div>
           </div>,
           document.body,
@@ -166,7 +205,7 @@ export function CheckOption({
   onToggle: () => void;
 }) {
   return (
-    <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-2 text-xs hover:bg-mw-bg">
+    <label data-filter-option className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-2 text-xs hover:bg-mw-bg ${checked ? "bg-mw-tint-blue font-semibold text-mw-record" : ""}`}>
       <input type="checkbox" checked={checked} onChange={onToggle} className="h-3.5 w-3.5" />
       <span className="truncate">{label}</span>
     </label>
@@ -186,6 +225,7 @@ export function RadioOption({
   return (
     <button
       type="button"
+      data-filter-option
       onClick={onPick}
       className={`flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-left text-xs hover:bg-mw-bg ${
         checked ? "font-semibold text-mw-record" : ""

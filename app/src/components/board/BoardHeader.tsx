@@ -29,6 +29,7 @@ export function BoardHeader({
   readOnly,
   backSlot,
   viewSlot,
+  addItemSlot,
 }: {
   boardId: string;
   icon: string | null;
@@ -38,6 +39,8 @@ export function BoardHeader({
   backSlot?: ReactNode;
   /** 뷰 전환 등 화면 고유 컨트롤. 헤더 줄 오른쪽 무리에 들어간다. */
   viewSlot?: ReactNode;
+  /** 보드별 기본 등록 폼. 신규리드는 업체명+사업자 구분을 함께 저장하는 전용 폼을 쓴다. */
+  addItemSlot?: ReactNode;
   /** 담당자 탭 선택지(도구줄과 동일 소스). */
   people: { value: string; label: string }[];
   /** 현재 선택된 담당자. 빈 배열 = "전체". */
@@ -95,7 +98,7 @@ export function BoardHeader({
       <div className="ml-auto flex shrink-0 items-center gap-2">
         {viewSlot}
 
-      {!readOnly && groups.length > 0 && (
+      {!readOnly && groups.length > 0 && (addItemSlot ?? (
         <details name="mw-board-header" className="relative shrink-0">
           <summary className="flex h-9 cursor-pointer select-none items-center rounded-full bg-mw-primary px-3.5 text-xs font-semibold text-mw-on-accent list-none [&::-webkit-details-marker]:hidden">
             ＋ 새 항목
@@ -133,7 +136,7 @@ export function BoardHeader({
             </button>
           </form>
         </details>
-      )}
+      ))}
       </div>
     </div>
   );

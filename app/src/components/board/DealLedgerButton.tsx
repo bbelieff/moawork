@@ -7,10 +7,11 @@
  * `loadDealLedgerAction` 재호출로 한다(`revalidatePath` 를 쓰지 않는다).
  */
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { DealLedgerPanel } from "@/components/accounting/DealLedgerPanel";
 import { loadDealLedgerAction, type LedgerPopupState } from "@/lib/accounting/actions";
 import { LedgerEntryModal } from "./LedgerEntryModal";
+import { BoardModalLayer } from "./BoardDialogPortal";
 
 export interface DealLedgerButtonProps {
   dealId: string;
@@ -35,6 +36,24 @@ export function DealLedgerButton({ dealId }: DealLedgerButtonProps) {
   const [entryOpen, setEntryOpen] = useState(false);
   const [state, setState] = useState<LedgerPopupState>({ kind: "loading" });
   const [, startTransition] = useTransition();
+  const openerRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const entryRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (open && !entryOpen) closeRef.current?.focus();
+  }, [entryOpen, open]);
+
+  function closePanel(): void {
+    setEntryOpen(false);
+    setOpen(false);
+    requestAnimationFrame(() => openerRef.current?.focus());
+  }
+
+  function closeEntry(): void {
+    setEntryOpen(false);
+    requestAnimationFrame(() => entryRef.current?.focus());
+  }
 
   function refresh(): void {
     setState({ kind: "loading" });
@@ -78,6 +97,7 @@ export function DealLedgerButton({ dealId }: DealLedgerButtonProps) {
         </span>
       )}
       <button
+        ref={openerRef}
         type="button"
         onClick={openPanel}
         className="min-h-8 shrink-0 rounded-lg border border-mw-line px-2 text-xs font-semibold text-mw-record hover:bg-mw-tint-blue"
@@ -85,20 +105,11 @@ export function DealLedgerButton({ dealId }: DealLedgerButtonProps) {
         📒 원장
       </button>
 
-      {open && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="deal-ledger-button-title"
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-3"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setOpen(false);
-          }}
-        >
+      {open && <BoardModalLayer labelledBy="deal-ledger-button-title" onClose={closePanel}>
           <div className="w-[min(40rem,calc(100vw-1.5rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-[var(--mw-radius)] border border-mw-line bg-mw-card p-4 shadow-xl sm:p-5">
             <div className="flex items-start justify-between gap-3">
               <h2 id="deal-ledger-button-title" className="sr-only">업무 원장</h2>
-              <button type="button" onClick={() => setOpen(false)} aria-label="닫기" className="ml-auto text-mw-sub">✕</button>
+              <button ref={closeRef} type="button" onClick={closePanel} aria-label="업무 원장 닫기" className="ml-auto rounded p-1 text-mw-sub hover:bg-mw-bg hover:text-mw-fg">✕</button>
             </div>
 
             <DealLedgerPanel dealId={dealId} state={state} />
@@ -106,6 +117,7 @@ export function DealLedgerButton({ dealId }: DealLedgerButtonProps) {
             {state.kind === "ready" && (
               <div className="mt-4 flex justify-end">
                 <button
+                  ref={entryRef}
                   type="button"
                   onClick={() => setEntryOpen(true)}
                   className="rounded-lg bg-mw-record px-3 py-1.5 text-sm font-semibold text-mw-on-accent"
@@ -115,15 +127,14 @@ export function DealLedgerButton({ dealId }: DealLedgerButtonProps) {
               </div>
             )}
           </div>
-        </div>
-      )}
+      </BoardModalLayer>}
 
       {entryOpen && (
         <LedgerEntryModal
           dealId={dealId}
           feeTerms={feeTerms}
           depositAlreadyReceived={depositAlreadyReceived}
-          onClose={() => setEntryOpen(false)}
+          onClose={closeEntry}
           onSaved={refresh}
         />
       )}

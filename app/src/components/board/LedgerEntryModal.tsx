@@ -6,11 +6,12 @@
  * 메모(선택) 필드는 이번 단계 범위 밖이다(openRisks) — 만들지 않는다.
  */
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { addDealLedgerEntryAction, type AddLedgerEntryInput } from "@/lib/accounting/actions";
 import type { LedgerKind } from "@/lib/accounting/ledger";
 import { ResultBanner } from "@/lib/ui/ResultBanner";
 import type { ResultNotice } from "@/lib/ui/result-notice";
+import { BoardModalLayer } from "./BoardDialogPortal";
 
 export interface LedgerEntryModalProps {
   dealId: string;
@@ -51,6 +52,11 @@ export function LedgerEntryModal({
   //   못박아 두면, 나중에 성공 메시지가 이 자리에 들어오는 순간 성공이 오류로 읽힌다.
   const [notice, setNotice] = useState<ResultNotice | null>(null);
   const [pending, startTransition] = useTransition();
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    closeRef.current?.focus();
+  }, []);
 
   const vatFillAmount = (() => {
     const n = parseWon(amount);
@@ -87,20 +93,11 @@ export function LedgerEntryModal({
     });
   }
 
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="ledger-entry-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
+  return <BoardModalLayer labelledBy="ledger-entry-title" onClose={onClose}>
       <div className="w-[min(30rem,calc(100vw-1.5rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-[var(--mw-radius)] border border-mw-line bg-mw-card p-4 text-mw-fg shadow-xl sm:p-5">
         <div className="flex items-start justify-between gap-3">
           <h2 id="ledger-entry-title" className="text-base font-semibold">원장에 기록하기</h2>
-          <button type="button" onClick={onClose} aria-label="닫기" className="text-mw-sub">✕</button>
+          <button ref={closeRef} type="button" onClick={onClose} aria-label="원장 입력 닫기" className="rounded p-1 text-mw-sub hover:bg-mw-bg hover:text-mw-fg">✕</button>
         </div>
 
         <div className="mt-3 flex gap-2">
@@ -234,6 +231,5 @@ export function LedgerEntryModal({
           </button>
         </div>
       </div>
-    </div>
-  );
+  </BoardModalLayer>;
 }

@@ -243,7 +243,9 @@ const COLUMNS: DefaultTabColumn[] = [
 ];
 
 /** These values remain durable, but belong to the item drawer instead of the table. */
-export const NEW_LEAD_DETAIL_ONLY_KEYS = new Set(["collaborators", "contact_move"]);
+/** 협업자는 상세에서 담당자와 같은 사람 선택기로 편집한다. 컨택 이동은 최신 사용자
+ * 확정에 따라 표 맨 오른쪽 고정 관문과 상세 CTA 양쪽에서 접근할 수 있어야 한다. */
+export const NEW_LEAD_DETAIL_ONLY_KEYS = new Set(["collaborators"]);
 
 export const NEW_LEAD_TAB: DefaultTab = {
   key: "new",

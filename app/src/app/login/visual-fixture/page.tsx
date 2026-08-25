@@ -5,6 +5,7 @@ import { VisualSettingsSlot } from "./VisualSettingsSlot";
 import { NewLeadOnboarding } from "@/components/board/NewLeadOnboarding";
 import { cookies } from "next/headers";
 import { visualSetCellAction } from "./actions";
+import { VisualLayerProbe } from "./VisualLayerProbe";
 
 function fixture(tabKey: string, workflowValue: string | null) {
   const definition = tabKey === "contact" ? CONTACT_TAB : NEW_LEAD_TAB;
@@ -49,6 +50,7 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
         .visual-mutation-wrong-region [data-right-pinned='true'] { right: 36% !important; }
         .visual-mutation-overlap [data-visual-block='board-settings'] { transform: translateY(-48px) !important; }
       `}</style>
+      <VisualLayerProbe />
       <output data-visual-workflow-feedback className="sr-only" aria-live="polite">{error ?? (saved ? "저장됨" : "")}</output>
       <BoardWorkspace
         {...data}

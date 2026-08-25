@@ -13,7 +13,7 @@ import { NotFoundError } from "@/lib/boards";
 import { createRequestBoards, requireRequestClient } from "@/lib/boards/server";
 import { markNoticeItemsReadAtomic } from "@/lib/notices/atomic";
 import { issueFileToken } from "@/lib/deal/fileSignedUrl";
-import { NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
+import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { loadNewLeadOnboardingState } from "@/lib/new-lead/onboarding";
 import { NewLeadOnboarding } from "@/components/board/NewLeadOnboarding";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
@@ -252,6 +252,20 @@ export default async function BoardPage({
     </div>
   );
 
+  const workflowHelp = board.source === NEW_LEAD_TAB_SOURCE
+    ? {
+        title: "상담 단계와 리드컨택 이동",
+        gate: "컨택 이동",
+        description: "상담 상황을 바꾸면 행이 맞는 그룹으로 이동합니다. 표 맨 오른쪽의 «컨택 이동»에서 상태를 바꾸거나 상세 화면의 «리드컨택으로 넘기기»를 눌러 다음 탭으로 넘깁니다.",
+      }
+    : board.source === CONTACT_TAB_SOURCE
+      ? {
+          title: "리드컨택에서 업무관리로 넘기기",
+          gate: "업무이동",
+          description: "표 맨 오른쪽에 고정된 «업무이동»을 «업무관리 이동»으로 바꾸면 이름 아래에 이동 실행 버튼이 나타납니다. 필수 정보를 확인한 뒤 그 버튼으로 업무관리 탭에 넘깁니다.",
+        }
+      : null;
+
   /** 실무 목적별 보드 설정 — 기록 항목/업무 양식/그룹 순서/위험 구역. */
   const boardSettings = !board.is_system && (canManageColumns || canManageSections || canDeleteBoard) && (
     <details id="board-settings" className="rounded-xl border border-mw-line bg-mw-card">
@@ -259,6 +273,18 @@ export default async function BoardPage({
         ⚙ 보드 설정
       </summary>
       <div className="flex flex-col gap-3 border-t border-mw-line p-3">
+        {workflowHelp ? <section className="rounded-xl border border-mw-primary/30 bg-mw-tint-blue p-3" aria-labelledby="workflow-settings-heading">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 id="workflow-settings-heading" className="font-semibold text-mw-fg">업무 흐름 · {workflowHelp.title}</h2>
+              <p className="mt-1 max-w-4xl text-xs leading-5 text-mw-body">{workflowHelp.description}</p>
+            </div>
+            <span className="shrink-0 rounded-full border border-mw-primary/30 bg-mw-card px-2.5 py-1 text-xs font-semibold text-mw-record">
+              오른쪽 고정 · {workflowHelp.gate}
+            </span>
+          </div>
+          <p className="mt-2 text-[0.68rem] text-mw-sub">이 관문은 가로로 스크롤해도 오른쪽에 남습니다. 항목을 삭제하거나 새 컬럼을 만드는 기능과는 별개입니다.</p>
+        </section> : null}
         {canManageColumns && <section className="rounded-xl border border-mw-line p-3" aria-labelledby="record-fields-heading">
           <h2 id="record-fields-heading" className="font-semibold text-mw-fg">기록 항목(컬럼)</h2>
           <p className="mb-3 text-xs text-mw-sub">이 보드가 기록하는 정보입니다. 추가하고, 각 머리말 메뉴에서 이름·타입·선택지·순서·숨김을 바꾸며 숨긴 항목은 여기서 복구합니다.</p>

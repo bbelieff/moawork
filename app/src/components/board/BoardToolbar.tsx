@@ -29,11 +29,13 @@ function toggle(list: readonly string[], value: string): string[] {
 }
 
 function OptionPicker({
+  label,
   options,
   picked,
   counts,
   onToggle,
 }: {
+  label: string;
   options: { id: string; label: string }[];
   picked: readonly string[];
   counts: Readonly<Record<string, number>>;
@@ -45,16 +47,21 @@ function OptionPicker({
   );
   return (
     <div className="flex flex-col gap-1">
-      <input
-        type="search"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="값 검색"
-        aria-label="필터 값 검색"
-        className="h-8 rounded-lg border border-mw-line bg-mw-card px-2 text-xs outline-none focus:border-mw-record"
-      />
-      {visible.length === 0 ? (
-        <p className="px-2 py-3 text-xs text-mw-sub">일치하는 값이 없습니다.</p>
+      {options.length > 7 ? (
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={`${label} 검색`}
+          aria-label={`${label} 필터 값 검색`}
+          data-filter-autofocus
+          className="h-9 rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs outline-none focus:border-mw-record"
+        />
+      ) : null}
+      {options.length === 0 ? (
+        <p className="rounded-lg bg-mw-bg px-3 py-4 text-xs leading-5 text-mw-sub">선택할 값이 아직 없습니다. 행에 값이 생기면 여기에 표시됩니다.</p>
+      ) : visible.length === 0 ? (
+        <p className="rounded-lg bg-mw-bg px-3 py-4 text-xs text-mw-sub">검색과 일치하는 값이 없습니다.</p>
       ) : (
         visible.map((option) => (
           <CheckOption
@@ -175,6 +182,7 @@ export function BoardToolbar({
           onClear={() => patch({ assignees: [] })}
         >
           <OptionPicker
+            label="담당자"
             options={people.map((person) => ({ id: person.value, label: person.label }))}
             picked={filters.assignees}
             counts={peopleCounts}
@@ -200,6 +208,7 @@ export function BoardToolbar({
             onClear={() => patch({ byColumn: { ...filters.byColumn, [col.key]: [] } })}
           >
             <OptionPicker
+              label={col.label}
               options={col.options_jsonb?.options ?? []}
               picked={picked}
               counts={optionCounts[col.key] ?? {}}
