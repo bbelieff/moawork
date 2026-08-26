@@ -50,7 +50,6 @@ import { NOTICE_KEYS } from "@/lib/notices/types";
 import { buildBlocks } from "./blocks";
 import {
   groupKeyOf,
-  orderNewLeadColumnsLikeMonday,
   reorderColumnKeys,
   resolveColumnOrder,
   type GroupColumnOrder,
@@ -63,7 +62,7 @@ import {
   decodeBoardFilters,
   encodeBoardFilters,
   EMPTY_FILTERS,
-  limitColumns,
+  selectVisibleColumns,
   type BoardFilterState,
 } from "./filters";
 import { resolveBoardDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
@@ -203,7 +202,7 @@ export function BoardWorkspace({
   const activeColumns = useMemo(() => {
     const visible = columns.filter((column) => !archivedColumnIds.has(column.id));
     const ordered = board.source === NEW_LEAD_TAB_SOURCE
-      ? presentNewLeadColumns(orderNewLeadColumnsLikeMonday(visible))
+      ? presentNewLeadColumns(visible)
       : visible;
     return workflowProgressKind
       ? presentWorkflowProgressColumns(workflowProgressKind, ordered)
@@ -490,10 +489,9 @@ export function BoardWorkspace({
         blocks.map((block) => {
           const resolvedColumns = resolveColumnOrder(tableColumns, optimisticOrder[block.key]);
           // 과거에 저장된 그룹별 배치도 광고 명의 필수 유입정보 위치를 되돌리지 못하게 한다.
-          const fullColumns = board.source === NEW_LEAD_TAB_SOURCE
-            ? orderNewLeadColumnsLikeMonday(resolvedColumns)
-            : resolvedColumns;
-          const shown = limitColumns(fullColumns, filters.columnLimit);
+          // 서버의 sort_order와 그룹별 사용자 배치를 정본으로 삼는다. 기본 신규리드 순서는
+          // revision installer가 안전하게 재배치하며, 회사가 직접 바꾼 순서는 여기서 덮지 않는다.
+          const shown = selectVisibleColumns(resolvedColumns, filters.visibleColumnKeys);
           const visibleRows = applyFilters(block.rows, tableColumns, filters);
           const boardDetailLayout = resolveBoardDetailLayout(
             board.source,
@@ -556,7 +554,7 @@ export function BoardWorkspace({
                 cellAction={cellAction}
                 workflowProgressKind={workflowProgressKind}
                 onColumnDrop={(draggedKey, targetKey) =>
-                  handleColumnDrop(block.key, fullColumns, draggedKey, targetKey)
+                  handleColumnDrop(block.key, resolvedColumns, draggedKey, targetKey)
                 }
                 dragRowId={rowDragEnabled ? dragRowId : null}
                 canDropRow={canDropRow}

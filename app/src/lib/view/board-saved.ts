@@ -38,6 +38,7 @@ const EMPTY_FILTERS: BoardFilterState = {
   sortKey: "",
   sortDir: "asc",
   columnLimit: 0,
+  visibleColumnKeys: null,
 };
 
 function sorts(value: unknown): Array<{ columnKey: string; direction: "asc" | "desc" }> {
@@ -110,9 +111,10 @@ export function parseSavedBoardViewConfig(value: unknown): SavedBoardViewConfig 
       byColumn,
       sortKey: typeof rawFilters.sortKey === "string" ? rawFilters.sortKey : "",
       sortDir: rawFilters.sortDir === "desc" ? "desc" : "asc",
-      columnLimit: typeof rawFilters.columnLimit === "number" && Number.isFinite(rawFilters.columnLimit)
-        ? Math.max(0, Math.floor(rawFilters.columnLimit))
-        : 0,
+      columnLimit: 0,
+      visibleColumnKeys: Array.isArray(rawFilters.visibleColumnKeys)
+        ? strings(rawFilters.visibleColumnKeys)
+        : null,
       sorts: parsedSorts.length ? parsedSorts : legacySorts,
     },
     groupBy: typeof root.groupBy === "string" ? root.groupBy : "",

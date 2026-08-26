@@ -23,7 +23,7 @@ describe("parseSavedBoardViewConfig", () => {
       focusColumnKey: "status",
     });
     expect(parsed).toMatchObject({ kind: "calendar", groupBy: "status", calendarFieldKey: "date" });
-    expect(parsed.filters).toMatchObject({ q: "서울", sortKey: "date", sortDir: "desc", columnLimit: 8 });
+    expect(parsed.filters).toMatchObject({ q: "서울", sortKey: "date", sortDir: "desc", columnLimit: 0, visibleColumnKeys: null });
     expect(parsed.layout.g1).toEqual(["name", "status"]);
     expect(parsed.hiddenColumns).toEqual(["secret"]);
     expect(parsed.sorts).toEqual([{ columnKey: "priority", direction: "asc" }, { columnKey: "date", direction: "desc" }]);
@@ -129,7 +129,7 @@ describe("parseSavedBoardViewConfig", () => {
   it("rejects malformed values without widening the contract", () => {
     expect(parseSavedBoardViewConfig({ filters: { assignees: "u1", columnLimit: -5 } })).toEqual({
       kind: "board",
-      filters: { q: "", assignees: [], byColumn: {}, sortKey: "", sortDir: "asc", sorts: [], columnLimit: 0 },
+      filters: { q: "", assignees: [], byColumn: {}, sortKey: "", sortDir: "asc", sorts: [], columnLimit: 0, visibleColumnKeys: null },
       groupBy: "",
       layout: {},
       hiddenColumns: [],

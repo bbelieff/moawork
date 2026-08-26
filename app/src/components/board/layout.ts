@@ -16,6 +16,7 @@
  */
 
 import type { BoardColumn } from "@/lib/boards/types";
+import { NEW_LEAD_PRIMARY_COLUMN_KEYS } from "@/lib/default-tabs/new-lead";
 
 /** 그룹이 없는 아이템(group_id = null)들이 모이는 가상 그룹의 키. */
 export const UNGROUPED_KEY = "__ungrouped__";
@@ -35,21 +36,13 @@ export type GroupColumnOrder = Record<string, string[]>;
  * 바로 앞으로 옮긴다. 나머지 컬럼의 상대 순서와 컬럼 집합은 그대로 보존한다.
  */
 export const MONDAY_NEW_LEAD_COLUMN_ORDER = [
-  "applied_on",
-  "ad_name",
-  "biz_reg_type",
-  "revenue_band",
-  "phone",
-  "rep_name",
-  "address_detail",
+  ...NEW_LEAD_PRIMARY_COLUMN_KEYS,
   "message_action",
   "delay_notice",
   "documents",
   "dispatch_status",
   "absence_notice",
   "malicious_absence_notice",
-  "owner",
-  "collaborators",
   "consult_notes",
   "consult_status",
   "consult1_notice",
@@ -60,10 +53,6 @@ export const MONDAY_NEW_LEAD_COLUMN_ORDER = [
   "meeting_at",
   "recontact_on",
   "contract_fee",
-  "email",
-  "industry",
-  "sido",
-  "sigungu",
   "contact_move",
 ] as const;
 

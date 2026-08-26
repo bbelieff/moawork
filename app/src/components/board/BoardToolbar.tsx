@@ -21,9 +21,6 @@ import {
   type BoardFilterState,
 } from "./filters";
 
-/** 컬럼수 칩의 선택지 — 0 = 전부. */
-const COLUMN_LIMITS = [0, 8, 12, 16] as const;
-
 function toggle(list: readonly string[], value: string): string[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }
@@ -116,6 +113,10 @@ export function BoardToolbar({
   }).join(" · ");
 
   const patch = (p: Partial<BoardFilterState>) => onChange({ ...filters, ...p });
+  const visibleColumnKeys = filters.visibleColumnKeys ?? null;
+  const selectedColumnKeys = visibleColumnKeys === null
+    ? columns.map((column) => column.key)
+    : visibleColumnKeys;
   const optionCounts = useMemo(() => {
     const counts: Record<string, Record<string, number>> = {};
     for (const column of optionColumns) {
@@ -263,26 +264,35 @@ export function BoardToolbar({
         })}
       </FilterChip>
 
-      {/*
-        컬럼수 칩 — 요약은 v5 2-3 형식대로 "표시 중/전체"(예: 21/26)를 항상 보여준다.
-        active(틴트)는 전체보다 적게 골랐을 때만 — 기본값(전부 보임)은 강조하지 않는다.
-      */}
       <FilterChip
-        label="컬럼"
-        summary={`${
-          filters.columnLimit > 0 ? Math.min(filters.columnLimit, columns.length) : columns.length
-        }/${columns.length}`}
-        active={filters.columnLimit > 0 && filters.columnLimit < columns.length}
-        onClear={() => patch({ columnLimit: 0 })}
+        label="표시 컬럼"
+        summary={`${selectedColumnKeys.length}/${columns.length}`}
+        active={visibleColumnKeys !== null}
+        onClear={() => patch({ columnLimit: 0, visibleColumnKeys: null })}
       >
-        {COLUMN_LIMITS.map((n) => (
-          <RadioOption
-            key={n}
-            label={n === 0 ? `전부 (${columns.length})` : `${n}개`}
-            checked={filters.columnLimit === n}
-            onPick={() => patch({ columnLimit: n })}
+        <RadioOption
+          label={`전체 보기 (${columns.length})`}
+          checked={visibleColumnKeys === null}
+          onPick={() => patch({ columnLimit: 0, visibleColumnKeys: null })}
+        />
+        <div className="my-1 border-t border-mw-line" />
+        {columns.map((column) => (
+          <CheckOption
+            key={column.id}
+            label={column.label}
+            checked={selectedColumnKeys.includes(column.key)}
+            onToggle={() => {
+              const next = toggle(selectedColumnKeys, column.key);
+              patch({
+                columnLimit: 0,
+                visibleColumnKeys: next.length === columns.length ? null : next,
+              });
+            }}
           />
         ))}
+        <p className="mt-2 border-t border-mw-line pt-2 text-[11px] leading-4 text-mw-sub">
+          이 선택은 현재 주소에 남습니다. «뷰로 저장»하면 해당 뷰에만 포함되고 다른 사람의 기본 화면은 바뀌지 않습니다.
+        </p>
       </FilterChip>
 
       {active > 0 && (

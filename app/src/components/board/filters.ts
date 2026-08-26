@@ -26,8 +26,10 @@ export interface BoardFilterState {
   sortDir: "asc" | "desc";
   /** 저장 뷰용 다중 정렬. 비어 있으면 위 legacy 단일 정렬을 사용한다. */
   sorts?: Array<{ columnKey: string; direction: "asc" | "desc" }>;
-  /** 표시할 컬럼 개수(원칙 8 의 "컬럼수" 칩). 0 = 전부. */
+  /** 이전 저장 뷰 역호환 슬롯. #576부터 제품 UI는 앞 N개 제한을 쓰지 않으며 항상 0이다. */
   columnLimit: number;
+  /** `null` = 전부, 배열 = 정확히 표시할 컬럼 key. 빈 배열은 이름 열만 표시한다. */
+  visibleColumnKeys?: string[] | null;
 }
 
 export const EMPTY_FILTERS: BoardFilterState = {
@@ -37,6 +39,7 @@ export const EMPTY_FILTERS: BoardFilterState = {
   sortKey: "",
   sortDir: "asc",
   columnLimit: 0,
+  visibleColumnKeys: null,
 };
 
 export const BOARD_FILTER_QUERY_KEY = "mwFilters";
@@ -77,10 +80,11 @@ export function decodeBoardFilters(value: string | null): BoardFilterState {
               : [];
           }) }
         : {}),
-      columnLimit:
-        typeof parsed.columnLimit === "number" && Number.isFinite(parsed.columnLimit)
-          ? Math.max(0, Math.floor(parsed.columnLimit))
-          : 0,
+      // #576 — 과거의 근거 없는 앞 N개(8/12/16)는 복원하지 않는다.
+      columnLimit: 0,
+      visibleColumnKeys: Array.isArray(parsed.visibleColumnKeys)
+        ? parsed.visibleColumnKeys.filter((item): item is string => typeof item === "string")
+        : null,
     };
   } catch {
     return EMPTY_FILTERS;
@@ -102,7 +106,7 @@ export function activeFilterCount(f: BoardFilterState): number {
   if (f.assignees.length > 0) n += 1;
   for (const picked of Object.values(f.byColumn)) if (picked.length > 0) n += 1;
   if ((f.sorts?.length ?? 0) > 0 || f.sortKey !== "") n += 1;
-  if (f.columnLimit > 0) n += 1;
+  if (f.visibleColumnKeys !== undefined && f.visibleColumnKeys !== null) n += 1;
   return n;
 }
 
@@ -173,13 +177,23 @@ export function applyFilters(
   }).map(({ row }) => row);
 }
 
-/** 원칙 8 의 "컬럼수" 칩 — 앞에서 N개만 남긴다. 0 이면 전부. */
+/** 이전 저장 뷰 테스트용 역호환 함수. 제품 UI는 `selectVisibleColumns`를 사용한다. */
 export function limitColumns(
   columns: readonly BoardColumn[],
   limit: number,
 ): BoardColumn[] {
   if (limit <= 0 || limit >= columns.length) return [...columns];
   return columns.slice(0, limit);
+}
+
+/** #576 — 앞 N개가 아니라 사용자가 이름으로 고른 정확한 열만 남긴다. */
+export function selectVisibleColumns(
+  columns: readonly BoardColumn[],
+  visibleColumnKeys: readonly string[] | null | undefined,
+): BoardColumn[] {
+  if (visibleColumnKeys === null || visibleColumnKeys === undefined) return [...columns];
+  const visible = new Set(visibleColumnKeys);
+  return columns.filter((column) => visible.has(column.key));
 }
 
 /**
