@@ -69,6 +69,12 @@ import { resolveBoardDetailLayout, resolveDetailLayout } from "@/lib/boards/deta
 import { runColumnCommandAction } from "@/app/(app)/boards/column-command-actions";
 import { INITIAL_COLUMN_COMMAND_STATE } from "@/app/(app)/boards/column-command-state";
 import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
+import {
+  presentWorkflowProgressColumns,
+  withWorkflowProgressValues,
+  workflowDetailHiddenKeys,
+  workflowKindForSource,
+} from "@/lib/workflow/progress";
 
 interface RowMove {
   itemId: string;
@@ -139,6 +145,7 @@ export function BoardWorkspace({
   canManageSections = false,
   currentUserId,
   cellAction,
+  workflowTransitionSlot,
 }: {
   board: Board;
   columns: BoardColumn[];
@@ -171,6 +178,8 @@ export function BoardWorkspace({
   currentUserId?: string;
   /** 시각 fixture가 제품 UI를 우회하지 않고 저장소 경계만 대체할 때 사용한다. */
   cellAction?: (formData: FormData) => Promise<void>;
+  /** 시각 fixture가 실제 진행현황 확인창을 유지한 채 이동 저장소만 대체한다. */
+  workflowTransitionSlot?: ReactNode;
 }) {
   // BBE-239 — 공지사항 한정 「작성자는 자기 글 삭제 가능」 예외. 다른 보드는 undefined 라
   // GroupTable 의 조건에서 항상 꺼진다.
@@ -182,12 +191,16 @@ export function BoardWorkspace({
   const [restoring, setRestoring] = useState(false);
   const [restoringColumnId, setRestoringColumnId] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
+  const workflowProgressKind = workflowKindForSource(board.source);
   const activeColumns = useMemo(() => {
     const visible = columns.filter((column) => !archivedColumnIds.has(column.id));
-    return board.source === NEW_LEAD_TAB_SOURCE
+    const ordered = board.source === NEW_LEAD_TAB_SOURCE
       ? presentNewLeadColumns(orderNewLeadColumnsLikeMonday(visible))
       : visible;
-  }, [archivedColumnIds, board.source, columns]);
+    return workflowProgressKind
+      ? presentWorkflowProgressColumns(workflowProgressKind, ordered)
+      : ordered;
+  }, [archivedColumnIds, board.source, columns, workflowProgressKind]);
   const tableColumns = useMemo(
     () => board.source === NEW_LEAD_TAB_SOURCE
       ? activeColumns.filter((column) => !NEW_LEAD_DETAIL_ONLY_KEYS.has(column.key))
@@ -195,10 +208,12 @@ export function BoardWorkspace({
     [activeColumns, board.source],
   );
   const detailColumns = useMemo(
-    () => board.source === NEW_LEAD_TAB_SOURCE
-      ? activeColumns.filter((column) => column.key !== "contact_move" && column.key !== "consult_status" && column.key !== "address_detail")
-      : activeColumns,
-    [activeColumns, board.source],
+    () => {
+      const hidden = new Set(workflowProgressKind ? workflowDetailHiddenKeys(workflowProgressKind) : []);
+      if (board.source === NEW_LEAD_TAB_SOURCE) hidden.add("address_detail");
+      return activeColumns.filter((column) => !hidden.has(column.key));
+    },
+    [activeColumns, board.source, workflowProgressKind],
   );
 
   useEffect(() => {
@@ -226,6 +241,12 @@ export function BoardWorkspace({
   const [dragRowId, setDragRowId] = useState<string | null>(null);
 
   const [optimisticRows, moveRowOptimistic] = useOptimistic(rows, rowMoveReducer);
+  const displayRows = useMemo(
+    () => workflowProgressKind
+      ? withWorkflowProgressValues(workflowProgressKind, optimisticRows)
+      : optimisticRows,
+    [optimisticRows, workflowProgressKind],
+  );
   const [optimisticOrder, setOrderOptimistic] = useOptimistic(columnOrder, columnOrderReducer);
 
   const readOnly = board.is_system || !canEditItems;
@@ -265,17 +286,19 @@ export function BoardWorkspace({
     persistGroupOrder(next);
   }, [orderedGroups, persistGroupOrder]);
 
-  const blocks = useMemo(() => buildBlocks(orderedGroups, optimisticRows), [orderedGroups, optimisticRows]);
+  const blocks = useMemo(() => buildBlocks(orderedGroups, displayRows), [orderedGroups, displayRows]);
   const people = useMemo(() => assigneeOptions(rows, assigneeLabels), [rows, assigneeLabels]);
-  const scheduleItems = useMemo(() => optimisticRows.map((row) => ({ id: row.id, label: row.title })), [optimisticRows]);
+  const scheduleItems = useMemo(() => displayRows.map((row) => ({ id: row.id, label: row.title })), [displayRows]);
   const scheduleRecipients = useMemo(
     () => Object.entries(assigneeLabels).map(([id, label]) => ({ id, label: label || "이름 없는 구성원" })),
     [assigneeLabels],
   );
 
   const matched = useMemo(
-    () => applyFilters(optimisticRows, tableColumns, filters).length,
-    [optimisticRows, tableColumns, filters],
+    () => workflowProgressKind
+      ? applyFilters(displayRows, tableColumns, filters).length
+      : applyFilters(optimisticRows, tableColumns, filters).length,
+    [displayRows, filters, optimisticRows, tableColumns, workflowProgressKind],
   );
 
   /** 도구줄 담당자 필터 ↔ 헤더 담당자 탭의 단일 소스. null = 전체. */
@@ -393,11 +416,11 @@ export function BoardWorkspace({
 
       <BoardToolbar
         columns={tableColumns}
-        rows={optimisticRows}
+        rows={displayRows}
         filters={filters}
         onChange={setFilters}
         matched={matched}
-        total={optimisticRows.length}
+        total={displayRows.length}
         people={people}
       />
 
@@ -517,6 +540,7 @@ export function BoardWorkspace({
                 rowDragEnabled={rowDragEnabled}
                 cellFlash={cellFlash}
                 cellAction={cellAction}
+                workflowProgressKind={workflowProgressKind}
                 onColumnDrop={(draggedKey, targetKey) =>
                   handleColumnDrop(block.key, fullColumns, draggedKey, targetKey)
                 }
@@ -527,25 +551,28 @@ export function BoardWorkspace({
                 onRowDrop={(index) =>
                   handleRowDrop(block.group?.id ?? null, block.rows, visibleRows, index)
                 }
-                renderRowAction={board.source === CONTACT_TAB_SOURCE ? (row) => row.values.work_move === "업무관리 이동" ? (
-                  <ContactPipelineAction
-                    dealId={null}
-                    kind="contact_to_work"
-                    requestId={row.id}
-                    initialCompanyName={row.title}
-                    initialValues={{
-                      bizNo: String(row.values.biz_no ?? row.values.biz_reg_no ?? ""),
-                      ceoName: String(row.values.rep_name ?? ""),
-                      bizType: String(row.values.biz_reg_type ?? ""),
-                      industry: String(row.values.industry ?? ""),
-                      regionSido: String(row.values.sido ?? ""),
-                      regionSigungu: String(row.values.sigungu ?? ""),
-                      phone: String(row.values.phone ?? ""),
-                      foundedOn: companyFoundedOn(row.values.founded_year),
-                      revenue: companyRevenue(row.values.revenue),
-                    }}
-                  />
-                ) : null : undefined}
+                renderWorkflowTransition={board.source === CONTACT_TAB_SOURCE ? (row) => (
+                  workflowTransitionSlot ?? (
+                    <ContactPipelineAction
+                      dealId={null}
+                      kind="contact_to_work"
+                      requestId={row.id}
+                      sourceBoardId={board.id}
+                      initialCompanyName={row.title}
+                      initialValues={{
+                        bizNo: String(row.values.biz_no ?? row.values.biz_reg_no ?? ""),
+                        ceoName: String(row.values.rep_name ?? ""),
+                        bizType: String(row.values.biz_reg_type ?? ""),
+                        industry: String(row.values.industry ?? ""),
+                        regionSido: String(row.values.sido ?? ""),
+                        regionSigungu: String(row.values.sigungu ?? ""),
+                        phone: String(row.values.phone ?? ""),
+                        foundedOn: companyFoundedOn(row.values.founded_year),
+                        revenue: companyRevenue(row.values.revenue),
+                      }}
+                    />
+                  )
+                ) : undefined}
               />
             </GroupBlock>
           );

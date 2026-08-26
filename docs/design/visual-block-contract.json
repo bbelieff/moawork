@@ -83,19 +83,19 @@
       "viewport": ["desktop", "mobile"],
       "mockup_anchor": "th:last-child",
       "product_anchor": "th[data-right-pinned='true']",
-      "expected_text": ["컨택 이동", "업무이동"],
-      "expected_text_by_tab": { "new": ["컨택 이동"], "contact": ["업무이동"] },
-      "expected_icon_state": "workflow state select + save feedback",
+      "expected_text": ["진행현황"],
+      "expected_text_by_tab": { "new": ["진행현황"], "contact": ["진행현황"] },
+      "expected_icon_state": "stage select + explicit cross-tab confirmation",
       "screen_region": "content-right-edge",
       "relative_order": { "inside": "group-table-assembly", "after": "all ordinary columns" },
       "bounding_box_constraints": { "desktop": { "right_gap_max": 1, "width_min": 120 }, "mobile": { "right_gap_max": 1, "width_min": 120 } },
       "sticky_pinned": true,
       "style_tokens": ["--mw-card", "--mw-primary", "--mw-line"],
       "comparison": { "y_delta_max": { "desktop": 0.09, "mobile": 0.49, "new": { "desktop": 0.35, "mobile": 0.49 } }, "font_delta_max": 1.5, "color_delta_max": 110, "background_delta_max": 25, "border_delta_max": 160, "size_ratio_max": 1.1 },
-      "interaction_feedback": "state change exposes explicit save/success/error feedback",
-      "persistence_reload": "fixture transition persists and reloads; guard rejection preserves input",
+      "interaction_feedback": "within-board stage saves directly; cross-tab move opens an explicit confirmation and preserves blocked input",
+      "persistence_reload": "fixture stage persists and reloads; transfer guard rejection preserves the source item",
       "dependencies": ["group-table-assembly"],
-      "override": { "issue": 549, "date": "2026-08-25", "rationale": "최신 사용자 확정에 따라 두 탭 모두 다음 단계 이동 관문을 표 오른쪽에 고정하고, 신규리드 상세 CTA도 함께 유지한다." }
+      "override": { "issue": 563, "date": "2026-08-26", "rationale": "사용자 확정에 따라 상담/계약 상태와 별도 이동 컬럼을 하나의 오른쪽 고정 진행현황으로 합치고, 보드 안 단계와 탭 이동 동작을 한 드롭다운 안에서 구분한다." }
     }
   ]
 }

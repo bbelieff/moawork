@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getSession, createClient, getDeal, getCompany, executeContactPipelineTransition } = vi.hoisted(() => ({
-  getSession: vi.fn(), createClient: vi.fn(), getDeal: vi.fn(), getCompany: vi.fn(), executeContactPipelineTransition: vi.fn(),
+const { getSession, createClient, createRequestBoards, setCells, getDeal, getCompany, executeContactPipelineTransition } = vi.hoisted(() => ({
+  getSession: vi.fn(), createClient: vi.fn(), createRequestBoards: vi.fn(), setCells: vi.fn(), getDeal: vi.fn(), getCompany: vi.fn(), executeContactPipelineTransition: vi.fn(),
 }));
 vi.mock("@/lib/auth/session", () => ({ getSession }));
 vi.mock("@/lib/supabase/server", () => ({ createClient }));
+vi.mock("@/lib/boards/server", () => ({ createRequestBoards }));
 vi.mock("@/lib/crm", () => ({ getCrmService: () => ({ getDeal, getCompany }) }));
 vi.mock("./supabaseContactPipeline", () => ({ executeContactPipelineTransition }));
 
@@ -17,6 +18,8 @@ describe("BBE-152 contact pipeline actions", () => {
     createClient.mockResolvedValue({ rpc:vi.fn() });
     getDeal.mockResolvedValue({id:"deal-1",title:"새봄상사",custom:{seal_approval:"완료"}});
     getCompany.mockResolvedValue(undefined);
+    setCells.mockResolvedValue({ errors: [] });
+    createRequestBoards.mockResolvedValue({ service: { setCells } });
     executeContactPipelineTransition.mockResolvedValue({status:"committed",dealId:"deal-1",companyId:null,reason:null});
   });
   it("executes lead to contact through the same atomic boundary", async () => {
@@ -34,10 +37,17 @@ describe("BBE-152 contact pipeline actions", () => {
     });
   });
   it("passes a contact-board item as source identity instead of cloning a customer snapshot", async () => {
-    const form=new FormData(); form.set("kind","contact_to_work"); form.set("sourceItemId","00000000-0000-4000-8000-000000000020"); form.set("requestId","00000000-0000-4000-8000-000000000099"); form.set("companyName","모아 상사");
+    const form=new FormData(); form.set("kind","contact_to_work"); form.set("sourceItemId","00000000-0000-4000-8000-000000000020"); form.set("sourceBoardId","00000000-0000-4000-8000-000000000030"); form.set("requestId","00000000-0000-4000-8000-000000000099"); form.set("companyName","모아 상사");
     await mutateContactPipeline({ok:false,message:""},form);
     expect(getDeal).not.toHaveBeenCalled();
+    expect(setCells).toHaveBeenCalledWith(expect.anything(), "00000000-0000-4000-8000-000000000030", "00000000-0000-4000-8000-000000000020", { work_move: "업무관리 이동" });
     expect(executeContactPipelineTransition).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({dealId:null,sourceItemId:"00000000-0000-4000-8000-000000000020"}));
+  });
+  it("does not pretend the tab transfer ran when its attached board status could not be saved", async () => {
+    setCells.mockResolvedValue({ errors: [{ message: "상태 저장 실패" }] });
+    const form=new FormData(); form.set("kind","contact_to_work"); form.set("sourceItemId","item-20"); form.set("sourceBoardId","board-30"); form.set("requestId","00000000-0000-4000-8000-000000000099"); form.set("companyName","모아 상사");
+    await expect(mutateContactPipeline({ok:false,message:""},form)).resolves.toEqual({ ok:false, message:"상태 저장 실패" });
+    expect(executeContactPipelineTransition).not.toHaveBeenCalled();
   });
   it("rejects a selected company outside the request scope", async () => {
     const form=new FormData(); form.set("kind","contact_to_work"); form.set("dealId","deal-1"); form.set("requestId","00000000-0000-4000-8000-000000000099"); form.set("selectedCompanyId","hidden");

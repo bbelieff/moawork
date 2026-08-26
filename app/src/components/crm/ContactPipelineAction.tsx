@@ -34,12 +34,14 @@ export function ContactPipelineAction({
   dealId,
   kind,
   requestId,
+  sourceBoardId = "",
   initialCompanyName = "",
   initialValues = {},
 }: Readonly<{
   dealId: string | null;
   kind: ContactTransitionKind;
   requestId: string;
+  sourceBoardId?: string;
   initialCompanyName?: string;
   initialValues?: Readonly<Record<string, string>>;
 }>) {
@@ -99,6 +101,7 @@ export function ContactPipelineAction({
     <form id="contact-pipeline-action" action={action} className="mt-3 border-t border-neutral-100 pt-3" aria-busy={pending}>
       <input type="hidden" name="dealId" value={dealId ?? ""} />
       <input type="hidden" name="sourceItemId" value={dealId ? "" : requestId} />
+      <input type="hidden" name="sourceBoardId" value={sourceBoardId} />
       <input type="hidden" name="requestId" value={requestId} />
       <input type="hidden" name="operation" value="move" />
       <input type="hidden" name="kind" value={kind} />

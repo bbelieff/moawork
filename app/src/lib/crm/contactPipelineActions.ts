@@ -6,6 +6,7 @@ import { getCrmService } from "@/lib/crm";
 import { executeContactPipelineTransition, type ContactPipelineRpcClient } from "./supabaseContactPipeline";
 import type { ContactTransitionKind } from "./contactPipeline";
 import { conditionFromTransitionBlockReason, type LockCondition } from "@/lib/automation/lock";
+import { createRequestBoards } from "@/lib/boards/server";
 
 export type ContactPipelineActionState = Readonly<{
   ok: boolean;
@@ -26,6 +27,7 @@ export async function mutateContactPipeline(
     const ctx = await getSession();
     const dealId = String(formData.get("dealId") ?? "").trim() || null;
     const sourceItemId = String(formData.get("sourceItemId") ?? "").trim() || null;
+    const sourceBoardId = String(formData.get("sourceBoardId") ?? "").trim() || null;
     const requestId = String(formData.get("requestId") ?? "").trim();
     if ((!dealId && !sourceItemId) || !requestId) return { ok: false, message: "이동 요청을 다시 시작해 주세요." };
     const selectedCompanyId = String(formData.get("selectedCompanyId") ?? "").trim() || null;
@@ -55,6 +57,18 @@ export async function mutateContactPipeline(
       const value = String(formData.get(key) ?? "").trim();
       return value || null;
     };
+    // 보드 간 이동을 선택한 한 번의 확인 동작이 기존 이중 잠금의 첫 값을
+    // 함께 기록한다. 과거처럼 별도 «업무이동» 컬럼을 먼저 찾아 누르게 하지 않는다.
+    // RPC의 직인 조건과 request replay가 최종 이동 안전성은 그대로 지킨다.
+    if (kind === "contact_to_work" && sourceItemId && sourceBoardId) {
+      const graph = await createRequestBoards();
+      const saved = await graph.service.setCells(ctx, sourceBoardId, sourceItemId, {
+        work_move: "업무관리 이동",
+      });
+      if (saved.errors.length > 0) {
+        throw new Error(saved.errors[0]?.message ?? "업무 이동 상태를 저장하지 못했습니다.");
+      }
+    }
     const result = await executeContactPipelineTransition(
       await createClient() as unknown as ContactPipelineRpcClient,
       {

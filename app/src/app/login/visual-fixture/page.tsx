@@ -62,6 +62,13 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
         settingsSlot={<VisualSettingsSlot />}
         onboardingSlot={tab === "new" ? <NewLeadOnboarding key="issue-554-help" /> : undefined}
         cellAction={visualSetCellAction}
+        workflowTransitionSlot={tab === "contact" ? (
+          <form action={visualSetCellAction} className="mt-4 flex justify-end gap-2">
+            <input type="hidden" name="boardId" value="visual-contact" />
+            <input type="hidden" name="value" value="업무관리 이동" />
+            <button type="submit" className="h-10 rounded-lg bg-mw-primary px-4 text-sm font-semibold text-mw-on-accent">계약업체 실무로 넘기기</button>
+          </form>
+        ) : undefined}
       />
     </main>
   );

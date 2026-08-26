@@ -28,13 +28,13 @@ const column = (key: string, label: string, sort_order: number) => ({
 });
 
 describe("Issue #542 canonical new-lead projection", () => {
-  it("같은 레코드를 유지하면서 담당자·협업자를 표에 두고 컨택 이동은 오른쪽 고정 관문으로 복구한다", () => {
+  it("같은 레코드를 유지하면서 상담 단계와 탭 이동을 오른쪽 고정 진행현황으로 통합한다", () => {
     const html = renderToStaticMarkup(
       <BoardWorkspace
         board={{ id: "board-new", org_id: "org-a", name: "신규리드", description: null, icon: null, source: NEW_LEAD_TAB_SOURCE, is_system: false, sort_order: 0 } as never}
         columns={[
           column("company", "회사명", 0),
-          column("consult_status", "상담상황", 1),
+          { ...column("consult_status", "상담상황", 1), type: "status", options_jsonb: { options: [{ id: "상담 대기", label: "상담 대기", color: "#999" }, { id: "리드컨택으로 넘기기", label: "리드컨택으로 넘기기", color: "#00c875" }] } },
           column("owner", "담당자", 2),
           column("collaborators", "협업자", 3),
           { ...column("delay_notice", "상담지연 메시지", 4), source: "msg", is_readonly: true },
@@ -51,7 +51,7 @@ describe("Issue #542 canonical new-lead projection", () => {
       />,
     );
     expect(html).toContain("회사명");
-    expect(html).toContain("상담상황");
+    expect(html).not.toContain(">상담상황<");
     expect(html).toContain("담당자");
     expect(html).toContain("대한정밀 상세 열기");
     expect(html).toContain(">출동<");
@@ -60,7 +60,10 @@ describe("Issue #542 canonical new-lead projection", () => {
     expect(html).toContain("min-h-7");
     expect(html).not.toContain(">상담지연 메시지<");
     expect(html).not.toContain(">부재 안내<");
-    expect(html).toContain(">컨택 이동<");
+    expect(html).not.toContain(">컨택 이동<");
+    expect(html).toContain(">진행현황<");
+    expect(html).toContain("보드 안 단계");
+    expect(html).toContain("다음 업무로 이동");
     expect(html).toContain('data-right-pinned="true"');
     expect(html).not.toContain("원장 열기");
   });
