@@ -8,7 +8,10 @@ import { createClient } from "@/lib/supabase/server";
 import { canonicalAssignee, createCanonicalNewLead, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadMeta, updateCanonicalNewLeadTitle } from "@/lib/new-lead/mutations";
 import type { NewLeadIntakeState } from "@/lib/new-lead/intake-state";
 import { CELL_FLASH_COOKIE, CELL_FLASH_MAX_AGE, encodeCellFlash } from "@/lib/boards/cellFlash";
-import { NEW_LEAD_BUSINESS_TYPES } from "@/lib/new-lead/business-types";
+import { resolveNewLeadBusinessType } from "@/lib/new-lead/business-types";
+import { resolveNewLeadRevenueBand } from "@/lib/new-lead/revenue-bands";
+import { canonicalSido, canonicalSigungu } from "@/lib/new-lead/region-search";
+import { analyzePhone } from "@/lib/format/phone";
 import { advanceNewLeadToContact, NewLeadAdvanceError } from "@/lib/new-lead/advance";
 
 function text(formData: FormData, key: string): string {
@@ -47,11 +50,39 @@ export async function createNewLeadAction(
   const title = text(formData, "title");
   const boardId = text(formData, "boardId");
   const groupId = text(formData, "groupId");
-  const businessType = text(formData, "business_registration_type");
+  const businessType = resolveNewLeadBusinessType(
+    text(formData, "business_registration_type"),
+    text(formData, "business_registration_type_custom"),
+  );
+  const phone = analyzePhone(text(formData, "phone"));
+  const revenueBand = resolveNewLeadRevenueBand(
+    text(formData, "revenue_band"),
+    text(formData, "revenue_band_custom"),
+  );
+  const rawSido = text(formData, "region_sido");
+  const rawSigungu = text(formData, "region_sigungu");
+  const regionSido = rawSido ? canonicalSido(rawSido) : "";
+  const regionSigungu = rawSigungu ? canonicalSigungu(regionSido, rawSigungu) : "";
   if (!title) { record("invalid_title"); return { ok: false, field: "title", message: "이름을 입력해 주세요. 나머지는 등록 후 채울 수 있어요." }; }
-  if (!NEW_LEAD_BUSINESS_TYPES.includes(businessType as (typeof NEW_LEAD_BUSINESS_TYPES)[number])) {
+  if (!businessType) {
     record("invalid_business_type");
     return { ok: false, field: "business_registration_type", message: "사업자 구분을 선택해 주세요." };
+  }
+  if (phone.status === "needs_review") {
+    record("invalid_phone");
+    return { ok: false, field: "phone", message: "연락처를 확인해 주세요. +82·0082·820 형식도 국내 번호로 자동 정리합니다." };
+  }
+  if (text(formData, "revenue_band") === "그외" && !revenueBand) {
+    record("invalid_revenue_band");
+    return { ok: false, field: "revenue_band", message: "그외 매출 구간을 입력해 주세요." };
+  }
+  if (rawSido && !regionSido) {
+    record("invalid_region_sido");
+    return { ok: false, field: "region_sido", message: "시도를 추천 목록에서 선택해 주세요." };
+  }
+  if (rawSigungu && !regionSigungu) {
+    record("invalid_region_sigungu");
+    return { ok: false, field: "region_sido", message: "시군구를 추천 목록에서 선택해 주세요." };
   }
   if (!boardId || !groupId) { record("invalid_target"); return { ok: false, field: "form", message: "신규리드 보드 구성을 확인해 주세요." }; }
 
@@ -71,13 +102,13 @@ export async function createNewLeadAction(
       p_request_id: text(formData, "requestId") || crypto.randomUUID(),
       p_title: title,
       p_representative_name: text(formData, "representative_name") || null,
-      p_phone: text(formData, "phone") || null,
+      p_phone: phone.status === "normalized" ? phone.normalized : null,
       p_email: text(formData, "email") || null,
       p_business_registration_type: businessType,
       p_industry: text(formData, "industry") || null,
-      p_revenue_band: text(formData, "revenue_band") || null,
-      p_region_sido: text(formData, "region_sido") || null,
-      p_region_sigungu: text(formData, "region_sigungu") || null,
+      p_revenue_band: revenueBand,
+      p_region_sido: regionSido || null,
+      p_region_sigungu: regionSigungu || null,
       p_address_detail: text(formData, "address_detail") || null,
       p_acquisition_source: text(formData, "acquisition_source") || null,
       p_assigned_to: canonicalAssignee(ctx.user.id, text(formData, "assigned_to")),

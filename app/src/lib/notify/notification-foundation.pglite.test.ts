@@ -6,6 +6,10 @@ const migration = readFileSync(
   new URL("../../../../supabase/migrations/082_notification_foundation.sql", import.meta.url),
   "utf8",
 );
+const lineageMigration = readFileSync(
+  new URL("../../../../supabase/migrations/129_issue558_dispatch_lineage_notifications.sql", import.meta.url),
+  "utf8",
+);
 const id = (value: number): string =>
   `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 
@@ -114,6 +118,38 @@ describe("BBE-167 hosted notification foundation", () => {
     expect((await db.query<{ count: number }>(
       "select count(*)::int count from public.notifications",
     )).rows[0].count).toBe(1);
+  });
+
+  it("notifies the assignee and every active 출동 lineage member on a status change", async () => {
+    const db = await setup();
+    await db.exec(`
+      alter table public.items add column deleted_at timestamptz;
+      create table public.item_values(
+        org_id uuid not null,
+        item_id uuid not null,
+        column_key text not null,
+        value_jsonb jsonb,
+        primary key(item_id,column_key)
+      );
+      insert into public.users values ('${id(14)}');
+      insert into public.org_members values ('${id(1)}','${id(14)}','member','all','active');
+      insert into public.item_values values(
+        '${id(1)}','${id(30)}','collaborators','["${id(14)}","${id(12)}"]'::jsonb
+      );
+    `);
+    const body = lineageMigration.slice(lineageMigration.indexOf("create or replace function public.notify_board_item_moved"));
+    await db.exec(body);
+
+    expect((await db.query<{ result: number }>(`
+      select public.notify_board_item_moved('${id(1)}','${id(20)}','${id(30)}','${id(43)}') result
+    `)).rows[0].result).toBe(3);
+    const recipients = await db.query<{ user_id: string }>(`
+      select user_id::text user_id from public.notifications order by user_id
+    `);
+    expect(recipients.rows.map((row) => row.user_id)).toEqual([id(10), id(11), id(14)]);
+    expect((await db.query<{ result: number }>(`
+      select public.notify_board_item_moved('${id(1)}','${id(20)}','${id(30)}','${id(43)}') result
+    `)).rows[0].result).toBe(0);
   });
 
   it("limits recipient access, supports read/resolve, and preserves the receipt after target deletion", async () => {

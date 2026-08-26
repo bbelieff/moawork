@@ -22,8 +22,29 @@ export function analyzePhone(value: string | null | undefined): PhoneNormalizati
   const trimmed = value.trim();
   let digits = trimmed.replace(/\D/g, "");
 
-  if (trimmed.startsWith("+") && digits.startsWith("82")) {
-    digits = digits.slice(2).replace(/^0+/, "");
+  // Meta CSV에서 확인되는 +82, +082, 0082, 82010, 82 82010처럼
+  // 국가번호가 한 번 더 붙은 값까지 국내 번호 하나로 접는다.
+  let koreanPrefix = false;
+  for (let pass = 0; pass < 3; pass += 1) {
+    if (digits.startsWith("0082") && digits.length > 12) {
+      digits = digits.slice(4);
+      koreanPrefix = true;
+      continue;
+    }
+    if (digits.startsWith("082") && digits.length > 11) {
+      digits = digits.slice(3);
+      koreanPrefix = true;
+      continue;
+    }
+    if (digits.startsWith("82") && digits.length > 11) {
+      digits = digits.slice(2);
+      koreanPrefix = true;
+      continue;
+    }
+    break;
+  }
+  if (koreanPrefix) {
+    digits = digits.replace(/^0+/, "");
     digits = digits ? `0${digits}` : "";
   }
 

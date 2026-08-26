@@ -45,14 +45,16 @@ describe("BBE-171 new-lead GroupTable wiring", () => {
     expect(html).toContain("회사명");
     expect(html).toContain("필수");
     expect(html).toContain("사업자 구분");
-    expect(html).toContain("개인/일반");
+    expect(html).toContain("개인사업자");
+    expect(html).toContain("법인사업자");
+    expect(html).toContain("그외");
     expect(html).toContain("연락처");
     expect(html).toContain("담당자 가 (나)");
     expect(html).toContain("대표자명");
     expect(html).toContain("이메일");
     expect(html).toContain("업종");
     expect(html).toContain("담당자 1명");
-    expect(html).toContain("협업자 여러 명");
+    expect(html).toContain("출동 · 알림받는 사람 여러 명");
     expect(html).not.toContain("등록과 동시에 준비되는 값");
     expect(html).toContain("취소");
   });

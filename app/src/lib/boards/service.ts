@@ -211,6 +211,15 @@ export class BoardsService {
     return (await this.repo).reorderGroups(ctx, boardId, groupIds);
   }
 
+  async renameGroup(ctx: Ctx, boardId: string, groupId: string, name: string) {
+    await this.requireEditableBoard(ctx, boardId);
+    const trimmed = name.trim();
+    if (!trimmed || trimmed.length > 100) throw new BoardRuleError("그룹 이름은 1~100자로 입력해 주세요");
+    const group = await (await this.repo).updateGroup(ctx, boardId, groupId, { name: trimmed });
+    if (!group) throw new NotFoundError("그룹을 찾을 수 없습니다");
+    return group;
+  }
+
   // ── 아이템 + 셀 ──
   // BBE-214 — 보드 메타(컬럼)와 아이템 목록은 서로 독립이다. 같이 발행한다.
   // 보드가 없으면 getBoardDetail 이 거부하므로 NotFoundError 는 그대로 나간다.

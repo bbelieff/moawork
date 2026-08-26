@@ -28,6 +28,7 @@ import {
 import type {
   BoardPatch,
   BoardsRepo,
+  GroupPatch,
   ColumnPatch,
   DefaultDefinitionState,
   ItemPatch,
@@ -195,6 +196,16 @@ export class LocalBoardsRepo {
       sort_order: input.sortOrder ?? (groups.length === 0 ? 0 : Math.max(...groups.map((group) => group.sort_order)) + 1),
     };
     db().boardGroups.push(group);
+    return group;
+  }
+
+  updateGroup(ctx: Ctx, boardId: string, id: string, patch: GroupPatch): BoardGroup | undefined {
+    const group = db().boardGroups.find((candidate) =>
+      candidate.id === id && candidate.org_id === ctx.org.id && candidate.board_id === boardId,
+    );
+    if (!group) return undefined;
+    if (patch.name !== undefined) group.name = patch.name;
+    if (patch.color !== undefined) group.color = patch.color;
     return group;
   }
 

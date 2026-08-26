@@ -42,6 +42,7 @@ export const MONDAY_NEW_LEAD_COLUMN_ORDER = [
   "phone",
   "rep_name",
   "address_detail",
+  "message_action",
   "delay_notice",
   "documents",
   "dispatch_status",

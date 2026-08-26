@@ -52,6 +52,7 @@ import type {
 } from "./ColumnSettingsPanel";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
 import { MemberPicker } from "./MemberPicker";
+import { NewLeadMessageCell } from "./NewLeadMessageCell";
 import {
   updateNewLeadFieldAction,
   updateNewLeadMetaAction,
@@ -191,6 +192,10 @@ export function BoardCell({
     canonicalNewLead && value === null
       ? NEW_LEAD_EMPTY_LABELS[column.key]
       : undefined;
+
+  if (canonicalNewLead && column.key === "message_action") {
+    return <NewLeadMessageCell row={row} />;
+  }
 
   if (cellReadOnly) {
     const display =
@@ -588,13 +593,13 @@ export function GroupTable({
                   data-view-focus={col.key === focusColumnKey || undefined}
                   data-column-key={col.key}
                   data-right-pinned={col.rightPinned || undefined}
-                  className={`relative sticky top-0 z-20 min-w-20 border-b border-mw-line px-2 py-1.5 text-xs font-semibold text-mw-sub ${col.key === focusColumnKey ? "bg-mw-tint-blue" : "bg-mw-card"} ${
+                  className={`relative sticky top-0 z-20 min-w-20 border-b border-r border-mw-line px-2 py-1.5 text-xs font-semibold text-mw-sub ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-card"} ${
                     !canManageColumns
                       ? ""
                       : "cursor-grab active:cursor-grabbing"
                   } ${isTarget ? "bg-mw-tint-blue text-mw-record" : ""} ${
                     dragColKey === col.key ? "opacity-50" : ""
-                  } ${col.rightPinned ? "right-0 border-l-2 border-l-mw-primary" : ""}`}
+                  } ${col.rightPinned ? "right-0 border-l-2 border-l-mw-primary text-mw-record" : ""}`}
                 >
                   <span className="flex items-center gap-1">
                     {canManageColumns && (
@@ -672,7 +677,7 @@ export function GroupTable({
                 } ${overRowIndex === index ? "border-t-2 border-t-mw-record" : ""}`}
               >
                 <td
-                  className={`${STICKY_FIRST} border-b border-mw-line px-2 group-hover:bg-mw-bg`}
+                  className={`${STICKY_FIRST} border-b border-r border-mw-line px-2 group-hover:bg-mw-bg`}
                 >
                   <div className="flex items-center gap-1">
                     {rowDragEnabled && (
@@ -782,9 +787,9 @@ export function GroupTable({
                     data-view-focus={col.key === focusColumnKey || undefined}
                     data-column-key={col.key}
                     data-right-pinned={col.rightPinned || undefined}
-                    className={`border-b border-mw-line px-2 align-middle group-hover:bg-mw-bg ${(col.wrap_mode ?? textMode) === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
+                    className={`border-b border-r border-mw-line px-2 align-middle group-hover:bg-mw-bg ${(col.wrap_mode ?? textMode) === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
                       col.rightPinned
-                        ? "sticky right-0 z-10 border-l-2 border-l-mw-primary bg-mw-card"
+                        ? "sticky right-0 z-10 border-l-2 border-l-mw-primary bg-mw-tint-blue"
                         : ""
                     }`}
                   >

@@ -3,8 +3,13 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { createNewLeadAction } from "@/app/(app)/boards/new-lead-actions";
 import { INITIAL_NEW_LEAD_INTAKE_STATE } from "@/lib/new-lead/intake-state";
-import { NEW_LEAD_BUSINESS_TYPES } from "@/lib/new-lead/business-types";
 import { BoardModalLayer } from "./BoardDialogPortal";
+import {
+  BusinessTypeField,
+  PhoneField,
+  RegionFields,
+  RevenueBandField,
+} from "./NewLeadIntakeFields";
 
 type MemberOption = Readonly<{ id: string; label: string }>;
 
@@ -22,7 +27,6 @@ export function NewLeadIntakeForm({
   const [requestId, setRequestId] = useState("");
   const [dismissedMessage, setDismissedMessage] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
-  const businessTypeRef = useRef<HTMLSelectElement>(null);
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const summaryRef = useRef<HTMLElement>(null);
   const headerOpenerRef = useRef<HTMLButtonElement>(null);
@@ -58,12 +62,6 @@ export function NewLeadIntakeForm({
     }
   }, [state]);
   useEffect(() => {
-    if (!state.ok && state.field === "business_registration_type") {
-      businessTypeRef.current?.scrollIntoView({ block: "center", inline: "nearest" });
-      businessTypeRef.current?.focus();
-    }
-  }, [state]);
-  useEffect(() => {
     if (!state.ok) return;
     const frame = requestAnimationFrame(() => {
       formRef.current?.reset();
@@ -94,15 +92,8 @@ export function NewLeadIntakeForm({
           <input ref={titleRef} name="title" aria-required="true" aria-invalid={state.field === "title"} className="h-11 rounded-lg border border-mw-line px-3 outline-none focus:border-mw-record aria-[invalid=true]:border-mw-error" placeholder="회사명 또는 담당자 이름" />
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="grid gap-1 text-xs text-mw-sub">사업자 구분 <span className="text-mw-error">필수</span>
-            <select ref={businessTypeRef} name="business_registration_type" required aria-required="true" aria-invalid={state.field === "business_registration_type"} defaultValue="" className="h-11 rounded-lg border border-mw-line bg-mw-card px-2 text-mw-fg aria-[invalid=true]:border-mw-error">
-              <option value="" disabled>선택하세요</option>
-              {NEW_LEAD_BUSINESS_TYPES.map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
-          </label>
-          <label className="grid gap-1 text-xs text-mw-sub">연락처 <span className="font-normal">선택</span>
-            <input name="phone" inputMode="tel" className="h-11 rounded-lg border border-mw-line px-2 text-mw-fg" />
-          </label>
+          <BusinessTypeField invalid={state.field === "business_registration_type"} />
+          <PhoneField invalid={state.field === "phone"} />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-xs text-mw-sub">대표자명
@@ -114,15 +105,8 @@ export function NewLeadIntakeForm({
           <label className="grid gap-1 text-xs text-mw-sub">업종/업태
             <input name="industry" className="h-11 rounded-lg border border-mw-line px-2 text-mw-fg" />
           </label>
-          <label className="grid gap-1 text-xs text-mw-sub">매출 구간
-            <input name="revenue_band" className="h-11 rounded-lg border border-mw-line px-2 text-mw-fg" />
-          </label>
-          <label className="grid gap-1 text-xs text-mw-sub">시도
-            <input name="region_sido" className="h-11 rounded-lg border border-mw-line px-2 text-mw-fg" />
-          </label>
-          <label className="grid gap-1 text-xs text-mw-sub">시군구
-            <input name="region_sigungu" className="h-11 rounded-lg border border-mw-line px-2 text-mw-fg" />
-          </label>
+          <RevenueBandField invalid={state.field === "revenue_band"} />
+          <RegionFields />
           <label className="grid gap-1 text-xs text-mw-sub sm:col-span-2">상세 주소
             <input name="address_detail" className="h-11 rounded-lg border border-mw-line px-2 text-mw-fg" />
           </label>
@@ -132,7 +116,7 @@ export function NewLeadIntakeForm({
         </div>
       </fieldset>
       <fieldset className="grid gap-3 border-t border-mw-line pt-3">
-        <legend className="text-sm font-semibold text-mw-fg">함께 일할 사람 <span className="font-normal text-mw-sub">선택</span></legend>
+        <legend className="text-sm font-semibold text-mw-fg">담당자와 출동 계보 <span className="font-normal text-mw-sub">선택</span></legend>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid content-start gap-2 rounded-lg border border-mw-line p-3">
             <span className="text-xs font-semibold text-mw-body">담당자 1명</span>
@@ -144,7 +128,7 @@ export function NewLeadIntakeForm({
             ))}
           </div>
           <div className="grid content-start gap-2 rounded-lg border border-mw-line p-3">
-            <span className="text-xs font-semibold text-mw-body">협업자 여러 명</span>
+            <span className="text-xs font-semibold text-mw-body">출동 · 알림받는 사람 여러 명</span>
             {members.map((member) => (
               <label key={member.id} className="flex min-h-9 items-center gap-2 text-sm text-mw-fg">
                 <input type="checkbox" name="collaborator_ids" value={member.id} />
@@ -153,6 +137,7 @@ export function NewLeadIntakeForm({
             ))}
           </div>
         </div>
+        <p className="text-xs leading-5 text-mw-sub">출동에 선택된 사람은 최초 접수자부터 다음 담당자까지 계보로 남고, 이 회사의 상태가 바뀔 때 함께 알림을 받습니다.</p>
       </fieldset>
       <p className="text-xs leading-5 text-mw-sub">여기서 비워 둔 값도 등록 후 표와 회사 상세에서 언제든 수정할 수 있어요.</p>
       {state.message ? <p role="alert" className={state.ok ? "text-sm text-mw-success" : "rounded-lg border border-mw-error p-2 text-sm text-mw-error"}>{state.message}</p> : null}
