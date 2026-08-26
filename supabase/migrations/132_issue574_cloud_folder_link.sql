@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=a449fc9082ce5683d45880e4b017c63979d49879cf7c9b5f68fe0ab5fc848f3e foundation=false
+-- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=6ede2288c6bdc0ed364e59b5e277657179270c4d31d004f3f1a8641989252b87 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '132_issue574_cloud_folder_link',
   p_file_name => '132_issue574_cloud_folder_link.sql',
-  p_file_digest => 'a449fc9082ce5683d45880e4b017c63979d49879cf7c9b5f68fe0ab5fc848f3e',
+  p_file_digest => '6ede2288c6bdc0ed364e59b5e277657179270c4d31d004f3f1a8641989252b87',
   p_expected_predecessor => '131_issue528_item_phone_review_status',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -49,14 +49,20 @@ as $$
     and p_url ~ '^https://[^[:space:]/?#]+(?::[0-9]+)?(?:/|$)'
     and p_url !~ '^https://[^/?#]*@'
     and p_url !~* '\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)(?:[?#]|$)'
+    and p_url !~* '[?&](?:id|folder|folder_id|folderId|directory)=[^&#]*(?:\.|%2e)(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)(?:&|#|$)'
     and (
       p_url ~* '^https://drive\.google\.com/drive/(?:u/[0-9]+/)?folders/[^/?#]+'
       or p_url ~* '^https://(?:[^/]+\.)?1drv\.ms/(?:[^/?#]*:f:[^/?#]*|f)/'
-      or p_url ~* '^https://(?:[^/]+\.)?onedrive\.live\.com/.*(?:[?&](?:id|cid)=|:f:)'
-      or p_url ~* '^https://[^/]+\.sharepoint\.com/.*(?::f:|/Forms/AllItems\.aspx|[?&]id=)'
+      or p_url ~* '^https://(?:[^/]+\.)?onedrive\.live\.com/.*(?::f:|[?&]id=[^&#]+)'
+      or p_url ~* '^https://[^/]+\.sharepoint\.com/.*(?::f:|/Forms/AllItems\.aspx[^#]*[?&]id=[^&#]+)'
       or p_url ~* '^https://(?:www\.)?dropbox\.com/(?:scl/fo|sh|home)/'
-      or p_url ~* '^https://[^/?#]+/(?:[^?#]*/)?(?:folders?|directories?)(?:/|[?#=])'
-      or p_url ~* '^https://[^/?#]+/.*[?&](?:folder|folder_id|folderId|directory|path)='
+      or (
+        p_url !~* '^https://(?:drive\.google\.com|(?:[^/]+\.)?1drv\.ms|(?:[^/]+\.)?onedrive\.live\.com|[^/]+\.sharepoint\.com|(?:www\.)?dropbox\.com)(?:/|$)'
+        and (
+          p_url ~* '^https://[^/?#]+/(?:[^?#]*/)?(?:folders?|directories?)/[^/?#]+'
+          or p_url ~* '^https://[^/?#]+/.*[?&](?:folder|folder_id|folderId|directory)=[^&#]+'
+        )
+      )
     )
 $$;
 

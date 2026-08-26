@@ -17,6 +17,15 @@ export type CloudFolderUrlResult =
 
 const DIRECT_FILE_PATH = /\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)$/iu;
 
+function isDirectFileValue(value: string) {
+  return DIRECT_FILE_PATH.test(value.trim());
+}
+
+function nonFileQueryValue(url: URL, key: string) {
+  const value = url.searchParams.get(key)?.trim() ?? "";
+  return value.length > 0 && !isDirectFileValue(value);
+}
+
 function isGoogleDriveFolder(url: URL) {
   return (
     url.hostname === "drive.google.com" &&
@@ -31,15 +40,16 @@ function isOneDriveFolder(url: URL) {
   if (url.hostname === "onedrive.live.com" || url.hostname.endsWith(".onedrive.live.com")) {
     return (
       url.pathname.toLowerCase().includes(":f:") ||
-      url.searchParams.has("id") ||
-      url.searchParams.has("cid")
+      nonFileQueryValue(url, "id")
     );
   }
   if (url.hostname.endsWith(".sharepoint.com")) {
     return (
       url.pathname.toLowerCase().includes(":f:") ||
-      url.pathname.toLowerCase().endsWith("/forms/allitems.aspx") ||
-      url.searchParams.has("id")
+      (
+        url.pathname.toLowerCase().endsWith("/forms/allitems.aspx") &&
+        nonFileQueryValue(url, "id")
+      )
     );
   }
   return false;
@@ -54,13 +64,27 @@ function isDropboxFolder(url: URL) {
 
 function isGenericFolder(url: URL) {
   const segments = url.pathname.toLowerCase().split("/").filter(Boolean);
-  const folderSegment = segments.some((segment) =>
-    ["folder", "folders", "directory", "directories"].includes(segment),
+  const folderSegment = segments.some((segment, index) =>
+    ["folder", "folders", "directory", "directories"].includes(segment) &&
+    Boolean(segments[index + 1]) &&
+    !isDirectFileValue(segments[index + 1]),
   );
-  const folderQuery = ["folder", "folder_id", "folderId", "directory", "path"].some(
-    (key) => url.searchParams.has(key),
+  const folderQuery = ["folder", "folder_id", "folderId", "directory"].some((key) =>
+    nonFileQueryValue(url, key),
   );
   return folderSegment || folderQuery;
+}
+
+function isKnownProviderHost(url: URL) {
+  return (
+    url.hostname === "drive.google.com" ||
+    url.hostname === "1drv.ms" ||
+    url.hostname === "onedrive.live.com" ||
+    url.hostname.endsWith(".onedrive.live.com") ||
+    url.hostname.endsWith(".sharepoint.com") ||
+    url.hostname === "dropbox.com" ||
+    url.hostname === "www.dropbox.com"
+  );
 }
 
 export function inspectCloudFolderUrl(raw: string): CloudFolderUrlResult {
@@ -94,7 +118,7 @@ export function inspectCloudFolderUrl(raw: string): CloudFolderUrlResult {
       ? { provider: "onedrive" as const, providerLabel: "OneDrive" }
       : isDropboxFolder(url)
         ? { provider: "dropbox" as const, providerLabel: "Dropbox" }
-        : isGenericFolder(url)
+        : !isKnownProviderHost(url) && isGenericFolder(url)
           ? { provider: "cloud_folder" as const, providerLabel: "클라우드 폴더" }
           : null;
   if (!provider) {

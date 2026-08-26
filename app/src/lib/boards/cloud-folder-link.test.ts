@@ -19,7 +19,13 @@ describe("Issue #574 cloud folder URL", () => {
     "http://drive.google.com/drive/folders/folder-id",
     "https://user:password@example.com/folders/a",
     "https://drive.google.com/file/d/file-id/view",
+    "https://drive.google.com/drive/folders/",
+    "https://onedrive.live.com/?id=contract.pdf",
+    "https://onedrive.live.com/?cid=only-a-drive-id",
+    "https://tenant.sharepoint.com/sites/team/Forms/AllItems.aspx?id=contract.pdf",
     "https://example.com/files/contract.pdf",
+    "https://example.com/folders/contract.pdf",
+    "https://example.com/?path=home",
     "https://example.com/an-ordinary-page",
   ])("rejects unsafe or non-folder input: %s", (raw) => {
     expect(inspectCloudFolderUrl(raw).ok).toBe(false);

@@ -115,6 +115,12 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       "javascript:alert(1)",
       "data:text/html,unsafe",
       "https://example.com/files/contract.pdf",
+      "https://drive.google.com/drive/folders/",
+      "https://onedrive.live.com/?id=contract.pdf",
+      "https://onedrive.live.com/?cid=only-a-drive-id",
+      "https://tenant.sharepoint.com/sites/team/Forms/AllItems.aspx?id=contract.pdf",
+      "https://example.com/folders/contract.pdf",
+      "https://example.com/?path=home",
       "https://example.com/ordinary-page",
     ]) {
       await expect(db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5)", [
