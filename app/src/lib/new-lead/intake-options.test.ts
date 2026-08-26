@@ -8,7 +8,9 @@ describe("issue 558 신규리드 입력 선택 계약", () => {
     expect(resolveNewLeadBusinessType("개인사업자", "")).toBe("개인사업자");
     expect(resolveNewLeadBusinessType("법인사업자", "")).toBe("법인사업자");
     expect(resolveNewLeadBusinessType("그외", " 비영리법인 ")).toBe("비영리법인");
-    expect(resolveNewLeadBusinessType("그외", " ")).toBeNull();
+    expect(resolveNewLeadBusinessType("그외", " ")).toBe("그외");
+    expect(resolveNewLeadBusinessType(" 비영리법인 ", "")).toBe("비영리법인");
+    expect(resolveNewLeadBusinessType("", "")).toBeNull();
   });
 
   it("keeps observed Monday revenue bands and allows a custom band", () => {

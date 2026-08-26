@@ -18,7 +18,7 @@ function column(key: string, index: number): BoardColumn {
 }
 
 describe("Issue #576 신규리드 순서와 표시 컬럼", () => {
-  it("회사명 다음 19개 열은 사용자 확정 순서와 exact이고 자동입력 표시는 편집 가능 출처다", () => {
+  it("회사명 다음 20개 열은 사용자 확정 순서와 exact이고 자동입력 표시는 편집 가능 출처다", () => {
     expect(NEW_LEAD_TAB.columns.slice(0, NEW_LEAD_PRIMARY_COLUMN_KEYS.length).map((entry) => entry.key))
       .toEqual([...NEW_LEAD_PRIMARY_COLUMN_KEYS]);
     expect(NEW_LEAD_TAB.columns.find((entry) => entry.key === "revenue_band")?.label).toBe("3개년매출");

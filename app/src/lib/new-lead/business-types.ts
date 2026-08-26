@@ -11,10 +11,9 @@ export function resolveNewLeadBusinessType(
   selected: string,
   custom: string,
 ): string | null {
-  if (!NEW_LEAD_BUSINESS_TYPES.includes(selected as (typeof NEW_LEAD_BUSINESS_TYPES)[number])) {
-    return null;
-  }
-  if (selected !== NEW_LEAD_CUSTOM_BUSINESS_TYPE) return selected;
-  const value = custom.trim();
-  return value ? value : null;
+  const value = selected.trim();
+  if (!value) return null;
+  if (value !== NEW_LEAD_CUSTOM_BUSINESS_TYPE) return value;
+  const legacyCustom = custom.trim();
+  return legacyCustom || value;
 }

@@ -45,6 +45,11 @@ import { inspectCloudFolderUrl } from "@/lib/boards/cloud-folder-link";
 import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
 import styles from "./item-detail-panel.module.css";
 
+const CANONICAL_NEW_LEAD_DETAIL_KEYS = new Set([
+  "applied_on", "address_detail", "rep_name", "phone", "email", "biz_reg_type",
+  "industry", "revenue_band", "sido", "sigungu", "ad_name",
+]);
+
 function AutoSaveField({
   boardId,
   itemId,
@@ -137,6 +142,9 @@ function AutoSaveField({
         id={`${itemId}-${fieldKey}`}
         value={value}
         type={inputType(type)}
+        min={fieldKey === "credit_score_ncb" || fieldKey === "credit_score_kcb" ? 1 : undefined}
+        max={fieldKey === "credit_score_ncb" || fieldKey === "credit_score_kcb" ? 1000 : fieldKey === "existing_loan_rate" ? 100 : undefined}
+        step={fieldKey === "credit_score_ncb" || fieldKey === "credit_score_kcb" ? 1 : undefined}
         onChange={(event) => {
           const next = event.target.value;
           setValue(next);
@@ -706,7 +714,7 @@ export function ItemDetailPanel({
                                 source={entry.source}
                                 type={type}
                                 initialValue={inputValue(value)}
-                                canonicalDealId={canonicalNewLead ? row.deal_id : null}
+                                canonicalDealId={canonicalNewLead && CANONICAL_NEW_LEAD_DETAIL_KEYS.has(entry.key) ? row.deal_id : null}
                                 phoneStatus={row.value_statuses?.[entry.key] ?? "normalized"}
                                 onStatusChange={(status) =>
                                   setFieldSaveStatuses((current) =>
