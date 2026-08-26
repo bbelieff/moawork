@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
+import { inspectCloudFolderUrl } from "./cloud-folder-link";
 
 const migration = readFileSync(
   resolve(process.cwd(), "../supabase/migrations/132_issue574_cloud_folder_link.sql"),
@@ -108,6 +109,31 @@ describe("Issue #574 canonical cloud folder persistence", () => {
     expect((await db.query<{ count: number }>(
       "select count(*)::int count from board_item_detail_links where link_kind is null",
     )).rows[0].count).toBe(1);
+  });
+
+  it("keeps the client and database URL decisions in lockstep", async () => {
+    const examples = [
+      "https://drive.google.com/drive/folders/folder-id",
+      "https://onedrive.live.com/?id=root%21folder&cid=drive-id",
+      "https://tenant.sharepoint.com/sites/team/Forms/AllItems.aspx?id=%2FShared%20Documents%2FClient%20Folder",
+      "https://www.dropbox.com/scl/fo/folder-id/example",
+      "https://cloud.example.com/folders/Client%20Folder",
+      "https://cloud.example.com/?folder=Client+Folder",
+      "https://drive.google.com/drive/folders/%00",
+      "https://onedrive.live.com/?id=abc%00def",
+      "https://example.com/?folder=+%20",
+      "https://example.com/folders/%ZZ",
+      "https://example.com/folders/contract%252Epdf",
+      "https://example.com/an-ordinary-page",
+    ];
+    for (const raw of examples) {
+      const clientAllowed = inspectCloudFolderUrl(raw).ok;
+      const databaseAllowed = (await db.query<{ allowed: boolean }>(
+        "select is_cloud_folder_url($1) allowed",
+        [raw],
+      )).rows[0].allowed;
+      expect(databaseAllowed, raw).toBe(clientAllowed);
+    }
   });
 
   it("rejects files, unsafe schemes, cross-org access and an unassigned member", async () => {
