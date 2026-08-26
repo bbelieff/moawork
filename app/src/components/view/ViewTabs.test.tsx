@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { SavedBoardView } from "@/lib/view/board-saved";
@@ -33,5 +34,13 @@ describe("ViewTabs", () => {
     expect(html).toContain("나만");
     expect(html).toContain('aria-current="page"');
     expect(html).not.toContain("고객관리");
+  });
+
+  it("keeps active tab text readable in dark mode and suppresses decorative scrollbars", () => {
+    const css = readFileSync(new URL("./view.module.css", import.meta.url), "utf8");
+    expect(css).toContain("overflow-y:hidden");
+    expect(css).toContain("scrollbar-width:none");
+    expect(css).toContain("color:var(--mw-record)");
+    expect(css).not.toContain("color:#3535a8");
   });
 });

@@ -62,7 +62,7 @@ export function BoardHeader({
     }`;
 
   return (
-    <div data-visual-block="board-header" className="flex flex-nowrap items-center gap-2 overflow-x-auto">
+    <div data-visual-block="board-header" className="mw-board-inline-scroll flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden">
       {backSlot}
 
       <h1 className="flex shrink-0 items-center gap-1.5 text-lg font-semibold text-mw-fg">

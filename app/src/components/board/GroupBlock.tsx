@@ -97,7 +97,7 @@ export function GroupBlock({
           } : undefined}
           className="flex cursor-pointer select-none items-center gap-2 rounded-t-xl px-3 py-2 list-none [&::-webkit-details-marker]:hidden"
           style={{
-            backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)`,
+            backgroundColor: `color-mix(in srgb, ${accent} 14%, var(--mw-card))`,
             borderLeft: `3px solid ${accent}`,
           }}
         >

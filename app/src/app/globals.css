@@ -165,6 +165,48 @@ body {
   color: var(--mw-fg);
 }
 
+/* 보드에서 실제로 넘치는 표만 스크롤바를 보여 준다. 색은 밝기 모드에 따라 토큰을 따른다. */
+[data-visual-block="group-table"] > details > div > .relative.isolate {
+  overscroll-behavior: contain;
+  scrollbar-color: color-mix(in srgb, var(--mw-sub) 72%, var(--mw-card)) var(--mw-card);
+  scrollbar-width: thin;
+}
+[data-visual-block="group-table"] > details > div > .relative.isolate::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+[data-visual-block="group-table"] > details > div > .relative.isolate::-webkit-scrollbar-track,
+[data-visual-block="group-table"] > details > div > .relative.isolate::-webkit-scrollbar-corner {
+  background: var(--mw-card);
+}
+[data-visual-block="group-table"] > details > div > .relative.isolate::-webkit-scrollbar-thumb {
+  border: 2px solid var(--mw-card);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mw-sub) 72%, var(--mw-card));
+}
+[data-visual-block="group-table"] > details > div > .relative.isolate::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--mw-fg) 62%, var(--mw-card));
+}
+
+[data-visual-block="group-table"] :is(tbody td, input, select, textarea) {
+  background-color: var(--mw-card);
+  color: var(--mw-body);
+}
+
+/* 헤더·필터 줄은 가로 휠/터치 이동만 유지하고 의미 없는 교차축 스크롤바는 숨긴다. */
+.mw-board-inline-scroll {
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+}
+.mw-board-inline-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* sticky/focus 열은 반투명 tint가 아니라 불투명 card 위에 섞어 뒤 글자가 비치지 않는다. */
+[data-visual-block="group-table"] :is([data-right-pinned="true"], [data-view-focus="true"]) {
+  background: color-mix(in srgb, var(--mw-record) 14%, var(--mw-card)) !important;
+}
+
 .mw-layer-page-popover { z-index: var(--mw-layer-page-popover); }
 .mw-layer-shell { z-index: var(--mw-layer-shell); }
 .mw-layer-shell-popover { z-index: var(--mw-layer-shell-popover); }

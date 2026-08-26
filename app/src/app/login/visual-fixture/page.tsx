@@ -7,6 +7,7 @@ import { cookies } from "next/headers";
 import { visualSetCellAction } from "./actions";
 import { VisualLayerProbe } from "./VisualLayerProbe";
 import { VisualWorkspaceSwitcherProbe } from "./VisualWorkspaceSwitcherProbe";
+import { VisualThemeProbe } from "./VisualThemeProbe";
 import { DepartmentManager } from "@/components/member-organization/DepartmentManager";
 import {
   loadVisualDepartmentChart,
@@ -87,6 +88,7 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
   const tab = params.tab === "contact" ? "contact" : "new";
   const mutation = typeof params.mutation === "string" ? params.mutation : "none";
   const layer = params.layer === "workspace" ? "workspace" : "none";
+  const theme = params.theme === "dark" ? "dark" : params.theme === "light" ? "light" : null;
   const jar = await cookies();
   const saved = jar.get(`visual-workflow-${tab}-saved`)?.value ?? null;
   const draft = jar.get(`visual-workflow-${tab}-draft`)?.value ?? null;
@@ -94,6 +96,7 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
   const data = fixture(tab, draft ?? saved);
   return (
     <main data-visual-fixture={tab} data-build-sha={process.env.VERCEL_GIT_COMMIT_SHA ?? "local"} className={`visual-mutation-${mutation} min-h-screen max-w-full bg-mw-bg p-4`}>
+      <VisualThemeProbe theme={theme} />
       <style>{`
         .visual-mutation-settings-bottom [data-visual-block='board-settings'] { order: 99 !important; margin-top: 700px !important; }
         .visual-mutation-no-sticky [data-right-pinned='true'] { position: static !important; }

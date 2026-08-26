@@ -11,7 +11,7 @@
 
 import type { FieldOption } from "@/lib/types";
 import type { CellValue } from "@/lib/boards/types";
-import { STATUS_EMPTY_COLOR, toStatusChip } from "@/lib/boards/status-palette";
+import { toStatusChip } from "@/lib/boards/status-palette";
 
 /** 상태 칩 1개. */
 export function StatusPill({
@@ -40,8 +40,7 @@ export function StatusPill({
 function EmptyPill() {
   return (
     <span
-      className="inline-flex items-center rounded px-2 py-0.5 text-xs text-zinc-600"
-      style={{ backgroundColor: STATUS_EMPTY_COLOR }}
+      className="inline-flex items-center rounded border border-mw-line bg-mw-bg px-2 py-0.5 text-xs text-mw-sub"
     >
       —
     </span>
@@ -95,7 +94,11 @@ export function StatusSelect({
   className?: string;
 }) {
   const current = typeof value === "string" && value ? value : "";
-  const chip = current ? toStatusChip(current, options) : null;
+  // native select 는 목록에 없는 값이면 실제 화면에서 빈 선택지(—)를 보여 준다.
+  // 이때 고아 값의 회색 팔레트만 칠하면 «값이 있는 회색 상태»처럼 보여 화면과 데이터가 어긋난다.
+  const chip = current && options.some((option) => option.id === current)
+    ? toStatusChip(current, options)
+    : null;
 
   return (
     <select
