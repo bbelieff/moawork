@@ -17,7 +17,7 @@ export function NewLeadOnboarding() {
         <strong className="block text-sm text-mw-fg">신규리드 시작하기</strong>
         <span className="mt-1 block text-xs leading-5 text-mw-body">
           새 회사에서 기본 정보를 등록하고 표에서 상담 상황과 담당자를 바로 고칠 수 있어요.
-          상담이 준비되면 상담 상황의 ‘리드컨택으로 넘기기’를 선택하세요.
+          상담이 준비되면 표 맨 오른쪽에 고정된 ‘진행현황’에서 다음 탭으로 넘기세요.
         </span>
       </span>
     </span>

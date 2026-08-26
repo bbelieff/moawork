@@ -16,6 +16,8 @@ import { issueFileToken } from "@/lib/deal/fileSignedUrl";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { NewLeadOnboarding } from "@/components/board/NewLeadOnboarding";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
+import { legacyMemberPickerEntries, memberPickerEntries } from "@/lib/boards/member-directory";
+import { loadOrgChart } from "@/lib/org/departments";
 import { loadPermGuards } from "@/lib/perm/guard";
 import { PermissionUnavailable } from "@/components/perm/PermissionUnavailable";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
@@ -182,9 +184,20 @@ export default async function BoardPage({
   );
 
   // 담당자 탭·칩에 쓸 표시 이름. items.assigned_to 는 사용자 id 라서 이 맵이 없으면 UUID 가 노출된다.
+  const orgChart = board.source === NEW_LEAD_TAB_SOURCE && client
+    ? await loadOrgChart(ctx, async () => client)
+    : null;
+  const defaultTabAssignees = orgChart?.kind === "ready"
+    ? []
+    : await loadDefaultTabAssignees(ctx);
   const assigneeLabels = Object.fromEntries(
-    (await loadDefaultTabAssignees(ctx)).map((member) => [member.userId, member.displayName]),
+    orgChart?.kind === "ready"
+      ? orgChart.members.map((member) => [member.userId, member.displayName])
+      : defaultTabAssignees.map((member) => [member.userId, member.displayName]),
   );
+  const memberDirectory = orgChart?.kind === "ready"
+    ? memberPickerEntries(orgChart)
+    : legacyMemberPickerEntries(defaultTabAssignees);
   /*
    * 그룹 메뉴의 «다른 프리셋 적용» 목록 — 이 PR 에서는 «비운다» (BBE-174 / BBE-223).
    *
@@ -252,7 +265,7 @@ export default async function BoardPage({
     ? {
         title: "상담 단계와 리드컨택 이동",
         gate: "컨택 이동",
-        description: "상담 상황을 바꾸면 행이 맞는 그룹으로 이동합니다. 표 맨 오른쪽의 «컨택 이동»에서 상태를 바꾸거나 상세 화면의 «리드컨택으로 넘기기»를 눌러 다음 탭으로 넘깁니다.",
+        description: "상담 상황을 바꾸면 행이 맞는 그룹으로 이동합니다. 다음 탭으로 넘길 때는 표 맨 오른쪽에 고정된 «진행현황»을 사용합니다.",
       }
     : board.source === CONTACT_TAB_SOURCE
       ? {
@@ -398,6 +411,7 @@ export default async function BoardPage({
       columnOrder={activeColumnOrder}
       cellFlash={cellFlash}
       assigneeLabels={assigneeLabels}
+      memberDirectory={memberDirectory}
       backSlot={backLink}
       viewSlot={viewToggle}
       savedViewsSlot={

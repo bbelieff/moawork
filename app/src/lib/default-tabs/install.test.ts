@@ -117,6 +117,14 @@ describe("BBE-184 additive existing-workspace repair", () => {
   });
 
   it("continues after the maximum durable position instead of a gapped row count", async () => {
+    // Revisioned product tabs deliberately reorder an untouched legacy board to the
+    // product definition. This test isolates the still-supported additive contract
+    // for definitions that do not opt into that revision reconciliation.
+    const additiveOnlyTab = {
+      ...NEW_LEAD_TAB,
+      revision: undefined,
+      previousRevision: undefined,
+    };
     const partial = repo.createBoard(ctx, { name: NEW_LEAD_TAB.name, source: NEW_LEAD_TAB.source });
     repo.createColumn(ctx, partial.id, {
       key: NEW_LEAD_TAB.columns[0].key,
@@ -125,7 +133,7 @@ describe("BBE-184 additive existing-workspace repair", () => {
       sortOrder: 7,
     });
 
-    await ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, memoizedColumnReads(repo), assignees);
+    await ensureDefaultTabAdditive(ctx, additiveOnlyTab, memoizedColumnReads(repo), assignees);
     const columns = repo.listColumns(ctx, partial.id);
 
     expect(columns).toHaveLength(NEW_LEAD_TAB.columns.length);

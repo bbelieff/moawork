@@ -131,6 +131,8 @@ export interface ItemValue {
   item_id: string;
   column_key: string;
   value_jsonb: CellValue;
+  /** 전화 셀만 사용한다. 131 이전 행과 다른 타입은 normalized로 간주한다. */
+  phone_normalization_status?: "normalized" | "needs_review";
 }
 
 /** 셀 값 — jsonb. 컬럼 타입별 정규화는 cells.ts 참조. */
@@ -157,6 +159,7 @@ export interface BoardView {
 /** 행 + 셀 맵(컬럼 key → 값). 화면 렌더용. */
 export interface ItemWithValues extends BoardItem {
   values: Record<string, CellValue>;
+  value_statuses?: Record<string, "normalized" | "needs_review">;
 }
 
 /** 보드 + 컬럼/그룹 — 보드 화면 1회 로드 단위. */

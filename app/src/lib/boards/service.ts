@@ -36,6 +36,7 @@ import { resolveMoveTarget } from "./moveRules";
 import { isIntegrityField } from "@/lib/custom/field-types";
 import { isSourceEditable } from "@/lib/field/source";
 import { pickDefaultView } from "@/lib/custom/views";
+import { resolveBoardDetailLayout, resolveDetailLayout } from "./detail-layout";
 
 export class NotFoundError extends Error {
   constructor(message = "찾을 수 없습니다") {
@@ -228,7 +229,7 @@ export class BoardsService {
       this.getBoardDetail(ctx, boardId),
       this.repo.then((repo) => repo.listItems(ctx, boardId)),
     ]);
-    return this.compose(ctx, items, detail.columns);
+    return this.compose(ctx, items, detail);
   }
 
   async listDeletedItems(ctx: Ctx, boardId: string): Promise<ItemWithValues[]> {
@@ -236,7 +237,7 @@ export class BoardsService {
       this.getBoardDetail(ctx, boardId),
       this.repo.then((repo) => repo.listDeletedItems(ctx, boardId)),
     ]);
-    return this.compose(ctx, items, detail.columns);
+    return this.compose(ctx, items, detail);
   }
 
   async getItem(ctx: Ctx, boardId: string, itemId: string): Promise<ItemWithValues> {
@@ -244,7 +245,7 @@ export class BoardsService {
     const item = await (await this.repo).getItem(ctx, itemId);
     if (!item || item.board_id !== boardId)
       throw new NotFoundError("아이템을 찾을 수 없습니다");
-    return (await this.compose(ctx, [item], detail.columns))[0];
+    return (await this.compose(ctx, [item], detail))[0];
   }
 
   async createItem(ctx: Ctx, boardId: string, input: NewItem): Promise<ItemWithValues> {
@@ -261,7 +262,7 @@ export class BoardsService {
       values = res.values;
     }
     const item = await (await this.repo).createItem(ctx, boardId, { ...input, values });
-    return (await this.compose(ctx, [item], detail.columns))[0];
+    return (await this.compose(ctx, [item], detail))[0];
   }
 
   async updateItem(ctx: Ctx, boardId: string, itemId: string, patch: ItemPatch): Promise<ItemWithValues> {
@@ -424,18 +425,47 @@ export class BoardsService {
   }
 
   // ── 내부 ──
-  private async compose(ctx: Ctx, items: BoardItem[], columns: BoardColumn[]): Promise<ItemWithValues[]> {
+  private async compose(ctx: Ctx, items: BoardItem[], detail: BoardDetail): Promise<ItemWithValues[]> {
     if (items.length === 0) return [];
-    const keys = new Set(columns.map((c) => c.key));
+    const columnKeys = new Set(detail.columns.map((column) => column.key));
+    const boardLayout = resolveBoardDetailLayout(
+      detail.board.source,
+      detail.board.detail_layout_jsonb,
+      detail.columns,
+    );
+    const groupLayouts = new Map(
+      detail.groups.map((group) => [
+        group.id,
+        resolveDetailLayout(boardLayout, group.detail_layout_jsonb).entries,
+      ]),
+    );
+    const boardDetailKeys = new Set(
+      boardLayout.filter((entry) => entry.source === "detail").map((entry) => entry.key),
+    );
+    const groupDetailKeys = new Map(
+      [...groupLayouts].map(([groupId, layout]) => [
+        groupId,
+        new Set(layout.filter((entry) => entry.source === "detail").map((entry) => entry.key)),
+      ]),
+    );
+    const itemById = new Map(items.map((item) => [item.id, item]));
     const values = await (await this.repo).listValues(ctx, items.map((i) => i.id));
     const byItem = new Map<string, Record<string, CellValue>>();
+    const statusesByItem = new Map<string, Record<string, "normalized" | "needs_review">>();
     for (const v of values) {
-      if (!keys.has(v.column_key)) continue; // 삭제된 컬럼의 잔여값 무시
+      const item = itemById.get(v.item_id);
+      const detailKeys = item?.group_id ? groupDetailKeys.get(item.group_id) ?? boardDetailKeys : boardDetailKeys;
+      if (!columnKeys.has(v.column_key) && !detailKeys.has(v.column_key)) continue; // 삭제·미배치 잔여값 무시
       const bag = byItem.get(v.item_id) ?? {};
       bag[v.column_key] = v.value_jsonb;
       byItem.set(v.item_id, bag);
+      if (v.phone_normalization_status === "needs_review") {
+        const statuses = statusesByItem.get(v.item_id) ?? {};
+        statuses[v.column_key] = "needs_review";
+        statusesByItem.set(v.item_id, statuses);
+      }
     }
-    return items.map((i) => ({ ...i, values: byItem.get(i.id) ?? {} }));
+    return items.map((i) => ({ ...i, values: byItem.get(i.id) ?? {}, value_statuses: statusesByItem.get(i.id) ?? {} }));
   }
 
   // ── 저장뷰(board_views · 003) ────────────────────────────────

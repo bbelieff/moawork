@@ -35,7 +35,13 @@ describe("loadDefaultTabAssignees production", () => {
       members: [],
     });
     await expect(loadDefaultTabAssignees(ctx)).resolves.toEqual([
-      { userId: "owner-1", displayName: "대표" },
+      {
+        userId: "owner-1",
+        displayName: "대표",
+        title: null,
+        teamKey: null,
+        role: "owner",
+      },
     ]);
     expect(loadMemberOrgSummary).toHaveBeenCalledWith(ctx);
   });

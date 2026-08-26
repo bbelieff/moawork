@@ -31,6 +31,11 @@ export const NOTICE_TAB_SOURCE = "core.default-tab/notice";
 export interface DefaultTabAssignee {
   userId: string;
   displayName: string;
+  /** 사람 선택기의 보조 설명. 기본 탭 설치 로직은 이 값에 의존하지 않는다. */
+  title?: string | null;
+  /** 조직도 정본이 붙기 전에도 같은 팀 사람을 묶어 보여 주는 안정적인 표시 키. */
+  teamKey?: string | null;
+  role?: "owner" | "admin" | "team_lead" | "member";
 }
 
 export interface DefaultTabAssigneeMove {

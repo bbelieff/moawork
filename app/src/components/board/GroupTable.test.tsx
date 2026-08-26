@@ -110,6 +110,7 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     expect(html).toContain('type="datetime-local"');
     expect(html).toContain('value="2026-08-11T03:45"');
     expect(cellInputValue("datetime", "2026-08-11T03:45:00.000Z")).toBe("2026-08-11T03:45");
+    expect(cellInputValue("phone", "01030266007")).toBe("010-3026-6007");
   });
 
   it("person 컬럼은 조직 멤버 선택 UI와 미배정 값을 렌더한다", () => {
@@ -125,9 +126,9 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     })];
     const html = renderTable(columns, [row({ owner: "member-b" })]);
     expect(html).toContain('name="kind" value="person"');
-    expect(html).toContain('placeholder="멤버 검색"');
     expect(html).toContain('type="hidden" name="value" value="member-b"');
-    expect(html).toContain('type="radio" checked=""');
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).toContain('aria-expanded="false"');
     expect(html).toContain("계정 B");
     expect(html).not.toContain('type="text" name="value"');
   });

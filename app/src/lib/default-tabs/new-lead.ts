@@ -126,9 +126,7 @@ function sendColumn(
 const COLUMNS: DefaultTabColumn[] = [
   // 1~2 사람 — 선택지는 멤버 계정에서 온다(D71~D75). 정적 옵션 금지.
   { key: "owner", label: "담당자", type: "person", source: "act", width: 120 },
-  // 설치 정본은 목업의 역사적 라벨을 보존하고, 실제 화면은 presentNewLeadColumns에서
-  // 최신 사용자 어휘인 «출동»으로 바꿔 보여 준다.
-  { key: "collaborators", label: "협업자", type: "people", source: "act", width: 150 },
+  { key: "collaborators", label: "연관담당", type: "people", source: "act", width: 150 },
 
   // 3~12 회사·접수 정보
   { key: "applied_on", label: "신청일", type: "date", source: "auto", width: 120 },
@@ -302,8 +300,8 @@ export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardCol
     if (column.key === "collaborators") {
       presented.push({
         ...column,
-        label: "출동",
-        description: "최초 접수자부터 다음 담당자까지 상태변경 알림을 함께 받는 인계 계보",
+        label: "연관담당",
+        description: "담당자와 함께 이 회사의 상태 변경 알림을 받는 사람",
       });
       continue;
     }
@@ -327,6 +325,13 @@ export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardCol
 }
 
 export const NEW_LEAD_TAB: DefaultTab = {
+  revision: 2,
+  previousRevision: {
+    revision: 1,
+    columns: {
+      collaborators: { label: "협업자" },
+    },
+  },
   key: "new",
   source: NEW_LEAD_TAB_SOURCE,
   name: "신규리드 관리",

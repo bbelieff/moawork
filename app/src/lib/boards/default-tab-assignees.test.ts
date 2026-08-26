@@ -21,9 +21,9 @@ describe("assigneesFromMemberSummary", () => {
       members: [row("member-3", "담당자", "member")],
     };
     expect(assigneesFromMemberSummary(summary)).toEqual([
-      { userId: "member-1", displayName: "대표" },
-      { userId: "member-2", displayName: "실장" },
-      { userId: "member-3", displayName: "담당자" },
+      { userId: "member-1", displayName: "대표", title: null, teamKey: null, role: "owner" },
+      { userId: "member-2", displayName: "실장", title: null, teamKey: null, role: "admin" },
+      { userId: "member-3", displayName: "담당자", title: null, teamKey: null, role: "member" },
     ]);
   });
 });

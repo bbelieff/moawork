@@ -8,6 +8,9 @@ export function assigneesFromMemberSummary(summary: MemberOrgSummary): DefaultTa
   return [summary.owner, ...summary.admins, ...summary.members].map((member) => ({
     userId: member.userId,
     displayName: member.displayName,
+    title: member.title,
+    teamKey: member.teamKey,
+    role: member.role,
   }));
 }
 
