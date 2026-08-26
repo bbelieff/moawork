@@ -182,6 +182,8 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       ["onedrive", "sharepoint|999.999.999.999|:f:/g/team/client"],
       ["dropbox", "scl/fo/client/contract.pdf"],
       ["dropbox", "scl/fo/client/../../ordinary"],
+      ["dropbox", "scl/fo"],
+      ["dropbox", "scl/fo////"],
     ]) {
       expect((await db.query<{ url: string | null }>(
         "select canonical_cloud_folder_url($1,$2) url",
@@ -238,6 +240,9 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       "https://onedrive.live.com:8443/?folder=fake",
       "https://www.dropbox.com:8443/folders/fake",
       "https://www.dropbox.com/home/contract%2Epdf",
+      "https://www.dropbox.com/scl/fo",
+      "https://www.dropbox.com/sh",
+      "https://www.dropbox.com/home",
       "https://example.com/?folder=%20",
       "https://example.com/?folder=%2520",
       "https://example.com/?folder=%252520",
@@ -263,6 +268,8 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       ["google_drive", "contract.pdf"],
       ["onedrive", "short:../ordinary"],
       ["dropbox", "scl/fo/client/contract.pdf"],
+      ["dropbox", "scl/fo"],
+      ["dropbox", "scl/fo////"],
     ]) {
       await expect(db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5,$6)", [
         id(1), id(20), id(30), provider, folderRef, crypto.randomUUID(),

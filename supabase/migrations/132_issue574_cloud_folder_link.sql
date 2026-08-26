@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=4fb225d27c02a56d22ac56906b9843ab0ab468411ff19d123eade388225a2348 foundation=false
+-- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=ab3e72401784cc2d7e45fc429dc3bc796459638e252b41474fb13ae80275ec2e foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '132_issue574_cloud_folder_link',
   p_file_name => '132_issue574_cloud_folder_link.sql',
-  p_file_digest => '4fb225d27c02a56d22ac56906b9843ab0ab468411ff19d123eade388225a2348',
+  p_file_digest => 'ab3e72401784cc2d7e45fc429dc3bc796459638e252b41474fb13ae80275ec2e',
   p_expected_predecessor => '131_issue528_item_phone_review_status',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -404,7 +404,7 @@ begin
     v_match := pg_catalog.regexp_match(p_folder_ref, '^sharepoint\|([^|]+)\|(.+)$');
     v_url := 'https://' || v_match[1] || '.sharepoint.com/' || v_match[2];
   elsif p_provider = 'dropbox'
-        and p_folder_ref ~ '^(?:scl/fo|sh|home)/[A-Za-z0-9._!~/-]+$'
+        and p_folder_ref ~ '^(?:scl/fo|sh|home)/[A-Za-z0-9._!~-]+(?:/[A-Za-z0-9._!~-]+)*$'
         and p_folder_ref !~ '(^|/)\.{1,2}(/|$)'
         and p_folder_ref !~* '\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)$' then
     v_url := 'https://www.dropbox.com/' || p_folder_ref;

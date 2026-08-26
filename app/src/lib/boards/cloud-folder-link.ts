@@ -125,7 +125,12 @@ function isDropboxFolder(url: URL) {
     : segments[0] === "sh" || segments[0] === "home"
       ? 1
       : -1;
-  return identifierIndex >= 0 && validFolderIdentifier(segments.at(-1));
+  return (
+    identifierIndex >= 0 &&
+    identifierIndex < segments.length &&
+    validFolderIdentifier(segments[identifierIndex]) &&
+    validFolderIdentifier(segments.at(-1))
+  );
 }
 
 export function inspectCloudFolderUrl(raw: string): CloudFolderUrlResult {
