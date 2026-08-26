@@ -347,7 +347,7 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
     );
     for (const copy of [
       "회사 정보",
-      "첨부 · 링크",
+      "클라우드 폴더",
       "TXT 추출",
       "CSV",
       "연관담당",
@@ -367,6 +367,60 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
       'window.addEventListener("hashchange", syncFromHash)',
     );
     expect(source).toContain("window.history.replaceState");
+  });
+
+  it("클라우드 폴더 1개를 중심에 두고 이전 링크·첨부는 읽기 전용으로 보존한다", () => {
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={row}
+        columns={columns}
+        boardLayout={[{ key: "company", source: "column" }]}
+        layout={[{ key: "company", source: "column" }]}
+        inherited
+        canEditItems
+        canManageColumns
+        defaultOpen
+        initialDetail={{
+          ok: true,
+          events: [],
+          cloudFolder: {
+            id: "folder-a",
+            url: "https://drive.google.com/drive/folders/folder-a",
+            provider: "google_drive",
+            providerLabel: "Google Drive",
+          },
+          links: [
+            {
+              id: "legacy-link",
+              label: "예전 견적 자료",
+              url: "https://legacy.example.com/folders/quote",
+              created_at: "2026-08-01T00:00:00Z",
+            },
+          ],
+          files: [
+            {
+              id: "legacy-file",
+              name: "견적서.pdf",
+              mime_type: "application/pdf",
+              size_bytes: 1024,
+              created_at: "2026-08-01T00:00:00Z",
+              downloadUrl: "https://storage.example.com/file",
+            },
+          ],
+          members: [],
+        }}
+      />,
+    );
+    expect(html).toContain("Google Drive");
+    expect(html).toContain("폴더 열기");
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener noreferrer"');
+    expect(html).toContain("이전 첨부·링크 2개");
+    expect(html).toContain("예전 견적 자료");
+    expect(html).toContain("견적서.pdf");
+    expect(html).not.toContain("파일 첨부");
+    expect(html).not.toContain("링크 이름");
   });
 
   it.each<CloseChannel>(["Escape", "backdrop", "close button"])(
