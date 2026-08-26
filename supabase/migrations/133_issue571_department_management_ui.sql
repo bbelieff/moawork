@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=133_issue571_department_management_ui predecessor=132_issue574_cloud_folder_link digest=4714c5472a2dd1ab32515f183dbf488dfe27f4c32d98236aab56401d645879b4 foundation=false
+-- moa-migration-guard: logical_key=133_issue571_department_management_ui predecessor=132_issue574_cloud_folder_link digest=c6e6fa91a7c7bade4decf016fda266c3b067143785b326b01e7e38f11ad709e1 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '133_issue571_department_management_ui',
   p_file_name => '133_issue571_department_management_ui.sql',
-  p_file_digest => '4714c5472a2dd1ab32515f183dbf488dfe27f4c32d98236aab56401d645879b4',
+  p_file_digest => 'c6e6fa91a7c7bade4decf016fda266c3b067143785b326b01e7e38f11ad709e1',
   p_expected_predecessor => '132_issue574_cloud_folder_link',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -31,7 +31,6 @@ as $$
 declare v_actor uuid := auth.uid();
 begin
   if v_actor is null
-     or not public.member_account_session_valid()
      or not exists (
        select 1
          from public.org_members m

@@ -30,7 +30,6 @@ create function public.begin_guarded_migration(
   p_logical_key text, p_file_name text, p_file_digest text,
   p_expected_predecessor text, p_executor text, p_thread_id text, p_foundation boolean
 ) returns void language sql as $$ select $$;
-create function public.member_account_session_valid() returns boolean language sql stable as $$ select true $$;
 
 create table public.orgs(id uuid primary key, status text not null default 'active');
 create table public.users(id uuid primary key);
