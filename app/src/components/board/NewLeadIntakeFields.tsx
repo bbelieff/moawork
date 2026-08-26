@@ -82,7 +82,8 @@ export function RevenueBandField({ invalid = false }: { invalid?: boolean }) {
         </select>
       </label>
       {selected === "그외" ? (
-        <label className="grid gap-1 text-xs text-mw-sub">그외 매출 구간
+        <label className="grid gap-1 text-xs text-mw-sub">
+          <span>그외 매출 구간 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
           <input name="revenue_band_custom" required className={CONTROL} placeholder="예: 9,000만원~1억" />
         </label>
       ) : null}
