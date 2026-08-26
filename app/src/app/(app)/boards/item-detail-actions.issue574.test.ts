@@ -114,7 +114,8 @@ describe("Issue #574 cloud folder server actions", () => {
       p_org_id: ids.org,
       p_board_id: ids.board,
       p_item_id: ids.item,
-      p_url: "https://drive.google.com/drive/folders/customer-a",
+      p_provider: "google_drive",
+      p_folder_ref: "customer-a",
       p_request_id: ids.request,
     });
     expect(result.cloudFolder).toMatchObject({ providerLabel: "Google Drive" });
@@ -133,7 +134,8 @@ describe("Issue #574 cloud folder server actions", () => {
       p_org_id: ids.org,
       p_board_id: ids.board,
       p_item_id: ids.item,
-      p_url: null,
+      p_provider: null,
+      p_folder_ref: null,
       p_request_id: ids.request,
     });
   });

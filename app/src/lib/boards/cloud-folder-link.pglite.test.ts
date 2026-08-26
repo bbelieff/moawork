@@ -79,14 +79,14 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       [id(100)],
     )).rows[0];
     await actor(id(10));
-    await db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5)", [
-      id(1), id(20), id(30), "https://drive.google.com/drive/folders/first", id(101),
+    await db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5,$6)", [
+      id(1), id(20), id(30), "google_drive", "first", id(101),
     ]);
-    await db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5)", [
-      id(1), id(20), id(30), "https://www.dropbox.com/scl/fo/second/share", id(102),
+    await db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5,$6)", [
+      id(1), id(20), id(30), "dropbox", "scl/fo/second/share", id(102),
     ]);
-    await db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5)", [
-      id(1), id(20), id(30), "https://www.dropbox.com/scl/fo/second/share", id(102),
+    await db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5,$6)", [
+      id(1), id(20), id(30), "dropbox", "scl/fo/second/share", id(102),
     ]);
 
     expect((await db.query<{ count: number; url: string }>(
@@ -97,11 +97,11 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       [id(100)],
     )).rows[0]).toEqual(legacyBefore);
 
-    await db.query("select * from set_board_item_cloud_folder($1,$2,$3,null,$4)", [
-      id(1), id(20), id(30), id(103),
+    await db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5,$6)", [
+      id(1), id(20), id(30), null, null, id(103),
     ]);
-    await db.query("select * from set_board_item_cloud_folder($1,$2,$3,null,$4)", [
-      id(1), id(20), id(30), id(103),
+    await db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5,$6)", [
+      id(1), id(20), id(30), null, null, id(103),
     ]);
     expect((await db.query<{ count: number }>(
       "select count(*)::int count from board_item_detail_links where link_kind='cloud_folder'",
@@ -111,7 +111,7 @@ describe("Issue #574 canonical cloud folder persistence", () => {
     )).rows[0].count).toBe(1);
   });
 
-  it("keeps the client and database URL decisions in lockstep", async () => {
+  it("passes only provider references to the database canonical URL builder", async () => {
     const examples = [
       "https://drive.google.com/drive/folders/folder-id",
       "https://onedrive.live.com/?id=root%21folder&cid=drive-id",
@@ -165,12 +165,28 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       "https://example.com/an-ordinary-page",
     ];
     for (const raw of examples) {
-      const clientAllowed = inspectCloudFolderUrl(raw).ok;
-      const databaseAllowed = (await db.query<{ allowed: boolean }>(
-        "select is_cloud_folder_url($1) allowed",
-        [raw],
-      )).rows[0].allowed;
-      expect(databaseAllowed, raw).toBe(clientAllowed);
+      const inspected = inspectCloudFolderUrl(raw);
+      if (!inspected.ok) continue;
+      const databaseUrl = (await db.query<{ url: string | null }>(
+        "select canonical_cloud_folder_url($1,$2) url",
+        [inspected.provider, inspected.folderRef],
+      )).rows[0].url;
+      expect(databaseUrl, raw).toBe(inspected.url);
+    }
+    for (const [provider, folderRef] of [
+      ["cloud_folder", "folders/client"],
+      ["google_drive", "../ordinary"],
+      ["google_drive", "contract.pdf"],
+      ["onedrive", "short:../ordinary"],
+      ["onedrive", "live:folder:"],
+      ["onedrive", "sharepoint|999.999.999.999|:f:/g/team/client"],
+      ["dropbox", "scl/fo/client/contract.pdf"],
+      ["dropbox", "scl/fo/client/../../ordinary"],
+    ]) {
+      expect((await db.query<{ url: string | null }>(
+        "select canonical_cloud_folder_url($1,$2) url",
+        [provider, folderRef],
+      )).rows[0].url, `${provider}:${folderRef}`).toBeNull();
     }
   });
 
@@ -237,46 +253,51 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       "https://example.com/?FOLDER=client",
       "https://example.com/?%2566older=client",
       "https://onedrive.live.com/?%2569d=folder",
+      "https://999.999.999.999/folders/client",
       "https://example.com/ordinary-page",
     ]) {
-      await expect(db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5)", [
-        id(1), id(20), id(30), unsafe, crypto.randomUUID(),
-      ])).rejects.toThrow(/invalid_cloud_folder_url/);
+      expect(inspectCloudFolderUrl(unsafe).ok, unsafe).toBe(false);
+    }
+    for (const [provider, folderRef] of [
+      ["cloud_folder", "folders/client"],
+      ["google_drive", "contract.pdf"],
+      ["onedrive", "short:../ordinary"],
+      ["dropbox", "scl/fo/client/contract.pdf"],
+    ]) {
+      await expect(db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5,$6)", [
+        id(1), id(20), id(30), provider, folderRef, crypto.randomUUID(),
+      ])).rejects.toThrow(/invalid_cloud_folder_reference/);
     }
     await actor(id(12));
-    await expect(db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5)", [
-      id(1), id(20), id(30), "https://drive.google.com/drive/folders/cross-org", id(110),
+    await expect(db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5,$6)", [
+      id(1), id(20), id(30), "google_drive", "cross-org", id(110),
     ])).rejects.toThrow(/permission_denied/);
     await actor(id(13));
-    await expect(db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5)", [
-      id(1), id(20), id(30), "https://drive.google.com/drive/folders/unassigned", id(111),
+    await expect(db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5,$6)", [
+      id(1), id(20), id(30), "google_drive", "unassigned", id(111),
     ])).rejects.toThrow(/permission_denied/);
     await actor(id(11));
     await db.exec("select set_config('test.permission.allowed','false',false)");
-    await expect(db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5)", [
-      id(1), id(20), id(30), "https://drive.google.com/drive/folders/permission-denied", id(112),
+    await expect(db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5,$6)", [
+      id(1), id(20), id(30), "google_drive", "permission-denied", id(112),
     ])).rejects.toThrow(/permission_denied/);
     await db.exec("select set_config('test.permission.allowed','true',false)");
-    await expect(db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5)", [
-      id(1), id(20), id(30), "https://drive.google.com/drive/folders/assigned", id(113),
+    await expect(db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5,$6)", [
+      id(1), id(20), id(30), "google_drive", "assigned", id(113),
     ])).resolves.toBeTruthy();
   });
 
   it("leaves the request ledger private and grants only the authenticated RPC", async () => {
     expect((await db.query<{ allowed: boolean }>(
-      "select has_function_privilege('authenticated','public.set_board_item_cloud_folder(uuid,uuid,uuid,text,uuid)','EXECUTE') allowed",
+      "select has_function_privilege('authenticated','public.set_board_item_cloud_folder(uuid,uuid,uuid,text,text,uuid)','EXECUTE') allowed",
     )).rows[0].allowed).toBe(true);
     for (const role of ["anon", "service_role"]) {
       expect((await db.query<{ allowed: boolean }>(
-        `select has_function_privilege('${role}','public.set_board_item_cloud_folder(uuid,uuid,uuid,text,uuid)','EXECUTE') allowed`,
+        `select has_function_privilege('${role}','public.set_board_item_cloud_folder(uuid,uuid,uuid,text,text,uuid)','EXECUTE') allowed`,
       )).rows[0].allowed).toBe(false);
     }
     for (const signature of [
-      "public.decode_cloud_folder_url(text)",
-      "public.decode_cloud_folder_query_key_once(text)",
-      "public.is_cloud_folder_identifier(text,boolean)",
-      "public.has_cloud_folder_query_identifier(text,text)",
-      "public.is_cloud_folder_url(text)",
+      "public.canonical_cloud_folder_url(text,text)",
     ]) {
       for (const role of ["anon", "authenticated", "service_role"]) {
         expect((await db.query<{ allowed: boolean }>(
@@ -298,6 +319,18 @@ describe("Issue #574 canonical cloud folder persistence", () => {
         )).rows[0].allowed).toBe(false);
       }
     }
+    for (const removedSignature of [
+      "public.is_cloud_folder_url(text)",
+      "public.decode_cloud_folder_url(text)",
+    ]) {
+      expect((await db.query<{ signature: string | null }>(
+        "select to_regprocedure($1)::text signature",
+        [removedSignature],
+      )).rows[0].signature).toBeNull();
+    }
+    expect((await db.query<{ signature: string | null }>(
+      "select to_regprocedure('public.set_board_item_cloud_folder(uuid,uuid,uuid,text,uuid)')::text signature",
+    )).rows[0].signature).toBeNull();
     expect((await db.query<{ rls: boolean; forced: boolean }>(
       "select relrowsecurity rls,relforcerowsecurity forced from pg_class where oid='public.board_item_cloud_folder_requests'::regclass",
     )).rows[0]).toEqual({ rls: true, forced: true });
@@ -307,7 +340,7 @@ describe("Issue #574 canonical cloud folder persistence", () => {
     const procedure = (await db.query<{ definer: boolean; config: string }>(`
       select prosecdef definer,coalesce(array_to_string(proconfig,','),'') config
         from pg_proc
-       where oid='public.set_board_item_cloud_folder(uuid,uuid,uuid,text,uuid)'::regprocedure
+       where oid='public.set_board_item_cloud_folder(uuid,uuid,uuid,text,text,uuid)'::regprocedure
     `)).rows[0];
     expect(procedure.definer).toBe(true);
     expect(procedure.config).toContain("search_path=");

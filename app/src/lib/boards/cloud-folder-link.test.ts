@@ -3,16 +3,14 @@ import { inspectCloudFolderUrl } from "./cloud-folder-link";
 
 describe("Issue #574 cloud folder URL", () => {
   it.each([
-    ["https://drive.google.com/drive/folders/folder-id", "google_drive", "Google Drive"],
-    ["https://drive.google.com/drive/u/1/folders/folder-id?usp=sharing", "google_drive", "Google Drive"],
-    ["https://1drv.ms/f/s!folder-share", "onedrive", "OneDrive"],
-    ["https://onedrive.live.com/?id=root%21folder&cid=drive-id", "onedrive", "OneDrive"],
-    ["https://tenant.sharepoint.com/:f:/g/team/folder", "onedrive", "OneDrive"],
-    ["https://tenant.sharepoint.com/sites/team/Forms/AllItems.aspx?id=%2FShared%20Documents%2FClient", "onedrive", "OneDrive"],
-    ["https://www.dropbox.com/scl/fo/folder-id/example", "dropbox", "Dropbox"],
-    ["https://cloud.example.com/folders/customer-a", "cloud_folder", "클라우드 폴더"],
-  ])("accepts a folder URL and detects its provider: %s", (raw, provider, label) => {
-    expect(inspectCloudFolderUrl(raw)).toMatchObject({ ok: true, provider, providerLabel: label });
+    ["https://drive.google.com/drive/folders/folder-id", "google_drive", "Google Drive", "folder-id"],
+    ["https://drive.google.com/drive/u/1/folders/folder-id?usp=sharing", "google_drive", "Google Drive", "folder-id"],
+    ["https://1drv.ms/f/s!folder-share", "onedrive", "OneDrive", "short:s!folder-share"],
+    ["https://onedrive.live.com/?id=root%21folder&cid=drive-id", "onedrive", "OneDrive", "live:root!folder:drive-id"],
+    ["https://tenant.sharepoint.com/:f:/g/team/folder", "onedrive", "OneDrive", "sharepoint|tenant|:f:/g/team/folder"],
+    ["https://www.dropbox.com/scl/fo/folder-id/example", "dropbox", "Dropbox", "scl/fo/folder-id/example"],
+  ])("accepts a folder URL and emits a narrow provider reference: %s", (raw, provider, label, folderRef) => {
+    expect(inspectCloudFolderUrl(raw)).toMatchObject({ ok: true, provider, providerLabel: label, folderRef });
   });
 
   it.each([
@@ -79,15 +77,13 @@ describe("Issue #574 cloud folder URL", () => {
     "https://example.com/?FOLDER=client",
     "https://example.com/?%2566older=client",
     "https://onedrive.live.com/?%2569d=folder",
+    "https://tenant.sharepoint.com/sites/team/Forms/AllItems.aspx?id=%2FShared%20Documents%2FClient",
+    "https://cloud.example.com/folders/customer-a",
+    "https://example.com/?folder=%2B",
+    "https://example.com/?folder=client&preview=contract.pdf",
+    "https://999.999.999.999/folders/client",
     "https://example.com/an-ordinary-page",
   ])("rejects unsafe or non-folder input: %s", (raw) => {
     expect(inspectCloudFolderUrl(raw).ok).toBe(false);
-  });
-
-  it.each([
-    "https://example.com/?folder=%2B",
-    "https://example.com/?folder=client&preview=contract.pdf",
-  ])("accepts a valid folder identifier without interpreting unrelated URL text: %s", (raw) => {
-    expect(inspectCloudFolderUrl(raw).ok).toBe(true);
   });
 });

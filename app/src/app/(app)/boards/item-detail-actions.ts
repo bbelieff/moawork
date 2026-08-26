@@ -231,7 +231,8 @@ export async function saveItemCloudFolderAction(input: {
       p_org_id: ctx.org.id,
       p_board_id: input.boardId,
       p_item_id: input.itemId,
-      p_url: inspected.url,
+      p_provider: inspected.provider,
+      p_folder_ref: inspected.folderRef,
       p_request_id: input.requestId,
     });
     if (error)
@@ -272,7 +273,8 @@ export async function removeItemCloudFolderAction(input: {
       p_org_id: ctx.org.id,
       p_board_id: input.boardId,
       p_item_id: input.itemId,
-      p_url: null,
+      p_provider: null,
+      p_folder_ref: null,
       p_request_id: input.requestId,
     });
     if (error)

@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=b9c6f7edb38bfd00b699ac5e5560dbb6bea4f7bfd79c2b587fbd66a84449ea8a foundation=false
+-- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=4fb225d27c02a56d22ac56906b9843ab0ab468411ff19d123eade388225a2348 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '132_issue574_cloud_folder_link',
   p_file_name => '132_issue574_cloud_folder_link.sql',
-  p_file_digest => 'b9c6f7edb38bfd00b699ac5e5560dbb6bea4f7bfd79c2b587fbd66a84449ea8a',
+  p_file_digest => '4fb225d27c02a56d22ac56906b9843ab0ab468411ff19d123eade388225a2348',
   p_expected_predecessor => '131_issue528_item_phone_review_status',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -27,10 +27,15 @@ create table if not exists public.board_item_cloud_folder_requests (
   item_id uuid not null references public.items(id),
   actor_id uuid not null references public.users(id),
   operation text not null check (operation in ('set', 'remove')),
+  provider text,
+  folder_ref text,
   url text,
   created_at timestamptz not null default now(),
   primary key (org_id, request_id),
-  check ((operation = 'set' and url is not null) or (operation = 'remove' and url is null))
+  check (
+    (operation = 'set' and provider is not null and folder_ref is not null and url is not null)
+    or (operation = 'remove' and provider is null and folder_ref is null and url is null)
+  )
 );
 
 alter table public.board_item_cloud_folder_requests enable row level security;
@@ -360,11 +365,73 @@ $$;
 
 revoke all on function public.is_cloud_folder_url(text) from public, anon, authenticated, service_role;
 
+-- The authenticated boundary never receives a URL. The application parses a
+-- provider-owned share shape into a narrow reference, and this private helper
+-- reconstructs the only URL that may be persisted.
+create or replace function public.canonical_cloud_folder_url(p_provider text, p_folder_ref text)
+returns text
+language plpgsql
+immutable
+security invoker
+set search_path = ''
+as $$
+declare
+  v_match text[];
+  v_url text;
+begin
+  if p_provider is null or p_folder_ref is null or pg_catalog.length(p_folder_ref) > 1500 then
+    return null;
+  end if;
+  if p_provider = 'google_drive'
+     and pg_catalog.length(p_folder_ref) between 3 and 256
+     and p_folder_ref ~ '^[A-Za-z0-9_-]+$' then
+    v_url := 'https://drive.google.com/drive/folders/' || p_folder_ref;
+  elsif p_provider = 'onedrive'
+        and pg_catalog.length(p_folder_ref) between 9 and 518
+        and p_folder_ref ~ '^short:[A-Za-z0-9!_-]+$' then
+    v_url := 'https://1drv.ms/f/' || pg_catalog.substr(p_folder_ref, 7);
+  elsif p_provider = 'onedrive'
+        and p_folder_ref ~ '^live:[A-Za-z0-9!_-]+:[A-Za-z0-9_-]+$' then
+    v_match := pg_catalog.regexp_match(p_folder_ref, '^live:([A-Za-z0-9!_-]+):([A-Za-z0-9_-]+)$');
+    if pg_catalog.length(v_match[1]) > 512 or pg_catalog.length(v_match[2]) > 256 then
+      return null;
+    end if;
+    v_url := 'https://onedrive.live.com/?id=' || v_match[1] || '&cid=' || v_match[2];
+  elsif p_provider = 'onedrive'
+        and p_folder_ref ~ '^sharepoint\|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\|:f:/[A-Za-z0-9._!~/-]+$'
+        and p_folder_ref !~ '(^|/)\.{1,2}(/|$)'
+        and p_folder_ref !~* '\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)$' then
+    v_match := pg_catalog.regexp_match(p_folder_ref, '^sharepoint\|([^|]+)\|(.+)$');
+    v_url := 'https://' || v_match[1] || '.sharepoint.com/' || v_match[2];
+  elsif p_provider = 'dropbox'
+        and p_folder_ref ~ '^(?:scl/fo|sh|home)/[A-Za-z0-9._!~/-]+$'
+        and p_folder_ref !~ '(^|/)\.{1,2}(/|$)'
+        and p_folder_ref !~* '\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)$' then
+    v_url := 'https://www.dropbox.com/' || p_folder_ref;
+  else
+    return null;
+  end if;
+
+  return case when pg_catalog.length(v_url) <= 2048 then v_url else null end;
+end
+$$;
+
+revoke all on function public.canonical_cloud_folder_url(text, text) from public, anon, authenticated, service_role;
+
+-- Remove the provisional raw-URL parsing surface. Only the provider/reference
+-- canonicalizer above remains after this migration commits.
+drop function public.is_cloud_folder_url(text);
+drop function public.has_cloud_folder_query_identifier(text, text);
+drop function public.is_cloud_folder_identifier(text, boolean);
+drop function public.decode_cloud_folder_query_key_once(text);
+drop function public.decode_cloud_folder_url(text);
+
 create or replace function public.set_board_item_cloud_folder(
   p_org_id uuid,
   p_board_id uuid,
   p_item_id uuid,
-  p_url text,
+  p_provider text,
+  p_folder_ref text,
   p_request_id uuid
 )
 returns table(link_id uuid, operation text, url text, replayed boolean)
@@ -374,8 +441,8 @@ set search_path = ''
 as $$
 declare
   v_actor uuid := auth.uid();
-  v_operation text := case when p_url is null then 'remove' else 'set' end;
-  v_url text := case when p_url is null then null else btrim(p_url) end;
+  v_operation text := case when p_provider is null and p_folder_ref is null then 'remove' else 'set' end;
+  v_url text := public.canonical_cloud_folder_url(p_provider, p_folder_ref);
   v_request public.board_item_cloud_folder_requests;
   v_link public.board_item_detail_links;
 begin
@@ -385,8 +452,9 @@ begin
   if p_request_id is null then
     raise exception 'invalid_request_id' using errcode = '22023';
   end if;
-  if v_operation = 'set' and not public.is_cloud_folder_url(v_url) then
-    raise exception 'invalid_cloud_folder_url' using errcode = '22023';
+  if (p_provider is null) <> (p_folder_ref is null)
+     or (v_operation = 'set' and v_url is null) then
+    raise exception 'invalid_cloud_folder_reference' using errcode = '22023';
   end if;
   if not exists (
     select 1
@@ -423,6 +491,8 @@ begin
       or v_request.item_id <> p_item_id
       or v_request.actor_id <> v_actor
       or v_request.operation <> v_operation
+      or v_request.provider is distinct from p_provider
+      or v_request.folder_ref is distinct from p_folder_ref
       or v_request.url is distinct from v_url then
       raise exception 'request_replay_conflict' using errcode = '23505';
     end if;
@@ -459,18 +529,18 @@ begin
   end if;
 
   insert into public.board_item_cloud_folder_requests(
-    org_id, request_id, board_id, item_id, actor_id, operation, url
+    org_id, request_id, board_id, item_id, actor_id, operation, provider, folder_ref, url
   ) values (
-    p_org_id, p_request_id, p_board_id, p_item_id, v_actor, v_operation, v_url
+    p_org_id, p_request_id, p_board_id, p_item_id, v_actor, v_operation, p_provider, p_folder_ref, v_url
   );
 
   return query select v_link.id, v_operation, v_link.url, false;
 end;
 $$;
 
-revoke all on function public.set_board_item_cloud_folder(uuid, uuid, uuid, text, uuid)
+revoke all on function public.set_board_item_cloud_folder(uuid, uuid, uuid, text, text, uuid)
   from public, anon, authenticated, service_role;
-grant execute on function public.set_board_item_cloud_folder(uuid, uuid, uuid, text, uuid)
+grant execute on function public.set_board_item_cloud_folder(uuid, uuid, uuid, text, text, uuid)
   to authenticated;
 
 do $$
@@ -479,7 +549,7 @@ begin
     select 1
       from information_schema.role_routine_grants
      where routine_schema = 'public'
-       and routine_name in ('is_cloud_folder_url', 'set_board_item_cloud_folder')
+       and routine_name in ('canonical_cloud_folder_url', 'set_board_item_cloud_folder')
        and grantee in ('PUBLIC', 'anon', 'service_role')
   ) then
     raise exception 'unsafe_issue574_rpc_acl';
