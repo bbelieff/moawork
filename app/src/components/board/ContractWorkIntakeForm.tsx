@@ -1,9 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { rankCompanies, type CompanyPickerRow } from "@/lib/companies/search";
+import {
+  EMPTY_INTAKE_RESULT,
+  type CompanyIntakeResult,
+} from "@/lib/companies/intake-result";
 import {
   workspaceBaseFromPathname,
   workspaceHref,
@@ -26,17 +30,18 @@ import {
 export function ContractWorkIntakeForm({
   rows,
   startWorkAction,
-  requestId,
   inputClassName,
 }: {
   rows: readonly CompanyPickerRow[];
-  startWorkAction: (formData: FormData) => void | Promise<void>;
-  /** 같은 «추가» 를 두 번 눌러도 건이 둘 생기지 않게 하는 열쇠. 서버가 발급한다. */
-  requestId: string;
+  startWorkAction: (
+    prev: CompanyIntakeResult,
+    formData: FormData,
+  ) => Promise<CompanyIntakeResult>;
   inputClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [state, formAction, pending] = useActionState(startWorkAction, EMPTY_INTAKE_RESULT);
   // 「업체관리 현황」으로 보내는 링크는 «지금 회사의» 것이어야 한다 —
   // 네임스페이스를 잃으면 남의 워크스페이스로 보내는 대신 진입 화면으로 튕긴다.
   const companiesHref = workspaceHref(
@@ -69,6 +74,18 @@ export function ContractWorkIntakeForm({
         </button>
       </div>
 
+      {/*
+        ② 실패를 «말한다». 전에는 서버 액션이 모든 오류를 삼키고 void 를 돌려줬다.
+          「다시 그리면 새 건이 없다」는 피드백이 아니다 — 사용자는 그냥 또 누른다.
+          이 화면이 실제로 만나는 실패는 넷이고 전부 처방이 다르다:
+          파이프라인 없음(첫 사용) · 권한 없음 · 회사 접근 불가(병합·범위 밖) · 열쇠 재사용.
+      */}
+      {state.error ? (
+        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950 dark:text-red-200">
+          {state.error}
+        </p>
+      ) : null}
+
       <input
         autoFocus
         value={query}
@@ -82,11 +99,27 @@ export function ContractWorkIntakeForm({
       <ul className="max-h-72 overflow-y-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
         {shown.map(({ company, dealCount }) => (
           <li key={company.id} className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-900">
-            <form action={startWorkAction}>
+            {/*
+              ★ 멱등 열쇠는 «고를 때마다» 새로 만든다 — 화면을 그릴 때 한 번이 아니다.
+                전에는 서버가 렌더마다 하나를 발급해 모든 행·모든 그룹의 폼이 같은 값을 달고
+                있었다. RPC 의 멱등 열쇠는 (org_id, request_id) 이고, 같은 열쇠를 «다른 회사» 로
+                다시 쓰면 22023 으로 거절한다(117 마이그레이션). 즉 회사 A 를 고른 직후
+                회사 B 를 고르면 두 번째가 조용히 거절됐다 — 그런데 그 거절이 화면에
+                나타나지 않아서(아래 ②) 사용자에겐 «아무 일도 안 일어남» 이었다.
+                submit 시점에 만들면 선택 하나가 열쇠 하나를 갖는다. 더블클릭은 여전히
+                같은 form 이 두 번 제출되는 것이라 브라우저가 막고, pending 으로도 막는다.
+            */}
+            <form action={formAction}>
               <input type="hidden" name="companyId" value={company.id} />
-              <input type="hidden" name="requestId" value={requestId} />
+              <input
+                type="hidden"
+                name="requestId"
+                value={crypto.randomUUID()}
+                key={`${company.id}:${state.stamp}`}
+              />
               <button
                 type="submit"
+                disabled={pending}
                 className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900"
               >
                 <span

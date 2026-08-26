@@ -49,6 +49,7 @@ import { TrashItemButton } from "./ItemTrashControls";
 import { AddItemForm } from "./AddItemForm";
 import { ContractWorkIntakeForm } from "./ContractWorkIntakeForm";
 import type { CompanyPickerRow } from "@/lib/companies/search";
+import type { CompanyIntakeResult } from "@/lib/companies/intake-result";
 import { ColumnContextMenu } from "./ColumnContextMenu";
 import type {
   ColumnScheduleItemOption,
@@ -452,8 +453,10 @@ export function GroupTable({
    */
   companyPicker?: {
     rows: readonly CompanyPickerRow[];
-    action: (formData: FormData) => void | Promise<void>;
-    requestId: string;
+    action: (
+      prev: CompanyIntakeResult,
+      formData: FormData,
+    ) => Promise<CompanyIntakeResult>;
   };
   // 담당자 선택 타입은 main 쪽(#576)이 넓혔다 — 내 브랜치의 좁은 형태로 되돌리지 않는다.
   newLeadMembers?: readonly MemberPickerMember[];
@@ -904,7 +907,6 @@ export function GroupTable({
                   <ContractWorkIntakeForm
                     rows={companyPicker.rows}
                     startWorkAction={companyPicker.action}
-                    requestId={companyPicker.requestId}
                     inputClassName={`${CELL_INPUT} w-full max-w-md`}
                   />
                 ) : (

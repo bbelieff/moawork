@@ -101,7 +101,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     //   **탭에 들어가 있는데 사이드바가 통째로 회색이었다.**
     //   위에서 뺀 것은 «직렬로 붙던» 조회였고 이것은 이 Promise.all 안에서 같이 출발하므로
     //   벽시계 시간이 늘지 않는다. 실패하면 빈 지도라 셸은 그대로 뜬다.
-    (async () => loadBoardNavKeys(ctx, (await createRequestBoards()).repo))(),
+    loadBoardNavKeys(ctx, async () => (await createRequestBoards()).repo),
   ]);
   const switcherWorkspaces = routing.kind === "ready"
     ? buildSwitcherWorkspaces(routing.memberships, orgLogoUrls)

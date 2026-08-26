@@ -8,14 +8,20 @@ import type { Ctx } from "@/lib/types";
 /**
  * 「업체 추가」 목록 — 회사 + 그 회사로 이미 진행한 자금 건 수.
  *
- * ★ 실패를 «회사 없음» 으로 위장하지 않는다.
+ * ★ 「못 읽었다」와 「회사가 없다」를 구분한다.
  *   빈 목록을 돌려주면 화면이 「찾은 업체가 없습니다」 라고 말하고, 사람은 «없구나» 하고
- *   새로 만든다 — 그게 바로 이 화면이 막으려던 중복이다. 못 읽었으면 빈 배열을 주되
- *   호출부가 그 사실을 구분할 수 있도록 «읽기 자체를 시도하지 않은 경우» 와만 같게 둔다.
- *   (지금은 계약업체 실무 진입에서만 부르고, 실패 시 화면이 목록 대신 안내를 낸다.)
+ *   새로 만든다 — 그게 바로 이 화면이 막으려던 중복이다.
+ *   처음 판에는 이 주석만 있고 구분이 «구현돼 있지 않았다». 둘 다 빈 배열이었다.
+ *   이제 kind 로 갈라서, 못 읽었으면 호출부가 회사 고르기 대신
+ *   **원래의 이름 입력칸을 그대로 둔다** — 항목을 아예 못 만드는 것보다 낫다.
  */
-export async function loadCompanyPickerRows(ctx: Ctx): Promise<CompanyPickerRow[]> {
-  if (!hasSupabaseEnv()) return [];
+export type CompanyPickerLoad =
+  | { kind: "ready"; rows: CompanyPickerRow[] }
+  | { kind: "unavailable" };
+
+export async function loadCompanyPickerRows(ctx: Ctx): Promise<CompanyPickerLoad> {
+  // 로컬 시드에는 Supabase 가 없다. 그때도 «못 읽음» 이다 — 빈 회사 목록이 아니다.
+  if (!hasSupabaseEnv()) return { kind: "unavailable" };
   try {
     const client = await createClient();
     const crm = new AsyncCrmService(new SupabaseCrmSource(client));
@@ -27,8 +33,11 @@ export async function loadCompanyPickerRows(ctx: Ctx): Promise<CompanyPickerRow[
       counts.set(deal.company_id, (counts.get(deal.company_id) ?? 0) + 1);
     }
 
-    return companies.map((company) => ({ company, dealCount: counts.get(company.id) ?? 0 }));
+    return {
+      kind: "ready",
+      rows: companies.map((company) => ({ company, dealCount: counts.get(company.id) ?? 0 })),
+    };
   } catch {
-    return [];
+    return { kind: "unavailable" };
   }
 }

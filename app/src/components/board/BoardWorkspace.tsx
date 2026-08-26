@@ -47,6 +47,7 @@ import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
 import type { CompanyPickerRow } from "@/lib/companies/search";
+import type { CompanyIntakeResult } from "@/lib/companies/intake-result";
 import { NEW_LEAD_DETAIL_ONLY_KEYS, presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
 import { NOTICE_KEYS } from "@/lib/notices/types";
 import { buildBlocks } from "./blocks";
@@ -151,15 +152,20 @@ export function BoardWorkspace({
   cellAction,
   itemDetailFixture,
   workflowTransitionSlot,
-  contractWorkCompanies = [],
+  contractWorkCompanies = null,
   startCompanyWorkAction,
-  companyIntakeRequestId,
 }: {
   board: Board;
-  /** 계약업체 실무에서만 채워진다 — 「＋ 업체 추가」 목록. 다른 보드는 빈 배열이다. */
-  contractWorkCompanies?: readonly CompanyPickerRow[];
-  startCompanyWorkAction?: (formData: FormData) => void | Promise<void>;
-  companyIntakeRequestId?: string;
+  /**
+   * 계약업체 실무의 「＋ 업체 추가」 목록.
+   * null = «못 읽었다» — 이때는 고르기를 띄우지 않고 원래 입력칸을 남긴다.
+   * 빈 배열 = «회사가 정말 없다» — 이때는 고르기를 띄우고 안내를 보여준다.
+   */
+  contractWorkCompanies?: readonly CompanyPickerRow[] | null;
+  startCompanyWorkAction?: (
+    prev: CompanyIntakeResult,
+    formData: FormData,
+  ) => Promise<CompanyIntakeResult>;
   columns: BoardColumn[];
   groups: BoardGroup[];
   rows: ItemWithValues[];
@@ -302,6 +308,18 @@ export function BoardWorkspace({
   }, [orderedGroups, persistGroupOrder]);
 
   const blocks = useMemo(() => buildBlocks(orderedGroups, displayRows), [orderedGroups, displayRows]);
+
+  /**
+   * 「＋ 업체 추가」를 띄울지 — 계약업체 실무이면서 «목록을 실제로 읽었을 때» 만이다.
+   *
+   * `contractWorkCompanies` 가 null 이면 못 읽은 것이다. 그때 빈 고르기를 띄우면
+   * 화면이 「찾은 업체가 없습니다」라고 말하고, 사람은 «없구나» 하며 새로 만든다 —
+   * 그게 바로 이 기능이 막으려던 중복이다. 못 읽었으면 원래의 이름 입력칸을 그대로 둔다.
+   */
+  const companyPickerProps =
+    board.source === CONTRACT_WORK_TAB_SOURCE && startCompanyWorkAction && contractWorkCompanies
+      ? { companyPicker: { rows: contractWorkCompanies, action: startCompanyWorkAction } }
+      : {};
   const people = useMemo(() => assigneeOptions(rows, assigneeLabels), [rows, assigneeLabels]);
   const scheduleItems = useMemo(() => displayRows.map((row) => ({ id: row.id, label: row.title })), [displayRows]);
   const scheduleRecipients = useMemo(
@@ -537,9 +555,7 @@ export function BoardWorkspace({
                 groupName={block.name}
                 canonicalNewLead={board.source === NEW_LEAD_TAB_SOURCE}
                 newLeadMembers={scheduleRecipients}
-                {...(board.source === CONTRACT_WORK_TAB_SOURCE && startCompanyWorkAction && companyIntakeRequestId
-                  ? { companyPicker: { rows: contractWorkCompanies, action: startCompanyWorkAction, requestId: companyIntakeRequestId } }
-                  : {})}
+                {...companyPickerProps}
                 itemDetailFixture={itemDetailFixture}
                 currentUserId={currentUserId}
                 groupId={block.group?.id ?? null}
