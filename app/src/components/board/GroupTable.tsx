@@ -58,6 +58,9 @@ import type {
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
 import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
 import { NewLeadMessageCell } from "./NewLeadMessageCell";
+import { NewLeadLoanCell } from "./NewLeadLoanCell";
+import { NewLeadCreditScoreCell } from "./NewLeadCreditScoreCell";
+import { CREDIT_SCORE_KEYS, EXISTING_LOAN_KEYS } from "@/lib/new-lead/financial-profile";
 import { WorkflowProgressCell } from "./WorkflowProgressCell";
 import {
   WORKFLOW_PROGRESS_KEY,
@@ -76,7 +79,7 @@ import {
 } from "@/app/(app)/boards/actions";
 
 const CELL_INPUT =
-  "w-full rounded border border-transparent bg-transparent px-1.5 py-0.5 text-xs text-mw-fg outline-none hover:border-mw-line focus:border-mw-record";
+  "w-full rounded border border-mw-line bg-mw-card px-1.5 py-0.5 text-xs text-mw-fg outline-none hover:border-mw-record focus:border-mw-record";
 
 /** 헤더/셀 공통 — 첫 열(이름)을 가로 스크롤에서 고정한다. */
 const STICKY_FIRST = "sticky left-0 z-[var(--mw-layer-board-cell)] bg-mw-card";
@@ -230,9 +233,35 @@ export function BoardCell({
     );
   }
 
+  if (canonicalNewLead && column.key === EXISTING_LOAN_KEYS.amount) {
+    return (
+      <NewLeadLoanCell
+        boardId={boardId}
+        itemId={row.id}
+        values={row.values}
+        readOnly={cellReadOnly}
+      />
+    );
+  }
+
+  if (
+    canonicalNewLead &&
+    (column.key === CREDIT_SCORE_KEYS.ncb || column.key === CREDIT_SCORE_KEYS.kcb)
+  ) {
+    return (
+      <NewLeadCreditScoreCell
+        boardId={boardId}
+        itemId={row.id}
+        fieldKey={column.key}
+        label={column.key === CREDIT_SCORE_KEYS.ncb ? "NCB" : "KCB"}
+        value={value}
+        readOnly={cellReadOnly}
+      />
+    );
+  }
+
   if (cellReadOnly) {
     const display =
-      column.type === "select" ||
       column.type === "status" ||
       column.type === "person" ||
       column.type === "multiselect" ||
@@ -335,13 +364,27 @@ export function BoardCell({
               aria-label={column.label}
             />
           </>
-        ) : column.type === "select" || column.type === "status" ? (
+        ) : column.type === "status" ? (
           <StatusSelect
             name="value"
             value={value}
             options={options}
             className={`${CELL_INPUT} cursor-pointer`}
           />
+        ) : column.type === "select" ? (
+          <select
+            name="value"
+            defaultValue={typeof value === "string" ? value : ""}
+            className={`${CELL_INPUT} cursor-pointer`}
+            aria-label={column.label}
+          >
+            <option value="">—</option>
+            {options.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         ) : column.type === "person" ? (
           <>
             <input type="hidden" name="kind" value="person" />

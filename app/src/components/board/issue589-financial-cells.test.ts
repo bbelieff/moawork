@@ -25,4 +25,16 @@ describe("Issue #589 신규리드 금융 셀", () => {
     expect(source).toContain('fieldKey === "credit_score_ncb"');
     expect(source).toContain('fieldKey === "existing_loan_rate" ? 100');
   });
+
+  it("신규리드 표는 금융 전용 편집기를 연결하고 일반 선택 필드에 상태 배색을 쓰지 않는다", () => {
+    const source = readFileSync(new URL("./GroupTable.tsx", import.meta.url), "utf8");
+    expect(source).toContain("<NewLeadLoanCell");
+    expect(source).toContain("<NewLeadCreditScoreCell");
+    expect(source).toContain('column.key === EXISTING_LOAN_KEYS.amount');
+    expect(source).toContain('column.key === CREDIT_SCORE_KEYS.ncb');
+    expect(source).toContain('column.type === "status" ? (');
+    expect(source).toContain(') : column.type === "select" ? (');
+    expect(source).toContain("border-mw-line bg-mw-card");
+    expect(source).not.toContain("border-transparent bg-transparent px-1.5");
+  });
 });
