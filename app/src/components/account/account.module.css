@@ -48,7 +48,7 @@
 
 .menuPanel {
   position: absolute;
-  z-index: 30;
+  z-index: var(--mw-layer-shell-popover);
   top: calc(100% + 8px);
   right: 0;
   width: min(300px, calc(100vw - 24px));

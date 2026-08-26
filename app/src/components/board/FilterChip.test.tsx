@@ -32,14 +32,14 @@ async function mountFilter() {
   return {
     opener,
     dialog: document.querySelector<HTMLElement>('[role="dialog"]')!,
-    backdrop: document.querySelector<HTMLElement>(".mw-layer-dialog")!,
+    backdrop: document.querySelector<HTMLElement>(".mw-layer-page-popover")!,
   };
 }
 
 describe("Issue #542 filter portal", () => {
   it("body portal에서 열고 내부 클릭은 유지하며 Escape 뒤 opener로 돌아간다", async () => {
     const { opener, dialog } = await mountFilter();
-    expect(dialog.parentElement).toBe(document.querySelector(".mw-layer-dialog"));
+    expect(dialog.parentElement).toBe(document.querySelector(".mw-layer-page-popover"));
     expect(dialog.closest("body")).toBe(document.body);
     expect(document.activeElement?.textContent).toBe("전체");
     await act(async () => dialog.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })));

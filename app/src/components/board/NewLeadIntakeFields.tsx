@@ -127,7 +127,7 @@ function RegionCombobox({ name, label, value, onValue, suggestions, disabled = f
         className={`${CONTROL} disabled:bg-mw-bg disabled:text-mw-sub`}
         placeholder={disabled ? "시도를 먼저 선택하세요" : `${label} 또는 초성 검색`} />
       {open && visible.length > 0 ? (
-        <ul id={listId} role="listbox" className="absolute left-0 right-0 top-[4.2rem] z-40 max-h-56 overflow-auto rounded-lg border border-mw-line bg-mw-card p-1 shadow-xl">
+        <ul id={listId} role="listbox" className="mw-layer-page-popover absolute left-0 right-0 top-[4.2rem] max-h-56 overflow-auto rounded-lg border border-mw-line bg-mw-card p-1 shadow-xl">
           {visible.map((entry, index) => (
             <li key={entry.value} id={`${listId}-${index}`} role="option" aria-selected={index === active}
               onMouseDown={(event) => event.preventDefault()} onClick={() => choose(entry)}

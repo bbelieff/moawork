@@ -73,7 +73,7 @@ export function ColumnContextMenu({ boardId, column, slots = {}, scheduleItems =
       onClick={(event) => { event.stopPropagation(); setOpen((value) => !value); }}
       onKeyDown={(event) => { if ((event.shiftKey && event.key === "F10") || event.key === "ContextMenu") { event.preventDefault(); setOpen(true); } }}
       className="ml-auto rounded px-1 text-mw-sub hover:bg-mw-bg focus:outline-none focus:ring-2 focus:ring-mw-primary">⋯</button>
-    {open ? <div role="menu" aria-label={`${column.label} 구조 변경`} className="absolute right-0 z-50 mt-1 w-52 rounded border border-mw-line bg-mw-card p-1 text-left shadow-lg">
+    {open ? <div role="menu" aria-label={`${column.label} 구조 변경`} className="mw-layer-page-popover absolute right-0 mt-1 w-52 rounded border border-mw-line bg-mw-card p-1 text-left shadow-lg">
       <MenuItem onClick={() => setPanel("duplicate")}>컬럼 복제</MenuItem>
       <MenuItem onClick={() => setPanel("add")}>오른쪽에 컬럼 추가</MenuItem>
       <MenuItem onClick={() => setPanel("type")}>컬럼 유형 변경</MenuItem>
@@ -82,7 +82,7 @@ export function ColumnContextMenu({ boardId, column, slots = {}, scheduleItems =
       <MenuItem onClick={() => setPanel("rename")}>이름 바꾸기</MenuItem>
       <MenuItem danger onClick={() => { if (window.confirm(`«${column.label}» 컬럼을 휴지통으로 옮길까요? 값은 보존됩니다.`)) submit("archive"); }}>삭제</MenuItem>
     </div> : null}
-    {panel ? <div role="dialog" aria-modal="true" aria-label={`${column.label} 컬럼 변경`} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30" onKeyDown={(event) => { if (event.key === "Escape") close(); }}>
+    {panel ? <div role="dialog" aria-modal="true" aria-label={`${column.label} 컬럼 변경`} className="mw-layer-dialog fixed inset-0 flex items-center justify-center bg-black/30" onKeyDown={(event) => { if (event.key === "Escape") close(); }}>
       <div ref={dialogRef} tabIndex={-1} className={`max-h-[90vh] w-full overflow-y-auto rounded bg-mw-card p-4 shadow-xl ${panel === "settings" ? "max-w-2xl" : "max-w-md"}`} onClick={(event) => event.stopPropagation()}>
         <h2 className="mb-3 text-base font-semibold">{column.label}</h2>
         {panel === "duplicate" ? <SimpleForm submit={(data) => submit("duplicate", { copyValues: data.copyValues ?? "false" })} fields={<label className="flex items-start gap-2 text-sm"><input type="checkbox" name="copyValues" value="true" /><span>행 값도 복제<br /><span className="text-mw-sub">기본은 구조·설정만 복제하며 기존 행 값은 비어 있습니다.</span></span></label>} /> : null}
@@ -94,7 +94,7 @@ export function ColumnContextMenu({ boardId, column, slots = {}, scheduleItems =
         <button type="button" onClick={close} className="mt-4 rounded border px-3 py-1.5">닫기</button>
       </div>
     </div> : null}
-    {state.message ? <div role={state.ok ? "status" : "alert"} className={`fixed bottom-5 right-5 z-[70] rounded px-4 py-3 shadow ${state.ok ? "bg-mw-card" : "bg-red-50 text-red-700"}`}>
+    {state.message ? <div role={state.ok ? "status" : "alert"} className={`mw-layer-toast fixed bottom-5 right-5 rounded px-4 py-3 shadow ${state.ok ? "bg-mw-card" : "bg-red-50 text-red-700"}`}>
       {state.message}
     </div> : null}
   </div>;

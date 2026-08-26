@@ -5,7 +5,7 @@
   place-items: center;
   padding: 20px;
   background: color-mix(in srgb, var(--mw-fg) 45%, transparent);
-  z-index: 60;
+  z-index: var(--mw-layer-dialog);
 }
 
 .dialog {

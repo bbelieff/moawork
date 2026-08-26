@@ -145,7 +145,7 @@ export function GroupPresetMenu({
 
       <div
         id={panelId}
-        className="absolute right-0 z-20 mt-1 flex w-[min(20rem,calc(100vw-2rem))] flex-col gap-3 rounded-xl border border-mw-line bg-mw-card p-3 text-left text-xs shadow-lg"
+        className="mw-layer-page-popover absolute right-0 mt-1 flex w-[min(20rem,calc(100vw-2rem))] flex-col gap-3 rounded-xl border border-mw-line bg-mw-card p-3 text-left text-xs shadow-lg"
       >
         <div>
           <p className="font-semibold text-mw-fg">업무 양식</p>

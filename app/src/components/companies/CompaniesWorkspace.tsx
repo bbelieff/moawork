@@ -293,7 +293,7 @@ export function CompaniesWorkspace({ model, importSlot }: { model: CompaniesView
 
         <details className="relative">
           <summary className={owner === "전체" ? chip : chipActive}>담당자{owner === "전체" ? "" : ` · ${owner}`}</summary>
-          <div className="absolute z-20 mt-1 min-w-44 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="mw-layer-page-popover absolute mt-1 min-w-44 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
             {owners.map((name) => (
               <button key={name} type="button" onClick={() => setOwner(name)} className="block w-full rounded-lg px-3 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800">
                 {name}
@@ -304,7 +304,7 @@ export function CompaniesWorkspace({ model, importSlot }: { model: CompaniesView
 
         <details className="relative">
           <summary className={status === "전체" ? chip : chipActive}>진행 상태{status === "전체" ? "" : ` · ${status}`}</summary>
-          <div className="absolute z-20 mt-1 min-w-44 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="mw-layer-page-popover absolute mt-1 min-w-44 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
             {statuses.map((name) => (
               <button key={name} type="button" onClick={() => setStatus(name)} className="block w-full rounded-lg px-3 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800">
                 {name}

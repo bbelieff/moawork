@@ -12,7 +12,7 @@ export function NewLeadOnboarding() {
       <span
         id="new-lead-help-note"
         role="tooltip"
-        className="invisible absolute left-0 top-full z-50 mt-2 w-72 rounded-xl border border-mw-line bg-mw-card p-3 text-left shadow-xl opacity-0 transition-opacity group-hover/help:visible group-hover/help:opacity-100 group-focus-within/help:visible group-focus-within/help:opacity-100"
+        className="mw-layer-tooltip invisible absolute left-0 top-full mt-2 w-72 rounded-xl border border-mw-line bg-mw-card p-3 text-left shadow-xl opacity-0 transition-opacity group-hover/help:visible group-hover/help:opacity-100 group-focus-within/help:visible group-focus-within/help:opacity-100"
       >
         <strong className="block text-sm text-mw-fg">신규리드 시작하기</strong>
         <span className="mt-1 block text-xs leading-5 text-mw-body">

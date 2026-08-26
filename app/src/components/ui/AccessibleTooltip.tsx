@@ -110,15 +110,14 @@ export function AccessibleTooltip({ children, content, fill = false, placement =
 
   return (
     <span
-      className={fill ? "relative flex w-full" : "relative inline-flex"}
-      style={{ zIndex: state.open ? 60 : undefined }}
+      className={`${fill ? "relative flex w-full" : "relative inline-flex"} ${state.open ? "mw-layer-tooltip" : ""}`}
     >
       {trigger}
       <span
         id={tooltipId}
         role="tooltip"
         data-tooltip-open={state.open ? "true" : "false"}
-        className="pointer-events-none absolute z-50 whitespace-nowrap border text-left shadow-sm"
+        className="mw-layer-tooltip pointer-events-none absolute whitespace-nowrap border text-left shadow-sm"
         style={{
           ...position,
           borderColor: "var(--mw-line)",

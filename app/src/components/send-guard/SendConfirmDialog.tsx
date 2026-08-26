@@ -68,7 +68,7 @@ export function SendConfirmDialog({
       role="dialog"
       aria-modal="true"
       aria-labelledby="mw-send-confirm-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3"
+      className="mw-layer-dialog fixed inset-0 flex items-center justify-center bg-black/40 p-3"
     >
       <div className={PANEL}>
         <p className="text-[0.65rem] font-semibold tracking-wide text-mw-error">

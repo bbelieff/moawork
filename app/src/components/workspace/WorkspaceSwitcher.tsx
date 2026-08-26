@@ -3,13 +3,17 @@
 import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
 
 import {
+  type CSSProperties,
+  type ReactNode,
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { WorkspaceMark } from "./WorkspaceMark";
 import styles from "./workspace-switcher.module.css";
 import { DeveloperModeControl } from "@/components/mode/DeveloperModeControl";
@@ -62,6 +66,10 @@ const ROLE_LABEL: Record<WorkspaceRole, string> = {
 };
 
 const CANONICAL_SLUG = /^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/u;
+
+function BodyPortal({ children }: { children: ReactNode }) {
+  return typeof document === "undefined" ? children : createPortal(children, document.body);
+}
 
 export function prepareWorkspaceList(
   currentOrgId: string,
@@ -134,7 +142,9 @@ export function WorkspaceSwitcher({
   const [open, setOpen] = useState(defaultOpen);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [navigationError, setNavigationError] = useState("");
+  const [dialogPosition, setDialogPosition] = useState({ left: 8, top: 8, maxHeight: 480 });
   const rootRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const firstChoiceRef = useRef<HTMLButtonElement>(null);
   const dialogId = useId();
@@ -152,7 +162,11 @@ export function WorkspaceSwitcher({
     const frame = requestAnimationFrame(() => firstChoiceRef.current?.focus());
 
     function onPointerDown(event: PointerEvent) {
-      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) {
+      if (
+        event.target instanceof Node
+        && !rootRef.current?.contains(event.target)
+        && !dialogRef.current?.contains(event.target)
+      ) {
         close();
       }
     }
@@ -172,6 +186,33 @@ export function WorkspaceSwitcher({
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [close, open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(320, Math.max(280, window.innerWidth - 16));
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+      const top = Math.min(rect.bottom + 6, window.innerHeight - 8);
+      setDialogPosition({ left, top, maxHeight: Math.max(160, window.innerHeight - top - 8) });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    const closeOtherPopover = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== dialogId) close(false);
+    };
+    window.addEventListener("moawork:popover-open", closeOtherPopover);
+    return () => window.removeEventListener("moawork:popover-open", closeOtherPopover);
+  }, [close, dialogId]);
 
   if (!list.ok) {
     return (
@@ -224,7 +265,11 @@ export function WorkspaceSwitcher({
         disabled={busyKey !== null}
         onClick={() => {
           setNavigationError("");
-          setOpen((value) => !value);
+          setOpen((value) => {
+            const next = !value;
+            if (next) window.dispatchEvent(new CustomEvent("moawork:popover-open", { detail: dialogId }));
+            return next;
+          });
         }}
       >
         <WorkspaceMark name={current.name} signedImageUrl={current.signedImageUrl} size={32} />
@@ -247,9 +292,22 @@ export function WorkspaceSwitcher({
       </span>
 
       {open ? (
-        <>
+        <BodyPortal>
+          <>
           <div className={styles.mobileBackdrop} aria-hidden="true" onPointerDown={() => close()} />
-          <section id={dialogId} className={styles.dialog} role="dialog" aria-labelledby={titleId}>
+          <section
+            ref={dialogRef}
+            id={dialogId}
+            className={styles.dialog}
+            role="dialog"
+            aria-labelledby={titleId}
+            data-workspace-switcher-dialog
+            style={{
+              "--mw-workspace-switcher-left": `${dialogPosition.left}px`,
+              "--mw-workspace-switcher-top": `${dialogPosition.top}px`,
+              "--mw-workspace-switcher-max-height": `${dialogPosition.maxHeight}px`,
+            } as CSSProperties}
+          >
             <div className={styles.dialogHeader}>
               <div>
                 <h2 id={titleId}>회사 전환</h2>
@@ -334,7 +392,8 @@ export function WorkspaceSwitcher({
 
             <p className={styles.note}>승인 전에는 회사에 들어갈 수 없어요. 목록에는 내 소속만 보여요.</p>
           </section>
-        </>
+          </>
+        </BodyPortal>
       ) : null}
     </div>
   );
