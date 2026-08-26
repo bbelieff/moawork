@@ -12,6 +12,12 @@ import { sanitizeFileName } from "@/lib/services/files";
 import { createRequestBoards } from "@/lib/boards/server";
 import { resolveBoardDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
 import { loadPermGuard } from "@/lib/perm/guard";
+import {
+  cloudFolderProviderLabel,
+  inspectCloudFolderUrl,
+  providerFromCloudFolderUrl,
+  type CloudFolderLink,
+} from "@/lib/boards/cloud-folder-link";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -50,6 +56,7 @@ export type ItemDetailSnapshot = {
   message?: string;
   events: ItemDetailEvent[];
   links: ItemDetailLink[];
+  cloudFolder?: CloudFolderLink | null;
   files: ItemDetailFile[];
   members: { id: string; name: string | null }[];
   viewerId?: string;
@@ -110,12 +117,12 @@ export async function loadItemDetailAction(
           .limit(100),
         client
           .from("board_item_detail_links")
-          .select("id,label,url,created_at")
+          .select("id,label,url,created_at,link_kind")
           .eq("org_id", ctx.org.id)
           .eq("board_id", boardId)
           .eq("item_id", itemId)
           .order("created_at", { ascending: false })
-          .limit(ITEM_DETAIL_LIMITS.linkCount),
+          .limit(ITEM_DETAIL_LIMITS.linkCount + 1),
         client
           .from("board_item_detail_files")
           .select("id,name,mime_type,size_bytes,storage_path,created_at")
@@ -162,10 +169,32 @@ export async function loadItemDetailAction(
       : [];
     const memberIds = [...new Set([item.assigned_to, ...collaboratorIds].filter((value): value is string => Boolean(value)))];
     const members = memberIds.map((id) => orgMembers.find((member) => member.id === id) ?? { id, name: null });
+    const rawLinks = (linksResult.data ?? []) as Array<
+      ItemDetailLink & { link_kind: string | null }
+    >;
+    const folderRow = rawLinks.find((link) => link.link_kind === "cloud_folder");
+    const folderProvider = folderRow
+      ? providerFromCloudFolderUrl(folderRow.url)
+      : null;
     return {
       ok: true,
       events: (eventsResult.data ?? []) as ItemDetailEvent[],
-      links: (linksResult.data ?? []) as ItemDetailLink[],
+      links: rawLinks
+        .filter((link) => link.link_kind !== "cloud_folder")
+        .map((link) => ({
+          id: link.id,
+          label: link.label,
+          url: link.url,
+          created_at: link.created_at,
+        })),
+      cloudFolder: folderRow && folderProvider
+        ? {
+            id: folderRow.id,
+            url: folderRow.url,
+            provider: folderProvider,
+            providerLabel: cloudFolderProviderLabel(folderProvider),
+          }
+        : null,
       files,
       members,
       viewerId: ctx.user.id,
@@ -177,6 +206,91 @@ export async function loadItemDetailAction(
         error instanceof Error
           ? error.message
           : "상세 기록을 불러오지 못했습니다.",
+      events: [],
+      links: [],
+      files: [],
+      members: [],
+    };
+  }
+}
+
+export async function saveItemCloudFolderAction(input: {
+  boardId: string;
+  itemId: string;
+  url: string;
+  requestId: string;
+}): Promise<ItemDetailSnapshot> {
+  try {
+    const inspected = inspectCloudFolderUrl(input.url);
+    if (!inspected.ok) throw new Error(inspected.message);
+    if (!UUID.test(input.requestId))
+      throw new Error("요청 식별자가 올바르지 않습니다.");
+    const { ctx, client } = await context(input.boardId, input.itemId);
+    await requireItemMutationPermission(ctx.org.id);
+    const { error } = await client.rpc("set_board_item_cloud_folder", {
+      p_org_id: ctx.org.id,
+      p_board_id: input.boardId,
+      p_item_id: input.itemId,
+      p_provider: inspected.provider,
+      p_folder_ref: inspected.folderRef,
+      p_request_id: input.requestId,
+    });
+    if (error)
+      throw new Error(
+        error.code === "42501"
+          ? "클라우드 폴더를 연결할 권한이 없습니다."
+          : error.code === "22023"
+            ? "파일이 아닌 클라우드 폴더 공유 주소인지 확인해 주세요."
+            : "클라우드 폴더를 저장하지 못했습니다. 입력은 그대로 두었습니다.",
+      );
+    return loadItemDetailAction(input.boardId, input.itemId);
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "클라우드 폴더를 저장하지 못했습니다.",
+      events: [],
+      links: [],
+      files: [],
+      members: [],
+    };
+  }
+}
+
+export async function removeItemCloudFolderAction(input: {
+  boardId: string;
+  itemId: string;
+  requestId: string;
+}): Promise<ItemDetailSnapshot> {
+  try {
+    if (!UUID.test(input.requestId))
+      throw new Error("요청 식별자가 올바르지 않습니다.");
+    const { ctx, client } = await context(input.boardId, input.itemId);
+    await requireItemMutationPermission(ctx.org.id);
+    const { error } = await client.rpc("set_board_item_cloud_folder", {
+      p_org_id: ctx.org.id,
+      p_board_id: input.boardId,
+      p_item_id: input.itemId,
+      p_provider: null,
+      p_folder_ref: null,
+      p_request_id: input.requestId,
+    });
+    if (error)
+      throw new Error(
+        error.code === "42501"
+          ? "클라우드 폴더 연결을 해제할 권한이 없습니다."
+          : "클라우드 폴더 연결을 해제하지 못했습니다.",
+      );
+    return loadItemDetailAction(input.boardId, input.itemId);
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "클라우드 폴더 연결을 해제하지 못했습니다.",
       events: [],
       links: [],
       files: [],

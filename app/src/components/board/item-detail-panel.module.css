@@ -162,6 +162,8 @@
 }
 
 .infoRail {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
@@ -169,6 +171,10 @@
   border-right: 1px solid var(--mw-line);
   padding: 0.65rem 1rem 1.25rem;
   scrollbar-gutter: stable;
+}
+
+.infoHeader {
+  order: -2;
 }
 
 .infoHeader,
@@ -369,6 +375,135 @@
   display: grid;
   gap: 0.6rem;
   padding: 0.2rem 0 0.8rem;
+}
+
+.cloudFolderTools {
+  order: -1;
+}
+
+.cloudFolderCard {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--mw-line);
+  border-radius: 0.55rem;
+  background: var(--mw-bg);
+  padding: 0.5rem;
+}
+
+.cloudFolderProvider {
+  border-radius: 999px;
+  background: var(--mw-tint-blue);
+  padding: 0.18rem 0.48rem;
+  color: var(--mw-record);
+  font-size: 0.62rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.cloudFolderUrl {
+  overflow: hidden;
+  color: var(--mw-sub);
+  font-size: 0.65rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloudFolderOpen,
+.cloudFolderActions button,
+.cloudFolderInputRow button {
+  display: inline-flex;
+  min-height: 1.8rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--mw-line);
+  border-radius: 0.42rem;
+  background: var(--mw-card);
+  padding: 0 0.55rem;
+  color: var(--mw-body);
+  font: inherit;
+  font-size: 0.65rem;
+  font-weight: 750;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cloudFolderOpen {
+  border-color: transparent;
+  background: var(--mw-primary);
+  color: var(--mw-on-accent);
+}
+
+.cloudFolderActions {
+  display: flex;
+  grid-column: 2 / -1;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.cloudFolderEditor {
+  display: grid;
+  gap: 0.35rem;
+  border: 1px solid var(--mw-line);
+  border-radius: 0.55rem;
+  padding: 0.55rem;
+}
+
+.cloudFolderEditor > label {
+  color: var(--mw-body);
+  font-size: 0.67rem;
+  font-weight: 750;
+}
+
+.cloudFolderInputRow {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.35rem;
+}
+
+.cloudFolderInputRow input {
+  min-width: 0;
+  min-height: 2rem;
+  border: 1px solid var(--mw-line);
+  border-radius: 0.42rem;
+  background: var(--mw-card);
+  padding: 0 0.55rem;
+  color: var(--mw-fg);
+  font: inherit;
+  font-size: 0.68rem;
+}
+
+.cloudFolderInputRow button:first-of-type {
+  border-color: transparent;
+  background: var(--mw-primary);
+  color: var(--mw-on-accent);
+}
+
+.cloudFolderError {
+  margin: 0;
+  color: var(--mw-error);
+  font-size: 0.65rem;
+}
+
+.legacyMaterials {
+  border-top: 1px solid var(--mw-line);
+  padding-top: 0.25rem;
+}
+
+.legacyMaterials > summary {
+  min-height: 1.8rem;
+  color: var(--mw-sub);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.legacyMaterials > p {
+  margin: 0 0 0.45rem;
+  color: var(--mw-sub);
+  font-size: 0.62rem;
 }
 
 .detailFieldCreator {

@@ -100,6 +100,12 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
           ],
           files: [],
           links: [],
+          cloudFolder: {
+            id: "visual-cloud-folder",
+            url: "https://drive.google.com/drive/folders/example-folder",
+            provider: "google_drive",
+            providerLabel: "Google Drive",
+          },
           events: [
             { id: "event-1", kind: "memo", body: "1차 통화 예정. @정희 실장님 제조업 쪽 자료 있으면 공유 부탁드립니다.", actor_id: "review-user", created_at: "2026-08-25T05:00:00.000Z" },
             { id: "event-2", kind: "call", body: "대표님 부재. 비서분이 내일 오전 재통화 요청.", actor_id: "review-user", created_at: "2026-08-24T07:40:00.000Z" },

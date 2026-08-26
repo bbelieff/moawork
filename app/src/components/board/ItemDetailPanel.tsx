@@ -35,12 +35,13 @@ import {
 } from "@/app/(app)/boards/new-lead-actions";
 import {
   addItemDetailEventAction,
-  addItemDetailLinkAction,
   loadItemDetailAction,
+  removeItemCloudFolderAction,
+  saveItemCloudFolderAction,
   saveItemDetailFieldAction,
-  uploadItemDetailFileAction,
   type ItemDetailSnapshot,
 } from "@/app/(app)/boards/item-detail-actions";
+import { inspectCloudFolderUrl } from "@/lib/boards/cloud-folder-link";
 import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
 import styles from "./item-detail-panel.module.css";
 
@@ -286,11 +287,12 @@ export function ItemDetailPanel({
   const [composer, setComposer] = useState("");
   const [composerKind, setComposerKind] = useState<"memo" | "call">("memo");
   const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([]);
-  const [linkLabel, setLinkLabel] = useState("");
-  const [linkUrl, setLinkUrl] = useState("");
+  const [folderUrl, setFolderUrl] = useState(initialDetail?.cloudFolder?.url ?? "");
+  const [folderEditing, setFolderEditing] = useState(!initialDetail?.cloudFolder);
+  const [folderError, setFolderError] = useState("");
+  const folderTouchedRef = useRef(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [fieldSaveStatuses, setFieldSaveStatuses] = useState<Record<string, string>>({});
-  const [fileRequestId, setFileRequestId] = useState(() => crypto.randomUUID());
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -339,6 +341,12 @@ export function ItemDetailPanel({
       `${window.location.pathname}${window.location.search}`,
     );
   }, [row.id]);
+
+  useEffect(() => {
+    if (!detail.cloudFolder || folderTouchedRef.current) return;
+    setFolderUrl(detail.cloudFolder.url);
+    setFolderEditing(false);
+  }, [detail.cloudFolder]);
 
   function openDrawer() {
     if (window.location.hash === `#item-${row.id}`) {
@@ -431,20 +439,47 @@ export function ItemDetailPanel({
     });
   }
 
-  function submitLink() {
-    if (!linkLabel.trim() || !linkUrl.trim()) return;
+  function submitCloudFolder() {
+    const inspected = inspectCloudFolderUrl(folderUrl);
+    if (!inspected.ok) {
+      setFolderError(inspected.message);
+      return;
+    }
     startDetailTransition(async () => {
-      const next = await addItemDetailLinkAction({
+      const next = await saveItemCloudFolderAction({
         boardId,
         itemId: row.id,
-        label: linkLabel,
-        url: linkUrl,
+        url: inspected.url,
         requestId: crypto.randomUUID(),
       });
       refreshDetail(next);
       if (next.ok) {
-        setLinkLabel("");
-        setLinkUrl("");
+        folderTouchedRef.current = false;
+        setFolderUrl(next.cloudFolder?.url ?? inspected.url);
+        setFolderEditing(false);
+        setFolderError("");
+      } else {
+        setFolderError(next.message ?? "클라우드 폴더를 저장하지 못했습니다.");
+      }
+    });
+  }
+
+  function removeCloudFolder() {
+    if (!window.confirm("클라우드 폴더 연결을 해제할까요? 이전 첨부와 링크는 그대로 보존됩니다.")) return;
+    startDetailTransition(async () => {
+      const next = await removeItemCloudFolderAction({
+        boardId,
+        itemId: row.id,
+        requestId: crypto.randomUUID(),
+      });
+      refreshDetail(next);
+      if (next.ok) {
+        folderTouchedRef.current = false;
+        setFolderUrl("");
+        setFolderEditing(true);
+        setFolderError("");
+      } else {
+        setFolderError(next.message ?? "클라우드 폴더 연결을 해제하지 못했습니다.");
       }
     });
   }
@@ -1034,113 +1069,131 @@ export function ItemDetailPanel({
                     </div>
                   </details>
                   ) : null}
-                  <details className={styles.compactTools}>
-                    <summary>첨부 · 링크</summary>
+                  <details className={`${styles.compactTools} ${styles.cloudFolderTools}`} open>
+                    <summary>클라우드 폴더</summary>
                     <div className={styles.compactToolsBody}>
-                    <p className="text-xs text-mw-sub">
-                      파일은 10MB씩 5개, 합계 30MB까지 올릴 수 있어요. 외부 자료는 Google Drive, OneDrive, Dropbox, 웹하드 등의 https 링크를 20개까지 연결하고, 보는 사람에게 읽기 권한이 있는지 확인하세요.
-                    </p>
-                    <div className="grid gap-2">
-                      {detail.files.map((file) =>
-                        file.downloadUrl ? (
-                          <a
-                            key={file.id}
-                            href={file.downloadUrl}
-                            className="rounded-lg border border-mw-line px-3 py-2 text-sm font-semibold text-mw-record"
-                            download
-                          >
-                            📎 {file.name}{" "}
-                            <span className="text-xs font-normal text-mw-sub">
-                              {Math.ceil(file.size_bytes / 1024)}KB
-                            </span>
-                          </a>
-                        ) : (
-                          <span
-                            key={file.id}
-                            className="rounded-lg border border-mw-line px-3 py-2 text-sm text-mw-sub"
-                          >
-                            📎 {file.name} · 내려받기 링크를 만들지 못했습니다.
+                      <p className="text-xs text-mw-sub">
+                        이 회사의 자료는 Google Drive·OneDrive·Dropbox 등의 폴더 하나로 모아 관리합니다. 폴더를 볼 사람에게 공유 권한이 있는지 확인해 주세요.
+                      </p>
+                      {detail.cloudFolder && !folderEditing ? (
+                        <div className={styles.cloudFolderCard}>
+                          <span className={styles.cloudFolderProvider}>
+                            {detail.cloudFolder.providerLabel}
                           </span>
-                        ),
+                          <span className={styles.cloudFolderUrl} title={detail.cloudFolder.url}>
+                            {detail.cloudFolder.url}
+                          </span>
+                          <a
+                            href={detail.cloudFolder.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={styles.cloudFolderOpen}
+                          >
+                            폴더 열기 <span className="sr-only">(새 창)</span>
+                          </a>
+                          {canEditItems && (
+                            <div className={styles.cloudFolderActions}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  folderTouchedRef.current = true;
+                                  setFolderUrl(detail.cloudFolder?.url ?? "");
+                                  setFolderEditing(true);
+                                  setFolderError("");
+                                }}
+                              >
+                                수정
+                              </button>
+                              <button type="button" onClick={removeCloudFolder} disabled={detailPending}>
+                                연결 해제
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : canEditItems ? (
+                        <div className={styles.cloudFolderEditor}>
+                          <label htmlFor={`${row.id}-cloud-folder`}>폴더 공유 주소</label>
+                          <div className={styles.cloudFolderInputRow}>
+                            <input
+                              id={`${row.id}-cloud-folder`}
+                              aria-label="클라우드 폴더 주소"
+                              type="url"
+                              inputMode="url"
+                              maxLength={2048}
+                              value={folderUrl}
+                              onChange={(event) => {
+                                folderTouchedRef.current = true;
+                                setFolderUrl(event.target.value);
+                                setFolderError("");
+                              }}
+                              placeholder="https://drive.google.com/drive/folders/..."
+                            />
+                            <button type="button" onClick={submitCloudFolder} disabled={detailPending}>
+                              {detailPending ? "저장 중…" : "폴더 연결"}
+                            </button>
+                            {detail.cloudFolder && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  folderTouchedRef.current = false;
+                                  setFolderUrl(detail.cloudFolder?.url ?? "");
+                                  setFolderEditing(false);
+                                  setFolderError("");
+                                }}
+                              >
+                                취소
+                              </button>
+                            )}
+                          </div>
+                          {folderError && <p role="alert" className={styles.cloudFolderError}>{folderError}</p>}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-mw-sub">연결된 클라우드 폴더가 없습니다.</p>
                       )}
-                      {detail.links.map((link) => (
+
+                      <details className={styles.legacyMaterials}>
+                        <summary>이전 첨부·링크 {detail.files.length + detail.links.length}개</summary>
+                        <p>기존 자료는 삭제하거나 덮어쓰지 않고 읽기 전용으로 보존합니다.</p>
+                        <div className="grid gap-2">
+                          {detail.files.map((file) =>
+                            file.downloadUrl ? (
+                              <a
+                                key={file.id}
+                                href={file.downloadUrl}
+                                className="rounded-lg border border-mw-line px-3 py-2 text-sm font-semibold text-mw-record"
+                                download
+                              >
+                                📎 {file.name}{" "}
+                                <span className="text-xs font-normal text-mw-sub">
+                                  {Math.ceil(file.size_bytes / 1024)}KB
+                                </span>
+                              </a>
+                            ) : (
+                              <span
+                                key={file.id}
+                                className="rounded-lg border border-mw-line px-3 py-2 text-sm text-mw-sub"
+                              >
+                                📎 {file.name} · 내려받기 링크를 만들지 못했습니다.
+                              </span>
+                            ),
+                          )}
+                          {detail.links.map((link) => (
                         <a
                           key={link.id}
                           href={link.url}
                           target="_blank"
-                          rel="noreferrer"
+                          rel="noopener noreferrer"
                           className="rounded-lg border border-mw-line px-3 py-2 text-sm font-semibold text-mw-record underline"
                         >
                           🔗 {link.label}
                           <span className="sr-only"> (새 창)</span>
                         </a>
-                      ))}
-                      {detail.links.length === 0 &&
-                        detail.files.length === 0 && (
-                          <p className="text-xs text-mw-sub">
-                            연결된 첨부·링크가 없습니다.
-                          </p>
-                        )}
-                      {canEditItems && (
-                        <form
-                          action={(formData) => {
-                            startDetailTransition(async () => {
-                              const next = await uploadItemDetailFileAction(boardId, row.id, formData);
-                              refreshDetail(next);
-                              if (next.ok) setFileRequestId(crypto.randomUUID());
-                            });
-                          }}
-                          className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-mw-line p-3"
-                        >
-                          <input type="hidden" name="requestId" value={fileRequestId} />
-                          <input
-                            aria-label="첨부 파일"
-                            type="file"
-                            name="file"
-                            required
-                            className="min-w-0 flex-1 text-xs"
-                          />
-                          <button
-                            type="submit"
-                            disabled={detailPending}
-                            className="rounded-lg border border-mw-line px-3 py-2 text-xs font-bold"
-                          >
-                            파일 첨부
-                          </button>
-                        </form>
-                      )}
-                      {canEditItems && (
-                        <div className="grid gap-2 sm:grid-cols-[10rem_1fr_auto]">
-                          <input
-                            aria-label="링크 이름"
-                            maxLength={100}
-                            value={linkLabel}
-                            onChange={(event) =>
-                              setLinkLabel(event.target.value)
-                            }
-                            placeholder="자료 이름"
-                            className="min-h-10 rounded-lg border border-mw-line px-3 text-sm"
-                          />
-                          <input
-                            aria-label="https 링크"
-                            type="url"
-                            maxLength={2048}
-                            value={linkUrl}
-                            onChange={(event) => setLinkUrl(event.target.value)}
-                            placeholder="https://"
-                            className="min-h-10 rounded-lg border border-mw-line px-3 text-sm"
-                          />
-                          <button
-                            type="button"
-                            disabled={detailPending}
-                            onClick={submitLink}
-                            className="rounded-lg border border-mw-line px-3 text-xs font-bold"
-                          >
-                            링크 연결
-                          </button>
+                          ))}
+                          {detail.links.length === 0 && detail.files.length === 0 && (
+                            <p className="text-xs text-mw-sub">보존된 이전 자료가 없습니다.</p>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      </details>
                     </div>
                   </details>
                   <details className={styles.compactTools}>

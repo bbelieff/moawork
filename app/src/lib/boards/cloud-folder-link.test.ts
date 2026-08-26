@@ -1,0 +1,101 @@
+import { describe, expect, it } from "vitest";
+import { inspectCloudFolderUrl } from "./cloud-folder-link";
+
+describe("Issue #574 cloud folder URL", () => {
+  it.each([
+    ["https://drive.google.com/drive/folders/folder-id", "google_drive", "Google Drive", "folder-id"],
+    ["https://drive.google.com/drive/u/1/folders/folder-id?usp=sharing", "google_drive", "Google Drive", "folder-id"],
+    ["https://1drv.ms/f/s!folder-share", "onedrive", "OneDrive", "short:s!folder-share"],
+    ["https://onedrive.live.com/?id=root%21folder&cid=drive-id", "onedrive", "OneDrive", "live:root!folder:drive-id"],
+    ["https://tenant.sharepoint.com/:f:/g/team/folder", "onedrive", "OneDrive", "sharepoint|tenant|:f:/g/team/folder"],
+    ["https://tenant.sharepoint.com/:F:/g/team/folder", "onedrive", "OneDrive", "sharepoint|tenant|:f:/g/team/folder"],
+    ["https://www.dropbox.com/scl/fo/folder-id/example", "dropbox", "Dropbox", "scl/fo/folder-id/example"],
+  ])("accepts a folder URL and emits a narrow provider reference: %s", (raw, provider, label, folderRef) => {
+    expect(inspectCloudFolderUrl(raw)).toMatchObject({ ok: true, provider, providerLabel: label, folderRef });
+  });
+
+  it("keeps emitted references within the database boundary", () => {
+    const oversizedToken = "a".repeat(1510);
+    expect(inspectCloudFolderUrl(`https://tenant.sharepoint.com/:f:/g/${oversizedToken}`).ok).toBe(false);
+    expect(inspectCloudFolderUrl(`https://www.dropbox.com/scl/fo/${oversizedToken}`).ok).toBe(false);
+  });
+
+  it.each([
+    "javascript:alert(1)",
+    "data:text/html,unsafe",
+    "http://drive.google.com/drive/folders/folder-id",
+    "https://user:password@example.com/folders/a",
+    "https://example.com%2Ffolders%2Fclient",
+    "https://drive.google.com%2Fdrive%2Ffolders%2Ffolder-id",
+    "https://example.com/folders%2Fclient",
+    "https://cloud.example.com/a%2Ffolders%2Fclient",
+    "https://example.com/path%3Ffolder=client",
+    "https://example.com/?ordinary=x%26folder=client",
+    "https://example.com:99999/folders/client",
+    "https://drive.google.com:8443/folders/fake",
+    "https://onedrive.live.com:8443/?folder=fake",
+    "https://www.dropbox.com:8443/folders/fake",
+    "https://drive.google.com/file/d/file-id/view",
+    "https://drive.google.com/drive/folders/",
+    "https://drive.google.com/drive/folders/%20",
+    "https://drive.google.com/drive/folders/%00",
+    "https://drive.google.com/drive/folders/.",
+    "https://drive.google.com/drive/folders/..",
+    "https://drive.google.com/drive/folders/client/contract%2Epdf",
+    "https://drive.google.com/drive/folders/client/%7F/final",
+    "https://onedrive.live.com/?id=contract.pdf",
+    "https://onedrive.live.com/?id=contract.pdf%3Fdownload%3D1",
+    "https://onedrive.live.com/?id=%00",
+    "https://onedrive.live.com/?id=%1F",
+    "https://onedrive.live.com/?id=abc%00def",
+    "https://onedrive.live.com/?id=.",
+    "https://onedrive.live.com/?id=..",
+    "https://onedrive.live.com/?id=contract%25252Epdf",
+    "https://onedrive.live.com/?id=%252520",
+    "https://onedrive.live.com/?cid=only-a-drive-id",
+    "https://tenant.sharepoint.com/sites/team/Forms/AllItems.aspx?id=contract.pdf",
+    "https://tenant.sharepoint.com/:f:",
+    "https://tenant.sharepoint.com/:f:////",
+    "https://tenant.sharepoint.com/abc:f:def/g/team/folder",
+    "https://tenant.sharepoint.com/:f:/g/team/%20",
+    "https://tenant.sharepoint.com/:f:/g/team/%C2%A0",
+    "https://tenant.sharepoint.com/:f:/g/team/%E2%80%83",
+    "https://tenant.sharepoint.com/:f:/g/team/%E3%80%80",
+    "https://example.com/files/contract.pdf",
+    "https://example.com/folders/contract.pdf",
+    "https://example.com/folders/contract%2Epdf",
+    "https://example.com/folders/contract%2Epdf%20",
+    "https://example.com/folders/contract.pdf%C2%A0",
+    "https://example.com/folders/client/%1F/final",
+    "https://example.com/folders/client/../../ordinary",
+    "https://example.com/folders/client\\..\\..\\ordinary",
+    "https://example.com/folders/%ZZ",
+    "https://www.dropbox.com/home/contract%2Epdf",
+    "https://www.dropbox.com/scl/fo",
+    "https://www.dropbox.com/sh",
+    "https://www.dropbox.com/home",
+    "https://example.com/?folder=%20",
+    "https://example.com/?folder=%2520",
+    "https://example.com/?folder=%252520",
+    "https://example.com/?folder=+",
+    "https://example.com/?folder=+%20",
+    "https://example.com/?path=home",
+    "https://example.com/path#?folder=client",
+    "https://onedrive.live.com/#?id=folder",
+    "https://example.com/path#&directory=client",
+    "https://drive.google.com/DRIVE/FOLDERS/id",
+    "https://www.dropbox.com/SCL/FO/id/example",
+    "https://onedrive.live.com/?ID=folder",
+    "https://example.com/?FOLDER=client",
+    "https://example.com/?%2566older=client",
+    "https://onedrive.live.com/?%2569d=folder",
+    "https://tenant.sharepoint.com/sites/team/Forms/AllItems.aspx?id=%2FShared%20Documents%2FClient",
+    "https://cloud.example.com/folders/customer-a",
+    "https://example.com/?folder=%2B",
+    "https://example.com/?folder=client&preview=contract.pdf",
+    "https://999.999.999.999/folders/client",
+    "https://example.com/an-ordinary-page",
+  ])("rejects unsafe or non-folder input: %s", (raw) => {
+    expect(inspectCloudFolderUrl(raw).ok).toBe(false);
+  });
+});
