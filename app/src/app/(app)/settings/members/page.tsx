@@ -8,7 +8,7 @@ import { isManager } from "@/lib/auth/roles";
 import { OrgLogoCard } from "@/components/org-logo/OrgLogoCard";
 import { loadOrgLogoView } from "@/lib/org-logo/server";
 import { loadOrgChart } from "@/lib/org/departments";
-import { DepartmentTree } from "@/components/member-organization/DepartmentTree";
+import { DepartmentManager } from "@/components/member-organization/DepartmentManager";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function MembersPage({ searchParams }: { searchParams: Promise<{ role?: string }> }) {
@@ -28,25 +28,17 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
     : { kind: "denied" as const, reason: permission.reason };
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4">
+    <div className="mx-auto flex max-w-6xl flex-col gap-4">
       <header>
         <h1 className="text-xl font-semibold">우리 회사와 팀</h1>
         <p className="mt-1 text-sm text-zinc-500">{ctx.org.name}에서 함께 일하는 사람과 업무 범위를 확인해요.</p>
       </header>
 
-      {/*
-        회사 로고 — **목업에 없는 자리다.** 목업 전체(v6)를 훑어도 회사 로고를 올리는 칸은
-        없고, 「로고」 언급 3건은 전부 MoaWork 브랜드 마크다. 그러니 어디에 둘지는 우리가 정한다.
+      {/* #571 — 읽기 전용 트리에서 실제 조직관리로 전환한다. */}
+      <DepartmentManager chart={chart} canManage={isManager(ctx.role)} />
 
-        여기로 정한 이유: 이 화면의 제목이 「우리 회사와 팀」이고 로고는 곧 «그 회사가 누구인가» 다.
-        사이드바 회사명 옆에 바로 나타나므로, 회사를 설명하는 이 화면 맨 위가 자연스럽다.
-        (목업 조직관리는 «조직도 · 조직원 · 보고 계통 · 알림 대상» 이 주제라 로고 자리가 없다 —
-         그 네 가지는 아직 제품에 없고, 그건 이 카드와 별개의 후속이다.)
-      */}
+      {/* BBE-199 — 로고는 조직 구조와 별개인 워크스페이스 식별 설정이다. */}
       <OrgLogoCard orgName={ctx.org.name} logo={logo} canManage={isManager(ctx.role)} />
-
-      {/* #571 — 목업의 조직관리는 부서 트리가 중심이다. 사람 목록보다 위에 둔다. */}
-      <DepartmentTree chart={chart} />
 
       {summary.kind === "ready" ? (
         <MemberOrganizationChart

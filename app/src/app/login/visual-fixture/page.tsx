@@ -7,6 +7,14 @@ import { cookies } from "next/headers";
 import { visualSetCellAction } from "./actions";
 import { VisualLayerProbe } from "./VisualLayerProbe";
 import { VisualWorkspaceSwitcherProbe } from "./VisualWorkspaceSwitcherProbe";
+import { DepartmentManager } from "@/components/member-organization/DepartmentManager";
+import {
+  loadVisualDepartmentChart,
+  visualAssignDepartmentMemberAction,
+  visualCreateDepartmentAction,
+  visualMoveDepartmentAction,
+  visualRenameDepartmentAction,
+} from "./department-actions";
 
 function fixture(tabKey: string, workflowValue: string | null) {
   const definition = tabKey === "contact" ? CONTACT_TAB : NEW_LEAD_TAB;
@@ -53,6 +61,29 @@ function fixture(tabKey: string, workflowValue: string | null) {
 
 export default async function VisualFixturePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
+  if (params.surface === "organization") {
+    const chart = await loadVisualDepartmentChart();
+    return (
+      <main data-visual-department-fixture data-build-sha={process.env.VERCEL_GIT_COMMIT_SHA ?? "local"} className="min-h-screen bg-mw-bg p-6">
+        <div className="mx-auto max-w-6xl">
+          <header className="mb-4">
+            <h1 className="text-xl font-semibold">우리 회사와 팀</h1>
+            <p className="mt-1 text-sm text-zinc-500">가상 회사에서 조직도 관리 흐름을 확인해요.</p>
+          </header>
+          <DepartmentManager
+            chart={chart}
+            canManage
+            actions={{
+              create: visualCreateDepartmentAction,
+              rename: visualRenameDepartmentAction,
+              move: visualMoveDepartmentAction,
+              assign: visualAssignDepartmentMemberAction,
+            }}
+          />
+        </div>
+      </main>
+    );
+  }
   const tab = params.tab === "contact" ? "contact" : "new";
   const mutation = typeof params.mutation === "string" ? params.mutation : "none";
   const layer = params.layer === "workspace" ? "workspace" : "none";

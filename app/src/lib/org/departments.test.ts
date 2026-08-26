@@ -14,7 +14,7 @@ const dept = (id: string, name: string, parentId: string | null = null, sortOrde
   ({ id, name, parentId, headUserId: null, sortOrder, memberCount: 0 });
 
 const member = (userId: string, departmentIds: string[]): DepartmentMember =>
-  ({ userId, displayName: userId, avatarUrl: null, departmentIds, active: true });
+  ({ userId, displayName: userId, avatarUrl: null, departmentIds, primaryDepartmentId: departmentIds[0] ?? null, active: true });
 
 describe("#571 조직도 트리", () => {
   it("부서가 없으면 빈 목록이다 — 오류가 아니다", () => {
@@ -77,10 +77,10 @@ describe("#571 canonical 조직도 adapter", () => {
         { id: "active-dept", name: "영업", parent_id: null, head_user_id: "active", sort_order: 0 },
       ],
       department_members: [
-        { dept_id: "active-dept", user_id: "active" },
-        { dept_id: "active-dept", user_id: "retired" },
+        { dept_id: "active-dept", user_id: "active", is_primary: true },
+        { dept_id: "active-dept", user_id: "retired", is_primary: true },
         // DB 조회는 archived 부서 배정을 함께 줄 수 있다. adapter가 현재 트리 기준으로 다시 거른다.
-        { dept_id: "archived-dept", user_id: "active" },
+        { dept_id: "archived-dept", user_id: "active", is_primary: false },
       ],
       org_members: [
         { user_id: "active", status: "active", users: { name: "가람", avatar_url: "https://example.test/a.png" } },
@@ -113,13 +113,14 @@ describe("#571 canonical 조직도 adapter", () => {
 
     expect(calls.map((call) => call.table)).toEqual(["departments", "department_members", "org_members"]);
     expect(calls[0].filters).toContainEqual(["is", "archived_at", null]);
+    expect(calls[1].columns).toContain("is_primary");
     expect(calls[2].columns).toContain("avatar_url");
     expect(chart).toEqual({
       kind: "ready",
       departments: [{ id: "active-dept", name: "영업", parentId: null, headUserId: "active", sortOrder: 0, memberCount: 1 }],
       members: [
-        { userId: "active", displayName: "가람", avatarUrl: "https://example.test/a.png", departmentIds: ["active-dept"], active: true },
-        { userId: "retired", displayName: "나감", avatarUrl: null, departmentIds: ["active-dept"], active: false },
+        { userId: "active", displayName: "가람", avatarUrl: "https://example.test/a.png", departmentIds: ["active-dept"], primaryDepartmentId: "active-dept", active: true },
+        { userId: "retired", displayName: "나감", avatarUrl: null, departmentIds: ["active-dept"], primaryDepartmentId: "active-dept", active: false },
       ],
       unassignedCount: 0,
     });

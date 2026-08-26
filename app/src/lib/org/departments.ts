@@ -29,6 +29,8 @@ export interface DepartmentMember {
   displayName: string;
   avatarUrl: string | null;
   departmentIds: string[];
+  /** 겸직 목록과 별개인 주부서. 배정 UI가 배열 순서에 기대지 않게 한다. */
+  primaryDepartmentId: string | null;
   active: boolean;
 }
 
@@ -90,7 +92,7 @@ export function toTree(departments: readonly DepartmentNode[], members: readonly
 }
 
 interface DepartmentRow { id: string; name: string; parent_id: string | null; head_user_id: string | null; sort_order: number }
-interface AssignmentRow { dept_id: string; user_id: string }
+interface AssignmentRow { dept_id: string; user_id: string; is_primary: boolean }
 interface MemberRow {
   user_id: string;
   status: string;
@@ -109,7 +111,7 @@ export async function loadOrgChart(
         .select("id,name,parent_id,head_user_id,sort_order")
         .eq("org_id", ctx.org.id)
         .is("archived_at", null),
-      client.from("department_members").select("dept_id,user_id").eq("org_id", ctx.org.id),
+      client.from("department_members").select("dept_id,user_id,is_primary").eq("org_id", ctx.org.id),
       client.from("org_members").select("user_id,status,users(name,avatar_url)").eq("org_id", ctx.org.id),
     ]);
     // 실패를 «부서 0개» 로 위장하지 않는다 — 그러면 화면이 「아직 부서가 없어요」 라고 거짓말한다.
@@ -133,6 +135,7 @@ export async function loadOrgChart(
         displayName: joined?.name?.trim() || "이름 없는 구성원",
         avatarUrl: joined?.avatar_url ?? null,
         departmentIds: byUser.get(row.user_id) ?? [],
+        primaryDepartmentId: activeAssignments.find((assignment) => assignment.user_id === row.user_id && assignment.is_primary)?.dept_id ?? null,
         active: row.status === "active",
       };
     });
