@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=77c41dfe6a0a1871e8ced498c88a6ef8b22f3ef46f32e2ac48cfa7edb193e6db foundation=false
+-- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=b62100fc2c7000b4189b75fa54a34392155859b524a211acf84079d9859f1368 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '132_issue574_cloud_folder_link',
   p_file_name => '132_issue574_cloud_folder_link.sql',
-  p_file_digest => '77c41dfe6a0a1871e8ced498c88a6ef8b22f3ef46f32e2ac48cfa7edb193e6db',
+  p_file_digest => 'b62100fc2c7000b4189b75fa54a34392155859b524a211acf84079d9859f1368',
   p_expected_predecessor => '131_issue528_item_phone_review_status',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -110,13 +110,13 @@ as $$
     and decoded_url !~* '[?&](?:id|folder|folder_id|folderId|directory)=[+[:space:]]*(?:&|#|$)'
     and decoded_url !~* '(?:/folders?|/directories?|/scl/fo|/sh|/home|/f)/[[:space:]]*(?:[/?#]|$)'
     and (
-      p_url ~* '^https://drive\.google\.com/drive/(?:u/[0-9]+/)?folders/[^/?#]+'
-      or p_url ~* '^https://(?:[^/]+\.)?1drv\.ms/(?:[^/?#]*:f:[^/?#]*|f)/[^/?#]+'
-      or p_url ~* '^https://(?:[^/]+\.)?onedrive\.live\.com/.*(?::f:[^/?#]*/[^/?#]+|[?&]id=[^&#]+)'
-      or p_url ~* '^https://[^/]+\.sharepoint\.com/.*(?::f:[^/?#]*/[^/?#]+|/Forms/AllItems\.aspx[^#]*[?&]id=[^&#]+)'
-      or p_url ~* '^https://(?:www\.)?dropbox\.com/(?:scl/fo|sh|home)/[^/?#]+'
+      p_url ~* '^https://drive\.google\.com(?::[0-9]{1,5})?/drive/(?:u/[0-9]+/)?folders/[^/?#]+'
+      or p_url ~* '^https://(?:[^/]+\.)?1drv\.ms(?::[0-9]{1,5})?/(?:[^/?#]*:f:[^/?#]*|f)/[^/?#]+'
+      or p_url ~* '^https://(?:[^/]+\.)?onedrive\.live\.com(?::[0-9]{1,5})?/.*(?::f:[^/?#]*/[^/?#]+|[?&]id=[^&#]+)'
+      or p_url ~* '^https://[^/]+\.sharepoint\.com(?::[0-9]{1,5})?/.*(?::f:[^/?#]*/[^/?#]+|/Forms/AllItems\.aspx[^#]*[?&]id=[^&#]+)'
+      or p_url ~* '^https://(?:www\.)?dropbox\.com(?::[0-9]{1,5})?/(?:scl/fo|sh|home)/[^/?#]+'
       or (
-        p_url !~* '^https://(?:drive\.google\.com|(?:[^/]+\.)?1drv\.ms|(?:[^/]+\.)?onedrive\.live\.com|[^/]+\.sharepoint\.com|(?:www\.)?dropbox\.com)(?:/|$)'
+        p_url !~* '^https://(?:drive\.google\.com|(?:[^/]+\.)?1drv\.ms|(?:[^/]+\.)?onedrive\.live\.com|[^/]+\.sharepoint\.com|(?:www\.)?dropbox\.com)(?::[0-9]{1,5})?(?:/|$)'
         and (
           p_url ~* '^https://[^/?#]+/(?:[^?#]*/)?(?:folders?|directories?)/[^/?#]+'
           or p_url ~* '^https://[^/?#]+/.*[?&](?:folder|folder_id|folderId|directory)=[^&#]+'
