@@ -17,14 +17,14 @@ import {
   visualRenameDepartmentAction,
 } from "./department-actions";
 
-function fixture(tabKey: string, workflowValue: string | null) {
+function fixture(tabKey: string, workflowValue: string | null, showAllGroups = false) {
   const definition = tabKey === "contact" ? CONTACT_TAB : NEW_LEAD_TAB;
   const board = {
     id: `visual-${definition.key}`, org_id: "visual-org", name: definition.name,
     description: definition.description, icon: definition.icon, is_system: false,
     source: definition.source, sort_order: 0, created_by: "visual-user", created_at: "", updated_at: "",
   } satisfies Board;
-  const groups = definition.groups.slice(0, 1).map((group, index) => ({
+  const groups = definition.groups.slice(0, showAllGroups ? undefined : 1).map((group, index) => ({
     id: `visual-group-${index}`, org_id: board.org_id, board_id: board.id,
     name: group.name, color: group.color, sort_order: index,
   })) satisfies BoardGroup[];
@@ -52,12 +52,20 @@ function fixture(tabKey: string, workflowValue: string | null) {
     consult_status: "상담 전",
     contact_move: workflowValue ?? "컨택 대기",
   } : workflowValue ? { work_move: workflowValue } : {};
-  const row = {
-    id: "visual-item", org_id: board.org_id, board_id: board.id, group_id: groups[0]?.id ?? null,
-    title: tabKey === "new" ? "(주)대한정밀" : "마스킹된 예시 항목", assigned_to: tabKey === "new" ? "review-user" : null, deal_id: tabKey === "new" ? "visual-deal" : null, sort_order: 0,
-    created_at: "", updated_at: "", values,
-  } satisfies ItemWithValues;
-  return { board, groups, columns, rows: [row] };
+  const rows = groups.map((group, index) => ({
+    id: index === 0 ? "visual-item" : `visual-item-${index}`,
+    org_id: board.org_id,
+    board_id: board.id,
+    group_id: group.id,
+    title: tabKey === "new" ? `(주)대한정밀${index === 0 ? "" : ` ${index + 1}`}` : `마스킹된 예시 항목 ${index + 1}`,
+    assigned_to: tabKey === "new" ? "review-user" : null,
+    deal_id: tabKey === "new" ? `visual-deal-${index}` : null,
+    sort_order: 0,
+    created_at: "",
+    updated_at: "",
+    values: { ...values },
+  })) satisfies ItemWithValues[];
+  return { board, groups, columns, rows };
 }
 
 export default async function VisualFixturePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -93,7 +101,7 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
   const saved = jar.get(`visual-workflow-${tab}-saved`)?.value ?? null;
   const draft = jar.get(`visual-workflow-${tab}-draft`)?.value ?? null;
   const error = jar.get(`visual-workflow-${tab}-error`)?.value ?? null;
-  const data = fixture(tab, draft ?? saved);
+  const data = fixture(tab, draft ?? saved, params.groups === "all");
   return (
     <main data-visual-fixture={tab} data-build-sha={process.env.VERCEL_GIT_COMMIT_SHA ?? "local"} className={`visual-mutation-${mutation} min-h-screen max-w-full bg-mw-bg p-4`}>
       <VisualThemeProbe theme={theme} />

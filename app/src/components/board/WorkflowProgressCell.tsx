@@ -8,6 +8,7 @@ import {
   workflowProgressSpec,
   type WorkflowProgressKind,
 } from "@/lib/workflow/progress";
+import { BOARD_TABLE_CONTROL } from "./table-style";
 
 const TRANSFER = "__workflow_transfer__";
 
@@ -51,7 +52,7 @@ export function WorkflowProgressCell({
           disabled={readOnly}
           aria-label="진행현황"
           aria-describedby={descriptionId}
-          className="h-8 w-full rounded-md border border-mw-line bg-mw-card px-2 text-xs font-semibold text-mw-fg outline-none focus:border-mw-record focus:ring-2 focus:ring-mw-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
+          className={`${BOARD_TABLE_CONTROL} font-semibold focus:ring-2 focus:ring-mw-primary/20 disabled:cursor-not-allowed disabled:opacity-70`}
           onChange={(event) => {
             if (event.currentTarget.value === TRANSFER) {
               event.preventDefault();

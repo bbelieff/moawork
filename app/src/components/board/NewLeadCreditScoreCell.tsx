@@ -5,6 +5,7 @@ import {
   saveNewLeadCreditScoreAction,
 } from "@/app/(app)/boards/new-lead-actions";
 import type { CellValue } from "@/lib/boards/types";
+import { BOARD_TABLE_CONTROL } from "./table-style";
 
 export function NewLeadCreditScoreCell({
   boardId,
@@ -60,7 +61,7 @@ export function NewLeadCreditScoreCell({
           attemptedValueRef.current = event.currentTarget.value;
           formRef.current?.requestSubmit();
         }}
-        className="h-7 w-full rounded border border-mw-line bg-mw-card px-2 text-right text-xs tabular-nums text-mw-fg outline-none focus:border-mw-record disabled:opacity-60"
+        className={`${BOARD_TABLE_CONTROL} text-right tabular-nums disabled:opacity-60`}
         placeholder="—"
       />
       {state.message && !state.ok ? <span role="alert" className="absolute left-0 top-full z-10 mt-1 w-48 rounded border border-mw-error bg-mw-card p-2 text-[0.65rem] text-mw-error shadow-lg">{state.message}</span> : null}

@@ -9,6 +9,7 @@ import {
   type ExistingLoanRecord,
 } from "@/lib/new-lead/financial-profile";
 import { BoardModalLayer } from "./BoardDialogPortal";
+import { BOARD_TABLE_CONTROL } from "./table-style";
 
 const CONTROL = "h-9 w-full rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg outline-none focus:border-mw-record";
 
@@ -84,7 +85,7 @@ export function NewLeadLoanCell({
       <button
         type="button"
         onClick={openEditor}
-        className="h-7 w-full truncate rounded border border-mw-line bg-mw-card px-2 text-left text-xs text-mw-fg hover:border-mw-record"
+        className={`${BOARD_TABLE_CONTROL} truncate text-left`}
         aria-label={`기대출 편집: ${summary}`}
       >
         {summary}
