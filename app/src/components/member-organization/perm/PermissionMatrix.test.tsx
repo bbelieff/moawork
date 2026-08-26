@@ -96,8 +96,14 @@ describe("PermissionMatrix — 매트릭스 렌더", () => {
       <PermissionMatrix orgId="org-1" activeRole="admin" viewerRole="owner" access={allowedAccess(snapshot)} />,
     );
     // 오버라이드로 admin=false 가 됐으므로 CSV 내보내기 행은 off 상태여야 한다
+    //
+    // ★ 2026-08-26 — 예전에는 `class="tg off"` 를 봤다. 그건 **목업 스타일시트의 클래스**이고
+    //   앱 CSS 에는 없는 이름이라, 이 단언은 «화면에 아무것도 안 보이는 상태» 를 통과시키고 있었다.
+    //   실제로 운영에서 토글이 통째로 안 보였는데 이 테스트는 초록이었다.
+    //   이제 «스타일» 이 아니라 «의미» 를 잰다 — 스타일을 바꿔도 이 단언은 계속 옳다.
     const rowMatch = html.match(/data-scope-key="danger\.csv_export"[\s\S]*?<\/form>/);
-    expect(rowMatch?.[0]).toContain('class="tg off"');
+    expect(rowMatch?.[0]).toContain('aria-pressed="false"');
+    expect(rowMatch?.[0]).toContain("꺼짐");
   });
 
   it("개인 예외 건수를 항목별로 보여준다", () => {
