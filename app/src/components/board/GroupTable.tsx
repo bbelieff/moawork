@@ -375,6 +375,7 @@ export function BoardCell({
           <select
             name="value"
             defaultValue={typeof value === "string" ? value : ""}
+            onChange={(event) => event.currentTarget.form?.requestSubmit()}
             className={`${CELL_INPUT} cursor-pointer`}
             aria-label={column.label}
           >

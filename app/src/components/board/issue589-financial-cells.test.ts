@@ -34,6 +34,7 @@ describe("Issue #589 신규리드 금융 셀", () => {
     expect(source).toContain('column.key === CREDIT_SCORE_KEYS.ncb');
     expect(source).toContain('column.type === "status" ? (');
     expect(source).toContain(') : column.type === "select" ? (');
+    expect(source).toContain("event.currentTarget.form?.requestSubmit()");
     expect(source).toContain("border-mw-line bg-mw-card");
     expect(source).not.toContain("border-transparent bg-transparent px-1.5");
   });
