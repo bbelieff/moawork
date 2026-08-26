@@ -46,6 +46,7 @@ const TYPE_MAP: Record<string, string> = { sel: "select", dt: "datetime" };
 const mockType = (type: string) => TYPE_MAP[type] ?? type;
 
 const byLabel = new Map(NEW_LEAD_TAB.columns.map((column) => [column.label, column]));
+byLabel.set("협업자", NEW_LEAD_TAB.columns.find((column) => column.key === "collaborators")!);
 
 /**
  * 목업과 다르기로 «결정한» 곳. 근거 없이 다른 것은 여기 못 들어온다.
@@ -54,7 +55,7 @@ const byLabel = new Map(NEW_LEAD_TAB.columns.map((column) => [column.label, colu
 const DELIBERATE_OPTION_DIFFS: Record<string, string> = {
   "부재 안내": "목업 첫 항목의 빈 라벨은 선택지가 아니라 «값 없음(null)» 이다. validation 이 빈 라벨을 거부한다",
   담당자: "D71~D75 — 사람 이름은 예시다. 값은 워크스페이스 멤버 계정에서 온다",
-  협업자: "D71~D75 — 〃",
+  협업자: "최신 사용자 어휘는 연관담당이며 목업의 협업자와 같은 durable key를 쓴다",
   시군구: "목업 12개는 샘플 잔재. 실측 지역 사전(222지)에서 시군구를 뽑아 쓴다. 종속 선택은 BBE-127",
   "매출 구간": "목업이 선택지를 비워 뒀다. 구간 기준은 회사가 정한다 — 지어내면 남의 회사 기준이 박힌다",
   "사업자 유형": "목업이 선택지를 비워 뒀다. 002 field_presets.biz_reg_type 6종을 재사용한다 — 국세 분류라 고객 고유값이 아니고, 구조 팩도 같은 6종을 쓴다(중복 정의 금지)",
@@ -77,9 +78,9 @@ describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
   it("실제 운영 먼데이의 비AI 업무 컬럼을 보강하고 광고 명을 유입정보 앞단에 둔다", () => {
     const labels = NEW_LEAD_TAB.columns.map((column) => column.label);
     expect(labels).toHaveLength(29);
-    expect(labels).toEqual(expect.arrayContaining(mock.columns.map((column) => column.label)));
+    expect(labels).toEqual(expect.arrayContaining(mock.columns.map((column) => column.label === "협업자" ? "연관담당" : column.label)));
     expect(labels).toEqual(expect.arrayContaining([
-      "주소", "파일", "상담내용", "출동", "컨택여부", "상담지연 메시지", "악성부재 메시지전달",
+      "주소", "파일", "상담내용", "연관담당", "출동", "컨택여부", "상담지연 메시지", "악성부재 메시지전달",
     ]));
     expect(labels.indexOf("광고 명")).toBeLessThan(labels.indexOf("연락처"));
   });
@@ -179,6 +180,13 @@ describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
 });
 
 describe("제품 규칙 — 목업을 그대로 옮기면 안 되는 곳", () => {
+  it("revision 2는 옛 협업자 라벨만 연관담당으로 교정하고 회사가 바꾼 값 판별 근거를 남긴다", () => {
+    expect(NEW_LEAD_TAB.revision).toBe(2);
+    expect(NEW_LEAD_TAB.previousRevision).toEqual({
+      revision: 1,
+      columns: { collaborators: { label: "협업자" } },
+    });
+  });
   it("D71~D75 — 사람 컬럼에 이름을 박지 않는다. 값은 멤버 계정에서 온다", () => {
     for (const column of NEW_LEAD_TAB.columns) {
       if (column.type === "person" || column.type === "people") {

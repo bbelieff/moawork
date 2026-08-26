@@ -116,7 +116,7 @@ export function NewLeadIntakeForm({
         </div>
       </fieldset>
       <fieldset className="grid gap-3 border-t border-mw-line pt-3">
-        <legend className="text-sm font-semibold text-mw-fg">담당자와 출동 계보 <span className="font-normal text-mw-sub">선택</span></legend>
+        <legend className="text-sm font-semibold text-mw-fg">담당자와 연관담당 <span className="font-normal text-mw-sub">선택</span></legend>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid content-start gap-2 rounded-lg border border-mw-line p-3">
             <span className="text-xs font-semibold text-mw-body">담당자 1명</span>
@@ -128,7 +128,7 @@ export function NewLeadIntakeForm({
             ))}
           </div>
           <div className="grid content-start gap-2 rounded-lg border border-mw-line p-3">
-            <span className="text-xs font-semibold text-mw-body">출동 · 알림받는 사람 여러 명</span>
+            <span className="text-xs font-semibold text-mw-body">연관담당 · 알림받는 사람 여러 명</span>
             {members.map((member) => (
               <label key={member.id} className="flex min-h-9 items-center gap-2 text-sm text-mw-fg">
                 <input type="checkbox" name="collaborator_ids" value={member.id} />
@@ -137,7 +137,7 @@ export function NewLeadIntakeForm({
             ))}
           </div>
         </div>
-        <p className="text-xs leading-5 text-mw-sub">출동에 선택된 사람은 최초 접수자부터 다음 담당자까지 계보로 남고, 이 회사의 상태가 바뀔 때 함께 알림을 받습니다.</p>
+        <p className="text-xs leading-5 text-mw-sub">연관담당에 선택된 사람은 담당자와 함께 이 회사의 상태가 바뀔 때 알림을 받습니다.</p>
       </fieldset>
       <p className="text-xs leading-5 text-mw-sub">여기서 비워 둔 값도 등록 후 표와 회사 상세에서 언제든 수정할 수 있어요.</p>
       {state.message ? <p role="alert" className={state.ok ? "text-sm text-mw-success" : "rounded-lg border border-mw-error p-2 text-sm text-mw-error"}>{state.message}</p> : null}

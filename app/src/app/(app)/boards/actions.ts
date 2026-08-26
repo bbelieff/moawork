@@ -41,6 +41,7 @@ import { notifyBoardItemMoved } from "@/lib/notify/board-actions";
 import {
   detailKeyFromLabel,
   normalizeDetailLayout,
+  resolveBoardDetailLayout,
   resolveDetailLayout,
   type DetailLayoutEntry,
 } from "@/lib/boards/detail-layout";
@@ -729,7 +730,8 @@ export async function addDetailFieldAction(formData: FormData): Promise<void> {
     const detail = await graph.service.getBoardDetail(ctx, boardId);
     const group = groupId ? detail.groups.find((candidate) => candidate.id === groupId) : undefined;
     if (groupId && !group) throw new NotFoundError("아이템을 찾을 수 없습니다.");
-    const current = resolveDetailLayout(detail.board.detail_layout_jsonb, group?.detail_layout_jsonb).entries;
+    const boardLayout = resolveBoardDetailLayout(detail.board.source, detail.board.detail_layout_jsonb, detail.columns);
+    const current = resolveDetailLayout(boardLayout, group?.detail_layout_jsonb).entries;
     const occupied = new Set([...detail.columns.map((column) => column.key), ...current.map((entry) => entry.key)]);
     const base = detailKeyFromLabel(label);
     let key = base;
@@ -756,7 +758,8 @@ export async function setDetailValueAction(formData: FormData): Promise<void> {
     ]);
     if (!item || item.board_id !== boardId) throw new NotFoundError("아이템을 찾을 수 없습니다.");
     const group = item.group_id ? detail.groups.find((candidate) => candidate.id === item.group_id) : undefined;
-    const entry = resolveDetailLayout(detail.board.detail_layout_jsonb, group?.detail_layout_jsonb).entries
+    const boardLayout = resolveBoardDetailLayout(detail.board.source, detail.board.detail_layout_jsonb, detail.columns);
+    const entry = resolveDetailLayout(boardLayout, group?.detail_layout_jsonb).entries
       .find((candidate) => candidate.key === key && candidate.source === "detail");
     if (!entry) throw new Error("현재 상세 배치에 없는 필드입니다.");
     await graph.repo.setValues(ctx, itemId, { [key]: str(formData, "value") });
@@ -776,7 +779,8 @@ export async function addUnplacedDetailEntryAction(formData: FormData): Promise<
     const detail = await graph.service.getBoardDetail(ctx, boardId);
     const group = groupId ? detail.groups.find((candidate) => candidate.id === groupId) : undefined;
     if (groupId && !group) throw new NotFoundError("아이템을 찾을 수 없습니다.");
-    const current = resolveDetailLayout(detail.board.detail_layout_jsonb, group?.detail_layout_jsonb).entries;
+    const boardLayout = resolveBoardDetailLayout(detail.board.source, detail.board.detail_layout_jsonb, detail.columns);
+    const current = resolveDetailLayout(boardLayout, group?.detail_layout_jsonb).entries;
     if (current.some((entry) => entry.key === key)) return;
     const column = detail.columns.find((candidate) => candidate.key === key);
     const next: DetailLayoutEntry[] = [

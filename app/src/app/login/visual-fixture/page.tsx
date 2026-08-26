@@ -27,7 +27,7 @@ function fixture(tabKey: string, workflowValue: string | null) {
     is_readonly: Boolean(column.readOnly),
   })) satisfies BoardColumn[];
   const values: ItemWithValues["values"] = tabKey === "new" ? {
-    owner: "이대표",
+    owner: "review-user",
     collaborators: ["visual-user"],
     applied_on: "2026-08-08",
     ad_name: "네이버 정책자금 A",
@@ -45,7 +45,7 @@ function fixture(tabKey: string, workflowValue: string | null) {
   } : workflowValue ? { work_move: workflowValue } : {};
   const row = {
     id: "visual-item", org_id: board.org_id, board_id: board.id, group_id: groups[0]?.id ?? null,
-    title: tabKey === "new" ? "(주)대한정밀" : "마스킹된 예시 항목", assigned_to: null, deal_id: tabKey === "new" ? "visual-deal" : null, sort_order: 0,
+    title: tabKey === "new" ? "(주)대한정밀" : "마스킹된 예시 항목", assigned_to: tabKey === "new" ? "review-user" : null, deal_id: tabKey === "new" ? "visual-deal" : null, sort_order: 0,
     created_at: "", updated_at: "", values,
   } satisfies ItemWithValues;
   return { board, groups, columns, rows: [row] };
@@ -77,7 +77,15 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
         columnOrder={{}}
         cellFlash={error ? { itemId: "visual-item", errors: [{ key: "work_move", label: "업무이동", message: error }] } : null}
         assigneeLabels={{ "visual-user": "카위", "review-user": "이대표", "ops-team": "심사실행팀 3명" }}
+        memberDirectory={[
+          { id: "review-user", label: "이대표", title: "영업본부장", groupId: "sales", groupLabel: "영업본부", active: true },
+          { id: "visual-user", label: "카위", title: "콜 담당", groupId: "support", groupLabel: "경영지원팀", active: true },
+          { id: "ops-team", label: "박정화", title: "실장", groupId: "review", groupLabel: "심사실행팀", active: true },
+          { id: "reviewer-2", label: "김도윤", title: "심사역", groupId: "review", groupLabel: "심사실행팀", active: true },
+          { id: "sales-2", label: "정희", title: "실장", groupId: "sales", groupLabel: "영업본부", active: true },
+        ]}
         canEditItems
+        canManageColumns
         currentUserId="visual-user"
         settingsSlot={<VisualSettingsSlot />}
         onboardingSlot={tab === "new" ? <NewLeadOnboarding key="issue-554-help" /> : undefined}

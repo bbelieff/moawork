@@ -30,6 +30,7 @@ import type {
   ItemWithValues,
 } from "@/lib/boards/types";
 import { formatCell } from "@/lib/boards/cells";
+import { formatPhone } from "@/lib/format/phone";
 import { findCellError, type CellFlash } from "@/lib/boards/cellFlash";
 import {
   getFieldSourceSpec,
@@ -52,7 +53,7 @@ import type {
   ColumnScheduleRecipientOption,
 } from "./ColumnSettingsPanel";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
-import { MemberPicker } from "./MemberPicker";
+import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
 import { NewLeadMessageCell } from "./NewLeadMessageCell";
 import { WorkflowProgressCell } from "./WorkflowProgressCell";
 import {
@@ -102,6 +103,7 @@ export function cellInputValue(
   value: CellValue,
 ): string | number {
   if (value === null) return "";
+  if (type === "phone" && typeof value === "string") return formatPhone(value);
   if (type === "datetime" && typeof value === "string") {
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime())
@@ -438,7 +440,7 @@ export function GroupTable({
   boardName?: string;
   groupName?: string;
   canonicalNewLead?: boolean;
-  newLeadMembers?: readonly { id: string; label: string }[];
+  newLeadMembers?: readonly MemberPickerMember[];
   itemDetailFixture?: ItemDetailSnapshot;
   currentUserId?: string;
   /** 이 그룹의 group_id. "그룹 없음" 블록은 null. */

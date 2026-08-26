@@ -158,6 +158,9 @@ export async function saveNewLeadDetailFieldAction(input: {
   }
   try {
     const client = await createClient();
+    if (input.fieldKey === "phone" && analyzePhone(input.value).status === "needs_review") {
+      return { ok: false, message: "연락처를 확인해 주세요. 저장하지 않았습니다." };
+    }
     if (input.fieldKey === "applied_on" || input.fieldKey === "address_detail") {
       await updateCanonicalNewLeadMeta(client, {
         orgId: ctx.org.id,
@@ -229,7 +232,11 @@ export async function updateNewLeadFieldAction(formData: FormData): Promise<void
     if (!boardId || !dealId || !itemId || !allowed.has(field)) throw new NewLeadMutationError("신규리드 편집 대상을 확인해 주세요.","22023");
     const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
     if (permission.kind !== "allowed") throw new NewLeadMutationError("이 신규리드를 저장할 권한이 없습니다.","42501");
-    await updateCanonicalNewLead(await createClient(), { orgId: ctx.org.id, dealId, requestId: text(formData, "requestId") || crypto.randomUUID(), patch: { [field]: text(formData, "value") || null }, valueSource: "manual" });
+    const rawValue = text(formData, "value");
+    const phone = field === "phone" ? analyzePhone(rawValue) : null;
+    if (phone?.status === "needs_review") throw new NewLeadMutationError("연락처를 확인해 주세요. 저장하지 않았습니다.", "22023");
+    const value = phone?.status === "normalized" ? phone.normalized : rawValue || null;
+    await updateCanonicalNewLead(await createClient(), { orgId: ctx.org.id, dealId, requestId: text(formData, "requestId") || crypto.randomUUID(), patch: { [field]: value }, valueSource: "manual" });
     await clearCanonicalError();
   } catch(error) { await flashCanonicalError(itemId,columnKey,error); }
   revalidatePath(`/boards/${boardId}`);

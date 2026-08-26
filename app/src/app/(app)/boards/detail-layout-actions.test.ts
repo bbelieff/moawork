@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   createColumn: vi.fn(),
   getItem: vi.fn(),
   detail: {
-    board: { id: "board-a", org_id: "org-a", detail_layout_jsonb: [{ key: "detail_note", source: "detail", label: "메모", type: "text" }] },
+    board: { id: "board-a", org_id: "org-a", source: null as string | null, detail_layout_jsonb: [{ key: "detail_note", source: "detail", label: "메모", type: "text" }] },
     columns: [] as Array<Record<string, unknown>>,
     groups: [{ id: "group-a", org_id: "org-a", board_id: "board-a", detail_layout_jsonb: null }],
   },
@@ -34,6 +34,7 @@ vi.mock("@/lib/boards/server", () => ({
 }));
 
 import {
+  addDetailFieldAction,
   promoteDetailFieldAction,
   saveDetailLayoutAction,
   setDetailValueAction,
@@ -51,6 +52,7 @@ describe("BBE-107 action permission/value preservation", () => {
     mocks.guard.mockResolvedValue({ kind: "allowed" });
     mocks.getItem.mockResolvedValue({ id: "item-a", org_id: "org-a", board_id: "board-a", group_id: "group-a" });
     mocks.detail.columns = [];
+    mocks.detail.board.source = null;
     mocks.detail.board.detail_layout_jsonb = [{ key: "detail_note", source: "detail", label: "메모", type: "text" }];
     mocks.detail.groups[0].detail_layout_jsonb = null;
   });
@@ -73,5 +75,18 @@ describe("BBE-107 action permission/value preservation", () => {
     expect(mocks.createColumn).toHaveBeenCalledWith(expect.anything(), "board-a", expect.objectContaining({ key: "detail_note", label: "메모" }));
     expect(mocks.setBoardLayout).toHaveBeenCalledWith(expect.anything(), "board-a", [expect.objectContaining({ key: "detail_note", source: "column" })]);
     expect(mocks.setValues).not.toHaveBeenCalled();
+  });
+
+  it("canonical 신규리드의 빈 DB 기본 배치에 추가해도 기존 표 필드 fallback을 보존한다", async () => {
+    mocks.detail.board.source = "core.default-tab/new-lead";
+    mocks.detail.board.detail_layout_jsonb = [];
+    mocks.detail.columns = [{ key: "owner", label: "담당자", type: "person" }];
+
+    await addDetailFieldAction(form({ boardId: "board-a", groupId: "group-a", label: "신용등급", type: "text" }));
+
+    expect(mocks.setGroupLayout).toHaveBeenCalledWith(expect.anything(), "group-a", [
+      expect.objectContaining({ key: "owner", source: "column" }),
+      expect.objectContaining({ key: "detail_신용등급", source: "detail", label: "신용등급" }),
+    ]);
   });
 });

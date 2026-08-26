@@ -371,6 +371,103 @@
   padding: 0.2rem 0 0.8rem;
 }
 
+.detailFieldCreator {
+  border-bottom: 1px solid var(--mw-line);
+}
+
+.detailFieldCreator > summary {
+  display: flex;
+  min-height: 2.15rem;
+  cursor: pointer;
+  align-items: center;
+  color: var(--mw-record);
+  font-size: 0.7rem;
+  font-weight: 750;
+  list-style: none;
+}
+
+.detailFieldCreator > summary::-webkit-details-marker { display: none; }
+
+.detailFieldCreatorForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6.5rem auto;
+  gap: 0.35rem;
+  padding: 0.25rem 0 0.65rem;
+}
+
+.detailFieldCreatorForm input,
+.detailFieldCreatorForm select,
+.detailFieldCreatorForm button {
+  min-width: 0;
+  min-height: 2rem;
+  border: 1px solid var(--mw-line);
+  border-radius: 0.42rem;
+  background: var(--mw-card);
+  padding: 0 0.5rem;
+  color: var(--mw-body);
+  font: inherit;
+  font-size: 0.68rem;
+}
+
+.detailFieldCreatorForm button {
+  border-color: transparent;
+  background: var(--mw-primary);
+  color: var(--mw-on-accent);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.orderRules {
+  display: grid;
+  gap: 0.32rem;
+  margin: 0.75rem 0;
+  border-radius: 0.55rem;
+  background: var(--mw-bg);
+  padding: 0.7rem 0.75rem;
+  color: var(--mw-sub);
+  font-size: 0.68rem;
+  line-height: 1.55;
+}
+
+.orderRules b {
+  color: var(--mw-body);
+  font-size: 0.72rem;
+}
+
+.orderRules p::before {
+  margin-right: 0.35rem;
+  content: "·";
+}
+
+.layoutAdmin {
+  border-bottom: 1px solid var(--mw-line);
+}
+
+.layoutAdmin > summary {
+  display: flex;
+  min-height: 2.2rem;
+  cursor: pointer;
+  align-items: center;
+  color: var(--mw-sub);
+  font-size: 0.68rem;
+  font-weight: 700;
+  list-style: none;
+}
+
+.layoutAdmin > summary::-webkit-details-marker { display: none; }
+
+.layoutAdmin > summary::before {
+  margin-right: 0.45rem;
+  content: "▸";
+}
+
+.layoutAdmin[open] > summary::before { content: "▾"; }
+
+.layoutAdminBody {
+  border-left: 2px solid var(--mw-line);
+  padding-left: 0.65rem;
+}
+
 .mainPane {
   display: grid;
   min-width: 0;
@@ -401,6 +498,12 @@
   font-size: 0.7rem;
 }
 
+.watcherCopy > b {
+  margin-right: 0.15rem;
+  color: var(--mw-body);
+  font-size: 0.72rem;
+}
+
 .watcherChip {
   display: inline-flex;
   min-height: 1.35rem;
@@ -413,6 +516,24 @@
   font-size: 0.68rem;
   font-weight: 700;
 }
+
+.watcherChip small {
+  border-radius: 0.2rem;
+  background: var(--mw-bg);
+  padding: 0.04rem 0.2rem;
+  color: var(--mw-sub);
+  font-size: 0.52rem;
+}
+
+.ruleWatcherChip { border: 1px solid var(--mw-line); }
+
+.watcherMore {
+  color: var(--mw-record);
+  font-size: 0.66rem;
+  font-weight: 750;
+}
+
+.watcherForm { flex: none; }
 
 .watcherAvatar {
   display: inline-grid;
@@ -644,4 +765,7 @@
   .fieldRow {
     grid-template-columns: 0.8rem minmax(5.6rem, 6.5rem) minmax(0, 1fr);
   }
+
+  .detailFieldCreatorForm { grid-template-columns: 1fr 5.5rem; }
+  .detailFieldCreatorForm button { grid-column: 1 / -1; }
 }

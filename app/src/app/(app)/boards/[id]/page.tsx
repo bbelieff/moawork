@@ -182,9 +182,18 @@ export default async function BoardPage({
   );
 
   // 담당자 탭·칩에 쓸 표시 이름. items.assigned_to 는 사용자 id 라서 이 맵이 없으면 UUID 가 노출된다.
+  const defaultTabAssignees = await loadDefaultTabAssignees(ctx);
   const assigneeLabels = Object.fromEntries(
-    (await loadDefaultTabAssignees(ctx)).map((member) => [member.userId, member.displayName]),
+    defaultTabAssignees.map((member) => [member.userId, member.displayName]),
   );
+  const memberDirectory = defaultTabAssignees.map((member) => ({
+    id: member.userId,
+    label: member.displayName,
+    title: member.title ?? (member.role === "owner" ? "대표" : member.role === "admin" ? "관리자" : member.role === "team_lead" ? "팀장" : null),
+    groupId: member.teamKey ? `team:${member.teamKey}` : `role:${member.role ?? "member"}`,
+    groupLabel: member.teamKey ?? (member.role === "owner" ? "대표" : member.role === "admin" ? "관리자" : member.role === "team_lead" ? "팀장" : "부서 미지정"),
+    active: true,
+  }));
   /*
    * 그룹 메뉴의 «다른 프리셋 적용» 목록 — 이 PR 에서는 «비운다» (BBE-174 / BBE-223).
    *
@@ -398,6 +407,7 @@ export default async function BoardPage({
       columnOrder={activeColumnOrder}
       cellFlash={cellFlash}
       assigneeLabels={assigneeLabels}
+      memberDirectory={memberDirectory}
       backSlot={backLink}
       viewSlot={viewToggle}
       savedViewsSlot={

@@ -40,6 +40,7 @@ import { BoardToolbar } from "./BoardToolbar";
 import { GroupBlock } from "./GroupBlock";
 import { GroupNameEditor } from "./GroupNameEditor";
 import { GroupTable } from "./GroupTable";
+import type { MemberPickerMember } from "./MemberPicker";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
 import { groupPresetName, isGroupPresetChanged } from "@/lib/presets/group-preset";
 import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
@@ -135,6 +136,7 @@ export function BoardWorkspace({
   columnOrder,
   cellFlash,
   assigneeLabels,
+  memberDirectory,
   backSlot,
   viewSlot,
   savedViewsSlot,
@@ -158,6 +160,8 @@ export function BoardWorkspace({
   cellFlash: CellFlash | null;
   /** 사용자 id → 표시 이름. 담당자 탭·칩에 UUID 가 그대로 나오지 않게 한다. */
   assigneeLabels: Record<string, string>;
+  /** 활성 조직 멤버의 사람 선택기 표시 정보. 조직도 공급자가 붙으면 이 경계만 교체한다. */
+  memberDirectory?: readonly MemberPickerMember[];
   /** 헤더 1줄 안에 얹을 화면 고유 컨트롤(뒤로가기·뷰 전환) — 줄을 늘리지 않기 위한 슬롯. */
   backSlot?: ReactNode;
   viewSlot?: ReactNode;
@@ -293,8 +297,10 @@ export function BoardWorkspace({
   const people = useMemo(() => assigneeOptions(rows, assigneeLabels), [rows, assigneeLabels]);
   const scheduleItems = useMemo(() => displayRows.map((row) => ({ id: row.id, label: row.title })), [displayRows]);
   const scheduleRecipients = useMemo(
-    () => Object.entries(assigneeLabels).map(([id, label]) => ({ id, label: label || "이름 없는 구성원" })),
-    [assigneeLabels],
+    () => memberDirectory?.length
+      ? memberDirectory
+      : Object.entries(assigneeLabels).map(([id, label]) => ({ id, label: label || "이름 없는 구성원" })),
+    [assigneeLabels, memberDirectory],
   );
 
   const matched = useMemo(
@@ -530,7 +536,9 @@ export function BoardWorkspace({
                 columns={shown}
                 detailColumns={[...detailColumns]}
                 boardDetailLayout={boardDetailLayout}
-                detailLayout={resolvedDetailLayout.entries.filter((entry) => detailColumns.some((column) => column.key === entry.key))}
+                detailLayout={resolvedDetailLayout.entries.filter(
+                  (entry) => entry.source === "detail" || detailColumns.some((column) => column.key === entry.key),
+                )}
                 detailLayoutInherited={resolvedDetailLayout.inherited}
                 rows={visibleRows}
                 textMode={savedPresentation.textMode}

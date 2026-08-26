@@ -10,7 +10,7 @@ import {
 } from "@/lib/notices/official-file";
 import { sanitizeFileName } from "@/lib/services/files";
 import { createRequestBoards } from "@/lib/boards/server";
-import { resolveDetailLayout } from "@/lib/boards/detail-layout";
+import { resolveBoardDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
 import { loadPermGuard } from "@/lib/perm/guard";
 
 const UUID =
@@ -441,8 +441,13 @@ export async function saveItemDetailFieldAction(input: {
       const group = item.group_id
         ? board.groups.find((candidate) => candidate.id === item.group_id)
         : undefined;
-      const valid = resolveDetailLayout(
+      const boardLayout = resolveBoardDetailLayout(
+        board.board.source,
         board.board.detail_layout_jsonb,
+        board.columns,
+      );
+      const valid = resolveDetailLayout(
+        boardLayout,
         group?.detail_layout_jsonb,
       ).entries.some(
         (entry) => entry.key === input.fieldKey && entry.source === "detail",

@@ -4,6 +4,9 @@ import { canonicalAssignee, canonicalPhone, createCanonicalNewLead, NewLeadMutat
 describe("BBE-171 canonical new-lead mutations", () => {
   it("formats a Korean phone for display while the RPC owns normalized storage", () => {
     expect(canonicalPhone("01012345678")).toBe("010-1234-5678");
+    expect(canonicalPhone("+82 10 1234 5678")).toBe("010-1234-5678");
+    expect(canonicalPhone("+082 82010 1234 5678")).toBe("010-1234-5678");
+    expect(canonicalPhone("0082 10.1234.5678")).toBe("010-1234-5678");
     expect(canonicalPhone("not a phone")).toBeNull();
   });
 

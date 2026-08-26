@@ -157,6 +157,9 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
     );
     expect(html).toContain("신규리드 관리 · 💡 신규고객");
     expect(html).toContain("이 화면에 배치되지 않은 항목 1개");
+    expect(html).toContain("순서 규칙");
+    expect(html).toContain("관리자 · 상세 배치 편집");
+    expect(html).not.toContain("리드컨택으로 넘기기");
     expect(html).toContain("hidden_legacy");
     expect(html).toContain("배치에 추가");
     for (const anchor of [
@@ -197,7 +200,29 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
     );
     expect(html).toContain("상세");
     expect(html).toContain("상세 메모을 표에도 보이기");
+    expect(html).toContain("+ 상세 전용 필드 추가");
+    expect(html).toContain('aria-label="상세 전용 필드 이름"');
     expect(html).toContain("기본으로 되돌리기");
+  });
+
+  it("상세 연락처는 편집 입력에서도 010-0000-0000 표기로 시작한다", () => {
+    const phoneColumn: BoardColumn = { ...columns[0], id: "col-phone", key: "phone", label: "연락처", type: "phone" };
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={{ ...row, deal_id: "deal-a", values: { phone: "+82 10 3026 6007" } }}
+        columns={[phoneColumn]}
+        boardLayout={[{ key: "phone", source: "column" }]}
+        layout={[{ key: "phone", source: "column" }]}
+        inherited
+        canEditItems
+        canManageColumns={false}
+        canonicalNewLead
+        defaultOpen
+      />,
+    );
+    expect(html).toContain('type="tel"');
+    expect(html).toContain('value="010-3026-6007"');
   });
 
   it("상속된 기본 필드가 있으면 빈 배치 안내 없이 편집 입력을 보여준다", () => {
@@ -221,10 +246,11 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
     expect(html).toContain('id="item-a-company"');
     expect(html).toContain("✓ 자동 저장됨");
     expect(html).not.toContain("배치된 상세 필드가 없습니다");
-    expect(html).toContain("이 화면에 배치되지 않은 항목 0개");
+    expect(html).not.toContain("이 화면에 배치되지 않은 항목");
+    expect(html).not.toContain("관리자 · 상세 배치 편집");
   });
 
-  it("신규리드 담당자와 출동은 표와 같은 단일·다중 멤버 선택기로 저장한다", () => {
+  it("신규리드 담당자는 좌측 단일 선택, 연관담당은 우측상단 복수 선택으로 저장한다", () => {
     const memberColumns: BoardColumn[] = [
       {
         ...columns[0],
@@ -237,7 +263,7 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
         ...columns[0],
         id: "col-collaborators",
         key: "collaborators",
-        label: "출동",
+        label: "연관담당",
         type: "people",
         sort_order: 1,
       },
@@ -272,10 +298,10 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
     );
     expect(html).toContain('name="field" value="owner"');
     expect(html).toContain('name="field" value="collaborators"');
-    expect(html).toContain('aria-label="담당자 멤버 검색"');
-    expect(html).toContain('aria-label="출동 멤버 검색"');
-    expect(html.match(/type="radio"/g)?.length).toBeGreaterThanOrEqual(3);
-    expect(html.match(/type="checkbox"/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(html).toContain("연관담당");
+    expect(html).toContain("바꾸기");
+    expect(html.match(/aria-haspopup="dialog"/g)?.length).toBe(2);
+    expect(html.match(/id="detail-field-collaborators"/g) ?? []).toHaveLength(0);
   });
 
   it("상세 drawer는 전역 portal과 공용 dialog 레이어를 사용한다", () => {
@@ -305,7 +331,7 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
       "첨부 · 링크",
       "TXT 추출",
       "CSV",
-      "이 건이 바뀌면 알게 되는 사람",
+      "연관담당",
       "히스토리",
       "통화 기록",
       "삭제 불가",
