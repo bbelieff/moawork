@@ -46,7 +46,8 @@ import { groupPresetName, isGroupPresetChanged } from "@/lib/presets/group-prese
 import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
-import type { CompanyPickerRow } from "@/lib/companies/search";
+import type { CompanyPickerLoadResult } from "@/lib/companies/picker-server";
+import type { CompanyIntakeActionState } from "@/app/(app)/boards/[id]/company-intake-actions";
 import { NEW_LEAD_DETAIL_ONLY_KEYS, presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
 import { NOTICE_KEYS } from "@/lib/notices/types";
 import { buildBlocks } from "./blocks";
@@ -151,14 +152,17 @@ export function BoardWorkspace({
   cellAction,
   itemDetailFixture,
   workflowTransitionSlot,
-  contractWorkCompanies = [],
+  contractWorkCompanyPicker = { rows: [], error: null },
   startCompanyWorkAction,
   companyIntakeRequestId,
 }: {
   board: Board;
   /** 계약업체 실무에서만 채워진다 — 「＋ 업체 추가」 목록. 다른 보드는 빈 배열이다. */
-  contractWorkCompanies?: readonly CompanyPickerRow[];
-  startCompanyWorkAction?: (formData: FormData) => void | Promise<void>;
+  contractWorkCompanyPicker?: CompanyPickerLoadResult;
+  startCompanyWorkAction?: (
+    previous: CompanyIntakeActionState,
+    formData: FormData,
+  ) => Promise<CompanyIntakeActionState>;
   companyIntakeRequestId?: string;
   columns: BoardColumn[];
   groups: BoardGroup[];
@@ -495,7 +499,7 @@ export function BoardWorkspace({
           그룹이 없습니다. 아래 «그룹 추가»로 첫 그룹을 만드세요.
         </p>
       ) : (
-        blocks.map((block) => {
+        blocks.map((block, blockIndex) => {
           const resolvedColumns = resolveColumnOrder(tableColumns, optimisticOrder[block.key]);
           // 과거에 저장된 그룹별 배치도 광고 명의 필수 유입정보 위치를 되돌리지 못하게 한다.
           // 서버의 sort_order와 그룹별 사용자 배치를 정본으로 삼는다. 기본 신규리드 순서는
@@ -511,6 +515,8 @@ export function BoardWorkspace({
             boardDetailLayout,
             block.group?.detail_layout_jsonb,
           );
+          // `start_company_work`는 정본상 첫 그룹에 넣는다. 다른 그룹 아래에도 선택기를
+          // 보여주면 누른 위치와 생성 위치가 달라지므로 첫 그룹에만 둔다.
 
           return (
             <GroupBlock
@@ -537,8 +543,13 @@ export function BoardWorkspace({
                 groupName={block.name}
                 canonicalNewLead={board.source === NEW_LEAD_TAB_SOURCE}
                 newLeadMembers={scheduleRecipients}
-                {...(board.source === CONTRACT_WORK_TAB_SOURCE && startCompanyWorkAction && companyIntakeRequestId
-                  ? { companyPicker: { rows: contractWorkCompanies, action: startCompanyWorkAction, requestId: companyIntakeRequestId } }
+                {...(blockIndex === 0 && board.source === CONTRACT_WORK_TAB_SOURCE && startCompanyWorkAction && companyIntakeRequestId
+                  ? { companyPicker: {
+                      rows: contractWorkCompanyPicker.rows,
+                      loadError: contractWorkCompanyPicker.error,
+                      action: startCompanyWorkAction,
+                      requestId: companyIntakeRequestId,
+                    } }
                   : {})}
                 itemDetailFixture={itemDetailFixture}
                 currentUserId={currentUserId}

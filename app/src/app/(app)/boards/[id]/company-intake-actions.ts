@@ -22,23 +22,36 @@ function text(formData: FormData, key: string): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-export async function startCompanyWorkFromBoardAction(formData: FormData): Promise<void> {
-  const ctx = await getSession();
+export type CompanyIntakeActionState = Readonly<{
+  ok: boolean | null;
+  message: string;
+}>;
+
+export async function startCompanyWorkFromBoardAction(
+  _previous: CompanyIntakeActionState,
+  formData: FormData,
+): Promise<CompanyIntakeActionState> {
   const companyId = text(formData, "companyId");
   const requestId = text(formData, "requestId");
-  // 값이 없으면 «조용히 아무 일도 없었던 것처럼» 두지 않는다 — 다시 그리면 목록이 그대로 있다.
-  if (!companyId || !requestId) return;
+  const boardId = text(formData, "boardId");
+  if (!companyId || !requestId || !boardId) {
+    return { ok: false, message: "업체를 선택한 뒤 다시 시도해 주세요." };
+  }
 
   try {
+    const ctx = await getSession();
     const client = await createClient();
     await startCompanyWork(client as unknown as CompanyStartWorkClient, { orgId: ctx.org.id, companyId, requestId });
-  } catch {
-    // 실패를 성공으로 위장하지 않는다. 다시 그리면 새 건이 없다는 것이 그대로 보인다.
-    return;
+  } catch (error) {
+    // DB 원문은 화면에 노출하지 않고 서버 로그에만 남긴다.
+    console.error("[company intake] failed to start work", error);
+    return { ok: false, message: "업무를 시작하지 못했어요. 잠시 후 다시 시도해 주세요." };
   }
 
   // 이 건은 세 화면에 동시에 나타난다 — 보드 · 계약업체 실무 진입 · 업체관리 현황.
+  revalidatePath(`/boards/${boardId}`);
   revalidatePath("/work");
   revalidatePath("/companies");
   revalidatePath(`/companies/${companyId}`);
+  return { ok: true, message: "업무를 시작했어요." };
 }

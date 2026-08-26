@@ -49,6 +49,7 @@ import { TrashItemButton } from "./ItemTrashControls";
 import { AddItemForm } from "./AddItemForm";
 import { ContractWorkIntakeForm } from "./ContractWorkIntakeForm";
 import type { CompanyPickerRow } from "@/lib/companies/search";
+import type { CompanyIntakeActionState } from "@/app/(app)/boards/[id]/company-intake-actions";
 import { ColumnContextMenu } from "./ColumnContextMenu";
 import type {
   ColumnScheduleItemOption,
@@ -452,7 +453,11 @@ export function GroupTable({
    */
   companyPicker?: {
     rows: readonly CompanyPickerRow[];
-    action: (formData: FormData) => void | Promise<void>;
+    loadError?: string | null;
+    action: (
+      previous: CompanyIntakeActionState,
+      formData: FormData,
+    ) => Promise<CompanyIntakeActionState>;
     requestId: string;
   };
   newLeadMembers?: readonly MemberPickerMember[];
@@ -902,8 +907,10 @@ export function GroupTable({
                 ) : companyPicker ? (
                   <ContractWorkIntakeForm
                     rows={companyPicker.rows}
+                    loadError={companyPicker.loadError}
                     startWorkAction={companyPicker.action}
                     requestId={companyPicker.requestId}
+                    boardId={boardId}
                     inputClassName={`${CELL_INPUT} w-full max-w-md`}
                   />
                 ) : (

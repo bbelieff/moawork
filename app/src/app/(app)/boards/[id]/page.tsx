@@ -132,9 +132,9 @@ export default async function BoardPage({
    * 이미 진행 이력이 있는 회사도 «다시» 고를 수 있게 건수를 같이 보여준다
    * (한 회사에 자금 건이 여러 번 생기는 것이 정상이다).
    */
-  const contractWorkCompanies = board.source === CONTRACT_WORK_TAB_SOURCE
+  const contractWorkCompanyPicker = board.source === CONTRACT_WORK_TAB_SOURCE
     ? await loadCompanyPickerRows(ctx)
-    : [];
+    : { rows: [], error: null };
   const boardItems = board.source === NOTICE_TAB_SOURCE
     ? loadedItems.map((item) => {
         const fileId = item.values.official_pdf;
@@ -425,7 +425,7 @@ export default async function BoardPage({
       groups={groups}
       rows={items}
       // 계약업체 실무에서만 채워진다 — 다른 보드는 빈 배열이라 «업체 추가» 가 뜨지 않는다.
-      contractWorkCompanies={contractWorkCompanies}
+      contractWorkCompanyPicker={contractWorkCompanyPicker}
       startCompanyWorkAction={startCompanyWorkFromBoardAction}
       // 같은 «추가» 를 두 번 눌러도 건이 둘 생기지 않게 하는 열쇠. 서버가 발급한다.
       companyIntakeRequestId={crypto.randomUUID()}

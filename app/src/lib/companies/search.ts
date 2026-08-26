@@ -1,5 +1,3 @@
-import type { Company } from "@/lib/types";
-
 /**
  * 「업체 추가 — 회사명을 먼저 찾습니다」 의 검색.
  *
@@ -38,6 +36,23 @@ export function digitsOnly(value: string): string {
   return digits.startsWith("82") ? `0${digits.slice(2)}` : digits;
 }
 
+/**
+ * 브라우저의 업체 선택기에 필요한 최소 회사 정보.
+ *
+ * 서버의 `Company` 전체를 넘기면 화면이 쓰지 않는 조직 id·매출·담당자 id·생성시각까지
+ * RSC payload에 실린다. 권한 안의 값이라도 클라이언트에 필요 없는 값은 보내지 않는다.
+ */
+export interface CompanyPickerCompany {
+  id: string;
+  name: string;
+  biz_type: string | null;
+  region: string | null;
+  owner_name: string | null;
+  phone: string | null;
+  email: string | null;
+  homepage: string | null;
+}
+
 /** 한 조각이 질의에 걸리나 — 원문·초성·초성끼리 셋 다 본다(목업 `hit` 과 같은 규칙). */
 function matchesText(field: string, query: string): boolean {
   if (!field) return false;
@@ -49,7 +64,7 @@ function matchesText(field: string, query: string): boolean {
 }
 
 /** 검색 대상이 되는 «회사 고유정보» — 여기 없는 칸은 검색되지 않는다. */
-export function searchableFields(company: Company): string[] {
+export function searchableFields(company: CompanyPickerCompany): string[] {
   return [
     company.name,
     company.owner_name ?? "",
@@ -61,7 +76,7 @@ export function searchableFields(company: Company): string[] {
   ].filter(Boolean);
 }
 
-export function companyMatches(company: Company, rawQuery: string): boolean {
+export function companyMatches(company: CompanyPickerCompany, rawQuery: string): boolean {
   const query = rawQuery.trim();
   if (!query) return true;
 
@@ -77,7 +92,7 @@ export function companyMatches(company: Company, rawQuery: string): boolean {
 }
 
 export interface CompanyPickerRow {
-  company: Company;
+  company: CompanyPickerCompany;
   /** 이 회사로 이미 진행한 자금 건 수. 0 이면 «이력 없음». */
   dealCount: number;
 }

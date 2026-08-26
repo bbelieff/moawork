@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chosung, companyMatches, digitsOnly, rankCompanies, type CompanyPickerRow } from "./search";
-import type { Company } from "@/lib/types";
+import { chosung, companyMatches, digitsOnly, rankCompanies, type CompanyPickerCompany, type CompanyPickerRow } from "./search";
 
 /**
  * 「업체 추가」 검색 — 이 화면의 목적은 «같은 회사를 두 번 적지 않게» 하는 것이다.
@@ -9,14 +8,13 @@ import type { Company } from "@/lib/types";
  * ★ 이름은 전부 «검색 규칙» 을 재기 위한 지어낸 값이다. 실제 고객 정보가 아니다.
  */
 
-const company = (over: Partial<Company>): Company => ({
-  id: "c1", org_id: "o1", name: "가나상사", biz_type: null, region: null,
-  owner_name: null, phone: null, email: null, revenue: null, founded_on: null,
-  homepage: null, assigned_to: null, created_at: "2026-01-01T00:00:00.000Z",
+const company = (over: Partial<CompanyPickerCompany>): CompanyPickerCompany => ({
+  id: "c1", name: "가나상사", biz_type: null, region: null,
+  owner_name: null, phone: null, email: null, homepage: null,
   ...over,
 });
 
-const row = (over: Partial<Company>, dealCount = 0): CompanyPickerRow => ({ company: company(over), dealCount });
+const row = (over: Partial<CompanyPickerCompany>, dealCount = 0): CompanyPickerRow => ({ company: company(over), dealCount });
 
 describe("초성", () => {
   it("한글을 초성으로 접는다", () => {
