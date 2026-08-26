@@ -150,7 +150,7 @@ export function BoardToolbar({
   };
 
   return (
-    <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1">
+    <div className="mw-board-inline-scroll flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden pb-1">
       {/* 검색 — 칩이 아니라 입력 자체를 노출한다(가장 자주 쓰는 컨트롤). */}
       <div className="relative shrink-0">
         <span
