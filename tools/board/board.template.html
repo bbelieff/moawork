@@ -457,19 +457,43 @@ function buildDecisions(){
  if(stampMissing.length)decisions.push({tone:"info",kind:"STAMP GAP",title:"서명 도장 미확인 "+stampMissing.length+"건",body:stampMissing.map((i)=>i.id).join(" · "),count:stampMissing.length});
  const repo=state.operations?.repository;
  if(repo?.available&&(repo.dirty||repo.behind>0))decisions.push({tone:"review",kind:"WORKTREE",title:"관제 서버 Git 상태 확인",body:(repo.dirty?"tracked/untracked "+repo.dirtyCount+"건 · ":"")+(repo.behind?"origin/main보다 "+repo.behind+" 뒤":"최신 main"),count:repo.dirtyCount||repo.behind});
- const badPr=(state.operations?.pullRequests?.items||[]).filter((pr)=>pr.checks?.failing>0||["DIRTY","BLOCKED"].includes(pr.mergeStateStatus));
+ /* ★ 2026-08-27 — «열린» PR 만 센다.
+    전에는 --state all 로 받은 100건 전부를 봤다. 그런데 머지된 PR 은 GitHub 이
+    mergeStateStatus 를 안 준다(UNKNOWN 이 된다) 하고, 그 PR 이 살아 있을 때 한 번
+    빨갰던 체크도 그대로 남는다. 그래서 «이미 끝난 일» 이 영원히 「충돌·실패」로 떴다 —
+    실측: #581 은 머지됐는데 「충돌·실패 PR 1건 #581 UNKNOWN」으로 판이 빨갰다.
+    판정 대상은 «지금 손을 대야 하는 것» 이다. 닫힌 PR 은 그것이 아니다. */
+ const badPr=(state.operations?.pullRequests?.items||[])
+  .filter((pr)=>String(pr.state||"").toUpperCase()==="OPEN")
+  .filter((pr)=>pr.checks?.failing>0||["DIRTY","BLOCKED"].includes(pr.mergeStateStatus));
  if(badPr.length)decisions.push({tone:"critical",kind:"PR GATE",title:"충돌·실패 PR "+badPr.length+"건",body:badPr.slice(0,8).map((pr)=>"#"+pr.number+" "+pr.mergeStateStatus).join(" · "),count:badPr.length});
- const coverage=BOARD_LOGIC.coverage(GOAL_IDS.map((id)=>state.by[id]).filter(Boolean),GOAL_IDS,SQUAD_LABELS);
- if(!coverage.ok){
+ /* ★ 2026-08-27 — 목표 카드를 «찾을 수 있을 때만» 잰다.
+    GOAL_IDS 는 Linear 시절 카드 15장(BBE-171~186)이다. 2026-08-24 CUTOVER 로
+    출처가 GitHub 이 되면서 그 15장은 이 판에 «존재하지 않게» 됐다.
+    그런데 분모는 GOAL_IDS.length(=15) 로 고정돼 있어서, 하나도 못 찾은 상태가
+    「15건 전부 UNSQUADDED · MISSING_OWNER」라는 빨간 경고로 나왔다.
+    막힌 것이 아니라 «없는 것을 찾고 있었다» — 판이 스스로를 빨갛게 칠했다.
+
+    못 찾으면 재지 않는다. 「측정 실패」를 「전부 실패」로 보고하지 않는다.
+    ★ 목표 집합을 GitHub 에서 유도하는 것은 별건이다 — 이 판의 SQUADS·DEPENDENCIES·
+      릴리스 관문이 전부 그 15장 위에 세워져 있어서, 같이 갈아야 한다. */
+ const goalIssues=GOAL_IDS.map((id)=>state.by[id]).filter(Boolean);
+ const goalsResolvable=goalIssues.length>0;
+ if(!goalsResolvable&&GOAL_IDS.length){
+  decisions.push({tone:"info",kind:"목표 집합 미연결",title:"목표 "+GOAL_IDS.length+"건을 이 판에서 찾지 못했습니다",
+   body:"Linear 시절 카드 번호(BBE-###)가 코드에 박혀 있습니다. GitHub 로 옮긴 뒤로는 조회되지 않아 작업반·소유 검사를 «재지 않았습니다» — 실패로 세지 않습니다.",count:GOAL_IDS.length});
+ }
+ const coverage=BOARD_LOGIC.coverage(goalIssues,GOAL_IDS,SQUAD_LABELS);
+ if(goalsResolvable&&!coverage.ok){
   const gaps=[coverage.missing.length?"UNSQUADDED "+coverage.missing.join(","):"",coverage.duplicate.length?"DUPLICATE "+coverage.duplicate.map((item)=>item.id+"["+item.labels.join(",")+"]").join(" · "):""].filter(Boolean);
   decisions.push({tone:"critical",kind:"P0 SQUAD COVERAGE",title:"목표 "+coverage.total+"건 exact coverage 오류",body:gaps.join(" · "),count:coverage.missing.length+coverage.duplicate.length});
  }
- const ownerCoverage=BOARD_LOGIC.ownerCoverage(GOAL_IDS.map((id)=>state.by[id]).filter(Boolean),GOAL_IDS);
- if(!ownerCoverage.ok){
+ const ownerCoverage=BOARD_LOGIC.ownerCoverage(goalIssues,GOAL_IDS);
+ if(goalsResolvable&&!ownerCoverage.ok){
   const gaps=[ownerCoverage.missing.length?"MISSING_OWNER "+ownerCoverage.missing.join(","):"",ownerCoverage.collision.length?"OWNER_COLLISION "+ownerCoverage.collision.map((item)=>item.id+"["+item.labels.join(",")+"]").join(" · "):""].filter(Boolean);
   decisions.push({tone:"critical",kind:"P0 OWNER COVERAGE",title:"목표 "+ownerCoverage.total+"건 owner exact-1 오류",body:gaps.join(" · "),count:ownerCoverage.missing.length+ownerCoverage.collision.length});
  }
- const cross=crossDependencies();
+ const cross=goalsResolvable?crossDependencies():[];
  if(cross.length)decisions.push({tone:"critical",kind:"P0 CROSS-SQUAD",title:"작업반 간 교차 의존 "+cross.length+"건",body:cross.map((x)=>x.issueId+"←"+x.dependencyId+" "+x.source+"←"+x.target).join(" · "),count:cross.length});
  const migrationActive=state.open.filter((issue)=>isMigrationCard(issue)&&ACTIVE_STATES.has(issue.status));
  if(migrationActive.length>1)decisions.push({tone:"critical",kind:"P0 MIGRATION SERIAL",title:"동시 migration writer "+migrationActive.length+"건",body:migrationActive.map((issue)=>issue.id+" "+(laneOf(issue)||"owner 없음")).join(" · "),count:migrationActive.length});
@@ -504,8 +528,23 @@ function renderSquads(){
  }).join("");
 }
 function renderSharedGates(){
- const cross=crossDependencies();
+ /* ★ 2026-08-27 — 관문이 «기다릴 대상» 을 못 찾으면 WAITING 이 아니라 «해당 없음» 이다.
+    BBE-182 는 Linear 카드다. GitHub 로 옮긴 뒤 조회되지 않는데도 관문이
+    「BBE-182 Global Release Gate · WAITING」으로 영원히 빨갛게 떴다.
+    아무도 그 관문을 열 수 없다 — 열쇠가 되는 카드가 이 판에 없기 때문이다.
+    없는 것을 기다리는 화면은 «막혔다» 가 아니라 «틀렸다» 이므로 그렇게 적는다. */
  const release=state.by["BBE-182"];
+ const gateEl=document.getElementById("releaseGate");
+ if(!release&&!GOAL_IDS.some((id)=>state.by[id])){
+  gateEl.className="card gate closed";
+  gateEl.innerHTML='<h3>릴리스 관문 · 해당 없음</h3>'+
+   '<p>이 관문은 Linear 카드 <b>BBE-182</b> 와 목표 15장 위에 세워져 있습니다. 2026-08-24 에 출처를 GitHub 으로 옮긴 뒤로 <b>그 카드들이 이 판에 존재하지 않습니다.</b></p>'+
+   '<p>그래서 «막혀 있는» 것이 아니라 <b>재지 못하는</b> 상태입니다. 예전에는 이것을 WAITING 으로 표시해 판이 빨갛게 보였습니다.</p>'+
+   '<p>목표 집합을 GitHub Issue 에서 유도하도록 바꾸는 것이 남은 일입니다.</p>';
+  document.getElementById("migrationQueue").innerHTML='<div class="section-title">Migration shared-resource queue</div><div class="empty">목표 집합 미연결 — 재지 않았습니다</div>';
+  return;
+ }
+ const cross=crossDependencies();
  const prereqs=GOAL_IDS.filter((id)=>id!=="BBE-182").filter((id)=>state.by[id]?.status!=="Done");
  const coverage=BOARD_LOGIC.coverage(GOAL_IDS.map((id)=>state.by[id]).filter(Boolean),GOAL_IDS,SQUAD_LABELS);
  const ownerCoverage=BOARD_LOGIC.ownerCoverage(GOAL_IDS.map((id)=>state.by[id]).filter(Boolean),GOAL_IDS);
@@ -532,7 +571,9 @@ function renderOperations(){
  const prs=state.operations?.pullRequests;
  const prEl=document.getElementById("pullRequests");
  if(!prs?.available){prEl.innerHTML='<div class="section-title">열린 PR</div><div class="empty">GitHub 상태 조회 불가</div>';return}
- const items=[...(prs.items||[])].sort((a,b)=>(a.checks?.failing?0:["DIRTY","BLOCKED"].includes(a.mergeStateStatus)?1:a.checks?.pending?2:3)-(b.checks?.failing?0:["DIRTY","BLOCKED"].includes(b.mergeStateStatus)?1:b.checks?.pending?2:3)||new Date(b.updatedAt)-new Date(a.updatedAt));
+ /* 제목이 「열린 PR」인데 --state all 로 받은 100건을 전부 그리고 있었다.
+    닫힌 PR 이 섞이면 «지금 손댈 것» 이 무엇인지 읽을 수 없다. */
+ const items=[...(prs.items||[])].filter((pr)=>String(pr.state||"").toUpperCase()==="OPEN").sort((a,b)=>(a.checks?.failing?0:["DIRTY","BLOCKED"].includes(a.mergeStateStatus)?1:a.checks?.pending?2:3)-(b.checks?.failing?0:["DIRTY","BLOCKED"].includes(b.mergeStateStatus)?1:b.checks?.pending?2:3)||new Date(b.updatedAt)-new Date(a.updatedAt));
  prEl.innerHTML='<div class="section-title">열린 PR '+prs.count+'건</div><div class="pr-list">'+(items.length?items.slice(0,12).map((pr)=>'<a class="pr" href="'+esc(pr.url)+'" target="_blank"><b>#'+pr.number+'</b><div><p>'+esc(pr.title)+'</p><small>'+esc(pr.headRefName)+' · '+ago(pr.updatedAt)+'</small></div><div class="merge-'+esc(pr.mergeStateStatus)+'"><b>'+esc(pr.mergeStateStatus)+'</b><small>✓'+(pr.checks?.success||0)+' !'+(pr.checks?.failing||0)+' …'+(pr.checks?.pending||0)+'</small></div></a>').join(""):'<div class="empty">열린 PR 없음</div>')+'</div>';
 }
 const LAYERS=[
