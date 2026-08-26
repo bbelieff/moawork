@@ -53,6 +53,12 @@ import type {
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
 import { MemberPicker } from "./MemberPicker";
 import { NewLeadMessageCell } from "./NewLeadMessageCell";
+import { WorkflowProgressCell } from "./WorkflowProgressCell";
+import {
+  WORKFLOW_PROGRESS_KEY,
+  workflowProgressSpec,
+  type WorkflowProgressKind,
+} from "@/lib/workflow/progress";
 import {
   updateNewLeadFieldAction,
   updateNewLeadMetaAction,
@@ -152,6 +158,8 @@ export function BoardCell({
   canonicalNewLead,
   members = [],
   error,
+  workflowProgressKind,
+  workflowTransitionAction,
   cellAction,
 }: {
   boardId: string;
@@ -161,6 +169,8 @@ export function BoardCell({
   canonicalNewLead?: boolean;
   members?: readonly { id: string; label: string }[];
   error?: string | null;
+  workflowProgressKind?: WorkflowProgressKind | null;
+  workflowTransitionAction?: ReactNode;
   /** 결정론적 화면 검증에서만 저장소 경계를 바꾼다. 실제 셀 폼/제출 흐름은 그대로 둔다. */
   cellAction?: (formData: FormData) => Promise<void>;
 }) {
@@ -195,6 +205,21 @@ export function BoardCell({
 
   if (canonicalNewLead && column.key === "message_action") {
     return <NewLeadMessageCell row={row} />;
+  }
+
+  if (column.key === WORKFLOW_PROGRESS_KEY && workflowProgressKind) {
+    return (
+      <WorkflowProgressCell
+        boardId={boardId}
+        row={row}
+        column={column}
+        kind={workflowProgressKind}
+        readOnly={readOnly}
+        error={error}
+        transitionAction={workflowTransitionAction}
+        cellAction={cellAction}
+      />
+    );
   }
 
   if (cellReadOnly) {
@@ -396,6 +421,8 @@ export function GroupTable({
   onRowDragEnd,
   onRowDrop,
   renderRowAction,
+  workflowProgressKind = null,
+  renderWorkflowTransition,
   textMode = "single",
   focusColumnKey = null,
   onColumnArchived,
@@ -436,6 +463,9 @@ export function GroupTable({
   /** 이 그룹의 index 위치에 놓는다. */
   onRowDrop: (index: number) => void;
   renderRowAction?: (row: ItemWithValues) => ReactNode;
+  /** 화면의 통합 진행현황 셀. 실제 저장은 기존 단계/이동 계약을 그대로 소비한다. */
+  workflowProgressKind?: WorkflowProgressKind | null;
+  renderWorkflowTransition?: (row: ItemWithValues) => ReactNode;
   textMode?: "single" | "wrap";
   focusColumnKey?: string | null;
   onColumnArchived?: (columnId: string) => void;
@@ -562,12 +592,14 @@ export function GroupTable({
             {columns.map((col) => {
               const isTarget = overColKey === col.key && dragColKey !== col.key;
               const width = liveWidths[col.id] ?? col.width ?? undefined;
+              const workflowLocked = col.key === WORKFLOW_PROGRESS_KEY;
               return (
                 <th
                   key={col.id}
                   scope="col"
-                  draggable={canManageColumns}
+                  draggable={canManageColumns && !workflowLocked}
                   onDragStart={() => {
+                    if (workflowLocked) return;
                     dragColRef.current = col.key;
                     setDragColKey(col.key);
                   }}
@@ -585,7 +617,7 @@ export function GroupTable({
                     clearColDrag();
                   }}
                   title={
-                    !canManageColumns
+                    !canManageColumns || workflowLocked
                       ? cellTitle(col)
                       : `${cellTitle(col)} — 끌어서 이 그룹의 컬럼 순서 변경`
                   }
@@ -594,7 +626,7 @@ export function GroupTable({
                   data-column-key={col.key}
                   data-right-pinned={col.rightPinned || undefined}
                   className={`relative sticky top-0 z-20 min-w-20 border-b border-r border-mw-line px-2 py-1.5 text-xs font-semibold text-mw-sub ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-card"} ${
-                    !canManageColumns
+                    !canManageColumns || workflowLocked
                       ? ""
                       : "cursor-grab active:cursor-grabbing"
                   } ${isTarget ? "bg-mw-tint-blue text-mw-record" : ""} ${
@@ -605,12 +637,12 @@ export function GroupTable({
                     {canManageColumns && (
                       <span
                         aria-hidden="true"
-                        className="text-[0.6rem] opacity-40"
+                        className={workflowLocked ? "hidden" : "text-[0.6rem] opacity-40"}
                       >
                         ⠿
                       </span>
                     )}
-                    {canManageColumns ? (
+                    {canManageColumns && !workflowLocked ? (
                       <ColumnContextMenu
                         boardId={boardId}
                         column={col}
@@ -628,7 +660,7 @@ export function GroupTable({
                       </>
                     )}
                   </span>
-                  {canManageColumns && (
+                  {canManageColumns && !workflowLocked && (
                     <span
                       aria-hidden="true"
                       draggable={false}
@@ -802,9 +834,17 @@ export function GroupTable({
                       members={newLeadMembers}
                       error={
                         cellFlash
-                          ? findCellError(cellFlash, row.id, col.key)
+                          ? findCellError(
+                              cellFlash,
+                              row.id,
+                              col.key === WORKFLOW_PROGRESS_KEY && workflowProgressKind
+                                ? workflowProgressSpec(workflowProgressKind).stageColumnKey
+                                : col.key,
+                            )
                           : null
                       }
+                      workflowProgressKind={workflowProgressKind}
+                      workflowTransitionAction={renderWorkflowTransition?.(row)}
                       cellAction={cellAction}
                     />
                   </td>
