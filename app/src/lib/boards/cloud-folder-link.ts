@@ -17,35 +17,83 @@ export type CloudFolderUrlResult =
 
 const DIRECT_FILE_PATH = /\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)$/iu;
 
+function decodedUrlPart(value: string) {
+  let decoded = value;
+  try {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    }
+  } catch {
+    return null;
+  }
+  return /[\u0000-\u001f\u007f]/u.test(decoded) ? null : decoded;
+}
+
 function isDirectFileValue(value: string) {
-  return DIRECT_FILE_PATH.test(value.trim());
+  const decoded = decodedUrlPart(value);
+  if (decoded === null) return true;
+  return DIRECT_FILE_PATH.test(decoded.split(/[?#]/u, 1)[0].trim());
+}
+
+function validFolderIdentifier(value: string | undefined) {
+  if (value === undefined) return false;
+  const decoded = decodedUrlPart(value)?.trim();
+  return Boolean(decoded && decoded !== "." && decoded !== ".." && !isDirectFileValue(decoded));
+}
+
+function pathSegments(url: URL) {
+  const segments = url.pathname.split("/").filter(Boolean);
+  const decoded = segments.map(decodedUrlPart);
+  return decoded.some((segment) => segment === null)
+    ? []
+    : (decoded as string[]);
 }
 
 function nonFileQueryValue(url: URL, key: string) {
-  const value = url.searchParams.get(key)?.trim() ?? "";
-  return value.length > 0 && !isDirectFileValue(value);
+  const value = url.searchParams.get(key);
+  return value !== null && validFolderIdentifier(value);
 }
 
 function isGoogleDriveFolder(url: URL) {
+  if (url.hostname !== "drive.google.com") return false;
+  const segments = pathSegments(url);
+  const folderIndex = segments[0] === "drive" && segments[1] === "folders"
+    ? 1
+    : segments[0] === "drive" && segments[1] === "u" && /^\d+$/u.test(segments[2] ?? "") && segments[3] === "folders"
+      ? 3
+      : -1;
   return (
-    url.hostname === "drive.google.com" &&
-    /^\/drive\/(?:u\/\d+\/)?folders\/[^/]+/u.test(url.pathname)
+    folderIndex >= 0 &&
+    validFolderIdentifier(segments[folderIndex + 1]) &&
+    validFolderIdentifier(segments.at(-1))
   );
 }
 
+function hasFolderMarkerWithTail(segments: string[]) {
+  const markerIndex = segments.findIndex((segment) => segment.toLowerCase().includes(":f:"));
+  return markerIndex >= 0 && markerIndex < segments.length - 1 && validFolderIdentifier(segments.at(-1));
+}
+
 function isOneDriveFolder(url: URL) {
+  const segments = pathSegments(url);
+  const finalSegment = segments.at(-1);
   if (url.hostname === "1drv.ms") {
-    return /^\/(?:[^/]*:f:[^/]*|f)\//iu.test(url.pathname);
+    return (
+      (segments[0]?.toLowerCase().includes(":f:") || segments[0]?.toLowerCase() === "f") &&
+      validFolderIdentifier(finalSegment)
+    );
   }
   if (url.hostname === "onedrive.live.com" || url.hostname.endsWith(".onedrive.live.com")) {
     return (
-      url.pathname.toLowerCase().includes(":f:") ||
+      hasFolderMarkerWithTail(segments) ||
       nonFileQueryValue(url, "id")
     );
   }
   if (url.hostname.endsWith(".sharepoint.com")) {
     return (
-      url.pathname.toLowerCase().includes(":f:") ||
+      hasFolderMarkerWithTail(segments) ||
       (
         url.pathname.toLowerCase().endsWith("/forms/allitems.aspx") &&
         nonFileQueryValue(url, "id")
@@ -56,18 +104,22 @@ function isOneDriveFolder(url: URL) {
 }
 
 function isDropboxFolder(url: URL) {
-  return (
-    (url.hostname === "dropbox.com" || url.hostname === "www.dropbox.com") &&
-    /^\/(?:scl\/fo|sh|home)\//u.test(url.pathname)
-  );
+  if (url.hostname !== "dropbox.com" && url.hostname !== "www.dropbox.com") return false;
+  const segments = pathSegments(url);
+  const identifierIndex = segments[0] === "scl" && segments[1] === "fo"
+    ? 2
+    : segments[0] === "sh" || segments[0] === "home"
+      ? 1
+      : -1;
+  return identifierIndex >= 0 && validFolderIdentifier(segments.at(-1));
 }
 
 function isGenericFolder(url: URL) {
-  const segments = url.pathname.toLowerCase().split("/").filter(Boolean);
+  const segments = pathSegments(url);
   const folderSegment = segments.some((segment, index) =>
-    ["folder", "folders", "directory", "directories"].includes(segment) &&
-    Boolean(segments[index + 1]) &&
-    !isDirectFileValue(segments[index + 1]),
+    ["folder", "folders", "directory", "directories"].includes(segment.toLowerCase()) &&
+    validFolderIdentifier(segments[index + 1]) &&
+    validFolderIdentifier(segments.at(-1)),
   );
   const folderQuery = ["folder", "folder_id", "folderId", "directory"].some((key) =>
     nonFileQueryValue(url, key),

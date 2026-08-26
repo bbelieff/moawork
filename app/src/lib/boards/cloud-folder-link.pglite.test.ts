@@ -44,7 +44,8 @@ describe("Issue #574 canonical cloud folder persistence", () => {
         as $$select exists(
           select 1 from public.org_members
            where org_id=p_org and user_id=auth.uid() and status='active'
-        ) and p_permission='work.item_upsert'$$;
+        ) and p_permission='work.item_upsert'
+          and coalesce(current_setting('test.permission.allowed',true),'true')='true'$$;
       create function public.begin_guarded_migration(
         p_logical_key text,p_file_name text,p_file_digest text,p_expected_predecessor text,
         p_executor text,p_thread_id text,p_foundation boolean
@@ -116,10 +117,18 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       "data:text/html,unsafe",
       "https://example.com/files/contract.pdf",
       "https://drive.google.com/drive/folders/",
+      "https://drive.google.com/drive/folders/%20",
+      "https://drive.google.com/drive/folders/client/contract%2Epdf",
       "https://onedrive.live.com/?id=contract.pdf",
+      "https://onedrive.live.com/?id=contract.pdf%3Fdownload%3D1",
       "https://onedrive.live.com/?cid=only-a-drive-id",
       "https://tenant.sharepoint.com/sites/team/Forms/AllItems.aspx?id=contract.pdf",
+      "https://tenant.sharepoint.com/:f:",
       "https://example.com/folders/contract.pdf",
+      "https://example.com/folders/contract%2Epdf",
+      "https://www.dropbox.com/home/contract%2Epdf",
+      "https://example.com/?folder=%20",
+      "https://example.com/?folder=%2520",
       "https://example.com/?path=home",
       "https://example.com/ordinary-page",
     ]) {
@@ -136,8 +145,13 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       id(1), id(20), id(30), "https://drive.google.com/drive/folders/unassigned", id(111),
     ])).rejects.toThrow(/permission_denied/);
     await actor(id(11));
+    await db.exec("select set_config('test.permission.allowed','false',false)");
     await expect(db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5)", [
-      id(1), id(20), id(30), "https://drive.google.com/drive/folders/assigned", id(112),
+      id(1), id(20), id(30), "https://drive.google.com/drive/folders/permission-denied", id(112),
+    ])).rejects.toThrow(/permission_denied/);
+    await db.exec("select set_config('test.permission.allowed','true',false)");
+    await expect(db.query("select * from set_board_item_cloud_folder($1,$2,$3,$4,$5)", [
+      id(1), id(20), id(30), "https://drive.google.com/drive/folders/assigned", id(113),
     ])).resolves.toBeTruthy();
   });
 
@@ -150,6 +164,27 @@ describe("Issue #574 canonical cloud folder persistence", () => {
         `select has_function_privilege('${role}','public.set_board_item_cloud_folder(uuid,uuid,uuid,text,uuid)','EXECUTE') allowed`,
       )).rows[0].allowed).toBe(false);
     }
+    for (const role of ["anon", "authenticated", "service_role"]) {
+      for (const privilege of ["SELECT", "INSERT", "UPDATE", "DELETE"]) {
+        expect((await db.query<{ allowed: boolean }>(
+          `select has_table_privilege('${role}','public.board_item_cloud_folder_requests','${privilege}') allowed`,
+        )).rows[0].allowed).toBe(false);
+      }
+    }
+    expect((await db.query<{ rls: boolean; forced: boolean }>(
+      "select relrowsecurity rls,relforcerowsecurity forced from pg_class where oid='public.board_item_cloud_folder_requests'::regclass",
+    )).rows[0]).toEqual({ rls: true, forced: true });
+    expect((await db.query<{ count: number }>(
+      "select count(*)::int count from pg_policies where schemaname='public' and tablename='board_item_cloud_folder_requests'",
+    )).rows[0].count).toBe(0);
+    const procedure = (await db.query<{ definer: boolean; config: string }>(`
+      select prosecdef definer,coalesce(array_to_string(proconfig,','),'') config
+        from pg_proc
+       where oid='public.set_board_item_cloud_folder(uuid,uuid,uuid,text,uuid)'::regprocedure
+    `)).rows[0];
+    expect(procedure.definer).toBe(true);
+    expect(procedure.config).toContain("search_path=");
+    expect(procedure.config).not.toContain("public");
     expect(migration).not.toMatch(/\b(insert|update|delete)\s+(?:into\s+|from\s+)?public\.(?:items|item_values|companies|deals)\b/iu);
   });
 });
