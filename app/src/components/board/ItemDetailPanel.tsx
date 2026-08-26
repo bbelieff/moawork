@@ -42,6 +42,11 @@ import {
   type ItemDetailSnapshot,
 } from "@/app/(app)/boards/item-detail-actions";
 import { inspectCloudFolderUrl } from "@/lib/boards/cloud-folder-link";
+import {
+  EXISTING_LOAN_RECORDS_KEY,
+  existingLoanRecordsFromValues,
+  existingLoanRecordsSummary,
+} from "@/lib/new-lead/financial-profile";
 import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
 import styles from "./item-detail-panel.module.css";
 
@@ -691,7 +696,11 @@ export function ItemDetailPanel({
                             </span>
                           </label>
                           <div className={styles.fieldValue}>
-                            {memberEditable ? (
+                            {entry.key === EXISTING_LOAN_RECORDS_KEY ? (
+                              <p className={styles.readonlyValue}>
+                                {existingLoanRecordsSummary(existingLoanRecordsFromValues(row.values))}
+                              </p>
+                            ) : memberEditable ? (
                               <form action={updateNewLeadMetaAction} className={styles.memberField}>
                                 <input type="hidden" name="boardId" value={boardId} />
                                 <input type="hidden" name="itemId" value={row.id} />

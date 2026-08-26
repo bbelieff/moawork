@@ -16,10 +16,9 @@ import { advanceNewLeadToContact, NewLeadAdvanceError } from "@/lib/new-lead/adv
 import { createRequestBoards } from "@/lib/boards/server";
 import {
   CREDIT_SCORE_KEYS,
-  EXISTING_LOAN_KEYS,
+  EXISTING_LOAN_RECORDS_KEY,
   parseCreditScore,
-  parseLoanMonth,
-  parseOptionalNumber,
+  parseExistingLoanRecords,
 } from "@/lib/new-lead/financial-profile";
 
 function text(formData: FormData, key: string): string {
@@ -208,22 +207,13 @@ export async function saveNewLeadLoanProfileAction(
   if (permission.kind !== "allowed") {
     return { ok: false, message: permission.reason === "permission" ? "기대출을 저장할 권한이 없습니다." : "권한을 확인하지 못했습니다." };
   }
-  const month = parseLoanMonth(text(formData, "loanMonth"));
-  if (!month.ok) return { ok: false, message: month.message };
-  const amount = parseOptionalNumber(text(formData, "loanAmount"), "대출 금액");
-  if (!amount.ok) return { ok: false, message: amount.message };
-  const rate = parseOptionalNumber(text(formData, "loanRate"), "대출 금리", 100);
-  if (!rate.ok) return { ok: false, message: rate.message };
+  const records = parseExistingLoanRecords(text(formData, "loanRecords"));
+  if (!records.ok) return { ok: false, message: records.message };
 
   try {
     const graph = await createRequestBoards();
     const result = await graph.service.setCells(ctx, boardId, itemId, {
-      [EXISTING_LOAN_KEYS.provider]: text(formData, "loanProvider") || null,
-      [EXISTING_LOAN_KEYS.month]: month.value,
-      [EXISTING_LOAN_KEYS.amount]: amount.value,
-      [EXISTING_LOAN_KEYS.rate]: rate.value,
-      [EXISTING_LOAN_KEYS.terms]: text(formData, "loanTerms") || null,
-      [EXISTING_LOAN_KEYS.notes]: text(formData, "loanNotes") || null,
+      [EXISTING_LOAN_RECORDS_KEY]: records.value.length > 0 ? JSON.stringify(records.value) : null,
     });
     if (result.errors.length > 0) {
       return { ok: false, message: result.errors.map((error) => `${error.label}: ${error.message}`).join(" · ") };

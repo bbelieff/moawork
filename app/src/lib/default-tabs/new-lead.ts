@@ -170,12 +170,8 @@ const ALL_COLUMNS: DefaultTabColumn[] = [
   { key: "email", label: "이메일", type: "email", source: "auto", width: 160 },
   { key: "address_detail", label: "주소", type: "text", source: "auto", width: 180 },
   { key: "founded_month", label: "창업연월", type: "text", source: "in", width: 110 },
-  { key: "existing_loan_provider", label: "기대출 진행기관", type: "text", source: "in", width: 130 },
-  { key: "existing_loan_month", label: "기대출 대출연월", type: "text", source: "in", width: 120 },
   { key: "existing_loans", label: "기대출", type: "money", source: "in", width: 240 },
-  { key: "existing_loan_rate", label: "기대출 금리", type: "number", source: "in", width: 100 },
-  { key: "existing_loan_terms", label: "기대출 조건", type: "text", source: "in", width: 160 },
-  { key: "existing_loan_notes", label: "기대출 비고", type: "longtext", source: "in", width: 180 },
+  { key: "existing_loan_records", label: "기대출 상세(반복)", type: "longtext", source: "in", width: 180 },
   { key: "credit_score_ncb", label: "NCB", type: "number", source: "in", width: 90 },
   { key: "credit_score_kcb", label: "KCB", type: "number", source: "in", width: 90 },
   { key: "credit_score", label: "기존 신용점수(기관 미상)", type: "number", source: "in", width: 150 },
@@ -333,8 +329,7 @@ export const NEW_LEAD_DETAIL_ONLY_KEYS = new Set<string>([
   "documents", "consult_notes", "dispatch_status", "contact_status", "message_action",
   "absence_notice", "consult1_notice", "confirm2_notice", "delay_notice",
   "malicious_absence_notice", "feedback_status", "recall_at", "meeting_at",
-  "recontact_on", "contract_fee", "existing_loan_provider", "existing_loan_month",
-  "existing_loan_rate", "existing_loan_terms", "existing_loan_notes", "credit_score",
+  "recontact_on", "contract_fee", "existing_loan_records", "credit_score",
 ]);
 
 export const NEW_LEAD_MESSAGE_COLUMN_KEYS = new Set([

@@ -85,7 +85,7 @@ describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
 
   it("실제 운영 먼데이의 비AI 업무 컬럼을 보강하고 광고 명을 유입정보 앞단에 둔다", () => {
     const labels = NEW_LEAD_TAB.columns.map((column) => column.label);
-    expect(labels).toHaveLength(42);
+    expect(labels).toHaveLength(38);
     expect(labels).toEqual(expect.arrayContaining(mock.columns.map((column) => {
       if (column.label === "협업자") return "연관담당";
       if (column.label === "매출 구간") return "3개년매출";
@@ -96,7 +96,7 @@ describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
     })));
     expect(labels).toEqual(expect.arrayContaining([
       "주소", "파일", "상담내용", "연관담당", "출동", "컨택여부", "상담지연 메시지", "악성부재 메시지전달",
-      "기대출 진행기관", "기대출 대출연월", "기대출 금리", "기대출 조건", "기대출 비고", "NCB", "KCB",
+      "기대출", "기대출 상세(반복)", "NCB", "KCB",
     ]));
     expect(labels.indexOf("광고명")).toBeLessThan(labels.indexOf("연락처"));
   });

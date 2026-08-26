@@ -48,14 +48,13 @@ describe("Issue #589 신규리드 재무 저장", () => {
     mocks.setCells.mockReset().mockResolvedValue({ errors: [] });
   });
 
-  it("기대출 여섯 값을 한 번의 같은-item 저장으로 묶는다", async () => {
+  it("여러 기대출을 stable id 목록 한 셀로 원자 저장한다", async () => {
     const data = baseForm();
-    data.set("loanProvider", "기업은행");
-    data.set("loanMonth", "2026-08");
-    data.set("loanAmount", "30,000,000");
-    data.set("loanRate", "3.75");
-    data.set("loanTerms", "만기일시상환");
-    data.set("loanNotes", "보증서 90%");
+    const records = [
+      { id: "loan-a", provider: "기업은행", month: "2026-08", amount: 30_000_000, rate: 3.75, terms: "만기일시상환", notes: "보증서 90%" },
+      { id: "loan-b", provider: "국민은행", month: "2025-01", amount: 10_000_000, rate: 4.1, terms: "원리금균등", notes: "" },
+    ];
+    data.set("loanRecords", JSON.stringify(records));
 
     await expect(saveNewLeadLoanProfileAction({ ok: false, message: "" }, data)).resolves.toEqual({
       ok: true,
@@ -66,15 +65,16 @@ describe("Issue #589 신규리드 재무 저장", () => {
       expect.objectContaining({ org: { id: "org-a" } }),
       "board-a",
       "item-a",
-      {
-        existing_loan_provider: "기업은행",
-        existing_loan_month: "2026-08",
-        existing_loans: 30_000_000,
-        existing_loan_rate: 3.75,
-        existing_loan_terms: "만기일시상환",
-        existing_loan_notes: "보증서 90%",
-      },
+      { existing_loan_records: JSON.stringify(records) },
     );
+  });
+
+  it("중복 기대출 id는 저장소에 도달하기 전에 전부 거부한다", async () => {
+    const data = baseForm();
+    const duplicate = { id: "same", provider: "", month: "", amount: null, rate: null, terms: "", notes: "" };
+    data.set("loanRecords", JSON.stringify([duplicate, duplicate]));
+    expect((await saveNewLeadLoanProfileAction({ ok: false, message: "" }, data)).ok).toBe(false);
+    expect(mocks.setCells).not.toHaveBeenCalled();
   });
 
   it.each([

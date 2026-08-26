@@ -27,6 +27,7 @@ export function NewLeadCreditScoreCell({
     { ok: false, message: "" },
   );
   const shown = typeof value === "number" || typeof value === "string" ? value : "";
+  const lastSubmittedRef = useRef(String(shown));
 
   if (readOnly) return <span className="block text-right text-xs tabular-nums text-mw-body">{shown || "—"}</span>;
 
@@ -45,7 +46,11 @@ export function NewLeadCreditScoreCell({
         disabled={pending}
         aria-label={`${label} 신용점수`}
         aria-invalid={!state.ok && Boolean(state.message)}
-        onBlur={() => formRef.current?.requestSubmit()}
+        onBlur={(event) => {
+          if (event.currentTarget.value === lastSubmittedRef.current) return;
+          lastSubmittedRef.current = event.currentTarget.value;
+          formRef.current?.requestSubmit();
+        }}
         className="h-7 w-full rounded border border-mw-line bg-mw-card px-2 text-right text-xs tabular-nums text-mw-fg outline-none focus:border-mw-record disabled:opacity-60"
         placeholder="—"
       />

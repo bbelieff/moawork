@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
 import { NEW_LEAD_BUSINESS_TYPES } from "@/lib/new-lead/business-types";
 import { NEW_LEAD_REVENUE_BANDS } from "@/lib/new-lead/revenue-bands";
 import {
@@ -23,19 +23,20 @@ function useReset(ref: RefObject<HTMLElement | null>, reset: () => void) {
 }
 
 export function BusinessTypeField({ invalid = false }: { invalid?: boolean }) {
+  const suggestionsId = useId();
   return (
     <label className="grid gap-1 text-xs text-mw-sub">
       <span>사업자유형 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
       <input
         name="business_registration_type"
-        list="new-lead-business-types"
+        list={suggestionsId}
         required
         aria-required="true"
         aria-invalid={invalid}
         className={`${CONTROL} aria-[invalid=true]:border-mw-error`}
         placeholder="직접 입력하거나 추천 선택"
       />
-      <datalist id="new-lead-business-types">
+      <datalist id={suggestionsId}>
         {NEW_LEAD_BUSINESS_TYPES.filter((value) => value !== "그외").map((value) => (
           <option key={value} value={value} />
         ))}
