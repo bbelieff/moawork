@@ -312,12 +312,12 @@ export function BoardCell({
         ) : column.type === "person" ? (
           <>
             <input type="hidden" name="kind" value="person" />
-            <MemberPicker label={column.label} members={members.length > 0 ? members : options.map(({ id, label }) => ({ id, label }))} value={typeof value === "string" ? value : null} multiple={false} />
+            <MemberPicker label={column.label} members={members.length > 0 ? members : options.map(({ id, label }) => ({ id, label }))} value={typeof value === "string" ? value : null} multiple={false} compact={canonicalNewLead} />
           </>
         ) : column.type === "people" ? (
           <>
             <input type="hidden" name="kind" value="people" />
-            <MemberPicker label={column.label} members={members.length > 0 ? members : options.map(({ id, label }) => ({ id, label }))} value={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []} multiple />
+            <MemberPicker label={column.label} members={members.length > 0 ? members : options.map(({ id, label }) => ({ id, label }))} value={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []} multiple compact={canonicalNewLead} />
           </>
         ) : column.type === "multiselect" ? (
           <select
@@ -672,7 +672,7 @@ export function GroupTable({
                 key={row.id}
                 onDragOver={acceptRow(index)}
                 onDrop={dropRow(index)}
-                className={`group h-9 hover:bg-mw-bg ${
+                className={`group ${canonicalNewLead ? "h-8" : "h-9"} hover:bg-mw-bg ${
                   dragRowId === row.id ? "opacity-40" : ""
                 } ${overRowIndex === index ? "border-t-2 border-t-mw-record" : ""}`}
               >
