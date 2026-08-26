@@ -58,13 +58,12 @@ function DealRow({ row, hidden }: { row: CompanyDealView; hidden: boolean }) {
           {deal.title}
         </Link>
       </td>
-      {/* 진행기관 — 아직 딜에 이 필드가 없다. 자리를 비워 두고 «없다» 를 말한다(#531 후속). */}
-      <Cell align="left"><span className="text-zinc-400">{DASH}</span></Cell>
+      {/* 진행기관 · 승인일 — 계약업체 실무 보드가 원본이다. 여기서 복사해 두지 않는다(#531). */}
+      <Cell align="left">{row.boardFacts.institution ?? <span className="text-zinc-400">{DASH}</span>}</Cell>
       <Cell align="left">{row.ownerName ?? <span className="text-zinc-400">미지정</span>}</Cell>
       <Cell align="left">{row.statusLabel ?? <span className="text-zinc-400">{DASH}</span>}</Cell>
       <Cell align="left">{shortDate(deal.applied_on)}</Cell>
-      {/* 승인 — 승인«일» 을 담는 필드가 제품에 아직 없다(#531 후속). */}
-      <Cell align="left"><span className="text-zinc-400">{DASH}</span></Cell>
+      <Cell align="left">{shortDate(row.boardFacts.approvedOn)}</Cell>
       <Cell align="right">{money(deal.amount)}</Cell>
       {/* ★ 목업의 «수수료율(%)» 자리 — 총괄 직접 지시로 «계약조건» 자유기재다. */}
       <Cell align="left">{deal.fee_terms || <span className="text-zinc-400">{DASH}</span>}</Cell>
@@ -95,6 +94,9 @@ function CompanyRow({
    * (여기에 지역을 «진행기관» 칸에 넣는 식으로 어긋나면 그게 곧 자리 틀림이다.)
    */
   const owners = [...new Set(view.deals.map((row) => row.ownerName).filter(Boolean))];
+  const institutions = [...new Set(view.deals.map((row) => row.boardFacts.institution).filter(Boolean))] as string[];
+  // 승인 — 건들 중 «가장 늦은» 승인일. 목업의 `g.last` 와 같은 뜻이다.
+  const approvedOn = view.deals.map((row) => row.boardFacts.approvedOn).filter(Boolean).sort().at(-1) ?? null;
   const approved = view.deals.filter((row) => row.statusLabel === "승인").length;
   const startedOn = view.deals.map((row) => row.deal.applied_on).filter(Boolean).sort()[0] ?? null;
   const execution = view.deals.reduce((total, row) => total + (row.deal.amount ?? 0), 0);
@@ -119,8 +121,12 @@ function CompanyRow({
           </button>
           {identity ? <p className="ml-6 mt-0.5 text-[11px] font-normal text-zinc-500">{identity}</p> : null}
         </th>
-        {/* 진행기관 — 건들의 고유값이 들어갈 자리. 아직 필드가 없어서 비어 있다(#531 후속). */}
-        <Cell align="left"><span className="text-zinc-400">{DASH}</span></Cell>
+        {/* 진행기관 — 건들의 고유값. 목업도 최대 2개까지만 적는다(그 이상은 줄이 길어져 못 읽는다). */}
+        <Cell align="left">
+          {institutions.length
+            ? <span className="font-normal text-zinc-600 dark:text-zinc-300">{institutions.slice(0, 2).join(", ")}{institutions.length > 2 ? ` 외 ${institutions.length - 2}` : ""}</span>
+            : <span className="text-zinc-400">{DASH}</span>}
+        </Cell>
         <Cell align="left">
           {owners.length ? <span className="font-normal text-zinc-600 dark:text-zinc-300">{owners.join(", ")}</span> : <span className="text-zinc-400">{DASH}</span>}
         </Cell>
@@ -132,7 +138,7 @@ function CompanyRow({
           )}
         </Cell>
         <Cell align="left"><span className="font-normal text-zinc-500">{shortDate(startedOn)}</span></Cell>
-        <Cell align="left"><span className="text-zinc-400">{DASH}</span></Cell>
+        <Cell align="left"><span className="font-normal text-zinc-500">{shortDate(approvedOn)}</span></Cell>
         <Cell align="right">{money(execution)}</Cell>
         {/* 계약조건은 건마다 다르다 — 접은 줄에서는 뜻이 없어 비운다(목업도 «—»). */}
         <Cell align="left"><span className="text-zinc-400">{DASH}</span></Cell>

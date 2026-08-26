@@ -13,7 +13,7 @@ it("registers the contract-work tab for default workspace installation", () => {
   expect(DEFAULT_TABS.find((tab) => tab.key === "work")).toBe(CONTRACT_WORK_TAB);
 });
 
-it("persists the 11 groups, 28 columns, and four resolved move targets", async () => {
+it("persists the 11 groups, 29 columns, and four resolved move targets", async () => {
   const ctx = {
     org: { id: "org-contract-work", name: "Test organization" },
     user: { id: "owner-contract-work", name: "Owner", email: "owner@example.test" },
@@ -26,7 +26,7 @@ it("persists the 11 groups, 28 columns, and four resolved move targets", async (
   const status = local.listColumns(ctx, result.boardId).find((column) => column.key === "progress_status");
 
   expect(groups).toHaveLength(11);
-  expect(local.listColumns(ctx, result.boardId)).toHaveLength(28);
+  expect(local.listColumns(ctx, result.boardId)).toHaveLength(29);
   expect(Object.keys(status?.move_rule_jsonb ?? {})).toHaveLength(4);
   expect(new Set(Object.values(status?.move_rule_jsonb ?? {}))).toEqual(
     new Set(groups.filter((group) => Object.values(CONTRACT_WORK_TAB.columns.find((column) => column.key === "progress_status")!.moveTo!).includes(group.name)).map((group) => group.id)),
@@ -64,16 +64,19 @@ describe("BBE-150 계약업체 실무 기본 탭", () => {
   // 같은 날 지시 3건이 더 얹혔다: 담당자를 맨 앞으로, 세부명칭을 상품명칭 바로 뒤로,
   // 라벨 «진행상항»→«진행상황». 14번 자리(진행상황)와 그 뒤 순서는 그대로다 — 4·13번을 빼서
   // 1·5번에 다시 꽂았을 뿐이라 뒤쪽은 밀리지 않는다.
-  it("총괄 지시 순서의 28컬럼과 고정열을 보존한다", () => {
+  it("총괄 지시 순서의 29컬럼과 고정열을 보존한다", () => {
     expect(CONTRACT_WORK_TAB.columns.map((column) => column.label)).toEqual([
       "담당자", "구분", "진행기관", "상품명칭", "세부명칭", "사업자유형", "창업년도", "연 매출액",
       "대표자명", "전화번호", "업종/업태", "시도", "시군구", "진행상황", "방문 및 신청 일",
       // ★ 2026-08-25 총괄 직접 지시 — 「수수료율을 계약조건으로 하자」. 20번 자리가 바뀌었다.
       //   컬럼을 빼지 않고 «그 자리에서» 바꿨으므로 28개와 순서는 그대로다(구조 축소 아님).
-      "실사일", "예상 심사 종료", "ƒ심사 D-day", "실행액", "계약조건", "ƒ수수료(원)",
+      // ★ 2026-08-26(#531) — «승인일» 을 새로 넣었다(28→29). 업체관리 현황의 «승인» 칸이
+      //   담을 곳이 제품에 없어 영원히 «—» 였기 때문이다. 줄이는 것은 FAIL 이지만 늘리는 것은
+      //   허용이다(D73). 자리는 «심사가 끝나고 → 승인되고 → 실행된다» 는 흐름을 따른다.
+      "실사일", "예상 심사 종료", "ƒ심사 D-day", "승인일", "실행액", "계약조건", "ƒ수수료(원)",
       "수수료_입금일", "ƒ총 매출액", "조달일", "ƒ재신청 안내일", "ƒD+180", "계약금", "계약금_입금일",
     ]);
-    expect(CONTRACT_WORK_TAB.columns).toHaveLength(28);
+    expect(CONTRACT_WORK_TAB.columns).toHaveLength(29);
     expect(CONTRACT_WORK_TAB.columns.filter((column) => column.rightPinned).map((column) => column.label)).toEqual(["진행상황"]);
   });
 

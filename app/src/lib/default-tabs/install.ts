@@ -245,8 +245,16 @@ async function reorderToDefinition(
   //   대가: 기록 기제가 생기기 «전» 에 회사가 순서를 옮겨 뒀다면 그 한 번은 되돌아간다.
   //   위험은 딱 한 번뿐이다 — 이 실행이 끝나면 상태가 기록되고, 그 뒤 회사가 옮긴 것은
   //   위 `untouched` 가 영원히 지켜 준다.
+  //
+  // ★ 기록에 «없는» 열은 판단에서 뺀다 — 방금 이 실행이 추가한 열이다.
+  //   `ensureDefaultTabAdditive` 는 새 열을 맨 뒤에 붙이므로 기록과 어긋나는 게 당연한데,
+  //   그걸 «회사가 손댔다» 로 읽으면 새 열이 영원히 맨 뒤에 남는다(재배치가 통째로 건너뛴다).
+  //   실제로 이 구멍 때문에 «승인일» 을 추가했을 때 정의 자리로 못 갈 뻔했다.
   const untouched = !priorState
-    || owned.every((entry) => priorState.columns[entry.column.key]?.sortOrder === entry.column.sort_order);
+    || owned.every((entry) => {
+      const recorded = priorState.columns[entry.column.key]?.sortOrder;
+      return recorded === undefined || recorded === entry.column.sort_order;
+    });
   if (!untouched) return;
   if (owned.every((entry) => entry.column.sort_order === entry.desired)) return;
 
