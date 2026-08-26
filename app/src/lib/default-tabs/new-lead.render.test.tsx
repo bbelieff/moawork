@@ -85,11 +85,11 @@ function renderTab(columns: BoardColumn[]) {
 }
 
 describe("② 표 렌더 — 업무 컬럼과 고정 열", () => {
-  it("29개 컬럼 라벨이 빠짐없이 화면에 나온다", () => {
+  it("35개 컬럼 라벨이 빠짐없이 화면에 나온다", () => {
     const columns = repo.listColumns(ctx, boardId);
     const html = renderTab(columns);
 
-    expect(columns).toHaveLength(29);
+    expect(columns).toHaveLength(35);
     // 마크업에서 라벨이 나타나는 순서가 목업 순서와 같아야 한다.
     const positions = NEW_LEAD_TAB.columns.map((column) => html.indexOf(`>${column.label}<`));
     for (const [index, position] of positions.entries()) {
@@ -145,7 +145,7 @@ describe("⑤ 필터는 칩 + 팝오버다 — 네이티브 select 나열 금지
 
   it("선택지를 가진 컬럼이 전부 칩이 된다 — status 타입도 포함", () => {
     const html = renderToolbar();
-    for (const label of ["업종/업태", "피드백 상황", "컨택 이동", "시도"]) {
+    for (const label of ["업종", "피드백 상황", "컨택 이동", "시도"]) {
       expect(html, label).toContain(label);
     }
   });

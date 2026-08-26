@@ -55,7 +55,8 @@ describe("Issue #542 canonical new-lead projection", () => {
     expect(html).toContain("담당자");
     expect(html).toContain("대한정밀 상세 열기");
     expect(html).toContain(">연관담당<");
-    expect(html).toContain(">메시지 보내기<");
+    // Issue #576 — 표는 확정된 고객 정보 열만 유지하고 메시지는 상세/자동화로 이동한다.
+    expect(html).not.toContain(">메시지 보내기<");
     expect(html).toContain('class="group h-8 hover:bg-mw-bg');
     expect(html).toContain("min-h-7");
     expect(html).not.toContain(">상담지연 메시지<");

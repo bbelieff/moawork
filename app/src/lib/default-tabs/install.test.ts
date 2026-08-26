@@ -337,7 +337,7 @@ describe("기본 탭 보장 (D76 — «설치» 단계 없이)", () => {
     expect(second.created).toBe(false);
     expect(second.boardId).toBe(first.boardId);
     expect(repo.listBoards(ctx).filter((board) => board.name === NEW_LEAD_TAB.name)).toHaveLength(1);
-    expect(repo.listColumns(ctx, first.boardId)).toHaveLength(29);
+    expect(repo.listColumns(ctx, first.boardId)).toHaveLength(NEW_LEAD_TAB.columns.length);
   });
 
   it("컬럼 순서가 정의 순서 그대로 심긴다 — 목업 순서가 화면 순서다", async () => {

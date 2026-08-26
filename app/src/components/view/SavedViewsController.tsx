@@ -117,9 +117,14 @@ export function SavedViewsController({
   const filteredRows = useMemo(() => applyFilters(personScopedRows, columns, config.filters), [personScopedRows, columns, config.filters]);
   const orderedColumns = useMemo(() => {
     const hidden = new Set(config.hiddenColumns);
+    const selected = config.filters.visibleColumnKeys === null || config.filters.visibleColumnKeys === undefined
+      ? null
+      : new Set(config.filters.visibleColumnKeys);
     const rank = new Map(config.columnOrder.map((key, index) => [key, index]));
-    return columns.filter((column) => !hidden.has(column.key)).sort((a, b) => (rank.get(a.key) ?? 1e6) - (rank.get(b.key) ?? 1e6));
-  }, [columns, config.hiddenColumns, config.columnOrder]);
+    return columns
+      .filter((column) => !hidden.has(column.key) && (selected === null || selected.has(column.key)))
+      .sort((a, b) => (rank.get(a.key) ?? 1e6) - (rank.get(b.key) ?? 1e6));
+  }, [columns, config.filters.visibleColumnKeys, config.hiddenColumns, config.columnOrder]);
   const tableColumns: TableColumn[] = [{ key: "__title", label: "아이템" }, ...orderedColumns.map((column) => ({ key: column.key, label: column.label }))];
   const dateColumn = columns.find((column) => column.key === config.calendarFieldKey) ?? columns.find((column) => column.type === "date");
 

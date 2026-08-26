@@ -49,9 +49,10 @@ describe("BBE-118 filter contract", () => {
       byColumn: { status: ["new", "hold"] },
       sortKey: "status",
       sortDir: "desc" as const,
-      columnLimit: 12,
+      visibleColumnKeys: ["status"],
     };
     expect(decodeBoardFilters(encodeBoardFilters(filters))).toEqual(filters);
+    expect(decodeBoardFilters(JSON.stringify({ ...filters, columnLimit: 12 })).columnLimit).toBe(0);
     expect(decodeBoardFilters("not-json")).toEqual(EMPTY_FILTERS);
   });
 

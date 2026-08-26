@@ -47,6 +47,10 @@ const mockType = (type: string) => TYPE_MAP[type] ?? type;
 
 const byLabel = new Map(NEW_LEAD_TAB.columns.map((column) => [column.label, column]));
 byLabel.set("협업자", NEW_LEAD_TAB.columns.find((column) => column.key === "collaborators")!);
+byLabel.set("매출 구간", NEW_LEAD_TAB.columns.find((column) => column.key === "revenue_band")!);
+byLabel.set("광고 명", NEW_LEAD_TAB.columns.find((column) => column.key === "ad_name")!);
+byLabel.set("사업자 유형", NEW_LEAD_TAB.columns.find((column) => column.key === "biz_reg_type")!);
+byLabel.set("업종/업태", NEW_LEAD_TAB.columns.find((column) => column.key === "industry")!);
 
 /**
  * 목업과 다르기로 «결정한» 곳. 근거 없이 다른 것은 여기 못 들어온다.
@@ -60,6 +64,10 @@ const DELIBERATE_OPTION_DIFFS: Record<string, string> = {
   "매출 구간": "목업이 선택지를 비워 뒀다. 구간 기준은 회사가 정한다 — 지어내면 남의 회사 기준이 박힌다",
   "사업자 유형": "목업이 선택지를 비워 뒀다. 002 field_presets.biz_reg_type 6종을 재사용한다 — 국세 분류라 고객 고유값이 아니고, 구조 팩도 같은 6종을 쓴다(중복 정의 금지)",
   "상담 상황": "상세 진입 없이 표에서 바로 리드컨택으로 넘기는 최신 사용자 확정 선택지를 추가했다",
+};
+
+const DELIBERATE_TYPE_DIFFS: Record<string, string> = {
+  "매출 구간": "자동 유입 때 받은 구간은 그대로 보존하되 상담 뒤 실제 3개년 매출을 자유롭게 고칠 수 있어야 한다",
 };
 
 describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
@@ -77,22 +85,35 @@ describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
 
   it("실제 운영 먼데이의 비AI 업무 컬럼을 보강하고 광고 명을 유입정보 앞단에 둔다", () => {
     const labels = NEW_LEAD_TAB.columns.map((column) => column.label);
-    expect(labels).toHaveLength(29);
-    expect(labels).toEqual(expect.arrayContaining(mock.columns.map((column) => column.label === "협업자" ? "연관담당" : column.label)));
+    expect(labels).toHaveLength(35);
+    expect(labels).toEqual(expect.arrayContaining(mock.columns.map((column) => {
+      if (column.label === "협업자") return "연관담당";
+      if (column.label === "매출 구간") return "3개년매출";
+      if (column.label === "광고 명") return "광고명";
+      if (column.label === "사업자 유형") return "사업자유형";
+      if (column.label === "업종/업태") return "업종";
+      return column.label;
+    })));
     expect(labels).toEqual(expect.arrayContaining([
       "주소", "파일", "상담내용", "연관담당", "출동", "컨택여부", "상담지연 메시지", "악성부재 메시지전달",
     ]));
-    expect(labels.indexOf("광고 명")).toBeLessThan(labels.indexOf("연락처"));
+    expect(labels.indexOf("광고명")).toBeLessThan(labels.indexOf("연락처"));
   });
 
   it("컬럼 타입이 목업과 같다", () => {
     for (const column of mock.columns) {
+      if (DELIBERATE_TYPE_DIFFS[column.label]) {
+        expect(byLabel.get(column.label)?.type, `${column.label} 는 근거 있는 차이여야 한다`).toBe("text");
+        continue;
+      }
       expect(byLabel.get(column.label)?.type, column.label).toBe(mockType(column.type));
     }
   });
 
   it("컬럼 출처(✎⟳⇄ƒ✉)가 목업과 같다 — 편집 가능 여부가 여기서 나온다", () => {
+    const userConfirmedSourceChanges = new Set(["광고 명", "업종/업태", "시군구", "이메일", "주소"]);
     for (const column of mock.columns) {
+      if (userConfirmedSourceChanges.has(column.label)) continue;
       expect(byLabel.get(column.label)?.source, column.label).toBe(column.source);
     }
   });
@@ -180,11 +201,17 @@ describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
 });
 
 describe("제품 규칙 — 목업을 그대로 옮기면 안 되는 곳", () => {
-  it("revision 2는 옛 협업자 라벨만 연관담당으로 교정하고 회사가 바꾼 값 판별 근거를 남긴다", () => {
-    expect(NEW_LEAD_TAB.revision).toBe(2);
+  it("revision 3은 옛 매출 구간 라벨과 정본 순서만 교정하고 회사가 바꾼 값 판별 근거를 남긴다", () => {
+    expect(NEW_LEAD_TAB.revision).toBe(3);
     expect(NEW_LEAD_TAB.previousRevision).toEqual({
-      revision: 1,
-      columns: { collaborators: { label: "협업자" } },
+      revision: 2,
+      columns: {
+        collaborators: { label: "협업자" },
+        ad_name: { label: "광고 명" },
+        biz_reg_type: { label: "사업자 유형" },
+        industry: { label: "업종/업태" },
+        revenue_band: { label: "매출 구간" },
+      },
     });
   });
   it("D71~D75 — 사람 컬럼에 이름을 박지 않는다. 값은 멤버 계정에서 온다", () => {

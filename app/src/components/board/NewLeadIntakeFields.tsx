@@ -11,7 +11,7 @@ import {
 } from "@/lib/new-lead/region-search";
 import { analyzePhone, formatPhone } from "@/lib/format/phone";
 
-const CONTROL = "h-11 w-full rounded-lg border border-mw-line bg-mw-card px-3 text-mw-fg outline-none focus:border-mw-record";
+const CONTROL = "h-9 w-full rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg outline-none focus:border-mw-record";
 
 function useReset(ref: RefObject<HTMLElement | null>, reset: () => void) {
   useEffect(() => {
@@ -28,9 +28,9 @@ export function BusinessTypeField({ invalid = false }: { invalid?: boolean }) {
   const reset = useCallback(() => setSelected(""), []);
   useReset(rootRef, reset);
   return (
-    <div ref={rootRef} className="grid gap-2">
+    <div ref={rootRef} className="grid gap-1">
       <label className="grid gap-1 text-xs text-mw-sub">
-        사업자 구분 <span className="text-mw-error">필수</span>
+        <span>사업자 구분 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
         <select name="business_registration_type" required aria-required="true" aria-invalid={invalid}
           value={selected} onChange={(event) => setSelected(event.target.value)}
           className={`${CONTROL} aria-[invalid=true]:border-mw-error`}>
@@ -40,7 +40,7 @@ export function BusinessTypeField({ invalid = false }: { invalid?: boolean }) {
       </label>
       {selected === "그외" ? (
         <label className="grid gap-1 text-xs text-mw-sub">
-          그외 사업자 유형 <span className="text-mw-error">필수</span>
+          <span>그외 사업자 유형 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
           <input name="business_registration_type_custom" required className={CONTROL} placeholder="예: 비영리법인" />
         </label>
       ) : null}
@@ -56,16 +56,13 @@ export function PhoneField({ invalid = false }: { invalid?: boolean }) {
   const analysis = analyzePhone(value);
   return (
     <label className="grid gap-1 text-xs text-mw-sub">
-      연락처 <span className="font-normal">선택</span>
+      연락처
       <input ref={inputRef} name="phone" inputMode="tel" autoComplete="tel" value={value}
         onChange={(event) => setValue(event.target.value)}
         onBlur={() => analysis.status === "normalized" && setValue(formatPhone(value))}
         aria-invalid={invalid || (value.length > 0 && analysis.status === "needs_review")}
         className={`${CONTROL} aria-[invalid=true]:border-mw-error`}
         placeholder="010-0000-0000" />
-      <span className={value && analysis.status === "needs_review" ? "text-mw-error" : "text-mw-sub"}>
-        +82·0082·820 형식도 저장 전에 010-0000-0000으로 정리됩니다.
-      </span>
     </label>
   );
 }
@@ -76,8 +73,8 @@ export function RevenueBandField({ invalid = false }: { invalid?: boolean }) {
   const reset = useCallback(() => setSelected(""), []);
   useReset(rootRef, reset);
   return (
-    <div ref={rootRef} className="grid gap-2">
-      <label className="grid gap-1 text-xs text-mw-sub">매출 구간
+    <div ref={rootRef} className="grid gap-1">
+      <label className="grid gap-1 text-xs text-mw-sub">3개년매출
         <select name="revenue_band" value={selected} onChange={(event) => setSelected(event.target.value)}
           aria-invalid={invalid} className={`${CONTROL} aria-[invalid=true]:border-mw-error`}>
           <option value="">미입력</option>

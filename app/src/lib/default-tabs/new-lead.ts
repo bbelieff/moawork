@@ -123,19 +123,19 @@ function sendColumn(
   };
 }
 
-const COLUMNS: DefaultTabColumn[] = [
+const ALL_COLUMNS: DefaultTabColumn[] = [
   // 1~2 사람 — 선택지는 멤버 계정에서 온다(D71~D75). 정적 옵션 금지.
   { key: "owner", label: "담당자", type: "person", source: "act", width: 120 },
   { key: "collaborators", label: "연관담당", type: "people", source: "act", width: 150 },
 
   // 3~12 회사·접수 정보
   { key: "applied_on", label: "신청일", type: "date", source: "auto", width: 120 },
-  { key: "ad_name", label: "광고 명", type: "text", source: "auto", width: 120 },
+  { key: "ad_name", label: "광고명", type: "text", source: "auto", width: 120 },
   { key: "phone", label: "연락처", type: "phone", source: "auto", width: 130 },
   { key: "rep_name", label: "대표자명", type: "text", source: "auto", width: 100 },
   {
     key: "biz_reg_type",
-    label: "사업자 유형",
+    label: "사업자유형",
     type: "select",
     source: "auto",
     options: opts(...NEW_LEAD_BUSINESS_TYPES.map((label) => [label, GREY] as const)),
@@ -143,7 +143,7 @@ const COLUMNS: DefaultTabColumn[] = [
   },
   {
     key: "industry",
-    label: "업종/업태",
+    label: "업종",
     type: "select",
     source: "in",
     options: opts(
@@ -171,6 +171,26 @@ const COLUMNS: DefaultTabColumn[] = [
   { key: "sigungu", label: "시군구", type: "select", source: "in", options: sigunguOptions(), width: 110 },
   { key: "email", label: "이메일", type: "email", source: "auto", width: 160 },
   { key: "address_detail", label: "주소", type: "text", source: "auto", width: 180 },
+  { key: "founded_month", label: "창업연월", type: "text", source: "in", width: 110 },
+  { key: "existing_loans", label: "기대출", type: "money", source: "in", width: 110 },
+  { key: "credit_score", label: "신용점수", type: "number", source: "in", width: 100 },
+  {
+    key: "closed_business",
+    label: "폐업여부",
+    type: "select",
+    source: "in",
+    options: opts(["영업 중", "#00c875"], ["폐업", "#df2f4a"]),
+    width: 100,
+  },
+  {
+    key: "export_status",
+    label: "수출여부",
+    type: "select",
+    source: "in",
+    options: opts(["수출 없음", GREY], ["수출 중", "#00c875"], ["수출 예정", "#fdab3d"]),
+    width: 110,
+  },
+  { key: "required_amount", label: "필요금액", type: "money", source: "in", width: 120 },
   { key: "documents", label: "파일", type: "file", source: "in", width: 110 },
   { key: "consult_notes", label: "상담내용", type: "text", source: "in", width: 220 },
   // 과거의 출동 예정/완료 상태값. 설치/데이터는 보존하되 실제 신규리드 화면에서는 숨기고
@@ -262,10 +282,54 @@ const COLUMNS: DefaultTabColumn[] = [
   },
 ];
 
+/**
+ * #576 — 사용자가 확정한 신규리드의 업무 읽기 순서.
+ *
+ * 회사명은 `items.title`이라 이 배열 밖의 첫 고정 열이다. 아래 19개 뒤에는 사용자가 만든
+ * 컬럼과 제품의 상세/자동화용 내구 컬럼이 이어지며, 화면 표에서는 상세 전용으로 숨긴다.
+ */
+export const NEW_LEAD_PRIMARY_COLUMN_KEYS = [
+  "applied_on", "ad_name", "rep_name", "phone", "owner", "collaborators",
+  "biz_reg_type", "industry", "founded_month", "revenue_band", "existing_loans",
+  "credit_score", "closed_business", "export_status", "required_amount", "sido",
+  "sigungu", "address_detail", "email",
+] as const;
+
+export const NEW_LEAD_AUTOFILL_COLUMN_KEYS = new Set<string>([
+  "applied_on", "rep_name", "phone", "biz_reg_type", "industry", "revenue_band",
+  "sido", "sigungu",
+]);
+
+const PRIMARY_RANK = new Map<string, number>(
+  NEW_LEAD_PRIMARY_COLUMN_KEYS.map((key, index) => [key, index]),
+);
+
+const COLUMNS: DefaultTabColumn[] = [...ALL_COLUMNS].sort((left, right) => {
+  const leftRank = PRIMARY_RANK.get(left.key) ?? Number.MAX_SAFE_INTEGER;
+  const rightRank = PRIMARY_RANK.get(right.key) ?? Number.MAX_SAFE_INTEGER;
+  if (leftRank !== rightRank) return leftRank - rightRank;
+  return ALL_COLUMNS.indexOf(left) - ALL_COLUMNS.indexOf(right);
+}).map((column) => {
+  if (!NEW_LEAD_PRIMARY_COLUMN_KEYS.includes(column.key as typeof NEW_LEAD_PRIMARY_COLUMN_KEYS[number])) return column;
+  if (column.key === "owner" || column.key === "collaborators") return column;
+  return {
+    ...column,
+    source: NEW_LEAD_AUTOFILL_COLUMN_KEYS.has(column.key) ? "auto" : "in",
+    ...(column.key === "revenue_band"
+      ? { label: "3개년매출", type: "text" as const, options_jsonb: null }
+      : {}),
+  };
+});
+
 /** These values remain durable, but belong to the item drawer instead of the table. */
 /** 협업자는 상세에서 담당자와 같은 사람 선택기로 편집한다. 컨택 이동은 최신 사용자
  * 확정에 따라 표 맨 오른쪽 고정 관문과 상세 CTA 양쪽에서 접근할 수 있어야 한다. */
-export const NEW_LEAD_DETAIL_ONLY_KEYS = new Set<string>();
+export const NEW_LEAD_DETAIL_ONLY_KEYS = new Set<string>([
+  "documents", "consult_notes", "dispatch_status", "contact_status", "message_action",
+  "absence_notice", "consult1_notice", "confirm2_notice", "delay_notice",
+  "malicious_absence_notice", "feedback_status", "recall_at", "meeting_at",
+  "recontact_on", "contract_fee",
+]);
 
 export const NEW_LEAD_MESSAGE_COLUMN_KEYS = new Set([
   "absence_notice", "consult1_notice", "confirm2_notice", "delay_notice",
@@ -315,7 +379,20 @@ export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardCol
     if (column.key === "revenue_band") {
       presented.push({
         ...column,
-        options_jsonb: { options: opts(...NEW_LEAD_REVENUE_BANDS.map((label) => [label, GREY] as const)) },
+        label: "3개년매출",
+        type: "text",
+        source: "auto",
+        options_jsonb: null,
+        description: "자동 유입 때는 매출 구간이 들어오며, 상담 뒤 실제 3개년 매출로 직접 수정",
+      });
+      continue;
+    }
+    if (NEW_LEAD_PRIMARY_COLUMN_KEYS.includes(column.key as typeof NEW_LEAD_PRIMARY_COLUMN_KEYS[number])) {
+      presented.push({
+        ...column,
+        source: column.key === "owner" || column.key === "collaborators"
+          ? column.source
+          : NEW_LEAD_AUTOFILL_COLUMN_KEYS.has(column.key) ? "auto" : "in",
       });
       continue;
     }
@@ -325,11 +402,15 @@ export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardCol
 }
 
 export const NEW_LEAD_TAB: DefaultTab = {
-  revision: 2,
+  revision: 3,
   previousRevision: {
-    revision: 1,
+    revision: 2,
     columns: {
       collaborators: { label: "협업자" },
+      ad_name: { label: "광고 명" },
+      biz_reg_type: { label: "사업자 유형" },
+      industry: { label: "업종/업태" },
+      revenue_band: { label: "매출 구간" },
     },
   },
   key: "new",

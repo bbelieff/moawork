@@ -598,7 +598,9 @@ export function GroupTable({
               className={`${STICKY_FIRST} z-[var(--mw-layer-board-corner)] min-w-44 border-b border-mw-line px-2 py-1.5 text-xs font-semibold text-mw-sub`}
               style={{ top: 0, position: "sticky" }}
             >
-              이름
+              {canonicalNewLead ? (
+                <span className="flex items-center gap-1"><SourceBadge source="auto" />회사명</span>
+              ) : "이름"}
             </th>
             {columns.map((col) => {
               const isTarget = overColKey === col.key && dragColKey !== col.key;

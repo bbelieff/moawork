@@ -111,15 +111,15 @@ describe("신규리드 — 실제 운영 먼데이 순서", () => {
     const original = [col("owner"), col("phone"), col("rep_name"), col("status"), col("ad_name"), ...Array.from({ length: 17 }, (_, index) => col(`extra-${index}`))];
     const result = placeAdNameNearContact(original);
     expect(result).toHaveLength(22);
-    expect(result.slice(0, 5).map((column) => column.key)).toEqual(["ad_name", "phone", "rep_name", "owner", "status"]);
+    expect(result.slice(0, 5).map((column) => column.key)).toEqual(["ad_name", "rep_name", "phone", "owner", "status"]);
     expect(result.filter((column) => column.key.startsWith("extra-")).map((column) => column.key))
       .toEqual(original.filter((column) => column.key.startsWith("extra-")).map((column) => column.key));
     expect(original[4].key).toBe("ad_name");
   });
 
   it("필수 컬럼이 없거나 이미 올바른 위치면 복사본만 반환한다", () => {
-    const ordered = [col("ad_name"), col("phone"), col("rep_name")];
-    expect(placeAdNameNearContact(ordered).map((column) => column.key)).toEqual(["ad_name", "phone", "rep_name"]);
+    const ordered = [col("ad_name"), col("rep_name"), col("phone")];
+    expect(placeAdNameNearContact(ordered).map((column) => column.key)).toEqual(["ad_name", "rep_name", "phone"]);
     expect(placeAdNameNearContact([col("phone")]).map((column) => column.key)).toEqual(["phone"]);
   });
 });
@@ -256,7 +256,7 @@ describe("filters", () => {
     expect(applyFilters(rows, columns, desc).map((r) => r.id)).toEqual(["r2", "r3", "r1"]);
   });
 
-  it("컬럼수 제한은 앞에서 N개만 남기고, 0/초과는 전부", () => {
+  it("legacy 컬럼수 제한 함수는 호환용으로만 남는다", () => {
     expect(limitColumns(columns, 2).map((c) => c.key)).toEqual(["name", "status"]);
     expect(limitColumns(columns, 0)).toHaveLength(3);
     expect(limitColumns(columns, 99)).toHaveLength(3);
@@ -278,7 +278,7 @@ describe("filters", () => {
         assignees: ["이대표"],
         byColumn: { status: ["o-new"], other: [] },
         sortKey: "amount",
-        columnLimit: 8,
+        visibleColumnKeys: ["name", "status"],
       }),
     ).toBe(5);
   });
