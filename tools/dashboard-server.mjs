@@ -2,24 +2,28 @@
  *
  * 무엇을 하나
  *   tools/board/board.template.html 을 «그대로» 내보내되,
- *   window.cowork.callMcpTool 만 «Linear 를 지금 읽어오는 것» 으로 갈아끼운다.
+ *   window.cowork.callMcpTool 만 «GitHub 를 지금 읽어오는 것» 으로 갈아끼운다.
  *
  * 왜 이 구조인가 (docs/design/관제판_표준규격_v1.md §9)
  *   Cowork 판 · 구운 판(build-board.mjs) · 이 실시간 판이 «같은 템플릿» 을 쓴다.
  *   갈아끼우는 것은 데이터 공급뿐이라 렌더링 코드가 한 줄도 갈라지지 않는다.
  *   디자인을 세 번 고치는 일이 없다.
  *
- * 왜 서버가 Linear 를 부르나
- *   Linear 개인 API 키를 브라우저에 내보내면 그건 «노출» 이 아니라 «양도» 다.
- *   서버가 대신 부르면 키는 이 컴퓨터 밖으로 안 나간다.
- *   질의도 서버가 소유한다 — 화면이 아무 질의나 못 보내므로 구조적으로 쓰기가 불가능하다.
+ * 왜 서버가 GitHub 를 부르나
+ *   토큰을 브라우저에 내보내면 그건 «노출» 이 아니라 «양도» 다.
+ *   서버가 대신 부르면 토큰은 이 컴퓨터 밖으로 안 나간다.
+ *   질의도 서버가 소유한다 — 화면이 아무 주소나 못 부르므로 구조적으로 쓰기가 불가능하다.
+ *
+ * 2026-08-26 — 출처를 Linear 에서 GitHub Issues 로 옮겼다.
+ *   Linear 는 READ_ONLY_ARCHIVE 라 거기서 카드가 더 안 움직인다.
+ *   판이 «지난 스냅샷» 을 실시간인 척 보여주고 있었다.
  *
  * 의존성 0 — node 내장 모듈만. npm install 필요 없다.
  */
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -52,44 +56,89 @@ function loadEnv() {
   return out;
 }
 const ENV = { ...loadEnv(), ...process.env };
-const KEY = (ENV.LINEAR_API_KEY || "").trim();
 const PORT = Number(ENV.DASHBOARD_PORT || 8787);
-const KEY_OK = KEY.startsWith("lin_api_") && KEY.length > 20;
 const REPO_ROOT = path.resolve(ENV.MOAWORK_REPO_ROOT || ROOT);
 const FUEL_FILE = path.join(ROOT, "tools", "board", "fuel.json");
-const LINEAR_URL = (() => {
-  const fallback = "https://api.linear.app/graphql";
-  if (ENV.NODE_ENV !== "test" || !ENV.LINEAR_GRAPHQL_TEST_URL) return fallback;
+/* ── GitHub ──────────────────────────────────────────────────
+ * 2026-08-26 — 판의 «지금» 을 여기서 읽는다.
+ *
+ * 왜 바꿨나: 이 판은 Linear 를 읽고 있었는데 Linear 는 READ_ONLY_ARCHIVE 다.
+ *   전환 뒤로 카드가 거기서 더 안 움직이므로, 판은 «지난 스냅샷» 을 실시간인 척 보여줬다.
+ *   정본이 GitHub Issues 로 옮겨졌으니 판도 거기를 봐야 한다.
+ *
+ * 토큰을 «내가 만들지 않는다»: 환경변수에 없으면 `gh auth token` 을 한 번 물어본다.
+ *   총괄이 따로 설정할 것이 없고, 값은 이 변수 밖으로 나가지 않는다(출력·기록 금지).
+ */
+/** 인증이 되어 있는가 — 없으면 화면이 «어떻게 로그인하는지» 를 말해 준다. */
+const AUTH_OK = () => Boolean(githubToken());
+const GITHUB_REPO = (ENV.MOAWORK_GITHUB_REPO || "bbelieff/moawork").trim();
+const GITHUB_API = (() => {
+  const fallback = "https://api.github.com";
+  if (ENV.NODE_ENV !== "test" || !ENV.GITHUB_API_TEST_URL) return fallback;
   try {
-    const candidate = new URL(ENV.LINEAR_GRAPHQL_TEST_URL);
-    return ["127.0.0.1", "localhost", "::1"].includes(candidate.hostname) ? candidate.href : fallback;
+    const candidate = new URL(ENV.GITHUB_API_TEST_URL);
+    return ["127.0.0.1", "localhost", "::1"].includes(candidate.hostname)
+      ? candidate.href.replace(/\/$/, "")
+      : fallback;
   } catch {
     return fallback;
   }
 })();
 
-/* ── Linear ──────────────────────────────────────────────── */
-async function gql(query, variables = {}) {
-  const r = await fetch(LINEAR_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: KEY },
-    body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(5_000),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (j.errors) throw new Error(j.errors.map((e) => e.message).join(" · "));
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return j.data;
+let githubTokenCache;
+function githubToken() {
+  if (githubTokenCache !== undefined) return githubTokenCache;
+  const fromEnv = (ENV.GITHUB_TOKEN || ENV.GH_TOKEN || "").trim();
+  if (fromEnv) return (githubTokenCache = fromEnv);
+  try {
+    // gh 가 이미 로그인돼 있으면 여기서 받는다 — 총괄이 토큰을 붙여 넣을 일이 없다.
+    githubTokenCache = execFileSync("gh", ["auth", "token"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    githubTokenCache = "";
+  }
+  return githubTokenCache;
 }
 
-/* build-board.mjs 가 검증한 질의 2개를 그대로 쓴다 — 다시 만들지 않는다 */
-const Q_ISSUES = `
-query($after:String){
-  issues(first:100, after:$after, filter:{project:{name:{eq:"${PROJECT}"}}}){
-    pageInfo{ hasNextPage endCursor }
-    nodes{ identifier title createdAt updatedAt url state{ name } priority labels{ nodes{ name } } }
-  }
-}`;
+async function gh(pathAndQuery) {
+  const token = githubToken();
+  const r = await fetch(`${GITHUB_API}${pathAndQuery}`, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (r.status === 403 || r.status === 429) throw new Error(`rate limit (HTTP ${r.status})`);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+/**
+ * 제목 앞의 «P0 ·» 를 우선순위로 읽는다.
+ * 이 저장소의 실제 관례다 — 「P0 · …」 처럼 제목 맨 앞이 등급을 들고 다닌다.
+ * GitHub 에는 Linear 의 priority 같은 1급 칸이 없으므로 «있는 것» 을 쓴다.
+ */
+function priorityFromTitle(title) {
+  const level = /^\s*P([0-3])\b/.exec(title || "")?.[1];
+  return { name: ["Urgent", "High", "Medium", "Low"][Number(level)] ?? "" };
+}
+
+/**
+ * GitHub 상태를 판의 어휘로 옮긴다.
+ *
+ * ⚠ 지어내지 않는다. GitHub 이슈가 스스로 아는 것은 «열림/닫힘» 과 라벨뿐이다.
+ *   Linear 의 In Review 같은 중간 상태는 GitHub Projects 의 Status 칸에 있는데,
+ *   그건 이슈 API 로는 안 보인다. 그래서 여기서는 셋만 말하고, 모르는 것은 Todo 로 둔다 —
+ *   «진행 중인 척» 하는 판보다 «모른다» 고 말하는 판이 낫다.
+ */
+function statusFromIssue(issue) {
+  if (issue.state === "closed") return "Done";
+  const labels = (issue.labels || []).map((l) => (typeof l === "string" ? l : l.name));
+  if (labels.some((name) => /blocked|차단/i.test(name || ""))) return "Blocked";
+  return "Todo";
+}
+
 const Q_COMMENTS = `
 query($id:String!,$first:Int!,$after:String){
   issue(id:$id){
@@ -120,21 +169,28 @@ async function getComments(id, limit, after, force = false) {
   if (commentInFlight.has(key)) return commentInFlight.get(key);
 
   const pending = (async () => {
-    const d = await gql(Q_COMMENTS, { id, first: limit, after });
-    const connection = d.issue?.comments;
-    const comments = (connection?.nodes ?? [])
-      .map(({ id: commentId, createdAt, updatedAt, body }) => ({
-        id: commentId,
-        createdAt,
-        updatedAt,
-        body,
+    // id 는 «#563» 모양이다(build 가 그렇게 만든다). 숫자만 떼어 쓴다.
+    const number = String(id).replace(/^#/, "");
+    // GitHub 코멘트는 오래된 것부터 온다. 마지막 쪽을 받아 뒤집으면 «최신 N개» 가 된다.
+    // 커서는 «쪽 번호» 다. 옛 판이 넘기던 Linear 커서 문자열이 와도 1쪽으로 돌아간다 —
+    // 빈 화면을 내는 것보다 처음부터 보여 주는 편이 낫다.
+    const page = Number(after) > 0 ? Number(after) : 1;
+    const raw = await gh(`/repos/${GITHUB_REPO}/issues/${encodeURIComponent(number)}/comments?per_page=${limit}&page=${page}`);
+    const rows = Array.isArray(raw) ? raw : [];
+    const comments = rows
+      .map((c) => ({
+        id: String(c.id),
+        createdAt: c.created_at,
+        updatedAt: c.updated_at,
+        body: c.body ?? "",
       }))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
     const data = {
       comments,
       pageInfo: {
-        hasNextPage: Boolean(connection?.pageInfo?.hasNextPage),
-        endCursor: connection?.pageInfo?.endCursor ?? null,
+        // 한 쪽을 꽉 채워 왔으면 다음 쪽이 있을 수 있다. 커서는 «쪽 번호» 다.
+        hasNextPage: rows.length === limit,
+        endCursor: rows.length === limit ? String(page + 1) : null,
       },
     };
     commentCache.set(key, { at: Date.now(), data });
@@ -168,33 +224,43 @@ let snap = { at: 0, building: null, data: null, error: null };
 
 async function build() {
   const issues = [];
-  let after = null;
-  do {
-    const d = await gql(Q_ISSUES, { after });
-    for (const i of d.issues.nodes) {
+  for (let page = 1; page <= 10; page += 1) {
+    const batch = await gh(`/repos/${GITHUB_REPO}/issues?state=all&per_page=100&page=${page}&sort=updated&direction=desc`);
+    if (!Array.isArray(batch) || batch.length === 0) break;
+    for (const i of batch) {
+      // ⚠ 이 엔드포인트는 PR 도 «이슈» 로 돌려준다. 판은 카드를 세는 곳이라 PR 은 뺀다.
+      if (i.pull_request) continue;
       issues.push({
-        id: i.identifier,
+        id: `#${i.number}`,
         title: i.title,
-        createdAt: i.createdAt,
-        status: i.state?.name ?? "Backlog",
-        updatedAt: i.updatedAt,
-        url: i.url ?? null,
-        priority: { name: ["No priority", "Urgent", "High", "Medium", "Low"][i.priority] ?? "" },
-        labels: (i.labels?.nodes ?? []).map((l) => l.name),
+        createdAt: i.created_at,
+        status: statusFromIssue(i),
+        updatedAt: i.updated_at,
+        url: i.html_url ?? null,
+        priority: priorityFromTitle(i.title),
+        labels: (i.labels || []).map((l) => (typeof l === "string" ? l : l.name)).filter(Boolean),
       });
     }
-    after = d.issues.pageInfo.hasNextPage ? d.issues.pageInfo.endCursor : null;
-  } while (after);
+    if (batch.length < 100) break;
+  }
 
   const builtAt = new Date().toISOString();
   return { issues, builtAt, lastSuccessAt: builtAt, available: true, stale: false, error: null };
 }
 
+/*
+ * ⚠ 아래 `linear*` 이름들은 «남겨 둔» 것이다 — 이제 담기는 값은 GitHub 것이다.
+ *   `linearRead` · `linearAvailable` · `linearStatus` · `linearError` 등은 응답 필드 이름이고
+ *   board.template.html 이 그대로 읽는다(18곳). 이름만 바꾸면 판이 조용히 빈 화면이 되는데,
+ *   그걸 확인하려면 판을 띄워 눈으로 봐야 한다. 그래서 «데이터 출처를 옮기는 일» 과
+ *   «이름을 고치는 일» 을 한 커밋에 섞지 않았다. 이름 정리는 판을 띄운 채로 별건으로 한다.
+ *   사용자에게 보이는 문구는 이미 GitHub 로 바꿨다(아래 message).
+ */
 function linearReadFailure(error) {
   const rateLimited = /rate limit|too many requests|429/i.test(String(error?.message || error));
   return {
-    code: rateLimited ? "LINEAR_RATE_LIMITED" : "LINEAR_UNAVAILABLE",
-    message: rateLimited ? "Linear 조회 제한에 도달했습니다." : "Linear 상태를 읽지 못했습니다.",
+    code: rateLimited ? "GITHUB_RATE_LIMITED" : "GITHUB_UNAVAILABLE",
+    message: rateLimited ? "GitHub 조회 제한에 도달했습니다." : "GitHub 상태를 읽지 못했습니다.",
     retryAt: new Date(Date.now() + 60_000).toISOString(),
   };
 }
@@ -703,14 +769,12 @@ const send = (res, code, body, type = "application/json; charset=utf-8") => {
   res.end(body);
 };
 const NO_KEY = {
-  error: "NO_KEY",
-  message: "Linear API 키가 없다.",
+  error: "NO_AUTH",
+  message: "GitHub 로그인을 찾지 못했다.",
   how: [
-    "1. https://linear.app/settings/account/security 를 연다",
-    "2. API keys → New API key → 권한 Read · 팀 Bbelieff → Create",
-    "3. 나온 키를 복사한다 (한 번만 보인다)",
-    "4. 저장소 폴더에서  notepad .env  로 열어 LINEAR_API_KEY= 뒤에 붙여넣는다",
-    "5. 이 서버를 껐다 켠다 (Ctrl+C 후 다시 실행)",
+    "1. 터미널에서  gh auth login  을 실행한다 (GitHub.com · HTTPS · 브라우저 로그인)",
+    "2. 끝나면 이 서버를 껐다 켠다 (Ctrl+C 후 다시 실행)",
+    "※ 토큰을 어디에 붙여 넣을 필요는 없다 — 서버가 gh 에게 직접 물어본다.",
   ],
 };
 
@@ -718,10 +782,10 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   try {
     if (url.pathname === "/api/health")
-      return send(res, 200, JSON.stringify({ keyPresent: KEY_OK, port: PORT, cachedAt: snap.at || null }));
+      return send(res, 200, JSON.stringify({ keyPresent: AUTH_OK(), port: PORT, cachedAt: snap.at || null }));
 
     if (url.pathname === "/api/issues") {
-      if (!KEY_OK) return send(res, 503, JSON.stringify(NO_KEY));
+      if (!AUTH_OK()) return send(res, 503, JSON.stringify(NO_KEY));
       const d = await getSnap(url.searchParams.get("force") === "1");
       return send(res, 200, JSON.stringify({ issues: d.issues, available: d.available, stale: d.stale, lastSuccessAt: d.lastSuccessAt, retryAt: d.error?.retryAt || null, error: d.error }));
     }
@@ -738,7 +802,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url.pathname === "/api/comments") {
-      if (!KEY_OK) return send(res, 503, JSON.stringify(NO_KEY));
+      if (!AUTH_OK()) return send(res, 503, JSON.stringify(NO_KEY));
       const input = parseCommentRequest(url);
       if (input.error) return send(res, 400, JSON.stringify(input));
       try {
@@ -779,7 +843,7 @@ if (!ENV.DASHBOARD_NO_LISTEN) server.listen(PORT, () => {
   console.log(`  다른 기기    http://<tailnet 주소>:${PORT}`);
   console.log("");
   console.log(`  템플릿  tools/board/board.template.html  (정본 — 디자인은 여기만 고친다)`);
-  console.log(KEY_OK ? "  ✅ Linear 키 확인됨" : "  ⚠️  Linear 키 없음 — .env 의 LINEAR_API_KEY 를 채우고 다시 켜라");
+  console.log(AUTH_OK ? "  ✅ Linear 키 확인됨" : "  ⚠️  Linear 키 없음 — .env 의 LINEAR_API_KEY 를 채우고 다시 켜라");
   console.log(L);
   console.log("  끄려면 Ctrl+C");
   getOperations(true).catch(() => {});

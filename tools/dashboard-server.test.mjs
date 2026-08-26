@@ -27,67 +27,68 @@ const json = (res, code, value) => {
   res.end(JSON.stringify(value));
 };
 
-function commentConnection(id) {
-  if (id === "BBE-94") {
-    return {
-      nodes: [
-        { id: "comment-b", createdAt: "2026-08-15T02:00:00.000Z", updatedAt: "2026-08-15T02:01:00.000Z", body: "done fixture b" },
-        { id: "comment-old", createdAt: "2026-08-14T23:00:00.000Z", updatedAt: "2026-08-14T23:01:00.000Z", body: "done fixture old" },
-        { id: "comment-a", createdAt: "2026-08-15T02:00:00.000Z", updatedAt: "2026-08-15T02:02:00.000Z", body: "done fixture a" },
-      ],
-      pageInfo: { hasNextPage: true, endCursor: "cursor-done" },
-    };
+/*
+ * 2026-08-26 — 가짜 상류를 Linear GraphQL 에서 **GitHub REST** 로 바꿨다.
+ *   판의 출처가 옮겨졌기 때문이다(Linear 는 READ_ONLY_ARCHIVE).
+ *   단언의 «뜻» 은 그대로 지킨다 — 읽기 전용인가 · 실패가 새지 않는가 · 캐시가 도는가.
+ */
+
+/** GitHub 코멘트 응답은 «배열» 이고 오래된 것부터 온다. */
+function commentRows(number) {
+  if (number === "94") {
+    return [
+      { id: 1001, created_at: "2026-08-14T23:00:00.000Z", updated_at: "2026-08-14T23:01:00.000Z", body: "done fixture old" },
+      { id: 1002, created_at: "2026-08-15T02:00:00.000Z", updated_at: "2026-08-15T02:01:00.000Z", body: "done fixture b" },
+      { id: 1003, created_at: "2026-08-15T02:00:00.000Z", updated_at: "2026-08-15T02:02:00.000Z", body: "done fixture a" },
+    ];
   }
-  if (id === "BBE-125") {
-    return {
-      nodes: [{ id: "comment-live", createdAt: "2026-08-15T01:00:00.000Z", updatedAt: "2026-08-15T01:00:00.000Z", body: "live fixture" }],
-      pageInfo: { hasNextPage: false, endCursor: "cursor-live" },
-    };
+  if (number === "125") {
+    return [{ id: 2001, created_at: "2026-08-15T01:00:00.000Z", updated_at: "2026-08-15T01:00:00.000Z", body: "live fixture" }];
   }
-  if (id === "BBE-SLOW") {
-    return {
-      nodes: [{ id: "comment-slow", createdAt: "2026-08-15T00:00:00.000Z", updatedAt: "2026-08-15T00:00:00.000Z", body: "slow fixture" }],
-      pageInfo: { hasNextPage: false, endCursor: null },
-    };
+  if (number === "777") {
+    return [{ id: 3001, created_at: "2026-08-15T00:00:00.000Z", updated_at: "2026-08-15T00:00:00.000Z", body: "slow fixture" }];
   }
-  return { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } };
+  return [];
 }
+
+const ISSUE_FIXTURES = [{
+  number: 125,
+  title: "P1 · In Progress fixture",
+  created_at: "2026-08-14T01:00:00.000Z",
+  updated_at: "2026-08-15T01:00:00.000Z",
+  html_url: "https://github.com/bbelieff/moawork/issues/125",
+  state: "open",
+  labels: [{ name: "fixture" }],
+}];
 
 before(async () => {
   upstream = http.createServer(async (req, res) => {
-    const payload = await readJson(req);
-    requests.push(payload);
-    assert.equal(payload.query.includes("mutation"), false, "dashboard must issue read-only GraphQL");
+    const url = new URL(req.url, "http://x");
+    requests.push({ method: req.method, path: url.pathname, search: url.search });
+    // 읽기 전용 — 판이 쓰기를 보낼 수 없다는 것이 이 단언의 뜻이었다(예전엔 «mutation 금지»).
+    assert.equal(req.method, "GET", "dashboard must only read from GitHub");
 
-    if (payload.variables?.id) {
-      const id = payload.variables.id;
-      commentCalls.set(id, (commentCalls.get(id) ?? 0) + 1);
-      if (id === "BBE-ERR") {
-        return json(res, 200, { errors: [{ message: "upstream private body lin_api_must_not_leak" }] });
-      }
-      if (id === "BBE-SLOW") await new Promise((resolve) => setTimeout(resolve, 80));
-      return json(res, 200, { data: { issue: { comments: commentConnection(id) } } });
+    const comments = /\/repos\/[^/]+\/[^/]+\/issues\/([^/]+)\/comments$/.exec(url.pathname);
+    if (comments) {
+      const number = comments[1];
+      commentCalls.set(number, (commentCalls.get(number) ?? 0) + 1);
+      // 상류가 «내부 사정» 을 뱉어도 판이 그대로 흘리면 안 된다.
+      if (number === "999") return json(res, 500, { message: "upstream private body must_not_leak" });
+      if (number === "777") await new Promise((resolve) => setTimeout(resolve, 80));
+      const page = Number(url.searchParams.get("page") || "1");
+      const perPage = Number(url.searchParams.get("per_page") || "20");
+      const rows = commentRows(number);
+      return json(res, 200, rows.slice((page - 1) * perPage, page * perPage));
     }
 
-    if (rateLimited) return json(res, 200, { errors: [{ message: "Rate limit exceeded. private lin_api_must_not_leak" }] });
+    if (rateLimited) return json(res, 403, { message: "API rate limit exceeded. private must_not_leak" });
 
-    return json(res, 200, {
-      data: {
-        issues: {
-          pageInfo: { hasNextPage: false, endCursor: null },
-          nodes: [{
-            identifier: "BBE-125",
-            title: "In Progress fixture",
-            createdAt: "2026-08-14T01:00:00.000Z",
-            updatedAt: "2026-08-15T01:00:00.000Z",
-            url: "https://linear.app/example/BBE-125",
-            state: { name: "In Progress" },
-            priority: 2,
-            labels: { nodes: [{ name: "fixture" }] },
-          }],
-        },
-      },
-    });
+    if (/\/repos\/[^/]+\/[^/]+\/issues$/.test(url.pathname)) {
+      // 2쪽부터는 비운다 — 서버가 «덜 찼으면 멈춘다» 를 지키는지 함께 잰다.
+      return json(res, 200, Number(url.searchParams.get("page") || "1") === 1 ? ISSUE_FIXTURES : []);
+    }
+
+    return json(res, 404, { message: "not found" });
   });
   const upstreamPort = await listen(upstream);
 
@@ -99,8 +100,8 @@ before(async () => {
     cwd,
     env: {
       NODE_ENV: "test",
-      LINEAR_API_KEY: "lin_api_fixture_only_not_a_secret",
-      LINEAR_GRAPHQL_TEST_URL: `http://127.0.0.1:${upstreamPort}/graphql`,
+      GITHUB_TOKEN: "fixture_only_not_a_secret",
+      GITHUB_API_TEST_URL: `http://127.0.0.1:${upstreamPort}`,
       DASHBOARD_PORT: String(dashboardPort),
       DASHBOARD_OPERATIONS_TEST_FIXTURE: JSON.stringify({
         builtAt: "2026-08-15T03:00:00.000Z",
@@ -126,7 +127,7 @@ before(async () => {
           loginStatus: 200,
           measuredAt: "2026-08-15T03:00:00.000Z",
           counts: { WORK_REVIEW: 0, MERGE_WAITING: 1, DEPLOYMENT_WAITING: 0, PRODUCTION_COMPLETE: 0, HOSTED_WAITING: 0 },
-          items: [{ cardId: "BBE-125", linearStatus: "Done", stage: "MERGE_WAITING", complete: false, blockers: ["LINEAR_DONE_WITHOUT_PRODUCTION"], pr: { number: 187, checks: { success: 3, failing: 0, pending: 0, total: 3 } } }],
+          items: [{ cardId: "#125", linearStatus: "Done", stage: "MERGE_WAITING", complete: false, blockers: ["LINEAR_DONE_WITHOUT_PRODUCTION"], pr: { number: 187, checks: { success: 3, failing: 0, pending: 0, total: 3 } } }],
         },
         workers: { available: true, staleAfterMs: 300000, items: [{ cardId: "BBE-256", engine: "DG", status: "dispatched", worktree: "C:/work/MoaWork", lastActivityAt: "2026-08-15T03:00:00.000Z", stalled: false }] },
         metrics: { qaDifference: { available: true, value: 35, measuredAt: "2026-08-15T03:00:00.000Z", ttlMs: 300000 }, urgentRemaining: 2, handNeeded: 1, completion: { done: 0, total: 1, percent: 0, basis: "production" } },
@@ -159,25 +160,27 @@ test("health remains available without exposing credentials", async () => {
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.keyPresent, true);
-  assert.equal(JSON.stringify(body).includes("lin_api_"), false);
+  assert.equal(JSON.stringify(body).includes("fixture_only_not_a_secret"), false);
 });
 
 test("Done issue bypasses the active snapshot and returns the exact comment field contract", async () => {
-  const response = await fetch(`${dashboardUrl}/api/comments?id=BBE-94`);
+  const response = await fetch(`${dashboardUrl}/api/comments?id=%2394`);
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.deepEqual(Object.keys(body.comments[0]).sort(), ["body", "createdAt", "id", "updatedAt"]);
-  assert.deepEqual(body.comments.map((comment) => comment.id), ["comment-a", "comment-b", "comment-old"]);
-  assert.deepEqual(body.pageInfo, { hasNextPage: true, endCursor: "cursor-done" });
+  // 정렬 규칙은 그대로다 — createdAt 내림차순, 같은 시각이면 id 오름차순.
+  //   GitHub id 가 숫자라 «같은 시각» 두 건의 앞뒤가 Linear 때와 달라진다(규칙이 아니라 값의 차이).
+  assert.deepEqual(body.comments.map((comment) => comment.id), ["1002", "1003", "1001"]);
+  assert.deepEqual(body.pageInfo, { hasNextPage: false, endCursor: null });
   assert.equal(body.comments.map((comment) => comment.body).length, 3, "existing comments[].body consumer remains valid");
 });
 
 test("In Progress issue returns comments independently", async () => {
-  const response = await fetch(`${dashboardUrl}/api/comments?id=BBE-125`);
+  const response = await fetch(`${dashboardUrl}/api/comments?id=%23125`);
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.comments.length, 1);
-  assert.equal(body.comments[0].id, "comment-live");
+  assert.equal(body.comments[0].id, "2001");
 });
 
 test("limit defaults to 20, accepts boundaries, and forwards the after cursor", async () => {
@@ -189,10 +192,17 @@ test("limit defaults to 20, accepts boundaries, and forwards the after cursor", 
   assert.equal((await fetch(`${dashboardUrl}/api/comments?id=BBE-EMPTY&limit=101`)).status, 400);
   assert.equal((await fetch(`${dashboardUrl}/api/comments?id=BBE-EMPTY&limit=1.5`)).status, 400);
 
-  const calls = requests.filter((request) => request.variables?.id === "BBE-EMPTY");
-  assert.deepEqual(calls.map((request) => [request.variables.first, request.variables.after]), [
-    [20, defaultCursor], [1, "one"], [100, "max"],
-  ]);
+  // 2026-08-26 — GraphQL variables 대신 «주소» 를 본다. 뜻은 같다:
+  //   limit 이 per_page 로, 커서가 page 로 그대로 실려 나가는가.
+  //   ★ 커서가 숫자가 아니면 1쪽으로 돌아간다 — 옛 Linear 커서가 남아 있어도 빈 화면이 되지 않는다.
+  const calls = requests.filter((request) => request.path.includes("/issues/BBE-EMPTY/comments"));
+  assert.deepEqual(
+    calls.map((request) => {
+      const params = new URLSearchParams(request.search);
+      return [Number(params.get("per_page")), params.get("page")];
+    }),
+    [[20, "1"], [1, "1"], [100, "1"]],
+  );
 });
 
 test("zero comments has a stable empty connection", async () => {
@@ -205,17 +215,17 @@ test("zero comments has a stable empty connection", async () => {
 });
 
 test("same issue page cache and in-flight requests coalesce", async () => {
-  const beforeCount = commentCalls.get("BBE-SLOW") ?? 0;
-  const url = `${dashboardUrl}/api/comments?id=BBE-SLOW&after=coalesce`;
+  const beforeCount = commentCalls.get("777") ?? 0;
+  const url = `${dashboardUrl}/api/comments?id=%23777&after=coalesce`;
   const responses = await Promise.all([fetch(url), fetch(url), fetch(url)]);
   assert.deepEqual(responses.map((response) => response.status), [200, 200, 200]);
-  assert.equal((commentCalls.get("BBE-SLOW") ?? 0) - beforeCount, 1);
+  assert.equal((commentCalls.get("777") ?? 0) - beforeCount, 1);
   assert.equal((await fetch(url)).status, 200);
-  assert.equal((commentCalls.get("BBE-SLOW") ?? 0) - beforeCount, 1, "short cache prevents a duplicate upstream read");
+  assert.equal((commentCalls.get("777") ?? 0) - beforeCount, 1, "short cache prevents a duplicate upstream read");
 });
 
 test("Linear errors return a safe 502 instead of an empty array or upstream details", async () => {
-  const response = await fetch(`${dashboardUrl}/api/comments?id=BBE-ERR`);
+  const response = await fetch(`${dashboardUrl}/api/comments?id=%23999`);
   assert.equal(response.status, 502);
   const text = await response.text();
   assert.deepEqual(JSON.parse(text), {
@@ -223,7 +233,7 @@ test("Linear errors return a safe 502 instead of an empty array or upstream deta
     message: "Linear 댓글을 읽지 못했다.",
   });
   assert.equal(text.includes("private body"), false);
-  assert.equal(text.includes("lin_api_"), false);
+  assert.equal(text.includes("fixture_only_not_a_secret"), false);
 });
 
 test("missing id is rejected before GraphQL", async () => {
@@ -237,10 +247,13 @@ test("issues endpoint retains the existing 45-second snapshot contract", async (
   const response = await fetch(`${dashboardUrl}/api/issues?force=1`);
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.deepEqual(body.issues.map((issue) => [issue.id, issue.status]), [["BBE-125", "In Progress"]]);
+  // 2026-08-26 — GitHub 이슈는 «열림/닫힘» 만 스스로 안다. In Progress 같은 중간 상태는
+  //   Projects 의 Status 칸에 있고 이슈 API 로는 안 보인다. 그래서 열린 것은 Todo 로 둔다 —
+  //   «진행 중인 척» 하는 판보다 «모른다» 고 말하는 판이 낫다(dashboard-server.mjs statusFromIssue).
+  assert.deepEqual(body.issues.map((issue) => [issue.id, issue.status]), [["#125", "Todo"]]);
   assert.deepEqual(body.issues.map((issue) => [issue.createdAt, issue.url]), [[
     "2026-08-14T01:00:00.000Z",
-    "https://linear.app/example/BBE-125",
+    "https://github.com/bbelieff/moawork/issues/125",
   ]]);
   const commentsAfter = [...commentCalls.values()].reduce((total, count) => total + count, 0);
   assert.equal(commentsAfter, commentsBefore, "issue snapshot must not duplicate the direct comment reads");
@@ -264,12 +277,12 @@ test("rate-limited issue refresh returns the last success as an explicit safe st
   const body = await response.json();
   assert.equal(body.available, false);
   assert.equal(body.stale, true);
-  assert.equal(body.error.code, "LINEAR_RATE_LIMITED");
-  assert.equal(body.issues[0].id, "BBE-125");
+  assert.equal(body.error.code, "GITHUB_RATE_LIMITED");
+  assert.equal(body.issues[0].id, "#125");
   assert.ok(body.lastSuccessAt);
   assert.ok(body.retryAt);
   assert.equal(JSON.stringify(body).includes("private"), false);
-  assert.equal(JSON.stringify(body).includes("lin_api_"), false);
+  assert.equal(JSON.stringify(body).includes("fixture_only_not_a_secret"), false);
 });
 
 test("operations endpoint exposes read-only repository and PR decision signals", async () => {
@@ -287,7 +300,7 @@ test("operations endpoint exposes read-only repository and PR decision signals",
   assert.equal(body.delivery.items[0].complete, false, "CI PASS plus Linear Done must not count as Production complete");
   assert.equal(body.delivery.counts.MERGE_WAITING, 1);
   assert.equal(body.fuel.available, false);
-  assert.equal(JSON.stringify(body).includes("lin_api_"), false);
+  assert.equal(JSON.stringify(body).includes("fixture_only_not_a_secret"), false);
   assert.ok(JSON.stringify(body).length < 10_000, "bounded operations payload must not regress toward the measured 155KB response");
   const startedAt = Date.now();
   assert.equal((await fetch(`${dashboardUrl}/api/operations?force=1`)).status, 200);
