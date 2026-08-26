@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=b62100fc2c7000b4189b75fa54a34392155859b524a211acf84079d9859f1368 foundation=false
+-- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=021b346ba940b1ff00ea05bd3ca14740141ecfb1031ea15e29b26b4808d1eae5 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '132_issue574_cloud_folder_link',
   p_file_name => '132_issue574_cloud_folder_link.sql',
-  p_file_digest => 'b62100fc2c7000b4189b75fa54a34392155859b524a211acf84079d9859f1368',
+  p_file_digest => '021b346ba940b1ff00ea05bd3ca14740141ecfb1031ea15e29b26b4808d1eae5',
   p_expected_predecessor => '131_issue528_item_phone_review_status',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -56,7 +56,7 @@ begin
   if p_url is null then
     return null;
   end if;
-  for v_pass in 1..2 loop
+  for v_pass in 1..16 loop
     v_bytes := ''::bytea;
     v_index := 1;
     while v_index <= pg_catalog.length(v_input) loop
@@ -79,6 +79,12 @@ begin
     end if;
     v_input := v_output;
   end loop;
+  -- A URL capped at 2048 characters cannot contain sixteen complete layers
+  -- of percent encoding. A remaining escape is therefore an unsafe or
+  -- malformed identifier, not a value to store for later interpretation.
+  if v_input ~ '%[0-9A-Fa-f]{2}' then
+    return null;
+  end if;
   return v_input;
 exception when others then
   return null;
@@ -87,7 +93,7 @@ $$;
 
 revoke all on function public.decode_cloud_folder_url(text) from public, anon, authenticated, service_role;
 
-create or replace function public.is_cloud_folder_url(p_url text)
+create or replace function public.is_cloud_folder_identifier(p_value text, p_query_value boolean default false)
 returns boolean
 language sql
 immutable
@@ -95,35 +101,198 @@ security invoker
 set search_path = ''
 as $$
   select
-    length(coalesce(p_url, '')) between 10 and 2048
-    and p_url ~ '^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?(?:/|$)'
-    and p_url !~ '^https://[^/?#]*@'
-    and (
-      substring(p_url from '^https://[^/:]+:([0-9]{1,5})(?:/|$)') is null
-      or substring(p_url from '^https://[^/:]+:([0-9]{1,5})(?:/|$)')::integer between 0 and 65535
-    )
-    and decoded_url is not null
-    and decoded_url ~ '^https://[^[:space:]/?#]+(?::[0-9]+)?(?:/|$)'
-    and decoded_url !~ '^https://[^/?#]*@'
-    and decoded_url !~ '[[:cntrl:]]'
-    and decoded_url !~* '\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)(?:[?&#/]|$)'
-    and decoded_url !~* '[?&](?:id|folder|folder_id|folderId|directory)=[+[:space:]]*(?:&|#|$)'
-    and decoded_url !~* '(?:/folders?|/directories?|/scl/fo|/sh|/home|/f)/[[:space:]]*(?:[/?#]|$)'
-    and (
-      p_url ~* '^https://drive\.google\.com(?::[0-9]{1,5})?/drive/(?:u/[0-9]+/)?folders/[^/?#]+'
-      or p_url ~* '^https://(?:[^/]+\.)?1drv\.ms(?::[0-9]{1,5})?/(?:[^/?#]*:f:[^/?#]*|f)/[^/?#]+'
-      or p_url ~* '^https://(?:[^/]+\.)?onedrive\.live\.com(?::[0-9]{1,5})?/.*(?::f:[^/?#]*/[^/?#]+|[?&]id=[^&#]+)'
-      or p_url ~* '^https://[^/]+\.sharepoint\.com(?::[0-9]{1,5})?/.*(?::f:[^/?#]*/[^/?#]+|/Forms/AllItems\.aspx[^#]*[?&]id=[^&#]+)'
-      or p_url ~* '^https://(?:www\.)?dropbox\.com(?::[0-9]{1,5})?/(?:scl/fo|sh|home)/[^/?#]+'
-      or (
-        p_url !~* '^https://(?:drive\.google\.com|(?:[^/]+\.)?1drv\.ms|(?:[^/]+\.)?onedrive\.live\.com|[^/]+\.sharepoint\.com|(?:www\.)?dropbox\.com)(?::[0-9]{1,5})?(?:/|$)'
-        and (
-          p_url ~* '^https://[^/?#]+/(?:[^?#]*/)?(?:folders?|directories?)/[^/?#]+'
-          or p_url ~* '^https://[^/?#]+/.*[?&](?:folder|folder_id|folderId|directory)=[^&#]+'
-        )
+    decoded_value is not null
+    and pg_catalog.btrim(decoded_value) <> ''
+    and pg_catalog.btrim(decoded_value) not in ('.', '..')
+    and decoded_value !~ '[[:cntrl:]]'
+    and pg_catalog.btrim(pg_catalog.split_part(pg_catalog.split_part(decoded_value, '?', 1), '#', 1))
+      !~* '\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)$'
+  from (
+    select public.decode_cloud_folder_url(
+      case when p_query_value then pg_catalog.replace(p_value, '+', ' ') else p_value end
+    ) decoded_value
+  ) decoded
+$$;
+
+revoke all on function public.is_cloud_folder_identifier(text, boolean) from public, anon, authenticated, service_role;
+
+create or replace function public.has_cloud_folder_query_identifier(p_query text, p_key text)
+returns boolean
+language plpgsql
+immutable
+security invoker
+set search_path = ''
+as $$
+declare
+  v_pairs text[];
+  v_pair text;
+  v_raw_key text;
+  v_raw_value text;
+  v_decoded_key text;
+begin
+  if p_query is null then
+    return false;
+  end if;
+
+  v_pairs := pg_catalog.regexp_split_to_array(p_query, '&');
+  foreach v_pair in array v_pairs loop
+    v_raw_key := case when pg_catalog.strpos(v_pair, '=') > 0
+      then pg_catalog.substr(v_pair, 1, pg_catalog.strpos(v_pair, '=') - 1)
+      else v_pair
+    end;
+    v_raw_value := case when pg_catalog.strpos(v_pair, '=') > 0
+      then pg_catalog.substr(v_pair, pg_catalog.strpos(v_pair, '=') + 1)
+      else ''
+    end;
+    v_decoded_key := public.decode_cloud_folder_url(pg_catalog.replace(v_raw_key, '+', ' '));
+    if v_decoded_key = p_key then
+      return public.is_cloud_folder_identifier(v_raw_value, true);
+    end if;
+  end loop;
+
+  return false;
+end
+$$;
+
+revoke all on function public.has_cloud_folder_query_identifier(text, text) from public, anon, authenticated, service_role;
+
+create or replace function public.is_cloud_folder_url(p_url text)
+returns boolean
+language plpgsql
+immutable
+security invoker
+set search_path = ''
+as $$
+declare
+  v_without_fragment text;
+  v_before_query text;
+  v_query text;
+  v_authority text;
+  v_host text;
+  v_port_text text;
+  v_path text;
+  v_raw_segments text[];
+  v_raw_segment text;
+  v_decoded_segment text;
+  v_segments text[] := array[]::text[];
+  v_segment_count integer;
+  v_index integer;
+  v_marker_index integer := 0;
+  v_generic_folder boolean := false;
+begin
+  if p_url is null
+     or pg_catalog.length(p_url) not between 10 and 2048
+     or p_url ~ '[[:space:]]'
+     or p_url !~* '^https://' then
+    return false;
+  end if;
+
+  v_without_fragment := pg_catalog.split_part(p_url, '#', 1);
+  v_before_query := pg_catalog.split_part(v_without_fragment, '?', 1);
+  v_query := case when pg_catalog.strpos(v_without_fragment, '?') > 0
+    then pg_catalog.substr(v_without_fragment, pg_catalog.strpos(v_without_fragment, '?') + 1)
+    else null
+  end;
+  v_authority := (pg_catalog.regexp_match(v_before_query, '(?i)^https://([^/?#]+)'))[1];
+  if v_authority is null or v_authority ~ '@' then
+    return false;
+  end if;
+  v_host := (pg_catalog.regexp_match(v_authority, '^([A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)(?::[0-9]{1,5})?$'))[1];
+  v_port_text := (pg_catalog.regexp_match(v_authority, ':([0-9]{1,5})$'))[1];
+  if v_host is null or (v_port_text is not null and v_port_text::integer not between 0 and 65535) then
+    return false;
+  end if;
+  v_host := pg_catalog.lower(v_host);
+  v_path := pg_catalog.regexp_replace(v_before_query, '(?i)^https://[^/?#]+', '');
+
+  v_raw_segments := pg_catalog.regexp_split_to_array(v_path, '/');
+  foreach v_raw_segment in array v_raw_segments loop
+    if v_raw_segment = '' then
+      continue;
+    end if;
+    v_decoded_segment := public.decode_cloud_folder_url(v_raw_segment);
+    if v_decoded_segment is null then
+      return false;
+    end if;
+    v_segments := pg_catalog.array_append(v_segments, v_decoded_segment);
+  end loop;
+  v_segment_count := coalesce(pg_catalog.array_length(v_segments, 1), 0);
+
+  if v_host = 'drive.google.com' then
+    return (
+      v_segment_count >= 3
+      and v_segments[1] = 'drive'
+      and v_segments[2] = 'folders'
+      and public.is_cloud_folder_identifier(v_segments[3], false)
+      and public.is_cloud_folder_identifier(v_segments[v_segment_count], false)
+    ) or (
+      v_segment_count >= 5
+      and v_segments[1] = 'drive'
+      and v_segments[2] = 'u'
+      and v_segments[3] ~ '^[0-9]+$'
+      and v_segments[4] = 'folders'
+      and public.is_cloud_folder_identifier(v_segments[5], false)
+      and public.is_cloud_folder_identifier(v_segments[v_segment_count], false)
+    );
+  end if;
+
+  for v_index in 1..v_segment_count loop
+    if pg_catalog.strpos(pg_catalog.lower(v_segments[v_index]), ':f:') > 0 then
+      v_marker_index := v_index;
+      exit;
+    end if;
+  end loop;
+
+  if v_host = '1drv.ms' then
+    return v_segment_count >= 2
+      and (pg_catalog.strpos(pg_catalog.lower(v_segments[1]), ':f:') > 0 or pg_catalog.lower(v_segments[1]) = 'f')
+      and public.is_cloud_folder_identifier(v_segments[v_segment_count], false);
+  end if;
+
+  if v_host = 'onedrive.live.com' or v_host like '%.onedrive.live.com' then
+    return (
+      v_marker_index > 0
+      and v_marker_index < v_segment_count
+      and public.is_cloud_folder_identifier(v_segments[v_segment_count], false)
+    ) or public.has_cloud_folder_query_identifier(v_query, 'id');
+  end if;
+
+  if v_host like '%.sharepoint.com' then
+    return (
+      v_marker_index > 0
+      and v_marker_index < v_segment_count
+      and public.is_cloud_folder_identifier(v_segments[v_segment_count], false)
+    ) or (
+      pg_catalog.lower(v_path) like '%/forms/allitems.aspx'
+      and public.has_cloud_folder_query_identifier(v_query, 'id')
+    );
+  end if;
+
+  if v_host in ('dropbox.com', 'www.dropbox.com') then
+    return v_segment_count >= 2
+      and (
+        (v_segments[1] = 'scl' and v_segments[2] = 'fo' and v_segment_count >= 3)
+        or v_segments[1] in ('sh', 'home')
       )
-    )
-  from (select public.decode_cloud_folder_url(p_url) decoded_url) decoded
+      and public.is_cloud_folder_identifier(v_segments[v_segment_count], false);
+  end if;
+
+  for v_index in 1..v_segment_count loop
+    if pg_catalog.lower(v_segments[v_index]) in ('folder', 'folders', 'directory', 'directories')
+       and v_index < v_segment_count
+       and public.is_cloud_folder_identifier(v_segments[v_index + 1], false)
+       and public.is_cloud_folder_identifier(v_segments[v_segment_count], false) then
+      v_generic_folder := true;
+      exit;
+    end if;
+  end loop;
+
+  return v_generic_folder
+    or public.has_cloud_folder_query_identifier(v_query, 'folder')
+    or public.has_cloud_folder_query_identifier(v_query, 'folder_id')
+    or public.has_cloud_folder_query_identifier(v_query, 'folderId')
+    or public.has_cloud_folder_query_identifier(v_query, 'directory');
+end
 $$;
 
 revoke all on function public.is_cloud_folder_url(text) from public, anon, authenticated, service_role;

@@ -20,11 +20,15 @@ const DIRECT_FILE_PATH = /\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe
 function decodedUrlPart(value: string) {
   let decoded = value;
   try {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt < 16; attempt += 1) {
       const next = decodeURIComponent(decoded);
       if (next === decoded) break;
       decoded = next;
     }
+    // A 2048-character URL cannot contain more than seven complete layers of
+    // percent encoding. Treat anything still encoded after this loop as an
+    // invalid identifier instead of letting a later parser reveal it.
+    if (/%[0-9a-f]{2}/iu.test(decoded)) return null;
   } catch {
     return null;
   }

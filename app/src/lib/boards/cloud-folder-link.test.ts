@@ -34,27 +34,50 @@ describe("Issue #574 cloud folder URL", () => {
     "https://drive.google.com/drive/folders/",
     "https://drive.google.com/drive/folders/%20",
     "https://drive.google.com/drive/folders/%00",
+    "https://drive.google.com/drive/folders/.",
+    "https://drive.google.com/drive/folders/..",
     "https://drive.google.com/drive/folders/client/contract%2Epdf",
     "https://onedrive.live.com/?id=contract.pdf",
     "https://onedrive.live.com/?id=contract.pdf%3Fdownload%3D1",
     "https://onedrive.live.com/?id=%00",
     "https://onedrive.live.com/?id=%1F",
     "https://onedrive.live.com/?id=abc%00def",
+    "https://onedrive.live.com/?id=.",
+    "https://onedrive.live.com/?id=..",
+    "https://onedrive.live.com/?id=contract%25252Epdf",
+    "https://onedrive.live.com/?id=%252520",
     "https://onedrive.live.com/?cid=only-a-drive-id",
     "https://tenant.sharepoint.com/sites/team/Forms/AllItems.aspx?id=contract.pdf",
     "https://tenant.sharepoint.com/:f:",
+    "https://tenant.sharepoint.com/:f:/g/team/%20",
     "https://example.com/files/contract.pdf",
     "https://example.com/folders/contract.pdf",
     "https://example.com/folders/contract%2Epdf",
+    "https://example.com/folders/contract%2Epdf%20",
     "https://example.com/folders/%ZZ",
     "https://www.dropbox.com/home/contract%2Epdf",
     "https://example.com/?folder=%20",
     "https://example.com/?folder=%2520",
+    "https://example.com/?folder=%252520",
     "https://example.com/?folder=+",
     "https://example.com/?folder=+%20",
     "https://example.com/?path=home",
+    "https://example.com/path#?folder=client",
+    "https://onedrive.live.com/#?id=folder",
+    "https://example.com/path#&directory=client",
+    "https://drive.google.com/DRIVE/FOLDERS/id",
+    "https://www.dropbox.com/SCL/FO/id/example",
+    "https://onedrive.live.com/?ID=folder",
+    "https://example.com/?FOLDER=client",
     "https://example.com/an-ordinary-page",
   ])("rejects unsafe or non-folder input: %s", (raw) => {
     expect(inspectCloudFolderUrl(raw).ok).toBe(false);
+  });
+
+  it.each([
+    "https://example.com/?folder=%2B",
+    "https://example.com/?folder=client&preview=contract.pdf",
+  ])("accepts a valid folder identifier without interpreting unrelated URL text: %s", (raw) => {
+    expect(inspectCloudFolderUrl(raw).ok).toBe(true);
   });
 });
