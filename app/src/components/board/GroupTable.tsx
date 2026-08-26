@@ -3,7 +3,7 @@
 /**
  * 그룹 하나의 표 — 밀도·sticky·드래그 (ui-guidelines 원칙 6 · PLAN-002 WO-2 ⓑⓒ).
  *
- * 밀도: 행 36px(원칙 6 의 34~40px), 셀 패딩 8px, 컬럼 최소폭 6rem.
+ * 밀도: 행 32px, 셀 패딩 8px, 컬럼 최소폭 6rem.
  *
  * sticky 두 축을 **한 스크롤 컨테이너**에서 처리한다. `overflow-x:auto` 를 걸면 CSS 규약상
  * overflow-y 도 visible 로 남을 수 없어(auto 로 승격) 페이지 스크롤 기준 sticky 헤더가
@@ -77,9 +77,14 @@ import {
   setCellAction,
   setColumnWidthAction,
 } from "@/app/(app)/boards/actions";
+import {
+  BOARD_TABLE_BODY_CELL,
+  BOARD_TABLE_CONTROL,
+  BOARD_TABLE_HEADER_CELL,
+  BOARD_TABLE_ROW,
+} from "./table-style";
 
-const CELL_INPUT =
-  "w-full rounded border border-mw-line bg-mw-card px-1.5 py-0.5 text-xs text-mw-fg outline-none hover:border-mw-record focus:border-mw-record";
+const CELL_INPUT = BOARD_TABLE_CONTROL;
 
 /** 헤더/셀 공통 — 첫 열(이름)을 가로 스크롤에서 고정한다. */
 const STICKY_FIRST = "sticky left-0 z-[var(--mw-layer-board-cell)] bg-mw-card";
@@ -389,12 +394,12 @@ export function BoardCell({
         ) : column.type === "person" ? (
           <>
             <input type="hidden" name="kind" value="person" />
-            <MemberPicker label={column.label} members={members.length > 0 ? members : options.map(({ id, label }) => ({ id, label }))} value={typeof value === "string" ? value : null} multiple={false} compact={canonicalNewLead} />
+            <MemberPicker label={column.label} members={members.length > 0 ? members : options.map(({ id, label }) => ({ id, label }))} value={typeof value === "string" ? value : null} multiple={false} compact />
           </>
         ) : column.type === "people" ? (
           <>
             <input type="hidden" name="kind" value="people" />
-            <MemberPicker label={column.label} members={members.length > 0 ? members : options.map(({ id, label }) => ({ id, label }))} value={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []} multiple compact={canonicalNewLead} />
+            <MemberPicker label={column.label} members={members.length > 0 ? members : options.map(({ id, label }) => ({ id, label }))} value={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []} multiple compact />
           </>
         ) : column.type === "multiselect" ? (
           <select
@@ -651,13 +656,13 @@ export function GroupTable({
   };
 
   return (
-    <div className="relative isolate max-h-[70vh] min-w-0 max-w-full overflow-auto">
+    <div data-board-table-format="uniform" className="relative isolate max-h-[70vh] min-w-0 max-w-full overflow-auto">
       <table className="w-full border-collapse text-left">
         <thead>
           <tr>
             <th
               scope="col"
-              className={`${STICKY_FIRST} z-[var(--mw-layer-board-corner)] min-w-44 border-b border-mw-line px-2 py-1.5 text-xs font-semibold text-mw-sub`}
+              className={`${STICKY_FIRST} z-[var(--mw-layer-board-corner)] ${BOARD_TABLE_HEADER_CELL} min-w-44`}
               style={{ top: 0, position: "sticky" }}
             >
               {canonicalNewLead ? (
@@ -700,7 +705,7 @@ export function GroupTable({
                   data-view-focus={col.key === focusColumnKey || undefined}
                   data-column-key={col.key}
                   data-right-pinned={col.rightPinned || undefined}
-                  className={`relative sticky top-0 z-[var(--mw-layer-board-header)] min-w-20 border-b border-r border-mw-line px-2 py-1.5 text-xs font-semibold text-mw-sub ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-card"} ${
+                  className={`relative sticky top-0 z-[var(--mw-layer-board-header)] min-w-20 ${BOARD_TABLE_HEADER_CELL} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-card"} ${
                     !canManageColumns || workflowLocked
                       ? ""
                       : "cursor-grab active:cursor-grabbing"
@@ -779,12 +784,12 @@ export function GroupTable({
                 key={row.id}
                 onDragOver={acceptRow(index)}
                 onDrop={dropRow(index)}
-                className={`group ${canonicalNewLead ? "h-8" : "h-9"} hover:bg-mw-bg ${
+                className={`group ${BOARD_TABLE_ROW} hover:bg-mw-bg ${
                   dragRowId === row.id ? "opacity-40" : ""
                 } ${overRowIndex === index ? "border-t-2 border-t-mw-record" : ""}`}
               >
                 <td
-                  className={`${STICKY_FIRST} border-b border-r border-mw-line px-2 group-hover:bg-mw-bg`}
+                  className={`${STICKY_FIRST} ${BOARD_TABLE_BODY_CELL} group-hover:bg-mw-bg`}
                 >
                   <div className="flex items-center gap-1">
                     {rowDragEnabled && (
@@ -897,7 +902,7 @@ export function GroupTable({
                     data-view-focus={col.key === focusColumnKey || undefined}
                     data-column-key={col.key}
                     data-right-pinned={col.rightPinned || undefined}
-                    className={`border-b border-r border-mw-line px-2 align-middle group-hover:bg-mw-bg ${(col.wrap_mode ?? textMode) === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
+                    className={`${BOARD_TABLE_BODY_CELL} group-hover:bg-mw-bg ${(col.wrap_mode ?? textMode) === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
                       col.rightPinned
                         ? "sticky right-0 z-[var(--mw-layer-board-cell)] border-l-2 border-l-mw-primary bg-mw-tint-blue"
                         : ""

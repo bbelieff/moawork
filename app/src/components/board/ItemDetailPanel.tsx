@@ -579,7 +579,7 @@ export function ItemDetailPanel({
         ref={triggerRef}
         type="button"
         onClick={openDrawer}
-        className={`${canonicalNewLead ? "min-h-7" : "min-h-8"} shrink-0 rounded-lg border border-mw-line px-2 text-xs font-semibold text-mw-record hover:bg-mw-tint-blue`}
+        className="min-h-7 shrink-0 rounded-lg border border-mw-line px-2 text-xs font-semibold text-mw-record hover:bg-mw-tint-blue"
         aria-label={`${row.title} 상세 열기`}
         data-item-detail-trigger={row.id}
       >
