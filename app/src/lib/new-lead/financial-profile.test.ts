@@ -41,6 +41,10 @@ describe("신규리드 금융 정보", () => {
     expect(existingLoanRecordsFromValues({ existing_loans: 50_000_000 })).toEqual([
       expect.objectContaining({ id: "legacy", amount: 50_000_000 }),
     ]);
+    expect(existingLoanRecordsFromValues({
+      [EXISTING_LOAN_RECORDS_KEY]: "[]",
+      existing_loans: 50_000_000,
+    })).toEqual([]);
   });
 
   it("중복 id·잘못된 월·20건 초과 목록은 원자 저장 전에 거부한다", () => {

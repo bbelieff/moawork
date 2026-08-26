@@ -213,7 +213,9 @@ export async function saveNewLeadLoanProfileAction(
   try {
     const graph = await createRequestBoards();
     const result = await graph.service.setCells(ctx, boardId, itemId, {
-      [EXISTING_LOAN_RECORDS_KEY]: records.value.length > 0 ? JSON.stringify(records.value) : null,
+      // `[]` is an explicit migrated-empty sentinel. `null` means the canonical
+      // list has never been saved and therefore still permits the legacy fallback.
+      [EXISTING_LOAN_RECORDS_KEY]: JSON.stringify(records.value),
     });
     if (result.errors.length > 0) {
       return { ok: false, message: result.errors.map((error) => `${error.label}: ${error.message}`).join(" · ") };

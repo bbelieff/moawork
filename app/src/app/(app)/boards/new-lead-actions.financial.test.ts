@@ -77,6 +77,22 @@ describe("Issue #589 신규리드 재무 저장", () => {
     expect(mocks.setCells).not.toHaveBeenCalled();
   });
 
+  it("기존 기대출을 모두 삭제하면 명시적 빈 목록을 저장해 legacy 값이 되살아나지 않는다", async () => {
+    const data = baseForm();
+    data.set("loanRecords", "[]");
+
+    await expect(saveNewLeadLoanProfileAction({ ok: false, message: "" }, data)).resolves.toEqual({
+      ok: true,
+      message: "기대출 정보를 저장했습니다.",
+    });
+    expect(mocks.setCells).toHaveBeenCalledWith(
+      expect.anything(),
+      "board-a",
+      "item-a",
+      { existing_loan_records: "[]" },
+    );
+  });
+
   it.each([
     ["credit_score_ncb", "NCB"],
     ["credit_score_kcb", "KCB"],

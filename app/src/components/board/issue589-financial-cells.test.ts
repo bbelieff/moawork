@@ -27,13 +27,18 @@ describe("Issue #589 신규리드 금융 셀", () => {
     expect(source).toContain("bg-mw-card");
     expect(source).toContain("lastSubmittedRef");
     expect(source).toContain("event.currentTarget.value === lastSubmittedRef.current");
+    expect(source).toContain("attemptedValueRef.current = event.currentTarget.value");
+    expect(source).toContain("if (pending || !state.ok");
+    expect(source).not.toContain("lastSubmittedRef.current = event.currentTarget.value");
   });
 
   it("회사 상세의 EAV 금융 필드는 canonical deal 전용 저장기로 잘못 보내지 않는다", () => {
     const source = readFileSync(new URL("./ItemDetailPanel.tsx", import.meta.url), "utf8");
     expect(source).toContain("CANONICAL_NEW_LEAD_DETAIL_KEYS.has(entry.key)");
     expect(source).toContain('fieldKey === "credit_score_ncb"');
-    expect(source).toContain("existingLoanRecordsSummary(existingLoanRecordsFromValues(row.values))");
+    expect(source).toContain("<NewLeadLoanCell");
+    expect(source).toContain("entry.key === canonicalLoanEntryKey");
+    expect(source).toContain("CANONICAL_NEW_LEAD_LOAN_KEYS.has(entry.key)");
   });
 
   it("신규리드 표는 금융 전용 편집기를 연결하고 일반 선택 필드에 상태 배색을 쓰지 않는다", () => {

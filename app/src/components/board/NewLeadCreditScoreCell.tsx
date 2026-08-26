@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef } from "react";
+import { useActionState, useEffect, useRef } from "react";
 import {
   saveNewLeadCreditScoreAction,
 } from "@/app/(app)/boards/new-lead-actions";
@@ -28,6 +28,13 @@ export function NewLeadCreditScoreCell({
   );
   const shown = typeof value === "number" || typeof value === "string" ? value : "";
   const lastSubmittedRef = useRef(String(shown));
+  const attemptedValueRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (pending || !state.ok || attemptedValueRef.current === null) return;
+    lastSubmittedRef.current = attemptedValueRef.current;
+    attemptedValueRef.current = null;
+  }, [pending, state.ok, state.message]);
 
   if (readOnly) return <span className="block text-right text-xs tabular-nums text-mw-body">{shown || "—"}</span>;
 
@@ -48,7 +55,9 @@ export function NewLeadCreditScoreCell({
         aria-invalid={!state.ok && Boolean(state.message)}
         onBlur={(event) => {
           if (event.currentTarget.value === lastSubmittedRef.current) return;
-          lastSubmittedRef.current = event.currentTarget.value;
+          // Commit the dedupe marker only after the server confirms success so
+          // the same value can be retried after a transient failure.
+          attemptedValueRef.current = event.currentTarget.value;
           formRef.current?.requestSubmit();
         }}
         className="h-7 w-full rounded border border-mw-line bg-mw-card px-2 text-right text-xs tabular-nums text-mw-fg outline-none focus:border-mw-record disabled:opacity-60"
