@@ -118,20 +118,24 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       "https://example.com/files/contract.pdf",
       "https://drive.google.com/drive/folders/",
       "https://drive.google.com/drive/folders/%20",
+      "https://drive.google.com/drive/folders/%00",
       "https://drive.google.com/drive/folders/client/contract%2Epdf",
       "https://onedrive.live.com/?id=contract.pdf",
       "https://onedrive.live.com/?id=contract.pdf%3Fdownload%3D1",
       "https://onedrive.live.com/?id=%00",
       "https://onedrive.live.com/?id=%1F",
+      "https://onedrive.live.com/?id=abc%00def",
       "https://onedrive.live.com/?cid=only-a-drive-id",
       "https://tenant.sharepoint.com/sites/team/Forms/AllItems.aspx?id=contract.pdf",
       "https://tenant.sharepoint.com/:f:",
       "https://example.com/folders/contract.pdf",
       "https://example.com/folders/contract%2Epdf",
+      "https://example.com/folders/%ZZ",
       "https://www.dropbox.com/home/contract%2Epdf",
       "https://example.com/?folder=%20",
       "https://example.com/?folder=%2520",
       "https://example.com/?folder=+",
+      "https://example.com/?folder=+%20",
       "https://example.com/?path=home",
       "https://example.com/ordinary-page",
     ]) {
@@ -166,6 +170,23 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       expect((await db.query<{ allowed: boolean }>(
         `select has_function_privilege('${role}','public.set_board_item_cloud_folder(uuid,uuid,uuid,text,uuid)','EXECUTE') allowed`,
       )).rows[0].allowed).toBe(false);
+    }
+    for (const signature of [
+      "public.decode_cloud_folder_url(text)",
+      "public.is_cloud_folder_url(text)",
+    ]) {
+      for (const role of ["anon", "authenticated", "service_role"]) {
+        expect((await db.query<{ allowed: boolean }>(
+          `select has_function_privilege('${role}','${signature}','EXECUTE') allowed`,
+        )).rows[0].allowed).toBe(false);
+      }
+      const helper = (await db.query<{ definer: boolean; config: string }>(`
+        select prosecdef definer,coalesce(array_to_string(proconfig,','),'') config
+          from pg_proc where oid='${signature}'::regprocedure
+      `)).rows[0];
+      expect(helper.definer).toBe(false);
+      expect(helper.config).toContain("search_path=");
+      expect(helper.config).not.toContain("public");
     }
     for (const role of ["anon", "authenticated", "service_role"]) {
       for (const privilege of ["SELECT", "INSERT", "UPDATE", "DELETE"]) {

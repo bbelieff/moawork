@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=c6941e7beea487b79d05b37f7fa7372263263cab8b4f8b3a929823482f5cfda2 foundation=false
+-- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=127b6dfb77dc13113a3eee27d2a2acf3b282ece3e66bf89c7517e045307d8176 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '132_issue574_cloud_folder_link',
   p_file_name => '132_issue574_cloud_folder_link.sql',
-  p_file_digest => 'c6941e7beea487b79d05b37f7fa7372263263cab8b4f8b3a929823482f5cfda2',
+  p_file_digest => '127b6dfb77dc13113a3eee27d2a2acf3b282ece3e66bf89c7517e045307d8176',
   p_expected_predecessor => '131_issue528_item_phone_review_status',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -37,6 +37,56 @@ alter table public.board_item_cloud_folder_requests enable row level security;
 alter table public.board_item_cloud_folder_requests force row level security;
 revoke all on public.board_item_cloud_folder_requests from public, anon, authenticated, service_role;
 
+create or replace function public.decode_cloud_folder_url(p_url text)
+returns text
+language plpgsql
+immutable
+security invoker
+set search_path = ''
+as $$
+declare
+  v_input text := p_url;
+  v_output text;
+  v_bytes bytea;
+  v_index integer;
+  v_character text;
+  v_hex text;
+  v_pass integer;
+begin
+  if p_url is null then
+    return null;
+  end if;
+  for v_pass in 1..2 loop
+    v_bytes := ''::bytea;
+    v_index := 1;
+    while v_index <= pg_catalog.length(v_input) loop
+      v_character := pg_catalog.substr(v_input, v_index, 1);
+      if v_character = '%' then
+        v_hex := pg_catalog.substr(v_input, v_index + 1, 2);
+        if pg_catalog.length(v_hex) <> 2 or v_hex !~ '^[0-9A-Fa-f]{2}$' then
+          return null;
+        end if;
+        v_bytes := v_bytes || pg_catalog.decode(v_hex, 'hex');
+        v_index := v_index + 3;
+      else
+        v_bytes := v_bytes || pg_catalog.convert_to(v_character, 'UTF8');
+        v_index := v_index + 1;
+      end if;
+    end loop;
+    v_output := pg_catalog.convert_from(v_bytes, 'UTF8');
+    if v_output = v_input then
+      return v_output;
+    end if;
+    v_input := v_output;
+  end loop;
+  return v_input;
+exception when others then
+  return null;
+end
+$$;
+
+revoke all on function public.decode_cloud_folder_url(text) from public, anon, authenticated, service_role;
+
 create or replace function public.is_cloud_folder_url(p_url text)
 returns boolean
 language sql
@@ -46,27 +96,27 @@ set search_path = ''
 as $$
   select
     length(coalesce(p_url, '')) between 10 and 2048
-    and p_url ~ '^https://[^[:space:]/?#]+(?::[0-9]+)?(?:/|$)'
-    and p_url !~ '^https://[^/?#]*@'
-    and p_url !~* '(?:\.|%2e|%252e)(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)(?:%3f|%253f|%23|%2523|[?&#/]|$)'
-    and p_url !~* '(?:/folders?/|/directories?/|/scl/fo/|/sh/|/home/|/f/|[?&](?:id|folder|folder_id|folderId|directory)=)(?:(?:%20|%2520|%09|%2509|%0a|%250a|%0d|%250d))+(?:[/?&#]|$)'
-    and p_url !~* '[?&](?:id|folder|folder_id|folderId|directory)=\++(?:&|#|$)'
-    and p_url !~* '[?&](?:id|folder|folder_id|folderId|directory)=(?:%(?:[01][0-9a-f]|7f|20))+(?:&|#|$)'
-    and p_url !~* '[?&](?:id|folder|folder_id|folderId|directory)=(?:%25(?:[01][0-9a-f]|7f|20))+(?:&|#|$)'
+    and decoded_url is not null
+    and decoded_url ~ '^https://[^[:space:]/?#]+(?::[0-9]+)?(?:/|$)'
+    and decoded_url !~ '^https://[^/?#]*@'
+    and decoded_url !~ '[[:cntrl:]]'
+    and decoded_url !~* '\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)(?:[?&#/]|$)'
+    and decoded_url !~* '[?&](?:id|folder|folder_id|folderId|directory)=[+[:space:]]*(?:&|#|$)'
     and (
-      p_url ~* '^https://drive\.google\.com/drive/(?:u/[0-9]+/)?folders/[^/?#]+'
-      or p_url ~* '^https://(?:[^/]+\.)?1drv\.ms/(?:[^/?#]*:f:[^/?#]*|f)/'
-      or p_url ~* '^https://(?:[^/]+\.)?onedrive\.live\.com/.*(?::f:[^/?#]*/[^/?#]+|[?&]id=[^&#]+)'
-      or p_url ~* '^https://[^/]+\.sharepoint\.com/.*(?::f:[^/?#]*/[^/?#]+|/Forms/AllItems\.aspx[^#]*[?&]id=[^&#]+)'
-      or p_url ~* '^https://(?:www\.)?dropbox\.com/(?:scl/fo|sh|home)/'
+      decoded_url ~* '^https://drive\.google\.com/drive/(?:u/[0-9]+/)?folders/[^[:space:]/?#]+'
+      or decoded_url ~* '^https://(?:[^/]+\.)?1drv\.ms/(?:[^/?#]*:f:[^/?#]*|f)/[^[:space:]/?#]+'
+      or decoded_url ~* '^https://(?:[^/]+\.)?onedrive\.live\.com/.*(?::f:[^/?#]*/[^[:space:]/?#]+|[?&]id=[^[:space:]&#]+)'
+      or decoded_url ~* '^https://[^/]+\.sharepoint\.com/.*(?::f:[^/?#]*/[^[:space:]/?#]+|/Forms/AllItems\.aspx[^#]*[?&]id=[^[:space:]&#]+)'
+      or decoded_url ~* '^https://(?:www\.)?dropbox\.com/(?:scl/fo|sh|home)/[^[:space:]/?#]+'
       or (
-        p_url !~* '^https://(?:drive\.google\.com|(?:[^/]+\.)?1drv\.ms|(?:[^/]+\.)?onedrive\.live\.com|[^/]+\.sharepoint\.com|(?:www\.)?dropbox\.com)(?:/|$)'
+        decoded_url !~* '^https://(?:drive\.google\.com|(?:[^/]+\.)?1drv\.ms|(?:[^/]+\.)?onedrive\.live\.com|[^/]+\.sharepoint\.com|(?:www\.)?dropbox\.com)(?:/|$)'
         and (
-          p_url ~* '^https://[^/?#]+/(?:[^?#]*/)?(?:folders?|directories?)/[^/?#]+'
-          or p_url ~* '^https://[^/?#]+/.*[?&](?:folder|folder_id|folderId|directory)=[^&#]+'
+          decoded_url ~* '^https://[^/?#]+/(?:[^?#]*/)?(?:folders?|directories?)/[^[:space:]/?#]+'
+          or decoded_url ~* '^https://[^/?#]+/.*[?&](?:folder|folder_id|folderId|directory)=[^[:space:]&#]+'
         )
       )
     )
+  from (select public.decode_cloud_folder_url(p_url) decoded_url) decoded
 $$;
 
 revoke all on function public.is_cloud_folder_url(text) from public, anon, authenticated, service_role;
