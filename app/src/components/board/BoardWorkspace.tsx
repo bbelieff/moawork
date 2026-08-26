@@ -66,6 +66,7 @@ import {
   type BoardFilterState,
 } from "./filters";
 import { resolveBoardDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
+import type { ItemDetailSnapshot } from "@/app/(app)/boards/item-detail-actions";
 import { runColumnCommandAction } from "@/app/(app)/boards/column-command-actions";
 import { INITIAL_COLUMN_COMMAND_STATE } from "@/app/(app)/boards/column-command-state";
 import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
@@ -145,6 +146,7 @@ export function BoardWorkspace({
   canManageSections = false,
   currentUserId,
   cellAction,
+  itemDetailFixture,
   workflowTransitionSlot,
 }: {
   board: Board;
@@ -178,6 +180,8 @@ export function BoardWorkspace({
   currentUserId?: string;
   /** 시각 fixture가 제품 UI를 우회하지 않고 저장소 경계만 대체할 때 사용한다. */
   cellAction?: (formData: FormData) => Promise<void>;
+  /** `/login/visual-fixture`의 마스킹 상세 기록. 제품 경로에서는 넘기지 않는다. */
+  itemDetailFixture?: ItemDetailSnapshot;
   /** 시각 fixture가 실제 진행현황 확인창을 유지한 채 이동 저장소만 대체한다. */
   workflowTransitionSlot?: ReactNode;
 }) {
@@ -210,10 +214,9 @@ export function BoardWorkspace({
   const detailColumns = useMemo(
     () => {
       const hidden = new Set(workflowProgressKind ? workflowDetailHiddenKeys(workflowProgressKind) : []);
-      if (board.source === NEW_LEAD_TAB_SOURCE) hidden.add("address_detail");
       return activeColumns.filter((column) => !hidden.has(column.key));
     },
-    [activeColumns, board.source, workflowProgressKind],
+    [activeColumns, workflowProgressKind],
   );
 
   useEffect(() => {
@@ -517,8 +520,11 @@ export function BoardWorkspace({
             >
               <GroupTable
                 boardId={board.id}
+                boardName={board.name}
+                groupName={block.name}
                 canonicalNewLead={board.source === NEW_LEAD_TAB_SOURCE}
                 newLeadMembers={scheduleRecipients}
+                itemDetailFixture={itemDetailFixture}
                 currentUserId={currentUserId}
                 groupId={block.group?.id ?? null}
                 columns={shown}

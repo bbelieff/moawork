@@ -43,6 +43,7 @@ import { clampWidth } from "./layout";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
 import { DealLedgerButton } from "./DealLedgerButton";
 import { ItemDetailPanel } from "./ItemDetailPanel";
+import type { ItemDetailSnapshot } from "@/app/(app)/boards/item-detail-actions";
 import { TrashItemButton } from "./ItemTrashControls";
 import { AddItemForm } from "./AddItemForm";
 import { ColumnContextMenu } from "./ColumnContextMenu";
@@ -397,8 +398,11 @@ export function BoardCell({
 
 export function GroupTable({
   boardId,
+  boardName,
+  groupName,
   canonicalNewLead = false,
   newLeadMembers = [],
+  itemDetailFixture,
   currentUserId,
   groupId,
   columns,
@@ -431,8 +435,11 @@ export function GroupTable({
   cellAction,
 }: {
   boardId: string;
+  boardName?: string;
+  groupName?: string;
   canonicalNewLead?: boolean;
   newLeadMembers?: readonly { id: string; label: string }[];
+  itemDetailFixture?: ItemDetailSnapshot;
   currentUserId?: string;
   /** 이 그룹의 group_id. "그룹 없음" 블록은 null. */
   groupId: string | null;
@@ -771,6 +778,8 @@ export function GroupTable({
 
                     <ItemDetailPanel
                       boardId={boardId}
+                      boardName={boardName}
+                      groupName={groupName}
                       row={row}
                       columns={detailColumns}
                       boardLayout={boardDetailLayout}
@@ -780,6 +789,7 @@ export function GroupTable({
                       canManageColumns={canManageColumns}
                       canonicalNewLead={canonicalNewLead}
                       memberOptions={newLeadMembers}
+                      initialDetail={itemDetailFixture}
                       previousItem={
                         index > 0
                           ? {

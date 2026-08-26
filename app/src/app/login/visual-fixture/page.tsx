@@ -25,10 +25,27 @@ function fixture(tabKey: string, workflowValue: string | null) {
     sort_order: index, width: column.width ?? 150, move_rule_jsonb: null,
     is_readonly: Boolean(column.readOnly),
   })) satisfies BoardColumn[];
+  const values: ItemWithValues["values"] = tabKey === "new" ? {
+    owner: "이대표",
+    collaborators: ["visual-user"],
+    applied_on: "2026-08-08",
+    ad_name: "네이버 정책자금 A",
+    phone: "010-2841-0000",
+    rep_name: "김성호",
+    biz_reg_type: "법인사업자",
+    industry: "기계부품 제조",
+    revenue_band: "30억~50억",
+    sido: "경기",
+    sigungu: "화성시",
+    email: "dh@—",
+    address_detail: "경기 화성시 동탄산단로 12",
+    consult_status: "상담 전",
+    contact_move: workflowValue ?? "컨택 대기",
+  } : workflowValue ? { work_move: workflowValue } : {};
   const row = {
     id: "visual-item", org_id: board.org_id, board_id: board.id, group_id: groups[0]?.id ?? null,
-    title: "마스킹된 예시 항목", assigned_to: null, deal_id: tabKey === "new" ? "visual-deal" : null, sort_order: 0,
-    created_at: "", updated_at: "", values: workflowValue ? { [tabKey === "contact" ? "work_move" : "contact_move"]: workflowValue } : {},
+    title: tabKey === "new" ? "(주)대한정밀" : "마스킹된 예시 항목", assigned_to: null, deal_id: tabKey === "new" ? "visual-deal" : null, sort_order: 0,
+    created_at: "", updated_at: "", values,
   } satisfies ItemWithValues;
   return { board, groups, columns, rows: [row] };
 }
@@ -56,12 +73,28 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
         {...data}
         columnOrder={{}}
         cellFlash={error ? { itemId: "visual-item", errors: [{ key: "work_move", label: "업무이동", message: error }] } : null}
-        assigneeLabels={{ "visual-user": "예시 담당자" }}
+        assigneeLabels={{ "visual-user": "카위", "review-user": "이대표", "ops-team": "심사실행팀 3명" }}
         canEditItems
         currentUserId="visual-user"
         settingsSlot={<VisualSettingsSlot />}
         onboardingSlot={tab === "new" ? <NewLeadOnboarding key="issue-554-help" /> : undefined}
         cellAction={visualSetCellAction}
+        itemDetailFixture={tab === "new" ? {
+          ok: true,
+          viewerId: "visual-user",
+          members: [
+            { id: "review-user", name: "이대표" },
+            { id: "visual-user", name: "카위" },
+            { id: "ops-team", name: "심사실행팀 3명" },
+          ],
+          files: [],
+          links: [],
+          events: [
+            { id: "event-1", kind: "memo", body: "1차 통화 예정. @정희 실장님 제조업 쪽 자료 있으면 공유 부탁드립니다.", actor_id: "review-user", created_at: "2026-08-25T05:00:00.000Z" },
+            { id: "event-2", kind: "call", body: "대표님 부재. 비서분이 내일 오전 재통화 요청.", actor_id: "review-user", created_at: "2026-08-24T07:40:00.000Z" },
+            { id: "event-3", kind: "field_change", body: "상담 상황을 상담 전으로 바꿈 · 이대표", actor_id: null, created_at: "2026-08-23T08:22:00.000Z" },
+          ],
+        } : undefined}
         workflowTransitionSlot={tab === "contact" ? (
           <form action={visualSetCellAction} className="mt-4 flex justify-end gap-2">
             <input type="hidden" name="boardId" value="visual-contact" />

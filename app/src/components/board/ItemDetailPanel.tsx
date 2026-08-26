@@ -44,6 +44,7 @@ import {
   type ItemDetailSnapshot,
 } from "@/app/(app)/boards/item-detail-actions";
 import { MemberPicker } from "./MemberPicker";
+import styles from "./item-detail-panel.module.css";
 
 function AutoSaveField({
   boardId,
@@ -53,6 +54,7 @@ function AutoSaveField({
   type,
   initialValue,
   canonicalDealId,
+  onStatusChange,
 }: {
   boardId: string;
   itemId: string;
@@ -61,6 +63,7 @@ function AutoSaveField({
   type: string;
   initialValue: string | number;
   canonicalDealId?: string | null;
+  onStatusChange?: (status: string) => void;
 }) {
   const [value, setValue] = useState(String(initialValue));
   const [status, setStatus] = useState("✓ 자동 저장됨");
@@ -70,6 +73,11 @@ function AutoSaveField({
   const savingRef = useRef(false);
   const queuedRef = useRef<string | null>(null);
 
+  function updateStatus(next: string) {
+    setStatus(next);
+    onStatusChange?.(next);
+  }
+
   async function drain() {
     if (savingRef.current) return;
     savingRef.current = true;
@@ -77,7 +85,7 @@ function AutoSaveField({
       const next = queuedRef.current;
       queuedRef.current = null;
       if (next === savedRef.current) continue;
-      setStatus("저장 중…");
+      updateStatus("저장 중…");
       const result = canonicalDealId
         ? await saveNewLeadDetailFieldAction({ boardId, itemId, dealId: canonicalDealId, fieldKey, value: next })
         : await saveItemDetailFieldAction({
@@ -88,14 +96,14 @@ function AutoSaveField({
             value: next,
           });
       if (!result.ok) {
-        setStatus(result.message);
+        updateStatus(result.message);
         if (queuedRef.current === null && valueRef.current !== next) {
           queuedRef.current = valueRef.current;
         }
         continue;
       }
       savedRef.current = next;
-      setStatus(
+      updateStatus(
         valueRef.current === next && queuedRef.current === null
           ? "✓ 자동 저장됨"
           : "저장 대기…",
@@ -122,7 +130,7 @@ function AutoSaveField({
   );
 
   return (
-    <div className="grid gap-1">
+    <div className={styles.fieldEditor}>
       <input
         id={`${itemId}-${fieldKey}`}
         value={value}
@@ -131,16 +139,17 @@ function AutoSaveField({
           const next = event.target.value;
           setValue(next);
           valueRef.current = next;
-          setStatus("저장 대기…");
+          updateStatus("저장 대기…");
           if (timerRef.current) clearTimeout(timerRef.current);
           timerRef.current = setTimeout(() => save(valueRef.current), 700);
         }}
         onBlur={() => save(valueRef.current)}
-        className="min-h-11 w-full rounded-lg border border-mw-line bg-mw-card px-3 text-sm text-mw-fg"
+        className={styles.fieldInput}
       />
       <span
         aria-live="polite"
-        className={`text-right text-[11px] ${status.startsWith("✓") ? "text-mw-success" : status.includes("중") || status.includes("대기") ? "text-mw-sub" : "text-mw-error"}`}
+        className={styles.fieldStatus}
+        data-saved={status.startsWith("✓")}
       >
         {status}
       </span>
@@ -231,6 +240,9 @@ export function ItemDetailPanel({
   defaultOpen = false,
   canonicalNewLead = false,
   memberOptions = [],
+  initialDetail,
+  boardName,
+  groupName,
   previousItem,
   nextItem,
 }: {
@@ -245,11 +257,15 @@ export function ItemDetailPanel({
   defaultOpen?: boolean;
   canonicalNewLead?: boolean;
   memberOptions?: readonly { id: string; label: string }[];
+  /** 마스킹된 시각 fixture에서만 사용한다. 실제 제품은 서버 상세를 불러온다. */
+  initialDetail?: ItemDetailSnapshot;
+  boardName?: string;
+  groupName?: string;
   previousItem?: { id: string; title: string };
   nextItem?: { id: string; title: string };
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const [detail, setDetail] = useState<ItemDetailSnapshot>({
+  const [detail, setDetail] = useState<ItemDetailSnapshot>(initialDetail ?? {
     ok: true,
     events: [],
     links: [],
@@ -263,6 +279,7 @@ export function ItemDetailPanel({
   const [linkLabel, setLinkLabel] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
+  const [fieldSaveStatuses, setFieldSaveStatuses] = useState<Record<string, string>>({});
   const [fileRequestId, setFileRequestId] = useState(() => crypto.randomUUID());
   const [advanceState, advanceAction, advancePending] = useActionState(
     advanceNewLeadFromDetailAction,
@@ -273,11 +290,28 @@ export function ItemDetailPanel({
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const wasOpenRef = useRef(open);
+  const suppressOpenerRestoreRef = useRef(false);
   const hashPushedRef = useRef(false);
   const columnsByKey = new Map(columns.map((column) => [column.key, column]));
   const unplaced = unplacedDetailKeys(row.values, layout).filter(
     (key) => !canonicalNewLead || (key !== "contact_move" && key !== "consult_status"),
   );
+  const saveStatuses = Object.values(fieldSaveStatuses);
+  const fieldSavePending = saveStatuses.some(
+    (status) => status === "저장 중…" || status === "저장 대기…",
+  );
+  const fieldSaveFailed = saveStatuses.some(
+    (status) =>
+      !status.startsWith("✓") &&
+      status !== "저장 중…" &&
+      status !== "저장 대기…",
+  );
+  const saveSummary =
+    detailPending || fieldSavePending
+      ? "저장 중…"
+      : !detail.ok || fieldSaveFailed
+        ? "저장 확인 필요"
+        : "✓ 자동 저장됨";
 
   const closeDrawer = useCallback(() => {
     setOpen(false);
@@ -316,9 +350,13 @@ export function ItemDetailPanel({
 
   useEffect(() => {
     if (!open) return;
-    startDetailTransition(async () =>
-      setDetail(await loadItemDetailAction(boardId, row.id)),
-    );
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    if (!initialDetail) {
+      startDetailTransition(async () =>
+        setDetail(await loadItemDetailAction(boardId, row.id)),
+      );
+    }
     focusDetailPanelElement(closeButtonRef.current);
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") closeDrawer();
@@ -331,7 +369,10 @@ export function ItemDetailPanel({
         if (focusable.length === 0) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
+        if (!dialogRef.current?.contains(document.activeElement)) {
+          event.preventDefault();
+          (event.shiftKey ? last : first).focus();
+        } else if (event.shiftKey && document.activeElement === first) {
           event.preventDefault();
           last.focus();
         } else if (!event.shiftKey && document.activeElement === last) {
@@ -341,8 +382,11 @@ export function ItemDetailPanel({
       }
     };
     window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [boardId, closeDrawer, open, row.id]);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [boardId, closeDrawer, initialDetail, open, row.id]);
 
   const refreshDetail = (next: ItemDetailSnapshot) => {
     if (next.ok) setDetail(next);
@@ -420,11 +464,23 @@ export function ItemDetailPanel({
   }
 
   function openSibling(id: string) {
+    suppressOpenerRestoreRef.current = true;
     window.location.hash = `item-${id}`;
     window.requestAnimationFrame(() =>
       document
         .querySelector<HTMLButtonElement>(`[data-item-detail-trigger="${id}"]`)
         ?.click(),
+    );
+  }
+
+  function focusCollaborators() {
+    const field = document.getElementById("detail-field-collaborators");
+    field?.scrollIntoView({ block: "center" });
+    const picker = field?.querySelector<HTMLDetailsElement>("details");
+    if (!picker) return;
+    picker.open = true;
+    window.requestAnimationFrame(() =>
+      picker.querySelector<HTMLElement>("summary")?.focus(),
     );
   }
 
@@ -437,7 +493,11 @@ export function ItemDetailPanel({
   }
 
   useEffect(() => {
-    restoreDetailPanelOpener(open, wasOpenRef.current, triggerRef.current);
+    if (!open && wasOpenRef.current && suppressOpenerRestoreRef.current) {
+      suppressOpenerRestoreRef.current = false;
+    } else {
+      restoreDetailPanelOpener(open, wasOpenRef.current, triggerRef.current);
+    }
     wasOpenRef.current = open;
   }, [open]);
 
@@ -460,31 +520,32 @@ export function ItemDetailPanel({
             role="dialog"
             aria-modal="true"
             aria-label={`${row.title} 상세`}
-            className="mw-layer-dialog fixed inset-0 flex justify-end bg-black/40"
+            className={`mw-layer-dialog ${styles.backdrop}`}
+            data-item-detail-backdrop
             onPointerDown={(event) => {
               if (isDetailPanelBackdrop(event.target, event.currentTarget))
                 closeDrawer();
             }}
           >
-            <section className="h-full w-full overflow-y-auto bg-mw-card p-4 shadow-2xl sm:p-6">
-              <header className="flex items-start justify-between gap-4 border-b border-mw-line pb-4">
-                <div>
-                  <p className="text-xs font-semibold text-mw-record">
-                    회사 상세 · {row.group_id ? "보드 아이템" : "미분류"}
-                  </p>
-                  <h2 className="mt-1 text-xl font-bold text-mw-fg">
-                    {row.title}
-                  </h2>
-                  <p className="mt-1 text-xs text-mw-sub">
-                    {inherited
-                      ? "보드 기본 배치를 상속 중"
-                      : "이 아이템만의 배치를 사용 중"}
-                  </p>
-                </div>
-                <nav
-                  aria-label="회사 상세 탐색"
-                  className="ml-auto flex items-center gap-2"
+            <section className={styles.surface} data-item-detail-surface>
+              <div className={styles.shell}>
+              <header className={styles.header} data-item-detail-header>
+                <button
+                  ref={closeButtonRef}
+                  type="button"
+                  onClick={closeDrawer}
+                  aria-label="상세 닫기"
+                  className={styles.closeButton}
                 >
+                  ×
+                </button>
+                <div className={styles.identity}>
+                  <h2 className={styles.companyName}>{row.title}</h2>
+                  <span className={styles.breadcrumb}>
+                    {boardName ?? (canonicalNewLead ? "신규리드 관리" : "보드")} · {groupName ?? (canonicalNewLead ? "💡 신규고객" : "그룹 없음")}
+                  </span>
+                </div>
+                <nav aria-label="회사 상세 탐색" className={styles.headerActions}>
                   <button
                     type="button"
                     disabled={!previousItem}
@@ -494,7 +555,7 @@ export function ItemDetailPanel({
                         ? `이전 회사 ${previousItem.title} 열기`
                         : "이전 회사 없음"
                     }
-                    className="min-h-10 rounded-lg border border-mw-line px-3 text-xs disabled:opacity-40"
+                    className={styles.headerButton}
                   >
                     ← 이전
                   </button>
@@ -507,7 +568,7 @@ export function ItemDetailPanel({
                         ? `다음 회사 ${nextItem.title} 열기`
                         : "다음 회사 없음"
                     }
-                    className="min-h-10 rounded-lg border border-mw-line px-3 text-xs disabled:opacity-40"
+                    className={styles.headerButton}
                   >
                     다음 →
                   </button>
@@ -515,95 +576,32 @@ export function ItemDetailPanel({
                     type="button"
                     onClick={copyDeepLink}
                     aria-live="polite"
-                    className="min-h-10 rounded-lg border border-mw-line px-3 text-xs"
+                    className={styles.headerButton}
                   >
                     {linkCopied ? "링크 복사됨" : "링크 복사"}
                   </button>
+                  <details className={styles.moreMenu}>
+                    <summary className={styles.moreButton} aria-label="회사 상세 추가 메뉴">⋯</summary>
+                    <div className={styles.morePopover}>
+                      <button type="button" onClick={() => download(`${row.title}.txt`, exportText(), "text/plain;charset=utf-8")}>TXT 내려받기</button>
+                      <button type="button" onClick={() => navigator.clipboard.writeText(exportText())}>회사 정보 복사</button>
+                    </div>
+                  </details>
                 </nav>
-                <button
-                  ref={closeButtonRef}
-                  type="button"
-                  onClick={closeDrawer}
-                  aria-label="상세 닫기"
-                  className="min-h-11 min-w-11 rounded-full border border-mw-line text-mw-body"
-                >
-                  ×
-                </button>
               </header>
 
-              <div className="grid gap-6 py-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(22rem,.92fr)]">
-                <div className="min-w-0">
-                  <div className="mb-3 flex items-center gap-2 border-b border-mw-line pb-3">
+              <div className={styles.content}>
+                <div className={styles.infoRail} data-item-detail-info-rail>
+                  <div className={styles.infoHeader}>
                     <h3 className="font-bold text-mw-fg">회사 정보</h3>
                     <span
-                      className="ml-auto text-xs text-mw-success"
+                      className={styles.saveState}
                       aria-live="polite"
                     >
-                      {detailPending
-                        ? "저장·불러오는 중…"
-                        : detail.ok
-                          ? "✓ 저장됨"
-                          : "저장 실패"}
+                      {saveSummary}
                     </span>
                   </div>
-                  <div className="grid gap-3">
-                    {canonicalNewLead && row.deal_id ? (
-                      <form action={advanceAction} className="rounded-xl border border-mw-record bg-mw-tint-blue p-3">
-                        <input type="hidden" name="boardId" value={boardId} />
-                        <input type="hidden" name="itemId" value={row.id} />
-                        <input type="hidden" name="requestId" value={advanceRequestId} />
-                        <button
-                          type="submit"
-                          disabled={!canEditItems || advancePending || advanceState.ok}
-                          className="min-h-11 w-full rounded-lg bg-mw-record px-4 text-sm font-bold text-white disabled:opacity-50"
-                        >
-                          {advancePending ? "넘기는 중…" : advanceState.ok ? "리드컨택으로 넘김" : "리드컨택으로 넘기기"}
-                        </button>
-                        {advanceState.message ? (
-                          <p role={advanceState.ok ? "status" : "alert"} className={`mt-2 text-xs ${advanceState.ok ? "text-mw-success" : "text-mw-error"}`}>
-                            {advanceState.message}{advanceState.ok ? <> <Link href="/contract" className="font-semibold underline">리드컨택 열기</Link></> : null}
-                          </p>
-                        ) : null}
-                      </form>
-                    ) : null}
-                    {canonicalNewLead && row.deal_id ? (
-                      <form
-                        action={updateNewLeadMetaAction}
-                        className="grid gap-2 rounded-xl border border-mw-line p-3"
-                      >
-                        <input type="hidden" name="boardId" value={boardId} />
-                        <input type="hidden" name="itemId" value={row.id} />
-                        <input
-                          type="hidden"
-                          name="dealId"
-                          value={row.deal_id}
-                        />
-                        <input
-                          type="hidden"
-                          name="field"
-                          value="address_detail"
-                        />
-                        <label className="grid gap-1 text-xs font-semibold text-mw-body">
-                          상세 주소
-                          <input
-                            name="value"
-                            defaultValue={
-                              typeof row.values.address_detail === "string"
-                                ? row.values.address_detail
-                                : ""
-                            }
-                            placeholder="미정"
-                            className="min-h-11 rounded-lg border border-mw-line px-3 text-sm text-mw-fg"
-                          />
-                        </label>
-                        <button
-                          type="submit"
-                          className="min-h-9 justify-self-end rounded-lg border border-mw-line px-3 text-xs"
-                        >
-                          상세 주소 저장
-                        </button>
-                      </form>
-                    ) : null}
+                  <div className={styles.fieldList}>
                     {layout.length === 0 && (
                       <p className="rounded-xl border border-dashed border-mw-line p-4 text-sm text-mw-sub">
                         배치된 상세 필드가 없습니다. 값이 있다면 아래 미배치
@@ -623,63 +621,88 @@ export function ItemDetailPanel({
                       const editable =
                         canEditItems &&
                         (entry.source === "detail" || editableColumn);
+                      const memberEditable = Boolean(
+                        canonicalNewLead &&
+                          row.deal_id &&
+                          (entry.key === "owner" ||
+                            entry.key === "collaborators") &&
+                          canEditItems,
+                      );
+                      const fieldLabelId = `${row.id}-${entry.key}-label`;
                       return (
                         <div
                           key={entry.key}
-                          className="rounded-xl border border-mw-line p-3"
+                          id={`detail-field-${entry.key}`}
+                          className={styles.fieldRow}
                         >
-                          <div className="mb-2 flex items-center justify-between gap-2">
-                            <label
-                              htmlFor={`${row.id}-${entry.key}`}
-                              className="text-xs font-semibold text-mw-body"
-                            >
-                              {label}
-                            </label>
-                            <span className="rounded-full bg-mw-bg px-2 py-0.5 text-[11px] text-mw-sub">
-                              {entry.source === "detail"
-                                ? "상세 전용"
-                                : "표 컬럼"}
+                          <span aria-hidden="true" className={styles.fieldHandle}>⠿</span>
+                          <label
+                            id={fieldLabelId}
+                            htmlFor={editable && !memberEditable ? `${row.id}-${entry.key}` : undefined}
+                            className={styles.fieldLabel}
+                          >
+                            {label}
+                            <span className={`${styles.fieldBadge} ${entry.source === "column" ? styles.columnBadge : ""}`}>
+                              {entry.source === "detail" ? "상세" : "표"}
                             </span>
-                          </div>
-                          {canonicalNewLead && row.deal_id && entry.key === "collaborators" && canEditItems ? (
-                            <form action={updateNewLeadMetaAction} className="grid gap-2">
-                              <input type="hidden" name="boardId" value={boardId} />
-                              <input type="hidden" name="itemId" value={row.id} />
-                              <input type="hidden" name="dealId" value={row.deal_id} />
-                              <input type="hidden" name="field" value="collaborators" />
-                              <MemberPicker
-                                label={label}
-                                members={memberOptions}
-                                value={Array.isArray(value) ? value.filter((candidate): candidate is string => typeof candidate === "string") : []}
-                                multiple
+                          </label>
+                          <div className={styles.fieldValue}>
+                            {memberEditable ? (
+                              <form action={updateNewLeadMetaAction} className={styles.memberField}>
+                                <input type="hidden" name="boardId" value={boardId} />
+                                <input type="hidden" name="itemId" value={row.id} />
+                                <input type="hidden" name="dealId" value={row.deal_id ?? ""} />
+                                <input type="hidden" name="field" value={entry.key} />
+                                <MemberPicker
+                                  label={label}
+                                  members={memberOptions}
+                                  value={
+                                    entry.key === "collaborators"
+                                      ? Array.isArray(value)
+                                        ? value.filter(
+                                            (candidate): candidate is string =>
+                                              typeof candidate === "string",
+                                          )
+                                        : []
+                                      : typeof value === "string"
+                                        ? value
+                                        : null
+                                  }
+                                  multiple={entry.key === "collaborators"}
+                                  compact
+                                  labelId={fieldLabelId}
+                                />
+                              </form>
+                            ) : editable ? (
+                              <AutoSaveField
+                                boardId={boardId}
+                                itemId={row.id}
+                                fieldKey={entry.key}
+                                source={entry.source}
+                                type={type}
+                                initialValue={inputValue(value)}
+                                canonicalDealId={canonicalNewLead ? row.deal_id : null}
+                                onStatusChange={(status) =>
+                                  setFieldSaveStatuses((current) =>
+                                    current[entry.key] === status
+                                      ? current
+                                      : { ...current, [entry.key]: status },
+                                  )
+                                }
                               />
-                            </form>
-                          ) : editable ? (
-                            <AutoSaveField
-                              boardId={boardId}
-                              itemId={row.id}
-                              fieldKey={entry.key}
-                              source={entry.source}
-                              type={type}
-                              initialValue={inputValue(value)}
-                              canonicalDealId={canonicalNewLead ? row.deal_id : null}
-                            />
-                          ) : (
-                            <p className="min-h-11 rounded-lg bg-mw-bg px-3 py-3 text-sm text-mw-body">
-                              {column
-                                ? formatCell(
-                                    column.type,
-                                    value ?? null,
-                                    column.options_jsonb?.options ?? [],
-                                  ) || "—"
-                                : inputValue(value) || "—"}
-                            </p>
-                          )}
-                          {entry.source === "detail" && canManageColumns && (
-                            <form
-                              action={promoteDetailFieldAction}
-                              className="mt-2"
-                            >
+                            ) : (
+                              <p className={styles.readonlyValue}>
+                                {column
+                                  ? formatCell(
+                                      column.type,
+                                      value ?? null,
+                                      column.options_jsonb?.options ?? [],
+                                    ) || "—"
+                                  : inputValue(value) || "—"}
+                              </p>
+                            )}
+                            {entry.source === "detail" && canManageColumns && (
+                              <form action={promoteDetailFieldAction}>
                               <input
                                 type="hidden"
                                 name="boardId"
@@ -692,25 +715,51 @@ export function ItemDetailPanel({
                               />
                               <button
                                 type="submit"
-                                className="text-xs font-semibold text-mw-record"
+                                className={styles.promoteButton}
+                                title={`${label}을 표에도 보이기`}
+                                aria-label={`${label}을 표에도 보이기`}
                               >
-                                ⋯ 표에도 보이기
+                                ⋯
                               </button>
                             </form>
                           )}
+                          </div>
                         </div>
                       );
                     })}
+                    {canonicalNewLead && row.deal_id ? (
+                      <details className={styles.compactTools}>
+                        <summary>업무 이동</summary>
+                        <div className={styles.compactToolsBody}>
+                          <form action={advanceAction} className="grid gap-2 rounded-lg border border-mw-record bg-mw-tint-blue p-2">
+                            <input type="hidden" name="boardId" value={boardId} />
+                            <input type="hidden" name="itemId" value={row.id} />
+                            <input type="hidden" name="requestId" value={advanceRequestId} />
+                            <button
+                              type="submit"
+                              disabled={!canEditItems || advancePending || advanceState.ok}
+                              className="min-h-9 rounded-lg bg-mw-record px-3 text-xs font-bold text-white disabled:opacity-50"
+                            >
+                              {advancePending ? "넘기는 중…" : advanceState.ok ? "리드컨택으로 넘김" : "리드컨택으로 넘기기"}
+                            </button>
+                            {advanceState.message ? (
+                              <p role={advanceState.ok ? "status" : "alert"} className={`text-xs ${advanceState.ok ? "text-mw-success" : "text-mw-error"}`}>
+                                {advanceState.message}{advanceState.ok ? <> <Link href="/contract" className="font-semibold underline">리드컨택 열기</Link></> : null}
+                              </p>
+                            ) : null}
+                          </form>
+                        </div>
+                      </details>
+                    ) : null}
                   </div>
 
                   <details
-                    className="border-t border-mw-line py-4"
-                    open={unplaced.length > 0}
+                    className={styles.compactTools}
                   >
-                    <summary className="cursor-pointer text-sm font-semibold text-mw-body">
-                      이 화면에 배치되지 않은 항목 {unplaced.length}개 ▾
+                    <summary>
+                      이 화면에 배치되지 않은 항목 {unplaced.length}개
                     </summary>
-                    <div className="mt-3 grid gap-2">
+                    <div className={styles.compactToolsBody}>
                       {unplaced.length === 0 && (
                         <p className="text-xs text-mw-sub">
                           모든 값이 현재 배치에 있습니다.
@@ -760,11 +809,11 @@ export function ItemDetailPanel({
                   </details>
 
                   {canManageColumns && (
-                    <details className="border-t border-mw-line py-4">
-                      <summary className="cursor-pointer text-sm font-semibold text-mw-body">
+                    <details className={styles.compactTools}>
+                      <summary>
                         이 아이템의 상세 배치 편집
                       </summary>
-                      <div className="mt-3 grid gap-2">
+                      <div className={styles.compactToolsBody}>
                         {inherited ? (
                           <SaveLayoutForm
                             boardId={boardId}
@@ -904,11 +953,11 @@ export function ItemDetailPanel({
                   )}
 
                   {canManageColumns && (
-                    <details className="border-t border-mw-line py-4">
-                      <summary className="cursor-pointer text-sm font-semibold text-mw-body">
+                    <details className={styles.compactTools}>
+                      <summary>
                         보드 기본 상세 배치
                       </summary>
-                      <div className="mt-3 grid gap-2">
+                      <div className={styles.compactToolsBody}>
                         {boardLayout.map((entry, index) => (
                           <div
                             key={entry.key}
@@ -1017,14 +1066,13 @@ export function ItemDetailPanel({
                       </div>
                     </details>
                   )}
-                  <section className="border-t border-mw-line py-4">
-                    <h3 className="text-sm font-bold text-mw-fg">
-                      첨부 · 링크
-                    </h3>
-                    <p className="mt-1 text-xs text-mw-sub">
+                  <details className={styles.compactTools}>
+                    <summary>첨부 · 링크</summary>
+                    <div className={styles.compactToolsBody}>
+                    <p className="text-xs text-mw-sub">
                       파일은 10MB씩 5개, 합계 30MB까지 올릴 수 있어요. 외부 자료는 Google Drive, OneDrive, Dropbox, 웹하드 등의 https 링크를 20개까지 연결하고, 보는 사람에게 읽기 권한이 있는지 확인하세요.
                     </p>
-                    <div className="mt-3 grid gap-2">
+                    <div className="grid gap-2">
                       {detail.files.map((file) =>
                         file.downloadUrl ? (
                           <a
@@ -1125,10 +1173,12 @@ export function ItemDetailPanel({
                         </div>
                       )}
                     </div>
-                  </section>
-                  <section className="border-t border-mw-line py-4">
-                    <h3 className="text-sm font-bold text-mw-fg">내보내기</h3>
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    </div>
+                  </details>
+                  <details className={styles.compactTools}>
+                    <summary>내보내기</summary>
+                    <div className={styles.compactToolsBody}>
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() =>
@@ -1165,92 +1215,112 @@ export function ItemDetailPanel({
                         ⬇ CSV
                       </button>
                     </div>
-                  </section>
+                    </div>
+                  </details>
                 </div>
 
-                <aside className="min-w-0 border-t border-mw-line pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-                  <section className="rounded-xl bg-mw-bg p-4">
-                    <h3 className="text-sm font-bold text-mw-fg">
-                      이 건이 바뀌면 알게 되는 사람
-                    </h3>
-                    <div className="mt-3 flex flex-wrap gap-2">
+                <aside className={styles.mainPane} data-item-detail-main>
+                  <section className={styles.watcherCard} data-item-detail-watchers>
+                    <div className={styles.watcherCopy}>
+                      <span>이 건이 바뀌면 알게 되는 사람</span>
                       {detail.members.map((member) => (
                         <span
                           key={member.id}
-                          className="rounded-full border border-mw-line bg-mw-card px-3 py-1 text-xs text-mw-body"
+                          className={styles.watcherChip}
                         >
+                          <span className={styles.watcherAvatar}>{(member.name ?? "조").slice(0, 1)}</span>
                           {member.name ?? "조직 멤버"}
                         </span>
                       ))}
                       {detail.members.length === 0 && (
-                        <span className="text-xs text-mw-sub">
-                          알림 대상 정보를 불러오지 못했습니다.
+                        <span>
+                          담당자·출동 계보가 아직 없습니다.
                         </span>
                       )}
                     </div>
-                    <p className="mt-2 text-xs text-mw-sub">
-                      현재 담당자에게 변경 및 멘션 알림이 전달됩니다.
-                    </p>
+                    {canEditItems && layout.some((entry) => entry.key === "collaborators") && (
+                      <button
+                        type="button"
+                        className={styles.watcherChange}
+                        onClick={focusCollaborators}
+                      >
+                        바꾸기
+                      </button>
+                    )}
                   </section>
-                  <section className="mt-5">
-                    <div className="flex items-center gap-2 border-b border-mw-line pb-3">
-                      <h3 className="font-bold text-mw-fg">히스토리</h3>
-                      <span className="ml-auto text-xs text-mw-sub">
+                  <section className={styles.history} data-item-detail-history>
+                    <div className={styles.historyHeader}>
+                      <h3>히스토리</h3>
+                      <span className={styles.historyMeta}>
                         최신순 · 자동 기록 포함 · 삭제 불가
                       </span>
                     </div>
+                    <div className={styles.historyScroll}>
                     {!detail.ok && (
                       <p
                         role="alert"
-                        className="mt-3 rounded-lg bg-mw-tint-red p-3 text-sm text-mw-error"
+                        className={styles.historyError}
                       >
                         {detail.message}
                       </p>
                     )}
-                    <div className="grid gap-3 py-4">
-                      {detail.events.map((event) => (
+                    {detail.events.map((event) => {
+                      const actorName = detail.members.find((member) => member.id === event.actor_id)?.name;
+                      return (
                         <article
                           key={event.id}
-                          className="rounded-xl border border-mw-line p-3"
+                          className={styles.historyEntry}
                         >
-                          <div className="flex gap-2 text-xs text-mw-sub">
-                            <b className="text-mw-body">
+                          <span
+                            className={styles.historyAvatar}
+                            data-automatic={event.kind === "field_change"}
+                            aria-hidden="true"
+                          >
+                            {event.kind === "field_change" ? "⚙" : event.kind === "call" ? "통" : "메"}
+                          </span>
+                          <div>
+                          <div className={styles.historyLine}>
+                            <b>
                               {event.kind === "call"
-                                ? "통화 기록"
+                                ? actorName ?? "담당자"
                                 : event.kind === "field_change"
-                                  ? "자동 필드 변경"
-                                  : "메모"}
+                                  ? "자동 기록"
+                                  : actorName ?? "담당자"}
                             </b>
-                            <time className="ml-auto">
+                            <span className={styles.historyKind}>
+                              {event.kind === "call" ? "통화" : event.kind === "field_change" ? "자동" : "메모"}
+                            </span>
+                            <time>
                               {new Date(event.created_at).toLocaleString(
                                 "ko-KR",
                               )}
                             </time>
                           </div>
-                          <p className="mt-2 whitespace-pre-wrap text-sm text-mw-fg">
+                          <p className={styles.historyBody}>
                             {event.body}
                           </p>
+                          </div>
                         </article>
-                      ))}
+                      );
+                    })}
                       {detail.events.length === 0 && !detailPending && (
-                        <p className="rounded-xl border border-dashed border-mw-line p-4 text-sm text-mw-sub">
-                          아직 히스토리가 없습니다.
+                        <p className={styles.emptyHistory}>
+                          아직 히스토리가 없습니다. 메모나 통화 기록을 남기면 이곳에 시간순으로 쌓입니다.
                         </p>
                       )}
                     </div>
                   </section>
                   {canEditItems && (
-                    <section className="sticky bottom-0 rounded-xl border border-mw-line bg-mw-card p-3 shadow-lg">
+                    <section className={styles.composer} data-item-detail-composer>
                       <textarea
                         aria-label="메모 또는 통화 기록"
                         value={composer}
                         onChange={(event) => setComposer(event.target.value)}
                         placeholder="메모를 적으세요 — @이름으로 멘션할 수 있습니다"
-                        rows={4}
-                        className="w-full resize-y rounded-lg border border-mw-line p-3 text-sm"
+                        rows={2}
                       />
                       {detail.members.length > 0 && (
-                        <fieldset className="mt-2 flex flex-wrap gap-2">
+                        <fieldset className={styles.mentionList}>
                           <legend className="sr-only">멘션할 사람</legend>
                           {detail.members
                             .filter((member) => member.id !== detail.viewerId)
@@ -1272,7 +1342,6 @@ export function ItemDetailPanel({
                                         : [...current, member.id],
                                     )
                                   }
-                                  className="rounded-full border border-mw-line px-2 py-1 text-xs"
                                 >
                                   @{member.name ?? "담당자"}
                                 </button>
@@ -1280,12 +1349,11 @@ export function ItemDetailPanel({
                             })}
                         </fieldset>
                       )}
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <div className={styles.composerActions}>
                         <button
                           type="button"
                           onClick={() => setComposerKind("memo")}
                           aria-pressed={composerKind === "memo"}
-                          className="rounded-lg border border-mw-line px-3 py-2 text-xs"
                         >
                           메모
                         </button>
@@ -1293,18 +1361,17 @@ export function ItemDetailPanel({
                           type="button"
                           onClick={() => setComposerKind("call")}
                           aria-pressed={composerKind === "call"}
-                          className="rounded-lg border border-mw-line px-3 py-2 text-xs"
                         >
                           통화 기록
                         </button>
-                        <span className="ml-auto text-xs text-mw-sub">
+                        <span className="text-xs text-mw-sub">
                           @ 멘션
                         </span>
                         <button
                           type="button"
                           disabled={detailPending || !composer.trim()}
                           onClick={submitEvent}
-                          className="rounded-lg bg-mw-primary px-4 py-2 text-xs font-bold text-mw-on-accent disabled:opacity-50"
+                          className={styles.submitButton}
                         >
                           등록
                         </button>
@@ -1312,6 +1379,7 @@ export function ItemDetailPanel({
                     </section>
                   )}
                 </aside>
+              </div>
               </div>
             </section>
           </div>
