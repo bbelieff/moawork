@@ -20,6 +20,8 @@ import {
 } from "@/lib/workspace-entry/server";
 import { NotificationBell } from "@/components/notify/NotificationBell";
 import { loadNotifySnapshot } from "@/lib/notify/server";
+import { loadBoardNavKeys } from "@/lib/shell/board-nav-map";
+import { createRequestBoards } from "@/lib/boards/server";
 import { loadPlatformActor } from "@/lib/platform/actor";
 import { ensureApprovedWorkspaceOnEntry } from "@/lib/workspace-entry/bootstrap";
 import { createClient } from "@/lib/supabase/server";
@@ -80,7 +82,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // BBE-214 — bootstrap 뒤의 셸 읽기는 서로 결과에 의존하지 않는다. 각각을 직렬로
   // 기다리면 모든 hard-load가 네트워크 지연을 그대로 합산한다. 같은 요청 안에서 함께
   // 시작하되, auth/RLS 판정과 실패 의미는 각 loader가 계속 소유한다.
-  const [workspaceApprovals, workspaceEntryContext, platformActor, orgLogoUrls, lockedFeatures, notify] = await Promise.all([
+  const [workspaceApprovals, workspaceEntryContext, platformActor, orgLogoUrls, lockedFeatures, notify, boardNavKeys] = await Promise.all([
     trustedOwnerOrgId ? loadWorkspaceApprovals(trustedOwnerOrgId) : Promise.resolve<WorkspaceApprovals | null>(null),
     loadWorkspaceEntryContext(),
     loadPlatformActor(),
@@ -92,6 +94,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     // 2026-08-25 — 「리드컨택 보드 직행 주소」 조회를 뺐다.
     //   그 값을 쓰던 곳은 가로 탭 줄 하나뿐이었고, 총괄 지시로 그 줄을 없앴다.
     //   덤으로 **탭 화면을 열 때마다 돌던 읽기 한 번이 사라진다.**
+    //
+    // 2026-08-26 — 보드 목록 읽기를 «여기» 한 번 넣는다. 위와 반대 방향이라 근거를 남긴다.
+    //   기본 탭 주소(`/work`·`/contract`·`/newcust`·`/notices`)는 전부 `/boards/<id>` 로
+    //   넘기는 경유지다. 그래서 사용자가 실제로 머무는 주소에는 탭 이름이 없고,
+    //   **탭에 들어가 있는데 사이드바가 통째로 회색이었다.**
+    //   위에서 뺀 것은 «직렬로 붙던» 조회였고 이것은 이 Promise.all 안에서 같이 출발하므로
+    //   벽시계 시간이 늘지 않는다. 실패하면 빈 지도라 셸은 그대로 뜬다.
+    (async () => loadBoardNavKeys(ctx, (await createRequestBoards()).repo))(),
   ]);
   const switcherWorkspaces = routing.kind === "ready"
     ? buildSwitcherWorkspaces(routing.memberships, orgLogoUrls)
@@ -145,6 +155,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         <div className="flex min-h-0 flex-1 flex-col">
           <SidebarNav
             workspaceBasePath={currentWorkspace.length === 1 ? `/w/${currentWorkspace[0].slug}` : undefined}
+            boardNavKeys={boardNavKeys}
             lockedFeatures={lockedFeatures}
             badges={workspaceApprovals
               ? { workspaceApprovals: workspaceApprovals.pendingCount }
