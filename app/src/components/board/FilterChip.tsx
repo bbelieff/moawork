@@ -52,8 +52,8 @@ export function FilterChip({
     const closeOther = (event: Event) => {
       if ((event as CustomEvent<string>).detail !== id) close(false);
     };
-    window.addEventListener("moawork:filter-open", closeOther);
-    return () => window.removeEventListener("moawork:filter-open", closeOther);
+    window.addEventListener("moawork:popover-open", closeOther);
+    return () => window.removeEventListener("moawork:popover-open", closeOther);
   }, [close, id]);
   useLayoutEffect(() => {
     if (!open) return;
@@ -117,7 +117,7 @@ export function FilterChip({
           onClick={() => {
             const next = !open;
             setOpen(next);
-            if (next) window.dispatchEvent(new CustomEvent("moawork:filter-open", { detail: id }));
+            if (next) window.dispatchEvent(new CustomEvent("moawork:popover-open", { detail: id }));
           }}
           className="flex min-h-11 cursor-pointer select-none items-center gap-1 rounded-full px-2.5 outline-none sm:min-h-7"
         >
@@ -129,7 +129,7 @@ export function FilterChip({
         </button>
         {typeof document !== "undefined" && open ? createPortal(
           <div
-            className="mw-layer-dialog fixed inset-0"
+            className="mw-layer-page-popover fixed inset-0"
             onPointerDown={(event) => { if (event.target === event.currentTarget) close(); }}
           >
             <div

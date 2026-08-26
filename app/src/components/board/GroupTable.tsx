@@ -75,7 +75,7 @@ const CELL_INPUT =
   "w-full rounded border border-transparent bg-transparent px-1.5 py-0.5 text-xs text-mw-fg outline-none hover:border-mw-line focus:border-mw-record";
 
 /** 헤더/셀 공통 — 첫 열(이름)을 가로 스크롤에서 고정한다. */
-const STICKY_FIRST = "sticky left-0 z-10 bg-mw-card";
+const STICKY_FIRST = "sticky left-0 z-[var(--mw-layer-board-cell)] bg-mw-card";
 
 function inputTypeOf(type: BoardColumn["type"]): string {
   switch (type) {
@@ -585,13 +585,13 @@ export function GroupTable({
   };
 
   return (
-    <div className="max-h-[70vh] min-w-0 max-w-full overflow-auto">
+    <div className="relative isolate max-h-[70vh] min-w-0 max-w-full overflow-auto">
       <table className="w-full border-collapse text-left">
         <thead>
           <tr>
             <th
               scope="col"
-              className={`${STICKY_FIRST} z-30 min-w-44 border-b border-mw-line px-2 py-1.5 text-xs font-semibold text-mw-sub`}
+              className={`${STICKY_FIRST} z-[var(--mw-layer-board-corner)] min-w-44 border-b border-mw-line px-2 py-1.5 text-xs font-semibold text-mw-sub`}
               style={{ top: 0, position: "sticky" }}
             >
               이름
@@ -632,7 +632,7 @@ export function GroupTable({
                   data-view-focus={col.key === focusColumnKey || undefined}
                   data-column-key={col.key}
                   data-right-pinned={col.rightPinned || undefined}
-                  className={`relative sticky top-0 z-20 min-w-20 border-b border-r border-mw-line px-2 py-1.5 text-xs font-semibold text-mw-sub ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-card"} ${
+                  className={`relative sticky top-0 z-[var(--mw-layer-board-header)] min-w-20 border-b border-r border-mw-line px-2 py-1.5 text-xs font-semibold text-mw-sub ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-card"} ${
                     !canManageColumns || workflowLocked
                       ? ""
                       : "cursor-grab active:cursor-grabbing"
@@ -831,7 +831,7 @@ export function GroupTable({
                     data-right-pinned={col.rightPinned || undefined}
                     className={`border-b border-r border-mw-line px-2 align-middle group-hover:bg-mw-bg ${(col.wrap_mode ?? textMode) === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
                       col.rightPinned
-                        ? "sticky right-0 z-10 border-l-2 border-l-mw-primary bg-mw-tint-blue"
+                        ? "sticky right-0 z-[var(--mw-layer-board-cell)] border-l-2 border-l-mw-primary bg-mw-tint-blue"
                         : ""
                     }`}
                   >

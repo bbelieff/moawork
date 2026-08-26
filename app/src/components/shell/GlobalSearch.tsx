@@ -130,7 +130,7 @@ export function GlobalSearch() {
       <Icon name="search" /><span className="hidden flex-1 text-left lg:inline">전체 검색</span>
       <kbd className="hidden border lg:inline" style={{ borderColor: "var(--mw-line)", borderRadius: "var(--mw-r-1)", paddingInline: "var(--sp-1)", fontSize: "var(--mw-shell-badge-fs)" }}>Ctrl K</kbd>
     </button>
-    {open ? <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/35 p-0 md:p-8" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
+    {open ? <div className="mw-layer-dialog fixed inset-0 flex items-start justify-center bg-black/35 p-0 md:p-8" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
       <section role="dialog" aria-modal="true" aria-label="통합 검색" className="flex h-full w-full flex-col bg-[var(--mw-card)] text-[var(--mw-fg)] shadow-2xl md:h-auto md:max-h-[78vh] md:max-w-2xl md:rounded-2xl">
         <div className="flex items-center gap-2 border-b border-[var(--mw-line)] p-3">
           <input ref={inputRef} value={query} onChange={(event) => { setQuery(event.target.value); setActive(0); }} onKeyDown={(event) => {

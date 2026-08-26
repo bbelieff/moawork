@@ -6,6 +6,7 @@ import { NewLeadOnboarding } from "@/components/board/NewLeadOnboarding";
 import { cookies } from "next/headers";
 import { visualSetCellAction } from "./actions";
 import { VisualLayerProbe } from "./VisualLayerProbe";
+import { VisualWorkspaceSwitcherProbe } from "./VisualWorkspaceSwitcherProbe";
 
 function fixture(tabKey: string, workflowValue: string | null) {
   const definition = tabKey === "contact" ? CONTACT_TAB : NEW_LEAD_TAB;
@@ -54,6 +55,7 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
   const params = await searchParams;
   const tab = params.tab === "contact" ? "contact" : "new";
   const mutation = typeof params.mutation === "string" ? params.mutation : "none";
+  const layer = params.layer === "workspace" ? "workspace" : "none";
   const jar = await cookies();
   const saved = jar.get(`visual-workflow-${tab}-saved`)?.value ?? null;
   const draft = jar.get(`visual-workflow-${tab}-draft`)?.value ?? null;
@@ -68,6 +70,7 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
         .visual-mutation-overlap [data-visual-block='board-settings'] { transform: translateY(-48px) !important; }
       `}</style>
       <VisualLayerProbe />
+      {layer === "workspace" ? <VisualWorkspaceSwitcherProbe /> : null}
       <output data-visual-workflow-feedback className="sr-only" aria-live="polite">{error ?? (saved ? "저장됨" : "")}</output>
       <BoardWorkspace
         {...data}

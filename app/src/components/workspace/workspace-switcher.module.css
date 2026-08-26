@@ -114,12 +114,14 @@
 .markFallback i:nth-child(3) { height: 72%; }
 
 .dialog {
-  position: absolute;
-  z-index: 70;
-  top: calc(100% + 6px);
-  left: 0;
+  position: fixed;
+  z-index: var(--mw-layer-shell-popover);
+  top: var(--mw-workspace-switcher-top, 8px);
+  left: var(--mw-workspace-switcher-left, 8px);
   width: 320px;
   max-width: calc(100vw - 24px);
+  max-height: var(--mw-workspace-switcher-max-height, calc(100dvh - 16px));
+  overflow-y: auto;
   padding: 8px;
   border: 1px solid var(--mw-line);
   border-radius: calc(var(--mw-radius) + 2px);
@@ -202,8 +204,8 @@
 @keyframes dialogIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (max-width: 640px) {
-  .mobileBackdrop { position: fixed; z-index: 69; inset: 0; display: block; background: color-mix(in srgb, var(--mw-fg) 48%, transparent); }
-  .dialog { position: fixed; top: auto; right: 8px; bottom: 8px; left: 8px; width: auto; max-width: none; max-height: calc(100dvh - 16px); padding-bottom: max(8px, env(safe-area-inset-bottom)); overflow-y: auto; border-radius: calc(var(--mw-radius) + 8px); animation-name: sheetIn; }
+  .mobileBackdrop { position: fixed; z-index: var(--mw-layer-scrim); inset: 0; display: block; background: color-mix(in srgb, var(--mw-fg) 48%, transparent); }
+  .dialog { z-index: var(--mw-layer-dialog); top: auto; right: 8px; bottom: 8px; left: 8px; width: auto; max-width: none; max-height: calc(100dvh - 16px); padding-bottom: max(8px, env(safe-area-inset-bottom)); overflow-y: auto; border-radius: calc(var(--mw-radius) + 8px); animation-name: sheetIn; }
   .workspaceList,
   .pendingList { max-height: min(288px, 34dvh); }
 }

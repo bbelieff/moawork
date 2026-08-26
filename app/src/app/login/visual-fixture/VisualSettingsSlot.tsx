@@ -14,7 +14,7 @@ export function VisualSettingsSlot() {
   }, [open]);
   return <>
     <button ref={opener} type="button" onClick={() => setOpen(true)} className="rounded border border-mw-line bg-mw-card px-3 py-2">⚙ 보드 설정</button>
-    {open ? <div role="dialog" aria-label="보드 설정" className="fixed inset-8 z-50 rounded border border-mw-line bg-mw-card p-6 shadow-lg">
+    {open ? <div role="dialog" aria-label="보드 설정" className="mw-layer-dialog fixed inset-8 rounded border border-mw-line bg-mw-card p-6 shadow-lg">
       <button type="button" onClick={() => { localStorage.setItem("visual-settings-saved", "1"); setSaved(true); }}>설정 저장</button>
       <span>{saved ? "저장됨" : "저장 전"}</span>
     </div> : null}

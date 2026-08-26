@@ -156,9 +156,10 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
 
   it("상세 패널이 닫힌 상태에서도 기존 sticky 헤더·첫 열 계층을 유지한다", () => {
     const html = renderTable([col({ key: "a", label: "일반" })], [row()]);
-    expect(html).toContain("sticky left-0 z-10");
-    expect(html).toContain("sticky top-0 z-20");
-    expect(html).toContain("sticky left-0 z-10 bg-mw-card z-30");
+    expect(html).toContain("sticky left-0 z-[var(--mw-layer-board-cell)]");
+    expect(html).toContain("sticky top-0 z-[var(--mw-layer-board-header)]");
+    expect(html).toContain("sticky left-0 z-[var(--mw-layer-board-cell)] bg-mw-card z-[var(--mw-layer-board-corner)]");
+    expect(html).toContain("relative isolate max-h-[70vh]");
   });
 
   it("삭제 권한이 있으면 hard delete 대신 휴지통 서버 액션을 렌더한다", () => {

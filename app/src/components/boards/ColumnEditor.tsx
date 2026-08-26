@@ -87,7 +87,7 @@ export function ColumnEditor({
                 >
                   ✕
                 </summary>
-                <div className="absolute right-0 z-10 mt-1 w-64 rounded border border-zinc-200 bg-white p-3 text-left shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+                <div className="mw-layer-page-popover absolute right-0 mt-1 w-64 rounded border border-zinc-200 bg-white p-3 text-left shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
                   <p className="font-medium text-zinc-900 dark:text-zinc-100">
                     「{c.label}」 컬럼을 삭제할까요?
                   </p>
