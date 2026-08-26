@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=021b346ba940b1ff00ea05bd3ca14740141ecfb1031ea15e29b26b4808d1eae5 foundation=false
+-- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=b9c6f7edb38bfd00b699ac5e5560dbb6bea4f7bfd79c2b587fbd66a84449ea8a foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '132_issue574_cloud_folder_link',
   p_file_name => '132_issue574_cloud_folder_link.sql',
-  p_file_digest => '021b346ba940b1ff00ea05bd3ca14740141ecfb1031ea15e29b26b4808d1eae5',
+  p_file_digest => 'b9c6f7edb38bfd00b699ac5e5560dbb6bea4f7bfd79c2b587fbd66a84449ea8a',
   p_expected_predecessor => '131_issue528_item_phone_review_status',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -93,25 +93,76 @@ $$;
 
 revoke all on function public.decode_cloud_folder_url(text) from public, anon, authenticated, service_role;
 
-create or replace function public.is_cloud_folder_identifier(p_value text, p_query_value boolean default false)
-returns boolean
-language sql
+create or replace function public.decode_cloud_folder_query_key_once(p_value text)
+returns text
+language plpgsql
 immutable
 security invoker
 set search_path = ''
 as $$
-  select
-    decoded_value is not null
-    and pg_catalog.btrim(decoded_value) <> ''
-    and pg_catalog.btrim(decoded_value) not in ('.', '..')
-    and decoded_value !~ '[[:cntrl:]]'
-    and pg_catalog.btrim(pg_catalog.split_part(pg_catalog.split_part(decoded_value, '?', 1), '#', 1))
-      !~* '\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)$'
-  from (
-    select public.decode_cloud_folder_url(
-      case when p_query_value then pg_catalog.replace(p_value, '+', ' ') else p_value end
-    ) decoded_value
-  ) decoded
+declare
+  v_input text := pg_catalog.replace(p_value, '+', ' ');
+  v_bytes bytea := ''::bytea;
+  v_index integer := 1;
+  v_character text;
+  v_hex text;
+begin
+  if p_value is null then
+    return null;
+  end if;
+  while v_index <= pg_catalog.length(v_input) loop
+    v_character := pg_catalog.substr(v_input, v_index, 1);
+    if v_character = '%' then
+      v_hex := pg_catalog.substr(v_input, v_index + 1, 2);
+      if pg_catalog.length(v_hex) <> 2 or v_hex !~ '^[0-9A-Fa-f]{2}$' then
+        return null;
+      end if;
+      v_bytes := v_bytes || pg_catalog.decode(v_hex, 'hex');
+      v_index := v_index + 3;
+    else
+      v_bytes := v_bytes || pg_catalog.convert_to(v_character, 'UTF8');
+      v_index := v_index + 1;
+    end if;
+  end loop;
+  return pg_catalog.convert_from(v_bytes, 'UTF8');
+exception when others then
+  return null;
+end
+$$;
+
+revoke all on function public.decode_cloud_folder_query_key_once(text) from public, anon, authenticated, service_role;
+
+create or replace function public.is_cloud_folder_identifier(p_value text, p_query_value boolean default false)
+returns boolean
+language plpgsql
+immutable
+security invoker
+set search_path = ''
+as $$
+declare
+  v_decoded text;
+  v_trimmed text;
+  v_trim_chars text := E' \t\n\r\v\f'
+    || pg_catalog.chr(160) || pg_catalog.chr(5760)
+    || pg_catalog.chr(8192) || pg_catalog.chr(8193) || pg_catalog.chr(8194)
+    || pg_catalog.chr(8195) || pg_catalog.chr(8196) || pg_catalog.chr(8197)
+    || pg_catalog.chr(8198) || pg_catalog.chr(8199) || pg_catalog.chr(8200)
+    || pg_catalog.chr(8201) || pg_catalog.chr(8202)
+    || pg_catalog.chr(8232) || pg_catalog.chr(8233) || pg_catalog.chr(8239)
+    || pg_catalog.chr(8287) || pg_catalog.chr(12288) || pg_catalog.chr(65279);
+begin
+  v_decoded := public.decode_cloud_folder_url(
+    case when p_query_value then pg_catalog.replace(p_value, '+', ' ') else p_value end
+  );
+  if v_decoded is null or v_decoded ~ '[[:cntrl:]]' then
+    return false;
+  end if;
+  v_trimmed := pg_catalog.btrim(v_decoded, v_trim_chars);
+  return v_trimmed <> ''
+    and v_trimmed not in ('.', '..')
+    and pg_catalog.btrim(pg_catalog.split_part(pg_catalog.split_part(v_trimmed, '?', 1), '#', 1), v_trim_chars)
+      !~* '\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)$';
+end
 $$;
 
 revoke all on function public.is_cloud_folder_identifier(text, boolean) from public, anon, authenticated, service_role;
@@ -144,7 +195,7 @@ begin
       then pg_catalog.substr(v_pair, pg_catalog.strpos(v_pair, '=') + 1)
       else ''
     end;
-    v_decoded_key := public.decode_cloud_folder_url(pg_catalog.replace(v_raw_key, '+', ' '));
+    v_decoded_key := public.decode_cloud_folder_query_key_once(v_raw_key);
     if v_decoded_key = p_key then
       return public.is_cloud_folder_identifier(v_raw_value, true);
     end if;
@@ -179,10 +230,20 @@ declare
   v_index integer;
   v_marker_index integer := 0;
   v_generic_folder boolean := false;
+  v_js_whitespace text := E' \t\n\r\v\f'
+    || pg_catalog.chr(160) || pg_catalog.chr(5760)
+    || pg_catalog.chr(8192) || pg_catalog.chr(8193) || pg_catalog.chr(8194)
+    || pg_catalog.chr(8195) || pg_catalog.chr(8196) || pg_catalog.chr(8197)
+    || pg_catalog.chr(8198) || pg_catalog.chr(8199) || pg_catalog.chr(8200)
+    || pg_catalog.chr(8201) || pg_catalog.chr(8202)
+    || pg_catalog.chr(8232) || pg_catalog.chr(8233) || pg_catalog.chr(8239)
+    || pg_catalog.chr(8287) || pg_catalog.chr(12288) || pg_catalog.chr(65279);
 begin
   if p_url is null
      or pg_catalog.length(p_url) not between 10 and 2048
      or p_url ~ '[[:space:]]'
+     or p_url <> pg_catalog.translate(p_url, v_js_whitespace, '')
+     or p_url ~ '\\'
      or p_url !~* '^https://' then
     return false;
   end if;
@@ -211,7 +272,9 @@ begin
       continue;
     end if;
     v_decoded_segment := public.decode_cloud_folder_url(v_raw_segment);
-    if v_decoded_segment is null then
+    if v_decoded_segment is null
+       or v_decoded_segment ~ '[[:cntrl:]]'
+       or v_decoded_segment in ('.', '..') then
       return false;
     end if;
     v_segments := pg_catalog.array_append(v_segments, v_decoded_segment);
