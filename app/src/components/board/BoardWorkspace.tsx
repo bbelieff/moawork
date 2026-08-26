@@ -45,6 +45,8 @@ import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
 import { groupPresetName, isGroupPresetChanged } from "@/lib/presets/group-preset";
 import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
+import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
+import type { CompanyPickerRow } from "@/lib/companies/search";
 import { NEW_LEAD_DETAIL_ONLY_KEYS, presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
 import { NOTICE_KEYS } from "@/lib/notices/types";
 import { buildBlocks } from "./blocks";
@@ -149,8 +151,15 @@ export function BoardWorkspace({
   cellAction,
   itemDetailFixture,
   workflowTransitionSlot,
+  contractWorkCompanies = [],
+  startCompanyWorkAction,
+  companyIntakeRequestId,
 }: {
   board: Board;
+  /** 계약업체 실무에서만 채워진다 — 「＋ 업체 추가」 목록. 다른 보드는 빈 배열이다. */
+  contractWorkCompanies?: readonly CompanyPickerRow[];
+  startCompanyWorkAction?: (formData: FormData) => void | Promise<void>;
+  companyIntakeRequestId?: string;
   columns: BoardColumn[];
   groups: BoardGroup[];
   rows: ItemWithValues[];
@@ -528,6 +537,9 @@ export function BoardWorkspace({
                 groupName={block.name}
                 canonicalNewLead={board.source === NEW_LEAD_TAB_SOURCE}
                 newLeadMembers={scheduleRecipients}
+                {...(board.source === CONTRACT_WORK_TAB_SOURCE && startCompanyWorkAction && companyIntakeRequestId
+                  ? { companyPicker: { rows: contractWorkCompanies, action: startCompanyWorkAction, requestId: companyIntakeRequestId } }
+                  : {})}
                 itemDetailFixture={itemDetailFixture}
                 currentUserId={currentUserId}
                 groupId={block.group?.id ?? null}

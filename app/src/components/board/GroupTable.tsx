@@ -47,6 +47,8 @@ import { ItemDetailPanel } from "./ItemDetailPanel";
 import type { ItemDetailSnapshot } from "@/app/(app)/boards/item-detail-actions";
 import { TrashItemButton } from "./ItemTrashControls";
 import { AddItemForm } from "./AddItemForm";
+import { ContractWorkIntakeForm } from "./ContractWorkIntakeForm";
+import type { CompanyPickerRow } from "@/lib/companies/search";
 import { ColumnContextMenu } from "./ColumnContextMenu";
 import type {
   ColumnScheduleItemOption,
@@ -405,6 +407,7 @@ export function GroupTable({
   boardName,
   groupName,
   canonicalNewLead = false,
+  companyPicker,
   newLeadMembers = [],
   itemDetailFixture,
   currentUserId,
@@ -442,6 +445,17 @@ export function GroupTable({
   boardName?: string;
   groupName?: string;
   canonicalNewLead?: boolean;
+  /**
+   * 계약업체 실무의 「＋ 업체 추가」. 있으면 이름 입력칸 대신 «회사 고르기» 를 그린다.
+   * 이 보드의 한 줄은 «어느 회사의 자금 건» 이라, 이름만 받으면 같은 회사가 표기만
+   * 달리해서 여러 번 들어온다 — 목업이 그걸 막으려고 회사부터 찾게 했다.
+   */
+  companyPicker?: {
+    rows: readonly CompanyPickerRow[];
+    action: (formData: FormData) => void | Promise<void>;
+    requestId: string;
+  };
+  // 담당자 선택 타입은 main 쪽(#576)이 넓혔다 — 내 브랜치의 좁은 형태로 되돌리지 않는다.
   newLeadMembers?: readonly MemberPickerMember[];
   itemDetailFixture?: ItemDetailSnapshot;
   currentUserId?: string;
@@ -885,6 +899,13 @@ export function GroupTable({
                     groupId={groupId}
                     members={newLeadMembers}
                     currentUserId={currentUserId}
+                  />
+                ) : companyPicker ? (
+                  <ContractWorkIntakeForm
+                    rows={companyPicker.rows}
+                    startWorkAction={companyPicker.action}
+                    requestId={companyPicker.requestId}
+                    inputClassName={`${CELL_INPUT} w-full max-w-md`}
                   />
                 ) : (
                   <AddItemForm
