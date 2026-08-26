@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=ab3e72401784cc2d7e45fc429dc3bc796459638e252b41474fb13ae80275ec2e foundation=false
+-- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=5c42474ae9c13eab370ad5f23c0440ddb2593b8db76bb1643a4c8a7c2085b7ad foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '132_issue574_cloud_folder_link',
   p_file_name => '132_issue574_cloud_folder_link.sql',
-  p_file_digest => 'ab3e72401784cc2d7e45fc429dc3bc796459638e252b41474fb13ae80275ec2e',
+  p_file_digest => '5c42474ae9c13eab370ad5f23c0440ddb2593b8db76bb1643a4c8a7c2085b7ad',
   p_expected_predecessor => '131_issue528_item_phone_review_status',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -398,7 +398,7 @@ begin
     end if;
     v_url := 'https://onedrive.live.com/?id=' || v_match[1] || '&cid=' || v_match[2];
   elsif p_provider = 'onedrive'
-        and p_folder_ref ~ '^sharepoint\|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\|:f:/[A-Za-z0-9._!~/-]+$'
+        and p_folder_ref ~ '^sharepoint\|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\|:f:/[A-Za-z0-9._!~-]+(?:/[A-Za-z0-9._!~-]+)*$'
         and p_folder_ref !~ '(^|/)\.{1,2}(/|$)'
         and p_folder_ref !~* '\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)$' then
     v_match := pg_catalog.regexp_match(p_folder_ref, '^sharepoint\|([^|]+)\|(.+)$');

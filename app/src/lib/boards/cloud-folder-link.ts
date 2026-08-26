@@ -86,7 +86,7 @@ function safeRefSegments(segments: string[]) {
 }
 
 function hasFolderMarkerWithTail(segments: string[]) {
-  const markerIndex = segments.findIndex((segment) => segment.toLowerCase().includes(":f:"));
+  const markerIndex = segments.findIndex((segment) => segment.toLowerCase() === ":f:");
   return markerIndex >= 0 && markerIndex < segments.length - 1 && validFolderIdentifier(segments.at(-1));
 }
 
@@ -185,8 +185,8 @@ export function inspectCloudFolderUrl(raw: string): CloudFolderUrlResult {
       }
     } else if (url.hostname.endsWith(".sharepoint.com") && safeRefSegments(segments.slice(1))) {
       const tenant = url.hostname.slice(0, -".sharepoint.com".length);
-      const sharePath = segments.join("/");
-      if (/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(tenant) && segments[0]?.toLowerCase().includes(":f:")) {
+      const sharePath = [":f:", ...segments.slice(1)].join("/");
+      if (/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(tenant) && segments[0]?.toLowerCase() === ":f:") {
         result = { ok: true, provider: "onedrive", providerLabel: "OneDrive", folderRef: `sharepoint|${tenant}|${sharePath}`, url: `https://${tenant}.sharepoint.com/${sharePath}` };
       }
     }

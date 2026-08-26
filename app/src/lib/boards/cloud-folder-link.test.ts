@@ -8,6 +8,7 @@ describe("Issue #574 cloud folder URL", () => {
     ["https://1drv.ms/f/s!folder-share", "onedrive", "OneDrive", "short:s!folder-share"],
     ["https://onedrive.live.com/?id=root%21folder&cid=drive-id", "onedrive", "OneDrive", "live:root!folder:drive-id"],
     ["https://tenant.sharepoint.com/:f:/g/team/folder", "onedrive", "OneDrive", "sharepoint|tenant|:f:/g/team/folder"],
+    ["https://tenant.sharepoint.com/:F:/g/team/folder", "onedrive", "OneDrive", "sharepoint|tenant|:f:/g/team/folder"],
     ["https://www.dropbox.com/scl/fo/folder-id/example", "dropbox", "Dropbox", "scl/fo/folder-id/example"],
   ])("accepts a folder URL and emits a narrow provider reference: %s", (raw, provider, label, folderRef) => {
     expect(inspectCloudFolderUrl(raw)).toMatchObject({ ok: true, provider, providerLabel: label, folderRef });
@@ -48,6 +49,8 @@ describe("Issue #574 cloud folder URL", () => {
     "https://onedrive.live.com/?cid=only-a-drive-id",
     "https://tenant.sharepoint.com/sites/team/Forms/AllItems.aspx?id=contract.pdf",
     "https://tenant.sharepoint.com/:f:",
+    "https://tenant.sharepoint.com/:f:////",
+    "https://tenant.sharepoint.com/abc:f:def/g/team/folder",
     "https://tenant.sharepoint.com/:f:/g/team/%20",
     "https://tenant.sharepoint.com/:f:/g/team/%C2%A0",
     "https://tenant.sharepoint.com/:f:/g/team/%E2%80%83",
