@@ -11,11 +11,13 @@ import { AccessibleTooltip } from "@/components/ui/AccessibleTooltip";
 import type { BadgeState } from "@/lib/notify/types";
 import { Icon } from "./icons";
 import {
+  NAV_ITEMS,
   NAV_SECTIONS,
   navItemsForSection,
   type NavBadgeKey,
   type NavItem,
 } from "./nav-items";
+import { resolveActiveNavKey } from "./active-nav";
 import { workspaceHref } from "./workspace-href";
 
 // 사이드바 메뉴 목록 — 활성 표시를 위해 클라이언트 컴포넌트.
@@ -35,6 +37,11 @@ type Props = {
   workspaceSwitcher?: Omit<WorkspaceSwitcherProps, "onNavigate">;
   /** Verified active-membership namespace, for example `/w/acme`. */
   workspaceBasePath?: string;
+  /**
+   * 보드 id → 메뉴 키. 기본 탭 주소(`/work` 등)는 `/boards/<id>` 로 넘기는 경유지라,
+   * 이게 없으면 정작 탭에 들어가 있을 때 사이드바가 전부 회색이 된다.
+   */
+  boardNavKeys?: Readonly<Record<string, string>>;
 };
 
 export function SidebarNav({
@@ -43,21 +50,28 @@ export function SidebarNav({
   notifyBadges,
   workspaceSwitcher,
   workspaceBasePath,
+  boardNavKeys,
 }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const locked = new Set(lockedFeatures);
+
+  // 활성은 «항목마다» 가 아니라 «전체에서 하나» 다 — 둘이 켜지면 색으로 구분하는 목적이 깨진다.
+  const activeKey = resolveActiveNavKey(
+    pathname,
+    NAV_ITEMS.filter((item) => item.href).map((item) => ({
+      key: item.key,
+      href: workspaceHref(workspaceBasePath, item.href!),
+    })),
+    { basePath: workspaceBasePath, boardNavKeys },
+  );
 
   const renderItem = (item: NavItem, nested: boolean) => {
     const isLocked = item.feature ? locked.has(item.feature) : false;
     // 실제 라우트가 있는 잠금 메뉴는 안내 화면에 도달할 수 있도록 링크를 유지한다.
     const unavailable = !item.href;
     const resolvedHref = item.href ? workspaceHref(workspaceBasePath, item.href) : undefined;
-    const active =
-      !isLocked && !unavailable &&
-      (resolvedHref === workspaceBasePath
-        ? pathname === resolvedHref
-        : pathname.startsWith(resolvedHref!));
+    const active = !isLocked && !unavailable && item.key === activeKey;
 
     const badge = item.badgeKey ? badges?.[item.badgeKey] : undefined;
     const visibleBadge = typeof badge === "number" && Number.isSafeInteger(badge) && badge > 0
