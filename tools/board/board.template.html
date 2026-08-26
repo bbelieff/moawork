@@ -110,7 +110,7 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
     <div>
       <div class="eyebrow">MoaWork C × G Shared Control Room</div>
       <h1>공동작업 관제판 : 신규리드·보드뷰·컬럼메뉴·대시보드 완주</h1>
-      <div class="sub freshness" id="stamp">Linear · GitHub · Vercel 상태를 불러오는 중…</div>
+      <div class="sub freshness" id="stamp">GitHub · Vercel 상태를 불러오는 중…</div>
     </div>
     <div class="actions">
       <button class="btn" id="copyBrief">판단 요약 복사</button>
@@ -141,13 +141,13 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
   <h2>지금 도는 워커 <span class="hint">Orca task·dispatch 실측 · 5분 무활동이면 멈춤 의심</span></h2>
   <section class="card section-card" id="workers"><div class="loading">Orca 워커 읽는 중…</div></section>
 
-  <h2>전체와 부분 <span class="hint">층별 Linear 상태 · 선행 층 미완료 시 잠김</span></h2>
+  <h2>전체와 부분 <span class="hint">층별 이슈 상태 · 선행 층 미완료 시 잠김</span></h2>
   <section class="live-grid">
     <div class="card section-card" id="layers"><div class="loading">층별 달성도 계산 중…</div></div>
     <div class="card section-card" id="handNeeded"><div class="loading">손이 필요한 것 계산 중…</div></div>
   </section>
 
-  <h2>오늘 고친 것 · 오늘 끝낸 것 <span class="hint">Linear+git 및 Production 실측</span></h2>
+  <h2>오늘 고친 것 · 오늘 끝낸 것 <span class="hint">이슈+git 및 Production 실측</span></h2>
   <section class="live-grid">
     <div class="card section-card" id="today"><div class="loading">오늘 기록 모으는 중…</div></div>
     <div class="card section-card" id="fuel"><div class="loading">연료 입력 확인 중…</div></div>
@@ -159,7 +159,7 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
   <h2>핵심 흐름 <span class="hint">직렬 관문과 다음 해제 대상</span></h2>
   <section class="flow-grid" id="flows"></section>
 
-  <h2>C × G 실행 레인 <span class="hint">Linear lane 라벨이 배정의 정본 · 한 카드 한 수술대</span></h2>
+  <h2>C × G 실행 레인 <span class="hint">이슈 lane 라벨이 배정의 정본 · 한 카드 한 수술대</span></h2>
   <section class="lanes" id="lanes"></section>
 
   <h2>회사별 상태 · 다음 행동 <span class="hint">회사 데이터 소스가 없으면 측정 실패로 명시 · 제품 squad 상태 병기</span></h2>
@@ -177,13 +177,13 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
     <div class="card section-card" id="pullRequests"><div class="loading">PR 상태 확인 중…</div></div>
   </section>
 
-  <h2>새 업무·인계 메모 <span class="hint">Linear 상태가 최종 정본, 메모는 판단 근거</span></h2>
+  <h2>새 업무·인계 메모 <span class="hint">이슈 상태가 최종 정본, 메모는 판단 근거</span></h2>
   <section class="context" id="context"></section>
 
   <h2>BBE-94 최근 도장 <span class="hint">댓글 ID·시각 기반 증분 감지 가능</span></h2>
   <section class="card section-card"><div class="feed" id="feed"><div class="loading">도장 읽는 중…</div></div></section>
 
-  <h2>전체 오픈 작업 <span class="hint" id="inventoryHint">BBE-170 하위 이슈 실시간 Linear 목록</span></h2>
+  <h2>전체 오픈 작업 <span class="hint" id="inventoryHint">GitHub Issues 실시간 목록</span></h2>
   <section class="card section-card">
     <div class="filters">
       <input id="search" placeholder="카드번호·제목·라벨 검색">
@@ -198,7 +198,7 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
   </section>
 
   <div class="card foot">
-    판단 원칙: <b>Linear lane 라벨 = 배정</b> · <b>surgery:newcust-v6 = 단일 수술대</b> ·
+    판단 원칙: <b>이슈 lane 라벨 = 배정</b> · <b>surgery:newcust-v6 = 단일 수술대</b> ·
     blockedBy 해제 전 착수 금지 · C는 UI, G는 DB/RPC 경계를 침범하지 않음 ·
     반대 진영 exact SHA 독립검수 · Production 버튼→DB→reload가 Done.
   </div>
@@ -432,7 +432,7 @@ function renderDelivery(){
  ];
  const pipeline=document.getElementById("deliveryPipeline");
  if(!delivery?.available){
-  pipeline.innerHTML='<div class="card pipe wait"><b>측정 실패</b><span>Linear·GitHub·Vercel 근거 중 하나를 읽지 못했습니다. 이전 숫자로 덮지 않습니다.</span></div>';
+  pipeline.innerHTML='<div class="card pipe wait"><b>측정 실패</b><span>GitHub·Vercel 근거 중 하나를 읽지 못했습니다. 이전 숫자로 덮지 않습니다.</span></div>';
  }else{
   pipeline.innerHTML=stages.map(([key,label])=>'<div class="card pipe '+(key==="PRODUCTION_COMPLETE"?'complete':key.includes("WAITING")?'wait':'')+'"><b>'+measured(delivery.counts?.[key])+'</b><span>'+(key==="HOSTED_WAITING"?'hosted 적용 필요 / 대기':label)+'</span></div>').join("");
  }
@@ -551,7 +551,7 @@ function renderLiveBoard(){
  ["Urgent 잔량",measured(metrics.urgentRemaining),"미완료 카드","hot"],
  ["손 필요",measured(metrics.handNeeded),"라벨+Blocked","warn"],
   ["현재 Production 완주율",metrics.completion?metrics.completion.percent+"%":"측정 실패",metrics.completion?metrics.completion.done+" / "+metrics.completion.total:"배포 측정 실패","go"],
-  ["전역 Linear 완료율",metrics.linearCompletion?metrics.linearCompletion.percent+"%":"측정 실패",metrics.linearCompletion?metrics.linearCompletion.done+" / "+metrics.linearCompletion.total:"Linear 측정 실패",""],
+  ["전역 이슈 완료율",metrics.linearCompletion?metrics.linearCompletion.percent+"%":"측정 실패",metrics.linearCompletion?metrics.linearCompletion.done+" / "+metrics.linearCompletion.total:"이슈 측정 실패",""],
   ["오늘 Production",measured(metrics.todayProductionDone),"exact SHA READY · /login 200","go"]
  ].map(([label,value,note,kind])=>'<div class="kpi '+kind+'"><b>'+esc(value)+'</b><span>'+esc(label)+' · '+esc(note)+'</span></div>').join("");
 
@@ -650,7 +650,7 @@ async function loadOnce(force=true){
   if(linearPartial){
    const last=issueData.lastSuccessAt||operations.linear?.lastSuccessAt;
    error.style.display="block";
-   error.textContent="Linear 조회 제한 · "+(last?"마지막 성공 "+new Date(last).toLocaleString("ko-KR"):"마지막 성공 시각 없음")+" · GitHub·Production은 계속 갱신합니다.";
+   error.textContent="GitHub 조회 제한 · "+(last?"마지막 성공 "+new Date(last).toLocaleString("ko-KR"):"마지막 성공 시각 없음")+" · Production은 계속 갱신합니다.";
   }
   const incoming=issueData.issues||[];
   const all=(incoming.length?incoming:state.all).map((issue)=>({...issue,labels:Array.isArray(issue.labels)?issue.labels:[]}));

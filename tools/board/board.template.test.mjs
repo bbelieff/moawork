@@ -27,12 +27,12 @@ test("decision dashboard script compiles and keeps the live data bridge contract
   assert.doesNotMatch(html, /key==="HOSTED_WAITING"\?delivery\.hostedRequiredCount/);
 });
 
-test("Linear partial state names the rate limit and preserves the last-success contract", async () => {
+test("GitHub partial state names the rate limit and preserves the last-success contract", async () => {
   const html = await readFile(templateUrl, "utf8");
-  assert.match(html, /Linear 조회 제한/);
+  assert.match(html, /GitHub 조회 제한/);
   assert.match(html, /마지막 성공/);
   assert.match(html, /incoming\.length\?incoming:state\.all/);
-  assert.match(html, /GitHub·Production은 계속 갱신합니다/);
+  assert.match(html, /Production은 계속 갱신합니다/);
 });
 
 test("slow initial load coalesces timer, visibility, and manual refresh fanout", async () => {
@@ -76,7 +76,7 @@ async function boardLogic() {
   return new Function(`${match[1]}; return BOARD_LOGIC;`)();
 }
 
-test("cross-squad detector catches the old graph and accepts the refreshed Linear graph", async () => {
+test("cross-squad detector catches the old graph and accepts the refreshed issue graph", async () => {
   const logic = await boardLogic();
   const squads = ["squad:new-lead", "squad:column-preset", "squad:release-gate"];
   const issues = [
@@ -189,7 +189,7 @@ test("Production completion is fail-closed across PR, exact deployment, runtime,
   const passingPr = { isDraft: false, checks: { total: 3, failing: 0, pending: 0 } };
   assert.deepEqual(deliveryStage({ linearStatus: "Done", pr: passingPr }), {
     stage: "MERGE_WAITING", complete: false, blockers: ["LINEAR_DONE_WITHOUT_PRODUCTION"],
-  }, "CI PASS and Linear Done are still not a completed delivery");
+  }, "CI PASS and issue Done are still not a completed delivery");
 
   const mergedPr = { ...passingPr, mergedAt: "2026-08-21T00:00:00Z", mergeCommitSha: "aaa" };
   assert.deepEqual(deliveryStage({ linearStatus: "Done", pr: mergedPr, deployment: { state: "SUCCESS", sha: "bbb" }, loginStatus: 200, runtimeErrorCount: 0 }), {

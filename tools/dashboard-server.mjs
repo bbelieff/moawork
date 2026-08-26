@@ -23,8 +23,9 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { createGithubReader } from "./github-issues.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -70,7 +71,7 @@ const FUEL_FILE = path.join(ROOT, "tools", "board", "fuel.json");
  *   총괄이 따로 설정할 것이 없고, 값은 이 변수 밖으로 나가지 않는다(출력·기록 금지).
  */
 /** 인증이 되어 있는가 — 없으면 화면이 «어떻게 로그인하는지» 를 말해 준다. */
-const AUTH_OK = () => Boolean(githubToken());
+const AUTH_OK = () => github.hasAuth();
 const GITHUB_REPO = (ENV.MOAWORK_GITHUB_REPO || "bbelieff/moawork").trim();
 const GITHUB_API = (() => {
   const fallback = "https://api.github.com";
@@ -85,69 +86,10 @@ const GITHUB_API = (() => {
   }
 })();
 
-let githubTokenCache;
-function githubToken() {
-  if (githubTokenCache !== undefined) return githubTokenCache;
-  const fromEnv = (ENV.GITHUB_TOKEN || ENV.GH_TOKEN || "").trim();
-  if (fromEnv) return (githubTokenCache = fromEnv);
-  try {
-    // gh 가 이미 로그인돼 있으면 여기서 받는다 — 총괄이 토큰을 붙여 넣을 일이 없다.
-    githubTokenCache = execFileSync("gh", ["auth", "token"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-  } catch {
-    githubTokenCache = "";
-  }
-  return githubTokenCache;
-}
-
-async function gh(pathAndQuery) {
-  const token = githubToken();
-  const r = await fetch(`${GITHUB_API}${pathAndQuery}`, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    signal: AbortSignal.timeout(8_000),
-  });
-  if (r.status === 403 || r.status === 429) throw new Error(`rate limit (HTTP ${r.status})`);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
-}
-
-/**
- * 제목 앞의 «P0 ·» 를 우선순위로 읽는다.
- * 이 저장소의 실제 관례다 — 「P0 · …」 처럼 제목 맨 앞이 등급을 들고 다닌다.
- * GitHub 에는 Linear 의 priority 같은 1급 칸이 없으므로 «있는 것» 을 쓴다.
- */
-function priorityFromTitle(title) {
-  const level = /^\s*P([0-3])\b/.exec(title || "")?.[1];
-  return { name: ["Urgent", "High", "Medium", "Low"][Number(level)] ?? "" };
-}
-
-/**
- * GitHub 상태를 판의 어휘로 옮긴다.
- *
- * ⚠ 지어내지 않는다. GitHub 이슈가 스스로 아는 것은 «열림/닫힘» 과 라벨뿐이다.
- *   Linear 의 In Review 같은 중간 상태는 GitHub Projects 의 Status 칸에 있는데,
- *   그건 이슈 API 로는 안 보인다. 그래서 여기서는 셋만 말하고, 모르는 것은 Todo 로 둔다 —
- *   «진행 중인 척» 하는 판보다 «모른다» 고 말하는 판이 낫다.
- */
-function statusFromIssue(issue) {
-  if (issue.state === "closed") return "Done";
-  const labels = (issue.labels || []).map((l) => (typeof l === "string" ? l : l.name));
-  if (labels.some((name) => /blocked|차단/i.test(name || ""))) return "Blocked";
-  return "Todo";
-}
-
-const Q_COMMENTS = `
-query($id:String!,$first:Int!,$after:String){
-  issue(id:$id){
-    comments(first:$first,after:$after,orderBy:createdAt){
-      pageInfo{ hasNextPage endCursor }
-      nodes{ id createdAt updatedAt body }
-    }
-  }
-}`;
+/* 읽기는 tools/github-issues.mjs 한 곳이 갖는다.
+   전에는 실시간 판과 구운 판이 각자 상류를 들고 있어서, 한쪽만 고치면
+   다른 쪽이 조용히 다른 것을 말했다. 출처가 갈라질 자리를 없앤다. */
+const github = createGithubReader({ repo: GITHUB_REPO, api: GITHUB_API, token: (ENV.GITHUB_TOKEN || ENV.GH_TOKEN || "").trim() || undefined });
 
 /* 댓글 읽기는 build()의 active-card 필터 및 45초 snapshot과 독립한다.
    반환 순서는 createdAt 내림차순, 같은 시각이면 id 오름차순으로 고정한다. */
@@ -169,30 +111,7 @@ async function getComments(id, limit, after, force = false) {
   if (commentInFlight.has(key)) return commentInFlight.get(key);
 
   const pending = (async () => {
-    // id 는 «#563» 모양이다(build 가 그렇게 만든다). 숫자만 떼어 쓴다.
-    const number = String(id).replace(/^#/, "");
-    // GitHub 코멘트는 오래된 것부터 온다. 마지막 쪽을 받아 뒤집으면 «최신 N개» 가 된다.
-    // 커서는 «쪽 번호» 다. 옛 판이 넘기던 Linear 커서 문자열이 와도 1쪽으로 돌아간다 —
-    // 빈 화면을 내는 것보다 처음부터 보여 주는 편이 낫다.
-    const page = Number(after) > 0 ? Number(after) : 1;
-    const raw = await gh(`/repos/${GITHUB_REPO}/issues/${encodeURIComponent(number)}/comments?per_page=${limit}&page=${page}`);
-    const rows = Array.isArray(raw) ? raw : [];
-    const comments = rows
-      .map((c) => ({
-        id: String(c.id),
-        createdAt: c.created_at,
-        updatedAt: c.updated_at,
-        body: c.body ?? "",
-      }))
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
-    const data = {
-      comments,
-      pageInfo: {
-        // 한 쪽을 꽉 채워 왔으면 다음 쪽이 있을 수 있다. 커서는 «쪽 번호» 다.
-        hasNextPage: rows.length === limit,
-        endCursor: rows.length === limit ? String(page + 1) : null,
-      },
-    };
+    const data = await github.listComments(id, limit, after);
     commentCache.set(key, { at: Date.now(), data });
     return data;
   })();
@@ -216,33 +135,14 @@ function parseCommentRequest(url) {
   return { id, limit, after };
 }
 
-/* ── 스냅샷 — 45초에 한 번만 Linear 를 친다 ──────────────────
-   화면은 카드마다 코멘트를 부른다(30~40회). 그때마다 Linear 를 치면
+/* ── 스냅샷 — 45초에 한 번만 GitHub 를 친다 ──────────────────
+   화면은 카드마다 코멘트를 부른다(30~40회). 그때마다 GitHub 를 치면
    rate limit 에 걸린다. 스냅샷 한 벌을 만들어 두고 전부 거기서 답한다. */
 const TTL = 45_000;
 let snap = { at: 0, building: null, data: null, error: null };
 
 async function build() {
-  const issues = [];
-  for (let page = 1; page <= 10; page += 1) {
-    const batch = await gh(`/repos/${GITHUB_REPO}/issues?state=all&per_page=100&page=${page}&sort=updated&direction=desc`);
-    if (!Array.isArray(batch) || batch.length === 0) break;
-    for (const i of batch) {
-      // ⚠ 이 엔드포인트는 PR 도 «이슈» 로 돌려준다. 판은 카드를 세는 곳이라 PR 은 뺀다.
-      if (i.pull_request) continue;
-      issues.push({
-        id: `#${i.number}`,
-        title: i.title,
-        createdAt: i.created_at,
-        status: statusFromIssue(i),
-        updatedAt: i.updated_at,
-        url: i.html_url ?? null,
-        priority: priorityFromTitle(i.title),
-        labels: (i.labels || []).map((l) => (typeof l === "string" ? l : l.name)).filter(Boolean),
-      });
-    }
-    if (batch.length < 100) break;
-  }
+  const issues = await github.listIssues();
 
   const builtAt = new Date().toISOString();
   return { issues, builtAt, lastSuccessAt: builtAt, available: true, stale: false, error: null };
@@ -424,8 +324,45 @@ function terminalIssueCompletion(issues) {
   return { done, total: issues.length, percent: issues.length ? Math.round(done / issues.length * 100) : 0 };
 }
 
+/**
+ * PR 이 «어느 카드의 것인가» 를 찾는다.
+ *
+ * 2026-08-26 — 카드 번호가 Linear(BBE-123)에서 GitHub(#570)로 바뀌었다.
+ *   그런데 이 연결기가 BBE 만 보고 있어서 **모든 PR 의 cardId 가 null** 이 됐고,
+ *   그 결과 배포 근거를 카드에 붙이지 못해 판이 「측정 실패」를 그렸다.
+ *   실측(2026-08-26): PR #570 의 cardId 가 null 이었다.
+ *
+ * 어디서 찾나 — 제목 · 브랜치 이름 · 라벨, 그리고 본문.
+ *   본문을 보는 이유: GitHub 관례가 「Closes #531」 이라 본문에만 있는 경우가 흔하다.
+ * ⚠ PR 자기 번호를 카드로 착각하면 안 된다. 그래서 «자기 번호» 는 빼고 찾는다.
+ */
 function cardIdFromPr(pr) {
-  return [pr.title, pr.headRefName, ...(pr.labels || []).map((label) => label.name || label)].filter(Boolean).join(" ").match(/BBE-\d+/i)?.[0]?.toUpperCase() || null;
+  const notSelf = (value) => (value.startsWith("#") ? Number(value.slice(1)) !== Number(pr.number) : true);
+  const pick = (text) => {
+    if (!text) return null;
+    for (const match of text.matchAll(/(BBE-\d+)|#(\d+)/gi)) {
+      const value = match[1] ? match[1].toUpperCase() : `#${match[2]}`;
+      if (notSelf(value)) return value;
+    }
+    return null;
+  };
+
+  // ① 「Closes #531」 처럼 **선언된** 것이 가장 세다. 본문 어디에 있어도 인정한다.
+  const declared = (pr.body || "").match(/\b(?:closes|fixes|resolves)\s+(?:#(\d+)|(BBE-\d+))/i);
+  if (declared) {
+    const value = declared[1] ? `#${declared[1]}` : declared[2].toUpperCase();
+    if (notSelf(value)) return value;
+  }
+
+  // ② 제목·브랜치·라벨은 «이 PR 이 무엇인가» 를 말하는 자리다. 여기 적힌 것은 믿는다.
+  const stated = pick([pr.title, pr.headRefName, ...(pr.labels || []).map((l) => l.name || l)].filter(Boolean).join(" "));
+  if (stated) return stated;
+
+  // ③ ★ 본문의 «지나가는 언급» 은 카드로 치지 않는다.
+  //   실측(2026-08-26): PR #570 본문의 산문 「BBE-125 → #125」 을 카드로 착각해
+  //   엉뚱한 카드에 배포 근거가 붙었다. 선언이 아니면 «카드 없음» 이 맞다 —
+  //   틀린 연결은 «연결 없음» 보다 나쁘다. 판이 거짓 근거를 그리기 때문이다.
+  return null;
 }
 
 function classifyDelivery({ issue, pr, deployment, loginStatus, commentEvidence }) {
@@ -758,8 +695,8 @@ window.cowork = {
 </script>
 <div style="max-width:1200px;margin:0 auto 4px;padding:9px 14px;border-radius:10px;
  background:#E7F7F3;border:1px solid #B9E6DC;color:#0F6E56;font:12px/1.5 -apple-system,Pretendard,sans-serif">
- <b>실시간 판이다.</b> 새로고침하면 지금의 Linear 를 읽는다 ·
- <span style="opacity:.75">서버 캐시 45초 · 키는 이 컴퓨터 밖으로 나가지 않는다</span>
+ <b>실시간 판이다.</b> 새로고침하면 지금의 GitHub Issues 를 읽는다 ·
+ <span style="opacity:.75">서버 캐시 45초 · 토큰은 이 컴퓨터 밖으로 나가지 않는다</span>
 </div>`;
 }
 

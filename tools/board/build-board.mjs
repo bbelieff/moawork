@@ -14,7 +14,7 @@
  *   → 디자인을 고치면 템플릿만 바꾸면 되고, 두 판이 절대 갈라지지 않는다.
  *
  * 쓰는 법:
- *   export LINEAR_API_KEY=lin_api_xxxxx        (레포에 절대 커밋하지 않는다)
+ *   gh auth login                              (토큰을 어디에도 적지 않는다)
  *   node tools/board/build-board.mjs
  *   → docs/dashboard/board.html  생성
  *
@@ -26,70 +26,32 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createGithubReader } from "../github-issues.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = resolve(HERE, "board.template.html");
 const OUT = resolve(HERE, "../../docs/dashboard/board.html");
 const PROJECT = "MoaWork · 운영 안정화 및 어드민";
 
-const KEY = process.env.LINEAR_API_KEY;
-if (!KEY) {
+const github = createGithubReader();
+if (!github.hasAuth()) {
   console.error(`
-❌ LINEAR_API_KEY 가 없다.
+❌ GitHub 로그인을 찾지 못했다.
 
-  1) Linear → Settings → Security & access → Personal API keys → 새 키 발급
-  2) export LINEAR_API_KEY=lin_api_xxxxx      (Windows: set LINEAR_API_KEY=...)
-  3) 다시 실행
+  1) gh auth login       (GitHub.com · HTTPS · 브라우저 로그인)
+  2) 다시 실행
 
-⚠️ 키를 레포에 커밋하지 않는다. .env 파일에 넣더라도 .gitignore 에 있는지 확인할 것.
+※ 토큰을 어디에 붙여 넣을 필요는 없다 — 이 도구가 gh 에게 직접 물어본다.
+   그래서 레포에 키가 들어갈 자리 자체가 없다.
 `);
   process.exit(1);
 }
 
-async function gql(query, variables = {}) {
-  const r = await fetch("https://api.linear.app/graphql", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: KEY },
-    body: JSON.stringify({ query, variables }),
-  });
-  const j = await r.json();
-  if (j.errors) throw new Error(JSON.stringify(j.errors));
-  return j.data;
-}
-
-// ── 1. 이슈 (프로젝트 한정) ─────────────────────────────
-const Q_ISSUES = `
-query($after:String){
-  issues(first:100, after:$after, filter:{project:{name:{eq:"${PROJECT}"}}}){
-    pageInfo{ hasNextPage endCursor }
-    nodes{
-      identifier title createdAt updatedAt url
-      state{ name }
-      priority
-      labels{ nodes{ name } }
-    }
-  }
-}`;
-
-const issues = [];
-let after = null;
-do {
-  const d = await gql(Q_ISSUES, { after });
-  const c = d.issues;
-  c.nodes.forEach((i) =>
-    issues.push({
-      id: i.identifier,
-      title: i.title,
-      createdAt: i.createdAt,
-      status: i.state?.name ?? "Backlog",
-      updatedAt: i.updatedAt,
-      url: i.url ?? null,
-      priority: { name: ["No priority", "Urgent", "High", "Medium", "Low"][i.priority] ?? "" },
-      labels: (i.labels?.nodes ?? []).map((l) => l.name),
-    })
-  );
-  after = c.pageInfo.hasNextPage ? c.pageInfo.endCursor : null;
-} while (after);
+/* 2026-08-26 — 출처를 Linear 에서 GitHub Issues 로 옮겼다.
+   Linear 는 READ_ONLY_ARCHIVE 라 카드가 거기서 더 안 움직인다 —
+   구운 판이 «얼어붙은 스냅샷» 을 실시간인 척 담고 있었다.
+   실시간 판(dashboard-server.mjs)과 «같은 모듈» 을 쓴다. 출처가 갈라지지 않는다. */
+const issues = await github.listIssues();
 
 console.log(`· 이슈 ${issues.length}건`);
 
@@ -97,17 +59,13 @@ console.log(`· 이슈 ${issues.length}건`);
 const DONE = ["Done", "Canceled", "Duplicate"];
 const live = issues.filter((i) => !DONE.includes(i.status));
 
-const Q_COMMENTS = `
-query($id:String!){
-  issue(id:$id){ comments(first:20, orderBy:createdAt){ nodes{ body } } }
-}`;
-
 const comments = {};
 let n = 0;
 for (const i of live) {
   try {
-    const d = await gql(Q_COMMENTS, { id: i.id });
-    comments[i.id] = { comments: (d.issue?.comments?.nodes ?? []).map((c) => ({ body: c.body })) };
+    // 실시간 판과 «같은» 읽기다 — 최신 20개, 같은 정렬 규칙.
+    const { comments: rows } = await github.listComments(i.id, 20, null);
+    comments[i.id] = { comments: rows.map((c) => ({ body: c.body })) };
   } catch {
     comments[i.id] = { comments: [] };
   }
