@@ -428,7 +428,6 @@ export default async function BoardPage({
       contractWorkCompanyPicker={contractWorkCompanyPicker}
       startCompanyWorkAction={startCompanyWorkFromBoardAction}
       // 같은 «추가» 를 두 번 눌러도 건이 둘 생기지 않게 하는 열쇠. 서버가 발급한다.
-      companyIntakeRequestId={crypto.randomUUID()}
       columnOrder={activeColumnOrder}
       cellFlash={cellFlash}
       assigneeLabels={assigneeLabels}

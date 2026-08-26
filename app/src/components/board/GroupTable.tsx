@@ -507,7 +507,6 @@ export function GroupTable({
       previous: CompanyIntakeActionState,
       formData: FormData,
     ) => Promise<CompanyIntakeActionState>;
-    requestId: string;
   };
   newLeadMembers?: readonly MemberPickerMember[];
   itemDetailFixture?: ItemDetailSnapshot;
@@ -958,7 +957,6 @@ export function GroupTable({
                     rows={companyPicker.rows}
                     loadError={companyPicker.loadError}
                     startWorkAction={companyPicker.action}
-                    requestId={companyPicker.requestId}
                     boardId={boardId}
                     inputClassName={`${CELL_INPUT} w-full max-w-md`}
                   />

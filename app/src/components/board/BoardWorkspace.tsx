@@ -154,7 +154,6 @@ export function BoardWorkspace({
   workflowTransitionSlot,
   contractWorkCompanyPicker = { rows: [], error: null },
   startCompanyWorkAction,
-  companyIntakeRequestId,
 }: {
   board: Board;
   /** 계약업체 실무에서만 채워진다 — 「＋ 업체 추가」 목록. 다른 보드는 빈 배열이다. */
@@ -163,7 +162,6 @@ export function BoardWorkspace({
     previous: CompanyIntakeActionState,
     formData: FormData,
   ) => Promise<CompanyIntakeActionState>;
-  companyIntakeRequestId?: string;
   columns: BoardColumn[];
   groups: BoardGroup[];
   rows: ItemWithValues[];
@@ -543,12 +541,11 @@ export function BoardWorkspace({
                 groupName={block.name}
                 canonicalNewLead={board.source === NEW_LEAD_TAB_SOURCE}
                 newLeadMembers={scheduleRecipients}
-                {...(blockIndex === 0 && board.source === CONTRACT_WORK_TAB_SOURCE && startCompanyWorkAction && companyIntakeRequestId
+                {...(blockIndex === 0 && board.source === CONTRACT_WORK_TAB_SOURCE && startCompanyWorkAction
                   ? { companyPicker: {
                       rows: contractWorkCompanyPicker.rows,
                       loadError: contractWorkCompanyPicker.error,
                       action: startCompanyWorkAction,
-                      requestId: companyIntakeRequestId,
                     } }
                   : {})}
                 itemDetailFixture={itemDetailFixture}

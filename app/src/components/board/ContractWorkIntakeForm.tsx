@@ -13,6 +13,26 @@ import type { CompanyIntakeActionState } from "@/app/(app)/boards/[id]/company-i
 const INITIAL_ACTION_STATE: CompanyIntakeActionState = { ok: null, message: "" };
 
 /**
+ * 멱등 열쇠를 «제출 직전» 에 채운다.
+ *
+ * ★ 왜 렌더 중이 아닌가 — 두 가지가 동시에 걸린다.
+ *   ① 렌더당 하나를 발급하면 모든 행이 같은 열쇠를 쓴다. RPC 의 멱등 열쇠는
+ *      (org_id, request_id) 이고 같은 열쇠를 «다른 회사» 로 다시 쓰면 거절한다
+ *      (117_bbe237_company_start_work.sql:92 — 'idempotency key reuse', 22023).
+ *      즉 회사A 를 고른 직후 회사B 를 고르면 두 번째가 «항상» 거절됐다.
+ *      「동일 회사 반복 허용, 동일 request 중복만 차단」을 정확히 뒤집는 형태다.
+ *   ② 그렇다고 렌더마다 randomUUID() 를 부르면 서버와 클라이언트가 다른 값을 그려
+ *      hydration 이 깨진다.
+ *
+ *   제출 이벤트에서 채우면 둘 다 없다 — 선택 하나가 열쇠 하나를 갖고, 그리는 값은 항상 빈 문자열이다.
+ *   같은 버튼 더블클릭은 pending 이 막으므로 「같은 요청 두 번」 보호는 그대로다.
+ */
+function stampRequestId(event: React.FormEvent<HTMLFormElement>) {
+  const field = event.currentTarget.elements.namedItem("requestId");
+  if (field instanceof HTMLInputElement) field.value = crypto.randomUUID();
+}
+
+/**
  * 계약업체 실무의 「＋ 업체 추가」 — 목업 `openPicker` 를 옮긴 것이다.
  *
  * 왜 이름 입력칸이 아닌가
@@ -30,7 +50,6 @@ export function ContractWorkIntakeForm({
   rows,
   loadError,
   startWorkAction,
-  requestId,
   boardId,
   inputClassName,
 }: {
@@ -40,8 +59,6 @@ export function ContractWorkIntakeForm({
     previous: CompanyIntakeActionState,
     formData: FormData,
   ) => Promise<CompanyIntakeActionState>;
-  /** 같은 «추가» 를 두 번 눌러도 건이 둘 생기지 않게 하는 열쇠. 서버가 발급한다. */
-  requestId: string;
   boardId: string;
   inputClassName?: string;
 }) {
@@ -98,9 +115,24 @@ export function ContractWorkIntakeForm({
           </li>
         ) : shown.map(({ company, dealCount }) => (
           <li key={company.id} className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-900">
-            <form action={action}>
+            {/*
+              ★ 멱등 열쇠는 «고를 때마다» 새로 만든다 — 화면을 그릴 때 한 번이 아니다.
+                전에는 서버가 렌더당 하나를 발급해(page.tsx 의 crypto.randomUUID())
+                모든 행·모든 그룹의 폼이 같은 값을 달고 있었다.
+                RPC 의 멱등 열쇠는 (org_id, request_id) 이고, 같은 열쇠를 «다른 회사» 로
+                다시 쓰면 22023 으로 거절한다 —
+                  supabase/migrations/117_bbe237_company_start_work.sql:92
+                  if v_prior.company_id <> p_company_id then raise ... 'idempotency key reuse'
+                즉 회사A 를 고른 직후 회사B 를 고르면 두 번째가 «항상» 거절됐다.
+                「동일 회사 반복 허용, 동일 request 중복만 차단」이라는 이 기능의
+                수용조건을 정확히 뒤집는 형태였다.
+                submit 시점에 만들면 선택 하나가 열쇠 하나를 갖는다.
+                같은 버튼 더블클릭은 pending 으로 막으므로 멱등성은 그대로 유지된다.
+            */}
+            <form action={action} onSubmit={stampRequestId}>
               <input type="hidden" name="companyId" value={company.id} />
-              <input type="hidden" name="requestId" value={requestId} />
+              {/* 값은 비워 두고 제출 직전에 채운다 — stampRequestId 참조 */}
+              <input type="hidden" name="requestId" defaultValue="" />
               <input type="hidden" name="boardId" value={boardId} />
               <button
                 type="submit"
