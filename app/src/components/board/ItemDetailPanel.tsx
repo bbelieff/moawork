@@ -42,8 +42,25 @@ import {
   type ItemDetailSnapshot,
 } from "@/app/(app)/boards/item-detail-actions";
 import { inspectCloudFolderUrl } from "@/lib/boards/cloud-folder-link";
+import {
+  EXISTING_LOAN_KEYS,
+  EXISTING_LOAN_RECORDS_KEY,
+  existingLoanRecordsFromValues,
+  existingLoanRecordsSummary,
+} from "@/lib/new-lead/financial-profile";
 import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
+import { NewLeadLoanCell } from "./NewLeadLoanCell";
 import styles from "./item-detail-panel.module.css";
+
+const CANONICAL_NEW_LEAD_DETAIL_KEYS = new Set([
+  "applied_on", "address_detail", "rep_name", "phone", "email", "biz_reg_type",
+  "industry", "revenue_band", "sido", "sigungu", "ad_name",
+]);
+
+const CANONICAL_NEW_LEAD_LOAN_KEYS = new Set<string>([
+  ...Object.values(EXISTING_LOAN_KEYS),
+  EXISTING_LOAN_RECORDS_KEY,
+]);
 
 function AutoSaveField({
   boardId,
@@ -137,6 +154,9 @@ function AutoSaveField({
         id={`${itemId}-${fieldKey}`}
         value={value}
         type={inputType(type)}
+        min={fieldKey === "credit_score_ncb" || fieldKey === "credit_score_kcb" ? 1 : undefined}
+        max={fieldKey === "credit_score_ncb" || fieldKey === "credit_score_kcb" ? 1000 : fieldKey === "existing_loan_rate" ? 100 : undefined}
+        step={fieldKey === "credit_score_ncb" || fieldKey === "credit_score_kcb" ? 1 : undefined}
         onChange={(event) => {
           const next = event.target.value;
           setValue(next);
@@ -300,6 +320,17 @@ export function ItemDetailPanel({
   const suppressOpenerRestoreRef = useRef(false);
   const hashPushedRef = useRef(false);
   const columnsByKey = new Map(columns.map((column) => [column.key, column]));
+  const canonicalLoanEntryKey = canonicalNewLead
+    ? layout.find((entry) => entry.key === EXISTING_LOAN_KEYS.amount)?.key
+      ?? layout.find((entry) => entry.key === EXISTING_LOAN_RECORDS_KEY)?.key
+      ?? layout.find((entry) => CANONICAL_NEW_LEAD_LOAN_KEYS.has(entry.key))?.key
+      ?? null
+    : null;
+  const visibleLayout = layout.filter((entry) =>
+    !canonicalNewLead
+    || entry.key === canonicalLoanEntryKey
+    || !CANONICAL_NEW_LEAD_LOAN_KEYS.has(entry.key),
+  );
   const ownerId = row.assigned_to ?? (typeof row.values.owner === "string" ? row.values.owner : null);
   const collaboratorIds = Array.isArray(row.values.collaborators)
     ? row.values.collaborators.filter((candidate): candidate is string => typeof candidate === "string")
@@ -308,8 +339,12 @@ export function ItemDetailPanel({
   const relatedMembers = collaboratorIds
     .map((id) => memberOptions.find((member) => member.id === id))
     .filter((member): member is MemberPickerMember => Boolean(member));
-  const unplaced = unplacedDetailKeys(row.values, layout).filter(
-    (key) => !canonicalNewLead || (key !== "contact_move" && key !== "consult_status"),
+  const unplaced = unplacedDetailKeys(row.values, visibleLayout).filter(
+    (key) => !canonicalNewLead || (
+      key !== "contact_move"
+      && key !== "consult_status"
+      && !CANONICAL_NEW_LEAD_LOAN_KEYS.has(key)
+    ),
   );
   const saveStatuses = Object.values(fieldSaveStatuses);
   const fieldSavePending = saveStatuses.some(
@@ -645,7 +680,7 @@ export function ItemDetailPanel({
                         영역에서 다시 올릴 수 있습니다.
                       </p>
                     )}
-                    {layout.filter((entry) => !canonicalNewLead || entry.key !== "collaborators").map((entry) => {
+                    {visibleLayout.filter((entry) => !canonicalNewLead || entry.key !== "collaborators").map((entry) => {
                       const column = columnsByKey.get(entry.key);
                       const label = entry.label ?? column?.label ?? entry.key;
                       const type = entry.type ?? column?.type ?? "text";
@@ -683,7 +718,18 @@ export function ItemDetailPanel({
                             </span>
                           </label>
                           <div className={styles.fieldValue}>
-                            {memberEditable ? (
+                            {canonicalNewLead && entry.key === canonicalLoanEntryKey ? (
+                              <NewLeadLoanCell
+                                boardId={boardId}
+                                itemId={row.id}
+                                values={row.values}
+                                readOnly={!canEditItems}
+                              />
+                            ) : entry.key === EXISTING_LOAN_RECORDS_KEY ? (
+                              <p className={styles.readonlyValue}>
+                                {existingLoanRecordsSummary(existingLoanRecordsFromValues(row.values))}
+                              </p>
+                            ) : memberEditable ? (
                               <form action={updateNewLeadMetaAction} className={styles.memberField}>
                                 <input type="hidden" name="boardId" value={boardId} />
                                 <input type="hidden" name="itemId" value={row.id} />
@@ -706,7 +752,7 @@ export function ItemDetailPanel({
                                 source={entry.source}
                                 type={type}
                                 initialValue={inputValue(value)}
-                                canonicalDealId={canonicalNewLead ? row.deal_id : null}
+                                canonicalDealId={canonicalNewLead && CANONICAL_NEW_LEAD_DETAIL_KEYS.has(entry.key) ? row.deal_id : null}
                                 phoneStatus={row.value_statuses?.[entry.key] ?? "normalized"}
                                 onStatusChange={(status) =>
                                   setFieldSaveStatuses((current) =>
@@ -876,7 +922,7 @@ export function ItemDetailPanel({
                             </button>
                           </form>
                         ) : null}
-                        {layout.map((entry, index) => (
+                        {visibleLayout.map((entry, index) => (
                           <div
                             key={entry.key}
                             className="flex flex-wrap items-center gap-2 rounded-lg bg-mw-bg p-2"
@@ -889,23 +935,23 @@ export function ItemDetailPanel({
                             <SaveLayoutForm
                               boardId={boardId}
                               groupId={row.group_id}
-                              layout={moveDetailEntry(layout, entry.key, -1)}
+                              layout={moveDetailEntry(visibleLayout, entry.key, -1)}
                               label="↑"
                               disabled={index === 0 || !row.group_id}
                             />
                             <SaveLayoutForm
                               boardId={boardId}
                               groupId={row.group_id}
-                              layout={moveDetailEntry(layout, entry.key, 1)}
+                              layout={moveDetailEntry(visibleLayout, entry.key, 1)}
                               label="↓"
                               disabled={
-                                index === layout.length - 1 || !row.group_id
+                                index === visibleLayout.length - 1 || !row.group_id
                               }
                             />
                             <SaveLayoutForm
                               boardId={boardId}
                               groupId={row.group_id}
-                              layout={layout.filter(
+                              layout={visibleLayout.filter(
                                 (candidate) => candidate.key !== entry.key,
                               )}
                               label="배치에서 빼기"
@@ -915,7 +961,8 @@ export function ItemDetailPanel({
                         ))}
                         {columns.filter(
                           (column) =>
-                            !layout.some((entry) => entry.key === column.key),
+                            (!canonicalNewLead || !CANONICAL_NEW_LEAD_LOAN_KEYS.has(column.key))
+                            && !visibleLayout.some((entry) => entry.key === column.key),
                         ).length > 0 && (
                           <div className="flex flex-wrap gap-2 rounded-xl border border-dashed border-mw-line p-3">
                             <span className="w-full text-xs font-semibold text-mw-sub">
@@ -924,7 +971,8 @@ export function ItemDetailPanel({
                             {columns
                               .filter(
                                 (column) =>
-                                  !layout.some(
+                                  (!canonicalNewLead || !CANONICAL_NEW_LEAD_LOAN_KEYS.has(column.key))
+                                  && !visibleLayout.some(
                                     (entry) => entry.key === column.key,
                                   ),
                               )
@@ -934,7 +982,7 @@ export function ItemDetailPanel({
                                   boardId={boardId}
                                   groupId={row.group_id}
                                   layout={[
-                                    ...layout,
+                                    ...visibleLayout,
                                     {
                                       key: column.key,
                                       source: "column",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
 import { NEW_LEAD_BUSINESS_TYPES } from "@/lib/new-lead/business-types";
 import { NEW_LEAD_REVENUE_BANDS } from "@/lib/new-lead/revenue-bands";
 import {
@@ -23,28 +23,25 @@ function useReset(ref: RefObject<HTMLElement | null>, reset: () => void) {
 }
 
 export function BusinessTypeField({ invalid = false }: { invalid?: boolean }) {
-  const [selected, setSelected] = useState("");
-  const rootRef = useRef<HTMLDivElement>(null);
-  const reset = useCallback(() => setSelected(""), []);
-  useReset(rootRef, reset);
+  const suggestionsId = useId();
   return (
-    <div ref={rootRef} className="grid gap-1">
-      <label className="grid gap-1 text-xs text-mw-sub">
-        <span>사업자 구분 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
-        <select name="business_registration_type" required aria-required="true" aria-invalid={invalid}
-          value={selected} onChange={(event) => setSelected(event.target.value)}
-          className={`${CONTROL} aria-[invalid=true]:border-mw-error`}>
-          <option value="" disabled>선택하세요</option>
-          {NEW_LEAD_BUSINESS_TYPES.map((value) => <option key={value} value={value}>{value}</option>)}
-        </select>
-      </label>
-      {selected === "그외" ? (
-        <label className="grid gap-1 text-xs text-mw-sub">
-          <span>그외 사업자 유형 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
-          <input name="business_registration_type_custom" required className={CONTROL} placeholder="예: 비영리법인" />
-        </label>
-      ) : null}
-    </div>
+    <label className="grid gap-1 text-xs text-mw-sub">
+      <span>사업자유형 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
+      <input
+        name="business_registration_type"
+        list={suggestionsId}
+        required
+        aria-required="true"
+        aria-invalid={invalid}
+        className={`${CONTROL} aria-[invalid=true]:border-mw-error`}
+        placeholder="직접 입력하거나 추천 선택"
+      />
+      <datalist id={suggestionsId}>
+        {NEW_LEAD_BUSINESS_TYPES.filter((value) => value !== "그외").map((value) => (
+          <option key={value} value={value} />
+        ))}
+      </datalist>
+    </label>
   );
 }
 

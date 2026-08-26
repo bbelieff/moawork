@@ -22,7 +22,9 @@ for (const scope of scopes) {
   const tab = app.tabs.get(scope);
   if (!tab) { failures.push(`${scope}: actual DefaultTab 없음`); continue; }
   if (scope === "new") {
-    if (tab.columns.length !== 35) failures.push(`new: columns ${tab.columns.length}/35`);
+    // #589: 반복 가능한 기대출 목록을 한 원자 저장 필드에 보존하고 NCB/KCB를 분리한다.
+    // 기존 기대출 금액과 기관 미상 신용점수는 무손실 fallback/detail-only로 유지한다.
+    if (tab.columns.length !== 38) failures.push(`new: columns ${tab.columns.length}/38`);
     const visibleGroups = tab.groups.map((group) => group.name.replace(/^[^가-힣A-Za-z0-9]+\s*/, ""));
     if (visibleGroups.join("|") !== "신규고객|2차 상담고객|1차 부재|보류|거절") failures.push("new: explicit group order 불일치");
     if (Object.keys(tab.columns.find((column) => column.key === "consult_status")?.moveTo ?? {}).length !== 6) failures.push("new: move rules 6 아님");

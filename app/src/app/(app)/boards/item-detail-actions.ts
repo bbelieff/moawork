@@ -11,7 +11,15 @@ import {
 import { sanitizeFileName } from "@/lib/services/files";
 import { createRequestBoards } from "@/lib/boards/server";
 import { resolveBoardDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
+import type { CellValue } from "@/lib/boards/types";
 import { loadPermGuard } from "@/lib/perm/guard";
+import {
+  CREDIT_SCORE_KEYS,
+  EXISTING_LOAN_KEYS,
+  parseCreditScore,
+  parseLoanMonth,
+  parseOptionalNumber,
+} from "@/lib/new-lead/financial-profile";
 import {
   cloudFolderProviderLabel,
   inspectCloudFolderUrl,
@@ -533,12 +541,31 @@ export async function saveItemDetailFieldAction(input: {
     await requireItemMutationPermission(ctx.org.id);
     const graph = await createRequestBoards();
     if (input.source === "column") {
+      let storedValue: CellValue = input.value;
+      if (input.fieldKey === CREDIT_SCORE_KEYS.ncb || input.fieldKey === CREDIT_SCORE_KEYS.kcb) {
+        const label = input.fieldKey === CREDIT_SCORE_KEYS.ncb ? "NCB" : "KCB";
+        const parsed = parseCreditScore(input.value, label);
+        if (!parsed.ok) throw new Error(parsed.message);
+        storedValue = parsed.value;
+      } else if (input.fieldKey === EXISTING_LOAN_KEYS.month) {
+        const parsed = parseLoanMonth(input.value);
+        if (!parsed.ok) throw new Error(parsed.message);
+        storedValue = parsed.value;
+      } else if (input.fieldKey === EXISTING_LOAN_KEYS.amount || input.fieldKey === EXISTING_LOAN_KEYS.rate) {
+        const parsed = parseOptionalNumber(
+          input.value,
+          input.fieldKey === EXISTING_LOAN_KEYS.amount ? "대출 금액" : "대출 금리",
+          input.fieldKey === EXISTING_LOAN_KEYS.rate ? 100 : Number.MAX_SAFE_INTEGER,
+        );
+        if (!parsed.ok) throw new Error(parsed.message);
+        storedValue = parsed.value;
+      }
       const result = await graph.service.setCells(
         ctx,
         input.boardId,
         input.itemId,
         {
-          [input.fieldKey]: input.value,
+          [input.fieldKey]: storedValue,
         },
       );
       const failure = result.errors.find(

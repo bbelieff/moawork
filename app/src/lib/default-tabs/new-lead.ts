@@ -48,7 +48,6 @@
 
 import type { FieldOption } from "@/lib/types";
 import { CANONICAL_REGIONS } from "@/lib/structure-packs/region-options";
-import { NEW_LEAD_BUSINESS_TYPES } from "@/lib/new-lead/business-types";
 import { NEW_LEAD_REVENUE_BANDS } from "@/lib/new-lead/revenue-bands";
 import { NEW_LEAD_TAB_SOURCE, type DefaultTab, type DefaultTabColumn } from "./types";
 import type { BoardColumn } from "@/lib/boards/types";
@@ -136,10 +135,9 @@ const ALL_COLUMNS: DefaultTabColumn[] = [
   {
     key: "biz_reg_type",
     label: "사업자유형",
-    type: "select",
+    type: "text",
     source: "auto",
-    options: opts(...NEW_LEAD_BUSINESS_TYPES.map((label) => [label, GREY] as const)),
-    width: 110,
+    width: 130,
   },
   {
     key: "industry",
@@ -172,8 +170,11 @@ const ALL_COLUMNS: DefaultTabColumn[] = [
   { key: "email", label: "이메일", type: "email", source: "auto", width: 160 },
   { key: "address_detail", label: "주소", type: "text", source: "auto", width: 180 },
   { key: "founded_month", label: "창업연월", type: "text", source: "in", width: 110 },
-  { key: "existing_loans", label: "기대출", type: "money", source: "in", width: 110 },
-  { key: "credit_score", label: "신용점수", type: "number", source: "in", width: 100 },
+  { key: "existing_loans", label: "기대출", type: "money", source: "in", width: 240 },
+  { key: "existing_loan_records", label: "기대출 상세(반복)", type: "longtext", source: "in", width: 180 },
+  { key: "credit_score_ncb", label: "NCB", type: "number", source: "in", width: 90 },
+  { key: "credit_score_kcb", label: "KCB", type: "number", source: "in", width: 90 },
+  { key: "credit_score", label: "기존 신용점수(기관 미상)", type: "number", source: "in", width: 150 },
   {
     key: "closed_business",
     label: "폐업여부",
@@ -285,13 +286,13 @@ const ALL_COLUMNS: DefaultTabColumn[] = [
 /**
  * #576 — 사용자가 확정한 신규리드의 업무 읽기 순서.
  *
- * 회사명은 `items.title`이라 이 배열 밖의 첫 고정 열이다. 아래 19개 뒤에는 사용자가 만든
+ * 회사명은 `items.title`이라 이 배열 밖의 첫 고정 열이다. 아래 20개 뒤에는 사용자가 만든
  * 컬럼과 제품의 상세/자동화용 내구 컬럼이 이어지며, 화면 표에서는 상세 전용으로 숨긴다.
  */
 export const NEW_LEAD_PRIMARY_COLUMN_KEYS = [
   "applied_on", "ad_name", "rep_name", "phone", "owner", "collaborators",
   "biz_reg_type", "industry", "founded_month", "revenue_band", "existing_loans",
-  "credit_score", "closed_business", "export_status", "required_amount", "sido",
+  "credit_score_ncb", "credit_score_kcb", "closed_business", "export_status", "required_amount", "sido",
   "sigungu", "address_detail", "email",
 ] as const;
 
@@ -328,7 +329,7 @@ export const NEW_LEAD_DETAIL_ONLY_KEYS = new Set<string>([
   "documents", "consult_notes", "dispatch_status", "contact_status", "message_action",
   "absence_notice", "consult1_notice", "confirm2_notice", "delay_notice",
   "malicious_absence_notice", "feedback_status", "recall_at", "meeting_at",
-  "recontact_on", "contract_fee",
+  "recontact_on", "contract_fee", "existing_loan_records", "credit_score",
 ]);
 
 export const NEW_LEAD_MESSAGE_COLUMN_KEYS = new Set([
@@ -372,7 +373,9 @@ export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardCol
     if (column.key === "biz_reg_type") {
       presented.push({
         ...column,
-        options_jsonb: { options: opts(...NEW_LEAD_BUSINESS_TYPES.map((label) => [label, GREY] as const)) },
+        type: "text",
+        options_jsonb: null,
+        description: "개인사업자·법인사업자 외 유형도 직접 입력",
       });
       continue;
     }
@@ -402,15 +405,15 @@ export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardCol
 }
 
 export const NEW_LEAD_TAB: DefaultTab = {
-  revision: 3,
+  revision: 4,
   previousRevision: {
-    revision: 2,
+    revision: 3,
     columns: {
-      collaborators: { label: "협업자" },
-      ad_name: { label: "광고 명" },
-      biz_reg_type: { label: "사업자 유형" },
-      industry: { label: "업종/업태" },
-      revenue_band: { label: "매출 구간" },
+      collaborators: { label: "연관담당" },
+      ad_name: { label: "광고명" },
+      biz_reg_type: { label: "사업자유형" },
+      industry: { label: "업종" },
+      revenue_band: { label: "3개년매출" },
     },
   },
   key: "new",

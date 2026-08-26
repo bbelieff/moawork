@@ -13,6 +13,13 @@ import { resolveNewLeadRevenueBand } from "@/lib/new-lead/revenue-bands";
 import { canonicalSido, canonicalSigungu } from "@/lib/new-lead/region-search";
 import { analyzePhone } from "@/lib/format/phone";
 import { advanceNewLeadToContact, NewLeadAdvanceError } from "@/lib/new-lead/advance";
+import { createRequestBoards } from "@/lib/boards/server";
+import {
+  CREDIT_SCORE_KEYS,
+  EXISTING_LOAN_RECORDS_KEY,
+  parseCreditScore,
+  parseExistingLoanRecords,
+} from "@/lib/new-lead/financial-profile";
 
 function text(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -66,7 +73,7 @@ export async function createNewLeadAction(
   if (!title) { record("invalid_title"); return { ok: false, field: "title", message: "이름을 입력해 주세요. 나머지는 등록 후 채울 수 있어요." }; }
   if (!businessType) {
     record("invalid_business_type");
-    return { ok: false, field: "business_registration_type", message: "사업자 구분을 선택해 주세요." };
+    return { ok: false, field: "business_registration_type", message: "사업자유형을 입력해 주세요." };
   }
   if (phone.status === "needs_review") {
     record("invalid_phone");
@@ -130,6 +137,7 @@ export async function createNewLeadAction(
 
 export type AdvanceNewLeadState = Readonly<{ ok: boolean; message: string }>;
 export type SaveNewLeadDetailFieldState = Readonly<{ ok: boolean; message: string }>;
+export type SaveNewLeadFinancialState = Readonly<{ ok: boolean; message: string }>;
 
 const DETAIL_FIELD_PATCH = {
   rep_name: "representative_name",
@@ -184,6 +192,69 @@ export async function saveNewLeadDetailFieldAction(input: {
     return { ok: true, message: "✓ 자동 저장됨" };
   } catch (error) {
     return { ok: false, message: error instanceof NewLeadMutationError ? error.message : "저장하지 못했습니다. 다시 시도해 주세요." };
+  }
+}
+
+export async function saveNewLeadLoanProfileAction(
+  _previous: SaveNewLeadFinancialState,
+  formData: FormData,
+): Promise<SaveNewLeadFinancialState> {
+  const ctx = await getSession();
+  const boardId = text(formData, "boardId");
+  const itemId = text(formData, "itemId");
+  if (!boardId || !itemId) return { ok: false, message: "기대출을 저장할 회사를 확인해 주세요." };
+  const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
+  if (permission.kind !== "allowed") {
+    return { ok: false, message: permission.reason === "permission" ? "기대출을 저장할 권한이 없습니다." : "권한을 확인하지 못했습니다." };
+  }
+  const records = parseExistingLoanRecords(text(formData, "loanRecords"));
+  if (!records.ok) return { ok: false, message: records.message };
+
+  try {
+    const graph = await createRequestBoards();
+    const result = await graph.service.setCells(ctx, boardId, itemId, {
+      // `[]` is an explicit migrated-empty sentinel. `null` means the canonical
+      // list has never been saved and therefore still permits the legacy fallback.
+      [EXISTING_LOAN_RECORDS_KEY]: JSON.stringify(records.value),
+    });
+    if (result.errors.length > 0) {
+      return { ok: false, message: result.errors.map((error) => `${error.label}: ${error.message}`).join(" · ") };
+    }
+    revalidatePath(`/boards/${boardId}`);
+    revalidatePath("/newcust");
+    return { ok: true, message: "기대출 정보를 저장했습니다." };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "기대출을 저장하지 못했습니다." };
+  }
+}
+
+export async function saveNewLeadCreditScoreAction(
+  _previous: SaveNewLeadFinancialState,
+  formData: FormData,
+): Promise<SaveNewLeadFinancialState> {
+  const ctx = await getSession();
+  const boardId = text(formData, "boardId");
+  const itemId = text(formData, "itemId");
+  const fieldKey = text(formData, "fieldKey");
+  const label = fieldKey === CREDIT_SCORE_KEYS.ncb ? "NCB" : fieldKey === CREDIT_SCORE_KEYS.kcb ? "KCB" : null;
+  if (!boardId || !itemId || !label) return { ok: false, message: "신용점수를 저장할 회사를 확인해 주세요." };
+  const score = parseCreditScore(text(formData, "score"), label);
+  if (!score.ok) return { ok: false, message: score.message };
+  const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
+  if (permission.kind !== "allowed") {
+    return { ok: false, message: permission.reason === "permission" ? "신용점수를 저장할 권한이 없습니다." : "권한을 확인하지 못했습니다." };
+  }
+  try {
+    const result = await (await createRequestBoards()).service.setCells(ctx, boardId, itemId, {
+      [fieldKey]: score.value,
+    });
+    const failure = result.errors.find((error) => error.key === fieldKey);
+    if (failure) return { ok: false, message: failure.message };
+    revalidatePath(`/boards/${boardId}`);
+    revalidatePath("/newcust");
+    return { ok: true, message: `${label} 점수를 저장했습니다.` };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "신용점수를 저장하지 못했습니다." };
   }
 }
 

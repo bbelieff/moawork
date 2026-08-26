@@ -85,11 +85,11 @@ function renderTab(columns: BoardColumn[]) {
 }
 
 describe("② 표 렌더 — 업무 컬럼과 고정 열", () => {
-  it("35개 컬럼 라벨이 빠짐없이 화면에 나온다", () => {
+  it("38개 컬럼 라벨이 빠짐없이 화면에 나온다", () => {
     const columns = repo.listColumns(ctx, boardId);
     const html = renderTab(columns);
 
-    expect(columns).toHaveLength(35);
+    expect(columns).toHaveLength(38);
     // 마크업에서 라벨이 나타나는 순서가 목업 순서와 같아야 한다.
     const positions = NEW_LEAD_TAB.columns.map((column) => html.indexOf(`>${column.label}<`));
     for (const [index, position] of positions.entries()) {

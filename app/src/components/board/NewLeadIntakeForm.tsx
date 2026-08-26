@@ -89,7 +89,7 @@ export function NewLeadIntakeForm({
         <legend className="text-xs font-semibold text-mw-fg">기본 정보</legend>
         <label className="grid gap-1 text-xs font-medium text-mw-fg">
           <span>회사명 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
-          <input ref={titleRef} name="title" aria-required="true" aria-invalid={state.field === "title"} className="h-9 rounded-lg border border-mw-line px-2.5 text-xs outline-none focus:border-mw-record aria-[invalid=true]:border-mw-error" placeholder="회사명 또는 담당자 이름" />
+          <input ref={titleRef} name="title" aria-required="true" aria-invalid={state.field === "title"} className="h-9 rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg outline-none focus:border-mw-record aria-[invalid=true]:border-mw-error" placeholder="회사명 또는 담당자 이름" />
         </label>
         <div className="grid gap-2 sm:grid-cols-2">
           <BusinessTypeField invalid={state.field === "business_registration_type"} />
@@ -97,21 +97,21 @@ export function NewLeadIntakeForm({
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="grid gap-1 text-xs text-mw-sub">대표자명
-            <input name="representative_name" className="h-9 rounded-lg border border-mw-line px-2.5 text-xs text-mw-fg" />
+            <input name="representative_name" className="h-9 rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg" />
           </label>
           <label className="grid gap-1 text-xs text-mw-sub">이메일
-            <input name="email" type="email" className="h-9 rounded-lg border border-mw-line px-2.5 text-xs text-mw-fg" />
+            <input name="email" type="email" className="h-9 rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg" />
           </label>
           <label className="grid gap-1 text-xs text-mw-sub">업종
-            <input name="industry" className="h-9 rounded-lg border border-mw-line px-2.5 text-xs text-mw-fg" />
+            <input name="industry" className="h-9 rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg" />
           </label>
           <RevenueBandField invalid={state.field === "revenue_band"} />
           <RegionFields />
           <label className="grid gap-1 text-xs text-mw-sub sm:col-span-2">상세 주소
-            <input name="address_detail" className="h-9 rounded-lg border border-mw-line px-2.5 text-xs text-mw-fg" />
+            <input name="address_detail" className="h-9 rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg" />
           </label>
           <label className="grid gap-1 text-xs text-mw-sub sm:col-span-2">광고명
-            <input name="acquisition_source" className="h-9 rounded-lg border border-mw-line px-2.5 text-xs text-mw-fg" />
+            <input name="acquisition_source" className="h-9 rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg" />
           </label>
         </div>
       </fieldset>
