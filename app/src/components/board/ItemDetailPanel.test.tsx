@@ -52,6 +52,7 @@ afterEach(async () => {
     mountedRoot = null;
   }
   document.body.replaceChildren();
+  window.history.replaceState(null, "", window.location.pathname);
 });
 
 async function renderInteractivePanel() {
@@ -126,11 +127,19 @@ function renderStaticPanel(element: ReactNode) {
 
 const sourcePath = resolve(
   process.cwd(),
-  "src/components/board/ItemDetailPanel.tsx",
+  process.cwd().endsWith("app")
+    ? "src/components/board/ItemDetailPanel.tsx"
+    : "app/src/components/board/ItemDetailPanel.tsx",
+);
+const stylePath = resolve(
+  process.cwd(),
+  process.cwd().endsWith("app")
+    ? "src/components/board/item-detail-panel.module.css"
+    : "app/src/components/board/item-detail-panel.module.css",
 );
 
-describe("BBE-107 실제 상세 패널", () => {
-  it("상속 상태와 미배치 값 회수, 1440/375 공통 반응형 패널 계약을 렌더한다", () => {
+describe("BBE-565 목업 기준 실제 상세 패널", () => {
+  it("상단 헤더·좌측 회사정보·우측 알림/히스토리·하단 작성기 구조를 렌더한다", () => {
     const html = renderStaticPanel(
       <ItemDetailPanel
         boardId="board-a"
@@ -142,17 +151,27 @@ describe("BBE-107 실제 상세 패널", () => {
         canEditItems
         canManageColumns
         defaultOpen
+        boardName="신규리드 관리"
+        groupName="💡 신규고객"
       />,
     );
-    expect(html).toContain("보드 기본 배치를 상속 중");
+    expect(html).toContain("신규리드 관리 · 💡 신규고객");
     expect(html).toContain("이 화면에 배치되지 않은 항목 1개");
     expect(html).toContain("hidden_legacy");
     expect(html).toContain("배치에 추가");
-    expect(html).toContain("h-full w-full overflow-y-auto");
-    expect(html).not.toContain("max-w-[74rem]");
-    expect(html).toContain(
-      "lg:grid-cols-[minmax(0,1.08fr)_minmax(22rem,.92fr)]",
-    );
+    for (const anchor of [
+      "data-item-detail-surface",
+      "data-item-detail-header",
+      "data-item-detail-info-rail",
+      "data-item-detail-watchers",
+      "data-item-detail-history",
+      "data-item-detail-composer",
+    ]) expect(html).toContain(anchor);
+    const css = readFileSync(stylePath, "utf8");
+    expect(css).toContain("width: calc(100% - 6rem)");
+    expect(css).toContain("grid-template-columns: minmax(22rem, 25rem) minmax(0, 1fr)");
+    expect(css).toContain("grid-template-rows: 3.625rem minmax(0, 1fr)");
+    expect(css).toContain("min-height: 2.15rem");
   });
 
   it("상세 전용 필드는 표 승격 동작을 제공한다", () => {
@@ -176,8 +195,8 @@ describe("BBE-107 실제 상세 패널", () => {
         defaultOpen
       />,
     );
-    expect(html).toContain("상세 전용");
-    expect(html).toContain("표에도 보이기");
+    expect(html).toContain("상세");
+    expect(html).toContain("상세 메모을 표에도 보이기");
     expect(html).toContain("기본으로 되돌리기");
   });
 
@@ -199,17 +218,71 @@ describe("BBE-107 실제 상세 패널", () => {
         defaultOpen
       />,
     );
-    expect(html).toContain("보드 기본 배치를 상속 중");
     expect(html).toContain('id="item-a-company"');
     expect(html).toContain("✓ 자동 저장됨");
     expect(html).not.toContain("배치된 상세 필드가 없습니다");
     expect(html).toContain("이 화면에 배치되지 않은 항목 0개");
   });
 
+  it("신규리드 담당자와 출동은 표와 같은 단일·다중 멤버 선택기로 저장한다", () => {
+    const memberColumns: BoardColumn[] = [
+      {
+        ...columns[0],
+        id: "col-owner",
+        key: "owner",
+        label: "담당자",
+        type: "person",
+      },
+      {
+        ...columns[0],
+        id: "col-collaborators",
+        key: "collaborators",
+        label: "출동",
+        type: "people",
+        sort_order: 1,
+      },
+    ];
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={{
+          ...row,
+          deal_id: "deal-a",
+          values: { owner: "user-a", collaborators: ["user-a", "user-b"] },
+        }}
+        columns={memberColumns}
+        boardLayout={[
+          { key: "owner", source: "column" },
+          { key: "collaborators", source: "column" },
+        ]}
+        layout={[
+          { key: "owner", source: "column" },
+          { key: "collaborators", source: "column" },
+        ]}
+        inherited
+        canEditItems
+        canManageColumns={false}
+        canonicalNewLead
+        memberOptions={[
+          { id: "user-a", label: "이대표" },
+          { id: "user-b", label: "카위" },
+        ]}
+        defaultOpen
+      />,
+    );
+    expect(html).toContain('name="field" value="owner"');
+    expect(html).toContain('name="field" value="collaborators"');
+    expect(html).toContain('aria-label="담당자 멤버 검색"');
+    expect(html).toContain('aria-label="출동 멤버 검색"');
+    expect(html.match(/type="radio"/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(html.match(/type="checkbox"/g)?.length).toBeGreaterThanOrEqual(3);
+  });
+
   it("상세 drawer는 전역 portal과 공용 dialog 레이어를 사용한다", () => {
     const source = readFileSync(sourcePath, "utf8");
     expect(source).toContain("createPortal(children, document.body)");
-    expect(source).toContain('className="mw-layer-dialog fixed inset-0');
+    expect(source).toContain("mw-layer-dialog ${styles.backdrop}");
+    expect(source).toContain("data-item-detail-backdrop");
     expect(source).not.toContain('className="fixed inset-0 z-50');
   });
 
@@ -239,7 +312,7 @@ describe("BBE-107 실제 상세 패널", () => {
     ]) {
       expect(html).toContain(copy);
     }
-    expect(html).toContain("✓ 저장됨");
+    expect(html).toContain("✓ 자동 저장됨");
     expect(html).toContain('aria-label="메모 또는 통화 기록"');
     expect(html).toContain("링크 복사");
     expect(html).toContain("← 이전");
@@ -269,6 +342,77 @@ describe("BBE-107 실제 상세 패널", () => {
       expect(document.activeElement).toBe(opener);
     },
   );
+
+  it("뒤 행에서 이전 회사로 전환해도 새 상세 닫기 버튼에 포커스를 유지하고 Tab을 가둔다", async () => {
+    const container = document.createElement("div");
+    const outside = document.createElement("button");
+    outside.textContent = "배경 버튼";
+    document.body.append(container, outside);
+    mountedRoot = createRoot(container);
+    const previousRow = row;
+    const nextRow = { ...row, id: "item-b", title: "미래상사" };
+
+    await act(async () => {
+      mountedRoot?.render(
+        <>
+          <ItemDetailPanel
+            boardId="board-a"
+            row={previousRow}
+            columns={columns}
+            boardLayout={[{ key: "company", source: "column" }]}
+            layout={[{ key: "company", source: "column" }]}
+            inherited
+            canEditItems
+            canManageColumns
+            nextItem={{ id: nextRow.id, title: nextRow.title }}
+          />
+          <ItemDetailPanel
+            boardId="board-a"
+            row={nextRow}
+            columns={columns}
+            boardLayout={[{ key: "company", source: "column" }]}
+            layout={[{ key: "company", source: "column" }]}
+            inherited
+            canEditItems
+            canManageColumns
+            previousItem={{ id: previousRow.id, title: previousRow.title }}
+          />
+        </>,
+      );
+    });
+
+    const nextTrigger = document.querySelector<HTMLButtonElement>(
+      '[data-item-detail-trigger="item-b"]',
+    );
+    await act(async () => nextTrigger?.click());
+    const previousButton = document.querySelector<HTMLButtonElement>(
+      '[aria-label="이전 회사 대한정밀 열기"]',
+    );
+    expect(previousButton).not.toBeNull();
+
+    await act(async () => {
+      previousButton?.click();
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+    });
+
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe(
+      "대한정밀",
+    );
+    const activeClose = document.querySelector<HTMLButtonElement>(
+      '[role="dialog"] [aria-label="상세 닫기"]',
+    );
+    expect(document.activeElement).toBe(activeClose);
+
+    outside.focus();
+    expect(document.activeElement).toBe(outside);
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", bubbles: true }),
+      );
+    });
+    expect(document.activeElement).toBe(activeClose);
+  });
 
   it("Escape·pointer·ref가 실행형 helper에 실제로 결속돼 있다", () => {
     const source = readFileSync(sourcePath, "utf8");
