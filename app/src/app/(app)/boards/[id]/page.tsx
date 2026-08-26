@@ -14,6 +14,9 @@ import { createRequestBoards, requireRequestClient } from "@/lib/boards/server";
 import { markNoticeItemsReadAtomic } from "@/lib/notices/atomic";
 import { issueFileToken } from "@/lib/deal/fileSignedUrl";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
+import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
+import { loadCompanyPickerRows } from "@/lib/companies/picker-server";
+import { startCompanyWorkFromBoardAction } from "./company-intake-actions";
 import { NewLeadOnboarding } from "@/components/board/NewLeadOnboarding";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import { legacyMemberPickerEntries, memberPickerEntries } from "@/lib/boards/member-directory";
@@ -119,6 +122,19 @@ export default async function BoardPage({
     const visibleNoticeIds = loadedItems.filter((item) => visibleItemIds.has(item.id)).map((item) => item.id);
     await markNoticeItemsReadAtomic(ctx, visibleNoticeIds, client);
   }
+
+  /*
+   * 계약업체 실무의 「＋ 업체 추가」가 쓸 회사 목록.
+   *
+   * 이 보드에서만 읽는다 — 다른 보드에 왕복을 더하지 않는다(BBE-214 예산).
+   * 목업이 이 화면의 규칙을 못박아 뒀다: 「이미 있는 업체를 고르면 저장된 정보가 그대로
+   * 채워집니다 — 같은 회사를 두 번 적지 않게」. 그래서 회사부터 고르게 하고,
+   * 이미 진행 이력이 있는 회사도 «다시» 고를 수 있게 건수를 같이 보여준다
+   * (한 회사에 자금 건이 여러 번 생기는 것이 정상이다).
+   */
+  const contractWorkCompanyPicker = board.source === CONTRACT_WORK_TAB_SOURCE
+    ? await loadCompanyPickerRows(ctx)
+    : { rows: [], error: null };
   const boardItems = board.source === NOTICE_TAB_SOURCE
     ? loadedItems.map((item) => {
         const fileId = item.values.official_pdf;
@@ -408,6 +424,11 @@ export default async function BoardPage({
       columns={visibleColumns}
       groups={groups}
       rows={items}
+      // 계약업체 실무에서만 채워진다 — 다른 보드는 빈 배열이라 «업체 추가» 가 뜨지 않는다.
+      contractWorkCompanyPicker={contractWorkCompanyPicker}
+      startCompanyWorkAction={startCompanyWorkFromBoardAction}
+      // 같은 «추가» 를 두 번 눌러도 건이 둘 생기지 않게 하는 열쇠. 서버가 발급한다.
+      companyIntakeRequestId={crypto.randomUUID()}
       columnOrder={activeColumnOrder}
       cellFlash={cellFlash}
       assigneeLabels={assigneeLabels}

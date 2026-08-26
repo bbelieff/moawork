@@ -1,5 +1,9 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
+import { cpus } from "node:os";
+
+/** 동시에 살아 있어도 되는 워커 수 — 근거는 아래 test.poolOptions 주석. */
+const WORKER_CAP = Math.min(3, Math.max(1, cpus().length - 1));
 
 // tsconfig 의 "@/*" 경로 별칭을 테스트에서도 해석하도록 매핑.
 export default defineConfig({
@@ -41,5 +45,37 @@ export default defineConfig({
     //   무한대는 매달림을 못 잡기 때문이다. «안전한 줄임» 이지 «증명된 적정값» 이 아니다.
     testTimeout: 20_000,
     hookTimeout: 20_000,
+
+    // ★ 2026-08-26 — 워커 상한. «시간» 이 아니라 «메모리» 로 죽는 것을 막는다.
+    //
+    //   위 testTimeout 은 «옆 파일이 CPU 를 쓴다» 를 다뤘다. 이건 다른 고장이다 —
+    //   테스트가 느려지는 게 아니라 **워커 프로세스가 통째로 사라진다**:
+    //     Error: Worker exited unexpectedly   (tinypool onUnexpectedExit)
+    //   어서션 실패 0건, 그때까지 전부 ✓, 그리고 게이트가 죽는다. 실패한 테스트를
+    //   찾으러 가면 아무것도 없다 — 이 줄이 없으면 다음 사람이 그 길을 다시 간다.
+    //
+    //   실측 (2026-08-26 · 8코어 · 16GB · 여유 5GB):
+    //     기본 워커 수  →  PGlite 스위트 직후 워커 사망. 3회 연속 «같은 자리» 재현
+    //     maxWorkers 3  →  428파일 · 2962테스트 전부 통과 · 184초
+    //
+    //   원인은 PGlite 다. 이 저장소에는 PGlite(Postgres WASM)를 띄우는 파일이 여럿 있고
+    //   하나가 수백 MB 를 잡는다. 기본값은 코어 수만큼 띄우므로 8코어에서 8개가 동시에
+    //   붙고, 그 순간 16GB 기계는 모자란다. 코어를 늘려도 «메모리» 가 늘지 않으면 더 나빠진다 —
+    //   그래서 상한을 코어가 아니라 «동시에 살아 있어도 되는 PGlite 개수» 로 잡는다.
+    //
+    //   상한 3은 위 실측에서 전체 게이트가 통과한 값이다. 최솟값이라고 주장하는 것이 아니라,
+    //   상한의 목적은 «코어 수만큼 무제한» 을 막는 것이지 최적값을 주장하는 것이 아니다.
+    //   코어가 적은 기계에서는 코어 수가 이긴다.
+    //
+    //   ★ 재는 법 — 값을 바꾸려는 다음 사람에게:
+    //       npx vitest run --minWorkers=1 --maxWorkers=<N>
+    //     환경변수로는 안 된다. VITEST_MAX_FORKS 류는 이 버전이 읽지 않는다(실측).
+    //   ★★ 최상위 `maxWorkers` 로 적으면 이 버전(2.1.9)이 «조용히 무시한다» — 실측이다.
+    //     그렇게 적어 두고 게이트를 돌렸더니 로그가 줄 번호까지 이전 실행과 같았다.
+    //     즉 «설정을 넣었다» 와 «설정이 적용됐다» 가 달랐다. 반드시 poolOptions 로 적는다.
+    poolOptions: {
+      forks: { minForks: 1, maxForks: WORKER_CAP },
+      threads: { minThreads: 1, maxThreads: WORKER_CAP },
+    },
   },
 });
