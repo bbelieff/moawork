@@ -3,7 +3,7 @@
 /**
  * 그룹 하나의 표 — 밀도·sticky·드래그 (ui-guidelines 원칙 6 · PLAN-002 WO-2 ⓑⓒ).
  *
- * 밀도: 행 36px(원칙 6 의 34~40px), 셀 패딩 8px, 컬럼 최소폭 6rem.
+ * 밀도: 행 32px, 셀 패딩 8px, 컬럼 최소폭 6rem.
  *
  * sticky 두 축을 **한 스크롤 컨테이너**에서 처리한다. `overflow-x:auto` 를 걸면 CSS 규약상
  * overflow-y 도 visible 로 남을 수 없어(auto 로 승격) 페이지 스크롤 기준 sticky 헤더가
