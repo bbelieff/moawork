@@ -27,6 +27,7 @@ export interface DepartmentNode {
 export interface DepartmentMember {
   userId: string;
   displayName: string;
+  avatarUrl: string | null;
   departmentIds: string[];
   active: boolean;
 }
@@ -89,8 +90,12 @@ export function toTree(departments: readonly DepartmentNode[], members: readonly
 }
 
 interface DepartmentRow { id: string; name: string; parent_id: string | null; head_user_id: string | null; sort_order: number }
-interface AssignmentRow { department_id: string; user_id: string }
-interface MemberRow { user_id: string; status: string; users: { name: string | null } | { name: string | null }[] | null }
+interface AssignmentRow { dept_id: string; user_id: string }
+interface MemberRow {
+  user_id: string;
+  status: string;
+  users: { name: string | null; avatar_url: string | null } | { name: string | null; avatar_url: string | null }[] | null;
+}
 
 export async function loadOrgChart(
   ctx: Ctx,
@@ -99,16 +104,26 @@ export async function loadOrgChart(
   try {
     const client = await clientFactory();
     const [departments, assignments, members] = await Promise.all([
-      client.from("departments").select("id,name,parent_id,head_user_id,sort_order").eq("org_id", ctx.org.id),
-      client.from("org_member_departments").select("department_id,user_id").eq("org_id", ctx.org.id),
-      client.from("org_members").select("user_id,status,users(name)").eq("org_id", ctx.org.id),
+      client
+        .from("departments")
+        .select("id,name,parent_id,head_user_id,sort_order")
+        .eq("org_id", ctx.org.id)
+        .is("archived_at", null),
+      client.from("department_members").select("dept_id,user_id").eq("org_id", ctx.org.id),
+      client.from("org_members").select("user_id,status,users(name,avatar_url)").eq("org_id", ctx.org.id),
     ]);
     // 실패를 «부서 0개» 로 위장하지 않는다 — 그러면 화면이 「아직 부서가 없어요」 라고 거짓말한다.
     if (departments.error || assignments.error || members.error) return { kind: "error" };
 
+    const departmentRows = (departments.data ?? []) as DepartmentRow[];
+    const activeDepartmentIds = new Set(departmentRows.map((department) => department.id));
+    const activeAssignments = ((assignments.data ?? []) as AssignmentRow[]).filter((row) =>
+      activeDepartmentIds.has(row.dept_id),
+    );
+
     const byUser = new Map<string, string[]>();
-    for (const row of (assignments.data ?? []) as AssignmentRow[]) {
-      byUser.set(row.user_id, [...(byUser.get(row.user_id) ?? []), row.department_id]);
+    for (const row of activeAssignments) {
+      byUser.set(row.user_id, [...(byUser.get(row.user_id) ?? []), row.dept_id]);
     }
 
     const memberList: DepartmentMember[] = ((members.data ?? []) as MemberRow[]).map((row) => {
@@ -116,19 +131,22 @@ export async function loadOrgChart(
       return {
         userId: row.user_id,
         displayName: joined?.name?.trim() || "이름 없는 구성원",
+        avatarUrl: joined?.avatar_url ?? null,
         departmentIds: byUser.get(row.user_id) ?? [],
         active: row.status === "active",
       };
     });
 
     const counts = new Map<string, number>();
-    for (const row of (assignments.data ?? []) as AssignmentRow[]) {
-      counts.set(row.department_id, (counts.get(row.department_id) ?? 0) + 1);
+    const activeUserIds = new Set(memberList.filter((member) => member.active).map((member) => member.userId));
+    for (const row of activeAssignments) {
+      if (!activeUserIds.has(row.user_id)) continue;
+      counts.set(row.dept_id, (counts.get(row.dept_id) ?? 0) + 1);
     }
 
     return {
       kind: "ready",
-      departments: ((departments.data ?? []) as DepartmentRow[]).map((row) => ({
+      departments: departmentRows.map((row) => ({
         id: row.id,
         name: row.name,
         parentId: row.parent_id,

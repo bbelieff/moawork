@@ -49,6 +49,25 @@ describe("BBE-138 phone consumer persistence", () => {
     const foreign: Ctx = { ...owner, org: { ...owner.org, id: "org-foreign" } };
     await expect(svc.getBoardDetail(foreign, detail.board.id)).rejects.toBeInstanceOf(NotFoundError);
   });
+
+  it("잠금 audit에서 연결된 검토상태를 보드·상세 consumer까지 전달한다", async () => {
+    const local = new LocalBoardsRepo();
+    const repo = toAsyncBoardsRepo(local);
+    const detail = await new BoardsService(repo).createBoard(owner, { name: "연락처 검토상태" });
+    const phone = await new BoardsService(repo).addColumn(owner, detail.board.id, { label: "연락처", type: "phone" });
+    const item = await new BoardsService(repo).createItem(owner, detail.board.id, { title: "회사" });
+    const listValues = repo.listValues.bind(repo);
+    repo.listValues = async (ctx, itemIds) => (await listValues(ctx, itemIds)).concat({
+      org_id: owner.org.id,
+      item_id: item.id,
+      column_key: phone.key,
+      value_jsonb: null,
+      phone_normalization_status: "needs_review",
+    });
+
+    const [loaded] = await new BoardsService(repo).listItems(owner, detail.board.id);
+    expect(loaded.value_statuses).toEqual({ [phone.key]: "needs_review" });
+  });
 });
 
 describe("보드 목록 — 시스템 + 사용자", () => {

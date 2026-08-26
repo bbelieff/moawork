@@ -10,7 +10,8 @@ describe("Issue #554 new lead help", () => {
     expect(html).toContain('aria-label="신규리드 도움말"');
     expect(html).toContain('role="tooltip"');
     expect(html).toContain("신규리드 시작하기");
-    expect(html).toContain("리드컨택으로 넘기기");
+    expect(html).toContain("진행현황");
+    expect(html).not.toContain("리드컨택으로 넘기기");
     expect(html).toContain("group-hover/help:visible");
     expect(html).toContain("group-focus-within/help:visible");
     expect(html).not.toContain("확인했어요");

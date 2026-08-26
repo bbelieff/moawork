@@ -30,7 +30,7 @@ import type {
   ItemWithValues,
 } from "@/lib/boards/types";
 import { formatCell } from "@/lib/boards/cells";
-import { formatPhone } from "@/lib/format/phone";
+import { presentPhone } from "@/lib/format/phone";
 import { findCellError, type CellFlash } from "@/lib/boards/cellFlash";
 import {
   getFieldSourceSpec,
@@ -101,9 +101,10 @@ function inputTypeOf(type: BoardColumn["type"]): string {
 export function cellInputValue(
   type: BoardColumn["type"],
   value: CellValue,
+  phoneStatus: "normalized" | "needs_review" = "normalized",
 ): string | number {
   if (value === null) return "";
-  if (type === "phone" && typeof value === "string") return formatPhone(value);
+  if (type === "phone") return presentPhone(typeof value === "string" ? value : null, phoneStatus);
   if (type === "datetime" && typeof value === "string") {
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime())
@@ -178,6 +179,7 @@ export function BoardCell({
   cellAction?: (formData: FormData) => Promise<void>;
 }) {
   const value = row.values[column.key] ?? null;
+  const phoneStatus = row.value_statuses?.[column.key] ?? "normalized";
   const options = column.options_jsonb?.options ?? [];
   // 출처가 편집을 막는 칸(⇄ 연동·ƒ 수식)은 보드가 편집 가능해도 클릭해도 열리지 않는다 — D09 수용기준.
   //
@@ -241,7 +243,7 @@ export function BoardCell({
         <span
           className={`truncate text-xs text-mw-body ${numeric ? "block text-right tabular-nums" : ""}`}
         >
-          {formatCell(column.type, value, options) || emptyLabel || "—"}
+          {(column.type === "phone" ? presentPhone(typeof value === "string" ? value : null, phoneStatus) : formatCell(column.type, value, options)) || emptyLabel || "—"}
           {column.source === "lk" && value !== null ? (
             <span
               aria-hidden="true"
@@ -365,7 +367,7 @@ export function BoardCell({
           <input
             type={inputTypeOf(column.type)}
             name="value"
-            defaultValue={cellInputValue(column.type, value)}
+            defaultValue={cellInputValue(column.type, value, phoneStatus)}
             placeholder={emptyLabel ?? "—"}
             aria-label={column.label}
             className={`${CELL_INPUT} ${numeric ? "text-right tabular-nums" : ""}`}

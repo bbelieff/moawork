@@ -451,6 +451,7 @@ export class BoardsService {
     const itemById = new Map(items.map((item) => [item.id, item]));
     const values = await (await this.repo).listValues(ctx, items.map((i) => i.id));
     const byItem = new Map<string, Record<string, CellValue>>();
+    const statusesByItem = new Map<string, Record<string, "normalized" | "needs_review">>();
     for (const v of values) {
       const item = itemById.get(v.item_id);
       const detailKeys = item?.group_id ? groupDetailKeys.get(item.group_id) ?? boardDetailKeys : boardDetailKeys;
@@ -458,8 +459,13 @@ export class BoardsService {
       const bag = byItem.get(v.item_id) ?? {};
       bag[v.column_key] = v.value_jsonb;
       byItem.set(v.item_id, bag);
+      if (v.phone_normalization_status === "needs_review") {
+        const statuses = statusesByItem.get(v.item_id) ?? {};
+        statuses[v.column_key] = "needs_review";
+        statusesByItem.set(v.item_id, statuses);
+      }
     }
-    return items.map((i) => ({ ...i, values: byItem.get(i.id) ?? {} }));
+    return items.map((i) => ({ ...i, values: byItem.get(i.id) ?? {}, value_statuses: statusesByItem.get(i.id) ?? {} }));
   }
 
   // ── 저장뷰(board_views · 003) ────────────────────────────────

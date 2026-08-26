@@ -20,7 +20,7 @@ import {
   unplacedDetailKeys,
 } from "@/lib/boards/detail-layout";
 import { formatCell } from "@/lib/boards/cells";
-import { formatPhone } from "@/lib/format/phone";
+import { formatPhone, presentPhone, type PhoneNormalizationStatus } from "@/lib/format/phone";
 import { isSourceEditable } from "@/lib/field/source";
 import {
   addDetailFieldAction,
@@ -52,6 +52,7 @@ function AutoSaveField({
   type,
   initialValue,
   canonicalDealId,
+  phoneStatus = "normalized",
   onStatusChange,
 }: {
   boardId: string;
@@ -61,9 +62,10 @@ function AutoSaveField({
   type: string;
   initialValue: string | number;
   canonicalDealId?: string | null;
+  phoneStatus?: PhoneNormalizationStatus;
   onStatusChange?: (status: string) => void;
 }) {
-  const presentedInitial = type === "phone" ? formatPhone(String(initialValue)) : String(initialValue);
+  const presentedInitial = type === "phone" ? presentPhone(String(initialValue), phoneStatus) : String(initialValue);
   const [value, setValue] = useState(presentedInitial);
   const [status, setStatus] = useState("✓ 자동 저장됨");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -670,6 +672,7 @@ export function ItemDetailPanel({
                                 type={type}
                                 initialValue={inputValue(value)}
                                 canonicalDealId={canonicalNewLead ? row.deal_id : null}
+                                phoneStatus={row.value_statuses?.[entry.key] ?? "normalized"}
                                 onStatusChange={(status) =>
                                   setFieldSaveStatuses((current) =>
                                     current[entry.key] === status
@@ -681,11 +684,13 @@ export function ItemDetailPanel({
                             ) : (
                               <p className={styles.readonlyValue}>
                                 {column
-                                  ? formatCell(
-                                      column.type,
-                                      value ?? null,
-                                      column.options_jsonb?.options ?? [],
-                                    ) || "—"
+                                  ? (column.type === "phone"
+                                      ? presentPhone(typeof value === "string" ? value : null, row.value_statuses?.[entry.key] ?? "normalized")
+                                      : formatCell(
+                                          column.type,
+                                          value ?? null,
+                                          column.options_jsonb?.options ?? [],
+                                        )) || "—"
                                   : inputValue(value) || "—"}
                               </p>
                             )}

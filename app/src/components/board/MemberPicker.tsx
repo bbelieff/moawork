@@ -7,6 +7,7 @@ import styles from "./member-picker.module.css";
 export type MemberPickerMember = Readonly<{
   id: string;
   label: string;
+  avatarUrl?: string | null;
   title?: string | null;
   groupId?: string | null;
   groupLabel?: string | null;
@@ -57,7 +58,7 @@ export function MemberPicker({
     () => new Set(valueSignature ? valueSignature.split("\u0000") : []),
     [valueSignature],
   );
-  const committed = selectionOverride?.source === valueSignature
+  const rawCommitted = selectionOverride?.source === valueSignature
     ? selectionOverride.selected
     : canonicalSelection;
 
@@ -66,6 +67,10 @@ export function MemberPicker({
     [members],
   );
   const byId = useMemo(() => new Map(activeMembers.map((member) => [member.id, member])), [activeMembers]);
+  const committed = useMemo(
+    () => new Set([...rawCommitted].filter((id) => byId.has(id))),
+    [byId, rawCommitted],
+  );
   const visible = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ko");
     if (!needle) return activeMembers;
@@ -94,7 +99,8 @@ export function MemberPicker({
     const width = Math.min(desiredWidth, window.innerWidth - inset * 2);
     const maxHeight = Math.max(260, Math.min(560, window.innerHeight - inset * 2));
     const left = Math.max(inset, Math.min(rect.left, window.innerWidth - width - inset));
-    const estimatedHeight = Math.min(maxHeight, multiple ? 520 : 420);
+    const renderedHeight = popoverRef.current?.getBoundingClientRect().height;
+    const estimatedHeight = Math.min(maxHeight, renderedHeight && renderedHeight > 0 ? renderedHeight : (multiple ? 520 : 500));
     const below = rect.bottom + 6;
     const top = below + estimatedHeight <= window.innerHeight - inset
       ? below
@@ -127,6 +133,8 @@ export function MemberPicker({
   useEffect(() => {
     if (!open) return;
     const reposition = () => place();
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reposition);
+    if (popoverRef.current) resizeObserver?.observe(popoverRef.current);
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
       if (popoverRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
@@ -143,6 +151,7 @@ export function MemberPicker({
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKeyDown, true);
     return () => {
+      resizeObserver?.disconnect();
       window.removeEventListener("resize", reposition);
       window.removeEventListener("scroll", reposition, true);
       document.removeEventListener("pointerdown", onPointerDown, true);
@@ -260,7 +269,7 @@ export function MemberPicker({
           {visible.length === 0 ? <p className={styles.empty}>검색 결과가 없습니다.</p> : null}
         </div>
       </section>
-      {multiple ? <p className={styles.note}>부서를 고르면 현재 소속 구성원이 함께 선택됩니다. 이후 조직 변경은 조직도 연동이 완료되면 자동 반영됩니다.</p> : null}
+      {multiple ? <p className={styles.note}>부서·역할을 고르면 현재 표시된 구성원을 한 번에 선택합니다. 이후 조직 변경은 자동 반영되지 않으며, 조직도 연동 후 제공할 예정입니다.</p> : null}
       <footer className={styles.footer}>
         <button type="button" onClick={() => closePicker()}>취소</button>
         <button type="button" className={styles.save} onClick={saveSelection}>선택 저장</button>

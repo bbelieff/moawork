@@ -20,7 +20,7 @@ const members = [
   { id: "c", label: "초록", title: "실장", groupId: "ops", groupLabel: "심사실행팀" },
 ];
 
-async function mount(multiple = true) {
+async function mount(multiple = true, valueOverride?: string | string[]) {
   const form = document.createElement("form");
   form.addEventListener("submit", (event) => event.preventDefault());
   document.body.append(form);
@@ -30,7 +30,7 @@ async function mount(multiple = true) {
       label={multiple ? "연관담당" : "담당자"}
       multiple={multiple}
       members={members}
-      value={multiple ? [] : "a"}
+      value={valueOverride ?? (multiple ? [] : "a")}
       ruleRecipients={multiple ? [members[0]] : []}
     />,
   ));
@@ -50,6 +50,7 @@ describe("MemberPicker 조직형 선택창", () => {
     expect(dialog.textContent).toContain("규칙에 따라 받는 사람");
     expect(dialog.textContent).toContain("영업본부");
     expect(dialog.textContent).toContain("심사실행팀");
+    expect(dialog.textContent).toContain("이후 조직 변경은 자동 반영되지 않으며");
 
     const search = dialog.querySelector<HTMLInputElement>('[aria-label="연관담당 멤버 검색"]')!;
     await act(async () => {
@@ -91,5 +92,15 @@ describe("MemberPicker 조직형 선택창", () => {
     await act(async () => [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "선택 저장")?.click());
     await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
     expect(new FormData(form).getAll("value")).toEqual(["c"]);
+  });
+
+  it("비활성·목록 밖 사용자는 다음 저장 payload에서 제거한다", async () => {
+    const form = await mount(true, ["retired", "a"]);
+    const { dialog } = await open(form);
+    const opsGroup = [...dialog.querySelectorAll("label")].find((label) => label.textContent?.includes("심사실행팀"))!;
+    await act(async () => opsGroup.querySelector<HTMLInputElement>('input[type="checkbox"]')?.click());
+    await act(async () => [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "선택 저장")?.click());
+    await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+    expect(new FormData(form).getAll("value").sort()).toEqual(["a", "c"]);
   });
 });

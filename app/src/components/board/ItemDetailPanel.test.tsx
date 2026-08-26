@@ -225,6 +225,25 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
     expect(html).toContain('value="010-3026-6007"');
   });
 
+  it("정규화 검토대상 연락처를 빈 값으로 숨기지 않고 확인 필요로 표시한다", () => {
+    const phoneColumn: BoardColumn = { ...columns[0], id: "col-phone", key: "phone", label: "연락처", type: "phone" };
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={{ ...row, deal_id: "deal-a", values: { phone: null }, value_statuses: { phone: "needs_review" } }}
+        columns={[phoneColumn]}
+        boardLayout={[{ key: "phone", source: "column" }]}
+        layout={[{ key: "phone", source: "column" }]}
+        inherited
+        canEditItems
+        canManageColumns={false}
+        canonicalNewLead
+        defaultOpen
+      />,
+    );
+    expect(html).toContain('value="확인 필요"');
+  });
+
   it("상속된 기본 필드가 있으면 빈 배치 안내 없이 편집 입력을 보여준다", () => {
     const html = renderStaticPanel(
       <ItemDetailPanel
