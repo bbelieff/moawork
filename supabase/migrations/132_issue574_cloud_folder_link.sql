@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=6f383c1b4018c1a8c51ca29c8d3db7fc44a8984bb177fc62c48694502a4c0b1a foundation=false
+-- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=c6941e7beea487b79d05b37f7fa7372263263cab8b4f8b3a929823482f5cfda2 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '132_issue574_cloud_folder_link',
   p_file_name => '132_issue574_cloud_folder_link.sql',
-  p_file_digest => '6f383c1b4018c1a8c51ca29c8d3db7fc44a8984bb177fc62c48694502a4c0b1a',
+  p_file_digest => 'c6941e7beea487b79d05b37f7fa7372263263cab8b4f8b3a929823482f5cfda2',
   p_expected_predecessor => '131_issue528_item_phone_review_status',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -50,6 +50,9 @@ as $$
     and p_url !~ '^https://[^/?#]*@'
     and p_url !~* '(?:\.|%2e|%252e)(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)(?:%3f|%253f|%23|%2523|[?&#/]|$)'
     and p_url !~* '(?:/folders?/|/directories?/|/scl/fo/|/sh/|/home/|/f/|[?&](?:id|folder|folder_id|folderId|directory)=)(?:(?:%20|%2520|%09|%2509|%0a|%250a|%0d|%250d))+(?:[/?&#]|$)'
+    and p_url !~* '[?&](?:id|folder|folder_id|folderId|directory)=\++(?:&|#|$)'
+    and p_url !~* '[?&](?:id|folder|folder_id|folderId|directory)=(?:%(?:[01][0-9a-f]|7f|20))+(?:&|#|$)'
+    and p_url !~* '[?&](?:id|folder|folder_id|folderId|directory)=(?:%25(?:[01][0-9a-f]|7f|20))+(?:&|#|$)'
     and (
       p_url ~* '^https://drive\.google\.com/drive/(?:u/[0-9]+/)?folders/[^/?#]+'
       or p_url ~* '^https://(?:[^/]+\.)?1drv\.ms/(?:[^/?#]*:f:[^/?#]*|f)/'

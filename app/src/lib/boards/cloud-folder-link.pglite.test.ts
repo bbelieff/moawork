@@ -121,6 +121,8 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       "https://drive.google.com/drive/folders/client/contract%2Epdf",
       "https://onedrive.live.com/?id=contract.pdf",
       "https://onedrive.live.com/?id=contract.pdf%3Fdownload%3D1",
+      "https://onedrive.live.com/?id=%00",
+      "https://onedrive.live.com/?id=%1F",
       "https://onedrive.live.com/?cid=only-a-drive-id",
       "https://tenant.sharepoint.com/sites/team/Forms/AllItems.aspx?id=contract.pdf",
       "https://tenant.sharepoint.com/:f:",
@@ -129,6 +131,7 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       "https://www.dropbox.com/home/contract%2Epdf",
       "https://example.com/?folder=%20",
       "https://example.com/?folder=%2520",
+      "https://example.com/?folder=+",
       "https://example.com/?path=home",
       "https://example.com/ordinary-page",
     ]) {
