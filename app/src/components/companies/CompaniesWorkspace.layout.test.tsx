@@ -47,6 +47,8 @@ const model: CompaniesViewModel = {
           },
           ownerName: "담당A",
           statusLabel: "승인",
+          // #531 — 진행기관·승인일은 계약업체 실무 보드에서 읽어 온다.
+          boardFacts: { institution: "기술보증기금", approvedOn: "2026-04-18" },
         },
       ],
     },
@@ -138,7 +140,8 @@ describe("#531 업체관리 현황 — 배치 계약", () => {
   it("④ 자금 건 한 줄의 값이 13열 순서 그대로 들어간다", () => {
     const row = html.slice(html.indexOf("운전자금"));
     // 값이 있는 칸들이 목업의 좌→우 차례 그대로 나온다.
-    const values = ["담당A", "승인", "26-03-04", "50,000,000원", "실행액의 3% · 부가세 별도", "1,000,000원", "26-03-10", "5,000,000원", "26-05-02"];
+    // #531 — 진행기관·승인일이 «자리에» 들어왔다. 예전에는 이 둘이 «—» 였다.
+    const values = ["기술보증기금", "담당A", "승인", "26-03-04", "26-04-18", "50,000,000원", "실행액의 3% · 부가세 별도", "1,000,000원", "26-03-10", "5,000,000원", "26-05-02"];
     const positions = values.map((value) => row.indexOf(value));
     for (const [index, position] of positions.entries()) {
       expect(position, `«${values[index]}» 가 자금 건 줄에 없다`).toBeGreaterThan(-1);

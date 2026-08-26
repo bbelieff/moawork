@@ -115,6 +115,16 @@ const columns: DefaultTabColumn[] = [
   { key: "inspection_date", label: "실사일", type: "date", source: "in", width: 110 },
   { key: "expected_review_end", label: "예상 심사 종료", type: "date", source: "in", width: 130 },
   { key: "review_dday", label: "ƒ심사 D-day", type: "calc", source: "calc", readOnly: true, width: 120 },
+  // ★ 2026-08-26(#531) — «승인일» 을 새로 둔다.
+  //   왜: 업체관리 현황(목업 T.company)의 6번째 열이 «승인» 이고 «날짜» 를 그린다(`dt(d.appr)`).
+  //   그런데 제품 어디에도 «언제 승인됐나» 를 담는 자리가 없었다. 진행상황에 「승인」 상태는
+  //   있지만 그건 «지금 그렇다» 이지 «언제 그렇게 됐나» 가 아니다.
+  //   그래서 그 칸이 영원히 «—» 였다. 자리를 만들어 그 칸을 살린다.
+  //
+  //   ⚠ 컬럼이 «늘어난다»(28→29). 줄이는 것은 FAIL 이지만 늘리는 것은 허용이다(D73).
+  //     목업의 계약업체 실무에는 이 열이 없으므로 qa-app override 에 근거와 함께 등록한다.
+  //   자리는 «심사가 끝나고 → 승인되고 → 실행된다» 는 실제 흐름을 따른다.
+  { key: "approved_on", label: "승인일", type: "date", source: "in", width: 110 },
   { key: "execution_amount", label: "실행액", type: "money", source: "in", width: 120 },
   // ★ 2026-08-25 총괄 직접 지시 — 「수수료율을 계약조건으로 하자」.
   //   원문: 「수수료 %는 앞으로 변동이 생길 수 있는 이슈야. 그래서 수수료 개념을 굳이 %로
@@ -149,9 +159,14 @@ export const CONTRACT_WORK_TAB: DefaultTab = {
    *   DB 라벨이 그것과 «같을 때만» 새 이름으로 옮긴다 — 회사가 직접 바꿔 놨으면 그대로 둔다.
    *   순서는 여기 못 적는다(보드마다 뒤섞인 값이 다르다). 기록된 상태로만 판단한다.
    */
-  revision: 2,
+  // 2026-08-26(#531) — 3 으로 올린다. «승인일» 을 새로 넣었는데, 새 열은 맨 뒤에 붙으므로
+  //   재배치(reorderToDefinition)가 한 번 돌아야 정의 자리로 간다. 그 재배치는 revision 이
+  //   올라갈 때만 돈다.
+  revision: 3,
   previousRevision: {
-    revision: 1,
+    // 라벨 교정은 revision 2 에서 이미 끝났다. 기록이 없는 옛 보드를 위해 그대로 남겨 둔다 —
+    // 지우면 아직 한 번도 진입하지 않은 워크스페이스가 옛 이름에 갇힌다.
+    revision: 2,
     columns: {
       progress_status: { label: "진행상항" },  // 목업 오탈자를 그대로 심었던 자리
       fund_name: { label: "자금명" },          // → 상품명칭 (2026-08-20 지시)

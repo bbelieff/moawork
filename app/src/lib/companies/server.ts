@@ -6,6 +6,8 @@ import { SupabaseCrmSource } from "@/lib/repo/supabase/supabaseCrmSource";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
+import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
+import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
 import { summarizeDealMoney, type DealMoneyView } from "@/lib/companies/status";
 import type { DealLedgerEntry } from "@/lib/accounting/ledger";
 import type { Company, Ctx, Deal } from "@/lib/types";
@@ -24,6 +26,8 @@ export type CompanyDealView = Readonly<{
   ownerName: string | null;
   /** 진행 상태(스테이지 이름). 스테이지 목록을 못 읽었으면 null. */
   statusLabel: string | null;
+  /** #531 — 계약업체 실무 보드에서 읽어 온 진행기관·승인일. 못 읽었으면 둘 다 null. */
+  boardFacts: DealBoardFacts;
 }>;
 
 export type CompanyView = Readonly<{
@@ -64,7 +68,23 @@ export interface CompaniesViewSource {
   loadOwnerNames?(ctx: Ctx): Promise<ReadonlyMap<string, string>>;
   /** 스테이지 id → 이름. 위와 같은 이유로 선택 사항이다. */
   loadStageNames?(ctx: Ctx): Promise<ReadonlyMap<string, string>>;
+  /**
+   * #531 — 딜 id → 계약업체 실무 보드에 적힌 «진행기관»·«승인일».
+   *
+   * ★ 왜 여기서 «복사» 하지 않고 읽어 오는가
+   *   진행기관은 이미 계약업체 실무 보드의 컬럼(`institution`)이다. 같은 값을 `deals` 에도
+   *   두면 두 곳이 서로 어긋나기 시작한다 — 이 저장소가 «수수료(%) vs 계약조건» 으로
+   *   이미 한 번 겪은 일이다(#544). 그래서 원본을 그대로 읽는다.
+   *   이름표들과 마찬가지로 **선택 사항**이다 — 못 읽으면 그 두 칸만 빈다.
+   */
+  loadBoardFacts?(ctx: Ctx): Promise<ReadonlyMap<string, DealBoardFacts>>;
 }
+
+/** 계약업체 실무 보드가 갖고 있는, 업체관리 현황 표가 쓰는 값. */
+export type DealBoardFacts = Readonly<{
+  institution: string | null;
+  approvedOn: string | null;
+}>;
 
 async function createCompaniesViewSource(
   clientFactory: () => Promise<SupabaseClient>,
@@ -94,6 +114,29 @@ async function createCompaniesViewSource(
       return new Map(
         pipelines.flatMap((pipeline) => pipeline.stages.map((stage) => [stage.id, stage.name] as const)),
       );
+    },
+    async loadBoardFacts(ctx) {
+      const boards = new SupabaseBoardsRepo(client);
+      const board = (await boards.listBoards(ctx)).find((row) => row.source === CONTRACT_WORK_TAB_SOURCE);
+      if (!board) return new Map();
+      // 딜에 붙은 아이템만 본다 — 딜과 연결되지 않은 줄은 이 표의 행이 아니다.
+      const items = (await boards.listItems(ctx, board.id)).filter((item) => item.deal_id);
+      if (items.length === 0) return new Map();
+      const values = await boards.listValues(ctx, items.map((item) => item.id));
+      const byItem = new Map<string, Record<string, unknown>>();
+      for (const value of values) {
+        const bucket = byItem.get(value.item_id) ?? {};
+        bucket[value.column_key] = value.value_jsonb;
+        byItem.set(value.item_id, bucket);
+      }
+      const text = (raw: unknown): string | null => {
+        if (typeof raw === "string") return raw.trim() === "" ? null : raw;
+        return raw === null || raw === undefined ? null : String(raw);
+      };
+      return new Map(items.map((item) => [item.deal_id as string, {
+        institution: text(byItem.get(item.id)?.institution),
+        approvedOn: text(byItem.get(item.id)?.approved_on),
+      }]));
     },
   };
 }
@@ -134,11 +177,20 @@ export async function loadCompaniesView(
   }
   const source = options.source ?? await createCompaniesViewSource(options.clientFactory ?? createClient);
   // 이름표 두 벌은 회사·딜과 «같은 물결» 에서 함께 나간다 — 뒤에 붙이면 왕복이 늘어난다.
-  const [companiesResult, dealsResult, ownerNames, stageNames] = await Promise.all([
+  const [companiesResult, dealsResult, ownerNames, stageNames, boardFacts] = await Promise.all([
     Promise.allSettled([source.loadCompanies(ctx)]).then(([r]) => r),
     Promise.allSettled([source.loadDeals(ctx)]).then(([r]) => r),
     labelsOrEmpty(source.loadOwnerNames?.bind(source), ctx),
     labelsOrEmpty(source.loadStageNames?.bind(source), ctx),
+    // #531 — 보드에서 읽어 오는 진행기관·승인일. 이름표들과 같은 «실패해도 화면은 선다» 규칙이다.
+    (async (): Promise<ReadonlyMap<string, DealBoardFacts>> => {
+      if (!source.loadBoardFacts) return new Map();
+      try {
+        return await source.loadBoardFacts(ctx);
+      } catch {
+        return new Map();
+      }
+    })(),
   ]);
 
   if (companiesResult.status === "rejected") return { status: "error" };
@@ -165,6 +217,7 @@ export async function loadCompaniesView(
         deals.map(async (deal): Promise<CompanyDealView> => {
           const ownerName = deal.assigned_to ? ownerNames.get(deal.assigned_to) ?? null : null;
           const statusLabel = deal.stage_id ? stageNames.get(deal.stage_id) ?? null : null;
+          const facts = boardFacts.get(deal.id) ?? { institution: null, approvedOn: null };
           try {
             const { entries, ...summary } = await source.loadLedger(ctx, deal.id);
             return {
@@ -176,9 +229,10 @@ export async function loadCompaniesView(
               money: summarizeDealMoney(entries),
               ownerName,
               statusLabel,
+              boardFacts: facts,
             };
           } catch {
-            return { deal, ledger: { status: "error" }, money: null, ownerName, statusLabel };
+            return { deal, ledger: { status: "error" }, money: null, ownerName, statusLabel, boardFacts: facts };
           }
         }),
       );
