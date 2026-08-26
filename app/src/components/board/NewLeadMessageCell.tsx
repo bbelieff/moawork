@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import type { ItemWithValues } from "@/lib/boards/types";
 import { formatPhone } from "@/lib/format/phone";
 import { BoardModalLayer } from "./BoardDialogPortal";
@@ -28,8 +37,13 @@ function lastMessageStatus(row: ItemWithValues): string {
 }
 
 export function NewLeadMessageCell({ row }: { row: ItemWithValues }) {
+  const menuId = useId();
   const [templateId, setTemplateId] = useState<(typeof MESSAGE_TEMPLATES)[number]["id"]>("delay");
-  const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [position, setPosition] = useState({ left: 0, top: 0, width: 288, maxHeight: 360 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const template = useMemo(
     () => MESSAGE_TEMPLATES.find((entry) => entry.id === templateId) ?? MESSAGE_TEMPLATES[0],
     [templateId],
@@ -37,25 +51,135 @@ export function NewLeadMessageCell({ row }: { row: ItemWithValues }) {
   const phone = formatPhone(typeof row.values.phone === "string" ? row.values.phone : "");
   const recipient = phone && phone !== "확인 필요" ? phone : "연락처 확인 필요";
   const ready = false;
+  const status = lastMessageStatus(row);
+
+  const closeMenu = useCallback((restoreFocus = true) => {
+    setMenuOpen(false);
+    if (restoreFocus) queueMicrotask(() => triggerRef.current?.focus());
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+    const place = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(304, Math.max(264, window.innerWidth - 16));
+      const below = window.innerHeight - rect.bottom - 12;
+      const above = rect.top - 12;
+      const useAbove = below < 250 && above > below;
+      const maxHeight = Math.max(230, Math.min(396, useAbove ? above : below));
+      const renderedHeight = Math.min(maxHeight, menuRef.current?.scrollHeight ?? maxHeight);
+      setPosition({
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+        top: useAbove ? Math.max(8, rect.top - renderedHeight - 4) : rect.bottom + 4,
+        width,
+        maxHeight,
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    queueMicrotask(() => menuRef.current?.querySelector<HTMLElement>("[data-message-option]")?.focus());
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeMenu();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [closeMenu, menuOpen]);
 
   return (
-    <div className="flex min-w-72 items-center gap-1.5 px-1">
-      <select
-        aria-label="메시지 종류"
-        value={templateId}
-        onChange={(event) => setTemplateId(event.target.value as typeof templateId)}
-        className="h-8 min-w-32 flex-1 rounded-md border border-mw-line bg-mw-card px-2 text-xs text-mw-fg"
+    <div className="flex h-7 min-w-64 items-center px-0.5 whitespace-nowrap">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        aria-controls={`${menuId}-menu`}
+        onClick={() => setMenuOpen((current) => !current)}
+        className="flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md border border-mw-line bg-mw-card px-2 text-left text-xs text-mw-fg hover:border-mw-sub focus:outline-none focus:ring-2 focus:ring-mw-primary/25"
       >
-        {MESSAGE_TEMPLATES.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
-      </select>
-      <button type="button" onClick={() => setOpen(true)} className="h-8 rounded-md bg-mw-primary px-3 text-xs font-semibold text-mw-on-accent">
-        보내기
+        <span className="shrink-0 font-semibold">{template.label}</span>
+        <span aria-hidden="true" className="text-mw-sub">·</span>
+        <span className="min-w-0 flex-1 truncate text-[0.68rem] text-mw-sub">{status}</span>
+        <span aria-hidden="true" className="shrink-0 text-[0.58rem] text-mw-sub">▼</span>
       </button>
-      <Link href="/settings/automations#solapi" className="grid h-8 w-8 place-items-center rounded-md border border-mw-line text-mw-sub" aria-label="메시지 발송 설정">⚙</Link>
-      <span className="min-w-16 text-[0.65rem] text-mw-sub">{lastMessageStatus(row)}</span>
 
-      {open ? (
-        <BoardModalLayer label="메시지 발송 확인" onClose={() => setOpen(false)}>
+      {typeof document !== "undefined" && menuOpen ? createPortal(
+        <div
+          className="mw-layer-dialog fixed inset-0"
+          onPointerDown={(event) => { if (event.target === event.currentTarget) closeMenu(); }}
+        >
+          <div
+            ref={menuRef}
+            id={`${menuId}-menu`}
+            role="menu"
+            aria-label="메시지 보내기"
+            style={{ left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight }}
+            className="fixed flex flex-col overflow-hidden rounded-xl border border-mw-line bg-mw-card text-mw-fg shadow-xl"
+          >
+            <div className="border-b border-mw-line px-3 py-2.5">
+              <p className="text-sm font-semibold">메시지 보내기</p>
+              <p className="mt-0.5 text-[0.68rem] text-mw-sub">보낼 문구를 고른 뒤 수신자와 내용을 확인하세요.</p>
+            </div>
+            <div className="min-h-0 overflow-y-auto p-1.5">
+              {MESSAGE_TEMPLATES.map((entry) => {
+                const selected = entry.id === templateId;
+                return (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={selected}
+                    data-message-option
+                    onClick={() => setTemplateId(entry.id)}
+                    className={`flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs hover:bg-mw-bg ${
+                      selected ? "bg-mw-tint-blue font-semibold text-mw-record" : ""
+                    }`}
+                  >
+                    <span aria-hidden="true" className="w-3">{selected ? "✓" : ""}</span>
+                    <span>{entry.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-2 border-t border-mw-line p-2">
+              <Link
+                href="/settings/automations#solapi"
+                role="menuitem"
+                onClick={() => closeMenu(false)}
+                className="grid h-9 place-items-center rounded-lg border border-mw-line px-3 text-xs text-mw-sub hover:bg-mw-bg"
+              >
+                설정
+              </Link>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  closeMenu(false);
+                  setConfirmOpen(true);
+                }}
+                className="ml-auto h-9 rounded-lg bg-mw-primary px-4 text-xs font-semibold text-mw-on-accent"
+              >
+                보내기
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+
+      {confirmOpen ? (
+        <BoardModalLayer label="메시지 발송 확인" onClose={() => setConfirmOpen(false)}>
           <section className="w-[min(30rem,calc(100vw-1.5rem))] rounded-2xl border border-mw-line bg-mw-card p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -63,7 +187,7 @@ export function NewLeadMessageCell({ row }: { row: ItemWithValues }) {
                 <h2 className="mt-1 text-lg font-bold text-mw-fg">이대로 보내시겠습니까?</h2>
                 <p className="mt-1 text-xs text-mw-sub">받는 사람 · {recipient}</p>
               </div>
-              <button type="button" aria-label="발송 확인 닫기" onClick={() => setOpen(false)} className="rounded-md p-2 text-mw-sub hover:bg-mw-bg">✕</button>
+              <button type="button" aria-label="발송 확인 닫기" onClick={() => setConfirmOpen(false)} className="rounded-md p-2 text-mw-sub hover:bg-mw-bg">✕</button>
             </div>
             <div className="mt-4 rounded-xl border border-mw-line bg-mw-bg p-4 text-sm leading-6 text-mw-body">{template.body}</div>
             {!ready ? (
@@ -72,7 +196,7 @@ export function NewLeadMessageCell({ row }: { row: ItemWithValues }) {
               </p>
             ) : null}
             <div className="mt-4 flex justify-end gap-2">
-              <button type="button" onClick={() => setOpen(false)} className="h-10 rounded-lg border border-mw-line px-4 text-sm text-mw-sub">취소</button>
+              <button type="button" onClick={() => setConfirmOpen(false)} className="h-10 rounded-lg border border-mw-line px-4 text-sm text-mw-sub">취소</button>
               <Link href="/settings/automations#solapi" className="grid h-10 place-items-center rounded-lg border border-mw-primary px-4 text-sm font-semibold text-mw-primary">설정 열기</Link>
               <button type="button" disabled={!ready || recipient === "연락처 확인 필요"} className="h-10 rounded-lg bg-mw-primary px-4 text-sm font-semibold text-mw-on-accent disabled:cursor-not-allowed disabled:opacity-45">확인 후 보내기</button>
             </div>

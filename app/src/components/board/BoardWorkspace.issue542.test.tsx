@@ -56,6 +56,8 @@ describe("Issue #542 canonical new-lead projection", () => {
     expect(html).toContain("대한정밀 상세 열기");
     expect(html).toContain(">출동<");
     expect(html).toContain(">메시지 보내기<");
+    expect(html).toContain('class="group h-8 hover:bg-mw-bg');
+    expect(html).toContain("min-h-7");
     expect(html).not.toContain(">상담지연 메시지<");
     expect(html).not.toContain(">부재 안내<");
     expect(html).toContain(">컨택 이동<");

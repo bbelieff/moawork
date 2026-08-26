@@ -7,11 +7,13 @@ export function MemberPicker({
   members,
   value,
   multiple,
+  compact = false,
 }: {
   label: string;
   members: readonly { id: string; label: string }[];
   value: string | readonly string[] | null;
   multiple: boolean;
+  compact?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(
@@ -21,7 +23,7 @@ export function MemberPicker({
   return (
     <details className="relative">
       {selected.size === 0 ? <input type="hidden" name="value" value="" /> : [...selected].map((id) => <input key={id} type="hidden" name="value" value={id} />)}
-      <summary className="min-h-9 cursor-pointer list-none rounded border border-mw-line px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-mw-primary">
+      <summary className={`${compact ? "min-h-7 py-1" : "min-h-9 py-2"} cursor-pointer list-none rounded border border-mw-line px-2 text-xs focus:outline-none focus:ring-2 focus:ring-mw-primary`}>
         {selected.size === 0 ? (multiple ? "선택 없음" : "미배정") : members.filter((member) => selected.has(member.id)).map((member) => member.label).join(", ")}
       </summary>
       <div className="absolute z-40 mt-1 w-56 rounded-xl border border-mw-line bg-mw-card p-2 shadow-xl">
