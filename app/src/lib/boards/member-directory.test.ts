@@ -16,7 +16,7 @@ describe("조직도 사람 선택기 경계", () => {
         { id: "sales", name: "영업", memberCount: 1, parentId: null, headUserId: null, sortOrder: 0 },
         { id: "review", name: "심사", memberCount: 1, parentId: null, headUserId: null, sortOrder: 1 },
       ],
-      members: [{ userId: "a", displayName: "가람", avatarUrl: null, departmentIds: ["sales", "review"], active: true }],
+      members: [{ userId: "a", displayName: "가람", avatarUrl: null, departmentIds: ["sales", "review"], primaryDepartmentId: "sales", active: true }],
       unassignedCount: 0,
     };
     expect(memberPickerEntries(directory)).toEqual([
