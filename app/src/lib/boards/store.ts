@@ -75,6 +75,7 @@ export interface NewGroup {
   color?: string | null;
   sortOrder?: number;
 }
+export interface GroupPatch { name?: string; color?: string | null; }
 
 export interface NewItem {
   title: string;
@@ -117,6 +118,7 @@ export interface BoardsRepo {
   // 그룹(칸반 스윔레인)
   listGroups(ctx: Ctx, boardId: string): Promise<BoardGroup[]>;
   createGroup(ctx: Ctx, boardId: string, input: NewGroup): Promise<BoardGroup>;
+  updateGroup(ctx: Ctx, boardId: string, id: string, patch: GroupPatch): Promise<BoardGroup | undefined>;
   reorderGroups(ctx: Ctx, boardId: string, groupIds: readonly string[]): Promise<BoardGroup[]>;
   deleteGroup(ctx: Ctx, id: string): Promise<boolean>;
   setGroupDetailLayout(ctx: Ctx, id: string, layout: DetailLayoutEntry[] | null): Promise<BoardGroup | undefined>;

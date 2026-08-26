@@ -38,12 +38,13 @@ import {
 import { BoardHeader } from "./BoardHeader";
 import { BoardToolbar } from "./BoardToolbar";
 import { GroupBlock } from "./GroupBlock";
+import { GroupNameEditor } from "./GroupNameEditor";
 import { GroupTable } from "./GroupTable";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
 import { groupPresetName, isGroupPresetChanged } from "@/lib/presets/group-preset";
 import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
-import { NEW_LEAD_DETAIL_ONLY_KEYS } from "@/lib/default-tabs/new-lead";
+import { NEW_LEAD_DETAIL_ONLY_KEYS, presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
 import { NOTICE_KEYS } from "@/lib/notices/types";
 import { buildBlocks } from "./blocks";
 import {
@@ -183,7 +184,9 @@ export function BoardWorkspace({
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const activeColumns = useMemo(() => {
     const visible = columns.filter((column) => !archivedColumnIds.has(column.id));
-    return board.source === NEW_LEAD_TAB_SOURCE ? orderNewLeadColumnsLikeMonday(visible) : visible;
+    return board.source === NEW_LEAD_TAB_SOURCE
+      ? presentNewLeadColumns(orderNewLeadColumnsLikeMonday(visible))
+      : visible;
   }, [archivedColumnIds, board.source, columns]);
   const tableColumns = useMemo(
     () => board.source === NEW_LEAD_TAB_SOURCE
@@ -479,6 +482,7 @@ export function BoardWorkspace({
               rows={visibleRows}
               presetName={groupPresetName(board.name, block.name)}
               presetChanged={isGroupPresetChanged(optimisticOrder[block.key])}
+              nameEditor={block.group && canManageSections ? <GroupNameEditor boardId={board.id} groupId={block.group.id} name={block.name} /> : undefined}
               onOrderDragStart={block.group && canManageSections ? () => { draggedGroupRef.current = block.group!.id; } : undefined}
               onOrderDrop={block.group && canManageSections ? () => dropGroup(block.group!.id) : undefined}
               orderControls={block.group && canManageSections ? (

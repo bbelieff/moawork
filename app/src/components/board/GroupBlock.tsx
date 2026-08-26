@@ -44,6 +44,7 @@ export function GroupBlock({
   columns,
   rows,
   presetMenu,
+  nameEditor,
   orderControls,
   onOrderDragStart,
   onOrderDrop,
@@ -63,6 +64,7 @@ export function GroupBlock({
    * 없으면 이름만 보여 주는 칩으로 되돌아간다.
    */
   presetMenu?: ReactNode;
+  nameEditor?: ReactNode;
   orderControls?: ReactNode;
   onOrderDragStart?: () => void;
   onOrderDrop?: () => void;
@@ -110,6 +112,7 @@ export function GroupBlock({
           <span className="text-sm font-semibold" style={{ color: accent }}>
             {name}
           </span>
+          {nameEditor}
           <span className="rounded-full bg-mw-card px-2 py-0.5 text-[0.65rem] text-mw-sub">
             {rows.length}건{!open && " · 접힘"}
           </span>

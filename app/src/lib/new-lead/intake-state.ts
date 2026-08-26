@@ -1,7 +1,7 @@
 export type NewLeadIntakeState = Readonly<{
   ok: boolean;
   message: string;
-  field?: "title" | "business_registration_type" | "form";
+  field?: "title" | "business_registration_type" | "phone" | "revenue_band" | "region_sido" | "form";
   itemId?: string;
 }>;
 

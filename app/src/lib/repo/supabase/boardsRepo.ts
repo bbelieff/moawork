@@ -4,7 +4,7 @@ import type {
   Board, BoardColumn, BoardGroup, BoardItem, BoardView, CellValue, ItemValue,
 } from "@/lib/boards/types";
 import type {
-  BoardPatch, BoardsRepo, ColumnPatch, DefaultDefinitionState, ItemPatch, NewBoard, NewColumn,
+  BoardPatch, BoardsRepo, ColumnPatch, DefaultDefinitionState, GroupPatch, ItemPatch, NewBoard, NewColumn,
   NewGroup, NewItem, NewView, ViewPatch,
 } from "@/lib/boards/store";
 import { slugifyKey } from "@/lib/repo/local/boardsRepo";
@@ -102,6 +102,7 @@ export class SupabaseBoardsRepo implements BoardsRepo {
 
   async listGroups(ctx: Ctx, boardId: string): Promise<BoardGroup[]> { const q = await this.client.from("board_groups").select("*").eq("org_id", ctx.org.id).eq("board_id", boardId).order("sort_order"); return many<BoardGroup>(q.data, q.error); }
   async createGroup(ctx: Ctx, boardId: string, input: NewGroup): Promise<BoardGroup> { const rows = await this.listGroups(ctx, boardId); const next = rows.length === 0 ? 0 : Math.max(...rows.map((group) => group.sort_order)) + 1; const q = await this.client.from("board_groups").insert({ org_id: ctx.org.id, board_id: boardId, name: input.name, color: input.color ?? null, sort_order: input.sortOrder ?? next }).select("*").single(); return one<BoardGroup>(q.data, q.error); }
+  async updateGroup(ctx: Ctx, boardId: string, id: string, patch: GroupPatch): Promise<BoardGroup | undefined> { const q = await this.client.from("board_groups").update(patch).eq("org_id", ctx.org.id).eq("board_id", boardId).eq("id", id).select("*").maybeSingle(); if (q.error) throw new Error(q.error.message); return (q.data as BoardGroup | null) ?? undefined; }
   async reorderGroups(ctx: Ctx, boardId: string, groupIds: readonly string[]): Promise<BoardGroup[]> { const q = await this.client.rpc("reorder_board_groups", { p_org_id: ctx.org.id, p_board_id: boardId, p_group_ids: [...groupIds] }); if (q.error) throw new Error(q.error.message); return many<BoardGroup>(q.data, null); }
   async deleteGroup(ctx: Ctx, id: string): Promise<boolean> { const q = await this.client.from("board_groups").delete().eq("org_id", ctx.org.id).eq("id", id).select("id"); if (q.error) throw new Error(q.error.message); return (q.data?.length ?? 0) > 0; }
   async setGroupDetailLayout(ctx: Ctx, id: string, layout: DetailLayoutEntry[] | null): Promise<BoardGroup | undefined> {

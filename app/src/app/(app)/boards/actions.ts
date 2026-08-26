@@ -448,8 +448,10 @@ export async function setCellAction(formData: FormData): Promise<void> {
       return;
     }
     const normalized = boardCellValueFromFormData(formData);
+    let changedColumn: import("@/lib/boards/types").BoardColumn | undefined;
     if (graph.client) {
-      const column = (await svc.getBoardDetail(ctx, boardId)).columns.find((candidate) => candidate.key === columnKey);
+      changedColumn = (await svc.getBoardDetail(ctx, boardId)).columns.find((candidate) => candidate.key === columnKey);
+      const column = changedColumn;
       if (!column) throw new UserFacingActionError("기록 항목을 찾을 수 없어요.");
       if (column.type === "person" || column.type === "people") {
         const ids = (Array.isArray(normalized) ? normalized : normalized ? [normalized] : [])
@@ -466,6 +468,18 @@ export async function setCellAction(formData: FormData): Promise<void> {
     const patch: Record<string, import("@/lib/boards/types").CellValue> = { [columnKey]: normalized };
     const { errors } = await svc.setCells(ctx, boardId, itemId, patch);
     await flashCellErrors(itemId, errors);
+    if (graph.client && errors.length === 0 && changedColumn?.type === "status") {
+      try {
+        await notifyBoardItemMoved(graph.client, ctx, {
+          boardId,
+          itemId,
+          eventKey: crypto.randomUUID(),
+        });
+      } catch (notificationError) {
+        // 셀 저장은 이미 커밋됐다. 알림 부작용 실패를 저장 실패로 거짓 표시하지 않는다.
+        console.warn("[board status notification]", boardId, itemId, notificationError);
+      }
+    }
   } catch (error) {
     console.error("[board cell]", boardId, itemId, columnKey, error);
     await flashCellErrors(itemId, [{ key: columnKey, label: columnKey, message: userFacingMessage(error) }]);
@@ -550,6 +564,16 @@ export async function reorderGroupsAction(formData: FormData): Promise<void> {
       throw new UserFacingActionError("그룹 순서를 읽지 못했어요. 새로고침 후 다시 시도해 주세요.");
     }
     await (await boardsService()).reorderGroups(ctx, boardId, groupIds);
+    revalidatePath(`/boards/${boardId}`);
+  });
+}
+
+export async function renameGroupAction(formData: FormData): Promise<void> {
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.section_manage");
+    const boardId = str(formData, "boardId");
+    await (await boardsService()).renameGroup(ctx, boardId, str(formData, "groupId"), str(formData, "name"));
     revalidatePath(`/boards/${boardId}`);
   });
 }

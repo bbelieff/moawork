@@ -104,6 +104,18 @@ describe("보드 생성 — 기본 컬럼 프로비저닝", () => {
   });
 });
 
+describe("그룹 이름 변경", () => {
+  it("같은 보드의 그룹 이름을 바꾸고 다른 보드 id 조합은 거부한다", async () => {
+    const board = await svc.createBoard(owner, { name: "영업" });
+    const other = await svc.createBoard(owner, { name: "다른 보드" });
+    const group = await svc.addGroup(owner, board.board.id, { name: "신규고객" });
+    await expect(svc.renameGroup(owner, board.board.id, group.id, "  우선 상담  "))
+      .resolves.toMatchObject({ name: "우선 상담" });
+    await expect(svc.renameGroup(owner, other.board.id, group.id, "침범"))
+      .rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
 describe("컬럼 추가 · key 유일성", () => {
   it("13타입 컬럼 추가, 같은 라벨은 key 에 접미사", async () => {
     const c1 = await svc.addColumn(owner, SEED_BOARD_TASKS, { label: "금액", type: "number" });

@@ -48,7 +48,10 @@
 
 import type { FieldOption } from "@/lib/types";
 import { CANONICAL_REGIONS } from "@/lib/structure-packs/region-options";
+import { NEW_LEAD_BUSINESS_TYPES } from "@/lib/new-lead/business-types";
+import { NEW_LEAD_REVENUE_BANDS } from "@/lib/new-lead/revenue-bands";
 import { NEW_LEAD_TAB_SOURCE, type DefaultTab, type DefaultTabColumn } from "./types";
+import type { BoardColumn } from "@/lib/boards/types";
 
 /** 목업 색을 그대로 옮긴다. 새 hex 를 만들지 않는다. */
 const GREY = "#c4c4c4";
@@ -123,7 +126,9 @@ function sendColumn(
 const COLUMNS: DefaultTabColumn[] = [
   // 1~2 사람 — 선택지는 멤버 계정에서 온다(D71~D75). 정적 옵션 금지.
   { key: "owner", label: "담당자", type: "person", source: "act", width: 120 },
-  { key: "collaborators", label: "협업자", type: "people", source: "act", width: 130 },
+  // 설치 정본은 목업의 역사적 라벨을 보존하고, 실제 화면은 presentNewLeadColumns에서
+  // 최신 사용자 어휘인 «출동»으로 바꿔 보여 준다.
+  { key: "collaborators", label: "협업자", type: "people", source: "act", width: 150 },
 
   // 3~12 회사·접수 정보
   { key: "applied_on", label: "신청일", type: "date", source: "auto", width: 120 },
@@ -135,11 +140,7 @@ const COLUMNS: DefaultTabColumn[] = [
     label: "사업자 유형",
     type: "select",
     source: "auto",
-    // 002 field_presets.biz_reg_type 과 같은 6종 — 구조 팩도 이 6종을 쓴다(중복 정의 금지).
-    options: opts(
-      ["개인/면세", GREY], ["개인/간이", GREY], ["개인/일반", GREY],
-      ["개인/성실", GREY], ["법인", GREY], ["법인/성실", GREY],
-    ),
+    options: opts(...NEW_LEAD_BUSINESS_TYPES.map((label) => [label, GREY] as const)),
     width: 110,
   },
   {
@@ -158,10 +159,7 @@ const COLUMNS: DefaultTabColumn[] = [
     label: "매출 구간",
     type: "select",
     source: "auto",
-    // 목업은 선택지를 비워 두었다(값이 예시라 지워진 자리). 구간 정의는 회사가 채운다 —
-    // 지어내면 남의 회사 기준이 제품에 박힌다. select 는 옵션 1개 이상이 필요하므로
-    // «미정» 한 칸만 두고 회사가 편집한다.
-    options: opts(["미정", GREY]),
+    options: opts(...NEW_LEAD_REVENUE_BANDS.map((label) => [label, GREY] as const)),
     width: 110,
   },
   {
@@ -177,6 +175,8 @@ const COLUMNS: DefaultTabColumn[] = [
   { key: "address_detail", label: "주소", type: "text", source: "auto", width: 180 },
   { key: "documents", label: "파일", type: "file", source: "in", width: 110 },
   { key: "consult_notes", label: "상담내용", type: "text", source: "in", width: 220 },
+  // 과거의 출동 예정/완료 상태값. 설치/데이터는 보존하되 실제 신규리드 화면에서는 숨기고
+  // `collaborators` 사람 계보를 «출동»으로 보여 준다.
   {
     key: "dispatch_status",
     label: "출동",
@@ -268,6 +268,63 @@ const COLUMNS: DefaultTabColumn[] = [
 /** 협업자는 상세에서 담당자와 같은 사람 선택기로 편집한다. 컨택 이동은 최신 사용자
  * 확정에 따라 표 맨 오른쪽 고정 관문과 상세 CTA 양쪽에서 접근할 수 있어야 한다. */
 export const NEW_LEAD_DETAIL_ONLY_KEYS = new Set<string>();
+
+export const NEW_LEAD_MESSAGE_COLUMN_KEYS = new Set([
+  "absence_notice", "consult1_notice", "confirm2_notice", "delay_notice",
+  "malicious_absence_notice",
+]);
+
+/** 기존 데이터 컬럼은 보존하면서 신규리드 화면만 하나의 업무 조작 열로 합친다. */
+export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardColumn[] {
+  const presented: BoardColumn[] = [];
+  let messageInserted = false;
+  for (const column of columns) {
+    if (column.key === "dispatch_status") continue;
+    if (NEW_LEAD_MESSAGE_COLUMN_KEYS.has(column.key)) {
+      if (!messageInserted) {
+        presented.push({
+          ...column,
+          id: `${column.id}:message-action`,
+          key: "message_action",
+          label: "메시지 보내기",
+          type: "text",
+          source: "msg",
+          rightPinned: false,
+          options_jsonb: null,
+          width: 320,
+          is_readonly: false,
+          description: "상담 안내 문구를 고르고 수신자와 본문을 확인한 뒤 발송",
+        });
+        messageInserted = true;
+      }
+      continue;
+    }
+    if (column.key === "collaborators") {
+      presented.push({
+        ...column,
+        label: "출동",
+        description: "최초 접수자부터 다음 담당자까지 상태변경 알림을 함께 받는 인계 계보",
+      });
+      continue;
+    }
+    if (column.key === "biz_reg_type") {
+      presented.push({
+        ...column,
+        options_jsonb: { options: opts(...NEW_LEAD_BUSINESS_TYPES.map((label) => [label, GREY] as const)) },
+      });
+      continue;
+    }
+    if (column.key === "revenue_band") {
+      presented.push({
+        ...column,
+        options_jsonb: { options: opts(...NEW_LEAD_REVENUE_BANDS.map((label) => [label, GREY] as const)) },
+      });
+      continue;
+    }
+    presented.push(column);
+  }
+  return presented;
+}
 
 export const NEW_LEAD_TAB: DefaultTab = {
   key: "new",
