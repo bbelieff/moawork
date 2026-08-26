@@ -7,15 +7,20 @@ import { isRole, type Role } from "@/lib/perm/matrix";
 import { isManager } from "@/lib/auth/roles";
 import { OrgLogoCard } from "@/components/org-logo/OrgLogoCard";
 import { loadOrgLogoView } from "@/lib/org-logo/server";
+import { loadOrgChart } from "@/lib/org/departments";
+import { DepartmentTree } from "@/components/member-organization/DepartmentTree";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function MembersPage({ searchParams }: { searchParams: Promise<{ role?: string }> }) {
   const ctx = await getSession();
   const requestedRole = (await searchParams).role;
   const activeRole: Role = requestedRole && isRole(requestedRole) ? requestedRole : "member";
-  const [summary, permission, logo] = await Promise.all([
+  const [summary, permission, logo, chart] = await Promise.all([
     loadMemberOrgSummary(ctx),
     loadPermissionMatrix(ctx.org.id),
     loadOrgLogoView(ctx.org.id),
+    // #571 — 조직도. 다른 읽기와 «같은 물결» 에서 나간다(뒤에 붙이면 왕복이 는다).
+    loadOrgChart(ctx, createClient),
   ]);
   const viewerRole: Role = ctx.role === "owner" || ctx.role === "admin" ? ctx.role : "member";
   const permissionAccess = permission.ok
@@ -39,6 +44,9 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
          그 네 가지는 아직 제품에 없고, 그건 이 카드와 별개의 후속이다.)
       */}
       <OrgLogoCard orgName={ctx.org.name} logo={logo} canManage={isManager(ctx.role)} />
+
+      {/* #571 — 목업의 조직관리는 부서 트리가 중심이다. 사람 목록보다 위에 둔다. */}
+      <DepartmentTree chart={chart} />
 
       {summary.kind === "ready" ? (
         <MemberOrganizationChart
