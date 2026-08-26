@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=5c42474ae9c13eab370ad5f23c0440ddb2593b8db76bb1643a4c8a7c2085b7ad foundation=false
+-- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=2d61877572f0f8a1b124b52fd6fec652fd08520e383a9f27cd67d1eede00d084 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '132_issue574_cloud_folder_link',
   p_file_name => '132_issue574_cloud_folder_link.sql',
-  p_file_digest => '5c42474ae9c13eab370ad5f23c0440ddb2593b8db76bb1643a4c8a7c2085b7ad',
+  p_file_digest => '2d61877572f0f8a1b124b52fd6fec652fd08520e383a9f27cd67d1eede00d084',
   p_expected_predecessor => '131_issue528_item_phone_review_status',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -400,13 +400,13 @@ begin
   elsif p_provider = 'onedrive'
         and p_folder_ref ~ '^sharepoint\|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\|:f:/[A-Za-z0-9._!~-]+(?:/[A-Za-z0-9._!~-]+)*$'
         and p_folder_ref !~ '(^|/)\.{1,2}(/|$)'
-        and p_folder_ref !~* '\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)$' then
+        and p_folder_ref !~* '\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)(?:/|$)' then
     v_match := pg_catalog.regexp_match(p_folder_ref, '^sharepoint\|([^|]+)\|(.+)$');
     v_url := 'https://' || v_match[1] || '.sharepoint.com/' || v_match[2];
   elsif p_provider = 'dropbox'
         and p_folder_ref ~ '^(?:scl/fo|sh|home)/[A-Za-z0-9._!~-]+(?:/[A-Za-z0-9._!~-]+)*$'
         and p_folder_ref !~ '(^|/)\.{1,2}(/|$)'
-        and p_folder_ref !~* '\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)$' then
+        and p_folder_ref !~* '\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)(?:/|$)' then
     v_url := 'https://www.dropbox.com/' || p_folder_ref;
   else
     return null;

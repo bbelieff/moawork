@@ -14,6 +14,12 @@ describe("Issue #574 cloud folder URL", () => {
     expect(inspectCloudFolderUrl(raw)).toMatchObject({ ok: true, provider, providerLabel: label, folderRef });
   });
 
+  it("keeps emitted references within the database boundary", () => {
+    const oversizedToken = "a".repeat(1510);
+    expect(inspectCloudFolderUrl(`https://tenant.sharepoint.com/:f:/g/${oversizedToken}`).ok).toBe(false);
+    expect(inspectCloudFolderUrl(`https://www.dropbox.com/scl/fo/${oversizedToken}`).ok).toBe(false);
+  });
+
   it.each([
     "javascript:alert(1)",
     "data:text/html,unsafe",

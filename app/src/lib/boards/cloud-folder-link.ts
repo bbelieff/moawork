@@ -194,7 +194,7 @@ export function inspectCloudFolderUrl(raw: string): CloudFolderUrlResult {
     const folderRef = segments.join("/");
     result = { ok: true, provider: "dropbox", providerLabel: "Dropbox", folderRef, url: `https://www.dropbox.com/${folderRef}` };
   }
-  if (!result) {
+  if (!result || result.folderRef.length > 1500) {
     return {
       ok: false,
       message: "Google Drive·OneDrive·Dropbox 등의 폴더 공유 주소를 입력해 주세요.",
