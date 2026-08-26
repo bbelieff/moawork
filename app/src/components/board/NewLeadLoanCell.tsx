@@ -12,13 +12,38 @@ import { BoardModalLayer } from "./BoardDialogPortal";
 
 const CONTROL = "h-9 w-full rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg outline-none focus:border-mw-record";
 
-function emptyRecord(): ExistingLoanRecord {
+type ExistingLoanDraft = Omit<ExistingLoanRecord, "amount" | "rate"> & {
+  amount: string;
+  rate: string;
+};
+
+function toDraft(records: readonly ExistingLoanRecord[]): ExistingLoanDraft[] {
+  return records.map((record) => ({
+    ...record,
+    amount: record.amount === null ? "" : String(record.amount),
+    rate: record.rate === null ? "" : String(record.rate),
+  }));
+}
+
+function toSummary(records: readonly ExistingLoanDraft[]): ExistingLoanRecord[] {
+  return records.map((record) => {
+    const amount = Number(record.amount.replaceAll(",", ""));
+    const rate = Number(record.rate);
+    return {
+      ...record,
+      amount: record.amount.trim() && Number.isFinite(amount) ? amount : null,
+      rate: record.rate.trim() && Number.isFinite(rate) ? rate : null,
+    };
+  });
+}
+
+function emptyRecord(): ExistingLoanDraft {
   return {
     id: crypto.randomUUID(),
     provider: "",
     month: "",
-    amount: null,
-    rate: null,
+    amount: "",
+    rate: "",
     terms: "",
     notes: "",
   };
@@ -35,20 +60,20 @@ export function NewLeadLoanCell({
   values: Readonly<Record<string, CellValue | undefined>>;
   readOnly: boolean;
 }) {
-  const initialRecords = existingLoanRecordsFromValues(values);
-  const [records, setRecords] = useState<ExistingLoanRecord[]>(initialRecords);
+  const initialRecords = toDraft(existingLoanRecordsFromValues(values));
+  const [records, setRecords] = useState<ExistingLoanDraft[]>(initialRecords);
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(saveNewLeadLoanProfileAction, { ok: false, message: "" });
-  const summary = existingLoanRecordsSummary(records);
+  const summary = existingLoanRecordsSummary(toSummary(records));
   const openEditor = () => {
-    setRecords(existingLoanRecordsFromValues(values));
+    setRecords(toDraft(existingLoanRecordsFromValues(values)));
     setOpen(true);
   };
   const closeEditor = () => {
-    setRecords(existingLoanRecordsFromValues(values));
+    setRecords(toDraft(existingLoanRecordsFromValues(values)));
     setOpen(false);
   };
-  const updateRecord = (id: string, patch: Partial<ExistingLoanRecord>) => {
+  const updateRecord = (id: string, patch: Partial<ExistingLoanDraft>) => {
     setRecords((current) => current.map((record) => record.id === id ? { ...record, ...patch } : record));
   };
 
@@ -95,10 +120,10 @@ export function NewLeadLoanCell({
                       <input type="month" value={record.month} onChange={(event) => updateRecord(record.id, { month: event.target.value })} className={CONTROL} />
                     </label>
                     <label className="grid gap-1 text-xs text-mw-sub">금액
-                      <input inputMode="numeric" value={record.amount ?? ""} onChange={(event) => updateRecord(record.id, { amount: event.target.value ? Number(event.target.value.replaceAll(",", "")) : null })} className={CONTROL} placeholder="원 단위" />
+                      <input inputMode="numeric" value={record.amount} onChange={(event) => updateRecord(record.id, { amount: event.target.value })} className={CONTROL} placeholder="원 단위" />
                     </label>
                     <label className="grid gap-1 text-xs text-mw-sub">금리
-                      <div className="relative"><input inputMode="decimal" value={record.rate ?? ""} onChange={(event) => updateRecord(record.id, { rate: event.target.value ? Number(event.target.value) : null })} className={`${CONTROL} pr-7`} placeholder="0.0" /><span className="pointer-events-none absolute right-2.5 top-2.5 text-xs text-mw-sub">%</span></div>
+                      <div className="relative"><input inputMode="decimal" value={record.rate} onChange={(event) => updateRecord(record.id, { rate: event.target.value })} className={`${CONTROL} pr-7`} placeholder="0.0" /><span className="pointer-events-none absolute right-2.5 top-2.5 text-xs text-mw-sub">%</span></div>
                     </label>
                     <label className="grid gap-1 text-xs text-mw-sub sm:col-span-2">조건
                       <input value={record.terms} onChange={(event) => updateRecord(record.id, { terms: event.target.value })} className={CONTROL} placeholder="예: 만기일시상환, 보증서 90%" />

@@ -9,7 +9,9 @@ describe("Issue #589 신규리드 금융 셀", () => {
     expect(source).toContain("crypto.randomUUID()");
     expect(source).toContain("＋ 기대출 추가");
     expect(source).toContain("const closeEditor = () =>");
-    expect(source).toContain("setRecords(existingLoanRecordsFromValues(values))");
+    expect(source).toContain("toDraft(existingLoanRecordsFromValues(values))");
+    expect(source).toContain("rate: event.target.value");
+    expect(source).not.toContain("rate: event.target.value ? Number(");
     for (const key of ["provider", "month", "amount", "rate", "terms", "notes"]) {
       expect(source).toContain(`${key}:`);
     }
