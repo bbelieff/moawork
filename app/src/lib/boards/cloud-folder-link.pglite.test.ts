@@ -123,6 +123,8 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       "https://onedrive.live.com/?id=abc%00def",
       "https://example.com/?folder=+%20",
       "https://example.com/folders/%ZZ",
+      "https://example.com%2Ffolders%2Fclient",
+      "https://drive.google.com%2Fdrive%2Ffolders%2Ffolder-id",
       "https://example.com/folders/contract%252Epdf",
       "https://example.com/an-ordinary-page",
     ];
@@ -157,6 +159,8 @@ describe("Issue #574 canonical cloud folder persistence", () => {
       "https://example.com/folders/contract.pdf",
       "https://example.com/folders/contract%2Epdf",
       "https://example.com/folders/%ZZ",
+      "https://example.com%2Ffolders%2Fclient",
+      "https://drive.google.com%2Fdrive%2Ffolders%2Ffolder-id",
       "https://www.dropbox.com/home/contract%2Epdf",
       "https://example.com/?folder=%20",
       "https://example.com/?folder=%2520",

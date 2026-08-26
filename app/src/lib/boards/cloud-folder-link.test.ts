@@ -20,6 +20,8 @@ describe("Issue #574 cloud folder URL", () => {
     "data:text/html,unsafe",
     "http://drive.google.com/drive/folders/folder-id",
     "https://user:password@example.com/folders/a",
+    "https://example.com%2Ffolders%2Fclient",
+    "https://drive.google.com%2Fdrive%2Ffolders%2Ffolder-id",
     "https://drive.google.com/file/d/file-id/view",
     "https://drive.google.com/drive/folders/",
     "https://drive.google.com/drive/folders/%20",
