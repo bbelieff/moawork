@@ -130,5 +130,5 @@ export async function assignDepartmentMemberAction(formData: FormData): Promise<
     p_request_id: randomUUID(),
   });
   if (error || !accepted(data)) return failure(reason(error));
-  return finish(departmentId ? "구성원의 주부서를 저장했어요." : "구성원을 미배정으로 옮겼어요.");
+  return finish(departmentId ? "구성원의 주부서를 저장했어요." : "구성원의 주부서 지정을 해제했어요.");
 }

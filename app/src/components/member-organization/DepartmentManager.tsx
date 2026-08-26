@@ -119,7 +119,7 @@ export function DepartmentManager({ chart, canManage, actions = DEFAULT_ACTIONS 
         <div className="flex gap-2 text-xs tabular-nums text-zinc-500">
           <span className="rounded-full bg-zinc-100 px-2.5 py-1 dark:bg-zinc-900">부서 {chart.departments.length}</span>
           <span className="rounded-full bg-zinc-100 px-2.5 py-1 dark:bg-zinc-900">조직원 {activeMembers.length}</span>
-          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800 dark:bg-amber-950 dark:text-amber-200">미배정 {chart.unassignedCount}</span>
+          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800 dark:bg-amber-950 dark:text-amber-200">주부서 미지정 {chart.unassignedCount}</span>
         </div>
       </header>
 

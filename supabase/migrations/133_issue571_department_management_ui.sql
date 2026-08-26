@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=133_issue571_department_management_ui predecessor=132_issue574_cloud_folder_link digest=c6e6fa91a7c7bade4decf016fda266c3b067143785b326b01e7e38f11ad709e1 foundation=false
+-- moa-migration-guard: logical_key=133_issue571_department_management_ui predecessor=132_issue574_cloud_folder_link digest=93c301fabb296036437ae5430d183691070769fa6b5c173395e96704f207f1d8 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '133_issue571_department_management_ui',
   p_file_name => '133_issue571_department_management_ui.sql',
-  p_file_digest => 'c6e6fa91a7c7bade4decf016fda266c3b067143785b326b01e7e38f11ad709e1',
+  p_file_digest => '93c301fabb296036437ae5430d183691070769fa6b5c173395e96704f207f1d8',
   p_expected_predecessor => '132_issue574_cloud_folder_link',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -206,14 +206,26 @@ begin
   end if;
 
   if p_dept_id is null then
-    update public.departments set head_user_id = null, updated_at = now()
-     where org_id = p_org_id and head_user_id = p_user_id;
     delete from public.department_members
+     where org_id = p_org_id and user_id = p_user_id and is_primary
+       and not exists (
+         select 1 from public.departments d
+          where d.id = department_members.dept_id and d.org_id = p_org_id
+            and d.head_user_id = p_user_id
+       );
+    update public.department_members
+       set is_primary = false
      where org_id = p_org_id and user_id = p_user_id and is_primary;
   else
-    update public.departments set head_user_id = null, updated_at = now()
-     where org_id = p_org_id and head_user_id = p_user_id and id <> p_dept_id;
     delete from public.department_members
+     where org_id = p_org_id and user_id = p_user_id and is_primary and dept_id <> p_dept_id
+       and not exists (
+         select 1 from public.departments d
+          where d.id = department_members.dept_id and d.org_id = p_org_id
+            and d.head_user_id = p_user_id
+       );
+    update public.department_members
+       set is_primary = false
      where org_id = p_org_id and user_id = p_user_id and is_primary and dept_id <> p_dept_id;
     insert into public.department_members(org_id, dept_id, user_id, role, is_primary)
     values (p_org_id, p_dept_id, p_user_id, 'member', true)

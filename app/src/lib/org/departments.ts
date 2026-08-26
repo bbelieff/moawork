@@ -158,9 +158,9 @@ export async function loadOrgChart(
         memberCount: counts.get(row.id) ?? 0,
       })),
       members: memberList,
-      // 목업이 이 숫자를 머리에 적는다 — 「부서 N · 조직원 N · 미배정 N」.
-      // 활성 멤버만 센다. 나간 사람이 «미배정» 으로 남으면 할 일이 있는 것처럼 보인다.
-      unassignedCount: memberList.filter((member) => member.active && member.departmentIds.length === 0).length,
+      // 이 화면이 관리하는 select는 겸직 전체가 아니라 «주부서»다.
+      // 활성 멤버 가운데 주부서가 없는 사람만 세며, 보조 소속은 그대로 보존한다.
+      unassignedCount: memberList.filter((member) => member.active && member.primaryDepartmentId === null).length,
     };
   } catch {
     return { kind: "error" };

@@ -156,6 +156,28 @@ describe("#571 부서관리 manager RPC", () => {
     expect((await db.query("select operation from public.org_department_audit where actor_user_id=$1 order by created_at,id", [id.adminA])).rows).toHaveLength(6);
   });
 
+  it("주부서를 바꾸거나 해제해도 기존 보조 소속과 그 부서의 부서장을 지우지 않는다", async () => {
+    const { db } = await boot();
+    await db.query("update public.departments set head_user_id=$1 where id=$2", [id.memberA, id.deptA]);
+    await db.query("update public.department_members set role='head' where org_id=$1 and dept_id=$2 and user_id=$3", [id.orgA, id.deptA, id.memberA]);
+
+    await as(db, id.adminA, `select public.manage_org_department_create('${id.orgA}',null,'새 주부서','30000000-0000-4000-8000-000000000011')`);
+    const target = await db.query<{ id: string }>("select id from public.departments where org_id=$1 and name='새 주부서'", [id.orgA]);
+    await as(db, id.adminA, `select public.manage_org_department_member('${id.orgA}','${id.memberA}','${target.rows[0].id}','30000000-0000-4000-8000-000000000012')`);
+
+    expect((await db.query("select dept_id,role,is_primary from public.department_members where org_id=$1 and user_id=$2 order by dept_id", [id.orgA, id.memberA])).rows).toEqual([
+      { dept_id: id.deptA, role: "head", is_primary: false },
+      { dept_id: target.rows[0].id, role: "member", is_primary: true },
+    ]);
+    expect((await db.query("select head_user_id from public.departments where id=$1", [id.deptA])).rows).toEqual([{ head_user_id: id.memberA }]);
+
+    await as(db, id.adminA, `select public.manage_org_department_member('${id.orgA}','${id.memberA}',null,'30000000-0000-4000-8000-000000000013')`);
+    expect((await db.query("select dept_id,role,is_primary from public.department_members where org_id=$1 and user_id=$2", [id.orgA, id.memberA])).rows).toEqual([
+      { dept_id: id.deptA, role: "head", is_primary: false },
+    ]);
+    expect((await db.query("select head_user_id from public.departments where id=$1", [id.deptA])).rows).toEqual([{ head_user_id: id.memberA }]);
+  });
+
   it("owner와 admin만 쓰고 member·외부인·비활성 대상·타조직 참조는 변화0으로 거부한다", async () => {
     const { db } = await boot();
     await as(db, id.ownerA, `select public.manage_org_department_rename('${id.orgA}','${id.deptA}','대표 변경','40000000-0000-4000-8000-000000000001')`);

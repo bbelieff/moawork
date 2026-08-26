@@ -21,7 +21,7 @@ const chart: OrgChart = {
     { userId: "00000000-0000-4000-8000-0000000000e1", displayName: "테스트 구성원", avatarUrl: null, departmentIds: ["00000000-0000-4000-8000-0000000000d1"], primaryDepartmentId: "00000000-0000-4000-8000-0000000000d1", active: true },
     { userId: "00000000-0000-4000-8000-0000000000e2", displayName: "퇴사 구성원", avatarUrl: null, departmentIds: [], primaryDepartmentId: null, active: false },
   ],
-  unassignedCount: 0,
+  unassignedCount: 1,
 };
 
 describe("#571 조직도 관리 화면", () => {
@@ -31,6 +31,7 @@ describe("#571 조직도 관리 화면", () => {
     expect(html).toContain("부서 구조");
     expect(html).toContain("운영");
     expect(html).toContain("심사");
+    expect(html).toContain("주부서 미지정 1");
     expect(html).toContain("부서 만들기");
     expect(html).toContain("이름 저장");
     expect(html).toContain("위치 저장");

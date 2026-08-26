@@ -99,5 +99,5 @@ export async function visualAssignDepartmentMemberAction(formData: FormData): Pr
   if (departmentId) state.assignments[userId] = departmentId;
   else delete state.assignments[userId];
   await write(state);
-  return ok(departmentId ? "구성원의 주부서를 저장했어요." : "구성원을 미배정으로 옮겼어요.");
+  return ok(departmentId ? "구성원의 주부서를 저장했어요." : "구성원의 주부서 지정을 해제했어요.");
 }

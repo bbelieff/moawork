@@ -78,12 +78,14 @@ describe("#571 canonical 조직도 adapter", () => {
       ],
       department_members: [
         { dept_id: "active-dept", user_id: "active", is_primary: true },
+        { dept_id: "active-dept", user_id: "secondary-only", is_primary: false },
         { dept_id: "active-dept", user_id: "retired", is_primary: true },
         // DB 조회는 archived 부서 배정을 함께 줄 수 있다. adapter가 현재 트리 기준으로 다시 거른다.
         { dept_id: "archived-dept", user_id: "active", is_primary: false },
       ],
       org_members: [
         { user_id: "active", status: "active", users: { name: "가람", avatar_url: "https://example.test/a.png" } },
+        { user_id: "secondary-only", status: "active", users: { name: "겸직", avatar_url: null } },
         { user_id: "retired", status: "inactive", users: { name: "나감", avatar_url: null } },
       ],
     };
@@ -117,12 +119,13 @@ describe("#571 canonical 조직도 adapter", () => {
     expect(calls[2].columns).toContain("avatar_url");
     expect(chart).toEqual({
       kind: "ready",
-      departments: [{ id: "active-dept", name: "영업", parentId: null, headUserId: "active", sortOrder: 0, memberCount: 1 }],
+      departments: [{ id: "active-dept", name: "영업", parentId: null, headUserId: "active", sortOrder: 0, memberCount: 2 }],
       members: [
         { userId: "active", displayName: "가람", avatarUrl: "https://example.test/a.png", departmentIds: ["active-dept"], primaryDepartmentId: "active-dept", active: true },
+        { userId: "secondary-only", displayName: "겸직", avatarUrl: null, departmentIds: ["active-dept"], primaryDepartmentId: null, active: true },
         { userId: "retired", displayName: "나감", avatarUrl: null, departmentIds: ["active-dept"], primaryDepartmentId: "active-dept", active: false },
       ],
-      unassignedCount: 0,
+      unassignedCount: 1,
     });
   });
 });
