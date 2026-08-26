@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=d4ae8e87f7dc7a3923df2a83a4974e86f25c925b458562c876f0707ce4099b6d foundation=false
+-- moa-migration-guard: logical_key=132_issue574_cloud_folder_link predecessor=131_issue528_item_phone_review_status digest=77c41dfe6a0a1871e8ced498c88a6ef8b22f3ef46f32e2ac48cfa7edb193e6db foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '132_issue574_cloud_folder_link',
   p_file_name => '132_issue574_cloud_folder_link.sql',
-  p_file_digest => 'd4ae8e87f7dc7a3923df2a83a4974e86f25c925b458562c876f0707ce4099b6d',
+  p_file_digest => '77c41dfe6a0a1871e8ced498c88a6ef8b22f3ef46f32e2ac48cfa7edb193e6db',
   p_expected_predecessor => '131_issue528_item_phone_review_status',
   p_executor => 'DG',
   p_thread_id => '019fe78c-cb3f-79f1-92e5-ea72b7d222e0',
@@ -96,25 +96,30 @@ set search_path = ''
 as $$
   select
     length(coalesce(p_url, '')) between 10 and 2048
-    and p_url ~ '^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]+)?(?:/|$)'
+    and p_url ~ '^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?(?:/|$)'
     and p_url !~ '^https://[^/?#]*@'
+    and (
+      substring(p_url from '^https://[^/:]+:([0-9]{1,5})(?:/|$)') is null
+      or substring(p_url from '^https://[^/:]+:([0-9]{1,5})(?:/|$)')::integer between 0 and 65535
+    )
     and decoded_url is not null
     and decoded_url ~ '^https://[^[:space:]/?#]+(?::[0-9]+)?(?:/|$)'
     and decoded_url !~ '^https://[^/?#]*@'
     and decoded_url !~ '[[:cntrl:]]'
     and decoded_url !~* '\.(?:pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|png|jpe?g|gif|webp|mp3|mp4|mov)(?:[?&#/]|$)'
     and decoded_url !~* '[?&](?:id|folder|folder_id|folderId|directory)=[+[:space:]]*(?:&|#|$)'
+    and decoded_url !~* '(?:/folders?|/directories?|/scl/fo|/sh|/home|/f)/[[:space:]]*(?:[/?#]|$)'
     and (
-      decoded_url ~* '^https://drive\.google\.com/drive/(?:u/[0-9]+/)?folders/[^/?#]*[^[:space:]/?#][^/?#]*(?:[/?#]|$)'
-      or decoded_url ~* '^https://(?:[^/]+\.)?1drv\.ms/(?:[^/?#]*:f:[^/?#]*|f)/[^/?#]*[^[:space:]/?#][^/?#]*(?:[/?#]|$)'
-      or decoded_url ~* '^https://(?:[^/]+\.)?onedrive\.live\.com/.*(?::f:[^/?#]*/[^/?#]*[^[:space:]/?#][^/?#]*(?:[/?#]|$)|[?&]id=[^&#]*[^[:space:]&#][^&#]*(?:&|#|$))'
-      or decoded_url ~* '^https://[^/]+\.sharepoint\.com/.*(?::f:[^/?#]*/[^/?#]*[^[:space:]/?#][^/?#]*(?:[/?#]|$)|/Forms/AllItems\.aspx[^#]*[?&]id=[^&#]*[^[:space:]&#][^&#]*(?:&|#|$))'
-      or decoded_url ~* '^https://(?:www\.)?dropbox\.com/(?:scl/fo|sh|home)/[^/?#]*[^[:space:]/?#][^/?#]*(?:[/?#]|$)'
+      p_url ~* '^https://drive\.google\.com/drive/(?:u/[0-9]+/)?folders/[^/?#]+'
+      or p_url ~* '^https://(?:[^/]+\.)?1drv\.ms/(?:[^/?#]*:f:[^/?#]*|f)/[^/?#]+'
+      or p_url ~* '^https://(?:[^/]+\.)?onedrive\.live\.com/.*(?::f:[^/?#]*/[^/?#]+|[?&]id=[^&#]+)'
+      or p_url ~* '^https://[^/]+\.sharepoint\.com/.*(?::f:[^/?#]*/[^/?#]+|/Forms/AllItems\.aspx[^#]*[?&]id=[^&#]+)'
+      or p_url ~* '^https://(?:www\.)?dropbox\.com/(?:scl/fo|sh|home)/[^/?#]+'
       or (
-        decoded_url !~* '^https://(?:drive\.google\.com|(?:[^/]+\.)?1drv\.ms|(?:[^/]+\.)?onedrive\.live\.com|[^/]+\.sharepoint\.com|(?:www\.)?dropbox\.com)(?:/|$)'
+        p_url !~* '^https://(?:drive\.google\.com|(?:[^/]+\.)?1drv\.ms|(?:[^/]+\.)?onedrive\.live\.com|[^/]+\.sharepoint\.com|(?:www\.)?dropbox\.com)(?:/|$)'
         and (
-          decoded_url ~* '^https://[^/?#]+/(?:[^?#]*/)?(?:folders?|directories?)/[^/?#]*[^[:space:]/?#][^/?#]*(?:[/?#]|$)'
-          or decoded_url ~* '^https://[^/?#]+/.*[?&](?:folder|folder_id|folderId|directory)=[^&#]*[^[:space:]&#][^&#]*(?:&|#|$)'
+          p_url ~* '^https://[^/?#]+/(?:[^?#]*/)?(?:folders?|directories?)/[^/?#]+'
+          or p_url ~* '^https://[^/?#]+/.*[?&](?:folder|folder_id|folderId|directory)=[^&#]+'
         )
       )
     )
