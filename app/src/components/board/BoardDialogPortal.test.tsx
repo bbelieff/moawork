@@ -43,4 +43,27 @@ describe("Issue #549 board dialog portal", () => {
     await act(async () => dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(closed).toBe(true);
   });
+
+  it("모달은 포커스를 가두고 닫힐 때 호출자에게 돌려준다", async () => {
+    const opener = document.createElement("button");
+    opener.textContent = "열기";
+    document.body.append(opener);
+    opener.focus();
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(<BoardModalLayer label="포커스" onClose={() => {}} returnFocusRef={{ current: opener }}><button>첫째</button><button>둘째</button></BoardModalLayer>);
+    });
+    await act(async () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    const buttons = document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button');
+    expect(document.activeElement).toBe(buttons[0]);
+    buttons[1].focus();
+    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true })));
+    expect(document.activeElement).toBe(buttons[0]);
+    await act(async () => root?.unmount());
+    root = null;
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    expect(document.activeElement).toBe(opener);
+  });
 });

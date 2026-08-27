@@ -14,8 +14,10 @@ describe("BBE-178 column settings UI preparation", () => {
   });
 
   it("registers the settings panel in the merged context-menu surface", () => {
-    expect(menu).toContain('setPanel("settings")}>컬럼 설정');
+    expect(menu).toContain('showSurface("settings")}>컬럼 설정');
     expect(menu).toContain("<ColumnSettingsPanel");
+    expect(menu).toContain("onPendingChange={setSettingsPending}");
+    expect(panel).toContain("onPendingChange?.(pending)");
   });
 
   it("enables required/validation and delivery only after migration118 and its constrained worker are live", () => {
