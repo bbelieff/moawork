@@ -6,6 +6,7 @@ import { Worker as NodeWorker } from "node:worker_threads";
 import { PGlite } from "@electric-sql/pglite";
 import { PGliteWorker } from "@electric-sql/pglite/worker";
 import { afterEach, describe, expect, it } from "vitest";
+import { PGliteWorkerLockBroker, workerWebLocksBootstrapSource } from "./pglite-worker-locks.test-support";
 
 const migration = readFileSync(resolve(process.cwd(), "../supabase/migrations/134_issue599_assignment_lineage_core.sql"), "utf8");
 
@@ -106,17 +107,19 @@ insert into public.item_values(org_id,item_id,column_key,value_jsonb) values
 
 const databases: PGlite[] = [];
 const workerDatabases: PGliteWorker[] = [];
+const workerLockBroker = new PGliteWorkerLockBroker();
 afterEach(async () => {
   await Promise.all(workerDatabases.splice(0).map((db) => db.close()));
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-function asWebWorker(nodeWorker: NodeWorker): Worker {
+function asWebWorker(nodeWorker: NodeWorker, isLockMessage: (value: unknown) => boolean): Worker {
   const listeners = new Map<EventListenerOrEventListenerObject, (data: unknown) => void>();
   return {
     addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) {
       if (type !== "message") return;
       const callback = (data: unknown) => {
+        if (isLockMessage(data)) return;
         if (typeof listener === "function") listener({ data } as MessageEvent);
         else listener.handleEvent({ data } as MessageEvent);
         if (typeof options === "object" && options.once) nodeWorker.off("message", callback);
@@ -135,12 +138,14 @@ function asWebWorker(nodeWorker: NodeWorker): Worker {
   } as unknown as Worker;
 }
 
-async function sharedWorkerClient(databaseId: string) {
+async function sharedWorkerClient(databaseId: string, forceMissingWorkerLocks = false) {
+  workerLockBroker.installClient();
   const require = createRequire(import.meta.url);
   const pgliteUrl = pathToFileURL(require.resolve("@electric-sql/pglite")).href;
   const workerUrl = pathToFileURL(require.resolve("@electric-sql/pglite/worker")).href;
   const source = `
     const { parentPort } = require("node:worker_threads");
+    ${workerWebLocksBootstrapSource(forceMissingWorkerLocks)}
     globalThis.postMessage = (data) => parentPort.postMessage(data);
     globalThis.addEventListener = (type, listener, options) => {
       if (type !== "message") return;
@@ -159,7 +164,9 @@ async function sharedWorkerClient(databaseId: string) {
   `;
   const nodeWorker = new NodeWorker(source, { eval: true, stderr: true });
   nodeWorker.stderr?.resume();
-  const client = await PGliteWorker.create(asWebWorker(nodeWorker), { id: databaseId });
+  const lockBridge = workerLockBroker.connectWorker(nodeWorker);
+  nodeWorker.once("exit", () => lockBridge.dispose());
+  const client = await PGliteWorker.create(asWebWorker(nodeWorker, lockBridge.isProtocolMessage), { id: databaseId });
   workerDatabases.push(client);
   return client;
 }
@@ -184,6 +191,16 @@ async function scalar<T>(db: PGlite, sql: string) {
 }
 
 describe("#599 assignment lineage migration", () => {
+  it("bootstraps functional Web Locks when navigator exists without locks in client and worker contexts", async () => {
+    Object.defineProperty(globalThis.navigator, "locks", { configurable: true, value: undefined });
+    expect(globalThis.navigator.locks).toBeUndefined();
+    const workerRequestsBefore = workerLockBroker.workerRequestCount;
+    const client = await sharedWorkerClient(`issue599-lock-bootstrap-${crypto.randomUUID()}`, true);
+    expect(typeof globalThis.navigator.locks?.request).toBe("function");
+    expect((await client.query<{ value: number }>("select 1::int value")).rows).toEqual([{ value: 1 }]);
+    expect(workerLockBroker.workerRequestCount).toBeGreaterThan(workerRequestsBefore);
+  });
+
   it("does not backfill customer rows and reports the current assignee as a read-only baseline", async () => {
     const { db, before } = await boot();
     const after = (await db.query("select (select count(*) from deals)::int deals,(select count(*) from items)::int items,(select count(*) from item_values)::int values_count")).rows[0];
