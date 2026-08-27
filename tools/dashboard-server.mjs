@@ -783,12 +783,28 @@ const server = http.createServer(async (req, res) => {
  * 그래서 exit(0) 이다 — 실패가 아니라 «이미 되어 있음» 이므로 0 이 맞다.
  */
 server.on("error", (error) => {
-  if (error?.code === "EADDRINUSE") {
-    console.log(`관제판이 이미 ${PORT} 에서 돌고 있습니다 — 새로 띄우지 않았습니다. http://localhost:${PORT}`);
-    process.exit(0);
+  if (error?.code !== "EADDRINUSE") {
+    console.error(`관제판을 ${PORT} 에 열지 못했습니다:`, error?.message || error);
+    process.exit(1);
   }
-  console.error(`관제판을 ${PORT} 에 열지 못했습니다:`, error?.message || error);
-  process.exit(1);
+  // ★ 「누가 쓰고 있다」와 「관제판이 이미 있다」는 다르다.
+  //   확인 없이 exit(0) 하면, 그 포트를 다른 앱(Next dev 등)이 잡고 있을 때도
+  //   «이미 되어 있음» 이라 말하고 «그 앱의 주소» 를 관제판이라고 안내하게 된다.
+  //   그래서 실제로 물어본다 — 관제판만 대답하는 /api/health 로.
+  fetch(`http://127.0.0.1:${PORT}/api/health`, { signal: AbortSignal.timeout(3000) })
+    .then((response) => response.json())
+    .then((body) => {
+      if (body && typeof body.port === "number") {
+        console.log(`관제판이 이미 ${PORT} 에서 돌고 있습니다 — 새로 띄우지 않았습니다. http://localhost:${PORT}`);
+        process.exit(0);
+      }
+      throw new Error("관제판이 아닙니다");
+    })
+    .catch(() => {
+      console.error(`${PORT} 를 «관제판이 아닌» 다른 프로그램이 쓰고 있습니다.`);
+      console.error(`그 프로그램을 끄거나 DASHBOARD_PORT 로 다른 포트를 지정해 주세요.`);
+      process.exit(1);
+    });
 });
 
 if (!ENV.DASHBOARD_NO_LISTEN) server.listen(PORT, () => {
