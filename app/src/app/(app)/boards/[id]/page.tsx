@@ -27,7 +27,15 @@ import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { BoardTrashPanel } from "@/components/board/BoardTrashPanel";
 import { SavedViewsController } from "@/components/view";
-import { applySavedKanbanView, applySavedPersonScope, boardViewSwitchUrl, parseSavedBoardLayout, parseSavedStringList } from "@/lib/view/board-saved";
+import {
+  applySavedKanbanView,
+  applySavedPersonScope,
+  boardViewSwitchUrl,
+  NEW_LEAD_SAVED_FILTER_PROJECTION,
+  parseSavedBoardLayout,
+  parseSavedStringList,
+  presentNewLeadSavedFilters,
+} from "@/lib/view/board-saved";
 import { resolveSavedPersonRuntime } from "@/lib/view/server";
 import { decodeBoardFilters } from "@/components/board/filters";
 import { GenericBoardKanban } from "@/components/boards/GenericBoardKanban";
@@ -36,6 +44,7 @@ import { GroupPresetMenu } from "@/components/board/GroupPresetMenu";
 import { groupPresetName } from "@/lib/presets/group-preset";
 import { addGroupAction, deleteBoardAction } from "../actions";
 import { getBoardColumnOrder } from "../groupLayout";
+import { presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
 
 /**
  * 범용 보드 화면 (T02b · ADR-0003) — 테이블/칸반 토글.
@@ -182,10 +191,16 @@ export default async function BoardPage({
   const personColumnKey = columns.find((column) => column.type === "person")?.key ?? null;
   const items = applySavedPersonScope(permissionItems, personRuntime.view, ctx.user.id, personColumnKey, personRuntime.memberIds);
   const hiddenCount = boardItems.length - permissionItems.length;
+  const canonicalNewLead = board.source === NEW_LEAD_TAB_SOURCE;
+  const savedViewColumns = canonicalNewLead ? presentNewLeadColumns(columns) : columns;
+  const savedViewFilters = canonicalNewLead
+    ? presentNewLeadSavedFilters(decodeBoardFilters(sp.mwFilters ?? null))
+    : decodeBoardFilters(sp.mwFilters ?? null);
   const lanes = view === "kanban"
     ? applySavedKanbanView(
         (await svc.kanban(ctx, id, groupBy || undefined)).map((lane) => ({ ...lane, items: lane.items.filter((item) => visibleItemIds.has(item.id)) })),
-        items, columns, decodeBoardFilters(sp.mwFilters ?? null),
+        items, savedViewColumns, savedViewFilters,
+        canonicalNewLead ? NEW_LEAD_SAVED_FILTER_PROJECTION : undefined,
       )
     : [];
 
@@ -380,7 +395,7 @@ export default async function BoardPage({
           <div className="ml-auto">{viewToggle}</div>
         </div>
         {/* 보드 이름 아래 — 목업 head() 순서(이름 → 보기). 테이블 뷰와 같은 위계다(BBE-214). */}
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} />
         {boardSettings}
 
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto text-xs">
@@ -415,7 +430,7 @@ export default async function BoardPage({
           {backLink}
           <h1 className="text-base font-semibold text-mw-fg">{board.icon ? <span aria-hidden="true">{board.icon}</span> : null} {board.name}</h1>
         </div>
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} renderMode={view} canEditItems={canEditItems} />
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} renderMode={view} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} />
         {boardSettings}
     </>
   ) : (
@@ -435,7 +450,7 @@ export default async function BoardPage({
       backSlot={backLink}
       viewSlot={viewToggle}
       savedViewsSlot={
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} />
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} />
       }
       settingsSlot={boardSettings}
       onboardingSlot={board.source === NEW_LEAD_TAB_SOURCE ? (

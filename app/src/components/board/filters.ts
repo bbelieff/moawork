@@ -32,6 +32,21 @@ export interface BoardFilterState {
   visibleColumnKeys?: string[] | null;
 }
 
+/**
+ * 물리 셀 하나로 표현되지 않는 presentation column의 검색/정렬 seam.
+ * 생략하면 기존 보드의 공통 셀 계약을 그대로 사용한다.
+ */
+export interface BoardFilterProjection {
+  searchText?: (row: ItemWithValues, column: BoardColumn) => string | null;
+  /** null이면 공통 비교로 fallback. 숫자면 direction까지 반영한 최종 비교값이다. */
+  compareRows?: (
+    left: ItemWithValues,
+    right: ItemWithValues,
+    columnKey: string,
+    direction: "asc" | "desc",
+  ) => number | null;
+}
+
 export const EMPTY_FILTERS: BoardFilterState = {
   q: "",
   assignees: [],
@@ -111,10 +126,13 @@ export function activeFilterCount(f: BoardFilterState): number {
 }
 
 /** 검색 대상 텍스트 — 제목 + 모든 셀의 **표시 텍스트**(옵션 id 가 아니라 라벨). */
-function haystack(row: ItemWithValues, columns: readonly BoardColumn[]): string {
-  const cells = columns.map((c) =>
-    cellSearchText(c.type, row.values[c.key] ?? null, c.options_jsonb?.options),
-  );
+function haystack(
+  row: ItemWithValues,
+  columns: readonly BoardColumn[],
+  projection?: BoardFilterProjection,
+): string {
+  const cells = columns.map((c) => projection?.searchText?.(row, c)
+    ?? cellSearchText(c.type, row.values[c.key] ?? null, c.options_jsonb?.options));
   return [row.title, ...cells].join(" ").toLowerCase();
 }
 
@@ -131,9 +149,10 @@ export function rowMatches(
   row: ItemWithValues,
   columns: readonly BoardColumn[],
   f: BoardFilterState,
+  projection?: BoardFilterProjection,
 ): boolean {
   const q = f.q.trim().toLowerCase();
-  if (q !== "" && !haystack(row, columns).includes(q)) return false;
+  if (q !== "" && !haystack(row, columns, projection).includes(q)) return false;
 
   if (f.assignees.length > 0) {
     const who = row.assigned_to ?? UNASSIGNED;
@@ -156,8 +175,9 @@ export function applyFilters(
   rows: readonly ItemWithValues[],
   columns: readonly BoardColumn[],
   f: BoardFilterState,
+  projection?: BoardFilterProjection,
 ): ItemWithValues[] {
-  const kept = rows.filter((r) => rowMatches(r, columns, f));
+  const kept = rows.filter((r) => rowMatches(r, columns, f, projection));
   const sorts = f.sorts?.length
     ? f.sorts
     : f.sortKey
@@ -167,10 +187,15 @@ export function applyFilters(
 
   return kept.map((row, index) => ({ row, index })).sort((a, b) => {
     for (const sort of sorts) {
+      const projected = projection?.compareRows?.(a.row, b.row, sort.columnKey, sort.direction);
+      if (projected !== null && projected !== undefined) {
+        if (projected !== 0) return projected;
+        continue;
+      }
       const compared = compareCells(
-        a.row.values[sort.columnKey] ?? null,
-        b.row.values[sort.columnKey] ?? null,
-      );
+          a.row.values[sort.columnKey] ?? null,
+          b.row.values[sort.columnKey] ?? null,
+        );
       if (compared !== 0) return sort.direction === "desc" ? -compared : compared;
     }
     return a.index - b.index;

@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { decodeBoardFilters } from "@/components/board/filters";
-import { applySavedKanbanView, applySavedPersonScope, boardViewSwitchUrl, parsePersonScopeInput, parseSavedBoardViewConfig, savedBoardViewFromRow, savedViewUrl, systemViewUrl } from "./board-saved";
+import { applyFilters, decodeBoardFilters } from "@/components/board/filters";
+import type { ItemWithValues } from "@/lib/boards";
+import {
+  applySavedKanbanView,
+  applySavedPersonScope,
+  boardViewSwitchUrl,
+  durableNewLeadSavedViewConfig,
+  NEW_LEAD_SAVED_FILTER_PROJECTION,
+  parsePersonScopeInput,
+  parseSavedBoardViewConfig,
+  presentNewLeadSavedViewConfig,
+  savedBoardViewFromRow,
+  savedViewUrl,
+  systemViewUrl,
+} from "./board-saved";
 
 describe("parseSavedBoardViewConfig", () => {
   it("round-trips viewer, team and fixed person scopes without silently widening them", () => {
@@ -28,6 +41,103 @@ describe("parseSavedBoardViewConfig", () => {
     expect(parsed.hiddenColumns).toEqual(["secret"]);
     expect(parsed.sorts).toEqual([{ columnKey: "priority", direction: "asc" }, { columnKey: "date", direction: "desc" }]);
     expect(parsed).toMatchObject({ textMode: "wrap", focusColumnKey: "status" });
+  });
+
+  it("신규리드 saved-view는 physical alias를 한 번만 표시하고 저장 때 양쪽 sibling을 복원한다", () => {
+    const physical = parseSavedBoardViewConfig({
+      kind: "table",
+      filters: {
+        q: "1,234",
+        byColumn: {
+          credit_score_ncb: ["812"],
+          credit_score_kcb: ["745"],
+          revenue_band: ["10억~30억"],
+        },
+        sortKey: "credit_score_ncb",
+        sortDir: "asc",
+        visibleColumnKeys: ["credit_score_ncb", "credit_score_kcb", "revenue_band", "revenue_3y_million"],
+      },
+      layout: { g1: ["credit_score_ncb", "credit_score_kcb", "revenue_band", "revenue_3y_million"] },
+      hiddenColumns: ["credit_score_ncb", "credit_score_kcb"],
+      columnOrder: ["credit_score_ncb", "credit_score_kcb", "revenue_band", "revenue_3y_million"],
+      sorts: [
+        { columnKey: "credit_score_ncb", direction: "asc" },
+        { columnKey: "credit_score_kcb", direction: "desc" },
+        { columnKey: "revenue_3y_million", direction: "desc" },
+      ],
+      focusColumnKey: "credit_score_kcb",
+    });
+    const presented = presentNewLeadSavedViewConfig(physical);
+    expect(presented.filters.visibleColumnKeys).toEqual(["credit_scores", "revenue_3y_million"]);
+    expect(presented.filters.byColumn).toEqual({
+      credit_score_ncb: ["812"],
+      credit_score_kcb: ["745"],
+      revenue_band: ["10억~30억"],
+    });
+    expect(presented.layout.g1).toEqual(["credit_scores", "revenue_3y_million"]);
+    expect(presented.hiddenColumns).toEqual(["credit_scores"]);
+    expect(presented.columnOrder).toEqual(["credit_scores", "revenue_3y_million"]);
+    expect(presented.sorts).toEqual([
+      { columnKey: "credit_scores", direction: "asc" },
+      { columnKey: "revenue_3y_million", direction: "desc" },
+    ]);
+    expect(presented.focusColumnKey).toBe("credit_scores");
+
+    const durable = durableNewLeadSavedViewConfig(presented);
+    expect(durable.filters.visibleColumnKeys).toEqual([
+      "credit_score_ncb", "credit_score_kcb", "revenue_band", "revenue_3y_million",
+    ]);
+    expect(durable.filters.byColumn).toEqual(physical.filters.byColumn);
+    expect(durable.layout.g1).toEqual([
+      "credit_score_ncb", "credit_score_kcb", "revenue_band", "revenue_3y_million",
+    ]);
+    expect(durable.hiddenColumns).toEqual(["credit_score_ncb", "credit_score_kcb"]);
+    expect(durable.sorts.map((sort) => sort.columnKey)).toEqual([
+      "credit_score_ncb", "credit_score_kcb", "revenue_band", "revenue_3y_million",
+    ]);
+    expect(presentNewLeadSavedViewConfig(durable)).toEqual(presented);
+  });
+
+  it("keeps physical finance facets as independent AND predicates in flat and kanban", () => {
+    const columns = [
+      { id: "credit", org_id: "o1", board_id: "b1", key: "credit_scores", label: "신용점수", type: "text", source: "in", rightPinned: false, options_jsonb: null, sort_order: 0, width: null },
+      { id: "revenue", org_id: "o1", board_id: "b1", key: "revenue_3y_million", label: "매출", type: "number", source: "in", rightPinned: false, options_jsonb: null, sort_order: 1, width: null },
+    ] as const;
+    const item = (id: string, ncb: number, kcb: number, band: string): ItemWithValues => ({
+      id, org_id: "o1", board_id: "b1", group_id: "g1", title: id,
+      assigned_to: null, deal_id: null, sort_order: 0, created_at: "", updated_at: "",
+      values: { credit_score_ncb: ncb, credit_score_kcb: kcb, revenue_band: band, revenue_3y_million: null },
+    });
+    const rows = [
+      item("match", 812, 745, "10억~30억"),
+      item("ncb-only", 812, 700, "10억~30억"),
+      item("kcb-only", 700, 745, "10억~30억"),
+      item("wrong-band", 812, 745, "30억 이상"),
+    ];
+    const physicalFilters = {
+      q: "", assignees: [], columnLimit: 0, sortKey: "", sortDir: "asc" as const,
+      byColumn: { credit_score_ncb: ["812"], credit_score_kcb: ["745"], revenue_band: ["10억~30억"] },
+    };
+    const filters = presentNewLeadSavedViewConfig(parseSavedBoardViewConfig({ filters: physicalFilters })).filters;
+    expect(filters.byColumn).toEqual(physicalFilters.byColumn);
+    expect(applyFilters(rows, [...columns], filters, NEW_LEAD_SAVED_FILTER_PROJECTION).map((row) => row.id))
+      .toEqual(["match"]);
+    expect(applySavedKanbanView([{ id: "lane", items: rows }], rows, [...columns], filters, NEW_LEAD_SAVED_FILTER_PROJECTION)[0].items.map((row) => row.id))
+      .toEqual(["match"]);
+  });
+
+  it("dedupes opposite-direction physical sort aliases by presentation key with deterministic first-wins reload", () => {
+    const physical = parseSavedBoardViewConfig({
+      sorts: [
+        { columnKey: "credit_score_ncb", direction: "desc" },
+        { columnKey: "credit_score_kcb", direction: "asc" },
+      ],
+    });
+    const presented = presentNewLeadSavedViewConfig(physical);
+    expect(presented.filters.sorts).toEqual([{ columnKey: "credit_scores", direction: "desc" }]);
+    expect(presented.sorts).toEqual([{ columnKey: "credit_scores", direction: "desc" }]);
+    const reloaded = presentNewLeadSavedViewConfig(durableNewLeadSavedViewConfig(presented));
+    expect(reloaded).toEqual(presented);
   });
 
   it("restores filters, sort, layout, hidden and order without touching the shared view row", () => {
@@ -93,6 +203,26 @@ describe("parseSavedBoardViewConfig", () => {
     const result = applySavedKanbanView([{ id: "lane", items: rows }], rows, [...columns], { q: "", assignees: [], byColumn: {}, sortKey: "", sortDir: "asc", sorts: [{ columnKey: "stage", direction: "asc" }, { columnKey: "score", direction: "desc" }], columnLimit: 0 });
     expect(result[0].items.map((row) => row.id)).toEqual(["a-high", "a-low", "b-low"]);
     expect(result[0].items).toHaveLength(3);
+  });
+
+  it("saved kanban도 flat과 같은 신규리드 finance projection으로 검색·정렬한다", () => {
+    const columns = [
+      { id: "credit", org_id: "o1", board_id: "b1", key: "credit_scores", label: "신용점수", type: "text", source: "in", rightPinned: false, options_jsonb: null, sort_order: 0, width: null },
+      { id: "revenue", org_id: "o1", board_id: "b1", key: "revenue_3y_million", label: "매출", type: "number", source: "in", rightPinned: false, options_jsonb: null, sort_order: 1, width: null },
+    ] as const;
+    const item = (id: string, revenue: number | null, band = ""): ItemWithValues => ({
+      id, org_id: "o1", board_id: "b1", group_id: "g1", title: id,
+      assigned_to: null, deal_id: null, sort_order: 0, created_at: "", updated_at: "",
+      values: revenue === null ? { revenue_band: band } : { revenue_3y_million: revenue },
+    });
+    const rows = [item("ten", 10), item("two", 2), item("grouped", 1234), item("legacy", null, "10억~30억")];
+    const filters = { q: "", assignees: [], byColumn: {}, sortKey: "revenue_3y_million", sortDir: "asc" as const, columnLimit: 0 };
+    const sorted = applySavedKanbanView([{ id: "lane", items: rows }], rows, [...columns], filters, NEW_LEAD_SAVED_FILTER_PROJECTION);
+    expect(sorted[0].items.map((row) => row.id)).toEqual(["two", "ten", "grouped", "legacy"]);
+    const searched = applySavedKanbanView(
+      [{ id: "lane", items: rows }], rows, [...columns], { ...filters, q: "1,234", sortKey: "" }, NEW_LEAD_SAVED_FILTER_PROJECTION,
+    );
+    expect(searched[0].items.map((row) => row.id)).toEqual(["grouped"]);
   });
 
   it("applies viewer, team and fixed person scopes to the actual rendered row set", () => {

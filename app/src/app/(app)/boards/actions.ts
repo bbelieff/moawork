@@ -46,10 +46,32 @@ import {
   type DetailLayoutEntry,
 } from "@/lib/boards/detail-layout";
 import { advanceNewLeadToContact, NewLeadAdvanceError } from "@/lib/new-lead/advance";
+import { NEW_LEAD_TAB_SOURCE } from "@/lib/default-tabs/types";
+import {
+  durableNewLeadDetailLayout,
+  presentNewLeadDetailLayout,
+} from "@/lib/default-tabs/new-lead";
+import {
+  CREDIT_SCORE_KEYS,
+  NEW_LEAD_COMPOSITE_FIELD_KEYS,
+} from "@/lib/new-lead/financial-profile";
 
 function str(fd: FormData, key: string): string {
   const v = fd.get(key);
   return typeof v === "string" ? v : "";
+}
+
+function sameDetailLayout(left: readonly DetailLayoutEntry[], right: readonly DetailLayoutEntry[]): boolean {
+  const normalizedLeft = normalizeDetailLayout(left);
+  const normalizedRight = normalizeDetailLayout(right);
+  return normalizedLeft.length === normalizedRight.length
+    && normalizedLeft.every((entry, index) => {
+      const candidate = normalizedRight[index];
+      return entry.key === candidate.key
+        && entry.source === candidate.source
+        && entry.label === candidate.label
+        && entry.type === candidate.type;
+    });
 }
 
 function moveEventKey(formData: FormData): string {
@@ -777,12 +799,57 @@ export async function addUnplacedDetailEntryAction(formData: FormData): Promise<
     const key = str(formData, "fieldKey");
     const graph = await createRequestBoards();
     const detail = await graph.service.getBoardDetail(ctx, boardId);
+    if (detail.board.id !== boardId || detail.board.org_id !== ctx.org.id) {
+      throw new NotFoundError("보드를 찾을 수 없습니다.");
+    }
     const group = groupId ? detail.groups.find((candidate) => candidate.id === groupId) : undefined;
     if (groupId && !group) throw new NotFoundError("아이템을 찾을 수 없습니다.");
     const boardLayout = resolveBoardDetailLayout(detail.board.source, detail.board.detail_layout_jsonb, detail.columns);
     const current = resolveDetailLayout(boardLayout, group?.detail_layout_jsonb).entries;
+    const canonicalNewLead = detail.board.source === NEW_LEAD_TAB_SOURCE;
+    const pairKeys = key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores
+      ? [CREDIT_SCORE_KEYS.ncb, CREDIT_SCORE_KEYS.kcb]
+      : key === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion
+        ? [NEW_LEAD_COMPOSITE_FIELD_KEYS.legacyRevenueBand, NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion]
+        : null;
+    if (key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores && !canonicalNewLead) {
+      throw new UserFacingActionError("이 보드에서는 합성 신용점수 필드를 복구할 수 없어요.");
+    }
+    if (canonicalNewLead && pairKeys) {
+      const physicalColumns = new Map(detail.columns.map((column) => [column.key, column]));
+      if (pairKeys.some((physicalKey) => !physicalColumns.has(physicalKey))) {
+        throw new UserFacingActionError("신규리드 금융 컬럼 구성을 확인하지 못해 배치를 바꾸지 않았어요.");
+      }
+      const presented = presentNewLeadDetailLayout(current);
+      const nextPresented = presented.some((entry) => entry.key === key)
+        ? presented
+        : [
+            ...presented,
+            {
+              key,
+              source: "column" as const,
+              label: key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores ? "신용점수" : "3개년매출(백만원)",
+              type: key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores ? "text" as const : "number" as const,
+            },
+          ];
+      const columnEntries: DetailLayoutEntry[] = detail.columns.map((column) => ({
+        key: column.key,
+        source: "column",
+        label: column.label,
+        type: column.type,
+      }));
+      const next = durableNewLeadDetailLayout(nextPresented, [...columnEntries, ...current]);
+      if (sameDetailLayout(current, next)) return;
+      if (group) await graph.repo.setGroupDetailLayout(ctx, group.id, next);
+      else await graph.repo.setBoardDetailLayout(ctx, boardId, next);
+      revalidatePath(`/boards/${boardId}`);
+      return;
+    }
     if (current.some((entry) => entry.key === key)) return;
     const column = detail.columns.find((candidate) => candidate.key === key);
+    if (key === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion && !column) {
+      throw new UserFacingActionError("이 보드에서는 합성 3개년매출 필드를 복구할 수 없어요.");
+    }
     const next: DetailLayoutEntry[] = [
       ...current,
       column

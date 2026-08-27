@@ -48,10 +48,11 @@
 
 import type { FieldOption } from "@/lib/types";
 import { CANONICAL_REGIONS } from "@/lib/structure-packs/region-options";
-import { NEW_LEAD_COMPOSITE_FIELD_KEYS } from "@/lib/new-lead/financial-profile";
+import { CREDIT_SCORE_KEYS, NEW_LEAD_COMPOSITE_FIELD_KEYS } from "@/lib/new-lead/financial-profile";
 import { NEW_LEAD_REVENUE_BANDS } from "@/lib/new-lead/revenue-bands";
 import { NEW_LEAD_TAB_SOURCE, type DefaultTab, type DefaultTabColumn } from "./types";
 import type { BoardColumn } from "@/lib/boards/types";
+import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
 
 /** 목업 색을 그대로 옮긴다. 새 hex 를 만들지 않는다. */
 const GREY = "#c4c4c4";
@@ -158,6 +159,13 @@ const ALL_COLUMNS: DefaultTabColumn[] = [
     source: "auto",
     options: opts(...NEW_LEAD_REVENUE_BANDS.map((label) => [label, GREY] as const)),
     width: 110,
+  },
+  {
+    key: NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion,
+    label: "3개년매출(백만원)",
+    type: "number",
+    source: "in",
+    width: 150,
   },
   {
     key: "sido",
@@ -287,12 +295,12 @@ const ALL_COLUMNS: DefaultTabColumn[] = [
 /**
  * #576 — 사용자가 확정한 신규리드의 업무 읽기 순서.
  *
- * 회사명은 `items.title`이라 이 배열 밖의 첫 고정 열이다. 아래 20개 뒤에는 사용자가 만든
+ * 회사명은 `items.title`이라 이 배열 밖의 첫 고정 열이다. 아래 21개 뒤에는 사용자가 만든
  * 컬럼과 제품의 상세/자동화용 내구 컬럼이 이어지며, 화면 표에서는 상세 전용으로 숨긴다.
  */
 export const NEW_LEAD_PRIMARY_COLUMN_KEYS = [
   "applied_on", "ad_name", "rep_name", "phone", "owner", "collaborators",
-  "biz_reg_type", "industry", "founded_month", "revenue_band", "existing_loans",
+  "biz_reg_type", "industry", "founded_month", "revenue_band", "revenue_3y_million", "existing_loans",
   "credit_score_ncb", "credit_score_kcb", "closed_business", "export_status", "required_amount", "sido",
   "sigungu", "address_detail", "email",
 ] as const;
@@ -334,12 +342,9 @@ export const NEW_LEAD_DETAIL_ONLY_KEYS = new Set<string>([
 ]);
 
 /**
- * #600 leaf-to-integration boundary.
- *
- * These are presentation columns only, so this leaf PR does not add duplicate
- * visible columns or reorder company-customized boards before GroupTable can
- * render the composite cells. The follow-up integration consumes these specs
- * and advances the physical default-tab revision in the same change.
+ * #600 leaf 계약을 #602 소비 화면이 사용하는 presentation 정의.
+ * 신용점수는 물리 열을 추가하지 않고 기존 NCB/KCB를 합치며, 매출은 revision 5의
+ * `revenue_3y_million` 물리 열을 사용한다. 어느 경우도 합성 key로 셀 값을 저장하지 않는다.
  */
 export const NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS = [
   {
@@ -358,15 +363,144 @@ export const NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS = [
   },
 ] as const satisfies readonly DefaultTabColumn[];
 
+export const NEW_LEAD_REVENUE_FALLBACK_ID_SUFFIX = ":revenue-3y-million";
+
+/** 물리 numeric 컬럼이 없을 때 revenue_band에서 만든 표시 전용 열인지 판정한다. */
+export function isNewLeadPresentationOnlyStructure(column: Pick<BoardColumn, "id" | "key">): boolean {
+  return column.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores
+    || (column.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion
+      && column.id.endsWith(NEW_LEAD_REVENUE_FALLBACK_ID_SUFFIX));
+}
+
 export const NEW_LEAD_MESSAGE_COLUMN_KEYS = new Set([
   "absence_notice", "consult1_notice", "confirm2_notice", "delay_notice",
   "malicious_absence_notice",
 ]);
 
+const CREDIT_PRESENTATION_KEYS = new Set<string>(Object.values(CREDIT_SCORE_KEYS));
+const REVENUE_PRESENTATION_KEYS = new Set<string>([
+  NEW_LEAD_COMPOSITE_FIELD_KEYS.legacyRevenueBand,
+  NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion,
+]);
+
+export function newLeadPresentationKey(key: string): string {
+  if (CREDIT_PRESENTATION_KEYS.has(key)) return NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores;
+  if (REVENUE_PRESENTATION_KEYS.has(key)) return NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion;
+  return key;
+}
+
+function uniqueKeys(keys: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return keys.filter((key) => !seen.has(key) && Boolean(seen.add(key)));
+}
+
+/** 과거 저장 뷰/그룹 순서의 durable key를 현재 presentation key로 읽는다. */
+export function presentNewLeadColumnKeys(keys: readonly string[] | null | undefined): string[] | null | undefined {
+  if (keys === null || keys === undefined) return keys;
+  return uniqueKeys(keys.map(newLeadPresentationKey));
+}
+
+/** 가상 key를 서버가 검증 가능한 physical column order로 되돌린다. 값은 전혀 쓰지 않는다. */
+export function durableNewLeadColumnKeys(keys: readonly string[]): string[] {
+  return uniqueKeys(keys.flatMap((key) => {
+    if (key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores) {
+      return [CREDIT_SCORE_KEYS.ncb, CREDIT_SCORE_KEYS.kcb];
+    }
+    if (key === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion) {
+      return [NEW_LEAD_COMPOSITE_FIELD_KEYS.legacyRevenueBand, key];
+    }
+    return [key];
+  }));
+}
+
+/** 저장된 physical 상세 배치를 합성 필드 한 칸으로 읽되 DB JSON은 바꾸지 않는다. */
+export function presentNewLeadDetailLayout(entries: readonly DetailLayoutEntry[]): DetailLayoutEntry[] {
+  const seen = new Set<string>();
+  return entries.flatMap((entry) => {
+    const key = newLeadPresentationKey(entry.key);
+    if (seen.has(key)) return [];
+    seen.add(key);
+    if (key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores) {
+      return [{ ...entry, key, source: "column" as const, label: "신용점수", type: "text" as const }];
+    }
+    if (key === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion) {
+      return [{ ...entry, key, source: "column" as const, label: "3개년매출(백만원)", type: "number" as const }];
+    }
+    return [{ ...entry, key }];
+  });
+}
+
+/**
+ * 상세 배치 저장 시 합성 항목을 양쪽 physical sibling으로 되돌린다.
+ * sourceEntries의 회사별 label/type/source를 우선하므로 이동만 해도 sibling metadata가 사라지지
+ * 않는다. 합성 항목이 entries에서 명시적으로 빠졌을 때만 그 pair 전체가 저장 배치에서 빠진다.
+ */
+export function durableNewLeadDetailLayout(
+  entries: readonly DetailLayoutEntry[],
+  sourceEntries: readonly DetailLayoutEntry[] = [],
+): DetailLayoutEntry[] {
+  const source = new Map(sourceEntries.map((entry) => [entry.key, entry]));
+  const defaults: Record<string, DetailLayoutEntry> = {
+    [CREDIT_SCORE_KEYS.ncb]: { key: CREDIT_SCORE_KEYS.ncb, source: "column", label: "NCB", type: "number" },
+    [CREDIT_SCORE_KEYS.kcb]: { key: CREDIT_SCORE_KEYS.kcb, source: "column", label: "KCB", type: "number" },
+    [NEW_LEAD_COMPOSITE_FIELD_KEYS.legacyRevenueBand]: {
+      key: NEW_LEAD_COMPOSITE_FIELD_KEYS.legacyRevenueBand,
+      source: "column",
+      label: "3개년매출",
+      type: "text",
+    },
+    [NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion]: {
+      key: NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion,
+      source: "column",
+      label: "3개년매출(백만원)",
+      type: "number",
+    },
+  };
+  const expanded = entries.flatMap((entry) => {
+    const keys = entry.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores
+      ? [CREDIT_SCORE_KEYS.ncb, CREDIT_SCORE_KEYS.kcb]
+      : entry.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion
+        ? [NEW_LEAD_COMPOSITE_FIELD_KEYS.legacyRevenueBand, NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion]
+        : [entry.key];
+    return keys.map((key) => source.get(key) ?? (key === entry.key ? entry : defaults[key]));
+  });
+  const seen = new Set<string>();
+  return expanded.filter((entry): entry is DetailLayoutEntry => Boolean(entry) && !seen.has(entry.key) && Boolean(seen.add(entry.key)));
+}
+
+/** 이미 배치된 합성 필드의 durable sibling을 숨기고, 미배치 별칭도 한 건만 남긴다. */
+export function presentNewLeadUnplacedKeys(
+  keys: readonly string[],
+  placedKeys: readonly string[],
+): string[] {
+  const placed = new Set(placedKeys.map(newLeadPresentationKey));
+  const seen = new Set<string>();
+  return keys.flatMap((key) => {
+    const presentationKey = newLeadPresentationKey(key);
+    if (placed.has(presentationKey) || seen.has(presentationKey)) return [];
+    seen.add(presentationKey);
+    return [presentationKey];
+  });
+}
+
+export function newLeadPresentationLabel(key: string): string | null {
+  const presentationKey = newLeadPresentationKey(key);
+  if (presentationKey === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores) return "신용점수";
+  if (presentationKey === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion) return "3개년매출(백만원)";
+  return null;
+}
+
 /** 기존 데이터 컬럼은 보존하면서 신규리드 화면만 하나의 업무 조작 열로 합친다. */
 export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardColumn[] {
   const presented: BoardColumn[] = [];
   let messageInserted = false;
+  let creditInserted = false;
+  let revenueInserted = false;
+  const revenueColumn = columns.find(
+    (column) => column.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion,
+  );
+  const creditSpec = NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS[0];
+  const revenueSpec = NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS[1];
   for (const column of columns) {
     if (column.key === "dispatch_status") continue;
     if (NEW_LEAD_MESSAGE_COLUMN_KEYS.has(column.key)) {
@@ -388,6 +522,37 @@ export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardCol
       }
       continue;
     }
+    if (CREDIT_PRESENTATION_KEYS.has(column.key)) {
+      if (!creditInserted) {
+        presented.push({
+          ...column,
+          ...creditSpec,
+          id: `${column.id}:credit-scores`,
+          rightPinned: false,
+          options_jsonb: null,
+          is_readonly: false,
+          description: "NCB와 KCB를 각각 독립 저장하는 합성 표시 셀",
+        });
+        creditInserted = true;
+      }
+      continue;
+    }
+    if (REVENUE_PRESENTATION_KEYS.has(column.key)) {
+      if (!revenueInserted) {
+        const physical = revenueColumn ?? column;
+        presented.push({
+          ...physical,
+          ...revenueSpec,
+          id: revenueColumn?.id ?? `${column.id}${NEW_LEAD_REVENUE_FALLBACK_ID_SUFFIX}`,
+          rightPinned: false,
+          options_jsonb: null,
+          is_readonly: false,
+          description: "백만원 단위 실제 매출을 우선하고 기존 매출 구간은 fallback으로 보존",
+        });
+        revenueInserted = true;
+      }
+      continue;
+    }
     if (column.key === "collaborators") {
       presented.push({
         ...column,
@@ -402,17 +567,6 @@ export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardCol
         type: "text",
         options_jsonb: null,
         description: "개인사업자·법인사업자 외 유형도 직접 입력",
-      });
-      continue;
-    }
-    if (column.key === "revenue_band") {
-      presented.push({
-        ...column,
-        label: "3개년매출",
-        type: "text",
-        source: "auto",
-        options_jsonb: null,
-        description: "자동 유입 때는 매출 구간이 들어오며, 상담 뒤 실제 3개년 매출로 직접 수정",
       });
       continue;
     }
@@ -431,16 +585,10 @@ export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardCol
 }
 
 export const NEW_LEAD_TAB: DefaultTab = {
-  revision: 4,
+  revision: 5,
   previousRevision: {
-    revision: 3,
-    columns: {
-      collaborators: { label: "연관담당" },
-      ad_name: { label: "광고명" },
-      biz_reg_type: { label: "사업자유형" },
-      industry: { label: "업종" },
-      revenue_band: { label: "3개년매출" },
-    },
+    revision: 4,
+    columns: {},
   },
   key: "new",
   source: NEW_LEAD_TAB_SOURCE,

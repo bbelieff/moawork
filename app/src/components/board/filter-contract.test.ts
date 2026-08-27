@@ -7,7 +7,12 @@ import {
   encodeBoardFilters,
   rowMatches,
   savedViewFilterPayload,
+  type BoardFilterProjection,
 } from "./filters";
+import {
+  compareNewLeadFinancialValues,
+  newLeadFinancialSearchText,
+} from "@/lib/new-lead/financial-profile";
 
 const columns: BoardColumn[] = [
   {
@@ -116,5 +121,32 @@ describe("BBE-118 filter contract", () => {
     }
     expect(applyFilters(rows, identityColumns, { ...EMPTY_FILTERS, q: "01012345678" }))
       .toHaveLength(0);
+  });
+
+  it("신규리드 finance projection만 합성 검색·숫자 정렬을 쓰고 legacy/null은 마지막에 둔다", () => {
+    const projection: BoardFilterProjection = {
+      searchText: (item, boardColumn) => newLeadFinancialSearchText(boardColumn.key, item.values),
+      compareRows: (left, right, key, direction) =>
+        compareNewLeadFinancialValues(key, left.values, right.values, direction),
+    };
+    const financeColumns = [column("credit_scores", "text"), column("revenue_3y_million", "number")];
+    const financeRows: ItemWithValues[] = [
+      { ...row(1), id: "two", values: { credit_score_ncb: 800, credit_score_kcb: 700, revenue_3y_million: 2 } },
+      { ...row(2), id: "ten", values: { credit_score_ncb: 800, credit_score_kcb: 750, revenue_3y_million: 10 } },
+      { ...row(3), id: "hundred", values: { credit_score_ncb: 900, revenue_3y_million: 100 } },
+      { ...row(4), id: "legacy", values: { revenue_band: "10억~30억" } },
+      { ...row(5), id: "grouped", values: { revenue_3y_million: 1234 } },
+    ];
+    expect(applyFilters(financeRows, financeColumns, { ...EMPTY_FILTERS, q: "NCB 800 KCB 750" }, projection).map((item) => item.id))
+      .toEqual(["ten"]);
+    for (const q of ["1234", "1,234", "10억~30억"]) {
+      expect(applyFilters(financeRows, financeColumns, { ...EMPTY_FILTERS, q }, projection)).toHaveLength(1);
+    }
+    expect(applyFilters(financeRows, financeColumns, { ...EMPTY_FILTERS, sortKey: "revenue_3y_million", sortDir: "asc" }, projection).map((item) => item.id))
+      .toEqual(["two", "ten", "hundred", "grouped", "legacy"]);
+    expect(applyFilters(financeRows, financeColumns, { ...EMPTY_FILTERS, sortKey: "revenue_3y_million", sortDir: "desc" }, projection).map((item) => item.id))
+      .toEqual(["grouped", "hundred", "ten", "two", "legacy"]);
+    expect(applyFilters(financeRows, financeColumns, { ...EMPTY_FILTERS, sortKey: "credit_scores", sortDir: "asc" }, projection).map((item) => item.id))
+      .toEqual(["two", "ten", "hundred", "legacy", "grouped"]);
   });
 });

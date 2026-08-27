@@ -283,6 +283,102 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
     expect(html).toContain('value="확인 필요"');
   });
 
+  it("신규리드 상세는 금융 alias를 한 셀씩 렌더하고 unplaced·generic write를 중복 생성하지 않는다", () => {
+    const financialColumns: BoardColumn[] = [
+      { ...columns[0], id: "col-credit", key: "credit_scores", label: "신용점수", type: "text" },
+      { ...columns[0], id: "col-founded", key: "founded_month", label: "창업연월", type: "text", sort_order: 1 },
+      { ...columns[0], id: "col-revenue", key: "revenue_3y_million", label: "3개년매출(백만원)", type: "number", sort_order: 2 },
+    ];
+    const financialLayout = financialColumns.map((column) => ({
+      key: column.key,
+      source: "column" as const,
+      label: column.label,
+      type: column.type,
+    }));
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={{
+          ...row,
+          deal_id: "deal-a",
+          values: {
+            credit_score_ncb: 812,
+            credit_score_kcb: 745,
+            founded_month: "2024-02-29",
+            revenue_3y_million: 1234,
+            revenue_band: "10억~30억",
+          },
+        }}
+        columns={financialColumns}
+        boardLayout={financialLayout}
+        layout={financialLayout}
+        inherited
+        canEditItems
+        canManageColumns
+        canonicalNewLead
+        defaultOpen
+      />,
+    );
+    expect(html.match(/id="detail-field-credit_scores"/g)).toHaveLength(1);
+    expect(html.match(/id="detail-field-revenue_3y_million"/g)).toHaveLength(1);
+    expect(html).toContain('name="fieldKey" value="credit_score_ncb"');
+    expect(html).toContain('name="fieldKey" value="credit_score_kcb"');
+    expect(html).not.toContain('name="fieldKey" value="credit_scores"');
+    expect(html).toContain('value="2024-02-29"');
+    expect(html).toContain('value="1,234"');
+    expect(html).toContain("이 화면에 배치되지 않은 항목 0개");
+    expect(html).toContain("credit_score_ncb");
+    expect(html).toContain("credit_score_kcb");
+    expect(html).toContain("revenue_band");
+    const source = readFileSync(sourcePath, "utf8");
+    expect(source).toContain("current[fieldKey] === status");
+    expect(source).toContain("current[NEW_LEAD_COMPOSITE_FIELD_KEYS.foundedDate] === status");
+    expect(source).toContain("current[NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion] === status");
+    expect(source).toContain('aria-live="polite"');
+  });
+
+  it("빈 layout의 기존 physical 금융 값은 unplaced에서 logical restore intent 한 건씩만 만든다", () => {
+    const presentationColumns: BoardColumn[] = [
+      { ...columns[0], id: "present-credit", key: "credit_scores", label: "신용점수", type: "text" },
+      { ...columns[0], id: "present-revenue", key: "revenue_3y_million", label: "3개년매출(백만원)", type: "number", sort_order: 1 },
+    ];
+    const durableColumns: BoardColumn[] = [
+      { ...columns[0], id: "ncb", key: "credit_score_ncb", label: "NCB", type: "number" },
+      { ...columns[0], id: "kcb", key: "credit_score_kcb", label: "KCB", type: "number", sort_order: 1 },
+      { ...columns[0], id: "band", key: "revenue_band", label: "기존 매출구간", type: "select", sort_order: 2 },
+      { ...columns[0], id: "revenue", key: "revenue_3y_million", label: "실제 매출", type: "number", sort_order: 3 },
+    ];
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={{
+          ...row,
+          values: {
+            credit_score_ncb: 812,
+            credit_score_kcb: 745,
+            revenue_band: "10억~30억",
+            revenue_3y_million: 1234,
+          },
+        }}
+        columns={presentationColumns}
+        durableColumns={durableColumns}
+        boardLayout={[]}
+        durableBoardLayout={[]}
+        layout={[]}
+        durableLayout={[]}
+        inherited={false}
+        canEditItems
+        canManageColumns
+        canonicalNewLead
+        defaultOpen
+      />,
+    );
+    expect(html.match(/name="fieldKey" value="credit_scores"/g)).toHaveLength(1);
+    expect(html.match(/name="fieldKey" value="revenue_3y_million"/g)).toHaveLength(1);
+    expect(html).not.toContain('name="fieldKey" value="credit_score_ncb"');
+    expect(html).not.toContain('name="fieldKey" value="credit_score_kcb"');
+  });
+
   it("상속된 기본 필드가 있으면 빈 배치 안내 없이 편집 입력을 보여준다", () => {
     const html = renderStaticPanel(
       <ItemDetailPanel

@@ -53,7 +53,7 @@ function resolveTsFile(specifier, parent) {
   throw new Error(`TypeScript import를 찾지 못했습니다: ${specifier} (${parent})`);
 }
 
-function loadTypeScriptModule(entryPath, cache = new Map()) {
+export function loadTypeScriptModule(entryPath, cache = new Map()) {
   const absolute = path.resolve(entryPath);
   if (cache.has(absolute)) return cache.get(absolute).exports;
   const module = { exports: {} };

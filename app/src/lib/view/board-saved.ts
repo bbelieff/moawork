@@ -1,5 +1,14 @@
-import { applyFilters, encodeBoardFilters, type BoardFilterState } from "@/components/board/filters";
+import { applyFilters, encodeBoardFilters, type BoardFilterProjection, type BoardFilterState } from "@/components/board/filters";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards";
+import {
+  durableNewLeadColumnKeys,
+  newLeadPresentationKey,
+  presentNewLeadColumnKeys,
+} from "@/lib/default-tabs/new-lead";
+import {
+  compareNewLeadFinancialValues,
+  newLeadFinancialSearchText,
+} from "@/lib/new-lead/financial-profile";
 import type { PersonScope } from "./contracts";
 
 export type SavedBoardViewKind = "board" | "table" | "calendar";
@@ -29,6 +38,99 @@ export interface SavedBoardView {
   isDefault: boolean;
   lastUsedAt: string | null;
   canEdit?: boolean;
+}
+
+export const NEW_LEAD_SAVED_FILTER_PROJECTION: BoardFilterProjection = {
+  searchText: (row, column) => newLeadFinancialSearchText(column.key, row.values),
+  compareRows: (left, right, columnKey, direction) =>
+    compareNewLeadFinancialValues(columnKey, left.values, right.values, direction),
+};
+
+type SavedSort = { columnKey: string; direction: "asc" | "desc" };
+
+function presentSorts(values: readonly SavedSort[]): SavedSort[] {
+  const seen = new Set<string>();
+  return values.flatMap((sort) => {
+    const columnKey = newLeadPresentationKey(sort.columnKey);
+    if (seen.has(columnKey)) return [];
+    seen.add(columnKey);
+    return [{ ...sort, columnKey }];
+  });
+}
+
+function durableSorts(values: readonly SavedSort[]): SavedSort[] {
+  const seen = new Set<string>();
+  return values.flatMap((sort) => durableNewLeadColumnKeys([sort.columnKey]).flatMap((columnKey) => {
+    const identity = `${columnKey}:${sort.direction}`;
+    if (seen.has(identity)) return [];
+    seen.add(identity);
+    return [{ ...sort, columnKey }];
+  }));
+}
+
+/** API/URL에서 읽은 physical saved-view config를 신규리드 presentation 계약으로 바꾼다. */
+export function presentNewLeadSavedFilters(filters: BoardFilterState): BoardFilterState {
+  const filterSorts = presentSorts(filters.sorts ?? []);
+  return {
+    ...filters,
+    // Facets are predicates over durable values. Aliasing them to a synthetic
+    // cell would merge NCB/KCB predicates and erase their independent AND.
+    byColumn: { ...filters.byColumn },
+    sortKey: filters.sortKey ? newLeadPresentationKey(filters.sortKey) : "",
+    sorts: filterSorts,
+    visibleColumnKeys: presentNewLeadColumnKeys(filters.visibleColumnKeys),
+  };
+}
+
+export function durableNewLeadSavedFilters(filters: BoardFilterState): BoardFilterState {
+  const filterSorts = durableSorts(filters.sorts ?? []);
+  return {
+    ...filters,
+    byColumn: { ...filters.byColumn },
+    sortKey: filters.sortKey ? durableNewLeadColumnKeys([filters.sortKey])[0] ?? "" : "",
+    sorts: filterSorts,
+    visibleColumnKeys: filters.visibleColumnKeys == null
+      ? filters.visibleColumnKeys
+      : durableNewLeadColumnKeys(filters.visibleColumnKeys),
+  };
+}
+
+/** API/URL에서 읽은 physical saved-view config를 신규리드 presentation 계약으로 바꾼다. */
+export function presentNewLeadSavedViewConfig(config: SavedBoardViewConfig): SavedBoardViewConfig {
+  const configSorts = presentSorts(config.sorts);
+  return {
+    ...config,
+    filters: presentNewLeadSavedFilters(config.filters),
+    groupBy: config.groupBy ? newLeadPresentationKey(config.groupBy) : "",
+    layout: Object.fromEntries(Object.entries(config.layout).map(([groupId, keys]) => [
+      groupId,
+      presentNewLeadColumnKeys(keys) ?? [],
+    ])),
+    hiddenColumns: presentNewLeadColumnKeys(config.hiddenColumns) ?? [],
+    columnOrder: presentNewLeadColumnKeys(config.columnOrder) ?? [],
+    calendarFieldKey: config.calendarFieldKey ? newLeadPresentationKey(config.calendarFieldKey) : null,
+    sorts: configSorts,
+    focusColumnKey: config.focusColumnKey ? newLeadPresentationKey(config.focusColumnKey) : null,
+  };
+}
+
+/** presentation config를 API 저장 직전에 양쪽 durable sibling으로 무손실 확장한다. */
+export function durableNewLeadSavedViewConfig(config: SavedBoardViewConfig): SavedBoardViewConfig {
+  const configSorts = durableSorts(config.sorts);
+  return {
+    ...config,
+    filters: durableNewLeadSavedFilters(config.filters),
+    groupBy: config.groupBy ? durableNewLeadColumnKeys([config.groupBy])[0] ?? "" : "",
+    layout: Object.fromEntries(Object.entries(config.layout).map(([groupId, keys]) => [
+      groupId,
+      durableNewLeadColumnKeys(keys),
+    ])),
+    hiddenColumns: durableNewLeadColumnKeys(config.hiddenColumns),
+    columnOrder: durableNewLeadColumnKeys(config.columnOrder),
+    calendarFieldKey: config.calendarFieldKey ? durableNewLeadColumnKeys([config.calendarFieldKey])[0] ?? null : null,
+    sorts: configSorts,
+    focusColumnKey: config.focusColumnKey ? durableNewLeadColumnKeys([config.focusColumnKey])[0] ?? null : null,
+  };
 }
 
 const EMPTY_FILTERS: BoardFilterState = {
@@ -185,8 +287,9 @@ export function boardViewSwitchUrl(
 
 export function applySavedKanbanView<T extends { items: readonly ItemWithValues[] }>(
   lanes: readonly T[], rows: readonly ItemWithValues[], columns: readonly BoardColumn[], filters: BoardFilterState,
+  projection?: BoardFilterProjection,
 ): Array<T & { items: ItemWithValues[] }> {
-  const filtered = applyFilters(rows, columns, filters);
+  const filtered = applyFilters(rows, columns, filters, projection);
   const rank = new Map(filtered.map((item, index) => [item.id, index]));
   return lanes.map((lane) => ({
     ...lane,

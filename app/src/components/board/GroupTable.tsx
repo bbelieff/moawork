@@ -60,8 +60,15 @@ import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
 import { AssignmentLineagePopover } from "./AssignmentLineagePopover";
 import { NewLeadMessageCell } from "./NewLeadMessageCell";
 import { NewLeadLoanCell } from "./NewLeadLoanCell";
-import { NewLeadCreditScoreCell } from "./NewLeadCreditScoreCell";
-import { CREDIT_SCORE_KEYS, EXISTING_LOAN_KEYS } from "@/lib/new-lead/financial-profile";
+import { NewLeadCreditScoresCell } from "./NewLeadCreditScoresCell";
+import { NewLeadFoundedDateCell } from "./NewLeadFoundedDateCell";
+import { NewLeadRevenue3yCell } from "./NewLeadRevenue3yCell";
+import {
+  CREDIT_SCORE_KEYS,
+  EXISTING_LOAN_KEYS,
+  NEW_LEAD_COMPOSITE_FIELD_KEYS,
+} from "@/lib/new-lead/financial-profile";
+import { isNewLeadPresentationOnlyStructure } from "@/lib/default-tabs/new-lead";
 import { WorkflowProgressCell } from "./WorkflowProgressCell";
 import {
   WORKFLOW_PROGRESS_KEY,
@@ -250,17 +257,36 @@ export function BoardCell({
     );
   }
 
-  if (
-    canonicalNewLead &&
-    (column.key === CREDIT_SCORE_KEYS.ncb || column.key === CREDIT_SCORE_KEYS.kcb)
-  ) {
+  if (canonicalNewLead && column.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores) {
     return (
-      <NewLeadCreditScoreCell
+      <NewLeadCreditScoresCell
         boardId={boardId}
         itemId={row.id}
-        fieldKey={column.key}
-        label={column.key === CREDIT_SCORE_KEYS.ncb ? "NCB" : "KCB"}
-        value={value}
+        ncb={row.values[CREDIT_SCORE_KEYS.ncb]}
+        kcb={row.values[CREDIT_SCORE_KEYS.kcb]}
+        readOnly={cellReadOnly}
+      />
+    );
+  }
+
+  if (canonicalNewLead && column.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.foundedDate) {
+    return (
+      <NewLeadFoundedDateCell
+        boardId={boardId}
+        itemId={row.id}
+        value={row.values[NEW_LEAD_COMPOSITE_FIELD_KEYS.foundedDate]}
+        readOnly={cellReadOnly}
+      />
+    );
+  }
+
+  if (canonicalNewLead && column.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion) {
+    return (
+      <NewLeadRevenue3yCell
+        boardId={boardId}
+        itemId={row.id}
+        value={row.values[NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion]}
+        legacyRevenueBand={row.values[NEW_LEAD_COMPOSITE_FIELD_KEYS.legacyRevenueBand]}
         readOnly={cellReadOnly}
       />
     );
@@ -482,6 +508,9 @@ export function GroupTable({
   columns,
   detailColumns = [...columns],
   boardDetailLayout = [],
+  durableDetailColumns = [],
+  durableBoardDetailLayout = [],
+  durableDetailLayout = [],
   detailLayout = [],
   detailLayoutInherited = true,
   rows,
@@ -535,6 +564,9 @@ export function GroupTable({
   /** 상세 패널은 표의 표시 제한과 무관하게 전체 컬럼 정의를 사용한다. */
   detailColumns?: BoardColumn[];
   boardDetailLayout?: DetailLayoutEntry[];
+  durableDetailColumns?: BoardColumn[];
+  durableBoardDetailLayout?: DetailLayoutEntry[];
+  durableDetailLayout?: DetailLayoutEntry[];
   detailLayout?: DetailLayoutEntry[];
   detailLayoutInherited?: boolean;
   rows: readonly ItemWithValues[];
@@ -689,23 +721,28 @@ export function GroupTable({
               const isTarget = overColKey === col.key && dragColKey !== col.key;
               const width = liveWidths[col.id] ?? col.width ?? undefined;
               const workflowLocked = col.key === WORKFLOW_PROGRESS_KEY;
+              const presentationOnlyStructure = canonicalNewLead
+                && isNewLeadPresentationOnlyStructure(col);
+              const structureLocked = workflowLocked || presentationOnlyStructure;
               return (
                 <th
                   key={col.id}
                   scope="col"
-                  draggable={canManageColumns && !workflowLocked}
+                  draggable={canManageColumns && !structureLocked}
                   onDragStart={() => {
-                    if (workflowLocked) return;
+                    if (structureLocked) return;
                     dragColRef.current = col.key;
                     setDragColKey(col.key);
                   }}
                   onDragEnd={clearColDrag}
                   onDragOver={(e) => {
+                    if (structureLocked) return;
                     if (!dragColRef.current) return;
                     e.preventDefault();
                     setOverColKey(col.key);
                   }}
                   onDrop={(e) => {
+                    if (structureLocked) return;
                     const dragged = dragColRef.current;
                     if (!dragged) return;
                     e.preventDefault();
@@ -713,7 +750,7 @@ export function GroupTable({
                     clearColDrag();
                   }}
                   title={
-                    !canManageColumns || workflowLocked
+                    !canManageColumns || structureLocked
                       ? cellTitle(col)
                       : `${cellTitle(col)} — 끌어서 이 그룹의 컬럼 순서 변경`
                   }
@@ -722,7 +759,7 @@ export function GroupTable({
                   data-column-key={col.key}
                   data-right-pinned={col.rightPinned || undefined}
                   className={`relative sticky top-0 z-[var(--mw-layer-board-header)] min-w-20 ${BOARD_TABLE_HEADER_CELL} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-card"} ${
-                    !canManageColumns || workflowLocked
+                    !canManageColumns || structureLocked
                       ? ""
                       : "cursor-grab active:cursor-grabbing"
                   } ${isTarget ? "bg-mw-tint-blue text-mw-record" : ""} ${
@@ -733,12 +770,12 @@ export function GroupTable({
                     {canManageColumns && (
                       <span
                         aria-hidden="true"
-                        className={workflowLocked ? "hidden" : "text-[0.6rem] opacity-40"}
+                        className={structureLocked ? "hidden" : "text-[0.6rem] opacity-40"}
                       >
                         ⠿
                       </span>
                     )}
-                    {canManageColumns && !workflowLocked ? (
+                    {canManageColumns && !structureLocked ? (
                       <ColumnContextMenu
                         boardId={boardId}
                         column={col}
@@ -756,7 +793,7 @@ export function GroupTable({
                       </>
                     )}
                   </span>
-                  {canManageColumns && !workflowLocked && (
+                  {canManageColumns && !structureLocked && (
                     <span
                       aria-hidden="true"
                       draggable={false}
@@ -872,6 +909,9 @@ export function GroupTable({
                       row={row}
                       columns={detailColumns}
                       boardLayout={boardDetailLayout}
+                      durableColumns={durableDetailColumns}
+                      durableBoardLayout={durableBoardDetailLayout}
+                      durableLayout={durableDetailLayout}
                       layout={detailLayout}
                       inherited={detailLayoutInherited}
                       canEditItems={!readOnly}

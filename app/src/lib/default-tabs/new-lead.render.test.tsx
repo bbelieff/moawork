@@ -20,12 +20,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { GroupTable } from "@/components/board/GroupTable";
 import { BoardToolbar } from "@/components/board/BoardToolbar";
 import { EMPTY_FILTERS } from "@/components/board/filters";
+import { presentNewLeadSavedFilters } from "@/lib/view/board-saved";
 import { BoardsService } from "@/lib/boards/service";
 import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import type { Ctx } from "@/lib/types";
-import { NEW_LEAD_GROUPS, NEW_LEAD_TAB } from "./new-lead";
+import { NEW_LEAD_GROUPS, NEW_LEAD_TAB, presentNewLeadColumns } from "./new-lead";
 import { ensureDefaultTab } from "./install";
 
 const ctx: Ctx = {
@@ -72,6 +73,7 @@ function renderTab(columns: BoardColumn[]) {
       columns={columns}
       rows={[emptyRow()]}
       readOnly={false}
+      canonicalNewLead
       rowDragEnabled={false}
       cellFlash={null}
       onColumnDrop={() => {}}
@@ -85,26 +87,33 @@ function renderTab(columns: BoardColumn[]) {
 }
 
 describe("② 표 렌더 — 업무 컬럼과 고정 열", () => {
-  it("38개 컬럼 라벨이 빠짐없이 화면에 나온다", () => {
+  it("39개 physical 열을 설치하고 합성·메시지 presentation은 중복 없이 렌더한다", () => {
     const columns = repo.listColumns(ctx, boardId);
-    const html = renderTab(columns);
+    const presented = presentNewLeadColumns(columns);
+    const html = renderTab(presented);
 
-    expect(columns).toHaveLength(38);
-    // 마크업에서 라벨이 나타나는 순서가 목업 순서와 같아야 한다.
-    const positions = NEW_LEAD_TAB.columns.map((column) => html.indexOf(`>${column.label}<`));
+    expect(columns).toHaveLength(39);
+    expect(columns.filter((column) => column.key === "revenue_3y_million")).toHaveLength(1);
+    expect(presented.filter((column) => column.key === "credit_scores")).toHaveLength(1);
+    expect(presented.filter((column) => column.key === "revenue_3y_million")).toHaveLength(1);
+    expect(presented.some((column) => column.key === "credit_score_ncb" || column.key === "credit_score_kcb" || column.key === "revenue_band")).toBe(false);
+    // 마크업에서 presentation 라벨이 정본 순서대로 나타나야 한다.
+    const positions = presented.map((column) => html.indexOf(`>${column.label}<`));
     for (const [index, position] of positions.entries()) {
-      expect(position, `${NEW_LEAD_TAB.columns[index].label} 가 렌더되지 않았다`).toBeGreaterThan(-1);
+      expect(position, `${presented[index].label} 가 렌더되지 않았다`).toBeGreaterThan(-1);
     }
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    expect(html.match(/>신용점수</g)).toHaveLength(1);
+    expect(html.match(/>3개년매출\(백만원\)</g)).toHaveLength(1);
   });
 
   it("맨 오른쪽 «컨택 이동» 이 sticky 로 고정된다 — 가로 스크롤해도 보인다", () => {
-    const html = renderTab(repo.listColumns(ctx, boardId));
+    const html = renderTab(presentNewLeadColumns(repo.listColumns(ctx, boardId)));
     expect(html).toContain("sticky right-0");
   });
 
   it("✉ 발송 3칸은 편집창이 열리지 않는다 — 클릭해도 돈이 나가지 않는다", () => {
-    const html = renderTab(repo.listColumns(ctx, boardId));
+    const html = renderTab(presentNewLeadColumns(repo.listColumns(ctx, boardId)));
     for (const key of ["absence_notice", "consult1_notice", "confirm2_notice"]) {
       expect(html, key).not.toContain(`name="columnKey" value="${key}"`);
     }
@@ -113,7 +122,7 @@ describe("② 표 렌더 — 업무 컬럼과 고정 열", () => {
   });
 
   it("출처 배지 4종이 헤더에 뜬다 — 이 탭이 실제로 쓰는 것 (⟳ ✎ ▼ ✉)", () => {
-    const html = renderTab(repo.listColumns(ctx, boardId));
+    const html = renderTab(presentNewLeadColumns(repo.listColumns(ctx, boardId)));
     for (const mark of ["⟳", "✎", "▼", "✉"]) expect(html, mark).toContain(mark);
   });
 });
@@ -155,6 +164,28 @@ describe("⑤ 필터는 칩 + 팝오버다 — 네이티브 select 나열 금지
     expect(html).toContain('aria-haspopup="dialog"');
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain("<details");
+  });
+
+  it("reload된 legacy revenue_band facet은 presentation toolbar에서 보이고 개별 해제할 수 있다", () => {
+    const filters = presentNewLeadSavedFilters({
+      ...EMPTY_FILTERS,
+      byColumn: { revenue_band: ["10억~30억"] },
+    });
+    const html = renderToStaticMarkup(
+      <BoardToolbar
+        columns={presentNewLeadColumns(repo.listColumns(ctx, boardId))}
+        filters={filters}
+        onChange={() => {}}
+        matched={1}
+        total={5}
+        people={[]}
+        legacyFacetLabels={{ revenue_band: "기존 매출구간" }}
+      />,
+    );
+    expect(filters.byColumn).toEqual({ revenue_band: ["10억~30억"] });
+    expect(html).toContain("기존 매출구간");
+    expect(html).toContain("10억~30억");
+    expect(html).toContain('aria-label="기존 매출구간 필터 해제"');
   });
 });
 
