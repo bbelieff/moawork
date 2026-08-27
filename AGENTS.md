@@ -618,8 +618,11 @@ gh pr checkout <PR 번호>          # 권장 — 브랜치 이름표까지 정�
 찾은 P1 두 건 중 하나가 빠져 Production에 나갔고 PR #594로 다시 고쳤다. 빈 findings 칸을
 「없음」으로 읽은 것이 원인이었다.
 
-원본 PR의 exact 검수 댓글은 아래 machine-readable block을 함께 남긴다. `findings: []`는
-**검수했지만 P0/P1 없음**이다. 검수하지 않은 것과 다르다.
+원본 PR author와 다르고 GitHub가 repo `OWNER`/`MEMBER`/`COLLABORATOR`로 증명하는 독립 reviewer의
+formal review(`APPROVED`/`CHANGES_REQUESTED`)에 아래 machine-readable block을 남긴다.
+일반 comment는 minimized lifecycle을 증명할 수 없어 evidence가 아니다. `findings: []`는
+**검수했지만 P0/P1 없음**이다. 검수하지 않은 것과 다르다. shared identity라 독립성을
+기계로 증명할 수 없으면 fail-closed한다.
 
 ````markdown
 ```moawork-review-findings
@@ -672,7 +675,20 @@ Supersedes PR #583
 - `reviewStatus: "not_run"` + `findings: []` = 검수 미실시. **빈칸이나 「없음」 문자열은 금지**다.
 - 두 상태 모두 원본 PR에 같은 exact의 `moawork-review-findings` block이 있어야 한다. 원본 block의
   `status`도 `reviewed`/`not_run`을 그대로 적는다. 인계 PR 혼자 「미실시」라고 낮춰 쓰면 차단된다.
-- disposition은 `fixed`+evidence, `not_applicable`+rationale, `deferred`+새 GitHub Issue 번호 중 하나다.
+- 원본 PR **본문과 comment는 검수 evidence가 아니다.** review의 kind·id·author·state·createdAt·commitId를
+  보존하고, PR author가 남긴 review는 matching block이어도 차단한다.
+- formal review도 `OWNER`/`MEMBER`/`COLLABORATOR` association과 manifest exact에 결속된 commitId가
+  있어야 한다. 같은 source PR의 schema/provenance-valid 과거 exact는 history로 보존하되 target exact
+  판정에서만 제외한다. 과거 exact의 malformed·unauthorized 후보와 다른 PR 번호 manifest는 계속 전체 차단한다.
+- handoff source marker는 PR title 또는 body의 독립 line에 `Supersedes PR #N`/`Takeover PR #N`
+  (한국어 `인계 PR #N`/`대체 PR #N`) 형식으로 정확히 하나만 둔다. manifest sourcePr와 같아야 하고
+  현재 PR 번호를 source로 쓸 수 없다. block 자체도 handoff intent라 marker/block 불일치는 일반 PR로 우회되지 않는다.
+- review tag가 있는 후보는 전부 JSON/schema/provenance-valid여야 한다. valid block 옆의 malformed·invalid
+  block도 무시하지 않고 전체를 차단한다. reviews와 workflow runs는 GitHub API pagination으로
+  끝까지 읽고, run id 중복·total drift·partial 응답은 merge0으로 닫는다.
+- P0/P1 disposition은 `fixed`+evidence 또는 실제 `not_applicable`+rationale만 허용한다.
+  `deferred`+Issue 번호도 merge를 통과하지 못한다. P2/P3는 이 P0/P1 manifest에 넣지 않고
+  §5 계약대로 별도 GitHub Issue + Project Todo에 기록하며 merge를 막지 않는다.
 - 원본 block의 id·severity·title·location·reproduction을 바꾸거나 한 건이라도 빼면
   `node scripts/merge-pr.mjs <PR번호>`가 fail-closed한다.
 - 일반 PR에는 이 추가 판정이 없다. `takeover`/`supersedes`를 명시한 PR만 대상이다.

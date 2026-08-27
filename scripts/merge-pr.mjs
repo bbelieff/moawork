@@ -36,7 +36,14 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { inspectHandoffBody, validateHandoffEvidence } from "./handoff-evidence.mjs";
+import {
+  inspectHandoffBody,
+  loadPaginatedCollection,
+  parseReviewEvidencePages,
+  parseSourcePrMetadata,
+  parseWorkflowRunPages,
+  validateHandoffEvidence,
+} from "./handoff-evidence.mjs";
 
 /**
  * CI 워크플로를 «파일 경로» 로 고른다 — 표시 이름이 아니라.
@@ -67,13 +74,14 @@ export const REQUIRED_EVENT = "pull_request";
  *
  * 저장소·네트워크를 모른다. 입력만 보고 답한다. 그래야 테스트가 돈다.
  *
- * @param {{state?: string, isDraft?: boolean, mergeStateStatus?: string, headRefOid?: string, body?: string}} pr
+ * @param {{number?: number, title?: string, state?: string, isDraft?: boolean, mergeStateStatus?: string, headRefOid?: string, body?: string}} pr
  * @param {Array<{name?: string, status?: string, conclusion?: string|null, head_sha?: string}>} runs
  *   그 PR head 의 워크플로 실행 목록. GitHub Actions API 응답 모양 그대로.
- * @param {string[]} sourceEvidenceTexts takeover/supersedes 원본 PR의 본문·댓글·review body
+ * @param {{pr: {number: number, author: string}, records: Array<object>}|null} sourceEvidence
+ *   takeover/supersedes 원본 PR의 author와 paginated formal-review provenance. PR body/comment는 제외한다.
  * @returns {{ok: boolean, reason: string}}
  */
-export function mergeDecision(pr, runs, sourceEvidenceTexts = []) {
+export function mergeDecision(pr, runs, sourceEvidence = null) {
   if (!pr || typeof pr !== "object") return { ok: false, reason: "PR 정보를 읽지 못했습니다." };
 
   const state = String(pr.state || "").toUpperCase();
@@ -108,7 +116,7 @@ export function mergeDecision(pr, runs, sourceEvidenceTexts = []) {
   //   하나가 비밀값이므로, 그 스캔이 빨간데 머지되는 일이 있어선 안 된다.
   //   mergeStateStatus 로는 못 잡는다 — 이 저장소의 열린 PR 은 전부 UNSTABLE 이라
   //   그 값으로 막으면 아무것도 못 머지한다. 그래서 체크를 직접 본다.
-  const handoff = validateHandoffEvidence(pr.body, sourceEvidenceTexts);
+  const handoff = validateHandoffEvidence(pr.body, sourceEvidence, { title: pr.title, currentPr: pr.number });
   if (!handoff.ok) return { ok: false, reason: `인계 evidence 실패 — ${handoff.reason}` };
 
   const failing = (Array.isArray(pr.statusCheckRollup) ? pr.statusCheckRollup : []).filter((check) => {
@@ -143,9 +151,15 @@ export function mergeDecision(pr, runs, sourceEvidenceTexts = []) {
   const newest = new Map();
   for (const run of mine) {
     const lane = String(run?.event || "?");
-    const at = Date.parse(run?.run_started_at || run?.created_at || "") || Number(run?.id) || 0;
+    const at = Date.parse(run?.created_at || "");
+    const id = typeof run?.id === "bigint"
+      ? (run.id > 0n ? run.id : null)
+      : (Number.isSafeInteger(run?.id) && run.id > 0 ? BigInt(run.id) : null);
+    if (!Number.isFinite(at) || id === null) {
+      return { ok: false, reason: `CI 실행의 positive stable integer id/created_at을 확인하지 못했습니다 (${lane}).` };
+    }
     const prev = newest.get(lane);
-    if (!prev || at >= prev.at) newest.set(lane, { at, run });
+    if (!prev || at > prev.at || (at === prev.at && id > prev.id)) newest.set(lane, { at, id, run });
   }
 
   const lanes = [...newest.entries()].map(([lane, entry]) => ({ lane, run: entry.run }));
@@ -187,13 +201,33 @@ function gh(args, what) {
   }
 }
 
+function paginatedGh(args, what, parser) {
+  const result = loadPaginatedCollection(
+    () => execFileSync("gh", args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }),
+    parser,
+    what,
+  );
+  if (result.ok) return result.items;
+  console.error(`  ${result.reason}`);
+  console.error("  머지하지 않았습니다. GitHub rate limit·네트워크·pagination schema를 확인해 주세요.");
+  process.exit(1);
+}
+
+function parsedOrExit(result, what) {
+  if (result.ok) return result.value;
+  console.error(`  ${what} 실패 — ${result.reason}`);
+  console.error("  머지하지 않았습니다. GitHub 응답 schema를 확인해 주세요.");
+  process.exit(1);
+}
+
 const HEAD_A = "a".repeat(40);
 const HEAD_B = "b".repeat(40);
 /** 정상 PR — 각 검사에서 «하나만» 비틀어 무엇이 판정을 바꾸는지 드러낸다. */
-const OK_PR = { state: "OPEN", headRefOid: HEAD_A, baseRefName: "main", mergeStateStatus: "UNSTABLE", statusCheckRollup: [] };
+const OK_PR = { number: 595, title: "일반 변경", state: "OPEN", headRefOid: HEAD_A, baseRefName: "main", mergeStateStatus: "UNSTABLE", statusCheckRollup: [] };
 /** 정상 CI 실행 — pull_request 이벤트 · ci.yml · 그 head · 초록. */
 function run(over = {}) {
   return {
+    id: 1,
     path: CI_WORKFLOW_PATH,
     head_sha: HEAD_A,
     event: REQUIRED_EVENT,
@@ -220,9 +254,23 @@ function selfTest() {
     reviewStatus: "not_run",
     findings: [],
   })}\n\`\`\``;
+  const sourceNotRunEvidence = {
+    pr: { number: 583, author: "source-author" },
+    records: [{
+      kind: "review",
+      id: "review-1",
+      author: "independent-reviewer",
+      authorAssociation: "MEMBER",
+      state: "APPROVED",
+      createdAt: "2026-08-27T00:00:00Z",
+      commitId: "3".repeat(40),
+      body: sourceReviewNotRun,
+    }],
+  };
   const cases = [
     // ── 통과해야 하는 것 ──────────────────────────────────────────
     ["정상 — pull_request CI 초록", OK_PR, [run()], true],
+    ["positive BigInt run id도 stable ordering key로 허용", OK_PR, [run({ id: 1n })], true],
     ["실패 뒤 «재실행» 초록이면 통과한다", OK_PR,
       [run({ conclusion: "failure", created_at: "2026-08-27T00:00:00Z" }),
        run({ created_at: "2026-08-27T01:00:00Z" })], true],
@@ -230,15 +278,21 @@ function selfTest() {
       [run(), run({ event: "workflow_dispatch" })], true],
     ["#615 같은 일반 PR exact replay는 인계 관문 영향 0", { ...OK_PR, body: "Closes #586 — exact CI gate" }, [run()], true],
     ["검수 미실시를 양쪽 exact evidence에 명시한 supersedes 인계는 통과",
-      { ...OK_PR, body: notRunHandoff }, [run()], true, [sourceReviewNotRun]],
+      { ...OK_PR, body: notRunHandoff }, [run()], true, sourceNotRunEvidence],
 
     // ── ★ 검수가 찾은 우회 경로 ───────────────────────────────────
     ["★ PR 이 빨간데 dispatch 를 돌려 통과시킬 수 없다 — gh workflow run 한 번이면 뚫리던 구멍", OK_PR,
       [run({ conclusion: "failure" }),
        run({ event: "workflow_dispatch", created_at: "2026-08-27T02:00:00Z" })], false],
     ["★ 옛 초록이 새 빨강을 덮지 못한다", OK_PR,
-      [run({ created_at: "2026-08-27T00:00:00Z" }),
-       run({ conclusion: "failure", created_at: "2026-08-27T01:00:00Z" })], false],
+      [run({ id: 1, created_at: "2026-08-27T00:00:00Z" }),
+       run({ id: 2, conclusion: "failure", created_at: "2026-08-27T01:00:00Z" })], false],
+    ["★ 같은 초의 실행은 입력 순서와 무관하게 높은 run id가 최신이다", OK_PR,
+      [run({ id: 2, conclusion: "failure", created_at: "2026-08-27T01:00:00Z" }),
+       run({ id: 1, created_at: "2026-08-27T01:00:00Z" })], false],
+    ["같은 초의 높은 run id 초록은 낮은 id 빨강보다 최신이다", OK_PR,
+      [run({ id: 1, conclusion: "failure", created_at: "2026-08-27T01:00:00Z" }),
+       run({ id: 2, created_at: "2026-08-27T01:00:00Z" })], true],
     ["★ 초록이 있어도 «도는 중» 이 있으면 기다린다", OK_PR,
       [run({ created_at: "2026-08-27T00:00:00Z" }),
        run({ status: "in_progress", conclusion: null, created_at: "2026-08-27T01:00:00Z" })], false],
@@ -252,6 +306,8 @@ function selfTest() {
     ["★ dispatch 초록«만» 있으면 통과하지 않는다 — 합친 트리를 검사하지 않는다", OK_PR,
       [run({ event: "workflow_dispatch" })], false],
     ["★ 다른 커밋의 초록으로는 통과하지 않는다", OK_PR, [run({ head_sha: HEAD_B })], false],
+    ["★ run id가 없거나 timestamp가 invalid면 최신 실행을 추측하지 않는다", OK_PR,
+      [run({ id: undefined, created_at: "not-a-time" })], false],
     ["★ GitGuardian 이 빨가면 막는다 — 비밀값 금지는 절대 금지 2가지 중 하나다",
       { ...OK_PR, statusCheckRollup: [{ name: "GitGuardian Security Checks", conclusion: "FAILURE" }] },
       [run()], false],
@@ -271,8 +327,8 @@ function selfTest() {
   ];
 
   let failed = 0;
-  for (const [label, pr, runs, expected, sourceEvidenceTexts] of cases) {
-    const got = mergeDecision(pr, runs, sourceEvidenceTexts);
+  for (const [label, pr, runs, expected, sourceEvidence] of cases) {
+    const got = mergeDecision(pr, runs, sourceEvidence);
     if (got.ok !== expected) {
       failed += 1;
       console.error(`✖ ${label}\n    기대 ok=${expected} · 실제 ok=${got.ok} — ${got.reason}`);
@@ -300,40 +356,44 @@ function main() {
 
   const pr = JSON.parse(
     gh(
-      ["pr", "view", number, "--json", "state,isDraft,mergeStateStatus,headRefOid,baseRefName,title,body,statusCheckRollup"],
+      ["pr", "view", number, "--json", "number,state,isDraft,mergeStateStatus,headRefOid,baseRefName,title,body,statusCheckRollup"],
       `PR #${number}`,
     ),
   );
   // 저장소를 박아 두지 않는다 — PR 조회는 cwd 로, 실행 조회는 하드코딩이면 둘이 어긋날 수 있다.
   const repo = JSON.parse(gh(["repo", "view", "--json", "nameWithOwner"], "저장소 이름")).nameWithOwner;
-  // --paginate 로 전부 받는다. 한 SHA 에 실행이 50개를 넘으면(재실행을 반복하면 넘는다)
+  // --paginate 로 전부 받는다. 한 SHA 에 실행이 100개를 넘으면(재실행을 반복하면 넘는다)
   // 잘린 목록에서 CI 가 빠져 «실행 없음» 으로 막히거나, 더 나쁘게는 최신 실행을 놓친다.
-  const runs = JSON.parse(
-    gh(
-      ["api", "--paginate", `repos/${repo}/actions/runs?head_sha=${pr.headRefOid}&per_page=100`, "--jq", ".workflow_runs"],
-      "CI 실행 목록",
-    ),
+  const runs = paginatedGh(
+    ["api", "--paginate", "--slurp", `repos/${repo}/actions/runs?head_sha=${pr.headRefOid}&per_page=100`],
+    "CI 실행 목록",
+    parseWorkflowRunPages,
   );
 
   // 일반 PR 은 추가 네트워크 호출 0. takeover/supersedes PR 이 reviewed 원본을
-  // 주장할 때만 원본 PR의 durable body/comment/review evidence를 읽는다.
-  const handoffRequest = inspectHandoffBody(pr.body);
-  let sourceEvidenceTexts = [];
+  // 주장할 때만 원본 PR의 durable formal review evidence를 읽는다.
+  const handoffRequest = inspectHandoffBody(pr.body, { title: pr.title, currentPr: pr.number });
+  let sourceEvidence = null;
   if (handoffRequest.ok && handoffRequest.required) {
-    const sourcePr = JSON.parse(
-      gh(
-        ["pr", "view", String(handoffRequest.evidence.sourcePr), "--json", "number,body,comments,reviews"],
-        `원본 PR #${handoffRequest.evidence.sourcePr} 검수 evidence`,
+    const sourceNumber = handoffRequest.evidence.sourcePr;
+    const sourcePr = parsedOrExit(
+      parseSourcePrMetadata(
+        gh(["api", `repos/${repo}/pulls/${sourceNumber}`], `원본 PR #${sourceNumber} metadata`),
+        sourceNumber,
       ),
+      `원본 PR #${sourceNumber} metadata`,
     );
-    sourceEvidenceTexts = [
-      sourcePr.body,
-      ...(Array.isArray(sourcePr.comments) ? sourcePr.comments.map((comment) => comment?.body) : []),
-      ...(Array.isArray(sourcePr.reviews) ? sourcePr.reviews.map((review) => review?.body) : []),
-    ].filter((text) => typeof text === "string");
+    const reviews = paginatedGh(
+      ["api", "--paginate", "--slurp", `repos/${repo}/pulls/${sourceNumber}/reviews?per_page=100`],
+      `원본 PR #${sourceNumber} reviews`,
+      (raw) => parseReviewEvidencePages(raw, "review"),
+    );
+    // sourcePr.body와 comments는 의도적으로 evidence 입력에 넣지 않는다. comment의
+    // minimized lifecycle을 이 REST 응답에서 증명하지 못하므로 formal review만 canonical이다.
+    sourceEvidence = { pr: sourcePr, records: reviews };
   }
 
-  const decision = mergeDecision(pr, runs, sourceEvidenceTexts);
+  const decision = mergeDecision(pr, runs, sourceEvidence);
   console.log(`PR #${number} — ${pr.title || ""}`);
   console.log(`  head ${String(pr.headRefOid).slice(0, 7)} · ${pr.mergeStateStatus}`);
   console.log(`  판정: ${decision.ok ? "통과" : "머지 안 함"} — ${decision.reason}`);

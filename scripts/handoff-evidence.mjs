@@ -10,6 +10,8 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const FINDING_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
 const HANDOFF_TAG = "moawork-handoff";
 const REVIEW_TAG = "moawork-review-findings";
+const PAGE_SIZE = 100;
+const REPO_REVIEWER_ASSOCIATIONS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
 
 function taggedBlocks(text, tag) {
   const blocks = [];
@@ -26,6 +28,151 @@ function parseJson(raw, label) {
   } catch (error) {
     return { ok: false, reason: `${label} JSON 을 읽지 못했습니다 — ${String(error?.message || error)}` };
   }
+}
+
+function parseSlurpedPages(raw, label) {
+  const parsed = parseJson(raw, label);
+  if (!parsed.ok) return parsed;
+  if (!Array.isArray(parsed.value) || parsed.value.length === 0) {
+    return { ok: false, reason: `${label} pagination 결과가 page 배열이 아닙니다.` };
+  }
+  return { ok: true, pages: parsed.value };
+}
+
+function completePageItems(pages, label, readPage) {
+  const items = [];
+  for (const [pageIndex, page] of pages.entries()) {
+    const read = readPage(page, pageIndex);
+    if (!read.ok) return read;
+    if (read.items.length > PAGE_SIZE) {
+      return { ok: false, reason: `${label} page ${pageIndex + 1}가 ${PAGE_SIZE}개를 초과했습니다.` };
+    }
+    if (pageIndex < pages.length - 1 && read.items.length !== PAGE_SIZE) {
+      return { ok: false, reason: `${label} page ${pageIndex + 1}가 ${read.items.length}개에서 끊긴 partial page입니다.` };
+    }
+    items.push(...read.items);
+  }
+  return { ok: true, items };
+}
+
+function evidenceRecord(item, kind, at) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    return { ok: false, reason: `${at}가 객체가 아닙니다.` };
+  }
+  const id = typeof item.id === "number" || typeof item.id === "string" ? String(item.id) : "";
+  const author = item.user?.login;
+  const authorAssociation = item.author_association;
+  const body = item.body;
+  if (!id || !nonBlank(author) || !nonBlank(authorAssociation) || (typeof body !== "string" && body !== null)) {
+    return { ok: false, reason: `${at}의 id/user.login/author_association/body schema가 불완전합니다.` };
+  }
+  if (kind === "comment") {
+    if (!nonBlank(item.created_at)) return { ok: false, reason: `${at}.created_at이 비었습니다.` };
+    return { ok: true, value: {
+      kind,
+      id,
+      author,
+      authorAssociation,
+      state: null,
+      createdAt: item.created_at,
+      commitId: null,
+      body: body ?? "",
+    } };
+  }
+  if (!nonBlank(item.state) || (item.submitted_at !== null && !nonBlank(item.submitted_at)) || (item.commit_id !== null && !nonBlank(item.commit_id))) {
+    return { ok: false, reason: `${at}의 state/submitted_at/commit_id schema가 불완전합니다.` };
+  }
+  return { ok: true, value: {
+    kind,
+    id,
+    author,
+    authorAssociation,
+    state: item.state,
+    createdAt: item.submitted_at,
+    commitId: item.commit_id,
+    body: body ?? "",
+  } };
+}
+
+/** `gh api --paginate --slurp` comments/reviews 결과를 provenance 보존 배열로 바꾼다. */
+export function parseReviewEvidencePages(raw, kind) {
+  if (kind !== "comment" && kind !== "review") return { ok: false, reason: "evidence kind는 comment/review여야 합니다." };
+  const label = `원본 PR ${kind}`;
+  const parsed = parseSlurpedPages(raw, label);
+  if (!parsed.ok) return parsed;
+  const complete = completePageItems(parsed.pages, label, (page, pageIndex) => {
+    if (!Array.isArray(page)) return { ok: false, reason: `${label} page ${pageIndex + 1}가 배열이 아닙니다.` };
+    const values = [];
+    for (const [itemIndex, item] of page.entries()) {
+      const normalized = evidenceRecord(item, kind, `${label} page ${pageIndex + 1}[${itemIndex}]`);
+      if (!normalized.ok) return normalized;
+      values.push(normalized.value);
+    }
+    return { ok: true, items: values };
+  });
+  if (!complete.ok) return complete;
+  const ids = new Set();
+  for (const item of complete.items) {
+    const key = `${item.kind}:${item.id}`;
+    if (ids.has(key)) return { ok: false, reason: `${label} pagination에 중복 id ${item.id}가 있습니다.` };
+    ids.add(key);
+  }
+  return complete;
+}
+
+/** `gh api --paginate --slurp` workflow-runs 결과를 누락 없는 단일 배열로 바꾼다. */
+export function parseWorkflowRunPages(raw) {
+  const label = "CI 실행 목록";
+  const parsed = parseSlurpedPages(raw, label);
+  if (!parsed.ok) return parsed;
+  let totalCount = null;
+  const complete = completePageItems(parsed.pages, label, (page, pageIndex) => {
+    if (!page || typeof page !== "object" || Array.isArray(page) || !Number.isInteger(page.total_count) || !Array.isArray(page.workflow_runs)) {
+      return { ok: false, reason: `${label} page ${pageIndex + 1} schema가 불완전합니다.` };
+    }
+    if (totalCount === null) totalCount = page.total_count;
+    else if (totalCount !== page.total_count) return { ok: false, reason: `${label} total_count가 page 사이에서 바뀌었습니다.` };
+    for (const [itemIndex, run] of page.workflow_runs.entries()) {
+      const stableId = Number.isSafeInteger(run?.id) && run.id > 0;
+      const validCreatedAt = nonBlank(run?.created_at) && Number.isFinite(Date.parse(run.created_at));
+      if (!stableId || !validCreatedAt || !run || typeof run !== "object" || !nonBlank(run.path) || !nonBlank(run.head_sha) || !nonBlank(run.event)
+        || !nonBlank(run.status) || !nonBlank(run.created_at) || (run.conclusion !== null && typeof run.conclusion !== "string")) {
+        return { ok: false, reason: `${label} page ${pageIndex + 1}[${itemIndex}]의 positive stable integer id/timestamp/schema가 불완전합니다.` };
+      }
+    }
+    return { ok: true, items: page.workflow_runs };
+  });
+  if (!complete.ok) return complete;
+  const runIds = new Set();
+  for (const run of complete.items) {
+    const id = String(run.id);
+    if (runIds.has(id)) return { ok: false, reason: `${label} pagination에 중복 workflow run id ${id}가 있습니다.` };
+    runIds.add(id);
+  }
+  if (complete.items.length !== totalCount) {
+    return { ok: false, reason: `${label}이 partial입니다 — total ${totalCount}, fetched ${complete.items.length}.` };
+  }
+  return complete;
+}
+
+/** 네트워크/403/rate 실패를 예외 대신 controlled fail-closed 결과로 바꾸는 순수 fetch seam. */
+export function loadPaginatedCollection(fetchSlurped, parser, label) {
+  try {
+    const parsed = parser(fetchSlurped());
+    return parsed.ok ? parsed : { ok: false, reason: `${label} 실패 — ${parsed.reason}` };
+  } catch (error) {
+    return { ok: false, reason: `${label} 조회 실패 — ${String(error?.message || error)}` };
+  }
+}
+
+export function parseSourcePrMetadata(raw, expectedPr) {
+  const parsed = parseJson(raw, "원본 PR metadata");
+  if (!parsed.ok) return parsed;
+  const value = parsed.value;
+  if (!value || typeof value !== "object" || Array.isArray(value) || value.number !== expectedPr || !nonBlank(value.user?.login)) {
+    return { ok: false, reason: "원본 PR number/author metadata가 불완전합니다." };
+  }
+  return { ok: true, value: { number: value.number, author: value.user.login } };
 }
 
 function nonBlank(value) {
@@ -60,13 +207,7 @@ function validateFinding(finding, index, requireDisposition) {
     if (!nonBlank(disposition.rationale)) return `${at}.disposition.rationale 가 비었습니다.`;
     return null;
   }
-  if (disposition.kind === "deferred") {
-    if (!Number.isInteger(disposition.issue) || disposition.issue <= 0) {
-      return `${at}.disposition.issue 는 이월 GitHub Issue 번호여야 합니다.`;
-    }
-    return null;
-  }
-  return `${at}.disposition.kind 는 fixed/not_applicable/deferred 중 하나여야 합니다.`;
+  return `${at}.disposition.kind 는 fixed 또는 not_applicable 이어야 합니다. P0/P1은 후속 Issue로 이월할 수 없습니다.`;
 }
 
 function validateFindingList(findings, requireDisposition) {
@@ -81,21 +222,45 @@ function validateFindingList(findings, requireDisposition) {
   return null;
 }
 
-export function hasHandoffIntent(body) {
-  const text = String(body ?? "");
-  if (/<!--\s*moawork-handoff\s*-->/i.test(text)) return true;
-  if (/```moawork-handoff\b/i.test(text)) return true;
-  return [
-    /\b(?:supersedes|superseding|takeover)\s+(?:PR\s*)?#?\d+/i,
-    /(?:인계|대체)\s*(?:PR|pull request)\s*#?\d+/i,
-    /원본\s*PR\s*#?\d+[\s\S]{0,200}(?:인계|대체)/i,
-  ].some((pattern) => pattern.test(text));
+const HANDOFF_REFERENCE_PATTERNS = [
+  /^\s*(?:supersedes|takeover)\s+PR\s+#?(\d+)\s*$/i,
+  /^\s*(?:인계|대체)\s*(?:PR|pull request)\s*#?(\d+)\s*$/i,
+];
+
+function explicitHandoffReferences(body, title) {
+  const lines = [String(title ?? ""), ...String(body ?? "").split(/\r?\n/)];
+  const refs = [];
+  for (const line of lines) {
+    for (const pattern of HANDOFF_REFERENCE_PATTERNS) {
+      const matched = pattern.exec(line);
+      if (matched) {
+        refs.push(Number(matched[1]));
+        break;
+      }
+    }
+  }
+  return refs;
 }
 
-/** PR 본문만으로 판정 가능한 형식·disposition 검증. */
-export function inspectHandoffBody(body) {
-  const required = hasHandoffIntent(body);
+export function hasHandoffIntent(body, { title = "" } = {}) {
+  const text = String(body ?? "");
+  if (/```moawork-handoff\b/i.test(text)) return true;
+  return explicitHandoffReferences(text, title).length > 0;
+}
+
+/** PR title+body와 current PR 번호만으로 판정 가능한 형식·disposition 검증. */
+export function inspectHandoffBody(body, { title = "", currentPr = null } = {}) {
+  const refs = explicitHandoffReferences(body, title);
+  const required = hasHandoffIntent(body, { title });
   if (!required) return { ok: true, required: false, reason: "일반 PR — 인계 evidence 비대상" };
+
+  if (refs.length !== 1) {
+    return {
+      ok: false,
+      required: true,
+      reason: `handoff source marker는 title 또는 독립 line에 정확히 1개여야 합니다 (현재 ${refs.length}개).`,
+    };
+  }
 
   const blocks = taggedBlocks(body, HANDOFF_TAG);
   if (blocks.length !== 1) {
@@ -117,6 +282,12 @@ export function inspectHandoffBody(body) {
   }
   if (!Number.isInteger(evidence.sourcePr) || evidence.sourcePr <= 0) {
     return { ok: false, required: true, reason: "sourcePr 가 유효한 원본 PR 번호가 아닙니다." };
+  }
+  if (evidence.sourcePr !== refs[0]) {
+    return { ok: false, required: true, reason: `명시한 source PR #${refs[0]}과 manifest sourcePr #${evidence.sourcePr}가 다릅니다.` };
+  }
+  if (Number.isInteger(currentPr) && evidence.sourcePr === currentPr) {
+    return { ok: false, required: true, reason: `sourcePr #${evidence.sourcePr}가 현재 PR과 같습니다. 자기 자신을 인계 source로 삼을 수 없습니다.` };
   }
   if (!nonBlank(evidence.sourceExactHead) || !SHA_PATTERN.test(evidence.sourceExactHead)) {
     return { ok: false, required: true, reason: "sourceExactHead 는 원본 검수 exact 40자리 SHA여야 합니다." };
@@ -158,49 +329,107 @@ function findingCore(finding) {
   };
 }
 
-/** 원본 PR 본문·댓글·review body의 manifest와 handoff 항목을 exact 대조한다. */
-export function validateHandoffEvidence(body, sourceTexts = []) {
-  const inspected = inspectHandoffBody(body);
+function provenanceProblem(record, sourcePr) {
+  if (!record || typeof record !== "object" || Array.isArray(record) || !nonBlank(record.id)
+    || !nonBlank(record.author) || !nonBlank(record.authorAssociation) || typeof record.body !== "string") {
+    return "review evidence provenance schema가 불완전합니다.";
+  }
+  if (record.author.toLowerCase() === sourcePr.author.toLowerCase()) {
+    return `원본 PR author(${record.author})가 남긴 ${record.kind}는 독립 검수 증거가 아닙니다.`;
+  }
+  if (record.kind !== "review") {
+    return `review evidence kind(${record.kind})는 canonical formal review가 아닙니다.`;
+  }
+  const state = String(record.state || "").toUpperCase();
+  if (state !== "APPROVED" && state !== "CHANGES_REQUESTED") {
+    return `formal review ${record.id} state(${state || "없음"})는 검수 증거가 아닙니다.`;
+  }
+  if (!REPO_REVIEWER_ASSOCIATIONS.has(String(record.authorAssociation).toUpperCase())) {
+    return `formal review ${record.id} authorAssociation(${record.authorAssociation})은 trusted repo reviewer가 아닙니다.`;
+  }
+  if (!nonBlank(record.commitId) || !SHA_PATTERN.test(record.commitId)) {
+    return `formal review ${record.id} commitId가 유효한 exact SHA가 아닙니다.`;
+  }
+  if (!nonBlank(record.createdAt)) return `formal review ${record.id} createdAt이 비었습니다.`;
+  return null;
+}
+
+/** 원본 PR body/comment는 제외하고 provenance가 보존된 formal review manifest만 exact 대조한다. */
+export function validateHandoffEvidence(body, source = null, context = {}) {
+  const inspected = inspectHandoffBody(body, context);
   if (!inspected.ok || !inspected.required) return inspected;
   const evidence = inspected.evidence;
 
+  if (!source || typeof source !== "object" || Array.isArray(source)
+    || !source.pr || source.pr.number !== evidence.sourcePr || !nonBlank(source.pr.author)
+    || !Array.isArray(source.records)) {
+    return { ok: false, required: true, reason: "원본 PR author와 paginated review provenance를 확인하지 못했습니다." };
+  }
+
   const matching = [];
-  let malformed = 0;
-  for (const text of sourceTexts) {
-    for (const raw of taggedBlocks(text, REVIEW_TAG)) {
+  for (const record of source.records) {
+    // GitHub comments는 minimized lifecycle을 이 endpoint에서 증명할 수 없다.
+    // self-assertion을 피하려고 canonical evidence에서 완전히 제외한다.
+    if (record?.kind === "comment") continue;
+    if (!record || typeof record.body !== "string") {
+      return { ok: false, required: true, reason: "review evidence record schema가 불완전합니다." };
+    }
+    const tagged = new RegExp("```" + REVIEW_TAG + "\\b", "i").test(record.body);
+    if (!tagged) continue;
+    const provenance = provenanceProblem(record, source.pr);
+    if (provenance) return { ok: false, required: true, reason: provenance };
+    const blocks = taggedBlocks(record.body, REVIEW_TAG);
+    if (blocks.length === 0) {
+      return { ok: false, required: true, reason: `${record.kind} ${record.id}의 ${REVIEW_TAG} block이 닫히지 않았습니다.` };
+    }
+    for (const raw of blocks) {
       const parsed = parseJson(raw, REVIEW_TAG);
-      if (!parsed.ok) { malformed += 1; continue; }
+      if (!parsed.ok) return { ...parsed, required: true };
       const review = inspectReviewManifest(parsed.value);
-      if (!review.ok) { malformed += 1; continue; }
-      if (review.value.pr === evidence.sourcePr && review.value.exactHead === evidence.sourceExactHead) {
-        matching.push(review.value);
+      if (!review.ok) return { ...review, required: true };
+      if (review.value.pr !== evidence.sourcePr) {
+        return { ok: false, required: true, reason: `${record.kind} ${record.id}의 review manifest PR #${review.value.pr}가 source PR #${evidence.sourcePr} context와 다릅니다.` };
       }
+      if (record.kind === "review" && record.commitId !== review.value.exactHead) {
+        return { ok: false, required: true, reason: `formal review ${record.id} commitId가 해당 manifest exact와 다릅니다.` };
+      }
+      // 같은 source PR의 schema/provenance-valid 과거 exact는 durable history다.
+      // 적대적 후보 검증은 위에서 이미 끝냈고, target exact canonical set에서만 제외한다.
+      if (review.value.exactHead !== evidence.sourceExactHead) continue;
+      matching.push({ manifest: review.value, provenance: {
+        kind: record.kind,
+        id: record.id,
+        author: record.author,
+        state: record.state,
+        createdAt: record.createdAt,
+        commitId: record.commitId,
+      } });
     }
   }
   if (matching.length === 0) {
     return {
       ok: false,
       required: true,
-      reason: `원본 PR #${evidence.sourcePr} exact ${evidence.sourceExactHead.slice(0, 7)}의 ${REVIEW_TAG} evidence가 없습니다${malformed ? ` (읽지 못한 block ${malformed}개)` : ""}.`,
+      reason: `원본 PR #${evidence.sourcePr} exact ${evidence.sourceExactHead.slice(0, 7)}의 독립 ${REVIEW_TAG} evidence가 없습니다.`,
     };
   }
 
-  const canonical = matching.map((review) => JSON.stringify({
-    status: review.status,
-    findings: review.findings.map(findingCore).sort((a, b) => a.id.localeCompare(b.id)),
+  const canonical = matching.map(({ manifest }) => JSON.stringify({
+    status: manifest.status,
+    findings: manifest.findings.map(findingCore).sort((a, b) => a.id.localeCompare(b.id)),
   }));
   if (new Set(canonical).size !== 1) {
     return { ok: false, required: true, reason: "같은 원본 exact의 review manifests가 서로 다른 findings를 주장합니다." };
   }
-  if (matching[0].status !== evidence.reviewStatus) {
+  if (matching[0].manifest.status !== evidence.reviewStatus) {
     return {
       ok: false,
       required: true,
-      reason: `원본 review status(${matching[0].status})와 인계 reviewStatus(${evidence.reviewStatus})가 다릅니다.`,
+      reason: `원본 review status(${matching[0].manifest.status})와 인계 reviewStatus(${evidence.reviewStatus})가 다릅니다.`,
     };
   }
 
-  const sourceFindings = new Map(matching[0].findings.map((finding) => [finding.id, findingCore(finding)]));
+  const sourceFindings = new Map(matching[0].manifest.findings.map((finding) => [finding.id, findingCore(finding)]));
   const handedFindings = new Map(evidence.findings.map((finding) => [finding.id, findingCore(finding)]));
   const missing = [...sourceFindings.keys()].filter((id) => !handedFindings.has(id));
   const extra = [...handedFindings.keys()].filter((id) => !sourceFindings.has(id));
@@ -219,6 +448,7 @@ export function validateHandoffEvidence(body, sourceTexts = []) {
     ok: true,
     required: true,
     evidence,
+    provenance: matching.map(({ provenance }) => provenance),
     reason: evidence.reviewStatus === "not_run"
       ? "원본 exact 검수 미실시 evidence를 명시적으로 보존함"
       : `원본 exact P0/P1 ${sourceFindings.size}건을 항목별로 보존·처리함`,

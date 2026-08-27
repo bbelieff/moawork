@@ -69,7 +69,7 @@
 | F14 | 브랜치 보호가 없다 — **승인 0건으로도 머지된다.** 「머지됐으니 검수를 통과한 것」이 아니다 |
 | F15 | **다 쓴 워크트리를 방치하지 마라.** 머지·폐기 즉시 `git worktree remove <경로>`. `rm -rf` 로 폴더만 지우면 git 목록에 유령 항목만 남는다(2026-08-20 기준 264개 적발, 다수가 자체 `node_modules` 보유 — 실제 용량 문제였다). 워크트리 수명은 원칙적으로 24시간 |
 | F16 | **`npm run dev` 를 띄웠으면 끝날 때 반드시 꺼라.** 2026-08-20 실측: 8/15~8/16 워커들이 `next dev` 를 띄운 채 죽어 node 프로세스 42개가 닷새간 남아 있었다. 결과는 «게이트가 아예 안 도는 것» — `spawnSync ETIMEDOUT` 과 `0xC0000142`(프로세스 생성 실패)로 `check.sh` 가 두 번 연속 터졌다. 메모리가 아니라 **프로세스·핸들 수**가 말랐다 |
-| F17 | **takeover/supersedes는 코드만 옮기면 안 된다.** 원본 PR exact 검수의 P0/P1을 항목별로 옮기고 `fixed`/`not_applicable`/`deferred` disposition을 붙인다. 빈칸은 「없음」이 아니다 — `AGENTS.md §6⑤` |
+| F17 | **takeover/supersedes는 코드만 옮기면 안 된다.** 원본 PR author와 다른 trusted repo reviewer(`OWNER`/`MEMBER`/`COLLABORATOR`)의 formal review provenance가 있는 exact P0/P1만 항목별로 옮기고 `fixed` 또는 실제 `not_applicable` disposition을 붙인다. PR body/comment·작성자 자기 review는 evidence가 아니며 P0/P1 `deferred`는 Issue 번호가 있어도 merge 차단이다. 유효한 과거 exact는 history로만 제외하고, 과거 malformed/unauthorized 및 다른 PR context는 계속 전체 차단한다. P2/P3는 별도 후속 Issue로 기록한다 — `AGENTS.md §6⑤` |
 
 ---
 
