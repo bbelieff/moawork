@@ -35,6 +35,7 @@ node scripts/check-use-server-exports.mjs
 # 그 자리를 이 스크립트가 대신한다. 관문 자체가 틀리면 관문이 없는 것과 같으므로
 # 판정 로직을 여기서 매번 검사한다.
 node scripts/merge-pr.mjs --self-test
+node --test scripts/handoff-evidence.test.mjs
 node --test scripts/check-build-gate.test.mjs
 node --test scripts/check-line-endings.test.mjs
 node scripts/check-unreachable-app-files.mjs
