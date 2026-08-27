@@ -66,24 +66,46 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actualKeys = Object.keys(value);
+  return actualKeys.length === keys.length
+    && keys.every((key) => Object.prototype.hasOwnProperty.call(value, key));
+}
+
 function readEntry(value: unknown): OtherInfoEntry | null {
-  if (!isRecord(value) || typeof value.checked !== "boolean" || typeof value.text !== "string") return null;
+  if (
+    !isRecord(value)
+    || !hasExactKeys(value, ["checked", "text"])
+    || typeof value.checked !== "boolean"
+    || typeof value.text !== "string"
+  ) return null;
   return {
     checked: value.checked,
     text: value.text,
   };
 }
 
-function legacyText(value: unknown): string | null {
-  if (typeof value === "string") return value.trim() || null;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
+interface LegacyText {
+  original: string;
+  normalized: string;
+}
+
+function legacyText(value: unknown): LegacyText | null {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized ? { original: value, normalized } : null;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    const text = String(value);
+    return { original: text, normalized: text };
+  }
   return null;
 }
 
 function projectLegacyEntry(value: unknown, checkedValues: ReadonlySet<string>): OtherInfoEntry | null {
   const text = legacyText(value);
   if (text === null) return null;
-  return { checked: checkedValues.has(text), text };
+  return { checked: checkedValues.has(text.normalized), text: text.original };
 }
 
 const CLOSED_HISTORY_TRUE = new Set(["폐업", "폐업 이력 있음", "있음", "true"]);
@@ -102,7 +124,11 @@ export function projectOtherInfoValue(
   const present = { ...EMPTY_PRESENT };
   let hasStructuredEntry = false;
 
-  if (isRecord(input) && input.version === 1) {
+  if (
+    isRecord(input)
+    && input.version === 1
+    && hasExactKeys(input, ["version", ...OTHER_INFO_KEYS])
+  ) {
     const entries = OTHER_INFO_KEYS.map((key) => readEntry(input[key]));
     const complete = entries.every((entry): entry is OtherInfoEntry => entry !== null);
     if (complete) {

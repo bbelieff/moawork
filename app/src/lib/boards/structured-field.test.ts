@@ -20,6 +20,15 @@ describe("Issue #601 structured other-info contract", () => {
     for (const key of OTHER_INFO_KEYS) expect(value[key]).toEqual({ checked: false, text: "" });
   });
 
+  it("accepts only an exact valid v1 object as structured", () => {
+    const value = emptyOtherInfoValue();
+    const projection = projectOtherInfoValue(value);
+
+    expect(projection.source).toBe("structured");
+    expect(projection.value).toEqual(value);
+    expect(Object.values(projection.present)).toEqual([true, true, true, true, true]);
+  });
+
   it("counts checked entries from 0건 through 5건", () => {
     let value = emptyOtherInfoValue();
     expect(otherInfoCountLabel(value)).toBe("0건");
@@ -51,6 +60,14 @@ describe("Issue #601 structured other-info contract", () => {
     expect(projection.value.export).toEqual({ checked: true, text: "수출 예정" });
     expect(projection.present.intellectualProperty).toBe(false);
     expect(otherInfoFacetState(null, "intellectualProperty", { closed_business: "폐업" })).toBe("missing");
+  });
+
+  it("preserves legacy string bytes while classifying a normalized copy", () => {
+    const original = "  폐업 이력 있음  ";
+    const projection = projectOtherInfoValue(null, { closed_business: original });
+
+    expect(projection.source).toBe("legacy");
+    expect(projection.value.closedHistory).toEqual({ checked: true, text: original });
   });
 
   it("keeps missing, unchecked, and checked as distinct facet states", () => {
@@ -97,5 +114,32 @@ describe("Issue #601 structured other-info contract", () => {
 
     expect(projection.source).toBe("missing");
     expect(projection.present.export).toBe(false);
+  });
+
+  it("rejects a v1 root with an unknown key and falls back without rewriting legacy text", () => {
+    const projection = projectOtherInfoValue({
+      ...emptyOtherInfoValue(),
+      futureField: true,
+    }, {
+      export_status: "  수출 예정  ",
+    });
+
+    expect(projection.source).toBe("legacy");
+    expect(projection.value.export).toEqual({ checked: true, text: "  수출 예정  " });
+    expect(projection.present.closedHistory).toBe(false);
+  });
+
+  it("rejects a v1 entry with an unknown key", () => {
+    const value = emptyOtherInfoValue();
+    const projection = projectOtherInfoValue({
+      ...value,
+      export: {
+        ...value.export,
+        futureField: "unknown",
+      },
+    });
+
+    expect(projection.source).toBe("missing");
+    expect(Object.values(projection.present)).toEqual([false, false, false, false, false]);
   });
 });
