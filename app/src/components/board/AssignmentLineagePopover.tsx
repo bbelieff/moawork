@@ -150,9 +150,14 @@ export function AssignmentLineagePopover({
         retryRef.current = null;
         setRetryAvailable(false);
         await load();
-      } else {
+      } else if (result.code === "unavailable") {
         setMutationError(result.error);
         setRetryAvailable(true);
+      } else {
+        retryRef.current = null;
+        setRetryAvailable(false);
+        setMutationError(result.error);
+        if (result.code === "conflict") await load();
       }
     } catch {
       setMutationError(TRANSPORT_ERROR);

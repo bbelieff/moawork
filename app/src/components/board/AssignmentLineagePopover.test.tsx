@@ -60,6 +60,15 @@ async function mount(readOnly = false) {
   return { trigger, dialog: document.body.querySelector<HTMLElement>('[aria-label="담당자 흐름"]')! };
 }
 
+async function submitReassignment(dialog: HTMLElement, targetLabel: string) {
+  await act(async () => [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "담당자 변경")?.click());
+  const picker = document.body.querySelector<HTMLElement>('[aria-label="현재 담당자 선택"]')!;
+  const target = [...picker.querySelectorAll<HTMLLabelElement>("label")].find((label) => label.textContent?.includes(targetLabel))!;
+  await act(async () => target.querySelector<HTMLInputElement>("input")?.click());
+  await act(async () => [...picker.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "선택 저장")?.click());
+  await flush();
+}
+
 afterEach(async () => {
   if (root) await act(async () => root?.unmount());
   root = null;
@@ -95,12 +104,7 @@ describe("#599 AssignmentLineagePopover", () => {
       .mockRejectedValueOnce(new Error("transport unavailable"))
       .mockResolvedValueOnce({ ok: true, data: { version: 3 } });
     const { dialog } = await mount();
-    await act(async () => [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "담당자 변경")?.click());
-    const picker = document.body.querySelector<HTMLElement>('[aria-label="현재 담당자 선택"]')!;
-    const target = [...picker.querySelectorAll<HTMLLabelElement>("label")].find((label) => label.textContent?.includes("다음 담당"))!;
-    await act(async () => target.querySelector<HTMLInputElement>("input")?.click());
-    await act(async () => [...picker.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "선택 저장")?.click());
-    await flush();
+    await submitReassignment(dialog, "다음 담당");
     expect(actions.reassign).toHaveBeenCalledWith({ ...ref, assignedTo: "member-b", expectedAssignedTo: "member-a", expectedVersion: 2, requestId: "50000000-0000-4000-8000-000000000001" });
     const retry = [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "같은 요청 다시 시도")!;
     expect(retry.disabled).toBe(false);
@@ -110,6 +114,63 @@ describe("#599 AssignmentLineagePopover", () => {
     await flush();
     expect(actions.reassign).toHaveBeenCalledTimes(2);
     expect(actions.reassign.mock.calls[1][0]).toEqual(actions.reassign.mock.calls[0][0]);
+  });
+
+  it("offers exact same-request retry for a resolved unavailable result", async () => {
+    vi.spyOn(crypto, "randomUUID").mockReturnValue("50000000-0000-4000-8000-000000000002");
+    actions.reassign
+      .mockResolvedValueOnce({ ok: false, code: "unavailable", error: "일시 오류" })
+      .mockResolvedValueOnce({ ok: true, data: { version: 3 } });
+    const { dialog } = await mount();
+    await submitReassignment(dialog, "다음 담당");
+    const retry = [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "같은 요청 다시 시도")!;
+    expect(retry.disabled).toBe(false);
+    await act(async () => retry.click());
+    await flush();
+    expect(actions.reassign.mock.calls[1][0]).toEqual(actions.reassign.mock.calls[0][0]);
+  });
+
+  it("refreshes a conflict and requires a new intent built from the refreshed version", async () => {
+    vi.spyOn(crypto, "randomUUID")
+      .mockReturnValueOnce("50000000-0000-4000-8000-000000000003")
+      .mockReturnValueOnce("50000000-0000-4000-8000-000000000004");
+    const refreshed = { ...snapshot, currentAssigneeId: "member-b", version: 3 };
+    actions.read
+      .mockResolvedValueOnce({ ok: true, data: snapshot })
+      .mockResolvedValueOnce({ ok: true, data: refreshed });
+    actions.reassign
+      .mockResolvedValueOnce({ ok: false, code: "conflict", error: "먼저 변경되었습니다." })
+      .mockResolvedValueOnce({ ok: true, data: { version: 4 } });
+    const { dialog } = await mount();
+    await submitReassignment(dialog, "다음 담당");
+    expect(actions.read).toHaveBeenCalledTimes(2);
+    expect(dialog.textContent).toContain("먼저 변경되었습니다.");
+    expect(dialog.textContent).toContain("다음 담당");
+    expect(dialog.textContent).not.toContain("같은 요청 다시 시도");
+    expect(dialog.getAttribute("aria-busy")).toBeNull();
+    await submitReassignment(dialog, "현재 담당");
+    expect(actions.reassign).toHaveBeenCalledTimes(2);
+    expect(actions.reassign.mock.calls[1][0]).toEqual({
+      ...ref,
+      assignedTo: "member-a",
+      expectedAssignedTo: "member-b",
+      expectedVersion: 3,
+      requestId: "50000000-0000-4000-8000-000000000004",
+    });
+  });
+
+  it.each([
+    ["request_mismatch", "요청 내용이 다릅니다."],
+    ["permission", "변경할 권한이 없습니다."],
+  ])("does not offer exact retry for terminal %s failures", async (code, error) => {
+    actions.reassign.mockResolvedValueOnce({ ok: false, code, error });
+    const { dialog } = await mount();
+    await submitReassignment(dialog, "다음 담당");
+    expect(dialog.textContent).toContain(error);
+    expect(dialog.textContent).not.toContain("같은 요청 다시 시도");
+    expect(dialog.getAttribute("aria-busy")).toBeNull();
+    expect(actions.read).toHaveBeenCalledTimes(1);
+    expect(document.body.contains(dialog)).toBe(true);
   });
 
   it("keeps follower removal separate from history and returns focus on Escape", async () => {
