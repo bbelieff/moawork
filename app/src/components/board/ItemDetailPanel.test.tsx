@@ -5,7 +5,24 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const lineageActions = vi.hoisted(() => ({
+  read: vi.fn(),
+  reassign: vi.fn(),
+  follower: vi.fn(),
+  schedule: vi.fn(),
+  cancel: vi.fn(),
+}));
+
+vi.mock("@/app/(app)/boards/assignment-lineage-actions", () => ({
+  readAssignmentLineageAction: lineageActions.read,
+  reassignAssignmentAction: lineageActions.reassign,
+  setAssignmentFollowerAction: lineageActions.follower,
+  scheduleAssignmentHandoffAction: lineageActions.schedule,
+  cancelAssignmentHandoffAction: lineageActions.cancel,
+}));
+
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 
@@ -53,6 +70,28 @@ afterEach(async () => {
   }
   document.body.replaceChildren();
   window.history.replaceState(null, "", window.location.pathname);
+});
+
+beforeEach(() => {
+  lineageActions.read.mockReset().mockResolvedValue({
+    ok: true,
+    data: {
+      orgId: "org-a",
+      boardId: "board-a",
+      dealId: "deal-a",
+      itemId: "item-a",
+      baselineAssigneeId: "user-a",
+      currentAssigneeId: "user-a",
+      version: 2,
+      transitions: [],
+      followers: [],
+      pendingHandoff: null,
+    },
+  });
+  lineageActions.reassign.mockReset().mockResolvedValue({ ok: true, data: { version: 3 } });
+  lineageActions.follower.mockReset().mockResolvedValue({ ok: true, data: { version: 2 } });
+  lineageActions.schedule.mockReset().mockResolvedValue({ ok: true, data: { version: 2, handoffId: "handoff-a" } });
+  lineageActions.cancel.mockReset().mockResolvedValue({ ok: true, data: { version: 2 } });
 });
 
 async function renderInteractivePanel() {
@@ -269,7 +308,7 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
     expect(html).not.toContain("관리자 · 상세 배치 편집");
   });
 
-  it("신규리드 담당자는 좌측 단일 선택, 연관담당은 우측상단 복수 선택으로 저장한다", () => {
+  it("신규리드 담당자는 canonical lineage로, 연관담당은 기존 복수 선택으로 저장한다", () => {
     const memberColumns: BoardColumn[] = [
       {
         ...columns[0],
@@ -315,12 +354,66 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
         defaultOpen
       />,
     );
-    expect(html).toContain('name="field" value="owner"');
+    expect(html).not.toContain('name="field" value="owner"');
     expect(html).toContain('name="field" value="collaborators"');
+    expect(html).toContain("이대표");
     expect(html).toContain("연관담당");
     expect(html).toContain("바꾸기");
     expect(html.match(/aria-haspopup="dialog"/g)?.length).toBe(2);
     expect(html.match(/id="detail-field-collaborators"/g) ?? []).toHaveLength(0);
+  });
+
+  it("상세 drawer 담당자 변경은 legacy owner form 없이 canonical reassign을 호출한다", async () => {
+    vi.spyOn(crypto, "randomUUID").mockReturnValue("50000000-0000-4000-8000-000000000010");
+    window.history.replaceState(null, "", "/#item-item-a");
+    const host = document.createElement("div");
+    document.body.append(host);
+    mountedRoot = createRoot(host);
+    const ownerColumn: BoardColumn = { ...columns[0], id: "col-owner", key: "owner", label: "담당자", type: "person" };
+    await act(async () => mountedRoot?.render(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={{ ...row, deal_id: "deal-a", values: { owner: "user-a" } }}
+        columns={[ownerColumn]}
+        boardLayout={[{ key: "owner", source: "column" }]}
+        layout={[{ key: "owner", source: "column" }]}
+        inherited
+        canEditItems
+        canManageColumns={false}
+        canonicalNewLead
+        memberOptions={[{ id: "user-a", label: "이대표" }, { id: "user-b", label: "카위" }]}
+        defaultOpen
+        initialDetail={{ ok: true, events: [], links: [], files: [], members: [] }}
+      />,
+    ));
+    const ownerTrigger = [...document.querySelectorAll<HTMLButtonElement>('button[aria-haspopup="dialog"]')]
+      .find((button) => button.textContent?.includes("이대표"))!;
+    expect(ownerTrigger).not.toBeUndefined();
+    expect(document.querySelector('input[name="field"][value="owner"]')).toBeNull();
+    await act(async () => ownerTrigger.click());
+    await act(async () => { await Promise.resolve(); });
+    const lineageDialog = document.querySelector<HTMLElement>('[aria-label="담당자 흐름"]')!;
+    await act(async () => [...lineageDialog.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "담당자 변경")?.click());
+    const picker = document.querySelector<HTMLElement>('[aria-label="현재 담당자 선택"]')!;
+    const target = [...picker.querySelectorAll<HTMLLabelElement>("label")]
+      .find((label) => label.textContent?.includes("카위"))!;
+    await act(async () => target.querySelector<HTMLInputElement>("input")?.click());
+    await act(async () => [...picker.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "선택 저장")?.click());
+    await act(async () => {
+      await Promise.resolve();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+    expect(lineageActions.reassign).toHaveBeenCalledWith({
+      boardId: "board-a",
+      dealId: "deal-a",
+      itemId: "item-a",
+      assignedTo: "user-b",
+      expectedAssignedTo: "user-a",
+      expectedVersion: 2,
+      requestId: "50000000-0000-4000-8000-000000000010",
+    });
   });
 
   it("상세 drawer는 전역 portal과 공용 dialog 레이어를 사용한다", () => {

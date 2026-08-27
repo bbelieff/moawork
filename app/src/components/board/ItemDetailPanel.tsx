@@ -49,6 +49,7 @@ import {
   existingLoanRecordsSummary,
 } from "@/lib/new-lead/financial-profile";
 import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
+import { AssignmentLineagePopover } from "./AssignmentLineagePopover";
 import { NewLeadLoanCell } from "./NewLeadLoanCell";
 import styles from "./item-detail-panel.module.css";
 
@@ -693,11 +694,10 @@ export function ItemDetailPanel({
                       const editable =
                         canEditItems &&
                         (entry.source === "detail" || editableColumn);
-                      const memberEditable = Boolean(
+                      const assignmentLineageField = Boolean(
                         canonicalNewLead &&
                           row.deal_id &&
-                          entry.key === "owner" &&
-                          canEditItems,
+                          entry.key === "owner",
                       );
                       const fieldLabelId = `${row.id}-${entry.key}-label`;
                       return (
@@ -709,7 +709,7 @@ export function ItemDetailPanel({
                           <span aria-hidden="true" className={styles.fieldHandle}>⠿</span>
                           <label
                             id={fieldLabelId}
-                            htmlFor={editable && !memberEditable ? `${row.id}-${entry.key}` : undefined}
+                            htmlFor={editable && !assignmentLineageField ? `${row.id}-${entry.key}` : undefined}
                             className={styles.fieldLabel}
                           >
                             {label}
@@ -729,21 +729,17 @@ export function ItemDetailPanel({
                               <p className={styles.readonlyValue}>
                                 {existingLoanRecordsSummary(existingLoanRecordsFromValues(row.values))}
                               </p>
-                            ) : memberEditable ? (
-                              <form action={updateNewLeadMetaAction} className={styles.memberField}>
-                                <input type="hidden" name="boardId" value={boardId} />
-                                <input type="hidden" name="itemId" value={row.id} />
-                                <input type="hidden" name="dealId" value={row.deal_id ?? ""} />
-                                <input type="hidden" name="field" value={entry.key} />
-                                <MemberPicker
-                                  label={label}
+                            ) : assignmentLineageField ? (
+                              <div className={styles.memberField} aria-labelledby={fieldLabelId}>
+                                <AssignmentLineagePopover
+                                  boardId={boardId}
+                                  dealId={row.deal_id!}
+                                  itemId={row.id}
+                                  currentAssigneeId={ownerId}
                                   members={memberOptions}
-                                  value={typeof value === "string" ? value : null}
-                                  multiple={false}
-                                  compact
-                                  labelId={fieldLabelId}
+                                  readOnly={!canEditItems}
                                 />
-                              </form>
+                              </div>
                             ) : editable ? (
                               <AutoSaveField
                                 boardId={boardId}

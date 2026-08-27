@@ -57,6 +57,7 @@ import type {
 } from "./ColumnSettingsPanel";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
 import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
+import { AssignmentLineagePopover } from "./AssignmentLineagePopover";
 import { NewLeadMessageCell } from "./NewLeadMessageCell";
 import { NewLeadLoanCell } from "./NewLeadLoanCell";
 import { NewLeadCreditScoreCell } from "./NewLeadCreditScoreCell";
@@ -162,7 +163,7 @@ const NEW_LEAD_EMPTY_LABELS: Readonly<Record<string, string>> = {
   recontact_on: "일정 없음",
   contract_fee: "미정",
 };
-const NEW_LEAD_META_KEYS = new Set(["owner", "collaborators", "applied_on"]);
+const NEW_LEAD_META_KEYS = new Set(["collaborators", "applied_on"]);
 
 /** 한 셀 — 읽기 전용이면 표시만, 아니면 셀 단위 서버 액션 폼. */
 export function BoardCell({
@@ -260,6 +261,22 @@ export function BoardCell({
         fieldKey={column.key}
         label={column.key === CREDIT_SCORE_KEYS.ncb ? "NCB" : "KCB"}
         value={value}
+        readOnly={cellReadOnly}
+      />
+    );
+  }
+
+  if (canonicalNewLead && column.key === "owner") {
+    if (!row.deal_id) {
+      return <span title={title} className="block"><StatusCell value={row.assigned_to} options={options} /></span>;
+    }
+    return (
+      <AssignmentLineagePopover
+        boardId={boardId}
+        dealId={row.deal_id}
+        itemId={row.id}
+        currentAssigneeId={row.assigned_to}
+        members={members}
         readOnly={cellReadOnly}
       />
     );
