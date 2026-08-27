@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * merge-pr — 「그 exact head 에 CI 초록이 있는가」를 «기계가» 확인하고 머지한다.
+ * merge-pr — exact-head CI와 takeover/supersedes findings 인계를 확인하고 머지한다.
  *
  * ★ 왜 이 스크립트가 필요한가
  *   `AGENTS.md §7` 의 실행 체인은 「④ push → PR → CI 초록」을 전제한다. 그런데 그걸
@@ -15,6 +15,8 @@
  *   포크 PR 이 데스크탑에서 임의 코드를 돌릴 수 있게 된다.
  *
  *   그래서 GitHub 이 못 막는 자리를 «우리 도구» 가 막는다.
+ *   takeover/supersedes PR이면 원본 exact review의 P0/P1 전부가 disposition과 함께
+ *   넘어왔는지도 `handoff-evidence.mjs`가 원본 PR durable evidence와 대조한다.
  *
  * ★ 2026-08-27 에 이 관문이 없어서 실제로 일어난 일
  *   · CI 실행이 5회 취소됐는데 아무도 못 알아챘다(feat/573 3회 · codex 1회 · main 1회)
@@ -34,6 +36,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { inspectHandoffBody, validateHandoffEvidence } from "./handoff-evidence.mjs";
 
 /**
  * CI 워크플로를 «파일 경로» 로 고른다 — 표시 이름이 아니라.
@@ -64,12 +67,13 @@ export const REQUIRED_EVENT = "pull_request";
  *
  * 저장소·네트워크를 모른다. 입력만 보고 답한다. 그래야 테스트가 돈다.
  *
- * @param {{state?: string, isDraft?: boolean, mergeStateStatus?: string, headRefOid?: string}} pr
+ * @param {{state?: string, isDraft?: boolean, mergeStateStatus?: string, headRefOid?: string, body?: string}} pr
  * @param {Array<{name?: string, status?: string, conclusion?: string|null, head_sha?: string}>} runs
  *   그 PR head 의 워크플로 실행 목록. GitHub Actions API 응답 모양 그대로.
+ * @param {string[]} sourceEvidenceTexts takeover/supersedes 원본 PR의 본문·댓글·review body
  * @returns {{ok: boolean, reason: string}}
  */
-export function mergeDecision(pr, runs) {
+export function mergeDecision(pr, runs, sourceEvidenceTexts = []) {
   if (!pr || typeof pr !== "object") return { ok: false, reason: "PR 정보를 읽지 못했습니다." };
 
   const state = String(pr.state || "").toUpperCase();
@@ -104,6 +108,9 @@ export function mergeDecision(pr, runs) {
   //   하나가 비밀값이므로, 그 스캔이 빨간데 머지되는 일이 있어선 안 된다.
   //   mergeStateStatus 로는 못 잡는다 — 이 저장소의 열린 PR 은 전부 UNSTABLE 이라
   //   그 값으로 막으면 아무것도 못 머지한다. 그래서 체크를 직접 본다.
+  const handoff = validateHandoffEvidence(pr.body, sourceEvidenceTexts);
+  if (!handoff.ok) return { ok: false, reason: `인계 evidence 실패 — ${handoff.reason}` };
+
   const failing = (Array.isArray(pr.statusCheckRollup) ? pr.statusCheckRollup : []).filter((check) => {
     const verdict = String(check?.conclusion || check?.state || "").toUpperCase();
     return verdict === "FAILURE" || verdict === "TIMED_OUT" || verdict === "ERROR" || verdict === "ACTION_REQUIRED";
@@ -158,7 +165,8 @@ export function mergeDecision(pr, runs) {
     return { ok: false, reason: `CI 최신 실행이 초록이 아닙니다 (${detail}). 재실행하거나 원인을 고친 뒤 머지합니다.` };
   }
 
-  return { ok: true, reason: `CI success · head ${head.slice(0, 7)} · 이벤트 ${lanes.map((entry) => entry.lane).join("+")}` };
+  const handoffReason = handoff.required ? ` · ${handoff.reason}` : "";
+  return { ok: true, reason: `CI success · head ${head.slice(0, 7)} · 이벤트 ${lanes.map((entry) => entry.lane).join("+")}${handoffReason}` };
 }
 
 /**
@@ -197,6 +205,21 @@ function run(over = {}) {
 }
 
 function selfTest() {
+  const sourceReviewNotRun = `\`\`\`moawork-review-findings\n${JSON.stringify({
+    version: 1,
+    pr: 583,
+    exactHead: "3".repeat(40),
+    status: "not_run",
+    findings: [],
+  })}\n\`\`\``;
+  const notRunHandoff = `Supersedes PR #583\n\n\`\`\`moawork-handoff\n${JSON.stringify({
+    version: 1,
+    kind: "supersedes",
+    sourcePr: 583,
+    sourceExactHead: "3".repeat(40),
+    reviewStatus: "not_run",
+    findings: [],
+  })}\n\`\`\``;
   const cases = [
     // ── 통과해야 하는 것 ──────────────────────────────────────────
     ["정상 — pull_request CI 초록", OK_PR, [run()], true],
@@ -205,6 +228,9 @@ function selfTest() {
        run({ created_at: "2026-08-27T01:00:00Z" })], true],
     ["pull_request 초록 + dispatch 초록이면 통과", OK_PR,
       [run(), run({ event: "workflow_dispatch" })], true],
+    ["#615 같은 일반 PR exact replay는 인계 관문 영향 0", { ...OK_PR, body: "Closes #586 — exact CI gate" }, [run()], true],
+    ["검수 미실시를 양쪽 exact evidence에 명시한 supersedes 인계는 통과",
+      { ...OK_PR, body: notRunHandoff }, [run()], true, [sourceReviewNotRun]],
 
     // ── ★ 검수가 찾은 우회 경로 ───────────────────────────────────
     ["★ PR 이 빨간데 dispatch 를 돌려 통과시킬 수 없다 — gh workflow run 한 번이면 뚫리던 구멍", OK_PR,
@@ -232,6 +258,7 @@ function selfTest() {
     ["★ mergeStateStatus UNKNOWN 이면 충돌 판정이 무의미하므로 막는다",
       { ...OK_PR, mergeStateStatus: "UNKNOWN" }, [run()], false],
     ["★ base 가 main 이 아니면 막는다", { ...OK_PR, baseRefName: "develop" }, [run()], false],
+    ["★ supersedes 문구만 있고 evidence가 없으면 막는다", { ...OK_PR, body: "Supersedes PR #583" }, [run()], false],
 
     // ── 기본 방어 ────────────────────────────────────────────────
     ["실행이 아예 없으면 통과가 아니다", OK_PR, [], false],
@@ -244,8 +271,8 @@ function selfTest() {
   ];
 
   let failed = 0;
-  for (const [label, pr, runs, expected] of cases) {
-    const got = mergeDecision(pr, runs);
+  for (const [label, pr, runs, expected, sourceEvidenceTexts] of cases) {
+    const got = mergeDecision(pr, runs, sourceEvidenceTexts);
     if (got.ok !== expected) {
       failed += 1;
       console.error(`✖ ${label}\n    기대 ok=${expected} · 실제 ok=${got.ok} — ${got.reason}`);
@@ -273,7 +300,7 @@ function main() {
 
   const pr = JSON.parse(
     gh(
-      ["pr", "view", number, "--json", "state,isDraft,mergeStateStatus,headRefOid,baseRefName,title,statusCheckRollup"],
+      ["pr", "view", number, "--json", "state,isDraft,mergeStateStatus,headRefOid,baseRefName,title,body,statusCheckRollup"],
       `PR #${number}`,
     ),
   );
@@ -288,7 +315,25 @@ function main() {
     ),
   );
 
-  const decision = mergeDecision(pr, runs);
+  // 일반 PR 은 추가 네트워크 호출 0. takeover/supersedes PR 이 reviewed 원본을
+  // 주장할 때만 원본 PR의 durable body/comment/review evidence를 읽는다.
+  const handoffRequest = inspectHandoffBody(pr.body);
+  let sourceEvidenceTexts = [];
+  if (handoffRequest.ok && handoffRequest.required) {
+    const sourcePr = JSON.parse(
+      gh(
+        ["pr", "view", String(handoffRequest.evidence.sourcePr), "--json", "number,body,comments,reviews"],
+        `원본 PR #${handoffRequest.evidence.sourcePr} 검수 evidence`,
+      ),
+    );
+    sourceEvidenceTexts = [
+      sourcePr.body,
+      ...(Array.isArray(sourcePr.comments) ? sourcePr.comments.map((comment) => comment?.body) : []),
+      ...(Array.isArray(sourcePr.reviews) ? sourcePr.reviews.map((review) => review?.body) : []),
+    ].filter((text) => typeof text === "string");
+  }
+
+  const decision = mergeDecision(pr, runs, sourceEvidenceTexts);
   console.log(`PR #${number} — ${pr.title || ""}`);
   console.log(`  head ${String(pr.headRefOid).slice(0, 7)} · ${pr.mergeStateStatus}`);
   console.log(`  판정: ${decision.ok ? "통과" : "머지 안 함"} — ${decision.reason}`);

@@ -611,6 +611,72 @@ gh pr checkout <PR 번호>          # 권장 — 브랜치 이름표까지 정�
 지금 무엇을 하던 중 · 다음 순서 · 미결 판단        + 브랜치명과 head SHA
 ```
 
+### ⑤ takeover/supersedes 인계 — 코드와 findings를 같이 옮긴다
+
+**인계는 브랜치의 코드만 복사하는 일이 아니다. 그 exact head에서 이미 알아낸 P0/P1도 산출물이다.**
+2026-08-27 PR #583→Issue #584→PR #585 인계에서 코드와 수용조건은 옮겼지만, #583 exact 검수가
+찾은 P1 두 건 중 하나가 빠져 Production에 나갔고 PR #594로 다시 고쳤다. 빈 findings 칸을
+「없음」으로 읽은 것이 원인이었다.
+
+원본 PR의 exact 검수 댓글은 아래 machine-readable block을 함께 남긴다. `findings: []`는
+**검수했지만 P0/P1 없음**이다. 검수하지 않은 것과 다르다.
+
+````markdown
+```moawork-review-findings
+{
+  "version": 1,
+  "pr": 583,
+  "exactHead": "<40자리 검수 SHA>",
+  "status": "reviewed",
+  "findings": [
+    {
+      "id": "P1-stable-id",
+      "severity": "P1",
+      "title": "무엇이 잘못됐는가",
+      "location": "path/to/file.ts:42",
+      "reproduction": "어떻게 재현되는가"
+    }
+  ]
+}
+```
+````
+
+takeover/supersedes PR 본문에는 원본 PR·검수 exact·검수 여부와 **원본 P0/P1 전부**를 적고,
+각 항목에 처리 결과를 붙인다.
+
+````markdown
+Supersedes PR #583
+
+```moawork-handoff
+{
+  "version": 1,
+  "kind": "supersedes",
+  "sourcePr": 583,
+  "sourceExactHead": "<원본 검수 40자리 SHA>",
+  "reviewStatus": "reviewed",
+  "findings": [
+    {
+      "id": "P1-stable-id",
+      "severity": "P1",
+      "title": "원본 제목 그대로",
+      "location": "path/to/file.ts:42",
+      "reproduction": "원본 재현 그대로",
+      "disposition": { "kind": "fixed", "evidence": "수정 파일과 회귀 테스트" }
+    }
+  ]
+}
+```
+````
+
+- `reviewStatus: "reviewed"` + `findings: []` = 검수했고 P0/P1 없음.
+- `reviewStatus: "not_run"` + `findings: []` = 검수 미실시. **빈칸이나 「없음」 문자열은 금지**다.
+- 두 상태 모두 원본 PR에 같은 exact의 `moawork-review-findings` block이 있어야 한다. 원본 block의
+  `status`도 `reviewed`/`not_run`을 그대로 적는다. 인계 PR 혼자 「미실시」라고 낮춰 쓰면 차단된다.
+- disposition은 `fixed`+evidence, `not_applicable`+rationale, `deferred`+새 GitHub Issue 번호 중 하나다.
+- 원본 block의 id·severity·title·location·reproduction을 바꾸거나 한 건이라도 빼면
+  `node scripts/merge-pr.mjs <PR번호>`가 fail-closed한다.
+- 일반 PR에는 이 추가 판정이 없다. `takeover`/`supersedes`를 명시한 PR만 대상이다.
+
 ---
 
 ## 7. 실행 체인 (순서 고정)
@@ -631,7 +697,8 @@ gh pr checkout <PR 번호>          # 권장 — 브랜치 이름표까지 정�
 > ### ★ ⑦ — 머지는 «손으로» 하지 않는다
 > `gh pr merge` 도 웹 UI 의 Merge 버튼도 쓰지 않는다. **`node scripts/merge-pr.mjs <번호>` 만 쓴다.**
 >
-> **왜** — 그 스크립트는 「**그 exact head** 에 CI 초록이 있는가」를 기계가 확인하고, 없으면 머지하지 않는다.
+> **왜** — 그 스크립트는 「**그 exact head** 에 CI 초록이 있는가」와 takeover/supersedes PR이
+> 원본 exact P0/P1을 전부 처리했는가를 기계가 확인하고, 하나라도 없으면 머지하지 않는다.
 > 사람이 「④ CI 초록」을 기억해야 하는 구조는 관문이 아니다.
 >
 > **원래는 GitHub 이 막아야 한다.** required status check 를 걸면 되는데 이 저장소는
