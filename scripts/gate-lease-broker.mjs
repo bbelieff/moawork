@@ -7,12 +7,10 @@ import {
   probeLeaseBroker,
 } from "./gate-lease-core.mjs";
 
-const host = process.env.MOAWORK_GATE_LEASE_HOST || DEFAULT_GATE_LEASE_HOST;
-const port = Number(process.env.MOAWORK_GATE_LEASE_PORT || DEFAULT_GATE_LEASE_PORT);
-const diagnosticIntervalMs = Number(
-  process.env.MOAWORK_GATE_DIAGNOSTIC_INTERVAL_MS || DEFAULT_DIAGNOSTIC_INTERVAL_MS,
-);
-const idleTimeoutMs = Number(process.env.MOAWORK_GATE_BROKER_IDLE_MS || 10_000);
+const host = DEFAULT_GATE_LEASE_HOST;
+const port = DEFAULT_GATE_LEASE_PORT;
+const diagnosticIntervalMs = DEFAULT_DIAGNOSTIC_INTERVAL_MS;
+const idleTimeoutMs = 10_000;
 
 try {
   await createLeaseBroker({ host, port, diagnosticIntervalMs, idleTimeoutMs });

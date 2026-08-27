@@ -10,6 +10,29 @@ export const DEFAULT_GATE_LEASE_PORT = 48761;
 export const DEFAULT_WAIT_TIMEOUT_MS = 20 * 60 * 1000;
 export const DEFAULT_DIAGNOSTIC_INTERVAL_MS = 30 * 1000;
 
+export function assertGateLeaseEndpoint({
+  host = DEFAULT_GATE_LEASE_HOST,
+  port = DEFAULT_GATE_LEASE_PORT,
+  testEndpoint = false,
+} = {}) {
+  const normalizedPort = Number(port);
+  const isGlobalEndpoint = host === DEFAULT_GATE_LEASE_HOST && normalizedPort === DEFAULT_GATE_LEASE_PORT;
+  if (!isGlobalEndpoint && !testEndpoint) {
+    throw new GateLeaseError(
+      "GATE_LEASE_ENDPOINT_OVERRIDE",
+      "the machine-wide gate lease endpoint is immutable outside explicit tests",
+      { host, port: normalizedPort },
+    );
+  }
+  if (host !== DEFAULT_GATE_LEASE_HOST || !Number.isInteger(normalizedPort) || normalizedPort < 1 || normalizedPort > 65535) {
+    throw new GateLeaseError("GATE_LEASE_ENDPOINT_INVALID", "invalid gate lease endpoint", {
+      host,
+      port: normalizedPort,
+    });
+  }
+  return { host, port: normalizedPort };
+}
+
 export class GateLeaseError extends Error {
   constructor(code, message, detail = {}) {
     super(message);
@@ -197,6 +220,14 @@ export async function createLeaseBroker({
   const diagnosticTimer = setInterval(() => {
     const now = Date.now();
     const owner = safeOwner(active?.request, active?.acquiredAt, now);
+    if (active) {
+      writeMessage(active.socket, {
+        type: "heartbeat",
+        requestId: active.request.requestId,
+        elapsedMs: Math.max(0, now - active.acquiredAt),
+        intervalMs: diagnosticIntervalMs,
+      });
+    }
     queue.forEach((client, index) => {
       writeMessage(client.socket, {
         type: "waiting",
@@ -289,6 +320,7 @@ export async function ensureLeaseBroker({
   brokerPath = fileURLToPath(new URL("./gate-lease-broker.mjs", import.meta.url)),
   env = process.env,
 } = {}) {
+  ({ host, port } = assertGateLeaseEndpoint({ host, port, testEndpoint: false }));
   const initial = await probeLeaseBroker({ host, port });
   if (initial.available) return;
   if (initial.conflict) {
@@ -302,11 +334,7 @@ export async function ensureLeaseBroker({
   const broker = spawn(process.execPath, [brokerPath], {
     cwd: path.dirname(brokerPath),
     detached: true,
-    env: {
-      ...env,
-      MOAWORK_GATE_LEASE_HOST: host,
-      MOAWORK_GATE_LEASE_PORT: String(port),
-    },
+    env,
     stdio: "ignore",
     windowsHide: true,
   });

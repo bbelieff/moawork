@@ -11,11 +11,38 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # 모든 worktree/clone/셀프호스티드 CI 가 같은 localhost broker 를 사용한다. focused test 는
 # 이 진입점을 거치지 않으므로 대기시키지 않는다. 재진입은 broker 가 발급한 활성 token 을
 # 다시 검증하므로 환경변수 하나를 임의로 켜서 관문을 우회할 수 없다.
+is_wsl_linux=0
+if [[ -n "${WSL_INTEROP:-}${WSL_DISTRO_NAME:-}" ]] || grep -Eqi 'microsoft|wsl' /proc/sys/kernel/osrelease 2>/dev/null; then
+  is_wsl_linux=1
+fi
+
+windows_node_from_wsl() {
+  local candidate=""
+  candidate="$(command -v node.exe 2>/dev/null || true)"
+  if [[ -z "$candidate" ]] && command -v where.exe >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then
+    candidate="$(where.exe node.exe 2>/dev/null | tr -d '\r' | head -n 1)"
+    [[ -n "$candidate" ]] && candidate="$(wslpath -u "$candidate")"
+  fi
+  [[ -n "$candidate" && -x "$candidate" ]] || return 78
+  printf '%s' "$candidate"
+}
+
 if [[ -n "${MOAWORK_GATE_LEASE_TOKEN:-}" ]]; then
-  node scripts/gate-lease.mjs --verify-held
+  if [[ "$is_wsl_linux" == "1" ]]; then
+    command -v wslpath >/dev/null 2>&1 || { echo 'GATE_LEASE_FAILURE {"code":"GATE_WSL_BRIDGE_UNPROVEN"}' >&2; exit 78; }
+    windows_node="$(windows_node_from_wsl)" || { echo 'GATE_LEASE_FAILURE {"code":"GATE_WSL_BRIDGE_UNPROVEN"}' >&2; exit 78; }
+    windows_lease_script="$(wslpath -w "$PWD/scripts/gate-lease.mjs")"
+    "$windows_node" "$windows_lease_script" --verify-held
+  else
+    node scripts/gate-lease.mjs --verify-held
+  fi
 else
-  if [[ -n "${WSL_DISTRO_NAME:-}" && "$(node -p 'process.platform')" == "win32" ]]; then
-    exec node scripts/gate-lease.mjs -- wsl.exe bash scripts/check.sh "$@"
+  if [[ "$is_wsl_linux" == "1" ]]; then
+    [[ -n "${WSL_DISTRO_NAME:-}" ]] || { echo 'GATE_LEASE_FAILURE {"code":"GATE_WSL_IDENTITY_UNPROVEN"}' >&2; exit 78; }
+    command -v wslpath >/dev/null 2>&1 || { echo 'GATE_LEASE_FAILURE {"code":"GATE_WSL_BRIDGE_UNPROVEN"}' >&2; exit 78; }
+    windows_node="$(windows_node_from_wsl)" || { echo 'GATE_LEASE_FAILURE {"code":"GATE_WSL_BRIDGE_UNPROVEN"}' >&2; exit 78; }
+    windows_lease_script="$(wslpath -w "$PWD/scripts/gate-lease.mjs")"
+    exec "$windows_node" "$windows_lease_script" -- wsl.exe -d "$WSL_DISTRO_NAME" --cd "$PWD" bash scripts/check.sh "$@"
   else
     bash_bin="$(command -v bash)"
     if command -v cygpath >/dev/null 2>&1; then
