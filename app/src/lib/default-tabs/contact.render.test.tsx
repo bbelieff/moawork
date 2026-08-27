@@ -11,6 +11,7 @@ import { getRepo } from "@/lib/repo";
 import type { Ctx } from "@/lib/types";
 import { CONTACT_TAB } from "./contact";
 import { ensureDefaultTab } from "./install";
+import { emptyOtherInfoValue, updateOtherInfoEntry } from "@/lib/boards/structured-field";
 
 const ctx = {
   org: { id: "org-contact-render", name: "테스트 회사" },
@@ -80,10 +81,10 @@ function renderTab(columns: BoardColumn[]) {
 }
 
 describe("리드컨택 공용 보드 화면", () => {
-  it("21컬럼과 우측 sticky 업무이동을 실제 표가 렌더한다", () => {
+  it("22컬럼과 우측 sticky 업무이동을 실제 표가 렌더한다", () => {
     const columns = repo.listColumns(ctx, boardId);
     const html = renderTab(columns);
-    expect(columns).toHaveLength(21);
+    expect(columns).toHaveLength(22);
     for (const column of CONTACT_TAB.columns) expect(html, column.label).toContain(`>${column.label}<`);
     expect(html).toContain("sticky right-0");
   });
@@ -100,6 +101,35 @@ describe("리드컨택 공용 보드 화면", () => {
     const html = renderTab(repo.listColumns(ctx, boardId));
     expect(html).toContain('name="columnKey" value="meeting_confirm_message"');
     expect(html).toContain("✉");
+  });
+
+  it("기타정보 한 셀을 저장·reload하고 actual 표에서 체크 수로 렌더한다", async () => {
+    const item = repo.createItem(ctx, boardId, { title: "기타정보 검증" });
+    const value = updateOtherInfoEntry(emptyOtherInfoValue(), "certifications", {
+      checked: true,
+      text: "벤처기업",
+    });
+    expect((await new BoardsService(asyncRepo).setCells(ctx, boardId, item.id, { other_info: value })).errors).toEqual([]);
+    const reloaded = await new BoardsService(toAsyncBoardsRepo(new LocalBoardsRepo())).getItem(ctx, boardId, item.id);
+    expect(reloaded.values.other_info).toEqual(value);
+    const html = renderToStaticMarkup(
+      <GroupTable
+        boardId={boardId}
+        groupId={null}
+        columns={repo.listColumns(ctx, boardId)}
+        rows={[reloaded]}
+        readOnly={false}
+        rowDragEnabled={false}
+        cellFlash={null}
+        onColumnDrop={() => {}}
+        dragRowId={null}
+        canDropRow={() => false}
+        onRowDragStart={() => {}}
+        onRowDragEnd={() => {}}
+        onRowDrop={() => {}}
+      />,
+    );
+    expect(html).toContain("기타정보 1건: 보유인증 편집");
   });
 });
 

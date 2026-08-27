@@ -23,8 +23,9 @@ vi.mock("@/app/(app)/boards/assignment-lineage-actions", () => ({
   cancelAssignmentHandoffAction: lineageActions.cancel,
 }));
 
-import { ItemDetailPanel } from "./ItemDetailPanel";
+import { detailValueText, ItemDetailPanel } from "./ItemDetailPanel";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
+import { emptyOtherInfoValue, updateOtherInfoEntry } from "@/lib/boards/structured-field";
 
 const columns: BoardColumn[] = [
   {
@@ -131,6 +132,55 @@ async function renderInteractivePanel() {
 
   return { opener: opener!, dialog: dialog!, closeButton: closeButton! };
 }
+
+it("renders other_info through the structured detail consumer and exports unchecked text losslessly", async () => {
+  let value = updateOtherInfoEntry(emptyOtherInfoValue(), "certifications", {
+    checked: true,
+    text: "벤처기업",
+  });
+  value = updateOtherInfoEntry(value, "otherBusinesses", {
+    checked: false,
+    text: "보존할 메모",
+  });
+  const infoColumn: BoardColumn = {
+    ...columns[0],
+    id: "col-other-info",
+    key: "custom_other_info",
+    label: "기타정보",
+    type: "other_info",
+  };
+  const infoRow: ItemWithValues = {
+    ...row,
+    values: { custom_other_info: value, export_status: "수출 예정" },
+  };
+  const container = document.createElement("div");
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => mountedRoot?.render(
+    <ItemDetailPanel
+      boardId="board-a"
+      row={infoRow}
+      columns={[infoColumn]}
+      boardLayout={[{ key: "custom_other_info", source: "column", type: "other_info", label: "기타정보" }]}
+      layout={[{ key: "custom_other_info", source: "column", type: "other_info", label: "기타정보" }]}
+      inherited
+      canEditItems
+      canManageColumns
+    />,
+  ));
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="대한정밀 상세 열기"]')?.click());
+  const otherInfoTrigger = document.body.querySelector<HTMLButtonElement>('[aria-label="기타정보 1건: 보유인증 편집"]')!;
+  expect(otherInfoTrigger).not.toBeNull();
+  expect(document.body.querySelector('#item-a-custom_other_info')).toBeNull();
+  await act(async () => otherInfoTrigger.click());
+  expect(document.body.querySelector('form input[name="fieldKey"][value="custom_other_info"]')).not.toBeNull();
+  const exported = detailValueText("other_info", value, infoRow.values, null);
+  expect(exported).toContain("1건");
+  expect(exported).toContain("보유인증=체크(벤처기업)");
+  expect(exported).toContain("다른사업자=미체크(보존할 메모)");
+  expect(exported).not.toContain("[object Object]");
+  expect(exported).not.toContain("수출 예정");
+});
 
 async function closePanel(
   channel: CloseChannel,

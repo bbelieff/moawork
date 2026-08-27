@@ -10,6 +10,12 @@
 
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { cellSearchText, compareCells } from "@/lib/boards/cells";
+import {
+  matchesOtherInfoFacet,
+  parseOtherInfoFacetFilterKey,
+  otherInfoLegacyFromValues,
+  otherInfoSearchText,
+} from "@/lib/boards/structured-field";
 
 /** 담당자 필터의 "미배정" 을 가리키는 예약값 — assigned_to = null. */
 export const UNASSIGNED = "__unassigned__";
@@ -63,8 +69,26 @@ export const BOARD_FILTER_QUERY_KEY = "mwFilters";
  * 필터 URL 계약. 저장 뷰(BBE-117)의 영속 포맷과 분리된, 새로고침 복원용 계약이다.
  * 알 수 없는/깨진 입력은 빈 필터로 닫아 화면과 권한 필터를 우회하지 않는다.
  */
+export function canonicalBoardFilters(filters: BoardFilterState): BoardFilterState {
+  const byColumn = Object.fromEntries(
+    Object.entries(filters.byColumn)
+      .filter(([, picked]) => picked.length > 0)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, picked]) => [key, [...new Set(picked)].sort()]),
+  );
+  return {
+    ...filters,
+    assignees: [...new Set(filters.assignees)].sort(),
+    byColumn,
+  };
+}
+
+export function canonicalBoardFiltersJson(filters: BoardFilterState): string {
+  return JSON.stringify(canonicalBoardFilters(filters));
+}
+
 export function encodeBoardFilters(filters: BoardFilterState): string {
-  return JSON.stringify(filters);
+  return canonicalBoardFiltersJson(filters);
 }
 
 export function decodeBoardFilters(value: string | null): BoardFilterState {
@@ -77,7 +101,7 @@ export function decodeBoardFilters(value: string | null): BoardFilterState {
           Array.isArray(entry[1]) && entry[1].every((item) => typeof item === "string"),
       ),
     );
-    return {
+    return canonicalBoardFilters({
       q: typeof parsed.q === "string" ? parsed.q : "",
       assignees: Array.isArray(parsed.assignees)
         ? parsed.assignees.filter((item): item is string => typeof item === "string")
@@ -100,7 +124,7 @@ export function decodeBoardFilters(value: string | null): BoardFilterState {
       visibleColumnKeys: Array.isArray(parsed.visibleColumnKeys)
         ? parsed.visibleColumnKeys.filter((item): item is string => typeof item === "string")
         : null,
-    };
+    });
   } catch {
     return EMPTY_FILTERS;
   }
@@ -132,7 +156,9 @@ function haystack(
   projection?: BoardFilterProjection,
 ): string {
   const cells = columns.map((c) => projection?.searchText?.(row, c)
-    ?? cellSearchText(c.type, row.values[c.key] ?? null, c.options_jsonb?.options));
+    ?? (c.type === "other_info"
+      ? otherInfoSearchText(row.values[c.key] ?? null, otherInfoLegacyFromValues(row.values))
+      : cellSearchText(c.type, row.values[c.key] ?? null, c.options_jsonb?.options)));
   return [row.title, ...cells].join(" ").toLowerCase();
 }
 
@@ -160,6 +186,19 @@ export function rowMatches(
   }
 
   for (const [key, picked] of Object.entries(f.byColumn)) {
+    const otherInfoFacet = parseOtherInfoFacetFilterKey(key);
+    if (otherInfoFacet) {
+      const selected = picked.filter((state): state is "missing" | "false" | "true" =>
+        state === "missing" || state === "false" || state === "true");
+      if (selected.length !== picked.length) return false;
+      if (!matchesOtherInfoFacet(
+        row.values[otherInfoFacet.columnKey] ?? null,
+        otherInfoFacet.facetKey,
+        selected,
+        otherInfoFacet.columnKey === "other_info" ? otherInfoLegacyFromValues(row.values) : undefined,
+      )) return false;
+      continue;
+    }
     if (!matchesOptions(row.values[key] ?? null, picked)) return false;
   }
   return true;

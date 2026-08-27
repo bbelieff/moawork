@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import { applyFilters, type BoardFilterState } from "@/components/board/filters";
+import {
+  applyFilters,
+  type BoardFilterState,
+} from "@/components/board/filters";
+import { parseOtherInfoFacetFilterKey } from "@/lib/boards/structured-field";
 import { analyzePhone } from "@/lib/format/phone";
 import type {
   CampaignOptOutPort,
@@ -13,12 +17,20 @@ import type {
 export class CampaignPermissionError extends Error {}
 export class CampaignConfirmationError extends Error {}
 
-function canonicalFilters(filters: BoardFilterState): string {
+function canonicalCampaignFilters(filters: BoardFilterState): string {
   const byColumn = Object.fromEntries(
     Object.entries(filters.byColumn)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, values]) => [key, [...values].sort()]),
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, values]) => [
+        key,
+        parseOtherInfoFacetFilterKey(key)
+          ? [...new Set(values)].sort()
+          : [...values].sort(),
+      ]),
   );
+  // Legacy dimensions intentionally retain duplicates and empty column entries.
+  // The digest is part of the outbox idempotency key, so deployment must not
+  // mint a new business key for an already-confirmed campaign retry.
   return JSON.stringify({
     q: filters.q.trim(),
     assignees: [...filters.assignees].sort(),
@@ -30,7 +42,7 @@ function canonicalFilters(filters: BoardFilterState): string {
 }
 
 export function filterSnapshotHash(filters: BoardFilterState): string {
-  return createHash("sha256").update(canonicalFilters(filters)).digest("hex");
+  return createHash("sha256").update(canonicalCampaignFilters(filters)).digest("hex");
 }
 
 export function normalizeCampaignPhone(value: unknown): string | null {

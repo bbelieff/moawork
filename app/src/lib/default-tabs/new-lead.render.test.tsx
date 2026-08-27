@@ -28,6 +28,7 @@ import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import type { Ctx } from "@/lib/types";
 import { NEW_LEAD_GROUPS, NEW_LEAD_TAB, presentNewLeadColumns } from "./new-lead";
 import { ensureDefaultTab } from "./install";
+import { emptyOtherInfoValue, updateOtherInfoEntry } from "@/lib/boards/structured-field";
 
 const ctx: Ctx = {
   org: { id: "org-render", name: "테스트 회사" },
@@ -65,13 +66,13 @@ function emptyRow(): ItemWithValues {
   };
 }
 
-function renderTab(columns: BoardColumn[]) {
+function renderTab(columns: BoardColumn[], rows: ItemWithValues[] = [emptyRow()]) {
   return renderToStaticMarkup(
     <GroupTable
       boardId={boardId}
       groupId={null}
       columns={columns}
-      rows={[emptyRow()]}
+      rows={rows}
       readOnly={false}
       canonicalNewLead
       rowDragEnabled={false}
@@ -87,16 +88,17 @@ function renderTab(columns: BoardColumn[]) {
 }
 
 describe("② 표 렌더 — 업무 컬럼과 고정 열", () => {
-  it("39개 physical 열을 설치하고 합성·메시지 presentation은 중복 없이 렌더한다", () => {
+  it("40개 physical 열을 설치하고 합성·메시지·기타정보 presentation은 중복 없이 렌더한다", () => {
     const columns = repo.listColumns(ctx, boardId);
     const presented = presentNewLeadColumns(columns);
     const html = renderTab(presented);
 
-    expect(columns).toHaveLength(39);
+    expect(columns).toHaveLength(40);
     expect(columns.filter((column) => column.key === "revenue_3y_million")).toHaveLength(1);
     expect(presented.filter((column) => column.key === "credit_scores")).toHaveLength(1);
     expect(presented.filter((column) => column.key === "revenue_3y_million")).toHaveLength(1);
-    expect(presented.some((column) => column.key === "credit_score_ncb" || column.key === "credit_score_kcb" || column.key === "revenue_band")).toBe(false);
+    expect(presented.filter((column) => column.key === "other_info")).toHaveLength(1);
+    expect(presented.some((column) => column.key === "credit_score_ncb" || column.key === "credit_score_kcb" || column.key === "revenue_band" || column.key === "closed_business" || column.key === "export_status")).toBe(false);
     // 마크업에서 presentation 라벨이 정본 순서대로 나타나야 한다.
     const positions = presented.map((column) => html.indexOf(`>${column.label}<`));
     for (const [index, position] of positions.entries()) {
@@ -105,6 +107,7 @@ describe("② 표 렌더 — 업무 컬럼과 고정 열", () => {
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     expect(html.match(/>신용점수</g)).toHaveLength(1);
     expect(html.match(/>3개년매출\(백만원\)</g)).toHaveLength(1);
+    expect(html.match(/>기타정보</g)).toHaveLength(1);
   });
 
   it("맨 오른쪽 «컨택 이동» 이 sticky 로 고정된다 — 가로 스크롤해도 보인다", () => {
@@ -166,6 +169,14 @@ describe("⑤ 필터는 칩 + 팝오버다 — 네이티브 select 나열 금지
     expect(html).not.toContain("<details");
   });
 
+  it("기타정보 다섯 facet이 missing/false/true 칩으로 actual toolbar에 연결된다", () => {
+    const html = renderToolbar();
+    for (const label of ["폐업이력", "수출여부", "지재권", "보유인증", "다른사업자"]) {
+      expect(html, label).toContain(label);
+    }
+    expect((html.match(/aria-haspopup="dialog"/g) ?? []).length).toBeGreaterThanOrEqual(5);
+  });
+
   it("reload된 legacy revenue_band facet은 presentation toolbar에서 보이고 개별 해제할 수 있다", () => {
     const filters = presentNewLeadSavedFilters({
       ...EMPTY_FILTERS,
@@ -190,6 +201,19 @@ describe("⑤ 필터는 칩 + 팝오버다 — 네이티브 select 나열 금지
 });
 
 describe("③ 셀을 고치면 저장되고 다시 읽어도 남는다", () => {
+  it("기타정보 strict 객체를 한 셀에 저장하고 reload·actual 표의 체크 수가 같다", async () => {
+    const item = repo.createItem(ctx, boardId, { title: "기타정보 검증" });
+    const value = updateOtherInfoEntry(emptyOtherInfoValue(), "intellectualProperty", {
+      checked: true,
+      text: "특허 2건",
+    });
+    expect((await svc.setCells(ctx, boardId, item.id, { other_info: value })).errors).toEqual([]);
+    const reread = await new BoardsService(toAsyncBoardsRepo(new LocalBoardsRepo())).getItem(ctx, boardId, item.id);
+    expect(reread.values.other_info).toEqual(value);
+    const html = renderTab(presentNewLeadColumns(repo.listColumns(ctx, boardId)), [reread]);
+    expect(html).toContain("기타정보 1건: 지재권 편집");
+  });
+
   it("업종/업태를 저장하면 같은 값이 다시 읽힌다", async () => {
     const item = repo.createItem(ctx, boardId, { title: "가밸브 주식회사" });
 

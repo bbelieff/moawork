@@ -6,7 +6,12 @@ import {
   matchesOtherInfoFacet,
   matchesOtherInfoFacets,
   otherInfoCountLabel,
+  otherInfoDetailText,
   otherInfoFacetState,
+  otherInfoFacetFilterKey,
+  parseOtherInfoFacetFilterKey,
+  otherInfoSearchText,
+  parseOtherInfoValue,
   projectOtherInfoValue,
   updateOtherInfoEntry,
 } from "./structured-field";
@@ -27,6 +32,7 @@ describe("Issue #601 structured other-info contract", () => {
     expect(projection.source).toBe("structured");
     expect(projection.value).toEqual(value);
     expect(Object.values(projection.present)).toEqual([true, true, true, true, true]);
+    expect(parseOtherInfoValue(value)).toEqual(value);
   });
 
   it("counts checked entries from 0건 through 5건", () => {
@@ -47,6 +53,7 @@ describe("Issue #601 structured other-info contract", () => {
     const unchecked = updateOtherInfoEntry(checked, "certifications", { checked: false });
 
     expect(unchecked.certifications).toEqual({ checked: false, text: "벤처기업 인증" });
+    expect(otherInfoDetailText(unchecked)).toContain("보유인증=미체크(벤처기업 인증)");
   });
 
   it("projects legacy select values without inventing the other three entries", () => {
@@ -141,5 +148,34 @@ describe("Issue #601 structured other-info contract", () => {
 
     expect(projection.source).toBe("missing");
     expect(Object.values(projection.present)).toEqual([false, false, false, false, false]);
+  });
+
+  it("uses deterministic facet keys and searchable structured/legacy text", () => {
+    const key = otherInfoFacetFilterKey("custom:other/info", "intellectualProperty");
+    expect(key).toBe("__other_info_facet__:custom%3Aother%2Finfo:intellectualProperty");
+    expect(parseOtherInfoFacetFilterKey(key)).toEqual({
+      columnKey: "custom:other/info",
+      facetKey: "intellectualProperty",
+    });
+    expect(parseOtherInfoFacetFilterKey("__other_info_facet__:other_info:future")).toBeNull();
+    const value = updateOtherInfoEntry(emptyOtherInfoValue(), "intellectualProperty", {
+      checked: true,
+      text: "특허 2건",
+    });
+    expect(otherInfoSearchText(value)).toContain("특허 2건");
+    expect(otherInfoSearchText(null, { export_status: "수출 예정" })).toContain("수출 예정");
+  });
+
+  it("rejects partial, future, and entry-type mutations at the strict parser", () => {
+    const value = emptyOtherInfoValue();
+    expect(parseOtherInfoValue({ ...value, future: true })).toBeNull();
+    const partial = Object.fromEntries(
+      Object.entries(value).filter(([key]) => key !== "certifications"),
+    );
+    expect(parseOtherInfoValue(partial)).toBeNull();
+    expect(parseOtherInfoValue({
+      ...value,
+      export: { checked: "true", text: "수출 중" },
+    })).toBeNull();
   });
 });

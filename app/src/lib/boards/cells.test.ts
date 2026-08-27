@@ -20,6 +20,7 @@ import {
 } from "./cells";
 import { numericSearchIncludes } from "@/lib/format/number";
 import type { FieldOption } from "@/lib/types";
+import { emptyOtherInfoValue, updateOtherInfoEntry } from "./structured-field";
 
 const OPTS: FieldOption[] = [
   { id: "o1", label: "대기" },
@@ -42,6 +43,15 @@ describe("validateCell — 정상 정규화(위임)", () => {
   });
   it("date 는 YYYY-MM-DD 로 정규화", () => {
     expect(validateCell("date", "2026-07-21").value).toBe("2026-07-21");
+  });
+  it("other_info 객체는 strict v1 그대로 저장하고 generic string 축약을 거부한다", () => {
+    const value = updateOtherInfoEntry(emptyOtherInfoValue(), "otherBusinesses", {
+      checked: true,
+      text: "별도 사업자",
+    });
+    expect(validateCell("other_info", value)).toEqual({ ok: true, value });
+    expect(validateCell("other_info", { version: 1 }).ok).toBe(false);
+    expect(validateCell("other_info", "[object Object]").ok).toBe(false);
   });
   it("문자열 계열은 trim, 빈문자는 빈 셀", () => {
     expect(validateCell("text", "  hi  ").value).toBe("hi");
@@ -170,5 +180,13 @@ describe("formatCell", () => {
     expect(cellSearchText("text", "001234")).toBe("001234");
     expect(cellSearchText("date", "2026-08-27")).toBe("2026-08-27");
     expect(cellSearchText("phone", "01012345678")).toBe("010-1234-5678");
+  });
+  it("other_info는 실제 체크 수와 검색 텍스트를 제공한다", () => {
+    const value = updateOtherInfoEntry(emptyOtherInfoValue(), "certifications", {
+      checked: true,
+      text: "ISO 9001",
+    });
+    expect(formatCell("other_info", value)).toBe("1건");
+    expect(cellSearchText("other_info", value)).toContain("ISO 9001");
   });
 });

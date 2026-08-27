@@ -10,6 +10,7 @@ import type { FieldOption } from "@/lib/types";
 import { STATUS_EMPTY_COLOR, STATUS_PALETTE } from "@/lib/boards/status-palette";
 import { CANONICAL_REGIONS } from "@/lib/structure-packs/region-options";
 import { CONTACT_TAB_SOURCE, type DefaultTab, type DefaultTabColumn } from "./types";
+import { OTHER_INFO_COLUMN_KEY } from "@/lib/boards/structured-field";
 
 const option = (label: string, order: number, color?: string): FieldOption => ({
   id: label,
@@ -86,6 +87,7 @@ const COLUMNS: DefaultTabColumn[] = [
   { key: "sigungu", label: "시군구", type: "select", source: "in", options: sigunguOptions(), width: 110 },
   { key: "rep_name", label: "대표자명", type: "text", source: "lk", width: 110 },
   { key: "revenue", label: "매출액", type: "text", source: "lk", width: 110 },
+  { key: OTHER_INFO_COLUMN_KEY, label: "기타정보", type: "other_info", source: "in", width: 170 },
   {
     key: "contract_status",
     label: "계약상황",
@@ -140,9 +142,11 @@ const COLUMNS: DefaultTabColumn[] = [
 ];
 
 export const CONTACT_TAB: DefaultTab = {
-  revision: 2,
+  revision: 3,
   previousRevision: {
-    revision: 1,
+    revision: 2,
+    // 기록이 없는 revision 1 보드의 linked-field 교정도 계속 감지한다.
+    // revision 2 상태가 있으면 저장된 false baseline이 우선하므로 회사 수정값은 덮지 않는다.
     columns: Object.fromEntries([
       "ad_name", "applied_on", "phone", "industry", "rep_name", "revenue", "email",
     ].map((key) => [key, { readOnly: true }])),

@@ -3,6 +3,7 @@ import type { Ctx } from "@/lib/types";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { EMPTY_FILTERS } from "@/components/board/filters";
 import { CampaignConfirmationError, CampaignPermissionError, filterSnapshotHash, RetargetingCampaignService } from "./service";
+import { emptyOtherInfoValue, otherInfoFacetFilterKey, updateOtherInfoEntry } from "@/lib/boards/structured-field";
 
 const ctx = { user: { id: "user-a", email: "a@example.test", name: "A" }, org: { id: "org-a", name: "A" }, role: "member", scope: "assigned" } as Ctx;
 const columns = [{ id: "phone-col", org_id: "org-a", board_id: "board-a", key: "phone", label: "연락처", type: "phone", source: "in", rightPinned: false, options_jsonb: null, sort_order: 0, width: null }] as BoardColumn[];
@@ -78,5 +79,60 @@ describe("retargeting campaign producer", () => {
     const a = { ...EMPTY_FILTERS, assignees: ["b", "a"], byColumn: { status: ["z", "a"] } };
     const b = { ...EMPTY_FILTERS, assignees: ["a", "b"], byColumn: { status: ["a", "z"] } };
     expect(filterSnapshotHash(a)).toBe(filterSnapshotHash(b));
+  });
+
+  it("freezes legacy campaign hash bytes including empty keys and duplicates", () => {
+    expect(filterSnapshotHash(EMPTY_FILTERS))
+      .toBe("22906e94ce56320474eec44bfde7f985a80f49970d1b73c8a1f0c54011652168");
+    expect(filterSnapshotHash({ ...EMPTY_FILTERS, byColumn: { status: [] } }))
+      .toBe("77c5c1e404a0fe850f81cc73daaa9c5d7ad57bcf989a6bfa1e76227d594beba8");
+    expect(filterSnapshotHash({
+      ...EMPTY_FILTERS,
+      assignees: ["b", "a", "a"],
+      byColumn: { status: ["z", "a", "a"] },
+    })).toBe("00ab02fda83783b301153bed75c1975fda1bdf5feac164a831ad63a278974f5a");
+  });
+
+  it("canonicalizes other-info facet order but distinguishes a different selection", () => {
+    const facet = otherInfoFacetFilterKey("other_info", "export");
+    const a = { ...EMPTY_FILTERS, byColumn: { [facet]: ["true", "missing"] } };
+    const b = { ...EMPTY_FILTERS, byColumn: { [facet]: ["missing", "true", "true"] } };
+    const c = { ...EMPTY_FILTERS, byColumn: { [facet]: ["false"] } };
+    expect(filterSnapshotHash(a)).toBe(filterSnapshotHash(b));
+    expect(filterSnapshotHash(a)).not.toBe(filterSnapshotHash(c));
+  });
+
+  it("a legacy retry keeps its old hash while only new facet ordering is canonicalized", () => {
+    const facet = otherInfoFacetFilterKey("other_info", "export");
+    const first = {
+      ...EMPTY_FILTERS,
+      assignees: ["b", "a", "a"],
+      byColumn: { status: [], [facet]: ["true", "missing", "true"] },
+    };
+    const retry = {
+      ...EMPTY_FILTERS,
+      assignees: ["a", "a", "b"],
+      byColumn: { [facet]: ["missing", "true"], status: [] },
+    };
+    expect(filterSnapshotHash(first)).toBe(filterSnapshotHash(retry));
+    expect(filterSnapshotHash(first)).not.toBe(filterSnapshotHash({
+      ...retry,
+      byColumn: { ...retry.byColumn, status: ["done"] },
+    }));
+  });
+
+  it("campaign consumes the same legacy-aware facet evaluator as the board", async () => {
+    const value = updateOtherInfoEntry(emptyOtherInfoValue(), "export", { checked: true, text: "직접 수출" });
+    const rows: ItemWithValues[] = [
+      { ...row("structured", "01011112222"), values: { phone: "01011112222", other_info: value } },
+      { ...row("legacy", "01033334444"), values: { phone: "01033334444", export_status: "수출 예정" } },
+      { ...row("missing", "01055556666"), values: { phone: "01055556666" } },
+    ];
+    const { service, enqueue, command } = setup(rows);
+    const filters = { ...EMPTY_FILTERS, byColumn: { [otherInfoFacetFilterKey("other_info", "export")]: ["true"] } };
+    const result = await service.enqueue({ ...command, filters, confirmedCount: 2 });
+    expect(result.matched).toBe(2);
+    expect(enqueue.mock.calls[0][0].targets.map((target: { itemId: string }) => target.itemId))
+      .toEqual(["structured", "legacy"]);
   });
 });

@@ -12,6 +12,7 @@
 import type { FieldOption, FieldType } from "@/lib/types";
 import type { FieldSource } from "@/lib/field/source";
 import type { DetailLayoutEntry } from "./detail-layout";
+import type { OtherInfoValue } from "./structured-field";
 
 /** 보드 뷰 종류 — 003 board_views.kind. */
 export const BOARD_VIEW_KINDS = ["table", "kanban"] as const;
@@ -141,6 +142,7 @@ export type CellValue =
   | number
   | boolean
   | string[]
+  | OtherInfoValue
   | null;
 
 export interface BoardView {

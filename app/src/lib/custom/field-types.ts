@@ -7,6 +7,10 @@
  */
 
 import { FIELD_TYPES, type FieldType, type FieldOption } from "./domain-types";
+import {
+  checkedOtherInfoCount,
+  parseOtherInfoValue,
+} from "@/lib/boards/structured-field";
 
 /** value_jsonb 에 저장 가능한 JSON 값. */
 export type JsonValue =
@@ -396,6 +400,19 @@ const SPECS: Record<FieldType, FieldTypeSpec> = {
     },
     isEmpty: emptyDefault,
     comparable: comparableDefault,
+  },
+  other_info: {
+    type: "other_info",
+    supportsOptions: false,
+    operators: ["eq", "neq", "contains", "is_empty", "is_not_empty"],
+    normalize: (raw) => {
+      if (raw === null || raw === undefined || raw === "") return null;
+      const parsed = parseOtherInfoValue(raw);
+      if (!parsed) throw new ValidationError("other_info: 정확한 version 1 다섯 항목 객체여야 합니다");
+      return parsed as unknown as JsonValue;
+    },
+    isEmpty: (value) => value === null || value === undefined,
+    comparable: (value) => checkedOtherInfoCount(value),
   },
 };
 

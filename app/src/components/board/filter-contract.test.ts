@@ -13,6 +13,11 @@ import {
   compareNewLeadFinancialValues,
   newLeadFinancialSearchText,
 } from "@/lib/new-lead/financial-profile";
+import {
+  emptyOtherInfoValue,
+  otherInfoFacetFilterKey,
+  updateOtherInfoEntry,
+} from "@/lib/boards/structured-field";
 
 const columns: BoardColumn[] = [
   {
@@ -67,7 +72,10 @@ describe("BBE-118 filter contract", () => {
       sortDir: "desc" as const,
       visibleColumnKeys: ["status"],
     };
-    expect(decodeBoardFilters(encodeBoardFilters(filters))).toEqual(filters);
+    expect(decodeBoardFilters(encodeBoardFilters(filters))).toEqual({
+      ...filters,
+      byColumn: { status: ["hold", "new"] },
+    });
     expect(decodeBoardFilters(JSON.stringify({ ...filters, columnLimit: 12 })).columnLimit).toBe(0);
     expect(decodeBoardFilters("not-json")).toEqual(EMPTY_FILTERS);
   });
@@ -89,7 +97,7 @@ describe("BBE-118 filter contract", () => {
 
   it("실제 보드 검색에서 typed 숫자의 raw·표시 문자열을 모두 찾는다", () => {
     const numericColumns = [column("number", "number"), column("money", "money")];
-    const rows = [
+    const rows: ItemWithValues[] = [
       { ...row(1), values: { number: 1_234, money: -1_234.5 } },
       { ...row(2), values: { number: 2_000, money: 5 } },
     ];
@@ -148,5 +156,58 @@ describe("BBE-118 filter contract", () => {
       .toEqual(["grouped", "hundred", "ten", "two", "legacy"]);
     expect(applyFilters(financeRows, financeColumns, { ...EMPTY_FILTERS, sortKey: "credit_scores", sortDir: "asc" }, projection).map((item) => item.id))
       .toEqual(["two", "ten", "hundred", "legacy", "grouped"]);
+  });
+
+  it("기타정보 facet은 같은 facet OR·다른 facet AND이며 structured가 legacy보다 우선한다", () => {
+    let structured = updateOtherInfoEntry(emptyOtherInfoValue(), "intellectualProperty", { checked: true, text: "특허" });
+    structured = updateOtherInfoEntry(structured, "export", { checked: false, text: "과거 수출" });
+    const rows: ItemWithValues[] = [
+      { ...row(1), id: "structured", values: { other_info: structured, export_status: "수출 중" } },
+      { ...row(2), id: "legacy", values: { export_status: "수출 예정" } },
+      { ...row(3), id: "missing", values: {} },
+    ];
+    const infoColumns = [column("other_info", "other_info")];
+    const filters = {
+      ...EMPTY_FILTERS,
+      byColumn: {
+        [otherInfoFacetFilterKey("other_info", "intellectualProperty")]: ["true"],
+        [otherInfoFacetFilterKey("other_info", "export")]: ["missing", "false"],
+      },
+    };
+    expect(applyFilters(rows, infoColumns, filters).map((item) => item.id)).toEqual(["structured"]);
+    expect(applyFilters(rows, infoColumns, {
+      ...EMPTY_FILTERS,
+      byColumn: { [otherInfoFacetFilterKey("other_info", "export")]: ["true"] },
+    }).map((item) => item.id)).toEqual(["legacy"]);
+  });
+
+  it("facet URL은 순서와 중복을 정규화하고 잘못된 상태는 fail-closed한다", () => {
+    const facet = otherInfoFacetFilterKey("other_info", "certifications");
+    const encoded = encodeBoardFilters({
+      ...EMPTY_FILTERS,
+      assignees: ["b", "a", "a"],
+      byColumn: { [facet]: ["true", "missing", "true"] },
+    });
+    expect(decodeBoardFilters(encoded).byColumn).toEqual({ [facet]: ["missing", "true"] });
+    expect(rowMatches(row(1), [column("other_info", "other_info")], {
+      ...EMPTY_FILTERS,
+      byColumn: { [facet]: ["future"] },
+    })).toBe(false);
+  });
+
+  it("namespaced facet evaluates the exact physical column key", () => {
+    const custom = updateOtherInfoEntry(emptyOtherInfoValue(), "export", { checked: true });
+    const rowWithTwo = {
+      ...row(1),
+      values: { other_info: emptyOtherInfoValue(), custom_other: custom },
+    };
+    expect(rowMatches(rowWithTwo, [column("other_info", "other_info"), column("custom_other", "other_info")], {
+      ...EMPTY_FILTERS,
+      byColumn: { [otherInfoFacetFilterKey("custom_other", "export")]: ["true"] },
+    })).toBe(true);
+    expect(rowMatches(rowWithTwo, [column("other_info", "other_info"), column("custom_other", "other_info")], {
+      ...EMPTY_FILTERS,
+      byColumn: { [otherInfoFacetFilterKey("other_info", "export")]: ["true"] },
+    })).toBe(false);
   });
 });

@@ -33,13 +33,16 @@ describe("리드컨택 기본 탭 — 목업 계약", () => {
     ]);
   });
 
-  it("컬럼 21개의 이름·순서·타입·출처가 목업과 같다", () => {
-    expect(CONTACT_TAB.columns).toHaveLength(21);
-    expect(CONTACT_TAB.columns.map((column) => column.label)).toEqual(mock.columns.map((column) => column.label));
-    for (const [index, column] of CONTACT_TAB.columns.entries()) {
+  it("목업 21컬럼을 보존하고 기타정보 한 컬럼만 additive로 추가한다", () => {
+    expect(CONTACT_TAB.columns).toHaveLength(22);
+    const legacyColumns = CONTACT_TAB.columns.filter((column) => column.key !== "other_info");
+    expect(legacyColumns.map((column) => column.label)).toEqual(mock.columns.map((column) => column.label));
+    for (const [index, column] of legacyColumns.entries()) {
       expect(TYPE_MAP[column.type], column.label).toContain(mock.columns[index].type);
       expect(column.source, column.label).toBe(mock.columns[index].source);
     }
+    expect(CONTACT_TAB.columns.filter((column) => column.key === "other_info"))
+      .toEqual([expect.objectContaining({ label: "기타정보", type: "other_info", source: "in" })]);
   });
 
   it("회사명 제목 1칸 + 연결(lk) 7컬럼은 provenance를 보존하면서 직접 편집 가능하다", () => {

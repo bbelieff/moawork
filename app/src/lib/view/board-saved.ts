@@ -1,4 +1,4 @@
-import { applyFilters, encodeBoardFilters, type BoardFilterProjection, type BoardFilterState } from "@/components/board/filters";
+import { applyFilters, canonicalBoardFilters, encodeBoardFilters, type BoardFilterProjection, type BoardFilterState } from "@/components/board/filters";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards";
 import {
   durableNewLeadColumnKeys,
@@ -206,7 +206,7 @@ export function parseSavedBoardViewConfig(value: unknown): SavedBoardViewConfig 
     : [];
   return {
     kind,
-    filters: {
+    filters: canonicalBoardFilters({
       ...EMPTY_FILTERS,
       q: typeof rawFilters.q === "string" ? rawFilters.q : "",
       assignees: strings(rawFilters.assignees),
@@ -218,7 +218,7 @@ export function parseSavedBoardViewConfig(value: unknown): SavedBoardViewConfig 
         ? strings(rawFilters.visibleColumnKeys)
         : null,
       sorts: parsedSorts.length ? parsedSorts : legacySorts,
-    },
+    }),
     groupBy: typeof root.groupBy === "string" ? root.groupBy : "",
     layout: Object.fromEntries(Object.entries(rawLayout).map(([key, order]) => [key, strings(order)])),
     hiddenColumns: strings(root.hiddenColumns),

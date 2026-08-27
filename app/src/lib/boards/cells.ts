@@ -22,6 +22,12 @@ import {
   formatDecimal,
 } from "@/lib/format/number";
 import type { CellValue } from "./types";
+import {
+  checkedOtherInfoCount,
+  isOtherInfoValue,
+  otherInfoCountLabel,
+  otherInfoSearchText,
+} from "./structured-field";
 
 /** 선택지를 갖는 타입. */
 export function hasOptions(type: FieldType): boolean {
@@ -67,6 +73,12 @@ export function validateCell(
     return { ok: true, value: phone.normalized || null };
   }
 
+  if (type === "other_info") {
+    return isOtherInfoValue(res.normalized)
+      ? { ok: true, value: res.normalized }
+      : { ok: false, value: null, error: "other_info: 저장 형식이 올바르지 않습니다" };
+  }
+
   return { ok: true, value: toCellValue(res.normalized) };
 }
 
@@ -81,6 +93,7 @@ export function isEmptyCell(value: CellValue): boolean {
  * 선행 0과 version/request id를 보존한다.
  */
 export function comparableCell(value: CellValue): number | string {
+  if (isOtherInfoValue(value)) return checkedOtherInfoCount(value);
   if (typeof value === "number") return value;
   if (typeof value === "boolean") return value ? 1 : 0;
   if (Array.isArray(value)) return value.join(",");
@@ -107,6 +120,7 @@ export function formatCell(
   options?: FieldOption[] | null,
 ): string {
   if (isEmptyCell(value)) return "";
+  if (type === "other_info") return otherInfoCountLabel(value);
   if (type === "checkbox") return value ? "✓" : "";
   if (type === "number" && typeof value === "number") return formatDecimal(value);
   if (type === "money" && typeof value === "number") return formatDecimal(value);
@@ -129,6 +143,7 @@ export function cellSearchText(
   value: CellValue,
   options?: FieldOption[] | null,
 ): string {
+  if (type === "other_info") return otherInfoSearchText(value);
   const display = formatCell(type, value, options);
   if ((type === "number" || type === "money") && typeof value === "number") {
     const raw = canonicalNumberString(value);

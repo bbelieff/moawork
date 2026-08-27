@@ -70,6 +70,8 @@ import {
 } from "@/lib/new-lead/financial-profile";
 import { isNewLeadPresentationOnlyStructure } from "@/lib/default-tabs/new-lead";
 import { WorkflowProgressCell } from "./WorkflowProgressCell";
+import { OtherInfoBoardCell } from "./OtherInfoBoardCell";
+import { OTHER_INFO_COLUMN_KEY, otherInfoLegacyFromValues } from "@/lib/boards/structured-field";
 import {
   WORKFLOW_PROGRESS_KEY,
   workflowProgressSpec,
@@ -131,6 +133,7 @@ export function cellInputValue(
       : parsed.toISOString().slice(0, 16);
   }
   if (type === "date" && typeof value === "string") return value.slice(0, 10);
+  if (typeof value === "object") return "";
   return typeof value === "number" ? value : String(value);
 }
 
@@ -288,6 +291,20 @@ export function BoardCell({
         value={row.values[NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion]}
         legacyRevenueBand={row.values[NEW_LEAD_COMPOSITE_FIELD_KEYS.legacyRevenueBand]}
         readOnly={cellReadOnly}
+      />
+    );
+  }
+
+  if (column.type === "other_info") {
+    return (
+      <OtherInfoBoardCell
+        boardId={boardId}
+        itemId={row.id}
+        fieldKey={column.key}
+        value={value}
+        legacy={column.key === OTHER_INFO_COLUMN_KEY ? otherInfoLegacyFromValues(row.values) : undefined}
+        readOnly={cellReadOnly}
+        error={error}
       />
     );
   }
