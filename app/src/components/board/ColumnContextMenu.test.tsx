@@ -90,6 +90,7 @@ describe("Issue #604 ColumnContextMenu portal contract", () => {
     await act(async () => trigger.dispatchEvent(new Event("dragstart", { bubbles: true, cancelable: true })));
     expect(onParentDrag).not.toHaveBeenCalled();
     expect(trigger.getAttribute("draggable")).toBe("false");
+    expect(trigger.className).not.toMatch(/\bpy-/u);
   });
 
   it("uses product confirmation for archive instead of window.confirm", async () => {

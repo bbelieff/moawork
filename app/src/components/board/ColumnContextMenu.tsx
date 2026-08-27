@@ -147,7 +147,7 @@ export function ColumnContextMenu({
             showSurface("menu");
           }
         }}
-        className="ml-auto rounded-lg px-1.5 py-0.5 text-mw-sub hover:bg-mw-bg focus:outline-none focus:ring-2 focus:ring-mw-primary"
+        className="ml-auto rounded-lg px-1.5 text-mw-sub hover:bg-mw-bg focus:outline-none focus:ring-2 focus:ring-mw-primary"
       >
         ⋯
       </button>
