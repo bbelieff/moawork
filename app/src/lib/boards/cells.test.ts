@@ -10,7 +10,15 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { validateCell, isEmptyCell, compareCells, formatCell, hasOptions } from "./cells";
+import {
+  cellSearchText,
+  compareCells,
+  formatCell,
+  hasOptions,
+  isEmptyCell,
+  validateCell,
+} from "./cells";
+import { numericSearchIncludes } from "@/lib/format/number";
 import type { FieldOption } from "@/lib/types";
 
 const OPTS: FieldOption[] = [
@@ -114,9 +122,17 @@ describe("compareCells — 빈값 뒤로", () => {
     expect(compareCells(1, null)).toBeLessThan(0);
     expect(compareCells(null, null)).toBe(0);
   });
+  it("raw number는 2 < 10 < 100이고 숫자처럼 생긴 식별 문자열은 추측하지 않는다", () => {
+    expect([100, 2, 10].sort(compareCells)).toEqual([2, 10, 100]);
+    expect(compareCells("0010", "2")).toBeLessThan(0);
+  });
 });
 
 describe("formatCell", () => {
+  it("number와 money는 3자리 쉼표로 표시하되 raw 값은 바꾸지 않는다", () => {
+    expect(formatCell("number", 1_234.5)).toBe("1,234.5");
+    expect(formatCell("money", -1_234)).toBe("-1,234");
+  });
   it("옵션 id 를 라벨로 치환", () => {
     expect(formatCell("select", "o1", OPTS)).toBe("대기");
     expect(formatCell("multiselect", ["o1", "o2"], OPTS)).toBe("대기, 완료");
@@ -131,5 +147,16 @@ describe("formatCell", () => {
   });
   it("phone 판독 불가는 «확인 필요»", () => {
     expect(formatCell("phone", "abc")).toBe("확인 필요");
+  });
+  it("숫자 검색 seam은 raw와 display를 함께 제공해 1234와 1,234가 동등하다", () => {
+    const searchText = cellSearchText("number", 1_234);
+    expect(searchText).toBe("1234 1,234");
+    expect(numericSearchIncludes(searchText, "1234")).toBe(true);
+    expect(numericSearchIncludes(searchText, "1,234")).toBe(true);
+  });
+  it("식별 문자열·날짜·전화는 숫자 검색/포맷을 거치지 않는다", () => {
+    expect(cellSearchText("text", "001234")).toBe("001234");
+    expect(cellSearchText("date", "2026-08-27")).toBe("2026-08-27");
+    expect(cellSearchText("phone", "01012345678")).toBe("010-1234-5678");
   });
 });

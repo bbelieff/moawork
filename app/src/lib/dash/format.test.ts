@@ -28,6 +28,10 @@ describe("formatCount", () => {
     expect(formatCount(Number.NaN)).toBe(EMPTY);
     expect(formatCount(null)).toBe(EMPTY);
   });
+  it("수량이 아닌 음수·소수는 typed 계약에 따라 '—'", () => {
+    expect(formatCount(-1)).toBe(EMPTY);
+    expect(formatCount(1.5)).toBe(EMPTY);
+  });
 });
 
 describe("formatPercent", () => {
@@ -48,6 +52,10 @@ describe("formatPercent", () => {
   it("비유한은 '—'", () => {
     expect(formatPercent(Number.NaN)).toBe(EMPTY);
     expect(formatPercent(null)).toBe(EMPTY);
+  });
+  it("0~1 밖 값은 ratio가 아니므로 '—'", () => {
+    expect(formatPercent(-0.1)).toBe(EMPTY);
+    expect(formatPercent(1.01)).toBe(EMPTY);
   });
 });
 

@@ -66,6 +66,16 @@ describe("고객사 CSV 매핑", () => {
     expect(parseRevenue(undefined)).toBeNull();
   });
 
+  it("CSV 숫자는 raw number로 파싱하고 식별 문자열의 선행 0은 보존한다", () => {
+    const result = mapCsvToCompanies(
+      [{ title: "회사", values: { 전화번호: "001234", 매출액: "1,234.5" } }],
+      ["전화번호", "매출액"],
+    );
+
+    expect(result.mapped[0].input.phone).toBe("001234");
+    expect(result.mapped[0].input.revenue).toBe(1234.5);
+  });
+
   it("창업년도는 연도만 있어도 받고, 못 읽으면 null 이다", () => {
     expect(parseFoundedOn("2024")).toBe("2024-01-01");
     expect(parseFoundedOn("2024.03")).toBe("2024-03-01");

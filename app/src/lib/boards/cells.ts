@@ -17,6 +17,10 @@ import { getFieldTypeSpec, validateValue } from "@/lib/custom/field-types";
 // 엉뚱한 모듈로 리졸브된다(지금까지 이 배럴의 실제 소비자가 0곳이라 아무도 못 봤다) —
 // 파일을 직접 가리켜 우회한다.
 import { analyzePhone, formatPhone } from "@/lib/format/phone";
+import {
+  canonicalNumberString,
+  formatDecimal,
+} from "@/lib/format/number";
 import type { CellValue } from "./types";
 
 /** 선택지를 갖는 타입. */
@@ -71,9 +75,16 @@ export function isEmptyCell(value: CellValue): boolean {
   return getFieldTypeSpec("text").isEmpty(value as never);
 }
 
-/** 정렬/비교용 스칼라. 빈값은 항상 뒤로 가도록 호출측에서 처리. */
+/**
+ * 정렬/비교용 raw 스칼라. 문자열을 숫자로 추측하지 않는다.
+ * 숫자 컬럼은 저장 경계(validateCell)에서 이미 number가 되어야 하며, 이 원칙이 식별 문자열의
+ * 선행 0과 version/request id를 보존한다.
+ */
 export function comparableCell(value: CellValue): number | string {
-  return getFieldTypeSpec("text").comparable(value as never);
+  if (typeof value === "number") return value;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (Array.isArray(value)) return value.join(",");
+  return String(value ?? "");
 }
 
 /** 두 셀 비교(오름차순). 빈값은 뒤로. */
@@ -97,7 +108,8 @@ export function formatCell(
 ): string {
   if (isEmptyCell(value)) return "";
   if (type === "checkbox") return value ? "✓" : "";
-  if (type === "money" && typeof value === "number") return value.toLocaleString("ko-KR");
+  if (type === "number" && typeof value === "number") return formatDecimal(value);
+  if (type === "money" && typeof value === "number") return formatDecimal(value);
   if (type === "phone" && typeof value === "string") return formatPhone(value);
   if (hasOptions(type) && options) {
     const label = (id: string) => options.find((o) => o.id === id)?.label ?? id;
@@ -106,4 +118,21 @@ export function formatCell(
   }
   if (Array.isArray(value)) return value.join(", ");
   return String(value);
+}
+
+/**
+ * 검색 소비자가 쓸 표시+raw 문자열. UI 필터 파일과 분리된 순수 seam이라 검색 UI가 바뀌어도
+ * `1234`와 `1,234` 동등 계약을 독립 검증할 수 있다.
+ */
+export function cellSearchText(
+  type: FieldType,
+  value: CellValue,
+  options?: FieldOption[] | null,
+): string {
+  const display = formatCell(type, value, options);
+  if ((type === "number" || type === "money") && typeof value === "number") {
+    const raw = canonicalNumberString(value);
+    return raw === display ? raw : `${raw} ${display}`;
+  }
+  return display;
 }
