@@ -18,6 +18,7 @@ import styles from "./assignment-flow-popover.module.css";
 
 type Position = Readonly<{ left: number; top: number; width: number; maxHeight: number }>;
 type MutationResult = AssignmentLineageActionResult<Record<string, unknown>>;
+const TRANSPORT_ERROR = "요청을 완료할 수 없습니다. 잠시 후 다시 시도해 주세요.";
 
 export type AssignmentLineagePopoverProps = AssignmentLineageRef & Readonly<{
   currentAssigneeId: string | null;
@@ -108,10 +109,15 @@ export function AssignmentLineagePopover({
   const load = useCallback(async () => {
     setLoading(true);
     setReadError(null);
-    const result = await readAssignmentLineageAction(ref);
-    if (result.ok) setSnapshot(result.data);
-    else setReadError(result.error);
-    setLoading(false);
+    try {
+      const result = await readAssignmentLineageAction(ref);
+      if (result.ok) setSnapshot(result.data);
+      else setReadError(result.error);
+    } catch {
+      setReadError(TRANSPORT_ERROR);
+    } finally {
+      setLoading(false);
+    }
   }, [ref]);
 
   const close = useCallback((restoreFocus = true) => {
@@ -138,16 +144,22 @@ export function AssignmentLineagePopover({
     setMutationError(null);
     setRetryAvailable(false);
     retryRef.current = operation;
-    const result = await operation();
-    if (result.ok) {
-      retryRef.current = null;
-      setRetryAvailable(false);
-      await load();
-    } else {
-      setMutationError(result.error);
+    try {
+      const result = await operation();
+      if (result.ok) {
+        retryRef.current = null;
+        setRetryAvailable(false);
+        await load();
+      } else {
+        setMutationError(result.error);
+        setRetryAvailable(true);
+      }
+    } catch {
+      setMutationError(TRANSPORT_ERROR);
       setRetryAvailable(true);
+    } finally {
+      setPendingLabel(null);
     }
-    setPendingLabel(null);
   }, [load, pendingLabel]);
 
   useEffect(() => {
@@ -219,7 +231,7 @@ export function AssignmentLineagePopover({
           <div className={styles.skeletons} aria-label="담당자 흐름 불러오는 중">
             {Array.from({ length: 5 }, (_, index) => <span key={index} className={styles.skeleton} />)}
           </div>
-        ) : (
+        ) : readError && !snapshot ? null : (
           <>
             <section className={styles.section} aria-labelledby={`assignment-history-${itemId}`}>
               <h3 id={`assignment-history-${itemId}`}>이전 담당자</h3>

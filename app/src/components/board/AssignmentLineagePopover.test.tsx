@@ -89,10 +89,10 @@ describe("#599 AssignmentLineagePopover", () => {
     expect(dialog.querySelector('[aria-label="알림 담당님을 알림 대상에서만 제외"]')).not.toBeNull();
   });
 
-  it("retries a failed reassignment with the exact same request id and expected version", async () => {
+  it("releases a rejected reassignment and retries with the exact same request id and expected version", async () => {
     vi.spyOn(crypto, "randomUUID").mockReturnValue("50000000-0000-4000-8000-000000000001");
     actions.reassign
-      .mockResolvedValueOnce({ ok: false, code: "unavailable", error: "일시 오류" })
+      .mockRejectedValueOnce(new Error("transport unavailable"))
       .mockResolvedValueOnce({ ok: true, data: { version: 3 } });
     const { dialog } = await mount();
     await act(async () => [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "담당자 변경")?.click());
@@ -103,6 +103,9 @@ describe("#599 AssignmentLineagePopover", () => {
     await flush();
     expect(actions.reassign).toHaveBeenCalledWith({ ...ref, assignedTo: "member-b", expectedAssignedTo: "member-a", expectedVersion: 2, requestId: "50000000-0000-4000-8000-000000000001" });
     const retry = [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "같은 요청 다시 시도")!;
+    expect(retry.disabled).toBe(false);
+    expect(dialog.getAttribute("aria-busy")).toBeNull();
+    expect(dialog.textContent).not.toContain("담당자 변경 중");
     await act(async () => retry.click());
     await flush();
     expect(actions.reassign).toHaveBeenCalledTimes(2);
@@ -125,7 +128,29 @@ describe("#599 AssignmentLineagePopover", () => {
     actions.read.mockResolvedValue({ ok: false, code: "permission", error: "볼 수 없습니다." });
     const { dialog } = await mount();
     expect(dialog.textContent).toContain("볼 수 없습니다.");
+    expect(dialog.textContent).not.toContain("미배정");
+    expect(dialog.textContent).not.toContain("도입 이후 담당 변경 이력이 없습니다.");
+    expect(dialog.textContent).not.toContain("예정된 인계가 없습니다.");
+    expect(dialog.textContent).not.toContain("알림 대상이 없습니다.");
     expect(dialog.textContent).not.toContain("담당자 변경");
     expect(dialog.textContent).not.toContain("알림 대상 추가");
+  });
+
+  it("turns a rejected read into a retryable error without false-empty content or a loading deadlock", async () => {
+    actions.read
+      .mockRejectedValueOnce(new Error("transport unavailable"))
+      .mockResolvedValueOnce({ ok: true, data: snapshot });
+    const { dialog } = await mount();
+    expect(dialog.textContent).toContain("요청을 완료할 수 없습니다.");
+    expect(dialog.textContent).not.toContain("미배정");
+    expect(dialog.textContent).not.toContain("도입 이후 담당 변경 이력이 없습니다.");
+    expect(dialog.textContent).not.toContain("예정된 인계가 없습니다.");
+    expect(dialog.textContent).not.toContain("알림 대상이 없습니다.");
+    expect(dialog.getAttribute("aria-busy")).toBeNull();
+    const retry = [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "다시 시도")!;
+    await act(async () => retry.click());
+    await flush();
+    expect(actions.read).toHaveBeenCalledTimes(2);
+    expect(dialog.textContent).toContain("현재 담당");
   });
 });
