@@ -10,6 +10,7 @@ const switcherCss = read("src/components/workspace/workspace-switcher.module.css
 const filter = read("src/components/board/FilterChip.tsx");
 const columnMenu = read("src/components/board/BoardAnchoredMenu.tsx");
 const columnPanel = read("src/components/board/ColumnExpandedPanel.tsx");
+const boardDialogPortal = read("src/components/board/BoardDialogPortal.tsx");
 const workBoard = read("src/components/work-management/WorkBoardSurface.tsx");
 const workBoardCss = read("src/components/work-management/work-management.module.css");
 
@@ -65,5 +66,11 @@ describe("Issue #568 global overlay contract", () => {
     expect(columnPanel).toContain("<BoardDialogPortal>");
     expect(columnPanel).toContain("mw-layer-page-popover fixed");
     expect(columnPanel).not.toContain("mw-layer-dialog");
+  });
+
+  it("보드 모달은 scrim과 dialog를 별도 의미 레이어로 렌더한다", () => {
+    expect(boardDialogPortal).toContain('className="mw-layer-scrim fixed inset-0 bg-black/45"');
+    expect(boardDialogPortal).toContain('className="mw-layer-dialog fixed inset-0');
+    expect(boardDialogPortal.indexOf("mw-layer-scrim")).toBeLessThan(boardDialogPortal.indexOf("mw-layer-dialog"));
   });
 });

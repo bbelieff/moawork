@@ -37,8 +37,18 @@ afterEach(async () => {
 async function fixture(onClose = vi.fn()) {
   const host = document.createElement("div");
   host.dataset.tableOverflow = "true";
+  Object.defineProperties(host, {
+    scrollWidth: { configurable: true, value: 960 },
+    clientWidth: { configurable: true, value: 360 },
+  });
   host.scrollLeft = 47;
   host.scrollTop = 19;
+  Object.defineProperties(document.documentElement, {
+    scrollWidth: { configurable: true, value: 1440 },
+    clientWidth: { configurable: true, value: 375 },
+  });
+  document.documentElement.scrollLeft = 5;
+  document.documentElement.scrollTop = 11;
   document.body.append(host);
   const anchorRef = createRef<HTMLButtonElement>();
   const menuRef = createRef<HTMLDivElement>();
@@ -63,13 +73,15 @@ async function fixture(onClose = vi.fn()) {
 describe("Issue #604 BoardAnchoredMenu", () => {
   it("portals outside table overflow, flips above, shifts into viewport, and preserves scroll", async () => {
     const { host, menuRef } = await fixture();
+    const tableGeometry = { scrollWidth: host.scrollWidth, clientWidth: host.clientWidth, scrollLeft: host.scrollLeft, scrollTop: host.scrollTop };
+    const pageGeometry = { scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth, scrollLeft: document.documentElement.scrollLeft, scrollTop: document.documentElement.scrollTop };
     expect(menuRef.current?.parentElement).toBe(document.body);
     expect(menuRef.current?.closest("[data-table-overflow]")).toBeNull();
     expect(menuRef.current?.dataset.placement).toBe("top");
     expect(Number.parseFloat(menuRef.current?.style.left ?? "999")).toBeLessThanOrEqual(135);
     expect(Number.parseFloat(menuRef.current?.style.maxHeight ?? "999")).toBeLessThanOrEqual(360);
-    expect(host.scrollLeft).toBe(47);
-    expect(host.scrollTop).toBe(19);
+    expect({ scrollWidth: host.scrollWidth, clientWidth: host.clientWidth, scrollLeft: host.scrollLeft, scrollTop: host.scrollTop }).toEqual(tableGeometry);
+    expect({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth, scrollLeft: document.documentElement.scrollLeft, scrollTop: document.documentElement.scrollTop }).toEqual(pageGeometry);
   });
 
   it("supports Arrow/Home/End, activation, Escape, and non-trapping Tab", async () => {

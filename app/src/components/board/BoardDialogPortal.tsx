@@ -77,6 +77,13 @@ export function BoardModalLayer({
   return (
     <BoardDialogPortal>
       <div
+        data-board-modal-scrim
+        className="mw-layer-scrim fixed inset-0 bg-black/45"
+        onPointerDown={() => {
+          if (dismissible) onClose();
+        }}
+      />
+      <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
@@ -84,7 +91,7 @@ export function BoardModalLayer({
         aria-labelledby={labelledBy}
         data-board-modal-layer
         tabIndex={-1}
-        className="mw-layer-dialog fixed inset-0 flex items-center justify-center bg-black/45 p-3"
+        className="mw-layer-dialog fixed inset-0 flex items-center justify-center p-3"
         onPointerDown={(event) => {
           if (event.target === event.currentTarget && dismissible) onClose();
         }}

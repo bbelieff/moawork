@@ -18,8 +18,20 @@ describe("Issue #604 ColumnExpandedPanel", () => {
   it("renders a fixed non-modal body portal without changing its table host", async () => {
     const host = document.createElement("div");
     host.dataset.tableOverflow = "true";
+    Object.defineProperties(host, {
+      scrollWidth: { configurable: true, value: 1280 },
+      clientWidth: { configurable: true, value: 720 },
+    });
     host.scrollLeft = 31;
     host.scrollTop = 12;
+    Object.defineProperties(document.documentElement, {
+      scrollWidth: { configurable: true, value: 1440 },
+      clientWidth: { configurable: true, value: 375 },
+    });
+    document.documentElement.scrollLeft = 7;
+    document.documentElement.scrollTop = 13;
+    const tableGeometry = { scrollWidth: host.scrollWidth, clientWidth: host.clientWidth, scrollLeft: host.scrollLeft, scrollTop: host.scrollTop };
+    const pageGeometry = { scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth, scrollLeft: document.documentElement.scrollLeft, scrollTop: document.documentElement.scrollTop };
     document.body.append(host);
     const anchorRef = createRef<HTMLButtonElement>();
     const close = vi.fn();
@@ -30,8 +42,8 @@ describe("Issue #604 ColumnExpandedPanel", () => {
     expect(panel.closest("[data-table-overflow]")).toBeNull();
     expect(panel.getAttribute("aria-modal")).toBe("false");
     expect(panel.className).toContain("fixed");
-    expect(host.scrollLeft).toBe(31);
-    expect(host.scrollTop).toBe(12);
+    expect({ scrollWidth: host.scrollWidth, clientWidth: host.clientWidth, scrollLeft: host.scrollLeft, scrollTop: host.scrollTop }).toEqual(tableGeometry);
+    expect({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth, scrollLeft: document.documentElement.scrollLeft, scrollTop: document.documentElement.scrollTop }).toEqual(pageGeometry);
     await act(async () => panel.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(close).toHaveBeenCalledWith(true);
   });
