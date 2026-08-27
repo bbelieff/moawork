@@ -5,6 +5,7 @@ import {
   decodeBoardFilters,
   EMPTY_FILTERS,
   encodeBoardFilters,
+  rowMatches,
   savedViewFilterPayload,
 } from "./filters";
 
@@ -23,6 +24,16 @@ const columns: BoardColumn[] = [
     width: null,
   },
 ];
+
+function column(key: string, type: BoardColumn["type"]): BoardColumn {
+  return {
+    ...columns[0],
+    id: key,
+    key,
+    label: key,
+    type,
+  };
+}
 
 function row(index: number): ItemWithValues {
   return {
@@ -69,5 +80,41 @@ describe("BBE-118 filter contract", () => {
       byColumn: { status: ["new", "missing"] },
     });
     expect(result).toHaveLength(1_400);
+  });
+
+  it("실제 보드 검색에서 typed 숫자의 raw·표시 문자열을 모두 찾는다", () => {
+    const numericColumns = [column("number", "number"), column("money", "money")];
+    const rows = [
+      { ...row(1), values: { number: 1_234, money: -1_234.5 } },
+      { ...row(2), values: { number: 2_000, money: 5 } },
+    ];
+
+    for (const q of ["1234", "1,234", "-1234.5", "-1,234.5"]) {
+      expect(rowMatches(rows[0], numericColumns, { ...EMPTY_FILTERS, q })).toBe(true);
+      expect(applyFilters(rows, numericColumns, { ...EMPTY_FILTERS, q }).map((item) => item.id))
+        .toEqual(["row-1"]);
+    }
+  });
+
+  it("text·phone·date·선행 0 문자열은 기존 표시 검색 의미를 보존한다", () => {
+    const identityColumns = [
+      column("identifier", "text"),
+      column("phone", "phone"),
+      column("date", "date"),
+    ];
+    const rows = [{
+      ...row(1),
+      values: {
+        identifier: "001234",
+        phone: "01012345678",
+        date: "2026-08-27",
+      },
+    }];
+
+    for (const q of ["001234", "010-1234-5678", "2026-08-27"]) {
+      expect(applyFilters(rows, identityColumns, { ...EMPTY_FILTERS, q })).toHaveLength(1);
+    }
+    expect(applyFilters(rows, identityColumns, { ...EMPTY_FILTERS, q: "01012345678" }))
+      .toHaveLength(0);
   });
 });

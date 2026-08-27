@@ -76,6 +76,19 @@ describe("고객사 CSV 매핑", () => {
     expect(result.mapped[0].input.revenue).toBe(1234.5);
   });
 
+  it("안전 정수 범위를 넘는 매출은 정밀도 손실 없이 거부해 저장값을 만들지 않는다", () => {
+    expect(parseRevenue("9007199254740991")).toBe(Number.MAX_SAFE_INTEGER);
+    expect(parseRevenue("9007199254740992")).toBeNull();
+    expect(parseRevenue("9007199254740993")).toBeNull();
+    expect(parseRevenue("-9007199254740992")).toBeNull();
+
+    const result = mapCsvToCompanies(
+      [{ title: "회사", values: { 매출액: "9007199254740993" } }],
+      ["매출액"],
+    );
+    expect(result.mapped[0].input.revenue).toBeNull();
+  });
+
   it("창업년도는 연도만 있어도 받고, 못 읽으면 null 이다", () => {
     expect(parseFoundedOn("2024")).toBe("2024-01-01");
     expect(parseFoundedOn("2024.03")).toBe("2024-03-01");

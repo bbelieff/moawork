@@ -10,6 +10,7 @@
  */
 
 import type { NewCompany } from "@/lib/repo";
+import { parseNumericInput } from "@/lib/format/number";
 
 /** 표준 필드 → 받아들이는 헤더 이름들(소문자·공백제거 후 비교). */
 const ALIASES: Readonly<Record<string, readonly string[]>> = {
@@ -44,8 +45,8 @@ export function parseRevenue(raw: string | undefined): number | null {
   if (!raw) return null;
   const cleaned = raw.replace(/[,\s원]/g, "");
   if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return null;
-  const value = Number(cleaned);
-  return Number.isFinite(value) ? value : null;
+  const parsed = parseNumericInput(cleaned, { allowDecimal: cleaned.includes(".") });
+  return parsed.ok ? parsed.value : null;
 }
 
 /** YYYY-MM-DD 로 읽히는 것만 받는다. 2024, 2024.03, 2024/03/05 도 받는다. */

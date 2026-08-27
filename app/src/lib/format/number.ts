@@ -28,6 +28,8 @@ export interface NumericInputRules {
 
 export type NumericValidationError =
   | "not_finite"
+  | "underflow"
+  | "unsafe_integer"
   | "negative_not_allowed"
   | "decimal_not_allowed"
   | "below_min"
@@ -43,10 +45,17 @@ export type NumericParseResult =
 
 const LOCALE = "ko-KR";
 const MAX_FRACTION_DIGITS = 20;
+const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 
 function assertFinite(value: number): void {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new TypeError("numeric display value must be a finite number");
+  }
+}
+
+function assertSafeInteger(value: number, label: string): void {
+  if (!Number.isSafeInteger(value)) {
+    throw new RangeError(`${label} must be a safe integer`);
   }
 }
 
@@ -81,6 +90,7 @@ export function formatQuantity(
 ): string {
   assertFinite(value);
   if (!Number.isInteger(value)) throw new RangeError("quantity must be an integer");
+  assertSafeInteger(value, "quantity");
   if (value < 0 && !options.allowNegative) {
     throw new RangeError("quantity must not be negative");
   }
@@ -136,6 +146,7 @@ export function formatKrw(
     throw new RangeError("KRW value must be an integer unless rounding is explicit");
   }
   const normalized = rounding === "round" ? Math.round(value) : value;
+  assertSafeInteger(normalized, "KRW value");
   return `${grouped(normalized, 0, 0)}${options.unit === "none" ? "" : "원"}`;
 }
 
@@ -156,6 +167,7 @@ export function formatOrdinal(value: number, options: { suffix?: string } = {}):
   if (!Number.isInteger(value) || value < 1) {
     throw new RangeError("ordinal must be a positive integer");
   }
+  assertSafeInteger(value, "ordinal");
   return `${grouped(value, 0, 0)}${options.suffix ?? "위"}`;
 }
 
@@ -185,6 +197,9 @@ export function validateNumericValue(
 ): NumericValidationResult {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return { ok: false, value: null, error: "not_finite" };
+  }
+  if (rules.allowDecimal === false && Number.isInteger(value) && !Number.isSafeInteger(value)) {
+    return { ok: false, value: null, error: "unsafe_integer" };
   }
   if (rules.allowNegative === false && value < 0) {
     return { ok: false, value: null, error: "negative_not_allowed" };
@@ -219,14 +234,43 @@ export function parseNumericInput(
     return { ok: false, value: null, error: "invalid_syntax" };
   }
 
-  const value = Number(text.replaceAll(",", ""));
+  const canonical = text.replaceAll(",", "");
+  if (rules.allowDecimal === false && !canonical.includes(".")) {
+    const integer = BigInt(canonical);
+    if (integer > MAX_SAFE_INTEGER_BIGINT || integer < -MAX_SAFE_INTEGER_BIGINT) {
+      return { ok: false, value: null, error: "unsafe_integer" };
+    }
+    const value = Number(canonical);
+    if (!Number.isSafeInteger(value) || BigInt(value) !== integer) {
+      return { ok: false, value: null, error: "unsafe_integer" };
+    }
+    return validateNumericValue(value, rules);
+  }
+
+  const value = Number(canonical);
+  if (value === 0 && /[1-9]/.test(canonical)) {
+    return { ok: false, value: null, error: "underflow" };
+  }
   return validateNumericValue(value, rules);
 }
 
 /** 포커스 편집·API·CSV에 쓸 단위 없는 canonical 문자열. */
 export function canonicalNumberString(value: number): string {
   assertFinite(value);
-  return String(value);
+  const text = String(value);
+  const match = /^(-?)(\d+)(?:\.(\d+))?e([+-]?\d+)$/.exec(text);
+  if (!match) return text;
+
+  const [, sign, integer, fraction = "", exponentText] = match;
+  const digits = `${integer}${fraction}`;
+  const decimalIndex = integer.length + Number(exponentText);
+  if (decimalIndex <= 0) {
+    return `${sign}0.${"0".repeat(-decimalIndex)}${digits}`;
+  }
+  if (decimalIndex >= digits.length) {
+    return `${sign}${digits}${"0".repeat(decimalIndex - digits.length)}`;
+  }
+  return `${sign}${digits.slice(0, decimalIndex)}.${digits.slice(decimalIndex)}`;
 }
 
 /** 검색에서 1234와 1,234가 같은 후보가 되도록 올바른 숫자 그룹만 정규화한다. */

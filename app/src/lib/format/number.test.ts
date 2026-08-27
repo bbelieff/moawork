@@ -98,6 +98,55 @@ describe("canonical numeric input", () => {
       error: "above_max",
     });
   });
+
+  it("정수 입력은 Number 안전 범위와 원문 왕복을 보장한다", () => {
+    const integerRules = { allowDecimal: false };
+    expect(parseNumericInput("9007199254740991", integerRules)).toEqual({
+      ok: true,
+      value: Number.MAX_SAFE_INTEGER,
+    });
+    expect(parseNumericInput("-9,007,199,254,740,991", integerRules)).toEqual({
+      ok: true,
+      value: -Number.MAX_SAFE_INTEGER,
+    });
+    expect(parseNumericInput("9,007,199,254,740,992", integerRules)).toEqual({
+      ok: false,
+      value: null,
+      error: "unsafe_integer",
+    });
+    expect(parseNumericInput("-9007199254740992", integerRules)).toEqual({
+      ok: false,
+      value: null,
+      error: "unsafe_integer",
+    });
+    expect(parseNumericInput("9".repeat(400), integerRules)).toEqual({
+      ok: false,
+      value: null,
+      error: "unsafe_integer",
+    });
+    expect(validateNumericValue(9_007_199_254_740_992, integerRules)).toEqual({
+      ok: false,
+      value: null,
+      error: "unsafe_integer",
+    });
+  });
+
+  it("0이 아닌 소수의 underflow를 거부하고 canonical 지수값은 십진 문자열로 왕복한다", () => {
+    const tinyInput = `0.${"0".repeat(400)}1`;
+    expect(parseNumericInput(tinyInput)).toEqual({
+      ok: false,
+      value: null,
+      error: "underflow",
+    });
+
+    for (const value of [1e21, 1e-7]) {
+      const canonical = canonicalNumberString(value);
+      expect(canonical).not.toMatch(/e/i);
+      expect(parseNumericInput(canonical)).toEqual({ ok: true, value });
+    }
+    expect(canonicalNumberString(1e21)).toBe("1000000000000000000000");
+    expect(canonicalNumberString(1e-7)).toBe("0.0000001");
+  });
 });
 
 describe("numeric search normalization", () => {
