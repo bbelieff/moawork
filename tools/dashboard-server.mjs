@@ -771,6 +771,26 @@ const server = http.createServer(async (req, res) => {
 
 /* 호스트를 지정하지 않는다 — IPv4(127.0.0.1)와 IPv6(::1) 양쪽에서 열린다.
    "0.0.0.0" 으로 묶으면 크롬이 localhost 를 ::1 로 풀 때 연결이 거부된다. */
+/**
+ * ★ 포트가 이미 잡혀 있으면 «조용히 물러난다».
+ *
+ * 전에는 error 핸들러가 없었다. 그러면 listen 실패가 처리되지 않은 'error' 이벤트가 되어
+ * 스택을 뱉는데, 그 시점에 이미 열린 핸들(주기 조회 등) 때문에 프로세스가 안 죽고
+ * **포트를 못 잡은 채 살아 있는 좀비**가 된다. 2026-08-27 점검에서 같은 포트에
+ * dashboard-server 5개가 떠 있었고 그중 하나만 실제로 듣고 있었다 — 나머지 넷이 그것이다.
+ *
+ * 로그온 자동 시작을 붙이면 이 경우가 «매번» 생긴다(이미 떠 있는데 또 띄움).
+ * 그래서 exit(0) 이다 — 실패가 아니라 «이미 되어 있음» 이므로 0 이 맞다.
+ */
+server.on("error", (error) => {
+  if (error?.code === "EADDRINUSE") {
+    console.log(`관제판이 이미 ${PORT} 에서 돌고 있습니다 — 새로 띄우지 않았습니다. http://localhost:${PORT}`);
+    process.exit(0);
+  }
+  console.error(`관제판을 ${PORT} 에 열지 못했습니다:`, error?.message || error);
+  process.exit(1);
+});
+
 if (!ENV.DASHBOARD_NO_LISTEN) server.listen(PORT, () => {
   const L = "─".repeat(58);
   console.log(L);
