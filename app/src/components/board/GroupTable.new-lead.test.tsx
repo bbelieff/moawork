@@ -65,12 +65,15 @@ describe("BBE-171 new-lead GroupTable wiring", () => {
     expect(html).not.toContain("＋ 새 회사");
   });
 
-  it("keeps an auto-sourced canonical field editable through the audited deal RPC action", () => {
+  it("keeps canonical metadata editable while routing owner through assignment lineage only", () => {
     const html = render();
     expect(html).toContain('name="dealId" value="deal-a"');
     expect(html).toContain('name="field" value="industry"');
     expect(html).toContain('name="value" value="기존 업종"');
-    expect(html).toContain('name="field" value="owner"');
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).toContain("미배정");
+    expect(html).not.toContain('name="field" value="owner"');
+    expect(html).not.toContain('name="kind" value="person"');
     expect(html).toContain('name="field" value="collaborators"');
     expect(html).toContain('name="field" value="applied_on"');
   });

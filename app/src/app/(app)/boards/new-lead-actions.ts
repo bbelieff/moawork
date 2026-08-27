@@ -374,7 +374,9 @@ export async function updateNewLeadFieldAction(formData: FormData): Promise<void
 export async function updateNewLeadMetaAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   const boardId=text(formData,"boardId"),dealId=text(formData,"dealId"),itemId=text(formData,"itemId"),field=text(formData,"field");
-  const allowed = new Set(["owner","collaborators","applied_on","address_detail"]);
+  // 담당자(owner)는 append-only assignment lineage RPC만 사용한다. 이 legacy
+  // meta action은 비담당 메타 필드만 보존하며 owner fallback을 제공하지 않는다.
+  const allowed = new Set(["collaborators","applied_on","address_detail"]);
   try {
     if (!boardId || !dealId || !itemId || !allowed.has(field)) throw new NewLeadMutationError("신규리드 편집 대상을 확인해 주세요.","22023");
     const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
