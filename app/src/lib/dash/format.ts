@@ -14,7 +14,11 @@ export const EMPTY = "—";
 /** 원화 금액 — 천단위 콤마 + '원'. 유한수가 아니면 '—'. */
 export function formatKrw(value: number | null | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return EMPTY;
-  return formatTypedKrw(value, { rounding: "round" });
+  try {
+    return formatTypedKrw(value, { rounding: "round" });
+  } catch {
+    return EMPTY;
+  }
 }
 
 /** 정수 건수 — 천단위 콤마. 유한수가 아니면 '—'. */

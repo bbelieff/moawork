@@ -23,6 +23,16 @@ describe("typed numeric display", () => {
     expect(() => formatQuantity(-1)).toThrow("quantity must not be negative");
   });
 
+  it("기본 decimal 표시는 허용된 비영 값을 0으로 축약하지 않는다", () => {
+    expect(formatDecimal(1e-21)).toBe("0.000000000000000000001");
+    expect(formatDecimal(-1e-21)).toBe("-0.000000000000000000001");
+    expect(formatDecimal(1e-20)).toBe("0.00000000000000000001");
+    expect(formatDecimal(0)).toBe("0");
+    expect(formatDecimal(-0)).toBe("-0");
+    expect(formatDecimal(1_234.5)).toBe("1,234.5");
+    expect(formatDecimal(1e-21, { maximumFractionDigits: 2 })).toBe("0");
+  });
+
   it("ratio와 percentPoints를 혼용하지 않는다", () => {
     expect(formatRatio(0.1234, { fractionDigits: 2 })).toBe("12.34%");
     expect(formatPercentPoints(12.34, { fractionDigits: 2 })).toBe("12.34%");

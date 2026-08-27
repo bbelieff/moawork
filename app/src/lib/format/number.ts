@@ -115,11 +115,23 @@ export function formatDecimal(
   value: number,
   options: { minimumFractionDigits?: number; maximumFractionDigits?: number } = {},
 ): string {
-  return grouped(
+  const formatted = grouped(
     value,
     options.minimumFractionDigits ?? 0,
     options.maximumFractionDigits ?? MAX_FRACTION_DIGITS,
   );
+  // The default decimal display is the durable board-cell representation. Intl caps
+  // fraction digits at 20, so accepted values below 1e-20 would otherwise become
+  // visibly different zeroes ("0" / "-0") while their raw search/sort value stays
+  // nonzero. Explicit precision remains an intentional rounding request.
+  if (
+    value !== 0
+    && options.maximumFractionDigits === undefined
+    && Number(formatted.replaceAll(",", "")) === 0
+  ) {
+    return canonicalNumberString(value);
+  }
+  return formatted;
 }
 
 /** 0~1 비율을 퍼센트 표시로 바꾼다. */

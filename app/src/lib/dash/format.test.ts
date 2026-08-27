@@ -17,6 +17,14 @@ describe("formatKrw", () => {
     expect(formatKrw(Number.NaN)).toBe(EMPTY);
     expect(formatKrw(Number.POSITIVE_INFINITY)).toBe(EMPTY);
   });
+
+  it("안전 정수 범위 밖의 유한 KRW도 던지지 않고 '—'로 닫는다", () => {
+    expect(() => formatKrw(Number.MAX_SAFE_INTEGER + 1)).not.toThrow();
+    expect(() => formatKrw(-(Number.MAX_SAFE_INTEGER + 1))).not.toThrow();
+    expect(formatKrw(Number.MAX_SAFE_INTEGER + 1)).toBe(EMPTY);
+    expect(formatKrw(-(Number.MAX_SAFE_INTEGER + 1))).toBe(EMPTY);
+    expect(formatKrw(Number.MAX_SAFE_INTEGER)).toBe("9,007,199,254,740,991원");
+  });
 });
 
 describe("formatCount", () => {

@@ -133,6 +133,18 @@ describe("formatCell", () => {
     expect(formatCell("number", 1_234.5)).toBe("1,234.5");
     expect(formatCell("money", -1_234)).toBe("-1,234");
   });
+  it("저장 경계가 허용한 작은 비영 number/money의 부호와 raw 검색값을 보존한다", () => {
+    for (const raw of ["0.000000000000000000001", "-0.000000000000000000001"]) {
+      const numberCell = validateCell("number", raw);
+      const moneyCell = validateCell("money", raw);
+      expect(numberCell).toEqual({ ok: true, value: Number(raw) });
+      expect(moneyCell).toEqual({ ok: true, value: Number(raw) });
+      expect(formatCell("number", numberCell.value)).toBe(raw);
+      expect(formatCell("money", moneyCell.value)).toBe(raw);
+      expect(cellSearchText("number", numberCell.value)).toBe(raw);
+      expect(cellSearchText("money", moneyCell.value)).toBe(raw);
+    }
+  });
   it("옵션 id 를 라벨로 치환", () => {
     expect(formatCell("select", "o1", OPTS)).toBe("대기");
     expect(formatCell("multiselect", ["o1", "o2"], OPTS)).toBe("대기, 완료");
