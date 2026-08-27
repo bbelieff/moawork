@@ -29,6 +29,12 @@ node scripts/check-css-token-references.mjs
 # (실측: export class 는 빌드가 잡고 export const 는 통과) 여기서 따로 센다.
 node scripts/check-use-server-exports.mjs --self-test
 node scripts/check-use-server-exports.mjs
+
+# 머지 관문 — 「그 exact head 에 CI 초록이 있는가」를 기계가 판정한다.
+# GitHub 의 required status check 가 «비공개 + 무료» 라 잠겨 있어서(403 Upgrade to Pro)
+# 그 자리를 이 스크립트가 대신한다. 관문 자체가 틀리면 관문이 없는 것과 같으므로
+# 판정 로직을 여기서 매번 검사한다.
+node scripts/merge-pr.mjs --self-test
 node --test scripts/check-build-gate.test.mjs
 node --test scripts/check-line-endings.test.mjs
 node scripts/check-unreachable-app-files.mjs

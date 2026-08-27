@@ -33,7 +33,7 @@
 ④ bash scripts/check.sh 초록    빨간 채로 올리지 않는다
 ⑤ 자기 서브에이전트로 검수       다른 창에 넘기지 않는다                      §5
 ⑥ ★ 그 화면 주소를 열어 본 증거  이게 없으면 완주가 아니다                    §3
-⑦ PR → CI 초록 → 머지
+⑦ PR → node scripts/merge-pr.mjs <번호>   손으로 머지하지 않는다 — CI 확인이 §7 에 있다
 ⑧ GitHub Issue/Project 도장 + 코디네이터에게 RESULT                           §2.3
 ```
 
@@ -622,11 +622,38 @@ gh pr checkout <PR 번호>          # 권장 — 브랜치 이름표까지 정�
 ④ push → PR(본문에 Issue 번호) → CI 초록
 ⑤ exact head 서브에이전트 자체 검수               docs/playbooks/subagent-review.md
 ⑥ ★ 화면 확인 — 그 주소를 열어 본 증거            못 보면 볼 수 있는 워커에게 넘긴다 (§2.2)
-⑦ squash merge → 배포 → health 200
+⑦ node scripts/merge-pr.mjs <PR번호> → 배포 → health 200
 ⑧ GitHub Issue close + Project Done + 코디네이터에게 RESULT
 ```
 
 **⑥ 이 없으면 완주가 아니다.**
+
+> ### ★ ⑦ — 머지는 «손으로» 하지 않는다
+> `gh pr merge` 도 웹 UI 의 Merge 버튼도 쓰지 않는다. **`node scripts/merge-pr.mjs <번호>` 만 쓴다.**
+>
+> **왜** — 그 스크립트는 「**그 exact head** 에 CI 초록이 있는가」를 기계가 확인하고, 없으면 머지하지 않는다.
+> 사람이 「④ CI 초록」을 기억해야 하는 구조는 관문이 아니다.
+>
+> **원래는 GitHub 이 막아야 한다.** required status check 를 걸면 되는데 이 저장소는
+> «비공개 + 무료 플랜» 이라 그 기능이 잠겨 있다 —
+> `GET /repos/.../branches/main/protection` → `403 Upgrade to GitHub Pro or make this repository public`.
+> 공개 전환은 답이 아니다: 히스토리에 첫 고객 자료가 영구 보존돼 있고(`.github/workflows/ci.yml` 주석의 실측),
+> 셀프호스티드 러너까지 붙어 있어 포크 PR 이 데스크탑에서 임의 코드를 돌릴 수 있게 된다.
+>
+> **2026-08-27 에 이 관문이 없어서 실제로 일어난 일** — CI 실행이 5회 취소됐는데 아무도 못 알아챘고
+> (`feat/573` 3회 · `codex/issue-584` 1회 · **`main` 1회**), force-push 로 덮인 head 하나는
+> 실행이 끝내 0건이라 **검증되지 않은 채 사라졌다.** 그동안 PR 체크 목록에는 GitGuardian·Vercel 이
+> 초록으로 떠 「전부 통과」처럼 보였다. **빨간불이 아니라 «불이 없는» 상태라 눈에 안 띈다.**
+>
+> **한계 세 가지 — 「이게 있으니 안전하다」고 읽지 마라**
+> ① 웹 UI 버튼이나 `gh pr merge` 를 직접 부르면 이 관문을 지나지 않는다. 그래서 이 줄이 규칙으로 있어야 한다.
+> ② **`required status check` 를 완전히 대체하지 못한다.** 「브랜치가 base 최신인가」를 강제하지 않는다 —
+>    그건 브랜치 보호에만 있는 기능이고, 이 스크립트는 그걸 흉내 낼 수 없다. main 이 앞서간 뒤의
+>    초록은 「그때 그 트리」의 초록이다. 그래서 §7 ①(최신 main 위 rebase)이 여전히 살아 있어야 한다.
+> ③ **스크립트가 저장소 «안» 에 있다.** 한 PR 이 판정 로직과 그 자체검사를 같이 약화시킨 뒤
+>    스스로를 머지할 수 있다. 저장소 안의 관문은 원리적으로 그렇다 — 검수(§5)가 그 자리를 메운다.
+>
+> Pro 로 올라가면 required status check 로 옮기고 스크립트는 지운다. ②·③이 그때 같이 없어진다.
 
 ## 8. 자율 완주 정책 — 승인 대기로 멈추지 않는다
 

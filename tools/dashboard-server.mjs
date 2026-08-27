@@ -771,6 +771,42 @@ const server = http.createServer(async (req, res) => {
 
 /* 호스트를 지정하지 않는다 — IPv4(127.0.0.1)와 IPv6(::1) 양쪽에서 열린다.
    "0.0.0.0" 으로 묶으면 크롬이 localhost 를 ::1 로 풀 때 연결이 거부된다. */
+/**
+ * ★ 포트가 이미 잡혀 있으면 «조용히 물러난다».
+ *
+ * 전에는 error 핸들러가 없었다. 그러면 listen 실패가 처리되지 않은 'error' 이벤트가 되어
+ * 스택을 뱉는데, 그 시점에 이미 열린 핸들(주기 조회 등) 때문에 프로세스가 안 죽고
+ * **포트를 못 잡은 채 살아 있는 좀비**가 된다. 2026-08-27 점검에서 같은 포트에
+ * dashboard-server 5개가 떠 있었고 그중 하나만 실제로 듣고 있었다 — 나머지 넷이 그것이다.
+ *
+ * 로그온 자동 시작을 붙이면 이 경우가 «매번» 생긴다(이미 떠 있는데 또 띄움).
+ * 그래서 exit(0) 이다 — 실패가 아니라 «이미 되어 있음» 이므로 0 이 맞다.
+ */
+server.on("error", (error) => {
+  if (error?.code !== "EADDRINUSE") {
+    console.error(`관제판을 ${PORT} 에 열지 못했습니다:`, error?.message || error);
+    process.exit(1);
+  }
+  // ★ 「누가 쓰고 있다」와 「관제판이 이미 있다」는 다르다.
+  //   확인 없이 exit(0) 하면, 그 포트를 다른 앱(Next dev 등)이 잡고 있을 때도
+  //   «이미 되어 있음» 이라 말하고 «그 앱의 주소» 를 관제판이라고 안내하게 된다.
+  //   그래서 실제로 물어본다 — 관제판만 대답하는 /api/health 로.
+  fetch(`http://127.0.0.1:${PORT}/api/health`, { signal: AbortSignal.timeout(3000) })
+    .then((response) => response.json())
+    .then((body) => {
+      if (body && typeof body.port === "number") {
+        console.log(`관제판이 이미 ${PORT} 에서 돌고 있습니다 — 새로 띄우지 않았습니다. http://localhost:${PORT}`);
+        process.exit(0);
+      }
+      throw new Error("관제판이 아닙니다");
+    })
+    .catch(() => {
+      console.error(`${PORT} 를 «관제판이 아닌» 다른 프로그램이 쓰고 있습니다.`);
+      console.error(`그 프로그램을 끄거나 DASHBOARD_PORT 로 다른 포트를 지정해 주세요.`);
+      process.exit(1);
+    });
+});
+
 if (!ENV.DASHBOARD_NO_LISTEN) server.listen(PORT, () => {
   const L = "─".repeat(58);
   console.log(L);
