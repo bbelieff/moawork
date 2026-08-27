@@ -1,7 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
-import { saveNewLeadRevenue3yAction } from "@/app/(app)/boards/new-lead-actions";
+import { useActionState, useEffect, useRef, useState } from "react";
+import {
+  saveNewLeadRevenue3yAction,
+  type SaveNewLeadFinancialState,
+} from "@/app/(app)/boards/new-lead-actions";
 import type { CellValue } from "@/lib/boards/types";
 import { formatRevenue3yMillion } from "@/lib/new-lead/financial-profile";
 import { BOARD_TABLE_CONTROL } from "./table-style";
@@ -12,25 +15,45 @@ export function NewLeadRevenue3yCell({
   value,
   legacyRevenueBand,
   readOnly,
+  saveAction = saveNewLeadRevenue3yAction,
 }: {
   boardId: string;
   itemId: string;
   value: CellValue | undefined;
   legacyRevenueBand: CellValue | undefined;
   readOnly: boolean;
+  saveAction?: (
+    previous: SaveNewLeadFinancialState,
+    formData: FormData,
+  ) => Promise<SaveNewLeadFinancialState>;
 }) {
   const numeric = typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
-  const shown = numeric === null ? "" : numeric.toLocaleString("ko-KR");
+  const shown = numeric !== null
+    ? numeric.toLocaleString("ko-KR")
+    : typeof value === "string"
+      ? value
+      : "";
   const legacy = typeof legacyRevenueBand === "string" ? legacyRevenueBand.trim() : "";
   const formRef = useRef<HTMLFormElement>(null);
-  const savedRef = useRef(shown);
+  const externalRef = useRef(shown);
   const attemptedRef = useRef<string | null>(null);
-  const [state, action, pending] = useActionState(saveNewLeadRevenue3yAction, { ok: false, message: "" });
+  const dirtyRef = useRef(false);
+  const [draft, setDraft] = useState(shown);
+  const [dirty, setDirty] = useState(false);
+  const [state, action, pending] = useActionState(saveAction, { ok: false, message: "" });
+
+  useEffect(() => {
+    if (shown === externalRef.current) return;
+    externalRef.current = shown;
+    if (!dirtyRef.current) setDraft(shown);
+  }, [shown]);
 
   useEffect(() => {
     if (pending || !state.ok || attemptedRef.current === null) return;
-    savedRef.current = attemptedRef.current;
+    externalRef.current = attemptedRef.current;
     attemptedRef.current = null;
+    dirtyRef.current = false;
+    setDirty(false);
   }, [pending, state.ok, state.message]);
 
   if (readOnly) {
@@ -51,16 +74,22 @@ export function NewLeadRevenue3yCell({
           type="text"
           inputMode="numeric"
           pattern="[0-9,]*"
-          defaultValue={shown}
+          value={draft}
           disabled={pending}
           aria-label="3개년매출"
           aria-describedby={state.message && !state.ok ? itemId + "-revenue-3y-error" : legacy ? itemId + "-revenue-3y-legacy" : undefined}
           aria-invalid={!state.ok && Boolean(state.message)}
           placeholder={legacy || "0"}
           className={BOARD_TABLE_CONTROL + " pr-14 text-right tabular-nums disabled:opacity-60"}
-          onBlur={(event) => {
-            if (event.currentTarget.value === savedRef.current) return;
-            attemptedRef.current = event.currentTarget.value;
+          onChange={(event) => {
+            const next = event.currentTarget.value;
+            setDraft(next);
+            dirtyRef.current = next !== externalRef.current;
+            setDirty(dirtyRef.current);
+          }}
+          onBlur={() => {
+            if (!dirty) return;
+            attemptedRef.current = draft;
             formRef.current?.requestSubmit();
           }}
         />

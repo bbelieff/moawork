@@ -1,7 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
-import { saveNewLeadFoundedDateAction } from "@/app/(app)/boards/new-lead-actions";
+import { useActionState, useEffect, useRef, useState } from "react";
+import {
+  saveNewLeadFoundedDateAction,
+  type SaveNewLeadFinancialState,
+} from "@/app/(app)/boards/new-lead-actions";
 import type { CellValue } from "@/lib/boards/types";
 import { formatFoundedDate } from "@/lib/new-lead/financial-profile";
 import { BOARD_TABLE_CONTROL } from "./table-style";
@@ -11,22 +14,38 @@ export function NewLeadFoundedDateCell({
   itemId,
   value,
   readOnly,
+  saveAction = saveNewLeadFoundedDateAction,
 }: {
   boardId: string;
   itemId: string;
   value: CellValue | undefined;
   readOnly: boolean;
+  saveAction?: (
+    previous: SaveNewLeadFinancialState,
+    formData: FormData,
+  ) => Promise<SaveNewLeadFinancialState>;
 }) {
   const shown = typeof value === "string" ? value : "";
   const formRef = useRef<HTMLFormElement>(null);
-  const savedRef = useRef(shown);
+  const externalRef = useRef(shown);
   const attemptedRef = useRef<string | null>(null);
-  const [state, action, pending] = useActionState(saveNewLeadFoundedDateAction, { ok: false, message: "" });
+  const dirtyRef = useRef(false);
+  const [draft, setDraft] = useState(shown);
+  const [dirty, setDirty] = useState(false);
+  const [state, action, pending] = useActionState(saveAction, { ok: false, message: "" });
+
+  useEffect(() => {
+    if (shown === externalRef.current) return;
+    externalRef.current = shown;
+    if (!dirtyRef.current) setDraft(shown);
+  }, [shown]);
 
   useEffect(() => {
     if (pending || !state.ok || attemptedRef.current === null) return;
-    savedRef.current = attemptedRef.current;
+    externalRef.current = attemptedRef.current;
     attemptedRef.current = null;
+    dirtyRef.current = false;
+    setDirty(false);
   }, [pending, state.ok, state.message]);
 
   if (readOnly) return <span className="block text-xs tabular-nums text-mw-body">{formatFoundedDate(value)}</span>;
@@ -40,16 +59,22 @@ export function NewLeadFoundedDateCell({
         type="text"
         inputMode="numeric"
         pattern="\d{4}-(0[1-9]|1[0-2])(-([0-2]\d|3[01]))?"
-        defaultValue={shown}
+        value={draft}
         disabled={pending}
         aria-label="창업연월"
         aria-describedby={state.message && !state.ok ? itemId + "-founded-date-error" : undefined}
         aria-invalid={!state.ok && Boolean(state.message)}
         placeholder="YYYY-MM 또는 YYYY-MM-DD"
         className={BOARD_TABLE_CONTROL + " tabular-nums disabled:opacity-60"}
-        onBlur={(event) => {
-          if (event.currentTarget.value === savedRef.current) return;
-          attemptedRef.current = event.currentTarget.value;
+        onChange={(event) => {
+          const next = event.currentTarget.value;
+          setDraft(next);
+          dirtyRef.current = next !== externalRef.current;
+          setDirty(dirtyRef.current);
+        }}
+        onBlur={() => {
+          if (!dirty) return;
+          attemptedRef.current = draft;
           formRef.current?.requestSubmit();
         }}
       />

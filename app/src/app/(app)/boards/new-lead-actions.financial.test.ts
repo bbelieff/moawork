@@ -30,7 +30,6 @@ vi.mock("@/lib/new-lead/advance", () => ({
 }));
 
 import {
-  saveNewLeadCreditScoresAction,
   saveNewLeadCreditScoreAction,
   saveNewLeadFoundedDateAction,
   saveNewLeadLoanProfileAction,
@@ -132,30 +131,46 @@ describe("Issue #589 신규리드 재무 저장", () => {
     expect(mocks.setCells).not.toHaveBeenCalled();
   });
 
-  it("합성 신용점수 셀은 NCB/KCB durable key를 한 번의 저장으로 갱신한다", async () => {
+  it("합성 셀의 한 기관 intent는 해당 durable key만 보내고 sibling을 전송하지 않는다", async () => {
     const data = baseForm();
-    data.set("ncb", "812");
-    data.set("kcb", "745");
+    data.set("fieldKey", "credit_score_ncb");
+    data.set("score", "812");
 
-    await expect(saveNewLeadCreditScoresAction({ ok: false, message: "" }, data)).resolves.toEqual({
+    await expect(saveNewLeadCreditScoreAction({ ok: false, message: "" }, data)).resolves.toEqual({
       ok: true,
-      message: "NCB와 KCB 점수를 저장했습니다.",
+      message: "NCB 점수를 저장했습니다.",
     });
     expect(mocks.setCells).toHaveBeenCalledTimes(1);
     expect(mocks.setCells).toHaveBeenCalledWith(
       expect.anything(),
       "board-a",
       "item-a",
-      { credit_score_ncb: 812, credit_score_kcb: 745 },
+      { credit_score_ncb: 812 },
     );
+    expect(mocks.setCells.mock.calls[0]?.[3]).not.toHaveProperty("credit_score_kcb");
   });
 
-  it("합성 신용점수 중 하나라도 잘못되면 두 점수 모두 저장하지 않는다", async () => {
+  it("한 기관 저장 실패 뒤 exact retry도 같은 single-key intent만 한 번 더 보낸다", async () => {
     const data = baseForm();
-    data.set("ncb", "812");
-    data.set("kcb", "1001");
-    expect((await saveNewLeadCreditScoresAction({ ok: false, message: "" }, data)).ok).toBe(false);
-    expect(mocks.setCells).not.toHaveBeenCalled();
+    data.set("fieldKey", "credit_score_ncb");
+    data.set("score", "812");
+    mocks.setCells
+      .mockResolvedValueOnce({ errors: [{ key: "credit_score_ncb", label: "NCB", message: "저장 실패" }] })
+      .mockResolvedValueOnce({ errors: [] });
+
+    await expect(saveNewLeadCreditScoreAction({ ok: false, message: "" }, data)).resolves.toEqual({
+      ok: false,
+      message: "저장 실패",
+    });
+    await expect(saveNewLeadCreditScoreAction({ ok: false, message: "" }, data)).resolves.toEqual({
+      ok: true,
+      message: "NCB 점수를 저장했습니다.",
+    });
+    expect(mocks.setCells).toHaveBeenCalledTimes(2);
+    expect(mocks.setCells.mock.calls.map((call) => call[3])).toEqual([
+      { credit_score_ncb: 812 },
+      { credit_score_ncb: 812 },
+    ]);
   });
 
   it.each(["2026-08", "2026-08-27"])("창업일 %s의 입력 정밀도를 그대로 저장한다", async (value) => {
