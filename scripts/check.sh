@@ -7,6 +7,24 @@ set -euo pipefail
 # 리포지토리 루트로 이동 (스크립트 위치 기준)
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# BBE-614 — 한 물리 기기의 heavyweight full gate 는 하나만 실행한다.
+# 모든 worktree/clone/셀프호스티드 CI 가 같은 localhost broker 를 사용한다. focused test 는
+# 이 진입점을 거치지 않으므로 대기시키지 않는다. 재진입은 broker 가 발급한 활성 token 을
+# 다시 검증하므로 환경변수 하나를 임의로 켜서 관문을 우회할 수 없다.
+if [[ -n "${MOAWORK_GATE_LEASE_TOKEN:-}" ]]; then
+  node scripts/gate-lease.mjs --verify-held
+else
+  if [[ -n "${WSL_DISTRO_NAME:-}" && "$(node -p 'process.platform')" == "win32" ]]; then
+    exec node scripts/gate-lease.mjs -- wsl.exe bash scripts/check.sh "$@"
+  else
+    bash_bin="$(command -v bash)"
+    if command -v cygpath >/dev/null 2>&1; then
+      bash_bin="$(cygpath -w "$bash_bin")"
+    fi
+    exec node scripts/gate-lease.mjs -- "$bash_bin" scripts/check.sh "$@"
+  fi
+fi
+
 echo "🔎 customer-specific values"
 node scripts/check-customer-specific-values.mjs --self-test
 node scripts/check-customer-specific-values.mjs
@@ -36,6 +54,7 @@ node scripts/check-use-server-exports.mjs
 # 판정 로직을 여기서 매번 검사한다.
 node scripts/merge-pr.mjs --self-test
 node --test scripts/handoff-evidence.test.mjs
+node --test scripts/gate-lease.test.mjs
 node --test scripts/check-build-gate.test.mjs
 node --test scripts/check-line-endings.test.mjs
 node scripts/check-unreachable-app-files.mjs
