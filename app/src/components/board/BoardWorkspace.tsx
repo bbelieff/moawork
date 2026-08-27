@@ -90,6 +90,11 @@ import {
   NEW_LEAD_SAVED_FILTER_PROJECTION,
   presentNewLeadSavedFilters,
 } from "@/lib/view/board-saved";
+import { BoardSummaryStrip } from "./BoardSummaryStrip";
+import { BoardSummarySettingsPopover } from "./BoardSummarySettingsPopover";
+import { formatCell } from "@/lib/boards/cells";
+import { parseBoardSummaryConfig, type BoardSummarySettingsRequest } from "@/lib/boards/summary-settings";
+import { saveBoardSummarySettingsAction } from "@/app/(app)/boards/[id]/summary-actions";
 
 const NEW_LEAD_LEGACY_FACET_LABELS = { revenue_band: "기존 매출구간" } as const;
 
@@ -146,6 +151,7 @@ function columnOrderReducer(
 export function BoardWorkspace({
   board,
   columns,
+  summaryColumns = columns,
   groups,
   rows,
   columnOrder,
@@ -161,6 +167,8 @@ export function BoardWorkspace({
   canDeleteItems = false,
   canManageColumns = false,
   canManageSections = false,
+  canManageSummaries = false,
+  savedViewActive = false,
   currentUserId,
   cellAction,
   itemDetailFixture,
@@ -176,6 +184,8 @@ export function BoardWorkspace({
     formData: FormData,
   ) => Promise<CompanyIntakeActionState>;
   columns: BoardColumn[];
+  /** URL/saved-view hidden과 무관한 보드의 전체 active 컬럼. */
+  summaryColumns?: BoardColumn[];
   groups: BoardGroup[];
   rows: ItemWithValues[];
   /** 그룹별 컬럼 배치 오버라이드(서버 저장분). */
@@ -203,6 +213,8 @@ export function BoardWorkspace({
   canDeleteItems?: boolean;
   canManageColumns?: boolean;
   canManageSections?: boolean;
+  canManageSummaries?: boolean;
+  savedViewActive?: boolean;
   /** BBE-239 — 공지사항에서 작성자 본인 삭제 예외를 판정하는 데 쓴다. */
   currentUserId?: string;
   /** 시각 fixture가 제품 UI를 우회하지 않고 저장소 경계만 대체할 때 사용한다. */
@@ -216,6 +228,7 @@ export function BoardWorkspace({
   // GroupTable 의 조건에서 항상 꺼진다.
   const authorColumnKey = board.source === NOTICE_TAB_SOURCE ? NOTICE_KEYS.author : undefined;
   const [filters, setFilters] = useState<BoardFilterState>(EMPTY_FILTERS);
+  const [summaryConfig, setSummaryConfig] = useState(() => parseBoardSummaryConfig(board.summary_config_jsonb));
   const [filterUrlReady, setFilterUrlReady] = useState(false);
   const [savedPresentation, setSavedPresentation] = useState<{ textMode: "single" | "wrap"; focusColumnKey: string | null }>({ textMode: "single", focusColumnKey: null });
   const [archivedColumnIds, setArchivedColumnIds] = useState<Set<string>>(() => new Set());
@@ -244,6 +257,12 @@ export function BoardWorkspace({
       ? presentWorkflowProgressColumns(workflowProgressKind, ordered)
       : ordered;
   }, [canonicalNewLead, physicalActiveColumns, workflowProgressKind]);
+  const activeSummaryColumns = useMemo(() => {
+    // Durable summary targets always use physical board column keys. Table/view
+    // presentation may collapse those columns (for example the credit score
+    // composite), but that synthetic key must never enter shared config.
+    return summaryColumns.filter((column) => !archivedColumnIds.has(column.id));
+  }, [archivedColumnIds, summaryColumns]);
   const tableColumns = useMemo(
     () => board.source === NEW_LEAD_TAB_SOURCE
       ? activeColumns.filter((column) => !NEW_LEAD_DETAIL_ONLY_KEYS.has(column.key))
@@ -357,6 +376,11 @@ export function BoardWorkspace({
       : applyFilters(optimisticRows, tableColumns, displayFilters, filterProjection).length,
     [displayFilters, displayRows, filterProjection, optimisticRows, tableColumns, workflowProgressKind],
   );
+  const saveSummary = useCallback(async (request: BoardSummarySettingsRequest) => {
+    const result = await saveBoardSummarySettingsAction(board.id, request);
+    if (result.ok) setSummaryConfig(parseBoardSummaryConfig(result.config));
+    return result;
+  }, [board.id]);
 
   /** 도구줄 담당자 필터 ↔ 헤더 담당자 탭의 단일 소스. null = 전체. */
   const pickAssignee = (value: string | null) =>
@@ -546,6 +570,11 @@ export function BoardWorkspace({
           // revision installer가 안전하게 재배치하며, 회사가 직접 바꾼 순서는 여기서 덮지 않는다.
           const shown = selectVisibleColumns(resolvedColumns, displayFilters.visibleColumnKeys);
           const visibleRows = applyFilters(block.rows, tableColumns, displayFilters, filterProjection);
+          const summaryScope = savedViewActive
+            ? { kind: "saved-view" as const, totalCount: block.rows.length }
+            : activeFilterCount(displayFilters) > 0
+              ? { kind: "filtered" as const, totalCount: block.rows.length }
+              : { kind: "all" as const, totalCount: block.rows.length };
           const rawBoardDetailLayout = resolveBoardDetailLayout(
             board.source,
             board.detail_layout_jsonb,
@@ -576,6 +605,24 @@ export function BoardWorkspace({
               nameEditor={block.group && canManageSections ? <GroupNameEditor boardId={board.id} groupId={block.group.id} name={block.name} /> : undefined}
               onOrderDragStart={block.group && canManageSections ? () => { draggedGroupRef.current = block.group!.id; } : undefined}
               onOrderDrop={block.group && canManageSections ? () => dropGroup(block.group!.id) : undefined}
+              summarySlot={
+                <BoardSummaryStrip
+                  config={summaryConfig}
+                  columns={activeSummaryColumns}
+                  rows={visibleRows}
+                  coverage={{ state: "complete" }}
+                  scope={summaryScope}
+                  formatValue={(value, type) => `${formatCell(type, value)}${type === "money" ? "원" : ""}`}
+                  settings={
+                    <BoardSummarySettingsPopover
+                      config={summaryConfig}
+                      columns={activeSummaryColumns}
+                      canEdit={!board.is_system && canManageSummaries}
+                      onSubmit={saveSummary}
+                    />
+                  }
+                />
+              }
               orderControls={block.group && canManageSections ? (
                 <span className="inline-flex" aria-label={`${block.name} 그룹 순서`}>
                   <button type="button" aria-label={`${block.name} 위로 이동`} onClick={() => moveGroup(block.group!.id, -1)} className="rounded px-1 focus:outline-none focus:ring-2 focus:ring-mw-primary">↑</button>

@@ -8,17 +8,8 @@ import {
   normalizeBoardSummaryConfig,
   type BoardSummaryMetricConfig,
 } from "@/lib/boards/summary";
-
-export type BoardSummarySettingsIntent =
-  | { type: "add"; metric: BoardSummaryMetricConfig }
-  | { type: "remove"; metricId: string }
-  | { type: "move"; metricId: string; direction: -1 | 1 };
-
-export interface BoardSummarySettingsRequest {
-  /** Stable across a retry of the same failed intent so a durable binding can replay safely. */
-  requestId: string;
-  intent: BoardSummarySettingsIntent;
-}
+import type { BoardSummarySettingsIntent, BoardSummarySettingsRequest } from "@/lib/boards/summary-settings";
+export type { BoardSummarySettingsIntent, BoardSummarySettingsRequest } from "@/lib/boards/summary-settings";
 
 export type BoardSummarySettingsResult =
   | { ok: true; requestId: string }

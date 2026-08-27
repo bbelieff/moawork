@@ -24,6 +24,7 @@ import type {
   ItemValue,
 } from "./types";
 import type { DetailLayoutEntry } from "./detail-layout";
+import type { BoardSummarySettingsReceipt, BoardSummarySettingsRequest } from "./summary-settings";
 
 export interface NewBoard {
   name: string;
@@ -114,6 +115,7 @@ export interface BoardsRepo {
   setDefaultDefinitionState?(ctx: Ctx, boardId: string, state: DefaultDefinitionState): Promise<void>;
   deleteBoard(ctx: Ctx, id: string): Promise<boolean>;
   setBoardDetailLayout(ctx: Ctx, id: string, layout: DetailLayoutEntry[]): Promise<Board | undefined>;
+  applyBoardSummarySettings(ctx: Ctx, boardId: string, request: BoardSummarySettingsRequest): Promise<BoardSummarySettingsReceipt>;
 
   // 그룹(칸반 스윔레인)
   listGroups(ctx: Ctx, boardId: string): Promise<BoardGroup[]>;

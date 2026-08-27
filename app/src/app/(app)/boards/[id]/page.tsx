@@ -79,6 +79,7 @@ export default async function BoardPage({
       "structure.section_manage",
       "danger.bulk_edit_delete",
       "structure.preset_edit",
+      "structure.tab_manage",
     ]),
     loadPermissionScopedWorkItems(ctx.org.id),
   ]);
@@ -95,6 +96,7 @@ export default async function BoardPage({
   const sectionManage = permissions["structure.section_manage"];
   const boardDelete = permissions["danger.bulk_edit_delete"];
   const presetEdit = permissions["structure.preset_edit"];
+  const tabManage = permissions["structure.tab_manage"];
   // Permission and D24 scope are resolved before any board metadata or item read.
   if (!scopedItems.ok) notFound();
   const canEditItems = itemUpsert.kind === "allowed";
@@ -103,6 +105,7 @@ export default async function BoardPage({
   const canManageSections = sectionManage.kind === "allowed";
   const canDeleteBoard = boardDelete.kind === "allowed";
   const canEditPresets = presetEdit.kind === "allowed";
+  const canManageSummaries = tabManage.kind === "allowed";
   const { client, repo, service: svc } = await createRequestBoards();
 
   let detail;
@@ -437,6 +440,7 @@ export default async function BoardPage({
     <BoardWorkspace
       board={board}
       columns={visibleColumns}
+      summaryColumns={columns}
       groups={groups}
       rows={items}
       // 계약업체 실무에서만 채워진다 — 다른 보드는 빈 배열이라 «업체 추가» 가 뜨지 않는다.
@@ -460,6 +464,8 @@ export default async function BoardPage({
       canDeleteItems={canDeleteItems}
       canManageColumns={canManageColumns}
       canManageSections={canManageSections}
+      canManageSummaries={canManageSummaries}
+      savedViewActive={Boolean(personRuntime.view)}
       currentUserId={ctx.user.id}
     />
   );

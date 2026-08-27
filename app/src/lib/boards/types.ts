@@ -13,6 +13,7 @@ import type { FieldOption, FieldType } from "@/lib/types";
 import type { FieldSource } from "@/lib/field/source";
 import type { DetailLayoutEntry } from "./detail-layout";
 import type { OtherInfoValue } from "./structured-field";
+import type { BoardSummaryMetricConfig } from "./summary";
 
 /** 보드 뷰 종류 — 003 board_views.kind. */
 export const BOARD_VIEW_KINDS = ["table", "kanban"] as const;
@@ -34,6 +35,8 @@ export interface Board {
   updated_at: string;
   /** 상세 패널의 보드 기본 배치. 빈 배열은 의도적으로 비어 있는 기본 배치다. */
   detail_layout_jsonb?: DetailLayoutEntry[];
+  /** 보드 전체가 공유하는 최대 3개 한줄 요약 설정. URL/저장 뷰와 독립이다. */
+  summary_config_jsonb?: BoardSummaryMetricConfig[];
 }
 
 export interface BoardGroup {
