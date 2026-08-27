@@ -1,3 +1,5 @@
+import { createConnection } from "node:net";
+
 export class VisualGateStageError extends Error {
   constructor(category, stage, message, details = {}) {
     super(`[${category}:${stage}] ${message}`);
@@ -26,13 +28,27 @@ export async function waitForVisualGate({
 
   while (now() - startedAt <= timeoutMs) {
     attempts += 1;
+    const remainingMs = Math.max(1, timeoutMs - (now() - startedAt));
+    let deadline;
     try {
-      last = await probe();
+      last = await Promise.race([
+        Promise.resolve().then(probe),
+        new Promise((_, reject) => {
+          deadline = setTimeout(() => reject(new VisualGateStageError(
+            category,
+            stage,
+            `probe exceeded the remaining ${remainingMs}ms deadline`,
+            { attempts, last },
+          )), remainingMs);
+        }),
+      ]);
       lastError = null;
       if (last?.ready) return { ...last, attempts };
     } catch (error) {
       if (error instanceof VisualGateStageError) throw error;
       lastError = error;
+    } finally {
+      clearTimeout(deadline);
     }
     await sleep(intervalMs);
   }
@@ -42,6 +58,42 @@ export async function waitForVisualGate({
     last,
     lastError: lastError instanceof Error ? lastError.message : String(lastError ?? ""),
   });
+}
+
+export function probeTcpPort(host, port, timeoutMs = 250) {
+  return new Promise(resolve => {
+    const socket = createConnection({ host, port });
+    let settled = false;
+    const finish = result => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(result);
+    };
+    socket.once("connect", () => finish({ open: true, state: "connected" }));
+    socket.once("error", error => finish({
+      open: error?.code !== "ECONNREFUSED",
+      state: error?.code === "ECONNREFUSED" ? "refused" : "error",
+      errorCode: error?.code ?? null,
+    }));
+    socket.setTimeout(timeoutMs, () => finish({ open: true, state: "timeout" }));
+  });
+}
+
+export async function isChildAndPortReleased({ childExited, host, port, timeoutMs = 250 }) {
+  const tcp = await probeTcpPort(host, port, timeoutMs);
+  return { ready: childExited && !tcp.open, childExited, tcp };
+}
+
+export function verifyBuildProvenance(provenance, expected) {
+  const mismatches = ["commitSha", "sourceDigest", "buildId", "artifactDigest"]
+    .filter(key => !provenance || provenance[key] !== expected[key]);
+  return {
+    ready: mismatches.length === 0,
+    mismatches,
+    artifactSha: provenance?.commitSha ?? null,
+    expectedSha: expected.commitSha,
+  };
 }
 
 export function recordImplicitDomFailure(testCase, minimumVisual) {
