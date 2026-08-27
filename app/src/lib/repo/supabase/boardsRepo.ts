@@ -16,6 +16,11 @@ import {
   GROUP_LAYOUT_VIEW_NAME,
   isGroupLayoutView,
 } from "@/lib/boards/group-layout-store";
+import {
+  parseBoardSummaryConfig,
+  type BoardSummarySettingsRequest,
+  type BoardSummarySettingsReceipt,
+} from "@/lib/boards/summary-settings";
 
 type Row = Record<string, unknown>;
 const DEFAULT_DEFINITION_VIEW = "__mw_default_definition__";
@@ -98,6 +103,18 @@ export class SupabaseBoardsRepo implements BoardsRepo {
     const q = await this.client.from("boards").update({ detail_layout_jsonb: normalizeDetailLayout(layout), updated_at: new Date().toISOString() }).eq("org_id", ctx.org.id).eq("id", id).select("*").maybeSingle();
     if (q.error) throw new Error(q.error.message);
     return (q.data ?? undefined) as Board | undefined;
+  }
+  async applyBoardSummarySettings(ctx: Ctx, boardId: string, request: BoardSummarySettingsRequest): Promise<BoardSummarySettingsReceipt> {
+    const q = await this.client.rpc("apply_board_summary_settings", {
+      p_org_id: ctx.org.id,
+      p_board_id: boardId,
+      p_request_id: request.requestId,
+      p_intent: request.intent,
+    });
+    if (q.error) throw new Error(q.error.message);
+    const row = (Array.isArray(q.data) ? q.data[0] : q.data) as Record<string, unknown> | null;
+    if (!row || typeof row.replayed !== "boolean") throw new Error("요약 설정 응답을 확인할 수 없습니다.");
+    return { config: parseBoardSummaryConfig(row.config), replayed: row.replayed };
   }
 
   async listGroups(ctx: Ctx, boardId: string): Promise<BoardGroup[]> { const q = await this.client.from("board_groups").select("*").eq("org_id", ctx.org.id).eq("board_id", boardId).order("sort_order"); return many<BoardGroup>(q.data, q.error); }

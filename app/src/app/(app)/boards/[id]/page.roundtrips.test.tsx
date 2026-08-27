@@ -266,6 +266,7 @@ function seed() {
     "work.item_delete": true,
     "structure.column_manage": true,
     "structure.section_manage": true,
+    "structure.tab_manage": true,
     "danger.bulk_edit_delete": true,
     "structure.preset_edit": true,
   };

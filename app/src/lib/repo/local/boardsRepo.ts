@@ -40,6 +40,11 @@ import type {
   ViewPatch,
 } from "@/lib/boards/store";
 import { db } from "./store";
+import {
+  applyBoardSummarySettingsIntent,
+  type BoardSummarySettingsRequest,
+  type BoardSummarySettingsReceipt,
+} from "@/lib/boards/summary-settings";
 
 function now(): string {
   return new Date().toISOString();
@@ -59,6 +64,7 @@ export function slugifyKey(label: string): string {
 export class LocalBoardsRepo {
   private readonly createdBoardRequests = new Map<string, { input: string; boardId: string }>();
   private readonly reorderedBoardRequests = new Map<string, string>();
+  private readonly summaryRequests = new Map<string, { actorId: string; payload: string; result: BoardSummarySettingsReceipt }>();
   // ── 보드 ──
   listBoards(ctx: Ctx): Board[] {
     return db()
@@ -99,6 +105,7 @@ export class LocalBoardsRepo {
       created_by: ctx.user.id,
       created_at: ts,
       updated_at: ts,
+      summary_config_jsonb: [],
     };
     db().boards.push(board);
     this.createdBoardRequests.set(requestKey, { input: payload, boardId: board.id });
@@ -111,6 +118,25 @@ export class LocalBoardsRepo {
     Object.assign(b, patch);
     b.updated_at = now();
     return b;
+  }
+
+  applyBoardSummarySettings(ctx: Ctx, boardId: string, request: BoardSummarySettingsRequest): BoardSummarySettingsReceipt {
+    const board = this.getBoard(ctx, boardId);
+    if (!board || board.is_system) throw new Error("보드를 찾을 수 없습니다.");
+    const requestKey = `${ctx.org.id}:${request.requestId}`;
+    const payload = JSON.stringify({ boardId, intent: request.intent });
+    const prior = this.summaryRequests.get(requestKey);
+    if (prior) {
+      if (prior.actorId !== ctx.user.id || prior.payload !== payload) throw new Error("요약 설정 요청 식별자가 다른 변경에 사용되었습니다.");
+      return { config: prior.result.config.map((entry) => ({ ...entry })), replayed: true };
+    }
+    const columns = this.listColumns(ctx, boardId);
+    const config = applyBoardSummarySettingsIntent(board.summary_config_jsonb, request, columns);
+    board.summary_config_jsonb = config;
+    board.updated_at = now();
+    const result = { config: config.map((entry) => ({ ...entry })), replayed: false };
+    this.summaryRequests.set(requestKey, { actorId: ctx.user.id, payload, result });
+    return result;
   }
 
   reorderBoards(ctx: Ctx, boardIds: readonly string[], requestId: string): Board[] {

@@ -80,7 +80,7 @@ export function BoardSummaryStrip({
   const coverageMessage = coverage.state === "complete" ? undefined : coverage.message;
 
   return (
-    <div
+    <span
       data-board-summary-strip
       aria-label="그룹 한줄 요약"
       aria-live="polite"
@@ -96,7 +96,7 @@ export function BoardSummaryStrip({
           {coverageLabel}
         </span>
       ) : null}
-      <div data-summary-metrics className="flex min-w-0 flex-1 flex-nowrap items-center justify-end gap-2 overflow-hidden">
+      <span data-summary-metrics className="flex min-w-0 flex-1 flex-nowrap items-center justify-end gap-2 overflow-hidden">
         {model.metrics.map((metric) => {
           const text = metricText(metric, model.rowCount, formatValue);
           return (
@@ -113,8 +113,8 @@ export function BoardSummaryStrip({
             </span>
           );
         })}
-      </div>
-      <div data-summary-settings className="shrink-0">{settings}</div>
-    </div>
+      </span>
+      <span data-summary-settings className="shrink-0">{settings}</span>
+    </span>
   );
 }

@@ -20,24 +20,6 @@
 import { useState, type ReactNode } from "react";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 
-/** 합계 대상 = 이 그룹에 보이는 첫 number 컬럼. 없으면 합계를 그리지 않는다. */
-function sumOfFirstNumberColumn(
-  columns: readonly BoardColumn[],
-  rows: readonly ItemWithValues[],
-): { label: string; total: number } | null {
-  const col = columns.find((c) => c.type === "number");
-  if (!col) return null;
-  let total = 0;
-  for (const r of rows) {
-    const v = r.values[col.key];
-    if (typeof v === "number") total += v;
-    else if (typeof v === "string" && v.trim() !== "" && !Number.isNaN(Number(v))) {
-      total += Number(v);
-    }
-  }
-  return { label: col.label, total };
-}
-
 export function GroupBlock({
   name,
   color,
@@ -48,6 +30,7 @@ export function GroupBlock({
   orderControls,
   onOrderDragStart,
   onOrderDrop,
+  summarySlot,
   children,
 }: {
   name: string;
@@ -68,11 +51,13 @@ export function GroupBlock({
   orderControls?: ReactNode;
   onOrderDragStart?: () => void;
   onOrderDrop?: () => void;
+  /** 보드 공통 설정을 이 그룹의 filtered rows로 계산한 한줄 요약. */
+  summarySlot?: ReactNode;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(true);
   const accent = color ?? "var(--mw-record)";
-  const sum = sumOfFirstNumberColumn(columns, rows);
+  void columns;
 
   return (
     /*
@@ -117,13 +102,9 @@ export function GroupBlock({
             {rows.length}건{!open && " · 접힘"}
           </span>
 
-          <span className="ml-auto flex items-center gap-2 text-[0.65rem] text-mw-sub">
+          <span className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 text-[0.65rem] text-mw-sub">
+            {summarySlot}
             {orderControls}
-            {sum && (
-              <span>
-                {sum.label} 합계 <b className="text-mw-body">{sum.total.toLocaleString()}</b>
-              </span>
-            )}
             {/*
               프리셋 칩 — 이 그룹의 컬럼 구성을 가리키는 아이템 프리셋.
               점(●)은 이 그룹이 프리셋 기본값에서 벗어난 배치 오버라이드를 갖고 있다는 표시.

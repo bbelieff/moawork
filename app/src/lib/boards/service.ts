@@ -37,6 +37,7 @@ import { isIntegrityField } from "@/lib/custom/field-types";
 import { isSourceEditable } from "@/lib/field/source";
 import { pickDefaultView } from "@/lib/custom/views";
 import { resolveBoardDetailLayout, resolveDetailLayout } from "./detail-layout";
+import { parseBoardSummarySettingsRequest, type BoardSummarySettingsReceipt } from "./summary-settings";
 
 export class NotFoundError extends Error {
   constructor(message = "찾을 수 없습니다") {
@@ -137,6 +138,12 @@ export class BoardsService {
     const updated = await (await this.repo).updateBoard(ctx, board.id, patch);
     if (!updated) throw new NotFoundError("보드를 찾을 수 없습니다");
     return updated;
+  }
+
+  async applyBoardSummarySettings(ctx: Ctx, boardId: string, request: unknown): Promise<BoardSummarySettingsReceipt> {
+    const board = await this.requireEditableBoard(ctx, boardId);
+    const parsed = parseBoardSummarySettingsRequest(request);
+    return (await this.repo).applyBoardSummarySettings(ctx, board.id, parsed);
   }
 
   async reorderBoards(ctx: Ctx, boardIds: readonly string[], requestId: string): Promise<Board[]> {
