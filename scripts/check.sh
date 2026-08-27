@@ -64,6 +64,7 @@ node scripts/check-use-server-exports.mjs
 node scripts/merge-pr.mjs --self-test
 node --test scripts/handoff-evidence.test.mjs
 node --test scripts/gate-lease.test.mjs
+node --test scripts/check-shell-entry.test.mjs
 node --test scripts/check-build-gate.test.mjs
 node --test scripts/check-line-endings.test.mjs
 node scripts/check-unreachable-app-files.mjs

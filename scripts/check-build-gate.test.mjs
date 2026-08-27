@@ -23,10 +23,12 @@ test("the canonical quality gate runs the real workspace production build", () =
 });
 
 test("CI and pre-commit keep consuming the one canonical check script", async () => {
-  const [workflow, hook] = await Promise.all([
+  const [workflow, hook, windowsLauncher] = await Promise.all([
     readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
     readFile(new URL("../.githooks/pre-commit", import.meta.url), "utf8"),
+    readFile(new URL("./run-check-windows.ps1", import.meta.url), "utf8"),
   ]);
-  assert.match(workflow, /run:\s+bash scripts\/check\.sh/u);
+  assert.match(workflow, /run:\s+\.\\scripts\\run-check-windows\.ps1/u);
+  assert.match(windowsLauncher, /& \$resolved --noprofile --norc "scripts\/check\.sh"/u);
   assert.match(hook, /bash (?:"\$ROOT\/)?scripts\/check\.sh"?/u);
 });

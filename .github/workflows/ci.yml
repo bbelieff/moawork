@@ -45,4 +45,4 @@ jobs:
         # BBE-614 — check.sh 자체의 machine-wide FIFO lease 가 로컬 worktree/clone과
         # 같은 물리 기기의 다른 runner까지 직렬화한다. GitHub concurrency로 대기 실행을
         # 교체 취소하지 않으며, focused workflow는 이 lease에 들어오지 않는다.
-        run: bash scripts/check.sh
+        run: .\scripts\run-check-windows.ps1
