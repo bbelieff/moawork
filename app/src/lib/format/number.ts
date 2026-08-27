@@ -29,6 +29,7 @@ export interface NumericInputRules {
 export type NumericValidationError =
   | "not_finite"
   | "underflow"
+  | "precision_loss"
   | "unsafe_integer"
   | "negative_not_allowed"
   | "decimal_not_allowed"
@@ -63,6 +64,18 @@ function assertDigits(value: number, field: string): void {
   if (!Number.isInteger(value) || value < 0 || value > MAX_FRACTION_DIGITS) {
     throw new RangeError(`${field} must be an integer between 0 and ${MAX_FRACTION_DIGITS}`);
   }
+}
+
+/** Decimal source/canonical comparison only; never use this to rewrite stored identifiers. */
+function normalizeExactDecimal(value: string): string {
+  const negative = value.startsWith("-");
+  const unsigned = negative ? value.slice(1) : value;
+  const [integerSource, fractionSource = ""] = unsigned.split(".");
+  const integer = integerSource.replace(/^0+(?=\d)/, "") || "0";
+  const fraction = fractionSource.replace(/0+$/, "");
+  const isZero = integer === "0" && (fraction === "" || !/[1-9]/.test(fraction));
+  if (isZero) return "0";
+  return `${negative ? "-" : ""}${integer}${fraction === "" ? "" : `.${fraction}`}`;
 }
 
 function grouped(
@@ -235,7 +248,11 @@ export function parseNumericInput(
   }
 
   const canonical = text.replaceAll(",", "");
-  if (rules.allowDecimal === false && !canonical.includes(".")) {
+  const hasDecimalPoint = canonical.includes(".");
+  if (rules.allowDecimal === false && hasDecimalPoint) {
+    return { ok: false, value: null, error: "decimal_not_allowed" };
+  }
+  if (rules.allowDecimal === false) {
     const integer = BigInt(canonical);
     if (integer > MAX_SAFE_INTEGER_BIGINT || integer < -MAX_SAFE_INTEGER_BIGINT) {
       return { ok: false, value: null, error: "unsafe_integer" };
@@ -248,8 +265,17 @@ export function parseNumericInput(
   }
 
   const value = Number(canonical);
+  if (!Number.isFinite(value)) {
+    return { ok: false, value: null, error: "not_finite" };
+  }
   if (value === 0 && /[1-9]/.test(canonical)) {
     return { ok: false, value: null, error: "underflow" };
+  }
+  if (
+    hasDecimalPoint
+    && normalizeExactDecimal(canonical) !== normalizeExactDecimal(canonicalNumberString(value))
+  ) {
+    return { ok: false, value: null, error: "precision_loss" };
   }
   return validateNumericValue(value, rules);
 }

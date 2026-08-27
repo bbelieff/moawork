@@ -147,6 +147,33 @@ describe("canonical numeric input", () => {
     expect(canonicalNumberString(1e21)).toBe("1000000000000000000000");
     expect(canonicalNumberString(1e-7)).toBe("0.0000001");
   });
+
+  it("decimal 원문이 Number 왕복 중 달라지면 precision loss로 거부한다", () => {
+    for (const raw of [
+      "9007199254740993.0",
+      "9007199254740991.5",
+      "0.1234567890123456789",
+    ]) {
+      expect(parseNumericInput(raw, { allowDecimal: true })).toEqual({
+        ok: false,
+        value: null,
+        error: "precision_loss",
+      });
+    }
+
+    expect(parseNumericInput("9007199254740991.0", { allowDecimal: true })).toEqual({
+      ok: true,
+      value: Number.MAX_SAFE_INTEGER,
+    });
+    expect(parseNumericInput("0.1", { allowDecimal: true })).toEqual({ ok: true, value: 0.1 });
+    expect(parseNumericInput("1.2300", { allowDecimal: true })).toEqual({ ok: true, value: 1.23 });
+    expect(parseNumericInput("-0.000", { allowDecimal: true })).toEqual({ ok: true, value: -0 });
+    expect(parseNumericInput("9007199254740991.5", { allowDecimal: false })).toEqual({
+      ok: false,
+      value: null,
+      error: "decimal_not_allowed",
+    });
+  });
 });
 
 describe("numeric search normalization", () => {

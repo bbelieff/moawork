@@ -78,15 +78,23 @@ describe("고객사 CSV 매핑", () => {
 
   it("안전 정수 범위를 넘는 매출은 정밀도 손실 없이 거부해 저장값을 만들지 않는다", () => {
     expect(parseRevenue("9007199254740991")).toBe(Number.MAX_SAFE_INTEGER);
+    expect(parseRevenue("9007199254740991.0")).toBe(Number.MAX_SAFE_INTEGER);
+    expect(parseRevenue("1.2300")).toBe(1.23);
     expect(parseRevenue("9007199254740992")).toBeNull();
     expect(parseRevenue("9007199254740993")).toBeNull();
     expect(parseRevenue("-9007199254740992")).toBeNull();
+    expect(parseRevenue("9007199254740993.0")).toBeNull();
+    expect(parseRevenue("9007199254740991.5")).toBeNull();
+    expect(parseRevenue("0.1234567890123456789")).toBeNull();
 
     const result = mapCsvToCompanies(
-      [{ title: "회사", values: { 매출액: "9007199254740993" } }],
+      [
+        { title: "회사1", values: { 매출액: "9007199254740993.0" } },
+        { title: "회사2", values: { 매출액: "9007199254740991.5" } },
+      ],
       ["매출액"],
     );
-    expect(result.mapped[0].input.revenue).toBeNull();
+    expect(result.mapped.map((row) => row.input.revenue)).toEqual([null, null]);
   });
 
   it("창업년도는 연도만 있어도 받고, 못 읽으면 null 이다", () => {
