@@ -40,7 +40,33 @@ describe("Issue #605 BoardSummaryStrip", () => {
     expect(html).toContain("flex-nowrap");
     expect(html).toContain("whitespace-nowrap");
     expect(html).toContain("data-summary-settings");
+    expect(html).toContain('tabindex="0"');
+    expect(html).toContain('aria-label="상담상황: 대기 1 · 완료 1 · 보류 1"');
     expect(formatter).toHaveBeenCalledWith(1500, "money");
+  });
+
+  it("renders null-only money as missing but preserves a real numeric zero", () => {
+    const formatter = vi.fn((value: number) => `${value}원`);
+    const missing = renderToStaticMarkup(
+      <BoardSummaryStrip
+        config={config.slice(1)} columns={columns} rows={[row("missing", { amount: null })]}
+        coverage={{ state: "complete" }} scope={{ kind: "all" }} formatValue={formatter}
+        settings={<button>요약 설정</button>}
+      />,
+    );
+    expect(missing).toContain("계약금 · 미입력");
+    expect(missing).not.toContain("계약금 0원");
+    expect(formatter).not.toHaveBeenCalled();
+
+    const zero = renderToStaticMarkup(
+      <BoardSummaryStrip
+        config={config.slice(1)} columns={columns} rows={[row("zero", { amount: 0 })]}
+        coverage={{ state: "complete" }} scope={{ kind: "all" }} formatValue={formatter}
+        settings={<button>요약 설정</button>}
+      />,
+    );
+    expect(zero).toContain("계약금 0원");
+    expect(formatter).toHaveBeenCalledWith(0, "money");
   });
 
   it("labels partial coverage and excluded values without turning either into zero", () => {

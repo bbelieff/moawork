@@ -9,27 +9,90 @@ import {
   type BoardSummaryMetricConfig,
 } from "@/lib/boards/summary";
 
+export type BoardSummarySettingsIntent =
+  | { type: "add"; metric: BoardSummaryMetricConfig }
+  | { type: "remove"; metricId: string }
+  | { type: "move"; metricId: string; direction: -1 | 1 };
+
+export interface BoardSummarySettingsRequest {
+  /** Stable across a retry of the same failed intent so a durable binding can replay safely. */
+  requestId: string;
+  intent: BoardSummarySettingsIntent;
+}
+
+export type BoardSummarySettingsResult =
+  | { ok: true; requestId: string }
+  | { ok: false; requestId: string; error: string };
+
+function intentKey(intent: BoardSummarySettingsIntent): string {
+  if (intent.type === "add") return `add:${intent.metric.id}:${intent.metric.kind}:${intent.metric.columnKey}`;
+  if (intent.type === "remove") return `remove:${intent.metricId}`;
+  return `move:${intent.metricId}:${intent.direction}`;
+}
+
 export function BoardSummarySettingsPopover({
   config,
   columns,
-  onAdd,
-  onRemove,
-  onMove,
+  canEdit,
+  pending = false,
+  error,
+  onSubmit,
 }: {
   config: readonly BoardSummaryMetricConfig[];
   columns: readonly BoardColumn[];
-  onAdd: (metric: BoardSummaryMetricConfig) => void;
-  onRemove: (metricId: string) => void;
-  onMove: (metricId: string, direction: -1 | 1) => void;
+  canEdit: boolean;
+  pending?: boolean;
+  error?: string | null;
+  onSubmit: (request: BoardSummarySettingsRequest) => Promise<BoardSummarySettingsResult>;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({ left: 8, top: 8, width: 352, maxHeight: 520 });
+  const [submitting, setSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const submittingRef = useRef(false);
+  const retryRef = useRef<{ key: string; request: BoardSummarySettingsRequest } | null>(null);
   const normalized = useMemo(() => normalizeBoardSummaryConfig(config), [config]);
   const candidates = useMemo(() => boardSummaryCandidates(columns, normalized), [columns, normalized]);
   const columnLabels = useMemo(() => new Map(columns.map((column) => [column.key, column.label])), [columns]);
+  const busy = pending || submitting;
+  const displayedError = localError ?? error;
+
+  const submit = useCallback(async (intent: BoardSummarySettingsIntent) => {
+    if (!canEdit || pending || submittingRef.current) return;
+    const key = intentKey(intent);
+    const retry = retryRef.current;
+    const request = retry?.key === key
+      ? retry.request
+      : {
+          requestId: crypto.randomUUID(),
+          intent,
+        };
+
+    submittingRef.current = true;
+    setSubmitting(true);
+    setLocalError(null);
+    try {
+      const result = await onSubmit(request);
+      if (result.requestId !== request.requestId) {
+        retryRef.current = { key, request };
+        setLocalError("요약 설정 응답을 확인할 수 없습니다. 다시 시도해 주세요.");
+      } else if (!result.ok) {
+        retryRef.current = { key, request };
+        setLocalError(result.error);
+      } else {
+        retryRef.current = null;
+      }
+    } catch {
+      retryRef.current = { key, request };
+      setLocalError("요약 설정을 저장하지 못했습니다. 다시 시도해 주세요.");
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  }, [canEdit, onSubmit, pending]);
 
   const close = useCallback((restoreFocus = true) => {
     setOpen(false);
@@ -110,6 +173,7 @@ export function BoardSummarySettingsPopover({
             id={`${id}-panel`}
             role="dialog"
             aria-label="요약 설정"
+            aria-busy={busy || undefined}
             style={{ left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight }}
             className="fixed flex flex-col overflow-hidden rounded-xl border border-mw-line bg-mw-card text-mw-fg shadow-xl"
           >
@@ -121,15 +185,18 @@ export function BoardSummarySettingsPopover({
               <button type="button" onClick={() => close()} aria-label="요약 설정 닫기" className="min-h-8 min-w-8 rounded-lg text-mw-sub hover:bg-mw-bg">✕</button>
             </header>
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              {!canEdit ? <p role="status" className="mb-3 rounded-lg bg-mw-bg p-2 text-xs text-mw-sub">요약 설정을 변경할 권한이 없습니다.</p> : null}
+              {busy ? <p role="status" aria-live="polite" className="mb-3 rounded-lg bg-mw-bg p-2 text-xs text-mw-sub">요약 설정 저장 중…</p> : null}
+              {displayedError ? <p role="alert" aria-live="assertive" className="mb-3 rounded-lg bg-mw-error/10 p-2 text-xs text-mw-error">{displayedError}</p> : null}
               <section aria-labelledby={`${id}-selected`}>
                 <h3 id={`${id}-selected`} className="text-xs font-semibold">표시 중 · {normalized.length}/3</h3>
                 <div className="mt-2 grid gap-1.5">
                   {normalized.length === 0 ? <p className="rounded-lg bg-mw-bg p-3 text-xs text-mw-sub">표시 중인 요약이 없습니다.</p> : normalized.map((metric, index) => (
                     <div key={metric.id} className="flex min-h-10 items-center gap-1 rounded-lg border border-mw-line px-2 text-xs">
                       <span className="min-w-0 flex-1 truncate">{columnLabels.get(metric.columnKey) ?? metric.columnKey} · {metric.kind === "sum" ? "합계" : "분포"}</span>
-                      <button type="button" disabled={index === 0} onClick={() => onMove(metric.id, -1)} aria-label={`${columnLabels.get(metric.columnKey) ?? metric.columnKey} 위로`} className="min-h-8 min-w-8 rounded disabled:opacity-30">↑</button>
-                      <button type="button" disabled={index === normalized.length - 1} onClick={() => onMove(metric.id, 1)} aria-label={`${columnLabels.get(metric.columnKey) ?? metric.columnKey} 아래로`} className="min-h-8 min-w-8 rounded disabled:opacity-30">↓</button>
-                      <button type="button" onClick={() => onRemove(metric.id)} aria-label={`${columnLabels.get(metric.columnKey) ?? metric.columnKey} 요약 제거`} className="min-h-8 rounded px-2 text-mw-error">제거</button>
+                      <button type="button" disabled={!canEdit || busy || index === 0} onClick={() => { void submit({ type: "move", metricId: metric.id, direction: -1 }); }} aria-label={`${columnLabels.get(metric.columnKey) ?? metric.columnKey} 위로`} className="min-h-8 min-w-8 rounded disabled:opacity-30">↑</button>
+                      <button type="button" disabled={!canEdit || busy || index === normalized.length - 1} onClick={() => { void submit({ type: "move", metricId: metric.id, direction: 1 }); }} aria-label={`${columnLabels.get(metric.columnKey) ?? metric.columnKey} 아래로`} className="min-h-8 min-w-8 rounded disabled:opacity-30">↓</button>
+                      <button type="button" disabled={!canEdit || busy} onClick={() => { void submit({ type: "remove", metricId: metric.id }); }} aria-label={`${columnLabels.get(metric.columnKey) ?? metric.columnKey} 요약 제거`} className="min-h-8 rounded px-2 text-mw-error disabled:opacity-30">제거</button>
                     </div>
                   ))}
                 </div>
@@ -142,8 +209,8 @@ export function BoardSummarySettingsPopover({
                     <button
                       key={`${candidate.kind}:${candidate.columnKey}`}
                       type="button"
-                      disabled={normalized.length >= 3}
-                      onClick={() => onAdd({ id: `${candidate.kind}:${candidate.columnKey}`, kind: candidate.kind, columnKey: candidate.columnKey })}
+                      disabled={!canEdit || busy || normalized.length >= 3}
+                      onClick={() => { void submit({ type: "add", metric: { id: `${candidate.kind}:${candidate.columnKey}`, kind: candidate.kind, columnKey: candidate.columnKey } }); }}
                       className="flex min-h-10 items-center justify-between rounded-lg border border-mw-line px-3 text-left text-xs hover:bg-mw-bg disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <span className="truncate">{candidate.label}</span>

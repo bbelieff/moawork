@@ -28,10 +28,11 @@ const configs: BoardSummaryMetricConfig[] = [
 ];
 
 describe("Issue #605 board summary domain", () => {
-  it("keeps ordered unique configuration and enforces maximum three", () => {
+  it("keeps ordered unique ids and targets and enforces maximum three", () => {
     expect(normalizeBoardSummaryConfig([
       ...configs,
       { id: "status-copy", kind: "distribution", columnKey: "status" },
+      { id: "amount", kind: "sum", columnKey: "duplicate-id" },
       { id: "quantity", kind: "sum", columnKey: "quantity" },
       { id: "fourth", kind: "sum", columnKey: "fourth" },
     ]).map((metric) => metric.id)).toEqual(["status", "amount", "quantity"]);
@@ -67,7 +68,53 @@ describe("Issue #605 board summary domain", () => {
       ],
       coverage: { state: "complete" }, scope: { kind: "all" },
     });
-    expect(model.metrics[0]).toMatchObject({ status: "ready", kind: "sum", valueType: "money", total: 1000, excludedCount: 2 });
+    expect(model.metrics[0]).toMatchObject({
+      status: "ready",
+      kind: "sum",
+      valueType: "money",
+      total: 1000,
+      includedCount: 2,
+      emptyCount: 1,
+      invalidCount: 2,
+      excludedCount: 0,
+    });
+  });
+
+  it("distinguishes null-only values from a real numeric zero", () => {
+    const columns = [column("amount", "계약금", "money")];
+    const empty = buildBoardSummaryModel({
+      config: configs.slice(1), columns, rows: [row("empty", { amount: null })],
+      coverage: { state: "complete" }, scope: { kind: "all" },
+    });
+    const zero = buildBoardSummaryModel({
+      config: configs.slice(1), columns, rows: [row("zero", { amount: 0 })],
+      coverage: { state: "complete" }, scope: { kind: "all" },
+    });
+
+    expect(empty.metrics[0]).toMatchObject({ status: "ready", total: 0, includedCount: 0, emptyCount: 1 });
+    expect(zero.metrics[0]).toMatchObject({ status: "ready", total: 0, includedCount: 1, emptyCount: 0 });
+  });
+
+  it("classifies arithmetic overflow separately from empty and invalid values", () => {
+    const model = buildBoardSummaryModel({
+      config: configs.slice(1),
+      columns: [column("amount", "계약금", "money")],
+      rows: [
+        row("included", { amount: Number.MAX_VALUE }),
+        row("excluded", { amount: Number.MAX_VALUE }),
+        row("empty", { amount: null }),
+        row("invalid", { amount: "not-a-number" }),
+      ],
+      coverage: { state: "complete" }, scope: { kind: "all" },
+    });
+
+    expect(model.metrics[0]).toMatchObject({
+      status: "ready",
+      includedCount: 1,
+      emptyCount: 1,
+      invalidCount: 1,
+      excludedCount: 1,
+    });
   });
 
   it("does not disguise failed or partial coverage as a truthful zero", () => {

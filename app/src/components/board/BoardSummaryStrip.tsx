@@ -31,8 +31,13 @@ function metricText(
 
   if (metric.kind === "sum") {
     if (rowCount === 0) return { compact: `${metric.label} · 데이터 없음`, full: `${metric.label}: 데이터 없음` };
+    const omittedCount = metric.invalidCount + metric.excludedCount;
+    const excluded = omittedCount > 0 ? ` · 일부 값 제외 ${omittedCount}건` : "";
+    if (metric.includedCount === 0) {
+      const absence = metric.emptyCount > 0 && omittedCount === 0 ? "미입력" : "값 없음";
+      return { compact: `${metric.label} · ${absence}${excluded}`, full: `${metric.label}: ${absence}${excluded}` };
+    }
     const value = formatValue(metric.total, metric.valueType);
-    const excluded = metric.excludedCount > 0 ? ` · 일부 값 제외 ${metric.excludedCount}건` : "";
     return { compact: `${metric.label} ${value}${excluded}`, full: `${metric.label}: ${value}${excluded}` };
   }
 
@@ -98,8 +103,11 @@ export function BoardSummaryStrip({
             <span
               key={metric.config.id}
               data-summary-metric={metric.config.id}
+              role="note"
+              tabIndex={0}
+              aria-label={text.full}
               title={text.full}
-              className="min-w-0 max-w-56 truncate rounded-full bg-mw-card px-2 py-0.5 text-mw-body"
+              className="min-w-0 max-w-56 truncate rounded-full bg-mw-card px-2 py-0.5 text-mw-body focus:outline-none focus:ring-2 focus:ring-mw-primary/25"
             >
               {text.compact}
             </span>

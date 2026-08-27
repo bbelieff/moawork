@@ -42,6 +42,9 @@ export type BoardSummaryMetricResult =
       kind: "sum";
       valueType: "number" | "money";
       total: number;
+      includedCount: number;
+      emptyCount: number;
+      invalidCount: number;
       excludedCount: number;
     })
   | (BoardSummaryBaseResult & {
@@ -59,17 +62,19 @@ export interface BoardSummaryModel {
 const EMPTY_BUCKET_ID = "__empty__";
 const UNKNOWN_BUCKET_ID = "__unknown__";
 
-/** Ordered, duplicate-free, maximum-three board-shared configuration. */
+/** Ordered; first accepted metric wins for duplicate ids or targets; maximum three. */
 export function normalizeBoardSummaryConfig(
   config: readonly BoardSummaryMetricConfig[],
 ): BoardSummaryMetricConfig[] {
-  const seen = new Set<string>();
+  const seenIds = new Set<string>();
+  const seenTargets = new Set<string>();
   const normalized: BoardSummaryMetricConfig[] = [];
   for (const metric of config) {
     if (!metric.id || !metric.columnKey) continue;
-    const identity = `${metric.kind}:${metric.columnKey}`;
-    if (seen.has(identity)) continue;
-    seen.add(identity);
+    const target = `${metric.kind}:${metric.columnKey}`;
+    if (seenIds.has(metric.id) || seenTargets.has(target)) continue;
+    seenIds.add(metric.id);
+    seenTargets.add(target);
     normalized.push({ ...metric });
     if (normalized.length === 3) break;
   }
@@ -152,12 +157,18 @@ function sum(
   }
 
   let total = 0;
+  let includedCount = 0;
+  let emptyCount = 0;
+  let invalidCount = 0;
   let excludedCount = 0;
   for (const row of rows) {
     const value = row.values[column.key];
-    if (value === null || value === undefined || value === "") continue;
+    if (value === null || value === undefined || value === "") {
+      emptyCount += 1;
+      continue;
+    }
     if (typeof value !== "number" || !Number.isFinite(value)) {
-      excludedCount += 1;
+      invalidCount += 1;
       continue;
     }
     const next = total + value;
@@ -166,6 +177,7 @@ function sum(
       continue;
     }
     total = next;
+    includedCount += 1;
   }
 
   return {
@@ -175,6 +187,9 @@ function sum(
     kind: "sum",
     valueType: column.type,
     total,
+    includedCount,
+    emptyCount,
+    invalidCount,
     excludedCount,
   };
 }
