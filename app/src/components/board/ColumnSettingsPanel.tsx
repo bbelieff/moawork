@@ -29,33 +29,39 @@ function statusLabel(status: ColumnScheduleRow["status"]): string {
   return { scheduled: "예약됨", claimed: "처리 중", fired: "완료", cancelled: "취소됨" }[status];
 }
 
-export function ColumnSettingsPanel({ boardId, column, items, recipients, onRequestClose }: {
+export function ColumnSettingsPanel({ boardId, column, items, recipients, onRequestClose, onPendingChange, onSaved }: {
   boardId: string;
   column: BoardColumn;
   items: readonly ColumnScheduleItemOption[];
   recipients: readonly ColumnScheduleRecipientOption[];
   onRequestClose?: () => void;
+  onPendingChange?: (pending: boolean) => void;
+  onSaved?: () => void;
 }) {
   const isDate = column.type === "date" || column.type === "datetime";
   const isText = column.type === "text" || column.type === "longtext";
   const date = column.date_settings_jsonb ?? {};
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
-  const [pending, setPending] = useState(false);
+  const [settingsPending, setSettingsPending] = useState(false);
+  const [schedulePending, setSchedulePending] = useState(false);
+  const pending = settingsPending || schedulePending;
   const [schedules, setSchedules] = useState<ColumnScheduleRow[]>([]);
   const [recipientId, setRecipientId] = useState(recipients[0]?.id ?? "");
   const [itemId, setItemId] = useState(items[0]?.id ?? "");
   const scheduleRef = useRef<HTMLElement>(null);
   const recipient = useMemo(() => recipients.find((option) => option.id === recipientId), [recipientId, recipients]);
 
-  const reloadSchedules = () => {
+  useEffect(() => {
     if (!isDate) return;
-    startTransition(async () => {
-      const result = await loadColumnSchedulesAction(boardId, column.id);
+    let cancelled = false;
+    void loadColumnSchedulesAction(boardId, column.id).then((result) => {
+      if (cancelled) return;
       setMessage(result.ok ? null : { ok: false, text: result.message });
       if (result.schedules) setSchedules(result.schedules);
     });
-  };
-  useEffect(reloadSchedules, [boardId, column.id, isDate]);
+    return () => { cancelled = true; };
+  }, [boardId, column.id, isDate]);
+  useEffect(() => { onPendingChange?.(pending); }, [onPendingChange, pending]);
 
   return <section aria-label={`${column.label} 컬럼 설정`} className="grid gap-4">
     <form className="grid gap-3" onSubmit={(event) => {
@@ -72,7 +78,7 @@ export function ColumnSettingsPanel({ boardId, column, items, recipients, onRequ
         const allowed = String(data.get("allowedValues") ?? "").split(",").map((part) => part.trim()).filter(Boolean);
         if (allowed.length) validation.allowedValues = allowed;
       }
-      setPending(true);
+      setSettingsPending(true);
       startTransition(async () => {
         const editPolicy = String(data.get("editPolicy") ?? "preserve");
         const viewPolicy = String(data.get("viewPolicy") ?? "preserve");
@@ -92,7 +98,9 @@ export function ColumnSettingsPanel({ boardId, column, items, recipients, onRequ
             deadline: data.get("deadline") === "on", reminderOffsetsMinutes: reminders,
           } } : {}),
         });
-        setMessage({ ok: result.ok, text: result.message }); setPending(false);
+        setMessage({ ok: result.ok, text: result.message });
+        setSettingsPending(false);
+        if (result.ok) onSaved?.();
       });
     }}>
       <label className="grid gap-1 text-sm"><span>설명</span><textarea name="description" defaultValue={column.description ?? ""} className="rounded border border-mw-line bg-mw-card p-2" placeholder="헤더에서 함께 보여 줄 설명" /></label>
@@ -119,7 +127,7 @@ export function ColumnSettingsPanel({ boardId, column, items, recipients, onRequ
         <label className="grid gap-1"><span>리마인더(분, 쉼표 구분)</span><input name="reminderOffsetsMinutes" defaultValue={(date.reminderOffsetsMinutes ?? []).join(", ")} className="rounded border p-2" /></label>
       </fieldset> : null}
       <button type="button" onClick={() => { onRequestClose?.(); window.requestAnimationFrame(() => { const settings = document.getElementById("board-settings") as HTMLDetailsElement | null; const forms = document.getElementById("board-work-forms"); settings?.setAttribute("open", ""); forms?.scrollIntoView({ behavior: "smooth", block: "center" }); forms?.querySelector<HTMLElement>("summary")?.focus(); }); }} className="rounded border border-mw-line px-3 py-2 text-left text-sm">업무 양식에서 재사용</button>
-      <button disabled={pending} className="rounded bg-mw-primary px-3 py-2 text-white disabled:opacity-50">{pending ? "저장 중…" : "설정 저장"}</button>
+      <button disabled={pending} className="rounded bg-mw-primary px-3 py-2 text-mw-on-accent disabled:opacity-50">{settingsPending ? "저장 중…" : "설정 저장"}</button>
     </form>
 
     {isDate ? <section ref={scheduleRef} aria-label="날짜 알림 예약" className="grid gap-3 rounded border border-mw-line p-3 text-sm">
@@ -130,25 +138,44 @@ export function ColumnSettingsPanel({ boardId, column, items, recipients, onRequ
       <p data-selected-recipient className="text-xs text-mw-sub">선택된 수신자: {recipient?.label ?? "없음"} — 담당자 자동 추정 없이 이 사용자 한 명에게만 예약합니다.</p>
       <label className="grid gap-1"><span>종류</span><select name="scheduleKind" className="rounded border p-2"><option value="notification">알림</option><option value="deadline">마감</option><option value="reminder">리마인더</option></select></label>
       <label className="grid gap-1"><span>예약 시각 (KST, Asia/Seoul)</span><input name="scheduledFor" type="datetime-local" className="rounded border p-2" /></label>
-      <button type="button" disabled={!DELIVERY_READY || !itemId || !recipientId} onClick={() => {
+      <button type="button" disabled={pending || !DELIVERY_READY || !itemId || !recipientId} onClick={() => {
         const root = scheduleRef.current;
         const time = root?.querySelector<HTMLInputElement>('[name="scheduledFor"]')?.value ?? "";
         const kind = (root?.querySelector<HTMLSelectElement>('[name="scheduleKind"]')?.value ?? "notification") as ColumnScheduleRow["kind"];
         const scheduledFor = kstLocalToIso(time);
         if (!scheduledFor) { setMessage({ ok: false, text: "KST 예약 시각을 확인해 주세요." }); return; }
+        setSchedulePending(true);
         startTransition(async () => {
-          const result = await setColumnScheduleAction({ boardId, columnId: column.id, itemId, targetUserId: recipientId, kind, scheduledFor, requestId: crypto.randomUUID() });
-          setMessage({ ok: result.ok, text: result.message }); if (result.ok) reloadSchedules();
+          try {
+            const result = await setColumnScheduleAction({ boardId, columnId: column.id, itemId, targetUserId: recipientId, kind, scheduledFor, requestId: crypto.randomUUID() });
+            setMessage({ ok: result.ok, text: result.message });
+            if (result.ok) {
+              const refreshed = await loadColumnSchedulesAction(boardId, column.id);
+              if (refreshed.schedules) setSchedules(refreshed.schedules);
+              if (!refreshed.ok) setMessage({ ok: false, text: refreshed.message });
+            }
+          } finally {
+            setSchedulePending(false);
+          }
         });
       }} className="rounded border px-3 py-2 disabled:cursor-not-allowed disabled:opacity-50">예약 저장</button>
       <ul className="grid gap-2">{schedules.map((schedule) => <li key={schedule.id} className="flex items-center justify-between gap-2 rounded bg-mw-bg p-2">
         <span>{statusLabel(schedule.status)} · {new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "medium", timeStyle: "short" }).format(new Date(schedule.scheduledFor))} KST</span>
-        {schedule.status === "scheduled" ? <button type="button" className="rounded border px-2 py-1" onClick={() => startTransition(async () => {
-          const result = await cancelColumnScheduleAction(boardId, column.id, schedule.id, crypto.randomUUID());
-          setMessage({ ok: result.ok, text: result.message }); if (result.ok) reloadSchedules();
-        })}>취소</button> : null}
+        {schedule.status === "scheduled" ? <button type="button" disabled={pending} className="rounded border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => { setSchedulePending(true); startTransition(async () => {
+          try {
+            const result = await cancelColumnScheduleAction(boardId, column.id, schedule.id, crypto.randomUUID());
+            setMessage({ ok: result.ok, text: result.message });
+            if (result.ok) {
+              const refreshed = await loadColumnSchedulesAction(boardId, column.id);
+              if (refreshed.schedules) setSchedules(refreshed.schedules);
+              if (!refreshed.ok) setMessage({ ok: false, text: refreshed.message });
+            }
+          } finally {
+            setSchedulePending(false);
+          }
+        }); }}>취소</button> : null}
       </li>)}</ul>
     </section> : null}
-    {message ? <p role={message.ok ? "status" : "alert"} className={`rounded p-2 text-sm ${message.ok ? "bg-mw-tint-blue" : "bg-red-50 text-red-700"}`}>{message.text}</p> : null}
+    {message ? <p role={message.ok ? "status" : "alert"} className={`rounded p-2 text-sm ${message.ok ? "bg-mw-tint-blue" : "border bg-mw-card"}`} style={message.ok ? undefined : { borderColor: "var(--mw-error)", color: "var(--mw-error)" }}>{message.text}</p> : null}
   </section>;
 }
