@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
 // 반환 타입은 아래 MockTab 으로 좁혀 쓴다 — 타입 선언 파일을 만들지 않는다(그 파일은 NG-02 소유).
 import { extractMockupContract } from "../../../../docs/design/dump-mockup.mjs";
 import { isSourceEditable } from "@/lib/field/source";
-import { NEW_LEAD_TAB, SEND_PENDING_REASON } from "./new-lead";
+import { NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS, NEW_LEAD_TAB, SEND_PENDING_REASON } from "./new-lead";
 import type { DefaultTabColumn } from "./types";
 
 interface MockColumn {
@@ -214,6 +214,18 @@ describe("제품 규칙 — 목업을 그대로 옮기면 안 되는 곳", () =>
         revenue_band: { label: "3개년매출" },
       },
     });
+  });
+
+  it("#600 합성 열은 후속 연결용 presentation 계약이고 기존 durable 열·순서를 바꾸지 않는다", () => {
+    expect(NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS).toEqual([
+      expect.objectContaining({ key: "credit_scores", label: "신용점수", type: "text" }),
+      expect.objectContaining({ key: "revenue_3y_million", label: "3개년매출(백만원)", type: "number" }),
+    ]);
+    expect(NEW_LEAD_TAB.columns.some((column) => column.key === "revenue_band")).toBe(true);
+    expect(NEW_LEAD_TAB.columns.some((column) => column.key === "credit_score_ncb")).toBe(true);
+    expect(NEW_LEAD_TAB.columns.some((column) => column.key === "credit_score_kcb")).toBe(true);
+    expect(NEW_LEAD_TAB.columns.some((column) => column.key === "credit_scores")).toBe(false);
+    expect(NEW_LEAD_TAB.columns.some((column) => column.key === "revenue_3y_million")).toBe(false);
   });
   it("D71~D75 — 사람 컬럼에 이름을 박지 않는다. 값은 멤버 계정에서 온다", () => {
     for (const column of NEW_LEAD_TAB.columns) {

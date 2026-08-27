@@ -31,7 +31,9 @@ vi.mock("@/lib/new-lead/advance", () => ({
 
 import {
   saveNewLeadCreditScoreAction,
+  saveNewLeadFoundedDateAction,
   saveNewLeadLoanProfileAction,
+  saveNewLeadRevenue3yAction,
 } from "./new-lead-actions";
 
 function baseForm() {
@@ -127,5 +129,66 @@ describe("Issue #589 신규리드 재무 저장", () => {
     outOfRange.set("score", "1001");
     expect((await saveNewLeadCreditScoreAction({ ok: false, message: "" }, outOfRange)).ok).toBe(false);
     expect(mocks.setCells).not.toHaveBeenCalled();
+  });
+
+  it("합성 셀의 한 기관 intent는 해당 durable key만 보내고 sibling을 전송하지 않는다", async () => {
+    const data = baseForm();
+    data.set("fieldKey", "credit_score_ncb");
+    data.set("score", "812");
+
+    await expect(saveNewLeadCreditScoreAction({ ok: false, message: "" }, data)).resolves.toEqual({
+      ok: true,
+      message: "NCB 점수를 저장했습니다.",
+    });
+    expect(mocks.setCells).toHaveBeenCalledTimes(1);
+    expect(mocks.setCells).toHaveBeenCalledWith(
+      expect.anything(),
+      "board-a",
+      "item-a",
+      { credit_score_ncb: 812 },
+    );
+    expect(mocks.setCells.mock.calls[0]?.[3]).not.toHaveProperty("credit_score_kcb");
+  });
+
+  it("한 기관 저장 실패 뒤 exact retry도 같은 single-key intent만 한 번 더 보낸다", async () => {
+    const data = baseForm();
+    data.set("fieldKey", "credit_score_ncb");
+    data.set("score", "812");
+    mocks.setCells
+      .mockResolvedValueOnce({ errors: [{ key: "credit_score_ncb", label: "NCB", message: "저장 실패" }] })
+      .mockResolvedValueOnce({ errors: [] });
+
+    await expect(saveNewLeadCreditScoreAction({ ok: false, message: "" }, data)).resolves.toEqual({
+      ok: false,
+      message: "저장 실패",
+    });
+    await expect(saveNewLeadCreditScoreAction({ ok: false, message: "" }, data)).resolves.toEqual({
+      ok: true,
+      message: "NCB 점수를 저장했습니다.",
+    });
+    expect(mocks.setCells).toHaveBeenCalledTimes(2);
+    expect(mocks.setCells.mock.calls.map((call) => call[3])).toEqual([
+      { credit_score_ncb: 812 },
+      { credit_score_ncb: 812 },
+    ]);
+  });
+
+  it.each(["2026-08", "2026-08-27"])("창업일 %s의 입력 정밀도를 그대로 저장한다", async (value) => {
+    const data = baseForm();
+    data.set("foundedDate", value);
+    expect((await saveNewLeadFoundedDateAction({ ok: false, message: "" }, data)).ok).toBe(true);
+    expect(mocks.setCells).toHaveBeenCalledWith(expect.anything(), "board-a", "item-a", {
+      founded_month: value,
+    });
+  });
+
+  it("백만원 매출은 새 숫자 key만 갱신하고 legacy revenue_band는 건드리지 않는다", async () => {
+    const data = baseForm();
+    data.set("revenue3yMillion", "1,234");
+    expect((await saveNewLeadRevenue3yAction({ ok: false, message: "" }, data)).ok).toBe(true);
+    expect(mocks.setCells).toHaveBeenCalledWith(expect.anything(), "board-a", "item-a", {
+      revenue_3y_million: 1234,
+    });
+    expect(mocks.setCells.mock.calls[0]?.[3]).not.toHaveProperty("revenue_band");
   });
 });
