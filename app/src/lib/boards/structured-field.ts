@@ -6,6 +6,9 @@ export const OTHER_INFO_KEYS = [
   "otherBusinesses",
 ] as const;
 
+export const OTHER_INFO_COLUMN_KEY = "other_info";
+export const OTHER_INFO_FACET_PREFIX = "__other_info_facet__:";
+
 export type OtherInfoKey = (typeof OTHER_INFO_KEYS)[number];
 
 export const OTHER_INFO_LABELS: Record<OtherInfoKey, string> = {
@@ -28,6 +31,13 @@ export type OtherInfoValue = {
 export interface OtherInfoLegacyInput {
   closed_business?: unknown;
   export_status?: unknown;
+}
+
+export function otherInfoLegacyFromValues(values: Readonly<Record<string, unknown>>): OtherInfoLegacyInput {
+  return {
+    closed_business: values.closed_business,
+    export_status: values.export_status,
+  };
 }
 
 export type OtherInfoFacetState = "missing" | "false" | "true";
@@ -85,6 +95,24 @@ function readEntry(value: unknown): OtherInfoEntry | null {
   };
 }
 
+/** Strict durable boundary: version 1, exactly five entries, no future/partial keys. */
+export function parseOtherInfoValue(input: unknown): OtherInfoValue | null {
+  if (
+    !isRecord(input)
+    || input.version !== 1
+    || !hasExactKeys(input, ["version", ...OTHER_INFO_KEYS])
+  ) return null;
+  const entries = OTHER_INFO_KEYS.map((key) => readEntry(input[key]));
+  if (!entries.every((entry): entry is OtherInfoEntry => entry !== null)) return null;
+  const value = emptyOtherInfoValue();
+  OTHER_INFO_KEYS.forEach((key, index) => { value[key] = entries[index]; });
+  return value;
+}
+
+export function isOtherInfoValue(input: unknown): input is OtherInfoValue {
+  return parseOtherInfoValue(input) !== null;
+}
+
 interface LegacyText {
   original: string;
   normalized: string;
@@ -124,20 +152,13 @@ export function projectOtherInfoValue(
   const present = { ...EMPTY_PRESENT };
   let hasStructuredEntry = false;
 
-  if (
-    isRecord(input)
-    && input.version === 1
-    && hasExactKeys(input, ["version", ...OTHER_INFO_KEYS])
-  ) {
-    const entries = OTHER_INFO_KEYS.map((key) => readEntry(input[key]));
-    const complete = entries.every((entry): entry is OtherInfoEntry => entry !== null);
-    if (complete) {
-      OTHER_INFO_KEYS.forEach((key, index) => {
-        value[key] = entries[index];
-        present[key] = true;
-      });
-      hasStructuredEntry = true;
-    }
+  const structured = parseOtherInfoValue(input);
+  if (structured) {
+    OTHER_INFO_KEYS.forEach((key) => {
+      value[key] = structured[key];
+      present[key] = true;
+    });
+    hasStructuredEntry = true;
   }
 
   if (hasStructuredEntry) {
@@ -162,6 +183,33 @@ export function projectOtherInfoValue(
   };
 }
 
+export function otherInfoFacetFilterKey(columnKey: string, key: OtherInfoKey): string {
+  return `${OTHER_INFO_FACET_PREFIX}${encodeURIComponent(columnKey)}:${key}`;
+}
+
+export function parseOtherInfoFacetFilterKey(key: string): { columnKey: string; facetKey: OtherInfoKey } | null {
+  if (!key.startsWith(OTHER_INFO_FACET_PREFIX)) return null;
+  const payload = key.slice(OTHER_INFO_FACET_PREFIX.length);
+  const separator = payload.lastIndexOf(":");
+  if (separator <= 0) return null;
+  const candidate = payload.slice(separator + 1);
+  if (!OTHER_INFO_KEYS.includes(candidate as OtherInfoKey)) return null;
+  try {
+    const columnKey = decodeURIComponent(payload.slice(0, separator));
+    return columnKey ? { columnKey, facetKey: candidate as OtherInfoKey } : null;
+  } catch {
+    return null;
+  }
+}
+
+export function otherInfoSearchText(input: unknown, legacy?: OtherInfoLegacyInput): string {
+  const projection = projectOtherInfoValue(input, legacy);
+  return OTHER_INFO_KEYS.flatMap((key) => {
+    const entry = projection.value[key];
+    return [OTHER_INFO_LABELS[key], entry.checked ? "체크" : "미체크", entry.text];
+  }).join(" ");
+}
+
 export function checkedOtherInfoCount(input: unknown, legacy?: OtherInfoLegacyInput): number {
   const { value } = projectOtherInfoValue(input, legacy);
   return OTHER_INFO_KEYS.reduce((count, key) => count + Number(value[key].checked), 0);
@@ -169,6 +217,18 @@ export function checkedOtherInfoCount(input: unknown, legacy?: OtherInfoLegacyIn
 
 export function otherInfoCountLabel(input: unknown, legacy?: OtherInfoLegacyInput): string {
   return `${checkedOtherInfoCount(input, legacy)}건`;
+}
+
+/** Lossless human-readable detail/export projection; unchecked text is intentionally retained. */
+export function otherInfoDetailText(input: unknown, legacy?: OtherInfoLegacyInput): string {
+  const projection = projectOtherInfoValue(input, legacy);
+  const entries = OTHER_INFO_KEYS.map((key) => {
+    if (!projection.present[key]) return `${OTHER_INFO_LABELS[key]}=값 없음`;
+    const entry = projection.value[key];
+    const state = entry.checked ? "체크" : "미체크";
+    return `${OTHER_INFO_LABELS[key]}=${state}${entry.text ? `(${entry.text})` : ""}`;
+  });
+  return `${otherInfoCountLabel(input, legacy)} · ${entries.join(" · ")}`;
 }
 
 export function otherInfoFacetState(

@@ -32,6 +32,7 @@ export const FIELD_TYPES = [
   "people",
   "money",
   "calc",
+  "other_info",
 ] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 

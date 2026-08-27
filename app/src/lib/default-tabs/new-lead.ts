@@ -53,6 +53,7 @@ import { NEW_LEAD_REVENUE_BANDS } from "@/lib/new-lead/revenue-bands";
 import { NEW_LEAD_TAB_SOURCE, type DefaultTab, type DefaultTabColumn } from "./types";
 import type { BoardColumn } from "@/lib/boards/types";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
+import { OTHER_INFO_COLUMN_KEY } from "@/lib/boards/structured-field";
 
 /** 목업 색을 그대로 옮긴다. 새 hex 를 만들지 않는다. */
 const GREY = "#c4c4c4";
@@ -200,6 +201,7 @@ const ALL_COLUMNS: DefaultTabColumn[] = [
     options: opts(["수출 없음", GREY], ["수출 중", "#00c875"], ["수출 예정", "#fdab3d"]),
     width: 110,
   },
+  { key: OTHER_INFO_COLUMN_KEY, label: "기타정보", type: "other_info", source: "in", width: 170 },
   { key: "required_amount", label: "필요금액", type: "money", source: "in", width: 120 },
   { key: "documents", label: "파일", type: "file", source: "in", width: 110 },
   { key: "consult_notes", label: "상담내용", type: "text", source: "in", width: 220 },
@@ -301,7 +303,7 @@ const ALL_COLUMNS: DefaultTabColumn[] = [
 export const NEW_LEAD_PRIMARY_COLUMN_KEYS = [
   "applied_on", "ad_name", "rep_name", "phone", "owner", "collaborators",
   "biz_reg_type", "industry", "founded_month", "revenue_band", "revenue_3y_million", "existing_loans",
-  "credit_score_ncb", "credit_score_kcb", "closed_business", "export_status", "required_amount", "sido",
+  "credit_score_ncb", "credit_score_kcb", "closed_business", "export_status", OTHER_INFO_COLUMN_KEY, "required_amount", "sido",
   "sigungu", "address_detail", "email",
 ] as const;
 
@@ -382,10 +384,16 @@ const REVENUE_PRESENTATION_KEYS = new Set<string>([
   NEW_LEAD_COMPOSITE_FIELD_KEYS.legacyRevenueBand,
   NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion,
 ]);
+const OTHER_INFO_PRESENTATION_KEYS = new Set<string>([
+  "closed_business",
+  "export_status",
+  OTHER_INFO_COLUMN_KEY,
+]);
 
 export function newLeadPresentationKey(key: string): string {
   if (CREDIT_PRESENTATION_KEYS.has(key)) return NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores;
   if (REVENUE_PRESENTATION_KEYS.has(key)) return NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion;
+  if (OTHER_INFO_PRESENTATION_KEYS.has(key)) return OTHER_INFO_COLUMN_KEY;
   return key;
 }
 
@@ -409,6 +417,7 @@ export function durableNewLeadColumnKeys(keys: readonly string[]): string[] {
     if (key === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion) {
       return [NEW_LEAD_COMPOSITE_FIELD_KEYS.legacyRevenueBand, key];
     }
+    if (key === OTHER_INFO_COLUMN_KEY) return ["closed_business", "export_status", OTHER_INFO_COLUMN_KEY];
     return [key];
   }));
 }
@@ -416,8 +425,11 @@ export function durableNewLeadColumnKeys(keys: readonly string[]): string[] {
 /** 저장된 physical 상세 배치를 합성 필드 한 칸으로 읽되 DB JSON은 바꾸지 않는다. */
 export function presentNewLeadDetailLayout(entries: readonly DetailLayoutEntry[]): DetailLayoutEntry[] {
   const seen = new Set<string>();
+  const hasOtherInfoColumn = entries.some((entry) => entry.key === OTHER_INFO_COLUMN_KEY);
   return entries.flatMap((entry) => {
-    const key = newLeadPresentationKey(entry.key);
+    const key = !hasOtherInfoColumn && OTHER_INFO_PRESENTATION_KEYS.has(entry.key)
+      ? entry.key
+      : newLeadPresentationKey(entry.key);
     if (seen.has(key)) return [];
     seen.add(key);
     if (key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores) {
@@ -425,6 +437,9 @@ export function presentNewLeadDetailLayout(entries: readonly DetailLayoutEntry[]
     }
     if (key === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion) {
       return [{ ...entry, key, source: "column" as const, label: "3개년매출(백만원)", type: "number" as const }];
+    }
+    if (key === OTHER_INFO_COLUMN_KEY) {
+      return [{ ...entry, key, source: "column" as const, label: "기타정보", type: "other_info" as const }];
     }
     return [{ ...entry, key }];
   });
@@ -455,12 +470,17 @@ export function durableNewLeadDetailLayout(
       label: "3개년매출(백만원)",
       type: "number",
     },
+    closed_business: { key: "closed_business", source: "column", label: "폐업여부", type: "select" },
+    export_status: { key: "export_status", source: "column", label: "수출여부", type: "select" },
+    [OTHER_INFO_COLUMN_KEY]: { key: OTHER_INFO_COLUMN_KEY, source: "column", label: "기타정보", type: "other_info" },
   };
   const expanded = entries.flatMap((entry) => {
     const keys = entry.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores
       ? [CREDIT_SCORE_KEYS.ncb, CREDIT_SCORE_KEYS.kcb]
       : entry.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion
         ? [NEW_LEAD_COMPOSITE_FIELD_KEYS.legacyRevenueBand, NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion]
+        : entry.key === OTHER_INFO_COLUMN_KEY
+          ? ["closed_business", "export_status", OTHER_INFO_COLUMN_KEY]
         : [entry.key];
     return keys.map((key) => source.get(key) ?? (key === entry.key ? entry : defaults[key]));
   });
@@ -473,13 +493,17 @@ export function presentNewLeadUnplacedKeys(
   keys: readonly string[],
   placedKeys: readonly string[],
 ): string[] {
-  const placed = new Set(placedKeys.map(newLeadPresentationKey));
+  const hasOtherInfoColumn = keys.includes(OTHER_INFO_COLUMN_KEY);
+  const presentationKey = (key: string) => !hasOtherInfoColumn && OTHER_INFO_PRESENTATION_KEYS.has(key)
+    ? key
+    : newLeadPresentationKey(key);
+  const placed = new Set(placedKeys.map(presentationKey));
   const seen = new Set<string>();
   return keys.flatMap((key) => {
-    const presentationKey = newLeadPresentationKey(key);
-    if (placed.has(presentationKey) || seen.has(presentationKey)) return [];
-    seen.add(presentationKey);
-    return [presentationKey];
+    const presented = presentationKey(key);
+    if (placed.has(presented) || seen.has(presented)) return [];
+    seen.add(presented);
+    return [presented];
   });
 }
 
@@ -487,6 +511,7 @@ export function newLeadPresentationLabel(key: string): string | null {
   const presentationKey = newLeadPresentationKey(key);
   if (presentationKey === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores) return "신용점수";
   if (presentationKey === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion) return "3개년매출(백만원)";
+  if (presentationKey === OTHER_INFO_COLUMN_KEY) return "기타정보";
   return null;
 }
 
@@ -496,13 +521,28 @@ export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardCol
   let messageInserted = false;
   let creditInserted = false;
   let revenueInserted = false;
+  let otherInfoInserted = false;
   const revenueColumn = columns.find(
     (column) => column.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion,
   );
+  const otherInfoColumn = columns.find((column) => column.key === OTHER_INFO_COLUMN_KEY);
   const creditSpec = NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS[0];
   const revenueSpec = NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS[1];
   for (const column of columns) {
     if (column.key === "dispatch_status") continue;
+    if (OTHER_INFO_PRESENTATION_KEYS.has(column.key)) {
+      // Additive repair가 아직 other_info를 만들지 못한 부분 상태에서는 기존 두 열을 숨기지 않는다.
+      // 새 structured 열이 실제로 존재할 때만 legacy physical 열을 한 칸으로 접는다.
+      if (!otherInfoColumn) {
+        presented.push(column);
+        continue;
+      }
+      if (!otherInfoInserted && otherInfoColumn) {
+        presented.push(otherInfoColumn);
+        otherInfoInserted = true;
+      }
+      continue;
+    }
     if (NEW_LEAD_MESSAGE_COLUMN_KEYS.has(column.key)) {
       if (!messageInserted) {
         presented.push({
@@ -585,9 +625,9 @@ export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardCol
 }
 
 export const NEW_LEAD_TAB: DefaultTab = {
-  revision: 5,
+  revision: 6,
   previousRevision: {
-    revision: 4,
+    revision: 5,
     columns: {},
   },
   key: "new",

@@ -9,6 +9,7 @@ import {
   isIntegrityField,
   ValidationError,
 } from "./field-types";
+import { emptyOtherInfoValue, updateOtherInfoEntry } from "@/lib/boards/structured-field";
 
 const opts: FieldOption[] = [
   { id: "opt-a", label: "A", order: 0 },
@@ -107,6 +108,24 @@ describe("field-types: checkbox/person/file", () => {
     ]);
     expect(() => normalizeValue("file", [{ name: "no-path" }])).toThrow(ValidationError);
     expect(() => normalizeValue("file", "notarray")).toThrow(ValidationError);
+  });
+});
+
+describe("field-types: strict other_info", () => {
+  it("preserves the exact structured object instead of coercing it to a string", () => {
+    const value = updateOtherInfoEntry(emptyOtherInfoValue(), "certifications", {
+      checked: true,
+      text: "벤처기업",
+    });
+    expect(normalizeValue("other_info", value)).toEqual(value);
+    expect(normalizeValue("other_info", value)).not.toBe("[object Object]");
+  });
+
+  it("rejects partial, future, and scalar values", () => {
+    const value = emptyOtherInfoValue();
+    expect(() => normalizeValue("other_info", { version: 1 })).toThrow(ValidationError);
+    expect(() => normalizeValue("other_info", { ...value, future: true })).toThrow(ValidationError);
+    expect(() => normalizeValue("other_info", "[object Object]")).toThrow(ValidationError);
   });
 });
 

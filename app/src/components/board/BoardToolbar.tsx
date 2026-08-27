@@ -20,6 +20,7 @@ import {
   savedViewFilterPayload,
   type BoardFilterState,
 } from "./filters";
+import { OtherInfoFacetFilters } from "./OtherInfoFacetFilter";
 
 function toggle(list: readonly string[], value: string): string[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -99,11 +100,15 @@ export function BoardToolbar({
   // «상태»(버튼으로 바꾸는 단계값)를 분리했는데 이 필터 목록은 그때 같이 안 늘었다.
   // 그래서 신규리드의 핵심 필터인 「상담 상황」·「컨택 이동」·「피드백 상황」이 전부
   // 칩으로 뜨지 않았다 — 표에서는 StatusCell 로 잘 그리면서 필터에서만 빠져 있었다.
-  const optionColumns = columns.filter(
-    (c) =>
-      (c.type === "select" || c.type === "multiselect" || c.type === "status") &&
-      c.options_jsonb?.options?.length,
+  const optionColumns = useMemo(
+    () => columns.filter(
+      (c) =>
+        (c.type === "select" || c.type === "multiselect" || c.type === "status") &&
+        c.options_jsonb?.options?.length,
+    ),
+    [columns],
   );
+  const otherInfoColumns = columns.filter((column) => column.type === "other_info");
   const active = activeFilterCount(filters);
   const activeSorts = filters.sorts?.length
     ? filters.sorts
@@ -111,7 +116,12 @@ export function BoardToolbar({
       ? [{ columnKey: filters.sortKey, direction: filters.sortDir }]
       : [];
   const optionColumnKeys = new Set(optionColumns.map((column) => column.key));
-  const activeLegacyFacets = Object.entries(legacyFacetLabels).flatMap(([key, label]) => {
+  const clearableLegacyFacetLabels = {
+    closed_business: "기존 폐업여부",
+    export_status: "기존 수출여부",
+    ...legacyFacetLabels,
+  };
+  const activeLegacyFacets = Object.entries(clearableLegacyFacetLabels).flatMap(([key, label]) => {
     const picked = filters.byColumn[key] ?? [];
     return picked.length > 0 && !optionColumnKeys.has(key) ? [{ key, label, picked }] : [];
   });
@@ -199,6 +209,18 @@ export function BoardToolbar({
           />
         </FilterChip>
       )}
+
+      {otherInfoColumns.map((column) => (
+        <OtherInfoFacetFilters
+          key={column.id}
+          rows={rows}
+          columnKey={column.key}
+          columnLabel={column.label}
+          qualifyLabel={otherInfoColumns.length > 1}
+          filters={filters}
+          onChange={onChange}
+        />
+      ))}
 
       {optionColumns.map((col) => {
         const picked = filters.byColumn[col.key] ?? [];

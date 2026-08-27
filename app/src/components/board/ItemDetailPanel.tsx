@@ -61,6 +61,12 @@ import { NewLeadCreditScoresCell } from "./NewLeadCreditScoresCell";
 import { NewLeadFoundedDateCell } from "./NewLeadFoundedDateCell";
 import { NewLeadLoanCell } from "./NewLeadLoanCell";
 import { NewLeadRevenue3yCell } from "./NewLeadRevenue3yCell";
+import { OtherInfoBoardCell } from "./OtherInfoBoardCell";
+import {
+  OTHER_INFO_COLUMN_KEY,
+  otherInfoDetailText,
+  otherInfoLegacyFromValues,
+} from "@/lib/boards/structured-field";
 import styles from "./item-detail-panel.module.css";
 
 const CANONICAL_NEW_LEAD_DETAIL_KEYS = new Set([
@@ -211,7 +217,21 @@ function inputType(type: string | undefined): string {
 
 function inputValue(value: CellValue | undefined): string | number {
   if (value === null || value === undefined) return "";
+  if (typeof value === "object") return "";
   return typeof value === "number" ? value : String(value);
+}
+
+export function detailValueText(
+  type: string | undefined,
+  value: CellValue | undefined,
+  values: ItemWithValues["values"],
+  options?: BoardColumn["options_jsonb"],
+): string {
+  if (type === "other_info") {
+    return otherInfoDetailText(value, otherInfoLegacyFromValues(values));
+  }
+  if (!type) return inputValue(value).toString();
+  return formatCell(type as BoardColumn["type"], value ?? null, options?.options ?? []) || "—";
 }
 
 function DialogPortal({ children }: { children: ReactNode }) {
@@ -558,8 +578,10 @@ export function ItemDetailPanel({
 
   const exportText = () => {
     const fields = layout.map(
-      (entry) =>
-        `${entry.label ?? columnsByKey.get(entry.key)?.label ?? entry.key}: ${String(row.values[entry.key] ?? "—")}`,
+      (entry) => {
+        const column = columnsByKey.get(entry.key);
+        return `${entry.label ?? column?.label ?? entry.key}: ${detailValueText(entry.type ?? column?.type, row.values[entry.key], row.values, column?.options_jsonb)}`;
+      },
     );
     const history = detail.events.map(
       (event) =>
@@ -742,6 +764,7 @@ export function ItemDetailPanel({
                           || entry.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.foundedDate
                         ),
                       );
+                      const structuredCompositeField = type === "other_info";
                       const fieldLabelId = `${row.id}-${entry.key}-label`;
                       return (
                         <div
@@ -752,7 +775,7 @@ export function ItemDetailPanel({
                           <span aria-hidden="true" className={styles.fieldHandle}>⠿</span>
                           <label
                             id={fieldLabelId}
-                            htmlFor={editable && !assignmentLineageField && !financialCompositeField ? `${row.id}-${entry.key}` : undefined}
+                            htmlFor={editable && !assignmentLineageField && !financialCompositeField && !structuredCompositeField ? `${row.id}-${entry.key}` : undefined}
                             className={styles.fieldLabel}
                           >
                             {label}
@@ -816,6 +839,15 @@ export function ItemDetailPanel({
                               <p className={styles.readonlyValue}>
                                 {existingLoanRecordsSummary(existingLoanRecordsFromValues(row.values))}
                               </p>
+                            ) : type === "other_info" ? (
+                              <OtherInfoBoardCell
+                                boardId={boardId}
+                                itemId={row.id}
+                                fieldKey={entry.key}
+                                value={value}
+                                legacy={entry.key === OTHER_INFO_COLUMN_KEY ? otherInfoLegacyFromValues(row.values) : undefined}
+                                readOnly={!editable}
+                              />
                             ) : assignmentLineageField ? (
                               <div className={styles.memberField} aria-labelledby={fieldLabelId}>
                                 <AssignmentLineagePopover
@@ -938,7 +970,12 @@ export function ItemDetailPanel({
                               {newLeadPresentationLabel(key) ?? columnsByKey.get(key)?.label ?? key}
                             </b>
                             <span className="block truncate text-xs text-mw-sub">
-                              {String(row.values[key] ?? "")}
+                              {detailValueText(
+                                columnsByKey.get(key)?.type,
+                                row.values[key],
+                                row.values,
+                                columnsByKey.get(key)?.options_jsonb,
+                              )}
                             </span>
                           </div>
                           {canManageColumns && (
@@ -1376,7 +1413,11 @@ export function ItemDetailPanel({
                         onClick={() =>
                           download(
                             `${row.title}.csv`,
-                            `항목,값\n${layout.map((entry) => `"${entry.label ?? entry.key}","${String(row.values[entry.key] ?? "").replaceAll('"', '""')}"`).join("\n")}`,
+                            `항목,값\n${layout.map((entry) => {
+                              const column = columnsByKey.get(entry.key);
+                              const value = detailValueText(entry.type ?? column?.type, row.values[entry.key], row.values, column?.options_jsonb);
+                              return `"${entry.label ?? entry.key}","${value.replaceAll('"', '""')}"`;
+                            }).join("\n")}`,
                             "text/csv;charset=utf-8",
                           )
                         }

@@ -6,6 +6,7 @@ import {
   projectOtherInfoValue,
   type OtherInfoLegacyInput,
 } from "@/lib/boards/structured-field";
+import type { Ref } from "react";
 
 export interface OtherInfoCellProps {
   value: unknown;
@@ -13,6 +14,7 @@ export interface OtherInfoCellProps {
   readOnly?: boolean;
   error?: string | null;
   onOpen?: () => void;
+  buttonRef?: Ref<HTMLButtonElement>;
 }
 
 export function OtherInfoCell({
@@ -21,6 +23,7 @@ export function OtherInfoCell({
   readOnly = false,
   error,
   onOpen,
+  buttonRef,
 }: OtherInfoCellProps) {
   const projection = projectOtherInfoValue(value, legacy);
   const count = checkedOtherInfoCount(value, legacy);
@@ -54,6 +57,7 @@ export function OtherInfoCell({
 
   return (
     <button
+      ref={buttonRef}
       type="button"
       aria-label={`${accessibleLabel} 편집`}
       aria-haspopup="dialog"

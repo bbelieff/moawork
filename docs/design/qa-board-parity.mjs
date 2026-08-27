@@ -14,7 +14,7 @@ const ROOT = path.resolve(import.meta.dirname, "../..");
 const requested = process.argv.slice(2);
 const selfTest = requested.includes("--self-test");
 const requestedScopes = requested.filter((argument) => argument !== "--self-test");
-const scopes = requestedScopes.length ? requestedScopes : (selfTest ? ["new"] : ["new", "contact"]);
+const scopes = requestedScopes.length ? requestedScopes : ["new", "contact"];
 const allowed = new Set(["new", "contact"]);
 if (scopes.some((scope) => !allowed.has(scope))) throw new Error("qa-board-parity supports: new contact");
 
@@ -29,6 +29,11 @@ const overrides = loadParityOverrides();
 const failures = [];
 const requireOverride = (scope) => {
   if (!overrides.some((entry) => entry.scope === scope)) failures.push(`${scope}: issue/date/rationale override 없음`);
+};
+const requireIssueOverride = (scope, issue) => {
+  if (!overrides.some((entry) => entry.scope === scope && entry.issue === issue)) {
+    failures.push(`${scope}: #${issue} exact override 없음`);
+  }
 };
 
 const ISSUE_602_REVISION_4_COLUMN_KEYS = [
@@ -127,20 +132,89 @@ const runIssue602SemanticGuardSelfTest = (revision4Columns, detailOnlyKeys) => {
   }
 };
 
+const ISSUE_601_OTHER_INFO = {
+  key: "other_info",
+  label: "기타정보",
+  type: "other_info",
+  source: "in",
+  width: 170,
+  rightPinned: false,
+  readOnly: false,
+  pendingReason: null,
+  options: [],
+  moveTo: null,
+  assigneeMove: null,
+  detailOnly: false,
+};
+const ISSUE_601_CONFIG = {
+  new: {
+    predecessorCount: 39,
+    predecessorSemantic: "ef6df021a480b396d8514c404877a1048423456a55350f2da43ffcb4b36ef90a",
+    index: 16,
+    before: "export_status",
+    after: "required_amount",
+  },
+  contact: {
+    predecessorCount: 21,
+    predecessorSemantic: "0fd430405386bb500a57785a5a0c5c5d6b185ca4c1d66d9c9ac020ea79ca6bb6",
+    index: 11,
+    before: "revenue",
+    after: "contract_status",
+  },
+};
+
+const issue601ContractPasses = (columns, detailOnlyKeys, config) => {
+  const matches = columns.filter((column) => column.key === "other_info");
+  const otherInfo = matches[0];
+  const index = columns.indexOf(otherInfo);
+  const predecessor = columns.filter((column) => column.key !== "other_info");
+  return matches.length === 1
+    && columns.length === config.predecessorCount + 1
+    && predecessor.length === config.predecessorCount
+    && semanticFingerprint(predecessor, detailOnlyKeys) === config.predecessorSemantic
+    && JSON.stringify(normalizeColumnSemantics(otherInfo ?? {}, detailOnlyKeys)) === JSON.stringify(ISSUE_601_OTHER_INFO)
+    && index === config.index
+    && columns[index - 1]?.key === config.before
+    && columns[index + 1]?.key === config.after;
+};
+
+const runIssue601SemanticGuard = (scope, columns, detailOnlyKeys) => {
+  const config = ISSUE_601_CONFIG[scope];
+  if (!issue601ContractPasses(columns, detailOnlyKeys, config)) {
+    failures.push(`${scope}: #601 predecessor 보존/other_info 단일 additive 위치·의미 계약 불일치`);
+    return;
+  }
+  const mutations = [
+    ["predecessor source", (items) => { items[0].source = `${items[0].source}-changed`; }],
+    ["other_info type", (items) => { items.find((column) => column.key === "other_info").type = "text"; }],
+    ["other_info order", (items) => { items.push(...items.splice(config.index, 1)); }],
+    ["other_info visibility", (_items, keys) => { keys.add("other_info"); }],
+  ];
+  for (const [label, mutate] of mutations) {
+    const mutatedColumns = structuredClone(columns);
+    const mutatedKeys = new Set(detailOnlyKeys);
+    mutate(mutatedColumns, mutatedKeys);
+    if (issue601ContractPasses(mutatedColumns, mutatedKeys, config)) {
+      failures.push(`${scope}: #601 semantic guard self-test ${label}가 RED 아님`);
+    }
+  }
+};
+
 for (const scope of scopes) {
   requireOverride(scope);
+  requireIssueOverride(scope, 601);
   const tab = app.tabs.get(scope);
   if (!tab) { failures.push(`${scope}: actual DefaultTab 없음`); continue; }
   if (scope === "new") {
-    // #589의 38개 물리 컬럼을 그대로 보존하고 #602가 숫자 매출 컬럼 하나만 additive로 더한다.
-    // 불투명한 app-only fingerprint만 갱신하지 않도록 rev4 전체 의미와 rev5 delta를 함께 검증한다.
-    if (tab.revision !== 5 || JSON.stringify(tab.previousRevision) !== JSON.stringify({ revision: 4, columns: {} })) {
-      failures.push("new: #602 revision 5/predecessor 4 계약 불일치");
+    // #601 rev6에서 other_info를 걷어 낸 rev5를 대상으로 기존 #602 guard를 그대로 실행한다.
+    if (tab.revision !== 6 || JSON.stringify(tab.previousRevision) !== JSON.stringify({ revision: 5, columns: {} })) {
+      failures.push("new: #601 revision 6/predecessor 5 계약 불일치");
     }
-    if (tab.columns.length !== 39) failures.push(`new: columns ${tab.columns.length}/39`);
-    const revenueColumns = tab.columns.filter((column) => column.key === "revenue_3y_million");
+    const revision5Columns = tab.columns.filter((column) => column.key !== "other_info");
+    if (revision5Columns.length !== 39) failures.push(`new: #602 predecessor columns ${revision5Columns.length}/39`);
+    const revenueColumns = revision5Columns.filter((column) => column.key === "revenue_3y_million");
     const revenue = revenueColumns[0];
-    const revenueIndex = tab.columns.indexOf(revenue);
+    const revenueIndex = revision5Columns.indexOf(revenue);
     const expectedRevenue = {
       key: "revenue_3y_million",
       label: "3개년매출(백만원)",
@@ -157,11 +231,11 @@ for (const scope of scopes) {
     };
     if (revenueColumns.length !== 1
       || JSON.stringify(normalizeColumnSemantics(revenue ?? {}, newLeadDetailOnlyKeys)) !== JSON.stringify(expectedRevenue)
-      || revenueIndex !== 10 || tab.columns[revenueIndex - 1]?.key !== "revenue_band"
-      || tab.columns[revenueIndex + 1]?.key !== "existing_loans") {
+      || revenueIndex !== 10 || revision5Columns[revenueIndex - 1]?.key !== "revenue_band"
+      || revision5Columns[revenueIndex + 1]?.key !== "existing_loans") {
       failures.push("new: #602 revenue_3y_million 단일 additive 위치/의미 계약 불일치");
     }
-    const revision4Columns = tab.columns.filter((column) => column.key !== "revenue_3y_million");
+    const revision4Columns = revision5Columns.filter((column) => column.key !== "revenue_3y_million");
     if (revision4Columns.map((column) => column.key).join("|") !== ISSUE_602_REVISION_4_COLUMN_KEYS.join("|")) {
       failures.push("new: #602 rev4 물리 key/order 보존 실패");
     }
@@ -177,14 +251,17 @@ for (const scope of scopes) {
     const visibleGroups = tab.groups.map((group) => group.name.replace(/^[^가-힣A-Za-z0-9]+\s*/, ""));
     if (visibleGroups.join("|") !== "신규고객|2차 상담고객|1차 부재|보류|거절") failures.push("new: explicit group order 불일치");
     if (Object.keys(tab.columns.find((column) => column.key === "consult_status")?.moveTo ?? {}).length !== 6) failures.push("new: move rules 6 아님");
+    runIssue601SemanticGuard("new", tab.columns, newLeadDetailOnlyKeys);
   }
   if (scope === "contact") {
-    if (tab.columns.length !== 21) failures.push(`contact: columns ${tab.columns.length}/21`);
+    if (tab.revision !== 3 || tab.previousRevision?.revision !== 2) failures.push("contact: #601 revision 3/predecessor 2 계약 불일치");
+    if (tab.columns.length !== 22) failures.push(`contact: columns ${tab.columns.length}/22`);
     if (tab.groups.filter((group) => group.assigneeSlot !== undefined).length !== 2) failures.push("contact: dynamic member groups 불일치");
     const linked = tab.columns.filter((column) => column.source === "lk");
     if (linked.some((column) => column.readOnly === true)) failures.push("contact: linked provenance가 편집 잠금됨");
     const transition = tab.transitions.find((entry) => entry.columnKey === "work_move");
     if (!transition || transition.guard?.columnKey !== "seal_status") failures.push("contact: transition seal guard 상실");
+    runIssue601SemanticGuard("contact", tab.columns, new Set());
   }
   const pinned = tab.columns.filter((column) => column.rightPinned);
   if (pinned.length !== 1) failures.push(`${scope}: pinned workflow gate ${pinned.length}/1`);
@@ -199,7 +276,7 @@ if (failures.length) {
 }
 
 if (selfTest) {
-  console.log("qa-board-parity #602 semantic guard self-test: GREEN 1 + RED 3");
+  console.log("qa-board-parity #602/#601 semantic guards: GREEN 3 + RED 11");
   process.exit(0);
 }
 

@@ -43,7 +43,7 @@ describe("actual board rendering and definition reconciliation", () => {
     await ensureDefaultTabAdditive(ctx, CONTACT_TAB, repo, []);
     const reloaded = toAsyncBoardsRepo(new LocalBoardsRepo());
     expect((await reloaded.listColumns(ctx, board.id)).filter((column) => column.source === "lk").every((column) => !column.is_readonly)).toBe(true);
-    expect((await reloaded.getDefaultDefinitionState?.(ctx, board.id))?.revision).toBe(2);
+    expect((await reloaded.getDefaultDefinitionState?.(ctx, board.id))?.revision).toBe(3);
   });
 
   it("edits a linked provenance cell and reloads the persisted value through a fresh service", async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyFilters, decodeBoardFilters } from "@/components/board/filters";
-import type { ItemWithValues } from "@/lib/boards";
+import type { BoardColumn, ItemWithValues } from "@/lib/boards";
+import { emptyOtherInfoValue, otherInfoFacetFilterKey, updateOtherInfoEntry } from "@/lib/boards/structured-field";
 import {
   applySavedKanbanView,
   applySavedPersonScope,
@@ -124,6 +125,37 @@ describe("parseSavedBoardViewConfig", () => {
       .toEqual(["match"]);
     expect(applySavedKanbanView([{ id: "lane", items: rows }], rows, [...columns], filters, NEW_LEAD_SAVED_FILTER_PROJECTION)[0].items.map((row) => row.id))
       .toEqual(["match"]);
+  });
+
+  it("private/shared saved facets canonicalize and drive identical flat+kanban other-info rows", () => {
+    const exportFacet = otherInfoFacetFilterKey("other_info", "export");
+    const certificationFacet = otherInfoFacetFilterKey("other_info", "certifications");
+    const config = parseSavedBoardViewConfig({
+      filters: {
+        byColumn: {
+          [exportFacet]: ["true", "missing", "true"],
+          [certificationFacet]: ["true"],
+        },
+      },
+    });
+    expect(config.filters.byColumn).toEqual({
+      [certificationFacet]: ["true"],
+      [exportFacet]: ["missing", "true"],
+    });
+    let matching = updateOtherInfoEntry(emptyOtherInfoValue(), "export", { checked: true });
+    matching = updateOtherInfoEntry(matching, "certifications", { checked: true });
+    const nonMatching = updateOtherInfoEntry(emptyOtherInfoValue(), "export", { checked: true });
+    const rows = [matching, nonMatching].map((other_info, index): ItemWithValues => ({
+      id: `row-${index}`, org_id: "o1", board_id: "b1", group_id: "g1", title: `row-${index}`,
+      assigned_to: null, deal_id: null, sort_order: index, created_at: "", updated_at: "", values: { other_info },
+    }));
+    const columns: BoardColumn[] = [{
+      id: "other_info", org_id: "o1", board_id: "b1", key: "other_info", label: "기타정보",
+      type: "other_info", source: "in", rightPinned: false, options_jsonb: null, sort_order: 0, width: null,
+    }];
+    expect(applyFilters(rows, columns, config.filters).map((row) => row.id)).toEqual(["row-0"]);
+    expect(applySavedKanbanView([{ id: "lane", items: rows }], rows, columns, config.filters)[0].items.map((row) => row.id))
+      .toEqual(["row-0"]);
   });
 
   it("dedupes opposite-direction physical sort aliases by presentation key with deterministic first-wins reload", () => {

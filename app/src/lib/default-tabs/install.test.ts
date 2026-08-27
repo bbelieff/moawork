@@ -119,13 +119,14 @@ describe("BBE-184 additive existing-workspace repair", () => {
     await ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, toAsyncBoardsRepo(repo), assignees);
 
     const columns = repo.listColumns(ctx, installed.boardId);
-    expect(columns).toHaveLength(39);
+    expect(columns).toHaveLength(40);
     expect(columns.filter((column) => column.key === "revenue_3y_million")).toHaveLength(1);
+    expect(columns.filter((column) => column.key === "other_info")).toHaveLength(1);
     expect(columns.map((column) => column.key)).toEqual(NEW_LEAD_TAB.columns.map((column) => column.key));
     expect(db().itemValues).toEqual(beforeValues);
   });
 
-  it("revision 5는 회사가 바꾼 기존 순서를 덮지 않고 새 물리 열만 additive로 붙인다", async () => {
+  it("revision 6은 회사가 바꾼 기존 순서를 덮지 않고 새 물리 열만 additive로 붙인다", async () => {
     const revision4 = {
       ...NEW_LEAD_TAB,
       revision: 4,
@@ -141,6 +142,7 @@ describe("BBE-184 additive existing-workspace repair", () => {
 
     expect(columns.find((column) => column.id === first.id)?.sort_order).toBe(100);
     expect(columns.filter((column) => column.key === "revenue_3y_million")).toHaveLength(1);
+    expect(columns.filter((column) => column.key === "other_info")).toHaveLength(1);
   });
 
   it("completes every missing column in one request even when GET is memoized", async () => {
@@ -238,10 +240,10 @@ describe("BBE-184 additive existing-workspace repair", () => {
 });
 
 describe("리드컨택 기본 탭 설치", () => {
-  it("그룹 7·컬럼 21·우측 고정 업무이동을 실제 보드로 만든다", async () => {
+  it("그룹 7·컬럼 22·우측 고정 업무이동을 실제 보드로 만든다", async () => {
     const result = await ensureDefaultTab(ctx, CONTACT_TAB, toAsyncBoardsRepo(repo));
     expect(repo.listGroups(ctx, result.boardId)).toHaveLength(7);
-    expect(repo.listColumns(ctx, result.boardId)).toHaveLength(21);
+    expect(repo.listColumns(ctx, result.boardId)).toHaveLength(22);
     expect(repo.listColumns(ctx, result.boardId).filter((column) => column.rightPinned).map((column) => column.label)).toEqual(["업무이동"]);
   });
 

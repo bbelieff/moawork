@@ -51,6 +51,7 @@ export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   people: "사람 여럿",
   money: "금액",
   calc: "수식",
+  other_info: "기타정보",
 };
 
 export function fieldTypeLabel(type: FieldType): string {
