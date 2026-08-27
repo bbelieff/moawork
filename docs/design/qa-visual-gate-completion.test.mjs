@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import {
   VisualGateStageError,
@@ -112,4 +113,54 @@ test("artifact SHA A cannot satisfy expected checkout SHA B", () => {
 test("a score-only DOM failure cannot produce an empty failure list", () => {
   const result = recordImplicitDomFailure({ visual: 63, failures: [] }, 65);
   assert.deepEqual(result.failures, ["DOM assertion: visual score 63 is below 65"]);
+});
+
+test("focus restoration polling accepts the following frame and bounds never-focus", async () => {
+  let clock = 0;
+  let samples = 0;
+  const delayed = await waitForVisualGate({
+    category: "dom-assertion",
+    stage: "modal-focus-return",
+    timeoutMs: 1000,
+    intervalMs: 16,
+    now: () => clock,
+    sleep: milliseconds => { clock += milliseconds; },
+    probe: async () => {
+      samples += 1;
+      const focused = samples >= 2;
+      return { ready: focused, focused };
+    },
+  });
+  assert.equal(delayed.attempts, 2);
+  assert.equal(delayed.focused, true);
+
+  clock = 0;
+  await assert.rejects(
+    waitForVisualGate({
+      category: "dom-assertion",
+      stage: "detail-focus-return",
+      timeoutMs: 32,
+      intervalMs: 16,
+      now: () => clock,
+      sleep: milliseconds => { clock += milliseconds; },
+      probe: async () => ({ ready: false, focused: false }),
+    }),
+    error => error instanceof VisualGateStageError
+      && error.category === "dom-assertion"
+      && error.stage === "detail-focus-return"
+      && error.details.last.focused === false,
+  );
+});
+
+test("modal and detail Escape checks use the bounded connected-focus contract", () => {
+  const source = readFileSync(new URL("./qa-visual-blocks.mjs", import.meta.url), "utf8");
+  assert.match(source, /async function waitForConnectedFocus\(element,stage\)/u);
+  assert.match(source, /timeoutMs:1000,intervalMs:16/u);
+  assert.match(source, /el\.isConnected&&document\.activeElement===el/u);
+  assert.match(source, /waitForConnectedFocus\(modalProbeHandle,"modal-focus-return"\)/u);
+  assert.match(source, /waitForConnectedFocus\(openerHandle,"detail-focus-return"\)/u);
+  assert.match(source, /interaction: modal Escape focus return missing/u);
+  assert.match(source, /new-lead detail: Escape opener focus return missing/u);
+  assert.doesNotMatch(source, /modalProbe\.evaluate\(el=>document\.activeElement===el\)/u);
+  assert.doesNotMatch(source, /opener\.evaluate\(el=>document\.activeElement===el\)/u);
 });

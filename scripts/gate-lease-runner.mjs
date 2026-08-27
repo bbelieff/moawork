@@ -141,6 +141,12 @@ export async function runGateCommand({
     );
   }
   const resolvedCommand = resolveGateCommand(command);
+  if (path.basename(resolvedCommand).toLowerCase() === "wsl.exe") {
+    throw new GateLeaseError(
+      "GATE_WSL_CONTAINMENT_UNAVAILABLE",
+      "WSL commands cannot enter the full gate until Linux descendants can be proven zero",
+    );
+  }
   if (ensureBroker) await ensureLeaseBroker();
   const nonce = randomUUID();
   const pipeName = `moawork-gate-${randomUUID()}`;

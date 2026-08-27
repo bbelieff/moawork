@@ -206,25 +206,86 @@ function Fence-MarkerName([string]$Name) {
   try { return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Name)))).Replace("-", "") }
   finally { $sha.Dispose() }
 }
-function Open-MarkerKey() { return [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey("Software\MoaWork\GateLease", $true) }
+function Set-OwnerOnlyMarkerAcl([Microsoft.Win32.RegistryKey]$Key) {
+  $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User
+  $security = [Security.AccessControl.RegistrySecurity]::new()
+  $security.SetOwner($sid)
+  $security.SetAccessRuleProtection($true, $false)
+  $security.AddAccessRule([Security.AccessControl.RegistryAccessRule]::new(
+    $sid,
+    [Security.AccessControl.RegistryRights]::FullControl,
+    [Security.AccessControl.InheritanceFlags]::ContainerInherit,
+    [Security.AccessControl.PropagationFlags]::None,
+    [Security.AccessControl.AccessControlType]::Allow
+  ))
+  $Key.SetAccessControl($security)
+}
+function Marker-RegistrySubKey([string]$Name) {
+  if ($Name.StartsWith("Global\MoaWork.FullGate.Test.", [StringComparison]::Ordinal)) { return "Software\MoaWork\GateLeaseTest" }
+  return "Software\MoaWork\GateLease"
+}
+function Open-MarkerKey([string]$Name) {
+  $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey((Marker-RegistrySubKey $Name), $true)
+  try { Set-OwnerOnlyMarkerAcl $key; return $key } catch { $key.Dispose(); throw }
+}
+function Get-ProcessCreationIdentity([uint32]$ProcessId) {
+  $handle = [MoaWorkProcessHandle]::Open($ProcessId)
+  try { return $handle.CreationIdentity } finally { $handle.Dispose() }
+}
 function Assert-NoFenceMarker([string]$Name) {
-  $key = Open-MarkerKey
-  try { if ($null -ne $key.GetValue((Fence-MarkerName $Name), $null)) { Quarantine "durable-crash-marker" } }
+  $key = Open-MarkerKey $Name
+  try {
+    $markerName = Fence-MarkerName $Name
+    if ($null -ne $key.GetValue($markerName, $null)) { Quarantine "durable-crash-marker" }
+    $audit = $key.OpenSubKey("RecoveryAudit", $false)
+    try {
+      if ($null -ne $audit) {
+        foreach ($valueName in $audit.GetValueNames()) {
+          try { $receipt = ([string]$audit.GetValue($valueName, "")) | ConvertFrom-Json } catch { Quarantine "recovery-audit-malformed" }
+          if ($receipt.fenceName -eq $Name -and $receipt.valueName -eq $markerName -and $receipt.result -eq "prepared") {
+            Quarantine "recovery-incomplete"
+          }
+        }
+      }
+    } finally { if ($null -ne $audit) { $audit.Dispose() } }
+  }
   finally { $key.Dispose() }
 }
-function Set-FenceMarker([string]$Name) {
-  $key = Open-MarkerKey
+function Set-FenceMarker([string]$Name, $Job = $null, [string]$CreatedAt = "") {
+  $key = Open-MarkerKey $Name
   try {
-    $marker = @{ guardianPid = $PID; bootIdentity = [MoaWorkProcessHandle]::BootIdentity(); fenceName = $Name } | ConvertTo-Json -Compress
+    if (-not $CreatedAt) { $CreatedAt = [DateTimeOffset]::UtcNow.ToString("o") }
+    $marker = [ordered]@{
+      version = 1
+      guardianPid = $PID
+      guardianCreationIdentity = Get-ProcessCreationIdentity ([uint32]$PID)
+      ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+      bootIdentity = [MoaWorkProcessHandle]::BootIdentity()
+      fenceName = $Name
+      createdAt = $CreatedAt
+    }
+    if ($null -ne $Job) {
+      $marker.commandPid = $Job.ProcessId
+      $marker.commandCreationIdentity = $Job.CreationIdentity
+      $marker.jobActiveProcesses = $Job.ActiveProcesses
+    }
+    $marker = $marker | ConvertTo-Json -Compress
     $key.SetValue((Fence-MarkerName $Name), $marker, [Microsoft.Win32.RegistryValueKind]::String)
+    return $CreatedAt
   } finally { $key.Dispose() }
 }
 function Remove-FenceMarker([string]$Name) {
-  $key = Open-MarkerKey
+  $key = Open-MarkerKey $Name
   try { $key.DeleteValue((Fence-MarkerName $Name), $false) } finally { $key.Dispose() }
+  if ($Name.StartsWith("Global\MoaWork.FullGate.Test.", [StringComparison]::Ordinal)) {
+    $testKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Software\MoaWork\GateLeaseTest", $false)
+    try { $empty = $null -ne $testKey -and @($testKey.GetValueNames()).Count -eq 0 -and @($testKey.GetSubKeyNames()).Count -eq 0 }
+    finally { if ($null -ne $testKey) { $testKey.Dispose() } }
+    if ($empty) { try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKey("Software\MoaWork\GateLeaseTest", $false) } catch {} }
+  }
 }
 
-$pipe = $null; $wrapper = $null; $fence = $null; $fenceOwned = $false; $markerOwned = $false; $client = $null; $job = $null; $payload = $null; $stage = "bootstrap"
+$pipe = $null; $wrapper = $null; $fence = $null; $fenceOwned = $false; $markerOwned = $false; $markerCreatedAt = ""; $client = $null; $job = $null; $payload = $null; $stage = "bootstrap"
 try {
   if (-not $PipeName.StartsWith("moawork-gate-") -or $PipeNonce.Length -lt 16) { throw "GATE_PIPE_IDENTITY_INVALID" }
   $wrapper = [MoaWorkProcessHandle]::Open([uint32]$BootstrapWrapperPid)
@@ -271,18 +332,16 @@ try {
     try { $fenceOwned = $fence.WaitOne(50) } catch [Threading.AbandonedMutexException] { $fenceOwned = $true; Quarantine "abandoned-machine-fence" }
   }
   Assert-NoFenceMarker ([string]$payload.fenceName)
-  Set-FenceMarker ([string]$payload.fenceName); $markerOwned = $true
+  $markerCreatedAt = Set-FenceMarker ([string]$payload.fenceName); $markerOwned = $true
   Write-Structured "GATE_FENCE_ACQUIRED" @{ fenceName = $payload.fenceName; bootIdentity = [MoaWorkProcessHandle]::BootIdentity() }
   [Environment]::SetEnvironmentVariable("MOAWORK_GATE_LEASE_TOKEN", [string]$grant.leaseToken, "Process")
   [Environment]::SetEnvironmentVariable("MOAWORK_GATE_LEASE_HOST", "127.0.0.1", "Process")
   [Environment]::SetEnvironmentVariable("MOAWORK_GATE_LEASE_PORT", [string]$payload.port, "Process")
-  $wsl = @(([Environment]::GetEnvironmentVariable("WSLENV", "Process") -split ":") | Where-Object { $_ })
-  foreach ($entry in @("MOAWORK_GATE_LEASE_TOKEN/u", "MOAWORK_GATE_LEASE_HOST/u", "MOAWORK_GATE_LEASE_PORT/u")) { if ($wsl -notcontains $entry) { $wsl += $entry } }
-  [Environment]::SetEnvironmentVariable("WSLENV", ($wsl -join ":"), "Process")
   if ($hasFault -and $payload.testFault -eq "stall-before-command") { Start-Sleep -Seconds 60 }
   if ($wrapper.Exited -or $pipe.Eof) { throw "GATE_WRAPPER_LOST_BEFORE_COMMAND" }
   $stage = "command"
   $job = [MoaWorkGateJob]::Start([string]$payload.command, [string[]]$payload.args, [string]$payload.cwd)
+  [void](Set-FenceMarker ([string]$payload.fenceName) $job $markerCreatedAt)
   Write-Structured "GATE_LEASE_ACQUIRED" @{ ownerPid = $PID; commandPid = $job.ProcessId; commandCreationIdentity = $job.CreationIdentity; bootIdentity = [MoaWorkProcessHandle]::BootIdentity() }
   $deadline = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + [int64]$payload.runTimeoutMs; $result = ""; $signal = ""; $exitCode = $null
   while (-not $result) {

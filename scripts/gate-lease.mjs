@@ -34,8 +34,8 @@ if (process.argv.includes("--test-endpoint")) {
 if (isWslRuntime()) {
   process.exit(
     fail(new GateLeaseError(
-      "GATE_LEASE_WSL_HOST_REQUIRED",
-      "WSL Linux Node cannot own a broker; route through the Windows host Node guardian",
+      "GATE_WSL_CONTAINMENT_UNAVAILABLE",
+      "WSL full gates are disabled until Linux descendants can be proven zero",
     )),
   );
 }

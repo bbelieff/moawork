@@ -16,40 +16,22 @@ if [[ -n "${WSL_INTEROP:-}${WSL_DISTRO_NAME:-}" ]] || grep -Eqi 'microsoft|wsl' 
   is_wsl_linux=1
 fi
 
-windows_node_from_wsl() {
-  local candidate=""
-  candidate="$(command -v node.exe 2>/dev/null || true)"
-  if [[ -z "$candidate" ]] && command -v where.exe >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then
-    candidate="$(where.exe node.exe 2>/dev/null | tr -d '\r' | head -n 1)"
-    [[ -n "$candidate" ]] && candidate="$(wslpath -u "$candidate")"
-  fi
-  [[ -n "$candidate" && -x "$candidate" ]] || return 78
-  printf '%s' "$candidate"
-}
+if [[ "$is_wsl_linux" == "1" ]]; then
+  # A Windows Job can prove only that wsl.exe exited; detached Linux descendants
+  # may still be alive in the VM. Until an in-guest containment primitive exists,
+  # never start a full gate from WSL or claim a verified-zero release.
+  echo 'GATE_LEASE_FAILURE {"code":"GATE_WSL_CONTAINMENT_UNAVAILABLE","message":"WSL full gates are disabled until Linux descendant containment is available"}' >&2
+  exit 78
+fi
 
 if [[ -n "${MOAWORK_GATE_LEASE_TOKEN:-}" ]]; then
-  if [[ "$is_wsl_linux" == "1" ]]; then
-    command -v wslpath >/dev/null 2>&1 || { echo 'GATE_LEASE_FAILURE {"code":"GATE_WSL_BRIDGE_UNPROVEN"}' >&2; exit 78; }
-    windows_node="$(windows_node_from_wsl)" || { echo 'GATE_LEASE_FAILURE {"code":"GATE_WSL_BRIDGE_UNPROVEN"}' >&2; exit 78; }
-    windows_lease_script="$(wslpath -w "$PWD/scripts/gate-lease.mjs")"
-    "$windows_node" "$windows_lease_script" --verify-held
-  else
-    node scripts/gate-lease.mjs --verify-held
-  fi
+  node scripts/gate-lease.mjs --verify-held
 else
-  if [[ "$is_wsl_linux" == "1" ]]; then
-    [[ -n "${WSL_DISTRO_NAME:-}" ]] || { echo 'GATE_LEASE_FAILURE {"code":"GATE_WSL_IDENTITY_UNPROVEN"}' >&2; exit 78; }
-    command -v wslpath >/dev/null 2>&1 || { echo 'GATE_LEASE_FAILURE {"code":"GATE_WSL_BRIDGE_UNPROVEN"}' >&2; exit 78; }
-    windows_node="$(windows_node_from_wsl)" || { echo 'GATE_LEASE_FAILURE {"code":"GATE_WSL_BRIDGE_UNPROVEN"}' >&2; exit 78; }
-    windows_lease_script="$(wslpath -w "$PWD/scripts/gate-lease.mjs")"
-    exec "$windows_node" "$windows_lease_script" -- wsl.exe -d "$WSL_DISTRO_NAME" --cd "$PWD" bash scripts/check.sh "$@"
-  else
-    bash_bin="$(command -v bash)"
-    if command -v cygpath >/dev/null 2>&1; then
-      bash_bin="$(cygpath -w "$bash_bin")"
-    fi
-    exec node scripts/gate-lease.mjs -- "$bash_bin" scripts/check.sh "$@"
+  bash_bin="$(command -v bash)"
+  if command -v cygpath >/dev/null 2>&1; then
+    bash_bin="$(cygpath -w "$bash_bin")"
   fi
+  exec node scripts/gate-lease.mjs -- "$bash_bin" scripts/check.sh "$@"
 fi
 
 echo "🔎 customer-specific values"

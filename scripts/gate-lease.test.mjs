@@ -304,41 +304,40 @@ test("signal IPC preserves exit 143 after verified zero", { skip: process.platfo
   } finally { await stop(run.child); await broker.close(); }
 });
 
-test("Windows and WSL process trees share one fence and boot identity", { skip: process.platform !== "win32" }, async () => {
+test("WSL full-gate entry fails closed before any product command", { skip: process.platform !== "win32" }, () => {
   const hasWsl = spawnSync("wsl.exe", ["bash", "-lc", "uname -r"], { encoding: "utf8", windowsHide: true });
   assert.equal(hasWsl.status, 0, `${hasWsl.stdout}${hasWsl.stderr}`);
-  const broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: -1 });
-  const fenceName = testFence();
-  const windowsRun = startHarness({ broker, fenceName, expression: "console.log('WINDOWS_START'); setTimeout(()=>{},600)" });
-  let wslRun;
-  try {
-    await waitUntil(() => windowsRun.output().includes("WINDOWS_START"));
-    const encoded = Buffer.from(JSON.stringify({
-      host: "127.0.0.1", port: broker.port, fenceName, waitTimeoutMs: 5_000,
-      runTimeoutMs: 5_000, bootstrapTimeoutMs: 5_000,
-    })).toString("base64url");
-    wslRun = spawn(process.execPath, [HARNESS, encoded, "--", "wsl.exe", "bash", "-lc", "printf 'WSL_PROCESS_START'; sleep 0.1"], {
-      cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
-    });
-    let output = ""; wslRun.stdout.on("data", (c) => (output += c)); wslRun.stderr.on("data", (c) => (output += c));
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    assert.doesNotMatch(output, /WSL_PROCESS_START/u);
-    await windowsRun.exited;
-    const result = await new Promise((resolve) => wslRun.once("exit", (code) => resolve({ code, output })));
-    assert.equal(result.code, 0, result.output);
-    assert.match(result.output, /WSL_PROCESS_START/u);
-    const bootA = windowsRun.output().match(/"bootIdentity":"([^"]+)"/u)?.[1];
-    const bootB = result.output.match(/"bootIdentity":"([^"]+)"/u)?.[1];
-    assert.ok(bootA && bootA === bootB, `${windowsRun.output()}\n${result.output}`);
-  } finally { await stop(windowsRun.child); await stop(wslRun); await broker.close(); }
+  const wslRoot = ROOT.replaceAll("\\", "/").replace(/^([A-Za-z]):/u, (_, drive) => `/mnt/${drive.toLowerCase()}`);
+  const result = spawnSync("wsl.exe", ["bash", "-lc", `cd '${wslRoot}' && bash scripts/check.sh`], {
+    encoding: "utf8", windowsHide: true,
+  });
+  assert.equal(result.status, 78, `${result.stdout}${result.stderr}`);
+  assert.match(`${result.stdout}${result.stderr}`, /GATE_WSL_CONTAINMENT_UNAVAILABLE/u);
+  assert.doesNotMatch(`${result.stdout}${result.stderr}`, /customer-specific values|GATE_GUARDIAN_READY/u);
 });
 
-test("native WSL Linux Node either routes to Windows host or is explicitly unavailable", { skip: process.platform !== "win32" }, (t) => {
+test("production CLI starts zero detached WSL descendants", { skip: process.platform !== "win32" }, () => {
+  const marker = `BBE614_BLOCKED_${randomUUID().replaceAll("-", "")}`;
+  const exploit = `nohup bash -c 'exec -a ${marker} sleep 30' >/dev/null 2>&1 & wait`;
+  const result = spawnSync(process.execPath, [CLI, "--", "wsl.exe", "bash", "-lc", exploit], {
+    cwd: ROOT, encoding: "utf8", windowsHide: true,
+  });
+  assert.equal(result.status, 78, `${result.stdout}${result.stderr}`);
+  assert.match(`${result.stdout}${result.stderr}`, /GATE_WSL_CONTAINMENT_UNAVAILABLE/u);
+  assert.doesNotMatch(`${result.stdout}${result.stderr}`, /GATE_GUARDIAN_READY|GATE_FENCE_ACQUIRED/u);
+  const residual = spawnSync("wsl.exe", ["bash", "-lc", `pgrep -f '^${marker} 30$' || true`], {
+    encoding: "utf8", windowsHide: true,
+  });
+  assert.equal(residual.status, 0, `${residual.stdout}${residual.stderr}`);
+  assert.equal(residual.stdout.trim(), "");
+});
+
+test("native WSL Linux Node fails closed or is explicitly unavailable", { skip: process.platform !== "win32" }, (t) => {
   const probe = spawnSync("wsl.exe", ["bash", "-lc", "test -x /usr/bin/node && /usr/bin/node -p process.platform"], {
     encoding: "utf8", windowsHide: true,
   });
   if (probe.status !== 0) {
-    t.skip("WSL has no native /usr/bin/node; only Windows node.exe is installed");
+    t.skip("WSL has no native /usr/bin/node; fail-closed runtime probe not run");
     return;
   }
   assert.equal(probe.stdout.trim(), "linux");
@@ -347,7 +346,7 @@ test("native WSL Linux Node either routes to Windows host or is explicitly unava
     encoding: "utf8", windowsHide: true,
   });
   assert.equal(result.status, 78);
-  assert.match(`${result.stdout}${result.stderr}`, /GATE_LEASE_WSL_HOST_REQUIRED/u);
+  assert.match(`${result.stdout}${result.stderr}`, /GATE_WSL_CONTAINMENT_UNAVAILABLE/u);
 });
 
 test("symlink/reparse control replacement has no path surface and production knobs stay fixed", async () => {
@@ -370,8 +369,10 @@ test("symlink/reparse control replacement has no path surface and production kno
   assert.doesNotMatch(runner, /mkdtemp|control\.json|MOAWORK_GATE_TEST/u);
   assert.doesNotMatch(cli, /MOAWORK_GATE_(?:WAIT|RUN|BOOTSTRAP)/u);
   assert.doesNotMatch(broker, /process\.env|test-endpoint/u);
-  assert.match(check, /windows_node_from_wsl/u);
-  assert.match(check, /GATE_WSL_BRIDGE_UNPROVEN/u);
+  assert.match(check, /GATE_WSL_CONTAINMENT_UNAVAILABLE/u);
+  assert.doesNotMatch(check, /windows_node_from_wsl|exec [^\n]*wsl\.exe/u);
+  assert.match(runner, /GATE_WSL_CONTAINMENT_UNAVAILABLE/u);
+  assert.doesNotMatch(guardian, /WSLENV/u);
   assert.match(posixGuardian, /cgroup v2\/pidfd\/subreaper/u);
   assert.doesNotMatch(posixGuardian, /process\.kill\(-|taskkill/iu);
 });

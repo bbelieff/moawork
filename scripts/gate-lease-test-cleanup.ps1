@@ -1,5 +1,7 @@
 param([string]$FenceName = "", [switch]$AllTests)
-$key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey("Software\MoaWork\GateLease", $true)
+$subKey = if ($AllTests -or $FenceName.StartsWith("Global\MoaWork.FullGate.Test.")) { "Software\MoaWork\GateLeaseTest" } else { "Software\MoaWork\GateLease" }
+$key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($subKey, $true)
+if ($null -eq $key) { exit 0 }
 try {
   if ($AllTests) {
     foreach ($name in $key.GetValueNames()) {
@@ -14,4 +16,8 @@ try {
       $key.DeleteValue($name, $false)
     } finally { $sha.Dispose() }
   }
+  $empty = @($key.GetValueNames()).Count -eq 0 -and @($key.GetSubKeyNames()).Count -eq 0
 } finally { $key.Dispose() }
+if ($empty -and $subKey -eq "Software\MoaWork\GateLeaseTest") {
+  try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKey($subKey, $false) } catch {}
+}
