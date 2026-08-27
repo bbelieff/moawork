@@ -1,0 +1,78 @@
+.trigger {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 1.85rem;
+  align-items: center;
+  gap: 0.4rem;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  background: transparent;
+  padding: 0.2rem 0.4rem;
+  color: var(--mw-body);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.trigger:hover { border-color: var(--mw-line); background: var(--mw-bg); }
+.trigger:focus-visible, .header button:focus-visible, .remove:focus-visible, .alert button:focus-visible { outline: 2px solid var(--mw-primary); outline-offset: 2px; }
+.trigger > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.popover {
+  position: fixed;
+  z-index: calc(var(--mw-layer-dialog) + 5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--mw-line);
+  border-radius: 0.8rem;
+  background: var(--mw-card);
+  box-shadow: 0 18px 48px color-mix(in srgb, var(--mw-fg) 22%, transparent);
+  color: var(--mw-body);
+}
+.header { display: flex; align-items: center; gap: 0.7rem; border-bottom: 1px solid var(--mw-line); padding: 0.8rem; }
+.header > div { display: grid; min-width: 0; flex: 1; gap: 0.15rem; }
+.header strong { font-size: 0.82rem; }
+.header span { color: var(--mw-sub); font-size: 0.65rem; }
+.header button { width: 1.9rem; height: 1.9rem; border: 0; border-radius: 50%; background: transparent; color: var(--mw-sub); font: inherit; font-size: 1rem; cursor: pointer; }
+.header button:hover { background: var(--mw-bg); }
+.body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.section { display: grid; gap: 0.45rem; border-bottom: 1px solid var(--mw-line); padding: 0.75rem 0.8rem; }
+.section:last-child { border-bottom: 0; }
+.section h3 { margin: 0; color: var(--mw-sub); font-size: 0.66rem; font-weight: 800; letter-spacing: 0.01em; }
+.person { display: flex; min-width: 0; min-height: 2.65rem; align-items: center; gap: 0.55rem; border-radius: 0.5rem; padding: 0.35rem 0.45rem; }
+.currentPerson { border: 1px solid color-mix(in srgb, var(--mw-primary) 30%, var(--mw-line)); background: color-mix(in srgb, var(--mw-primary) 8%, var(--mw-card)); }
+.inactive { opacity: 0.66; }
+.avatar { display: inline-grid; width: 1.65rem; height: 1.65rem; flex: 0 0 auto; place-items: center; border-radius: 50%; background: var(--mw-tint-blue); color: var(--mw-record); object-fit: cover; font-size: 0.61rem; font-weight: 800; }
+.avatarImage { background-position: center; background-size: cover; }
+.personCopy { display: grid; min-width: 0; flex: 1; gap: 0.05rem; }
+.personCopy b, .personCopy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.personCopy b { font-size: 0.7rem; }
+.personCopy small { color: var(--mw-sub); font-size: 0.6rem; }
+.badge { flex: 0 0 auto; border-radius: 999px; background: var(--mw-bg); padding: 0.12rem 0.38rem; color: var(--mw-sub); font-size: 0.56rem; font-weight: 800; }
+.timeline { display: grid; margin: 0; padding: 0; list-style: none; }
+.timeline li { position: relative; padding-left: 0.8rem; }
+.timeline li:not(:last-child)::after { position: absolute; top: 1.55rem; bottom: -0.75rem; left: 0.26rem; width: 1px; background: var(--mw-line); content: ""; }
+.timelineDot { position: absolute; top: 1.28rem; left: 0.09rem; width: 0.36rem; height: 0.36rem; border: 2px solid var(--mw-card); border-radius: 50%; background: var(--mw-sub); box-shadow: 0 0 0 1px var(--mw-line); }
+.recipientGroup { display: grid; gap: 0.15rem; border-radius: 0.55rem; background: var(--mw-bg); padding: 0.45rem; }
+.recipientGroup > b { padding: 0.15rem 0.4rem; color: var(--mw-sub); font-size: 0.61rem; }
+.followerRow { display: grid; grid-template-columns: minmax(0, 1fr) 2rem; align-items: center; border-radius: 0.5rem; }
+.followerRow:hover, .followerRow:focus-within { background: var(--mw-card); }
+.remove { width: 1.8rem; height: 1.8rem; border: 0; border-radius: 50%; background: transparent; color: var(--mw-sub); font: inherit; font-size: 1rem; cursor: pointer; opacity: 0; pointer-events: none; }
+.followerRow:hover .remove, .followerRow:focus-within .remove { opacity: 1; pointer-events: auto; }
+.remove:hover { background: var(--mw-bg); color: var(--mw-error); }
+.remove:disabled { cursor: wait; }
+.empty { margin: 0; border: 1px dashed var(--mw-line); border-radius: 0.5rem; padding: 0.7rem; color: var(--mw-sub); font-size: 0.66rem; text-align: center; }
+.note { margin: 0.25rem 0 0; color: var(--mw-sub); font-size: 0.59rem; line-height: 1.45; }
+.readOnly { margin: 0; border-bottom: 1px solid var(--mw-line); background: var(--mw-bg); padding: 0.55rem 0.8rem; color: var(--mw-sub); font-size: 0.63rem; }
+.alert { display: flex; align-items: center; gap: 0.65rem; border-bottom: 1px solid color-mix(in srgb, var(--mw-error) 30%, var(--mw-line)); background: color-mix(in srgb, var(--mw-error) 7%, var(--mw-card)); padding: 0.65rem 0.8rem; color: var(--mw-error); }
+.alert > span { display: grid; min-width: 0; flex: 1; gap: 0.1rem; font-size: 0.62rem; }
+.alert b { font-size: 0.67rem; }
+.alert button { min-height: 1.9rem; border: 1px solid currentColor; border-radius: 0.4rem; background: var(--mw-card); color: inherit; font: inherit; font-size: 0.61rem; font-weight: 800; cursor: pointer; }
+.mutationError { margin: 0; border-radius: 0.45rem; background: color-mix(in srgb, var(--mw-error) 8%, var(--mw-card)); padding: 0.5rem; color: var(--mw-error); font-size: 0.62rem; }
+.skeletons { display: grid; gap: 0.6rem; padding: 0.8rem; }
+.skeleton { height: 3rem; border-radius: 0.55rem; background: linear-gradient(90deg, var(--mw-bg), color-mix(in srgb, var(--mw-line) 55%, var(--mw-card)), var(--mw-bg)); background-size: 200% 100%; animation: assignment-flow-pulse 1.4s linear infinite; }
+.spinner { display: inline-block; width: 0.8rem; height: 0.8rem; border: 2px solid var(--mw-line); border-top-color: var(--mw-primary); border-radius: 50%; animation: assignment-flow-spin 0.7s linear infinite; }
+@keyframes assignment-flow-pulse { to { background-position: -200% 0; } }
+@keyframes assignment-flow-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .skeleton, .spinner { animation: none; } }
