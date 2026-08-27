@@ -43,14 +43,24 @@ import {
 } from "@/app/(app)/boards/item-detail-actions";
 import { inspectCloudFolderUrl } from "@/lib/boards/cloud-folder-link";
 import {
+  CREDIT_SCORE_KEYS,
   EXISTING_LOAN_KEYS,
   EXISTING_LOAN_RECORDS_KEY,
+  NEW_LEAD_COMPOSITE_FIELD_KEYS,
   existingLoanRecordsFromValues,
   existingLoanRecordsSummary,
 } from "@/lib/new-lead/financial-profile";
+import {
+  durableNewLeadDetailLayout,
+  newLeadPresentationLabel,
+  presentNewLeadUnplacedKeys,
+} from "@/lib/default-tabs/new-lead";
 import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
 import { AssignmentLineagePopover } from "./AssignmentLineagePopover";
+import { NewLeadCreditScoresCell } from "./NewLeadCreditScoresCell";
+import { NewLeadFoundedDateCell } from "./NewLeadFoundedDateCell";
 import { NewLeadLoanCell } from "./NewLeadLoanCell";
+import { NewLeadRevenue3yCell } from "./NewLeadRevenue3yCell";
 import styles from "./item-detail-panel.module.css";
 
 const CANONICAL_NEW_LEAD_DETAIL_KEYS = new Set([
@@ -237,18 +247,25 @@ function SaveLayoutForm({
   layout,
   label,
   disabled,
+  canonicalNewLead = false,
+  sourceEntries = [],
 }: {
   boardId: string;
   groupId: string | null;
   layout: DetailLayoutEntry[];
   label: string;
   disabled?: boolean;
+  canonicalNewLead?: boolean;
+  sourceEntries?: readonly DetailLayoutEntry[];
 }) {
+  const durableLayout = canonicalNewLead
+    ? durableNewLeadDetailLayout(layout, sourceEntries)
+    : layout;
   return (
     <form action={saveDetailLayoutAction}>
       <input type="hidden" name="boardId" value={boardId} />
       <input type="hidden" name="groupId" value={groupId ?? ""} />
-      <input type="hidden" name="layout" value={JSON.stringify(layout)} />
+      <input type="hidden" name="layout" value={JSON.stringify(durableLayout)} />
       <button
         type="submit"
         disabled={disabled}
@@ -266,6 +283,9 @@ export function ItemDetailPanel({
   columns,
   boardLayout,
   layout,
+  durableColumns = [],
+  durableBoardLayout = boardLayout,
+  durableLayout = layout,
   inherited,
   canEditItems,
   canManageColumns,
@@ -282,6 +302,9 @@ export function ItemDetailPanel({
   row: ItemWithValues;
   columns: BoardColumn[];
   boardLayout: DetailLayoutEntry[];
+  durableColumns?: BoardColumn[];
+  durableBoardLayout?: DetailLayoutEntry[];
+  durableLayout?: DetailLayoutEntry[];
   layout: DetailLayoutEntry[];
   inherited: boolean;
   canEditItems: boolean;
@@ -321,6 +344,16 @@ export function ItemDetailPanel({
   const suppressOpenerRestoreRef = useRef(false);
   const hashPushedRef = useRef(false);
   const columnsByKey = new Map(columns.map((column) => [column.key, column]));
+  const durableColumnEntries: DetailLayoutEntry[] = durableColumns.map((column) => ({
+    key: column.key,
+    source: "column",
+    label: column.label,
+    type: column.type,
+  }));
+  // Existing layout entries win over column defaults so a move cannot erase
+  // company-specific labels/types/source metadata for either durable sibling.
+  const durableLayoutSources = [...durableColumnEntries, ...durableLayout];
+  const durableBoardLayoutSources = [...durableColumnEntries, ...durableBoardLayout];
   const canonicalLoanEntryKey = canonicalNewLead
     ? layout.find((entry) => entry.key === EXISTING_LOAN_KEYS.amount)?.key
       ?? layout.find((entry) => entry.key === EXISTING_LOAN_RECORDS_KEY)?.key
@@ -340,13 +373,16 @@ export function ItemDetailPanel({
   const relatedMembers = collaboratorIds
     .map((id) => memberOptions.find((member) => member.id === id))
     .filter((member): member is MemberPickerMember => Boolean(member));
-  const unplaced = unplacedDetailKeys(row.values, visibleLayout).filter(
+  const rawUnplaced = unplacedDetailKeys(row.values, visibleLayout).filter(
     (key) => !canonicalNewLead || (
       key !== "contact_move"
       && key !== "consult_status"
       && !CANONICAL_NEW_LEAD_LOAN_KEYS.has(key)
     ),
   );
+  const unplaced = canonicalNewLead
+    ? presentNewLeadUnplacedKeys(rawUnplaced, visibleLayout.map((entry) => entry.key))
+    : rawUnplaced;
   const saveStatuses = Object.values(fieldSaveStatuses);
   const fieldSavePending = saveStatuses.some(
     (status) => status === "저장 중…" || status === "저장 대기…",
@@ -699,6 +735,13 @@ export function ItemDetailPanel({
                           row.deal_id &&
                           entry.key === "owner",
                       );
+                      const financialCompositeField = Boolean(
+                        canonicalNewLead && (
+                          entry.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores
+                          || entry.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion
+                          || entry.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.foundedDate
+                        ),
+                      );
                       const fieldLabelId = `${row.id}-${entry.key}-label`;
                       return (
                         <div
@@ -709,7 +752,7 @@ export function ItemDetailPanel({
                           <span aria-hidden="true" className={styles.fieldHandle}>⠿</span>
                           <label
                             id={fieldLabelId}
-                            htmlFor={editable && !assignmentLineageField ? `${row.id}-${entry.key}` : undefined}
+                            htmlFor={editable && !assignmentLineageField && !financialCompositeField ? `${row.id}-${entry.key}` : undefined}
                             className={styles.fieldLabel}
                           >
                             {label}
@@ -724,6 +767,50 @@ export function ItemDetailPanel({
                                 itemId={row.id}
                                 values={row.values}
                                 readOnly={!canEditItems}
+                              />
+                            ) : canonicalNewLead && entry.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores ? (
+                              <NewLeadCreditScoresCell
+                                boardId={boardId}
+                                itemId={row.id}
+                                ncb={row.values[CREDIT_SCORE_KEYS.ncb]}
+                                kcb={row.values[CREDIT_SCORE_KEYS.kcb]}
+                                readOnly={!editable}
+                                onStatusChange={(fieldKey, status) =>
+                                  setFieldSaveStatuses((current) =>
+                                    current[fieldKey] === status
+                                      ? current
+                                      : { ...current, [fieldKey]: status },
+                                  )
+                                }
+                              />
+                            ) : canonicalNewLead && entry.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.foundedDate ? (
+                              <NewLeadFoundedDateCell
+                                boardId={boardId}
+                                itemId={row.id}
+                                value={row.values[NEW_LEAD_COMPOSITE_FIELD_KEYS.foundedDate]}
+                                readOnly={!editable}
+                                onStatusChange={(status) =>
+                                  setFieldSaveStatuses((current) =>
+                                    current[NEW_LEAD_COMPOSITE_FIELD_KEYS.foundedDate] === status
+                                      ? current
+                                      : { ...current, [NEW_LEAD_COMPOSITE_FIELD_KEYS.foundedDate]: status },
+                                  )
+                                }
+                              />
+                            ) : canonicalNewLead && entry.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion ? (
+                              <NewLeadRevenue3yCell
+                                boardId={boardId}
+                                itemId={row.id}
+                                value={row.values[NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion]}
+                                legacyRevenueBand={row.values.revenue_band}
+                                readOnly={!editable}
+                                onStatusChange={(status) =>
+                                  setFieldSaveStatuses((current) =>
+                                    current[NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion] === status
+                                      ? current
+                                      : { ...current, [NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion]: status },
+                                  )
+                                }
                               />
                             ) : entry.key === EXISTING_LOAN_RECORDS_KEY ? (
                               <p className={styles.readonlyValue}>
@@ -848,7 +935,7 @@ export function ItemDetailPanel({
                         >
                           <div className="min-w-0">
                             <b className="block truncate text-xs text-mw-body">
-                              {columnsByKey.get(key)?.label ?? key}
+                              {newLeadPresentationLabel(key) ?? columnsByKey.get(key)?.label ?? key}
                             </b>
                             <span className="block truncate text-xs text-mw-sub">
                               {String(row.values[key] ?? "")}
@@ -897,6 +984,8 @@ export function ItemDetailPanel({
                             layout={layout}
                             label="현재 기본에서 분기해 편집"
                             disabled={!row.group_id}
+                            canonicalNewLead={canonicalNewLead}
+                            sourceEntries={durableLayoutSources}
                           />
                         ) : row.group_id ? (
                           <form action={resetGroupDetailLayoutAction}>
@@ -934,6 +1023,8 @@ export function ItemDetailPanel({
                               layout={moveDetailEntry(visibleLayout, entry.key, -1)}
                               label="↑"
                               disabled={index === 0 || !row.group_id}
+                              canonicalNewLead={canonicalNewLead}
+                              sourceEntries={durableLayoutSources}
                             />
                             <SaveLayoutForm
                               boardId={boardId}
@@ -943,6 +1034,8 @@ export function ItemDetailPanel({
                               disabled={
                                 index === visibleLayout.length - 1 || !row.group_id
                               }
+                              canonicalNewLead={canonicalNewLead}
+                              sourceEntries={durableLayoutSources}
                             />
                             <SaveLayoutForm
                               boardId={boardId}
@@ -952,6 +1045,8 @@ export function ItemDetailPanel({
                               )}
                               label="배치에서 빼기"
                               disabled={!row.group_id}
+                              canonicalNewLead={canonicalNewLead}
+                              sourceEntries={durableLayoutSources}
                             />
                           </div>
                         ))}
@@ -988,6 +1083,8 @@ export function ItemDetailPanel({
                                   ]}
                                   label={`+ ${column.label}`}
                                   disabled={!row.group_id}
+                                  canonicalNewLead={canonicalNewLead}
+                                  sourceEntries={durableLayoutSources}
                                 />
                               ))}
                           </div>
@@ -1022,6 +1119,8 @@ export function ItemDetailPanel({
                               )}
                               label="↑"
                               disabled={index === 0}
+                              canonicalNewLead={canonicalNewLead}
+                              sourceEntries={durableBoardLayoutSources}
                             />
                             <SaveLayoutForm
                               boardId={boardId}
@@ -1033,6 +1132,8 @@ export function ItemDetailPanel({
                               )}
                               label="↓"
                               disabled={index === boardLayout.length - 1}
+                              canonicalNewLead={canonicalNewLead}
+                              sourceEntries={durableBoardLayoutSources}
                             />
                             <SaveLayoutForm
                               boardId={boardId}
@@ -1041,6 +1142,8 @@ export function ItemDetailPanel({
                                 (candidate) => candidate.key !== entry.key,
                               )}
                               label="빼기"
+                              canonicalNewLead={canonicalNewLead}
+                              sourceEntries={durableBoardLayoutSources}
                             />
                           </div>
                         ))}
@@ -1076,6 +1179,8 @@ export function ItemDetailPanel({
                                     },
                                   ]}
                                   label={`+ ${column.label}`}
+                                  canonicalNewLead={canonicalNewLead}
+                                  sourceEntries={durableBoardLayoutSources}
                                 />
                               ))}
                           </div>

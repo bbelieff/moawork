@@ -127,6 +127,8 @@ describe("default-tab bootstrap PGlite boundary",()=>{
     const secondCount=(await db.query<{n:number}>("select ((select count(*) from board_groups where board_id=$1)+(select count(*) from board_columns where board_id=$1))::int n",[partial.id])).rows[0].n;
     expect(secondCount).toBe(firstCount);
     expect((await db.query("select key from board_columns where board_id=$1 and key='industry'",[partial.id])).rows).toHaveLength(1);
+    expect((await db.query("select key from board_columns where board_id=$1 and key='revenue_3y_million'",[partial.id])).rows).toHaveLength(1);
+    expect((await db.query("select key from board_columns where board_id=$1 and key='credit_scores'",[partial.id])).rows).toHaveLength(0);
     expect(await db.query("select * from items order by id").then(result=>result.rows)).toEqual(beforeRows);
     expect(await db.query("select * from item_values order by item_id,column_key").then(result=>result.rows)).toEqual(beforeValues);
     expect(await db.query("select * from boards where id=$1",[other.id]).then(result=>result.rows)).toEqual(beforeOther);

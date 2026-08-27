@@ -19,7 +19,19 @@ import { describe, expect, it } from "vitest";
 // 반환 타입은 아래 MockTab 으로 좁혀 쓴다 — 타입 선언 파일을 만들지 않는다(그 파일은 NG-02 소유).
 import { extractMockupContract } from "../../../../docs/design/dump-mockup.mjs";
 import { isSourceEditable } from "@/lib/field/source";
-import { NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS, NEW_LEAD_TAB, SEND_PENDING_REASON } from "./new-lead";
+import {
+  durableNewLeadColumnKeys,
+  durableNewLeadDetailLayout,
+  NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS,
+  NEW_LEAD_TAB,
+  presentNewLeadColumnKeys,
+  presentNewLeadColumns,
+  presentNewLeadDetailLayout,
+  presentNewLeadUnplacedKeys,
+  SEND_PENDING_REASON,
+} from "./new-lead";
+import type { BoardColumn } from "@/lib/boards/types";
+import { moveDetailEntry } from "@/lib/boards/detail-layout";
 import type { DefaultTabColumn } from "./types";
 
 interface MockColumn {
@@ -85,7 +97,7 @@ describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
 
   it("실제 운영 먼데이의 비AI 업무 컬럼을 보강하고 광고 명을 유입정보 앞단에 둔다", () => {
     const labels = NEW_LEAD_TAB.columns.map((column) => column.label);
-    expect(labels).toHaveLength(38);
+    expect(labels).toHaveLength(39);
     expect(labels).toEqual(expect.arrayContaining(mock.columns.map((column) => {
       if (column.label === "협업자") return "연관담당";
       if (column.label === "매출 구간") return "3개년매출";
@@ -202,21 +214,15 @@ describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
 });
 
 describe("제품 규칙 — 목업을 그대로 옮기면 안 되는 곳", () => {
-  it("revision 4는 자유입력·금융 필드와 정본 순서를 추가하고 회사가 바꾼 값 판별 근거를 남긴다", () => {
-    expect(NEW_LEAD_TAB.revision).toBe(4);
+  it("revision 5는 3개년매출 물리 열을 additive로 추가하고 revision 4를 선행 정본으로 남긴다", () => {
+    expect(NEW_LEAD_TAB.revision).toBe(5);
     expect(NEW_LEAD_TAB.previousRevision).toEqual({
-      revision: 3,
-      columns: {
-        collaborators: { label: "연관담당" },
-        ad_name: { label: "광고명" },
-        biz_reg_type: { label: "사업자유형" },
-        industry: { label: "업종" },
-        revenue_band: { label: "3개년매출" },
-      },
+      revision: 4,
+      columns: {},
     });
   });
 
-  it("#600 합성 열은 후속 연결용 presentation 계약이고 기존 durable 열·순서를 바꾸지 않는다", () => {
+  it("#602는 revenue 물리 열만 추가하고 신용점수는 durable 두 키를 한 presentation 셀로 둔다", () => {
     expect(NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS).toEqual([
       expect.objectContaining({ key: "credit_scores", label: "신용점수", type: "text" }),
       expect.objectContaining({ key: "revenue_3y_million", label: "3개년매출(백만원)", type: "number" }),
@@ -225,7 +231,63 @@ describe("제품 규칙 — 목업을 그대로 옮기면 안 되는 곳", () =>
     expect(NEW_LEAD_TAB.columns.some((column) => column.key === "credit_score_ncb")).toBe(true);
     expect(NEW_LEAD_TAB.columns.some((column) => column.key === "credit_score_kcb")).toBe(true);
     expect(NEW_LEAD_TAB.columns.some((column) => column.key === "credit_scores")).toBe(false);
-    expect(NEW_LEAD_TAB.columns.some((column) => column.key === "revenue_3y_million")).toBe(false);
+    expect(NEW_LEAD_TAB.columns.filter((column) => column.key === "revenue_3y_million")).toHaveLength(1);
+  });
+
+  it("표·저장 뷰·상세 alias는 한 칸으로 읽고 서버 저장에는 physical key만 쓴다", () => {
+    const physical = NEW_LEAD_TAB.columns.map((definition, index) => ({
+      ...definition,
+      id: `column-${definition.key}`,
+      org_id: "org-a",
+      board_id: "board-a",
+      rightPinned: Boolean(definition.rightPinned),
+      options_jsonb: null,
+      sort_order: index,
+      width: definition.width ?? null,
+    })) as BoardColumn[];
+    const presented = presentNewLeadColumns(physical);
+    expect(presented.filter((column) => column.key === "credit_scores")).toHaveLength(1);
+    expect(presented.filter((column) => column.key === "revenue_3y_million")).toHaveLength(1);
+    expect(presented.some((column) => column.key === "credit_score_ncb" || column.key === "credit_score_kcb" || column.key === "revenue_band")).toBe(false);
+    expect(presentNewLeadColumnKeys(["credit_score_ncb", "credit_score_kcb", "revenue_band", "revenue_3y_million"]))
+      .toEqual(["credit_scores", "revenue_3y_million"]);
+    expect(durableNewLeadColumnKeys(["credit_scores", "revenue_3y_million"]))
+      .toEqual(["credit_score_ncb", "credit_score_kcb", "revenue_band", "revenue_3y_million"]);
+
+    const physicalLayout = [
+      { key: "credit_score_ncb", source: "column" as const, label: "회사 NCB", type: "number" as const },
+      { key: "credit_score_kcb", source: "column" as const, label: "회사 KCB", type: "number" as const },
+      { key: "memo", source: "detail" as const, label: "회사 메모", type: "text" as const },
+      { key: "revenue_band", source: "column" as const, label: "기존 매출 구간", type: "text" as const },
+      { key: "revenue_3y_million", source: "column" as const, label: "실제 매출", type: "number" as const },
+    ];
+    const layout = presentNewLeadDetailLayout(physicalLayout);
+    expect(layout.map((entry) => entry.key)).toEqual(["credit_scores", "memo", "revenue_3y_million"]);
+    const moved = moveDetailEntry(layout, "revenue_3y_million", -1);
+    const durable = durableNewLeadDetailLayout(moved, physicalLayout);
+    expect(durable.map((entry) => entry.key)).toEqual([
+      "credit_score_ncb", "credit_score_kcb", "revenue_band", "revenue_3y_million", "memo",
+    ]);
+    expect(durable.slice(0, 2).map((entry) => entry.label)).toEqual(["회사 NCB", "회사 KCB"]);
+    expect(durable.slice(2, 4).map((entry) => entry.label)).toEqual(["기존 매출 구간", "실제 매출"]);
+    expect(presentNewLeadDetailLayout(durable).map((entry) => entry.key))
+      .toEqual(["credit_scores", "revenue_3y_million", "memo"]);
+    const withoutCredit = durableNewLeadDetailLayout(
+      moved.filter((entry) => entry.key !== "credit_scores"),
+      physicalLayout,
+    );
+    expect(withoutCredit.some((entry) => entry.key === "credit_score_ncb" || entry.key === "credit_score_kcb"))
+      .toBe(false);
+    expect(durableNewLeadDetailLayout(presentNewLeadDetailLayout(durable), durable))
+      .toEqual(durable);
+    expect(presentNewLeadUnplacedKeys(
+      ["credit_score_ncb", "credit_score_kcb", "revenue_band", "revenue_3y_million"],
+      ["credit_scores", "revenue_3y_million"],
+    )).toEqual([]);
+    expect(presentNewLeadUnplacedKeys(
+      ["credit_score_ncb", "credit_score_kcb", "revenue_band", "revenue_3y_million"],
+      [],
+    )).toEqual(["credit_scores", "revenue_3y_million"]);
   });
   it("D71~D75 — 사람 컬럼에 이름을 박지 않는다. 값은 멤버 계정에서 온다", () => {
     for (const column of NEW_LEAD_TAB.columns) {

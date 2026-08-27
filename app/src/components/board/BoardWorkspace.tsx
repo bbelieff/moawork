@@ -48,7 +48,14 @@ import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/li
 import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
 import type { CompanyPickerLoadResult } from "@/lib/companies/picker-server";
 import type { CompanyIntakeActionState } from "@/app/(app)/boards/[id]/company-intake-actions";
-import { NEW_LEAD_DETAIL_ONLY_KEYS, presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
+import {
+  durableNewLeadColumnKeys,
+  NEW_LEAD_DETAIL_ONLY_KEYS,
+  newLeadPresentationKey,
+  presentNewLeadColumnKeys,
+  presentNewLeadColumns,
+  presentNewLeadDetailLayout,
+} from "@/lib/default-tabs/new-lead";
 import { NOTICE_KEYS } from "@/lib/notices/types";
 import { buildBlocks } from "./blocks";
 import {
@@ -79,6 +86,12 @@ import {
   workflowDetailHiddenKeys,
   workflowKindForSource,
 } from "@/lib/workflow/progress";
+import {
+  NEW_LEAD_SAVED_FILTER_PROJECTION,
+  presentNewLeadSavedFilters,
+} from "@/lib/view/board-saved";
+
+const NEW_LEAD_LEGACY_FACET_LABELS = { revenue_band: "기존 매출구간" } as const;
 
 interface RowMove {
   itemId: string;
@@ -210,15 +223,27 @@ export function BoardWorkspace({
   const [restoringColumnId, setRestoringColumnId] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const workflowProgressKind = workflowKindForSource(board.source);
+  const canonicalNewLead = board.source === NEW_LEAD_TAB_SOURCE;
+  const filterProjection = canonicalNewLead ? NEW_LEAD_SAVED_FILTER_PROJECTION : undefined;
+  const displayFilters = useMemo(
+    () => canonicalNewLead
+      ? presentNewLeadSavedFilters(filters)
+      : filters,
+    [canonicalNewLead, filters],
+  );
+  const physicalActiveColumns = useMemo(
+    () => columns.filter((column) => !archivedColumnIds.has(column.id)),
+    [archivedColumnIds, columns],
+  );
   const activeColumns = useMemo(() => {
-    const visible = columns.filter((column) => !archivedColumnIds.has(column.id));
-    const ordered = board.source === NEW_LEAD_TAB_SOURCE
+    const visible = physicalActiveColumns;
+    const ordered = canonicalNewLead
       ? presentNewLeadColumns(visible)
       : visible;
     return workflowProgressKind
       ? presentWorkflowProgressColumns(workflowProgressKind, ordered)
       : ordered;
-  }, [archivedColumnIds, board.source, columns, workflowProgressKind]);
+  }, [canonicalNewLead, physicalActiveColumns, workflowProgressKind]);
   const tableColumns = useMemo(
     () => board.source === NEW_LEAD_TAB_SOURCE
       ? activeColumns.filter((column) => !NEW_LEAD_DETAIL_ONLY_KEYS.has(column.key))
@@ -232,16 +257,29 @@ export function BoardWorkspace({
     },
     [activeColumns, workflowProgressKind],
   );
+  const physicalDetailColumns = useMemo(
+    () => {
+      const hidden = new Set(workflowProgressKind ? workflowDetailHiddenKeys(workflowProgressKind) : []);
+      return physicalActiveColumns.filter((column) => !hidden.has(column.key));
+    },
+    [physicalActiveColumns, workflowProgressKind],
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const params = new URLSearchParams(window.location.search);
       setFilters(decodeBoardFilters(params.get(BOARD_FILTER_QUERY_KEY)));
-      setSavedPresentation({ textMode: params.get("mwText") === "wrap" ? "wrap" : "single", focusColumnKey: params.get("mwFocus") });
+      const rawFocusColumnKey = params.get("mwFocus");
+      setSavedPresentation({
+        textMode: params.get("mwText") === "wrap" ? "wrap" : "single",
+        focusColumnKey: canonicalNewLead && rawFocusColumnKey
+          ? newLeadPresentationKey(rawFocusColumnKey)
+          : rawFocusColumnKey,
+      });
       setFilterUrlReady(true);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [canonicalNewLead]);
 
   useEffect(() => {
     if (!filterUrlReady) return;
@@ -315,9 +353,9 @@ export function BoardWorkspace({
 
   const matched = useMemo(
     () => workflowProgressKind
-      ? applyFilters(displayRows, tableColumns, filters).length
-      : applyFilters(optimisticRows, tableColumns, filters).length,
-    [displayRows, filters, optimisticRows, tableColumns, workflowProgressKind],
+      ? applyFilters(displayRows, tableColumns, displayFilters, filterProjection).length
+      : applyFilters(optimisticRows, tableColumns, displayFilters, filterProjection).length,
+    [displayFilters, displayRows, filterProjection, optimisticRows, tableColumns, workflowProgressKind],
   );
 
   /** 도구줄 담당자 필터 ↔ 헤더 담당자 탭의 단일 소스. null = 전체. */
@@ -337,7 +375,7 @@ export function BoardWorkspace({
       const fd = new FormData();
       fd.set("boardId", board.id);
       fd.set("groupKey", groupKey);
-      fd.set("order", keys.join(","));
+      fd.set("order", (canonicalNewLead ? durableNewLeadColumnKeys(keys) : keys).join(","));
       await setGroupColumnOrderAction(fd);
     });
   };
@@ -436,11 +474,12 @@ export function BoardWorkspace({
       <BoardToolbar
         columns={tableColumns}
         rows={displayRows}
-        filters={filters}
+        filters={displayFilters}
         onChange={setFilters}
         matched={matched}
         total={displayRows.length}
         people={people}
+        legacyFacetLabels={canonicalNewLead ? NEW_LEAD_LEGACY_FACET_LABELS : undefined}
       />
 
       {readOnly && (
@@ -498,21 +537,30 @@ export function BoardWorkspace({
         </p>
       ) : (
         blocks.map((block, blockIndex) => {
-          const resolvedColumns = resolveColumnOrder(tableColumns, optimisticOrder[block.key]);
+          const storedOrder = canonicalNewLead
+            ? presentNewLeadColumnKeys(optimisticOrder[block.key])
+            : optimisticOrder[block.key];
+          const resolvedColumns = resolveColumnOrder(tableColumns, storedOrder ?? undefined);
           // 과거에 저장된 그룹별 배치도 광고 명의 필수 유입정보 위치를 되돌리지 못하게 한다.
           // 서버의 sort_order와 그룹별 사용자 배치를 정본으로 삼는다. 기본 신규리드 순서는
           // revision installer가 안전하게 재배치하며, 회사가 직접 바꾼 순서는 여기서 덮지 않는다.
-          const shown = selectVisibleColumns(resolvedColumns, filters.visibleColumnKeys);
-          const visibleRows = applyFilters(block.rows, tableColumns, filters);
-          const boardDetailLayout = resolveBoardDetailLayout(
+          const shown = selectVisibleColumns(resolvedColumns, displayFilters.visibleColumnKeys);
+          const visibleRows = applyFilters(block.rows, tableColumns, displayFilters, filterProjection);
+          const rawBoardDetailLayout = resolveBoardDetailLayout(
             board.source,
             board.detail_layout_jsonb,
-            detailColumns,
+            physicalDetailColumns,
           );
-          const resolvedDetailLayout = resolveDetailLayout(
-            boardDetailLayout,
+          const boardDetailLayout = canonicalNewLead
+            ? presentNewLeadDetailLayout(rawBoardDetailLayout)
+            : rawBoardDetailLayout;
+          const rawResolvedDetailLayout = resolveDetailLayout(
+            rawBoardDetailLayout,
             block.group?.detail_layout_jsonb,
           );
+          const presentedDetailLayout = canonicalNewLead
+            ? presentNewLeadDetailLayout(rawResolvedDetailLayout.entries)
+            : rawResolvedDetailLayout.entries;
           // `start_company_work`는 정본상 첫 그룹에 넣는다. 다른 그룹 아래에도 선택기를
           // 보여주면 누른 위치와 생성 위치가 달라지므로 첫 그룹에만 둔다.
 
@@ -539,7 +587,7 @@ export function BoardWorkspace({
                 boardId={board.id}
                 boardName={board.name}
                 groupName={block.name}
-                canonicalNewLead={board.source === NEW_LEAD_TAB_SOURCE}
+                canonicalNewLead={canonicalNewLead}
                 newLeadMembers={scheduleRecipients}
                 {...(blockIndex === 0 && board.source === CONTRACT_WORK_TAB_SOURCE && startCompanyWorkAction
                   ? { companyPicker: {
@@ -554,10 +602,13 @@ export function BoardWorkspace({
                 columns={shown}
                 detailColumns={[...detailColumns]}
                 boardDetailLayout={boardDetailLayout}
-                detailLayout={resolvedDetailLayout.entries.filter(
+                durableDetailColumns={[...physicalDetailColumns]}
+                durableBoardDetailLayout={rawBoardDetailLayout}
+                durableDetailLayout={rawResolvedDetailLayout.entries}
+                detailLayout={presentedDetailLayout.filter(
                   (entry) => entry.source === "detail" || detailColumns.some((column) => column.key === entry.key),
                 )}
-                detailLayoutInherited={resolvedDetailLayout.inherited}
+                detailLayoutInherited={rawResolvedDetailLayout.inherited}
                 rows={visibleRows}
                 textMode={savedPresentation.textMode}
                 focusColumnKey={savedPresentation.focusColumnKey}

@@ -1,4 +1,6 @@
 import type { CellValue } from "@/lib/boards/types";
+import { cellSearchText } from "@/lib/boards/cells";
+import { formatQuantity } from "@/lib/format/number";
 
 /** #589 이전의 단일 기대출 필드. 기존 값의 무손실 fallback에만 사용한다. */
 export const EXISTING_LOAN_KEYS = {
@@ -123,6 +125,14 @@ export function creditScoresFromValues(
   return { ncb: score(CREDIT_SCORE_KEYS.ncb), kcb: score(CREDIT_SCORE_KEYS.kcb) };
 }
 
+/** 숫자 정본만 쉼표 표시하고, 비정형 legacy 원문은 손대지 않는다. */
+export function formatCreditScoreValue(value: CellValue | undefined): string {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && value <= 1000) {
+    return formatQuantity(value);
+  }
+  return typeof value === "string" ? value : "";
+}
+
 export type FoundedDatePrecision = "month" | "day";
 export type ParsedFoundedDate = Readonly<{ value: string | null; precision: FoundedDatePrecision | null }>;
 
@@ -168,10 +178,91 @@ export function parseRevenue3yMillion(raw: string):
   return { ok: true, value };
 }
 
-/** Leaf-only adapter. Issue #603 owns the product-wide typed number formatter. */
+/** 저장값은 이미 백만원 단위다. 전역 포맷터는 표시 문자열에만 적용한다. */
 export function formatRevenue3yMillion(value: CellValue | undefined): string {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) return "";
-  return value.toLocaleString("ko-KR") + "백만원";
+  return formatQuantity(value, { suffix: "백만원" });
+}
+
+function sortableCreditScore(value: CellValue | undefined): number | null {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value >= 1 && value <= 1000 ? value : null;
+  }
+  if (typeof value !== "string") return null;
+  const parsed = parseCreditScore(value, "NCB");
+  return parsed.ok ? parsed.value : null;
+}
+
+function sortableRevenue(value: CellValue | undefined): number | null {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  }
+  if (typeof value !== "string") return null;
+  const parsed = parseRevenue3yMillion(value);
+  return parsed.ok ? parsed.value : null;
+}
+
+/**
+ * 가상 finance 컬럼의 검색 projection. null은 공통 셀 검색기를 그대로 쓰라는 뜻이다.
+ * raw와 표시 문자열을 함께 반환하므로 `1234`와 `1,234`가 같은 행을 찾는다.
+ */
+export function newLeadFinancialSearchText(
+  columnKey: string,
+  values: Readonly<Record<string, CellValue | undefined>>,
+): string | null {
+  if (columnKey === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores) {
+    const ncb = values[CREDIT_SCORE_KEYS.ncb] ?? null;
+    const kcb = values[CREDIT_SCORE_KEYS.kcb] ?? null;
+    return `NCB ${cellSearchText("number", ncb)} KCB ${cellSearchText("number", kcb)}`;
+  }
+  if (columnKey === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion) {
+    const revenue = values[NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion] ?? null;
+    const numeric = sortableRevenue(revenue);
+    const current = numeric === null
+      ? (typeof revenue === "string" ? revenue : "")
+      : cellSearchText("number", numeric);
+    const legacy = values[NEW_LEAD_COMPOSITE_FIELD_KEYS.legacyRevenueBand];
+    return [current, typeof legacy === "string" ? legacy : ""].filter(Boolean).join(" ");
+  }
+  return null;
+}
+
+/**
+ * 가상 finance 컬럼의 정렬 projection. 신용점수는 화면 읽기 순서인 NCB→KCB,
+ * 매출은 새 숫자만 비교한다. 비정형/legacy-only 값은 null로 두어 안정적으로 뒤에 남긴다.
+ */
+export function compareNewLeadFinancialValues(
+  columnKey: string,
+  left: Readonly<Record<string, CellValue | undefined>>,
+  right: Readonly<Record<string, CellValue | undefined>>,
+  direction: "asc" | "desc" = "asc",
+): number | null {
+  const compareNullableNumbers = (a: number | null, b: number | null) => {
+    if (a === null || b === null) {
+      if (a === b) return 0;
+      return a === null ? 1 : -1;
+    }
+    return direction === "desc" ? b - a : a - b;
+  };
+  if (columnKey === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores) {
+    const ncb = compareNullableNumbers(
+      sortableCreditScore(left[CREDIT_SCORE_KEYS.ncb]),
+      sortableCreditScore(right[CREDIT_SCORE_KEYS.ncb]),
+    );
+    return ncb !== 0
+      ? ncb
+      : compareNullableNumbers(
+          sortableCreditScore(left[CREDIT_SCORE_KEYS.kcb]),
+          sortableCreditScore(right[CREDIT_SCORE_KEYS.kcb]),
+        );
+  }
+  if (columnKey === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion) {
+    return compareNullableNumbers(
+      sortableRevenue(left[NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion]),
+      sortableRevenue(right[NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion]),
+    );
+  }
+  return null;
 }
 
 export function parseLoanMonth(

@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { SavedViewsController } from "./SavedViewsController";
+import type { BoardColumn, ItemWithValues } from "@/lib/boards";
 
 const controller = readFileSync(resolve(process.cwd(), "src/components/view/SavedViewsController.tsx"), "utf8");
 const page = readFileSync(resolve(process.cwd(), "src/app/(app)/boards/[id]/page.tsx"), "utf8");
@@ -9,6 +13,34 @@ const collectionRoute = readFileSync(resolve(process.cwd(), "src/app/api/tab-vie
 const itemRoute = readFileSync(resolve(process.cwd(), "src/app/api/tab-views/[viewId]/route.ts"), "utf8");
 
 describe("saved view production consumer", () => {
+  it("canonical flat consumer가 합성 금융 셀과 #618 담당자 lineage를 실제 렌더한다", () => {
+    const keys = ["owner", "credit_score_ncb", "credit_score_kcb", "revenue_band", "revenue_3y_million"] as const;
+    const columns = keys.map((key, index) => ({
+      id: `column-${key}`, org_id: "org-a", board_id: "board-a", key,
+      label: key === "owner" ? "담당자" : key === "credit_score_ncb" ? "NCB" : key === "credit_score_kcb" ? "KCB" : key === "revenue_band" ? "3개년매출" : "3개년매출(백만원)",
+      type: key === "owner" ? "person" : key === "revenue_3y_million" ? "number" : "text",
+      source: "in", rightPinned: false, options_jsonb: null, sort_order: index, width: null,
+    })) as BoardColumn[];
+    const row: ItemWithValues = {
+      id: "item-a", org_id: "org-a", board_id: "board-a", group_id: "group-a",
+      title: "테스트 회사", assigned_to: "user-a", deal_id: "deal-a", sort_order: 0,
+      created_at: "", updated_at: "",
+      values: { owner: "user-a", credit_score_ncb: 812, credit_score_kcb: 745, revenue_3y_million: 1234, revenue_band: "10억~30억" },
+    };
+    const html = renderToStaticMarkup(createElement(SavedViewsController, {
+      boardId: "board-a", orgId: "org-a", currentUserId: "user-a",
+      columns, rows: [row], renderMode: "flat", canEditItems: true,
+      canonicalNewLead: true, memberOptions: [{ id: "user-a", label: "담당자 가" }],
+    }));
+    expect(html.match(/신용점수/g)?.length).toBeGreaterThan(0);
+    expect(html.match(/3개년매출\(백만원\)/g)?.length).toBeGreaterThan(0);
+    expect(html).toContain('name="fieldKey" value="credit_score_ncb"');
+    expect(html).toContain('name="fieldKey" value="credit_score_kcb"');
+    expect(html).not.toContain('name="fieldKey" value="credit_scores"');
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).toContain("담당자 가");
+  });
+
   it("mounts all three view kinds and restores saved presentation state", () => {
     expect(controller).toContain("<ViewTabs");
     expect(controller).toContain("<ViewPicker");
@@ -28,12 +60,21 @@ describe("saved view production consumer", () => {
     expect(page).toContain("applySavedKanbanView(");
     expect(page).toContain('view === "flat" || view === "calendar"');
     expect(page).toContain("parseSavedBoardLayout(sp.mwLayout)");
+    expect(page).toContain("presentNewLeadSavedFilters(decodeBoardFilters(sp.mwFilters ?? null))");
+    expect(page).toContain("canonicalNewLead ? NEW_LEAD_SAVED_FILTER_PROJECTION : undefined");
+    expect(page.match(/canonicalNewLead=\{canonicalNewLead\}/g)).toHaveLength(3);
+    expect(page.match(/memberOptions=\{memberDirectory\}/g)).toHaveLength(3);
+    expect(controller).toContain("presentNewLeadColumns(columns)");
+    expect(controller).toContain("presentNewLeadSavedViewConfig(view.config)");
+    expect(controller).toContain("durableNewLeadSavedViewConfig(nextConfig)");
+    expect(controller).toContain("applyFilters(personScopedRows, displayColumns, config.filters, filterProjection)");
+    expect(controller).toContain("canonicalNewLead={canonicalNewLead} members={memberOptions}");
   });
 
   it("lets a second org member select a shared view without owner-only UPDATE", () => {
     expect(migration).toMatch(/visibility = 'shared' or owner_id = auth\.uid\(\)/);
     expect(migration).toMatch(/owner_id = auth\.uid\(\) or public\.org_role/);
-    expect(controller).toContain("savedViewUrl(saved, window.location.href)");
+    expect(controller).toMatch(/savedViewUrl\([\s\S]*?saved[\s\S]*?window\.location\.href/);
     expect(controller).not.toContain("touch: true");
     expect(controller).toContain("selected: true");
     expect(controller).toContain("<BoardCell");

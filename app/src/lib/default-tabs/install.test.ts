@@ -105,6 +105,44 @@ it("repairs a partially-created product board on request replay", async () => {
 });
 
 describe("BBE-184 additive existing-workspace repair", () => {
+  it("revision 4→5는 revenue 물리 열을 한 번만 추가하고 untouched 순서를 정의 위치로 맞춘다", async () => {
+    const revision4 = {
+      ...NEW_LEAD_TAB,
+      revision: 4,
+      previousRevision: undefined,
+      columns: NEW_LEAD_TAB.columns.filter((column) => column.key !== "revenue_3y_million"),
+    };
+    const installed = await ensureDefaultTabAdditive(ctx, revision4, toAsyncBoardsRepo(repo), assignees);
+    const beforeValues = structuredClone(db().itemValues);
+
+    await ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, toAsyncBoardsRepo(repo), assignees);
+    await ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, toAsyncBoardsRepo(repo), assignees);
+
+    const columns = repo.listColumns(ctx, installed.boardId);
+    expect(columns).toHaveLength(39);
+    expect(columns.filter((column) => column.key === "revenue_3y_million")).toHaveLength(1);
+    expect(columns.map((column) => column.key)).toEqual(NEW_LEAD_TAB.columns.map((column) => column.key));
+    expect(db().itemValues).toEqual(beforeValues);
+  });
+
+  it("revision 5는 회사가 바꾼 기존 순서를 덮지 않고 새 물리 열만 additive로 붙인다", async () => {
+    const revision4 = {
+      ...NEW_LEAD_TAB,
+      revision: 4,
+      previousRevision: undefined,
+      columns: NEW_LEAD_TAB.columns.filter((column) => column.key !== "revenue_3y_million"),
+    };
+    const installed = await ensureDefaultTabAdditive(ctx, revision4, toAsyncBoardsRepo(repo), assignees);
+    const first = repo.listColumns(ctx, installed.boardId)[0];
+    repo.updateColumn(ctx, first.id, { sort_order: 100 });
+
+    await ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, toAsyncBoardsRepo(repo), assignees);
+    const columns = repo.listColumns(ctx, installed.boardId);
+
+    expect(columns.find((column) => column.id === first.id)?.sort_order).toBe(100);
+    expect(columns.filter((column) => column.key === "revenue_3y_million")).toHaveLength(1);
+  });
+
   it("completes every missing column in one request even when GET is memoized", async () => {
     const result = await ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, memoizedColumnReads(repo), assignees);
     const columns = repo.listColumns(ctx, result.boardId);

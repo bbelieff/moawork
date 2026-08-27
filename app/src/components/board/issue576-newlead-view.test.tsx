@@ -5,6 +5,8 @@ import {
   NEW_LEAD_AUTOFILL_COLUMN_KEYS,
   NEW_LEAD_PRIMARY_COLUMN_KEYS,
   NEW_LEAD_TAB,
+  presentNewLeadColumnKeys,
+  presentNewLeadColumns,
 } from "@/lib/default-tabs/new-lead";
 import { selectVisibleColumns } from "./filters";
 
@@ -18,7 +20,7 @@ function column(key: string, index: number): BoardColumn {
 }
 
 describe("Issue #576 신규리드 순서와 표시 컬럼", () => {
-  it("회사명 다음 20개 열은 사용자 확정 순서와 exact이고 자동입력 표시는 편집 가능 출처다", () => {
+  it("회사명 다음 21개 열은 사용자 확정 순서와 exact이고 자동입력 표시는 편집 가능 출처다", () => {
     expect(NEW_LEAD_TAB.columns.slice(0, NEW_LEAD_PRIMARY_COLUMN_KEYS.length).map((entry) => entry.key))
       .toEqual([...NEW_LEAD_PRIMARY_COLUMN_KEYS]);
     expect(NEW_LEAD_TAB.columns.find((entry) => entry.key === "revenue_band")?.label).toBe("3개년매출");
@@ -50,7 +52,24 @@ describe("Issue #576 신규리드 순서와 표시 컬럼", () => {
   it("화면은 회사가 저장한 컬럼 순서를 다시 덮어쓰지 않는다", () => {
     const source = readFileSync(new URL("./BoardWorkspace.tsx", import.meta.url), "utf8");
     expect(source).not.toContain("orderNewLeadColumnsLikeMonday(");
-    expect(source).toContain("selectVisibleColumns(resolvedColumns, filters.visibleColumnKeys)");
+    expect(source).toContain("selectVisibleColumns(resolvedColumns, displayFilters.visibleColumnKeys)");
+  });
+
+  it("과거 저장 뷰 alias를 합성 키로 복원하고 BoardWorkspace에서만 finance projection을 적용한다", () => {
+    expect(presentNewLeadColumnKeys([
+      "owner", "credit_score_ncb", "credit_score_kcb", "revenue_band", "phone",
+    ])).toEqual(["owner", "credit_scores", "revenue_3y_million", "phone"]);
+    const physical = ["credit_score_ncb", "credit_score_kcb", "revenue_band", "revenue_3y_million"].map(column);
+    expect(presentNewLeadColumns(physical).map((entry) => entry.key))
+      .toEqual(["credit_scores", "revenue_3y_million"]);
+    const source = readFileSync(new URL("./BoardWorkspace.tsx", import.meta.url), "utf8");
+    expect(source).toContain("canonicalNewLead ? NEW_LEAD_SAVED_FILTER_PROJECTION : undefined");
+    expect(source).toContain("presentNewLeadSavedFilters(filters)");
+    expect(source).toContain("presentNewLeadDetailLayout(rawBoardDetailLayout)");
+    expect(source).toContain("durableNewLeadColumnKeys(keys)");
+    expect(source).toContain("canonicalNewLead && rawFocusColumnKey");
+    expect(source).toContain("newLeadPresentationKey(rawFocusColumnKey)");
+    expect(source).toContain("legacyFacetLabels={canonicalNewLead ? NEW_LEAD_LEGACY_FACET_LABELS : undefined}");
   });
 
   it("조건부 필수 매출 입력도 라벨 옆 빨간 별표를 보인다", () => {

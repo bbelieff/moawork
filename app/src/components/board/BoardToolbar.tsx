@@ -81,6 +81,7 @@ export function BoardToolbar({
   matched,
   total,
   people,
+  legacyFacetLabels = {},
 }: {
   /** 보드 전체 컬럼(그룹 오버라이드 적용 전) — 필터·정렬 대상은 보드 전역이다. */
   columns: readonly BoardColumn[];
@@ -91,6 +92,8 @@ export function BoardToolbar({
   total: number;
   /** 담당자 선택지 — 헤더 탭과 같은 목록을 그대로 받는다(둘이 어긋나지 않게). */
   people: { value: string; label: string }[];
+  /** presentation에서 숨긴 physical facet이 이미 활성일 때만 보여 주는 clear-only 라벨. */
+  legacyFacetLabels?: Readonly<Record<string, string>>;
 }) {
   // `status` 도 선택지 컬럼이다(BBE-145). BBE-123 이 타입 15종을 넣으면서 select 에서
   // «상태»(버튼으로 바꾸는 단계값)를 분리했는데 이 필터 목록은 그때 같이 안 늘었다.
@@ -107,6 +110,11 @@ export function BoardToolbar({
     : filters.sortKey
       ? [{ columnKey: filters.sortKey, direction: filters.sortDir }]
       : [];
+  const optionColumnKeys = new Set(optionColumns.map((column) => column.key));
+  const activeLegacyFacets = Object.entries(legacyFacetLabels).flatMap(([key, label]) => {
+    const picked = filters.byColumn[key] ?? [];
+    return picked.length > 0 && !optionColumnKeys.has(key) ? [{ key, label, picked }] : [];
+  });
   const sortSummary = activeSorts.map((sort) => {
     const column = columns.find((candidate) => candidate.key === sort.columnKey);
     return `${column?.label ?? sort.columnKey} ${sort.direction === "asc" ? "↑" : "↓"}`;
@@ -220,6 +228,20 @@ export function BoardToolbar({
           </FilterChip>
         );
       })}
+
+      {activeLegacyFacets.map(({ key, label, picked }) => (
+        <FilterChip
+          key={key}
+          label={label}
+          summary={picked.length === 1 ? picked[0] : `${picked.length}개`}
+          active
+          onClear={() => patch({ byColumn: { ...filters.byColumn, [key]: [] } })}
+        >
+          <p className="rounded-lg bg-mw-bg px-3 py-3 text-xs leading-5 text-mw-sub">
+            저장된 뷰의 기존 필터입니다. 값을 유지하거나 선택 해제로 지울 수 있어요.
+          </p>
+        </FilterChip>
+      ))}
 
       <FilterChip
         label="정렬"

@@ -3,12 +3,14 @@ import {
   CREDIT_SCORE_KEYS,
   EXISTING_LOAN_RECORDS_KEY,
   creditScoresFromValues,
+  compareNewLeadFinancialValues,
   existingLoanRecordsFromValues,
   existingLoanRecordsSummary,
   existingLoanProfileFromValues,
   existingLoanSummary,
   formatFoundedDate,
   formatRevenue3yMillion,
+  newLeadFinancialSearchText,
   parseExistingLoanRecords,
   parseCreditScore,
   parseCreditScores,
@@ -101,5 +103,30 @@ describe("신규리드 금융 정보", () => {
     expect(parseRevenue3yMillion("-1").ok).toBe(false);
     expect(parseRevenue3yMillion("1.5").ok).toBe(false);
     expect(formatRevenue3yMillion(1234)).toBe("1,234백만원");
+  });
+
+  it("합성 검색은 신용점수 두 값과 매출 raw·천단위·legacy fallback을 모두 투영한다", () => {
+    expect(newLeadFinancialSearchText("credit_scores", {
+      credit_score_ncb: 812,
+      credit_score_kcb: 745,
+    })).toContain("NCB 812 KCB 745");
+    expect(newLeadFinancialSearchText("revenue_3y_million", {
+      revenue_3y_million: 1234,
+      revenue_band: "10억~30억",
+    })).toBe("1234 1,234 10억~30억");
+    expect(newLeadFinancialSearchText("revenue_3y_million", {
+      revenue_band: "legacy-only",
+    })).toBe("legacy-only");
+    expect(newLeadFinancialSearchText("phone", {})).toBeNull();
+  });
+
+  it("합성 정렬은 NCB→KCB, 매출 숫자 순이며 null·legacy는 방향과 무관하게 마지막이다", () => {
+    const creditLowKcb = { credit_score_ncb: 800, credit_score_kcb: 700 };
+    const creditHighKcb = { credit_score_ncb: 800, credit_score_kcb: 750 };
+    const missingNcb = { credit_score_kcb: 900 };
+    expect(compareNewLeadFinancialValues("credit_scores", creditLowKcb, creditHighKcb)).toBeLessThan(0);
+    expect(compareNewLeadFinancialValues("credit_scores", missingNcb, creditHighKcb, "desc")).toBeGreaterThan(0);
+    expect(compareNewLeadFinancialValues("revenue_3y_million", { revenue_3y_million: 2 }, { revenue_3y_million: 10 })).toBeLessThan(0);
+    expect(compareNewLeadFinancialValues("revenue_3y_million", { revenue_band: "100억 이상" }, { revenue_3y_million: 100 }, "desc")).toBeGreaterThan(0);
   });
 });

@@ -19,17 +19,17 @@ describe("Issue #589 신규리드 금융 셀", () => {
     expect(source).toContain("bg-mw-card");
   });
 
-  it("NCB/KCB 입력은 숫자 1~1000으로 제한하고 일반 입력 표면을 쓴다", () => {
-    const source = readFileSync(new URL("./NewLeadCreditScoreCell.tsx", import.meta.url), "utf8");
-    expect(source).toContain("min={1}");
-    expect(source).toContain("max={1000}");
-    expect(source).toContain("step={1}");
+  it("grouped NCB/KCB는 두 독립 physical intent만 저장하고 generic synthetic write를 만들지 않는다", () => {
+    const source = readFileSync(new URL("./NewLeadCreditScoresCell.tsx", import.meta.url), "utf8");
+    expect(source).toContain('pattern="[0-9,]*"');
     expect(source).toContain("bg-mw-card");
-    expect(source).toContain("lastSubmittedRef");
-    expect(source).toContain("event.currentTarget.value === lastSubmittedRef.current");
-    expect(source).toContain("attemptedValueRef.current = event.currentTarget.value");
-    expect(source).toContain("if (pending || !state.ok");
-    expect(source).not.toContain("lastSubmittedRef.current = event.currentTarget.value");
+    expect(source).toContain("fieldKey={CREDIT_SCORE_KEYS.ncb}");
+    expect(source).toContain("fieldKey={CREDIT_SCORE_KEYS.kcb}");
+    expect(source).toContain('name="fieldKey" value={fieldKey}');
+    expect(source).toContain("saveNewLeadCreditScoreAction");
+    expect(source).not.toContain('value="credit_scores"');
+    expect(source).not.toContain('name="ncb"');
+    expect(source).not.toContain('name="kcb"');
   });
 
   it("회사 상세의 EAV 금융 필드는 canonical deal 전용 저장기로 잘못 보내지 않는다", () => {
@@ -45,9 +45,9 @@ describe("Issue #589 신규리드 금융 셀", () => {
     const source = readFileSync(new URL("./GroupTable.tsx", import.meta.url), "utf8");
     const style = readFileSync(new URL("./table-style.ts", import.meta.url), "utf8");
     expect(source).toContain("<NewLeadLoanCell");
-    expect(source).toContain("<NewLeadCreditScoreCell");
+    expect(source).toContain("<NewLeadCreditScoresCell");
     expect(source).toContain('column.key === EXISTING_LOAN_KEYS.amount');
-    expect(source).toContain('column.key === CREDIT_SCORE_KEYS.ncb');
+    expect(source).toContain('column.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores');
     expect(source).toContain('column.type === "status" ? (');
     expect(source).toContain(') : column.type === "select" ? (');
     expect(source).toContain("event.currentTarget.form?.requestSubmit()");
