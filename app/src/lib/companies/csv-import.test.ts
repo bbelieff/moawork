@@ -66,6 +66,37 @@ describe("고객사 CSV 매핑", () => {
     expect(parseRevenue(undefined)).toBeNull();
   });
 
+  it("CSV 숫자는 raw number로 파싱하고 식별 문자열의 선행 0은 보존한다", () => {
+    const result = mapCsvToCompanies(
+      [{ title: "회사", values: { 전화번호: "001234", 매출액: "1,234.5" } }],
+      ["전화번호", "매출액"],
+    );
+
+    expect(result.mapped[0].input.phone).toBe("001234");
+    expect(result.mapped[0].input.revenue).toBe(1234.5);
+  });
+
+  it("안전 정수 범위를 넘는 매출은 정밀도 손실 없이 거부해 저장값을 만들지 않는다", () => {
+    expect(parseRevenue("9007199254740991")).toBe(Number.MAX_SAFE_INTEGER);
+    expect(parseRevenue("9007199254740991.0")).toBe(Number.MAX_SAFE_INTEGER);
+    expect(parseRevenue("1.2300")).toBe(1.23);
+    expect(parseRevenue("9007199254740992")).toBeNull();
+    expect(parseRevenue("9007199254740993")).toBeNull();
+    expect(parseRevenue("-9007199254740992")).toBeNull();
+    expect(parseRevenue("9007199254740993.0")).toBeNull();
+    expect(parseRevenue("9007199254740991.5")).toBeNull();
+    expect(parseRevenue("0.1234567890123456789")).toBeNull();
+
+    const result = mapCsvToCompanies(
+      [
+        { title: "회사1", values: { 매출액: "9007199254740993.0" } },
+        { title: "회사2", values: { 매출액: "9007199254740991.5" } },
+      ],
+      ["매출액"],
+    );
+    expect(result.mapped.map((row) => row.input.revenue)).toEqual([null, null]);
+  });
+
   it("창업년도는 연도만 있어도 받고, 못 읽으면 null 이다", () => {
     expect(parseFoundedOn("2024")).toBe("2024-01-01");
     expect(parseFoundedOn("2024.03")).toBe("2024-03-01");

@@ -44,6 +44,16 @@ describe("createLedgerCsvExport", () => {
     expect(safeSpreadsheetCell(" normal")).toBe('" normal"');
   });
 
+  it("keeps numbers raw and identifier leading zeroes intact", () => {
+    const result = createLedgerCsvExport([
+      row({ id: "000123", dealId: "000045", amount: 1_500_000, receivedAmount: 0 }),
+    ], { from: "2026-08-01", to: "2026-08-31" });
+
+    expect(result.content).toContain('"000045","000123"');
+    expect(result.content).toContain('"1500000","0","1500000"');
+    expect(result.content).not.toContain('"1,500,000"');
+  });
+
   it("rejects an inverted date range", () => {
     expect(() => createLedgerCsvExport([], { from: "2026-09-01", to: "2026-08-31" })).toThrow(
       "from must not be after to",

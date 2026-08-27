@@ -17,6 +17,14 @@ describe("formatKrw", () => {
     expect(formatKrw(Number.NaN)).toBe(EMPTY);
     expect(formatKrw(Number.POSITIVE_INFINITY)).toBe(EMPTY);
   });
+
+  it("안전 정수 범위 밖의 유한 KRW도 던지지 않고 '—'로 닫는다", () => {
+    expect(() => formatKrw(Number.MAX_SAFE_INTEGER + 1)).not.toThrow();
+    expect(() => formatKrw(-(Number.MAX_SAFE_INTEGER + 1))).not.toThrow();
+    expect(formatKrw(Number.MAX_SAFE_INTEGER + 1)).toBe(EMPTY);
+    expect(formatKrw(-(Number.MAX_SAFE_INTEGER + 1))).toBe(EMPTY);
+    expect(formatKrw(Number.MAX_SAFE_INTEGER)).toBe("9,007,199,254,740,991원");
+  });
 });
 
 describe("formatCount", () => {
@@ -27,6 +35,10 @@ describe("formatCount", () => {
   it("비유한은 '—'", () => {
     expect(formatCount(Number.NaN)).toBe(EMPTY);
     expect(formatCount(null)).toBe(EMPTY);
+  });
+  it("수량이 아닌 음수·소수는 typed 계약에 따라 '—'", () => {
+    expect(formatCount(-1)).toBe(EMPTY);
+    expect(formatCount(1.5)).toBe(EMPTY);
   });
 });
 
@@ -48,6 +60,10 @@ describe("formatPercent", () => {
   it("비유한은 '—'", () => {
     expect(formatPercent(Number.NaN)).toBe(EMPTY);
     expect(formatPercent(null)).toBe(EMPTY);
+  });
+  it("0~1 밖 값은 ratio가 아니므로 '—'", () => {
+    expect(formatPercent(-0.1)).toBe(EMPTY);
+    expect(formatPercent(1.01)).toBe(EMPTY);
   });
 });
 

@@ -9,7 +9,7 @@
  */
 
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
-import { compareCells, formatCell } from "@/lib/boards/cells";
+import { cellSearchText, compareCells } from "@/lib/boards/cells";
 
 /** 담당자 필터의 "미배정" 을 가리키는 예약값 — assigned_to = null. */
 export const UNASSIGNED = "__unassigned__";
@@ -113,7 +113,7 @@ export function activeFilterCount(f: BoardFilterState): number {
 /** 검색 대상 텍스트 — 제목 + 모든 셀의 **표시 텍스트**(옵션 id 가 아니라 라벨). */
 function haystack(row: ItemWithValues, columns: readonly BoardColumn[]): string {
   const cells = columns.map((c) =>
-    formatCell(c.type, row.values[c.key] ?? null, c.options_jsonb?.options),
+    cellSearchText(c.type, row.values[c.key] ?? null, c.options_jsonb?.options),
   );
   return [row.title, ...cells].join(" ").toLowerCase();
 }
