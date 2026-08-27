@@ -17,8 +17,12 @@ import { createRequestBoards } from "@/lib/boards/server";
 import {
   CREDIT_SCORE_KEYS,
   EXISTING_LOAN_RECORDS_KEY,
+  NEW_LEAD_COMPOSITE_FIELD_KEYS,
   parseCreditScore,
+  parseCreditScores,
   parseExistingLoanRecords,
+  parseFoundedDate,
+  parseRevenue3yMillion,
 } from "@/lib/new-lead/financial-profile";
 
 function text(formData: FormData, key: string): string {
@@ -255,6 +259,90 @@ export async function saveNewLeadCreditScoreAction(
     return { ok: true, message: `${label} 점수를 저장했습니다.` };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "신용점수를 저장하지 못했습니다." };
+  }
+}
+
+export async function saveNewLeadCreditScoresAction(
+  _previous: SaveNewLeadFinancialState,
+  formData: FormData,
+): Promise<SaveNewLeadFinancialState> {
+  const ctx = await getSession();
+  const boardId = text(formData, "boardId");
+  const itemId = text(formData, "itemId");
+  if (!boardId || !itemId) return { ok: false, message: "신용점수를 저장할 회사를 확인해 주세요." };
+  const scores = parseCreditScores({ ncb: text(formData, "ncb"), kcb: text(formData, "kcb") });
+  if (!scores.ok) return { ok: false, message: scores.message };
+  const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
+  if (permission.kind !== "allowed") {
+    return { ok: false, message: permission.reason === "permission" ? "신용점수를 저장할 권한이 없습니다." : "권한을 확인하지 못했습니다." };
+  }
+  try {
+    const result = await (await createRequestBoards()).service.setCells(ctx, boardId, itemId, {
+      [CREDIT_SCORE_KEYS.ncb]: scores.value.ncb,
+      [CREDIT_SCORE_KEYS.kcb]: scores.value.kcb,
+    });
+    if (result.errors.length > 0) {
+      return { ok: false, message: result.errors.map((error) => error.message).join(" · ") };
+    }
+    revalidatePath(`/boards/${boardId}`);
+    revalidatePath("/newcust");
+    return { ok: true, message: "NCB와 KCB 점수를 저장했습니다." };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "신용점수를 저장하지 못했습니다." };
+  }
+}
+
+export async function saveNewLeadFoundedDateAction(
+  _previous: SaveNewLeadFinancialState,
+  formData: FormData,
+): Promise<SaveNewLeadFinancialState> {
+  const ctx = await getSession();
+  const boardId = text(formData, "boardId");
+  const itemId = text(formData, "itemId");
+  if (!boardId || !itemId) return { ok: false, message: "창업연월을 저장할 회사를 확인해 주세요." };
+  const founded = parseFoundedDate(text(formData, "foundedDate"));
+  if (!founded.ok) return { ok: false, message: founded.message };
+  const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
+  if (permission.kind !== "allowed") {
+    return { ok: false, message: permission.reason === "permission" ? "창업연월을 저장할 권한이 없습니다." : "권한을 확인하지 못했습니다." };
+  }
+  try {
+    const result = await (await createRequestBoards()).service.setCells(ctx, boardId, itemId, {
+      [NEW_LEAD_COMPOSITE_FIELD_KEYS.foundedDate]: founded.value.value,
+    });
+    if (result.errors.length > 0) return { ok: false, message: result.errors.map((error) => error.message).join(" · ") };
+    revalidatePath(`/boards/${boardId}`);
+    revalidatePath("/newcust");
+    return { ok: true, message: "창업연월을 저장했습니다." };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "창업연월을 저장하지 못했습니다." };
+  }
+}
+
+export async function saveNewLeadRevenue3yAction(
+  _previous: SaveNewLeadFinancialState,
+  formData: FormData,
+): Promise<SaveNewLeadFinancialState> {
+  const ctx = await getSession();
+  const boardId = text(formData, "boardId");
+  const itemId = text(formData, "itemId");
+  if (!boardId || !itemId) return { ok: false, message: "3개년매출을 저장할 회사를 확인해 주세요." };
+  const revenue = parseRevenue3yMillion(text(formData, "revenue3yMillion"));
+  if (!revenue.ok) return { ok: false, message: revenue.message };
+  const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
+  if (permission.kind !== "allowed") {
+    return { ok: false, message: permission.reason === "permission" ? "3개년매출을 저장할 권한이 없습니다." : "권한을 확인하지 못했습니다." };
+  }
+  try {
+    const result = await (await createRequestBoards()).service.setCells(ctx, boardId, itemId, {
+      [NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion]: revenue.value,
+    });
+    if (result.errors.length > 0) return { ok: false, message: result.errors.map((error) => error.message).join(" · ") };
+    revalidatePath(`/boards/${boardId}`);
+    revalidatePath("/newcust");
+    return { ok: true, message: "3개년매출을 저장했습니다." };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "3개년매출을 저장하지 못했습니다." };
   }
 }
 

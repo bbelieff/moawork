@@ -18,6 +18,20 @@ export const CREDIT_SCORE_KEYS = {
   kcb: "credit_score_kcb",
 } as const;
 
+/**
+ * Issue #600 leaf contract.
+ *
+ * These are durable EAV keys, not global number/date formatting rules. The
+ * table/detail integration may present them as composite cells later without
+ * rewriting the values already stored by #589.
+ */
+export const NEW_LEAD_COMPOSITE_FIELD_KEYS = {
+  creditScores: "credit_scores",
+  foundedDate: "founded_month",
+  revenue3yMillion: "revenue_3y_million",
+  legacyRevenueBand: "revenue_band",
+} as const;
+
 export type ExistingLoanProfile = Readonly<{
   provider: string;
   month: string;
@@ -79,6 +93,85 @@ export function parseCreditScore(
     return { ok: false, message: `${label} 신용점수는 1~1000 사이 정수로 입력해 주세요.` };
   }
   return parsed;
+}
+
+export type NewLeadCreditScores = Readonly<{
+  ncb: number | null;
+  kcb: number | null;
+}>;
+
+export function parseCreditScores(input: Readonly<{ ncb: string; kcb: string }>):
+  | { ok: true; value: NewLeadCreditScores }
+  | { ok: false; message: string } {
+  const ncb = parseCreditScore(input.ncb, "NCB");
+  if (!ncb.ok) return ncb;
+  const kcb = parseCreditScore(input.kcb, "KCB");
+  if (!kcb.ok) return kcb;
+  return { ok: true, value: { ncb: ncb.value, kcb: kcb.value } };
+}
+
+export function creditScoresFromValues(
+  values: Readonly<Record<string, CellValue | undefined>>,
+): NewLeadCreditScores {
+  const score = (key: string): number | null => {
+    const value = values[key];
+    if (typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 1000) return value;
+    if (typeof value !== "string") return null;
+    const parsed = parseCreditScore(value, key === CREDIT_SCORE_KEYS.ncb ? "NCB" : "KCB");
+    return parsed.ok ? parsed.value : null;
+  };
+  return { ncb: score(CREDIT_SCORE_KEYS.ncb), kcb: score(CREDIT_SCORE_KEYS.kcb) };
+}
+
+export type FoundedDatePrecision = "month" | "day";
+export type ParsedFoundedDate = Readonly<{ value: string | null; precision: FoundedDatePrecision | null }>;
+
+/** Preserve the precision the user supplied; never guess a day for month-only legacy values. */
+export function parseFoundedDate(raw: string):
+  | { ok: true; value: ParsedFoundedDate }
+  | { ok: false; message: string } {
+  const value = raw.trim();
+  if (!value) return { ok: true, value: { value: null, precision: null } };
+  const month = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(value);
+  if (month) return { ok: true, value: { value, precision: "month" } };
+  const day = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.exec(value);
+  if (day) {
+    const date = new Date(value + "T00:00:00Z");
+    if (!Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value) {
+      return { ok: true, value: { value, precision: "day" } };
+    }
+  }
+  return { ok: false, message: "창업연월은 연도-월 또는 연도-월-일 형식으로 입력해 주세요." };
+}
+
+/** Default board display is month-granular while the durable value keeps an optional day. */
+export function formatFoundedDate(raw: CellValue | undefined): string {
+  if (typeof raw !== "string" || !raw.trim()) return "—";
+  const parsed = parseFoundedDate(raw);
+  if (!parsed.ok || !parsed.value.value) return raw;
+  const [year, month] = parsed.value.value.split("-");
+  return year + ". " + month + ".";
+}
+
+export function parseRevenue3yMillion(raw: string):
+  | { ok: true; value: number | null }
+  | { ok: false; message: string } {
+  const normalized = raw.trim().replaceAll(",", "");
+  if (!normalized) return { ok: true, value: null };
+  if (!/^\d+$/.test(normalized)) {
+    return { ok: false, message: "3개년매출은 백만원 단위의 0 이상 정수로 입력해 주세요." };
+  }
+  const value = Number(normalized);
+  if (!Number.isSafeInteger(value)) {
+    return { ok: false, message: "3개년매출이 저장 가능한 범위를 벗어났습니다." };
+  }
+  return { ok: true, value };
+}
+
+/** Leaf-only adapter. Issue #603 owns the product-wide typed number formatter. */
+export function formatRevenue3yMillion(value: CellValue | undefined): string {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) return "";
+  return value.toLocaleString("ko-KR") + "백만원";
 }
 
 export function parseLoanMonth(

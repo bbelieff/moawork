@@ -48,6 +48,7 @@
 
 import type { FieldOption } from "@/lib/types";
 import { CANONICAL_REGIONS } from "@/lib/structure-packs/region-options";
+import { NEW_LEAD_COMPOSITE_FIELD_KEYS } from "@/lib/new-lead/financial-profile";
 import { NEW_LEAD_REVENUE_BANDS } from "@/lib/new-lead/revenue-bands";
 import { NEW_LEAD_TAB_SOURCE, type DefaultTab, type DefaultTabColumn } from "./types";
 import type { BoardColumn } from "@/lib/boards/types";
@@ -331,6 +332,31 @@ export const NEW_LEAD_DETAIL_ONLY_KEYS = new Set<string>([
   "malicious_absence_notice", "feedback_status", "recall_at", "meeting_at",
   "recontact_on", "contract_fee", "existing_loan_records", "credit_score",
 ]);
+
+/**
+ * #600 leaf-to-integration boundary.
+ *
+ * These are presentation columns only, so this leaf PR does not add duplicate
+ * visible columns or reorder company-customized boards before GroupTable can
+ * render the composite cells. The follow-up integration consumes these specs
+ * and advances the physical default-tab revision in the same change.
+ */
+export const NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS = [
+  {
+    key: NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores,
+    label: "신용점수",
+    type: "text",
+    source: "in",
+    width: 180,
+  },
+  {
+    key: NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion,
+    label: "3개년매출(백만원)",
+    type: "number",
+    source: "in",
+    width: 150,
+  },
+] as const satisfies readonly DefaultTabColumn[];
 
 export const NEW_LEAD_MESSAGE_COLUMN_KEYS = new Set([
   "absence_notice", "consult1_notice", "confirm2_notice", "delay_notice",

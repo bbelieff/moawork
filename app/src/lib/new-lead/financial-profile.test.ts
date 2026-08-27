@@ -1,14 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
+  CREDIT_SCORE_KEYS,
   EXISTING_LOAN_RECORDS_KEY,
+  creditScoresFromValues,
   existingLoanRecordsFromValues,
   existingLoanRecordsSummary,
   existingLoanProfileFromValues,
   existingLoanSummary,
+  formatFoundedDate,
+  formatRevenue3yMillion,
   parseExistingLoanRecords,
   parseCreditScore,
+  parseCreditScores,
+  parseFoundedDate,
   parseLoanMonth,
   parseOptionalNumber,
+  parseRevenue3yMillion,
 } from "./financial-profile";
 
 describe("신규리드 금융 정보", () => {
@@ -60,5 +67,39 @@ describe("신규리드 금융 정보", () => {
     expect(parseCreditScore("1001", "NCB").ok).toBe(false);
     expect(parseCreditScore("850.5", "KCB").ok).toBe(false);
     expect(parseCreditScore("850", "KCB")).toEqual({ ok: true, value: 850 });
+  });
+
+  it("NCB와 KCB를 한 번에 검증하되 기존 durable key 두 개를 그대로 읽는다", () => {
+    expect(parseCreditScores({ ncb: "812", kcb: "" })).toEqual({
+      ok: true,
+      value: { ncb: 812, kcb: null },
+    });
+    expect(parseCreditScores({ ncb: "812", kcb: "1001" }).ok).toBe(false);
+    expect(creditScoresFromValues({
+      [CREDIT_SCORE_KEYS.ncb]: 812,
+      [CREDIT_SCORE_KEYS.kcb]: "745",
+    })).toEqual({ ncb: 812, kcb: 745 });
+  });
+
+  it("창업일의 월/일 정밀도를 보존하고 기본 표시는 연월로 통일한다", () => {
+    expect(parseFoundedDate("2026-08")).toEqual({
+      ok: true,
+      value: { value: "2026-08", precision: "month" },
+    });
+    expect(parseFoundedDate("2024-02-29")).toEqual({
+      ok: true,
+      value: { value: "2024-02-29", precision: "day" },
+    });
+    expect(parseFoundedDate("2025-02-29").ok).toBe(false);
+    expect(formatFoundedDate("2024-02-29")).toBe("2024. 02.");
+    expect(formatFoundedDate("legacy-unknown")).toBe("legacy-unknown");
+  });
+
+  it("3개년매출을 백만원 정수로 읽고 leaf 경계에서 천단위 구분해 표시한다", () => {
+    expect(parseRevenue3yMillion("1,234")).toEqual({ ok: true, value: 1234 });
+    expect(parseRevenue3yMillion("")).toEqual({ ok: true, value: null });
+    expect(parseRevenue3yMillion("-1").ok).toBe(false);
+    expect(parseRevenue3yMillion("1.5").ok).toBe(false);
+    expect(formatRevenue3yMillion(1234)).toBe("1,234백만원");
   });
 });
