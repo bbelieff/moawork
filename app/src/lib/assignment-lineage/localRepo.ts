@@ -4,6 +4,7 @@ import type {
   AssignmentFollower,
   AssignmentLineageSnapshot,
   AssignmentPendingHandoff,
+  AssignmentProjectionRef,
   AssignmentTransition,
   CancelHandoffCommand,
   FollowerCommand,
@@ -21,6 +22,7 @@ export type LocalAssignmentMember = Readonly<{
 
 export type LocalAssignmentDeal = Readonly<{
   orgId: string;
+  boardId: string;
   dealId: string;
   itemId: string;
   assignedTo: string | null;
@@ -28,6 +30,7 @@ export type LocalAssignmentDeal = Readonly<{
 
 type MutableDeal = {
   orgId: string;
+  boardId: string;
   dealId: string;
   itemId: string;
   assignedTo: string | null;
@@ -38,7 +41,7 @@ type MutableDeal = {
   transitions: AssignmentTransition[];
   followers: AssignmentFollower[];
   pendingHandoff: AssignmentPendingHandoff | null;
-  handoffEvents: Array<{ type: "scheduled" | "cancelled" | "executed"; requestId: string }>;
+  handoffEvents: Array<{ type: "scheduled" | "cancelled" | "executed" | "superseded"; requestId: string }>;
 };
 
 type Receipt = { actorId: string; operation: string; payload: string; result: AssignmentCommandResult };
@@ -81,14 +84,15 @@ export class LocalAssignmentLineageRepo implements AssignmentLineagePort {
     return this.members.find((member) => member.orgId === actor.orgId && member.userId === actor.userId && member.active);
   }
 
-  private requireDeal(actor: AssignmentActor, dealId: string, write = false) {
+  private requireDeal(actor: AssignmentActor, ref: AssignmentProjectionRef, write = false) {
     const member = this.member(actor);
-    const deal = this.deals.get(this.key(actor.orgId, dealId));
+    const deal = this.deals.get(this.key(actor.orgId, ref.dealId));
+    const projectionMatches = deal?.boardId === ref.boardId && deal.itemId === ref.itemId;
     const canRead = member && deal && (
       member.canWrite || deal.assignedTo === actor.userId ||
       deal.followers.some((follower) => follower.userId === actor.userId)
     );
-    if (!member || !deal || (write ? !member.canWrite : !canRead)) {
+    if (!member || !deal || !projectionMatches || (write ? !member.canWrite : !canRead)) {
       throw new LocalAssignmentLineageError(write ? "assignment writer required" : "assignment lineage unavailable", "42501");
     }
     return deal;
@@ -117,15 +121,15 @@ export class LocalAssignmentLineageRepo implements AssignmentLineagePort {
     return result;
   }
 
-  async read(actor: AssignmentActor, dealId: string): Promise<AssignmentLineageSnapshot> {
-    const deal = this.requireDeal(actor, dealId);
+  async read(actor: AssignmentActor, ref: AssignmentProjectionRef): Promise<AssignmentLineageSnapshot> {
+    const deal = this.requireDeal(actor, ref);
     const activeFollowers = deal.followers.filter((follower) =>
       this.members.some((member) => member.orgId === actor.orgId && member.userId === follower.userId && member.active));
     const pending = deal.pendingHandoff && this.members.some((member) =>
       member.orgId === actor.orgId && member.userId === deal.pendingHandoff?.toUserId && member.active)
       ? deal.pendingHandoff : null;
     return {
-      orgId: actor.orgId, dealId, itemId: deal.itemId,
+      orgId: actor.orgId, boardId: deal.boardId, dealId: ref.dealId, itemId: deal.itemId,
       baselineAssigneeId: deal.baselineAssigneeId === undefined ? deal.assignedTo : deal.baselineAssigneeId,
       currentAssigneeId: deal.assignedTo, version: deal.version,
       transitions: deal.transitions.map((row) => ({ ...row })),
@@ -135,18 +139,19 @@ export class LocalAssignmentLineageRepo implements AssignmentLineagePort {
   }
 
   async reassign(actor: AssignmentActor, command: ReassignCommand): Promise<AssignmentCommandResult> {
-    const deal = this.requireDeal(actor, command.dealId, true);
-    if (command.assignedTo) this.requireActiveTarget(actor.orgId, command.assignedTo);
-    const payload = { dealId: command.dealId, assignedTo: command.assignedTo,
+    const deal = this.requireDeal(actor, command, true);
+    const payload = { boardId: command.boardId, dealId: command.dealId, itemId: command.itemId, assignedTo: command.assignedTo,
       expectedAssignedTo: command.expectedAssignedTo, expectedVersion: command.expectedVersion };
     const replay = this.replay(actor, command.requestId, "reassign", payload);
     if (replay.result) return replay.result;
+    if (command.assignedTo) this.requireActiveTarget(actor.orgId, command.assignedTo);
     if (deal.assignedTo !== command.expectedAssignedTo || deal.version !== command.expectedVersion) {
       throw new LocalAssignmentLineageError("assignment version conflict", "40001");
     }
     if (deal.baselineAssigneeId === undefined) deal.baselineAssigneeId = deal.assignedTo;
     if (deal.assignedTo !== command.assignedTo) {
       const previous = deal.assignedTo;
+      const previousVersion = deal.version;
       deal.assignedTo = command.assignedTo;
       deal.itemAssignedTo = command.assignedTo;
       deal.ownerProjection = command.assignedTo ?? "미정";
@@ -156,8 +161,11 @@ export class LocalAssignmentLineageRepo implements AssignmentLineagePort {
         toUserId: command.assignedTo, actorUserId: actor.userId,
         requestId: command.requestId, createdAt: this.now(),
       });
-      if (deal.pendingHandoff?.toUserId === command.assignedTo) {
-        deal.handoffEvents.push({ type: "executed", requestId: command.requestId });
+      if (deal.pendingHandoff) {
+        const executesPending = deal.pendingHandoff.fromUserId === previous &&
+          deal.pendingHandoff.toUserId === command.assignedTo &&
+          deal.pendingHandoff.expectedVersion === previousVersion;
+        deal.handoffEvents.push({ type: executesPending ? "executed" : "superseded", requestId: command.requestId });
         deal.pendingHandoff = null;
       }
       const recipients = new Set([command.assignedTo, ...deal.followers.map((follower) => follower.userId)]);
@@ -174,12 +182,13 @@ export class LocalAssignmentLineageRepo implements AssignmentLineagePort {
   }
 
   async setFollower(actor: AssignmentActor, command: FollowerCommand): Promise<AssignmentCommandResult> {
-    const deal = this.requireDeal(actor, command.dealId, true);
-    if (command.follow) this.requireActiveTarget(actor.orgId, command.userId);
+    const deal = this.requireDeal(actor, command, true);
     const operation = command.follow ? "follower_add" : "follower_remove";
-    const payload = { dealId: command.dealId, userId: command.userId, follow: command.follow };
+    const payload = { boardId: command.boardId, dealId: command.dealId, itemId: command.itemId,
+      userId: command.userId, follow: command.follow };
     const replay = this.replay(actor, command.requestId, operation, payload);
     if (replay.result) return replay.result;
+    if (command.follow) this.requireActiveTarget(actor.orgId, command.userId);
     if (command.follow && !deal.followers.some((follower) => follower.userId === command.userId)) {
       deal.followers.push({ userId: command.userId, addedBy: actor.userId, createdAt: this.now() });
     } else if (!command.follow) {
@@ -190,12 +199,12 @@ export class LocalAssignmentLineageRepo implements AssignmentLineagePort {
   }
 
   async scheduleHandoff(actor: AssignmentActor, command: ScheduleHandoffCommand): Promise<AssignmentCommandResult> {
-    const deal = this.requireDeal(actor, command.dealId, true);
-    this.requireActiveTarget(actor.orgId, command.toUserId);
-    const payload = { dealId: command.dealId, toUserId: command.toUserId,
+    const deal = this.requireDeal(actor, command, true);
+    const payload = { boardId: command.boardId, dealId: command.dealId, itemId: command.itemId, toUserId: command.toUserId,
       expectedAssignedTo: command.expectedAssignedTo, expectedVersion: command.expectedVersion };
     const replay = this.replay(actor, command.requestId, "handoff_schedule", payload);
     if (replay.result) return replay.result;
+    this.requireActiveTarget(actor.orgId, command.toUserId);
     if (deal.assignedTo !== command.expectedAssignedTo || deal.version !== command.expectedVersion || deal.pendingHandoff) {
       throw new LocalAssignmentLineageError("assignment version conflict", "40001");
     }
@@ -208,8 +217,9 @@ export class LocalAssignmentLineageRepo implements AssignmentLineagePort {
   }
 
   async cancelHandoff(actor: AssignmentActor, command: CancelHandoffCommand): Promise<AssignmentCommandResult> {
-    const deal = this.requireDeal(actor, command.dealId, true);
-    const payload = { dealId: command.dealId, handoffId: command.handoffId };
+    const deal = this.requireDeal(actor, command, true);
+    const payload = { boardId: command.boardId, dealId: command.dealId, itemId: command.itemId,
+      handoffId: command.handoffId };
     const replay = this.replay(actor, command.requestId, "handoff_cancel", payload);
     if (replay.result) return replay.result;
     if (!deal.pendingHandoff || deal.pendingHandoff.id !== command.handoffId) {

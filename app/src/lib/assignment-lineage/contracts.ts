@@ -1,5 +1,11 @@
 export type AssignmentActor = Readonly<{ orgId: string; userId: string }>;
 
+export type AssignmentProjectionRef = Readonly<{
+  boardId: string;
+  dealId: string;
+  itemId: string;
+}>;
+
 export type AssignmentTransition = Readonly<{
   id: string;
   sequence: number;
@@ -27,6 +33,7 @@ export type AssignmentPendingHandoff = Readonly<{
 
 export type AssignmentLineageSnapshot = Readonly<{
   orgId: string;
+  boardId: string;
   dealId: string;
   itemId: string;
   baselineAssigneeId: string | null;
@@ -46,31 +53,27 @@ export type AssignmentCommandResult = Readonly<{
   handoffId?: string;
 }>;
 
-export type ReassignCommand = Readonly<{
-  dealId: string;
+export type ReassignCommand = AssignmentProjectionRef & Readonly<{
   assignedTo: string | null;
   expectedAssignedTo: string | null;
   expectedVersion: number;
   requestId: string;
 }>;
 
-export type FollowerCommand = Readonly<{
-  dealId: string;
+export type FollowerCommand = AssignmentProjectionRef & Readonly<{
   userId: string;
   follow: boolean;
   requestId: string;
 }>;
 
-export type ScheduleHandoffCommand = Readonly<{
-  dealId: string;
+export type ScheduleHandoffCommand = AssignmentProjectionRef & Readonly<{
   toUserId: string;
   expectedAssignedTo: string | null;
   expectedVersion: number;
   requestId: string;
 }>;
 
-export type CancelHandoffCommand = Readonly<{
-  dealId: string;
+export type CancelHandoffCommand = AssignmentProjectionRef & Readonly<{
   handoffId: string;
   requestId: string;
 }>;
@@ -82,4 +85,3 @@ export const ASSIGNMENT_LINEAGE_RPC = {
   schedule: "schedule_assignment_handoff",
   cancel: "cancel_assignment_handoff",
 } as const;
-

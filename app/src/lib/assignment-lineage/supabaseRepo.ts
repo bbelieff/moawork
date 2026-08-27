@@ -5,6 +5,7 @@ import {
   type AssignmentFollower,
   type AssignmentLineageSnapshot,
   type AssignmentPendingHandoff,
+  type AssignmentProjectionRef,
   type AssignmentTransition,
   type CancelHandoffCommand,
   type FollowerCommand,
@@ -52,9 +53,10 @@ function pending(value: unknown): AssignmentPendingHandoff | null {
   return value as unknown as AssignmentPendingHandoff;
 }
 
-export function parseAssignmentLineageSnapshot(value: unknown, actor: AssignmentActor, dealId: string): AssignmentLineageSnapshot {
-  if (!record(value) || value.orgId !== actor.orgId || value.dealId !== dealId ||
-      !string(value.itemId) || !nullableString(value.baselineAssigneeId) ||
+export function parseAssignmentLineageSnapshot(value: unknown, actor: AssignmentActor, ref: AssignmentProjectionRef): AssignmentLineageSnapshot {
+  if (!record(value) || value.orgId !== actor.orgId || value.boardId !== ref.boardId ||
+      value.dealId !== ref.dealId || value.itemId !== ref.itemId ||
+      !nullableString(value.baselineAssigneeId) ||
       !nullableString(value.currentAssigneeId) || !version(value.version) ||
       !Array.isArray(value.transitions) || !Array.isArray(value.followers) ||
       (value.pendingHandoff !== null && !record(value.pendingHandoff))) {
@@ -69,8 +71,9 @@ export function parseAssignmentLineageSnapshot(value: unknown, actor: Assignment
   }
   return {
     orgId: actor.orgId,
-    dealId,
-    itemId: value.itemId,
+    boardId: ref.boardId,
+    dealId: ref.dealId,
+    itemId: ref.itemId,
     baselineAssigneeId: value.baselineAssigneeId,
     currentAssigneeId: value.currentAssigneeId,
     version: value.version,
@@ -99,15 +102,16 @@ export class SupabaseAssignmentLineageRepo implements AssignmentLineagePort {
     return response.data;
   }
 
-  async read(actor: AssignmentActor, dealId: string) {
+  async read(actor: AssignmentActor, ref: AssignmentProjectionRef) {
     return parseAssignmentLineageSnapshot(await this.call(ASSIGNMENT_LINEAGE_RPC.read, {
-      p_org_id: actor.orgId, p_deal_id: dealId,
-    }), actor, dealId);
+      p_org_id: actor.orgId, p_board_id: ref.boardId, p_deal_id: ref.dealId, p_item_id: ref.itemId,
+    }), actor, ref);
   }
 
   async reassign(actor: AssignmentActor, command: ReassignCommand) {
     return result(await this.call(ASSIGNMENT_LINEAGE_RPC.reassign, {
-      p_org_id: actor.orgId, p_deal_id: command.dealId, p_assigned_to: command.assignedTo,
+      p_org_id: actor.orgId, p_board_id: command.boardId, p_deal_id: command.dealId,
+      p_item_id: command.itemId, p_assigned_to: command.assignedTo,
       p_expected_assigned_to: command.expectedAssignedTo, p_expected_version: command.expectedVersion,
       p_request_id: command.requestId,
     }));
@@ -115,14 +119,16 @@ export class SupabaseAssignmentLineageRepo implements AssignmentLineagePort {
 
   async setFollower(actor: AssignmentActor, command: FollowerCommand) {
     return result(await this.call(ASSIGNMENT_LINEAGE_RPC.follower, {
-      p_org_id: actor.orgId, p_deal_id: command.dealId, p_user_id: command.userId,
+      p_org_id: actor.orgId, p_board_id: command.boardId, p_deal_id: command.dealId,
+      p_item_id: command.itemId, p_user_id: command.userId,
       p_follow: command.follow, p_request_id: command.requestId,
     }));
   }
 
   async scheduleHandoff(actor: AssignmentActor, command: ScheduleHandoffCommand) {
     return result(await this.call(ASSIGNMENT_LINEAGE_RPC.schedule, {
-      p_org_id: actor.orgId, p_deal_id: command.dealId, p_to_user_id: command.toUserId,
+      p_org_id: actor.orgId, p_board_id: command.boardId, p_deal_id: command.dealId,
+      p_item_id: command.itemId, p_to_user_id: command.toUserId,
       p_expected_assigned_to: command.expectedAssignedTo, p_expected_version: command.expectedVersion,
       p_request_id: command.requestId,
     }));
@@ -130,9 +136,9 @@ export class SupabaseAssignmentLineageRepo implements AssignmentLineagePort {
 
   async cancelHandoff(actor: AssignmentActor, command: CancelHandoffCommand) {
     return result(await this.call(ASSIGNMENT_LINEAGE_RPC.cancel, {
-      p_org_id: actor.orgId, p_deal_id: command.dealId, p_handoff_id: command.handoffId,
+      p_org_id: actor.orgId, p_board_id: command.boardId, p_deal_id: command.dealId,
+      p_item_id: command.itemId, p_handoff_id: command.handoffId,
       p_request_id: command.requestId,
     }));
   }
 }
-
