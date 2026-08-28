@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chosung, companyMatches, digitsOnly, rankCompanies, type CompanyPickerCompany, type CompanyPickerRow } from "./search";
+import { chosung, companyMatches, digitsOnly, isChosungQuery, rankCompanies, type CompanyPickerCompany, type CompanyPickerRow } from "./search";
 
 /**
  * 「업체 추가」 검색 — 이 화면의 목적은 «같은 회사를 두 번 적지 않게» 하는 것이다.
@@ -23,6 +23,66 @@ describe("초성", () => {
 
   it("한글이 아닌 글자는 그대로 둔다 — 영문·숫자도 찾을 수 있어야 한다", () => {
     expect(chosung("ABC 가나 123")).toBe("ABC ㄱㄴ 123");
+  });
+});
+
+/**
+ * 초성 과매칭 (#588 ⑤).
+ *
+ * ★ 전에는 «질의까지» 초성으로 낮춰서 견줬다 —
+ *     matchesText 의 셋째 조건 chosung(field).includes(chosung(query))
+ *   그래서 「대성」이 ㄷㅅ 가 되어 「다스산업」·「동서물류」까지 걸렸다.
+ *   찾던 회사가 엉뚱한 것들에 밀려 아래로 내려가고, 사람은 못 찾고 새로 만든다 —
+ *   이 화면이 막으려던 중복을 이 화면이 만든다.
+ *
+ * ★ 그 조건은 «질의가 이미 초성뿐일 때» 둘째 조건과 하는 일이 같았다. 즉 «추가로»
+ *   걸리는 경우는 질의가 완성형일 때뿐이고, 그게 정확히 결함이었다.
+ */
+function named(name: string): CompanyPickerCompany {
+  return { id: name, name, biz_type: null, region: null, owner_name: null, phone: null, email: null, homepage: null };
+}
+
+describe("초성 과매칭", () => {
+  it("★ 다 쓴 이름은 초성으로 낮추지 않는다 — 「대성」이 「다스산업」을 잡으면 안 된다", () => {
+    expect(companyMatches(named("대성산업"), "대성")).toBe(true);
+    expect(companyMatches(named("다스산업"), "대성")).toBe(false);
+    expect(companyMatches(named("동서물류"), "대성")).toBe(false);
+  });
+
+  it("★ 초성 검색은 그대로 살아 있다 — 이게 없으면 «그냥 꺼버린» 수정과 구분이 안 된다", () => {
+    expect(companyMatches(named("대성산업"), "ㄷㅅ")).toBe(true);
+    expect(companyMatches(named("다스산업"), "ㄷㅅ")).toBe(true);
+    expect(companyMatches(named("가나상사"), "ㄱㄴ")).toBe(true);
+    expect(companyMatches(named("가나상사"), "ㄷㅅ")).toBe(false);
+  });
+
+  it("부분 문자열 검색도 그대로다", () => {
+    expect(companyMatches(named("대성산업"), "산업")).toBe(true);
+    expect(companyMatches(named("대성산업"), "성산")).toBe(true);
+  });
+
+  /**
+   * ★ 목록에 «실제로» 미치는 영향을 잰다.
+   *   companyMatches 만 재면 「걸린다/안 걸린다」까지만 보인다. 사람이 겪는 것은
+   *   «찾던 회사가 엉뚱한 것들에 밀려 안 보이는» 것이다.
+   */
+  it("★ 찾던 회사가 엉뚱한 것들에 밀리지 않는다", () => {
+    const rows: CompanyPickerRow[] = [
+      { company: named("다스산업"), dealCount: 5 },
+      { company: named("동서물류"), dealCount: 3 },
+      { company: named("대성산업"), dealCount: 0 },
+    ];
+    // 이력이 많은 회사를 위로 올리는 규칙 때문에, 과매칭이 있으면
+    // 정작 찾던 «대성산업» 이 맨 아래로 밀린다.
+    expect(rankCompanies(rows, "대성").map((row) => row.company.name)).toEqual(["대성산업"]);
+  });
+
+  it("질의가 초성인지 가른다 — 완성형이 하나라도 있으면 아니다", () => {
+    expect(isChosungQuery("ㄷㅅ")).toBe(true);
+    expect(isChosungQuery("ABC")).toBe(true);
+    expect(isChosungQuery("010")).toBe(true);
+    expect(isChosungQuery("대성")).toBe(false);
+    expect(isChosungQuery("ㄷ성")).toBe(false);
   });
 });
 

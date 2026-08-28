@@ -53,14 +53,35 @@ export interface CompanyPickerCompany {
   homepage: string | null;
 }
 
-/** 한 조각이 질의에 걸리나 — 원문·초성·초성끼리 셋 다 본다(목업 `hit` 과 같은 규칙). */
+/**
+ * 질의가 «초성만» 으로 이루어졌나.
+ *
+ * 완성된 한글 음절(가~힣)이 하나라도 있으면 아니다. 영문·숫자·자음은 초성 질의로 친다.
+ */
+export function isChosungQuery(query: string): boolean {
+  return !/[가-힣]/.test(query);
+}
+
+/**
+ * 한 조각이 질의에 걸리나 — 원문과 초성 둘을 본다.
+ *
+ * ★ 전에는 셋째로 `chosung(field).includes(chosung(query))` 가 있었다. 즉 «질의까지»
+ *   초성으로 낮춰서 견줬다. 그게 과매칭의 원인이다 —
+ *     「대성」 → ㄷㅅ  →  「다스산업」(ㄷㅅㅅㅇ)·「동서물류」(ㄷㅅㅁㄹ) 이 다 걸린다.
+ *
+ * ★ 그런데 그 조건은 «질의가 이미 초성뿐일 때» 둘째 조건과 하는 일이 똑같다
+ *   (chosung(query) === query 이므로). 즉 셋째가 «추가로» 걸리는 경우는 질의에
+ *   완성형 글자가 있을 때뿐이고, 그게 정확히 사람이 원하지 않는 매칭이다.
+ *
+ *   그래서 초성끼리 비교는 «질의가 초성일 때만» 한다. 초성 검색 기능은 그대로 살아 있다.
+ */
 function matchesText(field: string, query: string): boolean {
   if (!field) return false;
   const lowerField = field.toLowerCase();
   const lowerQuery = query.toLowerCase();
-  return lowerField.includes(lowerQuery)
-    || chosung(field).includes(query)
-    || chosung(field).includes(chosung(query));
+  if (lowerField.includes(lowerQuery)) return true;
+  // 질의가 초성일 때만 초성으로 견준다. 다 쓴 이름을 초성으로 낮추지 않는다.
+  return isChosungQuery(query) && chosung(field).includes(query);
 }
 
 /** 검색 대상이 되는 «회사 고유정보» — 여기 없는 칸은 검색되지 않는다. */
