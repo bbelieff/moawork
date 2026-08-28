@@ -270,8 +270,61 @@ test("DB 를 안 바꾸는 이슈는 큐에 안 들어간다", async () => {
   assert.deepEqual(logic.migrationQueue(undefined), []);
 });
 
-test("도장 조회를 자르면 «안 봤다» 고 말한다", async () => {
+test("도장 몫을 자르면 «못 본 몫» 을 값으로 돌려준다", async () => {
+  const logic = await boardLogic();
+  const many = Array.from({ length: 43 }, (_, i) => ({ id: `#${i}` }));
+  const cut = logic.stampBudget(many, 40);
+  assert.equal(cut.seen.length, 40);
+  assert.deepEqual(cut.truncated, { seen: 40, total: 43 });
+
+  // 상한 이하면 «잘렸다» 고 말하지 않는다 — 거짓 경보를 만들지 않는다
+  const whole = logic.stampBudget(many.slice(0, 40), 40);
+  assert.equal(whole.seen.length, 40);
+  assert.equal(whole.truncated, null);
+  assert.deepEqual(logic.stampBudget(undefined, 40), { seen: [], truncated: null });
+});
+
+/**
+ * 큐 판정이 «이 저장소의 실제 제목» 을 잡는가.
+ *
+ * ★ 처음 판은 영어 낱말만 봤다(migration|schema). 검수가 실제 재고에 대보니
+ *   열린 이슈 7건 중 «0건» 이 걸렸고, 「마이그레이션이 딸린 PR」을 다루는 이슈
+ *   자기 자신도 안 걸렸다. 테스트는 초록이었다 — 픽스처가 영어였기 때문이다.
+ *   그래서 여기서는 «이 저장소가 실제로 쓰는 한글 제목» 을 픽스처로 쓴다.
+ */
+test("큐가 한글 제목을 잡는다 — 이 저장소의 제목 관례다 (#588 4)", async () => {
+  const logic = await boardLogic();
+  const real = [
+    { id: "#632", title: "P0 구조: 마이그레이션이 딸린 PR 은 머지 직후 «배포됨 · DB 안 됨» 구간이 생긴다", status: "Todo" },
+    { id: "#510", title: "스키마 표류를 원장으로 잡는다", status: "Todo" },
+    { id: "#600", title: "사이드바 활성 탭 색상", status: "Todo" },
+  ];
+  assert.deepEqual(logic.migrationQueue(real).map((i) => i.id), ["#510", "#632"]);
+});
+
+/**
+ * 경보는 «작업 중» 이 아니라 «열린 채» 를 센다.
+ *
+ * ★ 왜 낮췄나 — 이 판의 출처(GitHub 이슈 API)는 Todo·Blocked·Done 셋만 만든다.
+ *   「In Progress」는 Projects 의 Status 칸에 있어 이슈 API 로는 안 보인다.
+ *   그걸 모른 채 ACTIVE_STATES 로 세면 경보가 «영원히 안 뜬다» — 그게 이 카드의 병이었다.
+ */
+test("경보는 열려 있는 DB 변경을 센다. 막힌 건은 뺀다 (#588 4)", async () => {
+  const logic = await boardLogic();
+  const queue = [
+    { id: "#1", title: "migration 141", status: "Todo" },
+    { id: "#2", title: "스키마 정리", status: "Todo" },
+    { id: "#3", title: "마이그레이션 142", status: "Blocked" },
+  ];
+  const contention = logic.migrationContention(queue);
+  assert.deepEqual(contention.map((i) => i.id), ["#1", "#2"]);
+  assert.ok(contention.length > 1, "두 건이 동시에 열려 있으면 경보 조건이다");
+  // 막힌 것만 남으면 경보가 아니다 — 지금 아무도 안 건드리고 있다
+  assert.equal(logic.migrationContention([queue[2]]).length, 0);
+});
+
+test("판정 정규식은 한 벌만 있다 — 두 벌이면 경보와 큐가 다른 것을 센다", async () => {
   const html = await readFile(templateUrl, "utf8");
-  assert.match(html, /STAMP_FETCH_LIMIT/);
-  assert.match(html, /«없음» 이 아니라 «안 봄»/);
+  const copies = [...html.matchAll(/DB 정본\|컬럼 메뉴 DB/g)];
+  assert.equal(copies.length, 1, "migration 제목 정규식은 BOARD_LOGIC 한 곳만 갖는다");
 });
