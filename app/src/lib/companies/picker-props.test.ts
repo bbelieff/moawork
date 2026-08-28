@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildCompanyPickerProps } from "./BoardWorkspace";
+import { buildCompanyPickerProps } from "./picker-props";
 import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
 import { CONTACT_TAB_SOURCE } from "@/lib/default-tabs/types";
-import type { CompanyPickerLoadResult } from "@/lib/companies/picker-server";
+import type { CompanyPickerLoadResult } from "./picker-server";
 
 /**
  * 서버 → 화면 사이의 «아무도 안 보던 세 줄» 을 잰다 (#588 ②).
@@ -38,4 +38,5 @@ describe("업체 추가 목록의 서버→화면 전달", () => {
     expect(buildCompanyPickerProps(CONTACT_TAB_SOURCE, result(), action)).toEqual({});
     expect(buildCompanyPickerProps(CONTRACT_WORK_TAB_SOURCE, result(), undefined)).toEqual({});
   });
+
 });

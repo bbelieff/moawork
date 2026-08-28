@@ -68,14 +68,39 @@ describe("company picker server boundary", () => {
     expect(result.error).toBeNull();
   });
 
-  it("상한 «이하» 면 자르지 않고 잘렸다고 말하지도 않는다", async () => {
+  it("상한 «미만» 이면 자르지 않고 잘렸다고 말하지도 않는다", async () => {
+    const under = Array.from({ length: COMPANY_PICKER_LIMIT - 1 }, (_, i) => ({
+      ...company, id: `company-${i}`, name: `회사${i}`,
+    }));
+    const result = await loadCompanyPickerRows(ctx, {
+      source: { listCompanies: vi.fn(async () => under), listDeals: vi.fn(async () => []) },
+    });
+    expect(result.rows).toHaveLength(COMPANY_PICKER_LIMIT - 1);
+    expect(result.truncated).toBe(false);
+  });
+
+  /**
+   * ★ 정확히 상한만큼 받았을 때 — «딱 그만큼» 인지 «잘려서 그만큼» 인지 구분할 수 없다.
+   *   구분이 안 되면 «모른다» 고 말해야 한다. 안 그러면 DB 가 자른 걸 우리가
+   *   「안 잘렸다」고 단정해 버린다.
+   */
+  it("★ 정확히 상한만큼이면 «모른다» 쪽으로 — 잘렸다고 말한다", async () => {
     const exact = Array.from({ length: COMPANY_PICKER_LIMIT }, (_, i) => ({
       ...company, id: `company-${i}`, name: `회사${i}`,
     }));
     const result = await loadCompanyPickerRows(ctx, {
       source: { listCompanies: vi.fn(async () => exact), listDeals: vi.fn(async () => []) },
     });
-    expect(result.rows).toHaveLength(COMPANY_PICKER_LIMIT);
-    expect(result.truncated).toBe(false);
+    expect(result.truncated).toBe(true);
+  });
+  /**
+   * ★ 상한 값 자체를 잰다 — 500 이었을 때 «없던 회귀» 를 만들었다.
+   *   DB(PostgREST) 기본 max-rows 는 1000 이다. 우리 상한이 그보다 «낮으면»
+   *   회사 501~1000 곳인 조직은 원래 전부 보이던 것을 우리가 새로 자른다.
+   *   그래서 이 값은 1000 «이상» 이어야 한다. 다시 낮추면 이 검사가 막는다.
+   */
+  it("★ 우리 상한이 DB 상한보다 낮으면 안 된다", () => {
+    const POSTGREST_DEFAULT_MAX_ROWS = 1000;
+    expect(COMPANY_PICKER_LIMIT).toBeGreaterThanOrEqual(POSTGREST_DEFAULT_MAX_ROWS);
   });
 });
