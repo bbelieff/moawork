@@ -15,6 +15,8 @@ import type {
   BoardsRepo,
   ColumnPatch,
   ItemPatch,
+  RowMoveRequest,
+  RowMoveReceipt,
   NewBoard,
   NewColumn,
   NewGroup,
@@ -187,6 +189,11 @@ export class BoardsService {
     return col;
   }
 
+  async reorderColumns(ctx: Ctx, boardId: string, columnIds: readonly string[]): Promise<BoardColumn[]> {
+    await this.requireEditableBoard(ctx, boardId);
+    return (await this.repo).reorderColumns(ctx, boardId, columnIds);
+  }
+
   async deleteColumn(ctx: Ctx, boardId: string, columnId: string): Promise<void> {
     await this.requireEditableBoard(ctx, boardId);
     await this.requireColumnInBoard(ctx, boardId, columnId);
@@ -279,6 +286,14 @@ export class BoardsService {
     return this.getItem(ctx, boardId, itemId);
   }
 
+  async moveRowAtomic(ctx: Ctx, boardId: string, request: RowMoveRequest): Promise<RowMoveReceipt> {
+    if (!(ctx.role === "owner" || ctx.role === "admin" || ctx.scope === "all")) {
+      throw new BoardRuleError("전체 행을 볼 수 있는 사용자만 행 순서를 바꿀 수 있습니다");
+    }
+    await this.requireEditableBoard(ctx, boardId);
+    return (await this.repo).moveRowAtomic(ctx, boardId, request);
+  }
+
   async deleteItem(ctx: Ctx, boardId: string, itemId: string): Promise<void> {
     await this.requireEditableBoard(ctx, boardId);
     const repo = await this.repo;
@@ -314,6 +329,7 @@ export class BoardsService {
     boardId: string,
     itemId: string,
     patch: Record<string, CellValue>,
+    requestId = crypto.randomUUID(),
   ): Promise<SetCellsResult> {
     const detail = await this.requireEditableBoardDetail(ctx, boardId);
     const before = await this.getItem(ctx, boardId, itemId);
@@ -331,8 +347,6 @@ export class BoardsService {
       group_id: before.group_id,
     };
 
-    await (await this.repo).setValues(ctx, itemId, values);
-
     // 조작 열 이동 — 패치 순서상 나중 키가 최종 목적지를 정한다.
     const byKey = new Map(detail.columns.map((c) => [c.key, c]));
     let target: string | null = null;
@@ -342,9 +356,17 @@ export class BoardsService {
       const resolved = resolveMoveTarget(col, values[key]);
       if (resolved !== null) target = resolved;
     }
+    const repo = await this.repo;
     if (target !== null && target !== before.group_id) {
-      await (await this.repo).updateItem(ctx, itemId, { group_id: target });
-    }
+      await repo.setValuesAndMoveAtomic(ctx, boardId, {
+        itemId,
+        targetGroupId: target,
+        beforeItemId: null,
+        expectedVersion: detail.board.row_order_version ?? 0,
+        requestId,
+        values,
+      });
+    } else await repo.setValues(ctx, itemId, values);
 
     return { item: await this.getItem(ctx, boardId, itemId), errors, undo };
   }
@@ -361,7 +383,7 @@ export class BoardsService {
     itemId: string,
     undo: CellEditUndo,
   ): Promise<ItemWithValues> {
-    await this.requireEditableBoard(ctx, boardId);
+    const board = await this.requireEditableBoard(ctx, boardId);
     await this.getItem(ctx, boardId, itemId);
     if (
       undo.group_id !== null &&
@@ -369,8 +391,18 @@ export class BoardsService {
     ) {
       throw new NotFoundError("그룹을 찾을 수 없습니다");
     }
-    if (Object.keys(undo.values).length > 0) await (await this.repo).setValues(ctx, itemId, undo.values);
-    await (await this.repo).updateItem(ctx, itemId, { group_id: undo.group_id });
+    const repo = await this.repo;
+    const current = await repo.getItem(ctx, itemId);
+    if (current?.group_id !== undo.group_id) {
+      await repo.setValuesAndMoveAtomic(ctx, boardId, {
+        itemId,
+        targetGroupId: undo.group_id,
+        beforeItemId: null,
+        expectedVersion: board.row_order_version ?? 0,
+        requestId: crypto.randomUUID(),
+        values: undo.values,
+      });
+    } else if (Object.keys(undo.values).length > 0) await repo.setValues(ctx, itemId, undo.values);
     return this.getItem(ctx, boardId, itemId);
   }
 
@@ -395,7 +427,9 @@ export class BoardsService {
         color: o.color ?? null,
         items: items.filter((i) => {
           const v = i.values[col.key];
-          return Array.isArray(v) ? v.includes(o.id) : v === o.id;
+          return Array.isArray(v)
+            ? v.some((entry) => typeof entry === "string" && entry === o.id)
+            : v === o.id;
         }),
       }));
       lanes.push({

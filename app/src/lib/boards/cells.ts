@@ -21,7 +21,7 @@ import {
   canonicalNumberString,
   formatDecimal,
 } from "@/lib/format/number";
-import type { CellValue } from "./types";
+import type { CellValue, FileCellValue } from "./types";
 import {
   checkedOtherInfoCount,
   isOtherInfoValue,
@@ -47,7 +47,7 @@ export interface CellValidation {
 function toCellValue(v: unknown): CellValue {
   if (v === null || v === undefined) return null;
   if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return v;
-  if (Array.isArray(v)) return v.map((x) => String(x));
+  if (Array.isArray(v)) return v as CellValue;
   return String(v);
 }
 
@@ -96,7 +96,10 @@ export function comparableCell(value: CellValue): number | string {
   if (isOtherInfoValue(value)) return checkedOtherInfoCount(value);
   if (typeof value === "number") return value;
   if (typeof value === "boolean") return value ? 1 : 0;
-  if (Array.isArray(value)) return value.join(",");
+  if (Array.isArray(value))
+    return value
+      .map((entry) => (typeof entry === "string" ? entry : (entry as FileCellValue).name))
+      .join(",");
   return String(value ?? "");
 }
 
@@ -125,9 +128,18 @@ export function formatCell(
   if (type === "number" && typeof value === "number") return formatDecimal(value);
   if (type === "money" && typeof value === "number") return formatDecimal(value);
   if (type === "phone" && typeof value === "string") return formatPhone(value);
+  if (type === "file" && Array.isArray(value)) {
+    return value
+      .map((entry) => (typeof entry === "string" ? entry : (entry as FileCellValue).name))
+      .join(", ");
+  }
   if (hasOptions(type) && options) {
     const label = (id: string) => options.find((o) => o.id === id)?.label ?? id;
-    if (Array.isArray(value)) return value.map(label).join(", ");
+    if (Array.isArray(value))
+      return value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map(label)
+        .join(", ");
     if (typeof value === "string") return label(value);
   }
   if (Array.isArray(value)) return value.join(", ");

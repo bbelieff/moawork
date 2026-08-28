@@ -15,6 +15,7 @@ const {
   setCells,
   updateItem,
   listItems,
+  moveRowAtomic,
   notifyBoardItemMoved,
   advanceNewLeadToContact,
   cookieSet,
@@ -26,6 +27,7 @@ const {
     { id: "item-1", group_id: "group-a", sort_order: 0 },
     { id: "item-2", group_id: "group-b", sort_order: 0 },
   ]),
+  moveRowAtomic: vi.fn(async () => ({itemId:"item-1",targetGroupId:"group-b",beforeItemId:null,version:1,replayed:false})),
   notifyBoardItemMoved: vi.fn(async () => 1),
   advanceNewLeadToContact: vi.fn(async () => ({ status: "committed" })),
   cookieSet: vi.fn(),
@@ -51,7 +53,7 @@ vi.mock("@/lib/perm/server", () => ({ recordRiskyAction: async () => ({ ok: true
 vi.mock("@/lib/boards/server", () => ({
   createRequestBoards: async () => ({
     client: graph.client,
-    service: { setCells, updateItem, listItems },
+    service: { setCells, updateItem, listItems, moveRowAtomic },
   }),
 }));
 vi.mock("@/lib/notify/board-actions", () => ({ notifyBoardItemMoved }));
@@ -73,6 +75,7 @@ describe("보드 액션 — 로컬 시드", () => {
     setCells.mockClear();
     updateItem.mockClear();
     listItems.mockClear();
+    moveRowAtomic.mockClear();
     notifyBoardItemMoved.mockClear();
     advanceNewLeadToContact.mockClear();
     cookieSet.mockClear();
@@ -85,7 +88,7 @@ describe("보드 액션 — 로컬 시드", () => {
       itemId: "item-1",
       lane: "group-b",
       groupBy: "status",
-    }))).resolves.toBeUndefined();
+    }))).resolves.toMatchObject({ok:true,version:null});
 
     // 사용자가 누른 그 동작은 실제로 일어났다.
     expect(setCells).toHaveBeenCalledTimes(1);
@@ -98,10 +101,12 @@ describe("보드 액션 — 로컬 시드", () => {
       boardId: "board-1",
       itemId: "item-1",
       groupId: "group-b",
-      index: "0",
-    }))).resolves.toBeUndefined();
+      beforeItemId: "",
+      expectedVersion: "0",
+      requestId: "00000000-0000-4000-8000-000000000100",
+    }))).resolves.toMatchObject({ok:true,version:1});
 
-    expect(updateItem).toHaveBeenCalled();
+    expect(moveRowAtomic).toHaveBeenCalledTimes(1);
     expect(notifyBoardItemMoved).not.toHaveBeenCalled();
   });
 
@@ -119,6 +124,7 @@ describe("보드 액션 — 로컬 시드", () => {
       "board-1",
       "item-1",
       { status: "group-b" },
+      expect.any(String),
     );
   });
 

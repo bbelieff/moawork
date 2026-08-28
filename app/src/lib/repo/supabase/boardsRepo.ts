@@ -4,8 +4,8 @@ import type {
   Board, BoardColumn, BoardGroup, BoardItem, BoardView, CellValue, ItemValue,
 } from "@/lib/boards/types";
 import type {
-  BoardPatch, BoardsRepo, ColumnPatch, DefaultDefinitionState, GroupPatch, ItemPatch, NewBoard, NewColumn,
-  NewGroup, NewItem, NewView, ViewPatch,
+  AtomicValueMoveRequest, BoardPatch, BoardsRepo, ColumnPatch, DefaultDefinitionState, GroupPatch, ItemPatch, NewBoard, NewColumn,
+  NewGroup, NewItem, NewView, RowMoveReceipt, RowMoveRequest, ViewPatch,
 } from "@/lib/boards/store";
 import { slugifyKey } from "@/lib/repo/local/boardsRepo";
 import { isSectionPresetSource } from "@/lib/presets/section-presets";
@@ -136,6 +136,7 @@ export class SupabaseBoardsRepo implements BoardsRepo {
     return columnRow(one<Row>(q.data, q.error));
   }
   async updateColumn(ctx: Ctx, id: string, patch: ColumnPatch): Promise<BoardColumn | undefined> { const dbPatch: Row = {}; if (patch.label !== undefined) dbPatch.label=patch.label; if (patch.source !== undefined) dbPatch.source=patch.source; if (patch.rightPinned !== undefined) dbPatch.right_pinned=patch.rightPinned; if (patch.options !== undefined) dbPatch.options_jsonb=patch.options ? {options:patch.options}:null; if (patch.sort_order !== undefined) dbPatch.sort_order=patch.sort_order; if (patch.width !== undefined) dbPatch.width=patch.width; if (patch.moveRule !== undefined) dbPatch.move_rule_jsonb=patch.moveRule; if (patch.readOnly !== undefined) dbPatch.is_readonly=patch.readOnly; const q=await this.client.from("board_columns").update(dbPatch).eq("org_id",ctx.org.id).eq("id",id).select("*").maybeSingle(); if(q.error) throw new Error(q.error.message); return q.data ? columnRow(q.data as Row):undefined; }
+  async reorderColumns(ctx:Ctx,boardId:string,columnIds:readonly string[]):Promise<BoardColumn[]>{const q=await this.client.rpc("reorder_board_columns_atomic",{p_org_id:ctx.org.id,p_board_id:boardId,p_column_ids:[...columnIds]});if(q.error)throw new Error(q.error.message);return many<Row>(q.data,null).map(columnRow);}
   /**
    * 컬럼 정의를 보관한다 — 셀 값(`item_values`)과 원본 key를 모두 보존한다 (BBE-221).
    *
@@ -183,6 +184,21 @@ export class SupabaseBoardsRepo implements BoardsRepo {
   async getItem(ctx: Ctx,id:string):Promise<BoardItem|undefined>{const q=await this.client.from("items").select("*").eq("org_id",ctx.org.id).eq("id",id).is("deleted_at",null).maybeSingle();if(q.error)throw new Error(q.error.message);return(q.data??undefined)as BoardItem|undefined;}
   async createItem(ctx:Ctx,boardId:string,input:NewItem):Promise<BoardItem>{const rows=await this.listItems(ctx,boardId);const assignedTo=canSeeAll(ctx)?(input.assigned_to??null):ctx.user.id;const q=await this.client.from("items").insert({org_id:ctx.org.id,board_id:boardId,group_id:input.group_id??null,title:input.title,assigned_to:assignedTo,sort_order:rows.length}).select("*").single();const item=one<BoardItem>(q.data,q.error);if(input.values)await this.setValues(ctx,item.id,input.values);return item;}
   async updateItem(ctx:Ctx,id:string,patch:ItemPatch):Promise<BoardItem|undefined>{const{assigned_to,...safePatch}=patch;const q=await this.client.from("items").update({...safePatch,...(assigned_to!==undefined&&canSeeAll(ctx)?{assigned_to}:{}),updated_at:new Date().toISOString()}).eq("org_id",ctx.org.id).eq("id",id).is("deleted_at",null).select("*").maybeSingle();if(q.error)throw new Error(q.error.message);return(q.data??undefined)as BoardItem|undefined;}
+  async moveRowAtomic(ctx:Ctx,boardId:string,request:RowMoveRequest):Promise<RowMoveReceipt>{
+    const q=await this.client.rpc("move_board_row_atomic",{p_org_id:ctx.org.id,p_board_id:boardId,p_item_id:request.itemId,p_target_group_id:request.targetGroupId,p_before_item_id:request.beforeItemId,p_expected_version:request.expectedVersion,p_request_id:request.requestId});
+    if(q.error)throw new Error(q.error.message);
+    const row=(Array.isArray(q.data)?q.data[0]:q.data) as Record<string,unknown>|null;
+    if(!row||typeof row.version!=="number"||typeof row.replayed!=="boolean")throw new Error("행 이동 응답을 확인할 수 없습니다.");
+    return{itemId:String(row.item_id),targetGroupId:row.target_group_id===null?null:String(row.target_group_id),beforeItemId:row.before_item_id===null?null:String(row.before_item_id),version:row.version,replayed:row.replayed};
+  }
+  async setValuesAndMoveAtomic(ctx:Ctx,boardId:string,request:AtomicValueMoveRequest):Promise<RowMoveReceipt>{
+    const q=await this.client.rpc("set_board_item_values_with_atomic_move",{p_org_id:ctx.org.id,p_board_id:boardId,p_item_id:request.itemId,p_values:request.values,p_target_group_id:request.targetGroupId,p_before_item_id:request.beforeItemId,p_expected_version:request.expectedVersion,p_request_id:request.requestId});
+    if(q.error)throw new Error(q.error.message);
+    const row=(Array.isArray(q.data)?q.data[0]:q.data) as Record<string,unknown>|null;
+    if(!row||typeof row.version!=="number"||typeof row.replayed!=="boolean")throw new Error("값과 행 이동 응답을 확인할 수 없습니다.");
+    return{itemId:String(row.item_id),targetGroupId:row.target_group_id===null?null:String(row.target_group_id),beforeItemId:row.before_item_id===null?null:String(row.before_item_id),version:row.version,replayed:row.replayed};
+  }
+  async reconcileDefinitionItemGroup(ctx:Ctx,boardId:string,itemId:string,expectedSourceGroupId:string|null,targetGroupId:string):Promise<void>{const q=await this.client.rpc("reconcile_board_definition_item_group",{p_org_id:ctx.org.id,p_board_id:boardId,p_item_id:itemId,p_expected_source_group_id:expectedSourceGroupId,p_target_group_id:targetGroupId});if(q.error)throw new Error(q.error.message);}
   async deleteItem(ctx:Ctx,boardId:string,id:string):Promise<boolean>{const q=await this.client.from("items").update({deleted_at:new Date().toISOString(),deleted_by:ctx.user.id,updated_at:new Date().toISOString()}).eq("org_id",ctx.org.id).eq("board_id",boardId).eq("id",id).is("deleted_at",null).select("id");if(q.error)throw new Error(q.error.message);return(q.data?.length??0)>0;}
   async restoreItem(ctx:Ctx,boardId:string,id:string):Promise<BoardItem|undefined>{const q=await this.client.from("items").update({deleted_at:null,deleted_by:null,updated_at:new Date().toISOString()}).eq("org_id",ctx.org.id).eq("board_id",boardId).eq("id",id).not("deleted_at","is",null).select("*").maybeSingle();if(q.error)throw new Error(q.error.message);return(q.data??undefined)as BoardItem|undefined;}
   async listValues(ctx:Ctx,itemIds:string[]):Promise<ItemValue[]>{if(itemIds.length===0)return[];const q=await this.client.from("item_values").select("*").eq("org_id",ctx.org.id).in("item_id",itemIds);return many<ItemValue>(q.data,q.error);}

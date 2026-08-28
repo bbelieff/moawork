@@ -24,6 +24,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { renameColumnTitleAction } from "@/app/(app)/boards/title-actions";
 import type {
   BoardColumn,
   CellValue,
@@ -93,6 +94,8 @@ import {
   BOARD_TABLE_HEADER_CELL,
   BOARD_TABLE_ROW,
 } from "./table-style";
+import { BoardInlineTitleEditor } from "./BoardInlineTitleEditor";
+import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
 
 const CELL_INPUT = BOARD_TABLE_CONTROL;
 
@@ -465,7 +468,7 @@ export function BoardCell({
           <select
             name="value"
             multiple
-            defaultValue={Array.isArray(value) ? value : []}
+            defaultValue={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []}
             className={`${CELL_INPUT} h-12`}
             aria-label={column.label}
           >
@@ -539,11 +542,15 @@ export function GroupTable({
   rowDragEnabled,
   cellFlash,
   onColumnDrop,
+  onColumnKeyboardMove=()=>{},
   dragRowId,
   canDropRow,
   onRowDragStart,
   onRowDragEnd,
   onRowDrop,
+  onRowKeyboardMove=()=>{},
+  onRowMoveToGroup=()=>{},
+  groupMoveOptions=[],
   renderRowAction,
   workflowProgressKind = null,
   renderWorkflowTransition,
@@ -597,6 +604,7 @@ export function GroupTable({
   rowDragEnabled: boolean;
   cellFlash: CellFlash | null;
   onColumnDrop: (draggedKey: string, targetKey: string) => void;
+  onColumnKeyboardMove?:(columnKey:string,delta:-1|1)=>void;
   /** 지금 끌고 있는 행 id(다른 그룹의 행일 수 있다) — **표시 전용**. 없으면 null. */
   dragRowId: string | null;
   /** 드롭을 받아도 되는지의 **판정**. 리렌더 타이밍과 무관하게 부모 ref 를 즉시 읽는다. */
@@ -605,6 +613,9 @@ export function GroupTable({
   onRowDragEnd: () => void;
   /** 이 그룹의 index 위치에 놓는다. */
   onRowDrop: (index: number) => void;
+  onRowKeyboardMove?:(rowId:string,direction:"up"|"down")=>void;
+  onRowMoveToGroup?:(rowId:string,groupId:string|null)=>void;
+  groupMoveOptions?:readonly {id:string;name:string}[];
   renderRowAction?: (row: ItemWithValues) => ReactNode;
   /** 화면의 통합 진행현황 셀. 실제 저장은 기존 단계/이동 계약을 그대로 소비한다. */
   workflowProgressKind?: WorkflowProgressKind | null;
@@ -625,13 +636,35 @@ export function GroupTable({
   const dragColRef = useRef<string | null>(null);
   const [dragColKey, setDragColKey] = useState<string | null>(null);
   const [overColKey, setOverColKey] = useState<string | null>(null);
+  const [invalidColKey,setInvalidColKey]=useState<string|null>(null);
   const [overRowIndex, setOverRowIndex] = useState<number | null>(null);
+  const [invalidRowIndex,setInvalidRowIndex]=useState<number|null>(null);
+  const [dropMessage,setDropMessage]=useState<string|null>(null);
 
-  const clearColDrag = () => {
+  const clearColDrag = useCallback(() => {
     dragColRef.current = null;
     setDragColKey(null);
     setOverColKey(null);
-  };
+    setInvalidColKey(null);
+  },[]);
+
+  const clearRowDrop=useCallback(()=>{
+    setOverRowIndex(null);
+    setInvalidRowIndex(null);
+  },[]);
+
+  useEffect(()=>{
+    const clearAll=()=>{
+      dragColRef.current=null;
+      setDragColKey(null);
+      setOverColKey(null);
+      setInvalidColKey(null);
+      clearRowDrop();
+      onRowDragEnd();
+    };
+    window.addEventListener("dragend",clearAll);
+    return()=>window.removeEventListener("dragend",clearAll);
+  },[clearRowDrop,onRowDragEnd]);
 
   const colSpan = columns.length + 1;
 
@@ -708,13 +741,17 @@ export function GroupTable({
   };
 
   const acceptRow = (index: number) => (e: React.DragEvent) => {
-    if (!canDropRow()) return;
+    if (!canDropRow()) {setOverRowIndex(null);setInvalidRowIndex(index);setDropMessage("이 보기에서는 행을 옮길 수 없어요.");return;}
+    if(rows[index]?.id===dragRowId){setOverRowIndex(null);setInvalidRowIndex(index);setDropMessage("같은 행 위에는 놓을 수 없어요.");return;}
     e.preventDefault();
+    e.dataTransfer.dropEffect="move";
+    setInvalidRowIndex(null);
     setOverRowIndex(index);
+    setDropMessage("이 위치로 이동합니다.");
   };
 
   const dropRow = (index: number) => (e: React.DragEvent) => {
-    if (!canDropRow()) return;
+    if (!canDropRow()||rows[index]?.id===dragRowId){clearRowDrop();setDropMessage("이 위치에는 놓을 수 없어요.");return;}
     e.preventDefault();
     setOverRowIndex(null);
     onRowDrop(index);
@@ -722,6 +759,7 @@ export function GroupTable({
 
   return (
     <div data-board-table-format="uniform" className="relative isolate max-h-[70vh] min-w-0 max-w-full overflow-auto">
+      <p className="sr-only" aria-live="polite">{dropMessage}</p>
       <table className="w-full border-collapse text-left">
         <thead>
           <tr>
@@ -746,20 +784,25 @@ export function GroupTable({
                   key={col.id}
                   scope="col"
                   draggable={canManageColumns && !structureLocked}
-                  onDragStart={() => {
-                    if (structureLocked) return;
+                   onDragStart={(event) => {
+                     if (structureLocked) return;
+                     if((event.target as HTMLElement).closest("button,input,select,textarea,a,[role=menu],[contenteditable=true],[data-no-drag]")){event.preventDefault();setOverColKey(null);return;}
+                     claimBoardTransientSurface(`board:${boardId}`,`column-drag:${boardId}`);
                     dragColRef.current = col.key;
                     setDragColKey(col.key);
                   }}
                   onDragEnd={clearColDrag}
-                  onDragOver={(e) => {
-                    if (structureLocked) return;
+                   onDragOver={(e) => {
+                     if (structureLocked) {setOverColKey(null);setInvalidColKey(col.key);setDropMessage("이 컬럼은 구조를 바꿀 수 없어요.");return;}
                     if (!dragColRef.current) return;
+                    if(dragColRef.current===col.key){setOverColKey(null);setInvalidColKey(col.key);setDropMessage("같은 컬럼 위치에는 놓을 수 없어요.");return;}
                     e.preventDefault();
+                    setInvalidColKey(null);
                     setOverColKey(col.key);
                   }}
+                  onDragLeave={(event)=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null)){if(overColKey===col.key)setOverColKey(null);if(invalidColKey===col.key)setInvalidColKey(null);}}}
                   onDrop={(e) => {
-                    if (structureLocked) return;
+                    if (structureLocked) {clearColDrag();return;}
                     const dragged = dragColRef.current;
                     if (!dragged) return;
                     e.preventDefault();
@@ -775,23 +818,17 @@ export function GroupTable({
                   data-view-focus={col.key === focusColumnKey || undefined}
                   data-column-key={col.key}
                   data-right-pinned={col.rightPinned || undefined}
-                  className={`relative sticky top-0 z-[var(--mw-layer-board-header)] min-w-20 ${BOARD_TABLE_HEADER_CELL} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-card"} ${
+                   className={`relative sticky top-0 z-[var(--mw-layer-board-header)] min-w-20 ${BOARD_TABLE_HEADER_CELL} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-card"} ${
                     !canManageColumns || structureLocked
                       ? ""
                       : "cursor-grab active:cursor-grabbing"
                   } ${isTarget ? "bg-mw-tint-blue text-mw-record" : ""} ${
+                    invalidColKey===col.key?"cursor-not-allowed":""
+                  } ${
                     dragColKey === col.key ? "opacity-50" : ""
                   } ${col.rightPinned ? "right-0 border-l-2 border-l-mw-primary text-mw-record" : ""}`}
                 >
                   <span className="flex items-center gap-1">
-                    {canManageColumns && (
-                      <span
-                        aria-hidden="true"
-                        className={structureLocked ? "hidden" : "text-[0.6rem] opacity-40"}
-                      >
-                        ⠿
-                      </span>
-                    )}
                     {canManageColumns && !structureLocked ? (
                       <ColumnContextMenu
                         boardId={boardId}
@@ -801,7 +838,7 @@ export function GroupTable({
                         onArchived={onColumnArchived}
                       >
                         <SourceBadge source={col.source} />
-                        <span className="truncate">{col.label}</span>
+                         <BoardInlineTitleEditor name={col.label} label="컬럼 이름" onSave={(value)=>renameColumnTitleAction(boardId,col.id,value)} className="min-w-0 flex-1 truncate"/>
                       </ColumnContextMenu>
                     ) : (
                       <>
@@ -813,6 +850,7 @@ export function GroupTable({
                   {canManageColumns && !structureLocked && (
                     <span
                       aria-hidden="true"
+                      data-no-drag
                       draggable={false}
                       onMouseDown={startResize(col.id)}
                       onDoubleClick={resetWidth(col.id)}
@@ -820,6 +858,10 @@ export function GroupTable({
                       className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-mw-record/40"
                     />
                   )}
+                  {canManageColumns&&!structureLocked?<span className="sr-only focus-within:not-sr-only">
+                    <button type="button" onClick={()=>onColumnKeyboardMove(col.key,-1)} aria-label={`${col.label} 왼쪽으로 이동`}>왼쪽으로 이동</button>
+                    <button type="button" onClick={()=>onColumnKeyboardMove(col.key,1)} aria-label={`${col.label} 오른쪽으로 이동`}>오른쪽으로 이동</button>
+                  </span>:null}
                 </th>
               );
             })}
@@ -829,7 +871,7 @@ export function GroupTable({
         <tbody>
           {rows.length === 0 && (
             /* 원칙 5 — 빈 상태는 표 안 1줄. 동시에 첫 행의 드롭 자리이기도 하다. */
-            <tr onDragOver={acceptRow(0)} onDrop={dropRow(0)}>
+            <tr onDragOver={acceptRow(0)} onDragLeave={()=>clearRowDrop()} onDrop={dropRow(0)}>
               <td
                 colSpan={colSpan}
                 className={`border-b border-mw-line px-3 py-3 text-xs text-mw-sub ${
@@ -853,30 +895,23 @@ export function GroupTable({
               <tr
                 key={row.id}
                 onDragOver={acceptRow(index)}
+                onDragLeave={(event)=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null)&&overRowIndex===index)clearRowDrop();}}
                 onDrop={dropRow(index)}
                 className={`group ${BOARD_TABLE_ROW} hover:bg-mw-bg ${
                   dragRowId === row.id ? "opacity-40" : ""
-                } ${overRowIndex === index ? "border-t-2 border-t-mw-record" : ""}`}
+                } ${overRowIndex === index ? "border-t-2 border-t-mw-record bg-mw-tint-blue" : ""} ${invalidRowIndex===index?"cursor-not-allowed":""}`}
               >
                 <td
-                  className={`${STICKY_FIRST} ${BOARD_TABLE_BODY_CELL} group-hover:bg-mw-bg`}
+                  draggable={rowDragEnabled}
+                  onDragStart={rowDragEnabled?(event)=>{
+                    if((event.target as HTMLElement).closest("button,input,select,textarea,a,[role=menu],[contenteditable=true],[data-no-drag]")){event.preventDefault();clearRowDrop();setDropMessage("편집 중인 컨트롤에서는 끌 수 없어요.");return;}
+                    claimBoardTransientSurface(`board:${boardId}`,`row-drag:${boardId}`);
+                    event.dataTransfer.effectAllowed="move";onRowDragStart(row.id);
+                  }:undefined}
+                  onDragEnd={()=>{onRowDragEnd();clearRowDrop();setDropMessage(null);}}
+                  className={`${STICKY_FIRST} ${BOARD_TABLE_BODY_CELL} group-hover:bg-mw-bg ${rowDragEnabled?"cursor-grab active:cursor-grabbing":""}`}
                 >
                   <div className="flex items-center gap-1">
-                    {rowDragEnabled && (
-                      <span
-                        draggable
-                        onDragStart={() => onRowDragStart(row.id)}
-                        onDragEnd={() => {
-                          onRowDragEnd();
-                          setOverRowIndex(null);
-                        }}
-                        title="끌어서 행 순서·그룹 이동"
-                        aria-label="행 이동 손잡이"
-                        className="cursor-grab text-[0.7rem] text-mw-sub opacity-30 group-hover:opacity-100 active:cursor-grabbing"
-                      >
-                        ⠿
-                      </span>
-                    )}
 
                     {readOnly ? (
                       <span className="truncate text-xs font-medium text-mw-fg">
@@ -965,6 +1000,11 @@ export function GroupTable({
                         title={row.title}
                       />
                     )}
+                    {rowDragEnabled?<span className="sr-only focus-within:not-sr-only">
+                      <button type="button" onClick={()=>onRowKeyboardMove(row.id,"up")} aria-label={`${row.title} 위로 이동`}>위로 이동</button>
+                      <button type="button" onClick={()=>onRowKeyboardMove(row.id,"down")} aria-label={`${row.title} 아래로 이동`}>아래로 이동</button>
+                      <label><span>그룹으로 이동</span><select aria-label={`${row.title} 이동할 그룹`} defaultValue="" onChange={(event)=>{if(event.target.value)onRowMoveToGroup(row.id,event.target.value);event.currentTarget.value="";}}><option value="">그룹 선택</option>{groupMoveOptions.filter((group)=>group.id!==groupId).map((group)=><option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
+                    </span>:null}
                   </div>
                   {renderRowAction?.(row)}
                 </td>
@@ -1013,12 +1053,10 @@ export function GroupTable({
             /* 마지막 줄 = 새 항목 입력 + 그룹 맨 끝 드롭 자리(원칙 5). */
             <tr
               onDragOver={acceptRow(rows.length)}
+              onDragLeave={()=>clearRowDrop()}
               onDrop={dropRow(rows.length)}
             >
-              <td
-                colSpan={colSpan}
-                className={`px-2 py-1 ${overRowIndex === rows.length ? "bg-mw-tint-blue" : ""}`}
-              >
+              <td className={`${STICKY_FIRST} px-2 py-1 ${overRowIndex === rows.length ? "bg-mw-tint-blue" : ""}`}>
                 {canonicalNewLead && groupId ? (
                   <NewLeadIntakeForm
                     boardId={boardId}
@@ -1043,6 +1081,7 @@ export function GroupTable({
                   />
                 )}
               </td>
+              {columns.map((column)=><td key={column.id} aria-hidden="true" className="border-t border-mw-line bg-mw-card" />)}
             </tr>
           )}
         </tbody>

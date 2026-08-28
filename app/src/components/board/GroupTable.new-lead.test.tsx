@@ -136,6 +136,19 @@ describe("BBE-171 new-lead GroupTable wiring", () => {
     expect(ownerHeader).toContain("cursor-col-resize");
   });
 
+  it.each([
+    ["other-info-real","other_info","기타정보"],
+    ["notice-real:message-action","message_action","메시지 보내기"],
+  ])("presentation column %s exposes no structural command",(id,key,label)=>{
+    const presentation:BoardColumn={...columns[0],id,key,label,type:"text"};
+    const html=render(null,[presentation]);
+    const header=html.match(new RegExp(`<th(?=[^>]*data-column-key="${key}")[\\s\\S]*?<\\/th>`))?.[0]??"";
+    expect(header).not.toContain('draggable="true"');
+    expect(header).not.toContain("컬럼 메뉴");
+    expect(header).not.toContain("cursor-col-resize");
+    expect(header).not.toContain("컬럼 이름 편집");
+  });
+
   it("numeric 매출 컬럼 archive fallback만 구조 제어를 잠그고 restore하면 물리 제어를 되돌린다", () => {
     const bandColumn: BoardColumn = {
       ...columns[0],

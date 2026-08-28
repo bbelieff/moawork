@@ -29,7 +29,9 @@ export function GroupBlock({
   nameEditor,
   orderControls,
   onOrderDragStart,
+  onOrderDragEnd,
   onOrderDrop,
+  canOrderDrop,
   summarySlot,
   children,
 }: {
@@ -50,12 +52,15 @@ export function GroupBlock({
   nameEditor?: ReactNode;
   orderControls?: ReactNode;
   onOrderDragStart?: () => void;
+  onOrderDragEnd?: () => void;
   onOrderDrop?: () => void;
+  canOrderDrop?:()=>boolean;
   /** 보드 공통 설정을 이 그룹의 filtered rows로 계산한 한줄 요약. */
   summarySlot?: ReactNode;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(true);
+  const [dropState,setDropState]=useState<"valid"|"invalid"|null>(null);
   const accent = color ?? "var(--mw-record)";
   void columns;
 
@@ -75,29 +80,36 @@ export function GroupBlock({
     <section data-visual-block="group-table" className="min-w-0 max-w-full rounded-xl border border-mw-line bg-mw-card">
       <details className="min-w-0 max-w-full" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
         <summary
-          onDragOver={onOrderDrop ? (event) => event.preventDefault() : undefined}
+          draggable={Boolean(onOrderDragStart)}
+          onDragStart={onOrderDragStart ? (event) => {
+            if ((event.target as HTMLElement).closest("button,input,select,textarea,a,[role=menu],[contenteditable=true],[data-no-drag]")) {
+              event.preventDefault();
+              return;
+            }
+            onOrderDragStart();
+          } : undefined}
+          onDragEnd={()=>{setDropState(null);onOrderDragEnd?.();}}
+          onDragOver={onOrderDrop ? (event) => {if(canOrderDrop?.()===false){setDropState("invalid");return;}event.preventDefault();event.dataTransfer.dropEffect="move";setDropState("valid");} : undefined}
+          onDragLeave={()=>setDropState(null)}
           onDrop={onOrderDrop ? (event) => {
+            if(canOrderDrop?.()===false){setDropState("invalid");return;}
             event.preventDefault();
+            setDropState(null);
             onOrderDrop();
           } : undefined}
-          className="flex cursor-pointer select-none items-center gap-2 rounded-t-xl px-3 py-2 list-none [&::-webkit-details-marker]:hidden"
+          className={`flex select-none items-center gap-2 rounded-t-xl px-3 py-2 list-none [&::-webkit-details-marker]:hidden ${onOrderDragStart?"cursor-grab active:cursor-grabbing":"cursor-pointer"} ${dropState==="valid"?"border-t-2 border-mw-record bg-mw-tint-blue":dropState==="invalid"?"cursor-not-allowed":""}`}
           style={{
             backgroundColor: `color-mix(in srgb, ${accent} 14%, var(--mw-card))`,
             borderLeft: `3px solid ${accent}`,
           }}
         >
-          {onOrderDragStart && (
-            <button type="button" draggable aria-label={`${name} 그룹 순서 끌기`}
-              onDragStart={onOrderDragStart}
-              className="cursor-grab rounded px-1 text-mw-sub focus:outline-none focus:ring-2 focus:ring-mw-primary">⠿</button>
-          )}
+          <span className="sr-only" aria-live="polite">{dropState==="invalid"?"같은 그룹 위치에는 놓을 수 없어요.":dropState==="valid"?"이 위치로 그룹을 이동합니다.":""}</span>
           <span aria-hidden="true" className="text-[0.6rem] text-mw-sub">
             {open ? "▼" : "▶"}
           </span>
-          <span className="text-sm font-semibold" style={{ color: accent }}>
-            {name}
+          <span className="min-w-0 text-sm font-semibold" style={{ color: accent }}>
+            {nameEditor ?? name}
           </span>
-          {nameEditor}
           <span className="rounded-full bg-mw-card px-2 py-0.5 text-[0.65rem] text-mw-sub">
             {rows.length}건{!open && " · 접힘"}
           </span>

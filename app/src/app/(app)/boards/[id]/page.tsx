@@ -25,6 +25,11 @@ import { loadPermGuards } from "@/lib/perm/guard";
 import { PermissionUnavailable } from "@/components/perm/PermissionUnavailable";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
+import { BoardHeader } from "@/components/board/BoardHeader";
+import { BoardInlineTitleEditor } from "@/components/board/BoardInlineTitleEditor";
+import { NewLeadIntakeForm } from "@/components/board/NewLeadIntakeForm";
+import { renameColumnTitleAction } from "@/app/(app)/boards/title-actions";
+import { reorderColumnsAction } from "@/app/(app)/boards/actions";
 import { BoardTrashPanel } from "@/components/board/BoardTrashPanel";
 import { SavedViewsController } from "@/components/view";
 import {
@@ -118,6 +123,8 @@ export default async function BoardPage({
   const detailMs = performance.now() - startedAt - sessionMs - guardsMs;
 
   const { board, columns, groups } = detail;
+  const canMoveRows = !board.is_system && canEditItems
+    && (ctx.role === "owner" || ctx.role === "admin" || ctx.scope === "all");
   const view = sp.view === "kanban" ? "kanban" : sp.view === "flat" ? "flat" : sp.view === "calendar" ? "calendar" : "table";
   const selectColumns = columns.filter(
     (c) => c.type === "select" || c.type === "multiselect",
@@ -387,18 +394,37 @@ export default async function BoardPage({
     <BoardTrashPanel boardId={id} items={deletedItems} groups={groups} />
   );
 
+  const alternateViewHeader=(
+    <BoardHeader
+      boardId={id}
+      icon={board.icon}
+      name={board.name}
+      description={board.description}
+      people={[]}
+      selected={[]}
+      groups={groups}
+      readOnly={board.is_system||!canEditItems}
+      canEditTitle={!board.is_system&&canManageSummaries}
+      backSlot={backLink}
+      viewSlot={viewToggle}
+      addItemSlot={board.source===NEW_LEAD_TAB_SOURCE&&groups[0]?(
+        <NewLeadIntakeForm
+          variant="header"
+          boardId={id}
+          groupId={groups[0].id}
+          groups={groups.map((group)=>({id:group.id,name:group.name}))}
+          members={memberDirectory}
+          currentUserId={ctx.user.id}
+        />
+      ):undefined}
+    />
+  );
+
   const boardContent = view === "kanban" ? (
     <>
-        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
-          {backLink}
-          <h1 className="flex shrink-0 items-center gap-1.5 text-base font-semibold text-mw-fg">
-            {board.icon && <span aria-hidden="true">{board.icon}</span>}
-            <span>{board.name}</span>
-          </h1>
-          <div className="ml-auto">{viewToggle}</div>
-        </div>
+        {alternateViewHeader}
         {/* 보드 이름 아래 — 목업 head() 순서(이름 → 보기). 테이블 뷰와 같은 위계다(BBE-214). */}
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} />
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
         {boardSettings}
 
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto text-xs">
@@ -410,13 +436,11 @@ export default async function BoardPage({
             그룹
           </Link>
           {selectColumns.map((c) => (
-            <Link
-              key={c.id}
-              href={switchView("kanban", c.key)}
-              className={`shrink-0 rounded-full border px-2.5 py-1 ${groupBy === c.key ? "border-mw-record bg-mw-tint-blue text-mw-record" : "border-mw-line text-mw-body"}`}
-            >
-              {c.label}
-            </Link>
+            <span key={c.id} className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 ${groupBy===c.key?"border-mw-record bg-mw-tint-blue text-mw-record":"border-mw-line text-mw-body"}`}>
+              {!board.is_system&&canManageColumns?<BoardInlineTitleEditor name={c.label} label="컬럼 이름" onSave={(value)=>renameColumnTitleAction(id,c.id,value)}/>:c.label}
+              <Link href={switchView("kanban",c.key)} aria-label={`${c.label} 기준 칸반 보기`} className="text-[0.65rem] text-mw-sub">보기</Link>
+              {!board.is_system&&canManageColumns?<span className="sr-only focus-within:not-sr-only">{([-1,1] as const).map((delta)=>{const ordered=columns.map((column)=>column.id);const from=ordered.indexOf(c.id);const to=Math.max(0,Math.min(ordered.length-1,from+delta));if(from!==to){const [moved]=ordered.splice(from,1);ordered.splice(to,0,moved);}return <form key={delta} action={reorderColumnsAction} className="inline"><input type="hidden" name="boardId" value={id}/><input type="hidden" name="columnIds" value={JSON.stringify(ordered)}/><button type="submit" disabled={from===to} aria-label={`${c.label} ${delta<0?"왼쪽":"오른쪽"}으로 이동`}>{delta<0?"←":"→"}</button></form>;})}</span>:null}
+            </span>
           ))}
         </div>
 
@@ -425,15 +449,16 @@ export default async function BoardPage({
           lanes={lanes}
           groupBy={groupBy}
           readOnly={board.is_system || !canEditItems}
+          rowOrderVersion={board.row_order_version ?? 0}
+          canMoveRows={canMoveRows}
+          canManageSections={canManageSections}
+          isSystem={board.is_system}
         />
     </>
   ) : view === "flat" || view === "calendar" ? (
     <>
-        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
-          {backLink}
-          <h1 className="text-base font-semibold text-mw-fg">{board.icon ? <span aria-hidden="true">{board.icon}</span> : null} {board.name}</h1>
-        </div>
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} renderMode={view} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} />
+        {alternateViewHeader}
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} renderMode={view} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
         {boardSettings}
     </>
   ) : (
@@ -454,7 +479,7 @@ export default async function BoardPage({
       backSlot={backLink}
       viewSlot={viewToggle}
       savedViewsSlot={
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} />
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
       }
       settingsSlot={boardSettings}
       onboardingSlot={board.source === NEW_LEAD_TAB_SOURCE ? (
@@ -465,6 +490,7 @@ export default async function BoardPage({
       canManageColumns={canManageColumns}
       canManageSections={canManageSections}
       canManageSummaries={canManageSummaries}
+      canMoveRows={canMoveRows}
       savedViewActive={Boolean(personRuntime.view)}
       currentUserId={ctx.user.id}
     />

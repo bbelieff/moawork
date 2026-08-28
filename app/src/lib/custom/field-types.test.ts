@@ -190,7 +190,7 @@ describe("field-types: status (범주와 저장은 같지만 옵션 검증 동�
 
 describe("field-types: people (person 과 달리 배열만 허용)", () => {
   it("user id 배열을 정규화하고 중복이 아닌 것만 남긴다", () => {
-    expect(normalizeValue("people", ["u1", "u2"])).toEqual(["u1", "u2"]);
+    expect(normalizeValue("people", ["u1", "u2", "u1"])).toEqual(["u1", "u2"]);
     expect(normalizeValue("people", [])).toBeNull();
     expect(normalizeValue("people", null)).toBeNull();
   });

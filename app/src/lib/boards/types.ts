@@ -33,6 +33,8 @@ export interface Board {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  /** Atomic row-order epoch. Migration 139 owns increments; ordinary item edits never touch it. */
+  row_order_version?: number;
   /** 상세 패널의 보드 기본 배치. 빈 배열은 의도적으로 비어 있는 기본 배치다. */
   detail_layout_jsonb?: DetailLayoutEntry[];
   /** 보드 전체가 공유하는 최대 3개 한줄 요약 설정. URL/저장 뷰와 독립이다. */
@@ -139,12 +141,20 @@ export interface ItemValue {
   phone_normalization_status?: "normalized" | "needs_review";
 }
 
+export interface FileCellValue {
+  path: string;
+  name: string;
+  size: number;
+  mime: string;
+}
+
 /** 셀 값 — jsonb. 컬럼 타입별 정규화는 cells.ts 참조. */
 export type CellValue =
   | string
   | number
   | boolean
   | string[]
+  | FileCellValue[]
   | OtherInfoValue
   | null;
 

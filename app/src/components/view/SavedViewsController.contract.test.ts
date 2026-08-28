@@ -31,6 +31,8 @@ describe("saved view production consumer", () => {
       boardId: "board-a", orgId: "org-a", currentUserId: "user-a",
       columns, rows: [row], renderMode: "flat", canEditItems: true,
       canonicalNewLead: true, memberOptions: [{ id: "user-a", label: "담당자 가" }],
+      groups: [{id:"group-a",org_id:"org-a",board_id:"board-a",name:"접수",color:null,sort_order:0}],
+      rowOrderVersion: 4, canMoveRows: true, canManageColumns: true, canManageSections: true,
     }));
     expect(html.match(/신용점수/g)?.length).toBeGreaterThan(0);
     expect(html.match(/3개년매출\(백만원\)/g)?.length).toBeGreaterThan(0);
@@ -39,6 +41,11 @@ describe("saved view production consumer", () => {
     expect(html).not.toContain('name="fieldKey" value="credit_scores"');
     expect(html).toContain('aria-haspopup="dialog"');
     expect(html).toContain("담당자 가");
+    expect(html).toContain("그룹 이름 편집");
+    expect(html).toContain("컬럼 이름 편집");
+    expect(html).toContain('name="expectedVersion" value="4"');
+    const creditHeader=html.match(/<th(?=[^>]*data-column-key="credit_scores")[\s\S]*?<\/th>/)?.[0]??"";
+    expect(creditHeader).not.toContain("컬럼 이름 편집");
   });
 
   it("mounts all three view kinds and restores saved presentation state", () => {
@@ -69,6 +76,11 @@ describe("saved view production consumer", () => {
     expect(controller).toContain("durableNewLeadSavedViewConfig(nextConfig)");
     expect(controller).toContain("applyFilters(personScopedRows, displayColumns, config.filters, filterProjection)");
     expect(controller).toContain("canonicalNewLead={canonicalNewLead} members={memberOptions}");
+    expect(page).toContain("<BoardHeader");
+    expect(controller).toContain("moveRowAction");
+    expect(controller).toContain("rowMoveIntentRef");
+    expect(controller).toContain("GroupNameEditor");
+    expect(controller).toContain("renameColumnTitleAction");
   });
 
   it("lets a second org member select a shared view without owner-only UPDATE", () => {

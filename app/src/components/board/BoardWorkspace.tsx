@@ -39,6 +39,7 @@ import { BoardHeader } from "./BoardHeader";
 import { BoardToolbar } from "./BoardToolbar";
 import { GroupBlock } from "./GroupBlock";
 import { GroupNameEditor } from "./GroupNameEditor";
+import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
 import { GroupTable } from "./GroupTable";
 import type { MemberPickerMember } from "./MemberPicker";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
@@ -168,6 +169,7 @@ export function BoardWorkspace({
   canManageColumns = false,
   canManageSections = false,
   canManageSummaries = false,
+  canMoveRows = false,
   savedViewActive = false,
   currentUserId,
   cellAction,
@@ -214,6 +216,8 @@ export function BoardWorkspace({
   canManageColumns?: boolean;
   canManageSections?: boolean;
   canManageSummaries?: boolean;
+  /** Whole-group reindex is available only to owner/admin/all-scope sessions. */
+  canMoveRows?: boolean;
   savedViewActive?: boolean;
   /** BBE-239 — 공지사항에서 작성자 본인 삭제 예외를 판정하는 데 쓴다. */
   currentUserId?: string;
@@ -313,6 +317,18 @@ export function BoardWorkspace({
    */
   const dragRowRef = useRef<string | null>(null);
   const [dragRowId, setDragRowId] = useState<string | null>(null);
+  const rowOrderVersionRef = useRef(board.row_order_version ?? 0);
+  const latestRowOrderVersionPropRef = useRef(board.row_order_version ?? 0);
+  const rowMoveInFlightRef = useRef(false);
+  const rowMoveIntentRef=useRef<{key:string;requestId:string;expectedVersion:number}|null>(null);
+  const [rowMovePending,setRowMovePending]=useState(false);
+  const [moveNotice,setMoveNotice]=useState<string|null>(null);
+
+  useEffect(()=>{
+    const next=board.row_order_version??0;
+    latestRowOrderVersionPropRef.current=next;
+    if(!rowMoveInFlightRef.current)rowOrderVersionRef.current=next;
+  },[board.row_order_version]);
 
   const [optimisticRows, moveRowOptimistic] = useOptimistic(rows, rowMoveReducer);
   const displayRows = useMemo(
@@ -325,7 +341,7 @@ export function BoardWorkspace({
 
   const readOnly = board.is_system || !canEditItems;
   const sortActive = filters.sortKey !== "" || (filters.sorts?.length ?? 0) > 0;
-  const rowDragEnabled = !readOnly && !sortActive;
+  const rowDragEnabled = !readOnly && canMoveRows && !sortActive && !rowMovePending;
 
   const [orderedGroups, setOrderedGroups] = useOptimistic(
     [...groups].sort((a, b) => a.sort_order - b.sort_order),
@@ -403,6 +419,18 @@ export function BoardWorkspace({
       await setGroupColumnOrderAction(fd);
     });
   };
+  const handleColumnKeyboardMove=(groupKey:string,fullColumns:BoardColumn[],columnKey:string,delta:number)=>{
+    const keys=fullColumns.map((column)=>column.key);
+    const from=keys.indexOf(columnKey);const to=Math.max(0,Math.min(keys.length-1,from+delta));
+    if(from<0||from===to)return;
+    const [moved]=keys.splice(from,1);keys.splice(to,0,moved);
+    startTransition(async()=>{
+      setOrderOptimistic({groupKey,keys});
+      const fd=new FormData();fd.set("boardId",board.id);fd.set("groupKey",groupKey);
+      fd.set("order",(canonicalNewLead?durableNewLeadColumnKeys(keys):keys).join(","));
+      await setGroupColumnOrderAction(fd);
+    });
+  };
 
   /**
    * 보이는 목록 기준 인덱스 → 그룹 전체 기준 인덱스.
@@ -425,6 +453,7 @@ export function BoardWorkspace({
   const startRowDrag = useCallback((itemId: string) => {
     dragRowRef.current = itemId;
     setDragRowId(itemId);
+    setMoveNotice("이동할 위치를 선택하세요.");
   }, []);
 
   const endRowDrag = useCallback(() => {
@@ -437,6 +466,34 @@ export function BoardWorkspace({
     [rowDragEnabled],
   );
 
+  const persistRowMove = useCallback((itemId:string,groupId:string|null,beforeItemId:string|null,index:number)=>{
+    if(rowMoveInFlightRef.current){setMoveNotice("이전 이동을 저장하고 있어요.");return false;}
+    rowMoveInFlightRef.current=true;
+    setRowMovePending(true);
+    const intentKey=JSON.stringify({itemId,groupId,beforeItemId});
+    if(rowMoveIntentRef.current?.key!==intentKey)rowMoveIntentRef.current={key:intentKey,requestId:crypto.randomUUID(),expectedVersion:rowOrderVersionRef.current};
+    const {requestId,expectedVersion}=rowMoveIntentRef.current;
+    startTransition(async()=>{
+      moveRowOptimistic({itemId,groupId,index});
+      try{
+        const fd=new FormData();
+        fd.set("boardId",board.id);fd.set("itemId",itemId);fd.set("groupId",groupId??"");
+        fd.set("beforeItemId",beforeItemId??"");fd.set("expectedVersion",String(expectedVersion));
+        fd.set("requestId",requestId);fd.set("eventKey",requestId);
+        const result=await moveRowAction(fd);
+        if(result.ok){rowMoveIntentRef.current=null;rowOrderVersionRef.current=Math.max(result.version,latestRowOrderVersionPropRef.current);setMoveNotice(result.replayed?"이미 저장된 이동을 확인했습니다.":"행 순서를 저장했습니다.");}
+        else{if(result.stale)rowMoveIntentRef.current=null;setMoveNotice(result.message);}
+      }catch{
+        setMoveNotice("행 이동을 저장하지 못했어요. 현재 순서를 다시 확인해 주세요.");
+      }finally{
+        rowMoveInFlightRef.current=false;
+        rowOrderVersionRef.current=Math.max(rowOrderVersionRef.current,latestRowOrderVersionPropRef.current);
+        setRowMovePending(false);
+      }
+    });
+    return true;
+  },[board.id,moveRowOptimistic]);
+
   const handleRowDrop = (
     groupId: string | null,
     fullRows: readonly ItemWithValues[],
@@ -447,17 +504,28 @@ export function BoardWorkspace({
     endRowDrag();
     if (!itemId || !rowDragEnabled) return;
 
+    const anchor=visibleRows[visibleIndex];
+    if(anchor?.id===itemId){setMoveNotice("같은 위치에는 놓을 수 없어요.");return;}
+
     const index = toFullIndex(fullRows, visibleRows, visibleIndex, itemId);
-    startTransition(async () => {
-      moveRowOptimistic({ itemId, groupId, index });
-      const fd = new FormData();
-      fd.set("boardId", board.id);
-      fd.set("itemId", itemId);
-      fd.set("groupId", groupId ?? "");
-      fd.set("index", String(index));
-      fd.set("eventKey", crypto.randomUUID());
-      await moveRowAction(fd);
-    });
+    persistRowMove(itemId,groupId,anchor?.id??null,index);
+  };
+
+  const keyboardMoveRow=(rowId:string,groupId:string|null,visibleRows:readonly ItemWithValues[],direction:"up"|"down")=>{
+    if(!rowDragEnabled){setMoveNotice(rowMoveInFlightRef.current?"이전 이동을 저장하고 있어요.":sortActive?"정렬 중에는 행 순서를 바꿀 수 없어요.":"행을 옮길 권한이 없어요.");return;}
+    const at=visibleRows.findIndex((row)=>row.id===rowId);
+    if(at<0)return;
+    const targetIndex=direction==="up"?at-1:at+2;
+    if(targetIndex<0||targetIndex>visibleRows.length){setMoveNotice("더 이동할 수 없어요.");return;}
+    const anchor=visibleRows[targetIndex];
+    const fullRows=blocks.find((block)=>block.group?.id===groupId)?.rows??[];
+    persistRowMove(rowId,groupId,anchor?.id??null,toFullIndex(fullRows,visibleRows,targetIndex,rowId));
+  };
+
+  const keyboardMoveRowToGroup=(rowId:string,targetGroupId:string|null)=>{
+    if(!rowDragEnabled){setMoveNotice(rowMoveInFlightRef.current?"이전 이동을 저장하고 있어요.":"지금은 행을 다른 그룹으로 옮길 수 없어요.");return;}
+    const target=blocks.find((block)=>(block.group?.id??null)===targetGroupId);
+    persistRowMove(rowId,targetGroupId,null,target?.rows.length??0);
   };
 
   return (
@@ -476,6 +544,7 @@ export function BoardWorkspace({
         onSelect={pickAssignee}
         groups={groups}
         readOnly={readOnly}
+        canEditTitle={!board.is_system&&canManageSummaries}
         backSlot={backSlot}
         helpSlot={onboardingSlot}
         viewSlot={viewSlot}
@@ -483,7 +552,8 @@ export function BoardWorkspace({
           <NewLeadIntakeForm
             variant="header"
             boardId={board.id}
-            groupId={groups[0].id}
+             groupId={groups[0].id}
+             groups={groups.map((group)=>({id:group.id,name:group.name}))}
             members={scheduleRecipients}
             currentUserId={currentUserId}
           />
@@ -517,6 +587,7 @@ export function BoardWorkspace({
           정렬이 켜져 있어 행 드래그를 잠갔습니다. 직접 배치하려면 정렬을 «기본 순서»로 되돌리세요.
         </p>
       )}
+      <p className="sr-only" aria-live="polite" role={moveNotice?.includes("못")||moveNotice?.includes("없")?"alert":"status"}>{moveNotice}</p>
 
       {archivedColumnIds.size > 0 ? (
         <div role="status" className="flex items-center justify-between rounded-lg border border-mw-line bg-mw-card px-3 py-2 text-sm shadow">
@@ -602,9 +673,11 @@ export function BoardWorkspace({
               rows={visibleRows}
               presetName={groupPresetName(board.name, block.name)}
               presetChanged={isGroupPresetChanged(optimisticOrder[block.key])}
-              nameEditor={block.group && canManageSections ? <GroupNameEditor boardId={board.id} groupId={block.group.id} name={block.name} /> : undefined}
-              onOrderDragStart={block.group && canManageSections ? () => { draggedGroupRef.current = block.group!.id; } : undefined}
-              onOrderDrop={block.group && canManageSections ? () => dropGroup(block.group!.id) : undefined}
+              nameEditor={block.group && !board.is_system && canManageSections ? <GroupNameEditor boardId={board.id} groupId={block.group.id} name={block.name} /> : undefined}
+              onOrderDragStart={block.group && !board.is_system && canManageSections ? () => { claimBoardTransientSurface(`board:${board.id}`,`group-drag:${board.id}`);draggedGroupRef.current = block.group!.id;setMoveNotice("그룹을 놓을 위치를 선택하세요."); } : undefined}
+              onOrderDragEnd={block.group && !board.is_system && canManageSections ? ()=>{draggedGroupRef.current=null;setMoveNotice(null);} : undefined}
+              onOrderDrop={block.group && !board.is_system && canManageSections ? () => dropGroup(block.group!.id) : undefined}
+              canOrderDrop={block.group&&!board.is_system&&canManageSections?()=>draggedGroupRef.current!==null&&draggedGroupRef.current!==block.group!.id:undefined}
               summarySlot={
                 <BoardSummaryStrip
                   config={summaryConfig}
@@ -623,7 +696,7 @@ export function BoardWorkspace({
                   }
                 />
               }
-              orderControls={block.group && canManageSections ? (
+              orderControls={block.group && !board.is_system && canManageSections ? (
                 <span className="inline-flex" aria-label={`${block.name} 그룹 순서`}>
                   <button type="button" aria-label={`${block.name} 위로 이동`} onClick={() => moveGroup(block.group!.id, -1)} className="rounded px-1 focus:outline-none focus:ring-2 focus:ring-mw-primary">↑</button>
                   <button type="button" aria-label={`${block.name} 아래로 이동`} onClick={() => moveGroup(block.group!.id, 1)} className="rounded px-1 focus:outline-none focus:ring-2 focus:ring-mw-primary">↓</button>
@@ -674,6 +747,7 @@ export function BoardWorkspace({
                 onColumnDrop={(draggedKey, targetKey) =>
                   handleColumnDrop(block.key, resolvedColumns, draggedKey, targetKey)
                 }
+                onColumnKeyboardMove={(columnKey,delta)=>handleColumnKeyboardMove(block.key,resolvedColumns,columnKey,delta)}
                 dragRowId={rowDragEnabled ? dragRowId : null}
                 canDropRow={canDropRow}
                 onRowDragStart={startRowDrag}
@@ -681,6 +755,9 @@ export function BoardWorkspace({
                 onRowDrop={(index) =>
                   handleRowDrop(block.group?.id ?? null, block.rows, visibleRows, index)
                 }
+                onRowKeyboardMove={(rowId,direction)=>keyboardMoveRow(rowId,block.group?.id??null,visibleRows,direction)}
+                onRowMoveToGroup={keyboardMoveRowToGroup}
+                groupMoveOptions={orderedGroups.map((group)=>({id:group.id,name:group.name}))}
                 renderWorkflowTransition={board.source === CONTACT_TAB_SOURCE ? (row) => (
                   workflowTransitionSlot ?? (
                     <ContactPipelineAction

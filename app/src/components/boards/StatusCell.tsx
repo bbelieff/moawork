@@ -58,7 +58,11 @@ export function StatusCell({
   value: CellValue;
   options?: readonly FieldOption[] | null;
 }) {
-  const ids = Array.isArray(value) ? value : typeof value === "string" && value ? [value] : [];
+  const ids = Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : typeof value === "string" && value
+      ? [value]
+      : [];
   if (ids.length === 0) return <EmptyPill />;
 
   return (
