@@ -81,6 +81,7 @@ export function ContractWorkIntakeForm({
   loadError,
   startWorkAction,
   boardId,
+  groupId,
   inputClassName,
 }: {
   rows: readonly CompanyPickerRow[];
@@ -90,6 +91,11 @@ export function ContractWorkIntakeForm({
     formData: FormData,
   ) => Promise<CompanyIntakeActionState>;
   boardId: string;
+  /**
+   * 누른 그룹. 이 값이 없으면 서버가 «맨 위» 그룹에 넣는다(#588).
+   * 「그룹 없음」 블록에서는 null 이고, 그때는 종전과 같이 서버가 첫 그룹을 고른다.
+   */
+  groupId: string | null;
   inputClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -165,6 +171,7 @@ export function ContractWorkIntakeForm({
               {/* 값은 비워 두고 제출 직전에 채운다 — stampRequestId 참조 */}
               <input type="hidden" name="requestId" defaultValue="" />
               <input type="hidden" name="boardId" value={boardId} />
+              {groupId ? <input type="hidden" name="groupId" value={groupId} /> : null}
               <button
                 type="submit"
                 disabled={pending}
