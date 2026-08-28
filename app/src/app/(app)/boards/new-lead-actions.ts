@@ -22,6 +22,7 @@ import {
   parseExistingLoanRecords,
   parseFoundedDate,
   parseRevenue3yMillion,
+  type ExistingLoanRecord,
 } from "@/lib/new-lead/financial-profile";
 
 function text(formData: FormData, key: string): string {
@@ -141,6 +142,14 @@ export async function createNewLeadAction(
 export type AdvanceNewLeadState = Readonly<{ ok: boolean; message: string }>;
 export type SaveNewLeadDetailFieldState = Readonly<{ ok: boolean; message: string }>;
 export type SaveNewLeadFinancialState = Readonly<{ ok: boolean; message: string }>;
+export type SaveNewLeadLoanProfileResult = Readonly<{
+  ok: boolean;
+  message: string;
+  requestId: string;
+  boardId: string;
+  itemId: string;
+  records: readonly ExistingLoanRecord[];
+}>;
 
 const DETAIL_FIELD_PATCH = {
   rep_name: "representative_name",
@@ -201,17 +210,26 @@ export async function saveNewLeadDetailFieldAction(input: {
 export async function saveNewLeadLoanProfileAction(
   _previous: SaveNewLeadFinancialState,
   formData: FormData,
-): Promise<SaveNewLeadFinancialState> {
+): Promise<SaveNewLeadLoanProfileResult> {
   const ctx = await getSession();
   const boardId = text(formData, "boardId");
   const itemId = text(formData, "itemId");
-  if (!boardId || !itemId) return { ok: false, message: "기대출을 저장할 회사를 확인해 주세요." };
+  const requestId = text(formData, "requestId");
+  const failure = (message: string): SaveNewLeadLoanProfileResult => ({
+    ok: false,
+    message,
+    requestId,
+    boardId,
+    itemId,
+    records: [],
+  });
+  if (!boardId || !itemId || !requestId) return failure("기대출 저장 요청을 확인해 주세요.");
   const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
   if (permission.kind !== "allowed") {
-    return { ok: false, message: permission.reason === "permission" ? "기대출을 저장할 권한이 없습니다." : "권한을 확인하지 못했습니다." };
+    return failure(permission.reason === "permission" ? "기대출을 저장할 권한이 없습니다." : "권한을 확인하지 못했습니다.");
   }
   const records = parseExistingLoanRecords(text(formData, "loanRecords"));
-  if (!records.ok) return { ok: false, message: records.message };
+  if (!records.ok) return failure(records.message);
 
   try {
     const graph = await createRequestBoards();
@@ -221,13 +239,20 @@ export async function saveNewLeadLoanProfileAction(
       [EXISTING_LOAN_RECORDS_KEY]: JSON.stringify(records.value),
     });
     if (result.errors.length > 0) {
-      return { ok: false, message: result.errors.map((error) => `${error.label}: ${error.message}`).join(" · ") };
+      return failure(result.errors.map((error) => `${error.label}: ${error.message}`).join(" · "));
     }
     revalidatePath(`/boards/${boardId}`);
     revalidatePath("/newcust");
-    return { ok: true, message: "기대출 정보를 저장했습니다." };
+    return {
+      ok: true,
+      message: "기대출 정보를 저장했습니다.",
+      requestId,
+      boardId,
+      itemId,
+      records: records.value,
+    };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "기대출을 저장하지 못했습니다." };
+    return failure(error instanceof Error ? error.message : "기대출을 저장하지 못했습니다.");
   }
 }
 

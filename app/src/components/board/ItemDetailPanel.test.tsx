@@ -333,6 +333,51 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
     expect(html).toContain('value="확인 필요"');
   });
 
+  it("신규리드 상세 기대출 label은 실제 button id와 연결되고 label click은 그 편집기만 연다", async () => {
+    const loanColumn: BoardColumn = {
+      ...columns[0],
+      id: "col-loans",
+      key: "existing_loan_records",
+      label: "기대출",
+      type: "text",
+    };
+    const loanRow: ItemWithValues = {
+      ...row,
+      deal_id: "deal-a",
+      values: { existing_loan_records: "[]" },
+    };
+    const host = document.createElement("div");
+    document.body.append(host);
+    mountedRoot = createRoot(host);
+    await act(async () => {
+      mountedRoot?.render(
+        <ItemDetailPanel
+          boardId="board-a"
+          row={loanRow}
+          columns={[loanColumn]}
+          boardLayout={[{ key: "existing_loan_records", source: "column", label: "기대출", type: "text" }]}
+          layout={[{ key: "existing_loan_records", source: "column", label: "기대출", type: "text" }]}
+          inherited
+          canEditItems
+          canManageColumns={false}
+          canonicalNewLead
+          defaultOpen
+        />,
+      );
+    });
+    const detailOpener = document.querySelector<HTMLButtonElement>('[aria-label="대한정밀 상세 열기"]');
+    expect(detailOpener).not.toBeNull();
+    await act(async () => detailOpener?.click());
+
+    const label = document.querySelector<HTMLLabelElement>('#detail-field-existing_loan_records label[for="item-a-existing_loan_records"]');
+    const control = document.querySelector<HTMLButtonElement>("#item-a-existing_loan_records");
+    expect(label).not.toBeNull();
+    expect(control).not.toBeNull();
+    expect(document.querySelector('[aria-label="기대출 편집"]')).toBeNull();
+    await act(async () => label?.click());
+    expect(document.querySelectorAll('[aria-label="기대출 편집"]')).toHaveLength(1);
+  });
+
   it("신규리드 상세는 금융 alias를 한 셀씩 렌더하고 unplaced·generic write를 중복 생성하지 않는다", () => {
     const financialColumns: BoardColumn[] = [
       { ...columns[0], id: "col-credit", key: "credit_scores", label: "신용점수", type: "text" },
