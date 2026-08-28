@@ -340,7 +340,15 @@ const BOARD_LOGIC=(()=>{
   *   마이그레이션이 추가된 25일 중 23일(92%)이 하루 2건 이상이었다.
   *   그동안 이 판은 한 번도 경보를 띄우지 않았다.
   */
- const migrationWriters=(prs)=>(prs||[]).filter((pr)=>pr&&pr.state==="OPEN"&&pr.touchesMigrations)
+ const migrationWriters=(prs)=>(prs||[]).filter((pr)=>pr&&pr.state==="OPEN"&&pr.touchesMigrations===true)
+   .sort((a,b)=>(a.number||0)-(b.number||0));
+ /**
+  * 파일 목록이 잘려 «판정할 수 없었던» 열린 PR.
+  *
+  * ★ gh 는 파일 100개에서 조용히 자른다. 목록이 경로 알파벳 순이라 supabase/ 가
+  *   첫 희생자다. 그런 PR 을 «아니다» 로 세면 「있는데 없다」가 된다 — 따로 센다.
+  */
+ const migrationUnknown=(prs)=>(prs||[]).filter((pr)=>pr&&pr.state==="OPEN"&&pr.touchesMigrations===null)
    .sort((a,b)=>(a.number||0)-(b.number||0));
  /**
   * 제목에 DB 이야기가 있는 «열린 이슈» — 보조 신호다.
@@ -369,7 +377,7 @@ const BOARD_LOGIC=(()=>{
   prs.filter((pr)=>pr.state==="OPEN"||String(pr.mergedAt||"").slice(0,10)===today).forEach((pr)=>{if(pr.cardId)ids.add(pr.cardId)});
   return [...ids];
  };
- return {squadLabels,ownerLabels,ownerCoverage,coverage,crossDependencies,releaseState,deliveryStage,boundedDeliveryIds,migrationQueue,migrationWriters,stampBudget};
+ return {squadLabels,ownerLabels,ownerCoverage,coverage,crossDependencies,releaseState,deliveryStage,boundedDeliveryIds,migrationQueue,migrationWriters,migrationUnknown,stampBudget};
 })();
 /* BOARD_LOGIC_END */
 const DONE_STATES=new Set(["Done","Canceled","Duplicate"]);
@@ -614,8 +622,14 @@ function buildDecisions(){
  if(cross.length)decisions.push({tone:"critical",kind:"P0 CROSS-SQUAD",title:"작업반 간 교차 의존 "+cross.length+"건",body:cross.map((x)=>x.issueId+"←"+x.dependencyId+" "+x.source+"←"+x.target).join(" · "),count:cross.length});
  // ★ 정답지로 센다 — 열린 PR 이 supabase/migrations/ 를 실제로 건드리는가.
  //   이슈 «제목» 으로 세던 때는 실제 writer 15건 중 0건을 잡았다. BOARD_LOGIC 주석 참조.
- const migrationActive=BOARD_LOGIC.migrationWriters(state.operations?.pullRequests?.items);
- if(migrationActive.length>1)decisions.push({tone:"critical",kind:"DB 변경 겹침",title:migrationActive.length+"개 PR 이 동시에 DB 를 바꾸고 있습니다",body:migrationActive.map((pr)=>"#"+pr.number+" "+(pr.headRefName||"")).join(" · "),count:migrationActive.length});
+ const prFeed=state.operations?.pullRequests;
+ // ★ 못 읽은 것을 «없음» 으로 읽지 않는다. 조용한 0 이 이 카드가 앓던 병이다.
+ if(prFeed&&(prFeed.available===false||prFeed.migrationScanAvailable===false)){
+  decisions.push({tone:"review",kind:"측정 실패",title:"지금 누가 DB 를 바꾸는지 «셀 수 없습니다»",body:"열린 PR 을 읽지 못했습니다 — 겹침 경보가 «없음» 이 아니라 «모름» 입니다",count:null});
+ }else{
+  const migrationActive=BOARD_LOGIC.migrationWriters(prFeed?.items);
+  if(migrationActive.length>1)decisions.push({tone:"critical",kind:"DB 변경 겹침",title:migrationActive.length+"개 PR 이 동시에 DB 를 바꾸고 있습니다",body:migrationActive.map((pr)=>"#"+pr.number+" "+(pr.headRefName||"")).join(" · "),count:migrationActive.length});
+ }
  state.decisions=decisions;
  document.getElementById("decisions").innerHTML=decisions.length?decisions.map((d)=>'<div class="card decision '+d.tone+'"><div><div class="kind">'+esc(d.kind)+'</div><b>'+esc(d.title)+'</b><p>'+esc(d.body)+'</p></div><div class="count">'+d.count+'</div></div>').join(""):'<div class="card empty">긴급·막힘·검수·소유 공백이 없습니다.</div>';
 }
@@ -661,17 +675,23 @@ function renderSharedGates(){
  gate.innerHTML='<h3>BBE-182 Global Release Gate · '+gateState+'</h3><p>전체 합산: '+state.issues.filter((i)=>i.status==="Done").length+' / '+GOAL_IDS.length+' Done</p><p>Squad coverage: <b class="'+(coverage.ok?'cross-ok':'cross-p0')+'">'+esc(coverageText)+'</b></p><p>Owner coverage: <b class="'+(ownerCoverage.ok?'cross-ok':'cross-p0')+'">'+esc(ownerCoverageText)+'</b></p><p>선행 미완료: '+esc(prereqs.join(" · ")||"0")+'</p><p>Cross-dependency: <b class="'+(cross.length?'cross-p0':'cross-ok')+'">'+cross.length+(cross.length?' · P0 RED':' · 정상')+'</b></p><p>Release PR·CI: '+esc(prCiText(release))+'</p>';
  // ★ 정답지 — 지금 열려 있는 PR 중 supabase/migrations/ 를 «실제로» 건드리는 것.
  //   제목 추측이 아니다. 겹침 경보의 근거는 이것 하나다.
- const writers=BOARD_LOGIC.migrationWriters(state.operations?.pullRequests?.items);
+ const prs=state.operations?.pullRequests;
+ const scanFailed=Boolean(prs)&&(prs.available===false||prs.migrationScanAvailable===false);
+ const writers=BOARD_LOGIC.migrationWriters(prs?.items);
+ const unknown=BOARD_LOGIC.migrationUnknown(prs?.items);
  // 보조 — 아직 PR 이 없는 «계획» 을 보여준다. 이것만으로 「없다」고 말하지 않는다.
  const planned=BOARD_LOGIC.migrationQueue(state.open);
  document.getElementById("migrationQueue").innerHTML='<div class="section-title">지금 DB 를 바꾸는 중 <span class="hint">두 개가 동시에 바꾸면 충돌합니다 · 열린 PR 의 파일로 셉니다</span></div>'
   +(state.stampsTruncated?'<div class="squad-line">도장은 '+state.stampsTruncated.seen+' / '+state.stampsTruncated.total+' 건만 조회했습니다 — 나머지는 «없음» 이 아니라 «안 봄» 입니다</div>':'')
-  +(writers.length>1?'<div class="squad-line hot"><b>DB 변경 겹침</b> '+writers.length+'개 PR 이 동시에 마이그레이션을 담고 있습니다 — '+esc(writers.map((pr)=>"#"+pr.number).join(" · "))+'</div>':'')
+  +(!scanFailed&&writers.length>1?'<div class="squad-line hot"><b>DB 변경 겹침</b> '+writers.length+'개 PR 이 동시에 마이그레이션을 담고 있습니다 — '+esc(writers.map((pr)=>"#"+pr.number).join(" · "))+'</div>':'')
+  +(unknown.length?'<div class="squad-line">파일이 많아 «판정 못 한» 열린 PR '+unknown.length+'건 — '+esc(unknown.map((pr)=>"#"+pr.number).join(" · "))+' <span class="hint">없다는 뜻이 아닙니다</span></div>':'')
   +'<div class="queue">'
-  +(writers.length?writers.map((pr,index)=>'<div class="queue-item"><b>'+(index+1)+'</b><div><p>#'+pr.number+' · '+esc(pr.title)+'</p><small>'+esc(pr.headRefName||"")+' · '+esc(pr.mergeStateStatus||"")+'</small></div><small>'+esc(index===0?"먼저 연 것":"뒤에 연 것")+'</small></div>').join("")
-    :'<div class="empty">마이그레이션을 담은 열린 PR 이 없습니다</div>')
+  +(scanFailed
+    ? '<div class="empty">열린 PR 을 읽지 못했습니다 — 지금은 «셀 수 없습니다»<br><small>«없음» 이 아니라 «모름» 입니다</small></div>'
+    : writers.length?writers.map((pr,index)=>'<div class="queue-item"><b>'+(index+1)+'</b><div><p>#'+pr.number+' · '+esc(pr.title)+'</p><small>'+esc(pr.headRefName||"")+' · '+esc(pr.mergeStateStatus||"")+'</small></div><small>'+esc(index===0?"먼저 연 것":"뒤에 연 것")+'</small></div>').join("")
+      :'<div class="empty">마이그레이션을 담은 열린 PR 이 없습니다</div>')
   +'</div>'
-  +(planned.length?'<div class="squad-line"><b>계획</b> 제목에 DB 이야기가 있는 열린 일 '+planned.length+'건 — '+esc(planned.map((i)=>i.id).join(" · "))+' <span class="hint">아직 PR 없음</span></div>':'');
+  +(planned.length?'<div class="squad-line"><b>계획</b> 제목에 DB 이야기가 있는 열린 일 '+planned.length+'건 — '+esc(planned.map((i)=>i.id).join(" · "))+'</div>':'');
 
 }
 function renderOperations(){

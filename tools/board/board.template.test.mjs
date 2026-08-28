@@ -334,15 +334,45 @@ test("닫힌 PR 과 마이그레이션 없는 PR 은 겹침으로 안 센다", a
 });
 
 /**
- * 정답지가 판까지 «실려 오는가».
- * 서버가 touchesMigrations 를 안 실어 보내면 판은 영원히 「없습니다」를 그린다 —
- * 이 카드가 방금 그 병으로 고장나 있었다.
+ * 정답지 판정을 «행동» 으로 잰다 (검수 P2-b).
+ *
+ * ★ 처음엔 서버 소스를 grep 했다. 그러면 판정을 항상 false 로 만들어도
+ *   39개 검사가 전부 초록이다 — 이 PR 이 세 번 비판한 바로 그 안티패턴이
+ *   서버 쪽에 그대로 남아 있었다. 그래서 판정을 모듈로 빼고 여기서 직접 부른다.
  */
-test("서버가 PR 의 마이그레이션 여부를 실어 보낸다", async () => {
-  const source = await readFile(new URL("../dashboard-server.mjs", templateUrl), "utf8");
-  assert.match(source, /touchesMigrations/);
-  assert.match(source, /supabase\/migrations\//);
-  assert.match(source, /labels,files/, "gh pr list 가 files 를 요청해야 판정할 수 있다");
+test("PR 이 마이그레이션을 담았는지 «파일» 로 판정한다", async () => {
+  const { touchesMigrations, migrationWriterMap } = await import("../migration-writers.mjs");
+
+  assert.equal(touchesMigrations({ files: [{ path: "supabase/migrations/141_x.sql" }], changedFiles: 1 }), true);
+  assert.equal(touchesMigrations({ files: [{ path: "app/src/page.tsx" }], changedFiles: 1 }), false);
+  assert.equal(touchesMigrations({ files: [], changedFiles: 0 }), false);
+
+  // ★ 잘렸으면 «모른다»(null) 다. «아니다»(false) 가 아니다.
+  //   gh 는 파일 100개에서 조용히 자르고, 목록이 경로 알파벳 순이라
+  //   supabase/ 는 app/·docs/·scripts/ 뒤여서 «잘림의 첫 희생자» 다.
+  assert.equal(touchesMigrations({ files: [{ path: "app/a.ts" }], changedFiles: 120 }), null);
+
+  const map = migrationWriterMap([
+    { number: 1, files: [{ path: "supabase/migrations/1.sql" }], changedFiles: 1 },
+    { number: 2, files: [{ path: "docs/x.md" }], changedFiles: 1 },
+  ]);
+  assert.equal(map.get(1), true);
+  assert.equal(map.get(2), false);
+});
+
+/**
+ * 못 읽은 것을 «없음» 으로 읽지 않는다 (검수 P1-4).
+ *
+ * ★ 실패하면 카드가 조용히 「없습니다」를 그렸다. 실패 표시는 «다른 섹션» 에만 떴다.
+ *   그리고 그 실패는 가상이 아니다 — 검수가 실제로 GitHub 504 를 받았다.
+ */
+test("PR 을 못 읽으면 «없음» 이 아니라 «모름» 이라고 말한다", async () => {
+  const html = await readFile(templateUrl, "utf8");
+  assert.match(html, /migrationScanAvailable/, "판이 파일 조회 실패를 «따로» 봐야 한다");
+  assert.match(html, /셀 수 없습니다/);
+  assert.match(html, /«없음» 이 아니라 «모름»/);
+  // 잘려서 판정 못 한 PR 도 «없다» 로 세지 않는다
+  assert.match(html, /없다는 뜻이 아닙니다/);
 });
 
 test("판정 정규식은 한 벌만 있다 — 두 벌이면 경보와 큐가 다른 것을 센다", async () => {
