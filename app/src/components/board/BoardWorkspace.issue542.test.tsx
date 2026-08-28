@@ -54,7 +54,10 @@ describe("Issue #542 canonical new-lead projection", () => {
     expect(html).not.toContain(">상담상황<");
     expect(html).toContain("담당자");
     expect(html).toContain("대한정밀 상세 열기");
-    expect(html).toContain(">연관담당<");
+    // 2026-08-28 — 총괄 지시로 담당자와 연관담당을 «한 칸» 으로 합쳤다(#598).
+    // 표에는 담당자만 선다. 연관담당인 사람들은 담당자 칸을 누르면 나오는
+    // 팝업의 «알림 대상» 과 상세 화면에서 그대로 보고 고친다 — 값은 남는다.
+    expect(html).not.toContain(">연관담당<");
     // Issue #576 — 표는 확정된 고객 정보 열만 유지하고 메시지는 상세/자동화로 이동한다.
     expect(html).not.toContain(">메시지 보내기<");
     expect(html).toContain('class="group h-8 hover:bg-mw-bg');

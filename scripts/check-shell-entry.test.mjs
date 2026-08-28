@@ -4,13 +4,29 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 const [workflow, checkScript, launcher] = await Promise.all([
   readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
   readFile(new URL("./check.sh", import.meta.url), "utf8"),
   readFile(new URL("./run-check-windows.ps1", import.meta.url), "utf8"),
 ]);
-const launcherPath = new URL("./run-check-windows.ps1", import.meta.url).pathname.slice(1).replaceAll("/", "\\");
+/**
+ * ★ fileURLToPath 를 쓴다. `.pathname.slice(1).replaceAll("/", "\\")` 는 안 된다.
+ *
+ *   import.meta.url 은 URL 이라 한글·공백이 퍼센트 인코딩돼 있고, `.pathname` 은
+ *   그걸 «디코딩하지 않는다». 그래서 저장소가 한글 폴더 안에 있으면 이런 경로가 나온다:
+ *
+ *     C:\Users\...\Desktop\%EA%B0%9C%EB%B0%9C%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8\MoaWork\...
+ *
+ *   그 경로로 `pwsh -File` 을 부르면 파일을 못 찾아 사용법 안내를 뱉고 종료 코드가 0이 아니다.
+ *   그러면 이 테스트는 «런처가 잘못됐다» 고 보고한다 — 런처는 멀쩡한데.
+ *
+ *   CI 러너의 작업 폴더는 C:\actions-runner\_work\moawork\moawork 라 전부 ASCII 다.
+ *   인코딩될 글자가 없어서 CI 에서는 이 결함이 드러나지 않았다. 즉 이 검사는
+ *   «경로에 한글이 없는 기계» 에서만 통과했다 — 이 저장소 본체는 `Desktop\개발프로젝트\MoaWork` 다.
+ */
+const launcherPath = fileURLToPath(new URL("./run-check-windows.ps1", import.meta.url));
 
 function cleanTestEnvironment(extra = {}) {
   const env = { ...process.env };

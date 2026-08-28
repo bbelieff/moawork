@@ -12,9 +12,15 @@ test("decision dashboard script compiles and keeps the live data bridge contract
   assert.match(html, /callMcpTool/);
   assert.match(html, /\/api\/operations/);
   assert.match(html, /전체 오픈 작업/);
-  assert.match(html, /지금 도는 워커/);
-  assert.match(html, /멈춤 의심/);
-  assert.match(html, /목업 차이/);
+  // ★ 2026-08-27 — 화면 문구를 쉬운 말로 바꿨다(총괄 지시: "뭔말인지 못알아듣는거 굉장히 많음").
+  //   이 검사들은 «그 자리가 살아 있는가» 를 보는 것이지 «그 낱말이 그대로인가» 가 아니다.
+  //   그래서 바뀐 문구로 갱신한다. 다음에 또 다듬으면 여기도 같이 고친다.
+  assert.match(html, /지금 일하는 중/);
+  assert.match(html, /멈춘 것일 수 있습니다/);
+  assert.match(html, /목업과 다른 곳/);
+  // 진행 지도 — 「도착점·지금 위치·앞길」을 보여주는 자리(AGENTS.md §2.6-②).
+  assert.match(html, /진행 지도/);
+  assert.match(html, /renderJourney/);
   assert.match(html, /층별 달성도/);
   assert.match(html, /연료/);
   assert.match(html, /측정 실패/);
