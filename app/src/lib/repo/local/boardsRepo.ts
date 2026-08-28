@@ -26,6 +26,7 @@ import {
   isGroupLayoutView,
 } from "@/lib/boards/group-layout-store";
 import type {
+  AtomicValueMoveRequest,
   BoardPatch,
   BoardsRepo,
   GroupPatch,
@@ -37,6 +38,8 @@ import type {
   NewGroup,
   NewItem,
   NewView,
+  RowMoveReceipt,
+  RowMoveRequest,
   ViewPatch,
 } from "@/lib/boards/store";
 import { db } from "./store";
@@ -65,6 +68,7 @@ export class LocalBoardsRepo {
   private readonly createdBoardRequests = new Map<string, { input: string; boardId: string }>();
   private readonly reorderedBoardRequests = new Map<string, string>();
   private readonly summaryRequests = new Map<string, { actorId: string; payload: string; result: BoardSummarySettingsReceipt }>();
+  private readonly rowMoveRequests = new Map<string, { actorId: string; payload: string; result: RowMoveReceipt }>();
   // ── 보드 ──
   listBoards(ctx: Ctx): Board[] {
     return db()
@@ -106,6 +110,7 @@ export class LocalBoardsRepo {
       created_at: ts,
       updated_at: ts,
       summary_config_jsonb: [],
+      row_order_version: 0,
     };
     db().boards.push(board);
     this.createdBoardRequests.set(requestKey, { input: payload, boardId: board.id });
@@ -322,6 +327,14 @@ export class LocalBoardsRepo {
     return c;
   }
 
+  reorderColumns(ctx: Ctx, boardId: string, columnIds: readonly string[]): BoardColumn[] {
+    const board=this.getBoard(ctx,boardId);if(!board||board.is_system)return[];
+    const active=this.listColumns(ctx,boardId);
+    if(columnIds.length!==active.length||new Set(columnIds).size!==active.length||columnIds.some((id)=>!active.some((column)=>column.id===id)))throw new Error("컬럼 순서를 확인할 수 없습니다.");
+    const rank=new Map(columnIds.map((id,index)=>[id,index]));for(const column of active)column.sort_order=rank.get(column.id)!;
+    return this.listColumns(ctx,boardId);
+  }
+
   /**
    * 컬럼 정의만 지운다 — 셀 값(`itemValues`)은 남긴다 (BBE-177).
    * 근거와 배경은 supabase 어댑터의 같은 메서드 주석에 적었다. 두 어댑터가 어긋나면
@@ -417,6 +430,102 @@ export class LocalBoardsRepo {
     if (assigned_to !== undefined && canSeeAll(ctx)) i.assigned_to = assigned_to;
     i.updated_at = now();
     return i;
+  }
+
+  moveRowAtomic(ctx: Ctx, boardId: string, request: RowMoveRequest): RowMoveReceipt {
+    const board = this.getBoard(ctx, boardId);
+    if (!board || board.is_system) throw new Error("보드를 찾을 수 없습니다.");
+    if (!canSeeAll(ctx)) throw new Error("전체 행을 볼 수 있는 사용자만 행 순서를 바꿀 수 있습니다.");
+    const requestKey = `${ctx.org.id}:${request.requestId}`;
+    const payload = JSON.stringify({ boardId, ...request });
+    const prior = this.rowMoveRequests.get(requestKey);
+    if (prior) {
+      if (prior.actorId !== ctx.user.id || prior.payload !== payload) {
+        throw new Error("행 이동 요청 식별자가 다른 변경에 사용되었습니다.");
+      }
+      return { ...prior.result, replayed: true };
+    }
+    const currentVersion = board.row_order_version ?? 0;
+    if (request.expectedVersion !== currentVersion) throw new Error("행 순서가 변경되었습니다. 새로고침 후 다시 시도해 주세요.");
+    const moving = db().boardItems.find((item) => item.id === request.itemId
+      && item.org_id === ctx.org.id && item.board_id === boardId && item.deleted_at == null);
+    if (!moving) throw new Error("아이템을 찾을 수 없습니다.");
+    if (request.targetGroupId !== null && !db().boardGroups.some((group) => group.id === request.targetGroupId
+      && group.org_id === ctx.org.id && group.board_id === boardId)) throw new Error("대상 그룹을 찾을 수 없습니다.");
+    if (request.beforeItemId === request.itemId) throw new Error("같은 행 앞에는 놓을 수 없습니다.");
+    const originalTargetIds = db().boardItems
+      .filter((item) => item.org_id === ctx.org.id && item.board_id === boardId && item.deleted_at == null
+        && item.group_id === request.targetGroupId)
+      .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
+      .map((item) => item.id);
+    const target = db().boardItems
+      .filter((item) => item.org_id === ctx.org.id && item.board_id === boardId && item.deleted_at == null
+        && item.group_id === request.targetGroupId && item.id !== request.itemId)
+      .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id));
+    let at = target.length;
+    if (request.beforeItemId !== null) {
+      at = target.findIndex((item) => item.id === request.beforeItemId);
+      if (at < 0) throw new Error("놓을 위치가 변경되었습니다. 새로고침 후 다시 시도해 주세요.");
+    }
+    const sourceGroupId = moving.group_id;
+    target.splice(at, 0, moving);
+    if (sourceGroupId === request.targetGroupId
+      && target.length === originalTargetIds.length
+      && target.every((item,index)=>item.id===originalTargetIds[index])) {
+      return {
+        itemId: request.itemId,
+        targetGroupId: request.targetGroupId,
+        beforeItemId: request.beforeItemId,
+        version: currentVersion,
+        replayed: false,
+      };
+    }
+    const source = sourceGroupId === request.targetGroupId ? [] : db().boardItems
+      .filter((item) => item.org_id === ctx.org.id && item.board_id === boardId && item.deleted_at == null
+        && item.group_id === sourceGroupId && item.id !== request.itemId)
+      .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id));
+    moving.group_id = request.targetGroupId;
+    target.forEach((item, index) => { item.sort_order = index; item.updated_at = now(); });
+    source.forEach((item, index) => { item.sort_order = index; item.updated_at = now(); });
+    board.row_order_version = currentVersion + 1;
+    board.updated_at = now();
+    const result: RowMoveReceipt = {
+      itemId: request.itemId,
+      targetGroupId: request.targetGroupId,
+      beforeItemId: request.beforeItemId,
+      version: board.row_order_version,
+      replayed: false,
+    };
+    this.rowMoveRequests.set(requestKey, { actorId: ctx.user.id, payload, result });
+    return result;
+  }
+
+  setValuesAndMoveAtomic(ctx: Ctx, boardId: string, request: AtomicValueMoveRequest): RowMoveReceipt {
+    const data=db();
+    const itemSnapshot=structuredClone(data.boardItems);
+    const valueSnapshot=structuredClone(data.itemValues);
+    const boardSnapshot=structuredClone(data.boards);
+    const requestKey=`${ctx.org.id}:${request.requestId}`;
+    const priorReceipt=this.rowMoveRequests.get(requestKey);
+    try{
+      const receipt = this.moveRowAtomic(ctx, boardId, request);
+      this.setValues(ctx, request.itemId, request.values);
+      return receipt;
+    }catch(error){
+      data.boardItems=itemSnapshot;
+      data.itemValues=valueSnapshot;
+      data.boards=boardSnapshot;
+      if(priorReceipt)this.rowMoveRequests.set(requestKey,priorReceipt);
+      else this.rowMoveRequests.delete(requestKey);
+      throw error;
+    }
+  }
+
+  reconcileDefinitionItemGroup(ctx:Ctx,boardId:string,itemId:string,expectedSourceGroupId:string|null,targetGroupId:string):void{
+    const board=this.getBoard(ctx,boardId);const item=this.getItem(ctx,itemId);
+    if(!board||board.is_system||!item||item.board_id!==boardId||item.group_id!==expectedSourceGroupId||
+      !(board.source?.startsWith("core.default-tab/")||board.source?.startsWith("pack.")))throw new Error("정본 보드 그룹 조정을 확인할 수 없습니다.");
+    this.moveRowAtomic(ctx,boardId,{itemId,targetGroupId,beforeItemId:null,expectedVersion:board.row_order_version??0,requestId:crypto.randomUUID()});
   }
 
   deleteItem(ctx: Ctx, boardId: string, id: string): boolean {

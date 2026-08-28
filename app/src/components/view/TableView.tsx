@@ -3,7 +3,7 @@ import styles from "./view.module.css";
 
 export interface TableColumn {
   readonly key: string;
-  readonly label: string;
+  readonly label: ReactNode;
 }
 
 /**
@@ -15,6 +15,7 @@ export function TableView<T>({
   rows,
   rowKey,
   renderCell,
+  renderHeader,
   textMode = "single",
   focusColumnKey = null,
   emptyLabel = "조건에 맞는 항목이 없습니다.",
@@ -23,6 +24,7 @@ export function TableView<T>({
   rows: readonly T[];
   rowKey: (row: T) => string;
   renderCell: (row: T, column: TableColumn) => ReactNode;
+  renderHeader?: (column: TableColumn) => ReactNode;
   textMode?: "single" | "wrap";
   focusColumnKey?: string | null;
   emptyLabel?: string;
@@ -34,7 +36,7 @@ export function TableView<T>({
         <thead>
           <tr>
             {columns.map((c) => (
-              <th key={c.key} data-column-key={c.key} data-view-focus={c.key === focusColumnKey || undefined}>{c.label}</th>
+              <th key={c.key} data-column-key={c.key} data-view-focus={c.key === focusColumnKey || undefined}>{renderHeader?renderHeader(c):c.label}</th>
             ))}
           </tr>
         </thead>

@@ -366,7 +366,9 @@ const SPECS: Record<FieldType, FieldTypeSpec> = {
     normalize: (raw) => {
       if (raw === null || raw === undefined || raw === "") return null;
       if (!Array.isArray(raw)) throw new ValidationError("people: user id 배열이어야 합니다");
-      const out = raw.filter((x): x is string => typeof x === "string" && x !== "");
+      const out = [
+        ...new Set(raw.filter((x): x is string => typeof x === "string" && x !== "")),
+      ];
       return out.length === 0 ? null : out;
     },
     isEmpty: emptyDefault,

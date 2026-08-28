@@ -91,6 +91,27 @@ export interface ItemPatch {
   sort_order?: number;
 }
 
+export interface RowMoveRequest {
+  itemId: string;
+  targetGroupId: string | null;
+  /** Insert immediately before this active target-group item; null appends. */
+  beforeItemId: string | null;
+  expectedVersion: number;
+  requestId: string;
+}
+
+export interface RowMoveReceipt {
+  itemId: string;
+  targetGroupId: string | null;
+  beforeItemId: string | null;
+  version: number;
+  replayed: boolean;
+}
+
+export interface AtomicValueMoveRequest extends RowMoveRequest {
+  values: Record<string, CellValue>;
+}
+
 export interface NewView {
   name: string;
   kind: BoardViewKind;
@@ -130,6 +151,7 @@ export interface BoardsRepo {
   listArchivedColumns(ctx: Ctx, boardId: string): Promise<BoardColumn[]>;
   createColumn(ctx: Ctx, boardId: string, input: NewColumn): Promise<BoardColumn>;
   updateColumn(ctx: Ctx, id: string, patch: ColumnPatch): Promise<BoardColumn | undefined>;
+  reorderColumns(ctx: Ctx, boardId: string, columnIds: readonly string[]): Promise<BoardColumn[]>;
   deleteColumn(ctx: Ctx, id: string): Promise<boolean>;
   deleteColumn(ctx: Ctx, boardId: string, id: string): Promise<boolean>;
   restoreColumn(ctx: Ctx, boardId: string, id: string): Promise<BoardColumn | undefined>;
@@ -140,6 +162,9 @@ export interface BoardsRepo {
   getItem(ctx: Ctx, id: string): Promise<BoardItem | undefined>;
   createItem(ctx: Ctx, boardId: string, input: NewItem): Promise<BoardItem>;
   updateItem(ctx: Ctx, id: string, patch: ItemPatch): Promise<BoardItem | undefined>;
+  moveRowAtomic(ctx: Ctx, boardId: string, request: RowMoveRequest): Promise<RowMoveReceipt>;
+  setValuesAndMoveAtomic(ctx: Ctx, boardId: string, request: AtomicValueMoveRequest): Promise<RowMoveReceipt>;
+  reconcileDefinitionItemGroup(ctx: Ctx, boardId: string, itemId: string, expectedSourceGroupId: string | null, targetGroupId: string): Promise<void>;
   deleteItem(ctx: Ctx, boardId: string, id: string): Promise<boolean>;
   restoreItem(ctx: Ctx, boardId: string, id: string): Promise<BoardItem | undefined>;
 

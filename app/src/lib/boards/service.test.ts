@@ -461,6 +461,30 @@ describe("셀 편집 → 아이템 자동 이동 (BBE-14 · D68~D70)", () => {
     expect(res.item.values[col.key]).toBe("opt-done");
   });
 
+  it("로컬 어댑터도 값 저장 실패 시 위치·버전·receipt를 모두 롤백한다", async () => {
+    const local=new LocalBoardsRepo();
+    const localService=new BoardsService(toAsyncBoardsRepo(local));
+    const detail=await localService.createBoard(owner,{name:"원자 롤백"});
+    const waiting=await localService.addGroup(owner,detail.board.id,{name:"대기"});
+    const done=await localService.addGroup(owner,detail.board.id,{name:"완료"});
+    const column=await localService.addColumn(owner,detail.board.id,{label:"상태",type:"select",options:[{id:"done",label:"완료",color:"#0c0",order:0}],moveRule:{done:done.id}});
+    const item=await localService.createItem(owner,detail.board.id,{title:"보호",group_id:waiting.id});
+    const originalSetValues=local.setValues.bind(local);
+    local.setValues=((ctx,itemId,patch)=>{
+      if(patch[column.key]==="done")throw new Error("injected local value failure");
+      return originalSetValues(ctx,itemId,patch);
+    }) as typeof local.setValues;
+    await expect(localService.setCells(owner,detail.board.id,item.id,{[column.key]:"done"})).rejects.toThrow(/injected local value failure/);
+    const afterFailure=await localService.getItem(owner,detail.board.id,item.id);
+    expect(afterFailure.group_id).toBe(waiting.id);
+    expect(afterFailure.values[column.key]).toBeUndefined();
+    expect(local.getBoard(owner,detail.board.id)?.row_order_version??0).toBe(0);
+    local.setValues=originalSetValues;
+    const retried=await localService.setCells(owner,detail.board.id,item.id,{[column.key]:"done"});
+    expect(retried.item.group_id).toBe(done.id);
+    expect(retried.item.values[column.key]).toBe("done");
+  });
+
   it("규칙에 없는 값으로 바꾸면 그룹은 그대로다(빈 값·미매핑 선택지)", async () => {
     const { boardId, col, item, g대기 } = await setupMoveBoard();
     // 이 컬럼엔 opt-wait 에 대한 이동 규칙이 없다 — 매핑 안 된 선택지.

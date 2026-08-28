@@ -5,6 +5,7 @@ const {
   setCells,
   updateItem,
   listItems,
+  moveRowAtomic,
   notifyBoardItemMoved,
 } = vi.hoisted(() => ({
   client: { rpc: vi.fn() },
@@ -14,6 +15,7 @@ const {
     { id: "item-1", group_id: "group-a", sort_order: 0 },
     { id: "item-2", group_id: "group-b", sort_order: 0 },
   ]),
+  moveRowAtomic: vi.fn(async () => ({itemId:"item-1",targetGroupId:"group-b",beforeItemId:null,version:1,replayed:false})),
   notifyBoardItemMoved: vi.fn(async () => 1),
 }));
 
@@ -33,7 +35,7 @@ vi.mock("@/lib/perm/server", () => ({ recordRiskyAction: async () => ({ ok: true
 vi.mock("@/lib/boards/server", () => ({
   createRequestBoards: async () => ({
     client,
-    service: { setCells, updateItem, listItems },
+    service: { setCells, updateItem, listItems, moveRowAtomic },
   }),
 }));
 vi.mock("@/lib/notify/board-actions", () => ({ notifyBoardItemMoved }));
@@ -51,6 +53,7 @@ describe("board move notification producer", () => {
     setCells.mockClear();
     updateItem.mockClear();
     listItems.mockClear();
+    moveRowAtomic.mockClear();
     notifyBoardItemMoved.mockClear();
   });
 
@@ -68,6 +71,7 @@ describe("board move notification producer", () => {
       "board-1",
       "item-1",
       { status: "opt-doing" },
+      "00000000-0000-4000-8000-000000000099",
     );
     expect(notifyBoardItemMoved).toHaveBeenCalledWith(
       client,
@@ -88,15 +92,24 @@ describe("board move notification producer", () => {
       boardId: "board-1",
       itemId: "item-1",
       groupId: "group-b",
-      index: "1",
+      beforeItemId: "",
+      expectedVersion: "0",
+      requestId: "00000000-0000-4000-8000-000000000100",
       eventKey: "00000000-0000-4000-8000-000000000100",
     }));
 
-    expect(listItems).toHaveBeenCalledTimes(1);
-    expect(updateItem).toHaveBeenCalledTimes(2);
+    expect(moveRowAtomic).toHaveBeenCalledTimes(1);
     expect(notifyBoardItemMoved).toHaveBeenCalledTimes(1);
-    expect(Math.max(...updateItem.mock.invocationCallOrder)).toBeLessThan(
+    expect(moveRowAtomic.mock.invocationCallOrder[0]).toBeLessThan(
       notifyBoardItemMoved.mock.invocationCallOrder[0],
     );
+  });
+
+  it("uses the same atomic primitive for physical kanban group moves",async()=>{
+    await moveItemAction(form({boardId:"board-1",itemId:"item-1",groupBy:"",lane:"group-b",expectedVersion:"0",eventKey:"00000000-0000-4000-8000-000000000101"}));
+    expect(moveRowAtomic).toHaveBeenCalledWith(expect.anything(),"board-1",{
+      itemId:"item-1",targetGroupId:"group-b",beforeItemId:null,expectedVersion:0,requestId:"00000000-0000-4000-8000-000000000101",
+    });
+    expect(updateItem).not.toHaveBeenCalled();
   });
 });

@@ -16,6 +16,8 @@
 import type { ReactNode } from "react";
 import type { BoardGroup } from "@/lib/boards/types";
 import { addItemAction } from "@/app/(app)/boards/actions";
+import { renameBoardTitleAction } from "@/app/(app)/boards/title-actions";
+import { BoardInlineTitleEditor } from "./BoardInlineTitleEditor";
 
 export function BoardHeader({
   boardId,
@@ -24,13 +26,14 @@ export function BoardHeader({
   description,
   people,
   selected,
-  onSelect,
+  onSelect=()=>{},
   groups,
   readOnly,
   backSlot,
   helpSlot,
   viewSlot,
   addItemSlot,
+  canEditTitle=false,
 }: {
   boardId: string;
   icon: string | null;
@@ -48,9 +51,10 @@ export function BoardHeader({
   people: { value: string; label: string }[];
   /** 현재 선택된 담당자. 빈 배열 = "전체". */
   selected: string[];
-  onSelect: (value: string | null) => void;
+  onSelect?: (value: string | null) => void;
   groups: readonly BoardGroup[];
   readOnly: boolean;
+  canEditTitle?: boolean;
 }) {
   const activeTab = selected.length === 1 ? selected[0] : null;
 
@@ -62,22 +66,23 @@ export function BoardHeader({
     }`;
 
   return (
-    <div data-visual-block="board-header" className="mw-board-inline-scroll flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden">
-      {backSlot}
+    <div data-visual-block="board-header" className="relative flex min-w-0 max-w-full items-center">
+      <div className="mw-board-inline-scroll flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden pe-4 [scroll-padding-inline-end:1rem]">
+        {backSlot}
 
-      <h1 className="flex shrink-0 items-center gap-1.5 text-lg font-semibold text-mw-fg">
-        {icon && <span aria-hidden="true">{icon}</span>}
-        <span>{name}</span>
-      </h1>
-      {helpSlot}
+        <h1 className="flex shrink-0 items-center gap-1.5 text-lg font-semibold text-mw-fg">
+          {icon && <span aria-hidden="true">{icon}</span>}
+          {canEditTitle?<BoardInlineTitleEditor name={name} label="보드 이름" onSave={(value)=>renameBoardTitleAction(boardId,value)}/>:<span>{name}</span>}
+        </h1>
+        {helpSlot}
 
-      {description && (
-        <span className="shrink-0 truncate text-xs text-mw-sub" title={description}>
-          {description}
-        </span>
-      )}
+        {description && (
+          <span className="shrink-0 truncate text-xs text-mw-sub" title={description}>
+            {description}
+          </span>
+        )}
 
-      {people.length > 0 && (
+        {people.length > 0 && (
         <nav aria-label="담당자 탭" className="ml-3 flex shrink-0 items-center gap-0.5">
           <button
             type="button"
@@ -97,9 +102,10 @@ export function BoardHeader({
             </button>
           ))}
         </nav>
-      )}
+        )}
+      </div>
 
-      <div className="ml-auto flex shrink-0 items-center gap-2">
+      <div data-board-action-rail className="mw-layer-board-header relative z-[var(--mw-layer-board-header)] flex shrink-0 items-center gap-2 border-s border-mw-line bg-mw-card ps-3 shadow-[-10px_0_14px_-12px_color-mix(in_srgb,var(--mw-fg)_45%,transparent)] rtl:shadow-[10px_0_14px_-12px_color-mix(in_srgb,var(--mw-fg)_45%,transparent)]">
         {viewSlot}
 
       {!readOnly && groups.length > 0 && (addItemSlot ?? (
@@ -110,7 +116,7 @@ export function BoardHeader({
 
           <form
             action={addItemAction}
-            className="mw-layer-page-popover absolute right-0 top-full mt-1 flex w-64 flex-col gap-2 rounded-xl border border-mw-line bg-mw-card p-2 shadow-lg"
+            className="mw-layer-page-popover absolute end-0 top-full mt-1 flex w-64 flex-col gap-2 rounded-xl border border-mw-line bg-mw-card p-2 shadow-lg"
           >
             <input type="hidden" name="boardId" value={boardId} />
             <input

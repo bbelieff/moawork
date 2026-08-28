@@ -367,9 +367,16 @@ export const NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS = [
 
 export const NEW_LEAD_REVENUE_FALLBACK_ID_SUFFIX = ":revenue-3y-million";
 
-/** 물리 numeric 컬럼이 없을 때 revenue_band에서 만든 표시 전용 열인지 판정한다. */
+/**
+ * 실제 board_columns.id 한 건에 대응하지 않는 표시 전용 열의 단일 fail-closed 판정.
+ * 합성 id(`physical-id:suffix`)뿐 아니라 physical other_info를 여러 durable sibling의
+ * 한 칸 표현으로 쓰는 경우도 구조 명령으로 보내지 않는다.
+ */
 export function isNewLeadPresentationOnlyStructure(column: Pick<BoardColumn, "id" | "key">): boolean {
-  return column.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores
+  return column.id.includes(":")
+    || column.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores
+    || column.key === OTHER_INFO_COLUMN_KEY
+    || column.key === "message_action"
     || (column.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion
       && column.id.endsWith(NEW_LEAD_REVENUE_FALLBACK_ID_SUFFIX));
 }

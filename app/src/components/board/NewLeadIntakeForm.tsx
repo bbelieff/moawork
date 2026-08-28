@@ -14,10 +14,11 @@ import {
 type MemberOption = Readonly<{ id: string; label: string }>;
 
 export function NewLeadIntakeForm({
-  boardId, groupId, members, currentUserId, variant = "inline",
+  boardId, groupId, groups=[], members, currentUserId, variant = "inline",
 }: {
   boardId: string;
   groupId: string;
+  groups?:readonly {id:string;name:string}[];
   members: readonly MemberOption[];
   currentUserId?: string;
   variant?: "inline" | "header";
@@ -26,6 +27,7 @@ export function NewLeadIntakeForm({
   const [open, setOpen] = useState(false);
   const [requestId, setRequestId] = useState("");
   const [dismissedMessage, setDismissedMessage] = useState<string | null>(null);
+  const [targetGroupId,setTargetGroupId]=useState(groupId);
   const titleRef = useRef<HTMLInputElement>(null);
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const summaryRef = useRef<HTMLElement>(null);
@@ -83,10 +85,11 @@ export function NewLeadIntakeForm({
       className={`grid gap-3 bg-mw-card text-xs ${variant === "inline" ? "mt-2 w-[min(32rem,calc(100vw-2rem))] rounded-xl border border-mw-line p-3 shadow-lg" : ""}`}
     >
       <input type="hidden" name="boardId" value={boardId} />
-      <input type="hidden" name="groupId" value={groupId} />
+      <input type="hidden" name="groupId" value={targetGroupId} />
       <input type="hidden" name="requestId" value={requestId} />
       <fieldset className="grid gap-2">
         <legend className="text-xs font-semibold text-mw-fg">기본 정보</legend>
+        {variant==="header"&&groups.length>1?<label className="grid gap-1 text-xs font-medium text-mw-fg"><span>추가할 그룹</span><select value={targetGroupId} onChange={(event)=>setTargetGroupId(event.target.value)} className="h-9 rounded-lg border border-mw-line bg-mw-card px-2.5"><option value="" disabled>그룹 선택</option>{groups.map((group)=><option key={group.id} value={group.id}>{group.name}</option>)}</select></label>:null}
         <label className="grid gap-1 text-xs font-medium text-mw-fg">
           <span>회사명 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
           <input ref={titleRef} name="title" aria-required="true" aria-invalid={state.field === "title"} className="h-9 rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg outline-none focus:border-mw-record aria-[invalid=true]:border-mw-error" placeholder="회사명 또는 담당자 이름" />

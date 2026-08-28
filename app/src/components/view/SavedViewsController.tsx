@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { startTransition,useCallback, useEffect, useMemo, useRef,useState } from "react";
 import { applyFilters, BOARD_FILTER_QUERY_KEY, decodeBoardFilters, type BoardFilterState } from "@/components/board/filters";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards";
 import { type NewTabViewInput, type ViewKind } from "@/lib/view";
@@ -22,7 +22,13 @@ import { TableView, type TableColumn } from "./TableView";
 import { ViewPicker } from "./ViewPicker";
 import { ViewTabs } from "./ViewTabs";
 import { BoardCell } from "@/components/board/GroupTable";
-import { newLeadPresentationKey, presentNewLeadColumnKeys, presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
+import { isNewLeadPresentationOnlyStructure,newLeadPresentationKey, presentNewLeadColumnKeys, presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
+import { BoardInlineTitleEditor } from "@/components/board/BoardInlineTitleEditor";
+import { GroupNameEditor } from "@/components/board/GroupNameEditor";
+import { renameColumnTitleAction } from "@/app/(app)/boards/title-actions";
+import { moveRowAction,reorderGroupsAction } from "@/app/(app)/boards/actions";
+import type { BoardGroup } from "@/lib/boards/types";
+import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
 
 type SaveEvent = CustomEvent<{ version?: number; filters?: BoardFilterState }>;
 
@@ -40,6 +46,8 @@ function kindOf(config: SavedBoardViewConfig): ViewKind {
 export function SavedViewsController({
   boardId, orgId, currentUserId, teamMemberIds = [], layout = {}, columns = [], rows = [], renderMode = "controls", canEditItems = false,
   canonicalNewLead = false, memberOptions = [],
+  groups = [], rowOrderVersion = 0, canMoveRows = false, canManageColumns = false,
+  canManageSections = false, isSystem = false,
 }: {
   boardId: string; orgId: string; currentUserId: string;
   teamMemberIds?: readonly string[];
@@ -48,10 +56,21 @@ export function SavedViewsController({
   canEditItems?: boolean;
   canonicalNewLead?: boolean;
   memberOptions?: readonly { id: string; label: string }[];
+  groups?: readonly BoardGroup[];
+  rowOrderVersion?: number;
+  canMoveRows?: boolean;
+  canManageColumns?: boolean;
+  canManageSections?: boolean;
+  isSystem?: boolean;
 }) {
   const [views, setViews] = useState<SavedBoardView[]>([]);
   const [pending, setPending] = useState<SavedBoardViewConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const rowMovePendingRef=useRef(false);
+  const rowMoveIntentRef=useRef<{key:string;requestId:string;expectedVersion:number}|null>(null);
+  const [rowMovePending,setRowMovePending]=useState(false);
+  const [knownRowOrderVersion,setKnownRowOrderVersion]=useState(rowOrderVersion);
+  const effectiveRowOrderVersion=Math.max(knownRowOrderVersion,rowOrderVersion);
   const [now] = useState(() => new Date());
   useEffect(() => {
     request<SavedBoardView[]>(`/api/tab-views?boardId=${encodeURIComponent(boardId)}`)
@@ -182,17 +201,77 @@ export function SavedViewsController({
   }, [displayColumns, config.filters.visibleColumnKeys, config.hiddenColumns, config.columnOrder]);
   const tableColumns: TableColumn[] = [{ key: "__title", label: "아이템" }, ...orderedColumns.map((column) => ({ key: column.key, label: column.label }))];
   const dateColumn = displayColumns.find((column) => column.key === config.calendarFieldKey) ?? displayColumns.find((column) => column.type === "date");
+  const sortActive=(config.sorts?.length??0)>0||Boolean(config.filters.sortKey);
+  const submitFlatRowMove=(form:HTMLFormElement)=>{
+    if(rowMovePendingRef.current){setError("이전 이동을 저장하고 있어요.");return;}
+    rowMovePendingRef.current=true;setRowMovePending(true);setError(null);
+    const fd=new FormData(form);
+    if(fd.get("moveKind")==="group"&&String(fd.get("groupId")??"")===String(fd.get("currentGroupId")??"")){
+      rowMovePendingRef.current=false;setRowMovePending(false);return;
+    }
+    const intentKey=JSON.stringify({itemId:fd.get("itemId"),groupId:fd.get("groupId"),beforeItemId:fd.get("beforeItemId")});
+    if(rowMoveIntentRef.current?.key!==intentKey)rowMoveIntentRef.current={key:intentKey,requestId:crypto.randomUUID(),expectedVersion:effectiveRowOrderVersion};
+    fd.set("expectedVersion",String(rowMoveIntentRef.current.expectedVersion));
+    fd.set("requestId",rowMoveIntentRef.current.requestId);fd.set("eventKey",rowMoveIntentRef.current.requestId);
+    startTransition(async()=>{
+      try{const result=await moveRowAction(fd);if(result.ok){rowMoveIntentRef.current=null;setKnownRowOrderVersion((current)=>Math.max(current,result.version));setError(null);}else{if(result.stale)rowMoveIntentRef.current=null;setError(result.message);}}
+      catch{setError("행 이동을 저장하지 못했어요. 현재 순서를 다시 확인해 주세요.");}
+      finally{rowMovePendingRef.current=false;setRowMovePending(false);}
+    });
+  };
+  const moveFlatColumn=async(key:string,delta:-1|1)=>{
+    const keys=orderedColumns.map((column)=>column.key);const from=keys.indexOf(key);
+    const to=Math.max(0,Math.min(keys.length-1,from+delta));if(from<0||from===to)return;
+    const [moved]=keys.splice(from,1);keys.splice(to,0,moved);
+    if(activeSaved){
+      const next={...activeSaved.config,columnOrder:keys};const durable=canonicalNewLead?durableNewLeadSavedViewConfig(next):next;
+      await request(`/api/tab-views/${activeSaved.id}`,{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({config:durable})});
+      setViews((current)=>current.map((view)=>view.id===activeSaved.id?{...view,config:durable}:view));
+      return;
+    }
+    const url=new URL(window.location.href);url.searchParams.set("mwOrder",keys.join(","));window.location.assign(url);
+  };
+  const rowMoveControls=(row:ItemWithValues)=>{
+    if(!canMoveRows||isSystem||sortActive)return null;
+    const siblings=filteredRows.filter((candidate)=>candidate.group_id===row.group_id);
+    const at=siblings.findIndex((candidate)=>candidate.id===row.id);
+    const moves:[string,string|null,boolean][]=[
+      ["위로 이동",at>0?siblings[at-1].id:null,at<=0],
+      ["아래로 이동",at>=0&&at+2<siblings.length?siblings[at+2].id:null,at<0||at>=siblings.length-1],
+    ];
+    return <span className="sr-only focus-within:not-sr-only">
+      {moves.map(([label,before,disabled])=><form key={label} onSubmit={(event)=>{event.preventDefault();submitFlatRowMove(event.currentTarget);}} className="inline">
+        <input type="hidden" name="boardId" value={boardId}/><input type="hidden" name="itemId" value={row.id}/>
+        <input type="hidden" name="groupId" value={row.group_id??""}/><input type="hidden" name="currentGroupId" value={row.group_id??""}/><input type="hidden" name="beforeItemId" value={before??""}/>
+        <input type="hidden" name="expectedVersion" value={effectiveRowOrderVersion}/><button type="submit" disabled={disabled||rowMovePending} aria-label={`${row.title} ${label}`}>{label}</button>
+      </form>)}
+      {groups.length>1?<form onSubmit={(event)=>{event.preventDefault();submitFlatRowMove(event.currentTarget);}} className="inline">
+        <input type="hidden" name="boardId" value={boardId}/><input type="hidden" name="itemId" value={row.id}/><input type="hidden" name="beforeItemId" value=""/><input type="hidden" name="currentGroupId" value={row.group_id??""}/><input type="hidden" name="moveKind" value="group"/>
+        <input type="hidden" name="expectedVersion" value={effectiveRowOrderVersion}/><select name="groupId" defaultValue={row.group_id??""} disabled={rowMovePending} aria-label={`${row.title} 이동할 그룹`}>
+          {groups.map((group)=><option key={group.id} value={group.id}>{group.name}</option>)}
+        </select><button type="submit" disabled={rowMovePending}>그룹으로 이동</button>
+      </form>:null}
+    </span>;
+  };
 
   return (
     <section aria-label="저장된 뷰" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <ViewTabs views={displayViews} activeId={activeSaved?.id ?? null} onSelectMain={selectSystem} onSelect={(view) => void selectSaved(view)} onRequestCreate={() => setPending(currentConfig())} />
         <ViewPicker view={activeSaved} editable={activeSaved?.canEdit ?? activeSaved?.ownerId === currentUserId} onRename={(name) => void rename(name)} onDelete={() => void remove()} />
-        {error ? <span role="alert" className="text-xs text-mw-error">{error}</span> : null}
+        {error ? <span role={noticeRole(false)} aria-live={noticeLive(false)} className="text-xs text-mw-error">{error}</span> : null}
       </div>
       {pending ? <SaveViewDialog orgId={orgId} boardKey={boardId} ownerId={currentUserId} kind={kindOf(pending)} filters={pending.filters.byColumn} sort={pending.sorts} calendarFieldKey={pending.calendarFieldKey} dateColumns={displayColumns.filter((column) => column.type === "date" || column.type === "datetime").map((column) => ({ key: column.key, label: column.label }))} onSubmit={(input) => void create(input)} onCancel={() => setPending(null)} /> : null}
-      {renderMode === "flat" ? <TableView columns={tableColumns} rows={filteredRows} textMode={config.textMode} focusColumnKey={config.focusColumnKey} rowKey={(row) => row.id} renderCell={(row, column) => {
-        if (column.key === "__title") return row.title;
+      {renderMode==="flat"&&!isSystem&&canManageSections&&groups.length>0?<nav aria-label="그룹 이름과 순서" className="flex flex-wrap gap-2">{groups.map((group,index)=>{
+        const next=[...groups].sort((a,b)=>a.sort_order-b.sort_order).map((candidate)=>candidate.id);return <span key={group.id} className="inline-flex items-center rounded border border-mw-line px-2 py-1 text-xs"><GroupNameEditor boardId={boardId} groupId={group.id} name={group.name}/><span className="sr-only focus-within:not-sr-only">{([-1,1] as const).map((delta)=>{const to=Math.max(0,Math.min(next.length-1,index+delta));const ordered=[...next];if(index!==to){const [moved]=ordered.splice(index,1);ordered.splice(to,0,moved);}return <form key={delta} action={reorderGroupsAction} className="inline"><input type="hidden" name="boardId" value={boardId}/><input type="hidden" name="groupIds" value={JSON.stringify(ordered)}/><button type="submit" disabled={index===to} aria-label={`${group.name} ${delta<0?"위":"아래"}로 이동`}>{delta<0?"↑":"↓"}</button></form>;})}</span></span>;})}</nav>:null}
+      {renderMode === "flat" ? <TableView columns={tableColumns} rows={filteredRows} textMode={config.textMode} focusColumnKey={config.focusColumnKey} rowKey={(row) => row.id} renderHeader={(column)=>{
+        if(column.key==="__title")return column.label;
+        const definition=displayColumns.find((candidate)=>candidate.key===column.key);
+        if(!definition)return column.label;
+        const presentationOnly=canonicalNewLead&&isNewLeadPresentationOnlyStructure(definition);
+        return <span className="flex items-center gap-1">{canManageColumns&&!isSystem&&!presentationOnly?<BoardInlineTitleEditor name={definition.label} label="컬럼 이름" onSave={(value)=>renameColumnTitleAction(boardId,definition.id,value)}/>:definition.label}{canManageColumns&&!isSystem&&!presentationOnly?<span className="sr-only focus-within:not-sr-only"><button type="button" onClick={()=>void moveFlatColumn(column.key,-1)} aria-label={`${definition.label} 왼쪽으로 이동`}>왼쪽으로 이동</button><button type="button" onClick={()=>void moveFlatColumn(column.key,1)} aria-label={`${definition.label} 오른쪽으로 이동`}>오른쪽으로 이동</button></span>:null}</span>;
+      }} renderCell={(row, column) => {
+        if (column.key === "__title") return <span className="flex items-center gap-1">{row.title}{rowMoveControls(row)}</span>;
         const definition = displayColumns.find((candidate) => candidate.key === column.key);
         return definition ? <BoardCell boardId={boardId} row={row} column={definition} readOnly={!canEditItems} canonicalNewLead={canonicalNewLead} members={memberOptions} /> : "";
       }} /> : null}

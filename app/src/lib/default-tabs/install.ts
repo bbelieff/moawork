@@ -627,7 +627,8 @@ async function reconcileAssigneeGroups(
   const claimed = new Set<string>();
   const moveItems = async (fromGroupId: string) => {
     for (const item of await store.listItems(ctx, boardId)) {
-      if (item.group_id === fromGroupId) await store.updateItem(ctx, item.id, { group_id: fallbackId! });
+      if (item.group_id !== fromGroupId) continue;
+      await store.reconcileDefinitionItemGroup(ctx,boardId,item.id,fromGroupId,fallbackId!);
     }
   };
 

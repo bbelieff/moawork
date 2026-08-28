@@ -246,7 +246,8 @@ export async function reconcileAssigneeGroups(
 
   const moveItems = async (fromGroupId: string, toGroupId: string) => {
     for (const item of await repo.listItems(ctx, boardId)) {
-      if (item.group_id === fromGroupId) await repo.updateItem(ctx, item.id, { group_id: toGroupId });
+      if (item.group_id !== fromGroupId) continue;
+      await repo.reconcileDefinitionItemGroup(ctx,boardId,item.id,fromGroupId,toGroupId);
     }
   };
 

@@ -63,6 +63,11 @@ describe("validateCell — 정상 정규화(위임)", () => {
     expect(validateCell("phone", "010 1234 5678")).toEqual({ ok: true, value: "01012345678" });
     expect(validateCell("phone", "+82 10-1234-5678")).toEqual({ ok: true, value: "01012345678" });
   });
+  it("file은 registry의 canonical 객체 배열을 문자열로 축약하지 않는다", () => {
+    const value = [{ path: "docs/a.pdf", name: "a.pdf", size: 12, mime: "application/pdf" }];
+    expect(validateCell("file", value)).toEqual({ ok: true, value });
+    expect(formatCell("file", value)).toBe("a.pdf");
+  });
 });
 
 describe("validateCell — 형식 오류는 null 수렴이 아니라 ok:false", () => {

@@ -16,11 +16,9 @@ import { NotFoundError } from "@/lib/boards";
 import { createRequestBoards } from "@/lib/boards/server";
 import { COLUMN_DELETE_CONFIRM, parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
 import type { Ctx, FieldOption } from "@/lib/types";
-import type { ItemWithValues } from "@/lib/boards/types";
 import { boardCellValueFromFormData } from "@/lib/boards/form-values";
 import type { CellError } from "@/lib/boards/service";
-import type { ItemPatch } from "@/lib/boards/store";
-import { clampWidth, groupKeyOf } from "@/components/board/layout";
+import { clampWidth } from "@/components/board/layout";
 import { setGroupColumnOrder } from "./groupLayout";
 import {
   CELL_FLASH_COOKIE,
@@ -527,23 +525,32 @@ export async function renameItemAction(formData: FormData): Promise<void> {
  * 칸반 레인 이동. groupBy 가 select 컬럼이면 그 셀 값을, 아니면 group_id 를 바꾼다.
  * (dnd 라이브러리 도입 전까지 폼 기반 이동 — 결과는 동일)
  */
-export async function moveItemAction(formData: FormData): Promise<void> {
-  return runBoardAction(formData, async () => {
+export type MoveItemActionResult =
+  | { ok:true; version:number|null; replayed:boolean }
+  | { ok:false; stale:boolean; message:string };
+
+export async function moveItemAction(formData: FormData): Promise<MoveItemActionResult> {
+  try {
     const ctx = await getSession();
     await requirePermission(ctx, "work.item_upsert");
     const boardId = str(formData, "boardId");
     const itemId = str(formData, "itemId");
     const lane = str(formData, "lane");
     const groupBy = str(formData, "groupBy");
+    const eventKey = moveEventKey(formData);
     const graph = await createRequestBoards();
     const svc = graph.service;
     if (groupBy) {
       const { errors } = await svc.setCells(ctx, boardId, itemId, {
         [groupBy]: lane === "" ? null : lane,
-      });
-      await flashCellErrors(itemId, errors);
+      },eventKey);
+      if(errors.length>0)return{ok:false,stale:false,message:errors[0]?.message??"행 이동을 저장하지 못했어요."};
+      await flashCellErrors(itemId, []);
     } else {
-      await svc.updateItem(ctx, boardId, itemId, { group_id: lane === "" ? null : lane });
+      if(!formData.has("groupId"))formData.set("groupId",lane);
+      if(!formData.has("beforeItemId"))formData.set("beforeItemId","");
+      if(!formData.has("requestId"))formData.set("requestId",eventKey);
+      return moveRowAction(formData);
     }
     // 이동 «알림» 은 연결된 워크스페이스에서만 존재한다(BBE-209).
     //   notify_board_item_moved 는 Supabase RPC 이고 수신자·중복방지 판정을 DB 가 소유한다.
@@ -556,11 +563,16 @@ export async function moveItemAction(formData: FormData): Promise<void> {
       await notifyBoardItemMoved(graph.client, ctx, {
         boardId,
         itemId,
-        eventKey: moveEventKey(formData),
+        eventKey,
       });
     }
     revalidatePath(`/boards/${boardId}`);
-  });
+    return{ok:true,version:null,replayed:false};
+  }catch(error){
+    console.error("[board kanban move]",error);
+    const raw=error instanceof Error?error.message:"";
+    return{ok:false,stale:raw.includes("stale")||raw.includes("순서가 변경"),message:userFacingMessage(error)};
+  }
 }
 
 export async function addGroupAction(formData: FormData): Promise<void> {
@@ -591,6 +603,16 @@ export async function reorderGroupsAction(formData: FormData): Promise<void> {
   });
 }
 
+export async function reorderColumnsAction(formData: FormData): Promise<void> {
+  return runBoardAction(formData, async () => {
+    const ctx=await getSession();await requirePermission(ctx,"structure.column_manage");
+    const boardId=str(formData,"boardId");let columnIds:string[];
+    try{const parsed:unknown=JSON.parse(str(formData,"columnIds"));if(!Array.isArray(parsed)||parsed.some((id)=>typeof id!=="string"||!id))throw new Error();columnIds=parsed;}
+    catch{throw new UserFacingActionError("컬럼 순서를 읽지 못했어요. 새로고침 후 다시 시도해 주세요.");}
+    await (await boardsService()).reorderColumns(ctx,boardId,columnIds);revalidatePath(`/boards/${boardId}`);
+  });
+}
+
 export async function renameGroupAction(formData: FormData): Promise<void> {
   return runBoardAction(formData, async () => {
     const ctx = await getSession();
@@ -611,38 +633,32 @@ export async function renameGroupAction(formData: FormData): Promise<void> {
  * 끼워 넣는 방식은 반복하면 정밀도가 무너져 순서가 뒤섞인다(무증상 파손) — 그래서 매번
  * 정수로 다시 세운다. 그룹당 행 수 규모에서는 이 비용이 문제되지 않는다.
  */
-export async function moveRowAction(formData: FormData): Promise<void> {
-  return runBoardAction(formData, async () => {
+export type MoveRowActionResult =
+  | { ok: true; version: number; replayed: boolean }
+  | { ok: false; stale: boolean; message: string };
+
+export async function moveRowAction(formData: FormData): Promise<MoveRowActionResult> {
+  try {
     const ctx = await getSession();
     await requirePermission(ctx, "work.item_upsert");
+    if (!(ctx.role === "owner" || ctx.role === "admin" || ctx.scope === "all")) {
+      throw new UserFacingActionError("전체 행을 볼 수 있는 사용자만 행 순서를 바꿀 수 있어요.");
+    }
     const boardId = str(formData, "boardId");
     const itemId = str(formData, "itemId");
     const rawGroup = str(formData, "groupId");
     const groupId = rawGroup === "" ? null : rawGroup;
-    const requested = Number.parseInt(str(formData, "index"), 10);
+    const beforeItemId = str(formData, "beforeItemId") || null;
+    const expectedVersion = Number.parseInt(str(formData, "expectedVersion"), 10);
+    const requestId = moveEventKey(formData);
+    if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0 || !requestId) {
+      throw new UserFacingActionError("행 순서를 읽지 못했어요. 새로고침 후 다시 시도해 주세요.");
+    }
 
     const graph = await createRequestBoards();
-    const svc = graph.service;
-    const items = await svc.listItems(ctx, boardId);
-    const moving = items.find((i) => i.id === itemId);
-    if (!moving) throw new NotFoundError("아이템을 찾을 수 없습니다");
-
-    const targetKey = groupKeyOf(groupId);
-    const siblings: ItemWithValues[] = items
-      .filter((i) => i.id !== itemId && groupKeyOf(i.group_id) === targetKey)
-      .sort((a, b) => a.sort_order - b.sort_order);
-
-    const at = Number.isNaN(requested)
-      ? siblings.length
-      : Math.max(0, Math.min(requested, siblings.length));
-    siblings.splice(at, 0, moving);
-
-    await Promise.all(siblings.map(async (item, index) => {
-      const patch: ItemPatch = { sort_order: index };
-      // 그룹이 실제로 바뀐 행에만 group_id 를 싣는다(불필요한 쓰기 금지).
-      if (item.id === itemId && groupKeyOf(item.group_id) !== targetKey) patch.group_id = groupId;
-      await svc.updateItem(ctx, boardId, item.id, patch);
-    }));
+    const receipt = await graph.service.moveRowAtomic(ctx, boardId, {
+      itemId,targetGroupId:groupId,beforeItemId,expectedVersion,requestId,
+    });
 
     // 이동 «알림» 은 연결된 워크스페이스에서만 존재한다(BBE-209).
     //   notify_board_item_moved 는 Supabase RPC 이고 수신자·중복방지 판정을 DB 가 소유한다.
@@ -655,11 +671,28 @@ export async function moveRowAction(formData: FormData): Promise<void> {
       await notifyBoardItemMoved(graph.client, ctx, {
         boardId,
         itemId,
-        eventKey: moveEventKey(formData),
+        eventKey: requestId,
       });
     }
 
     revalidatePath(`/boards/${boardId}`);
+    return { ok:true,version:receipt.version,replayed:receipt.replayed };
+  } catch (error) {
+    console.error("[board row move]",error);
+    const raw=error instanceof Error?error.message:"";
+    return {
+      ok:false,
+      stale:raw.includes("stale")||raw.includes("순서가 변경"),
+      message:raw.includes("stale")?"다른 사용자가 먼저 순서를 바꿨어요. 새로고침 후 다시 시도해 주세요.":userFacingMessage(error),
+    };
+  }
+}
+
+/** Flat/keyboard forms consume the same typed atomic result while retaining the global error banner. */
+export async function moveRowFormAction(formData: FormData): Promise<void> {
+  return runBoardAction(formData, async () => {
+    const result = await moveRowAction(formData);
+    if (!result.ok) throw new UserFacingActionError(result.message);
   });
 }
 
