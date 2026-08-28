@@ -26,7 +26,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createGithubReader } from "./github-issues.mjs";
-import { migrationWriterMap } from "./migration-writers.mjs";
+import { migrationWriterMap, touchesMigrationsFor } from "./migration-writers.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -599,7 +599,8 @@ async function buildOperations(force = false) {
         checks: checkSummary(pr.statusCheckRollup || []),
         // 이 PR 이 새 마이그레이션을 담고 있는가 — 제목이 아니라 파일로 판정한다.
         // true · false · null(모름: 파일이 많아 목록이 잘렸다) 셋이다.
-        touchesMigrations: writerMap ? (writerMap.get(pr.number) ?? false) : null,
+        // 배선도 모듈이 갖는다 — 이 한 줄이 P1-5 였다. migration-writers.mjs 주석 참조.
+        touchesMigrations: touchesMigrationsFor(writerMap, pr.number),
       })),
     };
   } catch (error) {

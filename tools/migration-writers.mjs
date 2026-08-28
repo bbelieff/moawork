@@ -44,3 +44,21 @@ export function migrationWriterMap(openPrs) {
   }
   return map;
 }
+
+/**
+ * 판에 실어 보낼 값을 고른다 — «배선» 이다.
+ *
+ * ★ 이 함수가 따로 있는 이유 — 이 한 줄이 P1-5 였다.
+ *   `writerMap.get(n) ?? false` 로 썼더니 `??` 가 null 도 잡아서
+ *   «잘려서 모름» 이 «아니다» 로 뭉개졌고, 「파일이 많아 판정 못 함」 경로가
+ *   통째로 죽었다. 판정(위 touchesMigrations)에는 검사가 있었는데
+ *   «배선» 에는 하나도 없어서 못 잡았다. 그래서 배선도 잰다.
+ *
+ * @param writerMap null 이면 «열린 PR 을 못 읽었다» — 모든 PR 이 «모름» 이다
+ * @returns true · false · null(모름)
+ */
+export function touchesMigrationsFor(writerMap, prNumber) {
+  if (!writerMap) return null;
+  // has() 로 «map 에 없음(=닫힌 PR)» 과 «map 에 null(=잘림)» 을 가른다.
+  return writerMap.has(prNumber) ? writerMap.get(prNumber) : false;
+}

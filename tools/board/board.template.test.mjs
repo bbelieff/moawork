@@ -361,18 +361,90 @@ test("PR 이 마이그레이션을 담았는지 «파일» 로 판정한다", as
 });
 
 /**
- * 못 읽은 것을 «없음» 으로 읽지 않는다 (검수 P1-4).
+ * 카드가 «무엇을 말할지» 를 값으로 잰다 (검수 P1-4 · P2-e · P3).
  *
- * ★ 실패하면 카드가 조용히 「없습니다」를 그렸다. 실패 표시는 «다른 섹션» 에만 떴다.
- *   그리고 그 실패는 가상이 아니다 — 검수가 실제로 GitHub 504 를 받았다.
+ * ★ 앞선 검사는 소스 문자열을 grep 했다. 그러면 그 문장이 «도달 불가능한 가지» 에
+ *   있어도 초록이다 — 실제로 그런 일이 있었다(P1-5). 여기서는 분기를 값으로 잰다.
  */
-test("PR 을 못 읽으면 «없음» 이 아니라 «모름» 이라고 말한다", async () => {
-  const html = await readFile(templateUrl, "utf8");
-  assert.match(html, /migrationScanAvailable/, "판이 파일 조회 실패를 «따로» 봐야 한다");
-  assert.match(html, /셀 수 없습니다/);
-  assert.match(html, /«없음» 이 아니라 «모름»/);
-  // 잘려서 판정 못 한 PR 도 «없다» 로 세지 않는다
-  assert.match(html, /없다는 뜻이 아닙니다/);
+test("PR 을 못 읽으면 «없음» 이 아니라 «모름» 이다 (#588 4)", async () => {
+  const logic = await boardLogic();
+
+  // 목록 자체를 못 읽음
+  const a = logic.migrationCardState({ available: false, migrationScanAvailable: false, items: [] });
+  assert.equal(a.mode, "unreadable");
+  assert.equal(a.overlap, false, "못 읽었으면 겹침을 «없다» 고 판단하지 않는다");
+
+  // 목록은 읽었는데 파일 조회만 실패 — 이것도 «모름» 이다
+  const b = logic.migrationCardState({ available: true, migrationScanAvailable: false, items: [] });
+  assert.equal(b.mode, "unreadable");
+
+  // ★ 못 읽었을 때 «잘림» 줄을 띄우지 않는다 — 원인을 틀리게 말하는 것이다
+  const c = logic.migrationCardState({
+    available: true, migrationScanAvailable: false,
+    items: [{ number: 1, state: "OPEN", touchesMigrations: null }],
+  });
+  assert.deepEqual(c.unknown, [], "질의 실패를 «파일이 많아 잘림» 으로 말하면 안 된다");
+});
+
+test("정말 없을 때와 겹칠 때를 가른다", async () => {
+  const logic = await boardLogic();
+  const empty = logic.migrationCardState({ available: true, migrationScanAvailable: true, items: [] });
+  assert.equal(empty.mode, "empty");
+  assert.equal(empty.overlap, false);
+
+  const two = logic.migrationCardState({
+    available: true, migrationScanAvailable: true,
+    items: [
+      { number: 10, state: "OPEN", touchesMigrations: true },
+      { number: 11, state: "OPEN", touchesMigrations: true },
+      { number: 12, state: "OPEN", touchesMigrations: false },
+    ],
+  });
+  assert.equal(two.mode, "writers");
+  assert.equal(two.overlap, true);
+  assert.deepEqual(two.writers.map((pr) => pr.number), [10, 11]);
+});
+
+/**
+ * ★ 잘려서 «모르는» PR 은 «없다» 로 세지 않는다.
+ *   이 경로는 한 번 죽어 있었다 — 서버의 `?? false` 가 null 을 false 로 뭉갰다.
+ *   판정(모듈)에는 검사가 있었는데 «배선» 에는 없어서 못 잡았다.
+ */
+test("파일이 많아 판정 못 한 PR 은 «모름» 으로 따로 센다", async () => {
+  const logic = await boardLogic();
+  const card = logic.migrationCardState({
+    available: true, migrationScanAvailable: true,
+    items: [
+      { number: 20, state: "OPEN", touchesMigrations: null },
+      { number: 21, state: "OPEN", touchesMigrations: false },
+    ],
+  });
+  assert.deepEqual(card.unknown.map((pr) => pr.number), [20]);
+  assert.equal(card.mode, "empty", "모르는 것이 있어도 «있다» 고 단정하지 않는다");
+});
+
+/**
+ * ★ 배선을 잰다 — P1-5 가 정확히 이 빈칸으로 들어왔다.
+ *   판정(touchesMigrations)에는 검사가 있었는데 «판정을 판에 실어 보내는 한 줄» 에는
+ *   하나도 없었다. 그래서 `?? false` 한 글자가 잘림 경로를 통째로 죽였는데도
+ *   40개 검사가 전부 초록이었다.
+ */
+test("판정을 판에 실어 보낼 때 «모름» 을 «아니다» 로 뭉개지 않는다", async () => {
+  const { migrationWriterMap, touchesMigrationsFor } = await import("../migration-writers.mjs");
+  const map = migrationWriterMap([
+    { number: 1, files: [{ path: "supabase/migrations/1.sql" }], changedFiles: 1 },
+    { number: 2, files: [{ path: "docs/x.md" }], changedFiles: 1 },
+    { number: 3, files: [{ path: "app/a.ts" }], changedFiles: 120 },   // 잘림
+  ]);
+
+  assert.equal(touchesMigrationsFor(map, 1), true);
+  assert.equal(touchesMigrationsFor(map, 2), false);
+  // ★ 잘린 PR 은 null 이어야 한다. false 로 뭉개면 「있는데 없다」가 된다.
+  assert.equal(touchesMigrationsFor(map, 3), null);
+  // map 에 없는 것(=닫힌 PR)은 false — «모름» 이 아니다
+  assert.equal(touchesMigrationsFor(map, 99), false);
+  // 열린 PR 을 통째로 못 읽었으면 전부 «모름»
+  assert.equal(touchesMigrationsFor(null, 1), null);
 });
 
 test("판정 정규식은 한 벌만 있다 — 두 벌이면 경보와 큐가 다른 것을 센다", async () => {
