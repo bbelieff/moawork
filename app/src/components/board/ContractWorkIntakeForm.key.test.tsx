@@ -71,7 +71,7 @@ describe("업체 추가 — 멱등 열쇠", () => {
   it("회사A 다음에 회사B 를 골라도 «서로 다른» 열쇠로 나간다 — 이게 이 PR 의 본론이다", async () => {
     const { seen, action, host } = mount();
     await act(async () => {
-      root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId="g-2" startWorkAction={action} />);
+      root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId="g-2" startWorkAction={action} truncated={false} />);
     });
     await open(host);
 
@@ -89,7 +89,7 @@ describe("업체 추가 — 멱등 열쇠", () => {
   it("같은 회사를 한 틱에 두 번 눌러도 열쇠는 «하나» 다 — 자금 건이 둘 생기면 안 된다", async () => {
     const { seen, action, host } = mount();
     await act(async () => {
-      root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId="g-2" startWorkAction={action} />);
+      root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId="g-2" startWorkAction={action} truncated={false} />);
     });
     await open(host);
 
@@ -107,7 +107,7 @@ describe("업체 추가 — 멱등 열쇠", () => {
   it("열쇠가 uuid 꼴이다 — RPC 인자가 uuid 타입이다", async () => {
     const { seen, action, host } = mount();
     await act(async () => {
-      root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId="g-2" startWorkAction={action} />);
+      root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId="g-2" startWorkAction={action} truncated={false} />);
     });
     await open(host);
     await act(async () => submitFor(host, "c-1")?.requestSubmit());
@@ -120,7 +120,7 @@ describe("업체 추가 — 멱등 열쇠", () => {
   it("★ 누른 그룹이 그대로 실려 간다 — 이게 없으면 서버가 «맨 위» 그룹에 넣는다 (#588)", async () => {
     const { seen, action, host } = mount();
     await act(async () => {
-      root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId="g-2" startWorkAction={action} />);
+      root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId="g-2" startWorkAction={action} truncated={false} />);
     });
     await open(host);
     await act(async () => submitFor(host, "c-1")?.requestSubmit());
@@ -131,7 +131,7 @@ describe("업체 추가 — 멱등 열쇠", () => {
   it("「그룹 없음」 블록에서는 그룹을 안 보낸다 — 서버가 첫 그룹을 고른다", async () => {
     const { seen, action, host } = mount();
     await act(async () => {
-      root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId={null} startWorkAction={action} />);
+      root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId={null} startWorkAction={action} truncated={false} />);
     });
     await open(host);
     await act(async () => submitFor(host, "c-1")?.requestSubmit());
@@ -147,7 +147,7 @@ describe("업체 추가 — 멱등 열쇠", () => {
     try {
       const { seen, action, host } = mount();
       await act(async () => {
-        root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId="g-2" startWorkAction={action} />);
+        root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId="g-2" startWorkAction={action} truncated={false} />);
       });
       await open(host);
       await act(async () => submitFor(host, "c-1")?.requestSubmit());

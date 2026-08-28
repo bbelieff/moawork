@@ -573,8 +573,14 @@ export function GroupTable({
   companyPicker?: {
     rows: readonly CompanyPickerRow[];
     loadError?: string | null;
-    /** 목록이 상한에 걸려 일부만 담겼는가 — 폼이 「없으니 새로 등록하라」고 말하지 않게 한다. */
-    truncated?: boolean;
+    /**
+     * 목록이 상한에 걸려 일부만 담겼는가 — 폼이 「없으니 새로 등록하라」고 말하지 않게 한다.
+     *
+     * ★ «선택» 이 아니라 «필수» 다. 검수에서 이 아래의 전달 한 줄을 지웠더니
+     *   325개 테스트가 하나도 안 빨개졌다. 선택이면 빼먹어도 타입이 안 막고,
+     *   빼먹으면 잘린 목록에서 「먼저 등록해 주세요」가 그대로 뜬다.
+     */
+    truncated: boolean;
     action: (
       previous: CompanyIntakeActionState,
       formData: FormData,

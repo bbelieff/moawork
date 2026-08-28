@@ -33,7 +33,7 @@ const ROWS: CompanyPickerRow[] = [
 
 const action = vi.fn(async () => ({ ok: true, message: "" }) as CompanyIntakeActionState);
 
-async function render(props: { truncated?: boolean }) {
+async function render(props: { truncated: boolean }) {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -55,17 +55,29 @@ async function render(props: { truncated?: boolean }) {
 
 describe("업체 추가 — 목록이 잘렸을 때 (#588)", () => {
   it("안 잘렸으면 종전대로 «먼저 등록해 주세요» 로 안내한다", async () => {
-    const host = await render({});
+    const host = await render({ truncated: false });
     expect(host.textContent).toContain("먼저 등록해 주세요");
-    expect(host.textContent).not.toContain("일부만");
+    expect(host.textContent).not.toContain("곳까지만");
   });
 
-  it("★ 잘렸으면 등록을 권하지 않고 «먼저 찾아보라» 고 말한다", async () => {
+  it("★ 잘렸으면 «찾아보기» 를 먼저 권한다 — 다만 등록 길을 막지는 않는다", async () => {
     const host = await render({ truncated: true });
-    expect(host.textContent).toContain("먼저 찾아 주세요");
-    expect(host.textContent).not.toContain("먼저 등록해 주세요");
+    expect(host.textContent).toContain("안 보여도 없는 게 아닐 수 있어요");
+    expect(host.textContent).toContain("먼저 찾아보고");
     // 몇 곳까지 담겼는지 숫자로 밝힌다 — 「많아서 일부」 는 사람이 판단할 근거가 못 된다.
     expect(host.textContent).toContain(`${ROWS.length}곳까지만`);
+  });
+
+  /**
+   * ★ 검수 지적 — 처음엔 안내문을 «교체» 했다. 그러면 회사가 많은 조직은
+   *   진짜로 없는 회사를 만나도 「등록해 주세요」를 영영 못 본다. 막다른 길이다.
+   *   순서만 바꾸고 길은 남긴다.
+   */
+  it("★ 잘려도 «등록하는 길» 은 남아 있어야 한다", async () => {
+    const host = await render({ truncated: true });
+    expect(host.textContent).toContain("등록해 주세요");
+    const link = [...host.querySelectorAll("a")].find((a) => a.textContent?.includes("업체관리 현황"));
+    expect(link, "업체관리 현황 링크가 남아 있어야 한다").toBeTruthy();
   });
 
   it("★ 잘린 채 «못 찾았다» 를 말할 때는 없다고 단정하지 않는다", async () => {

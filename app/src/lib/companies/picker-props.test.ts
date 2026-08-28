@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildCompanyPickerProps } from "./BoardWorkspace";
+import { buildCompanyPickerProps } from "./picker-props";
 import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
 import { CONTACT_TAB_SOURCE } from "@/lib/default-tabs/types";
-import type { CompanyPickerLoadResult } from "@/lib/companies/picker-server";
+import type { CompanyPickerLoadResult } from "./picker-server";
 
 /**
  * 서버 → 화면 사이의 «아무도 안 보던 세 줄» 을 잰다 (#588 ②).
@@ -37,5 +37,17 @@ describe("업체 추가 목록의 서버→화면 전달", () => {
   it("계약업체 실무가 아니거나 액션이 없으면 아예 안 단다", () => {
     expect(buildCompanyPickerProps(CONTACT_TAB_SOURCE, result(), action)).toEqual({});
     expect(buildCompanyPickerProps(CONTRACT_WORK_TAB_SOURCE, result(), undefined)).toEqual({});
+  });
+
+  /**
+   * ★ 상한 값 자체를 잰다 — 500 이었을 때 «없던 회귀» 를 만들었다.
+   *   DB(PostgREST) 기본 max-rows 는 1000 이다. 우리 상한이 그보다 «낮으면»
+   *   회사 501~1000 곳인 조직은 원래 전부 보이던 것을 우리가 새로 자른다.
+   *   그래서 이 값은 1000 «이상» 이어야 한다. 다시 낮추면 이 검사가 막는다.
+   */
+  it("★ 우리 상한이 DB 상한보다 낮으면 안 된다", async () => {
+    const { COMPANY_PICKER_LIMIT } = await import("./picker-server");
+    const POSTGREST_DEFAULT_MAX_ROWS = 1000;
+    expect(COMPANY_PICKER_LIMIT).toBeGreaterThanOrEqual(POSTGREST_DEFAULT_MAX_ROWS);
   });
 });

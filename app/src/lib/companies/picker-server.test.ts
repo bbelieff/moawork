@@ -68,14 +68,29 @@ describe("company picker server boundary", () => {
     expect(result.error).toBeNull();
   });
 
-  it("상한 «이하» 면 자르지 않고 잘렸다고 말하지도 않는다", async () => {
+  it("상한 «미만» 이면 자르지 않고 잘렸다고 말하지도 않는다", async () => {
+    const under = Array.from({ length: COMPANY_PICKER_LIMIT - 1 }, (_, i) => ({
+      ...company, id: `company-${i}`, name: `회사${i}`,
+    }));
+    const result = await loadCompanyPickerRows(ctx, {
+      source: { listCompanies: vi.fn(async () => under), listDeals: vi.fn(async () => []) },
+    });
+    expect(result.rows).toHaveLength(COMPANY_PICKER_LIMIT - 1);
+    expect(result.truncated).toBe(false);
+  });
+
+  /**
+   * ★ 정확히 상한만큼 받았을 때 — «딱 그만큼» 인지 «잘려서 그만큼» 인지 구분할 수 없다.
+   *   구분이 안 되면 «모른다» 고 말해야 한다. 안 그러면 DB 가 자른 걸 우리가
+   *   「안 잘렸다」고 단정해 버린다.
+   */
+  it("★ 정확히 상한만큼이면 «모른다» 쪽으로 — 잘렸다고 말한다", async () => {
     const exact = Array.from({ length: COMPANY_PICKER_LIMIT }, (_, i) => ({
       ...company, id: `company-${i}`, name: `회사${i}`,
     }));
     const result = await loadCompanyPickerRows(ctx, {
       source: { listCompanies: vi.fn(async () => exact), listDeals: vi.fn(async () => []) },
     });
-    expect(result.rows).toHaveLength(COMPANY_PICKER_LIMIT);
-    expect(result.truncated).toBe(false);
+    expect(result.truncated).toBe(true);
   });
 });

@@ -21,19 +21,31 @@ export type CompanyPickerLoadResult = Readonly<{
 }>;
 
 /**
- * 한 번에 읽어 올 회사 수의 상한.
+ * 한 번에 화면으로 넘기는 회사 수의 상한.
  *
- * ★ 왜 상한을 «두는가» — 전에는 없었다. 계약업체 실무 보드를 열 때마다 회사와 자금 건을
- *   통째로 읽어 화면으로 넘겼다. 첫 고객 보드는 8,400행 규모다(AGENTS.md).
+ * ★ 왜 1000 인가 — «PostgREST 기본 max-rows» 와 같은 값이다. 이것이 핵심이다.
  *
- * ★ 왜 «이 숫자인가» — 재서 고른 값이 아니다. 「전부」와 「사람이 훑을 수 있는 양」 사이의
- *   임의의 선이고, 그 사실을 여기 적어 둔다. 중요한 것은 숫자가 아니라 **잘렸을 때 말한다**는
- *   것이다. 조용히 자르는 것이 이 화면의 결함이었다.
+ *   처음엔 500 으로 두었다가 검수에서 잡혔다. 500 은 DB 상한보다 «낮아서»,
+ *   회사 501~1000 곳인 조직은 **원래 전부 보이던 구간인데 이 코드가 새로 잘랐다.**
+ *   고치려던 병(조용히 잘림)을 안 앓던 조직에게 옮긴 셈이다.
+ *   게다가 잘리는 쪽은 오래된 회사인데(created_at desc), 그게 곧 거래 이력이
+ *   가장 많은 회사라 rankCompanies 의 「이력 있는 회사를 위로」와 정반대로 자른다.
  *
- * ★ 진짜 처방은 «서버에서 검색» 이다 — 지금은 전부 받아 화면에서 거른다(초성 검색 때문).
- *   초성을 SQL 로 하려면 생성 컬럼이 필요해서 마이그레이션이 따로 든다. #588 후속으로 남긴다.
+ *   그래서 규칙을 뒤집었다 — **우리 상한을 DB 상한보다 낮게 두지 않는다.**
+ *   1000 이하에서는 이 코드가 아무것도 자르지 않는다. 동작이 전과 같다.
+ *
+ * ★ 비교가 `>=` 인 이유 — 정확히 상한만큼 받았을 때 «딱 1000곳인지» 와
+ *   «잘려서 1000곳인지» 를 구분할 수 없다. 구분이 안 되면 «모른다» 고 말한다.
+ *   1000곳인 조직이 경고를 한 번 더 보는 쪽이, 잘린 조직이 못 보는 쪽보다 낫다.
+ *
+ * ★ 아직 못 잡는 것 — 프로젝트 설정의 max-rows 가 1000 «보다 낮으면» 이 판정은
+ *   못 알아챈다(DB 가 500 을 주면 500 >= 1000 이 거짓이다). 그걸 확실히 알려면
+ *   개수를 따로 세는 질의(count)가 필요하다. #588 후속으로 남긴다.
+ *
+ * ★ 진짜 처방은 여전히 «서버에서 검색» 이다 — 지금은 초성 검색 때문에 전부 받아
+ *   화면에서 거른다. 초성을 SQL 로 하려면 생성 컬럼이 필요해 마이그레이션이 든다.
  */
-export const COMPANY_PICKER_LIMIT = 500;
+export const COMPANY_PICKER_LIMIT = 1000;
 
 const COMPANY_PICKER_READ_ERROR = "업체 목록을 불러오지 못했어요. 새로고침 후 다시 시도해 주세요.";
 
@@ -84,7 +96,8 @@ export async function loadCompanyPickerRows(
     const crm = options.source ?? new AsyncCrmService(new SupabaseCrmSource(await createClient()));
     const [companies, deals] = await Promise.all([crm.listCompanies(ctx), crm.listDeals(ctx)]);
     // 상한을 «여기서» 자른다. 자른 사실은 숨기지 않는다 — truncated 참조.
-    const truncated = companies.length > COMPANY_PICKER_LIMIT;
+    // `>=` 다: 정확히 상한만큼 받으면 잘렸는지 알 수 없으므로 «모른다» 쪽으로 말한다.
+    const truncated = companies.length >= COMPANY_PICKER_LIMIT;
     const bounded = truncated ? companies.slice(0, COMPANY_PICKER_LIMIT) : companies;
     return { rows: buildCompanyPickerRows(bounded, deals), error: null, truncated };
   } catch (error) {
