@@ -56,13 +56,6 @@ export interface CompanyPickerCompany {
 /** 한글 초성 자모(ㄱ~ㅎ). 이 글자가 질의에 있으면 «초성으로 찾는 중» 이다. */
 const CHOSUNG_JAMO = /[\u3131-\u314e]/;
 
-/**
- * 질의가 «초성만» 으로 이루어졌나. (다른 곳에서 쓰므로 남긴다)
- */
-export function isChosungQuery(query: string): boolean {
-  return !/[가-힣]/.test(query);
-}
-
 /** 질의 한 글자가 대상 한 글자에 걸리나. 자모면 초성끼리, 아니면 글자끼리 견준다. */
 function charMatches(fieldChar: string, queryChar: string): boolean {
   if (CHOSUNG_JAMO.test(queryChar)) return chosung(fieldChar) === queryChar;
@@ -96,9 +89,15 @@ function charMatches(fieldChar: string, queryChar: string): boolean {
  *   ㄷㅅ → 대성산업 ○ · 다스산업 ○   (초성 검색은 그대로다)
  *   ㄷ성 → 대성산업 ○ · 다스산업 ✕   (섞인 질의도 산다)
  *   대ㅅ → 대성산업 ○ · 다스산업 ✕
+ * ★ 빈 질의는 «호출부 책임» 이다. 여기서는 false 를 준다.
+ *   companyMatches·matchesQuery 가 앞에서 「빈 질의는 전부 통과」를 처리한다.
+ *   세 번째 호출부를 만들 사람이 그걸 기대하면 목록이 통째로 빈다.
  */
 export function matchesText(field: string, query: string): boolean {
   if (!field || !query) return false;
+  // 자모가 없는 질의는 네이티브 includes 로 끝난다 — 첫 키 입력이 가장 자주 밟는 자리다.
+  // 아래 글자 단위 비교와 «같은 답» 을 준다(자모가 없으면 글자끼리 견주는 것과 같다).
+  if (field.toLowerCase().includes(query.toLowerCase())) return true;
   const target = [...field];
   const needle = [...query];
   for (let start = 0; start + needle.length <= target.length; start += 1) {

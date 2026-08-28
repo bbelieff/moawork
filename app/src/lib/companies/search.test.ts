@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chosung, companyMatches, digitsOnly, isChosungQuery, rankCompanies, type CompanyPickerCompany, type CompanyPickerRow } from "./search";
+import { chosung, companyMatches, digitsOnly, rankCompanies, type CompanyPickerCompany, type CompanyPickerRow } from "./search";
 
 /**
  * 「업체 추가」 검색 — 이 화면의 목적은 «같은 회사를 두 번 적지 않게» 하는 것이다.
@@ -92,18 +92,13 @@ describe("초성 과매칭", () => {
     expect(companyMatches(named("다스산업"), "대ㅅ")).toBe(false);
   });
 
+  /**
+   * 초성은 «이어져» 있어야 한다. 이건 전에도 그랬다 — 바꾼 게 아니라 못으로 박는 것이다.
+   * (chosung("대한상사")=ㄷㅎㅅㅅ 에 ㄷㅅ 는 연속으로 없다. 옛 둘째 조건도 includes 였다.)
+   */
   it("자리가 어긋나면 안 걸린다 — 초성이 흩어져 있다고 걸리면 그게 과매칭이다", () => {
-    // ㄷ...ㅅ 이 «붙어» 있어야 한다. 「대한상사」는 ㄷㅎㅅㅅ 라 ㄷㅅ 가 이어지지 않는다
     expect(companyMatches(named("대한상사"), "ㄷㅅ")).toBe(false);
     expect(companyMatches(named("대한상사"), "ㄷㅎ")).toBe(true);
-  });
-
-  it("질의가 초성인지 가른다 — 완성형이 하나라도 있으면 아니다", () => {
-    expect(isChosungQuery("ㄷㅅ")).toBe(true);
-    expect(isChosungQuery("ABC")).toBe(true);
-    expect(isChosungQuery("010")).toBe(true);
-    expect(isChosungQuery("대성")).toBe(false);
-    expect(isChosungQuery("ㄷ성")).toBe(false);
   });
 });
 
