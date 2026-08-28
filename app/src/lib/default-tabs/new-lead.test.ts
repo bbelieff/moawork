@@ -25,6 +25,7 @@ import {
   NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS,
   NEW_LEAD_TAB,
   presentNewLeadColumnKeys,
+  NEW_LEAD_DETAIL_ONLY_KEYS,
   presentNewLeadColumns,
   presentNewLeadDetailLayout,
   presentNewLeadUnplacedKeys,
@@ -317,6 +318,34 @@ describe("제품 규칙 — 목업을 그대로 옮기면 안 되는 곳", () =>
     expect(presentNewLeadUnplacedKeys(["closed_business", "export_status"], []))
       .toEqual(["closed_business", "export_status"]);
   });
+  it("담당자와 연관담당을 한 칸으로 합친다 — 표에서 빼되 «지우지는» 않는다", () => {
+    const physical = NEW_LEAD_TAB.columns.map((definition, index) => ({
+      ...definition,
+      id: `column-${definition.key}`,
+      org_id: "org-a",
+      board_id: "board-a",
+      rightPinned: Boolean(definition.rightPinned),
+      options_jsonb: null,
+      sort_order: index,
+      width: definition.width ?? null,
+    })) as BoardColumn[];
+
+    const presented = presentNewLeadColumns(physical);
+    // 표에는 담당자만 선다.
+    expect(presented.some((column) => column.key === "owner")).toBe(true);
+    expect(presented.some((column) => column.key === "collaborators")).toBe(false);
+
+    // ★ 그런데 «사라진» 것이 아니다 — 구조가 줄어든 변경은 무조건 FAIL 이다(D71~D75).
+    //   컬럼 정의는 그대로 있다. 상세 화면은 이 목록이 아니라 activeColumns 에서
+    //   나오므로(BoardWorkspace.tsx:276) 연관담당이 거기 그대로 보인다.
+    expect(NEW_LEAD_TAB.columns.some((column) => column.key === "collaborators")).toBe(true);
+
+    // ★ 상세 전용 집합은 «건드리지 않는다». #602 개정 계약이 SHA 로 고정한 자리라
+    //   여기를 바꾸면 「의미 보존 실패」로 게이트가 막는다 — 그 판정이 옳다.
+    //   표에서 빼는 일에 이 집합이 필요하지 않다는 것을 여기 못박아 둔다.
+    expect(NEW_LEAD_DETAIL_ONLY_KEYS.has("collaborators")).toBe(false);
+  });
+
   it("D71~D75 — 사람 컬럼에 이름을 박지 않는다. 값은 멤버 계정에서 온다", () => {
     for (const column of NEW_LEAD_TAB.columns) {
       if (column.type === "person" || column.type === "people") {

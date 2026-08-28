@@ -342,6 +342,11 @@ export const NEW_LEAD_DETAIL_ONLY_KEYS = new Set<string>([
   "malicious_absence_notice", "feedback_status", "recall_at", "meeting_at",
   "recontact_on", "contract_fee", "existing_loan_records", "credit_score",
 ]);
+// ★ 연관담당(collaborators)은 «여기» 에 넣지 않는다.
+//   표에서 빼는 일은 presentNewLeadColumns 가 이미 한다. 이 집합은 #602 의 개정 계약이
+//   SHA 로 고정하고 있어서, 여기를 건드리면 「의미 보존 실패」로 게이트가 막는다 —
+//   그리고 그 판정이 옳다. 상세 화면은 activeColumns 에서 나오므로(BoardWorkspace.tsx:276)
+//   이 집합과 무관하게 연관담당이 그대로 보인다. 즉 넣을 이유가 없었다.
 
 /**
  * #600 leaf 계약을 #602 소비 화면이 사용하는 presentation 정의.
@@ -601,11 +606,21 @@ export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardCol
       continue;
     }
     if (column.key === "collaborators") {
-      presented.push({
-        ...column,
-        label: "연관담당",
-        description: "담당자와 함께 이 회사의 상태 변경 알림을 받는 사람",
-      });
+      // ★ 표에서 «빼기» 만 한다. 지우지 않는다.
+      //
+      //   총괄 지시: 「담당자 컬럼과 연관담당자 컬럼을 통합하는 안」.
+      //   #598 의 계약도 「보드에는 현재 담당자만」이다.
+      //   그런데 지금까지는 담당자 칸 옆에 「연관담당」 칸이 그대로 서 있었다 —
+      //   담당자 칸에 이력·알림대상 팝업(AssignmentLineagePopover)을 붙여 놓고도
+      //   옛 칸을 안 치워서, 사용자에겐 «합쳐진» 것으로 보이지 않았다.
+      //
+      //   이 사람들은 사라지지 않는다. 담당자 칸을 누르면 나오는 팝업의
+      //   «알림 대상» 에서 그대로 보고 고친다. 기타정보(OTHER_INFO)가
+      //   폐업이력·수출여부를 접는 것과 «같은 방식» 이다 — 값은 남고 칸만 준다.
+      //
+      //   ★ 컬럼 정의(ALL_COLUMNS)와 저장된 값은 손대지 않는다.
+      //     구조가 줄어든 변경은 무조건 FAIL 이다(CLAUDE.md D71~D75).
+      //     여기서 하는 일은 «화면에 그리지 않는 것» 뿐이라 구조는 그대로다.
       continue;
     }
     if (column.key === "biz_reg_type") {

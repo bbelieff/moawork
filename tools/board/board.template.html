@@ -93,6 +93,25 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
 .inventory tr:hover{background:#fafbfc}.inventory .title{min-width:250px}.inventory .next{min-width:310px;color:var(--muted)}
 .stamp-ok{color:var(--teal);font-weight:750}.stamp-miss{color:var(--red);font-weight:750}.stamp-na{color:var(--faint)}
 .loading{padding:26px;text-align:center;color:var(--faint)}.muted{color:var(--muted)}
+/* 진행 지도 — 한 줄에 «어느 화면 · 얼마나 왔나 · 얼마나 남았나» 셋이 같이 읽힌다. */
+.journey{display:flex;flex-direction:column;gap:2px}
+.jrow{display:grid;grid-template-columns:minmax(9rem,13rem) 1fr auto;gap:14px;align-items:center;
+      padding:10px 4px;border-top:1px solid var(--line-soft)}
+.jrow:first-child{border-top:0}
+.jrow.is-done .jname b{color:var(--muted)}
+.jname b{display:block;font-size:14px;font-weight:680;letter-spacing:-.01em}
+.jname small{display:block;font-size:11.5px;color:var(--faint);margin-top:1px}
+.jbar{height:8px;border-radius:5px;background:var(--line-soft);overflow:hidden}
+.jbar i{display:block;height:100%;border-radius:5px;background:var(--teal)}
+.jrow.is-done .jbar i{background:var(--ok,var(--teal))}
+.jmeta{margin-top:5px;font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:baseline}
+.jleft b{color:var(--ink);font-variant-numeric:tabular-nums}
+.jdone{color:var(--teal);font-weight:650}
+.jurgent{color:var(--bad);font-weight:650}
+.jpct{font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:15px;font-weight:750;
+      font-variant-numeric:tabular-nums;min-width:3.2rem;text-align:right}
+.jnote{margin:12px 0 0;font-size:11.5px;color:var(--faint);line-height:1.6}
+@media(max-width:640px){.jrow{grid-template-columns:1fr auto;gap:8px}.jmid{grid-column:1/-1}}
 .foot{margin-top:22px;padding:13px 15px;font-size:10.5px;color:var(--muted)}
 @media(max-width:1100px){.lanes{grid-template-columns:repeat(4,minmax(170px,1fr))}.flow-grid{grid-template-columns:repeat(2,1fr)}.squads{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){
@@ -108,20 +127,20 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
 <div class="wrap">
   <header class="top">
     <div>
-      <div class="eyebrow">MoaWork C × G Shared Control Room</div>
-      <h1>공동작업 관제판 : 신규리드·보드뷰·컬럼메뉴·대시보드 완주</h1>
-      <div class="sub freshness" id="stamp">GitHub · Vercel 상태를 불러오는 중…</div>
+      <div class="eyebrow">모아워크 관제판</div>
+      <h1>지금 무엇이 어디까지 왔나</h1>
+      <div class="sub freshness" id="stamp">불러오는 중…</div>
     </div>
     <div class="actions">
-      <button class="btn" id="copyBrief">판단 요약 복사</button>
-      <button class="btn primary" id="refresh">지금 새로고침</button>
+      <button class="btn" id="copyBrief">요약 복사</button>
+      <button class="btn primary" id="refresh">새로고침</button>
     </div>
   </header>
   <div class="card alert" id="error"></div>
 
   <section class="card hero">
     <div class="score">
-      <div class="label">Production 완주율 · PR PASS는 분자에서 제외</div>
+      <div class="label">제품에 실제로 올라간 비율 — 코드만 만든 것은 안 셉니다</div>
       <div class="value" id="progressValue">—</div>
       <div class="caption" id="progressCaption">실측 대기</div>
       <div class="progress"><i id="progressBar"></i></div>
@@ -129,16 +148,27 @@ h2 .hint{font-size:11px;color:var(--faint);font-weight:500}
     <div class="kpis" id="kpis"><div class="loading">집계 중…</div></div>
   </section>
 
-  <h2>5단계 파이프라인 <span class="hint">작업/검수 → merge 대기 → 배포 대기 → Production 완주 · hosted는 별도 관문</span></h2>
+  <!--
+    진행 지도 — 「도착점 · 지금 위치 · 앞길」.
+    belie 가 명시적으로 요구한 것: 「현황과 지나온 길을 표현하는 건 둘째고
+    다음과 앞길을 보여주는 게 대시보드지」(AGENTS.md §2.6-②).
+    현황판은 «지금 몇 건» 만 말한다. 지도는 «어느 화면이 얼마나 남았나» 를 말한다.
+  -->
+  <section class="card" id="journeyCard">
+    <div class="section-title">진행 지도 <span class="hint">화면별로 얼마나 남았나</span></div>
+    <div id="journey"><div class="loading">지도를 그리는 중…</div></div>
+  </section>
+
+  <h2>어디까지 왔나 <span class="hint">만드는 중 → 합치기 대기 → 배포 대기 → 제품에 올라감</span></h2>
   <section class="pipeline" id="deliveryPipeline"><div class="card loading">Production 근거 측정 중…</div></section>
 
-  <h2>제품 단계 · DB 반영 · Production 완주 <span class="hint">merge SHA와 배포 SHA가 같아야 완주</span></h2>
+  <h2>제품에 올라간 것 <span class="hint">합친 것과 배포된 것이 같아야 «올라갔다» 입니다</span></h2>
   <section class="live-grid">
     <div class="card section-card" id="productStage"><div class="loading">제품 단계 계산 중…</div></div>
     <div class="card section-card" id="productionDone"><div class="loading">배포 근거 확인 중…</div></div>
   </section>
 
-  <h2>지금 도는 워커 <span class="hint">Orca task·dispatch 실측 · 5분 무활동이면 멈춤 의심</span></h2>
+  <h2>지금 일하는 중 <span class="hint">5분 넘게 조용하면 멈춘 것일 수 있습니다</span></h2>
   <section class="card section-card" id="workers"><div class="loading">Orca 워커 읽는 중…</div></section>
 
   <h2>전체와 부분 <span class="hint">층별 이슈 상태 · 선행 층 미완료 시 잠김</span></h2>
@@ -417,11 +447,80 @@ function renderHero(){
  const blocked=state.open.filter((issue)=>blockerOf(issue)||pendingDeps(issue).length).length;
  const unassigned=state.open.filter((issue)=>!laneOf(issue)).length;
  const fresh=state.open.filter((issue)=>issue.createdAt&&hours(issue.createdAt)<=168).length;
+ // 라벨은 «개발 용어» 가 아니라 «무슨 뜻인지» 로 적는다. 총괄이 읽고 판단하는 자리다.
  const values=[
-  ["오픈",state.open.length,""],["진행",active,""],["검수",review,review?"warn":""],["착수 가능",ready,ready?"go":""],
-  ["긴급",urgent,urgent?"hot":""],["blocked",blocked,blocked?"hot":""],["owner 공백",unassigned,unassigned?"warn":""],["7일 내 신규",fresh,""]
+  ["남은 일",state.open.length,""],
+  ["지금 만드는 중",active,""],
+  ["검사 받는 중",review,review?"warn":""],
+  ["바로 시작 가능",ready,ready?"go":""],
+  ["급한 것",urgent,urgent?"hot":""],
+  ["막혀 있는 것",blocked,blocked?"hot":""],
+  ["담당자 없음",unassigned,unassigned?"warn":""],
+  ["이번 주 새로 생김",fresh,""]
  ];
  document.getElementById("kpis").innerHTML=values.map(([label,value,tone])=>'<div class="kpi '+tone+'"><b>'+value+'</b><span>'+label+'</span></div>').join("");
+}
+
+/**
+ * 진행 지도 — 제품이 실제로 흐르는 순서대로 화면을 세우고, 각 칸에 남은 일을 붙인다.
+ *
+ * ★ 칸 목록은 «제품의 흐름» 이라 바뀌지 않는다(사이드바 IA 와 같다).
+ *   바뀌는 것은 «각 칸에 몇 건이 남았나» 이고, 그건 매번 실측한다.
+ *   옛 판은 카드 번호 15개를 박아 뒀다가 현실이 그 옆을 지나가자 통째로 낡았다 —
+ *   그래서 «무엇이 있어야 하는가» 만 고정하고 «지금 어떤가» 는 고정하지 않는다.
+ *
+ * ★ 분류는 제목 글자로 한다. 완벽하지 않다 — 그래서 못 고른 것을 «기타» 로 «보여준다».
+ *   조용히 버리면 지도가 거짓말이 된다.
+ */
+const JOURNEY = [
+ {key:"lead",   name:"신규리드 관리", hint:"문의가 들어온다",       words:["신규리드","신규 리드","리드 관리","newcust"]},
+ {key:"contact",name:"리드컨택 관리", hint:"연락하고 계약으로",     words:["리드컨택","컨택","contact"]},
+ {key:"work",   name:"계약업체 실무", hint:"계약 후 실제 진행",     words:["계약업체","업체 추가","업무 시작","work"]},
+ {key:"company",name:"업체관리 현황", hint:"회사별로 모아 본다",    words:["업체관리","회사 상세","고객사","companies"]},
+ {key:"acct",   name:"회계",         hint:"수수료·수납",           words:["회계","정산","수수료","원장","ledger"]},
+ {key:"org",    name:"조직·설정",     hint:"사람·권한·탭",          words:["조직관리","부서","권한","멤버","프리셋","탭 관리","온보딩"]},
+ {key:"board",  name:"보드 공통",     hint:"모든 탭이 함께 쓰는 표", words:["보드","컬럼","셀","DnD","숫자 표시","대시보드"]},
+ {key:"ops",    name:"일하는 방식",   hint:"게이트·인계·기계",       words:["게이트","머지","인계","워크트리","러너","CI","관제판"]},
+];
+
+function journeyBucket(issue){
+ const title=String(issue?.title||"");
+ for(const stage of JOURNEY){ if(stage.words.some((word)=>title.includes(word))) return stage.key; }
+ return "etc";
+}
+
+function renderJourney(){
+ const host=document.getElementById("journey");
+ if(!host)return;
+ // ★ state.issues 가 아니라 state.all 이다.
+ //   state.issues 는 Linear 시절 목표 카드 15개(GOAL_SET)로 «걸러진» 목록이라
+ //   GitHub 전환 뒤로는 항상 비어 있다. 지도는 전체를 봐야 한다.
+ const all=state.all||[];
+ if(!all.length){host.innerHTML='<div class="empty">읽은 이슈가 없습니다.</div>';return}
+
+ const rows=[...JOURNEY,{key:"etc",name:"기타",hint:"제목으로 못 고른 것",words:[]}].map((stage)=>{
+  const mine=all.filter((issue)=>journeyBucket(issue)===stage.key);
+  // DONE_STATES 는 이 판이 이미 쓰는 «끝난 것» 정의다(Done·Canceled·Duplicate).
+  // 새로 정의하지 않는다 — 두 곳이 다르게 세면 어느 쪽이 맞는지 아무도 모른다.
+  const done=mine.filter((issue)=>issue.status==="Done").length;
+  const open=mine.filter((issue)=>!DONE_STATES.has(issue.status));
+  const urgent=open.filter((issue)=>["Urgent","High"].includes(issue.priority?.name)).length;
+  const total=done+open.length;
+  return {...stage,done,open:open.length,urgent,total,pct:total?Math.round((done/total)*100):null};
+ }).filter((row)=>row.total>0);
+
+ host.innerHTML='<div class="journey">'+rows.map((row)=>{
+  const bar=row.pct===null?"":'<div class="jbar"><i style="width:'+row.pct+'%"></i></div>';
+  const left=row.open===0
+    ? '<span class="jdone">남은 일 없음</span>'
+    : '<span class="jleft">남은 일 <b>'+row.open+'</b>건</span>'+(row.urgent?' <span class="jurgent">급한 것 '+row.urgent+'</span>':'');
+  return '<div class="jrow'+(row.open===0?' is-done':'')+'">'
+   +'<div class="jname"><b>'+esc(row.name)+'</b><small>'+esc(row.hint)+'</small></div>'
+   +'<div class="jmid">'+bar+'<div class="jmeta">'+left+'</div></div>'
+   +'<div class="jpct">'+(row.pct===null?'—':row.pct+'%')+'</div>'
+   +'</div>';
+ }).join("")+'</div>'
+ +'<p class="jnote">칸은 제품이 흐르는 순서입니다. 숫자는 열 때마다 다시 셉니다 — 어디에도 박아 두지 않았습니다.</p>';
 }
 
 function renderDelivery(){
@@ -438,8 +537,8 @@ function renderDelivery(){
  }
  const complete=(delivery?.items||[]).filter((item)=>item.stage==="PRODUCTION_COMPLETE");
  const waiting=(delivery?.items||[]).filter((item)=>item.stage!=="PRODUCTION_COMPLETE");
- document.getElementById("productStage").innerHTML='<div class="section-title">진행률 / 제품 단계</div><div class="ops-list">'+(waiting.length?waiting.slice(0,20).map((item)=>'<div class="ops-item"><b>'+esc(item.cardId)+'</b> · '+esc(stages.find(([key])=>key===item.stage)?.[1]||item.stage)+'<br><small>'+esc((item.blockers||[]).join(" · ")||"다음 관문 대기")+'</small></div>').join(""):'<div class="empty">대기 작업 없음</div>')+'</div>';
- document.getElementById("productionDone").innerHTML='<div class="section-title">DB 반영 · Production 완주</div><div class="ops-list">'+(complete.length?complete.slice(0,20).map((item)=>'<div class="ops-item"><b>'+esc(item.cardId)+'</b> · PR #'+esc(item.pr?.number||"측정 실패")+'<br><small>merge '+esc(item.pr?.mergeCommitSha?.slice(0,8)||"측정 실패")+' = deploy '+esc(item.deployment?.sha?.slice(0,8)||"측정 실패")+' · /login '+esc(delivery.loginStatus)+'</small></div>').join(""):'<div class="empty">Production 완주 0건</div>')+'</div>';
+ document.getElementById("productStage").innerHTML='<div class="section-title">아직 안 올라간 것</div><div class="ops-list">'+(waiting.length?waiting.slice(0,20).map((item)=>'<div class="ops-item"><b>'+esc(item.cardId)+'</b> · '+esc(stages.find(([key])=>key===item.stage)?.[1]||item.stage)+'<br><small>'+esc((item.blockers||[]).join(" · ")||"다음 관문 대기")+'</small></div>').join(""):'<div class="empty">다 올라갔습니다</div>')+'</div>';
+ document.getElementById("productionDone").innerHTML='<div class="section-title">제품에 올라간 것</div><div class="ops-list">'+(complete.length?complete.slice(0,20).map((item)=>'<div class="ops-item"><b>'+esc(item.cardId)+'</b> · PR #'+esc(item.pr?.number||"측정 실패")+'<br><small>merge '+esc(item.pr?.mergeCommitSha?.slice(0,8)||"측정 실패")+' = deploy '+esc(item.deployment?.sha?.slice(0,8)||"측정 실패")+' · /login '+esc(delivery.loginStatus)+'</small></div>').join(""):'<div class="empty">아직 올라간 것이 없습니다</div>')+'</div>';
 }
 function buildDecisions(){
  const decisions=[];
@@ -518,14 +617,14 @@ function renderSharedGates(){
  gate.innerHTML='<h3>BBE-182 Global Release Gate · '+gateState+'</h3><p>전체 합산: '+state.issues.filter((i)=>i.status==="Done").length+' / '+GOAL_IDS.length+' Done</p><p>Squad coverage: <b class="'+(coverage.ok?'cross-ok':'cross-p0')+'">'+esc(coverageText)+'</b></p><p>Owner coverage: <b class="'+(ownerCoverage.ok?'cross-ok':'cross-p0')+'">'+esc(ownerCoverageText)+'</b></p><p>선행 미완료: '+esc(prereqs.join(" · ")||"0")+'</p><p>Cross-dependency: <b class="'+(cross.length?'cross-p0':'cross-ok')+'">'+cross.length+(cross.length?' · P0 RED':' · 정상')+'</b></p><p>Release PR·CI: '+esc(prCiText(release))+'</p>';
  const queue=state.issues.filter(isMigrationCard).filter((issue)=>issue.status!=="Done").sort((a,b)=>GOAL_IDS.indexOf(a.id)-GOAL_IDS.indexOf(b.id));
  const activeMigrations=queue.filter((issue)=>ACTIVE_STATES.has(issue.status));
- document.getElementById("migrationQueue").innerHTML='<div class="section-title">Migration shared-resource queue <span class="hint">제품 blocker와 별도</span></div>'+(activeMigrations.length>1?'<div class="squad-line hot"><b>P0 SERIAL CONFLICT</b>'+esc(activeMigrations.map((i)=>i.id).join(" · "))+'</div>':'')+'<div class="queue">'+(queue.length?queue.map((issue,index)=>'<div class="queue-item"><b>'+(index+1)+'</b><div><p>'+issue.id+' · '+esc(issue.title)+'</p><small>'+esc(laneOf(issue)||blockerOf(issue)||"미배정")+' · '+esc(issue.status)+'</small></div><small>'+esc(index===0?"active/latest+1":"serial wait")+'</small></div>').join(""):'<div class="empty">migration queue 없음</div>')+'</div>';
+ document.getElementById("migrationQueue").innerHTML='<div class="section-title">DB 변경 순서 <span class="hint">두 개가 동시에 바꾸면 충돌합니다</span></div>'+(activeMigrations.length>1?'<div class="squad-line hot"><b>P0 SERIAL CONFLICT</b>'+esc(activeMigrations.map((i)=>i.id).join(" · "))+'</div>':'')+'<div class="queue">'+(queue.length?queue.map((issue,index)=>'<div class="queue-item"><b>'+(index+1)+'</b><div><p>'+issue.id+' · '+esc(issue.title)+'</p><small>'+esc(laneOf(issue)||blockerOf(issue)||"미배정")+' · '+esc(issue.status)+'</small></div><small>'+esc(index===0?"active/latest+1":"serial wait")+'</small></div>').join(""):'<div class="empty">migration queue 없음</div>')+'</div>';
 }
 function renderOperations(){
  const repo=state.operations?.repository;
  const repoEl=document.getElementById("repository");
- if(!repo?.available){repoEl.innerHTML='<div class="section-title">Git worktree</div><div class="empty">상태 조회 불가<br><small>'+esc(repo?.error?.message||"연결 실패")+'</small></div>'}
+ if(!repo?.available){repoEl.innerHTML='<div class="section-title">관제 서버 상태</div><div class="empty">상태 조회 불가<br><small>'+esc(repo?.error?.message||"연결 실패")+'</small></div>'}
  else{
-  repoEl.innerHTML='<div class="section-title">Git worktree</div><div class="repo-grid">'+
+  repoEl.innerHTML='<div class="section-title">관제 서버 상태</div><div class="repo-grid">'+
    [["브랜치",repo.branch],["origin/main",repo.originMainShort],["ahead / behind",repo.ahead+" / "+repo.behind],["작업트리",repo.dirty?"변경 "+repo.dirtyCount+"건":"clean"]].map(([label,value])=>'<div class="repo-stat"><b>'+esc(value)+'</b><span>'+esc(label)+'</span></div>').join("")+
    '</div>'+(repo.changes?.length?'<div class="repo-changes">'+repo.changes.map(esc).join("<br>")+'</div>':'');
  }
@@ -547,12 +646,13 @@ function renderLiveBoard(){
  const metrics=ops.metrics||{};
  const qa=metrics.qaDifference;
  document.getElementById("kpis").innerHTML=[
-  ["목업 차이",qa?.available?qa.value:"측정 실패",qa?.measuredAt?"측정 "+ago(qa.measuredAt)+" · 5분 캐시":"qa-app 측정 실패",qa?.available?"":"hot"],
- ["Urgent 잔량",measured(metrics.urgentRemaining),"미완료 카드","hot"],
- ["손 필요",measured(metrics.handNeeded),"라벨+Blocked","warn"],
-  ["현재 Production 완주율",metrics.completion?metrics.completion.percent+"%":"측정 실패",metrics.completion?metrics.completion.done+" / "+metrics.completion.total:"배포 측정 실패","go"],
-  ["전역 이슈 완료율",metrics.linearCompletion?metrics.linearCompletion.percent+"%":"측정 실패",metrics.linearCompletion?metrics.linearCompletion.done+" / "+metrics.linearCompletion.total:"이슈 측정 실패",""],
-  ["오늘 Production",measured(metrics.todayProductionDone),"exact SHA READY · /login 200","go"]
+  // 라벨과 설명을 «무슨 뜻인지» 로 적는다. 총괄이 읽고 판단하는 자리다.
+  ["목업과 다른 곳",qa?.available?qa.value:"못 쟀습니다",qa?.measuredAt?"마지막 확인 "+ago(qa.measuredAt):"검사를 못 돌렸습니다",qa?.available?"":"hot"],
+ ["급한 일",measured(metrics.urgentRemaining),"아직 안 끝난 것","hot"],
+ ["총괄 손이 필요한 것",measured(metrics.handNeeded),"제가 못 하는 것","warn"],
+  ["제품에 올라간 비율",metrics.completion?metrics.completion.percent+"%":"못 쟀습니다",metrics.completion?metrics.completion.done+"건 / 목표 "+metrics.completion.total+"건":"배포 기록을 못 읽었습니다","go"],
+  ["전체 일 중 끝낸 비율",metrics.linearCompletion?metrics.linearCompletion.percent+"%":"못 쟀습니다",metrics.linearCompletion?metrics.linearCompletion.done+"건 / 전체 "+metrics.linearCompletion.total+"건":"이슈를 못 읽었습니다",""],
+  ["오늘 제품에 올린 것",measured(metrics.todayProductionDone),"배포까지 끝난 것","go"]
  ].map(([label,value,note,kind])=>'<div class="kpi '+kind+'"><b>'+esc(value)+'</b><span>'+esc(label)+' · '+esc(note)+'</span></div>').join("");
 
  const workers=ops.workers;
@@ -660,7 +760,7 @@ async function loadOnce(force=true){
   state.operations=operations;
   const active=state.open.filter((issue)=>ACTIVE_STATES.has(issue.status));
   state.stamps=new Map(await Promise.all(active.map(fetchStamp)));
-  renderHero();renderDelivery();renderLiveBoard();buildDecisions();renderFlows();renderLanes();renderSquads();renderSharedGates();renderOperations();renderContext();initFilters();renderInventory();renderFeed();
+  renderHero();renderJourney();renderDelivery();renderLiveBoard();buildDecisions();renderFlows();renderLanes();renderSquads();renderSharedGates();renderOperations();renderContext();initFilters();renderInventory();renderFeed();
   if(issueRead.status==="fulfilled"&&!linearPartial&&operationsRead.status==="fulfilled"){lastSuccessAt=Date.now()}
   else if(!lastSuccessAt&&(issueData.lastSuccessAt||operations.linear?.lastSuccessAt))lastSuccessAt=new Date(issueData.lastSuccessAt||operations.linear.lastSuccessAt).getTime();
   renderFreshness();
