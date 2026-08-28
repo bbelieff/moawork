@@ -573,6 +573,8 @@ export function GroupTable({
   companyPicker?: {
     rows: readonly CompanyPickerRow[];
     loadError?: string | null;
+    /** 목록이 상한에 걸려 일부만 담겼는가 — 폼이 「없으니 새로 등록하라」고 말하지 않게 한다. */
+    truncated?: boolean;
     action: (
       previous: CompanyIntakeActionState,
       formData: FormData,
@@ -1068,6 +1070,7 @@ export function GroupTable({
                   <ContractWorkIntakeForm
                     rows={companyPicker.rows}
                     loadError={companyPicker.loadError}
+                    truncated={companyPicker.truncated}
                     startWorkAction={companyPicker.action}
                     boardId={boardId}
                     // 누른 그룹을 그대로 넘긴다 — 이 값이 없으면 서버가 첫 그룹에 넣는다(#588).

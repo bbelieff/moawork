@@ -79,6 +79,7 @@ function newRequestId(): string {
 export function ContractWorkIntakeForm({
   rows,
   loadError,
+  truncated = false,
   startWorkAction,
   boardId,
   groupId,
@@ -86,6 +87,15 @@ export function ContractWorkIntakeForm({
 }: {
   rows: readonly CompanyPickerRow[];
   loadError?: string | null;
+  /**
+   * 목록이 상한에 걸려 «전부가 아닐» 때 true.
+   *
+   * ★ 이 화면에서 제일 위험한 문장이 아래의 「찾는 업체가 없다면 … 먼저 등록해 주세요」다.
+   *   목록이 잘렸는데 그 문장을 그대로 보이면, 이미 있는 회사를 «없다» 고 읽고 새로 만든다 —
+   *   이 화면이 애초에 막으려던 중복을 이 화면이 만들게 된다.
+   *   그래서 잘렸을 때는 등록을 권하지 않고 «검색해 보라» 고 먼저 말한다.
+   */
+  truncated?: boolean;
   startWorkAction: (
     previous: CompanyIntakeActionState,
     formData: FormData,
@@ -204,6 +214,14 @@ export function ContractWorkIntakeForm({
         {!loadError && shown.length === 0 ? (
           <li className="px-3 py-6 text-center text-sm text-mw-sub">
             «{query.trim()}» 로 찾은 업체가 없습니다
+            {truncated ? (
+              <>
+                <br />
+                <span className="text-[11px]">
+                  다만 지금은 업체 목록의 <b>일부만</b> 보고 있습니다 — 없다고 단정하지 마세요.
+                </span>
+              </>
+            ) : null}
           </li>
         ) : null}
       </ul>
@@ -224,7 +242,16 @@ export function ContractWorkIntakeForm({
       {!loadError ? <p className="text-[11px] text-mw-sub">
         이미 있는 업체를 고르면 <b>저장된 정보가 그대로 채워집니다</b> — 같은 회사를 두 번 적지 않게.
         <br />
-        찾는 업체가 없다면 <Link href={companiesHref} className="underline underline-offset-2">업체관리 현황</Link>에서 먼저 등록해 주세요.
+        {truncated ? (
+          <>
+            업체가 많아 <b>{rows.length}곳까지만</b> 이 목록에 담았습니다. 안 보이면 없는 게 아니라 안 담긴 것일 수 있으니,
+            {" "}<Link href={companiesHref} className="underline underline-offset-2">업체관리 현황</Link>에서 먼저 찾아 주세요.
+          </>
+        ) : (
+          <>
+            찾는 업체가 없다면 <Link href={companiesHref} className="underline underline-offset-2">업체관리 현황</Link>에서 먼저 등록해 주세요.
+          </>
+        )}
       </p> : null}
     </div>
   );

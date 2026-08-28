@@ -153,7 +153,7 @@ export default async function BoardPage({
    */
   const contractWorkCompanyPicker = board.source === CONTRACT_WORK_TAB_SOURCE
     ? await loadCompanyPickerRows(ctx)
-    : { rows: [], error: null };
+    : { rows: [], error: null, truncated: false };
   const boardItems = board.source === NOTICE_TAB_SOURCE
     ? loadedItems.map((item) => {
         const fileId = item.values.official_pdf;

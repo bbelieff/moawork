@@ -9,7 +9,31 @@ export type CompanyPickerLoadResult = Readonly<{
   rows: CompanyPickerRow[];
   /** null이면 정상적으로 읽은 결과(0건 포함), 문자열이면 목록을 신뢰하면 안 된다. */
   error: string | null;
+  /**
+   * 목록이 상한에 걸려 «전부가 아닐» 때 true.
+   *
+   * ★ 이걸 안 알리면 이 화면이 막으려던 중복을 오히려 만든다.
+   *   목록은 최근 등록 순이라 잘리면 «오래된 회사» 부터 사라진다.
+   *   사용자는 못 찾고 「없구나」 하며 새로 만든다 — 그게 정확히 이 기능이 막으려던 것이다.
+   *   그래서 조용히 자르지 않고 «일부만 보인다» 고 말한다.
+   */
+  truncated: boolean;
 }>;
+
+/**
+ * 한 번에 읽어 올 회사 수의 상한.
+ *
+ * ★ 왜 상한을 «두는가» — 전에는 없었다. 계약업체 실무 보드를 열 때마다 회사와 자금 건을
+ *   통째로 읽어 화면으로 넘겼다. 첫 고객 보드는 8,400행 규모다(AGENTS.md).
+ *
+ * ★ 왜 «이 숫자인가» — 재서 고른 값이 아니다. 「전부」와 「사람이 훑을 수 있는 양」 사이의
+ *   임의의 선이고, 그 사실을 여기 적어 둔다. 중요한 것은 숫자가 아니라 **잘렸을 때 말한다**는
+ *   것이다. 조용히 자르는 것이 이 화면의 결함이었다.
+ *
+ * ★ 진짜 처방은 «서버에서 검색» 이다 — 지금은 전부 받아 화면에서 거른다(초성 검색 때문).
+ *   초성을 SQL 로 하려면 생성 컬럼이 필요해서 마이그레이션이 따로 든다. #588 후속으로 남긴다.
+ */
+export const COMPANY_PICKER_LIMIT = 500;
 
 const COMPANY_PICKER_READ_ERROR = "업체 목록을 불러오지 못했어요. 새로고침 후 다시 시도해 주세요.";
 
@@ -55,13 +79,16 @@ export async function loadCompanyPickerRows(
   ctx: Ctx,
   options: { source?: CompanyPickerSource } = {},
 ): Promise<CompanyPickerLoadResult> {
-  if (!options.source && !hasSupabaseEnv()) return { rows: [], error: COMPANY_PICKER_READ_ERROR };
+  if (!options.source && !hasSupabaseEnv()) return { rows: [], error: COMPANY_PICKER_READ_ERROR, truncated: false };
   try {
     const crm = options.source ?? new AsyncCrmService(new SupabaseCrmSource(await createClient()));
     const [companies, deals] = await Promise.all([crm.listCompanies(ctx), crm.listDeals(ctx)]);
-    return { rows: buildCompanyPickerRows(companies, deals), error: null };
+    // 상한을 «여기서» 자른다. 자른 사실은 숨기지 않는다 — truncated 참조.
+    const truncated = companies.length > COMPANY_PICKER_LIMIT;
+    const bounded = truncated ? companies.slice(0, COMPANY_PICKER_LIMIT) : companies;
+    return { rows: buildCompanyPickerRows(bounded, deals), error: null, truncated };
   } catch (error) {
     console.error("[company picker] failed to load", error);
-    return { rows: [], error: COMPANY_PICKER_READ_ERROR };
+    return { rows: [], error: COMPANY_PICKER_READ_ERROR, truncated: false };
   }
 }
