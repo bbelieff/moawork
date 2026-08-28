@@ -62,3 +62,22 @@ export function touchesMigrationsFor(writerMap, prNumber) {
   // has() 로 «map 에 없음(=닫힌 PR)» 과 «map 에 null(=잘림)» 을 가른다.
   return writerMap.has(prNumber) ? writerMap.get(prNumber) : false;
 }
+
+/**
+ * 「열린 PR 의 파일을 읽었는가」 — 판이 «없음» 과 «모름» 을 가르는 근거다.
+ *
+ * ★ 이 함수가 따로 있는 이유 — `touchesMigrations` 배선(P1-5)이 검사 없는 한 줄로
+ *   들어왔는데, 바로 «형제 줄» 인 이것도 검사가 0건이었다. 이 줄이 깨지면
+ *   질의가 실패했는데도 판이 「없습니다」를 그린다 — 같은 병의 재발이다.
+ *
+ * @param writerMap null 이면 못 읽은 것
+ * @param openCount 이 시점에 열려 있다고 «다른 질의가» 말한 PR 수
+ *
+ * ★ 열린 PR 이 있다는데 판정이 하나도 없으면 그것도 «못 읽은» 것으로 본다.
+ *   gh 가 exit 0 으로 빈 출력을 내는 드문 경우를 조용한 0 으로 넘기지 않는다.
+ */
+export function migrationScanAvailable(writerMap, openCount) {
+  if (!writerMap) return false;
+  if (Number.isFinite(openCount) && openCount > 0 && writerMap.size === 0) return false;
+  return true;
+}

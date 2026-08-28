@@ -420,7 +420,52 @@ test("파일이 많아 판정 못 한 PR 은 «모름» 으로 따로 센다", a
     ],
   });
   assert.deepEqual(card.unknown.map((pr) => pr.number), [20]);
-  assert.equal(card.mode, "empty", "모르는 것이 있어도 «있다» 고 단정하지 않는다");
+  // ★ «없다» 고도 단정하지 않는다. 앞선 판은 여기서 "empty" 를 돌려줬고, 그러면
+  //   화면 윗줄(「N건은 판정 못 했습니다」)과 본문(「없습니다」)이 서로 모순됐다.
+  assert.equal(card.mode, "partial");
+});
+
+/**
+ * ★ 「모름을 없음으로 읽지 않는다」가 «겹침» 에서도 지켜지는가.
+ *   확인된 1건 + 모르는 1건이면 진짜 겹침일 수 있다. 그때 판이 조용하면
+ *   이 PR 이 세운 원칙이 마지막 자리에서 깨진다.
+ */
+test("확인 1건 + 모름 1건이면 «겹칠 수도 있다» 고 말한다", async () => {
+  const logic = await boardLogic();
+  const card = logic.migrationCardState({
+    available: true, migrationScanAvailable: true,
+    items: [
+      { number: 30, state: "OPEN", touchesMigrations: true },
+      { number: 31, state: "OPEN", touchesMigrations: null },
+    ],
+  });
+  assert.equal(card.overlap, false, "확실하지 않으면 빨간 경보로 울리지 않는다");
+  assert.equal(card.mayOverlap, true, "그렇다고 «겹침 없음» 으로 넘기지도 않는다");
+});
+
+/**
+ * ★ 경보 문턱을 잰다. `> 1` 을 `> 0` 으로 바꿔도 통과하면
+ *   「PR 한 건에도 겹침 경보」라는 상시 오경보가 검사를 그냥 지나간다.
+ */
+test("PR 한 건뿐이면 겹침이 아니다 — 상시 오경보를 막는다", async () => {
+  const logic = await boardLogic();
+  const one = logic.migrationCardState({
+    available: true, migrationScanAvailable: true,
+    items: [{ number: 40, state: "OPEN", touchesMigrations: true }],
+  });
+  assert.equal(one.mode, "writers");
+  assert.equal(one.overlap, false);
+  assert.equal(one.mayOverlap, false);
+});
+
+/**
+ * ★ 데이터가 «아예 없을 때» 도 «모름» 이다.
+ *   첫 렌더나 예상 못 한 모양에서 「없습니다」를 그리면 그게 이 카드의 습관 그대로다.
+ */
+test("PR 정보가 아예 없으면 «없음» 이 아니라 «모름» 이다", async () => {
+  const logic = await boardLogic();
+  assert.equal(logic.migrationCardState(undefined).mode, "unreadable");
+  assert.equal(logic.migrationCardState(null).mode, "unreadable");
 });
 
 /**
@@ -445,6 +490,39 @@ test("판정을 판에 실어 보낼 때 «모름» 을 «아니다» 로 뭉개
   assert.equal(touchesMigrationsFor(map, 99), false);
   // 열린 PR 을 통째로 못 읽었으면 전부 «모름»
   assert.equal(touchesMigrationsFor(null, 1), null);
+});
+
+/**
+ * ★ 형제 배선을 잰다 (검수 P2-j).
+ *   `touchesMigrations` 배선은 P1-5 로 덮었는데, 바로 옆 줄인 이것은 검사가 0건이라
+ *   `migrationScanAvailable: true` 로 통째로 바꿔도 43개 검사가 전부 초록이었다.
+ *   이 줄이 깨지면 P1-4(질의 실패인데 「없습니다」)가 그대로 재발한다.
+ */
+test("열린 PR 파일을 못 읽었으면 «읽었다» 고 말하지 않는다", async () => {
+  const { migrationWriterMap, migrationScanAvailable } = await import("../migration-writers.mjs");
+
+  assert.equal(migrationScanAvailable(null, 3), false, "질의가 실패했으면 못 읽은 것이다");
+
+  const map = migrationWriterMap([{ number: 1, files: [], changedFiles: 0 }]);
+  assert.equal(migrationScanAvailable(map, 1), true);
+
+  // ★ 열린 PR 이 있다는데 판정이 하나도 없다 — gh 가 exit 0 으로 빈 출력을 낸 경우다.
+  //   조용한 0 으로 넘기지 않는다.
+  assert.equal(migrationScanAvailable(new Map(), 3), false);
+  // 열린 PR 이 정말 0건이면 빈 Map 이 정상이다
+  assert.equal(migrationScanAvailable(new Map(), 0), true);
+});
+
+/**
+ * ★ 측정 실패 카드가 화면에 «null» 을 찍지 않는다.
+ *   count 를 그대로 이어 붙이므로 null 이면 판 맨 위에 큰 빨간 「null」이 뜬다.
+ */
+test("측정 실패 카드의 숫자 자리에 null 을 넣지 않는다", async () => {
+  const html = await readFile(templateUrl, "utf8");
+  const card = html.match(/kind:"측정 실패"[^}]*}/);
+  assert.ok(card, "측정 실패 카드가 있어야 한다");
+  assert.doesNotMatch(card[0], /count:null/);
+  assert.match(card[0], /count:"—"/);
 });
 
 test("판정 정규식은 한 벌만 있다 — 두 벌이면 경보와 큐가 다른 것을 센다", async () => {

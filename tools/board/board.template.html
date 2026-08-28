@@ -362,11 +362,19 @@ const BOARD_LOGIC=(()=>{
   *         "empty"      정말 없다
   */
  const migrationCardState=(prs)=>{
-  const unreadable=Boolean(prs)&&(prs.available===false||prs.migrationScanAvailable===false);
-  if(unreadable)return {mode:"unreadable",writers:[],unknown:[],overlap:false};
-  const writers=migrationWriters(prs?.items);
-  const unknown=migrationUnknown(prs?.items);
-  return {mode:writers.length?"writers":"empty",writers,unknown,overlap:writers.length>1};
+  // ★ 기본값은 «모름» 이다. 데이터가 아예 없을 때를 「없습니다」로 읽는 것이
+  //   이 카드가 네 번 거짓말한 그 습관이다. 모르면 모른다고 한다.
+  if(!prs||prs.available===false||prs.migrationScanAvailable===false){
+   return {mode:"unreadable",writers:[],unknown:[],overlap:false,mayOverlap:false};
+  }
+  const writers=migrationWriters(prs.items);
+  const unknown=migrationUnknown(prs.items);
+  // ★ 모르는 것이 있으면 «없다» 고 단언하지 않는다. 그러면 윗줄(「N건은 판정 못 했습니다」)과
+  //   본문(「없습니다」)이 같은 카드에서 서로 모순된다.
+  const mode=writers.length?"writers":unknown.length?"partial":"empty";
+  // ★ 겹침도 마찬가지다. 확인된 1건 + 모르는 1건이면 «진짜 겹침» 일 수 있다.
+  //   확실할 때만 hot 으로 울리고, 그 밖에는 «겹칠 수도 있다» 고 말한다.
+  return {mode,writers,unknown,overlap:writers.length>1,mayOverlap:writers.length+unknown.length>1};
  };
  /**
   * 제목에 DB 이야기가 있는 «열린 이슈» — 보조 신호다.
@@ -697,11 +705,14 @@ function renderSharedGates(){
  const planned=BOARD_LOGIC.migrationQueue(state.open);
  document.getElementById("migrationQueue").innerHTML='<div class="section-title">지금 DB 를 바꾸는 중 <span class="hint">두 개가 동시에 바꾸면 충돌합니다 · 열린 PR 의 파일로 셉니다</span></div>'
   +(state.stampsTruncated?'<div class="squad-line">도장은 '+state.stampsTruncated.seen+' / '+state.stampsTruncated.total+' 건만 조회했습니다 — 나머지는 «없음» 이 아니라 «안 봄» 입니다</div>':'')
-  +(card.overlap?'<div class="squad-line hot"><b>DB 변경 겹침</b> '+card.writers.length+'개 PR 이 동시에 마이그레이션을 담고 있습니다 — '+esc(card.writers.map((pr)=>"#"+pr.number).join(" · "))+'</div>':'')
+  +(card.overlap?'<div class="squad-line hot"><b>DB 변경 겹침</b> '+card.writers.length+'개 PR 이 동시에 마이그레이션을 담고 있습니다 — '+esc(card.writers.map((pr)=>"#"+pr.number).join(" · "))+'</div>'
+    :card.mayOverlap?'<div class="squad-line"><b>겹칠 수도 있습니다</b> 확인 '+card.writers.length+'건 · 판정 못 함 '+card.unknown.length+'건 — 모르는 쪽이 마이그레이션이면 겹칩니다</div>':'')
   +(card.unknown.length?'<div class="squad-line">파일이 많아 «판정 못 한» 열린 PR '+card.unknown.length+'건 — '+esc(card.unknown.map((pr)=>"#"+pr.number).join(" · "))+' <span class="hint">없다는 뜻이 아닙니다</span></div>':'')
   +'<div class="queue">'
   +(card.mode==="unreadable"
     ? '<div class="empty">열린 PR 을 읽지 못했습니다 — 지금은 «셀 수 없습니다»<br><small>«없음» 이 아니라 «모름» 입니다</small></div>'
+    : card.mode==="partial"
+      ? '<div class="empty">확인된 것은 없습니다 — 다만 '+card.unknown.length+'건은 «판정 못 했습니다»<br><small>«없음» 이 아닙니다</small></div>'
     : card.mode==="writers"?card.writers.map((pr,index)=>'<div class="queue-item"><b>'+(index+1)+'</b><div><p>#'+pr.number+' · '+esc(pr.title)+'</p><small>'+esc(pr.headRefName||"")+' · '+esc(pr.mergeStateStatus||"")+'</small></div><small>'+esc(index===0?"먼저 연 것":"뒤에 연 것")+'</small></div>').join("")
       :'<div class="empty">마이그레이션을 담은 열린 PR 이 없습니다</div>')
   +'</div>'

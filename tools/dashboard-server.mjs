@@ -26,7 +26,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createGithubReader } from "./github-issues.mjs";
-import { migrationWriterMap, touchesMigrationsFor } from "./migration-writers.mjs";
+import { migrationWriterMap, touchesMigrationsFor, migrationScanAvailable } from "./migration-writers.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -577,7 +577,8 @@ async function buildOperations(force = false) {
       available: true,
       // ★ 파일 조회가 «따로» 실패할 수 있다. PR 목록은 읽었는데 파일은 못 읽은 상태를
       //   「마이그레이션 0건」으로 위장하지 않는다 — 그게 이 카드가 앓던 병이다.
-      migrationScanAvailable: writerMap !== null,
+      //   판정은 모듈이 갖는다(migration-writers.mjs) — 이 줄도 검사가 붙어 있어야 한다.
+      migrationScanAvailable: migrationScanAvailable(writerMap, currentRows.filter((pr) => pr.state === "OPEN").length),
       count: currentRows.filter((pr) => pr.state === "OPEN").length,
       items: currentRows.map((pr, index) => ({
         number: pr.number,
