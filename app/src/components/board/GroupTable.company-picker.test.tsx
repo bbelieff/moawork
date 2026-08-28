@@ -80,12 +80,12 @@ async function openPicker(truncated: boolean) {
 describe("GroupTable — 업체 고르기로 «잘렸다» 를 전달한다", () => {
   it("★ 잘렸으면 폼이 그 사실을 안다", async () => {
     const host = await openPicker(true);
-    expect(host.textContent).toContain("안 보여도 없는 게 아닐 수 있어요");
+    expect(host.textContent).toContain("안 보여도 없는 게 아니에요");
   });
 
   it("안 잘렸으면 종전 안내 그대로다", async () => {
     const host = await openPicker(false);
     expect(host.textContent).toContain("먼저 등록해 주세요");
-    expect(host.textContent).not.toContain("안 보여도 없는 게 아닐 수 있어요");
+    expect(host.textContent).not.toContain("안 보여도 없는 게 아니에요");
   });
 });

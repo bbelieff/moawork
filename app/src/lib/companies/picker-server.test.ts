@@ -93,4 +93,14 @@ describe("company picker server boundary", () => {
     });
     expect(result.truncated).toBe(true);
   });
+  /**
+   * ★ 상한 값 자체를 잰다 — 500 이었을 때 «없던 회귀» 를 만들었다.
+   *   DB(PostgREST) 기본 max-rows 는 1000 이다. 우리 상한이 그보다 «낮으면»
+   *   회사 501~1000 곳인 조직은 원래 전부 보이던 것을 우리가 새로 자른다.
+   *   그래서 이 값은 1000 «이상» 이어야 한다. 다시 낮추면 이 검사가 막는다.
+   */
+  it("★ 우리 상한이 DB 상한보다 낮으면 안 된다", () => {
+    const POSTGREST_DEFAULT_MAX_ROWS = 1000;
+    expect(COMPANY_PICKER_LIMIT).toBeGreaterThanOrEqual(POSTGREST_DEFAULT_MAX_ROWS);
+  });
 });

@@ -46,7 +46,6 @@ import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
 import { groupPresetName, isGroupPresetChanged } from "@/lib/presets/group-preset";
 import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
-import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
 import type { CompanyPickerLoadResult } from "@/lib/companies/picker-server";
 import { buildCompanyPickerProps } from "@/lib/companies/picker-props";
 import type { CompanyIntakeActionState } from "@/app/(app)/boards/[id]/company-intake-actions";

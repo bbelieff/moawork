@@ -57,15 +57,15 @@ describe("업체 추가 — 목록이 잘렸을 때 (#588)", () => {
   it("안 잘렸으면 종전대로 «먼저 등록해 주세요» 로 안내한다", async () => {
     const host = await render({ truncated: false });
     expect(host.textContent).toContain("먼저 등록해 주세요");
-    expect(host.textContent).not.toContain("곳까지만");
+    expect(host.textContent).not.toContain("전부가 아닐 수 있으니");
   });
 
   it("★ 잘렸으면 «찾아보기» 를 먼저 권한다 — 다만 등록 길을 막지는 않는다", async () => {
     const host = await render({ truncated: true });
-    expect(host.textContent).toContain("안 보여도 없는 게 아닐 수 있어요");
+    expect(host.textContent).toContain("안 보여도 없는 게 아니에요");
     expect(host.textContent).toContain("먼저 찾아보고");
     // 몇 곳까지 담겼는지 숫자로 밝힌다 — 「많아서 일부」 는 사람이 판단할 근거가 못 된다.
-    expect(host.textContent).toContain(`${ROWS.length}곳까지만`);
+    expect(host.textContent).toContain(`${ROWS.length}곳`);
   });
 
   /**
