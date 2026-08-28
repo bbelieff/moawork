@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=139_issue602_atomic_board_row_move predecessor=138_issue605_board_summary_settings digest=30418c6fed84fc9b4673f64d105196fadbb8cf4b1d76b8f3bb39d89c9ed95d7d foundation=false
+-- moa-migration-guard: logical_key=139_issue602_atomic_board_row_move predecessor=138_issue605_board_summary_settings digest=37d0c23509e9a7870144d78abbf06c25688908b537858f1907aa7449d79e03f6 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '139_issue602_atomic_board_row_move',
   p_file_name => '139_issue602_atomic_board_row_move.sql',
-  p_file_digest => '30418c6fed84fc9b4673f64d105196fadbb8cf4b1d76b8f3bb39d89c9ed95d7d',
+  p_file_digest => '37d0c23509e9a7870144d78abbf06c25688908b537858f1907aa7449d79e03f6',
   p_expected_predecessor => '138_issue605_board_summary_settings',
   p_executor => 'DG-03',
   p_thread_id => '01a02046-56a7-76c3-8b1f-08a71a7e557a',
@@ -14,12 +14,28 @@ select public.begin_guarded_migration(
 -- Existing postgres-owned SECURITY DEFINER functions therefore remain outside this boundary.
 do $$
 begin
+  if current_user<>'postgres'
+     or current_setting('server_version_num')::integer not between 170000 and 179999
+     or not exists(select 1 from pg_roles where rolname='postgres' and not rolsuper and rolcreaterole and rolbypassrls)
+     or not exists(select 1 from pg_roles where oid=10 and rolname='supabase_admin' and rolsuper) then
+    raise exception 'unsupported issue602 migration executor' using errcode='42501';
+  end if;
   if not exists(select 1 from pg_roles where rolname='moawork_row_order_writer') then
     create role moawork_row_order_writer nologin noinherit bypassrls;
   end if;
 end $$;
+-- PostgreSQL requires the migration runner to be able to SET ROLE before it may
+-- transfer function ownership. Keep that capability only for this transaction.
+-- PostgreSQL 17 also retains the creator-admin grant made by the bootstrap
+-- superuser; the terminal self-audit proves that unavoidable row is inert and
+-- is the writer's only membership.
+do $$
+begin
+  execute format('grant moawork_row_order_writer to %I with set true, inherit false',current_user);
+end $$;
 revoke moawork_row_order_writer from anon,authenticated,service_role;
-grant usage on schema public,auth to moawork_row_order_writer;
+grant usage,create on schema public to moawork_row_order_writer;
+grant usage on schema auth to moawork_row_order_writer;
 grant execute on function auth.uid() to moawork_row_order_writer;
 grant execute on function public.effective_permission(uuid,text) to moawork_row_order_writer;
 grant execute on function public.board_column_value_editable(uuid,uuid,text) to moawork_row_order_writer;
@@ -221,8 +237,8 @@ begin
 exception when invalid_text_representation or datetime_field_overflow or numeric_value_out_of_range then return false;
 end;
 $$;
-alter function public.issue602_board_cell_value_is_valid(uuid,uuid,uuid,text,jsonb) owner to moawork_row_order_writer;
 revoke all on function public.issue602_board_cell_value_is_valid(uuid,uuid,uuid,text,jsonb) from public,anon,authenticated,service_role;
+alter function public.issue602_board_cell_value_is_valid(uuid,uuid,uuid,text,jsonb) owner to moawork_row_order_writer;
 
 -- Existing trusted automations and installers run as postgres-owned SECURITY DEFINER
 -- functions. They may request a move only through this private, owner-isolated helper;
@@ -332,9 +348,11 @@ begin
   return v_target_version;
 end;
 $$;
-alter function public.issue602_move_board_item_private(uuid,uuid,uuid,uuid,uuid,uuid,uuid,integer) owner to moawork_row_order_writer;
 revoke all on function public.issue602_move_board_item_private(uuid,uuid,uuid,uuid,uuid,uuid,uuid,integer) from public,anon,authenticated,service_role;
+alter function public.issue602_move_board_item_private(uuid,uuid,uuid,uuid,uuid,uuid,uuid,integer) owner to moawork_row_order_writer;
+set role moawork_row_order_writer;
 grant execute on function public.issue602_move_board_item_private(uuid,uuid,uuid,uuid,uuid,uuid,uuid,integer) to postgres;
+reset role;
 
 -- Definition installers receive a narrow server-owned reconciliation command instead of
 -- borrowing the user row-reorder RPC. The board source, manager scope and exact source
@@ -806,10 +824,9 @@ begin
 end;
 $$;
 
-alter function public.move_board_row_atomic(uuid,uuid,uuid,uuid,uuid,bigint,uuid) owner to moawork_row_order_writer;
-
 revoke all on function public.move_board_row_atomic(uuid,uuid,uuid,uuid,uuid,bigint,uuid) from public,anon,service_role;
 grant execute on function public.move_board_row_atomic(uuid,uuid,uuid,uuid,uuid,bigint,uuid) to authenticated;
+alter function public.move_board_row_atomic(uuid,uuid,uuid,uuid,uuid,bigint,uuid) owner to moawork_row_order_writer;
 
 create or replace function public.set_board_item_values_with_atomic_move(
   p_org_id uuid,
@@ -884,9 +901,9 @@ begin
     v_move.version,v_move.replayed;
 end;
 $$;
-alter function public.set_board_item_values_with_atomic_move(uuid,uuid,uuid,jsonb,uuid,uuid,bigint,uuid) owner to moawork_row_order_writer;
 revoke all on function public.set_board_item_values_with_atomic_move(uuid,uuid,uuid,jsonb,uuid,uuid,bigint,uuid) from public,anon,service_role;
 grant execute on function public.set_board_item_values_with_atomic_move(uuid,uuid,uuid,jsonb,uuid,uuid,bigint,uuid) to authenticated;
+alter function public.set_board_item_values_with_atomic_move(uuid,uuid,uuid,jsonb,uuid,uuid,bigint,uuid) owner to moawork_row_order_writer;
 
 create or replace function public.reorder_board_columns_atomic(
   p_org_id uuid,
@@ -918,9 +935,15 @@ begin
   return query select c.* from public.board_columns c where c.org_id=p_org_id and c.board_id=p_board_id and c.archived_at is null order by c.sort_order,c.id;
 end;
 $$;
-alter function public.reorder_board_columns_atomic(uuid,uuid,uuid[]) owner to moawork_row_order_writer;
 revoke all on function public.reorder_board_columns_atomic(uuid,uuid,uuid[]) from public,anon,service_role;
 grant execute on function public.reorder_board_columns_atomic(uuid,uuid,uuid[]) to authenticated;
+alter function public.reorder_board_columns_atomic(uuid,uuid,uuid[]) owner to moawork_row_order_writer;
+
+revoke create on schema public from moawork_row_order_writer;
+do $$
+begin
+  execute format('revoke moawork_row_order_writer from %I',current_user);
+end $$;
 
 do $$
 declare
@@ -944,7 +967,20 @@ begin
     or exists(select 1 from pg_proc where oid in (v_proc,v_value_proc,v_column_proc,v_private_proc,v_cell_proc) and pg_get_userbyid(proowner)<>'moawork_row_order_writer')
     or exists(select 1 from pg_proc where oid=v_reconcile_proc and pg_get_userbyid(proowner)<>'postgres')
     or exists(select 1 from pg_roles where rolname='moawork_row_order_writer' and (rolcanlogin or rolinherit or not rolbypassrls))
-    or exists(select 1 from pg_auth_members m join pg_roles r on r.oid=m.roleid where r.rolname='moawork_row_order_writer')
+    or (select count(*) from pg_auth_members m join pg_roles r on r.oid=m.roleid where r.rolname='moawork_row_order_writer')<>1
+    or not exists(
+      select 1 from pg_auth_members membership
+      join pg_roles writer on writer.oid=membership.roleid
+      join pg_roles member on member.oid=membership.member
+      join pg_roles grantor on grantor.oid=membership.grantor
+      where writer.rolname='moawork_row_order_writer'
+        and member.rolname='postgres'
+        and grantor.oid=10 and grantor.rolname='supabase_admin'
+        and membership.admin_option
+        and not membership.set_option
+        and not membership.inherit_option
+    )
+    or has_schema_privilege('moawork_row_order_writer','public','CREATE')
     or has_function_privilege('anon',v_proc,'EXECUTE')
     or has_function_privilege('service_role',v_proc,'EXECUTE')
     or not has_function_privilege('authenticated',v_proc,'EXECUTE')
