@@ -765,6 +765,9 @@ export function ItemDetailPanel({
                         ),
                       );
                       const structuredCompositeField = type === "other_info";
+                      const loanCompositeField = Boolean(
+                        canonicalNewLead && entry.key === canonicalLoanEntryKey,
+                      );
                       const fieldLabelId = `${row.id}-${entry.key}-label`;
                       return (
                         <div
@@ -775,7 +778,13 @@ export function ItemDetailPanel({
                           <span aria-hidden="true" className={styles.fieldHandle}>⠿</span>
                           <label
                             id={fieldLabelId}
-                            htmlFor={editable && !assignmentLineageField && !financialCompositeField && !structuredCompositeField ? `${row.id}-${entry.key}` : undefined}
+                            htmlFor={
+                              loanCompositeField && canEditItems
+                                ? `${row.id}-${entry.key}`
+                                : editable && !assignmentLineageField && !financialCompositeField && !structuredCompositeField
+                                  ? `${row.id}-${entry.key}`
+                                  : undefined
+                            }
                             className={styles.fieldLabel}
                           >
                             {label}
@@ -790,6 +799,7 @@ export function ItemDetailPanel({
                                 itemId={row.id}
                                 values={row.values}
                                 readOnly={!canEditItems}
+                                controlId={`${row.id}-${entry.key}`}
                               />
                             ) : canonicalNewLead && entry.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores ? (
                               <NewLeadCreditScoresCell

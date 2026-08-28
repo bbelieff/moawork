@@ -40,6 +40,7 @@ function baseForm() {
   const data = new FormData();
   data.set("boardId", "board-a");
   data.set("itemId", "item-a");
+  data.set("requestId", "request-a");
   return data;
 }
 
@@ -61,6 +62,10 @@ describe("Issue #589 신규리드 재무 저장", () => {
     await expect(saveNewLeadLoanProfileAction({ ok: false, message: "" }, data)).resolves.toEqual({
       ok: true,
       message: "기대출 정보를 저장했습니다.",
+      requestId: "request-a",
+      boardId: "board-a",
+      itemId: "item-a",
+      records,
     });
     expect(mocks.setCells).toHaveBeenCalledTimes(1);
     expect(mocks.setCells).toHaveBeenCalledWith(
@@ -86,6 +91,10 @@ describe("Issue #589 신규리드 재무 저장", () => {
     await expect(saveNewLeadLoanProfileAction({ ok: false, message: "" }, data)).resolves.toEqual({
       ok: true,
       message: "기대출 정보를 저장했습니다.",
+      requestId: "request-a",
+      boardId: "board-a",
+      itemId: "item-a",
+      records: [],
     });
     expect(mocks.setCells).toHaveBeenCalledWith(
       expect.anything(),
