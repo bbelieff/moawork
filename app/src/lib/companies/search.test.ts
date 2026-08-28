@@ -77,6 +77,27 @@ describe("초성 과매칭", () => {
     expect(rankCompanies(rows, "대성").map((row) => row.company.name)).toEqual(["대성산업"]);
   });
 
+  /**
+   * ★ 검수가 찾은 반례다. 처음 판은 셋째 조건을 «그냥 뺐고», 그러면 이것들이 0건이 됐다.
+   *
+   *   한글 IME 에서 「대성」을 치다 백스페이스하면 「대ㅅ」을 지나간다. 흔한 입력이다.
+   *   그때 목록이 통째로 비면 「찾은 업체가 없습니다」가 뜨고, 사람은 새로 만든다 —
+   *   과매칭(정답 + 노이즈)을 무매칭(빈 목록)으로 바꾸는 것이라 «더 나쁘다».
+   */
+  it("★ 완성형과 자모가 섞인 질의도 산다 — 「대ㅅ」이 0건이 되면 안 된다", () => {
+    expect(companyMatches(named("대성산업"), "ㄷ성")).toBe(true);
+    expect(companyMatches(named("대성산업"), "대ㅅ")).toBe(true);
+    // 섞인 질의도 «자리를 맞춰» 보므로 엉뚱한 회사는 여전히 안 걸린다
+    expect(companyMatches(named("다스산업"), "ㄷ성")).toBe(false);
+    expect(companyMatches(named("다스산업"), "대ㅅ")).toBe(false);
+  });
+
+  it("자리가 어긋나면 안 걸린다 — 초성이 흩어져 있다고 걸리면 그게 과매칭이다", () => {
+    // ㄷ...ㅅ 이 «붙어» 있어야 한다. 「대한상사」는 ㄷㅎㅅㅅ 라 ㄷㅅ 가 이어지지 않는다
+    expect(companyMatches(named("대한상사"), "ㄷㅅ")).toBe(false);
+    expect(companyMatches(named("대한상사"), "ㄷㅎ")).toBe(true);
+  });
+
   it("질의가 초성인지 가른다 — 완성형이 하나라도 있으면 아니다", () => {
     expect(isChosungQuery("ㄷㅅ")).toBe(true);
     expect(isChosungQuery("ABC")).toBe(true);

@@ -53,35 +53,62 @@ export interface CompanyPickerCompany {
   homepage: string | null;
 }
 
+/** 한글 초성 자모(ㄱ~ㅎ). 이 글자가 질의에 있으면 «초성으로 찾는 중» 이다. */
+const CHOSUNG_JAMO = /[\u3131-\u314e]/;
+
 /**
- * 질의가 «초성만» 으로 이루어졌나.
- *
- * 완성된 한글 음절(가~힣)이 하나라도 있으면 아니다. 영문·숫자·자음은 초성 질의로 친다.
+ * 질의가 «초성만» 으로 이루어졌나. (다른 곳에서 쓰므로 남긴다)
  */
 export function isChosungQuery(query: string): boolean {
   return !/[가-힣]/.test(query);
 }
 
+/** 질의 한 글자가 대상 한 글자에 걸리나. 자모면 초성끼리, 아니면 글자끼리 견준다. */
+function charMatches(fieldChar: string, queryChar: string): boolean {
+  if (CHOSUNG_JAMO.test(queryChar)) return chosung(fieldChar) === queryChar;
+  return fieldChar.toLowerCase() === queryChar.toLowerCase();
+}
+
 /**
- * 한 조각이 질의에 걸리나 — 원문과 초성 둘을 본다.
+ * 한 조각이 질의에 걸리나 — «글자 단위» 로 견준다.
  *
- * ★ 전에는 셋째로 `chosung(field).includes(chosung(query))` 가 있었다. 즉 «질의까지»
- *   초성으로 낮춰서 견줬다. 그게 과매칭의 원인이다 —
- *     「대성」 → ㄷㅅ  →  「다스산업」(ㄷㅅㅅㅇ)·「동서물류」(ㄷㅅㅁㄹ) 이 다 걸린다.
+ * ★ 왜 글자 단위인가. 전에는 세 조건을 통째로 봤다.
+ *     ① 원문끼리        ② 대상만 초성으로       ③ 대상과 질의 «둘 다» 초성으로
+ *   ③ 이 과매칭을 만들었다 — 「대성」을 ㄷㅅ 로 낮춰서 「다스산업」·「동서물류」가 걸렸다.
  *
- * ★ 그런데 그 조건은 «질의가 이미 초성뿐일 때» 둘째 조건과 하는 일이 똑같다
- *   (chosung(query) === query 이므로). 즉 셋째가 «추가로» 걸리는 경우는 질의에
- *   완성형 글자가 있을 때뿐이고, 그게 정확히 사람이 원하지 않는 매칭이다.
+ *   그런데 ③ 을 «그냥 빼면» 다른 것이 깨진다. 실측으로 확인했다 —
+ *     「ㄷ성」·「대ㅅ」 처럼 완성형과 자모가 «섞인» 질의가 0건이 된다.
+ *   한글 IME 에서 「대성」을 치다 백스페이스하면 「대ㅅ」을 지나가므로 흔한 입력이다.
+ *   그때 목록이 통째로 비고 「찾은 업체가 없습니다」가 뜬다 —
+ *   과매칭(정답 + 노이즈)을 무매칭(빈 목록)으로 바꾸는 것이라 «더 나쁘다».
  *
- *   그래서 초성끼리 비교는 «질의가 초성일 때만» 한다. 초성 검색 기능은 그대로 살아 있다.
+ * ★ 그래서 조건을 빼는 대신 «자리를 맞춰» 본다.
+ *     질의 글자가 자모면      그 자리 대상 글자의 초성과 견준다
+ *     질의 글자가 완성형이면  그 자리 대상 글자와 그대로 견준다
+ *
+ * ★ 목업과 «다른 점» — 여기가 유일하다. 되돌리려면 이 함수 하나만 바꾸면 된다.
+ *   목업(UI목업_워크스페이스_최종_v6.html 의 hit)은 셋째 조건을 그대로 갖고 있다.
+ *   목업에는 회사가 8곳뿐이라 과매칭이 «보이지 않는다». 실제 데이터에서는 보인다 —
+ *   그래서 #588 ⑤ 가 이걸 결함으로 적었다(PR #583 검수가 남긴 항목).
+ *   belie 가 목업 그대로를 원하면 이 함수를 목업의 세 조건으로 되돌리면 된다.
+ *
+ *   대성 → 대성산업 ○ · 다스산업 ✕   (과매칭이 없어진다)
+ *   ㄷㅅ → 대성산업 ○ · 다스산업 ○   (초성 검색은 그대로다)
+ *   ㄷ성 → 대성산업 ○ · 다스산업 ✕   (섞인 질의도 산다)
+ *   대ㅅ → 대성산업 ○ · 다스산업 ✕
  */
-function matchesText(field: string, query: string): boolean {
-  if (!field) return false;
-  const lowerField = field.toLowerCase();
-  const lowerQuery = query.toLowerCase();
-  if (lowerField.includes(lowerQuery)) return true;
-  // 질의가 초성일 때만 초성으로 견준다. 다 쓴 이름을 초성으로 낮추지 않는다.
-  return isChosungQuery(query) && chosung(field).includes(query);
+export function matchesText(field: string, query: string): boolean {
+  if (!field || !query) return false;
+  const target = [...field];
+  const needle = [...query];
+  for (let start = 0; start + needle.length <= target.length; start += 1) {
+    let hit = true;
+    for (let index = 0; index < needle.length; index += 1) {
+      if (!charMatches(target[start + index], needle[index])) { hit = false; break; }
+    }
+    if (hit) return true;
+  }
+  return false;
 }
 
 /** 검색 대상이 되는 «회사 고유정보» — 여기 없는 칸은 검색되지 않는다. */
