@@ -26,6 +26,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createGithubReader } from "./github-issues.mjs";
+import { migrationWriterMap, touchesMigrationsFor, migrationScanAvailable } from "./migration-writers.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -547,6 +548,20 @@ async function buildOperations(force = false) {
       "--json", "number,title,body,url,state,mergedAt,mergeCommit,headRefName,headRefOid,baseRefName,isDraft,mergeStateStatus,updatedAt,statusCheckRollup,labels",
     ]);
     const rows = JSON.parse(raw || "[]");
+    // ★ 「누가 DB 를 바꾸고 있나」는 «열린 PR» 만 보면 된다. 그래서 질의를 따로 둔다 —
+    //   무거운 질의에 files 를 붙였더니 3.2s/308KB 가 5.3s/424KB 가 됐고, 실측에서
+    //   GitHub 이 504 를 돌려주는 구간이 생겼다(5회 중 1회). 닫힌 PR 의 파일 목록은
+    //   받아서 버리고 있었다. 열린 것만 물으면 0.8s 다.
+    let writerMap = null;   // ★ null 은 «못 읽음». 빈 Map(=0건)과 다르다
+    try {
+      const writerRaw = await runReadOnly("gh", [
+        "pr", "list", "--repo", "bbelieff/moawork", "--state", "open", "--limit", "100",
+        "--json", "number,files,changedFiles",
+      ]);
+      writerMap = migrationWriterMap(JSON.parse(writerRaw || "[]"));
+    } catch {
+      writerMap = null;
+    }
     const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
     const currentRows = rows.filter((pr) => pr.baseRefName === "main" && (pr.state === "OPEN" || (pr.mergedAt && new Date(pr.mergedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === today)));
     const mainMembership = await Promise.all(currentRows.map(async (pr) => {
@@ -560,6 +575,10 @@ async function buildOperations(force = false) {
     }));
     pullRequests = {
       available: true,
+      // ★ 파일 조회가 «따로» 실패할 수 있다. PR 목록은 읽었는데 파일은 못 읽은 상태를
+      //   「마이그레이션 0건」으로 위장하지 않는다 — 그게 이 카드가 앓던 병이다.
+      //   판정은 모듈이 갖는다(migration-writers.mjs) — 이 줄도 검사가 붙어 있어야 한다.
+      migrationScanAvailable: migrationScanAvailable(writerMap, currentRows.filter((pr) => pr.state === "OPEN").length),
       count: currentRows.filter((pr) => pr.state === "OPEN").length,
       items: currentRows.map((pr, index) => ({
         number: pr.number,
@@ -579,10 +598,14 @@ async function buildOperations(force = false) {
         updatedAt: pr.updatedAt,
         labels: (pr.labels || []).map((label) => label.name),
         checks: checkSummary(pr.statusCheckRollup || []),
+        // 이 PR 이 새 마이그레이션을 담고 있는가 — 제목이 아니라 파일로 판정한다.
+        // true · false · null(모름: 파일이 많아 목록이 잘렸다) 셋이다.
+        // 배선도 모듈이 갖는다 — 이 한 줄이 P1-5 였다. migration-writers.mjs 주석 참조.
+        touchesMigrations: touchesMigrationsFor(writerMap, pr.number),
       })),
     };
   } catch (error) {
-    pullRequests = { available: false, count: null, items: [], error: safeToolError(error) };
+    pullRequests = { available: false, migrationScanAvailable: false, count: null, items: [], error: safeToolError(error) };
   }
 
   const [linearRead, qaRead, workersRead, gitTodayRead, productionRead] = await Promise.allSettled([getSnap(force), readQaDifference(), readWorkers(), readTodayGit(), productionPromise]);

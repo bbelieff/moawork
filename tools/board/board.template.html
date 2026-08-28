@@ -323,12 +323,87 @@ const BOARD_LOGIC=(()=>{
   if(pr&&!pr.isDraft&&pr.checks?.total>0&&pr.checks.failing===0&&pr.checks.pending===0)return {stage:"MERGE_WAITING",complete:false,blockers};
   return {stage:"WORK_REVIEW",complete:false,blockers};
  };
+ /**
+  * 지금 «실제로» DB 를 바꾸고 있는 것 — AGENTS.md §5 동시 migration writer 방어.
+  *
+  * ★ 제목으로 추측하지 않는다. 정답지는 저장소에 있다 —
+  *   그 PR 이 supabase/migrations/ 를 건드리는가.
+  *
+  *   전에는 제목에서 낱말을 찾았다(migration|마이그레이션|schema…).
+  *   실측하니 «실제로 마이그레이션 파일을 쓴 이슈 15건 중 0건» 이 걸렸다.
+  *   DB 를 바꾸는 사람은 제목에 DB 이야기를 안 쓴다 —
+  *     140_issue588_…  →  「업체 고르기 후속 6건 — 그룹 무시 · 목록 상한 없음」
+  *     139_issue602_…  →  「보드 상호작용 핵심 — 고정 새항목 · 아이콘 없는 DnD」
+  *   반대로 걸린 것은 마이그레이션을 «논하는» 이슈였다. 두 집합의 교집합이 0이었다.
+  *
+  * ★ 그리고 겹침은 예외가 아니라 «일상» 이다 —
+  *   마이그레이션이 추가된 25일 중 23일(92%)이 하루 2건 이상이었다.
+  *   그동안 이 판은 한 번도 경보를 띄우지 않았다.
+  */
+ const migrationWriters=(prs)=>(prs||[]).filter((pr)=>pr&&pr.state==="OPEN"&&pr.touchesMigrations===true)
+   .sort((a,b)=>(a.number||0)-(b.number||0));
+ /**
+  * 파일 목록이 잘려 «판정할 수 없었던» 열린 PR.
+  *
+  * ★ gh 는 파일 100개에서 조용히 자른다. 목록이 경로 알파벳 순이라 supabase/ 가
+  *   첫 희생자다. 그런 PR 을 «아니다» 로 세면 「있는데 없다」가 된다 — 따로 센다.
+  */
+ const migrationUnknown=(prs)=>(prs||[]).filter((pr)=>pr&&pr.state==="OPEN"&&pr.touchesMigrations===null)
+   .sort((a,b)=>(a.number||0)-(b.number||0));
+ /**
+  * 「지금 DB 를 바꾸는 중」 카드가 «무엇을 말할지» 를 정한다.
+  *
+  * ★ 이 함수가 있는 이유 — 이 카드는 네 번 연속으로 «없다» 고 거짓말했다.
+  *   그때마다 판정이 렌더 문자열 «안» 에 있어서 아무도 재지 못했다.
+  *   여기서 값으로 돌려주면 테스트가 «화면이 뭐라고 할지» 를 직접 잰다.
+  *
+  *   mode: "unreadable" 못 읽음 — «없음» 이 아니라 «모름» 이다
+  *         "writers"    지금 바꾸는 중인 PR 이 있다
+  *         "empty"      정말 없다
+  */
+ const migrationCardState=(prs)=>{
+  // ★ 기본값은 «모름» 이다. 데이터가 아예 없을 때를 「없습니다」로 읽는 것이
+  //   이 카드가 네 번 거짓말한 그 습관이다. 모르면 모른다고 한다.
+  if(!prs||prs.available===false||prs.migrationScanAvailable===false){
+   return {mode:"unreadable",writers:[],unknown:[],overlap:false,mayOverlap:false};
+  }
+  const writers=migrationWriters(prs.items);
+  const unknown=migrationUnknown(prs.items);
+  // ★ 모르는 것이 있으면 «없다» 고 단언하지 않는다. 그러면 윗줄(「N건은 판정 못 했습니다」)과
+  //   본문(「없습니다」)이 같은 카드에서 서로 모순된다.
+  const mode=writers.length?"writers":unknown.length?"partial":"empty";
+  // ★ 겹침도 마찬가지다. 확인된 1건 + 모르는 1건이면 «진짜 겹침» 일 수 있다.
+  //   확실할 때만 hot 으로 울리고, 그 밖에는 «겹칠 수도 있다» 고 말한다.
+  return {mode,writers,unknown,overlap:writers.length>1,mayOverlap:writers.length+unknown.length>1};
+ };
+ /**
+  * 제목에 DB 이야기가 있는 «열린 이슈» — 보조 신호다.
+  *
+  * ★ 이것만으로 「DB 를 바꾸는 일이 없다」고 말하지 않는다. 그게 이 카드의 병이었다.
+  *   정답지는 위의 migrationWriters 이고, 이건 «아직 PR 이 없는 계획» 을 보여줄 뿐이다.
+  */
+ const MIGRATION_TITLE=/(?:migration|마이그레이션|schema|스키마|DB 정본|컬럼 메뉴 DB)/i;
+ const migrationQueue=(openIssues)=>{
+  const order=(issue)=>{const m=/(\d+)/.exec(String(issue?.id||""));return m?Number(m[1]):Number.MAX_SAFE_INTEGER};
+  return (openIssues||[]).filter((issue)=>issue&&MIGRATION_TITLE.test(issue.title||"")).sort((a,b)=>order(a)-order(b));
+ };
+ /**
+  * 도장을 조회할 몫과 «못 본 몫» 을 가른다.
+  *
+  * ★ 순수 함수로 둔 이유 — 조용히 자르면 판이 「도장 없음」을 «없어서» 인지
+  *   «안 봐서» 인지 구분 못 하게 만든다. 이 판이 방금 그 병으로 고장나 있었다.
+  */
+ const stampBudget=(active,limit)=>{
+  const list=active||[];
+  const seen=list.slice(0,limit);
+  return {seen,truncated:list.length>seen.length?{seen:seen.length,total:list.length}:null};
+ };
  const boundedDeliveryIds=(issues,prs,today)=>{
   const ids=new Set(issues.filter((issue)=>issue.status==="In Progress").map((issue)=>issue.id));
   prs.filter((pr)=>pr.state==="OPEN"||String(pr.mergedAt||"").slice(0,10)===today).forEach((pr)=>{if(pr.cardId)ids.add(pr.cardId)});
   return [...ids];
  };
- return {squadLabels,ownerLabels,ownerCoverage,coverage,crossDependencies,releaseState,deliveryStage,boundedDeliveryIds};
+ return {squadLabels,ownerLabels,ownerCoverage,coverage,crossDependencies,releaseState,deliveryStage,boundedDeliveryIds,migrationQueue,migrationWriters,migrationUnknown,migrationCardState,stampBudget};
 })();
 /* BOARD_LOGIC_END */
 const DONE_STATES=new Set(["Done","Canceled","Duplicate"]);
@@ -373,7 +448,7 @@ const SPECIAL_ACTIONS={
  "BBE-186":"BBE-185 뒤 C가 V6 기준 홈을 구현하고 과잉 위젯은 별도 분석 화면에 보존한다.",
  "BBE-182":"활성 14건 Done 뒤 G가 Monday→V6→Production·DB 전수 QA와 fixture cleanup을 수행한다."
 };
-let state={all:[],issues:[],open:[],by:{},operations:null,stamps:new Map(),decisions:[]};
+let state={all:[],issues:[],open:[],by:{},operations:null,stamps:new Map(),stampsTruncated:null,decisions:[]};
 const esc=(value)=>String(value??"").replace(/[&<>"']/g,(char)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
 const cssKey=(value)=>String(value||"").replace(/\s+/g,"-");
 const hours=(value)=>Math.max(0,(Date.now()-new Date(value).getTime())/36e5);
@@ -402,7 +477,8 @@ const SQUAD_LABELS=SQUADS.map((squad)=>squad.label);
 const squadLabelOf=(issue)=>BOARD_LOGIC.squadLabels(issue,SQUAD_LABELS)[0]||null;
 const squadNameOf=(issue)=>SQUADS.find((squad)=>squad.label===squadLabelOf(issue))?.name||"미분류";
 /* needs-hosted는 read model 검증에도 붙으므로 migration writer 판정에 쓰지 않는다. */
-const isMigrationCard=(issue)=>Boolean(issue&&/(?:migration|schema|DB 정본|컬럼 메뉴 DB)/i.test(issue.title||""));
+/** 도장을 조회할 최대 건수. 재서 고른 값이 아니라 «무한대를 막는» 선이다. */
+const STAMP_FETCH_LIMIT=40;
 function prsFor(issue){
  const key=issue?.id?.toLowerCase(); if(!key)return [];
  return (state.operations?.pullRequests?.items||[]).filter((pr)=>[pr.title,pr.headRefName,...(pr.labels||[])].join(" ").toLowerCase().includes(key));
@@ -570,8 +646,15 @@ function buildDecisions(){
  }
  const cross=crossDependencies();
  if(cross.length)decisions.push({tone:"critical",kind:"P0 CROSS-SQUAD",title:"작업반 간 교차 의존 "+cross.length+"건",body:cross.map((x)=>x.issueId+"←"+x.dependencyId+" "+x.source+"←"+x.target).join(" · "),count:cross.length});
- const migrationActive=state.open.filter((issue)=>isMigrationCard(issue)&&ACTIVE_STATES.has(issue.status));
- if(migrationActive.length>1)decisions.push({tone:"critical",kind:"P0 MIGRATION SERIAL",title:"동시 migration writer "+migrationActive.length+"건",body:migrationActive.map((issue)=>issue.id+" "+(laneOf(issue)||"owner 없음")).join(" · "),count:migrationActive.length});
+ // ★ 정답지로 센다 — 열린 PR 이 supabase/migrations/ 를 실제로 건드리는가.
+ //   이슈 «제목» 으로 세던 때는 실제 writer 15건 중 0건을 잡았다. BOARD_LOGIC 주석 참조.
+ // ★ 못 읽은 것을 «없음» 으로 읽지 않는다. 조용한 0 이 이 카드가 앓던 병이다.
+ const migrationCard=BOARD_LOGIC.migrationCardState(state.operations?.pullRequests);
+ if(migrationCard.mode==="unreadable"){
+  decisions.push({tone:"review",kind:"측정 실패",title:"지금 누가 DB 를 바꾸는지 «셀 수 없습니다»",body:"열린 PR 을 읽지 못했습니다 — 겹침 경보가 «없음» 이 아니라 «모름» 입니다",count:"—"});
+ }else if(migrationCard.overlap){
+  decisions.push({tone:"critical",kind:"DB 변경 겹침",title:migrationCard.writers.length+"개 PR 이 동시에 DB 를 바꾸고 있습니다",body:migrationCard.writers.map((pr)=>"#"+pr.number+" "+(pr.headRefName||"")).join(" · "),count:migrationCard.writers.length});
+ }
  state.decisions=decisions;
  document.getElementById("decisions").innerHTML=decisions.length?decisions.map((d)=>'<div class="card decision '+d.tone+'"><div><div class="kind">'+esc(d.kind)+'</div><b>'+esc(d.title)+'</b><p>'+esc(d.body)+'</p></div><div class="count">'+d.count+'</div></div>').join(""):'<div class="card empty">긴급·막힘·검수·소유 공백이 없습니다.</div>';
 }
@@ -615,9 +698,26 @@ function renderSharedGates(){
  const coverageText=coverage.ok?'15 / 15 exact':'UNSQUADDED '+coverage.missing.join(",")+(coverage.duplicate.length?' · DUPLICATE '+coverage.duplicate.map((item)=>item.id).join(","):"");
  const ownerCoverageText=ownerCoverage.ok?'15 / 15 exact':'MISSING_OWNER '+ownerCoverage.missing.join(",")+(ownerCoverage.collision.length?' · OWNER_COLLISION '+ownerCoverage.collision.map((item)=>item.id+"["+item.labels.join("+")+"]").join(","):"");
  gate.innerHTML='<h3>BBE-182 Global Release Gate · '+gateState+'</h3><p>전체 합산: '+state.issues.filter((i)=>i.status==="Done").length+' / '+GOAL_IDS.length+' Done</p><p>Squad coverage: <b class="'+(coverage.ok?'cross-ok':'cross-p0')+'">'+esc(coverageText)+'</b></p><p>Owner coverage: <b class="'+(ownerCoverage.ok?'cross-ok':'cross-p0')+'">'+esc(ownerCoverageText)+'</b></p><p>선행 미완료: '+esc(prereqs.join(" · ")||"0")+'</p><p>Cross-dependency: <b class="'+(cross.length?'cross-p0':'cross-ok')+'">'+cross.length+(cross.length?' · P0 RED':' · 정상')+'</b></p><p>Release PR·CI: '+esc(prCiText(release))+'</p>';
- const queue=state.issues.filter(isMigrationCard).filter((issue)=>issue.status!=="Done").sort((a,b)=>GOAL_IDS.indexOf(a.id)-GOAL_IDS.indexOf(b.id));
- const activeMigrations=queue.filter((issue)=>ACTIVE_STATES.has(issue.status));
- document.getElementById("migrationQueue").innerHTML='<div class="section-title">DB 변경 순서 <span class="hint">두 개가 동시에 바꾸면 충돌합니다</span></div>'+(activeMigrations.length>1?'<div class="squad-line hot"><b>P0 SERIAL CONFLICT</b>'+esc(activeMigrations.map((i)=>i.id).join(" · "))+'</div>':'')+'<div class="queue">'+(queue.length?queue.map((issue,index)=>'<div class="queue-item"><b>'+(index+1)+'</b><div><p>'+issue.id+' · '+esc(issue.title)+'</p><small>'+esc(laneOf(issue)||blockerOf(issue)||"미배정")+' · '+esc(issue.status)+'</small></div><small>'+esc(index===0?"active/latest+1":"serial wait")+'</small></div>').join(""):'<div class="empty">migration queue 없음</div>')+'</div>';
+ // ★ 정답지 — 지금 열려 있는 PR 중 supabase/migrations/ 를 «실제로» 건드리는 것.
+ //   제목 추측이 아니다. 겹침 경보의 근거는 이것 하나다.
+ const card=BOARD_LOGIC.migrationCardState(state.operations?.pullRequests);
+ // 보조 — 아직 PR 이 없는 «계획» 을 보여준다. 이것만으로 「없다」고 말하지 않는다.
+ const planned=BOARD_LOGIC.migrationQueue(state.open);
+ document.getElementById("migrationQueue").innerHTML='<div class="section-title">지금 DB 를 바꾸는 중 <span class="hint">두 개가 동시에 바꾸면 충돌합니다 · 열린 PR 의 파일로 셉니다</span></div>'
+  +(state.stampsTruncated?'<div class="squad-line">도장은 '+state.stampsTruncated.seen+' / '+state.stampsTruncated.total+' 건만 조회했습니다 — 나머지는 «없음» 이 아니라 «안 봄» 입니다</div>':'')
+  +(card.overlap?'<div class="squad-line hot"><b>DB 변경 겹침</b> '+card.writers.length+'개 PR 이 동시에 마이그레이션을 담고 있습니다 — '+esc(card.writers.map((pr)=>"#"+pr.number).join(" · "))+'</div>'
+    :card.mayOverlap?'<div class="squad-line"><b>겹칠 수도 있습니다</b> 확인 '+card.writers.length+'건 · 판정 못 함 '+card.unknown.length+'건 — 모르는 쪽이 마이그레이션이면 겹칩니다</div>':'')
+  +(card.unknown.length?'<div class="squad-line">파일이 많아 «판정 못 한» 열린 PR '+card.unknown.length+'건 — '+esc(card.unknown.map((pr)=>"#"+pr.number).join(" · "))+' <span class="hint">없다는 뜻이 아닙니다</span></div>':'')
+  +'<div class="queue">'
+  +(card.mode==="unreadable"
+    ? '<div class="empty">열린 PR 을 읽지 못했습니다 — 지금은 «셀 수 없습니다»<br><small>«없음» 이 아니라 «모름» 입니다</small></div>'
+    : card.mode==="partial"
+      ? '<div class="empty">확인된 것은 없습니다 — 다만 '+card.unknown.length+'건은 «판정 못 했습니다»<br><small>«없음» 이 아닙니다</small></div>'
+    : card.mode==="writers"?card.writers.map((pr,index)=>'<div class="queue-item"><b>'+(index+1)+'</b><div><p>#'+pr.number+' · '+esc(pr.title)+'</p><small>'+esc(pr.headRefName||"")+' · '+esc(pr.mergeStateStatus||"")+'</small></div><small>'+esc(index===0?"먼저 연 것":"뒤에 연 것")+'</small></div>').join("")
+      :'<div class="empty">마이그레이션을 담은 열린 PR 이 없습니다</div>')
+  +'</div>'
+  +(planned.length?'<div class="squad-line"><b>계획</b> 제목에 DB 이야기가 있는 열린 일 '+planned.length+'건 — '+esc(planned.map((i)=>i.id).join(" · "))+'</div>':'');
+
 }
 function renderOperations(){
  const repo=state.operations?.repository;
@@ -756,9 +856,28 @@ async function loadOnce(force=true){
   const all=(incoming.length?incoming:state.all).map((issue)=>({...issue,labels:Array.isArray(issue.labels)?issue.labels:[]}));
   state.all=all;state.by=Object.fromEntries(all.map((issue)=>[issue.id,issue]));
   state.issues=all.filter((issue)=>GOAL_SET.has(issue.id));
-  state.open=state.issues.filter((issue)=>!DONE_STATES.has(issue.status));
+  // ★ 「열린 작업」은 «지금 열려 있는 이슈 전부» 다.
+  //   전에는 state.issues(= Linear 시절 목표 15건)에서 골랐다. CUTOVER 이후 그 15건은
+  //   GitHub 에 없어서 state.issues 가 «항상 빈 배열» 이고, 따라서 state.open 도 늘 비었다.
+  //   그 결과 이 판의 안전장치 둘이 «영원히 꺼진» 채였다 —
+  //     · 「DB 변경 순서」 큐 (AGENTS.md §5 의 동시 migration writer 방어)
+  //     · 상단 «P0 MIGRATION SERIAL» 경보
+  //   둘 다 조용히 「없음」만 말했다. 없어서가 아니라 «안 보고 있어서» 였다.
+  state.open=all.filter((issue)=>!DONE_STATES.has(issue.status));
   state.operations=operations;
-  const active=state.open.filter((issue)=>ACTIVE_STATES.has(issue.status));
+  // 도장 조회는 이슈 하나당 API 한 번이다. state.open 이 «열린 이슈 전부» 로 넓어졌으니
+  // 상한을 둔다. ★ 자른 사실을 숨기지 않는다 — 조용히 자르면 판이 「도장 없음」을
+  // «없어서» 인지 «안 봐서» 인지 구분 못 하게 만든다. 이 판이 방금 그 병으로 고장나 있었다.
+  // ★ 도장 경로는 «지금은 통째로 잠들어 있다».
+  //   이 판의 출처(GitHub 이슈 API)는 In Progress·In Review 를 만들지 않으므로
+  //   activeAll 이 항상 0 이고, 도장을 한 건도 조회하지 않는다. 표의 도장 열도
+  //   같은 이유로 전부 «—» 다. Projects Status 를 읽어야 깨어난다(후속).
+  //   ★ 그래도 상한을 «미리» 둔다 — 깨어나는 순간 state.open 이 넓어졌으므로
+  //     조회가 이슈 수만큼 폭발한다. 그때 이 줄이 없으면 그게 첫 사고가 된다.
+  const activeAll=state.open.filter((issue)=>ACTIVE_STATES.has(issue.status));
+  const budget=BOARD_LOGIC.stampBudget(activeAll,STAMP_FETCH_LIMIT);
+  const active=budget.seen;
+  state.stampsTruncated=budget.truncated;
   state.stamps=new Map(await Promise.all(active.map(fetchStamp)));
   renderHero();renderJourney();renderDelivery();renderLiveBoard();buildDecisions();renderFlows();renderLanes();renderSquads();renderSharedGates();renderOperations();renderContext();initFilters();renderInventory();renderFeed();
   if(issueRead.status==="fulfilled"&&!linearPartial&&operationsRead.status==="fulfilled"){lastSuccessAt=Date.now()}
