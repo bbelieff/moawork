@@ -303,24 +303,46 @@ test("큐가 한글 제목을 잡는다 — 이 저장소의 제목 관례다 (#
 });
 
 /**
- * 경보는 «작업 중» 이 아니라 «열린 채» 를 센다.
+ * 겹침 경보는 «정답지» 로 센다 — 그 PR 이 supabase/migrations/ 를 실제로 건드리는가.
  *
- * ★ 왜 낮췄나 — 이 판의 출처(GitHub 이슈 API)는 Todo·Blocked·Done 셋만 만든다.
- *   「In Progress」는 Projects 의 Status 칸에 있어 이슈 API 로는 안 보인다.
- *   그걸 모른 채 ACTIVE_STATES 로 세면 경보가 «영원히 안 뜬다» — 그게 이 카드의 병이었다.
+ * ★ 왜 제목을 버렸나 — 실측했더니 «실제로 마이그레이션 파일을 쓴 이슈 15건 중 0건» 이
+ *   제목 정규식에 걸렸다. DB 를 바꾸는 사람은 제목에 DB 이야기를 안 쓴다.
+ *     140_issue588_…  →  「업체 고르기 후속 6건 — 그룹 무시 · 목록 상한 없음」
+ *   반대로 걸린 것은 마이그레이션을 «논하는» 이슈였다. 두 집합의 교집합이 0이었다.
+ *
+ * ★ 그리고 겹침은 예외가 아니라 일상이다 — 마이그레이션이 추가된 25일 중 23일(92%)이
+ *   하루 2건 이상이었는데, 그동안 이 판은 한 번도 경보를 띄우지 않았다.
  */
-test("경보는 열려 있는 DB 변경을 센다. 막힌 건은 뺀다 (#588 4)", async () => {
+test("겹침 경보는 «파일» 로 센다 — 제목이 아니라 (#588 4)", async () => {
   const logic = await boardLogic();
-  const queue = [
-    { id: "#1", title: "migration 141", status: "Todo" },
-    { id: "#2", title: "스키마 정리", status: "Todo" },
-    { id: "#3", title: "마이그레이션 142", status: "Blocked" },
+  const prs = [
+    { number: 631, state: "OPEN", touchesMigrations: true },
+    { number: 640, state: "OPEN", touchesMigrations: false },
+    { number: 602, state: "OPEN", touchesMigrations: true },
+    { number: 500, state: "MERGED", touchesMigrations: true },
   ];
-  const contention = logic.migrationContention(queue);
-  assert.deepEqual(contention.map((i) => i.id), ["#1", "#2"]);
-  assert.ok(contention.length > 1, "두 건이 동시에 열려 있으면 경보 조건이다");
-  // 막힌 것만 남으면 경보가 아니다 — 지금 아무도 안 건드리고 있다
-  assert.equal(logic.migrationContention([queue[2]]).length, 0);
+  const writers = logic.migrationWriters(prs);
+  assert.deepEqual(writers.map((pr) => pr.number), [602, 631]);
+  assert.ok(writers.length > 1, "두 PR 이 동시에 마이그레이션을 담으면 경보 조건이다");
+});
+
+test("닫힌 PR 과 마이그레이션 없는 PR 은 겹침으로 안 센다", async () => {
+  const logic = await boardLogic();
+  assert.deepEqual(logic.migrationWriters([{ number: 1, state: "MERGED", touchesMigrations: true }]), []);
+  assert.deepEqual(logic.migrationWriters([{ number: 2, state: "OPEN", touchesMigrations: false }]), []);
+  assert.deepEqual(logic.migrationWriters(undefined), []);
+});
+
+/**
+ * 정답지가 판까지 «실려 오는가».
+ * 서버가 touchesMigrations 를 안 실어 보내면 판은 영원히 「없습니다」를 그린다 —
+ * 이 카드가 방금 그 병으로 고장나 있었다.
+ */
+test("서버가 PR 의 마이그레이션 여부를 실어 보낸다", async () => {
+  const source = await readFile(new URL("../dashboard-server.mjs", templateUrl), "utf8");
+  assert.match(source, /touchesMigrations/);
+  assert.match(source, /supabase\/migrations\//);
+  assert.match(source, /labels,files/, "gh pr list 가 files 를 요청해야 판정할 수 있다");
 });
 
 test("판정 정규식은 한 벌만 있다 — 두 벌이면 경보와 큐가 다른 것을 센다", async () => {

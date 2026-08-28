@@ -544,7 +544,12 @@ async function buildOperations(force = false) {
   try {
     const raw = await runReadOnly("gh", [
       "pr", "list", "--repo", "bbelieff/moawork", "--state", "all", "--limit", "100",
-      "--json", "number,title,body,url,state,mergedAt,mergeCommit,headRefName,headRefOid,baseRefName,isDraft,mergeStateStatus,updatedAt,statusCheckRollup,labels",
+      // files ★ — 「누가 DB 를 바꾸고 있나」의 «정답지» 다.
+      //   전에는 이슈 «제목» 에서 migration 이라는 낱말을 찾았다. 실측하니 실제로
+      //   마이그레이션 파일을 쓴 이슈 15건 중 «0건» 이 걸렸다 — DB 를 바꾸는 사람은
+      //   제목에 DB 이야기를 안 쓴다. 반대로 걸린 것은 마이그레이션을 «논하는» 이슈였다.
+      //   그래서 추측을 버리고 «그 PR 이 실제로 건드리는 파일» 을 본다.
+      "--json", "number,title,body,url,state,mergedAt,mergeCommit,headRefName,headRefOid,baseRefName,isDraft,mergeStateStatus,updatedAt,statusCheckRollup,labels,files",
     ]);
     const rows = JSON.parse(raw || "[]");
     const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
@@ -579,6 +584,8 @@ async function buildOperations(force = false) {
         updatedAt: pr.updatedAt,
         labels: (pr.labels || []).map((label) => label.name),
         checks: checkSummary(pr.statusCheckRollup || []),
+        // 이 PR 이 새 마이그레이션을 담고 있는가 — 제목이 아니라 파일로 판정한다.
+        touchesMigrations: (pr.files || []).some((file) => String(file?.path || "").startsWith("supabase/migrations/")),
       })),
     };
   } catch (error) {
