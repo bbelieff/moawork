@@ -1070,6 +1070,8 @@ export function GroupTable({
                     loadError={companyPicker.loadError}
                     startWorkAction={companyPicker.action}
                     boardId={boardId}
+                    // 누른 그룹을 그대로 넘긴다 — 이 값이 없으면 서버가 첫 그룹에 넣는다(#588).
+                    groupId={groupId}
                     inputClassName={`${CELL_INPUT} w-full max-w-md`}
                   />
                 ) : (

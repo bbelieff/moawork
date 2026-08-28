@@ -377,6 +377,25 @@ export function BoardWorkspace({
   }, [orderedGroups, persistGroupOrder]);
 
   const blocks = useMemo(() => buildBlocks(orderedGroups, displayRows), [orderedGroups, displayRows]);
+
+  /**
+   * 「＋ 업체 추가」를 «모든» 그룹에 단다 (#588).
+   *
+   * ★ 전에는 첫 그룹(blockIndex === 0)에만 달았다. 그건 서버가 어느 그룹에서 눌러도
+   *   첫 그룹에 행을 넣던 것을 «가리는» 처방이었지 고치는 게 아니었다 —
+   *   2분기 그룹에서는 회사 고르기 자체를 못 썼고, 이름 입력칸으로 되돌아갔다.
+   *   마이그레이션 140 이 그룹을 인자로 받으므로 이제 모든 그룹에서 제대로 동작한다.
+   */
+  const companyPickerProps =
+    board.source === CONTRACT_WORK_TAB_SOURCE && startCompanyWorkAction
+      ? {
+          companyPicker: {
+            rows: contractWorkCompanyPicker.rows,
+            loadError: contractWorkCompanyPicker.error,
+            action: startCompanyWorkAction,
+          },
+        }
+      : {};
   const people = useMemo(() => assigneeOptions(rows, assigneeLabels), [rows, assigneeLabels]);
   const scheduleItems = useMemo(() => displayRows.map((row) => ({ id: row.id, label: row.title })), [displayRows]);
   const scheduleRecipients = useMemo(
@@ -709,13 +728,7 @@ export function BoardWorkspace({
                 groupName={block.name}
                 canonicalNewLead={canonicalNewLead}
                 newLeadMembers={scheduleRecipients}
-                {...(blockIndex === 0 && board.source === CONTRACT_WORK_TAB_SOURCE && startCompanyWorkAction
-                  ? { companyPicker: {
-                      rows: contractWorkCompanyPicker.rows,
-                      loadError: contractWorkCompanyPicker.error,
-                      action: startCompanyWorkAction,
-                    } }
-                  : {})}
+                {...companyPickerProps}
                 itemDetailFixture={itemDetailFixture}
                 currentUserId={currentUserId}
                 groupId={block.group?.id ?? null}

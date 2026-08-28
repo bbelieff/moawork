@@ -12,11 +12,13 @@ vi.mock("@/lib/companies/start-work", () => ({ startCompanyWork: mocks.start }))
 
 import { startCompanyWorkFromBoardAction } from "./company-intake-actions";
 
-function form(overrides: Partial<Record<"companyId" | "requestId" | "boardId", string>> = {}) {
+function form(overrides: Partial<Record<"companyId" | "requestId" | "boardId" | "groupId", string>> = {}) {
   const value = new FormData();
   value.set("companyId", overrides.companyId ?? "company-1");
   value.set("requestId", overrides.requestId ?? "request-1");
   value.set("boardId", overrides.boardId ?? "board-1");
+  // groupId 는 «누른 그룹» 이다. 「그룹 없음」 블록에서는 폼이 아예 안 보낸다.
+  if (overrides.groupId) value.set("groupId", overrides.groupId);
   return value;
 }
 
@@ -32,9 +34,19 @@ describe("contract-work company intake action", () => {
       message: "업무를 시작했어요.",
     });
     expect(mocks.start).toHaveBeenCalledWith(expect.anything(), {
-      orgId: "org-1", companyId: "company-1", requestId: "request-1",
+      // groupId — 누른 그룹을 그대로 넘긴다(#588). 폼이 안 보내면 null 이고,
+      // 그때는 서버가 종전과 같이 첫 그룹을 고른다.
+      orgId: "org-1", companyId: "company-1", requestId: "request-1", groupId: null,
     });
     expect(mocks.revalidate).toHaveBeenCalledWith("/boards/board-1");
+  });
+
+  it("★ 누른 그룹을 그대로 서버에 넘긴다 — 없으면 «맨 위» 그룹에 생긴다 (#588)", async () => {
+    await startCompanyWorkFromBoardAction({ ok: null, message: "" }, form({ groupId: "group-2" }));
+    expect(mocks.start).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ groupId: "group-2" }),
+    );
   });
 
   it("RPC 실패와 잘못된 입력을 성공으로 숨기지 않는다", async () => {

@@ -41,7 +41,14 @@ export async function startCompanyWorkFromBoardAction(
   try {
     const ctx = await getSession();
     const client = await createClient();
-    await startCompanyWork(client as unknown as CompanyStartWorkClient, { orgId: ctx.org.id, companyId, requestId });
+    // groupId 는 «누른 그룹» 이다. 없으면(그룹 없음 블록) 서버가 첫 그룹을 고른다.
+    // 서버가 그 그룹이 이 조직·이 보드의 것인지 다시 확인한다 — 화면 값을 믿지 않는다.
+    await startCompanyWork(client as unknown as CompanyStartWorkClient, {
+      orgId: ctx.org.id,
+      companyId,
+      requestId,
+      groupId: text(formData, "groupId") || null,
+    });
   } catch (error) {
     // DB 원문은 화면에 노출하지 않고 서버 로그에만 남긴다.
     console.error("[company intake] failed to start work", error);
