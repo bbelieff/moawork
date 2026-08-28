@@ -26,6 +26,82 @@ describe("초성", () => {
   });
 });
 
+/**
+ * 초성 과매칭 (#588 ⑤).
+ *
+ * ★ 전에는 «질의까지» 초성으로 낮춰서 견줬다 —
+ *     matchesText 의 셋째 조건 chosung(field).includes(chosung(query))
+ *   그래서 「대성」이 ㄷㅅ 가 되어 「다스산업」·「동서물류」까지 걸렸다.
+ *   찾던 회사가 엉뚱한 것들에 밀려 아래로 내려가고, 사람은 못 찾고 새로 만든다 —
+ *   이 화면이 막으려던 중복을 이 화면이 만든다.
+ *
+ * ★ 그 조건은 «질의가 이미 초성뿐일 때» 둘째 조건과 하는 일이 같았다. 즉 «추가로»
+ *   걸리는 경우는 질의가 완성형일 때뿐이고, 그게 정확히 결함이었다.
+ */
+function named(name: string): CompanyPickerCompany {
+  return { id: name, name, biz_type: null, region: null, owner_name: null, phone: null, email: null, homepage: null };
+}
+
+describe("초성 과매칭", () => {
+  it("★ 다 쓴 이름은 초성으로 낮추지 않는다 — 「대성」이 「다스산업」을 잡으면 안 된다", () => {
+    expect(companyMatches(named("대성산업"), "대성")).toBe(true);
+    expect(companyMatches(named("다스산업"), "대성")).toBe(false);
+    expect(companyMatches(named("동서물류"), "대성")).toBe(false);
+  });
+
+  it("★ 초성 검색은 그대로 살아 있다 — 이게 없으면 «그냥 꺼버린» 수정과 구분이 안 된다", () => {
+    expect(companyMatches(named("대성산업"), "ㄷㅅ")).toBe(true);
+    expect(companyMatches(named("다스산업"), "ㄷㅅ")).toBe(true);
+    expect(companyMatches(named("가나상사"), "ㄱㄴ")).toBe(true);
+    expect(companyMatches(named("가나상사"), "ㄷㅅ")).toBe(false);
+  });
+
+  it("부분 문자열 검색도 그대로다", () => {
+    expect(companyMatches(named("대성산업"), "산업")).toBe(true);
+    expect(companyMatches(named("대성산업"), "성산")).toBe(true);
+  });
+
+  /**
+   * ★ 목록에 «실제로» 미치는 영향을 잰다.
+   *   companyMatches 만 재면 「걸린다/안 걸린다」까지만 보인다. 사람이 겪는 것은
+   *   «찾던 회사가 엉뚱한 것들에 밀려 안 보이는» 것이다.
+   */
+  it("★ 찾던 회사가 엉뚱한 것들에 밀리지 않는다", () => {
+    const rows: CompanyPickerRow[] = [
+      { company: named("다스산업"), dealCount: 5 },
+      { company: named("동서물류"), dealCount: 3 },
+      { company: named("대성산업"), dealCount: 0 },
+    ];
+    // 이력이 많은 회사를 위로 올리는 규칙 때문에, 과매칭이 있으면
+    // 정작 찾던 «대성산업» 이 맨 아래로 밀린다.
+    expect(rankCompanies(rows, "대성").map((row) => row.company.name)).toEqual(["대성산업"]);
+  });
+
+  /**
+   * ★ 검수가 찾은 반례다. 처음 판은 셋째 조건을 «그냥 뺐고», 그러면 이것들이 0건이 됐다.
+   *
+   *   한글 IME 에서 「대성」을 치다 백스페이스하면 「대ㅅ」을 지나간다. 흔한 입력이다.
+   *   그때 목록이 통째로 비면 「찾은 업체가 없습니다」가 뜨고, 사람은 새로 만든다 —
+   *   과매칭(정답 + 노이즈)을 무매칭(빈 목록)으로 바꾸는 것이라 «더 나쁘다».
+   */
+  it("★ 완성형과 자모가 섞인 질의도 산다 — 「대ㅅ」이 0건이 되면 안 된다", () => {
+    expect(companyMatches(named("대성산업"), "ㄷ성")).toBe(true);
+    expect(companyMatches(named("대성산업"), "대ㅅ")).toBe(true);
+    // 섞인 질의도 «자리를 맞춰» 보므로 엉뚱한 회사는 여전히 안 걸린다
+    expect(companyMatches(named("다스산업"), "ㄷ성")).toBe(false);
+    expect(companyMatches(named("다스산업"), "대ㅅ")).toBe(false);
+  });
+
+  /**
+   * 초성은 «이어져» 있어야 한다. 이건 전에도 그랬다 — 바꾼 게 아니라 못으로 박는 것이다.
+   * (chosung("대한상사")=ㄷㅎㅅㅅ 에 ㄷㅅ 는 연속으로 없다. 옛 둘째 조건도 includes 였다.)
+   */
+  it("자리가 어긋나면 안 걸린다 — 초성이 흩어져 있다고 걸리면 그게 과매칭이다", () => {
+    expect(companyMatches(named("대한상사"), "ㄷㅅ")).toBe(false);
+    expect(companyMatches(named("대한상사"), "ㄷㅎ")).toBe(true);
+  });
+});
+
 describe("전화번호 표기 차이", () => {
   it("구분자를 지운다", () => {
     expect(digitsOnly("010-1234-5678")).toBe("01012345678");
