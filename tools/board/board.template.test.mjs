@@ -68,7 +68,12 @@ test("new DG lanes and the P0 handoff chain are visible without the retired 20-s
 
 test("decision metrics derive from the full live issue inventory", async () => {
   const html = await readFile(templateUrl, "utf8");
-  assert.match(html, /state\.open=state\.issues\.filter/);
+  // 2026-08-28 — 이 줄은 원래 `state.open=state.issues.filter` 를 고정했다.
+  //   그 시절 state.issues 는 «전체 재고» 였다. 뒤에 목표 15건만 담도록 좁혀졌고,
+  //   CUTOVER 로 그 15건이 사라지면서 state.open 이 «항상 빈 배열» 이 됐다 —
+  //   이 테스트 이름이 말하는 「full live issue inventory」와 정반대인데도 초록이었다.
+  //   소스 문자열을 고정하면 이렇게 «틀린 것을 지키는» 검사가 된다.
+  assert.match(html, /state\.open=all\.filter/);
   assert.match(html, /owner 라벨 없는 오픈 카드/);
   assert.match(html, /충돌·실패 PR/);
   assert.match(html, /서명 도장 미확인/);
@@ -236,4 +241,37 @@ test("bounded pipeline excludes Backlog and Done without PR evidence but keeps I
     { id: "ACTIVE", status: "In Progress" }, { id: "OPEN", status: "Todo" },
   ];
   assert.deepEqual(boundedDeliveryIds(issues, [{ cardId: "OPEN", state: "OPEN", mergedAt: null }], "2026-08-21").sort(), ["ACTIVE", "OPEN"]);
+});
+
+/**
+ * 이 판의 안전장치가 «영원히 꺼져» 있었다 (#588 4).
+ *
+ *   「DB 변경 순서」 큐와 «P0 SERIAL CONFLICT» 경보는 둘 다 state.open 을 본다.
+ *   그런데 state.open 이 Linear 시절 목표 15건에서 골라져서 CUTOVER 이후 늘 비었다.
+ *   화면은 「migration queue 없음」이라고만 말했다 — 없어서가 아니라 «안 봐서» 였다.
+ *   가장 나쁜 고장이다: 꺼져 있는데 «정상» 처럼 보인다.
+ */
+test("DB 변경 순서 큐가 열린 이슈 전부를 본다 — 목표 목록에 없어도 (#588 4)", async () => {
+  const logic = await boardLogic();
+  const open = [
+    { id: "#640", title: "docs(worklog): 기록 추가", status: "In Progress" },
+    { id: "#612", title: "feat(db): migration 141 컬럼 추가", status: "In Progress" },
+    { id: "#588", title: "fix: schema 정합성", status: "Todo" },
+  ];
+  const queue = logic.migrationQueue(open);
+  assert.deepEqual(queue.map((issue) => issue.id), ["#588", "#612"]);
+  assert.equal(queue[0].id, "#588");
+});
+
+test("DB 를 안 바꾸는 이슈는 큐에 안 들어간다", async () => {
+  const logic = await boardLogic();
+  assert.deepEqual(logic.migrationQueue([{ id: "#1", title: "사이드바 색상", status: "Todo" }]), []);
+  assert.deepEqual(logic.migrationQueue([]), []);
+  assert.deepEqual(logic.migrationQueue(undefined), []);
+});
+
+test("도장 조회를 자르면 «안 봤다» 고 말한다", async () => {
+  const html = await readFile(templateUrl, "utf8");
+  assert.match(html, /STAMP_FETCH_LIMIT/);
+  assert.match(html, /«없음» 이 아니라 «안 봄»/);
 });

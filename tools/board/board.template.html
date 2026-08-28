@@ -323,12 +323,27 @@ const BOARD_LOGIC=(()=>{
   if(pr&&!pr.isDraft&&pr.checks?.total>0&&pr.checks.failing===0&&pr.checks.pending===0)return {stage:"MERGE_WAITING",complete:false,blockers};
   return {stage:"WORK_REVIEW",complete:false,blockers};
  };
+ /**
+  * DB 를 바꾸는 이슈를 «먼저 연 순» 으로 줄 세운다 (AGENTS.md §5 동시 migration writer 방어).
+  *
+  * ★ 순수 함수로 뺀 이유 — 이 판정이 렌더 함수 «안» 에 있어서 아무도 재지 못했고,
+  *   그동안 «항상 빈 줄» 을 그리고 있었다. 그런데 화면은 「없음」이라고만 말해서
+  *   «정말 없는지» 와 «안 보고 있는지» 를 구분할 수 없었다. 여기서 재면 그 일이 안 생긴다.
+  *
+  * ★ 정렬은 이슈 번호 오름차순이다. 전에는 GOAL_IDS.indexOf 로 세웠는데 그 목록에 없는
+  *   이슈는 전부 -1 이라 «순서가 아무 의미도 없었다».
+  */
+ const migrationQueue=(openIssues)=>{
+  const isMigration=(issue)=>Boolean(issue&&/(?:migration|schema|DB 정본|컬럼 메뉴 DB)/i.test(issue.title||""));
+  const order=(issue)=>{const m=/(\d+)/.exec(String(issue?.id||""));return m?Number(m[1]):Number.MAX_SAFE_INTEGER};
+  return (openIssues||[]).filter(isMigration).sort((a,b)=>order(a)-order(b));
+ };
  const boundedDeliveryIds=(issues,prs,today)=>{
   const ids=new Set(issues.filter((issue)=>issue.status==="In Progress").map((issue)=>issue.id));
   prs.filter((pr)=>pr.state==="OPEN"||String(pr.mergedAt||"").slice(0,10)===today).forEach((pr)=>{if(pr.cardId)ids.add(pr.cardId)});
   return [...ids];
  };
- return {squadLabels,ownerLabels,ownerCoverage,coverage,crossDependencies,releaseState,deliveryStage,boundedDeliveryIds};
+ return {squadLabels,ownerLabels,ownerCoverage,coverage,crossDependencies,releaseState,deliveryStage,boundedDeliveryIds,migrationQueue};
 })();
 /* BOARD_LOGIC_END */
 const DONE_STATES=new Set(["Done","Canceled","Duplicate"]);
@@ -373,7 +388,7 @@ const SPECIAL_ACTIONS={
  "BBE-186":"BBE-185 뒤 C가 V6 기준 홈을 구현하고 과잉 위젯은 별도 분석 화면에 보존한다.",
  "BBE-182":"활성 14건 Done 뒤 G가 Monday→V6→Production·DB 전수 QA와 fixture cleanup을 수행한다."
 };
-let state={all:[],issues:[],open:[],by:{},operations:null,stamps:new Map(),decisions:[]};
+let state={all:[],issues:[],open:[],by:{},operations:null,stamps:new Map(),stampsTruncated:null,decisions:[]};
 const esc=(value)=>String(value??"").replace(/[&<>"']/g,(char)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
 const cssKey=(value)=>String(value||"").replace(/\s+/g,"-");
 const hours=(value)=>Math.max(0,(Date.now()-new Date(value).getTime())/36e5);
@@ -402,6 +417,8 @@ const SQUAD_LABELS=SQUADS.map((squad)=>squad.label);
 const squadLabelOf=(issue)=>BOARD_LOGIC.squadLabels(issue,SQUAD_LABELS)[0]||null;
 const squadNameOf=(issue)=>SQUADS.find((squad)=>squad.label===squadLabelOf(issue))?.name||"미분류";
 /* needs-hosted는 read model 검증에도 붙으므로 migration writer 판정에 쓰지 않는다. */
+/** 도장을 조회할 최대 건수. 재서 고른 값이 아니라 «무한대를 막는» 선이다. */
+const STAMP_FETCH_LIMIT=40;
 const isMigrationCard=(issue)=>Boolean(issue&&/(?:migration|schema|DB 정본|컬럼 메뉴 DB)/i.test(issue.title||""));
 function prsFor(issue){
  const key=issue?.id?.toLowerCase(); if(!key)return [];
@@ -615,9 +632,10 @@ function renderSharedGates(){
  const coverageText=coverage.ok?'15 / 15 exact':'UNSQUADDED '+coverage.missing.join(",")+(coverage.duplicate.length?' · DUPLICATE '+coverage.duplicate.map((item)=>item.id).join(","):"");
  const ownerCoverageText=ownerCoverage.ok?'15 / 15 exact':'MISSING_OWNER '+ownerCoverage.missing.join(",")+(ownerCoverage.collision.length?' · OWNER_COLLISION '+ownerCoverage.collision.map((item)=>item.id+"["+item.labels.join("+")+"]").join(","):"");
  gate.innerHTML='<h3>BBE-182 Global Release Gate · '+gateState+'</h3><p>전체 합산: '+state.issues.filter((i)=>i.status==="Done").length+' / '+GOAL_IDS.length+' Done</p><p>Squad coverage: <b class="'+(coverage.ok?'cross-ok':'cross-p0')+'">'+esc(coverageText)+'</b></p><p>Owner coverage: <b class="'+(ownerCoverage.ok?'cross-ok':'cross-p0')+'">'+esc(ownerCoverageText)+'</b></p><p>선행 미완료: '+esc(prereqs.join(" · ")||"0")+'</p><p>Cross-dependency: <b class="'+(cross.length?'cross-p0':'cross-ok')+'">'+cross.length+(cross.length?' · P0 RED':' · 정상')+'</b></p><p>Release PR·CI: '+esc(prCiText(release))+'</p>';
- const queue=state.issues.filter(isMigrationCard).filter((issue)=>issue.status!=="Done").sort((a,b)=>GOAL_IDS.indexOf(a.id)-GOAL_IDS.indexOf(b.id));
+ // 큐도 열린 이슈 «전부» 에서 고른다. 판정은 BOARD_LOGIC 이 갖고 테스트가 직접 잰다.
+ const queue=BOARD_LOGIC.migrationQueue(state.open);
  const activeMigrations=queue.filter((issue)=>ACTIVE_STATES.has(issue.status));
- document.getElementById("migrationQueue").innerHTML='<div class="section-title">DB 변경 순서 <span class="hint">두 개가 동시에 바꾸면 충돌합니다</span></div>'+(activeMigrations.length>1?'<div class="squad-line hot"><b>P0 SERIAL CONFLICT</b>'+esc(activeMigrations.map((i)=>i.id).join(" · "))+'</div>':'')+'<div class="queue">'+(queue.length?queue.map((issue,index)=>'<div class="queue-item"><b>'+(index+1)+'</b><div><p>'+issue.id+' · '+esc(issue.title)+'</p><small>'+esc(laneOf(issue)||blockerOf(issue)||"미배정")+' · '+esc(issue.status)+'</small></div><small>'+esc(index===0?"active/latest+1":"serial wait")+'</small></div>').join(""):'<div class="empty">migration queue 없음</div>')+'</div>';
+ document.getElementById("migrationQueue").innerHTML='<div class="section-title">DB 변경 순서 <span class="hint">두 개가 동시에 바꾸면 충돌합니다</span></div>'+(state.stampsTruncated?'<div class="squad-line">도장은 '+state.stampsTruncated.seen+' / '+state.stampsTruncated.total+' 건만 조회했습니다 — 나머지는 «없음» 이 아니라 «안 봄» 입니다</div>':'')+(activeMigrations.length>1?'<div class="squad-line hot"><b>P0 SERIAL CONFLICT</b>'+esc(activeMigrations.map((i)=>i.id).join(" · "))+'</div>':'')+'<div class="queue">'+(queue.length?queue.map((issue,index)=>'<div class="queue-item"><b>'+(index+1)+'</b><div><p>'+issue.id+' · '+esc(issue.title)+'</p><small>'+esc(laneOf(issue)||blockerOf(issue)||"미배정")+' · '+esc(issue.status)+'</small></div><small>'+esc(index===0?"active/latest+1":"serial wait")+'</small></div>').join(""):'<div class="empty">migration queue 없음</div>')+'</div>';
 }
 function renderOperations(){
  const repo=state.operations?.repository;
@@ -756,9 +774,21 @@ async function loadOnce(force=true){
   const all=(incoming.length?incoming:state.all).map((issue)=>({...issue,labels:Array.isArray(issue.labels)?issue.labels:[]}));
   state.all=all;state.by=Object.fromEntries(all.map((issue)=>[issue.id,issue]));
   state.issues=all.filter((issue)=>GOAL_SET.has(issue.id));
-  state.open=state.issues.filter((issue)=>!DONE_STATES.has(issue.status));
+  // ★ 「열린 작업」은 «지금 열려 있는 이슈 전부» 다.
+  //   전에는 state.issues(= Linear 시절 목표 15건)에서 골랐다. CUTOVER 이후 그 15건은
+  //   GitHub 에 없어서 state.issues 가 «항상 빈 배열» 이고, 따라서 state.open 도 늘 비었다.
+  //   그 결과 이 판의 안전장치 둘이 «영원히 꺼진» 채였다 —
+  //     · 「DB 변경 순서」 큐 (AGENTS.md §5 의 동시 migration writer 방어)
+  //     · 상단 «P0 MIGRATION SERIAL» 경보
+  //   둘 다 조용히 「없음」만 말했다. 없어서가 아니라 «안 보고 있어서» 였다.
+  state.open=all.filter((issue)=>!DONE_STATES.has(issue.status));
   state.operations=operations;
-  const active=state.open.filter((issue)=>ACTIVE_STATES.has(issue.status));
+  // 도장 조회는 이슈 하나당 API 한 번이다. state.open 이 «열린 이슈 전부» 로 넓어졌으니
+  // 상한을 둔다. ★ 자른 사실을 숨기지 않는다 — 조용히 자르면 판이 「도장 없음」을
+  // «없어서» 인지 «안 봐서» 인지 구분 못 하게 만든다. 이 판이 방금 그 병으로 고장나 있었다.
+  const activeAll=state.open.filter((issue)=>ACTIVE_STATES.has(issue.status));
+  const active=activeAll.slice(0,STAMP_FETCH_LIMIT);
+  state.stampsTruncated=activeAll.length>active.length?{seen:active.length,total:activeAll.length}:null;
   state.stamps=new Map(await Promise.all(active.map(fetchStamp)));
   renderHero();renderJourney();renderDelivery();renderLiveBoard();buildDecisions();renderFlows();renderLanes();renderSquads();renderSharedGates();renderOperations();renderContext();initFilters();renderInventory();renderFeed();
   if(issueRead.status==="fulfilled"&&!linearPartial&&operationsRead.status==="fulfilled"){lastSuccessAt=Date.now()}
