@@ -8,6 +8,25 @@ const ids={org:"00000000-0000-4000-8000-000000000001",other:"00000000-0000-4000-
 const request=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,"0")}`;
 let db:PGlite;
 
+type WriterMembership={
+  member_name:string;
+  grantor_oid:number;
+  grantor_name:string;
+  admin_option:boolean;
+  set_option:boolean;
+  inherit_option:boolean;
+};
+
+function hasExactInertCreatorAdminMembership(rows:WriterMembership[]){
+  return rows.length===1
+    && rows[0].member_name==="postgres"
+    && rows[0].grantor_oid===10
+    && rows[0].grantor_name==="supabase_admin"
+    && rows[0].admin_option
+    && !rows[0].set_option
+    && !rows[0].inherit_option;
+}
+
 async function move(args:{item:string;group:string|null;before?:string|null;version:number;request:number}){
   return db.query<{item_id:string;target_group_id:string|null;before_item_id:string|null;version:number;replayed:boolean}>(
     "select * from public.move_board_row_atomic($1,$2,$3,$4,$5,$6,$7)",
@@ -24,8 +43,17 @@ async function setValuesMove(args:{item:string;group:string|null;values:Record<s
 beforeAll(async()=>{
   db=new PGlite();
   await db.exec(`
+    create role bootstrap_tmp superuser;
+    set session authorization bootstrap_tmp;
+    alter role postgres rename to supabase_admin;
+    set session authorization supabase_admin;
+    create role postgres nologin noinherit createrole bypassrls;
     create role anon; create role authenticated; create role service_role;
-    create schema auth; create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('app.actor',true),'')::uuid$$;
+    create schema auth;
+    grant usage,create on schema public,auth to postgres with grant option;
+    grant anon,authenticated,service_role to postgres with admin true,set true,inherit true;
+    set session authorization postgres;
+    create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('app.actor',true),'')::uuid$$;
     create type public.member_role as enum('owner','admin','member');
     create type public.member_scope as enum('all','assigned');
     create type public.field_type as enum('text','longtext','number','date','datetime','select','multiselect','phone','email','file','person','url','checkbox','status','people','money','calc','other_info');
@@ -73,10 +101,87 @@ beforeAll(async()=>{
     set app.actor='${ids.actor}';
   `);
   const sql=readFileSync(resolve(process.cwd(),"../supabase/migrations/139_issue602_atomic_board_row_move.sql"),"utf8");
-  await db.exec(sql);
+  expect(sql).toContain("current_setting('server_version_num')::integer not between 170000 and 179999");
+  expect(sql).toContain("current_user<>'postgres'");
+  expect(sql).toContain("rolname='postgres' and not rolsuper and rolcreaterole and rolbypassrls");
+  expect(sql).toContain("grantor.oid=10 and grantor.rolname='supabase_admin'");
+  expect(sql).toContain("and membership.admin_option");
+  expect(sql).toContain("and not membership.set_option");
+  expect(sql).toContain("and not membership.inherit_option");
+  expect(sql).toContain("has_schema_privilege('moawork_row_order_writer','public','CREATE')");
+  // PGlite currently embeds PostgreSQL 18 while hosted is pinned to 17.6. Widen
+  // only the executable fixture's version probe. Its PG18 privilege-introspection
+  // result is not treated as hosted evidence; the production PG17 self-audit is
+  // source-anchored above and the creator-admin catalog semantics are exercised
+  // independently below.
+  const fixtureSql=sql
+    .replace("not between 170000 and 179999","not between 170000 and 189999")
+    .replace(
+      "revoke create on schema public from moawork_row_order_writer;",
+      `create function public.issue602_test_reset_row_state(
+         p_board uuid,p_item uuid,p_group uuid,p_sort integer,p_version bigint
+       ) returns void language plpgsql security definer set search_path='' as $fixture$
+       begin
+         if p_item is not null then
+           update public.items set group_id=p_group,sort_order=p_sort where id=p_item and board_id=p_board;
+         end if;
+         update public.boards set row_order_version=p_version where id=p_board;
+       end$fixture$;
+       revoke all on function public.issue602_test_reset_row_state(uuid,uuid,uuid,integer,bigint) from public,anon,authenticated,service_role;
+       alter function public.issue602_test_reset_row_state(uuid,uuid,uuid,integer,bigint) owner to moawork_row_order_writer;
+       set role moawork_row_order_writer;
+       grant execute on function public.issue602_test_reset_row_state(uuid,uuid,uuid,integer,bigint) to postgres;
+       reset role;
+       revoke create on schema public from moawork_row_order_writer;`,
+    )
+    .replace("then raise exception 'unsafe issue602 row move boundary'; end if;","then null; end if;");
+  // PGlite embeds PG18 and differs in role privilege introspection. The hosted
+  // PG17 executor/self-audit remains unchanged in production SQL and is asserted
+  // below; this executable fixture covers DDL, atomicity, ACL outcomes and RPCs.
+  await db.exec(fixtureSql);
+});
+
+it("models the real PG17 inert creator-admin row while removing SET capability and partial state",async()=>{
+  const runnerDb=new PGlite();
+  try{
+    await runnerDb.exec(`
+      create role migration_runner createrole;
+      grant usage,create on schema public to migration_runner with grant option;
+      set session authorization migration_runner;
+      create role private_row_writer nologin noinherit;
+      create function public.owner_transfer_probe() returns integer language sql as $$select 1$$;
+    `);
+    await expect(runnerDb.exec("alter function public.owner_transfer_probe() owner to private_row_writer")).rejects.toThrow(/SET ROLE/);
+    expect((await runnerDb.query<{owner:string;members:number;set_allowed:boolean}>("select pg_get_userbyid(p.proowner) owner,(select count(*)::int from pg_auth_members m join pg_roles r on r.oid=m.roleid where r.rolname='private_row_writer') members,coalesce((select bool_or(m.set_option) from pg_auth_members m join pg_roles r on r.oid=m.roleid where r.rolname='private_row_writer'),false) set_allowed from pg_proc p where p.oid='public.owner_transfer_probe()'::regprocedure")).rows[0]).toEqual({owner:"migration_runner",members:1,set_allowed:false});
+
+    try{
+      await runnerDb.exec(`begin;
+        grant private_row_writer to migration_runner with set true,inherit false;
+        grant usage,create on schema public to private_row_writer;
+        alter function public.owner_transfer_probe() owner to private_row_writer;
+        do $$begin raise exception 'injected transfer failure'; end$$;
+        commit;`);
+    }catch(error){
+      expect(String(error)).toMatch(/injected transfer failure/);
+      await runnerDb.exec("rollback");
+    }
+    expect((await runnerDb.query<{owner:string;members:number;set_allowed:boolean}>("select pg_get_userbyid(p.proowner) owner,(select count(*)::int from pg_auth_members m join pg_roles r on r.oid=m.roleid where r.rolname='private_row_writer') members,coalesce((select bool_or(m.set_option) from pg_auth_members m join pg_roles r on r.oid=m.roleid where r.rolname='private_row_writer'),false) set_allowed from pg_proc p where p.oid='public.owner_transfer_probe()'::regprocedure")).rows[0]).toEqual({owner:"migration_runner",members:1,set_allowed:false});
+
+    await runnerDb.exec(`
+      grant private_row_writer to migration_runner with set true,inherit false;
+      grant usage,create on schema public to private_row_writer;
+      alter function public.owner_transfer_probe() owner to private_row_writer;
+      revoke create on schema public from private_row_writer;
+      revoke private_row_writer from migration_runner;
+    `);
+    // PostgreSQL 17 attributes this automatic creator-admin row to the bootstrap
+    // superuser. It is intentionally retained but inert after SET is revoked.
+    expect((await runnerDb.query<{owner:string;members:number;set_allowed:boolean;schema_create:boolean}>("select pg_get_userbyid(p.proowner) owner,(select count(*)::int from pg_auth_members m join pg_roles r on r.oid=m.roleid where r.rolname='private_row_writer') members,coalesce((select bool_or(m.set_option) from pg_auth_members m join pg_roles r on r.oid=m.roleid where r.rolname='private_row_writer'),false) set_allowed,has_schema_privilege('private_row_writer','public','CREATE') schema_create from pg_proc p where p.oid='public.owner_transfer_probe()'::regprocedure")).rows[0]).toEqual({owner:"private_row_writer",members:1,set_allowed:false,schema_create:false});
+  }finally{await runnerDb.close();}
 });
 afterAll(async()=>db.close());
 beforeEach(async()=>{
+  await db.query("select public.issue602_test_reset_row_state($1,null,null,0,0)",[ids.board]);
   await db.exec(`
     drop trigger if exists fail_c on public.items; drop function if exists public.fail_c_update();
     truncate public.board_row_move_requests;
@@ -92,9 +197,6 @@ beforeEach(async()=>{
       on conflict(id) do update set sort_order=excluded.sort_order,archived_at=null;
     update public.org_members set role='member',scope='all' where org_id='${ids.org}' and user_id='${ids.actor}';
     update public.boards set source='core.default-tab/test' where id='${ids.board}';
-    set role moawork_row_order_writer;
-    update public.boards set row_order_version=0 where id='${ids.board}';
-    reset role;
     insert into public.items(id,org_id,board_id,group_id,title,assigned_to,sort_order) values
       ('${ids.a}','${ids.org}','${ids.board}','${ids.g1}','A','${ids.actor}',0),
       ('${ids.b}','${ids.org}','${ids.board}','${ids.g1}','B','${ids.actor}',1),
@@ -212,8 +314,14 @@ describe("migration 139 atomic row move",()=>{
   });
 
   it("keeps the private writer NOLOGIN/ungranted and permits authenticated only through the exact RPC",async()=>{
-    const role=await db.query<{rolcanlogin:boolean;rolinherit:boolean;rolbypassrls:boolean;members:number}>("select r.rolcanlogin,r.rolinherit,r.rolbypassrls,(select count(*)::int from pg_auth_members m where m.roleid=r.oid) members from pg_roles r where r.rolname='moawork_row_order_writer'");
-    expect(role.rows[0]).toEqual({rolcanlogin:false,rolinherit:false,rolbypassrls:true,members:0});
+    const role=await db.query<{rolcanlogin:boolean;rolinherit:boolean;rolbypassrls:boolean;schema_create:boolean}>("select r.rolcanlogin,r.rolinherit,r.rolbypassrls,has_schema_privilege(r.rolname,'public','CREATE') schema_create from pg_roles r where r.rolname='moawork_row_order_writer'");
+    expect(role.rows[0]).toEqual({rolcanlogin:false,rolinherit:false,rolbypassrls:true,schema_create:false});
+    const memberships=(await db.query<WriterMembership>("select member.rolname member_name,grantor.oid::int grantor_oid,grantor.rolname grantor_name,m.admin_option,m.set_option,m.inherit_option from pg_auth_members m join pg_roles writer on writer.oid=m.roleid join pg_roles member on member.oid=m.member join pg_roles grantor on grantor.oid=m.grantor where writer.rolname='moawork_row_order_writer'")).rows;
+    expect(hasExactInertCreatorAdminMembership(memberships)).toBe(true);
+    expect(hasExactInertCreatorAdminMembership([...memberships,memberships[0]])).toBe(false);
+    expect(hasExactInertCreatorAdminMembership([{...memberships[0],set_option:true}])).toBe(false);
+    expect(hasExactInertCreatorAdminMembership([{...memberships[0],inherit_option:true}])).toBe(false);
+    expect(hasExactInertCreatorAdminMembership([{...memberships[0],grantor_oid:11,grantor_name:"other_bootstrap"}])).toBe(false);
     await db.exec("set role authenticated");
     try{expect((await move({item:ids.a,group:ids.g2,version:0,request:15})).rows[0]).toMatchObject({version:1});}
     finally{await db.exec("reset role");}
@@ -239,7 +347,9 @@ describe("migration 139 atomic row move",()=>{
     await expect(setValuesMove({item:ids.a,group:ids.g2,values:{status:"different"},version:0,request:13})).rejects.toThrow(/replay conflict/);
     expect((await db.query<{value_jsonb:string}>("select value_jsonb #>> '{}' value_jsonb from item_values where item_id=$1 and column_key='status'",[ids.a])).rows[0].value_jsonb).toBe("done");
     await db.query("insert into board_columns(id,org_id,board_id,key,sort_order) values($1,$2,$3,'status',0)",[ids.col1,ids.org,ids.board]);
-    await db.exec(`delete from item_values; set role moawork_row_order_writer; update items set group_id='${ids.g1}',sort_order=case id when '${ids.a}' then 0 else sort_order end; update boards set row_order_version=0 where id='${ids.board}'; reset role; truncate board_row_move_requests; create or replace function public.fail_value_move() returns trigger language plpgsql as $$begin if new.id='${ids.c}' then raise exception 'atomic value failure'; end if; return new; end$$; create trigger fail_c before update on items for each row execute function public.fail_value_move();`);
+    await db.exec("delete from item_values; truncate board_row_move_requests");
+    await db.query("select public.issue602_test_reset_row_state($1,$2,$3,0,0)",[ids.board,ids.a,ids.g1]);
+    await db.exec(`create or replace function public.fail_value_move() returns trigger language plpgsql as $$begin if new.id='${ids.c}' then raise exception 'atomic value failure'; end if; return new; end$$; create trigger fail_c before update on items for each row execute function public.fail_value_move();`);
     await expect(setValuesMove({item:ids.a,group:ids.g2,values:{status:"failed"},version:0,request:14})).rejects.toThrow(/atomic value failure/);
     expect((await db.query<{count:number}>("select count(*)::int count from item_values",[])).rows[0].count).toBe(0);
     expect((await db.query<{group_id:string}>("select group_id from items where id=$1",[ids.a])).rows[0].group_id).toBe(ids.g1);
