@@ -71,13 +71,20 @@ export function loadVisualOrgViewModel(options: { reportingKnown: boolean } = { 
       members,
       unassignedCount: members.filter((member) => member.departmentIds.length === 0).length,
     },
+    /*
+     * ★ 요약 행은 «프로덕션이 실제로 만들 수 있는 것» 만 준다.
+     *   member-org-summary.ts 의 isRole 은 owner/admin/member 만, isScope 는 all/assigned 만
+     *   통과시키고, 읽기 자체가 status='active' 로 좁혀져 있다. 그래서
+     *     · 「가상 팀장」(054 의 team_lead) 과
+     *     · 「가상 미배정」(비활성)
+     *   은 프로덕션에서 요약에 «안 들어온다». 픽스처도 안 준다.
+     *   그 두 사람이 표에서 사라지지 않고 「확인 못 함」으로 남는지가 이 화면의 핵심이다.
+     *   전에는 픽스처가 team_lead·department 를 넣어서, 증거 스크린샷이
+     *   프로덕션에서 나올 수 없는 값을 보여 주고 있었다(PR #641 검수 P2-1).
+     */
     owner: row(OWNER, "가상 대표", "owner", "all", "대표이사"),
-    admins: [row(HEAD, "가상 본부장", "admin", "department", "본부장")],
-    members: [
-      row(STAFF, "가상 팀장", "team_lead", "department", "팀장"),
-      row(SUB, "가상 파트원", "member", "assigned", null),
-      row(IDLE, "가상 미배정", "member", "assigned", null),
-    ],
+    admins: [row(HEAD, "가상 본부장", "admin", "assigned", "본부장")],
+    members: [row(SUB, "가상 파트원", "member", "assigned", null)],
     // null 을 주면 화면이 「확인 못 함」이라고 말해야 한다 — 그 상태도 눈으로 본다.
     exceptions: options.reportingKnown ? new Map() : null,
   });

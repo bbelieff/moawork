@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactElement, type ReactNode } from "react";
-import { membersOfDepartment, type OrgMemberView, type OrgViewModel } from "@/lib/org/org-view";
+import { membersOfDepartment, ORG_VIEWS, type OrgMemberView, type OrgView, type OrgViewModel } from "@/lib/org/org-view";
 import { OrgChartFlow } from "./OrgChartFlow";
 
 /**
@@ -16,14 +16,13 @@ import { OrgChartFlow } from "./OrgChartFlow";
  *   서버 컴포넌트로 남고, 구조도 하나도 안 줄어든다(D71~D75).
  */
 
-type OrgView = "list" | "chart" | "perm" | "rules";
-
-const VIEWS: { key: OrgView; label: string }[] = [
-  { key: "list", label: "목록" },
-  { key: "chart", label: "조직도 한눈에 보기" },
-  { key: "perm", label: "권한" },
-  { key: "rules", label: "알림 규칙" },
-];
+// 갈래 «목록» 은 서버도 읽어야 해서 lib/org/org-view.ts 가 갖는다. 여기는 이름표만 붙인다.
+const VIEW_LABEL: Record<OrgView, string> = {
+  list: "목록",
+  chart: "조직도 한눈에 보기",
+  perm: "권한",
+  rules: "알림 규칙",
+};
 
 const ROLE_LABEL: Record<string, string> = {
   owner: "대표",
@@ -32,12 +31,19 @@ const ROLE_LABEL: Record<string, string> = {
   member: "구성원",
 };
 
-function scopeLabel(member: OrgMemberView): string {
+function scopeLabel(member: OrgMemberView): string | null {
+  // null = 모른다. 「본인 담당분」으로 떨어뜨리면 가장 좁은 범위라고 «단언» 하는 것이 된다.
+  if (member.scope === null) return null;
   if (member.scope === "all") return "회사 전체";
   if (member.scope === "department") {
     return member.primaryDepartmentName ? `${member.primaryDepartmentName} 이하 전체` : "부서 전체";
   }
   return "본인 담당분";
+}
+
+/** 모르는 칸은 비워 두지 않고 «모른다» 고 적는다 — 빈칸은 「없음」으로 읽힌다. */
+function Unknown(): ReactElement {
+  return <span className="text-zinc-400">확인 못 함</span>;
 }
 
 function ReportsToCell({ member, known }: { member: OrgMemberView; known: boolean }): ReactElement {
@@ -83,9 +89,9 @@ function MemberTable({ rows, known }: { rows: OrgMemberView[]; known: boolean })
                 <div className="text-[11px] text-zinc-500">{member.title?.trim() || "호칭 미설정"}</div>
               </td>
               <td className="px-3 py-2.5 text-zinc-500">{member.primaryDepartmentName ?? "미배정"}</td>
-              <td className="px-3 py-2.5">{ROLE_LABEL[member.role] ?? member.role}</td>
+              <td className="px-3 py-2.5">{member.role === null ? <Unknown /> : ROLE_LABEL[member.role] ?? member.role}</td>
               <td className="px-3 py-2.5"><ReportsToCell member={member} known={known} /></td>
-              <td className="px-3 py-2.5 text-zinc-500">{scopeLabel(member)}</td>
+              <td className="px-3 py-2.5 text-zinc-500">{scopeLabel(member) ?? <Unknown />}</td>
               <td className="px-3 py-2.5">
                 {member.active ? (
                   <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">활성</span>
@@ -103,16 +109,39 @@ function MemberTable({ rows, known }: { rows: OrgMemberView[]; known: boolean })
 
 export function OrgViewTabs({
   model,
+  initialView = "list",
   departmentSlot,
   permissionSlot,
 }: {
   model: OrgViewModel;
+  /**
+   * 서버가 URL 에서 읽어 넘긴 갈래.
+   *
+   * ★ 왜 필요한가 — 권한표의 역할 링크는 평범한 <a href="?role=..."> 라서
+   *   Next 16 에서 «전체 재적재» 다. 갈래가 클라이언트 state 에만 있으면
+   *   권한 갈래에서 「관리자」를 누르는 순간 목록으로 튕긴다. 실제로 그랬다.
+   *   그래서 갈래를 URL 에 둔다 — 재적재해도, 링크를 공유해도 그 자리로 돌아온다.
+   */
+  initialView?: OrgView;
   /** 서버에서 이미 그려진 부서 관리 화면. 「목록」 갈래 아래에 놓인다. */
   departmentSlot: ReactNode;
   /** 서버에서 이미 그려진 권한표·개인별 편집기. 「권한」 갈래가 담는다. */
   permissionSlot: ReactNode;
 }): ReactElement {
-  const [view, setView] = useState<OrgView>("list");
+  const [view, setViewState] = useState<OrgView>(initialView);
+
+  // 갈래를 바꾸면 URL 에도 남긴다. 다른 질의(?role= 등)는 건드리지 않는다.
+  const setView = (next: OrgView) => {
+    setViewState(next);
+    if (typeof window === "undefined") return;
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("view", next);
+      window.history.replaceState(null, "", url);
+    } catch {
+      // 주소를 못 고쳐도 화면은 계속 동작해야 한다.
+    }
+  };
   const [selectedDeptId, setSelectedDeptId] = useState<string | null>(null);
   const [includeSub, setIncludeSub] = useState(true);
 
@@ -138,20 +167,21 @@ export function OrgViewTabs({
           aria-label="조직관리 보는 방식"
           className="-mx-1 flex max-w-full gap-0.5 overflow-x-auto rounded-lg border border-zinc-200 p-0.5 px-1 dark:border-zinc-800"
         >
-          {VIEWS.map((entry) => (
+          {ORG_VIEWS.map((key) => (
             <button
-              key={entry.key}
+              key={key}
               type="button"
               role="tab"
-              aria-selected={view === entry.key}
-              onClick={() => setView(entry.key)}
+              data-view={key}
+              aria-selected={view === key}
+              onClick={() => setView(key)}
               className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition ${
-                view === entry.key
+                view === key
                   ? "bg-zinc-900 font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
                   : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
               }`}
             >
-              {entry.label}
+              {VIEW_LABEL[key]}
             </button>
           ))}
         </div>
@@ -262,11 +292,14 @@ export function OrgViewTabs({
         <div className="rounded-2xl border border-zinc-200 p-8 text-center dark:border-zinc-800">
           <p className="font-medium">알림 규칙은 아직 없어요</p>
           {/*
-            «아직 없다» 고 말한다. «곧 나온다» 고 말하지 않는다 — 언제인지 모르기 때문이다.
-            대신 지금 무엇이 되는지를 알려 준다.
+            ★ 여기서 한 번 거짓말을 했다 — 「지금은 보고 계통을 따라 알림이 갑니다」라고 적었는데
+              그 경로(lib/org/notification-routing.ts)를 쓰는 곳이 0개다. 실제로 도는
+              CurrentMainRoutingPort(lib/notify/server.ts)는 담당자와 팀만 보고 보고 계통은 안 본다.
+              «아직 없다» 고 말하려면 «지금 무엇이 되는지» 도 사실이어야 한다.
           */}
           <p className="mx-auto mt-1 max-w-md text-sm text-zinc-500">
-            어떤 일이 생겼을 때 누구에게 알릴지 정하는 자리예요. 지금은 보고 계통(위 「목록」의 보고 대상)을 따라 알림이 갑니다.
+            어떤 일이 생겼을 때 누구에게 알릴지 정하는 자리예요. 지금 알림은 담당자와 팀에게만 가고,
+            <b> 「목록」의 보고 대상은 아직 알림에 쓰이지 않아요.</b>
           </p>
         </div>
       ) : null}

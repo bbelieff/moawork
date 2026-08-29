@@ -151,8 +151,16 @@ export function OrgChartFlow({ model }: { model: OrgViewModel }): ReactElement {
       {unassigned.length > 0 ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900 dark:bg-amber-950/20">
           <b className="text-sm font-semibold">미배정 {unassigned.length}명</b>
+          {/*
+            ★ 전에는 「어느 부서에도 없어 보고가 대표에게 갑니다」라고 썼는데,
+              이 상자에는 대표 본인도 들어온다. 대표는 아무에게도 보고하지 않는다
+              (resolveReportsTo → null). 한 명이라도 최상위가 섞이면 그 문장은 거짓이다.
+          */}
           <span className="ml-1 text-xs text-zinc-600 dark:text-zinc-300">
-            · 어느 부서에도 없어 보고가 대표에게 갑니다
+            · 어느 부서에도 속하지 않아요
+            {unassigned.some((member) => member.reportsToUserId !== null)
+              ? " — 최상위인 사람을 빼면 보고가 대표에게 갑니다"
+              : ""}
           </span>
           <MemberChips members={unassigned} limit={12} />
         </div>

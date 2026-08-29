@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { buildOrgViewModel, descendantDepartmentIds, membersOfDepartment, selectOrgViewModel, type OrgViewModel } from "./org-view";
+import {
+  buildOrgViewModel,
+  descendantDepartmentIds,
+  isOrgView,
+  membersOfDepartment,
+  ORG_VIEWS,
+  selectOrgViewModel,
+  type OrgViewModel,
+} from "./org-view";
 import type { DepartmentMember, DepartmentNode } from "./departments";
 import type { MemberSummaryRow } from "@/lib/auth/member-org-summary";
 
@@ -156,6 +164,22 @@ describe("#640 ④ 순환이 있어도 화면이 멈추지 않는다", () => {
   });
 });
 
+describe("#640 ⑦ 갈래 값은 «서버도» 읽을 수 있어야 한다", () => {
+  /*
+   * 한 번 여기서 500 을 냈다 — isOrgView 를 "use client" 파일에서 내보내고
+   * page.tsx(서버)에서 불렀더니 «Attempted to call isOrgView() from the server» 로
+   * 화면이 죽었다. tsc 는 통과했다. 그래서 이 함수는 공용 모듈이 갖는다.
+   */
+  it("네 갈래를 알아본다", () => {
+    expect(ORG_VIEWS).toEqual(["list", "chart", "perm", "rules"]);
+    for (const view of ORG_VIEWS) expect(isOrgView(view)).toBe(true);
+  });
+
+  it("모르는 값은 거른다 — 주소창에 아무거나 넣어도 화면이 안 깨진다", () => {
+    for (const bad of ["", "LIST", "목록", null, undefined, 3, {}]) expect(isOrgView(bad)).toBe(false);
+  });
+});
+
 describe("#640 ⑥ 판정 → 화면 배선 (#638 이 이름 붙인 무검사 자리)", () => {
   const readyChart = {
     kind: "ready" as const,
@@ -190,21 +214,67 @@ describe("#640 ⑥ 판정 → 화면 배선 (#638 이 이름 붙인 무검사 �
   });
 });
 
-describe("#640 ⑤ 모르는 것을 그리지 않는다", () => {
-  it("멤버십 요약에 없는 사람은 표에서 뺀다 — 역할을 추측하지 않는다", () => {
-    const model = buildOrgViewModel({
+describe("#640 ⑤ 모르는 것을 «버리지» 않고 모른다고 말한다", () => {
+  /*
+   * 검수(PR #641)가 P1 으로 잡은 자리다.
+   * 멤버십 요약의 isRole 은 owner/admin/member 만 통과시킨다 — 054 가 enum 에 넣은
+   * team_lead 와 비활성 구성원은 거기서 빠진다. 그런 사람을 표에서 «버리면»
+   * 왼쪽 트리와 오른쪽 표의 모집단이 갈려 한 부서가 서로 다른 수로 말해진다.
+   */
+  const droppedModel = () =>
+    buildOrgViewModel({
       chart: {
         kind: "ready",
         departments: [dept("d1", "본부")],
-        members: [chartMember("대표", []), chartMember("유령", ["d1"])],
-        unassignedCount: 0,
+        members: [chartMember("대표", []), chartMember("팀장", ["d1"]), chartMember("사원", ["d1"])],
+        unassignedCount: 99, // 일부러 틀린 값 — 이 값을 그대로 쓰면 안 된다
       },
       owner: summaryRow("대표", "owner"),
       admins: [],
-      members: [], // 「유령」이 여기 없다
+      members: [summaryRow("사원")], // 「팀장」이 여기 없다 (isRole 이 team_lead 를 거른 상황)
       exceptions: new Map(),
     });
-    expect(model.members.map((m) => m.userId)).toEqual(["대표"]);
+
+  it("★ 요약에 없는 사람도 표에 남는다 — 사라지면 트리 수와 표 행수가 갈린다", () => {
+    expect(droppedModel().members.map((m) => m.userId).sort()).toEqual(["대표", "사원", "팀장"]);
+  });
+
+  it("★ 그 사람의 역할·조회 범위는 null 이다 — 「구성원」으로 추측하지 않는다", () => {
+    const 팀장 = droppedModel().members.find((m) => m.userId === "팀장");
+    expect(팀장?.role).toBeNull();
+    expect(팀장?.scope).toBeNull();
+    expect(팀장?.title).toBeNull();
+  });
+
+  it("★ 왼쪽 트리의 인원과 오른쪽 표의 행수가 같은 모집단에서 나온다", () => {
+    const model = droppedModel();
+    const 본부 = model.departments.find((d) => d.id === "d1");
+    expect(본부?.reachCount).toBe(membersOfDepartment(model, "d1", true).length);
+  });
+
+  it("★ 미배정을 이 화면 공식으로 다시 센다 — 넘겨받은 값을 그대로 쓰지 않는다", () => {
+    // chart.unassignedCount 는 99 로 줬다. 실제 부서 없는 사람은 「대표」 하나뿐이다.
+    expect(droppedModel().unassignedCount).toBe(1);
+  });
+
+  it("역할·호칭·조회 범위를 요약에서 그대로 옮긴다", () => {
+    const model = build({
+      departments: [dept("d1", "본부")],
+      members: [chartMember("대표", []), chartMember("사원", ["d1"])],
+      exceptions: new Map(),
+    });
+    const 대표 = model.members.find((m) => m.userId === "대표");
+    expect(대표?.role).toBe("owner");
+    expect(대표?.scope).toBe("assigned");
+  });
+
+  it("이름 순으로 정렬한다 — 표 순서가 매번 달라지면 못 읽는다", () => {
+    const model = build({
+      departments: [],
+      members: [chartMember("하늘", []), chartMember("가람", []), chartMember("나무", [])],
+      exceptions: new Map(),
+    });
+    expect(model.members.map((m) => m.displayName)).toEqual(["가람", "나무", "하늘"]);
   });
 
   it("비활성 구성원도 재료에는 남는다 — 표가 «상태» 열로 말한다", () => {

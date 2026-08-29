@@ -17,6 +17,21 @@ import { resolveReportsTo, type ReportingContext } from "@/lib/org/reporting";
  *   그 값을 읽어 실제로 보여 주는 첫 경로다.
  */
 
+/**
+ * 조직관리의 «보는 방식» 네 갈래.
+ *
+ * ★ 왜 컴포넌트가 아니라 여기 있나 — 화면 파일이 "use client" 라서, 거기서 내보낸 함수는
+ *   서버가 부를 수 없다("Attempted to call isOrgView() from the server").
+ *   타입 검사는 통과하고 «실행할 때» 500 이 난다 — 화면을 열어야만 잡히는 종류다.
+ *   서버(page.tsx)와 클라이언트가 같이 쓰는 값이므로 공용 모듈이 갖는다.
+ */
+export const ORG_VIEWS = ["list", "chart", "perm", "rules"] as const;
+export type OrgView = (typeof ORG_VIEWS)[number];
+
+export function isOrgView(value: unknown): value is OrgView {
+  return typeof value === "string" && (ORG_VIEWS as readonly string[]).includes(value);
+}
+
 export type OrgMemberView = {
   userId: string;
   displayName: string;
@@ -26,8 +41,16 @@ export type OrgMemberView = {
   primaryDepartmentId: string | null;
   /** 주부서 이름. 미배정이면 null. */
   primaryDepartmentName: string | null;
-  role: MemberRole;
-  scope: MemberScope;
+  /**
+   * ★ null = «모른다». 「구성원이다」가 아니다.
+   *   멤버십 요약(member-org-summary.ts)의 isRole 은 owner/admin/member 만 통과시킨다 —
+   *   054 가 enum 에 넣은 team_lead 와 비활성 구성원은 그 관문에서 빠진다.
+   *   전에는 그런 사람을 표에서 «버렸다». 그러면 왼쪽 트리는 4명이라 하고 오른쪽 표는
+   *   2행이라 하는, 한 화면이 한 부서를 서로 다른 수로 말하는 상태가 된다.
+   *   버리지 않고 넣되, 모르는 칸은 「확인 못 함」이라고 말한다.
+   */
+  role: MemberRole | null;
+  scope: MemberScope | null;
   reportsToUserId: string | null;
   reportsToName: string | null;
   /** 자기 주부서의 책임자인가 — 목업이 「(상위)」 꼬리표를 붙이는 조건이다. */
@@ -145,20 +168,24 @@ export function buildOrgViewModel(input: {
 
   const views: OrgMemberView[] = [];
   for (const member of chart.members) {
-    const summary = summaryByUser.get(member.userId);
-    // 조직도에는 있는데 멤버십 요약에 없는 사람은 역할을 «모른다». 추측해서 그리지 않는다.
-    if (!summary) continue;
+    /*
+     * ★ 요약에 없는 사람을 «버리지» 않는다.
+     *   버리면 왼쪽 트리(조직도 기준)와 오른쪽 표(요약 기준)의 모집단이 갈려서
+     *   한 화면이 같은 부서를 4 · 2 · 3 · 3 이라고 동시에 말하게 된다.
+     *   모르는 것은 버리는 게 아니라 «모른다» 고 말한다.
+     */
+    const summary = summaryByUser.get(member.userId) ?? null;
     const primaryDept = member.primaryDepartmentId ? deptById.get(member.primaryDepartmentId) ?? null : null;
     const reportsToUserId = resolveReportsTo(member.userId, reportingCtx);
     views.push({
       userId: member.userId,
       displayName: member.displayName,
-      title: summary.title,
+      title: summary ? summary.title : null,
       departmentIds: member.departmentIds,
       primaryDepartmentId: member.primaryDepartmentId,
       primaryDepartmentName: primaryDept ? primaryDept.name : null,
-      role: summary.role,
-      scope: summary.scope,
+      role: summary ? summary.role : null,
+      scope: summary ? summary.scope : null,
       reportsToUserId,
       reportsToName: reportsToUserId ? nameOf.get(reportsToUserId) ?? null : null,
       isHeadOfPrimary: primaryDept ? primaryDept.headUserId === member.userId : false,
@@ -171,7 +198,13 @@ export function buildOrgViewModel(input: {
   return {
     departments: toTree(chart.departments, chart.members),
     members: views,
-    unassignedCount: chart.unassignedCount,
+    /*
+     * ★ 「미배정」을 여기서 «다시» 센다. chart.unassignedCount 를 그대로 쓰지 않는다.
+     *   저쪽 공식은 «활성 && 주부서 없음» 이고, 조직도 갈래의 미배정 상자는
+     *   «부서가 하나도 없음» 으로 센다 — 두 수가 갈리면 한 화면이 미배정을
+     *   두 개의 수로 말한다. 이 화면 안에서는 한 공식만 쓴다.
+     */
+    unassignedCount: views.filter((member) => member.departmentIds.length === 0).length,
     reportingKnown: exceptions !== null,
   };
 }

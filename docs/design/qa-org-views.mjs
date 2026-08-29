@@ -59,6 +59,11 @@ const measure = (page) =>
       .map((el) => el.textContent?.trim()),
     // 조직도 카드의 「N명」 — 전부 0명이면 부서 인원이 안 세어지고 있다는 뜻이다.
     chartCounts: [...document.querySelectorAll("[data-department-id]")].map((el) => el.textContent?.match(/(\d+)명/)?.[1] ?? null),
+    // 왼쪽 부서 트리가 말하는 «하위 포함 인원». 오른쪽 표 행수와 같아야 한다.
+    treeCounts: [...document.querySelectorAll('section[aria-label="부서"] [data-department-id]')].map((el) => ({
+      name: el.querySelector("span.truncate")?.textContent?.trim() ?? null,
+      reach: Number(el.textContent?.match(/(\d+)\s*$/)?.[1] ?? NaN),
+    })),
     bodyOverflowsX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
   }));
 
@@ -117,9 +122,22 @@ for (const vp of VIEWPORTS) {
         problems.push(`${vp.id}/${shot.id}: 요약은 조직원 ${metaPeople} 인데 표는 ${after.memberRows.length}행이다`);
       }
     }
-    // 조직도 카드가 전부 «0명» 이면 부서 인원이 안 세어지는 것이다.
-    if (shot.id === "2-chart" && after.chartCounts.length > 0 && after.chartCounts.every((n) => n === "0")) {
-      problems.push(`${vp.id}/${shot.id}: 조직도의 모든 부서가 0명이다 — 인원이 안 세어지고 있다`);
+    /*
+     * ★ 왼쪽 트리가 말하는 인원과 오른쪽 표의 행수가 같아야 한다.
+     *   PR #641 검수가 P1 으로 잡은 자리다 — 트리는 조직도 기준, 표는 요약 기준이라
+     *   모집단이 갈리면 한 부서가 「4명」과 「2행」으로 동시에 말해진다.
+     *   여기서 «부서를 골라» 실제로 대조한다.
+     */
+    if (shot.id === "1-list-picked") {
+      const tree = after.treeCounts.find((row) => row.name === shot.pick);
+      if (!tree) problems.push(`${vp.id}/${shot.id}: 트리에서 「${shot.pick}」 를 못 찾았다`);
+      else if (tree.reach !== after.memberRows.length) {
+        problems.push(`${vp.id}/${shot.id}: 트리는 「${shot.pick} ${tree.reach}」인데 표는 ${after.memberRows.length}행이다`);
+      }
+    }
+    // 조직도 카드는 «하나라도» 0명이면 의심한다. 전부 0일 때만 잡으면 한 부서만 틀린 경우를 놓친다.
+    if (shot.id === "2-chart" && after.chartCounts.some((n) => n === "0")) {
+      problems.push(`${vp.id}/${shot.id}: 조직도에 0명인 부서가 있다 — ${after.chartCounts.join("|")}`);
     }
     if (after.wrappedTabs.length) problems.push(`${vp.id}/${shot.id}: 갈래 글자가 접혔다 — ${after.wrappedTabs.join("|")}`);
     if (after.bodyOverflowsX) problems.push(`${vp.id}/${shot.id}: 몸통이 가로로 넘친다`);
@@ -129,6 +147,36 @@ for (const vp of VIEWPORTS) {
     report.push({ viewport: vp.id, shot: shot.id, file, ...after });
     await page.close();
   }
+}
+
+/*
+ * ★ 전체 재적재를 견디는가.
+ *   권한표의 역할 링크는 평범한 <a href="?role=..."> 라서 Next 16 에서 «전체 재적재» 다.
+ *   갈래가 클라이언트 state 에만 있으면 권한 갈래에서 역할을 누를 때마다 목록으로 튕긴다.
+ *   PR #641 검수가 P1 으로 잡았고, 그때 이 검사는 갈래마다 새로 열기만 해서 못 잡았다.
+ */
+{
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await page.goto(`${ORIGIN}/login/visual-fixture?surface=organization-views`, { waitUntil: "networkidle" });
+  const permTab = page.getByRole("tab", { name: "권한" });
+  for (let attempt = 0; attempt < 40 && (await permTab.getAttribute("aria-selected")) !== "true"; attempt += 1) {
+    await permTab.click();
+    await page.waitForTimeout(250);
+  }
+  const before = await page.locator('[role="tab"][aria-selected="true"]').textContent();
+
+  // 역할 링크를 «실제로» 누른다 — 전체 재적재가 일어난다.
+  await page.locator("a[data-role]").first().click();
+  await page.waitForLoadState("networkidle");
+  await page.waitForTimeout(400);
+  const after = await page.locator('[role="tab"][aria-selected="true"]').textContent();
+
+  console.log(`\n전체 재적재 견디기 — 누르기 전 「${before?.trim()}」 → 재적재 후 「${after?.trim()}」`);
+  if (after?.trim() !== "권한") {
+    problems.push(`권한 갈래에서 역할 링크를 누르니 「${after?.trim()}」 로 튕겼다 — 갈래가 URL 에 없다`);
+  }
+  await page.screenshot({ path: `${OUT}/6-after-reload-1440x900.png`, fullPage: true });
+  await page.close();
 }
 
 await browser.close();

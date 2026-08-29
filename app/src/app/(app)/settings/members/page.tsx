@@ -9,15 +9,25 @@ import { OrgLogoCard } from "@/components/org-logo/OrgLogoCard";
 import { loadOrgLogoView } from "@/lib/org-logo/server";
 import { loadOrgChart } from "@/lib/org/departments";
 import { loadReportingExceptions } from "@/lib/org/reporting-exceptions";
-import { selectOrgViewModel } from "@/lib/org/org-view";
+import { selectOrgViewModel, isOrgView, type OrgView } from "@/lib/org/org-view";
 import { DepartmentManager } from "@/components/member-organization/DepartmentManager";
 import { OrgViewTabs } from "@/components/member-organization/OrgViewTabs";
 import { createClient } from "@/lib/supabase/server";
 
-export default async function MembersPage({ searchParams }: { searchParams: Promise<{ role?: string }> }) {
+export default async function MembersPage({ searchParams }: { searchParams: Promise<{ role?: string; view?: string }> }) {
   const ctx = await getSession();
-  const requestedRole = (await searchParams).role;
+  const params = await searchParams;
+  const requestedRole = params.role;
   const activeRole: Role = requestedRole && isRole(requestedRole) ? requestedRole : "member";
+
+  /*
+   * #640 — 어느 갈래를 열고 시작할지.
+   *
+   * ★ 권한표의 역할 링크는 <a href="?role=..."> 라서 «전체 재적재» 다(Next 16).
+   *   그 링크는 view 질의를 안 달고 가므로, role 만 있는 주소는 «권한 화면을 보던 중»
+   *   이라는 뜻으로 읽는다. 안 그러면 역할을 누를 때마다 목록으로 튕긴다.
+   */
+  const initialView: OrgView = isOrgView(params.view) ? params.view : requestedRole ? "perm" : "list";
   const [summary, permission, logo, chart, exceptions] = await Promise.all([
     loadMemberOrgSummary(ctx),
     loadPermissionMatrix(ctx.org.id),
@@ -81,7 +91,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
 
       {model ? (
         // #640 ①②③ — 보는 방식 네 갈래 · 가로 조직도 · 부서↔사람 잇기.
-        <OrgViewTabs model={model} departmentSlot={departmentSlot} permissionSlot={permissionSlot} />
+        <OrgViewTabs model={model} initialView={initialView} departmentSlot={departmentSlot} permissionSlot={permissionSlot} />
       ) : (
         // 못 읽었을 때는 갈래를 만들지 않는다 — 빈 갈래는 «부서가 없다» 는 거짓말이 된다.
         // 대신 기존 화면을 그대로 두고 무엇을 못 읽었는지 말한다.
