@@ -9,6 +9,9 @@ import { VisualLayerProbe } from "./VisualLayerProbe";
 import { VisualWorkspaceSwitcherProbe } from "./VisualWorkspaceSwitcherProbe";
 import { VisualThemeProbe } from "./VisualThemeProbe";
 import { DepartmentManager } from "@/components/member-organization/DepartmentManager";
+import { OrgViewTabs } from "@/components/member-organization/OrgViewTabs";
+import { isOrgView } from "@/lib/org/org-view";
+import { loadVisualOrgViewModel } from "./org-view-fixture";
 import {
   loadVisualDepartmentChart,
   visualAssignDepartmentMemberAction,
@@ -70,6 +73,38 @@ function fixture(tabKey: string, workflowValue: string | null, showAllGroups = f
 
 export default async function VisualFixturePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
+  // #640 — 「보는 방식 네 갈래」를 1440·375 에서 눈으로 확인하는 자리.
+  // reporting=unknown 을 붙이면 «보고 예외를 못 읽은» 상태도 볼 수 있다.
+  if (params.surface === "organization-views") {
+    const model = loadVisualOrgViewModel({ reportingKnown: params.reporting !== "unknown" });
+    return (
+      <main data-visual-org-views-fixture data-build-sha={process.env.VERCEL_GIT_COMMIT_SHA ?? "local"} className="min-h-screen bg-mw-bg p-6">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4">
+          <header>
+            <h1 className="text-xl font-semibold">우리 회사와 팀</h1>
+            <p className="mt-1 text-sm text-zinc-500">가상 회사에서 조직관리 보는 방식을 확인해요.</p>
+          </header>
+          <OrgViewTabs
+            model={model}
+            /* 실제 화면과 «같은 규칙» 으로 갈래를 정한다 — role 만 있는 주소는 권한 갈래다.
+               그래야 「권한표의 역할 링크가 전체 재적재를 일으켜도 갈래가 유지되는가」를
+               픽스처에서 그대로 잴 수 있다(PR #641 검수 P1-2). */
+            initialView={isOrgView(params.view) ? params.view : params.role ? "perm" : "list"}
+            departmentSlot={<p className="text-xs text-zinc-500">— 부서 관리 자리(실제 화면에서는 조직도 관리가 들어옵니다)</p>}
+            permissionSlot={
+              <div className="text-xs text-zinc-500">
+                <p>— 권한 자리(실제 화면에서는 권한표와 개인별 편집기가 들어옵니다)</p>
+                {/* 권한표의 역할 링크와 «같은 모양» — 평범한 a 태그라 전체 재적재를 일으킨다. */}
+                <a href="?surface=organization-views&role=admin" data-role="admin" className="mt-2 inline-block underline">
+                  역할 바꾸기(관리자) — 전체 재적재
+                </a>
+              </div>
+            }
+          />
+        </div>
+      </main>
+    );
+  }
   if (params.surface === "organization") {
     const chart = await loadVisualDepartmentChart();
     return (
