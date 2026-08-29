@@ -9,7 +9,7 @@ import { OrgLogoCard } from "@/components/org-logo/OrgLogoCard";
 import { loadOrgLogoView } from "@/lib/org-logo/server";
 import { loadOrgChart } from "@/lib/org/departments";
 import { loadReportingExceptions } from "@/lib/org/reporting-exceptions";
-import { buildOrgViewModel } from "@/lib/org/org-view";
+import { selectOrgViewModel } from "@/lib/org/org-view";
 import { DepartmentManager } from "@/components/member-organization/DepartmentManager";
 import { OrgViewTabs } from "@/components/member-organization/OrgViewTabs";
 import { createClient } from "@/lib/supabase/server";
@@ -32,18 +32,10 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
     ? { kind: "allowed" as const, snapshot: permission.snapshot }
     : { kind: "denied" as const, reason: permission.reason };
 
-  // #640 — 부서·사람·보고 계통 셋을 한 재료로 합친다. 계산은 lib/org/org-view.ts 가 하고
-  // 여기서는 «합칠 수 있는 상태인가» 만 판단한다. 둘 중 하나라도 못 읽었으면 표를 그리지 않는다.
-  const model =
-    chart.kind === "ready" && summary.kind === "ready"
-      ? buildOrgViewModel({
-          chart,
-          owner: summary.owner,
-          admins: summary.admins,
-          members: summary.members,
-          exceptions,
-        })
-      : null;
+  // #640 — 부서·사람·보고 계통 셋을 한 재료로 합친다.
+  // «합칠 수 있는 상태인가» 의 판단까지 selectOrgViewModel 이 갖는다 — 여기 삼항으로 두면
+  // 그 판단에 시험을 붙일 자리가 없어진다(#638 「판정→화면 배선 무검사」).
+  const model = selectOrgViewModel({ chart, summary, exceptions });
 
   const departmentSlot = <DepartmentManager chart={chart} canManage={isManager(ctx.role)} />;
 

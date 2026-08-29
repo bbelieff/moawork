@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOrgViewModel, descendantDepartmentIds, membersOfDepartment, type OrgViewModel } from "./org-view";
+import { buildOrgViewModel, descendantDepartmentIds, membersOfDepartment, selectOrgViewModel, type OrgViewModel } from "./org-view";
 import type { DepartmentMember, DepartmentNode } from "./departments";
 import type { MemberSummaryRow } from "@/lib/auth/member-org-summary";
 
@@ -153,6 +153,40 @@ describe("#640 ④ 순환이 있어도 화면이 멈추지 않는다", () => {
 
   it("하위가 없으면 빈 집합이다", () => {
     expect(descendantDepartmentIds("a", [{ id: "a", parentId: null }])).toEqual(new Set());
+  });
+});
+
+describe("#640 ⑥ 판정 → 화면 배선 (#638 이 이름 붙인 무검사 자리)", () => {
+  const readyChart = {
+    kind: "ready" as const,
+    departments: [dept("d1", "본부")],
+    members: [chartMember("대표", []), chartMember("사원", ["d1"])],
+    unassignedCount: 1,
+  };
+  const readySummary = {
+    kind: "ready",
+    owner: summaryRow("대표", "owner"),
+    admins: [] as MemberSummaryRow[],
+    members: [summaryRow("사원")],
+  };
+
+  it("둘 다 읽었으면 표를 그린다", () => {
+    const model = selectOrgViewModel({ chart: readyChart, summary: readySummary, exceptions: new Map() });
+    expect(model?.members.map((m) => m.userId).sort()).toEqual(["대표", "사원"]);
+  });
+
+  it("조직도를 못 읽었으면 null 이다 — 빈 표로 위장하지 않는다", () => {
+    expect(selectOrgViewModel({ chart: { kind: "error" }, summary: readySummary, exceptions: new Map() })).toBeNull();
+  });
+
+  it.each(["unavailable", "error", "owner_integrity_error"])("멤버십 요약이 %s 면 null 이다", (kind) => {
+    expect(selectOrgViewModel({ chart: readyChart, summary: { kind }, exceptions: new Map() })).toBeNull();
+  });
+
+  it("보고 예외만 못 읽은 것은 «표를 못 그릴» 이유가 아니다 — 표는 그리고 그 열만 «확인 못 함» 이다", () => {
+    const model = selectOrgViewModel({ chart: readyChart, summary: readySummary, exceptions: null });
+    expect(model).not.toBeNull();
+    expect(model?.reportingKnown).toBe(false);
   });
 });
 

@@ -48,6 +48,34 @@ export type OrgViewModel = {
   reportingKnown: boolean;
 };
 
+/**
+ * 화면이 «표를 그릴 수 있는가» 를 판단한다.
+ *
+ * ★ 이 판단이 화면 파일 안에 삼항 연산자로 있으면 아무도 검사할 수 없다.
+ *   #638 이 이름 붙인 「판정→화면 배선 무검사」가 정확히 그 자리다 —
+ *   계산에는 시험이 16개 있는데 «언제 그 계산을 쓰는가» 에는 0개인 상태.
+ *   그래서 함수로 뺀다.
+ *
+ * 조직도나 멤버십 요약 중 하나라도 못 읽었으면 null 이다. 반쪽 데이터로 표를 그리면
+ * 「부서가 없다」·「사람이 없다」고 «단언» 하는 화면이 된다 — 못 읽은 것과 없는 것은 다르다.
+ */
+export function selectOrgViewModel(input: {
+  chart: OrgChart;
+  summary: { kind: string } & Partial<{ owner: MemberSummaryRow; admins: MemberSummaryRow[]; members: MemberSummaryRow[] }>;
+  exceptions: ReadonlyMap<string, string | null> | null;
+}): OrgViewModel | null {
+  const { chart, summary, exceptions } = input;
+  if (chart.kind !== "ready") return null;
+  if (summary.kind !== "ready" || !summary.owner) return null;
+  return buildOrgViewModel({
+    chart,
+    owner: summary.owner,
+    admins: summary.admins ?? [],
+    members: summary.members ?? [],
+    exceptions,
+  });
+}
+
 /** 자기 자신을 뺀 하위 부서 전부. 순환이 있어도 멈춘다. */
 export function descendantDepartmentIds(
   rootId: string,
