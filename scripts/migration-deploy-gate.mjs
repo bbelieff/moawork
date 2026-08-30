@@ -4,6 +4,9 @@ import { resolve } from "node:path";
 const MIGRATION_DIRECTORY_SQL = /^supabase\/migrations\/.+\.sql$/u;
 const MIGRATION_PATH = /^supabase\/migrations\/(\d{3}_[^/]+\.sql)$/u;
 const URL_KEY = "SUPABASE_DB_URL";
+const PRODUCTION_PROJECT_REF = "srtvmpcosekduvsscsyz";
+const PRODUCTION_DIRECT_HOST = `db.${PRODUCTION_PROJECT_REF}.supabase.co`;
+const SUPABASE_POOLER_HOST = /^(?:[a-z0-9-]+\.)?pooler\.supabase\.com$/u;
 
 export function collectAddedMigrations(files) {
   const migrations = [];
@@ -52,27 +55,80 @@ export function readLocalConnectionString(cwd) {
   throw new Error("MIGRATION_DEPLOY_GATE_CREDENTIAL_MISSING: local .env.local/.env only; CI credentials are forbidden");
 }
 
-function redact(error, secret) {
-  return String(error?.message ?? error ?? "unknown database failure")
-    .split(secret).join("<SUPABASE_DB_URL>")
+export function assertProductionConnectionTarget(connectionString) {
+  let url;
+  try {
+    url = new URL(connectionString);
+  } catch {
+    throw new Error("MIGRATION_DEPLOY_GATE_PROJECT_IDENTITY_MISMATCH: database URL is invalid");
+  }
+  if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
+    throw new Error("MIGRATION_DEPLOY_GATE_PROJECT_IDENTITY_MISMATCH: PostgreSQL URL required");
+  }
+  if (url.search || url.hash) {
+    throw new Error("MIGRATION_DEPLOY_GATE_CONNECTION_OPTIONS_FORBIDDEN: URL query/fragment options are not allowed");
+  }
+  const hostname = url.hostname.toLowerCase();
+  let username;
+  let password;
+  let database;
+  try {
+    username = decodeURIComponent(url.username);
+    password = decodeURIComponent(url.password);
+    database = decodeURIComponent(url.pathname.replace(/^\//u, ""));
+  } catch {
+    throw new Error("MIGRATION_DEPLOY_GATE_PROJECT_IDENTITY_MISMATCH: database credential encoding is invalid");
+  }
+  const direct = hostname === PRODUCTION_DIRECT_HOST && username === "postgres";
+  const pooler = SUPABASE_POOLER_HOST.test(hostname) && username === `postgres.${PRODUCTION_PROJECT_REF}`;
+  const port = url.port ? Number(url.port) : 5432;
+  const validPort = direct ? port === 5432 : port === 5432 || port === 6543;
+  if ((!direct && !pooler) || !validPort || database !== "postgres" || !password) {
+    throw new Error(`MIGRATION_DEPLOY_GATE_PROJECT_IDENTITY_MISMATCH: expected production project ${PRODUCTION_PROJECT_REF}`);
+  }
+  return {
+    projectRef: PRODUCTION_PROJECT_REF,
+    transport: direct ? "direct" : "pooler",
+    host: hostname,
+    port,
+    user: username,
+    password,
+    database,
+  };
+}
+
+export function productionClientConfig(connectionString) {
+  const target = assertProductionConnectionTarget(connectionString);
+  return {
+    host: target.host,
+    port: target.port,
+    user: target.user,
+    password: target.password,
+    database: target.database,
+    ssl: { rejectUnauthorized: true },
+    application_name: "moawork-merge-migration-gate",
+    connectionTimeoutMillis: 10_000,
+    query_timeout: 15_000,
+  };
+}
+
+function redact(error, secrets) {
+  let message = String(error?.message ?? error ?? "unknown database failure");
+  for (const secret of secrets.filter(Boolean)) message = message.split(secret).join("<redacted>");
+  return message
     .replace(/postgres(?:ql)?:\/\/[^\s"']+/giu, "<redacted-connection-string>");
 }
 
 export async function queryHostedGuard(migrations, { cwd = process.cwd(), clientFactory } = {}) {
   if (migrations.length === 0) return [];
   const connection = readLocalConnectionString(cwd);
+  const clientConfig = productionClientConfig(connection.value);
   let client;
   try {
-    if (clientFactory) client = await clientFactory(connection.value);
+    if (clientFactory) client = await clientFactory(clientConfig);
     else {
       const pg = (await import("pg")).default;
-      client = new pg.Client({
-        connectionString: connection.value,
-        ssl: { rejectUnauthorized: false },
-        application_name: "moawork-merge-migration-gate",
-        connectionTimeoutMillis: 10_000,
-        query_timeout: 15_000,
-      });
+      client = new pg.Client(clientConfig);
     }
     await client.connect();
     const result = await client.query(
@@ -83,7 +139,7 @@ export async function queryHostedGuard(migrations, { cwd = process.cwd(), client
     );
     return result.rows;
   } catch (error) {
-    throw new Error(`MIGRATION_DEPLOY_GATE_QUERY_FAILED: ${redact(error, connection.value)}`);
+    throw new Error(`MIGRATION_DEPLOY_GATE_QUERY_FAILED: ${redact(error, [connection.value, clientConfig.password])}`);
   } finally {
     await client?.end?.().catch(() => {});
   }

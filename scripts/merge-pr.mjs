@@ -240,6 +240,19 @@ export function parsePrFilePages(raw) {
   return { ok: true, items };
 }
 
+export function validatePrFileCount(changedFiles, files) {
+  if (!Number.isSafeInteger(changedFiles) || changedFiles < 0) {
+    return { ok: false, reason: "PR changed_files count가 유효한 정수가 아닙니다." };
+  }
+  if (!Array.isArray(files) || files.length !== changedFiles) {
+    return {
+      ok: false,
+      reason: `PR 파일 목록이 불완전합니다 (GitHub=${changedFiles}, 수집=${Array.isArray(files) ? files.length : "invalid"}).`,
+    };
+  }
+  return { ok: true };
+}
+
 const HEAD_A = "a".repeat(40);
 const HEAD_B = "b".repeat(40);
 /** 정상 PR — 각 검사에서 «하나만» 비틀어 무엇이 판정을 바꾸는지 드러낸다. */
@@ -372,6 +385,10 @@ function selfTest() {
     console.error("merge-pr file pagination self-test 실패 — duplicate path 허용");
     process.exit(1);
   }
+  if (!validatePrFileCount(2, files.items).ok || validatePrFileCount(3_001, Array.from({ length: 3_000 })).ok) {
+    console.error("merge-pr file completeness self-test 실패 — authoritative changed_files mismatch 허용");
+    process.exit(1);
+  }
   console.log(`merge-pr self-test: ${cases.length}건 통과`);
 }
 
@@ -388,7 +405,7 @@ async function main() {
 
   const pr = JSON.parse(
     gh(
-      ["pr", "view", number, "--json", "number,state,isDraft,mergeStateStatus,headRefOid,baseRefName,title,body,statusCheckRollup"],
+      ["pr", "view", number, "--json", "number,state,isDraft,mergeStateStatus,headRefOid,baseRefName,title,body,statusCheckRollup,changedFiles"],
       `PR #${number}`,
     ),
   );
@@ -440,6 +457,12 @@ async function main() {
     `PR #${number} 파일 목록`,
     parsePrFilePages,
   );
+  const fileCount = validatePrFileCount(pr.changedFiles, prFiles);
+  if (!fileCount.ok) {
+    console.error(`  ${fileCount.reason}`);
+    console.error("  머지하지 않았습니다. migration 누락을 피하려면 전체 PR 파일 목록이 exact 해야 합니다.");
+    process.exit(1);
+  }
   const migrationFiles = collectAddedMigrations(prFiles);
   if (migrationFiles.length > 0) {
     const migrations = migrationFiles.map((file) => {

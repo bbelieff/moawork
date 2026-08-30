@@ -3,7 +3,15 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { collectAddedMigrations, queryHostedGuard, validateHostedRows, verifyHostedMigrations } from "./migration-deploy-gate.mjs";
+import pg from "pg";
+import {
+  assertProductionConnectionTarget,
+  collectAddedMigrations,
+  productionClientConfig,
+  queryHostedGuard,
+  validateHostedRows,
+  verifyHostedMigrations,
+} from "./migration-deploy-gate.mjs";
 
 const migration = {
   logicalKey: "141_issue632_start_company_work_v2",
@@ -42,20 +50,47 @@ test("migration PR without a local release credential fails closed before a quer
   assert.equal(created, 0);
 });
 
+test("release credential is bound to the production Supabase project before connection", async () => {
+  assert.equal(assertProductionConnectionTarget("postgresql://postgres:secret@db.srtvmpcosekduvsscsyz.supabase.co:5432/postgres").transport, "direct");
+  assert.equal(assertProductionConnectionTarget("postgresql://postgres.srtvmpcosekduvsscsyz:secret@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres").transport, "pooler");
+  assert.throws(() => assertProductionConnectionTarget("postgresql://postgres:secret@db.other-project.supabase.co/postgres"), /PROJECT_IDENTITY_MISMATCH/u);
+  assert.throws(() => assertProductionConnectionTarget("postgresql://postgres.other-project:secret@aws-0-ap-northeast-2.pooler.supabase.com/postgres"), /PROJECT_IDENTITY_MISMATCH/u);
+  assert.throws(() => assertProductionConnectionTarget("postgresql://postgres.srtvmpcosekduvsscsyz:secret@example.invalid/postgres"), /PROJECT_IDENTITY_MISMATCH/u);
+
+  const cwd = await mkdtemp(join(tmpdir(), "migration-deploy-gate-"));
+  await writeFile(join(cwd, ".env.local"), "SUPABASE_DB_URL=postgresql://postgres:secret@db.other-project.supabase.co/postgres\n");
+  let created = 0;
+  await assert.rejects(() => queryHostedGuard([migration], { cwd, clientFactory: async () => { created += 1; } }), /PROJECT_IDENTITY_MISMATCH/u);
+  assert.equal(created, 0);
+});
+
+test("production client requires certificate verification", () => {
+  const connectionString = "postgresql://postgres:secret@db.srtvmpcosekduvsscsyz.supabase.co/postgres";
+  const config = productionClientConfig(connectionString);
+  assert.equal("connectionString" in config, false);
+  assert.deepEqual(config.ssl, { rejectUnauthorized: true });
+  const client = new pg.Client(config);
+  assert.equal(client.connectionParameters.ssl.rejectUnauthorized, true);
+  assert.throws(() => productionClientConfig(`${connectionString}?sslmode=no-verify`), /CONNECTION_OPTIONS_FORBIDDEN/u);
+  assert.throws(() => productionClientConfig(`${connectionString}?sslmode=disable`), /CONNECTION_OPTIONS_FORBIDDEN/u);
+  assert.throws(() => productionClientConfig(`${connectionString}?sslcert=C%3A%5Cattacker.pem`), /CONNECTION_OPTIONS_FORBIDDEN/u);
+});
+
 test("hosted query is read-only, parameterized, exact, and closes its client", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "migration-deploy-gate-"));
-  await writeFile(join(cwd, ".env.local"), "SUPABASE_DB_URL=postgresql://secret@example.invalid/db\n");
+  await writeFile(join(cwd, ".env.local"), "SUPABASE_DB_URL=postgresql://postgres:secret@db.srtvmpcosekduvsscsyz.supabase.co/postgres\n");
   const calls = [];
   let ended = 0;
   const result = await verifyHostedMigrations([migration], {
     cwd,
-    clientFactory: async () => ({
+    clientFactory: async (config) => ({
       async connect() { calls.push("connect"); },
       async query(sql, values) {
         calls.push({ sql, values });
         return { rows: [{ logicalKey: migration.logicalKey, fileName: migration.fileName, fileDigest: migration.digest }] };
       },
       async end() { ended += 1; },
+      config,
     }),
   });
   assert.equal(result.ok, true);
@@ -66,11 +101,11 @@ test("hosted query is read-only, parameterized, exact, and closes its client", a
 
 test("database errors redact connection strings", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "migration-deploy-gate-"));
-  await writeFile(join(cwd, ".env"), "SUPABASE_DB_URL=postgresql://secret@example.invalid/db\n");
+  await writeFile(join(cwd, ".env"), "SUPABASE_DB_URL=postgresql://postgres:secret@db.srtvmpcosekduvsscsyz.supabase.co/postgres\n");
   await assert.rejects(() => queryHostedGuard([migration], {
     cwd,
     clientFactory: async () => ({
-      async connect() { throw new Error("postgresql://secret@example.invalid/db unavailable"); },
+      async connect() { throw new Error("postgresql://postgres:secret@db.srtvmpcosekduvsscsyz.supabase.co/postgres unavailable"); },
       async end() {},
     }),
   }), (error) => {
