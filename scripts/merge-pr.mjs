@@ -44,6 +44,8 @@ import {
   parseWorkflowRunPages,
   validateHandoffEvidence,
 } from "./handoff-evidence.mjs";
+import { inspectGuardedMigration } from "./check-migration-guards.mjs";
+import { collectAddedMigrations, verifyHostedMigrations } from "./migration-deploy-gate.mjs";
 
 /**
  * CI 워크플로를 «파일 경로» 로 고른다 — 표시 이름이 아니라.
@@ -220,6 +222,37 @@ function parsedOrExit(result, what) {
   process.exit(1);
 }
 
+export function parsePrFilePages(raw) {
+  let pages;
+  try { pages = JSON.parse(raw); } catch { return { ok: false, reason: "PR 파일 목록 JSON이 아닙니다." }; }
+  if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page))) {
+    return { ok: false, reason: "PR 파일 목록 pagination schema가 불완전합니다." };
+  }
+  const items = pages.flat();
+  const seen = new Set();
+  for (const [index, file] of items.entries()) {
+    if (!file || typeof file !== "object" || typeof file.filename !== "string" || typeof file.status !== "string") {
+      return { ok: false, reason: `PR 파일 목록[${index}] schema가 불완전합니다.` };
+    }
+    if (seen.has(file.filename)) return { ok: false, reason: `PR 파일 목록에 중복 경로가 있습니다 (${file.filename}).` };
+    seen.add(file.filename);
+  }
+  return { ok: true, items };
+}
+
+export function validatePrFileCount(changedFiles, files) {
+  if (!Number.isSafeInteger(changedFiles) || changedFiles < 0) {
+    return { ok: false, reason: "PR changed_files count가 유효한 정수가 아닙니다." };
+  }
+  if (!Array.isArray(files) || files.length !== changedFiles) {
+    return {
+      ok: false,
+      reason: `PR 파일 목록이 불완전합니다 (GitHub=${changedFiles}, 수집=${Array.isArray(files) ? files.length : "invalid"}).`,
+    };
+  }
+  return { ok: true };
+}
+
 const HEAD_A = "a".repeat(40);
 const HEAD_B = "b".repeat(40);
 /** 정상 PR — 각 검사에서 «하나만» 비틀어 무엇이 판정을 바꾸는지 드러낸다. */
@@ -340,10 +373,26 @@ function selfTest() {
     console.error(`merge-pr self-test 실패 ${failed}건`);
     process.exit(1);
   }
+  const files = parsePrFilePages(JSON.stringify([[
+    { filename: "app/src/a.ts", status: "modified" },
+    { filename: "supabase/migrations/141_gate.sql", status: "added" },
+  ]]));
+  if (!files.ok || files.items.length !== 2) {
+    console.error(`merge-pr file pagination self-test 실패 — ${files.reason || "item count"}`);
+    process.exit(1);
+  }
+  if (parsePrFilePages(JSON.stringify([[{ filename: "a", status: "added" }], [{ filename: "a", status: "added" }]])).ok) {
+    console.error("merge-pr file pagination self-test 실패 — duplicate path 허용");
+    process.exit(1);
+  }
+  if (!validatePrFileCount(2, files.items).ok || validatePrFileCount(3_001, Array.from({ length: 3_000 })).ok) {
+    console.error("merge-pr file completeness self-test 실패 — authoritative changed_files mismatch 허용");
+    process.exit(1);
+  }
   console.log(`merge-pr self-test: ${cases.length}건 통과`);
 }
 
-function main() {
+async function main() {
   const args = process.argv.slice(2);
   if (args.includes("--self-test")) return selfTest();
 
@@ -356,7 +405,7 @@ function main() {
 
   const pr = JSON.parse(
     gh(
-      ["pr", "view", number, "--json", "number,state,isDraft,mergeStateStatus,headRefOid,baseRefName,title,body,statusCheckRollup"],
+      ["pr", "view", number, "--json", "number,state,isDraft,mergeStateStatus,headRefOid,baseRefName,title,body,statusCheckRollup,changedFiles"],
       `PR #${number}`,
     ),
   );
@@ -399,6 +448,37 @@ function main() {
   console.log(`  판정: ${decision.ok ? "통과" : "머지 안 함"} — ${decision.reason}`);
 
   if (!decision.ok) process.exit(1);
+
+  // ★ DB migration이 든 PR은 «hosted에 exact migration이 먼저 적용된 뒤»에만 머지한다.
+  // CI에는 운영 DB credential을 넣지 않는다. 이 검사는 merge-pr을 실행하는 release checkout의
+  // local .env.local/.env를 읽고 guard ledger를 SELECT만 한다. credential/row가 없으면 fail-closed다.
+  const prFiles = paginatedGh(
+    ["api", "--paginate", "--slurp", `repos/${repo}/pulls/${number}/files?per_page=100`],
+    `PR #${number} 파일 목록`,
+    parsePrFilePages,
+  );
+  const fileCount = validatePrFileCount(pr.changedFiles, prFiles);
+  if (!fileCount.ok) {
+    console.error(`  ${fileCount.reason}`);
+    console.error("  머지하지 않았습니다. migration 누락을 피하려면 전체 PR 파일 목록이 exact 해야 합니다.");
+    process.exit(1);
+  }
+  const migrationFiles = collectAddedMigrations(prFiles);
+  if (migrationFiles.length > 0) {
+    const migrations = migrationFiles.map((file) => {
+      const raw = JSON.parse(gh(
+        ["api", "--method", "GET", `repos/${repo}/contents/${file.path}`, "-f", `ref=${pr.headRefOid}`],
+        `${file.path} exact content`,
+      ));
+      if (raw?.type !== "file" || raw?.encoding !== "base64" || typeof raw?.content !== "string") {
+        throw new Error(`MIGRATION_DEPLOY_GATE_CONTENT_INVALID: ${file.path}`);
+      }
+      const sql = Buffer.from(raw.content.replace(/\s/gu, ""), "base64").toString("utf8");
+      return inspectGuardedMigration(file.fileName, sql);
+    });
+    const hosted = await verifyHostedMigrations(migrations);
+    console.log(`  hosted migration exact ${hosted.verified.length}건 확인 — ${hosted.verified.map((entry) => entry.logicalKey).join(", ")}`);
+  }
   if (dryRun) {
     console.log("  --dry-run 이라 머지하지 않았습니다.");
     return;
@@ -410,4 +490,10 @@ function main() {
   console.log(`  머지했습니다 — squash · head ${String(pr.headRefOid).slice(0, 7)}`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith("merge-pr.mjs")) main();
+if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith("merge-pr.mjs")) {
+  main().catch((error) => {
+    console.error(`  머지 관문 실패 — ${String(error?.message || error)}`);
+    console.error("  머지하지 않았습니다.");
+    process.exitCode = 1;
+  });
+}

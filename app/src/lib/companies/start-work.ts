@@ -1,5 +1,5 @@
 export interface CompanyStartWorkClient {
-  rpc(name: "start_company_work", args: Record<string, unknown>): Promise<{
+  rpc(name: "start_company_work_v2", args: Record<string, unknown>): Promise<{
     data: unknown;
     error: { code?: string; message?: string } | null;
   }>;
@@ -19,7 +19,7 @@ export async function startCompanyWork(
   client: CompanyStartWorkClient,
   input: { orgId: string; companyId: string; requestId: string; groupId?: string | null },
 ): Promise<CompanyStartWorkResult> {
-  const { data, error } = await client.rpc("start_company_work", {
+  const { data, error } = await client.rpc("start_company_work_v2", {
     p_org_id: input.orgId,
     p_company_id: input.companyId,
     p_request_id: input.requestId,

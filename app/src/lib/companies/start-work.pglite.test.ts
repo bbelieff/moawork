@@ -8,7 +8,7 @@ const org = "00000000-0000-4000-8000-000000000010";
 const otherOrg = "00000000-0000-4000-8000-000000000011";
 const company = "00000000-0000-4000-8000-000000000020";
 
-describe("BBE-237 company start work migration", () => {
+describe("#632 rollout-safe company start work migration", () => {
   let db: PGlite;
   beforeEach(async () => {
     db = new PGlite();
@@ -50,13 +50,15 @@ describe("BBE-237 company start work migration", () => {
     // 140 — 「＋ 업체 추가」가 «누른 그룹» 에 넣게 한다(#588). 117 위에 이어 올린다.
     const groupSql = await readFile(resolve(process.cwd(), "../supabase/migrations/140_issue588_company_work_group.sql"), "utf8");
     await db.exec(groupSql);
+    const rolloutSql = await readFile(resolve(process.cwd(), "../supabase/migrations/141_issue632_start_company_work_v2.sql"), "utf8");
+    await db.exec(rolloutSql);
   });
   afterEach(async () => db.close());
 
   it("creates one linked deal/item/audit and replays the same result without duplicates", async () => {
     const request = "00000000-0000-4000-8000-000000000030";
-    const first = await db.query<{ deal_id: string; item_id: string; replayed: boolean }>("select * from start_company_work($1,$2,$3)", [org, company, request]);
-    const replay = await db.query<{ deal_id: string; item_id: string; replayed: boolean }>("select * from start_company_work($1,$2,$3)", [org, company, request]);
+    const first = await db.query<{ deal_id: string; item_id: string; replayed: boolean }>("select * from start_company_work_v2($1,$2,$3)", [org, company, request]);
+    const replay = await db.query<{ deal_id: string; item_id: string; replayed: boolean }>("select * from start_company_work_v2($1,$2,$3)", [org, company, request]);
     expect(replay.rows[0]).toEqual({ ...first.rows[0], replayed: true });
     const counts = await db.query<{ deals: number; items: number; audits: number; requests: number }>(`select
       (select count(*)::int from deals) deals,(select count(*)::int from items) items,
@@ -73,7 +75,7 @@ describe("BBE-237 company start work migration", () => {
 
     // ① 그룹을 넘기면 그 그룹에 들어간다 — 이게 이 카드의 본론이다.
     const picked = await db.query<{ item_id: string }>(
-      "select * from start_company_work($1,$2,$3,$4)",
+      "select * from start_company_work_v2($1,$2,$3,$4)",
       [org, company, "00000000-0000-4000-8000-000000000041", second],
     );
     const placed = await db.query<{ group_id: string }>(
@@ -83,7 +85,7 @@ describe("BBE-237 company start work migration", () => {
 
     // ② 안 넘기면 첫 그룹이다 — 회사 상세의 「업무 시작」이 이 경로다. 동작이 그대로여야 한다.
     const fallback = await db.query<{ item_id: string }>(
-      "select * from start_company_work($1,$2,$3)",
+      "select * from start_company_work_v2($1,$2,$3)",
       [org, company, "00000000-0000-4000-8000-000000000042"],
     );
     const first = await db.query<{ id: string }>(
@@ -105,7 +107,7 @@ describe("BBE-237 company start work migration", () => {
     );
 
     await expect(db.query(
-      "select * from start_company_work($1,$2,$3,$4)",
+      "select * from start_company_work_v2($1,$2,$3,$4)",
       [org, company, "00000000-0000-4000-8000-000000000043", foreignGroup.rows[0].id],
     )).rejects.toThrow(/group unavailable/);
 
@@ -115,13 +117,36 @@ describe("BBE-237 company start work migration", () => {
   });
 
   it("denies a cross-org company without leaving a shell deal", async () => {
-    await expect(db.query("select * from start_company_work($1,$2,$3)", [otherOrg, company, "00000000-0000-4000-8000-000000000031"])).rejects.toThrow();
+    await expect(db.query("select * from start_company_work_v2($1,$2,$3)", [otherOrg, company, "00000000-0000-4000-8000-000000000031"])).rejects.toThrow();
     expect((await db.query<{ count: number }>("select count(*)::int count from deals")).rows[0].count).toBe(0);
   });
 
   it("rolls back the deal when projection cannot complete", async () => {
     await db.exec("delete from board_groups; delete from boards");
-    await expect(db.query("select * from start_company_work($1,$2,$3)", [org, company, "00000000-0000-4000-8000-000000000032"])).rejects.toThrow("contract work board unavailable");
+    await expect(db.query("select * from start_company_work_v2($1,$2,$3)", [org, company, "00000000-0000-4000-8000-000000000032"])).rejects.toThrow("contract work board unavailable");
     expect((await db.query<{ count: number }>("select count(*)::int count from deals")).rows[0].count).toBe(0);
+  });
+
+  it("keeps the deployed four-arg RPC while adding the predeployable v2 name", async () => {
+    const signatures = await db.query<{ old_rpc: boolean; v2_rpc: boolean }>(`select
+      to_regprocedure('public.start_company_work(uuid, uuid, uuid, uuid)') is not null old_rpc,
+      to_regprocedure('public.start_company_work_v2(uuid, uuid, uuid, uuid)') is not null v2_rpc`);
+    expect(signatures.rows[0]).toEqual({ old_rpc: true, v2_rpc: true });
+
+    const definitions = await db.query<{ old_definition: string; v2_definition: string }>(`select
+      pg_get_functiondef(to_regprocedure('public.start_company_work(uuid, uuid, uuid, uuid)')) old_definition,
+      pg_get_functiondef(to_regprocedure('public.start_company_work_v2(uuid, uuid, uuid, uuid)')) v2_definition`);
+    const canonical = (value: string) => value
+      .replaceAll("start_company_work_v2", "start_company_work")
+      .replace(/--.*$/gmu, "")
+      .replace(/\s+/gu, " ")
+      .trim();
+    expect(canonical(definitions.rows[0].v2_definition)).toBe(canonical(definitions.rows[0].old_definition));
+
+    const privileges = await db.query<{ authenticated: boolean; anon: boolean; service_role: boolean }>(`select
+      has_function_privilege('authenticated','public.start_company_work_v2(uuid,uuid,uuid,uuid)','EXECUTE') authenticated,
+      has_function_privilege('anon','public.start_company_work_v2(uuid,uuid,uuid,uuid)','EXECUTE') anon,
+      has_function_privilege('service_role','public.start_company_work_v2(uuid,uuid,uuid,uuid)','EXECUTE') service_role`);
+    expect(privileges.rows[0]).toEqual({ authenticated: true, anon: false, service_role: false });
   });
 });
