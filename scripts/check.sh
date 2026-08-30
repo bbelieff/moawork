@@ -42,6 +42,7 @@ echo "▶ [0/4] production repo boundary"
 node scripts/check-production-repo-boundaries.mjs --self-test
 node scripts/check-production-repo-boundaries.mjs
 node --test scripts/check-migration-guards.test.mjs
+node --test scripts/migration-deploy-gate.test.mjs
 node --test scripts/hosted-migration-runbook.test.mjs
 node scripts/check-migration-guards.mjs
 
