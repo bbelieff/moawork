@@ -46,6 +46,14 @@ node --test scripts/migration-deploy-gate.test.mjs
 node --test scripts/hosted-migration-runbook.test.mjs
 node scripts/check-migration-guards.mjs
 
+# #653 — pgcrypto 를 «스키마 없이» 부르는 security definer 함수를 막는다.
+# 이 프로젝트의 pgcrypto 는 extensions 에 있는데 PGlite 시험은 public 에 설치한다.
+# 그래서 로컬은 초록인데 운영만 42883 으로 죽는다 — 시험으로는 절대 안 잡히는 종류다.
+# 실제로 085 가 한 번 고쳤는데 089·115·118 이 다시 팠고, 보드 컬럼 명령이
+# 운영에서 «한 번도» 성공한 적이 없었다(영수증 0건).
+node scripts/check-pgcrypto-search-path.mjs --self-test
+node scripts/check-pgcrypto-search-path.mjs
+
 # BBE-206 — 정의된 적 없는 CSS 변수 참조를 막는다.
 # var(--없는토큰) 은 조용히 무효가 되어 «화면에서만» 티가 난다(BBE-199 의 이니셜 마크가
 # 안 보이던 결함). 사람 눈에만 보이던 것 중 «기계가 셀 수 있는» 부분을 여기서 잡는다.

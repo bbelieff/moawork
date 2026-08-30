@@ -1,0 +1,14 @@
+{
+  "note": "#653 — 이미 저장소에 들어 있는, pgcrypto 를 스키마 없이 부르는 security definer 함수들. 마이그레이션은 고쳐 쓰지 않으므로(AGENTS.md §9.1) 이 글자들은 영원히 남는다. 살아 있는 DB 의 search_path 는 142_issue653_pgcrypto_search_path.sql 이 alter function 으로 고친다. 이 목록은 «이미 알고 있고 141 이 덮는다» 는 뜻이며, 여기 없는 새 항목이 생기면 게이트가 빨개진다.",
+  "fixedBy": "supabase/migrations/142_issue653_pgcrypto_search_path.sql",
+  "known": [
+    "supabase/migrations/006_public_workspace_entry.sql::public.submit_workspace_join_request",
+    "supabase/migrations/009_workspace_entry_request_lifecycle.sql::public.submit_workspace_join_request",
+    "supabase/migrations/089_bbe176_column_metadata_canonical.sql::public.board_column_type_dry_run",
+    "supabase/migrations/089_bbe176_column_metadata_canonical.sql::public.execute_board_column_command",
+    "supabase/migrations/115_bbe176_column_date_schedule.sql::public.set_board_column_date_schedule",
+    "supabase/migrations/115_bbe176_column_date_schedule.sql::public.cancel_board_column_date_schedule",
+    "supabase/migrations/115_bbe176_column_date_schedule.sql::public.execute_board_column_command",
+    "supabase/migrations/118_bbe178_column_value_and_schedule_dispatch.sql::public.create_board_item_with_values"
+  ]
+}

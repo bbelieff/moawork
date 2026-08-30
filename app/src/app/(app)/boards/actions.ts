@@ -787,6 +787,22 @@ export async function addDetailFieldAction(formData: FormData): Promise<void> {
     if (groupId && !group) throw new NotFoundError("아이템을 찾을 수 없습니다.");
     const boardLayout = resolveBoardDetailLayout(detail.board.source, detail.board.detail_layout_jsonb, detail.columns);
     const current = resolveDetailLayout(boardLayout, group?.detail_layout_jsonb).entries;
+    /*
+     * ★ 같은 이름이 이미 있으면 «또 만들지 않는다» (#654).
+     *
+     *   전에는 이름이 겹치면 key 뒤에 _2, _3 … 을 붙여 «조용히 하나 더» 만들었다.
+     *   그래서 응답이 늦을 때 사용자가 「안 눌렸나」 하고 다시 누르면 그만큼 쌓인다 —
+     *   실제로 총괄이 16번 눌렀고 「법인공동인증서」가 16개 생겼다. 그 뒤로는
+     *   지우려 해도 컬럼 명령이 통째로 죽어 있어서(#653) 수습할 방법이 없었다.
+     *
+     *   번호 붙이기 자체는 남긴다 — «다른 이름» 인데 key 만 겹치는 경우가 있다.
+     *   막는 것은 «같은 이름이 이미 이 배치에 있는» 경우 하나다.
+     */
+    const duplicate = current.find(
+      (entry) => entry.source === "detail" && entry.label?.trim() === label,
+    );
+    if (duplicate) throw new Error(`「${label}」 필드가 이미 있어요. 다른 이름을 써 주세요.`);
+
     const occupied = new Set([...detail.columns.map((column) => column.key), ...current.map((entry) => entry.key)]);
     const base = detailKeyFromLabel(label);
     let key = base;

@@ -73,6 +73,15 @@ export const BOARD_COLUMN_ERROR_CODES = {
    * (003_boards_engine.sql) 이미 그 key 를 쓰는 컬럼이 있으면 새로 만들 수 없다.
    */
   duplicateKey: "23505",
+  /**
+   * 서버가 «이름을 못 찾음». #653 에서 실제로 이것 때문에 컬럼 명령이 100% 죽었다 —
+   * pgcrypto 가 extensions 에 있는데 함수의 search_path 에 그 스키마가 없었다.
+   *
+   * ★ 이 코드가 기본 문구로 떨어지면 안 된다. 기본 문구는 「잠시 뒤 다시 시도해 주세요」인데
+   *   이건 시간이 지나도 절대 안 풀리는 «설정» 문제다. 그렇게 말하면 사용자는
+   *   될 때까지 누르게 되고(총괄은 실제로 그렇게 16번 눌렀다), 아무도 원인을 모른다.
+   */
+  undefinedFunction: "42883",
 } as const;
 
 export type BoardColumnErrorCode =
@@ -100,6 +109,9 @@ export function boardColumnErrorMessage(code: string | null | undefined): string
       return "입력값이 올바르지 않아 적용하지 못했습니다. 값을 확인해 주세요.";
     case BOARD_COLUMN_ERROR_CODES.staleDryRun:
       return "그 사이 다른 사람이 이 컬럼을 바꿨습니다. 새로고침한 뒤 다시 시도해 주세요.";
+    case BOARD_COLUMN_ERROR_CODES.undefinedFunction:
+      // 「다시 시도」라고 말하지 않는다 — 다시 눌러도 절대 안 된다. 눌러서 될 일이 아니라고 말한다.
+      return "서버 설정 문제로 컬럼을 바꾸지 못했습니다. 다시 눌러도 같으니 관리자에게 알려 주세요.";
     default:
       return "컬럼 작업에 실패했습니다. 잠시 뒤 다시 시도해 주세요.";
   }
