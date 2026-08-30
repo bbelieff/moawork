@@ -286,3 +286,42 @@ describe("#640 ⑤ 모르는 것을 «버리지» 않고 모른다고 말한다"
     expect(model.members.find((m) => m.userId === "퇴사자")?.active).toBe(false);
   });
 });
+
+/**
+ * #644 ③ — 「호칭 미설정」과 「확인 못 함」은 다른 사실이다.
+ *
+ * 멤버십 요약(member-org-summary.ts)의 isRole 은 owner/admin/member 만 통과시킨다.
+ * 054 가 enum 에 넣은 team_lead 와 비활성 구성원은 그 관문에서 빠지는데, 그 사람들의
+ * 호칭은 «없는» 게 아니라 «못 읽은» 것이다 — member_account_profiles 에는 값이 있을 수 있다.
+ * 같은 행에서 역할·조회 범위는 「확인 못 함」이라 말하면서 호칭만 「미설정」이라 단언하면
+ * 그 한 줄이 스스로와 어긋난다.
+ */
+describe("#644 ③ 호칭을 «못 읽음» 과 «미설정» 으로 나눠 말한다", () => {
+  const model = buildOrgViewModel({
+    chart: {
+      kind: "ready",
+      departments: [dept("d1", "영업본부")],
+      members: [chartMember("대표", []), chartMember("팀장", ["d1"])],
+      unassignedCount: 0,
+    },
+    owner: summaryRow("대표", "owner"),
+    admins: [],
+    // ★ 팀장을 요약에 넣지 않는다 — team_lead 가 실제로 그렇게 빠진다.
+    members: [],
+    exceptions: new Map(),
+  });
+
+  it("요약에 없는 사람은 titleKnown 이 false 다 — 호칭이 «없다» 고 단언하지 않는다", () => {
+    const lead = model.members.find((row) => row.userId === "팀장");
+    expect(lead?.titleKnown).toBe(false);
+    // 역할·조회 범위와 «같은 결» 이어야 한다. 하나만 단언하면 그 줄이 어긋난다.
+    expect(lead?.role).toBeNull();
+    expect(lead?.scope).toBeNull();
+  });
+
+  it("요약이 있으면 titleKnown 이 true 다 — 그때의 null 은 진짜 «미설정» 이다", () => {
+    const owner = model.members.find((row) => row.userId === "대표");
+    expect(owner?.titleKnown).toBe(true);
+    expect(owner?.title).toBeNull();
+  });
+});

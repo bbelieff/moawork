@@ -86,7 +86,15 @@ function MemberTable({ rows, known }: { rows: OrgMemberView[]; known: boolean })
             <tr key={member.userId} data-user-id={member.userId} className="border-b border-zinc-50 last:border-0 dark:border-zinc-900/60">
               <td className="px-4 py-2.5">
                 <div className="font-medium">{member.displayName}</div>
-                <div className="text-[11px] text-zinc-500">{member.title?.trim() || "호칭 미설정"}</div>
+                {/*
+                  ★ 「미설정」과 「확인 못 함」은 다른 사실이다 (#644 ③).
+                    요약에서 빠진 사람(team_lead·비활성)은 호칭이 없는 게 아니라 못 읽은 것이고,
+                    실제로 DB 에는 값이 들어 있을 수 있다. 같은 행의 역할·조회 범위는
+                    이미 「확인 못 함」이라 말하는데 호칭만 단언하면 그 줄이 스스로와 어긋난다.
+                */}
+                <div className="text-[11px] text-zinc-500">
+                  {member.titleKnown ? member.title?.trim() || "호칭 미설정" : <Unknown />}
+                </div>
               </td>
               <td className="px-3 py-2.5 text-zinc-500">{member.primaryDepartmentName ?? "미배정"}</td>
               <td className="px-3 py-2.5">{member.role === null ? <Unknown /> : ROLE_LABEL[member.role] ?? member.role}</td>

@@ -35,8 +35,17 @@ export function isOrgView(value: unknown): value is OrgView {
 export type OrgMemberView = {
   userId: string;
   displayName: string;
-  /** 호칭·직책. 없으면 화면이 「호칭 미설정」이라고 말한다. */
+  /** 호칭·직책. 없으면 화면이 「호칭 미설정」이라고 말한다 — 단 titleKnown 이 true 일 때만. */
   title: string | null;
+  /**
+   * ★ 호칭을 «읽었는가» (#644 ③).
+   *   role·scope 는 모를 때 null 로 「확인 못 함」이라고 말하는데, 호칭만 null 을
+   *   「설정 안 함」으로 떨어뜨리고 있었다. 그 둘은 다른 사실이다 —
+   *   멤버십 요약에서 빠진 사람(team_lead·비활성)은 호칭이 «없는» 게 아니라 «못 읽은» 것이고,
+   *   실제로 member_account_profiles 에는 값이 들어 있을 수 있다.
+   *   같은 행에서 역할은 「확인 못 함」인데 호칭만 「미설정」이라 단언하면 그 줄이 거짓말을 한다.
+   */
+  titleKnown: boolean;
   departmentIds: string[];
   primaryDepartmentId: string | null;
   /** 주부서 이름. 미배정이면 null. */
@@ -181,6 +190,7 @@ export function buildOrgViewModel(input: {
       userId: member.userId,
       displayName: member.displayName,
       title: summary ? summary.title : null,
+      titleKnown: summary !== null,
       departmentIds: member.departmentIds,
       primaryDepartmentId: member.primaryDepartmentId,
       primaryDepartmentName: primaryDept ? primaryDept.name : null,

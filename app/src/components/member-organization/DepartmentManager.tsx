@@ -118,7 +118,14 @@ export function DepartmentManager({ chart, canManage, actions = DEFAULT_ACTIONS 
         </div>
         <div className="flex gap-2 text-xs tabular-nums text-zinc-500">
           <span className="rounded-full bg-zinc-100 px-2.5 py-1 dark:bg-zinc-900">부서 {chart.departments.length}</span>
-          <span className="rounded-full bg-zinc-100 px-2.5 py-1 dark:bg-zinc-900">조직원 {activeMembers.length}</span>
+          {/*
+            ★ 「활성」을 붙인다 — 바로 위 OrgViewTabs 요약줄도 「조직원 N」이라고 쓰는데
+              그쪽은 «비활성 포함 전체» 다(org-view.ts 의 views 는 active 로 거르지 않는다).
+              같은 낱말이 200px 간격으로 다른 수를 말하면 둘 중 하나는 반드시 거짓말이 된다.
+              이 카드가 아래에 실제로 줄 세우는 사람은 activeMembers 뿐이라 수는 이대로 맞고,
+              틀린 것은 «이름» 이었다. #640 QA 에서 조직원 9 vs 8 로 잡혔다.
+          */}
+          <span className="rounded-full bg-zinc-100 px-2.5 py-1 dark:bg-zinc-900">활성 조직원 {activeMembers.length}</span>
           <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800 dark:bg-amber-950 dark:text-amber-200">주부서 미지정 {chart.unassignedCount}</span>
         </div>
       </header>
