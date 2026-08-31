@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, X509Certificate } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,11 +28,88 @@ const SUPABASE_POOLER_HOST = /^(?:[a-z0-9-]+\.)?pooler\.supabase\.com$/u;
  *   누가 .crt 를 갈아끼우면 여기서 fail-closed 된다.
  */
 const SUPABASE_ROOT_CA_FILE = "supabase-prod-ca-2021.crt";
-/** `openssl x509 -noout -fingerprint -sha256` — Supabase Root 2021 CA (2031-04-26 만료). */
+/** 저장소에 번들된 파일 전체의 SHA-256. PEM 뒤에 다른 신뢰 앵커를 붙이는 것도 거부한다. */
+const SUPABASE_ROOT_CA_FILE_SHA256 =
+  "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7";
+/** `X509Certificate.raw` SHA-256 — Supabase Root 2021 CA (2031-04-26 만료). */
 const SUPABASE_ROOT_CA_SHA256 =
   "807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa";
 
 let cachedRootCa;
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function decodeSingleCertificatePem(bytes) {
+  if (!Buffer.isBuffer(bytes)) {
+    throw new Error(`MIGRATION_DEPLOY_GATE_CA_INVALID: ${SUPABASE_ROOT_CA_FILE} must be raw bytes`);
+  }
+  const pem = bytes.toString("utf8");
+  if (!Buffer.from(pem, "utf8").equals(bytes)) {
+    throw new Error(`MIGRATION_DEPLOY_GATE_CA_INVALID: ${SUPABASE_ROOT_CA_FILE} is not UTF-8`);
+  }
+  const match = pem.match(/^-----BEGIN CERTIFICATE-----\n([A-Za-z0-9+/=\n]+)-----END CERTIFICATE-----\n$/u);
+  if (!match) {
+    throw new Error(`MIGRATION_DEPLOY_GATE_CA_INVALID: ${SUPABASE_ROOT_CA_FILE} must contain exactly one certificate PEM`);
+  }
+  const lines = match[1].split("\n");
+  const finalEmpty = lines.pop();
+  if (finalEmpty !== "" || lines.length === 0 || lines.some((line, index) =>
+    line.length === 0 || line.length > 64 || (index < lines.length - 1 && line.length !== 64))) {
+    throw new Error(`MIGRATION_DEPLOY_GATE_CA_INVALID: ${SUPABASE_ROOT_CA_FILE} has non-canonical PEM wrapping`);
+  }
+  const base64 = lines.join("");
+  const raw = Buffer.from(base64, "base64");
+  if (raw.length === 0 || raw.toString("base64") !== base64) {
+    throw new Error(`MIGRATION_DEPLOY_GATE_CA_INVALID: ${SUPABASE_ROOT_CA_FILE} has malformed base64`);
+  }
+  return { pem, raw };
+}
+
+export function validateSupabaseRootCertificate(
+  bytes,
+  {
+    expectedFileSha256 = SUPABASE_ROOT_CA_FILE_SHA256,
+    expectedRawSha256 = SUPABASE_ROOT_CA_SHA256,
+    now = Date.now(),
+  } = {},
+) {
+  const { pem, raw } = decodeSingleCertificatePem(bytes);
+  const fileDigest = sha256(bytes);
+  if (fileDigest !== expectedFileSha256) {
+    throw new Error(`MIGRATION_DEPLOY_GATE_CA_FILE_MISMATCH: ${fileDigest}`);
+  }
+
+  let certificate;
+  try {
+    certificate = new X509Certificate(raw);
+  } catch {
+    throw new Error(`MIGRATION_DEPLOY_GATE_CA_INVALID: ${SUPABASE_ROOT_CA_FILE} is not X.509`);
+  }
+  const rawDigest = sha256(certificate.raw);
+  if (rawDigest !== expectedRawSha256) {
+    throw new Error(`MIGRATION_DEPLOY_GATE_CA_FINGERPRINT_MISMATCH: ${rawDigest}`);
+  }
+  if (certificate.ca !== true) {
+    throw new Error(`MIGRATION_DEPLOY_GATE_CA_NOT_CA: ${SUPABASE_ROOT_CA_FILE}`);
+  }
+  if (certificate.subject !== certificate.issuer || !certificate.checkIssued(certificate)) {
+    throw new Error(`MIGRATION_DEPLOY_GATE_CA_NOT_SELF_ISSUED: ${SUPABASE_ROOT_CA_FILE}`);
+  }
+  if (!certificate.verify(certificate.publicKey)) {
+    throw new Error(`MIGRATION_DEPLOY_GATE_CA_BAD_SIGNATURE: ${SUPABASE_ROOT_CA_FILE}`);
+  }
+  const validFrom = certificate.validFromDate.getTime();
+  const validTo = certificate.validToDate.getTime();
+  if (!Number.isFinite(now) || !Number.isFinite(validFrom) || !Number.isFinite(validTo) || now < validFrom) {
+    throw new Error(`MIGRATION_DEPLOY_GATE_CA_NOT_YET_VALID: ${SUPABASE_ROOT_CA_FILE}`);
+  }
+  if (now > validTo) {
+    throw new Error(`MIGRATION_DEPLOY_GATE_CA_EXPIRED: ${SUPABASE_ROOT_CA_FILE}`);
+  }
+  return pem;
+}
 
 export function supabaseRootCertificate() {
   if (cachedRootCa !== undefined) return cachedRootCa;
@@ -40,14 +117,7 @@ export function supabaseRootCertificate() {
   if (!existsSync(path)) {
     throw new Error(`MIGRATION_DEPLOY_GATE_CA_MISSING: ${SUPABASE_ROOT_CA_FILE}`);
   }
-  const pem = readFileSync(path, "utf8");
-  const body = pem.match(/-----BEGIN CERTIFICATE-----([\s\S]+?)-----END CERTIFICATE-----/u)?.[1];
-  if (!body) throw new Error(`MIGRATION_DEPLOY_GATE_CA_INVALID: ${SUPABASE_ROOT_CA_FILE} is not PEM`);
-  const digest = createHash("sha256").update(Buffer.from(body.replace(/\s/gu, ""), "base64")).digest("hex");
-  if (digest !== SUPABASE_ROOT_CA_SHA256) {
-    throw new Error(`MIGRATION_DEPLOY_GATE_CA_FINGERPRINT_MISMATCH: ${digest}`);
-  }
-  cachedRootCa = pem;
+  cachedRootCa = validateSupabaseRootCertificate(readFileSync(path));
   return cachedRootCa;
 }
 
