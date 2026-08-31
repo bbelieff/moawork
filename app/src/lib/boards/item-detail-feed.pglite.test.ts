@@ -15,6 +15,8 @@ const sql = migration("124_issue524_company_detail_feed.sql");
  *   그래야 143 이 124 의 권한·멱등·멘션 계약을 깨지 않았다는 것도 같이 증명된다.
  */
 const sql143 = migration("143_issue662_detail_event_kinds.sql");
+/* #672 — 144 는 히스토리를 «치울 수» 있게 한다(행은 지우지 않는다). 같은 이유로 같이 올린다. */
+const sql144 = migration("144_issue672_detail_event_remove.sql");
 const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
@@ -40,13 +42,14 @@ describe("Issue 524 item detail feed", () => {
       create function public.effective_permission(p_org uuid,p_permission text) returns boolean language sql stable as $$select auth.uid() is not null and auth.uid()<>'${id(13)}' and p_permission='work.item_upsert'$$;
       create function public.begin_guarded_migration(p_logical_key text,p_file_name text,p_file_digest text,p_expected_predecessor text,p_executor text,p_thread_id text,p_foundation boolean) returns void language sql as $$select$$;
       grant usage on schema auth,storage to authenticated; grant execute on function auth.uid() to authenticated; grant select on items,org_members to authenticated; grant select,insert,delete on storage.objects to authenticated;
-      insert into orgs values('${id(1)}'),('${id(2)}'); insert into users values('${id(10)}'),('${id(11)}'),('${id(12)}'),('${id(13)}');
-      insert into org_members values('${id(1)}','${id(10)}','owner','all','active'),('${id(1)}','${id(11)}','member','assigned','active'),('${id(1)}','${id(13)}','member','assigned','active'),('${id(2)}','${id(12)}','owner','all','active');
+      insert into orgs values('${id(1)}'),('${id(2)}'); insert into users values('${id(10)}'),('${id(11)}'),('${id(12)}'),('${id(13)}'),('${id(14)}');
+      insert into org_members values('${id(1)}','${id(10)}','owner','all','active'),('${id(1)}','${id(11)}','member','assigned','active'),('${id(1)}','${id(13)}','member','assigned','active'),('${id(1)}','${id(14)}','member','all','active'),('${id(2)}','${id(12)}','owner','all','active');
       insert into boards values('${id(20)}','${id(1)}'),('${id(21)}','${id(2)}');
       insert into items values('${id(30)}','${id(1)}','${id(20)}','${id(11)}',null),('${id(31)}','${id(1)}','${id(20)}','${id(10)}',null),('${id(32)}','${id(2)}','${id(21)}','${id(12)}',null),('${id(33)}','${id(1)}','${id(20)}','${id(13)}',null);
     `);
     await db.exec(sql.replace(/do \$\$ begin[\s\S]*?end \$\$;/, ""));
     await db.exec(sql143);
+    await db.exec(sql144);
     await db.query("insert into storage.objects(bucket_id,name) values('board-item-files',$1),('board-item-files',$2)",[
       `${id(1)}/${id(20)}/${id(30)}/${id(200)}__mine.pdf`,
       `${id(1)}/${id(20)}/${id(31)}/${id(201)}__other.pdf`,
@@ -166,6 +169,103 @@ describe("Issue 524 item detail feed", () => {
     for (const kind of ["memo", "call", "admin", "meeting", "field_change"]) {
       expect(allowed.rows[0].def).toContain(kind);
     }
+  });
+
+  /*
+   * #672 — 「담당자가 되면 자동기록 과 자기가 작성한 히스토리 지울 수 있게 /
+   *        이외 협업자들은 본인이 작성한 히스토리 / 회사대표는 모든권한」
+   *
+   * ★ 화면에서 버튼을 감추는 것으로는 부족하다. 버튼이 없어도 요청은 손으로 만들 수 있다.
+   *   그래서 «서버가 거부하는가» 를 여기서 잰다.
+   * ★ 그리고 행이 «진짜로 지워지지 않는가» 도 같이 잰다. 지우면 되돌릴 길이 없다.
+   */
+  it("#672 치우기 권한 — 대표는 전부 · 담당자는 자동기록+본인 · 협업자는 본인 것만", async () => {
+    // item 30 의 담당자는 id(11), id(14) 는 그냥 협업자, id(10) 은 대표.
+    await actor(id(11));
+    const memoAssignee = (
+      await db.query<{ id: string }>(
+        "select id from add_board_item_detail_event($1,$2,$3,'memo','담당자 메모',$4)",
+        [id(1), id(20), id(30), id(400)],
+      )
+    ).rows[0].id;
+
+    await actor(id(14));
+    const memoOther = (
+      await db.query<{ id: string }>(
+        "select id from add_board_item_detail_event($1,$2,$3,'memo','협업자 메모',$4)",
+        [id(1), id(20), id(30), id(401)],
+      )
+    ).rows[0].id;
+
+    // 자동 기록은 사람이 못 만든다 — item_values 를 건드리면 트리거가 남긴다.
+    await actor(id(11));
+    await db.query("insert into item_values values($1,$2,'status','\"상담\"')", [id(1), id(30)]);
+    const auto = (
+      await db.query<{ id: string }>(
+        "select id from board_item_detail_events where item_id=$1 and kind='field_change' order by created_at desc limit 1",
+        [id(30)],
+      )
+    ).rows[0].id;
+
+    const remove = (event: string) =>
+      db.query("select * from remove_board_item_detail_event($1,$2,$3,$4)", [id(1), id(20), id(30), event]);
+
+    // ① 협업자는 «남의 글» 을 못 치운다
+    await actor(id(14));
+    await expect(remove(memoAssignee)).rejects.toThrow(/permission_denied/);
+    // ② 협업자는 «자동 기록» 도 못 치운다 — 담당자만 할 수 있다
+    await expect(remove(auto)).rejects.toThrow(/permission_denied/);
+    // ③ 협업자는 자기 글은 치운다
+    await expect(remove(memoOther)).resolves.toBeTruthy();
+
+    // ④ 담당자는 자동 기록을 치운다
+    await actor(id(11));
+    await expect(remove(auto)).resolves.toBeTruthy();
+    // ⑤ 담당자도 «남의 글» 은 못 치운다
+    await actor(id(14));
+    const memoOther2 = (
+      await db.query<{ id: string }>(
+        "select id from add_board_item_detail_event($1,$2,$3,'memo','협업자 메모2',$4)",
+        [id(1), id(20), id(30), id(402)],
+      )
+    ).rows[0].id;
+    await actor(id(11));
+    await expect(remove(memoOther2)).rejects.toThrow(/permission_denied/);
+
+    // ⑥ 대표는 남의 글도 치운다
+    await actor(id(10));
+    await expect(remove(memoOther2)).resolves.toBeTruthy();
+
+    // ⑦ ★ 행이 «지워지지» 않았다. 치워졌을 뿐이다 — 되돌릴 수 있어야 한다.
+    const rows = await db.query<{ n: number; gone: number }>(
+      "select count(*)::int n, count(deleted_at)::int gone from board_item_detail_events where item_id=$1",
+      [id(30)],
+    );
+    expect(rows.rows[0].n).toBe(4); // 담당자메모 · 협업자메모 · 자동 · 협업자메모2
+    expect(rows.rows[0].gone).toBe(3); // 그중 셋이 치워졌다
+
+    // ⑧ 두 번 치워도 같은 결과다 — 두 번 누른 사람을 벌하지 않는다
+    await expect(remove(memoOther2)).resolves.toBeTruthy();
+
+    // ⑨ 되살리기는 «치운 사람» 과 대표만
+    const restore = (event: string) =>
+      db.query("select * from restore_board_item_detail_event($1,$2,$3,$4)", [id(1), id(20), id(30), event]);
+    await actor(id(14));
+    await expect(restore(memoOther2)).rejects.toThrow(/permission_denied/); // 대표가 치운 것
+    await actor(id(10));
+    await expect(restore(memoOther2)).resolves.toBeTruthy();
+    expect(
+      (
+        await db.query<{ gone: number }>(
+          "select count(deleted_at)::int gone from board_item_detail_events where item_id=$1",
+          [id(30)],
+        )
+      ).rows[0].gone,
+    ).toBe(2);
+
+    // ⑩ 다른 조직 사람은 아무것도 못 한다
+    await actor(id(12));
+    await expect(remove(memoAssignee)).rejects.toThrow(/permission_denied/);
   });
 
   it("allows assigned member but denies another item, cross-org tuples, inactive/deleted targets and replay mutation", async () => {
