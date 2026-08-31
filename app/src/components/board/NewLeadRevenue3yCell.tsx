@@ -8,6 +8,7 @@ import {
 import type { CellValue } from "@/lib/boards/types";
 import { formatRevenue3yMillion } from "@/lib/new-lead/financial-profile";
 import { formatQuantity } from "@/lib/format/number";
+import { readRevenueYears, revenueYearsSummary } from "@/lib/new-lead/revenue-years";
 import { BOARD_TABLE_CONTROL } from "./table-style";
 
 export function NewLeadRevenue3yCell({
@@ -15,6 +16,8 @@ export function NewLeadRevenue3yCell({
   itemId,
   value,
   legacyRevenueBand,
+  /* #673 — 「매출」 칸에 네 해가 물린다. 값은 상세 전용 필드로 같은 item_values 에 쌓인다. */
+  years,
   readOnly,
   saveAction = saveNewLeadRevenue3yAction,
   onStatusChange,
@@ -23,6 +26,7 @@ export function NewLeadRevenue3yCell({
   itemId: string;
   value: CellValue | undefined;
   legacyRevenueBand: CellValue | undefined;
+  years?: Record<string, unknown>;
   readOnly: boolean;
   saveAction?: (
     previous: SaveNewLeadFinancialState,
@@ -37,6 +41,8 @@ export function NewLeadRevenue3yCell({
       ? value
       : "";
   const legacy = typeof legacyRevenueBand === "string" ? legacyRevenueBand.trim() : "";
+  /* 적힌 해만 줄여 보인다. 하나도 없으면 줄 자체가 없다 — 빈 줄이 표를 늘리지 않게. */
+  const yearsLine = revenueYearsSummary(readRevenueYears(years ?? {}));
   const formRef = useRef<HTMLFormElement>(null);
   const externalRef = useRef(shown);
   const attemptedRef = useRef<string | null>(null);
@@ -167,6 +173,11 @@ export function NewLeadRevenue3yCell({
         />
         <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[0.65rem] text-mw-sub">백만원</span>
       </div>
+      {yearsLine ? (
+        <span className="mt-0.5 block truncate text-[0.6rem] tabular-nums text-mw-sub" title={yearsLine}>
+          {yearsLine}
+        </span>
+      ) : null}
       {legacy && numeric === null ? <span id={itemId + "-revenue-3y-legacy"} className="sr-only">기존 매출 구간 {legacy}는 보존됩니다.</span> : null}
       {constraintError || actionError ? <span id={itemId + "-revenue-3y-error"} role="alert" className="absolute left-0 top-full z-10 mt-1 w-64 rounded border border-mw-error bg-mw-card p-2 text-[0.65rem] text-mw-error shadow-lg">{constraintError || actionError}</span> : null}
     </form>

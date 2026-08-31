@@ -293,6 +293,7 @@ export function BoardCell({
         itemId={row.id}
         value={row.values[NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion]}
         legacyRevenueBand={row.values[NEW_LEAD_COMPOSITE_FIELD_KEYS.legacyRevenueBand]}
+        years={row.values}
         readOnly={cellReadOnly}
       />
     );

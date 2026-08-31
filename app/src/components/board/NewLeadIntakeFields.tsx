@@ -1,8 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
-import { NEW_LEAD_BUSINESS_TYPES } from "@/lib/new-lead/business-types";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  NEW_LEAD_BUSINESS_TYPES,
+  NEW_LEAD_CUSTOM_BUSINESS_TYPE,
+} from "@/lib/new-lead/business-types";
 import { NEW_LEAD_REVENUE_BANDS } from "@/lib/new-lead/revenue-bands";
+import {
+  formatRevenueInput,
+  REVENUE_UNIT_LABEL,
+  REVENUE_YEAR_FIELDS,
+} from "@/lib/new-lead/revenue-years";
 import {
   canonicalSido,
   searchSido,
@@ -22,26 +30,54 @@ function useReset(ref: RefObject<HTMLElement | null>, reset: () => void) {
   }, [ref, reset]);
 }
 
+/*
+ * #673 — 「개인사업자, 법인사업자, 그외 세개중 선택하게 하고 그외를 선택한 경우
+ *        자유작성 필드를 옆에 만들어줘」
+ *
+ * 전에는 datalist 를 단 «자유입력» 이었다. 그래서 아무 글자나 들어갔고 —
+ * 「개인」·「법인사업자 」·「개읺사업자」가 다 다른 값이 됐다. 그러면 나중에
+ * 「개인사업자만 보기」 같은 것을 할 수 없다. 게다가 추천 목록에서 「그외」를
+ * 빼 버려서, 정작 자유작성이 필요한 갈래로 갈 길이 없었다.
+ *
+ * ★ 「그외 → 옆 칸」 은 같은 파일의 RevenueBandField 가 이미 쓰는 모양이다.
+ *   화면 안에서 두 필드가 서로 다르게 동작하면 그게 학습 비용이다.
+ */
 export function BusinessTypeField({ invalid = false }: { invalid?: boolean }) {
-  const suggestionsId = useId();
+  const [selected, setSelected] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const reset = useCallback(() => setSelected(""), []);
+  useReset(rootRef, reset);
   return (
-    <label className="grid gap-1 text-xs text-mw-sub">
-      <span>사업자유형 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
-      <input
-        name="business_registration_type"
-        list={suggestionsId}
-        required
-        aria-required="true"
-        aria-invalid={invalid}
-        className={`${CONTROL} aria-[invalid=true]:border-mw-error`}
-        placeholder="직접 입력하거나 추천 선택"
-      />
-      <datalist id={suggestionsId}>
-        {NEW_LEAD_BUSINESS_TYPES.filter((value) => value !== "그외").map((value) => (
-          <option key={value} value={value} />
-        ))}
-      </datalist>
-    </label>
+    <div ref={rootRef} className="grid gap-1 sm:grid-cols-[1fr_1fr] sm:items-end sm:gap-2">
+      <label className="grid gap-1 text-xs text-mw-sub">
+        <span>사업자유형 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
+        <select
+          name="business_registration_type"
+          required
+          aria-required="true"
+          aria-invalid={invalid}
+          value={selected}
+          onChange={(event) => setSelected(event.target.value)}
+          className={`${CONTROL} aria-[invalid=true]:border-mw-error`}
+        >
+          <option value="">고르세요</option>
+          {NEW_LEAD_BUSINESS_TYPES.map((value) => (
+            <option key={value} value={value}>{value}</option>
+          ))}
+        </select>
+      </label>
+      {selected === NEW_LEAD_CUSTOM_BUSINESS_TYPE ? (
+        <label className="grid gap-1 text-xs text-mw-sub">
+          <span>어떤 유형인가요 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
+          <input
+            name="business_registration_type_custom"
+            required
+            className={CONTROL}
+            placeholder="예: 비영리법인 · 협동조합"
+          />
+        </label>
+      ) : null}
+    </div>
   );
 }
 
@@ -84,6 +120,54 @@ export function RevenueBandField({ invalid = false }: { invalid?: boolean }) {
           <input name="revenue_band_custom" required className={CONTROL} placeholder="예: 9,000만원~1억" />
         </label>
       ) : null}
+    </div>
+  );
+}
+
+/*
+ * #673 — 「'매출'로 이름 바꾸고 칸을 4개 만들어줘 Y-현재, Y-1,Y-2,Y-3 필드 넣고
+ *        천단위로 콤마, 백만원 될 수 있게 해서 매출에 4개 필드가 물리게 해줘」
+ *
+ * 전에는 「3개년매출(백만원)」 숫자 한 칸이었다. 그 칸이 3년 합계인지 작년치인지 평균인지
+ * 알 수 없어서, 적는 사람마다 다르게 적으면 그 숫자는 비교할 수 없었다.
+ *
+ * ★ 콤마는 적는 «도중에» 따라온다. 못 읽는 글자는 버리지 않고 그대로 둔다 —
+ *   적던 것이 사라지면 놀란다.
+ */
+export function RevenueYearsField() {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const rootRef = useRef<HTMLDivElement>(null);
+  const reset = useCallback(() => setValues({}), []);
+  useReset(rootRef, reset);
+  return (
+    <div ref={rootRef} className="grid gap-1">
+      <span className="text-xs text-mw-sub">
+        매출 <span className="text-mw-sub">({REVENUE_UNIT_LABEL})</span>
+      </span>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {REVENUE_YEAR_FIELDS.map((field) => (
+          <label key={field.key} className="grid gap-1 text-xs text-mw-sub">
+            {field.label}
+            <input
+              name={field.key}
+              inputMode="numeric"
+              autoComplete="off"
+              value={values[field.key] ?? ""}
+              onChange={(event) =>
+                setValues((current) => ({ ...current, [field.key]: event.target.value }))
+              }
+              onBlur={(event) =>
+                setValues((current) => ({
+                  ...current,
+                  [field.key]: formatRevenueInput(event.target.value),
+                }))
+              }
+              className={CONTROL}
+              placeholder="0"
+            />
+          </label>
+        ))}
+      </div>
     </div>
   );
 }

@@ -17,7 +17,7 @@ describe("saved view production consumer", () => {
     const keys = ["owner", "credit_score_ncb", "credit_score_kcb", "revenue_band", "revenue_3y_million"] as const;
     const columns = keys.map((key, index) => ({
       id: `column-${key}`, org_id: "org-a", board_id: "board-a", key,
-      label: key === "owner" ? "담당자" : key === "credit_score_ncb" ? "NCB" : key === "credit_score_kcb" ? "KCB" : key === "revenue_band" ? "3개년매출" : "3개년매출(백만원)",
+      label: key === "owner" ? "담당자" : key === "credit_score_ncb" ? "NCB" : key === "credit_score_kcb" ? "KCB" : key === "revenue_band" ? "3개년매출" : "매출(백만원)",
       type: key === "owner" ? "person" : key === "revenue_3y_million" ? "number" : "text",
       source: "in", rightPinned: false, options_jsonb: null, sort_order: index, width: null,
     })) as BoardColumn[];
@@ -35,7 +35,7 @@ describe("saved view production consumer", () => {
       rowOrderVersion: 4, canMoveRows: true, canManageColumns: true, canManageSections: true,
     }));
     expect(html.match(/신용점수/g)?.length).toBeGreaterThan(0);
-    expect(html.match(/3개년매출\(백만원\)/g)?.length).toBeGreaterThan(0);
+    expect(html.match(/매출\(백만원\)/g)?.length).toBeGreaterThan(0);
     expect(html).toContain('name="fieldKey" value="credit_score_ncb"');
     expect(html).toContain('name="fieldKey" value="credit_score_kcb"');
     expect(html).not.toContain('name="fieldKey" value="credit_scores"');

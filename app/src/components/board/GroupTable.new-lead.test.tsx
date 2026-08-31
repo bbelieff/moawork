@@ -161,7 +161,7 @@ describe("BBE-171 new-lead GroupTable wiring", () => {
       ...columns[0],
       id: "revenue-real",
       key: "revenue_3y_million",
-      label: "3개년매출(백만원)",
+      label: "매출(백만원)",
       type: "number",
     };
     const fallbackColumns = presentNewLeadColumns([bandColumn]);
@@ -180,7 +180,8 @@ describe("BBE-171 new-lead GroupTable wiring", () => {
     const restoredHeader = restoredHtml.match(/<th(?=[^>]*data-column-key="revenue_3y_million")[\s\S]*?<\/th>/)?.[0] ?? "";
     expect(restoredColumns[0].id).toBe("revenue-real");
     expect(restoredHeader).toContain('draggable="true"');
-    expect(restoredHeader).toContain("3개년매출(백만원) 컬럼 메뉴");
+    /* #673 — 총괄 지시로 이름이 「매출」이 됐다. 키는 그대로다. */
+    expect(restoredHeader).toContain("매출(백만원) 컬럼 메뉴");
     expect(restoredHeader).toContain("cursor-col-resize");
   });
 

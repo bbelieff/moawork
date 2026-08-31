@@ -226,7 +226,8 @@ describe("제품 규칙 — 목업을 그대로 옮기면 안 되는 곳", () =>
   it("#602는 revenue 물리 열만 추가하고 신용점수는 durable 두 키를 한 presentation 셀로 둔다", () => {
     expect(NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS).toEqual([
       expect.objectContaining({ key: "credit_scores", label: "신용점수", type: "text" }),
-      expect.objectContaining({ key: "revenue_3y_million", label: "3개년매출(백만원)", type: "number" }),
+      /* #673 — 총괄 지시로 이름이 「매출」이 됐다. 키는 그대로다 — 값이 딸려 있다. */
+      expect.objectContaining({ key: "revenue_3y_million", label: "매출(백만원)", type: "text" }),
     ]);
     expect(NEW_LEAD_TAB.columns.some((column) => column.key === "revenue_band")).toBe(true);
     expect(NEW_LEAD_TAB.columns.some((column) => column.key === "credit_score_ncb")).toBe(true);
