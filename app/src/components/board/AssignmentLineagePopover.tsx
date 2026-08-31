@@ -53,6 +53,19 @@ function selection(form: HTMLFormElement): string | null {
   return values.at(-1) ?? null;
 }
 
+/**
+ * 고른 «전부» 를 돌려준다 (#657).
+ *
+ * 담당자는 한 명이라 selection() 이 마지막 하나만 집어도 됐지만, 알림 대상은 여럿이다.
+ * 전에는 여기서도 마지막 하나만 집어서, 세 명을 골라도 한 명만 추가됐다.
+ * MemberPicker 는 이미 multiple 모드(「연관담당 선택 · N명 선택」)를 갖추고 있었고
+ * 이 화면만 multiple={false} 로 그걸 막고 있었다.
+ */
+function selections(form: HTMLFormElement): string[] {
+  const values = new FormData(form).getAll("value").filter((value): value is string => typeof value === "string" && value.length > 0);
+  return [...new Set(values)];
+}
+
 export function AssignmentLineagePopover({
   boardId,
   dealId,
@@ -325,12 +338,28 @@ export function AssignmentLineagePopover({
               {!controlsDisabled && followerCandidates.length ? (
                 <form onSubmit={(event) => {
                   event.preventDefault();
-                  const userId = selection(event.currentTarget);
-                  if (!userId) return;
-                  const requestId = crypto.randomUUID();
-                  void mutate("알림 대상 추가 중", () => setAssignmentFollowerAction({ ...ref, userId, follow: true, requestId }));
+                  const userIds = selections(event.currentTarget);
+                  if (userIds.length === 0) return;
+                  /*
+                   * ★ 한 번의 mutate 안에서 «순차» 로 처리한다.
+                   *   mutate 는 pendingLabel 로 동시 실행을 막으므로 여러 번 부르면 두 번째부터 조용히 버려진다.
+                   *   requestId 는 사람마다 새로 만든다 — 멱등 키를 돌려쓰면 두 번째가 «재시도» 로 읽힌다.
+                   * ★ 하나라도 실패하면 거기서 멈추고 그 오류를 그대로 올린다.
+                   *   나머지를 계속 밀어붙이면 «몇 명은 됐고 몇 명은 안 된» 상태를 아무도 모르게 된다.
+                   */
+                  void mutate(
+                    userIds.length > 1 ? `알림 대상 ${userIds.length}명 추가 중` : "알림 대상 추가 중",
+                    async () => {
+                      let last: MutationResult | null = null;
+                      for (const userId of userIds) {
+                        last = await setAssignmentFollowerAction({ ...ref, userId, follow: true, requestId: crypto.randomUUID() });
+                        if (!last.ok) return last;
+                      }
+                      return last as MutationResult;
+                    },
+                  );
                 }}>
-                  <MemberPicker label="알림 대상" members={followerCandidates} value={null} multiple={false} triggerLabel="알림 대상 추가" ruleRecipients={current ? [current] : []} />
+                  <MemberPicker label="알림 대상" members={followerCandidates} value={null} multiple triggerLabel="알림 대상 추가" ruleRecipients={current ? [current] : []} />
                 </form>
               ) : null}
               <p className={styles.note}>현재 담당자는 항상 알림을 받습니다. ×는 알림에서만 제외하며 담당 이력은 유지합니다.</p>

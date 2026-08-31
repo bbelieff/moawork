@@ -16,6 +16,7 @@ import type {
 } from "@/lib/boards/types";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
 import {
+  isDemotableDetailKey,
   moveDetailEntry,
   unplacedDetailKeys,
 } from "@/lib/boards/detail-layout";
@@ -25,6 +26,7 @@ import { isSourceEditable } from "@/lib/field/source";
 import {
   addDetailFieldAction,
   addUnplacedDetailEntryAction,
+  demoteDetailFieldAction,
   promoteDetailFieldAction,
   resetGroupDetailLayoutAction,
   saveDetailLayoutAction,
@@ -900,28 +902,45 @@ export function ItemDetailPanel({
                                   : inputValue(value) || "—"}
                               </p>
                             )}
-                            {entry.source === "detail" && canManageColumns && (
+                            {/*
+                              #657 — 「표로 올리기」에 «되돌리기» 를 붙인다.
+                              전에는 올리는 버튼만 있었고, 그것도 source === "detail" 일 때만 그려져서
+                              한 번 누르면 버튼 자체가 사라졌다 — 되돌릴 수 없는 한 방향 문이었다.
+                              버튼 글자는 «가는 곳» 을 그대로 적는다. ⋯ 만으로는 무엇이 일어날지 모른다.
+                            */}
+                            {canManageColumns && entry.source === "detail" && (
                               <form action={promoteDetailFieldAction}>
-                              <input
-                                type="hidden"
-                                name="boardId"
-                                value={boardId}
-                              />
-                              <input
-                                type="hidden"
-                                name="fieldKey"
-                                value={entry.key}
-                              />
-                              <button
-                                type="submit"
-                                className={styles.promoteButton}
-                                title={`${label}을 표에도 보이기`}
-                                aria-label={`${label}을 표에도 보이기`}
-                              >
-                                ⋯
-                              </button>
-                            </form>
-                          )}
+                                <input type="hidden" name="boardId" value={boardId} />
+                                <input type="hidden" name="fieldKey" value={entry.key} />
+                                <button
+                                  type="submit"
+                                  className={styles.promoteButton}
+                                  title={`${label}을 표에도 보이게 합니다`}
+                                  aria-label={`${label}을 표에도 보이기`}
+                                >
+                                  표에도
+                                </button>
+                              </form>
+                            )}
+                            {/*
+                              ★ 원래부터 표 컬럼이던 칸(owner·industry …)에는 안 붙인다.
+                                그건 되돌리기가 아니라 구조 축소다(D71~D75).
+                                표에서 잠깐 감추는 일은 「표시 컬럼」이 이미 한다.
+                            */}
+                            {canManageColumns && entry.source === "column" && isDemotableDetailKey(entry.key) && (
+                              <form action={demoteDetailFieldAction}>
+                                <input type="hidden" name="boardId" value={boardId} />
+                                <input type="hidden" name="fieldKey" value={entry.key} />
+                                <button
+                                  type="submit"
+                                  className={styles.promoteButton}
+                                  title={`${label}을 표에서 내리고 상세에서만 보이게 합니다. 값은 그대로 남고 컬럼은 휴지통으로 갑니다`}
+                                  aria-label={`${label}을 표에서 내리기`}
+                                >
+                                  상세만
+                                </button>
+                              </form>
+                            )}
                           </div>
                         </div>
                       );
@@ -1462,7 +1481,16 @@ export function ItemDetailPanel({
                       {relatedMembers.length > 3 ? <span className={styles.watcherMore}>+{relatedMembers.length - 3}</span> : null}
                       {!ownerMember && relatedMembers.length === 0 ? <span>알림을 받을 사람이 아직 없습니다.</span> : null}
                     </div>
-                    {canEditItems && row.deal_id && layout.some((entry) => entry.key === "collaborators") ? (
+                    {/*
+                      #657 — 연관담당을 «여기서도» 더할 수 있게 한다.
+                      칩은 row.values.collaborators 에서 바로 그리는데(layout 과 무관),
+                      바꾸는 버튼만 「collaborators 가 상세 배치에 놓여 있을 때」로 막혀 있었다.
+                      그래서 연관담당이 보이는데 이 자리에서는 못 바꾸는 상태가 됐다 —
+                      바꾸려면 「담당자 흐름」 팝오버까지 들어가야 했다.
+                      ★ 신규리드 정본 보드에서는 항상 연다. 다른 보드는 종전 조건 그대로 둔다 —
+                        그쪽은 collaborators 가 배치에 있을 때만 이 액션이 뜻을 갖는다.
+                    */}
+                    {canEditItems && row.deal_id && (canonicalNewLead || layout.some((entry) => entry.key === "collaborators")) ? (
                       <form action={updateNewLeadMetaAction} className={styles.watcherForm}>
                         <input type="hidden" name="boardId" value={boardId} />
                         <input type="hidden" name="itemId" value={row.id} />
@@ -1474,7 +1502,7 @@ export function ItemDetailPanel({
                           value={collaboratorIds}
                           multiple
                           compact
-                          triggerLabel="바꾸기"
+                          triggerLabel={relatedMembers.length > 0 ? "바꾸기" : "추가"}
                           ruleRecipients={ownerMember ? [ownerMember] : []}
                         />
                       </form>
@@ -1503,8 +1531,15 @@ export function ItemDetailPanel({
                           key={event.id}
                           className={styles.historyEntry}
                         >
+                          {/*
+                            #657 — 히스토리 종류를 색으로도 나눈다.
+                            전에는 통화·메모·자동이 전부 같은 파란 배지라, 훑을 때 «전화한 것» 을
+                            메모 사이에서 골라낼 수 없었다. 토큰의 뜻 그대로 나눈다 —
+                            통화=사람 접촉(coral) · 메모=기록(blue) · 자동=자동화(teal).
+                          */}
                           <span
                             className={styles.historyAvatar}
+                            data-kind={event.kind}
                             data-automatic={event.kind === "field_change"}
                             aria-hidden="true"
                           >
@@ -1519,7 +1554,7 @@ export function ItemDetailPanel({
                                   ? "자동 기록"
                                   : actorName ?? "담당자"}
                             </b>
-                            <span className={styles.historyKind}>
+                            <span className={styles.historyKind} data-kind={event.kind}>
                               {event.kind === "call" ? "통화" : event.kind === "field_change" ? "자동" : "메모"}
                             </span>
                             <time>

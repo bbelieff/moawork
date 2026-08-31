@@ -91,7 +91,21 @@ export function unplacedDetailKeys(
     .sort();
 }
 
+/**
+ * 상세 전용 필드로 «태어난» 칸의 key 접두 (#657).
+ *
+ * ★ 이게 「표에서 내리기」의 경계다. 표로 올린 것을 되돌릴 수 있어야 하지만,
+ *   원래부터 표 컬럼이던 것(owner·industry …)까지 내리면 그건 구조 축소다.
+ *   표에서 잠깐 감추는 일은 「표시 컬럼」이 이미 한다 — 그쪽은 값을 안 건드린다.
+ */
+export const DETAIL_FIELD_KEY_PREFIX = "detail_";
+
 export function detailKeyFromLabel(label: string): string {
   const base = label.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^\p{L}\p{N}_-]/gu, "");
-  return `detail_${base || "field"}`.slice(0, 80);
+  return `${DETAIL_FIELD_KEY_PREFIX}${base || "field"}`.slice(0, 80);
+}
+
+/** 표로 올렸다가 «다시 내릴 수 있는» 칸인가. */
+export function isDemotableDetailKey(key: string): boolean {
+  return key.startsWith(DETAIL_FIELD_KEY_PREFIX);
 }

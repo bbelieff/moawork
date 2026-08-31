@@ -56,8 +56,25 @@
 .timelineDot { position: absolute; top: 1.28rem; left: 0.09rem; width: 0.36rem; height: 0.36rem; border: 2px solid var(--mw-card); border-radius: 50%; background: var(--mw-sub); box-shadow: 0 0 0 1px var(--mw-line); }
 .recipientGroup { display: grid; gap: 0.15rem; border-radius: 0.55rem; background: var(--mw-bg); padding: 0.45rem; }
 .recipientGroup > b { padding: 0.15rem 0.4rem; color: var(--mw-sub); font-size: 0.61rem; }
-.followerRow { display: grid; grid-template-columns: minmax(0, 1fr) 2rem; align-items: center; border-radius: 0.5rem; }
+.followerRow { display: grid; grid-template-columns: minmax(0, 1fr) 1.7rem; align-items: center; border-radius: 0.5rem; }
 .followerRow:hover, .followerRow:focus-within { background: var(--mw-card); }
+
+/*
+ * #657 — 「직접 추가」 목록만 한 줄로 접는다.
+ *
+ * 한 번에 여러 명을 넣을 수 있게 되면서(multiple) 이 목록이 길어진다. 한 사람이
+ * 2.65rem 을 쓰고 이름·소속이 두 줄이라, 다섯 명만 넣어도 팝오버가 스크롤된다.
+ *
+ * ★ 지우는 정보는 없다 — 이름과 소속을 «한 줄에» 두고 높이만 낮춘다.
+ * ★ 「규칙 수신자」(잠김) 는 한 줄뿐이고 «바꿀 수 없는 사실» 을 말하는 자리라 그대로 둔다.
+ *   .followerRow 안쪽만 좁히므로 그쪽은 안 닿는다.
+ */
+.followerRow .person { min-height: 2rem; gap: 0.4rem; padding: 0.2rem 0.4rem; }
+.followerRow .avatar { width: 1.3rem; height: 1.3rem; font-size: 0.55rem; }
+.followerRow .personCopy { display: flex; min-width: 0; align-items: baseline; gap: 0.35rem; }
+.followerRow .personCopy b { flex: 0 1 auto; }
+.followerRow .personCopy small { flex: 1 1 auto; min-width: 0; }
+.followerRow .remove { width: 1.6rem; height: 1.6rem; }
 .remove { width: 1.8rem; height: 1.8rem; border: 0; border-radius: 50%; background: transparent; color: var(--mw-sub); font: inherit; font-size: 1rem; cursor: pointer; opacity: 0; pointer-events: none; }
 .followerRow:hover .remove, .followerRow:focus-within .remove { opacity: 1; pointer-events: auto; }
 .remove:hover { background: var(--mw-bg); color: var(--mw-error); }

@@ -762,6 +762,34 @@
   font-weight: 700;
 }
 
+/*
+ * #657 — 히스토리 종류를 색으로 나눈다.
+ *
+ * 전에는 통화·메모·자동이 «전부 같은 파란 배지» 라, 목록을 훑을 때 「전화한 것」을
+ * 메모 사이에서 골라낼 수 없었다. 아바타만 자동일 때 회색이었고 배지는 셋 다 같았다.
+ *
+ * ★ 새 색을 만들지 않고 토큰의 «뜻» 을 그대로 쓴다(globals.css 의 역할 별칭).
+ *     --mw-people      담당자·댓글·멘션    → 통화 (사람과 직접 접촉한 기록)
+ *     --mw-record      딜·기록·파이프라인   → 메모 (기본값 그대로)
+ *     --mw-automation  자동화·연결·흐름     → 자동 기록
+ *   플레이북 §4 가 coral 을 «필터 강조» 에 쓰지 말라고 한 것은 UI 상태 표시 얘기다.
+ *   여기는 사람이 한 접촉을 가리키는 자리라 그 뜻에 맞는다.
+ */
+.historyKind[data-kind="call"] {
+  background: var(--mw-tint-coral);
+  color: var(--mw-people);
+}
+
+.historyKind[data-kind="field_change"] {
+  background: var(--mw-tint-teal);
+  color: var(--mw-automation);
+}
+
+.historyAvatar[data-kind="call"] {
+  background: var(--mw-tint-coral);
+  color: var(--mw-people);
+}
+
 .historyLine time {
   margin-left: auto;
   color: var(--mw-sub);
