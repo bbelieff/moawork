@@ -241,9 +241,13 @@ GitHub Issue(Project #1) → Task → Dispatch → 워커 터미널
 >
 > **① 반드시 «새 워크트리» 로 띄운다.**
 > ```
-> worker-start --task <id> --worktree new-top-level --name <이름> --agent codex --setup run
+> worker-start --task <id> --worktree new-top-level --name <이름> --agent codex --setup skip
 > ```
 > 기존 워크트리를 재사용하면 **지시문이 자동 주입되지 않는다.** 디스패치만 붙고 프롬프트는 빈 채로 뜬다.
+>
+> ★ **2026-08-21 정정 — `--setup run` 을 쓰지 않는다.** `npm install` 이 도는 동안
+>   디스패치가 만료돼 2026-08-20 하루에 아홉 번 실패했다. `npm install` 은 워커가 스스로 한다 — §6⑥ F.
+>   **«새 워크트리» 는 그대로 지킨다** — 지시문 자동 주입은 거기에 달려 있고 `--setup` 과 무관하다.
 >
 > **② 권한 토큰은 «주입된 지시문 텍스트 안» 에 들어온다.**
 > 터미널에 디스패치가 배정돼 있어도, **지시문을 손으로 붙여넣으면 권한이 없다.**
@@ -260,7 +264,7 @@ GitHub Issue(Project #1) → Task → Dispatch → 워커 터미널
 > 보고를 코디네이터가 터미널에서 손으로 받아 `task-update` 로 정산해야 한다.
 >
 > **③ CLI 타임아웃은 실패가 아니다. 절대 재시도하지 마라.**
-> `--setup run` 은 `npm install` 을 돌려서 응답이 늦다. `runtime_unavailable` 이 떠도
+> 워크트리를 새로 만드느라 응답이 늦을 수 있다(`--setup run` 을 쓰면 더 심하다 — 위 ①). `runtime_unavailable` 이 떠도
 > **워크트리·터미널·디스패치·주입은 이미 다 됐다.**
 > → `orca terminal list` · `git worktree list` 로 **실물부터 확인한다.**
 > → 확인 없이 재시도하면 워크트리와 터미널이 그만큼 복제된다. 오늘 3개를 만들었다.
@@ -421,6 +425,17 @@ GitHub Issue나 댓글만으로는 배정되지 않는다. 배정은 코디네�
 ```
 
 **Issue와 Project #1 범위 없이 착수하지 않는다.** 없으면 코디네이터에게 요청한다.
+
+- 판은 **`github.com/users/bbelieff/projects/1`** — 이름은 「MoaWork 작업 대시보드 (파일럿)」.
+- **닫을 때 이유를 남긴다** — 취소는 `not planned`, 중복은 `duplicate`.
+  그냥 닫으면 목록에서 「해냈다」와 「안 하기로 했다」가 같은 얼굴이 된다.
+- **열린 Issue 는 전부 Project #1 에 있어야 한다.** 판에 없는 Issue 는 아무도 못 본다 —
+  2026-08-31 점검에서 열린 21건 중 **14건이 판에 없었다.** 확인은 한 줄이다:
+
+```bash
+gh issue list --repo bbelieff/moawork --state open --json number --jq '[.[].number]'
+gh project item-list 1 --owner bbelieff --format json --limit 1000   # 둘을 대조한다
+```
 
 ### 4.1 새 개발을 발견했을 때 — 자동 등록
 
@@ -587,7 +602,7 @@ gh pr checkout <PR 번호>          # 권장 — 브랜치 이름표까지 정�
 
 ```
 새 코디네이터가 이어받는 법
-  ① GitHub Project #1을 연다 — 무엇이 진행 중이고 무엇이 막혀 있는지가 거기 있다
+  ① GitHub Project #1을 연다 (github.com/users/bbelieff/projects/1) — 무엇이 진행 중이고 무엇이 막혀 있는지가 거기 있다
   ② orca orchestration run-list / task-list — 살아 있는 Task 와 Dispatch 를 본다
   ③ orca orchestration run-use --id <run> — 그 Run 을 자기 터미널에 묶는다
   ④ 돌고 있는 워커는 «그대로 둔다». 다시 세우지 않는다 — 하던 일이 날아간다
@@ -692,6 +707,82 @@ Supersedes PR #583
 - 원본 block의 id·severity·title·location·reproduction을 바꾸거나 한 건이라도 빼면
   `node scripts/merge-pr.mjs <PR번호>`가 fail-closed한다.
 - 일반 PR에는 이 추가 판정이 없다. `takeover`/`supersedes`를 명시한 PR만 대상이다.
+
+### ⑥ 원격 제어 세션이 죽었을 때 — 되살리는 법 (2026-08-21 실측 확정)
+
+claude.ai 에 **「원격 제어 연결 끊김」** 이 뜨는 것은 **claude.ai 가 고장난 게 아니다.**
+**이 컴퓨터의 로컬 `claude.exe` 가 죽은 것**이다. 그래서 고치는 자리도 여기다.
+
+> **★ 대화는 안 날아간다.** 트랜스크립트는 매 턴 디스크에 적힌다
+> (`~/.claude/projects/<프로젝트>/<세션ID>.jsonl`). 되살리면 **문맥이 그대로 돌아온다.**
+> **새 세션을 세우지 마라** — §6.2 의 인수인계는 «트랜스크립트가 없을 때» 의 최후수단이다.
+
+**A. 세션 ID 를 찾는다** — claude.ai 화면의 세션 이름과 같은 것을 고른다.
+
+```bash
+cd ~/.claude/projects/C--Users-Belief-desktop-Desktop--------MoaWork
+ls -lt *.jsonl | head            # 가장 최근에 쓰인 것이 죽은 세션이다
+grep -l "모아워크 DC 코디네이터(오르카)" *.jsonl   # 이름으로 확정한다
+```
+
+**B. 진짜 죽었는지 확인한다** — 살아 있는 것을 두 번 띄우면 그때부터 유령이 생긴다.
+
+```bash
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | \
+  Where-Object { \$_.CommandLine -like '*<세션ID 앞 8자>*' } | Select ProcessId,Name"
+```
+**아무것도 안 나오면 죽은 것이다.** 나오면 되살리지 말고 그 창을 찾아라.
+
+**C. 되살린다 — 한 줄이다.**
+
+```bash
+orca terminal create --worktree current --title "<원래 세션 이름>" \
+  --command "claude --resume <세션ID> --remote-control \"<원래 세션 이름>\""
+```
+
+- `--resume` 과 `--remote-control` 은 **같이 쓸 수 있다.** 2026-08-21 실증.
+- **claude.ai 의 «같은 카드» 로 다시 붙는다.** 새 카드가 생기지 않는다 —
+  브리지 ID(`cse_…`)가 트랜스크립트에 박혀 있어서 그것을 그대로 다시 쓴다.
+- **이미 떠 있는 창에서 원격 제어만 다시 켜려면** TUI 안에서 `/remote-control`.
+- 뜬 뒤 `orca terminal read --terminal <handle>` 로
+  `/remote-control is active · … https://claude.ai/code/session_…` 줄을 **눈으로 확인**한다.
+
+**D. 되살린 세션에 «죽어 있던 동안 바뀐 것» 을 먹인다 — 이걸 빼면 유령을 상대한다.**
+
+되살아난 세션은 **자기가 죽은 줄 모른다.** 죽기 직전 화면을 그대로 믿고 이어서 움직인다.
+2026-08-21 에는 «엔터를 기다리는 BBE-236 코덱스 창» 이 이미 없어진 뒤였다.
+
+```bash
+orca terminal list                         # 살아 있는 터미널 — 워커가 실제로 남았나
+git worktree list                          # 워크트리는 남았는데 에이전트가 없을 수 있다
+orca orchestration run-use --id <run>      # ★ Run 바인딩은 터미널마다다. 되살리면 풀려 있다
+orca orchestration task-list
+orca orchestration worker-list             # retained/active 는 «장부» 다. 위 terminal list 와 대조하라
+```
+
+그리고 그 결과를 **`[복구 알림 — 지시가 아니다. 읽고 대기하라]`** 로 시작하는 한 덩어리로 보낸다.
+지시로 보내면 그 세션이 belie 승인 없이 라운드를 다시 돌린다.
+
+**E. 왜 죽었는지도 같이 본다 — 안 보면 또 죽는다.**
+
+```bash
+tail -50 ~/.claude/daemon.log              # low memory / upgrade self-restart 가 여기 찍힌다
+powershell -NoProfile -Command "\$o=Get-CimInstance Win32_OperatingSystem; \
+  '{0}MB free / {1}MB' -f [math]::Round(\$o.FreePhysicalMemory/1024), \
+  [math]::Round(\$o.TotalVisibleMemorySize/1024)"
+```
+
+**실측된 사인은 둘이다.**
+- **메모리 고갈** — 16GB 기계에서 `claude.exe` 20개 이상이 동시에 떠 있었고
+  데몬이 `low memory (962MB free)` 를 찍고 워커를 죽이고 있었다. **워커를 5명 넘게 동시에 띄우지 마라.**
+- **바이너리 자동 업그레이드** — `binary … changed (mtime changed) — self-restarting for upgrade`.
+  데몬은 스스로 돌아오지만 **RC 세션은 안 돌아온다.** 위 C 로 다시 띄운다.
+
+**F. 죽지 않게 — 되살린 뒤에 반드시 한다.**
+
+- **끝난 워커 터미널을 그때그때 회수한다** (§8.4 ③). 13개가 유령으로 남아 있었다.
+- **`--setup run` 을 쓰지 마라.** `npm install` 이 도는 동안 디스패치가 만료된다 —
+  2026-08-20 하루에 아홉 번 그렇게 실패했다. `--setup skip` 으로 띄우고 `npm install` 은 워커가 스스로 한다.
 
 ---
 
@@ -962,6 +1053,8 @@ node docs/design/dump-mockup.mjs     # 목업을 글로 읽기
 
 | 날짜 | 내용 |
 | --- | --- |
+| 2026-08-24 | **CUTOVER.** 배정 정본을 Linear 에서 **GitHub Issue + Project #1** 로 옮겼다(belie 결정). Linear MoaWork 이슈 180건은 `[MIGRATED][BBE-N]`(#340~#519대)로 이관하고 그 뒤로 Linear 는 `READ_ONLY_ARCHIVE` — §4·§6·§10.1 |
+| 2026-08-21 | 원격 제어 세션 복구 절차 신설 — §6⑥. `--resume` 과 `--remote-control` 을 같이 쓰면 **같은 claude.ai 카드로** 다시 붙는다는 것을 실증 |
 | 2026-08-20 | **일원화.** 정본을 `CLAUDE.md`·`AGENTS.md` 둘로 확정 · 편제를 «코디네이터 1 + 워커 N» 으로 교체 · 반/칸/진영 축 폐지 · 워커 온보딩 전면 교체 · `docs/**` 기록으로 강등 · §0 신설 |
 | 2026-08-12 | 전면 개정. 종합 진단 반영 · 40칸→24세션 · 완료의 정의 개정 · 라벨 배정 · 3중 방어 |
 | 2026-08-09 | 운영 규약 (폐기 — §10.2) |

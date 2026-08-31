@@ -38,7 +38,6 @@ const TEMPLATE = [
   path.join(import.meta.dirname, "board.template.html"),        // 서버 파일 옆
 ].filter(Boolean).find((p) => fs.existsSync(p))
   || path.join(ROOT, "tools", "board", "board.template.html");
-const PROJECT = "MoaWork · 운영 안정화 및 어드민";
 
 /* ── .env 읽기 ───────────────────────────────────────────── */
 function loadEnv() {
@@ -73,6 +72,27 @@ const FUEL_FILE = path.join(ROOT, "tools", "board", "fuel.json");
  */
 /** 인증이 되어 있는가 — 없으면 화면이 «어떻게 로그인하는지» 를 말해 준다. */
 const AUTH_OK = () => github.hasAuth();
+
+/**
+ * 켤 때 찍는 인증 한 줄.
+ *
+ * ★ 왜 함수로 뺐나 — 여기 있던 줄이 `AUTH_OK ? … : …` 였다. `AUTH_OK` 는 «함수» 라
+ *   언제나 참이고, 그래서 **로그인이 안 돼 있어도 늘 「확인됨」 이 찍혔다.**
+ *   켤 때 딱 한 줄 있는 경고가 영원히 안 뜬다는 뜻이다(#663).
+ *
+ * ★ 그래서 boolean 만 받는다. 함수를 넘기면 «조용히 거짓말» 하는 대신 첫 실행에서 바로 터진다.
+ *   이 종류의 실수는 조용하면 몇 달을 간다.
+ */
+export function authBanner(ok) {
+  if (typeof ok !== "boolean") {
+    throw new TypeError(
+      `authBanner 는 판정 «결과» 를 받는다 — ${typeof ok} 를 받았다. AUTH_OK() 처럼 불러서 넘겨라.`,
+    );
+  }
+  return ok
+    ? "  ✅ GitHub 인증 확인됨"
+    : "  ⚠️  GitHub 인증 없음 — `gh auth login` 하고 다시 켜라";
+}
 const GITHUB_REPO = (ENV.MOAWORK_GITHUB_REPO || "bbelieff/moawork").trim();
 const GITHUB_API = (() => {
   const fallback = "https://api.github.com";
@@ -839,7 +859,7 @@ if (!ENV.DASHBOARD_NO_LISTEN) server.listen(PORT, () => {
   console.log(`  다른 기기    http://<tailnet 주소>:${PORT}`);
   console.log("");
   console.log(`  템플릿  tools/board/board.template.html  (정본 — 디자인은 여기만 고친다)`);
-  console.log(AUTH_OK ? "  ✅ Linear 키 확인됨" : "  ⚠️  Linear 키 없음 — .env 의 LINEAR_API_KEY 를 채우고 다시 켜라");
+  console.log(authBanner(AUTH_OK()));
   console.log(L);
   console.log("  끄려면 Ctrl+C");
   getOperations(true).catch(() => {});
