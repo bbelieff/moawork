@@ -4,7 +4,18 @@ import { BOARD_COLUMN_ERROR_CODES, BOARD_COLUMN_RPC, boardColumnErrorMessage, ty
 describe("BBE-176 board column RPC contract", () => {
   it("freezes the exact RPC names and failure codes consumed by C", () => {
     expect(BOARD_COLUMN_RPC).toEqual({ command: "execute_board_column_command", typeDryRun: "board_column_type_dry_run" });
-    expect(BOARD_COLUMN_ERROR_CODES).toEqual({ permissionDenied: "42501", notFound: "P0002", invalidOrUnsafe: "22023", staleDryRun: "40001", duplicateKey: "23505" });
+    expect(BOARD_COLUMN_ERROR_CODES).toEqual({ permissionDenied: "42501", notFound: "P0002", invalidOrUnsafe: "22023", staleDryRun: "40001", duplicateKey: "23505", undefinedFunction: "42883" });
+  });
+
+  /*
+   * #653 — 「잠시 뒤 다시 시도해 주세요」가 «절대 안 풀리는» 실패에 붙으면 안 된다.
+   * 42883(이름 못 찾음)은 서버 설정 문제라 시간이 지나도 그대로다. 그런데 이 코드가
+   * 오류 표에 없어서 기본 문구로 떨어졌고, 총괄은 될 때까지 눌렀다 — 16번.
+   */
+  it("42883 은 «다시 시도» 라고 말하지 않는다 — 눌러서 될 일이 아니다", () => {
+    const message = boardColumnErrorMessage("42883");
+    expect(message).toContain("관리자");
+    expect(message).not.toContain("잠시 뒤");
   });
 
   it("requires tenant, board, request id, operation, and payload", () => {

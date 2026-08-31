@@ -863,7 +863,19 @@ export function GroupTable({
                       onMouseDown={startResize(col.id)}
                       onDoubleClick={resetWidth(col.id)}
                       title="끌어서 폭 조절 · 두 번 누르면 원래대로"
-                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-mw-record/40"
+                      /*
+                       * #655 ② — 모서리 슬롭 제거.
+                       *
+                       * 전에는 `w-1.5 hover:bg-mw-record/40` 이라, 올리면 «6px 파란 덩어리» 가 떴다.
+                       * 평소의 컬럼 구분선은 1px 인데 그보다 여섯 배 굵고, 구분선보다 왼쪽으로
+                       * 어긋나 있고, `top-0 h-full` 이 테두리를 빼고 재서 셀 아래까지 닿지도 않았다.
+                       * 모서리에 «자리를 못 잡은 덩어리» 가 하나 생기는 것으로 보인다.
+                       *
+                       * ★ 잡는 영역은 6px 그대로 둔다 — 1px 를 겨누게 만들면 못 잡는다.
+                       *   바꾸는 것은 «보이는 것» 뿐이다: 오른쪽 끝에 2px 선으로, 구분선 위에 정확히 겹치게.
+                       * ★ top-0 h-full → inset-y-0. 그래야 테두리까지 포함한 셀 «전체» 높이가 된다.
+                       */
+                      className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize border-r-2 border-transparent transition-colors hover:border-mw-record"
                     />
                   )}
                   {canManageColumns&&!structureLocked?<span className="sr-only focus-within:not-sr-only">

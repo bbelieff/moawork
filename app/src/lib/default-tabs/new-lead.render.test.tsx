@@ -131,11 +131,20 @@ describe("② 표 렌더 — 업무 컬럼과 고정 열", () => {
 });
 
 describe("⑤ 필터는 칩 + 팝오버다 — 네이티브 select 나열 금지", () => {
-  function renderToolbar() {
+  /*
+   * #655 — 필터 칩은 「필터」 패널 안으로 들어갔다. 원칙 9(칩+팝오버·네이티브 select 금지)는
+   * 그대로이고 «어디에 서 있는가» 만 바뀌었다.
+   *
+   * ★ 걸린 필터가 하나라도 있으면 패널은 «기본으로 열린다»(#602 — 되살아난 필터는 보여야 한다).
+   *   그래서 칩의 존재를 재는 시험은 그 상태로 그린다. 접힌 기본 상태는 따로 잰다.
+   */
+  const OPEN = { ...EMPTY_FILTERS, assignees: ["someone"] };
+
+  function renderToolbar(filters = OPEN) {
     return renderToStaticMarkup(
       <BoardToolbar
         columns={repo.listColumns(ctx, boardId)}
-        filters={EMPTY_FILTERS}
+        filters={filters}
         onChange={() => {}}
         matched={5}
         total={5}
@@ -143,6 +152,20 @@ describe("⑤ 필터는 칩 + 팝오버다 — 네이티브 select 나열 금지
       />,
     );
   }
+
+  it("아무것도 안 걸리면 필터는 접혀 있고 「필터」 버튼 하나만 선다 (#655)", () => {
+    const html = renderToolbar(EMPTY_FILTERS);
+    expect(html).toContain("필터");
+    expect(html).toContain("찾기");
+    expect(html).toContain("보기");
+    expect(html).toContain("저장");
+    // 접혔으므로 개별 필터 칩은 아직 서 있지 않다 — 줄이 길어지던 원인이 이것이었다.
+    expect(html).not.toContain("상담 상황");
+    // 없앤 것은 없다. 「보기」·「저장」은 접지 않는다.
+    expect(html).toContain("정렬");
+    expect(html).toContain("표시 컬럼");
+    expect(html).toContain("뷰로 저장");
+  });
 
   it("네이티브 <select> 를 쓰지 않는다 (ui-guidelines 원칙 9)", () => {
     expect(renderToolbar()).not.toContain("<select");

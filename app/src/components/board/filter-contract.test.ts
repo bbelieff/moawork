@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import {
+  activeFacetCount,
+  activeFilterCount,
   applyFilters,
   decodeBoardFilters,
   EMPTY_FILTERS,
@@ -209,5 +211,39 @@ describe("BBE-118 filter contract", () => {
       ...EMPTY_FILTERS,
       byColumn: { [otherInfoFacetFilterKey("other_info", "export")]: ["true"] },
     })).toBe(false);
+  });
+});
+
+/*
+ * #655 — 「필터」 버튼 배지의 수.
+ *
+ * activeFilterCount 와 «일부러» 다르다. 저쪽은 「초기화」를 띄울지 정하려고 지금 무엇이든
+ * 걸려 있나를 센다(검색어·정렬·표시 컬럼 포함). 여기는 «접힌 패널 안에» 몇 개가 걸렸나다.
+ * 둘을 같은 수로 만들면 배지가 「2」라고 하는데 열어 보면 하나뿐인 상태가 생긴다.
+ */
+describe("#655 접힌 필터 배지는 패널 «안» 만 센다", () => {
+  it("검색어·정렬·표시 컬럼은 배지에 안 들어간다 — 패널 밖에 그대로 보이기 때문이다", () => {
+    const outside = {
+      ...EMPTY_FILTERS,
+      q: "대한",
+      sorts: [{ columnKey: "applied_on", direction: "asc" as const }],
+      visibleColumnKeys: ["title"],
+    };
+    expect(activeFacetCount(outside)).toBe(0);
+    // 대조군 — 저쪽 계수는 같은 상태를 3으로 센다. 둘이 다른 것이 «의도» 임을 못박는다.
+    expect(activeFilterCount(outside)).toBe(3);
+  });
+
+  it("담당자와 컬럼 필터만 센다", () => {
+    const inside = {
+      ...EMPTY_FILTERS,
+      assignees: ["u1"],
+      byColumn: { consult_status: ["a"], industry: [] },
+    };
+    expect(activeFacetCount(inside)).toBe(2);
+  });
+
+  it("빈 배열은 «걸린 것» 이 아니다 — 해제하면 배지가 사라져야 한다", () => {
+    expect(activeFacetCount({ ...EMPTY_FILTERS, byColumn: { consult_status: [] } })).toBe(0);
   });
 });

@@ -99,6 +99,45 @@ describe("BBE-107 action permission/value preservation", () => {
     ]);
   });
 
+  /*
+   * #654 — 같은 이름을 «또» 만들지 않는다.
+   *
+   * 전에는 이름이 겹치면 key 뒤에 _2, _3 … 을 붙여 조용히 하나 더 만들었다. 그래서
+   * 응답이 늦을 때 사용자가 「안 눌렸나」 하고 다시 누르면 누른 만큼 쌓인다 —
+   * 실제로 「법인공동인증서」가 16개 생겼고, 그 뒤 컬럼 명령이 통째로 죽어 있어서(#653)
+   * 지울 방법도 없었다.
+   *
+   * ★ runBoardAction 이 오류를 삼켜 flash 로 바꾸므로 «던졌는가» 로 재지 않는다.
+   *   «쓰지 않았는가» 로 잰다 — 사용자에게 중요한 것은 행이 안 생기는 것이다.
+   */
+  it("같은 이름의 상세 필드를 또 만들지 않는다 — 여러 번 눌러도 하나다", async () => {
+    mocks.detail.board.detail_layout_jsonb = [
+      { key: "detail_법인공동인증서", source: "detail", label: "법인공동인증서", type: "text" },
+    ];
+    mocks.detail.groups[0].detail_layout_jsonb = null;
+
+    for (let press = 0; press < 3; press += 1) {
+      await addDetailFieldAction(form({ boardId: "board-a", groupId: "group-a", label: "법인공동인증서", type: "text" }));
+    }
+
+    expect(mocks.setGroupLayout).not.toHaveBeenCalled();
+    expect(mocks.setBoardLayout).not.toHaveBeenCalled();
+  });
+
+  it("이름이 다르면 그대로 만든다 — 막는 것은 «같은 이름» 하나뿐이다", async () => {
+    mocks.detail.board.detail_layout_jsonb = [
+      { key: "detail_법인공동인증서", source: "detail", label: "법인공동인증서", type: "text" },
+    ];
+    mocks.detail.groups[0].detail_layout_jsonb = null;
+
+    await addDetailFieldAction(form({ boardId: "board-a", groupId: "group-a", label: "개인공동인증서", type: "text" }));
+
+    expect(mocks.setGroupLayout).toHaveBeenCalledWith(expect.anything(), "group-a", [
+      expect.objectContaining({ key: "detail_법인공동인증서" }),
+      expect.objectContaining({ key: "detail_개인공동인증서", source: "detail", label: "개인공동인증서" }),
+    ]);
+  });
+
   it("canonical unplaced 금융 셀은 physical sibling만 저장하고 replay·reload에서 한 셀이다", async () => {
     mocks.detail.board.source = "core.default-tab/new-lead";
     mocks.detail.board.detail_layout_jsonb = [];

@@ -41,10 +41,13 @@ function DeptCard({
   node,
   headName,
   members,
+  hasChildren,
 }: {
   node: Node;
   headName: string | null;
   members: OrgMemberView[];
+  /** 하위 부서가 «있는가». 없으면 「하위 포함」이라는 말 자체가 거짓이 된다(#644 ①). */
+  hasChildren: boolean;
 }): ReactElement {
   return (
     <div
@@ -58,9 +61,19 @@ function DeptCard({
         // 공석은 «비어 있음» 이 아니라 «보고가 위로 넘어간다» 는 사실이다. 목업도 이걸 강조한다.
         <div className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-400">책임자 공석</div>
       )}
+      {/*
+        ★ node.memberCount 를 쓰지 않는다 (#644 ①).
+          그 값은 loadOrgChart 가 «활성만» 센 것이고, reachCount 는 toTree 가 «전체» 를 센 것이다.
+          모집단이 다른 두 수를 나란히 놓으면, 하위 부서가 하나도 없는 부서가
+          「2명 · 하위 포함 3」 이라고 «하위가 있는 것처럼» 말하게 된다.
+          여기서는 바로 아래 이름표로 실제 그리는 members 를 그대로 센다 —
+          카드가 보여 주는 사람과 카드가 말하는 수가 같아진다.
+      */}
       <div className="mt-1 text-[11px] tabular-nums text-zinc-500">
-        {node.memberCount}명
-        {node.reachCount !== node.memberCount ? <span className="text-zinc-400"> · 하위 포함 {node.reachCount}</span> : null}
+        {members.length}명
+        {hasChildren && node.reachCount !== members.length ? (
+          <span className="text-zinc-400"> · 하위 포함 {node.reachCount}</span>
+        ) : null}
       </div>
       <MemberChips members={members} />
     </div>
@@ -83,7 +96,7 @@ function Branch({
   const kids = childrenOf(node.id);
   return (
     <div className="flex flex-col items-center">
-      <DeptCard node={node} headName={headNameOf(node.headUserId)} members={membersOf(node.id)} />
+      <DeptCard node={node} headName={headNameOf(node.headUserId)} members={membersOf(node.id)} hasChildren={kids.length > 0} />
       {kids.length > 0 ? (
         <>
           {/* 부모에서 내려오는 줄기 */}
