@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   setGroupLayout: vi.fn(),
   setValues: vi.fn(),
   createColumn: vi.fn(),
+  deleteColumn: vi.fn(),
   getItem: vi.fn(),
   detail: {
     board: { id: "board-a", org_id: "org-a", source: null as string | null, detail_layout_jsonb: [{ key: "detail_note", source: "detail", label: "메모", type: "text" }] as Array<Record<string, unknown>> },
@@ -28,6 +29,7 @@ vi.mock("@/lib/boards/server", () => ({
       getItem: mocks.getItem,
       setValues: mocks.setValues,
       createColumn: mocks.createColumn,
+      deleteColumn: mocks.deleteColumn,
       setBoardDetailLayout: mocks.setBoardLayout,
       setGroupDetailLayout: mocks.setGroupLayout,
     },
@@ -37,6 +39,7 @@ vi.mock("@/lib/boards/server", () => ({
 import {
   addDetailFieldAction,
   addUnplacedDetailEntryAction,
+  demoteDetailFieldAction,
   promoteDetailFieldAction,
   saveDetailLayoutAction,
   setDetailValueAction,
@@ -214,5 +217,84 @@ describe("BBE-107 action permission/value preservation", () => {
     expect(mocks.setGroupLayout).not.toHaveBeenCalled();
     expect(mocks.setBoardLayout).not.toHaveBeenCalled();
     expect(mocks.createColumn).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * #657 — 「표로 올리기」에 되돌리는 길을 낸다.
+ *
+ * 전에는 올리는 버튼만 있었고 그것도 source === "detail" 일 때만 그려져서,
+ * 한 번 누르면 버튼 자체가 사라졌다. 되돌릴 수 없는 한 방향 문이었다.
+ */
+describe("#657 표로 올린 상세 필드를 다시 내린다", () => {
+  beforeEach(() => {
+    // ★ 이 describe 는 위 describe 의 beforeEach 를 못 받는다. 목 초기화를 여기서 직접 한다 —
+    //   안 하면 앞 시험의 호출 수가 그대로 누적돼 «안 불렀다» 단언이 거짓으로 실패한다.
+    vi.clearAllMocks();
+    mocks.guard.mockResolvedValue({ kind: "allowed" });
+    mocks.setBoardLayout.mockImplementation(async (_ctx, _boardId: string, layout: Array<Record<string, unknown>>) => {
+      mocks.detail.board.detail_layout_jsonb = layout;
+    });
+    mocks.setGroupLayout.mockImplementation(async (_ctx, groupId: string, layout: Array<Record<string, unknown>>) => {
+      const group = mocks.detail.groups.find((candidate) => candidate.id === groupId);
+      if (group) group.detail_layout_jsonb = layout;
+    });
+    mocks.detail.board.source = null;
+    mocks.detail.columns = [{ id: "col-1", key: "detail_법인공동인증서", label: "법인공동인증서", type: "text" }];
+    mocks.detail.board.detail_layout_jsonb = [
+      { key: "detail_법인공동인증서", source: "column", label: "법인공동인증서", type: "text" },
+    ];
+    mocks.detail.groups[0].detail_layout_jsonb = null;
+  });
+
+  it("배치를 상세로 되돌리고 컬럼은 휴지통으로 보낸다 — 값은 지우지 않는다", async () => {
+    await demoteDetailFieldAction(form({ boardId: "board-a", fieldKey: "detail_법인공동인증서" }));
+
+    expect(mocks.setBoardLayout).toHaveBeenCalledWith(expect.anything(), "board-a", [
+      expect.objectContaining({ key: "detail_법인공동인증서", source: "detail" }),
+    ]);
+    // deleteColumn 은 archive 다(restoreColumn 이 짝으로 있다). 값과 설정이 남는다.
+    expect(mocks.deleteColumn).toHaveBeenCalledWith(expect.anything(), "board-a", "col-1");
+  });
+
+  it("올리기 → 내리기 왕복 뒤 배치가 원래대로 돌아온다", async () => {
+    mocks.detail.columns = [];
+    mocks.detail.board.detail_layout_jsonb = [
+      { key: "detail_법인공동인증서", source: "detail", label: "법인공동인증서", type: "text" },
+    ];
+
+    await promoteDetailFieldAction(form({ boardId: "board-a", fieldKey: "detail_법인공동인증서" }));
+    expect(mocks.detail.board.detail_layout_jsonb).toEqual([
+      expect.objectContaining({ source: "column" }),
+    ]);
+
+    mocks.detail.columns = [{ id: "col-1", key: "detail_법인공동인증서", label: "법인공동인증서", type: "text" }];
+    await demoteDetailFieldAction(form({ boardId: "board-a", fieldKey: "detail_법인공동인증서" }));
+    expect(mocks.detail.board.detail_layout_jsonb).toEqual([
+      expect.objectContaining({ source: "detail" }),
+    ]);
+  });
+
+  it("★ 원래부터 표 컬럼이던 칸은 내리지 않는다 — 되돌리기가 아니라 구조 축소다", async () => {
+    mocks.detail.columns = [{ id: "col-owner", key: "owner", label: "담당자", type: "person" }];
+    mocks.detail.board.detail_layout_jsonb = [
+      { key: "owner", source: "column", label: "담당자", type: "person" },
+    ];
+
+    await demoteDetailFieldAction(form({ boardId: "board-a", fieldKey: "owner" }));
+
+    expect(mocks.setBoardLayout).not.toHaveBeenCalled();
+    expect(mocks.deleteColumn).not.toHaveBeenCalled();
+  });
+
+  it("이미 상세인 칸을 또 내려도 아무것도 바꾸지 않는다", async () => {
+    mocks.detail.board.detail_layout_jsonb = [
+      { key: "detail_법인공동인증서", source: "detail", label: "법인공동인증서", type: "text" },
+    ];
+
+    await demoteDetailFieldAction(form({ boardId: "board-a", fieldKey: "detail_법인공동인증서" }));
+
+    expect(mocks.setBoardLayout).not.toHaveBeenCalled();
+    expect(mocks.deleteColumn).not.toHaveBeenCalled();
   });
 });

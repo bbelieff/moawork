@@ -294,6 +294,48 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
     expect(html).toContain("기본으로 되돌리기");
   });
 
+  /*
+   * #657 — 표로 올린 것을 다시 내리는 길.
+   *
+   * 전에는 올리는 버튼이 source === "detail" 일 때만 그려져서, 한 번 누르면 버튼 자체가
+   * 사라졌다. 총괄의 말: 「표로 보이게 하는 버튼은 있는데 이게 되돌릴수는 없게 되어있음」.
+   */
+  it("표로 올라간 상세 필드에는 「상세만」으로 되돌리는 버튼이 붙는다", () => {
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={{ ...row, values: { detail_cert: "ㄴㄴ" } }}
+        columns={columns}
+        boardLayout={[]}
+        layout={[{ key: "detail_cert", source: "column", label: "법인공동인증서", type: "text" }]}
+        inherited={false}
+        canEditItems
+        canManageColumns
+        defaultOpen
+      />,
+    );
+    expect(html).toContain("법인공동인증서을 표에서 내리기");
+    // 이미 표에 있으므로 «올리기» 는 없어야 한다 — 두 버튼이 같이 서면 무엇이 참인지 모른다.
+    expect(html).not.toContain("법인공동인증서을 표에도 보이기");
+  });
+
+  it("★ 원래부터 표 컬럼이던 칸에는 되돌리기 버튼이 안 붙는다 — 구조 축소가 아니다", () => {
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={{ ...row, values: { phone: "010-0000-0000" } }}
+        columns={columns}
+        boardLayout={[]}
+        layout={[{ key: "phone", source: "column", label: "연락처", type: "phone" }]}
+        inherited={false}
+        canEditItems
+        canManageColumns
+        defaultOpen
+      />,
+    );
+    expect(html).not.toContain("연락처을 표에서 내리기");
+  });
+
   it("상세 연락처는 편집 입력에서도 010-0000-0000 표기로 시작한다", () => {
     const phoneColumn: BoardColumn = { ...columns[0], id: "col-phone", key: "phone", label: "연락처", type: "phone" };
     const html = renderStaticPanel(

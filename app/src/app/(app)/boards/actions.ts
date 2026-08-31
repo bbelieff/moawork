@@ -38,6 +38,7 @@ import { NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { notifyBoardItemMoved } from "@/lib/notify/board-actions";
 import {
   detailKeyFromLabel,
+  isDemotableDetailKey,
   normalizeDetailLayout,
   resolveBoardDetailLayout,
   resolveDetailLayout,
@@ -940,6 +941,55 @@ export async function promoteDetailFieldAction(formData: FormData): Promise<void
       if (group.detail_layout_jsonb === null || group.detail_layout_jsonb === undefined) return;
       await graph.repo.setGroupDetailLayout(ctx, group.id, promote(normalizeDetailLayout(group.detail_layout_jsonb)));
     }));
+    revalidatePath(`/boards/${boardId}`);
+  });
+}
+
+/**
+ * 「표」로 올린 칸을 다시 «상세 전용» 으로 내린다 (#657).
+ *
+ * ★ 왜 필요한가 — 올리는 버튼은 있는데 내리는 길이 없었다.
+ *   화면에서도 그 버튼은 `entry.source === "detail"` 일 때만 그려져서,
+ *   한 번 누르면 버튼 자체가 사라졌다. 되돌릴 수 없는 한 방향 문이었다.
+ *
+ * ★ promote 의 «정확한 역방향» 이다. 그래서 promote 로 올라갈 수 있었던 것만 내린다 —
+ *   key 가 detail_ 로 시작하는 칸. 원래부터 표 컬럼이던 것(owner·industry …)을 내리면
+ *   그건 되돌리기가 아니라 구조 축소다(D71~D75). 표에서 잠깐 감추는 일은
+ *   「표시 컬럼」이 이미 하고, 그쪽은 값을 건드리지 않는다.
+ *
+ * ★ 컬럼은 «지우지 않고» 휴지통으로 보낸다(deleteColumn = archive).
+ *   값과 설정이 남아 restoreColumn 으로 되살아난다 — 되돌리기가 또 다른
+ *   되돌릴 수 없는 문이 되면 안 된다.
+ */
+export async function demoteDetailFieldAction(formData: FormData): Promise<void> {
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.column_manage");
+    const boardId = str(formData, "boardId");
+    const key = str(formData, "fieldKey");
+    if (!isDemotableDetailKey(key)) {
+      throw new Error("이 칸은 원래 표의 컬럼이라 상세로 내릴 수 없어요. 「표시 컬럼」에서 숨길 수 있어요.");
+    }
+    const graph = await createRequestBoards();
+    const detail = await graph.service.getBoardDetail(ctx, boardId);
+    const layouts = [normalizeDetailLayout(detail.board.detail_layout_jsonb), ...detail.groups
+      .filter((group) => group.detail_layout_jsonb !== null && group.detail_layout_jsonb !== undefined)
+      .map((group) => normalizeDetailLayout(group.detail_layout_jsonb))];
+    const entry = layouts.flat().find((candidate) => candidate.key === key && candidate.source === "column");
+    if (!entry) throw new Error("표에서 내릴 상세 필드를 찾을 수 없습니다.");
+
+    const demote = (layout: readonly DetailLayoutEntry[]) => layout.map((candidate) =>
+      candidate.key === key ? { ...candidate, source: "detail" as const } : candidate,
+    );
+    await graph.repo.setBoardDetailLayout(ctx, boardId, demote(normalizeDetailLayout(detail.board.detail_layout_jsonb)));
+    await Promise.all(detail.groups.map(async (group) => {
+      if (group.detail_layout_jsonb === null || group.detail_layout_jsonb === undefined) return;
+      await graph.repo.setGroupDetailLayout(ctx, group.id, demote(normalizeDetailLayout(group.detail_layout_jsonb)));
+    }));
+
+    // 배치를 먼저 내린 뒤에 컬럼을 치운다 — 순서가 반대면 «표에도 없고 상세에도 없는» 순간이 생긴다.
+    const column = detail.columns.find((candidate) => candidate.key === key);
+    if (column) await graph.repo.deleteColumn(ctx, boardId, column.id);
     revalidatePath(`/boards/${boardId}`);
   });
 }
