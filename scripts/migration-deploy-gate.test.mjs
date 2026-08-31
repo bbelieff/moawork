@@ -1,18 +1,115 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { execFile as execFileCallback, execFileSync } from "node:child_process";
+import { createHash, X509Certificate } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer, connect as connectTls } from "node:tls";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 import pg from "pg";
 import {
   assertProductionConnectionTarget,
   collectAddedMigrations,
   productionClientConfig,
   queryHostedGuard,
+  supabaseRootCertificate,
+  validateSupabaseRootCertificate,
   validateHostedRows,
   verifyHostedMigrations,
 } from "./migration-deploy-gate.mjs";
+
+const execFile = promisify(execFileCallback);
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function pemFromRaw(raw) {
+  const base64 = raw.toString("base64");
+  return Buffer.from(`-----BEGIN CERTIFICATE-----\n${base64.match(/.{1,64}/gu).join("\n")}\n-----END CERTIFICATE-----\n`);
+}
+
+function validateMutatedCertificate(bytes, now = Date.now()) {
+  const certificate = new X509Certificate(bytes);
+  return validateSupabaseRootCertificate(bytes, {
+    expectedFileSha256: sha256(bytes),
+    expectedRawSha256: sha256(certificate.raw),
+    now,
+  });
+}
+
+function opensslExecutable() {
+  if (process.platform !== "win32") return "openssl";
+  const gitExecPath = execFileSync("git", ["--exec-path"], { encoding: "utf8", windowsHide: true }).trim();
+  return resolve(gitExecPath, "..", "..", "bin", "openssl.exe");
+}
+
+async function generateHostileTlsFixture() {
+  const directory = await mkdtemp(join(tmpdir(), "migration-deploy-gate-tls-"));
+  const path = (name) => join(directory, name);
+  const run = (...args) => execFile(opensslExecutable(), args, { windowsHide: true });
+  try {
+    await run("ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", path("ca-key.pem"));
+    await run(
+      "req", "-x509", "-new", "-sha256", "-days", "2", "-key", path("ca-key.pem"),
+      "-subj", "/CN=Issue668 Runtime Attacker Root",
+      "-addext", "basicConstraints=critical,CA:TRUE",
+      "-addext", "keyUsage=critical,keyCertSign,cRLSign",
+      "-out", path("ca.pem"),
+    );
+    await run("ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", path("server-key.pem"));
+    await run(
+      "req", "-new", "-key", path("server-key.pem"), "-subj", "/CN=localhost",
+      "-addext", "subjectAltName=DNS:localhost", "-out", path("server.csr"),
+    );
+    await writeFile(
+      path("server-ext.cnf"),
+      "basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=serverAuth\nsubjectAltName=DNS:localhost\n",
+    );
+    await run(
+      "x509", "-req", "-in", path("server.csr"), "-CA", path("ca.pem"), "-CAkey", path("ca-key.pem"),
+      "-CAcreateserial", "-days", "2", "-sha256", "-extfile", path("server-ext.cnf"), "-out", path("server.pem"),
+    );
+    return {
+      ca: await readFile(path("ca.pem"), "utf8"),
+      cert: await readFile(path("server.pem"), "utf8"),
+      key: await readFile(path("server-key.pem"), "utf8"),
+      async dispose() { await rm(directory, { recursive: true, force: true }); },
+    };
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+async function authorizeHostileLoopback({ ca, cert, key }, servername = "localhost") {
+  const server = createServer({ key, cert });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  try {
+    const { port } = server.address();
+    return await new Promise((resolve, reject) => {
+      const socket = connectTls({
+        host: "127.0.0.1",
+        port,
+        servername,
+        ca,
+        rejectUnauthorized: true,
+      });
+      socket.once("secureConnect", () => {
+        const authorized = socket.authorized;
+        socket.end();
+        resolve(authorized);
+      });
+      socket.once("error", reject);
+    });
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
 
 const migration = {
   logicalKey: "141_issue632_start_company_work_v2",
@@ -93,18 +190,86 @@ test("production client requires certificate verification", () => {
  * 파일이 갈아끼워지면 관문은 조용히 «다른 것» 을 믿게 된다. 조용한 신뢰 이동이
  * 가장 위험하므로 지문이 다르면 fail-closed 여야 한다.
  */
-test("pinned Supabase root certificate is the expected one", async () => {
-  const { supabaseRootCertificate } = await import("./migration-deploy-gate.mjs");
+test("pinned Supabase root certificate is one exact current self-signed CA", async () => {
   const pem = supabaseRootCertificate();
-  assert.match(pem, /-----BEGIN CERTIFICATE-----/u);
-  assert.match(pem, /-----END CERTIFICATE-----/u);
+  const bytes = await readFile(new URL("./supabase-prod-ca-2021.crt", import.meta.url));
+  assert.equal(Buffer.byteLength(pem), bytes.length);
+  assert.equal(pem, bytes.toString("utf8"));
+  assert.equal(sha256(bytes), "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7");
 
-  // 지문을 여기서 «한 번 더» 독립적으로 센다 — 소스가 자기 상수를 자기 검사하는 것을 막는다.
-  const body = pem.match(/-----BEGIN CERTIFICATE-----([\s\S]+?)-----END CERTIFICATE-----/u)[1];
-  const digest = createHash("sha256")
-    .update(Buffer.from(body.replace(/\s/gu, ""), "base64"))
-    .digest("hex");
-  assert.equal(digest, "807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa");
+  const certificate = new X509Certificate(pem);
+  assert.equal(sha256(certificate.raw), "807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa");
+  assert.equal(certificate.ca, true);
+  assert.equal(certificate.subject, certificate.issuer);
+  assert.equal(certificate.checkIssued(certificate), true);
+  assert.equal(certificate.verify(certificate.publicKey), true);
+  assert.equal(certificate.validFromDate.getTime() <= Date.now(), true);
+  assert.equal(Date.now() <= certificate.validToDate.getTime(), true);
+});
+
+test("CA loader rejects extra trust material and non-canonical whole files", async () => {
+  const bytes = await readFile(new URL("./supabase-prod-ca-2021.crt", import.meta.url));
+  const pem = bytes.toString("utf8");
+  const fixture = await generateHostileTlsFixture();
+  try {
+    const hostileFiles = [
+      ["second certificate", Buffer.from(pem + fixture.ca)],
+      ["private key marker", Buffer.from(`${pem}-----BEGIN PRIVATE KEY-----\ninvalid-test-marker\n-----END PRIVATE KEY-----\n`)],
+      ["prefix", Buffer.from(`untrusted-prefix\n${pem}`)],
+      ["trailing bytes", Buffer.from(`${pem}untrusted-trailing\n`)],
+      ["truncated", Buffer.from(pem.replace("-----END CERTIFICATE-----\n", ""))],
+      ["malformed base64", Buffer.from(pem.replace("MIIDxD", "MIID*D"))],
+    ];
+    for (const [name, hostile] of hostileFiles) {
+      assert.throws(() => validateSupabaseRootCertificate(hostile), /MIGRATION_DEPLOY_GATE_CA_/u, name);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("CA loader checks raw fingerprint, CA bit, self-signature, and validity", async () => {
+  const bytes = await readFile(new URL("./supabase-prod-ca-2021.crt", import.meta.url));
+  const certificate = new X509Certificate(bytes);
+
+  assert.throws(() => validateSupabaseRootCertificate(bytes, {
+    expectedFileSha256: sha256(bytes),
+    expectedRawSha256: "0".repeat(64),
+  }), /CA_FINGERPRINT_MISMATCH/u);
+
+  const nonCaRaw = Buffer.from(certificate.raw);
+  const basicConstraints = Buffer.from([0x30, 0x03, 0x01, 0x01, 0xff]);
+  const basicConstraintsIndex = nonCaRaw.indexOf(basicConstraints);
+  assert.notEqual(basicConstraintsIndex, -1);
+  nonCaRaw[basicConstraintsIndex + basicConstraints.length - 1] = 0x00;
+  assert.throws(() => validateMutatedCertificate(pemFromRaw(nonCaRaw)), /CA_NOT_CA/u);
+
+  const badSignatureRaw = Buffer.from(certificate.raw);
+  badSignatureRaw[badSignatureRaw.length - 1] ^= 0x01;
+  assert.throws(() => validateMutatedCertificate(pemFromRaw(badSignatureRaw)), /CA_BAD_SIGNATURE/u);
+
+  const validFrom = certificate.validFromDate.getTime();
+  const validTo = certificate.validToDate.getTime();
+  assert.equal(validateSupabaseRootCertificate(bytes, { now: validFrom }), bytes.toString("utf8"));
+  assert.equal(validateSupabaseRootCertificate(bytes, { now: validTo }), bytes.toString("utf8"));
+  assert.throws(() => validateSupabaseRootCertificate(bytes, { now: validFrom - 1 }), /CA_NOT_YET_VALID/u);
+  assert.throws(() => validateSupabaseRootCertificate(bytes, { now: validTo + 1 }), /CA_EXPIRED/u);
+});
+
+test("an appended CA expands Node trust in a hostile loopback but the gate rejects it", async () => {
+  const pinned = supabaseRootCertificate();
+  const fixture = await generateHostileTlsFixture();
+  try {
+    const expandedTrust = pinned + fixture.ca;
+    assert.equal(await authorizeHostileLoopback({ ...fixture, ca: expandedTrust }), true);
+    await assert.rejects(
+      () => authorizeHostileLoopback({ ...fixture, ca: expandedTrust }, "wrong-host.invalid"),
+      /altname|hostname/iu,
+    );
+    assert.throws(() => validateSupabaseRootCertificate(Buffer.from(expandedTrust)), /CA_INVALID|CA_FILE_MISMATCH/u);
+  } finally {
+    await fixture.dispose();
+  }
 });
 
 test("hosted query is read-only, parameterized, exact, and closes its client", async () => {
