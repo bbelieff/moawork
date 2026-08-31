@@ -106,7 +106,9 @@ describe("② 표 렌더 — 업무 컬럼과 고정 열", () => {
     }
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     expect(html.match(/>신용점수</g)).toHaveLength(1);
-    expect(html.match(/>3개년매출\(백만원\)</g)).toHaveLength(1);
+    /* #673 — 총괄 지시로 「3개년매출」 → 「매출」. 키(revenue_3y_million)는 그대로다 — 값이 딸려 있다. */
+    expect(html.match(/>매출\(백만원\)</g)).toHaveLength(1);
+    expect(html).not.toContain(">3개년매출(백만원)<");
     expect(html.match(/>기타정보</g)).toHaveLength(1);
   });
 

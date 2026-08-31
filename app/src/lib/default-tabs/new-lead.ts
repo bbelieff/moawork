@@ -50,6 +50,7 @@ import type { FieldOption } from "@/lib/types";
 import { CANONICAL_REGIONS } from "@/lib/structure-packs/region-options";
 import { CREDIT_SCORE_KEYS, NEW_LEAD_COMPOSITE_FIELD_KEYS } from "@/lib/new-lead/financial-profile";
 import { NEW_LEAD_REVENUE_BANDS } from "@/lib/new-lead/revenue-bands";
+import { REVENUE_UNIT_LABEL, REVENUE_YEAR_FIELDS } from "@/lib/new-lead/revenue-years";
 import { NEW_LEAD_TAB_SOURCE, type DefaultTab, type DefaultTabColumn } from "./types";
 import type { BoardColumn } from "@/lib/boards/types";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
@@ -363,10 +364,11 @@ export const NEW_LEAD_COMPOSITE_PRESENTATION_COLUMNS = [
   },
   {
     key: NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion,
-    label: "3개년매출(백만원)",
-    type: "number",
+    /* #673 — 총괄 지시: 「'매출'로 이름 바꾸고」. 키는 그대로 둔다 — 값이 딸려 있다. */
+    label: `매출(${REVENUE_UNIT_LABEL})`,
+    type: "text",
     source: "in",
-    width: 150,
+    width: 190,
   },
 ] as const satisfies readonly DefaultTabColumn[];
 
@@ -395,6 +397,8 @@ const CREDIT_PRESENTATION_KEYS = new Set<string>(Object.values(CREDIT_SCORE_KEYS
 const REVENUE_PRESENTATION_KEYS = new Set<string>([
   NEW_LEAD_COMPOSITE_FIELD_KEYS.legacyRevenueBand,
   NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion,
+  /* #673 — 연도별 네 해도 같은 「매출」 칸에 물린다. */
+  ...REVENUE_YEAR_FIELDS.map((field) => field.key),
 ]);
 const OTHER_INFO_PRESENTATION_KEYS = new Set<string>([
   "closed_business",
@@ -522,7 +526,7 @@ export function presentNewLeadUnplacedKeys(
 export function newLeadPresentationLabel(key: string): string | null {
   const presentationKey = newLeadPresentationKey(key);
   if (presentationKey === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores) return "신용점수";
-  if (presentationKey === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion) return "3개년매출(백만원)";
+  if (presentationKey === NEW_LEAD_COMPOSITE_FIELD_KEYS.revenue3yMillion) return `매출(${REVENUE_UNIT_LABEL})`;
   if (presentationKey === OTHER_INFO_COLUMN_KEY) return "기타정보";
   return null;
 }
