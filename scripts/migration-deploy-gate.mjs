@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const MIGRATION_DIRECTORY_SQL = /^supabase\/migrations\/.+\.sql$/u;
 const MIGRATION_PATH = /^supabase\/migrations\/(\d{3}_[^/]+\.sql)$/u;
@@ -7,6 +9,47 @@ const URL_KEY = "SUPABASE_DB_URL";
 const PRODUCTION_PROJECT_REF = "srtvmpcosekduvsscsyz";
 const PRODUCTION_DIRECT_HOST = `db.${PRODUCTION_PROJECT_REF}.supabase.co`;
 const SUPABASE_POOLER_HOST = /^(?:[a-z0-9-]+\.)?pooler\.supabase\.com$/u;
+
+/*
+ * ── 신뢰 앵커 ────────────────────────────────────────────────────────────
+ *
+ * Supabase 는 **공개 CA 를 쓰지 않는다.** pooler 가 내미는 체인은 이렇게 끝난다:
+ *
+ *     *.pooler.supabase.com  ←  Supabase Intermediate 2021 CA  ←  Supabase Root 2021 CA
+ *
+ * 그 루트는 Node 신뢰 저장소에 없다. 그래서 `rejectUnauthorized: true` 만으로는
+ * **원리적으로 통과할 수 없었다** — 관문이 «열릴 수 없는 자물쇠» 였다(#665).
+ *
+ * ★ 그렇다고 검증을 끄면 안 된다. 이 관문의 존재 이유가 「운영에 정말 올라갔는가」를
+ *   **믿을 수 있게** 확인하는 것이다. 검증을 끄면 중간자가 「올라갔다」고 거짓말할 수 있고,
+ *   그러면 관문이 있으나 마나다. 그래서 루트를 박아 두고 검증은 켠 채로 둔다.
+ *
+ * ★ 파일이 바뀌면 «조용히» 다른 것을 믿게 된다. 그래서 지문을 같이 박는다.
+ *   누가 .crt 를 갈아끼우면 여기서 fail-closed 된다.
+ */
+const SUPABASE_ROOT_CA_FILE = "supabase-prod-ca-2021.crt";
+/** `openssl x509 -noout -fingerprint -sha256` — Supabase Root 2021 CA (2031-04-26 만료). */
+const SUPABASE_ROOT_CA_SHA256 =
+  "807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa";
+
+let cachedRootCa;
+
+export function supabaseRootCertificate() {
+  if (cachedRootCa !== undefined) return cachedRootCa;
+  const path = join(dirname(fileURLToPath(import.meta.url)), SUPABASE_ROOT_CA_FILE);
+  if (!existsSync(path)) {
+    throw new Error(`MIGRATION_DEPLOY_GATE_CA_MISSING: ${SUPABASE_ROOT_CA_FILE}`);
+  }
+  const pem = readFileSync(path, "utf8");
+  const body = pem.match(/-----BEGIN CERTIFICATE-----([\s\S]+?)-----END CERTIFICATE-----/u)?.[1];
+  if (!body) throw new Error(`MIGRATION_DEPLOY_GATE_CA_INVALID: ${SUPABASE_ROOT_CA_FILE} is not PEM`);
+  const digest = createHash("sha256").update(Buffer.from(body.replace(/\s/gu, ""), "base64")).digest("hex");
+  if (digest !== SUPABASE_ROOT_CA_SHA256) {
+    throw new Error(`MIGRATION_DEPLOY_GATE_CA_FINGERPRINT_MISMATCH: ${digest}`);
+  }
+  cachedRootCa = pem;
+  return cachedRootCa;
+}
 
 export function collectAddedMigrations(files) {
   const migrations = [];
@@ -105,7 +148,7 @@ export function productionClientConfig(connectionString) {
     user: target.user,
     password: target.password,
     database: target.database,
-    ssl: { rejectUnauthorized: true },
+    ssl: { rejectUnauthorized: true, ca: supabaseRootCertificate() },
     application_name: "moawork-merge-migration-gate",
     connectionTimeoutMillis: 10_000,
     query_timeout: 15_000,

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -68,12 +69,42 @@ test("production client requires certificate verification", () => {
   const connectionString = "postgresql://postgres:secret@db.srtvmpcosekduvsscsyz.supabase.co/postgres";
   const config = productionClientConfig(connectionString);
   assert.equal("connectionString" in config, false);
-  assert.deepEqual(config.ssl, { rejectUnauthorized: true });
+  /*
+   * #665 — 검증은 «켠 채로» 두고 신뢰 앵커를 박는다.
+   *
+   * Supabase pooler 는 공개 CA 가 아니라 사설 루트로 서명한다. ca 를 안 주면
+   * rejectUnauthorized: true 가 원리적으로 통과할 수 없어 마이그레이션 PR 이
+   * 하나도 머지되지 않는다. 반대로 검증을 끄면 관문이 있으나 마나다.
+   */
+  assert.equal(config.ssl.rejectUnauthorized, true);
+  assert.match(config.ssl.ca, /-----BEGIN CERTIFICATE-----/u);
+  assert.deepEqual(Object.keys(config.ssl).sort(), ["ca", "rejectUnauthorized"]);
   const client = new pg.Client(config);
   assert.equal(client.connectionParameters.ssl.rejectUnauthorized, true);
+  assert.equal(client.connectionParameters.ssl.ca, config.ssl.ca);
   assert.throws(() => productionClientConfig(`${connectionString}?sslmode=no-verify`), /CONNECTION_OPTIONS_FORBIDDEN/u);
   assert.throws(() => productionClientConfig(`${connectionString}?sslmode=disable`), /CONNECTION_OPTIONS_FORBIDDEN/u);
   assert.throws(() => productionClientConfig(`${connectionString}?sslcert=C%3A%5Cattacker.pem`), /CONNECTION_OPTIONS_FORBIDDEN/u);
+});
+
+/*
+ * #665 — 박아 둔 루트가 «그대로인가».
+ *
+ * 파일이 갈아끼워지면 관문은 조용히 «다른 것» 을 믿게 된다. 조용한 신뢰 이동이
+ * 가장 위험하므로 지문이 다르면 fail-closed 여야 한다.
+ */
+test("pinned Supabase root certificate is the expected one", async () => {
+  const { supabaseRootCertificate } = await import("./migration-deploy-gate.mjs");
+  const pem = supabaseRootCertificate();
+  assert.match(pem, /-----BEGIN CERTIFICATE-----/u);
+  assert.match(pem, /-----END CERTIFICATE-----/u);
+
+  // 지문을 여기서 «한 번 더» 독립적으로 센다 — 소스가 자기 상수를 자기 검사하는 것을 막는다.
+  const body = pem.match(/-----BEGIN CERTIFICATE-----([\s\S]+?)-----END CERTIFICATE-----/u)[1];
+  const digest = createHash("sha256")
+    .update(Buffer.from(body.replace(/\s/gu, ""), "base64"))
+    .digest("hex");
+  assert.equal(digest, "807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa");
 });
 
 test("hosted query is read-only, parameterized, exact, and closes its client", async () => {

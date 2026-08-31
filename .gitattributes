@@ -11,3 +11,6 @@
 *.tsx   text eol=lf
 *.json  text eol=lf
 *.css   text eol=lf
+
+# 신뢰 앵커 — 줄바꿈을 바꾸지 않는다 (#665). 체크아웃마다 파일이 달라지면 안 된다.
+*.crt   -text
