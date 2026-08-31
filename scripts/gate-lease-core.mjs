@@ -42,11 +42,12 @@ export class GateLeaseError extends Error {
   }
 }
 
-function writeMessage(socket, message) {
-  if (!socket.destroyed) socket.write(`${JSON.stringify(message)}\n`);
+function writeMessage(socket, message, onFlushed) {
+  if (socket.destroyed) return false;
+  return socket.write(`${JSON.stringify(message)}\n`, onFlushed);
 }
 
-function readMessages(socket, onMessage) {
+function readMessages(socket, onMessage, onInvalidMessage = null) {
   let buffer = "";
   socket.setEncoding("utf8");
   socket.on("data", (chunk) => {
@@ -60,8 +61,11 @@ function readMessages(socket, onMessage) {
       try {
         onMessage(JSON.parse(line));
       } catch {
-        writeMessage(socket, { type: "error", code: "INVALID_MESSAGE" });
-        socket.end();
+        if (onInvalidMessage) onInvalidMessage();
+        else {
+          writeMessage(socket, { type: "error", code: "INVALID_MESSAGE" });
+          socket.end();
+        }
       }
     }
   });
@@ -138,14 +142,14 @@ export async function createLeaseBroker({
     scheduleIdleExit();
   }
 
-  function removeClient(client) {
+  function removeClient(client, hadError = false) {
     clients.delete(client);
     if (client.request?.requestId) requestIds.delete(client.request.requestId);
     const queuedAt = queue.indexOf(client);
     if (queuedAt >= 0) queue.splice(queuedAt, 1);
     if (active === client) {
       active = null;
-      if (client.cleanRelease) {
+      if (client.state === "release-complete" && !client.protocolViolation && !hadError) {
         grantNext();
       } else {
         recoveryUntil = Date.now() + crashRecoveryDelayMs;
@@ -162,6 +166,12 @@ export async function createLeaseBroker({
     clients.add(client);
     writeMessage(socket, { type: "hello", protocol: GATE_LEASE_PROTOCOL });
 
+    const failProtocol = (code) => {
+      client.protocolViolation = true;
+      client.state = "protocol-error";
+      writeMessage(socket, { type: "error", code }, () => socket.end());
+    };
+
     readMessages(socket, (message) => {
       if (message.type === "acquire") {
         const request = message.request;
@@ -172,13 +182,11 @@ export async function createLeaseBroker({
           typeof request.pid !== "number" ||
           typeof request.label !== "string"
         ) {
-          writeMessage(socket, { type: "error", code: "INVALID_ACQUIRE" });
-          socket.end();
+          failProtocol("INVALID_ACQUIRE");
           return;
         }
         if (requestIds.has(request.requestId)) {
-          writeMessage(socket, { type: "error", code: "DUPLICATE_REQUEST" });
-          socket.end();
+          failProtocol("DUPLICATE_REQUEST");
           return;
         }
         requestIds.add(request.requestId);
@@ -203,17 +211,34 @@ export async function createLeaseBroker({
       }
 
       if (message.type === "release" && active === client) {
-        client.cleanRelease = true;
-        writeMessage(socket, { type: "released", requestId: client.request.requestId });
-        socket.end();
+        if (client.state !== "active" || message.requestId !== client.request.requestId) {
+          failProtocol("INVALID_RELEASE");
+          return;
+        }
+        client.state = "release-pending";
+        writeMessage(
+          socket,
+          { type: "released", requestId: client.request.requestId },
+          (error) => {
+            if (!error) client.state = "release-acknowledged";
+          },
+        );
         return;
       }
 
-      writeMessage(socket, { type: "error", code: "INVALID_STATE" });
-      socket.end();
-    });
+      if (message.type === "release-complete" && active === client) {
+        if (client.state !== "release-acknowledged" || message.requestId !== client.request.requestId) {
+          failProtocol("INVALID_RELEASE_COMPLETE");
+          return;
+        }
+        client.state = "release-complete";
+        return;
+      }
 
-    socket.once("close", () => removeClient(client));
+      failProtocol("INVALID_STATE");
+    }, () => failProtocol("INVALID_MESSAGE"));
+
+    socket.once("close", (hadError) => removeClient(client, hadError));
     socket.once("error", () => socket.destroy());
   });
 
@@ -436,7 +461,7 @@ export async function acquireGateLease({
       }
       if (message.type === "released" && message.requestId === requestId) {
         released = true;
-        socket.end();
+        writeMessage(socket, { type: "release-complete", requestId }, () => socket.end());
         return;
       }
       if (message.type === "error") {
