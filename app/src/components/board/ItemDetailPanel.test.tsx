@@ -678,14 +678,34 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
       "CSV",
       "연관담당",
       "히스토리",
-      "통화 기록",
       "삭제 불가",
     ]) {
       expect(html).toContain(copy);
     }
     expect(html).toContain("✓ 자동 저장됨");
     // #660 — 탭을 가로채므로 «빠져나갈 문(Esc)» 을 이름에 적는다. 키보드만 쓰는 사람이 갇히면 안 된다.
-    expect(html).toContain('aria-label="메모 또는 통화 기록 — 탭으로 들여쓰기, Esc 로 빠져나가기"');
+    // #662 — 성격이 넷이 되어 「메모 또는 통화 기록」이 더는 사실이 아니다. 고르는 자리를 가리킨다.
+    expect(html).toContain(
+      'aria-label="기록 내용 — 성격은 아래에서 고릅니다. 탭으로 들여쓰기, Esc 로 빠져나가기"',
+    );
+    /*
+     * #662 — 「버튼을 누르면 미끄러지듯이 열려서 네 개 중 하나를 고른다」.
+     *
+     * ★ 닫힌 채로는 inert 여야 한다. 폭 0 으로 숨기기만 하면 «보이지 않는데 탭이 걸리는»
+     *   버튼 넷이 남아, 키보드만 쓰는 사람이 빈 곳을 네 번 지나간다.
+     * ★ 자동(field_change)은 «없어야» 한다. 시스템이 남기는 기록이라 고를 수 없다.
+     */
+    expect(html).toContain("data-detail-kind-picker");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('role="radiogroup"');
+    expect(html).toContain("inert");
+    for (const kind of ["메모", "통화", "행정", "미팅"]) {
+      expect(html).toContain(`>${kind}</button>`);
+    }
+    // 처음에 고른 것은 메모 하나뿐이다 — 라디오는 하나만 켜져 있어야 한다.
+    expect(html.match(/aria-checked="true"/g)).toHaveLength(1);
+    // 자동은 선택지가 아니다.
+    expect(html).not.toContain(">자동</button>");
     // 높이 손잡이는 오른쪽 «위» 에 있다 — 이 칸은 화면 아래에 붙어 아래로는 늘릴 자리가 없다.
     expect(html).toContain("data-composer-grip");
     // 가장자리·가운데 손잡이로 전체 너비와 좌우 분할을 바꾼다.

@@ -24,6 +24,13 @@
   --mw-automation: var(--mw-flow-teal); /* 자동화·연결·흐름 */
   --mw-people: var(--mw-people-coral); /* 담당자·댓글·멘션 — UI 전용 */
 
+  /* 히스토리 성격 확장(#662) — UI 전용.
+     브랜드 4색으로는 다섯 갈래(메모·통화·행정·미팅·자동)를 가를 수 없다.
+     보라는 --mw-primary 가 이미 쓰고 있어 CTA 와 헷갈리므로, 배지 전용으로 한 단계 낮춘다.
+     둘 다 각자의 tint 위에서 4.5:1 이상이다(작은 굵은 글씨 기준). */
+  --mw-admin: #9a4a06; /* 행정 — 서류·접수·발급 */
+  --mw-meeting: #5b45cc; /* 미팅 — 대면·화상으로 만난 기록 */
+
   /* UI 상태색(브랜드·코랄과 분리, WCAG AA) */
   --mw-success: #16a34a;
   --mw-warning: #d97706;
@@ -40,6 +47,8 @@
   --mw-tint-blue: #eaf0fe;
   --mw-tint-teal: #eaf7f4;
   --mw-tint-coral: #fdecea;
+  --mw-tint-amber: #fbf0e0; /* 행정 배지 바탕 (#662) */
+  --mw-tint-violet: #efecff; /* 미팅 배지 바탕 (#662) */
   --mw-radius: 14px;
 
   /* 레이어 소유권 — 숫자를 컴포넌트에 직접 쓰지 않는다.
@@ -70,6 +79,8 @@
   --mw-flow-teal: #47cfbc;
   --mw-moa-violet: #8a7cff;
   --mw-people-coral: #ff8a80;
+  --mw-admin: #f0b849;
+  --mw-meeting: #a99bff;
   --mw-fg: #f7f8fa;
   --mw-surface: #111216;
 
@@ -86,6 +97,8 @@
   --mw-tint-blue: rgba(110, 160, 255, 0.14);
   --mw-tint-teal: rgba(71, 207, 188, 0.14);
   --mw-tint-coral: rgba(255, 138, 128, 0.15);
+  --mw-tint-amber: rgba(240, 184, 73, 0.15);
+  --mw-tint-violet: rgba(138, 124, 255, 0.16);
 }
 
 /* data-theme 미지정(최초 방문)일 때 OS 설정을 따른다 — 토글하면 data-theme 로 확정. */
@@ -95,6 +108,8 @@
     --mw-flow-teal: #47cfbc;
     --mw-moa-violet: #8a7cff;
     --mw-people-coral: #ff8a80;
+    --mw-admin: #f0b849;
+    --mw-meeting: #a99bff;
     --mw-fg: #f7f8fa;
     --mw-surface: #111216;
 
@@ -111,6 +126,8 @@
     --mw-tint-blue: rgba(110, 160, 255, 0.14);
     --mw-tint-teal: rgba(71, 207, 188, 0.14);
     --mw-tint-coral: rgba(255, 138, 128, 0.15);
+    --mw-tint-amber: rgba(240, 184, 73, 0.15);
+    --mw-tint-violet: rgba(138, 124, 255, 0.16);
   }
 }
 
@@ -150,6 +167,10 @@
   --color-mw-tint-blue: var(--mw-tint-blue);
   --color-mw-tint-teal: var(--mw-tint-teal);
   --color-mw-tint-coral: var(--mw-tint-coral);
+  --color-mw-tint-amber: var(--mw-tint-amber);
+  --color-mw-tint-violet: var(--mw-tint-violet);
+  --color-mw-admin: var(--mw-admin);
+  --color-mw-meeting: var(--mw-meeting);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
