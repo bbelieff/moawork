@@ -13,7 +13,7 @@ describe("OrgLogoCard", () => {
   it("★ owner/admin 에게 업로드 입력을 보여준다", () => {
     const html = render({ orgName: "샘플 회사", logo: { kind: "none" }, canManage: true });
     expect(html).toContain('type="file"');
-    expect(html).toContain("로고 올리기");
+    expect(html).toContain("올리기");
     expect(html).toContain('accept="image/png,image/jpeg,image/svg+xml"');
     expect(html).not.toContain('data-org-logo-locked="true"');
   });
@@ -21,7 +21,7 @@ describe("OrgLogoCard", () => {
   it("★ 권한이 없으면 입력을 감추고 «사유» 를 보여준다 — 말없이 사라지지 않는다", () => {
     const html = render({ orgName: "샘플 회사", logo: { kind: "none" }, canManage: false });
     expect(html).not.toContain('type="file"');
-    expect(html).not.toContain("로고 올리기");
+    expect(html).not.toContain("올리기");
     expect(html).toContain('data-org-logo-locked="true"');
     expect(html).toContain("대표와 관리자만");
   });
@@ -40,7 +40,7 @@ describe("OrgLogoCard", () => {
       canManage: true,
     });
     expect(html).toContain("https://storage.example.invalid/s/logo.png");
-    expect(html).toContain("로고 지우기");
+    expect(html).toContain("지우기");
     expect(html).toContain('data-org-logo-status="ready"');
   });
 
@@ -51,7 +51,7 @@ describe("OrgLogoCard", () => {
       canManage: false,
     });
     expect(html).toContain("https://storage.example.invalid/s/logo.png");
-    expect(html).not.toContain("로고 지우기");
+    expect(html).not.toContain("지우기");
   });
 
   it("★ 「아직 없음」과 「불러오지 못함」을 다르게 말한다", () => {
@@ -67,6 +67,12 @@ describe("OrgLogoCard", () => {
 
   it("올릴 수 있는 형식과 용량을 화면에 적어 둔다", () => {
     const html = render({ orgName: "샘플 회사", logo: { kind: "none" }, canManage: true });
-    expect(html).toContain("PNG · JPG · SVG · 1MB 이하");
+    /*
+     * #652 — 총괄 지시로 상한을 넓히고 «앱이 줄이도록» 바꿨다.
+     *   화면은 «고를 수 있는 크기» 를 말한다 — 서버 상한이 아니라. 줄이는 건 앱이 한다.
+     */
+    expect(html).toContain("PNG · JPG · SVG");
+    expect(html).toContain("16.0MB까지");
+    expect(html).not.toContain("1MB 이하");
   });
 });

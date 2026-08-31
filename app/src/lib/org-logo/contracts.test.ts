@@ -24,28 +24,82 @@ describe("validateOrgLogoUpload", () => {
     expect(validateOrgLogoUpload({ mime: "image/png", bytes: ORG_LOGO_MAX_BYTES + 1 })).toEqual({ ok: false, reason: "too_large" });
   });
 
-  it("1 MiB 경계를 정확히 잡는다", () => {
+  it("상한 경계를 정확히 잡는다", () => {
     expect(validateOrgLogoUpload({ mime: "image/png", bytes: ORG_LOGO_MAX_BYTES }).ok).toBe(true);
     expect(validateOrgLogoUpload({ mime: "image/png", bytes: ORG_LOGO_MAX_BYTES + 1 }).ok).toBe(false);
-    expect(ORG_LOGO_MAX_BYTES).toBe(1048576);
+    /*
+     * #652 — 1 MiB 였던 것을 4 MiB 로 넓혔다.
+     *
+     * ★ 옛 값이 하필 Next 서버 액션 본문 상한(1 MB)과 «같아서», 조금이라도 큰 파일은
+     *   우리 코드가 실행되기 전에 잘렸다 — 「너무 커요」라는 안내조차 못 떴다.
+     *   그래서 둘을 떼어 놓는다. next.config.ts 의 bodySizeLimit 이 이보다 커야 한다.
+     */
+    expect(ORG_LOGO_MAX_BYTES).toBe(4 * 1024 * 1024);
   });
 });
 
 describe("validateOrgLogoContent", () => {
   it("accepts real PNG/JPEG signatures and rejects spoofed declarations", () => {
-    expect(validateOrgLogoContent("image/png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
-    expect(validateOrgLogoContent("image/jpeg", new Uint8Array([0xff, 0xd8, 0xff, 0xd9]))).toBe(true);
-    expect(validateOrgLogoContent("image/png", new TextEncoder().encode("<html>not an image</html>"))).toBe(false);
+    expect(validateOrgLogoContent("image/png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toEqual({ ok: true });
+    expect(validateOrgLogoContent("image/jpeg", new Uint8Array([0xff, 0xd8, 0xff, 0xd9]))).toEqual({ ok: true });
+    expect(validateOrgLogoContent("image/png", new TextEncoder().encode("<html>not an image</html>")))
+      .toEqual({ ok: false, reason: "bad_content" });
+  });
+
+  /*
+   * #652 — 「이미지를 올려도 로고적용이 안되는게 문제임」.
+   *
+   * 전 판정기는 **실제 도구가 내보내는 파일을 거의 전부 거부했다.** 아래가 그 목록이고,
+   * 지금은 전부 통과해야 한다. 하나라도 다시 막히면 로고는 또 «한 번도 안 올라가는» 기능이 된다.
+   */
+  it("★ 실제 도구가 내보낸 파일을 받는다", () => {
+    const enc = (value: string) => new TextEncoder().encode(value);
+
+    // JPEG 뒤 꼬리 바이트 — 카메라·편집기가 흔히 남긴다
+    expect(validateOrgLogoContent("image/jpeg", new Uint8Array([0xff, 0xd8, 0x11, 0xff, 0xd9, 0x00])))
+      .toEqual({ ok: true });
+
+    for (const svg of [
+      // XML 선언으로 시작 — 내보내기 «기본값»
+      '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>',
+      // DOCTYPE — 오래된 내보내기
+      '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "x.dtd"><svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>',
+      // <style> — 일러스트레이터·피그마 기본값
+      '<svg xmlns="http://www.w3.org/2000/svg"><style>.a{fill:#000}</style><rect class="a"/></svg>',
+      // 내부 참조 그라디언트 — 바깥으로 나가지 않는다
+      '<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g"/></defs><rect fill="url(#g)"/></svg>',
+      // 주석으로 시작
+      '<!-- Generator: Figma --><svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>',
+      // 내부 참조 use
+      '<svg xmlns="http://www.w3.org/2000/svg"><defs><rect id="r"/></defs><use xlink:href="#r"/></svg>',
+      // data: 이미지는 바깥으로 안 나간다
+      '<svg xmlns="http://www.w3.org/2000/svg"><image href="data:image/png;base64,iVBOR"/></svg>',
+    ]) {
+      expect(validateOrgLogoContent("image/svg+xml", enc(svg)), svg).toEqual({ ok: true });
+    }
   });
 
   it("accepts inert SVG and rejects active or externally referenced SVG", () => {
-    expect(validateOrgLogoContent("image/svg+xml", new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>'))).toBe(true);
+    expect(validateOrgLogoContent("image/svg+xml", new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>')))
+      .toEqual({ ok: true });
+    /*
+     * ★ 넓혔다고 «위험한 것» 까지 받지 않는다. 여기가 그 선이다 —
+     *   실행되는 것과 바깥으로 나가는 것.
+     */
     for (const svg of [
       '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
       '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>',
       '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://evil.example/x"/></svg>',
       '<svg xmlns="http://www.w3.org/2000/svg"><foreignObject/></svg>',
-    ]) expect(validateOrgLogoContent("image/svg+xml", new TextEncoder().encode(svg)), svg).toBe(false);
+      '<svg xmlns="http://www.w3.org/2000/svg"><a href="javascript:alert(1)"/></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(https://evil.example/x)"/></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg"><use xlink:href="https://evil.example/x#a"/></svg>',
+      '<!DOCTYPE svg [<!ENTITY x SYSTEM "file:///etc/passwd">]><svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg"><iframe/></svg>',
+    ]) {
+      const verdict = validateOrgLogoContent("image/svg+xml", new TextEncoder().encode(svg));
+      expect(verdict.ok, svg).toBe(false);
+    }
   });
 });
 
