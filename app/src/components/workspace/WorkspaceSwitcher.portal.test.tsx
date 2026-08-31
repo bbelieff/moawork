@@ -70,3 +70,37 @@ describe("Issue #568 workspace switcher layer", () => {
     expect(document.activeElement).toBe(opener);
   });
 });
+
+/*
+ * #671 — 「워크스페이스 드롭다운 눌러서 test로 이동하려고 하니 계속 멈추게됨」
+ *
+ * 전에는 busy 를 켜 두고 «이동이 일어나 이 컴포넌트가 사라지는 것» 에만 기댔다.
+ * 성공 경로에서 busy 를 푸는 코드가 아예 없어서, 이동이 안 되면 트리거가
+ * disabled 인 채로 영원히 남았다 — 그게 「계속 멈춘다」의 정체다.
+ */
+describe("#671 워크스페이스를 골랐는데 이동이 «안 일어났을 때»", () => {
+  it("★ 트리거가 영원히 잠기지 않는다 — 시한이 지나면 풀리고 이유를 말한다", async () => {
+    vi.useFakeTimers();
+    try {
+      const { host } = await mountSwitcher();
+      const other = [
+        ...document.querySelectorAll<HTMLButtonElement>("[data-workspace-switcher-dialog] button"),
+      ].find((button) => button.textContent?.includes("샘플 B"))!;
+
+      await act(async () => other.click());
+
+      const opener = host.querySelector<HTMLButtonElement>('[aria-haspopup="dialog"]')!;
+      expect(opener.disabled).toBe(true); // 누른 직후에는 잠긴다 — 두 번 눌리지 않게
+
+      await act(async () => {
+        vi.advanceTimersByTime(4000);
+        await Promise.resolve();
+      });
+
+      expect(opener.disabled).toBe(false); // ★ 다시 누를 수 있다
+      expect(document.body.textContent).toContain("이동이 시작되지 않았어요");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

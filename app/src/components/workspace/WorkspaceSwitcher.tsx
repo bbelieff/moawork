@@ -17,6 +17,7 @@ import { createPortal } from "react-dom";
 import { WorkspaceMark } from "./WorkspaceMark";
 import styles from "./workspace-switcher.module.css";
 import { DeveloperModeControl } from "@/components/mode/DeveloperModeControl";
+import { NAVIGATION_STALL_MS } from "@/lib/workspace/switch-navigation";
 
 export type WorkspaceRole = "owner" | "admin" | "member";
 export type WorkspaceMembershipStatus = "active" | "inactive" | "suspended";
@@ -230,14 +231,31 @@ export function WorkspaceSwitcher({
 
   const { current } = list;
 
+  /*
+   * #671 — 「눌렀는데 계속 멈춘다」.
+   *
+   * 전에는 busy 를 켜 두고 «이동이 일어나 이 컴포넌트가 사라지는 것» 에만 기대고 있었다.
+   * 성공 경로에서 busy 를 푸는 코드가 아예 없었다. 그래서 이동이 안 되면
+   * 팝오버는 닫혀 있고, 트리거는 disabled 이고, 오류 문구도 없다 —
+   * 사용자 눈에는 **그냥 멈춘 것**이다. 그리고 다시는 안 눌린다.
+   *
+   * ★ 그래서 시한을 둔다. 그 안에 페이지가 안 떠나면 스스로 풀고 이유를 말한다.
+   *   되돌릴 길 없는 상태를 만들지 않는다.
+   */
   async function navigate(destination: string, key: string) {
     if (!destination || busyKey) return;
     setNavigationError("");
     setBusyKey(key);
     close(false);
+    const stall = window.setTimeout(() => {
+      setBusyKey(null);
+      setNavigationError("이동이 시작되지 않았어요. 다시 선택해 주세요.");
+      setOpen(true);
+    }, NAVIGATION_STALL_MS);
     try {
       await onNavigate(destination);
     } catch {
+      window.clearTimeout(stall);
       setBusyKey(null);
       setNavigationError("이동하지 못했어요. 연결을 확인하고 다시 선택해 주세요.");
       setOpen(true);
