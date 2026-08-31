@@ -187,6 +187,9 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
             { id: "event-1", kind: "memo", body: "1차 통화 예정. @정희 실장님 제조업 쪽 자료 있으면 공유 부탁드립니다.", actor_id: "review-user", created_at: "2026-08-25T05:00:00.000Z" },
             { id: "event-2", kind: "call", body: "대표님 부재. 비서분이 내일 오전 재통화 요청.", actor_id: "review-user", created_at: "2026-08-24T07:40:00.000Z" },
             { id: "event-3", kind: "field_change", body: "상담 상황을 상담 전으로 바꿈 · 이대표", actor_id: null, created_at: "2026-08-23T08:22:00.000Z" },
+            /* #662 — 같은 사람(review-user)이 네 성격을 다 남긴 모습. 아바타는 넷 다 같고 배지만 다르다. */
+            { id: "event-4", kind: "admin", body: "사업자등록증 사본 접수. 법인 인감증명서는 다음 주 발급 예정.", actor_id: "review-user", created_at: "2026-08-22T02:10:00.000Z" },
+            { id: "event-5", kind: "meeting", body: "본사 방문 미팅 40분. 설비 증설 계획과 자금 일정 확인.", actor_id: "review-user", created_at: "2026-08-21T06:30:00.000Z" },
           ],
         } : undefined}
         workflowTransitionSlot={tab === "contact" ? (

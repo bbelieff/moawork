@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   useTransition,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -18,6 +19,14 @@ import {
   type EditState,
 } from "@/lib/boards/composer-editing";
 import { clampDetailInset, clampRailWidth, DETAIL_DEFAULT_INSET } from "@/lib/boards/detail-pane-geometry";
+import {
+  detailEventActorInitial,
+  detailEventAuthorName,
+  detailEventKindIndex,
+  detailEventKindLabel,
+  SELECTABLE_DETAIL_EVENT_KINDS,
+  type SelectableDetailEventKind,
+} from "@/lib/boards/detail-event-kinds";
 import { createPortal } from "react-dom";
 import type {
   BoardColumn,
@@ -361,7 +370,16 @@ export function ItemDetailPanel({
   });
   const [detailPending, startDetailTransition] = useTransition();
   const [composer, setComposer] = useState("");
-  const [composerKind, setComposerKind] = useState<"memo" | "call">("memo");
+  const [composerKind, setComposerKind] =
+    useState<SelectableDetailEventKind>("memo");
+  /*
+   * #662 — 성격 고르개가 열려 있나.
+   *
+   * 총괄 지시 그대로다 — 「버튼을 누르면 미끄러지듯이 열려서 네 개 중 하나를 고른다」.
+   * 늘 넷을 펼쳐 두지 않는 이유는 375px 에서 등록 줄이 두 줄로 접히고,
+   * 대부분의 기록은 「메모」 그대로 쓰기 때문이다.
+   */
+  const [kindPickerOpen, setKindPickerOpen] = useState(false);
   const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([]);
   /*
    * #660 — 입력창 높이. null 이면 CSS 기본값(두 줄)을 쓴다.
@@ -733,7 +751,7 @@ export function ItemDetailPanel({
     );
     const history = detail.events.map(
       (event) =>
-        `[${event.created_at}] ${event.kind === "call" ? "통화" : event.kind === "field_change" ? "자동 변경" : "메모"}: ${event.body}`,
+        `[${event.created_at}] ${detailEventKindLabel(event.kind)}: ${event.body}`,
     );
     return [
       `회사: ${row.title}`,
@@ -1711,30 +1729,30 @@ export function ItemDetailPanel({
                           className={styles.historyEntry}
                         >
                           {/*
-                            #657 — 히스토리 종류를 색으로도 나눈다.
+                            #657 — 히스토리 종류를 «배지 색» 으로 나눈다.
                             전에는 통화·메모·자동이 전부 같은 파란 배지라, 훑을 때 «전화한 것» 을
                             메모 사이에서 골라낼 수 없었다. 토큰의 뜻 그대로 나눈다 —
-                            통화=사람 접촉(coral) · 메모=기록(blue) · 자동=자동화(teal).
+                            통화=사람 접촉(coral) · 메모=기록(blue) · 자동=자동화(teal)
+                            · 행정=서류(amber) · 미팅=만남(violet).
+
+                            #662 — ★ 아바타는 «누가» 다. 성격에 따라 바꾸지 않는다.
+                            전에는 같은 사람이 메모를 남기면 「메」, 전화를 하면 「통」이라
+                            한 사람이 두 얼굴로 보였다. 성격은 옆 배지가 전부 말한다.
                           */}
                           <span
                             className={styles.historyAvatar}
-                            data-kind={event.kind}
                             data-automatic={event.kind === "field_change"}
                             aria-hidden="true"
                           >
-                            {event.kind === "field_change" ? "⚙" : event.kind === "call" ? "통" : "메"}
+                            {event.kind === "field_change"
+                              ? "⚙"
+                              : detailEventActorInitial(actorName)}
                           </span>
                           <div>
                           <div className={styles.historyLine}>
-                            <b>
-                              {event.kind === "call"
-                                ? actorName ?? "담당자"
-                                : event.kind === "field_change"
-                                  ? "자동 기록"
-                                  : actorName ?? "담당자"}
-                            </b>
+                            <b>{detailEventAuthorName(event.kind, actorName)}</b>
                             <span className={styles.historyKind} data-kind={event.kind}>
-                              {event.kind === "call" ? "통화" : event.kind === "field_change" ? "자동" : "메모"}
+                              {detailEventKindLabel(event.kind)}
                             </span>
                             <time>
                               {new Date(event.created_at).toLocaleString(
@@ -1751,7 +1769,7 @@ export function ItemDetailPanel({
                     })}
                       {detail.events.length === 0 && !detailPending && (
                         <p className={styles.emptyHistory}>
-                          아직 히스토리가 없습니다. 메모나 통화 기록을 남기면 이곳에 시간순으로 쌓입니다.
+                          아직 히스토리가 없습니다. 메모·통화·행정·미팅 기록을 남기면 이곳에 시간순으로 쌓입니다.
                         </p>
                       )}
                     </div>
@@ -1786,11 +1804,11 @@ export function ItemDetailPanel({
                       </button>
                       <textarea
                         ref={composerRef}
-                        aria-label="메모 또는 통화 기록 — 탭으로 들여쓰기, Esc 로 빠져나가기"
+                        aria-label="기록 내용 — 성격은 아래에서 고릅니다. 탭으로 들여쓰기, Esc 로 빠져나가기"
                         value={composer}
                         onChange={(event) => setComposer(event.target.value)}
                         onKeyDown={onComposerKeyDown}
-                        placeholder="메모를 적으세요 — @이름 멘션 · 「- 」로 목록 · 탭으로 들여쓰기"
+                        placeholder="기록을 적으세요 — @이름 멘션 · 「- 」로 목록 · 탭으로 들여쓰기"
                         rows={2}
                         style={composerHeight === null ? undefined : { height: `${composerHeight}px`, maxHeight: `${composerHeight}px` }}
                       />
@@ -1825,20 +1843,80 @@ export function ItemDetailPanel({
                         </fieldset>
                       )}
                       <div className={styles.composerActions}>
-                        <button
-                          type="button"
-                          onClick={() => setComposerKind("memo")}
-                          aria-pressed={composerKind === "memo"}
+                        {/*
+                          #662 — 성격 고르개. 「버튼을 누르면 미끄러지듯이 열려서 넷 중 하나를 고른다」.
+
+                          ★ 닫혀 있는 동안 inert 를 건다. 폭 0 + overflow:hidden 만으로는
+                            «보이지 않는데 탭이 걸리는» 버튼 넷이 남는다 — 키보드만 쓰는 사람은
+                            빈 곳을 네 번 지나가게 된다.
+                          ★ 자동(field_change)은 여기 없다. 시스템이 남기는 기록이라 고를 수 없고,
+                            DB 가드(마이그레이션 143)도 넷만 받는다.
+                        */}
+                        <div
+                          className={styles.kindPicker}
+                          data-open={kindPickerOpen ? "true" : "false"}
+                          data-detail-kind-picker
                         >
-                          메모
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setComposerKind("call")}
-                          aria-pressed={composerKind === "call"}
-                        >
-                          통화 기록
-                        </button>
+                          <button
+                            type="button"
+                            className={styles.kindToggle}
+                            aria-expanded={kindPickerOpen}
+                            aria-controls="item-detail-kind-options"
+                            onClick={() => setKindPickerOpen((open) => !open)}
+                          >
+                            {detailEventKindLabel(composerKind)}
+                            <span className={styles.kindChevron} aria-hidden="true">
+                              ▾
+                            </span>
+                          </button>
+                          <div
+                            id="item-detail-kind-options"
+                            className={styles.kindOptions}
+                            data-kind={composerKind}
+                            role="radiogroup"
+                            aria-label="기록의 성격"
+                            inert={!kindPickerOpen}
+                          >
+                            <span
+                              className={styles.kindThumb}
+                              aria-hidden="true"
+                              style={
+                                {
+                                  "--kind-index": detailEventKindIndex(composerKind),
+                                } as CSSProperties
+                              }
+                            />
+                            {SELECTABLE_DETAIL_EVENT_KINDS.map((kind) => (
+                              <button
+                                key={kind}
+                                type="button"
+                                role="radio"
+                                aria-checked={composerKind === kind}
+                                tabIndex={composerKind === kind ? 0 : -1}
+                                onKeyDown={(event) => {
+                                  const step =
+                                    event.key === "ArrowRight" || event.key === "ArrowDown"
+                                      ? 1
+                                      : event.key === "ArrowLeft" || event.key === "ArrowUp"
+                                        ? -1
+                                        : 0;
+                                  if (step === 0) return;
+                                  event.preventDefault();
+                                  const list = SELECTABLE_DETAIL_EVENT_KINDS;
+                                  const next =
+                                    list[(list.indexOf(kind) + step + list.length) % list.length];
+                                  setComposerKind(next);
+                                }}
+                                onClick={() => {
+                                  setComposerKind(kind);
+                                  setKindPickerOpen(false);
+                                }}
+                              >
+                                {detailEventKindLabel(kind)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                         <span className="text-xs text-mw-sub">
                           @ 멘션
                         </span>

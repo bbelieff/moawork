@@ -780,6 +780,11 @@
   font-weight: 800;
 }
 
+/*
+ * #662 — 아바타는 «누가» 다. 성격에 따라 색이나 글자를 바꾸지 않는다.
+ *   전에는 메모면 「메」, 통화면 「통」이라 한 사람이 두 얼굴로 보였다.
+ *   성격은 옆의 배지가 전부 말한다. 자동 기록만 사람이 아니라서 예외다.
+ */
 .historyAvatar[data-automatic="true"] {
   background: var(--mw-bg);
   color: var(--mw-sub);
@@ -826,10 +831,16 @@
   color: var(--mw-automation);
 }
 
-.historyAvatar[data-kind="call"] {
-  background: var(--mw-tint-coral);
-  color: var(--mw-people);
+.historyKind[data-kind="admin"] {
+  background: var(--mw-tint-amber);
+  color: var(--mw-admin);
 }
+
+.historyKind[data-kind="meeting"] {
+  background: var(--mw-tint-violet);
+  color: var(--mw-meeting);
+}
+
 
 .historyLine time {
   margin-left: auto;
@@ -964,6 +975,127 @@
   border-color: var(--mw-primary);
   background: var(--mw-tint-blue);
   color: var(--mw-record);
+}
+
+/*
+ * #662 — 성격 고르개. 「버튼을 누르면 미끄러지듯이 열려서 넷 중 하나를 고른다」.
+ *
+ * 닫혀 있을 때는 지금 고른 것 하나만 보인다. 눌러야 넷이 옆으로 미끄러져 나온다.
+ * 늘 넷을 펼쳐 두면 등록 줄이 375px 에서 두 줄로 접히고, 대부분은 「메모」 그대로 쓴다.
+ *
+ * ★ 닫힌 동안 inert 를 건다. width:0 + overflow:hidden 만으로는 «보이지 않는데 탭이 걸리는»
+ *   버튼 넷이 남는다 — 키보드만 쓰는 사람에게는 빈 곳을 네 번 지나가는 셈이 된다.
+ */
+.kindPicker {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.composerActions .kindToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-color: var(--mw-primary);
+  background: var(--mw-tint-blue);
+  color: var(--mw-record);
+  font-weight: 700;
+}
+
+.kindChevron {
+  font-size: 0.55rem;
+  line-height: 1;
+  transition: transform 180ms ease;
+}
+
+.kindPicker[data-open="true"] .kindChevron {
+  transform: rotate(180deg);
+}
+
+.kindOptions {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 0;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    width 200ms ease,
+    opacity 150ms ease;
+}
+
+.kindPicker[data-open="true"] .kindOptions {
+  width: 11rem;
+  border-color: var(--mw-line);
+  background: var(--mw-card);
+  opacity: 1;
+}
+
+/* 고른 칸을 따라 미끄러지는 바탕. 칸 번호는 인라인 --kind-index 로 들어온다. */
+.kindThumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 4px) / 4);
+  border-radius: 0.35rem;
+  background: var(--mw-tint-blue);
+  transform: translateX(calc(var(--kind-index, 0) * 100%));
+  transition:
+    transform 200ms ease,
+    background-color 200ms ease;
+}
+
+.kindOptions[data-kind="call"] .kindThumb {
+  background: var(--mw-tint-coral);
+}
+
+.kindOptions[data-kind="admin"] .kindThumb {
+  background: var(--mw-tint-amber);
+}
+
+.kindOptions[data-kind="meeting"] .kindThumb {
+  background: var(--mw-tint-violet);
+}
+
+/* .composerActions button 의 테두리·바탕을 덮어야 해서 두 단계로 적는다. */
+.composerActions .kindOptions button {
+  position: relative;
+  z-index: 1;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  padding: 0 0.35rem;
+  color: var(--mw-sub);
+  font-size: 0.65rem;
+}
+
+.composerActions .kindOptions button[aria-checked="true"] {
+  background: transparent;
+  color: var(--mw-record);
+  font-weight: 800;
+}
+
+.composerActions .kindOptions[data-kind="call"] button[aria-checked="true"] {
+  color: var(--mw-people);
+}
+
+.composerActions .kindOptions[data-kind="admin"] button[aria-checked="true"] {
+  color: var(--mw-admin);
+}
+
+.composerActions .kindOptions[data-kind="meeting"] button[aria-checked="true"] {
+  color: var(--mw-meeting);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kindOptions,
+  .kindThumb,
+  .kindChevron {
+    transition: none;
+  }
 }
 
 @media (max-width: 54rem) {

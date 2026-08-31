@@ -3,13 +3,18 @@ import { resolve } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
 
-const sql = readFileSync(
-  resolve(
-    process.cwd(),
-    "../supabase/migrations/124_issue524_company_detail_feed.sql",
-  ),
-  "utf8",
-);
+const migration = (file: string) =>
+  readFileSync(resolve(process.cwd(), `../supabase/migrations/${file}`), "utf8");
+
+const sql = migration("124_issue524_company_detail_feed.sql");
+/*
+ * #662 — 143 은 성격을 넷으로 «넓히는» 마이그레이션이다.
+ *
+ * ★ 124 만 올리면 이 파일의 시험은 «지금 운영에 있는 것» 이 아니라 «옛 판» 을 잰다.
+ *   운영에는 143 까지 올라가 있으므로 여기서도 둘을 같이 올린다 —
+ *   그래야 143 이 124 의 권한·멱등·멘션 계약을 깨지 않았다는 것도 같이 증명된다.
+ */
+const sql143 = migration("143_issue662_detail_event_kinds.sql");
 const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
@@ -41,6 +46,7 @@ describe("Issue 524 item detail feed", () => {
       insert into items values('${id(30)}','${id(1)}','${id(20)}','${id(11)}',null),('${id(31)}','${id(1)}','${id(20)}','${id(10)}',null),('${id(32)}','${id(2)}','${id(21)}','${id(12)}',null),('${id(33)}','${id(1)}','${id(20)}','${id(13)}',null);
     `);
     await db.exec(sql.replace(/do \$\$ begin[\s\S]*?end \$\$;/, ""));
+    await db.exec(sql143);
     await db.query("insert into storage.objects(bucket_id,name) values('board-item-files',$1),('board-item-files',$2)",[
       `${id(1)}/${id(20)}/${id(30)}/${id(200)}__mine.pdf`,
       `${id(1)}/${id(20)}/${id(31)}/${id(201)}__other.pdf`,
@@ -101,6 +107,65 @@ describe("Issue 524 item detail feed", () => {
         )
       ).rows[0].kind,
     ).toBe("field_change");
+  });
+
+  /*
+   * #662 — 「히스토리의 성격이 메모 통화 행정 미팅 이렇게 나눠지면 좋겠다」.
+   *
+   * 화면만 고치면 «고를 수는 있는데 저장이 안 되는» 상태가 된다. 막는 자리가 DB 에 둘 있다 —
+   * 테이블의 CHECK 와 RPC 안의 가드. 둘 다 넓혔는지 여기서 잰다.
+   */
+  it("#662 행정·미팅을 새로 받고, 옛 값은 그대로 두고, 자동은 여전히 사람이 못 고른다", async () => {
+    await actor(id(10));
+
+    // ① 새 둘이 실제로 저장된다
+    for (const [n, kind] of [
+      [300, "admin"],
+      [301, "meeting"],
+    ] as const) {
+      const row = await db.query<{ kind: string }>(
+        `select kind from add_board_item_detail_event($1,$2,$3,'${kind}','새 성격',$4)`,
+        [id(1), id(20), id(30), id(n)],
+      );
+      expect(row.rows[0].kind).toBe(kind);
+    }
+
+    // ② 옛 둘도 그대로다 — 넓혔지 좁힌 게 아니다
+    for (const [n, kind] of [
+      [302, "memo"],
+      [303, "call"],
+    ] as const) {
+      await expect(
+        db.query(
+          `select * from add_board_item_detail_event($1,$2,$3,'${kind}','옛 성격',$4)`,
+          [id(1), id(20), id(30), id(n)],
+        ),
+      ).resolves.toBeTruthy();
+    }
+
+    // ③ ★ 자동은 사람이 못 고른다. 시스템이 남기는 기록이다
+    await expect(
+      db.query(
+        "select * from add_board_item_detail_event($1,$2,$3,'field_change','손으로 자동',$4)",
+        [id(1), id(20), id(30), id(304)],
+      ),
+    ).rejects.toThrow(/invalid_detail_event/);
+
+    // ④ 모르는 값도 여전히 막힌다 — 넓힌 것이지 열어 준 것이 아니다
+    await expect(
+      db.query(
+        "select * from add_board_item_detail_event($1,$2,$3,'무엇','아무거나',$4)",
+        [id(1), id(20), id(30), id(305)],
+      ),
+    ).rejects.toThrow(/invalid_detail_event/);
+
+    // ⑤ 그런데 «시스템» 은 여전히 자동 기록을 남길 수 있어야 한다 — CHECK 는 다섯을 받는다
+    const allowed = await db.query<{ def: string }>(
+      "select pg_get_constraintdef(oid) as def from pg_constraint where conname='board_item_detail_events_kind_check'",
+    );
+    for (const kind of ["memo", "call", "admin", "meeting", "field_change"]) {
+      expect(allowed.rows[0].def).toContain(kind);
+    }
   });
 
   it("allows assigned member but denies another item, cross-org tuples, inactive/deleted targets and replay mutation", async () => {

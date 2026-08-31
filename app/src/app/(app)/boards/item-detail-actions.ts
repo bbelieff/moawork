@@ -12,6 +12,10 @@ import { sanitizeFileName } from "@/lib/services/files";
 import { createRequestBoards } from "@/lib/boards/server";
 import { resolveBoardDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
 import type { CellValue } from "@/lib/boards/types";
+import type {
+  DetailEventKind,
+  SelectableDetailEventKind,
+} from "@/lib/boards/detail-event-kinds";
 import { loadPermGuard } from "@/lib/perm/guard";
 import {
   CREDIT_SCORE_KEYS,
@@ -40,7 +44,8 @@ const ITEM_DETAIL_LIMITS = {
 
 export type ItemDetailEvent = {
   id: string;
-  kind: "memo" | "call" | "field_change";
+  /* #662 — 배지에 뜨는 다섯. 고를 수 있는 넷은 아래 addItemDetailEventAction 이 좁힌다. */
+  kind: DetailEventKind;
   body: string;
   actor_id: string | null;
   created_at: string;
@@ -310,7 +315,8 @@ export async function removeItemCloudFolderAction(input: {
 export async function addItemDetailEventAction(input: {
   boardId: string;
   itemId: string;
-  kind: "memo" | "call";
+  /* #662 — 사람이 고를 수 있는 넷만. 자동(field_change)은 시스템이 남긴다. */
+  kind: SelectableDetailEventKind;
   body: string;
   requestId: string;
   mentionedUserIds: string[];
