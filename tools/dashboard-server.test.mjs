@@ -415,3 +415,29 @@ test("60 forced refreshes retain complete evidence and refresh only changed inco
   for (let index = 0; index < 60; index += 1) await readDeliveryCommentEvidence([failedAdvanced], true, unavailable);
   assert.equal(failedCalls, 2, "a failed refresh is negatively cached for the advanced issue snapshot");
 });
+
+/*
+ * #663 — 「인증 없음」 경고가 «영원히» 안 뜨던 것.
+ *
+ *     const AUTH_OK = () => github.hasAuth();     // 함수다
+ *     console.log(AUTH_OK ? "✅ …" : "⚠️ …");     // 괄호가 없다 → 항상 참
+ *
+ * 로그인이 안 돼 있어도 켤 때 늘 「확인됨」 이 찍혔다. 켤 때 딱 한 줄 있는 경고라
+ * 이게 안 뜨면 «왜 판이 비어 있는지» 를 알 길이 없다. 조용한 거짓말이라 몇 달을 갈 수 있다.
+ */
+test("#663 인증 배너는 두 갈래를 실제로 가른다 — 함수를 넘기면 조용히 참이 되지 않고 터진다", async () => {
+  const { authBanner } = await import("./dashboard-server.mjs?unit=auth-banner");
+
+  assert.match(authBanner(false), /없음/, "인증이 없으면 «없다» 고 말한다");
+  assert.match(authBanner(false), /gh auth login/, "무엇을 하면 되는지 같이 말한다");
+  assert.match(authBanner(true), /확인됨/);
+  assert.doesNotMatch(authBanner(true), /없음/);
+
+  // ★ 이게 이 시험의 본체다. 판정 «함수» 를 그대로 넘기던 것이 원래 결함이었다.
+  assert.throws(() => authBanner(() => true), TypeError, "함수를 받으면 터진다");
+  assert.throws(() => authBanner(undefined), TypeError);
+
+  // 출처 이름도 사실이어야 한다 — 2026-08-26 에 GitHub 로 옮겼다.
+  assert.doesNotMatch(authBanner(false), /Linear/);
+  assert.doesNotMatch(authBanner(true), /Linear/);
+});
