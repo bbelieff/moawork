@@ -684,7 +684,13 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
       expect(html).toContain(copy);
     }
     expect(html).toContain("✓ 자동 저장됨");
-    expect(html).toContain('aria-label="메모 또는 통화 기록"');
+    // #660 — 탭을 가로채므로 «빠져나갈 문(Esc)» 을 이름에 적는다. 키보드만 쓰는 사람이 갇히면 안 된다.
+    expect(html).toContain('aria-label="메모 또는 통화 기록 — 탭으로 들여쓰기, Esc 로 빠져나가기"');
+    // 높이 손잡이는 오른쪽 «위» 에 있다 — 이 칸은 화면 아래에 붙어 아래로는 늘릴 자리가 없다.
+    expect(html).toContain("data-composer-grip");
+    // 가장자리·가운데 손잡이로 전체 너비와 좌우 분할을 바꾼다.
+    expect(html).toContain("data-detail-edge-grip");
+    expect(html).toContain("data-detail-split-grip");
     expect(html).toContain("링크 복사");
     expect(html).toContain("← 이전");
     const source = readFileSync(sourcePath, "utf8");
