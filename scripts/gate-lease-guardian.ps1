@@ -177,8 +177,40 @@ public sealed class MoaWorkGateJob : IDisposable {
 function Write-Structured([string]$Kind, [hashtable]$Detail) { try { [Console]::Error.WriteLine("$Kind $($Detail | ConvertTo-Json -Compress -Depth 8)") } catch {} }
 function Fail([string]$Code, [string]$Message, [hashtable]$Detail = @{}) { Write-Structured "GATE_LEASE_FAILURE" @{ code = $Code; message = $Message; detail = $Detail } }
 function Send-Pipe($Pipe, [hashtable]$Message) { $Pipe.WriteLine(($Message | ConvertTo-Json -Compress -Depth 8)) }
-function Send-Broker($Writer, [hashtable]$Message) { $Writer.WriteLine(($Message | ConvertTo-Json -Compress -Depth 8)); $Writer.Flush() }
-function Read-Broker($Reader, [int]$TimeoutMs) { $task = $Reader.ReadLineAsync(); if (-not $task.Wait($TimeoutMs)) { throw "GATE_BROKER_READ_TIMEOUT" }; return $task.Result }
+function Send-Broker($Writer, [hashtable]$Message) {
+  try { $Writer.WriteLine(($Message | ConvertTo-Json -Compress -Depth 8)); $Writer.Flush() }
+  catch { throw [InvalidOperationException]::new("GATE_BROKER_WRITE_FAILED", $_.Exception) }
+}
+function Read-Broker($Reader, [int]$TimeoutMs) {
+  try {
+    $task = $Reader.ReadLineAsync()
+    if (-not $task.Wait($TimeoutMs)) { throw "GATE_BROKER_READ_TIMEOUT" }
+    return $task.Result
+  } catch {
+    if ([string]$_.Exception.Message -eq "GATE_BROKER_READ_TIMEOUT") { throw }
+    throw [InvalidOperationException]::new("GATE_BROKER_READ_FAILED", $_.Exception)
+  }
+}
+function Read-BrokerMessage($Reader, [int]$TimeoutMs, [string]$Phase) {
+  $line = Read-Broker $Reader $TimeoutMs
+  if ($null -eq $line) { throw ("GATE_BROKER_{0}_EOF" -f $Phase) }
+  try { $message = $line | ConvertFrom-Json -ErrorAction Stop }
+  catch { throw ("GATE_BROKER_{0}_MALFORMED" -f $Phase) }
+  if ($null -eq $message -or -not ($message.PSObject.Properties.Name -contains "type") -or $message.type -isnot [string]) {
+    throw ("GATE_BROKER_{0}_SCHEMA" -f $Phase)
+  }
+  return $message
+}
+function Has-StringProperty($Message, [string]$Name) {
+  return $Message.PSObject.Properties.Name -contains $Name -and $Message.$Name -is [string]
+}
+function Equals-OrdinalString([string]$Left, [string]$Right) {
+  return [string]::Equals($Left, $Right, [StringComparison]::Ordinal)
+}
+function Close-Broker($Client) {
+  try { $Client.Client.Shutdown([Net.Sockets.SocketShutdown]::Send); $Client.Close() }
+  catch { throw [InvalidOperationException]::new("GATE_BROKER_CLOSE_FAILED", $_.Exception) }
+}
 function Wait-Zero($Job, [int]$TimeoutMs, [bool]$InjectHang) {
   $deadline = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + $TimeoutMs
   while ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -lt $deadline) { if (-not $InjectHang -and $Job.ActiveProcesses -eq 0) { return $true }; Start-Sleep -Milliseconds 25 }
@@ -297,7 +329,7 @@ try {
   while ($null -eq $payloadLine -and [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -lt $payloadDeadline) { if (-not $pipe.TryRead([ref]$payloadLine)) { if ($pipe.Eof) { throw "GATE_PIPE_EOF" }; Start-Sleep -Milliseconds 10 } }
   if ($null -eq $payloadLine) { throw "GATE_PIPE_PAYLOAD_TIMEOUT" }
   try { $envelope = $payloadLine | ConvertFrom-Json } catch { throw "GATE_PIPE_MALFORMED" }
-  if ($envelope.type -ne "payload" -or $envelope.nonce -ne $PipeNonce) { throw "GATE_PIPE_NONCE_INVALID" }
+  if ($envelope.type -ne "payload" -or -not (Has-StringProperty $envelope "nonce") -or -not (Equals-OrdinalString $envelope.nonce $PipeNonce)) { throw "GATE_PIPE_NONCE_INVALID" }
   $payload = $envelope.payload
   if ($payload.protocol -ne "moawork-gate-guardian-v2" -or $payload.wrapperPid -ne $BootstrapWrapperPid -or $payload.host -ne "127.0.0.1") { throw "GATE_PAYLOAD_INVALID" }
   if ($wrapper.Exited) { throw "GATE_WRAPPER_EXITED" }
@@ -309,8 +341,8 @@ try {
   $stage = "broker"
   $client = [Net.Sockets.TcpClient]::new(); $connect = $client.ConnectAsync([string]$payload.host, [int]$payload.port); if (-not $connect.Wait(5000)) { throw "GATE_BROKER_CONNECT_TIMEOUT" }
   $stream = $client.GetStream(); $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $false, 4096, $true); $writer = [IO.StreamWriter]::new($stream, [Text.UTF8Encoding]::new($false), 4096, $true)
-  $hello = (Read-Broker $reader 5000) | ConvertFrom-Json
-  if ($hello.type -ne "hello" -or $hello.protocol -ne "moawork-full-gate-v1") { throw "GATE_BROKER_PROTOCOL" }
+  $hello = Read-BrokerMessage $reader 5000 "HELLO"
+  if ($hello.type -ne "hello" -or -not (Has-StringProperty $hello "protocol") -or $hello.protocol -ne "moawork-full-gate-v1") { throw "GATE_BROKER_HELLO_SCHEMA" }
   Send-Broker $writer @{ type = "acquire"; request = @{ requestId = $payload.requestId; pid = $PID; label = $payload.label } }
   $grant = $null; $waitDeadline = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + [int64]$payload.waitTimeoutMs
   while ($null -eq $grant) {
@@ -318,12 +350,23 @@ try {
     if ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -ge $waitDeadline) { throw "GATE_LEASE_TIMEOUT" }
     # Broker heartbeat is fixed at 30s. A 90s read deadline leaves two full
     # heartbeat intervals of scheduling jitter and cannot be weakened by env.
-    $line = Read-Broker $reader 90000
-    if ($null -eq $line) { throw "GATE_BROKER_EOF" }
-    $message = $line | ConvertFrom-Json
-    if ($message.type -eq "granted") { $grant = $message }
-    elseif ($message.type -eq "waiting") { Write-Structured "GATE_LEASE_WAIT" @{ position = $message.position; waitedMs = $message.waitedMs } }
-    elseif ($message.type -eq "error") { throw "GATE_BROKER_REJECTED" }
+    $message = Read-BrokerMessage $reader 90000 "WAIT"
+    if ($message.type -eq "granted") {
+      if (-not (Has-StringProperty $message "requestId") -or -not (Equals-OrdinalString $message.requestId $payload.requestId) -or -not (Has-StringProperty $message "leaseToken") -or -not $message.leaseToken) { throw "GATE_BROKER_WAIT_SCHEMA" }
+      $grant = $message
+    }
+    elseif ($message.type -eq "waiting") {
+      if (-not (Has-StringProperty $message "requestId") -or -not (Equals-OrdinalString $message.requestId $payload.requestId)) { throw "GATE_BROKER_WAIT_SCHEMA" }
+      Write-Structured "GATE_LEASE_WAIT" @{ position = $message.position; waitedMs = $message.waitedMs }
+    }
+    elseif ($message.type -eq "heartbeat") {
+      if (-not (Has-StringProperty $message "requestId") -or -not (Equals-OrdinalString $message.requestId $payload.requestId)) { throw "GATE_BROKER_WAIT_SCHEMA" }
+    }
+    elseif ($message.type -eq "error") {
+      if (-not (Has-StringProperty $message "code")) { throw "GATE_BROKER_WAIT_SCHEMA" }
+      throw "GATE_BROKER_REJECTED"
+    }
+    else { throw "GATE_BROKER_WAIT_SCHEMA" }
   }
 
   $stage = "fence"
@@ -348,8 +391,9 @@ try {
     $controlLine = $null
     if ($pipe.TryRead([ref]$controlLine)) {
       try { $control = $controlLine | ConvertFrom-Json } catch { $result = "malformed-control" }
-      if (-not $result -and $control.nonce -eq $PipeNonce -and $control.type -eq "signal" -and $control.signal -in @("SIGINT", "SIGTERM")) { $result = "signal"; $signal = $control.signal }
-      elseif (-not $result) { $result = "malformed-control" }
+      if (-not $result -and -not (Has-StringProperty $control "nonce")) { throw "GATE_PIPE_CONTROL_SCHEMA" }
+      if (-not $result -and (Equals-OrdinalString $control.nonce $PipeNonce) -and $control.type -eq "signal" -and $control.signal -in @("SIGINT", "SIGTERM")) { $result = "signal"; $signal = $control.signal }
+      elseif (-not $result) { throw "GATE_PIPE_CONTROL_SCHEMA" }
     } elseif ($pipe.Eof -or $wrapper.Exited) { $result = "wrapper-eof" }
     elseif ($null -eq $exitCode -and $job.PrimaryExited) { $exitCode = [int]$job.CaptureExitAndClosePrimary() }
     elseif ($null -ne $exitCode -and $job.ActiveProcesses -eq 0) { $result = "exit" }
@@ -362,12 +406,21 @@ try {
   if ($result -eq "timeout") { $exitCode = 124; Fail "GATE_LEASE_RUN_TIMEOUT" "gate command timed out" @{ activeProcesses = 0 } }
   elseif ($result -eq "signal") { $exitCode = if ($signal -eq "SIGINT") { 130 } else { 143 }; Write-Structured "GATE_LEASE_INTERRUPTED" @{ signal = $signal; activeProcesses = 0 } }
   elseif ($result -ne "exit") { $exitCode = 78; Fail "GATE_GUARDIAN_TRANSPORT_LOST" "wrapper IPC closed" @{ activeProcesses = 0 } }
+  $stage = "release"
   Send-Broker $writer @{ type = "release"; requestId = $payload.requestId }
   $releaseDeadline = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + 5000; $released = $false
-  while (-not $released -and [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -lt $releaseDeadline) { $reply = (Read-Broker $reader 5000) | ConvertFrom-Json; if ($reply.type -eq "released") { $released = $true } elseif ($reply.type -ne "heartbeat") { throw "GATE_BROKER_RELEASE_INVALID" } }
+  while (-not $released -and [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -lt $releaseDeadline) {
+    $reply = Read-BrokerMessage $reader 5000 "RELEASE"
+    if ($reply.type -eq "released" -and (Has-StringProperty $reply "requestId") -and (Equals-OrdinalString $reply.requestId $payload.requestId)) { $released = $true }
+    elseif ($reply.type -eq "heartbeat" -and (Has-StringProperty $reply "requestId") -and (Equals-OrdinalString $reply.requestId $payload.requestId)) {}
+    elseif ($reply.type -eq "error" -and (Has-StringProperty $reply "code")) { throw "GATE_BROKER_RELEASE_REJECTED" }
+    else { throw "GATE_BROKER_RELEASE_SCHEMA" }
+  }
   if (-not $released) { throw "GATE_BROKER_RELEASE_TIMEOUT" }
   Remove-FenceMarker ([string]$payload.fenceName); $markerOwned = $false
   $fence.ReleaseMutex(); $fenceOwned = $false
+  Send-Broker $writer @{ type = "release-complete"; requestId = $payload.requestId }
+  Close-Broker $client; $client = $null
   Write-Structured "GATE_LEASE_RELEASED" @{ childExitCode = $exitCode; activeProcesses = 0; bootIdentity = [MoaWorkProcessHandle]::BootIdentity() }
   exit $exitCode
 } catch {
