@@ -6,8 +6,18 @@ import {
   useRef,
   useState,
   useTransition,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import {
+  clampComposerHeight,
+  continueList,
+  indentLines,
+  outdentLines,
+  type EditState,
+} from "@/lib/boards/composer-editing";
+import { clampDetailInset, clampRailWidth, DETAIL_DEFAULT_INSET } from "@/lib/boards/detail-pane-geometry";
 import { createPortal } from "react-dom";
 import type {
   BoardColumn,
@@ -353,6 +363,142 @@ export function ItemDetailPanel({
   const [composer, setComposer] = useState("");
   const [composerKind, setComposerKind] = useState<"memo" | "call">("memo");
   const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([]);
+  /*
+   * #660 — 입력창 높이. null 이면 CSS 기본값(두 줄)을 쓴다.
+   *
+   * ★ 손잡이를 «위쪽» 에 둔다. 이 칸은 화면 «아래» 에 붙어 있어서, 아래로 끌어 늘리면
+   *   화면 밖으로 나간다. 위로 끌어 늘리는 게 이 자리에서는 자연스러운 방향이다.
+   *   네이티브 resize 는 오른쪽 «아래» 모서리에만 붙으므로 직접 만든다.
+   */
+  const [composerHeight, setComposerHeight] = useState<number | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const composerDragRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
+
+  /** 값과 커서를 함께 바꾼다. 커서는 다음 프레임에 되돌린다 — 지금 쓰면 React 가 value 를 덮으며 지운다. */
+  const applyComposerEdit = useCallback((next: EditState) => {
+    setComposer(next.value);
+    requestAnimationFrame(() => {
+      const node = composerRef.current;
+      if (!node) return;
+      node.selectionStart = next.selectionStart;
+      node.selectionEnd = next.selectionEnd;
+    });
+  }, []);
+
+  /*
+   * #660 — Slack 처럼 마크다운을 «치면서» 쓴다.
+   *
+   * 탭으로 줄 수준을 올리고 내리고, 엔터가 목록을 이어 준다.
+   * 판정은 전부 lib/boards/composer-editing.ts 에 있다 — 여기는 배선만 한다.
+   *
+   * ★ 탭을 가로채면 키보드만 쓰는 사람이 이 칸에 갇힌다. 그래서 Escape 로 빠져나갈 문을 둔다.
+   *   화면에도 그렇게 적는다(aria-label).
+   */
+  const onComposerKeyDown = useCallback((event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    const node = event.currentTarget;
+    const state: EditState = {
+      value: node.value,
+      selectionStart: node.selectionStart,
+      selectionEnd: node.selectionEnd,
+    };
+    if (event.key === "Tab" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault();
+      applyComposerEdit(event.shiftKey ? outdentLines(state) : indentLines(state));
+      return;
+    }
+    if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      const next = continueList(state);
+      // null 이면 브라우저 기본 줄바꿈을 그대로 둔다 — 흉내 내면 실행 취소 기록이 끊긴다.
+      if (!next) return;
+      event.preventDefault();
+      applyComposerEdit(next);
+      return;
+    }
+    if (event.key === "Escape") node.blur();
+  }, [applyComposerEdit]);
+
+  /*
+   * #660 — 높이 조절 손잡이를 «위쪽» 에 둔다.
+   *
+   * 이 칸은 화면 아래에 붙어 있다. 네이티브 resize 는 오른쪽 «아래» 모서리에만 붙는데,
+   * 그쪽으로 끌면 화면 밖으로 나가서 늘릴 수가 없다. 위로 끌어 늘리는 게 이 자리의 방향이다.
+   */
+  const beginComposerResize = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    const node = composerRef.current;
+    if (!node) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    composerDragRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      startHeight: node.getBoundingClientRect().height,
+    };
+  }, []);
+
+  const moveComposerResize = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    const drag = composerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    // ★ 위로 끌면(clientY 가 줄면) 커진다. 부호를 뒤집는 곳이 여기 한 군데다.
+    const next = drag.startHeight + (drag.startY - event.clientY);
+    setComposerHeight(clampComposerHeight(next, window.innerHeight));
+  }, []);
+
+  const endComposerResize = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    const drag = composerDragRef.current;
+    if (!drag) return;
+    composerDragRef.current = null;
+    try {
+      event.currentTarget.releasePointerCapture(drag.pointerId);
+    } catch {
+      // 포인터가 이미 풀렸으면 그걸로 됐다.
+    }
+  }, []);
+
+  /*
+   * #660 — 상세 화면을 «가장자리를 끌어» 조절한다.
+   *
+   *   왼쪽 가장자리   전체 너비 (여백이 줄면 대화상자가 넓어진다 · 0 이면 전체 화면)
+   *   가운데 선       좌우 분할 (왼쪽 정보 칸의 너비)
+   *
+   * ★ null 이면 CSS 기본값을 그대로 쓴다. 기본 기하는 시각 계약이 재고 있어서
+   *   (왼쪽 여백 80~112px · 정보 칸 352~430px) 기본을 바꾸면 게이트가 빨개진다.
+   *   사용자가 끌었을 때만 값이 생긴다.
+   * ★ 두 번 누르면 기본으로 돌아간다 — 끌어서 망가뜨린 것을 되돌릴 길을 같이 둔다.
+   */
+  const [detailInset, setDetailInset] = useState<number | null>(null);
+  const [railWidth, setRailWidth] = useState<number | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const paneDragRef = useRef<{ pointerId: number; kind: "inset" | "rail" } | null>(null);
+
+  const beginPaneDrag = useCallback((kind: "inset" | "rail") => (event: ReactPointerEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    paneDragRef.current = { pointerId: event.pointerId, kind };
+  }, []);
+
+  const movePaneDrag = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    const drag = paneDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.kind === "inset") {
+      // 왼쪽 가장자리를 끈 자리가 곧 여백이다. 왼쪽으로 끌수록 대화상자가 넓어진다.
+      setDetailInset(clampDetailInset(event.clientX, window.innerWidth));
+      return;
+    }
+    const box = contentRef.current?.getBoundingClientRect();
+    if (!box) return;
+    setRailWidth(clampRailWidth(event.clientX - box.left, box.width));
+  }, []);
+
+  const endPaneDrag = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    const drag = paneDragRef.current;
+    if (!drag) return;
+    paneDragRef.current = null;
+    try {
+      event.currentTarget.releasePointerCapture(drag.pointerId);
+    } catch {
+      // 이미 풀렸으면 그걸로 됐다.
+    }
+  }, []);
   const [folderUrl, setFolderUrl] = useState(initialDetail?.cloudFolder?.url ?? "");
   const [folderEditing, setFolderEditing] = useState(!initialDetail?.cloudFolder);
   const [folderError, setFolderError] = useState("");
@@ -660,7 +806,11 @@ export function ItemDetailPanel({
                 closeDrawer();
             }}
           >
-            <section className={styles.surface} data-item-detail-surface>
+            <section
+              className={styles.surface}
+              data-item-detail-surface
+              style={detailInset === null ? undefined : { width: `calc(100% - ${detailInset}px)` }}
+            >
               <div className={styles.shell}>
               <header className={styles.header} data-item-detail-header>
                 <button
@@ -723,7 +873,11 @@ export function ItemDetailPanel({
                 </nav>
               </header>
 
-              <div className={styles.content}>
+              <div
+                ref={contentRef}
+                className={styles.content}
+                style={railWidth === null ? undefined : { gridTemplateColumns: `${railWidth}px minmax(0, 1fr)` }}
+              >
                 <div className={styles.infoRail} data-item-detail-info-rail>
                   <div className={styles.infoHeader}>
                     <h3 className="font-bold text-mw-fg">회사 정보</h3>
@@ -1460,6 +1614,31 @@ export function ItemDetailPanel({
                 </div>
 
                 <aside className={styles.mainPane} data-item-detail-main>
+                  {/*
+                    #660 — 가운데 선을 끌면 좌우 분할이 바뀐다.
+                    ★ 정보 칸(infoRail)은 스크롤되는 상자라 그 안에 두면 손잡이가 같이 밀려 올라간다.
+                      스크롤하지 않는 이쪽(mainPane) 왼쪽 끝에 붙인다 — 자리는 같고 안 밀린다.
+                  */}
+                  <button
+                    type="button"
+                    data-detail-split-grip
+                    className={styles.splitGrip}
+                    aria-label="좌우 분할 조절 — 끌어서 정보 칸 너비를 바꿉니다"
+                    title="끌어서 좌우 분할 · 두 번 누르면 원래대로"
+                    onPointerDown={beginPaneDrag("rail")}
+                    onPointerMove={movePaneDrag}
+                    onPointerUp={endPaneDrag}
+                    onPointerCancel={endPaneDrag}
+                    onDoubleClick={() => setRailWidth(null)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+                      event.preventDefault();
+                      const box = contentRef.current?.getBoundingClientRect();
+                      const rail = document.querySelector<HTMLElement>("[data-item-detail-info-rail]")?.getBoundingClientRect();
+                      if (!box || !rail) return;
+                      setRailWidth(clampRailWidth(rail.width + (event.key === "ArrowLeft" ? -32 : 32), box.width));
+                    }}
+                  />
                   <section className={styles.watcherCard} data-item-detail-watchers>
                     <div className={styles.watcherCopy}>
                       <b>연관담당</b>
@@ -1579,12 +1758,41 @@ export function ItemDetailPanel({
                   </section>
                   {canEditItems && (
                     <section className={styles.composer} data-item-detail-composer>
+                      {/*
+                        #660 — 높이 조절 손잡이. 오른쪽 «위» 에 둔다.
+                        이 칸은 화면 아래에 붙어 있어서 아래로는 늘릴 자리가 없다.
+                        두 번 누르면 원래 높이로 돌아간다 — 늘린 것을 되돌릴 길을 같이 둔다.
+                      */}
+                      <button
+                        type="button"
+                        data-composer-grip
+                        className={styles.composerGrip}
+                        aria-label="입력창 높이 조절 — 위로 끌면 커져요. 위·아래 화살표로도 조절합니다"
+                        title="끌어서 높이 조절 · 두 번 누르면 원래대로"
+                        onPointerDown={beginComposerResize}
+                        onPointerMove={moveComposerResize}
+                        onPointerUp={endComposerResize}
+                        onPointerCancel={endComposerResize}
+                        onDoubleClick={() => setComposerHeight(null)}
+                        onKeyDown={(event) => {
+                          if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+                          event.preventDefault();
+                          const current = composerRef.current?.getBoundingClientRect().height ?? 0;
+                          const step = event.key === "ArrowUp" ? 24 : -24;
+                          setComposerHeight(clampComposerHeight(current + step, window.innerHeight));
+                        }}
+                      >
+                        <span aria-hidden="true" />
+                      </button>
                       <textarea
-                        aria-label="메모 또는 통화 기록"
+                        ref={composerRef}
+                        aria-label="메모 또는 통화 기록 — 탭으로 들여쓰기, Esc 로 빠져나가기"
                         value={composer}
                         onChange={(event) => setComposer(event.target.value)}
-                        placeholder="메모를 적으세요 — @이름으로 멘션할 수 있습니다"
+                        onKeyDown={onComposerKeyDown}
+                        placeholder="메모를 적으세요 — @이름 멘션 · 「- 」로 목록 · 탭으로 들여쓰기"
                         rows={2}
+                        style={composerHeight === null ? undefined : { height: `${composerHeight}px`, maxHeight: `${composerHeight}px` }}
                       />
                       {detail.members.length > 0 && (
                         <fieldset className={styles.mentionList}>
@@ -1648,6 +1856,33 @@ export function ItemDetailPanel({
                 </aside>
               </div>
               </div>
+              {/*
+                #660 — 왼쪽 가장자리를 끌면 전체 너비가 바뀐다. 왼쪽으로 갈수록 넓어지고,
+                끝까지 끌면 전체 화면이 된다. 두 번 누르면 기본으로 돌아간다.
+
+                ★ 자리는 화면 왼쪽 끝인데(절대 위치) 마크업은 «맨 뒤» 에 둔다.
+                  앞에 두면 이 버튼이 대화상자의 첫 초점이 되어 닫기 버튼을 밀어낸다 —
+                  열자마자 「닫기」에 초점이 가야 한다는 계약이 있고 시험이 그걸 잡는다.
+                  보조 조작이므로 초점 순서에서도 맨 뒤가 맞다.
+              */}
+              <button
+                type="button"
+                data-detail-edge-grip
+                className={styles.edgeGrip}
+                aria-label="상세 화면 너비 조절 — 왼쪽으로 끌면 넓어져요"
+                title="끌어서 너비 조절 · 두 번 누르면 원래대로"
+                onPointerDown={beginPaneDrag("inset")}
+                onPointerMove={movePaneDrag}
+                onPointerUp={endPaneDrag}
+                onPointerCancel={endPaneDrag}
+                onDoubleClick={() => setDetailInset(null)}
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+                  event.preventDefault();
+                  const current = detailInset ?? DETAIL_DEFAULT_INSET;
+                  setDetailInset(clampDetailInset(current + (event.key === "ArrowLeft" ? -32 : 32), window.innerWidth));
+                }}
+              />
             </section>
           </div>
         </DialogPortal>

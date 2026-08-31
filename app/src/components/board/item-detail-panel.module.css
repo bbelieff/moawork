@@ -604,11 +604,52 @@
 }
 
 .mainPane {
+  position: relative;
   display: grid;
   min-width: 0;
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr) auto;
   padding: 0.85rem 1rem 0.65rem;
+}
+
+/*
+ * #660 — 가장자리 손잡이 둘.
+ *
+ *   .edgeGrip   대화상자 왼쪽 끝 — 전체 너비
+ *   .splitGrip  두 칸 사이   — 좌우 분할
+ *
+ * ★ 잡는 영역은 넉넉히(8px), 보이는 것은 평소 없다가 올리면 «선 하나» 로 뜬다.
+ *   #655 에서 배운 것과 같다 — 6px 덩어리가 뜨면 «자리를 못 잡은 것» 처럼 보인다.
+ * ★ touch-action: none — 없으면 손가락으로 끌 때 브라우저가 스크롤로 먹는다.
+ */
+.edgeGrip,
+.splitGrip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 0.5rem;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.edgeGrip { left: 0; }
+.splitGrip { left: -0.25rem; }
+
+.edgeGrip:hover,
+.splitGrip:hover,
+.edgeGrip:focus-visible,
+.splitGrip:focus-visible {
+  border-left-color: var(--mw-record);
+}
+
+.edgeGrip:focus-visible,
+.splitGrip:focus-visible {
+  outline: 2px solid var(--mw-primary);
+  outline-offset: -2px;
 }
 
 .watcherCard {
@@ -832,7 +873,14 @@
   width: 100%;
   min-height: 2.45rem;
   max-height: 7rem;
-  resize: vertical;
+  /*
+   * #660 — 네이티브 손잡이를 끈다.
+   *
+   * `resize: vertical` 의 손잡이는 오른쪽 «아래» 모서리에만 붙는다. 이 칸은 화면 아래에
+   * 붙어 있어서 그쪽으로는 늘릴 자리가 없다. 그래서 손잡이를 직접 만들어 위에 둔다
+   * (.composerGrip). 높이는 그때 인라인 style 로 들어와 이 max-height 를 덮는다.
+   */
+  resize: none;
   border: 1px solid var(--mw-line);
   border-radius: 0.55rem;
   background: var(--mw-card);
@@ -840,6 +888,45 @@
   color: var(--mw-fg);
   font: inherit;
   font-size: 0.75rem;
+}
+
+/*
+ * #660 — 높이 조절 손잡이. 오른쪽 «위» 다.
+ *
+ * ★ touch-action: none — 없으면 손가락으로 끌 때 브라우저가 «스크롤» 로 먹어 버려서
+ *   손잡이가 안 움직인다. 포인터 이벤트로 직접 끄는 자리에는 반드시 붙인다.
+ */
+.composerGrip {
+  position: absolute;
+  top: 0.08rem;
+  right: 0.1rem;
+  z-index: 1;
+  display: grid;
+  width: 1.7rem;
+  height: 1.05rem;
+  place-items: center;
+  border: 0;
+  border-radius: 0.3rem;
+  background: transparent;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.composerGrip > span {
+  width: 0.9rem;
+  height: 0.3rem;
+  border-top: 2px solid var(--mw-line);
+  border-bottom: 2px solid var(--mw-line);
+}
+
+.composerGrip:hover > span,
+.composerGrip:focus-visible > span {
+  border-color: var(--mw-record);
+}
+
+.composerGrip:focus-visible {
+  outline: 2px solid var(--mw-primary);
+  outline-offset: 1px;
 }
 
 .composerActions,
