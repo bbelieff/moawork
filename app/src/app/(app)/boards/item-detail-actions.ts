@@ -49,6 +49,9 @@ export type ItemDetailEvent = {
   body: string;
   actor_id: string | null;
   created_at: string;
+  /* #672 — 치워진 줄. 행은 남아 있고 화면에서만 접힌다. */
+  deleted_at?: string | null;
+  deleted_by?: string | null;
 };
 export type ItemDetailLink = {
   id: string;
@@ -73,6 +76,9 @@ export type ItemDetailSnapshot = {
   files: ItemDetailFile[];
   members: { id: string; name: string | null }[];
   viewerId?: string;
+  /* #672 — 「치우기」를 보일지 정하는 데 쓴다. 막는 것은 서버(마이그레이션 144)다. */
+  viewerRole?: string | null;
+  assignedTo?: string | null;
 };
 
 async function context(boardId: string, itemId: string) {
@@ -122,7 +128,7 @@ export async function loadItemDetailAction(
       await Promise.all([
         client
           .from("board_item_detail_events")
-          .select("id,kind,body,actor_id,created_at")
+          .select("id,kind,body,actor_id,created_at,deleted_at,deleted_by")
           .eq("org_id", ctx.org.id)
           .eq("board_id", boardId)
           .eq("item_id", itemId)
@@ -211,6 +217,8 @@ export async function loadItemDetailAction(
       files,
       members,
       viewerId: ctx.user.id,
+      viewerRole: ctx.role,
+      assignedTo: item.assigned_to ?? null,
     };
   } catch (error) {
     return {
@@ -304,6 +312,66 @@ export async function removeItemCloudFolderAction(input: {
         error instanceof Error
           ? error.message
           : "클라우드 폴더 연결을 해제하지 못했습니다.",
+      events: [],
+      links: [],
+      files: [],
+      members: [],
+    };
+  }
+}
+
+/*
+ * #672 — 히스토리를 «치운다». 지우지 않는다.
+ *
+ * ★ 서버 함수가 권한을 판정한다(마이그레이션 144). 화면의 버튼 감추기는 «안내» 일 뿐이고,
+ *   여기서 다시 규칙을 흉내 내지 않는다 — 두 곳에 같은 규칙을 적으면 반드시 어긋난다.
+ */
+export async function removeItemDetailEventAction(input: {
+  boardId: string;
+  itemId: string;
+  eventId: string;
+}): Promise<ItemDetailSnapshot> {
+  return runDetailEventLifecycle(input, "remove_board_item_detail_event", "기록을 치우지");
+}
+
+/** 되살리기 — 치운 사람과 대표만. 판정은 역시 서버가 한다. */
+export async function restoreItemDetailEventAction(input: {
+  boardId: string;
+  itemId: string;
+  eventId: string;
+}): Promise<ItemDetailSnapshot> {
+  return runDetailEventLifecycle(input, "restore_board_item_detail_event", "기록을 되살리지");
+}
+
+async function runDetailEventLifecycle(
+  input: { boardId: string; itemId: string; eventId: string },
+  rpc: "remove_board_item_detail_event" | "restore_board_item_detail_event",
+  verb: string,
+): Promise<ItemDetailSnapshot> {
+  try {
+    const { ctx, client } = await context(input.boardId, input.itemId);
+    await requireItemMutationPermission(ctx.org.id);
+    if (!UUID.test(input.eventId)) throw new Error("기록 식별자가 올바르지 않습니다.");
+    const { error } = await client.rpc(rpc, {
+      p_org_id: ctx.org.id,
+      p_board_id: input.boardId,
+      p_item_id: input.itemId,
+      p_event_id: input.eventId,
+    });
+    if (error) {
+      throw new Error(
+        error.code === "42501"
+          ? `${verb} 권한이 없습니다.`
+          : error.code === "P0002"
+            ? "그 기록을 찾지 못했습니다. 화면을 새로 고쳐 주세요."
+            : `${verb} 못했습니다. 잠시 뒤 다시 시도해 주세요.`,
+      );
+    }
+    return loadItemDetailAction(input.boardId, input.itemId);
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : `${verb} 못했습니다.`,
       events: [],
       links: [],
       files: [],

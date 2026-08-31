@@ -20,6 +20,10 @@ import {
 } from "@/lib/boards/composer-editing";
 import { clampDetailInset, clampRailWidth, DETAIL_DEFAULT_INSET } from "@/lib/boards/detail-pane-geometry";
 import {
+  canRemoveDetailEvent,
+  canRestoreDetailEvent,
+} from "@/lib/boards/detail-event-permissions";
+import {
   detailEventActorInitial,
   detailEventAuthorName,
   detailEventKindIndex,
@@ -56,6 +60,8 @@ import {
 } from "@/app/(app)/boards/new-lead-actions";
 import {
   addItemDetailEventAction,
+  removeItemDetailEventAction,
+  restoreItemDetailEventAction,
   loadItemDetailAction,
   removeItemCloudFolderAction,
   saveItemCloudFolderAction,
@@ -1709,7 +1715,7 @@ export function ItemDetailPanel({
                     <div className={styles.historyHeader}>
                       <h3>히스토리</h3>
                       <span className={styles.historyMeta}>
-                        최신순 · 자동 기록 포함 · 삭제 불가
+                        최신순 · 자동 기록 포함 · 치운 기록은 되살릴 수 있어요
                       </span>
                     </div>
                     <div className={styles.historyScroll}>
@@ -1723,10 +1729,28 @@ export function ItemDetailPanel({
                     )}
                     {detail.events.map((event) => {
                       const actorName = detail.members.find((member) => member.id === event.actor_id)?.name;
+                      /*
+                        #672 — 「치우기」는 «누를 수 있는 줄에만» 보인다.
+                        못 누르는 자리에 회색 버튼을 두면 눌러 보고 실패하는 길을 만드는 셈이다.
+                        ★ 막는 것은 서버다(마이그레이션 144). 이건 안내일 뿐이다.
+                      */
+                      const viewer = {
+                        viewerId: detail.viewerId ?? null,
+                        viewerRole: detail.viewerRole ?? null,
+                        assignedTo: detail.assignedTo ?? null,
+                      };
+                      const removed = Boolean(event.deleted_at);
+                      const canRemove =
+                        canEditItems &&
+                        !removed &&
+                        canRemoveDetailEvent({ kind: event.kind, actorId: event.actor_id }, viewer);
+                      const canRestore =
+                        canEditItems && removed && canRestoreDetailEvent(event.deleted_by ?? null, viewer);
                       return (
                         <article
                           key={event.id}
                           className={styles.historyEntry}
+                          data-removed={removed || undefined}
                         >
                           {/*
                             #657 — 히스토리 종류를 «배지 색» 으로 나눈다.
@@ -1761,9 +1785,48 @@ export function ItemDetailPanel({
                             </time>
                           </div>
                           <p className={styles.historyBody}>
-                            {event.body}
+                            {removed ? "치운 기록이에요." : event.body}
                           </p>
                           </div>
+                          {canRemove && (
+                            <button
+                              type="button"
+                              className={styles.historyRemove}
+                              data-history-remove
+                              disabled={detailPending}
+                              aria-label={`${detailEventKindLabel(event.kind)} 기록 치우기`}
+                              title="치우기 — 되살릴 수 있어요"
+                              onClick={() =>
+                                startDetailTransition(async () => {
+                                  const next = await removeItemDetailEventAction({
+                                    boardId, itemId: row.id, eventId: event.id,
+                                  });
+                                  setDetail(next);
+                                })
+                              }
+                            >
+                              치우기
+                            </button>
+                          )}
+                          {canRestore && (
+                            <button
+                              type="button"
+                              className={styles.historyRemove}
+                              data-history-restore
+                              disabled={detailPending}
+                              aria-label={`${detailEventKindLabel(event.kind)} 기록 되살리기`}
+                              onClick={() =>
+                                startDetailTransition(async () => {
+                                  const next = await restoreItemDetailEventAction({
+                                    boardId, itemId: row.id, eventId: event.id,
+                                  });
+                                  setDetail(next);
+                                })
+                              }
+                            >
+                              되살리기
+                            </button>
+                          )}
                         </article>
                       );
                     })}
