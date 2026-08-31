@@ -76,21 +76,37 @@ describe("BBE-150 계약업체 실무 렌더", () => {
     expect(html).toContain('name="columnKey" value="execution_amount"');
   });
 
+  /*
+   * #655 — 필터 칩은 「필터」 패널 안으로 들어갔다. 원칙 9(칩+팝오버·네이티브 select 금지)는
+   * 그대로이고 «어디에 서 있는가» 만 바뀌었다. 걸린 필터가 있으면 패널은 기본으로 열린다(#602).
+   */
+  const toolbar = (filters: typeof EMPTY_FILTERS) => renderToStaticMarkup(
+    <BoardToolbar
+      columns={columns}
+      filters={filters}
+      onChange={() => {}}
+      matched={0}
+      total={0}
+      people={[]}
+    />,
+  );
+
   it("상태·선택 필터는 칩+팝오버이며 네이티브 select가 아니다", () => {
-    const html = renderToStaticMarkup(
-      <BoardToolbar
-        columns={columns}
-        filters={EMPTY_FILTERS}
-        onChange={() => {}}
-        matched={0}
-        total={0}
-        people={[]}
-      />,
-    );
+    const html = toolbar({ ...EMPTY_FILTERS, assignees: ["someone"] });
     expect(html).not.toContain("<select");
     expect(html).toContain('aria-haspopup="dialog"');
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain("<details");
     for (const label of ["진행기관", "세부명칭", "진행상황"]) expect(html).toContain(label);
+  });
+
+  it("아무것도 안 걸리면 필터는 접히고 세 묶음만 선다 (#655)", () => {
+    const html = toolbar(EMPTY_FILTERS);
+    for (const label of ["찾기", "필터", "보기", "정렬", "표시 컬럼", "저장", "뷰로 저장"]) {
+      expect(html, label).toContain(label);
+    }
+    // 접혔으므로 개별 필터 칩은 아직 서 있지 않다.
+    expect(html).not.toContain("진행기관");
+    expect(html).not.toContain("<select");
   });
 });

@@ -149,6 +149,23 @@ export function activeFilterCount(f: BoardFilterState): number {
   return n;
 }
 
+/**
+ * 「필터」 버튼의 배지에 붙는 수 (#655). 접힌 패널 안에 걸린 facet 개수다.
+ *
+ * ★ activeFilterCount 와 «일부러» 다르다.
+ *   저쪽은 「초기화」 버튼을 띄울지 정하려고 «지금 무엇이든 걸려 있나» 를 센다 —
+ *   검색어·정렬·표시 컬럼까지 포함한다.
+ *   여기는 «접힌 패널 안에 몇 개가 걸려 있나» 다. 검색은 패널 밖에 그대로 보이고
+ *   정렬·표시 컬럼은 「보기」 묶음에 있으므로, 그것들을 세면 배지가
+ *   «열어도 그 수가 안 보이는» 거짓말을 한다.
+ */
+export function activeFacetCount(f: BoardFilterState): number {
+  let n = 0;
+  if (f.assignees.length > 0) n += 1;
+  for (const picked of Object.values(f.byColumn)) if (picked.length > 0) n += 1;
+  return n;
+}
+
 /** 검색 대상 텍스트 — 제목 + 모든 셀의 **표시 텍스트**(옵션 id 가 아니라 라벨). */
 function haystack(
   row: ItemWithValues,

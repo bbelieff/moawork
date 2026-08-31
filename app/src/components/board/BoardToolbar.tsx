@@ -15,6 +15,7 @@ import { useMemo, useState } from "react";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { CheckOption, FilterChip, RadioOption } from "./FilterChip";
 import {
+  activeFacetCount,
   activeFilterCount,
   EMPTY_FILTERS,
   savedViewFilterPayload,
@@ -167,26 +168,50 @@ export function BoardToolbar({
     );
   };
 
-  return (
-    <div className="mw-board-inline-scroll flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden pb-1">
-      {/* 검색 — 칩이 아니라 입력 자체를 노출한다(가장 자주 쓰는 컨트롤). */}
-      <div className="relative shrink-0">
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-mw-sub"
-        >
-          ⌕
-        </span>
-        <input
-          type="search"
-          value={filters.q}
-          onChange={(e) => patch({ q: e.target.value })}
-          placeholder="검색"
-          aria-label="보드 검색"
-          className="h-7 w-52 rounded-full border border-mw-line bg-mw-card pl-7 pr-3 text-xs text-mw-fg outline-none placeholder:text-mw-sub focus:border-mw-record"
-        />
-      </div>
+  /** 접힌 패널 «안에» 걸린 수만 센다 — 검색·정렬·표시 컬럼은 패널 밖이라 빼야 배지가 정직하다. */
+  const facetCount = activeFacetCount(filters);
+  /*
+   * ★ 걸린 필터가 있으면 «기본으로 열려» 있다 (#602).
+   *
+   *   #602 가 세운 계약은 「저장된 뷰에서 되살아난 필터는 «보여야» 한다」다.
+   *   보이지 않으면 사용자는 «왜 행이 줄었는지» 를 알 방법이 없다 — 조용한 누락이 된다.
+   *   그래서 접는 것은 «아무것도 안 걸린» 상태뿐이다. 총괄이 막막하다고 한 것도 그 상태다.
+   *
+   *   사용자가 직접 접거나 편 뒤에는 그 선택이 이긴다(override). null 인 동안만 데이터를 따른다 —
+   *   useState 초기값으로만 두면 나중에 저장뷰를 불러와 필터가 걸려도 안 열린다.
+   */
+  const [openOverride, setOpenOverride] = useState<boolean | null>(null);
+  const filtersOpen = openOverride ?? facetCount > 0;
+  const setFiltersOpen = (next: boolean) => setOpenOverride(next);
+  /**
+   * 필터가 하나도 만들어질 수 없는 보드에서는 「필터」 버튼을 아예 안 그린다.
+   * 열어도 빈 패널이면 «있는데 비었다» 와 «애초에 없다» 를 구분 못 한다.
+   */
+  const hasFacets =
+    people.length > 0 ||
+    otherInfoColumns.length > 0 ||
+    optionColumns.length > 0 ||
+    activeLegacyFacets.length > 0;
 
+  /*
+   * #655 — 도구줄을 «찾기 · 보기 · 저장» 세 묶음으로 나누고 필터는 접는다.
+   *
+   * 전에는 성격이 다른 컨트롤 13개가 같은 모양·같은 크기로 한 줄에 있었다. 구분선도
+   * 묶음 이름도 없어서 「무엇을 바꾸면 무엇이 달라지는지」를 눈으로 읽을 수 없었다.
+   * 총괄의 말: 「너무 복잡하고 내용구분이 안되어있으니 … 의사결정이 힘들다」.
+   *
+   * ★ 없애는 기능은 하나도 없다. 접는 것과 지우는 것은 다르다(D71~D75).
+   *   필터 칩은 전부 그대로 살아서 패널 안으로 들어간다.
+   *
+   * ★ 필터 9개 중 대부분은 select 컬럼에서 «자동으로» 만들어진다. 그래서 접지 않으면
+   *   컬럼을 만들 때마다 줄이 길어지고 상한이 없다. 접으면 바깥 줄은 컬럼 수와 무관해진다.
+   *
+   * ★ 패널은 팝오버가 아니라 «줄 아래로 펼쳐지는 영역» 이다.
+   *   FilterChip 은 포털 팝오버이고 열릴 때 moawork:popover-open 으로 서로를 닫는다.
+   *   패널까지 팝오버로 만들면 안쪽 칩을 여는 순간 패널이 닫힌다.
+   */
+  const facetChips = (
+    <>
       {people.length > 0 && (
         <FilterChip
           label="담당자"
@@ -264,7 +289,11 @@ export function BoardToolbar({
           </p>
         </FilterChip>
       ))}
+    </>
+  );
 
+  const viewChips = (
+    <>
       <FilterChip
         label="정렬"
         summary={sortSummary || undefined}
@@ -338,29 +367,127 @@ export function BoardToolbar({
           이 선택은 현재 주소에 남습니다. «뷰로 저장»하면 해당 뷰에만 포함되고 다른 사람의 기본 화면은 바뀌지 않습니다.
         </p>
       </FilterChip>
+    </>
+  );
 
-      {active > 0 && (
+  return (
+    <div className="flex flex-col gap-1.5">
+      {/*
+        도구줄은 여전히 «1줄» 이다(ui-guidelines 원칙 4·9). 넘치면 꺾이지 않고 가로로 흐른다.
+        달라진 것은 «몇 개가 서 있는가» 다 — 필터가 접히면서 컬럼 수와 무관해졌다.
+      */}
+      <div
+        data-board-toolbar
+        className="mw-board-inline-scroll flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden pb-1"
+      >
+        <span className="shrink-0 select-none pr-0.5 text-[10px] tracking-wide text-mw-sub">찾기</span>
+
+        {/* 검색 — 칩이 아니라 입력 자체를 노출한다(가장 자주 쓰는 컨트롤). */}
+        <div className="relative shrink-0">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-mw-sub"
+          >
+            ⌕
+          </span>
+          <input
+            type="search"
+            value={filters.q}
+            onChange={(e) => patch({ q: e.target.value })}
+            placeholder="검색"
+            aria-label="보드 검색"
+            className="h-7 w-52 rounded-full border border-mw-line bg-mw-card pl-7 pr-3 text-xs text-mw-fg outline-none placeholder:text-mw-sub focus:border-mw-record"
+          />
+        </div>
+
+        {hasFacets && (
+          <button
+            type="button"
+            data-board-filter-toggle
+            aria-expanded={filtersOpen}
+            aria-controls="board-filter-panel"
+            onClick={() => setFiltersOpen(!filtersOpen)}
+            className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs transition-colors ${
+              facetCount > 0
+                ? "border-mw-record bg-mw-tint-blue text-mw-record"
+                : "border-mw-line bg-mw-card text-mw-body hover:border-mw-sub"
+            }`}
+          >
+            필터
+            {/*
+              ★ 걸린 개수를 «버튼 위에» 적는다. 접었는데 몇 개가 걸렸는지 모르면
+                접은 것이 아니라 숨긴 것이 된다.
+            */}
+            {facetCount > 0 ? (
+              <span className="rounded-full bg-mw-record px-1.5 text-[10px] font-semibold leading-4 text-mw-on-accent tabular-nums">
+                {facetCount}
+              </span>
+            ) : null}
+            <span aria-hidden="true" className="text-[8px] text-mw-sub">{filtersOpen ? "▴" : "▾"}</span>
+          </button>
+        )}
+
+        <span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-mw-line" />
+        <span className="shrink-0 select-none pr-0.5 text-[10px] tracking-wide text-mw-sub">보기</span>
+        {viewChips}
+
+        <span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-mw-line" />
+        <span className="shrink-0 select-none pr-0.5 text-[10px] tracking-wide text-mw-sub">저장</span>
+        {active > 0 && (
+          <button
+            type="button"
+            onClick={() => onChange(EMPTY_FILTERS)}
+            className="h-7 shrink-0 rounded-full px-3 text-xs text-mw-sub underline-offset-2 hover:text-mw-fg hover:underline"
+          >
+            초기화
+          </button>
+        )}
         <button
           type="button"
-          onClick={() => onChange(EMPTY_FILTERS)}
-          className="h-7 shrink-0 rounded-full px-3 text-xs text-mw-sub underline-offset-2 hover:text-mw-fg hover:underline"
+          onClick={requestSaveView}
+          className="h-7 shrink-0 rounded-full border border-mw-line bg-mw-card px-3 text-xs text-mw-body hover:border-mw-record hover:text-mw-record"
         >
-          초기화
+          뷰로 저장
         </button>
-      )}
 
-      <button
-        type="button"
-        onClick={requestSaveView}
-        className="h-7 shrink-0 rounded-full border border-mw-line bg-mw-card px-3 text-xs text-mw-body hover:border-mw-record hover:text-mw-record"
-      >
-        뷰로 저장
-      </button>
+        {/* 필터가 걸린 동안에는 "몇 건이 숨겨졌는지"가 보여야 한다 — 조용한 누락 방지. */}
+        <span className="ml-auto shrink-0 pl-2 text-xs text-mw-sub">
+          {matched === total ? `${total}건` : `${matched} / ${total}건`}
+        </span>
+      </div>
 
-      {/* 필터가 걸린 동안에는 "몇 건이 숨겨졌는지"가 보여야 한다 — 조용한 누락 방지. */}
-      <span className="ml-auto shrink-0 pl-2 text-xs text-mw-sub">
-        {matched === total ? `${total}건` : `${matched} / ${total}건`}
-      </span>
+      {hasFacets && filtersOpen ? (
+        <div
+          id="board-filter-panel"
+          data-board-filter-panel
+          className="flex flex-col gap-2 rounded-xl border border-mw-line bg-mw-card p-3"
+        >
+          <div className="flex flex-wrap items-center gap-2">{facetChips}</div>
+          <div className="flex items-center justify-between gap-2 border-t border-mw-line pt-2">
+            <span className="text-[11px] text-mw-sub">
+              {facetCount > 0 ? `${facetCount}개가 걸려 있어요` : "아직 걸린 필터가 없어요"}
+            </span>
+            <div className="flex items-center gap-2">
+              {facetCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => patch({ assignees: [], byColumn: {} })}
+                  className="rounded-full px-2 text-[11px] text-mw-sub underline-offset-2 hover:text-mw-fg hover:underline"
+                >
+                  필터만 지우기
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setFiltersOpen(false)}
+                className="h-7 rounded-full border border-mw-line bg-mw-bg px-3 text-xs text-mw-body hover:border-mw-sub"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
