@@ -9,6 +9,7 @@ import {
 import { Badge } from "@/components/notify/Badge";
 import { AccessibleTooltip } from "@/components/ui/AccessibleTooltip";
 import type { BadgeState } from "@/lib/notify/types";
+import { navigationKindFor } from "@/lib/workspace/switch-navigation";
 import { Icon } from "./icons";
 import {
   NAV_ITEMS,
@@ -195,6 +196,18 @@ export function SidebarNav({
         <WorkspaceSwitcher
           {...workspaceSwitcher}
           onNavigate={async (destination) => {
+            /*
+              Issue 671 — 워크스페이스 전환은 «문서 요청» 이어야 한다.
+
+              `/w/<slug>` 는 페이지가 아니라 Route Handler 라, 서버가 돌면서
+              org 쿠키를 심어야 전환이 끝난다. router.push 는 RSC 페이로드를
+              기대하는 클라이언트 이동이라 그 쿠키가 심기지 않고, 예외도 안 던져서
+              «조용히 아무 일도 안 일어난» 상태가 됐다.
+            */
+            if (navigationKindFor(destination) === "document") {
+              window.location.assign(destination);
+              return;
+            }
             router.push(destination);
           }}
         />
