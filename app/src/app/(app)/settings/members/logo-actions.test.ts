@@ -23,7 +23,7 @@ import {
   removeOrgLogoAction,
   uploadOrgLogoAction,
 } from "./logo-actions";
-import { ORG_LOGO_IDLE } from "@/lib/org-logo/contracts";
+import { ORG_LOGO_MAX_BYTES, ORG_LOGO_IDLE } from "@/lib/org-logo/contracts";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const OTHER_ORG = "22222222-2222-4222-8222-222222222222";
@@ -98,10 +98,18 @@ describe("uploadOrgLogoAction — 권한", () => {
 });
 
 describe("uploadOrgLogoAction — 서버측 검증 (화면 제한을 믿지 않는다)", () => {
-  it("★ 용량 초과를 서버가 거부한다 — 1MiB 경계", async () => {
-    const result = await uploadOrgLogoAction(ORG_LOGO_IDLE, formWith(pngFile(1048577)));
+  /*
+   * #652 — 상한을 1MiB → 4MiB 로 넓혔다.
+   *
+   * ★ 옛 값이 하필 Next 서버 액션 본문 상한(1MB)과 «같아서», 조금이라도 큰 파일은
+   *   이 코드가 실행되기 전에 잘렸다 — 「너무 커요」라는 안내조차 못 떴다.
+   *   그래서 상한을 ORG_LOGO_MAX_BYTES 에서 «읽는다». 숫자를 여기 다시 적으면
+   *   둘이 어긋나도 시험이 초록일 수 있다.
+   */
+  it("★ 용량 초과를 서버가 거부한다 — 상한 경계", async () => {
+    const result = await uploadOrgLogoAction(ORG_LOGO_IDLE, formWith(pngFile(ORG_LOGO_MAX_BYTES + 1)));
     expect(result.reason).toBe("too_large");
-    expect(result.message).toContain("1MB");
+    expect(result.message).toContain("MB");
     expect(mocks.upload).not.toHaveBeenCalled();
   });
 
@@ -122,7 +130,11 @@ describe("uploadOrgLogoAction — 서버측 검증 (화면 제한을 믿지 않�
   it("★ image/png 로 위장한 HTML 바이트를 서버가 거부한다", async () => {
     const spoofed = new File(["<html>not an image</html>"], "fake.png", { type: "image/png" });
     const result = await uploadOrgLogoAction(ORG_LOGO_IDLE, formWith(spoofed));
-    expect(result.reason).toBe("bad_format");
+    /*
+     * #652 — 사유를 갈랐다. 「확장자가 아예 아님(bad_format)」과
+     *   「이름은 맞는데 내용이 다름(bad_content)」은 고치는 법이 다르다.
+     */
+    expect(result.reason).toBe("bad_content");
     expect(mocks.upload).not.toHaveBeenCalled();
     expect(mocks.rpc).not.toHaveBeenCalled();
   });

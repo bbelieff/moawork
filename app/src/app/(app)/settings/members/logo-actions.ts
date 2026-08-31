@@ -66,7 +66,9 @@ export async function uploadOrgLogoAction(
   } catch {
     return failure("bad_format");
   }
-  if (!validateOrgLogoContent(validation.mime, content)) return failure("bad_format");
+  // ★ 왜 안 되는지 그대로 전한다. 「PNG·JPG·SVG 만 됩니다」로 뭉개면 고칠 수가 없다.
+  const verdict = validateOrgLogoContent(validation.mime, content);
+  if (!verdict.ok) return failure(verdict.reason);
 
   let supabase;
   try {
