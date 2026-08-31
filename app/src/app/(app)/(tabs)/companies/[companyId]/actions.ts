@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
-import { startCompanyWork, type CompanyStartWorkClient } from "@/lib/companies/start-work";
+import { shouldRetryCompanyStartWork, startCompanyWork, type CompanyStartWorkClient } from "@/lib/companies/start-work";
 import { createClient } from "@/lib/supabase/server";
 
 function text(formData: FormData, key: string): string {
@@ -22,8 +22,12 @@ export async function startCompanyWorkAction(formData: FormData): Promise<void> 
     const client = await createClient();
     const result = await startCompanyWork(client as unknown as CompanyStartWorkClient, { orgId: ctx.org.id, companyId, requestId });
     dealId = result.dealId;
-  } catch {
-    redirect(`/companies/${encodeURIComponent(companyId)}?workStart=failed`);
+  } catch (error) {
+    redirect(
+      `/companies/${encodeURIComponent(companyId)}?workStart=failed${shouldRetryCompanyStartWork(error)
+        ? `&requestId=${encodeURIComponent(requestId)}`
+        : ""}`,
+    );
   }
   revalidatePath(`/companies/${companyId}`);
   revalidatePath("/work");

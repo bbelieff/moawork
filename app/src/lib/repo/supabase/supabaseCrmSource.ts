@@ -8,8 +8,15 @@ import type {
   NewDeal,
 } from "@/lib/repo";
 import { mergeCustom } from "@/lib/repo/custom-merge";
-import { ACTIVITY_TYPES, stageMoveContent } from "@/lib/crm/activity";
-import { canSeeAll, type CrmSource } from "./source";
+import {
+  canSeeAll,
+  caseTaskMutationContract,
+  type CaseTaskMutationInput,
+  type CaseTaskMutationResult,
+  type CrmSource,
+} from "./source";
+import { CanonicalCaseApi } from "@/lib/case-domain/api";
+import { canonicalActivityType } from "@/lib/crm/activity";
 
 /**
  * 001_schema_v1 정본 테이블에 직접 붙는 core.crm 소스 (T02 · B2).
@@ -77,6 +84,7 @@ function toDeal(r: Row): Deal {
     custom: (r.custom as Record<string, unknown> | null) ?? {},
     created_at: String(r.created_at),
     updated_at: String(r.updated_at),
+    case_version: Number(r.case_version ?? 0),
   };
 }
 
@@ -89,6 +97,11 @@ function toActivity(r: Row): Activity {
     content: str(r.content),
     actor: str(r.actor),
     at: String(r.at),
+    company_id: str(r.company_id),
+    request_id: str(r.request_id),
+    payload_digest: str(r.payload_digest),
+    type_key: str(r.type_key),
+    category_key: str(r.category_key),
   };
 }
 
@@ -247,21 +260,8 @@ export class SupabaseCrmSource implements CrmSource {
   }
 
   async createDeal(ctx: Ctx, input: NewDeal): Promise<Deal> {
-    const assigned_to = canSeeAll(ctx)
-      ? (input.assigned_to ?? ctx.user.id)
-      : ctx.user.id;
-    const { data, error } = await this.db
-      .from("deals")
-      .insert({
-        ...input,
-        org_id: ctx.org.id,
-        assigned_to,
-        custom: input.custom ?? {},
-      })
-      .select("*")
-      .single();
-    if (error) this.fail("createDeal", error);
-    return toDeal(data as Row);
+    void ctx; void input;
+    throw new Error("Case 생성은 회사의 create_company_case 경로만 지원합니다.");
   }
 
   async updateDeal(
@@ -272,15 +272,17 @@ export class SupabaseCrmSource implements CrmSource {
     if ("stage_id" in patch) {
       throw new Error("딜 수정 불가: 단계 변경은 moveDeal() 을 사용하세요");
     }
+    if ("company_id" in patch || "pipeline_id" in patch || "assigned_to" in patch) {
+      throw new Error("Case 소유·파이프라인·담당 변경은 전용 RPC만 사용하세요");
+    }
     const current = await this.getDeal(ctx, id);
     if (!current) return undefined;
-    const { assigned_to, custom, ...rest } = patch;
+    const { custom, ...rest } = patch;
     const next: Row = { ...rest, updated_at: new Date().toISOString() };
     // custom 은 통째 교체 금지 — 읽은 값 위에 키 단위로 병합한다(BUG-0003, 로컬 구현과 동일 규약).
     // TODO(T02): 동시 수정 시 read-modify-write 는 마지막 쓰기가 이긴다. 정확히 하려면
     //   jsonb `||` 병합을 하는 RPC 로 옮긴다(단일 문장 원자성).
     if (custom !== undefined) next.custom = mergeCustom(current.custom, custom);
-    if (assigned_to !== undefined && canSeeAll(ctx)) next.assigned_to = assigned_to;
     const { data, error } = await this.db
       .from("deals")
       .update(next)
@@ -313,47 +315,48 @@ export class SupabaseCrmSource implements CrmSource {
     ctx: Ctx,
     id: string,
     toStageId: string,
+    identity: { requestId: string; expectedVersion: number },
   ): Promise<Deal | undefined> {
     const current = await this.getDeal(ctx, id);
     if (!current) return undefined;
-    const to = await this.getStage(toStageId);
-    if (!to) throw new Error(`단계 이동 불가: 존재하지 않는 단계 (${toStageId})`);
-    const from = current.stage_id ? await this.getStage(current.stage_id) : undefined;
-
-    const { data, error } = await this.db
-      .from("deals")
-      .update({
-        stage_id: to.id,
-        pipeline_id: current.pipeline_id ?? to.pipeline_id,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("org_id", ctx.org.id)
-      .eq("id", id)
-      .select("*")
-      .maybeSingle();
-    if (error) this.fail("moveDeal", error);
-    if (!data) return undefined;
-
-    // TODO(T02): 이동 UPDATE 와 활동로그 INSERT 가 한 트랜잭션이 아니다. 로그 INSERT 가
-    //   실패하면 로그 없는 이동이 남는다 — 004 이후 RPC(단일 트랜잭션)로 합친다.
-    await this.createActivity(ctx, {
-      deal_id: id,
-      type: ACTIVITY_TYPES.status,
-      content: stageMoveContent(from?.name ?? null, to.name),
+    const result = await new CanonicalCaseApi(this.db).moveStage({
+      orgId: ctx.org.id,
+      caseId: id,
+      stageId: toStageId,
+      expectedVersion: identity.expectedVersion,
+      requestId: identity.requestId,
+      content: null,
     });
-    return toDeal(data);
+    return { ...current, stage_id: result.stageId, pipeline_id: result.pipelineId, case_version: result.version };
+  }
+
+  async mutateCaseTask(
+    ctx: Ctx,
+    caseId: string,
+    input: CaseTaskMutationInput,
+  ): Promise<CaseTaskMutationResult> {
+    if (!(await this.getDeal(ctx, caseId))) throw new Error("case unavailable");
+    const contract = caseTaskMutationContract(input);
+    const { data, error } = await this.db.rpc("mutate_case_task_with_activity", {
+      p_org_id: ctx.org.id,
+      p_case_id: caseId,
+      p_request_id: contract.requestId,
+      p_patch: contract.patch,
+    });
+    if (error) this.fail("mutateCaseTask", error);
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row || typeof row !== "object") throw new Error("task mutation result unavailable");
+    const activityId = (row as Row).activity_id;
+    const replayed = (row as Row).replayed;
+    if (typeof activityId !== "string" || typeof replayed !== "boolean") {
+      throw new Error("task mutation result unavailable");
+    }
+    return { activityId, replayed };
   }
 
   async deleteDeal(ctx: Ctx, id: string): Promise<boolean> {
-    if (!(await this.getDeal(ctx, id))) return false;
-    // activities 는 001 에서 on delete cascade — 별도 정리 불필요.
-    const { error } = await this.db
-      .from("deals")
-      .delete()
-      .eq("org_id", ctx.org.id)
-      .eq("id", id);
-    if (error) this.fail("deleteDeal", error);
-    return true;
+    void ctx; void id;
+    throw new Error("canonical Case deletion is not supported");
   }
 
   // ── 활동기록 ──
@@ -372,11 +375,29 @@ export class SupabaseCrmSource implements CrmSource {
     return (data ?? []).map(toActivity);
   }
 
-  async createActivity(ctx: Ctx, input: NewActivity): Promise<Activity> {
+  async createActivity(ctx: Ctx, input: NewActivity, requestId: string): Promise<Activity> {
+    const typeId = canonicalActivityType(input.type);
+    if (!typeId) throw new Error(`활동 기록 불가: 지원하지 않는 type (${input.type})`);
+    const categoryId = typeId === "activity.status"
+      ? "activity.category.workflow"
+      : typeId === "activity.assignment"
+        ? "activity.category.ownership"
+        : typeId === "activity.memo"
+          ? "activity.category.note"
+          : "activity.category.conversation";
+    const result = await new CanonicalCaseApi(this.db).appendActivity({
+      orgId: ctx.org.id,
+      caseId: input.deal_id,
+      requestId,
+      typeId,
+      categoryId,
+      content: input.content,
+    });
     const { data, error } = await this.db
       .from("activities")
-      .insert({ ...input, org_id: ctx.org.id, actor: ctx.user.id })
       .select("*")
+      .eq("org_id", ctx.org.id)
+      .eq("id", result.activityId)
       .single();
     if (error) this.fail("createActivity", error);
     return toActivity(data as Row);

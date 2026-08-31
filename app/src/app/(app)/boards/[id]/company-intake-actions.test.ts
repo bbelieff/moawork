@@ -8,7 +8,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }));
 vi.mock("@/lib/auth/session", () => ({ getSession: vi.fn(async () => ({ org: { id: "org-1" } })) }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn(async () => ({ rpc: vi.fn() })) }));
-vi.mock("@/lib/companies/start-work", () => ({ startCompanyWork: mocks.start }));
+vi.mock("@/lib/companies/start-work", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/companies/start-work")>(),
+  startCompanyWork: mocks.start,
+}));
 
 import { startCompanyWorkFromBoardAction } from "./company-intake-actions";
 
@@ -55,6 +58,7 @@ describe("contract-work company intake action", () => {
     await expect(startCompanyWorkFromBoardAction({ ok: null, message: "" }, form())).resolves.toEqual({
       ok: false,
       message: "업무를 시작하지 못했어요. 잠시 후 다시 시도해 주세요.",
+      retry: { companyId: "company-1", groupId: null, requestId: "request-1" },
     });
     expect(mocks.revalidate).not.toHaveBeenCalled();
 
@@ -62,6 +66,29 @@ describe("contract-work company intake action", () => {
       { ok: null, message: "" },
       form({ companyId: "" }),
     )).resolves.toEqual({ ok: false, message: "업체를 선택한 뒤 다시 시도해 주세요." });
+    error.mockRestore();
+  });
+
+  it("actual unverifiable result만 exact retry intent를 보존하고 terminal conflict는 회전시킨다", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const actual = await vi.importActual<typeof import("@/lib/companies/start-work")>("@/lib/companies/start-work");
+    mocks.start.mockImplementationOnce((_client, input) => actual.startCompanyWork({
+      rpc: async () => ({
+        data: [{ case_id: "case-1", item_id: "item-1", version: null, replayed: false }],
+        error: null,
+      }),
+    }, input));
+    await expect(startCompanyWorkFromBoardAction({ ok: null, message: "" }, form({ groupId: "group-2" })))
+      .resolves.toMatchObject({
+        ok: false,
+        retry: { companyId: "company-1", groupId: "group-2", requestId: "request-1" },
+      });
+    mocks.start.mockImplementationOnce((_client, input) => actual.startCompanyWork({
+      rpc: async () => ({ data: null, error: { code: "42501", message: "permission denied" } }),
+    }, input));
+    const terminal = await startCompanyWorkFromBoardAction({ ok: null, message: "" }, form());
+    expect(terminal.ok).toBe(false);
+    expect(terminal.retry).toBeUndefined();
     error.mockRestore();
   });
 });

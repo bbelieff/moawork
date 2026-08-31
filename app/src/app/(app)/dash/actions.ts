@@ -4,12 +4,15 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { getCrmService } from "@/lib/crm";
-import {
-  canReassign,
-  DASH_TASK_KEYS,
-} from "@/lib/dash/drilldown";
+import { canReassign } from "@/lib/dash/drilldown";
+import { listOrgMemberOptions } from "@/lib/deal/members";
+import { shouldRetryCaseTaskMutation } from "@/lib/repo/supabase/source";
 
-type MutationResult = "completed" | "postponed" | "reassigned" | "partial" | "failed";
+type MutationResult = "completed" | "postponed" | "reassigned" | "retryable_unknown" | "failed";
+
+type TaskRetryState =
+  | { dealId: string; kind: "complete"; requestId: string }
+  | { dealId: string; kind: "postpone"; dueDate: string; requestId: string };
 
 function text(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -22,70 +25,73 @@ function safeReturnTo(value: string): string {
     : "/dash/tasks";
 }
 
-function withResult(returnTo: string, result: MutationResult): string {
+function withResult(returnTo: string, result: MutationResult, retry?: TaskRetryState): string {
   const url = new URL(safeReturnTo(returnTo), "https://moa-work.local");
-  url.searchParams.set("result", result);
-  return `${url.pathname}${url.search}`;
-}
-
-async function recordMutation(
-  dealId: string,
-  content: string,
-): Promise<boolean> {
-  try {
-    const ctx = await getSession();
-    await getCrmService().createActivity(ctx, dealId, { type: "status", content });
-    return true;
-  } catch {
-    return false;
+  for (const key of ["retryDealId", "retryKind", "retryRequestId", "retryDueDate"]) {
+    url.searchParams.delete(key);
   }
+  url.searchParams.set("result", result);
+  if (retry) {
+    url.searchParams.set("retryDealId", retry.dealId);
+    url.searchParams.set("retryKind", retry.kind);
+    url.searchParams.set("retryRequestId", retry.requestId);
+    if (retry.kind === "postpone") url.searchParams.set("retryDueDate", retry.dueDate);
+  }
+  return `${url.pathname}${url.search}`;
 }
 
 export async function completeTodayTaskAction(formData: FormData): Promise<void> {
   const dealId = text(formData, "dealId");
   const returnTo = safeReturnTo(text(formData, "returnTo"));
+  const requestId = text(formData, "requestId");
   let result: MutationResult = "failed";
+  let retry: TaskRetryState | undefined;
   try {
+    if (!requestId) throw new Error("requestId required");
     const ctx = await getSession();
-    await getCrmService().updateDeal(ctx, dealId, {
-      custom: {
-        [DASH_TASK_KEYS.status]: "done",
-        [DASH_TASK_KEYS.completedAt]: new Date().toISOString(),
-      },
+    await getCrmService().mutateCaseTask(ctx, dealId, {
+      kind: "complete",
+      requestId,
     });
-    result = (await recordMutation(dealId, "오늘 할 일을 완료했어요"))
-      ? "completed"
-      : "partial";
-  } catch {
-    result = "failed";
+    result = "completed";
+  } catch (error) {
+    if (requestId && shouldRetryCaseTaskMutation(error)) {
+      result = "retryable_unknown";
+      retry = { dealId, kind: "complete", requestId };
+    }
   }
   revalidatePath("/dash/tasks");
-  redirect(withResult(returnTo, result));
+  redirect(withResult(returnTo, result, retry));
 }
 
 export async function postponeTodayTaskAction(formData: FormData): Promise<void> {
   const dealId = text(formData, "dealId");
   const dueDate = text(formData, "dueDate");
+  const retryDueDate = text(formData, "retryDueDate");
   const returnTo = safeReturnTo(text(formData, "returnTo"));
+  const submittedRequestId = text(formData, "requestId");
+  const requestId = retryDueDate && retryDueDate !== dueDate
+    ? crypto.randomUUID()
+    : submittedRequestId;
   let result: MutationResult = "failed";
+  let retry: TaskRetryState | undefined;
   try {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) throw new Error("invalid date");
+    if (!requestId || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) throw new Error("invalid input");
     const ctx = await getSession();
-    await getCrmService().updateDeal(ctx, dealId, {
-      custom: {
-        [DASH_TASK_KEYS.dueDate]: dueDate,
-        [DASH_TASK_KEYS.status]: null,
-        [DASH_TASK_KEYS.completedAt]: null,
-      },
+    await getCrmService().mutateCaseTask(ctx, dealId, {
+      kind: "postpone",
+      dueDate,
+      requestId,
     });
-    result = (await recordMutation(dealId, `오늘 할 일을 ${dueDate}로 연기했어요`))
-      ? "postponed"
-      : "partial";
-  } catch {
-    result = "failed";
+    result = "postponed";
+  } catch (error) {
+    if (requestId && /^\d{4}-\d{2}-\d{2}$/u.test(dueDate) && shouldRetryCaseTaskMutation(error)) {
+      result = "retryable_unknown";
+      retry = { dealId, kind: "postpone", dueDate, requestId };
+    }
   }
   revalidatePath("/dash/tasks");
-  redirect(withResult(returnTo, result));
+  redirect(withResult(returnTo, result, retry));
 }
 
 export async function reassignTodayTaskAction(formData: FormData): Promise<void> {
@@ -96,13 +102,15 @@ export async function reassignTodayTaskAction(formData: FormData): Promise<void>
   try {
     const ctx = await getSession();
     if (!canReassign(ctx)) throw new Error("forbidden");
-    await getCrmService().getDeal(ctx, dealId);
-    await getCrmService().updateDeal(ctx, dealId, {
-      assigned_to: assignee || null,
+    const crm = getCrmService();
+    const before = await crm.getDeal(ctx, dealId);
+    const members = await listOrgMemberOptions(ctx);
+    const nameOf = (id: string | null) => id ? (members.find((member) => member.id === id)?.name ?? null) : null;
+    await crm.reassignDeal(ctx, dealId, assignee || null, {
+      fromName: nameOf(before.assigned_to),
+      toName: nameOf(assignee || null),
     });
-    result = (await recordMutation(dealId, "오늘 할 일 담당자를 바꿨어요"))
-      ? "reassigned"
-      : "partial";
+    result = "reassigned";
   } catch {
     result = "failed";
   }

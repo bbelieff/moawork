@@ -122,7 +122,7 @@ describe.skipIf(!READY)("실DB — core.crm 왕복", () => {
     const next = stages.find((s) => s.id !== deal.stage_id);
     expect(next, "이동할 다른 단계가 있어야 한다").toBeTruthy();
 
-    const moved = await svc.moveDealStage(ctx, deal.id, next!.id);
+    const moved = await svc.moveDealStage(ctx, deal.id, next!.id, { requestId: crypto.randomUUID(), expectedVersion: deal.case_version ?? 0 });
     expect(moved.stage_id).toBe(next!.id);
 
     const acts = await svc.listActivities(ctx, deal.id);

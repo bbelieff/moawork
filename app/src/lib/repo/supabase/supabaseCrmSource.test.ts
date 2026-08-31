@@ -98,6 +98,7 @@ const DEAL_ROW = {
   custom: null, // null 이면 {} 로 수렴해야 한다
   created_at: "2026-07-21T00:00:00Z",
   updated_at: "2026-07-21T00:00:00Z",
+  case_version: 2,
 };
 
 describe("SupabaseCrmSource — 담당범위 필터", () => {
@@ -164,6 +165,126 @@ describe("SupabaseCrmSource — 가시성", () => {
 });
 
 describe("SupabaseCrmSource — 쓰기 규칙", () => {
+  it("단계 이동은 expected Case version과 Activity를 묶은 canonical RPC만 호출한다", async () => {
+    const { db, rpc, queries } = fakeDb(
+      {
+        deals: { data: DEAL_ROW },
+        stages: { data: { id: "s2", pipeline_id: "p1", name: "다음", sort_order: 2, kind: "work" } },
+      },
+      { data: [{ case_id: "d1", version: 3, activity_id: "a1", stage_id: "s2", pipeline_id: "p1", replayed: false }] },
+    );
+    const moved = await new SupabaseCrmSource(db).moveDeal(ctxOf("member", "assigned"), "d1", "s2", { requestId: "00000000-0000-4000-8000-000000000001", expectedVersion: 2 });
+    expect(rpc).toHaveBeenCalledWith("move_case_stage_with_activity", expect.objectContaining({
+      p_org_id: "o1",
+      p_case_id: "d1",
+      p_stage_id: "s2",
+      p_expected_version: 2,
+      p_request_id: "00000000-0000-4000-8000-000000000001",
+    }));
+    expect(queries.every((query) => query.updated === undefined)).toBe(true);
+    expect(moved?.id).toBe("d1");
+  });
+
+  it("commit 뒤 transport loss 재시도는 같은 requestId로 저장된 stage 결과를 replay한다", async () => {
+    let deal = { ...DEAL_ROW };
+    let dealVisible = true;
+    let stageAvailable = true;
+    let stageReads = 0;
+    const rpc = vi.fn()
+      .mockImplementationOnce(async () => {
+        deal = { ...deal, stage_id: "s2", case_version: 3 };
+        stageAvailable = false;
+        throw new Error("transport lost after commit");
+      })
+      .mockResolvedValue({ data: [{ case_id: "d1", version: 3, activity_id: "a1", stage_id: "s2", pipeline_id: "p2", replayed: true }], error: null });
+    const db = {
+      from(table: string) {
+        if (table === "stages") stageReads += 1;
+        const data = table === "deals"
+          ? (dealVisible ? deal : null)
+          : (stageAvailable ? { id: "s2", pipeline_id: "p2", name: "다음", sort_order: 2, kind: "work" } : null);
+        return new FakeQuery({ data, error: null }, [], table);
+      },
+      rpc,
+    } as unknown as SupabaseClient;
+    const source = new SupabaseCrmSource(db);
+    const identity = { requestId: "00000000-0000-4000-8000-000000000099", expectedVersion: 2 };
+    await expect(source.moveDeal(ctxOf("member", "assigned"), "d1", "s2", identity)).rejects.toThrow(/transport lost/);
+    await expect(source.moveDeal(ctxOf("member", "assigned"), "d1", "s2", identity)).resolves.toMatchObject({ stage_id: "s2", pipeline_id: "p2", case_version: 3 });
+    expect(stageReads).toBe(0);
+    expect(rpc).toHaveBeenNthCalledWith(2, "move_case_stage_with_activity", expect.objectContaining({
+      p_request_id: identity.requestId,
+      p_expected_version: 2,
+      p_content: null,
+    }));
+    dealVisible = false;
+    await expect(source.moveDeal(ctxOf("member", "assigned"), "d1", "s2", identity)).resolves.toBeUndefined();
+    expect(rpc).toHaveBeenCalledTimes(2);
+  });
+
+  it("Activity append는 direct insert 대신 stable type/category RPC를 소비한다", async () => {
+    const activity = { id: "a1", org_id: "o1", deal_id: "d1", type: "memo", content: "메모", actor: "u1", at: "2026-08-31T00:00:00Z" };
+    const { db, rpc, queries } = fakeDb(
+      { activities: { data: activity } },
+      { data: [{ activity_id: "a1", replayed: false }] },
+    );
+    expect((await new SupabaseCrmSource(db).createActivity(ctxOf("member", "assigned"), {
+      deal_id: "d1", type: "memo", content: "메모",
+    }, "00000000-0000-4000-8000-000000000002")).id).toBe("a1");
+    expect(rpc).toHaveBeenCalledWith("append_case_activity", expect.objectContaining({
+      p_org_id: "o1",
+      p_case_id: "d1",
+      p_type_id: "activity.memo",
+      p_category_id: "activity.category.note",
+      p_request_id: "00000000-0000-4000-8000-000000000002",
+    }));
+    expect(queries.every((query) => query.inserted === undefined)).toBe(true);
+  });
+
+  it("오늘 할 일은 custom update와 Activity를 단일 receipt RPC로만 저장한다", async () => {
+    const requestId = "00000000-0000-4000-8000-000000000003";
+    const { db, rpc, queries } = fakeDb(
+      { deals: { data: DEAL_ROW } },
+      { data: [{ activity_id: "a-task", replayed: false }] },
+    );
+    const result = await new SupabaseCrmSource(db).mutateCaseTask(
+      ctxOf("member", "assigned"),
+      "d1",
+      { kind: "postpone", dueDate: "2026-09-02", requestId },
+    );
+
+    expect(result).toEqual({ activityId: "a-task", replayed: false });
+    expect(rpc).toHaveBeenCalledWith("mutate_case_task_with_activity", {
+      p_org_id: "o1",
+      p_case_id: "d1",
+      p_request_id: requestId,
+      p_patch: {
+        due_date: "2026-09-02",
+        task_status: null,
+        task_completed_at: null,
+      },
+    });
+    expect(queries.every((query) => query.updated === undefined && query.inserted === undefined)).toBe(true);
+  });
+
+  it("missing requestId와 RPC rollback 오류는 direct fallback 없이 실패한다", async () => {
+    const { db, rpc, queries } = fakeDb(
+      { deals: { data: DEAL_ROW } },
+      { data: null, error: { message: "injected receipt failure", code: "P0001" } },
+    );
+    const source = new SupabaseCrmSource(db);
+    await expect(source.mutateCaseTask(ctxOf("member", "assigned"), "d1", {
+      kind: "complete",
+      requestId: "",
+    })).rejects.toThrow(/requestId/);
+    expect(rpc).not.toHaveBeenCalled();
+    await expect(source.mutateCaseTask(ctxOf("member", "assigned"), "d1", {
+      kind: "complete",
+      requestId: "00000000-0000-4000-8000-000000000004",
+    })).rejects.toThrow(/injected receipt failure/);
+    expect(queries.every((query) => query.updated === undefined && query.inserted === undefined)).toBe(true);
+  });
+
   it("담당자 변경은 활동기록과 묶인 단일 RPC만 호출한다", async () => {
     const { db, rpc } = fakeDb({}, { data: { ...DEAL_ROW, assigned_to: "u2" } });
     const updated = await new SupabaseCrmSource(db).reassignDealWithActivity(
@@ -180,33 +301,27 @@ describe("SupabaseCrmSource — 쓰기 규칙", () => {
     expect(updated?.assigned_to).toBe("u2");
   });
 
-  it("일반 멤버가 만든 딜은 본인 담당으로 고정된다", async () => {
+  it("임의 deals insert는 fail-closed이고 회사 canonical Case 경로만 허용한다", async () => {
     const { db, queries } = fakeDb({ deals: { data: DEAL_ROW } });
-    await new SupabaseCrmSource(db).createDeal(ctxOf("member", "assigned"), {
+    await expect(new SupabaseCrmSource(db).createDeal(ctxOf("member", "assigned"), {
       title: "새 딜",
-      assigned_to: "someone-else", // 무시되어야 한다
-    });
-    expect((queries[0].inserted as { assigned_to: string }).assigned_to).toBe("u1");
+    })).rejects.toThrow(/create_company_case/);
+    expect(queries).toHaveLength(0);
   });
 
-  it("매니저는 타인에게 배정할 수 있다", async () => {
+  it("deleteDeal도 table delete 없이 fail-close한다", async () => {
     const { db, queries } = fakeDb({ deals: { data: DEAL_ROW } });
-    await new SupabaseCrmSource(db).createDeal(ctxOf("admin", "all"), {
-      title: "새 딜",
-      assigned_to: "u2",
-    });
-    expect((queries[0].inserted as { assigned_to: string }).assigned_to).toBe("u2");
+    await expect(new SupabaseCrmSource(db).deleteDeal(ctxOf("owner", "all"), "d1")).rejects.toThrow(/deletion is not supported/);
+    expect(queries).toHaveLength(0);
   });
 
-  it("일반 멤버의 재배정 시도는 패치에서 제거된다", async () => {
+  it("ownership PATCH는 direct deals update 전에 fail-closed된다", async () => {
     const { db, queries } = fakeDb({ deals: { data: DEAL_ROW } });
-    await new SupabaseCrmSource(db).updateDeal(ctxOf("member", "assigned"), "d1", {
+    await expect(new SupabaseCrmSource(db).updateDeal(ctxOf("member", "assigned"), "d1", {
       title: "수정",
       assigned_to: "u2",
-    });
-    // queries[0] = getDeal(가시성 확인), queries[1] = update
-    expect(queries[1].updated).not.toHaveProperty("assigned_to");
-    expect(queries[1].updated).toMatchObject({ title: "수정" });
+    })).rejects.toThrow(/전용 RPC/);
+    expect(queries).toHaveLength(0);
   });
 });
 

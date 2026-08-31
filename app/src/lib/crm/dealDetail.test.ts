@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Ctx, MemberRole, MemberScope } from "@/lib/types";
+import type { Ctx, Deal, MemberRole, MemberScope } from "@/lib/types";
 import { getRepo } from "@/lib/repo";
-import { resetDb } from "@/lib/repo/local/store";
+import { db, resetDb } from "@/lib/repo/local/store";
 import {
   SEED_ORG_ID,
   SEED_USER_MEMBER,
@@ -28,6 +28,24 @@ function ctxFor(userId: string, role: MemberRole, scope: MemberScope): Ctx {
   return { user, org, role, scope };
 }
 
+function seedDeal(ctx: Ctx, input: Parameters<ReturnType<typeof getRepo>["createDeal"]>[1]): Deal {
+  const repo = getRepo();
+  const pipeline = repo.listPipelines(ctx.org.id)[0];
+  const stage = pipeline ? repo.listStages(pipeline.id)[0] : undefined;
+  const company = repo.listCompanies(ctx)[0];
+  const deal = repo.createDeal(ctx, {
+    ...input,
+    company_id: input.company_id ?? company?.id ?? null,
+    pipeline_id: input.pipeline_id ?? pipeline?.id ?? null,
+    stage_id: input.stage_id ?? stage?.id ?? null,
+  });
+  const template = db().boardItems[0];
+  if (!template) throw new Error("board item seed missing");
+  db().boardItems.push({ ...template, id: crypto.randomUUID(), deal_id: deal.id });
+  if (stage) repo.createActivity(ctx, { deal_id: deal.id, type: "status", content: `미지정 → ${stage.name}` });
+  return deal;
+}
+
 beforeEach(() => {
   resetDb();
   svc = new AsyncCrmService(new LocalCrmSource());
@@ -38,7 +56,7 @@ beforeEach(() => {
 describe("딜 상세 — 데이터 조합", () => {
   it("딜·활동·단계·고객사를 함께 얻을 수 있다", async () => {
     const companies = await svc.listCompanies(owner);
-    const deal = await svc.createDeal(owner, {
+    const deal = seedDeal(owner, {
       title: "상세 대상",
       company_id: companies[0]?.id ?? null,
     });
@@ -61,7 +79,7 @@ describe("딜 상세 — 데이터 조합", () => {
   });
 
   it("담당범위 밖 딜은 NotFound — 상세가 404 로 수렴한다", async () => {
-    const deal = await svc.createDeal(owner, { title: "오너 전용" });
+    const deal = seedDeal(owner, { title: "오너 전용" });
     await expect(svc.getDeal(member, deal.id)).rejects.toBeInstanceOf(
       NotFoundError,
     );
@@ -70,11 +88,11 @@ describe("딜 상세 — 데이터 조합", () => {
 
 describe("딜 상세 — 단계 이동 액션", () => {
   it("이동하면 단계가 바뀌고 활동로그가 쌓인다", async () => {
-    const deal = await svc.createDeal(owner, { title: "이동" });
+    const deal = seedDeal(owner, { title: "이동" });
     const stages = (await svc.listPipelines(owner)).flatMap((p) => p.stages);
     const next = stages.find((s) => s.id !== deal.stage_id)!;
 
-    await svc.moveDealStage(owner, deal.id, next.id);
+    await svc.moveDealStage(owner, deal.id, next.id, { requestId: crypto.randomUUID(), expectedVersion: deal.case_version ?? 0 });
 
     expect((await svc.getDeal(owner, deal.id)).stage_id).toBe(next.id);
     expect(await svc.listActivities(owner, deal.id)).toHaveLength(2);
@@ -83,7 +101,7 @@ describe("딜 상세 — 단계 이동 액션", () => {
 
 describe("딜 상세 — 계약상황(커스텀필드) 저장", () => {
   it("custom 키 병합이라 다른 커스텀 값을 덮지 않는다", async () => {
-    const deal = await svc.createDeal(owner, {
+    const deal = seedDeal(owner, {
       title: "계약상황",
       custom: { 기존키: "보존되어야함" },
     });
@@ -96,7 +114,7 @@ describe("딜 상세 — 계약상황(커스텀필드) 저장", () => {
   });
 
   it("null 을 주면 해당 키만 지운다", async () => {
-    const deal = await svc.createDeal(owner, {
+    const deal = seedDeal(owner, {
       title: "삭제",
       custom: { 계약상황: "draft", 다른키: "유지" },
     });
@@ -111,11 +129,11 @@ describe("딜 상세 — 계약상황(커스텀필드) 저장", () => {
 
 describe("딜 상세 — 활동 추가", () => {
   it("메모를 남기면 목록 맨 앞(최신)에 온다", async () => {
-    const deal = await svc.createDeal(owner, { title: "메모" });
+    const deal = seedDeal(owner, { title: "메모" });
     await svc.createActivity(owner, deal.id, {
       type: "memo",
       content: "첫 상담 완료",
-    });
+    }, crypto.randomUUID());
 
     const acts = await svc.listActivities(owner, deal.id);
     expect(acts).toHaveLength(2);
@@ -123,9 +141,9 @@ describe("딜 상세 — 활동 추가", () => {
   });
 
   it("담당범위 밖 딜에는 활동을 남길 수 없다", async () => {
-    const deal = await svc.createDeal(owner, { title: "남의 딜" });
+    const deal = seedDeal(owner, { title: "남의 딜" });
     await expect(
-      svc.createActivity(member, deal.id, { type: "memo", content: "x" }),
+      svc.createActivity(member, deal.id, { type: "memo", content: "x" }, crypto.randomUUID()),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

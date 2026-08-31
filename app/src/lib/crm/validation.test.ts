@@ -48,21 +48,28 @@ describe("parseCreateDeal / parseUpdateDeal", () => {
     expect(() => parseUpdateDeal({})).toThrow(ValidationError);
     expect(parseUpdateDeal({ title: "새제목" })).toEqual({ title: "새제목" });
   });
+  it("소유·파이프라인·담당 필드는 전용 canonical 작업 외 PATCH를 거부한다", () => {
+    for (const patch of [{ company_id: "c" }, { pipeline_id: "p" }, { assigned_to: "u" }]) {
+      expect(() => parseUpdateDeal(patch)).toThrow(/전용 작업/);
+    }
+  });
 });
 
 describe("parseMoveStage", () => {
   it("stageId 또는 stage_id 허용", () => {
-    expect(parseMoveStage({ stageId: "s1" })).toEqual({ stageId: "s1" });
-    expect(parseMoveStage({ stage_id: "s2" })).toEqual({ stageId: "s2" });
+    const identity = { requestId: "00000000-0000-4000-8000-000000000001", expectedVersion: 0 };
+    expect(parseMoveStage({ stageId: "s1", ...identity })).toEqual({ stageId: "s1", ...identity });
+    expect(parseMoveStage({ stage_id: "s2", ...identity })).toEqual({ stageId: "s2", ...identity });
     expect(() => parseMoveStage({})).toThrow(ValidationError);
   });
 });
 
 describe("parseCreateActivity", () => {
   it("허용 type 만", () => {
-    expect(parseCreateActivity({ type: "memo", content: "메모" })).toEqual({
+    expect(parseCreateActivity({ type: "memo", content: "메모", requestId: "00000000-0000-4000-8000-000000000001" })).toEqual({
       type: "memo",
       content: "메모",
+      requestId: "00000000-0000-4000-8000-000000000001",
     });
     expect(() => parseCreateActivity({ type: "invalid" })).toThrow(ValidationError);
   });

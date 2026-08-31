@@ -4,12 +4,14 @@ import { getCrmService, NotFoundError } from "@/lib/crm";
 import { CompanyDetail } from "@/components/company/CompanyDetail";
 import { startCompanyWorkAction } from "./actions";
 
+const REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export default async function CompanyDetailPage({
   params,
   searchParams,
 }: {
   params: Promise<{ companyId: string }>;
-  searchParams: Promise<{ as?: string; workStart?: string; dealId?: string }>;
+  searchParams: Promise<{ as?: string; workStart?: string; dealId?: string; requestId?: string }>;
 }) {
   const [{ companyId }, sp] = await Promise.all([params, searchParams]);
   const ctx = applyAs(await getSession(), sp.as);
@@ -32,5 +34,8 @@ export default async function CompanyDetailPage({
   );
 
   const workStartStatus = sp.workStart === "ok" || sp.workStart === "failed" || sp.workStart === "invalid" ? sp.workStart : undefined;
-  return <CompanyDetail company={company} deals={deals} stageNames={stageNames} workStartRequestId={crypto.randomUUID()} workStartStatus={workStartStatus} startedDealId={sp.dealId} startWorkAction={startCompanyWorkAction} />;
+  const workStartRequestId = workStartStatus === "failed" && sp.requestId && REQUEST_ID_PATTERN.test(sp.requestId)
+    ? sp.requestId
+    : crypto.randomUUID();
+  return <CompanyDetail company={company} deals={deals} stageNames={stageNames} workStartRequestId={workStartRequestId} workStartStatus={workStartStatus} startedDealId={sp.dealId} startWorkAction={startCompanyWorkAction} />;
 }

@@ -69,6 +69,21 @@ describe("CompanyDetailPage", () => {
     expect(mocks.listDeals).toHaveBeenCalledWith(expect.anything(), { companyId: company.id });
   });
 
+  it("unknown failure 뒤에는 같은 caller requestId를 유지하고 새 intent에는 재사용하지 않는다", async () => {
+    const requestId = "90000000-0000-4000-8000-000000000123";
+    const failed = await CompanyDetailPage({
+      params: Promise.resolve({ companyId: company.id }),
+      searchParams: Promise.resolve({ workStart: "failed", requestId }),
+    });
+    expect(renderToStaticMarkup(failed)).toContain(`name="requestId" value="${requestId}"`);
+
+    const fresh = await CompanyDetailPage({
+      params: Promise.resolve({ companyId: company.id }),
+      searchParams: Promise.resolve({ workStart: "ok", requestId }),
+    });
+    expect(renderToStaticMarkup(fresh)).not.toContain(`name="requestId" value="${requestId}"`);
+  });
+
   it("보이지 않는 고객사는 404로 수렴하고 후속 조회를 하지 않는다", async () => {
     mocks.getCompany.mockRejectedValue(new NotFoundError());
 

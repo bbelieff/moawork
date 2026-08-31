@@ -3,7 +3,7 @@
  * 단계 변경은 /api/deals/[dealId]/move 사용.
  */
 
-import { getCrmService, requireCtx, parseUpdateDeal, jsonOk, toErrorResponse, readJson } from "@/lib/crm";
+import { getCrmService, requireCtx, parseUpdateDeal, ValidationError, jsonOk, toErrorResponse, readJson } from "@/lib/crm";
 
 type Ctx = { params: Promise<{ dealId: string }> };
 
@@ -30,10 +30,9 @@ export async function PATCH(req: Request, { params }: Ctx): Promise<Response> {
 
 export async function DELETE(_req: Request, { params }: Ctx): Promise<Response> {
   try {
-    const ctx = await requireCtx();
-    const { dealId } = await params;
-    await getCrmService().deleteDeal(ctx, dealId);
-    return jsonOk({ deleted: true });
+    await requireCtx();
+    await params;
+    throw new ValidationError("Case 삭제는 지원하지 않습니다.");
   } catch (err) {
     return toErrorResponse(err);
   }

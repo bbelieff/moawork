@@ -20,8 +20,8 @@ export async function POST(req: Request, { params }: Ctx): Promise<Response> {
   try {
     const ctx = await requireCtx();
     const { dealId } = await params;
-    const input = parseCreateActivity(await readJson(req));
-    return jsonOk(await getCrmService().createActivity(ctx, dealId, input), 201);
+    const { requestId, ...input } = parseCreateActivity(await readJson(req));
+    return jsonOk(await getCrmService().appendCaseActivity(ctx, dealId, input, requestId), 201);
   } catch (err) {
     return toErrorResponse(err);
   }

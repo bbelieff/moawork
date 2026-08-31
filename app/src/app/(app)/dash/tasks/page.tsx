@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
-import { DashboardEvidenceList, DashboardFilterBar, DashboardStateNotice, DashboardUnavailableNotice, MetricTabs, TodayTaskList, type AssigneeOption } from "@/components/dash/drilldown";
+import { DashboardEvidenceList, DashboardFilterBar, DashboardStateNotice, DashboardUnavailableNotice, MetricTabs, TodayTaskList, parseTaskRetryIntent, type AssigneeOption } from "@/components/dash/drilldown";
 import { StatCard } from "@/components/dash/widgets";
 import { getSession } from "@/lib/auth/session";
 import { getCrmService } from "@/lib/crm";
@@ -19,6 +19,7 @@ export default async function DashboardTasksPage({ searchParams }: { searchParam
   const query = await searchParams;
   const filters = parseDashboardFilters(query);
   const result = typeof query.result === "string" ? query.result : null;
+  const retryIntent = parseTaskRetryIntent(query);
   const ctx = await getSession();
   const service = getCrmService();
   const loaded = await Promise.all([service.listDeals(ctx), service.listPipelines(ctx)])
@@ -60,7 +61,7 @@ export default async function DashboardTasksPage({ searchParams }: { searchParam
             <Link href={dashboardHref(filters, { metric: "overdue" })}><StatCard label="기한 지남" value={overdueDeals.length} /></Link>
             <Link href={dashboardHref(filters, { metric: "new" })}><StatCard label="오늘 등록" value={newDeals.length} /></Link>
           </section>
-          <section className="space-y-3"><h2 className="text-base font-semibold">오늘 할 일</h2><TodayTaskList deals={todayDeals} assignees={assignees} canChangeAssignee={canReassign(ctx)} returnTo={returnTo} today={today} /></section>
+          <section className="space-y-3"><h2 className="text-base font-semibold">오늘 할 일</h2><TodayTaskList deals={todayDeals} assignees={assignees} canChangeAssignee={canReassign(ctx)} returnTo={returnTo} today={today} retryIntent={retryIntent} /></section>
           <section className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-semibold">같은 권한 기준 근거 목록</h2><MetricTabs filters={filters} /></div>
             <p className="text-xs text-zinc-500">지표와 목록은 로그인한 회사·역할·담당 범위에 동일한 조회 결과를 사용해요.</p>

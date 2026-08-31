@@ -39,7 +39,7 @@ function row(id: string, name: string): CompanyPickerRow {
 const ROWS = [row("c-1", "가나상사"), row("c-2", "다라물산")];
 
 /** 액션이 «실제로 받은» companyId·requestId 를 순서대로 모은다. */
-function mount() {
+function mount(respond?: (form: FormData) => Promise<CompanyIntakeActionState>) {
   const seen: { companyId: string; requestId: string; groupId: string | null }[] = [];
   const action = vi.fn(async (_prev: CompanyIntakeActionState, form: FormData) => {
     const group = form.get("groupId");
@@ -48,7 +48,7 @@ function mount() {
       requestId: String(form.get("requestId") ?? ""),
       groupId: typeof group === "string" ? group : null,
     });
-    return { ok: true, message: "" } as CompanyIntakeActionState;
+    return respond ? await respond(form) : { ok: true, message: "" } as CompanyIntakeActionState;
   });
 
   const host = document.createElement("div");
@@ -158,5 +158,41 @@ describe("업체 추가 — 멱등 열쇠", () => {
     } finally {
       Object.defineProperty(globalThis.crypto, "randomUUID", { value: original, configurable: true });
     }
+  });
+
+  it("unknown outcome 재시도는 같은 열쇠를 쓰고 terminal success 뒤 새 intent는 회전한다", async () => {
+    let attempt = 0;
+    const { seen, action, host } = mount(async (form) => {
+      attempt += 1;
+      const requestId = String(form.get("requestId"));
+      return attempt === 1
+        ? { ok: false, message: "retry", retry: { companyId: "c-1", groupId: "g-2", requestId } }
+        : { ok: true, message: "done" };
+    });
+    await act(async () => {
+      root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId="g-2" startWorkAction={action} truncated={false} />);
+    });
+    await open(host);
+    await act(async () => submitFor(host, "c-1")?.requestSubmit());
+    await act(async () => submitFor(host, "c-1")?.requestSubmit());
+    await act(async () => submitFor(host, "c-1")?.requestSubmit());
+
+    expect(seen[1].requestId).toBe(seen[0].requestId);
+    expect(seen[2].requestId).not.toBe(seen[1].requestId);
+  });
+
+  it("terminal conflict 뒤에는 이전 열쇠를 버리고 새 intent를 발급한다", async () => {
+    let attempt = 0;
+    const { seen, action, host } = mount(async () => {
+      attempt += 1;
+      return attempt === 1 ? { ok: false, message: "conflict" } : { ok: true, message: "done" };
+    });
+    await act(async () => {
+      root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId="g-2" startWorkAction={action} truncated={false} />);
+    });
+    await open(host);
+    await act(async () => submitFor(host, "c-1")?.requestSubmit());
+    await act(async () => submitFor(host, "c-1")?.requestSubmit());
+    expect(seen[1].requestId).not.toBe(seen[0].requestId);
   });
 });

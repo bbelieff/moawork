@@ -4,7 +4,9 @@
  * (수식/정산은 T09, 커스텀필드/뷰는 T05 소유 — 여기서 다루지 않음)
  */
 
-/** 활동 type 상수. */
+import { legacyAliasOf, resolveCaseOption, type ActivityTypeId } from "@/lib/case-domain/registry";
+
+/** Legacy aliases retained for existing consumers; stable IDs are used for new writes. */
 export const ACTIVITY_TYPES = {
   status: "status", // 단계 이동
   call: "call",
@@ -14,6 +16,14 @@ export const ACTIVITY_TYPES = {
 } as const;
 
 export type ActivityType = (typeof ACTIVITY_TYPES)[keyof typeof ACTIVITY_TYPES];
+
+export function canonicalActivityType(value: string): ActivityTypeId | undefined {
+  return resolveCaseOption("activity.type", value, "write")?.id as ActivityTypeId | undefined;
+}
+
+export function legacyActivityType(value: ActivityTypeId): ActivityType | undefined {
+  return legacyAliasOf(value) as ActivityType | undefined;
+}
 
 /** 단계 이동 로그 문구. from 이 없으면(최초 배치) 목적 단계만 표기. */
 export function stageMoveContent(

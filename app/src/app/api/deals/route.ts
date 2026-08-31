@@ -2,7 +2,7 @@
  * /api/deals — 딜 목록(GET, ?stageId= & ?companyId= 필터, 담당범위 적용) / 생성(POST).
  */
 
-import { getCrmService, requireCtx, parseCreateDeal, jsonOk, toErrorResponse, readJson } from "@/lib/crm";
+import { getCrmService, requireCtx, ValidationError, jsonOk, toErrorResponse } from "@/lib/crm";
 
 export async function GET(req: Request): Promise<Response> {
   try {
@@ -20,9 +20,9 @@ export async function GET(req: Request): Promise<Response> {
 
 export async function POST(req: Request): Promise<Response> {
   try {
-    const ctx = await requireCtx();
-    const input = parseCreateDeal(await readJson(req));
-    return jsonOk(await getCrmService().createDeal(ctx, input), 201);
+    void req;
+    await requireCtx();
+    throw new ValidationError("Case 생성은 회사의 업무 시작 경로에서만 가능합니다.");
   } catch (err) {
     return toErrorResponse(err);
   }

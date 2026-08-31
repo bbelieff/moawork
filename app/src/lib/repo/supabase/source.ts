@@ -44,12 +44,111 @@ export interface CrmSource {
     activityContent: string,
   ): Promise<Deal | undefined>;
   /** 단계 이동 + 활동로그 — stage_id 를 바꾸는 유일한 경로(공용 `Repo.moveDeal` 과 동일). */
-  moveDeal(ctx: Ctx, id: string, toStageId: string): Promise<Deal | undefined>;
+  moveDeal(
+    ctx: Ctx,
+    id: string,
+    toStageId: string,
+    identity: { requestId: string; expectedVersion: number },
+  ): Promise<Deal | undefined>;
+  /** 오늘 할 일 custom patch + status Activity를 request receipt와 함께 원자 저장한다. */
+  mutateCaseTask(
+    ctx: Ctx,
+    caseId: string,
+    input: CaseTaskMutationInput,
+  ): Promise<CaseTaskMutationResult>;
   deleteDeal(ctx: Ctx, id: string): Promise<boolean>;
 
   // 활동기록
   listActivities(ctx: Ctx, dealId: string): Promise<Activity[]>;
-  createActivity(ctx: Ctx, input: NewActivity): Promise<Activity>;
+  createActivity(ctx: Ctx, input: NewActivity, requestId: string): Promise<Activity>;
+}
+
+export type CaseTaskMutationInput =
+  | { kind: "complete"; requestId: string }
+  | { kind: "postpone"; dueDate: string; requestId: string };
+
+export type CaseTaskMutationResult = {
+  activityId: string;
+  replayed: boolean;
+};
+
+export type CaseTaskMutationFailureOutcome = "retryable_unknown" | "terminal";
+
+const TERMINAL_CASE_TASK_CODES = new Set(["22023", "40001", "42501"]);
+
+export class CaseTaskMutationError extends Error {
+  constructor(
+    message: string,
+    readonly outcome: CaseTaskMutationFailureOutcome,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "CaseTaskMutationError";
+  }
+}
+
+function nestedErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object" || !("cause" in error)) return undefined;
+  const cause = error.cause;
+  if (!cause || typeof cause !== "object" || !("code" in cause)) return undefined;
+  return typeof cause.code === "string" ? cause.code : undefined;
+}
+
+/** RPC의 권위 있는 terminal code만 intent를 폐기한다. 전송/응답 불명은 동일 requestId로 재확인한다. */
+export function toCaseTaskMutationError(error: unknown): CaseTaskMutationError {
+  if (error instanceof CaseTaskMutationError) return error;
+  const code = nestedErrorCode(error);
+  const message = error instanceof Error ? error.message : "task mutation outcome unavailable";
+  return new CaseTaskMutationError(
+    message,
+    code && TERMINAL_CASE_TASK_CODES.has(code) ? "terminal" : "retryable_unknown",
+    code,
+  );
+}
+
+export function shouldRetryCaseTaskMutation(error: unknown): boolean {
+  return toCaseTaskMutationError(error).outcome === "retryable_unknown";
+}
+
+export type CaseTaskMutationContract = {
+  requestId: string;
+  patch: Record<string, string | null>;
+  content: string;
+};
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+/** Local/Supabase가 같은 whitelist, digest payload, Activity 문구를 쓰게 하는 순수 계약. */
+export function caseTaskMutationContract(input: CaseTaskMutationInput): CaseTaskMutationContract {
+  if (!UUID.test(input.requestId)) {
+    throw new CaseTaskMutationError("task mutation requestId is required", "terminal", "22023");
+  }
+  if (input.kind === "complete") {
+    return {
+      requestId: input.requestId,
+      patch: {
+        task_status: "done",
+      },
+      content: "오늘 할 일을 완료했어요",
+    };
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(input.dueDate)) {
+    throw new CaseTaskMutationError("task dueDate is invalid", "terminal", "22023");
+  }
+  const parsed = new Date(`${input.dueDate}T00:00:00.000Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== input.dueDate) {
+    throw new CaseTaskMutationError("task dueDate is invalid", "terminal", "22023");
+  }
+  return {
+    requestId: input.requestId,
+    patch: {
+      due_date: input.dueDate,
+      task_status: null,
+      task_completed_at: null,
+    },
+    content: `오늘 할 일을 ${input.dueDate}로 연기했어요`,
+  };
 }
 
 /**

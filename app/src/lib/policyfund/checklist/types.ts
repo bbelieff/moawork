@@ -41,10 +41,14 @@ export interface ProductChecklistPreset {
  * 프리셋과 독립적으로 저장한다(프리셋이 바뀌어도 이미 진행 중인 딜은 영향받지 않는다).
  */
 export interface DealChecklistState {
+  /** Canonical Case id. `dealId` remains a compatibility alias for existing UI. */
+  caseId?: string;
   dealId: string;
   /** 마지막으로 적용/선택한 상품. 프리셋 재적용 UI 판단에 쓴다. */
   productId: string | null;
   items: ChecklistItem[];
+  /** Server-side compare-and-swap version. Legacy reads begin at zero. */
+  version?: number;
 }
 
 /** 완료율 — 표의 셀과 상세 패널이 **반드시 같은 함수**(engine.completionOf)로 계산한 값만 쓴다. */

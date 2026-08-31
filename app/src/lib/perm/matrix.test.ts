@@ -3,24 +3,25 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ALL_PERM_ITEMS, PERM_ITEM_COUNT, PERM_MATRIX, findPermItem, isKnownScopeKey, isRole } from "./matrix";
 
-const MIGRATION = join(__dirname, "..", "..", "..", "..", "supabase", "migrations", "055_permission_role_matrix.sql");
+const MIGRATION = join(__dirname, "..", "..", "..", "..", "supabase", "migrations", "144_issue645_case_ownership_registry.sql");
+const LEGACY_PERMISSION_MIGRATION = join(__dirname, "..", "..", "..", "..", "supabase", "migrations", "055_permission_role_matrix.sql");
 const ENUM_MIGRATION = join(__dirname, "..", "..", "..", "..", "supabase", "migrations", "054_permission_role_enums.sql");
 
 describe("PERM_MATRIX 구조", () => {
-  it("총 24항목이다 — 카드 제목 22항목은 낡은 값, 목업 실측이 정본", () => {
-    expect(PERM_ITEM_COUNT).toBe(24);
+  it("기존 24항목과 분리된 finance read/manage seam 2개다", () => {
+    expect(PERM_ITEM_COUNT).toBe(26);
   });
 
-  it("그룹 5개, 그룹별 항목 수가 목업과 같다 — 업무5·구조5·자동화발송4·조직공지5·위험5", () => {
-    expect(PERM_MATRIX.map((g) => g.items.length)).toEqual([5, 5, 4, 5, 5]);
+  it("기존 5개 그룹을 보존하고 재무 seam을 별도 그룹으로 둔다", () => {
+    expect(PERM_MATRIX.map((g) => g.items.length)).toEqual([5, 5, 4, 5, 5, 2]);
   });
 
-  it("scope_key 는 24개 전부 유일하다", () => {
+  it("scope_key 는 26개 전부 유일하다", () => {
     const keys = ALL_PERM_ITEMS.map((i) => i.scopeKey);
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it("위험 그룹 5항목만 danger=true 다", () => {
+  it("기존 위험 5항목과 재무 2항목만 danger=true 다", () => {
     const dangerKeys = ALL_PERM_ITEMS.filter((i) => i.danger).map((i) => i.scopeKey);
     expect(dangerKeys).toEqual([
       "danger.csv_export",
@@ -28,10 +29,12 @@ describe("PERM_MATRIX 구조", () => {
       "danger.view_accounting_amount",
       "danger.year_end_archive",
       "danger.data_import",
+      "finance.ledger_read",
+      "finance.ledger_manage",
     ]);
   });
 
-  it("소유자 열은 24항목 전부 true 다 — 소유자 권한은 끌 수 없다", () => {
+  it("소유자 열은 26항목 전부 true 다 — 소유자 권한은 끌 수 없다", () => {
     expect(ALL_PERM_ITEMS.every((i) => i.defaultAllowed[0] === true)).toBe(true);
   });
 
@@ -48,9 +51,10 @@ describe("PERM_MATRIX 구조", () => {
   });
 });
 
-describe("055_permission_role_matrix.sql 의 perm_baseline() 과 TS 매트릭스가 완전히 일치한다", () => {
+describe("142 migration perm_baseline() 과 TS 매트릭스가 완전히 일치한다", () => {
   // 값이 SQL 과 TS 양쪽에 있으므로 한쪽만 고치면 조용히 어긋난다. 여기서 막는다.
   const sql = readFileSync(MIGRATION, "utf8");
+  const legacySql = readFileSync(LEGACY_PERMISSION_MIGRATION, "utf8");
   const enumSql = readFileSync(ENUM_MIGRATION, "utf8");
   const valuesBlock = sql.slice(sql.indexOf("perm_baseline()"));
   const rowPattern = /\(\s*'([^']+)','([^']+)','([^']+)',(true|false),(true|false),(true|false),(true|false),(true|false)\)/g;
@@ -74,8 +78,8 @@ describe("055_permission_role_matrix.sql 의 perm_baseline() 과 TS 매트릭스
     });
   }
 
-  it("SQL VALUES 에서 24행을 파싱했다(파서 자체가 깨지지 않았는지 확인)", () => {
-    expect(sqlRows).toHaveLength(24);
+  it("SQL VALUES 에서 26행을 파싱했다(파서 자체가 깨지지 않았는지 확인)", () => {
+    expect(sqlRows).toHaveLength(26);
   });
 
   it("항목별 group·label·danger·역할별 허용값이 TS 와 완전히 같다", () => {
@@ -99,11 +103,11 @@ describe("055_permission_role_matrix.sql 의 perm_baseline() 과 TS 매트릭스
 
   it("BBE-119 부서 범위를 뷰보다 먼저 강제하고 숨김 수를 반환한다", () => {
     expect(enumSql).toContain("alter type public.member_scope add value if not exists 'department'");
-    expect(sql).toContain("create or replace function public.read_permission_scoped_work_items");
-    expect(sql.indexOf("scope_visible as materialized")).toBeLessThan(sql.indexOf("viewed as"));
-    expect(sql).toContain("p_view_assignee is null or s.assigned_to = p_view_assignee");
-    expect(sql).toContain("'hiddenCount', v_hidden");
-    expect(sql).toContain("public.department_members");
+    expect(legacySql).toContain("create or replace function public.read_permission_scoped_work_items");
+    expect(legacySql.indexOf("scope_visible as materialized")).toBeLessThan(legacySql.indexOf("viewed as"));
+    expect(legacySql).toContain("p_view_assignee is null or s.assigned_to = p_view_assignee");
+    expect(legacySql).toContain("'hiddenCount', v_hidden");
+    expect(legacySql).toContain("public.department_members");
   });
 
   it("SECURITY DEFINER RPC는 PUBLIC·anon 실행권을 회수한다", () => {
@@ -115,7 +119,7 @@ describe("055_permission_role_matrix.sql 의 perm_baseline() 과 TS 매트릭스
       "read_org_permission_matrix(uuid)",
       "read_permission_scoped_work_items(uuid, uuid)",
     ]) {
-      expect(sql).toContain(`revoke all on function public.${signature} from public, anon`);
+      expect(legacySql).toContain(`revoke all on function public.${signature} from public, anon`);
     }
   });
 });

@@ -127,7 +127,14 @@ export interface Deal {
   custom: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  /** Canonical Case optimistic-concurrency version (Issue #646). */
+  case_version?: number;
 }
+
+/** Canonical Case identity. A Case is an existing deal row, never a second table. */
+export type CaseId = Deal["id"];
+/** Compatibility name for new Case APIs; legacy Deal consumers keep the same shape. */
+export type CaseRecord = Deal;
 
 export interface Activity {
   id: string;
@@ -137,6 +144,12 @@ export interface Activity {
   content: string | null;
   actor: string | null;
   at: string;
+  /** Additive canonical ownership fields; null means a legacy read-compatible row. */
+  company_id?: string | null;
+  request_id?: string | null;
+  payload_digest?: string | null;
+  type_key?: string | null;
+  category_key?: string | null;
 }
 
 // ── 커스터마이징 (기둥①) ──

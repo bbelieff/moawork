@@ -180,8 +180,17 @@ export function ContractWorkIntakeForm({
             */}
             <form action={action} onSubmit={stampRequestId}>
               <input type="hidden" name="companyId" value={company.id} />
-              {/* 값은 비워 두고 제출 직전에 채운다 — stampRequestId 참조 */}
-              <input type="hidden" name="requestId" defaultValue="" />
+              {/* unknown outcome만 같은 intent를 보존한다. success/conflict/new intent는 빈 값에서 새 UUID를 발급한다. */}
+              <input
+                type="hidden"
+                name="requestId"
+                readOnly
+                value={state.ok === false
+                  && state.retry?.companyId === company.id
+                  && state.retry.groupId === groupId
+                  ? state.retry.requestId
+                  : ""}
+              />
               <input type="hidden" name="boardId" value={boardId} />
               {groupId ? <input type="hidden" name="groupId" value={groupId} /> : null}
               <button
