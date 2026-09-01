@@ -619,6 +619,78 @@ test("Windows guardian clean-close queues successors and preserves child exit co
   }
 });
 
+test("verified command results survive release write failure while queued successors stay recovery-delayed", { skip: process.platform !== "win32" }, async () => {
+  const recoveryMs = 1_000;
+  const broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 5, idleTimeoutMs: -1, crashRecoveryDelayMs: recoveryMs });
+  const fenceName = testFence();
+  const temp = await mkdtemp(path.join(os.tmpdir(), "moawork-gate-release-degraded-"));
+  const releasePath = path.join(temp, "release-owner");
+  cleanupFence(fenceName);
+  const first = startHarness({
+    broker,
+    fenceName,
+    expression: "const fs=require('node:fs'); console.log('DEGRADED_OWNER_READY'); const hold=setInterval(()=>{if(fs.existsSync(process.argv[1]))clearInterval(hold)},25)",
+    args: [releasePath],
+    runTimeoutMs: 10_000,
+    testFault: "release-write-failure",
+  });
+  let second;
+  let nonzero;
+  try {
+    await waitUntil(() => first.output().includes("DEGRADED_OWNER_READY"));
+    second = startHarness({ broker, fenceName, expression: "console.log('DEGRADED_SUCCESSOR_STARTED')" });
+    await waitUntil(() => broker.snapshot().queued.length === 1, 10_000);
+    const releasedAt = Date.now();
+    await writeFile(releasePath, "release\n");
+
+    assert.equal((await first.exited).code, 0, first.output());
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.match(first.output(), /GATE_LEASE_RELEASE_DEGRADED/u, first.output());
+    const warnings = first.output().split(/\r?\n/u).filter((line) => line.startsWith("GATE_LEASE_RELEASE_DEGRADED:"));
+    assert.deepEqual(warnings, [
+      "GATE_LEASE_RELEASE_DEGRADED: gate command finished; preserving child exit code 0 after activeProcesses=0; broker recovery required (GATE_BROKER_WRITE_FAILED)",
+    ]);
+    assert.doesNotMatch(first.output(), /GATE_LEASE_FAILURE|GATE_LEASE_RELEASED/u);
+    assert.equal(markerExists(fenceName), false);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.doesNotMatch(second.output(), /DEGRADED_SUCCESSOR_STARTED/u);
+
+    assert.equal((await second.exited).code, 0, second.output());
+    assert.ok(Date.now() - releasedAt >= recoveryMs - 100, `successor bypassed ${recoveryMs}ms recovery`);
+    assert.match(second.output(), /DEGRADED_SUCCESSOR_STARTED/u);
+    assert.match(second.output(), /GATE_LEASE_RELEASED.*"activeProcesses":0/u);
+
+    nonzero = startHarness({
+      broker,
+      fenceName,
+      expression: "console.log('DEGRADED_NONZERO'); process.exit(37)",
+      testFault: "release-write-failure",
+    });
+    assert.equal((await nonzero.exited).code, 37, nonzero.output());
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.match(nonzero.output(), /GATE_LEASE_RELEASE_DEGRADED/u, nonzero.output());
+    assert.match(nonzero.output(), /GATE_LEASE_RELEASE_DEGRADED: gate command finished; preserving child exit code 37 after activeProcesses=0; broker recovery required \(GATE_BROKER_WRITE_FAILED\)/u);
+    assert.doesNotMatch(nonzero.output(), /GATE_LEASE_FAILURE|GATE_LEASE_RELEASED/u);
+    assert.equal(markerExists(fenceName), false);
+    await waitUntil(() => broker.snapshot().active === null, recoveryMs + 2_000);
+
+    for (const run of [first, nonzero]) {
+      const guardianPid = Number(run.output().match(/GATE_GUARDIAN_READY[^\n]*"guardianPid":(\d+)/u)?.[1]);
+      assert.ok(guardianPid > 0, run.output());
+      await waitUntil(() => {
+        try { process.kill(guardianPid, 0); return false; } catch { return true; }
+      });
+    }
+  } finally {
+    await stop(first.child);
+    await stop(second?.child);
+    await stop(nonzero?.child);
+    await broker.close();
+    cleanupFence(fenceName);
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
 test("forced broker reset uses stable transport code and leaves fence reusable", { skip: process.platform !== "win32" }, async () => {
   let broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 5, idleTimeoutMs: -1 });
   const port = broker.port;
@@ -634,9 +706,9 @@ test("forced broker reset uses stable transport code and leaves fence reusable",
     await waitUntil(() => first.output().includes("RESET_READY"));
     await broker.close();
     const failed = await first.exited;
-    assert.equal(failed.code, 78, first.output());
-    assert.match(first.output(), /GATE_BROKER_(?:WRITE_FAILED|READ_FAILED|RELEASE_EOF)/u);
-    assert.doesNotMatch(first.output(), /GATE_GUARDIAN_INTERNAL/u);
+    assert.equal(failed.code, 0, first.output());
+    assert.match(first.output(), /GATE_LEASE_RELEASE_DEGRADED: gate command finished; preserving child exit code 0 after activeProcesses=0; broker recovery required \(GATE_BROKER_(?:WRITE_FAILED|READ_FAILED|RELEASE_EOF)\)/u);
+    assert.doesNotMatch(first.output(), /GATE_GUARDIAN_INTERNAL|GATE_LEASE_FAILURE/u);
     assert.equal(markerExists(fenceName), false);
 
     broker = await createLeaseBroker({ port, diagnosticIntervalMs: 5, idleTimeoutMs: -1 });

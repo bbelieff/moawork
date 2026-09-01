@@ -176,6 +176,9 @@ public sealed class MoaWorkGateJob : IDisposable {
 
 function Write-Structured([string]$Kind, [hashtable]$Detail) { try { [Console]::Error.WriteLine("$Kind $($Detail | ConvertTo-Json -Compress -Depth 8)") } catch {} }
 function Fail([string]$Code, [string]$Message, [hashtable]$Detail = @{}) { Write-Structured "GATE_LEASE_FAILURE" @{ code = $Code; message = $Message; detail = $Detail } }
+function Write-ReleaseDegraded([string]$Code, [int]$ChildExitCode) {
+  try { [Console]::Error.WriteLine("GATE_LEASE_RELEASE_DEGRADED: gate command finished; preserving child exit code $ChildExitCode after activeProcesses=0; broker recovery required ($Code)") } catch {}
+}
 function Send-Pipe($Pipe, [hashtable]$Message) { $Pipe.WriteLine(($Message | ConvertTo-Json -Compress -Depth 8)) }
 function Send-Broker($Writer, [hashtable]$Message) {
   try { $Writer.WriteLine(($Message | ConvertTo-Json -Compress -Depth 8)); $Writer.Flush() }
@@ -317,7 +320,7 @@ function Remove-FenceMarker([string]$Name) {
   }
 }
 
-$pipe = $null; $wrapper = $null; $fence = $null; $fenceOwned = $false; $markerOwned = $false; $markerCreatedAt = ""; $client = $null; $job = $null; $payload = $null; $stage = "bootstrap"
+$pipe = $null; $wrapper = $null; $fence = $null; $fenceOwned = $false; $markerOwned = $false; $markerCreatedAt = ""; $client = $null; $job = $null; $payload = $null; $stage = "bootstrap"; $commandResultVerified = $false
 try {
   if (-not $PipeName.StartsWith("moawork-gate-") -or $PipeNonce.Length -lt 16) { throw "GATE_PIPE_IDENTITY_INVALID" }
   $wrapper = [MoaWorkProcessHandle]::Open([uint32]$BootstrapWrapperPid)
@@ -406,7 +409,9 @@ try {
   if ($result -eq "timeout") { $exitCode = 124; Fail "GATE_LEASE_RUN_TIMEOUT" "gate command timed out" @{ activeProcesses = 0 } }
   elseif ($result -eq "signal") { $exitCode = if ($signal -eq "SIGINT") { 130 } else { 143 }; Write-Structured "GATE_LEASE_INTERRUPTED" @{ signal = $signal; activeProcesses = 0 } }
   elseif ($result -ne "exit") { $exitCode = 78; Fail "GATE_GUARDIAN_TRANSPORT_LOST" "wrapper IPC closed" @{ activeProcesses = 0 } }
+  $commandResultVerified = $result -eq "exit" -and $null -ne $exitCode
   $stage = "release"
+  if ($hasFault -and $payload.testFault -eq "release-write-failure") { $client.Close() }
   Send-Broker $writer @{ type = "release"; requestId = $payload.requestId }
   $releaseDeadline = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + 5000; $released = $false
   while (-not $released -and [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -lt $releaseDeadline) {
@@ -425,6 +430,25 @@ try {
   exit $exitCode
 } catch {
   $reason = [string]$_.Exception.Message
+  $releaseTransportFailure = $reason -in @(
+    "GATE_BROKER_WRITE_FAILED",
+    "GATE_BROKER_READ_FAILED",
+    "GATE_BROKER_RELEASE_EOF",
+    "GATE_BROKER_CLOSE_FAILED"
+  )
+  if ($stage -eq "release" -and $commandResultVerified -and $releaseTransportFailure) {
+    if (-not (Wait-Zero $job 5000 $false)) { Quarantine "release-result-cleanup-unverified:$reason" }
+    if ($markerOwned) {
+      try { Remove-FenceMarker ([string]$payload.fenceName); $markerOwned = $false }
+      catch { Quarantine "marker-cleanup-failed" }
+    }
+    if ($fenceOwned) {
+      try { $fence.ReleaseMutex(); $fenceOwned = $false }
+      catch { Quarantine "fence-release-failed" }
+    }
+    Write-ReleaseDegraded $reason ([int]$exitCode)
+    exit $exitCode
+  }
   if ($null -ne $job) { try { $job.Terminate(78) } catch {}; if (-not (Wait-Zero $job 5000 $false)) { Quarantine "exception-cleanup:$reason" } }
   if ($markerOwned) { try { Remove-FenceMarker ([string]$payload.fenceName); $markerOwned = $false } catch { Quarantine "marker-cleanup-failed" } }
   if ($fenceOwned) { try { $fence.ReleaseMutex(); $fenceOwned = $false } catch { Quarantine "fence-release-failed" } }
