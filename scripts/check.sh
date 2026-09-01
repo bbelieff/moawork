@@ -128,5 +128,8 @@ node docs/design/qa-app.mjs
 node docs/design/qa-board-parity.mjs new contact
 node docs/design/qa-visual-blocks.mjs --self-test
 node docs/design/qa-visual-blocks.mjs
+# Issue #643 — 조직관리 5갈래의 tab/tabpanel·키보드·375px·UUID 비노출을
+# 실제 production build + system Chrome에서 재는다. 외부 서버에 기대지 않고 스스로 띄우고 종료한다.
+node docs/design/qa-org-views.mjs
 
 echo "✅ check 통과"
