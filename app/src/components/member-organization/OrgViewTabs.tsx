@@ -1,6 +1,13 @@
 "use client";
 
-import { useMemo, useState, type ReactElement, type ReactNode } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { membersOfDepartment, ORG_VIEWS, type OrgMemberView, type OrgView, type OrgViewModel } from "@/lib/org/org-view";
 import { OrgChartFlow } from "./OrgChartFlow";
 import { SeatPanel } from "./SeatPanel";
@@ -8,7 +15,7 @@ import { deriveSeats, findSeat, seatName, seatSummary, SEAT_ROLE_LABEL, type Sea
 import type { SeatDefinition } from "@/lib/org/seat-definitions";
 
 /**
- * #640 ①③ — 조직관리의 «보는 방식» 네 갈래와 「부서 ↔ 사람」 잇기.
+ * #640 ①③ — 조직관리의 «보는 방식» 다섯 갈래와 「부서 ↔ 사람」 잇기.
  *
  * 전에는 부서·사람·권한이 한 페이지에 세로로 쌓여 있었다. 사람이 늘수록 스크롤로 찾아야 했고,
  * 부서를 눌러도 그 부서에 누가 있는지 알 길이 없었다 — 둘이 이어져 있지 않았다.
@@ -56,12 +63,17 @@ function ReportsToCell({ member, known }: { member: OrgMemberView; known: boolea
   if (!known) return <span className="text-zinc-400">확인 못 함</span>;
   if (!member.reportsToName) return <span className="text-zinc-400">— 최상위</span>;
   return (
-    <span className="inline-flex items-center gap-1">
-      {member.reportsToName}
-      {member.isHeadOfPrimary ? <span className="text-[11px] text-zinc-400">(상위)</span> : null}
+    <span className="inline-flex flex-col items-start">
+      <span>{member.reportsToName}</span>
+      {member.isHeadOfPrimary ? (
+        <span className="text-[11px] text-zinc-400">이 조직원은 부서 책임자</span>
+      ) : null}
     </span>
   );
 }
+
+const tabId = (view: OrgView) => `org-view-tab-${view}`;
+const panelId = (view: OrgView) => `org-view-panel-${view}`;
 
 function MemberTable({ rows, known }: { rows: OrgMemberView[]; known: boolean }): ReactElement {
   if (rows.length === 0) {
@@ -146,6 +158,7 @@ export function OrgViewTabs({
   permissionSlot: ReactNode;
 }): ReactElement {
   const [view, setViewState] = useState<OrgView>(initialView);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   // 갈래를 바꾸면 URL 에도 남긴다. 다른 질의(?role= 등)는 건드리지 않는다.
   const setView = (next: OrgView) => {
@@ -160,6 +173,24 @@ export function OrgViewTabs({
     }
   };
   const [selectedSeatId, setSelectedSeatId] = useState<string | null>(null);
+
+  const moveTabFocus = (index: number) => {
+    const nextIndex = (index + ORG_VIEWS.length) % ORG_VIEWS.length;
+    const next = ORG_VIEWS[nextIndex];
+    setView(next);
+    tabRefs.current[nextIndex]?.focus();
+  };
+
+  const onTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = index + 1;
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = index - 1;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = ORG_VIEWS.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    moveTabFocus(nextIndex);
+  };
   const [selectedDeptId, setSelectedDeptId] = useState<string | null>(null);
   const [includeSub, setIncludeSub] = useState(true);
 
@@ -185,34 +216,50 @@ export function OrgViewTabs({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* ① 보는 방식 네 갈래 */}
+      {/* ① 보는 방식 다섯 갈래 */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         {/*
           375px 에서 글자가 「권 한」처럼 한 글자씩 접히면 안 된다 —
           접히게 두지 말고, 좁으면 이 줄만 옆으로 밀리게 한다.
         */}
-        <div
-          role="tablist"
-          aria-label="조직관리 보는 방식"
-          className="-mx-1 flex max-w-full gap-0.5 overflow-x-auto rounded-lg border border-zinc-200 p-0.5 px-1 dark:border-zinc-800"
-        >
-          {ORG_VIEWS.map((key) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              data-view={key}
-              aria-selected={view === key}
-              onClick={() => setView(key)}
-              className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition ${
-                view === key
-                  ? "bg-zinc-900 font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
-                  : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
-              }`}
-            >
-              {VIEW_LABEL[key]}
-            </button>
-          ))}
+        <div className="min-w-0 max-w-full">
+          <div
+            role="tablist"
+            aria-label="조직관리 보는 방식"
+            aria-describedby="org-view-tab-scroll-hint"
+            data-org-view-tab-scroll
+            className="-mx-1 flex max-w-full gap-0.5 overflow-x-auto rounded-lg border border-zinc-200 p-0.5 px-1 dark:border-zinc-800"
+          >
+            {ORG_VIEWS.map((key, index) => (
+              <button
+                key={key}
+                ref={(element) => { tabRefs.current[index] = element; }}
+                id={tabId(key)}
+                type="button"
+                role="tab"
+                data-view={key}
+                aria-controls={panelId(key)}
+                aria-selected={view === key}
+                tabIndex={view === key ? 0 : -1}
+                onClick={() => setView(key)}
+                onKeyDown={(event) => onTabKeyDown(event, index)}
+                className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition ${
+                  view === key
+                    ? "bg-zinc-900 font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {VIEW_LABEL[key]}
+              </button>
+            ))}
+          </div>
+          <p
+            id="org-view-tab-scroll-hint"
+            data-org-view-scroll-hint
+            className="mt-1 text-[11px] text-zinc-500 sm:hidden"
+          >
+            <span aria-hidden="true">↔ </span>갈래를 옆으로 밀어 더 볼 수 있어요
+          </p>
         </div>
         {/*
           ★ 「조직원」은 표에 뜨는 사람 수와 «같은 수» 여야 한다.
@@ -225,8 +272,15 @@ export function OrgViewTabs({
         </span>
       </div>
 
-      {view === "list" ? (
-        <div className="flex flex-col gap-4">
+      <div
+        id={panelId("list")}
+        role="tabpanel"
+        aria-labelledby={tabId("list")}
+        tabIndex={view === "list" ? 0 : -1}
+        hidden={view !== "list"}
+      >
+        {view === "list" ? (
+          <div className="flex flex-col gap-4">
           {/* ③ 왼쪽 부서 ↔ 오른쪽 그 부서 사람. 375px 에서는 위아래로 쌓인다. */}
           <div className="grid gap-4 md:grid-cols-[260px_minmax(0,1fr)]">
             <section aria-label="부서" className="rounded-2xl border border-zinc-200 dark:border-zinc-800">
@@ -290,7 +344,7 @@ export function OrgViewTabs({
 
               {selected ? (
                 <div className="border-b border-zinc-100 px-4 py-2 text-[11px] text-zinc-500 dark:border-zinc-900">
-                  대상 키 <code className="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">dept:{selected.id}</code>
+                  <b className="font-medium text-zinc-700 dark:text-zinc-300">선택한 부서: {selected.name}</b>
                   {" · "}이 부서를 대상으로 지정하면 하위 부서까지 포함해서 전달돼요
                   {headName ? null : (
                     <b className="ml-1 text-amber-700 dark:text-amber-400">· 책임자 공석 — 보고가 상위로 넘어가요</b>
@@ -310,15 +364,23 @@ export function OrgViewTabs({
 
           {/* 구조를 줄이지 않는다 — 기존 부서 관리는 그대로 이 갈래 안에 남는다. */}
           {departmentSlot}
-        </div>
-      ) : null}
+          </div>
+        ) : null}
+      </div>
 
-      {view === "seats" ? (
-        /*
-          #683 · D안 — 부분과 전체를 «이름표로» 가른다.
-          왼쪽은 회사 전체, 오른쪽은 고른 자리 하나. 둘 다 늘 보인다.
-        */
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+      <div
+        id={panelId("seats")}
+        role="tabpanel"
+        aria-labelledby={tabId("seats")}
+        tabIndex={view === "seats" ? 0 : -1}
+        hidden={view !== "seats"}
+      >
+        {view === "seats" ? (
+          /*
+            #683 · D안 — 부분과 전체를 «이름표로» 가른다.
+            왼쪽은 회사 전체, 오른쪽은 고른 자리 하나. 둘 다 늘 보인다.
+          */
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
           <section aria-label="전체" className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800">
             <div
               data-region="all"
@@ -423,28 +485,53 @@ export function OrgViewTabs({
               canManage={canManageSeats}
             />
           ) : null}
-        </div>
-      ) : null}
+          </div>
+        ) : null}
+      </div>
 
-      {view === "chart" ? <OrgChartFlow model={model} /> : null}
+      <div
+        id={panelId("chart")}
+        role="tabpanel"
+        aria-labelledby={tabId("chart")}
+        tabIndex={view === "chart" ? 0 : -1}
+        hidden={view !== "chart"}
+      >
+        {view === "chart" ? <OrgChartFlow model={model} /> : null}
+      </div>
 
-      {view === "perm" ? <div className="flex flex-col gap-4">{permissionSlot}</div> : null}
+      <div
+        id={panelId("perm")}
+        role="tabpanel"
+        aria-labelledby={tabId("perm")}
+        tabIndex={view === "perm" ? 0 : -1}
+        hidden={view !== "perm"}
+      >
+        {view === "perm" ? <div className="flex flex-col gap-4">{permissionSlot}</div> : null}
+      </div>
 
-      {view === "rules" ? (
-        <div className="rounded-2xl border border-zinc-200 p-8 text-center dark:border-zinc-800">
-          <p className="font-medium">알림 규칙은 아직 없어요</p>
+      <div
+        id={panelId("rules")}
+        role="tabpanel"
+        aria-labelledby={tabId("rules")}
+        tabIndex={view === "rules" ? 0 : -1}
+        hidden={view !== "rules"}
+      >
+        {view === "rules" ? (
+          <div className="rounded-2xl border border-zinc-200 p-8 text-center dark:border-zinc-800">
+            <p className="font-medium">알림 규칙은 아직 없어요</p>
           {/*
             ★ 여기서 한 번 거짓말을 했다 — 「지금은 보고 계통을 따라 알림이 갑니다」라고 적었는데
               그 경로(lib/org/notification-routing.ts)를 쓰는 곳이 0개다. 실제로 도는
               CurrentMainRoutingPort(lib/notify/server.ts)는 담당자와 팀만 보고 보고 계통은 안 본다.
               «아직 없다» 고 말하려면 «지금 무엇이 되는지» 도 사실이어야 한다.
           */}
-          <p className="mx-auto mt-1 max-w-md text-sm text-zinc-500">
-            어떤 일이 생겼을 때 누구에게 알릴지 정하는 자리예요. 지금 알림은 담당자와 팀에게만 가고,
-            <b> 「목록」의 보고 대상은 아직 알림에 쓰이지 않아요.</b>
-          </p>
-        </div>
-      ) : null}
+            <p className="mx-auto mt-1 max-w-md text-sm text-zinc-500">
+              어떤 일이 생겼을 때 누구에게 알릴지 정하는 자리예요. 지금 알림은 담당자와 팀에게만 가고,
+              <b> 「목록」의 보고 대상은 아직 알림에 쓰이지 않아요.</b>
+            </p>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 /*
- * #640 — 조직관리 네 갈래를 «실제 프로덕션 빌드» 에서 열어 찍고, 동시에 잰다.
+ * #640/#643 — 조직관리 다섯 갈래를 «실제 프로덕션 빌드» 에서 열어 찍고, 동시에 잰다.
  * AGENTS.md §3 ⑥ 의 화면 확인 증거이자, 이슈 #640 에 적은 EVAL 의 실행본이다.
  *
  * ★ 찍기만 하면 «열었다» 밖에 증명 못 한다.
@@ -16,17 +16,156 @@
  *   npm run start --workspace app -- --port 3996
  *   SHOT_ORIGIN=http://127.0.0.1:3996 node docs/design/qa-org-views.mjs
  */
+import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
+import { execFileSync, spawn } from "node:child_process";
+import { createServer } from "node:net";
 import { chromium } from "playwright-core";
+import {
+  VisualGateStageError,
+  isChildAndPortReleased,
+  verifyBuildProvenance,
+  waitForVisualGate,
+} from "./qa-visual-gate-completion.mjs";
 
-const ORIGIN = process.env.SHOT_ORIGIN ?? "http://127.0.0.1:3996";
-const OUT = process.env.SHOT_OUT ?? "_shots640";
+const root = path.resolve(import.meta.dirname, "../..");
+const externalOrigin = process.env.SHOT_ORIGIN?.replace(/\/$/, "") ?? null;
+let ORIGIN = externalOrigin ?? "";
+const OUT = path.resolve(root, process.env.SHOT_OUT ?? "_shots640");
 const CHROME = ["C:/Program Files/Google/Chrome/Application/chrome.exe", "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"].find(fs.existsSync);
 if (!CHROME) throw new Error("시스템 크롬을 못 찾았습니다 — 이건 시각 게이트가 아닙니다");
 fs.mkdirSync(OUT, { recursive: true });
 
-// 이슈 #640 의 «목표» 를 그대로 옮긴 것이다. 하나라도 어긋나면 실패한다.
-const EXPECT = { tabs: 4, tableColumns: 6 };
+const expectedCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+const sourceDiff = execFileSync("git", ["diff", "--binary", "HEAD", "--", "app", "package.json", "package-lock.json"], {
+  cwd: root,
+  maxBuffer: 50 * 1024 * 1024,
+});
+const sourceDigest = crypto.createHash("sha256").update(expectedCommit).update("\0").update(sourceDiff).digest("hex");
+const provenancePath = path.join(root, "app/.next/moawork-visual-build-provenance.json");
+
+function artifactIdentity() {
+  const buildId = fs.readFileSync(path.join(root, "app/.next/BUILD_ID"), "utf8").trim();
+  const digest = crypto.createHash("sha256");
+  for (const name of ["BUILD_ID", "app-path-routes-manifest.json", "build-manifest.json", "routes-manifest.json"]) {
+    digest.update(name).update("\0").update(fs.readFileSync(path.join(root, "app/.next", name)));
+  }
+  return { buildId, artifactDigest: digest.digest("hex") };
+}
+
+function readProvenance() {
+  try {
+    return JSON.parse(fs.readFileSync(provenancePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function ensureLocalBuildProvenance() {
+  let artifact;
+  try {
+    artifact = artifactIdentity();
+  } catch {
+    artifact = null;
+  }
+  const expected = artifact ? { commitSha: expectedCommit, sourceDigest, ...artifact } : null;
+  const existing = readProvenance();
+  if (expected && verifyBuildProvenance(existing, expected).ready) return existing;
+
+  const command = process.platform === "win32" ? "cmd.exe" : "npm";
+  const args = process.platform === "win32"
+    ? ["/d", "/s", "/c", "npm", "run", "build", "--workspace", "app"]
+    : ["run", "build", "--workspace", "app"];
+  execFileSync(command, args, {
+    cwd: root,
+    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
+    stdio: "inherit",
+  });
+  artifact = artifactIdentity();
+  const provenance = { schemaVersion: 1, commitSha: expectedCommit, sourceDigest, ...artifact };
+  fs.writeFileSync(provenancePath, `${JSON.stringify(provenance)}\n`);
+  const verified = verifyBuildProvenance(provenance, { commitSha: expectedCommit, sourceDigest, ...artifact });
+  if (!verified.ready) {
+    throw new VisualGateStageError("infrastructure", "build-provenance", "fresh organization build provenance mismatch", verified);
+  }
+  return provenance;
+}
+
+async function freePort() {
+  return new Promise((resolve, reject) => {
+    const listener = createServer();
+    listener.unref();
+    listener.once("error", reject);
+    listener.listen(0, "127.0.0.1", () => {
+      const address = listener.address();
+      const port = typeof address === "object" && address ? address.port : null;
+      listener.close((error) => error ? reject(error) : port ? resolve(port) : reject(new Error("ephemeral port unavailable")));
+    });
+  });
+}
+
+function startServer(port) {
+  const command = process.platform === "win32" ? "cmd.exe" : "npm";
+  const args = process.platform === "win32"
+    ? ["/d", "/s", "/c", "npm", "run", "start", "--workspace", "app", "--", "--port", String(port)]
+    : ["run", "start", "--workspace", "app", "--", "--port", String(port)];
+  const env = { ...process.env, NEXT_TELEMETRY_DISABLED: "1" };
+  delete env.VERCEL_GIT_COMMIT_SHA;
+  return spawn(command, args, { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] });
+}
+
+async function waitForServer(child, origin, provenance) {
+  let log = "";
+  child.stdout.on("data", (chunk) => { log += chunk; });
+  child.stderr.on("data", (chunk) => { log += chunk; });
+  await waitForVisualGate({
+    category: "infrastructure",
+    stage: "org-view-server-ready",
+    timeoutMs: 90_000,
+    intervalMs: 500,
+    probe: async () => {
+      if (child.exitCode !== null) {
+        throw new VisualGateStageError("infrastructure", "org-view-server-process", `server exited with ${child.exitCode}`, { log: log.slice(-1500) });
+      }
+      try {
+        const [response, manifest] = await Promise.all([
+          fetch(`${origin}/login/visual-fixture?surface=organization-views`, { signal: AbortSignal.timeout(1500) }),
+          fetch(`${origin}/_next/static/${provenance.buildId}/_buildManifest.js`, { signal: AbortSignal.timeout(1500) }),
+        ]);
+        const html = await response.text();
+        const sha = html.match(/data-build-sha="([^"]+)"/)?.[1] ?? null;
+        return { ready: response.ok && manifest.ok && sha === "local", status: response.status, manifestStatus: manifest.status, sha };
+      } catch (error) {
+        return { ready: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  });
+}
+
+async function stopServer(child, origin) {
+  if (child.exitCode === null && process.platform === "win32" && child.pid) {
+    try {
+      execFileSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+    } catch {
+      // 이미 종료됐어도 아래의 child+port 풀림 검사가 정본이다.
+    }
+  } else if (child.exitCode === null) {
+    child.kill("SIGTERM");
+  }
+  const url = new URL(origin);
+  await waitForVisualGate({
+    category: "infrastructure",
+    stage: "org-view-process-port-cleanup",
+    timeoutMs: 5_000,
+    intervalMs: 100,
+    probe: () => isChildAndPortReleased({ childExited: child.exitCode !== null, host: url.hostname, port: Number(url.port) }),
+  });
+}
+
+// 현재 정본의 다섯 갈래를 순서까지 고정한다. 추가 갈래를 숫자만 맞춰 통과시키지 않는다.
+const EXPECTED_TABS = ["자리", "목록", "조직도 한눈에 보기", "권한", "알림 규칙"];
+const EXPECT = { tabs: EXPECTED_TABS.length, tableColumns: 6 };
 
 const VIEWPORTS = [
   { id: "1440x900", width: 1440, height: 900 },
@@ -34,6 +173,7 @@ const VIEWPORTS = [
 ];
 
 const SHOTS = [
+  { id: "0-seats", tab: "자리", pick: null, query: "" },
   { id: "1-list", tab: "목록", pick: null, query: "" },
   { id: "1-list-picked", tab: "목록", pick: "1팀", query: "" },
   { id: "2-chart", tab: "조직도 한눈에 보기", pick: null, query: "" },
@@ -46,7 +186,18 @@ const SHOTS = [
 const measure = (page) =>
   page.evaluate(() => ({
     tabs: [...document.querySelectorAll('[role="tab"]')].map((el) => el.textContent?.trim()),
+    tabBindings: [...document.querySelectorAll('[role="tab"]')].map((el) => ({
+      id: el.id,
+      controls: el.getAttribute("aria-controls"),
+      selected: el.getAttribute("aria-selected") === "true",
+      tabIndex: el.tabIndex,
+    })),
     selectedTab: document.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.trim() ?? null,
+    visiblePanel: (() => {
+      const panel = document.querySelector('[role="tabpanel"]:not([hidden])');
+      return panel ? { id: panel.id, labelledBy: panel.getAttribute("aria-labelledby") } : null;
+    })(),
+    panelCount: document.querySelectorAll('[role="tabpanel"]').length,
     tableHeaders: [...document.querySelectorAll("thead th")].map((el) => el.textContent?.trim()),
     memberRows: [...document.querySelectorAll("tbody tr[data-user-id]")].map((el) => el.getAttribute("data-user-id")),
     paneTitle: document.querySelector('section[aria-label="조직원"] h3')?.textContent?.trim() ?? null,
@@ -64,16 +215,80 @@ const measure = (page) =>
       name: el.querySelector("span.truncate")?.textContent?.trim() ?? null,
       reach: Number(el.textContent?.match(/(\d+)\s*$/)?.[1] ?? NaN),
     })),
+    tablistScrollable: (() => {
+      const tablist = document.querySelector("[data-org-view-tab-scroll]");
+      return tablist ? tablist.scrollWidth > tablist.clientWidth + 1 : false;
+    })(),
+    scrollHintVisible: (() => {
+      const hint = document.querySelector("[data-org-view-scroll-hint]");
+      return hint ? getComputedStyle(hint).display !== "none" && hint.getBoundingClientRect().height > 0 : false;
+    })(),
+    rawDepartmentIdentifierVisible: /dept:\s*[0-9a-f-]{36}/i.test(document.body.innerText)
+      || /d0000000-0000-4000-8000-00000000000[1-4]/i.test(document.body.innerText),
     bodyOverflowsX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
   }));
 
-const browser = await chromium.launch({ executablePath: CHROME, headless: true });
+async function verifyKeyboardNavigation(browser, vp, problems) {
+  const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
+  const errors = [];
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto(`${ORIGIN}/login/visual-fixture?surface=organization-views`, { waitUntil: "networkidle" });
+  const tabs = page.getByRole("tab");
+  const tabCount = await tabs.count();
+  const first = tabs.nth(0);
+  const last = tabs.nth(tabCount - 1);
+  const list = page.getByRole("tab", { name: "목록", exact: true });
+  const chart = page.getByRole("tab", { name: "조직도 한눈에 보기", exact: true });
+  let arrowReady = false;
+  for (let attempt = 0; attempt < 40 && !arrowReady; attempt += 1) {
+    await list.focus();
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(100);
+    arrowReady = (await chart.getAttribute("aria-selected")) === "true";
+  }
+  if (!arrowReady) problems.push(`${vp.id}/keyboard: ArrowRight가 다음 갈래를 선택하지 않았다`);
+  if (await page.evaluate(() => document.activeElement?.getAttribute("data-view")) !== "chart") {
+    problems.push(`${vp.id}/keyboard: ArrowRight 후 포커스가 조직도 갈래에 없다`);
+  }
+
+  await page.keyboard.press("End");
+  await page.waitForTimeout(50);
+  if ((await last.getAttribute("aria-selected")) !== "true") problems.push(`${vp.id}/keyboard: End가 마지막 갈래로 옮기지 않았다`);
+  await page.keyboard.press("Home");
+  await page.waitForTimeout(50);
+  if ((await first.getAttribute("aria-selected")) !== "true" || (await first.getAttribute("data-view")) !== "seats") {
+    problems.push(`${vp.id}/keyboard: Home이 첫 자리 갈래로 옮기지 않았다`);
+  }
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForTimeout(50);
+  if ((await last.getAttribute("aria-selected")) !== "true") problems.push(`${vp.id}/keyboard: 첫 갈래의 ArrowLeft가 끝으로 순환하지 않았다`);
+  if (errors.length) problems.push(`${vp.id}/keyboard console: ${errors.join(" | ")}`);
+  await page.close();
+}
+
+let serverChild = null;
+let browser = null;
 const report = [];
 const problems = [];
 
+try {
+  if (!externalOrigin) {
+    const provenance = ensureLocalBuildProvenance();
+    const port = await freePort();
+    ORIGIN = `http://127.0.0.1:${port}`;
+    serverChild = startServer(port);
+    await waitForServer(serverChild, ORIGIN, provenance);
+  }
+  browser = await chromium.launch({ executablePath: CHROME, headless: true });
+
 for (const vp of VIEWPORTS) {
+  await verifyKeyboardNavigation(browser, vp, problems);
   for (const shot of SHOTS) {
     const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
+    const pageErrors = [];
+    page.on("console", (message) => { if (message.type() === "error") pageErrors.push(message.text()); });
+    page.on("pageerror", (error) => pageErrors.push(error.message));
     await page.goto(`${ORIGIN}/login/visual-fixture?surface=organization-views${shot.query}`, { waitUntil: "networkidle" });
 
     // 수화를 기다린다 — 리액트가 붙기 전에 누르면 «눌리지만» 아무 일도 안 일어난다.
@@ -102,6 +317,27 @@ for (const vp of VIEWPORTS) {
     }
 
     if (after.tabs.length !== EXPECT.tabs) problems.push(`${vp.id}/${shot.id}: 갈래가 ${after.tabs.length}개다(목표 ${EXPECT.tabs})`);
+    if (JSON.stringify(after.tabs) !== JSON.stringify(EXPECTED_TABS)) {
+      problems.push(`${vp.id}/${shot.id}: 갈래 순서/이름이 정본과 다르다 — ${after.tabs.join("|")}`);
+    }
+    if (after.panelCount !== EXPECT.tabs) problems.push(`${vp.id}/${shot.id}: tabpanel이 ${after.panelCount}개다(목표 ${EXPECT.tabs})`);
+    for (const binding of after.tabBindings) {
+      if (!binding.id || !binding.controls) {
+        problems.push(`${vp.id}/${shot.id}: tab id/aria-controls 연결이 비어 있다`);
+        break;
+      }
+    }
+    const selectedBinding = after.tabBindings.find((binding) => binding.selected);
+    if (!selectedBinding || selectedBinding.tabIndex !== 0 || after.tabBindings.filter((binding) => binding.tabIndex === 0).length !== 1) {
+      problems.push(`${vp.id}/${shot.id}: 선택된 tab 한 개만 tab stop이 아니다`);
+    } else if (after.visiblePanel?.id !== selectedBinding.controls || after.visiblePanel?.labelledBy !== selectedBinding.id) {
+      problems.push(`${vp.id}/${shot.id}: 선택 tab과 보이는 tabpanel의 id 연결이 틀리다`);
+    }
+    if (vp.width < 640 && (!after.scrollHintVisible || !after.tablistScrollable)) {
+      problems.push(`${vp.id}/${shot.id}: 375px에서 가로 이동 힌트가 보이지 않거나 갈래 줄이 밀리지 않는다`);
+    }
+    if (vp.width >= 640 && after.scrollHintVisible) problems.push(`${vp.id}/${shot.id}: 넓은 화면에서 375px 힌트가 보인다`);
+    if (after.rawDepartmentIdentifierVisible) problems.push(`${vp.id}/${shot.id}: raw dept UUID가 사용자 문구에 보인다`);
     if (shot.tab === "목록" && after.tableHeaders.length !== EXPECT.tableColumns) {
       problems.push(`${vp.id}/${shot.id}: 표가 ${after.tableHeaders.length}열이다(목표 ${EXPECT.tableColumns})`);
     }
@@ -141,6 +377,7 @@ for (const vp of VIEWPORTS) {
     }
     if (after.wrappedTabs.length) problems.push(`${vp.id}/${shot.id}: 갈래 글자가 접혔다 — ${after.wrappedTabs.join("|")}`);
     if (after.bodyOverflowsX) problems.push(`${vp.id}/${shot.id}: 몸통이 가로로 넘친다`);
+    if (pageErrors.length) problems.push(`${vp.id}/${shot.id} console: ${pageErrors.join(" | ")}`);
 
     const file = `${OUT}/${shot.id}-${vp.id}.png`;
     await page.screenshot({ path: file, fullPage: true });
@@ -179,7 +416,6 @@ for (const vp of VIEWPORTS) {
   await page.close();
 }
 
-await browser.close();
 fs.writeFileSync(`${OUT}/report.json`, JSON.stringify(report, null, 2));
 
 for (const row of report) {
@@ -188,9 +424,14 @@ for (const row of report) {
   );
 }
 
+} finally {
+  await browser?.close();
+  if (serverChild) await stopServer(serverChild, ORIGIN);
+}
+
 if (problems.length) {
   console.error(`\n★ ${problems.length}건 어긋남`);
   problems.forEach((p) => console.error(`  - ${p}`));
   process.exit(1);
 }
-console.log(`\n✅ 갈래 ${EXPECT.tabs} · 표 ${EXPECT.tableColumns}열 · 부서↔사람 연결 · 1440/375 가로넘침 없음 — 모두 확인`);
+console.log(`\n✅ 갈래 ${EXPECT.tabs} · tab/tabpanel/키보드 · 375px 힌트 · UUID 비노출 · 표 ${EXPECT.tableColumns}열 · 부서↔사람 연결 — 모두 확인`);
