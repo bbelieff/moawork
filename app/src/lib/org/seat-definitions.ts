@@ -171,12 +171,28 @@ export function toSeatDefinition(row: Row, nameOf?: (userId: string) => string |
  * 모르는 id 는 그대로 null 로 둔다 — 그때는 「누군가」가 «맞는» 말이다.
  */
 /**
+ * 이름이 없을 때 화면이 채워 넣는 «자리표시» 글자들.
+ *
+ * ★ 이건 사람 이름이 아니라 «이름이 없다» 는 뜻의 시스템 문구다.
+ *   그대로 이름 칸에 앉히면 두 가지가 잘못된다 —
+ *     ① 「이름 없는 구성원**가** 씀」 처럼 조사가 깨진다(자음으로 끝난다)
+ *     ② 읽는 사람이 «시스템이 모르는 것» 인지 «누가 그렇게 적어 둔 것» 인지 구별을 못 한다
+ *   「누군가」는 모른다는 뜻이 문장 안에 있다. 정보량은 어느 쪽도 더 낫지 않으므로,
+ *   **문장이 맞고 뜻이 분명한 쪽**을 고른다 (#683 검수 P3-2).
+ */
+const PLACEHOLDER_NAMES = new Set(["이름 없는 구성원", "이름 미등록"]);
+
+/**
  * 「누가 썼나」를 찾는 이름표를 «한 번만» 만든다.
  *
  * ★ 두 곳에서 모은다. 순서가 뜻을 갖는다 —
  *
- *     ① 구성원 요약   활성인 사람. RPC 프로필 이름이라 «더 정확하다»
- *     ② 조직도       비활성 포함 «전원». 요약에 없는 사람을 여기서 건진다
+ *     ① 구성원 요약   활성인 사람. **이름이 비면 요약 전체가 error 로 떨어진다**
+ *                    → 여기 있는 이름은 «진짜 이름 아니면 아예 없음» 이다
+ *     ② 조직도       비활성 포함 «전원». 이름이 비면 자리표시를 채운다
+ *
+ *   즉 앞이 이기는 이유는 «더 정확한 출처라서» 가 아니다 — **둘 다 users.name 을 읽는다.**
+ *   진짜 이름만 있는 쪽을 먼저 두는 것이다. (안 잰 것을 사실로 적지 않는다 — AGENTS §2.6⑥)
  *
  * ★★ ②가 없으면 **쓴 사람이 퇴사하는 순간 이름이 다시 사라진다.**
  *   그런데 바로 그 옆에 「이 자리에 앉는 사람이 바뀌어도 남아요」라고 적혀 있다 —
@@ -191,8 +207,11 @@ export function seatWriterNames(
   const names = new Map<string, string>();
   for (const source of sources) {
     for (const person of source) {
-      // 먼저 넣은 쪽이 이긴다 — 앞 목록일수록 정확한 이름이다.
-      if (person.displayName && !names.has(person.userId)) names.set(person.userId, person.displayName);
+      const name = person.displayName?.trim();
+      // 빈 이름과 자리표시는 «이름이 아니다». 넣으면 화면이 「모른다」를 말할 기회를 잃는다.
+      if (!name || PLACEHOLDER_NAMES.has(name)) continue;
+      // 먼저 넣은 쪽이 이긴다 — 진짜 이름만 있는 출처를 앞에 둔다.
+      if (!names.has(person.userId)) names.set(person.userId, name);
     }
   }
   return names;

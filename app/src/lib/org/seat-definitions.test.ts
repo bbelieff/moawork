@@ -188,7 +188,7 @@ describe("#683 검수 P2-1 — 쓴 사람이 퇴사해도 이름이 남는다", 
     expect(names.get("u-2")).toBe("나간사람");
   });
 
-  it("★ 요약 이름이 이긴다 — 앞 목록일수록 정확하다", () => {
+  it("★ 앞 목록이 이긴다 — 진짜 이름만 있는 출처를 앞에 둔다", () => {
     const names = seatWriterNames([
       [{ userId: "u-1", displayName: "요약 이름" }],
       [{ userId: "u-1", displayName: "조직도 이름" }],
@@ -199,6 +199,29 @@ describe("#683 검수 P2-1 — 쓴 사람이 퇴사해도 이름이 남는다", 
   it("빈 이름은 넣지 않는다 — 빈 글자를 이름으로 쓰면 「이름이 있다」는 거짓말이 된다", () => {
     const names = seatWriterNames([[{ userId: "u-1", displayName: "" }], [{ userId: "u-1", displayName: "진짜 이름" }]]);
     expect(names.get("u-1")).toBe("진짜 이름");
+  });
+
+  it("★ «자리표시» 는 이름이 아니다 — 「이름 없는 구성원가 씀」이 되면 안 된다", () => {
+    /*
+     * 조직도는 이름이 비면 「이름 없는 구성원」을, 요약은 「이름 미등록」을 채운다.
+     * 그건 사람 이름이 아니라 «이름이 없다» 는 뜻의 시스템 문구다.
+     * 그대로 이름 칸에 앉히면 ① 조사가 깨지고(자음 끝) ② 모른다는 뜻이 사라진다.
+     * 「누군가」는 모른다는 뜻이 문장 안에 있다.
+     */
+    expect(seatWriterNames([[{ userId: "u-1", displayName: "이름 없는 구성원" }]]).get("u-1")).toBeUndefined();
+    expect(seatWriterNames([[{ userId: "u-2", displayName: "이름 미등록" }]]).get("u-2")).toBeUndefined();
+  });
+
+  it("자리표시를 건너뛰고 «진짜 이름» 을 뒤에서 건진다", () => {
+    const names = seatWriterNames([
+      [{ userId: "u-1", displayName: "이름 없는 구성원" }],
+      [{ userId: "u-1", displayName: "진짜 이름" }],
+    ]);
+    expect(names.get("u-1")).toBe("진짜 이름");
+  });
+
+  it("앞뒤 공백만 있는 이름도 이름이 아니다", () => {
+    expect(seatWriterNames([[{ userId: "u-1", displayName: "   " }]]).get("u-1")).toBeUndefined();
   });
 
   it("아무 데도 없는 사람은 없는 채로 둔다 — 그때는 「누군가」가 맞다", () => {
