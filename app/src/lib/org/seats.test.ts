@@ -172,6 +172,21 @@ describe("#683 사람에서 자리를 읽는다", () => {
     expect(seats.find((s) => s.id === "d1:team_lead")!.status).toBe("unknown");
   });
 
+  it("★ 퇴사자를 「사람」에 합치지 않는다 — 전원 퇴사한 회사가 「사람 3」으로 보이면 안 된다", () => {
+    const { seats, seatlessMembers } = deriveSeats({
+      departments: DEPTS,
+      members: [
+        person({ userId: "u1", displayName: "나간사람1", primaryDepartmentId: "d1", role: null, active: false }),
+        person({ userId: "u2", displayName: "나간사람2", primaryDepartmentId: "d1", role: null, active: false }),
+        person({ userId: "u3", displayName: "나간사람3", primaryDepartmentId: null, role: null, active: false }),
+      ],
+    });
+    const counts = seatSummary(seats, seatlessMembers);
+    expect(counts.peopleCount).toBe(0); // 지금 일하는 사람은 0명이다
+    expect(counts.inactiveCount).toBe(3); // 숨기지 않는다 — 따로 센다
+    expect(counts.vacantCount).toBe(2); // 두 부서의 팀장 자리는 «진짜» 공석이다
+  });
+
   it("★ 자리에 못 앉힌 사람도 머릿수에 센다 — 사람이 사라지면 안 된다", () => {
     const { seats, seatlessMembers } = deriveSeats({
       departments: DEPTS,
@@ -210,7 +225,13 @@ describe("#683 머리에 적는 수", () => {
       ],
       expectVacant: ["team_lead"],
     });
-    expect(seatSummary(seats)).toEqual({ seatCount: 3, peopleCount: 2, vacantCount: 1, unknownCount: 0 });
+    expect(seatSummary(seats)).toEqual({
+      seatCount: 3,
+      peopleCount: 2,
+      inactiveCount: 0,
+      vacantCount: 1,
+      unknownCount: 0,
+    });
   });
 
   it("★ 한 사람이 여러 자리에 있어도 사람은 한 번만 센다", () => {

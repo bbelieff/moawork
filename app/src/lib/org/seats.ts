@@ -206,10 +206,15 @@ export function deriveSeats(input: {
 }
 
 /**
- * 화면 머리에 적는 수. 「자리 9 · 사람 14 · 공석 1 · 확인 못 함 2」
+ * 화면 머리에 적는 수. 「자리 9 · 사람 14 · 공석 1 · 확인 못 한 자리 2」
  *
  * ★ 자리에 못 앉힌 사람도 «사람» 이다. 두 번째 인자를 빼면 머릿수가 실제보다 적게 나온다 —
- *   전에 그랬고, 팀장이 빠진 회사는 「사람 1」로 보였다(실제 2). 사람이 세어지지도 않았다.
+ *   전에 그랬고, 팀장이 빠진 회사는 「사람 1」로 보였다(실제 2).
+ *
+ * ★★ 그런데 «비활성인 사람» 까지 「사람」으로 합치면 이번엔 수가 과대해진다.
+ *   구성원이 전부 퇴사한 회사가 「사람 3」으로 보인다 — 활성인 사람은 0명인데.
+ *   「전체 — 우리 회사」라고 이름 붙은 상자의 수라서, 그 수는 «지금 일하는 사람» 이어야 한다.
+ *   숨기는 게 아니라 **단위를 정직하게** 만든다 — 비활성은 따로 센다 (#683 3차 검수 P2-1).
  */
 export function seatSummary(
   seats: readonly Seat[],
@@ -217,19 +222,31 @@ export function seatSummary(
 ): {
   seatCount: number;
   peopleCount: number;
+  inactiveCount: number;
   vacantCount: number;
   unknownCount: number;
 } {
   const people = new Set<string>();
+  const inactive = new Set<string>();
   let vacant = 0;
   let unknown = 0;
   for (const seat of seats) {
     if (seat.status === "vacant") vacant += 1;
     if (seat.status === "unknown") unknown += 1;
+    // 자리에 앉은 사람은 요약(활성만)에서 왔으므로 전부 활성이다.
     for (const occupant of seat.occupants) people.add(occupant.userId);
   }
-  for (const member of seatlessMembers) people.add(member.userId);
-  return { seatCount: seats.length, peopleCount: people.size, vacantCount: vacant, unknownCount: unknown };
+  for (const member of seatlessMembers) {
+    if (member.active) people.add(member.userId);
+    else inactive.add(member.userId);
+  }
+  return {
+    seatCount: seats.length,
+    peopleCount: people.size,
+    inactiveCount: inactive.size,
+    vacantCount: vacant,
+    unknownCount: unknown,
+  };
 }
 
 export function findSeat(seats: readonly Seat[], id: string | null): Seat | null {

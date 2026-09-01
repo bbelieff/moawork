@@ -329,6 +329,8 @@ export function OrgViewTabs({
                 자리 {seatCounts.seatCount} · 사람 {seatCounts.peopleCount} · 공석 {seatCounts.vacantCount}
                 {/* 「자리」 단위임을 붙여 둔다 — 아래 구역의 「…N명」과 단위가 달라 나란히 두면 헷갈린다. */}
                 {seatCounts.unknownCount > 0 ? ` · 확인 못 한 자리 ${seatCounts.unknownCount}` : ""}
+                {/* 비활성은 「사람」에 합치지 않는다. 합치면 전원 퇴사한 회사가 「사람 3」으로 보인다. */}
+                {seatCounts.inactiveCount > 0 ? ` · 비활성 ${seatCounts.inactiveCount}` : ""}
               </span>
             </div>
             <div className="flex flex-col gap-0.5 p-1.5">
@@ -390,6 +392,10 @@ export function OrgViewTabs({
                       className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm"
                     >
                       <span className="min-w-0 flex-1 truncate">{member.displayName}</span>
+                      {/* 부서 힌트를 같이 둔다 — 「어느 팀 사람인지」는 자리를 정할 때 첫 단서다. */}
+                      <span className="shrink-0 text-xs text-zinc-400">
+                        {member.primaryDepartmentId ? "부서 있음" : "부서 없음"}
+                      </span>
                       {/*
                         ★ «왜 자리가 없는지» 를 아는 만큼만 말한다.
                           비활성인 사람은 이유를 «안다» — 그걸 「역할을 읽지 못했어요」라고 하면

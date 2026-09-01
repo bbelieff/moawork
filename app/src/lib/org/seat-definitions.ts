@@ -56,13 +56,24 @@ export function parseSeatDuties(value: unknown): SeatDuty[] {
   return out;
 }
 
-function stringList(value: unknown): string[] {
+/**
+ * 판단 기준 한 갈래를 «화면과 저장이 같은 모양» 으로 줄인다.
+ *
+ * ★ 읽기와 쓰기가 «이 함수 하나» 를 같이 부른다. 상한 정의는 한 곳뿐이어야 하기 때문이다.
+ *   전에는 쓰기 쪽이 `parseSeatRules({escalate: ...}).escalate` 로 우회했는데,
+ *   그러면 갈래 하나(escalate)의 규칙이 나머지 둘을 «대변» 하게 된다.
+ *   지금은 셋의 상한이 같아 맞지만, 언젠가 갈리면 쓰기 경로가 조용히 틀린 규칙을 적용하고
+ *   **시험은 그때도 통과한다** — 어느 갈래인지 인자로 안 받으니까 (#683 3차 검수 P3-4).
+ */
+export function normalizeRuleLines(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
     .map((entry) => (typeof entry === "string" ? entry.trim().slice(0, MAX_LINE) : ""))
     .filter((entry) => entry.length > 0)
     .slice(0, MAX_RULES_PER_KIND);
 }
+
+const stringList = normalizeRuleLines;
 
 export function parseSeatRules(value: unknown): { escalate: string[]; handle: string[]; avoid: string[] } {
   const row = value && typeof value === "object" ? (value as Record<string, unknown>) : {};

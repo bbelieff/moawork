@@ -8,7 +8,7 @@
 //   같은 함정을 `(app)/boards/trash-action-state.ts` 가 이미 파일로 남겨 뒀다. 그 파일이
 //   적어 둔 대로 «규칙» 이 아니라 «파일» 로 막는다 — 여기 두는 한 액션 파일이 어길 수 없다.
 
-import { parseSeatDuties, parseSeatRules, type SeatDuty } from "@/lib/org/seat-definitions";
+import { normalizeRuleLines, parseSeatDuties, type SeatDuty } from "@/lib/org/seat-definitions";
 
 export type SeatDefinitionState = Readonly<{ ok: boolean; message: string }>;
 
@@ -50,7 +50,7 @@ export function parseDutyLines(raw: FormDataEntryValue | null): SeatDuty[] {
  *   할 일(duties)은 parseDutyLines 가 parseSeatDuties 를 거쳐 이미 그렇게 하고 있었다. rules 만 비대칭이었다.
  */
 export function parseRuleLines(raw: FormDataEntryValue | null): string[] {
-  return parseSeatRules({ escalate: lines(raw) }).escalate;
+  return normalizeRuleLines(lines(raw));
 }
 
 /** 한 칸짜리 글. 비면 null 이다 — «빈 문자열» 과 «안 적음» 을 서버에서 갈라 보게 한다. */
