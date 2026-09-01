@@ -1,4 +1,4 @@
-import type { Ctx, MemberRole, MemberScope } from "@/lib/types";
+import { MEMBER_ROLES, MEMBER_SCOPES, type Ctx, type MemberRole, type MemberScope } from "@/lib/types";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -33,12 +33,24 @@ function text(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+/*
+ * ★ 목록을 «손으로 적지» 않는다. 정본(MEMBER_ROLES · MEMBER_SCOPES)에서 파생시킨다.
+ *
+ *   전에는 여기에 `owner|admin|member` 와 `all|assigned` 를 손으로 적어 뒀는데,
+ *   정본에는 `team_lead` 와 `department` 가 있었다. **가드가 정본보다 좁았다.**
+ *   그러면 팀장인 행이 아래 flatMap 에서 «조용히» 버려지고, 그 사람은 화면에서 사라진다.
+ *   그 뒤 자리 갈래는 「그 부서에 팀장이 없다」고 읽어 **붉은 「공석」을 단언한다** —
+ *   앉아 있는 사람을 두고 화면이 거짓을 말한다 (#683 검수 P0-1).
+ *
+ *   목록을 늘려 고치면 다음에 역할이 하나 더 생길 때 똑같이 어긋난다.
+ *   정본에서 파생시키면 **어긋날 자리가 없어진다.**
+ */
 function isRole(value: unknown): value is MemberRole {
-  return value === "owner" || value === "admin" || value === "member";
+  return typeof value === "string" && (MEMBER_ROLES as readonly string[]).includes(value);
 }
 
 function isScope(value: unknown): value is MemberScope {
-  return value === "all" || value === "assigned";
+  return typeof value === "string" && (MEMBER_SCOPES as readonly string[]).includes(value);
 }
 
 function displayName(value: unknown): string {
@@ -91,7 +103,20 @@ export function buildMemberOrgSummary(orgId: string, rows: readonly MembershipDb
     kind: "ready",
     owner: owners[0],
     admins: members.filter((member) => member.role === "admin").sort(compareMembers),
-    members: members.filter((member) => member.role === "member").sort(compareMembers),
+    /*
+     * ★ 「role === 'member' 인 사람」이 아니라 **「나머지 전부」** 다.
+     *
+     *   전에는 `=== "member"` 였다. 그래서 `team_lead` 는 owner 도 admin 도 member 도 아니라서
+     *   **어느 칸에도 안 담기고 사라졌다.** 가드를 넓혀 여기까지 왔는데 여기서 다시 버려졌다 —
+     *   한 값이 두 곳에서 따로 버려지고 있었다 (#683 검수 P0-1).
+     *
+     *   칸이 역할을 «열거» 하는 한 역할이 하나 늘 때마다 같은 일이 난다.
+     *   「나머지」로 두면 새 역할이 생겨도 담길 곳이 있다. 각 행은 자기 `role` 을 그대로 들고
+     *   가므로, 팀장을 팀장으로 그려야 하는 화면은 그 값을 보면 된다.
+     */
+    members: members
+      .filter((member) => member.role !== "owner" && member.role !== "admin")
+      .sort(compareMembers),
   };
 }
 

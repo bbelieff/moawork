@@ -13,6 +13,22 @@ import { selectOrgViewModel, isOrgView, type OrgView } from "@/lib/org/org-view"
 import { DepartmentManager } from "@/components/member-organization/DepartmentManager";
 import { OrgViewTabs } from "@/components/member-organization/OrgViewTabs";
 import { createClient } from "@/lib/supabase/server";
+import { loadSeatDefinitions } from "@/lib/org/seat-definitions";
+
+/**
+ * 역할별 인원수 — «각 사람이 들고 있는 역할» 로 센다.
+ *
+ * ★ summary 의 칸 이름으로 세지 않는다. `members` 칸은 «owner·admin 이 아닌 나머지 전부» 라
+ *   팀장도 거기 들어 있다. 칸 길이를 그대로 쓰면 팀장이 「담당」으로 세어진다 (#683 검수 P0-1).
+ */
+function countByRole(summary: { owner: { role: string }; admins: { role: string }[]; members: { role: string }[] }) {
+  const counts: Partial<Record<Role, number>> = {};
+  for (const member of [summary.owner, ...summary.admins, ...summary.members]) {
+    if (!isRole(member.role)) continue;
+    counts[member.role] = (counts[member.role] ?? 0) + 1;
+  }
+  return counts;
+}
 
 export default async function MembersPage({ searchParams }: { searchParams: Promise<{ role?: string; view?: string }> }) {
   const ctx = await getSession();
@@ -28,7 +44,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
    *   이라는 뜻으로 읽는다. 안 그러면 역할을 누를 때마다 목록으로 튕긴다.
    */
   const initialView: OrgView = isOrgView(params.view) ? params.view : requestedRole ? "perm" : "list";
-  const [summary, permission, logo, chart, exceptions] = await Promise.all([
+  const [summary, permission, logo, chart, exceptions, seatDefinitions] = await Promise.all([
     loadMemberOrgSummary(ctx),
     loadPermissionMatrix(ctx.org.id),
     loadOrgLogoView(ctx.org.id),
@@ -36,6 +52,8 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
     loadOrgChart(ctx, createClient),
     // #640 — 보고 «예외»(013). 같은 물결에 태운다. null 이면 «못 읽음» 이고 화면이 그렇게 말한다.
     loadReportingExceptions(ctx, createClient),
+    // #683 — 자리의 역할 정의서. 역시 같은 물결이고, null 은 «못 읽음» 이다.
+    loadSeatDefinitions(ctx, createClient),
   ]);
   const viewerRole: Role = ctx.role === "owner" || ctx.role === "admin" ? ctx.role : "member";
   const permissionAccess = permission.ok
@@ -71,9 +89,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
         activeRole={activeRole}
         viewerRole={viewerRole}
         access={permissionAccess}
-        roleMemberCounts={summary.kind === "ready"
-          ? { owner: summary.owner ? 1 : 0, admin: summary.admins.length, member: summary.members.length }
-          : undefined}
+        roleMemberCounts={summary.kind === "ready" ? countByRole(summary) : undefined}
         revalidatePath="/settings/members"
       />
     </>
@@ -91,7 +107,14 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
 
       {model ? (
         // #640 ①②③ — 보는 방식 네 갈래 · 가로 조직도 · 부서↔사람 잇기.
-        <OrgViewTabs model={model} initialView={initialView} departmentSlot={departmentSlot} permissionSlot={permissionSlot} />
+        <OrgViewTabs
+          model={model}
+          initialView={initialView}
+          departmentSlot={departmentSlot}
+          permissionSlot={permissionSlot}
+          seatDefinitions={seatDefinitions}
+          canManageSeats={isManager(ctx.role)}
+        />
       ) : (
         // 못 읽었을 때는 갈래를 만들지 않는다 — 빈 갈래는 «부서가 없다» 는 거짓말이 된다.
         // 대신 기존 화면을 그대로 두고 무엇을 못 읽었는지 말한다.
