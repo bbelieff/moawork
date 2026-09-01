@@ -7,28 +7,5 @@
     "app/src/lib/dash/server.ts",
     "app/src/lib/dash/service.ts"
   ],
-  "entries": [
-    { "file": "app/src/app/(app)/dash/[pipelineId]/page.tsx", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-18", "expiresOn": "2026-11-30" },
-    { "file": "app/src/app/(app)/dash/all/page.tsx", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-18", "expiresOn": "2026-11-30" },
-    { "file": "app/src/app/(app)/deals/[dealId]/actions.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-16", "expiresOn": "2026-11-30" },
-    { "file": "app/src/app/(app)/deals/[dealId]/page.tsx", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-16", "expiresOn": "2026-11-30" },
-    { "file": "app/src/app/(app)/onboarding/page.tsx", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 2, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-32", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/auth/session.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-5", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/boards/default-tab-assignees.ts", "symbol": "import(\"@/lib/repo/local/defaultTabAssignees\")", "reason": "dynamic-local-repo-import", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-149", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/boards/service.ts", "symbol": "getBoardsRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-14", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/crm/service.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-15", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/custom/repo-store.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-123", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/deal/members.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-16", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/default-tabs/install.ts", "symbol": "getBoardsRepo", "reason": "local-repo-factory-call", "maxCount": 2, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-159", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/entitlements/server.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-122", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/notices/service.ts", "symbol": "getBoardsRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-17", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/perf/service.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 3, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-23", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/presets/policyfund.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-110", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/repo/index.ts", "symbol": "LocalRepo", "reason": "local-repo-construction", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-159", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/repo/local/boardsRepo.ts", "symbol": "LocalBoardsRepo", "reason": "local-repo-construction", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-159", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/repo/supabase/localCrmSource.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-15", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/services/files.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 3, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-16", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/structure-packs/install.ts", "symbol": "getRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-102", "expiresOn": "2026-11-30" },
-    { "file": "app/src/lib/structure-packs/install.ts", "symbol": "getBoardsRepo", "reason": "local-repo-factory-call", "maxCount": 1, "owner": "#687 owner", "followUp": "#687", "legacy": "BBE-102", "expiresOn": "2026-11-30" }
-  ]
+  "entries": []
 }

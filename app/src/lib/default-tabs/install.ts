@@ -21,7 +21,7 @@
 
 import type { Ctx } from "@/lib/types";
 import type { BoardsRepo, NewColumn } from "@/lib/boards/store";
-import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { createRequestBoardsRepo } from "@/lib/boards/request-repo";
 import { CONTACT_TAB } from "./contact";
 import { CONTRACT_WORK_TAB } from "./contract-work";
 import { NEW_LEAD_TAB } from "./new-lead";
@@ -397,7 +397,7 @@ export async function ensureDefaultTab(
   repo?: BoardsRepo,
   assigneesOverride?: readonly DefaultTabAssignee[],
 ): Promise<EnsuredTab> {
-  const store = repo ?? await getBoardsRepo();
+  const store = repo ?? await createRequestBoardsRepo();
   const needsAssignees = tab.groups.some((group) => group.assigneeSlot !== undefined)
     || tab.columns.some((column) => column.assigneeMove !== undefined);
   const assignees = needsAssignees
@@ -689,7 +689,7 @@ export async function ensureDefaultTabs(
   repo?: BoardsRepo,
   assigneesOverride?: readonly DefaultTabAssignee[],
 ): Promise<EnsuredTab[]> {
-  const store = repo ?? await getBoardsRepo();
+  const store = repo ?? await createRequestBoardsRepo();
   const ensured: EnsuredTab[] = [];
   for (const tab of DEFAULT_TABS) {
     ensured.push(await ensureDefaultTab(ctx, tab, store, assigneesOverride));

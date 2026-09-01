@@ -104,7 +104,8 @@ async function getDevSession(
   uid: string | undefined,
   orgId: string | undefined,
 ): Promise<Ctx | null> {
-  if (!uid || process.env.NODE_ENV === "production") return null;
+  if (!uid) return null;
+  if (process.env.NODE_ENV !== "production") {
   const repo = getRepo();
   const user = repo.getUser(uid);
   if (!user) return null;
@@ -122,6 +123,8 @@ async function getDevSession(
     scope: membership.scope,
     isPlatformAdmin: false,
   };
+  }
+  return null;
 }
 
 export async function getSessionOrNull(): Promise<Ctx | null> {

@@ -9,7 +9,7 @@
 
 import type { Ctx } from "@/lib/types";
 import type { BoardsRepo } from "@/lib/boards/store";
-import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { createRequestBoardsRepo } from "@/lib/boards/request-repo";
 import { getRepo } from "@/lib/repo";
 import type { DeferredColumn, PackBoard, PackColumn, SectionPreset, StructurePack } from "./types";
 
@@ -111,11 +111,10 @@ export interface InstallResult {
  * 슬롯 0만 채워지고, 멤버를 초대할 때마다 다음 슬롯이 채워진다.
  */
 function resolveAssignees(ctx: Ctx): AssigneeMember[] {
-  return getRepo()
-    .listMembers(ctx.org.id)
-    .slice()
-    .sort((a, b) => a.created_at.localeCompare(b.created_at))
-    .map((member) => ({
+  let members;
+  if (process.env.NODE_ENV !== "production") members = getRepo().listMembers(ctx.org.id);
+  else throw new Error("Production structure-pack callers must provide request-scoped assignees");
+  return members.slice().sort((a, b) => a.created_at.localeCompare(b.created_at)).map((member) => ({
       userId: member.user_id,
       displayName: member.user?.name?.trim() || member.user?.email?.trim() || "미배정",
     }));
@@ -136,7 +135,7 @@ export async function installStructurePack(
     assignees?: AssigneeMember[];
   },
 ): Promise<InstallResult> {
-  const repo = options.repo ?? await getBoardsRepo();
+  const repo = options.repo ?? await createRequestBoardsRepo();
   const pack = options.pack;
   const assignees = options.assignees ?? resolveAssignees(ctx);
 

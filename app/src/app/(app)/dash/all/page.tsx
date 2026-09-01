@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { applyAs, getSession } from "@/lib/auth/session";
-import { getRepo } from "@/lib/repo";
+import { getCrmService } from "@/lib/crm";
+import { createRequestCustomService } from "@/lib/custom/server";
 import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
 import { FEATURES } from "@/lib/product";
 import {
@@ -36,9 +37,11 @@ export default async function AllDealsDashboardPage({
   const base = await getSession();
   const ctx = applyAs(base, asParam);
 
-  const repo = getRepo();
-  const allDeals = repo.listDeals(ctx);
-  const fieldDefs = repo.listFieldDefs(ctx.org.id, "deal");
+  const custom = await createRequestCustomService();
+  const [allDeals, fieldDefs] = await Promise.all([
+    getCrmService().listDeals(ctx),
+    custom.listFields(ctx.org.id, "deal"),
+  ]);
 
   const month = currentMonthKst();
   const monthRange = monthRangeKst(month);

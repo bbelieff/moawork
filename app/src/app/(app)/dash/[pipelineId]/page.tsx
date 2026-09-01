@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
-import { getRepo } from "@/lib/repo";
+import { getCrmService } from "@/lib/crm";
+import { createRequestCustomService } from "@/lib/custom/server";
 import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
 import { FEATURES } from "@/lib/product";
 import {
@@ -38,14 +39,18 @@ export default async function PipelineDashboardPage({
   const base = await getSession();
   const ctx = applyAs(base, asParam);
 
-  const repo = getRepo();
-  const pipeline = repo.listPipelines(ctx.org.id).find((p) => p.id === pipelineId);
+  const custom = await createRequestCustomService();
+  const [pipelines, allDeals, fieldDefs] = await Promise.all([
+    getCrmService().listPipelines(ctx),
+    getCrmService().listDeals(ctx),
+    custom.listFields(ctx.org.id, "deal"),
+  ]);
+  const pipeline = pipelines.find((p) => p.id === pipelineId);
   if (!pipeline) notFound();
 
-  const stages = repo.listStages(pipeline.id);
+  const stages = pipeline.stages;
   // 담당범위 적용 조회 후 이 파이프라인 소속 딜만.
-  const deals = repo.listDeals(ctx).filter((d) => d.pipeline_id === pipeline.id);
-  const fieldDefs = repo.listFieldDefs(ctx.org.id, "deal");
+  const deals = allDeals.filter((d) => d.pipeline_id === pipeline.id);
 
   const breakdown = pipelineBreakdown(deals, stages);
   const conversions = [

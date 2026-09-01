@@ -26,6 +26,12 @@ export interface PerfOptions {
   repo?: Repo;
 }
 
+function requireRepo(repo: Repo | undefined): Repo {
+  if (repo) return repo;
+  if (process.env.NODE_ENV !== "production") return getRepo();
+  throw new Error("Production performance callers must provide a request-scoped repo");
+}
+
 /** 성과 화면 1개에 필요한 파생 수치. */
 export interface PerfData {
   period: string;
@@ -49,7 +55,7 @@ function orgUsers(repo: Repo, orgId: string): User[] {
  * 담당범위(assigned) 격리는 repo.listSettlements(ctx)/listDeals(ctx) 가 적용한다.
  */
 export function getLeaderboard(ctx: Ctx, opts: PerfOptions = {}): Leaderboard {
-  const repo = opts.repo ?? getRepo();
+  const repo = requireRepo(opts.repo);
   const period = opts.period ?? currentMonthKst(opts.now?.() ?? new Date());
   return buildLeaderboard(
     repo.listSettlements(ctx),
@@ -65,7 +71,7 @@ export function getMonthlyContractCompanies(
   ctx: Ctx,
   opts: PerfOptions = {},
 ): MonthlyContractCompanies {
-  const repo = opts.repo ?? getRepo();
+  const repo = requireRepo(opts.repo);
   const period = opts.period ?? currentMonthKst(opts.now?.() ?? new Date());
   return buildMonthlyContractCompanies(
     repo.listSettlements(ctx),
@@ -77,7 +83,7 @@ export function getMonthlyContractCompanies(
 
 /** 성과 화면 전체를 한 번에 조립한다(Repo 조회 1회분 공유). */
 export function buildPerf(ctx: Ctx, opts: PerfOptions = {}): PerfData {
-  const repo = opts.repo ?? getRepo();
+  const repo = requireRepo(opts.repo);
   const period = opts.period ?? currentMonthKst(opts.now?.() ?? new Date());
 
   const settlements = repo.listSettlements(ctx);

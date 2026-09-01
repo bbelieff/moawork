@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { getCrmService, NotFoundError } from "@/lib/crm";
-import { getRepo } from "@/lib/repo";
+import { createRequestCustomService } from "@/lib/custom/server";
 import { canReassignDeal } from "@/lib/deal/permissions";
 import { DealInfoTab } from "@/components/deal/DealInfoTab";
 import { DealTimeline } from "@/components/deal/detail/DealTimeline";
@@ -68,9 +68,8 @@ export default async function DealDetailPage({
   const stage = allStages.find((s) => s.id === deal.stage_id);
 
   // 커스텀필드 정의은 아직 동기 포트에서 읽는다(T05 소유 영역, BBE-16 범위 밖).
-  const repo = getRepo();
-  const contractStatusDef = repo
-    .listFieldDefs(ctx.org.id, "deal")
+  const custom = await createRequestCustomService();
+  const contractStatusDef = (await custom.listFields(ctx.org.id, "deal"))
     .find((d) => d.label === "계약상황" || d.key === "계약상황");
 
   const nameById = toNameMap(members);

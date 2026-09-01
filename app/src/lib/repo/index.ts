@@ -219,8 +219,9 @@ export interface Repo {
 const globalRepo = globalThis as unknown as { __moaworkRepo?: Repo };
 
 export function getRepo(): Repo {
-  if (!globalRepo.__moaworkRepo) {
-    globalRepo.__moaworkRepo = new LocalRepo();
+  if (process.env.NODE_ENV !== "production") {
+    if (!globalRepo.__moaworkRepo) globalRepo.__moaworkRepo = new LocalRepo();
+    return globalRepo.__moaworkRepo;
   }
-  return globalRepo.__moaworkRepo;
+  throw new Error("LocalRepo is disabled in production; use a request-scoped persistent port");
 }

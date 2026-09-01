@@ -12,8 +12,6 @@
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
 import { getCrmService, ValidationError } from "@/lib/crm";
-import { attachFile, removeFile } from "@/lib/services/files";
-import { getRepo } from "@/lib/repo";
 import { addComment, editComment, type CommentKind } from "@/lib/deal/comments";
 import { attachDealFile, removeDealFile, type NewDealFileInput } from "@/lib/deal/files";
 import { listOrgMemberOptions } from "@/lib/deal/members";
@@ -86,45 +84,7 @@ export async function setContractStatusAction(
   revalidatePath(`/deals/${dealId}`);
 }
 
-/**
- * 첨부 업로드/삭제 (T04 core.files 서비스 위임).
- *
- * ⚠ files 서비스는 아직 **동기 `getRepo()`** 위에서 돈다(T04 소유). 그래서 이 두 액션만
- * 로컬 인메모리에 기록되고 Supabase 로는 가지 않는다. 딜 본문/단계/활동과 저장소가
- * 갈리는 지점이라 T04 가 비동기 소스로 옮길 때까지의 한시적 상태다.
- */
-export async function uploadFileAction(
-  dealId: string,
-  input: { name: string; mime_type: string; size_bytes: number; data_url: string },
-): Promise<void> {
-  const ctx = await getSession();
-  attachFile(ctx, dealId, input);
-  revalidatePath(`/deals/${dealId}`);
-}
-
-export async function removeFileAction(
-  dealId: string,
-  fileId: string,
-): Promise<void> {
-  const ctx = await getSession();
-  removeFile(ctx, dealId, fileId);
-  revalidatePath(`/deals/${dealId}`);
-}
-
-/** 첨부 목록 — 위와 같은 이유로 동기 repo 에서 읽는다. */
-export async function readDealCustomKey(
-  dealId: string,
-): Promise<Record<string, unknown>> {
-  const ctx = await getSession();
-  const deal = getRepo().getDeal(ctx, dealId);
-  return (deal?.custom ?? {}) as Record<string, unknown>;
-}
-
-// ─────────────────────────────────────────────────────────────────
-// BBE-16 · 딜 상세 협업(타임라인·댓글·파일) — 비동기 경로(프로덕션 영속).
-// 위 uploadFileAction/removeFileAction(동기, 로컬 전용)과는 별개다 — 대체가 아니라
-// 새 화면(components/deal/detail/**)이 쓰는 새 경로. 기존 액션은 그대로 둔다.
-// ─────────────────────────────────────────────────────────────────
+// BBE-16 · 딜 상세 협업(타임라인·댓글·파일) — 프로덕션 영속 경로.
 
 /** 댓글 작성. mentionedIds 가 있으면 저장 후 해당 멤버에게 알림을 보낸다. */
 export async function addCommentAction(

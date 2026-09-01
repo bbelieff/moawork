@@ -15,7 +15,8 @@ import { isManager } from "@/lib/auth/roles";
 import { BoardsService, NotFoundError } from "@/lib/boards";
 import type { Board, CellValue, ItemWithValues } from "@/lib/boards/types";
 import type { BoardsRepo } from "@/lib/boards/store";
-import { getBoardsRepo, slugifyKey } from "@/lib/repo/local/boardsRepo";
+import { slugifyKey } from "@/lib/repo/local/boardsRepo";
+import { createRequestBoardsRepo } from "@/lib/boards/request-repo";
 import {
   NOTICE_AUDIENCE_MANAGERS,
   NOTICE_AUDIENCE_OPTIONS,
@@ -86,7 +87,7 @@ export class NoticesService {
     private readonly boards: BoardsService = new BoardsService(),
     repo?: BoardsRepo,
   ) {
-    this.repo = repo ? Promise.resolve(repo) : getBoardsRepo();
+    this.repo = repo ? Promise.resolve(repo) : createRequestBoardsRepo();
   }
 
   // ── 보드 ──

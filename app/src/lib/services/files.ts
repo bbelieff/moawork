@@ -217,6 +217,12 @@ export class DealNotFoundError extends Error {
   }
 }
 
+function requireRepo(repo: DealFilesPort | undefined): DealFilesPort {
+  if (repo) return repo;
+  if (process.env.NODE_ENV !== "production") return getRepo();
+  throw new Error("Production file callers must provide the persistent file port");
+}
+
 export interface FileServiceOptions {
   repo?: DealFilesPort;
   /** id 생성기(테스트 결정성). */
@@ -235,7 +241,7 @@ export function listDealFiles(
   dealId: string,
   opts: FileServiceOptions = {},
 ): DealFileRef[] {
-  const repo = opts.repo ?? getRepo();
+  const repo = requireRepo(opts.repo);
   const deal = repo.getDeal(ctx, dealId);
   if (!deal) return [];
   return [...readFileRefs(deal.custom)].sort(
@@ -276,7 +282,7 @@ export function attachFile(
   const verdict = validateUpload({ name: input.name, size_bytes: input.size_bytes });
   if (!verdict.ok) throw new FileValidationError(verdict.reason);
 
-  const repo = opts.repo ?? getRepo();
+  const repo = requireRepo(opts.repo);
   const deal = repo.getDeal(ctx, dealId);
   if (!deal) throw new DealNotFoundError();
 
@@ -301,7 +307,7 @@ export function removeFile(
   fileId: string,
   opts: FileServiceOptions = {},
 ): boolean {
-  const repo = opts.repo ?? getRepo();
+  const repo = requireRepo(opts.repo);
   const deal = repo.getDeal(ctx, dealId);
   if (!deal) return false;
 
