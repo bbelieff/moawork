@@ -66,6 +66,11 @@ node scripts/check-css-token-references.mjs
 node scripts/check-use-server-exports.mjs --self-test
 node scripts/check-use-server-exports.mjs
 
+# #642 — 서버 그래프가 "use client" export를 함수처럼 실행하면 개발 빌드가 초록이어도
+# 실제 요청에서 500이 난다. JSX 렌더와 타입 import는 허용하고, server-reachable 호출만 센다.
+node --test scripts/check-server-client-boundary.test.mjs
+node scripts/check-server-client-boundary.mjs
+
 # 머지 관문 — 「그 exact head 에 CI 초록이 있는가」를 기계가 판정한다.
 # GitHub 의 required status check 가 «비공개 + 무료» 라 잠겨 있어서(403 Upgrade to Pro)
 # 그 자리를 이 스크립트가 대신한다. 관문 자체가 틀리면 관문이 없는 것과 같으므로
