@@ -26,6 +26,14 @@ export type SeatDefinition = Readonly<{
   signals: string | null;
   handover: string | null;
   updatedAt: string | null;
+  /**
+   * 누가 썼는가.
+   *
+   * ★ id 를 «들고 있는다». 이름은 나중에 붙는다 —
+   *   정의서는 구성원 요약과 «같은 물결» 로 나가므로(왕복을 늘리지 않으려고)
+   *   읽는 시점에는 이름표가 아직 없다. id 를 버리면 그 뒤로 영영 못 붙인다.
+   */
+  updatedById: string | null;
   updatedByName: string | null;
 }>;
 
@@ -145,8 +153,38 @@ export function toSeatDefinition(row: Row, nameOf?: (userId: string) => string |
     signals: row.signals,
     handover: row.handover,
     updatedAt: row.updated_at,
+    updatedById: row.updated_by,
     updatedByName: row.updated_by ? (nameOf?.(row.updated_by) ?? null) : null,
   };
+}
+
+/**
+ * 이미 읽어 둔 정의서에 «이름표만» 나중에 입힌다.
+ *
+ * ★ 왜 나중인가 — 정의서와 구성원 요약이 같은 물결로 나간다. 순서를 매기면 왕복이 는다.
+ *   그래서 정의서는 먼저 도착하고, 이름은 요약이 온 뒤에 붙인다.
+ *
+ * ★ 이걸 안 해서 화면이 계속 「누군가가 씀」이라고 말했다. 우리는 누구인지 «알고 있었다» —
+ *   `updated_by` 도 요약도 같은 화면에 다 있었다. **아는 것을 모른다고 말하는 것**이고,
+ *   이 PR 이 네 라운드 동안 고친 것과 정확히 같은 종류다 (#683 운영 화면 확인에서 발견).
+ *
+ * 모르는 id 는 그대로 null 로 둔다 — 그때는 「누군가」가 «맞는» 말이다.
+ */
+export function withSeatDefinitionNames(
+  definitions: Map<string, SeatDefinition> | null,
+  nameOf: (userId: string) => string | null,
+): Map<string, SeatDefinition> | null {
+  if (!definitions) return null;
+  const out = new Map<string, SeatDefinition>();
+  for (const [key, definition] of definitions) {
+    out.set(
+      key,
+      definition.updatedById
+        ? { ...definition, updatedByName: nameOf(definition.updatedById) }
+        : definition,
+    );
+  }
+  return out;
 }
 
 /** 자리 열쇠 → 정의서. null 이면 «못 읽음» 이고 빈 Map 은 «아직 없음» 이다. */

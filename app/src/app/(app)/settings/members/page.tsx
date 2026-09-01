@@ -13,7 +13,7 @@ import { selectOrgViewModel, isOrgView, type OrgView } from "@/lib/org/org-view"
 import { DepartmentManager } from "@/components/member-organization/DepartmentManager";
 import { OrgViewTabs } from "@/components/member-organization/OrgViewTabs";
 import { createClient } from "@/lib/supabase/server";
-import { loadSeatDefinitions } from "@/lib/org/seat-definitions";
+import { loadSeatDefinitions, withSeatDefinitionNames } from "@/lib/org/seat-definitions";
 
 /**
  * 역할별 인원수 — «각 사람이 들고 있는 역할» 로 센다.
@@ -55,6 +55,19 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
     // #683 — 자리의 역할 정의서. 역시 같은 물결이고, null 은 «못 읽음» 이다.
     loadSeatDefinitions(ctx, createClient),
   ]);
+  /*
+   * #683 — 「누가 썼나」에 이름을 붙인다.
+   *   정의서는 요약과 «같은 물결» 로 나가서 읽는 시점엔 이름표가 없다. 여기서 입힌다 —
+   *   안 하면 화면이 계속 「누군가가 씀」이라고 말한다. 우리는 누구인지 알고 있는데도.
+   */
+  const namedSeatDefinitions = withSeatDefinitionNames(seatDefinitions, (userId) => {
+    if (summary.kind !== "ready") return null;
+    const found = [summary.owner, ...summary.admins, ...summary.members].find(
+      (member) => member.userId === userId,
+    );
+    return found?.displayName ?? null;
+  });
+
   const viewerRole: Role = ctx.role === "owner" || ctx.role === "admin" ? ctx.role : "member";
   const permissionAccess = permission.ok
     ? { kind: "allowed" as const, snapshot: permission.snapshot }
@@ -112,7 +125,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
           initialView={initialView}
           departmentSlot={departmentSlot}
           permissionSlot={permissionSlot}
-          seatDefinitions={seatDefinitions}
+          seatDefinitions={namedSeatDefinitions}
           canManageSeats={isManager(ctx.role)}
         />
       ) : (

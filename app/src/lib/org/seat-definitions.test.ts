@@ -5,6 +5,7 @@ import {
   parseSeatRules,
   seatDefinitionIsEmpty,
   toSeatDefinition,
+  withSeatDefinitionNames,
 } from "./seat-definitions";
 
 /**
@@ -106,6 +107,53 @@ describe("#683 누가 언제 고쳤나", () => {
       () => null,
     );
     expect(def.updatedByName).toBeNull();
+  });
+});
+
+describe("#683 운영 확인 후속 — 「누군가가 씀」이라고 말하지 않는다", () => {
+  /*
+   * 운영 화면을 열어 실제로 저장해 보고 발견한 것 —
+   * 「누가 언제 썼나」 줄이 항상 「누군가가 씀」이었다. updated_by 도 구성원 요약도
+   * 같은 화면에 다 있었는데 이름을 «붙이는 단계» 가 없었다.
+   * 아는 것을 모른다고 말하는 것이고, 이 PR 이 네 라운드 동안 고친 것과 같은 종류다.
+   */
+  const row = {
+    department_id: null,
+    role: "admin" as const,
+    summary: "요약",
+    duties: [],
+    rules: {},
+    signals: null,
+    handover: null,
+    updated_at: "2026-09-01T16:03:19Z",
+    updated_by: "u-1",
+  };
+
+  it("★ 나중에 이름을 입힐 수 있게 id 를 들고 있는다", () => {
+    expect(toSeatDefinition(row).updatedById).toBe("u-1");
+  });
+
+  it("★ 이름표가 온 뒤에 붙는다", () => {
+    const before = new Map([["-:admin", toSeatDefinition(row)]]);
+    expect(before.get("-:admin")!.updatedByName).toBeNull();
+
+    const after = withSeatDefinitionNames(before, (id) => (id === "u-1" ? "카뮈" : null));
+    expect(after!.get("-:admin")!.updatedByName).toBe("카뮈");
+  });
+
+  it("모르는 사람은 그대로 둔다 — 그때는 「누군가」가 «맞는» 말이다", () => {
+    const map = new Map([["-:admin", toSeatDefinition(row)]]);
+    expect(withSeatDefinitionNames(map, () => null)!.get("-:admin")!.updatedByName).toBeNull();
+  });
+
+  it("★ «못 읽음»(null)은 이름을 입혀도 여전히 «못 읽음» 이다 — 빈 Map 으로 바뀌지 않는다", () => {
+    expect(withSeatDefinitionNames(null, () => "카뮈")).toBeNull();
+  });
+
+  it("쓴 사람이 없는 정의서는 건드리지 않는다", () => {
+    const map = new Map([["-:admin", toSeatDefinition({ ...row, updated_by: null })]]);
+    const after = withSeatDefinitionNames(map, () => "카뮈");
+    expect(after!.get("-:admin")!.updatedByName).toBeNull();
   });
 });
 
