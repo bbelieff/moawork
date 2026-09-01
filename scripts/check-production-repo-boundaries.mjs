@@ -607,8 +607,30 @@ function policyKey(item) {
   return `${item.file}\u0000${item.symbol}\u0000${item.reason}`;
 }
 
+/**
+ * 예외 하나를 «누가 언제까지» 들고 있는가.
+ *
+ * ★ GitHub Issue(`#687`)와 옛 Linear 카드(`BBE-159`)를 둘 다 받는다.
+ *   2026-08-24 CUTOVER 로 Linear 는 READ_ONLY_ARCHIVE 가 됐는데(AGENTS.md §4)
+ *   이 정규식만 `BBE-\d+` 를 강제하고 있었다 — 살아 있는 곳을 가리킬 방법이 없었다.
+ *   그래서 22건이 «담당 없는 기한» 이 됐고, 날짜가 오자 아무도 모르게 저장소가 잠겼다 (#687).
+ */
+const FOLLOW_UP = /^(?:BBE-\d+|#\d+)$/;
+const OWNER = /^(?:BBE-\d+|#\d+) owner$/;
+
+/** 만료 며칠 전부터 미리 알리나. 하룻밤 새 잠기지 않도록 «닥치기 전에» 말한다. */
+export const EXPIRY_WARNING_DAYS = 14;
+
+function daysUntil(today, expiresOn) {
+  const from = Date.parse(`${today}T00:00:00Z`);
+  const to = Date.parse(`${expiresOn}T00:00:00Z`);
+  if (Number.isNaN(from) || Number.isNaN(to)) return null;
+  return Math.round((to - from) / 86_400_000);
+}
+
 export function evaluatePolicy(violations, baseline, today = new Date().toISOString().slice(0, 10)) {
   const errors = [];
+  const warnings = [];
   if (baseline.version !== 1) errors.push(`invalid baseline version: ${baseline.version}`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(baseline.capturedAt) || Number.isNaN(Date.parse(`${baseline.capturedAt}T00:00:00Z`))) {
     errors.push(`invalid baseline capturedAt: ${baseline.capturedAt}`);
@@ -630,7 +652,7 @@ export function evaluatePolicy(violations, baseline, today = new Date().toISOStr
     if (entries.has(key)) errors.push(`duplicate baseline entry: ${entry.file} ${entry.symbol}`);
     const validExpiry = /^\d{4}-\d{2}-\d{2}$/.test(entry.expiresOn)
       && !Number.isNaN(Date.parse(`${entry.expiresOn}T00:00:00Z`));
-    if (!/^BBE-\d+ owner$/.test(entry.owner) || !/^BBE-\d+$/.test(entry.followUp) || !validExpiry) {
+    if (!OWNER.test(entry.owner) || !FOLLOW_UP.test(entry.followUp) || !validExpiry) {
       errors.push(`invalid baseline metadata: ${entry.file} ${entry.symbol}`);
     }
     if (strictPaths.has(entry.file)) errors.push(`strict-zero path cannot be allowlisted: ${entry.file}`);
@@ -657,11 +679,21 @@ export function evaluatePolicy(violations, baseline, today = new Date().toISOStr
     }
     if (count > 0 && today > entry.expiresOn) {
       errors.push(`baseline expired ${entry.expiresOn}: ${entry.file} ${entry.symbol} (${entry.followUp})`);
+      continue;
+    }
+    // ★ 닥치기 전에 말한다. 예외는 «있다가 없어지는 것» 이라 그 날짜가 보여야 한다.
+    //   이게 없어서 2026-08-31 자정에 22건이 한꺼번에 만료됐고 저장소 전체가 잠겼다 (#687).
+    const left = count > 0 ? daysUntil(today, entry.expiresOn) : null;
+    if (left !== null && left <= EXPIRY_WARNING_DAYS) {
+      warnings.push(
+        `baseline expires in ${left}d (${entry.expiresOn}): ${entry.file} ${entry.symbol} (${entry.followUp})`,
+      );
     }
   }
 
   return {
     errors,
+    warnings,
     baselineMaximum: baseline.entries.reduce((sum, entry) => sum + entry.maxCount, 0),
     baselinedCurrent: baseline.entries.reduce((sum, entry) => sum + Math.min(counts.get(policyKey(entry)) ?? 0, entry.maxCount), 0),
     strictCurrent: violations.filter((item) => strictPaths.has(item.file)).length,
@@ -929,7 +961,31 @@ function runSelfTest() {
     "strict scope is never allowlisted",
   );
   assert.match(evaluatePolicy([legacy, legacy], policyFixture, "2100-01-01").errors[0], /expired/, "baseline expires");
-  console.log(`production repo boundary self-test: ${cases.length + 5} passed`);
+
+  // ★ 만료 «전» 에 예고한다 — 2026-08-31 처럼 하룻밤 새 저장소가 잠기지 않도록 (#687).
+  const near = evaluatePolicy([legacy, legacy], policyFixture, "2099-12-25");
+  assert.equal(near.errors.length, 0, "warning window does not block");
+  assert.match(near.warnings[0], /expires in 6d/, "expiry is announced before it lands");
+  assert.equal(
+    evaluatePolicy([legacy, legacy], policyFixture, "2099-01-01").warnings.length,
+    0,
+    "a distant expiry stays quiet",
+  );
+  // 만료된 뒤에는 예고가 아니라 차단이다 — 둘이 같이 나오면 「경고뿐」으로 읽힌다.
+  assert.equal(
+    evaluatePolicy([legacy, legacy], policyFixture, "2100-01-01").warnings.length,
+    0,
+    "an expired entry blocks instead of warning",
+  );
+  // ★ followUp 은 살아 있는 GitHub Issue 도 가리킬 수 있어야 한다. Linear 는 READ_ONLY_ARCHIVE 다.
+  const github = {
+    ...policyFixture,
+    entries: [{ ...policyFixture.entries[0], owner: "#687 owner", followUp: "#687" }],
+  };
+  assert.equal(evaluatePolicy([legacy, legacy], github).errors.length, 0, "GitHub issue is a valid follow-up");
+  const dead = { ...policyFixture, entries: [{ ...policyFixture.entries[0], followUp: "687" }] };
+  assert.match(evaluatePolicy([legacy, legacy], dead).errors[0], /invalid baseline metadata/, "follow-up must be a real reference");
+  console.log(`production repo boundary self-test: ${cases.length + 11} passed`);
 }
 
 const args = new Set(process.argv.slice(2));
@@ -962,6 +1018,7 @@ if (args.has("--self-test")) {
     }
     const policy = evaluatePolicy(violations, baseline);
     console.log(`boundary ratchet: baseline ${policy.baselinedCurrent}/${policy.baselineMaximum}, strict ${policy.strictCurrent}`);
+    for (const warning of policy.warnings) console.error(`WARN ${warning}`);
     for (const error of policy.errors) console.error(`ERROR ${error}`);
     if (policy.errors.length > 0) process.exitCode = 1;
   }
