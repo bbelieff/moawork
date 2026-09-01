@@ -170,6 +170,34 @@ export function toSeatDefinition(row: Row, nameOf?: (userId: string) => string |
  *
  * 모르는 id 는 그대로 null 로 둔다 — 그때는 「누군가」가 «맞는» 말이다.
  */
+/**
+ * 「누가 썼나」를 찾는 이름표를 «한 번만» 만든다.
+ *
+ * ★ 두 곳에서 모은다. 순서가 뜻을 갖는다 —
+ *
+ *     ① 구성원 요약   활성인 사람. RPC 프로필 이름이라 «더 정확하다»
+ *     ② 조직도       비활성 포함 «전원». 요약에 없는 사람을 여기서 건진다
+ *
+ * ★★ ②가 없으면 **쓴 사람이 퇴사하는 순간 이름이 다시 사라진다.**
+ *   그런데 바로 그 옆에 「이 자리에 앉는 사람이 바뀌어도 남아요」라고 적혀 있다 —
+ *   **쓴 사람이 떠난 뒤가 이 기능의 «정상 상태»** 인데 정확히 그때 이름이 없어지는 것이다.
+ *   그 사람은 같은 화면 「자리를 못 정한 사람」 구역에 이름까지 떠 있다. 알면서 모른다고 하는 것이다.
+ *
+ * ★ Map 을 «한 번만» 만든다. 정의서마다 배열을 새로 만들어 훑으면 자리가 늘수록 제곱으로 는다.
+ */
+export function seatWriterNames(
+  sources: readonly (readonly { userId: string; displayName: string }[])[],
+): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const source of sources) {
+    for (const person of source) {
+      // 먼저 넣은 쪽이 이긴다 — 앞 목록일수록 정확한 이름이다.
+      if (person.displayName && !names.has(person.userId)) names.set(person.userId, person.displayName);
+    }
+  }
+  return names;
+}
+
 export function withSeatDefinitionNames(
   definitions: Map<string, SeatDefinition> | null,
   nameOf: (userId: string) => string | null,

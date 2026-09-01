@@ -13,7 +13,7 @@ import { selectOrgViewModel, isOrgView, type OrgView } from "@/lib/org/org-view"
 import { DepartmentManager } from "@/components/member-organization/DepartmentManager";
 import { OrgViewTabs } from "@/components/member-organization/OrgViewTabs";
 import { createClient } from "@/lib/supabase/server";
-import { loadSeatDefinitions, withSeatDefinitionNames } from "@/lib/org/seat-definitions";
+import { loadSeatDefinitions, seatWriterNames, withSeatDefinitionNames } from "@/lib/org/seat-definitions";
 
 /**
  * 역할별 인원수 — «각 사람이 들고 있는 역할» 로 센다.
@@ -59,14 +59,18 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
    * #683 — 「누가 썼나」에 이름을 붙인다.
    *   정의서는 요약과 «같은 물결» 로 나가서 읽는 시점엔 이름표가 없다. 여기서 입힌다 —
    *   안 하면 화면이 계속 「누군가가 씀」이라고 말한다. 우리는 누구인지 알고 있는데도.
+   *
+   *   ★ 조직도(비활성 포함 전원)를 «차선» 으로 같이 넘긴다. 요약만 보면
+   *     쓴 사람이 퇴사하는 순간 이름이 다시 사라진다 — 그게 이 기능의 정상 상태인데도.
    */
-  const namedSeatDefinitions = withSeatDefinitionNames(seatDefinitions, (userId) => {
-    if (summary.kind !== "ready") return null;
-    const found = [summary.owner, ...summary.admins, ...summary.members].find(
-      (member) => member.userId === userId,
-    );
-    return found?.displayName ?? null;
-  });
+  const writerNames = seatWriterNames([
+    summary.kind === "ready" ? [summary.owner, ...summary.admins, ...summary.members] : [],
+    chart.kind === "ready" ? chart.members : [],
+  ]);
+  const namedSeatDefinitions = withSeatDefinitionNames(
+    seatDefinitions,
+    (userId) => writerNames.get(userId) ?? null,
+  );
 
   const viewerRole: Role = ctx.role === "owner" || ctx.role === "admin" ? ctx.role : "member";
   const permissionAccess = permission.ok

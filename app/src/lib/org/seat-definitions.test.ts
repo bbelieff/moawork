@@ -5,6 +5,7 @@ import {
   parseSeatRules,
   seatDefinitionIsEmpty,
   toSeatDefinition,
+  seatWriterNames,
   withSeatDefinitionNames,
 } from "./seat-definitions";
 
@@ -154,6 +155,54 @@ describe("#683 운영 확인 후속 — 「누군가가 씀」이라고 말하�
     const map = new Map([["-:admin", toSeatDefinition({ ...row, updated_by: null })]]);
     const after = withSeatDefinitionNames(map, () => "카뮈");
     expect(after!.get("-:admin")!.updatedByName).toBeNull();
+  });
+
+  it("★ 자리가 여럿이면 «전부» 돈다 — 첫 자리에만 붙이면 나머지는 계속 「누군가」다", () => {
+    // 항목 하나짜리 Map 만 재면 「첫 것에만 붙인다」는 결함이 통과한다.
+    // 실제 화면은 자리가 12개다.
+    const map = new Map([
+      ["d1:team_lead", toSeatDefinition({ ...row, updated_by: "u-1" })],
+      ["d2:team_lead", toSeatDefinition({ ...row, updated_by: "u-2" })],
+      ["-:member", toSeatDefinition({ ...row, updated_by: null })],
+    ]);
+    const names: Record<string, string> = { "u-1": "카뮈", "u-2": "데모 팀장" };
+    const after = withSeatDefinitionNames(map, (id) => names[id] ?? null)!;
+    expect([...after.values()].map((d) => d.updatedByName)).toEqual(["카뮈", "데모 팀장", null]);
+  });
+});
+
+describe("#683 검수 P2-1 — 쓴 사람이 퇴사해도 이름이 남는다", () => {
+  /*
+   * 요약(활성만)에서만 이름을 찾으면 «쓴 사람이 나가는 순간» 이름이 다시 사라진다.
+   * 그런데 그 옆에는 「이 자리에 앉는 사람이 바뀌어도 남아요」라고 적혀 있다 —
+   * 쓴 사람이 떠난 뒤가 이 기능의 «정상 상태» 인데 정확히 그때 이름이 없어지는 것이다.
+   * 그 사람은 같은 화면 「자리를 못 정한 사람」 구역에 이름까지 떠 있다.
+   */
+  it("★ 요약에 없는 사람을 조직도에서 건진다", () => {
+    const 요약 = [{ userId: "u-1", displayName: "남아있는사람" }];
+    const 조직도 = [
+      { userId: "u-1", displayName: "남아있는사람" },
+      { userId: "u-2", displayName: "나간사람" },
+    ];
+    const names = seatWriterNames([요약, 조직도]);
+    expect(names.get("u-2")).toBe("나간사람");
+  });
+
+  it("★ 요약 이름이 이긴다 — 앞 목록일수록 정확하다", () => {
+    const names = seatWriterNames([
+      [{ userId: "u-1", displayName: "요약 이름" }],
+      [{ userId: "u-1", displayName: "조직도 이름" }],
+    ]);
+    expect(names.get("u-1")).toBe("요약 이름");
+  });
+
+  it("빈 이름은 넣지 않는다 — 빈 글자를 이름으로 쓰면 「이름이 있다」는 거짓말이 된다", () => {
+    const names = seatWriterNames([[{ userId: "u-1", displayName: "" }], [{ userId: "u-1", displayName: "진짜 이름" }]]);
+    expect(names.get("u-1")).toBe("진짜 이름");
+  });
+
+  it("아무 데도 없는 사람은 없는 채로 둔다 — 그때는 「누군가」가 맞다", () => {
+    expect(seatWriterNames([[], []]).get("u-9")).toBeUndefined();
   });
 });
 
