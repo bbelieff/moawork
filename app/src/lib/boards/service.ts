@@ -9,7 +9,7 @@
  */
 
 import type { Ctx, FieldOption } from "@/lib/types";
-import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
+import { createRequestBoardsRepo } from "./request-repo";
 import type {
   BoardPatch,
   BoardsRepo,
@@ -100,7 +100,7 @@ export const DEFAULT_NEW_BOARD_COLUMNS: NewColumn[] = [
 
 export class BoardsService {
   private readonly repo: Promise<BoardsRepo>;
-  constructor(repo?: BoardsRepo) { this.repo = repo ? Promise.resolve(repo) : getBoardsRepo(); }
+  constructor(repo?: BoardsRepo) { this.repo = repo ? Promise.resolve(repo) : createRequestBoardsRepo(); }
 
   // ── 보드 ──
   async listBoards(ctx: Ctx): Promise<Board[]> {

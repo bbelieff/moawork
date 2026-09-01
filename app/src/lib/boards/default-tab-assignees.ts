@@ -14,6 +14,13 @@ export function assigneesFromMemberSummary(summary: MemberOrgSummary): DefaultTa
   }));
 }
 
+async function loadLocalAssignees(ctx: Ctx): Promise<DefaultTabAssignee[]> {
+  if (process.env.NODE_ENV !== "production") {
+    return (await import("@/lib/repo/local/defaultTabAssignees")).loadLocalDefaultTabAssignees(ctx);
+  }
+  throw new Error("Local default-tab assignees are disabled in production");
+}
+
 /** Loads active workspace members through authenticated org_members in production. */
 export async function loadDefaultTabAssignees(ctx: Ctx): Promise<DefaultTabAssignee[]> {
   // ★ BBE-203 — 아래 else 는 로컬 시드 담당자를 돌려준다. env 유무«만» 보면 운영에서
@@ -27,8 +34,7 @@ export async function loadDefaultTabAssignees(ctx: Ctx): Promise<DefaultTabAssig
     return assignees;
   }
 
-  const members = (await import("@/lib/repo/local/defaultTabAssignees"))
-    .loadLocalDefaultTabAssignees(ctx);
+  const members = await loadLocalAssignees(ctx);
   if (members.some((member) => member.userId === ctx.user.id)) return members;
   return [
     { userId: ctx.user.id, displayName: ctx.user.name?.trim() || ctx.user.email?.trim() || "멤버" },

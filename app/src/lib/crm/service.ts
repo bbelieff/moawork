@@ -29,7 +29,12 @@ export interface PipelineWithStages extends Pipeline {
 }
 
 export class CrmService {
-  constructor(private readonly repo: Repo = getRepo()) {}
+  private readonly repo: Repo;
+  constructor(repo?: Repo) {
+    if (repo) this.repo = repo;
+    else if (process.env.NODE_ENV !== "production") this.repo = getRepo();
+    else throw new Error("Production CRM callers must use the async request service");
+  }
 
   // ── 파이프라인 ────────────────────────────────────────
   listPipelines(ctx: Ctx): PipelineWithStages[] {

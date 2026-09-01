@@ -1,50 +1,18 @@
-import { cookies } from "next/headers";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getSession, SESSION_COOKIE } from "@/lib/auth/session";
-import { getRepo } from "@/lib/repo";
-import { installPolicyfundPreset } from "@/lib/presets/policyfund";
-import { ensureDefaultTabs } from "@/lib/default-tabs";
+import { getSession } from "@/lib/auth/session";
+import { createRequestCustomService } from "@/lib/custom/server";
+import { loadLockedFeatures } from "@/lib/entitlements/server";
 import { FEATURES } from "@/lib/product";
 
 // 온보딩(흐름 A): 조직 생성 → 업종팩(정책자금) 선택 → 홈.
 export default async function OnboardingPage() {
   const ctx = await getSession();
-  const repo = getRepo();
-  const dealFields = repo.listFieldDefs(ctx.org.id, "deal");
-  const policyOn = repo.isFeatureEnabled(ctx.org.id, FEATURES.policyfund);
-
-  async function createOrg(formData: FormData) {
-    "use server";
-    const current = await getSession();
-    const name = String(formData.get("name") ?? "").trim() || "새 조직";
-    const withPreset = formData.get("preset") === "on";
-
-    const { org } = getRepo().createOrg({ name }, current.user);
-    const jar = await cookies();
-    jar.set(SESSION_COOKIE.org, org.id, { path: "/" });
-
-    // D76 — 새 워크스페이스에는 목업의 기본 탭이 «이미 있다». «설치» 라는 단계는 없다.
-    // 구조는 채워져 있고 데이터는 0 이다(D72 와 충돌하지 않는다 — D73·D74 참고).
-    await ensureDefaultTabs({ user: current.user, org, role: "owner", scope: "all" });
-
-    if (withPreset) {
-      installPolicyfundPreset({
-        user: current.user,
-        org,
-        role: "owner",
-        scope: "all",
-      });
-    }
-    redirect("/");
-  }
-
-  async function installPreset() {
-    "use server";
-    const current = await getSession();
-    installPolicyfundPreset(current);
-    redirect("/onboarding");
-  }
+  const custom = await createRequestCustomService();
+  const [dealFields, locked] = await Promise.all([
+    custom.listFields(ctx.org.id, "deal"),
+    loadLockedFeatures(ctx.org.id, [FEATURES.policyfund]),
+  ]);
+  const policyOn = !locked.includes(FEATURES.policyfund);
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-8">
@@ -64,36 +32,13 @@ export default async function OnboardingPage() {
         </Link>
       </section>
 
-      <form
-        action={createOrg}
-        className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
-      >
-        <h2 className="text-sm font-semibold">새 조직 만들기</h2>
-        <input
-          name="name"
-          placeholder="조직 이름"
-          className="rounded border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-        />
-        <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
-          <input type="checkbox" name="preset" defaultChecked />
-          정책자금 업종팩 프리셋 설치(딜 커스텀필드 전개)
-        </label>
-        <button
-          type="submit"
-          className="self-start rounded bg-zinc-900 px-4 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900"
-        >
-          조직 생성 후 홈으로
-        </button>
-      </form>
-
-      <form action={installPreset}>
-        <button
-          type="submit"
-          className="rounded border border-zinc-300 px-4 py-2 text-sm hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
-        >
-          현재 조직에 정책자금팩만 설치
-        </button>
-      </form>
+      <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+        <h2 className="text-sm font-semibold">워크스페이스 관리</h2>
+        <p className="text-sm text-zinc-500">새 조직 생성과 기본 탭 준비는 안전한 워크스페이스 진입 흐름에서 진행합니다.</p>
+        <Link className="self-start rounded bg-zinc-900 px-4 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900" href="/workspace-entry">
+          워크스페이스 선택으로 이동
+        </Link>
+      </section>
 
       {dealFields.length > 0 ? (
         <section>

@@ -20,7 +20,7 @@ export async function loadLockedFeatures(
   orgId: string,
   features: readonly string[],
 ): Promise<string[]> {
-  if (!hasSupabaseEnv()) {
+  if (process.env.NODE_ENV !== "production" && !hasSupabaseEnv()) {
     // 로컬 개발: 인메모리 시드가 진실.
     const repo = getRepo();
     return features.filter((f) => !repo.isFeatureEnabled(orgId, f));

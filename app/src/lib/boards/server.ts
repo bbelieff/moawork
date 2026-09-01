@@ -1,8 +1,5 @@
 import { BoardsService } from "./service";
-import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
-import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
-import { createClient } from "@/lib/supabase/server";
-import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
+import { createRequestBoardsContext } from "./request-repo";
 
 /**
  * Build the board graph from the authenticated client bound to this request.
@@ -20,12 +17,7 @@ import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
  *   `getBoardsRepo` 가 운영 위반으로 세어진다.
  */
 export async function createRequestBoards() {
-  if (process.env.NODE_ENV !== "production" && canUseLocalSeedFallback()) {
-    const repo = await getBoardsRepo();
-    return { client: null, repo, service: new BoardsService(repo) };
-  }
-  const client = await createClient();
-  const repo = new SupabaseBoardsRepo(client);
+  const { client, repo } = await createRequestBoardsContext();
   return { client, repo, service: new BoardsService(repo) };
 }
 

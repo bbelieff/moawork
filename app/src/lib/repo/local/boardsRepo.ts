@@ -710,8 +710,11 @@ export async function getBoardsRepo(): Promise<BoardsRepo> {
     ]);
     return new SupabaseBoardsRepo(await createClient());
   }
-  if (!globalBoardsRepo.__moaworkBoardsRepo) {
-    globalBoardsRepo.__moaworkBoardsRepo = toAsyncBoardsRepo(new LocalBoardsRepo());
+  if (process.env.NODE_ENV !== "production") {
+    if (!globalBoardsRepo.__moaworkBoardsRepo) {
+      globalBoardsRepo.__moaworkBoardsRepo = toAsyncBoardsRepo(new LocalBoardsRepo());
+    }
+    return globalBoardsRepo.__moaworkBoardsRepo;
   }
-  return globalBoardsRepo.__moaworkBoardsRepo;
+  throw new Error("LocalBoardsRepo is disabled in production");
 }

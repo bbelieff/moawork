@@ -1,6 +1,7 @@
 import type { Activity, Company, Ctx, Deal, Pipeline, Stage } from "@/lib/types";
 import {
   getRepo,
+  type Repo,
   type CompanyPatch,
   type DealPatch,
   type NewActivity,
@@ -20,8 +21,11 @@ import { canSeeAll } from "./source";
 export class LocalCrmSource implements CrmSource {
   readonly kind = "local" as const;
 
-  private get repo() {
-    return getRepo();
+  private readonly repo: Repo;
+  constructor(repo?: Repo) {
+    if (repo) this.repo = repo;
+    else if (process.env.NODE_ENV !== "production") this.repo = getRepo();
+    else throw new Error("Local CRM source is disabled in production");
   }
 
   async listPipelines(orgId: string): Promise<Pipeline[]> {

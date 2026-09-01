@@ -1,6 +1,12 @@
 import type { Ctx, FieldDef, FieldType } from "@/lib/types";
 import { getRepo } from "@/lib/repo";
 import { FEATURES } from "@/lib/product";
+import type { Repo } from "@/lib/repo";
+
+function localPresetRepo(): Repo {
+  if (process.env.NODE_ENV !== "production") return getRepo();
+  throw new Error("Production preset installation must use the workspace bootstrap port");
+}
 
 // 정책자금 업종팩(ind.policyfund) 프리셋 설치 — 온보딩 "업종팩 선택" 단계에서 호출.
 // 딜(deal)에 정책자금용 커스텀필드를 전개하고 엔타이틀먼트를 켠다.
@@ -46,7 +52,7 @@ const POLICYFUND_DEAL_FIELDS: PresetField[] = [
 ];
 
 export function installPolicyfundPreset(ctx: Ctx): FieldDef[] {
-  const repo = getRepo();
+  const repo = localPresetRepo();
 
   // 엔타이틀먼트 ON (업종팩 설치 = 기능 활성)
   repo.setEntitlement(ctx.org.id, FEATURES.policyfund, true);

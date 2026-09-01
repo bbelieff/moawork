@@ -57,7 +57,7 @@ import { describe, expect, it } from "vitest";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SRC = fileURLToPath(new URL("../..", import.meta.url));
 const callSites = [
-  "../boards/server.ts",
+  "../boards/request-repo.ts",
   "../dash/server.ts",
   "../dash/today-server.ts",
   "../custom/server.ts",

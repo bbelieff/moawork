@@ -19,7 +19,12 @@ import type {
 } from "./store";
 
 export class RepoCustomStore implements CustomStore {
-  constructor(private readonly repo: Repo = getRepo()) {}
+  private readonly repo: Repo;
+  constructor(repo?: Repo) {
+    if (repo) this.repo = repo;
+    else if (process.env.NODE_ENV !== "production") this.repo = getRepo();
+    else throw new Error("Production custom-field callers must use createRequestCustomService");
+  }
 
   // ── field_defs ──
   async listDefs(orgId: string, entity?: FieldEntity): Promise<FieldDef[]> {
