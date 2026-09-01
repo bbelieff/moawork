@@ -25,7 +25,15 @@ import { resolveReportsTo, type ReportingContext } from "@/lib/org/reporting";
  *   타입 검사는 통과하고 «실행할 때» 500 이 난다 — 화면을 열어야만 잡히는 종류다.
  *   서버(page.tsx)와 클라이언트가 같이 쓰는 값이므로 공용 모듈이 갖는다.
  */
-export const ORG_VIEWS = ["list", "chart", "perm", "rules"] as const;
+/*
+ * #683 — 「자리」 를 «더한다». 기존 넷은 그대로 둔다.
+ *
+ * ★ D안은 결국 이 갈래 하나로 나머지를 흡수하는 것이 목표지만, 한 번에 지우지 않는다.
+ *   지금 조직관리는 실측 «조작 0건» 이라 «쓰이는지» 부터 확인해야 하고,
+ *   구조가 줄어든 변경은 무조건 FAIL 이다(D71~D75).
+ *   자리가 실제로 쓰이는 것을 보고 나서 옛 갈래를 정리한다.
+ */
+export const ORG_VIEWS = ["seats", "list", "chart", "perm", "rules"] as const;
 export type OrgView = (typeof ORG_VIEWS)[number];
 
 export function isOrgView(value: unknown): value is OrgView {

@@ -170,9 +170,15 @@ describe("#640 ⑦ 갈래 값은 «서버도» 읽을 수 있어야 한다", () 
    * page.tsx(서버)에서 불렀더니 «Attempted to call isOrgView() from the server» 로
    * 화면이 죽었다. tsc 는 통과했다. 그래서 이 함수는 공용 모듈이 갖는다.
    */
-  it("네 갈래를 알아본다", () => {
-    expect(ORG_VIEWS).toEqual(["list", "chart", "perm", "rules"]);
+  it("갈래를 알아본다 — #683 이 「자리」를 더했다", () => {
+    expect(ORG_VIEWS).toEqual(["seats", "list", "chart", "perm", "rules"]);
     for (const view of ORG_VIEWS) expect(isOrgView(view)).toBe(true);
+  });
+
+  it("★ 옛 갈래 넷이 «하나도» 안 사라졌다 — 구조가 줄어든 변경은 무조건 FAIL 이다(D71~D75)", () => {
+    for (const kept of ["list", "chart", "perm", "rules"]) {
+      expect(ORG_VIEWS, kept).toContain(kept);
+    }
   });
 
   it("모르는 값은 거른다 — 주소창에 아무거나 넣어도 화면이 안 깨진다", () => {

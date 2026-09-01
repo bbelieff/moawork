@@ -3,6 +3,9 @@
 import { useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { membersOfDepartment, ORG_VIEWS, type OrgMemberView, type OrgView, type OrgViewModel } from "@/lib/org/org-view";
 import { OrgChartFlow } from "./OrgChartFlow";
+import { SeatPanel } from "./SeatPanel";
+import { deriveSeats, findSeat, seatName, seatSummary, SEAT_ROLE_LABEL, type Seat } from "@/lib/org/seats";
+import type { SeatDefinition } from "@/lib/org/seat-definitions";
 
 /**
  * #640 ①③ — 조직관리의 «보는 방식» 네 갈래와 「부서 ↔ 사람」 잇기.
@@ -18,6 +21,7 @@ import { OrgChartFlow } from "./OrgChartFlow";
 
 // 갈래 «목록» 은 서버도 읽어야 해서 lib/org/org-view.ts 가 갖는다. 여기는 이름표만 붙인다.
 const VIEW_LABEL: Record<OrgView, string> = {
+  seats: "자리",
   list: "목록",
   chart: "조직도 한눈에 보기",
   perm: "권한",
@@ -120,8 +124,13 @@ export function OrgViewTabs({
   initialView = "list",
   departmentSlot,
   permissionSlot,
+  seatDefinitions = null,
+  canManageSeats = false,
 }: {
   model: OrgViewModel;
+  /* #683 — 자리 열쇠 → 역할 정의서. null 이면 «못 읽음» 이고 빈 Map 은 «아직 없음» 이다. */
+  seatDefinitions?: Map<string, SeatDefinition> | null;
+  canManageSeats?: boolean;
   /**
    * 서버가 URL 에서 읽어 넘긴 갈래.
    *
@@ -150,8 +159,20 @@ export function OrgViewTabs({
       // 주소를 못 고쳐도 화면은 계속 동작해야 한다.
     }
   };
+  const [selectedSeatId, setSelectedSeatId] = useState<string | null>(null);
   const [selectedDeptId, setSelectedDeptId] = useState<string | null>(null);
   const [includeSub, setIncludeSub] = useState(true);
+
+  /*
+   * #683 — 자리는 «부서 × 역할» 에서 읽는다. 새 엔티티를 만들지 않는다.
+   *   공석도 자리다 — 팀장이 비어 있으면 그 사실이 화면에서 사라지면 안 된다.
+   */
+  const { seats } = useMemo(
+    () => deriveSeats({ departments: model.departments, members: model.members }),
+    [model],
+  );
+  const seatCounts = useMemo(() => seatSummary(seats), [seats]);
+  const activeSeat = findSeat(seats, selectedSeatId) ?? seats[0] ?? null;
 
   const selected = model.departments.find((row) => row.id === selectedDeptId) ?? null;
   const rows = useMemo(
@@ -289,6 +310,66 @@ export function OrgViewTabs({
 
           {/* 구조를 줄이지 않는다 — 기존 부서 관리는 그대로 이 갈래 안에 남는다. */}
           {departmentSlot}
+        </div>
+      ) : null}
+
+      {view === "seats" ? (
+        /*
+          #683 · D안 — 부분과 전체를 «이름표로» 가른다.
+          왼쪽은 회사 전체, 오른쪽은 고른 자리 하나. 둘 다 늘 보인다.
+        */
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+          <section aria-label="전체" className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800">
+            <div
+              data-region="all"
+              className="flex items-center gap-2 bg-sky-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+            >
+              전체 — 우리 회사
+              <span className="ml-auto font-normal normal-case tracking-normal">
+                자리 {seatCounts.seatCount} · 사람 {seatCounts.peopleCount} · 공석 {seatCounts.vacantCount}
+              </span>
+            </div>
+            <div className="flex flex-col gap-0.5 p-1.5">
+              {seats.map((seat: Seat) => (
+                <button
+                  key={seat.id}
+                  type="button"
+                  data-seat-id={seat.id}
+                  aria-pressed={activeSeat?.id === seat.id}
+                  onClick={() => setSelectedSeatId(seat.id)}
+                  className={`flex items-center gap-2 rounded-lg px-2 py-2 text-left text-sm ${
+                    activeSeat?.id === seat.id
+                      ? "bg-indigo-50 font-medium dark:bg-indigo-950/40"
+                      : "hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                  }`}
+                >
+                  <span className="min-w-0 flex-1 truncate">{seatName(seat)}</span>
+                  {seat.vacant ? (
+                    <span data-seat-vacant className="shrink-0 text-xs font-semibold text-red-700 dark:text-red-400">공석</span>
+                  ) : (
+                    <span className="shrink-0 truncate text-xs text-zinc-500">
+                      {seat.occupants[0]?.displayName}
+                      {seat.occupants.length > 1 ? ` 외 ${seat.occupants.length - 1}` : ""}
+                    </span>
+                  )}
+                </button>
+              ))}
+              {seats.length === 0 ? (
+                <p className="px-2 py-6 text-sm text-zinc-500">
+                  아직 부서와 사람이 없어요. 부서를 만들면 자리가 생겨요.
+                </p>
+              ) : null}
+            </div>
+          </section>
+
+          {activeSeat ? (
+            <SeatPanel
+              seat={activeSeat}
+              definition={seatDefinitions?.get(activeSeat.id) ?? null}
+              definitionKnown={seatDefinitions !== null}
+              canManage={canManageSeats}
+            />
+          ) : null}
         </div>
       ) : null}
 
