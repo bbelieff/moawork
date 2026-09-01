@@ -75,7 +75,7 @@ describe("#683 사람에서 자리를 읽는다", () => {
     });
     const seat = seats.find((s) => s.id === "d1:member")!;
     expect(seat.occupants.map((o) => o.displayName)).toEqual(["박실장", "최주임"]);
-    expect(seat.vacant).toBe(false);
+    expect(seat.status).toBe("occupied");
   });
 
   it("★ 역할을 모르는 사람은 자리를 «만들지 않는다» — 담당으로 단언하지 않는다", () => {
@@ -91,7 +91,7 @@ describe("#683 사람에서 자리를 읽는다", () => {
   it("★ 사람이 없어도 «있어야 하는» 자리는 공석으로 남는다", () => {
     const { seats } = deriveSeats({ departments: DEPTS, members: [], expectVacant: ["team_lead"] });
     expect(seats.map((s) => s.id)).toEqual(["d1:team_lead", "d2:team_lead"]);
-    expect(seats.every((s) => s.vacant)).toBe(true);
+    expect(seats.every((s) => s.status === "vacant")).toBe(true);
   });
 
   it("사람이 앉으면 그 자리는 더 이상 공석이 아니다", () => {
@@ -100,8 +100,8 @@ describe("#683 사람에서 자리를 읽는다", () => {
       members: [person({ userId: "u1", displayName: "김담당", primaryDepartmentId: "d1", role: "team_lead" })],
       expectVacant: ["team_lead"],
     });
-    expect(seats.find((s) => s.id === "d1:team_lead")!.vacant).toBe(false);
-    expect(seats.find((s) => s.id === "d2:team_lead")!.vacant).toBe(true);
+    expect(seats.find((s) => s.id === "d1:team_lead")!.status).toBe("occupied");
+    expect(seats.find((s) => s.id === "d2:team_lead")!.status).toBe("vacant");
   });
 
   it("비활성 구성원도 자리에서 사라지지 않는다 — 상태는 따로 말한다", () => {
@@ -112,7 +112,51 @@ describe("#683 사람에서 자리를 읽는다", () => {
     });
     const seat = seats.find((s) => s.id === "d1:member")!;
     expect(seat.occupants[0].active).toBe(false);
-    expect(seat.vacant).toBe(false);
+    expect(seat.status).toBe("occupied");
+  });
+
+  /*
+   * ★ 여기부터는 «화면이 부르는 그대로» 부른다 — expectVacant 를 넘기지 않는다.
+   *
+   *   위의 시험들은 대부분 expectVacant: [] 를 넘겨서 공석 생성을 꺼 놓고 쟀다.
+   *   그런데 화면(OrgViewTabs)은 그 인자를 안 넘긴다 → 기본값 ["team_lead"] 로 돈다.
+   *   즉 «프로덕션 호출 모양» 에 시험이 하나도 없었고, 그래서 아래 P0 가 초록으로 통과했다.
+   *   시험은 «되는 걸 확인하는 것» 이 아니라 «틀린 걸 잡는 것» 이라 호출 모양이 같아야 한다.
+   */
+  it("★ 역할을 못 읽은 사람이 그 부서에 있으면 팀장 자리를 «공석» 이라 단언하지 않는다", () => {
+    // 실제로 있었던 일 — isRole 가드가 team_lead 를 빠뜨려 팀장 행이 role: null 로 들어왔다.
+    // 그때 화면은 「d1 팀장 = 공석」을 붉게 단언했다. 팀장이 앉아 있는데도.
+    const { seats, seatlessMembers } = deriveSeats({
+      departments: DEPTS,
+      members: [
+        person({ userId: "u1", displayName: "김팀장", primaryDepartmentId: "d1", role: null }),
+        person({ userId: "u2", displayName: "박담당", primaryDepartmentId: "d1", role: "member" }),
+      ],
+    });
+
+    const d1 = seats.find((s) => s.id === "d1:team_lead")!;
+    expect(d1.status).toBe("unknown");
+    expect(d1.unknownPeers).toBe(1);
+
+    // 미상인 사람이 없는 부서는 그대로 «공석» 이라고 말해도 된다 — 과보호로 사실을 숨기지 않는다.
+    expect(seats.find((s) => s.id === "d2:team_lead")!.status).toBe("vacant");
+
+    // 그리고 그 사람은 사라지지 않는다.
+    expect(seatlessMembers.map((m) => m.displayName)).toEqual(["김팀장"]);
+  });
+
+  it("★ 자리에 못 앉힌 사람도 머릿수에 센다 — 사람이 사라지면 안 된다", () => {
+    const { seats, seatlessMembers } = deriveSeats({
+      departments: DEPTS,
+      members: [
+        person({ userId: "u1", displayName: "김팀장", primaryDepartmentId: "d1", role: null }),
+        person({ userId: "u2", displayName: "박담당", primaryDepartmentId: "d1", role: "member" }),
+      ],
+    });
+    // seatlessMembers 를 안 넘기면 1명으로 세어진다 — 실제로 그렇게 틀렸었다.
+    expect(seatSummary(seats, seatlessMembers).peopleCount).toBe(2);
+    expect(seatSummary(seats, seatlessMembers).unknownCount).toBe(1);
+    expect(seatSummary(seats, seatlessMembers).vacantCount).toBe(1); // d2 팀장만
   });
 
   it("부서 → 역할 순으로 정렬하고, 미배정은 맨 뒤로 보낸다", () => {
@@ -139,7 +183,7 @@ describe("#683 머리에 적는 수", () => {
       ],
       expectVacant: ["team_lead"],
     });
-    expect(seatSummary(seats)).toEqual({ seatCount: 3, peopleCount: 2, vacantCount: 1 });
+    expect(seatSummary(seats)).toEqual({ seatCount: 3, peopleCount: 2, vacantCount: 1, unknownCount: 0 });
   });
 
   it("★ 한 사람이 여러 자리에 있어도 사람은 한 번만 센다", () => {

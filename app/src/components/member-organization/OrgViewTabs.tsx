@@ -167,11 +167,11 @@ export function OrgViewTabs({
    * #683 — 자리는 «부서 × 역할» 에서 읽는다. 새 엔티티를 만들지 않는다.
    *   공석도 자리다 — 팀장이 비어 있으면 그 사실이 화면에서 사라지면 안 된다.
    */
-  const { seats } = useMemo(
+  const { seats, seatlessMembers } = useMemo(
     () => deriveSeats({ departments: model.departments, members: model.members }),
     [model],
   );
-  const seatCounts = useMemo(() => seatSummary(seats), [seats]);
+  const seatCounts = useMemo(() => seatSummary(seats, seatlessMembers), [seats, seatlessMembers]);
   const activeSeat = findSeat(seats, selectedSeatId) ?? seats[0] ?? null;
 
   const selected = model.departments.find((row) => row.id === selectedDeptId) ?? null;
@@ -327,6 +327,7 @@ export function OrgViewTabs({
               전체 — 우리 회사
               <span className="ml-auto font-normal normal-case tracking-normal">
                 자리 {seatCounts.seatCount} · 사람 {seatCounts.peopleCount} · 공석 {seatCounts.vacantCount}
+                {seatCounts.unknownCount > 0 ? ` · 확인 못 함 ${seatCounts.unknownCount}` : ""}
               </span>
             </div>
             <div className="flex flex-col gap-0.5 p-1.5">
@@ -344,7 +345,13 @@ export function OrgViewTabs({
                   }`}
                 >
                   <span className="min-w-0 flex-1 truncate">{seatName(seat)}</span>
-                  {seat.vacant ? (
+                  {seat.status === "unknown" ? (
+                    // ★ 이 부서에 역할을 못 읽은 사람이 있다. 그 사람이 이 자리의 주인일 수 있으므로
+                    //   «비었다» 고 단언하지 않는다. 붉은색도 쓰지 않는다 — 붉은색은 «확인된 공석» 의 색이다.
+                    <span data-seat-unknown className="shrink-0 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                      확인 못 함
+                    </span>
+                  ) : seat.status === "vacant" ? (
                     <span data-seat-vacant className="shrink-0 text-xs font-semibold text-red-700 dark:text-red-400">공석</span>
                   ) : (
                     <span className="shrink-0 truncate text-xs text-zinc-500">
@@ -358,6 +365,35 @@ export function OrgViewTabs({
                 <p className="px-2 py-6 text-sm text-zinc-500">
                   아직 부서와 사람이 없어요. 부서를 만들면 자리가 생겨요.
                 </p>
+              ) : null}
+
+              {/*
+                ★ 역할을 못 읽은 사람도 «여기 있는 사람» 이다.
+                  자리를 못 만든다고 목록에서 빼면 그 사람은 조직관리에서 통째로 사라진다 —
+                  이 화면이 「우리 회사 전체」라고 이름 붙인 이상 그건 거짓말이 된다.
+                  자리를 «단언» 하지 않으면서 사람은 보이게 하는 자리가 여기다.
+              */}
+              {seatlessMembers.length > 0 ? (
+                <div data-seatless-region className="mt-1.5 border-t border-zinc-200 pt-1.5 dark:border-zinc-800">
+                  <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                    역할 확인 못 함 {seatlessMembers.length}명
+                  </p>
+                  <p className="px-2 pb-1.5 text-xs text-zinc-500">
+                    이 사람들의 역할을 읽지 못했어요. 자리를 정하지 못했을 뿐, 빠진 사람은 아니에요.
+                  </p>
+                  {seatlessMembers.map((member) => (
+                    <div
+                      key={member.userId}
+                      data-seatless-member={member.userId}
+                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm"
+                    >
+                      <span className="min-w-0 flex-1 truncate">{member.displayName}</span>
+                      <span className="shrink-0 text-xs text-zinc-500">
+                        {member.primaryDepartmentId ? "부서 있음" : "부서 없음"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               ) : null}
             </div>
           </section>

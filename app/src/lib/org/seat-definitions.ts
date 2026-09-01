@@ -31,14 +31,24 @@ export type SeatDefinition = Readonly<{
 
 const CYCLES = new Set(["daily", "weekly", "monthly"]);
 
+/*
+ * ★ 크기 상한 — summary·handover 에는 DB CHECK 가 있는데 이 둘(jsonb)에만 없었다.
+ *   타입만 보고 크기를 안 보면, 거대한 배열이 들어왔을 때 화면이 그것을 «그대로 다» 그린다.
+ *   그래서 화면이 믿는 쪽(여기)에서 자른다 — 화면이 감당할 수 있는 만큼만 넘긴다 (#683 검수 P2-6).
+ */
+const MAX_DUTIES = 50;
+const MAX_RULES_PER_KIND = 30;
+const MAX_LINE = 300;
+
 /** 사람이 적은 것을 화면이 믿을 수 있는 모양으로 줄인다. 모르는 것은 버린다. */
 export function parseSeatDuties(value: unknown): SeatDuty[] {
   if (!Array.isArray(value)) return [];
   const out: SeatDuty[] = [];
   for (const raw of value) {
+    if (out.length >= MAX_DUTIES) break;
     if (!raw || typeof raw !== "object") continue;
     const row = raw as { cycle?: unknown; text?: unknown };
-    const text = typeof row.text === "string" ? row.text.trim() : "";
+    const text = typeof row.text === "string" ? row.text.trim().slice(0, MAX_LINE) : "";
     if (!text) continue;
     const cycle = typeof row.cycle === "string" && CYCLES.has(row.cycle) ? row.cycle : "daily";
     out.push({ cycle: cycle as SeatDuty["cycle"], text });
@@ -49,8 +59,9 @@ export function parseSeatDuties(value: unknown): SeatDuty[] {
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
-    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-    .filter((entry) => entry.length > 0);
+    .map((entry) => (typeof entry === "string" ? entry.trim().slice(0, MAX_LINE) : ""))
+    .filter((entry) => entry.length > 0)
+    .slice(0, MAX_RULES_PER_KIND);
 }
 
 export function parseSeatRules(value: unknown): { escalate: string[]; handle: string[]; avoid: string[] } {
@@ -60,6 +71,21 @@ export function parseSeatRules(value: unknown): { escalate: string[]; handle: st
     handle: stringList(row.handle),
     avoid: stringList(row.avoid),
   };
+}
+
+/**
+ * 「2026. 9. 1.」처럼 적는다.
+ *
+ * ★ `toLocaleDateString` 을 안 쓴다. 클라이언트 컴포넌트에서 쓰면 서버(UTC)와 브라우저(로컬)의
+ *   시간대가 달라 **첫 그림과 두 번째 그림의 날짜가 다르게** 나온다 — 하이드레이션 불일치다.
+ *   한국 시간 15시 이후에 저장한 것은 하루 어긋났다가 화면에서 슬쩍 바뀐다 (#683 검수 P3-7).
+ *   보는 사람의 시간대와 무관하게 «같은 글자» 가 나와야 하므로 UTC 로 못 박아 쪼갠다.
+ */
+export function seatDefinitionDate(value: string | null | undefined): string {
+  if (!value) return "";
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return "";
+  return `${at.getUTCFullYear()}. ${at.getUTCMonth() + 1}. ${at.getUTCDate()}.`;
 }
 
 /** 정의서가 «비어 있는가». 비면 화면이 「아직 아무도 안 썼습니다」라고 말한다. */

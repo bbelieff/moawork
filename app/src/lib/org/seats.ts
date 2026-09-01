@@ -65,10 +65,25 @@ export type Seat = Readonly<{
   departmentId: string | null;
   departmentName: string | null;
   role: MemberRole;
-  /** 이 자리에 앉아 있는 사람들. 비면 공석이다. */
+  /** 이 자리에 앉아 있는 사람들. */
   occupants: readonly SeatOccupant[];
-  /** ★ 사람이 하나도 없는 자리. 화면이 붉게 말한다. */
-  vacant: boolean;
+  /**
+   * ★ «찼다 / 비었다» 두 값으로는 모자란다. 세 번째가 «모른다» 다.
+   *
+   *   전에는 `vacant: boolean` 이었다. 그런데 역할을 못 읽은 사람이 그 부서에 있으면
+   *   그 사람이 팀장일 수도 있는데 화면은 사람이 0명인 것만 보고 **붉은 「공석」을 단언**했다.
+   *   앉아 있는 사람을 두고 「이 자리는 비었다」고 말하는 것이다 (#683 검수 P0-1).
+   *
+   *   두 값짜리 참·거짓은 «모른다» 를 담을 곳이 없어서 반드시 한쪽으로 뭉갠다.
+   *   그래서 상태를 셋으로 둔다 — 화면이 모르는 것을 단언할 수 «없게» 만든다.
+   *
+   *     occupied  사람이 있다
+   *     vacant    사람이 없고, 그 부서에 역할 미상인 사람도 없다 → «비었다» 고 말해도 된다
+   *     unknown   사람이 없지만 그 부서에 역할 미상인 사람이 있다 → 「확인 못 함」
+   */
+  status: "occupied" | "vacant" | "unknown";
+  /** 그 부서에서 역할을 못 읽은 사람 수. status 가 unknown 인 이유를 화면이 설명할 수 있게. */
+  unknownPeers: number;
 }>;
 
 const ROLE_ORDER: Record<MemberRole, number> = {
@@ -145,15 +160,23 @@ export function deriveSeats(input: {
     }
   }
 
-  const seats = [...bucket.values()].map<Seat>((entry) => ({
-    key: entry.key,
-    id: seatKeyToId(entry.key),
-    departmentId: entry.key.departmentId,
-    departmentName: entry.key.departmentId ? departmentName.get(entry.key.departmentId) ?? null : null,
-    role: entry.key.role,
-    occupants: entry.occupants,
-    vacant: entry.occupants.length === 0,
-  }));
+  const seats = [...bucket.values()].map<Seat>((entry) => {
+    // ★ 그 «부서» 에 역할 미상인 사람이 있으면 그 부서의 빈 자리는 «비었다» 고 단언할 수 없다.
+    //   그 사람이 바로 그 자리의 주인일 수 있다. 모르는 것을 아는 것처럼 말하지 않는다.
+    const unknownPeers = seatless.filter(
+      (member) => member.primaryDepartmentId === entry.key.departmentId,
+    ).length;
+    return {
+      key: entry.key,
+      id: seatKeyToId(entry.key),
+      departmentId: entry.key.departmentId,
+      departmentName: entry.key.departmentId ? departmentName.get(entry.key.departmentId) ?? null : null,
+      role: entry.key.role,
+      occupants: entry.occupants,
+      status: entry.occupants.length > 0 ? "occupied" : unknownPeers > 0 ? "unknown" : "vacant",
+      unknownPeers,
+    };
+  });
 
   seats.sort((left, right) => {
     // 부서 순 → 역할 순 → 이름 순. 미배정(부서 없음)은 맨 뒤로.
@@ -168,19 +191,31 @@ export function deriveSeats(input: {
   return { seats, seatlessMembers: seatless };
 }
 
-/** 화면 머리에 적는 수. 「자리 9 · 사람 14 · 공석 1」 */
-export function seatSummary(seats: readonly Seat[]): {
+/**
+ * 화면 머리에 적는 수. 「자리 9 · 사람 14 · 공석 1 · 확인 못 함 2」
+ *
+ * ★ 자리에 못 앉힌 사람도 «사람» 이다. 두 번째 인자를 빼면 머릿수가 실제보다 적게 나온다 —
+ *   전에 그랬고, 팀장이 빠진 회사는 「사람 1」로 보였다(실제 2). 사람이 세어지지도 않았다.
+ */
+export function seatSummary(
+  seats: readonly Seat[],
+  seatlessMembers: readonly OrgMemberView[] = [],
+): {
   seatCount: number;
   peopleCount: number;
   vacantCount: number;
+  unknownCount: number;
 } {
   const people = new Set<string>();
   let vacant = 0;
+  let unknown = 0;
   for (const seat of seats) {
-    if (seat.vacant) vacant += 1;
+    if (seat.status === "vacant") vacant += 1;
+    if (seat.status === "unknown") unknown += 1;
     for (const occupant of seat.occupants) people.add(occupant.userId);
   }
-  return { seatCount: seats.length, peopleCount: people.size, vacantCount: vacant };
+  for (const member of seatlessMembers) people.add(member.userId);
+  return { seatCount: seats.length, peopleCount: people.size, vacantCount: vacant, unknownCount: unknown };
 }
 
 export function findSeat(seats: readonly Seat[], id: string | null): Seat | null {

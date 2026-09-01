@@ -6,7 +6,7 @@ import {
   SEAT_DEFINITION_IDLE,
   type SeatDefinitionState,
 } from "@/app/(app)/settings/members/seat-definition-state";
-import { seatDefinitionIsEmpty, type SeatDefinition } from "@/lib/org/seat-definitions";
+import { seatDefinitionDate, seatDefinitionIsEmpty, type SeatDefinition } from "@/lib/org/seat-definitions";
 import { seatName, SEAT_ROLE_LABEL, type Seat } from "@/lib/org/seats";
 
 /**
@@ -77,7 +77,13 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
       >
         이 자리 — {seatName(seat)}
         <span className="ml-auto text-[11px] font-normal normal-case tracking-normal">
-          {seat.vacant ? <b className="text-red-700 dark:text-red-400">공석</b> : `${seat.occupants.length}명`}
+          {seat.status === "unknown" ? (
+            <b className="text-amber-700 dark:text-amber-400">확인 못 함</b>
+          ) : seat.status === "vacant" ? (
+            <b className="text-red-700 dark:text-red-400">공석</b>
+          ) : (
+            `${seat.occupants.length}명`
+          )}
         </span>
       </div>
 
@@ -190,7 +196,7 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
                 {definition?.updatedAt ? (
                   <p className="border-t border-indigo-200/60 pt-1.5 text-[11px] text-zinc-500 dark:border-indigo-900/60">
                     {definition.updatedByName ?? "누군가"}가 씀 ·{" "}
-                    {new Date(definition.updatedAt).toLocaleDateString("ko-KR")} 고침 ·{" "}
+                    {seatDefinitionDate(definition.updatedAt)} 고침 ·{" "}
                     <b>이 자리에 앉는 사람이 바뀌어도 남아요</b>
                   </p>
                 ) : null}
@@ -297,7 +303,13 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-zinc-500">이 자리에 아직 아무도 없어요.</p>
+              // ★ «비었다» 와 «모른다» 를 다르게 말한다. 이 부서에 역할을 못 읽은 사람이 있으면
+              //   그 사람이 이 자리의 주인일 수 있다 — 「아무도 없다」고 하면 그게 거짓말이 된다.
+              <p className="text-xs text-zinc-500">
+                {seat.status === "unknown"
+                  ? `이 부서에 역할을 읽지 못한 사람이 ${seat.unknownPeers}명 있어요. 이 자리가 비었다고 단정할 수 없어요.`
+                  : "이 자리에 아직 아무도 없어요."}
+              </p>
             )}
           </div>
           {seat.occupants.length > 1 ? (

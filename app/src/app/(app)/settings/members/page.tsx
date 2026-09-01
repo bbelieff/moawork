@@ -15,6 +15,21 @@ import { OrgViewTabs } from "@/components/member-organization/OrgViewTabs";
 import { createClient } from "@/lib/supabase/server";
 import { loadSeatDefinitions } from "@/lib/org/seat-definitions";
 
+/**
+ * 역할별 인원수 — «각 사람이 들고 있는 역할» 로 센다.
+ *
+ * ★ summary 의 칸 이름으로 세지 않는다. `members` 칸은 «owner·admin 이 아닌 나머지 전부» 라
+ *   팀장도 거기 들어 있다. 칸 길이를 그대로 쓰면 팀장이 「담당」으로 세어진다 (#683 검수 P0-1).
+ */
+function countByRole(summary: { owner: { role: string }; admins: { role: string }[]; members: { role: string }[] }) {
+  const counts: Partial<Record<Role, number>> = {};
+  for (const member of [summary.owner, ...summary.admins, ...summary.members]) {
+    if (!isRole(member.role)) continue;
+    counts[member.role] = (counts[member.role] ?? 0) + 1;
+  }
+  return counts;
+}
+
 export default async function MembersPage({ searchParams }: { searchParams: Promise<{ role?: string; view?: string }> }) {
   const ctx = await getSession();
   const params = await searchParams;
@@ -74,9 +89,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
         activeRole={activeRole}
         viewerRole={viewerRole}
         access={permissionAccess}
-        roleMemberCounts={summary.kind === "ready"
-          ? { owner: summary.owner ? 1 : 0, admin: summary.admins.length, member: summary.members.length }
-          : undefined}
+        roleMemberCounts={summary.kind === "ready" ? countByRole(summary) : undefined}
         revalidatePath="/settings/members"
       />
     </>

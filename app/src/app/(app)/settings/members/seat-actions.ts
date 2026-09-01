@@ -34,8 +34,17 @@ export async function saveSeatDefinitionAction(
     // 앞차단 — 진짜 관문은 RPC 다.
     if (!isManager(ctx.role)) return { ok: false, message: "역할 정의서는 대표와 관리자만 쓸 수 있어요." };
 
+    /*
+     * ★ 못 읽는 부서 값을 «조용히 null 로» 바꾸지 않는다.
+     *   null 은 「부서 없는 자리」라는 «다른 자리» 다. 실패해야 할 요청이 엉뚱한 자리에 써진다.
+     *   빈 값(부서 없는 자리를 고른 것)과 «망가진 값» 은 다르다 (#683 검수 P3-9).
+     */
     const departmentRaw = formData.get("departmentId");
-    const departmentId = typeof departmentRaw === "string" && UUID.test(departmentRaw) ? departmentRaw : null;
+    const departmentGiven = typeof departmentRaw === "string" ? departmentRaw.trim() : "";
+    if (departmentGiven && !UUID.test(departmentGiven)) {
+      return { ok: false, message: "어떤 부서의 자리인지 확인하지 못했어요. 화면을 새로 고쳐 주세요." };
+    }
+    const departmentId = departmentGiven || null;
     const roleRaw = formData.get("role");
     if (typeof roleRaw !== "string" || !ROLES.has(roleRaw as MemberRole)) {
       return { ok: false, message: "어떤 자리인지 확인하지 못했어요. 화면을 새로 고쳐 주세요." };
@@ -71,10 +80,12 @@ export async function saveSeatDefinitionAction(
 
     revalidatePath("/settings/members");
     return { ok: true, message: "역할 정의서를 저장했어요." };
-  } catch (error) {
-    return {
-      ok: false,
-      message: error instanceof Error ? error.message : "저장하지 못했어요.",
-    };
+  } catch {
+    /*
+     * ★ 내부 오류 문구를 화면에 그대로 뿌리지 않는다.
+     *   위에서는 코드별로 사람이 읽을 말로 바꿔 놓고 여기서만 원문이 샜다 (#683 검수 P2-5).
+     *   사용자에게는 «무엇을 하면 되는지» 를 말하고, 원인은 서버 로그가 갖는다.
+     */
+    return { ok: false, message: "저장하지 못했어요. 잠시 뒤 다시 시도해 주세요. 적은 내용은 그대로 두었어요." };
   }
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  seatDefinitionDate,
   parseSeatDuties,
   parseSeatRules,
   seatDefinitionIsEmpty,
@@ -105,5 +106,39 @@ describe("#683 누가 언제 고쳤나", () => {
       () => null,
     );
     expect(def.updatedByName).toBeNull();
+  });
+});
+
+describe("#683 검수 후속 — 화면이 감당할 수 있는 만큼만 넘긴다", () => {
+  it("★ 할 일이 아무리 많아도 상한에서 끊는다 — 거대한 배열을 화면이 그대로 다 그리지 않게", () => {
+    const huge = Array.from({ length: 500 }, (_, index) => ({ cycle: "daily", text: `할일 ${index}` }));
+    expect(parseSeatDuties(huge)).toHaveLength(50);
+  });
+
+  it("★ 한 줄이 너무 길면 자른다", () => {
+    const long = "가".repeat(5000);
+    expect(parseSeatDuties([{ cycle: "daily", text: long }])[0].text).toHaveLength(300);
+    expect(parseSeatRules({ escalate: [long] }).escalate[0]).toHaveLength(300);
+  });
+
+  it("★ 판단 기준도 갈래마다 상한이 있다", () => {
+    const many = Array.from({ length: 200 }, (_, index) => `줄 ${index}`);
+    const rules = parseSeatRules({ escalate: many, handle: many, avoid: many });
+    expect([rules.escalate.length, rules.handle.length, rules.avoid.length]).toEqual([30, 30, 30]);
+  });
+});
+
+describe("#683 검수 P3-7 — 날짜는 보는 사람의 시간대와 무관하게 같은 글자여야 한다", () => {
+  it("★ 한국 시간으로 자정을 넘기는 시각이어도 UTC 기준으로 같은 날짜를 낸다", () => {
+    // toLocaleDateString 이었다면 서버(UTC)는 9월 1일, 한국 브라우저는 9월 2일로 그려
+    // 첫 그림과 두 번째 그림이 달라진다(하이드레이션 불일치).
+    expect(seatDefinitionDate("2026-09-01T16:30:00Z")).toBe("2026. 9. 1.");
+    expect(seatDefinitionDate("2026-09-01T00:00:00Z")).toBe("2026. 9. 1.");
+  });
+
+  it("못 읽는 값은 빈 글자다 — 「Invalid Date」를 화면에 뿌리지 않는다", () => {
+    expect(seatDefinitionDate(null)).toBe("");
+    expect(seatDefinitionDate("")).toBe("");
+    expect(seatDefinitionDate("어제")).toBe("");
   });
 });
