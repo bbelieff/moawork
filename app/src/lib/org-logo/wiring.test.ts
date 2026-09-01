@@ -100,4 +100,30 @@ describe("계정설정 › 회사와 팀 배선 — 업로드 화면이 붙어 �
   it("★ 서버가 읽은 로고가 카드로 흘러간다", () => {
     expect(membersBody).toMatch(/<OrgLogoCard[^>]*logo=\{logo\}/u);
   });
+
+  /*
+   * #683 — 자리 정의서의 «이름표» 배선.
+   *
+   * ★ 이 병이 실제로 났다. 정의서를 읽는 코드도, 이름을 붙이는 함수도, 그 함수의 시험도
+   *   전부 있었는데 **page.tsx 가 둘을 안 이었다.** 시험 218건·CI·게이트·검수 4라운드가
+   *   전부 초록이었고, 운영 화면을 열어 보고서야 「누군가가 씀」이 보였다.
+   *
+   *   순수 함수 시험은 «부품이 맞는가» 만 잰다. 부품을 안 꽂아도 초록이다.
+   *   그래서 이 파일이 하는 일 — «값이 흐르는가» 를 소스에서 따라간다.
+   */
+  it("★ 이름표를 «한 번» 만들고 그 결과가 정의서에 입혀진다", () => {
+    expect(membersBody).toMatch(/const\s+writerNames\s*=\s*seatWriterNames\s*\(/u);
+    expect(membersBody).toMatch(/withSeatDefinitionNames\s*\(\s*seatDefinitions/u);
+  });
+
+  it("★ 이름표가 «요약과 조직도 둘 다» 를 먹는다 — 하나만 보면 퇴사자 이름이 사라진다", () => {
+    const call = membersBody.match(/seatWriterNames\s*\(\s*\[([\s\S]*?)\]\s*\)/u)?.[1] ?? "";
+    expect(call).toMatch(/summary/u);
+    expect(call).toMatch(/chart/u);
+  });
+
+  it("★ 이름이 «입혀진» 쪽이 화면으로 간다 — 원본이 그대로 흘러가면 안 된다", () => {
+    expect(membersBody).toMatch(/seatDefinitions=\{namedSeatDefinitions\}/u);
+    expect(membersBody).not.toMatch(/seatDefinitions=\{seatDefinitions\}/u);
+  });
 });

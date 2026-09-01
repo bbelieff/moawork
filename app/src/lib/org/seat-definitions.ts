@@ -26,6 +26,14 @@ export type SeatDefinition = Readonly<{
   signals: string | null;
   handover: string | null;
   updatedAt: string | null;
+  /**
+   * 누가 썼는가.
+   *
+   * ★ id 를 «들고 있는다». 이름은 나중에 붙는다 —
+   *   정의서는 구성원 요약과 «같은 물결» 로 나가므로(왕복을 늘리지 않으려고)
+   *   읽는 시점에는 이름표가 아직 없다. id 를 버리면 그 뒤로 영영 못 붙인다.
+   */
+  updatedById: string | null;
   updatedByName: string | null;
 }>;
 
@@ -145,8 +153,85 @@ export function toSeatDefinition(row: Row, nameOf?: (userId: string) => string |
     signals: row.signals,
     handover: row.handover,
     updatedAt: row.updated_at,
+    updatedById: row.updated_by,
     updatedByName: row.updated_by ? (nameOf?.(row.updated_by) ?? null) : null,
   };
+}
+
+/**
+ * 이미 읽어 둔 정의서에 «이름표만» 나중에 입힌다.
+ *
+ * ★ 왜 나중인가 — 정의서와 구성원 요약이 같은 물결로 나간다. 순서를 매기면 왕복이 는다.
+ *   그래서 정의서는 먼저 도착하고, 이름은 요약이 온 뒤에 붙인다.
+ *
+ * ★ 이걸 안 해서 화면이 계속 「누군가가 씀」이라고 말했다. 우리는 누구인지 «알고 있었다» —
+ *   `updated_by` 도 요약도 같은 화면에 다 있었다. **아는 것을 모른다고 말하는 것**이고,
+ *   이 PR 이 네 라운드 동안 고친 것과 정확히 같은 종류다 (#683 운영 화면 확인에서 발견).
+ *
+ * 모르는 id 는 그대로 null 로 둔다 — 그때는 「누군가」가 «맞는» 말이다.
+ */
+/**
+ * 이름이 없을 때 화면이 채워 넣는 «자리표시» 글자들.
+ *
+ * ★ 이건 사람 이름이 아니라 «이름이 없다» 는 뜻의 시스템 문구다.
+ *   그대로 이름 칸에 앉히면 두 가지가 잘못된다 —
+ *     ① 「이름 없는 구성원**가** 씀」 처럼 조사가 깨진다(자음으로 끝난다)
+ *     ② 읽는 사람이 «시스템이 모르는 것» 인지 «누가 그렇게 적어 둔 것» 인지 구별을 못 한다
+ *   「누군가」는 모른다는 뜻이 문장 안에 있다. 정보량은 어느 쪽도 더 낫지 않으므로,
+ *   **문장이 맞고 뜻이 분명한 쪽**을 고른다 (#683 검수 P3-2).
+ */
+const PLACEHOLDER_NAMES = new Set(["이름 없는 구성원", "이름 미등록"]);
+
+/**
+ * 「누가 썼나」를 찾는 이름표를 «한 번만» 만든다.
+ *
+ * ★ 두 곳에서 모은다. 순서가 뜻을 갖는다 —
+ *
+ *     ① 구성원 요약   활성인 사람. **이름이 비면 요약 전체가 error 로 떨어진다**
+ *                    → 여기 있는 이름은 «진짜 이름 아니면 아예 없음» 이다
+ *     ② 조직도       비활성 포함 «전원». 이름이 비면 자리표시를 채운다
+ *
+ *   즉 앞이 이기는 이유는 «더 정확한 출처라서» 가 아니다 — **둘 다 users.name 을 읽는다.**
+ *   진짜 이름만 있는 쪽을 먼저 두는 것이다. (안 잰 것을 사실로 적지 않는다 — AGENTS §2.6⑥)
+ *
+ * ★★ ②가 없으면 **쓴 사람이 퇴사하는 순간 이름이 다시 사라진다.**
+ *   그런데 바로 그 옆에 「이 자리에 앉는 사람이 바뀌어도 남아요」라고 적혀 있다 —
+ *   **쓴 사람이 떠난 뒤가 이 기능의 «정상 상태»** 인데 정확히 그때 이름이 없어지는 것이다.
+ *   그 사람은 같은 화면 「자리를 못 정한 사람」 구역에 이름까지 떠 있다. 알면서 모른다고 하는 것이다.
+ *
+ * ★ Map 을 «한 번만» 만든다. 정의서마다 배열을 새로 만들어 훑으면 자리가 늘수록 제곱으로 는다.
+ */
+export function seatWriterNames(
+  sources: readonly (readonly { userId: string; displayName: string }[])[],
+): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const source of sources) {
+    for (const person of source) {
+      const name = person.displayName?.trim();
+      // 빈 이름과 자리표시는 «이름이 아니다». 넣으면 화면이 「모른다」를 말할 기회를 잃는다.
+      if (!name || PLACEHOLDER_NAMES.has(name)) continue;
+      // 먼저 넣은 쪽이 이긴다 — 진짜 이름만 있는 출처를 앞에 둔다.
+      if (!names.has(person.userId)) names.set(person.userId, name);
+    }
+  }
+  return names;
+}
+
+export function withSeatDefinitionNames(
+  definitions: Map<string, SeatDefinition> | null,
+  nameOf: (userId: string) => string | null,
+): Map<string, SeatDefinition> | null {
+  if (!definitions) return null;
+  const out = new Map<string, SeatDefinition>();
+  for (const [key, definition] of definitions) {
+    out.set(
+      key,
+      definition.updatedById
+        ? { ...definition, updatedByName: nameOf(definition.updatedById) }
+        : definition,
+    );
+  }
+  return out;
 }
 
 /** 자리 열쇠 → 정의서. null 이면 «못 읽음» 이고 빈 Map 은 «아직 없음» 이다. */

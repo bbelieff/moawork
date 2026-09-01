@@ -5,6 +5,8 @@ import {
   parseSeatRules,
   seatDefinitionIsEmpty,
   toSeatDefinition,
+  seatWriterNames,
+  withSeatDefinitionNames,
 } from "./seat-definitions";
 
 /**
@@ -106,6 +108,124 @@ describe("#683 누가 언제 고쳤나", () => {
       () => null,
     );
     expect(def.updatedByName).toBeNull();
+  });
+});
+
+describe("#683 운영 확인 후속 — 「누군가가 씀」이라고 말하지 않는다", () => {
+  /*
+   * 운영 화면을 열어 실제로 저장해 보고 발견한 것 —
+   * 「누가 언제 썼나」 줄이 항상 「누군가가 씀」이었다. updated_by 도 구성원 요약도
+   * 같은 화면에 다 있었는데 이름을 «붙이는 단계» 가 없었다.
+   * 아는 것을 모른다고 말하는 것이고, 이 PR 이 네 라운드 동안 고친 것과 같은 종류다.
+   */
+  const row = {
+    department_id: null,
+    role: "admin" as const,
+    summary: "요약",
+    duties: [],
+    rules: {},
+    signals: null,
+    handover: null,
+    updated_at: "2026-09-01T16:03:19Z",
+    updated_by: "u-1",
+  };
+
+  it("★ 나중에 이름을 입힐 수 있게 id 를 들고 있는다", () => {
+    expect(toSeatDefinition(row).updatedById).toBe("u-1");
+  });
+
+  it("★ 이름표가 온 뒤에 붙는다", () => {
+    const before = new Map([["-:admin", toSeatDefinition(row)]]);
+    expect(before.get("-:admin")!.updatedByName).toBeNull();
+
+    const after = withSeatDefinitionNames(before, (id) => (id === "u-1" ? "카뮈" : null));
+    expect(after!.get("-:admin")!.updatedByName).toBe("카뮈");
+  });
+
+  it("모르는 사람은 그대로 둔다 — 그때는 「누군가」가 «맞는» 말이다", () => {
+    const map = new Map([["-:admin", toSeatDefinition(row)]]);
+    expect(withSeatDefinitionNames(map, () => null)!.get("-:admin")!.updatedByName).toBeNull();
+  });
+
+  it("★ «못 읽음»(null)은 이름을 입혀도 여전히 «못 읽음» 이다 — 빈 Map 으로 바뀌지 않는다", () => {
+    expect(withSeatDefinitionNames(null, () => "카뮈")).toBeNull();
+  });
+
+  it("쓴 사람이 없는 정의서는 건드리지 않는다", () => {
+    const map = new Map([["-:admin", toSeatDefinition({ ...row, updated_by: null })]]);
+    const after = withSeatDefinitionNames(map, () => "카뮈");
+    expect(after!.get("-:admin")!.updatedByName).toBeNull();
+  });
+
+  it("★ 자리가 여럿이면 «전부» 돈다 — 첫 자리에만 붙이면 나머지는 계속 「누군가」다", () => {
+    // 항목 하나짜리 Map 만 재면 「첫 것에만 붙인다」는 결함이 통과한다.
+    // 실제 화면은 자리가 12개다.
+    const map = new Map([
+      ["d1:team_lead", toSeatDefinition({ ...row, updated_by: "u-1" })],
+      ["d2:team_lead", toSeatDefinition({ ...row, updated_by: "u-2" })],
+      ["-:member", toSeatDefinition({ ...row, updated_by: null })],
+    ]);
+    const names: Record<string, string> = { "u-1": "카뮈", "u-2": "데모 팀장" };
+    const after = withSeatDefinitionNames(map, (id) => names[id] ?? null)!;
+    expect([...after.values()].map((d) => d.updatedByName)).toEqual(["카뮈", "데모 팀장", null]);
+  });
+});
+
+describe("#683 검수 P2-1 — 쓴 사람이 퇴사해도 이름이 남는다", () => {
+  /*
+   * 요약(활성만)에서만 이름을 찾으면 «쓴 사람이 나가는 순간» 이름이 다시 사라진다.
+   * 그런데 그 옆에는 「이 자리에 앉는 사람이 바뀌어도 남아요」라고 적혀 있다 —
+   * 쓴 사람이 떠난 뒤가 이 기능의 «정상 상태» 인데 정확히 그때 이름이 없어지는 것이다.
+   * 그 사람은 같은 화면 「자리를 못 정한 사람」 구역에 이름까지 떠 있다.
+   */
+  it("★ 요약에 없는 사람을 조직도에서 건진다", () => {
+    const 요약 = [{ userId: "u-1", displayName: "남아있는사람" }];
+    const 조직도 = [
+      { userId: "u-1", displayName: "남아있는사람" },
+      { userId: "u-2", displayName: "나간사람" },
+    ];
+    const names = seatWriterNames([요약, 조직도]);
+    expect(names.get("u-2")).toBe("나간사람");
+  });
+
+  it("★ 앞 목록이 이긴다 — 진짜 이름만 있는 출처를 앞에 둔다", () => {
+    const names = seatWriterNames([
+      [{ userId: "u-1", displayName: "요약 이름" }],
+      [{ userId: "u-1", displayName: "조직도 이름" }],
+    ]);
+    expect(names.get("u-1")).toBe("요약 이름");
+  });
+
+  it("빈 이름은 넣지 않는다 — 빈 글자를 이름으로 쓰면 「이름이 있다」는 거짓말이 된다", () => {
+    const names = seatWriterNames([[{ userId: "u-1", displayName: "" }], [{ userId: "u-1", displayName: "진짜 이름" }]]);
+    expect(names.get("u-1")).toBe("진짜 이름");
+  });
+
+  it("★ «자리표시» 는 이름이 아니다 — 「이름 없는 구성원가 씀」이 되면 안 된다", () => {
+    /*
+     * 조직도는 이름이 비면 「이름 없는 구성원」을, 요약은 「이름 미등록」을 채운다.
+     * 그건 사람 이름이 아니라 «이름이 없다» 는 뜻의 시스템 문구다.
+     * 그대로 이름 칸에 앉히면 ① 조사가 깨지고(자음 끝) ② 모른다는 뜻이 사라진다.
+     * 「누군가」는 모른다는 뜻이 문장 안에 있다.
+     */
+    expect(seatWriterNames([[{ userId: "u-1", displayName: "이름 없는 구성원" }]]).get("u-1")).toBeUndefined();
+    expect(seatWriterNames([[{ userId: "u-2", displayName: "이름 미등록" }]]).get("u-2")).toBeUndefined();
+  });
+
+  it("자리표시를 건너뛰고 «진짜 이름» 을 뒤에서 건진다", () => {
+    const names = seatWriterNames([
+      [{ userId: "u-1", displayName: "이름 없는 구성원" }],
+      [{ userId: "u-1", displayName: "진짜 이름" }],
+    ]);
+    expect(names.get("u-1")).toBe("진짜 이름");
+  });
+
+  it("앞뒤 공백만 있는 이름도 이름이 아니다", () => {
+    expect(seatWriterNames([[{ userId: "u-1", displayName: "   " }]]).get("u-1")).toBeUndefined();
+  });
+
+  it("아무 데도 없는 사람은 없는 채로 둔다 — 그때는 「누군가」가 맞다", () => {
+    expect(seatWriterNames([[], []]).get("u-9")).toBeUndefined();
   });
 });
 
