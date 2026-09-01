@@ -74,18 +74,25 @@ export function parseSeatRules(value: unknown): { escalate: string[]; handle: st
 }
 
 /**
- * 「2026. 9. 1.」처럼 적는다.
+ * 「2026. 9. 1.」처럼 적는다. **시간대를 못 박는다.**
  *
- * ★ `toLocaleDateString` 을 안 쓴다. 클라이언트 컴포넌트에서 쓰면 서버(UTC)와 브라우저(로컬)의
- *   시간대가 달라 **첫 그림과 두 번째 그림의 날짜가 다르게** 나온다 — 하이드레이션 불일치다.
- *   한국 시간 15시 이후에 저장한 것은 하루 어긋났다가 화면에서 슬쩍 바뀐다 (#683 검수 P3-7).
- *   보는 사람의 시간대와 무관하게 «같은 글자» 가 나와야 하므로 UTC 로 못 박아 쪼갠다.
+ * ★ 왜 시간대를 «인자로» 주는가 — 두 가지를 동시에 만족해야 한다.
+ *
+ *   ① 하이드레이션이 안전해야 한다. 맨 `toLocaleDateString()` 은 서버(UTC)와 브라우저(로컬)가
+ *      서로 다른 날짜를 그려서, 첫 그림과 두 번째 그림이 달라진다 (#683 검수 P3-7).
+ *   ② 그런데 값도 맞아야 한다. UTC 로 못 박았더니 이번엔 **한국 00:00~09:00 에 저장한 것이
+ *      매일 «어제» 로 보였다** — 하루 9시간짜리 창이다 (#683 재검수 P2-D).
+ *
+ *   `timeZone` 을 명시하면 «누가 어디서 그리든 같은 글자» 이면서 «한국 날짜» 다.
+ *   ①은 결정적이라서 풀리고, ②는 기준이 맞아서 풀린다. 둘 중 하나를 포기할 필요가 없었다.
  */
+const SEAT_DATE_ZONE = "Asia/Seoul";
+
 export function seatDefinitionDate(value: string | null | undefined): string {
   if (!value) return "";
   const at = new Date(value);
   if (Number.isNaN(at.getTime())) return "";
-  return `${at.getUTCFullYear()}. ${at.getUTCMonth() + 1}. ${at.getUTCDate()}.`;
+  return at.toLocaleDateString("ko-KR", { timeZone: SEAT_DATE_ZONE });
 }
 
 /** 정의서가 «비어 있는가». 비면 화면이 「아직 아무도 안 썼습니다」라고 말한다. */

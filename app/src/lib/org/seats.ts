@@ -161,10 +161,24 @@ export function deriveSeats(input: {
   }
 
   const seats = [...bucket.values()].map<Seat>((entry) => {
-    // ★ 그 «부서» 에 역할 미상인 사람이 있으면 그 부서의 빈 자리는 «비었다» 고 단언할 수 없다.
-    //   그 사람이 바로 그 자리의 주인일 수 있다. 모르는 것을 아는 것처럼 말하지 않는다.
+    /*
+     * ★ 그 «부서» 에 역할 미상인 사람이 있으면 그 부서의 빈 자리는 «비었다» 고 단언할 수 없다.
+     *   그 사람이 바로 그 자리의 주인일 수 있다.
+     *
+     * ★★ 단 «활성인» 사람만 센다. 이걸 빼면 반대편으로 거짓말을 한다.
+     *
+     *   자리 없는 사람이 생기는 지배적인 이유는 «역할을 모른다» 가 아니라 **«활성이 아니다»** 다
+     *   (퇴사·정지·초대중). 그리고 그건 **아는 사실**이지 모르는 것이 아니다.
+     *   퇴사해도 department_members 행은 아무 데서도 지워지지 않아서, 퇴사자는 주부서를 유지한 채 남는다.
+     *
+     *   그래서 활성 여부를 안 보면 — **팀장이 나간 바로 그 순간** 그 자리가 「확인 못 함」이 되어
+     *   공석 신호가 꺼진다. 「인원이 왔다갔다 많이 한다」가 이 기능의 전제인데,
+     *   그 이동이 일어난 순간에 정확히 꺼지는 것이다 (#683 재검수 P1-A).
+     *
+     *   좁은 가드가 «사람» 을 지웠고, 넓은 추론이 «사실» 을 지운다. 같은 병의 반대편이다.
+     */
     const unknownPeers = seatless.filter(
-      (member) => member.primaryDepartmentId === entry.key.departmentId,
+      (member) => member.active && member.primaryDepartmentId === entry.key.departmentId,
     ).length;
     return {
       key: entry.key,

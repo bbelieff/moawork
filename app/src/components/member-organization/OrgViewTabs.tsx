@@ -327,7 +327,8 @@ export function OrgViewTabs({
               전체 — 우리 회사
               <span className="ml-auto font-normal normal-case tracking-normal">
                 자리 {seatCounts.seatCount} · 사람 {seatCounts.peopleCount} · 공석 {seatCounts.vacantCount}
-                {seatCounts.unknownCount > 0 ? ` · 확인 못 함 ${seatCounts.unknownCount}` : ""}
+                {/* 「자리」 단위임을 붙여 둔다 — 아래 구역의 「…N명」과 단위가 달라 나란히 두면 헷갈린다. */}
+                {seatCounts.unknownCount > 0 ? ` · 확인 못 한 자리 ${seatCounts.unknownCount}` : ""}
               </span>
             </div>
             <div className="flex flex-col gap-0.5 p-1.5">
@@ -375,21 +376,31 @@ export function OrgViewTabs({
               */}
               {seatlessMembers.length > 0 ? (
                 <div data-seatless-region className="mt-1.5 border-t border-zinc-200 pt-1.5 dark:border-zinc-800">
-                  <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                    역할 확인 못 함 {seatlessMembers.length}명
+                  <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                    자리를 못 정한 사람 {seatlessMembers.length}명
                   </p>
                   <p className="px-2 pb-1.5 text-xs text-zinc-500">
-                    이 사람들의 역할을 읽지 못했어요. 자리를 정하지 못했을 뿐, 빠진 사람은 아니에요.
+                    자리는 못 정했지만 빠진 사람은 아니에요.
                   </p>
                   {seatlessMembers.map((member) => (
                     <div
                       key={member.userId}
                       data-seatless-member={member.userId}
+                      data-seatless-active={member.active ? "yes" : "no"}
                       className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm"
                     >
                       <span className="min-w-0 flex-1 truncate">{member.displayName}</span>
-                      <span className="shrink-0 text-xs text-zinc-500">
-                        {member.primaryDepartmentId ? "부서 있음" : "부서 없음"}
+                      {/*
+                        ★ «왜 자리가 없는지» 를 아는 만큼만 말한다.
+                          비활성인 사람은 이유를 «안다» — 그걸 「역할을 읽지 못했어요」라고 하면
+                          그것도 틀린 단언이다. 이 PR 이 잡으려던 병과 같은 종류다, 방향만 반대다.
+                      */}
+                      <span
+                        className={`shrink-0 text-xs ${
+                          member.active ? "text-amber-700 dark:text-amber-400" : "text-zinc-500"
+                        }`}
+                      >
+                        {member.active ? "역할 확인 못 함" : "비활성"}
                       </span>
                     </div>
                   ))}

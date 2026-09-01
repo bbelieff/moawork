@@ -145,6 +145,33 @@ describe("#683 사람에서 자리를 읽는다", () => {
     expect(seatlessMembers.map((m) => m.displayName)).toEqual(["김팀장"]);
   });
 
+  it("★ 퇴사자가 «진짜 공석» 을 덮지 않는다 — 팀장이 나간 바로 그 순간이 가장 중요하다", () => {
+    /*
+     * 실제로 있었던 회귀 — unknownPeers 가 «비활성인» 사람까지 세는 바람에,
+     * 팀장이 퇴사한 직후 그 자리가 「공석」이 아니라 「확인 못 함」이 됐다.
+     * 퇴사해도 department_members 행은 안 지워져서 퇴사자는 주부서를 유지한 채 남는다.
+     * 「인원이 왔다갔다 많이 한다」가 전제인 기능이 그 이동의 순간에 신호를 끄는 것이다.
+     */
+    const { seats } = deriveSeats({
+      departments: DEPTS,
+      members: [
+        person({ userId: "u1", displayName: "박담당", primaryDepartmentId: "d1", role: "member" }),
+        person({ userId: "u2", displayName: "나간팀장", primaryDepartmentId: "d1", role: null, active: false }),
+      ],
+    });
+    const d1 = seats.find((s) => s.id === "d1:team_lead")!;
+    expect(d1.status).toBe("vacant"); // 「확인 못 함」이 아니다 — 우리는 왜 없는지 «안다»
+    expect(d1.unknownPeers).toBe(0);
+  });
+
+  it("활성인데 역할을 못 읽은 사람은 여전히 «모른다» 다 — 과교정하지 않는다", () => {
+    const { seats } = deriveSeats({
+      departments: DEPTS,
+      members: [person({ userId: "u3", displayName: "확인중", primaryDepartmentId: "d1", role: null, active: true })],
+    });
+    expect(seats.find((s) => s.id === "d1:team_lead")!.status).toBe("unknown");
+  });
+
   it("★ 자리에 못 앉힌 사람도 머릿수에 센다 — 사람이 사라지면 안 된다", () => {
     const { seats, seatlessMembers } = deriveSeats({
       departments: DEPTS,
