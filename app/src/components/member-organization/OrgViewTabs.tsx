@@ -410,7 +410,13 @@ export function OrgViewTabs({
             >
               우리 회사
               <span className="ml-auto font-normal normal-case tracking-normal">
-                자리 {seatCounts.seatCount} · 사람 {seatCounts.peopleCount} · 공석 {seatCounts.vacantCount}
+                {/*
+                  ★ 못 읽었으면 «숫자를 단언하지 않는다».
+                    아래 배너가 「다 못 읽었어요」라고 말하지만 목록 밑에 있어서,
+                    머리말만 훑는 사람은 「공석 0」을 사실로 읽는다. 그 자리에서 바로 말한다.
+                */}
+                자리 {seatCounts.seatCount} · 사람 {seatCounts.peopleCount} ·{" "}
+                공석 {seatDefinitions === null ? "?" : seatCounts.vacantCount}
                 {/* 「자리」 단위임을 붙여 둔다 — 아래 구역의 「…N명」과 단위가 달라 나란히 두면 헷갈린다. */}
                 {seatCounts.unknownCount > 0 ? ` · 모르는 자리 ${seatCounts.unknownCount}` : ""}
                 {/* 비활성은 「사람」에 합치지 않는다. 합치면 전원 퇴사한 회사가 「사람 3」으로 보인다. */}
@@ -448,7 +454,12 @@ export function OrgViewTabs({
                   )}
                 </button>
               ))}
-              {seats.length === 0 ? (
+              {/*
+                ★ 못 읽었을 때는 「없어요」라고 «단정하지 않는다».
+                  아래 배너가 「다 못 읽었어요」라고 유보하는데 위에서 「없어요」로 못박으면
+                  두 문장이 서로 부딪친다. 못 읽었으면 배너만 말하게 둔다.
+              */}
+              {seats.length === 0 && seatDefinitions !== null ? (
                 <p className="px-2 py-6 text-sm text-zinc-500">
                   아직 부서와 사람이 없어요. 부서를 만들면 자리가 생겨요.
                 </p>

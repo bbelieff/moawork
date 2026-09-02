@@ -225,8 +225,13 @@ export function MemberOrganizationChart({ orgId, owner, admins, members, canEdit
           한 갈래에 「팀장」이 서로 다른 뜻으로 두 번 떴다는 뜻이다.
           제목은 그 묶음이 «무엇의 묶음인가» 를 말해야 한다.
       */}
-      {section(roleLabel("admin"), admins, `아직 ${roleLabel("admin")}가 없어요.`)}
-      {section(roleLabel("member"), members, `아직 ${roleLabel("member")}이 없어요.`)}
+      {/*
+        ★ 조사를 붙이지 않는다. 이름표는 정본에서 오는데 조사는 «끝 글자» 에 달려 있어서,
+          「관리자가」는 맞지만 이름이 「멤버」로 바뀌면 「멤버이 없어요」가 된다.
+          제목이 이미 무엇의 묶음인지 말하므로 빈 상태는 조사 없이 적는다.
+      */}
+      {section(roleLabel("admin"), admins, "아직 없어요.")}
+      {section(roleLabel("member"), members, "아직 없어요.")}
       {editor?.kind === "profile" ? (
         <section aria-label="구성원 프로필 수정" className="rounded-2xl border border-mw-primary bg-white p-4 dark:bg-zinc-950">
           <h2 className="font-semibold">{editor.member.displayName}의 직책과 팀</h2>

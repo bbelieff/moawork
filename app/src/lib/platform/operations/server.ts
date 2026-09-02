@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { parseAdminRole } from "@/lib/auth/admin";
-import type { MemberRole } from "@/lib/types";
 import { roleLabel } from "@/lib/auth/roles";
 import {
   PLATFORM_OPERATION_CONTRACTS,

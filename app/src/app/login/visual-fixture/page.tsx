@@ -11,7 +11,7 @@ import { VisualThemeProbe } from "./VisualThemeProbe";
 import { DepartmentManager } from "@/components/member-organization/DepartmentManager";
 import { OrgViewTabs } from "@/components/member-organization/OrgViewTabs";
 import { isOrgView } from "@/lib/org/org-view";
-import { loadVisualOrgViewModel } from "./org-view-fixture";
+import { loadVisualOrgViewModel, loadVisualSeatDefinitions } from "./org-view-fixture";
 import {
   loadVisualDepartmentChart,
   visualAssignDepartmentMemberAction,
@@ -90,6 +90,11 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
                그래야 「권한표의 역할 링크가 전체 재적재를 일으켜도 갈래가 유지되는가」를
                픽스처에서 그대로 잴 수 있다(PR #641 검수 P1-2). */
             initialView={isOrgView(params.view) ? params.view : params.role ? "perm" : "list"}
+            /* ★ 안 넘기면 기본값 null = «못 읽음» 이라 「자리 목록을 다 못 읽었어요」 배너가
+                 사진에 영구히 박힌다 — 아무것도 실패하지 않았는데.
+                 그리고 「경영지원 팀장」이 «공석» 으로 떠서, 게이트가 이 화면의 핵심 배지를
+                 처음으로 눈으로 보게 된다. 그게 안 보여서 #640 · #683 이 두 번 미끄러졌다. */
+            seatDefinitions={loadVisualSeatDefinitions()}
             departmentSlot={<p className="text-xs text-zinc-500">— 부서 관리 자리(실제 화면에서는 조직도 관리가 들어옵니다)</p>}
             permissionSlot={
               <div className="text-xs text-zinc-500">
