@@ -414,9 +414,13 @@ export function OrgViewTabs({
                   ★ 못 읽었으면 «숫자를 단언하지 않는다».
                     아래 배너가 「다 못 읽었어요」라고 말하지만 목록 밑에 있어서,
                     머리말만 훑는 사람은 「공석 0」을 사실로 읽는다. 그 자리에서 바로 말한다.
+
+                  ★★ 「?」가 아니라 「모름」이다. 이 화면은 «모른다» 를 이미 그 말로 적고 있다 —
+                    표 셀 · 자리 배지 · 「모르는 자리 N」 · 역할 · 범위 전부. 여기만 기호를 쓰면
+                    「공석 ? · 모르는 자리 2」처럼 한 개념에 표기가 둘이 된다.
                 */}
                 자리 {seatCounts.seatCount} · 사람 {seatCounts.peopleCount} ·{" "}
-                공석 {seatDefinitions === null ? "?" : seatCounts.vacantCount}
+                공석 {seatDefinitions === null ? "모름" : seatCounts.vacantCount}
                 {/* 「자리」 단위임을 붙여 둔다 — 아래 구역의 「…N명」과 단위가 달라 나란히 두면 헷갈린다. */}
                 {seatCounts.unknownCount > 0 ? ` · 모르는 자리 ${seatCounts.unknownCount}` : ""}
                 {/* 비활성은 「사람」에 합치지 않는다. 합치면 전원 퇴사한 회사가 「사람 3」으로 보인다. */}
@@ -479,6 +483,7 @@ export function OrgViewTabs({
                   className="mt-1.5 rounded-lg bg-amber-50 px-2 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
                 >
                   자리 목록을 다 못 읽었어요. 사람이 없는 자리가 더 있을 수 있어요.
+                  잠시 뒤 새로고침해 주세요.
                 </p>
               ) : null}
 

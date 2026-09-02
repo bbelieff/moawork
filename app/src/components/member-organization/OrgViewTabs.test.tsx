@@ -265,5 +265,13 @@ describe("#683 공석이 화면에 실제로 뜬다", () => {
 
     expect(host.querySelector("[data-seats-unknown]")).not.toBeNull();
     expect(host.textContent).toContain("다 못 읽었어요");
+
+    /*
+     * ★ 머리말도 «숫자를 단언하지 않는다». 배너는 목록 아래라서 머리말만 훑는 사람은 못 본다.
+     *   그리고 「?」가 아니라 「모름」이다 — 이 화면은 이미 그 말로 «모른다» 를 적는다.
+     *   기호를 섞으면 「공석 ? · 모르는 자리 2」처럼 한 개념에 표기가 둘이 된다.
+     */
+    expect(host.textContent).toContain("공석 모름");
+    expect(host.textContent).not.toContain("공석 0");
   });
 });
