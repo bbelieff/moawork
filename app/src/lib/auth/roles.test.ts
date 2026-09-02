@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   atLeast,
@@ -81,7 +83,8 @@ describe("isMemberRole / isMemberScope", () => {
  *    team_lead 는 아예 빠져서 팀장인 사람이 자기 역할을 「확인할 수 없어요」로 봤다.
  *    **손으로 적은 지도는 어긋나기만 하는 게 아니라 틀린다.**
  *
- * 이 시험이 없으면 다음 사람이 또 자기 파일에 적는다. 그때 여기서 걸린다.
+ * ★ 아래 다섯은 «이 파일 안» 만 본다. 다른 파일이 이름표를 다시 적는 것은 못 잡는다 —
+ *   그건 맨 아래 «소스를 훑는» 시험이 잡는다. 둘이 하는 일이 다르다.
  */
 describe("역할·범위 이름표는 여기 하나가 정본이다", () => {
   it("★ 모든 역할에 이름이 있다 — 하나라도 빠지면 그 사람은 자기 역할을 못 본다", () => {
@@ -109,5 +112,52 @@ describe("역할·범위 이름표는 여기 하나가 정본이다", () => {
 
   it("★ 「담당」을 역할 이름으로 쓰지 않는다 — 담당자·담당 보드로 이미 쓰는 말이다", () => {
     expect(MEMBER_ROLES.map(roleLabel)).not.toContain("담당");
+  });
+});
+
+/*
+ * ★★ «다른 파일이 이름표를 다시 적는 것» 을 잡는다.
+ *
+ * 위 다섯 시험은 이 파일 안만 보므로, 다음 사람이 자기 컴포넌트에
+ *   const ROLE_LABEL = { owner: "소유자", … }
+ * 를 적어도 통과한다. 실제로 그렇게 여덟 파일이 흩어졌고, 그중 하나는 admin 을 「팀장」이라 불렀다.
+ *
+ * 그래서 소스를 훑어 «역할 이름 리터럴이 roles.ts 밖에 나타나는가» 를 본다.
+ * 이름표를 다시 적으려면 그 글자를 쓸 수밖에 없으므로, 여기서 걸린다.
+ *
+ * ★ 열쇠 «하나» 로는 안 잡는다. `owner` 는 「이 화면의 담당 트랙」에도 쓰이고(nav-items),
+ *   `admin` 은 「행정 기록」에도 쓰인다(detail-event-kinds). 그건 역할 지도가 아니다.
+ *   **역할 지도는 열쇠가 둘 이상 한글에 매달린다** — 그 모양만 잡는다.
+ *   오탐을 내는 시험은 다음 사람이 지워 버린다. 좁게 겨냥해야 살아남는다.
+ */
+describe("역할 이름표를 다른 파일이 다시 적지 않는다", () => {
+  const ROLE_KEYS = ["owner", "admin", "team_lead", "member"] as const;
+
+  function sourcesUnder(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) out.push(...sourcesUnder(full));
+      else if (/\.(ts|tsx)$/u.test(entry.name) && !/\.test\.tsx?$/u.test(entry.name)) out.push(full);
+    }
+    return out;
+  }
+
+  it("★ 역할 열쇠 둘 이상을 한글에 매다는 «지도» 가 roles.ts 밖에 없다", () => {
+    const root = resolve(process.cwd(), "src");
+    const canonical = resolve(root, "lib", "auth", "roles.ts");
+    const offenders: string[] = [];
+
+    for (const file of sourcesUnder(root)) {
+      if (resolve(file) === canonical) continue;
+      const source = readFileSync(file, "utf8");
+      // owner: "대표"  ·  owner: '대표'  — 한글 이름을 역할 열쇠에 직접 매다는 모양
+      const hit = ROLE_KEYS.filter((key) =>
+        new RegExp(`\\b${key}\\s*:\\s*["'][가-힣]`, "u").test(source),
+      );
+      if (hit.length >= 2) offenders.push(`${file.replace(root, "src")} — ${hit.join(", ")}`);
+    }
+
+    expect(offenders, `이름표는 lib/auth/roles.ts 하나에서만 나와야 한다:\n${offenders.join("\n")}`).toEqual([]);
   });
 });

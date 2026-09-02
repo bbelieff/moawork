@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { parseAdminRole } from "@/lib/auth/admin";
 import type { MemberRole } from "@/lib/types";
+import { roleLabel } from "@/lib/auth/roles";
 import {
   PLATFORM_OPERATION_CONTRACTS,
   type PlatformOperationSectionKey,
@@ -42,11 +43,12 @@ export type PlatformOperationSnapshot =
 
 type CurrentRole = { kind: "ready"; label: string } | { kind: "unavailable" };
 
-function roleLabel(value: MemberRole): string {
-  if (value === "owner") return "대표";
-  if (value === "admin") return "관리자";
-  return "구성원";
-}
+/*
+ * ★ 이름표는 lib/auth/roles.ts 하나에서 온다.
+ *   전에는 owner·admin 만 따로 보고 «나머지 전부» 를 「구성원」으로 떨어뜨렸다.
+ *   그래서 team_lead 가 «구성원» 으로 보였다 — parseAdminRole 이 isMemberRole 만 통과시키므로
+ *   실제로 도달하는 경로다. 「나머지는 다」로 접으면 새 역할이 생길 때마다 조용히 틀린다.
+ */
 
 async function loadCurrentRole(client: PlatformOperationClient): Promise<CurrentRole> {
   const userResult = await client.auth.getUser();

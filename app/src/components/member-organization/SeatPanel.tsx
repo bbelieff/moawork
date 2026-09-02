@@ -8,6 +8,7 @@ import {
 } from "@/app/(app)/settings/members/seat-definition-state";
 import { seatDefinitionDate, seatDefinitionIsEmpty, type SeatDefinition } from "@/lib/org/seat-definitions";
 import { seatName, SEAT_ROLE_LABEL, type Seat } from "@/lib/org/seats";
+import { scopeLabel } from "@/lib/auth/roles";
 
 /**
  * 「이 자리」 / 「이 사람」 두 겹 (#683 · D안 1단계).
@@ -278,7 +279,8 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
             <div className="flex gap-2 py-0.5"><span className="w-20 shrink-0 text-zinc-500">역할</span><span>{SEAT_ROLE_LABEL[seat.role] ?? seat.role}</span></div>
             <div className="flex gap-2 py-0.5">
               <span className="w-20 shrink-0 text-zinc-500">조회 범위</span>
-              <span>{occupant?.scope === "all" ? "회사 전체" : occupant?.scope === "department" ? "부서 이하 전체" : occupant?.scope === "assigned" ? "본인 담당분" : <span className="text-zinc-400">확인 못 함</span>}</span>
+              {/* ★ 범위 이름표도 손으로 적지 않는다 — 지금은 우연히 일치하지만 정본이 바뀌면 어긋난다. */}
+              <span>{occupant?.scope ? scopeLabel(occupant.scope) : <span className="text-zinc-400">모름</span>}</span>
             </div>
             <p className="mt-2 text-[11px] text-zinc-500">
               담당 보드 · 저장뷰 · 받는 알림을 자리에 묶는 것은 <b>다음 단계</b>예요.
@@ -296,7 +298,7 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
                 <div className="flex gap-2 py-0.5"><span className="w-20 shrink-0 text-zinc-500">이름</span><b>{occupant.displayName}</b></div>
                 <div className="flex gap-2 py-0.5">
                   <span className="w-20 shrink-0 text-zinc-500">호칭</span>
-                  <span>{occupant.titleKnown ? (occupant.title ?? <span className="text-zinc-400">미설정</span>) : <span className="text-zinc-400">확인 못 함</span>}</span>
+                  <span>{occupant.titleKnown ? (occupant.title ?? <span className="text-zinc-400">미설정</span>) : <span className="text-zinc-400">모름</span>}</span>
                 </div>
                 <div className="flex gap-2 py-0.5">
                   <span className="w-20 shrink-0 text-zinc-500">상태</span>

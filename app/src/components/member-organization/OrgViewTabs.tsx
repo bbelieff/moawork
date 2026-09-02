@@ -193,11 +193,25 @@ export function OrgViewTabs({
 
   /*
    * #683 — 자리는 «부서 × 역할» 에서 읽는다. 새 엔티티를 만들지 않는다.
-   *   공석도 자리다 — 팀장이 비어 있으면 그 사실이 화면에서 사라지면 안 된다.
+   *
+   * ★ 「하는 일」이 적혀 있는 자리를 «같이» 넘긴다. 이걸 빼면 자리가 생기는 길이
+   *   「사람이 앉는다」 하나뿐이 되어 **사람이 없는 자리는 만들어질 수가 없다** —
+   *   팀장이 나가는 순간 그 자리가 화면에서 사라지고, 붉은 「공석」도 앰버 「모름」도
+   *   영원히 안 뜨는 죽은 코드가 된다. 공석도 자리다.
    */
+  const declaredSeats = useMemo(
+    () =>
+      seatDefinitions
+        ? [...seatDefinitions.values()].map((definition) => ({
+            departmentId: definition.departmentId,
+            role: definition.role,
+          }))
+        : [],
+    [seatDefinitions],
+  );
   const { seats, seatlessMembers } = useMemo(
-    () => deriveSeats({ departments: model.departments, members: model.members }),
-    [model],
+    () => deriveSeats({ departments: model.departments, members: model.members, declaredSeats }),
+    [model, declaredSeats],
   );
   const seatCounts = useMemo(() => seatSummary(seats, seatlessMembers), [seats, seatlessMembers]);
   const activeSeat = findSeat(seats, selectedSeatId) ?? seats[0] ?? null;

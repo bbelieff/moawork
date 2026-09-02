@@ -1,6 +1,7 @@
 "use client";
 
 import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
+import { roleLabel } from "@/lib/auth/roles";
 
 import {
   type CSSProperties,
@@ -60,10 +61,11 @@ export type WorkspaceSwitcherProps = {
   defaultOpen?: boolean;
 };
 
+// ★ 이름표는 lib/auth/roles.ts 하나에서 온다. 여기 적으면 사이드바와 조직관리가 어긋난다.
 const ROLE_LABEL: Record<WorkspaceRole, string> = {
-  owner: "대표",
-  admin: "관리자",
-  member: "구성원",
+  owner: roleLabel("owner"),
+  admin: roleLabel("admin"),
+  member: roleLabel("member"),
 };
 
 const CANONICAL_SLUG = /^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/u;

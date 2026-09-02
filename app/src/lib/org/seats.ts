@@ -131,20 +131,31 @@ export function seatName(seat: Pick<Seat, "departmentName" | "role">): string {
  * ★ **「공석」은 «있어야 하는데 없다» 는 뜻이다.** 그 «있어야 한다» 를 우리가 멋대로 정하면
  *   화면이 없는 사실을 단언한다. 그래서 기본값을 «없음» 으로 바꾼다.
  *
- * 자리가 생기는 근거는 이제 둘이다 —
- *   ① 지금 사람이 앉아 있다        (departments × org_members 에서 읽는다)
- *   ② 부르는 쪽이 «있어야 한다» 고 말했다  (expectVacant — 데모·테스트가 쓴다)
+ * 자리가 생기는 근거는 이제 셋이다 —
+ *   ① 지금 사람이 앉아 있다              departments × org_members 에서 읽는다
+ *   ② ★ 그 자리의 「하는 일」이 적혀 있다   declaredSeats — 회사가 «이 자리가 있다» 고 말한 것
+ *   ③ 부르는 쪽이 «있어야 한다» 고 말했다   expectVacant — 데모·테스트가 쓴다
+ *
+ * ★ ②가 «공석» 을 살린다. ①만 있으면 사람이 없는 자리는 만들어질 수가 없어서
+ *   팀장이 나가는 순간 그 자리가 화면에서 사라진다. 적어 둔 「하는 일」이 그 자리의 근거다.
  *
  * ★ 기능을 지우지 않았다. 데모 데이터는 `expectVacant: ["team_lead"]` 를 «일부러» 넘겨
- *   공석이 있는 조직을 보여줄 수 있다. 바뀐 것은 **조용한 기본값** 하나다.
+ *   아무도 적어 두지 않은 자리까지 공석으로 보여줄 수 있다. 바뀐 것은 **조용한 기본값** 하나다.
  */
 export function deriveSeats(input: {
   departments: readonly { id: string; name: string }[];
   members: readonly OrgMemberView[];
   /**
+   * ★ 「하는 일」이 적혀 있는 자리. 사람이 없어도 남는다.
+   *
+   *   화면은 `seat_definitions` 의 열쇠를 그대로 넘긴다 — 누가 그 자리에 대해 적어 뒀다는 것은
+   *   «회사가 그 자리를 인정했다» 는 뜻이고, 그 사람이 나가도 자리는 남아야 한다.
+   */
+  declaredSeats?: readonly SeatKey[];
+  /**
    * 부서마다 «있어야 한다» 고 볼 역할.
    *
-   * ★ 기본은 «없음» 이다. 안 넘기면 사람이 앉은 자리만 나온다 —
+   * ★ 기본은 «없음» 이다. 안 넘기면 사람이 앉았거나 적어 둔 자리만 나온다 —
    *   회사가 말한 적 없는 자리를 우리가 만들어 「비었다」고 하지 않는다.
    */
   expectVacant?: readonly MemberRole[];
@@ -178,7 +189,26 @@ export function deriveSeats(input: {
     );
   }
 
-  // 비어 있어도 보여야 하는 자리를 채운다.
+  /*
+   * ② ★ «회사가 인정한» 자리는 사람이 없어도 남는다.
+   *
+   *   누군가 그 자리의 「하는 일」을 적어 뒀다면 그건 **회사가 «이 자리가 있다» 고 말한 것**이다.
+   *   그 사람이 나가도 적어 둔 글은 남고, 자리도 남아야 한다 —
+   *   그게 이 기능이 내건 말이다: 「사람이 바뀌어도 남아요」.
+   *
+   * ★★ 이게 없으면 «공석» 이 화면에 아예 못 나온다.
+   *   자리가 생기는 길이 「사람이 앉는다」 하나뿐이면 occupants 가 빈 자리는 만들어질 수가 없고,
+   *   **팀장이 나가는 순간 그 자리가 화면에서 사라진다.** 붉은 「공석」도 앰버 「모름」도 죽은 코드가 된다.
+   *   #640 과 #683 이 두 번에 걸쳐 고친 것이 정확히 그 「사라짐」이었다.
+   */
+  for (const key of input.declaredSeats ?? []) {
+    put(key, null);
+  }
+
+  /*
+   * ③ 부르는 쪽이 «있어야 한다» 고 말한 자리. 데모·테스트가 쓴다.
+   *   화면은 안 넘긴다 — 회사가 말한 적 없는 자리를 우리가 만들지 않는다.
+   */
   for (const department of input.departments) {
     for (const role of input.expectVacant ?? []) {
       put({ departmentId: department.id, role }, null);

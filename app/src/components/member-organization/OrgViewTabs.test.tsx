@@ -155,3 +155,76 @@ describe("Issue #643 조직관리 갈래 접근성", () => {
     expect(host.querySelector('[role="tablist"]')?.getAttribute("aria-describedby")).toBe(hint?.id);
   });
 });
+
+/*
+ * ★ «공석» 이 화면에 «실제로» 뜨는지 — 배선 시험이다.
+ *
+ * 이 저장소가 반복하는 병은 「부품은 다 만들어 놓고 배선을 안 한다」이고,
+ * 이 화면은 그 병을 이미 두 번 앓았다(#640 · #683). 세 번째가 여기서 날 뻔했다 —
+ * deriveSeats 의 기본값을 바꾸면서 화면이 «사람 없는 자리» 를 만들 길을 통째로 잃었고,
+ * 그러면 붉은 「공석」도 앰버 「모름」도 영원히 안 뜨는 죽은 코드가 된다.
+ *
+ * 순수 함수 시험(seats.test.ts)은 인자를 «우리가» 넣어서 부르므로 이걸 못 잡는다.
+ * 화면을 실제로 그려서 배지가 나오는지 봐야 한다.
+ */
+describe("#683 공석이 화면에 실제로 뜬다", () => {
+  const withDefinition = async (seatKey: { departmentId: string | null; role: "team_lead" }) => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(
+        <OrgViewTabs
+          model={model}
+          initialView="seats"
+          departmentSlot={<div>부서 관리</div>}
+          permissionSlot={<div>권한 관리</div>}
+          seatDefinitions={
+            new Map([
+              [
+                `${seatKey.departmentId ?? "-"}:${seatKey.role}`,
+                {
+                  departmentId: seatKey.departmentId,
+                  role: seatKey.role,
+                  summary: "리드를 3일 안에 첫 통화까지",
+                  duties: [],
+                  escalate: [],
+                  handle: [],
+                  avoid: [],
+                  signals: null,
+                  handover: null,
+                  updatedAt: null,
+                  updatedById: null,
+                  updatedByName: null,
+                },
+              ],
+            ])
+          }
+        />,
+      );
+    });
+    return host;
+  };
+
+  it("★ 「하는 일」이 적혀 있으면 사람이 없어도 그 자리가 남고 「공석」이 뜬다", async () => {
+    // 픽스처에 team_lead 인 사람은 없다 — 팀장이 나간 회사와 같은 모양이다.
+    const host = await withDefinition({ departmentId: DEPARTMENT_ID, role: "team_lead" });
+
+    expect(host.querySelector("[data-seat-vacant]")).not.toBeNull();
+    expect(host.textContent).toContain("공석");
+    expect(host.textContent).toContain("1팀 팀장");
+  });
+
+  it("★ 적어 둔 자리가 없으면 «없는 공석» 을 만들지 않는다 — 세 명 회사가 겪던 것", async () => {
+    const host = await renderFixture();
+    // 자리 갈래로 옮긴다.
+    const seatTab = [...host.querySelectorAll<HTMLElement>('[role="tab"]')].find(
+      (tab) => tab.textContent?.trim() === "자리",
+    );
+    await act(async () => seatTab?.click());
+
+    // 머리말은 「공석 N」을 항상 그리므로 «배지» 와 «숫자» 로 잰다. 글자만 세면 늘 통과한다.
+    expect(host.querySelector("[data-seat-vacant]")).toBeNull();
+    expect(host.textContent).toContain("공석 0");
+  });
+});

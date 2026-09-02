@@ -3,6 +3,7 @@
 import { type FormEvent, useId, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { MemberSummaryRow } from "@/lib/auth/member-org-summary";
+import { roleLabel, scopeLabel } from "@/lib/auth/roles";
 
 type Props = {
   orgId: string;
@@ -60,13 +61,11 @@ export function normalizePermissionScopeKey(value: string): string | null {
   return /^[a-z0-9][a-z0-9:_./-]{0,95}$/.test(normalized) ? normalized : null;
 }
 
-function roleLabel(role: MemberSummaryRow["role"]) {
-  return role === "owner" ? "대표" : role === "admin" ? "관리자" : role === "team_lead" ? "팀장" : "멤버";
-}
-
-function scopeLabel(scope: MemberSummaryRow["scope"]) {
-  return scope === "all" ? "회사 업무 전체" : scope === "department" ? "내 부서 이하" : "배정된 업무";
-}
+/*
+ * ★ 이름표를 여기 적지 않는다 — 정본은 lib/auth/roles.ts 다.
+ *   전에는 member 를 「멤버」라 부르고 범위를 「회사 업무 전체 / 내 부서 이하 / 배정된 업무」로
+ *   적어 뒀다. 같은 화면의 옆 갈래·옆 카드가 다른 말을 쓰고 있었다.
+ */
 
 function teamLabel(teamKey: string | null) {
   return teamKey ? `팀 · ${teamKey}` : "팀 미지정";
@@ -220,8 +219,14 @@ export function MemberOrganizationChart({ orgId, owner, admins, members, canEdit
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">대표 권한과 조직 단계는 이 화면에서 바꾸거나 지울 수 없어요.</p>
         <ul className="mt-3"><MemberCard member={owner} protectedOwner isViewer={owner.userId === viewerUserId} canEdit={false} onProfileEdit={beginProfileEdit} onHierarchyEdit={beginHierarchyEdit} onPermissionEdit={beginPermissionEdit} /></ul>
       </section>
-      {section("팀장", admins, "아직 팀장이 없어요.")}
-      {section("사원", members, "아직 사원이 없어요.")}
+      {/*
+        ★ 전에는 admin 묶음에 「팀장」이라는 제목을 달았다. 그런데 그 안의 카드는
+          자기를 「관리자」라고 적었고, 바로 아래 권한표는 team_lead 를 「팀장」으로 따로 그렸다.
+          한 갈래에 「팀장」이 서로 다른 뜻으로 두 번 떴다는 뜻이다.
+          제목은 그 묶음이 «무엇의 묶음인가» 를 말해야 한다.
+      */}
+      {section(roleLabel("admin"), admins, `아직 ${roleLabel("admin")}가 없어요.`)}
+      {section(roleLabel("member"), members, `아직 ${roleLabel("member")}이 없어요.`)}
       {editor?.kind === "profile" ? (
         <section aria-label="구성원 프로필 수정" className="rounded-2xl border border-mw-primary bg-white p-4 dark:bg-zinc-950">
           <h2 className="font-semibold">{editor.member.displayName}의 직책과 팀</h2>
