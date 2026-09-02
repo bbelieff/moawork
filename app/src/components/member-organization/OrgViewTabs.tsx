@@ -12,7 +12,7 @@ import { membersOfDepartment, ORG_VIEWS, type OrgMemberView, type OrgView, type 
 import { roleLabelOrUnknown } from "@/lib/auth/roles";
 import { OrgChartFlow } from "./OrgChartFlow";
 import { SeatPanel } from "./SeatPanel";
-import { deriveSeats, findSeat, seatName, seatSummary, SEAT_ROLE_LABEL, type Seat } from "@/lib/org/seats";
+import { deriveSeats, findSeat, seatName, seatSummary, type Seat } from "@/lib/org/seats";
 import { seatDefinitionIsEmpty, type SeatDefinition } from "@/lib/org/seat-definitions";
 
 /**
