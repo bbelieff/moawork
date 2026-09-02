@@ -13,7 +13,7 @@ import { roleLabelOrUnknown } from "@/lib/auth/roles";
 import { OrgChartFlow } from "./OrgChartFlow";
 import { SeatPanel } from "./SeatPanel";
 import { deriveSeats, findSeat, seatName, seatSummary, SEAT_ROLE_LABEL, type Seat } from "@/lib/org/seats";
-import type { SeatDefinition } from "@/lib/org/seat-definitions";
+import { seatDefinitionIsEmpty, type SeatDefinition } from "@/lib/org/seat-definitions";
 
 /**
  * #640 ①③ — 조직관리의 «보는 방식» 다섯 갈래와 「부서 ↔ 사람」 잇기.
@@ -199,16 +199,27 @@ export function OrgViewTabs({
    *   팀장이 나가는 순간 그 자리가 화면에서 사라지고, 붉은 「공석」도 앰버 「모름」도
    *   영원히 안 뜨는 죽은 코드가 된다. 공석도 자리다.
    */
-  const declaredSeats = useMemo(
-    () =>
-      seatDefinitions
-        ? [...seatDefinitions.values()].map((definition) => ({
-            departmentId: definition.departmentId,
-            role: definition.role,
-          }))
-        : [],
-    [seatDefinitions],
-  );
+  const declaredSeats = useMemo(() => {
+    if (!seatDefinitions) return [];
+    const known = new Set(model.departments.map((row) => row.id));
+    return (
+      [...seatDefinitions.values()]
+        /*
+         * ★ «빈» 정의서는 선언이 아니다.
+         *   「쓰기」를 눌러 아무것도 안 적고 저장하면 행은 생긴다. 그걸 선언으로 치면
+         *   그 자리가 영구 공석이 되는데, **지우는 길이 없다**(마이그 146 에 DELETE 정책·RPC 없음).
+         *   되돌릴 수 없는 화면 상태를 만들지 않는다.
+         */
+        .filter((definition) => !seatDefinitionIsEmpty(definition))
+        /*
+         * ★ 없는 부서를 가리키는 정의서는 거른다.
+         *   부서를 지우면 정의서도 같이 지워지지만(on delete cascade), 조직도와 정의서를
+         *   «같은 물결» 로 따로 읽으므로 그 사이에 지워지면 부서명 없는 유령 자리가 뜬다.
+         */
+        .filter((definition) => definition.departmentId === null || known.has(definition.departmentId))
+        .map((definition) => ({ departmentId: definition.departmentId, role: definition.role }))
+    );
+  }, [seatDefinitions, model.departments]);
   const { seats, seatlessMembers } = useMemo(
     () => deriveSeats({ departments: model.departments, members: model.members, declaredSeats }),
     [model, declaredSeats],
@@ -440,6 +451,23 @@ export function OrgViewTabs({
               {seats.length === 0 ? (
                 <p className="px-2 py-6 text-sm text-zinc-500">
                   아직 부서와 사람이 없어요. 부서를 만들면 자리가 생겨요.
+                </p>
+              ) : null}
+
+              {/*
+                ★ «못 읽음» 을 「없음」처럼 보여주지 않는다.
+                  seatDefinitions 가 null 이면 «어떤 자리가 선언돼 있는지» 를 우리가 모른다.
+                  그런데 자리 목록은 사람이 앉은 것만 그리고 머리말은 「공석 0」이라고 적는다 —
+                  그건 없는 사실을 단언하는 것이다. 그래서 모른다고 말한다.
+                  「하는 일」 칸에도 같은 안내가 있지만, 자리가 안 뜨면 거기 도달할 수조차 없다.
+              */}
+              {seatDefinitions === null ? (
+                <p
+                  role="status"
+                  data-seats-unknown
+                  className="mt-1.5 rounded-lg bg-amber-50 px-2 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
+                >
+                  자리 목록을 다 못 읽었어요. 사람이 없는 자리가 더 있을 수 있어요.
                 </p>
               ) : null}
 

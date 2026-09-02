@@ -129,6 +129,14 @@ describe("역할·범위 이름표는 여기 하나가 정본이다", () => {
  *   `admin` 은 「행정 기록」에도 쓰인다(detail-event-kinds). 그건 역할 지도가 아니다.
  *   **역할 지도는 열쇠가 둘 이상 한글에 매달린다** — 그 모양만 잡는다.
  *   오탐을 내는 시험은 다음 사람이 지워 버린다. 좁게 겨냥해야 살아남는다.
+ *
+ * ★★ 그리고 «모양이 셋» 이다. 처음엔 객체 지도 하나만 봤는데,
+ *   **정작 이번에 고친 위반 다섯 중 넷이 삼항·if 사슬이었다.**
+ *   돌연변이 검증도 하필 «잡히는 유일한 모양» 을 밟아서 「잡는다」고 착각했다.
+ *
+ *       지도    owner: "대표"
+ *       삼항    role === "owner" ? "대표" : …
+ *       if      if (role === "owner") return "대표";
  */
 describe("역할 이름표를 다른 파일이 다시 적지 않는다", () => {
   const ROLE_KEYS = ["owner", "admin", "team_lead", "member"] as const;
@@ -151,9 +159,17 @@ describe("역할 이름표를 다른 파일이 다시 적지 않는다", () => {
     for (const file of sourcesUnder(root)) {
       if (resolve(file) === canonical) continue;
       const source = readFileSync(file, "utf8");
-      // owner: "대표"  ·  owner: '대표'  — 한글 이름을 역할 열쇠에 직접 매다는 모양
       const hit = ROLE_KEYS.filter((key) =>
-        new RegExp(`\\b${key}\\s*:\\s*["'][가-힣]`, "u").test(source),
+        [
+          // ① 지도    owner: "대표"
+          `\\b${key}\\s*:\\s*["'][가-힣]`,
+          /*
+           * ② 삼항·if 사슬 — `=== "owner"` 뒤 «같은 줄» 에 한글 리터럴이 오는 모양.
+           *   `? "대표"` 도, `) return { label: "대표" }` 도 여기 걸린다.
+           *   줄바꿈을 안 넘는 것이 오탐을 막는다 — 멀리 떨어진 한글은 다른 문장이다.
+           */
+          `===\\s*["']${key}["'][^\\n]{0,80}?["'][가-힣]`,
+        ].some((pattern) => new RegExp(pattern, "u").test(source)),
       );
       if (hit.length >= 2) offenders.push(`${file.replace(root, "src")} — ${hit.join(", ")}`);
     }

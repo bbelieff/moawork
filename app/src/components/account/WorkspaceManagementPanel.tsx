@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { requestWorkspaceDeletionAction, restoreWorkspaceDeletionAction, type WorkspaceDeletionActionState } from "@/app/(app)/settings/account/actions";
 import styles from "./account.module.css";
+import { roleLabel } from "@/lib/auth/roles";
 
 export type ManagedWorkspace = {
   orgId: string;
@@ -27,7 +28,8 @@ function ActiveWorkspaceCard({ workspace }: { workspace: ManagedWorkspace }) {
   }, [state.kind]);
   const owner = workspace.role === "owner";
   return <li className={styles.workspaceRow}>
-    <div><strong>{workspace.name}</strong><small>/w/{workspace.slug} · {workspace.role === "owner" ? "대표" : workspace.role === "admin" ? "관리자" : "멤버"}</small></div>
+    {/* ★ 이름표는 lib/auth/roles.ts 하나에서 온다. 여기가 마지막으로 「멤버」라 부르던 곳이다. */}
+    <div><strong>{workspace.name}</strong><small>/w/{workspace.slug} · {roleLabel(workspace.role)}</small></div>
     {owner ? <details className={styles.deletionDetails}>
       <summary>회사 삭제 예약</summary>
       <p>회사는 즉시 지워지지 않아요. 목록에서 숨겨지고, 되돌릴 수 있는 삭제 예정 상태로 바뀝니다.</p>
