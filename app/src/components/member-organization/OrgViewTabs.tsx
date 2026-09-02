@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { membersOfDepartment, ORG_VIEWS, type OrgMemberView, type OrgView, type OrgViewModel } from "@/lib/org/org-view";
+import { roleLabelOrUnknown } from "@/lib/auth/roles";
 import { OrgChartFlow } from "./OrgChartFlow";
 import { SeatPanel } from "./SeatPanel";
 import { deriveSeats, findSeat, seatName, seatSummary, SEAT_ROLE_LABEL, type Seat } from "@/lib/org/seats";
@@ -30,17 +31,13 @@ import type { SeatDefinition } from "@/lib/org/seat-definitions";
 const VIEW_LABEL: Record<OrgView, string> = {
   seats: "자리",
   list: "목록",
-  chart: "조직도 한눈에 보기",
+  // 다른 넷이 두세 글자인데 이것만 「조직도 한눈에 보기」라 줄 안에서 혼자 길었다.
+  chart: "조직도",
   perm: "권한",
   rules: "알림 규칙",
 };
 
-const ROLE_LABEL: Record<string, string> = {
-  owner: "대표",
-  admin: "관리자",
-  team_lead: "팀장",
-  member: "구성원",
-};
+// ★ 역할 이름표는 lib/auth/roles.ts 하나에서 온다. 여기 적으면 옆 갈래와 어긋난다.
 
 function scopeLabel(member: OrgMemberView): string | null {
   // null = 모른다. 「본인 담당분」으로 떨어뜨리면 가장 좁은 범위라고 «단언» 하는 것이 된다.
@@ -54,13 +51,13 @@ function scopeLabel(member: OrgMemberView): string | null {
 
 /** 모르는 칸은 비워 두지 않고 «모른다» 고 적는다 — 빈칸은 「없음」으로 읽힌다. */
 function Unknown(): ReactElement {
-  return <span className="text-zinc-400">확인 못 함</span>;
+  return <span className="text-zinc-400">모름</span>;
 }
 
 function ReportsToCell({ member, known }: { member: OrgMemberView; known: boolean }): ReactElement {
   // ★ 못 읽었으면 이름을 «단언» 하지 않는다. 보고 예외(013)를 못 읽은 상태에서 그린 값은
   //   틀릴 수 있고, 틀린 이름은 빈칸보다 나쁘다.
-  if (!known) return <span className="text-zinc-400">확인 못 함</span>;
+  if (!known) return <span className="text-zinc-400">모름</span>;
   if (!member.reportsToName) return <span className="text-zinc-400">— 최상위</span>;
   return (
     <span className="inline-flex flex-col items-start">
@@ -113,7 +110,7 @@ function MemberTable({ rows, known }: { rows: OrgMemberView[]; known: boolean })
                 </div>
               </td>
               <td className="px-3 py-2.5 text-zinc-500">{member.primaryDepartmentName ?? "미배정"}</td>
-              <td className="px-3 py-2.5">{member.role === null ? <Unknown /> : ROLE_LABEL[member.role] ?? member.role}</td>
+              <td className="px-3 py-2.5">{member.role === null ? <Unknown /> : roleLabelOrUnknown(member.role)}</td>
               <td className="px-3 py-2.5"><ReportsToCell member={member} known={known} /></td>
               <td className="px-3 py-2.5 text-zinc-500">{scopeLabel(member) ?? <Unknown />}</td>
               <td className="px-3 py-2.5">
@@ -386,11 +383,11 @@ export function OrgViewTabs({
               data-region="all"
               className="flex items-center gap-2 bg-sky-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
             >
-              전체 — 우리 회사
+              우리 회사
               <span className="ml-auto font-normal normal-case tracking-normal">
                 자리 {seatCounts.seatCount} · 사람 {seatCounts.peopleCount} · 공석 {seatCounts.vacantCount}
                 {/* 「자리」 단위임을 붙여 둔다 — 아래 구역의 「…N명」과 단위가 달라 나란히 두면 헷갈린다. */}
-                {seatCounts.unknownCount > 0 ? ` · 확인 못 한 자리 ${seatCounts.unknownCount}` : ""}
+                {seatCounts.unknownCount > 0 ? ` · 모르는 자리 ${seatCounts.unknownCount}` : ""}
                 {/* 비활성은 「사람」에 합치지 않는다. 합치면 전원 퇴사한 회사가 「사람 3」으로 보인다. */}
                 {seatCounts.inactiveCount > 0 ? ` · 비활성 ${seatCounts.inactiveCount}` : ""}
               </span>
@@ -414,7 +411,7 @@ export function OrgViewTabs({
                     // ★ 이 부서에 역할을 못 읽은 사람이 있다. 그 사람이 이 자리의 주인일 수 있으므로
                     //   «비었다» 고 단언하지 않는다. 붉은색도 쓰지 않는다 — 붉은색은 «확인된 공석» 의 색이다.
                     <span data-seat-unknown className="shrink-0 text-xs font-semibold text-amber-700 dark:text-amber-400">
-                      확인 못 함
+                      모름
                     </span>
                   ) : seat.status === "vacant" ? (
                     <span data-seat-vacant className="shrink-0 text-xs font-semibold text-red-700 dark:text-red-400">공석</span>
@@ -441,10 +438,10 @@ export function OrgViewTabs({
               {seatlessMembers.length > 0 ? (
                 <div data-seatless-region className="mt-1.5 border-t border-zinc-200 pt-1.5 dark:border-zinc-800">
                   <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                    자리를 못 정한 사람 {seatlessMembers.length}명
+                    자리 없음 · {seatlessMembers.length}명
                   </p>
                   <p className="px-2 pb-1.5 text-xs text-zinc-500">
-                    자리는 못 정했지만 빠진 사람은 아니에요.
+                    빠진 사람은 아니에요.
                   </p>
                   {seatlessMembers.map((member) => (
                     <div
@@ -468,7 +465,7 @@ export function OrgViewTabs({
                           member.active ? "text-amber-700 dark:text-amber-400" : "text-zinc-500"
                         }`}
                       >
-                        {member.active ? "역할 확인 못 함" : "비활성"}
+                        {member.active ? "역할 모름" : "비활성"}
                       </span>
                     </div>
                   ))}

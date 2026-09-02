@@ -8,6 +8,8 @@
 // 이 상수는 supabase/migrations/055_permission_role_matrix.sql 의 `perm_baseline()` 함수와
 // 반드시 같은 값을 가져야 한다 — 드리프트는 matrix.test.ts 가 막는다.
 
+import { roleLabel, scopeLabel } from "@/lib/auth/roles";
+
 export const ROLES = ["owner", "admin", "team_lead", "member"] as const;
 export type Role = (typeof ROLES)[number];
 
@@ -15,20 +17,30 @@ export function isRole(value: string): value is Role {
   return (ROLES as readonly string[]).includes(value);
 }
 
+/*
+ * ★ 이름표를 여기 적지 않는다 — 정본은 lib/auth/roles.ts 다.
+ *   전에는 「소유자」·「멤버」였고, 같은 사람이 조직관리에서는 「대표」·「구성원」으로 보였다.
+ *   권한표와 조직관리는 «나란히 있는 갈래» 라서 그 차이가 특히 눈에 띄었다.
+ */
 export const ROLE_LABEL: Record<Role, string> = {
-  owner: "소유자",
-  admin: "관리자",
-  team_lead: "팀장",
-  member: "멤버",
+  owner: roleLabel("owner"),
+  admin: roleLabel("admin"),
+  team_lead: roleLabel("team_lead"),
+  member: roleLabel("member"),
 };
 
-// D24 — 조회 범위가 뷰보다 먼저 적용된다. 역할별 데이터 범위(표시용 · 실제 행 단위 시행은
-// 기존 org_members.scope=all/assigned 및 후속 부서-스코프 작업 소관, 이 카드는 판정 로직만 소유).
+/*
+ * D24 — 조회 범위가 뷰보다 먼저 적용된다. 역할별 데이터 범위(표시용 · 실제 행 단위 시행은
+ * 기존 org_members.scope=all/assigned 및 후속 부서-스코프 작업 소관, 이 카드는 판정 로직만 소유).
+ *
+ * ★ 이건 «역할 → 기본 조회 범위» 라 scope 이름표와 다른 축이지만, 같은 말을 쓴다.
+ *   「전체」와 「회사 전체」가 한 화면에 같이 뜨면 다른 뜻으로 읽힌다.
+ */
 export const ROLE_DATA_SCOPE_LABEL: Record<Role, string> = {
-  owner: "전체",
-  admin: "전체",
-  team_lead: "내 부서 이하",
-  member: "본인 담당분",
+  owner: scopeLabel("all"),
+  admin: scopeLabel("all"),
+  team_lead: scopeLabel("department"),
+  member: scopeLabel("assigned"),
 };
 
 export type PermItem = {

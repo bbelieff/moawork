@@ -55,7 +55,7 @@ describe("#683 자리 열쇠", () => {
 describe("#683 자리 이름", () => {
   it("부서 + 역할로 읽힌다", () => {
     expect(seatName({ departmentName: "영업1팀", role: "team_lead" })).toBe("영업1팀 팀장");
-    expect(seatName({ departmentName: "관리부", role: "member" })).toBe("관리부 담당");
+    expect(seatName({ departmentName: "관리부", role: "member" })).toBe("관리부 구성원");
   });
 
   it("부서가 없으면 역할만", () => {
@@ -115,14 +115,33 @@ describe("#683 사람에서 자리를 읽는다", () => {
     expect(seat.status).toBe("occupied");
   });
 
+  it("★ 화면이 부르는 그대로 부르면 «없는 팀장 자리» 가 안 생긴다 — 세 명 회사가 겪던 것", () => {
+    /*
+     * 실제로 있었던 일 — expectVacant 기본값이 ["team_lead"] 라서 부서마다 팀장 자리가
+     * 자동으로 생겼다. 세 명짜리 회사가 부서 둘을 만들면 곧바로 「공석 2」가 붉게 떴다.
+     * 그 회사엔 팀장이 없고 «없는 게 정상» 인데, 화면이 없는 사실을 단언한 것이다.
+     *
+     * ★ 「공석」은 «있어야 하는데 없다» 는 뜻이고, 그 «있어야 한다» 를 우리가 정하면 안 된다.
+     */
+    const { seats } = deriveSeats({
+      departments: DEPTS,
+      members: [
+        person({ userId: "u1", displayName: "영업 담당", primaryDepartmentId: "d1", role: "member" }),
+        person({ userId: "u2", displayName: "운영 담당", primaryDepartmentId: "d2", role: "member" }),
+      ],
+    });
+    expect(seats.map((s) => s.id)).toEqual(["d1:member", "d2:member"]);
+    expect(seats.every((s) => s.status === "occupied")).toBe(true);
+    expect(seatSummary(seats).vacantCount).toBe(0);
+  });
+
   /*
-   * ★ 여기부터는 «화면이 부르는 그대로» 부른다 — expectVacant 를 넘기지 않는다.
+   * ★ 아래부터는 «공석이 있어야 하는» 조직을 재려고 expectVacant 를 «일부러» 넘긴다.
    *
-   *   위의 시험들은 대부분 expectVacant: [] 를 넘겨서 공석 생성을 꺼 놓고 쟀다.
-   *   그런데 화면(OrgViewTabs)은 그 인자를 안 넘긴다 → 기본값 ["team_lead"] 로 돈다.
-   *   즉 «프로덕션 호출 모양» 에 시험이 하나도 없었고, 그래서 아래 P0 가 초록으로 통과했다.
-   *   시험은 «되는 걸 확인하는 것» 이 아니라 «틀린 걸 잡는 것» 이라 호출 모양이 같아야 한다.
+   *   기본값이 «없음» 으로 바뀌었으므로(위 시험) 공석·모름 판정을 재려면 켜야 한다.
+   *   데모·테스트 데이터가 실제로 그렇게 부른다 — 기능을 지운 게 아니라 기본값만 끈 것이다.
    */
+  const WITH_LEAD = { expectVacant: ["team_lead"] } as const;
   it("★ 역할을 못 읽은 사람이 그 부서에 있으면 팀장 자리를 «공석» 이라 단언하지 않는다", () => {
     // 실제로 있었던 일 — isRole 가드가 team_lead 를 빠뜨려 팀장 행이 role: null 로 들어왔다.
     // 그때 화면은 「d1 팀장 = 공석」을 붉게 단언했다. 팀장이 앉아 있는데도.
@@ -132,6 +151,7 @@ describe("#683 사람에서 자리를 읽는다", () => {
         person({ userId: "u1", displayName: "김팀장", primaryDepartmentId: "d1", role: null }),
         person({ userId: "u2", displayName: "박담당", primaryDepartmentId: "d1", role: "member" }),
       ],
+      ...WITH_LEAD,
     });
 
     const d1 = seats.find((s) => s.id === "d1:team_lead")!;
@@ -158,6 +178,7 @@ describe("#683 사람에서 자리를 읽는다", () => {
         person({ userId: "u1", displayName: "박담당", primaryDepartmentId: "d1", role: "member" }),
         person({ userId: "u2", displayName: "나간팀장", primaryDepartmentId: "d1", role: null, active: false }),
       ],
+      ...WITH_LEAD,
     });
     const d1 = seats.find((s) => s.id === "d1:team_lead")!;
     expect(d1.status).toBe("vacant"); // 「확인 못 함」이 아니다 — 우리는 왜 없는지 «안다»
@@ -168,6 +189,7 @@ describe("#683 사람에서 자리를 읽는다", () => {
     const { seats } = deriveSeats({
       departments: DEPTS,
       members: [person({ userId: "u3", displayName: "확인중", primaryDepartmentId: "d1", role: null, active: true })],
+      ...WITH_LEAD,
     });
     expect(seats.find((s) => s.id === "d1:team_lead")!.status).toBe("unknown");
   });
@@ -180,6 +202,7 @@ describe("#683 사람에서 자리를 읽는다", () => {
         person({ userId: "u2", displayName: "나간사람2", primaryDepartmentId: "d1", role: null, active: false }),
         person({ userId: "u3", displayName: "나간사람3", primaryDepartmentId: null, role: null, active: false }),
       ],
+      ...WITH_LEAD,
     });
     const counts = seatSummary(seats, seatlessMembers);
     expect(counts.peopleCount).toBe(0); // 지금 일하는 사람은 0명이다
@@ -194,6 +217,7 @@ describe("#683 사람에서 자리를 읽는다", () => {
         person({ userId: "u1", displayName: "김팀장", primaryDepartmentId: "d1", role: null }),
         person({ userId: "u2", displayName: "박담당", primaryDepartmentId: "d1", role: "member" }),
       ],
+      ...WITH_LEAD,
     });
     // seatlessMembers 를 안 넘기면 1명으로 세어진다 — 실제로 그렇게 틀렸었다.
     expect(seatSummary(seats, seatlessMembers).peopleCount).toBe(2);

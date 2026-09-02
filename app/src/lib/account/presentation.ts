@@ -1,4 +1,5 @@
-import type { Ctx, MemberRole, MemberScope } from "@/lib/types";
+import type { Ctx } from "@/lib/types";
+import { roleLabel, scopeLabel } from "@/lib/auth/roles";
 
 export type AccountViewModel = {
   displayName: string;
@@ -12,18 +13,7 @@ export type AccountViewModel = {
   canManageCompany: boolean;
 };
 
-const ROLE_LABELS: Record<MemberRole, string> = {
-  owner: "대표",
-  admin: "관리자",
-  team_lead: "팀장",
-  member: "사원",
-};
-
-const SCOPE_LABELS: Record<MemberScope, string> = {
-  all: "회사 업무 전체",
-  department: "내 부서 이하",
-  assigned: "내게 배정된 업무",
-};
+// ★ 이름표는 lib/auth/roles.ts 하나에서 온다. 여기 적으면 그날부터 어긋나기 시작한다.
 
 export function displayAccountName(name: string | null | undefined): string {
   const value = name?.trim();
@@ -53,9 +43,9 @@ function membershipPresentation(ctx: Ctx): Pick<
   // "회사 역할 확인 중" + 관리 불가로 고착됐다 → 실제 멤버십 역할을 그대로 쓴다.
   // (플랫폼 관리자라는 사실은 권한을 **더** 주는 축이지, 자기 역할을 가릴 이유가 아니다.)
   return {
-    roleLabel: ROLE_LABELS[ctx.role],
-    roleDescription: `${ROLE_LABELS[ctx.role]}로 참여하고 있어요.`,
-    scopeLabel: SCOPE_LABELS[ctx.scope],
+    roleLabel: roleLabel(ctx.role),
+    roleDescription: `${roleLabel(ctx.role)}로 참여하고 있어요.`,
+    scopeLabel: scopeLabel(ctx.scope),
     canManageCompany: ctx.role === "owner",
   };
 }

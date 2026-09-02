@@ -27,7 +27,7 @@
  * 안에 두면 검사할 자리가 없어진다(#638). 여기는 DOM 을 모른다.
  */
 
-import type { MemberRole, MemberScope } from "@/lib/auth/roles";
+import { roleLabel, type MemberRole, type MemberScope } from "@/lib/auth/roles";
 import type { OrgMemberView } from "./org-view";
 
 /**
@@ -93,11 +93,19 @@ const ROLE_ORDER: Record<MemberRole, number> = {
   member: 3,
 };
 
+/*
+ * ★ 이름표를 여기 적지 않는다 — 정본은 lib/auth/roles.ts 다.
+ *
+ *   전에는 member 를 「담당」이라 불렀다. 자리 이름(「영업1팀 담당」)에는 잘 맞았지만
+ *   ① 같은 사람이 옆 갈래(목록·권한)에서는 「구성원」·「멤버」로 보였고,
+ *   ② 「담당」은 담당자·담당 보드로 이미 다른 뜻에 쓰고 있었다.
+ *   자리 이름 하나가 예뻐지는 것보다 «같은 것을 같은 이름으로 부르는» 쪽이 중요하다.
+ */
 const ROLE_LABEL: Record<MemberRole, string> = {
-  owner: "대표",
-  admin: "관리자",
-  team_lead: "팀장",
-  member: "담당",
+  owner: roleLabel("owner"),
+  admin: roleLabel("admin"),
+  team_lead: roleLabel("team_lead"),
+  member: roleLabel("member"),
 };
 
 /** 화면에 적는 자리 이름 — 「영업1팀 팀장」. 부서가 없으면 역할만. */
@@ -112,16 +120,33 @@ export function seatName(seat: Pick<Seat, "departmentName" | "role">): string {
  * ★ 역할을 모르는 사람(role === null)은 자리를 만들지 않는다.
  *   모르는 것을 「담당」으로 떨어뜨리면 없는 자리를 «단언» 하는 것이 된다 —
  *   org-view.ts 가 role 을 null 로 두는 이유와 같다.
- *   그 사람들은 seatlessMembers 로 따로 돌려주어 화면이 「확인 못 함」이라고 말하게 한다.
+ *   그 사람들은 seatlessMembers 로 따로 돌려주어 화면이 「역할 모름」이라고 말하게 한다.
  *
- * ★ 「있어야 하는데 비어 있는 자리」도 만든다(expectVacant).
- *   부서마다 팀장 자리가 있어야 하는데 아무도 없으면 그 자리는 «공석» 이지 «없는 것» 이 아니다.
- *   그게 안 보이면 「우리 팀에 팀장이 없다」는 사실이 화면에서 사라진다.
+ * ## ★ 「있어야 하는 자리」를 «우리가» 정하지 않는다
+ *
+ * 전에는 `expectVacant` 기본값이 `["team_lead"]` 였다. 부서마다 팀장 자리를 자동으로 만들었고,
+ * 그래서 **세 명짜리 회사가 부서 둘을 만들면 곧바로 「공석 2」가 붉게 떴다.**
+ * 그 회사엔 팀장이 없고, 없는 게 정상이다. 아무도 「팀장이 필요하다」고 말한 적이 없다.
+ *
+ * ★ **「공석」은 «있어야 하는데 없다» 는 뜻이다.** 그 «있어야 한다» 를 우리가 멋대로 정하면
+ *   화면이 없는 사실을 단언한다. 그래서 기본값을 «없음» 으로 바꾼다.
+ *
+ * 자리가 생기는 근거는 이제 둘이다 —
+ *   ① 지금 사람이 앉아 있다        (departments × org_members 에서 읽는다)
+ *   ② 부르는 쪽이 «있어야 한다» 고 말했다  (expectVacant — 데모·테스트가 쓴다)
+ *
+ * ★ 기능을 지우지 않았다. 데모 데이터는 `expectVacant: ["team_lead"]` 를 «일부러» 넘겨
+ *   공석이 있는 조직을 보여줄 수 있다. 바뀐 것은 **조용한 기본값** 하나다.
  */
 export function deriveSeats(input: {
   departments: readonly { id: string; name: string }[];
   members: readonly OrgMemberView[];
-  /** 부서마다 «있어야 한다» 고 볼 역할. 기본은 팀장 — 공석이 보여야 하는 자리다. */
+  /**
+   * 부서마다 «있어야 한다» 고 볼 역할.
+   *
+   * ★ 기본은 «없음» 이다. 안 넘기면 사람이 앉은 자리만 나온다 —
+   *   회사가 말한 적 없는 자리를 우리가 만들어 「비었다」고 하지 않는다.
+   */
   expectVacant?: readonly MemberRole[];
 }): { seats: Seat[]; seatlessMembers: OrgMemberView[] } {
   const departmentName = new Map(input.departments.map((row) => [row.id, row.name]));
@@ -155,7 +180,7 @@ export function deriveSeats(input: {
 
   // 비어 있어도 보여야 하는 자리를 채운다.
   for (const department of input.departments) {
-    for (const role of input.expectVacant ?? ["team_lead"]) {
+    for (const role of input.expectVacant ?? []) {
       put({ departmentId: department.id, role }, null);
     }
   }
