@@ -32,7 +32,7 @@ export async function saveSeatDefinitionAction(
   try {
     const ctx = await getSession();
     // 앞차단 — 진짜 관문은 RPC 다.
-    if (!isManager(ctx.role)) return { ok: false, message: "역할 정의서는 대표와 관리자만 쓸 수 있어요." };
+    if (!isManager(ctx.role)) return { ok: false, message: "하는 일은 대표와 관리자만 쓸 수 있어요." };
 
     /*
      * ★ 못 읽는 부서 값을 «조용히 null 로» 바꾸지 않는다.
@@ -71,7 +71,7 @@ export async function saveSeatDefinitionAction(
         ok: false,
         message:
           error.code === "42501"
-            ? "역할 정의서를 쓸 권한이 없어요."
+            ? "하는 일을 쓸 권한이 없어요."
             : error.code === "22023"
               ? "적은 내용을 저장하지 못했어요. 형식을 확인해 주세요."
               : "저장하지 못했어요. 잠시 뒤 다시 시도해 주세요. 적은 내용은 그대로 두었어요.",
@@ -79,7 +79,7 @@ export async function saveSeatDefinitionAction(
     }
 
     revalidatePath("/settings/members");
-    return { ok: true, message: "역할 정의서를 저장했어요." };
+    return { ok: true, message: "하는 일을 저장했어요." };
   } catch {
     /*
      * ★ 내부 오류 문구를 화면에 그대로 뿌리지 않는다.

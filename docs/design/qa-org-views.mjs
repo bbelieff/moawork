@@ -164,7 +164,7 @@ async function stopServer(child, origin) {
 }
 
 // 현재 정본의 다섯 갈래를 순서까지 고정한다. 추가 갈래를 숫자만 맞춰 통과시키지 않는다.
-const EXPECTED_TABS = ["자리", "목록", "조직도 한눈에 보기", "권한", "알림 규칙"];
+const EXPECTED_TABS = ["자리", "목록", "조직도", "권한", "알림 규칙"];
 const EXPECT = { tabs: EXPECTED_TABS.length, tableColumns: 6 };
 
 const VIEWPORTS = [
@@ -176,10 +176,10 @@ const SHOTS = [
   { id: "0-seats", tab: "자리", pick: null, query: "" },
   { id: "1-list", tab: "목록", pick: null, query: "" },
   { id: "1-list-picked", tab: "목록", pick: "1팀", query: "" },
-  { id: "2-chart", tab: "조직도 한눈에 보기", pick: null, query: "" },
+  { id: "2-chart", tab: "조직도", pick: null, query: "" },
   { id: "3-perm", tab: "권한", pick: null, query: "" },
   { id: "4-rules", tab: "알림 규칙", pick: null, query: "" },
-  // 보고 예외를 «못 읽은» 상태도 눈으로 본다 — 화면이 「확인 못 함」이라고 말해야 한다.
+  // 보고 예외를 «못 읽은» 상태도 눈으로 본다 — 화면이 「모름」이라고 말해야 한다.
   { id: "5-reporting-unknown", tab: "목록", pick: null, query: "&reporting=unknown" },
 ];
 
@@ -239,7 +239,7 @@ async function verifyKeyboardNavigation(browser, vp, problems) {
   const first = tabs.nth(0);
   const last = tabs.nth(tabCount - 1);
   const list = page.getByRole("tab", { name: "목록", exact: true });
-  const chart = page.getByRole("tab", { name: "조직도 한눈에 보기", exact: true });
+  const chart = page.getByRole("tab", { name: "조직도", exact: true });
   let arrowReady = false;
   for (let attempt = 0; attempt < 40 && !arrowReady; attempt += 1) {
     await list.focus();
@@ -344,8 +344,8 @@ for (const vp of VIEWPORTS) {
     if (shot.tab !== "목록" && after.tableHeaders.length > 0) {
       problems.push(`${vp.id}/${shot.id}: 「${shot.tab}」 갈래인데 목록의 표가 아직 떠 있다`);
     }
-    if (shot.id === "5-reporting-unknown" && !after.reportsToCells.every((cell) => cell === "확인 못 함")) {
-      problems.push(`${vp.id}/${shot.id}: 보고 예외를 못 읽었는데 「확인 못 함」이 아니다 — ${after.reportsToCells.join("|")}`);
+    if (shot.id === "5-reporting-unknown" && !after.reportsToCells.every((cell) => cell === "모름")) {
+      problems.push(`${vp.id}/${shot.id}: 보고 예외를 못 읽었는데 「모름」이 아니다 — ${after.reportsToCells.join("|")}`);
     }
     /*
      * ★ 한 화면 안에서 같은 것을 다르게 세지 않는다.

@@ -8,6 +8,7 @@ import {
 } from "@/app/(app)/settings/members/seat-definition-state";
 import { seatDefinitionDate, seatDefinitionIsEmpty, type SeatDefinition } from "@/lib/org/seat-definitions";
 import { seatName, SEAT_ROLE_LABEL, type Seat } from "@/lib/org/seats";
+import { scopeLabel } from "@/lib/auth/roles";
 
 /**
  * 「이 자리」 / 「이 사람」 두 겹 (#683 · D안 1단계).
@@ -75,10 +76,11 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
         data-region="one"
         className="flex items-center gap-2 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300"
       >
-        이 자리 — {seatName(seat)}
+        {/* ★ 「이 자리 —」를 뗐다. 화면에 자리 하나만 열려 있는데 지시어를 붙일 이유가 없다. */}
+        {seatName(seat)}
         <span className="ml-auto text-[11px] font-normal normal-case tracking-normal">
           {seat.status === "unknown" ? (
-            <b className="text-amber-700 dark:text-amber-400">확인 못 함</b>
+            <b className="text-amber-700 dark:text-amber-400">모름</b>
           ) : seat.status === "vacant" ? (
             <b className="text-red-700 dark:text-red-400">공석</b>
           ) : (
@@ -90,8 +92,8 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
       <div className="flex border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/40">
         {(
           [
-            ["seat", "이 자리"],
-            ["person", occupant ? `이 사람 · ${occupant.displayName}` : "이 사람"],
+            ["seat", "자리"],
+            ["person", occupant ? `사람 · ${occupant.displayName}` : "사람"],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -116,10 +118,10 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
         <div className="flex flex-col">
           <div className="border-b border-zinc-100 p-3 dark:border-zinc-900">
             <div className="mb-2 flex items-center gap-2">
+              {/* ★ 「역할 정의서」는 서류 이름이다. 사람이 부르는 이름은 「하는 일」이다. */}
               <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                역할 정의서
+                하는 일
               </span>
-              <span className="text-[11px] text-zinc-500">— 이 자리가 무엇을 책임지나</span>
               {canManage ? (
                 <button
                   type="button"
@@ -135,12 +137,12 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
             {/* ★ «못 읽음» 과 «아직 없음» 을 뭉개지 않는다. */}
             {!definitionKnown ? (
               <p role="status" data-seat-definition="unknown" className="text-xs text-amber-700 dark:text-amber-400">
-                역할 정의서를 불러오지 못했어요. 비어 있다는 뜻은 아니에요.
+                하는 일을 불러오지 못했어요. 비어 있다는 뜻은 아니에요.
               </p>
             ) : empty && !editing ? (
               <p data-seat-definition="empty" className="text-xs text-zinc-500">
                 아직 아무도 안 썼어요.
-                {canManage ? " 「쓰기」를 눌러 이 자리가 무엇을 하는지 남겨 주세요." : " 대표나 관리자가 채우면 여기 보여요."}
+                {canManage ? " 「쓰기」를 눌러 이 자리가 뭘 하는지 남겨 주세요." : " 대표나 관리자가 채우면 여기 보여요."}
               </p>
             ) : !editing ? (
               <div data-seat-definition="ready" className="flex flex-col gap-2 rounded-xl bg-indigo-50/60 p-3 dark:bg-indigo-950/20">
@@ -197,7 +199,7 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
                   <p className="border-t border-indigo-200/60 pt-1.5 text-[11px] text-zinc-500 dark:border-indigo-900/60">
                     {definition.updatedByName ?? "누군가"}가 씀 ·{" "}
                     {seatDefinitionDate(definition.updatedAt)} 고침 ·{" "}
-                    <b>이 자리에 앉는 사람이 바뀌어도 남아요</b>
+                    <b>사람이 바뀌어도 남아요</b>
                   </p>
                 ) : null}
               </div>
@@ -208,7 +210,7 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
                 <input type="hidden" name="departmentId" value={seat.departmentId ?? ""} />
                 <input type="hidden" name="role" value={seat.role} />
                 <label className="grid gap-1 text-[11px] text-zinc-500">
-                  한 줄로 — 이 자리는 무엇을 책임지나
+                  한 줄로 — 이 자리는 뭘 책임지나
                   <input
                     name="summary"
                     defaultValue={definition?.summary ?? ""}
@@ -271,13 +273,14 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
 
           <div className="border-b border-zinc-100 p-3 text-xs dark:border-zinc-900">
             <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-              이 자리가 갖는 것 <span className="normal-case tracking-normal">— 다음 사람에게 그대로 넘어감</span>
+              같이 넘어가는 것
             </div>
             <div className="flex gap-2 py-0.5"><span className="w-20 shrink-0 text-zinc-500">부서</span><span>{seat.departmentName ?? "미배정"}</span></div>
             <div className="flex gap-2 py-0.5"><span className="w-20 shrink-0 text-zinc-500">역할</span><span>{SEAT_ROLE_LABEL[seat.role] ?? seat.role}</span></div>
             <div className="flex gap-2 py-0.5">
               <span className="w-20 shrink-0 text-zinc-500">조회 범위</span>
-              <span>{occupant?.scope === "all" ? "회사 전체" : occupant?.scope === "department" ? "부서 이하 전체" : occupant?.scope === "assigned" ? "본인 담당분" : <span className="text-zinc-400">확인 못 함</span>}</span>
+              {/* ★ 범위 이름표도 손으로 적지 않는다 — 지금은 우연히 일치하지만 정본이 바뀌면 어긋난다. */}
+              <span>{occupant?.scope ? scopeLabel(occupant.scope) : <span className="text-zinc-400">모름</span>}</span>
             </div>
             <p className="mt-2 text-[11px] text-zinc-500">
               담당 보드 · 저장뷰 · 받는 알림을 자리에 묶는 것은 <b>다음 단계</b>예요.
@@ -295,7 +298,7 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
                 <div className="flex gap-2 py-0.5"><span className="w-20 shrink-0 text-zinc-500">이름</span><b>{occupant.displayName}</b></div>
                 <div className="flex gap-2 py-0.5">
                   <span className="w-20 shrink-0 text-zinc-500">호칭</span>
-                  <span>{occupant.titleKnown ? (occupant.title ?? <span className="text-zinc-400">미설정</span>) : <span className="text-zinc-400">확인 못 함</span>}</span>
+                  <span>{occupant.titleKnown ? (occupant.title ?? <span className="text-zinc-400">미설정</span>) : <span className="text-zinc-400">모름</span>}</span>
                 </div>
                 <div className="flex gap-2 py-0.5">
                   <span className="w-20 shrink-0 text-zinc-500">상태</span>
@@ -307,8 +310,8 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
               //   그 사람이 이 자리의 주인일 수 있다 — 「아무도 없다」고 하면 그게 거짓말이 된다.
               <p className="text-xs text-zinc-500">
                 {seat.status === "unknown"
-                  ? `이 부서에 역할을 읽지 못한 사람이 ${seat.unknownPeers}명 있어요. 이 자리가 비었다고 단정할 수 없어요.`
-                  : "이 자리에 아직 아무도 없어요."}
+                  ? `이 부서에 역할을 모르는 사람이 ${seat.unknownPeers}명 있어요. 비었다고 단정할 수 없어요.`
+                  : "아직 아무도 없어요."}
               </p>
             )}
           </div>

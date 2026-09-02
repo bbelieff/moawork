@@ -9,10 +9,11 @@ import {
   type ReactNode,
 } from "react";
 import { membersOfDepartment, ORG_VIEWS, type OrgMemberView, type OrgView, type OrgViewModel } from "@/lib/org/org-view";
+import { roleLabelOrUnknown } from "@/lib/auth/roles";
 import { OrgChartFlow } from "./OrgChartFlow";
 import { SeatPanel } from "./SeatPanel";
 import { deriveSeats, findSeat, seatName, seatSummary, SEAT_ROLE_LABEL, type Seat } from "@/lib/org/seats";
-import type { SeatDefinition } from "@/lib/org/seat-definitions";
+import { seatDefinitionIsEmpty, type SeatDefinition } from "@/lib/org/seat-definitions";
 
 /**
  * #640 ①③ — 조직관리의 «보는 방식» 다섯 갈래와 「부서 ↔ 사람」 잇기.
@@ -30,17 +31,13 @@ import type { SeatDefinition } from "@/lib/org/seat-definitions";
 const VIEW_LABEL: Record<OrgView, string> = {
   seats: "자리",
   list: "목록",
-  chart: "조직도 한눈에 보기",
+  // 다른 넷이 두세 글자인데 이것만 「조직도 한눈에 보기」라 줄 안에서 혼자 길었다.
+  chart: "조직도",
   perm: "권한",
   rules: "알림 규칙",
 };
 
-const ROLE_LABEL: Record<string, string> = {
-  owner: "대표",
-  admin: "관리자",
-  team_lead: "팀장",
-  member: "구성원",
-};
+// ★ 역할 이름표는 lib/auth/roles.ts 하나에서 온다. 여기 적으면 옆 갈래와 어긋난다.
 
 function scopeLabel(member: OrgMemberView): string | null {
   // null = 모른다. 「본인 담당분」으로 떨어뜨리면 가장 좁은 범위라고 «단언» 하는 것이 된다.
@@ -54,13 +51,13 @@ function scopeLabel(member: OrgMemberView): string | null {
 
 /** 모르는 칸은 비워 두지 않고 «모른다» 고 적는다 — 빈칸은 「없음」으로 읽힌다. */
 function Unknown(): ReactElement {
-  return <span className="text-zinc-400">확인 못 함</span>;
+  return <span className="text-zinc-400">모름</span>;
 }
 
 function ReportsToCell({ member, known }: { member: OrgMemberView; known: boolean }): ReactElement {
   // ★ 못 읽었으면 이름을 «단언» 하지 않는다. 보고 예외(013)를 못 읽은 상태에서 그린 값은
   //   틀릴 수 있고, 틀린 이름은 빈칸보다 나쁘다.
-  if (!known) return <span className="text-zinc-400">확인 못 함</span>;
+  if (!known) return <span className="text-zinc-400">모름</span>;
   if (!member.reportsToName) return <span className="text-zinc-400">— 최상위</span>;
   return (
     <span className="inline-flex flex-col items-start">
@@ -113,7 +110,7 @@ function MemberTable({ rows, known }: { rows: OrgMemberView[]; known: boolean })
                 </div>
               </td>
               <td className="px-3 py-2.5 text-zinc-500">{member.primaryDepartmentName ?? "미배정"}</td>
-              <td className="px-3 py-2.5">{member.role === null ? <Unknown /> : ROLE_LABEL[member.role] ?? member.role}</td>
+              <td className="px-3 py-2.5">{member.role === null ? <Unknown /> : roleLabelOrUnknown(member.role)}</td>
               <td className="px-3 py-2.5"><ReportsToCell member={member} known={known} /></td>
               <td className="px-3 py-2.5 text-zinc-500">{scopeLabel(member) ?? <Unknown />}</td>
               <td className="px-3 py-2.5">
@@ -196,11 +193,36 @@ export function OrgViewTabs({
 
   /*
    * #683 — 자리는 «부서 × 역할» 에서 읽는다. 새 엔티티를 만들지 않는다.
-   *   공석도 자리다 — 팀장이 비어 있으면 그 사실이 화면에서 사라지면 안 된다.
+   *
+   * ★ 「하는 일」이 적혀 있는 자리를 «같이» 넘긴다. 이걸 빼면 자리가 생기는 길이
+   *   「사람이 앉는다」 하나뿐이 되어 **사람이 없는 자리는 만들어질 수가 없다** —
+   *   팀장이 나가는 순간 그 자리가 화면에서 사라지고, 붉은 「공석」도 앰버 「모름」도
+   *   영원히 안 뜨는 죽은 코드가 된다. 공석도 자리다.
    */
+  const declaredSeats = useMemo(() => {
+    if (!seatDefinitions) return [];
+    const known = new Set(model.departments.map((row) => row.id));
+    return (
+      [...seatDefinitions.values()]
+        /*
+         * ★ «빈» 정의서는 선언이 아니다.
+         *   「쓰기」를 눌러 아무것도 안 적고 저장하면 행은 생긴다. 그걸 선언으로 치면
+         *   그 자리가 영구 공석이 되는데, **지우는 길이 없다**(마이그 146 에 DELETE 정책·RPC 없음).
+         *   되돌릴 수 없는 화면 상태를 만들지 않는다.
+         */
+        .filter((definition) => !seatDefinitionIsEmpty(definition))
+        /*
+         * ★ 없는 부서를 가리키는 정의서는 거른다.
+         *   부서를 지우면 정의서도 같이 지워지지만(on delete cascade), 조직도와 정의서를
+         *   «같은 물결» 로 따로 읽으므로 그 사이에 지워지면 부서명 없는 유령 자리가 뜬다.
+         */
+        .filter((definition) => definition.departmentId === null || known.has(definition.departmentId))
+        .map((definition) => ({ departmentId: definition.departmentId, role: definition.role }))
+    );
+  }, [seatDefinitions, model.departments]);
   const { seats, seatlessMembers } = useMemo(
-    () => deriveSeats({ departments: model.departments, members: model.members }),
-    [model],
+    () => deriveSeats({ departments: model.departments, members: model.members, declaredSeats }),
+    [model, declaredSeats],
   );
   const seatCounts = useMemo(() => seatSummary(seats, seatlessMembers), [seats, seatlessMembers]);
   const activeSeat = findSeat(seats, selectedSeatId) ?? seats[0] ?? null;
@@ -386,11 +408,21 @@ export function OrgViewTabs({
               data-region="all"
               className="flex items-center gap-2 bg-sky-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
             >
-              전체 — 우리 회사
+              우리 회사
               <span className="ml-auto font-normal normal-case tracking-normal">
-                자리 {seatCounts.seatCount} · 사람 {seatCounts.peopleCount} · 공석 {seatCounts.vacantCount}
+                {/*
+                  ★ 못 읽었으면 «숫자를 단언하지 않는다».
+                    아래 배너가 「다 못 읽었어요」라고 말하지만 목록 밑에 있어서,
+                    머리말만 훑는 사람은 「공석 0」을 사실로 읽는다. 그 자리에서 바로 말한다.
+
+                  ★★ 「?」가 아니라 「모름」이다. 이 화면은 «모른다» 를 이미 그 말로 적고 있다 —
+                    표 셀 · 자리 배지 · 「모르는 자리 N」 · 역할 · 범위 전부. 여기만 기호를 쓰면
+                    「공석 ? · 모르는 자리 2」처럼 한 개념에 표기가 둘이 된다.
+                */}
+                자리 {seatCounts.seatCount} · 사람 {seatCounts.peopleCount} ·{" "}
+                공석 {seatDefinitions === null ? "모름" : seatCounts.vacantCount}
                 {/* 「자리」 단위임을 붙여 둔다 — 아래 구역의 「…N명」과 단위가 달라 나란히 두면 헷갈린다. */}
-                {seatCounts.unknownCount > 0 ? ` · 확인 못 한 자리 ${seatCounts.unknownCount}` : ""}
+                {seatCounts.unknownCount > 0 ? ` · 모르는 자리 ${seatCounts.unknownCount}` : ""}
                 {/* 비활성은 「사람」에 합치지 않는다. 합치면 전원 퇴사한 회사가 「사람 3」으로 보인다. */}
                 {seatCounts.inactiveCount > 0 ? ` · 비활성 ${seatCounts.inactiveCount}` : ""}
               </span>
@@ -414,7 +446,7 @@ export function OrgViewTabs({
                     // ★ 이 부서에 역할을 못 읽은 사람이 있다. 그 사람이 이 자리의 주인일 수 있으므로
                     //   «비었다» 고 단언하지 않는다. 붉은색도 쓰지 않는다 — 붉은색은 «확인된 공석» 의 색이다.
                     <span data-seat-unknown className="shrink-0 text-xs font-semibold text-amber-700 dark:text-amber-400">
-                      확인 못 함
+                      모름
                     </span>
                   ) : seat.status === "vacant" ? (
                     <span data-seat-vacant className="shrink-0 text-xs font-semibold text-red-700 dark:text-red-400">공석</span>
@@ -426,9 +458,32 @@ export function OrgViewTabs({
                   )}
                 </button>
               ))}
-              {seats.length === 0 ? (
+              {/*
+                ★ 못 읽었을 때는 「없어요」라고 «단정하지 않는다».
+                  아래 배너가 「다 못 읽었어요」라고 유보하는데 위에서 「없어요」로 못박으면
+                  두 문장이 서로 부딪친다. 못 읽었으면 배너만 말하게 둔다.
+              */}
+              {seats.length === 0 && seatDefinitions !== null ? (
                 <p className="px-2 py-6 text-sm text-zinc-500">
                   아직 부서와 사람이 없어요. 부서를 만들면 자리가 생겨요.
+                </p>
+              ) : null}
+
+              {/*
+                ★ «못 읽음» 을 「없음」처럼 보여주지 않는다.
+                  seatDefinitions 가 null 이면 «어떤 자리가 선언돼 있는지» 를 우리가 모른다.
+                  그런데 자리 목록은 사람이 앉은 것만 그리고 머리말은 「공석 0」이라고 적는다 —
+                  그건 없는 사실을 단언하는 것이다. 그래서 모른다고 말한다.
+                  「하는 일」 칸에도 같은 안내가 있지만, 자리가 안 뜨면 거기 도달할 수조차 없다.
+              */}
+              {seatDefinitions === null ? (
+                <p
+                  role="status"
+                  data-seats-unknown
+                  className="mt-1.5 rounded-lg bg-amber-50 px-2 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
+                >
+                  자리 목록을 다 못 읽었어요. 사람이 없는 자리가 더 있을 수 있어요.
+                  잠시 뒤 새로고침해 주세요.
                 </p>
               ) : null}
 
@@ -441,10 +496,10 @@ export function OrgViewTabs({
               {seatlessMembers.length > 0 ? (
                 <div data-seatless-region className="mt-1.5 border-t border-zinc-200 pt-1.5 dark:border-zinc-800">
                   <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                    자리를 못 정한 사람 {seatlessMembers.length}명
+                    자리 없음 · {seatlessMembers.length}명
                   </p>
                   <p className="px-2 pb-1.5 text-xs text-zinc-500">
-                    자리는 못 정했지만 빠진 사람은 아니에요.
+                    빠진 사람은 아니에요.
                   </p>
                   {seatlessMembers.map((member) => (
                     <div
@@ -468,7 +523,7 @@ export function OrgViewTabs({
                           member.active ? "text-amber-700 dark:text-amber-400" : "text-zinc-500"
                         }`}
                       >
-                        {member.active ? "역할 확인 못 함" : "비활성"}
+                        {member.active ? "역할 모름" : "비활성"}
                       </span>
                     </div>
                   ))}

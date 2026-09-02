@@ -45,7 +45,7 @@ describe("account presentation", () => {
     ["owner", "대표", true],
     ["admin", "관리자", false],
     ["team_lead", "팀장", false],
-    ["member", "사원", false],
+    ["member", "구성원", false],
   ] as const)("membership %s를 고객 역할로 번역한다", (role, label, canManage) => {
     const model = buildAccountViewModel(context({ role }));
     expect(model.roleLabel).toBe(label);
@@ -63,7 +63,7 @@ describe("account presentation", () => {
     );
     expect(model.roleLabel).toBe("대표");
     expect(model.canManageCompany).toBe(true);
-    expect(model.scopeLabel).toBe("회사 업무 전체");
+    expect(model.scopeLabel).toBe("회사 전체");
   });
 
   it("플랫폼 관리자가 아닌 멤버의 역할도 동일 규칙으로 표시된다", () => {
@@ -71,8 +71,8 @@ describe("account presentation", () => {
       context({ role: "member", scope: "assigned", isPlatformAdmin: true }),
     );
     // 플랫폼 관리자라고 회사 역할이 올라가지도 않는다(두 축은 독립).
-    expect(model.roleLabel).toBe("사원");
+    expect(model.roleLabel).toBe("구성원");
     expect(model.canManageCompany).toBe(false);
-    expect(model.scopeLabel).toBe("내게 배정된 업무");
+    expect(model.scopeLabel).toBe("본인 담당분");
   });
 });

@@ -3,6 +3,7 @@ import { AccountState } from "@/components/account/AccountState";
 import styles from "@/components/account/account.module.css";
 import { getSession } from "@/lib/auth/session";
 import { getMyPrivacyAccountData } from "@/lib/account/memberAccountOps";
+import { isMemberRole, isMemberScope, roleLabel, scopeLabel } from "@/lib/auth/roles";
 import { requestPrivacyExport } from "../actions";
 
 const NAV_ITEMS = [
@@ -29,16 +30,17 @@ type PrivacyDisplayRow = {
   value: string;
 };
 
-const ROLE_LABELS: Record<string, string> = {
-  owner: "대표",
-  admin: "팀장",
-  member: "사원",
-};
-
-const SCOPE_LABELS: Record<string, string> = {
-  all: "회사 업무 전체",
-  assigned: "내게 배정된 업무",
-};
+/*
+ * ★ 이름표를 손으로 적지 않는다 — 정본은 lib/auth/roles.ts 다.
+ *
+ *   전에는 여기에 세 줄이 적혀 있었고 «두 군데가 틀렸다»:
+ *     admin → 「팀장」          관리자인 사람이 자기 화면에서 팀장으로 읽혔다
+ *     team_lead 가 아예 없음   팀장인 사람은 자기 역할이 「확인할 수 없어요」로 떴다
+ *                             — 우리는 알고 있는데도.
+ *
+ *   여기는 «개인정보와 데이터» 화면이다. 자기 권한이 무엇인지 확인하러 오는 곳에서
+ *   틀린 역할을 보여주는 것은 다른 화면에서보다 더 나쁘다.
+ */
 
 function readRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -59,8 +61,8 @@ function buildPrivacyDisplayRows(data: Record<string, unknown>): PrivacyDisplayR
   return [
     { label: "이름", value: readText(identity?.name) ?? "등록되지 않았어요" },
     { label: "이메일", value: readText(identity?.email) ?? "연결되지 않았어요" },
-    { label: "회사 역할", value: (role && ROLE_LABELS[role]) ?? "확인할 수 없어요" },
-    { label: "볼 수 있는 업무", value: (scope && SCOPE_LABELS[scope]) ?? "확인할 수 없어요" },
+    { label: "회사 역할", value: isMemberRole(role) ? roleLabel(role) : "확인할 수 없어요" },
+    { label: "볼 수 있는 업무", value: isMemberScope(scope) ? scopeLabel(scope) : "확인할 수 없어요" },
     { label: "직책", value: readText(companyProfile?.title) ?? "등록되지 않았어요" },
     { label: "팀", value: readText(companyProfile?.team_key) ?? "배정되지 않았어요" },
   ];

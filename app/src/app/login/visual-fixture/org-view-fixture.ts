@@ -1,5 +1,6 @@
 import type { MemberSummaryRow } from "@/lib/auth/member-org-summary";
 import { buildOrgViewModel, type OrgViewModel } from "@/lib/org/org-view";
+import type { SeatDefinition } from "@/lib/org/seat-definitions";
 
 /**
  * #640 — 「보는 방식 네 갈래」를 실제 뷰포트에서 눈으로 확인하기 위한 픽스처.
@@ -85,7 +86,39 @@ export function loadVisualOrgViewModel(options: { reportingKnown: boolean } = { 
     owner: row(OWNER, "가상 대표", "owner", "all", "대표이사"),
     admins: [row(HEAD, "가상 본부장", "admin", "assigned", "본부장")],
     members: [row(SUB, "가상 파트원", "member", "assigned", null)],
-    // null 을 주면 화면이 「확인 못 함」이라고 말해야 한다 — 그 상태도 눈으로 본다.
+    // null 을 주면 화면이 「모름」이라고 말해야 한다 — 그 상태도 눈으로 본다.
     exceptions: options.reportingKnown ? new Map() : null,
   });
+}
+
+/**
+ * 자리 갈래에 «공석이 보이게» 하는 픽스처 (#683).
+ *
+ * ★ 왜 필요한가 — 게이트(`qa-org-views.mjs`)가 이 화면을 찍는데, 지금까지 사진에
+ *   **붉은 「공석」 배지가 한 번도 나온 적이 없다.** 그래서 「공석이 화면에서 사라졌다」가
+ *   두 번(#640 · #683) 미끄러졌다. 사진에 배지가 나오면 다음에 또 꺼져도 눈에 띈다.
+ *
+ * 「경영지원」 부서의 팀장 자리에 «하는 일» 만 적혀 있고 사람은 없다 —
+ * 팀장이 나간 회사와 같은 모양이다.
+ */
+export function loadVisualSeatDefinitions(): Map<string, SeatDefinition> {
+  return new Map([
+    [
+      `${D_SUPPORT}:team_lead`,
+      {
+        departmentId: D_SUPPORT,
+        role: "team_lead",
+        summary: "들어온 서류를 3일 안에 접수까지 끌고 간다",
+        duties: [{ cycle: "weekly", text: "금요일에 미접수 건을 훑는다" }],
+        escalate: ["금액이 3천만 원을 넘을 때"],
+        handle: [],
+        avoid: [],
+        signals: null,
+        handover: null,
+        updatedAt: "2026-08-20T01:00:00Z",
+        updatedById: null,
+        updatedByName: null,
+      },
+    ],
+  ]);
 }

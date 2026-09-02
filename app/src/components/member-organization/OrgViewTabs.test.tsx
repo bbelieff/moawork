@@ -155,3 +155,123 @@ describe("Issue #643 조직관리 갈래 접근성", () => {
     expect(host.querySelector('[role="tablist"]')?.getAttribute("aria-describedby")).toBe(hint?.id);
   });
 });
+
+/*
+ * ★ «공석» 이 화면에 «실제로» 뜨는지 — 배선 시험이다.
+ *
+ * 이 저장소가 반복하는 병은 「부품은 다 만들어 놓고 배선을 안 한다」이고,
+ * 이 화면은 그 병을 이미 두 번 앓았다(#640 · #683). 세 번째가 여기서 날 뻔했다 —
+ * deriveSeats 의 기본값을 바꾸면서 화면이 «사람 없는 자리» 를 만들 길을 통째로 잃었고,
+ * 그러면 붉은 「공석」도 앰버 「모름」도 영원히 안 뜨는 죽은 코드가 된다.
+ *
+ * 순수 함수 시험(seats.test.ts)은 인자를 «우리가» 넣어서 부르므로 이걸 못 잡는다.
+ * 화면을 실제로 그려서 배지가 나오는지 봐야 한다.
+ */
+describe("#683 공석이 화면에 실제로 뜬다", () => {
+  const withDefinition = async (seatKey: { departmentId: string | null; role: "team_lead" }) => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(
+        <OrgViewTabs
+          model={model}
+          initialView="seats"
+          departmentSlot={<div>부서 관리</div>}
+          permissionSlot={<div>권한 관리</div>}
+          seatDefinitions={
+            new Map([
+              [
+                `${seatKey.departmentId ?? "-"}:${seatKey.role}`,
+                {
+                  departmentId: seatKey.departmentId,
+                  role: seatKey.role,
+                  summary: "리드를 3일 안에 첫 통화까지",
+                  duties: [],
+                  escalate: [],
+                  handle: [],
+                  avoid: [],
+                  signals: null,
+                  handover: null,
+                  updatedAt: null,
+                  updatedById: null,
+                  updatedByName: null,
+                },
+              ],
+            ])
+          }
+        />,
+      );
+    });
+    return host;
+  };
+
+  it("★ 「하는 일」이 적혀 있으면 사람이 없어도 그 자리가 남고 「공석」이 뜬다", async () => {
+    // 픽스처에 team_lead 인 사람은 없다 — 팀장이 나간 회사와 같은 모양이다.
+    const host = await withDefinition({ departmentId: DEPARTMENT_ID, role: "team_lead" });
+
+    expect(host.querySelector("[data-seat-vacant]")).not.toBeNull();
+    expect(host.textContent).toContain("공석");
+    expect(host.textContent).toContain("1팀 팀장");
+  });
+
+  it("★ 적어 둔 자리가 «아직 없으면» 없는 공석을 만들지 않는다 — 세 명 회사가 겪던 것", async () => {
+    /*
+     * ★ 빈 Map 을 «명시적으로» 넘긴다. renderFixture 는 prop 을 안 넘겨서 기본값 null 이 되는데
+     *   그건 «아직 없음» 이 아니라 «못 읽음» 이다. 그걸로 재면 «못 읽음이 공석 0을 낸다» 를
+     *   기대값으로 굳히게 된다 — 이 PR 이 내내 반대하던 «읽기 실패를 사실로 단언» 그 자체다.
+     */
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(
+        <OrgViewTabs
+          model={model}
+          initialView="seats"
+          departmentSlot={<div>부서 관리</div>}
+          permissionSlot={<div>권한 관리</div>}
+          seatDefinitions={new Map()}
+        />,
+      );
+    });
+
+    // 머리말은 「공석 N」을 항상 그리므로 «배지» 와 «숫자» 로 잰다. 글자만 세면 늘 통과한다.
+    expect(host.querySelector("[data-seat-vacant]")).toBeNull();
+    expect(host.textContent).toContain("공석 0");
+  });
+
+  it("★ 자리 목록을 «못 읽었으면» 「공석 0」이라고 단언하지 않는다", async () => {
+    /*
+     * seatDefinitions 가 null 이면 «어떤 자리가 선언돼 있는지» 를 우리가 모른다.
+     * 그때 「공석 0」만 덩그러니 보여주면 화면이 없는 사실을 단언하는 것이다 —
+     * 「하는 일」 칸이 이미 「불러오지 못했어요. 비어 있다는 뜻은 아니에요」라고 말하는데,
+     * 자리가 아예 안 뜨면 그 문장에 **도달할 수조차 없다.**
+     */
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(
+        <OrgViewTabs
+          model={model}
+          initialView="seats"
+          departmentSlot={<div>부서 관리</div>}
+          permissionSlot={<div>권한 관리</div>}
+          seatDefinitions={null}
+        />,
+      );
+    });
+
+    expect(host.querySelector("[data-seats-unknown]")).not.toBeNull();
+    expect(host.textContent).toContain("다 못 읽었어요");
+
+    /*
+     * ★ 머리말도 «숫자를 단언하지 않는다». 배너는 목록 아래라서 머리말만 훑는 사람은 못 본다.
+     *   그리고 「?」가 아니라 「모름」이다 — 이 화면은 이미 그 말로 «모른다» 를 적는다.
+     *   기호를 섞으면 「공석 ? · 모르는 자리 2」처럼 한 개념에 표기가 둘이 된다.
+     */
+    expect(host.textContent).toContain("공석 모름");
+    expect(host.textContent).not.toContain("공석 0");
+  });
+});

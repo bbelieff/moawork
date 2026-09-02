@@ -49,14 +49,38 @@ describe("account settings copy", () => {
     expect(html).toContain("김모아");
     expect(html).toContain("me@example.test");
     expect(html).toContain("회사 역할");
-    expect(html).toContain("팀장");
+    /*
+     * ★ 전에는 이 줄이 `toContain("팀장")` 이었다. 픽스처의 role 은 `admin` 인데도.
+     *   화면이 admin 을 「팀장」이라고 부르고 있었고, **이 시험이 그 결함을 지키고 있었다.**
+     *   관리자인 사람이 «개인정보와 데이터» 화면에서 자기 역할을 팀장으로 읽었다는 뜻이다.
+     */
+    expect(html).toContain("관리자");
+    expect(html).not.toContain("팀장");
     expect(html).toContain("볼 수 있는 업무");
-    expect(html).toContain("내게 배정된 업무");
+    expect(html).toContain("본인 담당분");
     expect(html).toContain("운영 담당");
     expect(html).toContain("sales-a");
     for (const rawKey of ["identity", "workspace_profile", "avatar_url", "role", "scope", "team_key"]) {
       expect(html).not.toContain(rawKey);
     }
+  });
+
+  it("★ 팀장도 자기 역할을 본다 — 전에는 「확인할 수 없어요」로 떨어졌다", async () => {
+    /*
+     * 손으로 적은 이름표에 team_lead 가 «아예 없었다». 그래서 팀장인 사람은
+     * 자기 역할 칸에서 「확인할 수 없어요」를 봤다 — 우리는 알고 있는데도.
+     * 정본(lib/auth/roles.ts)에서 파생시키면 역할이 늘어도 빠질 자리가 없다.
+     */
+    mocks.getMyPrivacyAccountData.mockResolvedValue({
+      identity: { id: "user-2", email: "lead@example.test", name: "이팀장", avatar_url: null },
+      workspace_profile: { role: "team_lead", scope: "department", title: null, team_key: null },
+    });
+
+    const html = renderToStaticMarkup(await AccountPrivacyPage());
+
+    expect(html).toContain("팀장");
+    expect(html).toContain("부서 이하 전체");
+    expect(html).not.toContain("확인할 수 없어요");
   });
 
   it("개인정보 화면이 회사 중심 용어와 실제 다음 행동을 안내한다", () => {
