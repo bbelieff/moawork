@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideWorkspaceEntryPage } from "./route-decision";
+import { decideWorkspaceEntryPage, decideWorkspaceEntryRecheckStrategy } from "./route-decision";
 
 const membership = (slug: string) => ({ slug });
 const base = {
@@ -11,6 +11,11 @@ const base = {
 };
 
 describe("workspace entry page precedence", () => {
+  it("clears a routing-error query before rechecking but refreshes server-state blocks", () => {
+    expect(decideWorkspaceEntryRecheckStrategy(true)).toBe("replace-routing-query");
+    expect(decideWorkspaceEntryRecheckStrategy(false)).toBe("refresh");
+  });
+
   it("opens explicit new-company entry for eligible users with 0/1/2+ memberships", () => {
     expect(decideWorkspaceEntryPage({ ...base, mode: "new" })).toEqual({ kind: "render", view: "entry" });
     expect(decideWorkspaceEntryPage({ ...base, mode: "new", memberships: [membership("alpha-team")] })).toEqual({ kind: "render", view: "entry" });

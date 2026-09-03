@@ -13,6 +13,7 @@ import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
 import styles from "./workspace-entry.module.css";
 
 type InitialView = "fork" | "create" | "join" | "pending" | "rejected" | "blocked";
+type WorkspaceEntryRecheckStrategy = "refresh" | "replace-routing-query";
 export type WorkspaceEntryView =
   | "fork"
   | "create-name"
@@ -33,6 +34,7 @@ type Props = {
   isPlatformAdmin?: boolean;
   platformRequests?: PlatformCreateRequest[];
   freshStart?: boolean;
+  recheckStrategy?: WorkspaceEntryRecheckStrategy;
 };
 
 export function resolveWorkspaceEntryView({
@@ -90,7 +92,7 @@ export function workspaceEntryPendingSummary(request: MyWorkspaceEntryRequest | 
   };
 }
 
-export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatformAdmin = false, platformRequests = [], freshStart = false }: Props) {
+export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatformAdmin = false, platformRequests = [], freshStart = false, recheckStrategy = "refresh" }: Props) {
   const currentRequest = useMemo(() => requests.find((request) => request.status === "pending") ?? null, [requests]);
   const router = useRouter();
   const latestNotApproved = useMemo(() => requests.find((request) => request.decisionState === "not_approved") ?? null, [requests]);
@@ -219,6 +221,13 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
   const back = () => { setNotice(null); setDraftName(""); setDraftSlug(""); setSlugInput(""); setJoinSlug(""); setView("fork"); };
   const copy = workspaceEntryCopy(view);
   const pendingSummary = workspaceEntryPendingSummary(activeRequest);
+  const recheckAccess = () => {
+    if (recheckStrategy === "replace-routing-query") {
+      router.replace("/workspace-entry");
+      return;
+    }
+    router.refresh();
+  };
 
   return (
     <EntryShell eyebrow={view === "operator" ? "운영 영역" : "처음 오셨군요"} title={copy.title} lead={copy.lead} view={view} headingRef={headingRef}>
@@ -303,7 +312,7 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
 
         {view === "blocked" ? <>
           <div className={styles.bubble}><strong>회사 접근 상태를 다시 확인해야 해요.</strong><small>중지됐거나 일관되지 않은 소속을 새 회사 없음으로 바꾸지 않아요. 회사 정보 없이 안전하게 멈췄어요.</small></div>
-          <div className={styles.quick}><button type="button" onClick={() => router.refresh()}>접근 상태 다시 확인하기</button></div>
+          <div className={styles.quick}><button type="button" onClick={recheckAccess}>접근 상태 다시 확인하기</button></div>
         </> : null}
 
         {view === "operator" ? <>
