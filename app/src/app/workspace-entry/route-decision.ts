@@ -2,9 +2,14 @@ import { isCanonicalWorkspaceSlug } from "@/lib/auth/workspace-routing";
 
 export type WorkspaceEntrySelfState = "eligible" | "blocked_inactive" | "unknown";
 export type WorkspaceEntryResumeTarget = { kind: "none" } | { kind: "invalid" } | { kind: "workspace"; slug: string };
+export type WorkspaceEntryRecheckStrategy = "refresh" | "replace-routing-query";
 export type WorkspaceEntryPageDecision =
   | { kind: "redirect"; path: `/w/${string}` | "/workspaces" | "/platform/workspace-requests" | "/login?next=/workspace-entry" }
   | { kind: "render"; view: "entry" | "blocked" | "operator" };
+
+export function decideWorkspaceEntryRecheckStrategy(hasRoutingError: boolean): WorkspaceEntryRecheckStrategy {
+  return hasRoutingError ? "replace-routing-query" : "refresh";
+}
 
 export function decideWorkspaceEntryPage({
   authState,
