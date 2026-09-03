@@ -28,7 +28,7 @@ export type PermissionMatrixProps = {
   orgId: string;
   /** 지금 화면에 펼쳐 보는 역할 탭. 라우팅은 호출부(리스 밖) 소관 — 여기선 ?role= 상대링크만 낸다. */
   activeRole: Role;
-  /** 이 화면을 보는 사람의 역할. 소유자만 토글이 실제로 동작한다(RPC 가 강제). */
+  /** 이 화면을 보는 사람의 역할. 대표만 토글이 실제로 동작한다(RPC 가 강제). */
   viewerRole: Role;
   access: PermissionMatrixAccess;
   /** 역할별 보유 인원 수 — 없으면 0 으로 그린다. */
@@ -66,7 +66,7 @@ export function PermissionMatrix(props: PermissionMatrixProps): ReactElement {
     return (
       <AccessDenied>
         <h2 className="font-semibold">권한 화면을 볼 수 없어요</h2>
-        <p className="mt-1 text-sm text-zinc-500">이 화면은 소유자·관리자만 열 수 있습니다.</p>
+        <p className="mt-1 text-sm text-zinc-500">이 화면은 대표와 관리자만 열 수 있어요.</p>
       </AccessDenied>
     );
   }
@@ -130,7 +130,7 @@ export function PermissionMatrix(props: PermissionMatrixProps): ReactElement {
 
         {!canEdit ? (
           <p className="mt-3 rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">
-            소유자만 이 화면에서 토글을 바꿀 수 있습니다. 보기 전용입니다.
+            대표만 이 화면에서 토글을 바꿀 수 있어요. 보기 전용이에요.
           </p>
         ) : null}
 
@@ -175,8 +175,8 @@ export function PermissionMatrix(props: PermissionMatrixProps): ReactElement {
                         type="submit"
                         disabled={toggleDisabled}
                         aria-pressed={currentAllowed}
-                        aria-label={`${item.label} ${currentAllowed ? "켜짐" : "꺼짐"}${roleImmutable ? " · 소유자 권한은 끌 수 없습니다" : ""}`}
-                        title={roleImmutable ? "소유자 권한은 끌 수 없습니다" : undefined}
+                        aria-label={`${item.label} ${currentAllowed ? "켜짐" : "꺼짐"}${roleImmutable ? " · 대표 권한은 끌 수 없어요" : ""}`}
+                        title={roleImmutable ? "대표 권한은 끌 수 없어요" : undefined}
                         className="flex items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed"
                       >
                         <Switch on={currentAllowed} disabled={toggleDisabled} />

@@ -26,7 +26,7 @@ describe("PermissionMatrix — 권한 없음과 장애를 다른 화면으로 �
         access={{ kind: "denied", reason: "permission" }}
       />,
     );
-    expect(html).toContain("소유자·관리자만");
+    expect(html).toContain("대표와 관리자만");
     expect(html).not.toContain("불러오지 못했어요");
   });
 
@@ -40,7 +40,7 @@ describe("PermissionMatrix — 권한 없음과 장애를 다른 화면으로 �
       />,
     );
     expect(html).toContain("불러오지 못했어요");
-    expect(html).not.toContain("소유자·관리자만");
+    expect(html).not.toContain("대표와 관리자만");
   });
 });
 
@@ -57,7 +57,7 @@ describe("PermissionMatrix — 매트릭스 렌더", () => {
     const html = renderToStaticMarkup(
       <PermissionMatrix orgId="org-1" activeRole="owner" viewerRole="owner" access={allowedAccess()} />,
     );
-    expect(html).toContain("소유자 권한은 끌 수 없습니다");
+    expect(html).toContain("대표 권한은 끌 수 없어요");
     // owner 행의 버튼은 전부 disabled
     const ownerRowButtons = html.match(/<button[^>]*disabled[^>]*aria-pressed/g) ?? [];
     expect(ownerRowButtons.length).toBeGreaterThan(0);
@@ -67,7 +67,7 @@ describe("PermissionMatrix — 매트릭스 렌더", () => {
     const html = renderToStaticMarkup(
       <PermissionMatrix orgId="org-1" activeRole="member" viewerRole="admin" access={allowedAccess()} />,
     );
-    expect(html).toContain("보기 전용입니다");
+    expect(html).toContain("보기 전용이에요");
     // admin 뷰어이므로 24항목 전부 비활성이어야 한다
     const enabledButtons = html.match(/<button type="submit"(?!\s+disabled)[^>]*aria-pressed/g) ?? [];
     expect(enabledButtons).toHaveLength(0);
@@ -77,7 +77,7 @@ describe("PermissionMatrix — 매트릭스 렌더", () => {
     const html = renderToStaticMarkup(
       <PermissionMatrix orgId="org-1" activeRole="member" viewerRole="owner" access={allowedAccess()} />,
     );
-    expect(html).not.toContain("보기 전용입니다");
+    expect(html).not.toContain("보기 전용이에요");
   });
 
   it("역할 기본값을 서버 스냅샷이 있으면 스냅샷 값으로, 없으면 matrix.ts 기본값으로 렌더한다", () => {
