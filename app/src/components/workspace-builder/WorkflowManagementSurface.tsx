@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { startTransition, useMemo, useState } from "react";
+import { startTransition, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   renameWorkflowGroupAction,
   reorderWorkflowGroupsAction,
@@ -25,6 +25,12 @@ const EMPTY_NOTICE: WorkflowStructureResult = {
   ok: true,
   message: "단계 이름과 순서는 실제 업무 탭에 바로 적용됩니다.",
 };
+
+const WORKFLOW_VIEWS = ["overview", "stages"] as const;
+type WorkflowView = (typeof WORKFLOW_VIEWS)[number];
+
+const workflowTabId = (view: WorkflowView) => `workflow-view-tab-${view}`;
+const workflowPanelId = (view: WorkflowView) => `workflow-view-panel-${view}`;
 
 export function moveAt<T>(values: readonly T[], index: number, delta: number): T[] {
   const target = index + delta;
@@ -103,9 +109,26 @@ function StageEditor({ tab }: Readonly<{ tab: WorkflowManagementTab }>) {
 }
 
 export function WorkflowManagementSurface({ tabs }: Readonly<{ tabs: readonly WorkflowManagementTab[] }>) {
-  const [view, setView] = useState<"overview" | "stages">("overview");
+  const [view, setView] = useState<WorkflowView>("overview");
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const ordered = useMemo(() => [...tabs].sort((left, right) => left.order - right.order), [tabs]);
   const connectedCount = tabs.filter((tab) => tab.boardId).length;
+
+  function selectView(next: WorkflowView, focus = false) {
+    setView(next);
+    if (focus) tabRefs.current[WORKFLOW_VIEWS.indexOf(next)]?.focus();
+  }
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % WORKFLOW_VIEWS.length;
+    if (event.key === "ArrowLeft") nextIndex = (index - 1 + WORKFLOW_VIEWS.length) % WORKFLOW_VIEWS.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = WORKFLOW_VIEWS.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    selectView(WORKFLOW_VIEWS[nextIndex], true);
+  }
 
   return (
     <section className={styles.surface} aria-labelledby="workflow-management-title">
@@ -119,12 +142,34 @@ export function WorkflowManagementSurface({ tabs }: Readonly<{ tabs: readonly Wo
       </header>
 
       <div className={styles.viewTabs} role="tablist" aria-label="워크플로 보기">
-        <button type="button" role="tab" aria-selected={view === "overview"} className={view === "overview" ? styles.activeViewTab : styles.viewTab} onClick={() => setView("overview")}>전체 구조</button>
-        <button type="button" role="tab" aria-selected={view === "stages"} className={view === "stages" ? styles.activeViewTab : styles.viewTab} onClick={() => setView("stages")}>단계 편집</button>
+        {WORKFLOW_VIEWS.map((item, index) => (
+          <button
+            key={item}
+            ref={(node) => { tabRefs.current[index] = node; }}
+            id={workflowTabId(item)}
+            type="button"
+            role="tab"
+            aria-controls={workflowPanelId(item)}
+            aria-selected={view === item}
+            tabIndex={view === item ? 0 : -1}
+            className={view === item ? styles.activeViewTab : styles.viewTab}
+            onClick={() => selectView(item)}
+            onKeyDown={(event) => handleTabKeyDown(event, index)}
+          >
+            {item === "overview" ? "전체 구조" : "단계 편집"}
+          </button>
+        ))}
       </div>
 
-      {view === "overview" ? (
-        <div className={styles.workflowCanvas} role="tabpanel">
+      <div
+        id={workflowPanelId("overview")}
+        className={styles.workflowCanvas}
+        role="tabpanel"
+        aria-labelledby={workflowTabId("overview")}
+        hidden={view !== "overview"}
+      >
+        {view === "overview" ? (
+          <>
           <div className={styles.workflowLegend}>
             <span><i className={styles.legendStage} /> 보드 안 단계 · 값만 변경</span>
             <span><i className={styles.legendMove} /> 탭 이동 · 확인 후 실제 이동</span>
@@ -159,16 +204,26 @@ export function WorkflowManagementSurface({ tabs }: Readonly<{ tabs: readonly Wo
             <strong>다음 확장 지점</strong>
             <p>탭 추가·숨김·삭제·분류·전체 순서 변경은 실제 사이드바와 이동 규칙까지 함께 바꾸는 기능입니다. 이번 기반 위에 사용자가 정할 분류 체계를 붙입니다.</p>
           </aside>
-        </div>
-      ) : (
-        <div className={styles.editorGrid} role="tabpanel">
+          </>
+        ) : null}
+      </div>
+      <div
+        id={workflowPanelId("stages")}
+        className={styles.editorGrid}
+        role="tabpanel"
+        aria-labelledby={workflowTabId("stages")}
+        hidden={view !== "stages"}
+      >
+        {view === "stages" ? (
+          <>
           <header className={styles.editorIntro}>
             <h2>탭 안 단계</h2>
             <p>여기서 바꾼 이름과 순서는 즉시 실제 보드 그룹에 저장됩니다. `진행현황`의 보드 안 단계도 같은 순서를 따릅니다.</p>
           </header>
           {ordered.map((tab) => <StageEditor key={tab.key} tab={tab} />)}
-        </div>
-      )}
+          </>
+        ) : null}
+      </div>
     </section>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import type { LedgerReportRow } from "@/lib/accounting/report";
 import type { YearlyLedgerYearGroup } from "@/lib/accounting/yearly";
 import { LedgerReportView } from "./LedgerReportView";
@@ -21,6 +21,9 @@ const MODES = [
 
 type Mode = (typeof MODES)[number]["key"];
 
+const ledgerModeTabId = (mode: Mode) => `ledger-mode-tab-${mode}`;
+const ledgerModePanelId = (mode: Mode) => `ledger-mode-panel-${mode}`;
+
 /**
  * /ledger 의 두 모드 — 「연도별」(기존) 과 「리포트」(정산 리포트 시안 §②).
  *
@@ -32,27 +35,59 @@ type Mode = (typeof MODES)[number]["key"];
  */
 export function LedgerScreen({ years, rows, printedOn, printedBy }: LedgerScreenProps) {
   const [mode, setMode] = useState<Mode>("yearly");
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  function selectMode(next: Mode, focus = false) {
+    setMode(next);
+    if (focus) tabRefs.current[MODES.findIndex((item) => item.key === next)]?.focus();
+  }
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % MODES.length;
+    if (event.key === "ArrowLeft") nextIndex = (index - 1 + MODES.length) % MODES.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = MODES.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    selectMode(MODES[nextIndex].key, true);
+  }
 
   return (
     <>
       <div className={styles.modeTabs} role="tablist" aria-label="원장 보기 방식" data-print="hide">
-        {MODES.map((item) => (
+        {MODES.map((item, index) => (
           <button
             key={item.key}
+            ref={(node) => { tabRefs.current[index] = node; }}
+            id={ledgerModeTabId(item.key)}
             type="button"
             role="tab"
+            aria-controls={ledgerModePanelId(item.key)}
             aria-selected={item.key === mode}
-            onClick={() => setMode(item.key)}
+            tabIndex={item.key === mode ? 0 : -1}
+            onClick={() => selectMode(item.key)}
+            onKeyDown={(event) => handleTabKeyDown(event, index)}
           >
             {item.label}
           </button>
         ))}
       </div>
-      {mode === "yearly" ? (
-        <YearlyLedgerView groups={years} />
-      ) : (
-        <LedgerReportView rows={rows} printedOn={printedOn} printedBy={printedBy} />
-      )}
+      {MODES.map((item) => (
+        <div
+          key={item.key}
+          id={ledgerModePanelId(item.key)}
+          role="tabpanel"
+          aria-labelledby={ledgerModeTabId(item.key)}
+          hidden={mode !== item.key}
+        >
+          {mode === item.key
+            ? item.key === "yearly"
+              ? <YearlyLedgerView groups={years} />
+              : <LedgerReportView rows={rows} printedOn={printedOn} printedBy={printedBy} />
+            : null}
+        </div>
+      ))}
     </>
   );
 }

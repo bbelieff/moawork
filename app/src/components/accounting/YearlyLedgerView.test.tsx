@@ -1,5 +1,9 @@
+// @vitest-environment jsdom
+
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { YearlyLedgerView } from "./YearlyLedgerView";
 import { groupYearlyLedger, type YearlyLedgerRow } from "@/lib/accounting/yearly";
 
@@ -12,6 +16,29 @@ function row(partial: Partial<YearlyLedgerRow> & Pick<YearlyLedgerRow, "id" | "o
     paidOn: partial.occurredOn,
     ...partial,
   };
+}
+
+let root: Root | null = null;
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+afterEach(async () => {
+  if (root) await act(async () => root?.unmount());
+  root = null;
+  document.body.replaceChildren();
+});
+
+async function renderFixture(rows: readonly YearlyLedgerRow[]) {
+  const host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  await act(async () => root?.render(<YearlyLedgerView groups={groupYearlyLedger(rows)} />));
+  return host;
+}
+
+async function press(element: HTMLElement, key: string) {
+  await act(async () => {
+    element.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+  });
 }
 
 describe("YearlyLedgerView", () => {
@@ -44,5 +71,46 @@ describe("YearlyLedgerView", () => {
     ]);
     const html = renderToStaticMarkup(<YearlyLedgerView groups={groups} />);
     expect(html).toContain("<td>-</td>");
+  });
+
+  it("connects each year tab to a stable panel and exposes only the selected year as a tab stop", async () => {
+    const host = await renderFixture([
+      row({ id: "2024", occurredOn: "2024-01-01", kind: "fee", amount: 1 }),
+      row({ id: "2025", occurredOn: "2025-01-01", kind: "fee", amount: 2 }),
+      row({ id: "2026", occurredOn: "2026-01-01", kind: "fee", amount: 3 }),
+    ]);
+    const tabs = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    expect(tabs.map((tab) => [tab.id, tab.getAttribute("aria-controls"), tab.tabIndex])).toEqual([
+      ["ledger-year-tab-2024", "ledger-year-panel-2024", -1],
+      ["ledger-year-tab-2025", "ledger-year-panel-2025", -1],
+      ["ledger-year-tab-2026", "ledger-year-panel-2026", 0],
+    ]);
+    expect(host.querySelectorAll('[role="tabpanel"]')).toHaveLength(3);
+    expect(host.querySelector('[role="tabpanel"]:not([hidden])')?.id).toBe("ledger-year-panel-2026");
+  });
+
+  it("wraps year selection with arrows and supports Home, End, and click", async () => {
+    const host = await renderFixture([
+      row({ id: "2024", occurredOn: "2024-01-01", kind: "fee", amount: 1 }),
+      row({ id: "2025", occurredOn: "2025-01-01", kind: "fee", amount: 2 }),
+      row({ id: "2026", occurredOn: "2026-01-01", kind: "fee", amount: 3 }),
+    ]);
+    const tabs = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    tabs[2].focus();
+
+    await press(tabs[2], "ArrowRight");
+    expect(document.activeElement).toBe(tabs[0]);
+    expect(host.querySelector('[role="tabpanel"]:not([hidden])')?.id).toBe("ledger-year-panel-2024");
+    await press(tabs[0], "End");
+    expect(document.activeElement).toBe(tabs[2]);
+    await press(tabs[2], "Home");
+    expect(document.activeElement).toBe(tabs[0]);
+    await press(tabs[0], "ArrowLeft");
+    expect(document.activeElement).toBe(tabs[2]);
+
+    await act(async () => tabs[1].click());
+    expect(tabs[1].getAttribute("aria-selected")).toBe("true");
+    expect(tabs.filter((tab) => tab.tabIndex === 0)).toEqual([tabs[1]]);
+    expect(host.querySelector('[role="tabpanel"]:not([hidden])')?.getAttribute("aria-labelledby")).toBe("ledger-year-tab-2025");
   });
 });
