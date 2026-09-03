@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { MEMBER_ROLES, MEMBER_SCOPES, type MemberRole, type MemberScope } from "@/lib/auth/roles";
 
 export type TodayDashboardStatus = "ready" | "empty" | "partial" | "unfilled";
 
@@ -20,8 +21,28 @@ export class TodayDashboardVersionError extends Error {
     this.name = "TodayDashboardVersionError";
   }
 }
-export type TodayDashboardRole = "owner" | "admin" | "member";
-export type TodayDashboardScope = "all" | "assigned";
+/*
+ * ★ 역할·범위의 정본은 `lib/auth/roles.ts` 하나다. 여기서 손으로 다시 적지 않는다.
+ *
+ *   전에는 `"owner" | "admin" | "member"` 와 `"all" | "assigned"` 를 적어 뒀고,
+ *   아래 파서가 그 목록으로 `oneOf` 검사를 했다. 그런데 조직관리 화면에서
+ *   「팀장」과 「내 부서 이하」를 «고를 수 있고», RPC 가 그 값을 `org_members` 에
+ *   그대로 쓴다(013:146). 그러면 그 사람은 이 파서를 통과하지 못한다 (#676).
+ *
+ *   ★ 증상을 «죽는다» 고 적지 마라 — 검수가 반증했다.
+ *     `oneOf` 가 던지는 것은 평범한 `Error` 이고, `today-server.ts:44-70` 의
+ *     `loadTodayHome` 이 그것을 잡아 `{kind:"error", reason:"오늘 지표를 …"}` 로 바꾼다.
+ *     **실제 모습은 «홈은 뜨고 「오늘」 칸만 오류 카드»** 다. 500 도 흰 화면도 아니다.
+ *     그 사람에게는 그 카드가 «영원히» 떠 있었다 — 그게 진짜 증상이다.
+ *
+ *   범위(`department`) 쪽은 «역할과 무관하게» 누구나 걸린다.
+ *
+ *   ★★ 다만 여기를 고쳐도 «부서 데이터가 보이는» 것은 아니다 — 업무 데이터 RPC 들이
+ *      `department` 를 아직 무시한다(099:138 등). 오류 카드가 사라질 뿐이고,
+ *      숫자는 «자기 담당분» 이다. 그 조용한 거짓말은 #705 가 맡는다.
+ */
+export type TodayDashboardRole = MemberRole;
+export type TodayDashboardScope = MemberScope;
 export type TodayDashboardActionKind =
   | "work_due"
   | "follow_up"
@@ -135,7 +156,8 @@ export function parseTodayDashboard(value: unknown): TodayDashboardSnapshot {
   if (tasks.length > 5 || notifications.length > 5) throw new Error("Dashboard row limit exceeded.");
   return {
     version: 2, orgId: string(row.orgId),
-    viewer: { userId: string(viewer.userId), role: oneOf(viewer.role, ["owner", "admin", "member"]), scope: oneOf(viewer.scope, ["all", "assigned"]) },
+    // ★ 목록을 손으로 적지 않는다 — 정본을 그대로 쓴다. 역할·범위가 늘면 여기는 안 고쳐도 따라온다.
+    viewer: { userId: string(viewer.userId), role: oneOf(viewer.role, MEMBER_ROLES), scope: oneOf(viewer.scope, MEMBER_SCOPES) },
     asOf: string(row.asOf), timezone: oneOf(row.timezone, ["Asia/Seoul"]),
     period: { today: string(period.today), monthStart: string(period.monthStart), monthEndExclusive: string(period.monthEndExclusive) },
     status: oneOf(row.status, ["ready", "empty", "partial", "unfilled"]),

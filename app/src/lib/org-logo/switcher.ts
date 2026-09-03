@@ -6,11 +6,14 @@
 //   소스에 이름이 있는지만 보는 검사는 「이름은 있는데 값이 안 흐른다」를 통과시킨다.
 //   순수 함수로 떼어내면 값이 도착하는지를 실제로 잴 수 있다.
 
+import type { MemberRole } from "@/lib/auth/roles";
+
 export type SwitcherMembership = {
   orgId: string;
   slug: string;
   name: string;
-  role: "owner" | "admin" | "member";
+  /** ★ 정본은 lib/auth/roles.ts 다. 여기 손으로 다시 적으면 역할이 늘 때 안 따라온다 (#676). */
+  role: MemberRole;
 };
 
 export type SwitcherWorkspaceInput = SwitcherMembership & {
