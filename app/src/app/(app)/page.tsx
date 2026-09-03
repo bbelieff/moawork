@@ -5,7 +5,7 @@ import { FEATURES } from "@/lib/product";
 import { loadTodayHome } from "@/lib/dash/today-server";
 import { TodayHome } from "@/components/dash/TodayHome";
 import { CompanyStatusSection } from "@/components/dash/CompanyStatusSection";
-import type { MemberRole } from "@/lib/types";
+import { MEMBER_ROLES, type MemberRole } from "@/lib/types";
 import { PlatformAccessNotice } from "@/components/platform/PlatformAccessNotice";
 
 // 홈 = V6 «오늘». 로고를 누르면 오는 화면이고, 워크스페이스에 들어와 처음 보는 화면이다.
@@ -36,7 +36,13 @@ export default async function DashboardPage({
   const devToolsEnabled = process.env.NODE_ENV !== "production";
   const ctx = devToolsEnabled ? applyAs(base, asParam) : base;
   const today = await loadTodayHome(ctx.org.id);
-  const roles: MemberRole[] = ["owner", "admin", "member"];
+  /*
+   * ★ 목록을 손으로 좁혀 적지 않는다. 정본을 그대로 쓴다.
+   *   전에는 `const roles: MemberRole[] = ["owner","admin","member"]` 였다 —
+   *   타입은 `MemberRole[]` 이 맞는데 값이 «부분집합» 이라 tsc 가 영원히 못 잡는다.
+   *   #676 을 만든 것과 정확히 같은 병이고, 여기선 개발용 미리보기라 피해가 없었을 뿐이다.
+   */
+  const roles: readonly MemberRole[] = MEMBER_ROLES;
 
   return (
     <div className="flex flex-col gap-[var(--sp-4)]">

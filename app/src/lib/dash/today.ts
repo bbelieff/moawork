@@ -25,12 +25,21 @@ export class TodayDashboardVersionError extends Error {
  * ★ 역할·범위의 정본은 `lib/auth/roles.ts` 하나다. 여기서 손으로 다시 적지 않는다.
  *
  *   전에는 `"owner" | "admin" | "member"` 와 `"all" | "assigned"` 를 적어 뒀고,
- *   아래 파서가 그 목록으로 `oneOf` 검사를 했다. `oneOf` 는 **throw** 한다 —
- *   즉 목록에 없는 값이 오면 오늘 대시보드가 통째로 터진다.
+ *   아래 파서가 그 목록으로 `oneOf` 검사를 했다. 그런데 조직관리 화면에서
+ *   「팀장」과 「내 부서 이하」를 «고를 수 있고», RPC 가 그 값을 `org_members` 에
+ *   그대로 쓴다(013:146). 그러면 그 사람은 이 파서를 통과하지 못한다 (#676).
  *
- *   그런데 조직관리 화면에서 「팀장」과 「내 부서 이하」를 «고를 수 있고»,
- *   RPC 가 그 값을 `org_members` 에 그대로 쓴다(013:146). 그 사람의 대시보드는
- *   `Invalid dashboard enum` 으로 죽는다. 범위 쪽은 «역할과 무관하게» 누구나 걸린다.
+ *   ★ 증상을 «죽는다» 고 적지 마라 — 검수가 반증했다.
+ *     `oneOf` 가 던지는 것은 평범한 `Error` 이고, `today-server.ts:44-70` 의
+ *     `loadTodayHome` 이 그것을 잡아 `{kind:"error", reason:"오늘 지표를 …"}` 로 바꾼다.
+ *     **실제 모습은 «홈은 뜨고 「오늘」 칸만 오류 카드»** 다. 500 도 흰 화면도 아니다.
+ *     그 사람에게는 그 카드가 «영원히» 떠 있었다 — 그게 진짜 증상이다.
+ *
+ *   범위(`department`) 쪽은 «역할과 무관하게» 누구나 걸린다.
+ *
+ *   ★★ 다만 여기를 고쳐도 «부서 데이터가 보이는» 것은 아니다 — 업무 데이터 RPC 들이
+ *      `department` 를 아직 무시한다(099:138 등). 오류 카드가 사라질 뿐이고,
+ *      숫자는 «자기 담당분» 이다. 그 조용한 거짓말은 #705 가 맡는다.
  */
 export type TodayDashboardRole = MemberRole;
 export type TodayDashboardScope = MemberScope;
