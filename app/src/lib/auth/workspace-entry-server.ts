@@ -1,4 +1,5 @@
 import { parseActiveMembershipRows } from "@/lib/auth/workspace-routing";
+import { isMemberRole, type MemberRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 
@@ -6,7 +7,13 @@ export type WorkspaceEntryOption = {
   orgId: string;
   slug: string;
   name: string;
-  role: "owner" | "admin" | "member";
+  /*
+   * ★ 역할 목록을 여기 손으로 «다시 적지» 마라. 정본은 lib/auth/roles.ts 하나다.
+   *   전에는 `"owner" | "admin" | "member"` 라고 적혀 있었고, 2026-08-11 에
+   *   `team_lead` 가 생겼을 때 이 줄이 안 따라왔다 — 그래서 팀장인 사람이
+   *   **어느 회사에도 못 들어왔다** (#676).
+   */
+  role: MemberRole;
 };
 
 export type WorkspaceRoutingSnapshot =
@@ -76,13 +83,25 @@ export async function readWorkspaceRoutingSnapshot(
   const parsed = parseActiveMembershipRows(membershipResult.data);
   if (!parsed.ok) return { kind: "error" };
 
+  /*
+   * ★ 이상한 행은 «그 회사만» 뺀다. 스냅샷 전체를 죽이지 않는다.
+   *
+   *   전에는 둘 다 `return { kind: "error" }` 였다. 그래서 회사 하나가 이상하면
+   *   그 사람의 **멀쩡한 회사들까지 같이 사라졌고**, 로그인은 되는데 계속
+   *   `/workspace-entry?error=routing` 으로 튕겼다 (#676).
+   *
+   *   fail-closed 자체는 옳다. 틀린 것은 «무엇을 닫는가» 였다 — 이상한 회사 하나다.
+   *   남는 회사는 이름·역할 검사를 «각자» 통과한 것들뿐이라 권한이 넓어지지 않는다.
+   *   전부 빠져서 0개가 되면 호출부가 지금과 같은 곳으로 보낸다(workspaces/page.tsx).
+   */
   const memberships: WorkspaceEntryOption[] = [];
   for (const membership of parsed.memberships) {
     const org = relation(membership.source.orgs);
     const name = org && typeof org.name === "string" ? org.name.trim() : "";
-    if (!name) return { kind: "error" };
+    if (!name) continue;
     const role = membership.source.role;
-    if (role !== "owner" && role !== "admin" && role !== "member") return { kind: "error" };
+    // 정본(MEMBER_ROLES)에 물어본다. 역할이 늘면 여기는 안 고쳐도 따라온다.
+    if (!isMemberRole(role)) continue;
     memberships.push({ orgId: membership.orgId, slug: membership.slug, name, role });
   }
   return { kind: "ready", memberships, selfRouteState };

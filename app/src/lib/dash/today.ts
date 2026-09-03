@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { MEMBER_ROLES, MEMBER_SCOPES, type MemberRole, type MemberScope } from "@/lib/auth/roles";
 
 export type TodayDashboardStatus = "ready" | "empty" | "partial" | "unfilled";
 
@@ -20,8 +21,19 @@ export class TodayDashboardVersionError extends Error {
     this.name = "TodayDashboardVersionError";
   }
 }
-export type TodayDashboardRole = "owner" | "admin" | "member";
-export type TodayDashboardScope = "all" | "assigned";
+/*
+ * ★ 역할·범위의 정본은 `lib/auth/roles.ts` 하나다. 여기서 손으로 다시 적지 않는다.
+ *
+ *   전에는 `"owner" | "admin" | "member"` 와 `"all" | "assigned"` 를 적어 뒀고,
+ *   아래 파서가 그 목록으로 `oneOf` 검사를 했다. `oneOf` 는 **throw** 한다 —
+ *   즉 목록에 없는 값이 오면 오늘 대시보드가 통째로 터진다.
+ *
+ *   그런데 조직관리 화면에서 「팀장」과 「내 부서 이하」를 «고를 수 있고»,
+ *   RPC 가 그 값을 `org_members` 에 그대로 쓴다(013:146). 그 사람의 대시보드는
+ *   `Invalid dashboard enum` 으로 죽는다. 범위 쪽은 «역할과 무관하게» 누구나 걸린다.
+ */
+export type TodayDashboardRole = MemberRole;
+export type TodayDashboardScope = MemberScope;
 export type TodayDashboardActionKind =
   | "work_due"
   | "follow_up"
@@ -135,7 +147,8 @@ export function parseTodayDashboard(value: unknown): TodayDashboardSnapshot {
   if (tasks.length > 5 || notifications.length > 5) throw new Error("Dashboard row limit exceeded.");
   return {
     version: 2, orgId: string(row.orgId),
-    viewer: { userId: string(viewer.userId), role: oneOf(viewer.role, ["owner", "admin", "member"]), scope: oneOf(viewer.scope, ["all", "assigned"]) },
+    // ★ 목록을 손으로 적지 않는다 — 정본을 그대로 쓴다. 역할·범위가 늘면 여기는 안 고쳐도 따라온다.
+    viewer: { userId: string(viewer.userId), role: oneOf(viewer.role, MEMBER_ROLES), scope: oneOf(viewer.scope, MEMBER_SCOPES) },
     asOf: string(row.asOf), timezone: oneOf(row.timezone, ["Asia/Seoul"]),
     period: { today: string(period.today), monthStart: string(period.monthStart), monthEndExclusive: string(period.monthEndExclusive) },
     status: oneOf(row.status, ["ready", "empty", "partial", "unfilled"]),

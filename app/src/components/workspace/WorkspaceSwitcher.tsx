@@ -1,7 +1,7 @@
 "use client";
 
 import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
-import { roleLabel } from "@/lib/auth/roles";
+import { roleLabel, type MemberRole } from "@/lib/auth/roles";
 
 import {
   type CSSProperties,
@@ -20,7 +20,8 @@ import styles from "./workspace-switcher.module.css";
 import { DeveloperModeControl } from "@/components/mode/DeveloperModeControl";
 import { NAVIGATION_STALL_MS } from "@/lib/workspace/switch-navigation";
 
-export type WorkspaceRole = "owner" | "admin" | "member";
+/** ★ 정본은 lib/auth/roles.ts. 손으로 다시 적으면 역할이 늘 때 안 따라온다 (#676). */
+export type WorkspaceRole = MemberRole;
 export type WorkspaceMembershipStatus = "active" | "inactive" | "suspended";
 
 export type SwitcherWorkspace = {
@@ -65,6 +66,7 @@ export type WorkspaceSwitcherProps = {
 const ROLE_LABEL: Record<WorkspaceRole, string> = {
   owner: roleLabel("owner"),
   admin: roleLabel("admin"),
+  team_lead: roleLabel("team_lead"),
   member: roleLabel("member"),
 };
 

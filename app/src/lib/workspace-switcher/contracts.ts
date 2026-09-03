@@ -3,7 +3,14 @@
  * a snapshot produced by an authenticated server loader only; this module
  * deliberately accepts neither a user id nor a requested organisation id.
  */
-export type WorkspaceRole = "owner" | "admin" | "member";
+import type { MemberRole } from "@/lib/auth/roles";
+
+/**
+ * ★ 역할 목록의 정본은 `lib/auth/roles.ts` 하나다 — 여기서 다시 적지 않는다.
+ *   전에는 `"owner" | "admin" | "member"` 를 손으로 적었고, `team_lead` 가 생겼을 때
+ *   따라오지 않아 팀장인 사람이 워크스페이스에 못 들어왔다 (#676).
+ */
+export type WorkspaceRole = MemberRole;
 
 export type ServerWorkspaceMembership = Readonly<{
   orgId: string;

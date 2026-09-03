@@ -3,13 +3,17 @@
 import { useActionState, useEffect, useState } from "react";
 import { requestWorkspaceDeletionAction, restoreWorkspaceDeletionAction, type WorkspaceDeletionActionState } from "@/app/(app)/settings/account/actions";
 import styles from "./account.module.css";
-import { roleLabel } from "@/lib/auth/roles";
+import { roleLabel, type MemberRole } from "@/lib/auth/roles";
 
 export type ManagedWorkspace = {
   orgId: string;
   name: string;
   slug: string;
-  role: "owner" | "admin" | "member";
+  /*
+   * ★ #699 가 «이름표» 는 정본에서 가져오게 고쳤는데(위 roleLabel import) «타입» 은
+   *   손으로 적은 채 남아 있었다. 반쪽만 고친 것이다. 그래서 팀장이 여기까지 못 왔다 (#676).
+   */
+  role: MemberRole;
   status: "active" | "pending_delete";
   deletionRequestedAt: string | null;
 };
