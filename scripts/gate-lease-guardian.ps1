@@ -219,7 +219,14 @@ function Wait-Zero($Job, [int]$TimeoutMs, [bool]$InjectHang) {
   while ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -lt $deadline) { if (-not $InjectHang -and $Job.ActiveProcesses -eq 0) { return $true }; Start-Sleep -Milliseconds 25 }
   return (-not $InjectHang -and $Job.ActiveProcesses -eq 0)
 }
-function Quarantine([string]$Reason) { Fail "GATE_GUARDIAN_QUARANTINED" "machine fence quarantined" @{ reason = $Reason }; while ($true) { Start-Sleep -Seconds 60 } }
+$quarantineReason = ""
+function Request-Quarantine([string]$Reason) {
+  if (-not $script:quarantineReason) { $script:quarantineReason = $Reason }
+}
+function Quarantine([string]$Reason) {
+  Request-Quarantine $Reason
+  throw "GATE_GUARDIAN_QUARANTINED"
+}
 function Open-SafeFence([string]$Name) {
   if (-not $Name.StartsWith("Global\MoaWork.FullGate.")) { throw "GATE_FENCE_NAME_INVALID" }
   $created = $false
@@ -347,13 +354,22 @@ try {
   $hello = Read-BrokerMessage $reader 5000 "HELLO"
   if ($hello.type -ne "hello" -or -not (Has-StringProperty $hello "protocol") -or $hello.protocol -ne "moawork-full-gate-v1") { throw "GATE_BROKER_HELLO_SCHEMA" }
   Send-Broker $writer @{ type = "acquire"; request = @{ requestId = $payload.requestId; pid = $PID; label = $payload.label } }
-  $grant = $null; $waitDeadline = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + [int64]$payload.waitTimeoutMs
+  $grant = $null
+  $waitStartedAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+  $waitDeadline = $waitStartedAt + [int64]$payload.waitTimeoutMs
   while ($null -eq $grant) {
     if ($wrapper.Exited -or $pipe.Eof) { throw "GATE_WRAPPER_LOST_BEFORE_FENCE" }
-    if ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -ge $waitDeadline) { throw "GATE_LEASE_TIMEOUT" }
+    $brokerWaitNow = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    if ($brokerWaitNow -ge $waitDeadline) { throw "GATE_LEASE_TIMEOUT" }
     # Broker heartbeat is fixed at 30s. A 90s read deadline leaves two full
-    # heartbeat intervals of scheduling jitter and cannot be weakened by env.
-    $message = Read-BrokerMessage $reader 90000 "WAIT"
+    # heartbeat intervals of scheduling jitter, but a caller's absolute wait
+    # deadline always wins over the transport read window.
+    $brokerReadTimeout = [int][Math]::Min(90000L, [Math]::Max(1L, $waitDeadline - $brokerWaitNow))
+    try { $message = Read-BrokerMessage $reader $brokerReadTimeout "WAIT" }
+    catch {
+      if ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -ge $waitDeadline) { throw "GATE_LEASE_TIMEOUT" }
+      throw
+    }
     if ($message.type -eq "granted") {
       if (-not (Has-StringProperty $message "requestId") -or -not (Equals-OrdinalString $message.requestId $payload.requestId) -or -not (Has-StringProperty $message "leaseToken") -or -not $message.leaseToken) { throw "GATE_BROKER_WAIT_SCHEMA" }
       $grant = $message
@@ -373,9 +389,19 @@ try {
   }
 
   $stage = "fence"
+  $lastFenceWaitDiagnostic = 0L
   while (-not $fenceOwned) {
     if ($wrapper.Exited -or $pipe.Eof) { throw "GATE_WRAPPER_LOST_BEFORE_FENCE" }
-    try { $fenceOwned = $fence.WaitOne(50) } catch [Threading.AbandonedMutexException] { $fenceOwned = $true; Quarantine "abandoned-machine-fence" }
+    $fenceWaitNow = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    if ($lastFenceWaitDiagnostic -eq 0L -or $fenceWaitNow - $lastFenceWaitDiagnostic -ge 1000) {
+      Write-Structured "GATE_FENCE_WAIT" @{ fenceName = $payload.fenceName; waitedMs = $fenceWaitNow - $waitStartedAt; productChild = 0 }
+      $lastFenceWaitDiagnostic = $fenceWaitNow
+    }
+    if ($fenceWaitNow -ge $waitDeadline) { throw "GATE_MACHINE_FENCE_TIMEOUT" }
+    # An abandoned mutex transfers ownership to this guardian. The kernel-only
+    # signal is not durable evidence that a product command started: the marker
+    # and recovery audit below are the fail-closed source of truth.
+    try { $fenceOwned = $fence.WaitOne(50) } catch [Threading.AbandonedMutexException] { $fenceOwned = $true }
   }
   Assert-NoFenceMarker ([string]$payload.fenceName)
   $markerCreatedAt = Set-FenceMarker ([string]$payload.fenceName); $markerOwned = $true
@@ -423,6 +449,10 @@ try {
   }
   if (-not $released) { throw "GATE_BROKER_RELEASE_TIMEOUT" }
   Remove-FenceMarker ([string]$payload.fenceName); $markerOwned = $false
+  if ($hasFault -and $payload.testFault -eq "verified-release-handoff-delay") {
+    Write-Structured "GATE_TEST_VERIFIED_RELEASE_BARRIER" @{ path = "normal"; markerOwned = $markerOwned; fenceOwned = $fenceOwned }
+    Start-Sleep -Milliseconds 1000
+  }
   $fence.ReleaseMutex(); $fenceOwned = $false
   Send-Broker $writer @{ type = "release-complete"; requestId = $payload.requestId }
   Close-Broker $client; $client = $null
@@ -436,22 +466,45 @@ try {
     "GATE_BROKER_RELEASE_EOF",
     "GATE_BROKER_CLOSE_FAILED"
   )
-  if ($stage -eq "release" -and $commandResultVerified -and $releaseTransportFailure) {
-    if (-not (Wait-Zero $job 5000 $false)) { Quarantine "release-result-cleanup-unverified:$reason" }
-    if ($markerOwned) {
-      try { Remove-FenceMarker ([string]$payload.fenceName); $markerOwned = $false }
-      catch { Quarantine "marker-cleanup-failed" }
+  $preserveVerifiedExit = $stage -eq "release" -and $commandResultVerified -and $releaseTransportFailure
+  $jobZeroVerified = $null -eq $job
+  if ($null -ne $job) {
+    if (-not $commandResultVerified) { try { $job.Terminate(78) } catch {} }
+    try {
+      if (-not (Wait-Zero $job 5000 $false)) {
+        Request-Quarantine $(if ($preserveVerifiedExit) { "release-result-cleanup-unverified:$reason" } else { "exception-cleanup:$reason" })
+      } else {
+        $jobZeroVerified = $true
+      }
+    } catch { Request-Quarantine "exception-cleanup-probe-failed" }
+  }
+
+  if ($markerOwned -and $jobZeroVerified -and -not $quarantineReason -and $fenceOwned) {
+    try { Remove-FenceMarker ([string]$payload.fenceName); $markerOwned = $false }
+    catch { Request-Quarantine "marker-cleanup-failed" }
+    if (-not $quarantineReason -and $hasFault -and $payload.testFault -eq "verified-release-handoff-delay") {
+      $barrierPath = if ($preserveVerifiedExit) { "degraded" } else { "generic-error" }
+      Write-Structured "GATE_TEST_VERIFIED_RELEASE_BARRIER" @{ path = $barrierPath; markerOwned = $markerOwned; fenceOwned = $fenceOwned }
+      Start-Sleep -Milliseconds 1000
     }
-    if ($fenceOwned) {
-      try { $fence.ReleaseMutex(); $fenceOwned = $false }
-      catch { Quarantine "fence-release-failed" }
-    }
+  }
+
+  # Every positively verified-zero cleanup clears its owned marker under the
+  # fence above. Unverified or quarantined paths preserve durable evidence;
+  # no path intentionally deletes an owned marker after releasing the fence.
+  if ($fenceOwned) {
+    try { $fence.ReleaseMutex(); $fenceOwned = $false }
+    catch { Request-Quarantine "fence-release-failed" }
+  }
+
+  if ($quarantineReason) {
+    Fail "GATE_GUARDIAN_QUARANTINED" "machine fence quarantined" @{ stage = $stage; reason = $quarantineReason }
+    exit 78
+  }
+  if ($preserveVerifiedExit) {
     Write-ReleaseDegraded $reason ([int]$exitCode)
     exit $exitCode
   }
-  if ($null -ne $job) { try { $job.Terminate(78) } catch {}; if (-not (Wait-Zero $job 5000 $false)) { Quarantine "exception-cleanup:$reason" } }
-  if ($markerOwned) { try { Remove-FenceMarker ([string]$payload.fenceName); $markerOwned = $false } catch { Quarantine "marker-cleanup-failed" } }
-  if ($fenceOwned) { try { $fence.ReleaseMutex(); $fenceOwned = $false } catch { Quarantine "fence-release-failed" } }
   $code = if ($reason.StartsWith("GATE_")) { $reason } else { "GATE_GUARDIAN_INTERNAL" }
   Fail $code "Windows guardian failed closed" @{ stage = $stage; reason = $reason }
   exit 78
