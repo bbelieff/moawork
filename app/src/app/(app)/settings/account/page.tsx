@@ -3,6 +3,7 @@ import { AccountNav } from "@/components/account/AccountNav";
 import styles from "@/components/account/account.module.css";
 import { getSession } from "@/lib/auth/session";
 import { buildAccountViewModel } from "@/lib/account/presentation";
+import { loadAccountOrgProfile } from "@/lib/account/profile-server";
 import { loadWorkspaceRoutingSnapshot } from "@/lib/auth/workspace-entry-server";
 import { loadOwnerWorkspaceDeletionRows } from "@/lib/workspace-deletion/server";
 import type { ManagedWorkspace } from "@/components/account/WorkspaceManagementPanel";
@@ -34,9 +35,10 @@ export default async function AccountPage({
   const ctx = await getSession();
   const account = buildAccountViewModel(ctx);
   const { error } = await searchParams;
-  const [routing, ownerResult] = await Promise.all([
+  const [routing, ownerResult, orgProfile] = await Promise.all([
     loadWorkspaceRoutingSnapshot(),
     loadOwnerWorkspaceDeletionRows().then((rows) => ({ ok: true as const, rows })).catch(() => ({ ok: false as const, rows: [] })),
+    loadAccountOrgProfile(ctx),
   ]);
   const workspaceLoadError = routing.kind !== "ready" || !ownerResult.ok;
   const workspaces: ManagedWorkspace[] = [];
@@ -67,6 +69,7 @@ export default async function AccountPage({
       <AccountNav current="account" items={NAV_ITEMS} />
       <AccountHub
         account={account}
+        orgProfile={orgProfile}
         workspaces={workspaces}
         workspaceLoadError={workspaceLoadError}
         links={{

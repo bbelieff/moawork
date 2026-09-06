@@ -9,9 +9,21 @@ export type AccountViewModel = {
   roleLabel: string;
   roleDescription: string;
   scopeLabel: string;
-  teamMessage: string;
   canManageCompany: boolean;
+  scopeNote: string | null;
 };
+
+export type ProfileReadState =
+  | Readonly<{ kind: "ready"; value: string }>
+  | Readonly<{ kind: "empty"; message: string }>
+  | Readonly<{ kind: "error"; message: string }>;
+
+export type AccountOrgProfile = Readonly<{
+  title: ProfileReadState;
+  department: ProfileReadState;
+  job: ProfileReadState;
+  reportsTo: ProfileReadState;
+}>;
 
 // ★ 이름표는 lib/auth/roles.ts 하나에서 온다. 여기 적으면 그날부터 어긋나기 시작한다.
 
@@ -32,7 +44,7 @@ export function displayLoginEmail(email: string | null | undefined): string {
 
 function membershipPresentation(ctx: Ctx): Pick<
   AccountViewModel,
-  "roleLabel" | "roleDescription" | "scopeLabel" | "canManageCompany"
+  "roleLabel" | "roleDescription" | "scopeLabel" | "canManageCompany" | "scopeNote"
 > {
   // ⚠ 과거에는 여기서 isPlatformAdmin 이면 역할을 "확인 중"으로 가렸다.
   // 그 방어는 "Platform role 이 workspace membership 을 덮어쓸 수 있다"는 전제였는데,
@@ -47,6 +59,10 @@ function membershipPresentation(ctx: Ctx): Pick<
     roleDescription: `${roleLabel(ctx.role)}로 참여하고 있어요.`,
     scopeLabel: scopeLabel(ctx.scope),
     canManageCompany: ctx.role === "owner",
+    scopeNote:
+      ctx.scope === "department"
+        ? "이 값은 회사의 권한 설정이에요. 일부 화면의 부서 범위 적용은 계속 보강 중이에요."
+        : null,
   };
 }
 
@@ -57,10 +73,6 @@ export function buildAccountViewModel(ctx: Ctx): AccountViewModel {
     loginEmail: displayLoginEmail(ctx.user.email),
     initial: accountInitial(ctx.user.name),
     workspaceName: ctx.org.name,
-    teamMessage:
-      ctx.role === "owner" && !ctx.isPlatformAdmin
-        ? "아직 만든 팀이 없어요. 사람이 늘면 회사 관리에서 팀을 만들 수 있어요."
-        : "아직 소속 팀이 없어요. 회사 정보는 계속 볼 수 있어요. 팀 배정이 필요하면 대표에게 알려 주세요.",
     ...membership,
   };
 }
