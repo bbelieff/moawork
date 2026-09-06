@@ -99,6 +99,9 @@ const SCREENS: Readonly<Record<string, Coverage>> = {
   // BBE-240 — deal_ledger_entries 는 의도적으로 로컬 폴백이 없다(가짜 돈 데이터를 안 만든다,
   // accounting/actions.ts·server.ts 와 동일 원칙) — createClient() 가 env 없이 그대로 터진다.
   "/ledger": { status: "known-500", owner: "BBE-240" },
+  // #711 A — 운영에서는 cookie-bound Supabase read model을 쓴다. 로컬 가짜 수납값을
+  // 만들지 않으므로 env 없는 직접 page 호출은 의도적으로 연결 불가다(1440은 fixture 검증).
+  "/dash/top-companies": { status: "known-500", owner: "#711 A" },
 
   // ── 200 확인됨 ─────────────────────────────────────────────────────────
   // ★ BBE-186(PR #246)이 홈을 V6 «오늘» 로 재구성하면서 500 을 없앴다. 2026-08-18 실측 200 ·
@@ -182,7 +185,7 @@ describe("(app) 라우트 전수 목록", () => {
       .filter(([, coverage]) => coverage.status === "known-500")
       .map(([route]) => route);
     expect(remaining.length).toBeGreaterThan(0);
-    expect(remaining).toEqual(["/newcust", "/presets", "/ledger"]);
+    expect(remaining).toEqual(["/newcust", "/presets", "/ledger", "/dash/top-companies"]);
   });
 });
 

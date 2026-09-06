@@ -79,6 +79,8 @@ export const OUT_OF_TAB_HREFS: readonly string[] = [
   "/deals/[dealId]",
   // BBE-240: 연도별 전체 원장 — 사이드바(nav-items.ts "acct")에는 있지만 6탭엔 안 낀다.
   "/ledger",
+  // #711 A: 월별 계약회사 상세는 사이드바 운영 화면이며 보드 6탭과 별개다.
+  "/dash/top-companies",
   "/mode",
   "/onboarding",
   "/onboarding/practice",

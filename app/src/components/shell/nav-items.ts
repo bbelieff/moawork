@@ -36,7 +36,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { key: "work", label: "계약업체 실무", icon: "work", href: "/work", feature: FEATURES.policyfund, owner: "T09" },
   { key: "company", label: "업체관리 현황", icon: "company", href: "/companies", feature: FEATURES.crm, owner: "T02" },
   { key: "vendor", label: "거래처등록", icon: "vendor", feature: FEATURES.crm, owner: "T02" },
-  { key: "topco", label: "이달의 계약회사", icon: "topco", feature: FEATURES.dash, owner: "T04/B5" },
+  { key: "topco", label: "이달의 계약회사", href: "/dash/top-companies", icon: "topco", feature: FEATURES.dash, owner: "T04/B5" },
   // BBE-240: 연도별 전체 원장 실화면 배선 — "준비 중"에서 "계약 후"로 이동.
   { key: "acct", label: "회계", icon: "acct", href: "/ledger", feature: FEATURES.policyfund, owner: "T09" },
   // Phase 2 벤더 모듈 — MVP 엔타이틀먼트 OFF 라 기본 자물쇠.
@@ -63,11 +63,11 @@ export type NavSection = {
 export const NAV_SECTIONS: readonly NavSection[] = [
   { key: "overview", label: "종합", items: ["dash", "notifications", "notice"] },
   { key: "before-contract", label: "계약 전", items: ["new", "contact"], nested: true },
-  { key: "after-contract", label: "계약 후", items: ["work", "company", "acct"], nested: true },
+  { key: "after-contract", label: "계약 후", items: ["work", "company", "acct", "topco"], nested: true },
   {
     key: "coming-soon",
     label: "준비 중",
-    items: ["vendor", "topco", "addons"],
+    items: ["vendor", "addons"],
     nested: true,
     collapsible: true,
   },
