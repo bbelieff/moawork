@@ -132,4 +132,23 @@ node docs/design/qa-visual-blocks.mjs
 # 실제 production build + system Chrome에서 재는다. 외부 서버에 기대지 않고 스스로 띄우고 종료한다.
 node docs/design/qa-org-views.mjs
 
+# ── 5. 워크트리 위생 (경고만 — 용량은 코드 품질이 아니다) ──
+# MoaWork 의 워크트리는 wt/ 한 곳이 아니라 .codex/ · .claude/ · Temp 등 여러 곳에
+# 흩어진다. 그래서 디렉터리를 세지 않고 «git 에 등록된 것» 을 센다 — 위치와 무관하다.
+# 근거: 2026-08-20 워크트리 264개로 하드 고갈(BBE-255), 정리 다음날 194개로 재발.
+WT_CAP=20
+# set -euo pipefail 하에서도 절대 게이트를 죽이지 않는다 — 경고 전용이므로 항상 성공으로 끝낸다.
+wt_count=$(git worktree list 2>/dev/null | wc -l | tr -d ' ' || echo 0)
+if [[ "${wt_count:-0}" -gt "$WT_CAP" ]]; then
+  nm_count=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print substr($0,10)}' | { c=0; while read -r w; do if [[ -d "$w/node_modules" ]]; then c=$((c+1)); fi; done; echo "$c"; } || echo '?')
+  echo "⚠️ 등록 워크트리 ${wt_count}개 (권장 ≤ ${WT_CAP}) · node_modules 보유 ${nm_count}개"
+  echo "   머지 끝난 것부터 정리하세요 (AGENTS.md §9.1):"
+  echo "     git worktree list                    # 어디에 몇 개인지"
+  echo "     rm -rf <워크트리>/node_modules        # 용량만 회수 (npm install 로 복구)"
+  echo "     git worktree remove <워크트리> && git worktree prune"
+  echo "   ※ 머지 판정은 --is-ancestor 가 아니라 merge-tree 로 한다 (squash merge 레포)"
+else
+  echo "✅ 등록 워크트리 ${wt_count}개"
+fi
+
 echo "✅ check 통과"

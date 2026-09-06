@@ -946,6 +946,29 @@ GitHub 댓글도 알림도 «도는 창» 을 깨우지 못한다.
   `rm -rf` 로 폴더만 지우지 않는다 — git 쪽 등록이 유령으로 남아 다음 사람이 «살아있는 작업»과 구분을 못 한다
   (2026-08-20 점검에서 264개 적발, 다수가 자체 `node_modules` 를 갖고 있어 실제 용량을 먹고 있었다).
   워크트리 수명은 원칙적으로 24시간을 넘기지 않는다. 체크리스트는 `docs/playbooks/worker-onboarding.md` F15.
+- **★ 문서만 고치는 작업에 워크트리를 새로 만들지 마라.** worklog·docs 같은 `.md` 전용 변경은
+  **`node_modules` 가 이미 있는 워크트리에서** 하거나 메인에서 한다.
+  **실측: 의존성 없는 워크트리는 19MB, 있는 것은 ~700MB — 37배다.** 그러나 이 레포의
+  `.githooks/pre-commit` 은 문서 변경에도 전체 게이트를 돌리므로 **`node_modules` 없이는 커밋이 안 된다**
+  (2026-09-07 실패: `check-unreachable-app-files.mjs` 가 `typescript` 를 못 찾음).
+  즉 «깔지 마라» 가 아니라 «깔아야 하는 워크트리를 새로 늘리지 마라» 가 정확한 규칙이다.
+- **★ 완주 = 머지 + 배포 + health + 뒷정리.** 머지된 워크트리는 역할이 끝났다. 완주 도장 전에:
+  ```bash
+  rm -rf <워크트리>/node_modules      # 최소 — npm install 로 복구되므로 무손실
+  git worktree remove <워크트리>      # 권장 — 브랜치가 남으므로 언제든 재생성
+  git worktree prune                 # 등록 잔재 청소
+  ```
+- **★ 등록 워크트리 상한 20개.** `scripts/check.sh` 가 초과 시 경고한다(차단은 안 한다 —
+  용량은 코드 품질이 아니다). 경고가 뜨면 그 세션이 **머지 끝난 것부터 정리하고** 진행한다.
+  「내 것 아니니까」로 넘기면 아무도 안 치운다.
+  **머지 판정은 `merge-tree` 로 한다** — 이 레포는 squash merge 라 `--is-ancestor` 가 항상 거짓이다:
+  ```bash
+  [ "$(git merge-tree --write-tree origin/main <SHA> | head -1)" = "$(git rev-parse origin/main^{tree})" ]
+  ```
+- **`node_modules` 를 junction·심볼릭 링크로 공유하지 마라.** 해석이 깨지고, 청소할 때
+  `rm -rf` 가 링크를 따라가 **원본을 지운다**(2026-08-21 실제로 발생할 뻔했다).
+- 〔사고 기록〕 2026-08-20 264개 정리(90.51GB 회수) → **다음날 194개로 재발**(50GB 남음) →
+  296개 재정리(68GB 회수). 정리 규약 없이 생성 규약만 있으면 반드시 재발한다.
 - 한 파일에 활성 writer 는 한 명. 남의 미커밋 파일을 수정·stage·삭제하지 않는다.
 - 남의 브랜치를 checkout·rebase·force-push·reset·delete 하지 않는다.
 - **Supabase 스키마는 새 migration 파일로만 추가.** 기존 파일 수정 금지.
