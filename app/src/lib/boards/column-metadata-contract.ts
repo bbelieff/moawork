@@ -1,3 +1,5 @@
+import type { MemberRole } from "@/lib/auth/roles";
+
 export const BOARD_COLUMN_RPC = {
   command: "execute_board_column_command",
   typeDryRun: "board_column_type_dry_run",
@@ -14,7 +16,8 @@ export type BoardColumnCommandOperation =
   | "restore";
 
 export type BoardColumnPolicy = {
-  roles?: Array<"owner" | "admin" | "team_lead" | "member">;
+  /** ★ 정본은 lib/auth/roles.ts. 손으로 다시 적으면 역할이 늘 때 안 따라온다 (#707). */
+  roles?: MemberRole[];
   scopes?: Array<"all" | "department" | "assigned">;
   userIds?: string[];
 };
