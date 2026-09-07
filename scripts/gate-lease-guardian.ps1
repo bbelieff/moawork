@@ -274,11 +274,63 @@ function Get-ProcessCreationIdentity([uint32]$ProcessId) {
   $handle = [MoaWorkProcessHandle]::Open($ProcessId)
   try { return $handle.CreationIdentity } finally { $handle.Dispose() }
 }
+# Issue #718: a CI-runner guardian reported a durable marker at the same instant
+# a same-SID interactive sampler read the key as empty, and the same code passes
+# interactively on the same machine. Nothing in this file explains that, so the
+# quarantine now reports exactly what it read and where it read it: the handle
+# Open-MarkerKey created, a freshly reopened HKCU handle, and the same path
+# addressed through HKEY_USERS under this process's own SID. If those three
+# disagree, HKCU is not pointing where the rest of the tooling looks.
+function Read-MarkerProbe([Microsoft.Win32.RegistryKey]$Key, [string]$MarkerName) {
+  if ($null -eq $Key) { return @{ present = $false; keyMissing = $true } }
+  $probe = @{ keyMissing = $false }
+  try { $probe.keyName = $Key.Name } catch { $probe.keyName = "<unreadable>" }
+  try { $probe.valueNames = @($Key.GetValueNames()) } catch { $probe.valueNames = @("<unreadable>") }
+  try { $probe.present = $null -ne $Key.GetValue($MarkerName, $null) } catch { $probe.present = "<unreadable>" }
+  return $probe
+}
+function Write-QuarantineDiagnostic([Microsoft.Win32.RegistryKey]$Key, [string]$FenceName, [string]$MarkerName, $Raw) {
+  $detail = @{}
+  $subKey = Marker-RegistrySubKey $FenceName
+  $detail.registrySubKey = $subKey
+  $detail.openedKey = Read-MarkerProbe $Key $MarkerName
+  try {
+    $reopen = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($subKey, $false)
+    try { $detail.reopenedCurrentUser = Read-MarkerProbe $reopen $MarkerName }
+    finally { if ($null -ne $reopen) { $reopen.Dispose() } }
+  } catch { $detail.reopenedCurrentUser = @{ error = [string]$_.Exception.Message } }
+  $sid = "<unreadable>"
+  try { $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value } catch {}
+  try {
+    $byUser = [Microsoft.Win32.Registry]::Users.OpenSubKey(($sid + "\" + $subKey), $false)
+    try { $detail.byExplicitSid = Read-MarkerProbe $byUser $MarkerName }
+    finally { if ($null -ne $byUser) { $byUser.Dispose() } }
+  } catch { $detail.byExplicitSid = @{ error = [string]$_.Exception.Message } }
+  $detail.markerName = $MarkerName
+  $detail.fenceName = $FenceName
+  $detail.fenceNameLength = $FenceName.Length
+  $detail.rawType = if ($null -eq $Raw) { "null" } else { $Raw.GetType().FullName }
+  $text = [string]$Raw
+  $detail.rawLength = $text.Length
+  $detail.raw = if ($text.Length -gt 200) { $text.Substring(0, 200) } else { $text }
+  $detail.currentSid = $sid
+  $detail.is64BitProcess = [Environment]::Is64BitProcess
+  $detail.guardianPid = $PID
+  try { $detail.parentPid = [int](Get-CimInstance Win32_Process -Filter "ProcessId=$PID" -ErrorAction Stop).ParentProcessId } catch { $detail.parentPid = -1 }
+  $detail.userProfile = $env:USERPROFILE
+  $detail.scriptPath = $PSCommandPath
+  $detail.psVersion = $PSVersionTable.PSVersion.ToString()
+  Write-Structured "GATE_QUARANTINE_DIAG" $detail
+}
 function Assert-NoFenceMarker([string]$Name) {
   $key = Open-MarkerKey $Name
   try {
     $markerName = Fence-MarkerName $Name
-    if ($null -ne $key.GetValue($markerName, $null)) { Quarantine "durable-crash-marker" }
+    $markerRaw = $key.GetValue($markerName, $null)
+    if ($null -ne $markerRaw) {
+      Write-QuarantineDiagnostic $key $Name $markerName $markerRaw
+      Quarantine "durable-crash-marker"
+    }
     $audit = $key.OpenSubKey("RecoveryAudit", $false)
     try {
       if ($null -ne $audit) {
