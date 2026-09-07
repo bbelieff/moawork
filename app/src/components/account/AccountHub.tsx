@@ -110,7 +110,7 @@ export function AccountHub({
             <details className={styles.advanced}>
               <summary>회사가 성장하면 여는 관리</summary>
               <p>
-                멤버와 팀을 안전하게 관리하는 기능을 준비하고 있어요. 대표
+                구성원과 팀을 안전하게 관리하는 기능을 준비하고 있어요. 대표
                 보호 계약이 확인되기 전에는 변경할 수 없어요.
               </p>
               {links.companyManagement ? (

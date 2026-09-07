@@ -107,7 +107,7 @@ const EXPECTED_TARGETS = [
   ["companies.owner_name", "dup__of____", "text", "ready"],
   ["deals.custom.address", "___8", "text", "ready"],
   ["companies.email", "email_mm40x2jr", "email", "ready"],
-  ["deals.assigned_to ?? companies.assigned_to", "person", "person", "transform", "현재 조직의 활성 멤버인지 재검증해야 합니다."],
+  ["deals.assigned_to ?? companies.assigned_to", "person", "person", "transform", "현재 조직의 활성 구성원인지 재검증해야 합니다."],
   ["deals.status_note", "long_text", "longtext", "ready"],
   ["deals.custom.next_contact", "date", "datetime", "transform", "날짜를 회사 시간대의 명시적 시각으로 변환해야 합니다."],
 ] as const;
