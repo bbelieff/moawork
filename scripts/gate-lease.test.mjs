@@ -1223,6 +1223,20 @@ test("markerless abandoned fence recovers and runs one contained command", { ski
   }
 });
 
+// Issue #718: between Open-SafeFence and GATE_FENCE_ACQUIRED the guardian used
+// to say nothing, so an outside observer could not tell a guardian waiting for
+// the broker grant from one waiting for the OS fence - #718 comment 3 read a
+// guardian that had already quarantined as a stall in that gap. Both waits now
+// report the same event with the stage that is actually blocking.
+test("every pre-fence wait is reported with the stage that is blocking", async () => {
+  const guardian = await readFile(GUARDIAN, "utf8");
+  assert.match(guardian, /\$fenceOpenedAt = \[DateTimeOffset\]::UtcNow\.ToUnixTimeMilliseconds\(\)/u);
+  assert.match(guardian, /GATE_FENCE_WAIT.*waitedMs = \$brokerWaitNow - \$fenceOpenedAt; reason = "broker-grant"/u);
+  assert.match(guardian, /GATE_FENCE_WAIT.*waitedMs = \$fenceWaitNow - \$fenceOpenedAt; reason = "os-fence"/u);
+  // the broker-grant heartbeat repeats on a 30s cadence, the OS fence wait on 1s
+  assert.match(guardian, /\$brokerWaitNow - \$fenceOpenedAt -ge 30000 -and \(\$lastFenceWaitDiagnostic -eq 0L -or \$brokerWaitNow - \$lastFenceWaitDiagnostic -ge 30000\)/u);
+});
+
 test("live machine fence owner times out before command and queued successor recovers", { skip: process.platform !== "win32" }, async () => {
   const recoveryMs = 300;
   const broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: -1, crashRecoveryDelayMs: recoveryMs });
@@ -1237,6 +1251,7 @@ test("live machine fence owner times out before command and queued successor rec
     assert.equal(blockedResult.code, 78, blocked.output());
     assert.match(blocked.output(), /GATE_MACHINE_FENCE_TIMEOUT/u);
     assert.match(blocked.output(), /GATE_FENCE_WAIT.*"productChild":0/u);
+    assert.match(blocked.output(), /GATE_FENCE_WAIT.*"reason":"os-fence"/u);
     assert.doesNotMatch(blocked.output(), /BLOCKED_MUST_NOT_START/u);
     assert.equal(markerExists(fenceName), false);
     assert.equal(owner.child.exitCode, null);

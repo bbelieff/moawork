@@ -346,6 +346,11 @@ try {
   $hasFault = $payload.PSObject.Properties.Name -contains "testFault"
   if ($hasFault -and $payload.testFault -eq "stall-bootstrap") { Start-Sleep -Seconds 60 }
   $fence = Open-SafeFence ([string]$payload.fenceName)
+  # Everything from here to GATE_FENCE_ACQUIRED used to be silent, so an outside
+  # observer could not tell a guardian waiting for the broker from one waiting
+  # for the OS fence. GATE_FENCE_WAIT now covers the whole span.
+  $fenceOpenedAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+  $lastFenceWaitDiagnostic = 0L
   Send-Pipe $pipe @{ type = "ready"; nonce = $PipeNonce; guardianPid = $PID; wrapperPid = $BootstrapWrapperPid; wrapperCreationIdentity = $wrapper.CreationIdentity; fenceName = $payload.fenceName; bootIdentity = [MoaWorkProcessHandle]::BootIdentity() }
 
   $stage = "broker"
@@ -360,6 +365,10 @@ try {
   while ($null -eq $grant) {
     if ($wrapper.Exited -or $pipe.Eof) { throw "GATE_WRAPPER_LOST_BEFORE_FENCE" }
     $brokerWaitNow = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    if ($brokerWaitNow - $fenceOpenedAt -ge 30000 -and ($lastFenceWaitDiagnostic -eq 0L -or $brokerWaitNow - $lastFenceWaitDiagnostic -ge 30000)) {
+      Write-Structured "GATE_FENCE_WAIT" @{ fenceName = $payload.fenceName; waitedMs = $brokerWaitNow - $fenceOpenedAt; reason = "broker-grant"; productChild = 0 }
+      $lastFenceWaitDiagnostic = $brokerWaitNow
+    }
     if ($brokerWaitNow -ge $waitDeadline) { throw "GATE_LEASE_TIMEOUT" }
     # Broker heartbeat is fixed at 30s. A 90s read deadline leaves two full
     # heartbeat intervals of scheduling jitter, but a caller's absolute wait
@@ -394,7 +403,7 @@ try {
     if ($wrapper.Exited -or $pipe.Eof) { throw "GATE_WRAPPER_LOST_BEFORE_FENCE" }
     $fenceWaitNow = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     if ($lastFenceWaitDiagnostic -eq 0L -or $fenceWaitNow - $lastFenceWaitDiagnostic -ge 1000) {
-      Write-Structured "GATE_FENCE_WAIT" @{ fenceName = $payload.fenceName; waitedMs = $fenceWaitNow - $waitStartedAt; productChild = 0 }
+      Write-Structured "GATE_FENCE_WAIT" @{ fenceName = $payload.fenceName; waitedMs = $fenceWaitNow - $fenceOpenedAt; reason = "os-fence"; productChild = 0 }
       $lastFenceWaitDiagnostic = $fenceWaitNow
     }
     if ($fenceWaitNow -ge $waitDeadline) { throw "GATE_MACHINE_FENCE_TIMEOUT" }

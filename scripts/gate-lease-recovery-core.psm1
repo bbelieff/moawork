@@ -115,12 +115,73 @@ function Open-RecoveryMutex([string]$FenceName) {
   return $mutex
 }
 
-function Test-RelevantGateProcesses {
+# A quarantined guardian parks (pre-#719 builds) or exits (#719) without ever
+# owning a product command. Recovery already holds the machine fence when this
+# runs, so any surviving gate process is provably outside the critical section:
+# it is either parked after quarantine or queued before the fence. Neither can
+# be corrupted by clearing a marker it does not own, and counting those as
+# "live" is what made an isolated gate unrecoverable without a human killing
+# pids by hand.
+#
+# The evidence is the descendant set, not cpu time: a guardian that is actually
+# running the gate owns the product process it started. A console host is not a
+# product child. Brokers are never inert - they are childless by design and the
+# listener probe is their only guard.
+#
+# The command line match is also narrowed to the hosts the gate actually runs
+# as. Matching any process whose command line merely mentions the script name
+# caught editors, shells and agent sessions that quote it, and each of those
+# blocked recovery exactly the way #718 describes.
+$script:GateProcessHosts = @("node.exe", "powershell.exe", "pwsh.exe")
+function Test-GateProcessHasProductDescendant($Process, [hashtable]$ChildrenByParent) {
+  $pending = [Collections.Generic.Queue[object]]::new()
+  $pending.Enqueue($Process)
+  $seen = [Collections.Generic.HashSet[uint32]]::new()
+  [void]$seen.Add([uint32]$Process.ProcessId)
+  while ($pending.Count -gt 0) {
+    $current = $pending.Dequeue()
+    $key = [uint32]$current.ProcessId
+    if (-not $ChildrenByParent.ContainsKey($key)) { continue }
+    foreach ($child in $ChildrenByParent[$key]) {
+      $childPid = [uint32]$child.ProcessId
+      if ($childPid -eq $key) { continue }
+      if (-not $seen.Add($childPid)) { continue }
+      # Windows leaves an orphan's parent id pointing at a dead pid that can be
+      # reused. A child that predates its claimed parent is a stale mapping.
+      if ($null -ne $child.CreationDate -and $null -ne $current.CreationDate -and $child.CreationDate -lt $current.CreationDate) { continue }
+      if ($child.Name -ne "conhost.exe") { return $true }
+      $pending.Enqueue($child)
+    }
+  }
+  return $false
+}
+
+function Get-RelevantGateProcessCensus {
   $pattern = 'gate-lease-(guardian|runner|broker|test-harness)(?:\.mjs|\.ps1)?|scripts[\\/]gate-lease\.mjs'
-  $processes = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
-    $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine -match $pattern
+  $brokerPattern = 'gate-lease-broker(?:\.mjs)?'
+  $all = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+  $matched = @($all | Where-Object {
+    $_.ProcessId -ne $PID -and $_.CommandLine -and $script:GateProcessHosts -contains $_.Name -and $_.CommandLine -match $pattern
   })
-  return $processes
+  if ($matched.Count -eq 0) { return [pscustomobject]@{ live = @(); inert = @() } }
+  $childrenByParent = @{}
+  foreach ($process in $all) {
+    $parent = [uint32]$process.ParentProcessId
+    if (-not $childrenByParent.ContainsKey($parent)) { $childrenByParent[$parent] = [Collections.Generic.List[object]]::new() }
+    [void]$childrenByParent[$parent].Add($process)
+  }
+  $live = [Collections.Generic.List[object]]::new()
+  $inert = [Collections.Generic.List[object]]::new()
+  foreach ($process in $matched) {
+    if ($process.CommandLine -match $brokerPattern) { [void]$live.Add($process); continue }
+    if (Test-GateProcessHasProductDescendant $process $childrenByParent) { [void]$live.Add($process) }
+    else { [void]$inert.Add($process) }
+  }
+  return [pscustomobject]@{ live = @($live); inert = @($inert) }
+}
+
+function Test-RelevantGateProcesses {
+  return @((Get-RelevantGateProcessCensus).live)
 }
 
 function Test-GateListener([int]$Port) {
@@ -268,13 +329,15 @@ function Invoke-GateLeaseRecoveryInternal {
       if ([uint32][int64]$marker.guardianPid -ne $ExpectedGuardianPid) { throw "RECOVERY_MARKER_PID_MISMATCH" }
 
       if (@(Test-GateListener $InternalPort).Count -ne 0) { throw "RECOVERY_LISTENER_LIVE" }
-      if (@(Test-RelevantGateProcesses).Count -ne 0) { throw "RECOVERY_GATE_PROCESS_LIVE" }
+      $census = Get-RelevantGateProcessCensus
+      if (@($census.live).Count -ne 0) { throw "RECOVERY_GATE_PROCESS_LIVE" }
+      $inertGateProcesses = @($census.inert).Count
 
       if ($DryRun) {
         return [pscustomobject]@{
           result = "dry-run"; cleared = $false; wouldClear = $true; legacy = -not $isV1
           aclWouldHarden = (-not $strictAcl); priorDigest = $expectedDigest; bootIdentity = $ExpectedBootIdentity
-          abandonedFence = $abandoned
+          abandonedFence = $abandoned; inertGateProcesses = $inertGateProcesses
         }
       }
 
@@ -336,7 +399,7 @@ function Invoke-GateLeaseRecoveryInternal {
 
       return [pscustomobject]@{
         result = "cleared"; cleared = $true; legacy = -not $isV1; priorDigest = $expectedDigest
-        bootIdentity = $ExpectedBootIdentity; abandonedFence = $abandoned
+        bootIdentity = $ExpectedBootIdentity; abandonedFence = $abandoned; inertGateProcesses = $inertGateProcesses
       }
     } finally { $key.Dispose() }
   } finally {
