@@ -96,5 +96,12 @@ describe("account presentation", () => {
     expect(model.roleLabel).toBe("구성원");
     expect(model.canManageCompany).toBe(false);
     expect(model.scopeLabel).toBe("본인 담당분");
+    expect(model.scopeNote).toBeNull();
+  });
+
+  it("부서 범위 설정을 아직 모든 화면에 적용된 사실처럼 과장하지 않는다", () => {
+    const model = buildAccountViewModel(context({ role: "team_lead", scope: "department" }));
+    expect(model.scopeLabel).toBe("부서 이하 전체");
+    expect(model.scopeNote).toContain("일부 화면의 부서 범위 적용은 계속 보강 중");
   });
 });

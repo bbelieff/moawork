@@ -8,6 +8,8 @@ import { visualSetCellAction } from "./actions";
 import { VisualLayerProbe } from "./VisualLayerProbe";
 import { VisualWorkspaceSwitcherProbe } from "./VisualWorkspaceSwitcherProbe";
 import { VisualThemeProbe } from "./VisualThemeProbe";
+import { AccountHub } from "@/components/account/AccountHub";
+import accountStyles from "@/components/account/account.module.css";
 import { DepartmentManager } from "@/components/member-organization/DepartmentManager";
 import { OrgViewTabs } from "@/components/member-organization/OrgViewTabs";
 import { isOrgView } from "@/lib/org/org-view";
@@ -73,6 +75,45 @@ function fixture(tabKey: string, workflowValue: string | null, showAllGroups = f
 
 export default async function VisualFixturePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
+  if (params.surface === "account-profile") {
+    return (
+      <main data-visual-account-profile className="min-h-screen bg-mw-bg p-6">
+        <div className={accountStyles.page}>
+          <header className={accountStyles.heading}>
+            <h1>내 계정과 팀</h1>
+            <p>내 정보와 지금 함께 일하는 회사를 확인해요.</p>
+          </header>
+          <AccountHub
+            account={{
+              displayName: "가상 사용자",
+              loginEmail: "masked@example.invalid",
+              initial: "가",
+              workspaceName: "가상 회사",
+              roleLabel: "팀장",
+              roleDescription: "팀장으로 참여하고 있어요.",
+              scopeLabel: "부서 이하 전체",
+              scopeNote: "이 값은 회사의 권한 설정이에요. 일부 화면의 부서 범위 적용은 계속 보강 중이에요.",
+              canManageCompany: false,
+            }}
+            orgProfile={{
+              title: { kind: "ready", value: "고객 운영 담당" },
+              department: { kind: "ready", value: "고객지원팀" },
+              job: { kind: "ready", value: "고객 요청을 분류하고 다음 담당자에게 연결해요." },
+              reportsTo: { kind: "ready", value: "가상 관리자" },
+            }}
+            workspaces={[{
+              orgId: "visual-org",
+              name: "가상 회사",
+              slug: "visual-company",
+              role: "team_lead",
+              status: "active",
+              deletionRequestedAt: null,
+            }]}
+          />
+        </div>
+      </main>
+    );
+  }
   // #640 — 「보는 방식 네 갈래」를 1440·375 에서 눈으로 확인하는 자리.
   // reporting=unknown 을 붙이면 «보고 예외를 못 읽은» 상태도 볼 수 있다.
   if (params.surface === "organization-views") {

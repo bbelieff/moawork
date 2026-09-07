@@ -265,6 +265,15 @@
   overflow-wrap: anywhere;
 }
 
+.emptyValue {
+  color: var(--mw-sub);
+}
+
+.errorValue {
+  color: var(--mw-error);
+  font-weight: 700;
+}
+
 .actionRow {
   display: flex;
   flex-wrap: wrap;

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { AccountViewModel } from "@/lib/account/presentation";
+import type { AccountOrgProfile, AccountViewModel, ProfileReadState } from "@/lib/account/presentation";
 import { CurrentSessionLogout } from "./CurrentSessionLogout";
 import styles from "./account.module.css";
 import { WorkspaceManagementPanel, type ManagedWorkspace } from "./WorkspaceManagementPanel";
@@ -14,15 +14,25 @@ export type AccountHubLinks = {
 
 export function AccountHub({
   account,
+  orgProfile,
   links = {},
   workspaces = [],
   workspaceLoadError = false,
 }: {
   account: AccountViewModel;
+  orgProfile: AccountOrgProfile;
   links?: AccountHubLinks;
   workspaces?: ManagedWorkspace[];
   workspaceLoadError?: boolean;
 }) {
+  const profileValue = (state: ProfileReadState) => {
+    if (state.kind === "ready") return <dd data-profile-state="ready">{state.value}</dd>;
+    if (state.kind === "empty") {
+      return <dd className={styles.emptyValue} data-profile-state="empty">{state.message}</dd>;
+    }
+    return <dd className={styles.errorValue} data-profile-state="error">{state.message}</dd>;
+  };
+
   return (
     <>
       <section className={styles.identity} aria-labelledby="account-identity">
@@ -37,9 +47,8 @@ export function AccountHub({
       </section>
 
       <div className={styles.bento}>
-        <section className={styles.card} aria-labelledby="my-info-title">
+        <section className={styles.card} aria-labelledby="my-info-title" data-account-scope="global">
           <h2 id="my-info-title">내 정보</h2>
-          <div className={styles.stat}>{account.roleLabel}</div>
           <dl className={styles.definitionList}>
             <div>
               <dt>표시 이름</dt>
@@ -49,6 +58,14 @@ export function AccountHub({
               <dt>로그인 이메일</dt>
               <dd>{account.loginEmail}</dd>
             </div>
+          </dl>
+        </section>
+
+        <section className={styles.card} aria-labelledby="company-profile-title" data-account-scope="organization">
+          <h2 id="company-profile-title">현재 회사에서의 내 정보</h2>
+          <p>표시 이름과 로그인 정보는 모든 회사에서 같고, 아래 정보는 현재 회사에만 적용돼요.</p>
+          <div className={styles.stat}>{account.roleLabel}</div>
+          <dl className={styles.definitionList}>
             <div>
               <dt>역할</dt>
               <dd>{account.roleDescription}</dd>
@@ -56,7 +73,12 @@ export function AccountHub({
             <div>
               <dt>볼 수 있는 범위</dt>
               <dd>{account.scopeLabel}</dd>
+              {account.scopeNote ? <small>{account.scopeNote}</small> : null}
             </div>
+            <div><dt>호칭</dt>{profileValue(orgProfile.title)}</div>
+            <div><dt>주부서</dt>{profileValue(orgProfile.department)}</div>
+            <div><dt>직무</dt>{profileValue(orgProfile.job)}</div>
+            <div><dt>보고 대상</dt>{profileValue(orgProfile.reportsTo)}</div>
           </dl>
         </section>
 
@@ -87,10 +109,6 @@ export function AccountHub({
             <div>
               <dt>현재 회사</dt>
               <dd>{account.workspaceName}</dd>
-            </div>
-            <div>
-              <dt>팀</dt>
-              <dd>{account.teamMessage}</dd>
             </div>
           </dl>
           <div className={styles.actionRow}>
