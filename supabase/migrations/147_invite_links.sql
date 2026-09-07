@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=147_invite_links predecessor=146_issue683_seat_definitions digest=4360e912f68a80255f65c9fce7a30f736fa226eeaa178f94bdc6eef3e2dbe9e6 foundation=false
+-- moa-migration-guard: logical_key=147_invite_links predecessor=146_issue683_seat_definitions digest=a67efbf8ddac5fe286ba1b356b517680df1389be95437b994817f97782ae39c3 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '147_invite_links',
   p_file_name => '147_invite_links.sql',
-  p_file_digest => '4360e912f68a80255f65c9fce7a30f736fa226eeaa178f94bdc6eef3e2dbe9e6',
+  p_file_digest => 'a67efbf8ddac5fe286ba1b356b517680df1389be95437b994817f97782ae39c3',
   p_expected_predecessor => '146_issue683_seat_definitions',
   p_executor => 'DC',
   p_thread_id => 'c3f1a86e-40b7-4d92-9c5a-71e2d8b4306f',
@@ -199,11 +199,29 @@ begin
     return jsonb_build_object('ok', true, 'already', true, 'slug', v_slug, 'name', v_name);
   end if;
 
-  -- 다른 회사에 속해 있어도 상관없다. 사람은 여러 회사에 속할 수 있다.
+  /*
+   * 다른 회사에 속해 있어도 상관없다. 사람은 여러 회사에 속할 수 있다.
+   *
+   * ★★ `do update` 는 «되살리기만» 한다. 자리를 절대 안 바꾼다.
+   *
+   *   전에는 `set status='active', role=excluded.role, scope=excluded.scope` 였다.
+   *   위 갈래가 «active 인 사람» 만 걸러 내므로, 이 줄은 **정지·퇴사 상태의 행**에서 돈다.
+   *   그래서 이런 일이 났다 (직접 재현함):
+   *
+   *       팀장이 정지된다  →  대표가 만든 «구성원» 링크를 누른다
+   *       → team_lead/department 가 member/assigned 로 «강등» 된다
+   *
+   *   PR 본문에 「자리를 안 덮어쓴다」고 적었는데 그건 «active 인 사람에게만» 참이었다.
+   *   #702 에서 겪은 것과 같은 모양이다 — 시험이 한 갈래만 봤다.
+   *
+   *   ★ 링크는 «문을 여는» 물건이지 «자리를 정하는» 물건이 아니다.
+   *     링크에 적힌 자리는 «처음 오는 사람» 에게만 적용된다.
+   *     이미 행이 있는 사람의 자리는 조직관리에서 바꾼다 — 그게 그 화면이 있는 이유다.
+   */
   insert into public.org_members(org_id, user_id, role, scope, status)
   values (v_link.org_id, v_actor, v_link.role, v_link.scope, 'active')
   on conflict (org_id, user_id) do update
-    set status = 'active', role = excluded.role, scope = excluded.scope;
+    set status = 'active';
 
   update public.org_invite_links
      set used_count = used_count + 1

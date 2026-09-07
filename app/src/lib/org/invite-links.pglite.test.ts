@@ -166,6 +166,42 @@ describe("147 — 사람 부르기 링크", () => {
       expect(used.rows[0].used_count, "새로 들어온 사람이 아닌데 횟수가 올랐다").toBe(0);
     });
 
+    /*
+     * ★★★ 여기가 이 함수에서 제일 잘 깨지는 자리다 — 실제로 한 번 깨뜨렸다.
+     *
+     *   위 시험은 「이미 **active** 인 사람」만 봤다. 그런데 `on conflict do update` 는
+     *   «active 가 아닌 행» 에서 돈다. 처음 판에는 거기서 role·scope 를 링크 값으로
+     *   덮어썼고, 그래서 이런 일이 났다 (직접 재현했다):
+     *
+     *       팀장이 정지된다  →  대표가 만든 «구성원» 링크를 누른다
+     *       → team_lead/department 가 member/assigned 로 «강등» 된다
+     *
+     *   PR 본문에 「자리를 안 덮어쓴다」고 적었는데 그건 «active 인 사람에게만» 참이었다.
+     *   #702 에서 겪은 것과 같은 모양이다 — 시험이 한 갈래만 보면 나머지 갈래가 조용히 샌다.
+     *
+     * ★ 링크는 «문을 여는» 물건이지 «자리를 정하는» 물건이 아니다.
+     *   링크의 자리는 «처음 오는 사람» 에게만 적용된다.
+     */
+    it.each([["suspended"], ["inactive"], ["removed"]])(
+      "★ %s 이던 팀장이 «구성원» 링크로 돌아와도 강등되지 않는다",
+      async (status) => {
+        await db.exec(
+          `update public.org_members set status='${status}'
+            where org_id='${ids.orgA}' and user_id='${ids.lead}'`);
+        const { token } = await create(ids.owner, "member", "assigned") as { token: string };
+        as(ids.lead);
+        const out = await call<{ ok: boolean }>(`select public.redeem_org_invite('${token}') as out`);
+        expect(out).toMatchObject({ ok: true });
+
+        const row = await db.query<{ role: string; scope: string; status: string }>(
+          `select role::text, scope::text, status from public.org_members
+            where org_id='${ids.orgA}' and user_id='${ids.lead}'`);
+        expect(row.rows[0], `${status} → 되살아나며 자리가 바뀌었다`).toEqual({
+          role: "team_lead", scope: "department", status: "active",
+        });
+      },
+    );
+
     it("★ 다른 회사에 속해 있어도 «추가로» 들어온다", async () => {
       const { token } = await create(ids.owner) as { token: string };
       as(ids.ownerB);
