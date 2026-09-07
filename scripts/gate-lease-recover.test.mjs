@@ -46,11 +46,28 @@ function parseResult(run) {
   return JSON.parse(line.slice("RESULT ".length));
 }
 
-function fixture(body, { weakAcl = false, port = 0 } = {}) {
+const RECOVERY_FENCE_PREFIX = "Global\\MoaWork.FullGate.RecoveryTest.";
+const TEST_FENCE_PREFIX = "Global\\MoaWork.FullGate.Test.";
+
+async function waitFor(predicate, timeoutMs, label) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+  }
+  throw new Error(`timed out waiting for ${label}`);
+}
+
+function killTree(child) {
+  if (!child.pid) return;
+  spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+}
+
+function fixture(body, { weakAcl = false, port = 0, fencePrefix = RECOVERY_FENCE_PREFIX } = {}) {
   const id = randomUUID().replaceAll("-", "");
   return runPowerShell(`
 $sub = "Software\\MoaWork\\GateLeaseRecoveryTest\\${id}"
-$fence = "Global\\MoaWork.FullGate.RecoveryTest.${id}"
+$fence = "${fencePrefix}${id}"
 $valueName = Get-GateLeaseRecoveryValueName $fence
 $boot = Get-GateLeaseRecoveryBootIdentity
 $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
@@ -341,8 +358,20 @@ $state = Get-GateLeaseRecoveryFixtureState $sub $fence
     await new Promise((resolve) => server.close(resolve));
   }
 
-  const decoy = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)", "gate-lease-guardian.ps1"], { stdio: "ignore", windowsHide: true });
+  // A gate process only blocks recovery when it owns a product descendant, so
+  // the decoy has to start one. A childless guardian is the quarantined shape
+  // covered by the next test.
+  const decoyScript = [
+    "const { spawn } = require('child_process');",
+    "const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });",
+    "child.on('spawn', () => process.stdout.write('CHILD_READY'));",
+    "setTimeout(() => {}, 30000);",
+  ].join(" ");
+  const decoy = spawn(process.execPath, ["-e", decoyScript, "gate-lease-guardian.ps1"], { stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
+  let decoyOutput = "";
+  decoy.stdout.on("data", (chunk) => { decoyOutput += String(chunk); });
   try {
+    await waitFor(() => decoyOutput.includes("CHILD_READY"), 15_000, "decoy product child");
     const processRun = fixture(`
 $raw = New-V1Raw
 New-GateLeaseRecoveryFixture -RegistrySubKey $sub -FenceName $fence -Raw $raw
@@ -352,6 +381,37 @@ $state = Get-GateLeaseRecoveryFixtureState $sub $fence
 [pscustomobject]@{ code = $code; markerExists = $state.markerExists }`);
     assert.deepEqual(parseResult(processRun), { code: "RECOVERY_GATE_PROCESS_LIVE", markerExists: true });
   } finally {
-    decoy.kill("SIGKILL");
+    killTree(decoy);
+  }
+});
+
+// Issue #718: an isolated gate could not recover itself. The quarantined
+// guardian parked while still matching the gate process probe, so recovery
+// answered RECOVERY_GATE_PROCESS_LIVE forever and a human had to hunt pids.
+test("a quarantined guardian that owns no product child does not block recovery", { skip: process.platform !== "win32" }, async () => {
+  const parkedCommand = "Write-Output 'PARKED'; Start-Sleep -Seconds 45 # gate-lease-guardian.ps1";
+  const parked = spawn(POWERSHELL, ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", parkedCommand], {
+    stdio: ["ignore", "pipe", "ignore"],
+    windowsHide: true,
+  });
+  let parkedOutput = "";
+  parked.stdout.on("data", (chunk) => { parkedOutput += String(chunk); });
+  try {
+    await waitFor(() => parkedOutput.includes("PARKED"), 30_000, "parked guardian");
+    const run = fixture(`
+$raw = New-V1Raw
+New-GateLeaseRecoveryFixture -RegistrySubKey $sub -FenceName $fence -Raw $raw
+$result = Invoke-Exact $raw
+$state = Get-GateLeaseRecoveryFixtureState $sub $fence
+[pscustomobject]@{ cleared = $result.cleared; inert = [int]$result.inertGateProcesses; markerExists = $state.markerExists; auditResult = ($state.auditRaw | ConvertFrom-Json).result }`,
+      { fencePrefix: TEST_FENCE_PREFIX });
+    const result = parseResult(run);
+    assert.equal(result.cleared, true);
+    assert.equal(result.markerExists, false);
+    assert.equal(result.auditResult, "cleared");
+    assert.ok(result.inert >= 1, `expected the parked guardian to be counted inert, got ${result.inert}`);
+    assert.equal(parked.exitCode, null, "the parked guardian must survive recovery untouched");
+  } finally {
+    killTree(parked);
   }
 });
