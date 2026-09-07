@@ -50,7 +50,7 @@ export function seedDb(): Db {
     {
       id: SEED_USER_MEMBER,
       email: "member@demo.moawork",
-      name: "담당멤버",
+      name: "담당 구성원",
       avatar_url: null,
       created_at: TS,
     },

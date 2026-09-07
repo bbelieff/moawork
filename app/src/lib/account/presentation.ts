@@ -1,5 +1,6 @@
 import type { Ctx } from "@/lib/types";
 import { roleLabel, scopeLabel } from "@/lib/auth/roles";
+import { euroRo } from "@/lib/text/josa";
 
 export type AccountViewModel = {
   displayName: string;
@@ -42,9 +43,17 @@ function membershipPresentation(ctx: Ctx): Pick<
   // 전제가 사라진 뒤에도 가림막이 남아 belie(오너 & 플랫폼 관리자)가 자기 회사에서
   // "회사 역할 확인 중" + 관리 불가로 고착됐다 → 실제 멤버십 역할을 그대로 쓴다.
   // (플랫폼 관리자라는 사실은 권한을 **더** 주는 축이지, 자기 역할을 가릴 이유가 아니다.)
+  /*
+   * ★ 조사를 손으로 적지 않는다 — 이름이 받침으로 끝나면 「로」가 아니라 「으로」다.
+   *   전에는 `${roleLabel(ctx.role)}로` 였고, 네 역할 중 «둘» 이 이렇게 보였다:
+   *       팀장 → 「팀장로 참여하고 있어요」 · 구성원 → 「구성원로 참여하고 있어요」
+   *   #699 가 「사원」을 「구성원」으로 바꿨지만 둘 다 받침이라 계속 깨진 채였다.
+   *   이름을 고치는 것만으로는 안 되고, 조사가 이름을 «따라와야» 한다 (#700).
+   */
+  const role = roleLabel(ctx.role);
   return {
-    roleLabel: roleLabel(ctx.role),
-    roleDescription: `${roleLabel(ctx.role)}로 참여하고 있어요.`,
+    roleLabel: role,
+    roleDescription: `${role}${euroRo(role)} 참여하고 있어요.`,
     scopeLabel: scopeLabel(ctx.scope),
     canManageCompany: ctx.role === "owner",
   };

@@ -138,7 +138,7 @@ export async function reassignDealAction(
   const before = await getCrmService().getDeal(ctx, dealId);
   const members = await listOrgMemberOptions(ctx);
   if (newAssignedTo && !members.some((member) => member.id === newAssignedTo)) {
-    throw new ValidationError("같은 회사의 멤버만 담당자로 지정할 수 있습니다.");
+    throw new ValidationError("같은 회사에 속한 사람만 담당자로 지정할 수 있어요.");
   }
   const nameOf = (id: string | null) => (id ? (members.find((m) => m.id === id)?.name ?? null) : null);
 

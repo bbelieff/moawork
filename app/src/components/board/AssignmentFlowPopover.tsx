@@ -65,7 +65,7 @@ function Person({
       <Avatar member={member} />
       <span className={styles.personCopy}>
         <b>{member.label}</b>
-        <small>{member.active === false ? "비활성 멤버" : meta || member.title || "구성원"}</small>
+        <small>{member.active === false ? "비활성 구성원" : meta || member.title || "구성원"}</small>
       </span>
       {badge ? <span className={styles.badge}>{badge}</span> : null}
     </div>

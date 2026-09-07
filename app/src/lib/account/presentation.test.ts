@@ -53,6 +53,28 @@ describe("account presentation", () => {
     expect(model.loginEmail).toBe("member@example.invalid");
   });
 
+  /*
+   * ★ 조사가 이름을 «따라오는지» 를 여기서 잰다 (#700).
+   *
+   *   `roleDescription` 은 이름을 문장에 «끼워 넣는» 유일한 자리인데,
+   *   전에는 `${roleLabel(role)}로` 라고 박아 둬서 받침 있는 이름이 깨졌다:
+   *       팀장 → 「팀장로 참여하고 있어요」 · 구성원 → 「구성원로 …」
+   *   #699 가 「사원」을 「구성원」으로 바꿨지만 «둘 다 받침» 이라 계속 깨진 채였다.
+   *
+   * ★★ 그리고 이 시험이 «없어서» 그 결함이 오래 살아 있었다.
+   *   `josa.test.ts` 는 조사 «모듈» 만 지킨다 — 그 모듈을 여기서 «부르는지» 는 못 본다.
+   *   실측(검수 P2-4): 이 줄을 `${role}로` 로 되돌려도 727개 시험이 전부 초록이었다.
+   *   그래서 «만드는 곳» 에 직접 붙인다. 역할이 늘면 위 표에 한 줄만 더하면 된다.
+   */
+  it.each([
+    ["owner", "대표로 참여하고 있어요."],
+    ["admin", "관리자로 참여하고 있어요."],
+    ["team_lead", "팀장으로 참여하고 있어요."],
+    ["member", "구성원으로 참여하고 있어요."],
+  ] as const)("★ %s 의 소개 문장에 조사가 맞게 붙는다", (role, expected) => {
+    expect(buildAccountViewModel(context({ role })).roleDescription).toBe(expected);
+  });
+
   // 회귀 가드(P0): 플랫폼 관리자여도 **자기 회사 역할은 그대로 보인다**.
   // 과거엔 여기서 "회사 역할 확인 중"으로 가려 오너가 자기 회사를 관리하지 못했다.
   // role/scope 는 session.ts 의 두 경로 모두 검증된 org_members 행에서만 오므로

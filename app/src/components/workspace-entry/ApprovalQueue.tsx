@@ -55,7 +55,7 @@ export function ApprovalQueue(props: Props) {
               <span className={styles.stepNumber} aria-hidden="true">{index + 1}</span>
               <div>
                 <strong>{"desiredName" in request ? request.desiredName : `합류 요청 ${index + 1}`}</strong>
-                <small>{"desiredSlug" in request ? `/w/${request.desiredSlug} · 최종 생성 전` : "승인하면 사원·최소 범위로 시작해요."}</small>
+                <small>{"desiredSlug" in request ? `/w/${request.desiredSlug} · 최종 생성 전` : "승인하면 구성원·최소 범위로 시작해요."}</small>
               </div>
               <div className={styles.inlineActions}>
                 <button type="button" className={styles.quietButton} disabled={busyId !== null} onClick={() => decide(request.requestId, false)}>승인하지 않기</button>

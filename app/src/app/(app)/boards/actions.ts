@@ -482,7 +482,7 @@ export async function setCellAction(formData: FormData): Promise<void> {
           const members = await graph.client.from("org_members").select("user_id")
             .eq("org_id", ctx.org.id).eq("status", "active").in("user_id", ids);
           if (members.error || new Set((members.data ?? []).map((member) => member.user_id)).size !== new Set(ids).size) {
-            throw new UserFacingActionError("현재 회사의 활성 멤버만 선택할 수 있어요.");
+            throw new UserFacingActionError("이 회사에 속한 사람만 선택할 수 있어요.");
           }
         }
       }

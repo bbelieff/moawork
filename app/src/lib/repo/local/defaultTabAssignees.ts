@@ -13,7 +13,7 @@ export function loadLocalDefaultTabAssignees(ctx: Ctx): DefaultTabAssignee[] {
       const user = store.users.find((candidate) => candidate.id === member.user_id);
       return {
         userId: member.user_id,
-        displayName: user?.name?.trim() || user?.email?.trim() || "멤버",
+        displayName: user?.name?.trim() || user?.email?.trim() || "구성원",
       };
     });
 }
