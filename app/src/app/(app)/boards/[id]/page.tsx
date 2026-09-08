@@ -50,6 +50,8 @@ import { groupPresetName } from "@/lib/presets/group-preset";
 import { addGroupAction, deleteBoardAction } from "../actions";
 import { getBoardColumnOrder } from "../groupLayout";
 import { presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
+import { applyNoticePerspective, parseNoticePerspective, projectNoticeMetadata } from "@/lib/notices/perspectives";
+import { NoticePerspectiveNav } from "@/components/notices/NoticePerspectiveNav";
 
 /**
  * 범용 보드 화면 (T02b · ADR-0003) — 테이블/칸반 토글.
@@ -66,7 +68,7 @@ export default async function BoardPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ view?: string; group?: string; as?: string; savedView?: string; mwLayout?: string; mwHidden?: string; mwOrder?: string; mwFilters?: string; mwSort?: string; mwText?: string; mwFocus?: string; calendarField?: string }>;
+  searchParams: Promise<{ view?: string; group?: string; as?: string; savedView?: string; mwLayout?: string; mwHidden?: string; mwOrder?: string; mwFilters?: string; mwSort?: string; mwText?: string; mwFocus?: string; calendarField?: string; noticeView?: string }>;
 }) {
   const startedAt = performance.now();
   const { id } = await params;
@@ -130,15 +132,19 @@ export default async function BoardPage({
     (c) => c.type === "select" || c.type === "multiselect",
   );
   const groupBy = sp.group && selectColumns.some((c) => c.key === sp.group) ? sp.group : "";
+  const noticePerspective = parseNoticePerspective(sp.noticeView);
   const visibleItemIds = new Set(scopedItems.result.itemIds);
   const loadedItems = await svc.listItems(ctx, id);
+  const projectedItems = board.source === NOTICE_TAB_SOURCE
+    ? applyNoticePerspective(loadedItems.map(projectNoticeMetadata), noticePerspective, ctx.user.id)
+    : loadedItems;
   const deletedItems = !board.is_system && canDeleteItems
     ? await svc.listDeletedItems(ctx, id)
     : [];
   // 읽음 표시는 «쓰기» 다. 로컬 시드에는 그 저장소가 없어 건너뛴다 —
   // 화면에 표시되는 내용은 달라지지 않는다(BBE-209).
   if (board.source === NOTICE_TAB_SOURCE && client) {
-    const visibleNoticeIds = loadedItems.filter((item) => visibleItemIds.has(item.id)).map((item) => item.id);
+    const visibleNoticeIds = projectedItems.filter((item) => visibleItemIds.has(item.id)).map((item) => item.id);
     await markNoticeItemsReadAtomic(ctx, visibleNoticeIds, client);
   }
 
@@ -155,13 +161,13 @@ export default async function BoardPage({
     ? await loadCompanyPickerRows(ctx)
     : { rows: [], error: null, truncated: false };
   const boardItems = board.source === NOTICE_TAB_SOURCE
-    ? loadedItems.map((item) => {
+    ? projectedItems.map((item) => {
         const fileId = item.values.official_pdf;
         if (typeof fileId !== "string" || !fileId) return item;
         const token = issueFileToken(item.id, fileId);
         return { ...item, values: { ...item.values, official_pdf: `/api/boards/items/${item.id}/files/${fileId}?token=${encodeURIComponent(token)}` } };
       })
-    : loadedItems;
+    : projectedItems;
   const permissionItems = boardItems.filter((item) => visibleItemIds.has(item.id));
   // ★ 사람 범위(personScope)는 «보이는 항목을 좁히는» 규칙이다.
   //   로컬에서 그 조회를 건너뛰면 좁힘이 사라져 «더 많이 보이는» fail-OPEN 이 된다.
@@ -498,6 +504,13 @@ export default async function BoardPage({
 
   return (
     <div className="flex w-full flex-col gap-3">
+      {board.source === NOTICE_TAB_SOURCE ? (
+        <NoticePerspectiveNav
+          baseHref={`/boards/${encodeURIComponent(id)}`}
+          active={noticePerspective}
+          as={sp.as}
+        />
+      ) : null}
       {hiddenCount > 0 && (
         <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p>
       )}
