@@ -545,6 +545,31 @@ describe("147+148 — 사람 부르기 링크", () => {
       expect(await call(`select public.peek_org_invite('${token}') as out`))
         .toEqual({ ok: false, reason: "unusable" });
     });
+
+    /*
+     * ★★ 148:204-212 가 「회사 상태 검사가 «구성원 검사보다 먼저» 와야 한다」를 주석으로
+     *   못 박아 놨는데, 그것을 재는 시험이 «없었다». 검수가 짚었다.
+     *
+     *   위 시험들은 전부 «한 번도 구성원이 아닌 사람»(outsider) 으로만 돈다.
+     *   순서가 뒤집혔을 때 새는 것은 «옛 구성원» 이다 — needs_approval 이 회사 «이름» 을
+     *   돌려주기 때문이다. 그 사람으로 안 밟으면 불변식이 안 지켜져도 조용하다.
+     *
+     * ★ 주석으로만 있고 시험이 없는 규칙은 다음 사람이 지울 수 있다.
+     */
+    it("★ 옛 구성원에게도 문 닫은 회사의 «이름» 이 새지 않는다 — 검사 순서 불변식", async () => {
+      const { token } = await create(ids.owner) as { token: string };
+      await db.exec(
+        `update public.org_members set status='removed'
+          where org_id='${ids.orgA}' and user_id='${ids.lead}'`);
+      await db.exec(`update public.orgs set status='pending_delete' where id='${ids.orgA}'`);
+
+      as(ids.lead);
+      const out = await call<Record<string, unknown>>(
+        `select public.redeem_org_invite('${token}') as out`);
+      // needs_approval 이 아니라 unusable 이어야 하고, name 키가 «아예 없어야» 한다.
+      expect(out, "구성원 검사가 먼저 돌아 삭제 예정 회사 이름이 샜다")
+        .toEqual({ ok: false, reason: "unusable" });
+    });
   });
 
   describe("표에 직접 손대지 못한다", () => {

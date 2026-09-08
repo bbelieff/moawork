@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=148_invite_links_hardening predecessor=147_invite_links digest=0fa9d3509f25e574b322388e82c17bd8346b5dec588a436d1565c950b69a545c foundation=false
+-- moa-migration-guard: logical_key=148_invite_links_hardening predecessor=147_invite_links digest=a505940462dda47f16b1c1922bdd7a1a4e1eda32daeac3bd68464d642fae0a79 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '148_invite_links_hardening',
   p_file_name => '148_invite_links_hardening.sql',
-  p_file_digest => '0fa9d3509f25e574b322388e82c17bd8346b5dec588a436d1565c950b69a545c',
+  p_file_digest => 'a505940462dda47f16b1c1922bdd7a1a4e1eda32daeac3bd68464d642fae0a79',
   p_expected_predecessor => '147_invite_links',
   p_executor => 'DC',
   p_thread_id => '5b8e2f47-9c31-4a06-8d75-e14b3f2a9c60',
@@ -141,10 +141,25 @@ $$;
  *   「재입장은 대표가 조직관리 화면에서 정한다」고 쓸 뻔했다. 그 화면은 없다.
  *   찾아보니 신청 쪽도 막혀 있다:
  *
- *       006:59-66  resolve_workspace_join_request 는 org_members 에 행이 «있기만 하면»
- *                  removed 든 leave 든 안 가리고 23505 로 거절한다
+ *       006:792      create or replace function public.resolve_workspace_join_request
+ *       006:851-857  org_members 에 행이 «있기만 하면» removed 든 leave 든 안 가리고
+ *                    23505 'requester already has workspace membership' 로 거절한다
  *
  *   즉 지금은 링크로도, 신청으로도 못 돌아온다.
+ *
+ *   ★★ 그리고 008 은 이 정책을 «이미 다르게» 정해 놨다 — 둘이 어긋난다.
+ *
+ *       008:26-31   suspended                   → 'blocked_inactive'  (막는다)
+ *       008:36-38   removed · leave · expired    → 'eligible_entry'    (신청 «자격이 있다»)
+ *
+ *     즉 008 은 내보내진 사람에게 「신청하세요」라고 «화면으로 안내한다»
+ *     (app/src/app/workspace-entry/page.tsx 가 이 값으로 화면을 그린다).
+ *     그런데 그 신청을 대표가 승인하면 006:851-857 이 23505 로 거절한다.
+ *     제품이 사람을 막다른 길로 안내하고 있다 — 148 이 만든 것이 아니라 «이미» 그렇다.
+ *
+ *     148 은 여섯 상태를 하나로 묶어 전부 needs_approval 로 보낸다. 보안 판단으로는 맞다
+ *     (링크로 되살리면 정지된 관리자가 스스로 복귀한다). 다만 008 의 갈래와 어긋나므로
+ *     «어느 쪽이 이 제품의 답인가» 를 정하는 것이 #730 의 일이다.
  *
  *   ★ 「코드가 비활성 행을 안 만드니 갇히는 사람은 없다」고 쓸 뻔했다. 그것도 틀렸다.
  *     코드는 정말 안 만든다(008:26 등은 읽기만 한다). 그런데 «사람이 DB 를 직접 고쳐» 만든
