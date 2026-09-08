@@ -19,8 +19,12 @@ describe("BBE-103 — 사이드바 연결 누락 회귀 가드", () => {
     expect(hrefOf("work")).toBe("/work");
   });
 
+  it("이달의 계약회사는 기존 월 집계 상세 화면으로 연결된다", () => {
+    expect(hrefOf("topco")).toBe("/dash/top-companies");
+  });
+
   it("미구현 항목은 그대로 잠금 유지 — 없는 화면으로 보내지 않는다", () => {
-    for (const key of ["vendor", "topco", "addons"]) {
+    for (const key of ["vendor", "addons"]) {
       expect(hrefOf(key)).toBeUndefined();
     }
   });
@@ -51,7 +55,9 @@ describe("BBE-103 — 사이드바 연결 누락 회귀 가드", () => {
       ["계약업체 실무", "/work"],
       ["업체관리 현황", "/companies"],
       ["회계", "/ledger"], // BBE-240 — 연도별 전체 원장.
+      ["이달의 계약회사", "/dash/top-companies"],
     ]);
+    expect(navItemsForSection(NAV_SECTIONS[3]).map((item) => item.key)).toEqual(["vendor", "addons"]);
     expect(navItemsForSection(NAV_SECTIONS[4]).map((item) => [item.label, item.href])).toEqual([
       ["탭 관리", "/settings/workspace-builder"],
       ["자동화", "/settings/automations"],
