@@ -15,6 +15,14 @@ const migration = readFileSync(
   "utf8",
 );
 
+/*
+ * ★ 006:38-40 이 org_members.status 에 허용하는 «전부». active 를 뺀 여섯이다.
+ *   손으로 골라 적지 않는다 — 처음 판은 「suspended·inactive·removed」를 적었는데
+ *   `inactive` 는 006 이 허용하지도 않는 값이었고(시험 스텁에 제약이 없어 통과했다),
+ *   정작 운영에 실재하는 invited·pending·leave·expired 는 한 번도 안 밟았다.
+ */
+const NON_ACTIVE_STATUSES = ["invited", "pending", "suspended", "removed", "leave", "expired"] as const;
+
 const id = (suffix: string) => `00000000-0000-4000-8000-${suffix.padStart(12, "0")}`;
 const ids = {
   orgA: id("a1"),
@@ -59,7 +67,12 @@ const SCHEMA = `
     role public.member_role not null,
     scope public.member_scope not null default 'assigned',
     status text not null default 'active',
-    primary key(org_id, user_id)
+    primary key(org_id, user_id),
+    -- ★ 006:38-40 의 «진짜» 제약. 처음 판에는 이게 없어서 강등 버그가 안 보였다 —
+    --   시험이 아무 status 나 받으니 「suspended·inactive·removed」 같은 임의 값으로
+    --   돌았고, 정작 운영이 허용하는 여섯 상태를 다 못 밟았다. 검수가 이걸 짚었다.
+    constraint org_members_status_check check (
+      status in ('active','invited','pending','suspended','removed','leave','expired'))
   );
   create function public.begin_guarded_migration(
     p_logical_key text, p_file_name text, p_file_digest text,
@@ -129,6 +142,30 @@ describe("147 — 사람 부르기 링크", () => {
       await expect(create(ids.owner, "member", "assigned", 400, null)).rejects.toThrow();
     });
 
+    /*
+     * ★ 승인 단계를 없앤 대가를 막는 것이 «유효기간 · 횟수 · 끄기» 셋인데,
+     *   처음 판은 앞의 둘을 «둘 다» 비울 수 있었다. 그러면 카톡방에 남은 링크가
+     *   끄기 전까지 영원히 살아 있는 열쇠가 된다 (총괄 결정 2026-09-07).
+     */
+    it("★ 「기한 없음 + 무제한」은 못 만든다 — 영원히 사는 열쇠가 된다", async () => {
+      await expect(create(ids.owner, "member", "assigned", null, null)).rejects.toThrow();
+    });
+
+    it("하나만 정하면 만들어진다 — 「기한없음·1명」도 「30일·무제한」도", async () => {
+      await expect(create(ids.owner, "member", "assigned", null, 1)).resolves.toBeTruthy();
+      await expect(create(ids.owner, "member", "assigned", 30, null)).resolves.toBeTruthy();
+    });
+
+    /*
+     * ★ 총괄 결정(2026-09-07) — 관리자도 «관리자 자리» 링크를 만들 수 있다.
+     *   006 이 자리 배정을 대표 전용으로 두는 것과 «의도적으로» 다르다.
+     *   사고가 아니라 결정이라는 것을 시험으로도 못 박는다 —
+     *   다음 사람이 006 주석을 읽고 「이건 버그다」라며 되돌리지 않도록.
+     */
+    it("★ 관리자도 «관리자» 링크를 만들 수 있다 — 의도된 넓히기다", async () => {
+      await expect(create(ids.admin, "admin", "all", 7, null)).resolves.toBeTruthy();
+    });
+
     it("★ 토큰이 매번 다르다 — 같으면 하나가 다른 회사의 열쇠가 된다", async () => {
       const a = await create(ids.owner) as { token: string };
       const b = await create(ids.owner) as { token: string };
@@ -182,7 +219,7 @@ describe("147 — 사람 부르기 링크", () => {
      * ★ 링크는 «문을 여는» 물건이지 «자리를 정하는» 물건이 아니다.
      *   링크의 자리는 «처음 오는 사람» 에게만 적용된다.
      */
-    it.each([["suspended"], ["inactive"], ["removed"]])(
+    it.each(NON_ACTIVE_STATUSES.map((s) => [s]))(
       "★ %s 이던 팀장이 «구성원» 링크로 돌아와도 강등되지 않는다",
       async (status) => {
         await db.exec(
@@ -333,12 +370,55 @@ describe("147 — 사람 부르기 링크", () => {
     });
   });
 
-  describe("표에 직접 손대지 못한다", () => {
-    it("★ 토큰 목록을 «훑을» 수 있으면 그 자체가 사고다", async () => {
-      const grants = await db.query<{ n: number }>(`
-        select count(*)::int as n from information_schema.role_table_grants
-         where table_name = 'org_invite_links' and grantee in ('anon','authenticated','public')`);
-      expect(grants.rows[0].n, "표에 직접 권한이 남아 있다").toBe(0);
+  describe("★ 누가 들어왔는지 남는다 — 승인하는 사람이 없으므로 유일한 추적 수단이다", () => {
+    it("링크로 들어온 사람이 기록되고, 목록에서 보인다", async () => {
+      const { token } = await create(ids.owner) as { token: string };
+      as(ids.outsider);
+      await call(`select public.redeem_org_invite('${token}') as out`);
+      as(ids.owner);
+      const list = await call<Array<{ token: string; joined: Array<{ userId: string }> }>>(
+        `select public.list_org_invite_links('${ids.orgA}') as out`);
+      const row = list.find((l) => l.token === token);
+      expect(row?.joined.map((j) => j.userId), "누가 들어왔는지 안 보인다").toEqual([ids.outsider]);
     });
+
+    it("같은 사람이 같은 링크를 두 번 눌러도 한 번만 세어진다", async () => {
+      const { token } = await create(ids.owner) as { token: string };
+      as(ids.outsider);
+      await call(`select public.redeem_org_invite('${token}') as out`);
+      await call(`select public.redeem_org_invite('${token}') as out`);   // 두 번째는 already
+      const n = await db.query<{ n: number }>(
+        `select count(*)::int as n from public.org_invite_redemptions`);
+      expect(n.rows[0].n).toBe(1);
+    });
+
+    it("★ 「지우지 않는다 — 누가 들어왔는지는 남아야 한다」가 이제 «사실» 이다", async () => {
+      const { token } = await create(ids.owner) as { token: string };
+      as(ids.outsider);
+      await call(`select public.redeem_org_invite('${token}') as out`);
+      as(ids.owner);
+      await call(`select public.revoke_org_invite_link('${ids.orgA}','${token}') as out`);
+      const n = await db.query<{ n: number }>(
+        `select count(*)::int as n from public.org_invite_redemptions`);
+      expect(n.rows[0].n, "끄면 들어온 기록까지 사라진다").toBe(1);
+    });
+  });
+
+  describe("표에 직접 손대지 못한다", () => {
+    /*
+     * ★ 처음 판은 grantee 에서 `service_role` 을 빼고 셌다 — 그래서 «남아 있는데도» 0 이 나왔다.
+     *   Supabase 의 service_role 은 BYPASSRLS 라 FORCE RLS 로도 안 막힌다.
+     *   136·139·146 이 전부 service_role 까지 뗀다. 검수가 이걸 짚었다.
+     */
+    it.each([["org_invite_links"], ["org_invite_redemptions"]])(
+      "★ %s — 토큰·기록을 «훑을» 수 있으면 그 자체가 사고다",
+      async (table) => {
+        const grants = await db.query<{ n: number }>(`
+          select count(*)::int as n from information_schema.role_table_grants
+           where table_name = '${table}'
+             and grantee in ('anon','authenticated','public','service_role')`);
+        expect(grants.rows[0].n, `${table} 에 직접 권한이 남아 있다`).toBe(0);
+      },
+    );
   });
 });

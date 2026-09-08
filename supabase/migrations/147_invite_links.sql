@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=147_invite_links predecessor=146_issue683_seat_definitions digest=a67efbf8ddac5fe286ba1b356b517680df1389be95437b994817f97782ae39c3 foundation=false
+-- moa-migration-guard: logical_key=147_invite_links predecessor=146_issue683_seat_definitions digest=c609a6308d917cd5cfa811d615592557f3917b85b36045b385d114285b3fa365 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '147_invite_links',
   p_file_name => '147_invite_links.sql',
-  p_file_digest => 'a67efbf8ddac5fe286ba1b356b517680df1389be95437b994817f97782ae39c3',
+  p_file_digest => 'c609a6308d917cd5cfa811d615592557f3917b85b36045b385d114285b3fa365',
   p_expected_predecessor => '146_issue683_seat_definitions',
   p_executor => 'DC',
   p_thread_id => 'c3f1a86e-40b7-4d92-9c5a-71e2d8b4306f',
@@ -31,7 +31,11 @@ select public.begin_guarded_migration(
 --
 -- ## 넓히기만 한다
 --
--- 새 표 하나와 새 함수 둘. 기존 표·함수·정책을 건드리지 않는다.
+-- 새 표 «둘»(링크·들어온 기록)과 새 함수 «다섯». 기존 표·함수·정책을 건드리지 않는다.
+-- 되돌리기는 drop table 둘 + drop function 다섯이면 끝난다.
+--
+-- ★ 이 숫자를 손으로 세어 적었으니, 표나 함수를 더하면 여기도 같이 고쳐라.
+--   (처음 판은 「표 하나·함수 둘」이라 적어 놓고 실제로는 다섯이었다.)
 
 create table if not exists public.org_invite_links (
   id uuid primary key default gen_random_uuid(),
@@ -62,10 +66,38 @@ create index if not exists org_invite_links_org_idx on public.org_invite_links(o
 alter table public.org_invite_links enable row level security;
 alter table public.org_invite_links force row level security;
 
--- ★ 직접 읽기·쓰기를 아무에게도 주지 않는다.
---   토큰이 곧 열쇠라서, 목록을 «훑을» 수 있으면 그 자체가 사고다.
---   읽기는 아래 list 함수가, 쓰기는 create/revoke 함수가 security definer 로 한다.
-revoke all on table public.org_invite_links from public, anon, authenticated;
+/*
+ * 링크로 «누가» 들어왔나 — 승인 단계를 없앴으므로 이것이 유일한 추적 수단이다.
+ *
+ * ★ 처음 판에는 이 표가 없었고, `used_count` 숫자 하나만 남겼다. 그런데 바로 위에
+ *   「지우지 않는다: 누가 들어왔는지는 남아야 한다」고 적어 뒀다 — **그 말이 거짓이었다.**
+ *   링크가 새면 몇 명이 들어왔는지는 알아도 «누가» 인지는 알 방법이 없었다.
+ *   승인하는 사람이 없는 기능에서 그건 치명적이다.
+ */
+create table if not exists public.org_invite_redemptions (
+  link_id uuid not null references public.org_invite_links(id) on delete cascade,
+  user_id uuid not null references public.users(id) on delete restrict,
+  redeemed_at timestamptz not null default now(),
+  primary key (link_id, user_id)
+);
+
+create index if not exists org_invite_redemptions_user_idx
+  on public.org_invite_redemptions(user_id, redeemed_at desc);
+
+alter table public.org_invite_redemptions enable row level security;
+alter table public.org_invite_redemptions force row level security;
+
+/*
+ * ★ 직접 읽기·쓰기를 «아무에게도» 주지 않는다.
+ *   토큰이 곧 열쇠라서, 목록을 «훑을» 수 있으면 그 자체가 사고다.
+ *   읽기는 아래 list 함수가, 쓰기는 create/revoke 함수가 security definer 로 한다.
+ *
+ * ★★ `service_role` 도 뗀다. 처음 판에는 빠뜨렸다 —
+ *   Supabase 의 service_role 은 BYPASSRLS 라 FORCE RLS 로도 안 막힌다.
+ *   그러면 「아무에게도 안 준다」가 거짓이 된다. 136·139·146 이 전부 service_role 까지 뗀다.
+ */
+revoke all on table public.org_invite_links from public, anon, authenticated, service_role;
+revoke all on table public.org_invite_redemptions from public, anon, authenticated, service_role;
 
 /*
  * 링크를 만든다 — 대표·관리자만.
@@ -109,8 +141,25 @@ begin
   ) then
     raise exception 'owner or admin required' using errcode = '42501';
   end if;
-  -- ★ 대표 자리는 링크로 못 준다. 표의 check 와 «같은 말» 을 여기서도 먼저 한다 —
-  --   check 로 떨어지면 사용자에게 42501/23514 가 그대로 보인다.
+  /*
+   * ★ 대표 자리는 링크로 못 준다. 표의 check 와 «같은 말» 을 여기서도 먼저 한다 —
+   *   check 로 떨어지면 사용자에게 23514 가 그대로 보인다.
+   *
+   * ★★ 「관리자도 «관리자 자리» 를 줄 수 있다」는 총괄 결정이다 (2026-09-07).
+   *
+   *   이건 이 저장소의 기존 자세를 «의도적으로» 넓힌 것이라 여기 적어 둔다.
+   *   006 은 자리 배정을 대표 전용으로 두고 그 이유까지 주석에 적어 놨다:
+   *       013:126  set_workspace_member_hierarchy_role_scope  → require_owner
+   *       006:625  create_workspace_invite_code               → 대표 전용
+   *       006:879  신청 승인 → 'member','assigned' 하드코딩
+   *                주석: "The payload cannot choose a role or scope … never becomes owner/admin"
+   *
+   *   그래서 「관리자가 관리자를 무제한 늘릴 수 있다」가 «사고가 아니라 결정» 임을
+   *   여기 남긴다. 006 주석을 읽고 「147 이 어긴다」고 판단하지 말 것 —
+   *   대신 그 대가로 아래 두 가지가 붙는다:
+   *     ① 누가 들어왔는지 org_invite_redemptions 에 남는다
+   *     ② 영원+무제한 링크를 만들 수 없다 (아래)
+   */
   if p_role = 'owner' then
     raise exception 'owner role cannot be granted by link' using errcode = '22023';
   end if;
@@ -119,6 +168,20 @@ begin
   end if;
   if p_expires_in_days is not null and (p_expires_in_days <= 0 or p_expires_in_days > 365) then
     raise exception 'expiry must be between 1 and 365 days' using errcode = '22023';
+  end if;
+  /*
+   * ★ 「기한 없음 + 횟수 무제한」은 못 만든다 (총괄 결정 2026-09-07).
+   *
+   *   승인 단계를 없앤 대가를 막는 것이 «유효기간 · 횟수 · 끄기» 셋인데,
+   *   처음 판은 앞의 둘을 «둘 다» 비울 수 있었다. 그러면 카톡방에 남은 링크가
+   *   «끄기 전까지 영원히» 살아 있는 열쇠가 된다.
+   *
+   *   하나만 정하면 된다 — 「30일·무제한」도 「기한없음·1명」도 괜찮다.
+   *   기존 초대(006:643)는 둘 다 강제하는데, 여기는 링크를 계속 돌려 쓰는 쓰임이 있어
+   *   한 쪽만 요구한다.
+   */
+  if p_expires_in_days is null and p_max_uses is null then
+    raise exception 'invite link needs an expiry or a use limit' using errcode = '22023';
   end if;
 
   v_expires := case when p_expires_in_days is null then null
@@ -227,6 +290,14 @@ begin
      set used_count = used_count + 1
    where id = v_link.id;
 
+  /*
+   * ★ 누가 들어왔는지 남긴다. 승인하는 사람이 없으므로 이것이 유일한 추적 수단이다.
+   *   `on conflict do nothing` — 같은 사람이 같은 링크로 두 번 세어지지 않는다.
+   */
+  insert into public.org_invite_redemptions(link_id, user_id)
+  values (v_link.id, v_actor)
+  on conflict (link_id, user_id) do nothing;
+
   return jsonb_build_object('ok', true, 'already', false, 'slug', v_slug, 'name', v_name);
 end;
 $$;
@@ -299,6 +370,10 @@ begin
     raise exception 'owner or admin required' using errcode = '42501';
   end if;
 
+  /*
+   * ★ 「누가 들어왔나」를 같이 준다. 기록만 남기고 못 보면 없는 것과 같다.
+   *   링크가 샜을 때 대표가 «누구를 내보내야 하나» 를 여기서 안다.
+   */
   return coalesce((
     select jsonb_agg(jsonb_build_object(
       'token', l.token, 'role', l.role::text, 'scope', l.scope::text,
@@ -306,7 +381,12 @@ begin
       'revokedAt', l.revoked_at, 'createdAt', l.created_at,
       'usable', l.revoked_at is null
         and (l.expires_at is null or l.expires_at > now())
-        and (l.max_uses is null or l.used_count < l.max_uses)
+        and (l.max_uses is null or l.used_count < l.max_uses),
+      'joined', coalesce((
+        select jsonb_agg(jsonb_build_object('userId', r.user_id, 'at', r.redeemed_at)
+               order by r.redeemed_at desc)
+          from public.org_invite_redemptions r where r.link_id = l.id
+      ), '[]'::jsonb)
     ) order by l.created_at desc)
     from public.org_invite_links l where l.org_id = p_org_id
   ), '[]'::jsonb);
