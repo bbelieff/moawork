@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const checkScript = await readFile(new URL("./check.sh", import.meta.url), "utf8");
+const appPackage = JSON.parse(await readFile(new URL("../app/package.json", import.meta.url), "utf8"));
 
 test("the canonical quality gate runs the real workspace production build", () => {
   const typecheckCommand = "npm run typecheck --workspaces --if-present";
@@ -31,4 +32,11 @@ test("CI and pre-commit keep consuming the one canonical check script", async ()
   assert.match(workflow, /run:\s+\.\\scripts\\run-check-windows\.ps1/u);
   assert.match(windowsLauncher, /& \$resolved --noprofile --norc "scripts\/check\.sh"/u);
   assert.match(hook, /bash (?:"\$ROOT\/)?scripts\/check\.sh"?/u);
+});
+
+test("resource-heavy PGlite suites leave the parallel pool but still run exactly once", () => {
+  assert.equal(
+    appPackage.scripts["test:gate"],
+    "vitest run --exclude src/lib/boards/calculations.pglite.test.ts --exclude src/lib/boards/group-layout-persistence.pglite.test.ts && vitest run src/lib/boards/calculations.pglite.test.ts src/lib/boards/group-layout-persistence.pglite.test.ts --no-file-parallelism",
+  );
 });

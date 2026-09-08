@@ -9,7 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:gate": "vitest run --exclude src/lib/boards/calculations.pglite.test.ts && vitest run src/lib/boards/calculations.pglite.test.ts --no-file-parallelism"
+    "test:gate": "vitest run --exclude src/lib/boards/calculations.pglite.test.ts --exclude src/lib/boards/group-layout-persistence.pglite.test.ts && vitest run src/lib/boards/calculations.pglite.test.ts src/lib/boards/group-layout-persistence.pglite.test.ts --no-file-parallelism"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
