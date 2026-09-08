@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
@@ -119,6 +120,20 @@ async function waitUntil(predicate, timeoutMs = 5_000) {
   throw new Error("condition timed out");
 }
 
+async function settlesWithin(promise, timeoutMs) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise.then(() => true),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function testFence() {
   return `Global\\MoaWork.FullGate.Test.${randomUUID()}`;
 }
@@ -188,7 +203,100 @@ function lineChannel(socket) {
   };
 }
 
-async function startDirectGuardian({ broker, fenceName, envelopeNonce, controlNonce }) {
+function observeGuardianLifecycle(guardian, marker) {
+  let output = "";
+  let order = 0;
+  let markerEvent = null;
+  let closeEvent = null;
+  let resolveMarker;
+  let resolveClose;
+  const markerObserved = new Promise((resolve) => { resolveMarker = resolve; });
+  const closed = new Promise((resolve) => { resolveClose = resolve; });
+  const onData = (chunk) => {
+    output += chunk;
+    if (!markerEvent && output.includes(marker)) {
+      markerEvent = { type: "marker", order: ++order };
+      resolveMarker(markerEvent);
+    }
+  };
+  guardian.stdout.on("data", onData);
+  guardian.stderr.on("data", onData);
+  guardian.once("close", (code, signal) => {
+    closeEvent = { type: "close", order: ++order, code, signal };
+    guardian.stdout.off("data", onData);
+    guardian.stderr.off("data", onData);
+    resolveClose(closeEvent);
+  });
+  return {
+    closed,
+    markerObserved,
+    markerEvent: () => markerEvent,
+    closeEvent: () => closeEvent,
+    output: () => output,
+  };
+}
+
+async function waitForGuardianOutput(lifecycle) {
+  const chooseFirst = () => {
+    const marker = lifecycle.markerEvent();
+    const close = lifecycle.closeEvent();
+    if (marker && (!close || marker.order < close.order)) return marker;
+    if (close && (!marker || close.order < marker.order)) return close;
+    return null;
+  };
+  let result = chooseFirst();
+  if (!result) {
+    await Promise.race([lifecycle.markerObserved, lifecycle.closed]);
+    result = chooseFirst();
+  }
+  if (result?.type === "close") {
+    throw new Error(`DIRECT_GUARDIAN_CLOSED_BEFORE_CHILD_START code=${result.code} signal=${result.signal}\n${lifecycle.output()}`);
+  }
+}
+
+test("guardian output milestone is bound to its pre-registered close event", async () => {
+  const fakeGuardian = () => Object.assign(new EventEmitter(), {
+    stdout: new EventEmitter(),
+    stderr: new EventEmitter(),
+  });
+  const closedGuardian = fakeGuardian();
+  const closedLifecycle = observeGuardianLifecycle(closedGuardian, "NONCE_CHILD_STARTED");
+  closedGuardian.emit("close", 78, null);
+  await assert.rejects(
+    waitForGuardianOutput(closedLifecycle),
+    /DIRECT_GUARDIAN_CLOSED_BEFORE_CHILD_START code=78 signal=null/u,
+  );
+  assert.equal(closedGuardian.stdout.listenerCount("data"), 0);
+  assert.equal(closedGuardian.stderr.listenerCount("data"), 0);
+
+  const markerGuardian = fakeGuardian();
+  const markerLifecycle = observeGuardianLifecycle(markerGuardian, "NONCE_CHILD_STARTED");
+  markerGuardian.stdout.emit("data", Buffer.from("NONCE_CHILD_STARTED:1234\n"));
+  markerGuardian.emit("close", 78, null);
+  await waitForGuardianOutput(markerLifecycle);
+  assert.equal(markerGuardian.stdout.listenerCount("data"), 0);
+  assert.equal(markerGuardian.stderr.listenerCount("data"), 0);
+
+  const closeFirstGuardian = fakeGuardian();
+  const closeFirstLifecycle = observeGuardianLifecycle(closeFirstGuardian, "NONCE_CHILD_STARTED");
+  closeFirstGuardian.emit("close", 78, "SIGKILL");
+  closeFirstGuardian.stdout.emit("data", Buffer.from("NONCE_CHILD_STARTED:late\n"));
+  await assert.rejects(waitForGuardianOutput(closeFirstLifecycle), /DIRECT_GUARDIAN_CLOSED_BEFORE_CHILD_START code=78 signal=SIGKILL/u);
+  assert.equal(closeFirstGuardian.stdout.listenerCount("data"), 0);
+  assert.equal(closeFirstGuardian.stderr.listenerCount("data"), 0);
+});
+
+const directGuardianSetupEvidence = new WeakMap();
+
+async function startDirectGuardian({
+  broker,
+  fenceName,
+  envelopeNonce,
+  controlNonce,
+  childExpression = "console.log('NONCE_CHILD_STARTED'); setInterval(() => {}, 1000)",
+  injectSetupFailureAfterChildStart = false,
+  forceSetupCleanupFallback = false,
+}) {
   const nonce = `nonce-aa-${randomUUID()}`;
   const pipeName = `moawork-gate-${randomUUID()}`;
   const powershell = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
@@ -199,46 +307,78 @@ async function startDirectGuardian({ broker, fenceName, envelopeNonce, controlNo
     "-PipeNonce", nonce,
     "-BootstrapWrapperPid", String(process.pid),
   ], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
-  let output = "";
-  guardian.stdout.on("data", (chunk) => (output += chunk));
-  guardian.stderr.on("data", (chunk) => (output += chunk));
+  const lifecycle = observeGuardianLifecycle(guardian, "NONCE_CHILD_STARTED");
   const exited = new Promise((resolve) => guardian.once("exit", (code, signal) => resolve({ code, signal })));
-  const socket = await connectNamedPipe(`\\\\.\\pipe\\${pipeName}`);
-  const channel = lineChannel(socket);
-  const requestId = randomUUID();
-  channel.send({
-    type: "payload",
-    nonce: envelopeNonce ? invalidNonce(envelopeNonce, nonce) : nonce,
-    payload: {
-      protocol: "moawork-gate-guardian-v2",
-      host: "127.0.0.1",
-      port: broker.port,
-      fenceName,
-      requestId,
-      label: "nonce-fixture",
-      command: process.execPath,
-      args: ["-e", "console.log('NONCE_CHILD_STARTED'); setInterval(() => {}, 1000)"],
-      cwd: ROOT,
-      waitTimeoutMs: 5_000,
-      runTimeoutMs: 10_000,
-      wrapperPid: process.pid,
-    },
-  });
-  if (controlNonce) {
-    const ready = await channel.next();
-    assert.equal(ready.type, "ready", output);
-    await waitUntil(() => output.includes("NONCE_CHILD_STARTED"));
+  const { closed } = lifecycle;
+  let channel;
+  try {
+    const socket = await connectNamedPipe(`\\\\.\\pipe\\${pipeName}`);
+    channel = lineChannel(socket);
+    const requestId = randomUUID();
+    channel.send({
+      type: "payload",
+      nonce: envelopeNonce ? invalidNonce(envelopeNonce, nonce) : nonce,
+      payload: {
+        protocol: "moawork-gate-guardian-v2",
+        host: "127.0.0.1",
+        port: broker.port,
+        fenceName,
+        requestId,
+        label: "nonce-fixture",
+        command: process.execPath,
+        args: ["-e", childExpression],
+        cwd: ROOT,
+        waitTimeoutMs: 5_000,
+        runTimeoutMs: 10_000,
+        wrapperPid: process.pid,
+      },
+    });
+    if (controlNonce) {
+      const ready = await channel.next();
+      assert.equal(ready.type, "ready", lifecycle.output());
+      await waitForGuardianOutput(lifecycle);
+      if (injectSetupFailureAfterChildStart) throw new Error("DIRECT_GUARDIAN_SETUP_FAILURE_INJECTED");
+    }
+    return {
+      guardian,
+      exited,
+      channel,
+      output: lifecycle.output,
+      sendInvalidControl() {
+        assert.ok(controlNonce, "control nonce fixture was not configured");
+        channel.send({ type: "signal", nonce: invalidNonce(controlNonce, nonce), signal: "SIGTERM" });
+      },
+    };
+  } catch (error) {
+    let closeObserved = false;
+    let forced = forceSetupCleanupFallback || !channel;
+    let cleanupError = null;
+    try {
+      channel?.close();
+      if (!forced) closeObserved = await settlesWithin(closed, 2_000);
+      if (!closeObserved) {
+        forced = true;
+        await stop(guardian);
+        closeObserved = await settlesWithin(closed, 2_000);
+      }
+    } catch (candidate) {
+      cleanupError = candidate;
+      try { await stop(guardian); } catch {}
+      try { closeObserved ||= await settlesWithin(closed, 2_000); } catch {}
+    }
+    try {
+      if ((typeof error === "object" && error !== null) || typeof error === "function") {
+        directGuardianSetupEvidence.set(error, {
+          guardianPid: guardian.pid,
+          output: lifecycle.output(),
+          closeObserved,
+          forced,
+          cleanupError,
+        });
+      }
+    } catch {}
+    throw error;
   }
-  return {
-    guardian,
-    exited,
-    channel,
-    output: () => output,
-    sendInvalidControl() {
-      assert.ok(controlNonce, "control nonce fixture was not configured");
-      channel.send({ type: "signal", nonce: invalidNonce(controlNonce, nonce), signal: "SIGTERM" });
-    },
-  };
 }
 
 function markerExists(fenceName) {
@@ -423,7 +563,40 @@ async function createMalformedGuardianBroker(phase) {
   };
 }
 
+function observeHarnessChild(child, { startedAt = Date.now(), now = () => Date.now() } = {}) {
+  let output = "";
+  const observedAt = new Map();
+  const observe = (chunk) => {
+    const receivedAt = now();
+    output += chunk;
+    for (const kind of ["GATE_GUARDIAN_READY", "GATE_GUARDIAN_QUARANTINED"]) {
+      if (!observedAt.has(kind) && output.includes(kind)) observedAt.set(kind, receivedAt);
+    }
+  };
+  child.stdout.on("data", observe);
+  child.stderr.on("data", observe);
+
+  let processExitedAt = null;
+  let terminalAt = null;
+  child.once("exit", () => {
+    processExitedAt = now();
+  });
+  const exited = new Promise((resolve) => child.once("close", (code, signal) => {
+    terminalAt = now();
+    resolve({ code, signal });
+  }));
+  return {
+    exited,
+    output: () => output,
+    startedAt,
+    observedAt: (kind) => observedAt.get(kind) ?? null,
+    processExitedAt: () => processExitedAt,
+    terminalAt: () => terminalAt,
+  };
+}
+
 function startHarness({ broker, fenceName, expression, args = [], cwd = ROOT, ...config }) {
+  const startedAt = Date.now();
   const encoded = Buffer.from(JSON.stringify({
     host: "127.0.0.1",
     port: broker.port,
@@ -438,12 +611,63 @@ function startHarness({ broker, fenceName, expression, args = [], cwd = ROOT, ..
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
-  let output = "";
-  child.stdout.on("data", (chunk) => (output += chunk));
-  child.stderr.on("data", (chunk) => (output += chunk));
-  const exited = new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
-  return { child, exited, output: () => output };
+  return { child, ...observeHarnessChild(child, { startedAt }) };
 }
+
+test("harness lifecycle waits for drained output after process exit", async () => {
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  let clock = 1_000;
+  const harness = observeHarnessChild(child, { startedAt: clock, now: () => clock });
+  let terminalSettled = false;
+  harness.exited.then(() => {
+    terminalSettled = true;
+  });
+
+  clock = 1_100;
+  child.stdout.emit("data", Buffer.from("GATE_GUARDIAN_"));
+  clock = 1_125;
+  child.stdout.emit("data", Buffer.from("READY {}\n"));
+  clock = 1_200;
+  child.emit("exit", 78, null);
+  await Promise.resolve();
+  assert.equal(terminalSettled, false, "process exit must not expose output before stream close");
+
+  clock = 1_250;
+  child.stderr.emit("data", Buffer.from("GATE_GUARDIAN_QUARANTINED {}\n"));
+  clock = 1_300;
+  child.emit("close", 78, null);
+  const result = await harness.exited;
+
+  assert.deepEqual(result, { code: 78, signal: null });
+  assert.equal(terminalSettled, true);
+  assert.equal(harness.observedAt("GATE_GUARDIAN_READY"), 1_125);
+  assert.equal(harness.processExitedAt(), 1_200);
+  assert.equal(harness.observedAt("GATE_GUARDIAN_QUARANTINED"), 1_250);
+  assert.equal(harness.terminalAt(), 1_300);
+  assert.match(harness.output(), /GATE_GUARDIAN_READY/u);
+  assert.match(harness.output(), /GATE_GUARDIAN_QUARANTINED/u);
+
+  const lateChild = new EventEmitter();
+  lateChild.stdout = new EventEmitter();
+  lateChild.stderr = new EventEmitter();
+  clock = 2_000;
+  const lateHarness = observeHarnessChild(lateChild, { startedAt: clock, now: () => clock });
+  clock = 2_050;
+  lateChild.emit("exit", 78, null);
+  clock = 2_100;
+  lateChild.stderr.emit("data", Buffer.from("GATE_GUARDIAN_READY {}\n"));
+  clock = 2_150;
+  lateChild.stderr.emit("data", Buffer.from("GATE_GUARDIAN_QUARANTINED {}\n"));
+  clock = 2_200;
+  lateChild.emit("close", 78, null);
+  assert.deepEqual(await lateHarness.exited, { code: 78, signal: null });
+  assert.equal(lateHarness.processExitedAt(), 2_050);
+  assert.equal(lateHarness.observedAt("GATE_GUARDIAN_READY"), 2_100);
+  assert.equal(lateHarness.observedAt("GATE_GUARDIAN_QUARANTINED"), 2_150);
+  assert.equal(lateHarness.terminalAt(), 2_200);
+});
 
 async function stop(child) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
@@ -677,6 +901,53 @@ test("owner-only named pipe READY binds wrapper and structured argv", { skip: pr
   } finally { await stop(run.child); await broker.close(); }
 });
 
+test("direct guardian setup failure closes its pipe, process tree, lease, and fence", { skip: process.platform !== "win32" }, async () => {
+  for (const forceSetupCleanupFallback of [false, true]) {
+    const broker = await createLeaseBroker({
+      port: 0,
+      diagnosticIntervalMs: 5,
+      idleTimeoutMs: -1,
+      crashRecoveryDelayMs: 200,
+    });
+    const fenceName = testFence();
+    cleanupFence(fenceName);
+    let failure;
+    try {
+      await assert.rejects(
+        startDirectGuardian({
+          broker,
+          fenceName,
+          controlNonce: "array",
+          childExpression: "console.log('NONCE_CHILD_STARTED:' + process.pid); setInterval(() => {}, 1000)",
+          injectSetupFailureAfterChildStart: true,
+          forceSetupCleanupFallback,
+        }).catch((error) => {
+          failure = error;
+          throw error;
+        }),
+        /DIRECT_GUARDIAN_SETUP_FAILURE_INJECTED/u,
+      );
+      const evidence = directGuardianSetupEvidence.get(failure);
+      assert.ok(evidence, "setup failure must retain bounded cleanup evidence");
+      assert.equal(evidence.closeObserved, true, evidence.cleanupError?.stack);
+      assert.equal(evidence.forced, forceSetupCleanupFallback);
+      assert.equal(evidence.cleanupError, null);
+      const childPid = Number(/NONCE_CHILD_STARTED:(\d+)/u.exec(evidence.output)?.[1]);
+      assert.ok(Number.isSafeInteger(childPid) && childPid > 0, evidence.output);
+      await waitUntil(() => !processExists(evidence.guardianPid) && !processExists(childPid));
+      await waitUntil(() => broker.snapshot().active === null);
+      assert.deepEqual(broker.snapshot().queued, []);
+      assert.equal(markerExists(fenceName), forceSetupCleanupFallback);
+      if (forceSetupCleanupFallback) cleanupFence(fenceName);
+      assert.equal(markerExists(fenceName), false);
+      assert.equal(fenceCanBeAcquired(fenceName), true);
+    } finally {
+      await broker.close();
+      cleanupFence(fenceName);
+    }
+  }
+});
+
 test("bootstrap and control nonces require exact scalar strings before command or clean release", { skip: process.platform !== "win32" }, async () => {
   for (const phase of ["envelope", "control"]) {
     for (const kind of ["array", "null", "number", "case-variant", "soft-hyphen", "zwj", "nul"]) {
@@ -688,13 +959,14 @@ test("bootstrap and control nonces require exact scalar strings before command o
       });
       const fenceName = testFence();
       cleanupFence(fenceName);
-      const failed = await startDirectGuardian({
-        broker,
-        fenceName,
-        ...(phase === "envelope" ? { envelopeNonce: kind } : { controlNonce: kind }),
-      });
+      let failed;
       let successor;
       try {
+        failed = await startDirectGuardian({
+          broker,
+          fenceName,
+          ...(phase === "envelope" ? { envelopeNonce: kind } : { controlNonce: kind }),
+        });
         if (phase === "control") {
           successor = startHarness({ broker, fenceName, expression: "console.log('NONCE_RECOVERED')" });
           await waitUntil(() => broker.snapshot().queued.length === 1);
@@ -724,8 +996,8 @@ test("bootstrap and control nonces require exact scalar strings before command o
         assert.equal(broker.snapshot().active, null);
         assert.deepEqual(broker.snapshot().queued, []);
       } finally {
-        failed.channel.close();
-        await stop(failed.guardian);
+        failed?.channel.close();
+        await stop(failed?.guardian);
         await stop(successor?.child);
         await broker.close();
         cleanupFence(fenceName);
@@ -1075,7 +1347,7 @@ test("broker restart handoff clears a verified marker before releasing the OS fe
   }
 });
 
-test("cleanup quarantine exits, releases the fence, and remains fail-closed until evidence cleanup", { skip: process.platform !== "win32" }, async () => {
+test("cleanup quarantine exits, releases the fence, and remains fail-closed until evidence cleanup", { skip: process.platform !== "win32" }, async (t) => {
   let broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: -1 });
   const port = broker.port;
   const fenceName = testFence();
@@ -1099,10 +1371,24 @@ test("cleanup quarantine exits, releases the fence, and remains fail-closed unti
     await broker.close();
     broker = await createLeaseBroker({ port, diagnosticIntervalMs: 20, idleTimeoutMs: -1 });
     second = startHarness({ broker, fenceName, expression: "console.log('MUST_NOT_START')" });
-    const secondStartedAt = Date.now();
     const secondResult = await second.exited;
     assert.equal(secondResult.code, 78, second.output());
-    assert.ok(Date.now() - secondStartedAt < 3_000, second.output());
+    const secondReadyAt = second.observedAt("GATE_GUARDIAN_READY");
+    const secondQuarantinedAt = second.observedAt("GATE_GUARDIAN_QUARANTINED");
+    const secondProcessExitedAt = second.processExitedAt();
+    const secondTerminalAt = second.terminalAt();
+    assert.ok(Number.isSafeInteger(secondReadyAt) && secondReadyAt - second.startedAt < 10_000, second.output());
+    assert.ok(Number.isSafeInteger(secondTerminalAt) && secondTerminalAt - secondReadyAt < 3_000, second.output());
+    assert.ok(Number.isSafeInteger(secondProcessExitedAt)
+      && secondProcessExitedAt >= second.startedAt && secondProcessExitedAt <= secondTerminalAt, second.output());
+    assert.ok(Number.isSafeInteger(secondQuarantinedAt)
+      && secondQuarantinedAt >= secondReadyAt && secondQuarantinedAt <= secondTerminalAt, second.output());
+    t.diagnostic(`quarantine timing ${JSON.stringify({
+      bootstrapMs: secondReadyAt - second.startedAt,
+      readyToQuarantineMs: secondQuarantinedAt - secondReadyAt,
+      quarantineToTerminalMs: secondTerminalAt - secondQuarantinedAt,
+      processExitToTerminalMs: secondTerminalAt - secondProcessExitedAt,
+    })}`);
     assert.match(second.output(), /durable-crash-marker/u);
     assert.doesNotMatch(second.output(), /MUST_NOT_START/u);
     assert.equal(fenceCanBeAcquired(fenceName), true, "marker rejection retained the machine fence");
