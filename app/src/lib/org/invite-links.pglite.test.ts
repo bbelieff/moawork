@@ -457,14 +457,50 @@ describe("147+148 — 사람 부르기 링크", () => {
       expect(row?.joined.map((j) => j.userId), "누가 들어왔는지 안 보인다").toEqual([ids.outsider]);
     });
 
-    it("같은 사람이 같은 링크를 두 번 눌러도 한 번만 세어진다", async () => {
+    /*
+     * ★★ 이 시험은 처음에 «제목이 말하는 것을 재지 않았다». 검수가 돌연변이로 증명했다:
+     *
+     *     148 에서 `on conflict (link_id, user_id) do nothing` 을 «통째로» 지워도
+     *     → 49개 전부 통과. 안 빨개진다.
+     *
+     *   두 번째 redeem 이 `v_status='active'` 갈래에서 끊겨 redemption insert 에
+     *   «도달조차» 안 했기 때문이다. 제목은 「두 번 눌러도 한 번만」인데
+     *   두 번째 누름이 그 절을 한 번도 안 밟았다.
+     *
+     * ★ 그 절을 실제로 밟으려면 «행이 지워진 뒤 다시 들어오는» 경로가 필요하다.
+     *   그리고 그 경로는 마침 148 이 경고하는 바로 그 경로다 —
+     *   내보내기를 DELETE 로 만들면 needs_approval 방어가 무력화된다(#730).
+     *   그래서 이 시험 하나가 셋을 동시에 잡는다:
+     *     ① on conflict do nothing 이 «처음으로» 밟힌다
+     *     ② 제목이 사실이 된다
+     *     ③ used_count 와 redemptions 가 어긋나는 유일한 갈래를 «문서로» 남긴다
+     */
+    it("★ 행이 지워진 뒤 같은 링크로 다시 들어와도 «들어온 기록» 은 한 줄이다", async () => {
       const { token } = await create(ids.owner) as { token: string };
       as(ids.outsider);
       await call(`select public.redeem_org_invite('${token}') as out`);
-      await call(`select public.redeem_org_invite('${token}') as out`);   // 두 번째는 already
+
+      // ★ 내보내기를 «행 삭제» 로 만들었다고 가정한다 — 148 이 하지 말라고 경고하는 그것이다.
+      await db.exec(
+        `delete from public.org_members
+          where org_id='${ids.orgA}' and user_id='${ids.outsider}'`);
+
+      as(ids.outsider);
+      const back = await call<{ ok: boolean; already: boolean }>(
+        `select public.redeem_org_invite('${token}') as out`);
+      // 행이 없으니 «처음 오는 사람» 이 된다. 이게 바로 #730 이 경고하는 구멍이다.
+      expect(back, "행을 지우면 링크로 그냥 돌아온다 — 148 의 방어가 행 존재를 전제한다")
+        .toMatchObject({ ok: true, already: false });
+
       const n = await db.query<{ n: number }>(
         `select count(*)::int as n from public.org_invite_redemptions`);
-      expect(n.rows[0].n).toBe(1);
+      expect(n.rows[0].n, "같은 사람이 두 줄로 남았다 — on conflict do nothing 이 안 돈다").toBe(1);
+
+      // ★ 「확인 못 함」이 아니라 «알고 있는 어긋남» 으로 남긴다:
+      //   기록은 한 줄인데 횟수는 둘이다. 뿌리는 위의 DELETE 다 (#730).
+      const used = await db.query<{ used_count: number }>(
+        `select used_count from public.org_invite_links where token='${token}'`);
+      expect(used.rows[0].used_count).toBe(2);
     });
 
     it("★ 「지우지 않는다 — 누가 들어왔는지는 남아야 한다」가 이제 «사실» 이다", async () => {

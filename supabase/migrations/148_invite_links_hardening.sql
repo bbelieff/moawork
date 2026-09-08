@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=148_invite_links_hardening predecessor=147_invite_links digest=a658e39bf54bb5178099a67be41ff6be1f9da53540da59b234e9235cbc99236f foundation=false
+-- moa-migration-guard: logical_key=148_invite_links_hardening predecessor=147_invite_links digest=0fa9d3509f25e574b322388e82c17bd8346b5dec588a436d1565c950b69a545c foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '148_invite_links_hardening',
   p_file_name => '148_invite_links_hardening.sql',
-  p_file_digest => 'a658e39bf54bb5178099a67be41ff6be1f9da53540da59b234e9235cbc99236f',
+  p_file_digest => '0fa9d3509f25e574b322388e82c17bd8346b5dec588a436d1565c950b69a545c',
   p_expected_predecessor => '147_invite_links',
   p_executor => 'DC',
   p_thread_id => '5b8e2f47-9c31-4a06-8d75-e14b3f2a9c60',
@@ -146,13 +146,28 @@ $$;
  *
  *   즉 지금은 링크로도, 신청으로도 못 돌아온다.
  *
- *   ★ 다만 «오늘» 갇히는 사람은 없다 — 이 저장소에는 org_members.status 를
- *     비활성 값으로 «쓰는» 코드가 하나도 없다 (008:26 은 읽기만 한다).
- *     이 구멍은 「내보내기」를 만드는 순간 터진다. #730 에 EVAL 과 함께 적었다.
+ *   ★ 「코드가 비활성 행을 안 만드니 갇히는 사람은 없다」고 쓸 뻔했다. 그것도 틀렸다.
+ *     코드는 정말 안 만든다(008:26 등은 읽기만 한다). 그런데 «사람이 DB 를 직접 고쳐» 만든
+ *     행이 운영에 있다 — 2026-09-08 실측으로 status='suspended' 인 구성원이 둘이다.
+ *     「코드에 없다」에서 「데이터에 없다」를 추론하면 안 된다.
+ *     그래서 이 구멍은 「내보내기를 만들면 터진다」가 아니라 «이미 터져 있다». #730 참고.
  *
  *   ★ 내보내기를 만드는 사람에게: «되돌리기» 를 같이 만들어라. 하나만 만들면 사람이 갇힌다.
  *     그리고 그 되돌리기는 «링크» 가 아니라 대표가 직접 누르는 것이어야 한다 —
  *     위에 적은 이유로, 링크로 되살리면 정지된 관리자가 스스로 복귀한다.
+ *
+ * ★★★ 그리고 내보내기를 «행 DELETE» 로 만들면 위 방어가 통째로 무력화된다.
+ *
+ *   이 방어는 «org_members 에 행이 남아 있다» 는 전제 위에 서 있다.
+ *   행을 지우면 v_status 가 null 이 되어 그 사람은 「처음 오는 사람」이 되고,
+ *   링크에 적힌 자리로 그대로 들어온다 — 방금 막은 구멍이 그대로 다시 열린다.
+ *
+ *       status='removed' 로 «표시»  →  링크로 못 돌아온다   ✅
+ *       행을 DELETE                 →  링크로 그냥 돌아온다  ❌
+ *
+ *   취향이 아니다. org_members.status 의 CHECK 가 removed·leave·expired 를 갖고 있는
+ *   이유(006:38-40)가 이것이다. 정말 지워야 하면(개인정보 삭제 요청 등) «지워진 사람» 을
+ *   따로 남기는 표가 먼저 있어야 한다 — 지금은 없다.
  *
  * ★ 실패 이유를 여기서만 나눈다. 「없는 링크」와 「죽은 링크」는 계속 한 말(unusable)이지만,
  *   이건 «유효한 링크를 가진 사람» 에게 주는 답이라 회사 존재가 새지 않는다.
@@ -189,6 +204,11 @@ begin
   /*
    * ⑤ 정지·삭제 예정 회사에는 못 들어간다. 147 은 회사 상태를 안 봤다.
    *   들어가 봐야 RLS 가 막지만, 「들어왔다」고 말해 놓고 아무것도 안 보이는 것이 더 나쁘다.
+   *
+   * ★★ 이 검사는 «구성원 검사보다 먼저» 와야 한다 — 순서를 바꾸지 말 것.
+   *   아래 needs_approval 은 회사 «이름» 을 돌려준다. 구성원 검사가 먼저 오면
+   *   삭제 예정인 회사의 이름이 옛 구성원에게 새어 나간다. 지금 순서면
+   *   문 닫은 회사는 누구에게나 unusable 한 마디만 한다.
    */
   select o.slug, o.name into v_slug, v_name
     from public.orgs o where o.id = v_link.org_id and o.status = 'active';
@@ -216,7 +236,22 @@ begin
   on conflict (org_id, user_id) do nothing;
 
   if not found then
-    -- 그 사이 다른 요청이 넣었다. 횟수를 안 올린다.
+    /*
+     * 그 사이 다른 요청이 행을 넣었다. 횟수를 안 올린다.
+     *
+     * ★ 「그러니 이미 사람이다」라고 «단정하지» 않는다 — 그 행이 active 라는 보장이 없다.
+     *   오늘은 우연히 참이다: 행을 넣는 다른 경로(006:882 승인 · 018 · 030 · 048 · 다른 링크)가
+     *   전부 status='active' 로 넣기 때문이다. 그래서 이 갈래는 «지금은» 못 밟힌다.
+     *   누군가 invited·pending 으로 넣는 경로를 만드는 순간 이 단정이 거짓이 된다 —
+     *   「들어왔습니다」라고 말해 놓고 실제로는 못 들어간 사람이 생긴다.
+     *   한 줄로 막으니 지금 막아 둔다.
+     */
+    select m.status into v_status
+      from public.org_members m
+     where m.org_id = v_link.org_id and m.user_id = v_actor;
+    if v_status is distinct from 'active' then
+      return jsonb_build_object('ok', false, 'reason', 'needs_approval', 'name', v_name);
+    end if;
     return jsonb_build_object('ok', true, 'already', true, 'slug', v_slug, 'name', v_name);
   end if;
 
