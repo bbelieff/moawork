@@ -67,6 +67,40 @@ function cookieOn(response: NextResponse, name: string) {
   return response.cookies.get(name);
 }
 
+describe("proxy health probe boundary", () => {
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.test";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "public-anon-test-key";
+    mocks.createServerClient.mockReset();
+  });
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  });
+
+  it("passes only exact live/ready routes without auth or a network client", async () => {
+    for (const path of ["/api/health/live", "/api/health/ready"]) {
+      const response = await proxy(
+        new NextRequest(`https://www.moa-work.com${path}`),
+      );
+      expect(response.headers.get("location"), path).toBeNull();
+      expect(response.headers.get("x-middleware-next"), path).toBe("1");
+    }
+    expect(mocks.createServerClient).not.toHaveBeenCalled();
+  });
+
+  it("does not make lookalike health paths public", async () => {
+    setup(null);
+    const response = await proxy(
+      new NextRequest("https://www.moa-work.com/api/health/ready/extra"),
+    );
+    expect(response.headers.get("location")).toBe(
+      "https://www.moa-work.com/login?next=%2Fapi%2Fhealth%2Fready%2Fextra",
+    );
+    expect(mocks.createServerClient).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("proxy carries refreshed session cookies out of every exit (BBE-200)", () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.test";
