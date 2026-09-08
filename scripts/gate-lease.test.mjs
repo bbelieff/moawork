@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
@@ -423,7 +424,40 @@ async function createMalformedGuardianBroker(phase) {
   };
 }
 
+function observeHarnessChild(child, { startedAt = Date.now(), now = () => Date.now() } = {}) {
+  let output = "";
+  const observedAt = new Map();
+  const observe = (chunk) => {
+    const receivedAt = now();
+    output += chunk;
+    for (const kind of ["GATE_GUARDIAN_READY", "GATE_GUARDIAN_QUARANTINED"]) {
+      if (!observedAt.has(kind) && output.includes(kind)) observedAt.set(kind, receivedAt);
+    }
+  };
+  child.stdout.on("data", observe);
+  child.stderr.on("data", observe);
+
+  let processExitedAt = null;
+  let terminalAt = null;
+  child.once("exit", () => {
+    processExitedAt = now();
+  });
+  const exited = new Promise((resolve) => child.once("close", (code, signal) => {
+    terminalAt = now();
+    resolve({ code, signal });
+  }));
+  return {
+    exited,
+    output: () => output,
+    startedAt,
+    observedAt: (kind) => observedAt.get(kind) ?? null,
+    processExitedAt: () => processExitedAt,
+    terminalAt: () => terminalAt,
+  };
+}
+
 function startHarness({ broker, fenceName, expression, args = [], cwd = ROOT, ...config }) {
+  const startedAt = Date.now();
   const encoded = Buffer.from(JSON.stringify({
     host: "127.0.0.1",
     port: broker.port,
@@ -438,12 +472,63 @@ function startHarness({ broker, fenceName, expression, args = [], cwd = ROOT, ..
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
-  let output = "";
-  child.stdout.on("data", (chunk) => (output += chunk));
-  child.stderr.on("data", (chunk) => (output += chunk));
-  const exited = new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
-  return { child, exited, output: () => output };
+  return { child, ...observeHarnessChild(child, { startedAt }) };
 }
+
+test("harness lifecycle waits for drained output after process exit", async () => {
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  let clock = 1_000;
+  const harness = observeHarnessChild(child, { startedAt: clock, now: () => clock });
+  let terminalSettled = false;
+  harness.exited.then(() => {
+    terminalSettled = true;
+  });
+
+  clock = 1_100;
+  child.stdout.emit("data", Buffer.from("GATE_GUARDIAN_"));
+  clock = 1_125;
+  child.stdout.emit("data", Buffer.from("READY {}\n"));
+  clock = 1_200;
+  child.emit("exit", 78, null);
+  await Promise.resolve();
+  assert.equal(terminalSettled, false, "process exit must not expose output before stream close");
+
+  clock = 1_250;
+  child.stderr.emit("data", Buffer.from("GATE_GUARDIAN_QUARANTINED {}\n"));
+  clock = 1_300;
+  child.emit("close", 78, null);
+  const result = await harness.exited;
+
+  assert.deepEqual(result, { code: 78, signal: null });
+  assert.equal(terminalSettled, true);
+  assert.equal(harness.observedAt("GATE_GUARDIAN_READY"), 1_125);
+  assert.equal(harness.processExitedAt(), 1_200);
+  assert.equal(harness.observedAt("GATE_GUARDIAN_QUARANTINED"), 1_250);
+  assert.equal(harness.terminalAt(), 1_300);
+  assert.match(harness.output(), /GATE_GUARDIAN_READY/u);
+  assert.match(harness.output(), /GATE_GUARDIAN_QUARANTINED/u);
+
+  const lateChild = new EventEmitter();
+  lateChild.stdout = new EventEmitter();
+  lateChild.stderr = new EventEmitter();
+  clock = 2_000;
+  const lateHarness = observeHarnessChild(lateChild, { startedAt: clock, now: () => clock });
+  clock = 2_050;
+  lateChild.emit("exit", 78, null);
+  clock = 2_100;
+  lateChild.stderr.emit("data", Buffer.from("GATE_GUARDIAN_READY {}\n"));
+  clock = 2_150;
+  lateChild.stderr.emit("data", Buffer.from("GATE_GUARDIAN_QUARANTINED {}\n"));
+  clock = 2_200;
+  lateChild.emit("close", 78, null);
+  assert.deepEqual(await lateHarness.exited, { code: 78, signal: null });
+  assert.equal(lateHarness.processExitedAt(), 2_050);
+  assert.equal(lateHarness.observedAt("GATE_GUARDIAN_READY"), 2_100);
+  assert.equal(lateHarness.observedAt("GATE_GUARDIAN_QUARANTINED"), 2_150);
+  assert.equal(lateHarness.terminalAt(), 2_200);
+});
 
 async function stop(child) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
@@ -1075,7 +1160,7 @@ test("broker restart handoff clears a verified marker before releasing the OS fe
   }
 });
 
-test("cleanup quarantine exits, releases the fence, and remains fail-closed until evidence cleanup", { skip: process.platform !== "win32" }, async () => {
+test("cleanup quarantine exits, releases the fence, and remains fail-closed until evidence cleanup", { skip: process.platform !== "win32" }, async (t) => {
   let broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: -1 });
   const port = broker.port;
   const fenceName = testFence();
@@ -1099,10 +1184,24 @@ test("cleanup quarantine exits, releases the fence, and remains fail-closed unti
     await broker.close();
     broker = await createLeaseBroker({ port, diagnosticIntervalMs: 20, idleTimeoutMs: -1 });
     second = startHarness({ broker, fenceName, expression: "console.log('MUST_NOT_START')" });
-    const secondStartedAt = Date.now();
     const secondResult = await second.exited;
     assert.equal(secondResult.code, 78, second.output());
-    assert.ok(Date.now() - secondStartedAt < 3_000, second.output());
+    const secondReadyAt = second.observedAt("GATE_GUARDIAN_READY");
+    const secondQuarantinedAt = second.observedAt("GATE_GUARDIAN_QUARANTINED");
+    const secondProcessExitedAt = second.processExitedAt();
+    const secondTerminalAt = second.terminalAt();
+    assert.ok(Number.isSafeInteger(secondReadyAt) && secondReadyAt - second.startedAt < 10_000, second.output());
+    assert.ok(Number.isSafeInteger(secondTerminalAt) && secondTerminalAt - secondReadyAt < 3_000, second.output());
+    assert.ok(Number.isSafeInteger(secondProcessExitedAt)
+      && secondProcessExitedAt >= second.startedAt && secondProcessExitedAt <= secondTerminalAt, second.output());
+    assert.ok(Number.isSafeInteger(secondQuarantinedAt)
+      && secondQuarantinedAt >= secondReadyAt && secondQuarantinedAt <= secondTerminalAt, second.output());
+    t.diagnostic(`quarantine timing ${JSON.stringify({
+      bootstrapMs: secondReadyAt - second.startedAt,
+      readyToQuarantineMs: secondQuarantinedAt - secondReadyAt,
+      quarantineToTerminalMs: secondTerminalAt - secondQuarantinedAt,
+      processExitToTerminalMs: secondTerminalAt - secondProcessExitedAt,
+    })}`);
     assert.match(second.output(), /durable-crash-marker/u);
     assert.doesNotMatch(second.output(), /MUST_NOT_START/u);
     assert.equal(fenceCanBeAcquired(fenceName), true, "marker rejection retained the machine fence");
