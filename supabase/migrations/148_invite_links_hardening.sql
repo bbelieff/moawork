@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=148_invite_links_hardening predecessor=147_invite_links digest=a505940462dda47f16b1c1922bdd7a1a4e1eda32daeac3bd68464d642fae0a79 foundation=false
+-- moa-migration-guard: logical_key=148_invite_links_hardening predecessor=147_invite_links digest=8c19a1f5fd2246844668af698d866213b513ec79633eb58c3d14aab955f947a0 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '148_invite_links_hardening',
   p_file_name => '148_invite_links_hardening.sql',
-  p_file_digest => 'a505940462dda47f16b1c1922bdd7a1a4e1eda32daeac3bd68464d642fae0a79',
+  p_file_digest => '8c19a1f5fd2246844668af698d866213b513ec79633eb58c3d14aab955f947a0',
   p_expected_predecessor => '147_invite_links',
   p_executor => 'DC',
   p_thread_id => '5b8e2f47-9c31-4a06-8d75-e14b3f2a9c60',
@@ -220,10 +220,18 @@ begin
    * ⑤ 정지·삭제 예정 회사에는 못 들어간다. 147 은 회사 상태를 안 봤다.
    *   들어가 봐야 RLS 가 막지만, 「들어왔다」고 말해 놓고 아무것도 안 보이는 것이 더 나쁘다.
    *
-   * ★★ 이 검사는 «구성원 검사보다 먼저» 와야 한다 — 순서를 바꾸지 말 것.
-   *   아래 needs_approval 은 회사 «이름» 을 돌려준다. 구성원 검사가 먼저 오면
+   * ★★ 이 «return» 이 구성원 «return» 보다 먼저 도달해야 한다 — 순서를 바꾸지 말 것.
+   *   아래 needs_approval 은 회사 «이름» 을 돌려준다. 구성원 응답이 먼저 오면
    *   삭제 예정인 회사의 이름이 옛 구성원에게 새어 나간다. 지금 순서면
    *   문 닫은 회사는 누구에게나 unusable 한 마디만 한다.
+   *
+   *   ★ 「검사」가 아니라 «응답» 이다. select 는 부작용이 없어서 두 select 의 순서를
+   *     바꿔 봐야 아무것도 안 변한다 — 실제로 돌연변이로 확인했다(50개 전부 통과했다).
+   *     새는 것은 «어느 return 이 먼저 도달하는가» 뿐이다.
+   *     이 문장을 「검사」로 적어 두면 다음 사람의 돌연변이가 1차에서 헛돈다.
+   *
+   *   시험: invite-links.pglite.test.ts 「★ 옛 구성원에게도 … 검사 순서 불변식」
+   *         (removed 인 사람 + pending_delete 회사 → name 없이 unusable)
    */
   select o.slug, o.name into v_slug, v_name
     from public.orgs o where o.id = v_link.org_id and o.status = 'active';
@@ -260,6 +268,14 @@ begin
      *   누군가 invited·pending 으로 넣는 경로를 만드는 순간 이 단정이 거짓이 된다 —
      *   「들어왔습니다」라고 말해 놓고 실제로는 못 들어간 사람이 생긴다.
      *   한 줄로 막으니 지금 막아 둔다.
+     *
+     * ★★ 경고 — 이 갈래에는 «시험이 없다». 지워도 시험은 초록이다.
+     *   검수가 돌연변이로 확인했다: 아래 조건을 `if false` 로 바꿔도 50개 전부 통과한다.
+     *   PGlite 는 연결이 하나이고 위에서 링크 행을 `for update` 로 잠그므로,
+     *   「두 문장 사이에 다른 쓰기가 행을 넣는」 상황을 만들 방법이 없다.
+     *
+     *   즉 이건 «가드가 아니라 주석» 이다. 지우기 전에 이 문단을 읽었기를 바란다 —
+     *   시험이 초록이라는 것이 「이 코드가 필요 없다」는 뜻은 아니다.
      */
     select m.status into v_status
       from public.org_members m
