@@ -9,17 +9,35 @@ import {
   serverActionsKeyFingerprint,
 } from "./src/lib/operations/runtime-identity";
 
-const buildSha = resolveBuildSha(process.env);
+const isManagedVercelBuild = process.env.VERCEL === "1";
+const buildSha = isManagedVercelBuild
+  ? resolveBuildSha({
+      VERCEL_GIT_COMMIT_SHA: process.env.VERCEL_GIT_COMMIT_SHA,
+    })
+  : resolveBuildSha(process.env);
 const serverActionsBuildFingerprint = serverActionsKeyFingerprint(
   process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY,
 );
 
-if (
-  (process.env.MOAWORK_BUILD_SHA || process.env.VERCEL_GIT_COMMIT_SHA) &&
-  !buildSha
-) {
+if (isManagedVercelBuild && process.env.MOAWORK_BUILD_SHA) {
+  throw new Error(
+    "Managed Vercel builds must not define the self-hosted MOAWORK_BUILD_SHA.",
+  );
+}
+
+if (process.env.VERCEL_GIT_COMMIT_SHA && !buildSha) {
   // 값 자체는 출력하지 않는다. CI/Vercel 설정 오류를 산출물 생성 전에 차단한다.
   throw new Error("Build revision must be a full 40-character Git SHA.");
+}
+
+if (!isManagedVercelBuild && process.env.MOAWORK_BUILD_SHA && !buildSha) {
+  throw new Error("Build revision must be a full 40-character Git SHA.");
+}
+
+if (isManagedVercelBuild && !buildSha) {
+  throw new Error(
+    "Managed Vercel builds require VERCEL_GIT_COMMIT_SHA as a full 40-character Git SHA.",
+  );
 }
 
 if (process.env.MOAWORK_BUILD_SHA && !serverActionsBuildFingerprint) {
@@ -41,12 +59,20 @@ const nextConfig: NextConfig = {
   // This non-secret HMAC is compiled into the exact build and copied into
   // required-server-files.json. Runtime readiness and artifact provenance use
   // it to prove that Next consumed the same Server Actions key at build time.
-  env: serverActionsBuildFingerprint
-    ? {
-        MOAWORK_SERVER_ACTIONS_BUILD_FINGERPRINT:
-          serverActionsBuildFingerprint,
-      }
-    : {},
+  env: {
+    // Vercel Git metadata is available only while the build runs. Compile the
+    // validated source revision into the client/server artifact so runtime env
+    // drift cannot make a different release appear verified.
+    ...(isManagedVercelBuild && buildSha
+      ? { NEXT_PUBLIC_APP_VERSION: buildSha }
+      : {}),
+    ...(serverActionsBuildFingerprint
+      ? {
+          MOAWORK_SERVER_ACTIONS_BUILD_FINGERPRINT:
+            serverActionsBuildFingerprint,
+        }
+      : {}),
+  },
   // PostHog 리버스 프록시(/ingest/*). 근거는 src/lib/analytics/rewrites.ts 주석 참고.
   // 수집 엔드포인트는 후행 슬래시 유무에 민감해서 Next 의 자동 리다이렉트를 끈다.
   skipTrailingSlashRedirect: true,
