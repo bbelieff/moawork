@@ -82,13 +82,30 @@ export async function runReleaseCli(argv, dependencies = {}) {
   if (!path.isAbsolute(rawConfigPath)) throw new Error("config path must be absolute");
   const config = await loadConfig(rawConfigPath);
   const runtime = await createLinuxReleaseRuntime(config, dependencies.runtimeDependencies);
+  const controller = await createProductionReleaseSlots({
+    runtime,
+    slotIds: config.slotIds,
+    timeoutMs: config.timeoutMs,
+    trustedBuilderPublicKeyPath: config.trustedBuilderPublicKeyPath,
+    expectedBuilder: { platform: "linux", arch: config.nodeArch, nodeVersion: config.nodeVersion },
+  });
+  let deployInput = null;
+  if (command === "deploy") {
+    const mode = options.get("--mode");
+    if (mode !== "shadow" && mode !== "activate") throw new Error("mode must be shadow or activate");
+    const sourceSha = options.get("--source-sha");
+    if (!SHA40.test(sourceSha)) throw new Error("source-sha must be a lowercase full Git SHA");
+    for (const name of ["--archive", "--manifest", "--attestation"]) if (!path.isAbsolute(options.get(name))) throw new Error(`${name} must be absolute`);
+    deployInput = {
+      mode,
+      archivePath: path.resolve(options.get("--archive")),
+      manifestPath: path.resolve(options.get("--manifest")),
+      attestationPath: path.resolve(options.get("--attestation")),
+      expectedSourceSha: sourceSha,
+    };
+    await controller.verifyDeployArtifact(deployInput);
+  }
   return runtime.withExclusiveLock(async () => {
-    const controller = await createProductionReleaseSlots({
-      runtime,
-      slotIds: config.slotIds,
-      timeoutMs: config.timeoutMs,
-      trustedBuilderPublicKeyPath: config.trustedBuilderPublicKeyPath,
-    });
     if (command === "status") return controller.status();
     if (command === "rollback") return controller.rollback();
     if (command.startsWith("first-cutover-")) {
@@ -113,18 +130,7 @@ export async function runReleaseCli(argv, dependencies = {}) {
       if (command === "first-cutover-confirm") return controller.confirmInitialCutover(input);
       return controller.abortInitialCutover(input);
     }
-    const mode = options.get("--mode");
-    if (mode !== "shadow" && mode !== "activate") throw new Error("mode must be shadow or activate");
-    const sourceSha = options.get("--source-sha");
-    if (!SHA40.test(sourceSha)) throw new Error("source-sha must be a lowercase full Git SHA");
-    for (const name of ["--archive", "--manifest", "--attestation"]) if (!path.isAbsolute(options.get(name))) throw new Error(`${name} must be absolute`);
-    return controller.deploy({
-      mode,
-      archivePath: path.resolve(options.get("--archive")),
-      manifestPath: path.resolve(options.get("--manifest")),
-      attestationPath: path.resolve(options.get("--attestation")),
-      expectedSourceSha: sourceSha,
-    });
+    return controller.deploy(deployInput);
   });
 }
 

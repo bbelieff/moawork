@@ -123,6 +123,7 @@ async function makeArtifactRepository(root) {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     manifest.builder.platform = "linux";
     manifest.builder.arch = "x64";
+    manifest.builder.nodeVersion = "v22.23.2";
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     const descriptor = await verifyReleaseArtifact({ archivePath, manifestPath });
     const statement = releaseProvenanceStatement(descriptor, {
@@ -199,12 +200,18 @@ async function fixture() {
   const trustedBuilderPublicKeyPath = path.join(root, "builder.pub.pem");
   await copyFile(artifactTemplate.trustedBuilderPublicKeyPath, trustedBuilderPublicKeyPath);
   const caddyConfigFile = path.join(caddyRoot, "Caddyfile");
+  const caddySiteFile = path.join(caddyRoot, "moawork.caddy");
+  const caddyManagedDirectory = path.join(caddyRoot, "moawork.d");
+  await mkdir(caddyManagedDirectory);
   const systemctlPath = path.join(binRoot, "systemctl");
   const caddyPath = path.join(binRoot, "caddy");
   const nodePath = path.join(binRoot, process.platform === "win32" ? "node.exe" : "node");
   await writeFile(runtimeEnvFile, "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=redacted-fixture\n", { mode: 0o600 });
-  const upstreamFile = path.join(caddyRoot, "moawork-upstream.caddy");
-  await writeFile(caddyConfigFile, `import ${upstreamFile}\n`);
+  const upstreamFile = path.join(caddyManagedDirectory, "active.caddy");
+  const caddyImportLine = `import ${caddySiteFile}`;
+  const caddySite = `example.test {\n\timport ${caddyManagedDirectory}${path.sep}*.caddy\n}\n`;
+  await writeFile(caddyConfigFile, `${caddyImportLine}\n`);
+  await writeFile(caddySiteFile, caddySite);
   await writeFile(systemctlPath, "fixture\n", { mode: 0o700 });
   await writeFile(caddyPath, "fixture\n", { mode: 0o700 });
   await writeFile(nodePath, "fixture\n", { mode: 0o755 });
@@ -224,9 +231,14 @@ async function fixture() {
     runtimeEnvFile,
     upstreamFile,
     caddyConfigFile,
-    caddyConfigSha256: digest(await readFile(caddyConfigFile)),
+    caddyImportLine,
+    caddySiteFile,
+    caddySiteSha256: digest(Buffer.from(caddySite)),
+    caddyClosureSha256: digest(Buffer.from(`${caddyImportLine}\0${caddySite}`)),
     caddyPath,
     nodePath,
+    nodeArch: "x64",
+    nodeVersion: "v22.23.2",
     caddyUnit: "caddy.service",
     serviceUser: "moawork",
     systemctlPath,
@@ -287,6 +299,11 @@ async function fixture() {
           "StandardOutput=journal",
           "StandardError=journal",
           `SyslogIdentifier=${config.slots[slot].unit.replace(/[.]service$/u, "")}`,
+          "NoNewPrivileges=yes",
+          "PrivateTmp=yes",
+          "ProtectSystem=strict",
+          "ProtectHome=yes",
+          `ReadWritePaths=${config.releaseRoot}`,
           "",
         ].join("\n"),
         stderr: "",
@@ -456,7 +473,7 @@ test("actual verifier materializes an empty-VPS shadow without public routing", 
     assert.equal(Object.hasOwn(SOURCECORE_SELF_HOSTED_READY, "releaseId"), false);
     assert.equal(Object.hasOwn(SOURCECORE_SELF_HOSTED_READY, "sourceSha"), false);
     assert.deepEqual(h.commands, [
-      "systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier",
+      "systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier,NoNewPrivileges,PrivateTmp,ProtectSystem,ProtectHome,ReadWritePaths",
       "systemctl stop moawork-web-blue.service",
       "systemctl restart moawork-web-blue.service",
     ]);
@@ -573,7 +590,7 @@ test("activation uses exact service, candidate health, Caddy validation, CAS sta
     assert.equal(result.status.generation, 1);
     assert.equal(await readFile(h.config.upstreamFile, "utf8"), "reverse_proxy 127.0.0.1:31102\n");
     assert.deepEqual(h.commands, [
-      "systemctl show moawork-web-green.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier",
+      "systemctl show moawork-web-green.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier,NoNewPrivileges,PrivateTmp,ProtectSystem,ProtectHome,ReadWritePaths",
       "systemctl stop moawork-web-green.service",
       "systemctl restart moawork-web-green.service",
       `caddy validate --config ${h.config.caddyConfigFile}`,
@@ -1100,7 +1117,7 @@ test("a timed-out materialization keeps the lock until abort cleanup settles", a
     assert.deepEqual(await readdir(h.config.releaseRoot), []);
     await assert.rejects(() => readFile(h.config.stateFile), { code: "ENOENT" });
     assert.deepEqual(h.commands, [
-      "systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier",
+      "systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier,NoNewPrivileges,PrivateTmp,ProtectSystem,ProtectHome,ReadWritePaths",
     ]);
   } finally {
     await h.cleanup();
@@ -1167,6 +1184,13 @@ test("config fails closed for overlapping ports, foreign units, relative paths, 
       h.runtime.withExclusiveLock(() => Promise.resolve()),
       (error) => error instanceof LinuxReleaseRuntimeError && error.code === "host_contract",
     );
+    await writeFile(h.config.caddyConfigFile, `${h.config.caddyImportLine}\n`);
+    await writeFile(h.config.caddySiteFile, "drift\n");
+    await assert.rejects(
+      h.runtime.withExclusiveLock(() => Promise.resolve()),
+      (error) => error instanceof LinuxReleaseRuntimeError && error.code === "host_contract",
+    );
+    await assert.rejects(() => readFile(h.config.lockFile), { code: "ENOENT" });
   } finally {
     await h.cleanup();
   }
@@ -1217,7 +1241,7 @@ test("physical host isolation rejects linked ancestors and output-to-input hardl
 test("a missing or drifted systemd unit contract stops before service mutation", async () => {
   const h = await fixture();
   try {
-    h.faults.add("systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier");
+    h.faults.add("systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier,NoNewPrivileges,PrivateTmp,ProtectSystem,ProtectHome,ReadWritePaths");
     await assert.rejects(h.runtime.withExclusiveLock(() => h.controller.deploy({
       mode: "shadow",
       archivePath: h.nextArtifact.archivePath,
@@ -1225,7 +1249,7 @@ test("a missing or drifted systemd unit contract stops before service mutation",
       attestationPath: h.nextAttestationPath,
       expectedSourceSha: h.nextArtifact.sourceSha,
     })), /fault: systemctl show/u);
-    assert.deepEqual(h.commands, ["systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier"]);
+    assert.deepEqual(h.commands, ["systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier,NoNewPrivileges,PrivateTmp,ProtectSystem,ProtectHome,ReadWritePaths"]);
     await assert.rejects(() => readFile(h.config.stateFile), { code: "ENOENT" });
 
     h.commands.length = 0;
@@ -1269,6 +1293,11 @@ test("systemd contract rejects duplicate, extra, shell, environment, and resourc
     ["huge memory", (output) => output.replace("MemoryMax=536870912", "MemoryMax=999999999999999999999")],
     ["huge tasks", (output) => output.replace("TasksMax=128", "TasksMax=999999999999999999999")],
     ["huge CPU quota", (output) => output.replace("CPUQuotaPerSecUSec=500ms", "CPUQuotaPerSecUSec=999999h")],
+    ["new privileges enabled", (output) => output.replace("NoNewPrivileges=yes", "NoNewPrivileges=no")],
+    ["private tmp disabled", (output) => output.replace("PrivateTmp=yes", "PrivateTmp=no")],
+    ["filesystem protection weakened", (output) => output.replace("ProtectSystem=strict", "ProtectSystem=full")],
+    ["home protection weakened", (output) => output.replace("ProtectHome=yes", "ProtectHome=no")],
+    ["write path widened", (output) => output.replace(/^ReadWritePaths=.*$/mu, "ReadWritePaths=/")],
   ];
   for (const [name, mutate] of cases) {
     await t.test(name, async () => {
@@ -1299,7 +1328,7 @@ test("systemd contract rejects duplicate, extra, shell, environment, and resourc
           (error) => error instanceof LinuxReleaseRuntimeError && error.code === "host_contract",
         );
         assert.deepEqual(h.commands, [
-          "systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier",
+          "systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier,NoNewPrivileges,PrivateTmp,ProtectSystem,ProtectHome,ReadWritePaths",
         ]);
         await assert.rejects(() => readFile(h.config.stateFile), { code: "ENOENT" });
         await assert.rejects(() => readFile(h.config.lockFile), { code: "ENOENT" });
@@ -1386,7 +1415,7 @@ test("release sealing fails before service mutation and preserves empty state on
           (error) => error instanceof LinuxReleaseRuntimeError && error.code === "host_contract",
         );
         assert.deepEqual(h.commands, [
-          "systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier",
+          "systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier,NoNewPrivileges,PrivateTmp,ProtectSystem,ProtectHome,ReadWritePaths",
         ]);
         await assert.rejects(() => readFile(h.config.stateFile), { code: "ENOENT" });
         assert.deepEqual(await readdir(h.config.releaseRoot), []);
@@ -1432,7 +1461,7 @@ test("release sealing rejects an external hardlink without changing the outside 
     assert.equal(after.gid, before.gid);
     assert.deepEqual(await readFile(outside), bytesBefore);
     assert.deepEqual(h.commands, [
-      "systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier",
+      "systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier,NoNewPrivileges,PrivateTmp,ProtectSystem,ProtectHome,ReadWritePaths",
     ]);
     await assert.rejects(() => readFile(h.config.stateFile), { code: "ENOENT" });
     assert.equal((await readFile(h.config.lockFile, "utf8")).length > 0, true);
@@ -1631,7 +1660,7 @@ test("installed release identity drift blocks systemd restart and leaves prepare
       );
     });
     assert.deepEqual(h.commands, [
-      "systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier",
+      "systemctl show moawork-web-blue.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier,NoNewPrivileges,PrivateTmp,ProtectSystem,ProtectHome,ReadWritePaths",
       "systemctl stop moawork-web-blue.service",
     ]);
     const state = JSON.parse(await readFile(h.config.stateFile, "utf8"));
@@ -1679,7 +1708,7 @@ test("post-install identity drift restores the exact previous inactive release w
       (error) => error instanceof LinuxReleaseRuntimeError && error.code === "host_contract",
     );
     assert.deepEqual(h.commands, [
-      "systemctl show moawork-web-green.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier",
+      "systemctl show moawork-web-green.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier,NoNewPrivileges,PrivateTmp,ProtectSystem,ProtectHome,ReadWritePaths",
       "systemctl stop moawork-web-green.service",
     ]);
     assert.equal(await readFile(installedServer, "utf8"), 'console.log("old")\n');
@@ -1725,7 +1754,7 @@ test("prepare compensation restores a prior running slot or retains the lock on 
         /injected materialize cleanup failure/u,
       );
       assert.deepEqual(h.commands, [
-        "systemctl show moawork-web-green.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier",
+        "systemctl show moawork-web-green.service --no-pager --property=LoadState,User,Group,WorkingDirectory,EnvironmentFiles,ExecStart,Restart,RestartUSec,MemoryMax,TasksMax,CPUQuotaPerSecUSec,StandardOutput,StandardError,SyslogIdentifier,NoNewPrivileges,PrivateTmp,ProtectSystem,ProtectHome,ReadWritePaths",
         "systemctl stop moawork-web-green.service",
         "systemctl restart moawork-web-green.service",
         "systemctl show moawork-web-green.service --no-pager --property=ActiveState --value",
@@ -2065,9 +2094,15 @@ test("revoked operation leases block late prepare and Caddy namespace continuati
             artifact: h.nextArtifact,
             signal: new AbortController().signal,
           });
+        let operationPromise;
         const locked = runtime.withExclusiveLock(async () => {
-          void operation();
-          await blocked;
+          operationPromise = operation();
+          await Promise.race([
+            blocked,
+            operationPromise.then(() => {
+              throw new Error("operation completed before the atomic-write interception");
+            }),
+          ]);
         });
         await assert.rejects(locked, (error) => error instanceof LinuxReleaseRuntimeError && error.code === "timeout");
         const frozenState = await readFile(h.config.stateFile).catch((error) => error.code === "ENOENT" ? null : Promise.reject(error));
@@ -2386,6 +2421,29 @@ test("native Linux release is deploy-owned, service-readable, service-write-deni
       serverPath,
     ]);
     assert.equal(unrelatedProbe.status, 0, unrelatedProbe.stderr?.toString("utf8"));
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test("CLI verifies the signed builder tuple before acquiring the runtime lock", async () => {
+  const h = await fixture();
+  try {
+    const configPath = path.join(path.dirname(h.config.stateFile), "wrong-builder-release-config.json");
+    await writeFile(configPath, `${JSON.stringify({ ...h.config, nodeArch: "arm64" }, null, 2)}\n`);
+    await assert.rejects(
+      runReleaseCli([
+        "deploy", "--config", configPath,
+        "--mode", "shadow",
+        "--archive", h.nextArtifact.archivePath,
+        "--manifest", h.nextArtifact.manifestPath,
+        "--attestation", h.nextAttestationPath,
+        "--source-sha", h.nextArtifact.sourceSha,
+      ], { runtimeDependencies: { commandRunner: h.commandRunner, fetchImpl: h.fetchImpl, resolveServiceIdentity: h.resolveServiceIdentity } }),
+      (error) => error?.code === "artifact_untrusted",
+    );
+    assert.deepEqual(h.commands, []);
+    await assert.rejects(() => readFile(h.config.lockFile), { code: "ENOENT" });
   } finally {
     await h.cleanup();
   }

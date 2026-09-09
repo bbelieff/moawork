@@ -90,7 +90,20 @@ function validateArtifactDescriptor(artifact, { code, expectedSourceSha = null }
   });
 }
 
-function validateVerifiedArtifact(artifact, expectedSourceSha) {
+function validateExpectedBuilder(value) {
+  if (value === null) return null;
+  if (
+    !exactObjectKeys(value, ["arch", "nodeVersion", "platform"])
+    || value.platform !== "linux"
+    || typeof value.arch !== "string"
+    || value.arch.length === 0
+    || typeof value.nodeVersion !== "string"
+    || !/^v[0-9]+[.][0-9]+[.][0-9]+$/u.test(value.nodeVersion)
+  ) fail("invalid_input", "expected builder identity is malformed");
+  return Object.freeze({ ...value });
+}
+
+function validateVerifiedArtifact(artifact, expectedSourceSha, expectedBuilder) {
   const verified = validateArtifactDescriptor(artifact, { code: "artifact_invalid", expectedSourceSha });
   if (
     verified.builder.platform !== "linux"
@@ -99,6 +112,11 @@ function validateVerifiedArtifact(artifact, expectedSourceSha) {
     || verified.assurance.signed !== true
     || verified.assurance.transportIntegrityOnly !== false
   ) fail("artifact_untrusted", "production release requires signed trusted Linux artifact provenance");
+  if (expectedBuilder !== null && (
+    verified.builder.platform !== expectedBuilder.platform
+    || verified.builder.arch !== expectedBuilder.arch
+    || verified.builder.nodeVersion !== expectedBuilder.nodeVersion
+  )) fail("artifact_untrusted", "artifact builder identity differs from the audited target runtime");
   return verified;
 }
 
@@ -307,7 +325,7 @@ function sameRollbackTarget(left, right) {
     && left.sourceSha === right.sourceSha;
 }
 
-export function createReleaseSlots({ verifyReleaseArtifact, runtime, slotIds, timeoutMs }) {
+export function createReleaseSlots({ verifyReleaseArtifact, runtime, slotIds, timeoutMs, expectedBuilder = null }) {
   if (typeof verifyReleaseArtifact !== "function") fail("invalid_input", "artifact verifier is required");
   if (!runtime || typeof runtime !== "object") fail("invalid_input", "release runtime is required");
   if (!Array.isArray(slotIds) || slotIds.length !== 2 || new Set(slotIds).size !== 2) {
@@ -315,6 +333,7 @@ export function createReleaseSlots({ verifyReleaseArtifact, runtime, slotIds, ti
   }
   slotIds.forEach((slot, index) => assertNonEmpty(slot, `slotIds[${index}]`));
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) fail("invalid_input", "a positive bounded timeout is required");
+  const reviewedBuilder = validateExpectedBuilder(expectedBuilder);
 
   const call = (label, method, input) => {
     if (typeof runtime[method] !== "function") fail("invalid_input", `runtime.${method} is required`);
@@ -349,14 +368,18 @@ export function createReleaseSlots({ verifyReleaseArtifact, runtime, slotIds, ti
     }
   }
 
-  async function deploy({ mode, archivePath, manifestPath, attestationPath = null, expectedSourceSha }) {
-    if (mode !== "shadow" && mode !== "activate") fail("invalid_input", "mode must be shadow or activate");
+  async function verifyDeployArtifact({ archivePath, manifestPath, attestationPath = null, expectedSourceSha }) {
     if (!SHA40.test(expectedSourceSha ?? "")) fail("invalid_input", "expected source commit is required");
-
-    const artifact = validateVerifiedArtifact(
+    return validateVerifiedArtifact(
       await bounded("artifact verification", timeoutMs, (signal) => verifyReleaseArtifact({ archivePath, manifestPath, attestationPath, signal })),
       expectedSourceSha,
+      reviewedBuilder,
     );
+  }
+
+  async function deploy({ mode, archivePath, manifestPath, attestationPath = null, expectedSourceSha }) {
+    if (mode !== "shadow" && mode !== "activate") fail("invalid_input", "mode must be shadow or activate");
+    const artifact = await verifyDeployArtifact({ archivePath, manifestPath, attestationPath, expectedSourceSha });
     const before = await status();
     requireNoPendingCutover(before);
     const targetSlot = candidateSlot(before, slotIds);
@@ -715,5 +738,6 @@ export function createReleaseSlots({ verifyReleaseArtifact, runtime, slotIds, ti
     prepareInitialCutover,
     rollback,
     status,
+    verifyDeployArtifact,
   });
 }

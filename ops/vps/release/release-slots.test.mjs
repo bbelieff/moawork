@@ -521,6 +521,26 @@ test("transport-only or caller-asserted artifact assurance never reaches the run
   assert.deepEqual(h.runtime.events, []);
 });
 
+test("audited target builder identity rejects a trusted artifact before runtime access", async () => {
+  const h = harness();
+  const controller = createReleaseSlots({
+    slotIds: slots,
+    timeoutMs: 25,
+    runtime: h.runtime,
+    expectedBuilder: { platform: "linux", arch: "arm64", nodeVersion: "v22.23.2" },
+    verifyReleaseArtifact: async () => h.nextArtifact,
+  });
+  await assert.rejects(
+    controller.verifyDeployArtifact({
+      archivePath: h.nextArtifact.archivePath,
+      manifestPath: h.nextArtifact.manifestPath,
+      expectedSourceSha: h.nextArtifact.sourceSha,
+    }),
+    (error) => error instanceof ReleaseSlotError && error.code === "artifact_untrusted",
+  );
+  assert.deepEqual(h.runtime.events, []);
+});
+
 test("stub verifier rejection stops before every runtime operation", async () => {
   const h = harness();
   const controller = createReleaseSlots({
