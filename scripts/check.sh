@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # check.sh — moawork 품질 게이트
 # lint + typecheck + production build + test 를 순서대로 실행한다. 하나라도 실패하면 즉시 중단(비정상 종료).
-# CI 와 .githooks/pre-commit 이 공통으로 이 스크립트를 호출한다(단일 진실 게이트).
+# PR/main CI 가 이 전체 스크립트를 호출한다. pre-commit은 exact staged-tree fast gate를 호출한다.
 set -euo pipefail
 
 # 리포지토리 루트로 이동 (스크립트 위치 기준)
@@ -82,9 +82,10 @@ node --test scripts/check-shell-entry.test.mjs
 node --test scripts/check-build-gate.test.mjs
 node --test scripts/check-line-endings.test.mjs
 node scripts/check-unreachable-app-files.mjs
+node --test scripts/ci/fast-staged.test.mjs
 
 # ── 규칙 공지 (2026-08-20 일원화) ───────────────────────
-# 왜 여기 있나: 모든 세션이 커밋 전에 반드시 이 스크립트를 지난다.
+# 왜 여기 있나: 모든 PR exact tree가 머지 전에 CI에서 반드시 이 전체 스크립트를 지난다.
 # GitHub 댓글은 «도는 창» 을 깨우지 못한다. 이 배너만이 확실히 닿는다.
 #
 # ★ 이 배너에 규칙을 적지 마라. 가리키기만 한다.
