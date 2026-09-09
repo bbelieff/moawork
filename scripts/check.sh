@@ -84,6 +84,27 @@ node --test scripts/check-line-endings.test.mjs
 node scripts/check-unreachable-app-files.mjs
 node --test scripts/ci/fast-staged.test.mjs
 
+# #725 — VPS audit/provision/release contracts share host-state invariants and
+# must run in a bounded serial order. Native Linux DAC probes remain explicit
+# skips on Windows CI; they are not silently treated as cross-platform PASS.
+# The read-only host audit launches many isolated Git-Bash fixtures. Its measured
+# cold Windows runtime exceeds one minute, so give only that file a larger finite
+# budget while preserving the 60-second bound for every other VPS contract file.
+node --test --test-concurrency=1 --test-timeout=180000 \
+  ops/vps/audit-host-readonly.test.mjs
+
+node --test --test-concurrency=1 --test-timeout=60000 \
+  ops/vps/audit-contract.test.mjs \
+  ops/vps/artifact/artifact.test.mjs \
+  ops/vps/provision/assets.test.mjs \
+  ops/vps/provision/audit-evidence.test.mjs \
+  ops/vps/provision/installer.test.mjs \
+  ops/vps/provision/manifest.test.mjs \
+  ops/vps/provision/postflight.test.mjs \
+  ops/vps/provision/provision-cli.test.mjs \
+  ops/vps/release/linux-release-runtime.test.mjs \
+  ops/vps/release/release-slots.test.mjs
+
 # ── 규칙 공지 (2026-08-20 일원화) ───────────────────────
 # 왜 여기 있나: 모든 PR exact tree가 머지 전에 CI에서 반드시 이 전체 스크립트를 지난다.
 # GitHub 댓글은 «도는 창» 을 깨우지 못한다. 이 배너만이 확실히 닿는다.

@@ -29,12 +29,17 @@ const SAFE_SLOT = /^[a-z][a-z0-9-]{0,31}$/u;
 const SAFE_UNIT = /^moawork-[a-z0-9-]+[.]service$/u;
 const FORBIDDEN_DEPLOYMENT = /(?:salespt|hermes)/iu;
 const CONFIG_KEYS = [
+  "caddyClosureSha256",
   "caddyConfigFile",
-  "caddyConfigSha256",
+  "caddyImportLine",
   "caddyPath",
+  "caddySiteFile",
+  "caddySiteSha256",
   "caddyUnit",
   "lockFile",
   "nodePath",
+  "nodeArch",
+  "nodeVersion",
   "publicHealthUrl",
   "releaseRoot",
   "runtimeEnvFile",
@@ -82,6 +87,11 @@ const SYSTEMD_PROPERTIES = [
   "StandardOutput",
   "StandardError",
   "SyslogIdentifier",
+  "NoNewPrivileges",
+  "PrivateTmp",
+  "ProtectSystem",
+  "ProtectHome",
+  "ReadWritePaths",
 ];
 
 export class LinuxReleaseRuntimeError extends Error {
@@ -241,6 +251,7 @@ function normalizeConfig(input) {
   const runtimeEnvFile = safeAbsolute(input.runtimeEnvFile, "runtimeEnvFile");
   const upstreamFile = safeAbsolute(input.upstreamFile, "upstreamFile");
   const caddyConfigFile = safeAbsolute(input.caddyConfigFile, "caddyConfigFile");
+  const caddySiteFile = safeAbsolute(input.caddySiteFile, "caddySiteFile");
   const systemctlPath = safeAbsolute(input.systemctlPath, "systemctlPath");
   const caddyPath = safeAbsolute(input.caddyPath, "caddyPath");
   const nodePath = safeAbsolute(input.nodePath, "nodePath");
@@ -250,8 +261,15 @@ function normalizeConfig(input) {
   if (typeof input.serviceUser !== "string" || !/^[a-z_][a-z0-9_-]{0,31}$/u.test(input.serviceUser) || input.serviceUser === "root" || FORBIDDEN_DEPLOYMENT.test(input.serviceUser)) {
     fail("invalid_config", "serviceUser must be one dedicated non-root account");
   }
-  if (!SHA64.test(input.caddyConfigSha256)) fail("invalid_config", "Caddy config digest is malformed");
-  const dedicatedPaths = [stateFile, lockFile, runtimeEnvFile, upstreamFile, caddyConfigFile, systemctlPath, caddyPath, nodePath, trustedBuilderPublicKeyPath];
+  if (!SHA64.test(input.caddySiteSha256) || !SHA64.test(input.caddyClosureSha256)) fail("invalid_config", "Caddy managed closure digest is malformed");
+  if (input.caddyImportLine !== `import ${caddySiteFile}`) fail("invalid_config", "Caddy root import line differs from the exact managed site");
+  if (path.dirname(upstreamFile) === path.dirname(caddySiteFile) || path.dirname(upstreamFile) !== `${path.dirname(caddySiteFile)}${path.sep}moawork.d`) {
+    fail("invalid_config", "Caddy managed upstream directory is not the exact child of the managed site directory");
+  }
+  if (typeof input.nodeArch !== "string" || input.nodeArch.length === 0 || !/^v[0-9]+[.][0-9]+[.][0-9]+$/u.test(input.nodeVersion ?? "")) {
+    fail("invalid_config", "audited Node builder identity is malformed");
+  }
+  const dedicatedPaths = [stateFile, lockFile, runtimeEnvFile, upstreamFile, caddyConfigFile, caddySiteFile, systemctlPath, caddyPath, nodePath, trustedBuilderPublicKeyPath];
   if (new Set(dedicatedPaths).size !== dedicatedPaths.length) {
     fail("invalid_config", "release state, routing, executable, and trust paths must be pairwise distinct");
   }
@@ -282,6 +300,7 @@ function normalizeConfig(input) {
     runtimeEnvFile,
     upstreamFile,
     caddyConfigFile,
+    caddySiteFile,
     systemctlPath,
     caddyPath,
     nodePath,
@@ -798,6 +817,13 @@ async function boundedCleanup(timeoutMs, operation) {
 
 export async function createLinuxReleaseRuntime(input, dependencies = {}) {
   const config = normalizeConfig(input);
+  const validatedArtifact = (artifact, label = "artifact") => {
+    const value = validateArtifact(artifact, label);
+    if (value.builder.arch !== config.nodeArch || value.builder.nodeVersion !== config.nodeVersion) {
+      fail("artifact_invalid", `${label} builder identity differs from the audited target runtime`);
+    }
+    return value;
+  };
   const commandRunner = dependencies.commandRunner ?? defaultCommandRunner;
   const fetchImpl = dependencies.fetchImpl ?? globalThis.fetch;
   const materializeArtifact = dependencies.materializeArtifact ?? defaultMaterializeArtifact;
@@ -1078,7 +1104,8 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
     }
     const regularInputs = await Promise.all([
       [config.runtimeEnvFile, "runtime env", { privateFile: true }],
-      [config.caddyConfigFile, "Caddy config"],
+      [config.caddyConfigFile, "Caddy root config"],
+      [config.caddySiteFile, "Caddy managed site"],
       [config.systemctlPath, "systemctl executable"],
       [config.caddyPath, "caddy executable"],
       [config.nodePath, "Node executable"],
@@ -1107,10 +1134,20 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
     for (const entry of [...regularInputs, ...mutableOutputs]) {
       recordPhysicalAlias(physicalFiles, entry.target, entry.stats, entry.label);
     }
-    const caddyConfig = await readFile(config.caddyConfigFile);
-    const digest = sha256(caddyConfig);
-    if (digest !== config.caddyConfigSha256) fail("host_contract", "Caddy config differs from the reviewed digest");
-    if (!caddyConfig.toString("utf8").includes(config.upstreamFile)) fail("host_contract", "Caddy config does not bind the exact MoaWork upstream include");
+    const [caddyRoot, caddySite] = await Promise.all([
+      readFile(config.caddyConfigFile),
+      readFile(config.caddySiteFile),
+    ]);
+    const rootLines = caddyRoot.toString("utf8").split(/\r?\n/u);
+    if (rootLines.filter((line) => line === config.caddyImportLine).length !== 1) fail("host_contract", "Caddy root does not bind exactly one reviewed managed-site import");
+    if (sha256(caddySite) !== config.caddySiteSha256) fail("host_contract", "Caddy managed site differs from the reviewed digest");
+    const upstreamImport = `import ${path.dirname(config.upstreamFile)}${path.sep}*.caddy`;
+    if (caddySite.toString("utf8").split(/\r?\n/u).filter((line) => line.trim() === upstreamImport).length !== 1) {
+      fail("host_contract", "Caddy managed site does not bind exactly one reviewed upstream import");
+    }
+    if (sha256(Buffer.from(`${config.caddyImportLine}\0${caddySite.toString("utf8")}`, "utf8")) !== config.caddyClosureSha256) {
+      fail("host_contract", "Caddy managed closure differs from the reviewed digest");
+    }
   }
 
   async function assertArtifactNamespace(artifact) {
@@ -1166,13 +1203,14 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
     ) fail("recovery_required", "a prior release outcome requires operator reconciliation");
     for (const slot of config.slotIds) {
       const record = state.slots[slot];
+      if (record.artifact !== null) validatedArtifact(record.artifact, `slot ${slot} artifact`);
       const releaseDir = config.slots[slot].releaseDir;
       if (record.artifact === null) {
         if (await pathExists(releaseDir)) fail("state_invalid", `empty slot ${slot} has an untracked release directory`);
         continue;
       }
       await assertDirectory(releaseDir, `slot ${slot} release`);
-      const stored = validateArtifact(await readJson(path.join(releaseDir, ARTIFACT_STATE_NAME), `slot ${slot} identity`));
+      const stored = validatedArtifact(await readJson(path.join(releaseDir, ARTIFACT_STATE_NAME), `slot ${slot} identity`));
       if (!identitiesEqual(stored, record.artifact)) fail("state_invalid", `slot ${slot} filesystem identity differs from state`);
       await verifySealedRelease(slot, record.seal);
     }
@@ -1328,6 +1366,11 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
       || properties.get("StandardOutput") !== "journal"
       || properties.get("StandardError") !== "journal"
       || properties.get("SyslogIdentifier") !== slotConfig.unit.replace(/[.]service$/u, "")
+      || properties.get("NoNewPrivileges") !== "yes"
+      || properties.get("PrivateTmp") !== "yes"
+      || properties.get("ProtectSystem") !== "strict"
+      || properties.get("ProtectHome") !== "yes"
+      || properties.get("ReadWritePaths") !== config.releaseRoot
     ) fail("host_contract", `systemd unit ${slotConfig.unit} differs from the reviewed runtime contract`);
   }
 
@@ -1378,7 +1421,7 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
 
   async function prepare({ slot, artifact, signal }) {
     requireLock();
-    const expected = validateArtifact(artifact);
+    const expected = validatedArtifact(artifact);
     await assertArtifactNamespace(expected);
     const before = await readState();
     if (!config.slotIds.includes(slot) || slot === before.activeSlot) fail("prepare_rejected", "only the inactive configured slot may be prepared");
@@ -1481,7 +1524,7 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
 
   async function verifyPrepared({ slot, artifact }) {
     requireLock();
-    const expected = validateArtifact(artifact);
+    const expected = validatedArtifact(artifact);
     const state = await readState();
     if (!config.slotIds.includes(slot) || !identitiesEqual(state.slots[slot].artifact, expected)) fail("prepare_mismatch", "prepared state identity differs");
     await verifySealedRelease(slot, state.slots[slot].seal);
@@ -1491,7 +1534,7 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
 
   async function startCandidate({ slot, artifact, signal }) {
     requireLock();
-    const expected = validateArtifact(artifact);
+    const expected = validatedArtifact(artifact);
     const before = await readState();
     if (slot === before.activeSlot || !identitiesEqual(before.slots[slot]?.artifact, expected)) fail("candidate_rejected", "candidate identity is not prepared in the inactive slot");
     await verifySealedRelease(slot, before.slots[slot].seal);
@@ -1522,7 +1565,7 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
 
   async function checkCandidate({ slot, artifact, signal }) {
     requireLock();
-    const expected = validateArtifact(artifact);
+    const expected = validatedArtifact(artifact);
     const state = await readState();
     if (!identitiesEqual(state.slots[slot]?.artifact, expected)) fail("candidate_rejected", "candidate state identity differs");
     return exactHealth(fetchImpl, `http://127.0.0.1:${config.slots[slot].port}/api/health/ready`, expected, signal);
@@ -1530,7 +1573,7 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
 
   async function rejectCandidate({ slot, artifact, signal }) {
     requireLock();
-    const expected = validateArtifact(artifact);
+    const expected = validatedArtifact(artifact);
     const before = await readState();
     if (slot === before.activeSlot || !identitiesEqual(before.slots[slot]?.artifact, expected)) fail("candidate_rejected", "only the exact inactive candidate may be rejected");
     try {
@@ -1611,7 +1654,7 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
   }
 
   function assertInitialCutover(before, { expectedGeneration, targetSlot, artifact }) {
-    const expected = validateArtifact(artifact);
+    const expected = validatedArtifact(artifact);
     if (
       before.activeSlot !== null
       || before.previousSlot !== null
@@ -1673,7 +1716,7 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
 
   async function confirmInitialCutover({ expectedGeneration, targetSlot, artifact }) {
     requireLock();
-    const expected = validateArtifact(artifact);
+    const expected = validatedArtifact(artifact);
     const before = await readState({ allowInitialCutover: true });
     if (
       before.activeSlot !== null
@@ -1697,7 +1740,7 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
 
   async function abortInitialCutover({ expectedGeneration, targetSlot, artifact, signal }) {
     requireLock();
-    const expected = validateArtifact(artifact);
+    const expected = validatedArtifact(artifact);
     const before = await readState({ allowInitialCutover: true });
     if (
       before.activeSlot !== null
@@ -1756,7 +1799,7 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
 
   async function switchActive({ expectedActiveSlot, expectedGeneration, targetSlot, artifact, signal }) {
     requireLock();
-    const expected = validateArtifact(artifact);
+    const expected = validatedArtifact(artifact);
     const before = await readState();
     if (before.activeSlot !== expectedActiveSlot || before.generation !== expectedGeneration) fail("concurrent_switch", "release state changed before the switch");
     if (!config.slotIds.includes(targetSlot) || targetSlot === before.activeSlot || !identitiesEqual(before.slots[targetSlot]?.artifact, expected)) {
@@ -1817,7 +1860,7 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
 
   async function checkPublic({ artifact, signal }) {
     requireLock();
-    return exactHealth(fetchImpl, config.publicHealthUrl, validateArtifact(artifact), signal);
+    return exactHealth(fetchImpl, config.publicHealthUrl, validatedArtifact(artifact), signal);
   }
 
   return Object.freeze({
