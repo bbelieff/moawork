@@ -9,7 +9,8 @@
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { GroupTable, cellInputValue } from "./GroupTable";
+import { GroupTable, boardFileSelectionError, cellInputValue } from "./GroupTable";
+import { MAX_FILE_BYTES } from "@/lib/services/file-contract";
 import type { BoardColumn, CellValue, ItemWithValues } from "@/lib/boards/types";
 
 function col(over: Partial<BoardColumn> = {}): BoardColumn {
@@ -67,6 +68,11 @@ function renderTable(columns: BoardColumn[], rows: ItemWithValues[], canDeleteIt
 }
 
 describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
+  it("파일 선택은 서버 액션 전 10MiB 초과를 막는다", () => {
+    expect(boardFileSelectionError(MAX_FILE_BYTES)).toBeNull();
+    expect(boardFileSelectionError(MAX_FILE_BYTES + 1)).toContain("10MB");
+  });
+
   it("모든 출처 배지가 헤더에 뜬다(⟳✎▼✉⇄ƒ 6종 전부)", () => {
     const columns = (["auto", "in", "act", "msg", "lk", "calc"] as const).map((source) =>
       col({ key: source, label: source, source, type: source === "calc" ? "calc" : "text" }),

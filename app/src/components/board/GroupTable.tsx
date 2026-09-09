@@ -96,8 +96,15 @@ import {
 } from "./table-style";
 import { BoardInlineTitleEditor } from "./BoardInlineTitleEditor";
 import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
+import { MAX_FILE_BYTES } from "@/lib/services/file-contract";
 
 const CELL_INPUT = BOARD_TABLE_CONTROL;
+
+export function boardFileSelectionError(size: number): string | null {
+  return size > MAX_FILE_BYTES
+    ? `파일은 ${Math.floor(MAX_FILE_BYTES / 1024 / 1024)}MB까지 올릴 수 있어요.`
+    : null;
+}
 
 /** 헤더/셀 공통 — 첫 열(이름)을 가로 스크롤에서 고정한다. */
 const STICKY_FIRST = "sticky left-0 z-[var(--mw-layer-board-cell)] bg-mw-card";
@@ -419,6 +426,17 @@ export function BoardCell({
               name="value"
               aria-label={column.label}
               className={CELL_INPUT}
+              onChange={(event) => {
+                const input = event.currentTarget;
+                const error = input.files?.[0]
+                  ? boardFileSelectionError(input.files[0].size)
+                  : null;
+                input.setCustomValidity(error ?? "");
+                if (error) {
+                  input.reportValidity();
+                  input.value = "";
+                }
+              }}
             />
           </span>
         ) : column.type === "checkbox" ? (

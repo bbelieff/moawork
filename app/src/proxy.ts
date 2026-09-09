@@ -11,7 +11,7 @@ import { WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
 //   1) 매 요청마다 Supabase 세션 토큰을 갱신(쿠키 재기록)한다. SSR 인증의 필수 절차.
 //   2) 인증되지 않은 사용자를 /login 으로 보낸다. 앱 전체가 로그인 뒤에 있다.
 //
-// 공개 경로(미인증 허용): /login, /auth/*(OAuth 콜백/로그아웃).
+// 공개 경로(미인증 허용): /login, /auth/*(OAuth 콜백/로그아웃), exact health probes.
 // 그 외 모든 경로는 세션이 없으면 /login 으로 리다이렉트한다.
 // 다른 트랙이 추가하는 앱 페이지는 이 계약에 따라 "인증된 사용자" 를 전제로 한다.
 //
@@ -39,6 +39,10 @@ import { WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
 //     지우면 방어가 사라진다. 「타입이 막으니 안전하다」고 믿지 마라.
 
 const PUBLIC_PATHS = ["/login", "/auth"];
+const PUBLIC_HEALTH_PATHS = new Set([
+  "/api/health/live",
+  "/api/health/ready",
+]);
 const WORKSPACE_SLUG_COOKIE = "mw_workspace_slug";
 const WORKSPACE_PROTECTED_ROOTS = new Set([
   "boards", "notices", "companies", "contract", "newcust", "work",
@@ -104,8 +108,11 @@ function protectedWorkspacePath(pathname: string): boolean {
 }
 
 function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATHS.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  return (
+    PUBLIC_HEALTH_PATHS.has(pathname) ||
+    PUBLIC_PATHS.some(
+      (p) => pathname === p || pathname.startsWith(`${p}/`),
+    )
   );
 }
 
@@ -116,6 +123,10 @@ async function routeRequest(
   const { pathname, search } = request.nextUrl;
   const aliasCandidate = pathname.match(/^\/([^/]+)$/)?.[1];
   const safeRequestedPath = safeNextPath(`${pathname}${search}`, "/");
+
+  // Health must measure this process only. It must not depend on Supabase auth
+  // refresh, and only the two exact allowlisted routes bypass the auth client.
+  if (PUBLIC_HEALTH_PATHS.has(pathname)) return { kind: "pass" };
 
   // Supabase 미설정(개발 초기 등)에는 인증 게이트를 끄고 통과시킨다.
   // 운영에서는 env 를 반드시 설정해야 게이트가 활성화된다.

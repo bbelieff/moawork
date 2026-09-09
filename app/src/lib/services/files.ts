@@ -15,6 +15,9 @@
 
 import { getRepo } from "@/lib/repo";
 import type { Ctx, Deal } from "@/lib/types";
+import { MAX_FILE_BYTES } from "./file-contract";
+
+export { MAX_FILE_BYTES } from "./file-contract";
 
 /**
  * core.files 가 필요로 하는 **최소 포트**(구조적 타이핑).
@@ -35,9 +38,6 @@ export interface DealFilesPort {
     patch: { custom?: Record<string, unknown> },
   ): Deal | undefined;
 }
-
-/** 업로드 최대 크기 — 10MB. */
-export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 /** 차단 확장자(실행/스크립트) — 게이트 §3-B "악성·실행 파일 차단". */
 export const BLOCKED_EXTENSIONS = [
