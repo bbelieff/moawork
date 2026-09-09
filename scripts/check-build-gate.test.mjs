@@ -7,7 +7,7 @@ const appPackage = JSON.parse(await readFile(new URL("../app/package.json", impo
 
 test("the canonical quality gate runs the real workspace production build", () => {
   const typecheckCommand = "npm run typecheck --workspaces --if-present";
-  const buildCommand = "npm run build --workspaces --if-present";
+  const buildCommand = "node scripts/ci/build-artifact.mjs --workspace-build";
   const testCommand = "npm run test:gate --workspace app";
   const lines = checkScript.split(/\r?\n/u);
 
@@ -21,6 +21,24 @@ test("the canonical quality gate runs the real workspace production build", () =
   assert.ok(typecheckAt >= 0 && buildAt >= 0 && testAt >= 0, "all gate anchors must exist");
   assert.ok(typecheckAt < buildAt, "build must run after the cheaper static checks");
   assert.ok(buildAt < testAt, "build must fail before the long database test suite");
+});
+
+test("the build wrapper owns the exact workspace command and both visual consumers reuse its provenance", async () => {
+  const [wrapper, visualBlocks, organizationViews] = await Promise.all([
+    readFile(new URL("./ci/build-artifact.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../docs/design/qa-visual-blocks.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../docs/design/qa-org-views.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(wrapper, /\["run", "build", "--workspaces", "--if-present"\]/u);
+  assert.match(wrapper, /GATE_BUILD_SOURCE_CHANGED/u);
+  assert.match(wrapper, /prepareBuildOutput\(root\)/u);
+  assert.match(wrapper, /if \(entry\.name === "cache"\) continue/u);
+  assert.match(wrapper, /GATE_BUILD_OUTPUT_UNSAFE/u);
+  assert.match(wrapper, /git", \["ls-files", "--others"/u);
+  assert.match(visualBlocks, /ensureSharedBuildProvenance\(root\)/u);
+  assert.match(organizationViews, /ensureSharedBuildProvenance\(root\)/u);
+  assert.doesNotMatch(visualBlocks, /npm","run","build","--workspace","app/u);
+  assert.doesNotMatch(organizationViews, /"run", "build", "--workspace", "app"/u);
 });
 
 test("CI and pre-commit keep consuming the one canonical check script", async () => {
