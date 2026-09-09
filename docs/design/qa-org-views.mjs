@@ -16,16 +16,15 @@
  *   npm run start --workspace app -- --port 3996
  *   SHOT_ORIGIN=http://127.0.0.1:3996 node docs/design/qa-org-views.mjs
  */
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { chromium } from "playwright-core";
+import { ensureLocalBuildProvenance as ensureSharedBuildProvenance } from "../../scripts/ci/build-artifact.mjs";
 import {
   VisualGateStageError,
   isChildAndPortReleased,
-  verifyBuildProvenance,
   waitForVisualGate,
 } from "./qa-visual-gate-completion.mjs";
 
@@ -37,59 +36,14 @@ const CHROME = ["C:/Program Files/Google/Chrome/Application/chrome.exe", "C:/Pro
 if (!CHROME) throw new Error("시스템 크롬을 못 찾았습니다 — 이건 시각 게이트가 아닙니다");
 fs.mkdirSync(OUT, { recursive: true });
 
-const expectedCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
-const sourceDiff = execFileSync("git", ["diff", "--binary", "HEAD", "--", "app", "package.json", "package-lock.json"], {
-  cwd: root,
-  maxBuffer: 50 * 1024 * 1024,
-});
-const sourceDigest = crypto.createHash("sha256").update(expectedCommit).update("\0").update(sourceDiff).digest("hex");
-const provenancePath = path.join(root, "app/.next/moawork-visual-build-provenance.json");
-
-function artifactIdentity() {
-  const buildId = fs.readFileSync(path.join(root, "app/.next/BUILD_ID"), "utf8").trim();
-  const digest = crypto.createHash("sha256");
-  for (const name of ["BUILD_ID", "app-path-routes-manifest.json", "build-manifest.json", "routes-manifest.json"]) {
-    digest.update(name).update("\0").update(fs.readFileSync(path.join(root, "app/.next", name)));
-  }
-  return { buildId, artifactDigest: digest.digest("hex") };
-}
-
-function readProvenance() {
-  try {
-    return JSON.parse(fs.readFileSync(provenancePath, "utf8"));
-  } catch {
-    return null;
-  }
-}
-
 function ensureLocalBuildProvenance() {
-  let artifact;
   try {
-    artifact = artifactIdentity();
-  } catch {
-    artifact = null;
+    return ensureSharedBuildProvenance(root);
+  } catch (error) {
+    throw new VisualGateStageError("infrastructure", "build-provenance", error instanceof Error ? error.message : String(error), {
+      code: error?.code ?? "GATE_BUILD_INTERNAL",
+    });
   }
-  const expected = artifact ? { commitSha: expectedCommit, sourceDigest, ...artifact } : null;
-  const existing = readProvenance();
-  if (expected && verifyBuildProvenance(existing, expected).ready) return existing;
-
-  const command = process.platform === "win32" ? "cmd.exe" : "npm";
-  const args = process.platform === "win32"
-    ? ["/d", "/s", "/c", "npm", "run", "build", "--workspace", "app"]
-    : ["run", "build", "--workspace", "app"];
-  execFileSync(command, args, {
-    cwd: root,
-    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
-    stdio: "inherit",
-  });
-  artifact = artifactIdentity();
-  const provenance = { schemaVersion: 1, commitSha: expectedCommit, sourceDigest, ...artifact };
-  fs.writeFileSync(provenancePath, `${JSON.stringify(provenance)}\n`);
-  const verified = verifyBuildProvenance(provenance, { commitSha: expectedCommit, sourceDigest, ...artifact });
-  if (!verified.ready) {
-    throw new VisualGateStageError("infrastructure", "build-provenance", "fresh organization build provenance mismatch", verified);
-  }
-  return provenance;
 }
 
 async function freePort() {

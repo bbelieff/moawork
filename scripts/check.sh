@@ -116,7 +116,7 @@ npm run typecheck --workspaces --if-present
 
 echo "▶ [3/4] production build"
 export NEXT_TELEMETRY_DISABLED=1
-npm run build --workspaces --if-present
+node scripts/ci/build-artifact.mjs --workspace-build
 
 echo "▶ [4/4] test"
 npm run test:gate --workspace app

@@ -6,22 +6,18 @@ import { spawn } from "node:child_process";
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:net";
 import { chromium } from "playwright-core";
+import { ensureLocalBuildProvenance as ensureSharedBuildProvenance } from "../../scripts/ci/build-artifact.mjs";
 import {
   VisualGateStageError,
   isChildAndPortReleased,
   recordImplicitDomFailure,
   runVisualGateCompletionContractTests,
-  verifyBuildProvenance,
   waitForVisualGate,
 } from "./qa-visual-gate-completion.mjs";
 
 const root=path.resolve(import.meta.dirname,"../..");
 const contract=JSON.parse(fs.readFileSync(path.join(import.meta.dirname,"visual-block-contract.json"),"utf8"));
 const args=process.argv.slice(2);
-const localExpectedSha=execFileSync("git",["rev-parse","HEAD"],{cwd:root,encoding:"utf8"}).trim();
-const localSourceDiff=execFileSync("git",["diff","--binary","HEAD","--","app","package.json","package-lock.json"],{cwd:root,maxBuffer:50*1024*1024});
-const localSourceDigest=crypto.createHash("sha256").update(localExpectedSha).update("\0").update(localSourceDiff).digest("hex");
-const provenancePath=path.join(root,"app/.next/moawork-visual-build-provenance.json");
 const mutation=args.find(x=>x.startsWith("--mutate="))?.split("=")[1]??"none";
 const productionUrl=args.find(x=>x.startsWith("--production-url="))?.slice(17),expectedSha=args.find(x=>x.startsWith("--expected-sha="))?.slice(15);
 const reportArg=args.find(x=>x.startsWith("--report="))?.slice(9),artifactDir=reportArg?path.resolve(`${reportArg}.artifacts`):null;if(artifactDir)fs.mkdirSync(artifactDir,{recursive:true});
@@ -30,10 +26,8 @@ const required=["block_id","route","tab","viewport","mockup_anchor","product_anc
 function chrome(){const list=process.platform==="win32"?["C:/Program Files/Google/Chrome/Application/chrome.exe","C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"]:["/usr/bin/google-chrome","/usr/bin/chromium"];const hit=list.find(fs.existsSync);if(!hit)throw Error("system Chromium unavailable; source inspection is not a visual gate");return hit}
 function validate(){const out=[];if(contract.evaluation.visual!==70||contract.evaluation.minimumVisual!==65)out.push("score contract drift");for(const b of contract.blocks){for(const k of required)if(!(k in b))out.push(`${b.block_id}: missing ${k}`);if(!b.override?.issue||!/^\d{4}-\d{2}-\d{2}$/.test(b.override?.date??"")||!b.override?.rationale)out.push(`${b.block_id}: invalid override`)}return out}
 const blocksForTab=tab=>contract.blocks.filter(b=>b.tab.includes(tab));
-function artifactIdentity(){const buildId=fs.readFileSync(path.join(root,"app/.next/BUILD_ID"),"utf8").trim(),digest=crypto.createHash("sha256");for(const name of["BUILD_ID","app-path-routes-manifest.json","build-manifest.json","routes-manifest.json"]){const file=path.join(root,"app/.next",name);digest.update(name).update("\0").update(fs.readFileSync(file))}return{buildId,artifactDigest:digest.digest("hex")}}
-function readProvenance(){try{return JSON.parse(fs.readFileSync(provenancePath,"utf8"))}catch{return null}}
 let localProvenancePromise;
-async function ensureLocalBuildProvenance(){if(localProvenancePromise)return localProvenancePromise;localProvenancePromise=Promise.resolve().then(()=>{let artifact;try{artifact=artifactIdentity()}catch{}const expected=artifact?{commitSha:localExpectedSha,sourceDigest:localSourceDigest,...artifact}:null,existing=readProvenance();if(expected&&verifyBuildProvenance(existing,expected).ready)return existing;const command=process.platform==="win32"?"cmd.exe":"npm",parts=process.platform==="win32"?["/d","/s","/c","npm","run","build","--workspace","app"]:["run","build","--workspace","app"];execFileSync(command,parts,{cwd:root,env:{...process.env,NEXT_TELEMETRY_DISABLED:"1"},stdio:"inherit"});artifact=artifactIdentity();const provenance={schemaVersion:1,commitSha:localExpectedSha,sourceDigest:localSourceDigest,...artifact};fs.writeFileSync(provenancePath,JSON.stringify(provenance)+"\n");const verified=verifyBuildProvenance(provenance,{commitSha:localExpectedSha,sourceDigest:localSourceDigest,...artifact});if(!verified.ready)throw new VisualGateStageError("infrastructure","build-provenance","fresh build provenance mismatch",verified);return provenance});return localProvenancePromise}
+async function ensureLocalBuildProvenance(){if(localProvenancePromise)return localProvenancePromise;localProvenancePromise=Promise.resolve().then(()=>{try{return ensureSharedBuildProvenance(root)}catch(error){throw new VisualGateStageError("infrastructure","build-provenance",error instanceof Error?error.message:String(error),{code:error?.code??"GATE_BUILD_INTERNAL"})}});return localProvenancePromise}
 async function freePort(){return new Promise((resolve,reject)=>{const listener=createServer();listener.unref();listener.once("error",reject);listener.listen(0,"127.0.0.1",()=>{const address=listener.address(),port=typeof address==="object"&&address?address.port:null;listener.close(error=>error?reject(error):port?resolve(port):reject(Error("ephemeral port unavailable")))})})}
 function server(port){const command=process.platform==="win32"?"cmd.exe":"npm",parts=process.platform==="win32"?["/d","/s","/c","npm","run","start","--workspace","app","--","--port",String(port)]:["run","start","--workspace","app","--","--port",String(port)],env={...process.env,NEXT_TELEMETRY_DISABLED:"1"};delete env.VERCEL_GIT_COMMIT_SHA;return spawn(command,parts,{cwd:root,env,stdio:["ignore","pipe","pipe"]})}
 async function ready(child,origin,provenance){let log="";child.stdout.on("data",x=>log+=x);child.stderr.on("data",x=>log+=x);return waitForVisualGate({category:"infrastructure",stage:"server-ready",timeoutMs:90000,intervalMs:500,probe:async()=>{if(child.exitCode!==null)throw new VisualGateStageError("infrastructure","server-process",`server exited with ${child.exitCode}`,{log:log.slice(-1500)});try{const [response,manifest]=await Promise.all([fetch(`${origin}/login/visual-fixture?tab=new`,{signal:AbortSignal.timeout(1500)}),fetch(`${origin}/_next/static/${provenance.buildId}/_buildManifest.js`,{signal:AbortSignal.timeout(1500)})]),html=await response.text(),sha=html.match(/data-build-sha="([^"]+)"/)?.[1]??null;return{ready:response.ok&&manifest.ok&&sha==="local",listener:true,status:response.status,manifestStatus:manifest.status,sha,buildId:provenance.buildId,expectedSha:provenance.commitSha}}catch(error){return{ready:false,listener:false,error:error instanceof Error?error.message:String(error),buildId:provenance.buildId,expectedSha:provenance.commitSha}}}})}
