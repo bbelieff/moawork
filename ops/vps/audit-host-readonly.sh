@@ -490,7 +490,7 @@ collect_hermes() {
   fi
   for handle in "${containers[@]}"; do
     [[ -n "$handle" ]] || continue; container_id="${handle%%|*}"; name="${handle#*|}"; index=$((index + 1))
-    if ! raw="$(run_bounded docker inspect --format '{{.Id}}|{{.Image}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.RestartCount}}|{{.HostConfig.Memory}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}' "$name" 2>/dev/null)"; then failed=true; continue; fi
+    if ! raw="$(run_bounded docker inspect --format '{{.Id}}|{{.Image}}|{{.State.Status}}|{{with index .State "Health"}}{{.Status}}{{else}}none{{end}}|{{.RestartCount}}|{{.HostConfig.Memory}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}' "$name" 2>/dev/null)"; then failed=true; continue; fi
     if [[ -z "$raw" ]]; then failed=true; continue; fi
     IFS='|' read -r inspect_id inspect_image state health restarts memory nano pids <<<"$raw"
     if [[ -z "$inspect_id" || -z "$inspect_image" || "$inspect_id" != "$container_id"* ]]; then failed=true; continue; fi

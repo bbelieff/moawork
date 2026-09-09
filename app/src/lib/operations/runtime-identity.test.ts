@@ -197,32 +197,39 @@ describe("runtime release identity", () => {
     ).toBe(true);
   });
 
-  it("separates public-config validity from the required analytics readiness signal", () => {
+  it("separates public-config validity from the optional analytics status", () => {
     expect(isAnalyticsBuildConfigEnabled(PUBLIC_CONFIG)).toBe(true);
     expect(isAnalyticsBuildConfigEnabled({ ...PUBLIC_CONFIG, posthogKey: undefined })).toBe(false);
     expect(isAnalyticsBuildConfigEnabled({ ...PUBLIC_CONFIG, posthogKey: "phc_x" })).toBe(false);
     expect(isPublicBuildConfigValid({ ...PUBLIC_CONFIG, posthogKey: undefined }, BUILD_SHA)).toBe(true);
   });
 
-  it("does not report ready when the release has no valid PostHog public key", async () => {
-    const response = createHealthResponse(
-      "ready",
-      {
-        MOAWORK_BUILD_SHA: BUILD_SHA,
-        MOAWORK_RELEASE_SHA: BUILD_SHA,
-        MOAWORK_ARTIFACT_SHA256: ARTIFACT_SHA,
-        NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: SERVER_ACTIONS_KEY,
-        MOAWORK_SERVER_ACTIONS_BUILD_FINGERPRINT: SERVER_ACTIONS_FINGERPRINT,
-      },
-      { ...PUBLIC_CONFIG, posthogKey: undefined },
-    );
-
-    expect(response.status).toBe(503);
+  it("reports optional analytics disabled without weakening Supabase or Server Actions readiness", async () => {
+    const environment = {
+      MOAWORK_BUILD_SHA: BUILD_SHA,
+      MOAWORK_RELEASE_SHA: BUILD_SHA,
+      MOAWORK_ARTIFACT_SHA256: ARTIFACT_SHA,
+      NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: SERVER_ACTIONS_KEY,
+      MOAWORK_SERVER_ACTIONS_BUILD_FINGERPRINT: SERVER_ACTIONS_FINGERPRINT,
+    };
+    const config = { ...PUBLIC_CONFIG, posthogKey: undefined };
+    const response = createHealthResponse("ready", environment, config);
+    expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      status: "not_ready",
-      configuration: "verified",
-      analytics: "disabled",
+      status: "ready", configuration: "verified", serverActions: "verified", analytics: "disabled",
     });
+
+    for (const invalid of [
+      { ...environment, NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: undefined },
+      { ...environment, MOAWORK_SERVER_ACTIONS_BUILD_FINGERPRINT: "f".repeat(64) },
+    ]) {
+      const denied = createHealthResponse("ready", invalid, config);
+      expect(denied.status).toBe(503);
+      await expect(denied.json()).resolves.toMatchObject({ analytics: "disabled", serverActions: "unverified" });
+    }
+    const invalidConfig = createHealthResponse("ready", environment, { ...config, supabaseAnonKey: undefined });
+    expect(invalidConfig.status).toBe(503);
+    await expect(invalidConfig.json()).resolves.toMatchObject({ analytics: "disabled", configuration: "unverified" });
   });
 
   it("accepts only canonical base64 AES key lengths without exposing a value", () => {

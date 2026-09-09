@@ -94,6 +94,7 @@ node --test --test-concurrency=1 --test-timeout=180000 \
   ops/vps/audit-host-readonly.test.mjs
 
 node --test --test-concurrency=1 --test-timeout=60000 \
+  ops/vps/deploy-source.test.mjs \
   ops/vps/audit-contract.test.mjs \
   ops/vps/artifact/artifact.test.mjs \
   ops/vps/provision/assets.test.mjs \
