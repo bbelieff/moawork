@@ -60,6 +60,17 @@ const ENV = { ...loadEnv(), ...process.env };
 const PORT = Number(ENV.DASHBOARD_PORT || 8787);
 const REPO_ROOT = path.resolve(ENV.MOAWORK_REPO_ROOT || ROOT);
 const FUEL_FILE = path.join(ROOT, "tools", "board", "fuel.json");
+
+export function acknowledgeIssueJoin(token) {
+  if (
+    ENV.NODE_ENV !== "test"
+    || ENV.DASHBOARD_ISSUE_ARRIVAL_TEST_SIGNAL !== "1"
+    || !/^[a-z0-9-]{1,64}$/i.test(token || "")
+    || typeof process.send !== "function"
+  ) return false;
+  process.send({ type: "DASHBOARD_TEST_ISSUE_JOINED", token });
+  return true;
+}
 /* ── GitHub ──────────────────────────────────────────────────
  * 2026-08-26 — 판의 «지금» 을 여기서 읽는다.
  *
@@ -766,7 +777,10 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/issues") {
       if (!AUTH_OK()) return send(res, 503, JSON.stringify(NO_KEY));
-      const d = await getSnap(url.searchParams.get("force") === "1");
+      const arrivalToken = url.searchParams.get("arrival");
+      const snapshot = getSnap(url.searchParams.get("force") === "1");
+      acknowledgeIssueJoin(arrivalToken);
+      const d = await snapshot;
       return send(res, 200, JSON.stringify({ issues: d.issues, available: d.available, stale: d.stale, lastSuccessAt: d.lastSuccessAt, retryAt: d.error?.retryAt || null, error: d.error }));
     }
 
