@@ -12,6 +12,175 @@ export class VisualGateStageError extends Error {
 
 const defaultSleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
+const VISUAL_DIAGNOSTIC_EVENT_LIMIT = 12;
+const VISUAL_DIAGNOSTIC_RESOURCE_LIMIT = 12;
+const VISUAL_DIAGNOSTIC_RESOURCE_KINDS = new Set([
+  "document", "script", "style", "stylesheet", "image", "font", "xhr", "fetch", "other",
+]);
+
+export function sanitizeVisualDiagnosticMessage(value) {
+  const message = String(value ?? "");
+  const networkCode = message.match(/\bnet::(ERR_[A-Z_]+)\b/u)?.[1];
+  if (networkCode) return `Network ${networkCode}`;
+  if (/hydration failed/iu.test(message)) return "Hydration failed";
+  if (/chunkloaderror|loading chunk.+failed/iu.test(message)) return "Chunk load failed";
+  if (/failed to load resource/iu.test(message)) return "Resource load failed";
+  if (/unexpected token/iu.test(message)) return "SyntaxError: unexpected token";
+  if (/cannot read propert(?:y|ies)/iu.test(message)) return "TypeError: cannot read property";
+  if (/is not defined/iu.test(message)) return "ReferenceError: identifier is not defined";
+  const name = message.match(/^(TypeError|ReferenceError|SyntaxError|RangeError|Error)\b/iu)?.[1];
+  return name ? `${name}: redacted` : "redacted";
+}
+
+export function sameOriginPathname(value, expectedOrigin) {
+  try {
+    const url = new URL(String(value), expectedOrigin);
+    return url.origin === expectedOrigin ? url.pathname.slice(0, 240) : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeStaticAssetPathname(value, expectedOrigin) {
+  const pathname = sameOriginPathname(value, expectedOrigin);
+  if (!pathname || !/^\/_next\/static\/[A-Za-z0-9._/-]+\.(?:js|css|woff2?|png|jpe?g|svg|webp|ico|map)$/u.test(pathname)) return null;
+  if (pathname.split("/").some(segment => segment === "." || segment === "..")) return null;
+  return pathname;
+}
+
+function sameOriginRouteClass(value, expectedOrigin) {
+  const pathname = sameOriginPathname(value, expectedOrigin);
+  if (!pathname) return null;
+  if (pathname === "/login/visual-fixture") return "visual-fixture";
+  if (pathname.startsWith("/_next/")) return "next-internal";
+  return "same-origin";
+}
+
+function safeResourceKind(value) {
+  const kind = String(value ?? "other");
+  return VISUAL_DIAGNOSTIC_RESOURCE_KINDS.has(kind) ? kind : "other";
+}
+
+export function collectVisualFixtureResourceSnapshot({ expectedOrigin, limit }, runtime = globalThis) {
+  const document = runtime.document;
+  const resources = [...document.querySelectorAll("script[src],link[rel='stylesheet'][href]")]
+    .flatMap(element => {
+      const isScript = element instanceof runtime.HTMLScriptElement;
+      const raw = isScript ? element.src : element.href;
+      let url;
+      try {
+        url = new runtime.URL(raw, runtime.location.href);
+      } catch {
+        return [];
+      }
+      if (url.origin !== expectedOrigin) return [];
+      const pathname = /^\/_next\/static\/[A-Za-z0-9._/-]+\.(?:js|css|woff2?|png|jpe?g|svg|webp|ico|map)$/u.test(url.pathname)
+        && !url.pathname.split("/").some(segment => segment === "." || segment === "..")
+        ? url.pathname.slice(0, 240)
+        : null;
+      const entry = runtime.performance.getEntriesByName(raw).at(-1);
+      return [{
+        pathname,
+        routeClass: pathname ? "static-asset" : "same-origin-resource",
+        resourceKind: isScript ? "script" : "style",
+        status: entry?.responseEnd > 0 ? "loaded" : document.readyState === "complete" ? "unobserved" : "pending",
+      }];
+    })
+    .slice(0, limit);
+  return { documentReadyState: document.readyState, resources };
+}
+
+export function createVisualFixtureDiagnosticCollector(page, expectedOrigin) {
+  const events = [];
+  const record = event => {
+    if (events.length < VISUAL_DIAGNOSTIC_EVENT_LIMIT) events.push(event);
+  };
+  const onConsole = message => {
+    if (message.type() !== "error") return;
+    record({
+      kind: "console-error",
+      pathname: null,
+      status: null,
+      resourceKind: "document",
+      message: sanitizeVisualDiagnosticMessage(message.text()),
+    });
+  };
+  const onPageError = error => record({
+    kind: "page-error",
+    pathname: null,
+    status: null,
+    resourceKind: "script",
+    message: sanitizeVisualDiagnosticMessage(error?.message),
+  });
+  const onRequestFailed = request => {
+    const pathname = safeStaticAssetPathname(request.url(), expectedOrigin);
+    const routeClass = pathname ? "static-asset" : sameOriginRouteClass(request.url(), expectedOrigin);
+    if (!routeClass) return;
+    record({
+      kind: "request-failed",
+      pathname,
+      routeClass,
+      status: null,
+      resourceKind: safeResourceKind(request.resourceType()),
+      message: sanitizeVisualDiagnosticMessage(request.failure()?.errorText),
+    });
+  };
+  const onResponse = response => {
+    const pathname = safeStaticAssetPathname(response.url(), expectedOrigin);
+    const status = response.status();
+    if (!pathname || (status >= 200 && status < 300) || !pathname.endsWith(".js")) return;
+    record({
+      kind: "static-script-response",
+      pathname,
+      routeClass: "static-asset",
+      status,
+      resourceKind: "script",
+      message: "Static script response failed",
+    });
+  };
+
+  page.on("console", onConsole);
+  page.on("pageerror", onPageError);
+  page.on("requestfailed", onRequestFailed);
+  page.on("response", onResponse);
+
+  return {
+    async snapshot() {
+      let documentState = { documentReadyState: "unavailable", resources: [] };
+      try {
+        documentState = await page.evaluate(collectVisualFixtureResourceSnapshot, {
+          expectedOrigin,
+          limit: VISUAL_DIAGNOSTIC_RESOURCE_LIMIT,
+        });
+      } catch {
+        // A closed/crashed page is itself useful state; never attach the raw browser error.
+      }
+      return {
+        documentReadyState: documentState.documentReadyState,
+        events: [...events],
+        resources: documentState.resources,
+      };
+    },
+    dispose() {
+      page.off("console", onConsole);
+      page.off("pageerror", onPageError);
+      page.off("requestfailed", onRequestFailed);
+      page.off("response", onResponse);
+    },
+  };
+}
+
+export function attachVisualFixtureDiagnostics(error, diagnostics) {
+  if (error instanceof VisualGateStageError
+    && error.category === "render-completion"
+    && error.stage === "fixture-render-complete") {
+    const details = { ...error.details };
+    if (details.lastError) details.lastError = sanitizeVisualDiagnosticMessage(details.lastError);
+    error.details = { ...details, diagnostics };
+  }
+  return error;
+}
+
 export async function waitForVisualGate({
   category,
   stage,

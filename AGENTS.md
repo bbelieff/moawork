@@ -30,7 +30,7 @@
 ① 내 Issue가 무엇인가           GitHub Issue 번호. 없으면 착수하지 않는다     §4
 ② 최신 origin/main 위에서 시작   전용 worktree. 공유 checkout 금지            §9.1
 ③ 만든다                       제품이 무엇인가는 CLAUDE.md
-④ bash scripts/check.sh 초록    빨간 채로 올리지 않는다
+④ pre-commit fast gate 초록     exact staged-tree를 2분 안에 검사한다
 ⑤ 자기 서브에이전트로 검수       다른 창에 넘기지 않는다                      §5
 ⑥ ★ 그 화면 주소를 열어 본 증거  이게 없으면 완주가 아니다                    §3
 ⑦ PR → node scripts/merge-pr.mjs <번호>   손으로 머지하지 않는다 — CI 확인이 §7 에 있다
@@ -500,7 +500,7 @@ reviewer 세션을 호출하거나 판정을 다시 writer에게 전달하는 �
 
 - 서브에이전트 finding **P0/P1은 merge 중단**이다. 같은 워커가 같은 Issue에서 고치고 exact head로 재검수한다.
 - **P2/P3와 시각 다듬기는 merge 비차단**이다. 누락하지 말고 새 GitHub Issue + Project #1 범위로 등록한다.
-- focused test · `bash scripts/check.sh` · production build · CI는 종전대로 필수다.
+- focused test · exact staged-tree fast gate · PR CI의 `bash scripts/check.sh` 전체 gate는 필수다.
 - Issue 번호·PR exact head·서브에이전트 판정 원문/ID를 PR과 GitHub Issue 완료 증거에 남긴다.
 - 인증·보안/권한 하향·발송/과금·비가역 고객 데이터 변경은 finding 등급과 무관한 **강한 정지선**이다.
 - **root 코디네이터는 서브에이전트를 띄우지 않는다.** 서브에이전트는 배정된 Issue의 워커만 사용한다.
@@ -514,7 +514,7 @@ reviewer 세션을 호출하거나 판정을 다시 writer에게 전달하는 �
 ### 대신 «사람이 아닌 것» 이 막는다
 
 ```
-bash scripts/check.sh          lint · typecheck · test          ← 훅과 CI 가 강제
+fast staged hook → PR check.sh 변경 범위 → 전체 제품 gate          ← 로컬 훅과 CI가 순서대로 강제
 node docs/design/qa-app.mjs    구조 축소 (D73)                  ← 숫자로 잡는다
 화면 확인 증거                  1440px · 375px 스크린샷           ← 워커가 스스로 찍는다
 실행 잠금 4개                   provider · 자격증명 · 058 · 발송  ← belie 스위치. 검수와 무관
@@ -791,8 +791,8 @@ powershell -NoProfile -Command "\$o=Get-CimInstance Win32_OperatingSystem; \
 ```
 ① git fetch → 최신 origin/main 위 rebase        충돌 시 임의 해결 금지 · 중단 보고
 ② 내 Issue가 있는지 확인                         없으면 착수 금지 (§4)
-③ bash scripts/check.sh 초록
-④ push → PR(본문에 Issue 번호) → CI 초록
+③ exact staged-tree fast pre-commit 초록
+④ push → PR(본문에 Issue 번호) → CI의 bash scripts/check.sh 전체 gate 초록
 ⑤ exact head 서브에이전트 자체 검수               docs/playbooks/subagent-review.md
 ⑥ ★ 화면 확인 — 그 주소를 열어 본 증거            못 보면 볼 수 있는 워커에게 넘긴다 (§2.2)
 ⑦ node scripts/merge-pr.mjs <PR번호> → 배포 → health 200
@@ -949,9 +949,9 @@ GitHub 댓글도 알림도 «도는 창» 을 깨우지 못한다.
 - **★ 문서만 고치는 작업에 워크트리를 새로 만들지 마라.** worklog·docs 같은 `.md` 전용 변경은
   **`node_modules` 가 이미 있는 워크트리에서** 하거나 메인에서 한다.
   **실측: 의존성 없는 워크트리는 19MB, 있는 것은 ~700MB — 37배다.** 그러나 이 레포의
-  `.githooks/pre-commit` 은 문서 변경에도 전체 게이트를 돌리므로 **`node_modules` 없이는 커밋이 안 된다**
-  (2026-09-07 실패: `check-unreachable-app-files.mjs` 가 `typescript` 를 못 찾음).
-  즉 «깔지 마라» 가 아니라 «깔아야 하는 워크트리를 새로 늘리지 마라» 가 정확한 규칙이다.
+  `.githooks/pre-commit` fast gate도 변경 범위의 타입·인접 테스트를 실행할 수 있으므로 **제품/도구 변경은
+  `node_modules` 없이는 커밋이 안 된다** (문서만 바뀌면 공통 정적 경계만 실행한다).
+  즉 «깔지 마라» 가 아니라 «필요한 워크트리에만 설치하고 새 복제본을 늘리지 마라» 가 정확한 규칙이다.
 - **★ 완주 = 머지 + 배포 + health + 뒷정리.** 머지된 워크트리는 역할이 끝났다. 완주 도장 전에:
   ```bash
   rm -rf <워크트리>/node_modules      # 최소 — npm install 로 복구되므로 무손실
@@ -973,7 +973,9 @@ GitHub 댓글도 알림도 «도는 창» 을 깨우지 못한다.
 - 남의 브랜치를 checkout·rebase·force-push·reset·delete 하지 않는다.
 - **Supabase 스키마는 새 migration 파일로만 추가.** 기존 파일 수정 금지.
   번호는 **머지 직전에 `origin/main` 최신 +1 로 재확정**한다. 선점 금지.
-- 커밋 전 `bash scripts/check.sh` 통과. `.githooks/pre-commit` 이 같은 것을 돌린다.
+- 커밋 전 `.githooks/pre-commit` 이 exact staged-tree fast gate를 실행한다. 변경 범위의 정적·타입·인접 테스트를
+  2분 안에 fail-closed로 검사하며, unstaged/untracked source가 섞이면 중단한다. PR CI는 `bash scripts/check.sh`의
+  전체 제품·보안·build·visual 게이트를 정확히 한 번 실행한다. 전체 게이트를 없앤 것이 아니라 머지 전 한 번으로 줄인 것이다.
 - **PR 충돌이 나면 십중팔구 `docs/worklog.md` 다.** 코드 충돌보다 이 한 파일이 압도적으로 많다.
   붙기 전에 `git merge-tree` 로 먼저 확인한다.
 

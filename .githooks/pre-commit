@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# moawork pre-commit 훅 — 커밋 전에 check.sh 게이트를 실행한다.
+# moawork pre-commit 훅 — 커밋 전에 exact staged-tree fast gate를 실행한다.
 # 활성화: git config core.hooksPath .githooks  (루트 `npm install` 시 자동 설정됨)
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
-echo "🔎 pre-commit: moawork check 게이트 실행…"
-bash "$ROOT/scripts/check.sh"
+echo "🔎 pre-commit: exact staged-tree fast gate 실행 (SLO < 2분)…"
+node "$ROOT/scripts/ci/fast-staged.mjs"

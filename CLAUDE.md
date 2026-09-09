@@ -113,8 +113,9 @@ npm run dev
 bash scripts/check.sh      # lint + typecheck + test — 이것이 게이트다
 ```
 
-- 모든 변경은 `bash scripts/check.sh` 를 통과해야 한다.
-- `.githooks/pre-commit` 이 커밋 전에 같은 게이트를 실행한다.
+- 모든 변경은 머지 전에 PR CI의 `bash scripts/check.sh` 전체 게이트를 통과해야 한다.
+- `.githooks/pre-commit` 은 커밋 전에 exact staged-tree fast gate를 실행한다. 변경 범위의 정적·타입·인접 테스트를
+  2분 안에 검사하되, 전체 제품·build·visual 게이트는 PR CI에서 정확히 한 번 실행한다.
   최초 1회 `git config core.hooksPath .githooks` (루트 `npm install` 시 자동).
 - CI(`.github/workflows/ci.yml`)가 push/PR 마다 같은 게이트를 재실행한다.
 - 새 제품 작업은 GitHub Issue + Project #1 범위와 재현 가능한 EVAL을 가져야 한다.

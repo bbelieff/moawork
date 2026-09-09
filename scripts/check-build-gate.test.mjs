@@ -41,7 +41,7 @@ test("the build wrapper owns the exact workspace command and both visual consume
   assert.doesNotMatch(organizationViews, /"run", "build", "--workspace", "app"/u);
 });
 
-test("CI and pre-commit keep consuming the one canonical check script", async () => {
+test("pre-commit uses the staged fast gate while PR CI keeps the canonical full gate", async () => {
   const [workflow, hook, windowsLauncher] = await Promise.all([
     readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
     readFile(new URL("../.githooks/pre-commit", import.meta.url), "utf8"),
@@ -49,7 +49,9 @@ test("CI and pre-commit keep consuming the one canonical check script", async ()
   ]);
   assert.match(workflow, /run:\s+\.\\scripts\\run-check-windows\.ps1/u);
   assert.match(windowsLauncher, /& \$resolved --noprofile --norc "scripts\/check\.sh"/u);
-  assert.match(hook, /bash (?:"\$ROOT\/)?scripts\/check\.sh"?/u);
+  assert.match(hook, /node "\$ROOT\/scripts\/ci\/fast-staged\.mjs"/u);
+  assert.doesNotMatch(hook, /scripts\/check\.sh/u);
+  assert.equal(workflow.match(/run:\s+\.\\scripts\\run-check-windows\.ps1/gu)?.length, 1);
 });
 
 test("resource-heavy PGlite suites leave the parallel pool but still run exactly once", () => {
