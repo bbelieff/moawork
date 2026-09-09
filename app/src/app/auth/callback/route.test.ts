@@ -86,7 +86,7 @@ function setup(scenario: Scenario = {}) {
 }
 
 function callback(search = "code=test-code", cookie?: string) {
-  return GET(new Request(`https://www.moa-work.com/auth/callback?${search}`, {
+  return GET(new Request(`http://localhost:3100/auth/callback?${search}`, {
     headers: cookie ? { cookie } : undefined,
   }));
 }
@@ -100,22 +100,22 @@ describe("OAuth callback Workspace routing", () => {
 
   it("code/provider 교환 오류는 auth 오류로 닫는다", async () => {
     expect(location(await callback("next=/"))).toBe(
-      "https://www.moa-work.com/login?error=auth",
+      "/login?error=auth",
     );
     setup({ exchangeError: { message: "provider" } });
     expect(location(await callback())).toBe(
-      "https://www.moa-work.com/login?error=auth",
+      "/login?error=auth",
     );
   });
 
   it("provider user 오류와 profile 오류를 구분한다", async () => {
     setup({ userError: { message: "user" } });
     expect(location(await callback())).toBe(
-      "https://www.moa-work.com/login?error=auth",
+      "/login?error=auth",
     );
     setup({ profileError: { message: "profile" } });
     expect(location(await callback())).toBe(
-      "https://www.moa-work.com/login?error=profile",
+      "/login?error=profile",
     );
   });
 
@@ -123,7 +123,7 @@ describe("OAuth callback Workspace routing", () => {
     const { supabase, from } = setup({ rows: [] });
     const response = await callback();
     expect(location(response)).toBe(
-      "https://www.moa-work.com/workspace-entry",
+      "/workspace-entry",
     );
     expect(response.headers.get("set-cookie")).toContain("mw_org=;");
     // Platform routing uses only the canonical auth.uid()-bound RPC.
@@ -135,7 +135,7 @@ describe("OAuth callback Workspace routing", () => {
   it("active membership 1은 canonical slug로 0-click 이동한다", async () => {
     setup({ rows: [membership("org-1", "alpha-team")] });
     const response = await callback();
-    expect(location(response)).toBe("https://www.moa-work.com/w/alpha-team");
+    expect(location(response)).toBe("/w/alpha-team");
     expect(response.headers.get("set-cookie")).toContain("mw_org=org-1");
   });
 
@@ -147,7 +147,7 @@ describe("OAuth callback Workspace routing", () => {
       ],
     });
     const response = await callback();
-    expect(location(response)).toBe("https://www.moa-work.com/workspaces");
+    expect(location(response)).toBe("/workspaces");
     expect(response.headers.get("set-cookie")).toContain("mw_org=;");
   });
 
@@ -159,7 +159,7 @@ describe("OAuth callback Workspace routing", () => {
       ],
     });
     expect(location(await callback())).toBe(
-      "https://www.moa-work.com/workspace-entry",
+      "/workspace-entry",
     );
   });
 
@@ -176,7 +176,7 @@ describe("OAuth callback Workspace routing", () => {
     ]) {
       setup(scenario);
       expect(location(await callback())).toBe(
-        "https://www.moa-work.com/workspace-entry?error=routing",
+        "/workspace-entry?error=routing",
       );
     }
   });
@@ -188,12 +188,12 @@ describe("OAuth callback Workspace routing", () => {
     ];
     setup({ rows });
     expect(location(await callback("code=test-code&next=/w/beta-team"))).toBe(
-      "https://www.moa-work.com/w/beta-team",
+      "/w/beta-team",
     );
 
     setup({ rows });
     expect(location(await callback("code=test-code&next=/w/other-team"))).toBe(
-      "https://www.moa-work.com/workspace-entry?error=routing",
+      "/workspace-entry?error=routing",
     );
   });
 
@@ -201,7 +201,7 @@ describe("OAuth callback Workspace routing", () => {
     setup({ rows: [membership("org-alpha", "alpha-team"), membership("org-acme", "acme")] });
     const next = encodeURIComponent("/w/acme/deals/123?tab=notes");
     const response = await callback(`code=test-code&next=${next}`);
-    expect(location(response)).toBe("https://www.moa-work.com/w/acme/deals/123?tab=notes");
+    expect(location(response)).toBe("/w/acme/deals/123?tab=notes");
     expect(response.headers.get("set-cookie")).toContain("mw_org=org-acme");
     expect(response.headers.get("set-cookie")).not.toContain("mw_org=org-alpha");
   });
@@ -210,7 +210,7 @@ describe("OAuth callback Workspace routing", () => {
     const rows = [membership("org-alpha", "alpha-team"), membership("org-acme", "acme")];
     for (const next of ["/w/acme/%252e%252e/admin", "/w/acme/%25252e%25252e/admin", "/w/acme/%25252fapi", "/w/acme/%252fapi", "/w/acme/%5cauth", "//evil.example/w/acme"]) {
       setup({ rows });
-      expect(location(await callback(`code=test-code&next=${encodeURIComponent(next)}`))).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+      expect(location(await callback(`code=test-code&next=${encodeURIComponent(next)}`))).toBe("/workspace-entry?error=routing");
     }
   });
 
@@ -220,9 +220,9 @@ describe("OAuth callback Workspace routing", () => {
       membership("org-2", "beta-team"),
     ];
     setup({ rows });
-    expect(location(await callback(`code=test-code&next=${encodeURIComponent("https://evil.example/w/alpha-team")}`))).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+    expect(location(await callback(`code=test-code&next=${encodeURIComponent("https://evil.example/w/alpha-team")}`))).toBe("/workspace-entry?error=routing");
     setup({ rows });
-    expect(location(await callback(`code=test-code&next=${encodeURIComponent("/settings/account")}`))).toBe("https://www.moa-work.com/workspaces");
+    expect(location(await callback(`code=test-code&next=${encodeURIComponent("/settings/account")}`))).toBe("/workspaces");
   });
 });
 
@@ -235,7 +235,7 @@ describe("OAuth callback 플랫폼 관리자 분기", () => {
       `code=test-code&next=${encodeURIComponent("/account?tab=privacy")}`,
       "mw_mode=v1.platform.stale-signature",
     );
-    expect(location(response)).toBe("https://www.moa-work.com/mode?next=%2Faccount%3Ftab%3Dprivacy");
+    expect(location(response)).toBe("/mode?next=%2Faccount%3Ftab%3Dprivacy");
     expect(response.headers.get("set-cookie")).toContain("mw_mode=;");
     expect(from).not.toHaveBeenCalledWith("org_members");
   });
@@ -243,28 +243,28 @@ describe("OAuth callback 플랫폼 관리자 분기", () => {
   it("소속 0 + 일반 사용자 → 기존대로 진입 화면", async () => {
     setup({ rows: [], platformGranted: false });
     expect(location(await callback())).toBe(
-      "https://www.moa-work.com/workspace-entry",
+      "/workspace-entry",
     );
   });
 
   it("소속 1 + 플랫폼 관리자 → 회사로 (플랫폼 관리는 스위처 ⚙ 로)", async () => {
     setup({ rows: [membership("org-1", "alpha-team")], platformGranted: false });
     expect(location(await callback())).toBe(
-      "https://www.moa-work.com/w/alpha-team",
+      "/w/alpha-team",
     );
   });
 
   it("판정 RPC 가 실패하면 관리자 아님으로 수렴한다(장애가 권한 상승이 되지 않게)", async () => {
     setup({ rows: [], platformGranted: true, platformRpcError: { message: "boom" } });
     expect(location(await callback())).toBe(
-      "https://www.moa-work.com/workspace-entry",
+      "/workspace-entry",
     );
   });
 
   it("알 수 없는 role 값은 관리자로 인정하지 않는다", async () => {
     setup({ rows: [membership("org-1", "alpha-team"), membership("org-2", "beta-team")], platformGranted: false });
     expect(location(await callback())).toBe(
-      "https://www.moa-work.com/workspaces",
+      "/workspaces",
     );
   });
 });

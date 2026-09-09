@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { relativeRedirect } from "@/lib/auth/relative-redirect";
 import { createClient } from "@/lib/supabase/server";
 import { SESSION_COOKIE } from "@/lib/auth/session";
 import {
@@ -11,7 +11,7 @@ import { modePreferenceCookie } from "@/lib/mode/preference";
 function loginError(request: Request, code: string) {
   const url = new URL("/login", request.url);
   url.searchParams.set("error", code);
-  return NextResponse.redirect(url);
+  return relativeRedirect(url.pathname + url.search);
 }
 
 export async function GET(request: Request) {
@@ -56,7 +56,7 @@ export async function GET(request: Request) {
     const destination = new URL("/mode", url.origin);
     const next = sanitizeModeNext(url.searchParams.get("next"));
     if (next) destination.searchParams.set("next", next);
-    const response = NextResponse.redirect(destination);
+    const response = relativeRedirect(destination.pathname + destination.search);
     // A fresh OAuth login must not silently reuse an earlier mode preference.
     response.cookies.delete(modePreferenceCookie.name);
     response.cookies.delete(SESSION_COOKIE.org);
@@ -76,7 +76,7 @@ export async function GET(request: Request) {
     workspaceTargetFromNext(url.searchParams.get("next")),
   );
 
-  const response = NextResponse.redirect(new URL(decision.path, url.origin));
+  const response = relativeRedirect(decision.path);
   if (decision.kind === "workspace") {
     response.cookies.set(SESSION_COOKIE.org, decision.orgId, {
       path: "/",
