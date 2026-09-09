@@ -1,0 +1,297 @@
+name: VPS release artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact protected main commit to package
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vps-release-artifact
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: protected-main-preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Refuse an unprotected or stale dispatch before secret access
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_REF_PROTECTED" = true
+          test "$GITHUB_REPOSITORY" = bbelieff/moawork
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ARCH" = X64
+          test "$GITHUB_SHA" = "$EXPECTED_SOURCE_SHA"
+
+  build-smoke:
+    name: build-and-native-smoke
+    needs: preflight
+    # The dedicated environment must be protected and must hold only the two
+    # release secrets consumed below. Creating it and provisioning secrets are
+    # separate security operations; this workflow does neither.
+    environment:
+      name: moawork-vps-release-artifact
+    # This is the only currently available reviewed native-Linux execution
+    # surface. Dispatch remains disabled until its bounded Actions cost is
+    # explicitly accepted. The production VPS is never a builder or runner.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Require protected exact main
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_REF_PROTECTED" = true
+          test "$GITHUB_REPOSITORY" = bbelieff/moawork
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ARCH" = X64
+          test "$GITHUB_SHA" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Checkout exact source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify checkout identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git symbolic-ref --quiet --short HEAD || true)" = ""
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.23.2
+          cache: npm
+
+      - name: Install exact dependencies
+        shell: bash
+        run: npm ci
+
+      - name: Build once with source and output provenance
+        shell: bash
+        env:
+          MOAWORK_BUILD_SHA: ${{ github.sha }}
+          NEXT_PUBLIC_APP_VERSION: ${{ github.sha }}
+          NEXT_PUBLIC_SUPABASE_URL: https://srtvmpcosekduvsscsyz.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_POSTHOG_KEY: ${{ vars.NEXT_PUBLIC_POSTHOG_KEY }}
+          MOAWORK_RELEASE_PUBLIC_CONFIG_SHA256: ${{ vars.MOAWORK_RELEASE_PUBLIC_CONFIG_SHA256 }}
+          NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          set -euo pipefail
+          node scripts/ci/validate-vps-release-environment.mjs
+          node scripts/ci/build-artifact.mjs --workspace-build
+
+      - name: Pack immutable standalone archive
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/moawork-release-$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -e "$output"
+          install -d -m 700 "$output"
+          stem="moawork-$GITHUB_SHA"
+          archive="$output/$stem.tar"
+          manifest="$output/$stem.manifest.json"
+          smoke_evidence="$output/$stem.smoke.json"
+          node ops/vps/artifact/artifact.mjs pack \
+            --repo "$GITHUB_WORKSPACE" \
+            --standalone "$GITHUB_WORKSPACE/app/.next/standalone" \
+            --static "$GITHUB_WORKSPACE/app/.next/static" \
+            --public "$GITHUB_WORKSPACE/app/public" \
+            --archive "$archive" \
+            --manifest "$manifest"
+          {
+            echo "directory=$output"
+            echo "archive=$archive"
+            echo "manifest=$manifest"
+            echo "smoke_evidence=$smoke_evidence"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Prove native runtime without signer material
+        shell: bash
+        env:
+          ARCHIVE_PATH: ${{ steps.package.outputs.archive }}
+          MANIFEST_PATH: ${{ steps.package.outputs.manifest }}
+          SMOKE_EVIDENCE_PATH: ${{ steps.package.outputs.smoke_evidence }}
+          OUTPUT_DIRECTORY: ${{ steps.package.outputs.directory }}
+          NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          test ! -L "$OUTPUT_DIRECTORY"
+          test "$(stat -c %u "$OUTPUT_DIRECTORY")" = "$(id -u)"
+          test "$(stat -c %a "$OUTPUT_DIRECTORY")" = 700
+          test "$(dirname -- "$ARCHIVE_PATH")" = "$OUTPUT_DIRECTORY"
+          test "$(dirname -- "$MANIFEST_PATH")" = "$OUTPUT_DIRECTORY"
+          test "$(dirname -- "$SMOKE_EVIDENCE_PATH")" = "$OUTPUT_DIRECTORY"
+          test ! -e "$SMOKE_EVIDENCE_PATH"
+          node ops/vps/artifact/artifact.mjs smoke \
+            --archive "$ARCHIVE_PATH" \
+            --manifest "$MANIFEST_PATH" \
+            --evidence "$SMOKE_EVIDENCE_PATH"
+
+      - name: Transfer exact unsigned bundle to isolated signer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: moawork-unsigned-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.manifest }}
+            ${{ steps.package.outputs.smoke_evidence }}
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+          retention-days: 1
+
+  release-artifact:
+    name: isolated-sign-and-publish
+    needs: build-smoke
+    environment:
+      name: moawork-vps-release-artifact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Require protected exact main
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_REF_PROTECTED" = true
+          test "$GITHUB_REPOSITORY" = bbelieff/moawork
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ARCH" = X64
+          test "$GITHUB_SHA" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Checkout exact signing verifier
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify signing verifier identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git symbolic-ref --quiet --short HEAD || true)" = ""
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Use Node.js 22 without dependency lifecycle
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.23.2
+
+      - name: Download exact unsigned bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: moawork-unsigned-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/moawork-unsigned
+
+      - name: Sign bounded smoke evidence and verify without payload execution
+        shell: bash
+        env:
+          EXPECTED_SIGNER_KEY_ID: ${{ vars.MOAWORK_RELEASE_SIGNER_KEY_ID }}
+          MOAWORK_RELEASE_SIGNING_KEY_PEM: ${{ secrets.MOAWORK_RELEASE_SIGNING_KEY_PEM }}
+        run: |
+          set -euo pipefail
+          unsigned="$RUNNER_TEMP/moawork-unsigned"
+          output="$RUNNER_TEMP/moawork-signed"
+          stem="moawork-$GITHUB_SHA"
+          archive="$unsigned/$stem.tar"
+          manifest="$unsigned/$stem.manifest.json"
+          smoke_evidence="$unsigned/$stem.smoke.json"
+          attestation="$output/$stem.attestation.json"
+          public_key="$output/$stem.builder.pub.pem"
+          checksums="$output/$stem.sha256"
+          signing_key="$RUNNER_TEMP/moawork-release-signing-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.pem"
+          cleanup() {
+            rm -f -- "$signing_key"
+          }
+          trap cleanup EXIT
+          test "$(find "$unsigned" -mindepth 1 -maxdepth 1 -type f | wc -l)" = 3
+          test -f "$archive"
+          test -f "$manifest"
+          test -f "$smoke_evidence"
+          install -d -m 700 "$output"
+          test -n "$MOAWORK_RELEASE_SIGNING_KEY_PEM"
+          (umask 077; printf '%s' "$MOAWORK_RELEASE_SIGNING_KEY_PEM" > "$signing_key")
+          unset MOAWORK_RELEASE_SIGNING_KEY_PEM
+          node --input-type=module - "$signing_key" "$public_key" <<'NODE'
+          import { createHash, createPrivateKey, createPublicKey } from "node:crypto";
+          import { readFileSync, writeFileSync } from "node:fs";
+          const privateKey = createPrivateKey(readFileSync(process.argv[2]));
+          if (privateKey.asymmetricKeyType !== "ed25519") process.exit(78);
+          const publicKey = createPublicKey(privateKey);
+          const keyId = createHash("sha256").update(publicKey.export({ type: "spki", format: "der" })).digest("hex");
+          if (!/^[0-9a-f]{64}$/.test(process.env.EXPECTED_SIGNER_KEY_ID ?? "") || keyId !== process.env.EXPECTED_SIGNER_KEY_ID) process.exit(78);
+          writeFileSync(process.argv[3], publicKey.export({ type: "spki", format: "pem" }), { flag: "wx", mode: 0o600 });
+          NODE
+          node ops/vps/artifact/artifact.mjs attest-evidence \
+            --archive "$archive" \
+            --manifest "$manifest" \
+            --evidence "$smoke_evidence" \
+            --private-key "$signing_key" \
+            --attestation "$attestation"
+          node ops/vps/artifact/artifact.mjs verify-trusted \
+            --archive "$archive" \
+            --manifest "$manifest" \
+            --attestation "$attestation" \
+            --public-key "$public_key"
+          cp -- "$archive" "$manifest" "$output/"
+          cd "$output"
+          sha256sum --binary \
+            "$(basename "$archive")" \
+            "$(basename "$manifest")" \
+            "$(basename "$attestation")" \
+            "$(basename "$public_key")" > "$checksums"
+
+      # The standalone archive contains Next's build-time Server Actions
+      # material. It is a confidential deployment artifact, not a public
+      # download. One-day retention bounds exposure while the isolated deploy
+      # path consumes it; the signing private key is deleted before this action.
+      - name: Publish exact restricted release outputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: moawork-release-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/moawork-signed/moawork-${{ github.sha }}.tar
+            ${{ runner.temp }}/moawork-signed/moawork-${{ github.sha }}.manifest.json
+            ${{ runner.temp }}/moawork-signed/moawork-${{ github.sha }}.attestation.json
+            ${{ runner.temp }}/moawork-signed/moawork-${{ github.sha }}.builder.pub.pem
+            ${{ runner.temp }}/moawork-signed/moawork-${{ github.sha }}.sha256
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+          retention-days: 1
