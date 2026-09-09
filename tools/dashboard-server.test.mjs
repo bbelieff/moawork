@@ -11,6 +11,126 @@ let upstream;
 let dashboard;
 let dashboardUrl;
 let rateLimited = false;
+let rateLimitGate = null;
+const issueArrivalCounts = new Map();
+const issueArrivalWaiters = new Map();
+
+const deferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+};
+
+const bounded = async (promise, label, timeoutMs = 2_000) => {
+  let timeout;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const gatedRequest = (url) => {
+  const sent = deferred();
+  let request;
+  const response = new Promise((resolve, reject) => {
+    request = http.get(url, (incoming) => {
+      const chunks = [];
+      incoming.on("data", (chunk) => chunks.push(chunk));
+      incoming.on("end", () => {
+        try {
+          resolve({
+            status: incoming.statusCode,
+            body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+          });
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    request.once("finish", sent.resolve);
+    request.once("error", (error) => {
+      sent.reject(error);
+      reject(error);
+    });
+  });
+  return { sent: sent.promise, response, destroy: () => request.destroy() };
+};
+
+const productionJoinProbe = () => new Promise((resolve, reject) => {
+  const messages = [];
+  let stdout = "";
+  let stderr = "";
+  const child = spawn(process.execPath, [
+    "--input-type=module",
+    "--eval",
+    'const mod = await import("./tools/dashboard-server.mjs"); process.stdout.write(String(mod.acknowledgeIssueJoin("production-probe")));',
+  ], {
+    cwd,
+    env: {
+      ...process.env,
+      NODE_ENV: "production",
+      DASHBOARD_NO_LISTEN: "1",
+      DASHBOARD_ISSUE_ARRIVAL_TEST_SIGNAL: "1",
+    },
+    stdio: ["ignore", "pipe", "pipe", "ipc"],
+  });
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  child.on("message", (message) => messages.push(message));
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    child.kill();
+  }, 2_000);
+  child.once("error", (error) => {
+    clearTimeout(timeout);
+    reject(error);
+  });
+  child.once("close", (code, signal) => {
+    clearTimeout(timeout);
+    if (timedOut) reject(new Error("production join probe timed out after 2000ms"));
+    else resolve({ code, signal, stdout, stderr, messages });
+  });
+});
+
+const childExit = (child) => child.exitCode !== null || child.signalCode !== null
+  ? Promise.resolve()
+  : new Promise((resolve) => child.once("exit", resolve));
+
+const recordIssueArrival = (token) => {
+  const count = (issueArrivalCounts.get(token) ?? 0) + 1;
+  issueArrivalCounts.set(token, count);
+  const waiter = issueArrivalWaiters.get(token);
+  if (waiter && count >= waiter.expected) {
+    clearTimeout(waiter.timeout);
+    issueArrivalWaiters.delete(token);
+    waiter.resolve();
+  }
+};
+
+const waitForIssueArrivals = (token, expected, timeoutMs = 2_000) => {
+  if ((issueArrivalCounts.get(token) ?? 0) >= expected) return Promise.resolve();
+  assert.equal(issueArrivalWaiters.has(token), false, `only one arrival waiter is allowed for ${token}`);
+  const gate = deferred();
+  const timeout = setTimeout(() => {
+    issueArrivalWaiters.delete(token);
+    gate.reject(new Error(`dashboard did not report ${expected} issue arrivals for ${token}`));
+  }, timeoutMs);
+  issueArrivalWaiters.set(token, { expected, timeout, resolve: gate.resolve });
+  return gate.promise;
+};
 
 const listen = (server, port = 0) => new Promise((resolve, reject) => {
   server.once("error", reject);
@@ -81,7 +201,11 @@ before(async () => {
       return json(res, 200, rows.slice((page - 1) * perPage, page * perPage));
     }
 
-    if (rateLimited) return json(res, 403, { message: "API rate limit exceeded. private must_not_leak" });
+    if (rateLimited) {
+      rateLimitGate?.entered.resolve();
+      if (rateLimitGate) await rateLimitGate.release.promise;
+      return json(res, 403, { message: "API rate limit exceeded. private must_not_leak" });
+    }
 
     if (/\/repos\/[^/]+\/[^/]+\/issues$/.test(url.pathname)) {
       // 2쪽부터는 비운다 — 서버가 «덜 찼으면 멈춘다» 를 지키는지 함께 잰다.
@@ -103,6 +227,7 @@ before(async () => {
       GITHUB_TOKEN: "fixture_only_not_a_secret",
       GITHUB_API_TEST_URL: `http://127.0.0.1:${upstreamPort}`,
       DASHBOARD_PORT: String(dashboardPort),
+      DASHBOARD_ISSUE_ARRIVAL_TEST_SIGNAL: "1",
       DASHBOARD_OPERATIONS_TEST_FIXTURE: JSON.stringify({
         builtAt: "2026-08-15T03:00:00.000Z",
         repository: {
@@ -136,7 +261,12 @@ before(async () => {
         fuel: { available: false, claude: null, codex: null, updatedAt: null },
       }),
     },
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["ignore", "pipe", "pipe", "ipc"],
+  });
+  dashboard.on("message", (message) => {
+    if (message?.type === "DASHBOARD_TEST_ISSUE_JOINED" && /^[a-z0-9-]{1,64}$/i.test(message.token || "")) {
+      recordIssueArrival(message.token);
+    }
   });
 
   const deadline = Date.now() + 5_000;
@@ -151,8 +281,16 @@ before(async () => {
 });
 
 after(async () => {
-  if (dashboard && !dashboard.killed) dashboard.kill();
-  if (upstream) await close(upstream);
+  try {
+    if (dashboard && dashboard.exitCode === null && dashboard.signalCode === null) {
+      dashboard.kill();
+      await bounded(childExit(dashboard), "dashboard child exit");
+    }
+  } finally {
+    if (upstream) await close(upstream);
+  }
+  assert.equal(issueArrivalWaiters.size, 0);
+  assert.equal(rateLimitGate, null);
 });
 
 test("health remains available without exposing credentials", async () => {
@@ -260,29 +398,75 @@ test("issues endpoint retains the existing 45-second snapshot contract", async (
 });
 
 test("rate-limited issue refresh returns the last success as an explicit safe stale snapshot", async () => {
-  const callsBefore = requests.filter((request) => !request.variables?.id).length;
-  rateLimited = true;
-  const [response, concurrentResponse] = await Promise.all([
-    fetch(`${dashboardUrl}/api/issues?force=1`),
-    fetch(`${dashboardUrl}/api/issues?force=1`),
-  ]);
-  rateLimited = false;
-  assert.equal(response.status, 200);
-  assert.equal(concurrentResponse.status, 200);
-  assert.equal(
-    requests.filter((request) => !request.variables?.id).length - callsBefore,
-    1,
-    "simultaneous forced refreshes must share one upstream issue read",
-  );
-  const body = await response.json();
-  assert.equal(body.available, false);
-  assert.equal(body.stale, true);
-  assert.equal(body.error.code, "GITHUB_RATE_LIMITED");
-  assert.equal(body.issues[0].id, "#125");
-  assert.ok(body.lastSuccessAt);
-  assert.ok(body.retryAt);
-  assert.equal(JSON.stringify(body).includes("private"), false);
-  assert.equal(JSON.stringify(body).includes("fixture_only_not_a_secret"), false);
+  const issueReadCount = () => requests.filter((request) => /\/repos\/[^/]+\/[^/]+\/issues$/.test(request.path)).length;
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const callsBefore = issueReadCount();
+    const arrivalToken = `rate-limit-${attempt}`;
+    rateLimitGate = { entered: deferred(), release: deferred() };
+    rateLimited = true;
+    let first;
+    let second;
+
+    try {
+      first = gatedRequest(`${dashboardUrl}/api/issues?force=1&arrival=${arrivalToken}`);
+      await bounded(first.sent, "first dashboard request send");
+      await bounded(rateLimitGate.entered.promise, "first upstream entry");
+
+      // The first upstream read remains blocked until the second client request
+      // has entered the dashboard server. This proves an in-flight overlap instead of hoping
+      // Promise.all happens to schedule both handlers before an immediate 403.
+      second = gatedRequest(`${dashboardUrl}/api/issues?force=1&arrival=${arrivalToken}`);
+      await bounded(second.sent, "second dashboard request send");
+      await waitForIssueArrivals(arrivalToken, 2);
+      rateLimitGate.release.resolve();
+
+      const [response, concurrentResponse] = await bounded(
+        Promise.all([first.response, second.response]),
+        "overlapping dashboard responses",
+      );
+      assert.equal(response.status, 200);
+      assert.equal(concurrentResponse.status, 200);
+      assert.equal(
+        issueReadCount() - callsBefore,
+        1,
+        "overlapping forced refreshes must share one upstream issue read",
+      );
+      for (const body of [response.body, concurrentResponse.body]) {
+        assert.equal(body.available, false);
+        assert.equal(body.stale, true);
+        assert.equal(body.error.code, "GITHUB_RATE_LIMITED");
+        assert.equal(body.issues[0].id, "#125");
+        assert.ok(body.lastSuccessAt);
+        assert.ok(body.retryAt);
+        assert.equal(JSON.stringify(body).includes("private"), false);
+        assert.equal(JSON.stringify(body).includes("fixture_only_not_a_secret"), false);
+      }
+    } finally {
+      rateLimited = false;
+      rateLimitGate?.release.resolve();
+      rateLimitGate = null;
+      first?.destroy();
+      second?.destroy();
+      issueArrivalCounts.delete(arrivalToken);
+      const waiter = issueArrivalWaiters.get(arrivalToken);
+      if (waiter) {
+        clearTimeout(waiter.timeout);
+        issueArrivalWaiters.delete(arrivalToken);
+      }
+    }
+
+    const sequentialCallsBefore = issueReadCount();
+    const sequential = await fetch(`${dashboardUrl}/api/issues?force=1&sequential=${attempt}`, {
+      signal: AbortSignal.timeout(2_000),
+    });
+    assert.equal(sequential.status, 200);
+    const sequentialBody = await sequential.json();
+    assert.equal(issueReadCount() - sequentialCallsBefore, 1, "a later forced refresh must perform a fresh upstream read");
+    assert.equal(sequentialBody.available, true);
+    assert.equal(sequentialBody.stale, false);
+    assert.equal(sequentialBody.error, null);
+  }
 });
 
 test("operations endpoint exposes read-only repository and PR decision signals", async () => {
@@ -310,6 +494,33 @@ test("operations endpoint exposes read-only repository and PR decision signals",
 test("aggregate BBE-170 parent never becomes a delivery denominator", async () => {
   const source = await readFile(new URL("./dashboard-server.mjs", import.meta.url), "utf8");
   assert.match(source, /deliveryIds\.delete\("BBE-170"\)/);
+});
+
+test("issue overlap acknowledgement is test-only IPC after joining the in-flight snapshot", async () => {
+  const source = await readFile(new URL("./dashboard-server.mjs", import.meta.url), "utf8");
+  assert.match(source, /ENV\.NODE_ENV !== "test"[\s\S]*ENV\.DASHBOARD_ISSUE_ARRIVAL_TEST_SIGNAL !== "1"[\s\S]*typeof process\.send !== "function"/);
+  const joinIndex = source.indexOf('const snapshot = getSnap(url.searchParams.get("force") === "1");');
+  const ackIndex = source.indexOf("acknowledgeIssueJoin(arrivalToken);");
+  const awaitIndex = source.indexOf("const d = await snapshot;");
+  assert.ok(joinIndex >= 0 && joinIndex < ackIndex && ackIndex < awaitIndex, "IPC ack must follow getSnap join and precede its await");
+  assert.doesNotMatch(source, /DASHBOARD_ISSUE_ARRIVAL_(?:URL|PORT|HOST)|fetch\([^)]*arrivalToken/);
+
+  const productionProbe = await productionJoinProbe();
+  assert.equal(productionProbe.code, 0);
+  assert.equal(productionProbe.signal, null);
+  assert.equal(productionProbe.stdout, "false");
+  assert.equal(productionProbe.stderr, "");
+  assert.deepEqual(productionProbe.messages, [], "production mode must never emit the test IPC acknowledgement");
+});
+
+test("issue overlap barrier deadlines remove their waiter", async () => {
+  const token = "never-arrives";
+  await assert.rejects(
+    waitForIssueArrivals(token, 1, 25),
+    /dashboard did not report 1 issue arrivals for never-arrives/,
+  );
+  assert.equal(issueArrivalWaiters.has(token), false);
+  assert.equal(issueArrivalCounts.has(token), false);
 });
 
 test("Production evidence fails closed for runtime logs and non-main merges", async () => {
