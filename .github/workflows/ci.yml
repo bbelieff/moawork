@@ -9,34 +9,57 @@ on:
 jobs:
   check:
     name: check (lint + typecheck + test)
-    # ★ 2026-08-25 — GitHub 호스팅 러너에서 «셀프호스티드» 로 옮긴다.
-    #
-    #   왜 — 이 저장소는 비공개라 Actions 분이 무료 한도에서 깎인다.
-    #   2026-08 실측: 911회 실행 · 청구 3,983분(무료 2,000분의 약 2배) → 8/24 15:06 UTC 부터
-    #   저장소 전체 CI 가 과금으로 멈췄다. 워커 넷이 붙는 구조에서는 앞으로도 계속 넘는다.
-    #
-    #   왜 «공개 전환» 이 아니라 이것인가 — 공개하면 분은 무료가 되지만
-    #   히스토리(1,074커밋)에 있는 첫 고객 자료가 영구 공개된다. 실측: 「서울경영」 582건 ·
-    #   온보딩 녹취록 · 먼데이 실데이터 · 더미 아닌 휴대폰 번호 2건. 지워도 히스토리엔 남는다.
-    #   셀프호스티드는 비공개를 유지하면서 분 과금이 0 이다.
-    #
-    #   대가 — 데탑이 꺼져 있으면 CI 가 «큐에 쌓인 채» 안 돈다. 그래서 timeout 을 둔다.
-    #   러너: C:\actions-runner (moawork-desktop) · 로그온 시 시작프로그램으로 자동 기동.
-    runs-on: self-hosted
+    # #715: standard Windows hosted VM separates CI from local full-gate leases.
+    # Uses the account's included private-repository Actions minutes.
+    # Budget enforcement is a GitHub setting, not enforced by this workflow.
+    # Keep standard runners only; no paid larger runner or VPS build fallback.
+    runs-on: windows-2025
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      # ★ `cache: npm` 을 뺀다 — 셀프호스티드(윈도우)에서 매번 이 경고가 났다:
-      #     ! Failed to save: "C:\Program failed with error: ... tar.exe failed with exit code 2
-      #   actions/toolkit 이 tar 경로의 공백(C:\Program Files\Git\...)을 못 다뤄서 나는 것이고,
-      #   빌드를 실패시키진 않지만 «CI 가 깨진 것처럼» 보여 다른 워커를 헷갈리게 한다.
-      #
-      #   빼도 손해가 없다 — 러너가 «같은 PC 에 계속 사는» 구조라 npm 자체 캐시(~/.npm)가
-      #   잡 사이에 그대로 남는다. GitHub 호스팅 러너(매번 새 VM)와 달리 따로 실어 나를 것이 없다.
+      # Fresh hosted VMs install from the lockfile; no Actions cache storage added.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Prepare WSL containment test environment
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Download-Verified($url, $target, $sha256) {
+            curl.exe --fail --location --retry 2 --max-time 120 --output $target $url
+            if ($LASTEXITCODE -ne 0) { throw "Download failed: $url" }
+            if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha256) {
+              throw 'Test runtime SHA256 mismatch'
+            }
+          }
+          # Canonical Ubuntu WSL rootfs; pin bytes so upstream changes fail closed.
+          $rootfs = Join-Path $env:RUNNER_TEMP 'gate-wsl-rootfs.tar.gz'
+          Download-Verified 'https://cloud-images.ubuntu.com/wsl/jammy/current/ubuntu-jammy-wsl-amd64-ubuntu22.04lts.rootfs.tar.gz' $rootfs '1483cc5c1dce13064f774834cbffdff226559fd522a67a381a8ea77d63fb4109'
+          $nodeVersion = (node --version).Trim()
+          if ($nodeVersion -notmatch '^v22\.\d+\.\d+$') { throw 'Expected Node 22' }
+          $nodeFile = "node-$nodeVersion-linux-x64.tar.xz"
+          $nodeArchive = Join-Path $env:RUNNER_TEMP $nodeFile
+          $sums = (Invoke-WebRequest "https://nodejs.org/dist/$nodeVersion/SHASUMS256.txt").Content
+          $checksumLines = @($sums -split "`n" | Where-Object { $_ -match ('^[a-f0-9]{64}\s+' + [regex]::Escape($nodeFile) + '\s*$') })
+          if ($checksumLines.Count -ne 1) { throw 'Node checksum is missing or ambiguous' }
+          Download-Verified "https://nodejs.org/dist/$nodeVersion/$nodeFile" $nodeArchive ($checksumLines[0].Substring(0, 64))
+          # WSL1 avoids nested virtualization; only this disposable VM is changed.
+          wsl.exe --import MoaWorkGate (Join-Path $env:RUNNER_TEMP 'gate-wsl') $rootfs --version 1
+          if ($LASTEXITCODE -ne 0) { throw 'WSL import failed' }
+          wsl.exe --set-default MoaWorkGate
+          if ($LASTEXITCODE -ne 0) { throw 'WSL default selection failed' }
+          $nodeArchivePosix = $nodeArchive.Replace('\', '/')
+          $linuxArchive = (@(wsl.exe -d MoaWorkGate --exec wslpath -u $nodeArchivePosix) -join "`n").Trim()
+          if ($LASTEXITCODE -ne 0 -or $linuxArchive -notmatch '^/mnt/[a-z]/') { throw 'WSL path resolution failed' }
+          wsl.exe -d MoaWorkGate --exec tar -xJf $linuxArchive -C /usr/local --strip-components=1
+          if ($LASTEXITCODE -ne 0) { throw 'Native Node extraction failed' }
+          wsl.exe -d MoaWorkGate --exec ln -s /usr/local/bin/node /usr/bin/node
+          if ($LASTEXITCODE -ne 0) { throw 'Native Node path setup failed' }
+          wsl.exe --exec bash -lc 'set -eu; uname -r; command -v pgrep; /usr/bin/node --version'
+          if ($LASTEXITCODE -ne 0) { throw 'WSL test runtime probe failed' }
 
       - name: Install dependencies
         run: npm ci
