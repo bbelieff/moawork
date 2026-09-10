@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
-import { isManager, type MemberRole } from "@/lib/auth/roles";
+import { isManager, MEMBER_ROLES, type MemberRole } from "@/lib/auth/roles";
 import {
   parseDutyLines,
   parseRuleLines,
@@ -23,7 +23,8 @@ import {
  */
 
 const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/u;
-const ROLES = new Set<MemberRole>(["owner", "admin", "team_lead", "member"]);
+/** ★ 정본을 그대로 담는다. 손으로 적으면 역할이 늘 때 여기만 안 따라온다 (#707). */
+const ROLES = new Set<MemberRole>(MEMBER_ROLES);
 
 export async function saveSeatDefinitionAction(
   _previous: SeatDefinitionState,

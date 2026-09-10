@@ -8,14 +8,24 @@
 // 이 상수는 supabase/migrations/055_permission_role_matrix.sql 의 `perm_baseline()` 함수와
 // 반드시 같은 값을 가져야 한다 — 드리프트는 matrix.test.ts 가 막는다.
 
-import { roleLabel, scopeLabel } from "@/lib/auth/roles";
+import { roleLabel, scopeLabel, MEMBER_ROLES, isMemberRole, type MemberRole } from "@/lib/auth/roles";
 
-export const ROLES = ["owner", "admin", "team_lead", "member"] as const;
-export type Role = (typeof ROLES)[number];
+/*
+ * ★ 역할 목록을 여기서 «다시 적지» 않는다. 정본은 `lib/types/index.ts` 하나다.
+ *
+ *   전에는 `["owner","admin","team_lead","member"] as const` 를 여기 적어 두고
+ *   그것으로 «자기 Role 타입» 을 만들었다. 값이 우연히 정본과 같아서 조용했지만,
+ *   정본에만 역할을 하나 늘리면 `Role` 과 `MemberRole` 이 **조용히 갈라진다** —
+ *   컴파일러는 두 타입이 «지금» 같은 모양이라 아무 말도 안 한다.
+ *   그리고 갈라지는 자리가 하필 **권한표** 다. 새 역할의 권한 칸이 안 생기는데 아무도 모른다.
+ *
+ *   2026-08-11 에 `team_lead` 가 생겼을 때 이 병으로 일곱 군데가 어긋났고,
+ *   그중 하나(#676)는 팀장인 사람이 **제품에 못 들어오게** 만들었다.
+ */
+export const ROLES = MEMBER_ROLES;
+export type Role = MemberRole;
 
-export function isRole(value: string): value is Role {
-  return (ROLES as readonly string[]).includes(value);
-}
+export const isRole = isMemberRole;
 
 /*
  * ★ 이름표를 여기 적지 않는다 — 정본은 lib/auth/roles.ts 다.
