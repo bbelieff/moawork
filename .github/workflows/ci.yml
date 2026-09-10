@@ -51,13 +51,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'WSL import failed' }
           wsl.exe --set-default MoaWorkGate
           if ($LASTEXITCODE -ne 0) { throw 'WSL default selection failed' }
-          $linuxArchive = (wsl.exe -d MoaWorkGate -- wslpath -u $nodeArchive).Trim()
+          $nodeArchivePosix = $nodeArchive.Replace('\', '/')
+          $linuxArchive = (@(wsl.exe -d MoaWorkGate --exec wslpath -u $nodeArchivePosix) -join "`n").Trim()
           if ($LASTEXITCODE -ne 0 -or $linuxArchive -notmatch '^/mnt/[a-z]/') { throw 'WSL path resolution failed' }
-          wsl.exe -d MoaWorkGate -- tar -xJf $linuxArchive -C /usr/local --strip-components=1
+          wsl.exe -d MoaWorkGate --exec tar -xJf $linuxArchive -C /usr/local --strip-components=1
           if ($LASTEXITCODE -ne 0) { throw 'Native Node extraction failed' }
-          wsl.exe -d MoaWorkGate -- ln -s /usr/local/bin/node /usr/bin/node
+          wsl.exe -d MoaWorkGate --exec ln -s /usr/local/bin/node /usr/bin/node
           if ($LASTEXITCODE -ne 0) { throw 'Native Node path setup failed' }
-          wsl.exe -- bash -lc 'set -eu; uname -r; command -v pgrep; /usr/bin/node --version'
+          wsl.exe --exec bash -lc 'set -eu; uname -r; command -v pgrep; /usr/bin/node --version'
           if ($LASTEXITCODE -ne 0) { throw 'WSL test runtime probe failed' }
 
       - name: Install dependencies
