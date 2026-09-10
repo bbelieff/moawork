@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { relativeRedirect } from "@/lib/auth/relative-redirect";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { SESSION_COOKIE } from "@/lib/auth/session";
@@ -8,12 +8,18 @@ function signoutErrorResponse(request: Request) {
   const fallback = new URL("/", requestUrl);
   const referer = request.headers.get("referer");
   let destination = fallback;
+  try {
   if (referer) {
     const candidate = new URL(referer, requestUrl);
     if (candidate.origin === requestUrl.origin) destination = candidate;
   }
+  } catch { /* Invalid referer keeps the same local fallback. */ }
   destination.searchParams.set("error", "signout");
-  return NextResponse.redirect(destination, { status: 303 });
+  try {
+    return relativeRedirect(destination.pathname + destination.search + destination.hash, 303);
+  } catch {
+    return relativeRedirect("/?error=signout", 303);
+  }
 }
 
 export async function POST(request: Request) {
@@ -27,10 +33,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const response = NextResponse.redirect(
-    new URL("/login?reason=signed-out", request.url),
-    { status: 303 },
-  );
+  const response = relativeRedirect("/login?reason=signed-out", 303);
   response.cookies.delete(SESSION_COOKIE.uid);
   response.cookies.delete(SESSION_COOKIE.org);
   response.cookies.delete(SESSION_COOKIE.as);

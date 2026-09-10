@@ -253,13 +253,10 @@ export function createHealthResponse(
       : "unverified";
   const artifact = resolveArtifactStatus(environment, identity.runtime);
   const artifactSha256 = resolveArtifactSha256(environment, identity.runtime);
-  // 현재 Vercel 관리형 키 프로필은 PostHog가 비어 있어도 기존 앱을 계속 서빙한다.
-  // 명시적 안정키를 넣는 전환 릴리스와 self-hosted 후보는 분석 설정까지 갖춰야 한다.
-  const analyticsReady = analyticsConfigured || managedVercelActions;
+  // 분석은 선택 기능이다. 키가 없으면 disabled로 보고하되 readiness는 유지한다.
   const isReady =
     identity.revisionVerified &&
     configurationVerified &&
-    analyticsReady &&
     artifact !== "unverified" &&
     serverActions !== "unverified";
   const status = kind === "live" || isReady ? 200 : 503;
