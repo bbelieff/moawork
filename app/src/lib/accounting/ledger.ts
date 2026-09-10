@@ -1,11 +1,24 @@
+import { resolveCaseOption, type LedgerOptionId } from "@/lib/case-domain/registry";
+
+/** Legacy storage aliases. New contracts should carry LedgerOptionId. */
 export const LEDGER_KINDS = ["contract_deposit", "fee"] as const;
 
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
+
+export function canonicalLedgerKind(value: string): LedgerOptionId | undefined {
+  return resolveCaseOption("ledger.kind", value, "write")?.id as LedgerOptionId | undefined;
+}
+
+export function legacyLedgerKind(value: LedgerOptionId): LedgerKind | undefined {
+  return resolveCaseOption("ledger.kind", value)?.legacyAliases[0] as LedgerKind | undefined;
+}
 
 export interface DealLedgerEntry {
   id: string;
   dealId: string;
   kind: LedgerKind;
+  /** Canonical durable registry id. Legacy rows remain nullable/readable. */
+  kindKey?: LedgerOptionId | null;
   amount: number;
   receivedAmount: number;
   occurredOn: string;

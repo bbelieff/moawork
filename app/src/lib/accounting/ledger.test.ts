@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   assertFeeLedgerTotal,
+  canonicalLedgerKind,
+  legacyLedgerKind,
   summarizeDealLedger,
   type DealLedgerEntry,
 } from "./ledger";
@@ -25,6 +27,11 @@ function entry(
 }
 
 describe("deal ledger", () => {
+  it("keeps stable ledger IDs separate from legacy stored aliases", () => {
+    expect(canonicalLedgerKind("fee")).toBe("ledger.fee");
+    expect(legacyLedgerKind("ledger.contract_deposit")).toBe("contract_deposit");
+    expect(canonicalLedgerKind("unknown")).toBeUndefined();
+  });
   it("attaches many ledger entries to one deal without copying the deal", () => {
     const entries = [
       entry("deposit", { kind: "contract_deposit", amount: 1_000, receivedAmount: 1_000 }),

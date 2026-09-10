@@ -31,9 +31,11 @@ export async function moveStageAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   const dealId = str(formData, "dealId");
   const stageId = str(formData, "stageId");
-  if (!dealId || !stageId) return;
+  const requestId = str(formData, "requestId");
+  const expectedVersion = Number(str(formData, "expectedVersion"));
+  if (!dealId || !stageId || !requestId || !Number.isSafeInteger(expectedVersion)) return;
 
-  await getCrmService().moveDealStage(ctx, dealId, stageId);
+  await getCrmService().moveCaseStage(ctx, dealId, stageId, { requestId, expectedVersion });
   revalidatePath(`/deals/${dealId}`);
   // 보드 3종도 단계 구성이 바뀌므로 함께 갱신.
   for (const p of ["/newcust", "/contract", "/work"]) revalidatePath(p);
@@ -45,9 +47,10 @@ export async function addActivityAction(formData: FormData): Promise<void> {
   const dealId = str(formData, "dealId");
   const content = str(formData, "content");
   const type = str(formData, "type") || "memo";
-  if (!dealId || !content) return;
+  const requestId = str(formData, "requestId");
+  if (!dealId || !content || !requestId) return;
 
-  await getCrmService().createActivity(ctx, dealId, { type, content });
+  await getCrmService().appendCaseActivity(ctx, dealId, { type, content }, requestId);
   revalidatePath(`/deals/${dealId}`);
 }
 

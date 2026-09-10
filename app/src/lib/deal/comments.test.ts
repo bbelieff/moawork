@@ -3,7 +3,7 @@ import type { Ctx, MemberRole, MemberScope } from "@/lib/types";
 import { getRepo } from "@/lib/repo";
 import { resetDb } from "@/lib/repo/local/store";
 import { SEED_ORG_ID, SEED_USER_MEMBER, SEED_USER_OWNER } from "@/lib/repo/local/seed";
-import { getCrmService } from "@/lib/crm";
+import { getSyncCrmService } from "@/lib/crm";
 import {
   COMMENT_KINDS,
   CommentNotFoundError,
@@ -19,6 +19,8 @@ import {
   readComments,
   validateCommentBody,
 } from "./comments";
+
+const getCrmService = getSyncCrmService;
 
 function ctxFor(userId: string, role: MemberRole, scope: MemberScope): Ctx {
   const repo = getRepo();

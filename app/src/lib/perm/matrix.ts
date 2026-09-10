@@ -1,11 +1,11 @@
-// 권한 역할 4종 × 24항목 — BBE-122 (D23 · D24).
+// 권한 역할 4종 × 26항목 — BBE-122 + Issue #646 finance seams.
 //
 // 카드 제목은 "22항목"이지만 정본 목업(docs/design/UI목업_워크스페이스_최종_v6.html)의
-// `const PERM` 배열 실측은 24항목(업무5·구조5·자동화발송4·조직공지5·위험5)이다.
-// "카드보다 목업이 우선" 원칙에 따라 24항목으로 구현한다. 수치는
+// `const PERM` 배열 실측 24항목(업무5·구조5·자동화발송4·조직공지5·위험5)에
+// Case 원장의 read/manage 권한 seam 2개를 additive로 더한다. 수치는
 // `node docs/design/qa-mockup.mjs` 로 재현 가능(75/75 통과 확인분).
 //
-// 이 상수는 supabase/migrations/055_permission_role_matrix.sql 의 `perm_baseline()` 함수와
+// 이 상수는 최신 supabase migration의 `perm_baseline()` 함수와
 // 반드시 같은 값을 가져야 한다 — 드리프트는 matrix.test.ts 가 막는다.
 
 import { roleLabel, scopeLabel } from "@/lib/auth/roles";
@@ -106,6 +106,13 @@ export const PERM_MATRIX: readonly PermGroup[] = [
       { scopeKey: "danger.view_accounting_amount", label: "회계 금액 보기", description: "계약금·수수료 금액", danger: true, defaultAllowed: [true, true, true, false] },
       { scopeKey: "danger.year_end_archive", label: "연말 아카이빙", description: "되돌릴 수 없습니다", danger: true, defaultAllowed: [true, false, false, false] },
       { scopeKey: "danger.data_import", label: "데이터 가져오기·이관", description: "외부 데이터를 밀어 넣습니다", danger: true, defaultAllowed: [true, false, false, false] },
+    ],
+  },
+  {
+    group: "재무",
+    items: [
+      { scopeKey: "finance.ledger_read", label: "원장 보기", description: "Case 원장의 금액과 상태를 조회합니다", danger: true, defaultAllowed: [true, true, true, false] },
+      { scopeKey: "finance.ledger_manage", label: "원장 관리", description: "Case 원장 변경 권한입니다 · 실제 금액 쓰기는 별도 계약입니다", danger: true, defaultAllowed: [true, true, false, false] },
     ],
   },
 ];

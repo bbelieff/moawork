@@ -5,6 +5,7 @@
  */
 
 import type { CompanyPatch, DealPatch, NewCompany, NewDeal } from "@/lib/repo";
+import { canonicalActivityType, legacyActivityType } from "./activity";
 
 export class ValidationError extends Error {
   constructor(message: string) {
@@ -117,14 +118,14 @@ export function parseCreateDeal(body: unknown): NewDeal {
 
 export function parseUpdateDeal(body: unknown): DealPatch {
   if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
+  if (body.company_id !== undefined || body.pipeline_id !== undefined || body.assigned_to !== undefined) {
+    throw new ValidationError("Case 소유·파이프라인·담당 변경은 전용 작업만 사용하세요");
+  }
   const patch: DealPatch = {};
   if (body.title !== undefined) patch.title = reqString(body.title, "title", 300);
-  if (body.company_id !== undefined) patch.company_id = optId(body.company_id, "company_id");
-  if (body.pipeline_id !== undefined) patch.pipeline_id = optId(body.pipeline_id, "pipeline_id");
   // 단계 변경은 /move 전용(활동로그 보장) — 패치 본문으로는 받지 않는다.
   if (body.stage_id !== undefined)
     throw new ValidationError("단계 변경은 /move 엔드포인트를 사용하세요");
-  if (body.assigned_to !== undefined) patch.assigned_to = optId(body.assigned_to, "assigned_to");
   if (body.amount !== undefined) patch.amount = optNumber(body.amount, "amount");
   if (body.status_note !== undefined) patch.status_note = optString(body.status_note, "status_note", 1000);
   if (body.applied_on !== undefined) patch.applied_on = optDate(body.applied_on, "applied_on");
@@ -138,19 +139,31 @@ export function parseUpdateDeal(body: unknown): DealPatch {
 
 // ── move / activities ─────────────────────────────────
 
-export function parseMoveStage(body: unknown): { stageId: string } {
+function reqVersion(v: unknown): number {
+  const n = Number(v);
+  if (!Number.isSafeInteger(n) || n < 0) throw new ValidationError("expectedVersion: 0 이상의 정수여야 합니다");
+  return n;
+}
+
+function reqRequestId(v: unknown): string {
+  const value = reqString(v, "requestId", 100);
+  if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(value)) throw new ValidationError("requestId: UUID여야 합니다");
+  return value;
+}
+
+export function parseMoveStage(body: unknown): { stageId: string; requestId: string; expectedVersion: number } {
   if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
   const stageId = optId(body.stageId ?? body.stage_id, "stageId");
   if (!stageId) throw new ValidationError("stageId: 필수입니다");
-  return { stageId };
+  return { stageId, requestId: reqRequestId(body.requestId), expectedVersion: reqVersion(body.expectedVersion) };
 }
 
-const ACTIVITY_TYPE_SET = new Set(["call", "meeting", "memo", "status"]);
-
-export function parseCreateActivity(body: unknown): { type: string; content: string | null } {
+export function parseCreateActivity(body: unknown): { type: string; content: string | null; requestId: string } {
   if (!isObject(body)) throw new ValidationError("본문이 객체가 아닙니다");
   const type = reqString(body.type, "type", 30);
-  if (!ACTIVITY_TYPE_SET.has(type))
+  const canonical = canonicalActivityType(type);
+  const legacy = canonical ? legacyActivityType(canonical) : undefined;
+  if (!canonical || !legacy || canonical === "activity.customer_message")
     throw new ValidationError("type: call|meeting|memo|status 중 하나여야 합니다");
-  return { type, content: optString(body.content, "content", 5000) };
+  return { type: legacy, content: optString(body.content, "content", 5000), requestId: reqRequestId(body.requestId) };
 }

@@ -11,8 +11,8 @@ export async function POST(req: Request, { params }: Ctx): Promise<Response> {
   try {
     const ctx = await requireCtx();
     const { dealId } = await params;
-    const { stageId } = parseMoveStage(await readJson(req));
-    return jsonOk(await getCrmService().moveDealStage(ctx, dealId, stageId));
+    const { stageId, requestId, expectedVersion } = parseMoveStage(await readJson(req));
+    return jsonOk(await getCrmService().moveCaseStage(ctx, dealId, stageId, { requestId, expectedVersion }));
   } catch (err) {
     return toErrorResponse(err);
   }

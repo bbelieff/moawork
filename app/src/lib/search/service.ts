@@ -117,6 +117,5 @@ export async function quickCreate(
     const company = await crm.createCompany(ctx, { name: title });
     return { kind: "company", id: company.id, title: company.name, description: "새 회사", href: `/companies/${encodeURIComponent(company.id)}` };
   }
-  const deal = await crm.createDeal(ctx, { title });
-  return { kind: "deal", id: deal.id, title: deal.title, description: "새 업무", href: `/deals/${encodeURIComponent(deal.id)}` };
+  throw new Error("새 업무는 회사를 연 뒤 ‘업무 시작’으로 만들어 주세요.");
 }

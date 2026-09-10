@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
-import { startCompanyWork, type CompanyStartWorkClient } from "@/lib/companies/start-work";
+import { shouldRetryCompanyStartWork, startCompanyWork, type CompanyStartWorkClient } from "@/lib/companies/start-work";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -25,6 +25,11 @@ function text(formData: FormData, key: string): string {
 export type CompanyIntakeActionState = Readonly<{
   ok: boolean | null;
   message: string;
+  retry?: Readonly<{
+    companyId: string;
+    groupId: string | null;
+    requestId: string;
+  }>;
 }>;
 
 export async function startCompanyWorkFromBoardAction(
@@ -34,6 +39,7 @@ export async function startCompanyWorkFromBoardAction(
   const companyId = text(formData, "companyId");
   const requestId = text(formData, "requestId");
   const boardId = text(formData, "boardId");
+  const groupId = text(formData, "groupId") || null;
   if (!companyId || !requestId || !boardId) {
     return { ok: false, message: "업체를 선택한 뒤 다시 시도해 주세요." };
   }
@@ -47,12 +53,16 @@ export async function startCompanyWorkFromBoardAction(
       orgId: ctx.org.id,
       companyId,
       requestId,
-      groupId: text(formData, "groupId") || null,
+      groupId,
     });
   } catch (error) {
     // DB 원문은 화면에 노출하지 않고 서버 로그에만 남긴다.
     console.error("[company intake] failed to start work", error);
-    return { ok: false, message: "업무를 시작하지 못했어요. 잠시 후 다시 시도해 주세요." };
+    return {
+      ok: false,
+      message: "업무를 시작하지 못했어요. 잠시 후 다시 시도해 주세요.",
+      ...(shouldRetryCompanyStartWork(error) ? { retry: { companyId, groupId, requestId } } : {}),
+    };
   }
 
   // 이 건은 세 화면에 동시에 나타난다 — 보드 · 계약업체 실무 진입 · 업체관리 현황.

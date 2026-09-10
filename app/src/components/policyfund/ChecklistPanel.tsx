@@ -23,22 +23,28 @@
  * import 해서 얹으면 된다.
  */
 
-import { useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import type { OptionCategory } from "@/lib/policyfund";
 import {
   addItem,
+  applyPreset,
   completionOf,
   removeItem,
   toggleItem,
   type DealChecklistState,
+  type ProductChecklistPreset,
 } from "@/lib/policyfund/checklist";
 import {
-  addChecklistItemAction,
-  applyProductAction,
-  removeChecklistItemAction,
+  mutateChecklistAction,
   saveChecklistAsPresetAction,
-  toggleChecklistItemAction,
 } from "@/lib/policyfund/checklist/actions";
+import {
+  beginChecklistMutation,
+  failChecklistMutation,
+  isTerminalChecklistError,
+  settleChecklistMutation,
+  type ChecklistMutationIntent,
+} from "@/lib/policyfund/checklist/mutation-intent";
 import { ProductCombobox } from "./ProductCombobox";
 
 export interface ChecklistPanelProps {
@@ -50,6 +56,7 @@ export interface ChecklistPanelProps {
    * "진행 상품" 7종, dump-mockup.mjs 실측)를 그대로 넘기면 된다. 없으면 상품 선택 UI를 감춘다.
    */
   productCategory?: OptionCategory;
+  productPresets?: ProductChecklistPreset[];
   /**
    * 조달일·재신청 안내일 등 서류 준비 시점 안내(260810 목업 개정 — "체크리스트에서 그 날짜가
    * 보이면 좋다"). 이 컴포넌트는 딜 레코드를 직접 읽지 않으므로(리스 밖) 호스트가 이미 계산해
@@ -57,20 +64,31 @@ export interface ChecklistPanelProps {
    */
   dueDateHint?: string;
   readOnly?: boolean;
+  canManagePresets?: boolean;
 }
 
 export function ChecklistPanel({
   dealId,
   initialState,
   productCategory,
+  productPresets = [],
   dueDateHint,
   readOnly = false,
+  canManagePresets = false,
 }: ChecklistPanelProps) {
   const [state, setState] = useState(initialState);
-  const [productPending, startProductTransition] = useTransition();
+  const [mutationPending, setMutationPending] = useState(false);
+  const mutationPendingRef = useRef(false);
   const [newLabel, setNewLabel] = useState("");
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [canRetryMutation, setCanRetryMutation] = useState(false);
+  const retryIntent = useRef<ChecklistMutationIntent | null>(null);
+  const [savingPreset, setSavingPreset] = useState(false);
+  const [canRetryPreset, setCanRetryPreset] = useState(false);
+  const presetRetrySnapshot = useRef<DealChecklistState | null>(null);
 
   const completion = completionOf(state.items);
+  const mutationBlocked = mutationPending || savingPreset || canRetryMutation || canRetryPreset;
   const barColor = completion.percent === 100 ? "var(--mw-success)" : "var(--mw-record)";
 
   const fd = (extra: Record<string, string>) => {
@@ -80,42 +98,105 @@ export function ChecklistPanel({
     return form;
   };
 
+  const persist = async (key: string, next: DealChecklistState) => {
+    const prior = retryIntent.current;
+    const candidate = {
+      key,
+      requestId: crypto.randomUUID(),
+      expectedVersion: state.version ?? 0,
+      previous: state,
+      next,
+    };
+    const intent = beginChecklistMutation(prior, mutationPendingRef.current, candidate);
+    if (!intent) return;
+    retryIntent.current = intent;
+    mutationPendingRef.current = true;
+    setMutationPending(true);
+    setMutationError(null);
+    setCanRetryMutation(false);
+    setState(intent.next);
+    try {
+      const server = await mutateChecklistAction(fd({
+        requestId: intent.requestId,
+        expectedVersion: String(intent.expectedVersion),
+        state: JSON.stringify(intent.next),
+      }));
+      const settled = settleChecklistMutation(retryIntent.current, intent.requestId);
+      retryIntent.current = settled.next;
+      if (settled.applies) {
+        setState(server);
+      }
+      setCanRetryMutation(false);
+      mutationPendingRef.current = false;
+      setMutationPending(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "저장하지 못했습니다.";
+      const terminal = isTerminalChecklistError(message);
+      const matches = retryIntent.current?.requestId === intent.requestId;
+      retryIntent.current = failChecklistMutation(
+        retryIntent.current,
+        intent.requestId,
+        terminal ? "terminal" : "retryable",
+      );
+      if (terminal && matches) setState(intent.previous);
+      setCanRetryMutation(!terminal);
+      mutationPendingRef.current = false;
+      setMutationPending(false);
+      setMutationError(message);
+    }
+  };
+
   const selectProduct = (productId: string) => {
-    if (!productId) return;
-    setState((s) => ({ ...s, productId })); // 상품 id 는 즉시 반영해도 안전(추측이 아니다)
-    startProductTransition(async () => {
-      const server = await applyProductAction(fd({ productId }));
-      setState(server);
-    });
+    if (!productId || mutationBlocked) return;
+    const preset = productPresets.find((candidate) => candidate.productId === productId);
+    void persist(`product:${productId}`, { ...state, productId, items: applyPreset(preset?.items ?? null) });
   };
 
   const toggle = (itemId: string) => {
-    setState((s) => ({ ...s, items: toggleItem(s.items, itemId) }));
-    void toggleChecklistItemAction(fd({ itemId })).then(setState);
+    if (mutationBlocked) return;
+    const next = { ...state, items: toggleItem(state.items, itemId) };
+    void persist(`toggle:${itemId}`, next);
   };
 
   const add = () => {
+    if (mutationBlocked) return;
     const label = newLabel;
     setNewLabel("");
     if (label.trim() === "") return;
-    setState((s) => ({ ...s, items: addItem(s.items, label) }));
-    void addChecklistItemAction(fd({ label })).then(setState);
+    const next = { ...state, items: addItem(state.items, label) };
+    void persist(`add:${crypto.randomUUID()}`, next);
   };
 
   const remove = (itemId: string) => {
-    setState((s) => ({ ...s, items: removeItem(s.items, itemId) }));
-    void removeChecklistItemAction(fd({ itemId })).then(setState);
+    if (mutationBlocked) return;
+    const next = { ...state, items: removeItem(state.items, itemId) };
+    void persist(`remove:${itemId}`, next);
   };
 
-  const [saving, startSaveTransition] = useTransition();
-  const saveAsPreset = () => {
-    startSaveTransition(async () => {
-      await saveChecklistAsPresetAction(fd({}));
-    });
+  const saveAsPreset = async () => {
+    if (mutationPendingRef.current || mutationPending || canRetryMutation) return;
+    const snapshot = presetRetrySnapshot.current ?? structuredClone(state);
+    mutationPendingRef.current = true;
+    setSavingPreset(true);
+    setMutationError(null);
+    setCanRetryPreset(false);
+    try {
+      await saveChecklistAsPresetAction(fd({ state: JSON.stringify(snapshot) }));
+      presetRetrySnapshot.current = null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "프리셋을 저장하지 못했습니다.";
+      const terminal = isTerminalChecklistError(message);
+      presetRetrySnapshot.current = terminal ? null : snapshot;
+      setCanRetryPreset(!terminal);
+      setMutationError(message);
+    } finally {
+      mutationPendingRef.current = false;
+      setSavingPreset(false);
+    }
   };
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-mw-line bg-mw-card p-4">
+    <div aria-busy={mutationPending || savingPreset} className="flex flex-col gap-3 rounded-xl border border-mw-line bg-mw-card p-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-mw-fg">서류 체크리스트</h3>
         <span className="text-xs text-mw-sub" data-testid="checklist-completion">
@@ -143,17 +224,29 @@ export function ChecklistPanel({
         />
       </div>
 
+      {mutationError && (
+        <div role="alert" className="flex items-center justify-between gap-2 text-xs text-mw-error">
+          <span>{mutationError}</span>
+          {canRetryMutation && <button type="button" onClick={() => {
+            const intent = retryIntent.current;
+            if (!intent) return;
+            void persist(intent.key, intent.next);
+          }} className="rounded border border-current px-2 py-1">같은 요청 다시 시도</button>}
+          {canRetryPreset && <button type="button" onClick={() => void saveAsPreset()} className="rounded border border-current px-2 py-1">같은 프리셋 다시 시도</button>}
+        </div>
+      )}
+
       {productCategory && !readOnly && (
-        <div className={`flex items-end gap-2 ${productPending ? "opacity-60" : ""}`}>
+        <div className={`flex items-end gap-2 ${mutationBlocked ? "opacity-60" : ""}`}>
           <div className="flex-1">
             <ProductCombobox
               labels={productCategory.options.map((option) => option.label)}
               value={state.productId ?? undefined}
               onSelect={selectProduct}
-              disabled={productPending}
+              disabled={mutationBlocked}
             />
           </div>
-          {productPending && <span className="pb-2 text-xs text-mw-sub">적용 중…</span>}
+          {mutationPending && <span className="pb-2 text-xs text-mw-sub">저장 중…</span>}
         </div>
       )}
 
@@ -170,7 +263,7 @@ export function ChecklistPanel({
               <input
                 type="checkbox"
                 checked={item.checked}
-                disabled={readOnly}
+                disabled={readOnly || mutationBlocked}
                 onChange={() => toggle(item.id)}
                 className="h-4 w-4"
                 aria-label={item.label}
@@ -184,6 +277,7 @@ export function ChecklistPanel({
                 <button
                   type="button"
                   onClick={() => remove(item.id)}
+                  disabled={mutationBlocked}
                   aria-label={`${item.label} 삭제`}
                   className="px-1 text-xs text-mw-sub opacity-0 hover:text-mw-error group-hover:opacity-100"
                 >
@@ -199,6 +293,7 @@ export function ChecklistPanel({
         <div className="flex items-center gap-2 border-t border-mw-line pt-2">
           <input
             value={newLabel}
+            disabled={mutationBlocked}
             onChange={(e) => setNewLabel(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -213,20 +308,21 @@ export function ChecklistPanel({
           <button
             type="button"
             onClick={add}
+            disabled={mutationBlocked}
             className="h-8 rounded-lg border border-mw-line px-2.5 text-xs text-mw-body hover:bg-mw-bg"
           >
             추가
           </button>
 
-          {state.productId && state.items.length > 0 && (
+          {canManagePresets && state.productId && state.items.length > 0 && (
             <button
               type="button"
-              onClick={saveAsPreset}
-              disabled={saving}
+              onClick={() => void saveAsPreset()}
+              disabled={mutationBlocked}
               title="이 딜의 체크리스트를 이 상품의 회사 공용 기본값으로 저장합니다"
               className="h-8 rounded-lg bg-mw-primary px-2.5 text-xs font-semibold text-mw-on-accent disabled:opacity-40"
             >
-              {saving ? "저장 중…" : "프리셋으로 저장"}
+              {savingPreset ? "저장 중…" : "프리셋으로 저장"}
             </button>
           )}
         </div>

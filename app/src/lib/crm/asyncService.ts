@@ -13,7 +13,12 @@
 import type { Activity, Company, Ctx, Deal, Pipeline, Stage } from "@/lib/types";
 import type { CompanyPatch, DealPatch, NewCompany, NewDeal } from "@/lib/repo";
 import { getCrmSource, type CrmSource } from "@/lib/repo/supabase";
-import { ACTIVITY_TYPES, assignmentChangeContent, stageMoveContent } from "./activity";
+import {
+  toCaseTaskMutationError,
+  type CaseTaskMutationInput,
+  type CaseTaskMutationResult,
+} from "@/lib/repo/supabase/source";
+import { assignmentChangeContent } from "./activity";
 import { NotFoundError } from "./service";
 import { ValidationError } from "./validation";
 
@@ -78,49 +83,44 @@ export class AsyncCrmService {
     return deals;
   }
 
+  /** Canonical Case list; legacy listDeals remains a compatibility alias. */
+  async listCases(
+    ctx: Ctx,
+    filter: { stageId?: string; companyId?: string } = {},
+  ): Promise<Deal[]> {
+    return this.listDeals(ctx, filter);
+  }
+
   async getDeal(ctx: Ctx, id: string): Promise<Deal> {
     const d = await this.source.getDeal(ctx, id);
     if (!d) throw new NotFoundError("딜을 찾을 수 없습니다");
     return d;
   }
 
-  /** 딜 생성. pipeline/stage 미지정 시 조직 기본 파이프라인의 첫 단계로 배치. */
+  async getCase(ctx: Ctx, caseId: string): Promise<Deal> {
+    return this.getDeal(ctx, caseId);
+  }
+
+  /** Case creation is bound to the company-start request receipt, never this legacy port. */
   async createDeal(ctx: Ctx, input: NewDeal): Promise<Deal> {
-    const resolved = await this.resolveStageDefaults(
-      ctx,
-      input.pipeline_id ?? null,
-      input.stage_id ?? null,
-    );
-    const deal = await this.source.createDeal(ctx, {
-      ...input,
-      pipeline_id: resolved.pipelineId,
-      stage_id: resolved.stageId,
-    });
-    // 최초 배치도 활동로그(먼데이 파리티) — 동기판과 동일.
-    if (resolved.stageId) {
-      const to = await this.source.getStage(resolved.stageId);
-      if (to)
-        await this.source.createActivity(ctx, {
-          deal_id: deal.id,
-          type: ACTIVITY_TYPES.status,
-          content: stageMoveContent(null, to.name),
-        });
-    }
-    return deal;
+    void ctx; void input;
+    throw new ValidationError("Case 생성은 회사의 canonical 업무 시작 작업만 사용하세요");
   }
 
   async updateDeal(ctx: Ctx, id: string, patch: DealPatch): Promise<Deal> {
     // 단계 변경은 move 전용(활동로그 보장). 타입에는 없지만 런타임으로 섞여 들어올 수 있다.
     if ("stage_id" in patch)
       throw new ValidationError("단계 변경은 /move 엔드포인트를 사용하세요");
+    if ("company_id" in patch || "pipeline_id" in patch || "assigned_to" in patch)
+      throw new ValidationError("Case 소유·파이프라인·담당 변경은 전용 작업만 사용하세요");
     const d = await this.source.updateDeal(ctx, id, patch);
     if (!d) throw new NotFoundError("딜을 찾을 수 없습니다");
     return d;
   }
 
   async deleteDeal(ctx: Ctx, id: string): Promise<void> {
-    if (!(await this.source.deleteDeal(ctx, id)))
-      throw new NotFoundError("딜을 찾을 수 없습니다");
+    void ctx; void id;
+    throw new ValidationError("Case 삭제는 지원하지 않습니다");
   }
 
   /**
@@ -128,14 +128,50 @@ export class AsyncCrmService {
    * 이동과 로그는 소스(`moveDeal`)가 함께 처리한다 — 서비스를 우회해도 로그 없는 이동이
    * 생기지 않게 하기 위함. 여기서는 사용자용 오류 타입으로 옮기는 일만 한다.
    */
-  async moveDealStage(ctx: Ctx, id: string, toStageId: string): Promise<Deal> {
-    await this.getDeal(ctx, id); // 가시성/존재 확인 → NotFoundError
-    if (!(await this.source.getStage(toStageId)))
-      throw new ValidationError("존재하지 않는 단계입니다");
+  async moveDealStage(
+    ctx: Ctx,
+    id: string,
+    toStageId: string,
+    identity: { requestId: string; expectedVersion: number },
+  ): Promise<Deal> {
+    return this.moveCaseStage(ctx, id, toStageId, identity);
+  }
 
-    const updated = await this.source.moveDeal(ctx, id, toStageId);
+  /** Canonical stage transition; the source performs transition + Activity atomically. */
+  async moveCaseStage(
+    ctx: Ctx,
+    caseId: string,
+    toStageId: string,
+    identity: { requestId: string; expectedVersion: number },
+  ): Promise<Deal> {
+    await this.getCase(ctx, caseId); // 가시성/존재 확인 → NotFoundError
+    let updated: Deal | undefined;
+    try {
+      // Mutable stage availability is deliberately resolved inside the canonical source/RPC.
+      // Otherwise an exact receipt replay after stage retirement is blocked before the receipt.
+      updated = await this.source.moveDeal(ctx, caseId, toStageId, identity);
+    } catch (error) {
+      if (error instanceof Error && /stage unavailable|존재하지 않는 단계/iu.test(error.message)) {
+        throw new ValidationError("존재하지 않는 단계입니다");
+      }
+      throw error;
+    }
     if (!updated) throw new NotFoundError("딜을 찾을 수 없습니다");
     return updated;
+  }
+
+  /** 오늘 할 일 custom patch와 Activity를 source의 단일 receipt 작업으로 저장한다. */
+  async mutateCaseTask(
+    ctx: Ctx,
+    caseId: string,
+    input: CaseTaskMutationInput,
+  ): Promise<CaseTaskMutationResult> {
+    await this.getCase(ctx, caseId);
+    try {
+      return await this.source.mutateCaseTask(ctx, caseId, input);
+    } catch (error) {
+      throw toCaseTaskMutationError(error);
+    }
   }
 
   /**
@@ -171,36 +207,31 @@ export class AsyncCrmService {
     return this.source.listActivities(ctx, dealId);
   }
 
+  async listCaseActivities(ctx: Ctx, caseId: string): Promise<Activity[]> {
+    return this.listActivities(ctx, caseId);
+  }
+
   async createActivity(
     ctx: Ctx,
     dealId: string,
     input: { type: string; content: string | null },
+    requestId: string,
   ): Promise<Activity> {
     await this.getDeal(ctx, dealId);
     return this.source.createActivity(ctx, {
       deal_id: dealId,
       type: input.type,
       content: input.content,
-    });
+    }, requestId);
   }
 
-  // ── 내부 ──────────────────────────────────────────────
-  private async resolveStageDefaults(
+  async appendCaseActivity(
     ctx: Ctx,
-    pipelineId: string | null,
-    stageId: string | null,
-  ): Promise<{ pipelineId: string | null; stageId: string | null }> {
-    if (stageId) {
-      const stage = await this.source.getStage(stageId);
-      if (!stage) throw new ValidationError("존재하지 않는 단계입니다");
-      return { pipelineId: pipelineId ?? stage.pipeline_id, stageId };
-    }
-    const pipelines = await this.source.listPipelines(ctx.org.id);
-    const pipeline = pipelineId
-      ? pipelines.find((p) => p.id === pipelineId)
-      : pipelines[0];
-    if (!pipeline) return { pipelineId, stageId: null };
-    const firstStage = (await this.source.listStages(pipeline.id))[0];
-    return { pipelineId: pipeline.id, stageId: firstStage?.id ?? null };
+    caseId: string,
+    input: { type: string; content: string | null },
+    requestId: string,
+  ): Promise<Activity> {
+    return this.createActivity(ctx, caseId, input, requestId);
   }
+
 }

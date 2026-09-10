@@ -1,11 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import type { DealLedgerEntry } from "./ledger";
+import { canonicalLedgerKind, type DealLedgerEntry } from "./ledger";
 
 type LedgerRow = Readonly<{
   id: unknown;
   deal_id: unknown;
   kind: unknown;
+  kind_key?: unknown;
   amount: unknown;
   received_amount: unknown;
   occurred_on: unknown;
@@ -74,6 +75,7 @@ function ledgerEntry(row: LedgerRow, requestedDealId: string): DealLedgerEntry {
     id: requiredString(row.id),
     dealId,
     kind: row.kind,
+    kindKey: row.kind_key == null ? canonicalLedgerKind(row.kind) ?? null : canonicalLedgerKind(requiredString(row.kind_key)) ?? null,
     amount,
     receivedAmount,
     occurredOn: requiredString(row.occurred_on),
@@ -97,7 +99,7 @@ export async function loadDealLedger(
   const rowsResult = await client
     .from("deal_ledger_entries")
     .select(
-      "id,deal_id,kind,amount,received_amount,occurred_on,paid_on,attribution_month,vat_included,tax_invoice_issued",
+      "id,deal_id,kind,kind_key,amount,received_amount,occurred_on,paid_on,attribution_month,vat_included,tax_invoice_issued",
     )
     .eq("deal_id", dealId)
     .order("occurred_on", { ascending: true });

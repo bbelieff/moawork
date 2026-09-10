@@ -18,10 +18,11 @@ import { listOrgMemberOptions, toNameMap } from "@/lib/deal/members";
 import { mergeTimeline } from "@/lib/deal/timeline";
 import type { Stage } from "@/lib/types";
 import { ChecklistPanel } from "@/components/policyfund/ChecklistPanel";
-import { checklistProductCategory, ChecklistService, SupabaseChecklistStore } from "@/lib/policyfund/checklist";
+import { checklistProductCategory, ChecklistService, LocalChecklistStore, SupabaseChecklistStore } from "@/lib/policyfund/checklist";
 import { createClient } from "@/lib/supabase/server";
 import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { EsignPanel } from "@/components/deal/EsignPanel";
+import { loadPermGuard } from "@/lib/perm/guard";
 
 /**
  * 딜 상세 (T02 · core.crm).
@@ -97,10 +98,12 @@ export default async function DealDetailPage({
   const supabase = canUseLocalSeedFallback() ? null : await createClient();
   // 체크리스트도 전자계약과 «같은 규칙» 이다 — 못 불러온 것을 «항목이 없는 것» 으로 보여주지 않는다.
   //   빈 배열로 떨어뜨리면 촬영하는 사람이 그것을 진짜 빈 상태로 오해한다(§3 거짓 빈 상태 금지).
-  const checklistService = supabase ? new ChecklistService(ctx.org.id, new SupabaseChecklistStore(supabase)) : null;
-  const [checklist, checklistPresets] = checklistService
-    ? await Promise.all([checklistService.getDealChecklist(deal.id), checklistService.listPresets()])
-    : [null, []];
+  const checklistService = new ChecklistService(ctx.org.id, supabase ? new SupabaseChecklistStore(supabase) : new LocalChecklistStore(ctx));
+  const [checklist, checklistPresets, presetPermission] = await Promise.all([
+    checklistService.getDealChecklist(deal.id),
+    checklistService.listPresets(),
+    loadPermGuard(ctx.org.id, "structure.preset_edit"),
+  ]);
   const esignRow = supabase
     ? await supabase.from("esign_requests").select("status")
         .eq("org_id", ctx.org.id).eq("deal_id", deal.id).maybeSingle()
@@ -129,6 +132,8 @@ export default async function DealDetailPage({
         {canEdit && allStages.length > 0 && (
           <form action={moveStageAction} className="flex flex-wrap items-center gap-2">
             <input type="hidden" name="dealId" value={deal.id} />
+            <input type="hidden" name="requestId" value={crypto.randomUUID()} />
+            <input type="hidden" name="expectedVersion" value={deal.case_version ?? 0} />
             <label className="text-xs text-zinc-500" htmlFor="stageId">
               단계 이동
             </label>
@@ -207,7 +212,9 @@ export default async function DealDetailPage({
             dealId={deal.id}
             initialState={checklist}
             productCategory={checklistProductCategory(checklistPresets.map((preset) => preset.productId))}
+            productPresets={checklistPresets}
             readOnly={!canEdit}
+            canManagePresets={presetPermission.kind === "allowed"}
           />
         ) : (
           <p role="alert" className="text-sm" style={{ color: "var(--mw-error)" }}>

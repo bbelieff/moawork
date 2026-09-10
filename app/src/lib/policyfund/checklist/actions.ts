@@ -16,46 +16,103 @@
 
 import { getSession } from "@/lib/auth/session";
 import { ChecklistService } from "./service";
-import { SupabaseChecklistStore } from "./store";
+import { LocalChecklistStore, SupabaseChecklistStore } from "./store";
 import { createClient } from "@/lib/supabase/server";
 import { loadPermGuard } from "@/lib/perm/guard";
 import type { DealChecklistState, ProductChecklistPreset } from "./types";
+import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 
 function str(fd: FormData, key: string): string {
   const v = fd.get(key);
   return typeof v === "string" ? v : "";
 }
 
+function requestId(fd: FormData): string {
+  const value = str(fd, "requestId");
+  if (!value) throw new Error("requestId가 필요합니다.");
+  return value;
+}
+
+function productId(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string" || value.length < 1 || value.length > 200) {
+    throw new Error("case checklist schema invalid");
+  }
+  return value;
+}
+
+export async function mutateChecklistAction(formData: FormData): Promise<DealChecklistState> {
+  const dealId = str(formData, "dealId");
+  const expectedVersion = Number(str(formData, "expectedVersion"));
+  if (!dealId || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
+    throw new Error("체크리스트 버전을 확인하지 못했습니다.");
+  }
+  let parsed: unknown;
+  try { parsed = JSON.parse(str(formData, "state")); } catch { throw new Error("체크리스트 입력이 올바르지 않습니다."); }
+  if (!parsed || typeof parsed !== "object") throw new Error("체크리스트 입력이 올바르지 않습니다.");
+  const value = parsed as Partial<DealChecklistState>;
+  if (!Array.isArray(value.items)) throw new Error("체크리스트 항목이 올바르지 않습니다.");
+  return await (await service()).saveExact({
+    caseId: dealId,
+    dealId,
+    productId: productId(value.productId),
+    items: value.items,
+    version: expectedVersion,
+  }, { requestId: requestId(formData), expectedVersion });
+}
+
 async function service(): Promise<ChecklistService> {
   const ctx = await getSession();
-  return new ChecklistService(ctx.org.id, new SupabaseChecklistStore(await createClient()));
+  const store = canUseLocalSeedFallback()
+    ? new LocalChecklistStore(ctx)
+    : new SupabaseChecklistStore(await createClient());
+  return new ChecklistService(ctx.org.id, store);
 }
 
 export async function applyProductAction(formData: FormData): Promise<DealChecklistState> {
   const svc = await service();
-  return await svc.applyProduct(str(formData, "dealId"), str(formData, "productId"));
+  const expectedVersion = Number(str(formData, "expectedVersion"));
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) throw new Error("체크리스트 버전을 확인하지 못했습니다.");
+  return await svc.applyProduct(str(formData, "dealId"), str(formData, "productId"), requestId(formData), expectedVersion);
 }
 
 export async function toggleChecklistItemAction(formData: FormData): Promise<DealChecklistState> {
   const svc = await service();
-  return await svc.toggleItem(str(formData, "dealId"), str(formData, "itemId"));
+  return await svc.toggleItem(str(formData, "dealId"), str(formData, "itemId"), requestId(formData));
 }
 
 export async function addChecklistItemAction(formData: FormData): Promise<DealChecklistState> {
   const svc = await service();
-  return await svc.addItem(str(formData, "dealId"), str(formData, "label"));
+  return await svc.addItem(str(formData, "dealId"), str(formData, "label"), requestId(formData));
 }
 
 export async function removeChecklistItemAction(formData: FormData): Promise<DealChecklistState> {
   const svc = await service();
-  return await svc.removeItem(str(formData, "dealId"), str(formData, "itemId"));
+  return await svc.removeItem(str(formData, "dealId"), str(formData, "itemId"), requestId(formData));
 }
 
 export async function saveChecklistAsPresetAction(
   formData: FormData,
 ): Promise<ProductChecklistPreset> {
+  const ctx = await getSession();
+  const permission = await loadPermGuard(ctx.org.id, "structure.preset_edit");
+  if (permission.kind !== "allowed") throw new Error("서류 프리셋을 바꿀 권한이 없어요.");
   const svc = await service();
-  return await svc.saveAsPreset(str(formData, "dealId"));
+  const dealId = str(formData, "dealId");
+  let parsed: unknown;
+  try { parsed = JSON.parse(str(formData, "state")); } catch { throw new Error("체크리스트 프리셋 입력이 올바르지 않습니다."); }
+  if (!parsed || typeof parsed !== "object") throw new Error("체크리스트 프리셋 입력이 올바르지 않습니다.");
+  const value = parsed as Partial<DealChecklistState>;
+  if (!dealId || !Array.isArray(value.items) || !Number.isSafeInteger(value.version)) {
+    throw new Error("체크리스트 프리셋 입력이 올바르지 않습니다.");
+  }
+  return await svc.saveAsPresetExact({
+    caseId: dealId,
+    dealId,
+    productId: productId(value.productId),
+    items: value.items,
+    version: value.version,
+  });
 }
 
 /** 관리자 화면 — 상품 하나의 회사 공용 기본 체크리스트를 통째로 재설정. */
