@@ -120,6 +120,8 @@ async function routeRequest(
   request: NextRequest,
   jar: ReturnType<typeof createRefreshedCookieJar>,
 ): Promise<RouteDecision> {
+  // nextUrl normalizes loopback hosts; request.url preserves the router origin
+  // with skipProxyUrlNormalize. Use that origin for every rewrite and redirect.
   const { pathname, search } = request.nextUrl;
   const aliasCandidate = pathname.match(/^\/([^/]+)$/)?.[1];
   const safeRequestedPath = safeNextPath(`${pathname}${search}`, "/");
@@ -135,7 +137,7 @@ async function routeRequest(
     env = getSupabaseEnv();
   } catch {
     if (process.env.NODE_ENV === "production" && !isPublicPath(pathname)) {
-      const loginUrl = request.nextUrl.clone();
+      const loginUrl = new URL(request.url);
       loginUrl.pathname = "/login";
       loginUrl.search = "";
       loginUrl.searchParams.set("error", "config");
@@ -172,7 +174,7 @@ async function routeRequest(
   //   «빈 값 + maxAge 0» 삭제 지시를 setAll 로 내리는데, 그걸 버리면 브라우저에
   //   무효 쿠키가 남아 재로그인까지 오염된다.
   if (!user && !isPublicPath(pathname)) {
-    const loginUrl = request.nextUrl.clone();
+    const loginUrl = new URL(request.url);
     loginUrl.pathname = "/login";
     const canonicalNext = aliasCandidate && isWorkspaceNamespaceCandidate(pathname)
       ? `/w/${aliasCandidate}${search}`
@@ -190,7 +192,7 @@ async function routeRequest(
       .order("created_at", { ascending: true });
     const decision = decideWorkspaceNamespace(`${pathname}${search}`, membershipError ? null : membershipRows);
     if (decision.kind === "deny" || decision.kind === "none") {
-      const denied = request.nextUrl.clone();
+      const denied = new URL(request.url);
       denied.pathname = "/workspace-entry";
       denied.search = "";
       denied.searchParams.set("error", "routing");
@@ -223,11 +225,11 @@ async function routeRequest(
   if (user && protectedWorkspacePath(pathname)) {
     const slug = request.cookies.get(WORKSPACE_SLUG_COOKIE)?.value;
     if (slug && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(slug)) {
-      const canonical = request.nextUrl.clone();
+      const canonical = new URL(request.url);
       canonical.pathname = `/w/${slug}${pathname}`;
       return { kind: "redirect", to: canonical };
     }
-    const denied = request.nextUrl.clone();
+    const denied = new URL(request.url);
     denied.pathname = "/workspace-entry";
     denied.search = "";
     denied.searchParams.set("error", "routing");

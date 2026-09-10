@@ -50,6 +50,9 @@ const nextConfig: NextConfig = {
   // Issue #725 — 한 번 검증한 standalone 산출물을 shadow/blue/green에 재사용한다.
   // 빌드 위치와 무관하며 Vercel의 기존 Git 배포도 그대로 지원한다.
   output: "standalone",
+  // #725: preserve 127.0.0.1 in request.url so internal proxy rewrites match
+  // the standalone router's original origin instead of becoming external hops.
+  skipProxyUrlNormalize: true,
   // npm workspace의 hoisted production dependency까지 standalone trace에 포함한다.
   outputFileTracingRoot: join(process.cwd(), ".."),
   // Server Action 요청과 브라우저 asset이 서로 다른 release로 섞이지 않게 한다.
