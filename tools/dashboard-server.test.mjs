@@ -66,19 +66,30 @@ const gatedRequest = (url) => {
   return { sent: sent.promise, response, destroy: () => request.destroy() };
 };
 
-const productionJoinProbe = () => new Promise((resolve, reject) => {
+const productionJoinProbe = ({ fixtureAuth = true } = {}) => new Promise((resolve, reject) => {
   const messages = [];
   let stdout = "";
   let stderr = "";
   const child = spawn(process.execPath, [
     "--input-type=module",
     "--eval",
-    'const mod = await import("./tools/dashboard-server.mjs"); process.stdout.write(String(mod.acknowledgeIssueJoin("production-probe")));',
+    `import childProcess from "node:child_process";
+     import { syncBuiltinESMExports } from "node:module";
+     childProcess.execFileSync = () => {
+       process.stderr.write("unexpected external auth command");
+       throw new Error("external auth is forbidden in the isolated probe");
+     };
+     syncBuiltinESMExports();
+     const mod = await import("./tools/dashboard-server.mjs");
+     process.stdout.write(String(mod.acknowledgeIssueJoin("production-probe")));`,
   ], {
     cwd,
     env: {
       ...process.env,
       NODE_ENV: "production",
+      // Test production IPC without consulting this machine's gh credentials.
+      GITHUB_TOKEN: fixtureAuth ? "fixture_only_not_a_secret" : "",
+      GH_TOKEN: "",
       DASHBOARD_NO_LISTEN: "1",
       DASHBOARD_ISSUE_ARRIVAL_TEST_SIGNAL: "1",
     },
@@ -521,6 +532,15 @@ test("issue overlap barrier deadlines remove their waiter", async () => {
   );
   assert.equal(issueArrivalWaiters.has(token), false);
   assert.equal(issueArrivalCounts.has(token), false);
+});
+
+test("production join probe detects an accidental external auth dependency", async () => {
+  const result = await productionJoinProbe({ fixtureAuth: false });
+  assert.equal(result.code, 0);
+  assert.equal(result.signal, null);
+  assert.equal(result.stdout, "false");
+  assert.equal(result.stderr, "unexpected external auth command");
+  assert.deepEqual(result.messages, []);
 });
 
 test("Production evidence fails closed for runtime logs and non-main merges", async () => {
