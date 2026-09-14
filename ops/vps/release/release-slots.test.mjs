@@ -9,6 +9,10 @@ import { createReleaseSlots, ReleaseSlotError } from "./release-slots.mjs";
 const slots = ["release-a", "release-b"];
 const sha = (digit, length) => digit.repeat(length);
 
+// 정지(hang) 감시용 상한 — 성능 임계값이 아니다. 근거는
+// linux-release-runtime.test.mjs 의 같은 이름 상수 주석 참조 (2026-09-14 flaky 제거).
+const HANG_GUARD_MS = 60_000;
+
 function artifact(digit) {
   const archiveSha256 = sha(digit, 64);
   return {
@@ -598,10 +602,13 @@ test("a stalled external operation times out once with no retry or switch", asyn
   assert.equal(status.activeSlot, slots[0]);
 });
 
-test("timeout is bounded even when a transport ignores the abort signal", async () => {
+test("timeout is bounded even when a transport ignores the abort signal", { timeout: HANG_GUARD_MS }, async () => {
   const h = harness();
-  h.runtime.checkCandidate = async () => new Promise(() => {});
-  const started = Date.now();
+  let checks = 0;
+  h.runtime.checkCandidate = async () => {
+    checks += 1;
+    return new Promise(() => {});
+  };
   await assert.rejects(
     h.controller.deploy({
       mode: "activate",
@@ -611,7 +618,9 @@ test("timeout is bounded even when a transport ignores the abort signal", async 
     }),
     (error) => error instanceof ReleaseSlotError && error.code === "timeout",
   );
-  assert.ok(Date.now() - started < 250, "one bounded timeout must not become an implicit retry loop");
+  // 이 rejects 가 반환됐다는 사실 자체가 «경계가 abort 무시 transport 를 버렸다» 는 증거다.
+  // 버리지 않았다면 위 await 는 영원히 끝나지 않고 HANG_GUARD_MS 에서 실패한다.
+  assert.equal(checks, 1, "one bounded timeout must not become an implicit retry loop");
   assert.equal(h.runtime.events.some((event) => event.name === "switchActive"), false);
 });
 

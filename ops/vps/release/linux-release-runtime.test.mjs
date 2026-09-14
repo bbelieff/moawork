@@ -28,6 +28,19 @@ import { createProductionReleaseSlots } from "./production-release.mjs";
 import { createReleaseSlots } from "./release-slots.mjs";
 import { runReleaseCli } from "./release-cli.mjs";
 
+// 정지(hang) 감시용 상한. «얼마나 빨랐나» 를 재는 성능 임계값이 아니라
+// «영원히 안 끝나는가» 를 잡는 안전망이다. 그래서 러너 부하에 흔들리지 않게 넉넉히 잡는다.
+//
+// 왜 이 상수가 생겼나 (2026-09-14):
+//   원래는 `assert.equal(Date.now() - started < 1_000, true)` 였다. timeoutMs:100 의 하드
+//   데드라인이 abort 무시 작업을 버리는지를 «벽시계 1초» 로 쟀는데, 호스티드 Windows 러너에서
+//   해당 서브테스트가 5,063ms 걸려 PR #751 CI 가 빨갛게 떴다. 코드는 정상이었고 재실행하니
+//   같은 커밋이 그대로 초록이었다 — 코드가 안 바뀌었는데 판정이 바뀌면 그건 flaky 다.
+//   지금은 «데드라인이 작동했는가» 를 시간이 아니라 두 가지 결정론적 사실로 증명한다:
+//     ① await 가 반환됐다        — 안 버렸으면 영원히 안 끝나고 이 timeout 에서 실패한다
+//     ② 명령 호출 횟수가 정확하다 — 암묵적 재시도 루프가 없다
+const HANG_GUARD_MS = 60_000;
+
 let artifactTemplate;
 let builderKeys;
 let SOURCECORE_SELF_HOSTED_READY;
@@ -1950,13 +1963,15 @@ test("abort-ignoring service and cleanup work returns by the hard deadline with 
     h.commands.length = 0;
   }
 
-  await t.test("restart command and hanging termination handler", async () => {
+  await t.test("restart command and hanging termination handler", { timeout: HANG_GUARD_MS }, async () => {
     const h = await fixture();
     try {
       await preparedBlue(h);
+      let restarts = 0;
       const runtime = await createLinuxReleaseRuntime({ ...h.config, timeoutMs: 100 }, {
         commandRunner: async ({ args, registerTermination }) => {
           if (args[0] === "restart") {
+            restarts += 1;
             registerTermination(() => new Promise(() => {}));
             return new Promise(() => {});
           }
@@ -1965,12 +1980,14 @@ test("abort-ignoring service and cleanup work returns by the hard deadline with 
         fetchImpl: h.fetchImpl,
         resolveServiceIdentity: h.resolveServiceIdentity,
       });
-      const started = Date.now();
       await assert.rejects(
         runtime.withExclusiveLock(() => runtime.startCandidate({ slot: "blue", artifact: h.nextArtifact, signal: new AbortController().signal })),
         (error) => error instanceof LinuxReleaseRuntimeError && error.code === "service_state_unknown",
       );
-      assert.equal(Date.now() - started < 1_000, true);
+      // 이 rejects 가 반환됐다는 사실 자체가 «하드 데드라인이 abort 무시 작업을 버렸다» 는 증거다.
+      // 버리지 않았다면 위 await 는 영원히 끝나지 않고 HANG_GUARD_MS 에서 실패한다.
+      assert.equal(restarts, 1, "bounded timeout must not become an implicit retry loop");
+      // recovery.kind=service_state_unknown 은 terminationProven=false 경로에서만 기록된다.
       assert.equal(JSON.parse(await readFile(h.config.stateFile, "utf8")).recovery.kind, "service_state_unknown");
       assert.equal((await readFile(h.config.lockFile, "utf8")).length > 0, true);
     } finally {
@@ -2011,7 +2028,7 @@ test("abort-ignoring service and cleanup work returns by the hard deadline with 
     });
   }
 
-  await t.test("Caddy cleanup that ignores abort retains route recovery and returns", async () => {
+  await t.test("Caddy cleanup that ignores abort retains route recovery and returns", { timeout: HANG_GUARD_MS }, async () => {
     const h = await fixture();
     try {
       await h.seedActive(h.oldArtifact);
@@ -2029,7 +2046,6 @@ test("abort-ignoring service and cleanup work returns by the hard deadline with 
         fetchImpl: h.fetchImpl,
         resolveServiceIdentity: h.resolveServiceIdentity,
       });
-      const started = Date.now();
       await assert.rejects(
         runtime.withExclusiveLock(() => runtime.switchActive({
           expectedActiveSlot: "blue",
@@ -2040,7 +2056,10 @@ test("abort-ignoring service and cleanup work returns by the hard deadline with 
         })),
         (error) => error instanceof LinuxReleaseRuntimeError && error.code === "timeout",
       );
-      assert.equal(Date.now() - started < 1_000, true);
+      // 이 rejects 가 반환됐다는 사실 자체가 «하드 데드라인이 abort 무시 보상 reload 를 버렸다» 는 증거다.
+      // 버리지 않았다면 위 await 는 영원히 끝나지 않고 HANG_GUARD_MS 에서 실패한다.
+      // 실패 reload 1회 + 보상 reload 1회 = 2. 그 이상이면 암묵적 재시도 루프다.
+      assert.equal(reloads, 2, "bounded cleanup must not become an implicit retry loop");
       assert.equal(JSON.parse(await readFile(h.config.stateFile, "utf8")).recovery.kind, "caddy_switch_unknown");
       assert.equal((await readFile(h.config.lockFile, "utf8")).length > 0, true);
     } finally {
