@@ -1,5 +1,7 @@
 .root {
   position: relative;
+  flex-shrink: 0;
+  margin-block: var(--sp-2);
 }
 
 .trigger,
@@ -17,18 +19,18 @@
   align-items: center;
   gap: 10px;
   padding: 8px;
-  border: 1px solid transparent;
+  border: 1px solid var(--mw-line);
   border-radius: var(--mw-radius);
   color: var(--mw-fg);
-  background: transparent;
+  background: var(--mw-bg);
   text-align: left;
   cursor: pointer;
 }
 
 .trigger:hover:not(:disabled),
 .trigger[aria-expanded="true"] {
-  border-color: var(--mw-line);
-  background: var(--mw-bg);
+  border-color: color-mix(in srgb, var(--mw-primary) 35%, var(--mw-line));
+  background: var(--mw-tint-violet);
 }
 
 .trigger:disabled {
@@ -69,7 +71,13 @@
   line-height: 1.35;
 }
 
-.chevron { margin-left: auto; }
+.chevron {
+  margin-left: auto;
+  width: var(--sp-5);
+  height: var(--sp-5);
+  flex-shrink: 0;
+}
+.trigger[aria-expanded="true"] .chevron { transform: rotate(180deg); }
 
 .invalidMark {
   display: grid;

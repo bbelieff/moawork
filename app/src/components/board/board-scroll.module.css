@@ -1,0 +1,36 @@
+.viewport {
+  min-width: 0;
+  max-width: 100%;
+  height: var(--board-available-height, 65dvh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--mw-sub) var(--mw-card);
+}
+
+.viewport:focus-visible {
+  outline: 2px solid var(--mw-primary);
+  outline-offset: 2px;
+}
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  width: max-content;
+  min-width: 100%;
+}
+
+/* No intermediate clipping/scroll ancestor: sticky cells use the common viewport. */
+.groups [data-visual-block="group-table"] > details > div,
+.groups [data-board-table-format="uniform"] {
+  overflow: visible;
+  max-height: none;
+  max-width: none;
+}
+
+.groups [data-visual-block="group-table"] > details > summary {
+  position: sticky;
+  left: 0;
+  width: var(--board-visible-width, 100%);
+  max-width: 100%;
+}
