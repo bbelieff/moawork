@@ -13,7 +13,13 @@ describe("issue 558 신규리드 입력 선택 계약", () => {
     expect(resolveNewLeadBusinessType("", "")).toBeNull();
   });
 
-  it("keeps observed Monday revenue bands and allows a custom band", () => {
+  it("accepts the requested ranges, exact amounts and legacy form submissions", () => {
+    for (const band of ["~ 1억 미만", "1억 이상 ~ 3억 미만", "3억 이상 ~ 10억 미만", "10억 이상 ~"]) {
+      expect(resolveNewLeadRevenueBand(band, "")).toBe(band);
+    }
+    expect(resolveNewLeadRevenueBand("그외", " 2억 5,000만원 ")).toBe("2억 5,000만원");
+    expect(resolveNewLeadRevenueBand("그외", " ")).toBeNull();
+    expect(resolveNewLeadRevenueBand("알 수 없는 값", "")).toBeNull();
     expect(resolveNewLeadRevenueBand("2,000만원~4,000만원", "")).toBe("2,000만원~4,000만원");
     expect(resolveNewLeadRevenueBand("그외", " 1억원 이상 ")).toBe("1억원 이상");
   });

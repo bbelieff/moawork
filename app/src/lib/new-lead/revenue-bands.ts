@@ -1,7 +1,4 @@
-/**
- * 운영 Monday 신규고객 보드에서 2026-08-26 실제로 확인된 금액 구간.
- * `매출액` 칸에는 사업자 유형도 섞여 있었으므로 금액 구간 패턴만 분리했다.
- */
+/** 기존 보드 구조와 저장값에 사용한 매출 구간. */
 export const NEW_LEAD_REVENUE_BANDS = [
   "1,000만원~2,000만원",
   "2,000만원~4,000만원",
@@ -9,11 +6,20 @@ export const NEW_LEAD_REVENUE_BANDS = [
   "그외",
 ] as const;
 
+/** #770 신규리드 등록 화면의 선택지. 기존 보드 구조는 바꾸지 않는다. */
+export const NEW_LEAD_INTAKE_REVENUE_BANDS = [
+  "~ 1억 미만",
+  "1억 이상 ~ 3억 미만",
+  "3억 이상 ~ 10억 미만",
+  "10억 이상 ~",
+  "그외",
+] as const;
+export const NEW_LEAD_CUSTOM_REVENUE_LABEL = "정확한 수치를 알고 있어요";
+
 export function resolveNewLeadRevenueBand(selected: string, custom: string): string | null {
   if (!selected) return null;
-  if (!NEW_LEAD_REVENUE_BANDS.includes(selected as (typeof NEW_LEAD_REVENUE_BANDS)[number])) {
-    return null;
-  }
+  const accepted: readonly string[] = [...NEW_LEAD_INTAKE_REVENUE_BANDS, ...NEW_LEAD_REVENUE_BANDS];
+  if (!accepted.includes(selected)) return null;
   if (selected !== "그외") return selected;
   const value = custom.trim();
   return value || null;

@@ -75,7 +75,7 @@ describe("Issue #576 신규리드 순서와 표시 컬럼", () => {
   it("조건부 필수 매출 입력도 라벨 옆 빨간 별표를 보인다", () => {
     const source = readFileSync(new URL("./NewLeadIntakeFields.tsx", import.meta.url), "utf8");
     expect(source).toContain(
-      '<span>그외 매출 구간 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>',
+      '<span>정확한 매출액 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>',
     );
     expect(source).toMatch(/name="revenue_band_custom" required/);
   });
