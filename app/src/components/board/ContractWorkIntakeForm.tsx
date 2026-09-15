@@ -191,7 +191,7 @@ export function ContractWorkIntakeForm({
               >
                 <span
                   aria-hidden="true"
-                  className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-violet-100 text-sm font-semibold text-violet-800 dark:bg-violet-950 dark:text-violet-200"
+                  className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-mw-tint-blue text-sm font-semibold text-mw-primary  "
                 >
                   {company.name.trim().charAt(0) || "?"}
                 </span>
@@ -203,7 +203,7 @@ export function ContractWorkIntakeForm({
                 </span>
                 <span className="flex-none text-right text-[11px]">
                   {dealCount > 0 ? (
-                    <b className="font-semibold text-violet-700 dark:text-violet-300">진행 이력 {dealCount}건</b>
+                    <b className="font-semibold text-mw-primary ">진행 이력 {dealCount}건</b>
                   ) : (
                     <span className="text-mw-sub">이력 없음</span>
                   )}

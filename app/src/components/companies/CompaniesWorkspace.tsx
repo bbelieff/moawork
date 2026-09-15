@@ -34,7 +34,7 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
 const chip =
   "inline-flex items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200";
 const chipActive =
-  "inline-flex items-center gap-1 rounded-lg border border-violet-400 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800 dark:border-violet-600 dark:bg-violet-950 dark:text-violet-200";
+  "inline-flex items-center gap-1 rounded-lg border border-mw-primary bg-mw-tint-blue px-3 py-1.5 text-sm font-medium text-mw-primary   ";
 
 function Cell({ children, align }: { children: ReactNode; align: "left" | "right" }) {
   return (
@@ -53,7 +53,7 @@ function DealRow({ row, hidden }: { row: CompanyDealView; hidden: boolean }) {
   return (
     <tr hidden={hidden} className="border-t border-zinc-100 text-sm dark:border-zinc-900">
       <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-3 py-2 dark:bg-zinc-950">
-        <span aria-hidden="true" className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-violet-400" />
+        <span aria-hidden="true" className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-mw-primary" />
         <Link href={`/deals/${deal.id}`} className="underline-offset-4 hover:underline">
           {deal.title}
         </Link>
@@ -115,7 +115,7 @@ function CompanyRow({
           <button type="button" onClick={onToggle} aria-expanded={open} className="flex items-center gap-2">
             <span aria-hidden="true" className={`text-zinc-400 transition ${open ? "rotate-180" : ""}`}>⌄</span>
             <span>{view.company.name}</span>
-            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-800 dark:bg-violet-950 dark:text-violet-200">
+            <span className="rounded-full bg-mw-tint-blue px-2 py-0.5 text-xs font-semibold text-mw-primary  ">
               {dealsUnknown ? "확인 필요" : `자금 ${view.deals.length}건`}
             </span>
           </button>

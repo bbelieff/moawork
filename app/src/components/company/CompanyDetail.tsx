@@ -39,7 +39,7 @@ export function CompanyDetail({ company, deals, stageNames, workStartRequestId, 
         </Link>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-violet-700 dark:text-violet-300">고객사 상세</p>
+            <p className="text-sm font-medium text-mw-primary ">고객사 상세</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">{company.name}</h1>
           </div>
           <span className="rounded-full bg-zinc-100 px-3 py-1 text-sm text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
@@ -68,7 +68,7 @@ export function CompanyDetail({ company, deals, stageNames, workStartRequestId, 
             <dt className="text-xs font-medium text-zinc-500">홈페이지</dt>
             <dd className="mt-1 break-all text-sm">
               {homepage ? (
-                <a className="rounded text-violet-700 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 dark:text-violet-300" href={homepage} target="_blank" rel="noreferrer">
+                <a className="rounded text-mw-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 " href={homepage} target="_blank" rel="noreferrer">
                   사이트 열기<span className="sr-only"> (새 창)</span>
                 </a>
               ) : company.homepage ? "확인할 수 없는 주소" : "—"}

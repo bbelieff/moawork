@@ -98,7 +98,7 @@ export function CompanyCsvImport({
       >
         <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
           <div>
-            <p className="text-sm font-medium text-violet-700 dark:text-violet-300">고객사</p>
+            <p className="text-sm font-medium text-mw-primary ">고객사</p>
             <h2 className="mt-0.5 text-lg font-semibold">CSV로 가져오기</h2>
           </div>
           <button type="button" aria-label="닫기" onClick={close} className="rounded-lg px-2 py-1 text-xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">×</button>
@@ -150,7 +150,7 @@ export function CompanyCsvImport({
             다시 고르기
           </button>
           <button type="button" onClick={close} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium dark:border-zinc-700">닫기</button>
-          <button type="button" onClick={submit} disabled={busy || rows.length === 0} className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">
+          <button type="button" onClick={submit} disabled={busy || rows.length === 0} className="rounded-lg bg-mw-primary px-3 py-2 text-sm font-semibold text-mw-on-accent disabled:opacity-40">
             {busy ? "가져오는 중…" : "가져오기"}
           </button>
         </div>
