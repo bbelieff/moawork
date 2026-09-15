@@ -43,7 +43,7 @@ export function workspaceNoticeRole(tone: WorkspaceChooserNotice["tone"]): "stat
  * 테스트가 실패한다.
  */
 export function WorkspaceSelectionNotice({ notice }: { notice: WorkspaceChooserNotice | null }) {
-  if (!notice) return null;
+  if (!notice || notice.tone === "success") return null;
   const isError = notice.tone === "error";
   return (
     <p
@@ -165,7 +165,9 @@ export function WorkspaceChooserView({
   view: WorkspaceChooserView;
   onSelect: (workspaceId: string) => void;
 }) {
-  return <main className={styles.page}><section className={`${styles.shell} ${styles.compactShell}`} aria-labelledby="workspace-chooser-title"><header className={styles.protoTop}><Logo height={28} href="/" /><span>회사 선택</span></header><div className={styles.compactHub}><div className={styles.guideHead}><span className={styles.guideAvatar} aria-hidden="true">M</span><div><strong>모아 가이드</strong><small>들어갈 수 있는 회사만 보여드려요.</small></div></div><div className={styles.bubble}><h1 id="workspace-chooser-title">들어갈 회사를 골라 주세요.</h1><small>회사를 선택할 때 접근 권한을 한 번 더 확인해요.</small></div><WorkspaceSelectionNotice notice={view.notice} /><ul className={styles.chooserList}>{workspaces.map((workspace) => <li key={workspace.orgId}><button type="button" onClick={() => onSelect(workspace.orgId)} disabled={view.locked}><span className={styles.workspaceMark} aria-hidden="true">{workspace.name.slice(0, 1)}</span><span><strong>{workspace.name}</strong><small>/w/{workspace.slug}</small></span>{badges?.[workspace.orgId] ? <Badge state={badges[workspace.orgId]!} label={workspace.name} /> : null}<b aria-hidden="true">→</b></button></li>)}</ul><div className={styles.quick}><Link href="/workspace-entry?mode=new">새 회사를 시작하거나 다른 회사에 합류하기</Link></div><p className={styles.safety}>최근에 이용한 회사라는 이유만으로 자동으로 들어가지는 않아요.</p></div></section></main>;
+  const nameCounts = new Map<string, number>();
+  for (const workspace of workspaces) nameCounts.set(workspace.name, (nameCounts.get(workspace.name) ?? 0) + 1);
+  return <main className={styles.page}><section className={`${styles.shell} ${styles.compactShell}`} aria-labelledby="workspace-chooser-title"><header className={styles.protoTop}><Logo height={28} href="/" /></header><div className={styles.compactHub}><h1 id="workspace-chooser-title" className={styles.chooserTitle}>회사 선택</h1><WorkspaceSelectionNotice notice={view.notice} /><ul className={styles.chooserList}>{workspaces.map((workspace) => <li key={workspace.orgId}><button type="button" onClick={() => onSelect(workspace.orgId)} disabled={view.locked}><span className={styles.workspaceMark} aria-hidden="true">{workspace.name.slice(0, 1)}</span><span><strong>{workspace.name}</strong>{(nameCounts.get(workspace.name) ?? 0) > 1 ? <small>{workspace.slug}</small> : null}</span>{badges?.[workspace.orgId] ? <Badge state={badges[workspace.orgId]!} label={workspace.name} /> : null}<b aria-hidden="true">→</b></button></li>)}</ul><div className={styles.quick}><Link href="/workspace-entry?mode=new">새 회사를 시작하거나 다른 회사에 합류하기</Link></div></div></section></main>;
 }
 
 export function WorkspaceChooser({

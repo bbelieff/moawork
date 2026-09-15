@@ -19,8 +19,8 @@ describe("login A v1.1 UI contract", () => {
   });
 
   it("로그인 결과와 실패 후 다음 행동을 쉬운 회사 언어로 안내한다", () => {
-    expect(page).toContain("로그인하면 권한과 가입한 회사 수를 확인해");
-    expect(page).toContain("모드를 고르거나 회사 업무를 시작할 화면으로 이동해요.");
+    expect(page).not.toContain("로그인하면 권한과 가입한 회사 수를 확인해");
+    expect(page).not.toContain("모드를 고르거나 회사 업무를 시작할 화면으로 이동해요.");
 
     expect(Object.keys(AUTH_ERROR_MESSAGES).sort()).toEqual([
       "auth",
@@ -43,7 +43,7 @@ describe("login A v1.1 UI contract", () => {
     }
     expect(displayErrors.auth).toContain("다시 시도해 주세요");
     expect(displayErrors.config).toContain("잠시 후 다시 시도해 주세요");
-    expect(displayErrors.membership).toContain("초대를 요청해 주세요");
+    expect(displayErrors.membership).toBe("회사 연결이 필요합니다.");
     expect(displayErrors.profile).toContain("다시 로그인해 주세요");
     expect(displayErrors.provisioning).toContain("잠시 후 다시 시도해 주세요");
     expect(page).toContain("const errorMessage = LOGIN_ERROR_MESSAGES[errorCode]");

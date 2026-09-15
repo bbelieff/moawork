@@ -42,12 +42,11 @@ export function ApprovalQueue(props: Props) {
         <span className={styles.guideAvatar} aria-hidden="true">M</span>
         <div>
           <strong>{props.mode === "platform" ? "회사 만들기 검토" : `${props.workspaceName} 합류 검토`}</strong>
-          <small>{props.mode === "platform" ? "플랫폼 운영 영역이에요. 고객 회사 내부 권한은 생기지 않아요." : "이 회사의 보호된 대표만 결정할 수 있어요."}</small>
         </div>
       </div>
       {notice ? <ResultBanner notice={notice} okClassName={styles.status} errorClassName={styles.error} /> : null}
       {props.requests.length === 0 ? (
-        <div className={styles.bubble}><strong>지금 검토할 요청이 없어요.</strong><small>새 요청이 오면 이 목록에서 확인할 수 있어요.</small></div>
+        <div className={styles.bubble}><strong>지금 검토할 요청이 없어요.</strong></div>
       ) : (
         <ul className={styles.queueList}>
           {props.requests.map((request, index) => (
@@ -65,7 +64,7 @@ export function ApprovalQueue(props: Props) {
           ))}
         </ul>
       )}
-      <p className={styles.safety}>승인은 서버가 현재 권한과 요청 상태를 다시 확인한 뒤 한 번만 반영해요.</p>
+
     </div>
   );
 }

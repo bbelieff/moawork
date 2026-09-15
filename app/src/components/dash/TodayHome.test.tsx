@@ -81,7 +81,7 @@ describe("홈 «오늘» — 정상", () => {
 
   it("네 영역이 모두 있다", () => {
     for (const title of ["내 할 일", "최근 알림", "바로 가기"]) expect(html).toContain(title);
-    expect(html).toContain("담당자 = 나");
+    expect(html).not.toContain("담당자 = 나");
   });
 
   it("할 일과 알림이 실제 deep link 를 갖는다", () => {
@@ -143,7 +143,7 @@ describe("홈 «오늘» — 비어있음 · 부분 · 오류", () => {
   // ★ BBE-215 — 「0」과 「아직 안 채움」을 화면이 갈라 말하는가.
   //   098 이 unfilledColumns 를 주더라도 화면이 안 그리면 사용자에게는 «그냥 0» 이다.
   //   읽기 모델과 화면 «둘 다» 있어야 이 구분이 성립한다.
-  it("★ 컬럼이 통째로 비면 0 을 «없음» 으로 그리지 않고 컬럼 이름을 말한다", () => {
+  it("미입력 컬럼이 있어도 요청한 지표를 표시하고 장문의 설명은 생략한다", () => {
     const html = renderToStaticMarkup(
       <TodayHome
         state={{
@@ -157,10 +157,9 @@ describe("홈 «오늘» — 비어있음 · 부분 · 오류", () => {
       />,
     );
 
-    expect(html).toContain("아직 안 채웠다");
+    expect(html).not.toContain("아직 안 채웠다");
     // ★ 무엇을 채워야 하는지 «이름» 으로 말해야 한다 — 안 그러면 사용자가 할 일을 모른다.
-    expect(html).toContain("상담 상황");
-    expect(html).toContain('role="status"');
+    expect(html).not.toContain("상담 상황");
   });
 
   it("★ 채워져 있는데 조건에 안 맞는 진짜 0 에는 그 문구가 «안» 뜬다", () => {
