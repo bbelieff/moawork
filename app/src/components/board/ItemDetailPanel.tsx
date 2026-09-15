@@ -914,7 +914,7 @@ export function ItemDetailPanel({
                   </div>
                   <div className={styles.fieldList}>
                     {layout.length === 0 && (
-                      <p className="rounded-xl border border-dashed border-mw-line p-4 text-sm text-mw-sub">
+                      <p className="rounded-md border border-dashed border-mw-line p-4 text-sm text-mw-sub">
                         배치된 상세 필드가 없습니다. 값이 있다면 아래 미배치
                         영역에서 다시 올릴 수 있습니다.
                       </p>
@@ -1299,7 +1299,7 @@ export function ItemDetailPanel({
                             (!canonicalNewLead || !CANONICAL_NEW_LEAD_LOAN_KEYS.has(column.key))
                             && !visibleLayout.some((entry) => entry.key === column.key),
                         ).length > 0 && (
-                          <div className="flex flex-wrap gap-2 rounded-xl border border-dashed border-mw-line p-3">
+                          <div className="flex flex-wrap gap-2 rounded-md border border-dashed border-mw-line p-3">
                             <span className="w-full text-xs font-semibold text-mw-sub">
                               표 컬럼을 이 아이템 배치에 추가
                             </span>
@@ -1397,7 +1397,7 @@ export function ItemDetailPanel({
                               (entry) => entry.key === column.key,
                             ),
                         ).length > 0 && (
-                          <div className="flex flex-wrap gap-2 rounded-xl border border-dashed border-mw-line p-3">
+                          <div className="flex flex-wrap gap-2 rounded-md border border-dashed border-mw-line p-3">
                             <span className="w-full text-xs font-semibold text-mw-sub">
                               표 컬럼을 보드 기본 배치에 추가
                             </span>
@@ -1431,7 +1431,7 @@ export function ItemDetailPanel({
                         )}
                         <form
                           action={addDetailFieldAction}
-                          className="grid gap-2 rounded-xl border border-dashed border-mw-line p-3 sm:grid-cols-[1fr_9rem_auto]"
+                          className="grid gap-2 rounded-md border border-dashed border-mw-line p-3 sm:grid-cols-[1fr_9rem_auto]"
                         >
                           <input type="hidden" name="boardId" value={boardId} />
                           <input type="hidden" name="groupId" value="" />

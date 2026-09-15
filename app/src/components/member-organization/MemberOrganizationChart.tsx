@@ -81,7 +81,7 @@ function MemberCard({ member, protectedOwner, isViewer, canEdit, onProfileEdit, 
   onPermissionEdit: (member: MemberSummaryRow) => void;
 }) {
   return (
-    <li className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+    <li className="rounded-md border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-semibold">{member.displayName}{isViewer ? <span aria-label="지금 로그인한 계정" className="ml-2 rounded-full bg-zinc-900 px-2 py-0.5 text-xs font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900">나</span> : null}</p>
@@ -90,9 +90,9 @@ function MemberCard({ member, protectedOwner, isViewer, canEdit, onProfileEdit, 
         </div>
         {protectedOwner ? <span className="rounded-full bg-mw-tint-teal px-3 py-1 text-xs font-semibold text-mw-automation">보호된 대표</span> : canEdit ? (
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => onProfileEdit(member)} className="rounded-xl border border-zinc-300 px-3 py-2 text-sm font-semibold dark:border-zinc-700">직책·팀 수정</button>
-            <button type="button" onClick={() => onHierarchyEdit(member)} className="rounded-xl border border-zinc-300 px-3 py-2 text-sm font-semibold dark:border-zinc-700">업무 역할 설정</button>
-            {member.role === "member" ? <button type="button" onClick={() => onPermissionEdit(member)} className="rounded-xl border border-zinc-300 px-3 py-2 text-sm font-semibold dark:border-zinc-700">세부 권한 설정</button> : null}
+            <button type="button" onClick={() => onProfileEdit(member)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-semibold dark:border-zinc-700">직책·팀 수정</button>
+            <button type="button" onClick={() => onHierarchyEdit(member)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-semibold dark:border-zinc-700">업무 역할 설정</button>
+            {member.role === "member" ? <button type="button" onClick={() => onPermissionEdit(member)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-semibold dark:border-zinc-700">세부 권한 설정</button> : null}
           </div>
         ) : <span className="text-sm text-zinc-500">조회만 가능</span>}
       </div>
@@ -206,7 +206,7 @@ export function MemberOrganizationChart({ orgId, owner, admins, members, canEdit
   }
 
   const section = (label: string, rows: MemberSummaryRow[], empty: string) => (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+    <section className="rounded-md border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
       <h2 className="font-semibold">{label}</h2>
       {rows.length ? <ul className="mt-3 grid gap-2"><>{rows.map((member) => <MemberCard key={member.userId} member={member} isViewer={member.userId === viewerUserId} canEdit={canEditProfiles} onProfileEdit={beginProfileEdit} onHierarchyEdit={beginHierarchyEdit} onPermissionEdit={beginPermissionEdit} />)}</></ul> : <p className="mt-2 text-sm text-zinc-500">{empty}</p>}
     </section>
@@ -214,7 +214,7 @@ export function MemberOrganizationChart({ orgId, owner, admins, members, canEdit
 
   return (
     <div className="flex flex-col gap-4">
-      <section className="rounded-2xl border border-mw-automation bg-mw-tint-teal p-4">
+      <section className="rounded-md border border-mw-automation bg-mw-tint-teal p-4">
         <h2 className="font-semibold">대표</h2>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">대표 권한과 조직 단계는 이 화면에서 바꾸거나 지울 수 없어요.</p>
         <ul className="mt-3"><MemberCard member={owner} protectedOwner isViewer={owner.userId === viewerUserId} canEdit={false} onProfileEdit={beginProfileEdit} onHierarchyEdit={beginHierarchyEdit} onPermissionEdit={beginPermissionEdit} /></ul>
@@ -233,49 +233,49 @@ export function MemberOrganizationChart({ orgId, owner, admins, members, canEdit
       {section(roleLabel("admin"), admins, "아직 없어요.")}
       {section(roleLabel("member"), members, "아직 없어요.")}
       {editor?.kind === "profile" ? (
-        <section aria-label="구성원 프로필 수정" className="rounded-2xl border border-mw-primary bg-white p-4 dark:bg-zinc-950">
+        <section aria-label="구성원 프로필 수정" className="rounded-md border border-mw-primary bg-white p-4 dark:bg-zinc-950">
           <h2 className="font-semibold">{editor.member.displayName}의 직책과 팀</h2>
           <form className="mt-4 grid gap-3" onSubmit={save}>
-            <label htmlFor={titleId} className="grid gap-1 text-sm font-medium">직책<input id={titleId} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={80} className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700" /></label>
-            <label htmlFor={teamId} className="grid gap-1 text-sm font-medium">팀 식별자<input id={teamId} value={teamKey} onChange={(event) => setTeamKey(event.target.value)} maxLength={64} pattern="[a-z0-9][a-z0-9_-]{0,63}" className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700" /></label>
+            <label htmlFor={titleId} className="grid gap-1 text-sm font-medium">직책<input id={titleId} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={80} className="rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700" /></label>
+            <label htmlFor={teamId} className="grid gap-1 text-sm font-medium">팀 식별자<input id={teamId} value={teamKey} onChange={(event) => setTeamKey(event.target.value)} maxLength={64} pattern="[a-z0-9][a-z0-9_-]{0,63}" className="rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700" /></label>
             {state === "error" ? <p role="alert" className="text-sm text-red-600">저장하지 못했어요. 권한과 연결을 다시 확인해 주세요.</p> : null}
             {state === "saved" ? <p role="status" className="text-sm text-emerald-700">저장했어요. 새로고침하면 최신 조직도에 반영돼요.</p> : null}
-            <div className="flex flex-wrap gap-2"><button type="submit" disabled={state === "saving"} className="rounded-xl bg-mw-primary px-4 py-2 text-sm font-semibold text-mw-on-accent">{state === "saving" ? "저장 중…" : "저장"}</button><button type="button" onClick={() => setEditor(null)} className="rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold dark:border-zinc-700">닫기</button></div>
+            <div className="flex flex-wrap gap-2"><button type="submit" disabled={state === "saving"} className="rounded-md bg-mw-primary px-4 py-2 text-sm font-semibold text-mw-on-accent">{state === "saving" ? "저장 중…" : "저장"}</button><button type="button" onClick={() => setEditor(null)} className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-semibold dark:border-zinc-700">닫기</button></div>
           </form>
         </section>
       ) : null}
       {editor?.kind === "hierarchy" ? (
-        <section aria-label="구성원 업무 역할 설정" className="rounded-2xl border border-mw-primary bg-white p-4 dark:bg-zinc-950">
+        <section aria-label="구성원 업무 역할 설정" className="rounded-md border border-mw-primary bg-white p-4 dark:bg-zinc-950">
           <h2 className="font-semibold">{editor.member.displayName}의 업무 역할</h2>
-          <p className="mt-1 text-sm text-zinc-500">대표 본인·다른 회사 구성원은 바꿀 수 없어요. 저장 시 서버가 세션, 대상, 순환 보고선을 다시 확인해요.</p>
+          <p className="mt-1 text-sm text-zinc-500">대표 본인·다른 회사 구성원은 바꿀 수 없어요.</p>
           <form className="mt-4 grid gap-3" onSubmit={saveHierarchy}>
-            <label className="grid gap-1 text-sm font-medium">역할<select value={role} onChange={(event) => setRole(event.target.value as "admin" | "team_lead" | "member")} className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700">{/*
+            <label className="grid gap-1 text-sm font-medium">역할<select value={role} onChange={(event) => setRole(event.target.value as "admin" | "team_lead" | "member")} className="rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700">{/*
               ★ 역할을 «지정하는» 자리다. 여기서만 다른 이름을 쓰면 고른 뒤 목록에서
                 다른 말로 보인다 — 「멤버」로 골랐는데 「구성원」으로 뜨는 식이다.
                 이름표는 정본에서 온다.
             */}
             <option value="admin">{roleLabel("admin")}</option><option value="team_lead">{roleLabel("team_lead")}</option><option value="member">{roleLabel("member")}</option></select></label>
-            <label className="grid gap-1 text-sm font-medium">업무 범위<select value={scope} onChange={(event) => setScope(event.target.value as "all" | "department" | "assigned")} className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="assigned">배정된 업무</option><option value="department">내 부서 이하</option><option value="all">회사 업무 전체</option></select></label>
-            <label className="grid gap-1 text-sm font-medium">보고받는 사람<select value={reportsToUserId} onChange={(event) => setReportsToUserId(event.target.value)} className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="">지정하지 않음</option>{reportingLineCandidates.filter((candidate) => candidate.userId !== editor.member.userId).map((candidate) => <option key={candidate.userId} value={candidate.userId}>{candidate.displayName} · {roleLabel(candidate.role)}</option>)}</select></label>
+            <label className="grid gap-1 text-sm font-medium">업무 범위<select value={scope} onChange={(event) => setScope(event.target.value as "all" | "department" | "assigned")} className="rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="assigned">배정된 업무</option><option value="department">내 부서 이하</option><option value="all">회사 업무 전체</option></select></label>
+            <label className="grid gap-1 text-sm font-medium">보고받는 사람<select value={reportsToUserId} onChange={(event) => setReportsToUserId(event.target.value)} className="rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="">지정하지 않음</option>{reportingLineCandidates.filter((candidate) => candidate.userId !== editor.member.userId).map((candidate) => <option key={candidate.userId} value={candidate.userId}>{candidate.displayName} · {roleLabel(candidate.role)}</option>)}</select></label>
             {state === "unavailable" ? <p role="alert" className="text-sm text-zinc-600">업무 역할 변경 기능을 아직 사용할 수 없어요. 서버 준비가 끝난 뒤 다시 시도해 주세요.</p> : null}
             {state === "error" ? <p role="alert" className="text-sm text-red-600">저장하지 못했어요. 본인·대표·다른 회사 구성원은 변경할 수 없고, 순환되는 보고선도 설정할 수 없어요.</p> : null}
             {state === "saved" ? <p role="status" className="text-sm text-emerald-700">저장했어요. 새로고침하면 최신 조직도에 반영돼요.</p> : null}
-            <div className="flex flex-wrap gap-2"><button type="submit" disabled={state === "saving"} className="rounded-xl bg-mw-primary px-4 py-2 text-sm font-semibold text-mw-on-accent">{state === "saving" ? "저장 중…" : "변경 저장"}</button><button type="button" onClick={() => setEditor(null)} className="rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold dark:border-zinc-700">닫기</button></div>
+            <div className="flex flex-wrap gap-2"><button type="submit" disabled={state === "saving"} className="rounded-md bg-mw-primary px-4 py-2 text-sm font-semibold text-mw-on-accent">{state === "saving" ? "저장 중…" : "변경 저장"}</button><button type="button" onClick={() => setEditor(null)} className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-semibold dark:border-zinc-700">닫기</button></div>
           </form>
         </section>
       ) : null}
       {editor?.kind === "permission" ? (
-        <section aria-label="구성원 세부 권한 설정" className="rounded-2xl border border-mw-primary bg-white p-4 dark:bg-zinc-950">
+        <section aria-label="구성원 세부 권한 설정" className="rounded-md border border-mw-primary bg-white p-4 dark:bg-zinc-950">
           <h2 className="font-semibold">{editor.member.displayName}의 세부 권한</h2>
           <p className="mt-1 text-sm text-zinc-500">구성원에게만 적용해요. 범위 키는 회사 안에서 이미 정한 업무 영역만 입력해 주세요.</p>
           <form className="mt-4 grid gap-3" onSubmit={savePermission}>
-            <label className="grid gap-1 text-sm font-medium">업무 범위 키<input value={permissionScopeKey} onChange={(event) => setPermissionScopeKey(event.target.value)} maxLength={96} pattern="[a-z0-9][a-z0-9:_./-]{0,95}" placeholder="예: board:sales" className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700" /></label>
-            <label className="grid gap-1 text-sm font-medium">결정<select value={permissionDecision} onChange={(event) => setPermissionDecision(event.target.value as PermissionDecision)} className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="allow">허용</option><option value="deny">차단</option></select></label>
-            <label className="grid gap-1 text-sm font-medium">접근 수준<select value={permissionAccess} onChange={(event) => setPermissionAccess(event.target.value as PermissionAccess)} className="rounded-xl border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="viewer">보기</option><option value="editor">편집</option></select></label>
+            <label className="grid gap-1 text-sm font-medium">업무 범위 키<input value={permissionScopeKey} onChange={(event) => setPermissionScopeKey(event.target.value)} maxLength={96} pattern="[a-z0-9][a-z0-9:_./-]{0,95}" placeholder="예: board:sales" className="rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700" /></label>
+            <label className="grid gap-1 text-sm font-medium">결정<select value={permissionDecision} onChange={(event) => setPermissionDecision(event.target.value as PermissionDecision)} className="rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="allow">허용</option><option value="deny">차단</option></select></label>
+            <label className="grid gap-1 text-sm font-medium">접근 수준<select value={permissionAccess} onChange={(event) => setPermissionAccess(event.target.value as PermissionAccess)} className="rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"><option value="viewer">보기</option><option value="editor">편집</option></select></label>
             {state === "unavailable" ? <p role="alert" className="text-sm text-zinc-600">세부 권한 변경 기능을 아직 사용할 수 없어요. 서버 준비가 끝난 뒤 다시 시도해 주세요.</p> : null}
             {state === "error" ? <p role="alert" className="text-sm text-red-600">저장하지 못했어요. 범위 형식과 대표 권한, 대상 상태를 다시 확인해 주세요.</p> : null}
             {state === "saved" ? <p role="status" className="text-sm text-emerald-700">저장했어요. 새로고침하면 최신 권한 상태에 반영돼요.</p> : null}
-            <div className="flex flex-wrap gap-2"><button type="submit" disabled={state === "saving"} className="rounded-xl bg-mw-primary px-4 py-2 text-sm font-semibold text-mw-on-accent">{state === "saving" ? "저장 중…" : "권한 저장"}</button><button type="button" onClick={() => setEditor(null)} className="rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold dark:border-zinc-700">닫기</button></div>
+            <div className="flex flex-wrap gap-2"><button type="submit" disabled={state === "saving"} className="rounded-md bg-mw-primary px-4 py-2 text-sm font-semibold text-mw-on-accent">{state === "saving" ? "저장 중…" : "권한 저장"}</button><button type="button" onClick={() => setEditor(null)} className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-semibold dark:border-zinc-700">닫기</button></div>
           </form>
         </section>
       ) : null}

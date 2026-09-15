@@ -80,7 +80,7 @@ export function OtherInfoBoardCell({
           <form
             ref={formRef}
             action={action}
-            className="flex max-h-[min(44rem,calc(100dvh-1.5rem))] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-mw-line bg-mw-card shadow-2xl"
+            className="flex max-h-[min(44rem,calc(100dvh-1.5rem))] w-full max-w-2xl flex-col overflow-hidden rounded-md border border-mw-line bg-mw-card shadow-lg"
           >
             <input type="hidden" name="boardId" value={boardId} />
             <input type="hidden" name="itemId" value={itemId} />

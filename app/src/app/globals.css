@@ -19,7 +19,7 @@
   --mw-surface: #ffffff;
 
   /* 역할 별칭(의미로 참조) */
-  --mw-primary: var(--mw-moa-violet); /* Primary CTA·브랜드·설정 */
+  --mw-primary: #245dc1; /* Primary CTA·브랜드·설정 */
   --mw-record: var(--mw-work-blue); /* 딜·기록·파이프라인 */
   --mw-automation: var(--mw-flow-teal); /* 자동화·연결·흐름 */
   --mw-people: var(--mw-people-coral); /* 담당자·댓글·멘션 — UI 전용 */
@@ -49,7 +49,7 @@
   --mw-tint-coral: #fdecea;
   --mw-tint-amber: #fbf0e0; /* 행정 배지 바탕 (#662) */
   --mw-tint-violet: #efecff; /* 미팅 배지 바탕 (#662) */
-  --mw-radius: 14px;
+  --mw-radius: 6px;
 
   /* 레이어 소유권 — 숫자를 컴포넌트에 직접 쓰지 않는다.
      page popover < shell < shell popover < tooltip < scrim < dialog < toast. */
@@ -75,6 +75,7 @@
 
 /* 다크 — 브랜드 v1.0 Dark 토큰(Surface #111216) */
 [data-theme="dark"] {
+  --mw-primary: #8db4ff;
   --mw-work-blue: #6ea0ff;
   --mw-flow-teal: #47cfbc;
   --mw-moa-violet: #8a7cff;
@@ -107,6 +108,7 @@
     --mw-work-blue: #6ea0ff;
     --mw-flow-teal: #47cfbc;
     --mw-moa-violet: #8a7cff;
+    --mw-primary: #8db4ff;
     --mw-people-coral: #ff8a80;
     --mw-admin: #f0b849;
     --mw-meeting: #a99bff;

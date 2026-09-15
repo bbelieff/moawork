@@ -40,7 +40,7 @@ const workspaces: ManagedWorkspace[] = [{
 }];
 
 describe("AccountHub", () => {
-  it("C안 핵심 정보와 현재 로그인만 렌더한다", () => {
+  it("계정 정보와 현재 로그인 동작을 렌더한다", () => {
     const html = renderToStaticMarkup(
       <AccountHub
         account={account}
@@ -58,7 +58,7 @@ describe("AccountHub", () => {
     expect(html).not.toContain("모든 기기에서 로그아웃");
   });
 
-  it("대표에게만 점진적 회사 관리 설명을 보여준다", () => {
+  it("연결되지 않은 관리 기능과 준비 안내를 표시하지 않는다", () => {
     const employee = renderToStaticMarkup(<AccountHub account={account} orgProfile={orgProfile} />);
     const owner = renderToStaticMarkup(
       <AccountHub
@@ -68,7 +68,7 @@ describe("AccountHub", () => {
     );
 
     expect(employee).not.toContain("회사가 성장하면 여는 관리");
-    expect(owner).toContain("회사가 성장하면 여는 관리");
+    expect(owner).not.toContain("회사가 성장하면 여는 관리");
     expect(owner).not.toContain("회사 관리</a>");
   });
 
@@ -82,7 +82,7 @@ describe("AccountHub", () => {
     const html = renderToStaticMarkup(<AccountHub account={account} orgProfile={orgProfile} workspaces={workspaces} />);
     expect(html).toContain("대표 회사");
     expect(html).toContain("참여 회사");
-    expect(html).toContain("확인을 위해");
+    expect(html).toContain("회사명 확인");
     expect(html).toContain("회사 삭제는 현재 대표만 요청할 수 있어요");
     expect(html).not.toContain("접근 가능한 회사가 없어요");
   });
@@ -93,7 +93,7 @@ describe("AccountHub", () => {
     const companyCard = html.match(/<section[^>]*data-account-scope="organization"[\s\S]*?<\/section>/)?.[0] ?? "";
 
     expect(html).toContain("현재 회사에서의 내 정보");
-    expect(html).toContain("표시 이름과 로그인 정보는 모든 회사에서 같고");
+    expect(html).not.toContain("표시 이름과 로그인 정보는 모든 회사에서 같고");
     expect(globalCard).toContain("표시 이름");
     expect(globalCard).toContain("로그인 이메일");
     expect(globalCard).not.toContain("역할");
@@ -119,7 +119,7 @@ describe("AccountHub", () => {
       />,
     );
 
-    expect(html).toContain("아직 호칭이 정해지지 않았어요.");
+    expect(html).toContain("미등록");
     expect(html).toContain("직무 안내를 확인하지 못했어요.");
     expect(html).not.toContain("직무 안내가 아직 작성되지 않았어요.");
     expect(html).toContain('data-profile-state="empty"');

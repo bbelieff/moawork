@@ -70,7 +70,7 @@ export function ColumnExpandedPanel({
           maxHeight: position.maxHeight,
           visibility: position.ready ? "visible" : "hidden",
         }}
-        className="mw-layer-page-popover fixed overflow-y-auto rounded-xl border border-mw-line bg-mw-card p-4 text-mw-fg shadow-xl"
+        className="mw-layer-page-popover fixed overflow-y-auto rounded-md border border-mw-line bg-mw-card p-4 text-mw-fg shadow-xl"
       >
         <header className="mb-3 flex items-start justify-between gap-3 border-b border-mw-line pb-3">
           <div>

@@ -14,7 +14,7 @@
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
-  padding: clamp(34px, 5.4vh, 72px) clamp(48px, 6.2vw, 96px);
+  padding: var(--sp-6);
   color: var(--mw-brand-panel-text);
   background: var(--mw-brand-panel);
 }
@@ -24,9 +24,7 @@
   z-index: -1;
   inset: 0;
   animation: glowBreathe 12s ease-in-out infinite alternate;
-  background:
-    radial-gradient(circle at 92% 5%, color-mix(in srgb, var(--mw-primary) 34%, transparent), transparent 38%),
-    radial-gradient(circle at 8% 100%, color-mix(in srgb, var(--mw-automation) 18%, transparent), transparent 34%);
+  background: none;
 }
 
 .storyLogo {
@@ -45,7 +43,7 @@
 .storyCopy h1 {
   margin: clamp(34px, 6.5vh, 72px) 0 0;
   max-width: 620px;
-  font-size: clamp(46px, 4.7vw, 66px);
+  font-size: 32px;
   font-weight: 760;
   line-height: 1.04;
   letter-spacing: -0.055em;
@@ -125,9 +123,9 @@
   gap: 11px;
   padding: 13px 15px;
   border: 1px solid color-mix(in srgb, var(--mw-brand-panel-text) 24%, transparent);
-  border-radius: 17px;
+  border-radius: var(--mw-radius);
   background: color-mix(in srgb, var(--mw-brand-panel-card) 98%, transparent);
-  box-shadow: 0 22px 48px color-mix(in srgb, var(--mw-brand-panel) 58%, transparent);
+  box-shadow: none;
   animation: cardReveal 680ms 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -136,7 +134,7 @@
   z-index: -1;
   inset: -5px;
   border: 1px solid color-mix(in srgb, var(--mw-primary) 24%, transparent);
-  border-radius: 21px;
+  border-radius: var(--mw-radius);
   content: "";
   animation: coreBreathe 5.6s 1.2s ease-in-out infinite;
   pointer-events: none;
@@ -148,7 +146,7 @@
   height: 38px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 12px;
+  border-radius: var(--mw-radius);
   background: color-mix(in srgb, var(--mw-primary) 16%, transparent);
 }
 
@@ -178,9 +176,9 @@
   width: clamp(164px, 14.5vw, 202px);
   padding: 14px;
   border: 1px solid color-mix(in srgb, var(--mw-brand-panel-text) 18%, transparent);
-  border-radius: 18px;
+  border-radius: var(--mw-radius);
   background: color-mix(in srgb, var(--mw-brand-panel-card) 96%, transparent);
-  box-shadow: 0 20px 48px color-mix(in srgb, var(--mw-brand-panel) 60%, transparent);
+  box-shadow: none;
   transition:
     translate 260ms ease,
     border-color 260ms ease,
@@ -272,7 +270,7 @@
   margin: 0 auto;
   flex-direction: column;
   justify-content: center;
-  padding: clamp(34px, 6vh, 64px) clamp(36px, 4.2vw, 58px);
+  padding: var(--sp-6);
 }
 
 .miniCopy {
@@ -289,13 +287,13 @@
   width: 38px;
   height: 38px;
   place-items: center;
-  border-radius: 12px;
+  border-radius: var(--mw-radius);
   background: var(--mw-tint-blue);
 }
 
 .loginHeading h2 {
   margin: clamp(24px, 4.2vh, 34px) 0 0;
-  font-size: clamp(28px, 2.3vw, 34px);
+  font-size: 22px;
   font-weight: 760;
   line-height: 1.18;
   letter-spacing: -0.045em;
@@ -317,7 +315,7 @@
   margin: 22px 0 0;
   padding: 12px 14px;
   border: 1px solid color-mix(in srgb, var(--mw-error) 28%, var(--mw-line));
-  border-radius: 13px;
+  border-radius: var(--mw-radius);
   color: var(--mw-error);
   background: color-mix(in srgb, var(--mw-error) 8%, var(--mw-card));
   font-size: 13px;
@@ -338,9 +336,9 @@
 
 @media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
   .moduleCard:hover {
-    translate: 0 -3px;
+    translate: none;
     border-color: color-mix(in srgb, var(--module-tone) 36%, var(--mw-brand-panel-line));
-    box-shadow: 0 24px 54px color-mix(in srgb, var(--mw-brand-panel) 54%, transparent);
+    box-shadow: none;
   }
 }
 
@@ -412,7 +410,7 @@
   gap: 12px;
   padding: 10px 13px;
   border: 1px solid var(--mw-line);
-  border-radius: 12px;
+  border-radius: var(--mw-radius);
   color: var(--mw-fg);
   background: var(--mw-card);
   cursor: pointer;
@@ -445,26 +443,26 @@
   .loginStack {
     width: min(100%, 520px);
     min-height: 100svh;
-    padding: 48px 32px;
+    padding: var(--sp-6);
   }
 
   .story {
     min-height: 560px;
-    padding: 48px 36px;
+    padding: var(--sp-6);
   }
 
   .storyCopy h1 {
-    margin-top: 56px;
-    font-size: clamp(44px, 8vw, 64px);
+    margin-top: var(--sp-6);
+    font-size: 32px;
   }
 
   .workspaceVisual { min-height: 250px; }
 }
 
 @media (max-width: 620px) {
-  .loginStack { padding: 38px 24px; }
-  .story { min-height: 520px; padding: 38px 24px; }
-  .storyCopy h1 { margin-top: 48px; font-size: 43px; }
+  .loginStack { padding: var(--sp-6); }
+  .story { min-height: 520px; padding: var(--sp-6); }
+  .storyCopy h1 { margin-top: var(--sp-6); font-size: 30px; }
   .desktopBreak { display: none; }
   .workspaceVisual {
     min-height: 220px;
@@ -484,7 +482,7 @@
 
 @media (min-width: 981px) and (max-height: 760px) {
   .story { padding-top: 30px; padding-bottom: 30px; }
-  .storyCopy h1 { margin-top: 30px; font-size: clamp(44px, 4.4vw, 62px); }
+  .storyCopy h1 { margin-top: 30px; font-size: 30px; }
   .workspaceVisual { min-height: 180px; margin-top: 18px; }
   .moduleCard { padding: 12px; }
   .loginStack { padding-top: 30px; padding-bottom: 30px; }

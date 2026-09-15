@@ -12,7 +12,7 @@ import { toTree, type OrgChart } from "@/lib/org/departments";
  *   · 조직도 시각화(가로 트리)·알림 규칙 pane 도 다음이다.
  *   화면에 그 사실을 적어 둔다 — 없는 것을 «곧 나온다» 고 말하지 않고 «아직 없다» 고 말한다.
  */
-const CARD = "rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950";
+const CARD = "rounded-md border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950";
 
 export function DepartmentTree({ chart }: { chart: OrgChart }): ReactElement {
   if (chart.kind === "error") {

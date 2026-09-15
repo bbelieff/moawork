@@ -141,9 +141,9 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
         </>
       )}
 
-      {summary.kind === "unavailable" ? <section role="alert" className="rounded-2xl border border-red-200 p-4 text-sm text-red-700 dark:border-red-900 dark:text-red-300">회사 구성원 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</section> : null}
-      {summary.kind === "error" ? <section role="alert" className="rounded-2xl border border-zinc-200 p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-300">회사 구성원 정보를 불러오지 못했어요. 잠시 뒤 다시 확인해 주세요.</section> : null}
-      {summary.kind === "owner_integrity_error" ? <section role="alert" className="rounded-2xl border border-red-200 p-4 text-sm text-red-700 dark:border-red-900 dark:text-red-300">보호된 대표 정보를 안전하게 확인하지 못했어요. 이 화면에서는 어떤 권한도 바꿀 수 없어요.</section> : null}
+      {summary.kind === "unavailable" ? <section role="alert" className="rounded-md border border-red-200 p-4 text-sm text-red-700 dark:border-red-900 dark:text-red-300">회사 구성원 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</section> : null}
+      {summary.kind === "error" ? <section role="alert" className="rounded-md border border-zinc-200 p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-300">회사 구성원 정보를 불러오지 못했어요. 잠시 뒤 다시 확인해 주세요.</section> : null}
+      {summary.kind === "owner_integrity_error" ? <section role="alert" className="rounded-md border border-red-200 p-4 text-sm text-red-700 dark:border-red-900 dark:text-red-300">보호된 대표 정보를 안전하게 확인하지 못했어요. 이 화면에서는 어떤 권한도 바꿀 수 없어요.</section> : null}
     </div>
   );
 }

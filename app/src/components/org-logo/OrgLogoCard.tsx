@@ -87,7 +87,7 @@ export function OrgLogoCard({ orgName, logo, canManage }: OrgLogoCardProps) {
     <section
       aria-labelledby="org-logo-title"
       data-org-logo-card
-      className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-zinc-200 px-4 py-3 dark:border-zinc-800"
+      className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border border-zinc-200 px-4 py-3 dark:border-zinc-800"
     >
       <WorkspaceMark name={orgName} signedImageUrl={signedImageUrl} size={40} decorative={false} />
 

@@ -156,7 +156,7 @@ export function ContractWorkIntakeForm({
         className={inputClassName}
       />
 
-      <ul className="max-h-72 overflow-y-auto rounded-xl border border-zinc-200 dark:border-zinc-800" aria-busy={pending}>
+      <ul className="max-h-72 overflow-y-auto rounded-md border border-zinc-200 dark:border-zinc-800" aria-busy={pending}>
         {loadError ? (
           <li role="alert" className="px-3 py-6 text-center text-sm text-[var(--mw-error)]">
             {loadError}

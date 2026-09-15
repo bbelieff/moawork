@@ -62,7 +62,6 @@ export default async function AccountPage({
     <div className={styles.page}>
       <header className={styles.heading}>
         <h1>내 계정과 팀</h1>
-        <p>내 정보와 지금 함께 일하는 회사를 확인해요.</p>
       </header>
 
       {error === "signout" ? (

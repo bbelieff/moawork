@@ -82,7 +82,7 @@ export default async function PresetsPage({
       </nav>
 
       {view === "structure" ? <>
-      <section className="rounded-xl border border-mw-line bg-mw-card p-4" aria-labelledby="tabs-heading">
+      <section className="rounded-md border border-mw-line bg-mw-card p-4" aria-labelledby="tabs-heading">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 id="tabs-heading" className="font-semibold text-mw-fg">우리 회사 탭</h2>
@@ -132,7 +132,7 @@ export default async function PresetsPage({
         )}
       </section>
 
-      <section className="rounded-xl border border-mw-line bg-mw-card p-4" aria-labelledby="presets-heading">
+      <section className="rounded-md border border-mw-line bg-mw-card p-4" aria-labelledby="presets-heading">
         <h2 id="presets-heading" className="font-semibold text-mw-fg">아이템 프리셋 · 구조 묶음</h2>
         <p className="text-sm text-mw-sub">한 탭의 아이템(그룹)과 컬럼 구조를 저장하고 다른 탭에 재사용합니다. 별도의 ‘설치’ 단계는 없습니다.</p>
 
@@ -176,7 +176,7 @@ export default async function PresetsPage({
         )}
       </section>
       </> : (
-        <section id="documents" className="rounded-xl border border-mw-line bg-mw-card p-4" aria-labelledby="documents-heading">
+        <section id="documents" className="rounded-md border border-mw-line bg-mw-card p-4" aria-labelledby="documents-heading">
           <h2 id="documents-heading" className="font-semibold text-mw-fg">상품별 기본 서류</h2>
           <p className="mt-1 text-sm text-mw-sub">진행 상품을 고르거나 직접 입력해 회사 공용 체크리스트를 관리합니다.</p>
           {checklistService && selectedProduct ? <>

@@ -37,7 +37,7 @@ export type PermissionMatrixProps = {
   revalidatePath?: string;
 };
 
-const CARD = "rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950";
+const CARD = "rounded-md border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950";
 
 function AccessDenied({ children }: { children: ReactNode }): ReactElement {
   return <section role="alert" className={`${CARD} p-4`}>{children}</section>;

@@ -63,7 +63,7 @@ export function NotificationPanel({
     <div
       role="dialog"
       aria-label="알림"
-      className={`mw-layer-shell-popover absolute right-0 mt-2 flex ${PANEL_HEIGHT_CLASS} ${PANEL_WIDTH_CLASS} flex-col overflow-hidden rounded-2xl border shadow-lg`}
+      className={`mw-layer-shell-popover absolute right-0 mt-2 flex ${PANEL_HEIGHT_CLASS} ${PANEL_WIDTH_CLASS} flex-col overflow-hidden rounded-md border shadow-lg`}
       style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}
     >
       <div className="flex shrink-0 border-b" style={{ borderColor: "var(--mw-line)" }}>

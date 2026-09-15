@@ -35,7 +35,7 @@ export function CompanyPickerPanel({
   const trimmed = query.trim();
 
   return (
-    <div className="flex w-full max-w-md flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="flex w-full max-w-md flex-col gap-3 rounded-md border border-zinc-200 bg-white p-4 shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
       <div>
         <p className="font-semibold">업체 추가</p>
         <p className="text-xs text-zinc-500">회사명을 먼저 찾습니다</p>

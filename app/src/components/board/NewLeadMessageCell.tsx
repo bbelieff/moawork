@@ -125,7 +125,7 @@ export function NewLeadMessageCell({ row }: { row: ItemWithValues }) {
             role="menu"
             aria-label="메시지 보내기"
             style={{ left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight }}
-            className="fixed flex flex-col overflow-hidden rounded-xl border border-mw-line bg-mw-card text-mw-fg shadow-xl"
+            className="fixed flex flex-col overflow-hidden rounded-md border border-mw-line bg-mw-card text-mw-fg shadow-xl"
           >
             <div className="border-b border-mw-line px-3 py-2.5">
               <p className="text-sm font-semibold">메시지 보내기</p>
@@ -180,7 +180,7 @@ export function NewLeadMessageCell({ row }: { row: ItemWithValues }) {
 
       {confirmOpen ? (
         <BoardModalLayer label="메시지 발송 확인" onClose={() => setConfirmOpen(false)}>
-          <section className="w-[min(30rem,calc(100vw-1.5rem))] rounded-2xl border border-mw-line bg-mw-card p-5 shadow-2xl">
+          <section className="w-[min(30rem,calc(100vw-1.5rem))] rounded-md border border-mw-line bg-mw-card p-5 shadow-lg">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold text-mw-record">{template.label}</p>
@@ -189,7 +189,7 @@ export function NewLeadMessageCell({ row }: { row: ItemWithValues }) {
               </div>
               <button type="button" aria-label="발송 확인 닫기" onClick={() => setConfirmOpen(false)} className="rounded-md p-2 text-mw-sub hover:bg-mw-bg">✕</button>
             </div>
-            <div className="mt-4 rounded-xl border border-mw-line bg-mw-bg p-4 text-sm leading-6 text-mw-body">{template.body}</div>
+            <div className="mt-4 rounded-md border border-mw-line bg-mw-bg p-4 text-sm leading-6 text-mw-body">{template.body}</div>
             {!ready ? (
               <p role="status" className="mt-3 rounded-lg bg-mw-tint-blue px-3 py-2 text-xs leading-5 text-mw-body">
                 실제 발송 전 솔라피 API와 승인 템플릿을 자동화 설정에서 연결해야 합니다. 연결 전에는 고객에게 전송되지 않습니다.

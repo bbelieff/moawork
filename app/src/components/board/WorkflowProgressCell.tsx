@@ -83,7 +83,7 @@ export function WorkflowProgressCell({
       <dialog
         ref={dialog}
         aria-labelledby={`${descriptionId}-title`}
-        className="fixed inset-0 m-auto max-h-[calc(100vh-2rem)] w-[min(34rem,calc(100vw-2rem))] overflow-y-auto whitespace-normal rounded-2xl border border-mw-line bg-mw-card p-0 text-mw-fg shadow-2xl backdrop:bg-slate-950/50 backdrop:backdrop-blur-[1px]"
+        className="fixed inset-0 m-auto max-h-[calc(100vh-2rem)] w-[min(34rem,calc(100vw-2rem))] overflow-y-auto whitespace-normal rounded-md border border-mw-line bg-mw-card p-0 text-mw-fg shadow-lg backdrop:bg-slate-950/50 backdrop:backdrop-blur-[1px]"
         onClose={() => setDialogOpen(false)}
         onClick={(event) => {
           if (event.target === event.currentTarget) event.currentTarget.close();
@@ -99,7 +99,7 @@ export function WorkflowProgressCell({
           <button type="button" aria-label="닫기" onClick={() => dialog.current?.close()} className="h-8 w-8 rounded-full border border-mw-line text-mw-sub hover:bg-mw-bg">×</button>
         </div>
         <div className="px-5 py-4">
-          <p className="rounded-xl bg-mw-tint-blue px-3 py-2 text-sm leading-6 text-mw-body">
+          <p className="rounded-md bg-mw-tint-blue px-3 py-2 text-sm leading-6 text-mw-body">
             보드 안 단계 변경과 달리 이 선택은 실제 업무 탭을 넘깁니다.
             {spec.guardLabel ? ` «${spec.guardLabel}» 조건을 확인한 뒤 이동합니다.` : " 이동 전 마지막으로 확인해 주세요."}
           </p>

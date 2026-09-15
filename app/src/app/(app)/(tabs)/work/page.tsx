@@ -34,7 +34,7 @@ export default async function ContractWorkBoardPage({
     const conflict = result.kind === "conflict";
     const permission = result.kind === "permission";
     return (
-      <section className="rounded-xl border border-mw-line bg-mw-card p-5" aria-labelledby="work-entry-title">
+      <section className="rounded-md border border-mw-line bg-mw-card p-5" aria-labelledby="work-entry-title">
         <h1 id="work-entry-title" className="text-lg font-semibold text-mw-fg">
           {conflict
             ? "계약업체 실무 보드를 하나로 확인하지 못했습니다"

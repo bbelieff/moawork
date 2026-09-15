@@ -18,7 +18,7 @@ describe("AccountMenu developer-mode entry", () => {
     const html = renderToStaticMarkup(<AccountMenu {...props} serverConfirmedCanAccessPlatform platformModeAction={{ mode: "platform", next: "/platform" }} />);
     expect(html).toContain("관리자 모드로");
     expect(html).toContain('action="/mode/preference"');
-    expect(html).toContain("사용자 모드");
+    expect(html).not.toContain("사용자 모드");
     expect(html).toContain("member@example.invalid");
   });
 });

@@ -174,7 +174,7 @@ export default async function BoardPage({
   //   그래서 저장된 보기로 들어온 경우에는 화면을 열지 않는다 — 모르면 닫는다(BBE-207 D24 와 같은 판단).
   if (!client && sp.savedView) {
     return (
-      <section className="rounded-xl border border-mw-line bg-mw-card p-5" role="status" aria-labelledby="saved-view-unavailable">
+      <section className="rounded-md border border-mw-line bg-mw-card p-5" role="status" aria-labelledby="saved-view-unavailable">
         <h1 id="saved-view-unavailable" className="text-lg font-semibold text-mw-fg">
           저장된 보기는 연결된 워크스페이스가 필요합니다
         </h1>
@@ -324,12 +324,12 @@ export default async function BoardPage({
 
   /** 실무 목적별 보드 설정 — 기록 항목/업무 양식/그룹 순서/위험 구역. */
   const boardSettings = !board.is_system && (canManageColumns || canManageSections || canDeleteBoard) && (
-    <details id="board-settings" className="rounded-xl border border-mw-line bg-mw-card">
+    <details id="board-settings" className="rounded-md border border-mw-line bg-mw-card">
       <summary className="cursor-pointer select-none px-3 py-2 text-xs text-mw-sub list-none [&::-webkit-details-marker]:hidden">
         ⚙ 보드 설정
       </summary>
       <div className="flex flex-col gap-3 border-t border-mw-line p-3">
-        {workflowHelp ? <section className="rounded-xl border border-mw-primary/30 bg-mw-tint-blue p-3" aria-labelledby="workflow-settings-heading">
+        {workflowHelp ? <section className="rounded-md border border-mw-primary/30 bg-mw-tint-blue p-3" aria-labelledby="workflow-settings-heading">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <h2 id="workflow-settings-heading" className="font-semibold text-mw-fg">업무 흐름 · {workflowHelp.title}</h2>
@@ -341,12 +341,12 @@ export default async function BoardPage({
           </div>
           <p className="mt-2 text-[0.68rem] text-mw-sub">이 관문은 가로로 스크롤해도 오른쪽에 남습니다. 항목을 삭제하거나 새 컬럼을 만드는 기능과는 별개입니다.</p>
         </section> : null}
-        {canManageColumns && <section className="rounded-xl border border-mw-line p-3" aria-labelledby="record-fields-heading">
+        {canManageColumns && <section className="rounded-md border border-mw-line p-3" aria-labelledby="record-fields-heading">
           <h2 id="record-fields-heading" className="font-semibold text-mw-fg">기록 항목(컬럼)</h2>
           <p className="mb-3 text-xs text-mw-sub">이 보드가 기록하는 정보입니다. 추가하고, 각 머리말 메뉴에서 이름·타입·선택지·순서·숨김을 바꾸며 숨긴 항목은 여기서 복구합니다.</p>
           <ColumnEditor boardId={id} columns={columns} />
         </section>}
-        {(canManageColumns || canEditPresets) && <section id="board-work-forms" className="rounded-xl border border-mw-line p-3" aria-labelledby="work-form-heading">
+        {(canManageColumns || canEditPresets) && <section id="board-work-forms" className="rounded-md border border-mw-line p-3" aria-labelledby="work-form-heading">
           <h2 id="work-form-heading" className="font-semibold text-mw-fg">업무 양식</h2>
           <p className="mb-3 text-xs text-mw-sub">각 업무 단계의 현재 기록 항목 묶음을 저장해 회사에서 재사용합니다. 적용 전 추가·유지 항목과 값 보존을 미리 확인합니다.</p>
           <div className="flex flex-wrap gap-2">
@@ -359,7 +359,7 @@ export default async function BoardPage({
           </div>
         </section>}
 
-        {canManageSections && <section className="rounded-xl border border-mw-line p-3" aria-labelledby="group-order-heading">
+        {canManageSections && <section className="rounded-md border border-mw-line p-3" aria-labelledby="group-order-heading">
           <h2 id="group-order-heading" className="font-semibold text-mw-fg">그룹 순서</h2>
           <p className="mb-3 text-xs text-mw-sub">그룹은 상담·업무 단계입니다. 표의 그룹 머리말을 끌거나 ↑↓ 버튼으로 옮기면 즉시 회사 보드에 저장됩니다.</p>
           <form action={addGroupAction} className="flex flex-wrap items-end gap-2">
@@ -382,7 +382,7 @@ export default async function BoardPage({
           </form>
         </section>}
 
-        {canDeleteBoard && <section className="rounded-xl border border-mw-error/40 p-3" aria-labelledby="danger-heading">
+        {canDeleteBoard && <section className="rounded-md border border-mw-error/40 p-3" aria-labelledby="danger-heading">
           <h2 id="danger-heading" className="font-semibold text-mw-error">위험 구역</h2>
           <p className="mb-2 text-xs text-mw-sub">보드 전체를 삭제합니다. 기록 항목 숨김이나 그룹 순서 변경과는 별개입니다.</p>
           <form action={deleteBoardAction}>

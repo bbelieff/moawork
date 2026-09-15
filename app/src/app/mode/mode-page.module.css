@@ -2,21 +2,18 @@
   display: grid;
   min-height: 100svh;
   place-items: center;
-  padding: clamp(24px, 5vw, 64px);
+  padding: var(--sp-6);
   color: var(--mw-fg);
-  background:
-    radial-gradient(circle at 15% 10%, color-mix(in srgb, var(--mw-record) 10%, transparent), transparent 34%),
-    radial-gradient(circle at 90% 85%, color-mix(in srgb, var(--mw-primary) 12%, transparent), transparent 38%),
-    var(--mw-bg);
+  background: var(--mw-bg);
 }
 
 .panel {
   width: min(100%, 860px);
-  padding: clamp(24px, 4vw, 46px);
+  padding: var(--sp-6);
   border: 1px solid var(--mw-line);
-  border-radius: calc(var(--mw-radius) + 10px);
+  border-radius: var(--mw-radius);
   background: var(--mw-card);
-  box-shadow: 0 28px 80px color-mix(in srgb, var(--mw-fg) 12%, transparent);
+  box-shadow: none;
 }
 
 .header {
@@ -40,7 +37,7 @@
 }
 
 .intro {
-  margin-top: clamp(36px, 6vw, 64px);
+  margin-top: var(--sp-6);
 }
 
 .eyebrow {
@@ -53,7 +50,7 @@
 
 .intro h1 {
   margin: 0;
-  font-size: clamp(30px, 5vw, 46px);
+  font-size: 22px;
   line-height: 1.12;
   letter-spacing: -0.05em;
 }
@@ -81,7 +78,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
-  margin-top: 32px;
+  margin-top: var(--sp-4);
 }
 
 .choiceForm {
@@ -91,13 +88,13 @@
 .choice {
   display: grid;
   width: 100%;
-  min-height: 174px;
+  min-height: 110px;
   grid-template-columns: 46px minmax(0, 1fr) auto;
   align-items: start;
   gap: 14px;
-  padding: 22px;
+  padding: var(--sp-4);
   border: 1px solid var(--mw-line);
-  border-radius: calc(var(--mw-radius) + 3px);
+  border-radius: var(--mw-radius);
   color: var(--mw-fg);
   background: var(--mw-card);
   font: inherit;
@@ -107,13 +104,13 @@
 }
 
 .choice:hover {
-  translate: 0 -2px;
-  box-shadow: 0 16px 34px color-mix(in srgb, var(--mw-fg) 9%, transparent);
+  translate: none;
+  box-shadow: none;
 }
 
 .choice:focus-visible {
-  outline: 3px solid var(--mw-primary);
-  outline-offset: 3px;
+  outline: 2px solid var(--mw-primary);
+  outline-offset: 2px;
 }
 
 .platformChoice {
@@ -130,7 +127,7 @@
   width: 46px;
   height: 46px;
   place-items: center;
-  border-radius: 14px;
+  border-radius: var(--mw-radius);
   color: var(--mw-on-accent);
   background: var(--mw-primary);
   font-weight: 850;
@@ -186,12 +183,12 @@
   }
 
   .panel {
-    padding: 22px 18px;
-    border-radius: calc(var(--mw-radius) + 4px);
+    padding: var(--sp-4) 18px;
+    border-radius: var(--mw-radius);
   }
 
   .intro {
-    margin-top: 40px;
+    margin-top: var(--sp-6);
   }
 
   .choices {
@@ -199,7 +196,7 @@
   }
 
   .choice {
-    min-height: 150px;
+    min-height: 100px;
     padding: 18px;
   }
 }

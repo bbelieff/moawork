@@ -52,7 +52,7 @@ function DeptCard({
   return (
     <div
       data-department-id={node.id}
-      className="w-44 shrink-0 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
+      className="w-44 shrink-0 rounded-md border border-zinc-200 bg-white px-3 py-2 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
     >
       <div className="truncate text-sm font-semibold">{node.name}</div>
       {headName ? (
@@ -134,7 +134,7 @@ export function OrgChartFlow({ model }: { model: OrgViewModel }): ReactElement {
 
   if (roots.length === 0) {
     return (
-      <div className="rounded-2xl border border-zinc-200 p-8 text-center dark:border-zinc-800">
+      <div className="rounded-md border border-zinc-200 p-8 text-center dark:border-zinc-800">
         <p className="font-medium">아직 부서가 없어요</p>
         <p className="mt-1 text-sm text-zinc-500">
           부서를 만들면 여기에 누가 누구 밑인지 그림으로 보여요. 「목록」 갈래에서 부서를 먼저 만들어 주세요.
@@ -146,7 +146,7 @@ export function OrgChartFlow({ model }: { model: OrgViewModel }): ReactElement {
   return (
     <div className="flex flex-col gap-4">
       {/* 조직도는 원래 옆으로 넓다 — 몸통 대신 이 상자만 밀리게 한다(375px). */}
-      <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-zinc-50/60 p-5 dark:border-zinc-800 dark:bg-zinc-900/40">
+      <div className="overflow-x-auto rounded-md border border-zinc-200 bg-zinc-50/60 p-5 dark:border-zinc-800 dark:bg-zinc-900/40">
         <div className="flex min-w-max items-start gap-6">
           {roots.map((root) => (
             <Branch
@@ -162,7 +162,7 @@ export function OrgChartFlow({ model }: { model: OrgViewModel }): ReactElement {
       </div>
 
       {unassigned.length > 0 ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900 dark:bg-amber-950/20">
+        <div className="rounded-md border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900 dark:bg-amber-950/20">
           <b className="text-sm font-semibold">미배정 {unassigned.length}명</b>
           {/*
             ★ 전에는 「어느 부서에도 없어 보고가 대표에게 갑니다」라고 썼는데,

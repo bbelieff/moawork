@@ -14,7 +14,7 @@ export function BoardTrashPanel({
   const groupNames = new Map(groups.map((group) => [group.id, group.name]));
 
   return (
-    <details className="rounded-xl border border-mw-line bg-mw-card">
+    <details className="rounded-md border border-mw-line bg-mw-card">
       <summary className="cursor-pointer list-none px-3 py-2 text-xs text-mw-sub [&::-webkit-details-marker]:hidden">
         휴지통 <span className="font-semibold text-mw-body">{items.length}</span>
       </summary>
