@@ -245,3 +245,33 @@
   .compactHub { padding: var(--sp-4); }
   .page[data-entry-view="pending"] .chat { padding: 0; }
 }
+
+.chooserHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-width: 0;
+  margin-bottom: var(--sp-4);
+}
+.chooserHeader .chooserTitle { margin: 0; }
+.chooserAdd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: var(--sp-2);
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--mw-line);
+  border-radius: 8px;
+  background: var(--mw-card);
+  color: var(--mw-fg);
+  font-size: var(--fs-13);
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.chooserAdd:hover { border-color: var(--mw-primary); background: var(--mw-bg); }
+.chooserAdd:focus-visible { outline: 2px solid var(--mw-primary); outline-offset: 2px; }
