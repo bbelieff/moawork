@@ -71,9 +71,6 @@ export default async function DashboardPage({
 
       <header className="flex flex-wrap items-baseline justify-between gap-[var(--sp-2)]">
         <h1 className="text-[length:var(--fs-18)] font-semibold text-[var(--mw-t-1)]">오늘</h1>
-        <span className="text-[length:var(--fs-12)] text-[var(--mw-t-3)]">
-          {today.kind === "ready" ? `${today.snapshot.period.today} (KST)` : "KST"}
-        </span>
       </header>
 
       <FeatureGateServer orgId={ctx.org.id} feature={FEATURES.dash} label="대시보드">

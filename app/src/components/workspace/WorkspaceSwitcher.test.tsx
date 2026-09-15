@@ -59,9 +59,9 @@ describe("WorkspaceSwitcher", () => {
     const html = render();
     expect(html).toContain('data-destination="/workspace-entry?mode=new"');
     expect(html).toContain('data-destination="/workspace-entry?mode=join"');
-    expect(html).toContain("활성 회사만 선택할 수 있어요.");
-    expect(html).toContain("새 워크스페이스를 시작해요");
-    expect(html).toContain("초대 정보로 안전하게 찾아요");
+    expect(html).not.toContain("활성 회사만 선택할 수 있어요.");
+    expect(html).not.toContain("새 워크스페이스를 시작해요");
+    expect(html).not.toContain("초대 정보로 안전하게 찾아요");
     expect(html).not.toContain("intent=create");
     expect(html).not.toContain("intent=join");
   });
