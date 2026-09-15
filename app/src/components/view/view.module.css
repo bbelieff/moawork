@@ -1,21 +1,21 @@
 .tabs{display:flex;gap:2px;max-width:100%;overflow-x:auto;overflow-y:hidden;border-bottom:1px solid var(--mw-line);scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
-.tabs button{display:flex;flex:none;align-items:center;gap:6px;min-height:38px;border:0;border-bottom:3px solid transparent;background:transparent;padding:7px 12px;color:var(--mw-sub,#676879);font-weight:600;white-space:nowrap}
+.tabs button{display:flex;flex:none;align-items:center;gap:6px;min-height:38px;border:0;border-bottom:3px solid transparent;background:transparent;padding:7px 12px;color:var(--mw-sub);font-weight:600;white-space:nowrap}
 .tabs button:hover{background:var(--mw-tint-blue);color:var(--mw-fg)}
 .tabs button[aria-current=page]{border-bottom-color:var(--mw-primary);color:var(--mw-record)}
 
 .picker{position:relative;display:inline-block}
-.picker>summary{list-style:none;display:flex;align-items:center;gap:6px;min-height:38px;border:1px solid var(--mw-line,#d0d4e4);border-radius:8px;background:var(--mw-card,#fff);padding:7px 12px;cursor:pointer}
+.picker>summary{list-style:none;display:flex;align-items:center;gap:6px;min-height:38px;border:1px solid var(--mw-line);border-radius:8px;background:var(--mw-card,#fff);padding:7px 12px;cursor:pointer}
 .picker>summary::-webkit-details-marker{display:none}
-.picker[open]>summary{border-color:#6161ff}
-.pickerLabel{color:var(--mw-sub,#676879);font-size:12px}
-.pickerMenu{position:absolute;top:calc(100% + 4px);left:0;z-index:var(--mw-layer-page-popover);min-width:260px;border:1px solid var(--mw-line);border-radius:10px;background:var(--mw-card);color:var(--mw-fg);box-shadow:0 8px 24px color-mix(in srgb,var(--mw-fg) 14%,transparent);padding:6px}
-.pickerGroup{padding:6px 8px 2px;font-size:11px;font-weight:700;color:var(--mw-sub,#676879)}
+.picker[open]>summary{border-color:var(--mw-primary)}
+.pickerLabel{color:var(--mw-sub);font-size:12px}
+.pickerMenu{position:absolute;top:calc(100% + 4px);left:0;z-index:var(--mw-layer-page-popover);min-width:260px;border:1px solid var(--mw-line);border-radius:var(--mw-radius);background:var(--mw-card);color:var(--mw-fg);box-shadow:0 8px 24px color-mix(in srgb,var(--mw-fg) 14%,transparent);padding:6px}
+.pickerGroup{padding:6px 8px 2px;font-size:11px;font-weight:700;color:var(--mw-sub)}
 .pickerItem{display:flex;width:100%;align-items:center;gap:8px;border:0;background:transparent;border-radius:6px;padding:7px 8px;text-align:left}
 .pickerItem:hover{background:var(--mw-tint-blue)}
 .pickerItem[aria-current=true]{background:var(--mw-tint-blue)}
 .pickerBadge{font-size:11px;border-radius:999px;padding:1px 7px;background:var(--mw-tint-blue);color:var(--mw-record)}
-.pickerHint{display:block;font-size:11px;color:var(--mw-sub,#676879)}
+.pickerHint{display:block;font-size:11px;color:var(--mw-sub)}
 .pickerNew{width:100%;border:0;border-top:1px solid var(--mw-line);margin-top:4px;padding:9px 8px;text-align:left;color:var(--mw-record);font-weight:600}
 
 .hiddenNotice{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#8a5a00;background:#fff6e5;border-radius:999px;padding:2px 9px}
@@ -23,29 +23,29 @@
 .dialog{display:flex;flex-direction:column;gap:12px;min-width:320px;padding:4px}
 .dialog h3{font-size:15px;font-weight:700}
 .field{display:flex;flex-direction:column;gap:5px}
-.field label{font-size:12px;color:var(--mw-sub,#676879)}
+.field label{font-size:12px;color:var(--mw-sub)}
 .field input[type=text]{min-height:38px;border:1px solid var(--mw-line);border-radius:8px;background:var(--mw-card);color:var(--mw-fg);padding:7px 10px}
 .radioRow{display:flex;gap:6px;flex-wrap:wrap}
-.radioRow label{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--mw-line,#d0d4e4);border-radius:999px;padding:5px 11px;font-size:12.5px}
+.radioRow label{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--mw-line);border-radius:999px;padding:5px 11px;font-size:12.5px}
 .radioRow input{margin:0}
 .dialogActions{display:flex;justify-content:flex-end;gap:8px}
 .dialogActions button{min-height:38px;border:1px solid var(--mw-line);border-radius:8px;background:var(--mw-card);color:var(--mw-fg);padding:7px 14px}
 .dialogActions .primary{border-color:var(--mw-primary);background:var(--mw-primary);color:var(--mw-on-accent)}
 
-.tableWrap{overflow:auto;border:1px solid var(--mw-line);border-radius:10px;scrollbar-color:color-mix(in srgb,var(--mw-sub) 72%,var(--mw-card)) var(--mw-card);scrollbar-width:thin}
+.tableWrap{overflow:auto;border:1px solid var(--mw-line);border-radius:var(--mw-radius);scrollbar-color:color-mix(in srgb,var(--mw-sub) 72%,var(--mw-card)) var(--mw-card);scrollbar-width:thin}
 .tableWrap table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}
 .tableWrap th,.tableWrap td{border-right:1px solid var(--mw-line);border-bottom:1px solid var(--mw-line);padding:7px;text-align:left;background:var(--mw-card);color:var(--mw-body)}
 .tableWrap thead th{position:sticky;top:0;background:var(--mw-bg);color:var(--mw-sub);z-index:1}
 .singleCell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:20rem}
 .wrapCell{white-space:normal;overflow-wrap:anywhere}
 .tableWrap [data-view-focus="true"]{background:var(--mw-tint-blue,#eef0ff)}
-.tableEmpty{text-align:center;border:1px dashed #c3c6d4;border-radius:12px;padding:36px 20px;color:var(--mw-sub,#676879)}
+.tableEmpty{text-align:center;border:1px dashed var(--mw-line);border-radius:var(--mw-radius);padding:24px 16px;color:var(--mw-sub)}
 
-.calGrid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--mw-line);border-radius:10px;overflow:hidden}
+.calGrid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--mw-line);border-radius:var(--mw-radius);overflow:hidden}
 .calHead{background:var(--mw-bg);padding:6px;text-align:center;font-size:11px;font-weight:700;color:var(--mw-sub);border-bottom:1px solid var(--mw-line)}
 .calCell{min-height:74px;padding:5px;border-right:1px solid var(--mw-line);border-bottom:1px solid var(--mw-line)}
 .calCell.out{background:var(--mw-bg)}
-.calDay{font-size:11px;color:var(--mw-sub,#676879);margin-bottom:3px}
+.calDay{font-size:11px;color:var(--mw-sub);margin-bottom:3px}
 
 @media(max-width:720px){
   .pickerMenu{left:auto;right:0;min-width:230px}

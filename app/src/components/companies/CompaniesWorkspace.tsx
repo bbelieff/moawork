@@ -23,7 +23,7 @@ function shortDate(value: string | null | undefined): string {
 
 function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="rounded-md border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
       <p className="text-xs text-zinc-500">{label}</p>
       <p className="mt-1 text-lg font-semibold tabular-nums text-zinc-950 dark:text-zinc-50">{value}</p>
       <p className="mt-0.5 h-4 text-[11px] text-zinc-400">{hint ?? ""}</p>
@@ -34,7 +34,7 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
 const chip =
   "inline-flex items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200";
 const chipActive =
-  "inline-flex items-center gap-1 rounded-lg border border-violet-400 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800 dark:border-violet-600 dark:bg-violet-950 dark:text-violet-200";
+  "inline-flex items-center gap-1 rounded-lg border border-mw-primary bg-mw-tint-blue px-3 py-1.5 text-sm font-medium text-mw-primary   ";
 
 function Cell({ children, align }: { children: ReactNode; align: "left" | "right" }) {
   return (
@@ -53,7 +53,7 @@ function DealRow({ row, hidden }: { row: CompanyDealView; hidden: boolean }) {
   return (
     <tr hidden={hidden} className="border-t border-zinc-100 text-sm dark:border-zinc-900">
       <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-3 py-2 dark:bg-zinc-950">
-        <span aria-hidden="true" className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-violet-400" />
+        <span aria-hidden="true" className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-mw-primary" />
         <Link href={`/deals/${deal.id}`} className="underline-offset-4 hover:underline">
           {deal.title}
         </Link>
@@ -115,7 +115,7 @@ function CompanyRow({
           <button type="button" onClick={onToggle} aria-expanded={open} className="flex items-center gap-2">
             <span aria-hidden="true" className={`text-zinc-400 transition ${open ? "rotate-180" : ""}`}>⌄</span>
             <span>{view.company.name}</span>
-            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-800 dark:bg-violet-950 dark:text-violet-200">
+            <span className="rounded-full bg-mw-tint-blue px-2 py-0.5 text-xs font-semibold text-mw-primary  ">
               {dealsUnknown ? "확인 필요" : `자금 ${view.deals.length}건`}
             </span>
           </button>
@@ -227,7 +227,7 @@ export function CompaniesWorkspace({ model, importSlot }: { model: CompaniesView
   if (model.status === "unconfigured") {
     // 오류가 아니라 «아직 연결 안 됨». 빈 회사 목록으로 위장하지 않는다.
     return (
-      <section role="status" className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-800 dark:bg-zinc-900">
+      <section role="status" className="rounded-md border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-800 dark:bg-zinc-900">
         <h1 className="text-xl font-semibold">워크스페이스 데이터에 아직 연결되지 않았습니다</h1>
         <p className="mt-2 text-sm text-zinc-500">회사 목록은 워크스페이스 데이터베이스에서 옵니다. 연결되면 여기에 바로 나옵니다.</p>
       </section>
@@ -236,7 +236,7 @@ export function CompaniesWorkspace({ model, importSlot }: { model: CompaniesView
 
   if (model.status === "error") {
     return (
-      <section role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100">
+      <section role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-6 text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100">
         <h1 className="text-xl font-semibold">회사 정보를 불러오지 못했습니다</h1>
         <p className="mt-2 text-sm">DB 연결을 확인한 뒤 다시 시도해 주세요. 실패를 빈 회사 목록으로 표시하지 않습니다.</p>
       </section>
@@ -269,13 +269,13 @@ export function CompaniesWorkspace({ model, importSlot }: { model: CompaniesView
       </div>
 
       {dealsUnknown ? (
-        <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+        <p role="alert" className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
           업무 목록을 불러오지 못했습니다. 회사 목록은 유지하며 업무 건수를 0건으로 표시하지 않습니다.
         </p>
       ) : null}
 
       {/* 필터 줄 — 목업과 같은 6개, 같은 순서. 네이티브 select 를 쓰지 않는다(집안 규약). */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-200 p-2 dark:border-zinc-800">
+      <div className="flex flex-wrap items-center gap-2 rounded-md border border-zinc-200 p-2 dark:border-zinc-800">
         {/*
           ★ 라벨과 플레이스홀더에 같은 말을 두 번 쓰지 않는다.
             운영 화면에서 눈으로 보니 «회사명 검색   회사명» 으로 겹쳐 보였다 —
@@ -293,7 +293,7 @@ export function CompaniesWorkspace({ model, importSlot }: { model: CompaniesView
 
         <details className="relative">
           <summary className={owner === "전체" ? chip : chipActive}>담당자{owner === "전체" ? "" : ` · ${owner}`}</summary>
-          <div className="mw-layer-page-popover absolute mt-1 min-w-44 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="mw-layer-page-popover absolute mt-1 min-w-44 rounded-md border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
             {owners.map((name) => (
               <button key={name} type="button" onClick={() => setOwner(name)} className="block w-full rounded-lg px-3 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800">
                 {name}
@@ -304,7 +304,7 @@ export function CompaniesWorkspace({ model, importSlot }: { model: CompaniesView
 
         <details className="relative">
           <summary className={status === "전체" ? chip : chipActive}>진행 상태{status === "전체" ? "" : ` · ${status}`}</summary>
-          <div className="mw-layer-page-popover absolute mt-1 min-w-44 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="mw-layer-page-popover absolute mt-1 min-w-44 rounded-md border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
             {statuses.map((name) => (
               <button key={name} type="button" onClick={() => setStatus(name)} className="block w-full rounded-lg px-3 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800">
                 {name}
@@ -327,7 +327,7 @@ export function CompaniesWorkspace({ model, importSlot }: { model: CompaniesView
         </button>
       </div>
 
-      <section className="rounded-2xl border border-zinc-200 dark:border-zinc-800">
+      <section className="rounded-md border border-zinc-200 dark:border-zinc-800">
         <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-2.5 dark:border-zinc-800">
           <h2 className="text-sm font-semibold">업체 · 자금 건</h2>
           <span className="text-xs text-zinc-500">{owner === "전체" ? "전체" : `${owner} 담당분만`}</span>

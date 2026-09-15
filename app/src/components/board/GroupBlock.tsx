@@ -77,7 +77,7 @@ export function GroupBlock({
      * 그래서 머리말은 자기 위쪽 모서리를, 본문 래퍼는 자기 아래쪽 모서리를 각각 둥글린다.
      * 카드 모양은 그대로이고 팝오버만 밖으로 나올 수 있다.
      */
-    <section data-visual-block="group-table" className="min-w-0 max-w-full rounded-xl border border-mw-line bg-mw-card">
+    <section data-visual-block="group-table" className="min-w-0 max-w-full rounded-md border border-mw-line bg-mw-card">
       <details className="min-w-0 max-w-full" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
         <summary
           draggable={Boolean(onOrderDragStart)}

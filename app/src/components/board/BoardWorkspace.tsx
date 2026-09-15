@@ -635,7 +635,7 @@ export function BoardWorkspace({
       <BoardScrollViewport>
       {blocks.length === 0 ? (
         /* 원칙 5 — 화면 전체를 차지하는 빈 상태 금지. 한 줄 + 다음 행동. */
-        <p className="rounded-xl border border-dashed border-mw-line px-3 py-4 text-xs text-mw-sub">
+        <p className="rounded-md border border-dashed border-mw-line px-3 py-4 text-xs text-mw-sub">
           그룹이 없습니다. 아래 «그룹 추가»로 첫 그룹을 만드세요.
         </p>
       ) : (

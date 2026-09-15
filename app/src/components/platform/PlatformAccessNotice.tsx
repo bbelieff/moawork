@@ -17,7 +17,7 @@ export function PlatformAccessNotice({ error }: { error: unknown }) {
   return (
     <section
       role="alert"
-      className="rounded-xl border px-4 py-3"
+      className="rounded-md border px-4 py-3"
       style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}
     >
       <h2 className="font-semibold">{copy.title}</h2>

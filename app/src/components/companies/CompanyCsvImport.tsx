@@ -94,18 +94,18 @@ export function CompanyCsvImport({
       <dialog
         ref={dialogRef}
         onClose={() => { triggerRef.current?.focus(); }}
-        className="w-[min(38rem,92vw)] rounded-2xl border border-zinc-200 bg-white p-0 text-zinc-950 backdrop:bg-black/40 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
+        className="w-[min(38rem,92vw)] rounded-md border border-zinc-200 bg-white p-0 text-zinc-950 backdrop:bg-black/40 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
       >
         <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
           <div>
-            <p className="text-sm font-medium text-violet-700 dark:text-violet-300">고객사</p>
+            <p className="text-sm font-medium text-mw-primary ">고객사</p>
             <h2 className="mt-0.5 text-lg font-semibold">CSV로 가져오기</h2>
           </div>
           <button type="button" aria-label="닫기" onClick={close} className="rounded-lg px-2 py-1 text-xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">×</button>
         </div>
 
         <div className="flex flex-col gap-3 px-5 py-4">
-          <label className="flex cursor-pointer flex-col gap-1 rounded-xl border border-dashed border-zinc-300 px-4 py-5 text-sm dark:border-zinc-700">
+          <label className="flex cursor-pointer flex-col gap-1 rounded-md border border-dashed border-zinc-300 px-4 py-5 text-sm dark:border-zinc-700">
             <span className="font-medium">CSV 파일 선택</span>
             <input type="file" accept=".csv,text/csv" className="text-sm" onChange={(event) => void readFile(event.target.files?.[0])} />
             <span className="text-xs text-zinc-500">{fileName || `최대 1MB · 한 번에 ${IMPORT_ROW_CAP}행까지`}</span>
@@ -114,7 +114,7 @@ export function CompanyCsvImport({
           <p role="status" className="text-sm text-zinc-600 dark:text-zinc-300">{notice}</p>
 
           {preview ? (
-            <div className="rounded-xl border border-zinc-200 p-3 text-sm dark:border-zinc-800">
+            <div className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800">
               <p className="font-medium">{preview.mapped.length}건이 들어갑니다</p>
               {preview.rejected.length > 0 ? (
                 <p className="mt-1 text-amber-700 dark:text-amber-300">{preview.rejected.length}행은 회사명이 없어 제외됩니다.</p>
@@ -131,7 +131,7 @@ export function CompanyCsvImport({
           ) : null}
 
           {result ? (
-            <div role="status" className={`rounded-xl p-3 text-sm ${result.ok ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100" : "bg-rose-50 text-rose-900 dark:bg-rose-950 dark:text-rose-100"}`}>
+            <div role="status" className={`rounded-md p-3 text-sm ${result.ok ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100" : "bg-rose-50 text-rose-900 dark:bg-rose-950 dark:text-rose-100"}`}>
               <p className="font-medium">{result.message}</p>
               {result.rejected.length > 0 ? (
                 <ul className="mt-2 grid gap-1 text-xs">
@@ -150,7 +150,7 @@ export function CompanyCsvImport({
             다시 고르기
           </button>
           <button type="button" onClick={close} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium dark:border-zinc-700">닫기</button>
-          <button type="button" onClick={submit} disabled={busy || rows.length === 0} className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">
+          <button type="button" onClick={submit} disabled={busy || rows.length === 0} className="rounded-lg bg-mw-primary px-3 py-2 text-sm font-semibold text-mw-on-accent disabled:opacity-40">
             {busy ? "가져오는 중…" : "가져오기"}
           </button>
         </div>

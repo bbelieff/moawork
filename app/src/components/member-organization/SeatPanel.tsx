@@ -69,7 +69,7 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
     <section
       aria-label={`${seatName(seat)} 상세`}
       data-seat-panel
-      className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800"
+      className="overflow-hidden rounded-md border border-zinc-200 dark:border-zinc-800"
     >
       {/* ★ 이름표 — 「지금 내가 부분을 보고 있다」를 헷갈리지 않게. */}
       <div
@@ -145,7 +145,7 @@ export function SeatPanel({ seat, definition, definitionKnown, canManage }: Seat
                 {canManage ? " 「쓰기」를 눌러 이 자리가 뭘 하는지 남겨 주세요." : " 대표나 관리자가 채우면 여기 보여요."}
               </p>
             ) : !editing ? (
-              <div data-seat-definition="ready" className="flex flex-col gap-2 rounded-xl bg-indigo-50/60 p-3 dark:bg-indigo-950/20">
+              <div data-seat-definition="ready" className="flex flex-col gap-2 rounded-md bg-indigo-50/60 p-3 dark:bg-indigo-950/20">
                 {definition?.summary ? (
                   <p className="text-[13px] font-semibold text-zinc-900 dark:text-zinc-100">{definition.summary}</p>
                 ) : null}

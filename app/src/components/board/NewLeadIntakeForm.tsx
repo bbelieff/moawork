@@ -82,7 +82,7 @@ export function NewLeadIntakeForm({
       ref={formRef}
       action={action}
       noValidate
-      className={`grid gap-3 bg-mw-card text-xs ${variant === "inline" ? "mt-2 w-[min(32rem,calc(100vw-2rem))] rounded-xl border border-mw-line p-3 shadow-lg" : ""}`}
+      className={`grid gap-3 bg-mw-card text-xs ${variant === "inline" ? "mt-2 w-[min(32rem,calc(100vw-2rem))] rounded-md border border-mw-line p-3 shadow-lg" : ""}`}
     >
       <input type="hidden" name="boardId" value={boardId} />
       <input type="hidden" name="groupId" value={targetGroupId} />

@@ -41,7 +41,7 @@ describe("Issue #560 compact new-lead message cell", () => {
     const source = readFileSync(new URL("./NewLeadMessageCell.tsx", import.meta.url), "utf8");
     const portalStart = source.indexOf('createPortal(');
     const portalEnd = source.indexOf('document.body,', portalStart);
-    const menuSource = source.slice(portalStart, portalEnd);
+    const menuSource = source.slice(portalStart, portalEnd).replace(/\r\n/g, "\n");
 
     expect(portalStart).toBeGreaterThan(-1);
     expect(portalEnd).toBeGreaterThan(portalStart);

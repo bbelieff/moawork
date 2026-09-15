@@ -30,7 +30,7 @@ export function VisualLayerProbe() {
       </button>
       {open ? (
         <BoardModalLayer label="모달 레이어 검증" onClose={close}>
-          <div className="rounded-xl bg-mw-card p-6 shadow-xl">고정 제목행까지 덮는 공통 모달</div>
+          <div className="rounded-md bg-mw-card p-6 shadow-xl">고정 제목행까지 덮는 공통 모달</div>
         </BoardModalLayer>
       ) : null}
     </>

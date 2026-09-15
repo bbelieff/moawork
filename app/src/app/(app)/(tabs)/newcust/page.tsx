@@ -37,7 +37,7 @@ export default async function NewCustomerPage({
     const conflict = result.kind === "conflict";
     const permission = result.kind === "permission";
     return (
-      <section className="rounded-xl border border-mw-line bg-mw-card p-5" aria-labelledby="newcust-entry-title">
+      <section className="rounded-md border border-mw-line bg-mw-card p-5" aria-labelledby="newcust-entry-title">
         <h1 id="newcust-entry-title" className="text-lg font-semibold text-mw-fg">
           {conflict
             ? "신규리드 보드를 하나로 확인하지 못했습니다"

@@ -10,7 +10,7 @@ const ITEMS: readonly { key: NoticePerspective | "department" | "for-me"; label:
 
 export function NoticePerspectiveNav({ baseHref, active, as }: { baseHref: string; active: NoticePerspective; as?: string }) {
   return (
-    <nav aria-label="공지 보기" className="flex flex-wrap items-center gap-2 rounded-xl border border-mw-line bg-mw-card p-2">
+    <nav aria-label="공지 보기" className="flex flex-wrap items-center gap-2 rounded-md border border-mw-line bg-mw-card p-2">
       {ITEMS.map((item) => item.available ? (
         <Link
           key={item.key}

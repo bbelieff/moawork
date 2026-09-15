@@ -64,7 +64,7 @@ export function ProductChecklistAdmin({
   };
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-mw-line bg-mw-card p-4">
+    <div className="flex flex-col gap-3 rounded-md border border-mw-line bg-mw-card p-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-mw-fg">{productLabel} — 기본 서류</h3>
         <span className="text-xs text-mw-sub">{items.length}종</span>
