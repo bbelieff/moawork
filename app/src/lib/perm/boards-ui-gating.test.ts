@@ -56,7 +56,7 @@ describe("boards UI consumes effective permissions", () => {
     expect(source).toContain('id="board-work-forms"');
     expect(source).toContain("groups.map((group) =>");
     expect(source).toContain("<GroupPresetMenu key={group.id}");
-    expect(source).toContain('canDeleteBoard && <section className="rounded-xl border border-mw-error/40');
+    expect(source).toContain('canDeleteBoard && <section className="rounded-md border border-mw-error/40');
     expect(source).toContain('<form action={deleteBoardAction}>');
     const table = readFileSync(join(__dirname, "..", "..", "components", "board", "GroupTable.tsx"), "utf8");
     expect(table).toContain("canManageColumns && !structureLocked ? (");
