@@ -85,7 +85,7 @@ export async function createNewLeadAction(
   }
   if (text(formData, "revenue_band") === "그외" && !revenueBand) {
     record("invalid_revenue_band");
-    return { ok: false, field: "revenue_band", message: "그외 매출 구간을 입력해 주세요." };
+    return { ok: false, field: "revenue_band", message: "정확한 매출액을 입력해 주세요." };
   }
   if (rawSido && !regionSido) {
     record("invalid_region_sido");

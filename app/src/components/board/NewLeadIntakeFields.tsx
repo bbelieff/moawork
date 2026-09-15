@@ -5,7 +5,7 @@ import {
   NEW_LEAD_BUSINESS_TYPES,
   NEW_LEAD_CUSTOM_BUSINESS_TYPE,
 } from "@/lib/new-lead/business-types";
-import { NEW_LEAD_REVENUE_BANDS } from "@/lib/new-lead/revenue-bands";
+import { NEW_LEAD_REVENUE_BANDS, NEW_LEAD_CUSTOM_REVENUE_LABEL } from "@/lib/new-lead/revenue-bands";
 import {
   formatRevenueInput,
   REVENUE_UNIT_LABEL,
@@ -111,13 +111,13 @@ export function RevenueBandField({ invalid = false }: { invalid?: boolean }) {
         <select name="revenue_band" value={selected} onChange={(event) => setSelected(event.target.value)}
           aria-invalid={invalid} className={`${CONTROL} aria-[invalid=true]:border-mw-error`}>
           <option value="">미입력</option>
-          {NEW_LEAD_REVENUE_BANDS.map((value) => <option key={value} value={value}>{value}</option>)}
+          {NEW_LEAD_REVENUE_BANDS.map((value) => <option key={value} value={value}>{value === "그외" ? NEW_LEAD_CUSTOM_REVENUE_LABEL : value}</option>)}
         </select>
       </label>
       {selected === "그외" ? (
         <label className="grid gap-1 text-xs text-mw-sub">
-          <span>그외 매출 구간 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
-          <input name="revenue_band_custom" required className={CONTROL} placeholder="예: 9,000만원~1억" />
+          <span>정확한 매출액 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
+          <input name="revenue_band_custom" required className={CONTROL} placeholder="예: 2억 5,000만원" />
         </label>
       ) : null}
     </div>
