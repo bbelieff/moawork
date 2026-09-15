@@ -14,6 +14,8 @@ import { DepartmentManager } from "@/components/member-organization/DepartmentMa
 import { OrgViewTabs } from "@/components/member-organization/OrgViewTabs";
 import { createClient } from "@/lib/supabase/server";
 import { loadSeatDefinitions, seatWriterNames, withSeatDefinitionNames } from "@/lib/org/seat-definitions";
+import { loadInviteLinks } from "@/lib/org/invite-links-server";
+import { InviteLinkCard } from "@/components/member-organization/InviteLinkCard";
 
 /**
  * 역할별 인원수 — «각 사람이 들고 있는 역할» 로 센다.
@@ -44,7 +46,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
    *   이라는 뜻으로 읽는다. 안 그러면 역할을 누를 때마다 목록으로 튕긴다.
    */
   const initialView: OrgView = isOrgView(params.view) ? params.view : requestedRole ? "perm" : "list";
-  const [summary, permission, logo, chart, exceptions, seatDefinitions] = await Promise.all([
+  const [summary, permission, logo, chart, exceptions, seatDefinitions, inviteLinks] = await Promise.all([
     loadMemberOrgSummary(ctx),
     loadPermissionMatrix(ctx.org.id),
     loadOrgLogoView(ctx.org.id),
@@ -54,6 +56,8 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
     loadReportingExceptions(ctx, createClient),
     // #683 — 자리의 역할 정의서. 역시 같은 물결이고, null 은 «못 읽음» 이다.
     loadSeatDefinitions(ctx, createClient),
+    // #722 — 「사람 부르기」 링크 목록. 대표·관리자가 아니면 «못 읽음» 으로 온다(빈 목록이 아니다).
+    loadInviteLinks(ctx.org.id, createClient),
   ]);
   /*
    * #683 — 「누가 썼나」에 이름을 붙인다.
@@ -121,6 +125,12 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
 
       {/* BBE-199 — 로고는 조직 구조와 별개인 워크스페이스 식별 설정이다. 네 갈래 어디에도 속하지 않는다. */}
       <OrgLogoCard orgName={ctx.org.name} logo={logo} canManage={isManager(ctx.role)} />
+
+      {/*
+        #722 — 「사람 부르기」. 대표가 «먼저 부를» 방법이 여기 생긴다.
+        지금까지는 들어올 사람이 회사 주소를 «알아서» 찾아 신청해야 했다.
+      */}
+      <InviteLinkCard list={inviteLinks} canManage={isManager(ctx.role)} />
 
       {model ? (
         // #640 ①②③ — 보는 방식 네 갈래 · 가로 조직도 · 부서↔사람 잇기.
