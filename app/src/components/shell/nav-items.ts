@@ -27,6 +27,9 @@ export type NavItem = {
 
 export type NavBadgeKey = "workspaceApprovals";
 
+/** 업무도구의 실제 목적지가 정해지면 이 목록에 추가한다. */
+export const WORK_TOOL_ITEMS: readonly NavItem[] = [];
+
 export const NAV_ITEMS: readonly NavItem[] = [
   { key: "dash", label: "대시보드", icon: "grid", href: "/", feature: FEATURES.dash, owner: "T04" },
   { key: "notifications", label: "알림", icon: "notice", href: "/settings/notifications", owner: "T06" },
