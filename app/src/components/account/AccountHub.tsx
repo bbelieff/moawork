@@ -102,7 +102,7 @@ export function AccountHub({
           className={`${styles.card} ${styles.cardWide}`}
           aria-labelledby="workspace-title"
         >
-          <h2 id="workspace-title">내 회사와 팀</h2>
+          <h2 id="workspace-title">내 회사 관리</h2>
           <p>접근할 수 있는 회사와 내 역할을 확인하고, 대표는 회사를 삭제 예정으로 바꾸거나 되돌릴 수 있어요.</p>
           <WorkspaceManagementPanel workspaces={workspaces} loadError={workspaceLoadError} />
           <dl className={styles.definitionList}>

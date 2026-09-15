@@ -63,6 +63,7 @@ describe("BBE-103 — 사이드바 연결 누락 회귀 가드", () => {
       ["자동화", "/settings/automations"],
       ["조직관리", "/settings/members"],
       ["프리셋", "/presets"],
+      ["내 회사 관리", "/settings/account#workspace"],
       ["내 프로필", "/account"],
       ["온보딩", "/onboarding"],
     ]);

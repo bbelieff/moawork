@@ -136,7 +136,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       <IconSprite />
       {/* ── 사이드바 ── */}
       <aside
-        className="mw-layer-shell relative flex h-auto w-full flex-none flex-col border-b px-[var(--sp-3)] py-[var(--sp-3)] md:sticky md:top-0 md:h-screen md:w-[var(--mw-shell-nav-w)] md:overflow-visible md:border-b-0 md:border-r md:py-[var(--sp-4)]"
+        className="mw-layer-shell relative flex h-auto w-full flex-none flex-col border-b px-[var(--sp-3)] py-[var(--sp-3)] md:fixed md:inset-y-0 md:left-0 md:h-dvh md:w-[var(--mw-shell-nav-w)] md:overflow-visible md:border-b-0 md:border-r md:py-[var(--sp-4)]"
         style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}
       >
         {/* 목업 v6 `.brand` — 로고 한 덩이만. 높이 48px · 좌우 --sp-3 · 아래 경계선.
@@ -146,7 +146,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             락업 viewBox 는 2400×800(3:1)이라 22 로 그리면 자연 너비가 66px 뿐이어서
             Logo 의 minWidth:120 이 가로로 1.8배 잡아늘였다 — 그 찌그러짐도 같이 없어진다. */}
         <div
-          className="flex items-center border-b px-[var(--sp-3)]"
+          className="flex shrink-0 items-center border-b px-[var(--sp-3)]"
           style={{ height: "var(--mw-shell-header-h)", borderColor: "var(--mw-line)" }}
         >
           <Logo height={40} href={logoHref} />
@@ -180,7 +180,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
         {/* 하단 사용자 */}
         <div
-          className="mt-auto hidden items-center border-t md:flex"
+          className="mt-auto hidden shrink-0 items-center border-t md:flex"
           style={{
             borderColor: "var(--mw-line)",
             gap: "var(--sp-2)",
@@ -214,7 +214,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
       {/* ── 본문 ── */}
       <div
-        className="min-w-0 max-w-full flex-1 overflow-x-hidden px-[var(--sp-4)] py-[var(--sp-3)] sm:px-[var(--sp-5)] md:px-[var(--sp-6)]"
+        className="min-w-0 max-w-full flex-1 overflow-x-hidden md:ml-[var(--mw-shell-nav-w)] px-[var(--sp-4)] py-[var(--sp-3)] sm:px-[var(--sp-5)] md:px-[var(--sp-6)]"
       >
         {/* 페이지 제목은 각 화면이 자기 <h1> 로 그린다 — 셸은 우측 액션만 소유. */}
         <header

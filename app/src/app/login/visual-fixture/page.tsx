@@ -1,3 +1,4 @@
+import { NotificationCenterFixture } from "./NotificationCenterFixture";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { CONTACT_TAB, NEW_LEAD_TAB } from "@/lib/default-tabs";
 import type { Board, BoardColumn, BoardGroup, ItemWithValues } from "@/lib/boards/types";
@@ -75,6 +76,9 @@ function fixture(tabKey: string, workflowValue: string | null, showAllGroups = f
 
 export default async function VisualFixturePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
+  if (params.surface === "notifications") {
+    return <main className="min-h-screen bg-mw-bg p-4"><NotificationCenterFixture /></main>;
+  }
   if (params.surface === "account-profile") {
     return (
       <main data-visual-account-profile className="min-h-screen bg-mw-bg p-6">

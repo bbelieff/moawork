@@ -50,7 +50,7 @@ describe("AccountHub", () => {
     );
 
     expect(html).toContain("내 정보");
-    expect(html).toContain("내 회사와 팀");
+    expect(html).toContain("내 회사 관리");
     expect(html).toContain("현재 로그인");
     expect(html).toContain("test-user@example.invalid");
     expect(html).not.toContain("1급");

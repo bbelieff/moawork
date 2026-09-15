@@ -62,7 +62,7 @@ export function SidebarNav({
     pathname,
     NAV_ITEMS.filter((item) => item.href).map((item) => ({
       key: item.key,
-      href: workspaceHref(workspaceBasePath, item.href!),
+      href: workspaceHref(workspaceBasePath, item.href!).split(/[?#]/)[0],
     })),
     { basePath: workspaceBasePath, boardNavKeys },
   );
@@ -214,7 +214,7 @@ export function SidebarNav({
       ) : null}
       {/* 통합 검색은 여기 없다 — 목업 v6 는 검색을 상단바(`.top > .search`)에 둔다.
           트리거는 셸 상단바(app/layout.tsx)로 옮겼다(BBE-194). 기능은 그대로다. */}
-      <nav className="hidden min-h-0 flex-1 flex-col gap-px overflow-y-auto md:flex" aria-label="주요 메뉴">
+      <nav className="hidden min-h-0 flex-1 flex-col gap-px overflow-x-hidden overflow-y-auto overscroll-contain md:flex" aria-label="주요 메뉴">
         <div
           className="border-b"
           style={{ borderColor: "var(--mw-line)", paddingBottom: "var(--sp-2)" }}
