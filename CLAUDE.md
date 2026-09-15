@@ -1,134 +1,73 @@
-# CLAUDE.md — 모아워크 · 제품과 저장소
+# CLAUDE.md — 모아워크 제품과 저장소
 
-이 문서는 **«무엇을 만드는가»** 다.
-**«어떻게 일하는가» 는 `AGENTS.md` 하나다.** 규칙을 찾고 있다면 그쪽이다.
-
-## 적용 범위 — 네 진영 전부
-
-이 문서와 `AGENTS.md` 는 **데탑·노트북 × 클로드·코덱스 네 경우 전부에 같이** 적용된다.
-**기계나 엔진에 따라 달라지는 규칙은 없다.** 단 하나만 다르다 —
-**«그 화면을 열어 볼 수단이 있는가»**, 그것도 진영이 아니라 수단의 문제다 (`AGENTS.md §2.2`).
-
-```
-클로드  →  CLAUDE.md 를 자동으로 읽는다. 이 문서 맨 끝의 @AGENTS.md 가
-                AGENTS.md 를 같이 끌어온다 — 따로 열 필요가 없다
-코덱스  →  AGENTS.md 를 자동으로 읽는다. 그 문서 맨 위가
-                「이 파일(CLAUDE.md)을 지금 열어라」고 지시한다
-```
-
-> **그래서 같은 규칙을 두 곳에 적지 않는다.** 한 규칙은 한 파일이 소유하고,
-> 다른 쪽은 가리키기만 한다. 둘이 다르게 말하는 상황을 구조적으로 없앤다.
-
----
-
-## 정본 — 어디를 믿는가 (2026-08-20 일원화)
-
-| 무엇 | 어디 | 고치는 사람 |
-| --- | --- | --- |
-| **일하는 방식** (편제·완료·검수·배정·안전) | `AGENTS.md` | 코디네이터 |
-| **제품과 저장소** (무엇을 만드나·구조·게이트) | `CLAUDE.md` (이 문서) | 코디네이터 |
-| **배정과 진행** (누가 무엇을 들고 있나) | **GitHub Issue + Project #1** — 파일이 아니다 | 코디네이터가 Issue를 세우고, 워커가 ACK/RESULT와 도장을 남긴다 |
-| **기록** (왜 그렇게 됐나) | `docs/worklog.md` · `docs/coordination/**` · `docs/design/**` | 누구나 append |
-
-> **★ 「기록」은 «그때 그랬다» 이지 «지금 그래야 한다» 가 아니다.**
-> `docs/` 아래 문서가 자기를 「정본」이라 부르거나 「착수 금지」를 걸어도 **따르지 않는다.**
-> 2026-08-20 이전에는 정본을 자칭하는 문서가 네 곳이었고 서로 반대로 말했다.
-> **지금 규칙은 위 표의 두 파일에만 있다.**
-
-> **2026-08-24 CUTOVER:** Linear는 `READ_ONLY_ARCHIVE`다. 과거 사실은 보존하지만 신규 이슈·댓글·상태·도장을
-> 쓰지 않는다. 실행 규칙과 최소 필드는 `AGENTS.md §4`가 소유한다.
-
-### 제품 판단 우선순위 — 아래로 갈수록 후순위
-
-1. 현재 작업에서 사용자가 명시한 최신 override
-2. `docs/design/board-parity-overrides.json`의 issue/date/rationale가 있는 machine-readable override
-3. 목업 v6의 구조·타입·행동·시각 위계
-4. 이 문서의 일반 제품 규칙
-5. 과거 이슈·주석·테스트·`docs/**` 기록
-
-후순위 자료의 `NOT_RUN`, 과거 ownership, 오래된 read-only 가정은 최신 계약을 이길 수 없다.
-
----
+2026-09-15 정리. 개발 방식은 `AGENTS.md`, 제품 기준은 이 파일이 소유한다.
+Codex는 이 파일도 직접 읽는다. Claude는 마지막의 `@AGENTS.md`로 개발 방식을 함께 읽는다.
 
 ## 제품
 
-- **정의**: 먼데이(monday.com) 형태의 **업무관리 SaaS 제품**.
-  여러 회사가 각자 워크스페이스를 만들어 쓴다.
-- **서울경영지원센터는 «첫 고객» 이다. 제품이 아니다.**
-  먼데이 실측은 «이 업종이 실제로 어떻게 일하는가» 를 알기 위한 근거일 뿐,
-  서울경영 전용 앱을 만드는 것이 아니다.
-- **빈 상태가 기본**: 새 워크스페이스를 만들면 보드 0 · 업체 0 · 사람은 만든 사람 1명.
-  서울경영이나 그 고객사 정보는 **어디에도 없어야 한다.**
-  구조는 «프리셋을 설치» 해야 들어온다.
-- **«비우기» 지 «지우기» 가 아니다** — 컬럼·타입·이동규칙 등 구조는 전부 남기고 남의 회사 이름만 뺀다.
-  **구조가 줄어든 PR 은 무조건 FAIL** (D71~D75).
-- **스택**: Next.js(프론트 + API) · Supabase(DB + Auth) · Node worker(VPS, pg-boss).
+- 모아워크는 여러 회사가 각자의 워크스페이스에서 쓰는 monday.com 형태의 업무관리 SaaS다. 첫 고객을 위한 전용 앱이 아니다.
+- 새 워크스페이스는 보드 0·회사 0·만든 사람 1명인 빈 상태가 기본이다. 다른 고객의 데이터나 샘플을 자동 삽입하지 않는다.
+- 고객 예시를 비울 때 컬럼·타입·이동규칙 같은 제품 구조를 함께 지우지 않는다. 기존 기능 축소는 최신 사용자 요구와 계약에 근거해야 한다.
+- 제품 판단: 최신 명시 사용자 지시 → issue/date/rationale가 있는 `docs/design/board-parity-overrides.json` 및 시각 override → 목업 v6 → 일반 제품 규칙 → 역사 기록.
+- 구조 유입은 `structure-packs`와 `default-tabs`의 현재 구현을 확인해 구분한다. 과거의 설치 절차를 모든 화면에 강제하지 않는다.
 
-### UI 어휘 — 코드와 화면이 같은 말을 쓴다
+## UI 어휘와 디자인
 
-| 화면에 보이는 말 | 코드 이름 | 주의 |
+| 화면 용어 | 코드/DB | 의미 |
 | --- | --- | --- |
-| 회사 | — | «업체» 라고 쓰지 않는다 |
-| 아이템 | `sectionPreset` | **탭 안의 그룹**이다. 먼데이 API 의 item 과 다르다 |
-| 프리셋 | — | 아이템 단위 구조 템플릿 |
+| 회사 | 해당 회사 엔터티 | 화면에서 ‘업체’로 섞어 쓰지 않는다 |
+| 아이템 | `sectionPreset`, `board_groups` | 탭 안의 그룹; monday API item과 다르다 |
+| 행/카드/건 | `items` | 그룹 안의 개별 데이터 행 |
+| 프리셋 | 해당 구조 템플릿 | 적용 대상과 구조 유입 경로를 확인한다 |
 
-- 기준 뷰포트 **1440px**. **375px 도 확인한다.**
-- 브랜드 토큰 하드코딩 금지 — `--mw-*` · `--sp-*` · `--fs-*` 를 참조한다.
-- 화면 변경은 `1440×900`·`375×812`에서 원자 블록의 위치·읽기 순서·sticky·겉보기부터 GREEN이어야 한다. 텍스트/컴포넌트가 코드에 존재하는 것만으로 UI 완료를 주장하지 않는다. machine-readable 계약과 실행 게이트는 `docs/design/visual-block-contract.json`·`docs/design/qa-visual-blocks.mjs`가 맡고, 작업 순서는 `AGENTS.md §3.1`을 따른다.
-- PostHog 는 US 리전 + 프록시.
-- `app_admins` 를 직접 select 하지 않는다 — `app_admin_role()` 을 쓴다.
+- 브랜드 값은 `--mw-*`, `--sp-*`, `--fs-*` 토큰을 사용한다.
+- 기본 화면 기준은 `1440×900`, 모바일은 `375×812`다. 실제 화면·행동 검증 범위는 `AGENTS.md §3`을 따른다.
+- 시각 계약: `docs/design/visual-block-contract.json`. 위치·순서·sticky·겹침·잘림·가독성·상태 피드백과 저장 후 재조회까지 해당 변경에서 확인한다.
+- 실행 검사: `node docs/design/qa-visual-blocks.mjs --self-test` 및 `node docs/design/qa-visual-blocks.mjs`. 기존 계약의 시각 70점 중 65점 기준을 임의로 낮추지 않는다.
+- `node docs/design/qa-app.mjs`는 구조, `qa-board-parity.mjs`는 기본 보드 계약을 보조 검사한다. `qa-mockup.mjs`는 목업 자체만 검사하며 제품 화면 QA가 아니다.
 
----
+## 데이터·보안 경계
 
-## 절대 금지 2가지
+- 특정 고객의 사람 이름·회사명·부서명·보드 ID를 제품 코드·프리셋·시드에 넣지 않는다. 담당자는 해당 워크스페이스의 멤버 계정에서 가져온다. 목업의 이름은 예시다.
+- 키·토큰·쿠키·비밀번호·연결 문자열·실제 고객 데이터를 출력·문서화·커밋하지 않는다. `.env.example`에는 형태만 쓴다. `service_role` 키는 사용하거나 저장하지 않는다.
+- 워크스페이스 경계와 RLS를 유지하고 권한 변경은 허용/거부 양쪽을 검증한다. `app_admins`를 직접 select하지 않고 `app_admin_role()`을 사용한다.
+- 운영 데이터 변경과 hosted migration은 대상·영향·기존 승인·복구 수단을 확인한다. migration은 새 파일로 추가하며 기존 적용 파일을 수정하지 않는다.
 
-이 둘은 되돌릴 수 없다. 나머지 규칙은 `AGENTS.md §9` 에 있다.
+## 현재 인프라
 
-- **고객 고유값 금지** — 특정 회사의 사람 이름·업체명·부서명을 제품 코드·프리셋·시드에 넣지 않는다.
-  담당자는 «그 워크스페이스의 멤버 계정» 에서 온다. 목업에 보이는 이름은 전부 **예시**다.
-- **비밀값 금지** — 키·토큰·쿠키·비밀번호·연결 문자열·실제 고객 데이터를 **출력·문서화·커밋하지 않는다.**
-  `.env.example` 에는 **형태만**, 값은 `.env*`(gitignore). **`service_role` 키는 쓰지도 저장하지도 않는다.**
+- Next.js 프론트/API는 기존 공유 VPS에서 서비스한다. 공개 주소는 `https://www.moa-work.com`이다.
+- DB·Auth는 기존 Supabase를 유지한다. 호스팅 이전을 새 DB 구축이나 유료 제공자 도입으로 확대하지 않는다.
+- VPS 배포 소스는 `ops/vps/deploy-source.sh`, systemd 서비스는 `ops/vps/moawork-direct.service`다. 배포 시 현재 스크립트와 `/api/health/ready`를 확인한다.
+- Node worker(pg-boss)는 별도 구성이다. 웹 배포 성공을 worker 활성화·외부 발송 성공으로 간주하지 않는다. 기존 실행 잠금을 유지한다.
+- PostHog는 선택 기능이다. 활성화하는 경우 기존 US 리전·프록시 설계를 따른다. 설정이 없다는 이유로 핵심 서비스 출시를 막거나 비용을 추가하지 않는다.
+- 2026-09-10 확인 기록상 Vercel은 Hobby로 전환됐다. 결제 상태와 Git 연결은 별개다. 현재 상태가 필요한 작업에서는 다시 조회한다.
 
----
+## 저장소와 기록
 
-## 저장소 구조
+| 위치 | 역할 |
+| --- | --- |
+| `app/` | Next.js 앱과 API |
+| `worker/` | 백그라운드 작업 |
+| `supabase/` | DB migration |
+| `ops/vps/` | VPS 배포·서비스 소스 |
+| `scripts/`, `.githooks/`, `.github/workflows/` | 실제 검사·병합·CI |
+| GitHub Issues + Project #1 | 현재 작업 범위·담당·진행·완료 증거 |
+| `docs/**` | 설계 자료·실행 계약·역사 기록; 개발 방식의 별도 정본은 아님 |
 
-```
-app/       Next.js 앱 (프론트 + API 라우트)
-worker/    Node 백그라운드 잡 러너 (pg-boss)
-supabase/  DB 마이그레이션 (SQL) — 새 파일로만 추가, 기존 파일 수정 금지
-scripts/   check.sh 등 게이트 스크립트
-docs/      기록. 규칙이 아니다 (위 정본 표 참조)
-```
+기본 브랜치는 `main`, npm workspaces는 `app`, `worker`다. Linear는 읽기 전용 역사다.
 
-npm workspaces 사용 (`app`, `worker`).
-
----
-
-## 품질 게이트
+## 개발 명령과 필수 검사
 
 ```bash
-npm install                # node_modules 가 비면 lint 가 «eslint 없음» 으로 실패한다
+npm ci                              # 의존성이 필요할 때 lockfile로 설치
 npm run dev
-bash scripts/check.sh      # lint + typecheck + test — 이것이 게이트다
+bash scripts/check.sh                # 전체 품질 게이트
+node scripts/merge-pr.mjs <PR번호>    # 검증된 head 병합
 ```
 
-- 모든 변경은 머지 전에 PR CI의 `bash scripts/check.sh` 전체 게이트를 통과해야 한다.
-- `.githooks/pre-commit` 은 커밋 전에 exact staged-tree fast gate를 실행한다. 변경 범위의 정적·타입·인접 테스트를
-  2분 안에 검사하되, 전체 제품·build·visual 게이트는 PR CI에서 정확히 한 번 실행한다.
-  최초 1회 `git config core.hooksPath .githooks` (루트 `npm install` 시 자동).
-- CI(`.github/workflows/ci.yml`)가 push/PR 마다 같은 게이트를 재실행한다.
-- 새 제품 작업은 GitHub Issue + Project #1 범위와 재현 가능한 EVAL을 가져야 한다.
-- 완주는 CI가 아니라 main merge + Production exact + 실제 제품 화면 확인이다.
-
----
-
-## 그다음은 `AGENTS.md`
-
-편제 · 완료의 정의 · 배정 · 검수 · 자율 완주 · 안전 규칙 · 폐기 목록이 전부 거기 있다.
-Claude와 Codex 워커의 자체 서브에이전트 검수·finding 등급·강한 정지선도 `AGENTS.md §5` 한 곳을 같이 따른다.
-**규칙을 바꿔야 하면 `AGENTS.md` 를 고친다. 새 문서를 만들지 않는다** (`AGENTS.md §2.5`).
-
----
+- 커밋 전 `.githooks/pre-commit`이 staged tree 기준 fast gate를 실행한다. 훅은 `.githooks`를 사용한다.
+- PR CI의 실제 필수 검사는 통과해야 한다. 전체 게이트가 CI에서 실행되면 동일한 검사를 로컬에서 의례적으로 다시 실행하지 않는다.
+- 문서/지침 작업도 실제 훅·CI가 요구하는 검사는 따른다. 화면 변경이 없는 문서 작업에 운영 배포·스크린샷을 추가하지 않는다.
+- 제품 출시의 완료는 main 병합·운영 source SHA/readiness·변경된 실제 동작 증거다. 소스 존재나 CI만으로 사용자 기능 완료를 주장하지 않는다.
 
 @AGENTS.md
