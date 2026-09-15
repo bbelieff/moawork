@@ -10,7 +10,7 @@
 | P2 | 선택한 부서 아래에 전체 활성 구성원의 배정 폼이 나옴 | 전체 구성원 주부서 관리라고 명시하고 검색·부서 필터 제공 | DepartmentManager activeMembers 전체 렌더 |
 | P2 | 조직도 카드는 정적이고 생략된 구성원을 바로 펼칠 수 없음 | 카드에서 해당 부서 목록으로 이동, 구성원 전체 보기 제공 | OrgChartFlow 카드 및 외 N 표시; 운영 화면 확인 |
 | P2 | 긴 편집기의 저장 결과가 맨 위 한 곳에 표시됨 | 저장한 행 근처에서 결과 표시 | DepartmentManager 공통 feedback |
-| P3 | 넓은 화면에서도 조직 탭에 가로 스크롤바가 보임 | 음수 margin 제거부터 실측; 모바일 키보드 탐색 유지 | OrgViewTabs tablist; 운영 1440 화면 확인 |
+| P3 | 넓은 화면에서도 조직 탭에 가로 스크롤바가 보임 | 음수 margin 제거부터 실측; 모바일 키보드 탐색 유지 | OrgViewTabs tablist; 운영 1898×782 화면 확인 |
 | P3 | 새 부서의 상위 부서 입력에 접근 가능한 이름 없음 | 명시적 라벨 추가 | DepartmentManager 생성 선택 필드 |
 | P3 | 부서 이동 후보에 자기 하위 부서가 포함됨 | 불가능한 후보는 미리 제외; 서버 순환 방어 유지 | DepartmentManager parentOptions |
 | P3 | 로고 업로드가 모든 탐색 탭 위에 항상 표시됨 | 회사 설정의 보조 동작으로 접어 조직 탐색에 우선순위 | settings/members/page + 운영 화면 |
