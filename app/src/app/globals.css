@@ -186,6 +186,26 @@ body {
   color: var(--mw-fg);
 }
 
+/* Keep scrolling available without a heavy rail beside the navigation labels. */
+nav[aria-label="주요 메뉴"] {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--mw-sub) 22%, transparent) transparent;
+}
+nav[aria-label="주요 메뉴"]:hover,
+nav[aria-label="주요 메뉴"]:focus-within {
+  scrollbar-color: color-mix(in srgb, var(--mw-sub) 50%, transparent) transparent;
+}
+nav[aria-label="주요 메뉴"]::-webkit-scrollbar { width: 5px; }
+nav[aria-label="주요 메뉴"]::-webkit-scrollbar-track { background: transparent; }
+nav[aria-label="주요 메뉴"]::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--mw-sub) 22%, transparent);
+  border-radius: var(--mw-radius);
+}
+nav[aria-label="주요 메뉴"]::-webkit-scrollbar-button { display: none; }
+@media (forced-colors: active) {
+  nav[aria-label="주요 메뉴"] { scrollbar-color: auto; }
+}
+
 /* 보드에서 실제로 넘치는 표만 스크롤바를 보여 준다. 색은 밝기 모드에 따라 토큰을 따른다. */
 [data-visual-block="group-table"] > details > div > .relative.isolate {
   overscroll-behavior: contain;

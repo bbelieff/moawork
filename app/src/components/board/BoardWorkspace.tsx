@@ -36,6 +36,7 @@ import {
   setGroupColumnOrderAction,
 } from "@/app/(app)/boards/actions";
 import { BoardHeader } from "./BoardHeader";
+import { BoardScrollViewport } from "./BoardScrollViewport";
 import { BoardToolbar } from "./BoardToolbar";
 import { GroupBlock } from "./GroupBlock";
 import { GroupNameEditor } from "./GroupNameEditor";
@@ -631,13 +632,14 @@ export function BoardWorkspace({
       ) : null}
       {restoreError ? <p role={noticeRole(false)} aria-live={noticeLive(false)} className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{restoreError}</p> : null}
 
+      <BoardScrollViewport>
       {blocks.length === 0 ? (
         /* 원칙 5 — 화면 전체를 차지하는 빈 상태 금지. 한 줄 + 다음 행동. */
         <p className="rounded-xl border border-dashed border-mw-line px-3 py-4 text-xs text-mw-sub">
           그룹이 없습니다. 아래 «그룹 추가»로 첫 그룹을 만드세요.
         </p>
       ) : (
-        blocks.map((block, blockIndex) => {
+        blocks.map((block) => {
           const storedOrder = canonicalNewLead
             ? presentNewLeadColumnKeys(optimisticOrder[block.key])
             : optimisticOrder[block.key];
@@ -785,6 +787,7 @@ export function BoardWorkspace({
           );
         })
       )}
+      </BoardScrollViewport>
     </div>
   );
 }

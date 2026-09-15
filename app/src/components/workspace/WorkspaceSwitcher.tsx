@@ -299,7 +299,9 @@ export function WorkspaceSwitcher({
           <span className={styles.name}>{current.name}</span>
           <span className={styles.sub}>{ROLE_LABEL[current.role]} · 내 회사</span>
         </span>
-        <span className={styles.chevron} aria-hidden="true">⌄</span>
+        <svg className={styles.chevron} viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="m6 8 4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
 
       {/* ★ 실패를 status 로 읽어주면 보조기술 사용자는 «이동됐다» 로 듣는다(BBE-208).

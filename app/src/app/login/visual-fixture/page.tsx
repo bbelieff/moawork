@@ -192,6 +192,7 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
       <VisualThemeProbe theme={theme} />
       <style>{`
         .visual-mutation-settings-bottom [data-visual-block='board-settings'] { order: 99 !important; margin-top: 700px !important; }
+        .visual-mutation-split-scroll [data-board-table-format='uniform'] { overflow: auto !important; }
         .visual-mutation-no-sticky [data-right-pinned='true'] { position: static !important; }
         .visual-mutation-wrong-region [data-right-pinned='true'] { right: 36% !important; }
         .visual-mutation-overlap [data-visual-block='board-settings'] { transform: translateY(-48px) !important; }
