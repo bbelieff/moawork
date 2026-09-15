@@ -62,6 +62,7 @@
       "viewport": ["desktop", "mobile"],
       "mockup_anchor": "table",
       "product_anchor": "[data-visual-block='group-table']",
+      "geometry_anchor": "[data-board-scroll='shared']",
       "expected_text": ["신규고객", "컨택", "이름"],
       "expected_text_by_tab": { "new": ["신규고객"], "contact": ["컨텍"] },
       "expected_icon_state": "group handle + ordered column headers",
@@ -71,10 +72,10 @@
       "sticky_pinned": false,
       "style_tokens": ["--mw-card", "--mw-line", "--mw-bg", "--fs-*"],
       "comparison": { "y_delta_max": { "desktop": 0.13, "mobile": 0.53, "new": { "desktop": 0.22, "mobile": 0.53 } }, "font_delta_max": 3.5, "color_delta_max": 20, "background_delta_max": 10, "border_delta_max": 365, "size_ratio_max": 5.5 },
-      "interaction_feedback": "horizontal scroll preserves first and workflow columns",
+      "interaction_feedback": "one shared horizontal scroll moves every group and preserves first and workflow columns",
       "persistence_reload": "column order and group order reload from fixture state",
       "dependencies": ["board-settings-top"],
-      "override": { "issue": 536, "date": "2026-08-25", "rationale": "그룹과 표의 위치·밀도·컬럼 읽기 순서를 화면 조립 단위로 고정한다." }
+      "override": { "issue": 759, "date": "2026-09-15", "rationale": "사용자 요청으로 모든 그룹이 공통 스크롤을 사용한다. 화면 내 배치·잘림·재로드 기하 검사는 공통 뷰포트를, 글꼴·색상·내용 검사는 기존 그룹 표를 측정한다. 넓은 표의 화면 밖 영역은 공통 스크롤로 접근하며 중첩 스크롤은 실패 처리한다." }
     },
     {
       "block_id": "workflow-gate-pinned",
