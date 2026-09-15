@@ -29,7 +29,7 @@ export type NavBadgeKey = "workspaceApprovals";
 
 export const NAV_ITEMS: readonly NavItem[] = [
   { key: "dash", label: "대시보드", icon: "grid", href: "/", feature: FEATURES.dash, owner: "T04" },
-  { key: "notifications", label: "알림", icon: "notice", href: "/settings/notifications", feature: FEATURES.notify, owner: "T06" },
+  { key: "notifications", label: "알림", icon: "notice", href: "/settings/notifications", owner: "T06" },
   { key: "notice", label: "공지사항", icon: "notice", href: "/notices", owner: "미배정" },
   { key: "new", label: "신규리드 관리", icon: "new", href: "/newcust", feature: FEATURES.crm, owner: "BBE-26" },
   { key: "contact", label: "리드컨택 관리", icon: "contact", href: "/contract", feature: FEATURES.crm, owner: "T02" },
@@ -45,6 +45,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { key: "auto", label: "자동화", icon: "work", href: "/settings/automations", feature: FEATURES.policyfund, owner: "T06" },
   { key: "members", label: "조직관리", icon: "org", href: "/settings/members", feature: FEATURES.org, owner: "T03", badgeKey: "workspaceApprovals" },
   { key: "preset", label: "프리셋", icon: "preset", href: "/presets", owner: "BBE-142" },
+  { key: "workspace-settings", label: "내 회사 관리", icon: "company", href: "/settings/account#workspace" },
   { key: "profile", label: "내 프로필", icon: "org", href: "/account", owner: "T03" },
   { key: "onboard", label: "온보딩", icon: "new", href: "/onboarding", owner: "BBE-112" },
 ] as const;
@@ -71,7 +72,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     nested: true,
     collapsible: true,
   },
-  { key: "settings", label: "설정", items: ["tabs", "auto", "members", "preset", "profile", "onboard"] },
+  { key: "settings", label: "설정", items: ["tabs", "auto", "members", "preset", "workspace-settings", "profile", "onboard"] },
 ] as const;
 
 const NAV_ITEM_BY_KEY = new Map(NAV_ITEMS.map((item) => [item.key, item]));

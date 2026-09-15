@@ -139,7 +139,7 @@ export function AccountMenu({
                 className={styles.menuItem}
                 onClick={() => setOpen(false)}
               >
-                회사와 팀
+                내 회사 관리
               </Link>
             </li>
           ) : null}

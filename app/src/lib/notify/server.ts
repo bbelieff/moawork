@@ -20,10 +20,11 @@ import {
 const PAGE_SIZE = 30;
 
 export interface NotifySnapshot {
+  loadError?: boolean;
   bell: BadgeState;
   sidebar: Record<SurfaceKey, BadgeState>;
-  mine: Array<{ notification: Notification; href: string | null }>;
-  org: Array<{ group: FeedGroup; line: FeedLine; href: string | null; recipient: NotificationRecipient }>;
+  mine: Array<{ notification: Notification; href: string | null; actorName?: string }>;
+  org: Array<{ group: FeedGroup; line: FeedLine; href: string | null; recipient: NotificationRecipient; read?: boolean }>;
 }
 
 export const EMPTY_SNAPSHOT: NotifySnapshot = {
@@ -66,7 +67,8 @@ export async function loadNotifySnapshot(ctx: Ctx, now = new Date(), routingPort
         .eq("user_id", ctx.user.id),
     ]);
 
-    // 조회 실패는 조용히 빈 값으로 — 알림 때문에 화면 전체가 죽으면 안 된다.
+    if (notifRes.error || feedRes.error || seenRes.error) return { ...EMPTY_SNAPSHOT, loadError: true };
+    // 알림 화면에서 조회 실패와 빈 수신함을 구분한다.
     const rawNotifications = (notifRes.data ?? []) as Notification[];
     const rawFeed = (feedRes.data ?? []) as FeedItem[];
     const seen = (seenRes.data ?? []) as SurfaceSeen[];
@@ -85,10 +87,12 @@ export async function loadNotifySnapshot(ctx: Ctx, now = new Date(), routingPort
       sidebar: sidebarBadges(mine, routedFeed.map((item) => item.feed), seen, surfaceOfNotification, surfaceOfFeedItem),
       mine: mine.map((notification) => ({
         notification,
+        actorName: actorNames.get(notification.actor_id ?? "") ?? "알 수 없는 사용자",
         href: deepLink(notification.target_type, notification.target_id),
       })),
       org: groupFeed(routedFeed.map((item) => item.feed)).map((group) => ({
         group,
+        read: surfaceOfFeedItem(group.head) ? seen.some((entry) => entry.surface_key === surfaceOfFeedItem(group.head) && Date.parse(entry.seen_at) >= Date.parse(group.head.at)) : undefined,
         line: feedLine(group.head, actorNames.get(group.head.actor ?? "") ?? null, now, group.count),
         href: deepLink(group.head.target_type, group.head.target_id),
         recipient: routedFeed.find((item) => item.feed.id === group.head.id)!.recipient,
@@ -96,7 +100,7 @@ export async function loadNotifySnapshot(ctx: Ctx, now = new Date(), routingPort
     };
   } catch {
     // 네트워크·권한 오류로 알림이 안 뜨는 것은 감수하되, 화면은 계속 동작해야 한다.
-    return EMPTY_SNAPSHOT;
+    return { ...EMPTY_SNAPSHOT, loadError: true };
   }
 }
 
@@ -104,7 +108,7 @@ async function routeFeedToCurrentUser(
   feed: readonly FeedItem[],
   ctx: Ctx,
   port: NotificationRoutingPort,
-): Promise<Array<{ feed: FeedItem; recipient: NotificationRecipient }>> {
+): Promise<Array<{ feed: FeedItem; recipient: NotificationRecipient; read?: boolean }>> {
   const routes = await port.load(feed.flatMap((item) => item.target_id ? [item.target_id] : []));
   return routeNotificationFeed(feed, ctx.user.id, routes, ctx.scope === "all");
 }
@@ -173,12 +177,13 @@ export async function markAllRead(ctx: Ctx, now = new Date()): Promise<void> {
   const supabase = await createClient();
   const stamp = now.toISOString();
 
-  await supabase
+  const { error } = await supabase
     .from("notifications")
     .update({ read_at: stamp })
     .eq("org_id", ctx.org.id)
     .eq("user_id", ctx.user.id)
     .is("read_at", null);
+  if (error) throw new Error("알림 읽음 상태를 저장하지 못했어요.");
 
   // 사이드바 점도 함께 끈다(화면별 워터마크 일괄 갱신).
   await touchAllSurfaces(ctx, stamp);
@@ -206,13 +211,14 @@ export async function markSurfaceSeen(
 
 async function touchAllSurfaces(ctx: Ctx, stamp: string): Promise<void> {
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error: feedError } = await supabase
     .from("audit_logs")
     .select("target_type")
     .eq("org_id", ctx.org.id)
     .order("at", { ascending: false })
     .limit(200);
 
+  if (feedError) throw new Error("알림 읽음 범위를 확인하지 못했어요.");
   const keys = new Set<SurfaceKey>();
   for (const row of (data ?? []) as Array<{ target_type: string | null }>) {
     const key = surfaceOfFeedItem({ target_type: row.target_type } as FeedItem);
@@ -220,7 +226,7 @@ async function touchAllSurfaces(ctx: Ctx, stamp: string): Promise<void> {
   }
   if (keys.size === 0) return;
 
-  await supabase.from("notification_surface_seen").upsert(
+  const { error: seenError } = await supabase.from("notification_surface_seen").upsert(
     [...keys].map((surface_key) => ({
       org_id: ctx.org.id,
       user_id: ctx.user.id,
@@ -229,6 +235,7 @@ async function touchAllSurfaces(ctx: Ctx, stamp: string): Promise<void> {
     })),
     { onConflict: "org_id,user_id,surface_key" },
   );
+  if (seenError) throw new Error("알림 읽음 상태를 저장하지 못했어요.");
 }
 
 /**
