@@ -5,7 +5,7 @@ import {
   NEW_LEAD_BUSINESS_TYPES,
   NEW_LEAD_CUSTOM_BUSINESS_TYPE,
 } from "@/lib/new-lead/business-types";
-import { NEW_LEAD_REVENUE_BANDS, NEW_LEAD_CUSTOM_REVENUE_LABEL } from "@/lib/new-lead/revenue-bands";
+import { NEW_LEAD_INTAKE_REVENUE_BANDS, NEW_LEAD_CUSTOM_REVENUE_LABEL } from "@/lib/new-lead/revenue-bands";
 import {
   formatRevenueInput,
   REVENUE_UNIT_LABEL,
@@ -111,7 +111,7 @@ export function RevenueBandField({ invalid = false }: { invalid?: boolean }) {
         <select name="revenue_band" value={selected} onChange={(event) => setSelected(event.target.value)}
           aria-invalid={invalid} className={`${CONTROL} aria-[invalid=true]:border-mw-error`}>
           <option value="">미입력</option>
-          {NEW_LEAD_REVENUE_BANDS.map((value) => <option key={value} value={value}>{value === "그외" ? NEW_LEAD_CUSTOM_REVENUE_LABEL : value}</option>)}
+          {NEW_LEAD_INTAKE_REVENUE_BANDS.map((value) => <option key={value} value={value}>{value === "그외" ? NEW_LEAD_CUSTOM_REVENUE_LABEL : value}</option>)}
         </select>
       </label>
       {selected === "그외" ? (
