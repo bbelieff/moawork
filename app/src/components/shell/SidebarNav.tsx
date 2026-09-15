@@ -14,6 +14,7 @@ import { Icon } from "./icons";
 import {
   NAV_ITEMS,
   NAV_SECTIONS,
+  WORK_TOOL_ITEMS,
   navItemsForSection,
   type NavBadgeKey,
   type NavItem,
@@ -60,7 +61,7 @@ export function SidebarNav({
   // 활성은 «항목마다» 가 아니라 «전체에서 하나» 다 — 둘이 켜지면 색으로 구분하는 목적이 깨진다.
   const activeKey = resolveActiveNavKey(
     pathname,
-    NAV_ITEMS.filter((item) => item.href).map((item) => ({
+    [...NAV_ITEMS, ...WORK_TOOL_ITEMS].filter((item) => item.href).map((item) => ({
       key: item.key,
       href: workspaceHref(workspaceBasePath, item.href!).split(/[?#]/)[0],
     })),
@@ -224,6 +225,28 @@ export function SidebarNav({
           </h2>
           {navItemsForSection(NAV_SECTIONS[0]).map((item) => renderItem(item, false))}
         </div>
+
+        <details
+          data-nav-section="work-tools"
+          className="group/work-tools border-b"
+          style={{ borderColor: "var(--mw-line)", paddingBlock: "var(--sp-2)" }}
+        >
+          <summary className="cursor-pointer list-none hover:bg-[var(--mw-bg)] focus-visible:outline-2 focus-visible:outline-[var(--mw-primary)] [&::-webkit-details-marker]:hidden">
+            <h2 className="flex items-center justify-between font-semibold" style={{ color: "var(--mw-sub)", fontSize: "var(--fs-11)", padding: "var(--sp-2) var(--sp-3)" }}>
+              업무도구
+              <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" className="group-open/work-tools:rotate-90" style={{ width: "var(--sp-3)", height: "var(--sp-3)" }}>
+                <path d="m6 4 4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </h2>
+          </summary>
+          {WORK_TOOL_ITEMS.length ? (
+            <ul aria-label="업무도구 목록">
+              {WORK_TOOL_ITEMS.map((item) => <li key={item.key}>{renderItem(item, true)}</li>)}
+            </ul>
+          ) : (
+            <p style={{ color: "var(--mw-sub)", fontSize: "var(--fs-11)", padding: "var(--sp-1) var(--sp-6) var(--sp-2)" }}>등록된 도구가 없습니다.</p>
+          )}
+        </details>
 
         <div
           className="border-b"
