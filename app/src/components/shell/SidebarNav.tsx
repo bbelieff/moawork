@@ -62,7 +62,7 @@ export function SidebarNav({
     pathname,
     NAV_ITEMS.filter((item) => item.href).map((item) => ({
       key: item.key,
-      href: workspaceHref(workspaceBasePath, item.href!),
+      href: workspaceHref(workspaceBasePath, item.href!).split(/[?#]/)[0],
     })),
     { basePath: workspaceBasePath, boardNavKeys },
   );
