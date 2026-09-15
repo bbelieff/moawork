@@ -91,7 +91,7 @@ export default async function PresetsPage({
           {canManageTabs && (
             <form action={createTabAction} className="flex gap-2">
               <input name="name" required placeholder="새 탭 이름" className="min-w-0 rounded-lg border border-mw-line bg-mw-bg px-3 py-2 text-sm text-mw-fg" />
-              <button className="rounded-lg bg-mw-primary px-3 py-2 text-sm font-semibold text-white">+ 탭 만들기</button>
+              <button className="rounded-lg bg-mw-primary px-3 py-2 text-sm font-semibold text-mw-on-accent">+ 탭 만들기</button>
             </form>
           )}
         </div>
@@ -143,7 +143,7 @@ export default async function PresetsPage({
               <option value="">구조를 가져올 탭</option>
               {boards.map((board) => <option key={board.id} value={board.id}>{board.name}</option>)}
             </select>
-            <button className="rounded bg-mw-primary px-3 py-2 text-sm font-semibold text-white">구조 저장</button>
+            <button className="rounded bg-mw-primary px-3 py-2 text-sm font-semibold text-mw-on-accent">구조 저장</button>
           </form>
         )}
 

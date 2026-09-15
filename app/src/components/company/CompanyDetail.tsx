@@ -85,7 +85,7 @@ export function CompanyDetail({ company, deals, stageNames, workStartRequestId, 
           <form action={startWorkAction}>
             <input type="hidden" name="companyId" value={company.id} />
             <input type="hidden" name="requestId" value={workStartRequestId} />
-            <button type="submit" className="min-h-11 rounded-lg bg-mw-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mw-primary">
+            <button type="submit" className="min-h-11 rounded-lg bg-mw-primary px-4 py-2 text-sm font-semibold text-mw-on-accent hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mw-primary">
               업무 시작
             </button>
           </form>

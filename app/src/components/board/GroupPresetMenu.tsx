@@ -178,7 +178,7 @@ export function GroupPresetMenu({
               <button
                 type="submit"
                 disabled={saving}
-                className="shrink-0 rounded-lg bg-mw-primary px-2.5 py-1.5 font-semibold text-white disabled:opacity-50"
+                className="shrink-0 rounded-lg bg-mw-primary px-2.5 py-1.5 font-semibold text-mw-on-accent disabled:opacity-50"
               >
                 {saving ? "저장 중…" : "저장"}
               </button>
@@ -250,7 +250,7 @@ export function GroupPresetMenu({
                     <button
                       type="submit"
                       disabled={applying || preview.noop}
-                      className="rounded-lg bg-mw-primary px-2.5 py-1.5 font-semibold text-white disabled:opacity-50"
+                      className="rounded-lg bg-mw-primary px-2.5 py-1.5 font-semibold text-mw-on-accent disabled:opacity-50"
                     >
                       {applying ? "적용 중…" : preview.noop ? "이미 같은 배치입니다" : "이 아이템에 적용"}
                     </button>
