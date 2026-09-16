@@ -1,4 +1,5 @@
 import { NotificationCenterFixture } from "./NotificationCenterFixture";
+import { SupporterFixtureSurface } from "./SupporterFixtureSurface";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { CONTACT_TAB, NEW_LEAD_TAB } from "@/lib/default-tabs";
 import type { Board, BoardColumn, BoardGroup, ItemWithValues } from "@/lib/boards/types";
@@ -78,6 +79,62 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
   const params = await searchParams;
   if (params.surface === "notifications") {
     return <main className="min-h-screen bg-mw-bg p-4"><NotificationCenterFixture /></main>;
+  }
+  // 서포터 시각 픽스처 — 실제 컴포넌트를 합성 props 로 렌더한다.
+  // 세션을 읽지 않고 운영 호출을 하지 않는다. transport stub 은 정확한
+  // 미연결 메타데이터(unavailable/not_configured)에 대한 승인/거부만 흉내 낸다.
+  if (params.surface === "supporter") {
+    const ctx = params.ctx === "platform" ? "fixture-platform" : "fixture-org";
+    const allowOps = params.ops === "1";
+    const grantOps = params.grant !== "0";
+    const failUser = params.fail === "1";
+    const link = (over: { ctx?: string; ops?: string; grant?: string; fail?: string }) => {
+      const next = new URLSearchParams({ surface: "supporter" });
+      const finalCtx = over.ctx ?? (ctx === "fixture-platform" ? "platform" : undefined);
+      if (finalCtx) next.set("ctx", finalCtx);
+      const finalOps = over.ops ?? (allowOps ? "1" : undefined);
+      if (finalOps) next.set("ops", finalOps);
+      const finalGrant = over.grant ?? (grantOps ? undefined : "0");
+      if (finalGrant) next.set("grant", finalGrant);
+      const finalFail = over.fail ?? (failUser ? "1" : undefined);
+      if (finalFail) next.set("fail", finalFail);
+      return `?${next.toString()}`;
+    };
+    return (
+      <main data-visual-supporter-fixture data-build-sha={process.env.VERCEL_GIT_COMMIT_SHA ?? "local"} className="min-h-screen bg-mw-bg p-4">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4">
+          <header>
+            <h1 className="text-xl font-semibold">서포터 픽스처</h1>
+            <p className="mt-1 text-sm text-zinc-500">
+              합성 맥락으로 실제 패널을 확인해요. 세션을 읽지 않고 운영 호출을 하지 않아요.
+            </p>
+          </header>
+          <nav aria-label="서포터 픽스처 전환" className="flex flex-wrap gap-2 text-sm">
+            <a className="underline" href={link({ ctx: "org" })}>모아 맥락</a>
+            <a className="underline" href={link({ ctx: "platform", ops: "1" })}>운영 맥락</a>
+            <a className="underline" href={link({ ops: allowOps ? "0" : "1" })}>
+              운영 표면 {allowOps ? "끄기" : "켜기"}
+            </a>
+            <a className="underline" href={link({ grant: grantOps ? "0" : "1" })}>
+              운영 승인 {grantOps ? "거부" : "허용"}
+            </a>
+            <a className="underline" href={link({ fail: failUser ? "0" : "1" })}>
+              연결 실패 {failUser ? "끄기" : "켜기"}
+            </a>
+          </nav>
+          <p className="text-xs text-zinc-500">
+            맥락 {ctx} · 운영 표면 {allowOps ? "켬" : "끔"} · 운영 승인 {grantOps ? "허용" : "거부"} ·
+            연결 실패 {failUser ? "켜기" : "끄기"}
+          </p>
+          <SupporterFixtureSurface
+            contextKey={ctx}
+            allowOperations={allowOps}
+            grantOperations={grantOps}
+            failUser={failUser}
+          />
+        </div>
+      </main>
+    );
   }
   if (params.surface === "account-profile") {
     return (

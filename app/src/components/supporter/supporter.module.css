@@ -1,0 +1,325 @@
+/* 서포터 도크 — 색·간격·글자 크기는 --mw-*·--sp-*·--fs-* 토큰만 쓴다. */
+
+/* 데스크톱: 셸 안에서 390~400px 고정폭으로 본문을 민다. 닫힘은 null 렌더라 이 파일 밖 레이아웃에 영향을 주지 않는다. */
+.dock {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  max-height: 100dvh;
+  flex: none;
+  width: 396px;
+  max-width: 400px;
+  min-width: 390px;
+  border-left: 1px solid var(--mw-line);
+  background: var(--mw-card);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  align-self: flex-start;
+}
+
+.openButton {
+  border: 1px solid var(--mw-line);
+  background: var(--mw-card);
+  color: var(--mw-primary);
+  border-radius: var(--mw-r-2);
+  padding-inline: var(--sp-3);
+  padding-block: var(--sp-2);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-inline: var(--sp-3);
+  padding-block: var(--sp-3);
+  border-bottom: 1px solid var(--mw-line);
+}
+
+.panelHeadOps {
+  background: var(--mw-tint-coral);
+}
+
+.panelName {
+  font-weight: 700;
+  font-size: var(--fs-13);
+}
+
+.statusBadge {
+  font-size: var(--fs-11);
+  color: var(--mw-sub);
+  border: 1px solid var(--mw-line);
+  border-radius: var(--mw-r-2);
+  padding-inline: var(--sp-2);
+}
+
+.closeButton {
+  margin-left: auto;
+  border: 1px solid var(--mw-line);
+  background: var(--mw-card);
+  border-radius: var(--mw-r-2);
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.opsRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-inline: var(--sp-3);
+  padding-block: var(--sp-2);
+  border-bottom: 1px solid var(--mw-line);
+  font-size: var(--fs-13);
+}
+
+.opsLabel {
+  color: var(--mw-sub);
+  font-size: var(--fs-12);
+}
+
+.opsSwitch {
+  width: 34px;
+  height: 20px;
+  border-radius: 10px;
+  border: 1px solid var(--mw-line);
+  background: var(--mw-line);
+  position: relative;
+  cursor: pointer;
+  padding: 0;
+}
+
+.opsSwitch[data-on="true"] {
+  background: var(--mw-primary);
+  border-color: var(--mw-primary);
+}
+
+.opsKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--mw-card);
+  border: 1px solid var(--mw-line);
+}
+
+.opsSwitch[data-on="true"] .opsKnob {
+  left: 18px;
+}
+
+.sessionRow {
+  padding-inline: var(--sp-3);
+  padding-block: var(--sp-2);
+  border-bottom: 1px solid var(--mw-line);
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  font-size: var(--fs-13);
+  flex-wrap: wrap;
+}
+
+.sessionButton {
+  font-size: var(--fs-13);
+  padding-inline: var(--sp-3);
+  padding-block: var(--sp-2);
+  border: 1px solid var(--mw-primary);
+  color: var(--mw-primary);
+  background: var(--mw-card);
+  border-radius: var(--mw-r-2);
+  cursor: pointer;
+}
+
+.sessionNote {
+  font-size: var(--fs-12);
+  color: var(--mw-sub);
+}
+
+.chat {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.msg {
+  max-width: 92%;
+  padding-inline: var(--sp-3);
+  padding-block: var(--sp-2);
+  border: 1px solid var(--mw-line);
+  border-radius: var(--mw-r-2);
+  background: var(--mw-card);
+  font-size: var(--fs-13);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.msgMe {
+  align-self: flex-end;
+}
+
+.msgBot {
+  align-self: flex-start;
+}
+
+.msgWho {
+  display: block;
+  font-size: var(--fs-11);
+  color: var(--mw-sub);
+  margin-bottom: var(--sp-1);
+}
+
+.notice {
+  align-self: flex-start;
+  max-width: 94%;
+  border: 1px solid var(--mw-line);
+  border-radius: var(--mw-r-2);
+  background: var(--mw-card);
+  padding-inline: var(--sp-3);
+  padding-block: var(--sp-2);
+  font-size: var(--fs-13);
+}
+
+.noticeTitle {
+  font-weight: 700;
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-13);
+}
+
+.notice p {
+  margin: 0 0 var(--sp-2);
+}
+
+.helpList {
+  margin: var(--sp-1) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.helpList a {
+  color: var(--mw-primary);
+}
+
+.staticTag {
+  font-size: var(--fs-11);
+  color: var(--mw-sub);
+  border: 1px solid var(--mw-line);
+  border-radius: var(--mw-r-2);
+  padding-inline: var(--sp-2);
+  margin-left: var(--sp-2);
+}
+
+.sugs {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  padding-inline: var(--sp-3);
+  padding-block: var(--sp-2);
+  border-top: 1px solid var(--mw-line);
+}
+
+.sugs button {
+  font-size: var(--fs-13);
+  padding-inline: var(--sp-3);
+  padding-block: var(--sp-1);
+  border: 1px solid var(--mw-primary);
+  color: var(--mw-primary);
+  background: var(--mw-card);
+  border-radius: var(--mw-r-2);
+  cursor: pointer;
+}
+
+.sugs button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.foot {
+  display: flex;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-top: 1px solid var(--mw-line);
+}
+
+.foot input {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-13);
+  padding-inline: var(--sp-3);
+  padding-block: var(--sp-2);
+  border: 1px solid var(--mw-line);
+  border-radius: var(--mw-r-2);
+  background: var(--mw-card);
+  color: var(--mw-text, inherit);
+}
+
+.foot button {
+  font-size: var(--fs-13);
+  padding-inline: var(--sp-3);
+  padding-block: var(--sp-2);
+  background: var(--mw-primary);
+  color: var(--mw-on-accent);
+  border: 1px solid var(--mw-primary);
+  border-radius: var(--mw-r-2);
+  cursor: pointer;
+}
+
+.foot button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* 연결 없음 안내는 가짜 서포터 말풍선이 아니라 명시적 상태 한 줄이다. */
+.submitError {
+  margin: 0;
+  padding-inline: var(--sp-3);
+  padding-block: var(--sp-2);
+  background: var(--mw-tint-coral);
+  font-size: var(--fs-12);
+}
+
+/* 입력 길이 카운터 — maxLength 침묵 잘림을 눈으로 보이게 한다. */
+.counter {
+  align-self: flex-end;
+  padding-inline: var(--sp-3);
+  padding-block: var(--sp-1);
+  font-size: var(--fs-11);
+  color: var(--mw-sub);
+}
+
+/* 375px 모바일: 화면 전체 drawer. */
+@media (max-width: 767px) {
+  .dock {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    border-left: 0;
+  }
+
+  .foot input,
+  .foot button {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock,
+  .dock * {
+    transition: none;
+  }
+}

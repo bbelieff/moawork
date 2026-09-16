@@ -344,6 +344,83 @@ describe("proxy workspace namespace", () => {
   });
 });
 
+describe("proxy supporter status boundary", () => {
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.test";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "public-anon-test-key";
+    mocks.createServerClient.mockReset();
+  });
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  });
+
+  it("lets the exact status route reach its own JSON when unauthenticated", async () => {
+    setupRotating(null, [], rotateOnce);
+    const response = await proxy(
+      new NextRequest("https://www.moa-work.com/api/supporter/status?mode=user"),
+    );
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(cookieOn(response, ROTATED_0.name)?.value).toBe(ROTATED_0.value);
+  });
+
+  it("preserves the session-clearing directive on the exact status route", async () => {
+    setupRotating(null, [], clearSession);
+    const response = await proxy(
+      new NextRequest(
+        "https://www.moa-work.com/api/supporter/status?mode=operations",
+      ),
+    );
+    expect(response.headers.get("location")).toBeNull();
+    const cleared = cookieOn(response, CLEARED_0.name);
+    expect(cleared?.value).toBe("");
+    expect(cleared?.maxAge).toBe(0);
+  });
+
+  it("keeps the exact status route passing for an authenticated caller", async () => {
+    setupRotating({ id: "user-1" }, [membership("org-acme", "acme")], rotateOnce);
+    const response = await proxy(
+      new NextRequest("https://www.moa-work.com/api/supporter/status?mode=user"),
+    );
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(cookieOn(response, ROTATED_0.name)?.value).toBe(ROTATED_0.value);
+  });
+
+  it("does not make lookalike status paths public", async () => {
+    setup(null);
+    const exact = await proxy(
+      new NextRequest("https://www.moa-work.com/api/supporter/status/extra"),
+    );
+    expect(exact.headers.get("location")).toBe(
+      "https://www.moa-work.com/login?next=%2Fapi%2Fsupporter%2Fstatus%2Fextra",
+    );
+    for (const path of [
+      "/api/supporter/statusx",
+      "/api/supporter",
+      "/api/supporter/",
+    ]) {
+      const response = await proxy(
+        new NextRequest(`https://www.moa-work.com${path}`),
+      );
+      expect(response.headers.get("location"), path).toContain(
+        "https://www.moa-work.com/login?next=",
+      );
+    }
+  });
+
+  it("passes the exact status route without env so the route can answer 503", async () => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const response = await proxy(
+      new NextRequest("https://www.moa-work.com/api/supporter/status?mode=user"),
+    );
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+  });
+});
+
 // Exercise Next's actual adapter and router URL classification, not only the
 // proxy response header. All auth and membership data remains a local fixture.
 describe("self-hosted namespace routing through the Next adapter (#725)", () => {

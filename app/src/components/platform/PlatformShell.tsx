@@ -4,6 +4,11 @@ import { PLATFORM_NAV, PLATFORM_NAV_GROUPS, activePlatformSection } from "./nav"
 import styles from "./platform.module.css";
 import type { PlatformAggregateState, PlatformSectionKey } from "@/lib/platform/contracts";
 import { DeveloperModeControl, type DeveloperModeAction } from "@/components/mode/DeveloperModeControl";
+import {
+  SupporterDock,
+  SupporterOpenButton,
+  SupporterProvider,
+} from "@/components/supporter";
 
 export function PlatformShell({
   pathname,
@@ -21,8 +26,13 @@ export function PlatformShell({
 }) {
   const active = activePlatformSection(pathname);
   const activeItem = PLATFORM_NAV.find((item) => item.key === active);
+  // 서포터 — 기본 닫힘이라 닫힘 상태의 추가 DOM 은 열기 버튼 한 줄뿐이다.
+  // contextKey "platform" 은 운영 화면 전용이며, 운영 토글 노출은 서버 검증
+  // (/api/supporter/status) 뒤에만 된다. 토글 자체는 권한을 주지 않는다.
   return (
-    <div className={styles.root}>
+    <SupporterProvider contextKey="platform" allowOperations>
+    <div style={{ display: "flex", alignItems: "flex-start", minWidth: 0 }}>
+    <div className={styles.root} style={{ flex: "1 1 auto", minWidth: 0 }}>
       <header className={styles.band} role="note">
         <div className={styles.brand}>
           <span className={styles.mark} aria-hidden="true"><i /><i /><i /></span>
@@ -30,6 +40,7 @@ export function PlatformShell({
         </div>
         <p className={styles.safety}>서비스 관리자 화면이에요. 고객 업무 정보는 별도 권한이 있을 때만 볼 수 있어요.</p>
         <DeveloperModeControl mode="platform" action={userModeAction ?? { mode: "user" }} />
+        <SupporterOpenButton />
       </header>
       <div className={styles.layout}>
         <nav className={styles.sidebar} aria-label="서비스 운영 메뉴">
@@ -62,6 +73,9 @@ export function PlatformShell({
         </main>
       </div>
     </div>
+      <SupporterDock />
+    </div>
+    </SupporterProvider>
   );
 }
 

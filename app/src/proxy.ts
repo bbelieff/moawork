@@ -43,6 +43,17 @@ const PUBLIC_HEALTH_PATHS = new Set([
   "/api/health/live",
   "/api/health/ready",
 ]);
+
+/**
+ * 유일한 자기인증 JSON 상태 경로. 정확히 이 경로만 미인증 통과를 허용해
+ * route 자신의 401/403/503 JSON 을 살린다. 접미사·형제 경로는 공개하지 않는다.
+ * 갱신 세션 쿠키는 buildResponse 가 다른 모든 출구와 똑같이 싣는다.
+ */
+const SELF_AUTHENTICATING_STATUS_PATH = "/api/supporter/status";
+
+function isSelfAuthenticatingStatusPath(pathname: string): boolean {
+  return pathname === SELF_AUTHENTICATING_STATUS_PATH;
+}
 const WORKSPACE_SLUG_COOKIE = "mw_workspace_slug";
 const WORKSPACE_PROTECTED_ROOTS = new Set([
   "boards", "notices", "companies", "contract", "newcust", "work",
@@ -136,6 +147,8 @@ async function routeRequest(
   try {
     env = getSupabaseEnv();
   } catch {
+    // 백엔드 미설정이어도 상태 경로는 route 까지 닿아야 503 JSON 을 낸다.
+    if (isSelfAuthenticatingStatusPath(pathname)) return { kind: "pass" };
     if (process.env.NODE_ENV === "production" && !isPublicPath(pathname)) {
       const loginUrl = new URL(request.url);
       loginUrl.pathname = "/login";
@@ -169,11 +182,12 @@ async function routeRequest(
     data: { user },
   } = await supabase.auth.getUser();
 
-  // 미인증 + 비공개 경로 → 로그인으로.
+  // 미인증 + 비공개 경로 → 로그인으로. 단 자기인증 상태 경로는 예외 —
+  // route 자신이 401/403/503 JSON 을 내야 하므로 HTML 로그인으로 덮지 않는다.
   // ★ 이 응답도 갱신 쿠키를 실어야 한다. refresh 실패 시 @supabase/ssr 은
   //   «빈 값 + maxAge 0» 삭제 지시를 setAll 로 내리는데, 그걸 버리면 브라우저에
   //   무효 쿠키가 남아 재로그인까지 오염된다.
-  if (!user && !isPublicPath(pathname)) {
+  if (!user && !isPublicPath(pathname) && !isSelfAuthenticatingStatusPath(pathname)) {
     const loginUrl = new URL(request.url);
     loginUrl.pathname = "/login";
     const canonicalNext = aliasCandidate && isWorkspaceNamespaceCandidate(pathname)
