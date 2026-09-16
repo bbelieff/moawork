@@ -51,10 +51,12 @@ function WorkspaceBootstrapUnavailable({ slug }: { slug: string }) {
 // 색·간격·글자 크기는 전부 globals.css/moawork-tokens.css 의 --mw-*·--sp-*·--fs-* 토큰 참조(하드코딩 hex·임의 px 금지).
 // getSession() 이 세션 없으면 /login 으로 보낸다(가드).
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const ctx = await getSession();
+  // Session and routing snapshot are independent reads for the same request
+  // (verified membership vs. entry routing), so they are issued together.
+  // Both still fail closed on their own terms — only the wait is shared.
+  const [ctx, routing] = await Promise.all([getSession(), loadWorkspaceRoutingSnapshot()]);
   const requestHeaders = await headers();
   const appTabRequest = requestHeaders.get("x-mw-app-tab") === "1";
-  const routing = await loadWorkspaceRoutingSnapshot();
   const currentWorkspace = routing.kind === "ready"
     ? routing.memberships.filter((membership) => membership.orgId === ctx.org.id)
     : [];

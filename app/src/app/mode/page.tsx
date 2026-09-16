@@ -31,13 +31,17 @@ export default async function ModePage({
   const params = await searchParams;
   const next = sanitizeModeNext(params.next);
   const errorMessage = params.error ? MODE_ERROR_MESSAGES[params.error] : undefined;
-  const snapshot = await loadWorkspaceRoutingSnapshot();
+  // The membership snapshot and the platform actor check are independent once
+  // the request is authenticated, so they are issued together. Snapshot
+  // redirects still win — the actor result is only consumed past them.
+  const [snapshot, actor] = await Promise.all([
+    loadWorkspaceRoutingSnapshot(),
+    loadPlatformActor(),
+  ]);
   if (snapshot.kind === "unauthenticated") {
     redirect(`/login?next=${encodeURIComponent(modePath(next))}`);
   }
   if (snapshot.kind === "error") redirect("/workspace-entry?error=routing");
-
-  const actor = await loadPlatformActor();
   const preference = readModePreference(
     (await cookies()).get(modePreferenceCookie.name)?.value,
   );

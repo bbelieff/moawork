@@ -172,6 +172,66 @@ describe("workspace session authorization", () => {
     await expect(getSessionOrNull()).resolves.toBeNull();
   });
 
+  it("denies the session when membership fails even though the platform read grants", async () => {
+    setup({ membershipError: new Error("membership unavailable"), platformRole: "owner" });
+    await expect(getSessionOrNull()).resolves.toBeNull();
+  });
+
+  it("denies an inactive membership even though the platform read grants", async () => {
+    setup({
+      rows: [membership("org-1", "alpha-team", "member", "suspended")],
+      platformRole: "owner",
+    });
+    await expect(getSessionOrNull()).resolves.toBeNull();
+  });
+
+  it("reads tenant membership and platform identity together, not in series", async () => {
+    const rows = [membership("org-1", "alpha-team")];
+    let releaseRead!: () => void;
+    const readGate = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    let identityStarted = false;
+    const supabase = {
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: "user-1",
+              email: "platform@example.test",
+              created_at: "2026-01-01T00:00:00.000Z",
+              user_metadata: { name: "구성원" },
+            },
+          },
+          error: null,
+        }),
+      },
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            order: vi.fn(() => readGate.then(() => ({ data: rows, error: null }))),
+          })),
+        })),
+      })),
+      rpc: vi.fn(async () => {
+        identityStarted = true;
+        return { data: "owner", error: null };
+      }),
+    };
+    mocks.createClient.mockResolvedValue(supabase);
+    mocks.cookies.mockResolvedValue({ get: vi.fn(() => undefined) });
+
+    const pending = getSessionOrNull();
+    // 멤버십 읽기가 끝나기 전에 플랫폼 조회가 출발해야 한다 — 직렬 코드라면
+    // order 가 풀리기 전까지 rpc 는 절대 호출되지 않는다.
+    await vi.waitFor(() => {
+      expect(identityStarted).toBe(true);
+    }, { timeout: 2000, interval: 10 });
+    releaseRead();
+    const ctx = await pending;
+    expect(ctx).toMatchObject({ org: { id: "org-1" }, isPlatformAdmin: true });
+  });
+
   it("contains no legacy fallback or cookie-based role grant path", () => {
     expect(source).toContain("chooseSessionMembership(membershipRows, preferredOrgId)");
     expect(source).toContain("role: membership.role");

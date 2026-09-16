@@ -31,26 +31,38 @@ export async function GET(request: Request) {
   if (userError || !user) return loginError(request, "auth");
 
   const metadata = user.user_metadata ?? {};
-  const { error: profileError } = await supabase.from("users").upsert(
-    {
-      id: user.id,
-      email: user.email ?? null,
-      name: metadata.full_name ?? metadata.name ?? null,
-      avatar_url: metadata.avatar_url ?? metadata.picture ?? null,
-    },
-    { onConflict: "id" },
-  );
+  // The profile write and the platform guard are independent once the user is
+  // known, so they are issued together (one serial step, not two). Precedence
+  // is unchanged: a profile failure still wins over any platform/membership
+  // routing below, and the admin RPC still fails closed (never grants).
+  // The membership read stays lazy so a verified platform admin never pays
+  // for — or leaves traces of — a tenant read they do not need.
+  const [profileResult, adminResult] = await Promise.all([
+    supabase.from("users").upsert(
+      {
+        id: user.id,
+        email: user.email ?? null,
+        name: metadata.full_name ?? metadata.name ?? null,
+        avatar_url: metadata.avatar_url ?? metadata.picture ?? null,
+      },
+      { onConflict: "id" },
+    ),
+    (async () => {
+      try {
+        return await supabase.rpc("is_platform_admin");
+      } catch {
+        // Preserve ordinary verified membership routing when the guard is unavailable.
+        return { data: false as const, error: { message: "unavailable" } };
+      }
+    })(),
+  ]);
+  const { error: profileError } = profileResult;
   if (profileError) return loginError(request, "profile");
 
   // The SECURITY DEFINER RPC binds the platform decision to auth.uid().
   // A false, malformed, or unavailable result never grants the platform plane.
-  let isPlatformAdmin = false;
-  try {
-    const adminResult = await supabase.rpc("is_platform_admin");
-    isPlatformAdmin = !adminResult.error && adminResult.data === true;
-  } catch {
-    // Preserve ordinary verified membership routing when the guard is unavailable.
-  }
+  const isPlatformAdmin =
+    !adminResult.error && adminResult.data === true;
 
   if (isPlatformAdmin) {
     const destination = new URL("/mode", url.origin);

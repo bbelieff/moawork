@@ -59,13 +59,29 @@ async function getSupabaseSession(
   if (userError || !authUser) return null;
   const authUserId = authUser.id;
 
-  const { data: membershipRows, error: membershipError } = await supabase
+  // The tenant membership read and the platform identity read are independent
+  // once the user is known, so they are issued together (one serial step, not
+  // two). Denial is unchanged: a failed or non-selecting membership still
+  // yields no session even when the platform read grants, and platform
+  // identity never substitutes for tenant role/scope below.
+  const membershipPromise = supabase
     .from("org_members")
     .select(
       "org_id, status, role, scope, orgs!inner(id, slug, status, name, plan_tier, created_at)",
     )
     .eq("user_id", authUserId)
     .order("created_at", { ascending: true });
+  const platformRolePromise = authUser.email
+    ? supabase
+        .rpc("app_admin_role", { p_email: authUser.email })
+        .then(
+          (result) => result,
+          () => ({ data: null, error: { message: "unavailable" } }),
+        )
+    : Promise.resolve(null);
+  const [membershipResult, platformRoleResult] =
+    await Promise.all([membershipPromise, platformRolePromise]);
+  const { data: membershipRows, error: membershipError } = membershipResult;
   if (membershipError) return null;
 
   const selected = chooseSessionMembership(membershipRows, preferredOrgId);
@@ -75,11 +91,8 @@ async function getSupabaseSession(
   if (!membership) return null;
 
   let platformRole = null;
-  if (authUser.email) {
-    const { data, error } = await supabase.rpc("app_admin_role", {
-      p_email: authUser.email,
-    });
-    if (!error) platformRole = parseAdminRole(data);
+  if (platformRoleResult && !platformRoleResult.error) {
+    platformRole = parseAdminRole(platformRoleResult.data);
   }
 
   const metadata = authUser.user_metadata ?? {};
