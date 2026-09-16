@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { ResultBanner } from "@/lib/ui/ResultBanner";
 import { type ResultNotice } from "@/lib/ui/result-notice";
-import { validateWorkspaceSlug } from "@/lib/workspace-entry/contracts";
+import { normalizeWorkspaceSlug, validateWorkspaceSlug } from "@/lib/workspace-entry/contracts";
 import {
   CUSTOMER_INDUSTRY_FIXED,
   INVITE_STATE_LABEL,
@@ -69,6 +69,7 @@ export function PlatformCustomerRegistry({
   async function submitNew(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     const displayName = name.trim();
+    const normalizedSlug = normalizeWorkspaceSlug(slug);
     if (displayName.length < 1 || displayName.length > 80) {
       setFormError("회사 이름을 1~80자로 입력해 주세요.");
       return;
@@ -86,7 +87,7 @@ export function PlatformCustomerRegistry({
       const created = await fetch("/api/workspace-requests", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind: "create", displayName, slug: slug.trim(), requestId: requestId.current }),
+        body: JSON.stringify({ kind: "create", displayName, slug: normalizedSlug, requestId: requestId.current }),
       });
       const result = (await created.json()) as { ok: boolean; state?: string; message?: string };
       if (!result.ok) {
@@ -95,10 +96,10 @@ export function PlatformCustomerRegistry({
         return;
       }
       // 저장을 «주장» 하지 않는다 — 목록에서 다시 읽어 확인된 회사로만 이동한다.
-      const reread = await fetch(`/api/platform/customers?q=${encodeURIComponent(slug.trim())}`, { cache: "no-store" });
+      const reread = await fetch(`/api/platform/customers?q=${encodeURIComponent(normalizedSlug)}`, { cache: "no-store" });
       const listed = (await reread.json()) as { ok: boolean; customers?: { orgId: string; slug: string | null }[] };
       const match = reread.ok && listed.ok
-        ? (listed.customers ?? []).find((row) => row.slug === slug.trim())
+        ? (listed.customers ?? []).find((row) => row.slug === normalizedSlug)
         : undefined;
       if (!match) {
         setFormError("등록은 됐지만 목록에서 확인되지 않아요. 새로고침 후 다시 확인해 주세요.");

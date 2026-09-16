@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=148_platform_customer_ops predecessor=147_invite_links digest=411bfac47566d9d62dd294af1f52c9c309729a00d2aeb1716ce895002faba0e1 foundation=false
+-- moa-migration-guard: logical_key=148_platform_customer_ops predecessor=147_invite_links digest=012e55b4934988a3926f142d6fde35854bb4952cb5c42e475698b01f7cbf8bfe foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '148_platform_customer_ops',
   p_file_name => '148_platform_customer_ops.sql',
-  p_file_digest => '411bfac47566d9d62dd294af1f52c9c309729a00d2aeb1716ce895002faba0e1',
+  p_file_digest => '012e55b4934988a3926f142d6fde35854bb4952cb5c42e475698b01f7cbf8bfe',
   p_expected_predecessor => '147_invite_links',
   p_executor => 'NC-01',
   p_thread_id => '01a0aacf-8d09-7ee0-a87a-e4b7f6b239d2',
@@ -487,7 +487,8 @@ begin
   insert into public.platform_customer_history(
     org_id, event_label, before_state, after_state, memo, actor_user_id
   ) values (
-    p_org_id, '초대 안내함', v_before, p_invite_state, '대표 수락 대기', v_actor
+    p_org_id, case when p_invite_state = 'sent' then '초대 안내함' else '초대 안내 취소' end,
+    v_before, p_invite_state, '', v_actor
   );
 
   return jsonb_build_object('ok', true, 'invite_state', p_invite_state, 'changed', true);
@@ -605,8 +606,9 @@ begin
     raise exception 'customer task not found' using errcode = 'P0002';
   end if;
 
-  if not exists (select 1 from public.orgs o
-                  where o.id = p_org_id and o.status = 'active') then
+  perform 1 from public.orgs o
+    where o.id = p_org_id and o.status = 'active' for update;
+  if not found then
     raise exception 'customer not found' using errcode = 'P0002';
   end if;
 

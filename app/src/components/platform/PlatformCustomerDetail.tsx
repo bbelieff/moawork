@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { ResultBanner } from "@/lib/ui/ResultBanner";
 import { type ResultNotice } from "@/lib/ui/result-notice";
 import {
@@ -66,6 +66,7 @@ export function PlatformCustomerDetail({
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState<CustomerTaskKind>("setup");
   const [taskError, setTaskError] = useState<string | null>(null);
+  const taskRequestId = useRef<string | null>(null);
   // 초대 주소 복사는 전달이 아니다. 복사만 하고, 안내 기록은 아래 버튼으로 따로 남긴다.
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
@@ -118,19 +119,21 @@ export function PlatformCustomerDetail({
       return;
     }
     setBusy("task-create");
+    if (!taskRequestId.current) taskRequestId.current = crypto.randomUUID();
     setTaskError(null);
     setNotice(null);
     try {
       const response = await fetch(`/api/platform/customers/${customer.orgId}/tasks`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ taskId: crypto.randomUUID(), title: title.trim(), kind }),
+        body: JSON.stringify({ taskId: taskRequestId.current, title: title.trim(), kind }),
       });
       if (!response.ok) {
         setTaskError(await readError(response, "작업을 저장하지 못했어요."));
         return;
       }
       setTitle("");
+      taskRequestId.current = null;
       setTaskOpen(false);
       setNotice({ ok: true, message: "작업을 추가했어요." });
       router.refresh();

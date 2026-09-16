@@ -147,7 +147,7 @@ describe("PlatformCustomerRegistry", () => {
     expect(input("customer-new-name").value).toBe("알파 회사");
   });
 
-  it("navigates only to a re-read customer, never on an unconfirmed save", async () => {
+  it.each(["alpha", " ALPHA "])("navigates only to a re-read customer using normalized address %s", async (typedSlug) => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       if (String(url).startsWith("/api/workspace-requests")) {
         return new Response(JSON.stringify({ ok: true, state: "approved", redirectTo: "/w/alpha" }), { status: 200 });
@@ -158,7 +158,7 @@ describe("PlatformCustomerRegistry", () => {
     const openButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "새 고객사");
     act(() => { openButton!.click(); });
     typeInto(input("customer-new-name"), "알파 회사");
-    typeInto(input("customer-new-slug"), "alpha");
+    typeInto(input("customer-new-slug"), typedSlug);
     await act(async () => {
       container.querySelector('form[aria-label="새 고객사 등록"]')!
         .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
@@ -212,7 +212,11 @@ describe("PlatformCustomerDetail", () => {
   });
 
   it("keeps the task title when saving fails and refreshes the list on success", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: false, message: "작업을 저장하지 못했어요." }), { status: 503 }));
+    const postedIds: string[] = [];
+    const fetchMock = vi.fn(async (...args: Parameters<typeof fetch>) => {
+      postedIds.push(JSON.parse(String(args[1]?.body)).taskId);
+      return new Response(JSON.stringify({ ok: false, message: "작업을 저장하지 못했어요." }), { status: 503 });
+    });
     vi.stubGlobal("fetch", fetchMock);
     mount(<PlatformCustomerDetail customer={detail} tasks={[]} history={[]} />);
     act(() => {
@@ -228,6 +232,12 @@ describe("PlatformCustomerDetail", () => {
     expect(container.textContent).toContain("작업을 저장하지 못했어요.");
     expect(input("customer-task-title").value).toBe("대표 초대 안내");
     expect(refreshes).toEqual([]);
+    await act(async () => {
+      container.querySelector('form[aria-label="관리 작업 추가"]')!
+        .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(postedIds).toHaveLength(2);
+    expect(postedIds[0]).toBe(postedIds[1]);
   });
 
   it("renders task rows and history with before-after metadata", () => {
