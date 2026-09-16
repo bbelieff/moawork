@@ -9,6 +9,7 @@ import {
   assertKnownIgnoredInputSafe,
   buildFastGatePlan,
   commandsFor,
+  fastGateLimitFor,
   isKnownIgnoredOutput,
   parseGitNameStatusZ,
   readExactStagedSnapshot,
@@ -124,6 +125,28 @@ test("the plan is narrow but keeps app, worker, migration, and gate boundaries e
   }]);
   assert.equal(commandsFor(["docs/design/other.test.mjs"], process.cwd())
     .some((command) => command.label === "visual completion contract"), false);
+});
+
+test("only staged guardian changes receive the longer integration budget without dropping any gate", () => {
+  for (const paths of [
+    ["app/src/lib/example.ts"],
+    ["package-lock.json"],
+    ["docs/record.md"],
+    ["scripts/ci/fast-staged.mjs", ".githooks/pre-commit"],
+    ["scripts/check-build-gate.test.mjs"],
+  ]) assert.equal(fastGateLimitFor(paths), 120_000);
+
+  for (const guardianPath of ["scripts/gate-lease-runner.mjs", "scripts/gate-lease-guardian.ps1", "scripts/gate-lease.test.mjs"]) {
+    const paths = ["app/src/lib/example.ts", guardianPath];
+    assert.equal(fastGateLimitFor(paths), 300_000);
+    const commands = commandsFor(paths);
+    assert.ok(commands.some((command) => command.label === "app typecheck"));
+    assert.ok(commands.some((command) => command.label === "gate source contract"));
+    assert.deepEqual(commands.find((command) => command.label === "gate lease contract")?.args,
+      ["--test", "scripts/gate-lease.test.mjs"]);
+  }
+  const movedOut = parseGitNameStatusZ("R100\0scripts/gate-lease-runner.mjs\0docs/archived-runner.txt\0");
+  assert.equal(fastGateLimitFor(movedOut), 300_000);
 });
 
 test("changed app tests and lint paths use argv boundaries while deleted files are skipped", async () => {

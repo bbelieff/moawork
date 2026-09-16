@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 export const FAST_GATE_LIMIT_MS = 120_000;
+// Guardian changes run the complete Windows process-containment integration
+// suite. Keep its cold-start budget separate from ordinary staged app checks.
+export const GATE_LEASE_FAST_GATE_LIMIT_MS = 300_000;
 
 function git(args, root = ROOT) {
   return execFileSync("git", args, {
@@ -166,6 +169,10 @@ export function buildFastGatePlan(paths) {
     gateLease: exact.some((value) => value.startsWith("scripts/gate-lease")),
     visualGate: exact.some(visualGatePath),
   };
+}
+
+export function fastGateLimitFor(paths) {
+  return buildFastGatePlan(paths).gateLease ? GATE_LEASE_FAST_GATE_LIMIT_MS : FAST_GATE_LIMIT_MS;
 }
 
 function adjacentTests(paths, workspace, root = ROOT) {
@@ -336,7 +343,7 @@ export async function runCommand({ file, args, label, cwd = ROOT, timeoutMs, sig
   if (result.signal || result.code !== 0) throw new Error(`FAST_GATE_COMMAND_FAILED:${label}:${result.signal || result.code}`);
 }
 
-export async function runFastGate({ root = ROOT, limitMs = FAST_GATE_LIMIT_MS } = {}) {
+export async function runFastGate({ root = ROOT, limitMs } = {}) {
   const startedAt = Date.now();
   const controller = new AbortController();
   const onSigint = () => controller.abort("SIGINT");
@@ -345,11 +352,13 @@ export async function runFastGate({ root = ROOT, limitMs = FAST_GATE_LIMIT_MS } 
   process.once("SIGTERM", onSigterm);
   let initial;
   let commands;
+  let budgetMs;
   try {
     initial = readExactStagedSnapshot(root);
+    budgetMs = limitMs ?? fastGateLimitFor(initial.paths);
     commands = commandsFor(initial.paths, root);
     for (const command of commands) {
-      const remaining = limitMs - (Date.now() - startedAt);
+      const remaining = budgetMs - (Date.now() - startedAt);
       if (remaining <= 0) throw new Error("FAST_GATE_SLO_EXCEEDED");
       await runCommand({ ...command, cwd: root, timeoutMs: remaining, signal: controller.signal });
     }
@@ -359,8 +368,8 @@ export async function runFastGate({ root = ROOT, limitMs = FAST_GATE_LIMIT_MS } 
   }
   assertStagedSnapshotUnchanged(initial, readExactStagedSnapshot(root));
   const durationMs = Date.now() - startedAt;
-  if (durationMs >= limitMs) throw new Error(`FAST_GATE_SLO_EXCEEDED:${durationMs}`);
-  return { tree: initial.tree, changed: initial.paths.length, commands: commands.length, durationMs };
+  if (durationMs >= budgetMs) throw new Error(`FAST_GATE_SLO_EXCEEDED:${durationMs}`);
+  return { tree: initial.tree, changed: initial.paths.length, commands: commands.length, durationMs, limitMs: budgetMs };
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

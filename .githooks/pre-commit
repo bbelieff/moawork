@@ -4,5 +4,5 @@
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
-echo "🔎 pre-commit: exact staged-tree fast gate 실행 (SLO < 2분)…"
+echo "🔎 pre-commit: exact staged-tree fast gate 실행 (일반 < 2분, guardian 변경 검사 < 5분)…"
 node "$ROOT/scripts/ci/fast-staged.mjs"
