@@ -686,7 +686,7 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
      *   ★ 그래도 «지워지지는» 않는다는 것이 문구에 남아 있어야 한다 — 되살릴 수 있다.
      */
     expect(html).not.toContain("삭제 불가");
-    expect(html).toContain("되살릴 수 있어요");
+    expect(html).toContain("전체 기록");
     expect(html).toContain("✓ 자동 저장됨");
     // #660 — 탭을 가로채므로 «빠져나갈 문(Esc)» 을 이름에 적는다. 키보드만 쓰는 사람이 갇히면 안 된다.
     // #662 — 성격이 넷이 되어 「메모 또는 통화 기록」이 더는 사실이 아니다. 고르는 자리를 가리킨다.
@@ -888,4 +888,33 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
       "restoreDetailPanelOpener(open, wasOpenRef.current, triggerRef.current)",
     );
   });
+});
+
+it("히스토리는 대화와 실제 변경을 기본으로 보여 주고 전체 기록에서 최초 입력을 확인한다", async () => {
+  window.history.replaceState(null, "", "/#item-item-a");
+  const container = document.createElement("div");
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => mountedRoot?.render(
+    <ItemDetailPanel boardId="board-a" row={row} columns={columns}
+      boardLayout={[{ key: "company", source: "column" }]} layout={[{ key: "company", source: "column" }]}
+      inherited canEditItems={false} canManageColumns={false} defaultOpen
+      initialDetail={{ ok: true, links: [], files: [], members: [{ id: "user-a", name: "담당 A" }], events: [
+        { id: "memo", kind: "memo", actor_id: "user-a", body: "담당자 상담 내용", created_at: row.created_at },
+        { id: "initial", kind: "field_change", actor_id: "user-a", body: "company 항목이 변경되었습니다.", created_at: row.created_at, metadata: { column_key: "company", before: null, after: "초기 회사" } },
+        { id: "change", kind: "field_change", actor_id: "user-a", body: "company 항목이 변경되었습니다.", created_at: "2026-08-17T00:00:00Z", metadata: { column_key: "company", before: "초기 회사", after: "변경 회사" } },
+      ] }} />,
+  ));
+  const history = document.querySelector<HTMLElement>("[data-item-detail-history]")!;
+  expect(history.textContent).toContain("담당자 상담 내용");
+  expect(history.textContent).toContain("회사명: 초기 회사 → 변경 회사");
+  expect(history.textContent).not.toContain("최초 입력");
+  expect(history.textContent).not.toContain("company 항목");
+  const toggle = history.querySelector<HTMLButtonElement>("button[aria-pressed]")!;
+  await act(async () => toggle.click());
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  expect(history.textContent).toContain("회사명: 미입력 → 초기 회사 (최초 입력)");
+  expect(history.querySelector("[data-history-remove]")).toBeNull();
+  await act(async () => toggle.click());
+  expect(history.textContent).not.toContain("최초 입력");
 });

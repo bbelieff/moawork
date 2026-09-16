@@ -8,7 +8,7 @@ const ids = {
   request: "00000000-0000-4000-8000-000000000040",
 };
 
-const mocks = vi.hoisted(() => ({ rpc: vi.fn(), createClient: vi.fn() }));
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), createClient: vi.fn(), eventRows: [] as Record<string, unknown>[], members: [] as { id: string; name: string }[] }));
 
 function queryResult(table: string) {
   if (table === "board_item_detail_links") {
@@ -38,9 +38,15 @@ function queryResult(table: string) {
 const client = {
   from: vi.fn((table: string) => {
     const builder: Record<string, unknown> = {};
-    for (const method of ["select", "eq", "is", "order", "limit"]) {
+    for (const method of ["select", "eq", "in", "is", "order", "limit"]) {
       builder[method] = vi.fn(() => builder);
     }
+    const filters: [string, unknown][] = [];
+    let kinds: string[] | undefined;
+    let limit = 100;
+    builder.eq = vi.fn((key: string, value: unknown) => { filters.push([key, value]); return builder; });
+    builder.in = vi.fn((_key: string, values: string[]) => { kinds = values; return builder; });
+    builder.limit = vi.fn((value: number) => { limit = value; return builder; });
     builder.maybeSingle = vi.fn(async () =>
       table === "items"
         ? {
@@ -56,7 +62,9 @@ const client = {
         : { data: null, error: null },
     );
     builder.then = (resolve: (value: unknown) => unknown) =>
-      Promise.resolve(queryResult(table)).then(resolve);
+      Promise.resolve(table === "board_item_detail_events" ? {
+        data: mocks.eventRows.filter((row) => filters.every(([key, value]) => row[key] === value) && (!kinds || kinds.includes(String(row.kind)))).slice(0, limit), error: null,
+      } : queryResult(table)).then(resolve);
     return builder;
   }),
   rpc: mocks.rpc,
@@ -82,7 +90,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: mocks.createClient,
 }));
 vi.mock("@/lib/deal/members", () => ({
-  listOrgMemberOptions: vi.fn(async () => []),
+  listOrgMemberOptions: vi.fn(async () => mocks.members),
 }));
 vi.mock("@/lib/boards/server", () => ({ createRequestBoards: vi.fn() }));
 vi.mock("@/lib/notices/official-file", () => ({
@@ -92,6 +100,7 @@ vi.mock("@/lib/notices/official-file", () => ({
 }));
 
 import {
+  loadItemDetailAction,
   removeItemCloudFolderAction,
   saveItemCloudFolderAction,
 } from "./item-detail-actions";
@@ -101,6 +110,8 @@ describe("Issue #574 cloud folder server actions", () => {
     mocks.rpc.mockReset().mockResolvedValue({ data: [], error: null });
     mocks.createClient.mockReset().mockResolvedValue(client);
     client.from.mockClear();
+    mocks.eventRows = [];
+    mocks.members = [];
   });
 
   it("normalizes a folder URL, calls the canonical RPC and separates the cloud row from legacy links", async () => {
@@ -154,4 +165,20 @@ describe("Issue #574 cloud folder server actions", () => {
       expect(mocks.rpc).not.toHaveBeenCalled();
     },
   );
+});
+
+
+it("keeps a separate conversation budget and resolves only referenced allowed members", async () => {
+  const base = { org_id: ids.org, board_id: ids.board, item_id: ids.item, actor_id: ids.user, body: "기록", deleted_at: null };
+  mocks.eventRows = Array.from({ length: 120 }, (_, index) => ({ ...base, id: `change-${index}`, kind: "field_change", created_at: "2026-09-16T00:00:00Z", metadata: { column_key: "owner", before: "old-member", after: ids.user } }));
+  mocks.eventRows.push({ ...base, id: "conversation", kind: "memo", body: "이전 담당 대화", created_at: "2026-09-15T00:00:00Z" });
+  mocks.eventRows.push({ ...base, id: "foreign", org_id: "other-org", kind: "memo", created_at: "2026-09-16T00:00:00Z" });
+  mocks.members = [{ id: ids.user, name: "담당 A" }, { id: "old-member", name: "담당 B" }, { id: "unrelated", name: "다른 구성원" }];
+  const result = await loadItemDetailAction(ids.board, ids.item);
+  expect(result.ok).toBe(true);
+  expect(result.events).toHaveLength(101);
+  expect(result.events.at(-1)?.id).toBe("conversation");
+  expect(result.events.some((event) => event.id === "foreign")).toBe(false);
+  expect(result.events[0].metadata).toMatchObject({ before: "old-member" });
+  expect(result.members.map((member) => member.id)).toEqual([ids.user, "old-member"]);
 });

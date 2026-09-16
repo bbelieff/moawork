@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
-import { getSession } from "@/lib/auth/session";
+import { getSession, getSessionOrNull } from "@/lib/auth/session";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { createClient } from "@/lib/supabase/server";
 import { canonicalAssignee, createCanonicalNewLead, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadMeta, updateCanonicalNewLeadTitle } from "@/lib/new-lead/mutations";
@@ -57,7 +57,11 @@ export async function createNewLeadAction(
       ...(permissionMs === undefined ? {} : { permission_ms: Math.round(permissionMs) }),
     }));
   };
-  const ctx = await getSession();
+  const ctx = await getSessionOrNull();
+  if (!ctx) {
+    record("session_unavailable");
+    return { ok: false, field: "form", message: "로그인 또는 회사 접근 권한을 확인할 수 없습니다. 다른 탭에서 로그인 상태를 확인한 뒤 다시 등록해 주세요. 입력한 내용은 유지됩니다." };
+  }
   const title = text(formData, "title");
   const boardId = text(formData, "boardId");
   const groupId = text(formData, "groupId");
@@ -93,7 +97,7 @@ export async function createNewLeadAction(
   }
   if (rawSigungu && !regionSigungu) {
     record("invalid_region_sigungu");
-    return { ok: false, field: "region_sido", message: "시군구를 추천 목록에서 선택해 주세요." };
+    return { ok: false, field: "region_sigungu", message: "시군구를 추천 목록에서 선택해 주세요." };
   }
   if (!boardId || !groupId) { record("invalid_target"); return { ok: false, field: "form", message: "신규리드 보드 구성을 확인해 주세요." }; }
 
