@@ -47,6 +47,7 @@ export type ItemDetailEvent = {
   /* #662 — 배지에 뜨는 다섯. 고를 수 있는 넷은 아래 addItemDetailEventAction 이 좁힌다. */
   kind: DetailEventKind;
   body: string;
+  metadata?: unknown;
   actor_id: string | null;
   created_at: string;
   /* #672 — 치워진 줄. 행은 남아 있고 화면에서만 접힌다. */
@@ -124,15 +125,27 @@ export async function loadItemDetailAction(
 ): Promise<ItemDetailSnapshot> {
   try {
     const { ctx, client, item } = await context(boardId, itemId);
-    const [eventsResult, linksResult, filesResult, collaboratorsResult, orgMembers] =
+    const [humanEventsResult, fieldEventsResult, linksResult, filesResult, collaboratorsResult, orgMembers] =
       await Promise.all([
         client
           .from("board_item_detail_events")
-          .select("id,kind,body,actor_id,created_at,deleted_at,deleted_by")
+          .select("id,kind,body,metadata,actor_id,created_at,deleted_at,deleted_by")
           .eq("org_id", ctx.org.id)
           .eq("board_id", boardId)
           .eq("item_id", itemId)
+          .in("kind", ["memo", "call", "admin", "meeting"])
           .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(100),
+        client
+          .from("board_item_detail_events")
+          .select("id,kind,body,metadata,actor_id,created_at,deleted_at,deleted_by")
+          .eq("org_id", ctx.org.id)
+          .eq("board_id", boardId)
+          .eq("item_id", itemId)
+          .eq("kind", "field_change")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
           .limit(100),
         client
           .from("board_item_detail_links")
@@ -161,8 +174,11 @@ export async function loadItemDetailAction(
           ? listOrgMemberOptions(ctx)
           : Promise.resolve([]),
       ]);
-    if (eventsResult.error || linksResult.error || filesResult.error || collaboratorsResult.error)
+    if (humanEventsResult.error || fieldEventsResult.error || linksResult.error || filesResult.error || collaboratorsResult.error)
       throw new Error("상세 기록을 불러오지 못했습니다.");
+    // Separate limits keep machine churn from crowding human conversations out.
+    const events = ([...(humanEventsResult.data ?? []), ...(fieldEventsResult.data ?? [])] as ItemDetailEvent[])
+      .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
     const files = await Promise.all(
       (
         (filesResult.data ?? []) as Array<
@@ -186,7 +202,14 @@ export async function loadItemDetailAction(
     const collaboratorIds = Array.isArray(rawCollaborators)
       ? rawCollaborators.filter((value): value is string => typeof value === "string" && UUID.test(value))
       : [];
-    const memberIds = [...new Set([item.assigned_to, ...collaboratorIds].filter((value): value is string => Boolean(value)))];
+    const eventActorIds = events.map((event) => event.actor_id);
+    const referencedValues = events.flatMap((event) => {
+      if (event.kind !== "field_change" || !event.metadata || typeof event.metadata !== "object") return [];
+      const metadata = event.metadata as Record<string, unknown>;
+      return [metadata.before, metadata.after].flat().filter((value): value is string => typeof value === "string");
+    });
+    const referencedMemberIds = orgMembers.filter((member) => referencedValues.includes(member.id)).map((member) => member.id);
+    const memberIds = [...new Set([item.assigned_to, ...collaboratorIds, ...eventActorIds, ...referencedMemberIds].filter((value): value is string => Boolean(value)))];
     const members = memberIds.map((id) => orgMembers.find((member) => member.id === id) ?? { id, name: null });
     const rawLinks = (linksResult.data ?? []) as Array<
       ItemDetailLink & { link_kind: string | null }
@@ -197,7 +220,7 @@ export async function loadItemDetailAction(
       : null;
     return {
       ok: true,
-      events: (eventsResult.data ?? []) as ItemDetailEvent[],
+      events,
       links: rawLinks
         .filter((link) => link.link_kind !== "cloud_folder")
         .map((link) => ({

@@ -172,9 +172,9 @@ export function RevenueYearsField() {
   );
 }
 
-function RegionCombobox({ name, label, value, onValue, suggestions, disabled = false }: {
+function RegionCombobox({ name, label, value, onValue, suggestions, disabled = false, invalid = false }: {
   name: string; label: string; value: string; onValue: (value: string) => void;
-  suggestions: readonly RegionSuggestion[]; disabled?: boolean;
+  suggestions: readonly RegionSuggestion[]; disabled?: boolean; invalid?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -190,6 +190,7 @@ function RegionCombobox({ name, label, value, onValue, suggestions, disabled = f
     <label className="relative grid gap-1 text-xs text-mw-sub">
       {label}
       <input ref={inputRef} name={name} value={value} disabled={disabled} autoComplete="off"
+        aria-invalid={invalid}
         role="combobox" aria-expanded={open && visible.length > 0} aria-controls={listId}
         aria-autocomplete="list" aria-activedescendant={open && visible[active] ? `${listId}-${active}` : undefined}
         onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 120)}
@@ -203,7 +204,7 @@ function RegionCombobox({ name, label, value, onValue, suggestions, disabled = f
           if (event.key === "ArrowUp") { event.preventDefault(); setOpen(true); setActive((current) => (current - 1 + visible.length) % visible.length); }
           if (event.key === "Escape") setOpen(false);
         }}
-        className={`${CONTROL} disabled:bg-mw-bg disabled:text-mw-sub`}
+        className={`${CONTROL} aria-[invalid=true]:border-mw-error disabled:bg-mw-bg disabled:text-mw-sub`}
         placeholder={disabled ? "시도를 먼저 선택하세요" : `${label} 또는 초성 검색`} />
       {open && visible.length > 0 ? (
         <ul id={listId} role="listbox" className="mw-layer-page-popover absolute left-0 right-0 top-[4.2rem] max-h-56 overflow-auto rounded-lg border border-mw-line bg-mw-card p-1 shadow-xl">
@@ -220,7 +221,7 @@ function RegionCombobox({ name, label, value, onValue, suggestions, disabled = f
   );
 }
 
-export function RegionFields() {
+export function RegionFields({ invalidField }: { invalidField?: string } = {}) {
   const [sido, setSido] = useState("");
   const [sigungu, setSigungu] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -230,9 +231,9 @@ export function RegionFields() {
   useReset(rootRef, reset);
   return (
     <div ref={rootRef} className="contents">
-      <RegionCombobox name="region_sido" label="시도" value={sido}
+      <RegionCombobox name="region_sido" label="시도" value={sido} invalid={invalidField === "region_sido"}
         onValue={(next) => { setSido(next); setSigungu(""); }} suggestions={sidoOptions} />
-      <RegionCombobox name="region_sigungu" label="시군구" value={sigungu}
+      <RegionCombobox name="region_sigungu" label="시군구" value={sigungu} invalid={invalidField === "region_sigungu"}
         onValue={setSigungu} suggestions={sigunguOptions} disabled={!canonicalSido(sido)} />
     </div>
   );

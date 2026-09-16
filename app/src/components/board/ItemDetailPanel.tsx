@@ -31,6 +31,7 @@ import {
   SELECTABLE_DETAIL_EVENT_KINDS,
   type SelectableDetailEventKind,
 } from "@/lib/boards/detail-event-kinds";
+import { presentDetailHistoryEvent } from "@/lib/boards/detail-event-presentation";
 import { createPortal } from "react-dom";
 import type {
   BoardColumn,
@@ -375,6 +376,7 @@ export function ItemDetailPanel({
     members: [],
   });
   const [detailPending, startDetailTransition] = useTransition();
+  const [showAllHistory, setShowAllHistory] = useState(false);
   const [composer, setComposer] = useState("");
   const [composerKind, setComposerKind] =
     useState<SelectableDetailEventKind>("memo");
@@ -536,6 +538,11 @@ export function ItemDetailPanel({
   const suppressOpenerRestoreRef = useRef(false);
   const hashPushedRef = useRef(false);
   const columnsByKey = new Map(columns.map((column) => [column.key, column]));
+  const historyEntries = detail.events.map((event) => ({
+    event,
+    presentation: presentDetailHistoryEvent(event, { columns: [...durableColumns, ...columns], members: detail.members, itemCreatedAt: row.created_at }),
+  }));
+  const visibleHistory = historyEntries.filter(({ presentation }) => showAllHistory || presentation.important);
   const durableColumnEntries: DetailLayoutEntry[] = durableColumns.map((column) => ({
     key: column.key,
     source: "column",
@@ -755,9 +762,9 @@ export function ItemDetailPanel({
         return `${entry.label ?? column?.label ?? entry.key}: ${detailValueText(entry.type ?? column?.type, row.values[entry.key], row.values, column?.options_jsonb)}`;
       },
     );
-    const history = detail.events.map(
-      (event) =>
-        `[${event.created_at}] ${detailEventKindLabel(event.kind)}: ${event.body}`,
+    const history = visibleHistory.map(
+      ({ event, presentation }) =>
+        `[${event.created_at}] ${detailEventKindLabel(event.kind)}: ${event.deleted_at ? "치운 기록이에요." : presentation.body}`,
     );
     return [
       `회사: ${row.title}`,
@@ -1714,9 +1721,9 @@ export function ItemDetailPanel({
                   <section className={styles.history} data-item-detail-history>
                     <div className={styles.historyHeader}>
                       <h3>히스토리</h3>
-                      <span className={styles.historyMeta}>
-                        최신순 · 자동 기록 포함 · 치운 기록은 되살릴 수 있어요
-                      </span>
+                      <button type="button" className={styles.headerButton} aria-pressed={showAllHistory} onClick={() => setShowAllHistory((value) => !value)}>
+                        {showAllHistory ? "주요 기록" : "전체 기록"}
+                      </button>
                     </div>
                     <div className={styles.historyScroll}>
                     {!detail.ok && (
@@ -1727,7 +1734,7 @@ export function ItemDetailPanel({
                         {detail.message}
                       </p>
                     )}
-                    {detail.events.map((event) => {
+                    {visibleHistory.map(({ event, presentation }) => {
                       const actorName = detail.members.find((member) => member.id === event.actor_id)?.name;
                       /*
                         #672 — 「치우기」는 «누를 수 있는 줄에만» 보인다.
@@ -1785,7 +1792,7 @@ export function ItemDetailPanel({
                             </time>
                           </div>
                           <p className={styles.historyBody}>
-                            {removed ? "치운 기록이에요." : event.body}
+                            {removed ? "치운 기록이에요." : presentation.body}
                           </p>
                           </div>
                           {canRemove && (
@@ -1830,9 +1837,9 @@ export function ItemDetailPanel({
                         </article>
                       );
                     })}
-                      {detail.events.length === 0 && !detailPending && (
+                      {visibleHistory.length === 0 && !detailPending && (
                         <p className={styles.emptyHistory}>
-                          아직 히스토리가 없습니다. 메모·통화·행정·미팅 기록을 남기면 이곳에 시간순으로 쌓입니다.
+                          아직 주요 기록이 없습니다.
                         </p>
                       )}
                     </div>
