@@ -87,7 +87,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // BBE-214 — bootstrap 뒤의 셸 읽기는 서로 결과에 의존하지 않는다. 각각을 직렬로
   // 기다리면 모든 hard-load가 네트워크 지연을 그대로 합산한다. 같은 요청 안에서 함께
   // 시작하되, auth/RLS 판정과 실패 의미는 각 loader가 계속 소유한다.
-  const [workspaceApprovals, workspaceEntryContext, platformActor, orgLogoUrls, lockedFeatures, notify, boardNavKeys] = await entryTimer.time("shell", () => Promise.all([
+  const [workspaceApprovals, workspaceEntryContext, platformActor, orgLogoUrls, lockedFeatures, notify, boardNavKeys] = await Promise.all([
     trustedOwnerOrgId ? loadWorkspaceApprovals(trustedOwnerOrgId) : Promise.resolve<WorkspaceApprovals | null>(null),
     loadWorkspaceEntryContext(),
     loadPlatformActor(),
@@ -107,7 +107,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     //   위에서 뺀 것은 «직렬로 붙던» 조회였고 이것은 이 Promise.all 안에서 같이 출발하므로
     //   벽시계 시간이 늘지 않는다. 실패하면 빈 지도라 셸은 그대로 뜬다.
     (async () => loadBoardNavKeys(ctx, (await createRequestBoards()).repo))(),
-  ]));
+  ]);
   logEntryTimings("workspace-layout", entryTimer.snapshot(), "ready");
   const switcherWorkspaces = routing.kind === "ready"
     ? buildSwitcherWorkspaces(routing.memberships, orgLogoUrls)
