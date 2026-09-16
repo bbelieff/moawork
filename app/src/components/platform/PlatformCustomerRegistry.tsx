@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { ResultBanner } from "@/lib/ui/ResultBanner";
-import { type ResultNotice } from "@/lib/ui/result-notice";
 import { normalizeWorkspaceSlug, validateWorkspaceSlug } from "@/lib/workspace-entry/contracts";
 import {
   CUSTOMER_INDUSTRY_FIXED,
@@ -56,7 +55,6 @@ export function PlatformCustomerRegistry({
   const [slug, setSlug] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<ResultNotice | null>(null);
   // 폼을 열 때마다 새 멱등 키. 같은 내용 재전송은 같은 요청으로 처리된다.
   const requestId = useRef<string | null>(null);
 
@@ -82,7 +80,6 @@ export function PlatformCustomerRegistry({
     if (!requestId.current) requestId.current = crypto.randomUUID();
     setBusy(true);
     setFormError(null);
-    setNotice(null);
     try {
       const created = await fetch("/api/workspace-requests", {
         method: "POST",
@@ -127,12 +124,10 @@ export function PlatformCustomerRegistry({
         </div>
       </section>
 
-      {notice ? <ResultBanner notice={notice} okClassName={styles.organizationStatus} errorClassName={styles.organizationError} /> : null}
-
       {formOpen ? (
         <form className={styles.registryForm} aria-label="새 고객사 등록" onSubmit={submitNew}>
           <h3>새 고객사 등록</h3>
-          {formError ? <p className={styles.formError} role="alert">{formError}</p> : null}
+          {formError ? <ResultBanner notice={{ ok: false, message: formError }} okClassName={styles.organizationStatus} errorClassName={styles.formError} /> : null}
           <div className={styles.formRow}>
             <div className={styles.formField}>
               <label htmlFor="customer-new-name">회사명 (필수)</label>
