@@ -28,7 +28,6 @@ export function PlatformShell({
           <span className={styles.mark} aria-hidden="true"><i /><i /><i /></span>
           <div><strong>모아워크 운영 관리</strong><span>서비스 관리자 전용</span></div>
         </div>
-        <p className={styles.safety}>서비스 관리자 화면이에요. 고객 업무 정보는 별도 권한이 있을 때만 볼 수 있어요.</p>
         <DeveloperModeControl mode="platform" action={userModeAction ?? { mode: "user" }} />
       </header>
       <div className={styles.layout}>
@@ -55,7 +54,7 @@ export function PlatformShell({
             <header className={styles.heading}>
               <p className={styles.eyebrow}>서비스 운영 <span aria-hidden="true">/</span> {activeItem?.label ?? title}</p>
               <h1>{title}</h1>
-              <p>{description}</p>
+              {description ? <p>{description}</p> : null}
             </header>
             <div className={styles.content}>{children}</div>
           </div>

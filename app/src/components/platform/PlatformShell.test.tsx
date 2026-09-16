@@ -16,7 +16,7 @@ describe("PlatformShell", () => {
     expect(html).toContain("현황");
     expect(html).toContain("고객사 관리");
     expect(html).toContain("출시 전 확인");
-    expect(html).toContain("별도 권한이 있을 때만");
+    expect(html).toContain("서비스 관리자 전용");
     expect(html).toMatch(/서비스 운영 .* 운영 분석/);
     for (const item of PLATFORM_NAV) {
       expect(html.match(new RegExp(`href="${item.href}"`, "g"))).toHaveLength(1);
