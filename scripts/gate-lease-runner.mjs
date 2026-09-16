@@ -14,7 +14,10 @@ import {
 
 export const GLOBAL_GATE_FENCE = "Global\\MoaWork.FullGate.v1";
 export const DEFAULT_RUN_TIMEOUT_MS = 30 * 60 * 1000;
-export const DEFAULT_BOOTSTRAP_TIMEOUT_MS = 8_000;
+// Cold Windows runners compile the guardian's native interop before opening
+// its pipe. Allow that startup time; nonce, containment, and cleanup checks
+// remain mandatory, and an unready guardian still fails closed.
+export const DEFAULT_BOOTSTRAP_TIMEOUT_MS = 30_000;
 const GUARDIAN_PROTOCOL = "moawork-gate-guardian-v2";
 const guardianPath = fileURLToPath(new URL("./gate-lease-guardian.ps1", import.meta.url));
 

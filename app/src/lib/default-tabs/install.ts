@@ -21,6 +21,7 @@
 
 import type { Ctx } from "@/lib/types";
 import type { BoardsRepo, NewColumn } from "@/lib/boards/store";
+import type { Board } from "@/lib/boards/types";
 import { createRequestBoardsRepo } from "@/lib/boards/request-repo";
 import { CONTACT_TAB } from "./contact";
 import { CONTRACT_WORK_TAB } from "./contract-work";
@@ -131,7 +132,23 @@ export async function readDefaultTabDrift(
       hasWork: true,
     };
   }
+  return readDefaultTabBoardDrift(ctx, tab, board, store, assignees);
+}
 
+/**
+ * Board-level drift check with the board already resolved — the exact same
+ * eyes as readDefaultTabDrift, minus its listBoards. Entry fast paths list
+ * boards once for all tabs and check each board here in parallel; anything
+ * but a unanimous clean verdict falls through to the lease-guarded repair,
+ * which stays authoritative (writes, conflict errors, failure semantics).
+ */
+export async function readDefaultTabBoardDrift(
+  ctx: Ctx,
+  tab: DefaultTab,
+  board: Board,
+  store: BoardsRepo,
+  assignees: readonly DefaultTabAssignee[],
+): Promise<DefaultTabDrift> {
   const [groups, columns] = await Promise.all([
     store.listGroups(ctx, board.id),
     store.listColumns(ctx, board.id),
@@ -185,6 +202,71 @@ export async function readDefaultTabDrift(
     definitionRevisionBehind,
     hasWork: missingGroupNames.length > 0 || missingColumnKeys.length > 0 || definitionRevisionBehind,
   };
+}
+
+/**
+ * Bootstrap also reconciles member options, move rules and retired groups;
+ * the additive page-repair probe above cannot prove that work unnecessary.
+ * Run the actual reconciler against one read-only snapshot instead. Every
+ * operation outside the cached reads fails closed as dirty, before reaching
+ * the repository. Only an identical definition-state write is a no-op.
+ */
+export async function readDefaultTabBootstrapDrift(
+  ctx: Ctx,
+  tab: DefaultTab,
+  board: Board,
+  store: BoardsRepo,
+  assignees: readonly DefaultTabAssignee[],
+): Promise<{ hasWork: boolean }> {
+  if (board.org_id !== ctx.org.id || board.source !== tab.source) return { hasWork: true };
+  const [groups, columns, state] = await Promise.all([
+    store.listGroups(ctx, board.id),
+    store.listColumns(ctx, board.id),
+    (tab.revision !== undefined || tab.previousRevision !== undefined)
+      && store.getDefaultDefinitionState && store.setDefaultDefinitionState
+      ? store.getDefaultDefinitionState(ctx, board.id)
+      : null,
+  ]);
+  const dirty = new Error("default tab bootstrap repair required");
+  const assertBoard = (readCtx: Ctx, boardId: string) => {
+    if (readCtx.org.id !== ctx.org.id || readCtx.user.id !== ctx.user.id || boardId !== board.id) throw dirty;
+  };
+  const reads: Partial<BoardsRepo> = {
+    listBoards: async () => [structuredClone(board)],
+    listGroups: async (readCtx, boardId) => {
+      assertBoard(readCtx, boardId);
+      return structuredClone(groups);
+    },
+    listColumns: async (readCtx, boardId) => {
+      assertBoard(readCtx, boardId);
+      return structuredClone(columns);
+    },
+  };
+  if (store.getDefaultDefinitionState) reads.getDefaultDefinitionState = async (readCtx, boardId) => {
+    assertBoard(readCtx, boardId);
+    return structuredClone(state);
+  };
+  if (store.setDefaultDefinitionState) reads.setDefaultDefinitionState = async (readCtx, boardId, desired) => {
+    assertBoard(readCtx, boardId);
+    if (!sameJson(state, desired)) throw dirty;
+  };
+  const readOnlyStore = new Proxy(store, {
+    get(target, property, receiver) {
+      if (Object.prototype.hasOwnProperty.call(reads, property)) return Reflect.get(reads, property);
+      const value = Reflect.get(target, property, receiver);
+      // Includes listItems: the reconciler only requests rows when a group
+      // needs retirement, so there is no need to read customer rows to prove drift.
+      if (typeof value === "function") return async () => { throw dirty; };
+      return value;
+    },
+  });
+  try {
+    await ensureDefaultTab(ctx, tab, readOnlyStore, assignees);
+    return { hasWork: false };
+  } catch (error) {
+    if (error === dirty) return { hasWork: true };
+    throw error;
+  }
 }
 
 function desiredDefinitionState(tab: DefaultTab, columns: readonly { key: string; label: string; is_readonly?: boolean; rightPinned: boolean; sort_order: number }[]) {

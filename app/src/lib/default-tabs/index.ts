@@ -9,5 +9,5 @@ export { CONTACT_TAB, CONTACT_GROUPS } from "./contact";
 export { CONTRACT_WORK_TAB, CONTRACT_WORK_TAB_SOURCE } from "./contract-work";
 export { NOTICE_TAB, NOTICE_GROUPS } from "./notice";
 export { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "./types";
-export { DEFAULT_TABS, ensureDefaultTab, ensureDefaultTabs } from "./install";
+export { DEFAULT_TABS, ensureDefaultTab, ensureDefaultTabs, readDefaultTabBoardDrift, readDefaultTabBootstrapDrift, readDefaultTabDrift } from "./install";
 export type { EnsuredTab } from "./install";

@@ -27,6 +27,7 @@ import { ensureApprovedWorkspaceOnEntry } from "@/lib/workspace-entry/bootstrap"
 import { createClient } from "@/lib/supabase/server";
 import { loadOrgLogoSignedUrls } from "@/lib/org-logo/server";
 import { buildSwitcherWorkspaces } from "@/lib/org-logo/switcher";
+import { createEntryTimer, logEntryTimings } from "@/lib/entry-timing";
 
 function WorkspaceBootstrapUnavailable({ slug }: { slug: string }) {
   return (
@@ -51,10 +52,11 @@ function WorkspaceBootstrapUnavailable({ slug }: { slug: string }) {
 // 색·간격·글자 크기는 전부 globals.css/moawork-tokens.css 의 --mw-*·--sp-*·--fs-* 토큰 참조(하드코딩 hex·임의 px 금지).
 // getSession() 이 세션 없으면 /login 으로 보낸다(가드).
 export default async function AppLayout({ children }: { children: ReactNode }) {
+  const entryTimer = createEntryTimer();
   // Session and routing snapshot are independent reads for the same request
   // (verified membership vs. entry routing), so they are issued together.
   // Both still fail closed on their own terms — only the wait is shared.
-  const [ctx, routing] = await Promise.all([getSession(), loadWorkspaceRoutingSnapshot()]);
+  const [ctx, routing] = await entryTimer.time("session-routing", () => Promise.all([getSession(), loadWorkspaceRoutingSnapshot()]));
   const requestHeaders = await headers();
   const appTabRequest = requestHeaders.get("x-mw-app-tab") === "1";
   const currentWorkspace = routing.kind === "ready"
@@ -65,8 +67,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     : undefined;
   if (ctx.role === "owner" && currentWorkspace.length === 1) {
     try {
-      await ensureApprovedWorkspaceOnEntry(requestClient!, currentWorkspace[0].slug);
+      await entryTimer.time("bootstrap", () => ensureApprovedWorkspaceOnEntry(requestClient!, currentWorkspace[0].slug));
     } catch {
+      logEntryTimings("workspace-layout", entryTimer.snapshot(), "unavailable");
       return <WorkspaceBootstrapUnavailable slug={currentWorkspace[0].slug} />;
     }
   }
@@ -105,6 +108,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     //   벽시계 시간이 늘지 않는다. 실패하면 빈 지도라 셸은 그대로 뜬다.
     (async () => loadBoardNavKeys(ctx, (await createRequestBoards()).repo))(),
   ]);
+  logEntryTimings("workspace-layout", entryTimer.snapshot(), "ready");
   const switcherWorkspaces = routing.kind === "ready"
     ? buildSwitcherWorkspaces(routing.memberships, orgLogoUrls)
     : [];
