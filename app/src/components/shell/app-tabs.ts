@@ -71,6 +71,7 @@ export const OUT_OF_TAB_HREFS: readonly string[] = [
   "/login",
   // Issue #536: deterministic, customer-DML-free visual merge-gate fixture.
   "/login/visual-fixture",
+  "/login/platform-fixture",
   // BBE-186: 홈에서 옮겨 온 업무 분석. 6탭이 아니라 홈의 «바로 가기» 로 들어간다.
   "/dash",
   "/dash/[pipelineId]",
@@ -103,6 +104,7 @@ export const OUT_OF_TAB_HREFS: readonly string[] = [
   "/platform/demo",
   "/platform/metrics",
   "/platform/organizations",
+  "/platform/organizations/[id]",
   "/platform/support",
   "/platform/system",
   "/platform/workspace-requests",
