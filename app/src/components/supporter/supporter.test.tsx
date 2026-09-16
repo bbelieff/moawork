@@ -42,7 +42,7 @@ describe("SupporterDock markup", () => {
     const html = openSurface(false);
     expect(html).toContain("<aside");
     expect(html).toContain('aria-label="모아서포터"');
-    expect(html).toContain("AI 연결 준비 중");
+    expect(html).toContain("연결 상태 확인 중");
     expect(html).toContain("서포터 입력");
     expect(html).toContain("보내기");
     expect(html).not.toContain("운영서포터 전환");
@@ -96,6 +96,7 @@ describe("supporter thread guards", () => {
     expect(canSubmitSupporterInput({ pending: true, text: "도와줘" })).toBe(false);
     expect(canSubmitSupporterInput({ pending: false, text: "   " })).toBe(false);
     expect(canSubmitSupporterInput({ pending: false, text: "" })).toBe(false);
+    expect(canSubmitSupporterInput({ pending: false, text: " ".repeat(2000) + "x" })).toBe(false);
   });
 
   it("drops late in-flight replies from an older epoch", () => {

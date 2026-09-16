@@ -58,7 +58,7 @@ export function canSubmitSupporterInput(input: {
   pending: boolean;
   text: string;
 }): boolean {
-  return !input.pending && input.text.trim().length > 0;
+  return !input.pending && input.text.slice(0, SUPPORTER_INPUT_MAX_LENGTH).trim().length > 0;
 }
 
 /**
@@ -199,7 +199,7 @@ export function SupporterProvider({
   } | null>(null);
   const [threads, setThreads] = useState<Record<string, ThreadState>>({});
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
-  const [userStatusLine, setStatusLine] = useState("AI 연결 준비 중");
+  const [userStatusLine, setStatusLine] = useState("연결 상태 확인 중");
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const epochRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -213,6 +213,7 @@ export function SupporterProvider({
     setModeState("user");
     setOpsGrant(null);
     setSessionNotice(null);
+    setStatusLine("연결 상태 확인 중");
   }
 
   // allowOperations 가 떨어지면 그 즉시 안전한 user 로 읽는다 —
