@@ -116,3 +116,4 @@
 .organizationConsole{max-width:none;gap:14px}.organizationConsole+.organizationConsole{margin-top:24px}
 .onboardingSummary{padding:16px;gap:16px}.onboardingSummary h2{font-size:17px}.onboardingMetrics div{padding:10px}.onboardingMetrics dd{font-size:16px;margin:4px 0 0}
 @media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{padding:12px}.sidebarHeading,.navGroupLabel{display:none}.navGroup+.navGroup{margin-top:6px}.navGroup ul{display:flex;flex-wrap:wrap;gap:4px}.sidebar a{min-height:34px;padding:6px 9px}.mainInner{padding:18px 14px}.band{padding:8px 14px}.brand>div{font-size:12px}.brand span{font-size:10px}.approvalQueue{padding:14px}}
+@media(max-width:480px){.approvalQueue>header{flex-direction:column;align-items:stretch;gap:12px}.registrySearch{width:100%;flex-wrap:nowrap}.registrySearch label{white-space:nowrap;flex:none}.registrySearch input{min-width:0;flex:1;width:100%}}
