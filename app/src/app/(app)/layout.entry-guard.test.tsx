@@ -124,6 +124,53 @@ describe("BBE-139 root entry guard", () => {
     expect(html).toContain("root-dashboard");
   });
 
+  it("starts the session and the routing snapshot together, not in series", async () => {
+    let snapshotStarted = false;
+    mocks.loadWorkspaceRoutingSnapshot.mockImplementation(async () => {
+      snapshotStarted = true;
+      return {
+        kind: "ready",
+        selfRouteState: "eligible_entry",
+        memberships: [{ orgId: "org-owner", slug: "test-company", name: "테스트 회사", role: "owner" }],
+      };
+    });
+    let releaseSession!: () => void;
+    const sessionGate = new Promise<void>((resolve) => {
+      releaseSession = resolve;
+    });
+    mocks.getSession.mockImplementation(() =>
+      sessionGate.then(() => ({
+        user: {
+          id: "owner-1",
+          email: null,
+          name: "대표",
+          avatar_url: null,
+          created_at: "2026-08-12T00:00:00.000Z",
+        },
+        org: {
+          id: "org-owner",
+          name: "테스트 회사",
+          plan_tier: "t1_3",
+          created_at: "2026-08-12T00:00:00.000Z",
+        },
+        role: "owner",
+        scope: "all",
+        isPlatformAdmin: false,
+      })),
+    );
+
+    const pending = AppLayout({ children: createElement("p", null, "parallel-shell") });
+    // 세션이 끝나기 전에 라우팅 스냅샷이 출발해야 한다 — 직렬 코드라면
+    // getSession 이 풀리기 전까지 스냅샷은 절대 시작되지 않는다.
+    await vi.waitFor(() => {
+      expect(snapshotStarted).toBe(true);
+    }, { timeout: 2000, interval: 10 });
+    releaseSession();
+    const html = renderToStaticMarkup(await pending);
+    expect(html).toContain("trusted-sidebar");
+    expect(html).toContain("parallel-shell");
+  });
+
   it("does not bootstrap for a non-owner membership", async () => {
     mocks.getSession.mockResolvedValue({
       user: { id: "member-1", email: null, name: "Member", avatar_url: null, created_at: "2026-08-12T00:00:00.000Z" },

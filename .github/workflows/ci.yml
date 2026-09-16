@@ -14,7 +14,9 @@ jobs:
     # Budget enforcement is a GitHub setting, not enforced by this workflow.
     # Keep standard runners only; no paid larger runner or VPS build fallback.
     runs-on: windows-2025
-    timeout-minutes: 30
+    # Full app/worker suites plus browser contracts can exceed 30 minutes on
+    # Windows runners; keep every gate and its own timeout intact.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 

@@ -8,10 +8,15 @@ import { decideWorkspaceEntryPage, decideWorkspaceEntryRecheckStrategy } from ".
 
 export default async function WorkspaceEntryPage({ searchParams }: { searchParams: Promise<{ error?: string; mode?: string }> }) {
   const { error, mode } = await searchParams;
-  const snapshot = await loadWorkspaceRoutingSnapshot();
+  // The routing snapshot and the entry context read different tables for the
+  // same user, so they are issued together. Redirect/blocked precedence below
+  // is unchanged — only the wait is shared.
+  const [snapshot, context] = await Promise.all([
+    loadWorkspaceRoutingSnapshot(),
+    loadWorkspaceEntryContext(),
+  ]);
   if (snapshot.kind === "unauthenticated") redirect("/login?next=/workspace-entry");
   if (snapshot.kind === "error") return <WorkspaceEntry initialView="blocked" />;
-  const context = await loadWorkspaceEntryContext();
   if (context.kind === "error") return <WorkspaceEntry initialView="blocked" />;
   const resume = mode === "resume" ? parseWorkspaceEntryResume((await cookies()).get(WORKSPACE_ENTRY_RESUME_COOKIE)?.value) : null;
   const approvedTarget = mode === "resume"

@@ -119,6 +119,52 @@ describe("OAuth callback Workspace routing", () => {
     );
   });
 
+  it("profile 실패는 확인된 플랫폼 권한보다 먼저 닫는다(병렬 조회 우선순위)", async () => {
+    setup({ rows: [], platformGranted: true, profileError: { message: "profile" } });
+    expect(location(await callback())).toBe(
+      "/login?error=profile",
+    );
+  });
+
+  it("profile 쓰기와 플랫폼 가드를 함께 발행한다(직렬 2단계가 아니다)", async () => {
+    const ctx = setup({ rows: [] });
+    let guardStarted = false;
+    const innerRpc = ctx.supabase.rpc;
+    ctx.supabase.rpc = vi.fn(async (name: string) => {
+      guardStarted = true;
+      return innerRpc(name);
+    });
+    let releaseWrite!: () => void;
+    const writeGate = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    ctx.from.mockImplementation((table: string) => {
+      if (table === "users") {
+        return { upsert: vi.fn(() => writeGate.then(() => ({ error: null }))) };
+      }
+      if (table === "org_members") return { select: ctx.membershipSelect };
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    const pending = callback();
+    // profile 쓰기가 끝나기 전에 가드가 출발해야 한다 — 직렬 코드라면
+    // upsert 가 풀리기 전까지 rpc 는 절대 호출되지 않는다.
+    await vi.waitFor(() => {
+      expect(guardStarted).toBe(true);
+    }, { timeout: 2000, interval: 10 });
+    releaseWrite();
+    expect(location(await pending)).toBe("/workspace-entry");
+  });
+
+  it("한 로그인의 플랫폼 판정이 다음 요청에 새지 않는다(요청 간 캐시 없음)", async () => {
+    setup({ rows: [], platformGranted: true });
+    expect(location(await callback())).toBe("/mode");
+    const fresh = setup({ rows: [], platformGranted: false });
+    expect(location(await callback())).toBe("/workspace-entry");
+    expect(fresh.supabase.rpc).toHaveBeenCalledWith("is_platform_admin");
+    expect(fresh.from).toHaveBeenCalledWith("org_members");
+  });
+
   it("active membership 0은 membership 오류 없이 public entry로 보낸다", async () => {
     const { supabase, from } = setup({ rows: [] });
     const response = await callback();
