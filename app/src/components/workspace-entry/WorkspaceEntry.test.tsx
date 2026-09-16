@@ -115,6 +115,30 @@ describe("WorkspaceEntry B-3 state contract", () => {
     expect(html).not.toContain("기존 회사에 합류할게요");
   });
 
+  it("prefills the approval-based join flow from a safe invite address", () => {
+    const html = renderToStaticMarkup(<WorkspaceEntry initialJoinSlug="alpha-team" />);
+
+    expect(html).toContain('data-entry-view="join-confirm"');
+    expect(html).toContain("이 주소로 합류를 신청할까요?");
+    expect(html).toContain("참여 요청 후 승인이 필요합니다.");
+    expect(html).toContain("https://www.moa-work.com/w/alpha-team");
+    expect(html).not.toContain("초대 코드");
+  });
+
+  it("keeps pending and blocked precedence over an invite address", () => {
+    const pending = renderToStaticMarkup(<WorkspaceEntry requests={[pendingJoin]} initialJoinSlug="alpha-team" />);
+    expect(pending).toContain('data-entry-view="pending"');
+    expect(pending).not.toContain("join-confirm");
+
+    const blocked = renderToStaticMarkup(<WorkspaceEntry initialView="blocked" initialJoinSlug="alpha-team" />);
+    expect(blocked).toContain('data-entry-view="blocked"');
+    expect(blocked).not.toContain("join-confirm");
+
+    const operator = renderToStaticMarkup(<WorkspaceEntry isPlatformAdmin platformRequests={[]} initialJoinSlug="alpha-team" />);
+    expect(operator).toContain('data-entry-view="operator"');
+    expect(operator).not.toContain("join-confirm");
+  });
+
   it("applies fail-closed initial-state precedence deterministically", () => {
     expect(resolveWorkspaceEntryView({ initialView: "fork", hasPendingRequest: true, hasRejectedRequest: true, isPlatformAdmin: false })).toBe("pending");
     expect(resolveWorkspaceEntryView({ initialView: "fork", hasPendingRequest: true, hasRejectedRequest: true, isPlatformAdmin: false, freshStart: true })).toBe("pending");

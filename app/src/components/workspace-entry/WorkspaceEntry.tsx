@@ -35,6 +35,8 @@ type Props = {
   platformRequests?: PlatformCreateRequest[];
   freshStart?: boolean;
   recheckStrategy?: WorkspaceEntryRecheckStrategy;
+  /** 승인 기반 초대로 들어온 회사 주소. 토큰이 아니라 join 흐름의 주소만 싣는다. */
+  initialJoinSlug?: string | null;
 };
 
 export function resolveWorkspaceEntryView({
@@ -92,22 +94,28 @@ export function workspaceEntryPendingSummary(request: MyWorkspaceEntryRequest | 
   };
 }
 
-export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatformAdmin = false, platformRequests = [], freshStart = false, recheckStrategy = "refresh" }: Props) {
+export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatformAdmin = false, platformRequests = [], freshStart = false, recheckStrategy = "refresh", initialJoinSlug = null }: Props) {
   const currentRequest = useMemo(() => requests.find((request) => request.status === "pending") ?? null, [requests]);
   const router = useRouter();
   const latestNotApproved = useMemo(() => requests.find((request) => request.decisionState === "not_approved") ?? null, [requests]);
-  const [view, setView] = useState<WorkspaceEntryView>(() => resolveWorkspaceEntryView({
-    initialView,
-    hasPendingRequest: currentRequest !== null,
-    hasRejectedRequest: latestNotApproved !== null,
-    isPlatformAdmin,
-    freshStart,
-  }));
+  const [view, setView] = useState<WorkspaceEntryView>(() => {
+    const base = resolveWorkspaceEntryView({
+      initialView,
+      hasPendingRequest: currentRequest !== null,
+      hasRejectedRequest: latestNotApproved !== null,
+      isPlatformAdmin,
+      freshStart,
+    });
+    // 초대 주소는 대기·차단·운영자 판정을 덮지 않는다. 빈 진입(fork)일 때만
+    // 합류 확인으로 바로 시작하고, 아니면 주소만 미리 채워 둔다.
+    if (initialJoinSlug && base === "fork") return "join-confirm";
+    return base;
+  });
   const [activeRequest, setActiveRequest] = useState(currentRequest);
   const [draftName, setDraftName] = useState("");
   const [draftSlug, setDraftSlug] = useState("");
   const [slugInput, setSlugInput] = useState("");
-  const [joinSlug, setJoinSlug] = useState("");
+  const [joinSlug, setJoinSlug] = useState(initialJoinSlug ?? "");
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
   const retryKeys = useRef<Record<"create" | "join", { payload: string; requestId: string } | null>>({ create: null, join: null });
@@ -274,7 +282,7 @@ export function WorkspaceEntry({ initialView = "fork", requests = [], isPlatform
         </> : null}
 
         {view === "join-confirm" ? <>
-          <div className={styles.bubble}><strong>이 주소로 합류를 신청할까요?</strong></div>
+          <div className={styles.bubble}><strong>이 주소로 합류를 신청할까요?</strong><small>참여 요청 후 승인이 필요합니다.</small></div>
           <div className={styles.confirmCard}><span>회사 주소</span><code>https://www.moa-work.com/w/{joinSlug}</code></div>
           <div className={styles.actions}><button type="button" className={styles.quietButton} onClick={() => setView("join-address")}>이전 질문</button><button type="button" disabled={busy} onClick={() => void confirmJoin()}>{busy ? "신청 중…" : "이대로 신청하기"}</button></div>
         </> : null}

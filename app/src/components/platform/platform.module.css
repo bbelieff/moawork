@@ -19,3 +19,100 @@
 .statusBadges{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;margin:0 0 2px;padding:0;list-style:none}.statusBadge{display:inline-flex;align-items:center;min-height:32px;border:1px solid var(--mw-line);border-radius:999px;padding:6px 13px;background:var(--mw-card);font-size:12px;font-weight:800;line-height:1.4}.statusWarn{border-color:color-mix(in srgb,var(--mw-warning) 42%,var(--mw-line));color:var(--mw-warning);background:color-mix(in srgb,var(--mw-warning) 10%,var(--mw-card))}.statusInfo{border-color:color-mix(in srgb,var(--mw-info) 38%,var(--mw-line));color:var(--mw-info);background:color-mix(in srgb,var(--mw-info) 9%,var(--mw-card))}.panel .statusHint{margin-top:12px;color:var(--mw-sub);font-size:14px}
 /* BBE-208: 실패 배너는 성공과 «색으로도» 구분된다. role 만 갈리면 눈으로 보는 사용자는 못 알아챈다. */
 .organizationError{margin:0;border-radius:var(--mw-radius);padding:13px 15px;color:var(--mw-body);background:color-mix(in srgb,#dc2626 10%,var(--mw-card));border:1px solid color-mix(in srgb,#dc2626 34%,var(--mw-line));font-size:14px;font-weight:700}
+
+/* 778 ADMIN 팔레트 — charcoal 사이드바 + deep teal. 이 모듈(.root 아래)에만 적용한다.
+   사용자 화면 토큰(--mw-*)은 그대로 두고, 플랫폼 셸 범위에서만 덮어쓴다. */
+.root{--platform-sidebar:#22272e;--platform-sidebar-ink:#f1f4f8;--platform-sidebar-muted:#a9b2c0;--platform-sidebar-line:#3e4652;--platform-teal:#0f766e;--platform-teal-bright:#5eead4;--platform-teal-soft:color-mix(in srgb,var(--platform-teal) 9%,var(--mw-card));font-size:13px}
+.sidebar{background:var(--platform-sidebar);color:var(--platform-sidebar-ink);border-right-color:var(--platform-sidebar-line)}
+.sidebarHeading span{color:var(--platform-teal-bright)}
+.navGroupLabel{color:var(--platform-sidebar-muted)}
+.sidebar a{color:var(--platform-sidebar-ink);min-height:46px}
+.navMark{background:var(--platform-sidebar-line)}
+.sidebar a small{color:var(--platform-sidebar-muted)}
+.sidebar a:hover{border-color:var(--platform-sidebar-line);background:var(--platform-sidebar-line)}
+.sidebar a:focus-visible{outline-color:var(--platform-teal-bright)}
+.sidebar .active{border-color:var(--platform-teal);background:color-mix(in srgb,var(--platform-teal) 26%,var(--platform-sidebar));color:var(--platform-teal-bright)}
+.sidebar .active .navMark{background:var(--platform-teal-bright)}
+.mark i{background:var(--platform-teal-bright)}.mark i:nth-child(3){background:var(--platform-teal)}
+.heading .eyebrow{color:var(--platform-teal)}
+.sectionLabel{color:var(--platform-teal)}
+.onboardingSummary{border-color:color-mix(in srgb,var(--platform-teal) 30%,var(--mw-line))}
+.onboardingSummary h2{font-size:20px}
+.organizationActions button{background:var(--platform-teal);border-color:var(--platform-teal)}
+.organizationActions button:focus-visible{outline-color:color-mix(in srgb,var(--platform-teal) 45%,transparent)}
+/* 상태 태그 — 작은 사각형. pill·보라를 쓰지 않는다. */
+.statusTag{display:inline-block;font-size:11px;line-height:1.5;border-radius:4px;padding:1px 7px;white-space:nowrap;border:1px solid var(--mw-line);background:var(--mw-card);color:var(--mw-sub)}
+.statusTagOk{background:color-mix(in srgb,var(--platform-teal) 12%,var(--mw-card));border-color:transparent;color:var(--platform-teal)}
+.statusTagInfo{background:var(--platform-teal-soft);border-color:transparent;color:var(--platform-teal)}
+.statusTagWarn{background:color-mix(in srgb,var(--mw-warning) 12%,var(--mw-card));border-color:transparent;color:var(--mw-warning)}
+.statusTagNeutral{background:color-mix(in srgb,var(--mw-sub) 10%,var(--mw-card));border-color:var(--mw-line);color:var(--mw-sub)}
+/* 등록·상세 공용 */
+.registryActions{display:flex;gap:8px;align-items:center}
+.primaryButton{min-height:40px;border:1px solid var(--platform-teal);border-radius:var(--mw-radius);padding:0 14px;color:#fff;background:var(--platform-teal);font:inherit;font-size:13px;font-weight:800;cursor:pointer}
+.ghostButton{min-height:40px;border:1px solid var(--mw-line);border-radius:var(--mw-radius);padding:0 14px;color:var(--mw-body);background:var(--mw-card);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.registryForm{border:1px solid var(--mw-line);border-radius:var(--mw-radius);padding:14px 16px;background:var(--mw-card)}
+.registryForm h3{margin:0 0 10px;font-size:15px}
+.formError{margin:0 0 8px;color:var(--mw-error);font-size:13px;font-weight:700}
+.formRow{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.formField{display:flex;flex-direction:column;gap:4px;min-width:180px;flex:1}
+.formField label,.formField>span:first-child{font-size:12px;color:var(--mw-sub)}
+.formField input,.formField select{font:inherit;font-size:13px;color:var(--mw-fg);background:var(--mw-card);border:1px solid var(--mw-line);border-radius:var(--mw-radius);padding:7px 10px;max-width:100%}
+.formNote{margin:8px 0 0;color:var(--mw-sub);font-size:12px;line-height:1.6}
+.registrySearch{display:flex;align-items:center;gap:8px}
+.registrySearch label{font-size:12px;color:var(--mw-sub)}
+.registrySearch input{font:inherit;font-size:13px;border:1px solid var(--mw-line);border-radius:var(--mw-radius);padding:6px 10px;background:var(--mw-card);color:var(--mw-fg)}
+.registryFilters{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:14px 0}
+.registryFilters>button{font:inherit;font-size:12px;border:1px solid var(--mw-line);background:var(--mw-card);color:var(--mw-body);border-radius:var(--mw-radius);padding:5px 11px;cursor:pointer;white-space:nowrap}
+.registryFilters>button.filterActive{background:var(--mw-fg);border-color:var(--mw-fg);color:var(--mw-card);font-weight:800}
+.customerRows{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.customerRows li{display:grid;grid-template-columns:minmax(140px,1.3fr) minmax(100px,.8fr) auto auto auto auto;gap:10px;align-items:center;border:1px solid var(--mw-line);border-radius:var(--mw-radius);padding:10px 12px;background:var(--mw-card)}
+.customerName{font:inherit;font-size:14px;font-weight:800;color:var(--platform-teal);background:none;border:0;padding:0;cursor:pointer;text-align:left}
+.customerName:hover{text-decoration:underline}
+.customerMeta{font-size:12px;color:var(--mw-sub);white-space:nowrap}
+/* 상세 */
+.detailHead{display:grid;gap:8px;border:1px solid var(--mw-line);border-radius:var(--mw-radius);padding:14px 16px;background:var(--mw-card)}
+.backLink{font-size:13px;font-weight:700;color:var(--platform-teal);text-decoration:none}
+.backLink:hover{text-decoration:underline}
+.detailTitle{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.detailTitle h2{margin:0;font-size:20px;letter-spacing:-.02em}
+.entryLink{display:inline-flex;align-items:center;min-height:40px;border:1px solid var(--platform-teal);border-radius:var(--mw-radius);padding:0 14px;color:#fff;background:var(--platform-teal);font-size:13px;font-weight:800;text-decoration:none}
+.entryBlocked{font-size:12px;color:var(--mw-sub)}
+.detailTabs{display:flex;gap:4px;border-bottom:1px solid var(--mw-line)}
+.detailTabs button{font:inherit;font-size:13px;background:none;border:0;border-bottom:2px solid transparent;color:var(--mw-sub);padding:8px 10px;cursor:pointer}
+.detailTabs button[aria-selected="true"]{color:var(--mw-fg);border-bottom-color:var(--platform-teal);font-weight:800}
+.detailGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.detailFacts{display:grid;gap:6px;margin:0}
+.detailFacts>div{display:grid;grid-template-columns:110px 1fr;gap:10px;font-size:13px}
+.detailFacts dt{color:var(--mw-sub)}
+.detailFacts dd{margin:0}
+.approvalQueue h3{margin:0 0 10px;font-size:15px}
+.checkList{list-style:none;margin:0 0 10px;padding:0;font-size:13px}
+.checkList li{display:flex;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px dotted var(--mw-line)}
+.checkList li:last-child{border-bottom:0}
+.checkDot{flex:none;font-size:11px;border-radius:4px;padding:0 6px;border:1px solid var(--mw-line);color:var(--mw-sub)}
+.checkDone{background:color-mix(in srgb,var(--platform-teal) 12%,var(--mw-card));color:var(--platform-teal);border-color:transparent}
+.taskRows{display:grid;margin:14px 0 0;padding:0;list-style:none}
+.taskRows li{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--mw-line);font-size:13px}
+.taskRows li:last-child{border-bottom:0}
+.taskKind{font-size:11px;color:var(--mw-sub);border:1px solid var(--mw-line);border-radius:4px;padding:0 6px;white-space:nowrap}
+.taskTitle{flex:1;min-width:140px}
+.taskRows label{font-size:12px;color:var(--mw-sub)}
+.taskRows select{font:inherit;font-size:13px;border:1px solid var(--mw-line);border-radius:var(--mw-radius);padding:6px 8px;background:var(--mw-card);color:var(--mw-fg)}
+.historyRows{list-style:none;margin:0;padding:0;font-size:13px}
+.historyRows li{padding:9px 0;border-bottom:1px solid var(--mw-line)}
+.historyRows li:last-child{border-bottom:0}
+.historyChange{font-weight:700}
+.historyMeta{font-size:12px;color:var(--mw-sub)}
+@media (max-width:820px){.customerRows li{grid-template-columns:1fr 1fr}.registryActions{width:100%}.registryActions button{flex:1}.detailGrid{grid-template-columns:1fr}}
+
+/* Compact admin shell; user-mode colors remain outside this scope. */
+.root{--mw-primary:var(--platform-teal)}
+.band{min-height:56px;padding:8px 20px;background:var(--platform-sidebar);color:var(--platform-sidebar-ink);border-color:var(--platform-sidebar-line);justify-content:space-between}
+.brand span{color:var(--platform-sidebar-muted)}
+.layout{grid-template-columns:216px minmax(0,1fr);max-width:none;min-height:calc(100vh - 56px)}
+.sidebar{padding:18px 12px}.sidebarHeading{margin:0 10px 18px}.sidebarHeading strong{font-size:15px}
+.navGroup+.navGroup{margin-top:16px}.sidebar a{min-height:38px}.sidebar a small{display:none}
+.mainInner{width:100%;max-width:1440px;padding:22px 24px}.heading{margin-bottom:18px}.heading h1{margin:6px 0;font-size:23px}
+.organizationConsole{max-width:none;gap:14px}.organizationConsole+.organizationConsole{margin-top:24px}
+.onboardingSummary{padding:16px;gap:16px}.onboardingSummary h2{font-size:17px}.onboardingMetrics div{padding:10px}.onboardingMetrics dd{font-size:16px;margin:4px 0 0}
+@media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{padding:12px}.sidebarHeading,.navGroupLabel{display:none}.navGroup+.navGroup{margin-top:6px}.navGroup ul{display:flex;flex-wrap:wrap;gap:4px}.sidebar a{min-height:34px;padding:6px 9px}.mainInner{padding:18px 14px}.band{padding:8px 14px}.brand>div{font-size:12px}.brand span{font-size:10px}.approvalQueue{padding:14px}}
