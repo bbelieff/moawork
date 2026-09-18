@@ -11,16 +11,16 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
  */
 
 /*
- * ★ 147 «다음에» 148 을 얹는다 — 운영이 실제로 겪는 순서다.
+ * ★ 147 «다음에» 150 을 얹는다 — 운영이 실제로 겪는 순서다.
  *
  *   147 은 이미 머지됐다(PR #723 · merge 6e75c6b). `begin_guarded_migration` 은
  *   digest 가 아니라 **logical_key 로** 판정하므로(094:53), 147 파일을 고쳐 봐야
  *   적용된 DB 에는 절대 안 닿는다. 실제로 그 실수를 한 번 했고 검수가 잡아 줬다.
  *
  *   그래서 이 시험도 «147 만» 읽으면 안 된다. 운영은 둘 다 지나간 상태이고,
- *   여기서 순서대로 얹어야 「148 이 147 을 제대로 덮는가」까지 같이 재진다.
+ *   여기서 순서대로 얹어야 「150 이 147 을 제대로 덮는가」까지 같이 재진다.
  */
-const migrations = ["147_invite_links.sql", "148_invite_links_hardening.sql"].map((name) =>
+const migrations = ["147_invite_links.sql", "150_invite_links_hardening.sql"].map((name) =>
   readFileSync(resolve(process.cwd(), `../supabase/migrations/${name}`), "utf8"),
 );
 
@@ -111,7 +111,7 @@ const SEED = `
     ('${ids.orgB}', '${ids.ownerB}', 'owner', 'all');
 `;
 
-describe("147+148 — 사람 부르기 링크", () => {
+describe("147+150 — 사람 부르기 링크", () => {
   let db: PGlite;
 
   beforeEach(async () => {
@@ -460,7 +460,7 @@ describe("147+148 — 사람 부르기 링크", () => {
     /*
      * ★★ 이 시험은 처음에 «제목이 말하는 것을 재지 않았다». 검수가 돌연변이로 증명했다:
      *
-     *     148 에서 `on conflict (link_id, user_id) do nothing` 을 «통째로» 지워도
+     *     150 에서 `on conflict (link_id, user_id) do nothing` 을 «통째로» 지워도
      *     → 49개 전부 통과. 안 빨개진다.
      *
      *   두 번째 redeem 이 `v_status='active'` 갈래에서 끊겨 redemption insert 에
@@ -468,7 +468,7 @@ describe("147+148 — 사람 부르기 링크", () => {
      *   두 번째 누름이 그 절을 한 번도 안 밟았다.
      *
      * ★ 그 절을 실제로 밟으려면 «행이 지워진 뒤 다시 들어오는» 경로가 필요하다.
-     *   그리고 그 경로는 마침 148 이 경고하는 바로 그 경로다 —
+     *   그리고 그 경로는 마침 150 이 경고하는 바로 그 경로다 —
      *   내보내기를 DELETE 로 만들면 needs_approval 방어가 무력화된다(#730).
      *   그래서 이 시험 하나가 셋을 동시에 잡는다:
      *     ① on conflict do nothing 이 «처음으로» 밟힌다
@@ -480,7 +480,7 @@ describe("147+148 — 사람 부르기 링크", () => {
       as(ids.outsider);
       await call(`select public.redeem_org_invite('${token}') as out`);
 
-      // ★ 내보내기를 «행 삭제» 로 만들었다고 가정한다 — 148 이 하지 말라고 경고하는 그것이다.
+      // ★ 내보내기를 «행 삭제» 로 만들었다고 가정한다 — 150 이 하지 말라고 경고하는 그것이다.
       await db.exec(
         `delete from public.org_members
           where org_id='${ids.orgA}' and user_id='${ids.outsider}'`);
@@ -489,7 +489,7 @@ describe("147+148 — 사람 부르기 링크", () => {
       const back = await call<{ ok: boolean; already: boolean }>(
         `select public.redeem_org_invite('${token}') as out`);
       // 행이 없으니 «처음 오는 사람» 이 된다. 이게 바로 #730 이 경고하는 구멍이다.
-      expect(back, "행을 지우면 링크로 그냥 돌아온다 — 148 의 방어가 행 존재를 전제한다")
+      expect(back, "행을 지우면 링크로 그냥 돌아온다 — 150 의 방어가 행 존재를 전제한다")
         .toMatchObject({ ok: true, already: false });
 
       const n = await db.query<{ n: number }>(
@@ -547,7 +547,7 @@ describe("147+148 — 사람 부르기 링크", () => {
     });
 
     /*
-     * ★★ 148:204-212 가 「회사 상태 검사가 «구성원 검사보다 먼저» 와야 한다」를 주석으로
+     * ★★ 150:204-212 가 「회사 상태 검사가 «구성원 검사보다 먼저» 와야 한다」를 주석으로
      *   못 박아 놨는데, 그것을 재는 시험이 «없었다». 검수가 짚었다.
      *
      *   위 시험들은 전부 «한 번도 구성원이 아닌 사람»(outsider) 으로만 돈다.

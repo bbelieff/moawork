@@ -1,10 +1,10 @@
--- moa-migration-guard: logical_key=148_invite_links_hardening predecessor=147_invite_links digest=8c19a1f5fd2246844668af698d866213b513ec79633eb58c3d14aab955f947a0 foundation=false
+-- moa-migration-guard: logical_key=150_invite_links_hardening predecessor=149_platform_customer_session_repair digest=9257b0d5785ccd8042f7a9cf0bb8f0d13741f8a407564eee7a35b81996966585 foundation=false
 
 select public.begin_guarded_migration(
-  p_logical_key => '148_invite_links_hardening',
-  p_file_name => '148_invite_links_hardening.sql',
-  p_file_digest => '8c19a1f5fd2246844668af698d866213b513ec79633eb58c3d14aab955f947a0',
-  p_expected_predecessor => '147_invite_links',
+  p_logical_key => '150_invite_links_hardening',
+  p_file_name => '150_invite_links_hardening.sql',
+  p_file_digest => '9257b0d5785ccd8042f7a9cf0bb8f0d13741f8a407564eee7a35b81996966585',
+  p_expected_predecessor => '149_platform_customer_session_repair',
   p_executor => 'DC',
   p_thread_id => '5b8e2f47-9c31-4a06-8d75-e14b3f2a9c60',
   p_foundation => false
@@ -12,7 +12,7 @@ select public.begin_guarded_migration(
 
 -- 「사람 부르기」를 안전하게 만든다 — 147 의 뒤처리 (#722).
 --
--- ## ★ 왜 147 을 고치지 않고 148 을 만드나
+-- ## ★ 왜 147 을 고치지 않고 150 을 만드나
 --
 -- 147 은 이미 머지됐다(PR #723 · merge 6e75c6b). `begin_guarded_migration` 은
 -- **digest 가 아니라 logical_key 로** 판정한다(094:53) — 원장에 그 키가 있으면 23505 로 죽는다.
@@ -94,7 +94,7 @@ begin
   /*
    * ★ 「관리자도 «관리자 자리» 를 줄 수 있다」는 총괄 결정이다 (2026-09-07).
    *   006 은 자리 배정을 대표 전용으로 둔다(013:126 require_owner · 006:625 · 006:879 하드코딩).
-   *   여기서 «의도적으로» 넓힌 것이니, 006 주석을 읽고 「148 이 어긴다」고 판단하지 말 것.
+   *   여기서 «의도적으로» 넓힌 것이니, 006 주석을 읽고 「150 이 어긴다」고 판단하지 말 것.
    *   그 대가로 ③(누가 들어왔는지 기록)과 ①(내보낸 사람은 못 돌아옴)이 붙는다.
    */
   if p_role = 'owner' then
@@ -155,9 +155,9 @@ $$;
  *     즉 008 은 내보내진 사람에게 「신청하세요」라고 «화면으로 안내한다»
  *     (app/src/app/workspace-entry/page.tsx 가 이 값으로 화면을 그린다).
  *     그런데 그 신청을 대표가 승인하면 006:851-857 이 23505 로 거절한다.
- *     제품이 사람을 막다른 길로 안내하고 있다 — 148 이 만든 것이 아니라 «이미» 그렇다.
+ *     제품이 사람을 막다른 길로 안내하고 있다 — 150 이 만든 것이 아니라 «이미» 그렇다.
  *
- *     148 은 여섯 상태를 하나로 묶어 전부 needs_approval 로 보낸다. 보안 판단으로는 맞다
+ *     150 은 여섯 상태를 하나로 묶어 전부 needs_approval 로 보낸다. 보안 판단으로는 맞다
  *     (링크로 되살리면 정지된 관리자가 스스로 복귀한다). 다만 008 의 갈래와 어긋나므로
  *     «어느 쪽이 이 제품의 답인가» 를 정하는 것이 #730 의 일이다.
  *
