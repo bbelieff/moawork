@@ -95,6 +95,7 @@ import {
   otherInfoDetailText,
   otherInfoLegacyFromValues,
 } from "@/lib/boards/structured-field";
+import { eulReul } from "@/lib/text/josa";
 import styles from "./item-detail-panel.module.css";
 
 const CANONICAL_NEW_LEAD_DETAIL_KEYS = new Set([
@@ -1100,8 +1101,8 @@ export function ItemDetailPanel({
                                 <button
                                   type="submit"
                                   className={styles.promoteButton}
-                                  title={`${label}을 표에도 보이게 합니다`}
-                                  aria-label={`${label}을 표에도 보이기`}
+                                  title={`${label}${eulReul(label)} 표에도 보이게 합니다`}
+                                  aria-label={`${label}${eulReul(label)} 표에도 보이기`}
                                 >
                                   표에도
                                 </button>
@@ -1119,8 +1120,8 @@ export function ItemDetailPanel({
                                 <button
                                   type="submit"
                                   className={styles.promoteButton}
-                                  title={`${label}을 표에서 내리고 상세에서만 보이게 합니다. 값은 그대로 남고 컬럼은 휴지통으로 갑니다`}
-                                  aria-label={`${label}을 표에서 내리기`}
+                                  title={`${label}${eulReul(label)} 표에서 내리고 상세에서만 보이게 합니다. 값은 그대로 남고 컬럼은 휴지통으로 갑니다`}
+                                  aria-label={`${label}${eulReul(label)} 표에서 내리기`}
                                 >
                                   상세만
                                 </button>
