@@ -6,7 +6,7 @@ export type TodayDashboardStatus = "ready" | "empty" | "partial" | "unfilled";
 /**
  * ★ BBE-215 — 읽기 모델 «버전» 이 앱보다 낮을 때 쓰는 오류.
  *
- *   배포 순서가 어긋날 수 있다: 앱은 머지되면 Vercel 이 «자동으로» 올리는데,
+ *   배포 순서가 어긋날 수 있다: 앱은 머지되면 VPS 배포가 «자동으로» 올리는데,
  *   마이그레이션은 총괄이 SQL 편집기에서 «손으로» 적용한다(운영 직접 적용 금지 규약).
  *   그 사이에는 v1 payload 가 v2 파서에 들어온다.
  *

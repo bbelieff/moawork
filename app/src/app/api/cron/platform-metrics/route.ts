@@ -2,10 +2,9 @@
  * 야간 배치 엔드포인트 — 하루치 플랫폼 지표를 집계해 `platform_metrics_daily` 에 적재.
  * (C4 · T04)
  *
- * 호출: Vercel Cron 이 매일 KST 04:00 에 GET 한다.
- *   설정 위치는 `app/vercel.json` — Vercel Root Directory 가 `app` 이라 저장소 루트의
- *   vercel.json 은 읽히지 않는다. schedule 은 UTC 이므로 `0 19 * * *` = KST 익일 04:00.
- *   (vercel.json 스키마는 추가 속성을 거부하므로 설명 주석을 그 파일에 둘 수 없다.)
+ * 호출: VPS 의 systemd timer `moawork-platform-metrics.timer` 가 매일 KST 04:00 에 GET 한다.
+ *   정의는 `ops/vps/cron/` 에 있다. 예전에는 `app/vercel.json` 의 Vercel Cron 이 했지만
+ *   운영이 VPS 로 옮겨 오면서 그 파일과 함께 없앴다.
  *   야간 배치는 '완료된 하루'(KST 어제)를 집계하므로 자정 이후에 돈다.
  * 인증: `CRON_SECRET` 이 설정돼 있으면 `Authorization: Bearer <secret>` 를 요구한다.
  *       미설정이면 **거부**한다 — 인증 없이 전 조직 데이터를 훑는 경로를 열어 두지 않는다.

@@ -11,7 +11,7 @@ const ACTIONS_FINGERPRINT_CONTEXT = "moawork:server-actions:fingerprint:v1";
 export const RUNTIME_SERVICE_NAME = "moawork-web";
 
 export type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
-export type RuntimeFlavor = "self-hosted" | "vercel" | "unknown";
+export type RuntimeFlavor = "self-hosted" | "unknown";
 
 export type RuntimeIdentity = Readonly<{
   service: typeof RUNTIME_SERVICE_NAME;
@@ -71,24 +71,18 @@ function exactSupabaseOrigin(value: string | undefined): boolean {
 }
 
 export function resolveBuildSha(environment: RuntimeEnvironment): string | null {
-  return publicSha(
-    nonEmpty(environment.MOAWORK_BUILD_SHA) ??
-      nonEmpty(environment.VERCEL_GIT_COMMIT_SHA),
-  );
+  return publicSha(nonEmpty(environment.MOAWORK_BUILD_SHA));
 }
 
 /**
- * Vercel owns its deployment identifier and injects it separately from the
- * source revision. Supplying our Git SHA as next.config `deploymentId` would
- * override that opaque `dpl_*` identity and makes a managed build fail. The
- * self-hosted artifact still needs one stable skew identifier across slots.
+ * The self-hosted artifact needs one stable skew identifier across slots so a
+ * Server Action request and the browser assets that issued it cannot come from
+ * two different releases. The commit SHA is that identifier.
  */
 export function resolveNextDeploymentId(
   environment: RuntimeEnvironment,
 ): string | undefined {
-  return environment.VERCEL === "1"
-    ? undefined
-    : (resolveBuildSha(environment) ?? undefined);
+  return resolveBuildSha(environment) ?? undefined;
 }
 
 /**
@@ -154,8 +148,7 @@ export function publicBuildConfigFingerprint(
 export function resolveArtifactStatus(
   environment: RuntimeEnvironment,
   runtime: RuntimeFlavor,
-): "verified" | "managed" | "unverified" {
-  if (runtime === "vercel") return "managed";
+): "verified" | "unverified" {
   return runtime === "self-hosted" &&
     FULL_SHA256.test(environment.MOAWORK_ARTIFACT_SHA256 ?? "")
     ? "verified"
@@ -171,7 +164,6 @@ export function resolveArtifactSha256(
   environment: RuntimeEnvironment,
   runtime: RuntimeFlavor,
 ): string {
-  if (runtime === "vercel") return "managed";
   const value = environment.MOAWORK_ARTIFACT_SHA256;
   return runtime === "self-hosted" && value && FULL_SHA256.test(value)
     ? value
@@ -197,17 +189,9 @@ export function resolveRuntimeIdentity(
   environment: RuntimeEnvironment = process.env,
 ): RuntimeIdentity {
   const selfHostedBuild = nonEmpty(environment.MOAWORK_BUILD_SHA);
-  const vercelBuild = nonEmpty(environment.VERCEL_GIT_COMMIT_SHA);
-  const runtime: RuntimeFlavor = selfHostedBuild
-    ? "self-hosted"
-    : environment.VERCEL === "1"
-      ? "vercel"
-      : "unknown";
-  const rawBuildSha = selfHostedBuild ?? vercelBuild;
-  const rawReleaseSha =
-    nonEmpty(environment.MOAWORK_RELEASE_SHA) ??
-    (runtime === "vercel" ? vercelBuild : null);
-  const buildSha = publicSha(rawBuildSha);
+  const runtime: RuntimeFlavor = selfHostedBuild ? "self-hosted" : "unknown";
+  const rawReleaseSha = nonEmpty(environment.MOAWORK_RELEASE_SHA);
+  const buildSha = publicSha(selfHostedBuild);
   const releaseSha = publicSha(rawReleaseSha);
 
   return {
@@ -236,21 +220,11 @@ export function createHealthResponse(
     environment.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY,
   );
   const actionsBuildFingerprint = resolveServerActionsBuildFingerprint(environment);
-  // A managed Vercel release may keep serving before handoff. Once an explicit
-  // key exists it must be valid and exposes the comparable opaque fingerprint.
-  const managedVercelActions =
-    identity.runtime === "vercel" &&
-    environment.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY === undefined &&
-    actionsBuildFingerprint === null;
   const verifiedServerActions =
     actionsFingerprint !== null &&
     actionsBuildFingerprint !== null &&
     actionsFingerprint === actionsBuildFingerprint;
-  const serverActions = verifiedServerActions
-    ? "verified"
-    : managedVercelActions
-      ? "managed"
-      : "unverified";
+  const serverActions = verifiedServerActions ? "verified" : "unverified";
   const artifact = resolveArtifactStatus(environment, identity.runtime);
   const artifactSha256 = resolveArtifactSha256(environment, identity.runtime);
   // 분석은 선택 기능이다. 키가 없으면 disabled로 보고하되 readiness는 유지한다.
@@ -275,12 +249,9 @@ export function createHealthResponse(
       artifactSha256,
       analytics: analyticsConfigured ? "configured" : "disabled",
       serverActions,
-      serverActionsKeyFingerprint:
-        verifiedServerActions
-          ? actionsFingerprint
-          : managedVercelActions
-            ? "managed"
-            : "unavailable",
+      serverActionsKeyFingerprint: verifiedServerActions
+        ? actionsFingerprint
+        : "unavailable",
       buildSha: identity.buildSha ?? "unknown",
       releaseSha: identity.releaseSha ?? "unknown",
     },
