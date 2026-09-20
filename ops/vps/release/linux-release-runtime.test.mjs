@@ -282,7 +282,6 @@ async function fixture() {
   const wrongArtifactPorts = new Set();
   const serviceStates = new Map(Object.values(config.slots).map((slot) => [slot.unit, false]));
   let publicPort = null;
-  let publicVercelSourceSha = null;
   const commandRunner = async ({ file, args }) => {
     const call = `${path.basename(file)} ${args.join(" ")}`;
     commands.push(call);
@@ -341,25 +340,6 @@ async function fixture() {
   };
   const fetchImpl = async (url) => {
     const parsed = new URL(url);
-    const isDirectVercel = parsed.hostname.endsWith(".vercel.app");
-    if (isDirectVercel || (parsed.protocol === "https:" && publicVercelSourceSha !== null)) {
-      const sourceSha = publicVercelSourceSha;
-      const payload = sourceSha === null
-        ? { status: "not_ready" }
-        : {
-            ...SOURCECORE_SELF_HOSTED_READY,
-            runtime: "vercel",
-            artifact: "managed",
-            artifactSha256: "managed",
-            buildSha: sourceSha,
-            releaseSha: sourceSha,
-            serverActionsKeyFingerprint: FIXTURE_SERVER_ACTIONS_FINGERPRINT,
-          };
-      return new Response(JSON.stringify(payload), {
-        status: sourceSha === null ? 503 : 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
     const port = parsed.protocol === "http:" ? Number(parsed.port) : publicPort;
     const artifact = await artifactAtPort(port);
     const healthy = artifact !== null && !unhealthyPorts.has(port);
@@ -411,9 +391,7 @@ async function fixture() {
     seedActive,
     setPublicPort: (value) => {
       publicPort = value;
-      publicVercelSourceSha = null;
     },
-    setPublicVercel: (sourceSha) => { publicVercelSourceSha = sourceSha; },
     unhealthyPorts,
     wrongArtifactPorts,
   };
@@ -494,94 +472,6 @@ test("actual verifier materializes an empty-VPS shadow without public routing", 
     const state = JSON.parse(await readFile(h.config.stateFile, "utf8"));
     assert.equal(state.activeSlot, null);
     assert.equal(state.slots.blue.artifact.releaseId, h.nextArtifact.releaseId);
-  } finally {
-    await h.cleanup();
-  }
-});
-
-test("first cutover CLI prepares without an active receipt and confirms only after exact public self-hosted health", async () => {
-  const h = await fixture();
-  try {
-    const configPath = path.join(path.dirname(h.config.stateFile), "release-config.json");
-    await writeFile(configPath, `${JSON.stringify(h.config, null, 2)}\n`);
-    const dependencies = { runtimeDependencies: { commandRunner: h.commandRunner, fetchImpl: h.fetchImpl, resolveServiceIdentity: h.resolveServiceIdentity } };
-    await runReleaseCli([
-      "deploy", "--config", configPath,
-      "--mode", "shadow",
-      "--archive", h.nextArtifact.archivePath,
-      "--manifest", h.nextArtifact.manifestPath,
-      "--attestation", h.nextAttestationPath,
-      "--source-sha", h.nextArtifact.sourceSha,
-    ], dependencies);
-    h.setPublicVercel(h.oldArtifact.sourceSha);
-    const common = [
-      "--config", configPath,
-      "--slot", "blue",
-      "--artifact-sha256", h.nextArtifact.releaseId,
-      "--source-sha", h.nextArtifact.sourceSha,
-    ];
-    const prepared = await runReleaseCli([
-      "first-cutover-prepare", ...common,
-      "--rollback-url", "https://moawork-reviewed.vercel.app/api/health/ready",
-      "--rollback-source-sha", h.oldArtifact.sourceSha,
-      "--rollback-server-actions-fingerprint", FIXTURE_SERVER_ACTIONS_FINGERPRINT,
-    ], dependencies);
-    assert.equal(prepared.phase, "prepared");
-    assert.equal(prepared.activeRegistered, false);
-    assert.equal(prepared.dnsMutationPerformed, false);
-    assert.equal(prepared.status.activeSlot, null);
-    assert.equal(prepared.status.recovery.kind, "initial_cutover_pending");
-    assert.equal(await readFile(h.config.upstreamFile, "utf8"), "reverse_proxy 127.0.0.1:31101\n");
-
-    h.setPublicPort(h.config.slots.blue.port);
-    const confirmed = await runReleaseCli(["first-cutover-confirm", ...common], dependencies);
-    assert.equal(confirmed.phase, "confirmed");
-    assert.equal(confirmed.activeRegistered, true);
-    assert.equal(confirmed.status.activeSlot, "blue");
-    assert.equal(confirmed.status.previousSlot, null);
-    assert.equal(confirmed.status.recovery, null);
-    assert.equal(confirmed.status.generation, 2);
-  } finally {
-    await h.cleanup();
-  }
-});
-
-test("first cutover abort requires restored Vercel health before removing the staged VPS route", async () => {
-  const h = await fixture();
-  try {
-    await h.runtime.withExclusiveLock(() => h.controller.deploy({
-      mode: "shadow",
-      archivePath: h.nextArtifact.archivePath,
-      manifestPath: h.nextArtifact.manifestPath,
-      attestationPath: h.nextAttestationPath,
-      expectedSourceSha: h.nextArtifact.sourceSha,
-    }));
-    const rollbackTarget = {
-      provider: "vercel",
-      healthUrl: "https://moawork-reviewed.vercel.app/api/health/ready",
-      serverActionsKeyFingerprint: FIXTURE_SERVER_ACTIONS_FINGERPRINT,
-      sourceSha: h.oldArtifact.sourceSha,
-    };
-    h.setPublicVercel(h.oldArtifact.sourceSha);
-    const identity = {
-      targetSlot: "blue",
-      sourceSha: h.nextArtifact.sourceSha,
-      artifactSha256: h.nextArtifact.releaseId,
-    };
-    await h.runtime.withExclusiveLock(() => h.controller.prepareInitialCutover({ ...identity, rollbackTarget }));
-    h.setPublicVercel(h.nextArtifact.sourceSha);
-    await assert.rejects(
-      h.runtime.withExclusiveLock(() => h.controller.abortInitialCutover(identity)),
-      /has not restored/u,
-    );
-    assert.equal(await readFile(h.config.upstreamFile, "utf8"), "reverse_proxy 127.0.0.1:31101\n");
-
-    h.setPublicVercel(h.oldArtifact.sourceSha);
-    const aborted = await h.runtime.withExclusiveLock(() => h.controller.abortInitialCutover(identity));
-    assert.equal(aborted.phase, "aborted");
-    assert.equal(aborted.status.activeSlot, null);
-    assert.equal(aborted.status.recovery, null);
-    await assert.rejects(() => readFile(h.config.upstreamFile), { code: "ENOENT" });
   } finally {
     await h.cleanup();
   }
@@ -2472,9 +2362,7 @@ test("CLI status binds config and production verifier while an empty activation 
   const h = await fixture();
   try {
     const help = await runReleaseCli(["help"]);
-    assert.match(help.help, /first-cutover-prepare[^\n]* \\\n    --slot/u);
-    assert.match(help.help, /first-cutover-confirm[^\n]* \\\n    --slot/u);
-    assert.match(help.help, /first-cutover-abort[^\n]* \\\n    --slot/u);
+    assert.doesNotMatch(help.help, /first-cutover/u);
     const configPath = path.join(path.dirname(h.config.stateFile), "release-config.json");
     await writeFile(configPath, `${JSON.stringify(h.config, null, 2)}\n`);
     const status = await runReleaseCli(["status", "--config", configPath], {

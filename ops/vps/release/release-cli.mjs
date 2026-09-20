@@ -13,26 +13,15 @@ const HELP = `Usage:
     --manifest <absolute-release.manifest.json> \\
     --attestation <absolute-release.attestation.json> --source-sha <40-hex>
   node ops/vps/release/release-cli.mjs rollback --config <absolute-config.json>
-  node ops/vps/release/release-cli.mjs first-cutover-prepare --config <absolute-config.json> \\
-    --slot <slot> --artifact-sha256 <64-hex> --source-sha <40-hex> \\
-    --rollback-url <exact-vercel-ready-url> --rollback-source-sha <40-hex> \\
-    --rollback-server-actions-fingerprint <64-hex>
-  node ops/vps/release/release-cli.mjs first-cutover-confirm --config <absolute-config.json> \\
-    --slot <slot> --artifact-sha256 <64-hex> --source-sha <40-hex>
-  node ops/vps/release/release-cli.mjs first-cutover-abort --config <absolute-config.json> \\
-    --slot <slot> --artifact-sha256 <64-hex> --source-sha <40-hex>
 
 The config supplies exactly two dedicated MoaWork slots, loopback ports,
 systemd units, state/lock/env paths, reviewed Caddy configuration, and the
 public readiness URL. The CLI never accepts a verifier override or secrets.
-An empty VPS is proven in shadow mode before the explicit first-cutover
-prepare/confirm/abort sequence. These commands never mutate DNS: prepare keeps
-the active slot null, confirm requires exact public candidate health, and abort
-requires exact public Vercel rollback health before removing the VPS route.
+A new artifact is proven in shadow mode before it is activated, and these
+commands never mutate DNS.
 `;
 
 const SHA40 = /^[0-9a-f]{40}$/u;
-const SHA64 = /^[0-9a-f]{64}$/u;
 
 function parsePairs(values) {
   const parsed = new Map();
@@ -68,14 +57,8 @@ export async function runReleaseCli(argv, dependencies = {}) {
   if (command === undefined || command === "help" || command === "--help") return { help: HELP };
   const options = parsePairs(values);
   const common = ["--config"];
-  const cutoverIdentity = ["--slot", "--artifact-sha256", "--source-sha"];
   if (command === "deploy") exactOptions(options, [...common, "--mode", "--archive", "--manifest", "--attestation", "--source-sha"]);
   else if (command === "status" || command === "rollback") exactOptions(options, common);
-  else if (command === "first-cutover-prepare") {
-    exactOptions(options, [...common, ...cutoverIdentity, "--rollback-url", "--rollback-source-sha", "--rollback-server-actions-fingerprint"]);
-  } else if (command === "first-cutover-confirm" || command === "first-cutover-abort") {
-    exactOptions(options, [...common, ...cutoverIdentity]);
-  }
   else throw new Error(`unknown command: ${command}`);
 
   const rawConfigPath = options.get("--config");
@@ -108,28 +91,6 @@ export async function runReleaseCli(argv, dependencies = {}) {
   return runtime.withExclusiveLock(async () => {
     if (command === "status") return controller.status();
     if (command === "rollback") return controller.rollback();
-    if (command.startsWith("first-cutover-")) {
-      const sourceSha = options.get("--source-sha");
-      const artifactSha256 = options.get("--artifact-sha256");
-      if (!SHA40.test(sourceSha)) throw new Error("source-sha must be a lowercase full Git SHA");
-      if (!SHA64.test(artifactSha256)) throw new Error("artifact-sha256 must be a lowercase SHA-256");
-      const input = { targetSlot: options.get("--slot"), sourceSha, artifactSha256 };
-      if (command === "first-cutover-prepare") {
-        const rollbackSourceSha = options.get("--rollback-source-sha");
-        const rollbackServerActionsFingerprint = options.get("--rollback-server-actions-fingerprint");
-        if (!SHA40.test(rollbackSourceSha)) throw new Error("rollback-source-sha must be a lowercase full Git SHA");
-        if (!SHA64.test(rollbackServerActionsFingerprint)) throw new Error("rollback-server-actions-fingerprint must be a lowercase SHA-256");
-        input.rollbackTarget = {
-          provider: "vercel",
-          healthUrl: options.get("--rollback-url"),
-          serverActionsKeyFingerprint: rollbackServerActionsFingerprint,
-          sourceSha: rollbackSourceSha,
-        };
-        return controller.prepareInitialCutover(input);
-      }
-      if (command === "first-cutover-confirm") return controller.confirmInitialCutover(input);
-      return controller.abortInitialCutover(input);
-    }
     return controller.deploy(deployInput);
   });
 }
