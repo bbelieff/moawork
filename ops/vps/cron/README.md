@@ -56,7 +56,16 @@ journalctl -u moawork-platform-metrics.service -n 30 --no-pager
 
 ## 빠진 날 메우기 (백필)
 
+**2026-09-20 실측**: `platform_metrics_daily` 는 **0행**이다. 버셀 이전 이후가 아니라
+«한 번도» 적재된 적이 없다. 원본도 아직 적다 — 조직 5 · 딜 6(2026-08-23~09-15) ·
+`activities` 0행. 그래서 백필해도 대부분의 날은 0 으로 채워진다. 그게 정상이고,
+숫자가 0 이라고 배치가 실패한 것이 아니다.
+
+`activities` 가 비어 있는 한 DAU·MAU·stickiness 는 계속 0 이다. 그건 이 크론이 아니라
+활동 기록(딜 단계 이동) 쪽 이야기다 — 이 크론을 고쳐도 그 값은 안 올라간다.
+
 적재는 멱등 upsert 라 같은 날짜를 여러 번 돌려도 중복되지 않는다.
+첫 딜이 생긴 날부터 메우려면 `2026-08-23` 부터 어제까지 돌린다.
 
 ```sh
 /usr/local/bin/moawork-platform-metrics.sh 2026-09-18
