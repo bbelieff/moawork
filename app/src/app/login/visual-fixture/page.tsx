@@ -123,7 +123,7 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
   if (params.surface === "organization-views") {
     const model = loadVisualOrgViewModel({ reportingKnown: params.reporting !== "unknown" });
     return (
-      <main data-visual-org-views-fixture data-build-sha={process.env.VERCEL_GIT_COMMIT_SHA ?? "local"} className="min-h-screen bg-mw-bg p-6">
+      <main data-visual-org-views-fixture data-build-sha={process.env.MOAWORK_BUILD_SHA ?? "local"} className="min-h-screen bg-mw-bg p-6">
         <div className="mx-auto flex max-w-6xl flex-col gap-4">
           <header>
             <h1 className="text-xl font-semibold">우리 회사와 팀</h1>
@@ -158,7 +158,7 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
   if (params.surface === "organization") {
     const chart = await loadVisualDepartmentChart();
     return (
-      <main data-visual-department-fixture data-build-sha={process.env.VERCEL_GIT_COMMIT_SHA ?? "local"} className="min-h-screen bg-mw-bg p-6">
+      <main data-visual-department-fixture data-build-sha={process.env.MOAWORK_BUILD_SHA ?? "local"} className="min-h-screen bg-mw-bg p-6">
         <div className="mx-auto max-w-6xl">
           <header className="mb-4">
             <h1 className="text-xl font-semibold">우리 회사와 팀</h1>
@@ -188,7 +188,7 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
   const error = jar.get(`visual-workflow-${tab}-error`)?.value ?? null;
   const data = fixture(tab, draft ?? saved, params.groups === "all");
   return (
-    <main data-visual-fixture={tab} data-build-sha={process.env.VERCEL_GIT_COMMIT_SHA ?? "local"} className={`visual-mutation-${mutation} min-h-screen max-w-full bg-mw-bg p-4`}>
+    <main data-visual-fixture={tab} data-build-sha={process.env.MOAWORK_BUILD_SHA ?? "local"} className={`visual-mutation-${mutation} min-h-screen max-w-full bg-mw-bg p-4`}>
       <VisualThemeProbe theme={theme} />
       <style>{`
         .visual-mutation-settings-bottom [data-visual-block='board-settings'] { order: 99 !important; margin-top: 700px !important; }

@@ -48,7 +48,7 @@ const SOURCECORE_FIXTURE_PATH = fileURLToPath(new URL(
   "../../../app/src/lib/operations/runtime-identity.ready.fixture.json",
   import.meta.url,
 ));
-const SOURCECORE_FIXTURE_SHA256 = "6a1b4e261327a492c3f61cadac1624e54d11bedd8b177371596694ca11faa675";
+const SOURCECORE_FIXTURE_SHA256 = "716395e85521f44da16c7abe023523d66fcf4608dd5a5d59a72431e615ed9947";
 const FIXTURE_SERVER_ACTIONS_KEY = Buffer.alloc(32, 0x5a).toString("base64");
 const FIXTURE_SERVER_ACTIONS_FINGERPRINT = createHmac("sha256", Buffer.from(FIXTURE_SERVER_ACTIONS_KEY, "base64"))
   .update("moawork:server-actions:fingerprint:v1")
