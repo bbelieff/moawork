@@ -19,6 +19,11 @@ import {
   type WorkspaceApprovals,
 } from "@/lib/workspace-entry/server";
 import { NotificationBell } from "@/components/notify/NotificationBell";
+import {
+  SupporterDock,
+  SupporterOpenButton,
+  SupporterProvider,
+} from "@/components/supporter";
 import { loadNotifySnapshot } from "@/lib/notify/server";
 import { loadBoardNavKeys } from "@/lib/shell/board-nav-map";
 import { createRequestBoards } from "@/lib/boards/server";
@@ -128,7 +133,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const initial = (ctx.user.name ?? "?").trim().charAt(0) || "?";
   const account = buildAccountViewModel(ctx);
 
+  // 서포터 — 기본 닫힘. 닫힘 상태의 추가 DOM 은 열기 버튼 한 줄뿐이라
+  // 기존 레이아웃에 시각 변경을 남기지 않는다(시각 override 검사는 부모 관리).
+  // contextKey 는 서버 검증 활성 회사, 운영 토글은 회사 화면에서 항상 끈다.
   return (
+    <SupporterProvider contextKey={ctx.org.id} allowOperations={false}>
     <div className="flex min-h-full flex-1 flex-col md:flex-row">
       {/* 분석 필수 속성(org_id·role·plan_tier·app_version) 등록 + 내부 UUID 식별.
           DOM 을 그리지 않는다. 이메일·이름은 넘기지 않는다(PII 하드 금지). */}
@@ -250,6 +259,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
                 onClick 도 button 도 없는 «죽은 장식»이었다(PR #14 셸 목업의 잔재).
                 진짜 통합 검색(BBE-22)은 사이드바에 처박혀 있어서 «정체불명»으로 보였다.
                 기능을 지운 게 아니라 그 진짜 트리거를 이 자리로 옮긴 것이다(BBE-194). */}
+            <SupporterOpenButton />
             <GlobalSearch />
             {/* 기존 🔔 자리에 그대로 연결한다(자리를 새로 만들지 않음).
                 모바일(375px)에서도 알림을 확인해야 하므로 sm 미만 숨김은 걷어낸다. */}
@@ -272,6 +282,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         </header>
         <main className="min-w-0 max-w-full">{children}</main>
       </div>
+      <SupporterDock />
     </div>
+    </SupporterProvider>
   );
 }
