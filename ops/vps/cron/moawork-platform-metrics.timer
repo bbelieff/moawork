@@ -1,0 +1,14 @@
+[Unit]
+Description=Run the MoaWork platform metrics rollup nightly
+
+[Timer]
+# «완료된 하루» 를 집계하므로 자정 이후에 돈다. 예전 버셀 크론의 `0 19 * * *`(UTC)와
+# 같은 시각이다. 호스트 시간대와 무관하게 읽히도록 Asia/Seoul 을 명시한다.
+OnCalendar=*-*-* 04:00:00 Asia/Seoul
+# 서버가 꺼져 있었으면 다음 부팅 때 한 번 따라잡는다. 적재는 멱등이라 안전하다.
+Persistent=true
+RandomizedDelaySec=300
+Unit=moawork-platform-metrics.service
+
+[Install]
+WantedBy=timers.target

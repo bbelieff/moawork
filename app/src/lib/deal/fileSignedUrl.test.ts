@@ -1,13 +1,12 @@
+import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildDownloadUrl, issueFileToken, verifyFileToken } from "./fileSignedUrl";
 
-const ORIGINAL_LEGACY_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ORIGINAL_ACTIONS_KEY = process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY;
 const ACTIONS_KEY = Buffer.alloc(32, 7).toString("base64");
 
 beforeEach(() => {
   process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY = ACTIONS_KEY;
-  process.env.SUPABASE_SERVICE_ROLE_KEY = "legacy-test-only-secret-key";
 });
 
 afterEach(() => {
@@ -15,11 +14,6 @@ afterEach(() => {
     delete process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY;
   } else {
     process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY = ORIGINAL_ACTIONS_KEY;
-  }
-  if (ORIGINAL_LEGACY_KEY === undefined) {
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-  } else {
-    process.env.SUPABASE_SERVICE_ROLE_KEY = ORIGINAL_LEGACY_KEY;
   }
   vi.useRealTimers();
 });
@@ -81,27 +75,32 @@ describe("issueFileToken / verifyFileToken", () => {
   it("안정키가 다르면(다른 환경) 검증에 실패한다", () => {
     const token = issueFileToken("deal-1", "file-1", 60_000);
     process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY = Buffer.alloc(32, 8).toString("base64");
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     expect(verifyFileToken(token)).toBeNull();
   });
 
-  it("안정키가 있으면 legacy service-role 변경이 신규 토큰에 영향을 주지 않는다", () => {
+  it("service_role 키가 같은 프로세스에 있어도 신규 토큰에 영향을 주지 않는다", () => {
     const token = issueFileToken("deal-1", "file-1", 60_000);
-    process.env.SUPABASE_SERVICE_ROLE_KEY = "another-legacy-secret";
-    expect(verifyFileToken(token)).not.toBeNull();
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-role-must-not-sign");
+    try {
+      expect(verifyFileToken(token)).not.toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
-  it("전환 중에는 legacy 토큰을 검증하지만 안정키가 있으면 legacy로 발급하지 않는다", () => {
-    delete process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY;
-    process.env.SUPABASE_SERVICE_ROLE_KEY = "legacy-test-only-secret-key";
-    const legacyToken = issueFileToken("deal-1", "file-1", 60_000);
-
-    process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY = ACTIONS_KEY;
-    expect(verifyFileToken(legacyToken)).not.toBeNull();
-
-    const primaryToken = issueFileToken("deal-1", "file-2", 60_000);
-    delete process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY;
-    expect(verifyFileToken(primaryToken)).toBeNull();
+  // 야간 배치(platform-metrics)가 같은 서버에서 돌면서 service_role 을 쓰더라도,
+  // 그 키로 서명한 토큰이 다운로드에 통과하면 안 된다. 예전 Vercel 전환 호환 경로가
+  // 정확히 그 구멍이었으므로 다시 생기지 않게 막는다.
+  it("service_role 키로 서명한 토큰은 거부된다", () => {
+    const serviceRole = "service-role-must-not-sign";
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", serviceRole);
+    try {
+      const payload = `deal-1.file-1.${Date.now() + 60_000}`;
+      const forged = `${payload}.${createHmac("sha256", serviceRole).update(payload).digest("base64url")}`;
+      expect(verifyFileToken(forged)).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("형식이 잘못된 안정키는 service-role로 조용히 폴백하지 않는다", () => {
@@ -112,7 +111,6 @@ describe("issueFileToken / verifyFileToken", () => {
   });
 
   it("프로덕션에서 서버 서명 키가 없으면 고정 개발키로 폴백하지 않는다", () => {
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     delete process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY;
     vi.stubEnv("NODE_ENV", "production");
     try {

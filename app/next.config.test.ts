@@ -42,65 +42,34 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe("managed Vercel build identity", () => {
-  it("compiles the validated Vercel Git SHA over an untrusted public override", async () => {
+describe("self-hosted build identity", () => {
+  // 매니지드 플랫폼 변수는 빌드 신원의 근거가 아니다. 그 변수가 빌드 환경에
+  // 흘러들어온 것만으로 릴리스가 식별되면 안 된다.
+  it("ignores managed-platform build variables entirely", async () => {
     const config = await loadConfig({
       VERCEL: "1",
       VERCEL_GIT_COMMIT_SHA: VERCEL_SHA,
-      NEXT_PUBLIC_APP_VERSION: OTHER_SHA,
+      NEXT_PUBLIC_APP_VERSION: VERCEL_SHA,
     });
 
-    expect(config.env?.NEXT_PUBLIC_APP_VERSION).toBe(VERCEL_SHA);
-
-    process.env.VERCEL_GIT_COMMIT_SHA = OTHER_SHA;
-    process.env.NEXT_PUBLIC_APP_VERSION = OTHER_SHA;
-    expect(config.env?.NEXT_PUBLIC_APP_VERSION).toBe(VERCEL_SHA);
+    expect(config.env?.NEXT_PUBLIC_APP_VERSION).toBeUndefined();
+    expect(config.deploymentId).toBeUndefined();
   });
 
-  it("fails closed when managed Vercel omits the exact Git SHA", async () => {
-    await expect(loadConfig({ VERCEL: "1" })).rejects.toThrow(
-      "Managed Vercel builds require VERCEL_GIT_COMMIT_SHA as a full 40-character Git SHA.",
-    );
-  });
-
-  it("fails closed when managed Vercel supplies a malformed Git SHA", async () => {
+  it("fails closed on a malformed self-hosted Git SHA", async () => {
     await expect(
-      loadConfig({ VERCEL: "1", VERCEL_GIT_COMMIT_SHA: "not-a-sha" }),
+      loadConfig({ MOAWORK_BUILD_SHA: "not-a-sha" }),
     ).rejects.toThrow("Build revision must be a full 40-character Git SHA.");
   });
 
-  it.each([
-    ["a conflicting self-hosted SHA", VERCEL_SHA],
-    ["a missing Vercel SHA", undefined],
-    ["a malformed Vercel SHA", "not-a-sha"],
-  ])(
-    "rejects %s even when MOAWORK_BUILD_SHA is otherwise valid",
-    async (_label, vercelGitSha) => {
-      await expect(
-        loadConfig({
-          VERCEL: "1",
-          MOAWORK_BUILD_SHA: OTHER_SHA,
-          NEXT_PUBLIC_APP_VERSION: OTHER_SHA,
-          NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString(
-            "base64",
-          ),
-          ...(vercelGitSha
-            ? { VERCEL_GIT_COMMIT_SHA: vercelGitSha }
-            : {}),
-        }),
-      ).rejects.toThrow(
-        "Managed Vercel builds must not define the self-hosted MOAWORK_BUILD_SHA.",
-      );
-    },
-  );
-
-  it("does not replace the self-hosted GitHub SHA path outside Vercel", async () => {
+  it("uses the self-hosted GitHub SHA as the deployment identity", async () => {
     const config = await loadConfig({
       MOAWORK_BUILD_SHA: OTHER_SHA,
       NEXT_PUBLIC_APP_VERSION: OTHER_SHA,
       NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
     });
 
+    expect(config.deploymentId).toBe(OTHER_SHA);
     expect(config.env?.NEXT_PUBLIC_APP_VERSION).toBeUndefined();
     expect(config.env?.MOAWORK_SERVER_ACTIONS_BUILD_FINGERPRINT).toMatch(
       /^[0-9a-f]{64}$/,

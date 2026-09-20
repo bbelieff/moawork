@@ -6,10 +6,6 @@ function healthFor(artifact, ok = true) {
   return { ok, releaseId: artifact.releaseId, sourceSha: artifact.sourceSha, serverActionsKeyFingerprint: artifact.serverActionsKeyFingerprint };
 }
 
-function rollbackHealth(rollbackTarget, ok = true) {
-  return { ok, sourceSha: rollbackTarget.sourceSha, serverActionsKeyFingerprint: rollbackTarget.serverActionsKeyFingerprint };
-}
-
 export function createFakeReleaseRuntime({ slotIds, active, failures = {}, stalls = {} }) {
   const events = [];
   const slots = Object.fromEntries(slotIds.map((slot) => [slot, { state: "empty", artifact: null }]));
@@ -78,72 +74,6 @@ export function createFakeReleaseRuntime({ slotIds, active, failures = {}, stall
       activeSlot = targetSlot;
       previousSlot = oldActive;
       generation += 1;
-      return copy({ generation, activeSlot, previousSlot });
-    },
-    async checkRollbackTarget({ rollbackTarget, signal }) {
-      await maybeStall("checkRollbackTarget", signal);
-      record("checkRollbackTarget", { healthUrl: rollbackTarget.healthUrl });
-      return rollbackHealth(rollbackTarget, !failures.rollbackTargetHealth);
-    },
-    async checkRollbackRestored({ rollbackTarget, signal }) {
-      await maybeStall("checkRollbackRestored", signal);
-      record("checkRollbackRestored", { healthUrl: rollbackTarget.healthUrl });
-      return rollbackHealth(rollbackTarget, !failures.rollbackRestoredHealth);
-    },
-    async prepareInitialCutover({ expectedGeneration, targetSlot, artifact, rollbackTarget, signal }) {
-      await maybeStall("prepareInitialCutover", signal);
-      record("prepareInitialCutover", { expectedGeneration, targetSlot });
-      if (failures.prepareInitialCutover) throw new Error("initial cutover prepare failed");
-      if (
-        activeSlot !== null
-        || previousSlot !== null
-        || recovery !== null
-        || generation !== expectedGeneration
-        || slots[targetSlot]?.state !== "running"
-        || slots[targetSlot]?.artifact?.releaseId !== artifact.releaseId
-      ) throw new Error("concurrent initial cutover prepare");
-      generation += 1;
-      recovery = {
-        kind: "initial_cutover_pending",
-        expectedGeneration: generation,
-        targetSlot,
-        rollbackTarget: copy(rollbackTarget),
-      };
-      return copy({ generation, activeSlot, previousSlot });
-    },
-    async confirmInitialCutover({ expectedGeneration, targetSlot, artifact, signal }) {
-      await maybeStall("confirmInitialCutover", signal);
-      record("confirmInitialCutover", { expectedGeneration, targetSlot });
-      if (failures.confirmInitialCutover) throw new Error("initial cutover confirm failed");
-      if (
-        activeSlot !== null
-        || previousSlot !== null
-        || generation !== expectedGeneration
-        || recovery?.kind !== "initial_cutover_pending"
-        || recovery.targetSlot !== targetSlot
-        || slots[targetSlot]?.artifact?.releaseId !== artifact.releaseId
-      ) throw new Error("concurrent initial cutover confirm");
-      generation += 1;
-      activeSlot = targetSlot;
-      previousSlot = null;
-      recovery = null;
-      slots[targetSlot].state = "active";
-      return copy({ generation, activeSlot, previousSlot });
-    },
-    async abortInitialCutover({ expectedGeneration, targetSlot, artifact, signal }) {
-      await maybeStall("abortInitialCutover", signal);
-      record("abortInitialCutover", { expectedGeneration, targetSlot });
-      if (failures.abortInitialCutover) throw new Error("initial cutover abort failed");
-      if (
-        activeSlot !== null
-        || previousSlot !== null
-        || generation !== expectedGeneration
-        || recovery?.kind !== "initial_cutover_pending"
-        || recovery.targetSlot !== targetSlot
-        || slots[targetSlot]?.artifact?.releaseId !== artifact.releaseId
-      ) throw new Error("concurrent initial cutover abort");
-      generation += 1;
-      recovery = null;
       return copy({ generation, activeSlot, previousSlot });
     },
     async checkPublic({ artifact, signal }) {
