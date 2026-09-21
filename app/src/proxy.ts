@@ -43,6 +43,14 @@ const PUBLIC_HEALTH_PATHS = new Set([
   "/api/health/live",
   "/api/health/ready",
 ]);
+// 야간 배치는 «사람 세션» 이 아니라 `CRON_SECRET` 으로 스스로를 증명한다.
+// 세션 게이트에 걸리면 /login 으로 307 되어 라우트에 닿지도 못한다 — 그래서
+// `platform_metrics_daily` 가 한 번도 적재되지 않았다(2026-09-20 실측: 0행).
+//
+// 여기서 통과시켜도 «열리는» 것이 아니다. 라우트가 `CRON_SECRET` 미설정이면 503,
+// 토큰 불일치면 401 로 fail-closed 한다. 세션 게이트 대신 그 게이트를 쓰는 것뿐이다.
+// exact 매치만 허용한다 — 접두어로 열면 하위 경로가 같이 새어 나간다.
+const PUBLIC_BATCH_PATHS = new Set(["/api/cron/platform-metrics"]);
 const WORKSPACE_SLUG_COOKIE = "mw_workspace_slug";
 const WORKSPACE_PROTECTED_ROOTS = new Set([
   "boards", "notices", "companies", "contract", "newcust", "work",
@@ -110,6 +118,7 @@ function protectedWorkspacePath(pathname: string): boolean {
 function isPublicPath(pathname: string): boolean {
   return (
     PUBLIC_HEALTH_PATHS.has(pathname) ||
+    PUBLIC_BATCH_PATHS.has(pathname) ||
     PUBLIC_PATHS.some(
       (p) => pathname === p || pathname.startsWith(`${p}/`),
     )
@@ -129,6 +138,9 @@ async function routeRequest(
   // Health must measure this process only. It must not depend on Supabase auth
   // refresh, and only the two exact allowlisted routes bypass the auth client.
   if (PUBLIC_HEALTH_PATHS.has(pathname)) return { kind: "pass" };
+
+  // 배치도 세션 게이트를 지나지 않는다. 인증은 라우트의 CRON_SECRET 이 맡는다.
+  if (PUBLIC_BATCH_PATHS.has(pathname)) return { kind: "pass" };
 
   // Supabase 미설정(개발 초기 등)에는 인증 게이트를 끄고 통과시킨다.
   // 운영에서는 env 를 반드시 설정해야 게이트가 활성화된다.

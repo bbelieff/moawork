@@ -13,6 +13,23 @@
 - 207(부분 실패)도 실패로 보고,
 - 서버가 꺼져 있던 날은 `Persistent=true` 로 다음 부팅 때 따라잡는다(적재는 멱등).
 
+## 왜 «한 번도» 안 돌았나 (2026-09-20 실측)
+
+키가 없어서만이 아니다. `app/src/proxy.ts`(Next 16 미들웨어)가 `/login`·`/auth/*` 와
+health 2개를 빼고 **모든 경로**를 세션 게이트로 막고 있었다. 배치는 사람 세션이 아니라
+`CRON_SECRET` 으로 오므로 `/login` 으로 307 되어 라우트에 **닿지도 못했다.**
+
+```
+$ curl -i http://127.0.0.1:3100/api/cron/platform-metrics
+HTTP/1.1 307 Temporary Redirect
+location: /login?next=%2Fapi%2Fcron%2Fplatform-metrics
+```
+
+그래서 이 경로를 게이트 예외로 뒀다. «열어 둔» 것이 아니다 — 라우트가
+`CRON_SECRET` 미설정이면 503, 토큰 불일치면 401 로 fail-closed 한다.
+세션 게이트 대신 그 게이트를 쓴다. 예외는 **정확히 이 한 경로**뿐이고,
+하위·유사 경로가 새지 않는지는 `app/src/proxy.test.ts` 가 지킨다.
+
 ## 설치 전에 — 총괄이 직접 넣어야 하는 값 2개
 
 둘 다 **자격증명이라 저장소·대화·로그에 남기지 않는다.** 서버에서 직접 넣는다.
