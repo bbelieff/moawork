@@ -92,6 +92,31 @@ describe("proxy health probe boundary", () => {
     expect(mocks.createServerClient).not.toHaveBeenCalled();
   });
 
+  // 배치는 사람 세션이 없다. 게이트에 걸리면 /login 으로 307 되어 라우트에 닿지 못하고,
+  // 그러면 지표가 «조용히» 안 쌓인다 — 실제로 그렇게 0행이었다.
+  it("lets the nightly batch reach its own CRON_SECRET gate", async () => {
+    const response = await proxy(
+      new NextRequest("https://www.moa-work.com/api/cron/platform-metrics"),
+    );
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(mocks.createServerClient).not.toHaveBeenCalled();
+  });
+
+  it("keeps the batch allowlist exact — no sibling or prefix leaks", async () => {
+    for (const path of [
+      "/api/cron",
+      "/api/cron/platform-metrics/extra",
+      "/api/cron/platform-metrics-x",
+      "/api/cron/other",
+    ]) {
+      mocks.createServerClient.mockReset();
+      setup(null);
+      const response = await proxy(new NextRequest(`https://www.moa-work.com${path}`));
+      expect(response.headers.get("location"), path).toContain("/login?next=");
+    }
+  });
+
   it("does not make lookalike health paths public", async () => {
     setup(null);
     const response = await proxy(
