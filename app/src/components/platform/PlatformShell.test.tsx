@@ -41,4 +41,25 @@ describe("PlatformShell", () => {
     expect(html).toContain("사용자 모드로");
     expect(html).toContain('action="/mode/preference"');
   });
+
+  it("shows the real lockup undistorted with a single POST return seam", () => {
+    const html = renderToStaticMarkup(<PlatformShell pathname="/platform" title="운영" description="집계" userModeAction={{ mode: "user" }}><p>내용</p></PlatformShell>);
+    // 실제 락업(어두운 band에서 읽히는 dark 자산) + 현재 위치 캡션.
+    // band는 상태 표시줄이라 탐색 링크를 두지 않는다(탐색 href 단일 계약 유지).
+    expect(html).toContain("/brand/moawork-lockup-dark.svg");
+    expect(html).toContain("서비스 관리자 전용");
+    // 비율 계약(레이아웃 사이드바와 동일): 자연 너비(height×3)가 120px 이상, min-width가 자연 너비 이하.
+    const inlineStyles = [...html.matchAll(/<img[^>]*style="([^"]*)"[^>]*>/g)].map((match) => match[1]);
+    expect(inlineStyles.length).toBeGreaterThan(0);
+    for (const style of inlineStyles) {
+      const height = Number(/height:\s*(\d+(?:\.\d+)?)px/.exec(style)?.[1]);
+      const minWidth = Number(/min-width:\s*(\d+(?:\.\d+)?)px/.exec(style)?.[1]);
+      expect(height * 3).toBeGreaterThanOrEqual(120);
+      expect(minWidth).toBeLessThanOrEqual(height * 3);
+    }
+    // 현재 표시와 전환은 함께 있고, 전환은 POST 그대로.
+    expect(html).toContain("관리자 모드");
+    expect(html).toContain("사용자 모드로");
+    expect(html).toContain('name="mode" value="user"');
+  });
 });
