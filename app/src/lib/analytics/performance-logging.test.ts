@@ -22,4 +22,16 @@ describe("BBE-214 production performance logging", () => {
       expect(block).not.toMatch(/orgId|org_id|userId|user_id|boardId|board_id|title|slug|email|phone/u);
     }
   });
+
+  it("board correlation accepts only a UUID and never claims transport first-byte or finish timing", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/app/(app)/boards/[id]/page.tsx"), "utf8");
+    expect(source).toContain("TRACE_ID_PATTERN");
+    expect(source).toContain('normalizeTraceId((await headers()).get("x-mw-trace-id"))');
+    expect(source).toContain('...(traceId ? { trace_id: traceId } : {})');
+    expect(source).not.toMatch(/first_byte_ms|finish_ms/u);
+    expect(source).toContain("permission_guard");
+    expect(source).toContain("scoped_items_guard");
+    expect(source).toContain("post_snapshot_tail_reads");
+    expect(source).toContain("pre_return");
+  });
 });

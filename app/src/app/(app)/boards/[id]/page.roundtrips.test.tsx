@@ -19,6 +19,7 @@ const probe = vi.hoisted(() => {
   let wave = 0;
   let queue: Array<() => void> = [];
   let scheduled = false;
+  let traceId: string | null = null;
   const trips: Trip[] = [];
 
   // 어느 «호출부» 가 이 왕복을 냈는지 붙인다. 중복을 없애려면 «누가 중복하는지» 를 알아야 한다.
@@ -173,10 +174,13 @@ const probe = vi.hoisted(() => {
     rpcs,
     rpcErrors,
     trips,
+    get traceId() { return traceId; },
+    set traceId(value: string | null) { traceId = value; },
     reset() {
       wave = 0;
       queue = [];
       scheduled = false;
+      traceId = null;
       trips.length = 0;
       for (const key of Object.keys(rpcErrors)) delete rpcErrors[key];
     },
@@ -191,7 +195,9 @@ vi.mock("@/lib/supabase/env", () => ({
 }));
 vi.mock("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, getAll: () => [], set: () => {} }),
-  headers: async () => ({ get: () => null }),
+  headers: async () => ({
+    get: (name: string) => name.toLowerCase() === "x-mw-trace-id" ? probe.traceId : null,
+  }),
 }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
@@ -439,11 +445,64 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
     const run = await renderBoard();
     // 화면 스냅샷 적용 후 측정값 9. 권한·D24/메타·행·값을 다시 줄 세우면 즉시 넘는다.
     expect(run.serialStages, "보드 화면의 직렬 DB 단계가 늘었다 — 어디서 await 이 줄 섰는지 확인해라")
-      .toBeLessThanOrEqual(9);
+      .toBe(9);
+    expect(run.total, "보드 화면의 읽기 왕복 계약이 바뀌었다 — 로그 계측은 쿼리를 더하면 안 된다")
+      .toBe(14);
     const permissionWave = run.trips.find((trip) => trip.label === "rpc:effective_permissions")?.wave;
     const scopeWave = run.trips.find((trip) => trip.label === "rpc:read_permission_scoped_work_items")?.wave;
     expect(permissionWave, "권한 판정 왕복을 못 찾았다").toBeTypeOf("number");
     expect(scopeWave, "D24 범위 판정 왕복을 못 찾았다").toBe(permissionWave);
+  });
+
+  it("한 요청에 한 로그만 남기고 검증된 UUID와 유한한 비음수 단계만 기록한다", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const validTraceId = "002b99d0-bf2d-4ffa-bc5c-bb6bcd7d3bd2";
+
+    try {
+      const valid = await renderBoard({}, () => { probe.traceId = validTraceId; });
+      const missing = await renderBoard();
+      const invalid = await renderBoard({}, () => { probe.traceId = "ATTACKER_TRACE"; });
+
+      for (const run of [valid, missing, invalid]) {
+        expect(run.total).toBe(14);
+        expect(run.serialStages).toBe(9);
+      }
+
+      const logs = info.mock.calls
+        .map(([message]) => typeof message === "string" ? JSON.parse(message) as Record<string, unknown> : null)
+        .filter((entry): entry is Record<string, unknown> =>
+          entry !== null && entry.event === "mw.performance" && entry.route === "board_detail",
+        );
+      expect(logs).toHaveLength(3);
+      expect(logs[0]?.trace_id).toBe(validTraceId);
+      expect(logs[1]).not.toHaveProperty("trace_id");
+      expect(logs[2]).not.toHaveProperty("trace_id");
+
+      const phaseNames = [
+        "session",
+        "permission_guard",
+        "scoped_items_guard",
+        "snapshot_metadata",
+        "snapshot_items",
+        "snapshot_hydrate",
+        "post_snapshot_tail_reads",
+        "projection",
+        "pre_return",
+      ];
+      for (const log of logs) {
+        expect(log).not.toHaveProperty("first_byte_ms");
+        expect(log).not.toHaveProperty("finish_ms");
+        for (const key of ["phase_ms", "phase_offset_ms"] as const) {
+          const phases = log[key] as Record<string, number>;
+          expect(Object.keys(phases)).toEqual(phaseNames);
+          expect(Object.values(phases).every((value) => Number.isFinite(value) && value >= 0)).toBe(true);
+        }
+      }
+    } finally {
+      info.mockRestore();
+      vi.unstubAllEnvs();
+    }
   });
 
   it("getBoardDetail 의 세 읽기가 한 물결로 나간다", async () => {
