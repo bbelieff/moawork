@@ -1,8 +1,9 @@
 import type { Ctx } from "@/lib/types";
+import type { Board } from "@/lib/boards/types";
 import type { BoardsRepo } from "@/lib/boards/store";
 import { NEW_LEAD_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { NEW_LEAD_TAB } from "@/lib/default-tabs/new-lead";
-import { ensureDefaultTabAdditive, readDefaultTabDrift } from "@/lib/default-tabs/install";
+import { ensureDefaultTabAdditive, readDefaultTabBoardDrift } from "@/lib/default-tabs/install";
 import { assigneesFromMemberSummary } from "@/lib/boards/default-tab-assignees";
 import { loadMemberOrgSummaryWithClient } from "@/lib/auth/member-org-summary";
 import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
@@ -14,10 +15,33 @@ export type NewcustEntryResolution =
   | { kind: "conflict" }
   | { kind: "permission" };
 
+type ExistingNewcustBoard =
+  | { kind: "ready"; board: Board }
+  | { kind: "missing" }
+  | { kind: "conflict" };
+
 export const NEWCUST_BOARD_SOURCE = NEW_LEAD_TAB_SOURCE;
 const REPAIR_LEASE_ATTEMPTS = 40;
 const REPAIR_LEASE_WAIT_MS = 250;
 const REPAIR_LEASE_HEARTBEAT_MS = 10_000;
+
+async function readExistingNewcustBoard(
+  ctx: Ctx,
+  repo: BoardsRepo,
+): Promise<ExistingNewcustBoard> {
+  const matches = (await repo.listBoards(ctx)).filter(
+    (board) => board.source === NEWCUST_BOARD_SOURCE,
+  );
+  if (matches.length === 0) return { kind: "missing" };
+  if (matches.length > 1) return { kind: "conflict" };
+  return { kind: "ready", board: matches[0] };
+}
+
+function toEntryResolution(selection: ExistingNewcustBoard): NewcustEntryResolution {
+  return selection.kind === "ready"
+    ? { kind: "ready", boardId: selection.board.id }
+    : selection;
+}
 
 /**
  * 현재 조직의 기존 031 신규업체 보드를 유일하게 찾는다.
@@ -29,12 +53,7 @@ export async function resolveExistingNewcustBoard(
   ctx: Ctx,
   repo: BoardsRepo,
 ): Promise<NewcustEntryResolution> {
-  const matches = (await repo.listBoards(ctx)).filter(
-    (board) => board.source === NEWCUST_BOARD_SOURCE,
-  );
-  if (matches.length === 0) return { kind: "missing" };
-  if (matches.length > 1) return { kind: "conflict" };
-  return { kind: "ready", boardId: matches[0].id };
+  return toEntryResolution(await readExistingNewcustBoard(ctx, repo));
 }
 
 /** Production entry repair for exactly the authenticated workspace in `ctx`. */
@@ -43,13 +62,24 @@ export async function repairNewcustBoardOnEntry(
   client: SupabaseClient,
 ): Promise<NewcustEntryResolution> {
   const repo = new SupabaseBoardsRepo(client);
-  const existing = await resolveExistingNewcustBoard(ctx, repo);
-  if (existing.kind === "conflict") return existing;
   if (ctx.role !== "owner" && ctx.role !== "admin") {
-    return existing.kind === "ready" ? existing : { kind: "permission" };
+    const existing = await readExistingNewcustBoard(ctx, repo);
+    if (existing.kind === "conflict") return existing;
+    return existing.kind === "ready" ? toEntryResolution(existing) : { kind: "permission" };
   }
 
-  const summary = await loadMemberOrgSummaryWithClient(client, ctx);
+  // Board identity and member-derived assignee input are independent reads. Keep
+  // both request-local, then preserve board conflict as the first authoritative
+  // outcome even if the concurrent member read fails.
+  const [existingResult, summaryResult] = await Promise.allSettled([
+    readExistingNewcustBoard(ctx, repo),
+    loadMemberOrgSummaryWithClient(client, ctx),
+  ]);
+  if (existingResult.status === "rejected") throw existingResult.reason;
+  const existing = existingResult.value;
+  if (existing.kind === "conflict") return existing;
+  if (summaryResult.status === "rejected") throw summaryResult.reason;
+  const summary = summaryResult.value;
   const assignees = assigneesFromMemberSummary(summary);
   if (summary.kind !== "ready" || assignees.length === 0) {
     throw new Error("newcust repair members unavailable");
@@ -67,8 +97,8 @@ export async function repairNewcustBoardOnEntry(
   //     즉 여기서 잘못 «있다» 고 말하면 예전과 똑같이 동작할 뿐이고,
   //     «없다» 고 말할 수 있는 경우는 읽은 순간 정말로 빠진 것이 없을 때뿐이다.
   if (existing.kind === "ready") {
-    const drift = await readDefaultTabDrift(ctx, NEW_LEAD_TAB, repo, assignees);
-    if (!drift.hasWork) return existing;
+    const drift = await readDefaultTabBoardDrift(ctx, NEW_LEAD_TAB, existing.board, repo, assignees);
+    if (!drift.hasWork) return toEntryResolution(existing);
   }
 
   const holder = crypto.randomUUID();
