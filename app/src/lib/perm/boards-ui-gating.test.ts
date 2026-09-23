@@ -27,11 +27,11 @@ describe("boards UI consumes effective permissions", () => {
     );
     expect(source).toContain('if (viewTabs.kind !== "allowed") notFound()');
     expect(source.indexOf('if (viewTabs.kind !== "allowed") notFound()')).toBeLessThan(
-      source.indexOf("svc.getBoardDetail(ctx, id)"),
+      source.indexOf("svc.loadPageSnapshot(ctx, id, { includeDeleted: canDeleteItems })"),
     );
     expect(source).toContain("if (!scopedItems.ok) notFound()");
     expect(source.indexOf("if (!scopedItems.ok) notFound()")).toBeLessThan(
-      source.indexOf("svc.getBoardDetail(ctx, id)"),
+      source.indexOf("svc.loadPageSnapshot(ctx, id, { includeDeleted: canDeleteItems })"),
     );
     expect(source).toContain("visibleItemIds.has(item.id)");
     expect(source).toContain("const permissionItems = boardItems.filter");
