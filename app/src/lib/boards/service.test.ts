@@ -416,6 +416,38 @@ describe("보드 화면 스냅샷", () => {
       .map((spy) => spy.mock.calls.length)).toEqual(before);
   });
 
+  it("선택적 timing sink는 결과·읽기 계약을 바꾸지 않고 세 단계만 유한한 비음수로 보고한다", async () => {
+    const { local, service, boardId, active, deleted } = await setupSnapshotBoard();
+    const getBoard = vi.spyOn(local, "getBoard");
+    const listColumns = vi.spyOn(local, "listColumns");
+    const listGroups = vi.spyOn(local, "listGroups");
+    const listItems = vi.spyOn(local, "listItems");
+    const listDeletedItems = vi.spyOn(local, "listDeletedItems");
+    const listValues = vi.spyOn(local, "listValues");
+    const timings: Array<{ phase: string; offsetMs: number; durationMs: number }> = [];
+
+    const snapshot = await service.loadPageSnapshot(owner, boardId, {
+      includeDeleted: true,
+      onTiming: (timing) => timings.push(timing),
+    });
+
+    expect(timings.map((timing) => timing.phase)).toEqual(["metadata", "items", "hydrate"]);
+    for (const timing of timings) {
+      expect(Number.isFinite(timing.offsetMs)).toBe(true);
+      expect(Number.isFinite(timing.durationMs)).toBe(true);
+      expect(timing.offsetMs).toBeGreaterThanOrEqual(0);
+      expect(timing.durationMs).toBeGreaterThanOrEqual(0);
+    }
+    expect(snapshot.items.map((item) => item.id)).toEqual([active.id]);
+    expect(snapshot.deletedItems.map((item) => item.id)).toEqual([deleted.id]);
+    expect(getBoard).toHaveBeenCalledOnce();
+    expect(listColumns).toHaveBeenCalledOnce();
+    expect(listGroups).toHaveBeenCalledOnce();
+    expect(listItems).toHaveBeenCalledOnce();
+    expect(listDeletedItems).toHaveBeenCalledOnce();
+    expect(listValues).toHaveBeenCalledOnce();
+  });
+
   it("휴지통을 허용하지 않으면 deleted read와 deleted value ID를 발행하지 않는다", async () => {
     const { local, service, boardId, active } = await setupSnapshotBoard();
     const listDeletedItems = vi.spyOn(local, "listDeletedItems");

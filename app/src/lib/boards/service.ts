@@ -89,6 +89,14 @@ export interface BoardPageSnapshot {
   deletedItems: ItemWithValues[];
 }
 
+export type BoardPageSnapshotTimingPhase = "metadata" | "items" | "hydrate";
+
+export interface BoardPageSnapshotTiming {
+  phase: BoardPageSnapshotTimingPhase;
+  offsetMs: number;
+  durationMs: number;
+}
+
 export interface KanbanLane {
   key: string;
   label: string;
@@ -278,22 +286,46 @@ export class BoardsService {
   async loadPageSnapshot(
     ctx: Ctx,
     boardId: string,
-    options: { includeDeleted?: boolean } = {},
+    options: {
+      includeDeleted?: boolean;
+      onTiming?: (timing: BoardPageSnapshotTiming) => void;
+    } = {},
   ): Promise<BoardPageSnapshot> {
+    const startedAt = performance.now();
+    const measure = (
+      phase: BoardPageSnapshotTimingPhase,
+      phaseStartedAt: number,
+    ) => {
+      if (!options.onTiming) return;
+      const finishedAt = performance.now();
+      const finiteNonnegative = (value: number) => Number.isFinite(value) && value >= 0 ? value : 0;
+      options.onTiming({
+        phase,
+        offsetMs: finiteNonnegative(phaseStartedAt - startedAt),
+        durationMs: finiteNonnegative(finishedAt - phaseStartedAt),
+      });
+    };
+
+    const metadataStartedAt = performance.now();
     const detail = await this.getBoardDetail(ctx, boardId);
+    measure("metadata", metadataStartedAt);
     const repo = await this.repo;
     const includeDeleted = options.includeDeleted === true && !detail.board.is_system;
+    const itemsStartedAt = performance.now();
     const [activeItems, deletedItems] = await Promise.all([
       repo.listItems(ctx, boardId),
       includeDeleted ? repo.listDeletedItems(ctx, boardId) : Promise.resolve([]),
     ]);
+    measure("items", itemsStartedAt);
 
     const activeIds = new Set(activeItems.map((item) => item.id));
     if (deletedItems.some((item) => activeIds.has(item.id))) {
       throw new BoardRuleError("활성 항목과 휴지통 항목의 범위가 겹칩니다");
     }
 
+    const hydrateStartedAt = performance.now();
     const hydrated = await this.compose(ctx, [...activeItems, ...deletedItems], detail);
+    measure("hydrate", hydrateStartedAt);
     return {
       detail,
       items: hydrated.slice(0, activeItems.length),

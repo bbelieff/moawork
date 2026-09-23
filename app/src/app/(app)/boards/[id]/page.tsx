@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/purity -- Async Server Component timing is emitted only to an operational log, never rendered. */
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { CELL_FLASH_COOKIE, decodeCellFlash } from "@/lib/boards/cellFlash";
 import {
@@ -53,6 +53,36 @@ import { presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
 import { applyNoticePerspective, parseNoticePerspective, projectNoticeMetadata } from "@/lib/notices/perspectives";
 import { NoticePerspectiveNav } from "@/components/notices/NoticePerspectiveNav";
 
+type PagePhaseTiming = { offsetMs: number; durationMs: number };
+
+const TRACE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+function normalizeTraceId(raw: string | null): string | null {
+  return raw && TRACE_ID_PATTERN.test(raw) ? raw.toLowerCase() : null;
+}
+
+function phaseTiming(overallStartedAt: number, phaseStartedAt: number): PagePhaseTiming {
+  const finishedAt = performance.now();
+  const finiteNonnegative = (value: number) => Number.isFinite(value) && value >= 0 ? value : 0;
+  return {
+    offsetMs: finiteNonnegative(phaseStartedAt - overallStartedAt),
+    durationMs: finiteNonnegative(finishedAt - phaseStartedAt),
+  };
+}
+
+function roundedMs(value: number): number {
+  return Number.isFinite(value) && value >= 0 ? Math.round(value) : 0;
+}
+
+async function measurePagePhase<T>(
+  overallStartedAt: number,
+  task: () => Promise<T>,
+): Promise<{ value: T; timing: PagePhaseTiming }> {
+  const phaseStartedAt = performance.now();
+  const value = await task();
+  return { value, timing: phaseTiming(overallStartedAt, phaseStartedAt) };
+}
+
 /**
  * 범용 보드 화면 (T02b · ADR-0003) — 테이블/칸반 토글.
  * ?view=table|kanban · ?group=<select 컬럼 key>(없으면 board_groups 기준)
@@ -71,26 +101,29 @@ export default async function BoardPage({
   searchParams: Promise<{ view?: string; group?: string; as?: string; savedView?: string; mwLayout?: string; mwHidden?: string; mwOrder?: string; mwFilters?: string; mwSort?: string; mwText?: string; mwFocus?: string; calendarField?: string; noticeView?: string }>;
 }) {
   const startedAt = performance.now();
+  const traceId = normalizeTraceId((await headers()).get("x-mw-trace-id"));
+  const sessionStartedAt = performance.now();
   const { id } = await params;
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
-  const sessionMs = performance.now() - startedAt;
+  const sessionTiming = phaseTiming(startedAt, sessionStartedAt);
   // BBE-214 — 두 판정은 같은 ctx만 소비하고 서로의 결과에 의존하지 않는다.
   // 둘 다 통과하기 전에는 board metadata를 읽지 않으므로 fail-closed 순서는 유지한다.
-  const [permissions, scopedItems] = await Promise.all([
-    loadPermGuards(ctx.org.id, [
-      "work.view_tabs",
-      "work.item_upsert",
-      "work.item_delete",
-      "structure.column_manage",
-      "structure.section_manage",
-      "danger.bulk_edit_delete",
-      "structure.preset_edit",
-      "structure.tab_manage",
-    ]),
-    loadPermissionScopedWorkItems(ctx.org.id),
+  const [permissionsMeasured, scopedItemsMeasured] = await Promise.all([
+    measurePagePhase(startedAt, () => loadPermGuards(ctx.org.id, [
+        "work.view_tabs",
+        "work.item_upsert",
+        "work.item_delete",
+        "structure.column_manage",
+        "structure.section_manage",
+        "danger.bulk_edit_delete",
+        "structure.preset_edit",
+        "structure.tab_manage",
+      ])),
+    measurePagePhase(startedAt, () => loadPermissionScopedWorkItems(ctx.org.id)),
   ]);
-  const guardsMs = performance.now() - startedAt - sessionMs;
+  const permissions = permissionsMeasured.value;
+  const scopedItems = scopedItemsMeasured.value;
   const viewTabs = permissions["work.view_tabs"];
   // 판정 «불능» 은 「없음」이 아니다(BBE-204). 권한 없음만 404 로 남긴다 — 존재 숨김 유지.
   if (viewTabs.kind === "denied" && viewTabs.reason === "unavailable") {
@@ -116,13 +149,28 @@ export default async function BoardPage({
   const { client, repo, service: svc } = await createRequestBoards();
 
   let snapshot;
+  const snapshotStartedOffsetMs = performance.now() - startedAt;
+  const snapshotTimings: Record<"metadata" | "items" | "hydrate", PagePhaseTiming> = {
+    metadata: { offsetMs: snapshotStartedOffsetMs, durationMs: 0 },
+    items: { offsetMs: snapshotStartedOffsetMs, durationMs: 0 },
+    hydrate: { offsetMs: snapshotStartedOffsetMs, durationMs: 0 },
+  };
+  // Permission-order contract: svc.loadPageSnapshot(ctx, id, { includeDeleted: canDeleteItems }) runs only after both guards.
   try {
-    snapshot = await svc.loadPageSnapshot(ctx, id, { includeDeleted: canDeleteItems });
+    snapshot = await svc.loadPageSnapshot(ctx, id, {
+      includeDeleted: canDeleteItems,
+      onTiming: ({ phase, offsetMs, durationMs }) => {
+        snapshotTimings[phase] = {
+          offsetMs: Math.max(0, snapshotStartedOffsetMs + offsetMs),
+          durationMs: Math.max(0, durationMs),
+        };
+      },
+    });
   } catch (err) {
     if (err instanceof NotFoundError) notFound();
     throw err;
   }
-  const detailMs = performance.now() - startedAt - sessionMs - guardsMs;
+  const postSnapshotTailStartedAt = performance.now();
 
   const { detail, items: loadedItems, deletedItems } = snapshot;
   const { board, columns, groups } = detail;
@@ -257,20 +305,8 @@ export default async function BoardPage({
   );
   const hiddenColumnKeys = new Set(parseSavedStringList(sp.mwHidden));
   const visibleColumns = columns.filter((column) => !hiddenColumnKeys.has(column.key));
-
-  if (process.env.NODE_ENV === "production") {
-    console.info(JSON.stringify({
-      event: "mw.performance",
-      route: "board_detail",
-      outcome: "ready",
-      total_ms: Math.round(performance.now() - startedAt),
-      phase_ms: {
-        session: Math.round(sessionMs),
-        guards: Math.round(guardsMs),
-        detail: Math.round(detailMs),
-      },
-    }));
-  }
+  const postSnapshotTailTiming = phaseTiming(startedAt, postSnapshotTailStartedAt);
+  const projectionStartedAt = performance.now();
 
   const currentQuery = new URLSearchParams(
     Object.entries(sp).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
@@ -498,6 +534,37 @@ export default async function BoardPage({
       currentUserId={ctx.user.id}
     />
   );
+
+  const projectionTiming = phaseTiming(startedAt, projectionStartedAt);
+  const preReturnStartedAt = performance.now();
+  const preReturnTiming = phaseTiming(startedAt, preReturnStartedAt);
+
+  if (process.env.NODE_ENV === "production") {
+    const timings = {
+      session: sessionTiming,
+      permission_guard: permissionsMeasured.timing,
+      scoped_items_guard: scopedItemsMeasured.timing,
+      snapshot_metadata: snapshotTimings.metadata,
+      snapshot_items: snapshotTimings.items,
+      snapshot_hydrate: snapshotTimings.hydrate,
+      post_snapshot_tail_reads: postSnapshotTailTiming,
+      projection: projectionTiming,
+      pre_return: preReturnTiming,
+    };
+    console.info(JSON.stringify({
+      event: "mw.performance",
+      route: "board_detail",
+      outcome: "ready",
+      ...(traceId ? { trace_id: traceId } : {}),
+      total_ms: roundedMs(performance.now() - startedAt),
+      phase_ms: Object.fromEntries(
+        Object.entries(timings).map(([phase, timing]) => [phase, roundedMs(timing.durationMs)]),
+      ),
+      phase_offset_ms: Object.fromEntries(
+        Object.entries(timings).map(([phase, timing]) => [phase, roundedMs(timing.offsetMs)]),
+      ),
+    }));
+  }
 
   return (
     <div className="flex w-full flex-col gap-3">
