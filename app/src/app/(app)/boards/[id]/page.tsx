@@ -115,15 +115,16 @@ export default async function BoardPage({
   const canManageSummaries = tabManage.kind === "allowed";
   const { client, repo, service: svc } = await createRequestBoards();
 
-  let detail;
+  let snapshot;
   try {
-    detail = await svc.getBoardDetail(ctx, id);
+    snapshot = await svc.loadPageSnapshot(ctx, id, { includeDeleted: canDeleteItems });
   } catch (err) {
     if (err instanceof NotFoundError) notFound();
     throw err;
   }
   const detailMs = performance.now() - startedAt - sessionMs - guardsMs;
 
+  const { detail, items: loadedItems, deletedItems } = snapshot;
   const { board, columns, groups } = detail;
   const canMoveRows = !board.is_system && canEditItems
     && (ctx.role === "owner" || ctx.role === "admin" || ctx.scope === "all");
@@ -134,13 +135,9 @@ export default async function BoardPage({
   const groupBy = sp.group && selectColumns.some((c) => c.key === sp.group) ? sp.group : "";
   const noticePerspective = parseNoticePerspective(sp.noticeView);
   const visibleItemIds = new Set(scopedItems.result.itemIds);
-  const loadedItems = await svc.listItems(ctx, id);
   const projectedItems = board.source === NOTICE_TAB_SOURCE
     ? applyNoticePerspective(loadedItems.map(projectNoticeMetadata), noticePerspective, ctx.user.id)
     : loadedItems;
-  const deletedItems = !board.is_system && canDeleteItems
-    ? await svc.listDeletedItems(ctx, id)
-    : [];
   // 읽음 표시는 «쓰기» 다. 로컬 시드에는 그 저장소가 없어 건너뛴다 —
   // 화면에 표시되는 내용은 달라지지 않는다(BBE-209).
   if (board.source === NOTICE_TAB_SOURCE && client) {
@@ -214,7 +211,7 @@ export default async function BoardPage({
     : decodeBoardFilters(sp.mwFilters ?? null);
   const lanes = view === "kanban"
     ? applySavedKanbanView(
-        (await svc.kanban(ctx, id, groupBy || undefined)).map((lane) => ({ ...lane, items: lane.items.filter((item) => visibleItemIds.has(item.id)) })),
+        svc.kanbanFromSnapshot(snapshot, groupBy || undefined).map((lane) => ({ ...lane, items: lane.items.filter((item) => visibleItemIds.has(item.id)) })),
         items, savedViewColumns, savedViewFilters,
         canonicalNewLead ? NEW_LEAD_SAVED_FILTER_PROJECTION : undefined,
       )
