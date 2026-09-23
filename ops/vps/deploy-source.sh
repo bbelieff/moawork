@@ -6,6 +6,9 @@ ROOT=/srv/moawork-direct
 NODE=/usr/bin/node
 UNIT=moawork-direct.service
 PORT=3100
+OBSERVER_SOURCE_RELATIVE=ops/vps/request-stream-observer.cjs
+OBSERVER_RUNTIME_NAME=request-stream-observer.cjs
+OBSERVER_REQUIRE_PATH=$ROOT/current/runtime/app/$OBSERVER_RUNTIME_NAME
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 trusted() {
@@ -50,6 +53,19 @@ port_free() {
   local listeners
   listeners="$(ss -H -lnt "sport = :$PORT")" || return 1
   [[ -z "$listeners" ]]
+}
+install_observer() {
+  local source="$1" target="$2"
+  [[ -f "$source" && ! -L "$source" ]] || return 1
+  [[ ! -e "$target" && ! -L "$target" ]] || return 1
+  install -m 0440 -- "$source" "$target"
+}
+write_release_env() {
+  local target="$1" sha="$2" artifact="$3"
+  [[ ! -e "$target" && ! -L "$target" ]] || return 1
+  printf 'NODE_ENV=production\nHOSTNAME=127.0.0.1\nPORT=%s\nMOAWORK_BUILD_SHA=%s\nMOAWORK_RELEASE_SHA=%s\nMOAWORK_ARTIFACT_SHA256=%s\nNODE_OPTIONS=--require=%s\n' \
+    "$PORT" "$sha" "$sha" "$artifact" "$OBSERVER_REQUIRE_PATH" >"$target"
+  chmod 0600 "$target"
 }
 check_ready() {
   local sha="$1" artifact="$2"
@@ -162,6 +178,7 @@ main() {
   [[ ! -e "$release/runtime/app/.next/static" && ! -L "$release/runtime/app/.next/static" && ! -e "$release/runtime/app/public" && ! -L "$release/runtime/app/public" ]] || die 'unexpected bundled public/static target'
   cp -a "$release/source/app/.next/static" "$release/runtime/app/.next/static"
   cp -a "$release/source/app/public" "$release/runtime/app/public"
+  install_observer "$release/source/$OBSERVER_SOURCE_RELATIVE" "$release/runtime/app/$OBSERVER_RUNTIME_NAME" || die 'invalid request stream observer'
   # Reject special files and escaping links before privileged ownership changes.
   [[ -z "$(find "$release/runtime" ! -type f ! -type d ! -type l -print -quit)" ]] || die 'unsafe runtime entry'
   while IFS= read -r -d '' link; do
@@ -173,8 +190,7 @@ main() {
   chmod -R u=rwX,g=rX,o= "$release/runtime"
   tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf "$release/runtime.tar" -C "$release/runtime" .
   sha256sum "$release/runtime.tar" | cut -d ' ' -f1 >"$release/runtime.sha256"
-  printf 'NODE_ENV=production\nHOSTNAME=127.0.0.1\nPORT=%s\nMOAWORK_BUILD_SHA=%s\nMOAWORK_RELEASE_SHA=%s\nMOAWORK_ARTIFACT_SHA256=%s\n' "$PORT" "$sha" "$sha" "$(cat "$release/runtime.sha256")" >"$release/release.env"
-  chmod 0600 "$release/release.env"
+  write_release_env "$release/release.env" "$sha" "$(cat "$release/runtime.sha256")" || die 'release env already exists'
   trap 'if [[ "$(readlink "$ROOT/current" 2>/dev/null)" == "$release" ]]; then rollback "$previous" || printf "%s\\n" ROLLBACK_FAILED >&2; fi' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
