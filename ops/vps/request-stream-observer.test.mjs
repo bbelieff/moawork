@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const observer = fileURLToPath(new URL("./request-stream-observer.cjs", import.meta.url));
-const SENTINELS = ["ATTACKER_TRACE", "customer@example.invalid", "org-secret", "board-secret", "cookie-secret"];
+const SENTINELS = ["ATTACKER_TRACE", "ATTACKER_START", "customer@example.invalid", "org-secret", "board-secret", "cookie-secret"];
 
 function runFixture() {
   const fixture = String.raw`
@@ -21,7 +21,8 @@ function runFixture() {
         setTimeout(() => {
           const endReturn = response.end("beta", () => {
             process.send({ fixture: "semantics", headReturn: headReturn === response,
-              writeReturnType: typeof writeReturn, endReturn: endReturn === response, writeCallback });
+              writeReturnType: typeof writeReturn, endReturn: endReturn === response, writeCallback,
+              requestStart: request.headers["x-mw-request-start-ms"] });
           });
         }, 5);
         return;
@@ -40,6 +41,7 @@ function runFixture() {
         request.on("data", (chunk) => { body += chunk; });
         request.on("end", () => {
           response.setHeader("x-seen-trace", request.headers["x-mw-trace-id"] ?? "missing");
+          process.send({ fixture: "spoof-marker", requestStart: request.headers["x-mw-request-start-ms"] });
           response.end("accepted");
         });
         return;
@@ -133,14 +135,17 @@ test("preload preserves responses, replaces spoofed traces, and emits bounded PI
   assert.equal(stream.body, "alphabeta");
   assert.match(stream.headers["x-mw-trace-id"], /^[0-9a-f-]{36}$/);
   assert.equal(stream.headers["x-mw-trace-id"], stream.headers["x-seen-trace"]);
+  assert.equal(stream.headers["x-mw-request-start-ms"], undefined);
   const semantics = await waitFor(() => childMessages.find((message) => message.fixture === "semantics"));
-  assert.deepEqual(semantics, {
+  assert.deepEqual({ ...semantics, requestStart: undefined }, {
     fixture: "semantics",
     headReturn: true,
     writeReturnType: "boolean",
     endReturn: true,
     writeCallback: true,
+    requestStart: undefined,
   });
+  assert.match(semantics.requestStart, /^\d+(?:\.\d+)?$/);
 
   const flushed = await httpCall(ready.port, { path: "/flush", headers: { rsc: "1" } });
   assert.equal(flushed.statusCode, 429);
@@ -155,6 +160,7 @@ test("preload preserves responses, replaces spoofed traces, and emits bounded PI
     headers: {
       "next-action": "action-id-must-not-log",
       "x-mw-trace-id": "ATTACKER_TRACE",
+      "x-mw-request-start-ms": "ATTACKER_START",
       cookie: "session=cookie-secret",
       "x-board-id": "board-secret",
     },
@@ -164,6 +170,10 @@ test("preload preserves responses, replaces spoofed traces, and emits bounded PI
   assert.match(spoof.headers["x-seen-trace"], /^[0-9a-f-]{36}$/);
   assert.notEqual(spoof.headers["x-seen-trace"], "ATTACKER_TRACE");
   assert.equal(spoof.headers["x-mw-trace-id"], spoof.headers["x-seen-trace"]);
+  assert.equal(spoof.headers["x-mw-request-start-ms"], undefined);
+  const spoofMarker = await waitFor(() => childMessages.find((message) => message.fixture === "spoof-marker"));
+  assert.match(spoofMarker.requestStart, /^\d+(?:\.\d+)?$/);
+  assert.notEqual(spoofMarker.requestStart, "ATTACKER_START");
 
   const document = await httpCall(ready.port, { path: "/document", headers: { "sec-fetch-dest": "document" } });
   assert.equal(document.statusCode, 200);
@@ -188,11 +198,18 @@ test("preload preserves responses, replaces spoofed traces, and emits bounded PI
     assert.equal(entries.filter((entry) => entry.phase === "first_byte").length, 1);
     assert.equal(entries.filter((entry) => entry.phase === "finish" || entry.phase === "premature_close").length, 1);
     assert.ok(entries[1].elapsed_ms >= entries[0].elapsed_ms);
+    assert.ok(entries[1].last_write_ms >= entries[0].elapsed_ms);
+    assert.ok(entries[1].elapsed_ms >= entries[1].last_write_ms);
+    assert.ok(Number.isInteger(entries[1].chunk_count));
+    assert.ok(entries[1].chunk_count >= 0);
+    assert.ok(entries[1].max_inter_chunk_gap_ms >= 0);
     assert.equal(Object.hasOwn(entries[0], "path"), false);
     assert.equal(Object.hasOwn(entries[0], "method"), false);
   }
   const streamRows = byTrace.get(stream.headers["x-mw-trace-id"]);
   assert.equal(streamRows.at(-1).node_body_bytes, Buffer.byteLength("alphabeta"));
+  assert.equal(streamRows.at(-1).chunk_count, 2);
+  assert.ok(streamRows.at(-1).max_inter_chunk_gap_ms > 0);
   assert.equal(streamRows[0].status_class, "4xx");
   assert.equal(streamRows.at(-1).status_class, "4xx");
   const flushRows = byTrace.get(flushed.headers["x-mw-trace-id"]);

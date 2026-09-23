@@ -5,6 +5,7 @@ const { randomUUID } = require("node:crypto");
 
 const CHANNEL_NAME = "http.server.request.start";
 const TRACE_HEADER = "x-mw-trace-id";
+const REQUEST_START_HEADER = "x-mw-request-start-ms";
 const INSTALLED = Symbol.for("moawork.request-stream-observer.installed");
 
 function hasHeader(headers, name) {
@@ -19,18 +20,18 @@ function shouldObserve(request) {
   return isDocument || isRsc || isAction;
 }
 
-function replaceRawTraceHeader(request, traceId) {
+function replaceRawHeader(request, headerName, headerValue) {
   if (Array.isArray(request.rawHeaders)) {
     const sanitized = [];
     for (let index = 0; index < request.rawHeaders.length; index += 2) {
       const name = request.rawHeaders[index];
       const value = request.rawHeaders[index + 1];
-      if (String(name).toLowerCase() !== TRACE_HEADER) sanitized.push(name, value);
+      if (String(name).toLowerCase() !== headerName) sanitized.push(name, value);
     }
-    sanitized.push(TRACE_HEADER, traceId);
+    sanitized.push(headerName, headerValue);
     request.rawHeaders.splice(0, request.rawHeaders.length, ...sanitized);
   }
-  request.headers[TRACE_HEADER] = traceId;
+  request.headers[headerName] = headerValue;
 }
 
 function forceResponseTraceHeader(args, traceId) {
@@ -56,7 +57,7 @@ function forceResponseTraceHeader(args, traceId) {
 }
 
 function elapsedMilliseconds(startedAt) {
-  return Math.round(Number(process.hrtime.bigint() - startedAt) / 100_000) / 10;
+  return Math.round((performance.now() - startedAt) * 10) / 10;
 }
 
 function responseStatusClass(response) {
@@ -81,13 +82,33 @@ function observe(request, response) {
   if (!shouldObserve(request)) return;
 
   const traceId = randomUUID();
-  const startedAt = process.hrtime.bigint();
+  const startedAt = performance.now();
   let firstByteMilliseconds = null;
+  let lastWriteMilliseconds = null;
+  let previousChunkMilliseconds = null;
+  let maxInterChunkGapMilliseconds = 0;
+  let chunkCount = 0;
   let bodyBytes = 0;
   let terminalEmitted = false;
 
-  replaceRawTraceHeader(request, traceId);
+  replaceRawHeader(request, TRACE_HEADER, traceId);
+  replaceRawHeader(request, REQUEST_START_HEADER, String(startedAt));
   response.setHeader(TRACE_HEADER, traceId);
+
+  const recordSuccessfulWrite = (chunk, encoding) => {
+    const writtenAt = elapsedMilliseconds(startedAt);
+    lastWriteMilliseconds = writtenAt;
+    bodyBytes += chunkBytes(chunk, encoding);
+    if (chunk === undefined || chunk === null) return;
+    chunkCount += 1;
+    if (previousChunkMilliseconds !== null) {
+      maxInterChunkGapMilliseconds = Math.max(
+        maxInterChunkGapMilliseconds,
+        Math.round((writtenAt - previousChunkMilliseconds) * 10) / 10,
+      );
+    }
+    previousChunkMilliseconds = writtenAt;
+  };
 
   const markFirstByte = () => {
     if (firstByteMilliseconds !== null) return;
@@ -111,6 +132,9 @@ function observe(request, response) {
       trace_id: traceId,
       elapsed_ms: elapsedMilliseconds(startedAt),
       first_byte_ms: firstByteMilliseconds,
+      last_write_ms: lastWriteMilliseconds,
+      chunk_count: chunkCount,
+      max_inter_chunk_gap_ms: maxInterChunkGapMilliseconds,
       status_class: responseStatusClass(response),
       node_body_bytes: bodyBytes,
     });
@@ -130,16 +154,18 @@ function observe(request, response) {
 
   const originalWrite = response.write;
   response.write = function wrappedWrite() {
-    bodyBytes += chunkBytes(arguments[0], arguments[1]);
+    const result = Reflect.apply(originalWrite, this, arguments);
     markFirstByte();
-    return Reflect.apply(originalWrite, this, arguments);
+    recordSuccessfulWrite(arguments[0], arguments[1]);
+    return result;
   };
 
   const originalEnd = response.end;
   response.end = function wrappedEnd() {
-    bodyBytes += chunkBytes(arguments[0], arguments[1]);
+    const result = Reflect.apply(originalEnd, this, arguments);
     markFirstByte();
-    return Reflect.apply(originalEnd, this, arguments);
+    recordSuccessfulWrite(arguments[0], arguments[1]);
+    return result;
   };
 
   response.once("finish", () => markTerminal("finish"));
