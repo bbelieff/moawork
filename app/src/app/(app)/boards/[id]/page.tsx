@@ -285,21 +285,31 @@ export default async function BoardPage({
     id,
   );
 
-  // 담당자 탭·칩에 쓸 표시 이름. items.assigned_to 는 사용자 id 라서 이 맵이 없으면 UUID 가 노출된다.
-  const orgChart = board.source === NEW_LEAD_TAB_SOURCE && client
-    ? await loadOrgChart(ctx, async () => client)
-    : null;
-  const defaultTabAssignees = orgChart?.kind === "ready"
-    ? []
-    : await loadDefaultTabAssignees(ctx);
-  const assigneeLabels = Object.fromEntries(
-    orgChart?.kind === "ready"
-      ? orgChart.members.map((member) => [member.userId, member.displayName])
-      : defaultTabAssignees.map((member) => [member.userId, member.displayName]),
-  );
-  const memberDirectory = orgChart?.kind === "ready"
-    ? memberPickerEntries(orgChart)
-    : legacyMemberPickerEntries(defaultTabAssignees);
+  // 담당자 목록과 그룹별 컬럼 배치는 서로의 결과에 의존하지 않는다.
+  // 둘 다 snapshot/permission 관문 뒤에서 시작하되 같은 왕복 물결에 실어 tail 을 줄인다.
+  const [assigneeBundle, savedColumnOrder] = await Promise.all([
+    (async () => {
+      // 담당자 탭·칩에 쓸 표시 이름. items.assigned_to 는 사용자 id 라서 이 맵이 없으면 UUID 가 노출된다.
+      const orgChart = board.source === NEW_LEAD_TAB_SOURCE && client
+        ? await loadOrgChart(ctx, async () => client)
+        : null;
+      const defaultTabAssignees = orgChart?.kind === "ready"
+        ? []
+        : await loadDefaultTabAssignees(ctx);
+      return {
+        assigneeLabels: Object.fromEntries(
+          orgChart?.kind === "ready"
+            ? orgChart.members.map((member) => [member.userId, member.displayName])
+            : defaultTabAssignees.map((member) => [member.userId, member.displayName]),
+        ),
+        memberDirectory: orgChart?.kind === "ready"
+          ? memberPickerEntries(orgChart)
+          : legacyMemberPickerEntries(defaultTabAssignees),
+      };
+    })(),
+    getBoardColumnOrder(repo, ctx, id),
+  ]);
+  const { assigneeLabels, memberDirectory } = assigneeBundle;
   /*
    * 그룹 메뉴의 «다른 프리셋 적용» 목록 — 이 PR 에서는 «비운다» (BBE-174 / BBE-223).
    *
@@ -309,7 +319,6 @@ export default async function BoardPage({
    *   목록은 «그룹 메뉴를 열 때» 만 필요하므로 렌더에서 읽지 않는 것이 옳다(BBE-223).
    *   저장·미리보기는 이 PR 로 동작하고, 「다른 프리셋 적용」 목록만 그 카드에서 잇는다.
    */
-  const savedColumnOrder = await getBoardColumnOrder(repo, ctx, id);
   const activeColumnOrder = Object.fromEntries(
     Object.entries(parseSavedBoardLayout(sp.mwLayout) ?? savedColumnOrder).map(([groupId, keys]) => [groupId, [...keys]]),
   );
