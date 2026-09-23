@@ -452,15 +452,23 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
   // 시간을 단언하지 않으므로 기계·부하와 무관하게 결정적으로 빨개진다.
   it("보드 화면의 직렬 단계가 예산을 넘지 않는다 — 병렬을 직렬로 되돌리면 빨개진다", async () => {
     const run = await renderBoard();
-    // 화면 스냅샷 적용 후 측정값 9. 권한·D24/메타·행·값을 다시 줄 세우면 즉시 넘는다.
+    // 담당자 목록과 그룹 컬럼 배치를 같은 물결에 실은 뒤 측정값 8.
+    // 권한·D24/메타·행·값 또는 snapshot 뒤의 두 독립 읽기를 다시 줄 세우면 즉시 넘는다.
     expect(run.serialStages, "보드 화면의 직렬 DB 단계가 늘었다 — 어디서 await 이 줄 섰는지 확인해라")
-      .toBe(9);
+      .toBe(8);
     expect(run.total, "보드 화면의 읽기 왕복 계약이 바뀌었다 — 로그 계측은 쿼리를 더하면 안 된다")
       .toBe(14);
     const permissionWave = run.trips.find((trip) => trip.label === "rpc:effective_permissions")?.wave;
     const scopeWave = run.trips.find((trip) => trip.label === "rpc:read_permission_scoped_work_items")?.wave;
     expect(permissionWave, "권한 판정 왕복을 못 찾았다").toBeTypeOf("number");
     expect(scopeWave, "D24 범위 판정 왕복을 못 찾았다").toBe(permissionWave);
+    const assigneeWaves = run.trips
+      .filter((trip) => trip.label === "select:org_members")
+      .map((trip) => trip.wave);
+    const groupLayoutWave = run.trips.find((trip) => trip.label === "select:board_views")?.wave;
+    expect(groupLayoutWave, "그룹 컬럼 배치 읽기를 못 찾았다").toBeTypeOf("number");
+    expect(assigneeWaves, "그룹 컬럼 배치와 같은 물결에서 시작한 담당자 목록 읽기를 못 찾았다")
+      .toContain(groupLayoutWave);
   });
 
   it("한 요청에 한 로그만 남기고 검증된 UUID와 유한한 비음수 단계만 기록한다", async () => {
@@ -481,7 +489,7 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
 
       for (const run of [valid, missing, invalid]) {
         expect(run.total).toBe(14);
-        expect(run.serialStages).toBe(9);
+        expect(run.serialStages).toBe(8);
       }
 
       const logs = info.mock.calls
