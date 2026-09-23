@@ -2,7 +2,11 @@
 
 import path from "node:path";
 import { packReleaseArtifact, verifyReleaseArtifact } from "./contract.mjs";
-import { signReleaseArtifactAttestation, verifyTrustedReleaseArtifact } from "./provenance.mjs";
+import {
+  produceReleaseArtifactSmokeEvidence,
+  signReleaseArtifactAttestationFromEvidence,
+  verifyTrustedReleaseArtifact,
+} from "./provenance.mjs";
 
 const HELP = `Usage:
   node ops/vps/artifact/artifact.mjs pack \\
@@ -14,8 +18,13 @@ const HELP = `Usage:
     --archive <release.tar> --manifest <release.manifest.json> \\
     [--destination <new-empty-release-directory>]
 
-  node ops/vps/artifact/artifact.mjs attest \\
+  node ops/vps/artifact/artifact.mjs smoke \\
     --archive <release.tar> --manifest <release.manifest.json> \\
+    --evidence <new-release.smoke.json>
+
+  node ops/vps/artifact/artifact.mjs attest-evidence \\
+    --archive <release.tar> --manifest <release.manifest.json> \\
+    --evidence <release.smoke.json> \\
     --private-key <trusted-builder-ed25519.pem> \\
     --attestation <new-release.attestation.json>
 
@@ -28,9 +37,9 @@ const HELP = `Usage:
 The manifest binds exact source commit/tree, package-lock SHA-256, builder
 Node/npm/platform/arch, every payload entry, and the archive SHA-256.
 SHA-256 proves transfer integrity only. Production trust additionally requires
-the protected exact-main Linux release-artifact job to run the extracted
-standalone health smoke and sign that evidence with a separately pinned
-Ed25519 builder key. The pinned key holder is the provenance root of trust;
+the protected exact-main Linux build-smoke job to run the extracted standalone
+health check, followed by a fresh release-artifact job that signs only its
+bounded evidence with a separately pinned Ed25519 builder key. The pinned key holder is the provenance root of trust;
 CI identity strings alone are not remote attestation. Environment files,
 private-key blocks, and known credential-shaped
 config keys are rejected; this is not a general secret scanner.
@@ -86,12 +95,20 @@ async function main() {
       manifestPath: path.resolve(options.get("--manifest")),
       destinationPath: options.has("--destination") ? path.resolve(options.get("--destination")) : null,
     });
-  } else if (command === "attest") {
-    const required = requireOptions(options, ["--archive", "--manifest", "--private-key", "--attestation"]);
-    result = await signReleaseArtifactAttestation({
+  } else if (command === "smoke") {
+    const required = requireOptions(options, ["--archive", "--manifest", "--evidence"]);
+    result = await produceReleaseArtifactSmokeEvidence({
       archivePath: required.archive,
       manifestPath: required.manifest,
-      privateKeyPath: required.privateKey,
+      smokeEvidencePath: required.evidence,
+    });
+  } else if (command === "attest-evidence") {
+    const required = requireOptions(options, ["--archive", "--manifest", "--evidence", "--private-key", "--attestation"]);
+    result = await signReleaseArtifactAttestationFromEvidence({
+      archivePath: required.archive,
+      manifestPath: required.manifest,
+      smokeEvidencePath: required.evidence,
+      privateKeyPath: required["private-key"],
       attestationPath: required.attestation,
     });
   } else if (command === "verify-trusted") {

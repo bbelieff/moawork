@@ -80,6 +80,10 @@ node --test scripts/handoff-evidence.test.mjs
 node --test scripts/gate-lease.test.mjs
 node --test scripts/check-shell-entry.test.mjs
 node --test scripts/check-build-gate.test.mjs
+node --test scripts/check-vps-release-artifact-workflow.test.mjs
+node --test scripts/ci/validate-vps-release-environment.test.mjs
+node --test ops/vps/artifact/isolated-signing.test.mjs
+node scripts/check-vps-release-artifact-workflow.mjs
 node --test scripts/check-line-endings.test.mjs
 node scripts/check-unreachable-app-files.mjs
 node --test scripts/ci/fast-staged.test.mjs
