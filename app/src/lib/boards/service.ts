@@ -82,6 +82,20 @@ export interface SetCellsResult {
   undo: CellEditUndo | null;
 }
 
+/** 보드 화면 한 번을 그리는 데 필요한 읽기 스냅샷. */
+export interface BoardPageSnapshot {
+  detail: BoardDetail;
+  items: ItemWithValues[];
+  deletedItems: ItemWithValues[];
+}
+
+export interface KanbanLane {
+  key: string;
+  label: string;
+  color: string | null;
+  items: ItemWithValues[];
+}
+
 /** 새 보드에 기본 제공되는 컬럼(빈 보드가 바로 쓸 수 있도록). */
 export const DEFAULT_NEW_BOARD_COLUMNS: NewColumn[] = [
   {
@@ -254,6 +268,39 @@ export class BoardsService {
     return this.compose(ctx, items, detail);
   }
 
+  /**
+   * 보드 화면용 일관 스냅샷.
+   *
+   * 메타데이터는 한 번만 읽고, 활성/휴지통 행은 같은 물결에서 가져온 뒤 셀 값도
+   * 한 번만 수화한다. 휴지통 권한이 없으면 deleted query와 그 값 ID를 아예 발행하지
+   * 않는다. 시스템 보드는 기존 화면 계약대로 휴지통을 읽지 않는다.
+   */
+  async loadPageSnapshot(
+    ctx: Ctx,
+    boardId: string,
+    options: { includeDeleted?: boolean } = {},
+  ): Promise<BoardPageSnapshot> {
+    const detail = await this.getBoardDetail(ctx, boardId);
+    const repo = await this.repo;
+    const includeDeleted = options.includeDeleted === true && !detail.board.is_system;
+    const [activeItems, deletedItems] = await Promise.all([
+      repo.listItems(ctx, boardId),
+      includeDeleted ? repo.listDeletedItems(ctx, boardId) : Promise.resolve([]),
+    ]);
+
+    const activeIds = new Set(activeItems.map((item) => item.id));
+    if (deletedItems.some((item) => activeIds.has(item.id))) {
+      throw new BoardRuleError("활성 항목과 휴지통 항목의 범위가 겹칩니다");
+    }
+
+    const hydrated = await this.compose(ctx, [...activeItems, ...deletedItems], detail);
+    return {
+      detail,
+      items: hydrated.slice(0, activeItems.length),
+      deletedItems: hydrated.slice(activeItems.length),
+    };
+  }
+
   async getItem(ctx: Ctx, boardId: string, itemId: string): Promise<ItemWithValues> {
     const detail = await this.getBoardDetail(ctx, boardId);
     const item = await (await this.repo).getItem(ctx, itemId);
@@ -414,9 +461,13 @@ export class BoardsService {
     ctx: Ctx,
     boardId: string,
     groupBy?: string,
-  ): Promise<{ key: string; label: string; color: string | null; items: ItemWithValues[] }[]> {
-    const detail = await this.getBoardDetail(ctx, boardId);
-    const items = await this.listItems(ctx, boardId);
+  ): Promise<KanbanLane[]> {
+    return this.kanbanFromSnapshot(await this.loadPageSnapshot(ctx, boardId), groupBy);
+  }
+
+  /** 이미 읽은 화면 스냅샷만 그룹핑한다 — 저장소 왕복은 0회다. */
+  kanbanFromSnapshot(snapshot: BoardPageSnapshot, groupBy?: string): KanbanLane[] {
+    const { detail, items } = snapshot;
 
     const col = groupBy ? detail.columns.find((c) => c.key === groupBy) : undefined;
     if (col && (col.type === "select" || col.type === "multiselect")) {

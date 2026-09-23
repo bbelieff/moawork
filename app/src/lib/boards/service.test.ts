@@ -367,6 +367,80 @@ describe("칸반 그룹핑", () => {
   });
 });
 
+describe("보드 화면 스냅샷", () => {
+  async function setupSnapshotBoard() {
+    const local = new LocalBoardsRepo();
+    const repo = toAsyncBoardsRepo(local);
+    const service = new BoardsService(repo);
+    const detail = await service.createBoard(owner, { name: "화면 스냅샷" });
+    const active = await service.createItem(owner, detail.board.id, {
+      title: "활성",
+      values: { status: "opt-doing" },
+    });
+    const deleted = await service.createItem(owner, detail.board.id, {
+      title: "휴지통",
+      values: { status: "opt-done" },
+    });
+    await service.deleteItem(owner, detail.board.id, deleted.id);
+    return { local, repo, service, boardId: detail.board.id, active, deleted };
+  }
+
+  it("메타·활성·휴지통을 한 번씩 읽고 값은 한 번만 수화한 뒤 정확히 분리한다", async () => {
+    const { local, service, boardId, active, deleted } = await setupSnapshotBoard();
+    const getBoard = vi.spyOn(local, "getBoard");
+    const listColumns = vi.spyOn(local, "listColumns");
+    const listGroups = vi.spyOn(local, "listGroups");
+    const listItems = vi.spyOn(local, "listItems");
+    const listDeletedItems = vi.spyOn(local, "listDeletedItems");
+    const listValues = vi.spyOn(local, "listValues");
+
+    const snapshot = await service.loadPageSnapshot(owner, boardId, { includeDeleted: true });
+
+    expect(getBoard).toHaveBeenCalledTimes(1);
+    expect(listColumns).toHaveBeenCalledTimes(1);
+    expect(listGroups).toHaveBeenCalledTimes(1);
+    expect(listItems).toHaveBeenCalledTimes(1);
+    expect(listDeletedItems).toHaveBeenCalledTimes(1);
+    expect(listValues).toHaveBeenCalledTimes(1);
+    expect(listValues).toHaveBeenCalledWith(owner, [active.id, deleted.id]);
+    expect(snapshot.items.map((item) => item.id)).toEqual([active.id]);
+    expect(snapshot.deletedItems.map((item) => item.id)).toEqual([deleted.id]);
+    expect(snapshot.items[0].values.status).toBe("opt-doing");
+    expect(snapshot.deletedItems[0].values.status).toBe("opt-done");
+
+    const before = [getBoard, listColumns, listGroups, listItems, listDeletedItems, listValues]
+      .map((spy) => spy.mock.calls.length);
+    expect(service.kanbanFromSnapshot(snapshot, "status").flatMap((lane) => lane.items).map((item) => item.id))
+      .toContain(active.id);
+    expect([getBoard, listColumns, listGroups, listItems, listDeletedItems, listValues]
+      .map((spy) => spy.mock.calls.length)).toEqual(before);
+  });
+
+  it("휴지통을 허용하지 않으면 deleted read와 deleted value ID를 발행하지 않는다", async () => {
+    const { local, service, boardId, active } = await setupSnapshotBoard();
+    const listDeletedItems = vi.spyOn(local, "listDeletedItems");
+    const listValues = vi.spyOn(local, "listValues");
+
+    const snapshot = await service.loadPageSnapshot(owner, boardId);
+
+    expect(listDeletedItems).not.toHaveBeenCalled();
+    expect(listValues).toHaveBeenCalledOnce();
+    expect(listValues).toHaveBeenCalledWith(owner, [active.id]);
+    expect(snapshot.deletedItems).toEqual([]);
+  });
+
+  it("활성·휴지통 범위에 같은 ID가 섞이면 값 조회 전에 fail-closed 한다", async () => {
+    const { repo, service, boardId } = await setupSnapshotBoard();
+    const [active] = await repo.listItems(owner, boardId);
+    repo.listDeletedItems = async () => [active];
+    const listValues = vi.spyOn(repo, "listValues");
+
+    await expect(service.loadPageSnapshot(owner, boardId, { includeDeleted: true }))
+      .rejects.toThrow(BoardRuleError);
+    expect(listValues).not.toHaveBeenCalled();
+  });
+});
+
 describe("담당범위(scope) 격리 — 003 items 규칙", () => {
   it("member+assigned 는 본인 담당 아이템만 본다", async () => {
     const ownerItems = await svc.listItems(owner, SEED_BOARD_TASKS);
