@@ -20,6 +20,7 @@ const probe = vi.hoisted(() => {
   let queue: Array<() => void> = [];
   let scheduled = false;
   let traceId: string | null = null;
+  let requestStart: string | null = null;
   const trips: Trip[] = [];
 
   // 어느 «호출부» 가 이 왕복을 냈는지 붙인다. 중복을 없애려면 «누가 중복하는지» 를 알아야 한다.
@@ -176,11 +177,14 @@ const probe = vi.hoisted(() => {
     trips,
     get traceId() { return traceId; },
     set traceId(value: string | null) { traceId = value; },
+    get requestStart() { return requestStart; },
+    set requestStart(value: string | null) { requestStart = value; },
     reset() {
       wave = 0;
       queue = [];
       scheduled = false;
       traceId = null;
+      requestStart = null;
       trips.length = 0;
       for (const key of Object.keys(rpcErrors)) delete rpcErrors[key];
     },
@@ -196,7 +200,12 @@ vi.mock("@/lib/supabase/env", () => ({
 vi.mock("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, getAll: () => [], set: () => {} }),
   headers: async () => ({
-    get: (name: string) => name.toLowerCase() === "x-mw-trace-id" ? probe.traceId : null,
+    get: (name: string) => {
+      const normalized = name.toLowerCase();
+      if (normalized === "x-mw-trace-id") return probe.traceId;
+      if (normalized === "x-mw-request-start-ms") return probe.requestStart;
+      return null;
+    },
   }),
 }));
 vi.mock("next/navigation", () => ({
@@ -460,9 +469,15 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
     const validTraceId = "002b99d0-bf2d-4ffa-bc5c-bb6bcd7d3bd2";
 
     try {
-      const valid = await renderBoard({}, () => { probe.traceId = validTraceId; });
+      const valid = await renderBoard({}, () => {
+        probe.traceId = validTraceId;
+        probe.requestStart = String(Math.max(0, performance.now() - 10));
+      });
       const missing = await renderBoard();
-      const invalid = await renderBoard({}, () => { probe.traceId = "ATTACKER_TRACE"; });
+      const invalid = await renderBoard({}, () => {
+        probe.traceId = "ATTACKER_TRACE";
+        probe.requestStart = "ATTACKER_START";
+      });
 
       for (const run of [valid, missing, invalid]) {
         expect(run.total).toBe(14);
@@ -476,8 +491,14 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
         );
       expect(logs).toHaveLength(3);
       expect(logs[0]?.trace_id).toBe(validTraceId);
+      const requestElapsedAtPreReturn = logs[0]?.request_elapsed_at_pre_return_ms as number;
+      expect(typeof requestElapsedAtPreReturn).toBe("number");
+      expect(Number.isFinite(requestElapsedAtPreReturn)).toBe(true);
+      expect(requestElapsedAtPreReturn).toBeGreaterThanOrEqual(0);
       expect(logs[1]).not.toHaveProperty("trace_id");
+      expect(logs[1]).not.toHaveProperty("request_elapsed_at_pre_return_ms");
       expect(logs[2]).not.toHaveProperty("trace_id");
+      expect(logs[2]).not.toHaveProperty("request_elapsed_at_pre_return_ms");
 
       const phaseNames = [
         "session",

@@ -56,9 +56,17 @@ import { NoticePerspectiveNav } from "@/components/notices/NoticePerspectiveNav"
 type PagePhaseTiming = { offsetMs: number; durationMs: number };
 
 const TRACE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+const REQUEST_START_HEADER = "x-mw-request-start-ms";
+const REQUEST_START_PATTERN = /^\d+(?:\.\d+)?$/u;
 
 function normalizeTraceId(raw: string | null): string | null {
   return raw && TRACE_ID_PATTERN.test(raw) ? raw.toLowerCase() : null;
+}
+
+function normalizeRequestStartedAt(raw: string | null): number | null {
+  if (!raw || !REQUEST_START_PATTERN.test(raw)) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 function phaseTiming(overallStartedAt: number, phaseStartedAt: number): PagePhaseTiming {
@@ -101,7 +109,9 @@ export default async function BoardPage({
   searchParams: Promise<{ view?: string; group?: string; as?: string; savedView?: string; mwLayout?: string; mwHidden?: string; mwOrder?: string; mwFilters?: string; mwSort?: string; mwText?: string; mwFocus?: string; calendarField?: string; noticeView?: string }>;
 }) {
   const startedAt = performance.now();
-  const traceId = normalizeTraceId((await headers()).get("x-mw-trace-id"));
+  const requestHeaders = await headers();
+  const traceId = normalizeTraceId(requestHeaders.get("x-mw-trace-id"));
+  const requestStartedAt = normalizeRequestStartedAt(requestHeaders.get(REQUEST_START_HEADER));
   const sessionStartedAt = performance.now();
   const { id } = await params;
   const sp = await searchParams;
@@ -551,11 +561,17 @@ export default async function BoardPage({
       projection: projectionTiming,
       pre_return: preReturnTiming,
     };
+    const requestElapsedAtPreReturn = requestStartedAt === null
+      ? null
+      : performance.now() - requestStartedAt;
     console.info(JSON.stringify({
       event: "mw.performance",
       route: "board_detail",
       outcome: "ready",
       ...(traceId ? { trace_id: traceId } : {}),
+      ...(requestElapsedAtPreReturn !== null && Number.isFinite(requestElapsedAtPreReturn) && requestElapsedAtPreReturn >= 0
+        ? { request_elapsed_at_pre_return_ms: roundedMs(requestElapsedAtPreReturn) }
+        : {}),
       total_ms: roundedMs(performance.now() - startedAt),
       phase_ms: Object.fromEntries(
         Object.entries(timings).map(([phase, timing]) => [phase, roundedMs(timing.durationMs)]),
