@@ -288,7 +288,7 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
       />,
     );
     expect(html).toContain("상세");
-    expect(html).toContain("상세 메모을 표에도 보이기");
+    expect(html).toContain("상세 메모를 표에도 보이기");
     expect(html).toContain("+ 상세 전용 필드 추가");
     expect(html).toContain('aria-label="상세 전용 필드 이름"');
     expect(html).toContain("기본으로 되돌리기");
@@ -314,9 +314,9 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
         defaultOpen
       />,
     );
-    expect(html).toContain("법인공동인증서을 표에서 내리기");
+    expect(html).toContain("법인공동인증서를 표에서 내리기");
     // 이미 표에 있으므로 «올리기» 는 없어야 한다 — 두 버튼이 같이 서면 무엇이 참인지 모른다.
-    expect(html).not.toContain("법인공동인증서을 표에도 보이기");
+    expect(html).not.toContain("법인공동인증서를 표에도 보이기");
   });
 
   it("★ 원래부터 표 컬럼이던 칸에는 되돌리기 버튼이 안 붙는다 — 구조 축소가 아니다", () => {
@@ -333,7 +333,40 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
         defaultOpen
       />,
     );
-    expect(html).not.toContain("연락처을 표에서 내리기");
+    expect(html).not.toContain("연락처를 표에서 내리기");
+  });
+
+  /*
+   * #717 — 사용자가 지은 이름에 조사를 «손으로» 붙이면 절반이 틀린다.
+   *
+   * ★ 이 시험이 생기기 전까지, 바로 위 시험들이 틀린 조사를 «정답으로» 고정하고 있었다
+   *   («상세 메모을» · «법인공동인증서을»). 시험이 버그를 지키고 있었던 것이다.
+   *
+   * ★★ 그리고 이건 title·aria-label 이다 — 화면 낭독기를 쓰는 사람이 그대로 «듣는다».
+   *
+   * 받침 «있는» 이름과 «없는» 이름을 같은 시험에서 돌린다. 한쪽만 재면
+   *   `${label}을` 로 되돌려도 통과하는 시험이 된다 (받침 있는 쪽은 원래 맞으니까).
+   */
+  it.each([
+    ["받침 있음", "영업관리팀", "영업관리팀을"],
+    ["받침 없음", "담당자", "담당자를"],
+    ["받침 없음 · 모음", "메모", "메모를"],
+    ["받침 ㄹ", "이메일", "이메일을"],
+  ])("★ #717 %s — 「%s」에는 「%s」가 붙는다", (_label, name, expected) => {
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={{ ...row, values: { detail_note: "값" } }}
+        columns={columns}
+        boardLayout={[]}
+        layout={[{ key: "detail_note", source: "detail", label: name, type: "text" }]}
+        inherited={false}
+        canEditItems
+        canManageColumns
+        defaultOpen
+      />,
+    );
+    expect(html, `${name} → 조사가 틀렸다`).toContain(`${expected} 표에도 보이기`);
   });
 
   it("상세 연락처는 편집 입력에서도 010-0000-0000 표기로 시작한다", () => {
