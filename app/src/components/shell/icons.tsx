@@ -1,3 +1,5 @@
+import { MOA_SHELL_PATHS } from "./moa-icon-paths";
+
 // 셸 아이콘 스프라이트 — D43(design-tokens.md §10): 이모지를 UI 아이콘으로 쓰지 않는다.
 // 심볼 원본은 docs/design/UI목업_워크스페이스_최종_v6.html 의 <symbol id="i-*"> 를 그대로 옮겼다
 // (해당 목업이 밀도·형태의 판정 기준 — 손으로 다시 그리지 않고 실측 그대로 포팅했다).
@@ -34,11 +36,11 @@ export function IconSprite() {
   return (
     <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
       <defs>
-        {Object.entries(PATHS).map(([name, path]) => (
+        {Object.entries({ ...PATHS, ...MOA_SHELL_PATHS }).map(([name, path]) => (
           <symbol
             key={name}
             id={`i-${name}`}
-            viewBox="0 0 24 24"
+            viewBox={name in MOA_SHELL_PATHS ? "0 0 20 20" : "0 0 24 24"}
             dangerouslySetInnerHTML={{ __html: path }}
           />
         ))}

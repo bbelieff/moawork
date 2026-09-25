@@ -10,6 +10,7 @@ import { VisualLayerProbe } from "./VisualLayerProbe";
 import { VisualWorkspaceSwitcherProbe } from "./VisualWorkspaceSwitcherProbe";
 import { VisualAppearanceProbe } from "./VisualAppearanceProbe";
 import { VisualThemeProbe } from "./VisualThemeProbe";
+import { IconSprite } from "@/components/shell/icons";
 import { AccountHub } from "@/components/account/AccountHub";
 import accountStyles from "@/components/account/account.module.css";
 import { DepartmentManager } from "@/components/member-organization/DepartmentManager";
@@ -190,6 +191,7 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
   const data = fixture(tab, draft ?? saved, params.groups === "all");
   return (
     <main data-visual-fixture={tab} data-build-sha={process.env.MOAWORK_BUILD_SHA ?? "local"} className={`visual-mutation-${mutation} min-h-screen max-w-full bg-mw-bg p-4`}>
+      <IconSprite />
       <VisualThemeProbe theme={theme} />
       <VisualAppearanceProbe accent={tab} controls={params.appearance === "controls"} />
       <style>{`
