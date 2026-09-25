@@ -12,7 +12,7 @@
  *  - 그룹 이동: `BoardsService.moveRowAtomic` (migration139 RPC-only, ordering/version/permission/group/status)
  *
  * 안전 규칙:
- *  - 권한은 호출당 1회 `work.item_upsert` 로 검사. 실패하면 건별 실패로 돌려준다 (던지지 않음).
+ *  - `work.item_upsert`와 `danger.bulk_edit_delete`를 모두 검사하고 위험 작업 기록 후 실행한다.
  *  - 전이 강제 값은 순수 게이트 `bulkBlockReason` 이 막는다 — contact/seal 파이프라인을
  *    호출하지 않으므로 직인·계약 게이트를 우회할 자리가 없다.
  *  - 휴지통은 별도 액션을 사용한다. 복제·보관·관계변환은 후속 구현 범위다.
@@ -22,8 +22,7 @@
  */
 
 import { revalidatePath } from "next/cache";
-import { getSession } from "@/lib/auth/session";
-import { loadPermGuard } from "@/lib/perm/guard";
+import { requireBulkWritePermission } from "./bulk-permission";
 import { createRequestBoards } from "@/lib/boards/server";
 import { userFacingMessage } from "@/lib/boards/boardActionFlash";
 import { workflowKindForSource, type WorkflowProgressKind } from "@/lib/workflow/progress";
@@ -92,23 +91,8 @@ function actualKindForBoard(board: { source?: string | null } | null | undefined
 const SYSTEM_BOARD_MESSAGE =
   "시스템 보드는 편집할 수 없습니다 — 정책자금 파이프라인은 딜 화면에서 관리합니다";
 
-async function requireBulkPermission(): Promise<{ ok: true; ctx: Awaited<ReturnType<typeof getSession>> } | { ok: false; message: string }> {
-  try {
-    const ctx = await getSession();
-    const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
-    if (permission.kind !== "allowed") {
-      return {
-        ok: false,
-        message:
-          permission.reason === "permission"
-            ? "이 업무를 실행할 권한이 없어요."
-            : "권한을 확인하지 못했어요.",
-      };
-    }
-    return { ok: true, ctx };
-  } catch (error) {
-    return { ok: false, message: userFacingMessage(error) };
-  }
+async function requireBulkPermission() {
+  return requireBulkWritePermission("work.item_upsert");
 }
 
 function canSeeAll(ctx: { role: string; scope: string }): boolean {

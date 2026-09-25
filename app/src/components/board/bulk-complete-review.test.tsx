@@ -6,16 +6,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   session: vi.fn(), permission: vi.fn(), graph: vi.fn(), rpc: vi.fn(),
   detail: vi.fn(), item: vi.fn(), trash: vi.fn(), restore: vi.fn(),
+  audit: vi.fn(),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth/session", () => ({ getSession: mocks.session }));
 vi.mock("@/lib/perm/guard", () => ({ loadPermGuard: mocks.permission }));
+vi.mock("@/lib/perm/server", () => ({ recordRiskyAction: mocks.audit }));
 vi.mock("@/lib/boards/server", () => ({ createRequestBoards: mocks.graph }));
 vi.mock("@/app/(app)/boards/bulk-actions", () => ({
   bulkApplyCellsAction: vi.fn(), bulkAssignAction: vi.fn(), bulkMoveGroupAction: vi.fn(),
 }));
 import { bulkTrashAction, bulkRestoreAction } from "@/app/(app)/boards/bulk-trash-actions";
 import { bulkAddNoteAction } from "@/app/(app)/boards/bulk-note-actions";
+import { authorizeBoardCsvExport } from "@/app/(app)/boards/bulk-export-actions";
 import { BulkActionBar, type BulkDialogState } from "./BulkActionBar";
 import { bulkRangeIds, intersectVisibleSelection, selectionToCsv } from "./bulk-selection";
 
@@ -28,6 +31,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.session.mockResolvedValue({ org: { id: "org-a" }, user: { id: "actor-a" }, role: "owner", scope: "all" });
   mocks.permission.mockResolvedValue({ kind: "allowed" });
+  mocks.audit.mockResolvedValue({ ok: true });
   mocks.detail.mockResolvedValue({ board: { id: "board-a", is_system: false } });
   mocks.item.mockImplementation(async (_ctx, _board, id) => ({ id, assigned_to: "actor-a" }));
   mocks.trash.mockResolvedValue(undefined);
@@ -44,6 +48,38 @@ afterEach(async () => {
 });
 
 describe("independent bulk action boundary review", () => {
+  it.each(["permission", "unavailable"])("single-row batch calls deny missing bulk permission (%s) despite allowed row permissions", async (reason) => {
+    const actions = await vi.importActual<typeof import("@/app/(app)/boards/bulk-actions")>("@/app/(app)/boards/bulk-actions");
+    mocks.permission.mockImplementation(async (_org, scope) => scope === "danger.bulk_edit_delete"
+      ? { kind: "denied", reason } : { kind: "allowed" });
+    const input = { boardId: "board-a", itemIds: ["item-a"] };
+    const results = await Promise.all([
+      actions.bulkApplyCellsAction({ ...input, columnKey: "status", value: "active", workflowKind: null }),
+      actions.bulkAssignAction({ ...input, assigneeId: null }),
+      actions.bulkMoveGroupAction({ ...input, groupId: "group-a" }),
+      bulkTrashAction(input), bulkRestoreAction(input),
+      bulkAddNoteAction({ ...note, itemIds: input.itemIds }),
+    ]);
+    expect(results.every(result => result.applied === 0 && result.failed === 1)).toBe(true);
+    expect(mocks.graph).not.toHaveBeenCalled();
+    expect(mocks.audit).not.toHaveBeenCalled();
+  });
+  it("audit failure closes the batch boundary before fetching or writing rows", async () => {
+    mocks.audit.mockResolvedValue({ ok: false });
+    const result = await bulkTrashAction({ boardId: "board-a", itemIds: ["item-a"] });
+    expect(result.applied).toBe(0);
+    expect(mocks.graph).not.toHaveBeenCalled();
+  });
+  it("CSV authorization checks its separate permission and audit before allowing a browser download", async () => {
+    mocks.permission.mockResolvedValueOnce({ kind: "denied", reason: "permission" });
+    expect((await authorizeBoardCsvExport()).ok).toBe(false);
+    expect(mocks.audit).not.toHaveBeenCalled();
+    mocks.audit.mockResolvedValueOnce({ ok: false });
+    expect((await authorizeBoardCsvExport()).ok).toBe(false);
+    expect((await authorizeBoardCsvExport()).ok).toBe(true);
+    expect(mocks.permission).toHaveBeenCalledWith("org-a", "danger.csv_export");
+    expect(mocks.audit).toHaveBeenCalledWith("org-a", "danger.csv_export", { operation: "board_selection_csv_export" });
+  });
   it("denied permission performs no trash, restore or note writes", async () => {
     mocks.permission.mockResolvedValue({ kind: "denied", reason: "permission" });
     const input = { boardId: "board-a", itemIds: ["item-a"] };

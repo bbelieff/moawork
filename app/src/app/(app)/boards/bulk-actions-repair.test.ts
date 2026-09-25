@@ -25,6 +25,7 @@ const {
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth/session", () => ({ getSession: getSessionMock }));
 vi.mock("@/lib/perm/guard", () => ({ loadPermGuard: loadPermGuardMock }));
+vi.mock("@/lib/perm/server", () => ({ recordRiskyAction: vi.fn(async () => ({ ok: true })) }));
 vi.mock("@/lib/boards/server", () => ({ createRequestBoards: createRequestBoardsMock }));
 vi.mock("@/lib/assignment-lineage", async (importOriginal) => {
   const orig = await importOriginal<typeof import("@/lib/assignment-lineage")>();

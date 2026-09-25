@@ -5,7 +5,7 @@
  *
  * 기존 인가 경로를 그대로 쓴다:
  *  - `add_board_item_detail_event` RPC (item-detail-actions.ts의 addItemDetailEventAction과 동일 RPC·게이트)
- *  - 권한은 `work.item_upsert` (단일 메모와 동일)
+ *  - 권한은 `work.item_upsert`와 `danger.bulk_edit_delete` 모두 필요하며 위험 작업을 기록한다.
  *  - actor는 세션에서 유도 — 호출부가 actor_id를锻造하지 않는다 (RPC가 auth에서 가져간다).
  *
  * 안전 규칙:
@@ -18,8 +18,7 @@
  *    메모 결과를 별도로 보여주고 본 작업은 그대로 성공으로 둔다.
  */
 
-import { getSession } from "@/lib/auth/session";
-import { loadPermGuard } from "@/lib/perm/guard";
+import { requireBulkWritePermission } from "./bulk-permission";
 import { createRequestBoards } from "@/lib/boards/server";
 import { userFacingMessage } from "@/lib/boards/boardActionFlash";
 import { BULK_MAX_ITEMS } from "@/components/board/bulk-selection";
@@ -102,21 +101,9 @@ export async function bulkAddNoteAction(input: {
     }
   }
 
-  let ctx: Awaited<ReturnType<typeof getSession>>;
-  try {
-    ctx = await getSession();
-    const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
-    if (permission.kind !== "allowed") {
-      return allFailed(
-        ids,
-        permission.reason === "permission"
-          ? "이 정보를 수정할 권한이 없습니다."
-          : "권한을 확인하지 못했습니다.",
-      );
-    }
-  } catch (error) {
-    return allFailed(ids, userFacingMessage(error));
-  }
+  const gate = await requireBulkWritePermission("work.item_upsert");
+  if (!gate.ok) return allFailed(ids, gate.message);
+  const ctx = gate.ctx;
 
   let graph: Awaited<ReturnType<typeof createRequestBoards>>;
   try {

@@ -29,6 +29,7 @@ import {
 import { BULK_BLOCKED_VALUES } from "@/components/board/bulk-selection";
 import type { WorkflowProgressKind } from "@/lib/workflow/progress";
 import { SELECTABLE_DETAIL_EVENT_KINDS, type SelectableDetailEventKind } from "@/lib/boards/detail-event-kinds";
+import { authorizeBoardCsvExport } from "@/app/(app)/boards/bulk-export-actions";
 import type { CellValue } from "@/lib/boards/types";
 
 export type BulkOpKind = "status" | "assignee" | "date" | "fields" | "move" | "trash" | "note";
@@ -899,6 +900,7 @@ export function BulkActionBar({
   canEdit,
   canMove,
   canDelete = false,
+  canExport = false,
   statusColumn,
   fieldColumns,
   dateColumns,
@@ -924,6 +926,7 @@ export function BulkActionBar({
   canEdit: boolean;
   canMove: boolean;
   canDelete?: boolean;
+  canExport?: boolean;
   statusColumn: BulkStatusColumn | null;
   fieldColumns: BulkFieldColumn[];
   dateColumns: BulkDateColumn[];
@@ -951,18 +954,28 @@ export function BulkActionBar({
   const showMove = canEdit && canMove && groups.length > 0;
   const showTrash = canDelete;
   const showNote = canEdit;
+  const [exportPending, startExport] = useTransition();
 
   const download = () => {
-    const blob = new Blob(["\uFEFF" + exportCsv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = exportFilename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-    onNotice(`${targets.length}개를 CSV로 내려받았습니다.`);
+    if (!canExport || !hasTargets || exportPending) return;
+    startExport(async () => {
+      try {
+        const authorization = await authorizeBoardCsvExport();
+        if (!authorization.ok) { onNotice(authorization.message); return; }
+        const blob = new Blob(["\uFEFF" + exportCsv], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = exportFilename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+        onNotice(`${targets.length}개를 CSV로 내려받았습니다.`);
+      } catch {
+        onNotice("파일을 내려받지 못했어요. 다시 시도해 주세요.");
+      }
+    });
   };
 
   return (
@@ -982,11 +995,11 @@ export function BulkActionBar({
         {showMove ? <button type="button" data-bulk-op="move" disabled={!hasTargets} onClick={() => onOpenDialog("move")} className={BAR_BUTTON}>이동</button> : null}
         {showNote ? <button type="button" data-bulk-op="note" disabled={!hasTargets} onClick={() => onOpenDialog("note")} className={BAR_BUTTON}>메모</button> : null}
         {showTrash ? <button type="button" data-bulk-op="trash" disabled={!hasTargets} onClick={() => onOpenDialog("trash")} className={BAR_BUTTON}>삭제</button> : null}
-        {hasTargets ? <button type="button" data-bulk-op="export" onClick={download} className={BAR_BUTTON}>내보내기</button> : null}
+        {hasTargets && canExport ? <button type="button" data-bulk-op="export" disabled={exportPending} onClick={download} className={BAR_BUTTON}>{exportPending ? "내보내기 준비 중…" : "내보내기"}</button> : null}
         <button type="button" onClick={onClear} className={BAR_BUTTON}>선택 해제</button>
         {notice ? <span role="status" className="text-xs text-mw-body">{notice}</span> : null}
       </section>
-      {dialog && (targets.length > 0 || dialog.op === "trash" || dialog.op === "note") ? (
+      {dialog && (dialog.op === "trash" ? canDelete : canEdit) && (targets.length > 0 || dialog.op === "trash" || dialog.op === "note") ? (
         dialog.op === "status" && statusColumn ? (
           <StatusDialog
             key={`status:${dialog.preset ?? ""}`}

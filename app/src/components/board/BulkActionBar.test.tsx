@@ -33,6 +33,7 @@ function bar(over: Record<string, unknown> = {}) {
       targetValues={{}}
       canEdit
       canMove
+      canExport
       statusColumn={STATUS}
       fieldColumns={[{ key: "due", label: "마감일", type: "date" }]}
       dateColumns={[{ key: "due", label: "마감일", includeTime: false }]}
@@ -53,6 +54,13 @@ function bar(over: Record<string, unknown> = {}) {
 }
 
 describe("BulkActionBar 선택 바", () => {
+  it("일괄 권한이 없으면 쓰기·삭제 대화상자를 막고 export 권한도 독립적으로 숨긴다", () => {
+    const html = bar({ canEdit: false, canDelete: false, canExport: false, dialog: { op: "trash" } });
+    for (const op of ["status", "assignee", "date", "fields", "move", "note", "trash", "export"]) {
+      expect(html).not.toContain(`data-bulk-op="${op}"`);
+    }
+    expect(html).not.toContain("<dialog");
+  });
   it("개수·보기 내 대상·숨겨진 제외를 함께 표시", () => {
     const html = bar();
     expect(html).toContain("3개 선택");

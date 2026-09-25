@@ -189,6 +189,8 @@ export function BoardWorkspace({
   onboardingSlot,
   canEditItems = false,
   canDeleteItems = false,
+  canBulkEditItems = false,
+  canExportItems = false,
   canManageColumns = false,
   canManageSections = false,
   canManageSummaries = false,
@@ -237,6 +239,8 @@ export function BoardWorkspace({
   onboardingSlot?: ReactNode;
   canEditItems?: boolean;
   canDeleteItems?: boolean;
+  canBulkEditItems?: boolean;
+  canExportItems?: boolean;
   canManageColumns?: boolean;
   canManageSections?: boolean;
   canManageSummaries?: boolean;
@@ -847,9 +851,10 @@ export function BoardWorkspace({
           totalSelected={selectedIds.size}
           targets={bulkTargets}
           targetValues={bulkTargetValues}
-          canEdit={!readOnly}
+          canEdit={!readOnly && canBulkEditItems}
           canMove={canMoveRows}
-          canDelete={!board.is_system && canDeleteItems}
+          canDelete={!board.is_system && canDeleteItems && canBulkEditItems}
+          canExport={canExportItems}
           statusColumn={bulkStatusColumn}
           fieldColumns={bulkFieldColumns}
           dateColumns={bulkDateColumns}
@@ -1040,6 +1045,7 @@ export function BoardWorkspace({
                 onToggleRow={toggleRow}
                 onToggleGroup={(checked) => toggleGroupIds(visibleRows.map((row) => row.id), checked)}
                 onBulkStatusRequest={(rowId, columnKey, preset) => {
+                  if (!canBulkEditItems) return false;
                   const decision = decideBulkIntercept({
                     selectedSize: selectedIds.size,
                     isSelectedRow: selectedIds.has(rowId),

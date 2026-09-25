@@ -5,7 +5,7 @@
  *
  * 기존 단일 경로를 그대로 재사용한다:
  *  - `BoardsService.deleteItem/restoreItem` (board/item association/system/scopes는 서비스·repo·RLS가 강제)
- *  - 권한은 `work.item_delete` (trash-actions.ts와 동일 게이트)
+ *  - 권한은 `work.item_delete`와 `danger.bulk_edit_delete` 모두 필요하며 위험 작업을 기록한다.
  *  - 하드 삭제 없음 — delete는 deleted_at 소프트, restore는 원위치 복구.
  *
  * 안전 규칙:
@@ -16,8 +16,7 @@
  */
 
 import { revalidatePath } from "next/cache";
-import { getSession } from "@/lib/auth/session";
-import { loadPermGuard } from "@/lib/perm/guard";
+import { requireBulkWritePermission } from "./bulk-permission";
 import { createRequestBoards } from "@/lib/boards/server";
 import { userFacingMessage } from "@/lib/boards/boardActionFlash";
 import { BULK_MAX_ITEMS } from "@/components/board/bulk-selection";
@@ -57,23 +56,8 @@ function toResult(
   return { ok: applied > 0 && applied === results.length, applied, failed: results.length - applied, results };
 }
 
-async function requireTrashPermission(): Promise<{ ok: true; ctx: Awaited<ReturnType<typeof getSession>> } | { ok: false; message: string }> {
-  try {
-    const ctx = await getSession();
-    const permission = await loadPermGuard(ctx.org.id, "work.item_delete");
-    if (permission.kind !== "allowed") {
-      return {
-        ok: false,
-        message:
-          permission.reason === "permission"
-            ? "이 항목을 삭제하거나 복구할 권한이 없어요."
-            : "권한을 확인하지 못했어요.",
-      };
-    }
-    return { ok: true, ctx };
-  } catch (error) {
-    return { ok: false, message: userFacingMessage(error) };
-  }
+async function requireTrashPermission() {
+  return requireBulkWritePermission("work.item_delete");
 }
 
 const SYSTEM_BOARD_MESSAGE =
