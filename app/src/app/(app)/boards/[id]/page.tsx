@@ -550,6 +550,7 @@ export default async function BoardPage({
       canManageSummaries={canManageSummaries}
       canMoveRows={canMoveRows}
       savedViewActive={Boolean(personRuntime.view)}
+      savedViewId={personRuntime.view ? (sp.savedView ?? null) : null}
       currentUserId={ctx.user.id}
     />
   );

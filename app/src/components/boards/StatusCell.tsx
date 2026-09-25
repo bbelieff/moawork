@@ -91,11 +91,17 @@ export function StatusSelect({
   value,
   options,
   className,
+  interceptChange,
 }: {
   name: string;
   value: CellValue;
   options: readonly FieldOption[];
   className?: string;
+  /**
+   * true 를 돌려주면 저장은 건너뛰고 표시값으로 되돌린다 —
+   * 여러 행이 선택된 상태의 낱개 상태 변경을 일괄 흐름으로 넘길 때 쓴다.
+   */
+  interceptChange?: (nextValue: string) => boolean;
 }) {
   const current = typeof value === "string" && value ? value : "";
   // native select 는 목록에 없는 값이면 실제 화면에서 빈 선택지(—)를 보여 준다.
@@ -108,7 +114,13 @@ export function StatusSelect({
     <select
       name={name}
       defaultValue={current}
-      onChange={(event) => event.currentTarget.form?.requestSubmit()}
+      onChange={(event) => {
+        if (interceptChange?.(event.currentTarget.value)) {
+          event.currentTarget.value = current;
+          return;
+        }
+        event.currentTarget.form?.requestSubmit();
+      }}
       className={className}
       style={
         chip ? { backgroundColor: chip.background, color: chip.color, fontWeight: 500 } : undefined

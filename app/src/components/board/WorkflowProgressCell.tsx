@@ -21,6 +21,7 @@ export function WorkflowProgressCell({
   error,
   transitionAction,
   cellAction,
+  bulkIntercept,
 }: Readonly<{
   boardId: string;
   row: ItemWithValues;
@@ -30,6 +31,11 @@ export function WorkflowProgressCell({
   error?: string | null;
   transitionAction?: ReactNode;
   cellAction?: (formData: FormData) => Promise<void>;
+  /**
+   * 여러 행이 선택된 상태의 낱개 진행 변경을 일괄 흐름으로 넘긴다.
+   * true 를 돌려주면 낱개 저장·전이 대화를 건너뛰고 표시값으로 되돌린다.
+   */
+  bulkIntercept?: (nextValue: string) => boolean;
 }>) {
   const spec = workflowProgressSpec(kind);
   const current = typeof row.values[spec.stageColumnKey] === "string"
@@ -54,6 +60,10 @@ export function WorkflowProgressCell({
           aria-describedby={descriptionId}
           className={`${BOARD_TABLE_CONTROL} font-semibold focus:ring-2 focus:ring-mw-primary/20 disabled:cursor-not-allowed disabled:opacity-70`}
           onChange={(event) => {
+            if (bulkIntercept?.(event.currentTarget.value)) {
+              event.currentTarget.value = current;
+              return;
+            }
             if (event.currentTarget.value === TRANSFER) {
               event.preventDefault();
               event.currentTarget.value = current;

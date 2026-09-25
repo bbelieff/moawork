@@ -10,6 +10,7 @@
 
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { cellSearchText, compareCells } from "@/lib/boards/cells";
+import { normalizeBoardPhoneDigits } from "./bulk-selection";
 import {
   matchesOtherInfoFacet,
   parseOtherInfoFacetFilterKey,
@@ -166,17 +167,39 @@ export function activeFacetCount(f: BoardFilterState): number {
   return n;
 }
 
-/** 검색 대상 텍스트 — 제목 + 모든 셀의 **표시 텍스트**(옵션 id 가 아니라 라벨). */
+/**
+ * 검색 대상 텍스트 — 제목 + 모든 셀의 **표시 텍스트**(옵션 id 가 아니라 라벨) + 담당자 표시 이름.
+ * 담당자 id(UUID) 자체는 넣지 않는다 — 화면에 보이는 라벨로만 찾는다 (숨은 값 노출 금지).
+ */
 function haystack(
   row: ItemWithValues,
   columns: readonly BoardColumn[],
   projection?: BoardFilterProjection,
+  assigneeLabels?: Readonly<Record<string, string>>,
 ): string {
   const cells = columns.map((c) => projection?.searchText?.(row, c)
     ?? (c.type === "other_info"
       ? otherInfoSearchText(row.values[c.key] ?? null, otherInfoLegacyFromValues(row.values))
       : cellSearchText(c.type, row.values[c.key] ?? null, c.options_jsonb?.options)));
-  return [row.title, ...cells].join(" ").toLowerCase();
+  const assigneeLabel = row.assigned_to ? (assigneeLabels?.[row.assigned_to] ?? "") : "";
+  return [row.title, assigneeLabel, ...cells].join(" ").toLowerCase();
+}
+
+/**
+ * 전화 숫자 대상 — phone 타입 셀 + 제목에 섞인 번호를 표기 차이 없이 견준다.
+ * 질의·필드 양쪽을 normalizeBoardPhoneDigits 로 수렴시킨다 (+82/하이픈/공백 해소).
+ */
+function phoneDigitHaystack(
+  row: ItemWithValues,
+  columns: readonly BoardColumn[],
+): string {
+  const parts: string[] = [normalizeBoardPhoneDigits(row.title)];
+  for (const column of columns) {
+    if (column.type !== "phone") continue;
+    const raw = row.values[column.key];
+    if (typeof raw === "string" && raw !== "") parts.push(normalizeBoardPhoneDigits(raw));
+  }
+  return parts.join(" ");
 }
 
 /** 셀 값이 선택된 옵션 중 하나라도 포함하는가. multiselect 는 교집합 판정. */
@@ -193,9 +216,20 @@ export function rowMatches(
   columns: readonly BoardColumn[],
   f: BoardFilterState,
   projection?: BoardFilterProjection,
+  assigneeLabels?: Readonly<Record<string, string>>,
 ): boolean {
   const q = f.q.trim().toLowerCase();
-  if (q !== "" && !haystack(row, columns, projection).includes(q)) return false;
+  if (q !== "") {
+    if (haystack(row, columns, projection, assigneeLabels).includes(q)) {
+      // 표시 텍스트 적중 — 아래 숫자 매칭은 건너뛴다.
+    } else {
+      // 숫자 섞인 질의는 번호 찾기로 본다 — 표기 차이(+82/하이픈/공백)를 지우고 견준다.
+      const queryDigits = normalizeBoardPhoneDigits(f.q);
+      if (queryDigits.length < 3 || !phoneDigitHaystack(row, columns).includes(queryDigits)) {
+        return false;
+      }
+    }
+  }
 
   if (f.assignees.length > 0) {
     const who = row.assigned_to ?? UNASSIGNED;
@@ -232,8 +266,9 @@ export function applyFilters(
   columns: readonly BoardColumn[],
   f: BoardFilterState,
   projection?: BoardFilterProjection,
+  assigneeLabels?: Readonly<Record<string, string>>,
 ): ItemWithValues[] {
-  const kept = rows.filter((r) => rowMatches(r, columns, f, projection));
+  const kept = rows.filter((r) => rowMatches(r, columns, f, projection, assigneeLabels));
   const sorts = f.sorts?.length
     ? f.sorts
     : f.sortKey
