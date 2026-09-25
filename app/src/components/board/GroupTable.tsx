@@ -31,6 +31,7 @@ import type {
   ItemWithValues,
 } from "@/lib/boards/types";
 import { formatCell } from "@/lib/boards/cells";
+import { NEW_LEAD_FIELD_KEYS } from "@/lib/new-lead/cell-fields";
 import { presentPhone } from "@/lib/format/phone";
 import { findCellError, type CellFlash } from "@/lib/boards/cellFlash";
 import {
@@ -158,22 +159,6 @@ function cellTitle(column: BoardColumn): string {
 }
 
 const NUMERIC_TYPES = new Set(["money", "number"]);
-const NEW_LEAD_FIELD_KEYS: Readonly<Record<string, string>> = {
-  rep_name: "representative_name",
-  phone: "phone",
-  email: "email",
-  biz_reg_type: "business_registration_type",
-  business_registration_type: "business_registration_type",
-  industry: "industry",
-  revenue_band: "revenue_band",
-  sido: "region_sido",
-  region_sido: "region_sido",
-  sigungu: "region_sigungu",
-  region_sigungu: "region_sigungu",
-  ad_name: "acquisition_source",
-  acquisition_source: "acquisition_source",
-};
-
 const NEW_LEAD_EMPTY_LABELS: Readonly<Record<string, string>> = {
   absence_notice: "해당 없음",
   consult1_notice: "해당 없음",
