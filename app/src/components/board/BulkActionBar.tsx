@@ -30,6 +30,7 @@ import { BULK_BLOCKED_VALUES } from "@/components/board/bulk-selection";
 import type { WorkflowProgressKind } from "@/lib/workflow/progress";
 import { SELECTABLE_DETAIL_EVENT_KINDS, type SelectableDetailEventKind } from "@/lib/boards/detail-event-kinds";
 import { authorizeBoardCsvExport } from "@/app/(app)/boards/bulk-export-actions";
+import { noticeLive, noticeRole, type ResultNotice } from "@/lib/ui/result-notice";
 import type { CellValue } from "@/lib/boards/types";
 
 export type BulkOpKind = "status" | "assignee" | "date" | "fields" | "move" | "trash" | "note";
@@ -242,7 +243,7 @@ function StatusDialog({
   preset?: string;
   onClose: () => void;
   onApplied: (succeededIds: string[]) => void;
-  onNotice: (message: string) => void;
+  onNotice: (message: string, ok?: boolean) => void;
 }) {
   const options = useMemo(
     () => statusColumn.options.filter((option) => !BULK_BLOCKED_VALUES.has(option.id)),
@@ -312,7 +313,7 @@ function AssigneeDialog({
   targets: readonly BulkTargetRow[];
   onClose: () => void;
   onApplied: (succeededIds: string[]) => void;
-  onNotice: (message: string) => void;
+  onNotice: (message: string, ok?: boolean) => void;
 }) {
   const [assigneeId, setAssigneeId] = useState<string>("");
   const [localError, setLocalError] = useState<string | null>(null);
@@ -378,7 +379,7 @@ function DateDialog({
   targetValues: Record<string, Record<string, CellValue>>;
   onClose: () => void;
   onApplied: (succeededIds: string[]) => void;
-  onNotice: (message: string) => void;
+  onNotice: (message: string, ok?: boolean) => void;
 }) {
   const [columnKey, setColumnKey] = useState(dateColumns[0]?.key ?? "");
   const [mode, setMode] = useState<"set" | "shift">("set");
@@ -553,7 +554,7 @@ function FieldsDialog({
   initialValue?: string;
   onClose: () => void;
   onApplied: (succeededIds: string[]) => void;
-  onNotice: (message: string) => void;
+  onNotice: (message: string, ok?: boolean) => void;
 }) {
   const resolvedInitialKey = initialColumnKey && fieldColumns.some((entry) => entry.key === initialColumnKey)
     ? initialColumnKey
@@ -684,7 +685,7 @@ function MoveDialog({
   targets: readonly BulkTargetRow[];
   onClose: () => void;
   onApplied: (succeededIds: string[]) => void;
-  onNotice: (message: string) => void;
+  onNotice: (message: string, ok?: boolean) => void;
 }) {
   const [groupId, setGroupId] = useState<string>("");
   const [localError, setLocalError] = useState<string | null>(null);
@@ -745,7 +746,7 @@ function TrashDialog({
   targets: readonly BulkTargetRow[];
   onClose: () => void;
   onApplied: (succeededIds: string[]) => void;
-  onNotice: (message: string) => void;
+  onNotice: (message: string, ok?: boolean) => void;
 }) {
   const [result, setResult] = useState<BulkTrashResult | null>(null);
   const [restoreResult, setRestoreResult] = useState<BulkTrashResult | null>(null);
@@ -823,7 +824,7 @@ function NoteDialog({
   targets: readonly BulkTargetRow[];
   onClose: () => void;
   onApplied: (succeededIds: string[]) => void;
-  onNotice: (message: string) => void;
+  onNotice: (message: string, ok?: boolean) => void;
 }) {
   const [kind, setKind] = useState<SelectableDetailEventKind>("memo");
   const [body, setBody] = useState("");
@@ -936,12 +937,12 @@ export function BulkActionBar({
   exportCsv: string;
   exportFilename: string;
   dialog: BulkDialogState | null;
-  notice: string | null;
+  notice: ResultNotice | null;
   onOpenDialog: (op: BulkOpKind, preset?: string) => void;
   onCloseDialog: () => void;
   onClear: () => void;
   onApplied: (succeededIds: string[]) => void;
-  onNotice: (message: string) => void;
+  onNotice: (message: string, ok?: boolean) => void;
 }) {
   void boardId;
   void workflowKind;
@@ -961,7 +962,7 @@ export function BulkActionBar({
     startExport(async () => {
       try {
         const authorization = await authorizeBoardCsvExport();
-        if (!authorization.ok) { onNotice(authorization.message); return; }
+        if (!authorization.ok) { onNotice(authorization.message, false); return; }
         const blob = new Blob(["\uFEFF" + exportCsv], { type: "text/csv;charset=utf-8" });
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement("a");
@@ -973,7 +974,7 @@ export function BulkActionBar({
         URL.revokeObjectURL(url);
         onNotice(`${targets.length}개를 CSV로 내려받았습니다.`);
       } catch {
-        onNotice("파일을 내려받지 못했어요. 다시 시도해 주세요.");
+        onNotice("파일을 내려받지 못했어요. 다시 시도해 주세요.", false);
       }
     });
   };
@@ -997,7 +998,7 @@ export function BulkActionBar({
         {showTrash ? <button type="button" data-bulk-op="trash" disabled={!hasTargets} onClick={() => onOpenDialog("trash")} className={BAR_BUTTON}>삭제</button> : null}
         {hasTargets && canExport ? <button type="button" data-bulk-op="export" disabled={exportPending} onClick={download} className={BAR_BUTTON}>{exportPending ? "내보내기 준비 중…" : "내보내기"}</button> : null}
         <button type="button" onClick={onClear} className={BAR_BUTTON}>선택 해제</button>
-        {notice ? <span role="status" className="text-xs text-mw-body">{notice}</span> : null}
+        {notice ? <span role={noticeRole(notice.ok)} aria-live={noticeLive(notice.ok)} className={`text-xs ${notice.ok ? "text-mw-body" : "text-mw-error"}`}>{notice.message}</span> : null}
       </section>
       {dialog && (dialog.op === "trash" ? canDelete : canEdit) && (targets.length > 0 || dialog.op === "trash" || dialog.op === "note") ? (
         dialog.op === "status" && statusColumn ? (

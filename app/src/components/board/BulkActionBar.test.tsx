@@ -54,6 +54,14 @@ function bar(over: Record<string, unknown> = {}) {
 }
 
 describe("BulkActionBar 선택 바", () => {
+  it("성공과 실패 메시지는 판정에 따라 역할·색상을 구분한다", () => {
+    const success = bar({ notice: { ok: true, message: "내보냈습니다" } });
+    expect(success).toContain('role="status" aria-live="polite"');
+    const failure = bar({ notice: { ok: false, message: "내보낼 권한이 없어요" } });
+    expect(failure).toContain('role="alert" aria-live="assertive"');
+    expect(failure).toContain('class="text-xs text-mw-error"');
+    expect(failure).toContain("내보낼 권한이 없어요");
+  });
   it("일괄 권한이 없으면 쓰기·삭제 대화상자를 막고 export 권한도 독립적으로 숨긴다", () => {
     const html = bar({ canEdit: false, canDelete: false, canExport: false, dialog: { op: "trash" } });
     for (const op of ["status", "assignee", "date", "fields", "move", "note", "trash", "export"]) {

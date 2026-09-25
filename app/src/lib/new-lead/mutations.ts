@@ -3,6 +3,7 @@ import { formatPhone } from "@/lib/format/phone";
 import type {
   CreateNewLeadArgs,
   CreateNewLeadRow,
+  CreateNewLeadWithFoundedMonthArgs,
   NewLeadFieldPatch,
   NewLeadValueSource,
   UpdateNewLeadRow,
@@ -73,6 +74,24 @@ export async function createCanonicalNewLead(
   const result = await client.rpc(NEW_LEAD_RPC.create, {
     ...input,
     p_phone: canonicalPhone(input.p_phone),
+  });
+  if (result.error) throw new NewLeadMutationError(messageFor(result.error.code), result.error.code);
+  return oneRow<CreateNewLeadRow>(result.data, ["deal_id", "item_id", "replayed"]);
+}
+
+/**
+ * 창업연월 포함 원자 생성(v17-detail-repair).
+ * 월 형식·컬럼 존재를 서버 wrapper가 어떤 INSERT보다 먼저 판정하고,
+ * 같은 트랜잭션·같은 요청 payload에 넣어 기록한다. 기존 create RPC는 그대로 둔다.
+ */
+export async function createCanonicalNewLeadWithFoundedMonth(
+  client: SupabaseClient,
+  input: CreateNewLeadWithFoundedMonthArgs,
+): Promise<CreateNewLeadRow> {
+  const result = await client.rpc(NEW_LEAD_RPC.createWithFoundedMonth, {
+    ...input,
+    p_phone: canonicalPhone(input.p_phone),
+    p_founded_month: input.p_founded_month ?? null,
   });
   if (result.error) throw new NewLeadMutationError(messageFor(result.error.code), result.error.code);
   return oneRow<CreateNewLeadRow>(result.data, ["deal_id", "item_id", "replayed"]);

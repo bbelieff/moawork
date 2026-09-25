@@ -306,6 +306,7 @@ function seed() {
     "structure.section_manage": true,
     "structure.tab_manage": true,
     "danger.bulk_edit_delete": true,
+    "danger.csv_export": true,
     "structure.preset_edit": true,
   };
   probe.rpcs.read_permission_scoped_work_items = { itemIds: ["item-1"], hiddenCount: 0 };

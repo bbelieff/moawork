@@ -81,7 +81,7 @@ import { resolveBoardDetailLayout, resolveDetailLayout } from "@/lib/boards/deta
 import type { ItemDetailSnapshot } from "@/app/(app)/boards/item-detail-actions";
 import { runColumnCommandAction } from "@/app/(app)/boards/column-command-actions";
 import { INITIAL_COLUMN_COMMAND_STATE } from "@/app/(app)/boards/column-command-state";
-import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
+import { noticeLive, noticeRole, type ResultNotice } from "@/lib/ui/result-notice";
 import {
   presentWorkflowProgressColumns,
   withWorkflowProgressValues,
@@ -379,7 +379,7 @@ export function BoardWorkspace({
    */
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDialog, setBulkDialog] = useState<BulkDialogState | null>(null);
-  const [bulkNotice, setBulkNotice] = useState<string | null>(null);
+  const [bulkNotice, setBulkNotice] = useState<ResultNotice | null>(null);
   const [selectionScope, setSelectionScope] = useState(() => selectionScopeKey(board.id, savedViewId ?? savedViewActive));
   const currentSelectionScope = selectionScopeKey(board.id, savedViewId ?? savedViewActive);
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
@@ -463,7 +463,10 @@ export function BoardWorkspace({
    * 서버가 이미 권한 밖 행을 빼고 준 rows만 대상으로 삼으므로 여기서
    * 허가받지 않은 데이터를 새로 조회하지는 않는다. +82 정규화는 filters가 유지한다.
    */
-  const searchColumns = activeColumns;
+  const searchColumns = useMemo(() => {
+    const ordered = canonicalNewLead ? presentNewLeadColumns(activeSummaryColumns) : activeSummaryColumns;
+    return workflowProgressKind ? presentWorkflowProgressColumns(workflowProgressKind, ordered) : ordered;
+  }, [activeSummaryColumns, canonicalNewLead, workflowProgressKind]);
 
   /** 보이는 순서대로 모은 전체 가시 행 id — 선택 교집합·내보내기·Shift 범위의 기준. */
   const visibleOrderedIds = useMemo(() => {
@@ -868,11 +871,11 @@ export function BoardWorkspace({
           onCloseDialog={() => setBulkDialog(null)}
           onClear={clearSelection}
           onApplied={applyBulkSucceeded}
-          onNotice={setBulkNotice}
+          onNotice={(message, ok = true) => setBulkNotice({ message, ok })}
         />
       ) : bulkNotice ? (
-        <p role="status" className="rounded-lg border border-mw-line bg-mw-card px-3 py-2 text-xs text-mw-body">
-          {bulkNotice}
+        <p role={noticeRole(bulkNotice.ok)} aria-live={noticeLive(bulkNotice.ok)} className={`rounded-lg border border-mw-line bg-mw-card px-3 py-2 text-xs ${bulkNotice.ok ? "text-mw-body" : "text-mw-error"}`}>
+          {bulkNotice.message}
         </p>
       ) : null}
       <p className="sr-only" aria-live="polite" role={moveNotice?.includes("못")||moveNotice?.includes("없")?"alert":"status"}>{moveNotice}</p>

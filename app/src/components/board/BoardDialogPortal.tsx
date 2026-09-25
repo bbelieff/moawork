@@ -40,7 +40,12 @@ export function BoardModalLayer({
     const focusable = () => [...(dialogRef.current?.querySelectorAll<HTMLElement>(
       'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex]:not([tabindex="-1"])',
     ) ?? [])].filter((element) => !element.hasAttribute("hidden"));
-    const frame = window.requestAnimationFrame(() => (focusable()[0] ?? dialogRef.current)?.focus());
+    const frame = window.requestAnimationFrame(() => {
+      // A form may already focus its title or invalid field during mount.
+      if (!dialogRef.current?.contains(document.activeElement)) {
+        (focusable()[0] ?? dialogRef.current)?.focus();
+      }
+    });
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && dismissibleRef.current) {
         event.preventDefault();

@@ -1,5 +1,12 @@
 {
   "schemaVersion": 1,
+  "detailEvidenceOverride": {
+    "issue": 797,
+    "date": "2026-09-26",
+    "rationale": "사용자가 승인한 v17과 회의 메모에 따라 클라우드 폴더 연결을 보존하면서 증빙 여러 파일 선택·드롭 업로드를 추가한다. 과거 input[type=file] 부재 조건을 대체하며 폴더 링크의 새 창 안전성, 상세 기하·포커스·권한 검사는 유지한다.",
+    "multipleFileInput": true,
+    "dropZone": "[data-evidence-drop]"
+  },
   "evaluation": {
     "visual": 70,
     "behavior": 15,

@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   NEW_LEAD_BUSINESS_TYPES,
+  NEW_LEAD_CORPORATE_BUSINESS_SUBTYPES,
   NEW_LEAD_CUSTOM_BUSINESS_TYPE,
+  NEW_LEAD_PERSONAL_BUSINESS_SUBTYPES,
 } from "@/lib/new-lead/business-types";
 import { NEW_LEAD_INTAKE_REVENUE_BANDS, NEW_LEAD_CUSTOM_REVENUE_LABEL } from "@/lib/new-lead/revenue-bands";
 import {
@@ -44,9 +46,16 @@ function useReset(ref: RefObject<HTMLElement | null>, reset: () => void) {
  */
 export function BusinessTypeField({ invalid = false }: { invalid?: boolean }) {
   const [selected, setSelected] = useState("");
+  const [subtype, setSubtype] = useState("일반");
   const rootRef = useRef<HTMLDivElement>(null);
-  const reset = useCallback(() => setSelected(""), []);
+  const reset = useCallback(() => { setSelected(""); setSubtype("일반"); }, []);
   useReset(rootRef, reset);
+  const subtypes =
+    selected === "개인사업자"
+      ? NEW_LEAD_PERSONAL_BUSINESS_SUBTYPES
+      : selected === "법인사업자"
+        ? NEW_LEAD_CORPORATE_BUSINESS_SUBTYPES
+        : null;
   return (
     <div ref={rootRef} className="grid gap-1 sm:grid-cols-[1fr_1fr] sm:items-end sm:gap-2">
       <label className="grid gap-1 text-xs text-mw-sub">
@@ -57,7 +66,7 @@ export function BusinessTypeField({ invalid = false }: { invalid?: boolean }) {
           aria-required="true"
           aria-invalid={invalid}
           value={selected}
-          onChange={(event) => setSelected(event.target.value)}
+          onChange={(event) => { setSelected(event.target.value); setSubtype("일반"); }}
           className={`${CONTROL} aria-[invalid=true]:border-mw-error`}
         >
           <option value="">고르세요</option>
@@ -66,7 +75,24 @@ export function BusinessTypeField({ invalid = false }: { invalid?: boolean }) {
           ))}
         </select>
       </label>
-      {selected === NEW_LEAD_CUSTOM_BUSINESS_TYPE ? (
+      {subtypes ? (
+        <label className="grid gap-1 text-xs text-mw-sub">
+          <span>{selected === "법인사업자" ? "과세·형태" : "과세유형"} <span className="text-mw-sub">(기본 일반)</span></span>
+          <select
+            name="business_registration_subtype"
+            value={subtype}
+            onChange={(event) => setSubtype(event.target.value)}
+            aria-label={selected === "법인사업자" ? "법인 과세·형태 구분" : "개인 과세유형 구분"}
+            className={CONTROL}
+          >
+            {subtypes.map((value) => (
+              <option key={value} value={value}>
+                {selected === "법인사업자" && value === "유한" ? "유한(법인 형태)" : value}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : selected === NEW_LEAD_CUSTOM_BUSINESS_TYPE ? (
         <label className="grid gap-1 text-xs text-mw-sub">
           <span>어떤 유형인가요 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
           <input
@@ -78,6 +104,27 @@ export function BusinessTypeField({ invalid = false }: { invalid?: boolean }) {
         </label>
       ) : null}
     </div>
+  );
+}
+
+export function FoundingMonthField({ invalid = false }: { invalid?: boolean }) {
+  const [value, setValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const reset = useCallback(() => setValue(""), []);
+  useReset(inputRef, reset);
+  return (
+    <label className="grid gap-1 text-xs text-mw-sub">
+      창업연월
+      <input
+        ref={inputRef}
+        name="founded_month"
+        type="month"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        aria-invalid={invalid}
+        className={`${CONTROL} aria-[invalid=true]:border-mw-error`}
+      />
+    </label>
   );
 }
 
@@ -172,7 +219,7 @@ export function RevenueYearsField() {
   );
 }
 
-function RegionCombobox({ name, label, value, onValue, suggestions, disabled = false, invalid = false }: {
+export function RegionCombobox({ name, label, value, onValue, suggestions, disabled = false, invalid = false }: {
   name: string; label: string; value: string; onValue: (value: string) => void;
   suggestions: readonly RegionSuggestion[]; disabled?: boolean; invalid?: boolean;
 }) {
