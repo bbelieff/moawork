@@ -127,6 +127,7 @@ export default async function BoardPage({
         "structure.column_manage",
         "structure.section_manage",
         "danger.bulk_edit_delete",
+        "danger.csv_export",
         "structure.preset_edit",
         "structure.tab_manage",
       ])),
@@ -545,11 +546,14 @@ export default async function BoardPage({
       ) : undefined}
       canEditItems={canEditItems}
       canDeleteItems={canDeleteItems}
+      canBulkEditItems={boardDelete.kind === "allowed"}
+      canExportItems={permissions["danger.csv_export"].kind === "allowed"}
       canManageColumns={canManageColumns}
       canManageSections={canManageSections}
       canManageSummaries={canManageSummaries}
       canMoveRows={canMoveRows}
       savedViewActive={Boolean(personRuntime.view)}
+      savedViewId={personRuntime.view ? (sp.savedView ?? null) : null}
       currentUserId={ctx.user.id}
     />
   );

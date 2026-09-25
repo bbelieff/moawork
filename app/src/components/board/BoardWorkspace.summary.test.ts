@@ -16,7 +16,7 @@ const page = readFileSync(resolve(process.cwd(), "src/app/(app)/boards/[id]/page
 
 describe("Issue #605 live summary consumer", () => {
   it("binds the leaf to each group after the canonical display filter", () => {
-    expect(workspace).toMatch(/const visibleRows = applyFilters\(block\.rows, tableColumns, displayFilters, filterProjection\)/);
+    expect(workspace).toMatch(/const visibleRows = applyFilters\(block\.rows, searchColumns, displayFilters, filterProjection, assigneeLabels\)/);
     expect(workspace).toMatch(/<BoardSummaryStrip[\s\S]*rows=\{visibleRows\}/);
     expect(workspace).toContain("columns={activeSummaryColumns}");
     expect(workspace).toContain("totalCount: block.rows.length");

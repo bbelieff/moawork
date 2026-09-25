@@ -52,7 +52,9 @@ describe("Issue #576 신규리드 순서와 표시 컬럼", () => {
   it("화면은 회사가 저장한 컬럼 순서를 다시 덮어쓰지 않는다", () => {
     const source = readFileSync(new URL("./BoardWorkspace.tsx", import.meta.url), "utf8");
     expect(source).not.toContain("orderNewLeadColumnsLikeMonday(");
-    expect(source).toContain("selectVisibleColumns(resolvedColumns, displayFilters.visibleColumnKeys)");
+    expect(source).toContain("resolveColumnOrder(tableColumns, storedOrder ?? undefined)");
+    expect(source).toContain("selectVisibleColumns(resolved, displayFilters.visibleColumnKeys)");
+    expect(source).toContain("const shown = columnsForBlock(block.key)");
   });
 
   it("과거 저장 뷰 alias를 합성 키로 복원하고 BoardWorkspace에서만 finance projection을 적용한다", () => {

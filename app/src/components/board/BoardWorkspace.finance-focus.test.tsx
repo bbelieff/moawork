@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NEW_LEAD_TAB_SOURCE } from "@/lib/default-tabs/types";
 import type { BoardColumn } from "@/lib/boards/types";
+import { EMPTY_FILTERS, encodeBoardFilters } from "./filters";
 
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => <a href={href} {...rest}>{children}</a>,
@@ -60,6 +61,23 @@ async function renderWorkspace(source: string, columns: BoardColumn[], focus: st
 }
 
 describe("#602 saved focus projection", () => {
+  it("URL로 숨긴 인가 컬럼을 검색하되 숨긴 컬럼을 표에 다시 표시하지 않는다", async () => {
+    const query = encodeBoardFilters({ ...EMPTY_FILTERS, q: "authorized-needle" });
+    window.history.replaceState(null, "", `/boards/board-a?mwFilters=${encodeURIComponent(query)}`);
+    const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    const visible = column("visible", 0);
+    const hidden = column("memo", 1);
+    await act(async () => root?.render(<BoardWorkspace
+      board={{ id: "board-a", org_id: "org-a", name: "보드", description: null, icon: null, source: "custom/board", is_system: false, sort_order: 0 } as never}
+      columns={[visible]} summaryColumns={[visible, hidden]}
+      groups={[{ id: "group-a", org_id: "org-a", board_id: "board-a", name: "그룹", color: null, sort_order: 0 }] as never}
+      rows={[{ id: "item-a", org_id: "org-a", board_id: "board-a", group_id: "group-a", title: "검색된 회사", assigned_to: null, deal_id: null, sort_order: 0, created_at: "", updated_at: "", values: { visible: "visible-cell", memo: "authorized-needle" } }] as never}
+      columnOrder={{}} cellFlash={null} assigneeLabels={{}}
+    />));
+    expect(host.textContent).toContain("검색된 회사");
+    expect(host.querySelector('th[data-column-key="memo"]')).toBeNull();
+    expect(host.querySelector('th[data-column-key="visible"]')).not.toBeNull();
+  });
   it.each([
     ["credit_score_ncb", "credit_scores"],
     ["credit_score_kcb", "credit_scores"],

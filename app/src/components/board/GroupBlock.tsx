@@ -33,6 +33,8 @@ export function GroupBlock({
   onOrderDrop,
   canOrderDrop,
   summarySlot,
+  open: controlledOpen,
+  onOpenChange,
   children,
 }: {
   name: string;
@@ -57,9 +59,12 @@ export function GroupBlock({
   canOrderDrop?:()=>boolean;
   /** 보드 공통 설정을 이 그룹의 filtered rows로 계산한 한줄 요약. */
   summarySlot?: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(true);
+  const [localOpen, setOpen] = useState(true);
+  const open = controlledOpen ?? localOpen;
   const [dropState,setDropState]=useState<"valid"|"invalid"|null>(null);
   const accent = color ?? "var(--mw-record)";
   void columns;
@@ -78,7 +83,10 @@ export function GroupBlock({
      * 카드 모양은 그대로이고 팝오버만 밖으로 나올 수 있다.
      */
     <section data-visual-block="group-table" className="min-w-0 max-w-full rounded-md border border-mw-line bg-mw-card">
-      <details className="min-w-0 max-w-full" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <details className="min-w-0 max-w-full" open={open} onToggle={(e) => {
+        setOpen(e.currentTarget.open);
+        onOpenChange?.(e.currentTarget.open);
+      }}>
         <summary
           draggable={Boolean(onOrderDragStart)}
           onDragStart={onOrderDragStart ? (event) => {

@@ -81,7 +81,7 @@ import { resolveBoardDetailLayout, resolveDetailLayout } from "@/lib/boards/deta
 import type { ItemDetailSnapshot } from "@/app/(app)/boards/item-detail-actions";
 import { runColumnCommandAction } from "@/app/(app)/boards/column-command-actions";
 import { INITIAL_COLUMN_COMMAND_STATE } from "@/app/(app)/boards/column-command-state";
-import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
+import { noticeLive, noticeRole, type ResultNotice } from "@/lib/ui/result-notice";
 import {
   presentWorkflowProgressColumns,
   withWorkflowProgressValues,
@@ -92,6 +92,28 @@ import {
   NEW_LEAD_SAVED_FILTER_PROJECTION,
   presentNewLeadSavedFilters,
 } from "@/lib/view/board-saved";
+import {
+  BULK_BLOCKED_COLUMN_KEYS,
+  BULK_BLOCKED_VALUES,
+  bulkRangeIds,
+  intersectVisibleSelection,
+  pruneSelection,
+  selectionScopeKey,
+  selectionToCsv,
+  toggleGroupSelection,
+  toggleSelection,
+} from "./bulk-selection";
+import {
+  BulkActionBar,
+  type BulkDialogState,
+  type BulkOpKind,
+} from "./BulkActionBar";
+import { isSourceEditable } from "@/lib/field/source";
+import {
+  decideBulkIntercept,
+  pickBulkStatusColumn,
+} from "@/app/(app)/boards/bulk-action-gates";
+import { WORKFLOW_PROGRESS_KEY } from "@/lib/workflow/progress";
 import { BoardSummaryStrip } from "./BoardSummaryStrip";
 import { BoardSummarySettingsPopover } from "./BoardSummarySettingsPopover";
 import { formatCell } from "@/lib/boards/cells";
@@ -167,11 +189,14 @@ export function BoardWorkspace({
   onboardingSlot,
   canEditItems = false,
   canDeleteItems = false,
+  canBulkEditItems = false,
+  canExportItems = false,
   canManageColumns = false,
   canManageSections = false,
   canManageSummaries = false,
   canMoveRows = false,
   savedViewActive = false,
+  savedViewId = null,
   currentUserId,
   cellAction,
   itemDetailFixture,
@@ -214,12 +239,15 @@ export function BoardWorkspace({
   onboardingSlot?: ReactNode;
   canEditItems?: boolean;
   canDeleteItems?: boolean;
+  canBulkEditItems?: boolean;
+  canExportItems?: boolean;
   canManageColumns?: boolean;
   canManageSections?: boolean;
   canManageSummaries?: boolean;
   /** Whole-group reindex is available only to owner/admin/all-scope sessions. */
   canMoveRows?: boolean;
   savedViewActive?: boolean;
+  savedViewId?: string | null;
   /** BBE-239 — 공지사항에서 작성자 본인 삭제 예외를 판정하는 데 쓴다. */
   currentUserId?: string;
   /** 시각 fixture가 제품 UI를 우회하지 않고 저장소 경계만 대체할 때 사용한다. */
@@ -340,6 +368,30 @@ export function BoardWorkspace({
   );
   const [optimisticOrder, setOrderOptimistic] = useOptimistic(columnOrder, columnOrderReducer);
 
+  /*
+   * 일괄 선택 — 이 BoardWorkspace 인스턴스(현재 탭·보기)에만 산다.
+   * 일괄 대상은 «선택 ∩ 현재 보이는 행» (bulk-selection.intersectVisibleSelection).
+   * 보드·저장 보기 전환 시 비운다. 필터로 숨겨진 행은 절대 수정하지 않는다.
+   *
+   * effect로 setState하지 않는다 — 보드·보기 식별자를 렌더 중에 비교해
+   * 같은 렌더에서 상태를 맞춘다 (react-hooks/set-state-in-effect 회피가 아니라
+   * 캐스케이드 렌더를 없애는 정본 패턴).
+   */
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDialog, setBulkDialog] = useState<BulkDialogState | null>(null);
+  const [bulkNotice, setBulkNotice] = useState<ResultNotice | null>(null);
+  const [selectionScope, setSelectionScope] = useState(() => selectionScopeKey(board.id, savedViewId ?? savedViewActive));
+  const currentSelectionScope = selectionScopeKey(board.id, savedViewId ?? savedViewActive);
+  const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
+  if (selectionScope !== currentSelectionScope) {
+    setSelectionScope(currentSelectionScope);
+    setSelectedIds(new Set());
+    setBulkDialog(null);
+    setBulkNotice(null);
+  }
+  // Shift-범위 기준점 — 보이는 순서에서의 마지막 토글 위치.
+  const lastToggledRef = useRef<string | null>(null);
+
   const readOnly = board.is_system || !canEditItems;
   const sortActive = filters.sortKey !== "" || (filters.sorts?.length ?? 0) > 0;
   const rowDragEnabled = !readOnly && canMoveRows && !sortActive && !rowMovePending;
@@ -379,6 +431,207 @@ export function BoardWorkspace({
 
   const blocks = useMemo(() => buildBlocks(orderedGroups, displayRows), [orderedGroups, displayRows]);
 
+  // 사라진 행 id는 렌더 중에 털어낸다 — effect로 미루면 삭제된 id가 복구·필터 전환 때
+  // 다시 보이는 «예상 밖 재등장»이 된다. 필터로 숨겨진 행은 여기서 지우지 않는다
+  // (숨김은 intersectVisibleSelection이 대상에서만 제외하고 선택 자체는 유지한다).
+  const allRowIds = useMemo(() => new Set(displayRows.map((row) => row.id)), [displayRows]);
+  if (selectedIds.size > 0) {
+    let hasStale = false;
+    for (const id of selectedIds) {
+      if (!allRowIds.has(id)) { hasStale = true; break; }
+    }
+    if (hasStale) {
+      setSelectedIds(pruneSelection(selectedIds, allRowIds));
+    }
+  }
+
+  /**
+   * 그룹의 최종 표시 컬럼 — 본문 map 과 같은 계산 (표시 전용).
+   * 검색(q)은 표시와 분리한다 — UI 열을 숨겼다고 권한 밖이 되는 것이 아니다.
+   */
+  const columnsForBlock = useCallback((blockKey: string) => {
+    const storedOrder = canonicalNewLead
+      ? presentNewLeadColumnKeys(optimisticOrder[blockKey])
+      : optimisticOrder[blockKey];
+    const resolved = resolveColumnOrder(tableColumns, storedOrder ?? undefined);
+    return selectVisibleColumns(resolved, displayFilters.visibleColumnKeys);
+  }, [canonicalNewLead, displayFilters.visibleColumnKeys, optimisticOrder, tableColumns]);
+
+  /**
+   * 검색 기준 컬럼 — 인가된 전체 active 컬럼 (보기에서 숨긴 칸 포함).
+   * columnsForBlock(표시 전용)으로 검색하면 숨긴 칸의 텍스트·라벨·전화가 새지 않는다.
+   * 서버가 이미 권한 밖 행을 빼고 준 rows만 대상으로 삼으므로 여기서
+   * 허가받지 않은 데이터를 새로 조회하지는 않는다. +82 정규화는 filters가 유지한다.
+   */
+  const searchColumns = useMemo(() => {
+    const ordered = canonicalNewLead ? presentNewLeadColumns(activeSummaryColumns) : activeSummaryColumns;
+    return workflowProgressKind ? presentWorkflowProgressColumns(workflowProgressKind, ordered) : ordered;
+  }, [activeSummaryColumns, canonicalNewLead, workflowProgressKind]);
+
+  /** 보이는 순서대로 모은 전체 가시 행 id — 선택 교집합·내보내기·Shift 범위의 기준. */
+  const visibleOrderedIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const block of blocks) {
+      if (closedGroups.has(block.key)) continue;
+      for (const row of applyFilters(block.rows, searchColumns, displayFilters, filterProjection, assigneeLabels)) {
+        ids.push(row.id);
+      }
+    }
+    return ids;
+  }, [assigneeLabels, blocks, closedGroups, searchColumns, displayFilters, filterProjection]);
+
+  const bulkTargetIds = useMemo(
+    () => intersectVisibleSelection(selectedIds, visibleOrderedIds),
+    [selectedIds, visibleOrderedIds],
+  );
+  const rowById = useMemo(() => new Map(displayRows.map((row) => [row.id, row])), [displayRows]);
+  const bulkTargets = useMemo(
+    () => bulkTargetIds.map((id) => ({ id, title: rowById.get(id)?.title ?? id })),
+    [bulkTargetIds, rowById],
+  );
+
+  const toggleRow = useCallback((itemId: string, checked: boolean, shiftKey = false) => {
+    setBulkNotice(null);
+    const anchor = lastToggledRef.current;
+    const ordered = visibleOrderedIds;
+    if (shiftKey) {
+      const range = bulkRangeIds(ordered, anchor, itemId);
+      if (range.length > 0) {
+        setSelectedIds((previous) => toggleGroupSelection(previous, range, checked));
+        lastToggledRef.current = itemId;
+        return;
+      }
+    }
+    setSelectedIds((previous) => toggleSelection(previous, itemId, checked));
+    lastToggledRef.current = itemId;
+  }, [visibleOrderedIds]);
+  const toggleGroupIds = useCallback((ids: readonly string[], checked: boolean) => {
+    setBulkNotice(null);
+    setSelectedIds((previous) => toggleGroupSelection(previous, ids, checked));
+    if (ids.length > 0) lastToggledRef.current = checked ? ids[ids.length - 1] ?? null : lastToggledRef.current;
+  }, []);
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    setBulkDialog(null);
+    lastToggledRef.current = null;
+  }, []);
+  const openBulkDialog = useCallback((op: BulkOpKind, preset?: string) => {
+    setBulkNotice(null);
+    setBulkDialog({ op, preset });
+  }, []);
+  const applyBulkSucceeded = useCallback((succeededIds: string[]) => {
+    if (succeededIds.length === 0) return;
+    const done = new Set(succeededIds);
+    setSelectedIds((previous) => {
+      const next = new Set<string>();
+      for (const id of previous) if (!done.has(id)) next.add(id);
+      return next;
+    });
+  }, []);
+
+  // 일괄 대화상자에 내보이는 컬럼 — 편집 가능하고 불투명 전이 열이 아닌 것만.
+  const BULK_FIELD_TYPES = useMemo(() => new Set([
+    "text", "number", "money", "date", "datetime", "email", "url", "phone",
+    "select", "status", "person",
+  ]), []);
+  const bulkStatusColumn = useMemo(
+    () => pickBulkStatusColumn(physicalActiveColumns, workflowProgressKind),
+    [physicalActiveColumns, workflowProgressKind],
+  );
+  const bulkFieldColumns = useMemo(
+    () => tableColumns
+      .filter((column) =>
+        BULK_FIELD_TYPES.has(column.type)
+        && isSourceEditable(column.source)
+        && column.is_readonly !== true
+        && !BULK_BLOCKED_COLUMN_KEYS.has(column.key)
+        && column.key !== WORKFLOW_PROGRESS_KEY)
+      .map((column) => ({
+        key: column.key,
+        label: column.label,
+        type: column.type,
+        options: column.type === "select" || column.type === "status"
+          ? (column.options_jsonb?.options ?? [])
+            .filter((option) => !BULK_BLOCKED_VALUES.has(option.id))
+            .map((option) => ({ id: option.id, label: option.label }))
+          : undefined,
+      })),
+    [BULK_FIELD_TYPES, tableColumns],
+  );
+  const bulkDateColumns = useMemo(
+    () => tableColumns
+      .filter((column) =>
+        (column.type === "date" || column.type === "datetime")
+        && isSourceEditable(column.source)
+        && column.is_readonly !== true)
+      .map((column) => ({
+        key: column.key,
+        label: column.label,
+        includeTime: column.type === "datetime",
+      })),
+    [tableColumns],
+  );
+  // scheduleRecipients(아래 정의)와 같은 원천 — 담당자 탭·일괄이 같은 사람을 본다.
+  const bulkMembers = useMemo(
+    () => memberDirectory?.length
+      ? memberDirectory.map((member) => ({ id: member.id, label: member.label }))
+      : Object.entries(assigneeLabels).map(([id, label]) => ({ id, label: label || "이름 없는 구성원" })),
+    [assigneeLabels, memberDirectory],
+  );
+  const bulkTargetValues = useMemo(() => {
+    const wanted = new Set([
+      ...bulkFieldColumns.map((column) => column.key),
+      ...bulkDateColumns.map((column) => column.key),
+    ]);
+    const out: Record<string, Record<string, import("@/lib/boards/types").CellValue>> = {};
+    for (const id of bulkTargetIds) {
+      const row = rowById.get(id);
+      if (!row) continue;
+      out[id] = Object.fromEntries(
+        [...wanted].filter((key) => key in row.values).map((key) => [key, row.values[key] ?? null]),
+      );
+    }
+    return out;
+  }, [bulkDateColumns, bulkFieldColumns, bulkTargetIds, rowById]);
+
+  // 내보내기 — 표시 라벨(헤더)과 표시 텍스트(셀)만. 담당자는 이름으로 푼다.
+  // 진행현황은 투영된 인간 라벨로 포함한다 — 합성 키를 빼면 워크플로 보드의 진행이 통째로 사라진다.
+  const bulkExport = useMemo(() => {
+    const visibleKeys = displayFilters.visibleColumnKeys ?? null;
+    const exportColumns = tableColumns.filter((column) =>
+      (visibleKeys === null || visibleKeys.includes(column.key)));
+    const optionLookup = new Map<string, { id: string; label: string }[]>();
+    for (const column of [...columns, ...tableColumns]) {
+      if (!optionLookup.has(column.key)) {
+        optionLookup.set(column.key, column.options_jsonb?.options ?? []);
+      }
+    }
+    const headers = ["이름", ...exportColumns.map((column) => column.label)];
+    const lines = bulkTargetIds.map((id) => {
+      const row = rowById.get(id);
+      if (!row) return [id];
+      return [
+        row.title,
+        ...exportColumns.map((column) => {
+          const value = row.values[column.key] ?? null;
+          if (column.type === "person" && typeof value === "string") {
+            return assigneeLabels[value] ?? value;
+          }
+          if (column.type === "people" && Array.isArray(value)) {
+            return value
+              .map((entry) => typeof entry === "string" ? (assigneeLabels[entry] ?? entry) : String(entry))
+              .join(", ");
+          }
+          return formatCell(column.type, value, optionLookup.get(column.key) ?? undefined);
+        }),
+      ];
+    });
+    return {
+      csv: selectionToCsv(headers, lines),
+      filename: `board-${board.id}-selection.csv`,
+    };
+  }, [assigneeLabels, board.id, bulkTargetIds, columns, displayFilters.visibleColumnKeys, rowById, tableColumns]);
+
   const companyPickerProps = buildCompanyPickerProps(
     board.source,
     contractWorkCompanyPicker,
@@ -395,9 +648,9 @@ export function BoardWorkspace({
 
   const matched = useMemo(
     () => workflowProgressKind
-      ? applyFilters(displayRows, tableColumns, displayFilters, filterProjection).length
-      : applyFilters(optimisticRows, tableColumns, displayFilters, filterProjection).length,
-    [displayFilters, displayRows, filterProjection, optimisticRows, tableColumns, workflowProgressKind],
+      ? applyFilters(displayRows, searchColumns, displayFilters, filterProjection, assigneeLabels).length
+      : applyFilters(optimisticRows, searchColumns, displayFilters, filterProjection, assigneeLabels).length,
+    [assigneeLabels, displayFilters, displayRows, filterProjection, optimisticRows, searchColumns, workflowProgressKind],
   );
   const saveSummary = useCallback(async (request: BoardSummarySettingsRequest) => {
     const result = await saveBoardSummarySettingsAction(board.id, request);
@@ -594,6 +847,37 @@ export function BoardWorkspace({
           정렬이 켜져 있어 행 드래그를 잠갔습니다. 직접 배치하려면 정렬을 «기본 순서»로 되돌리세요.
         </p>
       )}
+      {selectedIds.size > 0 || bulkDialog !== null ? (
+        <BulkActionBar
+          boardId={board.id}
+          workflowKind={workflowProgressKind}
+          totalSelected={selectedIds.size}
+          targets={bulkTargets}
+          targetValues={bulkTargetValues}
+          canEdit={!readOnly && canBulkEditItems}
+          canMove={canMoveRows}
+          canDelete={!board.is_system && canDeleteItems && canBulkEditItems}
+          canExport={canExportItems}
+          statusColumn={bulkStatusColumn}
+          fieldColumns={bulkFieldColumns}
+          dateColumns={bulkDateColumns}
+          members={bulkMembers}
+          groups={orderedGroups.map((group) => ({ id: group.id, name: group.name }))}
+          exportCsv={bulkExport.csv}
+          exportFilename={bulkExport.filename}
+          dialog={bulkDialog}
+          notice={bulkNotice}
+          onOpenDialog={openBulkDialog}
+          onCloseDialog={() => setBulkDialog(null)}
+          onClear={clearSelection}
+          onApplied={applyBulkSucceeded}
+          onNotice={(message, ok = true) => setBulkNotice({ message, ok })}
+        />
+      ) : bulkNotice ? (
+        <p role={noticeRole(bulkNotice.ok)} aria-live={noticeLive(bulkNotice.ok)} className={`rounded-lg border border-mw-line bg-mw-card px-3 py-2 text-xs ${bulkNotice.ok ? "text-mw-body" : "text-mw-error"}`}>
+          {bulkNotice.message}
+        </p>
+      ) : null}
       <p className="sr-only" aria-live="polite" role={moveNotice?.includes("못")||moveNotice?.includes("없")?"alert":"status"}>{moveNotice}</p>
 
       {archivedColumnIds.size > 0 ? (
@@ -647,8 +931,9 @@ export function BoardWorkspace({
           // 과거에 저장된 그룹별 배치도 광고 명의 필수 유입정보 위치를 되돌리지 못하게 한다.
           // 서버의 sort_order와 그룹별 사용자 배치를 정본으로 삼는다. 기본 신규리드 순서는
           // revision installer가 안전하게 재배치하며, 회사가 직접 바꾼 순서는 여기서 덮지 않는다.
-          const shown = selectVisibleColumns(resolvedColumns, displayFilters.visibleColumnKeys);
-          const visibleRows = applyFilters(block.rows, tableColumns, displayFilters, filterProjection);
+          const shown = columnsForBlock(block.key);
+          // 검색(q)은 인가된 전체 active 컬럼을 대상으로 삼는다 — UI 열 숨김은 권한 숨김이 아니다.
+          const visibleRows = applyFilters(block.rows, searchColumns, displayFilters, filterProjection, assigneeLabels);
           const summaryScope = savedViewActive
             ? { kind: "saved-view" as const, totalCount: block.rows.length }
             : activeFilterCount(displayFilters) > 0
@@ -674,6 +959,13 @@ export function BoardWorkspace({
 
           return (
             <GroupBlock
+              open={!closedGroups.has(block.key)}
+              onOpenChange={(open) => setClosedGroups((current) => {
+                if (current.has(block.key) === !open) return current;
+                const next = new Set(current);
+                if (open) next.delete(block.key); else next.add(block.key);
+                return next;
+              })}
               key={block.key}
               name={block.name}
               color={block.color}
@@ -752,6 +1044,30 @@ export function BoardWorkspace({
                 onColumnKeyboardMove={(columnKey,delta)=>handleColumnKeyboardMove(block.key,resolvedColumns,columnKey,delta)}
                 dragRowId={rowDragEnabled ? dragRowId : null}
                 canDropRow={canDropRow}
+                selection={selectedIds}
+                onToggleRow={toggleRow}
+                onToggleGroup={(checked) => toggleGroupIds(visibleRows.map((row) => row.id), checked)}
+                onBulkStatusRequest={(rowId, columnKey, preset) => {
+                  if (!canBulkEditItems) return false;
+                  const decision = decideBulkIntercept({
+                    selectedSize: selectedIds.size,
+                    isSelectedRow: selectedIds.has(rowId),
+                    columnKey,
+                    workflowKind: workflowProgressKind,
+                    statusColumnKey: bulkStatusColumn?.key ?? null,
+                    fieldColumns: bulkFieldColumns,
+                  });
+                  if (decision === "status") {
+                    openBulkDialog("status", preset);
+                    return true;
+                  }
+                  if (decision === "fields") {
+                    setBulkNotice(null);
+                    setBulkDialog({ op: "fields", fieldKey: columnKey, fieldValue: preset });
+                    return true;
+                  }
+                  return false;
+                }}
                 onRowDragStart={startRowDrag}
                 onRowDragEnd={endRowDrag}
                 onRowDrop={(index) =>

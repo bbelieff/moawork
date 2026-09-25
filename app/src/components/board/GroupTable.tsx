@@ -96,6 +96,7 @@ import {
 } from "./table-style";
 import { BoardInlineTitleEditor } from "./BoardInlineTitleEditor";
 import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
+import { selectionTriState } from "./bulk-selection";
 import { MAX_FILE_BYTES } from "@/lib/services/file-contract";
 
 const CELL_INPUT = BOARD_TABLE_CONTROL;
@@ -197,6 +198,7 @@ export function BoardCell({
   workflowProgressKind,
   workflowTransitionAction,
   cellAction,
+  bulkStatusIntercept,
 }: {
   boardId: string;
   row: ItemWithValues;
@@ -209,6 +211,11 @@ export function BoardCell({
   workflowTransitionAction?: ReactNode;
   /** 결정론적 화면 검증에서만 저장소 경계를 바꾼다. 실제 셀 폼/제출 흐름은 그대로 둔다. */
   cellAction?: (formData: FormData) => Promise<void>;
+  /**
+   * 여러 행이 선택된 상태의 낱개 상태 변경을 일괄 흐름으로 넘긴다.
+   * true 를 돌려주면 낱개 저장을 건너뛰고 표시값으로 되돌린다.
+   */
+  bulkStatusIntercept?: (columnKey: string, nextValue: string) => boolean;
 }) {
   const value = row.values[column.key] ?? null;
   const phoneStatus = row.value_statuses?.[column.key] ?? "normalized";
@@ -255,6 +262,7 @@ export function BoardCell({
         error={error}
         transitionAction={workflowTransitionAction}
         cellAction={cellAction}
+        bulkIntercept={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
       />
     );
   }
@@ -457,12 +465,19 @@ export function BoardCell({
             value={value}
             options={options}
             className={`${CELL_INPUT} cursor-pointer`}
+            interceptChange={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
           />
         ) : column.type === "select" ? (
           <select
             name="value"
             defaultValue={typeof value === "string" ? value : ""}
-            onChange={(event) => event.currentTarget.form?.requestSubmit()}
+            onChange={(event) => {
+              if (bulkStatusIntercept?.(column.key, event.currentTarget.value)) {
+                event.currentTarget.value = typeof value === "string" ? value : "";
+                return;
+              }
+              event.currentTarget.form?.requestSubmit();
+            }}
             className={`${CELL_INPUT} cursor-pointer`}
             aria-label={column.label}
           >
@@ -579,6 +594,10 @@ export function GroupTable({
   scheduleItems = [],
   scheduleRecipients = [],
   cellAction,
+  selection,
+  onToggleRow,
+  onToggleGroup,
+  onBulkStatusRequest,
 }: {
   boardId: string;
   boardName?: string;
@@ -653,6 +672,22 @@ export function GroupTable({
   scheduleItems?: readonly ColumnScheduleItemOption[];
   scheduleRecipients?: readonly ColumnScheduleRecipientOption[];
   cellAction?: (formData: FormData) => Promise<void>;
+  /**
+   * 일괄 선택 — BoardWorkspace 가 들고 있는 공유 집합. 없으면 체크박스를 그리지 않는다.
+   * 첫 칸(이름) 안에 들어 sticky 와 단일 가로 스크롤을 그대로 유지한다.
+   * 표준 체크박스(키보드 접근 가능)를 유지하고 Shift-클릭은 보이는 순서 구간으로 넓힌다.
+   */
+  selection?: ReadonlySet<string>;
+  onToggleRow?: (itemId: string, checked: boolean, shiftKey?: boolean) => void;
+  /** 이 그룹의 보이는 행 전체를 같은 상태로. */
+  onToggleGroup?: (checked: boolean) => void;
+  /**
+   * 여러 행이 선택된 채 그중 하나의 상태값을 건드리면 낱개로 바꾸지 않고
+   * 일괄 흐름을 연다 (값은 되돌려 둔다).
+   * 실제 의도한 컬럼 키를 그대로 전달한다 — 상태 의도가 아니면 false 를 돌려
+   * 그 칸이 스스로 편집되게 한다.
+   */
+  onBulkStatusRequest?: (rowId: string, columnKey: string, presetValue: string) => boolean;
 }) {
   /*
    * 드래그 중인 대상은 **ref 가 정본**이고 state 는 표시(반투명·강조)에만 쓴다.
@@ -694,6 +729,11 @@ export function GroupTable({
   },[clearRowDrop,onRowDragEnd]);
 
   const colSpan = columns.length + 1;
+  // 그룹 마스터 — 보이는 행 기준 3상태. indeterminate 는 ref 로, 접근성은 aria-checked 로.
+  const groupTriState = selection && onToggleGroup
+    ? selectionTriState(selection, rows.map((row) => row.id))
+    : "empty";
+  const bulkArmed = (selection?.size ?? 0) > 1;
 
   /*
    * 컬럼 폭 조절(D12) — 드래그 중인 값은 dragColRef 와 같은 이유로 ref 가 정본이다
@@ -795,9 +835,23 @@ export function GroupTable({
               className={`${STICKY_FIRST} z-[var(--mw-layer-board-corner)] ${BOARD_TABLE_HEADER_CELL} min-w-44`}
               style={{ top: 0, position: "sticky" }}
             >
-              {canonicalNewLead ? (
-                <span className="flex items-center gap-1"><SourceBadge source="auto" />회사명</span>
-              ) : "이름"}
+              <span className="flex items-center gap-1">
+                {selection && onToggleGroup ? (
+                  <input
+                    ref={(element) => { if (element) element.indeterminate = groupTriState === "partial"; }}
+                    type="checkbox"
+                    checked={groupTriState === "full"}
+                    aria-checked={groupTriState === "partial" ? "mixed" : undefined}
+                    aria-label={`${groupName ?? "그룹"} 전체 선택`}
+                    onChange={(event) => onToggleGroup(event.currentTarget.checked)}
+                    className="h-3.5 w-3.5 shrink-0"
+                    data-no-drag
+                  />
+                ) : null}
+                {canonicalNewLead ? (
+                  <><SourceBadge source="auto" />회사명</>
+                ) : "이름"}
+              </span>
             </th>
             {columns.map((col) => {
               const isTarget = overColKey === col.key && dragColKey !== col.key;
@@ -930,6 +984,8 @@ export function GroupTable({
               (authorColumnKey !== undefined &&
                 viewerUserId !== undefined &&
                 row.values[authorColumnKey] === viewerUserId);
+            // 이 행이 여러 선택에 포함돼 있으면 낱개 상태 변경 대신 일괄 흐름을 연다.
+            const armedForRow = bulkArmed && (selection?.has(row.id) ?? false) && onBulkStatusRequest;
             return (
               <tr
                 key={row.id}
@@ -951,6 +1007,22 @@ export function GroupTable({
                   className={`${STICKY_FIRST} ${BOARD_TABLE_BODY_CELL} group-hover:bg-mw-bg ${rowDragEnabled?"cursor-grab active:cursor-grabbing":""}`}
                 >
                   <div className="flex items-center gap-1">
+                    {selection && onToggleRow ? (
+                      <input
+                        type="checkbox"
+                        checked={selection.has(row.id)}
+                        aria-label={`${row.title} 선택`}
+                        onChange={(event) => {
+                          const native = event.nativeEvent as MouseEvent | KeyboardEvent | undefined;
+                          const shift = typeof (native as { shiftKey?: unknown } | undefined)?.shiftKey === "boolean"
+                            ? (native as { shiftKey: boolean }).shiftKey
+                            : false;
+                          onToggleRow(row.id, event.currentTarget.checked, shift);
+                        }}
+                        className="h-3.5 w-3.5 shrink-0"
+                        data-no-drag
+                      />
+                    ) : null}
 
                     {readOnly ? (
                       <span className="truncate text-xs font-medium text-mw-fg">
@@ -1066,6 +1138,13 @@ export function GroupTable({
                       column={col}
                       readOnly={readOnly}
                       canonicalNewLead={canonicalNewLead}
+                      bulkStatusIntercept={armedForRow
+                        ? (columnKey, nextValue) => {
+                          const handler = onBulkStatusRequest;
+                          if (!handler) return false;
+                          return handler(row.id, columnKey, nextValue);
+                        }
+                        : undefined}
                       members={newLeadMembers}
                       error={
                         cellFlash
