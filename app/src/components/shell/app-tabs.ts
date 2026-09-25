@@ -67,6 +67,7 @@ export const APP_TABS: readonly AppTab[] = [
  * 아직 이 파일을 읽지 않으므로(§NG-02 후속) 지금은 사람이 유지한다.
  */
 export const OUT_OF_TAB_HREFS: readonly string[] = [
+  "/policyfund/news",
   "/",
   "/login",
   // Issue #536: deterministic, customer-DML-free visual merge-gate fixture.
