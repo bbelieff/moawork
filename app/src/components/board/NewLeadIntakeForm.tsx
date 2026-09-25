@@ -6,6 +6,7 @@ import { INITIAL_NEW_LEAD_INTAKE_STATE } from "@/lib/new-lead/intake-state";
 import { BoardModalLayer } from "./BoardDialogPortal";
 import {
   BusinessTypeField,
+  FoundingMonthField,
   PhoneField,
   RegionFields,
   RevenueBandField,
@@ -125,6 +126,7 @@ export function NewLeadIntakeForm({
             <input name="industry" className="h-9 rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg" />
           </label>
           <RevenueBandField invalid={state.field === "revenue_band"} />
+          <FoundingMonthField invalid={state.field === "founded_month"} />
           <RegionFields invalidField={state.ok ? undefined : state.field} />
           <label className="grid gap-1 text-xs text-mw-sub sm:col-span-2">상세 주소
             <input name="address_detail" className="h-9 rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg" />

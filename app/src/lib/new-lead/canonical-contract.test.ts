@@ -5,6 +5,7 @@ describe("BBE-173 canonical new-lead RPC contract", () => {
   it("freezes the consumer-facing RPC names and stable SQLSTATEs", () => {
     expect(NEW_LEAD_RPC).toEqual({
       create: "create_new_lead",
+      createWithFoundedMonth: "create_new_lead_with_founded_month",
       update: "update_new_lead_fields",
       updateTitle: "update_new_lead_title",
       updateMeta: "update_new_lead_intake_meta",

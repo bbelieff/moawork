@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canEditDetailEvent,
   canRemoveDetailEvent,
   canRestoreDetailEvent,
   type DetailEventViewer,
@@ -100,5 +101,29 @@ describe("#672 되살리기는 «치운 사람» 과 대표만", () => {
 
   it("치워지지 않은 것에는 되살리기가 없다", () => {
     expect(canRestoreDetailEvent(null, asOther)).toBe(false);
+  });
+});
+
+describe("v17-detail 고치기는 쓴 사람·대표만", () => {
+  it("대표는 남의 메모를 고친다", () => {
+    expect(canEditDetailEvent(memoBy(OTHER), asOwner)).toBe(true);
+  });
+
+  it("쓴 사람은 자기 메모를 고친다", () => {
+    expect(canEditDetailEvent(memoBy(OTHER), asOther)).toBe(true);
+  });
+
+  it("★ 담당자도 남의 메모는 못 고친다", () => {
+    expect(canEditDetailEvent(memoBy(OTHER), asAssignee)).toBe(false);
+  });
+
+  it("★ 자동 기록은 대표도 화면에서 못 고친다 — 시스템 소유다", () => {
+    expect(canEditDetailEvent(auto, asOwner)).toBe(false);
+    expect(canEditDetailEvent(auto, asAssignee)).toBe(false);
+  });
+
+  it("로그인 전·주인 없는 줄은 못 고친다", () => {
+    expect(canEditDetailEvent(memoBy(OTHER), { viewerId: null, viewerRole: "owner", assignedTo: ASSIGNEE })).toBe(false);
+    expect(canEditDetailEvent(memoBy(null), asOther)).toBe(false);
   });
 });

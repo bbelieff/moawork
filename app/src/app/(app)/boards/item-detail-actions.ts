@@ -53,6 +53,9 @@ export type ItemDetailEvent = {
   /* #672 — 치워진 줄. 행은 남아 있고 화면에서만 접힌다. */
   deleted_at?: string | null;
   deleted_by?: string | null;
+  /* v17-detail — 고친 자국. 마이그레이션 150 이전 행은 둘 다 비어 있다. */
+  edited_at?: string | null;
+  edit_count?: number | null;
 };
 export type ItemDetailLink = {
   id: string;
@@ -129,7 +132,7 @@ export async function loadItemDetailAction(
       await Promise.all([
         client
           .from("board_item_detail_events")
-          .select("id,kind,body,metadata,actor_id,created_at,deleted_at,deleted_by")
+          .select("id,kind,body,metadata,actor_id,created_at,deleted_at,deleted_by,edited_at,edit_count")
           .eq("org_id", ctx.org.id)
           .eq("board_id", boardId)
           .eq("item_id", itemId)
