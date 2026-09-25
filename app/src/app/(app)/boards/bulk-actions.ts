@@ -4,7 +4,8 @@
  * 일괄 적용 서버 액션 — agenda06 보드 반복 조작 줄이기 (삭제 없음).
  *
  * 기존 단일 쓰기 경로를 그대로 재사용한다:
- *  - 셀 값: `BoardsService.setCells` (읽기전용·출처·무결성·선택지 검증 + 이동규칙 동일)
+ *  - 신규리드 정본 필드/메타: 단일 편집과 같은 audited RPC (직접 EAV 쓰기 금지)
+ *  - 그 외 셀 값: `BoardsService.setCells` (읽기전용·출처·무결성·선택지 검증 + 이동규칙 동일)
  *  - 담당자: deal 연결 행은 `reassign_deal_with_lineage` RPC 경유
  *    (AssignmentLineageService.reassign — deals/items/owner EAV/lineage version/history 보존),
  *    비연결 행은 `BoardsService.updateItem({ assigned_to })` + 조직 멤버 검증
@@ -30,6 +31,10 @@ import type { CellValue } from "@/lib/boards/types";
 import { BULK_MAX_ITEMS } from "@/components/board/bulk-selection";
 import { bulkBlockReason, resolveBulkColumnKey } from "./bulk-action-gates";
 import { isSourceEditable } from "@/lib/field/source";
+import { validateCell } from "@/lib/boards/cells";
+import { NEW_LEAD_TAB_SOURCE } from "@/lib/default-tabs/types";
+import { NEW_LEAD_FIELD_KEYS, NEW_LEAD_META_KEYS } from "@/lib/new-lead/cell-fields";
+import { NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadMeta } from "@/lib/new-lead/mutations";
 import { notifyBoardItemMoved } from "@/lib/notify/board-actions";
 import {
   AssignmentLineageService,
@@ -147,6 +152,9 @@ export async function bulkApplyCellsAction(input: {
   // 실제 보드를 먼저 읽어 is_system을 거부하고, kind 매핑도 실제 보드에서 가져온다.
   let columnKey: string;
   let isStatusColumn = false;
+  let canonicalField: (typeof NEW_LEAD_FIELD_KEYS)[string] | undefined;
+  let canonicalMeta = false;
+  let canonicalValue: CellValue = input.value;
   try {
     const detail = await graph.service.getBoardDetail(gate.ctx, input.boardId);
     if (detail.board.is_system) {
@@ -167,6 +175,20 @@ export async function bulkApplyCellsAction(input: {
           ? "자동 계산되는 칸이라 손으로 고칠 수 없습니다"
           : "자동으로 채워지는 칸은 직접 바꿀 수 없습니다";
       return allFailed(ids, message);
+    }
+    if (detail.board.source === NEW_LEAD_TAB_SOURCE) {
+      if (columnKey === "owner") return allFailed(ids, "담당자 일괄 변경을 이용해 주세요.");
+      canonicalField = NEW_LEAD_FIELD_KEYS[columnKey];
+      canonicalMeta = NEW_LEAD_META_KEYS.has(columnKey);
+      if (canonicalField || canonicalMeta) {
+        // The RPC replaces persistence, not the column's validation contract.
+        const validated = validateCell(column.type, input.value, column.options_jsonb?.options ?? null);
+        if (!validated.ok) return allFailed(ids, validated.error ?? "값을 해석할 수 없습니다");
+        canonicalValue = validated.value;
+        if (canonicalField && canonicalValue !== null && typeof canonicalValue !== "string") {
+          return allFailed(ids, "문자열 값을 입력해 주세요.");
+        }
+      }
     }
     // person/people 컬럼의 조직 멤버 검증 — setCellAction 과 같은 조건 (연결된 워크스페이스에서만).
     if (graph.client && (column.type === "person" || column.type === "people")) {
@@ -195,6 +217,26 @@ export async function bulkApplyCellsAction(input: {
   const processed: BulkItemResult[] = [];
   for (const itemId of head) {
     try {
+      if (canonicalField || canonicalMeta) {
+        // Resolve membership/visibility before looking up a deal; never trust a client deal id.
+        const item = await graph.service.getItem(gate.ctx, input.boardId, itemId);
+        if (item.deal_id) {
+          if (!graph.client) {
+            processed.push({ itemId, ok: false, message: "신규리드 저장: 연결된 워크스페이스가 필요합니다." });
+            continue;
+          }
+          const ref = { orgId: gate.ctx.org.id, dealId: item.deal_id, requestId: crypto.randomUUID() };
+          if (canonicalField) {
+            await updateCanonicalNewLead(graph.client, {
+              ...ref, patch: { [canonicalField]: canonicalValue as string | null }, valueSource: "manual",
+            });
+          } else {
+            await updateCanonicalNewLeadMeta(graph.client, { ...ref, patch: { [columnKey]: canonicalValue } });
+          }
+          processed.push({ itemId, ok: true, message: "저장했습니다." });
+          continue;
+        }
+      }
       const { errors } = await graph.service.setCells(
         gate.ctx,
         input.boardId,
@@ -216,7 +258,7 @@ export async function bulkApplyCellsAction(input: {
         processed.push({ itemId, ok: true, message });
       }
     } catch (error) {
-      processed.push({ itemId, ok: false, message: userFacingMessage(error) });
+      processed.push({ itemId, ok: false, message: error instanceof NewLeadMutationError ? error.message : userFacingMessage(error) });
     }
   }
   if (processed.some((r) => r.ok)) revalidatePath(`/boards/${input.boardId}`);
