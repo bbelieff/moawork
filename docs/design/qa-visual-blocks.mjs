@@ -129,13 +129,17 @@ async function observe(page,tab,vp,mut,mockup,targetOrigin,expectedBuildSha){
     if(artifactDir)await page.screenshot({path:path.join(artifactDir,`new-${vp.id}-detail.png`)});
     const duplicateCtaAbsent=await detail.getByRole("button",{name:"리드컨택으로 넘기기"}).count()===0;
     const folderLink=detail.getByRole("link",{name:/폴더 열기/});
-    const cloudFolderPrimary=await folderLink.isVisible()&&await folderLink.getAttribute("target")==="_blank"&&(await folderLink.getAttribute("rel")??"").split(/\s+/).includes("noopener")&&await detail.locator('input[type="file"]').count()===0;
+    const cloudFolderPrimary=await folderLink.isVisible()&&await folderLink.getAttribute("target")==="_blank"&&(await folderLink.getAttribute("rel")??"").split(/\s+/).includes("noopener");
+    // #797: approved multi-file evidence upload supplements the canonical folder link.
+    const evidenceInput=detail.getByLabel("증빙 파일 고르기(여러 개 가능·끌어다 놓기)");
+    const evidenceUpload=contract.detailEvidenceOverride?.issue===797&&contract.detailEvidenceOverride?.multipleFileInput===true&&await evidenceInput.count()===1&&await evidenceInput.isVisible()&&await evidenceInput.isEnabled()&&await evidenceInput.getAttribute("multiple")!==null&&await detail.locator(contract.detailEvidenceOverride.dropZone).isVisible();
+    if(!evidenceUpload)failures.push("new-lead detail: multiple evidence upload/drop control missing or disabled");
     const orderRulesVisible=await detail.getByText("순서 규칙",{exact:true}).isVisible();
     const adminSummary=detail.getByText("관리자 · 상세 배치 편집",{exact:true});
     const adminCollapsed=await adminSummary.isVisible()&&await adminSummary.evaluate(el=>el.closest("details")?.open===false);
     const detailGeometry=desktopGeometry&&mobileGeometry&&dialogOverflow;
     await page.keyboard.press("Escape");await detail.waitFor({state:"detached"});const focusReturned=await waitForConnectedFocus(openerHandle,"detail-focus-return");
-    detailFlow=bodyPortal&&duplicateCtaAbsent&&cloudFolderPrimary&&orderRulesVisible&&adminCollapsed&&detailGeometry&&focusReturned;
+    detailFlow=bodyPortal&&duplicateCtaAbsent&&cloudFolderPrimary&&evidenceUpload&&orderRulesVisible&&adminCollapsed&&detailGeometry&&focusReturned;
     if(!bodyPortal)failures.push("new-lead detail: portal parent is not BODY");if(!duplicateCtaAbsent)failures.push("new-lead detail: duplicate contact-transfer CTA remains");if(!cloudFolderPrimary)failures.push("new-lead detail: canonical cloud-folder link is missing or unsafe");if(!orderRulesVisible)failures.push("new-lead detail: order rules are missing");if(!adminCollapsed)failures.push("new-lead detail: admin-only layout editor is not collapsed");if(!detailGeometry)failures.push(`new-lead detail: mockup header/rail/history/composer geometry mismatch or overflow ${JSON.stringify({surfaceBox,headerBox,infoBox,mainBox,watchersBox,historyBox,composerBox,dialogOverflow,desktopGeometry,mobileGeometry})}`);if(!focusReturned)failures.push("new-lead detail: Escape opener focus return missing")
   }
   const readOrder=()=>page.locator("[data-visual-block='group-table']").evaluateAll(groups=>JSON.stringify(groups.map(g=>({group:g.querySelector("summary")?.textContent,columns:[...g.querySelectorAll("th")].map(th=>th.textContent)}))));
