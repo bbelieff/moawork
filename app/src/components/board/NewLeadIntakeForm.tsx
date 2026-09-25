@@ -161,7 +161,7 @@ export function NewLeadIntakeForm({
       <p className="text-[11px] leading-4 text-mw-sub">비워 둔 값은 등록 후 표와 회사 상세에서 수정할 수 있어요.</p>
       {state.message && !state.ok ? <p id={errorId} role="alert" className="rounded-md border border-mw-error p-2 text-sm text-mw-error">{state.message}</p> : null}
       <div className="flex gap-2">
-        <button type="submit" onClick={() => setDismissedMessage(null)} disabled={pending} className="h-9 flex-1 rounded-lg bg-mw-primary text-xs font-semibold text-mw-on-accent disabled:opacity-60">{pending ? "등록 중…" : "등록"}</button>
+        <button type="submit" data-mw-cta="primary" onClick={() => setDismissedMessage(null)} disabled={pending} className="h-9 flex-1 rounded-lg bg-mw-primary text-xs font-semibold text-mw-on-accent disabled:opacity-60">{pending ? "등록 중…" : "등록"}</button>
         <button type="button" disabled={pending} onClick={() => closeEditor(true)} className="h-9 rounded-lg border border-mw-line px-3 text-xs text-mw-sub">취소</button>
       </div>
     </form>
@@ -169,7 +169,7 @@ export function NewLeadIntakeForm({
 
   return (
     <>
-          <button ref={headerOpenerRef} type="button" onClick={prepareOpen} className={variant === "inline" ? "inline-flex min-h-11 items-center rounded-md px-2 text-xs text-mw-sub hover:bg-mw-bg hover:text-mw-fg" : "flex h-9 shrink-0 items-center rounded-md bg-mw-primary px-3.5 text-xs font-semibold text-mw-on-accent"}>
+          <button ref={headerOpenerRef} type="button" onClick={prepareOpen} data-mw-cta={variant === "header" ? "primary" : undefined} className={variant === "inline" ? "inline-flex min-h-11 items-center rounded-md px-2 text-xs text-mw-sub hover:bg-mw-bg hover:text-mw-fg" : "flex h-9 shrink-0 items-center rounded-md bg-mw-primary px-3.5 text-xs font-semibold text-mw-on-accent"}>
             {variant === "inline" ? "＋ 새 항목" : "＋ 새 회사"}
           </button>
           {open ? <BoardModalLayer label="새 회사 등록" dismissible={!pending} returnFocusRef={headerOpenerRef} onClose={() => closeEditor(false)}>

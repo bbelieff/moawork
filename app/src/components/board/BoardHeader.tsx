@@ -110,7 +110,7 @@ export function BoardHeader({
 
       {!readOnly && groups.length > 0 && (addItemSlot ?? (
         <details name="mw-board-header" className="relative shrink-0">
-          <summary className="flex h-9 cursor-pointer select-none items-center rounded-full bg-mw-primary px-3.5 text-xs font-semibold text-mw-on-accent list-none [&::-webkit-details-marker]:hidden">
+          <summary data-mw-cta="primary" className="flex h-9 cursor-pointer select-none items-center rounded-full bg-mw-primary px-3.5 text-xs font-semibold text-mw-on-accent list-none [&::-webkit-details-marker]:hidden">
             ＋ 새 항목
           </summary>
 
@@ -140,6 +140,7 @@ export function BoardHeader({
             </select>
             <button
               type="submit"
+              data-mw-cta="primary"
               className="h-9 rounded-lg bg-mw-primary text-xs font-semibold text-mw-on-accent"
             >
               추가

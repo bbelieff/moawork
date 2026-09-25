@@ -1,0 +1,214 @@
+/* =====================================================================
+ * MoaWork v17 vivid 외관층 — 승인 목업의 포인트 색을 실제 운영 셸에 배선.
+ * 이 파일은 --mw-* 정본 토큰만 참조·재정의한다(임의 hex는 출처 스톱 한정).
+ *
+ * 출처(복사 vs 각색 구분, 확인일 2026-09-25):
+ * - Soft UI Dashboard (Creative Tim, MIT, 라이선스 별첨
+ *   app/src/styles/moawork-vivid-v17.LICENSE.txt).
+ *   https://github.com/creativetimofficial/soft-ui-dashboard
+ *   아래 5쌍은 원본 .bg-gradient-* 정의와 각도·스톱·순서까지 동일하게 복사:
+ *   primary 310deg #ea580c→#facc15 · info 310deg #0ea5e9→#06b6d4 ·
+ *   success 310deg #22c55e→#98ec2d · warning 310deg #eab308→#f97316 ·
+ *   danger 310deg #ef4444→#ec4899.
+ * - Mobbin Canva 팔레트 https://mobbin.com/colors/brand/canva
+ *   스톱 #07B9CE #3969E7 #7D2AE7 그대로. 다스톱 배치·비율은 모아워크 각색이며
+ *   공식 Canva 그라디언트라고 주장하지 않는다.
+ * - Figma Purity UI Dashboard (Simmmple/Creative Tim, CC BY 4.0,
+ *   https://www.figma.com/community/file/1020707462188017225/purity-ui-dashboard-chakra-ui-dashboard):
+ *   흰 카드·절제된 간격·유색 아이콘 타일이라는 레이아웃 방향만 참조, 색 토큰·자산 복사 없음.
+ * - Pinterest https://co.pinterest.com/catalopera/colorful-dashboard/ (16핀 열람):
+ *   중립 캔버스 위 vivid 블록이라는 방향 영감만, 핀 다운로드 없음.
+ *
+ * 승인 근거: v17 vivid 목업 사용자 승인 + 시각 override issue #761 (2026-09-25).
+ * CTA 실제 채움 동작은 목업 vivid-v17.css 최종 절이 정본이다:
+ * 파랑/보라 계열(contact·dash)은 Canva 블루→바이올렛(#3969e7→#7d2ae7) + 흰 글자,
+ * 그 외 밝은 CTA는 원천 Soft UI 쌍 + #111827 글자(밝은 노랑 위 흰 글자 금지).
+ *
+ * 배선 원칙: html[data-mw-accent] 아래에서만 동작한다. 변수만 바꾸고
+ * [data-mw-cta="primary"]·.mw-nav-active 등 명시 속성을 단 실제 요소에만 닿는다.
+ * 전역 button 스타일·표 셀·행·sticky·스크롤 구조는 건드리지 않는다.
+ * ===================================================================== */
+
+/* ── 밝은 중립 바탕 + 가는 경계 (라이트 한정, 다크는 아래 별도) ── */
+html[data-mw-accent] {
+  --mw-bg: #ffffff;
+  --mw-line: #e7e9ee;
+  --mw-cta-r: 7px; /* R7 컨트롤 */
+  --mw-pop-r: 11px; /* R11 팝오버 */
+}
+
+/* ── 라우트 강조 토큰 (실제 운영 라우트 5종만) ── */
+html[data-mw-accent="new"] {
+  --mw-cta-grad: linear-gradient(310deg, #ea580c 0%, #facc15 100%);
+  --mw-cta-solid: #ea580c;
+  --mw-cta-ink: #111827;
+  --mw-accent-soft: #fdebdc;
+  --mw-accent-ink: #7a3a12;
+  --mw-accent-deep: #9a3412;
+}
+html[data-mw-accent="contact"] {
+  --mw-cta-grad: linear-gradient(110deg, #3969e7 0%, #7d2ae7 100%);
+  --mw-cta-solid: #3969e7;
+  --mw-cta-ink: #ffffff;
+  --mw-accent-soft: #e9edff;
+  --mw-accent-ink: #2e377f;
+  --mw-accent-deep: #2b3a9e;
+}
+html[data-mw-accent="work"] {
+  --mw-cta-grad: linear-gradient(310deg, #22c55e 0%, #98ec2d 100%);
+  --mw-cta-solid: #22c55e;
+  --mw-cta-ink: #111827;
+  --mw-accent-soft: #ddf5e8;
+  --mw-accent-ink: #0a4a33;
+  --mw-accent-deep: #166534;
+}
+html[data-mw-accent="company"] {
+  --mw-cta-grad: linear-gradient(310deg, #0ea5e9 0%, #06b6d4 100%);
+  --mw-cta-solid: #0ea5e9;
+  --mw-cta-ink: #111827;
+  --mw-accent-soft: #e2f1fe;
+  --mw-accent-ink: #0c3f66;
+  --mw-accent-deep: #075985;
+}
+html[data-mw-accent="dash"] {
+  --mw-cta-grad: linear-gradient(110deg, #3969e7 0%, #7d2ae7 100%);
+  --mw-cta-solid: #3969e7;
+  --mw-cta-ink: #ffffff;
+  --mw-accent-soft: #e9edff;
+  --mw-accent-ink: #2e377f;
+  --mw-accent-deep: #2b3a9e;
+}
+
+/* 소비되지 않은 팔레트 토큰(정의만, 실제 라우트 미배선: s3 로즈·허니·파트너·뉴스).
+   운영 라우트가 생기기 전에는 어떤 선택자도 참조하지 않는다. */
+html[data-mw-accent] {
+  --mw-palette-s3rose: linear-gradient(310deg, #ef4444 0%, #ec4899 100%);
+  --mw-palette-honey: linear-gradient(310deg, #eab308 0%, #f97316 100%);
+  --mw-palette-partners: linear-gradient(310deg, #7d2ae7 0%, #3969e7 100%);
+  --mw-palette-news: linear-gradient(310deg, #07b9ce 0%, #06b6d4 100%);
+}
+
+/* 회사(워크스페이스) 강조 — RouteAppearance가 저장 프리셋에서 주입한다. */
+html[data-mw-accent] {
+  --mw-company-grad: linear-gradient(310deg, #ef4444 0%, #ec4899 100%);
+  --mw-company-solid: #ef4444;
+}
+
+/* ── 셸 활성 메뉴: 연한 강조 바탕 + 진한 글자 + 3px 그라디언트 밑줄 ──
+   SidebarNav가 인라인으로 var(--mw-nav-active-bg, var(--mw-record)) 를 깔아 두어
+   이 층이 없어도 기존 파랑 폴백으로 보인다. */
+html[data-mw-accent] {
+  --mw-nav-active-bg: var(--mw-accent-soft);
+  --mw-nav-active-fg: var(--mw-accent-ink);
+  --mw-nav-active-bar: var(--mw-cta-grad);
+}
+html[data-mw-accent][data-mw-effects="on"] .mw-nav-active {
+  position: relative;
+  box-shadow: inset 0 -3px 0 0 var(--mw-accent-deep);
+}
+
+/* ── 보드 헤더 정체성: 옅은 강조 워시만, 제목 글자는 잉크 유지 ── */
+html[data-mw-accent][data-mw-effects="on"] [data-visual-block="board-header"] {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--mw-accent-soft) 60%, transparent) 0%, transparent 100%);
+  border-radius: var(--mw-radius);
+}
+
+/* ── 주요 CTA: 명시 속성 단 것만 그라디언트 채움 ──
+   파괴적·비활성·상태 셀은 선택자에서 제외한다. */
+html[data-mw-accent][data-mw-effects="on"] [data-mw-cta="primary"]:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--mw-cta-grad);
+  color: var(--mw-cta-ink);
+  border: 1px solid transparent;
+  border-radius: var(--mw-cta-r, 7px);
+  font-weight: var(--fw-semibold, 600);
+  box-shadow: 0 2px 5px rgba(25, 35, 70, 0.09);
+}
+html[data-mw-accent][data-mw-effects="on"] [data-mw-cta="primary"]:not(:disabled):not([aria-disabled="true"]):hover {
+  box-shadow: 0 3px 8px rgba(25, 35, 70, 0.14);
+  filter: brightness(1.03);
+}
+html[data-mw-accent][data-mw-effects="on"] [data-mw-cta="primary"]:not(:disabled):not([aria-disabled="true"]):focus-visible {
+  outline: 2px solid var(--mw-accent-deep);
+  outline-offset: 2px;
+}
+/* 효과 끔: 같은 자리·같은 글자색의 단색 솔리드로 */
+html[data-mw-accent][data-mw-effects="off"] [data-mw-cta="primary"]:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--mw-cta-solid);
+  color: var(--mw-cta-ink);
+  border: 1px solid transparent;
+  border-radius: var(--mw-cta-r, 7px);
+}
+
+/* ── 워크스페이스 표식: 실제 회사 정체성에 vivid 링 ── */
+html[data-mw-accent][data-mw-effects="on"] [data-workspace-mark] {
+  box-shadow: 0 0 0 2px var(--mw-company-solid);
+}
+
+/* ── 외관 팝오버: R11 ── */
+html[data-mw-accent] [data-mw-appearance-popover] {
+  border-radius: var(--mw-pop-r, 11px);
+}
+
+/* ── 다크: 바탕·표면은 기존 다크 유지, 강조만 vivid ── */
+html[data-mw-accent][data-theme="dark"] {
+  --mw-bg: #111216;
+  --mw-line: #262932;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-mw-accent]:not([data-theme="light"]) {
+    --mw-bg: #111216;
+    --mw-line: #262932;
+  }
+}
+
+/* ── 강제 색상 모드: 시스템 색으로 ── */
+@media (forced-colors: active) {
+  html[data-mw-accent] [data-visual-block="board-header"] {
+    background: none;
+  }
+  html[data-mw-accent] .mw-nav-active {
+    box-shadow: none;
+    outline: 2px solid Highlight;
+  }
+  html[data-mw-accent][data-mw-effects] [data-mw-cta="primary"] {
+    background: ButtonFace;
+    color: ButtonText;
+    border: 1px solid ButtonText;
+    box-shadow: none;
+  }
+  html[data-mw-accent] [data-workspace-mark] {
+    box-shadow: none;
+    outline: 2px solid CanvasText;
+  }
+}
+
+/* ── 모션 감소: 전환 없음 ── */
+@media (prefers-reduced-motion: reduce) {
+  html[data-mw-accent] [data-mw-cta="primary"],
+  html[data-mw-accent] .mw-nav-active {
+    transition: none !important;
+  }
+}
+
+/* ── 인쇄: 그라디언트 잉크 낭비 없이 ── */
+@media print {
+  html[data-mw-accent] [data-mw-cta="primary"] {
+    background: #ffffff !important;
+    color: #111111 !important;
+    border: 1px solid #111111 !important;
+    box-shadow: none !important;
+  }
+  html[data-mw-accent] [data-visual-block="board-header"] {
+    background: none !important;
+  }
+}
+
+/* #761 approved v17: R3 labels / R7 controls / R11 panels; group colors as dots. */
+html[data-mw-accent]{--mw-r-1:3px;--mw-r-2:7px;--mw-r-3:11px;--mw-radius:7px;--mw-group-header-bg:var(--mw-card);--mw-group-rail-width:0px;--mw-group-title-ink:var(--mw-fg)}
+[data-mw-group-color]{display:none}
+html[data-mw-accent] [data-mw-group-color]{display:inline-block;flex:none;width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 1px var(--mw-line)}
+html[data-mw-accent] [data-visual-block="group-table"]{border-radius:7px}
+html[data-mw-accent] [data-visual-block="group-table"]>details>summary{border-radius:7px 7px 0 0;border-bottom:1px solid var(--mw-line)}
+html[data-mw-accent] [data-visual-block="board-header"] h1>span[aria-hidden="true"]{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:7px;background:var(--mw-cta-grad);font-size:16px}
+html[data-mw-accent][data-mw-effects="off"] [data-visual-block="board-header"] h1>span[aria-hidden="true"]{background:var(--mw-cta-solid)}
+@media(forced-colors:active){html[data-mw-accent] [data-mw-group-color]{background:Highlight!important}html[data-mw-accent] [data-visual-block="board-header"] h1>span[aria-hidden="true"]{background:Canvas}}

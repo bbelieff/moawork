@@ -8,6 +8,7 @@ import { cookies } from "next/headers";
 import { visualSetCellAction } from "./actions";
 import { VisualLayerProbe } from "./VisualLayerProbe";
 import { VisualWorkspaceSwitcherProbe } from "./VisualWorkspaceSwitcherProbe";
+import { VisualAppearanceProbe } from "./VisualAppearanceProbe";
 import { VisualThemeProbe } from "./VisualThemeProbe";
 import { AccountHub } from "@/components/account/AccountHub";
 import accountStyles from "@/components/account/account.module.css";
@@ -190,6 +191,7 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
   return (
     <main data-visual-fixture={tab} data-build-sha={process.env.MOAWORK_BUILD_SHA ?? "local"} className={`visual-mutation-${mutation} min-h-screen max-w-full bg-mw-bg p-4`}>
       <VisualThemeProbe theme={theme} />
+      <VisualAppearanceProbe accent={tab} controls={params.appearance === "controls"} />
       <style>{`
         .visual-mutation-settings-bottom [data-visual-block='board-settings'] { order: 99 !important; margin-top: 700px !important; }
         .visual-mutation-split-scroll [data-board-table-format='uniform'] { overflow: auto !important; }
