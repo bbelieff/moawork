@@ -70,6 +70,14 @@ html[data-mw-accent="company"] {
   --mw-accent-ink: #0c3f66;
   --mw-accent-deep: #075985;
 }
+html[data-mw-accent="news"] {
+  --mw-cta-grad: linear-gradient(310deg, #07b9ce 0%, #06b6d4 100%);
+  --mw-cta-solid: #07b9ce;
+  --mw-cta-ink: #111827;
+  --mw-accent-soft: #e2f7f9;
+  --mw-accent-ink: #0c4a56;
+  --mw-accent-deep: #075a68;
+}
 html[data-mw-accent="dash"] {
   --mw-cta-grad: linear-gradient(110deg, #3969e7 0%, #7d2ae7 100%);
   --mw-cta-solid: #3969e7;

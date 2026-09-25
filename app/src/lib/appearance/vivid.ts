@@ -53,6 +53,7 @@ export const ROUTE_ACCENT_FOR_NAV_KEY: Readonly<Record<string, string>> = {
   work: "work",
   company: "company",
   dash: "dash",
+  "policy-news": "news",
 };
 
 /**
@@ -66,6 +67,7 @@ export const ROUTE_CTA: Readonly<Record<string, { grad: string; solid: string; i
   work: { grad: "linear-gradient(310deg, #22c55e 0%, #98ec2d 100%)", solid: "#22c55e", ink: "#111827" },
   company: { grad: "linear-gradient(310deg, #0ea5e9 0%, #06b6d4 100%)", solid: "#0ea5e9", ink: "#111827" },
   dash: { grad: "linear-gradient(110deg, #3969e7 0%, #7d2ae7 100%)", solid: "#3969e7", ink: "#ffffff" },
+  news: { grad: "linear-gradient(310deg, #07b9ce 0%, #06b6d4 100%)", solid: "#07b9ce", ink: "#111827" },
 };
 
 /**
@@ -76,7 +78,6 @@ export const UNWIRED_PALETTE: Readonly<Record<string, { grad: string; reason: st
   s3rose: { grad: "linear-gradient(310deg, #ef4444 0%, #ec4899 100%)", reason: "독립 대면(s3) 라우트 없음 — 발명하지 않음" },
   honey: { grad: "linear-gradient(310deg, #eab308 0%, #f97316 100%)", reason: "대응 운영 탭 없음 — 토큰만 정의" },
   partners: { grad: "linear-gradient(310deg, #7d2ae7 0%, #3969e7 100%)", reason: "파트너 기능 제외(사용자 지시) — 미배선" },
-  news: { grad: "linear-gradient(310deg, #07b9ce 0%, #06b6d4 100%)", reason: "대응 운영 탭 없음 — 토큰만 정의" },
 };
 
 /** nav key → 강조. 모르는 키·미구현 메뉴는 null(호출부가 dash 폴백). */

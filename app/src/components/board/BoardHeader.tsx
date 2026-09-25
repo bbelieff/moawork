@@ -18,6 +18,11 @@ import type { BoardGroup } from "@/lib/boards/types";
 import { addItemAction } from "@/app/(app)/boards/actions";
 import { renameBoardTitleAction } from "@/app/(app)/boards/title-actions";
 import { BoardInlineTitleEditor } from "./BoardInlineTitleEditor";
+import { Icon } from "@/components/shell/icons";
+
+const DEFAULT_BOARD_ICONS: Readonly<Record<string, string>> = {
+  "💡": "new", "💰": "contact", "🔁": "work", "📢": "notice", "📞": "contact", "📍": "meeting",
+};
 
 export function BoardHeader({
   boardId,
@@ -71,7 +76,7 @@ export function BoardHeader({
         {backSlot}
 
         <h1 className="flex shrink-0 items-center gap-1.5 text-lg font-semibold text-mw-fg">
-          {icon && <span aria-hidden="true">{icon}</span>}
+          {icon && <span aria-hidden="true">{DEFAULT_BOARD_ICONS[icon] ? <Icon name={DEFAULT_BOARD_ICONS[icon]} /> : icon}</span>}
           {canEditTitle?<BoardInlineTitleEditor name={name} label="보드 이름" onSave={(value)=>renameBoardTitleAction(boardId,value)}/>:<span>{name}</span>}
         </h1>
         {helpSlot}
