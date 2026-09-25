@@ -169,10 +169,12 @@ export function SidebarNav({
         href={resolvedHref!}
         aria-disabled={isLocked ? "true" : undefined}
         aria-current={active ? "page" : undefined}
-        className={`${base} w-full ${active ? "font-semibold" : "hover:bg-[var(--mw-bg)]"} ${isLocked ? "cursor-help" : ""}`}
+        className={`${base} w-full ${active ? "mw-nav-active font-semibold" : "hover:bg-[var(--mw-bg)]"} ${isLocked ? "cursor-help" : ""}`}
         style={
           active
-            ? { ...baseStyle, background: "var(--mw-record)", color: "var(--mw-on-accent)" }
+            // v17 vivid가 --mw-nav-active-* 로 덮는다. 폴백은 기존 파랑 그대로라
+            // vivid층이 없어도 색 구분이 깨지지 않는다.
+            ? { ...baseStyle, background: "var(--mw-nav-active-bg, var(--mw-record))", color: "var(--mw-nav-active-fg, var(--mw-on-accent))" }
             : { ...baseStyle, color: isLocked ? "var(--mw-sub)" : "var(--mw-fg)" }
         }
       >

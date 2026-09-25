@@ -99,15 +99,16 @@ export function GroupBlock({
           } : undefined}
           className={`flex select-none items-center gap-2 rounded-t-xl px-3 py-2 list-none [&::-webkit-details-marker]:hidden ${onOrderDragStart?"cursor-grab active:cursor-grabbing":"cursor-pointer"} ${dropState==="valid"?"border-t-2 border-mw-record bg-mw-tint-blue":dropState==="invalid"?"cursor-not-allowed":""}`}
           style={{
-            backgroundColor: `color-mix(in srgb, ${accent} 14%, var(--mw-card))`,
-            borderLeft: `3px solid ${accent}`,
+            backgroundColor: `var(--mw-group-header-bg, color-mix(in srgb, ${accent} 14%, var(--mw-card)))`,
+            borderLeft: `var(--mw-group-rail-width, 3px) solid ${accent}`,
           }}
         >
           <span className="sr-only" aria-live="polite">{dropState==="invalid"?"같은 그룹 위치에는 놓을 수 없어요.":dropState==="valid"?"이 위치로 그룹을 이동합니다.":""}</span>
           <span aria-hidden="true" className="text-[0.6rem] text-mw-sub">
             {open ? "▼" : "▶"}
           </span>
-          <span className="min-w-0 text-sm font-semibold" style={{ color: accent }}>
+          <span data-mw-group-color aria-hidden="true" style={{ backgroundColor: accent }} />
+          <span className="min-w-0 text-sm font-semibold" style={{ color: `var(--mw-group-title-ink, ${accent})` }}>
             {nameEditor ?? name}
           </span>
           <span className="rounded-full bg-mw-card px-2 py-0.5 text-[0.65rem] text-mw-sub">

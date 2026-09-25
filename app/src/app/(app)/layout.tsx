@@ -4,6 +4,8 @@ import { headers } from "next/headers";
 import { getSession } from "@/lib/auth/session";
 import { Logo } from "@/components/brand/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { AppearanceControl } from "@/components/appearance/AppearanceControl";
+import { RouteAppearance } from "@/components/appearance/RouteAppearance";
 import { SidebarNav } from "@/components/shell/SidebarNav";
 import { IconSprite } from "@/components/shell/icons";
 import { GlobalSearch } from "@/components/shell/GlobalSearch";
@@ -76,6 +78,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const logoHref = currentWorkspace.length === 1
     ? `/w/${currentWorkspace[0].slug}`
     : "/workspaces";
+  // v17 vivid 라우트 강조가 읽는 검증된 네임스페이스 — SidebarNav와 같은 값이다.
+  const workspaceBasePath = currentWorkspace.length === 1
+    ? `/w/${currentWorkspace[0].slug}`
+    : undefined;
   const trustedOwnerOrgId = ctx.role === "owner" ? ctx.org.id : undefined;
   const features = Array.from(
     new Set(
@@ -140,6 +146,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       />
       {/* IconSprite 는 한 번만 마운트 — Icon 이 <use href="#i-…"> 로 여기 심볼을 참조한다. */}
       <IconSprite />
+      {/* v17 vivid 라우트 팔레트·외관 배선 — DOM을 그리지 않는다. */}
+      <RouteAppearance boardNavKeys={boardNavKeys} basePath={workspaceBasePath} />
       {/* ── 사이드바 ── */}
       <aside
         className="mw-layer-shell relative flex h-auto w-full flex-none flex-col border-b px-[var(--sp-3)] py-[var(--sp-3)] md:fixed md:inset-y-0 md:left-0 md:h-dvh md:w-[var(--mw-shell-nav-w)] md:overflow-visible md:border-b-0 md:border-r md:py-[var(--sp-4)]"
@@ -160,7 +168,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
         <div className="flex min-h-0 flex-1 flex-col">
           <SidebarNav
-            workspaceBasePath={currentWorkspace.length === 1 ? `/w/${currentWorkspace[0].slug}` : undefined}
+            workspaceBasePath={workspaceBasePath}
             boardNavKeys={boardNavKeys}
             lockedFeatures={lockedFeatures}
             badges={workspaceApprovals
@@ -255,6 +263,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
                 모바일(375px)에서도 알림을 확인해야 하므로 sm 미만 숨김은 걷어낸다. */}
             <NotificationBell initial={notify} />
             <ThemeToggle />
+            <AppearanceControl />
             <AccountMenu
               displayName={account.displayName}
               loginEmail={account.loginEmail}

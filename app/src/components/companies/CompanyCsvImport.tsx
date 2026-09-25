@@ -150,7 +150,7 @@ export function CompanyCsvImport({
             다시 고르기
           </button>
           <button type="button" onClick={close} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium dark:border-zinc-700">닫기</button>
-          <button type="button" onClick={submit} disabled={busy || rows.length === 0} className="rounded-lg bg-mw-primary px-3 py-2 text-sm font-semibold text-mw-on-accent disabled:opacity-40">
+          <button type="button" onClick={submit} disabled={busy || rows.length === 0} data-mw-cta="primary" className="rounded-lg bg-mw-primary px-3 py-2 text-sm font-semibold text-mw-on-accent disabled:opacity-40">
             {busy ? "가져오는 중…" : "가져오기"}
           </button>
         </div>

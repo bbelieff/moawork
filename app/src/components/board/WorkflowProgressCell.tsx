@@ -110,7 +110,7 @@ export function WorkflowProgressCell({
               <input type="hidden" name="columnKey" value={spec.stageColumnKey} />
               <input type="hidden" name="value" value={spec.transitionValue ?? ""} />
               <button type="button" onClick={() => dialog.current?.close()} className="h-10 rounded-lg border border-mw-line px-4 text-sm font-semibold text-mw-body">취소</button>
-              <button type="submit" className="h-10 rounded-lg bg-mw-primary px-4 text-sm font-semibold text-mw-on-accent">{spec.transitionLabel}</button>
+              <button type="submit" data-mw-cta="primary" className="h-10 rounded-lg bg-mw-primary px-4 text-sm font-semibold text-mw-on-accent">{spec.transitionLabel}</button>
             </form>
           ) : kind === "contact" ? (
             dialogOpen
@@ -119,7 +119,7 @@ export function WorkflowProgressCell({
           ) : (
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={() => dialog.current?.close()} className="h-10 rounded-lg border border-mw-line px-4 text-sm font-semibold text-mw-body">취소</button>
-              <Link href={spec.targetHref} className="inline-flex h-10 items-center rounded-lg bg-mw-primary px-4 text-sm font-semibold text-mw-on-accent">{spec.transitionLabel}</Link>
+              <Link href={spec.targetHref} data-mw-cta="primary" className="inline-flex h-10 items-center rounded-lg bg-mw-primary px-4 text-sm font-semibold text-mw-on-accent">{spec.transitionLabel}</Link>
             </div>
           )}
         </div>
