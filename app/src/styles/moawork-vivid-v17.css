@@ -109,7 +109,7 @@ html[data-mw-accent][data-mw-effects="on"] .mw-nav-active {
 
 /* ── 보드 헤더 정체성: 옅은 강조 워시만, 제목 글자는 잉크 유지 ── */
 html[data-mw-accent][data-mw-effects="on"] [data-visual-block="board-header"] {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--mw-accent-soft) 60%, transparent) 0%, transparent 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--mw-accent-soft) var(--mw-header-wash, 60%), transparent) 0%, transparent 100%);
   border-radius: var(--mw-radius);
 }
 
@@ -151,11 +151,13 @@ html[data-mw-accent] [data-mw-appearance-popover] {
 
 /* ── 다크: 바탕·표면은 기존 다크 유지, 강조만 vivid ── */
 html[data-mw-accent][data-theme="dark"] {
+  --mw-header-wash: 6%;
   --mw-bg: #111216;
   --mw-line: #262932;
 }
 @media (prefers-color-scheme: dark) {
   html[data-mw-accent]:not([data-theme="light"]) {
+    --mw-header-wash: 6%;
     --mw-bg: #111216;
     --mw-line: #262932;
   }

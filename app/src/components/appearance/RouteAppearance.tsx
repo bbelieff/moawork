@@ -19,9 +19,11 @@ import {
 
 /** 같은 탭의 AppearanceControl·RouteAppearance가 저장 변경을 나누는 채널. */
 export const APPEARANCE_CHANGE_EVENT = "moawork:appearance-change";
+let sessionPreference: AppearancePreference | null = null;
 
 /** 본인 외관 설정 읽기 — 실패하면 기본값, 던지지 않는다. */
 export function readAppearancePreference(): AppearancePreference {
+  if (sessionPreference) return { ...sessionPreference };
   try {
     return parseAppearanceStorageText(window.localStorage.getItem(APPEARANCE_STORAGE_KEY));
   } catch {
@@ -47,8 +49,10 @@ export function storeAppearancePreference(pref: AppearancePreference): Appearanc
   const clean = parseAppearancePreference(pref);
   try {
     window.localStorage.setItem(APPEARANCE_STORAGE_KEY, serializeAppearancePreference(clean));
+    sessionPreference = null;
   } catch {
-    // 프라이빗 모드 등 저장 실패 — 이번 세션 화면에만 반영하고 조용히 넘어간다.
+    // 저장이 막힌 경우에도 같은 탭의 설정과 화면은 일치해야 한다.
+    sessionPreference = clean;
   }
   applyAppearancePreference(clean);
   window.dispatchEvent(new CustomEvent(APPEARANCE_CHANGE_EVENT));
@@ -80,6 +84,7 @@ export function RouteAppearance({
       }));
     const active = resolveActiveNavKey(pathname ?? "", candidates, { basePath, boardNavKeys });
     document.documentElement.setAttribute("data-mw-accent", resolveRouteAccent(active));
+    return () => document.documentElement.removeAttribute("data-mw-accent");
   }, [pathname, boardNavKeys, basePath]);
 
   useEffect(() => {
