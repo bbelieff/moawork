@@ -888,6 +888,50 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
       "restoreDetailPanelOpener(open, wasOpenRef.current, triggerRef.current)",
     );
   });
+
+  it("v17-detail 증빙 묶음·메모 고치기·시도 추천 입력을 렌더한다", () => {
+    const regionColumns: BoardColumn[] = [
+      { ...columns[0], id: "col-sido", key: "sido", label: "시도", type: "select" },
+    ];
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={{ ...row, values: { sido: "서울" } }}
+        columns={regionColumns}
+        boardLayout={[{ key: "sido", source: "column" }]}
+        layout={[{ key: "sido", source: "column" }]}
+        inherited
+        canEditItems
+        canManageColumns={false}
+        defaultOpen
+        initialDetail={{
+          ok: true,
+          events: [
+            { id: "evt-1", kind: "memo", body: "첫 메모", actor_id: "user-a", created_at: "2026-09-20T00:00:00Z" },
+            { id: "evt-2", kind: "memo", body: "고친 메모", actor_id: "user-a", created_at: "2026-09-21T00:00:00Z", edited_at: "2026-09-22T00:00:00Z", edit_count: 1 },
+          ],
+          links: [],
+          files: [
+            { id: "f-1", name: "사업자등록증.pdf", mime_type: "application/pdf", size_bytes: 2048, created_at: "2026-09-22T00:00:00Z", downloadUrl: "https://example.invalid/dl" },
+          ],
+          members: [{ id: "user-a", name: "담당자 A" }],
+          viewerId: "user-a",
+          viewerRole: "member",
+          assignedTo: "user-a",
+        }}
+      />,
+    );
+    // 증빙: 묶음 제목·다중 선택 input·내려받기. 폴더 연결은 건드리지 않는다.
+    expect(html).toContain("증빙 파일");
+    expect(html).toContain('id="item-a-evidence-files"');
+    expect(html).toContain("사업자등록 1개");
+    expect(html).toContain("https://example.invalid/dl");
+    // 메모: 본인 줄에만 고치기, 고친 줄에는 고침 표시.
+    expect(html).toContain("메모 기록 고치기");
+    expect(html).toContain("고침");
+    // 지역: 시도 추천 입력이 자동저장 입력 대신 렌더된다.
+    expect(html).toContain('name="item-a-sido-region"');
+  });
 });
 
 it("히스토리는 대화와 실제 변경을 기본으로 보여 주고 전체 기록에서 최초 입력을 확인한다", async () => {

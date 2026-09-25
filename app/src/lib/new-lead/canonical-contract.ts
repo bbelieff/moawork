@@ -1,5 +1,6 @@
 export const NEW_LEAD_RPC = {
   create: "create_new_lead",
+  createWithFoundedMonth: "create_new_lead_with_founded_month",
   update: "update_new_lead_fields",
   updateTitle: "update_new_lead_title",
   updateMeta: "update_new_lead_intake_meta",
@@ -55,6 +56,9 @@ export type CreateNewLeadRow = Readonly<{
   item_id: string;
   replayed: boolean;
 }>;
+
+export type CreateNewLeadWithFoundedMonthArgs = CreateNewLeadArgs &
+  Readonly<{ p_founded_month?: string | null }>;
 
 export type UpdateNewLeadArgs = Readonly<{
   p_org_id: string;
