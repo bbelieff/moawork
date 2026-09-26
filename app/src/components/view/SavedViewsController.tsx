@@ -187,8 +187,8 @@ export function SavedViewsController({
   const config = activeSaved?.config ?? currentConfig();
   const personColumnKey = displayColumns.find((column) => column.type === "person")?.key ?? null;
   const personScopedRows = useMemo(
-    () => applySavedPersonScope(rows, activeSaved, currentUserId, personColumnKey, teamMemberIds),
-    [rows, activeSaved, currentUserId, personColumnKey, teamMemberIds],
+    () => applySavedPersonScope(rows, activeSaved, currentUserId, personColumnKey, teamMemberIds, canonicalNewLead),
+    [rows, activeSaved, currentUserId, personColumnKey, teamMemberIds, canonicalNewLead],
   );
   const filterProjection = canonicalNewLead ? NEW_LEAD_SAVED_FILTER_PROJECTION : undefined;
   const filteredRows = useMemo(

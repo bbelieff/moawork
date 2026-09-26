@@ -272,7 +272,7 @@ export default async function BoardPage({
     },
   );
   const personColumnKey = columns.find((column) => column.type === "person")?.key ?? null;
-  const items = applySavedPersonScope(permissionItems, personRuntime.view, ctx.user.id, personColumnKey, personRuntime.memberIds);
+  const items = applySavedPersonScope(permissionItems, personRuntime.view, ctx.user.id, personColumnKey, personRuntime.memberIds, board.source === NEW_LEAD_TAB_SOURCE);
   const hiddenCount = boardItems.length - permissionItems.length;
   /*
    * 상담 단계 보기(?consultation=remote|inperson) — STEP2·STEP3 탭의 자리다.
