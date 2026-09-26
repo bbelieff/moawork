@@ -32,7 +32,7 @@ export type SelectableDetailEventKind =
   (typeof SELECTABLE_DETAIL_EVENT_KINDS)[number];
 
 /** 배지에 뜨는 성격 — 고를 수 있는 넷 + 시스템이 남기는 하나. */
-export type DetailEventKind = SelectableDetailEventKind | "field_change";
+export type DetailEventKind = SelectableDetailEventKind | "field_change" | "consultation";
 
 const LABELS: Record<DetailEventKind, string> = {
   memo: "메모",
@@ -40,6 +40,7 @@ const LABELS: Record<DetailEventKind, string> = {
   admin: "행정",
   meeting: "미팅",
   field_change: "자동",
+  consultation: "상담",
 };
 
 export function isSelectableDetailEventKind(

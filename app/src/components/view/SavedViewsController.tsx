@@ -31,6 +31,7 @@ import { addBoardLabelOptionAction } from "@/app/(app)/boards/label-option-actio
 import { moveRowAction,reorderGroupsAction } from "@/app/(app)/boards/actions";
 import type { BoardGroup } from "@/lib/boards/types";
 import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
+import { workflowKindForSource } from "@/lib/workflow/progress";
 
 type SaveEvent = CustomEvent<{ version?: number; filters?: BoardFilterState }>;
 
@@ -283,7 +284,7 @@ export function SavedViewsController({
         if (column.key === "__selection") return cell(row);
         if (column.key === "__title") return <span className="flex items-center gap-1">{row.title}{rowMoveControls(row)}</span>;
         const definition = displayColumns.find((candidate) => candidate.key === column.key);
-        return definition ? <BoardCell boardId={boardId} row={row} column={definition} readOnly={!canEditItems} canonicalNewLead={canonicalNewLead} members={memberOptions} canCreateColumnOptions={canManageColumns && !isSystem} addLabelOptionAction={addBoardLabelOptionAction} /> : "";
+        return definition ? <BoardCell boardId={boardId} row={row} column={definition} readOnly={!canEditItems} canonicalNewLead={canonicalNewLead} canonicalOwner={workflowKindForSource(boardSource ?? null) !== null} members={memberOptions} canCreateColumnOptions={canManageColumns && !isSystem} addLabelOptionAction={addBoardLabelOptionAction} /> : "";
       }} />}
       </SavedTableSelection> : null}
       {renderMode === "calendar" ? <>

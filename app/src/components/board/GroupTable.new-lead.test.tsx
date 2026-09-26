@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GroupTable } from "./GroupTable";
+import { BoardCell, GroupTable } from "./GroupTable";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { newLeadPresentationKey, presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
 
@@ -12,6 +12,26 @@ import { newLeadPresentationKey, presentNewLeadColumns } from "@/lib/default-tab
 
 afterEach(() => {
   document.body.replaceChildren();
+});
+
+describe("canonical work/contact ownership",()=>{
+  it.each(["work","contact"] as const)("%s uses assigned_to, never absent/stale owner EAV",(kind)=>{
+    for(const owner of [undefined,"stale"]){
+      const html=renderToStaticMarkup(<BoardCell boardId="board-a" column={columns[0]} row={{...row,assigned_to:"actor",values:{owner:owner??null}}}
+        readOnly={false} workflowProgressKind={kind} members={[{id:"actor",label:"현재 담당"},{id:"stale",label:"이전 담당"}]}/>);
+      expect(html).toContain("현재 담당"); expect(html).not.toContain("미배정");
+      expect(html).not.toContain('name="kind" value="person"');
+      expect(html).toContain('aria-haspopup="dialog"');
+    }
+  });
+  it("null canonical owner stays unassigned despite stale EAV; custom person still uses its own value",()=>{
+    const canonical=renderToStaticMarkup(<BoardCell boardId="board-a" column={columns[0]} row={{...row,assigned_to:null,values:{owner:"actor"}}}
+      readOnly workflowProgressKind="work" members={[{id:"actor",label:"이전 담당"}]}/>);
+    expect(canonical).toContain("미배정");expect(canonical).not.toContain("이전 담당");
+    const custom=renderToStaticMarkup(<BoardCell boardId="board-a" column={columns[0]} row={{...row,assigned_to:"other",values:{owner:"actor"}}}
+      readOnly={false} members={[{id:"actor",label:"사용자 지정 담당"}]}/>);
+    expect(custom).toContain("사용자 지정 담당");expect(custom).toContain('name="kind" value="person"');
+  });
 });
 
 const keys = [

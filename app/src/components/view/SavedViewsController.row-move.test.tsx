@@ -17,6 +17,15 @@ afterEach(async()=>{actions.moveRowAction.mockReset();vi.unstubAllGlobals();if(r
 async function mount(version=2){const host=document.createElement("div");document.body.append(host);root=createRoot(host);await act(async()=>{root?.render(<SavedViewsController boardId="board-1" orgId="org-1" currentUserId="user-1" rows={rows as never} groups={[group as never]} renderMode="flat" canEditItems canMoveRows rowOrderVersion={version}/>);await Promise.resolve();});return host;}
 
 describe("#602 flat atomic row move",()=>{
+  it("work flat view forwards canonical ownership without reading stale person EAV",async()=>{
+    const owner={id:"owner",org_id:"org-1",board_id:"board-1",key:"owner",label:"담당자",type:"person",source:"act",rightPinned:false,options_jsonb:null,width:120,sort_order:0};
+    const host=document.createElement("div");document.body.append(host);root=createRoot(host);
+    await act(async()=>{root?.render(<SavedViewsController boardId="board-1" orgId="org-1" currentUserId="actor"
+      boardSource="core.default-tab/contract-work" columns={[owner as never]} rows={[{...rows[0],assigned_to:"actor",deal_id:"deal-1",values:{owner:"stale"}}] as never}
+      memberOptions={[{id:"actor",label:"현재 담당"},{id:"stale",label:"이전 담당"}]} renderMode="flat" canEditItems/>);await Promise.resolve();});
+    expect(host.textContent).toContain("현재 담당");expect(host.textContent).not.toContain("미배정");
+    expect(host.querySelector('input[name="kind"][value="person"]')).toBeNull();
+  });
   it("retains the exact request id after an unknown result and consumes the returned version",async()=>{
     actions.moveRowAction.mockRejectedValueOnce(new Error("response lost")).mockResolvedValueOnce({ok:true,version:8,replayed:true}).mockResolvedValueOnce({ok:true,version:9,replayed:false});
     const host=await mount();const down=()=>host.querySelector<HTMLButtonElement>('[aria-label="A 아래로 이동"]')!;

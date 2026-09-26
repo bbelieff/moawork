@@ -190,6 +190,7 @@ export function BoardCell({
   column,
   readOnly,
   canonicalNewLead,
+  canonicalOwner = false,
   members = [],
   error,
   workflowProgressKind,
@@ -206,6 +207,7 @@ export function BoardCell({
   column: BoardColumn;
   readOnly: boolean;
   canonicalNewLead?: boolean;
+  canonicalOwner?: boolean;
   members?: readonly { id: string; label: string }[];
   error?: string | null;
   workflowProgressKind?: WorkflowProgressKind | null;
@@ -367,7 +369,7 @@ export function BoardCell({
     );
   }
 
-  if (canonicalNewLead && column.key === "owner") {
+  if ((canonicalNewLead || canonicalOwner || workflowProgressKind === "contact" || workflowProgressKind === "work") && column.key === "owner") {
     if (!row.deal_id) {
       return <span title={title} className="block"><StatusCell value={row.assigned_to} options={options} /></span>;
     }

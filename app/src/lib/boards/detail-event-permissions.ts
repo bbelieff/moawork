@@ -40,6 +40,7 @@ export function canRemoveDetailEvent(
   event: RemovableDetailEvent,
   viewer: DetailEventViewer,
 ): boolean {
+  if (event.kind === "consultation") return false;
   const { viewerId, viewerRole, assignedTo } = viewer;
   if (!viewerId) return false;
 
@@ -72,7 +73,7 @@ export function canEditDetailEvent(
   event: RemovableDetailEvent,
   viewer: DetailEventViewer,
 ): boolean {
-  if (event.kind === "field_change") return false;
+  if (event.kind === "field_change" || event.kind === "consultation") return false;
   const { viewerId, viewerRole } = viewer;
   if (!viewerId) return false;
   if (viewerRole === "owner") return true;

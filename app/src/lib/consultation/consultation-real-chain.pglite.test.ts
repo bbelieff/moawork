@@ -103,6 +103,25 @@ let sharedDb: PGlite;
 beforeAll(async () => { sharedDb = new PGlite(); await sharedDb.waitReady; });
 afterAll(async () => { await sharedDb?.close(); });
 
+it("work-board audit remains readable through real151 RLS, never writable or visible to another assignee",async()=>{
+  const db=await setup(); await asUser(db,ids.owner);
+  const version=await completeChecks(db,ids.item,"work-feed");
+  await db.exec(`update boards set source='core.default-tab/contract-work' where id='${ids.board}';
+    update deals set stage_id='${ids.work}' where id='${ids.deal}';
+    grant usage on schema auth to authenticated;
+    grant select on items to authenticated;
+    set role authenticated;`);
+  try {
+    await asUser(db,ids.assignee);
+    expect((await db.query(`select * from consultation_events where org_id='${ids.org}' and item_id='${ids.item}'`)).rows).toHaveLength(4);
+    await expect(db.query(`delete from consultation_events where item_id='${ids.item}'`)).rejects.toMatchObject({code:"42501"});
+    await expect(check(db,ids.item,"work-feed-edit","deposit_confirmed",false,version)).rejects.toThrow();
+    await asUser(db,ids.stranger);
+    expect((await db.query(`select * from consultation_events where org_id='${ids.org}' and item_id='${ids.item}'`)).rows).toHaveLength(0);
+  } finally { await db.exec("reset role"); }
+  expect((await db.query(`select count(*)::int n from consultation_events where item_id='${ids.item}'`)).rows[0]).toEqual({n:4});
+});
+
 async function setup(withWorkflow = true): Promise<PGlite> {
   const db = sharedDb;
     // Reuse only the WASM engine. Every test still installs the real SQL on a
