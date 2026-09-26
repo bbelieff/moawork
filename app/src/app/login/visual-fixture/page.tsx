@@ -5,6 +5,7 @@ import type { Board, BoardColumn, BoardGroup, ItemWithValues } from "@/lib/board
 import { VisualSettingsSlot } from "./VisualSettingsSlot";
 import { NewLeadOnboarding } from "@/components/board/NewLeadOnboarding";
 import { cookies } from "next/headers";
+import { VisualCompaniesProbe } from "./VisualCompaniesProbe";
 import { visualSetCellAction } from "./actions";
 import { VisualLayerProbe } from "./VisualLayerProbe";
 import { VisualWorkspaceSwitcherProbe } from "./VisualWorkspaceSwitcherProbe";
@@ -78,6 +79,7 @@ function fixture(tabKey: string, workflowValue: string | null, showAllGroups = f
 
 export default async function VisualFixturePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
+  if (params.surface === "companies") return <VisualCompaniesProbe />;
   if (params.surface === "notifications") {
     return <main className="min-h-screen bg-mw-bg p-4"><NotificationCenterFixture /></main>;
   }

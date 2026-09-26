@@ -237,7 +237,7 @@ export function RegionCombobox({ name, label, value, onValue, suggestions, disab
     <label className="relative grid gap-1 text-xs text-mw-sub">
       {label}
       <input ref={inputRef} name={name} value={value} disabled={disabled} autoComplete="off"
-        aria-invalid={invalid}
+        aria-label={label} aria-invalid={invalid}
         role="combobox" aria-expanded={open && visible.length > 0} aria-controls={listId}
         aria-autocomplete="list" aria-activedescendant={open && visible[active] ? `${listId}-${active}` : undefined}
         onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 120)}

@@ -82,6 +82,20 @@ export interface SetCellsResult {
   undo: CellEditUndo | null;
 }
 
+/** strict 쌍원자 저장의 실제 커밋 범위 — touch 실패처럼 값은 반영됐는데 후처리가 실패한 경우를 꾸미지 않기 위함. */
+export type StrictCellCommit = "none" | "partial" | "all" | "unknown";
+
+export interface SetCellsStrictResult extends SetCellsResult {
+  /**
+   * 이번 호출로 실제로 반영된 범위. `none` 일 때만 "저장하지 않음"이라 말한다.
+   * `unknown` 은 쓰기 자체는 성공했으나 최종 재조회가 안 돼 반영을 확인하지 못한
+   * 경우다 — 저장 거부(none/partial)와 post-commit 확인불가를 구분한다.
+   */
+  committed: StrictCellCommit;
+  /** 커밋 범위가 `all` 이 아니거나 쓰기 후 확인에 실패했을 때의 설명. */
+  commitDetail: string | null;
+}
+
 /** 보드 화면 한 번을 그리는 데 필요한 읽기 스냅샷. */
 export interface BoardPageSnapshot {
   detail: BoardDetail;
@@ -448,6 +462,178 @@ export class BoardsService {
     } else await repo.setValues(ctx, itemId, values);
 
     return { item: await this.getItem(ctx, boardId, itemId), errors, undo };
+  }
+
+  /**
+   * 쌍원자 저장 — 지역 쌍처럼 "둘 다 아니면 둘 다 아니다"가 필요한 자리 전용.
+   * 기존 `setCells()` 의 부분저장 계약은 그대로 둔다(관대 정책 유지).
+   *
+   * 첫 쓰기 전에 끝내는 검사: 요청키 누락·컬럼 미존재·readonly·source·값 검증
+   * errors. 하나라도 실패하면 쓰지 않는다. 쓰기는 `repo.setValues` 단일
+   * upsert(이동이 있으면 기존 `setValuesAndMoveAtomic` RPC)로 한 번만 나간다.
+   *
+   * 쓰기 호출이 실패하면 재조회로 실제 반영 범위를 가려 `committed` 에 담는다.
+   * 값은 이미 반영됐는데 `items.updated_at` touch 같은 후처리가 실패한 경우를
+   * "둘 다 미저장"이라 꾸미지 않고, 실패한 후처리를 무시해 성공으로 돌리지도
+   * 않는다 — 범위를 분명히 한 errors 로 닫는다.
+   */
+  async setCellsStrict(
+    ctx: Ctx,
+    boardId: string,
+    itemId: string,
+    patch: Record<string, CellValue>,
+    requestId = crypto.randomUUID(),
+    requiredKeys: readonly string[] = [],
+  ): Promise<SetCellsStrictResult> {
+    const detail = await this.requireEditableBoardDetail(ctx, boardId);
+    const before = await this.getItem(ctx, boardId, itemId);
+    const byKey = new Map(detail.columns.map((c) => [c.key, c]));
+    const preErrors: CellError[] = [];
+
+    for (const required of requiredKeys) {
+      if (!(required in patch)) {
+        const col = byKey.get(required);
+        preErrors.push({
+          key: required,
+          label: col?.label ?? required,
+          message: "함께 저장할 값이 빠져 저장하지 않았습니다",
+        });
+      }
+    }
+    for (const key of Object.keys(patch)) {
+      if (!byKey.has(key)) {
+        preErrors.push({ key, label: key, message: "컬럼을 찾을 수 없어 저장하지 않았습니다" });
+      }
+    }
+    if (preErrors.length > 0) {
+      return { item: before, errors: preErrors, undo: null, committed: "none", commitDetail: null };
+    }
+
+    // 무결성 필드 throw 는 여기서 나간다 — 아직 쓰지 않았으므로 원자성이 깨지지 않는다.
+    const { values, errors } = this.validateValues(detail.columns, patch, true);
+    if (errors.length > 0) {
+      return { item: before, errors, undo: null, committed: "none", commitDetail: null };
+    }
+    const writtenKeys = Object.keys(values);
+    if (writtenKeys.length === 0) {
+      return { item: before, errors, undo: null, committed: "none", commitDetail: null };
+    }
+
+    const beforeValues = (await this.getItem(ctx, boardId, itemId)).values;
+    const undo: CellEditUndo = {
+      values: Object.fromEntries(writtenKeys.map((k) => [k, beforeValues[k] ?? null])),
+      group_id: before.group_id,
+    };
+
+    let target: string | null = null;
+    for (const key of writtenKeys) {
+      const resolved = resolveMoveTarget(byKey.get(key)!, values[key]);
+      if (resolved !== null) target = resolved;
+    }
+    const repo = await this.repo;
+    try {
+      if (target !== null && target !== before.group_id) {
+        await repo.setValuesAndMoveAtomic(ctx, boardId, {
+          itemId,
+          targetGroupId: target,
+          beforeItemId: null,
+          expectedVersion: detail.board.row_order_version ?? 0,
+          requestId,
+          values,
+        });
+      } else {
+        await repo.setValues(ctx, itemId, values);
+      }
+    } catch (error) {
+      // 쓰기 실패 뒤 실제 반영 범위를 재조회로 가린다 — 추측으로 "미저장"이라 하지 않는다.
+      let reread: ItemWithValues;
+      try {
+        reread = await this.getItem(ctx, boardId, itemId);
+      } catch {
+        const message = "저장 결과를 확인하지 못했습니다. 화면을 새로고침한 뒤 다시 시도해 주세요.";
+        return {
+          item: before,
+          errors: writtenKeys.map((key) => ({ key, label: byKey.get(key)?.label ?? key, message })),
+          undo: null,
+          committed: "unknown",
+          commitDetail: message,
+        };
+      }
+      const appliedKeys = writtenKeys.filter(
+        (key) => compareCells(reread.values[key] ?? null, values[key] ?? null) === 0,
+      );
+      const committed: StrictCellCommit =
+        appliedKeys.length === 0 ? "none" : appliedKeys.length === writtenKeys.length ? "all" : "partial";
+      const scope =
+        committed === "all"
+          ? "값은 저장됐으나 마무리 확인에 실패했습니다"
+          : committed === "partial"
+            ? `일부 값만 저장됐습니다(${appliedKeys.length}/${writtenKeys.length})`
+            : "저장하지 못했습니다";
+      const detailMessage = error instanceof Error && error.message ? ` (${error.message})` : "";
+      const message = `${scope}${detailMessage} 화면을 새로고침해 확인해 주세요.`;
+      const failedKeys = writtenKeys.filter((key) => !appliedKeys.includes(key));
+      const scopeErrors: CellError[] =
+        committed === "none"
+          ? writtenKeys.map((key) => ({
+              key,
+              label: byKey.get(key)?.label ?? key,
+              message,
+            }))
+          : [
+              {
+                key: (failedKeys[0] ?? appliedKeys[0] ?? writtenKeys[0]) as string,
+                label: byKey.get((failedKeys[0] ?? appliedKeys[0] ?? writtenKeys[0]) as string)?.label ??
+                  ((failedKeys[0] ?? appliedKeys[0] ?? writtenKeys[0]) as string),
+                message,
+              },
+            ];
+      return {
+        item: reread,
+        errors: scopeErrors,
+        undo: appliedKeys.length > 0
+          ? {
+              values: Object.fromEntries(appliedKeys.map((k) => [k, beforeValues[k] ?? null])),
+              group_id: before.group_id,
+            }
+          : null,
+        committed,
+        commitDetail: message,
+      };
+    }
+
+    // 쓰기는 성공했으나 최종 재조회가 안 되면 성공도 미저장도 단정하지 않는다.
+    // generic unsaved로 떨어뜨리면 "아무것도 안 저장됐다"며 중복 쓰기를 부르고,
+    // 성공으로 꾸미면 확인 안 된 값을 확정한다 — committed:"unknown"으로 닫고
+    // 호출부는 초안을 보존한 채 재조회 뒤 재시도해야 한다.
+    try {
+      return {
+        item: await this.getItem(ctx, boardId, itemId),
+        errors: [],
+        undo,
+        committed: "all",
+        commitDetail: null,
+      };
+    } catch (rereadError) {
+      const cause = rereadError instanceof Error && rereadError.message ? ` (${rereadError.message})` : "";
+      const message =
+        `저장됐을 수 있으나 방금 저장값을 확인하지 못했습니다${cause} ` +
+        `화면을 새로고침해 확인한 뒤 다시 시도해 주세요(확인 전에는 다시 저장하지 마세요).`;
+      const key = (requiredKeys[0] ?? writtenKeys[0]) as string;
+      return {
+        item: before,
+        errors: [
+          {
+            key,
+            label: byKey.get(key)?.label ?? key,
+            message,
+          },
+        ],
+        undo,
+        committed: "unknown",
+        commitDetail: message,
+      };
+    }
   }
 
   /**

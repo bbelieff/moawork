@@ -99,6 +99,8 @@ import { BoardInlineTitleEditor } from "./BoardInlineTitleEditor";
 import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
 import { selectionTriState } from "./bulk-selection";
 import { MAX_FILE_BYTES } from "@/lib/services/file-contract";
+import { RegionCell } from "./RegionPairCell";
+import { isRegionSidoKey, isRegionSigunguKey } from "@/lib/new-lead/region-pair";
 
 const CELL_INPUT = BOARD_TABLE_CONTROL;
 
@@ -719,6 +721,23 @@ export function GroupTable({
     ? selectionTriState(selection, rows.map((row) => row.id))
     : "empty";
   const bulkArmed = (selection?.size ?? 0) > 1;
+  // 시도-시군구 의존 콤보 — 같은 보드에 두 키가 함께 있을 때만 쌍으로 저장한다.
+  const regionSidoKey = columns.find((column) => isRegionSidoKey(column.key))?.key ?? null;
+  const regionSigunguKey = columns.find((column) => isRegionSigunguKey(column.key))?.key ?? null;
+  const regionPairKeys = regionSidoKey && regionSigunguKey ? { sidoKey: regionSidoKey, sigunguKey: regionSigunguKey } : null;
+  const regionSidoColumn = regionPairKeys ? columns.find((column) => column.key === regionPairKeys.sidoKey) ?? null : null;
+  const regionSigunguColumn = regionPairKeys ? columns.find((column) => column.key === regionPairKeys.sigunguKey) ?? null : null;
+  /*
+   * 지역 쌍 읽기전용 판정 — BoardCell 과 같은 답을 양쪽에 동일하게 적용한다.
+   * 원자 저장이라 한쪽만 잠그면 의미가 없다: 어느 한쪽이라도 손으로 못 고치면
+   * 쌍 전체를 표시만 한다. 서버도 setCellsStrict 재검증으로 같은 답을 낸다.
+   */
+  const isRegionPairReadOnly = (): boolean => {
+    if (readOnly || !regionSidoColumn || !regionSigunguColumn) return true;
+    return [regionSidoColumn, regionSigunguColumn].some((column) =>
+      !isSourceEditable(column.source) || column.is_readonly === true,
+    );
+  };
 
   /*
    * 컬럼 폭 조절(D12) — 드래그 중인 값은 dragColRef 와 같은 이유로 ref 가 정본이다
@@ -1105,49 +1124,73 @@ export function GroupTable({
                   {renderRowAction?.(row)}
                 </td>
 
-                {columns.map((col) => (
-                  <td
-                    key={col.id}
-                    data-view-focus={col.key === focusColumnKey || undefined}
-                    data-column-key={col.key}
-                    data-right-pinned={col.rightPinned || undefined}
-                    className={`${BOARD_TABLE_BODY_CELL} group-hover:bg-mw-bg ${(col.wrap_mode ?? textMode) === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
-                      col.rightPinned
-                        ? "sticky right-0 z-[var(--mw-layer-board-cell)] border-l-2 border-l-mw-primary bg-mw-tint-blue"
-                        : ""
-                    }`}
-                  >
-                    <BoardCell
-                      boardId={boardId}
-                      row={row}
-                      column={col}
-                      readOnly={readOnly}
-                      canonicalNewLead={canonicalNewLead}
-                      bulkStatusIntercept={armedForRow
-                        ? (columnKey, nextValue) => {
-                          const handler = onBulkStatusRequest;
-                          if (!handler) return false;
-                          return handler(row.id, columnKey, nextValue);
-                        }
-                        : undefined}
-                      members={newLeadMembers}
-                      error={
-                        cellFlash
-                          ? findCellError(
-                              cellFlash,
-                              row.id,
-                              col.key === WORKFLOW_PROGRESS_KEY && workflowProgressKind
-                                ? workflowProgressSpec(workflowProgressKind).stageColumnKey
-                                : col.key,
-                            )
-                          : null
-                      }
-                      workflowProgressKind={workflowProgressKind}
-                      workflowTransitionAction={renderWorkflowTransition?.(row)}
-                      cellAction={cellAction}
-                    />
-                  </td>
-                ))}
+                {columns.map((col) => {
+                  const isRegionCell = Boolean(
+                    regionPairKeys && (isRegionSidoKey(col.key) || isRegionSigunguKey(col.key)),
+                  );
+                  return (
+                    <td
+                      key={col.id}
+                      data-view-focus={col.key === focusColumnKey || undefined}
+                      data-column-key={col.key}
+                      data-right-pinned={col.rightPinned || undefined}
+                      className={`${BOARD_TABLE_BODY_CELL} group-hover:bg-mw-bg ${(col.wrap_mode ?? textMode) === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
+                        col.rightPinned
+                          ? "sticky right-0 z-[var(--mw-layer-board-cell)] border-l-2 border-l-mw-primary bg-mw-tint-blue"
+                          : ""
+                      }`}
+                    >
+                      {isRegionCell && regionPairKeys ? (
+                        <RegionCell
+                          boardId={boardId}
+                          itemId={row.id}
+                          dealId={row.deal_id}
+                          canonicalNewLead={canonicalNewLead}
+                          kind={isRegionSidoKey(col.key) ? "sido" : "sigungu"}
+                          sidoKey={regionPairKeys.sidoKey}
+                          sigunguKey={regionPairKeys.sigunguKey}
+                          sidoValue={String(
+                            row.values[regionPairKeys.sidoKey] ?? row.values.sido ?? row.values.region_sido ?? "",
+                          )}
+                          sigunguValue={String(
+                            row.values[regionPairKeys.sigunguKey] ?? row.values.sigungu ?? row.values.region_sigungu ?? "",
+                          )}
+                          readOnly={isRegionPairReadOnly()}
+                        />
+                      ) : (
+                        <BoardCell
+                          boardId={boardId}
+                          row={row}
+                          column={col}
+                          readOnly={readOnly}
+                          canonicalNewLead={canonicalNewLead}
+                          bulkStatusIntercept={armedForRow
+                            ? (columnKey, nextValue) => {
+                              const handler = onBulkStatusRequest;
+                              if (!handler) return false;
+                              return handler(row.id, columnKey, nextValue);
+                            }
+                            : undefined}
+                          members={newLeadMembers}
+                          error={
+                            cellFlash
+                              ? findCellError(
+                                  cellFlash,
+                                  row.id,
+                                  col.key === WORKFLOW_PROGRESS_KEY && workflowProgressKind
+                                    ? workflowProgressSpec(workflowProgressKind).stageColumnKey
+                                    : col.key,
+                                )
+                              : null
+                          }
+                          workflowProgressKind={workflowProgressKind}
+                          workflowTransitionAction={renderWorkflowTransition?.(row)}
+                          cellAction={cellAction}
+                        />
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
             );
           })}
