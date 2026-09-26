@@ -129,7 +129,7 @@ async function setup(): Promise<PGlite> {
     create table public.activities(id uuid primary key default gen_random_uuid(), org_id uuid, deal_id uuid, type text, content text, actor uuid);
     create table public.boards(id uuid primary key, org_id uuid, source text);
     create table public.items(id uuid primary key, org_id uuid, board_id uuid, title text,
-      assigned_to uuid, deal_id uuid, deleted_at timestamptz, created_at timestamptz default now(), updated_at timestamptz default now());
+      assigned_to uuid, deal_id uuid, deleted_at timestamptz, archived_at timestamptz, created_at timestamptz default now(), updated_at timestamptz default now());
     create table public.item_values(org_id uuid, item_id uuid, column_key text, value_jsonb jsonb, primary key(item_id, column_key));
     create table public.deal_intake(deal_id uuid primary key, org_id uuid, representative_name text, industry text, updated_at timestamptz default now());
     create table public.new_lead_requests(org_id uuid, request_id uuid, operation text, deal_id uuid, item_id uuid, actor_id uuid, payload jsonb, primary key(org_id, request_id));
@@ -438,5 +438,32 @@ describe.sequential("OCR-PROTECTED-CHAIN (actual 065+069+087+151+154)", () => {
     expect((await db.query(`select company_id from deals where id='${ids.deal2}'`)).rows[0]).toEqual({ company_id: null });
     expect((await db.query<{ n: number }>(`select count(*)::int n from contact_pipeline_transitions where request_id='${req("otheroperation")}'`)).rows[0]!.n).toBe(0);
   });
+
+
+describe("161 preserves the real OCR protected chain", () => {
+  it("explicit approval and handoff retain OCR metadata, stable IDs and all receipts without intent prewrite", async () => {
+    const db=await setup();
+    const workflow=readFileSync(resolve(process.cwd(),`${CONSULT}/156_consultation_workflow.sql`),"utf8");
+    await db.exec(workflow.slice(workflow.indexOf("alter table public.consultation_states add column phase")));
+    const seal=readFileSync(resolve(process.cwd(),`${CONSULT}/161_consultation_seal_handoff.sql`),"utf8");
+    await db.exec(seal.slice(seal.indexOf("alter table public.consultation_requests drop constraint")));
+    await asUser(db,ids.owner);
+    const version=await completeChecks(db,ids.item,"161-ocr");
+    await db.exec(`delete from item_values where item_id='${ids.item}'; update deal_intake set biz_no='${INTAKE_BIZ}',birthdate='1990-01-01',business_item='합성 OCR 종목' where deal_id='${ids.deal}'`);
+    const submit=(op:string,v:number,tag:string)=>db.query<{company_id:string;deal_id:string;replayed:boolean}>(
+      "select * from execute_consultation_seal_handoff($1,$2,$3,$4,$5,$6)",[ids.org,ids.item,req(tag),v,op,"테스트 회사"]);
+    await submit("seal_approval",version,"161-ocr-seal");
+    const result=(await submit("handoff",version+1,"161-ocr-go")).rows[0];
+    expect(result.deal_id).toBe(ids.deal);
+    expect((await db.query("select id,biz_no,owner_birthdate::text,business_item from companies")).rows[0]).toEqual({id:result.company_id,biz_no:INTAKE_BIZ,owner_birthdate:"1990-01-01",business_item:"합성 OCR 종목"});
+    expect((await db.query(`select deal_id from items where id='${ids.item}'`)).rows[0]).toEqual({deal_id:ids.deal});
+    expect((await db.query(`select company_id,stage_id from deals where id='${ids.deal}'`)).rows[0]).toEqual({company_id:result.company_id,stage_id:ids.work});
+    expect((await submit("handoff",version+1,"161-ocr-go")).rows[0]).toMatchObject({company_id:result.company_id,replayed:true});
+    for(const table of ["contact_pipeline_transitions","new_lead_requests","consultation_requests"]){
+      expect((await db.query<{n:number}>(`select count(*)::int n from ${table} where request_id='${req("161-ocr-go")}'`)).rows[0].n).toBe(1);
+    }
+    expect((await db.query<{n:number}>("select count(*)::int n from companies")).rows[0].n).toBe(1);
+  });
+});
 
 });
