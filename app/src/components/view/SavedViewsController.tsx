@@ -27,6 +27,7 @@ import { isNewLeadPresentationOnlyStructure,newLeadPresentationKey, presentNewLe
 import { BoardInlineTitleEditor } from "@/components/board/BoardInlineTitleEditor";
 import { GroupNameEditor } from "@/components/board/GroupNameEditor";
 import { renameColumnTitleAction } from "@/app/(app)/boards/title-actions";
+import { addBoardLabelOptionAction } from "@/app/(app)/boards/label-option-actions";
 import { moveRowAction,reorderGroupsAction } from "@/app/(app)/boards/actions";
 import type { BoardGroup } from "@/lib/boards/types";
 import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
@@ -282,7 +283,7 @@ export function SavedViewsController({
         if (column.key === "__selection") return cell(row);
         if (column.key === "__title") return <span className="flex items-center gap-1">{row.title}{rowMoveControls(row)}</span>;
         const definition = displayColumns.find((candidate) => candidate.key === column.key);
-        return definition ? <BoardCell boardId={boardId} row={row} column={definition} readOnly={!canEditItems} canonicalNewLead={canonicalNewLead} members={memberOptions} /> : "";
+        return definition ? <BoardCell boardId={boardId} row={row} column={definition} readOnly={!canEditItems} canonicalNewLead={canonicalNewLead} members={memberOptions} canCreateColumnOptions={canManageColumns && !isSystem} addLabelOptionAction={addBoardLabelOptionAction} /> : "";
       }} />}
       </SavedTableSelection> : null}
       {renderMode === "calendar" ? <>
