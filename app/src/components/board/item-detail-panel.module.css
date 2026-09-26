@@ -173,6 +173,15 @@
   scrollbar-gutter: stable;
 }
 
+.consultationSection {
+  order: -3;
+  flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: var(--sp-3);
+}
+
 .infoHeader {
   order: -2;
 }

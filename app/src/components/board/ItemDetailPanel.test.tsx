@@ -228,6 +228,28 @@ const stylePath = resolve(
 );
 
 describe("BBE-565 목업 기준 실제 상세 패널", () => {
+  it("상담은 두 행 shell의 새 행이 아니라 정보 rail 안에서 스크롤된다", () => {
+    const html = renderStaticPanel(
+      <ItemDetailPanel boardId="board-a" row={row} columns={columns}
+        boardLayout={[{ key: "company", source: "column" }]}
+        layout={[{ key: "company", source: "column" }]} inherited defaultOpen canEditItems canManageColumns
+        consultationSection={<section><button type="button">예약 변경</button></section>} />,
+    );
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    const consultation = host.querySelector("[data-item-detail-consultation]")!;
+    const rail = host.querySelector("[data-item-detail-info-rail]")!;
+    const header = host.querySelector("[data-item-detail-header]")!;
+    expect(consultation.parentElement).toBe(rail);
+    expect(header.parentElement!.children).toHaveLength(2);
+    expect(rail.contains(consultation.querySelector("button"))).toBe(true);
+    const css = readFileSync(stylePath, "utf8");
+    const rule = css.match(/\.consultationSection\s*\{([^}]+)\}/)![1];
+    expect(rule).toContain("flex-shrink: 0");
+    expect(rule).toContain("overflow-x: auto");
+    expect(rule).toContain("max-width: 100%");
+  });
+
   it("상단 헤더·좌측 회사정보·우측 알림/히스토리·하단 작성기 구조를 렌더한다", () => {
     const html = renderStaticPanel(
       <ItemDetailPanel
