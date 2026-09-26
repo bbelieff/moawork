@@ -39,6 +39,7 @@ const request = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12,
 
 let db: PGlite;
 let migrationSql = "";
+const unlinkRepairSql = readFileSync(resolve(process.cwd(), "../supabase/migrations/163_parent_unlink_record.sql"), "utf8");
 
 async function asActor<T>(actor: string, fn: () => Promise<T>): Promise<T> {
   await db.exec(`set app.actor='${actor}'`);
@@ -148,6 +149,7 @@ beforeAll(async () => {
   await db.exec(metaSql.slice(syncStart, syncEnd));
   await db.exec(readFileSync(resolve(process.cwd(), "../supabase/migrations/135_issue599_assignment_ui_hardening.sql"), "utf8"));
   await db.exec(migrationSql);
+  await db.exec(unlinkRepairSql);
 });
 
 afterAll(async () => db.close());
@@ -305,6 +307,58 @@ describe("153 repair: 실제 authenticated 역할 (GRANT 성공·revoke 거부·
 
   it("다른 조직 행은 22023", async () => {
     await expect(db.query("select * from public.archive_board_item_atomic($1,$2,$3,$4)", [ids.org, ids.board, ids.foreign, request(114)])).rejects.toThrow(/not found in this board/);
+  });
+});
+
+describe("163: fresh-session unlink preserves the 153 contract", () => {
+  const originalParentSql = () => migrationSql.slice(
+    migrationSql.indexOf("create or replace function public.set_board_item_parent_atomic("),
+    migrationSql.indexOf("-- ② 안전한 복제"),
+  );
+  const unlink = (tag: number, expected: string | null = null) => db.query<{item_id:string;parent_item_id:string|null;replayed:boolean}>(
+    "select * from public.set_board_item_parent_atomic($1,$2,$3,null,$4,$5)", [ids.org,ids.board,ids.b,request(tag),expected],
+  );
+  async function seedLinked() {
+    await db.query("update items set parent_item_id=$1 where id=$2",[ids.a,ids.b]);
+  }
+  it("negative control: fresh original153 function fails before any prior link call",async()=>{
+    await seedLinked();
+    await db.exec(originalParentSql());
+    try {
+      await expect(asRole("authenticated",()=>unlink(180))).rejects.toThrow(/record "v_parent" is not assigned yet/);
+      expect((await db.query("select parent_item_id from items where id=$1",[ids.b])).rows[0]).toEqual({parent_item_id:ids.a});
+      expect((await db.query("select count(*)::int n from item_operation_receipts")).rows[0]).toEqual({n:0});
+    } finally { await db.exec(unlinkRepairSql); }
+  });
+  it("changes exactly the parent variable type; permission/CAS/receipt body and grants are unchanged",()=>{
+    const repairedBody=unlinkRepairSql.slice(unlinkRepairSql.indexOf("create or replace function public.set_board_item_parent_atomic("));
+    expect(repairedBody.replaceAll("\r\n","\n").trim()).toBe(originalParentSql().replace("v_parent record;","v_parent public.items%rowtype;").replaceAll("\r\n","\n").trim());
+  });
+  it("first RPC can clear an existing link; response-loss replay is stable and preserves siblings",async()=>{
+    await seedLinked(); await db.exec(unlinkRepairSql);
+    const original=(await db.query("select * from items order by id")).rows;
+    const first=(await asRole("authenticated",()=>unlink(181))).rows[0];
+    expect(first).toEqual({item_id:ids.b,parent_item_id:null,replayed:false});
+    expect((await asRole("authenticated",()=>unlink(181))).rows[0]).toEqual({...first,replayed:true});
+    expect((await db.query("select parent_item_id from items where id=$1",[ids.b])).rows[0]).toEqual({parent_item_id:null});
+    expect((await db.query("select * from items where id<>$1 order by id",[ids.b])).rows).toEqual(original.filter((row)=> (row as {id:string}).id!==ids.b));
+    expect((await db.query("select count(*)::int n from item_operation_receipts")).rows[0]).toEqual({n:1});
+  });
+  it.each(["outsider","scope","cas","archived","deleted"])("unlink still rejects %s without a receipt",async(condition)=>{
+    await seedLinked(); await db.exec(unlinkRepairSql);
+    if(condition==="scope") await db.exec(`update org_members set scope='assigned' where user_id='${ids.actor}'; update items set assigned_to='${ids.member2}' where id='${ids.b}'`);
+    if(condition==="archived") await db.query("update items set archived_at=now() where id=$1",[ids.b]);
+    if(condition==="deleted") await db.query("update items set deleted_at=now() where id=$1",[ids.b]);
+    const action=()=>asRole("authenticated",()=>unlink(182,condition==="cas"?"2000-01-01T00:00:00Z":null));
+    await expect(condition==="outsider"?asActor(ids.outsider,action):action()).rejects.toThrow();
+    expect((await db.query("select parent_item_id from items where id=$1",[ids.b])).rows[0]).toEqual({parent_item_id:ids.a});
+    expect((await db.query("select count(*)::int n from item_operation_receipts")).rows[0]).toEqual({n:0});
+  });
+  it("an unlink receipt cannot authorize another payload or a now-invisible child",async()=>{
+    await seedLinked(); await unlink(183);
+    await expect(db.query("select * from public.set_board_item_parent_atomic($1,$2,$3,$4,$5)",[ids.org,ids.board,ids.b,ids.a,request(183)])).rejects.toThrow(/payload mismatch/);
+    await db.exec(`update org_members set scope='assigned' where user_id='${ids.actor}'; update items set assigned_to='${ids.member2}' where id='${ids.b}'`);
+    await expect(unlink(183)).rejects.toThrow(/not allowed/);
   });
 });
 
