@@ -1132,18 +1132,17 @@ export function ItemDetailPanel({
                 </nav>
               </header>
 
-              {consultationSection ? (
-                <div data-item-detail-consultation style={{ padding: "0 var(--sp-4)" }}>
-                  {consultationSection}
-                </div>
-              ) : null}
-
               <div
                 ref={contentRef}
                 className={styles.content}
                 style={railWidth === null ? undefined : { gridTemplateColumns: `${railWidth}px minmax(0, 1fr)` }}
               >
                 <div className={styles.infoRail} data-item-detail-info-rail>
+                  {consultationSection ? (
+                    <div className={styles.consultationSection} data-item-detail-consultation>
+                      {consultationSection}
+                    </div>
+                  ) : null}
                   <div className={styles.infoHeader}>
                     <h3 className="font-bold text-mw-fg">회사 정보</h3>
                     <span
