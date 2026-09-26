@@ -34,6 +34,7 @@ import {
 } from "@/lib/boards/detail-event-kinds";
 import { presentDetailHistoryEvent } from "@/lib/boards/detail-event-presentation";
 import { createPortal } from "react-dom";
+import { ITEM_DETAIL_OPEN_EVENT, type ItemDetailOpenRequest } from "@/lib/boards/item-detail-open";
 import type {
   BoardColumn,
   CellValue,
@@ -782,7 +783,9 @@ export function ItemDetailPanel({
     setFolderEditing(false);
   }, [detail.cloudFolder]);
 
-  function openDrawer() {
+  const requestedOpenerRef = useRef<HTMLElement | null>(null);
+  const openDrawer = useCallback((opener?: HTMLElement) => {
+    requestedOpenerRef.current = opener ?? null;
     if (window.location.hash === `#item-${row.id}`) {
       setOpen(true);
       return;
@@ -790,7 +793,17 @@ export function ItemDetailPanel({
     hashPushedRef.current = true;
     setOpen(true);
     pushItemDetailHash(row.id);
-  }
+  }, [row.id]);
+
+  useEffect(() => {
+    const openRequestedItem = (event: Event) => {
+      const request = (event as CustomEvent<ItemDetailOpenRequest>).detail;
+      if (request?.itemId !== row.id) return;
+      openDrawer(request.opener instanceof HTMLElement ? request.opener : undefined);
+    };
+    window.addEventListener(ITEM_DETAIL_OPEN_EVENT, openRequestedItem);
+    return () => window.removeEventListener(ITEM_DETAIL_OPEN_EVENT, openRequestedItem);
+  }, [openDrawer, row.id]);
 
   useEffect(() => {
     const syncFromHash = () => {
@@ -1046,7 +1059,7 @@ export function ItemDetailPanel({
     if (!open && wasOpenRef.current && suppressOpenerRestoreRef.current) {
       suppressOpenerRestoreRef.current = false;
     } else {
-      restoreDetailPanelOpener(open, wasOpenRef.current, triggerRef.current);
+      restoreDetailPanelOpener(open, wasOpenRef.current, requestedOpenerRef.current?.isConnected ? requestedOpenerRef.current : triggerRef.current);
     }
     wasOpenRef.current = open;
   }, [open]);
@@ -1056,7 +1069,7 @@ export function ItemDetailPanel({
       <button
         ref={triggerRef}
         type="button"
-        onClick={openDrawer}
+        onClick={() => openDrawer()}
         className="min-h-7 shrink-0 rounded-lg border border-mw-line px-2 text-xs font-semibold text-mw-record hover:bg-mw-tint-blue"
         aria-label={`${row.title} 상세 열기`}
         data-item-detail-trigger={row.id}

@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
 import { act, cloneElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const actionMocks = vi.hoisted(() => ({ moveRowAction: vi.fn() }));
+const actionMocks = vi.hoisted(() => ({ moveRowAction: vi.fn(), readSnapshot: vi.fn(), readHandoff: vi.fn() }));
+vi.mock("@/lib/consultation/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/consultation/actions")>()),
+  readConsultationSnapshot: actionMocks.readSnapshot,
+  readConsultationHandoff: actionMocks.readHandoff,
+}));
 vi.mock("@/app/(app)/boards/actions", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/app/(app)/boards/actions")>()),
   moveRowAction: actionMocks.moveRowAction,
@@ -20,10 +25,11 @@ import { boardEntryFromRow } from "@/lib/consultation/boardView";
 let root: Root | null = null;
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 afterEach(async () => {
-  actionMocks.moveRowAction.mockReset();
+  vi.clearAllMocks();
   if (root) await act(async () => root?.unmount());
   root = null;
   document.body.replaceChildren();
+  window.history.replaceState(null, "", "/");
 });
 
 const group = { id: "group-1", org_id: "org-1", board_id: "board-1", name: "담당자 1", color: null, sort_order: 0 };
@@ -87,6 +93,43 @@ const consultationByItem = {
   "item-inperson": entryOf("item-inperson", "inperson", [true, true, false, false]),
 };
 
+beforeEach(() => {
+  actionMocks.readSnapshot.mockImplementation(async (itemId: keyof typeof consultationByItem) => {
+    const entry = consultationByItem[itemId];
+    return { ok: true, message: "", snapshot: {
+      itemId, dealId: "deal-1", companyId: null, stage: entry.mode,
+      version: entry.version, checklist: entry.checklist, phase: "contract",
+      meetingAt: null, assigneeId: "user-1", history: [],
+      ready: false, missing: [], seal: { approved: false, detail: "" },
+    } };
+  });
+  actionMocks.readHandoff.mockResolvedValue({ ok: true, ready: false, message: "승인 대기", missing: [] });
+});
+
+function renderedRowNames(host: HTMLElement) {
+  return [...host.querySelectorAll<HTMLInputElement>('input[aria-label="행 이름"]')].map((input) => input.value);
+}
+
+async function expectSharedConsultation(host: HTMLElement, title: string, itemId: string) {
+  expect(document.querySelector('[data-item-detail-backdrop]')).toBeNull();
+  const entry = host.querySelector<HTMLButtonElement>(`button[aria-label="${title} 상담 확인 열기"]`);
+  expect(entry).not.toBeNull();
+  await act(async () => entry!.click());
+  const panels = document.querySelectorAll('[role="dialog"][data-item-detail-backdrop]');
+  expect(panels).toHaveLength(1);
+  expect(panels[0].querySelector('[data-item-detail-header]')?.textContent).toContain(title);
+  expect(panels[0].querySelector('[data-item-detail-consultation]')?.textContent).toContain("계약서 송부");
+  expect(actionMocks.readSnapshot).toHaveBeenCalledWith(itemId);
+  expect(actionMocks.readHandoff).toHaveBeenCalledWith(itemId);
+  expect(window.location.hash).toContain(encodeURIComponent(itemId));
+  const close = panels[0].querySelector<HTMLButtonElement>('button[aria-label="상세 닫기"]');
+  expect(close).not.toBeNull();
+  await act(async () => close!.click());
+  expect(document.querySelector('[data-item-detail-backdrop]')).toBeNull();
+  expect(renderedRowNames(host)).toContain(title);
+  expect(entry!.isConnected).toBe(true);
+}
+
 function workspace(view: "all" | "remote" | "inperson") {
   return (
     <BoardWorkspace
@@ -112,8 +155,8 @@ describe("BoardWorkspace consultation stage view", () => {
     root = createRoot(host);
     await act(async () => root?.render(workspace("remote")));
     const text = host.textContent ?? "";
-    expect(text).toContain("화상 상담 건");
-    expect(text).not.toContain("방문 상담 건");
+    expect(renderedRowNames(host)).toEqual(["화상 상담 건"]);
+    expect(host.querySelector('button[aria-label="방문 상담 건 상담 확인 열기"]')).toBeNull();
     // 계약 단계 보드: 1단계 묶음에 1건.
     expect(text).toContain("계약 확인 2단계 · 서명본 발송 (1)");
     expect(text).toContain("정보수집 (0)");
@@ -124,6 +167,7 @@ describe("BoardWorkspace consultation stage view", () => {
     // 첫열 체크박스(일괄 선택)는 그대로 있다.
     const checkbox = host.querySelector('input[type="checkbox"][aria-label="화상 상담 건 선택"]');
     expect(checkbox).not.toBeNull();
+    await expectSharedConsultation(host, "화상 상담 건", "item-remote");
   });
 
   it("STEP3 탭에서는 대면 행만 보이고 계약 단계가 다르다", async () => {
@@ -132,11 +176,12 @@ describe("BoardWorkspace consultation stage view", () => {
     root = createRoot(host);
     await act(async () => root?.render(workspace("inperson")));
     const text = host.textContent ?? "";
-    expect(text).not.toContain("화상 상담 건");
-    expect(text).toContain("방문 상담 건");
+    expect(renderedRowNames(host)).toEqual(["방문 상담 건"]);
+    expect(host.querySelector('button[aria-label="화상 상담 건 상담 확인 열기"]')).toBeNull();
     expect(text).toContain("계약 확인 3단계 · 상대 서명 확인 (1)");
     expect(text).toContain("계약 2/4");
     expect(text).toContain("대면상담예약 (0)");
+    await expectSharedConsultation(host, "방문 상담 건", "item-inperson");
   });
 
   it("전체 보기(기존 /contract)는 물리 그룹 그대로 두 행을 보여준다", async () => {
@@ -145,13 +190,13 @@ describe("BoardWorkspace consultation stage view", () => {
     root = createRoot(host);
     await act(async () => root?.render(workspace("all")));
     const text = host.textContent ?? "";
-    expect(text).toContain("화상 상담 건");
-    expect(text).toContain("방문 상담 건");
+    expect(renderedRowNames(host)).toEqual(["화상 상담 건", "방문 상담 건"]);
     expect(text).toContain("담당자 1");
     expect(text).not.toContain("STEP2");
     expect(text).not.toContain("STEP3");
     // 전체 보기에서도 상담 진행 칸은 읽힌다.
     expect(text).toContain("상담 진행");
+    await expectSharedConsultation(host, "방문 상담 건", "item-inperson");
   });
 
   it("단계 보기에서는 행 드래그 진입점이 없다", async () => {

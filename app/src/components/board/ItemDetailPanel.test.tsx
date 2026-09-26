@@ -907,7 +907,7 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
     expect(source).toContain("focusDetailPanelElement(closeButtonRef.current)");
     expect(source).toContain("ref={triggerRef}");
     expect(source).toContain(
-      "restoreDetailPanelOpener(open, wasOpenRef.current, triggerRef.current)",
+      "restoreDetailPanelOpener(open, wasOpenRef.current, requestedOpenerRef.current?.isConnected ? requestedOpenerRef.current : triggerRef.current)",
     );
   });
 
