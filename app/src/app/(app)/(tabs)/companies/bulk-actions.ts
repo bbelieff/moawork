@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { recordRiskyAction } from "@/lib/perm/server";
-import { getCrmService } from "@/lib/crm";
+import { AsyncCrmService } from "@/lib/crm";
+import { SupabaseCrmSource } from "@/lib/repo/supabase/supabaseCrmSource";
 import { userFacingMessage } from "@/lib/boards/boardActionFlash";
 import { BULK_MAX_ITEMS } from "@/components/board/bulk-selection";
 import { validateCompanyBulkPatch, validateDealBulkPatch } from "@/lib/companies/bulk";
@@ -115,7 +116,13 @@ export async function bulkUpdateCompaniesAction(input: {
 
   const head = ids.slice(0, BULK_MAX_ITEMS);
   const tail = ids.slice(BULK_MAX_ITEMS);
-  const crm = getCrmService();
+  let crm: AsyncCrmService;
+  try {
+    // Bind RLS reads and writes to this request's cookies, never the cached anon client.
+    crm = new AsyncCrmService(new SupabaseCrmSource(await createClient()));
+  } catch (error) {
+    return allFailed(ids, userFacingMessage(error));
+  }
   const processed: CompaniesBulkItemResult[] = [];
   for (const companyId of head) {
     try {
@@ -152,7 +159,12 @@ export async function bulkUpdateDealsAction(input: {
 
   const head = ids.slice(0, BULK_MAX_ITEMS);
   const tail = ids.slice(BULK_MAX_ITEMS);
-  const crm = getCrmService();
+  let crm: AsyncCrmService;
+  try {
+    crm = new AsyncCrmService(new SupabaseCrmSource(await createClient()));
+  } catch (error) {
+    return allFailed(ids, userFacingMessage(error));
+  }
   const processed: CompaniesBulkItemResult[] = [];
   for (const dealId of head) {
     try {
@@ -209,20 +221,14 @@ export async function bulkReassignDealsAction(input: {
 
   const head = ids.slice(0, BULK_MAX_ITEMS);
   const tail = ids.slice(BULK_MAX_ITEMS);
-  const crm = getCrmService();
+  if (!client) {
+    return allFailed(ids, "담당 흐름을 확인할 수 없어 저장하지 않았습니다. 새로 불러온 뒤 다시 시도해 주세요.");
+  }
+  const crm = new AsyncCrmService(new SupabaseCrmSource(client));
   const processed: CompaniesBulkItemResult[] = [];
   for (const dealId of head) {
     try {
       await crm.getDeal(gate.ctx, dealId);
-
-      if (!client) {
-        processed.push({
-          itemId: dealId,
-          ok: false,
-          message: "담당 흐름을 확인할 수 없어 저장하지 않았습니다. 새로 불러온 뒤 다시 시도해 주세요.",
-        });
-        continue;
-      }
 
       let lineageRef: { boardId: string; itemId: string } | null = null;
       try {
@@ -314,7 +320,7 @@ export async function bulkStartWorkAction(input: {
 
   const head = ids.slice(0, BULK_MAX_ITEMS);
   const tail = ids.slice(BULK_MAX_ITEMS);
-  const crm = getCrmService();
+  const crm = new AsyncCrmService(new SupabaseCrmSource(client));
   const processed: CompaniesBulkItemResult[] = [];
   for (const companyId of head) {
     try {
