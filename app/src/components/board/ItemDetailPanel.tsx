@@ -396,6 +396,18 @@ function DialogPortal({ children }: { children: ReactNode }) {
     : createPortal(children, document.body);
 }
 
+// Native history writes are integrated with Next's canonical URL; assigning
+// location.hash alone is lost when a Server Action commits router state.
+function pushItemDetailHash(itemId: string) {
+  const oldURL = window.location.href;
+  const url = new URL(oldURL);
+  url.hash = `item-${itemId}`;
+  if (url.href === oldURL) return;
+  window.history.pushState(null, "", url);
+  // pushState does not emit hashchange. Keep sibling drawers and deep links in sync.
+  window.dispatchEvent(new HashChangeEvent("hashchange", { oldURL, newURL: url.href }));
+}
+
 type FocusTarget = Pick<HTMLElement, "focus">;
 
 export function focusDetailPanelElement(target: FocusTarget | null) {
@@ -777,7 +789,7 @@ export function ItemDetailPanel({
     }
     hashPushedRef.current = true;
     setOpen(true);
-    window.location.hash = `item-${row.id}`;
+    pushItemDetailHash(row.id);
   }
 
   useEffect(() => {
@@ -1014,7 +1026,7 @@ export function ItemDetailPanel({
 
   function openSibling(id: string) {
     suppressOpenerRestoreRef.current = true;
-    window.location.hash = `item-${id}`;
+    pushItemDetailHash(id);
     window.requestAnimationFrame(() =>
       document
         .querySelector<HTMLButtonElement>(`[data-item-detail-trigger="${id}"]`)
