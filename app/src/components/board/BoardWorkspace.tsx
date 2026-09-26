@@ -1,5 +1,7 @@
 "use client";
 
+import { consultationPhase, REMOTE_PHASES, INPERSON_PHASES, CONSULTATION_PHASE_LABEL } from "@/lib/consultation/phases";
+
 /**
  * 보드 화면 셸 — 헤더 1줄 + 도구줄 1줄 + **블록 리스트** (PLAN-002 WO-2).
  *
@@ -46,10 +48,20 @@ import type { MemberPickerMember } from "./MemberPicker";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
 import { groupPresetName, isGroupPresetChanged } from "@/lib/presets/group-preset";
 import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
+import { ConsultationPanel } from "@/components/consultation/ConsultationPanel";
+import {
+  CONSULTATION_PROGRESS_KEY,
+  consultationModeForRow,
+  contractStepGroupKey,
+  CONTRACT_STEP_GROUPS,
+  type ConsultationBoardMap,
+  type ConsultationView,
+} from "@/lib/consultation/boardView";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import type { CompanyPickerLoadResult } from "@/lib/companies/picker-server";
 import { buildCompanyPickerProps } from "@/lib/companies/picker-props";
 import type { CompanyIntakeActionState } from "@/app/(app)/boards/[id]/company-intake-actions";
+import type { AddLabelOptionInput, AddLabelOptionResult } from "@/app/(app)/boards/label-option-actions";
 import {
   durableNewLeadColumnKeys,
   NEW_LEAD_DETAIL_ONLY_KEYS,
@@ -59,7 +71,7 @@ import {
   presentNewLeadDetailLayout,
 } from "@/lib/default-tabs/new-lead";
 import { NOTICE_KEYS } from "@/lib/notices/types";
-import { buildBlocks } from "./blocks";
+import { buildBlocks, buildNewLeadStageBlocks, durableNewLeadBlockKey } from "./blocks";
 import {
   groupKeyOf,
   reorderColumnKeys,
@@ -113,6 +125,7 @@ import {
   decideBulkIntercept,
   pickBulkStatusColumn,
 } from "@/app/(app)/boards/bulk-action-gates";
+import { canCreateLabelForColumn, newLabelRequestId } from "@/lib/boards/label-options";
 import { WORKFLOW_PROGRESS_KEY } from "@/lib/workflow/progress";
 import { BoardSummaryStrip } from "./BoardSummaryStrip";
 import { BoardSummarySettingsPopover } from "./BoardSummarySettingsPopover";
@@ -203,6 +216,10 @@ export function BoardWorkspace({
   workflowTransitionSlot,
   contractWorkCompanyPicker = { rows: [], error: null, truncated: false },
   startCompanyWorkAction,
+  consultationView = "all",
+  consultationByItem = {},
+  startNewCompanyWorkAction,
+  addLabelOptionAction,
 }: {
   board: Board;
   /** 계약업체 실무에서만 채워진다 — 「＋ 업체 추가」 목록. 다른 보드는 빈 배열이다. */
@@ -211,6 +228,13 @@ export function BoardWorkspace({
     previous: CompanyIntakeActionState,
     formData: FormData,
   ) => Promise<CompanyIntakeActionState>;
+  /** 2026-09-26 — «새 회사» 등록 + 업무 시작. 없어도 기존 회사 경로는 그대로 돈다. */
+  startNewCompanyWorkAction?: (
+    previous: CompanyIntakeActionState,
+    formData: FormData,
+  ) => Promise<CompanyIntakeActionState>;
+  /** 2026-09-26 — 셀 드롭다운의 «라벨 만들기». 없으면 만들기 행이 안 보인다. */
+  addLabelOptionAction?: (input: AddLabelOptionInput) => Promise<AddLabelOptionResult>;
   columns: BoardColumn[];
   /** URL/saved-view hidden과 무관한 보드의 전체 active 컬럼. */
   summaryColumns?: BoardColumn[];
@@ -256,6 +280,14 @@ export function BoardWorkspace({
   itemDetailFixture?: ItemDetailSnapshot;
   /** 시각 fixture가 실제 진행현황 확인창을 유지한 채 이동 저장소만 대체한다. */
   workflowTransitionSlot?: ReactNode;
+  /**
+   * 상담 단계 보기 — `all` 은 기존 리드컨택 전체 보기(호환 유지).
+   * `remote`·`inperson` 은 같은 정본 행을 상담 모드로 가른 STEP2·STEP3 탭이다.
+   * 회사·딜·아이템을 복제하지 않고 서버 적재분(`consultationByItem`)으로 가른다.
+   */
+  consultationView?: ConsultationView;
+  /** 152 일괄 조회 적재분 — 행마다 조회하지 않는다. 권한 밖 행은 서버가 이미 뺐다. */
+  consultationByItem?: ConsultationBoardMap;
 }) {
   // BBE-239 — 공지사항 한정 「작성자는 자기 글 삭제 가능」 예외. 다른 보드는 undefined 라
   // GroupTable 의 조건에서 항상 꺼진다.
@@ -270,6 +302,32 @@ export function BoardWorkspace({
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const workflowProgressKind = workflowKindForSource(board.source);
   const canonicalNewLead = board.source === NEW_LEAD_TAB_SOURCE;
+  const isNewLeadStageView = canonicalNewLead && columns.some((column) => column.key === "consult_status");
+  // 상담 단계 보기 — 같은 리드컨택 정본의 STEP2·STEP3 탭. `all` 은 기존 전체 보기다.
+  const isContactBoard = board.source === CONTACT_TAB_SOURCE;
+  const isConsultationStageView =
+    isContactBoard && (consultationView === "remote" || consultationView === "inperson");
+  const showConsultationColumn =
+    isContactBoard && (isConsultationStageView || Object.keys(consultationByItem).length > 0);
+  const consultationProgressColumn = useMemo<BoardColumn | null>(() => {
+    if (!showConsultationColumn) return null;
+    return {
+      id: `consultation-progress:${board.id}`,
+      org_id: board.org_id,
+      board_id: board.id,
+      key: CONSULTATION_PROGRESS_KEY,
+      label: "상담 진행",
+      type: "text",
+      source: "calc",
+      rightPinned: false,
+      options_jsonb: null,
+      sort_order: Number.MAX_SAFE_INTEGER,
+      width: 200,
+      // 표시 전용 가상 칸 — 서버 setCells 도 이 키 쓰기를 거부하도록 is_readonly 를 못박는다.
+      is_readonly: true,
+      move_rule_jsonb: null,
+    };
+  }, [board.id, board.org_id, showConsultationColumn]);
   const filterProjection = canonicalNewLead ? NEW_LEAD_SAVED_FILTER_PROJECTION : undefined;
   const displayFilters = useMemo(
     () => canonicalNewLead
@@ -296,12 +354,17 @@ export function BoardWorkspace({
     // composite), but that synthetic key must never enter shared config.
     return summaryColumns.filter((column) => !archivedColumnIds.has(column.id));
   }, [archivedColumnIds, summaryColumns]);
-  const tableColumns = useMemo(
-    () => board.source === NEW_LEAD_TAB_SOURCE
+  const tableColumns = useMemo(() => {
+    const base = board.source === NEW_LEAD_TAB_SOURCE
       ? activeColumns.filter((column) => !NEW_LEAD_DETAIL_ONLY_KEYS.has(column.key))
-      : activeColumns,
-    [activeColumns, board.source],
-  );
+      : activeColumns;
+    // 상담 진행 가상 칸은 표 맨 끝(우측 고정 관문 바로 앞)에 둔다 — DB 컬럼이 아니라
+    // 저장 보기·검색·일괄 대상에 들어가지 않는다.
+    if (consultationProgressColumn && !base.some((column) => column.key === CONSULTATION_PROGRESS_KEY)) {
+      return [...base, consultationProgressColumn];
+    }
+    return base;
+  }, [activeColumns, board.source, consultationProgressColumn]);
   const detailColumns = useMemo(
     () => {
       const hidden = new Set(workflowProgressKind ? workflowDetailHiddenKeys(workflowProgressKind) : []);
@@ -360,12 +423,16 @@ export function BoardWorkspace({
   },[board.row_order_version]);
 
   const [optimisticRows, moveRowOptimistic] = useOptimistic(rows, rowMoveReducer);
-  const displayRows = useMemo(
-    () => workflowProgressKind
-      ? withWorkflowProgressValues(workflowProgressKind, optimisticRows)
-      : optimisticRows,
-    [optimisticRows, workflowProgressKind],
-  );
+  const displayRows = useMemo(() => {
+    // 상담 단계 보기 — 같은 정본 행을 서버 적재분의 mode 로 가른다. 적재된 레거시 remote 는
+    // SQL 의도된 기본값이며, 미조회(null)는 특정 보기에 넣지 않는다(F5). 새로고침해도 mode 는 DB 값 그대로다.
+    const scoped = isConsultationStageView
+      ? optimisticRows.filter((row) => consultationModeForRow(row.id, consultationByItem) === consultationView)
+      : optimisticRows;
+    return workflowProgressKind
+      ? withWorkflowProgressValues(workflowProgressKind, scoped)
+      : scoped;
+  }, [consultationByItem, consultationView, isConsultationStageView, optimisticRows, workflowProgressKind]);
   const [optimisticOrder, setOrderOptimistic] = useOptimistic(columnOrder, columnOrderReducer);
 
   /*
@@ -380,8 +447,9 @@ export function BoardWorkspace({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDialog, setBulkDialog] = useState<BulkDialogState | null>(null);
   const [bulkNotice, setBulkNotice] = useState<ResultNotice | null>(null);
-  const [selectionScope, setSelectionScope] = useState(() => selectionScopeKey(board.id, savedViewId ?? savedViewActive));
-  const currentSelectionScope = selectionScopeKey(board.id, savedViewId ?? savedViewActive);
+  // 상담 단계 보기 전환 시에도 선택을 비운다 — 다른 탭의 선택이 섞이지 않게 한다.
+  const [selectionScope, setSelectionScope] = useState(() => selectionScopeKey(board.id, `${savedViewId ?? savedViewActive}|${consultationView}`));
+  const currentSelectionScope = selectionScopeKey(board.id, `${savedViewId ?? savedViewActive}|${consultationView}`);
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
   if (selectionScope !== currentSelectionScope) {
     setSelectionScope(currentSelectionScope);
@@ -394,7 +462,9 @@ export function BoardWorkspace({
 
   const readOnly = board.is_system || !canEditItems;
   const sortActive = filters.sortKey !== "" || (filters.sorts?.length ?? 0) > 0;
-  const rowDragEnabled = !readOnly && canMoveRows && !sortActive && !rowMovePending;
+  // 상담 단계 보기는 가상 계약 단계 묶음이라 행 순서를 옮기지 않는다 —
+  // 순서는 리드컨택 전체 보기(물리 그룹)에서만 바꾼다.
+  const rowDragEnabled = !readOnly && canMoveRows && !sortActive && !rowMovePending && !isConsultationStageView;
 
   const [orderedGroups, setOrderedGroups] = useOptimistic(
     [...groups].sort((a, b) => a.sort_order - b.sort_order),
@@ -429,7 +499,48 @@ export function BoardWorkspace({
     persistGroupOrder(next);
   }, [orderedGroups, persistGroupOrder]);
 
-  const blocks = useMemo(() => buildBlocks(orderedGroups, displayRows), [orderedGroups, displayRows]);
+  const physicalBlocks = useMemo(
+    () => buildBlocks(orderedGroups, displayRows),
+    [orderedGroups, displayRows],
+  );
+  /**
+   * 상담 단계 보기의 계약 단계 묶음 — 비대면·대면 «각각» 의 계약 단계 보드다.
+   * 같은 정본 행을 첫 미완료 단계 키로 묶는 가상 묶음이라 회사·딜·아이템을
+   * 복제하지 않고, 물리 그룹·순서·이동 규칙을 건드리지 않는다.
+   */
+  const consultationStageBlocks = useMemo<ReturnType<typeof buildBlocks> | null>(() => {
+    if (!isConsultationStageView) return null;
+    const buckets = new Map<string, ItemWithValues[]>();
+    for (const row of displayRows) {
+      const entry = consultationByItem[row.id];
+      if (!entry) continue;
+      const phase = consultationPhase(entry);
+      const key = phase === "contract" ? contractStepGroupKey(entry.checklist) : phase;
+      const bucket = buckets.get(key);
+      if (bucket) bucket.push(row);
+      else buckets.set(key, [row]);
+    }
+    const phaseGroups = (consultationView === "inperson" ? INPERSON_PHASES : REMOTE_PHASES)
+      .filter((phase) => phase !== "contract").map((phase) => ({ key: phase, title: CONSULTATION_PHASE_LABEL[phase] }));
+    return [...phaseGroups, ...CONTRACT_STEP_GROUPS].map((group) => {
+      const rows = [...(buckets.get(group.key) ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+      return {
+        kind: "item-group" as const,
+        key: `consult-step:${group.key}`,
+        group: null,
+        name: `${group.title} (${rows.length})`,
+        color: null,
+        rows,
+      };
+    });
+  }, [consultationByItem, consultationView, displayRows, isConsultationStageView]);
+  const newLeadStageBlocks = useMemo(() => isNewLeadStageView ? buildNewLeadStageBlocks(orderedGroups, displayRows) : null,
+    [isNewLeadStageView, orderedGroups, displayRows]);
+  const blocks = consultationStageBlocks ?? newLeadStageBlocks ?? physicalBlocks;
+  const durableLayoutKey = useCallback((key: string) => {
+    const block = isNewLeadStageView ? blocks.find((candidate) => candidate.key === key) : undefined;
+    return block ? durableNewLeadBlockKey(block, orderedGroups) : key;
+  }, [blocks, isNewLeadStageView, orderedGroups]);
 
   // 사라진 행 id는 렌더 중에 털어낸다 — effect로 미루면 삭제된 id가 복구·필터 전환 때
   // 다시 보이는 «예상 밖 재등장»이 된다. 필터로 숨겨진 행은 여기서 지우지 않는다
@@ -451,11 +562,11 @@ export function BoardWorkspace({
    */
   const columnsForBlock = useCallback((blockKey: string) => {
     const storedOrder = canonicalNewLead
-      ? presentNewLeadColumnKeys(optimisticOrder[blockKey])
-      : optimisticOrder[blockKey];
+      ? presentNewLeadColumnKeys(optimisticOrder[durableLayoutKey(blockKey)])
+      : optimisticOrder[durableLayoutKey(blockKey)];
     const resolved = resolveColumnOrder(tableColumns, storedOrder ?? undefined);
     return selectVisibleColumns(resolved, displayFilters.visibleColumnKeys);
-  }, [canonicalNewLead, displayFilters.visibleColumnKeys, optimisticOrder, tableColumns]);
+  }, [canonicalNewLead, displayFilters.visibleColumnKeys, optimisticOrder, tableColumns, durableLayoutKey]);
 
   /**
    * 검색 기준 컬럼 — 인가된 전체 active 컬럼 (보기에서 숨긴 칸 포함).
@@ -486,8 +597,13 @@ export function BoardWorkspace({
   );
   const rowById = useMemo(() => new Map(displayRows.map((row) => [row.id, row])), [displayRows]);
   const bulkTargets = useMemo(
-    () => bulkTargetIds.map((id) => ({ id, title: rowById.get(id)?.title ?? id })),
+    () => bulkTargetIds.map((id) => ({ id, title: rowById.get(id)?.title ?? id, updatedAt: rowById.get(id)?.updated_at ?? null })),
     [bulkTargetIds, rowById],
+  );
+  /** 상하위 연결 후보 — 보기 내 전체 행 (접힌 그룹·검색제외는 visibleOrderedIds에서 이미 빠진다). */
+  const linkCandidates = useMemo(
+    () => visibleOrderedIds.map((id) => ({ id, title: rowById.get(id)?.title ?? id })),
+    [visibleOrderedIds, rowById],
   );
 
   const toggleRow = useCallback((itemId: string, checked: boolean, shiftKey = false) => {
@@ -534,10 +650,32 @@ export function BoardWorkspace({
     "text", "number", "money", "date", "datetime", "email", "url", "phone",
     "select", "status", "person",
   ]), []);
-  const bulkStatusColumn = useMemo(
-    () => pickBulkStatusColumn(physicalActiveColumns, workflowProgressKind),
-    [physicalActiveColumns, workflowProgressKind],
-  );
+  const bulkStatusColumn = useMemo(() => {
+    const picked = pickBulkStatusColumn(canonicalNewLead ? presentNewLeadColumns(physicalActiveColumns) : physicalActiveColumns, workflowProgressKind);
+    if (!picked) return null;
+    // ★ 일괄 만들기 입구 — 실제 컬럼 id + 시스템보드 제외 + 관리 권한 + 저장 액션 +
+    //   순수 가드 통과가 «다» 있을 때만 열린다. 하나라도 없으면 검색 전용이다.
+    //   워크플로 단계·지역·연동 컬럼은 여기서 행 자체가 안 보인다(서버도 다시 막는다).
+    const pickedColumn = physicalActiveColumns.find((candidate) => candidate.key === picked.key);
+    const guardAllowsCreate = pickedColumn
+      ? canCreateLabelForColumn(pickedColumn).allowed
+      : false;
+    const canCreateBulkLabel =
+      !board.is_system && canManageColumns === true && typeof addLabelOptionAction === "function"
+      && guardAllowsCreate;
+    return {
+      ...picked,
+      canCreate: canCreateBulkLabel,
+      onCreateLabel: canCreateBulkLabel && picked.columnId
+        ? (label: string) => addLabelOptionAction!({
+            boardId: board.id,
+            columnId: picked.columnId!,
+            label,
+            requestId: newLabelRequestId(),
+          })
+        : undefined,
+    };
+  }, [canonicalNewLead, physicalActiveColumns, workflowProgressKind, board.id, board.is_system, canManageColumns, addLabelOptionAction]);
   const bulkFieldColumns = useMemo(
     () => tableColumns
       .filter((column) =>
@@ -545,7 +683,8 @@ export function BoardWorkspace({
         && isSourceEditable(column.source)
         && column.is_readonly !== true
         && !BULK_BLOCKED_COLUMN_KEYS.has(column.key)
-        && column.key !== WORKFLOW_PROGRESS_KEY)
+        && column.key !== WORKFLOW_PROGRESS_KEY
+        && column.key !== CONSULTATION_PROGRESS_KEY)
       .map((column) => ({
         key: column.key,
         label: column.label,
@@ -598,8 +737,10 @@ export function BoardWorkspace({
   // 진행현황은 투영된 인간 라벨로 포함한다 — 합성 키를 빼면 워크플로 보드의 진행이 통째로 사라진다.
   const bulkExport = useMemo(() => {
     const visibleKeys = displayFilters.visibleColumnKeys ?? null;
+    // 상담 진행 가상 칸은 표시 전용이라 내보내기에 넣지 않는다.
     const exportColumns = tableColumns.filter((column) =>
-      (visibleKeys === null || visibleKeys.includes(column.key)));
+      column.key !== CONSULTATION_PROGRESS_KEY
+      && (visibleKeys === null || visibleKeys.includes(column.key)));
     const optionLookup = new Map<string, { id: string; label: string }[]>();
     for (const column of [...columns, ...tableColumns]) {
       if (!optionLookup.has(column.key)) {
@@ -636,6 +777,7 @@ export function BoardWorkspace({
     board.source,
     contractWorkCompanyPicker,
     startCompanyWorkAction,
+    startNewCompanyWorkAction,
   );
   const people = useMemo(() => assigneeOptions(rows, assigneeLabels), [rows, assigneeLabels]);
   const scheduleItems = useMemo(() => displayRows.map((row) => ({ id: row.id, label: row.title })), [displayRows]);
@@ -669,6 +811,7 @@ export function BoardWorkspace({
     draggedKey: string,
     targetKey: string,
   ) => {
+    groupKey = durableLayoutKey(groupKey);
     const keys = reorderColumnKeys(fullColumns, draggedKey, targetKey);
     startTransition(async () => {
       setOrderOptimistic({ groupKey, keys });
@@ -680,6 +823,7 @@ export function BoardWorkspace({
     });
   };
   const handleColumnKeyboardMove=(groupKey:string,fullColumns:BoardColumn[],columnKey:string,delta:number)=>{
+    groupKey=durableLayoutKey(groupKey);
     const keys=fullColumns.map((column)=>column.key);
     const from=keys.indexOf(columnKey);const to=Math.max(0,Math.min(keys.length-1,from+delta));
     if(from<0||from===to)return;
@@ -836,7 +980,7 @@ export function BoardWorkspace({
         legacyFacetLabels={canonicalNewLead ? NEW_LEAD_LEGACY_FACET_LABELS : undefined}
       />
 
-      {readOnly && (
+      {board.is_system && (
         <p className="rounded-lg border border-mw-line bg-mw-tint-blue px-3 py-2 text-xs text-mw-body">
           시스템 보드입니다. 정책자금 파이프라인의 딜·정산은 전용 화면에서 관리합니다(구조 편집 불가).
         </p>
@@ -863,6 +1007,7 @@ export function BoardWorkspace({
           dateColumns={bulkDateColumns}
           members={bulkMembers}
           groups={orderedGroups.map((group) => ({ id: group.id, name: group.name }))}
+          linkCandidates={linkCandidates}
           exportCsv={bulkExport.csv}
           exportFilename={bulkExport.filename}
           dialog={bulkDialog}
@@ -925,8 +1070,8 @@ export function BoardWorkspace({
       ) : (
         blocks.map((block) => {
           const storedOrder = canonicalNewLead
-            ? presentNewLeadColumnKeys(optimisticOrder[block.key])
-            : optimisticOrder[block.key];
+            ? presentNewLeadColumnKeys(optimisticOrder[durableLayoutKey(block.key)])
+            : optimisticOrder[durableLayoutKey(block.key)];
           const resolvedColumns = resolveColumnOrder(tableColumns, storedOrder ?? undefined);
           // 과거에 저장된 그룹별 배치도 광고 명의 필수 유입정보 위치를 되돌리지 못하게 한다.
           // 서버의 sort_order와 그룹별 사용자 배치를 정본으로 삼는다. 기본 신규리드 순서는
@@ -972,7 +1117,7 @@ export function BoardWorkspace({
               columns={shown}
               rows={visibleRows}
               presetName={groupPresetName(board.name, block.name)}
-              presetChanged={isGroupPresetChanged(optimisticOrder[block.key])}
+              presetChanged={isGroupPresetChanged(optimisticOrder[durableLayoutKey(block.key)])}
               nameEditor={block.group && !board.is_system && canManageSections ? <GroupNameEditor boardId={board.id} groupId={block.group.id} name={block.name} /> : undefined}
               onOrderDragStart={block.group && !board.is_system && canManageSections ? () => { claimBoardTransientSurface(`board:${board.id}`,`group-drag:${board.id}`);draggedGroupRef.current = block.group!.id;setMoveNotice("그룹을 놓을 위치를 선택하세요."); } : undefined}
               onOrderDragEnd={block.group && !board.is_system && canManageSections ? ()=>{draggedGroupRef.current=null;setMoveNotice(null);} : undefined}
@@ -1012,13 +1157,18 @@ export function BoardWorkspace({
                 {...companyPickerProps}
                 itemDetailFixture={itemDetailFixture}
                 currentUserId={currentUserId}
-                groupId={block.group?.id ?? null}
+                groupId={block.group?.id ?? (isNewLeadStageView && block.key === "new-lead-stage:0" ? orderedGroups[0]?.id ?? null : null)}
                 columns={shown}
                 detailColumns={[...detailColumns]}
                 boardDetailLayout={boardDetailLayout}
                 durableDetailColumns={[...physicalDetailColumns]}
                 durableBoardDetailLayout={rawBoardDetailLayout}
                 durableDetailLayout={rawResolvedDetailLayout.entries}
+                rowDetailLayout={isNewLeadStageView ? (row) => {
+                  const originalGroup = orderedGroups.find((group) => group.id === row.group_id);
+                  const resolved = resolveDetailLayout(rawBoardDetailLayout, originalGroup?.detail_layout_jsonb);
+                  return { durable: resolved.entries, presented: presentNewLeadDetailLayout(resolved.entries), inherited: resolved.inherited };
+                } : undefined}
                 detailLayout={presentedDetailLayout.filter(
                   (entry) => entry.source === "detail" || detailColumns.some((column) => column.key === entry.key),
                 )}
@@ -1031,10 +1181,24 @@ export function BoardWorkspace({
                 authorColumnKey={authorColumnKey}
                 viewerUserId={currentUserId}
                 canManageColumns={!board.is_system && canManageColumns}
+                addLabelOptionAction={addLabelOptionAction}
                 onColumnArchived={(columnId) => setArchivedColumnIds((current) => new Set(current).add(columnId))}
                 scheduleItems={scheduleItems}
                 scheduleRecipients={scheduleRecipients}
-                rowDragEnabled={rowDragEnabled}
+                consultationByItem={showConsultationColumn ? consultationByItem : undefined}
+                consultationMembers={isContactBoard ? scheduleRecipients : undefined}
+                renderConsultationSection={isContactBoard ? (row) => (
+                  <ConsultationPanel
+                    itemId={row.id}
+                    title={row.title}
+                    initialMeetingAt={typeof row.values.meeting_at === "string" ? row.values.meeting_at : null}
+                    currentAssigneeId={typeof row.assigned_to === "string" ? row.assigned_to : null}
+                    members={scheduleRecipients.map((member) => ({ id: member.id, label: member.label }))}
+                    initialCompanyName={row.title}
+                  />
+                ) : undefined}
+                hideAddRow={isConsultationStageView || (isNewLeadStageView && !block.group && block.key !== "new-lead-stage:0")}
+                rowDragEnabled={rowDragEnabled && (!isNewLeadStageView || Boolean(block.group))}
                 cellFlash={cellFlash}
                 cellAction={cellAction}
                 workflowProgressKind={workflowProgressKind}
@@ -1078,24 +1242,34 @@ export function BoardWorkspace({
                 groupMoveOptions={orderedGroups.map((group)=>({id:group.id,name:group.name}))}
                 renderWorkflowTransition={board.source === CONTACT_TAB_SOURCE ? (row) => (
                   workflowTransitionSlot ?? (
-                    <ContactPipelineAction
-                      dealId={null}
-                      kind="contact_to_work"
-                      requestId={row.id}
-                      sourceBoardId={board.id}
-                      initialCompanyName={row.title}
-                      initialValues={{
-                        bizNo: String(row.values.biz_no ?? row.values.biz_reg_no ?? ""),
-                        ceoName: String(row.values.rep_name ?? ""),
-                        bizType: String(row.values.biz_reg_type ?? ""),
-                        industry: String(row.values.industry ?? ""),
-                        regionSido: String(row.values.sido ?? ""),
-                        regionSigungu: String(row.values.sigungu ?? ""),
-                        phone: String(row.values.phone ?? ""),
-                        foundedOn: companyFoundedOn(row.values.founded_year),
-                        revenue: companyRevenue(row.values.revenue),
-                      }}
-                    />
+                    <>
+                      <ConsultationPanel
+                        itemId={row.id}
+                        title={row.title}
+                        initialMeetingAt={typeof row.values.meeting_at === "string" ? row.values.meeting_at : null}
+                        currentAssigneeId={typeof row.assigned_to === "string" ? row.assigned_to : null}
+                        members={(memberDirectory?.length ? memberDirectory : []).map((member) => ({ id: member.id, label: member.label }))}
+                        initialCompanyName={row.title}
+                      />
+                      <ContactPipelineAction
+                        dealId={null}
+                        kind="contact_to_work"
+                        requestId={row.id}
+                        sourceBoardId={board.id}
+                        initialCompanyName={row.title}
+                        initialValues={{
+                          bizNo: String(row.values.biz_no ?? row.values.biz_reg_no ?? ""),
+                          ceoName: String(row.values.rep_name ?? ""),
+                          bizType: String(row.values.biz_reg_type ?? ""),
+                          industry: String(row.values.industry ?? ""),
+                          regionSido: String(row.values.sido ?? ""),
+                          regionSigungu: String(row.values.sigungu ?? ""),
+                          phone: String(row.values.phone ?? ""),
+                          foundedOn: companyFoundedOn(row.values.founded_year),
+                          revenue: companyRevenue(row.values.revenue),
+                        }}
+                      />
+                    </>
                   )
                 ) : undefined}
               />

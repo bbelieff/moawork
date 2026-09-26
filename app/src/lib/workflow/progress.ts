@@ -1,3 +1,4 @@
+import { presentNewLeadStageColumn } from "@/lib/new-lead/stage-presentation";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
@@ -23,9 +24,9 @@ const SPECS: Readonly<Record<WorkflowProgressKind, WorkflowProgressSpec>> = {
     stageColumnKey: "consult_status",
     legacyMoveColumnKey: "contact_move",
     transitionValue: "리드컨택으로 넘기기",
-    transitionLabel: "리드컨택 관리로 넘기기",
-    targetLabel: "리드컨택 관리",
-    targetHref: "/contract",
+    transitionLabel: "비대면 상담으로 넘기기",
+    targetLabel: "비대면 상담",
+    targetHref: "/consult-remote",
     guardLabel: null,
   },
   contact: {
@@ -86,10 +87,10 @@ export function presentWorkflowProgressColumns(
     label: "진행현황",
     rightPinned: true,
     width: Math.max(stage.width ?? 0, 180),
-    options_jsonb: { options: visibleOptions },
+    options_jsonb: { ...stage.options_jsonb, options: visibleOptions },
     move_rule_jsonb: null,
   };
-  return [...ordinary.filter((column) => !column.rightPinned), progress];
+  return [...ordinary.filter((column) => !column.rightPinned), kind === "new-lead" ? presentNewLeadStageColumn(progress) : progress];
 }
 
 export function withWorkflowProgressValues(

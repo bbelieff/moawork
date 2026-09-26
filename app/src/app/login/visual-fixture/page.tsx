@@ -1,4 +1,7 @@
+import { VisualConsultationProbe } from "./VisualConsultationProbe";
+import { SavedViewsController } from "@/components/view/SavedViewsController";
 import { NotificationCenterFixture } from "./NotificationCenterFixture";
+import { VisualDocumentOcrProbe } from "./VisualDocumentOcrProbe";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { CONTACT_TAB, NEW_LEAD_TAB } from "@/lib/default-tabs";
 import type { Board, BoardColumn, BoardGroup, ItemWithValues } from "@/lib/boards/types";
@@ -79,7 +82,29 @@ function fixture(tabKey: string, workflowValue: string | null, showAllGroups = f
 
 export default async function VisualFixturePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
+  if (params.surface === "new-lead-stages") {
+    // Synthetic layout/interaction QA only; real actions remain authenticated.
+    const sample = fixture("new", null, true);
+    const states = ["상담 전", "1차 부재", "2차 상담예약", "2차 상담완료", "보류", "거절", "직접 만든 값"];
+    const rows = states.map((state, index) => ({ ...sample.rows[0], id: `stage-qa-${index}`, title: `합성 업체 ${index + 1}`,
+      deal_id: null, sort_order: index, values: { ...sample.rows[0].values, consult_status: state } }));
+    return <main className="min-h-screen min-w-0 bg-mw-bg p-3"><VisualAppearanceProbe accent="new" controls={false} />
+      <BoardWorkspace board={sample.board} columns={sample.columns.filter((column) => ["phone", "consult_status", "contact_move"].includes(column.key))}
+        groups={sample.groups} rows={rows} columnOrder={{}} cellFlash={null} assigneeLabels={{}} canEditItems canBulkEditItems canMoveRows
+        itemDetailFixture={{ ok: true, events: [], links: [], files: [], members: [] }} />
+    </main>;
+  }
+  if (params.surface === "saved-table") {
+    const sample = fixture("new", null, true);
+    return <main className="min-h-screen min-w-0 bg-mw-bg p-4"><h1 className="mb-4 text-lg font-semibold">저장된 표 보기</h1>
+      <SavedViewsController boardId={sample.board.id} boardSource={sample.board.source} orgId="visual-org" currentUserId="visual-user"
+        columns={sample.columns} rows={sample.rows} groups={sample.groups} renderMode="flat" canonicalNewLead
+        canEditItems canBulkEditItems canMoveRows canDeleteItems memberOptions={[{ id: "review-user", label: "가상 담당자" }]} />
+    </main>;
+  }
+  if (params.surface === "consultation") return <VisualConsultationProbe />;
   if (params.surface === "companies") return <VisualCompaniesProbe />;
+  if (params.surface === "document-ocr") return <VisualDocumentOcrProbe />;
   if (params.surface === "notifications") {
     return <main className="min-h-screen bg-mw-bg p-4"><NotificationCenterFixture /></main>;
   }

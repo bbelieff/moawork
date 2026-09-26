@@ -1,3 +1,5 @@
+import { NEW_LEAD_GROUPS } from "@/lib/default-tabs/new-lead";
+import { NEW_LEAD_STAGE_LABELS, newLeadStageOf } from "@/lib/new-lead/stage-presentation";
 /**
  * 탭 페이지 = **블록 리스트** (PLAN-002 WO-2 ⓔ · 사용자 방향 확정 2026-08-04).
  *
@@ -79,4 +81,26 @@ export function buildBlocks(
     });
   }
   return blocks;
+}
+
+/** Status view only: keep physical IDs/layouts and preserve unknown/legacy rows in their original blocks. */
+export function buildNewLeadStageBlocks(groups: readonly BoardGroup[], rows: readonly ItemWithValues[]): BoardBlock[] {
+  const stageRows = new Map<string, ItemWithValues[]>();
+  const remaining: ItemWithValues[] = [];
+  for (const row of rows) {
+    const stage = newLeadStageOf(row);
+    if (!stage) { remaining.push(row); continue; }
+    const bucket = stageRows.get(stage) ?? [];
+    bucket.push(row); stageRows.set(stage, bucket);
+  }
+  const stages: BoardBlock[] = NEW_LEAD_STAGE_LABELS.map((stage, index) => ({
+    kind: "item-group", key: `new-lead-stage:${index}`, group: null, name: stage,
+    color: null, rows: [...(stageRows.get(stage) ?? [])].sort((a,b) => a.sort_order-b.sort_order),
+  }));
+  return [...stages, ...buildBlocks(groups, remaining).filter((block) => block.rows.length > 0 || (block.group && !Object.values(NEW_LEAD_GROUPS).some((name) => name === block.group?.name)))];
+}
+
+/** Virtual headings never become persistence keys. Reuse the original physical group's layout. */
+export function durableNewLeadBlockKey(block: BoardBlock, groups: readonly BoardGroup[]): string {
+  return block.group?.id ?? block.rows.find((row) => row.group_id)?.group_id ?? groups[0]?.id ?? UNGROUPED_KEY;
 }

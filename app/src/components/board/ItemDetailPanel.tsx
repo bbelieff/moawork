@@ -94,6 +94,7 @@ import {
   searchSigungu,
 } from "@/lib/new-lead/region-search";
 import { DETAIL_FILE_GROUP_LABEL, groupDetailFiles } from "./detail-file-groups";
+import { ItemDetailOcr } from "./ItemDetailOcr";
 import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
 import { AssignmentLineagePopover } from "./AssignmentLineagePopover";
 import { NewLeadCreditScoresCell } from "./NewLeadCreditScoresCell";
@@ -118,6 +119,12 @@ const CANONICAL_NEW_LEAD_LOAN_KEYS = new Set<string>([
   EXISTING_LOAN_RECORDS_KEY,
 ]);
 
+/**
+ * ★ 상세 편집기는 native 입력 그대로다. select/status/multiselect형에는
+ *   기존 선택지를 datalist로만 이어준다 — 검색은 되지만 «만들기»는 없다.
+ *   만들기는 컬럼 잠금이 필요한 구조 변경이라 상세 자동저장 경로에서 하지 않는다.
+ *   저장(디바운스 자동저장)·상태 표시는 그대로다.
+ */
 function AutoSaveField({
   boardId,
   itemId,
@@ -127,6 +134,7 @@ function AutoSaveField({
   initialValue,
   canonicalDealId,
   phoneStatus = "normalized",
+  options,
   onStatusChange,
 }: {
   boardId: string;
@@ -137,6 +145,8 @@ function AutoSaveField({
   initialValue: string | number;
   canonicalDealId?: string | null;
   phoneStatus?: PhoneNormalizationStatus;
+  /** 표 컬럼의 기존 선택지 — 있을 때만 datalist 검색으로 이어준다. */
+  options?: readonly { id: string; label: string }[];
   onStatusChange?: (status: string) => void;
 }) {
   const presentedInitial = type === "phone" ? presentPhone(String(initialValue), phoneStatus) : String(initialValue);
@@ -204,12 +214,17 @@ function AutoSaveField({
     [],
   );
 
+  const optionListId =
+    (type === "select" || type === "status" || type === "multiselect") && options && options.length > 0
+      ? `${itemId}-${fieldKey}-options`
+      : undefined;
   return (
     <div className={styles.fieldEditor}>
       <input
         id={`${itemId}-${fieldKey}`}
         value={value}
         type={inputType(type)}
+        list={optionListId}
         min={fieldKey === "credit_score_ncb" || fieldKey === "credit_score_kcb" ? 1 : undefined}
         max={fieldKey === "credit_score_ncb" || fieldKey === "credit_score_kcb" ? 1000 : fieldKey === "existing_loan_rate" ? 100 : undefined}
         step={fieldKey === "credit_score_ncb" || fieldKey === "credit_score_kcb" ? 1 : undefined}
@@ -233,6 +248,13 @@ function AutoSaveField({
         }}
         className={styles.fieldInput}
       />
+      {optionListId ? (
+        <datalist id={optionListId}>
+          {options!.map((option) => (
+            <option key={option.id} value={option.label} />
+          ))}
+        </datalist>
+      ) : null}
       <span
         aria-live="polite"
         className={styles.fieldStatus}
@@ -451,6 +473,7 @@ export function ItemDetailPanel({
   groupName,
   previousItem,
   nextItem,
+  consultationSection,
 }: {
   boardId: string;
   row: ItemWithValues;
@@ -472,6 +495,11 @@ export function ItemDetailPanel({
   groupName?: string;
   previousItem?: { id: string; title: string };
   nextItem?: { id: string; title: string };
+  /**
+   * 상담 확인 인라인 — 리드컨택 행에서만 BoardWorkspace 가 채운다.
+   * 업무이동 메뉴를 찾지 않아도 상세 안에서 바로 확인한다.
+   */
+  consultationSection?: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [detail, setDetail] = useState<ItemDetailSnapshot>(initialDetail ?? {
@@ -1104,6 +1132,12 @@ export function ItemDetailPanel({
                 </nav>
               </header>
 
+              {consultationSection ? (
+                <div data-item-detail-consultation style={{ padding: "0 var(--sp-4)" }}>
+                  {consultationSection}
+                </div>
+              ) : null}
+
               <div
                 ref={contentRef}
                 className={styles.content}
@@ -1290,6 +1324,7 @@ export function ItemDetailPanel({
                                 initialValue={inputValue(value)}
                                 canonicalDealId={canonicalNewLead && CANONICAL_NEW_LEAD_DETAIL_KEYS.has(entry.key) ? row.deal_id : null}
                                 phoneStatus={row.value_statuses?.[entry.key] ?? "normalized"}
+                                options={column?.options_jsonb?.options}
                                 onStatusChange={(status) =>
                                   setFieldSaveStatuses((current) =>
                                     current[entry.key] === status
@@ -1843,8 +1878,9 @@ export function ItemDetailPanel({
                           }}
                         >
                           {/*
-                            OCR은 이 과업 밖이다. 유료·외부 OCR 없이 로컬 파일 선택만
-                            두며, 이 input이 후속 OCR 진입점이다.
+                            이 input은 보호 스토리지 업로드 전용이다. OCR은 파일을
+                            서버로 보내지 않으므로 아래 ItemDetailOcr(브라우저
+                            로컬 인식 + 사용자 확인 diff)가 별도 진입점이다.
                           */}
                           <label htmlFor={`${row.id}-evidence-files`}>
                             증빙 파일 고르기(여러 개 가능·끌어다 놓기)
@@ -1861,6 +1897,16 @@ export function ItemDetailPanel({
                           />
                         </div>
                       ) : null}
+                      <ItemDetailOcr
+                        boardId={boardId}
+                        itemId={row.id}
+                        dealId={canonicalNewLead ? row.deal_id : null}
+                        values={row.values}
+                        columns={columns}
+                        boardLayout={boardLayout}
+                        layout={layout}
+                        canEditItems={canEditItems}
+                      />
                       {filePending ? (
                         <p aria-live="polite" className="text-xs text-mw-sub">올리는 중…</p>
                       ) : null}

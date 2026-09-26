@@ -6,6 +6,10 @@ import type {
   CreateNewLeadWithFoundedMonthArgs,
   NewLeadFieldPatch,
   NewLeadValueSource,
+  OcrCompanyBizNoRow,
+  OcrCompanyNameSyncRow,
+  OcrPrecompanyMetaRow,
+  OcrPrecompanyPatch,
   UpdateNewLeadRow,
   UpdateNewLeadTitleRow,
   UpdateNewLeadMetaRow,
@@ -95,6 +99,81 @@ export async function createCanonicalNewLeadWithFoundedMonth(
   });
   if (result.error) throw new NewLeadMutationError(messageFor(result.error.code), result.error.code);
   return oneRow<CreateNewLeadRow>(result.data, ["deal_id", "item_id", "replayed"]);
+}
+
+/**
+ * 154 초안(미적용) intake meta — 생년월일/종목/미연계 사업자번호의
+ * 회사-생기기-전 보관분. 마이그레이션 적용 전에는 RPC 부재 오류(코드 없음·
+ * 메시지는 그대로)로 실패하며 조용히 성공하지 않는다.
+ */
+export async function updateOcrPrecompanyMeta(
+  client: SupabaseClient,
+  input: Readonly<{
+    orgId: string;
+    dealId: string;
+    requestId: string;
+    patch: OcrPrecompanyPatch;
+    valueSource?: NewLeadValueSource;
+  }>,
+): Promise<OcrPrecompanyMetaRow> {
+  const result = await client.rpc(NEW_LEAD_RPC.ocrMeta, {
+    p_org_id: input.orgId,
+    p_deal_id: input.dealId,
+    p_request_id: input.requestId,
+    p_patch: input.patch,
+    p_value_source: input.valueSource ?? "manual",
+  });
+  if (result.error) throw new NewLeadMutationError(messageFor(result.error.code), result.error.code);
+  return oneRow<OcrPrecompanyMetaRow>(result.data, ["deal_id", "item_id", "changed_fields", "replayed"]);
+}
+
+/**
+ * 154 초안(미적용) — 연계된 회사 원본의 사업자번호 동기화.
+ * confirmed가 false면 호출하지 않는다 (서버도 22023으로 막는다).
+ * 회사 신규 생성·재연계는 하지 않는다.
+ */
+export async function updateLinkedCompanyBizNo(
+  client: SupabaseClient,
+  input: Readonly<{ orgId: string; dealId: string; requestId: string; bizNo: string; confirmed: boolean }>,
+): Promise<OcrCompanyBizNoRow> {
+  if (!input.confirmed) {
+    throw new NewLeadMutationError("사업자등록번호는 체크섬 통과와 사용자 확정이 함께 있어야 저장됩니다.", "22023");
+  }
+  const result = await client.rpc(NEW_LEAD_RPC.companyBizNo, {
+    p_org_id: input.orgId,
+    p_deal_id: input.dealId,
+    p_request_id: input.requestId,
+    p_biz_no: input.bizNo,
+    p_confirmed: true,
+  });
+  if (result.error) throw new NewLeadMutationError(messageFor(result.error.code), result.error.code);
+  return oneRow<OcrCompanyBizNoRow>(result.data, ["deal_id", "company_id", "replayed"]);
+}
+
+/**
+ * 154 초안(미적용) — 연계 회사명 정정.
+ * confirmed(사용자 선택 확정)가 false면 호출하지 않는다 (서버도 22023).
+ * expected는 비교 화면에서 본 이전 회사명이다 — 빈 문자열이면 "비어 있었음"
+ * 관찰이며, null이면 비교 기준 없이 저장하지 않는다 (서버도 22023).
+ * 확정+CAS 일치가 있으면 틀린 원본을 갱신한다. 생성·재연계·자동 병합 없음.
+ */
+export async function syncLinkedCompanyName(
+  client: SupabaseClient,
+  input: Readonly<{ orgId: string; dealId: string; requestId: string; title: string; expected: string | null; confirmed: boolean }>,
+): Promise<OcrCompanyNameSyncRow> {
+  if (!input.confirmed) {
+    throw new NewLeadMutationError("연계 회사명은 비교 화면에서 확인해야 저장됩니다.", "22023");
+  }
+  const result = await client.rpc(NEW_LEAD_RPC.companyNameSync, {
+    p_org_id: input.orgId,
+    p_deal_id: input.dealId,
+    p_request_id: input.requestId,
+    p_title: input.title.trim(),
+    p_expected: input.expected,
+    p_confirmed: true,
+  });
+  if (result.error) throw new NewLeadMutationError(messageFor(result.error.code), result.error.code);
+  return oneRow<OcrCompanyNameSyncRow>(result.data, ["deal_id", "company_id", "skipped", "replayed"]);
 }
 
 export async function updateCanonicalNewLead(

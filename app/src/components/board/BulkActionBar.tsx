@@ -1,13 +1,15 @@
 "use client";
 
 /**
- * 선택 작업 바 + 일괄 대화상자 (agenda06).
+ * 선택 작업 바 + 일괄 대화상자 (agenda06 + v17 아이템 연산).
  *
  * 바는 작게 — 개수·대상·지원되는 작업만. 대화상자는 적용 전 목록 검토,
- * 건별 실패 보존, 입력 유지를 보장한다. 삭제·복제·보관·관계변환은 두지 않는다.
+ * 건별 실패 보존, 입력 유지를 보장한다. 보관·복제·상하위연결은 153 draft
+ * 보호 RPC(`bulk-archive/link/duplicate-actions.ts`)만 쓴다.
  *
- * 저장은 `bulk-actions.ts` 의 권한 검사 서버 액션만 쓴다. 전이 열/값은
- * 선택지에 올리지 않고 서버 게이트가 한 번 더 막는다.
+ * 저장은 권한 검사 서버 액션만 쓴다. 전이 열/값은 선택지에 올리지 않고
+ * 서버 게이트가 한 번 더 막는다. 숨김/접힘/검색제외 행은 보기 내 대상에서
+ * 제외된다(워크스페이스가 `intersectVisibleSelection` 으로 자른 목록만 넘긴다).
  */
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -23,17 +25,31 @@ import {
   type BulkTrashResult,
 } from "@/app/(app)/boards/bulk-trash-actions";
 import {
+  bulkArchiveAction,
+  bulkRestoreArchivedAction,
+  type BulkArchiveResult,
+} from "@/app/(app)/boards/bulk-archive-actions";
+import {
+  bulkDuplicateAction,
+  type BulkDuplicateResult,
+} from "@/app/(app)/boards/bulk-duplicate-actions";
+import {
+  bulkSetParentAction,
+  type BulkLinkResult,
+} from "@/app/(app)/boards/bulk-link-actions";
+import {
   bulkAddNoteAction,
   type BulkNoteResult,
 } from "@/app/(app)/boards/bulk-note-actions";
 import { BULK_BLOCKED_VALUES } from "@/components/board/bulk-selection";
+import { LabelCombobox } from "./LabelCombobox";
 import type { WorkflowProgressKind } from "@/lib/workflow/progress";
 import { SELECTABLE_DETAIL_EVENT_KINDS, type SelectableDetailEventKind } from "@/lib/boards/detail-event-kinds";
 import { authorizeBoardCsvExport } from "@/app/(app)/boards/bulk-export-actions";
 import { noticeLive, noticeRole, type ResultNotice } from "@/lib/ui/result-notice";
 import type { CellValue } from "@/lib/boards/types";
 
-export type BulkOpKind = "status" | "assignee" | "date" | "fields" | "move" | "trash" | "note";
+export type BulkOpKind = "status" | "assignee" | "date" | "fields" | "move" | "trash" | "note" | "archive" | "duplicate" | "link";
 
 export interface BulkDialogState {
   op: BulkOpKind;
@@ -46,12 +62,27 @@ export interface BulkDialogState {
 export interface BulkTargetRow {
   id: string;
   title: string;
+  /** 동시수정(CAS) 기준 — 없으면 서버가 현재값 기준으로 처리한다. */
+  updatedAt?: string | null;
 }
 
 export interface BulkStatusColumn {
   key: string;
   label: string;
   options: { id: string; label: string }[];
+  /**
+   * 실제 물리 컬럼 id + 만들기 권한 + 저장 입구가 «다» 있을 때만
+   * 일괄 대화상자에 만들기 행을 보여준다(워크스페이스가 순수 가드까지 보고 정한다).
+   * 하나라도 없으면 검색 전용이다. 조용히 넓히지 않는다.
+   */
+  columnId?: string | null;
+  canCreate?: boolean;
+  onCreateLabel?: (label: string) => Promise<{
+    ok: boolean;
+    message: string;
+    optionId?: string;
+    conflict?: boolean;
+  }>;
 }
 
 export interface BulkFieldColumn {
@@ -213,7 +244,11 @@ function DialogShell({
     <dialog
       ref={ref}
       aria-label={title}
-      onClose={onClose}
+      onClose={(event) => {
+        // close() queues its event. StrictMode may reopen this same dialog before
+        // that old event arrives; only a currently closed dialog may dismiss UI.
+        if (!event.currentTarget.open) onClose();
+      }}
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
       className="fixed inset-0 m-auto max-h-[calc(100vh-2rem)] w-[min(34rem,calc(100vw-2rem))] overflow-y-auto whitespace-normal rounded-md border border-mw-line bg-mw-card p-0 text-mw-fg shadow-lg backdrop:bg-slate-950/50"
     >
@@ -280,14 +315,22 @@ function StatusDialog({
     <DialogShell title="상태 일괄 변경" onClose={onClose}>
       <p className="text-xs text-mw-sub">모두에 공통으로 고를 수 있는 보드 안 단계만 표시합니다. 다음 업무로 넘기기는 낱개 확인 흐름에서만 가능합니다.</p>
       <ReviewList targets={targets} />
-      <label className="flex flex-col gap-1 text-xs font-medium">상태
-        <select value={value} onChange={(e) => setValue(e.target.value)} className={DIALOG_INPUT} aria-label="일괄 적용할 상태">
-          <option value="">선택하세요</option>
-          {options.map((option) => (
-            <option key={option.id} value={option.id}>{option.label}</option>
-          ))}
-        </select>
-      </label>
+      <div className="flex flex-col gap-1 text-xs font-medium">상태
+        {/*
+          2026-09-26 수리 — 일괄 선택도 같은 검색 콤보박스를 쓴다.
+          만들기는 실제 컬럼 id + 권한 + 저장 입구가 셋 다 있을 때만 열린다.
+          하나라도 없으면 검색 전용이다(보호 워크플로 단계는 가드가 막는다).
+        */}
+        <LabelCombobox
+          options={options}
+          value={value}
+          onSelect={(next) => setValue(typeof next === "string" ? next : "")}
+          label="일괄 적용할 상태"
+          className={DIALOG_INPUT}
+          canCreate={Boolean(statusColumn.columnId) && statusColumn.canCreate === true && typeof statusColumn.onCreateLabel === "function"}
+          createLabel={statusColumn.onCreateLabel}
+        />
+      </div>
       {localError ? <p role="alert" className="text-xs text-mw-error">{localError}</p> : null}
       {result ? <Failures result={result} targets={targets} /> : null}
       <div className="flex justify-end gap-2">
@@ -892,6 +935,215 @@ function NoteDialog({
   );
 }
 
+function toArchiveTargets(targets: readonly BulkTargetRow[]) {
+  return targets.map((target) => ({ id: target.id, expectedUpdatedAt: target.updatedAt ?? null }));
+}
+
+function ArchiveDialog({
+  boardId,
+  targets,
+  onClose,
+  onApplied,
+  onNotice,
+}: {
+  boardId: string;
+  targets: readonly BulkTargetRow[];
+  onClose: () => void;
+  onApplied: (succeededIds: string[]) => void;
+  onNotice: (message: string, ok?: boolean) => void;
+}) {
+  const [result, setResult] = useState<BulkArchiveResult | null>(null);
+  const [restoreResult, setRestoreResult] = useState<BulkArchiveResult | null>(null);
+  const [reviewTargets] = useState(() => [...targets]);
+  const [restoredIds, setRestoredIds] = useState<string[]>([]);
+  const [pending, startTransition] = useTransition();
+  // 같은 대화상자 안의 재시도는 같은 묶음 키를 써서 서버가 replay한다 (중복 기록 방지).
+  const [bulkKey] = useState(() => crypto.randomUUID());
+  const ids = result ? result.results.filter((entry) => !entry.ok).map((entry) => entry.itemId) : reviewTargets.map((row) => row.id);
+  const succeededIds = useMemo(
+    () => (result?.results.filter((entry) => entry.ok && !restoredIds.includes(entry.itemId)).map((entry) => entry.itemId) ?? []),
+    [result, restoredIds],
+  );
+
+  const apply = () => {
+    setRestoreResult(null);
+    startTransition(async () => {
+      const next = await bulkArchiveAction({ boardId, items: toArchiveTargets(reviewTargets.filter((row) => ids.includes(row.id))), idempotencyKey: bulkKey });
+      setResult((previous) => {
+        const results = [...(previous?.results.filter((entry) => entry.ok) ?? []), ...next.results];
+        const applied = results.filter((entry) => entry.ok).length;
+        return { ok: applied === results.length, applied, failed: results.length - applied, results };
+      });
+      const succeeded = next.results.filter((entry) => entry.ok).map((entry) => entry.itemId);
+      onApplied(succeeded);
+      if (next.failed === 0) {
+        onNotice(`${next.applied}개를 보관했습니다. 보관 목록에서 복구할 수 있습니다(휴지통과 별도).`);
+      }
+    });
+  };
+
+  const undo = () => {
+    if (succeededIds.length === 0) return;
+    startTransition(async () => {
+      const next = await bulkRestoreArchivedAction({ boardId, items: succeededIds, idempotencyKey: bulkKey });
+      setRestoreResult(next);
+      setRestoredIds((previous) => [...previous, ...next.results.filter((entry) => entry.ok).map((entry) => entry.itemId)]);
+      if (next.failed === 0) {
+        onNotice(`${next.applied}개를 보관 전 위치로 복구했습니다.`);
+        onClose();
+      }
+    });
+  };
+
+  return (
+    <DialogShell title="선택 항목 보관" onClose={onClose}>
+      <p className="text-xs text-mw-sub">휴지통과 별도로 치웁니다. 회사 원본·신청·원장은 지우지 않고, 보관 목록에서 복구할 수 있습니다. 완전히 지우지 않습니다.</p>
+      <ReviewList targets={reviewTargets} />
+      {result ? <Failures result={result} targets={reviewTargets} /> : null}
+      {restoreResult ? <Failures result={restoreResult} targets={reviewTargets} /> : null}
+      {succeededIds.length > 0 ? (
+        <div className="flex items-center justify-between gap-2 rounded bg-mw-bg px-3 py-2 text-xs">
+          <span>{succeededIds.length}개 보관 — 실패분은 선택에 남겼습니다.</span>
+          <button type="button" onClick={undo} disabled={pending} className={BAR_BUTTON}>
+            {pending ? "복구 중…" : "되돌리기"}
+          </button>
+        </div>
+      ) : null}
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onClose} className={BAR_BUTTON}>닫기</button>
+        <button type="button" onClick={apply} disabled={pending || ids.length === 0} className={DIALOG_PRIMARY}>
+          {pending ? "보관하는 중…" : `${ids.length}개 보관하기`}
+        </button>
+      </div>
+    </DialogShell>
+  );
+}
+
+function DuplicateDialog({
+  boardId,
+  targets,
+  onClose,
+  onApplied,
+  onNotice,
+}: {
+  boardId: string;
+  targets: readonly BulkTargetRow[];
+  onClose: () => void;
+  onApplied: (succeededIds: string[]) => void;
+  onNotice: (message: string, ok?: boolean) => void;
+}) {
+  const [result, setResult] = useState<BulkDuplicateResult | null>(null);
+  const [reviewTargets] = useState(() => [...targets]);
+  const [pending, startTransition] = useTransition();
+  const [bulkKey] = useState(() => crypto.randomUUID());
+  const ids = result ? result.results.filter((entry) => !entry.ok).map((entry) => entry.itemId) : reviewTargets.map((row) => row.id);
+  const createdCount = result?.results.filter((entry) => entry.ok).length ?? 0;
+
+  const apply = () => {
+    startTransition(async () => {
+      const next = await bulkDuplicateAction({ boardId, itemIds: ids, idempotencyKey: bulkKey });
+      setResult((previous) => {
+        const results = [...(previous?.results.filter((entry) => entry.ok) ?? []), ...next.results];
+        const applied = results.filter((entry) => entry.ok).length;
+        return { ok: applied === results.length, applied, failed: results.length - applied, results };
+      });
+      // 복제는 새 행을 만든다 — 성공분을 선택에서 빼지 않는다(원본 선택 유지). 실패분만 다시 실행한다.
+      onApplied([]);
+      if (next.failed === 0) {
+        onNotice(`${next.applied}개를 복제했습니다. 승인·서명·원장 등은 옮기지 않습니다.`);
+      } else if (next.applied > 0) {
+        onNotice(`${next.applied}개 복제·${next.failed}개 실패 — 실패한 것만 다시 실행해 주세요.`, false);
+      }
+    });
+  };
+
+  return (
+    <DialogShell title="선택 항목 복제" onClose={onClose}>
+      <p className="text-xs text-mw-sub">새 행은 내가 담당합니다. 승인·직인·서명·계약확인·입금/원장은 복사하지 않습니다. 신규리드·컨택·계약업무의 전화번호·이메일·외부 식별번호도 복사하지 않습니다. 복제는 되돌릴 수 없습니다.</p>
+      <ReviewList targets={reviewTargets} />
+      {result ? <Failures result={result} targets={reviewTargets} /> : null}
+      {createdCount > 0 ? (
+        <p className="rounded bg-mw-bg px-3 py-2 text-xs text-mw-body">{createdCount}개 복제됨 — 실패분({ids.length}개)만 다시 실행할 수 있습니다.</p>
+      ) : null}
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onClose} className={BAR_BUTTON}>닫기</button>
+        <button type="button" onClick={apply} disabled={pending || ids.length === 0} className={DIALOG_PRIMARY}>
+          {pending ? "복제하는 중…" : `${ids.length}개 복제하기`}
+        </button>
+      </div>
+    </DialogShell>
+  );
+}
+
+function LinkDialog({
+  boardId,
+  targets,
+  candidates,
+  onClose,
+  onApplied,
+  onNotice,
+}: {
+  boardId: string;
+  targets: readonly BulkTargetRow[];
+  candidates: readonly BulkTargetRow[];
+  onClose: () => void;
+  onApplied: (succeededIds: string[]) => void;
+  onNotice: (message: string, ok?: boolean) => void;
+}) {
+  const [result, setResult] = useState<BulkLinkResult | null>(null);
+  const [reviewTargets] = useState(() => [...targets]);
+  const [parentId, setParentId] = useState<string>("");
+  const [pending, startTransition] = useTransition();
+  const [bulkKey] = useState(() => crypto.randomUUID());
+  const retryIds = result ? result.results.filter((entry) => !entry.ok).map((entry) => entry.itemId) : reviewTargets.map((row) => row.id);
+
+  const apply = (parentItemId: string | null) => {
+    startTransition(async () => {
+      const next = await bulkSetParentAction({
+        boardId,
+        items: toArchiveTargets(reviewTargets.filter((row) => retryIds.includes(row.id))),
+        parentItemId,
+        idempotencyKey: bulkKey,
+      });
+      setResult((previous) => {
+        const results = [...(previous?.results.filter((entry) => entry.ok) ?? []), ...next.results];
+        const applied = results.filter((entry) => entry.ok).length;
+        return { ok: applied === results.length, applied, failed: results.length - applied, results };
+      });
+      const succeeded = next.results.filter((entry) => entry.ok).map((entry) => entry.itemId);
+      onApplied(succeeded);
+      if (next.failed === 0) {
+        onNotice(parentItemId === null ? `${next.applied}개의 상위 연결을 해제했습니다.` : `${next.applied}개를 상위 항목에 연결했습니다.`);
+      }
+    });
+  };
+
+  return (
+    <DialogShell title="상하위 항목 연결" onClose={onClose}>
+      <p className="text-xs text-mw-sub">부모를 정해도 하위 행이 함께 바뀌거나 지워지지 않습니다. 아래 목록의 행에만 연결이 적용됩니다. 순환 연결은 저장하지 않습니다.</p>
+      <ReviewList targets={reviewTargets} />
+      <label className="flex flex-col gap-1 text-xs font-medium">상위 항목
+        <select value={parentId} onChange={(e) => setParentId(e.target.value)} className={DIALOG_INPUT} aria-label="상위 항목">
+          <option value="">선택하세요</option>
+          {candidates.filter((row) => !reviewTargets.some((target) => target.id === row.id)).map((row) => (
+            <option key={row.id} value={row.id}>{row.title}</option>
+          ))}
+        </select>
+      </label>
+      {result ? <Failures result={result} targets={reviewTargets} /> : null}
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onClose} className={BAR_BUTTON}>닫기</button>
+        <button type="button" onClick={() => apply(null)} disabled={pending || retryIds.length === 0} className={BAR_BUTTON}>
+          {pending ? "해제 중…" : "연결 해제"}
+        </button>
+        <button type="button" onClick={() => apply(parentId || null)} disabled={pending || retryIds.length === 0 || !parentId} className={DIALOG_PRIMARY}>
+          {pending ? "연결 중…" : `${retryIds.length}개 연결하기`}
+        </button>
+      </div>
+    </DialogShell>
+  );
+}
+
 export function BulkActionBar({
   boardId,
   workflowKind,
@@ -907,6 +1159,7 @@ export function BulkActionBar({
   dateColumns,
   members,
   groups,
+  linkCandidates = [],
   exportCsv,
   exportFilename,
   dialog,
@@ -928,6 +1181,8 @@ export function BulkActionBar({
   canMove: boolean;
   canDelete?: boolean;
   canExport?: boolean;
+  /** 상하위 연결 후보 — 보기 내 전체 행 (숨김/접힘/검색제외 제외). */
+  linkCandidates?: readonly BulkTargetRow[];
   statusColumn: BulkStatusColumn | null;
   fieldColumns: BulkFieldColumn[];
   dateColumns: BulkDateColumn[];
@@ -955,6 +1210,9 @@ export function BulkActionBar({
   const showMove = canEdit && canMove && groups.length > 0;
   const showTrash = canDelete;
   const showNote = canEdit;
+  const showArchive = canDelete;
+  const showDuplicate = canEdit;
+  const showLink = canEdit;
   const [exportPending, startExport] = useTransition();
 
   const download = () => {
@@ -996,11 +1254,14 @@ export function BulkActionBar({
         {showMove ? <button type="button" data-bulk-op="move" disabled={!hasTargets} onClick={() => onOpenDialog("move")} className={BAR_BUTTON}>이동</button> : null}
         {showNote ? <button type="button" data-bulk-op="note" disabled={!hasTargets} onClick={() => onOpenDialog("note")} className={BAR_BUTTON}>메모</button> : null}
         {showTrash ? <button type="button" data-bulk-op="trash" disabled={!hasTargets} onClick={() => onOpenDialog("trash")} className={BAR_BUTTON}>삭제</button> : null}
+        {showArchive ? <button type="button" data-bulk-op="archive" disabled={!hasTargets} onClick={() => onOpenDialog("archive")} className={BAR_BUTTON}>보관</button> : null}
+        {showDuplicate ? <button type="button" data-bulk-op="duplicate" disabled={!hasTargets} onClick={() => onOpenDialog("duplicate")} className={BAR_BUTTON}>복제</button> : null}
+        {showLink ? <button type="button" data-bulk-op="link" disabled={!hasTargets} onClick={() => onOpenDialog("link")} className={BAR_BUTTON}>상위연결</button> : null}
         {hasTargets && canExport ? <button type="button" data-bulk-op="export" disabled={exportPending} onClick={download} className={BAR_BUTTON}>{exportPending ? "내보내기 준비 중…" : "내보내기"}</button> : null}
         <button type="button" onClick={onClear} className={BAR_BUTTON}>선택 해제</button>
         {notice ? <span role={noticeRole(notice.ok)} aria-live={noticeLive(notice.ok)} className={`text-xs ${notice.ok ? "text-mw-body" : "text-mw-error"}`}>{notice.message}</span> : null}
       </section>
-      {dialog && (dialog.op === "trash" ? canDelete : canEdit) && (targets.length > 0 || dialog.op === "trash" || dialog.op === "note") ? (
+      {dialog && ((dialog.op === "trash" || dialog.op === "archive") ? canDelete : canEdit) && (targets.length > 0 || dialog.op === "trash" || dialog.op === "note") ? (
         dialog.op === "status" && statusColumn ? (
           <StatusDialog
             key={`status:${dialog.preset ?? ""}`}
@@ -1074,6 +1335,34 @@ export function BulkActionBar({
             key="note"
             boardId={boardId}
             targets={targets}
+            onClose={onCloseDialog}
+            onApplied={onApplied}
+            onNotice={onNotice}
+          />
+        ) : dialog.op === "archive" && showArchive ? (
+          <ArchiveDialog
+            key="archive"
+            boardId={boardId}
+            targets={targets}
+            onClose={onCloseDialog}
+            onApplied={onApplied}
+            onNotice={onNotice}
+          />
+        ) : dialog.op === "duplicate" && showDuplicate ? (
+          <DuplicateDialog
+            key="duplicate"
+            boardId={boardId}
+            targets={targets}
+            onClose={onCloseDialog}
+            onApplied={onApplied}
+            onNotice={onNotice}
+          />
+        ) : dialog.op === "link" && showLink ? (
+          <LinkDialog
+            key="link"
+            boardId={boardId}
+            targets={targets}
+            candidates={linkCandidates}
             onClose={onCloseDialog}
             onApplied={onApplied}
             onNotice={onNotice}

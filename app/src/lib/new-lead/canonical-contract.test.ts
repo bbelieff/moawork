@@ -3,6 +3,8 @@ import { NEW_LEAD_ERROR, NEW_LEAD_RPC, type CreateNewLeadArgs, type NewLeadField
 
 describe("BBE-173 canonical new-lead RPC contract", () => {
   it("freezes the consumer-facing RPC names and stable SQLSTATEs", () => {
+    // 기존 6종 이름은 고정이다. 뒤 4종은 154 초안(미적용) 추가분이며
+    // 기존 이름을 바꾸지 않는다.
     expect(NEW_LEAD_RPC).toEqual({
       create: "create_new_lead",
       createWithFoundedMonth: "create_new_lead_with_founded_month",
@@ -10,6 +12,9 @@ describe("BBE-173 canonical new-lead RPC contract", () => {
       updateTitle: "update_new_lead_title",
       updateMeta: "update_new_lead_intake_meta",
       advance: "advance_new_lead_to_contact",
+      ocrMeta: "update_new_lead_ocr_meta",
+      companyBizNo: "ocr_update_linked_company_biz_no",
+      companyNameSync: "ocr_sync_linked_company_name",
     });
     expect(NEW_LEAD_ERROR).toEqual({ invalidInput: "22023", forbidden: "42501", manualCorrectionConflict: "40001" });
   });

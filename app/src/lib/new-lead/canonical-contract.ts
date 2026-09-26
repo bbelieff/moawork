@@ -5,6 +5,10 @@ export const NEW_LEAD_RPC = {
   updateTitle: "update_new_lead_title",
   updateMeta: "update_new_lead_intake_meta",
   advance: "advance_new_lead_to_contact",
+  /** 154 초안(미적용): OCR intake meta·연계 회사 동기화 (protected chain enrich는 154 wrapper가 소유). */
+  ocrMeta: "update_new_lead_ocr_meta",
+  companyBizNo: "ocr_update_linked_company_biz_no",
+  companyNameSync: "ocr_sync_linked_company_name",
 } as const;
 
 export const NEW_LEAD_ERROR = {
@@ -76,6 +80,42 @@ export type UpdateNewLeadRow = Readonly<{
 
 export type UpdateNewLeadTitleRow = Readonly<{ deal_id: string; item_id: string; replayed: boolean }>;
 export type UpdateNewLeadMetaRow = Readonly<{ deal_id: string; item_id: string; changed_fields: string[]; replayed: boolean }>;
+
+/**
+ * 154 초안 intake meta patch — deal_intake의 회사-생기기-전 보관분.
+ * birthdate는 YYYY-MM-DD 날짜만(주민번호 추론 금지), business_item은
+ * industry(업태)와 분리된 종목, biz_no는 10자리 정규화 보관분이다.
+ */
+export type OcrPrecompanyPatch = Partial<Readonly<{
+  birthdate: string | null;
+  business_item: string | null;
+  biz_no: string | null;
+}>>;
+
+export type OcrPrecompanyMetaRow = Readonly<{
+  deal_id: string;
+  item_id: string;
+  changed_fields: string[];
+  replayed: boolean;
+}>;
+
+export type OcrCompanyBizNoRow = Readonly<{
+  deal_id: string;
+  company_id: string;
+  replayed: boolean;
+}>;
+
+export type OcrCompanyNameSyncRow = Readonly<{
+  deal_id: string;
+  company_id: string;
+  /**
+   * true면 회사명을 쓰지 않았다 — 새 값과 이미 같아 멱등이거나(감사 없음)
+   * replay다. 기존 이름이 있다고 무조건 건너뛰지 않는다: 사용자 확정 +
+   * 이전값 CAS가 일치하면 틀린 원본을 갱신한다 (P2 정정).
+   */
+  skipped: boolean;
+  replayed: boolean;
+}>;
 
 export type AdvanceNewLeadRow = Readonly<{
   status: "committed" | "blocked" | "rolled_back";

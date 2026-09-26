@@ -1,0 +1,146 @@
+.row {
+  display: flex;
+  gap: var(--sp-2);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--mw-line, #e7e9ee);
+  list-style: none;
+}
+
+.check {
+  padding-top: 2px;
+}
+
+.check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--mw-cta-solid, #3969e7);
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.label {
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+
+.confidence {
+  font-size: var(--fs-11);
+  color: var(--mw-accent-ink, #2e377f);
+  background: var(--mw-accent-soft, #e9edff);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.confidence[data-low="true"] {
+  color: #7a3a12;
+  background: #fdebdc;
+}
+
+.same,
+.review {
+  font-size: var(--fs-11);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.same {
+  color: #0a4a33;
+  background: #ddf5e8;
+}
+
+.review {
+  color: #7a3a12;
+  background: #fdebdc;
+}
+
+.cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+@media (max-width: 480px) {
+  .cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.colLabel {
+  font-size: var(--fs-11);
+  color: #5b6472;
+}
+
+.current {
+  font-size: var(--fs-13);
+  overflow-wrap: anywhere;
+}
+
+.proposed {
+  font-size: var(--fs-13);
+  padding: var(--sp-2);
+  border: 1px solid var(--mw-line, #e7e9ee);
+  border-radius: var(--mw-cta-r, 7px);
+  background: #fff;
+  color: inherit;
+  width: 100%;
+}
+
+.proposed[aria-invalid="true"] {
+  border-color: #ef4444;
+}
+
+.proposed:disabled {
+  background: #f3f4f6;
+}
+
+.confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  color: #0a4a33;
+}
+
+.confirm input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--mw-cta-solid, #3969e7);
+}
+
+.warnings {
+  margin: var(--sp-2) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.warn {
+  font-size: var(--fs-12);
+  color: #7a3a12;
+}
+
+.error {
+  font-size: var(--fs-12);
+  color: #b42318;
+  font-weight: 600;
+}

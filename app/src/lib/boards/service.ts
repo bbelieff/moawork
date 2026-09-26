@@ -101,6 +101,8 @@ export interface BoardPageSnapshot {
   detail: BoardDetail;
   items: ItemWithValues[];
   deletedItems: ItemWithValues[];
+  /** 153-draft 별도 보관 (휴지통과 독립). includeArchived가 거짓이면 빈 배열. */
+  archivedItems: ItemWithValues[];
 }
 
 export type BoardPageSnapshotTimingPhase = "metadata" | "items" | "hydrate";
@@ -279,7 +281,8 @@ export class BoardsService {
       this.getBoardDetail(ctx, boardId),
       this.repo.then((repo) => repo.listItems(ctx, boardId)),
     ]);
-    return this.compose(ctx, items, detail);
+    // 153-draft 별도 보관 행은 활성 목록에서 뺀다 (읽기는 한 번, 분리는 메모리에서 — BBE-214 왕복 예산 유지).
+    return this.compose(ctx, items.filter((item) => !item.archived_at), detail);
   }
 
   async listDeletedItems(ctx: Ctx, boardId: string): Promise<ItemWithValues[]> {
@@ -291,17 +294,39 @@ export class BoardsService {
   }
 
   /**
+   * 보관 목록 — 휴지통과 같은 가시성 등급의 권한 뒤에 같은 읽기 파동으로 읽힌다.
+   * 보통 목록·검색·칸반·집계는 listItems(보관 제외)를 쓰므로 보관 행이 새지 않는다.
+   */
+  async listArchivedItems(ctx: Ctx, boardId: string): Promise<ItemWithValues[]> {
+    const [detail, items] = await Promise.all([
+      this.getBoardDetail(ctx, boardId),
+      this.repo.then((repo) => repo.listArchivedItems(ctx, boardId)),
+    ]);
+    return this.compose(ctx, items, detail);
+  }
+
+  /** 보관 행은 복구 전에는 보통 수정·이동·삭제 경로에서 거부한다. */
+  private async requireActiveItem(ctx: Ctx, itemId: string): Promise<void> {
+    const archived = await (await this.repo).getArchivedItem(ctx, itemId);
+    if (archived) {
+      throw new BoardRuleError("보관된 항목입니다. 보관 목록에서 복구한 뒤 수정할 수 있습니다.");
+    }
+  }
+
+  /**
    * 보드 화면용 일관 스냅샷.
    *
-   * 메타데이터는 한 번만 읽고, 활성/휴지통 행은 같은 물결에서 가져온 뒤 셀 값도
-   * 한 번만 수화한다. 휴지통 권한이 없으면 deleted query와 그 값 ID를 아예 발행하지
-   * 않는다. 시스템 보드는 기존 화면 계약대로 휴지통을 읽지 않는다.
+   * 메타데이터는 한 번만 읽고, 활성/보관/휴지통 행은 같은 물결에서 가져온 뒤 셀 값도
+   * 한 번만 수화한다 (직렬 단계는 metadata→items→hydrate 그대로 — BBE-214 유지).
+   * 휴지통·보관 권한이 없으면 해당 query와 그 값 ID를 아예 발행하지 않는다.
+   * 시스템 보드는 기존 화면 계약대로 휴지통·보관을 읽지 않는다.
    */
   async loadPageSnapshot(
     ctx: Ctx,
     boardId: string,
     options: {
       includeDeleted?: boolean;
+      includeArchived?: boolean;
       onTiming?: (timing: BoardPageSnapshotTiming) => void;
     } = {},
   ): Promise<BoardPageSnapshot> {
@@ -325,12 +350,23 @@ export class BoardsService {
     measure("metadata", metadataStartedAt);
     const repo = await this.repo;
     const includeDeleted = options.includeDeleted === true && !detail.board.is_system;
+    // 보관 목록은 휴지통과 같은 가시성 등급(work.item_delete)으로 같은 스냅샷에서 분리한다.
+    // 명시 옵션이 없으면 includeDeleted를 따른다 — 호출문(권한 순서 계약)을 바꾸지 않고도
+    // 보관 패널이 휴지통과 같은 관문 뒤에 같은 왕복으로 읽힌다.
+    const includeArchived = (options.includeArchived ?? options.includeDeleted) === true && !detail.board.is_system;
     const itemsStartedAt = performance.now();
-    const [activeItems, deletedItems] = await Promise.all([
+    // 보관 행은 listItems(활성 전용)에서 제외되므로 보관함이 필요할 때만 같은
+    // 파동에서 listArchivedItems를 함께 읽는다 (직렬 단계는 그대로 metadata→items→hydrate).
+    const [visibleItems, deletedItems, archivedOnly] = await Promise.all([
       repo.listItems(ctx, boardId),
       includeDeleted ? repo.listDeletedItems(ctx, boardId) : Promise.resolve([]),
+      includeArchived ? repo.listArchivedItems(ctx, boardId) : Promise.resolve([]),
     ]);
     measure("items", itemsStartedAt);
+
+    // 방어 분리: 보관 권한이 없으면 보관 행의 값 ID를 발행하지 않는다.
+    const activeItems = visibleItems.filter((item) => !item.archived_at);
+    const archivedItems = [...archivedOnly, ...visibleItems.filter((item) => Boolean(item.archived_at))];
 
     const activeIds = new Set(activeItems.map((item) => item.id));
     if (deletedItems.some((item) => activeIds.has(item.id))) {
@@ -338,12 +374,17 @@ export class BoardsService {
     }
 
     const hydrateStartedAt = performance.now();
-    const hydrated = await this.compose(ctx, [...activeItems, ...deletedItems], detail);
+    const hydrated = await this.compose(
+      ctx,
+      [...activeItems, ...deletedItems, ...archivedItems],
+      detail,
+    );
     measure("hydrate", hydrateStartedAt);
     return {
       detail,
       items: hydrated.slice(0, activeItems.length),
-      deletedItems: hydrated.slice(activeItems.length),
+      deletedItems: hydrated.slice(activeItems.length, activeItems.length + deletedItems.length),
+      archivedItems: hydrated.slice(activeItems.length + deletedItems.length),
     };
   }
 
@@ -374,6 +415,7 @@ export class BoardsService {
 
   async updateItem(ctx: Ctx, boardId: string, itemId: string, patch: ItemPatch): Promise<ItemWithValues> {
     await this.requireEditableBoard(ctx, boardId);
+    await this.requireActiveItem(ctx, itemId);
     const item = await (await this.repo).updateItem(ctx, itemId, patch);
     if (!item) throw new NotFoundError("아이템을 찾을 수 없습니다");
     return this.getItem(ctx, boardId, itemId);
@@ -384,11 +426,13 @@ export class BoardsService {
       throw new BoardRuleError("전체 행을 볼 수 있는 사용자만 행 순서를 바꿀 수 있습니다");
     }
     await this.requireEditableBoard(ctx, boardId);
+    await this.requireActiveItem(ctx, request.itemId);
     return (await this.repo).moveRowAtomic(ctx, boardId, request);
   }
 
   async deleteItem(ctx: Ctx, boardId: string, itemId: string): Promise<void> {
     await this.requireEditableBoard(ctx, boardId);
+    await this.requireActiveItem(ctx, itemId);
     const repo = await this.repo;
     if (await repo.deleteItem(ctx, boardId, itemId)) return;
     const alreadyDeleted = (await repo.listDeletedItems(ctx, boardId)).some((item) => item.id === itemId);
@@ -425,6 +469,7 @@ export class BoardsService {
     requestId = crypto.randomUUID(),
   ): Promise<SetCellsResult> {
     const detail = await this.requireEditableBoardDetail(ctx, boardId);
+    await this.requireActiveItem(ctx, itemId);
     const before = await this.getItem(ctx, boardId, itemId);
 
     const { values, errors } = this.validateValues(detail.columns, patch, true);

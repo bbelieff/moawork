@@ -32,6 +32,8 @@ describe("v17 라우트 강조 매핑", () => {
   it("실제 운영 라우트 5종이 각자의 강조로 간다", () => {
     expect(accentForNavKey("new")).toBe("new");
     expect(accentForNavKey("contact")).toBe("contact");
+    expect(accentForNavKey("consult-remote")).toBe("contact");
+    expect(accentForNavKey("consult-inperson")).toBe("inperson");
     expect(accentForNavKey("work")).toBe("work");
     expect(accentForNavKey("company")).toBe("company");
     expect(accentForNavKey("dash")).toBe("dash");
@@ -90,7 +92,10 @@ describe("v17 CTA 정본 값", () => {
   it("소비용 팔레트는 정의만 — 파트너는 제외 사유를 남긴다", () => {
     expect(UNWIRED_PALETTE.partners.grad).toContain("#7d2ae7");
     expect(UNWIRED_PALETTE.partners.reason).toMatch(/제외/);
-    expect(UNWIRED_PALETTE.s3rose.grad).toContain("#ef4444");
+    expect(UNWIRED_PALETTE.s3rose).toBeUndefined();
+    expect(ROUTE_CTA.inperson).toEqual({
+      grad: "linear-gradient(310deg, #ef4444 0%, #ec4899 100%)", solid: "#ef4444", ink: "#111827",
+    });
   });
 });
 

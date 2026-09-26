@@ -543,3 +543,27 @@ describe("migration 139 atomic row move",()=>{
     expect((await db.query<{count:number}>("select count(*)::int count from board_row_move_requests where request_id=$1",[request(6)])).rows[0].count).toBe(0);
   });
 });
+
+
+it("153 archive boundary rejects shelved moves but preserves active sibling ordering through real 139", async () => {
+  await db.exec(`
+    create table public.companies(id uuid primary key,org_id uuid);
+    alter table public.items add column parent_item_id uuid, add column deleted_by uuid, add column created_at timestamptz default now();
+    create or replace function public.effective_permission(p_org uuid,p_key text) returns boolean language sql stable as $$select public.is_org_member(p_org)$$;
+    update public.org_members set scope='all' where user_id='${ids.actor}';
+  `);
+  const archiveSql=readFileSync(resolve(process.cwd(),"../supabase/migrations/153_item_operations_draft.sql"),"utf8");
+  await db.exec(archiveSql);
+  await db.query("select * from public.archive_board_item_atomic($1,$2,$3,$4)",[ids.org,ids.board,ids.a,request(9601)]);
+  await db.exec("set role authenticated");
+  try {
+    await expect(move({item:ids.a,group:ids.g2,version:0,request:9602})).rejects.toMatchObject({code:"42501"});
+    const moved=await move({item:ids.b,group:ids.g2,before:ids.c,version:0,request:9603});
+    expect(moved.rows[0]).toMatchObject({item_id:ids.b,target_group_id:ids.g2,version:1});
+  } finally { await db.exec("reset role"); }
+  expect((await db.query("select group_id,sort_order from public.items where id=$1",[ids.a])).rows[0]).toEqual({group_id:ids.g1,sort_order:0});
+  expect((await db.query("select id,sort_order from public.items where group_id=$1 and archived_at is null order by sort_order",[ids.g2])).rows).toEqual([{id:ids.b,sort_order:0},{id:ids.c,sort_order:1}]);
+  await expect(db.query("select public.issue602_move_board_item_private($1,$2,$3,$4,$3,$5,null,null)",[ids.org,ids.a,ids.board,ids.g1,ids.g2])).rejects.toMatchObject({code:"40001"});
+  expect((await db.query<{owner:string}>("select pg_get_userbyid(proowner) owner from pg_proc where oid='public.move_board_row_atomic(uuid,uuid,uuid,uuid,uuid,bigint,uuid)'::regprocedure")).rows[0].owner).toBe("moawork_row_order_writer");
+  expect((await db.query<{allowed:boolean}>("select has_function_privilege('authenticated','public.issue602_move_board_item_private(uuid,uuid,uuid,uuid,uuid,uuid,uuid,integer)','EXECUTE') allowed")).rows[0].allowed).toBe(false);
+});

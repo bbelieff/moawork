@@ -40,7 +40,10 @@ import {
   sourceRequiresConfirm,
 } from "@/lib/field/source";
 import { fieldTypeLabel } from "@/lib/field/type-labels";
-import { StatusCell, StatusSelect } from "@/components/boards/StatusCell";
+import { StatusCell } from "@/components/boards/StatusCell";
+import { LabelCombobox } from "./LabelCombobox";
+import { canCreateLabelForColumn, newLabelRequestId } from "@/lib/boards/label-options";
+import type { AddLabelOptionInput, AddLabelOptionResult } from "@/app/(app)/boards/label-option-actions";
 import { SourceBadge } from "./FieldBadge";
 import { clampWidth } from "./layout";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
@@ -79,6 +82,12 @@ import {
   workflowProgressSpec,
   type WorkflowProgressKind,
 } from "@/lib/workflow/progress";
+import { ConsultationProgressCell } from "@/components/consultation/ConsultationProgressCell";
+import {
+  CONSULTATION_PROGRESS_KEY,
+  type ConsultationBoardEntry,
+  type ConsultationBoardMap,
+} from "@/lib/consultation/boardView";
 import {
   updateNewLeadFieldAction,
   updateNewLeadMetaAction,
@@ -111,6 +120,7 @@ export function boardFileSelectionError(size: number): string | null {
 }
 
 /** 헤더/셀 공통 — 첫 열(이름)을 가로 스크롤에서 고정한다. */
+// Both frozen edges belong to the shared scrollport at every viewport width.
 const STICKY_FIRST = "sticky left-0 z-[var(--mw-layer-board-cell)] bg-mw-card";
 
 function inputTypeOf(type: BoardColumn["type"]): string {
@@ -184,8 +194,12 @@ export function BoardCell({
   error,
   workflowProgressKind,
   workflowTransitionAction,
+  consultationEntry,
+  consultationMembers,
   cellAction,
   bulkStatusIntercept,
+  canCreateColumnOptions,
+  addLabelOptionAction,
 }: {
   boardId: string;
   row: ItemWithValues;
@@ -196,6 +210,10 @@ export function BoardCell({
   error?: string | null;
   workflowProgressKind?: WorkflowProgressKind | null;
   workflowTransitionAction?: ReactNode;
+  /** 상담 진행 가상 칸의 항목 — 없으면 안내만 그린다(표시 전용, 쓰기 없음). */
+  consultationEntry?: ConsultationBoardEntry | null;
+  /** 상담 담당자 선택지 — 확인 팝오버의 담당자 목록에 쓴다. */
+  consultationMembers?: ReadonlyArray<{ id: string; label: string }>;
   /** 결정론적 화면 검증에서만 저장소 경계를 바꾼다. 실제 셀 폼/제출 흐름은 그대로 둔다. */
   cellAction?: (formData: FormData) => Promise<void>;
   /**
@@ -203,6 +221,13 @@ export function BoardCell({
    * true 를 돌려주면 낱개 저장을 건너뛰고 표시값으로 되돌린다.
    */
   bulkStatusIntercept?: (columnKey: string, nextValue: string) => boolean;
+  /**
+   * 2026-09-26 — «라벨 만들기» 노출 조건. 컬럼 관리 권한이 있을 때만 true 로 넘긴다.
+   * 일반 편집자는 검색·선택만 된다(서버도 다시 막는다).
+   */
+  canCreateColumnOptions?: boolean;
+  /** 2026-09-26 — 라벨 만들기 서버 액션. 없으면 만들기 행이 안 보인다. */
+  addLabelOptionAction?: (input: AddLabelOptionInput) => Promise<AddLabelOptionResult>;
 }) {
   const value = row.values[column.key] ?? null;
   const phoneStatus = row.value_statuses?.[column.key] ?? "normalized";
@@ -227,6 +252,17 @@ export function BoardCell({
       !auditedMetaEdit &&
       !isSourceEditable(column.source)) ||
     column.is_readonly === true;
+  // 2026-09-26 — «라벨 만들기» 는 권한 + 가드 + 액션이 다 있을 때만 열린다.
+  //   보호 컬럼(전이·승인·단계·이동규칙·지역·읽기전용·수식·연동)은 검색·선택만 된다.
+  const labelCreatable = canCreateColumnOptions === true
+    && typeof addLabelOptionAction === "function"
+    && canCreateLabelForColumn(column).allowed;
+  const createCellLabel = (label: string) => addLabelOptionAction!({
+    boardId,
+    columnId: column.id,
+    label,
+    requestId: newLabelRequestId(),
+  });
   const numeric = NUMERIC_TYPES.has(column.type);
   const title = cellTitle(column);
   const emptyLabel =
@@ -250,6 +286,22 @@ export function BoardCell({
         transitionAction={workflowTransitionAction}
         cellAction={cellAction}
         bulkIntercept={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
+      />
+    );
+  }
+
+  // 상담 진행 가상 칸 — 표시 + 그 자리 확인 팝오버 전용. 값을 쓰지 않으므로
+  // 일괄 흐름·셀 액션에 넘기지 않는다.
+  if (column.key === CONSULTATION_PROGRESS_KEY) {
+    return (
+      <ConsultationProgressCell
+        itemId={row.id}
+        title={row.title}
+        entry={consultationEntry ?? null}
+        meetingAt={typeof row.values.meeting_at === "string" ? row.values.meeting_at : null}
+        assigneeId={typeof row.assigned_to === "string" ? row.assigned_to : null}
+        members={consultationMembers ?? []}
+        companyName={row.title}
       />
     );
   }
@@ -447,34 +499,27 @@ export function BoardCell({
             />
           </>
         ) : column.type === "status" ? (
-          <StatusSelect
-            name="value"
-            value={value}
+          <LabelCombobox
             options={options}
-            className={`${CELL_INPUT} cursor-pointer`}
+            value={typeof value === "string" ? value : null}
+            name="value"
+            label={column.label}
+            canCreate={labelCreatable}
+            createLabel={labelCreatable ? createCellLabel : undefined}
             interceptChange={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
+            className={`${CELL_INPUT} cursor-pointer`}
           />
         ) : column.type === "select" ? (
-          <select
+          <LabelCombobox
+            options={options}
+            value={typeof value === "string" ? value : null}
             name="value"
-            defaultValue={typeof value === "string" ? value : ""}
-            onChange={(event) => {
-              if (bulkStatusIntercept?.(column.key, event.currentTarget.value)) {
-                event.currentTarget.value = typeof value === "string" ? value : "";
-                return;
-              }
-              event.currentTarget.form?.requestSubmit();
-            }}
+            label={column.label}
+            canCreate={labelCreatable}
+            createLabel={labelCreatable ? createCellLabel : undefined}
+            interceptChange={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
             className={`${CELL_INPUT} cursor-pointer`}
-            aria-label={column.label}
-          >
-            <option value="">—</option>
-            {options.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          />
         ) : column.type === "person" ? (
           <>
             <input type="hidden" name="kind" value="person" />
@@ -486,19 +531,16 @@ export function BoardCell({
             <MemberPicker label={column.label} members={members.length > 0 ? members : options.map(({ id, label }) => ({ id, label }))} value={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []} multiple compact />
           </>
         ) : column.type === "multiselect" ? (
-          <select
-            name="value"
+          <LabelCombobox
+            options={options}
+            value={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []}
             multiple
-            defaultValue={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []}
-            className={`${CELL_INPUT} h-12`}
-            aria-label={column.label}
-          >
-            {options.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+            name="value"
+            label={column.label}
+            canCreate={labelCreatable}
+            createLabel={labelCreatable ? createCellLabel : undefined}
+            className={CELL_INPUT}
+          />
         ) : (
           <input
             type={inputTypeOf(column.type)}
@@ -554,12 +596,14 @@ export function GroupTable({
   durableDetailLayout = [],
   detailLayout = [],
   detailLayoutInherited = true,
+  rowDetailLayout,
   rows,
   readOnly,
   canDeleteItems = !readOnly,
   authorColumnKey,
   viewerUserId,
   canManageColumns = !readOnly,
+  addLabelOptionAction,
   rowDragEnabled,
   cellFlash,
   onColumnDrop,
@@ -575,6 +619,10 @@ export function GroupTable({
   renderRowAction,
   workflowProgressKind = null,
   renderWorkflowTransition,
+  consultationByItem,
+  consultationMembers = [],
+  renderConsultationSection,
+  hideAddRow = false,
   textMode = "single",
   focusColumnKey = null,
   onColumnArchived,
@@ -610,6 +658,15 @@ export function GroupTable({
       previous: CompanyIntakeActionState,
       formData: FormData,
     ) => Promise<CompanyIntakeActionState>;
+    /**
+     * 2026-09-26 — «새 회사» 등록 + 업무 시작. 없으면 새 회사 탭의 제출만 막힌다.
+     * 선택으로 두는 이유: 이 prop 을 빼먹으면 타입이 안 막지만, 그때는 제출 버튼이
+     * 막혀 조용히 중복을 만들지 않는다(막힌 쪽이 안전하다).
+     */
+    newCompanyAction?: (
+      previous: CompanyIntakeActionState,
+      formData: FormData,
+    ) => Promise<CompanyIntakeActionState>;
   };
   newLeadMembers?: readonly MemberPickerMember[];
   itemDetailFixture?: ItemDetailSnapshot;
@@ -626,6 +683,7 @@ export function GroupTable({
   durableDetailLayout?: DetailLayoutEntry[];
   detailLayout?: DetailLayoutEntry[];
   detailLayoutInherited?: boolean;
+  rowDetailLayout?: (row: ItemWithValues) => { durable: DetailLayoutEntry[]; presented: DetailLayoutEntry[]; inherited: boolean };
   rows: readonly ItemWithValues[];
   readOnly: boolean;
   canDeleteItems?: boolean;
@@ -633,6 +691,8 @@ export function GroupTable({
   authorColumnKey?: string;
   viewerUserId?: string;
   canManageColumns?: boolean;
+  /** 2026-09-26 — 라벨 만들기 서버 액션. 셀 드롭다운의 만들기 행이 이걸 쓴다. */
+  addLabelOptionAction?: (input: AddLabelOptionInput) => Promise<AddLabelOptionResult>;
   /** 정렬이 켜져 있으면 부모가 false 를 준다 — 손잡이 자체를 감춰 헛짚을 자리를 없앤다. */
   rowDragEnabled: boolean;
   cellFlash: CellFlash | null;
@@ -653,6 +713,17 @@ export function GroupTable({
   /** 화면의 통합 진행현황 셀. 실제 저장은 기존 단계/이동 계약을 그대로 소비한다. */
   workflowProgressKind?: WorkflowProgressKind | null;
   renderWorkflowTransition?: (row: ItemWithValues) => ReactNode;
+  /**
+   * 상담 단계 보기 적재분(item id → 항목). 있으면 «상담 진행» 가상 칸과
+   * 상세 인라인에 쓴다. 없으면 그 칸들을 그리지 않는다(기존 보드 그대로).
+   */
+  consultationByItem?: ConsultationBoardMap;
+  /** 상담 담당자 선택지 — 확인 팝오버·상세 인라인의 담당자 목록에 쓴다. */
+  consultationMembers?: ReadonlyArray<{ id: string; label: string }>;
+  /** 행 상세에 얹는 상담 확인 인라인 — 업무이동 메뉴 없이 상세에서 바로 확인한다. */
+  renderConsultationSection?: (row: ItemWithValues) => ReactNode;
+  /** 상담 단계 보기(가상 계약 단계 묶음)에서는 새 행 추가 줄을 감춘다. */
+  hideAddRow?: boolean;
   textMode?: "single" | "wrap";
   focusColumnKey?: string | null;
   onColumnArchived?: (columnId: string) => void;
@@ -812,7 +883,7 @@ export function GroupTable({
   };
 
   const acceptRow = (index: number) => (e: React.DragEvent) => {
-    if (!canDropRow()) {setOverRowIndex(null);setInvalidRowIndex(index);setDropMessage("이 보기에서는 행을 옮길 수 없어요.");return;}
+    if (!rowDragEnabled || !canDropRow()) {setOverRowIndex(null);setInvalidRowIndex(index);setDropMessage("이 보기에서는 행을 옮길 수 없어요.");return;}
     if(rows[index]?.id===dragRowId){setOverRowIndex(null);setInvalidRowIndex(index);setDropMessage("같은 행 위에는 놓을 수 없어요.");return;}
     e.preventDefault();
     e.dataTransfer.dropEffect="move";
@@ -822,7 +893,7 @@ export function GroupTable({
   };
 
   const dropRow = (index: number) => (e: React.DragEvent) => {
-    if (!canDropRow()||rows[index]?.id===dragRowId){clearRowDrop();setDropMessage("이 위치에는 놓을 수 없어요.");return;}
+    if (!rowDragEnabled || !canDropRow()||rows[index]?.id===dragRowId){clearRowDrop();setDropMessage("이 위치에는 놓을 수 없어요.");return;}
     e.preventDefault();
     setOverRowIndex(null);
     onRowDrop(index);
@@ -989,6 +1060,7 @@ export function GroupTable({
                 viewerUserId !== undefined &&
                 row.values[authorColumnKey] === viewerUserId);
             // 이 행이 여러 선택에 포함돼 있으면 낱개 상태 변경 대신 일괄 흐름을 연다.
+            const resolvedRowDetail = rowDetailLayout?.(row);
             const armedForRow = bulkArmed && (selection?.has(row.id) ?? false) && onBulkStatusRequest;
             return (
               <tr
@@ -1073,14 +1145,15 @@ export function GroupTable({
                       boardId={boardId}
                       boardName={boardName}
                       groupName={groupName}
+                      consultationSection={renderConsultationSection?.(row)}
                       row={row}
                       columns={detailColumns}
                       boardLayout={boardDetailLayout}
                       durableColumns={durableDetailColumns}
                       durableBoardLayout={durableBoardDetailLayout}
-                      durableLayout={durableDetailLayout}
-                      layout={detailLayout}
-                      inherited={detailLayoutInherited}
+                      durableLayout={resolvedRowDetail?.durable ?? durableDetailLayout}
+                      layout={resolvedRowDetail?.presented ?? detailLayout}
+                      inherited={resolvedRowDetail?.inherited ?? detailLayoutInherited}
                       canEditItems={!readOnly}
                       canManageColumns={canManageColumns}
                       canonicalNewLead={canonicalNewLead}
@@ -1185,17 +1258,23 @@ export function GroupTable({
                           }
                           workflowProgressKind={workflowProgressKind}
                           workflowTransitionAction={renderWorkflowTransition?.(row)}
+                          consultationEntry={consultationByItem?.[row.id] ?? null}
+                          consultationMembers={consultationMembers}
                           cellAction={cellAction}
+                          canCreateColumnOptions={canManageColumns}
+                          addLabelOptionAction={addLabelOptionAction}
                         />
                       )}
                     </td>
                   );
                 })}
+
+
               </tr>
             );
           })}
 
-          {!readOnly && (
+          {!readOnly && !hideAddRow && (
             /* 마지막 줄 = 새 항목 입력 + 그룹 맨 끝 드롭 자리(원칙 5). */
             <tr
               onDragOver={acceptRow(rows.length)}
@@ -1216,6 +1295,7 @@ export function GroupTable({
                     loadError={companyPicker.loadError}
                     truncated={companyPicker.truncated}
                     startWorkAction={companyPicker.action}
+                    startNewCompanyWorkAction={companyPicker.newCompanyAction}
                     boardId={boardId}
                     // 누른 그룹을 그대로 넘긴다 — 이 값이 없으면 서버가 첫 그룹에 넣는다(#588).
                     groupId={groupId}

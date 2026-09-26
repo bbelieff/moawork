@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { Suspense, useEffect } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { NAV_ITEMS, WORK_TOOL_ITEMS } from "@/components/shell/nav-items";
-import { resolveActiveNavKey } from "@/components/shell/active-nav";
+import { resolveActiveNavKey, resolveConsultationNavKey } from "@/components/shell/active-nav";
 import { workspaceHref } from "@/components/shell/workspace-href";
 import {
   APPEARANCE_DEFAULT,
@@ -66,26 +66,34 @@ export function storeAppearancePreference(pref: AppearancePreference): Appearanc
  *   대시보드 강조로 폴백한다(엉뚱한 탭 잔상 금지).
  * - 저장된 본인 외관(프리셋·효과)을 문서 상태에 올린다.
  */
-export function RouteAppearance({
-  boardNavKeys,
-  basePath,
-}: {
+type RouteAppearanceProps = {
   boardNavKeys?: Readonly<Record<string, string>>;
   basePath?: string;
-}) {
+};
+
+export function RouteAppearance(props: RouteAppearanceProps) {
+  // Keep the query subscriber inside its own boundary for statically rendered shells.
+  return <Suspense fallback={null}><RouteAppearanceState {...props} /></Suspense>;
+}
+
+function RouteAppearanceState({ boardNavKeys, basePath }: RouteAppearanceProps) {
   const pathname = usePathname();
+  const search = useSearchParams()?.toString() ?? "";
 
   useEffect(() => {
     const candidates = [...NAV_ITEMS, ...WORK_TOOL_ITEMS]
       .filter((item) => item.href)
       .map((item) => ({
         key: item.key,
-        href: workspaceHref(basePath, item.href!).split(/[?#]/)[0],
+        // Presentation only: unnamespaced entry routes also have an accent.
+        // This does not generate a navigable link or bypass workspace routing.
+        href: (basePath ? workspaceHref(basePath, item.href!) : item.href!).split(/[?#]/)[0],
       }));
-    const active = resolveActiveNavKey(pathname ?? "", candidates, { basePath, boardNavKeys });
+    const active = resolveConsultationNavKey(pathname ?? "", search, boardNavKeys)
+      ?? resolveActiveNavKey(pathname ?? "", candidates, { basePath, boardNavKeys });
     document.documentElement.setAttribute("data-mw-accent", resolveRouteAccent(active));
     return () => document.documentElement.removeAttribute("data-mw-accent");
-  }, [pathname, boardNavKeys, basePath]);
+  }, [pathname, search, boardNavKeys, basePath]);
 
   useEffect(() => {
     applyAppearancePreference(readAppearancePreference());

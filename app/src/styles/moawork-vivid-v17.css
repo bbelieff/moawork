@@ -54,6 +54,15 @@ html[data-mw-accent="contact"] {
   --mw-accent-ink: #2e377f;
   --mw-accent-deep: #2b3a9e;
 }
+/* STEP3 대면 상담: 승인된 s3 로즈와 기존 coral tint를 활성화한다. */
+html[data-mw-accent="inperson"] {
+  --mw-cta-grad: var(--mw-palette-s3rose);
+  --mw-cta-solid: #ef4444;
+  --mw-cta-ink: #111827;
+  --mw-accent-soft: var(--mw-tint-coral);
+  --mw-accent-ink: var(--mw-fg);
+  --mw-accent-deep: var(--mw-cta-solid);
+}
 html[data-mw-accent="work"] {
   --mw-cta-grad: linear-gradient(310deg, #22c55e 0%, #98ec2d 100%);
   --mw-cta-solid: #22c55e;
@@ -87,8 +96,7 @@ html[data-mw-accent="dash"] {
   --mw-accent-deep: #2b3a9e;
 }
 
-/* 소비되지 않은 팔레트 토큰(정의만, 실제 라우트 미배선: s3 로즈·허니·파트너·뉴스).
-   운영 라우트가 생기기 전에는 어떤 선택자도 참조하지 않는다. */
+/* 승인 팔레트: s3 로즈는 대면 상담에서 소비하며 허니·파트너는 미배선이다. */
 html[data-mw-accent] {
   --mw-palette-s3rose: linear-gradient(310deg, #ef4444 0%, #ec4899 100%);
   --mw-palette-honey: linear-gradient(310deg, #eab308 0%, #f97316 100%);

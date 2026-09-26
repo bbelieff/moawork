@@ -4,7 +4,7 @@ import { AppearanceControl } from "@/components/appearance/AppearanceControl";
 import { applyAppearancePreference, readAppearancePreference } from "@/components/appearance/RouteAppearance";
 
 /** Existing isolated visual fixture: exercise the real production appearance layer. */
-export function VisualAppearanceProbe({ accent, controls }: { accent: "new" | "contact"; controls: boolean }) {
+export function VisualAppearanceProbe({ accent, controls }: { accent: "new" | "contact" | "inperson"; controls: boolean }) {
   useLayoutEffect(() => {
     const root = document.documentElement;
     const attrs = ["data-mw-accent", "data-mw-effects", "data-moa-theme"];

@@ -34,3 +34,26 @@
   width: var(--board-visible-width, 100%);
   max-width: 100%;
 }
+
+/* Keep both frozen edges accessible on a phone without a long company title
+   consuming the whole shared viewport. The editable title still holds its full value. */
+@media (max-width: 639px) {
+  .groups [data-board-table-format="uniform"] > table > :is(thead, tbody) > tr > :first-child {
+    width: 8rem;
+    min-width: 8rem;
+    max-width: 8rem;
+  }
+  .groups [data-board-table-format="uniform"] > table > tbody > tr > td:first-child > div {
+    width: 7rem;
+    max-width: 7rem;
+  }
+  .groups [data-board-table-format="uniform"] > table > :is(thead, tbody) > tr > [data-right-pinned="true"] {
+    width: 8rem !important;
+    min-width: 8rem !important;
+    max-width: 8rem !important;
+  }
+  .groups [data-board-table-format="uniform"] > table > tbody > tr > [data-right-pinned="true"] > div {
+    min-width: 0;
+    width: 7rem;
+  }
+}

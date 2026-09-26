@@ -46,6 +46,7 @@
  *    ⚠ 시도에 딸린 «종속» 선택은 여기서 하지 않는다 — 그건 BBE-127(DC-04) 소유다.
  */
 
+import { presentNewLeadStageColumn } from "@/lib/new-lead/stage-presentation";
 import type { FieldOption } from "@/lib/types";
 import { CANONICAL_REGIONS } from "@/lib/structure-packs/region-options";
 import { CREDIT_SCORE_KEYS, NEW_LEAD_COMPOSITE_FIELD_KEYS } from "@/lib/new-lead/financial-profile";
@@ -647,7 +648,7 @@ export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardCol
     }
     presented.push(column);
   }
-  return presented;
+  return presented.map(presentNewLeadStageColumn);
 }
 
 export const NEW_LEAD_TAB: DefaultTab = {

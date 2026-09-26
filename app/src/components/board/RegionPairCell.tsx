@@ -307,7 +307,7 @@ export function RegionCell({
     );
   }
 
-  const invalid = !status.startsWith("✓") && status !== "저장 중…";
+  const invalid = !status.startsWith("✓") && status !== "저장 중…" && status !== "입력 중…";
 
   return (
     <span className="flex flex-col" onBlur={handleBlur}>
@@ -318,6 +318,7 @@ export function RegionCell({
         onValue={(next) => {
           valueRef.current = next;
           setValue(next);
+          setStatus(next === baselineRef.current ? "✓ 자동 저장됨" : "입력 중…");
         }}
         suggestions={suggestions}
         disabled={disabled}

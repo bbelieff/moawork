@@ -38,6 +38,11 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { key: "notice", label: "공지사항", icon: "notice", href: "/notices", owner: "미배정" },
   { key: "new", label: "신규리드 관리", icon: "new", href: "/newcust", feature: FEATURES.crm, owner: "BBE-26" },
   { key: "contact", label: "리드컨택 관리", icon: "contact", href: "/contract", feature: FEATURES.crm, owner: "T02" },
+  // 상담 STEP 탭 — 같은 리드컨택 정본 보드의 단계 보기다(STEP1=신규리드 관리·STEP2=비대면·STEP3=대면).
+  // 행을 복제하지 않고 /consult-remote·/consult-inperson 경유지에서 같은 보드의
+  // ?consultation=remote|inperson 보기로 보낸다. 기존 /contract 주소는 그대로 둔다.
+  { key: "consult-remote", label: "비대면 상담", icon: "contact", href: "/consult-remote", feature: FEATURES.crm, owner: "T02" },
+  { key: "consult-inperson", label: "대면 상담", icon: "contact", href: "/consult-inperson", feature: FEATURES.crm, owner: "T02" },
   { key: "work", label: "계약업체 실무", icon: "work", href: "/work", feature: FEATURES.policyfund, owner: "T09" },
   { key: "company", label: "업체관리 현황", icon: "company", href: "/companies", feature: FEATURES.crm, owner: "T02" },
   { key: "vendor", label: "거래처등록", icon: "vendor", feature: FEATURES.crm, owner: "T02" },
@@ -68,7 +73,8 @@ export type NavSection = {
 /** 목업 D05: 종합 / 업무(계약 전·계약 후·준비 중) / 설정. */
 export const NAV_SECTIONS: readonly NavSection[] = [
   { key: "overview", label: "종합", items: ["dash", "notifications", "notice"] },
-  { key: "before-contract", label: "계약 전", items: ["new", "contact"], nested: true },
+  // v17: 화면에는 세 단계만 노출한다. contact의 주소와 정본 보드는 기존 링크용으로 보존한다.
+  { key: "before-contract", label: "계약 전", items: ["new", "consult-remote", "consult-inperson"], nested: true },
   { key: "after-contract", label: "계약 후", items: ["work", "company", "acct", "topco"], nested: true },
   {
     key: "coming-soon",

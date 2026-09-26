@@ -3,7 +3,7 @@
  *
  * - 라우트 강조(accent)는 실제 운영 라우트에만 배선한다: new→/newcust,
  *   contact→/contract, work→/work, company→/companies, dash→루트.
- *   운영에 s2/s3 독립 라우트가 없으므로 별도 스테이지 라우트를 발명하지 않는다.
+ *   상담 STEP2는 contact의 블루바이올렛, STEP3는 승인된 s3 로즈를 쓴다.
  * - 10개 회사 프리셋 id는 검토 목업(v17-reference theme-presets.*)과 source-compatible
  *   하게 유지한다. 값(그라디언트 스톱)은 아래 출처의 실측값이다.
  * - 본인 외관 설정만 다루며 업무 데이터·워크스페이스 상태는 절대 만지지 않는다.
@@ -50,6 +50,8 @@ export const APPEARANCE_PRESET_GRADS: Readonly<Record<AppearancePresetId, { grad
 export const ROUTE_ACCENT_FOR_NAV_KEY: Readonly<Record<string, string>> = {
   new: "new",
   contact: "contact",
+  "consult-remote": "contact",
+  "consult-inperson": "inperson",
   work: "work",
   company: "company",
   dash: "dash",
@@ -64,6 +66,7 @@ export const ROUTE_ACCENT_FOR_NAV_KEY: Readonly<Record<string, string>> = {
 export const ROUTE_CTA: Readonly<Record<string, { grad: string; solid: string; ink: string }>> = {
   new: { grad: "linear-gradient(310deg, #ea580c 0%, #facc15 100%)", solid: "#ea580c", ink: "#111827" },
   contact: { grad: "linear-gradient(110deg, #3969e7 0%, #7d2ae7 100%)", solid: "#3969e7", ink: "#ffffff" },
+  inperson: { grad: "linear-gradient(310deg, #ef4444 0%, #ec4899 100%)", solid: "#ef4444", ink: "#111827" },
   work: { grad: "linear-gradient(310deg, #22c55e 0%, #98ec2d 100%)", solid: "#22c55e", ink: "#111827" },
   company: { grad: "linear-gradient(310deg, #0ea5e9 0%, #06b6d4 100%)", solid: "#0ea5e9", ink: "#111827" },
   dash: { grad: "linear-gradient(110deg, #3969e7 0%, #7d2ae7 100%)", solid: "#3969e7", ink: "#ffffff" },
@@ -72,10 +75,9 @@ export const ROUTE_CTA: Readonly<Record<string, { grad: string; solid: string; i
 
 /**
  * 소비되지 않은 팔레트 토큰(정의만 두고 실제 라우트에 배선하지 않음).
- * s3 로즈·amber·partners 바이올렛·news 시안은 운영 라우트가 없어 미배선으로 남긴다.
+ * honey·partners는 대응 운영 탭이 없어 미배선으로 남긴다.
  */
 export const UNWIRED_PALETTE: Readonly<Record<string, { grad: string; reason: string }>> = {
-  s3rose: { grad: "linear-gradient(310deg, #ef4444 0%, #ec4899 100%)", reason: "독립 대면(s3) 라우트 없음 — 발명하지 않음" },
   honey: { grad: "linear-gradient(310deg, #eab308 0%, #f97316 100%)", reason: "대응 운영 탭 없음 — 토큰만 정의" },
   partners: { grad: "linear-gradient(310deg, #7d2ae7 0%, #3969e7 100%)", reason: "파트너 기능 제외(사용자 지시) — 미배선" },
 };

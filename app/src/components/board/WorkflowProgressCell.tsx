@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { newLeadStageLabel } from "@/lib/new-lead/stage-presentation";
 import { useId, useRef, useState, type ReactNode } from "react";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { setCellAction } from "@/app/(app)/boards/actions";
@@ -44,9 +45,33 @@ export function WorkflowProgressCell({
   const [dialogOpen, setDialogOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const descriptionId = useId();
+  // ★ 기존 단계 «검색» — 진행 셀은 native select를 그대로 둔다.
+  //   만들기 입구는 없다(단계값은 전이·이동규칙과 묶여 있어 새 값을 넣으면
+  //   «골랐는데 카드가 안 움직이는» 상태가 된다 — LabelCombobox로 바꾸지 않는다).
+  //   필터는 보여주는 항목만 좁히고, 제출·전이 대화·일괄 가로채기는 그대로다.
+  const [stageFilter, setStageFilter] = useState("");
+  const stageOptions = column.options_jsonb?.options ?? [];
+  const filterText = stageFilter.trim().toLowerCase();
+  const visibleStages = filterText === ""
+    ? stageOptions
+    : stageOptions.filter(
+        (option) =>
+          option.label.toLowerCase().includes(filterText)
+          || option.id.toLowerCase().includes(filterText),
+      );
 
   return (
     <div className="min-w-40">
+      {stageOptions.length > 4 ? (
+        <input
+          type="search"
+          value={stageFilter}
+          onChange={(event) => setStageFilter(event.target.value)}
+          placeholder="단계 검색"
+          aria-label="진행 단계 검색"
+          className={`${BOARD_TABLE_CONTROL} mb-1 font-normal`}
+        />
+      ) : null}
       <form action={cellAction ?? setCellAction}>
         <input type="hidden" name="boardId" value={boardId} />
         <input type="hidden" name="itemId" value={row.id} />
@@ -75,8 +100,11 @@ export function WorkflowProgressCell({
           }}
         >
           <option value="">미선택</option>
+          {current && !visibleStages.some((option) => option.id === current) ? (
+            <option value={current}>{stageOptions.find((option) => option.id === current)?.label ?? (kind === "new-lead" ? newLeadStageLabel(current) : current)}</option>
+          ) : null}
           <optgroup label="보드 안 단계">
-            {(column.options_jsonb?.options ?? []).map((option) => (
+            {visibleStages.map((option) => (
               <option key={option.id} value={option.id}>{option.label}</option>
             ))}
           </optgroup>

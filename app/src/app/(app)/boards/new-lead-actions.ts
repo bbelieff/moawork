@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { canonicalAssignee, createCanonicalNewLeadWithFoundedMonth, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadMeta, updateCanonicalNewLeadTitle } from "@/lib/new-lead/mutations";
 import type { NewLeadIntakeState } from "@/lib/new-lead/intake-state";
 import { CELL_FLASH_COOKIE, CELL_FLASH_MAX_AGE, encodeCellFlash } from "@/lib/boards/cellFlash";
+import { NEW_LEAD_DETAIL_FIELD_PATCH } from "@/lib/new-lead/detail-field-patch";
 import { resolveNewLeadBusinessSubtype } from "@/lib/new-lead/business-types";
 import { resolveNewLeadRevenueBand } from "@/lib/new-lead/revenue-bands";
 import { canonicalSido, canonicalSigungu } from "@/lib/new-lead/region-search";
@@ -173,17 +174,11 @@ export type SaveNewLeadLoanProfileResult = Readonly<{
   records: readonly ExistingLoanRecord[];
 }>;
 
-const DETAIL_FIELD_PATCH = {
-  rep_name: "representative_name",
-  phone: "phone",
-  email: "email",
-  biz_reg_type: "business_registration_type",
-  industry: "industry",
-  revenue_band: "revenue_band",
-  sido: "region_sido",
-  sigungu: "region_sigungu",
-  ad_name: "acquisition_source",
-} as const;
+/**
+ * 보드 키 → canonical patch 키. 단일 정의는
+ * `@/lib/new-lead/detail-field-patch`이며 OCR 저장 분기도 같은 것을 쓴다.
+ */
+const DETAIL_FIELD_PATCH = NEW_LEAD_DETAIL_FIELD_PATCH;
 
 /** 회사 상세의 자동 저장도 표와 같은 canonical deal/item/audit 경로를 관통한다. */
 export async function saveNewLeadDetailFieldAction(input: {
