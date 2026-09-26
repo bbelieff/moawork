@@ -288,6 +288,28 @@ describe("parseSavedBoardViewConfig", () => {
     expect(applySavedPersonScope(rows, { personScope: "fixed", personScopeUserId: null }, "u1", "owner")).toEqual([]);
   });
 
+  it("keeps canonical duplicates in the viewer scope using actual ownership, never missing or stale EAV", () => {
+    const item = (id: string, assigned_to: string | null, owner?: string): ItemWithValues => ({
+      id, org_id: "o1", board_id: "b1", group_id: "g1", title: id,
+      assigned_to, deal_id: "deal-" + id, sort_order: 0, created_at: "", updated_at: "",
+      values: owner === undefined ? {} : { owner },
+    });
+    const rows = [item("duplicate", "u1"), item("stale-mine", "u1", "u2"),
+      item("other", "u2", "u1"), item("unassigned", null, "u1")];
+    const view = { personScope: "viewer" as const, personScopeUserId: null };
+    expect(applySavedPersonScope(rows, view, "u1", "owner", ["u1", "u2"], true).map((row) => row.id))
+      .toEqual(["duplicate", "stale-mine"]);
+    expect(applySavedPersonScope(rows, view, "u2", "owner", ["u1", "u2"], true).map((row) => row.id))
+      .toEqual(["other"]);
+    expect(applySavedPersonScope(rows, view, "u1", "owner", ["u2"], true)).toEqual([]);
+    // Ordinary board ownership retains its existing person-column semantics.
+    expect(applySavedPersonScope(rows, view, "u1", "owner", ["u1", "u2"]).map((row) => row.id))
+      .toEqual(["other", "unassigned"]);
+    const custom = [{ ...rows[0], values: { reviewer: "u2" } }];
+    expect(applySavedPersonScope(custom, view, "u1", "reviewer", ["u1", "u2"], true)).toEqual([]);
+    expect(applySavedPersonScope(custom, view, "u2", "reviewer", ["u1", "u2"], true)).toEqual(custom);
+  });
+
   it("rejects malformed values without widening the contract", () => {
     expect(parseSavedBoardViewConfig({ filters: { assignees: "u1", columnLimit: -5 } })).toEqual({
       kind: "board",

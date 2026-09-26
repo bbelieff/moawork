@@ -545,6 +545,48 @@ describe("migration 139 atomic row move",()=>{
 });
 
 
+it("157 restores only auth helper access for real private-owner RPCs and preserves actor/tenant rejection", async () => {
+  const fix = readFileSync(resolve(process.cwd(), "../supabase/migrations/157_row_order_writer_auth_access.sql"), "utf8");
+  const ownerBefore = (await db.query("select proname,proowner,proacl,prosecdef from pg_proc where oid in ('public.move_board_row_atomic(uuid,uuid,uuid,uuid,uuid,bigint,uuid)'::regprocedure,'public.set_board_item_values_with_atomic_move(uuid,uuid,uuid,jsonb,uuid,uuid,bigint,uuid)'::regprocedure) order by proname")).rows;
+  await db.exec(`
+    create table auth.issue797_private_probe(id integer);
+    revoke usage on schema auth from moawork_row_order_writer;
+    revoke execute on function auth.uid() from public, moawork_row_order_writer;
+    set role authenticated;
+  `);
+  try {
+    // Real SECURITY DEFINER calls switch from authenticated to the private writer.
+    await expect(move({item:ids.a,group:ids.g2,version:0,request:9701})).rejects.toThrow(/permission denied for schema auth/);
+    await expect(setValuesMove({item:ids.a,group:ids.g2,values:{status:"통화완료"},version:0,request:9702})).rejects.toThrow(/permission denied for schema auth/);
+    await db.exec("reset role; grant usage on schema auth to moawork_row_order_writer; set role authenticated;");
+    await expect(move({item:ids.a,group:ids.g2,version:0,request:9701})).rejects.toThrow(/permission denied for function uid/);
+    await db.exec("reset role; revoke usage on schema auth from moawork_row_order_writer;");
+    await db.exec(fix);
+    await db.exec("set role authenticated;");
+    expect((await move({item:ids.a,group:ids.g2,version:0,request:9701})).rows[0]).toMatchObject({version:1,replayed:false});
+    expect((await setValuesMove({item:ids.a,group:ids.g1,values:{status:"통화완료"},version:1,request:9702})).rows[0]).toMatchObject({version:2,replayed:false});
+    expect((await setValuesMove({item:ids.a,group:ids.g1,values:{status:"통화완료"},version:1,request:9702})).rows[0]).toMatchObject({version:2,replayed:true});
+    await db.exec(`set app.actor='${ids.outsider}';`);
+    await expect(move({item:ids.b,group:ids.g2,version:2,request:9703})).rejects.toThrow(/denied/);
+    await db.exec(`set app.actor='${ids.actor}';`);
+    await expect(db.query("select * from public.move_board_row_atomic($1,$2,$3,$4,null,0,$5)", [ids.other,ids.otherBoard,ids.a,ids.g2,request(9704)])).rejects.toThrow(/denied/);
+    await db.exec("reset role;");
+    expect((await db.query("select proname,proowner,proacl,prosecdef from pg_proc where oid in ('public.move_board_row_atomic(uuid,uuid,uuid,uuid,uuid,bigint,uuid)'::regprocedure,'public.set_board_item_values_with_atomic_move(uuid,uuid,uuid,jsonb,uuid,uuid,bigint,uuid)'::regprocedure) order by proname")).rows).toEqual(ownerBefore);
+    expect((await db.query<{value_jsonb:string}>("select value_jsonb from item_values where item_id=$1 and column_key='status'",[ids.a])).rows[0].value_jsonb).toBe("통화완료");
+    expect((await db.query<{schema_usage:boolean;schema_create:boolean;uid_execute:boolean;auth_table_read:boolean}>(`select
+      has_schema_privilege('moawork_row_order_writer','auth','USAGE') schema_usage,
+      has_schema_privilege('moawork_row_order_writer','auth','CREATE') schema_create,
+      has_function_privilege('moawork_row_order_writer','auth.uid()','EXECUTE') uid_execute,
+      has_table_privilege('moawork_row_order_writer','auth.issue797_private_probe','SELECT') auth_table_read`)).rows[0])
+      .toEqual({schema_usage:true,schema_create:false,uid_execute:true,auth_table_read:false});
+  } finally {
+    await db.exec(`reset role; set app.actor='${ids.actor}';
+      grant usage on schema auth to moawork_row_order_writer;
+      grant execute on function auth.uid() to public,moawork_row_order_writer;
+      drop table auth.issue797_private_probe;`);
+  }
+});
+
 it("153 archive boundary rejects shelved moves but preserves active sibling ordering through real 139", async () => {
   await db.exec(`
     create table public.companies(id uuid primary key,org_id uuid);
@@ -566,4 +608,85 @@ it("153 archive boundary rejects shelved moves but preserves active sibling orde
   await expect(db.query("select public.issue602_move_board_item_private($1,$2,$3,$4,$3,$5,null,null)",[ids.org,ids.a,ids.board,ids.g1,ids.g2])).rejects.toMatchObject({code:"40001"});
   expect((await db.query<{owner:string}>("select pg_get_userbyid(proowner) owner from pg_proc where oid='public.move_board_row_atomic(uuid,uuid,uuid,uuid,uuid,bigint,uuid)'::regprocedure")).rows[0].owner).toBe("moawork_row_order_writer");
   expect((await db.query<{allowed:boolean}>("select has_function_privilege('authenticated','public.issue602_move_board_item_private(uuid,uuid,uuid,uuid,uuid,uuid,uuid,integer)','EXECUTE') allowed")).rows[0].allowed).toBe(false);
+  // Hosted auth schema belongs to supabase_admin: postgres can use it but cannot
+  // delegate USAGE. Keep real 139 + archive-aware 153 RPCs; model that exact ACL.
+  await db.exec(`
+    alter function public.effective_permission(uuid,text) security definer;
+    revoke usage on schema auth from moawork_row_order_writer;
+    set session authorization supabase_admin;
+    revoke grant option for usage on schema auth from postgres cascade;
+    set session authorization postgres;
+  `);
+  expect((await db.query<{grantable:boolean}>("select has_schema_privilege('postgres','auth','USAGE WITH GRANT OPTION') grantable")).rows[0].grantable).toBe(false);
+  const fix157=readFileSync(resolve(process.cwd(),"../supabase/migrations/157_row_order_writer_auth_access.sql"),"utf8");
+  await db.exec(fix157); // PostgreSQL WARNING, not an error: no privileges granted.
+  expect((await db.query<{allowed:boolean}>("select has_schema_privilege('moawork_row_order_writer','auth','USAGE') allowed")).rows[0].allowed).toBe(false);
+  await db.exec("set role authenticated;");
+  await expect(move({item:ids.b,group:ids.g1,version:1,request:9801})).rejects.toThrow(/permission denied for schema auth/);
+  await expect(db.query("select * from public.reorder_board_columns_atomic($1,$2,$3)",[ids.org,ids.board,[ids.col2,ids.col1]])).rejects.toThrow(/permission denied for schema auth/);
+  await db.exec("reset role;");
+  const fix158=readFileSync(resolve(process.cwd(),"../supabase/migrations/158_row_order_actor_helper.sql"),"utf8");
+  await db.exec(`begin; ${fix158} commit;`);
+  expect((await db.query<{allowed:boolean}>("select has_schema_privilege('moawork_row_order_writer','auth','USAGE') allowed")).rows[0].allowed).toBe(false);
+  // Load the actual deployed pure validator bodies (not permissive stubs).
+  // 139's original fixture omitted these CHECKs, hiding the hosted EXECUTE gap.
+  const validators = [
+    ["138_issue605_board_summary_settings.sql", "board_summary_config_is_valid", "jsonb"],
+    ["089_bbe176_column_metadata_canonical.sql", "board_column_access_policy_is_valid", "jsonb"],
+    ["118_bbe178_column_value_and_schedule_dispatch.sql", "board_column_validation_is_valid", "jsonb"],
+    ["089_bbe176_column_metadata_canonical.sql", "board_column_metadata_is_valid", "jsonb,jsonb,jsonb"],
+    ["115_bbe176_column_date_schedule.sql", "board_column_date_settings_is_valid", "jsonb"],
+  ];
+  for (const [file, name, args] of validators) {
+    const source = readFileSync(resolve(process.cwd(), "../supabase/migrations", file), "utf8");
+    const definition = source.match(new RegExp(`create or replace function public[.]${name}\\([\\s\\S]*?\\$\\$;`))?.[0];
+    expect(definition).toBeTruthy();
+    await db.exec(`${definition}
+      revoke all on function public.${name}(${args}) from public,anon,authenticated,service_role;
+      grant execute on function public.${name}(${args}) to authenticated;`);
+  }
+  await db.exec(`
+    grant execute on function public.board_summary_config_is_valid(jsonb) to anon,service_role;
+    alter table public.boards add column summary_config_jsonb jsonb not null default '[]';
+    alter table public.boards add constraint boards_summary_config_shape_check check(public.board_summary_config_is_valid(summary_config_jsonb));
+    alter table public.board_columns add column view_policy_jsonb jsonb not null default '{}', add column date_settings_jsonb jsonb not null default '{}';
+    alter table public.board_columns add constraint board_columns_policy_objects check(public.board_column_metadata_is_valid(validation_jsonb,edit_policy_jsonb,view_policy_jsonb));
+    alter table public.board_columns add constraint board_columns_date_settings_valid check(public.board_column_date_settings_is_valid(date_settings_jsonb));
+    set role authenticated;
+  `);
+  await expect(move({item:ids.b,group:ids.g1,version:1,request:9801})).rejects.toThrow(/permission denied for function board_summary_config_is_valid/);
+  await expect(db.query("select * from public.reorder_board_columns_atomic($1,$2,$3)",[ids.org,ids.board,[ids.col2,ids.col1]])).rejects.toThrow(/permission denied for function board_column_date_settings_is_valid/);
+  await db.exec("reset role;");
+  const boundarySql = `select p.oid,proowner,prosrc,prosecdef,provolatile,proconfig,
+    has_function_privilege('anon',p.oid,'EXECUTE') anon_exec,
+    has_function_privilege('authenticated',p.oid,'EXECUTE') authenticated_exec,
+    has_function_privilege('service_role',p.oid,'EXECUTE') service_exec
+    from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' order by p.oid`;
+  const beforeValidators = (await db.query(boundarySql)).rows;
+  const beforeMembership = (await db.query("select * from pg_auth_members order by roleid,member,grantor")).rows;
+  const fix159=readFileSync(resolve(process.cwd(),"../supabase/migrations/159_row_order_validator_access.sql"),"utf8");
+  await db.exec(fix159);
+  expect((await db.query(boundarySql)).rows).toEqual(beforeValidators);
+  expect((await db.query("select * from pg_auth_members order by roleid,member,grantor")).rows).toEqual(beforeMembership);
+  expect((await db.query<{allowed:boolean}>("select has_schema_privilege('moawork_row_order_writer','auth','USAGE') allowed")).rows[0].allowed).toBe(false);
+  for (const [, name, args] of validators) {
+    expect((await db.query<{allowed:boolean}>("select has_function_privilege('moawork_row_order_writer',$1,'EXECUTE') allowed", [`public.${name}(${args})`])).rows[0].allowed).toBe(true);
+  }
+  await expect(db.exec("update public.boards set summary_config_jsonb='[{}]' where id='"+ids.board+"'")).rejects.toMatchObject({code:"23514"});
+  await expect(db.exec("update public.board_columns set edit_policy_jsonb='{\"roles\":[\"invalid\"]}' where id='"+ids.col1+"'")).rejects.toMatchObject({code:"23514"});
+  await expect(db.exec("update public.board_columns set date_settings_jsonb='{\"includeTime\":\"invalid\"}' where id='"+ids.col1+"'")).rejects.toMatchObject({code:"23514"});
+  await db.exec("set role authenticated;");
+  try {
+    await expect(db.query("select public.row_order_actor_uid()")).rejects.toThrow(/permission denied/);
+    expect((await move({item:ids.b,group:ids.g1,version:1,request:9801})).rows[0]).toMatchObject({version:2,replayed:false});
+    expect((await db.query<{id:string;sort_order:number}>("select id,sort_order from public.reorder_board_columns_atomic($1,$2,$3) order by sort_order",[ids.org,ids.board,[ids.col2,ids.col1]])).rows).toEqual([{id:ids.col2,sort_order:0},{id:ids.col1,sort_order:1}]);
+    expect((await setValuesMove({item:ids.b,group:ids.g2,values:{status:"통화완료"},version:2,request:9802})).rows[0]).toMatchObject({version:3,replayed:false});
+    expect((await setValuesMove({item:ids.b,group:ids.g2,values:{status:"통화완료"},version:2,request:9802})).rows[0]).toMatchObject({version:3,replayed:true});
+    await expect(move({item:ids.a,group:ids.g2,version:3,request:9803})).rejects.toMatchObject({code:"42501"});
+    await db.exec(`set app.actor='${ids.outsider}';`);
+    await expect(move({item:ids.c,group:ids.g1,version:3,request:9804})).rejects.toMatchObject({code:"42501"});
+    await expect(db.query("select * from public.reorder_board_columns_atomic($1,$2,$3)",[ids.org,ids.board,[ids.col1,ids.col2]])).rejects.toMatchObject({code:"42501"});
+    await db.exec(`set app.actor='${ids.actor}';`);
+    await expect(db.query("select * from public.move_board_row_atomic($1,$2,$3,$4,null,0,$5)",[ids.other,ids.otherBoard,ids.c,ids.g1,request(9805)])).rejects.toMatchObject({code:"42501"});
+  } finally { await db.exec(`reset role; set app.actor='${ids.actor}';`); }
 });

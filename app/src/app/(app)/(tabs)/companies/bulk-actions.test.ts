@@ -28,7 +28,8 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth/session", () => ({ getSession: getSessionMock }));
 vi.mock("@/lib/perm/guard", () => ({ loadPermGuard: loadPermGuardMock }));
 vi.mock("@/lib/perm/server", () => ({ recordRiskyAction: recordRiskyMock }));
-vi.mock("@/lib/crm", () => ({ getCrmService: () => crmMock }));
+vi.mock("@/lib/crm", () => ({ AsyncCrmService: class { constructor() { return crmMock; } } }));
+vi.mock("@/lib/repo/supabase/supabaseCrmSource", () => ({ SupabaseCrmSource: class {} }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
 vi.mock("@/lib/assignment-lineage", async (importOriginal) => {
   const orig = await importOriginal<typeof import("@/lib/assignment-lineage")>();
