@@ -984,3 +984,104 @@ it("히스토리는 대화와 실제 변경을 기본으로 보여 주고 전체
   await act(async () => toggle.click());
   expect(history.textContent).not.toContain("최초 입력");
 });
+
+
+describe("Next canonical URL and detail hash", () => {
+  // Next 16 app-router wraps native history writes to update canonicalUrl.
+  // Server Action/refresh then commits that canonical URL back to history.
+  // Direct location.hash does not pass through this integration point.
+  function routerHistoryProbe() {
+    let canonical = window.location.href;
+    const push = window.history.pushState.bind(window.history);
+    const replace = window.history.replaceState.bind(window.history);
+    const pushSpy = vi.spyOn(window.history, "pushState").mockImplementation((data, title, url) => {
+      if (url) canonical = new URL(url, window.location.href).href;
+      push(data, title, url);
+    });
+    const replaceSpy = vi.spyOn(window.history, "replaceState").mockImplementation((data, title, url) => {
+      if (url) canonical = new URL(url, window.location.href).href;
+      replace(data, title, url);
+    });
+    return { canonical: () => canonical, refresh: () => replace(null, "", canonical),
+      restore: () => { pushSpy.mockRestore(); replaceSpy.mockRestore(); } };
+  }
+  function panel(id = "item-a", next?: {id:string;title:string}, previous?: {id:string;title:string}) {
+    return <ItemDetailPanel boardId="board-a" row={{ ...row, id, title: id === "item-a" ? "대한정밀" : "미래상사" }}
+      columns={columns} boardLayout={[{key:"company",source:"column"}]} layout={[{key:"company",source:"column"}]}
+      inherited canEditItems canManageColumns={false} nextItem={next} previousItem={previous}
+      initialDetail={{ok:true,events:[],links:[],files:[],members:[]}} />;
+  }
+  it("a saved checkbox regroup keeps the same detail open after the row remounts", async () => {
+    window.history.replaceState(null,"","/w/test/boards/board-a?consultation=remote");
+    const probe = routerHistoryProbe();
+    try {
+      const host=document.createElement("div"); document.body.append(host); mountedRoot=createRoot(host);
+      await act(async()=>mountedRoot?.render(<div key="contract-done">{panel()}</div>));
+      await act(async()=>document.querySelector<HTMLButtonElement>('[data-item-detail-trigger="item-a"]')!.click());
+      expect(new URL(probe.canonical()).hash).toBe("#item-item-a");
+      await act(async()=>{ probe.refresh(); mountedRoot?.render(<div key="deposit-confirmed">{panel()}</div>); });
+      expect(window.location.hash).toBe("#item-item-a");
+      expect(document.querySelectorAll('[aria-label="상세 닫기"]')).toHaveLength(1);
+      expect(window.location.search).toBe("?consultation=remote");
+    } finally { probe.restore(); }
+  });
+  it("sibling navigation updates the router URL and back/forward still select one detail", async () => {
+    const probe=routerHistoryProbe();
+    try {
+      const host=document.createElement("div"); document.body.append(host); mountedRoot=createRoot(host);
+      await act(async()=>mountedRoot?.render(<>{panel("item-a",{id:"item-b",title:"미래상사"})}{panel("item-b",undefined,{id:"item-a",title:"대한정밀"})}</>));
+      await act(async()=>document.querySelector<HTMLButtonElement>('[data-item-detail-trigger="item-a"]')!.click());
+      await act(async()=>{ document.querySelector<HTMLButtonElement>('[aria-label="다음 회사 미래상사 열기"]')!.click(); await new Promise(resolve=>setTimeout(resolve,30)); });
+      expect(new URL(probe.canonical()).hash).toBe("#item-item-b");
+      await act(async()=>{ window.history.back(); await new Promise(resolve=>setTimeout(resolve,30)); });
+      expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe("대한정밀");
+      expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+      await act(async()=>{ window.history.forward(); await new Promise(resolve=>setTimeout(resolve,30)); });
+      expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe("미래상사");
+      expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    } finally { probe.restore(); }
+  });
+  it("closing a direct deep link replaces only its hash and keeps the query", async () => {
+    window.history.replaceState(null,"","/w/test/boards/board-a?consultation=remote#item-item-a");
+    const probe=routerHistoryProbe(); const length=window.history.length;
+    try {
+      const host=document.createElement("div"); document.body.append(host); mountedRoot=createRoot(host);
+      await act(async()=>mountedRoot?.render(panel()));
+      await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="상세 닫기"]')!.click());
+      expect(new URL(probe.canonical()).hash).toBe("");
+      expect(window.location.search).toBe("?consultation=remote");
+      expect(window.history.length).toBe(length);
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+    } finally { probe.restore(); }
+  });
+  it("an unsuccessful save refresh retains the open drawer and unsaved memo draft", async () => {
+    const probe=routerHistoryProbe();
+    try {
+      const host=document.createElement("div"); document.body.append(host); mountedRoot=createRoot(host);
+      await act(async()=>mountedRoot?.render(panel()));
+      await act(async()=>document.querySelector<HTMLButtonElement>('[data-item-detail-trigger="item-a"]')!.click());
+      const draft=document.querySelector<HTMLTextAreaElement>('[data-item-detail-composer] textarea')!;
+      await act(async()=>{
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(draft,"아직 저장하지 않은 메모");
+        draft.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+      await act(async()=>{ probe.refresh(); mountedRoot?.render(panel()); });
+      expect(window.location.hash).toBe("#item-item-a");
+      expect(document.querySelector<HTMLTextAreaElement>('[data-item-detail-composer] textarea')!.value).toBe("아직 저장하지 않은 메모");
+      expect(document.querySelectorAll('[aria-label="상세 닫기"]')).toHaveLength(1);
+    } finally { probe.restore(); }
+  });
+  it("closing a drawer opened here goes back once instead of adding another URL entry", async () => {
+    window.history.replaceState(null,"","/w/test/boards/board-a?consultation=remote");
+    const length=window.history.length;
+    const host=document.createElement("div"); document.body.append(host); mountedRoot=createRoot(host);
+    await act(async()=>mountedRoot?.render(panel()));
+    await act(async()=>document.querySelector<HTMLButtonElement>('[data-item-detail-trigger="item-a"]')!.click());
+    expect(window.history.length).toBe(length+1);
+    await act(async()=>{ document.querySelector<HTMLButtonElement>('[aria-label="상세 닫기"]')!.click(); await new Promise(resolve=>setTimeout(resolve,30)); });
+    expect(window.location.hash).toBe("");
+    expect(window.location.search).toBe("?consultation=remote");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+});
