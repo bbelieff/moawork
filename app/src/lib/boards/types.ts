@@ -127,6 +127,12 @@ export interface BoardItem {
   deleted_at?: string | null;
   /** User who moved the item to trash. Values/group/assignee/order remain untouched. */
   deleted_by?: string | null;
+  /** 153-draft 별도 보관 마커 (휴지통과 독립). 보관해도 회사/딜/원장 행은 삭제하지 않는다. */
+  archived_at?: string | null;
+  /** 보관 행위자. 복구 시 null로 되돌린다. */
+  archived_by?: string | null;
+  /** 004 기존 상하위 연결. FK만으로는 tenant/board/순환을 보장 못하므로 153 RPC가 검사한다. */
+  parent_item_id?: string | null;
   created_at: string;
   updated_at: string;
 }

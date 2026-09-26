@@ -25,6 +25,11 @@ export type BulkStatusColumnPick = {
   key: string;
   label: string;
   options: { id: string; label: string }[];
+  /**
+   * 실제 물리 컬럼 id — 일괄 대화상자의 «만들기»는 이게 있을 때만 잇는다.
+   * 없으면 검색 전용이다(셀 드롭다운에서만 만든다).
+   */
+  columnId: string | null;
 };
 
 /**
@@ -54,6 +59,7 @@ export function pickBulkStatusColumn(
     key: found.key,
     label: workflowKind ? "진행현황" : found.label,
     options,
+    columnId: found.id,
   };
 }
 

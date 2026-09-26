@@ -379,8 +379,15 @@ export class LocalBoardsRepo {
   // ── 아이템(담당범위) ──
   listItems(ctx: Ctx, boardId: string): BoardItem[] {
     const all = db()
-      .boardItems.filter((i) => i.org_id === ctx.org.id && i.board_id === boardId && !i.deleted_at)
+      .boardItems.filter((i) => i.org_id === ctx.org.id && i.board_id === boardId && !i.deleted_at && !(i as BoardItem).archived_at)
       .sort((a, b) => a.sort_order - b.sort_order);
+    return canSeeAll(ctx) ? all : all.filter((i) => i.assigned_to === ctx.user.id);
+  }
+
+  listArchivedItems(ctx: Ctx, boardId: string): BoardItem[] {
+    const all = db()
+      .boardItems.filter((i) => i.org_id === ctx.org.id && i.board_id === boardId && !i.deleted_at && Boolean((i as BoardItem).archived_at))
+      .sort((a, b) => String((b as BoardItem).archived_at).localeCompare(String((a as BoardItem).archived_at)));
     return canSeeAll(ctx) ? all : all.filter((i) => i.assigned_to === ctx.user.id);
   }
 
@@ -392,7 +399,13 @@ export class LocalBoardsRepo {
   }
 
   getItem(ctx: Ctx, id: string): BoardItem | undefined {
-    const i = db().boardItems.find((x) => x.id === id && x.org_id === ctx.org.id && !x.deleted_at);
+    const i = db().boardItems.find((x) => x.id === id && x.org_id === ctx.org.id && !x.deleted_at && !(x as BoardItem).archived_at);
+    if (!i) return undefined;
+    return canSeeAll(ctx) || i.assigned_to === ctx.user.id ? i : undefined;
+  }
+
+  getArchivedItem(ctx: Ctx, id: string): BoardItem | undefined {
+    const i = db().boardItems.find((x) => x.id === id && x.org_id === ctx.org.id && !x.deleted_at && Boolean((x as BoardItem).archived_at));
     if (!i) return undefined;
     return canSeeAll(ctx) || i.assigned_to === ctx.user.id ? i : undefined;
   }

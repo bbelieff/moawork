@@ -32,9 +32,11 @@ describe("SaveViewDialog", () => {
     expect(html).not.toContain("특정 사람 고정");
   });
 
-  it("«뷰는 권한이 아닙니다» 경고 문구를 항상 보여준다(D24)", () => {
+  it("긴 권한 안내 대신 실제 공개 범위 선택을 제공한다", () => {
     const html = renderToStaticMarkup(<SaveViewDialog orgId="org-1" boardKey="new" ownerId="카뮈" kind="board" filters={{}} onSubmit={() => {}} />);
-    expect(html).toContain("뷰는 권한이 아닙니다");
+    expect(html).toContain('aria-label="공개 범위"');
+    expect(html).toContain("나만");
+    expect(html).toContain("회사 전체");
   });
 
   it("creates only supported real view kinds and enables calendar when a date column exists", () => {

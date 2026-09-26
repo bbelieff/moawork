@@ -157,9 +157,13 @@ export interface BoardsRepo {
   restoreColumn(ctx: Ctx, boardId: string, id: string): Promise<BoardColumn | undefined>;
 
   // 아이템(담당범위 적용)
+  // listItems/getItem/updateItem/deleteItem/setValues 는 보관 행을 다루지 않는다
+  // (보관은 listArchivedItems/getArchivedItem + 보관 RPC로만 읽고 되돌린다).
   listItems(ctx: Ctx, boardId: string): Promise<BoardItem[]>;
   listDeletedItems(ctx: Ctx, boardId: string): Promise<BoardItem[]>;
+  listArchivedItems(ctx: Ctx, boardId: string): Promise<BoardItem[]>;
   getItem(ctx: Ctx, id: string): Promise<BoardItem | undefined>;
+  getArchivedItem(ctx: Ctx, id: string): Promise<BoardItem | undefined>;
   createItem(ctx: Ctx, boardId: string, input: NewItem): Promise<BoardItem>;
   updateItem(ctx: Ctx, id: string, patch: ItemPatch): Promise<BoardItem | undefined>;
   moveRowAtomic(ctx: Ctx, boardId: string, request: RowMoveRequest): Promise<RowMoveReceipt>;

@@ -54,14 +54,24 @@ describe("contract-work company intake action", () => {
     mocks.start.mockRejectedValueOnce(new Error("private database detail"));
     await expect(startCompanyWorkFromBoardAction({ ok: null, message: "" }, form())).resolves.toEqual({
       ok: false,
-      message: "업무를 시작하지 못했어요. 잠시 후 다시 시도해 주세요.",
+      outcome: "uncertain",
+      message: "저장 결과를 확인하지 못했어요. 같은 회사로 다시 시도해 결과를 확인해 주세요.",
     });
     expect(mocks.revalidate).not.toHaveBeenCalled();
 
     await expect(startCompanyWorkFromBoardAction(
       { ok: null, message: "" },
       form({ companyId: "" }),
-    )).resolves.toEqual({ ok: false, message: "업체를 선택한 뒤 다시 시도해 주세요." });
+    )).resolves.toEqual({ ok: false, outcome: "rejected", message: "업체를 선택한 뒤 다시 시도해 주세요." });
     error.mockRestore();
   });
+});
+
+
+it("explicit database denial is distinguished from an uncertain transport result", async () => {
+  mocks.start.mockRejectedValueOnce(Object.assign(new Error("permission denied"), { code: "42501" }));
+  const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  try {
+    expect(await startCompanyWorkFromBoardAction({ ok: null, message: "" }, form())).toMatchObject({ ok: false, outcome: "rejected" });
+  } finally { log.mockRestore(); }
 });

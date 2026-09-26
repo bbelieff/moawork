@@ -38,6 +38,26 @@ function covers(pathname: string, href: string): boolean {
   return pathname.startsWith(`${href}/`);
 }
 
+/**
+ * 상담 단계 보기의 활성 탭 — 같은 리드컨택 정본 보드(`/boards/<id>`)라도
+ * `?consultation=remote|inperson` 이면 STEP2·STEP3 탭이 켜진다.
+ * 쿼리가 없거나 contact 보드가 아니면 null(기존 판정 그대로).
+ */
+export function resolveConsultationNavKey(
+  pathname: string,
+  search: string | null | undefined,
+  boardNavKeys?: Readonly<Record<string, string>>,
+): "consult-remote" | "consult-inperson" | null {
+  const boardId = boardIdFromPathname(pathname);
+  if (!boardId || boardNavKeys?.[boardId] !== "contact") return null;
+  if (!search) return null;
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const view = params.get("consultation");
+  if (view === "remote") return "consult-remote";
+  if (view === "inperson") return "consult-inperson";
+  return null;
+}
+
 export function resolveActiveNavKey(
   pathname: string,
   candidates: readonly NavCandidate[],

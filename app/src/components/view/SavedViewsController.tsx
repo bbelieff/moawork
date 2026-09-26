@@ -21,6 +21,7 @@ import { SaveViewDialog } from "./SaveViewDialog";
 import { TableView, type TableColumn } from "./TableView";
 import { ViewPicker } from "./ViewPicker";
 import { ViewTabs } from "./ViewTabs";
+import { SavedTableSelection } from "./SavedTableSelection";
 import { BoardCell } from "@/components/board/GroupTable";
 import { isNewLeadPresentationOnlyStructure,newLeadPresentationKey, presentNewLeadColumnKeys, presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
 import { BoardInlineTitleEditor } from "@/components/board/BoardInlineTitleEditor";
@@ -47,7 +48,7 @@ export function SavedViewsController({
   boardId, orgId, currentUserId, teamMemberIds = [], layout = {}, columns = [], rows = [], renderMode = "controls", canEditItems = false,
   canonicalNewLead = false, memberOptions = [],
   groups = [], rowOrderVersion = 0, canMoveRows = false, canManageColumns = false,
-  canManageSections = false, isSystem = false,
+  canManageSections = false, isSystem = false, canBulkEditItems = false, canDeleteItems = false, canExportItems = false, boardSource = null,
 }: {
   boardId: string; orgId: string; currentUserId: string;
   teamMemberIds?: readonly string[];
@@ -62,6 +63,10 @@ export function SavedViewsController({
   canManageColumns?: boolean;
   canManageSections?: boolean;
   isSystem?: boolean;
+  canBulkEditItems?: boolean;
+  canDeleteItems?: boolean;
+  canExportItems?: boolean;
+  boardSource?: string | null;
 }) {
   const [views, setViews] = useState<SavedBoardView[]>([]);
   const [pending, setPending] = useState<SavedBoardViewConfig | null>(null);
@@ -264,17 +269,22 @@ export function SavedViewsController({
       {pending ? <SaveViewDialog orgId={orgId} boardKey={boardId} ownerId={currentUserId} kind={kindOf(pending)} filters={pending.filters.byColumn} sort={pending.sorts} calendarFieldKey={pending.calendarFieldKey} dateColumns={displayColumns.filter((column) => column.type === "date" || column.type === "datetime").map((column) => ({ key: column.key, label: column.label }))} onSubmit={(input) => void create(input)} onCancel={() => setPending(null)} /> : null}
       {renderMode==="flat"&&!isSystem&&canManageSections&&groups.length>0?<nav aria-label="그룹 이름과 순서" className="flex flex-wrap gap-2">{groups.map((group,index)=>{
         const next=[...groups].sort((a,b)=>a.sort_order-b.sort_order).map((candidate)=>candidate.id);return <span key={group.id} className="inline-flex items-center rounded border border-mw-line px-2 py-1 text-xs"><GroupNameEditor boardId={boardId} groupId={group.id} name={group.name}/><span className="sr-only focus-within:not-sr-only">{([-1,1] as const).map((delta)=>{const to=Math.max(0,Math.min(next.length-1,index+delta));const ordered=[...next];if(index!==to){const [moved]=ordered.splice(index,1);ordered.splice(to,0,moved);}return <form key={delta} action={reorderGroupsAction} className="inline"><input type="hidden" name="boardId" value={boardId}/><input type="hidden" name="groupIds" value={JSON.stringify(ordered)}/><button type="submit" disabled={index===to} aria-label={`${group.name} ${delta<0?"위":"아래"}로 이동`}>{delta<0?"↑":"↓"}</button></form>;})}</span></span>;})}</nav>:null}
-      {renderMode === "flat" ? <TableView columns={tableColumns} rows={filteredRows} textMode={config.textMode} focusColumnKey={config.focusColumnKey} rowKey={(row) => row.id} renderHeader={(column)=>{
+      {renderMode === "flat" ? <SavedTableSelection key={boardId} boardId={boardId} boardSource={boardSource} rows={filteredRows} columns={orderedColumns} physicalColumns={columns}
+        members={memberOptions} groups={groups} canEdit={canEditItems && canBulkEditItems && !isSystem}
+        canMove={canMoveRows} canDelete={canDeleteItems && canBulkEditItems && !isSystem} canExport={canExportItems}>
+        {({ header, cell }) => <TableView columns={[{ key: "__selection", label: header }, ...tableColumns]} rows={filteredRows} textMode={config.textMode} focusColumnKey={config.focusColumnKey} rowKey={(row) => row.id} renderHeader={(column)=>{
         if(column.key==="__title")return column.label;
         const definition=displayColumns.find((candidate)=>candidate.key===column.key);
         if(!definition)return column.label;
         const presentationOnly=canonicalNewLead&&isNewLeadPresentationOnlyStructure(definition);
         return <span className="flex items-center gap-1">{canManageColumns&&!isSystem&&!presentationOnly?<BoardInlineTitleEditor name={definition.label} label="컬럼 이름" onSave={(value)=>renameColumnTitleAction(boardId,definition.id,value)}/>:definition.label}{canManageColumns&&!isSystem&&!presentationOnly?<span className="sr-only focus-within:not-sr-only"><button type="button" onClick={()=>void moveFlatColumn(column.key,-1)} aria-label={`${definition.label} 왼쪽으로 이동`}>왼쪽으로 이동</button><button type="button" onClick={()=>void moveFlatColumn(column.key,1)} aria-label={`${definition.label} 오른쪽으로 이동`}>오른쪽으로 이동</button></span>:null}</span>;
       }} renderCell={(row, column) => {
+        if (column.key === "__selection") return cell(row);
         if (column.key === "__title") return <span className="flex items-center gap-1">{row.title}{rowMoveControls(row)}</span>;
         const definition = displayColumns.find((candidate) => candidate.key === column.key);
         return definition ? <BoardCell boardId={boardId} row={row} column={definition} readOnly={!canEditItems} canonicalNewLead={canonicalNewLead} members={memberOptions} /> : "";
-      }} /> : null}
+      }} />}
+      </SavedTableSelection> : null}
       {renderMode === "calendar" ? <>
         <label className="flex items-center gap-2 text-sm text-mw-body">날짜 컬럼
           <select value={dateColumn?.key ?? ""} disabled={!activeSaved} onChange={(event) => void changeCalendarField(event.target.value)} className="rounded border border-mw-line bg-mw-card px-2 py-1">

@@ -7,6 +7,7 @@ import { RouteAppearance } from "./RouteAppearance";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/sample-lab",
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push: vi.fn() }),
 }));
 
@@ -21,7 +22,8 @@ function read(rel: string): string {
  */
 describe("v17 vivid 배선", () => {
   it("RouteAppearance는 DOM을 그리지 않는다", () => {
-    expect(renderToStaticMarkup(<RouteAppearance boardNavKeys={{}} basePath="/w/sample-lab" />)).toBe("");
+    const html = renderToStaticMarkup(<RouteAppearance boardNavKeys={{}} basePath="/w/sample-lab" />);
+    expect(html.replace(/<!--[\s\S]*?-->/g, "")).toBe("");
   });
 
   it("외관 조절기는 접근 가능한 버튼+팝오버 계약을 지킨다", () => {
@@ -56,7 +58,7 @@ describe("v17 vivid 배선", () => {
 
   it("vivid CSS는 라우트 5종·효과 on/off·다크·강제색상·모션감소를 모두 덮는다", () => {
     const css = read("styles/moawork-vivid-v17.css");
-    for (const accent of ["new", "contact", "work", "company", "dash"]) {
+    for (const accent of ["new", "contact", "inperson", "work", "company", "dash"]) {
       expect(css).toContain(`html[data-mw-accent="${accent}"]`);
     }
     expect(css).toContain('html[data-mw-accent][data-mw-effects="on"] [data-mw-cta="primary"]');

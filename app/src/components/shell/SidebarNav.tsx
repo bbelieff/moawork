@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { Suspense } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   WorkspaceSwitcher,
   type WorkspaceSwitcherProps,
@@ -19,7 +20,7 @@ import {
   type NavBadgeKey,
   type NavItem,
 } from "./nav-items";
-import { resolveActiveNavKey } from "./active-nav";
+import { resolveActiveNavKey, resolveConsultationNavKey } from "./active-nav";
 import { workspaceHref } from "./workspace-href";
 
 // 사이드바 메뉴 목록 — 활성 표시를 위해 클라이언트 컴포넌트.
@@ -46,20 +47,32 @@ type Props = {
   boardNavKeys?: Readonly<Record<string, string>>;
 };
 
-export function SidebarNav({
+export function SidebarNav(props: Props) {
+  return <Suspense fallback={<SidebarNavContent {...props} search="" />}><SidebarNavQuery {...props} /></Suspense>;
+}
+
+function SidebarNavQuery(props: Props) {
+  const search = useSearchParams()?.toString() ?? "";
+  return <SidebarNavContent {...props} search={search} />;
+}
+
+function SidebarNavContent({
   lockedFeatures,
   badges,
   notifyBadges,
   workspaceSwitcher,
   workspaceBasePath,
   boardNavKeys,
-}: Props) {
+  search,
+}: Props & { search: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const locked = new Set(lockedFeatures);
 
   // 활성은 «항목마다» 가 아니라 «전체에서 하나» 다 — 둘이 켜지면 색으로 구분하는 목적이 깨진다.
-  const activeKey = resolveActiveNavKey(
+  // 같은 리드컨택 정본 보드라도 ?consultation=remote|inperson 이면 STEP2·STEP3 탭이 켜진다.
+  const consultationKey = resolveConsultationNavKey(pathname, search, boardNavKeys);
+  const resolvedActiveKey = consultationKey ?? resolveActiveNavKey(
     pathname,
     [...NAV_ITEMS, ...WORK_TOOL_ITEMS].filter((item) => item.href).map((item) => ({
       key: item.key,
@@ -67,6 +80,7 @@ export function SidebarNav({
     })),
     { basePath: workspaceBasePath, boardNavKeys },
   );
+  const activeKey = resolvedActiveKey === "contact" ? "consult-remote" : resolvedActiveKey;
 
   const renderItem = (item: NavItem, nested: boolean) => {
     const isLocked = item.feature ? locked.has(item.feature) : false;

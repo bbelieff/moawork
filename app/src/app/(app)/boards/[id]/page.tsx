@@ -15,8 +15,17 @@ import { markNoticeItemsReadAtomic } from "@/lib/notices/atomic";
 import { issueFileToken } from "@/lib/deal/fileSignedUrl";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
+import {
+  consultationModeForRow,
+  parseConsultationView,
+  type ConsultationBoardMap,
+  type ConsultationBoardRpcClient,
+  type ConsultationView,
+} from "@/lib/consultation/boardView";
+import { loadConsultationBoardView } from "@/lib/consultation/boardViewServer";
 import { loadCompanyPickerRows } from "@/lib/companies/picker-server";
-import { startCompanyWorkFromBoardAction } from "./company-intake-actions";
+import { startCompanyWorkFromBoardAction, startCompanyWorkFromNewCompanyAction } from "./company-intake-actions";
+import { addBoardLabelOptionAction } from "@/app/(app)/boards/label-option-actions";
 import { NewLeadOnboarding } from "@/components/board/NewLeadOnboarding";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import { legacyMemberPickerEntries, memberPickerEntries } from "@/lib/boards/member-directory";
@@ -31,6 +40,7 @@ import { NewLeadIntakeForm } from "@/components/board/NewLeadIntakeForm";
 import { renameColumnTitleAction } from "@/app/(app)/boards/title-actions";
 import { reorderColumnsAction } from "@/app/(app)/boards/actions";
 import { BoardTrashPanel } from "@/components/board/BoardTrashPanel";
+import { BoardArchivePanel } from "@/components/board/BoardArchivePanel";
 import { SavedViewsController } from "@/components/view";
 import {
   applySavedKanbanView,
@@ -106,7 +116,7 @@ export default async function BoardPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ view?: string; group?: string; as?: string; savedView?: string; mwLayout?: string; mwHidden?: string; mwOrder?: string; mwFilters?: string; mwSort?: string; mwText?: string; mwFocus?: string; calendarField?: string; noticeView?: string }>;
+  searchParams: Promise<{ view?: string; group?: string; as?: string; savedView?: string; mwLayout?: string; mwHidden?: string; mwOrder?: string; mwFilters?: string; mwSort?: string; mwText?: string; mwFocus?: string; calendarField?: string; noticeView?: string; consultation?: string }>;
 }) {
   const startedAt = performance.now();
   const requestHeaders = await headers();
@@ -166,10 +176,11 @@ export default async function BoardPage({
     items: { offsetMs: snapshotStartedOffsetMs, durationMs: 0 },
     hydrate: { offsetMs: snapshotStartedOffsetMs, durationMs: 0 },
   };
-  // Permission-order contract: svc.loadPageSnapshot(ctx, id, { includeDeleted: canDeleteItems }) runs only after both guards.
+  // Permission-order contract: svc.loadPageSnapshot(ctx, id, { includeDeleted/includeArchived: canDeleteItems }) runs only after both guards.
   try {
     snapshot = await svc.loadPageSnapshot(ctx, id, {
       includeDeleted: canDeleteItems,
+      includeArchived: canDeleteItems,
       onTiming: ({ phase, offsetMs, durationMs }) => {
         snapshotTimings[phase] = {
           offsetMs: Math.max(0, snapshotStartedOffsetMs + offsetMs),
@@ -263,6 +274,46 @@ export default async function BoardPage({
   const personColumnKey = columns.find((column) => column.type === "person")?.key ?? null;
   const items = applySavedPersonScope(permissionItems, personRuntime.view, ctx.user.id, personColumnKey, personRuntime.memberIds);
   const hiddenCount = boardItems.length - permissionItems.length;
+  /*
+   * 상담 단계 보기(?consultation=remote|inperson) — STEP2·STEP3 탭의 자리다.
+   * 같은 리드컨택 정본 보드에서 서버가 한 번에 읽은 mode 로 가른다(행마다 조회 없음).
+   * 값 검증에 실패하거나 적재에 실패하면 전체 보기로 남고 안내만 덧붙인다 —
+   * 기존 리드컨택 URL·보드 호환을 깨지 않는다.
+   */
+  const requestedConsultationView = board.source === CONTACT_TAB_SOURCE
+    ? parseConsultationView(sp.consultation)
+    : null;
+  let consultationView: ConsultationView = "all";
+  let consultationByItem: ConsultationBoardMap = {};
+  let consultationViewNotice: string | null = null;
+  if (requestedConsultationView) {
+    if (!client) {
+      consultationViewNotice = "상담 단계 보기는 연결된 워크스페이스에서만 볼 수 있어 전체를 보여줍니다.";
+    } else {
+      const boardRpc: ConsultationBoardRpcClient = {
+        rpc: async (name, args) => {
+          const { data, error } = await requireRequestClient(client, "상담 단계 보기").rpc(name, args);
+          return { data, error: error ? { message: error.message, code: error.code ?? "" } : null };
+        },
+      };
+      // F7: 보드 행 ID bounded 후보로만 조회한다. 미조회(null)는 특정 보기에 넣지 않는다(F5).
+      const loaded = await loadConsultationBoardView(boardRpc, {
+        orgId: ctx.org.id,
+        boardId: id,
+        visibleItemIds,
+        candidateItemIds: items.map((item) => item.id),
+      });
+      if (loaded.ok) {
+        consultationView = requestedConsultationView;
+        consultationByItem = loaded.entries;
+      } else {
+        consultationViewNotice = `상담 단계 보기를 읽지 못해 전체를 보여줍니다. (${loaded.message})`;
+      }
+    }
+  }
+  const stageItems = consultationView === "all"
+    ? items
+    : items.filter((item) => consultationModeForRow(item.id, consultationByItem) === consultationView);
   const canonicalNewLead = board.source === NEW_LEAD_TAB_SOURCE;
   const savedViewColumns = canonicalNewLead ? presentNewLeadColumns(columns) : columns;
   const savedViewFilters = canonicalNewLead
@@ -270,7 +321,7 @@ export default async function BoardPage({
     : decodeBoardFilters(sp.mwFilters ?? null);
   const lanes = view === "kanban"
     ? applySavedKanbanView(
-        svc.kanbanFromSnapshot(snapshot, groupBy || undefined).map((lane) => ({ ...lane, items: lane.items.filter((item) => visibleItemIds.has(item.id)) })),
+        svc.kanbanFromSnapshot(snapshot, groupBy || undefined).map((lane) => ({ ...lane, items: lane.items.filter((item) => visibleItemIds.has(item.id) && (consultationView === "all" || consultationModeForRow(item.id, consultationByItem) === consultationView)) })),
         items, savedViewColumns, savedViewFilters,
         canonicalNewLead ? NEW_LEAD_SAVED_FILTER_PROJECTION : undefined,
       )
@@ -453,6 +504,13 @@ export default async function BoardPage({
     <BoardTrashPanel boardId={id} items={deletedItems} groups={groups} />
   );
 
+  // 별도 보관 목록 — 휴지통과 독립. 위 loadPageSnapshot 호출문은
+  // 권한 순서 계약(boards-ui-gating)이 읽으므로 그대로 두고, 스냅샷이 같은 관문·같은 물결의
+  // 보관 읽기로 분리한 archivedItems를 쓴다 (직렬 단계 추가 없음 — BBE-214 유지).
+  const archivePanel = (
+    <BoardArchivePanel boardId={id} items={snapshot.archivedItems} groups={groups} />
+  );
+
   const alternateViewHeader=(
     <BoardHeader
       boardId={id}
@@ -483,7 +541,7 @@ export default async function BoardPage({
     <>
         {alternateViewHeader}
         {/* 보드 이름 아래 — 목업 head() 순서(이름 → 보기). 테이블 뷰와 같은 위계다(BBE-214). */}
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={stageItems} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
         {boardSettings}
 
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto text-xs">
@@ -517,7 +575,7 @@ export default async function BoardPage({
   ) : view === "flat" || view === "calendar" ? (
     <>
         {alternateViewHeader}
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} renderMode={view} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={stageItems} renderMode={view} boardSource={board.source} canEditItems={canEditItems} canBulkEditItems={boardDelete.kind === "allowed"} canDeleteItems={canDeleteItems} canExportItems={permissions["danger.csv_export"].kind === "allowed"} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
         {boardSettings}
     </>
   ) : (
@@ -526,10 +584,12 @@ export default async function BoardPage({
       columns={visibleColumns}
       summaryColumns={columns}
       groups={groups}
-      rows={items}
+      rows={stageItems}
       // 계약업체 실무에서만 채워진다 — 다른 보드는 빈 배열이라 «업체 추가» 가 뜨지 않는다.
       contractWorkCompanyPicker={contractWorkCompanyPicker}
       startCompanyWorkAction={startCompanyWorkFromBoardAction}
+      startNewCompanyWorkAction={startCompanyWorkFromNewCompanyAction}
+      addLabelOptionAction={addBoardLabelOptionAction}
       // 같은 «추가» 를 두 번 눌러도 건이 둘 생기지 않게 하는 열쇠. 서버가 발급한다.
       columnOrder={activeColumnOrder}
       cellFlash={cellFlash}
@@ -538,7 +598,7 @@ export default async function BoardPage({
       backSlot={backLink}
       viewSlot={viewToggle}
       savedViewsSlot={
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={items} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={stageItems} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
       }
       settingsSlot={boardSettings}
       onboardingSlot={board.source === NEW_LEAD_TAB_SOURCE ? (
@@ -555,6 +615,8 @@ export default async function BoardPage({
       savedViewActive={Boolean(personRuntime.view)}
       savedViewId={personRuntime.view ? (sp.savedView ?? null) : null}
       currentUserId={ctx.user.id}
+      consultationView={consultationView}
+      consultationByItem={consultationByItem}
     />
   );
 
@@ -607,6 +669,9 @@ export default async function BoardPage({
       {hiddenCount > 0 && (
         <p className="text-xs text-mw-sub">권한 밖 {hiddenCount}건 숨김</p>
       )}
+      {consultationViewNotice ? (
+        <p className="text-xs text-mw-sub">{consultationViewNotice}</p>
+      ) : null}
       {/* 항목 추가 실패는 «화면 안에서» 말한다. 전면 오류 화면으로 덮으면
           사용자는 무엇이 왜 안 됐는지 모르고 입력하던 것도 잃는다(BBE-201). */}
       {boardActionError ? (
@@ -623,6 +688,8 @@ export default async function BoardPage({
       {boardContent}
 
       {trashPanel}
+
+      {archivePanel}
     </div>
   );
 }

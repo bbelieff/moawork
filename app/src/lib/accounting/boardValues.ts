@@ -85,6 +85,7 @@ export async function loadContractWorkDealValues(ctx: Ctx): Promise<Map<string, 
       .eq("org_id", ctx.org.id)
       .eq("board_id", boardId)
       .is("deleted_at", null)
+      .is("archived_at", null)
       .not("deal_id", "is", null);
     if (items.error || !Array.isArray(items.data)) return empty;
 

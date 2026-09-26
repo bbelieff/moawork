@@ -24,6 +24,7 @@ export function buildCompanyPickerProps(
   boardSource: string | null | undefined,
   picker: CompanyPickerLoadResult,
   action?: StartWorkAction,
+  newCompanyAction?: StartWorkAction,
 ) {
   if (boardSource !== CONTRACT_WORK_TAB_SOURCE || !action) return {};
   return {
@@ -32,6 +33,8 @@ export function buildCompanyPickerProps(
       loadError: picker.error,
       truncated: picker.truncated,
       action,
+      // 2026-09-26 — «새 회사» 등록 + 업무 시작. 없어도 기존 회사 경로는 그대로 돈다.
+      newCompanyAction,
     },
   };
 }

@@ -86,6 +86,7 @@ const probe = vi.hoisted(() => {
 
   function makeQuery(table: string) {
     let deletedScope: "active" | "deleted" | null = null;
+    let archivedScope = false;
     const rows = () => {
       const all = tables[table] ?? [];
       if (table !== "items" || deletedScope === null) return all;
@@ -108,9 +109,14 @@ const probe = vi.hoisted(() => {
     };
     q.not = (column: string, operator: string, value: unknown) => {
       if (table === "items" && column === "deleted_at" && operator === "is" && value === null) deletedScope = "deleted";
+      if (table === "items" && column === "archived_at" && operator === "is" && value === null) archivedScope = true;
       return q;
     };
-    const label = () => `${op}:${table}${table === "items" && deletedScope ? `:${deletedScope}` : ""}`;
+    const label = () => {
+      if (table !== "items") return `${op}:${table}`;
+      if (archivedScope) return `${op}:${table}:archived`;
+      return `${op}:${table}${deletedScope ? `:${deletedScope}` : ""}`;
+    };
     q.single = () => thenable(label(), () => rows()[0] ?? null);
     q.maybeSingle = () => thenable(label(), () => rows()[0] ?? null);
     q.then = (onOk: (v: unknown) => unknown, onErr?: (e: unknown) => unknown) =>
@@ -457,8 +463,9 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
     // 권한·D24/메타·행·값 또는 snapshot 뒤의 두 독립 읽기를 다시 줄 세우면 즉시 넘는다.
     expect(run.serialStages, "보드 화면의 직렬 DB 단계가 늘었다 — 어디서 await 이 줄 섰는지 확인해라")
       .toBe(8);
+    // 보관 읽기는 활성·휴지통과 같은 물결에 탄다 (직렬 단계 추가 없음, 왕복 +1).
     expect(run.total, "보드 화면의 읽기 왕복 계약이 바뀌었다 — 로그 계측은 쿼리를 더하면 안 된다")
-      .toBe(14);
+      .toBe(15);
     const permissionWave = run.trips.find((trip) => trip.label === "rpc:effective_permissions")?.wave;
     const scopeWave = run.trips.find((trip) => trip.label === "rpc:read_permission_scoped_work_items")?.wave;
     expect(permissionWave, "권한 판정 왕복을 못 찾았다").toBeTypeOf("number");
@@ -489,7 +496,7 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
       });
 
       for (const run of [valid, missing, invalid]) {
-        expect(run.total).toBe(14);
+        expect(run.total).toBe(15);
         expect(run.serialStages).toBe(8);
       }
 
@@ -550,7 +557,7 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
     }
   });
 
-  it("화면 스냅샷은 메타1·활성1·휴지통1·값1이고 칸반 추가 조회는 0이다", async () => {
+  it("화면 스냅샷은 메타1·활성1·휴지통1·보관1·값1이고 칸반 추가 조회는 0이다", async () => {
     const table = await renderBoard();
     const kanban = await renderBoard({ view: "kanban" });
     for (const run of [table, kanban]) {
@@ -559,6 +566,7 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
       expect(run.countOf("select:board_groups")).toBe(1);
       expect(run.countOf("select:items:active")).toBe(1);
       expect(run.countOf("select:items:deleted")).toBe(1);
+      expect(run.countOf("select:items:archived")).toBe(1);
       expect(run.countOf("select:item_values")).toBe(1);
     }
     expect(kanban.total).toBe(table.total);
@@ -585,11 +593,12 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
       expect(run.countOf("select:board_groups")).toBe(0);
       expect(run.countOf("select:items:active")).toBe(0);
       expect(run.countOf("select:items:deleted")).toBe(0);
+      expect(run.countOf("select:items:archived")).toBe(0);
       expect(run.countOf("select:item_values")).toBe(0);
     }
   });
 
-  it("휴지통 권한이 없으면 deleted read 0, 있으면 1이며 값 수화는 둘 다 1이다", async () => {
+  it("휴지통·보관 권한이 없으면 deleted/archived read 0, 있으면 1이며 값 수화는 둘 다 1이다", async () => {
     const denied = await renderBoard({}, () => {
       probe.rpcs.effective_permissions = {
         ...(probe.rpcs.effective_permissions as Record<string, boolean>),
@@ -599,9 +608,11 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
     const allowed = await renderBoard();
     expect(denied.countOf("select:items:active")).toBe(1);
     expect(denied.countOf("select:items:deleted")).toBe(0);
+    expect(denied.countOf("select:items:archived")).toBe(0);
     expect(denied.countOf("select:item_values")).toBe(1);
     expect(allowed.countOf("select:items:active")).toBe(1);
     expect(allowed.countOf("select:items:deleted")).toBe(1);
+    expect(allowed.countOf("select:items:archived")).toBe(1);
     expect(allowed.countOf("select:item_values")).toBe(1);
   });
 

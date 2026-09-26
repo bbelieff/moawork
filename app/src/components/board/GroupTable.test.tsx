@@ -161,11 +161,11 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     expect(html).not.toContain("sticky right-0");
   });
 
-  it("상세 패널이 닫힌 상태에서도 기존 sticky 헤더·첫 열 계층을 유지한다", () => {
+  it("상세 패널이 닫혀도 데스크톱 첫 열 고정과 모바일 겹침 방지를 유지한다", () => {
     const html = renderTable([col({ key: "a", label: "일반" })], [row()]);
-    expect(html).toContain("sticky left-0 z-[var(--mw-layer-board-cell)]");
+    expect(html).toContain("sm:sticky sm:left-0 z-[var(--mw-layer-board-cell)]");
     expect(html).toContain("sticky top-0 z-[var(--mw-layer-board-header)]");
-    expect(html).toContain("sticky left-0 z-[var(--mw-layer-board-cell)] bg-mw-card z-[var(--mw-layer-board-corner)]");
+    expect(html).toContain("sm:sticky sm:left-0 z-[var(--mw-layer-board-cell)] bg-mw-card z-[var(--mw-layer-board-corner)]");
     expect(html).toContain("relative isolate max-h-[70vh]");
   });
 

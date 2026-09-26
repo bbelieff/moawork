@@ -86,15 +86,22 @@ describe("GroupTable 일괄 상태 — 실제 컬럼 키 보존", () => {
       );
     });
 
-    const priority = host.querySelector('select[aria-label="우선순위"]') as HTMLSelectElement | null;
+    // 2026-09-26 — 낱개 select 가 검색 콤보박스로 바뀌었다. 계약은 같다:
+    // 일괄 가로채기가 (rowId, 실제 컬럼 키, 고른 값)으로 불린다.
+    const priority = host.querySelector('input[aria-label="우선순위"]') as HTMLInputElement | null;
     expect(priority).not.toBeNull();
     await act(async () => {
-      priority!.value = "b";
-      priority!.dispatchEvent(new Event("change", { bubbles: true }));
+      priority!.focus();
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(priority!, "B");
+      priority!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      priority!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     });
     expect(seen).toEqual([{ rowId: "row-1", columnKey: "priority", value: "b" }]);
 
-    const state = host.querySelectorAll('select[aria-label="상태"]')[0] as HTMLSelectElement | null;
+    const state = host.querySelectorAll('input[aria-label="상태"]')[0] as HTMLInputElement | null;
     expect(state).not.toBeNull();
   });
 
@@ -130,11 +137,16 @@ describe("GroupTable 일괄 상태 — 실제 컬럼 키 보존", () => {
         />,
       );
     });
-    const select = host.querySelector('select[aria-label="우선순위"]') as HTMLSelectElement | null;
+    const select = host.querySelector('input[aria-label="우선순위"]') as HTMLInputElement | null;
     expect(select).not.toBeNull();
     await act(async () => {
-      select!.value = "b";
-      select!.dispatchEvent(new Event("change", { bubbles: true }));
+      select!.focus();
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(select!, "B");
+      select!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      select!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     });
     // false 여도 호출 자체는 실제 키를 보존한다 — 되돌림/일괄 진입은 BoardWorkspace 판정이 맡는다.
     expect(seen).toEqual([{ rowId: "row-1", columnKey: "priority", value: "b" }]);

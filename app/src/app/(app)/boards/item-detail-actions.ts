@@ -92,11 +92,12 @@ async function context(boardId: string, itemId: string) {
   const client = await createClient({ noStore: true });
   const { data: item, error } = await client
     .from("items")
-    .select("id,board_id,org_id,assigned_to,deleted_at")
+    .select("id,board_id,org_id,assigned_to,deleted_at,archived_at")
     .eq("id", itemId)
     .eq("board_id", boardId)
     .eq("org_id", ctx.org.id)
     .is("deleted_at", null)
+    .is("archived_at", null)
     .maybeSingle();
   if (error || !item)
     throw new Error("이 회사 정보를 열 권한이 없거나 항목을 찾을 수 없습니다.");
@@ -635,12 +636,25 @@ export async function saveItemDetailFieldAction(input: {
   fieldKey: string;
   source: "column" | "detail";
   value: string;
+  /** OCR 재시도 등의 멱등 키. 없으면 setCells가 새로 만든다. */
+  requestId?: string;
 }): Promise<{ ok: boolean; message: string }> {
   try {
     const { ctx } = await context(input.boardId, input.itemId);
     await requireItemMutationPermission(ctx.org.id);
     const graph = await createRequestBoards();
     if (input.source === "column") {
+      // 클라이언트가 보낸 source는 신뢰하지 않는다. 실제 컬럼 정의에 없는
+      // 키를 "column"이라 우기면 setCells가 조용히 무시하고 성공을 돌려준다
+      // (정의되지 않은 컬럼 skip → errors 없음 → ok:true). 소스 불일치·
+      // 배치 밖 키는 여기서 명시 거부한다 — 성공 no-op 금지.
+      const board = await graph.service.getBoardDetail(ctx, input.boardId);
+      const actualColumn = board.columns.find((column) => column.key === input.fieldKey);
+      if (!actualColumn) {
+        throw new Error(
+          "요청한 저장 위치와 실제 배치가 일치하지 않습니다. 새로고침 후 다시 시도하세요. 저장하지 않았습니다.",
+        );
+      }
       let storedValue: CellValue = input.value;
       if (input.fieldKey === CREDIT_SCORE_KEYS.ncb || input.fieldKey === CREDIT_SCORE_KEYS.kcb) {
         const label = input.fieldKey === CREDIT_SCORE_KEYS.ncb ? "NCB" : "KCB";
@@ -667,6 +681,7 @@ export async function saveItemDetailFieldAction(input: {
         {
           [input.fieldKey]: storedValue,
         },
+        input.requestId || crypto.randomUUID(),
       );
       const failure = result.errors.find(
         (error) => error.key === input.fieldKey,
