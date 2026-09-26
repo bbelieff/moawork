@@ -25,6 +25,7 @@ import { consultationPhase, CONSULTATION_PHASE_LABEL, REMOTE_PHASES, INPERSON_PH
 import {
   mutateConsultationChecklist,
   mutateConsultationHandoff,
+  mutateConsultationSeal,
   mutateConsultationMode,
   mutateConsultationWorkflow,
   readConsultationHandoff,
@@ -44,7 +45,7 @@ const READ_ERROR = "상담 기록을 불러오지 못했습니다. 잠시 후 �
 const UNKNOWN_RESULT = "응답을 받지 못해 저장 여부를 확인할 수 없습니다. 입력은 유지했습니다. 같은 요청을 다시 확인해 주세요.";
 
 type Submission = Readonly<{
-  kind: "check" | "mode" | "handoff" | "workflow";
+  kind: "check" | "mode" | "handoff" | "workflow" | "seal";
   step?: ChecklistStep;
   fields: Readonly<Record<string, string>>;
   success: string;
@@ -93,7 +94,7 @@ export function ConsultationPanel({
   const [snapshot, setSnapshot] = useState<ConsultationSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [handoffInfo, setHandoffInfo] = useState<{ ready: boolean; missing: readonly string[]; message: string } | null>(null);
+  const [handoffInfo, setHandoffInfo] = useState<{ ready: boolean; missing: readonly string[]; message: string; canApproveSeal: boolean; sealApproved: boolean } | null>(null);
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
   const [pendingStep, setPendingStep] = useState<ChecklistStep | null>(null);
@@ -127,6 +128,7 @@ export function ConsultationPanel({
           ready: Boolean(handoff.ok && handoff.ready),
           missing: handoff.missing ?? [],
           message: handoff.message,
+          canApproveSeal: handoff.canApproveSeal === true, sealApproved: handoff.sealApproved === true,
         });
         setLoading(false);
       })
@@ -163,6 +165,7 @@ export function ConsultationPanel({
           ready: Boolean(handoff.ok && handoff.ready),
           missing: handoff.missing ?? [],
           message: handoff.message,
+          canApproveSeal: handoff.canApproveSeal === true, sealApproved: handoff.sealApproved === true,
         });
         return loaded;
       }
@@ -190,7 +193,7 @@ export function ConsultationPanel({
     unresolved.current = submission;
     setPendingStep(submission.kind === "check" ? submission.step ?? null : null);
     setModePending(submission.kind === "mode" || submission.kind === "workflow");
-    setHandoffPending(submission.kind === "handoff");
+    setHandoffPending(submission.kind === "handoff" || submission.kind === "seal");
     setActionError("");
     setNotice("");
     try {
@@ -198,7 +201,7 @@ export function ConsultationPanel({
         ? mutateConsultationChecklist
         : submission.kind === "mode"
           ? mutateConsultationMode
-          : submission.kind === "workflow" ? mutateConsultationWorkflow : mutateConsultationHandoff;
+          : submission.kind === "workflow" ? mutateConsultationWorkflow : submission.kind === "seal" ? mutateConsultationSeal : mutateConsultationHandoff;
       const result = await mutate(CHECK_INITIAL, formOf(submission.fields));
       if (result.field === "unknown_result") throw new Error(UNKNOWN_RESULT);
       // A structured response settles this request; a rejection may be retried
@@ -289,6 +292,12 @@ export function ConsultationPanel({
       phase, meetingAt: meeting, assigneeId: needsSchedule ? assigneeDraft : baseline.assigneeId ?? currentAssigneeId ?? assigneeDraft,
       cancel: String(cancel),
     }, success: cancel ? "예약을 취소했습니다." : "상담 기록을 저장했습니다.", failure: "상담 기록을 저장하지 못했습니다." });
+  }
+
+  async function submitSeal(): Promise<void> {
+    if (!snapshot || inFlight.current || unresolved.current) return;
+    await runSubmission({ kind: "seal", fields: { itemId, requestId: newRequestId(), expectedVersion: String(snapshot.version) },
+      success: "직인 승인을 기록했습니다.", failure: "직인 승인을 기록하지 못했습니다." });
   }
 
   /** 명시적 인계 — 4완료 + 직인 조건을 DB 가 다시 강제한다. */
@@ -495,14 +504,18 @@ export function ConsultationPanel({
                 <summary className="cursor-pointer">상담 변경 이력</summary>
                 <ol className="mt-1 space-y-1">
                   {snapshot.history.map((entry) => <li key={entry.id}>
-                    {new Date(entry.at).toLocaleString("ko-KR")} · {members.find((member) => member.id === entry.actorId)?.label ?? "담당자"} · {CONSULTATION_PHASE_LABEL[entry.details.before.phase]} → {CONSULTATION_PHASE_LABEL[entry.details.after.phase]}
+                    {new Date(entry.at).toLocaleString("ko-KR")} · {members.find((member) => member.id === entry.actorId)?.label ?? "담당자"} · {entry.kind === "seal_approved" ? "직인 승인 완료" : <>{CONSULTATION_PHASE_LABEL[entry.details.before.phase]} → {CONSULTATION_PHASE_LABEL[entry.details.after.phase]}
                     {" · 담당 "}{members.find((member) => member.id === entry.details.after.assigneeId)?.label ?? "미지정"}
-                    {" · "}{entry.details.before.meetingAt ? new Date(entry.details.before.meetingAt).toLocaleString("ko-KR") : "일정 없음"} → {entry.details.after.meetingAt ? new Date(entry.details.after.meetingAt).toLocaleString("ko-KR") : "일정 없음"}
+                    {" · "}{entry.details.before.meetingAt ? new Date(entry.details.before.meetingAt).toLocaleString("ko-KR") : "일정 없음"} → {entry.details.after.meetingAt ? new Date(entry.details.after.meetingAt).toLocaleString("ko-KR") : "일정 없음"}</>}
                   </li>)}
                 </ol>
               </details>
             ) : null}
             <div className="mt-2 border-t border-mw-line pt-2">
+              <p className="mb-2 text-xs text-mw-body">{handoffInfo?.sealApproved ? "직인 승인 완료" : "대표·관리자 직인 승인 대기"}</p>
+              {handoffInfo?.canApproveSeal && !handoffInfo.sealApproved ? <button type="button"
+                disabled={locked || !CHECKLIST_STEPS.every((step) => snapshot.checklist[step].confirmed)}
+                onClick={() => void submitSeal()} className="mb-2 min-h-9 border border-mw-line px-3 text-xs font-semibold disabled:opacity-60" style={{ borderRadius: 11 }}>직인 승인 완료</button> : null}
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -524,9 +537,6 @@ export function ConsultationPanel({
                       : "인계 조건 확인 중…"}
                 </span>
               </div>
-              <p className="mt-1 text-[11px] leading-5 text-mw-sub">
-                인계는 정식 contact_to_work 파이프라인으로 실행되며, DB에서 4단계 완료를 다시 강제합니다. 담당·예약은 유지됩니다.
-              </p>
             </div>
           </>
         )}

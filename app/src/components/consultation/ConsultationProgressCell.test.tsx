@@ -12,9 +12,9 @@ const consultationActions = vi.hoisted(() => ({
 
 vi.mock("@/lib/consultation/actions", () => ({
   mutateConsultationChecklist: consultationActions.mutateChecklist,
-  mutateConsultationSeal: vi.fn(),
   mutateConsultationWorkflow: vi.fn(async () => ({ ok: false, message: "" })),
   mutateConsultationMode: vi.fn(async () => ({ ok: false, message: "" })),
+  mutateConsultationSeal: vi.fn(async () => ({ ok: true, message: "승인 완료" })),
   mutateConsultationHandoff: vi.fn(async () => ({ ok: false, message: "" })),
   readConsultationSnapshot: consultationActions.readSnapshot,
   readConsultationHandoff: consultationActions.readHandoff,
