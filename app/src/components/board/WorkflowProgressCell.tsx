@@ -10,6 +10,7 @@ import {
   type WorkflowProgressKind,
 } from "@/lib/workflow/progress";
 import { BOARD_TABLE_CONTROL } from "./table-style";
+import { NewLeadPipelineRepair } from "./NewLeadPipelineRepair";
 
 const TRANSFER = "__workflow_transfer__";
 
@@ -117,6 +118,7 @@ export function WorkflowProgressCell({
         보드 안 단계는 즉시 저장되고, 다음 업무로 이동은 확인 후 실행됩니다.
       </span>
       {error ? <p role="alert" className="mt-1 text-[0.65rem] text-mw-error">{error}</p> : null}
+      {!readOnly && kind === "new-lead" && error?.includes("현재 단계에서는 이 관문을 넘을 수 없습니다") ? <NewLeadPipelineRepair key={row.id} itemId={row.id} /> : null}
 
       <dialog
         ref={dialog}
