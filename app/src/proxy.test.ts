@@ -140,6 +140,38 @@ describe("proxy carries refreshed session cookies out of every exit (BBE-200)", 
     delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   });
 
+  it.each(["consult-remote", "consult-inperson"])("routes %s with membership, tab hint, and rotated cookies intact", async (segment) => {
+    setupRotating({ id: "user-1" }, [membership("org-acme", "acme")], rotateOnce);
+    const response = await proxy(new NextRequest(`https://www.moa-work.com/w/acme/${segment}?as=member`));
+    expect(response.headers.get("x-middleware-rewrite")).toBe(`https://www.moa-work.com/${segment}?as=member`);
+    expect(response.headers.get("x-middleware-request-x-mw-app-tab")).toBe("1");
+    expect(response.headers.get("x-middleware-request-cookie")).toContain("mw_org=org-acme");
+    expect(cookieOn(response, ROTATED_0.name)?.value).toBe(ROTATED_0.value);
+    const legacy = await proxy(new NextRequest(`https://www.moa-work.com/${segment}?as=member`, {
+      headers: { cookie: "mw_workspace_slug=acme; mw_org=org-acme" },
+    }));
+    expect(legacy.headers.get("location")).toBe(`https://www.moa-work.com/w/acme/${segment}?as=member`);
+    expect(cookieOn(legacy, ROTATED_0.name)?.value).toBe(ROTATED_0.value);
+    const missingSlug = await proxy(new NextRequest(`https://www.moa-work.com/${segment}`));
+    expect(missingSlug.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+  });
+
+  it.each(["consult-remote", "consult-inperson"])("does not grant %s to another workspace or anonymous session", async (segment) => {
+    setupRotating({ id: "user-1" }, [membership("org-other", "other")], rotateOnce);
+    const denied = await proxy(new NextRequest(`https://www.moa-work.com/w/acme/${segment}`, {
+      headers: { cookie: "mw_org=org-acme", "x-mw-app-tab": "1" },
+    }));
+    expect(denied.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+    expect(denied.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(cookieOn(denied, "mw_org")?.value).toBe("");
+    expect(cookieOn(denied, "mw_org")?.expires).toEqual(new Date(0));
+    expect(cookieOn(denied, ROTATED_0.name)?.value).toBe(ROTATED_0.value);
+    setupRotating(null, [], clearSession);
+    const anonymous = await proxy(new NextRequest(`https://www.moa-work.com/${segment}`));
+    expect(anonymous.headers.get("location")).toBe(`https://www.moa-work.com/login?next=%2F${segment}`);
+    expect(cookieOn(anonymous, CLEARED_0.name)?.maxAge).toBe(0);
+  });
+
   it("① workspace rewrite response carries the rotated cookie", async () => {
     setupRotating({ id: "user-1" }, [membership("org-acme", "acme")], rotateOnce);
     const response = await proxy(new NextRequest("https://www.moa-work.com/w/acme/deals/123"));

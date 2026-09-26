@@ -53,7 +53,7 @@ const PUBLIC_HEALTH_PATHS = new Set([
 const PUBLIC_BATCH_PATHS = new Set(["/api/cron/platform-metrics"]);
 const WORKSPACE_SLUG_COOKIE = "mw_workspace_slug";
 const WORKSPACE_PROTECTED_ROOTS = new Set([
-  "boards", "notices", "companies", "contract", "newcust", "work",
+  "boards", "notices", "companies", "consult-remote", "consult-inperson", "contract", "newcust", "work",
   "presets", "dash", "deals", "settlements", "onboarding", "settings",
 ]);
 
@@ -284,7 +284,7 @@ export async function proxy(request: NextRequest) {
     // BBE-222: this is a trusted path hint only. Strip any caller-supplied
     // value, then derive it after authentication and namespace verification.
     requestHeaders.delete("x-mw-app-tab");
-    if (/^\/w\/[^/]+\/(?:newcust|contract|work|companies|notices|presets)(?:\/|$)/.test(request.nextUrl.pathname)) {
+    if (/^\/w\/[^/]+\/(?:newcust|consult-remote|consult-inperson|contract|work|companies|notices|presets)(?:\/|$)/.test(request.nextUrl.pathname)) {
       requestHeaders.set("x-mw-app-tab", "1");
     }
     return buildResponse(request, { ...decision, requestHeaders }, jar);
