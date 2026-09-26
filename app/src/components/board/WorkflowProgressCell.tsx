@@ -46,6 +46,7 @@ export function WorkflowProgressCell({
   const [dialogOpen, setDialogOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const descriptionId = useId();
+  const repairAvailable = Boolean(error?.includes("현재 단계에서는 이 관문을 넘을 수 없습니다"));
   // ★ 기존 단계 «검색» — 진행 셀은 native select를 그대로 둔다.
   //   만들기 입구는 없다(단계값은 전이·이동규칙과 묶여 있어 새 값을 넣으면
   //   «골랐는데 카드가 안 움직이는» 상태가 된다 — LabelCombobox로 바꾸지 않는다).
@@ -117,8 +118,13 @@ export function WorkflowProgressCell({
       <span id={descriptionId} className="sr-only">
         보드 안 단계는 즉시 저장되고, 다음 업무로 이동은 확인 후 실행됩니다.
       </span>
-      {error ? <p role="alert" className="mt-1 text-[0.65rem] text-mw-error">{error}</p> : null}
-      {!readOnly && kind === "new-lead" && error?.includes("현재 단계에서는 이 관문을 넘을 수 없습니다") ? <NewLeadPipelineRepair key={row.id} itemId={row.id} /> : null}
+      {!dialogOpen && error ? <p role="alert" className="mt-1 text-[0.65rem] text-mw-error">{error}</p> : null}
+      {!dialogOpen && !readOnly && kind === "new-lead" && repairAvailable ? (
+        <button type="button" className="mt-1 rounded border border-mw-line px-2 py-1 text-xs" onClick={() => {
+          setDialogOpen(true);
+          dialog.current?.showModal();
+        }}>단계 구성 확인</button>
+      ) : null}
 
       <dialog
         ref={dialog}
@@ -143,6 +149,10 @@ export function WorkflowProgressCell({
             보드 안 단계 변경과 달리 이 선택은 실제 업무 탭을 넘깁니다.
             {spec.guardLabel ? ` «${spec.guardLabel}» 조건을 확인한 뒤 이동합니다.` : " 이동 전 마지막으로 확인해 주세요."}
           </p>
+          {error ? <p role="alert" className="mt-3 text-sm text-mw-error">{error}</p> : null}
+          {!readOnly && kind === "new-lead" ? (
+            <NewLeadPipelineRepair key={row.id} itemId={row.id} available={repairAvailable} />
+          ) : null}
           {kind === "new-lead" ? (
             <form action={cellAction ?? setCellAction} className="mt-4 flex justify-end gap-2">
               <input type="hidden" name="boardId" value={boardId} />

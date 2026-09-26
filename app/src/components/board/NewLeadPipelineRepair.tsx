@@ -4,7 +4,7 @@ import { useState } from "react";
 import { pipelineStructureAction, type PipelineStructureResult } from "@/app/(app)/boards/pipeline-structure-actions";
 import { ResultBanner } from "@/lib/ui/ResultBanner";
 
-export function NewLeadPipelineRepair({ itemId }: { itemId: string }) {
+export function NewLeadPipelineRepair({ itemId, available = true }: { itemId: string; available?: boolean }) {
   const [result, setResult] = useState<PipelineStructureResult | null>(null);
   const [pending, setPending] = useState(false);
   async function run(apply: boolean) {
@@ -20,6 +20,9 @@ export function NewLeadPipelineRepair({ itemId }: { itemId: string }) {
       setResult({ ok: false, message: "단계 구성 결과를 확인하지 못했습니다. 다시 조회해 주세요." });
     } finally { setPending(false); }
   }
+  // Flash errors disappear on a server-action refresh. Keep an in-flight request
+  // and its preview alive until this row's cell is unmounted.
+  if (!available && !pending && !result) return null;
   return <div className="mt-2 max-w-80 whitespace-normal text-xs">
     {result ? <ResultBanner notice={result} okClassName="text-mw-body" errorClassName="text-mw-error" /> : null}
     {result?.ok && result.missing?.length ? <>
