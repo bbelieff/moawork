@@ -70,8 +70,8 @@
       "mockup_anchor": "table",
       "product_anchor": "[data-visual-block='group-table']",
       "geometry_anchor": "[data-board-scroll='shared']",
-      "expected_text": ["신규고객", "컨택", "이름"],
-      "expected_text_by_tab": { "new": ["신규고객"], "contact": ["컨텍"] },
+      "expected_text": ["통화대기", "컨택", "이름"],
+      "expected_text_by_tab": { "new": ["통화대기"], "contact": ["컨텍"] },
       "expected_icon_state": "group handle + ordered column headers",
       "screen_region": "content",
       "relative_order": { "after": "board-settings-top", "contains": "workflow-gate-pinned" },
@@ -82,7 +82,7 @@
       "interaction_feedback": "one shared horizontal scroll moves every group and preserves first and workflow columns",
       "persistence_reload": "column order and group order reload from fixture state",
       "dependencies": ["board-settings-top"],
-      "override": { "issue": 759, "date": "2026-09-15", "rationale": "사용자 요청으로 모든 그룹이 공통 스크롤을 사용한다. 화면 내 배치·잘림·재로드 기하 검사는 공통 뷰포트를, 글꼴·색상·내용 검사는 기존 그룹 표를 측정한다. 넓은 표의 화면 밖 영역은 공통 스크롤로 접근하며 중첩 스크롤은 실패 처리한다." }
+      "override": { "issue": 797, "date": "2026-09-27", "rationale": "승인된 v17의 신규리드 단계(통화대기·부재·재통화·통화완료)에 맞춰 첫 그룹의 기대 제목을 신규고객에서 통화대기로 바꾼다. 저장된 상태 ID와 사용자 그룹은 보존한다. #759의 단일 가로 스크롤과 양끝 고정 열 계약은 그대로 유지한다. 화면 내 배치·잘림·재로드 기하 검사는 공통 뷰포트를, 글꼴·색상·내용 검사는 그룹 표를 측정하며 중첩 스크롤은 계속 실패 처리한다." }
     },
     {
       "block_id": "workflow-gate-pinned",

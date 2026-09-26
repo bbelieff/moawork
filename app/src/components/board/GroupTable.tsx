@@ -120,8 +120,8 @@ export function boardFileSelectionError(size: number): string | null {
 }
 
 /** 헤더/셀 공통 — 첫 열(이름)을 가로 스크롤에서 고정한다. */
-// On narrow screens a long frozen title must not cover scrollable cell controls.
-const STICKY_FIRST = "sm:sticky sm:left-0 z-[var(--mw-layer-board-cell)] bg-mw-card";
+// Both frozen edges belong to the shared scrollport at every viewport width.
+const STICKY_FIRST = "sticky left-0 z-[var(--mw-layer-board-cell)] bg-mw-card";
 
 function inputTypeOf(type: BoardColumn["type"]): string {
   switch (type) {
