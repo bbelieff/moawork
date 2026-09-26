@@ -545,6 +545,48 @@ describe("migration 139 atomic row move",()=>{
 });
 
 
+it("157 restores only auth helper access for real private-owner RPCs and preserves actor/tenant rejection", async () => {
+  const fix = readFileSync(resolve(process.cwd(), "../supabase/migrations/157_row_order_writer_auth_access.sql"), "utf8");
+  const ownerBefore = (await db.query("select proname,proowner,proacl,prosecdef from pg_proc where oid in ('public.move_board_row_atomic(uuid,uuid,uuid,uuid,uuid,bigint,uuid)'::regprocedure,'public.set_board_item_values_with_atomic_move(uuid,uuid,uuid,jsonb,uuid,uuid,bigint,uuid)'::regprocedure) order by proname")).rows;
+  await db.exec(`
+    create table auth.issue797_private_probe(id integer);
+    revoke usage on schema auth from moawork_row_order_writer;
+    revoke execute on function auth.uid() from public, moawork_row_order_writer;
+    set role authenticated;
+  `);
+  try {
+    // Real SECURITY DEFINER calls switch from authenticated to the private writer.
+    await expect(move({item:ids.a,group:ids.g2,version:0,request:9701})).rejects.toThrow(/permission denied for schema auth/);
+    await expect(setValuesMove({item:ids.a,group:ids.g2,values:{status:"통화완료"},version:0,request:9702})).rejects.toThrow(/permission denied for schema auth/);
+    await db.exec("reset role; grant usage on schema auth to moawork_row_order_writer; set role authenticated;");
+    await expect(move({item:ids.a,group:ids.g2,version:0,request:9701})).rejects.toThrow(/permission denied for function uid/);
+    await db.exec("reset role; revoke usage on schema auth from moawork_row_order_writer;");
+    await db.exec(fix);
+    await db.exec("set role authenticated;");
+    expect((await move({item:ids.a,group:ids.g2,version:0,request:9701})).rows[0]).toMatchObject({version:1,replayed:false});
+    expect((await setValuesMove({item:ids.a,group:ids.g1,values:{status:"통화완료"},version:1,request:9702})).rows[0]).toMatchObject({version:2,replayed:false});
+    expect((await setValuesMove({item:ids.a,group:ids.g1,values:{status:"통화완료"},version:1,request:9702})).rows[0]).toMatchObject({version:2,replayed:true});
+    await db.exec(`set app.actor='${ids.outsider}';`);
+    await expect(move({item:ids.b,group:ids.g2,version:2,request:9703})).rejects.toThrow(/denied/);
+    await db.exec(`set app.actor='${ids.actor}';`);
+    await expect(db.query("select * from public.move_board_row_atomic($1,$2,$3,$4,null,0,$5)", [ids.other,ids.otherBoard,ids.a,ids.g2,request(9704)])).rejects.toThrow(/denied/);
+    await db.exec("reset role;");
+    expect((await db.query("select proname,proowner,proacl,prosecdef from pg_proc where oid in ('public.move_board_row_atomic(uuid,uuid,uuid,uuid,uuid,bigint,uuid)'::regprocedure,'public.set_board_item_values_with_atomic_move(uuid,uuid,uuid,jsonb,uuid,uuid,bigint,uuid)'::regprocedure) order by proname")).rows).toEqual(ownerBefore);
+    expect((await db.query<{value_jsonb:string}>("select value_jsonb from item_values where item_id=$1 and column_key='status'",[ids.a])).rows[0].value_jsonb).toBe("통화완료");
+    expect((await db.query<{schema_usage:boolean;schema_create:boolean;uid_execute:boolean;auth_table_read:boolean}>(`select
+      has_schema_privilege('moawork_row_order_writer','auth','USAGE') schema_usage,
+      has_schema_privilege('moawork_row_order_writer','auth','CREATE') schema_create,
+      has_function_privilege('moawork_row_order_writer','auth.uid()','EXECUTE') uid_execute,
+      has_table_privilege('moawork_row_order_writer','auth.issue797_private_probe','SELECT') auth_table_read`)).rows[0])
+      .toEqual({schema_usage:true,schema_create:false,uid_execute:true,auth_table_read:false});
+  } finally {
+    await db.exec(`reset role; set app.actor='${ids.actor}';
+      grant usage on schema auth to moawork_row_order_writer;
+      grant execute on function auth.uid() to public,moawork_row_order_writer;
+      drop table auth.issue797_private_probe;`);
+  }
+});
+
 it("153 archive boundary rejects shelved moves but preserves active sibling ordering through real 139", async () => {
   await db.exec(`
     create table public.companies(id uuid primary key,org_id uuid);
