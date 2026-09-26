@@ -369,7 +369,7 @@ export function BoardCell({
     );
   }
 
-  if ((canonicalNewLead || canonicalOwner || workflowProgressKind === "contact" || workflowProgressKind === "work") && column.key === "owner") {
+  if ((canonicalNewLead || (row.deal_id && (canonicalOwner || workflowProgressKind === "contact" || workflowProgressKind === "work"))) && column.key === "owner") {
     if (!row.deal_id) {
       return <span title={title} className="block"><StatusCell value={row.assigned_to} options={options} /></span>;
     }

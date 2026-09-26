@@ -31,6 +31,9 @@ describe("canonical work/contact ownership",()=>{
     const custom=renderToStaticMarkup(<BoardCell boardId="board-a" column={columns[0]} row={{...row,assigned_to:"other",values:{owner:"actor"}}}
       readOnly={false} members={[{id:"actor",label:"사용자 지정 담당"}]}/>);
     expect(custom).toContain("사용자 지정 담당");expect(custom).toContain('name="kind" value="person"');
+    const legacy=renderToStaticMarkup(<BoardCell boardId="board-a" column={columns[0]} row={{...row,deal_id:null,assigned_to:"other",values:{owner:"actor"}}}
+      readOnly={false} workflowProgressKind="work" members={[{id:"actor",label:"기존 담당"}]}/>);
+    expect(legacy).toContain("기존 담당");expect(legacy).toContain('name="kind" value="person"');
   });
 });
 
