@@ -883,7 +883,7 @@ export function GroupTable({
   };
 
   const acceptRow = (index: number) => (e: React.DragEvent) => {
-    if (!canDropRow()) {setOverRowIndex(null);setInvalidRowIndex(index);setDropMessage("이 보기에서는 행을 옮길 수 없어요.");return;}
+    if (!rowDragEnabled || !canDropRow()) {setOverRowIndex(null);setInvalidRowIndex(index);setDropMessage("이 보기에서는 행을 옮길 수 없어요.");return;}
     if(rows[index]?.id===dragRowId){setOverRowIndex(null);setInvalidRowIndex(index);setDropMessage("같은 행 위에는 놓을 수 없어요.");return;}
     e.preventDefault();
     e.dataTransfer.dropEffect="move";
@@ -893,7 +893,7 @@ export function GroupTable({
   };
 
   const dropRow = (index: number) => (e: React.DragEvent) => {
-    if (!canDropRow()||rows[index]?.id===dragRowId){clearRowDrop();setDropMessage("이 위치에는 놓을 수 없어요.");return;}
+    if (!rowDragEnabled || !canDropRow()||rows[index]?.id===dragRowId){clearRowDrop();setDropMessage("이 위치에는 놓을 수 없어요.");return;}
     e.preventDefault();
     setOverRowIndex(null);
     onRowDrop(index);
