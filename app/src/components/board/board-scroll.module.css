@@ -46,6 +46,14 @@
   .groups [data-board-table-format="uniform"] > table > tbody > tr > td:first-child > div {
     width: 7rem;
     max-width: 7rem;
+    flex-wrap: wrap;
+  }
+  /* Keep the company name on the first line; actions use the next line. */
+  .groups [data-board-table-format="uniform"] > table > tbody > tr > td:first-child > div > form:has(input[name="title"]),
+  .groups [data-board-table-format="uniform"] > table > tbody > tr > td:first-child > div > span.truncate {
+    flex: 1 0 calc(100% - 1.25rem);
+    min-width: calc(100% - 1.25rem);
+    max-width: 100%;
   }
   .groups [data-board-table-format="uniform"] > table > :is(thead, tbody) > tr > [data-right-pinned="true"] {
     width: 8rem !important;

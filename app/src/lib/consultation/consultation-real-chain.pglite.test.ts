@@ -692,3 +692,90 @@ describe("CONSULTATION-REAL-CHAIN (실제 069/087/065)", () => {
   });
 
 });
+
+
+describe("160 explicit pipeline repair retains the real 151→087→069 gate", () => {
+  async function brokenLead() {
+    const db = await setup();
+    await asUser(db, ids.owner);
+    await db.exec(`alter table pipelines add column name text default '기본 파이프라인';
+      alter table stages add column name text; alter table stages add column sort_order int default 0;
+      alter table stages alter column id set default gen_random_uuid();
+      create type public.stage_kind as enum ('marketing','meeting','work');
+      update boards set source='core.default-tab/new-lead';
+      update stages set kind='marketing' where id='${ids.meeting}';
+      delete from stages where id='${ids.work}';`);
+    const migration = readFileSync(resolve(process.cwd(), "../supabase/migrations/160_new_lead_pipeline_structure.sql"), "utf8");
+    await db.exec(migration.slice(migration.indexOf("create or replace function public.repair_new_lead_pipeline_structure(")));
+    return db;
+  }
+  const repair = (apply = false, pipeline = ids.pipeline, missing = "array['meeting','work']") =>
+    `select * from repair_new_lead_pipeline_structure('${ids.org}','${ids.item}',${apply},'${pipeline}',${missing})`;
+  const advance = (request: string) => `select * from execute_contact_pipeline_transition('${ids.org}','${ids.deal}',null,'${req(request)}','lead_to_contact')`;
+
+  it("reproduces blocked marketing-only pipeline; preview is read-only; explicit repair and same request retry preserve IDs", async () => {
+    const db = await brokenLead();
+    expect((await db.query<Record<string, unknown>>(advance("160-retry"))).rows[0]).toMatchObject({status:"blocked",reason:"현재 단계에서는 이 관문을 넘을 수 없습니다."});
+    expect((await db.query<Record<string, unknown>>(repair())).rows[0]).toMatchObject({pipeline_id:ids.pipeline,missing_kinds:["meeting","work"],added_kinds:[]});
+    expect((await db.query<Record<string, unknown>>("select count(*)::int n from stages")).rows[0].n).toBe(1);
+    expect((await db.query<Record<string, unknown>>(repair(true))).rows[0]).toMatchObject({missing_kinds:[],added_kinds:["meeting","work"]});
+    expect((await db.query<Record<string, unknown>>(repair(true))).rows[0]).toMatchObject({added_kinds:[]});
+    const result = (await db.query<Record<string, unknown>>(advance("160-retry"))).rows[0];
+    expect(result).toMatchObject({status:"committed",deal_id:ids.deal,company_id:null});
+    expect((await db.query<Record<string, unknown>>(advance("160-retry"))).rows[0]).toEqual(result);
+    expect((await db.query<Record<string, unknown>>(`select pipeline_id,company_id from deals where id='${ids.deal}'`)).rows[0]).toEqual({pipeline_id:ids.pipeline,company_id:null});
+    expect((await db.query<Record<string, unknown>>(`select deal_id from items where id='${ids.item}'`)).rows[0].deal_id).toBe(ids.deal);
+    expect((await db.query<Record<string, unknown>>("select kind,count(*)::int n from stages group by kind order by kind")).rows).toEqual([{kind:"marketing",n:1},{kind:"meeting",n:1},{kind:"work",n:1}]);
+  });
+  it("denies member, other tenant and revoked current permission without stage writes", async () => {
+    const db = await brokenLead();
+    await asUser(db, ids.assignee);
+    await expect(db.query<Record<string, unknown>>(repair(true))).rejects.toMatchObject({code:"42501"});
+    await asUser(db, ids.owner);
+    await expect(db.query<Record<string, unknown>>(repair(true).replace(ids.org, ids.stranger))).rejects.toMatchObject({code:"42501"});
+    await db.exec(`insert into test_permission_deny values('${ids.org}','${ids.owner}','work.item_upsert')`);
+    await expect(db.query<Record<string, unknown>>(repair(true))).rejects.toMatchObject({code:"42501"});
+    expect((await db.query<Record<string, unknown>>("select count(*)::int n from stages")).rows[0].n).toBe(1);
+    await expect(db.query<Record<string, unknown>>(advance("160-denied"))).rejects.toMatchObject({code:"42501"});
+  });
+  it("rejects duplicate kinds and changed preview target or missing set without mutation", async () => {
+    const db = await brokenLead();
+    await expect(db.query<Record<string, unknown>>(repair(true, ids.work))).rejects.toMatchObject({code:"40001"});
+    await expect(db.query<Record<string, unknown>>(repair(true, ids.pipeline, "array['meeting']"))).rejects.toMatchObject({code:"40001"});
+    await db.exec(`insert into stages(pipeline_id,kind) values('${ids.pipeline}','marketing')`);
+    await expect(db.query<Record<string, unknown>>(repair(true))).rejects.toMatchObject({code:"22023"});
+    expect((await db.query<Record<string, unknown>>("select count(*)::int n from stages")).rows[0].n).toBe(2);
+    expect((await db.query<Record<string, unknown>>(advance("160-duplicate"))).rows[0].status).toBe("blocked");
+  });
+  it("adds only the missing kind, preserves custom stage names and blocks archived rows", async () => {
+    const db = await brokenLead();
+    await db.exec(`insert into stages(pipeline_id,kind,name,sort_order) values('${ids.pipeline}','meeting','맞춤 상담',9)`);
+    await db.query<Record<string, unknown>>(repair(true, ids.pipeline, "array['work']"));
+    expect((await db.query<Record<string, unknown>>("select name,sort_order from stages where kind='meeting'")).rows[0]).toEqual({name:"맞춤 상담",sort_order:9});
+    await db.exec(`update items set archived_at=now() where id='${ids.item}'`);
+    await expect(db.query<Record<string, unknown>>(repair())).rejects.toMatchObject({code:"22023"});
+  });
+  it("inactive org, inactive admin and deleted/mismatched source rows remain denied", async () => {
+    const db = await brokenLead();
+    await db.exec(`update orgs set status='inactive'`);
+    await expect(db.query<Record<string, unknown>>(repair(true))).rejects.toMatchObject({code:"42501"});
+    await db.exec(`update orgs set status='active'; update org_members set status='inactive' where user_id='${ids.owner}'`);
+    await expect(db.query<Record<string, unknown>>(repair(true))).rejects.toMatchObject({code:"42501"});
+    await db.exec(`update org_members set status='active'; update items set deleted_at=now() where id='${ids.item}'`);
+    await expect(db.query<Record<string, unknown>>(repair(true))).rejects.toMatchObject({code:"22023"});
+    await db.exec(`update items set deleted_at=null; update boards set source='custom'`);
+    await expect(db.query<Record<string, unknown>>(repair(true))).rejects.toMatchObject({code:"22023"});
+    expect((await db.query<Record<string, unknown>>("select count(*)::int n from stages")).rows[0].n).toBe(1);
+  });
+  it("RPC is unavailable to anon/service_role and leaves the protected contract handoff enforced", async () => {
+    const db = await brokenLead();
+    const signature = 'public.repair_new_lead_pipeline_structure(uuid,uuid,boolean,uuid,text[])';
+    expect((await db.query<Record<string, unknown>>(`select has_function_privilege('anon','${signature}','execute') a,has_function_privilege('service_role','${signature}','execute') s`)).rows[0]).toEqual({a:false,s:false});
+    await db.query<Record<string, unknown>>(repair(true)); await db.query<Record<string, unknown>>(advance("160-to-contact"));
+    await db.exec(`update boards set source='core.default-tab/contact'; update deals set custom='{"seal_approval":"완료"}' where id='${ids.deal}'`);
+    await check(db,ids.item,"160-partial","contract_sent",true,0);
+    const result = await handoff(db,ids.item,ids.deal,"160-no-bypass");
+    expect(result.rows[0].status).toBe("blocked");
+    expect(result.rows[0].reason).toMatch(/계약|확인/);
+  });
+});

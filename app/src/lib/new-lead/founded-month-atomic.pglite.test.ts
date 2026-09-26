@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const sql150 = readFileSync(
   resolve(process.cwd(), "../supabase/migrations/150_issue700_detail_event_edit.sql"),
@@ -27,6 +27,7 @@ async function actor(db: PGlite, userId: string) {
 
 describe("150 founded_month atomic wrapper (PGlite actual SQL)", () => {
   let db: PGlite;
+  afterEach(async () => { await db?.close(); });
   beforeEach(async () => {
     db = new PGlite();
     await db.exec(`
@@ -57,7 +58,12 @@ describe("150 founded_month atomic wrapper (PGlite actual SQL)", () => {
       insert into board_groups values('${ids.groupA}','${ids.orgA}','${ids.boardA}');
       insert into board_columns(org_id,board_id,key) select '${ids.orgA}','${ids.boardA}',unnest(array['owner','collaborators','applied_on','phone','rep_name','biz_reg_type','industry','revenue_band','sido','sigungu','email','ad_name','business_registration_type','region_sido','region_sigungu','acquisition_source','founded_month','absence_notice','consult1_notice','confirm2_notice','feedback_status','consult_status','contact_move']);
     `);
+    const sql120 = readFileSync(resolve(process.cwd(), "../supabase/migrations/120_bbe273_new_lead_full_intake.sql"), "utf8");
+    await db.exec(sql120.slice(sql120.indexOf("create function public.create_new_lead("), sql120.indexOf("revoke all on function public.create_new_lead(")));
     await db.exec(sql150);
+    const before = (await db.query("select proname,proowner,proacl,prosecdef from pg_proc where proname in ('create_new_lead','create_new_lead_with_founded_month') order by proname")).rows;
+    await db.exec(readFileSync(resolve(process.cwd(), "../supabase/migrations/160_new_lead_pipeline_structure.sql"), "utf8"));
+    expect((await db.query("select proname,proowner,proacl,prosecdef from pg_proc where proname in ('create_new_lead','create_new_lead_with_founded_month') order by proname")).rows).toEqual(before);
     await actor(db, ids.owner);
   });
 
@@ -65,6 +71,24 @@ describe("150 founded_month atomic wrapper (PGlite actual SQL)", () => {
     const monthArg = month === null ? "null" : `'${month}'`;
     return `select * from create_new_lead_with_founded_month('${ids.orgA}','${ids.boardA}','${ids.groupA}','${request}','${title}',null,null,null,null,null,null,null,null,null,null,null,null,null,'{}',${monthArg})`;
   }
+
+  it("new pipeline starts with exactly one ordered marketing/meeting/work and replay adds none", async () => {
+    await db.query(createCall(ids.req1, "신규", null));
+    await db.query(createCall(ids.req1, "신규", null));
+    expect((await db.query("select kind,sort_order from stages order by sort_order")).rows).toEqual([
+      { kind: "marketing", sort_order: 0 }, { kind: "meeting", sort_order: 1 }, { kind: "work", sort_order: 2 },
+    ]);
+  });
+  it("existing partial custom pipeline is never automatically supplemented", async () => {
+    await db.exec(`insert into pipelines(id,org_id,name) values('${ids.req2}','${ids.orgA}','기본 파이프라인');
+      insert into stages(pipeline_id,name,sort_order,kind) values('${ids.req2}','맞춤 신규',8,'marketing')`);
+    await db.query(createCall(ids.req1, "신규", null));
+    expect((await db.query("select name,kind,sort_order from stages")).rows).toEqual([{name:"맞춤 신규",kind:"marketing",sort_order:8}]);
+  });
+  it("legacy 120 intake also initializes full structure only on a genuinely new pipeline", async () => {
+    await db.query(`select * from create_new_lead('${ids.orgA}','${ids.boardA}','${ids.groupA}','${ids.req1}','신규')`);
+    expect((await db.query<{ kind: string }>("select kind from stages order by sort_order")).rows.map((row) => row.kind)).toEqual(["marketing","meeting","work"]);
+  });
 
   it("잘못된 월이면 회사가 생기지 않는다 (validate before mutation)", async () => {
     await expect(db.query(createCall(ids.req1, "나쁜월", "2024-13"))).rejects.toThrow(/founded_month invalid/);
