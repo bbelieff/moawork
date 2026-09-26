@@ -129,6 +129,13 @@ function expectedVersionOf(callIndex: number): string {
 }
 
 describe("ConsultationPanel", () => {
+  it("renders the stored instant as browser-local time without shifting it", async () => {
+    await renderPanel();
+    const local = container!.querySelector<HTMLInputElement>('input[name="meetingAt"]')!.value;
+    // Independent of the runner's zone: KST 10:00 and UTC 01:00 denote this instant.
+    expect(new Date(local).toISOString()).toBe("2026-10-01T01:00:00.000Z");
+  });
+
   it("4단계를 순서대로 보여주고 앞 단계 미완이면 뒤 확인을 막는다", async () => {
     const html = await renderPanel({ confirmed: [true, false, false, false] });
     expect(html).toContain("계약서 송부");
@@ -226,6 +233,7 @@ describe("ConsultationPanel", () => {
 
   it("CAS 실패는 오류 + 새 기준으로 돌려주고 초안은 보존한다", async () => {
     await renderPanel({ confirmed: [true, false, false, false], version: 2 });
+    const meetingBeforeFailure = container!.querySelector<HTMLInputElement>('input[name="meetingAt"]')!.value;
     consultationActions.mutateChecklist.mockResolvedValueOnce({
       ok: false,
       message: "다른 담당자가 먼저 변경했습니다. 새로고침 후 다시 시도해 주세요.",
@@ -237,10 +245,12 @@ describe("ConsultationPanel", () => {
     });
     await act(async () => {});
     expect(container!.innerHTML).toContain("다른 담당자가 먼저 변경했습니다");
+    expect(container!.querySelector('[role="alert"]')?.getAttribute("aria-live")).toBe("assertive");
+    expect(container!.querySelector('[role="alert"]')?.className).toContain("text-mw-error");
     // 예약 일시·담당자 초안은 그대로다.
     const meeting = container!.querySelector('input[name="meetingAt"]') as HTMLInputElement;
     const assignee = container!.querySelector('select[name="assigneeId"]') as HTMLSelectElement;
-    expect(meeting.value).toBe("2026-10-01T10:00");
+    expect(meeting.value).toBe(meetingBeforeFailure);
     expect(assignee.value).toBe("user-1");
     await act(async () => { boxes()[1].click(); });
     expect(expectedVersionOf(1)).toBe("5");
@@ -268,10 +278,12 @@ describe("ConsultationPanel", () => {
     await act(async () => {});
     const sent = consultationActions.mutateMode.mock.calls[0][1] as FormData;
     expect(String(sent.get("to"))).toBe("inperson");
-    expect(String(sent.get("meetingAt"))).toBe("2026-10-01T10:00");
+    expect(String(sent.get("meetingAt"))).toBe("2026-10-01T01:00:00.000Z");
     expect(String(sent.get("assigneeId"))).toBe("user-1");
     expect(String(sent.get("expectedVersion"))).toBe("2");
     expect(container!.innerHTML).toContain("상담 보기를 옮겼습니다.");
+    expect(container!.querySelector('[role="status"]')?.getAttribute("aria-live")).toBe("polite");
+    expect(container!.querySelector('[role="status"]')?.className).toContain("text-mw-success");
     expect(container!.innerHTML).toContain("대면 상담");
     expect(container!.innerHTML).not.toContain("최신 상태 다시 읽기");
   });
@@ -381,6 +393,7 @@ describe("ConsultationPanel", () => {
 
   it("유실 재확인에서 명시적 거부를 받으면 초안을 유지하며 새 기준으로 수정할 수 있다", async () => {
     await renderPanel({ version: 2 });
+    const meetingBeforeFailure = container!.querySelector<HTMLInputElement>('input[name="meetingAt"]')!.value;
     consultationActions.mutateMode.mockRejectedValueOnce(new Error("transport"));
     await act(async () => { container!.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
     consultationActions.mutateWorkflow.mockResolvedValue({ ok: false, message: "" });
@@ -388,7 +401,7 @@ describe("ConsultationPanel", () => {
     consultationActions.readSnapshot.mockResolvedValueOnce(snapshotOf("remote", [true, false, false, false], 7));
     await act(async () => { [...container!.querySelectorAll("button")].find((b) => b.textContent === "같은 요청 다시 확인")!.click(); });
     expect(container!.textContent).toContain("다른 담당자가 먼저 변경했습니다");
-    expect(container!.querySelector<HTMLInputElement>('input[name="meetingAt"]')!.value).toBe("2026-10-01T10:00");
+    expect(container!.querySelector<HTMLInputElement>('input[name="meetingAt"]')!.value).toBe(meetingBeforeFailure);
     await act(async () => { container!.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
     const forms = consultationActions.mutateMode.mock.calls.map((call) => call[1] as FormData);
     expect(forms[1].get("requestId")).toBe(forms[0].get("requestId"));
@@ -398,6 +411,7 @@ describe("ConsultationPanel", () => {
 
   it("저장 후 기준 조회 예외도 한국어로 표시하고 초안을 보존한다", async () => {
     await renderPanel();
+    const meetingBeforeFailure = container!.querySelector<HTMLInputElement>('input[name="meetingAt"]')!.value;
     consultationActions.mutateWorkflow.mockResolvedValue({ ok: false, message: "" });
   consultationActions.mutateMode.mockResolvedValueOnce({ ok: false, message: "다른 담당자가 먼저 변경했습니다." });
     consultationActions.readSnapshot.mockRejectedValueOnce(new Error("Server Components render failure"));
@@ -405,7 +419,7 @@ describe("ConsultationPanel", () => {
     expect(container!.textContent).toContain("잠시 후 다시 읽어 주세요");
     expect(container!.textContent).not.toContain("Server Components");
     await act(async () => { [...container!.querySelectorAll("button")].find((b) => b.textContent === "다시 읽기")!.click(); });
-    expect(container!.querySelector<HTMLInputElement>('input[name="meetingAt"]')!.value).toBe("2026-10-01T10:00");
+    expect(container!.querySelector<HTMLInputElement>('input[name="meetingAt"]')!.value).toBe(meetingBeforeFailure);
   });
   it("same-mode schedule update and cancel use workflow CAS instead of mode switching", async () => {
     await renderPanel({ stage: "remote", version: 8 });
@@ -413,8 +427,19 @@ describe("ConsultationPanel", () => {
     await act(async () => button("예약 변경").click());
     const first = consultationActions.mutateWorkflow.mock.calls[0][1] as FormData;
     expect(first.get("mode")).toBe("remote"); expect(first.get("phase")).toBe("scheduled");
+    expect(first.get("meetingAt")).toBe("2026-10-01T01:00:00.000Z");
     expect(first.get("expectedVersion")).toBe("8"); expect(first.get("assigneeId")).toBe("user-1");
+    // Cancelling an existing reservation must ignore incomplete replacement drafts.
+    await act(async () => {
+      const meeting = container!.querySelector<HTMLInputElement>('input[name="meetingAt"]')!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(meeting, "");
+      meeting.dispatchEvent(new Event("input", { bubbles: true }));
+      const assignee = container!.querySelector<HTMLSelectElement>('select[name="assigneeId"]')!;
+      assignee.value = "";
+      assignee.dispatchEvent(new Event("change", { bubbles: true }));
+    });
     await act(async () => button("예약 취소").click());
+    expect(consultationActions.mutateWorkflow).toHaveBeenCalledTimes(2);
     const second = consultationActions.mutateWorkflow.mock.calls[1][1] as FormData;
     expect(second.get("phase")).toBe("on_hold"); expect(second.get("cancel")).toBe("true");
     expect(second.get("meetingAt")).toBe(""); expect(consultationActions.mutateMode).not.toHaveBeenCalled();

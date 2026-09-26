@@ -28,6 +28,8 @@
  * - 법인 형태: 정본 키가 없는 참고 정보라 미지원으로 남는다.
  */
 
+import { ResultBanner } from "@/lib/ui/ResultBanner";
+import type { ResultNotice } from "@/lib/ui/result-notice";
 import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -168,17 +170,17 @@ export function ItemDetailOcr({
     linkedCompany: boolean;
     linkedCompanyName: string;
   } | null>(null);
-  const [loadError, setLoadError] = useState("");
+  const [loadError, setLoadError] = useState<ResultNotice | null>(null);
 
   const handleOpen = useCallback(async () => {
-    setLoadError("");
+    setLoadError(null);
     setLoadingCurrent(true);
     try {
       // 정본 비교 기준 typed 읽기 — 실패하면 모달을 열지 않는다.
       // 비교 기준 없이 적용 버튼이 켜지는 일은 없다 (deny apply until loaded).
       const result = await loadOcrCurrentAction({ boardId, itemId });
       if (!result.ok) {
-        setLoadError(result.message);
+        setLoadError({ ok: result.ok, message: `${result.message} 다시 시도하려면 위 버튼을 누르세요.` });
         setExtraCurrent(null);
         return;
       }
@@ -191,6 +193,10 @@ export function ItemDetailOcr({
         linkedCompanyName: result.current.linkedCompanyName,
       });
       setOpen(true);
+    } catch {
+      setLoadError({ ok: false, message: "비교 기준을 읽지 못했어요. 잠시 후 다시 시도해 주세요." });
+      setExtraCurrent(null);
+      setOpen(false);
     } finally {
       setLoadingCurrent(false);
     }
@@ -212,9 +218,8 @@ export function ItemDetailOcr({
           파일은 이 브라우저 안에서만 읽습니다. 체크한 필드만 직접 반영됩니다.
         </p>
         {loadError ? (
-          <p className="text-xs text-mw-sub" role="alert">
-            {loadError} 다시 시도하려면 위 버튼을 누르세요.
-          </p>
+          <ResultBanner notice={loadError}
+            okClassName="text-xs text-mw-success" errorClassName="text-xs text-mw-error" />
         ) : null}
       </div>
       {open ? (

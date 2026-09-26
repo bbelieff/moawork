@@ -20,6 +20,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ResultBanner } from "@/lib/ui/ResultBanner";
 import { consultationPhase, CONSULTATION_PHASE_LABEL, REMOTE_PHASES, INPERSON_PHASES, phaseNeedsSchedule, type ConsultationPhase } from "@/lib/consultation/phases";
 import {
   mutateConsultationChecklist,
@@ -246,12 +247,19 @@ export function ConsultationPanel({
   async function submitMode(to: "remote" | "inperson"): Promise<void> {
     const baseline = snapshot;
     if (!baseline || inFlight.current || unresolved.current) return;
+    const meeting = new Date(meetingDraft);
+    if (Number.isNaN(meeting.getTime())) {
+      setActionError("상담 일시를 지정해 주세요.");
+      return;
+    }
     await runSubmission({
       kind: "mode",
       fields: {
           itemId,
           to,
-          meetingAt: meetingDraft,
+          // datetime-local belongs to the browser timezone. Send an instant, never
+          // a timezone-less string for the server/database to reinterpret.
+          meetingAt: meeting.toISOString(),
           assigneeId: assigneeDraft,
           requestId: newRequestId(),
           expectedVersion: String(baseline.version),
@@ -270,7 +278,12 @@ export function ConsultationPanel({
       setActionError("상담 일시와 담당자를 지정해 주세요.");
       return;
     }
-    const meeting = cancel ? "" : needsSchedule ? new Date(meetingDraft).toISOString() : baseline.meetingAt ?? "";
+    const scheduled = needsSchedule ? new Date(meetingDraft) : null;
+    if (scheduled && Number.isNaN(scheduled.getTime())) {
+      setActionError("상담 일시를 지정해 주세요.");
+      return;
+    }
+    const meeting = cancel ? "" : scheduled ? scheduled.toISOString() : baseline.meetingAt ?? "";
     await runSubmission({ kind: "workflow", fields: {
       itemId, requestId: newRequestId(), expectedVersion: String(baseline.version), mode: targetMode,
       phase, meetingAt: meeting, assigneeId: needsSchedule ? assigneeDraft : baseline.assigneeId ?? currentAssigneeId ?? assigneeDraft,
@@ -325,7 +338,7 @@ export function ConsultationPanel({
           <p role="status" className="py-2 text-xs text-mw-sub">상담 기록을 읽는 중…</p>
         ) : loadError || !snapshot ? (
           <div>
-            <p role="alert" className="py-1 text-xs text-mw-error">{loadError || "상담 기록이 없습니다."}</p>
+            <ResultBanner notice={{ ok: false, message: loadError || "상담 기록이 없습니다." }} okClassName="py-1 text-xs text-mw-success" errorClassName="py-1 text-xs text-mw-error" />
             <button
               type="button"
               onClick={manualReload}
@@ -401,7 +414,7 @@ export function ConsultationPanel({
               </tbody>
             </table>
             {actionError ? (
-              <p role="alert" className="mt-1 text-xs text-mw-error">{actionError}</p>
+              <ResultBanner notice={{ ok: false, message: actionError }} okClassName="mt-1 text-xs text-mw-success" errorClassName="mt-1 text-xs text-mw-error" />
             ) : null}
             {uncertain ? (
               <button
@@ -415,7 +428,7 @@ export function ConsultationPanel({
               </button>
             ) : null}
             {notice && !actionError ? (
-              <p role="status" className="mt-1 text-xs text-mw-success">{notice}</p>
+              <ResultBanner notice={{ ok: true, message: notice }} okClassName="mt-1 text-xs text-mw-success" errorClassName="mt-1 text-xs text-mw-error" />
             ) : null}
             <p className="mt-1 text-[11px] leading-5 text-mw-sub">
               앞 확인을 취소하면 뒤 확인은 함께 무효가 되며 기록으로 남습니다.

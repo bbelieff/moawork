@@ -16,6 +16,8 @@
  *     `onCreated` 로 부모에 알려 revalidate 로 다른 셀도 갱신한다
  */
 
+import { ResultBanner } from "@/lib/ui/ResultBanner";
+import type { ResultNotice } from "@/lib/ui/result-notice";
 import { useId, useMemo, useRef, useState } from "react";
 import { filterLabelOptions, normalizeLabelKey } from "@/lib/boards/label-options";
 
@@ -70,7 +72,7 @@ export function LabelCombobox({
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [localOptions, setLocalOptions] = useState<{ snapshot: readonly LabelComboOption[]; created: readonly LabelComboOption[] } | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<ResultNotice | null>(null);
   const [creating, setCreating] = useState(false);
 
   // 컬럼 정의가 바뀌면(다른 셀 저장·revalidate) 그걸 따른다 — 만든 값 끼워넣기와 충돌 안 나게
@@ -162,7 +164,7 @@ export function LabelCombobox({
           return { snapshot: options, created: prior.some((o) => o.id === created.id) ? prior : [...prior, created] };
         });
         onCreated?.(result.optionId);
-        setMessage(result.message);
+        setMessage({ ok: result.ok, message: result.message });
         if (multiple) {
           if (onSelect) onSelect([...selectedIds, result.optionId]);
           else setLocalMulti({ source: selectionKey, values: [...selectedIds, result.optionId] });
@@ -172,7 +174,7 @@ export function LabelCombobox({
         }
       } else if (result.conflict && result.optionId) {
         // ★ 충돌 실패 — 쿼리를 지우지 않고 기존값을 고른다.
-        setMessage(result.message);
+        setMessage({ ok: result.ok, message: result.message });
         if (multiple) {
           if (!selectedIds.includes(result.optionId)) {
             if (onSelect) onSelect([...selectedIds, result.optionId]);
@@ -184,10 +186,10 @@ export function LabelCombobox({
         }
       } else {
         // ★ 일반 실패 — 쿼리 그대로, 메시지만 보여준다.
-        setMessage(result.message);
+        setMessage({ ok: result.ok, message: result.message });
       }
     } catch {
-      setMessage("라벨을 만들지 못했어요. 잠시 후 다시 시도해 주세요.");
+      setMessage({ ok: false, message: "라벨을 만들지 못했어요. 잠시 후 다시 시도해 주세요." });
     } finally {
       setCreating(false);
     }
@@ -330,9 +332,9 @@ export function LabelCombobox({
         </button>
       ) : null}
       {message ? (
-        <p role="status" className="px-1.5 text-[0.65rem] text-mw-body">
-          {message}
-        </p>
+        <ResultBanner notice={message}
+          okClassName="px-1.5 text-[0.65rem] text-mw-success"
+          errorClassName="px-1.5 text-[0.65rem] text-mw-error" />
       ) : null}
     </span>
   );

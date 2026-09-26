@@ -1,5 +1,7 @@
 "use client";
 
+import { ResultBanner } from "@/lib/ui/ResultBanner";
+import type { ResultNotice } from "@/lib/ui/result-notice";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   applyOcrResultToStates,
@@ -80,7 +82,7 @@ export function DocumentOcrModal({
   const [docWarnings, setDocWarnings] = useState<string[]>([]);
   const [states, setStates] = useState<OcrFieldState[]>([]);
   const [applyErrors, setApplyErrors] = useState<Partial<Record<OcrFieldKey, string>>>({});
-  const [applyMessage, setApplyMessage] = useState("");
+  const [applyMessage, setApplyMessage] = useState<ResultNotice | null>(null);
   const [applyNotice, setApplyNotice] = useState("");
   const [applying, setApplying] = useState(false);
   const [requestId, setRequestId] = useState("");
@@ -106,7 +108,7 @@ export function DocumentOcrModal({
     setDocWarnings([]);
     setStates([]);
     setApplyErrors({});
-    setApplyMessage("");
+    setApplyMessage(null);
     setApplyNotice("");
     setApplying(false);
     setRequestId("");
@@ -175,7 +177,7 @@ export function DocumentOcrModal({
       revokePreview();
       setRunError("");
       setApplyErrors({});
-      setApplyMessage("");
+      setApplyMessage(null);
       setApplyNotice("");
       const kind = file.type === "application/pdf" || /\.pdf$/i.test(file.name) ? "pdf" : "image";
       const url = URL.createObjectURL(file);
@@ -332,7 +334,7 @@ export function DocumentOcrModal({
     }
     setApplying(true);
     setApplyNotice("");
-    setApplyMessage("");
+    setApplyMessage(null);
     const request: OcrApplyRequest = {
       requestId,
       selections: payload.selections.map((s) => ({
@@ -362,16 +364,16 @@ export function DocumentOcrModal({
           payload.skippedBlank.length > 0
             ? ` (빈 제안 ${payload.skippedBlank.length}개는 기존값 유지)`
             : "";
-        setApplyMessage(
-          `선택한 ${payload.selections.length}개를 반영했습니다.${skipped}${excludedNote}`,
-        );
+        setApplyMessage({ ok: result.ok,
+          message: `선택한 ${payload.selections.length}개를 반영했습니다.${skipped}${excludedNote}`,
+        });
       } else {
         // 실패해도 편집·선택 유지 — 고친 값 그대로 다시 시도 가능.
-        setApplyMessage(
-          (result.message ??
+        setApplyMessage({ ok: result.ok,
+          message: (result.message ??
             `${failedKeys.length}개 실패. 성공분은 유지되고 실패분만 다시 시도하세요.`) +
             excludedNote,
-        );
+        });
       }
       if (payload.skippedBlank.length > 0 && !result.ok) {
         setApplyNotice(
@@ -379,11 +381,11 @@ export function DocumentOcrModal({
         );
       }
     } catch (error) {
-      setApplyMessage(
-        error instanceof Error
+      setApplyMessage({ ok: false,
+        message: error instanceof Error
           ? `반영 중 오류: ${error.message} — 편집·선택은 그대로 두었습니다. 다시 시도하세요.`
           : "반영 중 오류 — 편집·선택은 그대로 두었습니다. 다시 시도하세요.",
-      );
+      });
     } finally {
       setApplying(false);
     }
@@ -509,9 +511,7 @@ export function DocumentOcrModal({
           </ul>
           {applyNotice && <p className={styles.notice}>{applyNotice}</p>}
           {applyMessage && (
-            <p className={styles.message} role="status">
-              {applyMessage}
-            </p>
+            <ResultBanner notice={applyMessage} okClassName={styles.message} errorClassName={styles.error} />
           )}
           <div className={styles.actions}>
             <label className={styles.repick}>

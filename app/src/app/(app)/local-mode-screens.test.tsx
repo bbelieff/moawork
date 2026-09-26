@@ -136,6 +136,8 @@ const SCREENS: Readonly<Record<string, Coverage>> = {
 
   // ── 이 방식으로 잴 수 없는 것 ───────────────────────────────────────────
   "/account": { status: "not-measurable", why: "307 리다이렉트" },
+  "/consult-remote": { status: "not-measurable", why: "인증된 정본 보드의 비대면 보기로 리다이렉트" },
+  "/consult-inperson": { status: "not-measurable", why: "인증된 정본 보드의 대면 보기로 리다이렉트" },
   "/boards": { status: "not-measurable", why: "404 — 2층 권한 fail-closed. 별도 카드" },
   "/boards/[id]": { status: "not-measurable", why: "동적 파라미터" },
   "/companies/[companyId]": { status: "not-measurable", why: "동적 파라미터" },
