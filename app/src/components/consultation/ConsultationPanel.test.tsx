@@ -11,12 +11,14 @@ const consultationActions = vi.hoisted(() => ({
   mutateMode: vi.fn(),
   mutateHandoff: vi.fn(),
   mutateWorkflow: vi.fn(),
+  mutateSeal: vi.fn(),
 }));
 
 vi.mock("@/lib/consultation/actions", () => ({
   mutateConsultationChecklist: consultationActions.mutateChecklist,
   mutateConsultationMode: consultationActions.mutateMode,
   mutateConsultationWorkflow: consultationActions.mutateWorkflow,
+  mutateConsultationSeal: consultationActions.mutateSeal,
   mutateConsultationHandoff: consultationActions.mutateHandoff,
   readConsultationSnapshot: consultationActions.readSnapshot,
   readConsultationHandoff: consultationActions.readHandoff,
@@ -84,6 +86,7 @@ beforeEach(() => {
   consultationActions.mutateChecklist.mockResolvedValue({ ok: false, message: "" });
   consultationActions.mutateWorkflow.mockResolvedValue({ ok: false, message: "" });
   consultationActions.mutateMode.mockResolvedValue({ ok: false, message: "" });
+  consultationActions.mutateSeal.mockResolvedValue({ ok: false, message: "" });
   consultationActions.mutateHandoff.mockResolvedValue({ ok: false, message: "" });
 });
 
@@ -97,12 +100,12 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function renderPanel(props?: { stage?: string; confirmed?: readonly boolean[]; handoffReady?: boolean; version?: number }) {
+async function renderPanel(props?: { stage?: string; confirmed?: readonly boolean[]; handoffReady?: boolean; version?: number; canApproveSeal?: boolean; sealApproved?: boolean }) {
   const stage = props?.stage ?? "remote";
   const confirmed = props?.confirmed ?? [true, false, false, false];
   const version = props?.version ?? 2;
   consultationActions.readSnapshot.mockResolvedValue(snapshotOf(stage, confirmed, version));
-  consultationActions.readHandoff.mockResolvedValue(handoffOf(props?.handoffReady ?? false));
+  consultationActions.readHandoff.mockResolvedValue({ ...handoffOf(props?.handoffReady ?? false), canApproveSeal: props?.canApproveSeal, sealApproved: props?.sealApproved });
   await act(async () => {
     root!.render(
       <ConsultationPanel
@@ -336,10 +339,10 @@ describe("ConsultationPanel", () => {
     expect(consultationActions.mutateChecklist).not.toHaveBeenCalled();
   });
 
-  it.each(["check", "mode", "handoff"] as const)("%s 응답 유실 시 입력을 잠그고 동일 요청 전체로만 다시 확인한다", async (kind) => {
-    await renderPanel({ confirmed: [true, true, true, true], handoffReady: true, version: 4 });
+  it.each(["check", "mode", "handoff", "seal"] as const)("%s 응답 유실 시 입력을 잠그고 동일 요청 전체로만 다시 확인한다", async (kind) => {
+    await renderPanel({ confirmed: [true, true, true, true], handoffReady: true, version: 4, canApproveSeal: true, sealApproved: false });
     const mutation = kind === "check" ? consultationActions.mutateChecklist
-      : kind === "mode" ? consultationActions.mutateMode : consultationActions.mutateHandoff;
+      : kind === "mode" ? consultationActions.mutateMode : kind === "seal" ? consultationActions.mutateSeal : consultationActions.mutateHandoff;
     mutation.mockRejectedValueOnce(new Error("fetch failed: response lost after commit"));
     const meeting = container!.querySelector<HTMLInputElement>('input[name="meetingAt"]')!;
     const assignee = container!.querySelector<HTMLSelectElement>('select[name="assigneeId"]')!;
@@ -347,7 +350,7 @@ describe("ConsultationPanel", () => {
     await act(async () => {
       if (kind === "check") boxes()[0].click();
       else if (kind === "mode") container!.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-      else [...container!.querySelectorAll("button")].find((b) => b.textContent?.includes("실무로 인계"))!.click();
+      else [...container!.querySelectorAll("button")].find((b) => b.textContent?.includes(kind === "seal" ? "직인 승인 완료" : "실무로 인계"))!.click();
     });
     expect(container!.textContent).toContain("저장 여부를 확인할 수 없습니다");
     expect(container!.textContent).not.toContain("fetch failed");
@@ -470,4 +473,29 @@ describe("ConsultationPanel", () => {
     expect(form.get("meetingAt")).toBeTruthy(); expect(form.get("assigneeId")).toBe("user-1");
   });
 
+});
+
+
+describe("seal approval controls", () => {
+  it("hides approval from non-approvers and disables approval until four confirmations", async () => {
+    await renderPanel({ canApproveSeal: false, sealApproved: false });
+    expect([...container!.querySelectorAll("button")].some(b => b.textContent === "직인 승인 완료")).toBe(false);
+  });
+  it("an approver cannot approve with incomplete checklist", async () => {
+    await renderPanel({ canApproveSeal: true, sealApproved: false });
+    const button = [...container!.querySelectorAll("button")].find(b => b.textContent === "직인 승인 완료")!;
+    expect(button.disabled).toBe(true);
+    await act(async () => { button.click(); });
+    expect(consultationActions.mutateSeal).not.toHaveBeenCalled();
+  });
+  it("successful approval reloads authoritative readiness and removes the approval action", async () => {
+    await renderPanel({ confirmed: [true,true,true,true], canApproveSeal: true, sealApproved: false, version: 4 });
+    consultationActions.mutateSeal.mockResolvedValueOnce({ ok: true, message: "직인 승인을 기록했습니다.", version: 5 });
+    consultationActions.readSnapshot.mockResolvedValueOnce(snapshotOf("remote",[true,true,true,true],5));
+    consultationActions.readHandoff.mockResolvedValueOnce({ ok: true, ready: true, canApproveSeal: true, sealApproved: true });
+    await act(async () => { [...container!.querySelectorAll("button")].find(b => b.textContent === "직인 승인 완료")!.click(); });
+    expect(consultationActions.mutateSeal).toHaveBeenCalledTimes(1);
+    expect([...container!.querySelectorAll("button")].some(b => b.textContent === "직인 승인 완료")).toBe(false);
+    expect([...container!.querySelectorAll("button")].find(b => b.textContent?.includes("실무로 인계"))!.disabled).toBe(false);
+  });
 });

@@ -1,5 +1,5 @@
 /**
- * 상담 서버 액션 — 151 RPC 전용 진입점.
+ * 상담 서버 액션 — 보호된 상담 RPC 진입점.
  *
  * 기존 boards/actions.ts·contactPipelineActions.ts 를 건드리지 않고
  * 상담 도메인만의 파일을 둔다. 공개 라우트·CTA는 노출하지 않는다.
@@ -9,7 +9,6 @@
 
 import { getSession } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
-import type { ContactPipelineRpcClient } from "@/lib/crm/supabaseContactPipeline";
 import type { ConsultationRpcClient } from "./supabaseConsultation";
 
 async function rpcClient(): Promise<ConsultationRpcClient> {
@@ -18,8 +17,7 @@ async function rpcClient(): Promise<ConsultationRpcClient> {
 import { ConsultationError } from "./errors";
 import {
   readConsultationSnapshotOrFail,
-  readHandoffReadiness,
-  requestHandoff,
+  consultationErrorFromRpc,
   setChecklistStep,
   setConsultationMode,
   setConsultationWorkflow,
@@ -37,6 +35,8 @@ export type ConsultationActionState = Readonly<{
   replayed?: boolean;
   ready?: boolean;
   missing?: readonly string[];
+  canApproveSeal?: boolean;
+  sealApproved?: boolean;
   mode?: string;
   meetingAt?: string | null;
   dealId?: string | null;
@@ -58,7 +58,9 @@ function text(formData: FormData, key: string): string | null {
 }
 
 function versionOf(formData: FormData): number | null {
-  const version = Number(String(formData.get("expectedVersion") ?? ""));
+  const raw = String(formData.get("expectedVersion") ?? "").trim();
+  if (!raw) return null;
+  const version = Number(raw);
   return Number.isInteger(version) && version >= 0 ? version : null;
 }
 
@@ -187,19 +189,18 @@ export async function readConsultationSnapshot(
 export async function readConsultationHandoff(itemId: string): Promise<ConsultationActionState> {
   try {
     const ctx = await getSession();
-    const readiness = await readHandoffReadiness(await rpcClient(), {
-      orgId: ctx.org.id,
-      itemId,
+    const { data, error } = await (await rpcClient()).rpc("read_consultation_handoff_controls", {
+      p_org_id: ctx.org.id, p_item_id: itemId,
     });
+    if (error) throw Object.assign(new Error(error.message), { code: error.code });
+    const result = Array.isArray(data) ? data[0] : data;
+    if (!result || typeof result.ready !== "boolean") throw new Error("Invalid handoff controls");
+    const missing: string[] = Array.isArray(result.missing) ? [...result.missing] : [];
+    if (!result.seal_approved) missing.push("대표 직인 승인");
     return {
-      ok: readiness.ready,
-      message: readiness.ready
-        ? "인계 조건을 모두 채웠습니다. 인계하기를 눌러 정식 인계를 실행해 주세요."
-        : `인계 조건이 남았습니다: ${[...readiness.missing, ...(readiness.seal.approved ? [] : [readiness.seal.detail])].join(" · ")}`,
-      version: readiness.version,
-      ready: readiness.ready,
-      missing: readiness.missing,
-      nextAction: readiness.nextAction,
+      ok: true, ready: result.ready, version: result.version, missing,
+      canApproveSeal: result.can_approve_seal === true, sealApproved: result.seal_approved === true,
+      message: result.ready ? "실무로 인계할 수 있습니다." : `인계 조건: ${missing.join(" · ")}`,
     };
   } catch (error) {
     return fail(error, "인계 조건을 확인하지 못했습니다.");
@@ -216,7 +217,6 @@ export async function mutateConsultationHandoff(
 ): Promise<ConsultationActionState> {
   void _previous;
   try {
-    const ctx = await getSession();
     const itemId = text(formData, "itemId");
     const requestId = text(formData, "requestId");
     const expectedVersion = versionOf(formData);
@@ -229,29 +229,7 @@ export async function mutateConsultationHandoff(
     if (!itemId || !requestId || expectedVersion === null) {
       return { ok: false, message: "인계 요청을 다시 시작해 주세요.", echo: submitted };
     }
-    const client = await createClient();
-    const result = await requestHandoff(
-      client as unknown as ConsultationRpcClient,
-      client as unknown as ContactPipelineRpcClient,
-      {
-        orgId: ctx.org.id,
-        itemId,
-        requestId,
-        expectedVersion,
-        companyId: text(formData, "companyId"),
-        companyName: text(formData, "companyName"),
-      },
-    );
-    return {
-      ok: true,
-      message: "업무관리로 인계했습니다.",
-      version: result.version,
-      ready: true,
-      missing: [],
-      dealId: result.dealId,
-      companyId: result.companyId,
-      nextAction: result.nextAction,
-    };
+    return await executeSealHandoff("handoff", itemId, requestId, expectedVersion, text(formData, "companyName"));
   } catch (error) {
     return fail(error, "인계하지 못했습니다.");
   }
@@ -271,4 +249,33 @@ export async function mutateConsultationWorkflow(_previous: ConsultationActionSt
       mode, phase, meetingAt: text(formData, "meetingAt"), assigneeId: text(formData, "assigneeId"), cancel: formData.get("cancel") === "true" });
     return { ok: true, message: "상담 기록을 저장했습니다.", version: result.version, replayed: result.replayed, mode: result.mode };
   } catch (error) { return fail(error, "상담 기록을 저장하지 못했습니다."); }
+}
+
+async function executeSealHandoff(operation: "seal_approval" | "handoff", itemId: string, requestId: string, expectedVersion: number, companyName: string | null): Promise<ConsultationActionState> {
+  const ctx = await getSession();
+  try {
+    const { data, error } = await (await rpcClient()).rpc("execute_consultation_seal_handoff", {
+      p_org_id: ctx.org.id, p_item_id: itemId, p_request_id: requestId,
+      p_expected_version: expectedVersion, p_operation: operation, p_company_name: companyName,
+    });
+    if (error) {
+      if (!error.code) throw new Error("Unknown result");
+      if (!["42501", "40001", "22023", "22P02"].includes(error.code)) {
+        return { ok: false, message: "저장하지 못했습니다. 잠시 후 다시 시도해 주세요." };
+      }
+      return fail(consultationErrorFromRpc(Object.assign(new Error(error.message), { code: error.code }), { itemId }), "저장하지 못했습니다.");
+    }
+    const result = Array.isArray(data) ? data[0] : data;
+    if (!result || typeof result.version !== "number" || typeof result.replayed !== "boolean") throw new Error("Unknown result");
+    return { ok: true, message: operation === "seal_approval" ? "직인 승인을 기록했습니다." : "업무관리로 인계했습니다.",
+      version: result.version, replayed: result.replayed, dealId: result.deal_id, companyId: result.company_id };
+  } catch {
+    return { ok: false, field: "unknown_result", message: "저장 결과를 확인할 수 없습니다. 같은 요청을 다시 확인해 주세요." };
+  }
+}
+
+export async function mutateConsultationSeal(_previous: ConsultationActionState, formData: FormData): Promise<ConsultationActionState> {
+  const itemId = text(formData, "itemId"); const requestId = text(formData, "requestId"); const expectedVersion = versionOf(formData);
+  if (!itemId || !requestId || expectedVersion === null) return { ok: false, message: "승인 요청을 다시 시작해 주세요." };
+  return executeSealHandoff("seal_approval", itemId, requestId, expectedVersion, null);
 }

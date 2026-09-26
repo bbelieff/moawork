@@ -1251,7 +1251,7 @@ export function BoardWorkspace({
                         members={(memberDirectory?.length ? memberDirectory : []).map((member) => ({ id: member.id, label: member.label }))}
                         initialCompanyName={row.title}
                       />
-                      <ContactPipelineAction
+                      {!row.deal_id ? <ContactPipelineAction
                         dealId={null}
                         kind="contact_to_work"
                         requestId={row.id}
@@ -1268,7 +1268,7 @@ export function BoardWorkspace({
                           foundedOn: companyFoundedOn(row.values.founded_year),
                           revenue: companyRevenue(row.values.revenue),
                         }}
-                      />
+                      /> : null}
                     </>
                   )
                 ) : undefined}

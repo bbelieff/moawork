@@ -75,6 +75,8 @@ const archivedGuard153 = full153.slice(
   full153.indexOf("create or replace function public.guard_archived_deal_write()"),
 );
 const full156 = readFileSync(resolve(process.cwd(), "../supabase/migrations/156_consultation_workflow.sql"), "utf8");
+const full161 = readFileSync(resolve(process.cwd(), "../supabase/migrations/161_consultation_seal_handoff.sql"), "utf8");
+const body161 = full161.slice(full161.indexOf("alter table public.consultation_requests"));
 const body156 = full156.slice(full156.indexOf("alter table public.consultation_states add column phase"));
 
 const ids = {
@@ -169,7 +171,7 @@ async function setup(withWorkflow = true): Promise<PGlite> {
   await db.exec(body151);
   await db.exec(body152);
   await db.exec(archivedGuard153);
-  if (withWorkflow) await db.exec(body156);
+  if (withWorkflow) { await db.exec(body156); await db.exec(body161); }
   await db.exec(`
     insert into orgs values ('${ids.org}');
     insert into users values ('${ids.owner}'), ('${ids.assignee}'), ('${ids.stranger}'),
@@ -778,4 +780,122 @@ describe("160 explicit pipeline repair retains the real 151→087→069 gate", (
     expect(result.rows[0].status).toBe("blocked");
     expect(result.rows[0].reason).toMatch(/계약|확인/);
   });
+});
+
+
+describe("161 seal approval and protected handoff", () => {
+  async function submit(db: PGlite, operation: string, version: number, tag: string, item = ids.item) {
+    return db.query<{version:number;replayed:boolean;deal_id:string;company_id:string}>(
+      "select * from execute_consultation_seal_handoff($1,$2,$3,$4,$5,$6)",
+      [ids.org,item,req(tag),version,operation,"테스트 회사"]);
+  }
+  it("owner approves both canonical and mirror once, intent and protected pipeline commit atomically", async () => {
+    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.item,"161-ok");
+    await db.exec(`delete from item_values where item_id='${ids.item}';`);
+    const controls=await db.query<{can_approve_seal:boolean;ready:boolean}>(`select * from read_consultation_handoff_controls('${ids.org}','${ids.item}')`);
+    expect(controls.rows[0]).toMatchObject({can_approve_seal:true,ready:false});
+    expect((await submit(db,"seal_approval",version,"161-seal")).rows[0].version).toBe(version+1);
+    expect((await submit(db,"seal_approval",version,"161-seal")).rows[0].replayed).toBe(true);
+    expect((await db.query<{n:number}>("select count(*)::int n from consultation_events where kind='seal_approved'")).rows[0].n).toBe(1);
+    expect((await db.query<{seal:string}>(`select custom->>'seal_approval' seal from deals where id='${ids.deal}'`)).rows[0].seal).toBe("완료");
+    expect((await db.query<{ready:boolean}>(`select ready from read_consultation_handoff_controls('${ids.org}','${ids.item}')`)).rows[0].ready).toBe(true);
+    const result=await submit(db,"handoff",version+1,"161-handoff");
+    expect(result.rows[0].deal_id).toBe(ids.deal); expect(result.rows[0].company_id).toBeTruthy();
+    expect((await db.query<{stage_id:string}>(`select stage_id from deals where id='${ids.deal}'`)).rows[0].stage_id).toBe(ids.work);
+    expect((await submit(db,"handoff",version+1,"161-handoff")).rows[0].replayed).toBe(true);
+  });
+  it.each(["member","team_lead"])("%s including all-scope cannot approve, assigned member may handoff only after approval", async (role) => {
+    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.item,"161-role-"+role);
+    await db.exec(`update org_members set role='${role}',scope='all' where user_id='${ids.assignee}'`);
+    await asUser(db,ids.assignee);
+    expect((await db.query<{can_approve_seal:boolean}>(`select can_approve_seal from read_consultation_handoff_controls('${ids.org}','${ids.item}')`)).rows[0].can_approve_seal).toBe(false);
+    await expect(submit(db,"seal_approval",version,"161-deny-"+role)).rejects.toThrow(/permission denied/);
+    await expect(submit(db,"handoff",version,"161-before-"+role)).rejects.toThrow(/직인/);
+    await asUser(db,ids.owner); await submit(db,"seal_approval",version,"161-admin-"+role);
+    await asUser(db,ids.assignee); expect((await submit(db,"handoff",version+1,"161-member-go-"+role)).rows[0].deal_id).toBe(ids.deal);
+  });
+  it("blocks revoked role, null auth, org inactive, archived item, feature denial and stale CAS", async () => {
+    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.item,"161-denials");
+    await expect(submit(db,"seal_approval",version-1,"161-stale")).rejects.toThrow(/version conflict/);
+    await db.exec(`select set_config('app.uid','',false)`);
+    await expect(submit(db,"seal_approval",version,"161-noauth")).rejects.toThrow(/authentication/);
+    await asUser(db,ids.owner);
+    for (const perm of ["work.view_tabs","work.item_upsert"]) {
+      await db.exec(`insert into test_permission_deny values('${ids.org}','${ids.owner}','${perm}')`);
+      await expect(submit(db,"seal_approval",version,"161-feature-"+perm)).rejects.toThrow(/permission/);
+      await db.exec("delete from test_permission_deny");
+    }
+    await db.exec("update orgs set status='inactive'");
+    await expect(submit(db,"seal_approval",version,"161-org")).rejects.toThrow(/permission/);
+    await db.exec("update orgs set status='active'");
+    await db.exec(`update items set archived_at=now() where id='${ids.item}'`);
+    await expect(submit(db,"seal_approval",version,"161-archived")).rejects.toThrow(/unavailable/);
+    await db.exec(`update items set archived_at=null where id='${ids.item}'`);
+    await submit(db,"seal_approval",version,"161-revoked");
+    await db.exec(`update org_members set role='member',scope='all' where user_id='${ids.owner}'`);
+    await expect(submit(db,"seal_approval",version,"161-revoked")).rejects.toThrow(/permission/);
+  });
+  it("rejects incomplete checklist, foreign tenant/association and request reuse", async () => {
+    const db=await setup(); await asUser(db,ids.owner);
+    await check(db,ids.item,"161-first","contract_sent",true,0);
+    await expect(submit(db,"seal_approval",1,"161-incomplete")).rejects.toThrow(/checklist blocked/);
+    await db.exec(`update consultation_states set deal_id='${ids.dealDept}' where item_id='${ids.item}'`);
+    await expect(submit(db,"seal_approval",1,"161-link")).rejects.toThrow(/association/);
+    await db.exec(`update consultation_states set deal_id='${ids.deal}' where item_id='${ids.item}'`);
+    await db.exec(`insert into orgs values('00000000-0000-4000-8000-000000000099'); update items set org_id='00000000-0000-4000-8000-000000000099' where id='${ids.itemNull}'`);
+    await expect(submit(db,"seal_approval",1,"161-tenant",ids.itemNull)).rejects.toThrow(/unavailable/);
+    await expect(submit(db,"seal_approval",1,"161-first")).rejects.toThrow(/key reuse/);
+  });
+  it("blocked downstream handoff rolls back intent and receipt; authenticated has RPC only", async () => {
+    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.item,"161-rollback");
+    await submit(db,"seal_approval",version,"161-rb-seal");
+    await db.exec(`delete from item_values where item_id='${ids.item}' and column_key='work_move'; delete from stages where id='${ids.work}'`);
+    await expect(submit(db,"handoff",version+1,"161-rb-go")).rejects.toThrow();
+    expect((await db.query<{n:number}>(`select count(*)::int n from item_values where item_id='${ids.item}' and column_key='work_move'`)).rows[0].n).toBe(0);
+    expect((await db.query<{n:number}>(`select count(*)::int n from consultation_requests where request_id='${req("161-rb-go")}'`)).rows[0].n).toBe(0);
+    const acl=await db.query<{anon:boolean;service:boolean;auth:boolean}>(`select has_function_privilege('anon','public.execute_consultation_seal_handoff(uuid,uuid,uuid,bigint,text,text)','execute') anon,has_function_privilege('service_role','public.execute_consultation_seal_handoff(uuid,uuid,uuid,bigint,text,text)','execute') service,has_function_privilege('authenticated','public.execute_consultation_seal_handoff(uuid,uuid,uuid,bigint,text,text)','execute') auth`);
+    expect(acl.rows[0]).toEqual({anon:false,service:false,auth:true});
+  });
+  it("admin uses the existing approver role; handoff replay rechecks current row scope and active membership", async () => {
+    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.item,"161-scope");
+    await db.exec(`update org_members set role='admin' where user_id='${ids.owner}'`);
+    await submit(db,"seal_approval",version,"161-admin-ok");
+    await asUser(db,ids.stranger);
+    await expect(submit(db,"handoff",version+1,"161-stranger")).rejects.toMatchObject({code:"42501"});
+    await expect(db.query(`select * from read_consultation_handoff_controls('${ids.org}','${ids.item}')`)).rejects.toMatchObject({code:"42501"});
+    await asUser(db,ids.assignee); await submit(db,"handoff",version+1,"161-assignee-ok");
+    await db.exec(`update deals set assigned_to='${ids.stranger}' where id='${ids.deal}'; update items set assigned_to='${ids.stranger}' where id='${ids.item}'`);
+    await expect(submit(db,"handoff",version+1,"161-assignee-ok")).rejects.toMatchObject({code:"42501"});
+    await db.exec(`update deals set assigned_to='${ids.assignee}' where id='${ids.deal}'; update items set assigned_to='${ids.assignee}' where id='${ids.item}'; update org_members set status='inactive' where user_id='${ids.assignee}'`);
+    await expect(submit(db,"handoff",version+1,"161-assignee-ok")).rejects.toMatchObject({code:"42501"});
+  });
+  it("mismatched pipeline and stage cannot receive a canonical approval", async () => {
+    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.item,"161-pipeline");
+    await db.exec(`insert into pipelines values('${ids.stranger}','${ids.org}'); update stages set pipeline_id='${ids.stranger}' where id='${ids.meeting}'`);
+    await expect(submit(db,"seal_approval",version,"161-bad-pipeline")).rejects.toThrow(/association/);
+    expect((await db.query<{n:number}>("select count(*)::int n from consultation_events where kind='seal_approved'")).rows[0].n).toBe(0);
+  });
+
+  it("department visibility does not promise handoff permission; current item AND deal assignee must match", async () => {
+    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.itemDept,"161-dept-ready");
+    await submit(db,"seal_approval",version,"161-dept-seal",ids.itemDept);
+    const read=()=>db.query<{ready:boolean;can_approve_seal:boolean;missing:string[]}>(`select * from read_consultation_handoff_controls('${ids.org}','${ids.itemDept}')`);
+    await asUser(db,ids.teamLead);
+    expect((await read()).rows[0]).toMatchObject({ready:false,can_approve_seal:false,missing:["인계 담당자 권한"]});
+    await expect(submit(db,"handoff",version+1,"161-dept-deny",ids.itemDept)).rejects.toMatchObject({code:"42501"});
+    await asUser(db,ids.deptMember); expect((await read()).rows[0].ready).toBe(true);
+    await db.exec(`update deals set assigned_to='${ids.teamLead}' where id='${ids.dealDept}'`);
+    expect((await read()).rows[0].ready).toBe(false);
+    await asUser(db,ids.owner); expect((await read()).rows[0].ready).toBe(true);
+  });
+
+  it("a prior handoff receipt cannot bypass current write scope through department visibility", async () => {
+    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.itemDept,"161-dept-replay");
+    await submit(db,"seal_approval",version,"161-dept-replay-seal",ids.itemDept);
+    await asUser(db,ids.deptMember); await submit(db,"handoff",version+1,"161-dept-replay-go",ids.itemDept);
+    await db.exec(`update org_members set role='team_lead',scope='department' where user_id='${ids.deptMember}'; update deals set assigned_to='${ids.teamLead}' where id='${ids.dealDept}'; update items set assigned_to='${ids.teamLead}' where id='${ids.itemDept}'`);
+    expect((await db.query(`select * from read_consultation_snapshot('${ids.org}','${ids.itemDept}')`)).rows).toHaveLength(1);
+    await expect(submit(db,"handoff",version+1,"161-dept-replay-go",ids.itemDept)).rejects.toMatchObject({code:"42501"});
+  });
+
 });

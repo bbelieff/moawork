@@ -13,6 +13,7 @@ vi.mock("@/lib/consultation/actions", () => ({
   mutateConsultationChecklist: vi.fn(async () => ({ ok: false, message: "" })),
   mutateConsultationWorkflow: vi.fn(async () => ({ ok: false, message: "" })),
   mutateConsultationMode: vi.fn(async () => ({ ok: false, message: "" })),
+  mutateConsultationSeal: vi.fn(async () => ({ ok: true, message: "승인 완료" })),
   mutateConsultationHandoff: vi.fn(async () => ({ ok: false, message: "" })),
   readConsultationSnapshot: consultationActions.readSnapshot,
   readConsultationHandoff: consultationActions.readHandoff,
