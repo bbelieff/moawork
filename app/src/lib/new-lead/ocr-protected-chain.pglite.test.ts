@@ -591,6 +591,158 @@ describe("162 actual work projection + 139 writer + 153 archive boundary", () =>
     }
     await expect(db.exec(`update items set board_id='${workBoard}' where id='${ids.item}'`)).rejects.toThrow(/RPC-only/);
   });
+  describe("164 detail resources survive approved handoffs", () => {
+    const fileId="00000000-0000-4000-8000-000000000091";
+    const path=`${ids.org}/${ids.board}/${ids.item}/${fileId}__synthetic.png`;
+    const apply164=()=>db.exec(sql("164_item_detail_handoff_resources.sql"));
+    const functionBody=(text:string,name:string,end="end $$;")=>{
+      text=text.replaceAll("\r\n","\n");
+      const start=text.indexOf(`create or replace function public.${name}(`);
+      return text.slice(start,text.indexOf(end,start)+end.length);
+    };
+    async function resources(patched=true) {
+      await projectSetup();
+      await db.exec(`
+        drop schema if exists storage cascade; create schema storage;
+        create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint);
+        create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);
+        alter table storage.objects enable row level security; alter table storage.objects force row level security;
+        create function storage.foldername(name text) returns text[] language sql immutable as $$select (string_to_array(name,'/'))[1:array_length(string_to_array(name,'/'),1)-1]$$;
+        create function public.begin_guarded_migration(p_logical_key text,p_file_name text,p_file_digest text,p_expected_predecessor text,p_executor text,p_thread_id text,p_foundation boolean) returns void language sql as $$select$$;
+        create table notifications(id uuid primary key default gen_random_uuid(),org_id uuid,user_id uuid,type text,title text,body text,target_type text,target_id uuid,actor_id uuid,is_action boolean,dedupe_key text);
+        create unique index notifications_recipient_dedupe_idx on notifications(org_id,user_id,dedupe_key) where dedupe_key is not null;
+        alter table boards add column is_system boolean default false;
+        grant usage on schema auth,storage to authenticated;
+        grant select,insert,update,delete on storage.objects to authenticated;
+      `);
+      await db.exec(sql("124_issue524_company_detail_feed.sql"));
+      const upload=sql("128_issue542_new_lead_v6plus.sql");
+      await db.exec(upload.slice(upload.indexOf("create table if not exists public.board_item_detail_file_reservations"),upload.indexOf("revoke all on function public.get_new_lead_onboarding_state")));
+      await db.exec(upload.split("\n").filter(line=>/^(revoke|grant)/.test(line)&&/reserve_board_item_detail_file|cancel_board_item_detail_file|can_upload_reserved_board_item_file|register_board_item_detail_file|add_board_item_detail_link/.test(line)).join("\n"));
+      await db.exec(sql("143_issue662_detail_event_kinds.sql"));
+      await db.exec(sql("144_issue672_detail_event_remove.sql"));
+      const edit=sql("150_issue700_detail_event_edit.sql");
+      await db.exec(edit.slice(edit.indexOf("alter table public.board_item_detail_events"),edit.indexOf("-- ## 창업연월 원자 생성")));
+      await db.exec("create trigger guard_archived_item_child_write before insert or update or delete on public.board_item_detail_events for each row execute function public.guard_archived_item_child_write()");
+      if(patched) await apply164();
+      await asUser(db,ids.owner);
+    }
+    async function inRole<T>(actor:string,run:()=>Promise<T>) {
+      await asUser(db,actor); await db.exec("set role authenticated");
+      try { return await run(); } finally { await db.exec("reset role"); }
+    }
+    async function seedResources() {
+      await db.query("select * from add_board_item_detail_event($1,$2,$3,'memo','원본 메모',$4)",[ids.org,ids.board,ids.item,req("memo")]);
+      await db.query("select * from add_board_item_detail_link($1,$2,$3,'합성 링크','https://example.com/qa',$4)",[ids.org,ids.board,ids.item,req("link")]);
+      await db.query("select * from reserve_board_item_detail_file($1,$2,$3,$4,'synthetic.png','image/png',512,$5,$6)",[ids.org,ids.board,ids.item,fileId,path,req("file")]);
+      await inRole(ids.owner,()=>db.query("insert into storage.objects(bucket_id,name) values('board-item-files',$1)",[path]));
+      await db.query("select * from register_board_item_detail_file($1,$2,$3,$4,'synthetic.png','image/png',512,$5,$6)",[ids.org,ids.board,ids.item,fileId,path,req("file")]);
+    }
+    async function counts(board:string) {
+      return (await db.query(`select (select count(*)::int from board_item_detail_events where board_id=$1 and kind='memo') events,
+        (select count(*)::int from board_item_detail_links where board_id=$1) links,
+        (select count(*)::int from board_item_detail_files where board_id=$1) files,
+        (select count(*)::int from storage.objects where name=$2) objects`,[board,path])).rows[0];
+    }
+    it("negative control: actual162 loses current-board metadata and immutable-object read",async()=>{
+      await resources(false); await seedResources(); await submit("handoff",await ready(),"resource-go");
+      expect(await inRole(ids.assignee,()=>counts(workBoard))).toEqual({events:0,links:0,files:0,objects:0});
+    });
+    it("preserves content, revisions/receipts, file key and current assignee read through real162",async()=>{
+      await resources(); await seedResources();
+      const event=(await db.query<{id:string}>("select id from board_item_detail_events where kind='memo'")).rows[0];
+      await db.query("select * from update_board_item_detail_event($1,$2,$3,$4,'편집된 메모',$5,0,'원본 메모')",[ids.org,ids.board,ids.item,event.id,req("edit")]);
+      const frozen=(await db.query("select * from board_item_detail_edit_requests")).rows;
+      const revisions=(await db.query("select * from board_item_detail_event_revisions")).rows;
+      const reserved=(await db.query("select * from board_item_detail_file_reservations")).rows;
+      const objects=(await db.query("select * from storage.objects")).rows;
+      await submit("handoff",await ready(),"resource-go");
+      expect(await inRole(ids.assignee,()=>counts(workBoard))).toEqual({events:1,links:1,files:1,objects:1});
+      expect((await db.query("select body,edit_count from board_item_detail_events where kind='memo'")).rows).toEqual([{body:"편집된 메모",edit_count:1}]);
+      expect((await db.query("select * from board_item_detail_edit_requests")).rows).toEqual(frozen);
+      expect((await db.query("select * from board_item_detail_event_revisions")).rows).toEqual(revisions);
+      expect((await db.query("select * from board_item_detail_file_reservations")).rows).toEqual(reserved);
+      expect((await db.query("select * from storage.objects")).rows).toEqual(objects);
+      expect((await db.query("select storage_path from board_item_detail_files")).rows).toEqual([{storage_path:path}]);
+      await asUser(db,ids.owner);
+      await db.query("select * from remove_board_item_detail_event($1,$2,$3,$4)",[ids.org,workBoard,ids.item,event.id]);
+      await db.query("select * from restore_board_item_detail_event($1,$2,$3,$4)",[ids.org,workBoard,ids.item,event.id]);
+      await db.query("select * from update_board_item_detail_event($1,$2,$3,$4,'실무 메모',$5,1,'편집된 메모')",[ids.org,workBoard,ids.item,event.id,req("edit-after")]);
+    });
+    it("stale source-board creation/edit/remove/restore cannot write after the move commits",async()=>{
+      await resources(); await seedResources();
+      const event=(await db.query<{id:string}>("select id from board_item_detail_events where kind='memo'")).rows[0];
+      await submit("handoff",await ready(),"resource-go");
+      await expect(db.query("select * from add_board_item_detail_event($1,$2,$3,'memo','옛 화면 요청',$4)",[ids.org,ids.board,ids.item,req("stale-memo")])).rejects.toThrow(/permission_denied/);
+      await expect(db.query("select * from add_board_item_detail_link($1,$2,$3,'옛 링크','https://example.com/stale',$4)",[ids.org,ids.board,ids.item,req("stale-link")])).rejects.toThrow(/permission_denied/);
+      await expect(db.query("select * from register_board_item_detail_file($1,$2,$3,$4,'synthetic.png','image/png',512,$5,$6)",[ids.org,ids.board,ids.item,fileId,path,req("file")])).rejects.toThrow(/permission_denied/);
+      await expect(db.query("select * from update_board_item_detail_event($1,$2,$3,$4,'옛 화면 수정',$5,0,'원본 메모')",[ids.org,ids.board,ids.item,event.id,req("stale-edit")])).rejects.toThrow(/permission_denied/);
+      for(const method of ["remove_board_item_detail_event","restore_board_item_detail_event"])
+        await expect(db.query(`select * from ${method}($1,$2,$3,$4)`,[ids.org,ids.board,ids.item,event.id])).rejects.toThrow(/permission_denied/);
+      expect((await db.query("select body,edit_count,deleted_at from board_item_detail_events where id=$1",[event.id])).rows[0]).toEqual({body:"원본 메모",edit_count:0,deleted_at:null});
+      expect(await inRole(ids.assignee,()=>counts(workBoard))).toEqual({events:1,links:1,files:1,objects:1});
+    });
+    it.each(["stranger","foreign-tenant","inactive","inactive-org","revoked","archived","trashed"])("moved file still denies %s",async(condition)=>{
+      await resources(); await seedResources(); await submit("handoff",await ready(),"resource-go");
+      if(condition==="foreign-tenant") await db.exec(`delete from org_members where user_id='${ids.assignee}'; insert into orgs values('${ids.stranger}'); insert into org_members values('${ids.stranger}','${ids.assignee}','owner','all','active')`);
+      if(condition==="inactive-org") await db.exec("update orgs set status='inactive'");
+      if(condition==="inactive") await db.exec(`update org_members set status='inactive' where user_id='${ids.assignee}'`);
+      if(condition==="revoked") await db.exec(`insert into test_permission_deny values('${ids.org}','${ids.assignee}','work.view_tabs')`);
+      if(condition==="archived") await db.exec(`update items set archived_at=now() where id='${ids.item}'`);
+      if(condition==="trashed") await db.exec(`update items set deleted_at=now() where id='${ids.item}'`);
+      expect((await inRole(condition==="stranger"?ids.stranger:ids.assignee,()=>db.query("select name from storage.objects"))).rows).toEqual([]);
+    });
+    it("unregistered paths are not adopted; moved read never grants insert/update/delete",async()=>{
+      await resources(); await seedResources();
+      await db.query("insert into storage.objects(bucket_id,name) values('board-item-files',$1)",[path+"-unregistered"]);
+      await submit("handoff",await ready(),"resource-go");
+      expect((await inRole(ids.assignee,()=>db.query("select name from storage.objects"))).rows).toEqual([{name:path}]);
+      expect((await inRole(ids.assignee,()=>db.query("delete from storage.objects where name=$1 returning id",[path]))).rows).toEqual([]);
+      expect((await inRole(ids.assignee,()=>db.query("update storage.objects set name=name where name=$1 returning id",[path]))).rows).toEqual([]);
+      await expect(inRole(ids.assignee,()=>db.query("insert into storage.objects(bucket_id,name) values('board-item-files',$1)",[path+"-new"]))).rejects.toThrow();
+    });
+    it("pending upload blocks handoff atomically, then finalize and same request can succeed",async()=>{
+      await resources(); const version=await ready();
+      await db.query("select * from reserve_board_item_detail_file($1,$2,$3,$4,'synthetic.png','image/png',512,$5,$6)",[ids.org,ids.board,ids.item,fileId,path,req("file")]);
+      await expect(submit("handoff",version,"resource-go")).rejects.toThrow(/업로드가 끝난/);
+      expect((await projected())[0].board_id).toBe(ids.board);
+      expect((await db.query("select count(*)::int n from companies")).rows[0]).toEqual({n:0});
+      expect((await db.query("select count(*)::int n from contact_pipeline_transitions")).rows[0]).toEqual({n:0});
+      await db.query("select * from register_board_item_detail_file($1,$2,$3,$4,'synthetic.png','image/png',512,$5,$6)",[ids.org,ids.board,ids.item,fileId,path,req("file")]);
+      await submit("handoff",version,"resource-go");
+      expect((await projected())[0].board_id).toBe(workBoard);
+      await expect(db.query("select * from reserve_board_item_detail_file($1,$2,$3,$4,'synthetic.png','image/png',512,$5,$6)",[ids.org,ids.board,ids.item,fileId,path,req("file")])).rejects.toThrow(/permission_denied/);
+    });
+    it("a resource update failure rolls back deal, company, item and every resource",async()=>{
+      await resources(); await seedResources(); const version=await ready();
+      await db.exec("create function deny_resource_move() returns trigger language plpgsql as $$begin raise exception 'synthetic resource failure'; end$$; create trigger reject_move before update of board_id on board_item_detail_files for each row execute function deny_resource_move()");
+      await expect(submit("handoff",version,"resource-go")).rejects.toThrow(/synthetic resource failure/);
+      expect((await projected())[0].board_id).toBe(ids.board);
+      expect((await db.query("select count(*)::int n from companies")).rows[0]).toEqual({n:0});
+      expect(await inRole(ids.assignee,()=>counts(ids.board))).toEqual({events:1,links:1,files:1,objects:1});
+    });
+    it("actual139 new-lead to contact also preserves registered resources",async()=>{
+      await resources();
+      const contact="00000000-0000-4000-8000-000000000094",group="00000000-0000-4000-8000-000000000095",marketing="00000000-0000-4000-8000-000000000096";
+      await db.exec(`update boards set source='core.default-tab/new-lead' where id='${ids.board}'; insert into boards(id,org_id,source) values('${contact}','${ids.org}','core.default-tab/contact'); insert into board_groups(id,org_id,board_id,name) values('${group}','${ids.org}','${contact}','신규'); insert into stages values('${marketing}','${ids.pipeline}','marketing'); update deals set stage_id='${marketing}' where id='${ids.deal}'`);
+      await db.exec(functionBody(full087,"advance_new_lead_to_contact","end\n$$;"));
+      await db.exec(functionBody(sql("139_issue602_atomic_board_row_move.sql"),"advance_new_lead_to_contact","$function$;"));
+      await seedResources();
+      const result=await db.query<{status:string}>("select * from advance_new_lead_to_contact($1,$2)",[ids.item,req("lead-move")]);
+      expect(result.rows[0].status).toBe("committed");
+      expect(await inRole(ids.assignee,()=>counts(contact))).toEqual({events:1,links:1,files:1,objects:1});
+      expect((await projected())[0].id).toBe(ids.item);
+      await asUser(db,ids.owner); await submit("handoff",await ready(),"lead-then-work");
+      expect(await inRole(ids.assignee,()=>counts(workBoard))).toEqual({events:1,links:1,files:1,objects:1});
+    });
+    it("only the four creation RPCs gain a current-item lock; payload/limits/receipt bodies remain exact",()=>{
+      const actual=sql("164_item_detail_handoff_resources.sql");
+      for(const [file,name] of [["143_issue662_detail_event_kinds.sql","add_board_item_detail_event"],["128_issue542_new_lead_v6plus.sql","add_board_item_detail_link"],["128_issue542_new_lead_v6plus.sql","reserve_board_item_detail_file"],["128_issue542_new_lead_v6plus.sql","register_board_item_detail_file"]]) {
+        expect(functionBody(actual,name).replace("  perform public.lock_item_detail_resource_target(p_org_id,p_board_id,p_item_id);\n","").replaceAll("\r\n","\n")).toBe(functionBody(sql(file),name).replaceAll("\r\n","\n"));
+      }
+    });
+  });
+
 });
 
 });
