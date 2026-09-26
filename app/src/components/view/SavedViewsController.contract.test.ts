@@ -76,7 +76,10 @@ describe("saved view production consumer", () => {
     expect(controller).toContain("presentNewLeadSavedViewConfig(view.config)");
     expect(controller).toContain("durableNewLeadSavedViewConfig(nextConfig)");
     expect(controller).toContain("applyFilters(personScopedRows, displayColumns, config.filters, filterProjection)");
-    expect(controller).toContain("canonicalNewLead={canonicalNewLead} members={memberOptions}");
+    const boardCell = controller.match(/<BoardCell\b[\s\S]*?\/>/)?.[0] ?? "";
+    expect(boardCell).toContain("canonicalNewLead={canonicalNewLead}");
+    expect(boardCell).toContain("canonicalOwner={workflowKindForSource(boardSource ?? null) !== null}");
+    expect(boardCell).toContain("members={memberOptions}");
     expect(page).toContain("<BoardHeader");
     expect(controller).toContain("moveRowAction");
     expect(controller).toContain("rowMoveIntentRef");
