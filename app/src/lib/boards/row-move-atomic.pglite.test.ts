@@ -608,4 +608,38 @@ it("153 archive boundary rejects shelved moves but preserves active sibling orde
   await expect(db.query("select public.issue602_move_board_item_private($1,$2,$3,$4,$3,$5,null,null)",[ids.org,ids.a,ids.board,ids.g1,ids.g2])).rejects.toMatchObject({code:"40001"});
   expect((await db.query<{owner:string}>("select pg_get_userbyid(proowner) owner from pg_proc where oid='public.move_board_row_atomic(uuid,uuid,uuid,uuid,uuid,bigint,uuid)'::regprocedure")).rows[0].owner).toBe("moawork_row_order_writer");
   expect((await db.query<{allowed:boolean}>("select has_function_privilege('authenticated','public.issue602_move_board_item_private(uuid,uuid,uuid,uuid,uuid,uuid,uuid,integer)','EXECUTE') allowed")).rows[0].allowed).toBe(false);
+  // Hosted auth schema belongs to supabase_admin: postgres can use it but cannot
+  // delegate USAGE. Keep real 139 + archive-aware 153 RPCs; model that exact ACL.
+  await db.exec(`
+    alter function public.effective_permission(uuid,text) security definer;
+    revoke usage on schema auth from moawork_row_order_writer;
+    set session authorization supabase_admin;
+    revoke grant option for usage on schema auth from postgres cascade;
+    set session authorization postgres;
+  `);
+  expect((await db.query<{grantable:boolean}>("select has_schema_privilege('postgres','auth','USAGE WITH GRANT OPTION') grantable")).rows[0].grantable).toBe(false);
+  const fix157=readFileSync(resolve(process.cwd(),"../supabase/migrations/157_row_order_writer_auth_access.sql"),"utf8");
+  await db.exec(fix157); // PostgreSQL WARNING, not an error: no privileges granted.
+  expect((await db.query<{allowed:boolean}>("select has_schema_privilege('moawork_row_order_writer','auth','USAGE') allowed")).rows[0].allowed).toBe(false);
+  await db.exec("set role authenticated;");
+  await expect(move({item:ids.b,group:ids.g1,version:1,request:9801})).rejects.toThrow(/permission denied for schema auth/);
+  await expect(db.query("select * from public.reorder_board_columns_atomic($1,$2,$3)",[ids.org,ids.board,[ids.col2,ids.col1]])).rejects.toThrow(/permission denied for schema auth/);
+  await db.exec("reset role;");
+  const fix158=readFileSync(resolve(process.cwd(),"../supabase/migrations/158_row_order_actor_helper.sql"),"utf8");
+  await db.exec(`begin; ${fix158} commit;`);
+  expect((await db.query<{allowed:boolean}>("select has_schema_privilege('moawork_row_order_writer','auth','USAGE') allowed")).rows[0].allowed).toBe(false);
+  await db.exec("set role authenticated;");
+  try {
+    await expect(db.query("select public.row_order_actor_uid()")).rejects.toThrow(/permission denied/);
+    expect((await move({item:ids.b,group:ids.g1,version:1,request:9801})).rows[0]).toMatchObject({version:2,replayed:false});
+    expect((await db.query<{id:string;sort_order:number}>("select id,sort_order from public.reorder_board_columns_atomic($1,$2,$3) order by sort_order",[ids.org,ids.board,[ids.col2,ids.col1]])).rows).toEqual([{id:ids.col2,sort_order:0},{id:ids.col1,sort_order:1}]);
+    expect((await setValuesMove({item:ids.b,group:ids.g2,values:{status:"통화완료"},version:2,request:9802})).rows[0]).toMatchObject({version:3,replayed:false});
+    expect((await setValuesMove({item:ids.b,group:ids.g2,values:{status:"통화완료"},version:2,request:9802})).rows[0]).toMatchObject({version:3,replayed:true});
+    await expect(move({item:ids.a,group:ids.g2,version:3,request:9803})).rejects.toMatchObject({code:"42501"});
+    await db.exec(`set app.actor='${ids.outsider}';`);
+    await expect(move({item:ids.c,group:ids.g1,version:3,request:9804})).rejects.toMatchObject({code:"42501"});
+    await expect(db.query("select * from public.reorder_board_columns_atomic($1,$2,$3)",[ids.org,ids.board,[ids.col1,ids.col2]])).rejects.toMatchObject({code:"42501"});
+    await db.exec(`set app.actor='${ids.actor}';`);
+    await expect(db.query("select * from public.move_board_row_atomic($1,$2,$3,$4,null,0,$5)",[ids.other,ids.otherBoard,ids.c,ids.g1,request(9805)])).rejects.toMatchObject({code:"42501"});
+  } finally { await db.exec(`reset role; set app.actor='${ids.actor}';`); }
 });
