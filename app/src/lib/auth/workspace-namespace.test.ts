@@ -6,6 +6,18 @@ function row(orgId: string, slug: string, status = "active") {
 }
 
 describe("workspace namespace", () => {
+  it.each(["consult-remote", "consult-inperson"])("keeps %s inside verified workspace routing", (segment) => {
+    const path = `/w/alpha-team/${segment}?as=member`;
+    expect(decideWorkspaceNamespace(path, [row("org-1", "alpha-team")])).toEqual({
+      kind: "rewrite", canonical: path, internal: `/${segment}?as=member`, orgId: "org-1",
+    });
+    expect(decideWorkspaceNamespace(path, [row("org-2", "other-team")])).toEqual({ kind: "deny" });
+    expect(decideWorkspaceNamespace(path, [row("org-1", "alpha-team", "removed")])).toEqual({ kind: "deny" });
+    expect(decideWorkspaceNamespace(path, null)).toEqual({ kind: "deny" });
+    expect(decideWorkspaceNamespace(`/${segment}`, [row("org-2", segment)])).toEqual({ kind: "none" });
+    expect(decideWorkspaceNamespace(`/w/alpha-team/${segment}-extra`, [row("org-1", "alpha-team")])).toEqual({ kind: "deny" });
+  });
+
   it("rewrites bare and deep canonical paths while preserving query", () => {
     expect(decideWorkspaceNamespace("/w/alpha-team", [row("org-1", "alpha-team")])).toEqual({ kind: "rewrite", canonical: "/w/alpha-team", internal: "/", orgId: "org-1" });
     expect(decideWorkspaceNamespace("/w/alpha-team/settings/account?tab=privacy", [row("org-1", "alpha-team")])).toEqual({ kind: "rewrite", canonical: "/w/alpha-team/settings/account?tab=privacy", internal: "/settings/account?tab=privacy", orgId: "org-1" });
