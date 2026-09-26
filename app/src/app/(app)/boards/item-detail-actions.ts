@@ -9,6 +9,7 @@ import {
   encodeNoticeFile,
 } from "@/lib/notices/official-file";
 import { sanitizeFileName } from "@/lib/services/files";
+import { consultationFeedEvent, type ConsultationFeedEvent } from "@/lib/consultation/detail-history";
 import { createRequestBoards } from "@/lib/boards/server";
 import { resolveBoardDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
 import type { CellValue } from "@/lib/boards/types";
@@ -129,7 +130,7 @@ export async function loadItemDetailAction(
 ): Promise<ItemDetailSnapshot> {
   try {
     const { ctx, client, item } = await context(boardId, itemId);
-    const [humanEventsResult, fieldEventsResult, linksResult, filesResult, collaboratorsResult, orgMembers] =
+    const [humanEventsResult, fieldEventsResult, linksResult, filesResult, collaboratorsResult, orgMembers, consultationEventsResult] =
       await Promise.all([
         client
           .from("board_item_detail_events")
@@ -177,11 +178,18 @@ export async function loadItemDetailAction(
         ctx.role === "owner" || ctx.role === "admin" || ctx.scope === "all"
           ? listOrgMemberOptions(ctx)
           : Promise.resolve([]),
+        // Existing151 RLS checks current item visibility; item identity survives handoff.
+        client.from("consultation_events")
+          .select("id,kind,step,before,after,actor_id,at,details")
+          .eq("org_id",ctx.org.id).eq("item_id",itemId)
+          .order("at",{ascending:false}).order("id",{ascending:false}).limit(100),
       ]);
-    if (humanEventsResult.error || fieldEventsResult.error || linksResult.error || filesResult.error || collaboratorsResult.error)
+    if (humanEventsResult.error || fieldEventsResult.error || linksResult.error || filesResult.error || collaboratorsResult.error || consultationEventsResult.error)
       throw new Error("상세 기록을 불러오지 못했습니다.");
     // Separate limits keep machine churn from crowding human conversations out.
-    const events = ([...(humanEventsResult.data ?? []), ...(fieldEventsResult.data ?? [])] as ItemDetailEvent[])
+    const consultationEvents = [...new Map(((consultationEventsResult.data ?? []) as ConsultationFeedEvent[])
+      .map((event)=>[event.id,consultationFeedEvent(event,orgMembers)])).values()];
+    const events = ([...(humanEventsResult.data ?? []), ...(fieldEventsResult.data ?? []), ...consultationEvents] as ItemDetailEvent[])
       .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
     const files = await Promise.all(
       (
