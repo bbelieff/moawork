@@ -628,6 +628,53 @@ it("153 archive boundary rejects shelved moves but preserves active sibling orde
   const fix158=readFileSync(resolve(process.cwd(),"../supabase/migrations/158_row_order_actor_helper.sql"),"utf8");
   await db.exec(`begin; ${fix158} commit;`);
   expect((await db.query<{allowed:boolean}>("select has_schema_privilege('moawork_row_order_writer','auth','USAGE') allowed")).rows[0].allowed).toBe(false);
+  // Load the actual deployed pure validator bodies (not permissive stubs).
+  // 139's original fixture omitted these CHECKs, hiding the hosted EXECUTE gap.
+  const validators = [
+    ["138_issue605_board_summary_settings.sql", "board_summary_config_is_valid", "jsonb"],
+    ["089_bbe176_column_metadata_canonical.sql", "board_column_access_policy_is_valid", "jsonb"],
+    ["118_bbe178_column_value_and_schedule_dispatch.sql", "board_column_validation_is_valid", "jsonb"],
+    ["089_bbe176_column_metadata_canonical.sql", "board_column_metadata_is_valid", "jsonb,jsonb,jsonb"],
+    ["115_bbe176_column_date_schedule.sql", "board_column_date_settings_is_valid", "jsonb"],
+  ];
+  for (const [file, name, args] of validators) {
+    const source = readFileSync(resolve(process.cwd(), "../supabase/migrations", file), "utf8");
+    const definition = source.match(new RegExp(`create or replace function public[.]${name}\\([\\s\\S]*?\\$\\$;`))?.[0];
+    expect(definition).toBeTruthy();
+    await db.exec(`${definition}
+      revoke all on function public.${name}(${args}) from public,anon,authenticated,service_role;
+      grant execute on function public.${name}(${args}) to authenticated;`);
+  }
+  await db.exec(`
+    grant execute on function public.board_summary_config_is_valid(jsonb) to anon,service_role;
+    alter table public.boards add column summary_config_jsonb jsonb not null default '[]';
+    alter table public.boards add constraint boards_summary_config_shape_check check(public.board_summary_config_is_valid(summary_config_jsonb));
+    alter table public.board_columns add column view_policy_jsonb jsonb not null default '{}', add column date_settings_jsonb jsonb not null default '{}';
+    alter table public.board_columns add constraint board_columns_policy_objects check(public.board_column_metadata_is_valid(validation_jsonb,edit_policy_jsonb,view_policy_jsonb));
+    alter table public.board_columns add constraint board_columns_date_settings_valid check(public.board_column_date_settings_is_valid(date_settings_jsonb));
+    set role authenticated;
+  `);
+  await expect(move({item:ids.b,group:ids.g1,version:1,request:9801})).rejects.toThrow(/permission denied for function board_summary_config_is_valid/);
+  await expect(db.query("select * from public.reorder_board_columns_atomic($1,$2,$3)",[ids.org,ids.board,[ids.col2,ids.col1]])).rejects.toThrow(/permission denied for function board_column_date_settings_is_valid/);
+  await db.exec("reset role;");
+  const boundarySql = `select p.oid,proowner,prosrc,prosecdef,provolatile,proconfig,
+    has_function_privilege('anon',p.oid,'EXECUTE') anon_exec,
+    has_function_privilege('authenticated',p.oid,'EXECUTE') authenticated_exec,
+    has_function_privilege('service_role',p.oid,'EXECUTE') service_exec
+    from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' order by p.oid`;
+  const beforeValidators = (await db.query(boundarySql)).rows;
+  const beforeMembership = (await db.query("select * from pg_auth_members order by roleid,member,grantor")).rows;
+  const fix159=readFileSync(resolve(process.cwd(),"../supabase/migrations/159_row_order_validator_access.sql"),"utf8");
+  await db.exec(fix159);
+  expect((await db.query(boundarySql)).rows).toEqual(beforeValidators);
+  expect((await db.query("select * from pg_auth_members order by roleid,member,grantor")).rows).toEqual(beforeMembership);
+  expect((await db.query<{allowed:boolean}>("select has_schema_privilege('moawork_row_order_writer','auth','USAGE') allowed")).rows[0].allowed).toBe(false);
+  for (const [, name, args] of validators) {
+    expect((await db.query<{allowed:boolean}>("select has_function_privilege('moawork_row_order_writer',$1,'EXECUTE') allowed", [`public.${name}(${args})`])).rows[0].allowed).toBe(true);
+  }
+  await expect(db.exec("update public.boards set summary_config_jsonb='[{}]' where id='"+ids.board+"'")).rejects.toMatchObject({code:"23514"});
+  await expect(db.exec("update public.board_columns set edit_policy_jsonb='{\"roles\":[\"invalid\"]}' where id='"+ids.col1+"'")).rejects.toMatchObject({code:"23514"});
+  await expect(db.exec("update public.board_columns set date_settings_jsonb='{\"includeTime\":\"invalid\"}' where id='"+ids.col1+"'")).rejects.toMatchObject({code:"23514"});
   await db.exec("set role authenticated;");
   try {
     await expect(db.query("select public.row_order_actor_uid()")).rejects.toThrow(/permission denied/);
