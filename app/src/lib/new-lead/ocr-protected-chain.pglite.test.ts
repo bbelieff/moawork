@@ -466,4 +466,131 @@ describe("161 preserves the real OCR protected chain", () => {
   });
 });
 
+describe("162 actual work projection + 139 writer + 153 archive boundary", () => {
+  const workBoard = "00000000-0000-4000-8000-000000000080";
+  const workGroup = "00000000-0000-4000-8000-000000000081";
+  const sql = (file: string) => readFileSync(resolve(process.cwd(), `${CONSULT}/${file}`), "utf8");
+  const upgrade = () => {
+    const full = sql("162_work_handoff_projection.sql");
+    return db.exec(full.slice(full.indexOf("create function public.project_committed_work_item")));
+  };
+  async function projectSetup(patched = true) {
+    await setup();
+    await db.exec(`
+      do $$begin if not exists(select 1 from pg_roles where rolname='moawork_row_order_writer') then
+        create role moawork_row_order_writer nologin bypassrls; end if; end$$;
+      alter table boards add column row_order_version bigint default 0, add column updated_at timestamptz default now();
+      alter table items alter column id set default gen_random_uuid();
+      alter table items add column group_id uuid,add column sort_order integer default 0,
+        add column parent_item_id uuid,add column archived_by uuid;
+      create table board_groups(id uuid primary key,org_id uuid,board_id uuid,name text,sort_order int default 0);
+      create unique index items_active_deal_projection_uq on items(org_id,deal_id) where deal_id is not null and deleted_at is null;
+      insert into boards(id,org_id,source) values('${workBoard}','${ids.org}','core.default-tab/contract-work');
+      insert into board_groups(id,org_id,board_id,name) values('${workGroup}','${ids.org}','${workBoard}','진행');
+      grant usage on schema public to moawork_row_order_writer;
+      grant select on boards,board_groups,items to moawork_row_order_writer;
+      grant update(board_id,group_id,sort_order,updated_at) on items to moawork_row_order_writer;
+      grant update(row_order_version,updated_at) on boards to moawork_row_order_writer;
+    `);
+    const rowMove=sql("139_issue602_atomic_board_row_move.sql");
+    for (const [start,end] of [
+      ["create or replace function public.guard_board_row_order_version_direct_write()","-- Row position is an RPC-owned invariant"],
+      ["create or replace function public.guard_board_row_position_direct_write()","create table public.board_row_move_requests"],
+    ]) await db.exec(rowMove.slice(rowMove.indexOf(start),rowMove.indexOf(end)));
+    const archive=sql("153_item_operations_draft.sql");
+    await db.exec(archive.slice(archive.indexOf("create or replace function public.guard_archived_item_write()"),archive.indexOf("-- 139 keeps row positions writer-owned")));
+    const moveStart=archive.indexOf("create or replace function public.issue602_move_board_item_private(");
+    await db.exec(archive.slice(moveStart,archive.indexOf("$$;",moveStart)+3));
+    await db.exec(`alter function public.issue602_move_board_item_private(uuid,uuid,uuid,uuid,uuid,uuid,uuid,integer) owner to moawork_row_order_writer;
+      revoke all on function public.issue602_move_board_item_private(uuid,uuid,uuid,uuid,uuid,uuid,uuid,integer) from public,anon,authenticated,service_role;
+      grant execute on function public.issue602_move_board_item_private(uuid,uuid,uuid,uuid,uuid,uuid,uuid,integer) to postgres;`);
+    const projection=sql("100_bbe235_work_board_projection.sql");
+    await db.exec(projection.slice(projection.indexOf("create or replace function public.bbe235_project_work_board()")));
+    const workflow=sql("156_consultation_workflow.sql");
+    await db.exec(workflow.slice(workflow.indexOf("alter table public.consultation_states add column phase")));
+    const seal=sql("161_consultation_seal_handoff.sql");
+    await db.exec(seal.slice(seal.indexOf("alter table public.consultation_requests drop constraint")));
+    if(patched) await upgrade();
+    await asUser(db,ids.owner);
+  }
+  const submit=(op:string,v:number,tag:string)=>db.query<{company_id:string;replayed:boolean}>(
+    "select * from execute_consultation_seal_handoff($1,$2,$3,$4,$5,$6)",[ids.org,ids.item,req(tag),v,op,"테스트 회사"]);
+  async function ready() {
+    const version=await completeChecks(db,ids.item,"projection");
+    await submit("seal_approval",version,"seal");
+    return version+1;
+  }
+  const projected = async () => (await db.query<{id:string;deal_id:string;board_id:string;group_id:string|null}>(`select id,deal_id,board_id,group_id from items where deal_id='${ids.deal}' and deleted_at is null`)).rows;
+
+  it("negative control: real 100 accepts handoff but leaves canonical item on contact", async()=>{
+    await projectSetup(false);
+    await submit("handoff",await ready(),"go");
+    expect(await projected()).toEqual([{id:ids.item,deal_id:ids.deal,board_id:ids.board,group_id:null}]);
+  });
+
+  it("moves the SAME item/deal; preserves OCR, owner, appointment, checklist, history and replay",async()=>{
+    await projectSetup();
+    await db.exec(`update deal_intake set biz_no='${INTAKE_BIZ}',birthdate='1990-01-01',business_item='합성 종목' where deal_id='${ids.deal}'`);
+    const version=await ready();
+    await db.exec(`update consultation_states set meeting_at='2026-09-28 02:00:00+00' where item_id='${ids.item}'`);
+    const state=(await db.query(`select * from consultation_states where item_id='${ids.item}'`)).rows[0];
+    const values=(await db.query(`select column_key,value_jsonb from item_values where item_id='${ids.item}' order by column_key`)).rows;
+    const events=(await db.query(`select * from consultation_events where item_id='${ids.item}' order by id`)).rows;
+    const result=(await submit("handoff",version,"go")).rows[0];
+    expect(await projected()).toEqual([{id:ids.item,deal_id:ids.deal,board_id:workBoard,group_id:workGroup}]);
+    expect((await db.query(`select * from consultation_states where item_id='${ids.item}'`)).rows[0]).toEqual(state);
+    expect((await db.query(`select column_key,value_jsonb from item_values where item_id='${ids.item}' order by column_key`)).rows).toEqual(values);
+    expect((await db.query(`select * from consultation_events where item_id='${ids.item}' order by id`)).rows).toEqual(events);
+    expect((await db.query(`select assigned_to from items where id='${ids.item}'`)).rows[0]).toEqual({assigned_to:ids.assignee});
+    expect((await db.query("select id,owner_birthdate::text,business_item from companies")).rows).toEqual([{id:result.company_id,owner_birthdate:"1990-01-01",business_item:"합성 종목"}]);
+    expect((await submit("handoff",version,"go")).rows[0].replayed).toBe(true);
+    expect((await db.query("select row_order_version from boards order by id")).rows).toEqual([{row_order_version:1},{row_order_version:1}]);
+    expect((await db.query("select count(*)::int n from companies")).rows[0]).toEqual({n:1});
+  });
+
+  it.each(["missing-board","duplicate-board","missing-group","hierarchy","foreign-board","foreign-group"])("%s rolls back the whole protected handoff",async(condition)=>{
+    await projectSetup(); const version=await ready();
+    if(condition==="missing-board") await db.exec(`delete from boards where id='${workBoard}'`);
+    if(condition==="duplicate-board") await db.exec(`insert into boards(id,org_id,source) values(gen_random_uuid(),'${ids.org}','core.default-tab/contract-work')`);
+    if(condition==="missing-group") await db.exec("delete from board_groups");
+    if(condition==="hierarchy") await db.exec(`update items set parent_item_id='${ids.item2}' where id='${ids.item}'`);
+    if(condition==="foreign-board") await db.exec(`update boards set org_id=gen_random_uuid() where id='${workBoard}'`);
+    if(condition==="foreign-group") await db.exec("update board_groups set org_id=gen_random_uuid()");
+    await expect(submit("handoff",version,"go")).rejects.toThrow();
+    expect((await db.query(`select company_id,stage_id from deals where id='${ids.deal}'`)).rows[0]).toEqual({company_id:null,stage_id:ids.meeting});
+    expect((await db.query("select count(*)::int n from companies")).rows[0]).toEqual({n:0});
+    expect((await db.query("select count(*)::int n from contact_pipeline_transitions")).rows[0]).toEqual({n:0});
+    expect((await projected())[0].board_id).toBe(ids.board);
+  });
+
+  it("does not reorder an archived sibling, and revoked replay cannot invoke projection",async()=>{
+    await projectSetup();
+    await db.exec(`update items set archived_at=now() where id='${ids.item2}'`);
+    const version=await ready(); await submit("handoff",version,"go");
+    expect((await db.query(`select board_id,sort_order from items where id='${ids.item2}'`)).rows[0]).toEqual({board_id:ids.board,sort_order:0});
+    await db.exec(`insert into test_permission_deny values('${ids.org}','${ids.owner}','work.item_upsert')`);
+    await expect(submit("handoff",version,"go")).rejects.toThrow(/permission denied/);
+    expect((await db.query("select row_order_version from boards order by id")).rows).toEqual([{row_order_version:1},{row_order_version:1}]);
+  });
+
+  it.each(["stranger","inactive","feature","archived"])("%s cannot cause projection or bypass its current authority",async(condition)=>{
+    await projectSetup(); const version=await ready();
+    if(condition==="stranger") await asUser(db,ids.stranger);
+    if(condition==="inactive") await db.exec("update orgs set status='inactive'");
+    if(condition==="feature") await db.exec(`insert into test_permission_deny values('${ids.org}','${ids.owner}','work.item_upsert')`);
+    if(condition==="archived") await db.exec(`update items set archived_at=now() where id='${ids.item}'`);
+    await expect(submit("handoff",version,"go")).rejects.toThrow();
+    expect((await projected())[0].board_id).toBe(ids.board);
+    expect((await db.query("select count(*)::int n from companies")).rows[0]).toEqual({n:0});
+  });
+
+  it("private projection and row writer have no Data API execute; position guard is real",async()=>{
+    await projectSetup();
+    for(const role of ["anon","authenticated","service_role"]){
+      expect((await db.query(`select has_function_privilege('${role}','public.project_committed_work_item(uuid,uuid)','EXECUTE') ok`)).rows[0]).toEqual({ok:false});
+    }
+    await expect(db.exec(`update items set board_id='${workBoard}' where id='${ids.item}'`)).rejects.toThrow(/RPC-only/);
+  });
+});
+
 });
