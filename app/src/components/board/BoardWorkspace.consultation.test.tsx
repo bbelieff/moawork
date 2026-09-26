@@ -122,6 +122,12 @@ async function expectSharedConsultation(host: HTMLElement, title: string, itemId
   expect(actionMocks.readSnapshot).toHaveBeenCalledWith(itemId);
   expect(actionMocks.readHandoff).toHaveBeenCalledWith(itemId);
   expect(window.location.hash).toContain(encodeURIComponent(itemId));
+  const close = panels[0].querySelector<HTMLButtonElement>('button[aria-label="상세 닫기"]');
+  expect(close).not.toBeNull();
+  await act(async () => close!.click());
+  expect(document.querySelector('[data-item-detail-backdrop]')).toBeNull();
+  expect(renderedRowNames(host)).toContain(title);
+  expect(entry!.isConnected).toBe(true);
 }
 
 function workspace(view: "all" | "remote" | "inperson") {
