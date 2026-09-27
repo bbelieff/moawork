@@ -9,8 +9,11 @@ PORT=3100
 OBSERVER_SOURCE_RELATIVE=ops/vps/request-stream-observer.cjs
 OBSERVER_RUNTIME_NAME=request-stream-observer.cjs
 OBSERVER_REQUIRE_PATH=$ROOT/current/runtime/app/$OBSERVER_RUNTIME_NAME
-# Releases kept on disk before a new build, counting current and previous (~1.1G each).
+# Disk ceiling on a shared host: a deploy may only add one runtime-only release (~160M).
+# Releases kept before a new build, counting current and previous.
 KEEP_RELEASES=3
+# Build needs ~1.5G; the rest is headroom for the other services on this VPS.
+MIN_FREE_BYTES=$((3 * 1024 * 1024 * 1024))
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 trusted() {
@@ -100,8 +103,10 @@ check_release() {
   actual="$(curl -fsS --noproxy '*' --max-time 3 "http://127.0.0.1:$PORT/_next/static/$relative" | sha256sum)" || return 1
   [[ "${actual%% *}" == "$expected" ]]
 }
-# Delete the oldest releases and their own incoming archives; protected paths always survive.
-# Archives of releases not yet built (another pending deploy) are left alone.
+# Keep the newest complete releases, delete the rest with their own archives and strip
+# build sources from survivors; runtime/, runtime.sha256 and release.env are all a
+# rollback or the service reads. Protected paths are never deleted; the candidate is
+# never touched. Archives of releases not yet built (a pending deploy) are left alone.
 prune_releases() {
   local keep="$1" entry name extras=0 line; shift
   [[ "$keep" =~ ^[1-9][0-9]*$ ]] || return 1
@@ -115,13 +120,31 @@ prune_releases() {
   while IFS= read -r -d '' line; do
     entry="${line#* }"; name="${entry##*/}"
     [[ "$name" =~ ^[a-f0-9]{40}$ && "$entry" == "$ROOT/releases/$name" && -d "$entry" && ! -L "$entry" ]] || continue
-    [[ -n "${protect[$entry]:-}" ]] && continue
-    if ((extras < keep)); then extras=$((extras+1)); continue; fi
+    if [[ -n "${protect[$entry]:-}" ]]; then
+      [[ "$entry" == "${1:-}" || "$entry" == "${2:-}" ]] && { strip_source "$entry" || return 1; }
+      continue
+    fi
+    if ((extras < keep)) && [[ -f "$entry/runtime.sha256" && -d "$entry/runtime" ]]; then
+      extras=$((extras+1)); strip_source "$entry" || return 1; continue
+    fi
     rm -rf --one-file-system -- "$entry" || return 1
     rm -f -- "$ROOT/incoming/$name.tar" || return 1
-    printf 'PRUNED release=%s
-' "$name"
+    printf 'PRUNED release=%s\n' "$name"
   done < <(find "$ROOT/releases" -mindepth 1 -maxdepth 1 -printf '%T@ %p\0' | sort -z -rn)
+}
+# Build sources (node_modules, .next cache) are ~93% of a release and unused after activation.
+strip_source() {
+  local release="$1"
+  [[ -e "$release/source" || -L "$release/source" ]] || return 0
+  [[ -f "$release/runtime.sha256" && -d "$release/runtime" && ! -L "$release/source" ]] || return 1
+  rm -rf --one-file-system -- "$release/source"
+}
+free_bytes() { df --output=avail -B1 -- "$1" | tail -n 1 | tr -d ' '; }
+require_free_space() {
+  local need="$1" have
+  have="$(free_bytes "$ROOT")" || return 1
+  [[ "$have" =~ ^[0-9]+$ ]] || return 1
+  ((have >= need)) || { printf 'DISK_LOW need=%s have=%s\n' "$need" "$have" >&2; return 1; }
 }
 rollback() {
   local previous="$1"
@@ -173,6 +196,8 @@ main() {
   else port_free || die 'candidate port is occupied or query failed'; fi
   prune_releases "$KEEP_RELEASES" "$previous" "$(release_link "$ROOT/previous")" "$release" ||
     printf '%s\n' 'PRUNE_INCOMPLETE; continuing with existing disk space' >&2
+  # Failing the deploy is better than filling the disk shared with other services.
+  require_free_space "$MIN_FREE_BYTES" || die 'not enough free disk for a build; current release unchanged'
   [[ "$(sha256sum "$archive" | cut -d ' ' -f1)" == "$archive_hash" ]] || die 'archive digest mismatch'
   [[ "$(git get-tar-commit-id <"$archive")" == "$sha" ]] || die 'archive does not identify exact source commit'
   install -d -m 0755 "$release"
@@ -223,6 +248,8 @@ main() {
   trap 'exit 143' TERM
   activate "$release" "$previous" || die 'candidate failed; inspect rollback result'
   trap - EXIT INT TERM
+  { strip_source "$release" && rm -f -- "$archive"; } ||
+    printf '%s\n' 'CLEANUP_INCOMPLETE; next deploy retries' >&2
   printf 'DEPLOYED source=%s artifact=%s private=loopback\n' "$sha" "$(cat "$release/runtime.sha256")"
 }
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi
