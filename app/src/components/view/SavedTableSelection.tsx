@@ -61,7 +61,7 @@ export function SavedTableSelection({ boardId, boardSource = null, rows, columns
   return <>
     {selected.size > 0 || dialog ? <BulkActionBar
       boardId={boardId} workflowKind={workflowKind} totalSelected={selected.size}
-      targets={targets.map((row) => ({ id: row.id, title: row.title, updatedAt: row.updated_at }))}
+      targets={targets.map((row) => ({ id: row.id, title: row.title, updatedAt: row.updated_at, parentItemId: row.parent_item_id ?? null }))}
       targetValues={Object.fromEntries(targets.map((row) => [row.id, row.values]))}
       canEdit={canEdit} canMove={canMove} canDelete={canDelete} canExport={canExport}
       statusColumn={pickBulkStatusColumn(workflowKind === "new-lead" ? presentNewLeadColumns(physicalColumns) : physicalColumns, workflowKind)} fieldColumns={fieldColumns}
