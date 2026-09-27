@@ -1,4 +1,5 @@
 import { safeNextPath } from "@/lib/auth/oauth";
+import { roleLabel } from "@/lib/auth/roles";
 
 /**
  * 「사람 부르기」 링크 — 화면 셋이 함께 쓰는 «말» 을 여기 모은다.
@@ -102,8 +103,9 @@ export function workspacePath(slug: string): string {
   return `/w/${slug}`;
 }
 
+/** 역할 이름표는 정본(lib/auth/roles.ts) 하나에서 나온다 — 여기서 다시 적지 않는다. */
 export function inviteRoleLabel(role: InviteRole): string {
-  return role === "admin" ? "관리자" : role === "team_lead" ? "팀장" : "구성원";
+  return roleLabel(role);
 }
 
 export function inviteScopeLabel(scope: InviteScope): string {
