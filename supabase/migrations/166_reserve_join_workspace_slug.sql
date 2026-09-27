@@ -1,10 +1,10 @@
--- moa-migration-guard: logical_key=151_reserve_join_workspace_slug predecessor=150_invite_links_hardening digest=1f7686818e3db0898d115bc3d785457d1e493175f5c30eed0d96e2cd0ee63988 foundation=false
+-- moa-migration-guard: logical_key=166_reserve_join_workspace_slug predecessor=165_invite_links_hardening digest=d9b0c189e00f64b0ec484ae7930a446097de8ca0dd0697b2e0348801728b7fed foundation=false
 
 select public.begin_guarded_migration(
-  p_logical_key => '151_reserve_join_workspace_slug',
-  p_file_name => '151_reserve_join_workspace_slug.sql',
-  p_file_digest => '1f7686818e3db0898d115bc3d785457d1e493175f5c30eed0d96e2cd0ee63988',
-  p_expected_predecessor => '150_invite_links_hardening',
+  p_logical_key => '166_reserve_join_workspace_slug',
+  p_file_name => '166_reserve_join_workspace_slug.sql',
+  p_file_digest => 'd9b0c189e00f64b0ec484ae7930a446097de8ca0dd0697b2e0348801728b7fed',
+  p_expected_predecessor => '165_invite_links_hardening',
   p_executor => 'DC-00',
   p_thread_id => '54ccb210-7be2-4b40-bcea-8cf0d99047ee',
   p_foundation => false

@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
  *   그래서 이 시험도 «147 만» 읽으면 안 된다. 운영은 둘 다 지나간 상태이고,
  *   여기서 순서대로 얹어야 「150 이 147 을 제대로 덮는가」까지 같이 재진다.
  */
-const migrations = ["147_invite_links.sql", "150_invite_links_hardening.sql"].map((name) =>
+const migrations = ["147_invite_links.sql", "165_invite_links_hardening.sql"].map((name) =>
   readFileSync(resolve(process.cwd(), `../supabase/migrations/${name}`), "utf8"),
 );
 
