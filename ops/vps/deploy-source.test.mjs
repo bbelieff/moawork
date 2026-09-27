@@ -160,13 +160,13 @@ function retentionFixture() {
 n=1000; for s in ${shas.join(" ")}; do
   [[ $s == ${shas[6]} ]] || { mkdir "$ROOT/releases/$s"; touch -d @$n "$ROOT/releases/$s"; }
   : >"$ROOT/incoming/$s.tar"; n=$((n+100)); done
-: >"$ROOT/incoming/notes.tar"
+: >"$ROOT/incoming/notes.tar"; : >"$ROOT/incoming/${"8".repeat(40)}.tar"
 `;
   return { root, shas, body, rel: (i) => `${root}/releases/${shas[i]}` };
 }
 const listing = `; printf '%s|' $(ls "$ROOT/releases"); printf '#'; printf '%s|' $(ls "$ROOT/incoming")`;
 
-test("retention keeps current, previous and the newest extras, and drops only their stale archives", () => {
+test("retention keeps current, previous and the newest extras, and drops only the pruned releases' archives", () => {
   const f = retentionFixture();
   // current = newest (6), previous = oldest (1), candidate 7 is not built yet.
   const r = run(f.body + `prune_releases 3 ${quote(f.rel(5))} ${quote(f.rel(0))} ${quote(f.rel(6))}` + listing);
@@ -176,7 +176,7 @@ test("retention keeps current, previous and the newest extras, and drops only th
   const [releases, incoming] = listed.split("#");
   assert.deepEqual(releases.split("|").filter(Boolean).sort(), [f.shas[0], f.shas[4], f.shas[5], "scratch"].sort());
   assert.deepEqual(incoming.split("|").filter(Boolean).sort(),
-    [f.shas[0], f.shas[4], f.shas[5], f.shas[6]].map((s) => s + ".tar").concat("notes.tar").sort());
+    [f.shas[0], f.shas[4], f.shas[5], f.shas[6], "8".repeat(40)].map((s) => s + ".tar").concat("notes.tar").sort());
 });
 
 test("retention never deletes protected releases even when keep is smaller than the protected set", () => {
