@@ -110,3 +110,4 @@ systemctl disable --now moawork-platform-metrics.timer
 - 정리는 `deploy.lock` 안에서만 한다. current·previous·진행 중 후보는 지우지 않는다. 정리 실패는 경고만 남기고 배포를 계속한다.
 - 정리 후 여유가 `MIN_FREE_BYTES`(3G = 빌드 ≈1.5G + 다른 서비스 여유) 미만이면 빌드하지 않고 `DISK_LOW` 로 멈춘다. 디스크를 채우는 것보다 배포 실패가 낫다.
 - 새 배포 경로·스크립트는 디스크 상한과 정리 단계를 포함해야 머지할 수 있다.
+- 운영 배포 도구는 레포 파일이 아니라 VPS 설치본 `/etc/moawork/deploy-source.sh`(root, 0700)다. `deploy-source.sh` 를 바꾸는 PR 은 «머지 + 설치본 교체»가 한 세트다. 배포 전에 `sha256sum /etc/moawork/deploy-source.sh` 가 main 의 `ops/vps/deploy-source.sh` 와 같은지 확인하고, 다르면 옛 설치본을 `.bak-<옛sha>-<날짜>` 로 남긴 뒤 같은 소유·권한으로 교체한다.
