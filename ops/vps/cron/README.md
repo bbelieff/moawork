@@ -100,3 +100,13 @@ done
 ```sh
 systemctl disable --now moawork-platform-metrics.timer
 ```
+
+## 배포와 디스크 상한 (공유 VPS)
+
+같은 서버를 다른 서비스들이 함께 쓴다. 모아워크 배포가 그 공간을 잠식하면 안 된다. `ops/vps/deploy-source.sh` 가 지키는 규칙:
+
+- 배포 1회가 남기는 것은 runtime 한 벌(≈160M)뿐이다. 활성화·health 성공 뒤 새 release 의 `source/`(node_modules·빌드 캐시)와 `incoming/<sha>.tar` 를 지운다. 서비스·health·롤백은 `runtime/`·`runtime.sha256`·`release.env` 만 읽는다.
+- 빌드 전에 current·previous 포함 `KEEP_RELEASES=3` 벌만 남기고, 남는 release 의 `source/` 도 지운다. 끝나지 않은 빌드는 보존 수에 넣지 않는다.
+- 정리는 `deploy.lock` 안에서만 한다. current·previous·진행 중 후보는 지우지 않는다. 정리 실패는 경고만 남기고 배포를 계속한다.
+- 정리 후 여유가 `MIN_FREE_BYTES`(3G = 빌드 ≈1.5G + 다른 서비스 여유) 미만이면 빌드하지 않고 `DISK_LOW` 로 멈춘다. 디스크를 채우는 것보다 배포 실패가 낫다.
+- 새 배포 경로·스크립트는 디스크 상한과 정리 단계를 포함해야 머지할 수 있다.
