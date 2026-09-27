@@ -64,6 +64,7 @@ export interface BulkTargetRow {
   title: string;
   /** 동시수정(CAS) 기준 — 없으면 서버가 현재값 기준으로 처리한다. */
   updatedAt?: string | null;
+  parentItemId?: string | null;
 }
 
 export interface BulkStatusColumn {
@@ -1022,53 +1023,75 @@ function ArchiveDialog({
 function DuplicateDialog({
   boardId,
   targets,
+  requestKey,
+  onStarted,
+  onCompleted,
   onClose,
   onApplied,
   onNotice,
 }: {
   boardId: string;
   targets: readonly BulkTargetRow[];
+  requestKey: string;
+  onStarted: (ids: string[]) => void;
+  onCompleted: (ids: string[]) => void;
   onClose: () => void;
   onApplied: (succeededIds: string[]) => void;
   onNotice: (message: string, ok?: boolean) => void;
 }) {
   const [result, setResult] = useState<BulkDuplicateResult | null>(null);
+  const [requestError, setRequestError] = useState("");
+  const inFlight = useRef(false);
   const [reviewTargets] = useState(() => [...targets]);
   const [pending, startTransition] = useTransition();
-  const [bulkKey] = useState(() => crypto.randomUUID());
+  const [bulkKey] = useState(requestKey);
   const ids = result ? result.results.filter((entry) => !entry.ok).map((entry) => entry.itemId) : reviewTargets.map((row) => row.id);
   const createdCount = result?.results.filter((entry) => entry.ok).length ?? 0;
 
+  const close = () => { if (!inFlight.current) onClose(); };
+
   const apply = () => {
+    if (inFlight.current || ids.length === 0) return;
+    inFlight.current = true;
+    onStarted(ids);
+    setRequestError("");
     startTransition(async () => {
-      const next = await bulkDuplicateAction({ boardId, itemIds: ids, idempotencyKey: bulkKey });
-      setResult((previous) => {
-        const results = [...(previous?.results.filter((entry) => entry.ok) ?? []), ...next.results];
-        const applied = results.filter((entry) => entry.ok).length;
-        return { ok: applied === results.length, applied, failed: results.length - applied, results };
-      });
-      // 복제는 새 행을 만든다 — 성공분을 선택에서 빼지 않는다(원본 선택 유지). 실패분만 다시 실행한다.
-      onApplied([]);
-      if (next.failed === 0) {
-        onNotice(`${next.applied}개를 복제했습니다. 승인·서명·원장 등은 옮기지 않습니다.`);
-      } else if (next.applied > 0) {
-        onNotice(`${next.applied}개 복제·${next.failed}개 실패 — 실패한 것만 다시 실행해 주세요.`, false);
+      try {
+        const next = await bulkDuplicateAction({ boardId, itemIds: ids, idempotencyKey: bulkKey });
+        setResult((previous) => {
+          const results = [...(previous?.results.filter((entry) => entry.ok) ?? []), ...next.results];
+          const applied = results.filter((entry) => entry.ok).length;
+          return { ok: applied === results.length, applied, failed: results.length - applied, results };
+        });
+        onCompleted(next.results.filter((entry) => entry.ok).map((entry) => entry.itemId));
+        // 복제는 새 행을 만든다 — 성공분을 선택에서 빼지 않는다(원본 선택 유지). 실패분만 다시 실행한다.
+        onApplied([]);
+        if (next.failed === 0) {
+          onNotice(`${next.applied}개를 복제했습니다. 승인·서명·원장 등은 옮기지 않습니다.`);
+        } else if (next.applied > 0) {
+          onNotice(`${next.applied}개 복제·${next.failed}개 실패 — 실패한 것만 다시 실행해 주세요.`, false);
+        }
+      } catch {
+        setRequestError("복제 결과를 확인하지 못했습니다. 같은 요청으로 다시 시도해 주세요.");
+      } finally {
+        inFlight.current = false;
       }
     });
   };
 
   return (
-    <DialogShell title="선택 항목 복제" onClose={onClose}>
+    <DialogShell title="선택 항목 복제" onClose={close}>
       <p className="text-xs text-mw-sub">새 행은 내가 담당합니다. 승인·직인·서명·계약확인·입금/원장은 복사하지 않습니다. 신규리드·컨택·계약업무의 전화번호·이메일·외부 식별번호도 복사하지 않습니다. 복제는 되돌릴 수 없습니다.</p>
       <ReviewList targets={reviewTargets} />
       {result ? <Failures result={result} targets={reviewTargets} /> : null}
+      {requestError ? <p role="alert" className="text-xs text-mw-error">{requestError}</p> : null}
       {createdCount > 0 ? (
         <p className="rounded bg-mw-bg px-3 py-2 text-xs text-mw-body">{createdCount}개 복제됨 — 실패분({ids.length}개)만 다시 실행할 수 있습니다.</p>
       ) : null}
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={onClose} className={BAR_BUTTON}>닫기</button>
+        <button type="button" onClick={close} className={BAR_BUTTON}>닫기</button>
         <button type="button" onClick={apply} disabled={pending || ids.length === 0} className={DIALOG_PRIMARY}>
-          {pending ? "복제하는 중…" : `${ids.length}개 복제하기`}
+          {result && ids.length === 0 ? "복제 완료" : pending ? "복제하는 중…" : `${ids.length}개 복제하기`}
         </button>
       </div>
     </DialogShell>
@@ -1091,8 +1114,13 @@ function LinkDialog({
   onNotice: (message: string, ok?: boolean) => void;
 }) {
   const [result, setResult] = useState<BulkLinkResult | null>(null);
-  const [reviewTargets] = useState(() => [...targets]);
-  const [parentId, setParentId] = useState<string>("");
+  const [reviewTargets, setReviewTargets] = useState(() => [...targets]);
+  const availableParents = candidates.filter((row) => !reviewTargets.some((target) => target.id === row.id));
+  const [parentId, setParentId] = useState(() => {
+    const current = reviewTargets[0]?.parentItemId;
+    return current && reviewTargets.every((row) => row.parentItemId === current)
+      && availableParents.some((row) => row.id === current) ? current : "";
+  });
   const [pending, startTransition] = useTransition();
   const [bulkKey] = useState(() => crypto.randomUUID());
   const retryIds = result ? result.results.filter((entry) => !entry.ok).map((entry) => entry.itemId) : reviewTargets.map((row) => row.id);
@@ -1111,6 +1139,8 @@ function LinkDialog({
         return { ok: applied === results.length, applied, failed: results.length - applied, results };
       });
       const succeeded = next.results.filter((entry) => entry.ok).map((entry) => entry.itemId);
+      setReviewTargets((rows) => rows.map((row) => succeeded.includes(row.id) ? { ...row, parentItemId } : row));
+      if (next.failed === 0) setParentId(parentItemId ?? "");
       onApplied(succeeded);
       if (next.failed === 0) {
         onNotice(parentItemId === null ? `${next.applied}개의 상위 연결을 해제했습니다.` : `${next.applied}개를 상위 항목에 연결했습니다.`);
@@ -1122,10 +1152,15 @@ function LinkDialog({
     <DialogShell title="상하위 항목 연결" onClose={onClose}>
       <p className="text-xs text-mw-sub">부모를 정해도 하위 행이 함께 바뀌거나 지워지지 않습니다. 아래 목록의 행에만 연결이 적용됩니다. 순환 연결은 저장하지 않습니다.</p>
       <ReviewList targets={reviewTargets} />
+      <ul aria-label="현재 상위 연결" className="space-y-1 text-xs text-mw-sub">
+        {reviewTargets.map((row) => <li key={row.id}>{row.title} · 상위: {row.parentItemId
+          ? candidates.find((candidate) => candidate.id === row.parentItemId)?.title ?? "현재 보기에서 확인할 수 없음"
+          : "연결 없음"}</li>)}
+      </ul>
       <label className="flex flex-col gap-1 text-xs font-medium">상위 항목
         <select value={parentId} onChange={(e) => setParentId(e.target.value)} className={DIALOG_INPUT} aria-label="상위 항목">
           <option value="">선택하세요</option>
-          {candidates.filter((row) => !reviewTargets.some((target) => target.id === row.id)).map((row) => (
+          {availableParents.map((row) => (
             <option key={row.id} value={row.id}>{row.title}</option>
           ))}
         </select>
@@ -1214,6 +1249,9 @@ export function BulkActionBar({
   const showDuplicate = canEdit;
   const showLink = canEdit;
   const [exportPending, startExport] = useTransition();
+  // Keep an uncertain duplicate intent across dialog close/reopen.
+  const [duplicateIntentKey, setDuplicateIntentKey] = useState(() => crypto.randomUUID());
+  const unresolvedDuplicates = useRef(new Set<string>());
 
   const download = () => {
     if (!canExport || !hasTargets || exportPending) return;
@@ -1350,6 +1388,12 @@ export function BulkActionBar({
           />
         ) : dialog.op === "duplicate" && showDuplicate ? (
           <DuplicateDialog
+            requestKey={duplicateIntentKey}
+            onStarted={(ids) => ids.forEach((id) => unresolvedDuplicates.current.add(id))}
+            onCompleted={(ids) => {
+              ids.forEach((id) => unresolvedDuplicates.current.delete(id));
+              if (unresolvedDuplicates.current.size === 0) setDuplicateIntentKey(crypto.randomUUID());
+            }}
             key="duplicate"
             boardId={boardId}
             targets={targets}

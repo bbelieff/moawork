@@ -1,4 +1,5 @@
 "use client";
+import { ParentItemLabel } from "@/components/board/ParentItemLabel";
 
 import { startTransition,useCallback, useEffect, useMemo, useRef,useState } from "react";
 import { applyFilters, BOARD_FILTER_QUERY_KEY, decodeBoardFilters, type BoardFilterState } from "@/components/board/filters";
@@ -282,7 +283,7 @@ export function SavedViewsController({
         return <span className="flex items-center gap-1">{canManageColumns&&!isSystem&&!presentationOnly?<BoardInlineTitleEditor name={definition.label} label="컬럼 이름" onSave={(value)=>renameColumnTitleAction(boardId,definition.id,value)}/>:definition.label}{canManageColumns&&!isSystem&&!presentationOnly?<span className="sr-only focus-within:not-sr-only"><button type="button" onClick={()=>void moveFlatColumn(column.key,-1)} aria-label={`${definition.label} 왼쪽으로 이동`}>왼쪽으로 이동</button><button type="button" onClick={()=>void moveFlatColumn(column.key,1)} aria-label={`${definition.label} 오른쪽으로 이동`}>오른쪽으로 이동</button></span>:null}</span>;
       }} renderCell={(row, column) => {
         if (column.key === "__selection") return cell(row);
-        if (column.key === "__title") return <span className="flex items-center gap-1">{row.title}{rowMoveControls(row)}</span>;
+        if (column.key === "__title") return <span className="flex min-w-0 flex-col gap-1"><span>{row.title}{rowMoveControls(row)}</span><ParentItemLabel parentId={row.parent_item_id} title={filteredRows.find((candidate) => candidate.id === row.parent_item_id)?.title} /></span>;
         const definition = displayColumns.find((candidate) => candidate.key === column.key);
         return definition ? <BoardCell boardId={boardId} row={row} column={definition} readOnly={!canEditItems} canonicalNewLead={canonicalNewLead} canonicalOwner={workflowKindForSource(boardSource ?? null) !== null} members={memberOptions} canCreateColumnOptions={canManageColumns && !isSystem} addLabelOptionAction={addBoardLabelOptionAction} /> : "";
       }} />}

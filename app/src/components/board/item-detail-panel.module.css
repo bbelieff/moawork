@@ -771,7 +771,7 @@
 
 .historyEntry {
   display: grid;
-  /* 셋째 칸은 «치우기» 자리다(#672). 버튼이 없으면 auto 가 0 이라 전과 같은 모양이다. */
+  /* All permitted actions share one cell; none can wrap into the avatar column. */
   grid-template-columns: 1.75rem minmax(0, 1fr) auto;
   gap: 0.65rem;
   border-bottom: 1px solid var(--mw-line);
@@ -802,6 +802,7 @@
 
 .historyLine {
   display: flex;
+  flex-wrap: wrap;
   min-width: 0;
   align-items: center;
   gap: 0.4rem;
@@ -856,10 +857,17 @@
  * #672 — 「치우기」는 줄 오른쪽에 조용히 붙는다.
  *
  * ★ 못 누르는 줄에는 «아예 없다». 회색 버튼을 두면 눌러 보고 실패하는 길을 만드는 셈이다.
- * ★ 평소엔 흐리고 그 줄에 마우스가 올라오거나 초점이 오면 또렷해진다 —
- *   훑어 읽을 때 「치우기」 가 줄마다 시선을 뺏으면 안 된다.
+ * 작은 화면과 터치 환경에서도 읽을 수 있는 대비를 유지한다.
  */
+.historyActions {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+
 .historyRemove {
+  white-space: nowrap;
+  flex-shrink: 0;
   align-self: start;
   border: 1px solid transparent;
   border-radius: 0.35rem;
@@ -867,9 +875,9 @@
   padding: 0.1rem 0.35rem;
   color: var(--mw-sub);
   font: inherit;
-  font-size: 0.62rem;
+  font-size: 0.72rem;
   cursor: pointer;
-  opacity: 0.35;
+  opacity: 1;
   transition: opacity 140ms ease;
 }
 
@@ -914,11 +922,17 @@
 }
 
 .historyBody {
+  overflow-wrap: anywhere;
   margin: 0.25rem 0 0;
   color: var(--mw-fg);
   font-size: 0.75rem;
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+@media (max-width: 600px) {
+  .historyEntry { grid-template-columns: 1.75rem minmax(0, 1fr); }
+  .historyActions { grid-column: 2; justify-content: flex-end; }
 }
 
 .emptyHistory,

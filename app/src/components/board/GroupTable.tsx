@@ -600,6 +600,7 @@ export function GroupTable({
   detailLayoutInherited = true,
   rowDetailLayout,
   rows,
+  parentItems = rows,
   readOnly,
   canDeleteItems = !readOnly,
   authorColumnKey,
@@ -687,6 +688,7 @@ export function GroupTable({
   detailLayoutInherited?: boolean;
   rowDetailLayout?: (row: ItemWithValues) => { durable: DetailLayoutEntry[]; presented: DetailLayoutEntry[]; inherited: boolean };
   rows: readonly ItemWithValues[];
+  parentItems?: readonly { id: string; title: string }[];
   readOnly: boolean;
   canDeleteItems?: boolean;
   /** BBE-239 — 이 키가 있으면 그 컬럼 값이 `viewerUserId` 와 같은 행은 role 권한 없이도 삭제 버튼을 보여준다(작성자 예외, 공지사항 한정). 서버가 다시 검증한다 — 여긴 표시 전용. */
@@ -1149,6 +1151,7 @@ export function GroupTable({
                       groupName={groupName}
                       consultationSection={renderConsultationSection?.(row)}
                       row={row}
+                      parentItemTitle={parentItems.find((candidate) => candidate.id === row.parent_item_id)?.title}
                       columns={detailColumns}
                       boardLayout={boardDetailLayout}
                       durableColumns={durableDetailColumns}

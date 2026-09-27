@@ -1,4 +1,5 @@
 import { VisualConsultationProbe } from "./VisualConsultationProbe";
+import { ItemDetailPanel } from "@/components/board/ItemDetailPanel";
 import { SavedViewsController } from "@/components/view/SavedViewsController";
 import { NotificationCenterFixture } from "./NotificationCenterFixture";
 import { VisualDocumentOcrProbe } from "./VisualDocumentOcrProbe";
@@ -82,6 +83,18 @@ function fixture(tabKey: string, workflowValue: string | null, showAllGroups = f
 
 export default async function VisualFixturePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
+  if (params.surface === "detail-actions") {
+    const sample = fixture("new", null);
+    return <main><ItemDetailPanel boardId={sample.board.id}
+      row={{ ...sample.rows[0], title: "합성 메모 QA", parent_item_id: "visual-parent" }}
+      parentItemTitle="합성 상위 회사" columns={[]} boardLayout={[]} layout={[]} inherited
+      canEditItems canManageColumns={false} defaultOpen
+      initialDetail={{ ok: true, viewerId: "visual-user", viewerRole: "owner", members: [{ id: "visual-user", name: "시험 담당자" }],
+        links: [], files: [], events: [
+          { id: "memo", kind: "memo", actor_id: "visual-user", created_at: "2026-09-27T05:00:00Z", body: "메모의 고치기와 치우기가 같은 자리에서 가로로 표시됩니다." },
+          { id: "consultation", kind: "consultation", actor_id: "visual-user", created_at: "2026-09-27T04:00:00Z", body: "계약서 송부: 미확인 → 확인" },
+        ] }} /></main>;
+  }
   if (params.surface === "new-lead-stages") {
     // Synthetic layout/interaction QA only; real actions remain authenticated.
     const sample = fixture("new", null, true);

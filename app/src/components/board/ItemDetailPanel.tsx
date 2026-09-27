@@ -96,6 +96,7 @@ import {
 } from "@/lib/new-lead/region-search";
 import { DETAIL_FILE_GROUP_LABEL, groupDetailFiles } from "./detail-file-groups";
 import { ItemDetailOcr } from "./ItemDetailOcr";
+import { ParentItemLabel } from "./ParentItemLabel";
 import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
 import { AssignmentLineagePopover } from "./AssignmentLineagePopover";
 import { NewLeadCreditScoresCell } from "./NewLeadCreditScoresCell";
@@ -487,6 +488,7 @@ export function ItemDetailPanel({
   previousItem,
   nextItem,
   consultationSection,
+  parentItemTitle,
 }: {
   boardId: string;
   row: ItemWithValues;
@@ -506,6 +508,7 @@ export function ItemDetailPanel({
   initialDetail?: ItemDetailSnapshot;
   boardName?: string;
   groupName?: string;
+  parentItemTitle?: string;
   previousItem?: { id: string; title: string };
   nextItem?: { id: string; title: string };
   /**
@@ -1107,7 +1110,10 @@ export function ItemDetailPanel({
                   ×
                 </button>
                 <div className={styles.identity}>
-                  <h2 className={styles.companyName}>{row.title}</h2>
+                  <div className="min-w-0">
+                    <h2 className={styles.companyName}>{row.title}</h2>
+                    <ParentItemLabel parentId={row.parent_item_id} title={parentItemTitle} />
+                  </div>
                   <span className={styles.breadcrumb}>
                     {boardName ?? (canonicalNewLead ? "신규리드 관리" : "보드")} · {groupName ?? (canonicalNewLead ? "💡 신규고객" : "그룹 없음")}
                   </span>
@@ -2282,6 +2288,7 @@ export function ItemDetailPanel({
                             </p>
                           )}
                           </div>
+                          {(canEdit || canRemove || canRestore) && <div className={styles.historyActions}>
                           {canEdit && (
                             <button
                               type="button"
@@ -2339,6 +2346,7 @@ export function ItemDetailPanel({
                               되살리기
                             </button>
                           )}
+                          </div>}
                         </article>
                       );
                     })}

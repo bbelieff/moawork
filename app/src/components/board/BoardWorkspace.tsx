@@ -597,7 +597,7 @@ export function BoardWorkspace({
   );
   const rowById = useMemo(() => new Map(displayRows.map((row) => [row.id, row])), [displayRows]);
   const bulkTargets = useMemo(
-    () => bulkTargetIds.map((id) => ({ id, title: rowById.get(id)?.title ?? id, updatedAt: rowById.get(id)?.updated_at ?? null })),
+    () => bulkTargetIds.map((id) => ({ id, title: rowById.get(id)?.title ?? id, updatedAt: rowById.get(id)?.updated_at ?? null, parentItemId: rowById.get(id)?.parent_item_id ?? null })),
     [bulkTargetIds, rowById],
   );
   /** 상하위 연결 후보 — 보기 내 전체 행 (접힌 그룹·검색제외는 visibleOrderedIds에서 이미 빠진다). */
@@ -1174,6 +1174,7 @@ export function BoardWorkspace({
                 )}
                 detailLayoutInherited={rawResolvedDetailLayout.inherited}
                 rows={visibleRows}
+                parentItems={linkCandidates}
                 textMode={savedPresentation.textMode}
                 focusColumnKey={savedPresentation.focusColumnKey}
                 readOnly={readOnly}
