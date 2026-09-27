@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=165_invite_links_hardening predecessor=164_item_detail_handoff_resources digest=17ec553a987feb382f47c37342732c4c561c4cdee16b9be08bb4e06eb3e7d360 foundation=false
+-- moa-migration-guard: logical_key=165_invite_links_hardening predecessor=164_item_detail_handoff_resources digest=52688906c46f14a26bb8f218f27dd88ba76766a37f82a7ed6f47c5b93b985439 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '165_invite_links_hardening',
   p_file_name => '165_invite_links_hardening.sql',
-  p_file_digest => '17ec553a987feb382f47c37342732c4c561c4cdee16b9be08bb4e06eb3e7d360',
+  p_file_digest => '52688906c46f14a26bb8f218f27dd88ba76766a37f82a7ed6f47c5b93b985439',
   p_expected_predecessor => '164_item_detail_handoff_resources',
   p_executor => 'DC',
   p_thread_id => '5b8e2f47-9c31-4a06-8d75-e14b3f2a9c60',
@@ -123,70 +123,36 @@ end;
 $$;
 
 /* ─────────────────────────────────────────────────────────────
- * ① ★★ 내보내진 사람은 링크로 «못» 돌아온다 — 이번 판의 핵심이다.
+ * ① 예전에 있던 사람은 링크의 «자리» 로 다시 들어온다 — 정지된 사람만 막는다.
  *
- * 147 은 `on conflict do update set status='active', role=excluded.role, …` 였다.
- * 그 갈래는 «active 가 아닌 행» 에서 도는데, 두 가지 방식으로 다 틀렸다:
+ * 결정: belie 2026-09-28 (#733). 처음 판은 비활성 여섯 상태를 전부 needs_approval 로
+ * 돌려보냈다. 제품이 그보다 «자유롭게» 하기로 정했다.
  *
- *   147 그대로     정지된 «팀장» 이 «구성원» 링크로 → member 로 «강등» 된다
- *   자리를 보존하면  정지된 «관리자» 가 «구성원» 링크로 → admin 으로 «복귀» 한다
- *                   ★ 게다가 자기가 정지 전에 만들어 둔 링크를 쓸 수 있다:
- *                     링크 생성 → 정지당함 → 자기 링크로 복귀 → 다시 admin 링크 발급
- *                     즉 «내보내기» 자체가 무력화된다
+ *   suspended                                  → 막는다. 링크도 안 탄다. (정지 = 대표의 판단)
+ *   invited · pending · removed · leave · expired → 링크의 역할·범위로 active 가 된다.
  *
- * 둘 다 안 된다. 링크는 «새 사람을 부르는» 도구지 «징계를 되돌리는» 도구가 아니다.
+ * ★★ 되살리는 것은 «자리» 뿐이다. 권한을 주는 예전 설정은 되살리지 않는다.
+ *   나가도 지워지는 데이터가 없다(개인 권한 예외 013 · 부서 050 이 그대로 남는다).
+ *   권한 판정이 status='active' 일 때만 그것을 읽으므로, active 로 바꾸는 순간 잠자던 권한이 켜진다.
+ *   그래서 여기서 함께 끈다:
+ *     - 역할·범위: 예전 값이 아니라 «링크» 의 값. 내보낸 관리자가 구성원 링크로 오면 구성원이다.
+ *     - 개인 권한 예외 중 «허용»(decision='allow') 은 지운다. «막기» 는 권한을 줄이므로 남긴다.
+ *     - 예전 부서 소속(department_members) 은 지운다. 부서 가시성은 «소속» 만 보므로
+ *       남겨 두면 department 범위 링크로 오는 순간 예전 부서 데이터가 보인다(검수 P2).
+ *   ★ 링크를 만든 사람이 더 이상 active 대표·관리자가 아니면 그 링크는 죽은 링크다(검수 P1).
+ *     내보낸 관리자가 예전에 만든 관리자 링크로 관리자 자리에 돌아오는 길을 막는다.
+ *     미리보기·목록도 같은 기준으로 «못 쓴다» 고 말한다.
+ *   예전 설정을 «불러오기 / 새로 시작» 으로 고르게 하는 것은 내보내기 기능(#730)과 함께 만든다.
  *
- * ★★ 그런데 «되돌리는 문» 이 아직 없다 — 사실대로 적어 둔다.
+ * ★ 대표가 막는 방법: 링크 «끄기»(revoke_org_invite_link) 와 새 링크 발급, 사람 단위로는 정지.
+ *   정지된 사람에게는 정지 사실을 알리지 않는다 — 화면은 «지금은 들어갈 수 없어요» 만 말한다.
  *
- *   「재입장은 대표가 조직관리 화면에서 정한다」고 쓸 뻔했다. 그 화면은 없다.
- *   찾아보니 신청 쪽도 막혀 있다:
- *
- *       006:792      create or replace function public.resolve_workspace_join_request
- *       006:851-857  org_members 에 행이 «있기만 하면» removed 든 leave 든 안 가리고
- *                    23505 'requester already has workspace membership' 로 거절한다
- *
- *   즉 지금은 링크로도, 신청으로도 못 돌아온다.
- *
- *   ★★ 그리고 008 은 이 정책을 «이미 다르게» 정해 놨다 — 둘이 어긋난다.
- *
- *       008:26-31   suspended                   → 'blocked_inactive'  (막는다)
- *       008:36-38   removed · leave · expired    → 'eligible_entry'    (신청 «자격이 있다»)
- *
- *     즉 008 은 내보내진 사람에게 「신청하세요」라고 «화면으로 안내한다»
- *     (app/src/app/workspace-entry/page.tsx 가 이 값으로 화면을 그린다).
- *     그런데 그 신청을 대표가 승인하면 006:851-857 이 23505 로 거절한다.
- *     제품이 사람을 막다른 길로 안내하고 있다 — 165 가 만든 것이 아니라 «이미» 그렇다.
- *
- *     165 는 여섯 상태를 하나로 묶어 전부 needs_approval 로 보낸다. 보안 판단으로는 맞다
- *     (링크로 되살리면 정지된 관리자가 스스로 복귀한다). 다만 008 의 갈래와 어긋나므로
- *     «어느 쪽이 이 제품의 답인가» 를 정하는 것이 #730 의 일이다.
- *
- *   ★ 「코드가 비활성 행을 안 만드니 갇히는 사람은 없다」고 쓸 뻔했다. 그것도 틀렸다.
- *     코드는 정말 안 만든다(008:26 등은 읽기만 한다). 그런데 «사람이 DB 를 직접 고쳐» 만든
- *     행이 운영에 있다 — 2026-09-08 실측으로 status='suspended' 인 구성원이 둘이다.
- *     「코드에 없다」에서 「데이터에 없다」를 추론하면 안 된다.
- *     그래서 이 구멍은 「내보내기를 만들면 터진다」가 아니라 «이미 터져 있다». #730 참고.
- *
- *   ★ 내보내기를 만드는 사람에게: «되돌리기» 를 같이 만들어라. 하나만 만들면 사람이 갇힌다.
- *     그리고 그 되돌리기는 «링크» 가 아니라 대표가 직접 누르는 것이어야 한다 —
- *     위에 적은 이유로, 링크로 되살리면 정지된 관리자가 스스로 복귀한다.
- *
- * ★★★ 그리고 내보내기를 «행 DELETE» 로 만들면 위 방어가 통째로 무력화된다.
- *
- *   이 방어는 «org_members 에 행이 남아 있다» 는 전제 위에 서 있다.
- *   행을 지우면 v_status 가 null 이 되어 그 사람은 「처음 오는 사람」이 되고,
- *   링크에 적힌 자리로 그대로 들어온다 — 방금 막은 구멍이 그대로 다시 열린다.
- *
- *       status='removed' 로 «표시»  →  링크로 못 돌아온다   ✅
- *       행을 DELETE                 →  링크로 그냥 돌아온다  ❌
- *
- *   취향이 아니다. org_members.status 의 CHECK 가 removed·leave·expired 를 갖고 있는
- *   이유(006:38-40)가 이것이다. 정말 지워야 하면(개인정보 삭제 요청 등) «지워진 사람» 을
- *   따로 남기는 표가 먼저 있어야 한다 — 지금은 없다.
+ * ★★★ 내보내기를 «행 DELETE» 로 만들면 정지 방어가 무력화된다.
+ *   정지된 행을 지우면 v_status 가 null 이 되어 «처음 오는 사람» 으로 링크를 탄다.
+ *   정지는 반드시 status='suspended' 로 «표시» 해야 한다.
  *
  * ★ 실패 이유를 여기서만 나눈다. 「없는 링크」와 「죽은 링크」는 계속 한 말(unusable)이지만,
- *   이건 «유효한 링크를 가진 사람» 에게 주는 답이라 회사 존재가 새지 않는다.
- *   그리고 그 사람은 무엇을 해야 하는지 알아야 한다 — 대표에게 말해야 한다.
+ *   needs_approval 은 «유효한 링크를 가진 사람» 에게 주는 답이라 회사 존재가 새지 않는다.
  * ───────────────────────────────────────────────────────────── */
 create or replace function public.redeem_org_invite(p_token text) returns jsonb
 language plpgsql
@@ -216,6 +182,15 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'unusable');
   end if;
 
+  -- 만든 사람이 자격을 잃은 링크는 죽은 링크다 (위 ① 참고).
+  if not exists (
+    select 1 from public.org_members c
+     where c.org_id = v_link.org_id and c.user_id = v_link.created_by
+       and c.status = 'active' and c.role in ('owner','admin')
+  ) then
+    return jsonb_build_object('ok', false, 'reason', 'unusable');
+  end if;
+
   /*
    * ⑤ 정지·삭제 예정 회사에는 못 들어간다. 147 은 회사 상태를 안 봤다.
    *   들어가 봐야 RLS 가 막지만, 「들어왔다」고 말해 놓고 아무것도 안 보이는 것이 더 나쁘다.
@@ -239,58 +214,60 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'unusable');
   end if;
 
+  -- 잠그고 읽는다. 같은 사람이 다른 링크로 동시에 눌러도 한 번만 되살아난다.
   select m.status into v_status
     from public.org_members m
-   where m.org_id = v_link.org_id and m.user_id = v_actor;
+   where m.org_id = v_link.org_id and m.user_id = v_actor
+     for update;
 
   if v_status = 'active' then
     -- 이미 이 회사 사람이다. 자리를 안 건드리고 횟수도 안 올린다.
     return jsonb_build_object('ok', true, 'already', true, 'slug', v_slug, 'name', v_name);
   end if;
 
-  if v_status is not null then
-    -- ★ 나갔던 사람이다. 되살리지 «않고» 링크도 «안 태운다».
+  if v_status = 'suspended' then
+    -- 정지된 사람. 되살리지 «않고» 링크도 «안 태운다». 정지 사실은 화면에서 말하지 않는다.
     return jsonb_build_object('ok', false, 'reason', 'needs_approval', 'name', v_name);
   end if;
 
-  -- 처음 오는 사람. 다른 회사에 속해 있어도 상관없다.
-  insert into public.org_members(org_id, user_id, role, scope, status)
-  values (v_link.org_id, v_actor, v_link.role, v_link.scope, 'active')
-  on conflict (org_id, user_id) do nothing;
+  if v_status is not null then
+    -- 예전에 있던 사람(invited·pending·removed·leave·expired). 링크의 «자리» 로 되살린다.
+    update public.org_members
+       set status = 'active', role = v_link.role, scope = v_link.scope
+     where org_id = v_link.org_id and user_id = v_actor;
+    -- 잠자던 권한은 켜지 않는다 (위 ① 참고).
+    delete from public.member_scoped_permission_bindings
+     where org_id = v_link.org_id and subject_user_id = v_actor and decision = 'allow';
+    delete from public.department_members
+     where org_id = v_link.org_id and user_id = v_actor;
+  else
+    -- 처음 오는 사람. 다른 회사에 속해 있어도 상관없다.
+    insert into public.org_members(org_id, user_id, role, scope, status)
+    values (v_link.org_id, v_actor, v_link.role, v_link.scope, 'active')
+    on conflict (org_id, user_id) do nothing;
 
-  if not found then
-    /*
-     * 그 사이 다른 요청이 행을 넣었다. 횟수를 안 올린다.
-     *
-     * ★ 「그러니 이미 사람이다」라고 «단정하지» 않는다 — 그 행이 active 라는 보장이 없다.
-     *   오늘은 우연히 참이다: 행을 넣는 다른 경로(006:882 승인 · 018 · 030 · 048 · 다른 링크)가
-     *   전부 status='active' 로 넣기 때문이다. 그래서 이 갈래는 «지금은» 못 밟힌다.
-     *   누군가 invited·pending 으로 넣는 경로를 만드는 순간 이 단정이 거짓이 된다 —
-     *   「들어왔습니다」라고 말해 놓고 실제로는 못 들어간 사람이 생긴다.
-     *   한 줄로 막으니 지금 막아 둔다.
-     *
-     * ★★ 경고 — 이 갈래에는 «시험이 없다». 지워도 시험은 초록이다.
-     *   검수가 돌연변이로 확인했다: 아래 조건을 `if false` 로 바꿔도 50개 전부 통과한다.
-     *   PGlite 는 연결이 하나이고 위에서 링크 행을 `for update` 로 잠그므로,
-     *   「두 문장 사이에 다른 쓰기가 행을 넣는」 상황을 만들 방법이 없다.
-     *
-     *   즉 이건 «가드가 아니라 주석» 이다. 지우기 전에 이 문단을 읽었기를 바란다 —
-     *   시험이 초록이라는 것이 「이 코드가 필요 없다」는 뜻은 아니다.
-     */
-    select m.status into v_status
-      from public.org_members m
-     where m.org_id = v_link.org_id and m.user_id = v_actor;
-    if v_status is distinct from 'active' then
-      return jsonb_build_object('ok', false, 'reason', 'needs_approval', 'name', v_name);
+    if not found then
+      /*
+       * 그 사이 다른 요청이 행을 넣었다(행이 없어 위 for update 가 잠글 것이 없었다). 횟수를 안 올린다.
+       * ★ 그 행이 active 라는 보장은 없다 — 오늘은 행을 넣는 경로가 전부 active 로 넣어서 참일 뿐이다.
+       * ★★ 이 갈래에는 시험이 없다. PGlite 는 연결이 하나라 두 문장 사이에 끼어드는 쓰기를 못 만든다.
+       *   시험이 초록이라는 것이 「이 코드가 필요 없다」는 뜻은 아니다.
+       */
+      select m.status into v_status
+        from public.org_members m
+       where m.org_id = v_link.org_id and m.user_id = v_actor;
+      if v_status is distinct from 'active' then
+        return jsonb_build_object('ok', false, 'reason', 'needs_approval', 'name', v_name);
+      end if;
+      return jsonb_build_object('ok', true, 'already', true, 'slug', v_slug, 'name', v_name);
     end if;
-    return jsonb_build_object('ok', true, 'already', true, 'slug', v_slug, 'name', v_name);
   end if;
 
   update public.org_invite_links set used_count = used_count + 1 where id = v_link.id;
 
   insert into public.org_invite_redemptions(link_id, user_id)
   values (v_link.id, v_actor)
-  on conflict (link_id, user_id) do nothing;
+  on conflict (link_id, user_id) do update set redeemed_at = now();
 
   return jsonb_build_object('ok', true, 'already', false, 'slug', v_slug, 'name', v_name);
 end;
@@ -309,6 +286,10 @@ as $$
       or l.revoked_at is not null
       or (l.expires_at is not null and l.expires_at <= now())
       or (l.max_uses is not null and l.used_count >= l.max_uses)
+      or not exists (
+      select 1 from public.org_members c
+       where c.org_id = l.org_id and c.user_id = l.created_by
+         and c.status = 'active' and c.role in ('owner','admin'))
     then jsonb_build_object('ok', false, 'reason', 'unusable')
     else jsonb_build_object('ok', true, 'name', o.name, 'role', l.role::text, 'scope', l.scope::text)
   end
@@ -343,7 +324,11 @@ begin
       'revokedAt', l.revoked_at, 'createdAt', l.created_at,
       'usable', l.revoked_at is null
         and (l.expires_at is null or l.expires_at > now())
-        and (l.max_uses is null or l.used_count < l.max_uses),
+        and (l.max_uses is null or l.used_count < l.max_uses)
+        and exists (
+      select 1 from public.org_members c
+       where c.org_id = l.org_id and c.user_id = l.created_by
+         and c.status = 'active' and c.role in ('owner','admin')),
       'joined', coalesce((
         select jsonb_agg(jsonb_build_object('userId', r.user_id, 'at', r.redeemed_at)
                order by r.redeemed_at desc)

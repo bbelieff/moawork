@@ -75,7 +75,8 @@ export function parseInvitePeek(value: unknown): InvitePeek {
  * 들어가기 결과.
  *
  * ★ 「이미 이 회사 사람이다」와 「방금 들어왔다」를 나눈다 — 화면이 할 말이 다르기 때문이다.
- *   나갔던 사람(needs_approval)도 따로 둔다. 그 사람에게 「링크가 죽었다」고 하면 거짓말이다.
+ *   이용이 정지된 사람(needs_approval)도 따로 둔다 — 링크는 멀쩡하고 그 사람에게 쓰이지 않았을 뿐이다.
+ *   예전에 있던 다른 사람(내보냄·퇴사·만료 등)은 165 가 링크의 자리로 되살리므로 joined 로 온다.
  */
 export type InviteRedeemOutcome =
   | { kind: "joined"; slug: string; orgName: string }
@@ -89,7 +90,7 @@ export function parseInviteRedeem(value: unknown): InviteRedeemOutcome {
   const orgName = typeof row.name === "string" && row.name ? row.name : null;
 
   if (row.ok !== true) {
-    // 148 은 «나갔던 사람» 에게만 다른 이유를 준다. 나머지는 전부 한 말이다.
+    // 165 는 «정지된 사람» 에게만 다른 이유를 준다. 나머지는 전부 한 말이다.
     return row.reason === "needs_approval" ? { kind: "needs_approval", orgName } : { kind: "unusable" };
   }
 

@@ -51,17 +51,15 @@ export function JoinInvite({ token, peek, signedIn, loginHref }: JoinInviteProps
   }
 
   /*
-   * ★ 나갔던 사람. 「링크가 죽었다」고 하면 거짓말이다 — 링크는 멀쩡하고 그 사람이 못 들어가는 것이다.
-   *   그리고 무엇을 해야 하는지 알려 줘야 한다.
+   * ★ 이용이 정지된 사람(#733, belie 2026-09-28). 정지 사실은 말하지 않는다 — 대표에게 물어보라고만 한다.
+   *   「링크가 죽었다」고 하면 거짓말이다 — 링크는 멀쩡하고, 이 사람에게는 쓰이지 않았다.
    */
   if (state.kind === "needs_approval") {
     return (
       <Shell>
-        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-          {state.orgName ? `「${state.orgName}」에는 링크로 다시 들어올 수 없어요` : "이 회사에는 링크로 다시 들어올 수 없어요"}
-        </h1>
+        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">지금은 이 회사에 들어갈 수 없어요</h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          예전에 이 회사에 있었던 기록이 남아 있어요. 다시 들어오려면 회사 대표에게 직접 말씀해 주세요.
+          회사 대표에게 문의해 주세요. 이 초대 링크는 사용되지 않았어요.
         </p>
       </Shell>
     );
