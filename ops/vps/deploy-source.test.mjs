@@ -144,3 +144,56 @@ printf '%s|%s' "$code" "$events"
   assert.match(legacy.stdout, /^1\|/);
   assert.match(legacy.stdout, /health:\/fixture\/releases\/legacy-without-observer/);
 });
+
+test("retention runs after the current release is verified and before the new build", () => {
+  const health = scriptSource.indexOf("check_release \"$previous\" || die 'existing MoaWork release is not healthy'");
+  const prune = scriptSource.indexOf("prune_releases \"$KEEP_RELEASES\" \"$previous\" \"$(release_link \"$ROOT/previous\")\" \"$release\"");
+  const build = scriptSource.indexOf("install -d -m 0755 \"$release\"");
+  assert.ok(health > 0 && health < prune && prune < build);
+  assert.match(scriptSource, /^KEEP_RELEASES=3$/m);
+});
+
+function retentionFixture() {
+  const root = posix(mkdtempSync(join(tmpdir(), "moawork-retention-")));
+  const shas = Array.from({ length: 7 }, (_, i) => String(i + 1).repeat(40));
+  const body = `ROOT=${quote(root)}; mkdir -p "$ROOT/releases" "$ROOT/incoming" "$ROOT/releases/scratch"
+n=1000; for s in ${shas.join(" ")}; do
+  [[ $s == ${shas[6]} ]] || { mkdir "$ROOT/releases/$s"; touch -d @$n "$ROOT/releases/$s"; }
+  : >"$ROOT/incoming/$s.tar"; n=$((n+100)); done
+: >"$ROOT/incoming/notes.tar"
+`;
+  return { root, shas, body, rel: (i) => `${root}/releases/${shas[i]}` };
+}
+const listing = `; printf '%s|' $(ls "$ROOT/releases"); printf '#'; printf '%s|' $(ls "$ROOT/incoming")`;
+
+test("retention keeps current, previous and the newest extras, and drops only their stale archives", () => {
+  const f = retentionFixture();
+  // current = newest (6), previous = oldest (1), candidate 7 is not built yet.
+  const r = run(f.body + `prune_releases 3 ${quote(f.rel(5))} ${quote(f.rel(0))} ${quote(f.rel(6))}` + listing);
+  assert.equal(r.status, 0, r.stderr);
+  const [out, listed] = [r.stdout.split("\n").filter((l) => l.startsWith("PRUNED")), r.stdout.split("\n").pop()];
+  assert.deepEqual(out, [3, 2, 1].map((i) => "PRUNED release=" + f.shas[i]));
+  const [releases, incoming] = listed.split("#");
+  assert.deepEqual(releases.split("|").filter(Boolean).sort(), [f.shas[0], f.shas[4], f.shas[5], "scratch"].sort());
+  assert.deepEqual(incoming.split("|").filter(Boolean).sort(),
+    [f.shas[0], f.shas[4], f.shas[5], f.shas[6]].map((s) => s + ".tar").concat("notes.tar").sort());
+});
+
+test("retention never deletes protected releases even when keep is smaller than the protected set", () => {
+  const f = retentionFixture();
+  const r = run(f.body + `prune_releases 1 ${quote(f.rel(5))} ${quote(f.rel(0))} ""` + listing);
+  assert.equal(r.status, 0, r.stderr);
+  const [releases] = r.stdout.split("\n").pop().split("#");
+  assert.deepEqual(releases.split("|").filter(Boolean).sort(), [f.shas[0], f.shas[5], "scratch"].sort());
+});
+
+test("retention refuses protected paths outside the release root and invalid keep counts", () => {
+  for (const call of [(f) => `prune_releases 3 /tmp/elsewhere`, (f) => `prune_releases 0 ${quote(f.rel(5))}`, () => `prune_releases x`]) {
+    const f = retentionFixture();
+    const r = run(f.body + `if ${call(f)}; then printf accepted; else printf refused; fi` + listing);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /^refused/);
+    assert.doesNotMatch(r.stdout, /PRUNED/);
+    assert.equal(r.stdout.split("#")[0].split("|").filter(Boolean).length, 7);
+  }
+});

@@ -9,6 +9,8 @@ PORT=3100
 OBSERVER_SOURCE_RELATIVE=ops/vps/request-stream-observer.cjs
 OBSERVER_RUNTIME_NAME=request-stream-observer.cjs
 OBSERVER_REQUIRE_PATH=$ROOT/current/runtime/app/$OBSERVER_RUNTIME_NAME
+# Releases kept on disk before a new build, counting current and previous (~1.1G each).
+KEEP_RELEASES=3
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 trusted() {
@@ -98,6 +100,31 @@ check_release() {
   actual="$(curl -fsS --noproxy '*' --max-time 3 "http://127.0.0.1:$PORT/_next/static/$relative" | sha256sum)" || return 1
   [[ "${actual%% *}" == "$expected" ]]
 }
+# Delete the oldest releases and their incoming archives; protected paths always survive.
+prune_releases() {
+  local keep="$1" entry name extras=0 line; shift
+  [[ "$keep" =~ ^[1-9][0-9]*$ ]] || return 1
+  local -A protect=() names=()
+  for entry in "$@"; do
+    [[ -z "$entry" ]] && continue
+    [[ "$entry" =~ ^$ROOT/releases/[a-f0-9]{40}$ ]] || return 1
+    protect["$entry"]=1; names["${entry##*/}"]=1
+  done
+  for entry in "${!protect[@]}"; do [[ -d "$entry" ]] && keep=$((keep-1)); done
+  while IFS= read -r -d '' line; do
+    entry="${line#* }"; name="${entry##*/}"
+    [[ "$name" =~ ^[a-f0-9]{40}$ && "$entry" == "$ROOT/releases/$name" && -d "$entry" && ! -L "$entry" ]] || continue
+    [[ -n "${protect[$entry]:-}" ]] && continue
+    if ((extras < keep)); then extras=$((extras+1)); names["$name"]=1; continue; fi
+    rm -rf --one-file-system -- "$entry" || return 1
+    printf 'PRUNED release=%s\n' "$name"
+  done < <(find "$ROOT/releases" -mindepth 1 -maxdepth 1 -printf '%T@ %p\0' | sort -z -rn)
+  for entry in "$ROOT"/incoming/*.tar; do
+    name="${entry##*/}"; name="${name%.tar}"
+    [[ "$name" =~ ^[a-f0-9]{40}$ && -f "$entry" && ! -L "$entry" && -z "${names[$name]:-}" ]] || continue
+    rm -f -- "$entry" || return 1
+  done
+}
 rollback() {
   local previous="$1"
   if [[ -n "$previous" ]]; then
@@ -146,6 +173,8 @@ main() {
   release_link "$ROOT/previous" >/dev/null || die 'unexpected previous link'
   if [[ -n "$previous" ]]; then check_release "$previous" || die 'existing MoaWork release is not healthy'
   else port_free || die 'candidate port is occupied or query failed'; fi
+  prune_releases "$KEEP_RELEASES" "$previous" "$(release_link "$ROOT/previous")" "$release" ||
+    printf '%s\n' 'PRUNE_INCOMPLETE; continuing with existing disk space' >&2
   [[ "$(sha256sum "$archive" | cut -d ' ' -f1)" == "$archive_hash" ]] || die 'archive digest mismatch'
   [[ "$(git get-tar-commit-id <"$archive")" == "$sha" ]] || die 'archive does not identify exact source commit'
   install -d -m 0755 "$release"
