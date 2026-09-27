@@ -19,7 +19,7 @@
  * → 후속: 초기화 표식 컬럼. 그게 없으면 «탭 0개» 상태(D77)가 새로고침마다 되살아난다.
  */
 
-import type { Ctx } from "@/lib/types";
+import type { Ctx, FieldOption } from "@/lib/types";
 import type { BoardsRepo, NewColumn } from "@/lib/boards/store";
 import type { Board } from "@/lib/boards/types";
 import { createRequestBoardsRepo } from "@/lib/boards/request-repo";
@@ -194,13 +194,17 @@ export async function readDefaultTabBoardDrift(
     : false;
   const definitionRevisionBehind = tab.revision !== undefined
     && (state ? state.revision < tab.revision : legacyPropertyNeedsReconcile || legacyLabelNeedsReconcile);
+  // 2026-09-26 — 정의가 나중에 추가한 이동 규칙 항목(예: 대기중 → 준비단계)이
+  // 아직 안 메꿔졌으면 고칠 일이 있다. 판정과 치유가 같은 눈을 쓰도록
+  // planMoveRuleBackfill 하나로 본다.
+  const moveRuleBackfillPending = planMoveRuleBackfill(tab, columns, groups).length > 0;
 
   return {
     boardMissing: false,
     missingGroupNames,
     missingColumnKeys,
     definitionRevisionBehind,
-    hasWork: missingGroupNames.length > 0 || missingColumnKeys.length > 0 || definitionRevisionBehind,
+    hasWork: missingGroupNames.length > 0 || missingColumnKeys.length > 0 || definitionRevisionBehind || moveRuleBackfillPending,
   };
 }
 
@@ -391,6 +395,89 @@ async function reconcileDefaultDefinition(
 }
 
 /**
+ * 2026-09-26 — 정의 이동 규칙(`moveTo`)의 «빠진 쪽지만» 채운다.
+ *
+ * 왜 필요한가 — 계약업체 실무의 `progress_status` 이동 규칙에 «대기중 → 준비단계» 가
+ * 없었다. 정의를 고치는 것만으로는 이미 깔린 보드가 안 고쳐진다: 드리프트 판정은
+ * 빠진 그룹·컬럼·리비전만 보고, `ensure*` 는 담당자 이동(`assigneeMove`) 규칙만
+ * 맞추기 때문이다. 그래서 대기중으로 되돌린 카드가 진행중 그룹에 그대로 남았다.
+ *
+ * 무엇을 «안» 하는가 — 아래 셋은 손대지 않는다. 어느 하나라도 어긋나면 그 항목은 건너뛴다.
+ *   · 이미 있는 규칙 항목은 덮어쓰지 않는다(회사가 목적지를 바꿨으면 그게 정답이다).
+ *   · 규칙이 통째로 비었으면 손대지 않는다(끄기로 읽는다 — «없음» 도 의도일 수 있다).
+ *   · 선택지에 없는 값·이름이 바뀌거나 지워진 그룹은 건너뛴다(추측으로 만들지 않는다).
+ * 즉 이 함수는 «우리가 나중에 추가한 정의 항목» 만, 그것도 «받아줄 자리가 그대로 있을 때»
+ * 메꾼다. 그룹·선택지·ID 를 새로 만들거나 지우지 않는다.
+ */
+export type MoveRuleBackfill = Readonly<{
+  columnId: string;
+  columnKey: string;
+  moveRule: Record<string, string>;
+}>;
+
+type MoveRuleBackfillColumn = Readonly<{
+  id: string;
+  key: string;
+  options_jsonb?: { options?: readonly FieldOption[] } | null;
+  move_rule_jsonb?: Record<string, string> | null;
+}>;
+
+function plainGroupName(name: string): string {
+  return name.replace(/^\P{L}+/u, "").trim();
+}
+
+export function planMoveRuleBackfill(
+  tab: DefaultTab,
+  columns: readonly MoveRuleBackfillColumn[],
+  groups: readonly { id: string; name: string }[],
+): MoveRuleBackfill[] {
+  const patches: MoveRuleBackfill[] = [];
+  for (const definition of tab.columns) {
+    if (!definition.moveTo) continue;
+    const stored = columns.find((column) => column.key === definition.key);
+    if (!stored) continue;
+    const rule = stored.move_rule_jsonb;
+    // 통째로 비었으면 «끄기» 로 읽는다 — 켜는 것은 회사의 몫이다.
+    if (!rule || Object.keys(rule).length === 0) continue;
+    const storedOptionIds = new Set(
+      (stored.options_jsonb?.options ?? []).map((option) => option.id),
+    );
+    // 선택지 기록이 없으면 «어느 값이 살아 있는지» 를 판단할 근거가 없다 — 손대지 않는다.
+    if (storedOptionIds.size === 0) continue;
+    const additions: Record<string, string> = {};
+    for (const [optionId, groupName] of Object.entries(definition.moveTo)) {
+      if (Object.hasOwn(rule, optionId)) continue;
+      if (!storedOptionIds.has(optionId)) continue;
+      const target = groups.find((group) => group.name === groupName)
+        // «⏹️준비단계» → «준비단계» 같은 표시 다듬기는 같은 그룹으로 읽는다.
+        // 앞머리 장식(prefix)만 벗기고, 본문이 다르면 다른 그룹이다.
+        ?? groups.find((group) => plainGroupName(group.name) === plainGroupName(groupName));
+      if (!target) continue;
+      additions[optionId] = target.id;
+    }
+    if (Object.keys(additions).length > 0) {
+      patches.push({ columnId: stored.id, columnKey: stored.key, moveRule: { ...rule, ...additions } });
+    }
+  }
+  return patches;
+}
+
+async function applyMoveRuleBackfill(
+  ctx: Ctx,
+  tab: DefaultTab,
+  store: BoardsRepo,
+  boardId: string,
+): Promise<void> {
+  const [columns, groups] = await Promise.all([
+    store.listColumns(ctx, boardId),
+    store.listGroups(ctx, boardId),
+  ]);
+  for (const patch of planMoveRuleBackfill(tab, columns, groups)) {
+    await store.updateColumn(ctx, patch.columnId, { moveRule: patch.moveRule });
+  }
+}
+
+/**
  * Repairs one product tab without rewriting customer-owned structure.
  *
  * Unlike the workspace bootstrap reconciler, this path is intentionally additive:
@@ -455,6 +542,9 @@ export async function ensureDefaultTabAdditive(
   }
 
   await reconcileDefaultDefinition(ctx, tab, store, board.id);
+  // 2026-09-26 — 정의가 나중에 추가한 이동 규칙 항목을 빠진 쪽만 메꾼다
+  // (planMoveRuleBackfill — 사용자 손댄 항목·그룹·선택지는 그대로).
+  await applyMoveRuleBackfill(ctx, tab, store, board.id);
 
   return {
     tabKey: tab.key,
@@ -525,6 +615,7 @@ export async function ensureDefaultTab(
     }
     const reconciledColumns = await store.listColumns(ctx, existing.id);
     await reconcileDefaultDefinition(ctx, tab, store, existing.id);
+    await applyMoveRuleBackfill(ctx, tab, store, existing.id);
     return {
       tabKey: tab.key,
       boardId: existing.id,

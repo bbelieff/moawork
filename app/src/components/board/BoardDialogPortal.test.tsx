@@ -15,6 +15,18 @@ afterEach(async () => {
 });
 
 describe("Issue #549 board dialog portal", () => {
+  it("폼이 오류 입력에 둔 포커스를 초기 모달 포커스가 빼앗지 않는다", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => root?.render(
+      <BoardModalLayer label="오류 입력" onClose={() => {}}>
+        <button>닫기</button><input aria-invalid="true" ref={(node) => { node?.focus(); }} />
+      </BoardModalLayer>,
+    ));
+    await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+    expect(document.activeElement).toBe(document.querySelector('input[aria-invalid="true"]'));
+  });
   it("sticky 표 안에서 호출돼도 dialog를 body 바로 아래에 둔다", async () => {
     const tableHost = document.createElement("div");
     tableHost.dataset.stickyTable = "true";

@@ -58,33 +58,30 @@ describe("runtime release identity", () => {
     );
   });
 
-  it("uses a managed commit as the expectation only on Vercel", () => {
+  // 매니지드 플랫폼 변수는 더 이상 신원의 근거가 아니다. 예전에는 VERCEL_GIT_COMMIT_SHA
+  // 하나로 revision 이 verified 가 됐는데, 그 경로가 남아 있으면 VPS 에 그 변수가
+  // 흘러들어온 것만으로 검증된 릴리스처럼 보인다.
+  it("ignores managed-platform build variables entirely", () => {
     expect(
       resolveRuntimeIdentity({
         VERCEL: "1",
         VERCEL_GIT_COMMIT_SHA: BUILD_SHA,
       }),
     ).toMatchObject({
-      buildSha: BUILD_SHA,
-      releaseSha: BUILD_SHA,
-      revisionVerified: true,
+      runtime: "unknown",
+      buildSha: null,
+      releaseSha: null,
+      revisionVerified: false,
     });
-    expect(
-      resolveRuntimeIdentity({ VERCEL_GIT_COMMIT_SHA: BUILD_SHA })
-        .revisionVerified,
-    ).toBe(false);
-  });
-
-  it("keeps Vercel's opaque deployment identity separate from the source SHA", () => {
     expect(
       resolveNextDeploymentId({
         VERCEL: "1",
         VERCEL_GIT_COMMIT_SHA: BUILD_SHA,
-        VERCEL_DEPLOYMENT_ID: "dpl_platform-opaque",
-        NEXT_DEPLOYMENT_ID: "dpl_platform-opaque",
       }),
     ).toBeUndefined();
+  });
 
+  it("uses the self-hosted build SHA as the deployment identity", () => {
     expect(
       resolveNextDeploymentId({
         MOAWORK_BUILD_SHA: BUILD_SHA,
@@ -124,12 +121,6 @@ describe("runtime release identity", () => {
       ),
     ).toBe("unknown");
     expect(resolveArtifactSha256({}, "self-hosted")).toBe("unknown");
-    expect(
-      resolveArtifactSha256(
-        { MOAWORK_ARTIFACT_SHA256: ARTIFACT_SHA },
-        "vercel",
-      ),
-    ).toBe("managed");
     expect(
       resolveArtifactSha256(
         { MOAWORK_ARTIFACT_SHA256: ARTIFACT_SHA },
@@ -360,7 +351,7 @@ describe("runtime release identity", () => {
     }
   });
 
-  it("reports an explicit Vercel stable key as verified, not managed", async () => {
+  it("never reports ready from managed-platform variables alone", async () => {
     const response = createHealthResponse(
       "ready",
       {
@@ -372,13 +363,12 @@ describe("runtime release identity", () => {
       PUBLIC_CONFIG,
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
-      runtime: "vercel",
-      artifact: "managed",
-      artifactSha256: "managed",
-      serverActions: "verified",
-      serverActionsKeyFingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
+      status: "not_ready",
+      runtime: "unknown",
+      artifact: "unverified",
+      artifactSha256: "unknown",
     });
   });
 
@@ -403,21 +393,7 @@ describe("runtime release identity", () => {
     });
   });
 
-  it("keeps managed Vercel ready before handoff but requires a key when self-hosted", async () => {
-    const vercel = createHealthResponse(
-      "ready",
-      { VERCEL: "1", VERCEL_GIT_COMMIT_SHA: BUILD_SHA },
-      PUBLIC_CONFIG,
-    );
-    expect(vercel.status).toBe(200);
-    await expect(vercel.json()).resolves.toMatchObject({
-      runtime: "vercel",
-      artifact: "managed",
-      artifactSha256: "managed",
-      serverActions: "managed",
-      serverActionsKeyFingerprint: "managed",
-    });
-
+  it("requires a Server Actions key when self-hosted", async () => {
     const selfHosted = createHealthResponse(
       "ready",
       {
@@ -483,8 +459,9 @@ describe("runtime release identity", () => {
     const first = await createHealthResponse(
       "ready",
       {
-        VERCEL: "1",
-        VERCEL_GIT_COMMIT_SHA: BUILD_SHA,
+        MOAWORK_BUILD_SHA: BUILD_SHA,
+        MOAWORK_RELEASE_SHA: BUILD_SHA,
+        MOAWORK_ARTIFACT_SHA256: ARTIFACT_SHA,
         NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: SERVER_ACTIONS_KEY,
         MOAWORK_SERVER_ACTIONS_BUILD_FINGERPRINT: SERVER_ACTIONS_FINGERPRINT,
       },
@@ -494,8 +471,9 @@ describe("runtime release identity", () => {
     const second = await createHealthResponse(
       "ready",
       {
-        VERCEL: "1",
-        VERCEL_GIT_COMMIT_SHA: BUILD_SHA,
+        MOAWORK_BUILD_SHA: BUILD_SHA,
+        MOAWORK_RELEASE_SHA: BUILD_SHA,
+        MOAWORK_ARTIFACT_SHA256: ARTIFACT_SHA,
         NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: secondKey,
         MOAWORK_SERVER_ACTIONS_BUILD_FINGERPRINT:
           serverActionsKeyFingerprint(secondKey)!,
@@ -522,32 +500,19 @@ describe("runtime release identity", () => {
       },
       PUBLIC_CONFIG,
     ).json();
-    const vercelStable = await createHealthResponse(
+    const selfHostedNoAnalytics = await createHealthResponse(
       "ready",
       {
-        VERCEL: "1",
-        VERCEL_GIT_COMMIT_SHA: BUILD_SHA,
+        MOAWORK_BUILD_SHA: BUILD_SHA,
+        MOAWORK_RELEASE_SHA: BUILD_SHA,
+        MOAWORK_ARTIFACT_SHA256: ARTIFACT_SHA,
         NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: SERVER_ACTIONS_KEY,
         MOAWORK_SERVER_ACTIONS_BUILD_FINGERPRINT: SERVER_ACTIONS_FINGERPRINT,
       },
-      PUBLIC_CONFIG,
-    ).json();
-    const vercelManaged = await createHealthResponse(
-      "ready",
-      { VERCEL: "1", VERCEL_GIT_COMMIT_SHA: BUILD_SHA },
-      PUBLIC_CONFIG,
-    ).json();
-    const vercelManagedNoAnalytics = await createHealthResponse(
-      "ready",
-      { VERCEL: "1", VERCEL_GIT_COMMIT_SHA: BUILD_SHA },
       { ...PUBLIC_CONFIG, posthogKey: undefined },
     ).json();
 
     expect(selfHosted).toEqual(readyFixture.selfHosted);
-    expect(vercelStable).toEqual(readyFixture.vercelStable);
-    expect(vercelManaged).toEqual(readyFixture.vercelManaged);
-    expect(vercelManagedNoAnalytics).toEqual(
-      readyFixture.vercelManagedNoAnalytics,
-    );
+    expect(selfHostedNoAnalytics).toEqual(readyFixture.selfHostedNoAnalytics);
   });
 });

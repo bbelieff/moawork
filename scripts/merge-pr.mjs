@@ -114,7 +114,7 @@ export function mergeDecision(pr, runs, sourceEvidence = null) {
   //   대신 어떤 검사가 빨간지는 아래 statusCheckRollup 으로 직접 본다. 그쪽이 정확하다.
 
   // ★ 다른 체크가 «빨간» 상태면 막는다.
-  //   GitGuardian(비밀값 스캔)·Vercel 이 여기 들어온다. CLAUDE.md 의 「절대 금지 2가지」 중
+  //   GitGuardian(비밀값 스캔)이 여기 들어온다. CLAUDE.md 의 「절대 금지 2가지」 중
   //   하나가 비밀값이므로, 그 스캔이 빨간데 머지되는 일이 있어선 안 된다.
   //   mergeStateStatus 로는 못 잡는다 — 이 저장소의 열린 PR 은 전부 UNSTABLE 이라
   //   그 값으로 막으면 아무것도 못 머지한다. 그래서 체크를 직접 본다.

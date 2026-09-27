@@ -132,74 +132,11 @@ function identitiesEqual(left, right) {
   return JSON.stringify(artifactIdentity(left)) === JSON.stringify(artifactIdentity(right));
 }
 
-function validateRollbackTarget(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail("invalid_input", "the external rollback target is required");
-  }
-  const keys = Object.keys(value).sort();
-  if (JSON.stringify(keys) !== JSON.stringify(["healthUrl", "provider", "serverActionsKeyFingerprint", "sourceSha"])) {
-    fail("invalid_input", "external rollback target keys are outside the reviewed contract");
-  }
-  if (
-    value.provider !== "vercel"
-    || !SHA40.test(value.sourceSha ?? "")
-    || !SHA64.test(value.serverActionsKeyFingerprint ?? "")
-  ) {
-    fail("invalid_input", "external rollback target identity is malformed");
-  }
-  let healthUrl;
-  try {
-    healthUrl = new URL(value.healthUrl);
-  } catch {
-    fail("invalid_input", "external rollback health URL is malformed");
-  }
-  if (
-    healthUrl.protocol !== "https:"
-    || healthUrl.port !== ""
-    || healthUrl.username !== ""
-    || healthUrl.password !== ""
-    || healthUrl.search !== ""
-    || healthUrl.hash !== ""
-    || healthUrl.pathname !== "/api/health/ready"
-    || !healthUrl.hostname.endsWith(".vercel.app")
-    || healthUrl.href !== value.healthUrl
-  ) {
-    fail("invalid_input", "external rollback must be one canonical Vercel readiness URL");
-  }
-  return Object.freeze({
-    provider: "vercel",
-    healthUrl: healthUrl.href,
-    serverActionsKeyFingerprint: value.serverActionsKeyFingerprint,
-    sourceSha: value.sourceSha,
-  });
-}
-
-function validateInitialRecovery(value, slotIds) {
+// 최초 공개 전환(버셀→VPS)은 끝났고 그 명령들은 제거했다. 옛 상태 파일에 마커가
+// 남아 있으면 조용히 무시하지 않고 멈춘다 — 그걸 확정하거나 취소할 명령이 더는 없다.
+function validateNoRecovery(value) {
   if (value === null || value === undefined) return null;
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail("status_invalid", "release recovery marker is malformed");
-  }
-  const keys = Object.keys(value).sort();
-  if (
-    value.kind !== "initial_cutover_pending"
-    || JSON.stringify(keys) !== JSON.stringify([
-      "expectedGeneration",
-      "kind",
-      "rollbackTarget",
-      "targetSlot",
-    ])
-    || !Number.isSafeInteger(value.expectedGeneration)
-    || value.expectedGeneration < 0
-    || !slotIds.includes(value.targetSlot)
-  ) {
-    fail("status_invalid", "release recovery marker is not a canonical initial cutover");
-  }
-  return Object.freeze({
-    kind: value.kind,
-    expectedGeneration: value.expectedGeneration,
-    targetSlot: value.targetSlot,
-    rollbackTarget: validateRollbackTarget(value.rollbackTarget),
-  });
+  fail("status_invalid", "release recovery markers are no longer supported");
 }
 
 function validateStatus(status, slotIds) {
@@ -238,18 +175,7 @@ function validateStatus(status, slotIds) {
       fail("status_invalid", "active and previous slots require a canonical artifact identity");
     }
   }
-  const recovery = validateInitialRecovery(status.recovery, slotIds);
-  if (recovery !== null) {
-    if (
-      status.activeSlot !== null
-      || status.previousSlot !== null
-      || status.generation !== recovery.expectedGeneration
-      || slots[recovery.targetSlot].state !== "running"
-      || slots[recovery.targetSlot].artifact === null
-    ) {
-      fail("status_invalid", "initial cutover state is inconsistent");
-    }
-  }
+  const recovery = validateNoRecovery(status.recovery);
   return Object.freeze({ ...status, recovery, slots: Object.freeze(slots) });
 }
 
@@ -307,24 +233,6 @@ function switchStateMatches(status, expected) {
     && status.generation === expected.generation;
 }
 
-function exactInitialArtifact(status, targetSlot, sourceSha, artifactSha256) {
-  if (!status || !status.slots || !status.slots[targetSlot]) return null;
-  const artifact = status.slots[targetSlot].artifact;
-  return artifact
-    && artifact.sourceSha === sourceSha
-    && artifact.releaseId === artifactSha256
-    && artifact.archiveSha256 === artifactSha256
-    ? artifact
-    : null;
-}
-
-function sameRollbackTarget(left, right) {
-  return left?.provider === right.provider
-    && left.healthUrl === right.healthUrl
-    && left.serverActionsKeyFingerprint === right.serverActionsKeyFingerprint
-    && left.sourceSha === right.sourceSha;
-}
-
 export function createReleaseSlots({ verifyReleaseArtifact, runtime, slotIds, timeoutMs, expectedBuilder = null }) {
   if (typeof verifyReleaseArtifact !== "function") fail("invalid_input", "artifact verifier is required");
   if (!runtime || typeof runtime !== "object") fail("invalid_input", "release runtime is required");
@@ -342,12 +250,6 @@ export function createReleaseSlots({ verifyReleaseArtifact, runtime, slotIds, ti
 
   async function status() {
     return validateStatus(await call("status", "status", {}), slotIds);
-  }
-
-  function requireNoPendingCutover(value) {
-    if (value.recovery !== null) {
-      fail("recovery_required", "the initial public cutover must be confirmed or aborted first");
-    }
   }
 
   async function switchWithReconciliation({ label, input, before, expected }) {
@@ -381,7 +283,6 @@ export function createReleaseSlots({ verifyReleaseArtifact, runtime, slotIds, ti
     if (mode !== "shadow" && mode !== "activate") fail("invalid_input", "mode must be shadow or activate");
     const artifact = await verifyDeployArtifact({ archivePath, manifestPath, attestationPath, expectedSourceSha });
     const before = await status();
-    requireNoPendingCutover(before);
     const targetSlot = candidateSlot(before, slotIds);
     if (!targetSlot) fail("status_invalid", "no inactive release slot is available");
     const previousArtifact = before.activeSlot === null ? null : before.slots[before.activeSlot].artifact;
@@ -471,7 +372,6 @@ export function createReleaseSlots({ verifyReleaseArtifact, runtime, slotIds, ti
 
   async function rollback() {
     const before = await status();
-    requireNoPendingCutover(before);
     if (before.activeSlot === null || before.previousSlot === null) {
       fail("rollback_unavailable", "active and previous release slots are required");
     }
@@ -503,239 +403,8 @@ export function createReleaseSlots({ verifyReleaseArtifact, runtime, slotIds, ti
     return { artifact: artifactIdentity(previousArtifact), status: await status() };
   }
 
-  async function prepareInitialCutover({ targetSlot, sourceSha, artifactSha256, rollbackTarget }) {
-    if (!slotIds.includes(targetSlot) || !SHA40.test(sourceSha ?? "") || !SHA64.test(artifactSha256 ?? "")) {
-      fail("invalid_input", "initial cutover candidate identity is malformed");
-    }
-    const externalRollback = validateRollbackTarget(rollbackTarget);
-    const before = await status();
-    const artifact = exactInitialArtifact(before, targetSlot, sourceSha, artifactSha256);
-    if (
-      before.recovery?.kind === "initial_cutover_pending"
-      && before.recovery.targetSlot === targetSlot
-      && artifact !== null
-      && sameRollbackTarget(before.recovery.rollbackTarget, externalRollback)
-    ) {
-      return {
-        phase: "prepared",
-        replayed: true,
-        targetSlot,
-        artifact: artifactIdentity(artifact),
-        externalRollback,
-        activeRegistered: false,
-        dnsMutationPerformed: false,
-        status: before,
-      };
-    }
-    requireNoPendingCutover(before);
-    if (before.activeSlot !== null || before.previousSlot !== null) {
-      fail("initial_cutover_unavailable", "initial cutover requires an empty active-slot history");
-    }
-    if (artifact === null || before.slots[targetSlot].state !== "running") {
-      fail("initial_cutover_unavailable", "initial cutover requires the exact healthy shadow candidate");
-    }
-    for (const slot of slotIds) {
-      if (slot !== targetSlot && before.slots[slot].artifact !== null) {
-        fail("initial_cutover_unavailable", "initial cutover requires one unambiguous shadow candidate");
-      }
-    }
-    const candidateHealth = await call("initial candidate health", "checkCandidate", { slot: targetSlot, artifact });
-    if (!exactHealth(candidateHealth, artifact)) fail("candidate_unhealthy", "initial cutover candidate is not healthy");
-    const rollbackHealth = await call("external rollback health", "checkRollbackTarget", { rollbackTarget: externalRollback });
-    if (
-      rollbackHealth?.ok !== true
-      || rollbackHealth.sourceSha !== externalRollback.sourceSha
-      || rollbackHealth.serverActionsKeyFingerprint !== externalRollback.serverActionsKeyFingerprint
-      || candidateHealth.serverActionsKeyFingerprint !== externalRollback.serverActionsKeyFingerprint
-    ) {
-      fail("rollback_unavailable", "the external Vercel rollback target is not ready");
-    }
-    const expectedGeneration = before.generation + 1;
-    const expectedRecovery = {
-      kind: "initial_cutover_pending",
-      expectedGeneration,
-      targetSlot,
-      rollbackTarget: externalRollback,
-    };
-    try {
-      await call("initial cutover prepare", "prepareInitialCutover", {
-        expectedGeneration: before.generation,
-        targetSlot,
-        artifact,
-        rollbackTarget: externalRollback,
-      });
-    } catch (error) {
-      const authoritative = await status().catch((statusError) => {
-        fail("switch_unknown", "initial cutover prepare and authoritative status are unknown", statusError);
-      });
-      if (
-        authoritative.generation === expectedGeneration
-        && authoritative.activeSlot === null
-        && authoritative.previousSlot === null
-        && authoritative.recovery?.kind === expectedRecovery.kind
-        && authoritative.recovery.targetSlot === targetSlot
-        && sameRollbackTarget(authoritative.recovery.rollbackTarget, externalRollback)
-      ) {
-        return {
-          phase: "prepared",
-          replayed: true,
-          targetSlot,
-          artifact: artifactIdentity(artifact),
-          externalRollback,
-          activeRegistered: false,
-          dnsMutationPerformed: false,
-          status: authoritative,
-        };
-      }
-      if (error?.code !== "timeout" && switchStateMatches(authoritative, before)) {
-        fail("switch_failed", "initial cutover route was not prepared", error);
-      }
-      fail("switch_unknown", "initial cutover prepare outcome is ambiguous", error);
-    }
-    const prepared = await status();
-    if (
-      prepared.generation !== expectedGeneration
-      || prepared.recovery?.kind !== "initial_cutover_pending"
-      || prepared.recovery.targetSlot !== targetSlot
-      || !sameRollbackTarget(prepared.recovery.rollbackTarget, externalRollback)
-    ) fail("switch_mismatch", "initial cutover prepare returned an unexpected state");
-    return {
-      phase: "prepared",
-      replayed: false,
-      targetSlot,
-      artifact: artifactIdentity(artifact),
-      externalRollback,
-      activeRegistered: false,
-      dnsMutationPerformed: false,
-      status: prepared,
-    };
-  }
-
-  async function confirmInitialCutover({ targetSlot, sourceSha, artifactSha256 }) {
-    if (!slotIds.includes(targetSlot) || !SHA40.test(sourceSha ?? "") || !SHA64.test(artifactSha256 ?? "")) {
-      fail("invalid_input", "initial cutover candidate identity is malformed");
-    }
-    const before = await status();
-    const artifact = exactInitialArtifact(before, targetSlot, sourceSha, artifactSha256);
-    if (
-      before.recovery === null
-      && before.activeSlot === targetSlot
-      && before.previousSlot === null
-      && artifact !== null
-    ) {
-      return {
-        phase: "confirmed",
-        replayed: true,
-        targetSlot,
-        artifact: artifactIdentity(artifact),
-        activeRegistered: true,
-        dnsMutationPerformed: false,
-        status: before,
-      };
-    }
-    if (
-      before.recovery?.kind !== "initial_cutover_pending"
-      || before.recovery.targetSlot !== targetSlot
-      || artifact === null
-    ) fail("initial_cutover_unavailable", "no exact initial cutover is pending confirmation");
-    const publicHealth = await call("initial public health", "checkPublic", { artifact });
-    if (
-      !exactHealth(publicHealth, artifact)
-      || publicHealth.serverActionsKeyFingerprint !== before.recovery.rollbackTarget.serverActionsKeyFingerprint
-    ) {
-      fail("public_unhealthy", "public DNS does not serve the exact initial candidate");
-    }
-    const expected = {
-      activeSlot: targetSlot,
-      previousSlot: null,
-      generation: before.generation + 1,
-    };
-    try {
-      validateSwitch(await call("initial cutover confirm", "confirmInitialCutover", {
-        expectedGeneration: before.generation,
-        targetSlot,
-        artifact,
-      }), expected);
-    } catch (error) {
-      const authoritative = await status().catch((statusError) => {
-        fail("switch_unknown", "initial cutover confirmation and authoritative status are unknown", statusError);
-      });
-      if (!switchStateMatches(authoritative, expected)) {
-        if (error?.code !== "timeout" && switchStateMatches(authoritative, before)) {
-          fail("switch_failed", "initial cutover was not confirmed", error);
-        }
-        fail("switch_unknown", "initial cutover confirmation is ambiguous", error);
-      }
-    }
-    return {
-      phase: "confirmed",
-      replayed: false,
-      targetSlot,
-      artifact: artifactIdentity(artifact),
-      activeRegistered: true,
-      dnsMutationPerformed: false,
-      status: await status(),
-    };
-  }
-
-  async function abortInitialCutover({ targetSlot, sourceSha, artifactSha256 }) {
-    if (!slotIds.includes(targetSlot) || !SHA40.test(sourceSha ?? "") || !SHA64.test(artifactSha256 ?? "")) {
-      fail("invalid_input", "initial cutover candidate identity is malformed");
-    }
-    const before = await status();
-    const artifact = exactInitialArtifact(before, targetSlot, sourceSha, artifactSha256);
-    if (
-      before.recovery?.kind !== "initial_cutover_pending"
-      || before.recovery.targetSlot !== targetSlot
-      || artifact === null
-    ) fail("initial_cutover_unavailable", "no exact initial cutover is pending abort");
-    const rollbackTarget = before.recovery.rollbackTarget;
-    const restored = await call("external DNS rollback health", "checkRollbackRestored", { rollbackTarget });
-    if (
-      restored?.ok !== true
-      || restored.sourceSha !== rollbackTarget.sourceSha
-      || restored.serverActionsKeyFingerprint !== rollbackTarget.serverActionsKeyFingerprint
-    ) {
-      fail("rollback_unavailable", "public DNS has not restored the exact Vercel rollback target");
-    }
-    const expected = {
-      activeSlot: null,
-      previousSlot: null,
-      generation: before.generation + 1,
-    };
-    try {
-      validateSwitch(await call("initial cutover abort", "abortInitialCutover", {
-        expectedGeneration: before.generation,
-        targetSlot,
-        artifact,
-      }), expected);
-    } catch (error) {
-      const authoritative = await status().catch((statusError) => {
-        fail("switch_unknown", "initial cutover abort and authoritative status are unknown", statusError);
-      });
-      if (!switchStateMatches(authoritative, expected) || authoritative.recovery !== null) {
-        if (error?.code !== "timeout" && switchStateMatches(authoritative, before)) {
-          fail("switch_failed", "initial cutover was not aborted", error);
-        }
-        fail("switch_unknown", "initial cutover abort is ambiguous", error);
-      }
-    }
-    return {
-      phase: "aborted",
-      replayed: false,
-      targetSlot,
-      artifact: artifactIdentity(artifact),
-      activeRegistered: false,
-      dnsMutationPerformed: false,
-      status: await status(),
-    };
-  }
-
   return Object.freeze({
-    abortInitialCutover,
-    confirmInitialCutover,
     deploy,
-    prepareInitialCutover,
     rollback,
     status,
     verifyDeployArtifact,

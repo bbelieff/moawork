@@ -533,7 +533,7 @@ async function readProductionEvidence(force = false) {
       const response = await fetch("https://www.moa-work.com/login", { redirect: "manual", signal: AbortSignal.timeout(10_000) });
       loginStatus = response.status;
     } catch {}
-    const data = { available: true, items, loginStatus, measuredAt: new Date().toISOString(), source: "GitHub/Vercel Production deployments" };
+    const data = { available: true, items, loginStatus, measuredAt: new Date().toISOString(), source: "GitHub Production deployments" };
     readProductionEvidence.cache = { at: Date.now(), data };
     return data;
   } catch (error) {

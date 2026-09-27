@@ -8,7 +8,7 @@ const ids = {
   request: "00000000-0000-4000-8000-000000000040",
 };
 
-const mocks = vi.hoisted(() => ({ rpc: vi.fn(), createClient: vi.fn(), eventRows: [] as Record<string, unknown>[], members: [] as { id: string; name: string }[] }));
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), createClient: vi.fn(), eventRows: [] as Record<string, unknown>[], consultationRows: [] as Record<string, unknown>[], consultationError: false, itemAvailable: true, members: [] as { id: string; name: string }[] }));
 
 function queryResult(table: string) {
   if (table === "board_item_detail_links") {
@@ -50,13 +50,13 @@ const client = {
     builder.maybeSingle = vi.fn(async () =>
       table === "items"
         ? {
-            data: {
+            data: mocks.itemAvailable ? {
               id: ids.item,
               board_id: ids.board,
               org_id: ids.org,
               assigned_to: ids.user,
               deleted_at: null,
-            },
+            } : null,
             error: null,
           }
         : { data: null, error: null },
@@ -64,6 +64,9 @@ const client = {
     builder.then = (resolve: (value: unknown) => unknown) =>
       Promise.resolve(table === "board_item_detail_events" ? {
         data: mocks.eventRows.filter((row) => filters.every(([key, value]) => row[key] === value) && (!kinds || kinds.includes(String(row.kind)))).slice(0, limit), error: null,
+      } : table === "consultation_events" ? {
+        data: mocks.consultationRows.filter((row)=>filters.every(([key,value])=>row[key]===value)).slice(0,limit),
+        error: mocks.consultationError ? {message:"private detail"} : null,
       } : queryResult(table)).then(resolve);
     return builder;
   }),
@@ -111,7 +114,34 @@ describe("Issue #574 cloud folder server actions", () => {
     mocks.createClient.mockReset().mockResolvedValue(client);
     client.from.mockClear();
     mocks.eventRows = [];
+    mocks.consultationRows = [];
+    mocks.consultationError = false;
+    mocks.itemAvailable = true;
     mocks.members = [];
+  });
+
+  it("merges moved-item consultation audit by current org/item once, independent of old board, with no mutation",async()=>{
+    mocks.consultationRows=[
+      {id:"audit1",org_id:ids.org,item_id:ids.item,kind:"confirmed",step:"deposit_confirmed",before:false,after:true,actor_id:ids.user,at:"2026-09-26T02:00:00Z",details:null},
+      {id:"audit1",org_id:ids.org,item_id:ids.item,kind:"confirmed",step:"deposit_confirmed",before:false,after:true,actor_id:ids.user,at:"2026-09-26T02:00:00Z",details:null},
+      {id:"hidden",org_id:"another-org",item_id:ids.item,kind:"confirmed",at:"2026-09-26T02:00:00Z"},
+    ];
+    mocks.members=[{id:ids.user,name:"합성 담당"}];
+    const result=await loadItemDetailAction(ids.board,ids.item);
+    expect(result.ok).toBe(true);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]).toMatchObject({id:"consultation:audit1",kind:"consultation",body:"착수금 입금 확인: 미확인 → 확인",actor_id:ids.user});
+    expect(result.members).toContainEqual({id:ids.user,name:"합성 담당"});
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("checks current item visibility before audit reads; audit failure is not an empty-history success",async()=>{
+    mocks.itemAvailable=false;
+    expect((await loadItemDetailAction(ids.board,ids.item)).ok).toBe(false);
+    expect(client.from).not.toHaveBeenCalledWith("consultation_events");
+    mocks.itemAvailable=true; mocks.consultationError=true;
+    const result=await loadItemDetailAction(ids.board,ids.item);
+    expect(result.ok).toBe(false);expect(result.message).not.toContain("private detail");
   });
 
   it("normalizes a folder URL, calls the canonical RPC and separates the cloud row from legacy links", async () => {

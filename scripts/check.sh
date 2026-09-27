@@ -104,7 +104,8 @@ node --test --test-concurrency=1 --test-timeout=60000 \
   ops/vps/provision/postflight.test.mjs \
   ops/vps/provision/provision-cli.test.mjs \
   ops/vps/release/linux-release-runtime.test.mjs \
-  ops/vps/release/release-slots.test.mjs
+  ops/vps/release/release-slots.test.mjs \
+  ops/vps/cron/cron-units.test.mjs
 
 # ── 규칙 공지 (2026-08-20 일원화) ───────────────────────
 # 왜 여기 있나: 모든 PR exact tree가 머지 전에 CI에서 반드시 이 전체 스크립트를 지난다.

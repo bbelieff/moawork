@@ -6,62 +6,28 @@ on:
   pull_request:
   workflow_dispatch:
 
+# 같은 브랜치에 새 커밋이 오면 이전 실행을 취소한다 — 이미 낡은 결과에 분을 쓰지 않는다.
+# Windows 러너는 분이 2배로 청구되므로 버려질 실행 하나가 특히 비싸다.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     name: check (lint + typecheck + test)
-    # #715: standard Windows hosted VM separates CI from local full-gate leases.
-    # Uses the account's included private-repository Actions minutes.
-    # Budget enforcement is a GitHub setting, not enforced by this workflow.
-    # Keep standard runners only; no paid larger runner or VPS build fallback.
+    # Windows 유지는 선택이 아니라 제약이다 — scripts/gate-lease.mjs 가 non-win32 를
+    # GATE_POSIX_CONTAINMENT_UNAVAILABLE 로 명시적으로 거부한다(cgroup v2/pidfd/subreaper
+    # 격리 미구현). Linux 러너로 옮기려면 그 격리를 먼저 구현해야 하고, 그건 별도 작업이다.
     runs-on: windows-2025
-    # Full app/worker suites plus browser contracts can exceed 30 minutes on
-    # Windows runners; keep every gate and its own timeout intact.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
-      # Fresh hosted VMs install from the lockfile; no Actions cache storage added.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Prepare WSL containment test environment
-        timeout-minutes: 5
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          function Download-Verified($url, $target, $sha256) {
-            curl.exe --fail --location --retry 2 --max-time 120 --output $target $url
-            if ($LASTEXITCODE -ne 0) { throw "Download failed: $url" }
-            if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha256) {
-              throw 'Test runtime SHA256 mismatch'
-            }
-          }
-          # Canonical Ubuntu WSL rootfs; pin bytes so upstream changes fail closed.
-          $rootfs = Join-Path $env:RUNNER_TEMP 'gate-wsl-rootfs.tar.gz'
-          Download-Verified 'https://cloud-images.ubuntu.com/wsl/jammy/current/ubuntu-jammy-wsl-amd64-ubuntu22.04lts.rootfs.tar.gz' $rootfs '1483cc5c1dce13064f774834cbffdff226559fd522a67a381a8ea77d63fb4109'
-          $nodeVersion = (node --version).Trim()
-          if ($nodeVersion -notmatch '^v22\.\d+\.\d+$') { throw 'Expected Node 22' }
-          $nodeFile = "node-$nodeVersion-linux-x64.tar.xz"
-          $nodeArchive = Join-Path $env:RUNNER_TEMP $nodeFile
-          $sums = (Invoke-WebRequest "https://nodejs.org/dist/$nodeVersion/SHASUMS256.txt").Content
-          $checksumLines = @($sums -split "`n" | Where-Object { $_ -match ('^[a-f0-9]{64}\s+' + [regex]::Escape($nodeFile) + '\s*$') })
-          if ($checksumLines.Count -ne 1) { throw 'Node checksum is missing or ambiguous' }
-          Download-Verified "https://nodejs.org/dist/$nodeVersion/$nodeFile" $nodeArchive ($checksumLines[0].Substring(0, 64))
-          # WSL1 avoids nested virtualization; only this disposable VM is changed.
-          wsl.exe --import MoaWorkGate (Join-Path $env:RUNNER_TEMP 'gate-wsl') $rootfs --version 1
-          if ($LASTEXITCODE -ne 0) { throw 'WSL import failed' }
-          wsl.exe --set-default MoaWorkGate
-          if ($LASTEXITCODE -ne 0) { throw 'WSL default selection failed' }
-          $nodeArchivePosix = $nodeArchive.Replace('\', '/')
-          $linuxArchive = (@(wsl.exe -d MoaWorkGate --exec wslpath -u $nodeArchivePosix) -join "`n").Trim()
-          if ($LASTEXITCODE -ne 0 -or $linuxArchive -notmatch '^/mnt/[a-z]/') { throw 'WSL path resolution failed' }
-          wsl.exe -d MoaWorkGate --exec tar -xJf $linuxArchive -C /usr/local --strip-components=1
-          if ($LASTEXITCODE -ne 0) { throw 'Native Node extraction failed' }
-          wsl.exe -d MoaWorkGate --exec ln -s /usr/local/bin/node /usr/bin/node
-          if ($LASTEXITCODE -ne 0) { throw 'Native Node path setup failed' }
-          wsl.exe --exec bash -lc 'set -eu; uname -r; command -v pgrep; /usr/bin/node --version'
-          if ($LASTEXITCODE -ne 0) { throw 'WSL test runtime probe failed' }
+          # 의존성 캐시 — 예전엔 캐시가 없어 npm ci 가 매번 레지스트리에서 전부 받았다.
+          cache: npm
 
       - name: Install dependencies
         run: npm ci

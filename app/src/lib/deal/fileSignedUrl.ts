@@ -10,9 +10,10 @@
  * `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` 에서 용도 분리해 파생한다. 원키를 HMAC
  * 메시지 키로 직접 쓰지 않으며 응답·로그로 내보내지 않는다.
  *
- * 전환 호환성: 예전 Vercel 릴리스가 `SUPABASE_SERVICE_ROLE_KEY` 로 발급한 5분 토큰은
- * 새 릴리스가 검증만 한다. 안정키가 있으면 신규 발급은 반드시 파생키를 사용한다.
- * VPS 웹 컨테이너에는 service_role 을 넣지 않는다.
+ * `SUPABASE_SERVICE_ROLE_KEY` 는 이 서명에 **쓰지 않는다**. 예전 Vercel 릴리스가 그 키로
+ * 발급한 5분 토큰을 받아 주던 전환 호환 경로는 제거했다(전환 완료). 그 경로가 남아 있으면
+ * 야간 배치 때문에 service_role 을 같은 프로세스에 넣는 순간, DB 자격증명이 다운로드
+ * 서명키로도 인정된다. 다시 넣지 않는다.
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -45,8 +46,6 @@ function primarySigningKey(): Buffer | null {
 function issuingKey(): Buffer | string {
   const primary = primarySigningKey();
   if (primary) return primary;
-  const legacy = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (legacy) return legacy;
   if (process.env.NODE_ENV === "production") {
     throw new Error("파일 다운로드 서명 설정이 없습니다.");
   }
@@ -63,11 +62,6 @@ function verificationKeys(): Array<Buffer | string> {
 
   const keys: Array<Buffer | string> = [];
   if (primary) keys.push(primary);
-
-  // Legacy verification exists only for the five-minute Vercel drain window.
-  // It is never required in the self-hosted runtime.
-  const legacy = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (legacy) keys.push(legacy);
   if (keys.length === 0 && process.env.NODE_ENV !== "production") {
     keys.push(DEV_ONLY_FALLBACK_SECRET);
   }

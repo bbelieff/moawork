@@ -183,40 +183,6 @@ function validateArtifact(artifact, label = "artifact") {
   return structuredClone(artifact);
 }
 
-function validateRollbackTarget(value) {
-  exactKeys(value, ["healthUrl", "provider", "serverActionsKeyFingerprint", "sourceSha"], "external rollback target");
-  if (
-    value.provider !== "vercel"
-    || !SHA40.test(value.sourceSha ?? "")
-    || !SHA64.test(value.serverActionsKeyFingerprint ?? "")
-  ) {
-    fail("invalid_config", "external rollback target identity is malformed");
-  }
-  let healthUrl;
-  try {
-    healthUrl = new URL(value.healthUrl);
-  } catch {
-    fail("invalid_config", "external rollback health URL is malformed");
-  }
-  if (
-    healthUrl.protocol !== "https:"
-    || healthUrl.port !== ""
-    || healthUrl.username !== ""
-    || healthUrl.password !== ""
-    || healthUrl.search !== ""
-    || healthUrl.hash !== ""
-    || healthUrl.pathname !== "/api/health/ready"
-    || !healthUrl.hostname.endsWith(".vercel.app")
-    || healthUrl.href !== value.healthUrl
-  ) fail("invalid_config", "external rollback must be one canonical Vercel readiness URL");
-  return {
-    provider: "vercel",
-    healthUrl: healthUrl.href,
-    serverActionsKeyFingerprint: value.serverActionsKeyFingerprint,
-    sourceSha: value.sourceSha,
-  };
-}
-
 function normalizeConfig(input) {
   exactKeys(input, CONFIG_KEYS, "runtime config");
   if (input.schema !== 1) fail("invalid_config", "runtime config schema must be 1");
@@ -607,15 +573,7 @@ function validateState(value, config) {
   for (const key of ["activeSlot", "previousSlot"]) if (value[key] !== null && !config.slotIds.includes(value[key])) fail("state_invalid", `${key} is outside configured slots`);
   if (value.activeSlot !== null && value.activeSlot === value.previousSlot) fail("state_invalid", "active and previous slots must differ");
   if (value.recovery !== null) {
-    if (value.recovery.kind === "initial_cutover_pending") {
-      exactKeys(value.recovery, ["expectedGeneration", "kind", "rollbackTarget", "targetSlot"], "release recovery marker");
-      if (
-        !config.slotIds.includes(value.recovery.targetSlot)
-        || !Number.isSafeInteger(value.recovery.expectedGeneration)
-        || value.recovery.expectedGeneration < 0
-      ) fail("state_invalid", "initial cutover marker is malformed");
-      value.recovery.rollbackTarget = validateRollbackTarget(value.recovery.rollbackTarget);
-    } else if (value.recovery.kind === "service_state_unknown") {
+    if (value.recovery.kind === "service_state_unknown") {
       exactKeys(value.recovery, ["expectedActive", "kind", "operation", "slot"], "release recovery marker");
       if (
         !config.slotIds.includes(value.recovery.slot)
@@ -654,15 +612,6 @@ function validateState(value, config) {
     };
   }
   if (value.activeSlot !== null && slots[value.activeSlot].state !== "active") fail("state_invalid", "active slot state is inconsistent");
-  if (value.recovery?.kind === "initial_cutover_pending") {
-    if (
-      value.activeSlot !== null
-      || value.previousSlot !== null
-      || value.generation !== value.recovery.expectedGeneration
-      || slots[value.recovery.targetSlot].state !== "running"
-      || slots[value.recovery.targetSlot].artifact === null
-    ) fail("state_invalid", "initial cutover state is inconsistent");
-  }
   return { ...value, slots };
 }
 
@@ -719,44 +668,6 @@ async function exactHealth(fetchImpl, url, artifact, signal) {
     && releaseId === artifact.releaseId
     && serverActionsKeyFingerprint !== null;
   return { ok, releaseId, sourceSha, serverActionsKeyFingerprint };
-}
-
-async function exactVercelHealth(fetchImpl, url, rollbackTarget, signal) {
-  let response;
-  try {
-    response = await fetchImpl(url, { method: "GET", redirect: "error", headers: { accept: "application/json" }, signal });
-  } catch (error) {
-    fail("health_failed", "Vercel rollback readiness request failed", error);
-  }
-  const text = await response.text();
-  if (!response.ok || text.length > 4096) return { ok: false, sourceSha: null };
-  let payload;
-  try {
-    payload = JSON.parse(text);
-  } catch {
-    return { ok: false, sourceSha: null };
-  }
-  const sourceSha = typeof payload?.buildSha === "string" && SHA40.test(payload.buildSha)
-    ? payload.buildSha
-    : null;
-  const releaseSha = typeof payload?.releaseSha === "string" && SHA40.test(payload.releaseSha)
-    ? payload.releaseSha
-    : null;
-  const serverActionsKeyFingerprint = typeof payload?.serverActionsKeyFingerprint === "string"
-    && SHA64.test(payload.serverActionsKeyFingerprint)
-    ? payload.serverActionsKeyFingerprint
-    : null;
-  const ok = payload?.service === "moawork-web"
-    && payload.status === "ready"
-    && payload.runtime === "vercel"
-    && payload.revision === "verified"
-    && payload.artifact === "managed"
-    && payload.artifactSha256 === "managed"
-    && payload.serverActions === "verified"
-    && serverActionsKeyFingerprint === rollbackTarget.serverActionsKeyFingerprint
-    && sourceSha === rollbackTarget.sourceSha
-    && releaseSha === rollbackTarget.sourceSha;
-  return { ok, sourceSha, serverActionsKeyFingerprint };
 }
 
 function upstreamBytes(port) {
@@ -1193,14 +1104,11 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
     return pending;
   }
 
-  async function readState({ allowInitialCutover = false } = {}) {
+  async function readState() {
     requireLock();
     const value = await pathExists(config.stateFile) ? await readJson(config.stateFile, "release state") : emptyStatus(config);
     const state = validateState(value, config);
-    if (
-      state.recovery !== null
-      && !(allowInitialCutover && state.recovery.kind === "initial_cutover_pending")
-    ) fail("recovery_required", "a prior release outcome requires operator reconciliation");
+    if (state.recovery !== null) fail("recovery_required", "a prior release outcome requires operator reconciliation");
     for (const slot of config.slotIds) {
       const record = state.slots[slot];
       if (record.artifact !== null) validatedArtifact(record.artifact, `slot ${slot} artifact`);
@@ -1215,12 +1123,7 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
       await verifySealedRelease(slot, record.seal);
     }
     const upstreamExists = await pathExists(config.upstreamFile);
-    if (state.recovery?.kind === "initial_cutover_pending") {
-      if (!upstreamExists) fail("state_invalid", "pending initial cutover is missing its staged upstream");
-      await assertRegular(config.upstreamFile, "Caddy upstream");
-      const expected = upstreamBytes(config.slots[state.recovery.targetSlot].port);
-      if (!(await readFile(config.upstreamFile)).equals(expected)) fail("state_invalid", "pending initial cutover upstream differs from state");
-    } else if (state.activeSlot === null) {
+    if (state.activeSlot === null) {
       if (upstreamExists) fail("state_invalid", "an upstream exists without an active MoaWork slot");
     } else {
       if (!upstreamExists) fail("state_invalid", "active MoaWork slot is missing its upstream");
@@ -1416,7 +1319,7 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
   }
 
   async function status() {
-    return structuredClone(await readState({ allowInitialCutover: true }));
+    return structuredClone(await readState());
   }
 
   async function prepare({ slot, artifact, signal }) {
@@ -1653,150 +1556,6 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
     fail("timeout", "Caddy outcome requires operator reconciliation", cause);
   }
 
-  function assertInitialCutover(before, { expectedGeneration, targetSlot, artifact }) {
-    const expected = validatedArtifact(artifact);
-    if (
-      before.activeSlot !== null
-      || before.previousSlot !== null
-      || before.recovery !== null
-      || before.generation !== expectedGeneration
-      || !config.slotIds.includes(targetSlot)
-      || before.slots[targetSlot].state !== "running"
-      || !identitiesEqual(before.slots[targetSlot].artifact, expected)
-    ) fail("concurrent_switch", "initial cutover state changed before the operation");
-    for (const slot of config.slotIds) {
-      if (slot !== targetSlot && before.slots[slot].artifact !== null) {
-        fail("switch_rejected", "initial cutover has more than one candidate");
-      }
-    }
-    return expected;
-  }
-
-  async function prepareInitialCutover({ expectedGeneration, targetSlot, artifact, rollbackTarget, signal }) {
-    requireLock();
-    const externalRollback = validateRollbackTarget(rollbackTarget);
-    const before = await readState();
-    assertInitialCutover(before, { expectedGeneration, targetSlot, artifact });
-    await verifySealedRelease(targetSlot, before.slots[targetSlot].seal);
-    let routeInstalled = false;
-    let reloadAttempted = false;
-    try {
-      await writeAtomic(config.upstreamFile, upstreamBytes(config.slots[targetSlot].port), 0o644);
-      routeInstalled = true;
-      await run(config.caddyPath, ["validate", "--config", config.caddyConfigFile], signal);
-      reloadAttempted = true;
-      await run(config.systemctlPath, ["reload", config.caddyUnit], signal);
-      const next = structuredClone(before);
-      next.generation += 1;
-      next.recovery = {
-        kind: "initial_cutover_pending",
-        expectedGeneration: next.generation,
-        targetSlot,
-        rollbackTarget: externalRollback,
-      };
-      await writeState(next);
-      return { generation: next.generation, activeSlot: null, previousSlot: null };
-    } catch (error) {
-      if (!routeInstalled) throw error;
-      let compensationError = null;
-      try {
-        await boundedCleanup(config.timeoutMs, async (cleanupSignal, registerTermination) => {
-          await restoreUpstream(null);
-          if (reloadAttempted) await run(config.systemctlPath, ["reload", config.caddyUnit], cleanupSignal);
-          if (await pathExists(config.upstreamFile)) fail("recovery_persistence", "initial cutover upstream was not removed");
-        });
-      } catch (cleanupError) {
-        compensationError = cleanupError;
-      }
-      if (compensationError !== null) await persistUnknownCaddy(before, targetSlot, compensationError);
-      if (hasUnprovenTermination(error)) await persistUnknownCaddy(before, targetSlot, error);
-      throw error;
-    }
-  }
-
-  async function confirmInitialCutover({ expectedGeneration, targetSlot, artifact }) {
-    requireLock();
-    const expected = validatedArtifact(artifact);
-    const before = await readState({ allowInitialCutover: true });
-    if (
-      before.activeSlot !== null
-      || before.previousSlot !== null
-      || before.generation !== expectedGeneration
-      || before.recovery?.kind !== "initial_cutover_pending"
-      || before.recovery.targetSlot !== targetSlot
-      || before.slots[targetSlot].state !== "running"
-      || !identitiesEqual(before.slots[targetSlot].artifact, expected)
-    ) fail("concurrent_switch", "initial cutover state changed before confirmation");
-    await verifySealedRelease(targetSlot, before.slots[targetSlot].seal);
-    const next = structuredClone(before);
-    next.generation += 1;
-    next.activeSlot = targetSlot;
-    next.previousSlot = null;
-    next.recovery = null;
-    next.slots[targetSlot].state = "active";
-    await writeState(next);
-    return { generation: next.generation, activeSlot: targetSlot, previousSlot: null };
-  }
-
-  async function abortInitialCutover({ expectedGeneration, targetSlot, artifact, signal }) {
-    requireLock();
-    const expected = validatedArtifact(artifact);
-    const before = await readState({ allowInitialCutover: true });
-    if (
-      before.activeSlot !== null
-      || before.previousSlot !== null
-      || before.generation !== expectedGeneration
-      || before.recovery?.kind !== "initial_cutover_pending"
-      || before.recovery.targetSlot !== targetSlot
-      || before.slots[targetSlot].state !== "running"
-      || !identitiesEqual(before.slots[targetSlot].artifact, expected)
-    ) fail("concurrent_switch", "initial cutover state changed before abort");
-    const stagedUpstream = upstreamBytes(config.slots[targetSlot].port);
-    let routeRemoved = false;
-    let reloadAttempted = false;
-    try {
-      await restoreUpstream(null);
-      routeRemoved = true;
-      await run(config.caddyPath, ["validate", "--config", config.caddyConfigFile], signal);
-      reloadAttempted = true;
-      await run(config.systemctlPath, ["reload", config.caddyUnit], signal);
-      const next = structuredClone(before);
-      next.generation += 1;
-      next.recovery = null;
-      await writeState(next);
-      return { generation: next.generation, activeSlot: null, previousSlot: null };
-    } catch (error) {
-      if (!routeRemoved) throw error;
-      let compensationError = null;
-      try {
-        await boundedCleanup(config.timeoutMs, async (cleanupSignal, registerTermination) => {
-          await restoreUpstream(stagedUpstream);
-          if (reloadAttempted) await run(config.systemctlPath, ["reload", config.caddyUnit], cleanupSignal);
-          if (!(await readFile(config.upstreamFile)).equals(stagedUpstream)) {
-            fail("recovery_persistence", "pending initial cutover upstream was not restored");
-          }
-        });
-      } catch (cleanupError) {
-        compensationError = cleanupError;
-      }
-      if (compensationError !== null) await persistUnknownCaddy(before, targetSlot, compensationError);
-      if (hasUnprovenTermination(error)) await persistUnknownCaddy(before, targetSlot, error);
-      throw error;
-    }
-  }
-
-  async function checkRollbackTarget({ rollbackTarget, signal }) {
-    requireLock();
-    const expected = validateRollbackTarget(rollbackTarget);
-    return exactVercelHealth(fetchImpl, expected.healthUrl, expected, signal);
-  }
-
-  async function checkRollbackRestored({ rollbackTarget, signal }) {
-    requireLock();
-    const expected = validateRollbackTarget(rollbackTarget);
-    return exactVercelHealth(fetchImpl, config.publicHealthUrl, expected, signal);
-  }
-
   async function switchActive({ expectedActiveSlot, expectedGeneration, targetSlot, artifact, signal }) {
     requireLock();
     const expected = validatedArtifact(artifact);
@@ -1864,15 +1623,10 @@ export async function createLinuxReleaseRuntime(input, dependencies = {}) {
   }
 
   return Object.freeze({
-    abortInitialCutover: (input) => tracked(() => abortInitialCutover(input)),
     checkCandidate: (input) => tracked(() => checkCandidate(input)),
     checkPublic: (input) => tracked(() => checkPublic(input)),
-    checkRollbackRestored: (input) => tracked(() => checkRollbackRestored(input)),
-    checkRollbackTarget: (input) => tracked(() => checkRollbackTarget(input)),
     config,
-    confirmInitialCutover: (input) => tracked(() => confirmInitialCutover(input)),
     prepare: (input) => tracked(() => prepare(input)),
-    prepareInitialCutover: (input) => tracked(() => prepareInitialCutover(input)),
     rejectCandidate: (input) => tracked(() => rejectCandidate(input)),
     startCandidate: (input) => tracked(() => startCandidate(input)),
     status: (input) => tracked(() => status(input)),

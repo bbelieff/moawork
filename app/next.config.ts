@@ -9,35 +9,14 @@ import {
   serverActionsKeyFingerprint,
 } from "./src/lib/operations/runtime-identity";
 
-const isManagedVercelBuild = process.env.VERCEL === "1";
-const buildSha = isManagedVercelBuild
-  ? resolveBuildSha({
-      VERCEL_GIT_COMMIT_SHA: process.env.VERCEL_GIT_COMMIT_SHA,
-    })
-  : resolveBuildSha(process.env);
+const buildSha = resolveBuildSha(process.env);
 const serverActionsBuildFingerprint = serverActionsKeyFingerprint(
   process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY,
 );
 
-if (isManagedVercelBuild && process.env.MOAWORK_BUILD_SHA) {
-  throw new Error(
-    "Managed Vercel builds must not define the self-hosted MOAWORK_BUILD_SHA.",
-  );
-}
-
-if (process.env.VERCEL_GIT_COMMIT_SHA && !buildSha) {
-  // 값 자체는 출력하지 않는다. CI/Vercel 설정 오류를 산출물 생성 전에 차단한다.
+if (process.env.MOAWORK_BUILD_SHA && !buildSha) {
+  // 값 자체는 출력하지 않는다. CI 설정 오류를 산출물 생성 전에 차단한다.
   throw new Error("Build revision must be a full 40-character Git SHA.");
-}
-
-if (!isManagedVercelBuild && process.env.MOAWORK_BUILD_SHA && !buildSha) {
-  throw new Error("Build revision must be a full 40-character Git SHA.");
-}
-
-if (isManagedVercelBuild && !buildSha) {
-  throw new Error(
-    "Managed Vercel builds require VERCEL_GIT_COMMIT_SHA as a full 40-character Git SHA.",
-  );
 }
 
 if (process.env.MOAWORK_BUILD_SHA && !serverActionsBuildFingerprint) {
@@ -48,7 +27,6 @@ if (process.env.MOAWORK_BUILD_SHA && !serverActionsBuildFingerprint) {
 
 const nextConfig: NextConfig = {
   // Issue #725 — 한 번 검증한 standalone 산출물을 shadow/blue/green에 재사용한다.
-  // 빌드 위치와 무관하며 Vercel의 기존 Git 배포도 그대로 지원한다.
   output: "standalone",
   // #725: preserve 127.0.0.1 in request.url so internal proxy rewrites match
   // the standalone router's original origin instead of becoming external hops.
@@ -56,19 +34,12 @@ const nextConfig: NextConfig = {
   // npm workspace의 hoisted production dependency까지 standalone trace에 포함한다.
   outputFileTracingRoot: join(process.cwd(), ".."),
   // Server Action 요청과 브라우저 asset이 서로 다른 release로 섞이지 않게 한다.
-  // 자체 호스팅은 exact commit SHA를 쓰고, Vercel Git 배포는 플랫폼이 주입한
-  // 불투명한 dpl_* 식별자를 그대로 소비한다. source/release SHA 검증은 별개다.
+  // 자체 호스팅은 exact commit SHA를 쓴다. source/release SHA 검증은 별개다.
   deploymentId: resolveNextDeploymentId(process.env),
   // This non-secret HMAC is compiled into the exact build and copied into
   // required-server-files.json. Runtime readiness and artifact provenance use
   // it to prove that Next consumed the same Server Actions key at build time.
   env: {
-    // Vercel Git metadata is available only while the build runs. Compile the
-    // validated source revision into the client/server artifact so runtime env
-    // drift cannot make a different release appear verified.
-    ...(isManagedVercelBuild && buildSha
-      ? { NEXT_PUBLIC_APP_VERSION: buildSha }
-      : {}),
     ...(serverActionsBuildFingerprint
       ? {
           MOAWORK_SERVER_ACTIONS_BUILD_FINGERPRINT:

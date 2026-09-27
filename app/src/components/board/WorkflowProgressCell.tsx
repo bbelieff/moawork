@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { newLeadStageLabel } from "@/lib/new-lead/stage-presentation";
 import { useId, useRef, useState, type ReactNode } from "react";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { setCellAction } from "@/app/(app)/boards/actions";
@@ -9,6 +10,7 @@ import {
   type WorkflowProgressKind,
 } from "@/lib/workflow/progress";
 import { BOARD_TABLE_CONTROL } from "./table-style";
+import { NewLeadPipelineRepair } from "./NewLeadPipelineRepair";
 
 const TRANSFER = "__workflow_transfer__";
 
@@ -21,6 +23,7 @@ export function WorkflowProgressCell({
   error,
   transitionAction,
   cellAction,
+  bulkIntercept,
 }: Readonly<{
   boardId: string;
   row: ItemWithValues;
@@ -30,6 +33,11 @@ export function WorkflowProgressCell({
   error?: string | null;
   transitionAction?: ReactNode;
   cellAction?: (formData: FormData) => Promise<void>;
+  /**
+   * 여러 행이 선택된 상태의 낱개 진행 변경을 일괄 흐름으로 넘긴다.
+   * true 를 돌려주면 낱개 저장·전이 대화를 건너뛰고 표시값으로 되돌린다.
+   */
+  bulkIntercept?: (nextValue: string) => boolean;
 }>) {
   const spec = workflowProgressSpec(kind);
   const current = typeof row.values[spec.stageColumnKey] === "string"
@@ -38,9 +46,34 @@ export function WorkflowProgressCell({
   const [dialogOpen, setDialogOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const descriptionId = useId();
+  const repairAvailable = Boolean(error?.includes("현재 단계에서는 이 관문을 넘을 수 없습니다"));
+  // ★ 기존 단계 «검색» — 진행 셀은 native select를 그대로 둔다.
+  //   만들기 입구는 없다(단계값은 전이·이동규칙과 묶여 있어 새 값을 넣으면
+  //   «골랐는데 카드가 안 움직이는» 상태가 된다 — LabelCombobox로 바꾸지 않는다).
+  //   필터는 보여주는 항목만 좁히고, 제출·전이 대화·일괄 가로채기는 그대로다.
+  const [stageFilter, setStageFilter] = useState("");
+  const stageOptions = column.options_jsonb?.options ?? [];
+  const filterText = stageFilter.trim().toLowerCase();
+  const visibleStages = filterText === ""
+    ? stageOptions
+    : stageOptions.filter(
+        (option) =>
+          option.label.toLowerCase().includes(filterText)
+          || option.id.toLowerCase().includes(filterText),
+      );
 
   return (
     <div className="min-w-40">
+      {stageOptions.length > 4 ? (
+        <input
+          type="search"
+          value={stageFilter}
+          onChange={(event) => setStageFilter(event.target.value)}
+          placeholder="단계 검색"
+          aria-label="진행 단계 검색"
+          className={`${BOARD_TABLE_CONTROL} mb-1 font-normal`}
+        />
+      ) : null}
       <form action={cellAction ?? setCellAction}>
         <input type="hidden" name="boardId" value={boardId} />
         <input type="hidden" name="itemId" value={row.id} />
@@ -54,6 +87,10 @@ export function WorkflowProgressCell({
           aria-describedby={descriptionId}
           className={`${BOARD_TABLE_CONTROL} font-semibold focus:ring-2 focus:ring-mw-primary/20 disabled:cursor-not-allowed disabled:opacity-70`}
           onChange={(event) => {
+            if (bulkIntercept?.(event.currentTarget.value)) {
+              event.currentTarget.value = current;
+              return;
+            }
             if (event.currentTarget.value === TRANSFER) {
               event.preventDefault();
               event.currentTarget.value = current;
@@ -65,8 +102,11 @@ export function WorkflowProgressCell({
           }}
         >
           <option value="">미선택</option>
+          {current && !visibleStages.some((option) => option.id === current) ? (
+            <option value={current}>{stageOptions.find((option) => option.id === current)?.label ?? (kind === "new-lead" ? newLeadStageLabel(current) : current)}</option>
+          ) : null}
           <optgroup label="보드 안 단계">
-            {(column.options_jsonb?.options ?? []).map((option) => (
+            {visibleStages.map((option) => (
               <option key={option.id} value={option.id}>{option.label}</option>
             ))}
           </optgroup>
@@ -78,7 +118,13 @@ export function WorkflowProgressCell({
       <span id={descriptionId} className="sr-only">
         보드 안 단계는 즉시 저장되고, 다음 업무로 이동은 확인 후 실행됩니다.
       </span>
-      {error ? <p role="alert" className="mt-1 text-[0.65rem] text-mw-error">{error}</p> : null}
+      {!dialogOpen && error ? <p role="alert" className="mt-1 text-[0.65rem] text-mw-error">{error}</p> : null}
+      {!dialogOpen && !readOnly && kind === "new-lead" && repairAvailable ? (
+        <button type="button" className="mt-1 rounded border border-mw-line px-2 py-1 text-xs" onClick={() => {
+          setDialogOpen(true);
+          dialog.current?.showModal();
+        }}>단계 구성 확인</button>
+      ) : null}
 
       <dialog
         ref={dialog}
@@ -103,6 +149,10 @@ export function WorkflowProgressCell({
             보드 안 단계 변경과 달리 이 선택은 실제 업무 탭을 넘깁니다.
             {spec.guardLabel ? ` «${spec.guardLabel}» 조건을 확인한 뒤 이동합니다.` : " 이동 전 마지막으로 확인해 주세요."}
           </p>
+          {error ? <p role="alert" className="mt-3 text-sm text-mw-error">{error}</p> : null}
+          {!readOnly && kind === "new-lead" ? (
+            <NewLeadPipelineRepair key={row.id} itemId={row.id} available={repairAvailable} />
+          ) : null}
           {kind === "new-lead" ? (
             <form action={cellAction ?? setCellAction} className="mt-4 flex justify-end gap-2">
               <input type="hidden" name="boardId" value={boardId} />
@@ -110,7 +160,7 @@ export function WorkflowProgressCell({
               <input type="hidden" name="columnKey" value={spec.stageColumnKey} />
               <input type="hidden" name="value" value={spec.transitionValue ?? ""} />
               <button type="button" onClick={() => dialog.current?.close()} className="h-10 rounded-lg border border-mw-line px-4 text-sm font-semibold text-mw-body">취소</button>
-              <button type="submit" className="h-10 rounded-lg bg-mw-primary px-4 text-sm font-semibold text-mw-on-accent">{spec.transitionLabel}</button>
+              <button type="submit" data-mw-cta="primary" className="h-10 rounded-lg bg-mw-primary px-4 text-sm font-semibold text-mw-on-accent">{spec.transitionLabel}</button>
             </form>
           ) : kind === "contact" ? (
             dialogOpen
@@ -119,7 +169,7 @@ export function WorkflowProgressCell({
           ) : (
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={() => dialog.current?.close()} className="h-10 rounded-lg border border-mw-line px-4 text-sm font-semibold text-mw-body">취소</button>
-              <Link href={spec.targetHref} className="inline-flex h-10 items-center rounded-lg bg-mw-primary px-4 text-sm font-semibold text-mw-on-accent">{spec.transitionLabel}</Link>
+              <Link href={spec.targetHref} data-mw-cta="primary" className="inline-flex h-10 items-center rounded-lg bg-mw-primary px-4 text-sm font-semibold text-mw-on-accent">{spec.transitionLabel}</Link>
             </div>
           )}
         </div>

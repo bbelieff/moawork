@@ -6,6 +6,14 @@ ROOT=/srv/moawork-direct
 NODE=/usr/bin/node
 UNIT=moawork-direct.service
 PORT=3100
+OBSERVER_SOURCE_RELATIVE=ops/vps/request-stream-observer.cjs
+OBSERVER_RUNTIME_NAME=request-stream-observer.cjs
+OBSERVER_REQUIRE_PATH=$ROOT/current/runtime/app/$OBSERVER_RUNTIME_NAME
+# Disk ceiling on a shared host: a deploy may only add one runtime-only release (~160M).
+# Releases kept before a new build, counting current and previous.
+KEEP_RELEASES=3
+# Build needs ~1.5G; the rest is headroom for the other services on this VPS.
+MIN_FREE_BYTES=$((3 * 1024 * 1024 * 1024))
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 trusted() {
@@ -51,6 +59,19 @@ port_free() {
   listeners="$(ss -H -lnt "sport = :$PORT")" || return 1
   [[ -z "$listeners" ]]
 }
+install_observer() {
+  local source="$1" target="$2"
+  [[ -f "$source" && ! -L "$source" ]] || return 1
+  [[ ! -e "$target" && ! -L "$target" ]] || return 1
+  install -m 0440 -- "$source" "$target"
+}
+write_release_env() {
+  local target="$1" sha="$2" artifact="$3"
+  [[ ! -e "$target" && ! -L "$target" ]] || return 1
+  printf 'NODE_ENV=production\nHOSTNAME=127.0.0.1\nPORT=%s\nMOAWORK_BUILD_SHA=%s\nMOAWORK_RELEASE_SHA=%s\nMOAWORK_ARTIFACT_SHA256=%s\nNODE_OPTIONS=--require=%s\n' \
+    "$PORT" "$sha" "$sha" "$artifact" "$OBSERVER_REQUIRE_PATH" >"$target"
+  chmod 0600 "$target"
+}
 check_ready() {
   local sha="$1" artifact="$2"
   curl --fail --silent --show-error --noproxy '*' --max-time 2 "http://127.0.0.1:$PORT/api/health/ready" |
@@ -81,6 +102,51 @@ check_release() {
   expected="$(sha256sum "$asset")"; expected="${expected%% *}"
   actual="$(curl -fsS --noproxy '*' --max-time 3 "http://127.0.0.1:$PORT/_next/static/$relative" | sha256sum)" || return 1
   [[ "${actual%% *}" == "$expected" ]]
+}
+# Keep the newest complete releases, delete the rest with their own archives and strip
+# build sources from survivors; runtime/, runtime.sha256 and release.env are all a
+# rollback or the service reads. Protected paths are never deleted; the candidate is
+# never touched. Archives of releases not yet built (a pending deploy) are left alone.
+prune_releases() {
+  local keep="$1" entry name extras=0 line; shift
+  [[ "$keep" =~ ^[1-9][0-9]*$ ]] || return 1
+  local -A protect=()
+  for entry in "$@"; do
+    [[ -z "$entry" ]] && continue
+    [[ "$entry" =~ ^$ROOT/releases/[a-f0-9]{40}$ ]] || return 1
+    protect["$entry"]=1
+  done
+  for entry in "${!protect[@]}"; do [[ -d "$entry" ]] && keep=$((keep-1)); done
+  while IFS= read -r -d '' line; do
+    entry="${line#* }"; name="${entry##*/}"
+    [[ "$name" =~ ^[a-f0-9]{40}$ && "$entry" == "$ROOT/releases/$name" && -d "$entry" && ! -L "$entry" ]] || continue
+    if [[ -n "${protect[$entry]:-}" ]]; then
+      [[ "$entry" == "${1:-}" || "$entry" == "${2:-}" ]] && { strip_source "$entry" || return 1; }
+      continue
+    fi
+    if ((extras < keep)) && [[ -f "$entry/runtime.sha256" && -d "$entry/runtime" ]]; then
+      extras=$((extras+1)); strip_source "$entry" || return 1; continue
+    fi
+    rm -rf --one-file-system -- "$entry" || return 1
+    rm -f -- "$ROOT/incoming/$name.tar" || return 1
+    printf 'PRUNED release=%s\n' "$name"
+  done < <(find "$ROOT/releases" -mindepth 1 -maxdepth 1 -printf '%T@ %p\0' | sort -z -rn)
+}
+# Build sources (node_modules, .next cache) are ~93% of a release and unused after activation.
+# The release mtime orders retention, so removing the entry must not make it look newer.
+strip_source() {
+  local release="$1" stamp
+  [[ -e "$release/source" || -L "$release/source" ]] || return 0
+  [[ -f "$release/runtime.sha256" && -d "$release/runtime" && ! -L "$release/source" ]] || return 1
+  stamp="$(stat -c %Y -- "$release")" || return 1
+  rm -rf --one-file-system -- "$release/source" && touch -m -d "@$stamp" -- "$release"
+}
+free_bytes() { df --output=avail -B1 -- "$1" | tail -n 1 | tr -d ' '; }
+require_free_space() {
+  local need="$1" have
+  have="$(free_bytes "$ROOT")" || return 1
+  [[ "$have" =~ ^[0-9]+$ ]] || return 1
+  ((have >= need)) || { printf 'DISK_LOW need=%s have=%s\n' "$need" "$have" >&2; return 1; }
 }
 rollback() {
   local previous="$1"
@@ -130,6 +196,10 @@ main() {
   release_link "$ROOT/previous" >/dev/null || die 'unexpected previous link'
   if [[ -n "$previous" ]]; then check_release "$previous" || die 'existing MoaWork release is not healthy'
   else port_free || die 'candidate port is occupied or query failed'; fi
+  prune_releases "$KEEP_RELEASES" "$previous" "$(release_link "$ROOT/previous")" "$release" ||
+    printf '%s\n' 'PRUNE_INCOMPLETE; continuing with existing disk space' >&2
+  # Failing the deploy is better than filling the disk shared with other services.
+  require_free_space "$MIN_FREE_BYTES" || die 'not enough free disk for a build; current release unchanged'
   [[ "$(sha256sum "$archive" | cut -d ' ' -f1)" == "$archive_hash" ]] || die 'archive digest mismatch'
   [[ "$(git get-tar-commit-id <"$archive")" == "$sha" ]] || die 'archive does not identify exact source commit'
   install -d -m 0755 "$release"
@@ -162,6 +232,7 @@ main() {
   [[ ! -e "$release/runtime/app/.next/static" && ! -L "$release/runtime/app/.next/static" && ! -e "$release/runtime/app/public" && ! -L "$release/runtime/app/public" ]] || die 'unexpected bundled public/static target'
   cp -a "$release/source/app/.next/static" "$release/runtime/app/.next/static"
   cp -a "$release/source/app/public" "$release/runtime/app/public"
+  install_observer "$release/source/$OBSERVER_SOURCE_RELATIVE" "$release/runtime/app/$OBSERVER_RUNTIME_NAME" || die 'invalid request stream observer'
   # Reject special files and escaping links before privileged ownership changes.
   [[ -z "$(find "$release/runtime" ! -type f ! -type d ! -type l -print -quit)" ]] || die 'unsafe runtime entry'
   while IFS= read -r -d '' link; do
@@ -173,13 +244,14 @@ main() {
   chmod -R u=rwX,g=rX,o= "$release/runtime"
   tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf "$release/runtime.tar" -C "$release/runtime" .
   sha256sum "$release/runtime.tar" | cut -d ' ' -f1 >"$release/runtime.sha256"
-  printf 'NODE_ENV=production\nHOSTNAME=127.0.0.1\nPORT=%s\nMOAWORK_BUILD_SHA=%s\nMOAWORK_RELEASE_SHA=%s\nMOAWORK_ARTIFACT_SHA256=%s\n' "$PORT" "$sha" "$sha" "$(cat "$release/runtime.sha256")" >"$release/release.env"
-  chmod 0600 "$release/release.env"
+  write_release_env "$release/release.env" "$sha" "$(cat "$release/runtime.sha256")" || die 'release env already exists'
   trap 'if [[ "$(readlink "$ROOT/current" 2>/dev/null)" == "$release" ]]; then rollback "$previous" || printf "%s\\n" ROLLBACK_FAILED >&2; fi' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
   activate "$release" "$previous" || die 'candidate failed; inspect rollback result'
   trap - EXIT INT TERM
+  { strip_source "$release" && rm -f -- "$archive"; } ||
+    printf '%s\n' 'CLEANUP_INCOMPLETE; next deploy retries' >&2
   printf 'DEPLOYED source=%s artifact=%s private=loopback\n' "$sha" "$(cat "$release/runtime.sha256")"
 }
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi

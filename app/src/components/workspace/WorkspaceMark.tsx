@@ -67,6 +67,7 @@ export function WorkspaceMark({
       aria-hidden={decorative || undefined}
       role={decorative ? undefined : "img"}
       aria-label={decorative ? undefined : `${name} 회사 표식`}
+      data-workspace-mark={tone}
     >
       {signedImageUrl && failedImageUrl !== signedImageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- 짧게 만료되는 서명 URL은 최적화 대상이 아니다.

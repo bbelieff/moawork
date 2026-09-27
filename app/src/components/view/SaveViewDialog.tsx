@@ -70,7 +70,7 @@ export function SaveViewDialog({
     <div className={styles.dialog} role="dialog" aria-label="새 뷰 만들기">
       <h3>새 뷰 만들기</h3>
       <p className={styles.pickerHint}>
-        지금 저장될 조건 — 보는 방식 <b>{KIND_LABEL[selectedKind]}</b> · 필터 <b>{filterCount}개</b>
+        <b>{KIND_LABEL[selectedKind]}</b> · 필터 <b>{filterCount}개</b>
       </p>
 
       <div className={styles.field}>
@@ -103,7 +103,7 @@ export function SaveViewDialog({
       </div>
 
       <div className={styles.field}>
-        <label>사람 조건을 어떻게 둘까</label>
+        <label>담당자 범위</label>
         <div className={styles.radioRow} role="radiogroup" aria-label="사람 조건">
           <label>
             <input type="radio" name="personScope" checked={personScope === "viewer"} onChange={() => setPersonScope("viewer")} />
@@ -133,13 +133,10 @@ export function SaveViewDialog({
             ))}
           </select>
         ) : null}
-        <span className={styles.pickerHint}>
-          <b>보는 사람 기준</b>이 기본입니다. 사람 이름을 박으면 그 사람이 바뀔 때 뷰가 거짓말을 합니다.
-        </span>
       </div>
 
       <div className={styles.field}>
-        <label>누가 볼 수 있나</label>
+        <label>공개 범위</label>
         <div className={styles.radioRow} role="radiogroup" aria-label="공개 범위">
           <label>
             <input type="radio" name="visibility" checked={visibility === "private"} onChange={() => setVisibility("private")} />
@@ -151,10 +148,6 @@ export function SaveViewDialog({
           </label>
         </div>
       </div>
-
-      <p className={styles.pickerHint}>
-        <b>뷰는 권한이 아닙니다.</b> 조회 범위가 먼저 적용되고 그 위에 이 뷰의 조건이 얹힙니다.
-      </p>
 
       <div className={styles.dialogActions}>
         {onCancel ? (

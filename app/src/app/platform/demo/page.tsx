@@ -30,5 +30,5 @@ export default async function PlatformDemoPage({ searchParams }: Readonly<{ sear
     : exactSelectedDemo
       ? { kind: "access-required" as const }
       : undefined;
-  return <PlatformDemoWorkspaceTab state={state} selectAction={selectPlatformDemoWorkspace} prepareAction={preparePlatformDemoWorkspace} workspaceSurface={workspaceSurface} deploymentVersion={process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null} />;
+  return <PlatformDemoWorkspaceTab state={state} selectAction={selectPlatformDemoWorkspace} prepareAction={preparePlatformDemoWorkspace} workspaceSurface={workspaceSurface} deploymentVersion={process.env.MOAWORK_BUILD_SHA?.slice(0, 7) ?? null} />;
 }

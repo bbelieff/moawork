@@ -1,0 +1,25 @@
+[Unit]
+Description=MoaWork nightly platform metrics rollup
+Documentation=https://github.com/bbelieff/moawork/blob/main/ops/vps/cron/README.md
+After=network-online.target moawork-direct.service
+Wants=network-online.target
+ConditionPathExists=/usr/local/bin/moawork-platform-metrics.sh
+
+[Service]
+# oneshot 은 Restart= 를 받지 않는다(systemd 가 거부). 앱이 아직 안 떴을 때의
+# 재시도는 스크립트의 curl --retry 가 맡는다.
+Type=oneshot
+# 앱과 «같은» 파일을 읽는다. CRON_SECRET 을 두 군데 적으면 한쪽만 바꿨을 때
+# 크론이 조용히 401 로 죽는다. 값은 이 파일에만 있고 저장소·인자에는 없다.
+EnvironmentFile=/etc/moawork/runtime.env
+ExecStart=/usr/local/bin/moawork-platform-metrics.sh
+TimeoutStartSec=300
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectProc=invisible
+UMask=0077

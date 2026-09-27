@@ -1,0 +1,261 @@
+.dialog {
+  border: 1px solid var(--mw-line, #e7e9ee);
+  border-radius: var(--mw-pop-r, 11px);
+  padding: 0;
+  /* 프리플라이트 margin:0이 네이티브 dialog의 자동 중앙을 깨뜨려 좌상단에
+     붙는다 — margin:auto로 중앙에 둔다 (브라우저 실측 수정). */
+  margin: auto;
+  width: min(640px, calc(100vw - var(--sp-8)));
+  max-width: 100%;
+  max-height: min(86vh, 900px);
+  overflow: auto;
+  background: var(--mw-bg, #ffffff);
+  color: inherit;
+}
+
+.dialog::backdrop {
+  background: rgba(17, 24, 39, 0.45);
+}
+
+.dialog > * {
+  padding-left: var(--sp-4);
+  padding-right: var(--sp-4);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-top: var(--sp-4);
+  padding-bottom: var(--sp-3);
+  position: sticky;
+  top: 0;
+  /* 스크롤 내용이 헤더 뒤로 비치지 않게 불투명 배경+z-index. */
+  background: var(--mw-bg, #ffffff);
+  z-index: 2;
+  border-bottom: 1px solid var(--mw-line, #e7e9ee);
+}
+
+.title {
+  font-size: var(--fs-16);
+  font-weight: 700;
+  margin: 0;
+  outline: none;
+}
+
+.close {
+  min-width: var(--mw-hit-min-loose, 30px);
+  min-height: var(--mw-hit-min-loose, 30px);
+  border: 1px solid var(--mw-line, #e7e9ee);
+  border-radius: var(--mw-cta-r, 7px);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.localNote {
+  font-size: var(--fs-12);
+  color: #5b6472;
+  margin: var(--sp-2) 0;
+}
+
+.pick,
+.running {
+  padding-top: var(--sp-3);
+  padding-bottom: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.fileLabel {
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+
+.error {
+  color: #b42318;
+  font-size: var(--fs-13);
+  margin: 0;
+}
+
+.fileName {
+  font-size: var(--fs-13);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.progress {
+  height: 8px;
+  border-radius: 999px;
+  background: #eef0f4;
+  overflow: hidden;
+}
+
+.bar {
+  height: 100%;
+  background: var(--mw-cta-solid, #3969e7);
+  transition: width 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    transition: none;
+  }
+}
+
+.stage {
+  font-size: var(--fs-13);
+  margin: 0;
+}
+
+.preview {
+  margin: var(--sp-3) 0;
+}
+
+.preview img,
+.preview iframe {
+  width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+  border: 1px solid var(--mw-line, #e7e9ee);
+  border-radius: var(--mw-cta-r, 7px);
+  background: #f7f8fa;
+}
+
+.previewNote {
+  font-size: var(--fs-12);
+  color: #5b6472;
+  margin: var(--sp-2) 0 0;
+}
+
+.docWarnings {
+  margin: 0 0 var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: #fdebdc;
+  border-radius: var(--mw-cta-r, 7px);
+  font-size: var(--fs-12);
+  color: #7a3a12;
+  list-style: none;
+}
+
+.selectRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
+}
+
+.count {
+  margin-left: auto;
+  font-size: var(--fs-12);
+  color: #5b6472;
+}
+
+/* .dialog > * 의 좌우 패딩을 덮어쓰던 padding:0 때문에 체크박스가 가장자리에
+   붙었다 — 안쪽 여백을 명시한다. */
+.list {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-4);
+  list-style: none;
+}
+
+.notice,
+.message {
+  font-size: var(--fs-13);
+  margin: var(--sp-2) 0;
+}
+
+.notice {
+  color: #7a3a12;
+}
+
+.message {
+  color: #0a4a33;
+}
+
+.actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-3);
+  padding-top: var(--sp-3);
+  padding-bottom: var(--sp-4);
+  /* 하단 고정 바 — 스크롤 목록 위에서 버튼이 항상 보인다. */
+  position: sticky;
+  bottom: 0;
+  background: var(--mw-bg, #ffffff);
+  z-index: 2;
+  border-top: 1px solid var(--mw-line, #e7e9ee);
+}
+
+.ghost {
+  border: 1px solid var(--mw-line, #e7e9ee);
+  border-radius: var(--mw-cta-r, 7px);
+  background: transparent;
+  color: inherit;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-13);
+  cursor: pointer;
+  min-height: var(--mw-hit-min-loose, 30px);
+}
+
+.primary {
+  border: none;
+  border-radius: var(--mw-cta-r, 7px);
+  background: var(--mw-cta-solid, #3969e7);
+  color: var(--mw-cta-ink, #ffffff);
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--fs-14);
+  font-weight: 600;
+  cursor: pointer;
+  min-height: var(--mw-hit-min-loose, 30px);
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.repick {
+  font-size: var(--fs-13);
+  color: var(--mw-accent-ink, #2e377f);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.repick input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+@media (max-width: 480px) {
+  .dialog {
+    width: calc(100vw - var(--sp-4));
+    max-height: 92vh;
+    overflow-x: hidden;
+  }
+
+  .preview img,
+  .preview iframe {
+    max-height: 140px;
+  }
+
+  .list {
+    padding: var(--sp-2) var(--sp-3);
+  }
+
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .primary {
+    width: 100%;
+  }
+}

@@ -1,9 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { CompaniesViewModel, CompanyDealView, CompanyView } from "@/lib/companies/server";
 import { COMPANY_STATUS_COLUMNS, totalsFrom } from "@/lib/companies/status";
+import {
+  bulkRangeIds,
+  intersectVisibleSelection,
+  pruneSelection,
+  selectionToCsv,
+  selectionTriState,
+  toggleGroupSelection,
+  toggleSelection,
+} from "@/components/board/bulk-selection";
+import {
+  describeCompaniesBulkTargets,
+  toCompanyBulkId,
+  toDealBulkId,
+  visibleCompaniesBulkIds,
+} from "@/lib/companies/bulk";
+import { CompaniesBulkBar, type CompaniesBulkOp, type CompaniesBulkTarget } from "./CompaniesBulkBar";
+import type { ResultNotice } from "@/lib/ui/result-notice";
 
 const won = new Intl.NumberFormat("ko-KR");
 
@@ -44,7 +61,19 @@ function Cell({ children, align }: { children: ReactNode; align: "left" | "right
   );
 }
 
-function DealRow({ row, hidden }: { row: CompanyDealView; hidden: boolean }) {
+function DealRow({
+  row,
+  hidden,
+  bulkId,
+  checked,
+  onToggle,
+}: {
+  row: CompanyDealView;
+  hidden: boolean;
+  bulkId?: string;
+  checked?: boolean;
+  onToggle?: (bulkId: string, checked: boolean, shiftKey?: boolean) => void;
+}) {
   const { deal, money: m } = row;
   // 원장을 못 읽은 건은 돈 다섯 칸을 «0원» 이 아니라 «확인 필요» 로 적는다.
   const unreadable = m === null;
@@ -53,10 +82,28 @@ function DealRow({ row, hidden }: { row: CompanyDealView; hidden: boolean }) {
   return (
     <tr hidden={hidden} className="border-t border-zinc-100 text-sm dark:border-zinc-900">
       <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-3 py-2 dark:bg-zinc-950">
-        <span aria-hidden="true" className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-mw-primary" />
-        <Link href={`/deals/${deal.id}`} className="underline-offset-4 hover:underline">
-          {deal.title}
-        </Link>
+        <span className="flex items-center gap-2">
+          {bulkId && onToggle ? (
+            <input
+              type="checkbox"
+              checked={Boolean(checked)}
+              aria-label={`${deal.title} 선택`}
+              onChange={(event) => {
+                const native = event.nativeEvent as MouseEvent | KeyboardEvent | undefined;
+                const shift =
+                  typeof (native as { shiftKey?: unknown } | undefined)?.shiftKey === "boolean"
+                    ? (native as { shiftKey: boolean }).shiftKey
+                    : false;
+                onToggle(bulkId, event.currentTarget.checked, shift);
+              }}
+              className="h-3.5 w-3.5 shrink-0"
+            />
+          ) : null}
+          <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-mw-primary" />
+          <Link href={`/deals/${deal.id}`} className="underline-offset-4 hover:underline">
+            {deal.title}
+          </Link>
+        </span>
       </td>
       {/* 진행기관 · 승인일 — 계약업체 실무 보드가 원본이다. 여기서 복사해 두지 않는다(#531). */}
       <Cell align="left">{row.boardFacts.institution ?? <span className="text-zinc-400">{DASH}</span>}</Cell>
@@ -81,11 +128,21 @@ function CompanyRow({
   open,
   onToggle,
   dealsUnknown,
+  bulkId,
+  checked,
+  onToggleSelect,
+  dealToggle,
+  selection,
 }: {
   view: CompanyView;
   open: boolean;
   onToggle: () => void;
   dealsUnknown: boolean;
+  bulkId?: string;
+  checked?: boolean;
+  onToggleSelect?: (bulkId: string, checked: boolean, shiftKey?: boolean) => void;
+  dealToggle?: (bulkId: string, checked: boolean, shiftKey?: boolean) => void;
+  selection?: ReadonlySet<string>;
 }) {
   /*
    * 회사 줄은 «그 회사의 자금 건 전체를 접은 것» 이다(목업 `.corow`).
@@ -112,13 +169,31 @@ function CompanyRow({
           scope="row"
           className="sticky left-0 z-10 whitespace-nowrap bg-zinc-50 px-3 py-2 text-left font-semibold dark:bg-zinc-900"
         >
-          <button type="button" onClick={onToggle} aria-expanded={open} className="flex items-center gap-2">
-            <span aria-hidden="true" className={`text-zinc-400 transition ${open ? "rotate-180" : ""}`}>⌄</span>
-            <span>{view.company.name}</span>
-            <span className="rounded-full bg-mw-tint-blue px-2 py-0.5 text-xs font-semibold text-mw-primary  ">
-              {dealsUnknown ? "확인 필요" : `자금 ${view.deals.length}건`}
-            </span>
-          </button>
+          <span className="flex items-center gap-2">
+            {bulkId && onToggleSelect ? (
+              <input
+                type="checkbox"
+                checked={Boolean(checked)}
+                aria-label={`${view.company.name} 선택`}
+                onChange={(event) => {
+                  const native = event.nativeEvent as MouseEvent | KeyboardEvent | undefined;
+                  const shift =
+                    typeof (native as { shiftKey?: unknown } | undefined)?.shiftKey === "boolean"
+                      ? (native as { shiftKey: boolean }).shiftKey
+                      : false;
+                  onToggleSelect(bulkId, event.currentTarget.checked, shift);
+                }}
+                className="h-3.5 w-3.5 shrink-0"
+              />
+            ) : null}
+            <button type="button" onClick={onToggle} aria-expanded={open} className="flex items-center gap-2">
+              <span aria-hidden="true" className={`text-zinc-400 transition ${open ? "rotate-180" : ""}`}>⌄</span>
+              <span>{view.company.name}</span>
+              <span className="rounded-full bg-mw-tint-blue px-2 py-0.5 text-xs font-semibold text-mw-primary  ">
+                {dealsUnknown ? "확인 필요" : `자금 ${view.deals.length}건`}
+              </span>
+            </button>
+          </span>
           {identity ? <p className="ml-6 mt-0.5 text-[11px] font-normal text-zinc-500">{identity}</p> : null}
         </th>
         {/* 진행기관 — 건들의 고유값. 목업도 최대 2개까지만 적는다(그 이상은 줄이 길어져 못 읽는다). */}
@@ -162,18 +237,56 @@ function CompanyRow({
           그때 조건부 렌더로 지워 버리면 그 성질을 조용히 잃는다.
           `hidden` 은 화면에서도 보조기술에서도 감추므로 «접힘» 의 뜻은 그대로다.
       */}
-      {view.deals.map((row) => <DealRow key={row.deal.id} row={row} hidden={!open} />)}
+      {view.deals.map((row) => (
+        <DealRow
+          key={row.deal.id}
+          row={row}
+          hidden={!open}
+          bulkId={toDealBulkId(row.deal.id)}
+          checked={selection?.has(toDealBulkId(row.deal.id)) ?? false}
+          onToggle={dealToggle}
+        />
+      ))}
     </>
   );
 }
 
-export function CompaniesWorkspace({ model, importSlot }: { model: CompaniesViewModel; importSlot?: ReactNode }) {
-  const companies = model.status === "ready" ? model.companies : [];
+export function CompaniesWorkspace({
+  model,
+  importSlot,
+  members = [],
+  membersError = null,
+}: {
+  model: CompaniesViewModel;
+  importSlot?: ReactNode;
+  members?: readonly { id: string; label: string }[];
+  /** 담당 목록 조회 장애 — 빈 목록과 구분한다. 있으면 담당 변경만 차단한다. */
+  membersError?: string | null;
+}) {
+  const companies = useMemo(
+    () => (model.status === "ready" ? model.companies : []),
+    [model],
+  );
   const [query, setQuery] = useState("");
   const [owner, setOwner] = useState("전체");
   const [status, setStatus] = useState("전체");
   const [unpaidOnly, setUnpaidOnly] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDialog, setBulkDialog] = useState<CompaniesBulkOp | null>(null);
+  const [bulkNotice, setBulkNotice] = useState<ResultNotice | null>(null);
+  const lastToggledRef = useRef<string | null>(null);
+
+  // 탭/보기 변경 선택 초기화 — 검색·필터 범위가 바뀌면 다른 집합이므로 비운다.
+  const selectionScope = `${query}::${owner}::${status}::${unpaidOnly ? "unpaid" : "all"}`;
+  const [selectionScopeState, setSelectionScopeState] = useState(selectionScope);
+  if (selectionScopeState !== selectionScope) {
+    setSelectionScopeState(selectionScope);
+    setSelected(new Set());
+    setBulkDialog(null);
+    setBulkNotice(null);
+  }
 
   const owners = useMemo(() => {
     const names = new Set<string>();
@@ -223,6 +336,133 @@ export function CompaniesWorkspace({ model, importSlot }: { model: CompaniesView
       ),
     [shown],
   );
+
+  // 사라진 id는 털어낸다 — 삭제 후 잔류 방지. 숨김(필터·접힘)은 유지하고 대상에서만 뺀다.
+  const allExistingIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const view of companies) {
+      ids.add(toCompanyBulkId(view.company.id));
+      for (const row of view.deals) ids.add(toDealBulkId(row.deal.id));
+    }
+    return ids;
+  }, [companies]);
+  if (selected.size > 0) {
+    let hasStale = false;
+    for (const id of selected) {
+      if (!allExistingIds.has(id)) {
+        hasStale = true;
+        break;
+      }
+    }
+    if (hasStale) {
+      setSelected(pruneSelection(selected, allExistingIds));
+    }
+  }
+
+  // 보이는·펼쳐진 순서 — 선택 교집합·Shift 범위·마스터의 기준. 접힌 하위는 절대 포함하지 않는다.
+  const visibleOrderedIds = useMemo(
+    () =>
+      visibleCompaniesBulkIds(
+        shown.map((view) => ({
+          companyId: view.company.id,
+          dealIds: view.deals.map((row) => row.deal.id),
+        })),
+        open,
+      ),
+    [shown, open],
+  );
+  const bulkTargetIds = useMemo(
+    () => intersectVisibleSelection(selected, visibleOrderedIds),
+    [selected, visibleOrderedIds],
+  );
+
+  const companyById = useMemo(() => new Map(companies.map((view) => [view.company.id, view])), [companies]);
+  const dealById = useMemo(() => {
+    const map = new Map<string, { view: CompanyView; row: CompanyDealView }>();
+    for (const view of companies) for (const row of view.deals) map.set(row.deal.id, { view, row });
+    return map;
+  }, [companies]);
+
+  const bulkTargets: CompaniesBulkTarget[] = useMemo(
+    () =>
+      bulkTargetIds.map((bulkId) => {
+        if (bulkId.startsWith("company:")) {
+          const id = bulkId.slice("company:".length);
+          const view = companyById.get(id);
+          return { bulkId, kind: "company" as const, id, title: view?.company.name ?? id };
+        }
+        const id = bulkId.slice("deal:".length);
+        const found = dealById.get(id);
+        return { bulkId, kind: "deal" as const, id, title: found?.row.deal.title ?? id };
+      }),
+    [bulkTargetIds, companyById, dealById],
+  );
+
+  const masterState = selectionTriState(selected, visibleOrderedIds);
+
+  const toggleRow = (bulkId: string, checked: boolean, shiftKey = false) => {
+    setBulkNotice(null);
+    const anchor = lastToggledRef.current;
+    if (shiftKey) {
+      const range = bulkRangeIds(visibleOrderedIds, anchor, bulkId);
+      if (range.length > 0) {
+        setSelected((previous) => toggleGroupSelection(previous, range, checked));
+        lastToggledRef.current = bulkId;
+        return;
+      }
+    }
+    setSelected((previous) => toggleSelection(previous, bulkId, checked));
+    lastToggledRef.current = bulkId;
+  };
+
+  const toggleVisible = (checked: boolean) => {
+    setBulkNotice(null);
+    setSelected((previous) => toggleGroupSelection(previous, visibleOrderedIds, checked));
+    if (visibleOrderedIds.length > 0) {
+      lastToggledRef.current = checked ? visibleOrderedIds[visibleOrderedIds.length - 1] ?? null : lastToggledRef.current;
+    }
+  };
+
+  const clearSelection = () => {
+    setSelected(new Set());
+    setBulkDialog(null);
+    lastToggledRef.current = null;
+  };
+
+  const applySucceeded = (succeededBulkIds: string[]) => {
+    if (succeededBulkIds.length === 0) return;
+    const done = new Set(succeededBulkIds);
+    setSelected((previous) => {
+      const next = new Set<string>();
+      for (const id of previous) if (!done.has(id)) next.add(id);
+      return next;
+    });
+  };
+
+  const exportCsv = useMemo(() => {
+    const headers = ["종류", "이름", "담당", "상태", "실행액"];
+    const lines = bulkTargetIds.map((bulkId) => {
+      if (bulkId.startsWith("company:")) {
+        const id = bulkId.slice("company:".length);
+        const view = companyById.get(id);
+        const ownersOf = view ? [...new Set(view.deals.map((row) => row.ownerName).filter(Boolean))].join(", ") : "";
+        return ["회사", view?.company.name ?? id, ownersOf, "", ""];
+      }
+      const id = bulkId.slice("deal:".length);
+      const found = dealById.get(id);
+      return [
+        "자금 건",
+        found?.row.deal.title ?? id,
+        found?.row.ownerName ?? "",
+        found?.row.statusLabel ?? "",
+        found?.row.deal.amount != null ? String(found.row.deal.amount) : "",
+      ];
+    });
+    return selectionToCsv(headers, lines);
+  }, [bulkTargetIds, companyById, dealById]);
+
+  const described = describeCompaniesBulkTargets(bulkTargetIds);
+  void described;
 
   if (model.status === "unconfigured") {
     // 오류가 아니라 «아직 연결 안 됨». 빈 회사 목록으로 위장하지 않는다.
@@ -327,6 +567,24 @@ export function CompaniesWorkspace({ model, importSlot }: { model: CompaniesView
         </button>
       </div>
 
+      {selected.size > 0 || bulkDialog !== null || bulkNotice !== null ? (
+        <CompaniesBulkBar
+          totalSelected={selected.size}
+          targets={bulkTargets}
+          members={members}
+          membersError={membersError}
+          exportCsv={exportCsv}
+          exportFilename="companies-selection.csv"
+          dialog={bulkDialog}
+          notice={bulkNotice}
+          onOpenDialog={setBulkDialog}
+          onCloseDialog={() => setBulkDialog(null)}
+          onClear={clearSelection}
+          onApplied={applySucceeded}
+          onNotice={(message, ok) => setBulkNotice({ ok: ok ?? true, message })}
+        />
+      ) : null}
+
       <section className="rounded-md border border-zinc-200 dark:border-zinc-800">
         <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-2.5 dark:border-zinc-800">
           <h2 className="text-sm font-semibold">업체 · 자금 건</h2>
@@ -357,7 +615,24 @@ export function CompaniesWorkspace({ model, importSlot }: { model: CompaniesView
                         index === 0 ? "sticky left-0 z-10 bg-white dark:bg-zinc-950" : ""
                       }`}
                     >
-                      {column.label}
+                      {index === 0 ? (
+                        <span className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            ref={(element) => {
+                              if (element) element.indeterminate = masterState === "partial";
+                            }}
+                            checked={masterState === "full"}
+                            aria-checked={masterState === "partial" ? "mixed" : undefined}
+                            aria-label="업체·자금 건 전체 선택"
+                            onChange={(event) => toggleVisible(event.currentTarget.checked)}
+                            className="h-3.5 w-3.5 shrink-0"
+                          />
+                          {column.label}
+                        </span>
+                      ) : (
+                        column.label
+                      )}
                     </th>
                   ))}
                 </tr>
@@ -370,6 +645,11 @@ export function CompaniesWorkspace({ model, importSlot }: { model: CompaniesView
                     open={Boolean(open[view.company.id])}
                     onToggle={() => setOpen((prev) => ({ ...prev, [view.company.id]: !prev[view.company.id] }))}
                     dealsUnknown={dealsUnknown}
+                    bulkId={toCompanyBulkId(view.company.id)}
+                    checked={selected.has(toCompanyBulkId(view.company.id))}
+                    onToggleSelect={toggleRow}
+                    dealToggle={toggleRow}
+                    selection={selected}
                   />
                 ))}
               </tbody>

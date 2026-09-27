@@ -9,6 +9,7 @@ import {
   encodeNoticeFile,
 } from "@/lib/notices/official-file";
 import { sanitizeFileName } from "@/lib/services/files";
+import { consultationFeedEvent, type ConsultationFeedEvent } from "@/lib/consultation/detail-history";
 import { createRequestBoards } from "@/lib/boards/server";
 import { resolveBoardDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
 import type { CellValue } from "@/lib/boards/types";
@@ -53,6 +54,9 @@ export type ItemDetailEvent = {
   /* #672 — 치워진 줄. 행은 남아 있고 화면에서만 접힌다. */
   deleted_at?: string | null;
   deleted_by?: string | null;
+  /* v17-detail — 고친 자국. 마이그레이션 150 이전 행은 둘 다 비어 있다. */
+  edited_at?: string | null;
+  edit_count?: number | null;
 };
 export type ItemDetailLink = {
   id: string;
@@ -89,11 +93,12 @@ async function context(boardId: string, itemId: string) {
   const client = await createClient({ noStore: true });
   const { data: item, error } = await client
     .from("items")
-    .select("id,board_id,org_id,assigned_to,deleted_at")
+    .select("id,board_id,org_id,assigned_to,deleted_at,archived_at")
     .eq("id", itemId)
     .eq("board_id", boardId)
     .eq("org_id", ctx.org.id)
     .is("deleted_at", null)
+    .is("archived_at", null)
     .maybeSingle();
   if (error || !item)
     throw new Error("이 회사 정보를 열 권한이 없거나 항목을 찾을 수 없습니다.");
@@ -125,11 +130,11 @@ export async function loadItemDetailAction(
 ): Promise<ItemDetailSnapshot> {
   try {
     const { ctx, client, item } = await context(boardId, itemId);
-    const [humanEventsResult, fieldEventsResult, linksResult, filesResult, collaboratorsResult, orgMembers] =
+    const [humanEventsResult, fieldEventsResult, linksResult, filesResult, collaboratorsResult, orgMembers, consultationEventsResult] =
       await Promise.all([
         client
           .from("board_item_detail_events")
-          .select("id,kind,body,metadata,actor_id,created_at,deleted_at,deleted_by")
+          .select("id,kind,body,metadata,actor_id,created_at,deleted_at,deleted_by,edited_at,edit_count")
           .eq("org_id", ctx.org.id)
           .eq("board_id", boardId)
           .eq("item_id", itemId)
@@ -173,11 +178,18 @@ export async function loadItemDetailAction(
         ctx.role === "owner" || ctx.role === "admin" || ctx.scope === "all"
           ? listOrgMemberOptions(ctx)
           : Promise.resolve([]),
+        // Existing151 RLS checks current item visibility; item identity survives handoff.
+        client.from("consultation_events")
+          .select("id,kind,step,before,after,actor_id,at,details")
+          .eq("org_id",ctx.org.id).eq("item_id",itemId)
+          .order("at",{ascending:false}).order("id",{ascending:false}).limit(100),
       ]);
-    if (humanEventsResult.error || fieldEventsResult.error || linksResult.error || filesResult.error || collaboratorsResult.error)
+    if (humanEventsResult.error || fieldEventsResult.error || linksResult.error || filesResult.error || collaboratorsResult.error || consultationEventsResult.error)
       throw new Error("상세 기록을 불러오지 못했습니다.");
     // Separate limits keep machine churn from crowding human conversations out.
-    const events = ([...(humanEventsResult.data ?? []), ...(fieldEventsResult.data ?? [])] as ItemDetailEvent[])
+    const consultationEvents = [...new Map(((consultationEventsResult.data ?? []) as ConsultationFeedEvent[])
+      .map((event)=>[event.id,consultationFeedEvent(event,orgMembers)])).values()];
+    const events = ([...(humanEventsResult.data ?? []), ...(fieldEventsResult.data ?? []), ...consultationEvents] as ItemDetailEvent[])
       .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
     const files = await Promise.all(
       (
@@ -632,12 +644,25 @@ export async function saveItemDetailFieldAction(input: {
   fieldKey: string;
   source: "column" | "detail";
   value: string;
+  /** OCR 재시도 등의 멱등 키. 없으면 setCells가 새로 만든다. */
+  requestId?: string;
 }): Promise<{ ok: boolean; message: string }> {
   try {
     const { ctx } = await context(input.boardId, input.itemId);
     await requireItemMutationPermission(ctx.org.id);
     const graph = await createRequestBoards();
     if (input.source === "column") {
+      // 클라이언트가 보낸 source는 신뢰하지 않는다. 실제 컬럼 정의에 없는
+      // 키를 "column"이라 우기면 setCells가 조용히 무시하고 성공을 돌려준다
+      // (정의되지 않은 컬럼 skip → errors 없음 → ok:true). 소스 불일치·
+      // 배치 밖 키는 여기서 명시 거부한다 — 성공 no-op 금지.
+      const board = await graph.service.getBoardDetail(ctx, input.boardId);
+      const actualColumn = board.columns.find((column) => column.key === input.fieldKey);
+      if (!actualColumn) {
+        throw new Error(
+          "요청한 저장 위치와 실제 배치가 일치하지 않습니다. 새로고침 후 다시 시도하세요. 저장하지 않았습니다.",
+        );
+      }
       let storedValue: CellValue = input.value;
       if (input.fieldKey === CREDIT_SCORE_KEYS.ncb || input.fieldKey === CREDIT_SCORE_KEYS.kcb) {
         const label = input.fieldKey === CREDIT_SCORE_KEYS.ncb ? "NCB" : "KCB";
@@ -664,6 +689,7 @@ export async function saveItemDetailFieldAction(input: {
         {
           [input.fieldKey]: storedValue,
         },
+        input.requestId || crypto.randomUUID(),
       );
       const failure = result.errors.find(
         (error) => error.key === input.fieldKey,

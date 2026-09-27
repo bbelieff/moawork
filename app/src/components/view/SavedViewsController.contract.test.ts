@@ -61,8 +61,9 @@ describe("saved view production consumer", () => {
     expect(controller).toContain("filters.sorts");
     expect(controller).toContain("textMode={config.textMode}");
     expect(controller).toContain("focusColumnKey={config.focusColumnKey}");
-    expect(controller).toContain("applySavedPersonScope(rows, activeSaved, currentUserId, personColumnKey, teamMemberIds)");
+    expect(controller).toContain("applySavedPersonScope(rows, activeSaved, currentUserId, personColumnKey, teamMemberIds, canonicalNewLead)");
     expect(page).toContain("const items = applySavedPersonScope(permissionItems, personRuntime.view");
+    expect(page).toContain("personRuntime.memberIds, board.source === NEW_LEAD_TAB_SOURCE)");
     expect(page).toContain("teamMemberIds={personRuntime.memberIds}");
     expect(page).toContain("applySavedKanbanView(");
     expect(page).toContain('view === "flat" || view === "calendar"');
@@ -75,7 +76,10 @@ describe("saved view production consumer", () => {
     expect(controller).toContain("presentNewLeadSavedViewConfig(view.config)");
     expect(controller).toContain("durableNewLeadSavedViewConfig(nextConfig)");
     expect(controller).toContain("applyFilters(personScopedRows, displayColumns, config.filters, filterProjection)");
-    expect(controller).toContain("canonicalNewLead={canonicalNewLead} members={memberOptions}");
+    const boardCell = controller.match(/<BoardCell\b[\s\S]*?\/>/)?.[0] ?? "";
+    expect(boardCell).toContain("canonicalNewLead={canonicalNewLead}");
+    expect(boardCell).toContain("canonicalOwner={workflowKindForSource(boardSource ?? null) !== null}");
+    expect(boardCell).toContain("members={memberOptions}");
     expect(page).toContain("<BoardHeader");
     expect(controller).toContain("moveRowAction");
     expect(controller).toContain("rowMoveIntentRef");

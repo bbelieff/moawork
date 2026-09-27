@@ -19,6 +19,8 @@ const probe = vi.hoisted(() => {
   let wave = 0;
   let queue: Array<() => void> = [];
   let scheduled = false;
+  let traceId: string | null = null;
+  let requestStart: string | null = null;
   const trips: Trip[] = [];
 
   // 어느 «호출부» 가 이 왕복을 냈는지 붙인다. 중복을 없애려면 «누가 중복하는지» 를 알아야 한다.
@@ -60,11 +62,12 @@ const probe = vi.hoisted(() => {
 
   const tables: Record<string, unknown[]> = {};
   const rpcs: Record<string, unknown> = {};
+  const rpcErrors: Record<string, unknown> = {};
 
-  function thenable(label: string, produce: () => unknown) {
+  function thenable(label: string, produce: () => unknown, error: () => unknown = () => null) {
     return {
       then: (onOk: (v: unknown) => unknown, onErr?: (e: unknown) => unknown) =>
-        roundtrip(label, { data: produce(), error: null, count: 0 }).then(onOk, onErr),
+        roundtrip(label, { data: produce(), error: error(), count: 0 }).then(onOk, onErr),
     };
   }
 
@@ -82,7 +85,16 @@ const probe = vi.hoisted(() => {
   const WRITE_OPS = new Set(["insert", "update", "upsert", "delete"]);
 
   function makeQuery(table: string) {
-    const rows = () => tables[table] ?? [];
+    let deletedScope: "active" | "deleted" | null = null;
+    let archivedScope = false;
+    const rows = () => {
+      const all = tables[table] ?? [];
+      if (table !== "items" || deletedScope === null) return all;
+      return all.filter((row) => {
+        const deleted = Boolean((row as { deleted_at?: string | null }).deleted_at);
+        return deletedScope === "deleted" ? deleted : !deleted;
+      });
+    };
     const q: Record<string, unknown> = {};
     let op = "select";
     for (const method of CHAIN) {
@@ -91,7 +103,20 @@ const probe = vi.hoisted(() => {
         return q;
       };
     }
-    const label = () => `${op}:${table}`;
+    q.is = (column: string, value: unknown) => {
+      if (table === "items" && column === "deleted_at" && value === null) deletedScope = "active";
+      return q;
+    };
+    q.not = (column: string, operator: string, value: unknown) => {
+      if (table === "items" && column === "deleted_at" && operator === "is" && value === null) deletedScope = "deleted";
+      if (table === "items" && column === "archived_at" && operator === "is" && value === null) archivedScope = true;
+      return q;
+    };
+    const label = () => {
+      if (table !== "items") return `${op}:${table}`;
+      if (archivedScope) return `${op}:${table}:archived`;
+      return `${op}:${table}${deletedScope ? `:${deletedScope}` : ""}`;
+    };
     q.single = () => thenable(label(), () => rows()[0] ?? null);
     q.maybeSingle = () => thenable(label(), () => rows()[0] ?? null);
     q.then = (onOk: (v: unknown) => unknown, onErr?: (e: unknown) => unknown) =>
@@ -147,19 +172,27 @@ const probe = vi.hoisted(() => {
         }),
     },
     from: (table: string) => makeQuery(table),
-    rpc: (name: string) => thenable(rpcLabel(name), () => rpcs[name] ?? null),
+    rpc: (name: string) => thenable(rpcLabel(name), () => rpcs[name] ?? null, () => rpcErrors[name] ?? null),
   };
 
   return {
     client,
     tables,
     rpcs,
+    rpcErrors,
     trips,
+    get traceId() { return traceId; },
+    set traceId(value: string | null) { traceId = value; },
+    get requestStart() { return requestStart; },
+    set requestStart(value: string | null) { requestStart = value; },
     reset() {
       wave = 0;
       queue = [];
       scheduled = false;
+      traceId = null;
+      requestStart = null;
       trips.length = 0;
+      for (const key of Object.keys(rpcErrors)) delete rpcErrors[key];
     },
   };
 });
@@ -172,7 +205,14 @@ vi.mock("@/lib/supabase/env", () => ({
 }));
 vi.mock("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, getAll: () => [], set: () => {} }),
-  headers: async () => ({ get: () => null }),
+  headers: async () => ({
+    get: (name: string) => {
+      const normalized = name.toLowerCase();
+      if (normalized === "x-mw-trace-id") return probe.traceId;
+      if (normalized === "x-mw-request-start-ms") return probe.requestStart;
+      return null;
+    },
+  }),
 }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
@@ -253,9 +293,13 @@ function seed() {
   probe.tables.board_columns = [];
   probe.tables.board_groups = [];
   probe.tables.items = [
-    { id: "item-1", org_id: "org-1", board_id: BOARD_ID, group_id: null, title: "리드 1", assigned_to: "user-1", sort_order: 0 },
+    { id: "item-1", org_id: "org-1", board_id: BOARD_ID, group_id: null, title: "리드 1", assigned_to: "user-1", sort_order: 0, deleted_at: null },
+    { id: "item-deleted", org_id: "org-1", board_id: BOARD_ID, group_id: null, title: "휴지통 리드", assigned_to: "user-1", sort_order: 1, deleted_at: "2026-01-02T00:00:00Z" },
   ];
-  probe.tables.item_values = [];
+  probe.tables.item_values = [
+    { org_id: "org-1", item_id: "item-1", column_key: "status", value_jsonb: "doing" },
+    { org_id: "org-1", item_id: "item-deleted", column_key: "status", value_jsonb: "done" },
+  ];
   probe.tables.tab_views = [{ id: "view-1", person_scope: "team", person_scope_user_id: null }];
 
   probe.rpcs.app_admin_role = null;
@@ -268,25 +312,51 @@ function seed() {
     "structure.section_manage": true,
     "structure.tab_manage": true,
     "danger.bulk_edit_delete": true,
+    "danger.csv_export": true,
     "structure.preset_edit": true,
   };
   probe.rpcs.read_permission_scoped_work_items = { itemIds: ["item-1"], hiddenCount: 0 };
   probe.rpcs.get_member_account_profile = { id: "user-1", name: "멤버", title: null, team_key: "team-a" };
 }
 
-async function renderBoard(searchParams: Record<string, string> = {}) {
+type BoardRun = {
+  trips: Trip[];
+  total: number;
+  serialStages: number;
+  countOf: (label: string) => number;
+  error: unknown;
+};
+
+async function renderBoardAttempt(
+  searchParams: Record<string, string> = {},
+  configure?: () => void,
+): Promise<BoardRun> {
   probe.reset();
   seed();
-  await BoardPage({
-    params: Promise.resolve({ id: BOARD_ID }),
-    searchParams: Promise.resolve(searchParams),
-  });
+  configure?.();
+  let error: unknown = null;
+  try {
+    await BoardPage({
+      params: Promise.resolve({ id: BOARD_ID }),
+      searchParams: Promise.resolve(searchParams),
+    });
+  } catch (caught) {
+    error = caught;
+  }
+  const trips = [...probe.trips];
   return {
-    trips: [...probe.trips],
-    total: probe.trips.length,
-    serialStages: new Set(probe.trips.map((t) => t.wave)).size,
-    countOf: (label: string) => probe.trips.filter((t) => t.label === label).length,
+    trips,
+    total: trips.length,
+    serialStages: new Set(trips.map((t) => t.wave)).size,
+    countOf: (label: string) => trips.filter((t) => t.label === label).length,
+    error,
   };
+}
+
+async function renderBoard(searchParams: Record<string, string> = {}, configure?: () => void) {
+  const run = await renderBoardAttempt(searchParams, configure);
+  if (run.error) throw run.error;
+  return run;
 }
 
 describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", () => {
@@ -299,7 +369,7 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
     const run = await renderBoard();
     expect(run.countOf("auth.getUser")).toBe(1);
     expect(run.countOf("select:boards")).toBeGreaterThan(0);
-    expect(run.countOf("select:items")).toBeGreaterThan(0);
+    expect(run.countOf("select:items:active")).toBeGreaterThan(0);
   });
 
   it("측정 — 기본 테이블 뷰 (savedView 없음)", async () => {
@@ -389,13 +459,87 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
   // 시간을 단언하지 않으므로 기계·부하와 무관하게 결정적으로 빨개진다.
   it("보드 화면의 직렬 단계가 예산을 넘지 않는다 — 병렬을 직렬로 되돌리면 빨개진다", async () => {
     const run = await renderBoard();
-    // BBE-214 R2 측정값 12. 권한·D24 판정을 다시 줄 세우면 13으로 되돌아간다.
+    // 담당자 목록과 그룹 컬럼 배치를 같은 물결에 실은 뒤 측정값 8.
+    // 권한·D24/메타·행·값 또는 snapshot 뒤의 두 독립 읽기를 다시 줄 세우면 즉시 넘는다.
     expect(run.serialStages, "보드 화면의 직렬 DB 단계가 늘었다 — 어디서 await 이 줄 섰는지 확인해라")
-      .toBeLessThanOrEqual(12);
+      .toBe(8);
+    // 보관 읽기는 활성·휴지통과 같은 물결에 탄다 (직렬 단계 추가 없음, 왕복 +1).
+    expect(run.total, "보드 화면의 읽기 왕복 계약이 바뀌었다 — 로그 계측은 쿼리를 더하면 안 된다")
+      .toBe(15);
     const permissionWave = run.trips.find((trip) => trip.label === "rpc:effective_permissions")?.wave;
     const scopeWave = run.trips.find((trip) => trip.label === "rpc:read_permission_scoped_work_items")?.wave;
     expect(permissionWave, "권한 판정 왕복을 못 찾았다").toBeTypeOf("number");
     expect(scopeWave, "D24 범위 판정 왕복을 못 찾았다").toBe(permissionWave);
+    const assigneeWaves = run.trips
+      .filter((trip) => trip.label === "select:org_members")
+      .map((trip) => trip.wave);
+    const groupLayoutWave = run.trips.find((trip) => trip.label === "select:board_views")?.wave;
+    expect(groupLayoutWave, "그룹 컬럼 배치 읽기를 못 찾았다").toBeTypeOf("number");
+    expect(assigneeWaves, "그룹 컬럼 배치와 같은 물결에서 시작한 담당자 목록 읽기를 못 찾았다")
+      .toContain(groupLayoutWave);
+  });
+
+  it("한 요청에 한 로그만 남기고 검증된 UUID와 유한한 비음수 단계만 기록한다", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const validTraceId = "002b99d0-bf2d-4ffa-bc5c-bb6bcd7d3bd2";
+
+    try {
+      const valid = await renderBoard({}, () => {
+        probe.traceId = validTraceId;
+        probe.requestStart = String(Math.max(0, performance.now() - 10));
+      });
+      const missing = await renderBoard();
+      const invalid = await renderBoard({}, () => {
+        probe.traceId = "ATTACKER_TRACE";
+        probe.requestStart = "ATTACKER_START";
+      });
+
+      for (const run of [valid, missing, invalid]) {
+        expect(run.total).toBe(15);
+        expect(run.serialStages).toBe(8);
+      }
+
+      const logs = info.mock.calls
+        .map(([message]) => typeof message === "string" ? JSON.parse(message) as Record<string, unknown> : null)
+        .filter((entry): entry is Record<string, unknown> =>
+          entry !== null && entry.event === "mw.performance" && entry.route === "board_detail",
+        );
+      expect(logs).toHaveLength(3);
+      expect(logs[0]?.trace_id).toBe(validTraceId);
+      const requestElapsedAtPreReturn = logs[0]?.request_elapsed_at_pre_return_ms as number;
+      expect(typeof requestElapsedAtPreReturn).toBe("number");
+      expect(Number.isFinite(requestElapsedAtPreReturn)).toBe(true);
+      expect(requestElapsedAtPreReturn).toBeGreaterThanOrEqual(0);
+      expect(logs[1]).not.toHaveProperty("trace_id");
+      expect(logs[1]).not.toHaveProperty("request_elapsed_at_pre_return_ms");
+      expect(logs[2]).not.toHaveProperty("trace_id");
+      expect(logs[2]).not.toHaveProperty("request_elapsed_at_pre_return_ms");
+
+      const phaseNames = [
+        "session",
+        "permission_guard",
+        "scoped_items_guard",
+        "snapshot_metadata",
+        "snapshot_items",
+        "snapshot_hydrate",
+        "post_snapshot_tail_reads",
+        "projection",
+        "pre_return",
+      ];
+      for (const log of logs) {
+        expect(log).not.toHaveProperty("first_byte_ms");
+        expect(log).not.toHaveProperty("finish_ms");
+        for (const key of ["phase_ms", "phase_offset_ms"] as const) {
+          const phases = log[key] as Record<string, number>;
+          expect(Object.keys(phases)).toEqual(phaseNames);
+          expect(Object.values(phases).every((value) => Number.isFinite(value) && value >= 0)).toBe(true);
+        }
+      }
+    } finally {
+      info.mockRestore();
+      vi.unstubAllEnvs();
+    }
   });
 
   it("getBoardDetail 의 세 읽기가 한 물결로 나간다", async () => {
@@ -411,6 +555,65 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
       expect(columns[i], "board_columns 가 boards 뒤 물결로 밀렸다 — 직렬로 되돌아갔다").toBe(boards[i]);
       expect(groups[i], "board_groups 가 boards 뒤 물결로 밀렸다 — 직렬로 되돌아갔다").toBe(boards[i]);
     }
+  });
+
+  it("화면 스냅샷은 메타1·활성1·휴지통1·보관1·값1이고 칸반 추가 조회는 0이다", async () => {
+    const table = await renderBoard();
+    const kanban = await renderBoard({ view: "kanban" });
+    for (const run of [table, kanban]) {
+      expect(run.countOf("select:boards")).toBe(1);
+      expect(run.countOf("select:board_columns")).toBe(1);
+      expect(run.countOf("select:board_groups")).toBe(1);
+      expect(run.countOf("select:items:active")).toBe(1);
+      expect(run.countOf("select:items:deleted")).toBe(1);
+      expect(run.countOf("select:items:archived")).toBe(1);
+      expect(run.countOf("select:item_values")).toBe(1);
+    }
+    expect(kanban.total).toBe(table.total);
+    expect(kanban.serialStages).toBe(table.serialStages);
+  });
+
+  it("권한 거부·판정 불능은 보드 저장소를 한 번도 읽지 않는다", async () => {
+    const denied = await renderBoardAttempt({}, () => {
+      probe.rpcs.effective_permissions = {
+        ...(probe.rpcs.effective_permissions as Record<string, boolean>),
+        "work.view_tabs": false,
+      };
+    });
+    expect((denied.error as Error)?.message).toBe("HARNESS_NOT_FOUND");
+
+    const unavailable = await renderBoardAttempt({}, () => {
+      probe.rpcErrors.effective_permissions = { message: "unavailable" };
+    });
+    expect(unavailable.error).toBeNull();
+
+    for (const run of [denied, unavailable]) {
+      expect(run.countOf("select:boards")).toBe(0);
+      expect(run.countOf("select:board_columns")).toBe(0);
+      expect(run.countOf("select:board_groups")).toBe(0);
+      expect(run.countOf("select:items:active")).toBe(0);
+      expect(run.countOf("select:items:deleted")).toBe(0);
+      expect(run.countOf("select:items:archived")).toBe(0);
+      expect(run.countOf("select:item_values")).toBe(0);
+    }
+  });
+
+  it("휴지통·보관 권한이 없으면 deleted/archived read 0, 있으면 1이며 값 수화는 둘 다 1이다", async () => {
+    const denied = await renderBoard({}, () => {
+      probe.rpcs.effective_permissions = {
+        ...(probe.rpcs.effective_permissions as Record<string, boolean>),
+        "work.item_delete": false,
+      };
+    });
+    const allowed = await renderBoard();
+    expect(denied.countOf("select:items:active")).toBe(1);
+    expect(denied.countOf("select:items:deleted")).toBe(0);
+    expect(denied.countOf("select:items:archived")).toBe(0);
+    expect(denied.countOf("select:item_values")).toBe(1);
+    expect(allowed.countOf("select:items:active")).toBe(1);
+    expect(allowed.countOf("select:items:deleted")).toBe(1);
+    expect(allowed.countOf("select:items:archived")).toBe(1);
+    expect(allowed.countOf("select:item_values")).toBe(1);
   });
 
   it("측정 — savedView 붙은 테이블 뷰", async () => {

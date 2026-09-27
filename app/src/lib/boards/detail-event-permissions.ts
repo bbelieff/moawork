@@ -40,6 +40,7 @@ export function canRemoveDetailEvent(
   event: RemovableDetailEvent,
   viewer: DetailEventViewer,
 ): boolean {
+  if (event.kind === "consultation") return false;
   const { viewerId, viewerRole, assignedTo } = viewer;
   if (!viewerId) return false;
 
@@ -57,6 +58,26 @@ export function canRemoveDetailEvent(
   if (assignedTo && assignedTo === viewerId && event.kind === "field_change") return true;
 
   return false;
+}
+
+/**
+ * 고칠 수 있는가 (v17-detail — 메모 고치기).
+ *
+ * ## 회사 대표(owner) · 쓴 사람 본인만. 담당자도 남의 줄은 못 고친다.
+ *
+ * 자동 기록(field_change)은 시스템 소유라 여기서도 제외한다 — 서버 RPC
+ * `update_board_item_detail_event`(마이그레이션 150)가 같은 판정으로 거부한다.
+ * 이 함수는 버튼 표시용 사본이며 막는 것은 서버다.
+ */
+export function canEditDetailEvent(
+  event: RemovableDetailEvent,
+  viewer: DetailEventViewer,
+): boolean {
+  if (event.kind === "field_change" || event.kind === "consultation") return false;
+  const { viewerId, viewerRole } = viewer;
+  if (!viewerId) return false;
+  if (viewerRole === "owner") return true;
+  return Boolean(event.actorId && event.actorId === viewerId);
 }
 
 /**

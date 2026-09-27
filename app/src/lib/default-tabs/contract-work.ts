@@ -104,6 +104,10 @@ const columns: DefaultTabColumn[] = [
     options: mappedOptions("진행상항"),
     rightPinned: true,
     moveTo: {
+      // ★ 2026-09-26 — «대기중» 이 빠져 있었다. 대기중은 먼데이 이관 사전의 첫 상태(order 0)인데
+      //   이동 규칙에 없어서, 대기중으로 되돌린 카드가 진행중 그룹에 그대로 남았다.
+      //   대기중의 자리는 «준비단계» 다 — 사전 sections 의 첫 그룹(업무관리-준비단계)이다.
+      "대기중": groupByPlainName("준비단계"),
       "진행중": groupByPlainName("진행중"),
       "심사 중": groupByPlainName("심사 중"),
       "승인": groupByPlainName("승인"),

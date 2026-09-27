@@ -13,7 +13,7 @@ it("registers the contract-work tab for default workspace installation", () => {
   expect(DEFAULT_TABS.find((tab) => tab.key === "work")).toBe(CONTRACT_WORK_TAB);
 });
 
-it("persists the 11 groups, 29 columns, and four resolved move targets", async () => {
+it("persists the 11 groups, 29 columns, and five resolved move targets", async () => {
   const ctx = {
     org: { id: "org-contract-work", name: "Test organization" },
     user: { id: "owner-contract-work", name: "Owner", email: "owner@example.test" },
@@ -27,7 +27,7 @@ it("persists the 11 groups, 29 columns, and four resolved move targets", async (
 
   expect(groups).toHaveLength(11);
   expect(local.listColumns(ctx, result.boardId)).toHaveLength(29);
-  expect(Object.keys(status?.move_rule_jsonb ?? {})).toHaveLength(4);
+  expect(Object.keys(status?.move_rule_jsonb ?? {})).toHaveLength(5);
   expect(new Set(Object.values(status?.move_rule_jsonb ?? {}))).toEqual(
     new Set(groups.filter((group) => Object.values(CONTRACT_WORK_TAB.columns.find((column) => column.key === "progress_status")!.moveTo!).includes(group.name)).map((group) => group.id)),
   );
@@ -112,9 +112,11 @@ describe("BBE-150 계약업체 실무 기본 탭", () => {
     for (const column of [...linked, ...calculated]) expect(column.readOnly, column.label).toBe(true);
   });
 
-  it("진행상황 자동 이동 4규칙이 전량 그룹을 가리킨다", () => {
+  it("진행상황 자동 이동 5규칙이 전량 그룹을 가리킨다", () => {
     const moveTo = byLabel.get("진행상황")?.moveTo;
-    expect(Object.keys(moveTo ?? {})).toEqual(["진행중", "심사 중", "승인", "불가"]);
+    // 2026-09-26 — «대기중 → 준비단계» 가 다섯째로 들어갔다. 대기중으로 되돌린 카드가
+    // 진행중 그룹에 갇히는 회귀를 막는다.
+    expect(Object.keys(moveTo ?? {})).toEqual(["대기중", "진행중", "심사 중", "승인", "불가"]);
     const groups = new Set(CONTRACT_WORK_TAB.groups.map((group) => group.name));
     for (const target of Object.values(moveTo ?? {})) expect(groups.has(target), target).toBe(true);
   });

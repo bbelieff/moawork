@@ -198,4 +198,37 @@ describe("BBE-273 atomic full new-lead intake", () => {
       expect((await db.query<{ n: number }>("select count(*)::int n from item_values where column_key='biz_reg_type'")).rows[0].n).toBe(1);
     }).rejects.toThrow();
   });
+
+  it("keeps direct bulk projection writes blocked while canonical field/date RPCs persist and replay", async () => {
+    const canonical = readFileSync(resolve(process.cwd(), "../supabase/migrations/087_new_lead_canonical.sql"), "utf8");
+    const start = canonical.indexOf("create or replace function public.update_new_lead_fields(");
+    await db.exec("alter table deal_intake add column updated_at timestamptz");
+    await db.exec(canonical.slice(start, canonical.indexOf("\ndo $$", start)));
+    // Apply the deployed owner restriction too; the bulk metadata route must never
+    // resurrect the pre-lineage owner path from the original intake fixture.
+    const lineage = readFileSync(resolve(process.cwd(), "../supabase/migrations/135_issue599_assignment_ui_hardening.sql"), "utf8");
+    await db.exec(lineage.slice(lineage.indexOf("alter function public.update_new_lead_intake_meta"), lineage.indexOf("revoke all on function public.update_new_lead_intake_meta(uuid")));
+    for (const [boardId, groupId, adKey] of [[ids.boardA, ids.groupA, "ad_name"], [ids.boardLegacy, ids.groupLegacy, "acquisition_source"]]) {
+      const created = (await db.query<{ deal_id: string; item_id: string }>(
+        `select * from create_new_lead(p_org_id=>$1,p_board_id=>$2,p_group_id=>$3,p_request_id=>gen_random_uuid(),p_title=>'합성 bulk 회귀',p_acquisition_source=>'Before')`, [ids.orgA, boardId, groupId],
+      )).rows[0];
+      await db.exec("grant usage on schema public,auth to authenticated; grant select on items,boards,item_values to authenticated; grant update on item_values to authenticated; set role authenticated");
+      await expect(db.query("update item_values set value_jsonb='\"QA-BULK\"'::jsonb where item_id=$1 and column_key=$2", [created.item_id, adKey])).rejects.toThrow(/require update_new_lead_fields/);
+      const requestId = crypto.randomUUID();
+      const args = [ids.orgA, created.deal_id, requestId, JSON.stringify({ acquisition_source: "QA-BULK" })];
+      const call = "select * from update_new_lead_fields($1,$2,$3,$4::jsonb,'manual')";
+      expect((await db.query<{ replayed: boolean }>(call, args)).rows[0].replayed).toBe(false);
+      expect((await db.query<{ replayed: boolean }>(call, args)).rows[0].replayed).toBe(true);
+      await db.query("select * from update_new_lead_intake_meta($1,$2,$3,$4::jsonb)", [ids.orgA, created.deal_id, crypto.randomUUID(), JSON.stringify({ applied_on: "2026-09-26" })]);
+      await expect(db.query("select * from update_new_lead_intake_meta($1,$2,$3,$4::jsonb)", [ids.orgA, created.deal_id, crypto.randomUUID(), JSON.stringify({ owner: ids.member })])).rejects.toThrow(/require lineage/);
+      await db.exec("reset role");
+      expect((await db.query<{ acquisition_source: string }>("select acquisition_source from deal_intake where deal_id=$1", [created.deal_id])).rows[0].acquisition_source).toBe("QA-BULK");
+      expect((await db.query<{ value_jsonb: string }>("select value_jsonb from item_values where item_id=$1 and column_key=$2", [created.item_id, adKey])).rows[0].value_jsonb).toBe("QA-BULK");
+      expect((await db.query<{ applied_on: string }>("select applied_on::text from deals where id=$1", [created.deal_id])).rows[0].applied_on).toBe("2026-09-26");
+      expect((await db.query<{ n: number }>("select count(*)::int n from deal_intake_field_audit where request_id=$1 and field_key='acquisition_source' and value_source='manual'", [requestId])).rows[0].n).toBe(1);
+      await actor(db, ids.outsider);
+      await expect(db.query(call, [ids.orgA, created.deal_id, crypto.randomUUID(), JSON.stringify({ acquisition_source: "denied" })])).rejects.toThrow(/update denied/);
+      await actor(db, ids.owner);
+    }
+  });
 });

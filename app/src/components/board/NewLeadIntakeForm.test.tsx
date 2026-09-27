@@ -56,6 +56,22 @@ describe("등록 실패 시 입력 유지", () => {
     await act(async()=>new Promise<void>(resolve=>requestAnimationFrame(()=>resolve())));
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
+  it("창업연월·사업자 하위구분 실패에도 모든 입력과 요청 ID를 유지한다", async () => {
+    vi.mocked(createNewLeadAction).mockResolvedValue({ ok: false, field: "founded_month", message: "창업연월은 연도-월 또는 연도-월-일 형식으로 입력해 주세요." });
+    const form = await open();
+    await set(form, "title", "창업연월 보존 검증");
+    await set(form, "business_registration_type", "개인사업자");
+    await set(form, "business_registration_subtype", "간이");
+    await set(form, "founded_month", "2024-03");
+    const before = [...new FormData(form).entries()];
+    await act(async () => form.requestSubmit());
+    expect([...new FormData(form).entries()]).toEqual(before);
+    expect(new FormData(form).get("founded_month")).toBe("2024-03");
+    expect(new FormData(form).get("business_registration_subtype")).toBe("간이");
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain("창업연월");
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(document.activeElement).toBe(form.elements.namedItem("founded_month"));
+  });
   it("네트워크 예외에도 팝업과 입력을 유지하고 재시도 안내를 보여준다",async()=>{
     vi.mocked(createNewLeadAction).mockRejectedValue(new Error("network"));
     const form=await open(); await set(form,"title","남겨둘 입력");

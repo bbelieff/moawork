@@ -31,6 +31,7 @@ import type {
   ItemWithValues,
 } from "@/lib/boards/types";
 import { formatCell } from "@/lib/boards/cells";
+import { NEW_LEAD_FIELD_KEYS } from "@/lib/new-lead/cell-fields";
 import { presentPhone } from "@/lib/format/phone";
 import { findCellError, type CellFlash } from "@/lib/boards/cellFlash";
 import {
@@ -39,7 +40,10 @@ import {
   sourceRequiresConfirm,
 } from "@/lib/field/source";
 import { fieldTypeLabel } from "@/lib/field/type-labels";
-import { StatusCell, StatusSelect } from "@/components/boards/StatusCell";
+import { StatusCell } from "@/components/boards/StatusCell";
+import { LabelCombobox } from "./LabelCombobox";
+import { canCreateLabelForColumn, newLabelRequestId } from "@/lib/boards/label-options";
+import type { AddLabelOptionInput, AddLabelOptionResult } from "@/app/(app)/boards/label-option-actions";
 import { SourceBadge } from "./FieldBadge";
 import { clampWidth } from "./layout";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
@@ -78,6 +82,12 @@ import {
   workflowProgressSpec,
   type WorkflowProgressKind,
 } from "@/lib/workflow/progress";
+import { ConsultationProgressCell } from "@/components/consultation/ConsultationProgressCell";
+import {
+  CONSULTATION_PROGRESS_KEY,
+  type ConsultationBoardEntry,
+  type ConsultationBoardMap,
+} from "@/lib/consultation/boardView";
 import {
   updateNewLeadFieldAction,
   updateNewLeadMetaAction,
@@ -96,7 +106,10 @@ import {
 } from "./table-style";
 import { BoardInlineTitleEditor } from "./BoardInlineTitleEditor";
 import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
+import { selectionTriState } from "./bulk-selection";
 import { MAX_FILE_BYTES } from "@/lib/services/file-contract";
+import { RegionCell } from "./RegionPairCell";
+import { isRegionSidoKey, isRegionSigunguKey } from "@/lib/new-lead/region-pair";
 
 const CELL_INPUT = BOARD_TABLE_CONTROL;
 
@@ -107,6 +120,7 @@ export function boardFileSelectionError(size: number): string | null {
 }
 
 /** 헤더/셀 공통 — 첫 열(이름)을 가로 스크롤에서 고정한다. */
+// Both frozen edges belong to the shared scrollport at every viewport width.
 const STICKY_FIRST = "sticky left-0 z-[var(--mw-layer-board-cell)] bg-mw-card";
 
 function inputTypeOf(type: BoardColumn["type"]): string {
@@ -157,22 +171,6 @@ function cellTitle(column: BoardColumn): string {
 }
 
 const NUMERIC_TYPES = new Set(["money", "number"]);
-const NEW_LEAD_FIELD_KEYS: Readonly<Record<string, string>> = {
-  rep_name: "representative_name",
-  phone: "phone",
-  email: "email",
-  biz_reg_type: "business_registration_type",
-  business_registration_type: "business_registration_type",
-  industry: "industry",
-  revenue_band: "revenue_band",
-  sido: "region_sido",
-  region_sido: "region_sido",
-  sigungu: "region_sigungu",
-  region_sigungu: "region_sigungu",
-  ad_name: "acquisition_source",
-  acquisition_source: "acquisition_source",
-};
-
 const NEW_LEAD_EMPTY_LABELS: Readonly<Record<string, string>> = {
   absence_notice: "해당 없음",
   consult1_notice: "해당 없음",
@@ -192,23 +190,46 @@ export function BoardCell({
   column,
   readOnly,
   canonicalNewLead,
+  canonicalOwner = false,
   members = [],
   error,
   workflowProgressKind,
   workflowTransitionAction,
+  consultationEntry,
+  consultationMembers,
   cellAction,
+  bulkStatusIntercept,
+  canCreateColumnOptions,
+  addLabelOptionAction,
 }: {
   boardId: string;
   row: ItemWithValues;
   column: BoardColumn;
   readOnly: boolean;
   canonicalNewLead?: boolean;
+  canonicalOwner?: boolean;
   members?: readonly { id: string; label: string }[];
   error?: string | null;
   workflowProgressKind?: WorkflowProgressKind | null;
   workflowTransitionAction?: ReactNode;
+  /** 상담 진행 가상 칸의 항목 — 없으면 안내만 그린다(표시 전용, 쓰기 없음). */
+  consultationEntry?: ConsultationBoardEntry | null;
+  /** 상담 담당자 선택지 — 확인 팝오버의 담당자 목록에 쓴다. */
+  consultationMembers?: ReadonlyArray<{ id: string; label: string }>;
   /** 결정론적 화면 검증에서만 저장소 경계를 바꾼다. 실제 셀 폼/제출 흐름은 그대로 둔다. */
   cellAction?: (formData: FormData) => Promise<void>;
+  /**
+   * 여러 행이 선택된 상태의 낱개 상태 변경을 일괄 흐름으로 넘긴다.
+   * true 를 돌려주면 낱개 저장을 건너뛰고 표시값으로 되돌린다.
+   */
+  bulkStatusIntercept?: (columnKey: string, nextValue: string) => boolean;
+  /**
+   * 2026-09-26 — «라벨 만들기» 노출 조건. 컬럼 관리 권한이 있을 때만 true 로 넘긴다.
+   * 일반 편집자는 검색·선택만 된다(서버도 다시 막는다).
+   */
+  canCreateColumnOptions?: boolean;
+  /** 2026-09-26 — 라벨 만들기 서버 액션. 없으면 만들기 행이 안 보인다. */
+  addLabelOptionAction?: (input: AddLabelOptionInput) => Promise<AddLabelOptionResult>;
 }) {
   const value = row.values[column.key] ?? null;
   const phoneStatus = row.value_statuses?.[column.key] ?? "normalized";
@@ -233,6 +254,17 @@ export function BoardCell({
       !auditedMetaEdit &&
       !isSourceEditable(column.source)) ||
     column.is_readonly === true;
+  // 2026-09-26 — «라벨 만들기» 는 권한 + 가드 + 액션이 다 있을 때만 열린다.
+  //   보호 컬럼(전이·승인·단계·이동규칙·지역·읽기전용·수식·연동)은 검색·선택만 된다.
+  const labelCreatable = canCreateColumnOptions === true
+    && typeof addLabelOptionAction === "function"
+    && canCreateLabelForColumn(column).allowed;
+  const createCellLabel = (label: string) => addLabelOptionAction!({
+    boardId,
+    columnId: column.id,
+    label,
+    requestId: newLabelRequestId(),
+  });
   const numeric = NUMERIC_TYPES.has(column.type);
   const title = cellTitle(column);
   const emptyLabel =
@@ -255,6 +287,23 @@ export function BoardCell({
         error={error}
         transitionAction={workflowTransitionAction}
         cellAction={cellAction}
+        bulkIntercept={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
+      />
+    );
+  }
+
+  // 상담 진행 가상 칸 — 표시 + 그 자리 확인 팝오버 전용. 값을 쓰지 않으므로
+  // 일괄 흐름·셀 액션에 넘기지 않는다.
+  if (column.key === CONSULTATION_PROGRESS_KEY) {
+    return (
+      <ConsultationProgressCell
+        itemId={row.id}
+        title={row.title}
+        entry={consultationEntry ?? null}
+        meetingAt={typeof row.values.meeting_at === "string" ? row.values.meeting_at : null}
+        assigneeId={typeof row.assigned_to === "string" ? row.assigned_to : null}
+        members={consultationMembers ?? []}
+        companyName={row.title}
       />
     );
   }
@@ -320,7 +369,7 @@ export function BoardCell({
     );
   }
 
-  if (canonicalNewLead && column.key === "owner") {
+  if ((canonicalNewLead || (row.deal_id && (canonicalOwner || workflowProgressKind === "contact" || workflowProgressKind === "work"))) && column.key === "owner") {
     if (!row.deal_id) {
       return <span title={title} className="block"><StatusCell value={row.assigned_to} options={options} /></span>;
     }
@@ -452,27 +501,27 @@ export function BoardCell({
             />
           </>
         ) : column.type === "status" ? (
-          <StatusSelect
-            name="value"
-            value={value}
+          <LabelCombobox
             options={options}
+            value={typeof value === "string" ? value : null}
+            name="value"
+            label={column.label}
+            canCreate={labelCreatable}
+            createLabel={labelCreatable ? createCellLabel : undefined}
+            interceptChange={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
             className={`${CELL_INPUT} cursor-pointer`}
           />
         ) : column.type === "select" ? (
-          <select
+          <LabelCombobox
+            options={options}
+            value={typeof value === "string" ? value : null}
             name="value"
-            defaultValue={typeof value === "string" ? value : ""}
-            onChange={(event) => event.currentTarget.form?.requestSubmit()}
+            label={column.label}
+            canCreate={labelCreatable}
+            createLabel={labelCreatable ? createCellLabel : undefined}
+            interceptChange={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
             className={`${CELL_INPUT} cursor-pointer`}
-            aria-label={column.label}
-          >
-            <option value="">—</option>
-            {options.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          />
         ) : column.type === "person" ? (
           <>
             <input type="hidden" name="kind" value="person" />
@@ -484,19 +533,16 @@ export function BoardCell({
             <MemberPicker label={column.label} members={members.length > 0 ? members : options.map(({ id, label }) => ({ id, label }))} value={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []} multiple compact />
           </>
         ) : column.type === "multiselect" ? (
-          <select
-            name="value"
+          <LabelCombobox
+            options={options}
+            value={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []}
             multiple
-            defaultValue={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []}
-            className={`${CELL_INPUT} h-12`}
-            aria-label={column.label}
-          >
-            {options.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+            name="value"
+            label={column.label}
+            canCreate={labelCreatable}
+            createLabel={labelCreatable ? createCellLabel : undefined}
+            className={CELL_INPUT}
+          />
         ) : (
           <input
             type={inputTypeOf(column.type)}
@@ -552,12 +598,15 @@ export function GroupTable({
   durableDetailLayout = [],
   detailLayout = [],
   detailLayoutInherited = true,
+  rowDetailLayout,
   rows,
+  parentItems = rows,
   readOnly,
   canDeleteItems = !readOnly,
   authorColumnKey,
   viewerUserId,
   canManageColumns = !readOnly,
+  addLabelOptionAction,
   rowDragEnabled,
   cellFlash,
   onColumnDrop,
@@ -573,12 +622,20 @@ export function GroupTable({
   renderRowAction,
   workflowProgressKind = null,
   renderWorkflowTransition,
+  consultationByItem,
+  consultationMembers = [],
+  renderConsultationSection,
+  hideAddRow = false,
   textMode = "single",
   focusColumnKey = null,
   onColumnArchived,
   scheduleItems = [],
   scheduleRecipients = [],
   cellAction,
+  selection,
+  onToggleRow,
+  onToggleGroup,
+  onBulkStatusRequest,
 }: {
   boardId: string;
   boardName?: string;
@@ -604,6 +661,15 @@ export function GroupTable({
       previous: CompanyIntakeActionState,
       formData: FormData,
     ) => Promise<CompanyIntakeActionState>;
+    /**
+     * 2026-09-26 — «새 회사» 등록 + 업무 시작. 없으면 새 회사 탭의 제출만 막힌다.
+     * 선택으로 두는 이유: 이 prop 을 빼먹으면 타입이 안 막지만, 그때는 제출 버튼이
+     * 막혀 조용히 중복을 만들지 않는다(막힌 쪽이 안전하다).
+     */
+    newCompanyAction?: (
+      previous: CompanyIntakeActionState,
+      formData: FormData,
+    ) => Promise<CompanyIntakeActionState>;
   };
   newLeadMembers?: readonly MemberPickerMember[];
   itemDetailFixture?: ItemDetailSnapshot;
@@ -620,13 +686,17 @@ export function GroupTable({
   durableDetailLayout?: DetailLayoutEntry[];
   detailLayout?: DetailLayoutEntry[];
   detailLayoutInherited?: boolean;
+  rowDetailLayout?: (row: ItemWithValues) => { durable: DetailLayoutEntry[]; presented: DetailLayoutEntry[]; inherited: boolean };
   rows: readonly ItemWithValues[];
+  parentItems?: readonly { id: string; title: string }[];
   readOnly: boolean;
   canDeleteItems?: boolean;
   /** BBE-239 — 이 키가 있으면 그 컬럼 값이 `viewerUserId` 와 같은 행은 role 권한 없이도 삭제 버튼을 보여준다(작성자 예외, 공지사항 한정). 서버가 다시 검증한다 — 여긴 표시 전용. */
   authorColumnKey?: string;
   viewerUserId?: string;
   canManageColumns?: boolean;
+  /** 2026-09-26 — 라벨 만들기 서버 액션. 셀 드롭다운의 만들기 행이 이걸 쓴다. */
+  addLabelOptionAction?: (input: AddLabelOptionInput) => Promise<AddLabelOptionResult>;
   /** 정렬이 켜져 있으면 부모가 false 를 준다 — 손잡이 자체를 감춰 헛짚을 자리를 없앤다. */
   rowDragEnabled: boolean;
   cellFlash: CellFlash | null;
@@ -647,12 +717,39 @@ export function GroupTable({
   /** 화면의 통합 진행현황 셀. 실제 저장은 기존 단계/이동 계약을 그대로 소비한다. */
   workflowProgressKind?: WorkflowProgressKind | null;
   renderWorkflowTransition?: (row: ItemWithValues) => ReactNode;
+  /**
+   * 상담 단계 보기 적재분(item id → 항목). 있으면 «상담 진행» 가상 칸과
+   * 상세 인라인에 쓴다. 없으면 그 칸들을 그리지 않는다(기존 보드 그대로).
+   */
+  consultationByItem?: ConsultationBoardMap;
+  /** 상담 담당자 선택지 — 확인 팝오버·상세 인라인의 담당자 목록에 쓴다. */
+  consultationMembers?: ReadonlyArray<{ id: string; label: string }>;
+  /** 행 상세에 얹는 상담 확인 인라인 — 업무이동 메뉴 없이 상세에서 바로 확인한다. */
+  renderConsultationSection?: (row: ItemWithValues) => ReactNode;
+  /** 상담 단계 보기(가상 계약 단계 묶음)에서는 새 행 추가 줄을 감춘다. */
+  hideAddRow?: boolean;
   textMode?: "single" | "wrap";
   focusColumnKey?: string | null;
   onColumnArchived?: (columnId: string) => void;
   scheduleItems?: readonly ColumnScheduleItemOption[];
   scheduleRecipients?: readonly ColumnScheduleRecipientOption[];
   cellAction?: (formData: FormData) => Promise<void>;
+  /**
+   * 일괄 선택 — BoardWorkspace 가 들고 있는 공유 집합. 없으면 체크박스를 그리지 않는다.
+   * 첫 칸(이름) 안에 들어 sticky 와 단일 가로 스크롤을 그대로 유지한다.
+   * 표준 체크박스(키보드 접근 가능)를 유지하고 Shift-클릭은 보이는 순서 구간으로 넓힌다.
+   */
+  selection?: ReadonlySet<string>;
+  onToggleRow?: (itemId: string, checked: boolean, shiftKey?: boolean) => void;
+  /** 이 그룹의 보이는 행 전체를 같은 상태로. */
+  onToggleGroup?: (checked: boolean) => void;
+  /**
+   * 여러 행이 선택된 채 그중 하나의 상태값을 건드리면 낱개로 바꾸지 않고
+   * 일괄 흐름을 연다 (값은 되돌려 둔다).
+   * 실제 의도한 컬럼 키를 그대로 전달한다 — 상태 의도가 아니면 false 를 돌려
+   * 그 칸이 스스로 편집되게 한다.
+   */
+  onBulkStatusRequest?: (rowId: string, columnKey: string, presetValue: string) => boolean;
 }) {
   /*
    * 드래그 중인 대상은 **ref 가 정본**이고 state 는 표시(반투명·강조)에만 쓴다.
@@ -694,6 +791,28 @@ export function GroupTable({
   },[clearRowDrop,onRowDragEnd]);
 
   const colSpan = columns.length + 1;
+  // 그룹 마스터 — 보이는 행 기준 3상태. indeterminate 는 ref 로, 접근성은 aria-checked 로.
+  const groupTriState = selection && onToggleGroup
+    ? selectionTriState(selection, rows.map((row) => row.id))
+    : "empty";
+  const bulkArmed = (selection?.size ?? 0) > 1;
+  // 시도-시군구 의존 콤보 — 같은 보드에 두 키가 함께 있을 때만 쌍으로 저장한다.
+  const regionSidoKey = columns.find((column) => isRegionSidoKey(column.key))?.key ?? null;
+  const regionSigunguKey = columns.find((column) => isRegionSigunguKey(column.key))?.key ?? null;
+  const regionPairKeys = regionSidoKey && regionSigunguKey ? { sidoKey: regionSidoKey, sigunguKey: regionSigunguKey } : null;
+  const regionSidoColumn = regionPairKeys ? columns.find((column) => column.key === regionPairKeys.sidoKey) ?? null : null;
+  const regionSigunguColumn = regionPairKeys ? columns.find((column) => column.key === regionPairKeys.sigunguKey) ?? null : null;
+  /*
+   * 지역 쌍 읽기전용 판정 — BoardCell 과 같은 답을 양쪽에 동일하게 적용한다.
+   * 원자 저장이라 한쪽만 잠그면 의미가 없다: 어느 한쪽이라도 손으로 못 고치면
+   * 쌍 전체를 표시만 한다. 서버도 setCellsStrict 재검증으로 같은 답을 낸다.
+   */
+  const isRegionPairReadOnly = (): boolean => {
+    if (readOnly || !regionSidoColumn || !regionSigunguColumn) return true;
+    return [regionSidoColumn, regionSigunguColumn].some((column) =>
+      !isSourceEditable(column.source) || column.is_readonly === true,
+    );
+  };
 
   /*
    * 컬럼 폭 조절(D12) — 드래그 중인 값은 dragColRef 와 같은 이유로 ref 가 정본이다
@@ -768,7 +887,7 @@ export function GroupTable({
   };
 
   const acceptRow = (index: number) => (e: React.DragEvent) => {
-    if (!canDropRow()) {setOverRowIndex(null);setInvalidRowIndex(index);setDropMessage("이 보기에서는 행을 옮길 수 없어요.");return;}
+    if (!rowDragEnabled || !canDropRow()) {setOverRowIndex(null);setInvalidRowIndex(index);setDropMessage("이 보기에서는 행을 옮길 수 없어요.");return;}
     if(rows[index]?.id===dragRowId){setOverRowIndex(null);setInvalidRowIndex(index);setDropMessage("같은 행 위에는 놓을 수 없어요.");return;}
     e.preventDefault();
     e.dataTransfer.dropEffect="move";
@@ -778,7 +897,7 @@ export function GroupTable({
   };
 
   const dropRow = (index: number) => (e: React.DragEvent) => {
-    if (!canDropRow()||rows[index]?.id===dragRowId){clearRowDrop();setDropMessage("이 위치에는 놓을 수 없어요.");return;}
+    if (!rowDragEnabled || !canDropRow()||rows[index]?.id===dragRowId){clearRowDrop();setDropMessage("이 위치에는 놓을 수 없어요.");return;}
     e.preventDefault();
     setOverRowIndex(null);
     onRowDrop(index);
@@ -795,9 +914,23 @@ export function GroupTable({
               className={`${STICKY_FIRST} z-[var(--mw-layer-board-corner)] ${BOARD_TABLE_HEADER_CELL} min-w-44`}
               style={{ top: 0, position: "sticky" }}
             >
-              {canonicalNewLead ? (
-                <span className="flex items-center gap-1"><SourceBadge source="auto" />회사명</span>
-              ) : "이름"}
+              <span className="flex items-center gap-1">
+                {selection && onToggleGroup ? (
+                  <input
+                    ref={(element) => { if (element) element.indeterminate = groupTriState === "partial"; }}
+                    type="checkbox"
+                    checked={groupTriState === "full"}
+                    aria-checked={groupTriState === "partial" ? "mixed" : undefined}
+                    aria-label={`${groupName ?? "그룹"} 전체 선택`}
+                    onChange={(event) => onToggleGroup(event.currentTarget.checked)}
+                    className="h-3.5 w-3.5 shrink-0"
+                    data-no-drag
+                  />
+                ) : null}
+                {canonicalNewLead ? (
+                  <><SourceBadge source="auto" />회사명</>
+                ) : "이름"}
+              </span>
             </th>
             {columns.map((col) => {
               const isTarget = overColKey === col.key && dragColKey !== col.key;
@@ -930,6 +1063,9 @@ export function GroupTable({
               (authorColumnKey !== undefined &&
                 viewerUserId !== undefined &&
                 row.values[authorColumnKey] === viewerUserId);
+            // 이 행이 여러 선택에 포함돼 있으면 낱개 상태 변경 대신 일괄 흐름을 연다.
+            const resolvedRowDetail = rowDetailLayout?.(row);
+            const armedForRow = bulkArmed && (selection?.has(row.id) ?? false) && onBulkStatusRequest;
             return (
               <tr
                 key={row.id}
@@ -951,6 +1087,22 @@ export function GroupTable({
                   className={`${STICKY_FIRST} ${BOARD_TABLE_BODY_CELL} group-hover:bg-mw-bg ${rowDragEnabled?"cursor-grab active:cursor-grabbing":""}`}
                 >
                   <div className="flex items-center gap-1">
+                    {selection && onToggleRow ? (
+                      <input
+                        type="checkbox"
+                        checked={selection.has(row.id)}
+                        aria-label={`${row.title} 선택`}
+                        onChange={(event) => {
+                          const native = event.nativeEvent as MouseEvent | KeyboardEvent | undefined;
+                          const shift = typeof (native as { shiftKey?: unknown } | undefined)?.shiftKey === "boolean"
+                            ? (native as { shiftKey: boolean }).shiftKey
+                            : false;
+                          onToggleRow(row.id, event.currentTarget.checked, shift);
+                        }}
+                        className="h-3.5 w-3.5 shrink-0"
+                        data-no-drag
+                      />
+                    ) : null}
 
                     {readOnly ? (
                       <span className="truncate text-xs font-medium text-mw-fg">
@@ -997,14 +1149,16 @@ export function GroupTable({
                       boardId={boardId}
                       boardName={boardName}
                       groupName={groupName}
+                      consultationSection={renderConsultationSection?.(row)}
                       row={row}
+                      parentItemTitle={parentItems.find((candidate) => candidate.id === row.parent_item_id)?.title}
                       columns={detailColumns}
                       boardLayout={boardDetailLayout}
                       durableColumns={durableDetailColumns}
                       durableBoardLayout={durableBoardDetailLayout}
-                      durableLayout={durableDetailLayout}
-                      layout={detailLayout}
-                      inherited={detailLayoutInherited}
+                      durableLayout={resolvedRowDetail?.durable ?? durableDetailLayout}
+                      layout={resolvedRowDetail?.presented ?? detailLayout}
+                      inherited={resolvedRowDetail?.inherited ?? detailLayoutInherited}
                       canEditItems={!readOnly}
                       canManageColumns={canManageColumns}
                       canonicalNewLead={canonicalNewLead}
@@ -1048,47 +1202,84 @@ export function GroupTable({
                   {renderRowAction?.(row)}
                 </td>
 
-                {columns.map((col) => (
-                  <td
-                    key={col.id}
-                    data-view-focus={col.key === focusColumnKey || undefined}
-                    data-column-key={col.key}
-                    data-right-pinned={col.rightPinned || undefined}
-                    className={`${BOARD_TABLE_BODY_CELL} group-hover:bg-mw-bg ${(col.wrap_mode ?? textMode) === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
-                      col.rightPinned
-                        ? "sticky right-0 z-[var(--mw-layer-board-cell)] border-l-2 border-l-mw-primary bg-mw-tint-blue"
-                        : ""
-                    }`}
-                  >
-                    <BoardCell
-                      boardId={boardId}
-                      row={row}
-                      column={col}
-                      readOnly={readOnly}
-                      canonicalNewLead={canonicalNewLead}
-                      members={newLeadMembers}
-                      error={
-                        cellFlash
-                          ? findCellError(
-                              cellFlash,
-                              row.id,
-                              col.key === WORKFLOW_PROGRESS_KEY && workflowProgressKind
-                                ? workflowProgressSpec(workflowProgressKind).stageColumnKey
-                                : col.key,
-                            )
-                          : null
-                      }
-                      workflowProgressKind={workflowProgressKind}
-                      workflowTransitionAction={renderWorkflowTransition?.(row)}
-                      cellAction={cellAction}
-                    />
-                  </td>
-                ))}
+                {columns.map((col) => {
+                  const isRegionCell = Boolean(
+                    regionPairKeys && (isRegionSidoKey(col.key) || isRegionSigunguKey(col.key)),
+                  );
+                  return (
+                    <td
+                      key={col.id}
+                      data-view-focus={col.key === focusColumnKey || undefined}
+                      data-column-key={col.key}
+                      data-right-pinned={col.rightPinned || undefined}
+                      className={`${BOARD_TABLE_BODY_CELL} group-hover:bg-mw-bg ${(col.wrap_mode ?? textMode) === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
+                        col.rightPinned
+                          ? "sticky right-0 z-[var(--mw-layer-board-cell)] border-l-2 border-l-mw-primary bg-mw-tint-blue"
+                          : ""
+                      }`}
+                    >
+                      {isRegionCell && regionPairKeys ? (
+                        <RegionCell
+                          boardId={boardId}
+                          itemId={row.id}
+                          dealId={row.deal_id}
+                          canonicalNewLead={canonicalNewLead}
+                          kind={isRegionSidoKey(col.key) ? "sido" : "sigungu"}
+                          sidoKey={regionPairKeys.sidoKey}
+                          sigunguKey={regionPairKeys.sigunguKey}
+                          sidoValue={String(
+                            row.values[regionPairKeys.sidoKey] ?? row.values.sido ?? row.values.region_sido ?? "",
+                          )}
+                          sigunguValue={String(
+                            row.values[regionPairKeys.sigunguKey] ?? row.values.sigungu ?? row.values.region_sigungu ?? "",
+                          )}
+                          readOnly={isRegionPairReadOnly()}
+                        />
+                      ) : (
+                        <BoardCell
+                          boardId={boardId}
+                          row={row}
+                          column={col}
+                          readOnly={readOnly}
+                          canonicalNewLead={canonicalNewLead}
+                          bulkStatusIntercept={armedForRow
+                            ? (columnKey, nextValue) => {
+                              const handler = onBulkStatusRequest;
+                              if (!handler) return false;
+                              return handler(row.id, columnKey, nextValue);
+                            }
+                            : undefined}
+                          members={newLeadMembers}
+                          error={
+                            cellFlash
+                              ? findCellError(
+                                  cellFlash,
+                                  row.id,
+                                  col.key === WORKFLOW_PROGRESS_KEY && workflowProgressKind
+                                    ? workflowProgressSpec(workflowProgressKind).stageColumnKey
+                                    : col.key,
+                                )
+                              : null
+                          }
+                          workflowProgressKind={workflowProgressKind}
+                          workflowTransitionAction={renderWorkflowTransition?.(row)}
+                          consultationEntry={consultationByItem?.[row.id] ?? null}
+                          consultationMembers={consultationMembers}
+                          cellAction={cellAction}
+                          canCreateColumnOptions={canManageColumns}
+                          addLabelOptionAction={addLabelOptionAction}
+                        />
+                      )}
+                    </td>
+                  );
+                })}
+
+
               </tr>
             );
           })}
 
-          {!readOnly && (
+          {!readOnly && !hideAddRow && (
             /* 마지막 줄 = 새 항목 입력 + 그룹 맨 끝 드롭 자리(원칙 5). */
             <tr
               onDragOver={acceptRow(rows.length)}
@@ -1109,6 +1300,7 @@ export function GroupTable({
                     loadError={companyPicker.loadError}
                     truncated={companyPicker.truncated}
                     startWorkAction={companyPicker.action}
+                    startNewCompanyWorkAction={companyPicker.newCompanyAction}
                     boardId={boardId}
                     // 누른 그룹을 그대로 넘긴다 — 이 값이 없으면 서버가 첫 그룹에 넣는다(#588).
                     groupId={groupId}

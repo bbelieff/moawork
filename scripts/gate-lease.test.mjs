@@ -7,11 +7,20 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+
+// CI 가 Windows 러너에서 WSL 부트스트랩(우분투 rootfs 내려받기 + import)을 하느라 시간과
+// 과금 분을 크게 썼다. 아래 세 테스트만 실제로 wsl.exe 를 필요로 하므로, WSL 이 없으면
+// **실패가 아니라 건너뛰기**로 만든다. WSL 이 있는 환경(개발자 PC)에서는 그대로 돈다.
+const WSL_AVAILABLE = process.platform === "win32"
+  && spawnSync("wsl.exe", ["bash", "-lc", "true"], { windowsHide: true, encoding: "utf8" }).status === 0;
+
 import { fileURLToPath } from "node:url";
 import {
   acquireGateLease,
   createLeaseBroker,
   GateLeaseError,
+  holdLeaseBroker,
+  probeLeaseBroker,
 } from "./gate-lease-core.mjs";
 import { resolveGateCommand } from "./gate-lease-runner.mjs";
 
@@ -674,6 +683,50 @@ async function stop(child) {
   child.kill("SIGKILL");
   await new Promise((resolve) => child.once("exit", resolve));
 }
+
+test("a broker hold outlasts the idle exit window and releasing it restores the idle exit (#804)", async () => {
+  const broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: 150 });
+  try {
+    const hold = await holdLeaseBroker({ port: broker.port });
+    // Guardian bootstrap longer than the idle window: the broker must still accept the guardian.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    assert.equal((await probeLeaseBroker({ port: broker.port })).available, true);
+    const lease = await acquireGateLease({ port: broker.port, requestId: "after-slow-bootstrap", label: "guardian" });
+    lease.release();
+    hold.release();
+    assert.equal(hold.released, true);
+    const deadline = Date.now() + 5_000;
+    while ((await probeLeaseBroker({ port: broker.port })).available) {
+      assert.ok(Date.now() < deadline, "broker never resumed its idle exit");
+      // Each probe is itself a client, so probe less often than the idle window.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+  } finally { await broker.close(); }
+});
+
+test("a broker hold fails closed when no broker answers", async () => {
+  const server = net.createServer();
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  await new Promise((resolve) => server.close(resolve));
+  await assert.rejects(holdLeaseBroker({ port }), (error) => error.code === "GATE_LEASE_BROKER_HOLD_FAILED");
+});
+
+test("the runner holds the broker before spawning the guardian and releases it on every exit", async () => {
+  const source = await readFile(fileURLToPath(new URL("./gate-lease-runner.mjs", import.meta.url)), "utf8");
+  const hold = source.indexOf("lifetime.brokerHold = await holdStartedBroker()");
+  const spawnGuardian = source.indexOf("const guardian = spawn(");
+  assert.ok(hold > 0 && hold < spawnGuardian);
+  const wrapper = source.slice(source.indexOf("export async function runGateCommand("), source.indexOf("async function holdStartedBroker("));
+  assert.ok(wrapper.includes("return await runGateCommandWithBroker(options, lifetime);"));
+  assert.ok(wrapper.indexOf("} finally {") < wrapper.indexOf("lifetime.brokerHold?.release();"));
+  assert.ok(!source.includes("if (ensureBroker) await ensureLeaseBroker();"));
+});
+
+test("the guardian never queries WMI, which can stall the READY-to-quarantine exit for seconds (#732)", async () => {
+  const guardian = await readFile(GUARDIAN, "utf8");
+  assert.doesNotMatch(guardian, /Get-CimInstance|Get-WmiObject|Win32_Process/iu);
+});
 
 test("broker remains FIFO but is not the machine safety fence", async () => {
   const broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: -1 });
@@ -1630,7 +1683,7 @@ test("signal IPC preserves exit 143 after verified zero", { skip: process.platfo
   } finally { await stop(run.child); await broker.close(); }
 });
 
-test("WSL full-gate entry fails closed before any product command", { skip: process.platform !== "win32" }, () => {
+test("WSL full-gate entry fails closed before any product command", { skip: !WSL_AVAILABLE }, () => {
   const hasWsl = spawnSync("wsl.exe", ["bash", "-lc", "uname -r"], { encoding: "utf8", windowsHide: true });
   assert.equal(hasWsl.status, 0, `${hasWsl.stdout}${hasWsl.stderr}`);
   const wslRoot = ROOT.replaceAll("\\", "/").replace(/^([A-Za-z]):/u, (_, drive) => `/mnt/${drive.toLowerCase()}`);
@@ -1642,7 +1695,7 @@ test("WSL full-gate entry fails closed before any product command", { skip: proc
   assert.doesNotMatch(`${result.stdout}${result.stderr}`, /customer-specific values|GATE_GUARDIAN_READY/u);
 });
 
-test("production CLI starts zero detached WSL descendants", { skip: process.platform !== "win32" }, () => {
+test("production CLI starts zero detached WSL descendants", { skip: !WSL_AVAILABLE }, () => {
   const marker = `BBE614_BLOCKED_${randomUUID().replaceAll("-", "")}`;
   const exploit = `nohup bash -c 'exec -a ${marker} sleep 30' >/dev/null 2>&1 & wait`;
   const result = spawnSync(process.execPath, [CLI, "--", "wsl.exe", "bash", "-lc", exploit], {
@@ -1658,7 +1711,7 @@ test("production CLI starts zero detached WSL descendants", { skip: process.plat
   assert.equal(residual.stdout.trim(), "");
 });
 
-test("native WSL Linux Node fails closed or is explicitly unavailable", { skip: process.platform !== "win32" }, (t) => {
+test("native WSL Linux Node fails closed or is explicitly unavailable", { skip: !WSL_AVAILABLE }, (t) => {
   const probe = spawnSync("wsl.exe", ["bash", "-lc", "test -x /usr/bin/node && /usr/bin/node -p process.platform"], {
     encoding: "utf8", windowsHide: true,
   });

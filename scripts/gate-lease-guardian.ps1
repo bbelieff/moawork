@@ -316,7 +316,9 @@ function Write-QuarantineDiagnostic([Microsoft.Win32.RegistryKey]$Key, [string]$
   $detail.currentSid = $sid
   $detail.is64BitProcess = [Environment]::Is64BitProcess
   $detail.guardianPid = $PID
-  try { $detail.parentPid = [int](Get-CimInstance Win32_Process -Filter "ProcessId=$PID" -ErrorAction Stop).ParentProcessId } catch { $detail.parentPid = -1 }
+  # No WMI here: a cold CIM query costs seconds on CI and this runs between READY and the
+  # quarantine exit (#732). The spawning wrapper is already known from the payload.
+  $detail.wrapperPid = if ($null -ne $payload) { [int]$payload.wrapperPid } else { -1 }
   $detail.userProfile = $env:USERPROFILE
   $detail.scriptPath = $PSCommandPath
   $detail.psVersion = $PSVersionTable.PSVersion.ToString()
