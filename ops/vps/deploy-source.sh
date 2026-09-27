@@ -133,11 +133,13 @@ prune_releases() {
   done < <(find "$ROOT/releases" -mindepth 1 -maxdepth 1 -printf '%T@ %p\0' | sort -z -rn)
 }
 # Build sources (node_modules, .next cache) are ~93% of a release and unused after activation.
+# The release mtime orders retention, so removing the entry must not make it look newer.
 strip_source() {
-  local release="$1"
+  local release="$1" stamp
   [[ -e "$release/source" || -L "$release/source" ]] || return 0
   [[ -f "$release/runtime.sha256" && -d "$release/runtime" && ! -L "$release/source" ]] || return 1
-  rm -rf --one-file-system -- "$release/source"
+  stamp="$(stat -c %Y -- "$release")" || return 1
+  rm -rf --one-file-system -- "$release/source" && touch -m -d "@$stamp" -- "$release"
 }
 free_bytes() { df --output=avail -B1 -- "$1" | tail -n 1 | tr -d ' '; }
 require_free_space() {

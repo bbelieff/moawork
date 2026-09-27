@@ -203,6 +203,17 @@ prune_releases 3 ${quote(f.rel(5))} "" ${quote(f.rel(3))}` + listing);
   assert.deepEqual(sources, [f.shas[3] + "/source"]);
 });
 
+test("stripping sources keeps release age so the next deploy still keeps the newest extra", () => {
+  const f = retentionFixture();
+  // Deploy A: current 4, previous 3. Deploy B: current 5 (new, built with source), previous 4 → 3 must stay, 2 must go.
+  const r = run(f.body + `rm -rf ${quote(f.rel(4))} ${quote(f.rel(5))}
+prune_releases 3 ${quote(f.rel(3))} ${quote(f.rel(2))} ${quote(f.rel(4))} >/dev/null
+d=${quote(f.rel(4))}; mkdir -p "$d/runtime/app" "$d/source"; : >"$d/runtime.sha256"; touch -d @5000 "$d"
+prune_releases 3 "$d" ${quote(f.rel(3))} ${quote(f.rel(5))} >/dev/null` + listing);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(parts(r.stdout)[0], [f.shas[2], f.shas[3], f.shas[4], "scratch"].sort());
+});
+
 test("retention never deletes protected releases even when keep is smaller than the protected set", () => {
   const f = retentionFixture();
   const r = run(f.body + `prune_releases 1 ${quote(f.rel(5))} ${quote(f.rel(0))} ""` + listing);
