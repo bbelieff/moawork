@@ -19,6 +19,8 @@ import {
   acquireGateLease,
   createLeaseBroker,
   GateLeaseError,
+  holdLeaseBroker,
+  probeLeaseBroker,
 } from "./gate-lease-core.mjs";
 import { resolveGateCommand } from "./gate-lease-runner.mjs";
 
@@ -681,6 +683,50 @@ async function stop(child) {
   child.kill("SIGKILL");
   await new Promise((resolve) => child.once("exit", resolve));
 }
+
+test("a broker hold outlasts the idle exit window and releasing it restores the idle exit (#804)", async () => {
+  const broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: 150 });
+  try {
+    const hold = await holdLeaseBroker({ port: broker.port });
+    // Guardian bootstrap longer than the idle window: the broker must still accept the guardian.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    assert.equal((await probeLeaseBroker({ port: broker.port })).available, true);
+    const lease = await acquireGateLease({ port: broker.port, requestId: "after-slow-bootstrap", label: "guardian" });
+    lease.release();
+    hold.release();
+    assert.equal(hold.released, true);
+    const deadline = Date.now() + 5_000;
+    while ((await probeLeaseBroker({ port: broker.port })).available) {
+      assert.ok(Date.now() < deadline, "broker never resumed its idle exit");
+      // Each probe is itself a client, so probe less often than the idle window.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+  } finally { await broker.close(); }
+});
+
+test("a broker hold fails closed when no broker answers", async () => {
+  const server = net.createServer();
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  await new Promise((resolve) => server.close(resolve));
+  await assert.rejects(holdLeaseBroker({ port }), (error) => error.code === "GATE_LEASE_BROKER_HOLD_FAILED");
+});
+
+test("the runner holds the broker before spawning the guardian and releases it on every exit", async () => {
+  const source = await readFile(fileURLToPath(new URL("./gate-lease-runner.mjs", import.meta.url)), "utf8");
+  const hold = source.indexOf("lifetime.brokerHold = await holdStartedBroker()");
+  const spawnGuardian = source.indexOf("const guardian = spawn(");
+  assert.ok(hold > 0 && hold < spawnGuardian);
+  const wrapper = source.slice(source.indexOf("export async function runGateCommand("), source.indexOf("async function holdStartedBroker("));
+  assert.ok(wrapper.includes("return await runGateCommandWithBroker(options, lifetime);"));
+  assert.ok(wrapper.indexOf("} finally {") < wrapper.indexOf("lifetime.brokerHold?.release();"));
+  assert.ok(!source.includes("if (ensureBroker) await ensureLeaseBroker();"));
+});
+
+test("the guardian never queries WMI, which can stall the READY-to-quarantine exit for seconds (#732)", async () => {
+  const guardian = await readFile(GUARDIAN, "utf8");
+  assert.doesNotMatch(guardian, /Get-CimInstance|Get-WmiObject|Win32_Process/iu);
+});
 
 test("broker remains FIFO but is not the machine safety fence", async () => {
   const broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: -1 });
