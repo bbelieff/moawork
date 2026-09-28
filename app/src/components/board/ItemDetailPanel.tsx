@@ -11,6 +11,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { useFormStatus } from "react-dom";
 import {
   clampComposerHeight,
   continueList,
@@ -1434,7 +1435,7 @@ export function ItemDetailPanel({
                             <option value="email">이메일</option>
                             <option value="url">링크</option>
                           </select>
-                          <button type="submit">추가</button>
+                          <DetailFieldSubmit idle="추가" />
                         </form>
                       </details>
                     ) : null}
@@ -1745,12 +1746,10 @@ export function ItemDetailPanel({
                             <option value="number">숫자</option>
                             <option value="date">날짜</option>
                           </select>
-                          <button
-                            type="submit"
-                            className="min-h-11 rounded-lg bg-mw-primary px-3 text-xs font-bold text-mw-on-accent"
-                          >
-                            기본에 추가
-                          </button>
+                          <DetailFieldSubmit
+                            idle="기본에 추가"
+                            className="min-h-11 rounded-lg bg-mw-primary px-3 text-xs font-bold text-mw-on-accent disabled:opacity-60"
+                          />
                         </form>
                       </div>
                     </details>
@@ -2549,5 +2548,18 @@ export function ItemDetailPanel({
         </DialogPortal>
       )}
     </>
+  );
+}
+
+/*
+ * 상세 전용 필드 «추가» 버튼 (#654). 저장이 끝날 때까지 다시 못 누르고, 누른 것이 보인다.
+ * 응답이 늦을 때 「안 눌렸나」 하고 여러 번 누르던 것이 필드가 쌓인 출발점이었다.
+ */
+export function DetailFieldSubmit({ idle, className }: { idle: string; className?: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending} aria-busy={pending} className={className}>
+      {pending ? "추가하는 중…" : idle}
+    </button>
   );
 }
