@@ -175,6 +175,33 @@ export function fastGateLimitFor(paths) {
   return buildFastGatePlan(paths).gateLease ? GATE_LEASE_FAST_GATE_LIMIT_MS : FAST_GATE_LIMIT_MS;
 }
 
+// npm runs through cmd.exe on Windows, whose command line stops at 8191 characters.
+// A merge commit can stage hundreds of files, so path lists are split into bounded runs.
+export const ARGV_PATH_BUDGET = 6000;
+export function chunkPaths(values, budget = ARGV_PATH_BUDGET) {
+  const chunks = [];
+  let current = [];
+  let size = 0;
+  for (const value of values) {
+    if (current.length && size + value.length + 1 > budget) {
+      chunks.push(current);
+      current = [];
+      size = 0;
+    }
+    current.push(value);
+    size += value.length + 1;
+  }
+  if (current.length) chunks.push(current);
+  return chunks;
+}
+
+function pushChunked(commands, values, label, build) {
+  const chunks = chunkPaths(values);
+  chunks.forEach((chunk, index) => {
+    commands.push({ ...build(chunk), label: chunks.length === 1 ? label : `${label} ${index + 1}/${chunks.length}` });
+  });
+}
+
 function adjacentTests(paths, workspace, root = ROOT) {
   const prefix = `${workspace}/`;
   const result = new Set();
@@ -218,15 +245,13 @@ export function commandsFor(paths, root = ROOT) {
     const lintPaths = paths.filter((value) => /^app\/.*\.[cm]?[jt]sx?$/u.test(value) && existsSync(path.join(root, value)))
       .map((value) => `./${value.slice(4)}`);
     if (lintPaths.length) {
-      commands.push({ file: "npm", args: ["exec", "--workspace", "app", "--", "eslint", "--", ...lintPaths], label: "changed app lint" });
+      pushChunked(commands, lintPaths, "changed app lint",
+        (chunk) => ({ file: "npm", args: ["exec", "--workspace", "app", "--", "eslint", "--", ...chunk] }));
     }
     const tests = adjacentTests(paths, "app", root);
     if (tests.length) {
-      commands.push({
-        file: "npm",
-        args: ["exec", "--workspace", "app", "--", "vitest", "run", ...tests.map((value) => `./${value}`), "--maxWorkers=2"],
-        label: "adjacent app tests",
-      });
+      pushChunked(commands, tests.map((value) => `./${value}`), "adjacent app tests",
+        (chunk) => ({ file: "npm", args: ["exec", "--workspace", "app", "--", "vitest", "run", ...chunk, "--maxWorkers=2"] }));
     }
   }
 
@@ -235,15 +260,13 @@ export function commandsFor(paths, root = ROOT) {
     const lintPaths = paths.filter((value) => /^worker\/.*\.[cm]?[jt]sx?$/u.test(value) && existsSync(path.join(root, value)))
       .map((value) => `./${value.slice(7)}`);
     if (lintPaths.length) {
-      commands.push({ file: "npm", args: ["exec", "--workspace", "worker", "--", "eslint", "--", ...lintPaths], label: "changed worker lint" });
+      pushChunked(commands, lintPaths, "changed worker lint",
+        (chunk) => ({ file: "npm", args: ["exec", "--workspace", "worker", "--", "eslint", "--", ...chunk] }));
     }
     const tests = adjacentTests(paths, "worker", root);
     if (tests.length) {
-      commands.push({
-        file: "npm",
-        args: ["exec", "--workspace", "worker", "--", "vitest", "run", ...tests.map((value) => `./${value}`), "--maxWorkers=2"],
-        label: "adjacent worker tests",
-      });
+      pushChunked(commands, tests.map((value) => `./${value}`), "adjacent worker tests",
+        (chunk) => ({ file: "npm", args: ["exec", "--workspace", "worker", "--", "vitest", "run", ...chunk, "--maxWorkers=2"] }));
     }
   }
 

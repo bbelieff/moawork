@@ -8,6 +8,7 @@ import {
   assertStagedSnapshotUnchanged,
   assertKnownIgnoredInputSafe,
   buildFastGatePlan,
+  chunkPaths,
   commandsFor,
   fastGateLimitFor,
   isKnownIgnoredOutput,
@@ -163,6 +164,39 @@ test("changed app tests and lint paths use argv boundaries while deleted files a
     assert.deepEqual(lint.args.slice(-2), ["--", "./src/lib/value.ts"]);
     assert.ok(tests.args.includes("./src/lib/value.test.ts"));
     assert.equal(tests.args.includes("./src/lib/deleted.test.ts"), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("path lists are split so no command line passes the Windows limit, and nothing is dropped", async () => {
+  assert.deepEqual(chunkPaths(["a", "bb", "ccc"], 5), [["a", "bb"], ["ccc"]]);
+  assert.deepEqual(chunkPaths([], 5), []);
+  assert.deepEqual(chunkPaths(["too-long-for-budget"], 5), [["too-long-for-budget"]]);
+
+  const root = await mkdtemp(path.join(os.tmpdir(), "moawork-fast-chunks-"));
+  try {
+    await writeFile(path.join(root, "package.json"), "{}\n");
+    const dir = path.join(root, "app", "src", "components", "a-fairly-long-directory-name-for-merge-commits");
+    await mkdir(dir, { recursive: true });
+    const files = [];
+    for (let index = 0; index < 400; index += 1) {
+      const name = `component-with-a-long-name-${index}`;
+      await writeFile(path.join(dir, `${name}.tsx`), "export {};\n");
+      await writeFile(path.join(dir, `${name}.test.tsx`), "\n");
+      files.push(`app/src/components/a-fairly-long-directory-name-for-merge-commits/${name}.tsx`);
+    }
+    const commands = commandsFor(files, root);
+    const lint = commands.filter((command) => command.label.startsWith("changed app lint"));
+    const tests = commands.filter((command) => command.label.startsWith("adjacent app tests"));
+    assert.ok(lint.length > 1 && tests.length > 1);
+    for (const command of [...lint, ...tests]) {
+      assert.ok([command.file, ...command.args].join(" ").length < 8191, command.label);
+    }
+    const linted = lint.flatMap((command) => command.args.slice(command.args.indexOf("--", 4) + 1));
+    assert.equal(linted.length, files.length);
+    assert.equal(new Set(linted).size, files.length);
+    assert.match(lint[0].label, /^changed app lint 1\/\d+$/u);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
