@@ -202,6 +202,62 @@ test("path lists are split so no command line passes the Windows limit, and noth
   }
 });
 
+test("while merging, the staged plan is what differs from the incoming side", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "moawork-fast-merge-"));
+  const gitEnvironment = isolatedGitEnvironment();
+  const runGit = (...args) => execFileSync("git", ["-c", "user.name=Gate Test", "-c", "user.email=gate@example.invalid", ...args],
+    { cwd: root, env: gitEnvironment, stdio: "ignore" });
+  const readSnapshot = () => withoutLocalGitEnvironment(() => readExactStagedSnapshot(root));
+  try {
+    runGit("init", "-b", "main");
+    await writeFile(path.join(root, "shared.mjs"), "export const shared = 1;\n");
+    runGit("add", "shared.mjs");
+    runGit("commit", "-m", "base");
+    runGit("checkout", "-b", "feature");
+    await writeFile(path.join(root, "feature.mjs"), "export const feature = 1;\n");
+    runGit("add", "feature.mjs");
+    runGit("commit", "-m", "feature");
+    runGit("checkout", "main");
+    for (const name of ["a", "b", "c"]) await writeFile(path.join(root, `${name}.mjs`), `export const ${name} = 1;\n`);
+    runGit("add", ".");
+    runGit("commit", "-m", "main moves on");
+    runGit("update-ref", "refs/remotes/origin/main", "main");
+    runGit("checkout", "feature");
+    runGit("merge", "--no-commit", "--no-ff", "main");
+
+    const merging = readSnapshot();
+    assert.ok(merging.base, "merge base side was not detected");
+    // main's already-verified files are not rechecked; this branch's own change is.
+    assert.deepEqual(merging.paths.map((entry) => entry.path ?? entry), ["feature.mjs"]);
+
+    // A conflict resolution or edit made during the merge is checked too.
+    await writeFile(path.join(root, "a.mjs"), "export const a = 2;\n");
+    runGit("add", "a.mjs");
+    assert.deepEqual(readSnapshot().paths.map((entry) => entry.path ?? entry).sort(), ["a.mjs", "feature.mjs"]);
+
+    runGit("commit", "-m", "merge main");
+    await writeFile(path.join(root, "b.mjs"), "export const b = 2;\n");
+    runGit("add", "b.mjs");
+    const plain = readSnapshot();
+    assert.equal(plain.base, null);
+    assert.deepEqual(plain.paths.map((entry) => entry.path ?? entry), ["b.mjs"]);
+    runGit("commit", "-m", "edit b");
+
+    // Merging a branch that is not on origin/main is not «already verified»: plan everything.
+    runGit("checkout", "-b", "unverified", "main");
+    for (const name of ["x", "y"]) await writeFile(path.join(root, `${name}.mjs`), `export const ${name} = 1;\n`);
+    runGit("add", ".");
+    runGit("commit", "-m", "never went through CI");
+    runGit("checkout", "feature");
+    runGit("merge", "--no-commit", "--no-ff", "unverified");
+    const untrusted = readSnapshot();
+    assert.equal(untrusted.base, null, "an unverified branch was trusted as the merge base");
+    assert.deepEqual(untrusted.paths.map((entry) => entry.path ?? entry).sort(), ["x.mjs", "y.mjs"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("the exact staged snapshot rejects unstaged and untracked source and detects index drift", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "moawork-fast-staged-"));
   const gitEnvironment = isolatedGitEnvironment();
