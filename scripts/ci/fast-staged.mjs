@@ -131,9 +131,16 @@ export function readExactStagedSnapshot(root = ROOT) {
   const unsafeIgnored = parseGitPathsZ(git(["ls-files", "--others", "--ignored", "--exclude-standard", "-z"], root))
     .find((repoPath) => !assertKnownIgnoredInputSafe(root, repoPath));
   if (unsafeIgnored) throw new Error("FAST_GATE_IGNORED_INPUT");
-  const paths = parseGitNameStatusZ(git(["diff", "--cached", "--name-status", "-z"], root));
+  // While merging, the incoming side already passed its own CI. Check what differs from it:
+  // this branch's own changes and the conflict resolutions. Otherwise a merge of a stale
+  // branch stages hundreds of already-verified files and cannot fit the fast gate budget.
+  const mergeHead = spawnSync("git", ["rev-parse", "-q", "--verify", "MERGE_HEAD"], { cwd: root, encoding: "utf8" });
+  const base = !mergeHead.error && mergeHead.status === 0 ? mergeHead.stdout.trim() : null;
+  let paths = parseGitNameStatusZ(git(["diff", "--cached", "--name-status", "-z", ...(base ? [base] : [])], root));
+  if (base && paths.length === 0) paths = parseGitNameStatusZ(git(["diff", "--cached", "--name-status", "-z"], root));
   if (paths.length === 0) throw new Error("FAST_GATE_EMPTY_INDEX");
   return {
+    base,
     head: git(["rev-parse", "HEAD"], root).trim(),
     tree: git(["write-tree"], root).trim(),
     paths,
@@ -141,7 +148,7 @@ export function readExactStagedSnapshot(root = ROOT) {
 }
 
 export function assertStagedSnapshotUnchanged(initial, final) {
-  if (initial?.head !== final?.head || initial?.tree !== final?.tree
+  if (initial?.head !== final?.head || initial?.base !== final?.base || initial?.tree !== final?.tree
     || JSON.stringify(initial?.paths) !== JSON.stringify(final?.paths)) {
     throw new Error("FAST_GATE_STAGED_TREE_DRIFT");
   }
