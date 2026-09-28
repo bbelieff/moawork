@@ -134,8 +134,14 @@ export function readExactStagedSnapshot(root = ROOT) {
   // While merging, the incoming side already passed its own CI. Check what differs from it:
   // this branch's own changes and the conflict resolutions. Otherwise a merge of a stale
   // branch stages hundreds of already-verified files and cannot fit the fast gate budget.
+  // Only an incoming side that is already on origin/main counts as verified; merging any
+  // other branch keeps the full HEAD-based plan.
   const mergeHead = spawnSync("git", ["rev-parse", "-q", "--verify", "MERGE_HEAD"], { cwd: root, encoding: "utf8" });
-  const base = !mergeHead.error && mergeHead.status === 0 ? mergeHead.stdout.trim() : null;
+  const candidate = !mergeHead.error && mergeHead.status === 0 ? mergeHead.stdout.trim() : null;
+  const verified = candidate
+    ? spawnSync("git", ["merge-base", "--is-ancestor", candidate, "refs/remotes/origin/main"], { cwd: root })
+    : null;
+  const base = candidate && verified && !verified.error && verified.status === 0 ? candidate : null;
   let paths = parseGitNameStatusZ(git(["diff", "--cached", "--name-status", "-z", ...(base ? [base] : [])], root));
   if (base && paths.length === 0) paths = parseGitNameStatusZ(git(["diff", "--cached", "--name-status", "-z"], root));
   if (paths.length === 0) throw new Error("FAST_GATE_EMPTY_INDEX");

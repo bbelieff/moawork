@@ -221,6 +221,7 @@ test("while merging, the staged plan is what differs from the incoming side", as
     for (const name of ["a", "b", "c"]) await writeFile(path.join(root, `${name}.mjs`), `export const ${name} = 1;\n`);
     runGit("add", ".");
     runGit("commit", "-m", "main moves on");
+    runGit("update-ref", "refs/remotes/origin/main", "main");
     runGit("checkout", "feature");
     runGit("merge", "--no-commit", "--no-ff", "main");
 
@@ -240,6 +241,18 @@ test("while merging, the staged plan is what differs from the incoming side", as
     const plain = readSnapshot();
     assert.equal(plain.base, null);
     assert.deepEqual(plain.paths.map((entry) => entry.path ?? entry), ["b.mjs"]);
+    runGit("commit", "-m", "edit b");
+
+    // Merging a branch that is not on origin/main is not «already verified»: plan everything.
+    runGit("checkout", "-b", "unverified", "main");
+    for (const name of ["x", "y"]) await writeFile(path.join(root, `${name}.mjs`), `export const ${name} = 1;\n`);
+    runGit("add", ".");
+    runGit("commit", "-m", "never went through CI");
+    runGit("checkout", "feature");
+    runGit("merge", "--no-commit", "--no-ff", "unverified");
+    const untrusted = readSnapshot();
+    assert.equal(untrusted.base, null, "an unverified branch was trusted as the merge base");
+    assert.deepEqual(untrusted.paths.map((entry) => entry.path ?? entry).sort(), ["x.mjs", "y.mjs"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
