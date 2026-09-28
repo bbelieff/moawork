@@ -3,7 +3,7 @@
 import { type FormEvent, useId, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { MemberSummaryRow } from "@/lib/auth/member-org-summary";
-import { roleLabel, scopeLabel } from "@/lib/auth/roles";
+import { roleLabel, scopeLabel, type MemberRole } from "@/lib/auth/roles";
 
 type Props = {
   orgId: string;
@@ -30,7 +30,7 @@ export type MemberHierarchyRpc = {
     orgId: string,
     targetUserId: string,
     reportsToUserId: string | null,
-    role: "owner" | "admin" | "team_lead" | "member",
+    role: MemberRole,
     scope: "all" | "department" | "assigned",
     requestId: string,
   ) => Promise<{ accepted: boolean; replayed: boolean }>;
@@ -59,6 +59,20 @@ export function isUnavailableRpcError(error: unknown): boolean {
 export function normalizePermissionScopeKey(value: string): string | null {
   const normalized = value.trim().toLowerCase();
   return /^[a-z0-9][a-z0-9:_./-]{0,95}$/.test(normalized) ? normalized : null;
+}
+
+/**
+ * 「세부 권한 설정」을 이 사람에게 열 수 있나 — **판정은 여기 하나다.**
+ *
+ * ★ 같은 판정이 두 곳(버튼을 그릴지 · 눌렀을 때 열지)에 따로 있으면 한쪽만 고쳤을 때
+ *   «보이는데 눌러도 아무 일이 안 나는» 상태가 된다. 그래서 함수 하나로 합쳐 둔다.
+ *
+ * 기준은 «저장» 경로다: `savePermission` 이 부르는 `bind_workspace_lower_member_permission`
+ * (013) 은 `member` 만 받는다. 팀장·관리자에게 사람별 예외를 열지는 정책 결정이 먼저다 (#702).
+ * 여기만 넓히면 버튼은 열리고 저장은 거부된다 — 검수 P1 이 정확히 그 모양이었다.
+ */
+export function canEditMemberPermissions(role: MemberRole): boolean {
+  return role === "member";
 }
 
 /*
@@ -92,7 +106,8 @@ function MemberCard({ member, protectedOwner, isViewer, canEdit, onProfileEdit, 
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => onProfileEdit(member)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-semibold dark:border-zinc-700">직책·팀 수정</button>
             <button type="button" onClick={() => onHierarchyEdit(member)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-semibold dark:border-zinc-700">업무 역할 설정</button>
-            {member.role === "member" ? <button type="button" onClick={() => onPermissionEdit(member)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-semibold dark:border-zinc-700">세부 권한 설정</button> : null}
+            {/* ★ 판정은 canEditMemberPermissions 하나다 — 여는 쪽(beginPermissionEdit)과 «같은» 함수를 쓴다. */}
+            {canEditMemberPermissions(member.role) ? <button type="button" onClick={() => onPermissionEdit(member)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-semibold dark:border-zinc-700">세부 권한 설정</button> : null}
           </div>
         ) : <span className="text-sm text-zinc-500">조회만 가능</span>}
       </div>
@@ -136,7 +151,8 @@ export function MemberOrganizationChart({ orgId, owner, admins, members, canEdit
   }
 
   function beginPermissionEdit(member: MemberSummaryRow) {
-    if (member.role !== "member") return;
+    // ★ 버튼을 그리는 쪽과 «같은» 판정을 쓴다. 둘이 갈라지면 「보이는데 안 눌리는」 상태가 된다.
+    if (!canEditMemberPermissions(member.role)) return;
     setEditor({ kind: "permission", member });
     setPermissionScopeKey("");
     setPermissionDecision("allow");

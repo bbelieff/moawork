@@ -18,7 +18,7 @@
  * 설치기(`install.ts`)가 이름 → id 로 해석한다.
  */
 
-import type { FieldOption, FieldType } from "@/lib/types";
+import type { FieldOption, FieldType, MemberRole } from "@/lib/types";
 import type { FieldSource } from "@/lib/field/source";
 
 /** Product-owned identity for the default new-lead tab. */
@@ -35,7 +35,8 @@ export interface DefaultTabAssignee {
   title?: string | null;
   /** 조직도 정본이 붙기 전에도 같은 팀 사람을 묶어 보여 주는 안정적인 표시 키. */
   teamKey?: string | null;
-  role?: "owner" | "admin" | "team_lead" | "member";
+  /** ★ 정본은 lib/types 하나다. 손으로 다시 적으면 역할이 늘 때 안 따라온다 (#707). */
+  role?: MemberRole;
 }
 
 export interface DefaultTabAssigneeMove {

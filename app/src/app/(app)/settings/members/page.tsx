@@ -72,7 +72,19 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
     (userId) => writerNames.get(userId) ?? null,
   );
 
-  const viewerRole: Role = ctx.role === "owner" || ctx.role === "admin" ? ctx.role : "member";
+  /*
+   * ★ 보는 사람의 «자기 역할» 이다. 강등하지 않는다 (#706).
+   *
+   *   전에는 `ctx.role === "owner" || ctx.role === "admin" ? ctx.role : "member"` 였다.
+   *   그래서 팀장이 권한표를 열면 **자기가 「구성원」으로 표시됐다** — 권한표에 「팀장」 갈래가
+   *   버젓이 있는데 자기 줄을 못 찾았다. 권한을 확인하러 온 사람에게 남의 줄을 보여 준 것이다.
+   *
+   *   권한이 새는 것이 아니다 — 편집 가능 여부는 `canEdit = viewerRole === "owner"` 가
+   *   따로 판정하므로 이 값이 «보여 주는 줄» 만 정한다.
+   *
+   *   역할을 손으로 나열하지 않고 정본 가드에 물어본다. 역할이 늘어도 여기는 안 고친다.
+   */
+  const viewerRole: Role = isRole(ctx.role) ? ctx.role : "member";
   const permissionAccess = permission.ok
     ? { kind: "allowed" as const, snapshot: permission.snapshot }
     : { kind: "denied" as const, reason: permission.reason };
