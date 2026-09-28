@@ -224,9 +224,6 @@ export default async function BoardPage({
    * 이미 진행 이력이 있는 회사도 «다시» 고를 수 있게 건수를 같이 보여준다
    * (한 회사에 자금 건이 여러 번 생기는 것이 정상이다).
    */
-  const contractWorkCompanyPicker = board.source === CONTRACT_WORK_TAB_SOURCE
-    ? await loadCompanyPickerRows(ctx)
-    : { rows: [], error: null, truncated: false };
   const boardItems = board.source === NOTICE_TAB_SOURCE
     ? projectedItems.map((item) => {
         const fileId = item.values.official_pdf;
@@ -251,6 +248,38 @@ export default async function BoardPage({
       </section>
     );
   }
+  /*
+   * 담당자 목록 · 그룹별 컬럼 배치 · 계약업체 회사 목록은 저장된 보기(사람 범위)나
+   * 상담 단계 결과에 의존하지 않는다. 그래서 그 사슬보다 «먼저» 한 물결로 띄우고
+   * 뒤에서 받는다 — 사슬이 도는 동안 같이 돈다(#746). 사슬이 먼저 실패해도
+   * 처리되지 않은 거부가 남지 않게 catch 를 붙여 두고, 받을 때 원래 오류가 그대로 난다.
+   */
+  const independentTailReads = Promise.all([
+    (async () => {
+      // 담당자 탭·칩에 쓸 표시 이름. items.assigned_to 는 사용자 id 라서 이 맵이 없으면 UUID 가 노출된다.
+      const orgChart = board.source === NEW_LEAD_TAB_SOURCE && client
+        ? await loadOrgChart(ctx, async () => client)
+        : null;
+      const defaultTabAssignees = orgChart?.kind === "ready"
+        ? []
+        : await loadDefaultTabAssignees(ctx);
+      return {
+        assigneeLabels: Object.fromEntries(
+          orgChart?.kind === "ready"
+            ? orgChart.members.map((member) => [member.userId, member.displayName])
+            : defaultTabAssignees.map((member) => [member.userId, member.displayName]),
+        ),
+        memberDirectory: orgChart?.kind === "ready"
+          ? memberPickerEntries(orgChart)
+          : legacyMemberPickerEntries(defaultTabAssignees),
+      };
+    })(),
+    getBoardColumnOrder(repo, ctx, id),
+      board.source === CONTRACT_WORK_TAB_SOURCE
+      ? loadCompanyPickerRows(ctx)
+      : Promise.resolve({ rows: [], error: null, truncated: false }),
+  ]);
+  independentTailReads.catch(() => {});
   const personRuntime = await resolveSavedPersonRuntime(
     ctx.org.id, id, client ? (sp.savedView ?? null) : null, ctx.user.id,
     async (orgId, boardId, viewId) => {
@@ -337,30 +366,7 @@ export default async function BoardPage({
     id,
   );
 
-  // 담당자 목록과 그룹별 컬럼 배치는 서로의 결과에 의존하지 않는다.
-  // 둘 다 snapshot/permission 관문 뒤에서 시작하되 같은 왕복 물결에 실어 tail 을 줄인다.
-  const [assigneeBundle, savedColumnOrder] = await Promise.all([
-    (async () => {
-      // 담당자 탭·칩에 쓸 표시 이름. items.assigned_to 는 사용자 id 라서 이 맵이 없으면 UUID 가 노출된다.
-      const orgChart = board.source === NEW_LEAD_TAB_SOURCE && client
-        ? await loadOrgChart(ctx, async () => client)
-        : null;
-      const defaultTabAssignees = orgChart?.kind === "ready"
-        ? []
-        : await loadDefaultTabAssignees(ctx);
-      return {
-        assigneeLabels: Object.fromEntries(
-          orgChart?.kind === "ready"
-            ? orgChart.members.map((member) => [member.userId, member.displayName])
-            : defaultTabAssignees.map((member) => [member.userId, member.displayName]),
-        ),
-        memberDirectory: orgChart?.kind === "ready"
-          ? memberPickerEntries(orgChart)
-          : legacyMemberPickerEntries(defaultTabAssignees),
-      };
-    })(),
-    getBoardColumnOrder(repo, ctx, id),
-  ]);
+  const [assigneeBundle, savedColumnOrder, contractWorkCompanyPicker] = await independentTailReads;
   const { assigneeLabels, memberDirectory } = assigneeBundle;
   /*
    * 그룹 메뉴의 «다른 프리셋 적용» 목록 — 이 PR 에서는 «비운다» (BBE-174 / BBE-223).

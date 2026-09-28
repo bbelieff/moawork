@@ -625,6 +625,9 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
         [...byLabel.entries()].map(([l, n]) => `    ${n}× ${l}`).join("\n") + "\n",
     );
     expect(run.total).toBeGreaterThan(0);
+    // #746: 담당자·컬럼 배치 읽기를 사람 범위 사슬과 같은 물결로 띄워 12 → 10.
+    expect(run.serialStages, "savedView 경로의 직렬 단계가 늘었다 — 독립 읽기가 다시 줄 섰는지 확인해라")
+      .toBeLessThanOrEqual(10);
   });
 });
 
