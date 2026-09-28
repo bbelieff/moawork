@@ -18,6 +18,11 @@ import type { BoardGroup } from "@/lib/boards/types";
 import { addItemAction } from "@/app/(app)/boards/actions";
 import { renameBoardTitleAction } from "@/app/(app)/boards/title-actions";
 import { BoardInlineTitleEditor } from "./BoardInlineTitleEditor";
+import { Icon } from "@/components/shell/icons";
+
+const DEFAULT_BOARD_ICONS: Readonly<Record<string, string>> = {
+  "💡": "new", "💰": "contact", "🔁": "work", "📢": "notice", "📞": "contact", "📍": "meeting",
+};
 
 export function BoardHeader({
   boardId,
@@ -71,7 +76,7 @@ export function BoardHeader({
         {backSlot}
 
         <h1 className="flex shrink-0 items-center gap-1.5 text-lg font-semibold text-mw-fg">
-          {icon && <span aria-hidden="true">{icon}</span>}
+          {icon && <span aria-hidden="true">{DEFAULT_BOARD_ICONS[icon] ? <Icon name={DEFAULT_BOARD_ICONS[icon]} /> : icon}</span>}
           {canEditTitle?<BoardInlineTitleEditor name={name} label="보드 이름" onSave={(value)=>renameBoardTitleAction(boardId,value)}/>:<span>{name}</span>}
         </h1>
         {helpSlot}
@@ -110,13 +115,13 @@ export function BoardHeader({
 
       {!readOnly && groups.length > 0 && (addItemSlot ?? (
         <details name="mw-board-header" className="relative shrink-0">
-          <summary className="flex h-9 cursor-pointer select-none items-center rounded-full bg-mw-primary px-3.5 text-xs font-semibold text-mw-on-accent list-none [&::-webkit-details-marker]:hidden">
+          <summary data-mw-cta="primary" className="flex h-9 cursor-pointer select-none items-center rounded-full bg-mw-primary px-3.5 text-xs font-semibold text-mw-on-accent list-none [&::-webkit-details-marker]:hidden">
             ＋ 새 항목
           </summary>
 
           <form
             action={addItemAction}
-            className="mw-layer-page-popover absolute end-0 top-full mt-1 flex w-64 flex-col gap-2 rounded-xl border border-mw-line bg-mw-card p-2 shadow-lg"
+            className="mw-layer-page-popover absolute end-0 top-full mt-1 flex w-64 flex-col gap-2 rounded-md border border-mw-line bg-mw-card p-2 shadow-lg"
           >
             <input type="hidden" name="boardId" value={boardId} />
             <input
@@ -140,6 +145,7 @@ export function BoardHeader({
             </select>
             <button
               type="submit"
+              data-mw-cta="primary"
               className="h-9 rounded-lg bg-mw-primary text-xs font-semibold text-mw-on-accent"
             >
               추가

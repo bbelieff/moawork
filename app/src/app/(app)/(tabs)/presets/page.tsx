@@ -82,7 +82,7 @@ export default async function PresetsPage({
       </nav>
 
       {view === "structure" ? <>
-      <section className="rounded-xl border border-mw-line bg-mw-card p-4" aria-labelledby="tabs-heading">
+      <section className="rounded-md border border-mw-line bg-mw-card p-4" aria-labelledby="tabs-heading">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 id="tabs-heading" className="font-semibold text-mw-fg">우리 회사 탭</h2>
@@ -91,7 +91,7 @@ export default async function PresetsPage({
           {canManageTabs && (
             <form action={createTabAction} className="flex gap-2">
               <input name="name" required placeholder="새 탭 이름" className="min-w-0 rounded-lg border border-mw-line bg-mw-bg px-3 py-2 text-sm text-mw-fg" />
-              <button className="rounded-lg bg-mw-primary px-3 py-2 text-sm font-semibold text-white">+ 탭 만들기</button>
+              <button className="rounded-lg bg-mw-primary px-3 py-2 text-sm font-semibold text-mw-on-accent">+ 탭 만들기</button>
             </form>
           )}
         </div>
@@ -132,7 +132,7 @@ export default async function PresetsPage({
         )}
       </section>
 
-      <section className="rounded-xl border border-mw-line bg-mw-card p-4" aria-labelledby="presets-heading">
+      <section className="rounded-md border border-mw-line bg-mw-card p-4" aria-labelledby="presets-heading">
         <h2 id="presets-heading" className="font-semibold text-mw-fg">아이템 프리셋 · 구조 묶음</h2>
         <p className="text-sm text-mw-sub">한 탭의 아이템(그룹)과 컬럼 구조를 저장하고 다른 탭에 재사용합니다. 별도의 ‘설치’ 단계는 없습니다.</p>
 
@@ -143,7 +143,7 @@ export default async function PresetsPage({
               <option value="">구조를 가져올 탭</option>
               {boards.map((board) => <option key={board.id} value={board.id}>{board.name}</option>)}
             </select>
-            <button className="rounded bg-mw-primary px-3 py-2 text-sm font-semibold text-white">구조 저장</button>
+            <button className="rounded bg-mw-primary px-3 py-2 text-sm font-semibold text-mw-on-accent">구조 저장</button>
           </form>
         )}
 
@@ -176,7 +176,7 @@ export default async function PresetsPage({
         )}
       </section>
       </> : (
-        <section id="documents" className="rounded-xl border border-mw-line bg-mw-card p-4" aria-labelledby="documents-heading">
+        <section id="documents" className="rounded-md border border-mw-line bg-mw-card p-4" aria-labelledby="documents-heading">
           <h2 id="documents-heading" className="font-semibold text-mw-fg">상품별 기본 서류</h2>
           <p className="mt-1 text-sm text-mw-sub">진행 상품을 고르거나 직접 입력해 회사 공용 체크리스트를 관리합니다.</p>
           {checklistService && selectedProduct ? <>

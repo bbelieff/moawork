@@ -193,7 +193,7 @@ export function ColumnContextMenu({
           onClose={() => closeSurface(true)}
           dismissible={!modalPending}
         >
-          <div className={`max-h-[calc(100vh-2rem)] w-full overflow-y-auto rounded-xl border border-mw-line bg-mw-card p-4 text-mw-fg shadow-xl ${surface === "settings" ? "max-w-3xl" : "max-w-md"}`}>
+          <div className={`max-h-[calc(100vh-2rem)] w-full overflow-y-auto rounded-md border border-mw-line bg-mw-card p-4 text-mw-fg shadow-xl ${surface === "settings" ? "max-w-3xl" : "max-w-md"}`}>
             <header className="mb-4 flex items-start justify-between gap-3 border-b border-mw-line pb-3">
               <div>
                 <p className="text-xs font-medium text-mw-sub">컬럼 변경</p>
@@ -245,7 +245,7 @@ export function ColumnContextMenu({
       ) : null}
 
       {showCommandMessage && state.ok && state.message && surface === null ? (
-        <div role="status" aria-live="polite" className="mw-layer-toast fixed bottom-5 right-5 rounded-xl border border-mw-line bg-mw-card px-4 py-3 text-sm text-mw-fg shadow-xl">
+        <div role="status" aria-live="polite" className="mw-layer-toast fixed bottom-5 right-5 rounded-md border border-mw-line bg-mw-card px-4 py-3 text-sm text-mw-fg shadow-xl">
           {state.message}
         </div>
       ) : null}

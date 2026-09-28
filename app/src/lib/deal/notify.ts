@@ -86,7 +86,7 @@ export async function notifyFollowupRequested(
     const messages = {
       no_assignee: "담당자가 없어 보완 요청을 전달하지 못했습니다.",
       self_assigned: "현재 담당자가 요청자 본인이라 알림을 보내지 않았습니다.",
-      invalid_assignee: "현재 담당자가 이 회사의 멤버가 아니라 알림을 보내지 않았습니다.",
+      invalid_assignee: "현재 담당자가 이 회사의 구성원이 아니라 알림을 보내지 않았습니다.",
     } as const;
     if (
       result === "no_assignee" ||

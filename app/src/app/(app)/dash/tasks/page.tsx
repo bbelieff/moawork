@@ -51,7 +51,7 @@ export default async function DashboardTasksPage({ searchParams }: { searchParam
       <nav className="text-sm text-zinc-500"><Link href="/" className="hover:underline">대시보드</Link><span className="mx-1.5">/</span><span>업무 근거 목록</span></nav>
       <FeatureGateServer orgId={ctx.org.id} feature={FEATURES.dash} label="대시보드">
         <div className="flex flex-col gap-6">
-          <header><h1 className="text-xl font-semibold">업무 현황 자세히 보기</h1><p className="mt-1 text-sm text-zinc-500">내 권한으로 볼 수 있는 업무만 같은 기준으로 집계하고 보여줘요.</p></header>
+          <header><h1 className="text-xl font-semibold">업무 현황 자세히 보기</h1></header>
           <DashboardFilterBar filters={filters} pipelines={pipelines} assignees={assignees} />
           <DashboardStateNotice result={result} overdueCount={overdueDeals.length} />
           <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="업무 지표">

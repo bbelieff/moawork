@@ -141,6 +141,24 @@ describe("repairNewcustBoardOnEntry", () => {
     };
   }
 
+  function countedRepo(repo: ReturnType<typeof toAsyncBoardsRepo>) {
+    const reads = {
+      listBoards: vi.fn(repo.listBoards.bind(repo)),
+      listGroups: vi.fn(repo.listGroups.bind(repo)),
+      listColumns: vi.fn(repo.listColumns.bind(repo)),
+      getDefaultDefinitionState: vi.fn(repo.getDefaultDefinitionState?.bind(repo)),
+    };
+    return {
+      reads,
+      repo: new Proxy(repo, {
+        get(target, property, receiver) {
+          if (property in reads) return reads[property as keyof typeof reads];
+          return Reflect.get(target, property, receiver);
+        },
+      }),
+    };
+  }
+
   it("does not mutate for a member and returns a clear permission result", async () => {
     const repo = toAsyncBoardsRepo(new LocalBoardsRepo());
     const request = client(repo);
@@ -153,13 +171,76 @@ describe("repairNewcustBoardOnEntry", () => {
   it("lets a member enter an existing canonical board without acquiring a mutation lease", async () => {
     const local = new LocalBoardsRepo();
     const board = local.createBoard(owner(), { name: "신규리드", source: NEWCUST_BOARD_SOURCE });
-    const request = client(toAsyncBoardsRepo(local));
+    const counted = countedRepo(toAsyncBoardsRepo(local));
+    const request = client(counted.repo);
     const result = await repairNewcustBoardOnEntry(
       { ...owner(), role: "member", scope: "assigned" },
       request as never,
     );
     expect(result).toEqual({ kind: "ready", boardId: board.id });
+    expect(counted.reads.listBoards).toHaveBeenCalledTimes(1);
+    expect(loadMemberOrgSummaryWithClient).not.toHaveBeenCalled();
     expect(request.rpc).not.toHaveBeenCalled();
+  });
+
+  it.each(["member", "team_lead"] as const)(
+    "keeps duplicate canonical boards as a conflict for a %s",
+    async (role) => {
+      const local = new LocalBoardsRepo();
+      local.createBoard(owner(), { name: "A", source: NEWCUST_BOARD_SOURCE });
+      local.createBoard(owner(), { name: "B", source: NEWCUST_BOARD_SOURCE });
+      const counted = countedRepo(toAsyncBoardsRepo(local));
+      const request = client(counted.repo);
+
+      await expect(repairNewcustBoardOnEntry(
+        { ...owner(), role, scope: role === "member" ? "assigned" : "all" },
+        request as never,
+      )).resolves.toEqual({ kind: "conflict" });
+      expect(counted.reads.listBoards).toHaveBeenCalledTimes(1);
+      expect(loadMemberOrgSummaryWithClient).not.toHaveBeenCalled();
+      expect(request.rpc).not.toHaveBeenCalled();
+    },
+  );
+
+  it("reuses the resolved board and starts owner board/member reads concurrently", async () => {
+    const local = new LocalBoardsRepo();
+    const baseRepo = toAsyncBoardsRepo(local);
+    const assignees = [{ userId: SEED_USER_OWNER, displayName: "Owner" }];
+    const { boardId } = await ensureDefaultTab(owner(), NEW_LEAD_TAB, baseRepo, assignees);
+    const counted = countedRepo(baseRepo);
+    const originalListBoards = counted.reads.listBoards.getMockImplementation()!;
+    let releaseBoards!: () => void;
+    let releaseSummary!: () => void;
+    let boardsStarted = false;
+    let summaryStarted = false;
+    const boardsGate = new Promise<void>((resolve) => { releaseBoards = resolve; });
+    const summaryGate = new Promise<void>((resolve) => { releaseSummary = resolve; });
+    counted.reads.listBoards.mockImplementationOnce(async (...args) => {
+      boardsStarted = true;
+      await boardsGate;
+      return originalListBoards(...args);
+    });
+    loadMemberOrgSummaryWithClient.mockImplementationOnce(async () => {
+      summaryStarted = true;
+      await summaryGate;
+      return {
+        kind: "ready",
+        owner: { userId: SEED_USER_OWNER, displayName: "Owner" },
+        admins: [],
+        members: [],
+      };
+    });
+
+    const pending = repairNewcustBoardOnEntry(owner(), client(counted.repo) as never);
+    await vi.waitFor(() => expect({ boardsStarted, summaryStarted }).toEqual({ boardsStarted: true, summaryStarted: true }));
+    releaseBoards();
+    releaseSummary();
+
+    await expect(pending).resolves.toEqual({ kind: "ready", boardId });
+    expect(counted.reads.listBoards).toHaveBeenCalledTimes(1);
+    expect(counted.reads.listGroups).toHaveBeenCalledTimes(1);
+    expect(counted.reads.listColumns).toHaveBeenCalledTimes(1);
+    expect(counted.reads.getDefaultDefinitionState).toHaveBeenCalledTimes(1);
   });
 
   it("repairs the exact org for owner/admin and includes the BBE-173 industry column", async () => {
@@ -186,6 +267,30 @@ describe("repairNewcustBoardOnEntry", () => {
     const result = await repairNewcustBoardOnEntry(owner(), client(toAsyncBoardsRepo(local)) as never);
     expect(result).toEqual({ kind: "conflict" });
     expect(local.listBoards(owner())).toHaveLength(2);
+  });
+
+  it("keeps canonical conflict precedence when the concurrent member read fails", async () => {
+    const local = new LocalBoardsRepo();
+    local.createBoard(owner(), { name: "A", source: NEWCUST_BOARD_SOURCE });
+    local.createBoard(owner(), { name: "B", source: NEWCUST_BOARD_SOURCE });
+    loadMemberOrgSummaryWithClient.mockRejectedValueOnce(new Error("member summary unavailable"));
+    const request = client(toAsyncBoardsRepo(local));
+
+    await expect(repairNewcustBoardOnEntry(owner(), request as never)).resolves.toEqual({ kind: "conflict" });
+    expect(request.rpc).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before drift or repair when the member summary rejects", async () => {
+    const local = new LocalBoardsRepo();
+    local.createBoard(owner(), { name: "신규리드", source: NEWCUST_BOARD_SOURCE });
+    loadMemberOrgSummaryWithClient.mockRejectedValueOnce(new Error("member summary unavailable"));
+    const counted = countedRepo(toAsyncBoardsRepo(local));
+    const request = client(counted.repo);
+
+    await expect(repairNewcustBoardOnEntry(owner(), request as never)).rejects.toThrow("member summary unavailable");
+    expect(counted.reads.listGroups).not.toHaveBeenCalled();
+    expect(counted.reads.listColumns).not.toHaveBeenCalled();
+    expect(request.rpc).not.toHaveBeenCalled();
   });
 
   it("serializes concurrent entry repair and converges on one complete board", async () => {

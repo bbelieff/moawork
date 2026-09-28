@@ -1,16 +1,26 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+
+// CI 가 Windows 러너에서 WSL 부트스트랩(우분투 rootfs 내려받기 + import)을 하느라 시간과
+// 과금 분을 크게 썼다. 아래 세 테스트만 실제로 wsl.exe 를 필요로 하므로, WSL 이 없으면
+// **실패가 아니라 건너뛰기**로 만든다. WSL 이 있는 환경(개발자 PC)에서는 그대로 돈다.
+const WSL_AVAILABLE = process.platform === "win32"
+  && spawnSync("wsl.exe", ["bash", "-lc", "true"], { windowsHide: true, encoding: "utf8" }).status === 0;
+
 import { fileURLToPath } from "node:url";
 import {
   acquireGateLease,
   createLeaseBroker,
   GateLeaseError,
+  holdLeaseBroker,
+  probeLeaseBroker,
 } from "./gate-lease-core.mjs";
 import { resolveGateCommand } from "./gate-lease-runner.mjs";
 
@@ -26,6 +36,89 @@ function cleanupFence(fenceName) {
   spawnSync(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", CLEANUP, "-FenceName", fenceName], { windowsHide: true });
 }
 
+test("test cleanup cannot address the production fence namespace", { skip: process.platform !== "win32" }, () => {
+  const powershell = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  const invoke = (args) => spawnSync(powershell, [
+    "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", CLEANUP, ...args,
+  ], { encoding: "utf8", windowsHide: true });
+  for (const fenceName of [
+    "",
+    "Global\\MoaWork.FullGate.v1",
+    "Global\\MoaWork.FullGate.Test",
+    "Global\\MoaWork.FullGate.TestLike.value",
+    "global\\MoaWork.FullGate.Test.value",
+  ]) {
+    const run = invoke(["-FenceName", fenceName]);
+    assert.equal(run.status, 78, `${fenceName}: ${run.stdout}${run.stderr}`);
+    assert.match(`${run.stdout}${run.stderr}`, /GATE_TEST_CLEANUP_SCOPE_INVALID/u);
+  }
+  const conflicting = invoke(["-AllTests", "-FenceName", "Global\\MoaWork.FullGate.v1"]);
+  assert.equal(conflicting.status, 78, `${conflicting.stdout}${conflicting.stderr}`);
+  assert.equal(invoke(["-FenceName", testFence()]).status, 0);
+  assert.equal(invoke(["-AllTests"]).status, 0);
+});
+
+async function startAbandonedFenceOwner(fenceName) {
+  const powershell = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  const script = [
+    "$name=$args[0]",
+    "$created=$false",
+    "$mutex=[Threading.Mutex]::new($false,$name,[ref]$created)",
+    "$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User",
+    "$security=[Security.AccessControl.MutexSecurity]::new()",
+    "$security.SetOwner($sid)",
+    "$security.SetAccessRuleProtection($true,$false)",
+    "$security.AddAccessRule([Security.AccessControl.MutexAccessRule]::new($sid,[Security.AccessControl.MutexRights]::FullControl,[Security.AccessControl.AccessControlType]::Allow))",
+    "$mutex.SetAccessControl($security)",
+    "[void]$mutex.WaitOne()",
+    "[Console]::Out.WriteLine('FENCE_OWNER_READY')",
+    "[Console]::Out.Flush()",
+    "Start-Sleep -Seconds 60",
+  ].join(";");
+  const child = spawn(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script, fenceName], {
+    stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
+  });
+  let output = "";
+  child.stdout.on("data", (chunk) => (output += chunk));
+  child.stderr.on("data", (chunk) => (output += chunk));
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  await waitUntil(() => output.includes("FENCE_OWNER_READY"));
+  return { child, exited };
+}
+
+async function startLiveFenceOwner(fenceName, holdMs = 8_000) {
+  const powershell = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  const script = [
+    "$name=$env:MOAWORK_TEST_LIVE_FENCE_NAME",
+    "$created=$false",
+    "$mutex=[Threading.Mutex]::new($false,$name,[ref]$created)",
+    "$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User",
+    "$security=[Security.AccessControl.MutexSecurity]::new()",
+    "$security.SetOwner($sid)",
+    "$security.SetAccessRuleProtection($true,$false)",
+    "$security.AddAccessRule([Security.AccessControl.MutexAccessRule]::new($sid,[Security.AccessControl.MutexRights]::FullControl,[Security.AccessControl.AccessControlType]::Allow))",
+    "$mutex.SetAccessControl($security)",
+    "[void]$mutex.WaitOne()",
+    "[Console]::Out.WriteLine('FENCE_OWNER_READY')",
+    "[Console]::Out.Flush()",
+    "Start-Sleep -Milliseconds ([int]$env:MOAWORK_TEST_LIVE_FENCE_HOLD_MS)",
+    "$mutex.ReleaseMutex()",
+    "$mutex.Dispose()",
+  ].join(";");
+  const child = spawn(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script], {
+    stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
+    env: { ...process.env, MOAWORK_TEST_LIVE_FENCE_NAME: fenceName, MOAWORK_TEST_LIVE_FENCE_HOLD_MS: String(holdMs) },
+  });
+  let output = "";
+  child.stdout.on("data", (chunk) => (output += chunk));
+  child.stderr.on("data", (chunk) => (output += chunk));
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  await waitUntil(() => output.includes("FENCE_OWNER_READY")).catch(() => {
+    throw new Error(`live fence owner failed to start: ${output}`);
+  });
+  return { child, exited };
+}
+
 async function waitUntil(predicate, timeoutMs = 5_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -34,6 +127,20 @@ async function waitUntil(predicate, timeoutMs = 5_000) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   throw new Error("condition timed out");
+}
+
+async function settlesWithin(promise, timeoutMs) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise.then(() => true),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function testFence() {
@@ -105,7 +212,100 @@ function lineChannel(socket) {
   };
 }
 
-async function startDirectGuardian({ broker, fenceName, envelopeNonce, controlNonce }) {
+function observeGuardianLifecycle(guardian, marker) {
+  let output = "";
+  let order = 0;
+  let markerEvent = null;
+  let closeEvent = null;
+  let resolveMarker;
+  let resolveClose;
+  const markerObserved = new Promise((resolve) => { resolveMarker = resolve; });
+  const closed = new Promise((resolve) => { resolveClose = resolve; });
+  const onData = (chunk) => {
+    output += chunk;
+    if (!markerEvent && output.includes(marker)) {
+      markerEvent = { type: "marker", order: ++order };
+      resolveMarker(markerEvent);
+    }
+  };
+  guardian.stdout.on("data", onData);
+  guardian.stderr.on("data", onData);
+  guardian.once("close", (code, signal) => {
+    closeEvent = { type: "close", order: ++order, code, signal };
+    guardian.stdout.off("data", onData);
+    guardian.stderr.off("data", onData);
+    resolveClose(closeEvent);
+  });
+  return {
+    closed,
+    markerObserved,
+    markerEvent: () => markerEvent,
+    closeEvent: () => closeEvent,
+    output: () => output,
+  };
+}
+
+async function waitForGuardianOutput(lifecycle) {
+  const chooseFirst = () => {
+    const marker = lifecycle.markerEvent();
+    const close = lifecycle.closeEvent();
+    if (marker && (!close || marker.order < close.order)) return marker;
+    if (close && (!marker || close.order < marker.order)) return close;
+    return null;
+  };
+  let result = chooseFirst();
+  if (!result) {
+    await Promise.race([lifecycle.markerObserved, lifecycle.closed]);
+    result = chooseFirst();
+  }
+  if (result?.type === "close") {
+    throw new Error(`DIRECT_GUARDIAN_CLOSED_BEFORE_CHILD_START code=${result.code} signal=${result.signal}\n${lifecycle.output()}`);
+  }
+}
+
+test("guardian output milestone is bound to its pre-registered close event", async () => {
+  const fakeGuardian = () => Object.assign(new EventEmitter(), {
+    stdout: new EventEmitter(),
+    stderr: new EventEmitter(),
+  });
+  const closedGuardian = fakeGuardian();
+  const closedLifecycle = observeGuardianLifecycle(closedGuardian, "NONCE_CHILD_STARTED");
+  closedGuardian.emit("close", 78, null);
+  await assert.rejects(
+    waitForGuardianOutput(closedLifecycle),
+    /DIRECT_GUARDIAN_CLOSED_BEFORE_CHILD_START code=78 signal=null/u,
+  );
+  assert.equal(closedGuardian.stdout.listenerCount("data"), 0);
+  assert.equal(closedGuardian.stderr.listenerCount("data"), 0);
+
+  const markerGuardian = fakeGuardian();
+  const markerLifecycle = observeGuardianLifecycle(markerGuardian, "NONCE_CHILD_STARTED");
+  markerGuardian.stdout.emit("data", Buffer.from("NONCE_CHILD_STARTED:1234\n"));
+  markerGuardian.emit("close", 78, null);
+  await waitForGuardianOutput(markerLifecycle);
+  assert.equal(markerGuardian.stdout.listenerCount("data"), 0);
+  assert.equal(markerGuardian.stderr.listenerCount("data"), 0);
+
+  const closeFirstGuardian = fakeGuardian();
+  const closeFirstLifecycle = observeGuardianLifecycle(closeFirstGuardian, "NONCE_CHILD_STARTED");
+  closeFirstGuardian.emit("close", 78, "SIGKILL");
+  closeFirstGuardian.stdout.emit("data", Buffer.from("NONCE_CHILD_STARTED:late\n"));
+  await assert.rejects(waitForGuardianOutput(closeFirstLifecycle), /DIRECT_GUARDIAN_CLOSED_BEFORE_CHILD_START code=78 signal=SIGKILL/u);
+  assert.equal(closeFirstGuardian.stdout.listenerCount("data"), 0);
+  assert.equal(closeFirstGuardian.stderr.listenerCount("data"), 0);
+});
+
+const directGuardianSetupEvidence = new WeakMap();
+
+async function startDirectGuardian({
+  broker,
+  fenceName,
+  envelopeNonce,
+  controlNonce,
+  childExpression = "console.log('NONCE_CHILD_STARTED'); setInterval(() => {}, 1000)",
+  injectSetupFailureAfterChildStart = false,
+  forceSetupCleanupFallback = false,
+}) {
   const nonce = `nonce-aa-${randomUUID()}`;
   const pipeName = `moawork-gate-${randomUUID()}`;
   const powershell = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
@@ -116,46 +316,78 @@ async function startDirectGuardian({ broker, fenceName, envelopeNonce, controlNo
     "-PipeNonce", nonce,
     "-BootstrapWrapperPid", String(process.pid),
   ], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
-  let output = "";
-  guardian.stdout.on("data", (chunk) => (output += chunk));
-  guardian.stderr.on("data", (chunk) => (output += chunk));
+  const lifecycle = observeGuardianLifecycle(guardian, "NONCE_CHILD_STARTED");
   const exited = new Promise((resolve) => guardian.once("exit", (code, signal) => resolve({ code, signal })));
-  const socket = await connectNamedPipe(`\\\\.\\pipe\\${pipeName}`);
-  const channel = lineChannel(socket);
-  const requestId = randomUUID();
-  channel.send({
-    type: "payload",
-    nonce: envelopeNonce ? invalidNonce(envelopeNonce, nonce) : nonce,
-    payload: {
-      protocol: "moawork-gate-guardian-v2",
-      host: "127.0.0.1",
-      port: broker.port,
-      fenceName,
-      requestId,
-      label: "nonce-fixture",
-      command: process.execPath,
-      args: ["-e", "console.log('NONCE_CHILD_STARTED'); setInterval(() => {}, 1000)"],
-      cwd: ROOT,
-      waitTimeoutMs: 5_000,
-      runTimeoutMs: 10_000,
-      wrapperPid: process.pid,
-    },
-  });
-  if (controlNonce) {
-    const ready = await channel.next();
-    assert.equal(ready.type, "ready", output);
-    await waitUntil(() => output.includes("NONCE_CHILD_STARTED"));
+  const { closed } = lifecycle;
+  let channel;
+  try {
+    const socket = await connectNamedPipe(`\\\\.\\pipe\\${pipeName}`);
+    channel = lineChannel(socket);
+    const requestId = randomUUID();
+    channel.send({
+      type: "payload",
+      nonce: envelopeNonce ? invalidNonce(envelopeNonce, nonce) : nonce,
+      payload: {
+        protocol: "moawork-gate-guardian-v2",
+        host: "127.0.0.1",
+        port: broker.port,
+        fenceName,
+        requestId,
+        label: "nonce-fixture",
+        command: process.execPath,
+        args: ["-e", childExpression],
+        cwd: ROOT,
+        waitTimeoutMs: 5_000,
+        runTimeoutMs: 10_000,
+        wrapperPid: process.pid,
+      },
+    });
+    if (controlNonce) {
+      const ready = await channel.next();
+      assert.equal(ready.type, "ready", lifecycle.output());
+      await waitForGuardianOutput(lifecycle);
+      if (injectSetupFailureAfterChildStart) throw new Error("DIRECT_GUARDIAN_SETUP_FAILURE_INJECTED");
+    }
+    return {
+      guardian,
+      exited,
+      channel,
+      output: lifecycle.output,
+      sendInvalidControl() {
+        assert.ok(controlNonce, "control nonce fixture was not configured");
+        channel.send({ type: "signal", nonce: invalidNonce(controlNonce, nonce), signal: "SIGTERM" });
+      },
+    };
+  } catch (error) {
+    let closeObserved = false;
+    let forced = forceSetupCleanupFallback || !channel;
+    let cleanupError = null;
+    try {
+      channel?.close();
+      if (!forced) closeObserved = await settlesWithin(closed, 2_000);
+      if (!closeObserved) {
+        forced = true;
+        await stop(guardian);
+        closeObserved = await settlesWithin(closed, 2_000);
+      }
+    } catch (candidate) {
+      cleanupError = candidate;
+      try { await stop(guardian); } catch {}
+      try { closeObserved ||= await settlesWithin(closed, 2_000); } catch {}
+    }
+    try {
+      if ((typeof error === "object" && error !== null) || typeof error === "function") {
+        directGuardianSetupEvidence.set(error, {
+          guardianPid: guardian.pid,
+          output: lifecycle.output(),
+          closeObserved,
+          forced,
+          cleanupError,
+        });
+      }
+    } catch {}
+    throw error;
   }
-  return {
-    guardian,
-    exited,
-    channel,
-    output: () => output,
-    sendInvalidControl() {
-      assert.ok(controlNonce, "control nonce fixture was not configured");
-      channel.send({ type: "signal", nonce: invalidNonce(controlNonce, nonce), signal: "SIGTERM" });
-    },
-  };
 }
 
 function markerExists(fenceName) {
@@ -163,13 +395,65 @@ function markerExists(fenceName) {
   const powershell = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
   const script = [
     "$sha=[Security.Cryptography.SHA256]::Create()",
-    "$name=([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($args[0])))).Replace('-','')",
+    "$name=([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($env:MOAWORK_TEST_FENCE_NAME)))).Replace('-','')",
     "$key=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\\MoaWork\\GateLeaseTest')",
     "if($null -ne $key -and $null -ne $key.GetValue($name,$null)){exit 1}else{exit 0}",
   ].join(";");
-  return spawnSync(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script, fenceName], {
-    windowsHide: true,
+  return spawnSync(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script], {
+    windowsHide: true, env: { ...process.env, MOAWORK_TEST_FENCE_NAME: fenceName },
   }).status === 1;
+}
+
+function fenceCanBeAcquired(fenceName) {
+  if (process.platform !== "win32") return false;
+  const powershell = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  const script = [
+    "$created=$false",
+    "$mutex=[Threading.Mutex]::new($false,$env:MOAWORK_TEST_FENCE_NAME,[ref]$created)",
+    "$owned=$false",
+    "try{try{$owned=$mutex.WaitOne(0)}catch [Threading.AbandonedMutexException]{$owned=$true};if(-not $owned){exit 1};$mutex.ReleaseMutex();exit 0}finally{$mutex.Dispose()}",
+  ].join(";");
+  return spawnSync(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script], {
+    windowsHide: true, env: { ...process.env, MOAWORK_TEST_FENCE_NAME: fenceName },
+  }).status === 0;
+}
+
+function processExists(pid) {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+}
+
+function seedFenceMarker(fenceName) {
+  if (process.platform !== "win32") return;
+  const powershell = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  const script = [
+    "$sha=[Security.Cryptography.SHA256]::Create()",
+    "$name=([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($env:MOAWORK_TEST_FENCE_NAME)))).Replace('-','')",
+    "$key=[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\\MoaWork\\GateLeaseTest',$true)",
+    "$key.SetValue($name,'{\"version\":1,\"fixture\":true}',[Microsoft.Win32.RegistryValueKind]::String)",
+    "$key.Dispose()",
+  ].join(";");
+  const run = spawnSync(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script], {
+    windowsHide: true, env: { ...process.env, MOAWORK_TEST_FENCE_NAME: fenceName },
+  });
+  assert.equal(run.status, 0, `${run.stdout ?? ""}${run.stderr ?? ""}`);
+}
+
+function recoveryEvidence(fenceName, valueName, operation, rawValue = "") {
+  const powershell = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  const script = [
+    "$root='Software\\MoaWork\\GateLeaseTest'",
+    "$path=$root+'\\RecoveryAudit'",
+    "if($env:MOAWORK_TEST_EVIDENCE_OP -eq 'write'){$key=[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($path,$true);$key.SetValue($env:MOAWORK_TEST_EVIDENCE_NAME,$env:MOAWORK_TEST_EVIDENCE_RAW,[Microsoft.Win32.RegistryValueKind]::String);$key.Dispose();exit 0}",
+    "if($env:MOAWORK_TEST_EVIDENCE_OP -eq 'read'){$key=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($path,$false);if($null -eq $key){exit 2};[Console]::Out.Write([string]$key.GetValue($env:MOAWORK_TEST_EVIDENCE_NAME,''));$key.Dispose();exit 0}",
+    "if($env:MOAWORK_TEST_EVIDENCE_OP -eq 'delete'){$key=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($path,$true);if($null -ne $key){$key.DeleteValue($env:MOAWORK_TEST_EVIDENCE_NAME,$false);$empty=@($key.GetValueNames()).Count -eq 0;$key.Dispose();if($empty){$rootKey=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($root,$true);if($null -ne $rootKey){try{$rootKey.DeleteSubKey('RecoveryAudit',$false)}catch{};$rootKey.Dispose()}}};exit 0}",
+    "exit 78",
+  ].join(";");
+  const run = spawnSync(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script], {
+    encoding: "utf8", windowsHide: true,
+    env: { ...process.env, MOAWORK_TEST_FENCE_NAME: fenceName, MOAWORK_TEST_EVIDENCE_NAME: valueName, MOAWORK_TEST_EVIDENCE_OP: operation, MOAWORK_TEST_EVIDENCE_RAW: rawValue },
+  });
+  assert.equal(run.status, 0, `${run.stdout ?? ""}${run.stderr ?? ""}`);
+  return run.stdout;
 }
 
 async function rawLeaseClient(port, requestId) {
@@ -288,7 +572,40 @@ async function createMalformedGuardianBroker(phase) {
   };
 }
 
+function observeHarnessChild(child, { startedAt = Date.now(), now = () => Date.now() } = {}) {
+  let output = "";
+  const observedAt = new Map();
+  const observe = (chunk) => {
+    const receivedAt = now();
+    output += chunk;
+    for (const kind of ["GATE_GUARDIAN_READY", "GATE_GUARDIAN_QUARANTINED"]) {
+      if (!observedAt.has(kind) && output.includes(kind)) observedAt.set(kind, receivedAt);
+    }
+  };
+  child.stdout.on("data", observe);
+  child.stderr.on("data", observe);
+
+  let processExitedAt = null;
+  let terminalAt = null;
+  child.once("exit", () => {
+    processExitedAt = now();
+  });
+  const exited = new Promise((resolve) => child.once("close", (code, signal) => {
+    terminalAt = now();
+    resolve({ code, signal });
+  }));
+  return {
+    exited,
+    output: () => output,
+    startedAt,
+    observedAt: (kind) => observedAt.get(kind) ?? null,
+    processExitedAt: () => processExitedAt,
+    terminalAt: () => terminalAt,
+  };
+}
+
 function startHarness({ broker, fenceName, expression, args = [], cwd = ROOT, ...config }) {
+  const startedAt = Date.now();
   const encoded = Buffer.from(JSON.stringify({
     host: "127.0.0.1",
     port: broker.port,
@@ -303,18 +620,113 @@ function startHarness({ broker, fenceName, expression, args = [], cwd = ROOT, ..
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
-  let output = "";
-  child.stdout.on("data", (chunk) => (output += chunk));
-  child.stderr.on("data", (chunk) => (output += chunk));
-  const exited = new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
-  return { child, exited, output: () => output };
+  return { child, ...observeHarnessChild(child, { startedAt }) };
 }
+
+test("harness lifecycle waits for drained output after process exit", async () => {
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  let clock = 1_000;
+  const harness = observeHarnessChild(child, { startedAt: clock, now: () => clock });
+  let terminalSettled = false;
+  harness.exited.then(() => {
+    terminalSettled = true;
+  });
+
+  clock = 1_100;
+  child.stdout.emit("data", Buffer.from("GATE_GUARDIAN_"));
+  clock = 1_125;
+  child.stdout.emit("data", Buffer.from("READY {}\n"));
+  clock = 1_200;
+  child.emit("exit", 78, null);
+  await Promise.resolve();
+  assert.equal(terminalSettled, false, "process exit must not expose output before stream close");
+
+  clock = 1_250;
+  child.stderr.emit("data", Buffer.from("GATE_GUARDIAN_QUARANTINED {}\n"));
+  clock = 1_300;
+  child.emit("close", 78, null);
+  const result = await harness.exited;
+
+  assert.deepEqual(result, { code: 78, signal: null });
+  assert.equal(terminalSettled, true);
+  assert.equal(harness.observedAt("GATE_GUARDIAN_READY"), 1_125);
+  assert.equal(harness.processExitedAt(), 1_200);
+  assert.equal(harness.observedAt("GATE_GUARDIAN_QUARANTINED"), 1_250);
+  assert.equal(harness.terminalAt(), 1_300);
+  assert.match(harness.output(), /GATE_GUARDIAN_READY/u);
+  assert.match(harness.output(), /GATE_GUARDIAN_QUARANTINED/u);
+
+  const lateChild = new EventEmitter();
+  lateChild.stdout = new EventEmitter();
+  lateChild.stderr = new EventEmitter();
+  clock = 2_000;
+  const lateHarness = observeHarnessChild(lateChild, { startedAt: clock, now: () => clock });
+  clock = 2_050;
+  lateChild.emit("exit", 78, null);
+  clock = 2_100;
+  lateChild.stderr.emit("data", Buffer.from("GATE_GUARDIAN_READY {}\n"));
+  clock = 2_150;
+  lateChild.stderr.emit("data", Buffer.from("GATE_GUARDIAN_QUARANTINED {}\n"));
+  clock = 2_200;
+  lateChild.emit("close", 78, null);
+  assert.deepEqual(await lateHarness.exited, { code: 78, signal: null });
+  assert.equal(lateHarness.processExitedAt(), 2_050);
+  assert.equal(lateHarness.observedAt("GATE_GUARDIAN_READY"), 2_100);
+  assert.equal(lateHarness.observedAt("GATE_GUARDIAN_QUARANTINED"), 2_150);
+  assert.equal(lateHarness.terminalAt(), 2_200);
+});
 
 async function stop(child) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   child.kill("SIGKILL");
   await new Promise((resolve) => child.once("exit", resolve));
 }
+
+test("a broker hold outlasts the idle exit window and releasing it restores the idle exit (#804)", async () => {
+  const broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: 150 });
+  try {
+    const hold = await holdLeaseBroker({ port: broker.port });
+    // Guardian bootstrap longer than the idle window: the broker must still accept the guardian.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    assert.equal((await probeLeaseBroker({ port: broker.port })).available, true);
+    const lease = await acquireGateLease({ port: broker.port, requestId: "after-slow-bootstrap", label: "guardian" });
+    lease.release();
+    hold.release();
+    assert.equal(hold.released, true);
+    const deadline = Date.now() + 5_000;
+    while ((await probeLeaseBroker({ port: broker.port })).available) {
+      assert.ok(Date.now() < deadline, "broker never resumed its idle exit");
+      // Each probe is itself a client, so probe less often than the idle window.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+  } finally { await broker.close(); }
+});
+
+test("a broker hold fails closed when no broker answers", async () => {
+  const server = net.createServer();
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  await new Promise((resolve) => server.close(resolve));
+  await assert.rejects(holdLeaseBroker({ port }), (error) => error.code === "GATE_LEASE_BROKER_HOLD_FAILED");
+});
+
+test("the runner holds the broker before spawning the guardian and releases it on every exit", async () => {
+  const source = await readFile(fileURLToPath(new URL("./gate-lease-runner.mjs", import.meta.url)), "utf8");
+  const hold = source.indexOf("lifetime.brokerHold = await holdStartedBroker()");
+  const spawnGuardian = source.indexOf("const guardian = spawn(");
+  assert.ok(hold > 0 && hold < spawnGuardian);
+  const wrapper = source.slice(source.indexOf("export async function runGateCommand("), source.indexOf("async function holdStartedBroker("));
+  assert.ok(wrapper.includes("return await runGateCommandWithBroker(options, lifetime);"));
+  assert.ok(wrapper.indexOf("} finally {") < wrapper.indexOf("lifetime.brokerHold?.release();"));
+  assert.ok(!source.includes("if (ensureBroker) await ensureLeaseBroker();"));
+});
+
+test("the guardian never queries WMI, which can stall the READY-to-quarantine exit for seconds (#732)", async () => {
+  const guardian = await readFile(GUARDIAN, "utf8");
+  assert.doesNotMatch(guardian, /Get-CimInstance|Get-WmiObject|Win32_Process/iu);
+});
 
 test("broker remains FIFO but is not the machine safety fence", async () => {
   const broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: -1 });
@@ -454,6 +866,28 @@ test("duplicate request and bounded wait fail closed", async () => {
   } finally { await broker.close(); }
 });
 
+test("guardian broker wait honors the caller deadline before a slow heartbeat", { skip: process.platform !== "win32" }, async () => {
+  const broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 5_000, idleTimeoutMs: -1 });
+  const fenceName = testFence();
+  const owner = await acquireGateLease({ port: broker.port, requestId: "broker-deadline-owner", label: "owner" });
+  let waiting;
+  try {
+    waiting = startHarness({ broker, fenceName, expression: "console.log('WAITING_MUST_NOT_START')", waitTimeoutMs: 250 });
+    await waitUntil(() => waiting.output().includes("GATE_GUARDIAN_READY"), 15_000);
+    await waitUntil(() => broker.snapshot().queued.length === 1, 15_000);
+    const startedAt = Date.now();
+    const result = await waiting.exited;
+    assert.equal(result.code, 78, waiting.output());
+    assert.ok(Date.now() - startedAt < 2_000, waiting.output());
+    assert.match(waiting.output(), /GATE_LEASE_TIMEOUT/u);
+    assert.doesNotMatch(waiting.output(), /GATE_BROKER_WAIT_TIMEOUT|WAITING_MUST_NOT_START/u);
+    assert.equal(markerExists(fenceName), false);
+  } finally {
+    owner.release();
+    await stop(waiting?.child); await broker.close(); cleanupFence(fenceName);
+  }
+});
+
 test("production CLI has no test endpoint and rejects direct POSIX/WSL ownership", () => {
   const endpoint = spawnSync(process.execPath, [CLI, "--test-endpoint", "127.0.0.1", "1"], {
     cwd: ROOT, encoding: "utf8", windowsHide: true,
@@ -520,6 +954,53 @@ test("owner-only named pipe READY binds wrapper and structured argv", { skip: pr
   } finally { await stop(run.child); await broker.close(); }
 });
 
+test("direct guardian setup failure closes its pipe, process tree, lease, and fence", { skip: process.platform !== "win32" }, async () => {
+  for (const forceSetupCleanupFallback of [false, true]) {
+    const broker = await createLeaseBroker({
+      port: 0,
+      diagnosticIntervalMs: 5,
+      idleTimeoutMs: -1,
+      crashRecoveryDelayMs: 200,
+    });
+    const fenceName = testFence();
+    cleanupFence(fenceName);
+    let failure;
+    try {
+      await assert.rejects(
+        startDirectGuardian({
+          broker,
+          fenceName,
+          controlNonce: "array",
+          childExpression: "console.log('NONCE_CHILD_STARTED:' + process.pid); setInterval(() => {}, 1000)",
+          injectSetupFailureAfterChildStart: true,
+          forceSetupCleanupFallback,
+        }).catch((error) => {
+          failure = error;
+          throw error;
+        }),
+        /DIRECT_GUARDIAN_SETUP_FAILURE_INJECTED/u,
+      );
+      const evidence = directGuardianSetupEvidence.get(failure);
+      assert.ok(evidence, "setup failure must retain bounded cleanup evidence");
+      assert.equal(evidence.closeObserved, true, evidence.cleanupError?.stack);
+      assert.equal(evidence.forced, forceSetupCleanupFallback);
+      assert.equal(evidence.cleanupError, null);
+      const childPid = Number(/NONCE_CHILD_STARTED:(\d+)/u.exec(evidence.output)?.[1]);
+      assert.ok(Number.isSafeInteger(childPid) && childPid > 0, evidence.output);
+      await waitUntil(() => !processExists(evidence.guardianPid) && !processExists(childPid));
+      await waitUntil(() => broker.snapshot().active === null);
+      assert.deepEqual(broker.snapshot().queued, []);
+      assert.equal(markerExists(fenceName), forceSetupCleanupFallback);
+      if (forceSetupCleanupFallback) cleanupFence(fenceName);
+      assert.equal(markerExists(fenceName), false);
+      assert.equal(fenceCanBeAcquired(fenceName), true);
+    } finally {
+      await broker.close();
+      cleanupFence(fenceName);
+    }
+  }
+});
+
 test("bootstrap and control nonces require exact scalar strings before command or clean release", { skip: process.platform !== "win32" }, async () => {
   for (const phase of ["envelope", "control"]) {
     for (const kind of ["array", "null", "number", "case-variant", "soft-hyphen", "zwj", "nul"]) {
@@ -531,13 +1012,14 @@ test("bootstrap and control nonces require exact scalar strings before command o
       });
       const fenceName = testFence();
       cleanupFence(fenceName);
-      const failed = await startDirectGuardian({
-        broker,
-        fenceName,
-        ...(phase === "envelope" ? { envelopeNonce: kind } : { controlNonce: kind }),
-      });
+      let failed;
       let successor;
       try {
+        failed = await startDirectGuardian({
+          broker,
+          fenceName,
+          ...(phase === "envelope" ? { envelopeNonce: kind } : { controlNonce: kind }),
+        });
         if (phase === "control") {
           successor = startHarness({ broker, fenceName, expression: "console.log('NONCE_RECOVERED')" });
           await waitUntil(() => broker.snapshot().queued.length === 1);
@@ -567,8 +1049,8 @@ test("bootstrap and control nonces require exact scalar strings before command o
         assert.equal(broker.snapshot().active, null);
         assert.deepEqual(broker.snapshot().queued, []);
       } finally {
-        failed.channel.close();
-        await stop(failed.guardian);
+        failed?.channel.close();
+        await stop(failed?.guardian);
         await stop(successor?.child);
         await broker.close();
         cleanupFence(fenceName);
@@ -619,6 +1101,104 @@ test("Windows guardian clean-close queues successors and preserves child exit co
   }
 });
 
+test("verified clean release clears its marker before a parallel broker can cross the fence", { skip: process.platform !== "win32" }, async () => {
+  const ownerBroker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 5, idleTimeoutMs: -1 });
+  const successorBroker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 5, idleTimeoutMs: -1 });
+  const fenceName = testFence();
+  const temp = await mkdtemp(path.join(os.tmpdir(), "moawork-gate-parallel-handoff-"));
+  const releasePath = path.join(temp, "release-owner");
+  cleanupFence(fenceName);
+  const first = startHarness({
+    broker: ownerBroker,
+    fenceName,
+    expression: "const fs=require('node:fs'); console.log('PARALLEL_OWNER_READY'); const hold=setInterval(()=>{if(fs.existsSync(process.argv[1]))clearInterval(hold)},25)",
+    args: [releasePath],
+    runTimeoutMs: 10_000,
+    testFault: "verified-release-handoff-delay",
+  });
+  let second;
+  try {
+    await waitUntil(() => first.output().includes("PARALLEL_OWNER_READY"));
+    second = startHarness({
+      broker: successorBroker,
+      fenceName,
+      expression: "console.log('PARALLEL_SUCCESSOR_STARTED')",
+      bootstrapTimeoutMs: 15_000,
+    });
+    await waitUntil(() => second.output().includes("GATE_FENCE_WAIT"), 15_000);
+    await writeFile(releasePath, "release\n");
+    await waitUntil(() => first.output().includes("GATE_TEST_VERIFIED_RELEASE_BARRIER"), 10_000);
+    assert.match(first.output(), /GATE_TEST_VERIFIED_RELEASE_BARRIER.*"path":"normal"/u);
+    assert.match(first.output(), /GATE_TEST_VERIFIED_RELEASE_BARRIER.*"markerOwned":false/u);
+    assert.match(first.output(), /GATE_TEST_VERIFIED_RELEASE_BARRIER.*"fenceOwned":true/u);
+    assert.doesNotMatch(second.output(), /PARALLEL_SUCCESSOR_STARTED|GATE_GUARDIAN_QUARANTINED/u);
+    assert.equal((await first.exited).code, 0, first.output());
+    assert.equal((await second.exited).code, 0, second.output());
+    assert.match(second.output(), /PARALLEL_SUCCESSOR_STARTED/u);
+    assert.match(second.output(), /GATE_LEASE_RELEASED.*"activeProcesses":0/u);
+    assert.equal(markerExists(fenceName), false);
+    assert.equal(ownerBroker.snapshot().active, null);
+    assert.equal(successorBroker.snapshot().active, null);
+  } finally {
+    await stop(first.child);
+    await stop(second?.child);
+    await ownerBroker.close();
+    await successorBroker.close();
+    cleanupFence(fenceName);
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("verified-zero generic release error clears its marker before a parallel broker can cross the fence", { skip: process.platform !== "win32" }, async () => {
+  const ownerBroker = await createMalformedGuardianBroker("RELEASE_ARRAY");
+  const successorBroker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 5, idleTimeoutMs: -1 });
+  const fenceName = testFence();
+  const temp = await mkdtemp(path.join(os.tmpdir(), "moawork-gate-generic-handoff-"));
+  const releasePath = path.join(temp, "release-owner");
+  cleanupFence(fenceName);
+  const first = startHarness({
+    broker: ownerBroker,
+    fenceName,
+    expression: "const fs=require('node:fs'); console.log('GENERIC_OWNER_READY'); const hold=setInterval(()=>{if(fs.existsSync(process.argv[1]))clearInterval(hold)},25)",
+    args: [releasePath],
+    runTimeoutMs: 10_000,
+    testFault: "verified-release-handoff-delay",
+  });
+  let second;
+  try {
+    await waitUntil(() => first.output().includes("GENERIC_OWNER_READY"));
+    second = startHarness({
+      broker: successorBroker,
+      fenceName,
+      expression: "console.log('GENERIC_SUCCESSOR_STARTED')",
+      bootstrapTimeoutMs: 15_000,
+    });
+    await waitUntil(() => second.output().includes("GATE_FENCE_WAIT"), 15_000);
+    await writeFile(releasePath, "release\n");
+    await waitUntil(() => first.output().includes("GATE_TEST_VERIFIED_RELEASE_BARRIER"), 10_000);
+    assert.match(first.output(), /GATE_TEST_VERIFIED_RELEASE_BARRIER.*"path":"generic-error"/u);
+    assert.match(first.output(), /GATE_TEST_VERIFIED_RELEASE_BARRIER.*"markerOwned":false/u);
+    assert.match(first.output(), /GATE_TEST_VERIFIED_RELEASE_BARRIER.*"fenceOwned":true/u);
+    assert.doesNotMatch(second.output(), /GENERIC_SUCCESSOR_STARTED|GATE_GUARDIAN_QUARANTINED/u);
+    assert.equal((await first.exited).code, 78, first.output());
+    assert.match(first.output(), /GATE_BROKER_RELEASE_SCHEMA/u);
+    assert.doesNotMatch(first.output(), /GATE_GUARDIAN_QUARANTINED/u);
+    assert.equal(ownerBroker.releaseCompleteCount, 0);
+    assert.equal((await second.exited).code, 0, second.output());
+    assert.match(second.output(), /GENERIC_SUCCESSOR_STARTED/u);
+    assert.match(second.output(), /GATE_LEASE_RELEASED.*"activeProcesses":0/u);
+    assert.equal(markerExists(fenceName), false);
+    assert.equal(successorBroker.snapshot().active, null);
+  } finally {
+    await stop(first.child);
+    await stop(second?.child);
+    await ownerBroker.close();
+    await successorBroker.close();
+    cleanupFence(fenceName);
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
 test("verified command results survive release write failure while queued successors stay recovery-delayed", { skip: process.platform !== "win32" }, async () => {
   const recoveryMs = 1_000;
   const broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 5, idleTimeoutMs: -1, crashRecoveryDelayMs: recoveryMs });
@@ -644,7 +1224,6 @@ test("verified command results survive release write failure while queued succes
     await writeFile(releasePath, "release\n");
 
     assert.equal((await first.exited).code, 0, first.output());
-    await new Promise((resolve) => setTimeout(resolve, 100));
     assert.match(first.output(), /GATE_LEASE_RELEASE_DEGRADED/u, first.output());
     const warnings = first.output().split(/\r?\n/u).filter((line) => line.startsWith("GATE_LEASE_RELEASE_DEGRADED:"));
     assert.deepEqual(warnings, [
@@ -652,8 +1231,6 @@ test("verified command results survive release write failure while queued succes
     ]);
     assert.doesNotMatch(first.output(), /GATE_LEASE_FAILURE|GATE_LEASE_RELEASED/u);
     assert.equal(markerExists(fenceName), false);
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    assert.doesNotMatch(second.output(), /DEGRADED_SUCCESSOR_STARTED/u);
 
     assert.equal((await second.exited).code, 0, second.output());
     assert.ok(Date.now() - releasedAt >= recoveryMs - 100, `successor bypassed ${recoveryMs}ms recovery`);
@@ -760,8 +1337,13 @@ test("guardian broker JSON and request schema failures use phase codes and leave
       const port = malformed.port;
       await malformed.close();
       successorBroker = await createLeaseBroker({ port, diagnosticIntervalMs: 5, idleTimeoutMs: -1 });
-      successor = startHarness({ broker: successorBroker, fenceName, expression: "console.log('PROTOCOL_RECOVERED')" });
-      assert.equal((await successor.exited).code, 0, successor.output());
+      successor = startHarness({
+        broker: successorBroker,
+        fenceName,
+        expression: "console.log('PROTOCOL_RECOVERED')",
+        bootstrapTimeoutMs: 15_000,
+      });
+      assert.equal((await successor.exited).code, 0, `${fixture}: ${successor.output()}`);
       assert.match(successor.output(), /PROTOCOL_RECOVERED/u);
       assert.match(successor.output(), /GATE_LEASE_RELEASED.*"activeProcesses":0/u);
       assert.equal(markerExists(fenceName), false);
@@ -775,27 +1357,50 @@ test("guardian broker JSON and request schema failures use phase codes and leave
   }
 });
 
-test("broker restart during active command cannot bypass the OS fence", { skip: process.platform !== "win32" }, async () => {
+test("broker restart handoff clears a verified marker before releasing the OS fence", { skip: process.platform !== "win32" }, async () => {
   let broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: -1 });
   const port = broker.port;
   const fenceName = testFence();
-  const first = startHarness({ broker, fenceName, expression: "console.log('FIRST_START'); setTimeout(() => {}, 900)" });
+  const temp = await mkdtemp(path.join(os.tmpdir(), "moawork-gate-restart-handoff-"));
+  const releasePath = path.join(temp, "release-owner");
+  const first = startHarness({
+    broker,
+    fenceName,
+    expression: "const fs=require('node:fs'); console.log('FIRST_START'); const hold=setInterval(()=>{if(fs.existsSync(process.argv[1]))clearInterval(hold)},25)",
+    args: [releasePath],
+    runTimeoutMs: 10_000,
+    testFault: "verified-release-handoff-delay",
+  });
   let second;
   try {
     await waitUntil(() => first.output().includes("FIRST_START"));
     await broker.close();
     broker = await createLeaseBroker({ port, diagnosticIntervalMs: 20, idleTimeoutMs: -1 });
-    second = startHarness({ broker, fenceName, expression: "console.log('SECOND_START')" });
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    assert.doesNotMatch(second.output(), /SECOND_START/u);
-    await first.exited;
+    second = startHarness({ broker, fenceName, expression: "console.log('SECOND_START')", bootstrapTimeoutMs: 15_000 });
+    await waitUntil(() => second.output().includes("GATE_FENCE_WAIT"), 15_000);
+    await writeFile(releasePath, "release\n");
+    await waitUntil(() => first.output().includes("GATE_TEST_VERIFIED_RELEASE_BARRIER"), 10_000);
+    assert.match(first.output(), /GATE_TEST_VERIFIED_RELEASE_BARRIER.*"path":"degraded"/u);
+    assert.match(first.output(), /GATE_TEST_VERIFIED_RELEASE_BARRIER.*"markerOwned":false/u);
+    assert.match(first.output(), /GATE_TEST_VERIFIED_RELEASE_BARRIER.*"fenceOwned":true/u);
+    assert.doesNotMatch(second.output(), /SECOND_START|GATE_GUARDIAN_QUARANTINED/u);
+    assert.equal((await first.exited).code, 0, first.output());
+    assert.match(first.output(), /GATE_LEASE_RELEASE_DEGRADED/u);
     const secondResult = await second.exited;
     assert.equal(secondResult.code, 0, second.output());
     assert.match(second.output(), /SECOND_START/u);
-  } finally { await stop(first.child); await stop(second?.child); await broker.close(); }
+    assert.equal(markerExists(fenceName), false);
+    assert.equal(broker.snapshot().active, null);
+  } finally {
+    await stop(first.child);
+    await stop(second?.child);
+    await broker.close();
+    cleanupFence(fenceName);
+    await rm(temp, { recursive: true, force: true });
+  }
 });
 
-test("cleanup quarantine survives broker restart and starts no successor", { skip: process.platform !== "win32" }, async () => {
+test("cleanup quarantine exits, releases the fence, and remains fail-closed until evidence cleanup", { skip: process.platform !== "win32" }, async (t) => {
   let broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: -1 });
   const port = broker.port;
   const fenceName = testFence();
@@ -803,22 +1408,55 @@ test("cleanup quarantine survives broker restart and starts no successor", { ski
     broker, fenceName, expression: "setInterval(() => {}, 1000)", runTimeoutMs: 100, testFault: "cleanup-hang",
   });
   let second;
+  let successor;
   try {
-    await waitUntil(() => first.output().includes("GATE_GUARDIAN_QUARANTINED"), 8_000);
+    const firstResult = await first.exited;
+    assert.equal(firstResult.code, 78, first.output());
+    assert.match(first.output(), /GATE_GUARDIAN_QUARANTINED/u);
+    assert.match(first.output(), /cleanup-unverified:timeout/u);
+    const firstGuardian = Number(first.output().match(/GATE_GUARDIAN_READY[^\n]*"guardianPid":(\d+)/u)?.[1]);
+    const firstCommand = Number(first.output().match(/GATE_LEASE_ACQUIRED[^\n]*"commandPid":(\d+)/u)?.[1]);
+    assert.ok(firstGuardian > 0 && firstCommand > 0, first.output());
+    await waitUntil(() => !processExists(firstGuardian) && !processExists(firstCommand));
+    assert.equal(fenceCanBeAcquired(fenceName), true, "terminal quarantine retained the machine fence");
+    assert.equal(markerExists(fenceName), true, "terminal quarantine consumed durable evidence");
+    await waitUntil(() => broker.snapshot().active === null && broker.snapshot().queued.length === 0);
     await broker.close();
     broker = await createLeaseBroker({ port, diagnosticIntervalMs: 20, idleTimeoutMs: -1 });
     second = startHarness({ broker, fenceName, expression: "console.log('MUST_NOT_START')" });
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    const secondResult = await second.exited;
+    assert.equal(secondResult.code, 78, second.output());
+    const secondReadyAt = second.observedAt("GATE_GUARDIAN_READY");
+    const secondQuarantinedAt = second.observedAt("GATE_GUARDIAN_QUARANTINED");
+    const secondProcessExitedAt = second.processExitedAt();
+    const secondTerminalAt = second.terminalAt();
+    assert.ok(Number.isSafeInteger(secondReadyAt) && secondReadyAt - second.startedAt < 10_000, second.output());
+    assert.ok(Number.isSafeInteger(secondTerminalAt) && secondTerminalAt - secondReadyAt < 3_000, second.output());
+    assert.ok(Number.isSafeInteger(secondProcessExitedAt)
+      && secondProcessExitedAt >= second.startedAt && secondProcessExitedAt <= secondTerminalAt, second.output());
+    assert.ok(Number.isSafeInteger(secondQuarantinedAt)
+      && secondQuarantinedAt >= secondReadyAt && secondQuarantinedAt <= secondTerminalAt, second.output());
+    t.diagnostic(`quarantine timing ${JSON.stringify({
+      bootstrapMs: secondReadyAt - second.startedAt,
+      readyToQuarantineMs: secondQuarantinedAt - secondReadyAt,
+      quarantineToTerminalMs: secondTerminalAt - secondQuarantinedAt,
+      processExitToTerminalMs: secondTerminalAt - secondProcessExitedAt,
+    })}`);
+    assert.match(second.output(), /durable-crash-marker/u);
     assert.doesNotMatch(second.output(), /MUST_NOT_START/u);
-    const firstGuardian = Number(first.output().match(/GATE_GUARDIAN_READY[^\n]*"guardianPid":(\d+)/u)?.[1]);
-    assert.ok(firstGuardian > 0, first.output());
-    process.kill(firstGuardian, "SIGKILL");
-    await waitUntil(() => second.output().includes("GATE_GUARDIAN_QUARANTINED"), 5_000);
-    assert.doesNotMatch(second.output(), /MUST_NOT_START/u);
+    assert.equal(fenceCanBeAcquired(fenceName), true, "marker rejection retained the machine fence");
+
+    cleanupFence(fenceName);
+    assert.equal(markerExists(fenceName), false);
+    successor = startHarness({ broker, fenceName, expression: "console.log('CLEANUP_QUARANTINE_RECOVERED')", waitTimeoutMs: 12_000 });
+    assert.equal((await successor.exited).code, 0, successor.output());
+    assert.match(successor.output(), /CLEANUP_QUARANTINE_RECOVERED/u);
+    assert.match(successor.output(), /GATE_LEASE_RELEASED.*"activeProcesses":0/u);
+    assert.equal(markerExists(fenceName), false);
+    assert.equal(broker.snapshot().active, null);
+    assert.deepEqual(broker.snapshot().queued, []);
   } finally {
-    const secondGuardian = Number(second?.output().match(/GATE_GUARDIAN_READY[^\n]*"guardianPid":(\d+)/u)?.[1]);
-    if (secondGuardian > 0) { try { process.kill(secondGuardian, "SIGKILL"); } catch {} }
-    await stop(first.child); await stop(second?.child); await broker.close(); cleanupFence(fenceName);
+    await stop(first.child); await stop(second?.child); await stop(successor?.child); await broker.close(); cleanupFence(fenceName);
   }
 });
 
@@ -834,11 +1472,138 @@ test("guardian SIGKILL abandons the fence and successor quarantines without star
     await first.exited;
     second = startHarness({ broker, fenceName, expression: "console.log('MUST_NOT_START')" });
     await waitUntil(() => second.output().includes("GATE_GUARDIAN_QUARANTINED"), 5_000);
+    const secondResult = await second.exited;
+    assert.equal(secondResult.code, 78, second.output());
+    assert.match(second.output(), /durable-crash-marker/u);
     assert.doesNotMatch(second.output(), /MUST_NOT_START/u);
+    assert.doesNotMatch(second.output(), /release-complete|GATE_LEASE_RELEASED/u);
   } finally {
     const secondGuardian = Number(second?.output().match(/GATE_GUARDIAN_READY[^\n]*"guardianPid":(\d+)/u)?.[1]);
     if (secondGuardian > 0) { try { process.kill(secondGuardian, "SIGKILL"); } catch {} }
     await stop(first.child); await stop(second?.child); await broker.close(); cleanupFence(fenceName);
+  }
+});
+
+test("startup durable marker exits promptly without consuming evidence or starting a command", { skip: process.platform !== "win32" }, async () => {
+  const broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: -1 });
+  const fenceName = testFence();
+  let first;
+  let second;
+  try {
+    seedFenceMarker(fenceName);
+    first = startHarness({ broker, fenceName, expression: "console.log('MUST_NOT_START')" });
+    const firstResult = await first.exited;
+    assert.equal(firstResult.code, 78, first.output());
+    assert.match(first.output(), /GATE_LEASE_FAILURE[^\n]*durable-crash-marker[^\n]*GATE_GUARDIAN_QUARANTINED/u);
+    assert.doesNotMatch(first.output(), /MUST_NOT_START|release-complete|GATE_LEASE_RELEASED/u);
+    assert.equal(markerExists(fenceName), true);
+    second = startHarness({ broker, fenceName, expression: "console.log('STILL_MUST_NOT_START')" });
+    const secondResult = await second.exited;
+    assert.equal(secondResult.code, 78, second.output());
+    assert.match(second.output(), /GATE_LEASE_FAILURE[^\n]*durable-crash-marker[^\n]*GATE_GUARDIAN_QUARANTINED/u);
+    assert.doesNotMatch(second.output(), /STILL_MUST_NOT_START|release-complete|GATE_LEASE_RELEASED/u);
+    assert.equal(markerExists(fenceName), true);
+  } finally {
+    await stop(first?.child); await stop(second?.child); await broker.close(); cleanupFence(fenceName);
+  }
+});
+
+test("startup recovery evidence exits promptly and remains byte-exact until explicit recovery", { skip: process.platform !== "win32" }, async (t) => {
+  for (const kind of ["malformed", "prepared"]) {
+    await t.test(kind, async () => {
+      const broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: -1 });
+      const fenceName = testFence();
+      const valueName = `Fixture_${randomUUID().replaceAll("-", "")}`;
+      const markerName = createHash("sha256").update(fenceName).digest("hex").toUpperCase();
+      const rawValue = kind === "malformed" ? "{fixture-malformed" : JSON.stringify({ fenceName, valueName: markerName, result: "prepared", fixture: true });
+      let first;
+      let second;
+      try {
+        recoveryEvidence(fenceName, valueName, "write", rawValue);
+        first = startHarness({ broker, fenceName, expression: "console.log('MUST_NOT_START')" });
+        await waitUntil(() => first.output().includes("GATE_GUARDIAN_READY"), 15_000);
+        const rejectedAt = Date.now();
+        const firstResult = await first.exited;
+        assert.equal(firstResult.code, 78, first.output());
+        assert.ok(Date.now() - rejectedAt < 2_000, first.output());
+        assert.match(first.output(), new RegExp(kind === "malformed" ? "recovery-audit-malformed" : "recovery-incomplete", "u"));
+        assert.doesNotMatch(first.output(), /MUST_NOT_START|release-complete|GATE_LEASE_RELEASED/u);
+        assert.equal(recoveryEvidence(fenceName, valueName, "read"), rawValue);
+        second = startHarness({ broker, fenceName, expression: "console.log('STILL_MUST_NOT_START')" });
+        const secondResult = await second.exited;
+        assert.equal(secondResult.code, 78, second.output());
+        assert.doesNotMatch(second.output(), /STILL_MUST_NOT_START|release-complete|GATE_LEASE_RELEASED/u);
+        assert.equal(recoveryEvidence(fenceName, valueName, "read"), rawValue);
+      } finally {
+        await stop(first?.child); await stop(second?.child); recoveryEvidence(fenceName, valueName, "delete"); await broker.close(); cleanupFence(fenceName);
+      }
+    });
+  }
+});
+
+test("markerless abandoned fence recovers and runs one contained command", { skip: process.platform !== "win32" }, async () => {
+  const broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: -1 });
+  const fenceName = testFence();
+  const owner = await startAbandonedFenceOwner(fenceName);
+  const run = startHarness({ broker, fenceName, expression: "console.log('RECOVERED_AFTER_ABANDON')" });
+  try {
+    await waitUntil(() => run.output().includes("GATE_GUARDIAN_READY"));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    owner.child.kill("SIGKILL");
+    await owner.exited;
+    const result = await run.exited;
+    assert.equal(result.code, 0, run.output());
+    assert.match(run.output(), /RECOVERED_AFTER_ABANDON/u);
+    assert.match(run.output(), /GATE_LEASE_RELEASED.*"activeProcesses":0/u);
+    assert.doesNotMatch(run.output(), /GATE_GUARDIAN_QUARANTINED/u);
+    assert.equal(markerExists(fenceName), false);
+  } finally {
+    await stop(owner.child); await stop(run.child); await broker.close(); cleanupFence(fenceName);
+  }
+});
+
+// Issue #718: between Open-SafeFence and GATE_FENCE_ACQUIRED the guardian used
+// to say nothing, so an outside observer could not tell a guardian waiting for
+// the broker grant from one waiting for the OS fence - #718 comment 3 read a
+// guardian that had already quarantined as a stall in that gap. Both waits now
+// report the same event with the stage that is actually blocking.
+test("every pre-fence wait is reported with the stage that is blocking", async () => {
+  const guardian = await readFile(GUARDIAN, "utf8");
+  assert.match(guardian, /\$fenceOpenedAt = \[DateTimeOffset\]::UtcNow\.ToUnixTimeMilliseconds\(\)/u);
+  assert.match(guardian, /GATE_FENCE_WAIT.*waitedMs = \$brokerWaitNow - \$fenceOpenedAt; reason = "broker-grant"/u);
+  assert.match(guardian, /GATE_FENCE_WAIT.*waitedMs = \$fenceWaitNow - \$fenceOpenedAt; reason = "os-fence"/u);
+  // the broker-grant heartbeat repeats on a 30s cadence, the OS fence wait on 1s
+  assert.match(guardian, /\$brokerWaitNow - \$fenceOpenedAt -ge 30000 -and \(\$lastFenceWaitDiagnostic -eq 0L -or \$brokerWaitNow - \$lastFenceWaitDiagnostic -ge 30000\)/u);
+});
+
+test("live machine fence owner times out before command and queued successor recovers", { skip: process.platform !== "win32" }, async () => {
+  const recoveryMs = 300;
+  const broker = await createLeaseBroker({ port: 0, diagnosticIntervalMs: 20, idleTimeoutMs: -1, crashRecoveryDelayMs: recoveryMs });
+  const fenceName = testFence();
+  const owner = await startLiveFenceOwner(fenceName);
+  const blocked = startHarness({ broker, fenceName, expression: "console.log('BLOCKED_MUST_NOT_START')", waitTimeoutMs: 350 });
+  let successor;
+  try {
+    await waitUntil(() => blocked.output().includes("GATE_GUARDIAN_READY"));
+    successor = startHarness({ broker, fenceName, expression: "console.log('SUCCESSOR_AFTER_FENCE')", waitTimeoutMs: 12_000 });
+    const blockedResult = await blocked.exited;
+    assert.equal(blockedResult.code, 78, blocked.output());
+    assert.match(blocked.output(), /GATE_MACHINE_FENCE_TIMEOUT/u);
+    assert.match(blocked.output(), /GATE_FENCE_WAIT.*"productChild":0/u);
+    assert.match(blocked.output(), /GATE_FENCE_WAIT.*"reason":"os-fence"/u);
+    assert.doesNotMatch(blocked.output(), /BLOCKED_MUST_NOT_START/u);
+    assert.equal(markerExists(fenceName), false);
+    assert.equal(owner.child.exitCode, null);
+    await owner.exited;
+    const successorResult = await successor.exited;
+    assert.equal(successorResult.code, 0, successor.output());
+    assert.match(successor.output(), /SUCCESSOR_AFTER_FENCE/u);
+    assert.match(successor.output(), /GATE_LEASE_RELEASED.*"activeProcesses":0/u);
+    assert.deepEqual(broker.snapshot().queued, []);
+    assert.equal(broker.snapshot().active, null);
+    assert.equal(markerExists(fenceName), false);
+  } finally {
+    await stop(owner.child); await stop(blocked.child); await stop(successor?.child); await broker.close(); cleanupFence(fenceName);
   }
 });
 
@@ -918,7 +1683,7 @@ test("signal IPC preserves exit 143 after verified zero", { skip: process.platfo
   } finally { await stop(run.child); await broker.close(); }
 });
 
-test("WSL full-gate entry fails closed before any product command", { skip: process.platform !== "win32" }, () => {
+test("WSL full-gate entry fails closed before any product command", { skip: !WSL_AVAILABLE }, () => {
   const hasWsl = spawnSync("wsl.exe", ["bash", "-lc", "uname -r"], { encoding: "utf8", windowsHide: true });
   assert.equal(hasWsl.status, 0, `${hasWsl.stdout}${hasWsl.stderr}`);
   const wslRoot = ROOT.replaceAll("\\", "/").replace(/^([A-Za-z]):/u, (_, drive) => `/mnt/${drive.toLowerCase()}`);
@@ -930,7 +1695,7 @@ test("WSL full-gate entry fails closed before any product command", { skip: proc
   assert.doesNotMatch(`${result.stdout}${result.stderr}`, /customer-specific values|GATE_GUARDIAN_READY/u);
 });
 
-test("production CLI starts zero detached WSL descendants", { skip: process.platform !== "win32" }, () => {
+test("production CLI starts zero detached WSL descendants", { skip: !WSL_AVAILABLE }, () => {
   const marker = `BBE614_BLOCKED_${randomUUID().replaceAll("-", "")}`;
   const exploit = `nohup bash -c 'exec -a ${marker} sleep 30' >/dev/null 2>&1 & wait`;
   const result = spawnSync(process.execPath, [CLI, "--", "wsl.exe", "bash", "-lc", exploit], {
@@ -946,7 +1711,7 @@ test("production CLI starts zero detached WSL descendants", { skip: process.plat
   assert.equal(residual.stdout.trim(), "");
 });
 
-test("native WSL Linux Node fails closed or is explicitly unavailable", { skip: process.platform !== "win32" }, (t) => {
+test("native WSL Linux Node fails closed or is explicitly unavailable", { skip: !WSL_AVAILABLE }, (t) => {
   const probe = spawnSync("wsl.exe", ["bash", "-lc", "test -x /usr/bin/node && /usr/bin/node -p process.platform"], {
     encoding: "utf8", windowsHide: true,
   });
@@ -978,8 +1743,14 @@ test("symlink/reparse control replacement has no path surface and production kno
   assert.match(guardian, /AbandonedMutexException/u);
   assert.match(guardian, /CREATE_SUSPENDED/u);
   assert.match(guardian, /JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE/u);
+  assert.doesNotMatch(guardian, /while \(\$true\) \{ Start-Sleep -Seconds 60 \}/u);
   assert.doesNotMatch(guardian, /controlPath|taskkill/iu);
-  assert.match(guardian, /Read-BrokerMessage \$reader 90000 "WAIT"/u);
+  assert.match(guardian, /Math\]::Min\(90000L, \[Math\]::Max\(1L, \$waitDeadline - \$brokerWaitNow\)\)/u);
+  assert.match(guardian, /Read-BrokerMessage \$reader \$brokerReadTimeout "WAIT"/u);
+  assert.match(guardian, /if \(\$brokerWaitNow -ge \$waitDeadline\) \{ throw "GATE_LEASE_TIMEOUT" \}/u);
+  assert.match(guardian, /Remove-FenceMarker \(\[string\]\$payload\.fenceName\); \$markerOwned = \$false[\s\S]*?\$fence\.ReleaseMutex\(\); \$fenceOwned = \$false/u);
+  assert.match(guardian, /\$markerOwned -and \$jobZeroVerified -and -not \$quarantineReason -and \$fenceOwned[\s\S]*?Remove-FenceMarker[\s\S]*?if \(\$fenceOwned\)/u);
+  assert.doesNotMatch(guardian, /-not \$fenceOwned[\s\S]{0,200}?Remove-FenceMarker/u);
   assert.doesNotMatch(runner, /mkdtemp|control\.json|MOAWORK_GATE_TEST/u);
   assert.doesNotMatch(cli, /MOAWORK_GATE_(?:WAIT|RUN|BOOTSTRAP)/u);
   assert.doesNotMatch(broker, /process\.env|test-endpoint/u);

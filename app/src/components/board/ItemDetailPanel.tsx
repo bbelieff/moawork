@@ -11,6 +11,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { useFormStatus } from "react-dom";
 import {
   clampComposerHeight,
   continueList,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/boards/composer-editing";
 import { clampDetailInset, clampRailWidth, DETAIL_DEFAULT_INSET } from "@/lib/boards/detail-pane-geometry";
 import {
+  canEditDetailEvent,
   canRemoveDetailEvent,
   canRestoreDetailEvent,
 } from "@/lib/boards/detail-event-permissions";
@@ -31,7 +33,9 @@ import {
   SELECTABLE_DETAIL_EVENT_KINDS,
   type SelectableDetailEventKind,
 } from "@/lib/boards/detail-event-kinds";
+import { presentDetailHistoryEvent } from "@/lib/boards/detail-event-presentation";
 import { createPortal } from "react-dom";
+import { ITEM_DETAIL_OPEN_EVENT, type ItemDetailOpenRequest } from "@/lib/boards/item-detail-open";
 import type {
   BoardColumn,
   CellValue,
@@ -66,8 +70,10 @@ import {
   removeItemCloudFolderAction,
   saveItemCloudFolderAction,
   saveItemDetailFieldAction,
+  uploadItemDetailFileAction,
   type ItemDetailSnapshot,
 } from "@/app/(app)/boards/item-detail-actions";
+import { updateItemDetailEventAction } from "@/app/(app)/boards/item-detail-memo-actions";
 import { inspectCloudFolderUrl } from "@/lib/boards/cloud-folder-link";
 import {
   CREDIT_SCORE_KEYS,
@@ -82,6 +88,16 @@ import {
   newLeadPresentationLabel,
   presentNewLeadUnplacedKeys,
 } from "@/lib/default-tabs/new-lead";
+import { RegionCombobox } from "./NewLeadIntakeFields";
+import {
+  canonicalSido,
+  canonicalSigungu,
+  searchSido,
+  searchSigungu,
+} from "@/lib/new-lead/region-search";
+import { DETAIL_FILE_GROUP_LABEL, groupDetailFiles } from "./detail-file-groups";
+import { ItemDetailOcr } from "./ItemDetailOcr";
+import { ParentItemLabel } from "./ParentItemLabel";
 import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
 import { AssignmentLineagePopover } from "./AssignmentLineagePopover";
 import { NewLeadCreditScoresCell } from "./NewLeadCreditScoresCell";
@@ -94,6 +110,7 @@ import {
   otherInfoDetailText,
   otherInfoLegacyFromValues,
 } from "@/lib/boards/structured-field";
+import { eulReul } from "@/lib/text/josa";
 import styles from "./item-detail-panel.module.css";
 
 const CANONICAL_NEW_LEAD_DETAIL_KEYS = new Set([
@@ -106,6 +123,12 @@ const CANONICAL_NEW_LEAD_LOAN_KEYS = new Set<string>([
   EXISTING_LOAN_RECORDS_KEY,
 ]);
 
+/**
+ * ★ 상세 편집기는 native 입력 그대로다. select/status/multiselect형에는
+ *   기존 선택지를 datalist로만 이어준다 — 검색은 되지만 «만들기»는 없다.
+ *   만들기는 컬럼 잠금이 필요한 구조 변경이라 상세 자동저장 경로에서 하지 않는다.
+ *   저장(디바운스 자동저장)·상태 표시는 그대로다.
+ */
 function AutoSaveField({
   boardId,
   itemId,
@@ -115,6 +138,7 @@ function AutoSaveField({
   initialValue,
   canonicalDealId,
   phoneStatus = "normalized",
+  options,
   onStatusChange,
 }: {
   boardId: string;
@@ -125,6 +149,8 @@ function AutoSaveField({
   initialValue: string | number;
   canonicalDealId?: string | null;
   phoneStatus?: PhoneNormalizationStatus;
+  /** 표 컬럼의 기존 선택지 — 있을 때만 datalist 검색으로 이어준다. */
+  options?: readonly { id: string; label: string }[];
   onStatusChange?: (status: string) => void;
 }) {
   const presentedInitial = type === "phone" ? presentPhone(String(initialValue), phoneStatus) : String(initialValue);
@@ -192,12 +218,17 @@ function AutoSaveField({
     [],
   );
 
+  const optionListId =
+    (type === "select" || type === "status" || type === "multiselect") && options && options.length > 0
+      ? `${itemId}-${fieldKey}-options`
+      : undefined;
   return (
     <div className={styles.fieldEditor}>
       <input
         id={`${itemId}-${fieldKey}`}
         value={value}
         type={inputType(type)}
+        list={optionListId}
         min={fieldKey === "credit_score_ncb" || fieldKey === "credit_score_kcb" ? 1 : undefined}
         max={fieldKey === "credit_score_ncb" || fieldKey === "credit_score_kcb" ? 1000 : fieldKey === "existing_loan_rate" ? 100 : undefined}
         step={fieldKey === "credit_score_ncb" || fieldKey === "credit_score_kcb" ? 1 : undefined}
@@ -220,6 +251,108 @@ function AutoSaveField({
           save(valueRef.current);
         }}
         className={styles.fieldInput}
+      />
+      {optionListId ? (
+        <datalist id={optionListId}>
+          {options!.map((option) => (
+            <option key={option.id} value={option.label} />
+          ))}
+        </datalist>
+      ) : null}
+      <span
+        aria-live="polite"
+        className={styles.fieldStatus}
+        data-saved={status.startsWith("✓")}
+      >
+        {status}
+      </span>
+    </div>
+  );
+}
+
+/*
+ * v17-detail — 상세 화면의 시도·시군구 두 단계 입력. 접수 폼과 같은
+ * searchSido/searchSigungu 계약을 쓰며, 시군구 후보는 현재 시도값으로
+ * 좁힌다(서울→서울 25개 구). 검증 실패 시 입력은 유지하고 필드별 오류만
+ * 보여주며 강제 초기화하지 않는다.
+ */
+function RegionAutoSaveField({
+  boardId,
+  itemId,
+  fieldKey,
+  source,
+  kind,
+  sidoValue,
+  initialValue,
+  canonicalDealId,
+  onStatusChange,
+}: {
+  boardId: string;
+  itemId: string;
+  fieldKey: string;
+  source: "column" | "detail";
+  kind: "sido" | "sigungu";
+  sidoValue: string;
+  initialValue: string | number;
+  canonicalDealId?: string | null;
+  onStatusChange?: (status: string) => void;
+}) {
+  const [value, setValue] = useState(String(initialValue));
+  const [status, setStatus] = useState("✓ 자동 저장됨");
+  const [saving, setSaving] = useState(false);
+  const savedRef = useRef(String(initialValue));
+  const valueRef = useRef(String(initialValue));
+
+  function updateStatus(next: string) {
+    setStatus(next);
+    onStatusChange?.(next);
+  }
+
+  async function persist(next: string) {
+    const trimmed = next.trim();
+    if (trimmed === savedRef.current) {
+      updateStatus("✓ 자동 저장됨");
+      return;
+    }
+    if (kind === "sido" && trimmed && !canonicalSido(trimmed)) {
+      updateStatus("시도를 추천 목록에서 선택해 주세요. 입력은 유지됩니다.");
+      return;
+    }
+    if (kind === "sigungu" && trimmed && !canonicalSigungu(sidoValue || null, trimmed)) {
+      updateStatus("시군구를 추천 목록에서 선택해 주세요. 입력은 유지됩니다.");
+      return;
+    }
+    setSaving(true);
+    updateStatus("저장 중…");
+    const result = canonicalDealId && source === "column"
+      && (fieldKey === "sido" || fieldKey === "sigungu")
+      ? await saveNewLeadDetailFieldAction({ boardId, itemId, dealId: canonicalDealId, fieldKey, value: trimmed })
+      : await saveItemDetailFieldAction({ boardId, itemId, fieldKey, source, value: trimmed });
+    setSaving(false);
+    if (result.ok) savedRef.current = trimmed;
+    // 실패해도 입력은 유지한다 — 다음 blur·선택 때 다시 저장한다.
+    updateStatus(result.ok ? "✓ 자동 저장됨" : `${result.message} 입력은 유지됩니다.`);
+  }
+
+  // 치는 도중에는 저장하지 않는다. 추천 선택·포커스 이동 때 한 번만 저장한다.
+  function handleBlur() {
+    if (valueRef.current !== savedRef.current && !saving) void persist(valueRef.current);
+  }
+
+  const suggestions = kind === "sido" ? searchSido(value) : searchSigungu(sidoValue, value);
+  return (
+    <div className={styles.fieldEditor} onBlur={handleBlur}>
+      <RegionCombobox
+        name={`${itemId}-${fieldKey}-region`}
+        label={kind === "sido" ? "시도" : "시군구"}
+        value={value}
+        onValue={(next) => {
+          setValue(next);
+          valueRef.current = next;
+        }}
+        suggestions={suggestions}
+        disabled={saving || (kind === "sigungu" && !canonicalSido(sidoValue))}
+        invalid={!status.startsWith("✓") && status !== "저장 중…"}
       />
       <span
         aria-live="polite"
@@ -265,6 +398,18 @@ function DialogPortal({ children }: { children: ReactNode }) {
   return typeof document === "undefined"
     ? children
     : createPortal(children, document.body);
+}
+
+// Native history writes are integrated with Next's canonical URL; assigning
+// location.hash alone is lost when a Server Action commits router state.
+function pushItemDetailHash(itemId: string) {
+  const oldURL = window.location.href;
+  const url = new URL(oldURL);
+  url.hash = `item-${itemId}`;
+  if (url.href === oldURL) return;
+  window.history.pushState(null, "", url);
+  // pushState does not emit hashchange. Keep sibling drawers and deep links in sync.
+  window.dispatchEvent(new HashChangeEvent("hashchange", { oldURL, newURL: url.href }));
 }
 
 type FocusTarget = Pick<HTMLElement, "focus">;
@@ -344,6 +489,8 @@ export function ItemDetailPanel({
   groupName,
   previousItem,
   nextItem,
+  consultationSection,
+  parentItemTitle,
 }: {
   boardId: string;
   row: ItemWithValues;
@@ -363,8 +510,14 @@ export function ItemDetailPanel({
   initialDetail?: ItemDetailSnapshot;
   boardName?: string;
   groupName?: string;
+  parentItemTitle?: string;
   previousItem?: { id: string; title: string };
   nextItem?: { id: string; title: string };
+  /**
+   * 상담 확인 인라인 — 리드컨택 행에서만 BoardWorkspace 가 채운다.
+   * 업무이동 메뉴를 찾지 않아도 상세 안에서 바로 확인한다.
+   */
+  consultationSection?: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [detail, setDetail] = useState<ItemDetailSnapshot>(initialDetail ?? {
@@ -375,6 +528,13 @@ export function ItemDetailPanel({
     members: [],
   });
   const [detailPending, startDetailTransition] = useTransition();
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  // v17-detail 메모 고치기 — 초안은 이 패널이 들고, 실패·취소해도 서버값은 그대로다.
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [editBaseline, setEditBaseline] = useState<{ id: string; body: string; count: number } | null>(null);
+  const editRequest = useRef<{ body: string; requestId: string } | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [editError, setEditError] = useState("");
   const [composer, setComposer] = useState("");
   const [composerKind, setComposerKind] =
     useState<SelectableDetailEventKind>("memo");
@@ -524,6 +684,11 @@ export function ItemDetailPanel({
     }
   }, []);
   const [folderUrl, setFolderUrl] = useState(initialDetail?.cloudFolder?.url ?? "");
+  // v17-detail 증빙 파일 — 파일별 성공/실패를 따로 들고, 성공분은 스냅샷에 남는다.
+  const [fileResults, setFileResults] = useState<readonly { name: string; ok: boolean; message: string }[]>([]);
+  const [filePending, setFilePending] = useState(false);
+  const [fileDragOver, setFileDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [folderEditing, setFolderEditing] = useState(!initialDetail?.cloudFolder);
   const [folderError, setFolderError] = useState("");
   const folderTouchedRef = useRef(false);
@@ -536,6 +701,11 @@ export function ItemDetailPanel({
   const suppressOpenerRestoreRef = useRef(false);
   const hashPushedRef = useRef(false);
   const columnsByKey = new Map(columns.map((column) => [column.key, column]));
+  const historyEntries = detail.events.map((event) => ({
+    event,
+    presentation: presentDetailHistoryEvent(event, { columns: [...durableColumns, ...columns], members: detail.members, itemCreatedAt: row.created_at }),
+  }));
+  const visibleHistory = historyEntries.filter(({ presentation }) => showAllHistory || presentation.important);
   const durableColumnEntries: DetailLayoutEntry[] = durableColumns.map((column) => ({
     key: column.key,
     source: "column",
@@ -557,6 +727,12 @@ export function ItemDetailPanel({
     || entry.key === canonicalLoanEntryKey
     || !CANONICAL_NEW_LEAD_LOAN_KEYS.has(entry.key),
   );
+  const detailSidoValue =
+    typeof row.values.sido === "string"
+      ? row.values.sido
+      : typeof row.values.region_sido === "string"
+        ? row.values.region_sido
+        : "";
   const ownerId = row.assigned_to ?? (typeof row.values.owner === "string" ? row.values.owner : null);
   const collaboratorIds = Array.isArray(row.values.collaborators)
     ? row.values.collaborators.filter((candidate): candidate is string => typeof candidate === "string")
@@ -612,15 +788,27 @@ export function ItemDetailPanel({
     setFolderEditing(false);
   }, [detail.cloudFolder]);
 
-  function openDrawer() {
+  const requestedOpenerRef = useRef<HTMLElement | null>(null);
+  const openDrawer = useCallback((opener?: HTMLElement) => {
+    requestedOpenerRef.current = opener ?? null;
     if (window.location.hash === `#item-${row.id}`) {
       setOpen(true);
       return;
     }
     hashPushedRef.current = true;
     setOpen(true);
-    window.location.hash = `item-${row.id}`;
-  }
+    pushItemDetailHash(row.id);
+  }, [row.id]);
+
+  useEffect(() => {
+    const openRequestedItem = (event: Event) => {
+      const request = (event as CustomEvent<ItemDetailOpenRequest>).detail;
+      if (request?.itemId !== row.id) return;
+      openDrawer(request.opener instanceof HTMLElement ? request.opener : undefined);
+    };
+    window.addEventListener(ITEM_DETAIL_OPEN_EVENT, openRequestedItem);
+    return () => window.removeEventListener(ITEM_DETAIL_OPEN_EVENT, openRequestedItem);
+  }, [openDrawer, row.id]);
 
   useEffect(() => {
     const syncFromHash = () => {
@@ -683,6 +871,48 @@ export function ItemDetailPanel({
       }));
   };
 
+  function reloadDetailForConflict() {
+    startDetailTransition(async () => {
+      const next = await loadItemDetailAction(boardId, row.id);
+      // 충돌이어도 초안은 버리지 않는다. 서버값만 갈아끼워 비교하게 한다.
+      if (next.ok) setDetail(next);
+      else setEditError(next.message ?? "최신을 불러오지 못했습니다. 입력은 그대로 두었습니다.");
+    });
+  }
+
+  function submitEventEdit(eventId: string) {
+    const body = editDraft.trim();
+    if (!body) {
+      setEditError("기록을 비울 수는 없어요. 없앨 때는 치우기를 쓰세요. 입력은 그대로 두었습니다.");
+      return;
+    }
+    if (!editBaseline || editBaseline.id !== eventId) return;
+    if (editRequest.current?.body !== body) {
+      editRequest.current = { body, requestId: crypto.randomUUID() };
+    }
+    const requestId = editRequest.current.requestId;
+    startDetailTransition(async () => {
+      const next = await updateItemDetailEventAction({
+        boardId,
+        itemId: row.id,
+        eventId,
+        body,
+        requestId,
+        expectedEditCount: editBaseline.count,
+        baseBody: editBaseline.body,
+      });
+      if (next.ok) {
+        setDetail(next);
+        setEditingEventId(null);
+        setEditDraft("");
+        setEditError("");
+      } else {
+        // 실패해도 초안은 유지한다 — detail도 건드리지 않는다. 충돌이면 명시적 새로고침을 제공한다.
+        setEditError(next.message ?? "기록을 고치지 못했습니다. 입력은 그대로 두었습니다.");
+      }
+    });
+  }
+
   function submitEvent() {
     const body = composer.trim();
     if (!body) return;
@@ -728,6 +958,41 @@ export function ItemDetailPanel({
     });
   }
 
+  /*
+   * v17-detail — 여러 증빙 파일을 기존 보호 저장소 파이프라인으로 한 개씩 올린다.
+   * 중간에 실패해도 앞의 성공분은 스냅샷에 남고, 실패분만 파일별 오류로 남긴다.
+   * 클라우드 폴더 연결은 파일 첨부가 아니라 개수에 들어가지 않는다.
+   */
+  async function uploadEvidenceFiles(list: FileList | readonly File[]) {
+    const files = Array.from(list).filter((file) => file.size > 0);
+    if (files.length === 0 || filePending) return;
+    setFilePending(true);
+    setFileResults([]);
+    const results: { name: string; ok: boolean; message: string }[] = [];
+    let lastOk: ItemDetailSnapshot | null = null;
+    for (const file of files) {
+      const data = new FormData();
+      data.set("file", file);
+      data.set("requestId", crypto.randomUUID());
+      try {
+        const next = await uploadItemDetailFileAction(boardId, row.id, data);
+        if (next.ok) {
+          lastOk = next;
+          results.push({ name: file.name, ok: true, message: "올렸습니다." });
+        } else {
+          results.push({ name: file.name, ok: false, message: next.message ?? "올리지 못했습니다." });
+        }
+      } catch {
+        results.push({ name: file.name, ok: false, message: "올리지 못했습니다. 다시 시도해 주세요." });
+      }
+    }
+    // 매 성공이 전체 재조회이므로 마지막 성공분에 앞의 성공분이 전부 들어 있다.
+    if (lastOk) setDetail(lastOk);
+    setFileResults(results);
+    setFilePending(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
   function removeCloudFolder() {
     if (!window.confirm("클라우드 폴더 연결을 해제할까요? 이전 첨부와 링크는 그대로 보존됩니다.")) return;
     startDetailTransition(async () => {
@@ -755,9 +1020,9 @@ export function ItemDetailPanel({
         return `${entry.label ?? column?.label ?? entry.key}: ${detailValueText(entry.type ?? column?.type, row.values[entry.key], row.values, column?.options_jsonb)}`;
       },
     );
-    const history = detail.events.map(
-      (event) =>
-        `[${event.created_at}] ${detailEventKindLabel(event.kind)}: ${event.body}`,
+    const history = visibleHistory.map(
+      ({ event, presentation }) =>
+        `[${event.created_at}] ${detailEventKindLabel(event.kind)}: ${event.deleted_at ? "치운 기록이에요." : presentation.body}`,
     );
     return [
       `회사: ${row.title}`,
@@ -779,7 +1044,7 @@ export function ItemDetailPanel({
 
   function openSibling(id: string) {
     suppressOpenerRestoreRef.current = true;
-    window.location.hash = `item-${id}`;
+    pushItemDetailHash(id);
     window.requestAnimationFrame(() =>
       document
         .querySelector<HTMLButtonElement>(`[data-item-detail-trigger="${id}"]`)
@@ -799,7 +1064,7 @@ export function ItemDetailPanel({
     if (!open && wasOpenRef.current && suppressOpenerRestoreRef.current) {
       suppressOpenerRestoreRef.current = false;
     } else {
-      restoreDetailPanelOpener(open, wasOpenRef.current, triggerRef.current);
+      restoreDetailPanelOpener(open, wasOpenRef.current, requestedOpenerRef.current?.isConnected ? requestedOpenerRef.current : triggerRef.current);
     }
     wasOpenRef.current = open;
   }, [open]);
@@ -809,7 +1074,7 @@ export function ItemDetailPanel({
       <button
         ref={triggerRef}
         type="button"
-        onClick={openDrawer}
+        onClick={() => openDrawer()}
         className="min-h-7 shrink-0 rounded-lg border border-mw-line px-2 text-xs font-semibold text-mw-record hover:bg-mw-tint-blue"
         aria-label={`${row.title} 상세 열기`}
         data-item-detail-trigger={row.id}
@@ -847,7 +1112,10 @@ export function ItemDetailPanel({
                   ×
                 </button>
                 <div className={styles.identity}>
-                  <h2 className={styles.companyName}>{row.title}</h2>
+                  <div className="min-w-0">
+                    <h2 className={styles.companyName}>{row.title}</h2>
+                    <ParentItemLabel parentId={row.parent_item_id} title={parentItemTitle} />
+                  </div>
                   <span className={styles.breadcrumb}>
                     {boardName ?? (canonicalNewLead ? "신규리드 관리" : "보드")} · {groupName ?? (canonicalNewLead ? "💡 신규고객" : "그룹 없음")}
                   </span>
@@ -903,6 +1171,11 @@ export function ItemDetailPanel({
                 style={railWidth === null ? undefined : { gridTemplateColumns: `${railWidth}px minmax(0, 1fr)` }}
               >
                 <div className={styles.infoRail} data-item-detail-info-rail>
+                  {consultationSection ? (
+                    <div className={styles.consultationSection} data-item-detail-consultation>
+                      {consultationSection}
+                    </div>
+                  ) : null}
                   <div className={styles.infoHeader}>
                     <h3 className="font-bold text-mw-fg">회사 정보</h3>
                     <span
@@ -914,7 +1187,7 @@ export function ItemDetailPanel({
                   </div>
                   <div className={styles.fieldList}>
                     {layout.length === 0 && (
-                      <p className="rounded-xl border border-dashed border-mw-line p-4 text-sm text-mw-sub">
+                      <p className="rounded-md border border-dashed border-mw-line p-4 text-sm text-mw-sub">
                         배치된 상세 필드가 없습니다. 값이 있다면 아래 미배치
                         영역에서 다시 올릴 수 있습니다.
                       </p>
@@ -948,6 +1221,12 @@ export function ItemDetailPanel({
                       const loanCompositeField = Boolean(
                         canonicalNewLead && entry.key === canonicalLoanEntryKey,
                       );
+                      const regionKind =
+                        entry.key === "sido" || entry.key === "region_sido"
+                          ? ("sido" as const)
+                          : entry.key === "sigungu" || entry.key === "region_sigungu"
+                            ? ("sigungu" as const)
+                            : null;
                       const fieldLabelId = `${row.id}-${entry.key}-label`;
                       return (
                         <div
@@ -1049,6 +1328,24 @@ export function ItemDetailPanel({
                                   readOnly={!canEditItems}
                                 />
                               </div>
+                            ) : regionKind && editable ? (
+                              <RegionAutoSaveField
+                                boardId={boardId}
+                                itemId={row.id}
+                                fieldKey={entry.key}
+                                source={entry.source}
+                                kind={regionKind}
+                                sidoValue={detailSidoValue}
+                                initialValue={inputValue(value)}
+                                canonicalDealId={canonicalNewLead && CANONICAL_NEW_LEAD_DETAIL_KEYS.has(entry.key) ? row.deal_id : null}
+                                onStatusChange={(status) =>
+                                  setFieldSaveStatuses((current) =>
+                                    current[entry.key] === status
+                                      ? current
+                                      : { ...current, [entry.key]: status },
+                                  )
+                                }
+                              />
                             ) : editable ? (
                               <AutoSaveField
                                 boardId={boardId}
@@ -1059,6 +1356,7 @@ export function ItemDetailPanel({
                                 initialValue={inputValue(value)}
                                 canonicalDealId={canonicalNewLead && CANONICAL_NEW_LEAD_DETAIL_KEYS.has(entry.key) ? row.deal_id : null}
                                 phoneStatus={row.value_statuses?.[entry.key] ?? "normalized"}
+                                options={column?.options_jsonb?.options}
                                 onStatusChange={(status) =>
                                   setFieldSaveStatuses((current) =>
                                     current[entry.key] === status
@@ -1093,8 +1391,8 @@ export function ItemDetailPanel({
                                 <button
                                   type="submit"
                                   className={styles.promoteButton}
-                                  title={`${label}을 표에도 보이게 합니다`}
-                                  aria-label={`${label}을 표에도 보이기`}
+                                  title={`${label}${eulReul(label)} 표에도 보이게 합니다`}
+                                  aria-label={`${label}${eulReul(label)} 표에도 보이기`}
                                 >
                                   표에도
                                 </button>
@@ -1112,8 +1410,8 @@ export function ItemDetailPanel({
                                 <button
                                   type="submit"
                                   className={styles.promoteButton}
-                                  title={`${label}을 표에서 내리고 상세에서만 보이게 합니다. 값은 그대로 남고 컬럼은 휴지통으로 갑니다`}
-                                  aria-label={`${label}을 표에서 내리기`}
+                                  title={`${label}${eulReul(label)} 표에서 내리고 상세에서만 보이게 합니다. 값은 그대로 남고 컬럼은 휴지통으로 갑니다`}
+                                  aria-label={`${label}${eulReul(label)} 표에서 내리기`}
                                 >
                                   상세만
                                 </button>
@@ -1138,7 +1436,7 @@ export function ItemDetailPanel({
                             <option value="email">이메일</option>
                             <option value="url">링크</option>
                           </select>
-                          <button type="submit">추가</button>
+                          <DetailFieldSubmit idle="추가" />
                         </form>
                       </details>
                     ) : null}
@@ -1299,7 +1597,7 @@ export function ItemDetailPanel({
                             (!canonicalNewLead || !CANONICAL_NEW_LEAD_LOAN_KEYS.has(column.key))
                             && !visibleLayout.some((entry) => entry.key === column.key),
                         ).length > 0 && (
-                          <div className="flex flex-wrap gap-2 rounded-xl border border-dashed border-mw-line p-3">
+                          <div className="flex flex-wrap gap-2 rounded-md border border-dashed border-mw-line p-3">
                             <span className="w-full text-xs font-semibold text-mw-sub">
                               표 컬럼을 이 아이템 배치에 추가
                             </span>
@@ -1397,7 +1695,7 @@ export function ItemDetailPanel({
                               (entry) => entry.key === column.key,
                             ),
                         ).length > 0 && (
-                          <div className="flex flex-wrap gap-2 rounded-xl border border-dashed border-mw-line p-3">
+                          <div className="flex flex-wrap gap-2 rounded-md border border-dashed border-mw-line p-3">
                             <span className="w-full text-xs font-semibold text-mw-sub">
                               표 컬럼을 보드 기본 배치에 추가
                             </span>
@@ -1431,7 +1729,7 @@ export function ItemDetailPanel({
                         )}
                         <form
                           action={addDetailFieldAction}
-                          className="grid gap-2 rounded-xl border border-dashed border-mw-line p-3 sm:grid-cols-[1fr_9rem_auto]"
+                          className="grid gap-2 rounded-md border border-dashed border-mw-line p-3 sm:grid-cols-[1fr_9rem_auto]"
                         >
                           <input type="hidden" name="boardId" value={boardId} />
                           <input type="hidden" name="groupId" value="" />
@@ -1449,12 +1747,10 @@ export function ItemDetailPanel({
                             <option value="number">숫자</option>
                             <option value="date">날짜</option>
                           </select>
-                          <button
-                            type="submit"
-                            className="min-h-11 rounded-lg bg-mw-primary px-3 text-xs font-bold text-mw-on-accent"
-                          >
-                            기본에 추가
-                          </button>
+                          <DetailFieldSubmit
+                            idle="기본에 추가"
+                            className="min-h-11 rounded-lg bg-mw-primary px-3 text-xs font-bold text-mw-on-accent disabled:opacity-60"
+                          />
                         </form>
                       </div>
                     </details>
@@ -1589,6 +1885,112 @@ export function ItemDetailPanel({
                       </details>
                     </div>
                   </details>
+                  <details className={styles.compactTools} open>
+                    <summary>증빙 파일 {detail.files.length > 0 ? `${detail.files.length}개` : ""}</summary>
+                    <div className={styles.compactToolsBody}>
+                      <p className="text-xs text-mw-sub">
+                        사업자등록증·부가세 자료를 보호 저장소에 직접 올립니다.
+                        클라우드 폴더 연결은 첨부 개수에 들어가지 않아요.
+                      </p>
+                      {canEditItems ? (
+                        <div
+                          data-evidence-drop
+                          data-dragover={fileDragOver ? "true" : "false"}
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                            setFileDragOver(true);
+                          }}
+                          onDragLeave={() => setFileDragOver(false)}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            setFileDragOver(false);
+                            void uploadEvidenceFiles(event.dataTransfer.files);
+                          }}
+                        >
+                          {/*
+                            이 input은 보호 스토리지 업로드 전용이다. OCR은 파일을
+                            서버로 보내지 않으므로 아래 ItemDetailOcr(브라우저
+                            로컬 인식 + 사용자 확인 diff)가 별도 진입점이다.
+                          */}
+                          <label htmlFor={`${row.id}-evidence-files`}>
+                            증빙 파일 고르기(여러 개 가능·끌어다 놓기)
+                          </label>
+                          <input
+                            ref={fileInputRef}
+                            id={`${row.id}-evidence-files`}
+                            type="file"
+                            multiple
+                            disabled={filePending || detailPending}
+                            onChange={(event) => {
+                              if (event.target.files) void uploadEvidenceFiles(event.target.files);
+                            }}
+                          />
+                        </div>
+                      ) : null}
+                      <ItemDetailOcr
+                        boardId={boardId}
+                        itemId={row.id}
+                        dealId={canonicalNewLead ? row.deal_id : null}
+                        values={row.values}
+                        columns={columns}
+                        boardLayout={boardLayout}
+                        layout={layout}
+                        canEditItems={canEditItems}
+                      />
+                      {filePending ? (
+                        <p aria-live="polite" className="text-xs text-mw-sub">올리는 중…</p>
+                      ) : null}
+                      {fileResults.length > 0 ? (
+                        <ul className="grid gap-1">
+                          {fileResults.map((result) => (
+                            <li
+                              key={result.name}
+                              role={result.ok ? "status" : "alert"}
+                              className="text-xs text-mw-sub"
+                            >
+                              {result.ok ? "✓" : "✕"} {result.name} · {result.message}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      <div className="grid gap-2">
+                        {groupDetailFiles(detail.files).map(({ group, files }) => (
+                          <div key={group}>
+                            <b className="block text-xs text-mw-body">
+                              {DETAIL_FILE_GROUP_LABEL[group]} {files.length}개
+                            </b>
+                            <div className="grid gap-2">
+                              {files.map((file) =>
+                                file.downloadUrl ? (
+                                  <a
+                                    key={file.id}
+                                    href={file.downloadUrl}
+                                    className="rounded-lg border border-mw-line px-3 py-2 text-sm font-semibold text-mw-record"
+                                    download
+                                  >
+                                    📎 {file.name}{" "}
+                                    <span className="text-xs font-normal text-mw-sub">
+                                      {Math.ceil(file.size_bytes / 1024)}KB
+                                    </span>
+                                  </a>
+                                ) : (
+                                  <span
+                                    key={file.id}
+                                    className="rounded-lg border border-mw-line px-3 py-2 text-sm text-mw-sub"
+                                  >
+                                    📎 {file.name} · 내려받기 링크를 만들지 못했습니다.
+                                  </span>
+                                ),
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        {detail.files.length === 0 && !filePending ? (
+                          <p className="text-xs text-mw-sub">올린 증빙 파일이 없습니다.</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </details>
                   <details className={styles.compactTools}>
                     <summary>내보내기</summary>
                     <div className={styles.compactToolsBody}>
@@ -1714,9 +2116,9 @@ export function ItemDetailPanel({
                   <section className={styles.history} data-item-detail-history>
                     <div className={styles.historyHeader}>
                       <h3>히스토리</h3>
-                      <span className={styles.historyMeta}>
-                        최신순 · 자동 기록 포함 · 치운 기록은 되살릴 수 있어요
-                      </span>
+                      <button type="button" className={styles.headerButton} aria-pressed={showAllHistory} onClick={() => setShowAllHistory((value) => !value)}>
+                        {showAllHistory ? "주요 기록" : "전체 기록"}
+                      </button>
                     </div>
                     <div className={styles.historyScroll}>
                     {!detail.ok && (
@@ -1727,7 +2129,7 @@ export function ItemDetailPanel({
                         {detail.message}
                       </p>
                     )}
-                    {detail.events.map((event) => {
+                    {visibleHistory.map(({ event, presentation }) => {
                       const actorName = detail.members.find((member) => member.id === event.actor_id)?.name;
                       /*
                         #672 — 「치우기」는 «누를 수 있는 줄에만» 보인다.
@@ -1746,6 +2148,13 @@ export function ItemDetailPanel({
                         canRemoveDetailEvent({ kind: event.kind, actorId: event.actor_id }, viewer);
                       const canRestore =
                         canEditItems && removed && canRestoreDetailEvent(event.deleted_by ?? null, viewer);
+                      // v17-detail — 쓴 사람·회사대표만. 자동 기록은 서버도 거부한다.
+                      const canEdit =
+                        canEditItems &&
+                        !removed &&
+                        editingEventId !== event.id &&
+                        canEditDetailEvent({ kind: event.kind, actorId: event.actor_id }, viewer);
+                      const isEditing = editingEventId === event.id && !removed;
                       return (
                         <article
                           key={event.id}
@@ -1783,11 +2192,121 @@ export function ItemDetailPanel({
                                 "ko-KR",
                               )}
                             </time>
+                            {Boolean(event.edit_count) ? (
+                              <span className={styles.historyKind} data-kind="edited" title="고친 기록이에요. 이전 내용은 서버에 보존됩니다.">
+                                고침
+                              </span>
+                            ) : null}
                           </div>
-                          <p className={styles.historyBody}>
-                            {removed ? "치운 기록이에요." : event.body}
-                          </p>
+                          {isEditing ? (
+                            <div>
+                              <textarea
+                                aria-label="기록 고치기"
+                                value={editDraft}
+                                maxLength={4000}
+                                rows={3}
+                                disabled={detailPending}
+                                onChange={(event) => {
+                                  setEditDraft(event.target.value);
+                                  setEditError("");
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Escape") {
+                                    event.stopPropagation();
+                                    setEditingEventId(null);
+                                    setEditDraft("");
+                                    setEditError("");
+                                  }
+                                  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                                    event.preventDefault();
+                                    submitEventEdit(event.currentTarget.dataset.eventId ?? "");
+                                  }
+                                }}
+                                data-event-id={event.id}
+                                className={styles.fieldInput}
+                              />
+                              {editBaseline?.id === event.id && (editBaseline.body !== event.body || editBaseline.count !== (event.edit_count ?? 0)) ? (
+                                <div className="my-2 rounded border border-mw-line p-2 text-sm">
+                                  <p className="font-semibold">다른 수정 내용이 있습니다</p>
+                                  <p className="whitespace-pre-wrap">{event.body}</p>
+                                  <button type="button" className={styles.historyRemove} disabled={detailPending}
+                                    onClick={() => {
+                                      setEditBaseline({ id: event.id, body: event.body, count: event.edit_count ?? 0 });
+                                      editRequest.current = null;
+                                      setEditError("");
+                                    }}>
+                                    최신 내용을 확인하고 편집 계속
+                                  </button>
+                                </div>
+                              ) : null}
+                              {editError ? (
+                                <div>
+                                  <p role="alert" className={styles.cloudFolderError}>
+                                    {editError}
+                                  </p>
+                                  {editError.includes("새로고침") ? (
+                                    <button
+                                      type="button"
+                                      className={styles.historyRemove}
+                                      disabled={detailPending}
+                                      aria-label="최신 기록 다시 불러오기"
+                                      onClick={reloadDetailForConflict}
+                                    >
+                                      새로고침
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                              <div className="flex gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  className={styles.historyRemove}
+                                  disabled={detailPending || !editDraft.trim()}
+                                  aria-label="고친 기록 저장"
+                                  onClick={() => submitEventEdit(event.id)}
+                                >
+                                  저장
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.historyRemove}
+                                  disabled={detailPending}
+                                  aria-label="고치기 취소"
+                                  onClick={() => {
+                                    setEditingEventId(null);
+                                    setEditDraft("");
+                                    setEditError("");
+                                  }}
+                                >
+                                  취소
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className={styles.historyBody}>
+                              {removed ? "치운 기록이에요." : presentation.body}
+                            </p>
+                          )}
                           </div>
+                          {(canEdit || canRemove || canRestore) && <div className={styles.historyActions}>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              className={styles.historyRemove}
+                              disabled={detailPending}
+                              aria-label={`${detailEventKindLabel(event.kind)} 기록 고치기`}
+                              title="고치기 — 이전 내용은 서버에 보존돼요"
+                              onClick={() => {
+                                setEditingEventId(event.id);
+                                setEditBaseline({ id: event.id, body: event.body, count: event.edit_count ?? 0 });
+                                editRequest.current = null;
+                                setEditDraft(event.body);
+                                setEditError("");
+                              }}
+                            >
+                              고치기
+                            </button>
+                          )}
                           {canRemove && (
                             <button
                               type="button"
@@ -1827,12 +2346,13 @@ export function ItemDetailPanel({
                               되살리기
                             </button>
                           )}
+                          </div>}
                         </article>
                       );
                     })}
-                      {detail.events.length === 0 && !detailPending && (
+                      {visibleHistory.length === 0 && !detailPending && (
                         <p className={styles.emptyHistory}>
-                          아직 히스토리가 없습니다. 메모·통화·행정·미팅 기록을 남기면 이곳에 시간순으로 쌓입니다.
+                          아직 주요 기록이 없습니다.
                         </p>
                       )}
                     </div>
@@ -2029,5 +2549,18 @@ export function ItemDetailPanel({
         </DialogPortal>
       )}
     </>
+  );
+}
+
+/*
+ * 상세 전용 필드 «추가» 버튼 (#654). 저장이 끝날 때까지 다시 못 누르고, 누른 것이 보인다.
+ * 응답이 늦을 때 「안 눌렸나」 하고 여러 번 누르던 것이 필드가 쌓인 출발점이었다.
+ */
+export function DetailFieldSubmit({ idle, className }: { idle: string; className?: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending} aria-busy={pending} className={className}>
+      {pending ? "추가하는 중…" : idle}
+    </button>
   );
 }

@@ -4,6 +4,8 @@ import { headers } from "next/headers";
 import { getSession } from "@/lib/auth/session";
 import { Logo } from "@/components/brand/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { AppearanceControl } from "@/components/appearance/AppearanceControl";
+import { RouteAppearance } from "@/components/appearance/RouteAppearance";
 import { SidebarNav } from "@/components/shell/SidebarNav";
 import { IconSprite } from "@/components/shell/icons";
 import { GlobalSearch } from "@/components/shell/GlobalSearch";
@@ -27,6 +29,7 @@ import { ensureApprovedWorkspaceOnEntry } from "@/lib/workspace-entry/bootstrap"
 import { createClient } from "@/lib/supabase/server";
 import { loadOrgLogoSignedUrls } from "@/lib/org-logo/server";
 import { buildSwitcherWorkspaces } from "@/lib/org-logo/switcher";
+import { createEntryTimer, logEntryTimings } from "@/lib/entry-timing";
 
 function WorkspaceBootstrapUnavailable({ slug }: { slug: string }) {
   return (
@@ -51,10 +54,13 @@ function WorkspaceBootstrapUnavailable({ slug }: { slug: string }) {
 // 색·간격·글자 크기는 전부 globals.css/moawork-tokens.css 의 --mw-*·--sp-*·--fs-* 토큰 참조(하드코딩 hex·임의 px 금지).
 // getSession() 이 세션 없으면 /login 으로 보낸다(가드).
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const ctx = await getSession();
+  const entryTimer = createEntryTimer();
+  // Session and routing snapshot are independent reads for the same request
+  // (verified membership vs. entry routing), so they are issued together.
+  // Both still fail closed on their own terms — only the wait is shared.
+  const [ctx, routing] = await entryTimer.time("session-routing", () => Promise.all([getSession(), loadWorkspaceRoutingSnapshot()]));
   const requestHeaders = await headers();
   const appTabRequest = requestHeaders.get("x-mw-app-tab") === "1";
-  const routing = await loadWorkspaceRoutingSnapshot();
   const currentWorkspace = routing.kind === "ready"
     ? routing.memberships.filter((membership) => membership.orgId === ctx.org.id)
     : [];
@@ -63,14 +69,19 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     : undefined;
   if (ctx.role === "owner" && currentWorkspace.length === 1) {
     try {
-      await ensureApprovedWorkspaceOnEntry(requestClient!, currentWorkspace[0].slug);
+      await entryTimer.time("bootstrap", () => ensureApprovedWorkspaceOnEntry(requestClient!, currentWorkspace[0].slug));
     } catch {
+      logEntryTimings("workspace-layout", entryTimer.snapshot(), "unavailable");
       return <WorkspaceBootstrapUnavailable slug={currentWorkspace[0].slug} />;
     }
   }
   const logoHref = currentWorkspace.length === 1
     ? `/w/${currentWorkspace[0].slug}`
     : "/workspaces";
+  // v17 vivid 라우트 강조가 읽는 검증된 네임스페이스 — SidebarNav와 같은 값이다.
+  const workspaceBasePath = currentWorkspace.length === 1
+    ? `/w/${currentWorkspace[0].slug}`
+    : undefined;
   const trustedOwnerOrgId = ctx.role === "owner" ? ctx.org.id : undefined;
   const features = Array.from(
     new Set(
@@ -103,6 +114,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     //   벽시계 시간이 늘지 않는다. 실패하면 빈 지도라 셸은 그대로 뜬다.
     (async () => loadBoardNavKeys(ctx, (await createRequestBoards()).repo))(),
   ]);
+  logEntryTimings("workspace-layout", entryTimer.snapshot(), "ready");
   const switcherWorkspaces = routing.kind === "ready"
     ? buildSwitcherWorkspaces(routing.memberships, orgLogoUrls)
     : [];
@@ -134,9 +146,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       />
       {/* IconSprite 는 한 번만 마운트 — Icon 이 <use href="#i-…"> 로 여기 심볼을 참조한다. */}
       <IconSprite />
+      {/* v17 vivid 라우트 팔레트·외관 배선 — DOM을 그리지 않는다. */}
+      <RouteAppearance boardNavKeys={boardNavKeys} basePath={workspaceBasePath} />
       {/* ── 사이드바 ── */}
       <aside
-        className="mw-layer-shell relative flex h-auto w-full flex-none flex-col border-b px-[var(--sp-3)] py-[var(--sp-3)] md:sticky md:top-0 md:h-screen md:w-[var(--mw-shell-nav-w)] md:overflow-visible md:border-b-0 md:border-r md:py-[var(--sp-4)]"
+        className="mw-layer-shell relative flex h-auto w-full flex-none flex-col border-b px-[var(--sp-3)] py-[var(--sp-3)] md:fixed md:inset-y-0 md:left-0 md:h-dvh md:w-[var(--mw-shell-nav-w)] md:overflow-visible md:border-b-0 md:border-r md:py-[var(--sp-4)]"
         style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}
       >
         {/* 목업 v6 `.brand` — 로고 한 덩이만. 높이 48px · 좌우 --sp-3 · 아래 경계선.
@@ -146,7 +160,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             락업 viewBox 는 2400×800(3:1)이라 22 로 그리면 자연 너비가 66px 뿐이어서
             Logo 의 minWidth:120 이 가로로 1.8배 잡아늘였다 — 그 찌그러짐도 같이 없어진다. */}
         <div
-          className="flex items-center border-b px-[var(--sp-3)]"
+          className="flex shrink-0 items-center border-b px-[var(--sp-3)]"
           style={{ height: "var(--mw-shell-header-h)", borderColor: "var(--mw-line)" }}
         >
           <Logo height={40} href={logoHref} />
@@ -154,7 +168,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
         <div className="flex min-h-0 flex-1 flex-col">
           <SidebarNav
-            workspaceBasePath={currentWorkspace.length === 1 ? `/w/${currentWorkspace[0].slug}` : undefined}
+            workspaceBasePath={workspaceBasePath}
             boardNavKeys={boardNavKeys}
             lockedFeatures={lockedFeatures}
             badges={workspaceApprovals
@@ -180,7 +194,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
         {/* 하단 사용자 */}
         <div
-          className="mt-auto hidden items-center border-t md:flex"
+          className="mt-auto hidden shrink-0 items-center border-t md:flex"
           style={{
             borderColor: "var(--mw-line)",
             gap: "var(--sp-2)",
@@ -214,7 +228,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
       {/* ── 본문 ── */}
       <div
-        className="min-w-0 max-w-full flex-1 overflow-x-hidden px-[var(--sp-4)] py-[var(--sp-3)] sm:px-[var(--sp-5)] md:px-[var(--sp-6)]"
+        className="min-w-0 max-w-full flex-1 overflow-x-hidden md:ml-[var(--mw-shell-nav-w)] px-[var(--sp-4)] py-[var(--sp-3)] sm:px-[var(--sp-5)] md:px-[var(--sp-6)]"
       >
         {/* 페이지 제목은 각 화면이 자기 <h1> 로 그린다 — 셸은 우측 액션만 소유. */}
         <header
@@ -249,6 +263,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
                 모바일(375px)에서도 알림을 확인해야 하므로 sm 미만 숨김은 걷어낸다. */}
             <NotificationBell initial={notify} />
             <ThemeToggle />
+            <AppearanceControl />
             <AccountMenu
               displayName={account.displayName}
               loginEmail={account.loginEmail}

@@ -21,7 +21,7 @@ export function PermissionUnavailable() {
       role="alert"
       aria-labelledby="perm-unavailable-title"
       data-testid="perm-unavailable"
-      className="rounded-xl border p-5"
+      className="rounded-md border p-5"
       style={{ borderColor: "var(--mw-error)", background: "var(--mw-card)" }}
     >
       <h1 id="perm-unavailable-title" className="text-lg font-semibold" style={{ color: "var(--mw-fg)" }}>

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { relativeRedirect } from "@/lib/auth/relative-redirect";
 import { createClient } from "@/lib/supabase/server";
 import { SESSION_COOKIE } from "@/lib/auth/session";
 import {
@@ -11,7 +11,7 @@ import { modePreferenceCookie } from "@/lib/mode/preference";
 function loginError(request: Request, code: string) {
   const url = new URL("/login", request.url);
   url.searchParams.set("error", code);
-  return NextResponse.redirect(url);
+  return relativeRedirect(url.pathname + url.search);
 }
 
 export async function GET(request: Request) {
@@ -31,32 +31,44 @@ export async function GET(request: Request) {
   if (userError || !user) return loginError(request, "auth");
 
   const metadata = user.user_metadata ?? {};
-  const { error: profileError } = await supabase.from("users").upsert(
-    {
-      id: user.id,
-      email: user.email ?? null,
-      name: metadata.full_name ?? metadata.name ?? null,
-      avatar_url: metadata.avatar_url ?? metadata.picture ?? null,
-    },
-    { onConflict: "id" },
-  );
+  // The profile write and the platform guard are independent once the user is
+  // known, so they are issued together (one serial step, not two). Precedence
+  // is unchanged: a profile failure still wins over any platform/membership
+  // routing below, and the admin RPC still fails closed (never grants).
+  // The membership read stays lazy so a verified platform admin never pays
+  // for — or leaves traces of — a tenant read they do not need.
+  const [profileResult, adminResult] = await Promise.all([
+    supabase.from("users").upsert(
+      {
+        id: user.id,
+        email: user.email ?? null,
+        name: metadata.full_name ?? metadata.name ?? null,
+        avatar_url: metadata.avatar_url ?? metadata.picture ?? null,
+      },
+      { onConflict: "id" },
+    ),
+    (async () => {
+      try {
+        return await supabase.rpc("is_platform_admin");
+      } catch {
+        // Preserve ordinary verified membership routing when the guard is unavailable.
+        return { data: false as const, error: { message: "unavailable" } };
+      }
+    })(),
+  ]);
+  const { error: profileError } = profileResult;
   if (profileError) return loginError(request, "profile");
 
   // The SECURITY DEFINER RPC binds the platform decision to auth.uid().
   // A false, malformed, or unavailable result never grants the platform plane.
-  let isPlatformAdmin = false;
-  try {
-    const adminResult = await supabase.rpc("is_platform_admin");
-    isPlatformAdmin = !adminResult.error && adminResult.data === true;
-  } catch {
-    // Preserve ordinary verified membership routing when the guard is unavailable.
-  }
+  const isPlatformAdmin =
+    !adminResult.error && adminResult.data === true;
 
   if (isPlatformAdmin) {
     const destination = new URL("/mode", url.origin);
     const next = sanitizeModeNext(url.searchParams.get("next"));
     if (next) destination.searchParams.set("next", next);
-    const response = NextResponse.redirect(destination);
+    const response = relativeRedirect(destination.pathname + destination.search);
     // A fresh OAuth login must not silently reuse an earlier mode preference.
     response.cookies.delete(modePreferenceCookie.name);
     response.cookies.delete(SESSION_COOKIE.org);
@@ -76,7 +88,7 @@ export async function GET(request: Request) {
     workspaceTargetFromNext(url.searchParams.get("next")),
   );
 
-  const response = NextResponse.redirect(new URL(decision.path, url.origin));
+  const response = relativeRedirect(decision.path);
   if (decision.kind === "workspace") {
     response.cookies.set(SESSION_COOKIE.org, decision.orgId, {
       path: "/",

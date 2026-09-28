@@ -6,6 +6,9 @@ const mocks = vi.hoisted(() => ({ createServerClient: vi.fn() }));
 vi.mock("@supabase/ssr", () => ({ createServerClient: mocks.createServerClient }));
 
 import { proxy } from "./proxy";
+import nextConfig from "../next.config";
+import { adapter } from "next/dist/server/web/adapter";
+import { getRelativeURL } from "next/dist/shared/lib/router/utils/relativize-url";
 
 function membership(orgId: string, slug: string) {
   return { org_id: orgId, status: "active", role: "member", scope: "assigned", created_at: "2026-01-01T00:00:00Z", orgs: { id: orgId, slug, status: "active", name: "샘플", plan_tier: "t1_3", created_at: "2026-01-01T00:00:00Z" } };
@@ -67,6 +70,65 @@ function cookieOn(response: NextResponse, name: string) {
   return response.cookies.get(name);
 }
 
+describe("proxy health probe boundary", () => {
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.test";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "public-anon-test-key";
+    mocks.createServerClient.mockReset();
+  });
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  });
+
+  it("passes only exact live/ready routes without auth or a network client", async () => {
+    for (const path of ["/api/health/live", "/api/health/ready"]) {
+      const response = await proxy(
+        new NextRequest(`https://www.moa-work.com${path}`),
+      );
+      expect(response.headers.get("location"), path).toBeNull();
+      expect(response.headers.get("x-middleware-next"), path).toBe("1");
+    }
+    expect(mocks.createServerClient).not.toHaveBeenCalled();
+  });
+
+  // 배치는 사람 세션이 없다. 게이트에 걸리면 /login 으로 307 되어 라우트에 닿지 못하고,
+  // 그러면 지표가 «조용히» 안 쌓인다 — 실제로 그렇게 0행이었다.
+  it("lets the nightly batch reach its own CRON_SECRET gate", async () => {
+    const response = await proxy(
+      new NextRequest("https://www.moa-work.com/api/cron/platform-metrics"),
+    );
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(mocks.createServerClient).not.toHaveBeenCalled();
+  });
+
+  it("keeps the batch allowlist exact — no sibling or prefix leaks", async () => {
+    for (const path of [
+      "/api/cron",
+      "/api/cron/platform-metrics/extra",
+      "/api/cron/platform-metrics-x",
+      "/api/cron/other",
+    ]) {
+      mocks.createServerClient.mockReset();
+      setup(null);
+      const response = await proxy(new NextRequest(`https://www.moa-work.com${path}`));
+      expect(response.headers.get("location"), path).toContain("/login?next=");
+    }
+  });
+
+  it("does not make lookalike health paths public", async () => {
+    setup(null);
+    const response = await proxy(
+      new NextRequest("https://www.moa-work.com/api/health/ready/extra"),
+    );
+    expect(response.headers.get("location")).toBe(
+      "https://www.moa-work.com/login?next=%2Fapi%2Fhealth%2Fready%2Fextra",
+    );
+    expect(mocks.createServerClient).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("proxy carries refreshed session cookies out of every exit (BBE-200)", () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.test";
@@ -76,6 +138,38 @@ describe("proxy carries refreshed session cookies out of every exit (BBE-200)", 
   afterEach(() => {
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
     delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  });
+
+  it.each(["consult-remote", "consult-inperson"])("routes %s with membership, tab hint, and rotated cookies intact", async (segment) => {
+    setupRotating({ id: "user-1" }, [membership("org-acme", "acme")], rotateOnce);
+    const response = await proxy(new NextRequest(`https://www.moa-work.com/w/acme/${segment}?as=member`));
+    expect(response.headers.get("x-middleware-rewrite")).toBe(`https://www.moa-work.com/${segment}?as=member`);
+    expect(response.headers.get("x-middleware-request-x-mw-app-tab")).toBe("1");
+    expect(response.headers.get("x-middleware-request-cookie")).toContain("mw_org=org-acme");
+    expect(cookieOn(response, ROTATED_0.name)?.value).toBe(ROTATED_0.value);
+    const legacy = await proxy(new NextRequest(`https://www.moa-work.com/${segment}?as=member`, {
+      headers: { cookie: "mw_workspace_slug=acme; mw_org=org-acme" },
+    }));
+    expect(legacy.headers.get("location")).toBe(`https://www.moa-work.com/w/acme/${segment}?as=member`);
+    expect(cookieOn(legacy, ROTATED_0.name)?.value).toBe(ROTATED_0.value);
+    const missingSlug = await proxy(new NextRequest(`https://www.moa-work.com/${segment}`));
+    expect(missingSlug.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+  });
+
+  it.each(["consult-remote", "consult-inperson"])("does not grant %s to another workspace or anonymous session", async (segment) => {
+    setupRotating({ id: "user-1" }, [membership("org-other", "other")], rotateOnce);
+    const denied = await proxy(new NextRequest(`https://www.moa-work.com/w/acme/${segment}`, {
+      headers: { cookie: "mw_org=org-acme", "x-mw-app-tab": "1" },
+    }));
+    expect(denied.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+    expect(denied.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(cookieOn(denied, "mw_org")?.value).toBe("");
+    expect(cookieOn(denied, "mw_org")?.expires).toEqual(new Date(0));
+    expect(cookieOn(denied, ROTATED_0.name)?.value).toBe(ROTATED_0.value);
+    setupRotating(null, [], clearSession);
+    const anonymous = await proxy(new NextRequest(`https://www.moa-work.com/${segment}`));
+    expect(anonymous.headers.get("location")).toBe(`https://www.moa-work.com/login?next=%2F${segment}`);
+    expect(cookieOn(anonymous, CLEARED_0.name)?.maxAge).toBe(0);
   });
 
   it("① workspace rewrite response carries the rotated cookie", async () => {
@@ -304,5 +398,90 @@ describe("proxy workspace namespace", () => {
     setup({ id: "user-1" }, [membership("org-acme", "acme")]);
     const response = await proxy(new NextRequest("https://www.moa-work.com/notices"));
     expect(response.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+  });
+});
+
+// Exercise Next's actual adapter and router URL classification, not only the
+// proxy response header. All auth and membership data remains a local fixture.
+describe("self-hosted namespace routing through the Next adapter (#725)", () => {
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.test");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "public-anon-test-key");
+    // Next's build/define-env maps this official config option to the adapter.
+    vi.stubEnv("__NEXT_NO_MIDDLEWARE_URL_NORMALIZE", nextConfig.skipProxyUrlNormalize ? "true" : undefined);
+    mocks.createServerClient.mockReset();
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  async function throughAdapter(path: string, origin = "http://127.0.0.1:3100", rsc = false) {
+    const initialUrl = `${origin}${path}`;
+    const result = await adapter({
+      // This harness needs URL/header adaptation, not request async storage.
+      page: "/namespace-routing-regression",
+      request: {
+        url: initialUrl,
+        method: "GET",
+        signal: new AbortController().signal,
+        headers: {
+          host: "localhost:3000",
+          "x-forwarded-host": "untrusted.invalid",
+          "x-forwarded-proto": "https",
+          cookie: "mw_workspace_slug=acme; mw_org=org-acme",
+          ...(rsc ? { rsc: "1", "next-router-state-tree": "[]" } : {}),
+        },
+      },
+      handler: proxy,
+    });
+    await result.waitUntil;
+    const destination = result.response.headers.get("x-middleware-rewrite")
+      ?? result.response.headers.get("location");
+    return { response: result.response, destination: destination ? getRelativeURL(destination, initialUrl) : null };
+  }
+
+  it("reproduces the default loopback normalization as an external rewrite", async () => {
+    vi.stubEnv("__NEXT_NO_MIDDLEWARE_URL_NORMALIZE", undefined);
+    setup({ id: "user-1" }, [membership("org-acme", "acme")]);
+    const result = await throughAdapter("/w/acme/newcust");
+    expect(result.destination).toBe("http://localhost:3100/newcust");
+  });
+
+  it("keeps document and RSC namespace rewrites internal on loopback and public origins", async () => {
+    for (const origin of ["http://127.0.0.1:3100", "http://localhost:3000", "https://www.moa-work.com"]) {
+      for (const rsc of [false, true]) {
+        for (const [path, destination] of [["/w/acme", "/"], ["/w/acme/newcust?view=table", "/newcust?view=table"]]) {
+          setupRotating({ id: "user-1" }, [membership("org-acme", "acme")], rotateOnce);
+          const result = await throughAdapter(path, origin, rsc);
+          expect(result.destination, `${origin}${path} rsc=${rsc}`).toBe(destination);
+          expect(result.response.headers.get("location")).toBeNull();
+          expect(result.response.headers.get("set-cookie")).toContain(`${ROTATED_0.name}=${ROTATED_0.value}`);
+          expect(result.response.headers.get("x-middleware-request-cookie")).toContain("mw_org=org-acme");
+        }
+      }
+    }
+  });
+
+  it("canonicalizes legacy and alias paths on the same origin without a second external request", async () => {
+    setup({ id: "user-1" }, [membership("org-acme", "acme")]);
+    for (const [path, canonical] of [["/newcust?view=table", "/w/acme/newcust?view=table"], ["/acme", "/w/acme"]]) {
+      const result = await throughAdapter(path);
+      expect(result.response.status).toBe(307);
+      expect(result.destination).toBe(canonical);
+      const next = await throughAdapter(canonical);
+      expect(next.response.headers.get("location")).toBeNull();
+      expect(next.destination).toBe(path.startsWith("/newcust") ? path : "/");
+    }
+  });
+
+  it("keeps unauthenticated and denied-membership redirects relative with refresh cookies intact", async () => {
+    setupRotating(null, [], clearSession);
+    const login = await throughAdapter("/w/acme/newcust");
+    expect(login.response.status).toBe(307);
+    expect(login.destination).toBe("/login?next=%2Fw%2Facme%2Fnewcust");
+    expect(login.response.headers.get("set-cookie")).toContain("Max-Age=0");
+    setupRotating({ id: "user-1" }, [membership("org-acme", "acme")], rotateOnce);
+    const denied = await throughAdapter("/w/not-mine/newcust");
+    expect(denied.destination).toBe("/workspace-entry?error=routing");
+    expect(denied.response.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(denied.response.headers.get("set-cookie")).toContain(`${ROTATED_0.name}=${ROTATED_0.value}`);
   });
 });

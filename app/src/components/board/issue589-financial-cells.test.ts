@@ -50,7 +50,11 @@ describe("Issue #589 신규리드 금융 셀", () => {
     expect(source).toContain('column.key === NEW_LEAD_COMPOSITE_FIELD_KEYS.creditScores');
     expect(source).toContain('column.type === "status" ? (');
     expect(source).toContain(') : column.type === "select" ? (');
-    expect(source).toContain("event.currentTarget.form?.requestSubmit()");
+    // 선택 저장은 검색·라벨 추가를 지원하는 공통 편집기로 이동했다.
+    // 실제 선택 후 폼 전송은 LabelCombobox DOM 테스트가 검증한다.
+    expect(source).toContain("<LabelCombobox");
+    const combobox = readFileSync(new URL("./LabelCombobox.tsx", import.meta.url), "utf8");
+    expect(combobox).toContain("requestSubmit()");
     expect(source).toContain("BOARD_TABLE_CONTROL");
     expect(style).toContain("border-mw-line bg-mw-card");
     expect(source).not.toContain("border-transparent bg-transparent px-1.5");

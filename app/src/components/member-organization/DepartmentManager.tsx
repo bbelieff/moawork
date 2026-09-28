@@ -24,7 +24,7 @@ type Props = Readonly<{
 }>;
 type Feedback = DepartmentActionState | null;
 
-const CARD = "rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950";
+const CARD = "rounded-md border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950";
 
 function SubmitForm({
   action,
@@ -144,7 +144,7 @@ export function DepartmentManager({ chart, canManage, actions = DEFAULT_ACTIONS 
           </div>
 
           {rows.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-zinc-300 px-4 py-7 text-center dark:border-zinc-700">
+            <div className="rounded-md border border-dashed border-zinc-300 px-4 py-7 text-center dark:border-zinc-700">
               <p className="font-medium">아직 부서가 없어요</p>
               <p className="mt-1 text-sm text-zinc-500">예시 부서는 만들지 않아요. 회사에 맞는 첫 부서를 직접 만들어 주세요.</p>
             </div>
@@ -191,7 +191,7 @@ export function DepartmentManager({ chart, canManage, actions = DEFAULT_ACTIONS 
               </div>
 
               {canManage ? (
-                <div className="grid gap-3 rounded-xl bg-zinc-50 p-3 sm:grid-cols-2 dark:bg-zinc-900">
+                <div className="grid gap-3 rounded-md bg-zinc-50 p-3 sm:grid-cols-2 dark:bg-zinc-900">
                   <SubmitForm key={`rename-${selected.id}-${selected.name}`} action={actions.rename} submitLabel="이름 저장" pendingLabel="저장 중…" onResult={report}>
                     <input type="hidden" name="departmentId" value={selected.id} />
                     <label className="grid gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-300">부서 이름<input name="name" defaultValue={selected.name} required maxLength={80} className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white" /></label>
@@ -211,9 +211,9 @@ export function DepartmentManager({ chart, canManage, actions = DEFAULT_ACTIONS 
                   <span className="text-xs text-zinc-500">활동 중인 구성원만 표시</span>
                 </div>
                 {activeMembers.length === 0 ? (
-                  <p className="rounded-xl border border-dashed border-zinc-300 px-4 py-6 text-center text-sm text-zinc-500 dark:border-zinc-700">배정할 활동 구성원이 없어요.</p>
+                  <p className="rounded-md border border-dashed border-zinc-300 px-4 py-6 text-center text-sm text-zinc-500 dark:border-zinc-700">배정할 활동 구성원이 없어요.</p>
                 ) : (
-                  <ul className="divide-y divide-zinc-100 rounded-xl border border-zinc-200 dark:divide-zinc-900 dark:border-zinc-800">
+                  <ul className="divide-y divide-zinc-100 rounded-md border border-zinc-200 dark:divide-zinc-900 dark:border-zinc-800">
                     {activeMembers.map((member) => (
                       <li key={member.userId} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
                         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-mw-tint-purple text-xs font-bold text-mw-primary">{member.displayName.slice(0, 1)}</span>

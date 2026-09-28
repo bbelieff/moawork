@@ -9,12 +9,16 @@ import {
   DEFAULT_GATE_LEASE_PORT,
   DEFAULT_WAIT_TIMEOUT_MS,
   ensureLeaseBroker,
+  holdLeaseBroker,
   GateLeaseError,
 } from "./gate-lease-core.mjs";
 
 export const GLOBAL_GATE_FENCE = "Global\\MoaWork.FullGate.v1";
 export const DEFAULT_RUN_TIMEOUT_MS = 30 * 60 * 1000;
-export const DEFAULT_BOOTSTRAP_TIMEOUT_MS = 8_000;
+// Cold Windows runners compile the guardian's native interop before opening
+// its pipe. Allow that startup time; nonce, containment, and cleanup checks
+// remain mandatory, and an unready guardian still fails closed.
+export const DEFAULT_BOOTSTRAP_TIMEOUT_MS = 30_000;
 const GUARDIAN_PROTOCOL = "moawork-gate-guardian-v2";
 const guardianPath = fileURLToPath(new URL("./gate-lease-guardian.ps1", import.meta.url));
 
@@ -116,7 +120,29 @@ async function connectPipe(pipePath, deadline) {
   });
 }
 
-export async function runGateCommand({
+export async function runGateCommand(options = {}) {
+  const lifetime = { brokerHold: null };
+  try {
+    return await runGateCommandWithBroker(options, lifetime);
+  } finally {
+    lifetime.brokerHold?.release();
+  }
+}
+
+// Ensure the broker, then hold it open: its 10s idle exit must not fire while the guardian
+// bootstraps (up to bootstrapTimeoutMs) before the guardian's own broker connection exists.
+async function holdStartedBroker() {
+  await ensureLeaseBroker();
+  try {
+    return await holdLeaseBroker();
+  } catch (error) {
+    if (error?.code !== "GATE_LEASE_BROKER_HOLD_FAILED") throw error;
+    await ensureLeaseBroker();
+    return await holdLeaseBroker();
+  }
+}
+
+async function runGateCommandWithBroker({
   command,
   args = [],
   cwd = process.cwd(),
@@ -133,7 +159,7 @@ export async function runGateCommand({
   testSignalAfterMs,
   testSignal = "SIGTERM",
   testGuardianMode,
-} = {}) {
+} = {}, lifetime) {
   if (process.platform !== "win32") {
     throw new GateLeaseError(
       "GATE_POSIX_CONTAINMENT_UNAVAILABLE",
@@ -147,7 +173,7 @@ export async function runGateCommand({
       "WSL commands cannot enter the full gate until Linux descendants can be proven zero",
     );
   }
-  if (ensureBroker) await ensureLeaseBroker();
+  if (ensureBroker) lifetime.brokerHold = await holdStartedBroker();
   const nonce = randomUUID();
   const pipeName = `moawork-gate-${randomUUID()}`;
   const pipePath = `\\\\.\\pipe\\${pipeName}`;

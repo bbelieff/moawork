@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { Suspense } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   WorkspaceSwitcher,
   type WorkspaceSwitcherProps,
@@ -14,11 +15,12 @@ import { Icon } from "./icons";
 import {
   NAV_ITEMS,
   NAV_SECTIONS,
+  WORK_TOOL_ITEMS,
   navItemsForSection,
   type NavBadgeKey,
   type NavItem,
 } from "./nav-items";
-import { resolveActiveNavKey } from "./active-nav";
+import { resolveActiveNavKey, resolveConsultationNavKey } from "./active-nav";
 import { workspaceHref } from "./workspace-href";
 
 // 사이드바 메뉴 목록 — 활성 표시를 위해 클라이언트 컴포넌트.
@@ -45,27 +47,40 @@ type Props = {
   boardNavKeys?: Readonly<Record<string, string>>;
 };
 
-export function SidebarNav({
+export function SidebarNav(props: Props) {
+  return <Suspense fallback={<SidebarNavContent {...props} search="" />}><SidebarNavQuery {...props} /></Suspense>;
+}
+
+function SidebarNavQuery(props: Props) {
+  const search = useSearchParams()?.toString() ?? "";
+  return <SidebarNavContent {...props} search={search} />;
+}
+
+function SidebarNavContent({
   lockedFeatures,
   badges,
   notifyBadges,
   workspaceSwitcher,
   workspaceBasePath,
   boardNavKeys,
-}: Props) {
+  search,
+}: Props & { search: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const locked = new Set(lockedFeatures);
 
   // 활성은 «항목마다» 가 아니라 «전체에서 하나» 다 — 둘이 켜지면 색으로 구분하는 목적이 깨진다.
-  const activeKey = resolveActiveNavKey(
+  // 같은 리드컨택 정본 보드라도 ?consultation=remote|inperson 이면 STEP2·STEP3 탭이 켜진다.
+  const consultationKey = resolveConsultationNavKey(pathname, search, boardNavKeys);
+  const resolvedActiveKey = consultationKey ?? resolveActiveNavKey(
     pathname,
-    NAV_ITEMS.filter((item) => item.href).map((item) => ({
+    [...NAV_ITEMS, ...WORK_TOOL_ITEMS].filter((item) => item.href).map((item) => ({
       key: item.key,
-      href: workspaceHref(workspaceBasePath, item.href!),
+      href: workspaceHref(workspaceBasePath, item.href!).split(/[?#]/)[0],
     })),
     { basePath: workspaceBasePath, boardNavKeys },
   );
+  const activeKey = resolvedActiveKey === "contact" ? "consult-remote" : resolvedActiveKey;
 
   const renderItem = (item: NavItem, nested: boolean) => {
     const isLocked = item.feature ? locked.has(item.feature) : false;
@@ -168,10 +183,12 @@ export function SidebarNav({
         href={resolvedHref!}
         aria-disabled={isLocked ? "true" : undefined}
         aria-current={active ? "page" : undefined}
-        className={`${base} w-full ${active ? "font-semibold" : "hover:bg-[var(--mw-bg)]"} ${isLocked ? "cursor-help" : ""}`}
+        className={`${base} w-full ${active ? "mw-nav-active font-semibold" : "hover:bg-[var(--mw-bg)]"} ${isLocked ? "cursor-help" : ""}`}
         style={
           active
-            ? { ...baseStyle, background: "var(--mw-record)", color: "var(--mw-on-accent)" }
+            // v17 vivid가 --mw-nav-active-* 로 덮는다. 폴백은 기존 파랑 그대로라
+            // vivid층이 없어도 색 구분이 깨지지 않는다.
+            ? { ...baseStyle, background: "var(--mw-nav-active-bg, var(--mw-record))", color: "var(--mw-nav-active-fg, var(--mw-on-accent))" }
             : { ...baseStyle, color: isLocked ? "var(--mw-sub)" : "var(--mw-fg)" }
         }
       >
@@ -214,7 +231,7 @@ export function SidebarNav({
       ) : null}
       {/* 통합 검색은 여기 없다 — 목업 v6 는 검색을 상단바(`.top > .search`)에 둔다.
           트리거는 셸 상단바(app/layout.tsx)로 옮겼다(BBE-194). 기능은 그대로다. */}
-      <nav className="hidden min-h-0 flex-1 flex-col gap-px overflow-y-auto md:flex" aria-label="주요 메뉴">
+      <nav className="hidden min-h-0 flex-1 flex-col gap-px overflow-x-hidden overflow-y-auto overscroll-contain md:flex" aria-label="주요 메뉴">
         <div
           className="border-b"
           style={{ borderColor: "var(--mw-line)", paddingBottom: "var(--sp-2)" }}
@@ -224,6 +241,28 @@ export function SidebarNav({
           </h2>
           {navItemsForSection(NAV_SECTIONS[0]).map((item) => renderItem(item, false))}
         </div>
+
+        <details
+          data-nav-section="work-tools"
+          className="group/work-tools border-b"
+          style={{ borderColor: "var(--mw-line)", paddingBlock: "var(--sp-2)" }}
+        >
+          <summary className="cursor-pointer list-none hover:bg-[var(--mw-bg)] focus-visible:outline-2 focus-visible:outline-[var(--mw-primary)] [&::-webkit-details-marker]:hidden">
+            <h2 className="flex items-center justify-between font-semibold" style={{ color: "var(--mw-sub)", fontSize: "var(--fs-11)", padding: "var(--sp-2) var(--sp-3)" }}>
+              업무도구
+              <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" className="group-open/work-tools:rotate-90" style={{ width: "var(--sp-3)", height: "var(--sp-3)" }}>
+                <path d="m6 4 4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </h2>
+          </summary>
+          {WORK_TOOL_ITEMS.length ? (
+            <ul aria-label="업무도구 목록">
+              {WORK_TOOL_ITEMS.map((item) => <li key={item.key}>{renderItem(item, true)}</li>)}
+            </ul>
+          ) : (
+            <p style={{ color: "var(--mw-sub)", fontSize: "var(--fs-11)", padding: "var(--sp-1) var(--sp-6) var(--sp-2)" }}>등록된 도구가 없습니다.</p>
+          )}
+        </details>
 
         <div
           className="border-b"

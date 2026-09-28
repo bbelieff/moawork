@@ -115,7 +115,7 @@ export function ChecklistPanel({
   };
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-mw-line bg-mw-card p-4">
+    <div className="flex flex-col gap-3 rounded-md border border-mw-line bg-mw-card p-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-mw-fg">서류 체크리스트</h3>
         <span className="text-xs text-mw-sub" data-testid="checklist-completion">

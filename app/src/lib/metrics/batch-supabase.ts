@@ -53,7 +53,7 @@ export class SupabaseMetricsSource implements MetricsSource {
       .from("org_members")
       .select("user_id")
       .eq("org_id", orgId);
-    fail("멤버 목록 조회 실패", error);
+    fail("구성원 목록 조회 실패", error);
     return (data ?? [])
       .map((r) => (r.user_id === null ? null : String(r.user_id)))
       .filter((v): v is string => v !== null);

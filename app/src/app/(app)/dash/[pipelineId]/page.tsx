@@ -85,9 +85,6 @@ export default async function PipelineDashboardPage({
         label="대시보드"
       >
         <div className="flex flex-col gap-6">
-          <p className="text-sm text-zinc-500">
-            업무는 업체와 진행하는 각각의 일입니다.
-          </p>
           <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <StatCard label="업무" value={formatCount(breakdown.total)} />
             <StatCard label="단계" value={formatCount(ordered.length)} />

@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
-import { getSession } from "@/lib/auth/session";
+import { getSession, getSessionOrNull } from "@/lib/auth/session";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { createClient } from "@/lib/supabase/server";
-import { canonicalAssignee, createCanonicalNewLead, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadMeta, updateCanonicalNewLeadTitle } from "@/lib/new-lead/mutations";
+import { canonicalAssignee, createCanonicalNewLeadWithFoundedMonth, NewLeadMutationError, updateCanonicalNewLead, updateCanonicalNewLeadMeta, updateCanonicalNewLeadTitle } from "@/lib/new-lead/mutations";
 import type { NewLeadIntakeState } from "@/lib/new-lead/intake-state";
 import { CELL_FLASH_COOKIE, CELL_FLASH_MAX_AGE, encodeCellFlash } from "@/lib/boards/cellFlash";
-import { resolveNewLeadBusinessType } from "@/lib/new-lead/business-types";
+import { NEW_LEAD_DETAIL_FIELD_PATCH } from "@/lib/new-lead/detail-field-patch";
+import { resolveNewLeadBusinessSubtype } from "@/lib/new-lead/business-types";
 import { resolveNewLeadRevenueBand } from "@/lib/new-lead/revenue-bands";
 import { canonicalSido, canonicalSigungu } from "@/lib/new-lead/region-search";
 import { analyzePhone } from "@/lib/format/phone";
@@ -57,12 +58,17 @@ export async function createNewLeadAction(
       ...(permissionMs === undefined ? {} : { permission_ms: Math.round(permissionMs) }),
     }));
   };
-  const ctx = await getSession();
+  const ctx = await getSessionOrNull();
+  if (!ctx) {
+    record("session_unavailable");
+    return { ok: false, field: "form", message: "로그인 또는 회사 접근 권한을 확인할 수 없습니다. 다른 탭에서 로그인 상태를 확인한 뒤 다시 등록해 주세요. 입력한 내용은 유지됩니다." };
+  }
   const title = text(formData, "title");
   const boardId = text(formData, "boardId");
   const groupId = text(formData, "groupId");
-  const businessType = resolveNewLeadBusinessType(
+  const businessType = resolveNewLeadBusinessSubtype(
     text(formData, "business_registration_type"),
+    text(formData, "business_registration_subtype"),
     text(formData, "business_registration_type_custom"),
   );
   const phone = analyzePhone(text(formData, "phone"));
@@ -85,7 +91,7 @@ export async function createNewLeadAction(
   }
   if (text(formData, "revenue_band") === "그외" && !revenueBand) {
     record("invalid_revenue_band");
-    return { ok: false, field: "revenue_band", message: "그외 매출 구간을 입력해 주세요." };
+    return { ok: false, field: "revenue_band", message: "정확한 매출액을 입력해 주세요." };
   }
   if (rawSido && !regionSido) {
     record("invalid_region_sido");
@@ -93,9 +99,22 @@ export async function createNewLeadAction(
   }
   if (rawSigungu && !regionSigungu) {
     record("invalid_region_sigungu");
-    return { ok: false, field: "region_sido", message: "시군구를 추천 목록에서 선택해 주세요." };
+    return { ok: false, field: "region_sigungu", message: "시군구를 추천 목록에서 선택해 주세요." };
   }
   if (!boardId || !groupId) { record("invalid_target"); return { ok: false, field: "form", message: "신규리드 보드 구성을 확인해 주세요." }; }
+
+  // 창업연월은 어떤 INSERT보다 먼저 판정한다. 여기서 떨어지면 회사가 생기지 않는다.
+  // 같은 트랜잭션·같은 요청 payload로 한 번에 기록하므로 별도 setCells를 두지 않는다.
+  const foundedRaw = text(formData, "founded_month");
+  let foundedMonth: string | null = null;
+  if (foundedRaw) {
+    const founded = parseFoundedDate(foundedRaw);
+    if (!founded.ok) {
+      record("invalid_founded_month");
+      return { ok: false, field: "founded_month", message: founded.message };
+    }
+    foundedMonth = founded.value.value;
+  }
 
   const permissionStartedAt = performance.now();
   const permission = await loadPermGuard(ctx.org.id, "work.item_upsert");
@@ -106,7 +125,7 @@ export async function createNewLeadAction(
   }
 
   try {
-    const row = await createCanonicalNewLead(await createClient(), {
+    const row = await createCanonicalNewLeadWithFoundedMonth(await createClient(), {
       p_org_id: ctx.org.id,
       p_board_id: boardId,
       p_group_id: groupId,
@@ -124,6 +143,7 @@ export async function createNewLeadAction(
       p_acquisition_source: text(formData, "acquisition_source") || null,
       p_assigned_to: canonicalAssignee(ctx.user.id, text(formData, "assigned_to")),
       p_collaborator_ids: textList(formData, "collaborator_ids"),
+      p_founded_month: foundedMonth,
     });
     revalidatePath(`/boards/${boardId}`);
     revalidatePath("/newcust");
@@ -131,6 +151,9 @@ export async function createNewLeadAction(
     return { ok: true, message: "신규리드를 등록했습니다.", itemId: row.item_id };
   } catch (error) {
     record("error", permissionMs);
+    if (error instanceof NewLeadMutationError && error.code === "22023" && foundedMonth) {
+      return { ok: false, field: "founded_month", message: error.message };
+    }
     return {
       ok: false,
       field: "form",
@@ -151,17 +174,11 @@ export type SaveNewLeadLoanProfileResult = Readonly<{
   records: readonly ExistingLoanRecord[];
 }>;
 
-const DETAIL_FIELD_PATCH = {
-  rep_name: "representative_name",
-  phone: "phone",
-  email: "email",
-  biz_reg_type: "business_registration_type",
-  industry: "industry",
-  revenue_band: "revenue_band",
-  sido: "region_sido",
-  sigungu: "region_sigungu",
-  ad_name: "acquisition_source",
-} as const;
+/**
+ * 보드 키 → canonical patch 키. 단일 정의는
+ * `@/lib/new-lead/detail-field-patch`이며 OCR 저장 분기도 같은 것을 쓴다.
+ */
+const DETAIL_FIELD_PATCH = NEW_LEAD_DETAIL_FIELD_PATCH;
 
 /** 회사 상세의 자동 저장도 표와 같은 canonical deal/item/audit 경로를 관통한다. */
 export async function saveNewLeadDetailFieldAction(input: {

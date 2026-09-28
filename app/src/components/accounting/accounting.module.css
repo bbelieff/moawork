@@ -1,6 +1,6 @@
 .panel,.export,.notice{border:1px solid var(--mw-line);border-radius:var(--mw-radius);background:var(--mw-card);color:var(--mw-fg)}
 .panel,.export{padding:20px}.notice{padding:16px;color:var(--mw-sub);line-height:1.55}
-.heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.heading h2,.export h2{margin:0;font-size:20px;letter-spacing:-.02em}.heading p,.export p{margin:5px 0 0;color:var(--mw-sub);font-size:13px;line-height:1.55}.eyebrow{margin:0!important;color:var(--mw-primary)!important;font-size:12px!important;font-weight:800}.count{padding:6px 9px;border-radius:999px;background:var(--mw-tint-blue);color:var(--mw-primary);font-size:12px;font-weight:800;white-space:nowrap}.summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:18px 0}.summary div{padding:12px;border-radius:14px;background:var(--mw-bg)}.summary dt{color:var(--mw-sub);font-size:12px}.summary dd{margin:6px 0 0;font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}.tableWrap{overflow-x:auto}.tableWrap table{width:100%;border-collapse:collapse;font-size:13px}.tableWrap th,.tableWrap td{padding:11px 10px;border-top:1px solid var(--mw-line);text-align:left;white-space:nowrap}.tableWrap th{color:var(--mw-sub);font-size:12px;font-weight:700}.period{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin-top:16px}.period label{display:grid;gap:5px;color:var(--mw-sub);font-size:12px;font-weight:700}.period input{min-height:44px;padding:8px 10px;border:1px solid var(--mw-line);border-radius:12px;background:var(--mw-card);color:var(--mw-fg);font:inherit}.period button{min-height:44px;padding:10px 14px;border:0;border-radius:12px;background:var(--mw-primary);color:var(--mw-on-accent);font:inherit;font-weight:800;cursor:pointer}.period button:focus-visible,.period input:focus-visible{outline:3px solid var(--mw-primary);outline-offset:2px}.exportMessage{font-size:12px!important}
+.heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.heading h2,.export h2{margin:0;font-size:20px;letter-spacing:-.02em}.heading p,.export p{margin:5px 0 0;color:var(--mw-sub);font-size:13px;line-height:1.55}.eyebrow{margin:0!important;color:var(--mw-primary)!important;font-size:12px!important;font-weight:800}.count{padding:6px 9px;border-radius:999px;background:var(--mw-tint-blue);color:var(--mw-primary);font-size:12px;font-weight:800;white-space:nowrap}.summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:18px 0}.summary div{padding:12px;border-radius:var(--mw-radius);background:var(--mw-bg)}.summary dt{color:var(--mw-sub);font-size:12px}.summary dd{margin:6px 0 0;font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}.tableWrap{overflow-x:auto}.tableWrap table{width:100%;border-collapse:collapse;font-size:13px}.tableWrap th,.tableWrap td{padding:11px 10px;border-top:1px solid var(--mw-line);text-align:left;white-space:nowrap}.tableWrap th{color:var(--mw-sub);font-size:12px;font-weight:700}.period{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin-top:16px}.period label{display:grid;gap:5px;color:var(--mw-sub);font-size:12px;font-weight:700}.period input{min-height:44px;padding:8px 10px;border:1px solid var(--mw-line);border-radius:var(--mw-radius);background:var(--mw-card);color:var(--mw-fg);font:inherit}.period button{min-height:44px;padding:10px 14px;border:0;border-radius:var(--mw-radius);background:var(--mw-primary);color:var(--mw-on-accent);font:inherit;font-weight:800;cursor:pointer}.period button:focus-visible,.period input:focus-visible{outline:2px solid var(--mw-primary);outline-offset:2px}.exportMessage{font-size:12px!important}
 /* BBE-193 — 성공과 실패를 «보이는 쪽» 에서도 가른다. 예전엔 이 한 클래스뿐이라
    권한 거부와 성공이 글자 크기까지 똑같았다. 색은 브랜드 토큰만 쓴다. */
 .exportOk{color:var(--mw-success)}
@@ -11,27 +11,27 @@
 /* BBE-240 — 연도별 전체 원장(③). 기존 .summary/.tableWrap 톤을 그대로 잇는다. */
 .yearHead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
 .yearHead h1{margin:0;font-size:20px;letter-spacing:-.02em}
-.yearTabs{display:flex;gap:6px;background:var(--mw-bg);padding:4px;border-radius:11px;border:1px solid var(--mw-line)}
+.yearTabs{display:flex;gap:6px;background:var(--mw-bg);padding:4px;border-radius:var(--mw-radius);border:1px solid var(--mw-line)}
 .yearTabs button{border:0;background:none;color:var(--mw-sub);font:inherit;font-size:13px;font-weight:700;padding:7px 14px;border-radius:8px;cursor:pointer}
 .yearTabs button[aria-selected="true"]{background:var(--mw-card);color:var(--mw-fg);box-shadow:0 1px 2px rgba(0,0,0,.06)}
-.yearTabs button:focus-visible{outline:2.5px solid var(--mw-primary);outline-offset:1px}
+.yearTabs button:focus-visible{outline:2px solid var(--mw-primary);outline-offset:1px}
 .monthGroup{margin-bottom:18px}
 .monthGroup h2{margin:0 0 8px;font-size:13px;font-weight:800;color:var(--mw-sub)}
 /* BBE-198 — 정산 리포트(정산-리포트-시안_v1.html §②). 시안의 필터바·리포트머리·소계/합계 톤 그대로. */
-.modeTabs{display:flex;gap:6px;background:var(--mw-bg);padding:4px;border-radius:11px;border:1px solid var(--mw-line);align-self:flex-start}
+.modeTabs{display:flex;gap:6px;background:var(--mw-bg);padding:4px;border-radius:var(--mw-radius);border:1px solid var(--mw-line);align-self:flex-start}
 .modeTabs button{border:0;background:none;color:var(--mw-sub);font:inherit;font-size:13px;font-weight:700;padding:7px 16px;border-radius:8px;cursor:pointer}
 .modeTabs button[aria-selected="true"]{background:var(--mw-card);color:var(--mw-fg);box-shadow:0 1px 2px rgba(0,0,0,.06)}
-.modeTabs button:focus-visible{outline:2.5px solid var(--mw-primary);outline-offset:1px}
+.modeTabs button:focus-visible{outline:2px solid var(--mw-primary);outline-offset:1px}
 .report{display:block}
-.filters{display:flex;flex-wrap:wrap;gap:9px;align-items:end;padding:14px 16px;background:var(--mw-bg);border:1px solid var(--mw-line);border-radius:12px;margin-bottom:14px}
+.filters{display:flex;flex-wrap:wrap;gap:9px;align-items:end;padding:14px 16px;background:var(--mw-bg);border:1px solid var(--mw-line);border-radius:var(--mw-radius);margin-bottom:14px}
 .filters label{display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mw-sub)}
 .filters input,.filters select{min-height:36px;padding:7px 9px;border:1px solid var(--mw-line);border-radius:9px;background:var(--mw-card);color:var(--mw-fg);font:inherit;font-size:12.5px}
-.filters input:focus-visible,.filters select:focus-visible{outline:2.5px solid var(--mw-primary);outline-offset:1px}
+.filters input:focus-visible,.filters select:focus-visible{outline:2px solid var(--mw-primary);outline-offset:1px}
 .exports{display:flex;align-items:center;gap:8px;margin-left:auto}
 .exportControl{display:inline-flex;align-items:center;gap:8px}
 .exportControl button,.printButton{min-height:36px;padding:8px 14px;border:0;border-radius:9px;background:var(--mw-primary);color:var(--mw-on-accent);font:inherit;font-size:12.5px;font-weight:800;cursor:pointer;white-space:nowrap}
 .ghostButton{background:var(--mw-card);color:var(--mw-body);border:1px solid var(--mw-line)}
-.exportControl button:focus-visible,.printButton:focus-visible{outline:2.5px solid var(--mw-primary);outline-offset:1px}
+.exportControl button:focus-visible,.printButton:focus-visible{outline:2px solid var(--mw-primary);outline-offset:1px}
 .reportHead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding-bottom:12px;border-bottom:2px solid var(--mw-fg);margin-bottom:4px}
 .reportHead h2{margin:0;font-size:17px;letter-spacing:-.01em}
 .reportCondition{margin:5px 0 0;font-size:11.5px;color:var(--mw-sub)}

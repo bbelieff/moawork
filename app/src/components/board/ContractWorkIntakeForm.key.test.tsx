@@ -100,7 +100,7 @@ describe("업체 추가 — 멱등 열쇠", () => {
       form?.requestSubmit();
     });
 
-    expect(seen.length).toBeGreaterThanOrEqual(2);
+    expect(seen).toHaveLength(1);
     expect(new Set(seen.map((s) => s.requestId)).size).toBe(1);
   });
 
@@ -158,5 +158,49 @@ describe("업체 추가 — 멱등 열쇠", () => {
     } finally {
       Object.defineProperty(globalThis.crypto, "randomUUID", { value: original, configurable: true });
     }
+  });
+});
+
+
+describe("existing company response loss", () => {
+  it("retains the same request across failed response/reset and blocks another company until confirmed", async () => {
+    const { seen, action, host } = mount();
+    action.mockImplementation(async (_prev, form) => {
+      seen.push({ companyId: String(form.get("companyId")), requestId: String(form.get("requestId")), groupId: null });
+      return seen.length === 1
+        ? { ok: false, outcome: "uncertain", message: "결과 확인 필요" }
+        : { ok: true, message: "확인 완료" };
+    });
+    await act(async () => root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId={null} startWorkAction={action} truncated={false} />));
+    await open(host);
+    await act(async () => submitFor(host, "c-1")?.requestSubmit());
+    await act(async () => submitFor(host, "c-2")?.requestSubmit());
+    expect(seen).toHaveLength(1);
+    expect(host.textContent).toContain("이전 회사의 저장 결과");
+    await act(async () => [...host.querySelectorAll("button")].find(b => b.textContent === "닫기")?.click());
+    await open(host);
+    await act(async () => submitFor(host, "c-1")?.requestSubmit());
+    expect(seen).toHaveLength(2);
+    expect(seen[1].requestId).toBe(seen[0].requestId);
+    await act(async () => submitFor(host, "c-1")?.requestSubmit());
+    expect(seen[2].requestId).not.toBe(seen[0].requestId);
+  });
+
+  it("transport throw is caught and retry uses the original ID; explicit rejection releases it", async () => {
+    const { seen, action, host } = mount();
+    action.mockImplementation(async (_prev, form) => {
+      seen.push({ companyId: String(form.get("companyId")), requestId: String(form.get("requestId")), groupId: null });
+      if (seen.length === 1) throw new Error("transport interrupted");
+      return { ok: false, outcome: "rejected", message: "권한 확인" };
+    });
+    await act(async () => root!.render(<ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId={null} startWorkAction={action} truncated={false} />));
+    await open(host);
+    await act(async () => submitFor(host, "c-1")?.requestSubmit());
+    expect(host.textContent).toContain("저장 결과를 확인하지 못했어요");
+    await act(async () => submitFor(host, "c-1")?.requestSubmit());
+    expect(seen[1].requestId).toBe(seen[0].requestId);
+    await act(async () => submitFor(host, "c-2")?.requestSubmit());
+    expect(seen[2].requestId).not.toBe(seen[0].requestId);
+    expect(seen[2].companyId).toBe("c-2");
   });
 });

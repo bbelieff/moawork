@@ -26,8 +26,8 @@ const ACTION_TEMPLATES: Record<string, { icon: string; verb: string; where: stri
   "settlement.create": { icon: "₩", verb: "정산이 등록되었습니다", where: "회계" },
   "settlement.update": { icon: "₩", verb: "정산을 수정했습니다", where: "회계" },
   "notice.create": { icon: "📋", verb: "공지를 올렸습니다", where: "공지사항" },
-  "member.join_request": { icon: "👥", verb: "합류를 요청했습니다", where: "멤버관리" },
-  "member.join_approved": { icon: "✅", verb: "합류가 승인되었습니다", where: "멤버관리" },
+  "member.join_request": { icon: "👥", verb: "합류를 요청했습니다", where: "조직관리" },
+  "member.join_approved": { icon: "✅", verb: "합류가 승인되었습니다", where: "조직관리" },
 };
 
 const FALLBACK = { icon: "•", verb: "변경했습니다", where: "" } as const;

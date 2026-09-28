@@ -52,7 +52,9 @@ describe("Issue #576 신규리드 순서와 표시 컬럼", () => {
   it("화면은 회사가 저장한 컬럼 순서를 다시 덮어쓰지 않는다", () => {
     const source = readFileSync(new URL("./BoardWorkspace.tsx", import.meta.url), "utf8");
     expect(source).not.toContain("orderNewLeadColumnsLikeMonday(");
-    expect(source).toContain("selectVisibleColumns(resolvedColumns, displayFilters.visibleColumnKeys)");
+    expect(source).toContain("resolveColumnOrder(tableColumns, storedOrder ?? undefined)");
+    expect(source).toContain("selectVisibleColumns(resolved, displayFilters.visibleColumnKeys)");
+    expect(source).toContain("const shown = columnsForBlock(block.key)");
   });
 
   it("과거 저장 뷰 alias를 합성 키로 복원하고 BoardWorkspace에서만 finance projection을 적용한다", () => {
@@ -75,7 +77,7 @@ describe("Issue #576 신규리드 순서와 표시 컬럼", () => {
   it("조건부 필수 매출 입력도 라벨 옆 빨간 별표를 보인다", () => {
     const source = readFileSync(new URL("./NewLeadIntakeFields.tsx", import.meta.url), "utf8");
     expect(source).toContain(
-      '<span>그외 매출 구간 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>',
+      '<span>정확한 매출액 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>',
     );
     expect(source).toMatch(/name="revenue_band_custom" required/);
   });

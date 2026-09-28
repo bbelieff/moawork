@@ -53,7 +53,7 @@ describe("AssignmentFlowPopover", () => {
     expect(sections.find((section) => section.querySelector("h3")?.textContent === "다음 인계 예정")?.textContent).toContain("다음 담당");
     expect(text).toContain("규칙 수신자");
     expect(text).toContain("직접 추가");
-    expect(text).toContain("비활성 멤버");
+    expect(text).toContain("비활성 구성원");
   });
 
   it("removes only a direct follower through the callback and keeps history visible", async () => {

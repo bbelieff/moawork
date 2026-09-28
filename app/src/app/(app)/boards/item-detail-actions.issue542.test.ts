@@ -13,7 +13,7 @@ const client = {
       ? { data: { id: "00000000-0000-4000-8000-000000000030", board_id: "00000000-0000-4000-8000-000000000020", org_id: "00000000-0000-4000-8000-000000000001", assigned_to: "00000000-0000-4000-8000-000000000010", deleted_at: null }, error: null }
       : { data: [], error: null };
     const builder: Record<string, unknown> = {};
-    for (const method of ["select", "eq", "is", "order", "limit"]) builder[method] = vi.fn(() => builder);
+    for (const method of ["select", "eq", "in", "is", "order", "limit"]) builder[method] = vi.fn(() => builder);
     builder.maybeSingle = vi.fn(async () => result);
     builder.then = (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve);
     return builder;

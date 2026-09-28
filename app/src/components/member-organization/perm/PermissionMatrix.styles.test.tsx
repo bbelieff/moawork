@@ -75,8 +75,8 @@ describe("권한 매트릭스 — 화면에 실제로 닿는 스타일만 쓴다
     //   함정이 된다. 못은 «무엇이 틀렸었나»(①②③)에만 박는 것이 맞다.
     const roleNav = html.match(/<nav[^>]*aria-label="역할"[^>]*class="([^"]*)"/)
       ?? html.match(/<nav[^>]*class="([^"]*)"[^>]*aria-label="역할"/);
-    expect(roleNav?.[1], "역할 목록이 카드가 아니다").toMatch(/rounded-2xl/);
+    expect(roleNav?.[1], "역할 목록이 카드가 아니다").toMatch(/rounded-md/);
     expect(roleNav?.[1]).toMatch(/border/);
-    expect(html.match(/<section[^>]*aria-label="[^"]*권한"[^>]*class="([^"]*)"/)?.[1] ?? "").toMatch(/rounded-2xl/);
+    expect(html.match(/<section[^>]*aria-label="[^"]*권한"[^>]*class="([^"]*)"/)?.[1] ?? "").toMatch(/rounded-md/);
   });
 });

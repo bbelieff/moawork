@@ -37,7 +37,7 @@ export type PermissionMatrixProps = {
   revalidatePath?: string;
 };
 
-const CARD = "rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950";
+const CARD = "rounded-md border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950";
 
 function AccessDenied({ children }: { children: ReactNode }): ReactElement {
   return <section role="alert" className={`${CARD} p-4`}>{children}</section>;
@@ -49,11 +49,11 @@ function Switch({ on, disabled }: { on: boolean; disabled: boolean }): ReactElem
     <span
       aria-hidden="true"
       className={`relative inline-flex h-5 w-9 flex-none rounded-full transition ${
-        on ? "bg-violet-600" : "bg-zinc-300 dark:bg-zinc-700"
+        on ? "bg-mw-primary" : "bg-zinc-300 dark:bg-zinc-700"
       } ${disabled ? "opacity-50" : ""}`}
     >
       <span
-        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${on ? "left-[18px]" : "left-0.5"}`}
+        className={`absolute top-0.5 h-4 w-4 rounded-full shadow transition-all ${on ? "left-[18px] bg-mw-on-accent" : "left-0.5 bg-white"}`}
       />
     </span>
   );
@@ -103,7 +103,7 @@ export function PermissionMatrix(props: PermissionMatrixProps): ReactElement {
                 aria-current={active ? "true" : undefined}
                 className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm transition ${
                   active
-                    ? "bg-violet-50 font-semibold text-violet-800 dark:bg-violet-950 dark:text-violet-200"
+                    ? "bg-mw-tint-blue font-semibold text-mw-primary  "
                     : "text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-900"
                 }`}
               >
@@ -177,7 +177,7 @@ export function PermissionMatrix(props: PermissionMatrixProps): ReactElement {
                         aria-pressed={currentAllowed}
                         aria-label={`${item.label} ${currentAllowed ? "켜짐" : "꺼짐"}${roleImmutable ? " · 대표 권한은 끌 수 없어요" : ""}`}
                         title={roleImmutable ? "대표 권한은 끌 수 없어요" : undefined}
-                        className="flex items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed"
+                        className="flex items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mw-primary disabled:cursor-not-allowed"
                       >
                         <Switch on={currentAllowed} disabled={toggleDisabled} />
                       </button>

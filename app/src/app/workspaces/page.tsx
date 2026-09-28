@@ -7,10 +7,15 @@ import { WorkspaceManagementPanel } from "@/components/account/WorkspaceManageme
 import accountStyles from "@/components/account/account.module.css";
 
 export default async function WorkspacesPage() {
-  const snapshot = await loadWorkspaceRoutingSnapshot();
+  // The routing snapshot and the owner deletion rows are independent reads
+  // for the same user, so they are issued together. Redirect/loadError
+  // precedence below is unchanged — only the wait is shared.
+  const [snapshot, ownerRows] = await Promise.all([
+    loadWorkspaceRoutingSnapshot(),
+    loadOwnerWorkspaceDeletionRows().catch(() => null),
+  ]);
   if (snapshot.kind === "unauthenticated") redirect("/login?next=/workspaces");
   if (snapshot.kind === "error") redirect("/workspace-entry?error=routing");
-  const ownerRows = await loadOwnerWorkspaceDeletionRows().catch(() => null);
   if (!ownerRows) return <main className={accountStyles.page}><WorkspaceManagementPanel workspaces={[]} loadError /></main>;
   const pending = ownerRows.filter((row) => row.status === "pending_delete");
   if (snapshot.memberships.length === 0) {

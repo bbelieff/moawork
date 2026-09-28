@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GroupTable } from "./GroupTable";
+import { BoardCell, GroupTable } from "./GroupTable";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { newLeadPresentationKey, presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
 
@@ -12,6 +12,29 @@ import { newLeadPresentationKey, presentNewLeadColumns } from "@/lib/default-tab
 
 afterEach(() => {
   document.body.replaceChildren();
+});
+
+describe("canonical work/contact ownership",()=>{
+  it.each(["work","contact"] as const)("%s uses assigned_to, never absent/stale owner EAV",(kind)=>{
+    for(const owner of [undefined,"stale"]){
+      const html=renderToStaticMarkup(<BoardCell boardId="board-a" column={columns[0]} row={{...row,assigned_to:"actor",values:{owner:owner??null}}}
+        readOnly={false} workflowProgressKind={kind} members={[{id:"actor",label:"현재 담당"},{id:"stale",label:"이전 담당"}]}/>);
+      expect(html).toContain("현재 담당"); expect(html).not.toContain("미배정");
+      expect(html).not.toContain('name="kind" value="person"');
+      expect(html).toContain('aria-haspopup="dialog"');
+    }
+  });
+  it("null canonical owner stays unassigned despite stale EAV; custom person still uses its own value",()=>{
+    const canonical=renderToStaticMarkup(<BoardCell boardId="board-a" column={columns[0]} row={{...row,assigned_to:null,values:{owner:"actor"}}}
+      readOnly workflowProgressKind="work" members={[{id:"actor",label:"이전 담당"}]}/>);
+    expect(canonical).toContain("미배정");expect(canonical).not.toContain("이전 담당");
+    const custom=renderToStaticMarkup(<BoardCell boardId="board-a" column={columns[0]} row={{...row,assigned_to:"other",values:{owner:"actor"}}}
+      readOnly={false} members={[{id:"actor",label:"사용자 지정 담당"}]}/>);
+    expect(custom).toContain("사용자 지정 담당");expect(custom).toContain('name="kind" value="person"');
+    const legacy=renderToStaticMarkup(<BoardCell boardId="board-a" column={columns[0]} row={{...row,deal_id:null,assigned_to:"other",values:{owner:"actor"}}}
+      readOnly={false} workflowProgressKind="work" members={[{id:"actor",label:"기존 담당"}]}/>);
+    expect(legacy).toContain("기존 담당");expect(legacy).toContain('name="kind" value="person"');
+  });
 });
 
 const keys = [
@@ -65,26 +88,13 @@ function render(
 }
 
 describe("BBE-171 new-lead GroupTable wiring", () => {
-  it("보드 컬럼을 바로 채울 수 있는 회사 등록 필드와 동일한 사람 선택 UI를 보여준다", () => {
+  it("그룹 추가는 입력 폼을 표 안에 펼치지 않고 팝업 진입 버튼만 표시한다", () => {
     const html = render();
     expect(html).toContain("＋ 새 항목");
-    expect(html).toContain("회사명");
-    expect(html).toContain("필수");
-    expect(html).toContain("사업자유형");
-    expect(html).toContain("개인사업자");
-    expect(html).toContain("법인사업자");
-    expect(html).toContain("그외");
-    expect(html).toContain("연락처");
-    expect(html).toContain("담당자 가 (나)");
-    expect(html).toContain("대표자명");
-    expect(html).toContain("이메일");
-    expect(html).toContain("업종");
-    expect(html).toContain("담당자 1명");
-    expect(html).toContain("연관담당 · 알림받는 사람 여러 명");
-    expect(html).not.toContain("등록과 동시에 준비되는 값");
-    expect(html).toContain("취소");
+    expect(html).not.toContain('name="requestId"');
+    expect(html).not.toContain('name="revenue_band_custom"');
+    expect(html).not.toContain("연관담당 · 알림받는 사람 여러 명");
   });
-
   it("does not infer a canonical board from matching custom columns", () => {
     const html = renderToStaticMarkup(<GroupTable boardId="board-a" groupId="group-a" columns={columns} rows={[row]} readOnly={false} rowDragEnabled={false} cellFlash={null} onColumnDrop={() => {}} dragRowId={null} canDropRow={() => false} onRowDragStart={() => {}} onRowDragEnd={() => {}} onRowDrop={() => {}} />);
     expect(html).not.toContain('name="dealId"');

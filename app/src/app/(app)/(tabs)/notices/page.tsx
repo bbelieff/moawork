@@ -38,7 +38,7 @@ import {
 function NoticesNotConnected() {
   return (
     <section
-      className="rounded-xl border border-mw-line bg-mw-card p-5"
+      className="rounded-md border border-mw-line bg-mw-card p-5"
       aria-labelledby="notice-entry-title"
       role="status"
       data-testid="notice-not-connected"
@@ -87,7 +87,7 @@ export default async function NoticesPage({
   }
   if (noticeEntryState === "conflict") {
     return (
-      <section className="rounded-xl border border-mw-line bg-mw-card p-5" aria-labelledby="notice-entry-title">
+      <section className="rounded-md border border-mw-line bg-mw-card p-5" aria-labelledby="notice-entry-title">
         <h1 id="notice-entry-title" className="text-lg font-semibold text-mw-fg">
           공지사항 보드를 하나로 확인하지 못했습니다
         </h1>
@@ -97,7 +97,7 @@ export default async function NoticesPage({
   }
   if (noticeEntryState === "permission") {
     return (
-      <section className="rounded-xl border border-mw-line bg-mw-card p-5" aria-labelledby="notice-entry-title">
+      <section className="rounded-md border border-mw-line bg-mw-card p-5" aria-labelledby="notice-entry-title">
         <h1 id="notice-entry-title" className="text-lg font-semibold text-mw-fg">
           공지사항 보드 복구 권한이 없습니다
         </h1>
@@ -109,7 +109,7 @@ export default async function NoticesPage({
   }
   if (noticeEntryState === "missing") {
     return (
-      <section className="rounded-xl border border-red-200 bg-mw-card p-5" aria-labelledby="notice-entry-title">
+      <section className="rounded-md border border-red-200 bg-mw-card p-5" aria-labelledby="notice-entry-title">
         <h1 id="notice-entry-title" className="text-lg font-semibold text-mw-fg">
           공지사항 보드를 복구하지 못했습니다
         </h1>
@@ -120,7 +120,7 @@ export default async function NoticesPage({
   if (noticeEntryState === "unavailable") {
     return (
       <section
-        className="rounded-xl border border-red-200 bg-mw-card p-5"
+        className="rounded-md border border-red-200 bg-mw-card p-5"
         aria-labelledby="notice-entry-title"
         data-testid="notice-load-error"
       >

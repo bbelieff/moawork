@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Logo } from "@/components/brand/Logo";
 import { PLATFORM_NAV, PLATFORM_NAV_GROUPS, activePlatformSection } from "./nav";
 import styles from "./platform.module.css";
 import type { PlatformAggregateState, PlatformSectionKey } from "@/lib/platform/contracts";
@@ -25,11 +26,12 @@ export function PlatformShell({
     <div className={styles.root}>
       <header className={styles.band} role="note">
         <div className={styles.brand}>
-          <span className={styles.mark} aria-hidden="true"><i /><i /><i /></span>
-          <div><strong>모아워크 운영 관리</strong><span>서비스 관리자 전용</span></div>
+          <Logo height={40} className={styles.brandLogo} />
+          <span className={styles.brandCaption}>서비스 관리자 전용</span>
         </div>
-        <p className={styles.safety}>서비스 관리자 화면이에요. 고객 업무 정보는 별도 권한이 있을 때만 볼 수 있어요.</p>
-        <DeveloperModeControl mode="platform" action={userModeAction ?? { mode: "user" }} />
+        <div className={styles.modeControls}>
+          <DeveloperModeControl mode="platform" action={userModeAction ?? { mode: "user" }} />
+        </div>
       </header>
       <div className={styles.layout}>
         <nav className={styles.sidebar} aria-label="서비스 운영 메뉴">
@@ -55,7 +57,7 @@ export function PlatformShell({
             <header className={styles.heading}>
               <p className={styles.eyebrow}>서비스 운영 <span aria-hidden="true">/</span> {activeItem?.label ?? title}</p>
               <h1>{title}</h1>
-              <p>{description}</p>
+              {description ? <p>{description}</p> : null}
             </header>
             <div className={styles.content}>{children}</div>
           </div>

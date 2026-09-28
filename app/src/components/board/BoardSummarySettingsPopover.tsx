@@ -166,7 +166,7 @@ export function BoardSummarySettingsPopover({
             aria-label="요약 설정"
             aria-busy={busy || undefined}
             style={{ left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight }}
-            className="fixed flex flex-col overflow-hidden rounded-xl border border-mw-line bg-mw-card text-mw-fg shadow-xl"
+            className="fixed flex flex-col overflow-hidden rounded-md border border-mw-line bg-mw-card text-mw-fg shadow-xl"
           >
             <header className="flex shrink-0 items-start gap-2 border-b border-mw-line px-3 py-2.5">
               <div className="min-w-0 flex-1">

@@ -43,7 +43,7 @@ export function ProductCombobox({ labels, value, disabled, onSelect }: { labels:
       <div className="flex gap-2">
         <input id={`${listId}-input`} list={listId} value={draft} disabled={disabled} onChange={(event) => setDraft(event.target.value)} placeholder="선택하거나 직접 입력" className="h-9 min-w-0 flex-1 rounded-md border border-mw-line bg-mw-card px-2 text-sm" />
         <datalist id={listId}>{labels.map((label) => <option key={label} value={label} />)}</datalist>
-        <button type="button" disabled={disabled || !matched} onClick={() => { setDraft(matched); onSelect(matched); }} className="h-9 rounded-md bg-mw-primary px-3 text-sm font-semibold text-white disabled:opacity-40">{isNew ? "새 상품 추가" : "적용"}</button>
+        <button type="button" disabled={disabled || !matched} onClick={() => { setDraft(matched); onSelect(matched); }} className="h-9 rounded-md bg-mw-primary px-3 text-sm font-semibold text-mw-on-accent disabled:opacity-40">{isNew ? "새 상품 추가" : "적용"}</button>
       </div>
       {draft.trim() && matched !== draft.trim() ? <p className="text-xs text-mw-sub">“{matched}”으로 매칭됩니다.</p> : null}
     </div>

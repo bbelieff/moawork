@@ -228,6 +228,28 @@ const stylePath = resolve(
 );
 
 describe("BBE-565 목업 기준 실제 상세 패널", () => {
+  it("상담은 두 행 shell의 새 행이 아니라 정보 rail 안에서 스크롤된다", () => {
+    const html = renderStaticPanel(
+      <ItemDetailPanel boardId="board-a" row={row} columns={columns}
+        boardLayout={[{ key: "company", source: "column" }]}
+        layout={[{ key: "company", source: "column" }]} inherited defaultOpen canEditItems canManageColumns
+        consultationSection={<section><button type="button">예약 변경</button></section>} />,
+    );
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    const consultation = host.querySelector("[data-item-detail-consultation]")!;
+    const rail = host.querySelector("[data-item-detail-info-rail]")!;
+    const header = host.querySelector("[data-item-detail-header]")!;
+    expect(consultation.parentElement).toBe(rail);
+    expect(header.parentElement!.children).toHaveLength(2);
+    expect(rail.contains(consultation.querySelector("button"))).toBe(true);
+    const css = readFileSync(stylePath, "utf8");
+    const rule = css.match(/\.consultationSection\s*\{([^}]+)\}/)![1];
+    expect(rule).toContain("flex-shrink: 0");
+    expect(rule).toContain("overflow-x: auto");
+    expect(rule).toContain("max-width: 100%");
+  });
+
   it("상단 헤더·좌측 회사정보·우측 알림/히스토리·하단 작성기 구조를 렌더한다", () => {
     const html = renderStaticPanel(
       <ItemDetailPanel
@@ -288,7 +310,7 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
       />,
     );
     expect(html).toContain("상세");
-    expect(html).toContain("상세 메모을 표에도 보이기");
+    expect(html).toContain("상세 메모를 표에도 보이기");
     expect(html).toContain("+ 상세 전용 필드 추가");
     expect(html).toContain('aria-label="상세 전용 필드 이름"');
     expect(html).toContain("기본으로 되돌리기");
@@ -314,9 +336,9 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
         defaultOpen
       />,
     );
-    expect(html).toContain("법인공동인증서을 표에서 내리기");
+    expect(html).toContain("법인공동인증서를 표에서 내리기");
     // 이미 표에 있으므로 «올리기» 는 없어야 한다 — 두 버튼이 같이 서면 무엇이 참인지 모른다.
-    expect(html).not.toContain("법인공동인증서을 표에도 보이기");
+    expect(html).not.toContain("법인공동인증서를 표에도 보이기");
   });
 
   it("★ 원래부터 표 컬럼이던 칸에는 되돌리기 버튼이 안 붙는다 — 구조 축소가 아니다", () => {
@@ -333,7 +355,40 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
         defaultOpen
       />,
     );
-    expect(html).not.toContain("연락처을 표에서 내리기");
+    expect(html).not.toContain("연락처를 표에서 내리기");
+  });
+
+  /*
+   * #717 — 사용자가 지은 이름에 조사를 «손으로» 붙이면 절반이 틀린다.
+   *
+   * ★ 이 시험이 생기기 전까지, 바로 위 시험들이 틀린 조사를 «정답으로» 고정하고 있었다
+   *   («상세 메모을» · «법인공동인증서을»). 시험이 버그를 지키고 있었던 것이다.
+   *
+   * ★★ 그리고 이건 title·aria-label 이다 — 화면 낭독기를 쓰는 사람이 그대로 «듣는다».
+   *
+   * 받침 «있는» 이름과 «없는» 이름을 같은 시험에서 돌린다. 한쪽만 재면
+   *   `${label}을` 로 되돌려도 통과하는 시험이 된다 (받침 있는 쪽은 원래 맞으니까).
+   */
+  it.each([
+    ["받침 있음", "영업관리팀", "영업관리팀을"],
+    ["받침 없음", "담당자", "담당자를"],
+    ["받침 없음 · 모음", "메모", "메모를"],
+    ["받침 ㄹ", "이메일", "이메일을"],
+  ])("★ #717 %s — 「%s」에는 「%s」가 붙는다", (_label, name, expected) => {
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={{ ...row, values: { detail_note: "값" } }}
+        columns={columns}
+        boardLayout={[]}
+        layout={[{ key: "detail_note", source: "detail", label: name, type: "text" }]}
+        inherited={false}
+        canEditItems
+        canManageColumns
+        defaultOpen
+      />,
+    );
+    expect(html, `${name} → 조사가 틀렸다`).toContain(`${expected} 표에도 보이기`);
   });
 
   it("상세 연락처는 편집 입력에서도 010-0000-0000 표기로 시작한다", () => {
@@ -686,7 +741,7 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
      *   ★ 그래도 «지워지지는» 않는다는 것이 문구에 남아 있어야 한다 — 되살릴 수 있다.
      */
     expect(html).not.toContain("삭제 불가");
-    expect(html).toContain("되살릴 수 있어요");
+    expect(html).toContain("전체 기록");
     expect(html).toContain("✓ 자동 저장됨");
     // #660 — 탭을 가로채므로 «빠져나갈 문(Esc)» 을 이름에 적는다. 키보드만 쓰는 사람이 갇히면 안 된다.
     // #662 — 성격이 넷이 되어 「메모 또는 통화 기록」이 더는 사실이 아니다. 고르는 자리를 가리킨다.
@@ -885,7 +940,181 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
     expect(source).toContain("focusDetailPanelElement(closeButtonRef.current)");
     expect(source).toContain("ref={triggerRef}");
     expect(source).toContain(
-      "restoreDetailPanelOpener(open, wasOpenRef.current, triggerRef.current)",
+      "restoreDetailPanelOpener(open, wasOpenRef.current, requestedOpenerRef.current?.isConnected ? requestedOpenerRef.current : triggerRef.current)",
     );
   });
+
+  it("v17-detail 증빙 묶음·메모 고치기·시도 추천 입력을 렌더한다", () => {
+    const regionColumns: BoardColumn[] = [
+      { ...columns[0], id: "col-sido", key: "sido", label: "시도", type: "select" },
+    ];
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={{ ...row, values: { sido: "서울" } }}
+        columns={regionColumns}
+        boardLayout={[{ key: "sido", source: "column" }]}
+        layout={[{ key: "sido", source: "column" }]}
+        inherited
+        canEditItems
+        canManageColumns={false}
+        defaultOpen
+        initialDetail={{
+          ok: true,
+          events: [
+            { id: "evt-1", kind: "memo", body: "첫 메모", actor_id: "user-a", created_at: "2026-09-20T00:00:00Z" },
+            { id: "evt-2", kind: "memo", body: "고친 메모", actor_id: "user-a", created_at: "2026-09-21T00:00:00Z", edited_at: "2026-09-22T00:00:00Z", edit_count: 1 },
+          ],
+          links: [],
+          files: [
+            { id: "f-1", name: "사업자등록증.pdf", mime_type: "application/pdf", size_bytes: 2048, created_at: "2026-09-22T00:00:00Z", downloadUrl: "https://example.invalid/dl" },
+          ],
+          members: [{ id: "user-a", name: "담당자 A" }],
+          viewerId: "user-a",
+          viewerRole: "member",
+          assignedTo: "user-a",
+        }}
+      />,
+    );
+    // 증빙: 묶음 제목·다중 선택 input·내려받기. 폴더 연결은 건드리지 않는다.
+    expect(html).toContain("증빙 파일");
+    expect(html).toContain('id="item-a-evidence-files"');
+    expect(html).toContain("사업자등록 1개");
+    expect(html).toContain("https://example.invalid/dl");
+    // 메모: 본인 줄에만 고치기, 고친 줄에는 고침 표시.
+    expect(html).toContain("메모 기록 고치기");
+    expect(html).toContain("고침");
+    // 지역: 시도 추천 입력이 자동저장 입력 대신 렌더된다.
+    expect(html).toContain('name="item-a-sido-region"');
+  });
+});
+
+it("히스토리는 대화와 실제 변경을 기본으로 보여 주고 전체 기록에서 최초 입력을 확인한다", async () => {
+  window.history.replaceState(null, "", "/#item-item-a");
+  const container = document.createElement("div");
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => mountedRoot?.render(
+    <ItemDetailPanel boardId="board-a" row={row} columns={columns}
+      boardLayout={[{ key: "company", source: "column" }]} layout={[{ key: "company", source: "column" }]}
+      inherited canEditItems={false} canManageColumns={false} defaultOpen
+      initialDetail={{ ok: true, links: [], files: [], members: [{ id: "user-a", name: "담당 A" }], events: [
+        { id: "memo", kind: "memo", actor_id: "user-a", body: "담당자 상담 내용", created_at: row.created_at },
+        { id: "initial", kind: "field_change", actor_id: "user-a", body: "company 항목이 변경되었습니다.", created_at: row.created_at, metadata: { column_key: "company", before: null, after: "초기 회사" } },
+        { id: "change", kind: "field_change", actor_id: "user-a", body: "company 항목이 변경되었습니다.", created_at: "2026-08-17T00:00:00Z", metadata: { column_key: "company", before: "초기 회사", after: "변경 회사" } },
+      ] }} />,
+  ));
+  const history = document.querySelector<HTMLElement>("[data-item-detail-history]")!;
+  expect(history.textContent).toContain("담당자 상담 내용");
+  expect(history.textContent).toContain("회사명: 초기 회사 → 변경 회사");
+  expect(history.textContent).not.toContain("최초 입력");
+  expect(history.textContent).not.toContain("company 항목");
+  const toggle = history.querySelector<HTMLButtonElement>("button[aria-pressed]")!;
+  await act(async () => toggle.click());
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  expect(history.textContent).toContain("회사명: 미입력 → 초기 회사 (최초 입력)");
+  expect(history.querySelector("[data-history-remove]")).toBeNull();
+  await act(async () => toggle.click());
+  expect(history.textContent).not.toContain("최초 입력");
+});
+
+
+describe("Next canonical URL and detail hash", () => {
+  // Next 16 app-router wraps native history writes to update canonicalUrl.
+  // Server Action/refresh then commits that canonical URL back to history.
+  // Direct location.hash does not pass through this integration point.
+  function routerHistoryProbe() {
+    let canonical = window.location.href;
+    const push = window.history.pushState.bind(window.history);
+    const replace = window.history.replaceState.bind(window.history);
+    const pushSpy = vi.spyOn(window.history, "pushState").mockImplementation((data, title, url) => {
+      if (url) canonical = new URL(url, window.location.href).href;
+      push(data, title, url);
+    });
+    const replaceSpy = vi.spyOn(window.history, "replaceState").mockImplementation((data, title, url) => {
+      if (url) canonical = new URL(url, window.location.href).href;
+      replace(data, title, url);
+    });
+    return { canonical: () => canonical, refresh: () => replace(null, "", canonical),
+      restore: () => { pushSpy.mockRestore(); replaceSpy.mockRestore(); } };
+  }
+  function panel(id = "item-a", next?: {id:string;title:string}, previous?: {id:string;title:string}) {
+    return <ItemDetailPanel boardId="board-a" row={{ ...row, id, title: id === "item-a" ? "대한정밀" : "미래상사" }}
+      columns={columns} boardLayout={[{key:"company",source:"column"}]} layout={[{key:"company",source:"column"}]}
+      inherited canEditItems canManageColumns={false} nextItem={next} previousItem={previous}
+      initialDetail={{ok:true,events:[],links:[],files:[],members:[]}} />;
+  }
+  it("a saved checkbox regroup keeps the same detail open after the row remounts", async () => {
+    window.history.replaceState(null,"","/w/test/boards/board-a?consultation=remote");
+    const probe = routerHistoryProbe();
+    try {
+      const host=document.createElement("div"); document.body.append(host); mountedRoot=createRoot(host);
+      await act(async()=>mountedRoot?.render(<div key="contract-done">{panel()}</div>));
+      await act(async()=>document.querySelector<HTMLButtonElement>('[data-item-detail-trigger="item-a"]')!.click());
+      expect(new URL(probe.canonical()).hash).toBe("#item-item-a");
+      await act(async()=>{ probe.refresh(); mountedRoot?.render(<div key="deposit-confirmed">{panel()}</div>); });
+      expect(window.location.hash).toBe("#item-item-a");
+      expect(document.querySelectorAll('[aria-label="상세 닫기"]')).toHaveLength(1);
+      expect(window.location.search).toBe("?consultation=remote");
+    } finally { probe.restore(); }
+  });
+  it("sibling navigation updates the router URL and back/forward still select one detail", async () => {
+    const probe=routerHistoryProbe();
+    try {
+      const host=document.createElement("div"); document.body.append(host); mountedRoot=createRoot(host);
+      await act(async()=>mountedRoot?.render(<>{panel("item-a",{id:"item-b",title:"미래상사"})}{panel("item-b",undefined,{id:"item-a",title:"대한정밀"})}</>));
+      await act(async()=>document.querySelector<HTMLButtonElement>('[data-item-detail-trigger="item-a"]')!.click());
+      await act(async()=>{ document.querySelector<HTMLButtonElement>('[aria-label="다음 회사 미래상사 열기"]')!.click(); await new Promise(resolve=>setTimeout(resolve,30)); });
+      expect(new URL(probe.canonical()).hash).toBe("#item-item-b");
+      await act(async()=>{ window.history.back(); await new Promise(resolve=>setTimeout(resolve,30)); });
+      expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe("대한정밀");
+      expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+      await act(async()=>{ window.history.forward(); await new Promise(resolve=>setTimeout(resolve,30)); });
+      expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe("미래상사");
+      expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    } finally { probe.restore(); }
+  });
+  it("closing a direct deep link replaces only its hash and keeps the query", async () => {
+    window.history.replaceState(null,"","/w/test/boards/board-a?consultation=remote#item-item-a");
+    const probe=routerHistoryProbe(); const length=window.history.length;
+    try {
+      const host=document.createElement("div"); document.body.append(host); mountedRoot=createRoot(host);
+      await act(async()=>mountedRoot?.render(panel()));
+      await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="상세 닫기"]')!.click());
+      expect(new URL(probe.canonical()).hash).toBe("");
+      expect(window.location.search).toBe("?consultation=remote");
+      expect(window.history.length).toBe(length);
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+    } finally { probe.restore(); }
+  });
+  it("an unsuccessful save refresh retains the open drawer and unsaved memo draft", async () => {
+    const probe=routerHistoryProbe();
+    try {
+      const host=document.createElement("div"); document.body.append(host); mountedRoot=createRoot(host);
+      await act(async()=>mountedRoot?.render(panel()));
+      await act(async()=>document.querySelector<HTMLButtonElement>('[data-item-detail-trigger="item-a"]')!.click());
+      const draft=document.querySelector<HTMLTextAreaElement>('[data-item-detail-composer] textarea')!;
+      await act(async()=>{
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(draft,"아직 저장하지 않은 메모");
+        draft.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+      await act(async()=>{ probe.refresh(); mountedRoot?.render(panel()); });
+      expect(window.location.hash).toBe("#item-item-a");
+      expect(document.querySelector<HTMLTextAreaElement>('[data-item-detail-composer] textarea')!.value).toBe("아직 저장하지 않은 메모");
+      expect(document.querySelectorAll('[aria-label="상세 닫기"]')).toHaveLength(1);
+    } finally { probe.restore(); }
+  });
+  it("closing a drawer opened here goes back once instead of adding another URL entry", async () => {
+    window.history.replaceState(null,"","/w/test/boards/board-a?consultation=remote");
+    const length=window.history.length;
+    const host=document.createElement("div"); document.body.append(host); mountedRoot=createRoot(host);
+    await act(async()=>mountedRoot?.render(panel()));
+    await act(async()=>document.querySelector<HTMLButtonElement>('[data-item-detail-trigger="item-a"]')!.click());
+    expect(window.history.length).toBe(length+1);
+    await act(async()=>{ document.querySelector<HTMLButtonElement>('[aria-label="상세 닫기"]')!.click(); await new Promise(resolve=>setTimeout(resolve,30)); });
+    expect(window.location.hash).toBe("");
+    expect(window.location.search).toBe("?consultation=remote");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
 });

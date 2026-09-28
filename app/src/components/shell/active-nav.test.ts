@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   boardIdFromPathname,
   resolveActiveNavKey,
+  resolveConsultationNavKey,
   TAB_SOURCE_NAV_KEY,
 } from "./active-nav";
 import {
@@ -81,5 +82,24 @@ describe("사이드바 활성 판정", () => {
     expect(TAB_SOURCE_NAV_KEY[CONTACT_TAB_SOURCE]).toBe("contact");
     expect(TAB_SOURCE_NAV_KEY[CONTRACT_WORK_TAB_SOURCE]).toBe("work");
     expect(TAB_SOURCE_NAV_KEY[NOTICE_TAB_SOURCE]).toBe("notice");
+  });
+
+  it("같은 contact 보드라도 단계 보기 쿼리면 STEP2·STEP3 탭이 켜진다", () => {
+    const keys = { "b-contact": "contact" };
+    expect(resolveConsultationNavKey(`${BASE}/boards/b-contact`, "?consultation=remote", keys)).toBe(
+      "consult-remote",
+    );
+    expect(resolveConsultationNavKey(`${BASE}/boards/b-contact`, "?consultation=inperson", keys)).toBe(
+      "consult-inperson",
+    );
+  });
+
+  it("쿼리가 없거나 contact 보드가 아니면 단계 탭을 켜지 않는다", () => {
+    const keys = { "b-contact": "contact", "b-work": "work" };
+    expect(resolveConsultationNavKey(`${BASE}/boards/b-contact`, "", keys)).toBeNull();
+    expect(resolveConsultationNavKey(`${BASE}/boards/b-contact`, null, keys)).toBeNull();
+    expect(resolveConsultationNavKey(`${BASE}/boards/b-contact`, "?consultation=all", keys)).toBeNull();
+    expect(resolveConsultationNavKey(`${BASE}/boards/b-work`, "?consultation=remote", keys)).toBeNull();
+    expect(resolveConsultationNavKey(`${BASE}/companies`, "?consultation=remote", keys)).toBeNull();
   });
 });

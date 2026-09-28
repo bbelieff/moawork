@@ -145,7 +145,7 @@ export function GroupPresetMenu({
 
       <div
         id={panelId}
-        className="mw-layer-page-popover absolute right-0 mt-1 flex w-[min(20rem,calc(100vw-2rem))] flex-col gap-3 rounded-xl border border-mw-line bg-mw-card p-3 text-left text-xs shadow-lg"
+        className="mw-layer-page-popover absolute right-0 mt-1 flex w-[min(20rem,calc(100vw-2rem))] flex-col gap-3 rounded-md border border-mw-line bg-mw-card p-3 text-left text-xs shadow-lg"
       >
         <div>
           <p className="font-semibold text-mw-fg">업무 양식</p>
@@ -178,7 +178,7 @@ export function GroupPresetMenu({
               <button
                 type="submit"
                 disabled={saving}
-                className="shrink-0 rounded-lg bg-mw-primary px-2.5 py-1.5 font-semibold text-white disabled:opacity-50"
+                className="shrink-0 rounded-lg bg-mw-primary px-2.5 py-1.5 font-semibold text-mw-on-accent disabled:opacity-50"
               >
                 {saving ? "저장 중…" : "저장"}
               </button>
@@ -250,7 +250,7 @@ export function GroupPresetMenu({
                     <button
                       type="submit"
                       disabled={applying || preview.noop}
-                      className="rounded-lg bg-mw-primary px-2.5 py-1.5 font-semibold text-white disabled:opacity-50"
+                      className="rounded-lg bg-mw-primary px-2.5 py-1.5 font-semibold text-mw-on-accent disabled:opacity-50"
                     >
                       {applying ? "적용 중…" : preview.noop ? "이미 같은 배치입니다" : "이 아이템에 적용"}
                     </button>

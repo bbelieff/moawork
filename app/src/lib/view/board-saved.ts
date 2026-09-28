@@ -170,6 +170,7 @@ export function applySavedPersonScope(
   currentUserId: string,
   personColumnKey: string | null,
   teamMemberIds: readonly string[] = [],
+  canonicalNewLead = false,
 ): ItemWithValues[] {
   if (!view || !view.personScope || view.personScope === "none") return [...rows];
   const expected = view.personScope === "fixed"
@@ -177,7 +178,9 @@ export function applySavedPersonScope(
     : view.personScope === "team" ? teamMemberIds : teamMemberIds.includes(currentUserId) ? [currentUserId] : [];
   if (!expected.length) return [];
   return rows.filter((row) => {
-    const value = personColumnKey ? row.values[personColumnKey] : row.assigned_to;
+    // Canonical lead ownership lives on the item; its EAV projection may be absent or stale.
+    const value = personColumnKey && !(canonicalNewLead && personColumnKey === "owner")
+      ? row.values[personColumnKey] : row.assigned_to;
     return typeof value === "string"
       ? expected.includes(value)
       : Array.isArray(value) && value.some((memberId) => typeof memberId === "string" && expected.includes(memberId));

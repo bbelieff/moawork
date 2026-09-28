@@ -131,22 +131,22 @@ export function GlobalSearch() {
       <kbd className="hidden border lg:inline" style={{ borderColor: "var(--mw-line)", borderRadius: "var(--mw-r-1)", paddingInline: "var(--sp-1)", fontSize: "var(--mw-shell-badge-fs)" }}>Ctrl K</kbd>
     </button>
     {open ? <div className="mw-layer-dialog fixed inset-0 flex items-start justify-center bg-black/35 p-0 md:p-8" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
-      <section role="dialog" aria-modal="true" aria-label="통합 검색" className="flex h-full w-full flex-col bg-[var(--mw-card)] text-[var(--mw-fg)] shadow-2xl md:h-auto md:max-h-[78vh] md:max-w-2xl md:rounded-2xl">
+      <section role="dialog" aria-modal="true" aria-label="통합 검색" className="flex h-full w-full flex-col bg-[var(--mw-card)] text-[var(--mw-fg)] shadow-lg md:h-auto md:max-h-[78vh] md:max-w-2xl md:rounded-md">
         <div className="flex items-center gap-2 border-b border-[var(--mw-line)] p-3">
           <input ref={inputRef} value={query} onChange={(event) => { setQuery(event.target.value); setActive(0); }} onKeyDown={(event) => {
             if (event.key === "ArrowDown") { event.preventDefault(); setActive((value) => Math.min(value + 1, shown.length - 1)); }
             if (event.key === "ArrowUp") { event.preventDefault(); setActive((value) => Math.max(value - 1, 0)); }
             if (event.key === "Enter" && shown[active]) { event.preventDefault(); visit(shown[active]); }
-          }} placeholder="보드, 업무, 회사, 공지를 검색해요" className="min-h-11 flex-1 rounded-xl bg-[var(--mw-bg)] px-3 text-base outline-none focus:ring-2 focus:ring-[var(--mw-record)]" aria-label="검색어" aria-activedescendant={shown[active] ? `search-result-${active}` : undefined} />
+          }} placeholder="보드, 업무, 회사, 공지를 검색해요" className="min-h-11 flex-1 rounded-md bg-[var(--mw-bg)] px-3 text-base outline-none focus:ring-2 focus:ring-[var(--mw-record)]" aria-label="검색어" aria-activedescendant={shown[active] ? `search-result-${active}` : undefined} />
           <button type="button" onClick={() => setOpen(false)} className="min-h-11 px-2 text-sm">닫기</button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           <p className="mb-2 text-xs font-semibold text-[var(--mw-sub)]">{query.trim() ? "검색 결과" : "최근 본 항목"}</p>
-          {shown.map((result, index) => <button id={`search-result-${index}`} key={`${result.kind}:${result.id}`} type="button" onMouseEnter={() => setActive(index)} onClick={() => visit(result)} className={`flex min-h-14 w-full items-center gap-3 rounded-xl px-3 text-left ${active === index ? "bg-[var(--mw-bg)]" : ""}`}>
+          {shown.map((result, index) => <button id={`search-result-${index}`} key={`${result.kind}:${result.id}`} type="button" onMouseEnter={() => setActive(index)} onClick={() => visit(result)} className={`flex min-h-14 w-full items-center gap-3 rounded-md px-3 text-left ${active === index ? "bg-[var(--mw-bg)]" : ""}`}>
             <span className="w-10 shrink-0 text-xs font-semibold text-[var(--mw-sub)]">{KIND_LABEL[result.kind]}</span><span className="min-w-0"><span className="block truncate font-medium">{result.title}</span><span className="block truncate text-xs text-[var(--mw-sub)]">{result.description}</span></span>
           </button>)}
-          {!shown.length ? <p className="rounded-xl bg-[var(--mw-bg)] p-4 text-sm text-[var(--mw-sub)]">{query.trim() ? "일치하는 항목이 없어요. 아래에서 바로 만들 수 있어요." : "최근 본 항목이 없어요."}</p> : null}
-          {query.trim() ? <div className="mt-4 border-t border-[var(--mw-line)] pt-3"><p className="mb-2 text-xs font-semibold text-[var(--mw-sub)]">빠른 만들기</p><div className="flex flex-wrap gap-2"><select value={createKind} onChange={(event) => setCreateKind(event.target.value as "deal" | "company")} className="min-h-11 rounded-xl border border-[var(--mw-line)] bg-[var(--mw-card)] px-3"><option value="deal">업무</option><option value="company">회사</option></select><button type="button" disabled={busy} onClick={() => void create()} className="min-h-11 flex-1 rounded-xl bg-[var(--mw-record)] px-4 font-semibold text-[var(--mw-on-accent)] disabled:opacity-60">{busy ? "만드는 중…" : `“${query.trim()}” 만들기`}</button></div></div> : null}
+          {!shown.length ? <p className="rounded-md bg-[var(--mw-bg)] p-4 text-sm text-[var(--mw-sub)]">{query.trim() ? "일치하는 항목이 없어요. 아래에서 바로 만들 수 있어요." : "최근 본 항목이 없어요."}</p> : null}
+          {query.trim() ? <div className="mt-4 border-t border-[var(--mw-line)] pt-3"><p className="mb-2 text-xs font-semibold text-[var(--mw-sub)]">빠른 만들기</p><div className="flex flex-wrap gap-2"><select value={createKind} onChange={(event) => setCreateKind(event.target.value as "deal" | "company")} className="min-h-11 rounded-md border border-[var(--mw-line)] bg-[var(--mw-card)] px-3"><option value="deal">업무</option><option value="company">회사</option></select><button type="button" disabled={busy} onClick={() => void create()} className="min-h-11 flex-1 rounded-md bg-[var(--mw-record)] px-4 font-semibold text-[var(--mw-on-accent)] disabled:opacity-60">{busy ? "만드는 중…" : `“${query.trim()}” 만들기`}</button></div></div> : null}
           {error ? <p role="alert" className="mt-3 text-sm text-[var(--mw-people)]">{error}</p> : null}
         </div>
       </section>

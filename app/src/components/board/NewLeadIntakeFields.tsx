@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   NEW_LEAD_BUSINESS_TYPES,
+  NEW_LEAD_CORPORATE_BUSINESS_SUBTYPES,
   NEW_LEAD_CUSTOM_BUSINESS_TYPE,
+  NEW_LEAD_PERSONAL_BUSINESS_SUBTYPES,
 } from "@/lib/new-lead/business-types";
-import { NEW_LEAD_REVENUE_BANDS } from "@/lib/new-lead/revenue-bands";
+import { NEW_LEAD_INTAKE_REVENUE_BANDS, NEW_LEAD_CUSTOM_REVENUE_LABEL } from "@/lib/new-lead/revenue-bands";
 import {
   formatRevenueInput,
   REVENUE_UNIT_LABEL,
@@ -44,9 +46,16 @@ function useReset(ref: RefObject<HTMLElement | null>, reset: () => void) {
  */
 export function BusinessTypeField({ invalid = false }: { invalid?: boolean }) {
   const [selected, setSelected] = useState("");
+  const [subtype, setSubtype] = useState("일반");
   const rootRef = useRef<HTMLDivElement>(null);
-  const reset = useCallback(() => setSelected(""), []);
+  const reset = useCallback(() => { setSelected(""); setSubtype("일반"); }, []);
   useReset(rootRef, reset);
+  const subtypes =
+    selected === "개인사업자"
+      ? NEW_LEAD_PERSONAL_BUSINESS_SUBTYPES
+      : selected === "법인사업자"
+        ? NEW_LEAD_CORPORATE_BUSINESS_SUBTYPES
+        : null;
   return (
     <div ref={rootRef} className="grid gap-1 sm:grid-cols-[1fr_1fr] sm:items-end sm:gap-2">
       <label className="grid gap-1 text-xs text-mw-sub">
@@ -57,7 +66,7 @@ export function BusinessTypeField({ invalid = false }: { invalid?: boolean }) {
           aria-required="true"
           aria-invalid={invalid}
           value={selected}
-          onChange={(event) => setSelected(event.target.value)}
+          onChange={(event) => { setSelected(event.target.value); setSubtype("일반"); }}
           className={`${CONTROL} aria-[invalid=true]:border-mw-error`}
         >
           <option value="">고르세요</option>
@@ -66,7 +75,24 @@ export function BusinessTypeField({ invalid = false }: { invalid?: boolean }) {
           ))}
         </select>
       </label>
-      {selected === NEW_LEAD_CUSTOM_BUSINESS_TYPE ? (
+      {subtypes ? (
+        <label className="grid gap-1 text-xs text-mw-sub">
+          <span>{selected === "법인사업자" ? "과세·형태" : "과세유형"} <span className="text-mw-sub">(기본 일반)</span></span>
+          <select
+            name="business_registration_subtype"
+            value={subtype}
+            onChange={(event) => setSubtype(event.target.value)}
+            aria-label={selected === "법인사업자" ? "법인 과세·형태 구분" : "개인 과세유형 구분"}
+            className={CONTROL}
+          >
+            {subtypes.map((value) => (
+              <option key={value} value={value}>
+                {selected === "법인사업자" && value === "유한" ? "유한(법인 형태)" : value}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : selected === NEW_LEAD_CUSTOM_BUSINESS_TYPE ? (
         <label className="grid gap-1 text-xs text-mw-sub">
           <span>어떤 유형인가요 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
           <input
@@ -78,6 +104,27 @@ export function BusinessTypeField({ invalid = false }: { invalid?: boolean }) {
         </label>
       ) : null}
     </div>
+  );
+}
+
+export function FoundingMonthField({ invalid = false }: { invalid?: boolean }) {
+  const [value, setValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const reset = useCallback(() => setValue(""), []);
+  useReset(inputRef, reset);
+  return (
+    <label className="grid gap-1 text-xs text-mw-sub">
+      창업연월
+      <input
+        ref={inputRef}
+        name="founded_month"
+        type="month"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        aria-invalid={invalid}
+        className={`${CONTROL} aria-[invalid=true]:border-mw-error`}
+      />
+    </label>
   );
 }
 
@@ -111,13 +158,13 @@ export function RevenueBandField({ invalid = false }: { invalid?: boolean }) {
         <select name="revenue_band" value={selected} onChange={(event) => setSelected(event.target.value)}
           aria-invalid={invalid} className={`${CONTROL} aria-[invalid=true]:border-mw-error`}>
           <option value="">미입력</option>
-          {NEW_LEAD_REVENUE_BANDS.map((value) => <option key={value} value={value}>{value}</option>)}
+          {NEW_LEAD_INTAKE_REVENUE_BANDS.map((value) => <option key={value} value={value}>{value === "그외" ? NEW_LEAD_CUSTOM_REVENUE_LABEL : value}</option>)}
         </select>
       </label>
       {selected === "그외" ? (
         <label className="grid gap-1 text-xs text-mw-sub">
-          <span>그외 매출 구간 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
-          <input name="revenue_band_custom" required className={CONTROL} placeholder="예: 9,000만원~1억" />
+          <span>정확한 매출액 <span aria-label="필수" className="font-semibold text-mw-error">*</span></span>
+          <input name="revenue_band_custom" required className={CONTROL} placeholder="예: 2억 5,000만원" />
         </label>
       ) : null}
     </div>
@@ -172,9 +219,9 @@ export function RevenueYearsField() {
   );
 }
 
-function RegionCombobox({ name, label, value, onValue, suggestions, disabled = false }: {
+export function RegionCombobox({ name, label, value, onValue, suggestions, disabled = false, invalid = false }: {
   name: string; label: string; value: string; onValue: (value: string) => void;
-  suggestions: readonly RegionSuggestion[]; disabled?: boolean;
+  suggestions: readonly RegionSuggestion[]; disabled?: boolean; invalid?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -190,6 +237,7 @@ function RegionCombobox({ name, label, value, onValue, suggestions, disabled = f
     <label className="relative grid gap-1 text-xs text-mw-sub">
       {label}
       <input ref={inputRef} name={name} value={value} disabled={disabled} autoComplete="off"
+        aria-label={label} aria-invalid={invalid}
         role="combobox" aria-expanded={open && visible.length > 0} aria-controls={listId}
         aria-autocomplete="list" aria-activedescendant={open && visible[active] ? `${listId}-${active}` : undefined}
         onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 120)}
@@ -203,7 +251,7 @@ function RegionCombobox({ name, label, value, onValue, suggestions, disabled = f
           if (event.key === "ArrowUp") { event.preventDefault(); setOpen(true); setActive((current) => (current - 1 + visible.length) % visible.length); }
           if (event.key === "Escape") setOpen(false);
         }}
-        className={`${CONTROL} disabled:bg-mw-bg disabled:text-mw-sub`}
+        className={`${CONTROL} aria-[invalid=true]:border-mw-error disabled:bg-mw-bg disabled:text-mw-sub`}
         placeholder={disabled ? "시도를 먼저 선택하세요" : `${label} 또는 초성 검색`} />
       {open && visible.length > 0 ? (
         <ul id={listId} role="listbox" className="mw-layer-page-popover absolute left-0 right-0 top-[4.2rem] max-h-56 overflow-auto rounded-lg border border-mw-line bg-mw-card p-1 shadow-xl">
@@ -220,7 +268,7 @@ function RegionCombobox({ name, label, value, onValue, suggestions, disabled = f
   );
 }
 
-export function RegionFields() {
+export function RegionFields({ invalidField }: { invalidField?: string } = {}) {
   const [sido, setSido] = useState("");
   const [sigungu, setSigungu] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -230,9 +278,9 @@ export function RegionFields() {
   useReset(rootRef, reset);
   return (
     <div ref={rootRef} className="contents">
-      <RegionCombobox name="region_sido" label="시도" value={sido}
+      <RegionCombobox name="region_sido" label="시도" value={sido} invalid={invalidField === "region_sido"}
         onValue={(next) => { setSido(next); setSigungu(""); }} suggestions={sidoOptions} />
-      <RegionCombobox name="region_sigungu" label="시군구" value={sigungu}
+      <RegionCombobox name="region_sigungu" label="시군구" value={sigungu} invalid={invalidField === "region_sigungu"}
         onValue={setSigungu} suggestions={sigunguOptions} disabled={!canonicalSido(sido)} />
     </div>
   );

@@ -9,7 +9,8 @@
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { GroupTable, cellInputValue } from "./GroupTable";
+import { GroupTable, boardFileSelectionError, cellInputValue } from "./GroupTable";
+import { MAX_FILE_BYTES } from "@/lib/services/file-contract";
 import type { BoardColumn, CellValue, ItemWithValues } from "@/lib/boards/types";
 
 function col(over: Partial<BoardColumn> = {}): BoardColumn {
@@ -67,6 +68,11 @@ function renderTable(columns: BoardColumn[], rows: ItemWithValues[], canDeleteIt
 }
 
 describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
+  it("파일 선택은 서버 액션 전 10MiB 초과를 막는다", () => {
+    expect(boardFileSelectionError(MAX_FILE_BYTES)).toBeNull();
+    expect(boardFileSelectionError(MAX_FILE_BYTES + 1)).toContain("10MB");
+  });
+
   it("모든 출처 배지가 헤더에 뜬다(⟳✎▼✉⇄ƒ 6종 전부)", () => {
     const columns = (["auto", "in", "act", "msg", "lk", "calc"] as const).map((source) =>
       col({ key: source, label: source, source, type: source === "calc" ? "calc" : "text" }),
@@ -155,7 +161,7 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     expect(html).not.toContain("sticky right-0");
   });
 
-  it("상세 패널이 닫힌 상태에서도 기존 sticky 헤더·첫 열 계층을 유지한다", () => {
+  it("상세 패널이 닫혀도 모바일 포함 두 축 고정을 유지한다", () => {
     const html = renderTable([col({ key: "a", label: "일반" })], [row()]);
     expect(html).toContain("sticky left-0 z-[var(--mw-layer-board-cell)]");
     expect(html).toContain("sticky top-0 z-[var(--mw-layer-board-header)]");

@@ -40,8 +40,8 @@ function ActiveWorkspaceCard({ workspace }: { workspace: ManagedWorkspace }) {
       <form action={action}>
         <input type="hidden" name="orgId" value={workspace.orgId} />
         <input type="hidden" name="workspaceName" value={workspace.name} />
-        <label>확인을 위해 <strong>{workspace.name}</strong> 입력
-          <input name="confirmation" value={confirmation} onChange={(event) => setConfirmation(event.currentTarget.value)} autoComplete="off" />
+        <label className={styles.deletionConfirmation}>회사명 확인
+          <input name="confirmation" placeholder={workspace.name} required value={confirmation} onChange={(event) => setConfirmation(event.currentTarget.value)} autoComplete="off" />
         </label>
         <button className={styles.dangerAction} disabled={pending || !deletionConfirmationMatches(workspace.name, confirmation)}>{pending ? "삭제 예약 중…" : "회사 삭제 예약"}</button>
       </form>

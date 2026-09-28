@@ -28,7 +28,7 @@ export default async function PlatformWorkspaceRequestsPage() {
             <p>플랫폼 운영</p>
             <h1 id="platform-title">요청을 안전하게 검토하세요</h1>
             <p>
-              회사 만들기 요청만 확인할 수 있어요. 고객사의 업무, 멤버, 고객 정보는 이 화면에서 열리지 않아요.
+              회사 만들기 요청만 확인할 수 있어요. 고객사의 업무, 구성원, 고객 정보는 이 화면에서 열리지 않아요.
             </p>
           </section>
 

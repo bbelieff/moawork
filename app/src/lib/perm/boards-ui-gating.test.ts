@@ -27,12 +27,15 @@ describe("boards UI consumes effective permissions", () => {
     );
     expect(source).toContain('if (viewTabs.kind !== "allowed") notFound()');
     expect(source.indexOf('if (viewTabs.kind !== "allowed") notFound()')).toBeLessThan(
-      source.indexOf("svc.getBoardDetail(ctx, id)"),
+      source.indexOf("svc.loadPageSnapshot(ctx, id, {"),
     );
     expect(source).toContain("if (!scopedItems.ok) notFound()");
     expect(source.indexOf("if (!scopedItems.ok) notFound()")).toBeLessThan(
-      source.indexOf("svc.getBoardDetail(ctx, id)"),
+      source.indexOf("svc.loadPageSnapshot(ctx, id, {"),
     );
+    // 보관함도 같은 관문 뒤 같은 물결에서 읽는다 (휴지통과 같은 등급).
+    expect(source).toContain("includeDeleted: canDeleteItems,");
+    expect(source).toContain("includeArchived: canDeleteItems,");
     expect(source).toContain("visibleItemIds.has(item.id)");
     expect(source).toContain("const permissionItems = boardItems.filter");
     expect(source).toContain("const hiddenCount = boardItems.length - permissionItems.length");
@@ -56,7 +59,7 @@ describe("boards UI consumes effective permissions", () => {
     expect(source).toContain('id="board-work-forms"');
     expect(source).toContain("groups.map((group) =>");
     expect(source).toContain("<GroupPresetMenu key={group.id}");
-    expect(source).toContain('canDeleteBoard && <section className="rounded-xl border border-mw-error/40');
+    expect(source).toContain('canDeleteBoard && <section className="rounded-md border border-mw-error/40');
     expect(source).toContain('<form action={deleteBoardAction}>');
     const table = readFileSync(join(__dirname, "..", "..", "components", "board", "GroupTable.tsx"), "utf8");
     expect(table).toContain("canManageColumns && !structureLocked ? (");

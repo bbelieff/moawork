@@ -34,6 +34,13 @@ describe("사이드바 — 지금 어느 탭인지 색으로 보인다", () => {
     expect(link).toContain("var(--mw-on-accent)");
   });
 
+  it("회사 관리 앵커 링크도 현재 페이지로 표시한다", () => {
+    pathname = `${BASE}/settings/account`;
+    const html = render();
+    expect(activeKeys(html)).toEqual(["workspace-settings"]);
+    expect(html).toContain(`${BASE}/settings/account#workspace`);
+  });
+
   it("탭마다 «하나만» 켜진다", () => {
     pathname = `${BASE}/settings/members`;
     expect(activeKeys(render())).toEqual(["members"]);

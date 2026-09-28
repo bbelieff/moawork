@@ -36,30 +36,37 @@ describe("MemberOrganizationChart", () => {
   });
 
   /*
-   * ★ #702 — 「세부 권한 설정」은 «대표가 아닌 모두» 에게 열린다.
+   * ★ 「세부 권한 설정」은 저장 경로가 받는 사람에게만 열린다.
    *
-   *   전에는 `role === "member"` 일 때만 그렸다. 그래서 사람을 팀장으로 올리는 순간
-   *   그 사람의 세부 권한을 **제품에서 손댈 수 없었다.** DB 쪽
-   *   `bind_workspace_member_permission_exception` 은 «대표만» 거부하는데 화면이 더 좁았다.
-   *
-   *   가장 나빴던 조합 — 구성원에게 「막기」를 걸고 팀장으로 올리면 막힌 것은 남는데
-   *   (예외는 사람 단위이고 지우는 SQL 이 저장소에 0건이다) 버튼만 사라졌다.
+   *   `savePermission` 이 부르는 `bind_workspace_lower_member_permission`(013) 은 `member` 만 받는다.
+   *   팀장·관리자에게 버튼을 열면 «보이는데 저장이 조용히 안 되는» 상태가 된다 — #716 검수 P1.
+   *   팀장에게 사람별 예외를 줄지는 정책 결정(#702)이 먼저다. 그때 이 시험과 RPC 를 함께 바꾼다.
    *
    * ★★ 역할을 손으로 적지 않고 MEMBER_ROLES 를 돈다 — 역할이 늘면 이 시험도 같이 늘어난다.
-   *    2026-08-11 에 team_lead 가 생겼을 때 «시험이 역할을 안 바꿔 봐서» 일곱 군데가 어긋났다.
    */
-  it.each(MEMBER_ROLES.filter((role) => role !== "owner").map((role) => [role]))(
-    "★ %s 인 사람도 「세부 권한 설정」을 열 수 있다 — 대표가 아니면 DB 가 받는다",
+  const EDITABLE = MEMBER_ROLES.filter((role) => role === "member");
+  const LOCKED = MEMBER_ROLES.filter((role) => role !== "member");
+
+  it.each(EDITABLE.map((role) => [role]))("★ %s 카드에는 「세부 권한 설정」이 뜬다", (role) => {
+    const target = { ...member, userId: `u-${role}`, role };
+    const html = renderToStaticMarkup(
+      <MemberOrganizationChart orgId="org-a" owner={owner} admins={[]} members={[target]} canEditProfiles viewerUserId="owner-a" />,
+    );
+    expect(html, `${role} 카드에 버튼이 없다`).toContain("세부 권한 설정");
+  });
+
+  it.each(LOCKED.filter((role) => role !== "owner").map((role) => [role]))(
+    "★ %s 카드에는 안 뜬다 — 저장 RPC 가 거부하므로 뜨면 거짓말이 된다",
     (role) => {
       const target = { ...member, userId: `u-${role}`, role };
       const html = renderToStaticMarkup(
         <MemberOrganizationChart orgId="org-a" owner={owner} admins={[]} members={[target]} canEditProfiles viewerUserId="owner-a" />,
       );
-      expect(html, `${role} 카드에 버튼이 없다`).toContain("세부 권한 설정");
+      expect(html).not.toContain("세부 권한 설정");
     },
   );
 
-  it("★ 대표 카드에는 여전히 안 뜬다 — 뜨면 DB 가 거부하므로 거짓말이 된다", () => {
+  it("★ 대표 카드에는 안 뜬다", () => {
     const html = renderToStaticMarkup(
       <MemberOrganizationChart orgId="org-a" owner={owner} admins={[]} members={[]} canEditProfiles viewerUserId="owner-a" />,
     );
@@ -68,44 +75,18 @@ describe("MemberOrganizationChart", () => {
   });
 
   /*
-   * ★★ 위 시험만으로는 «반쪽 수정» 을 통과시킨다 — 버튼이 «그려지는지» 만 보기 때문이다.
-   *
-   *   실제로 이 수정을 하다가 그 상태를 한 번 만들었다: 카드의 버튼 조건은 고쳤는데
-   *   `beginPermissionEdit` 안의 `role !== "member"` 는 그대로여서,
-   *   **버튼은 보이는데 눌러도 아무 일이 안 나는** 상태였다.
-   *   같은 값이 두 곳에서 따로 버려지는 것 — #683 검수 P0-1 과 같은 병이다.
-   *
+   * ★★ 버튼을 그릴지(카드)와 눌렀을 때 열지(`beginPermissionEdit`)가 따로 판정하면
+   *   한쪽만 고쳤을 때 «보이는데 눌러도 아무 일이 안 나는» 상태가 된다 — #683 검수 P0-1 과 같은 병.
    *   그래서 판정을 `canEditMemberPermissions` 하나로 합쳤고, 여기서 그 함수를 직접 잰다.
-   *   두 곳이 «같은 함수» 를 쓰므로 이제 구조적으로 갈라질 수 없다.
    */
   describe("canEditMemberPermissions — 그리는 쪽과 여는 쪽이 «같은» 판정을 쓴다", () => {
-    it.each(MEMBER_ROLES.filter((role) => role !== "owner").map((role) => [role]))(
-      "★ %s 는 열 수 있다 — DB 가 대표만 거부하므로 화면이 더 좁으면 거짓말이다",
-      (role) => {
-        expect(canEditMemberPermissions(role)).toBe(true);
-      },
-    );
-
-    it("대표는 못 연다 — DB(require_active_nonowner)와 같은 답이다", () => {
-      expect(canEditMemberPermissions("owner")).toBe(false);
-    });
-
-    it("★ 역할이 늘어도 «대표만» 이 기준이다 — 목록을 손으로 적지 않는다", () => {
-      const allowed = MEMBER_ROLES.filter(canEditMemberPermissions);
-      expect(allowed).toEqual(MEMBER_ROLES.filter((role) => role !== "owner"));
+    it("저장 RPC 가 받는 역할만 연다", () => {
+      expect(MEMBER_ROLES.filter(canEditMemberPermissions)).toEqual(EDITABLE);
     });
   });
 
   /*
-   * ★★★ «눌러 보는» 시험 — 위 시험들만으로는 반쪽 수정을 통과시킨다.
-   *
-   *   실측으로 확인했다: `beginPermissionEdit` 의 판정만 옛날(`role !== "member"`)로
-   *   되돌려 놓아도 **위 시험 14개가 전부 통과**했다. 버튼이 그려지는 것과
-   *   눌렀을 때 열리는 것은 다른 일이고, 앞의 것만 재고 있었기 때문이다.
-   *
-   *   그래서 여기서는 실제로 «누른다». 팀장 카드의 「세부 권한 설정」을 눌러
-   *   편집창이 열리는지 본다. 열리지 않으면 그건 사용자가 겪는 그대로다 —
-   *   버튼은 보이는데 눌러도 아무 일이 안 난다.
+   * ★★★ «눌러 보는» 시험 — 버튼이 그려지는 것과 눌렀을 때 열리는 것은 다른 일이다.
    */
   describe("눌러서 열린다 — 그려지는 것과 열리는 것은 다른 일이다", () => {
     let host: HTMLDivElement | null = null;
@@ -136,13 +117,10 @@ describe("MemberOrganizationChart", () => {
       return { text: host.textContent ?? "", displayName: target.displayName };
     }
 
-    it.each(MEMBER_ROLES.filter((role) => role !== "owner").map((role) => [role]))(
-      "★ %s — 누르면 세부 권한 편집창이 실제로 열린다",
-      (role) => {
-        const { text, displayName } = open(role);
-        expect(text, `${role}: 버튼은 보이는데 눌러도 안 열린다`).toContain(`${displayName}의 세부 권한`);
-      },
-    );
+    it.each(EDITABLE.map((role) => [role]))("★ %s — 누르면 세부 권한 편집창이 실제로 열린다", (role) => {
+      const { text, displayName } = open(role);
+      expect(text, `${role}: 버튼은 보이는데 눌러도 안 열린다`).toContain(`${displayName}의 세부 권한`);
+    });
   });
 
   // BBE-88: 조직도가 이름만 보여줘서 같은 사람의 다른 계정(요청 계정 vs 승인 계정)을

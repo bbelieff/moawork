@@ -45,10 +45,10 @@ describe("BBE-96 core CRM UX writing", () => {
     }
   });
 
-  it("explains 업무 on both analysis pages", () => {
+  it("omits redundant 업무 definitions on both analysis pages", () => {
     const explanation = "업무는 업체와 진행하는 각각의 일입니다.";
-    expect(read(analysisPage)).toContain(explanation);
-    expect(read(pipelinePage)).toContain(explanation);
+    expect(read(analysisPage)).not.toContain(explanation);
+    expect(read(pipelinePage)).not.toContain(explanation);
   });
 
   it("states the real conditions for representative empty and unavailable views", () => {

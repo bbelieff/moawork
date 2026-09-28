@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # check.sh — moawork 품질 게이트
 # lint + typecheck + production build + test 를 순서대로 실행한다. 하나라도 실패하면 즉시 중단(비정상 종료).
-# CI 와 .githooks/pre-commit 이 공통으로 이 스크립트를 호출한다(단일 진실 게이트).
+# PR/main CI 가 이 전체 스크립트를 호출한다. pre-commit은 exact staged-tree fast gate를 호출한다.
 set -euo pipefail
 
 # 리포지토리 루트로 이동 (스크립트 위치 기준)
@@ -82,9 +82,33 @@ node --test scripts/check-shell-entry.test.mjs
 node --test scripts/check-build-gate.test.mjs
 node --test scripts/check-line-endings.test.mjs
 node scripts/check-unreachable-app-files.mjs
+node --test scripts/ci/fast-staged.test.mjs
+
+# #725 — VPS audit/provision/release contracts share host-state invariants and
+# must run in a bounded serial order. Native Linux DAC probes remain explicit
+# skips on Windows CI; they are not silently treated as cross-platform PASS.
+# The read-only host audit launches many isolated Git-Bash fixtures. Its measured
+# cold Windows runtime exceeds one minute, so give only that file a larger finite
+# budget while preserving the 60-second bound for every other VPS contract file.
+node --test --test-concurrency=1 --test-timeout=180000 \
+  ops/vps/audit-host-readonly.test.mjs
+
+node --test --test-concurrency=1 --test-timeout=60000 \
+  ops/vps/deploy-source.test.mjs \
+  ops/vps/audit-contract.test.mjs \
+  ops/vps/artifact/artifact.test.mjs \
+  ops/vps/provision/assets.test.mjs \
+  ops/vps/provision/audit-evidence.test.mjs \
+  ops/vps/provision/installer.test.mjs \
+  ops/vps/provision/manifest.test.mjs \
+  ops/vps/provision/postflight.test.mjs \
+  ops/vps/provision/provision-cli.test.mjs \
+  ops/vps/release/linux-release-runtime.test.mjs \
+  ops/vps/release/release-slots.test.mjs \
+  ops/vps/cron/cron-units.test.mjs
 
 # ── 규칙 공지 (2026-08-20 일원화) ───────────────────────
-# 왜 여기 있나: 모든 세션이 커밋 전에 반드시 이 스크립트를 지난다.
+# 왜 여기 있나: 모든 PR exact tree가 머지 전에 CI에서 반드시 이 전체 스크립트를 지난다.
 # GitHub 댓글은 «도는 창» 을 깨우지 못한다. 이 배너만이 확실히 닿는다.
 #
 # ★ 이 배너에 규칙을 적지 마라. 가리키기만 한다.
@@ -116,7 +140,7 @@ npm run typecheck --workspaces --if-present
 
 echo "▶ [3/4] production build"
 export NEXT_TELEMETRY_DISABLED=1
-npm run build --workspaces --if-present
+node scripts/ci/build-artifact.mjs --workspace-build
 
 echo "▶ [4/4] test"
 npm run test:gate --workspace app
@@ -131,5 +155,24 @@ node docs/design/qa-visual-blocks.mjs
 # Issue #643 — 조직관리 5갈래의 tab/tabpanel·키보드·375px·UUID 비노출을
 # 실제 production build + system Chrome에서 재는다. 외부 서버에 기대지 않고 스스로 띄우고 종료한다.
 node docs/design/qa-org-views.mjs
+
+# ── 5. 워크트리 위생 (경고만 — 용량은 코드 품질이 아니다) ──
+# MoaWork 의 워크트리는 wt/ 한 곳이 아니라 .codex/ · .claude/ · Temp 등 여러 곳에
+# 흩어진다. 그래서 디렉터리를 세지 않고 «git 에 등록된 것» 을 센다 — 위치와 무관하다.
+# 근거: 2026-08-20 워크트리 264개로 하드 고갈(BBE-255), 정리 다음날 194개로 재발.
+WT_CAP=20
+# set -euo pipefail 하에서도 절대 게이트를 죽이지 않는다 — 경고 전용이므로 항상 성공으로 끝낸다.
+wt_count=$(git worktree list 2>/dev/null | wc -l | tr -d ' ' || echo 0)
+if [[ "${wt_count:-0}" -gt "$WT_CAP" ]]; then
+  nm_count=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print substr($0,10)}' | { c=0; while read -r w; do if [[ -d "$w/node_modules" ]]; then c=$((c+1)); fi; done; echo "$c"; } || echo '?')
+  echo "⚠️ 등록 워크트리 ${wt_count}개 (권장 ≤ ${WT_CAP}) · node_modules 보유 ${nm_count}개"
+  echo "   머지 끝난 것부터 정리하세요 (AGENTS.md §9.1):"
+  echo "     git worktree list                    # 어디에 몇 개인지"
+  echo "     rm -rf <워크트리>/node_modules        # 용량만 회수 (npm install 로 복구)"
+  echo "     git worktree remove <워크트리> && git worktree prune"
+  echo "   ※ 머지 판정은 --is-ancestor 가 아니라 merge-tree 로 한다 (squash merge 레포)"
+else
+  echo "✅ 등록 워크트리 ${wt_count}개"
+fi
 
 echo "✅ check 통과"

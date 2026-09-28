@@ -26,7 +26,7 @@ export function DashboardFilterBar({
   assignees: AssigneeOption[];
 }) {
   return (
-    <form className="grid gap-3 rounded-xl border border-zinc-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-5 dark:border-zinc-800 dark:bg-zinc-950">
+    <form className="grid gap-3 rounded-md border border-zinc-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-5 dark:border-zinc-800 dark:bg-zinc-950">
       <label className="text-xs text-zinc-500">
         시작일
         <input name="from" type="date" defaultValue={filters.from ?? ""} className="mt-1 w-full rounded-lg border border-zinc-200 bg-transparent px-3 py-2 text-sm dark:border-zinc-700" />
@@ -75,7 +75,7 @@ export function DashboardStateNotice({
 
 export function DashboardUnavailableNotice() {
   return (
-    <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-5 text-sm text-red-900">
+    <div role="alert" className="rounded-md border border-red-300 bg-red-50 p-5 text-sm text-red-900">
       <p className="font-medium">업무 현황을 불러오지 못했어요.</p>
       <p className="mt-1">연결 상태를 확인한 뒤 새로고침해 주세요.</p>
     </div>
@@ -89,10 +89,10 @@ export function DashboardEvidenceList({
   deals: Deal[];
   pipelines: Pipeline[];
 }) {
-  if (deals.length === 0) return <div className="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700">선택한 조건에 맞는 업무가 0건이에요. 기간이나 필터를 바꿔 보세요.</div>;
+  if (deals.length === 0) return <div className="rounded-md border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700">선택한 조건에 맞는 업무가 0건이에요. 기간이나 필터를 바꿔 보세요.</div>;
   const pipelineLabel = (id: string | null) => pipelines.find((item) => item.id === id)?.name ?? "파이프라인 미지정";
   return (
-    <ul className="divide-y divide-zinc-100 rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+    <ul className="divide-y divide-zinc-100 rounded-md border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
       {deals.map((deal) => (
         <li key={deal.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
           <Link href={`/deals/${deal.id}`} className="font-medium hover:underline">{deal.title}</Link>
@@ -116,11 +116,11 @@ export function TodayTaskList({
   returnTo: string;
   today: string;
 }) {
-  if (deals.length === 0) return <p className="rounded-xl border border-dashed border-zinc-300 p-5 text-sm text-zinc-500 dark:border-zinc-700">오늘 처리할 업무가 0건이에요.</p>;
+  if (deals.length === 0) return <p className="rounded-md border border-dashed border-zinc-300 p-5 text-sm text-zinc-500 dark:border-zinc-700">오늘 처리할 업무가 0건이에요.</p>;
   return (
     <ul className="space-y-3">
       {deals.map((deal) => (
-        <li key={deal.id} className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+        <li key={deal.id} className="rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
           <div className="mb-3 flex items-center justify-between gap-2">
             <Link href={`/deals/${deal.id}`} className="font-medium hover:underline">{deal.title}</Link>
             <span className="text-xs text-zinc-500">오늘 마감</span>

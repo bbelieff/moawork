@@ -211,7 +211,7 @@ export function MemberPicker({
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="이름·부서 검색"
-          aria-label={`${label} 멤버 검색`}
+          aria-label={`${label} 구성원 검색`}
           className={styles.search}
         />
         <div className={styles.list} role="listbox" aria-multiselectable={multiple || undefined}>

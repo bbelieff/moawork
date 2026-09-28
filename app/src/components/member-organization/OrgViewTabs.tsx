@@ -305,7 +305,7 @@ export function OrgViewTabs({
           <div className="flex flex-col gap-4">
           {/* ③ 왼쪽 부서 ↔ 오른쪽 그 부서 사람. 375px 에서는 위아래로 쌓인다. */}
           <div className="grid gap-4 md:grid-cols-[260px_minmax(0,1fr)]">
-            <section aria-label="부서" className="rounded-2xl border border-zinc-200 dark:border-zinc-800">
+            <section aria-label="부서" className="rounded-md border border-zinc-200 dark:border-zinc-800">
               <div className="border-b border-zinc-100 px-3 py-2.5 text-sm font-semibold dark:border-zinc-900">조직도</div>
               <div className="flex flex-col p-1.5">
                 <button
@@ -343,7 +343,7 @@ export function OrgViewTabs({
               </div>
             </section>
 
-            <section aria-label="조직원" className="min-w-0 rounded-2xl border border-zinc-200 dark:border-zinc-800">
+            <section aria-label="조직원" className="min-w-0 rounded-md border border-zinc-200 dark:border-zinc-800">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-4 py-2.5 dark:border-zinc-900">
                 <h3 className="text-sm font-semibold">{selected ? selected.name : "전체"}</h3>
                 <div className="flex items-center gap-3">
@@ -403,7 +403,7 @@ export function OrgViewTabs({
             왼쪽은 회사 전체, 오른쪽은 고른 자리 하나. 둘 다 늘 보인다.
           */
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-          <section aria-label="전체" className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800">
+          <section aria-label="전체" className="overflow-hidden rounded-md border border-zinc-200 dark:border-zinc-800">
             <div
               data-region="all"
               className="flex items-center gap-2 bg-sky-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
@@ -572,7 +572,7 @@ export function OrgViewTabs({
         hidden={view !== "rules"}
       >
         {view === "rules" ? (
-          <div className="rounded-2xl border border-zinc-200 p-8 text-center dark:border-zinc-800">
+          <div className="rounded-md border border-zinc-200 p-8 text-center dark:border-zinc-800">
             <p className="font-medium">알림 규칙은 아직 없어요</p>
           {/*
             ★ 여기서 한 번 거짓말을 했다 — 「지금은 보고 계통을 따라 알림이 갑니다」라고 적었는데

@@ -91,7 +91,7 @@ export function NotificationBell({ initial }: { initial: NotifySnapshot }) {
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={actionCount > 0 ? `알림 — 할 일 ${actionCount}건` : "알림"}
-        className="relative flex h-9 w-9 items-center justify-center rounded-xl border transition-opacity hover:opacity-80"
+        className="relative flex h-9 w-9 items-center justify-center rounded-md border transition-opacity hover:opacity-80"
         style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}
       >
         <span aria-hidden>🔔</span>

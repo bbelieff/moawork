@@ -14,7 +14,7 @@ export type OnboardingPanelProps = {
 
 function StartScreen({ revalidatePath }: { revalidatePath?: string }): ReactElement {
   return (
-    <section className="rounded-xl border p-4" style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}>
+    <section className="rounded-md border p-4" style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}>
       <h2 className="font-semibold">연습 회사에서 먼저 손에 익혀보세요</h2>
       <p className="mt-1 text-sm" style={{ color: "var(--mw-sub)" }}>
         진짜 회사와 절대 섞이지 않는 연습 전용 공간이 만들어져요. 실제로 조작해야 퀘스트가 통과돼요.
@@ -32,14 +32,14 @@ function StartScreen({ revalidatePath }: { revalidatePath?: string }): ReactElem
 function ErrorScreen({ error }: { error: "permission" | "unavailable" }): ReactElement {
   if (error === "permission") {
     return (
-      <section role="alert" className="rounded-xl border p-4" style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}>
+      <section role="alert" className="rounded-md border p-4" style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}>
         <h2 className="font-semibold">이 연습 회사는 볼 수 없어요</h2>
         <p className="mt-1 text-sm" style={{ color: "var(--mw-sub)" }}>내 연습 회사가 아니에요.</p>
       </section>
     );
   }
   return (
-    <section role="alert" className="rounded-xl border p-4" style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}>
+    <section role="alert" className="rounded-md border p-4" style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}>
       <h2 className="font-semibold">퀘스트 정보를 불러오지 못했어요</h2>
       <p className="mt-1 text-sm" style={{ color: "var(--mw-sub)" }}>잠시 후 다시 시도해 주세요.</p>
     </section>
@@ -59,7 +59,7 @@ export function OnboardingPanel({ snapshot, error, revalidatePath, showManagemen
   const passedCount = visibleQuests.filter((q) => q.completed).length;
 
   return (
-    <section className="rounded-xl border p-4" style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}>
+    <section className="rounded-md border p-4" style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}>
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">
           연습 퀘스트 <span style={{ color: "var(--mw-sub)" }}>{passedCount} / {visibleQuests.length}</span>

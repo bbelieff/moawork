@@ -12,7 +12,7 @@ const LOGIN_ERROR_MESSAGES: Record<string, string> = {
   ...AUTH_ERROR_MESSAGES,
   auth: "Google 로그인을 마치지 못했어요. 다시 시도해 주세요.",
   config: "로그인 설정을 확인하고 있어요. 잠시 후 다시 시도해 주세요.",
-  membership: "연결된 회사가 없어요. 회사 관리자에게 초대를 요청해 주세요.",
+  membership: "회사 연결이 필요합니다.",
   profile: "사용자 정보를 준비하지 못했어요. 다시 로그인해 주세요.",
   provisioning: "회사 접근 권한을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.",
 };
@@ -113,10 +113,6 @@ export default async function LoginPage({
 
           <div className={styles.loginHeading}>
             <h2 id="login-title">{PRODUCT_NAME}에 로그인</h2>
-            <p>
-              로그인하면 권한과 가입한 회사 수를 확인해
-              <br /> 모드를 고르거나 회사 업무를 시작할 화면으로 이동해요.
-            </p>
           </div>
 
           {errorMessage ? (
@@ -127,9 +123,7 @@ export default async function LoginPage({
 
           <GoogleSignInButton nextPath={nextPath} />
 
-          <p className={styles.legal}>
-            계속하면 MoaWork 이용약관 및 개인정보처리방침에 동의하게 됩니다.
-          </p>
+
 
           {devToolsEnabled ? (
             <section className={styles.devAccounts}>

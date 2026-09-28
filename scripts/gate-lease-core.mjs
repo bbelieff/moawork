@@ -385,6 +385,49 @@ export async function ensureLeaseBroker({
   });
 }
 
+// A silent connected client keeps the broker from its idle exit. The runner holds one while the
+// guardian bootstraps (which may outlast the idle window) and until the gated command ends.
+export async function holdLeaseBroker({
+  host = DEFAULT_GATE_LEASE_HOST,
+  port = DEFAULT_GATE_LEASE_PORT,
+  timeoutMs = 750,
+} = {}) {
+  return await new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host, port });
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) {
+        socket.destroy();
+        reject(error);
+        return;
+      }
+      socket.removeAllListeners("error");
+      socket.on("error", () => {});
+      socket.unref();
+      resolve({
+        get released() { return socket.destroyed; },
+        release() { socket.destroy(); },
+      });
+    };
+    const timer = setTimeout(
+      () => finish(new GateLeaseError("GATE_LEASE_BROKER_HOLD_FAILED", "gate lease broker hold timed out", { host, port })),
+      timeoutMs,
+    );
+    readMessages(socket, (message) => {
+      if (message.type === "hello" && message.protocol === GATE_LEASE_PROTOCOL) finish();
+      else finish(new GateLeaseError("GATE_LEASE_ENDPOINT_CONFLICT", "gate lease endpoint handshake failed", {
+        host, port, reason: "protocol-mismatch",
+      }));
+    });
+    socket.once("error", (error) => finish(new GateLeaseError("GATE_LEASE_BROKER_HOLD_FAILED", "gate lease broker hold failed", {
+      host, port, reason: error.code ?? error.message,
+    })));
+  });
+}
+
 export async function acquireGateLease({
   host = DEFAULT_GATE_LEASE_HOST,
   port = DEFAULT_GATE_LEASE_PORT,

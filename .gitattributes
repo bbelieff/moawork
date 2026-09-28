@@ -14,3 +14,8 @@
 
 # 신뢰 앵커 — 줄바꿈을 바꾸지 않는다 (#665). 체크아웃마다 파일이 달라지면 안 된다.
 *.crt   -text
+
+# systemd 유닛은 리눅스가 그대로 읽는다. CRLF 면 값 끝에 CR 이 붙어
+# OnCalendar 시각과 ExecStart 경로가 어긋난다.
+*.service  text eol=lf
+*.timer    text eol=lf

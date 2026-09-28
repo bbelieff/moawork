@@ -64,6 +64,14 @@ function row(index: number): ItemWithValues {
 }
 
 describe("BBE-118 filter contract", () => {
+  it("보기 숨김 열은 인가된 검색에 포함하고 전달되지 않은 컬럼·행은 추가하지 않는다", () => {
+    const authorizedColumns = [column("status", "select"), column("memo", "text")];
+    const authorizedRows = [{ ...row(1), values: { memo: "authorized-needle", private_value: "private-needle" } }];
+    const view = { ...EMPTY_FILTERS, visibleColumnKeys: ["status"] };
+    expect(applyFilters(authorizedRows, authorizedColumns, { ...view, q: "authorized-needle" }).map(r => r.id)).toEqual(["row-1"]);
+    expect(applyFilters(authorizedRows, authorizedColumns, { ...view, q: "private-needle" })).toEqual([]);
+    expect(applyFilters(authorizedRows, authorizedColumns, { ...view, q: "회사 2" })).toEqual([]);
+  });
   it("restores multi-select filters after a URL round trip and fails closed", () => {
     const filters = {
       ...EMPTY_FILTERS,
@@ -111,7 +119,7 @@ describe("BBE-118 filter contract", () => {
     }
   });
 
-  it("text·phone·date·선행 0 문자열은 기존 표시 검색 의미를 보존한다", () => {
+  it("text·date·선행 0은 보존하고 전화는 하이픈·공백·국제표기를 정규화한다", () => {
     const identityColumns = [
       column("identifier", "text"),
       column("phone", "phone"),
@@ -126,10 +134,10 @@ describe("BBE-118 filter contract", () => {
       },
     }];
 
-    for (const q of ["001234", "010-1234-5678", "2026-08-27"]) {
+    for (const q of ["001234", "010-1234-5678", "01012345678", "+82 10 1234 5678", "2026-08-27"]) {
       expect(applyFilters(rows, identityColumns, { ...EMPTY_FILTERS, q })).toHaveLength(1);
     }
-    expect(applyFilters(rows, identityColumns, { ...EMPTY_FILTERS, q: "01012345678" }))
+    expect(applyFilters(rows, identityColumns, { ...EMPTY_FILTERS, q: "01099998888" }))
       .toHaveLength(0);
   });
 

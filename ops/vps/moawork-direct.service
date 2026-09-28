@@ -1,0 +1,36 @@
+[Unit]
+Description=MoaWork private web
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/srv/moawork-direct/current/runtime/app/server.js
+
+[Service]
+Type=simple
+User=moawork
+Group=moawork
+WorkingDirectory=/srv/moawork-direct/current/runtime/app
+EnvironmentFile=/etc/moawork/runtime.env
+EnvironmentFile=/srv/moawork-direct/current/release.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=10
+MemoryMax=768M
+MemorySwapMax=0
+CPUQuota=50%
+TasksMax=128
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectProc=invisible
+CacheDirectory=moawork-direct
+ReadWritePaths=/var/cache/moawork-direct
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -14,7 +14,7 @@ function formRequest(mode: string, next?: string): Request {
   const form = new FormData();
   form.set("mode", mode);
   if (next) form.set("next", next);
-  return new Request("https://www.moa-work.com/mode/preference", {
+  return new Request("http://localhost:3100/mode/preference", {
     method: "POST",
     body: form,
   });
@@ -39,7 +39,7 @@ describe("POST /mode/preference", () => {
     const response = await POST(formRequest("platform", "/account?tab=privacy"));
 
     expect(response.headers.get("location")).toBe(
-      "https://www.moa-work.com/mode?next=%2Faccount%3Ftab%3Dprivacy",
+      "/mode?next=%2Faccount%3Ftab%3Dprivacy",
     );
     expect(response.headers.get("set-cookie")).toMatch(/mw_mode=v1\.platform\./);
     expect(response.headers.get("set-cookie")).toContain("HttpOnly");
@@ -85,7 +85,7 @@ describe("POST /mode/preference", () => {
     expect(response.status).toBeGreaterThanOrEqual(300);
     expect(response.status).toBeLessThan(400);
     expect(response.headers.get("location")).toBe(
-      "https://www.moa-work.com/mode?next=%2Faccount%3Ftab%3Dprivacy&error=config",
+      "/mode?next=%2Faccount%3Ftab%3Dprivacy&error=config",
     );
     // No preference is persisted — we could not produce a trustworthy signed cookie.
     expect(response.headers.get("set-cookie")).toBeNull();

@@ -49,7 +49,7 @@ export function GoogleSignInButton({ nextPath = "/" }: { nextPath?: string }) {
         onClick={signIn}
         disabled={pending}
         aria-busy={pending}
-        className="flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold shadow-sm transition-[border-color,box-shadow,opacity] hover:border-mw-primary hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mw-primary disabled:cursor-wait disabled:opacity-60"
+        className="flex min-h-14 w-full items-center justify-center gap-3 rounded-md border px-4 py-3 text-sm font-semibold shadow-sm transition-[border-color,box-shadow,opacity] hover:border-mw-primary hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mw-primary disabled:cursor-wait disabled:opacity-60"
         style={{
           borderColor: "color-mix(in srgb, var(--mw-fg) 50%, var(--mw-card))",
           background: "var(--mw-card)",

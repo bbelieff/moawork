@@ -11,7 +11,7 @@ import { WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
 //   1) 매 요청마다 Supabase 세션 토큰을 갱신(쿠키 재기록)한다. SSR 인증의 필수 절차.
 //   2) 인증되지 않은 사용자를 /login 으로 보낸다. 앱 전체가 로그인 뒤에 있다.
 //
-// 공개 경로(미인증 허용): /login, /auth/*(OAuth 콜백/로그아웃).
+// 공개 경로(미인증 허용): /login, /auth/*(OAuth 콜백/로그아웃), exact health probes.
 // 그 외 모든 경로는 세션이 없으면 /login 으로 리다이렉트한다.
 // 다른 트랙이 추가하는 앱 페이지는 이 계약에 따라 "인증된 사용자" 를 전제로 한다.
 //
@@ -39,9 +39,21 @@ import { WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
 //     지우면 방어가 사라진다. 「타입이 막으니 안전하다」고 믿지 마라.
 
 const PUBLIC_PATHS = ["/login", "/auth"];
+const PUBLIC_HEALTH_PATHS = new Set([
+  "/api/health/live",
+  "/api/health/ready",
+]);
+// 야간 배치는 «사람 세션» 이 아니라 `CRON_SECRET` 으로 스스로를 증명한다.
+// 세션 게이트에 걸리면 /login 으로 307 되어 라우트에 닿지도 못한다 — 그래서
+// `platform_metrics_daily` 가 한 번도 적재되지 않았다(2026-09-20 실측: 0행).
+//
+// 여기서 통과시켜도 «열리는» 것이 아니다. 라우트가 `CRON_SECRET` 미설정이면 503,
+// 토큰 불일치면 401 로 fail-closed 한다. 세션 게이트 대신 그 게이트를 쓰는 것뿐이다.
+// exact 매치만 허용한다 — 접두어로 열면 하위 경로가 같이 새어 나간다.
+const PUBLIC_BATCH_PATHS = new Set(["/api/cron/platform-metrics"]);
 const WORKSPACE_SLUG_COOKIE = "mw_workspace_slug";
 const WORKSPACE_PROTECTED_ROOTS = new Set([
-  "boards", "notices", "companies", "contract", "newcust", "work",
+  "boards", "notices", "companies", "consult-remote", "consult-inperson", "contract", "newcust", "work",
   "presets", "dash", "deals", "settlements", "onboarding", "settings",
 ]);
 
@@ -104,8 +116,12 @@ function protectedWorkspacePath(pathname: string): boolean {
 }
 
 function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATHS.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  return (
+    PUBLIC_HEALTH_PATHS.has(pathname) ||
+    PUBLIC_BATCH_PATHS.has(pathname) ||
+    PUBLIC_PATHS.some(
+      (p) => pathname === p || pathname.startsWith(`${p}/`),
+    )
   );
 }
 
@@ -113,9 +129,18 @@ async function routeRequest(
   request: NextRequest,
   jar: ReturnType<typeof createRefreshedCookieJar>,
 ): Promise<RouteDecision> {
+  // nextUrl normalizes loopback hosts; request.url preserves the router origin
+  // with skipProxyUrlNormalize. Use that origin for every rewrite and redirect.
   const { pathname, search } = request.nextUrl;
   const aliasCandidate = pathname.match(/^\/([^/]+)$/)?.[1];
   const safeRequestedPath = safeNextPath(`${pathname}${search}`, "/");
+
+  // Health must measure this process only. It must not depend on Supabase auth
+  // refresh, and only the two exact allowlisted routes bypass the auth client.
+  if (PUBLIC_HEALTH_PATHS.has(pathname)) return { kind: "pass" };
+
+  // 배치도 세션 게이트를 지나지 않는다. 인증은 라우트의 CRON_SECRET 이 맡는다.
+  if (PUBLIC_BATCH_PATHS.has(pathname)) return { kind: "pass" };
 
   // Supabase 미설정(개발 초기 등)에는 인증 게이트를 끄고 통과시킨다.
   // 운영에서는 env 를 반드시 설정해야 게이트가 활성화된다.
@@ -124,7 +149,7 @@ async function routeRequest(
     env = getSupabaseEnv();
   } catch {
     if (process.env.NODE_ENV === "production" && !isPublicPath(pathname)) {
-      const loginUrl = request.nextUrl.clone();
+      const loginUrl = new URL(request.url);
       loginUrl.pathname = "/login";
       loginUrl.search = "";
       loginUrl.searchParams.set("error", "config");
@@ -161,7 +186,7 @@ async function routeRequest(
   //   «빈 값 + maxAge 0» 삭제 지시를 setAll 로 내리는데, 그걸 버리면 브라우저에
   //   무효 쿠키가 남아 재로그인까지 오염된다.
   if (!user && !isPublicPath(pathname)) {
-    const loginUrl = request.nextUrl.clone();
+    const loginUrl = new URL(request.url);
     loginUrl.pathname = "/login";
     const canonicalNext = aliasCandidate && isWorkspaceNamespaceCandidate(pathname)
       ? `/w/${aliasCandidate}${search}`
@@ -179,7 +204,7 @@ async function routeRequest(
       .order("created_at", { ascending: true });
     const decision = decideWorkspaceNamespace(`${pathname}${search}`, membershipError ? null : membershipRows);
     if (decision.kind === "deny" || decision.kind === "none") {
-      const denied = request.nextUrl.clone();
+      const denied = new URL(request.url);
       denied.pathname = "/workspace-entry";
       denied.search = "";
       denied.searchParams.set("error", "routing");
@@ -212,11 +237,11 @@ async function routeRequest(
   if (user && protectedWorkspacePath(pathname)) {
     const slug = request.cookies.get(WORKSPACE_SLUG_COOKIE)?.value;
     if (slug && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(slug)) {
-      const canonical = request.nextUrl.clone();
+      const canonical = new URL(request.url);
       canonical.pathname = `/w/${slug}${pathname}`;
       return { kind: "redirect", to: canonical };
     }
-    const denied = request.nextUrl.clone();
+    const denied = new URL(request.url);
     denied.pathname = "/workspace-entry";
     denied.search = "";
     denied.searchParams.set("error", "routing");
@@ -259,7 +284,7 @@ export async function proxy(request: NextRequest) {
     // BBE-222: this is a trusted path hint only. Strip any caller-supplied
     // value, then derive it after authentication and namespace verification.
     requestHeaders.delete("x-mw-app-tab");
-    if (/^\/w\/[^/]+\/(?:newcust|contract|work|companies|notices|presets)(?:\/|$)/.test(request.nextUrl.pathname)) {
+    if (/^\/w\/[^/]+\/(?:newcust|consult-remote|consult-inperson|contract|work|companies|notices|presets)(?:\/|$)/.test(request.nextUrl.pathname)) {
       requestHeaders.set("x-mw-app-tab", "1");
     }
     return buildResponse(request, { ...decision, requestHeaders }, jar);

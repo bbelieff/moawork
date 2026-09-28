@@ -54,7 +54,7 @@ export default async function WorkspaceBuilderPage({ searchParams }: { searchPar
           <p className="text-xs font-semibold text-mw-record">설정</p>
           <h1 className="text-xl font-bold tracking-tight text-mw-fg">탭 관리</h1>
         </div>
-        <nav aria-label="탭 관리 메뉴" className="flex rounded-xl border border-mw-line bg-mw-card p-1 text-sm">
+        <nav aria-label="탭 관리 메뉴" className="flex rounded-md border border-mw-line bg-mw-card p-1 text-sm">
           <Link href="/settings/workspace-builder?section=migration" aria-current={section === "migration" ? "page" : undefined} className={`rounded-lg px-4 py-2 font-semibold ${section === "migration" ? "bg-mw-primary text-mw-on-accent" : "text-mw-sub hover:bg-mw-bg"}`}>마이그레이션</Link>
           <Link href="/settings/workspace-builder?section=workflow" aria-current={section === "workflow" ? "page" : undefined} className={`rounded-lg px-4 py-2 font-semibold ${section === "workflow" ? "bg-mw-primary text-mw-on-accent" : "text-mw-sub hover:bg-mw-bg"}`}>워크플로 관리</Link>
         </nav>

@@ -51,7 +51,7 @@ export function ColumnTemplateLibrary({ boardId, columns }: { boardId: string; c
             <select name="scope" defaultValue="private" className="rounded border px-2 py-1 dark:bg-zinc-900">
               <option value="private">나만 보기</option><option value="org">회사 공개</option>
             </select>
-            <button disabled={pending || !sourceColumnId} className="rounded bg-mw-primary px-3 py-1 text-white disabled:opacity-50">저장</button>
+            <button disabled={pending || !sourceColumnId} className="rounded bg-mw-primary px-3 py-1 text-mw-on-accent disabled:opacity-50">저장</button>
           </div>
         </form>
 
@@ -72,7 +72,7 @@ export function ColumnTemplateLibrary({ boardId, columns }: { boardId: string; c
                 </label>
                 {preview ? <p className="rounded bg-mw-bg p-2 text-mw-sub">미리보기: {preview.mode === "create" ? "새 컬럼 1개 추가" : `${preview.changes.length}개 설정 변경`}{"typeMismatch" in preview && preview.typeMismatch ? " · 타입이 달라 적용 불가" : ""} · 입력값 변경 0</p> : null}
                 <div className="flex flex-wrap gap-2">
-                  <OperationForm action={action} boardId={boardId} operation="apply" templateId={selected.id} targetColumnId={targetColumnId}><button disabled={pending || Boolean(preview && "typeMismatch" in preview && preview.typeMismatch)} className="rounded bg-mw-primary px-3 py-1 text-white disabled:opacity-50">적용</button></OperationForm>
+                  <OperationForm action={action} boardId={boardId} operation="apply" templateId={selected.id} targetColumnId={targetColumnId}><button disabled={pending || Boolean(preview && "typeMismatch" in preview && preview.typeMismatch)} className="rounded bg-mw-primary px-3 py-1 text-mw-on-accent disabled:opacity-50">적용</button></OperationForm>
                   <OperationForm action={action} boardId={boardId} operation="update" templateId={selected.id} columnId={sourceColumnId}><input name="name" defaultValue={selected.name} className="w-32 rounded border px-2 py-1 dark:bg-zinc-900" /><button disabled={pending} className="rounded border px-3 py-1">새 버전 저장</button></OperationForm>
                   {templates.filter((template) => template.templateKey === selected.templateKey).map((version) => <OperationForm key={version.id} action={action} boardId={boardId} operation="rollback" templateId={version.id}><button disabled={pending || version.version === Math.max(...templates.filter((item) => item.templateKey === selected.templateKey).map((item) => item.version))} className="rounded border px-3 py-1 disabled:opacity-50">v{version.version}로 원복</button></OperationForm>)}
                   <OperationForm action={action} boardId={boardId} operation="delete" templateId={selected.id}><button disabled={pending} className="rounded border border-red-300 px-3 py-1 text-red-600">전체 버전 삭제</button></OperationForm>

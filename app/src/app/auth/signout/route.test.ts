@@ -37,7 +37,7 @@ describe("POST /auth/signout", () => {
     expect(signOut).toHaveBeenCalledWith({ scope: "local" });
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "https://www.moa-work.com/login?reason=signed-out",
+      "/login?reason=signed-out",
     );
     expect(response.headers.get("set-cookie")).toContain("mw_uid=");
   });
@@ -56,7 +56,7 @@ describe("POST /auth/signout", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "https://www.moa-work.com/candidate-account?error=signout",
+      "/candidate-account?error=signout",
     );
     expect(response.headers.get("set-cookie")).toBeNull();
   });
@@ -76,7 +76,7 @@ describe("POST /auth/signout", () => {
     expect(signOut).toHaveBeenCalledWith({ scope: "local" });
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "https://www.moa-work.com/settings/account?error=signout",
+      "/settings/account?error=signout",
     );
     expect(response.headers.get("set-cookie")).toBeNull();
   });
@@ -90,8 +90,31 @@ describe("POST /auth/signout", () => {
 
     expect(mocks.createClient).not.toHaveBeenCalled();
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3000/login?reason=signed-out",
+      "/login?reason=signed-out",
     );
     expect(response.headers.get("set-cookie")).toContain("mw_org=");
+  });
+
+  it("never uses an internal or forwarded host for the success Location", async () => {
+    mocks.hasSupabaseEnv.mockReturnValue(false);
+    const response = await POST(new Request("http://localhost:3100/auth/signout", {
+      method: "POST", headers: { host: "www.moa-work.com", "x-forwarded-host": "evil.example", "x-forwarded-proto": "https" },
+    }));
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/login?reason=signed-out");
+    expect(response.headers.get("set-cookie")).toContain("mw_org=");
+  });
+
+  it("keeps foreign, malformed and unsafe error referers on the local fallback", async () => {
+    mocks.hasSupabaseEnv.mockReturnValue(true);
+    mocks.createClient.mockResolvedValue({ auth: { signOut: vi.fn().mockResolvedValue({ error: new Error("failed") }) } });
+    for (const referer of ["https://evil.example/path", "http://[invalid", "https://www.moa-work.com//evil.example"]) {
+      const response = await POST(new Request("https://www.moa-work.com/auth/signout", {
+        method: "POST", headers: { referer },
+      }));
+      expect(response.status).toBe(303);
+      expect(response.headers.get("location")).toBe("/?error=signout");
+      expect(response.headers.get("set-cookie")).toBeNull();
+    }
   });
 });

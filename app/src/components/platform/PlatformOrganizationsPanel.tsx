@@ -58,9 +58,9 @@ export function PlatformOrganizationsPanel({ requests, aggregate }: Props) {
     <div className={styles.organizationConsole}>
       <section className={styles.onboardingSummary} aria-labelledby="organization-onboarding-title">
         <div>
-          <p className={styles.sectionLabel}>첫 진입 관리</p>
-          <h2 id="organization-onboarding-title">회사 요청을 승인하면 바로 시작할 수 있어요</h2>
-          <p>승인하면 회사가 만들어지고 요청자가 대표 권한으로 연결돼요. 고객 업무나 개인정보는 이 화면에서 열지 않아요.</p>
+
+          <h2 id="organization-onboarding-title">회사 요청 관리</h2>
+
         </div>
         <dl className={styles.onboardingMetrics}>
           <div>
@@ -74,18 +74,12 @@ export function PlatformOrganizationsPanel({ requests, aggregate }: Props) {
         </dl>
       </section>
 
-      <ol className={styles.onboardingSteps} aria-label="고객사 첫 진입 순서">
-        <li><span>1</span><div><strong>사용자가 요청</strong><small>로그인 후 회사 이름과 주소를 입력해요.</small></div></li>
-        <li><span>2</span><div><strong>관리자가 승인</strong><small>아래 요청을 확인하고 한 번만 승인해요.</small></div></li>
-        <li><span>3</span><div><strong>회사 업무 시작</strong><small>요청자가 대표로 연결되어 사용자 모드로 들어가요.</small></div></li>
-      </ol>
-
       {notice ? <ResultBanner notice={notice} okClassName={styles.organizationStatus} errorClassName={styles.organizationError} /> : null}
 
       {requests === null ? (
         <section className={styles.organizationUnavailable} aria-labelledby="organization-unavailable-title">
           <h2 id="organization-unavailable-title">승인 요청을 불러오지 못했어요</h2>
-          <p>관리자 권한과 요청 연결 상태를 확인해 주세요. 권한을 추정해서 승인 버튼을 보여주지 않아요.</p>
+          <p>페이지를 새로고침한 뒤 다시 시도해 주세요.</p>
         </section>
       ) : (
         <section className={styles.approvalQueue} aria-labelledby="organization-approval-title">
@@ -99,7 +93,7 @@ export function PlatformOrganizationsPanel({ requests, aggregate }: Props) {
           {requests.length === 0 ? (
             <div className={styles.organizationEmpty}>
               <strong>지금 승인할 요청이 없어요</strong>
-              <p>새 요청이 들어오면 회사 이름과 주소가 여기에 표시돼요.</p>
+
             </div>
           ) : (
             <ul className={styles.organizationRequests}>
@@ -132,7 +126,6 @@ export function PlatformOrganizationsPanel({ requests, aggregate }: Props) {
               ))}
             </ul>
           )}
-          <p className={styles.approvalSafety}>승인할 때 서버가 관리자 권한과 요청 상태를 다시 확인하고, 회사 생성과 대표 연결을 한 번에 처리해요.</p>
         </section>
       )}
     </div>

@@ -52,7 +52,7 @@ describe("MemberPicker 조직형 선택창", () => {
     expect(dialog.textContent).toContain("심사실행팀");
     expect(dialog.textContent).toContain("이후 조직 변경은 자동 반영되지 않으며");
 
-    const search = dialog.querySelector<HTMLInputElement>('[aria-label="연관담당 멤버 검색"]')!;
+    const search = dialog.querySelector<HTMLInputElement>('[aria-label="연관담당 구성원 검색"]')!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(search, "초록");
       search.dispatchEvent(new Event("input", { bubbles: true }));

@@ -1,5 +1,11 @@
 param([string]$FenceName = "", [switch]$AllTests)
-$subKey = if ($AllTests -or $FenceName.StartsWith("Global\MoaWork.FullGate.Test.")) { "Software\MoaWork\GateLeaseTest" } else { "Software\MoaWork\GateLease" }
+$testPrefix = "Global\MoaWork.FullGate.Test."
+$isTestFence = $FenceName.StartsWith($testPrefix, [StringComparison]::Ordinal)
+if ((-not $AllTests -and -not $isTestFence) -or ($AllTests -and $FenceName -and -not $isTestFence)) {
+  [Console]::Error.WriteLine("GATE_TEST_CLEANUP_SCOPE_INVALID")
+  exit 78
+}
+$subKey = "Software\MoaWork\GateLeaseTest"
 $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($subKey, $true)
 if ($null -eq $key) { exit 0 }
 try {

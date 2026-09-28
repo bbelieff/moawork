@@ -32,7 +32,8 @@ export const APP_TABS: readonly AppTab[] = [
     key: "contact",
     mockupLabel: "리드컨택 관리",
     canonicalHref: "/contract",
-    altHrefs: [],
+    // 상담 STEP 탭은 같은 리드컨택 정본의 단계 보기라 contact 탭에 속한다.
+    altHrefs: ["/consult-remote", "/consult-inperson"],
   },
   {
     key: "work",
@@ -67,10 +68,12 @@ export const APP_TABS: readonly AppTab[] = [
  * 아직 이 파일을 읽지 않으므로(§NG-02 후속) 지금은 사람이 유지한다.
  */
 export const OUT_OF_TAB_HREFS: readonly string[] = [
+  "/policyfund/news",
   "/",
   "/login",
   // Issue #536: deterministic, customer-DML-free visual merge-gate fixture.
   "/login/visual-fixture",
+  "/login/platform-fixture",
   // BBE-186: 홈에서 옮겨 온 업무 분석. 6탭이 아니라 홈의 «바로 가기» 로 들어간다.
   "/dash",
   "/dash/[pipelineId]",
@@ -79,6 +82,8 @@ export const OUT_OF_TAB_HREFS: readonly string[] = [
   "/deals/[dealId]",
   // BBE-240: 연도별 전체 원장 — 사이드바(nav-items.ts "acct")에는 있지만 6탭엔 안 낀다.
   "/ledger",
+  // #711 A: 월별 계약회사 상세는 사이드바 운영 화면이며 보드 6탭과 별개다.
+  "/dash/top-companies",
   "/mode",
   "/onboarding",
   "/onboarding/practice",
@@ -101,6 +106,7 @@ export const OUT_OF_TAB_HREFS: readonly string[] = [
   "/platform/demo",
   "/platform/metrics",
   "/platform/organizations",
+  "/platform/organizations/[id]",
   "/platform/support",
   "/platform/system",
   "/platform/workspace-requests",

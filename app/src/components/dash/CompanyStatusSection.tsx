@@ -52,9 +52,7 @@ export async function CompanyStatusSection({
     <header className="flex flex-wrap items-baseline justify-between gap-[var(--sp-2)]">
       <div>
         <h2 className="text-[length:var(--fs-18)] font-semibold text-[var(--mw-t-1)]">회사 현황</h2>
-        <p className="mt-[var(--sp-1)] text-[length:var(--fs-12)] text-[var(--mw-t-3)]">
-          내 권한으로 볼 수 있는 업무만 같은 기준으로 집계합니다.
-        </p>
+
       </div>
     </header>
   );
@@ -90,7 +88,7 @@ export async function CompanyStatusSection({
   return (
     <div className="flex flex-col gap-6">
       {header}
-      <span className="text-sm text-zinc-500">기준 {formatMonth(displayMonth)} (KST)</span>
+      <span className="text-sm text-zinc-500">{formatMonth(displayMonth)}</span>
 
       <FeatureGateServer orgId={ctx.org.id} feature={FEATURES.dash} label="대시보드">
         <div className="flex flex-col gap-6">
@@ -100,7 +98,7 @@ export async function CompanyStatusSection({
             <div className="mb-2 flex items-baseline justify-between gap-2">
               <div>
                 <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">📢 최근 공지</h2>
-                <p className="mt-0.5 text-xs text-zinc-400">상단고정 우선 · 게시일 최신순</p>
+
               </div>
               <Link href="/notices" className="text-xs text-zinc-500 hover:underline">전체 보기 →</Link>
             </div>
@@ -164,7 +162,7 @@ export async function CompanyStatusSection({
                   <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
                     내 업무 ({formatCount(core.deals.length)})
                   </h2>
-                  <p className="mt-0.5 text-xs text-zinc-500">업무는 업체와 진행하는 각각의 일입니다.</p>
+
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
                   <table className="w-full text-sm">

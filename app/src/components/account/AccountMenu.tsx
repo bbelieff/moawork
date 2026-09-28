@@ -88,7 +88,7 @@ export function AccountMenu({
           <strong>{displayName}</strong>
           <small>{loginEmail}</small>
         </span>
-        <span aria-hidden="true">▾</span>
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </button>
 
       <div
@@ -114,9 +114,6 @@ export function AccountMenu({
         <div className={styles.menuSummary}>
           <strong>{displayName}</strong>
           <small>{loginEmail}</small>
-          {serverConfirmedCanAccessPlatform ? (
-            <span className={styles.modeBadge}>사용자 모드</span>
-          ) : null}
         </div>
         <ul className={styles.menuList}>
           <li>
@@ -139,7 +136,7 @@ export function AccountMenu({
                 className={styles.menuItem}
                 onClick={() => setOpen(false)}
               >
-                회사와 팀
+                내 회사 관리
               </Link>
             </li>
           ) : null}

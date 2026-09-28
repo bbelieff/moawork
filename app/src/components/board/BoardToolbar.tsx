@@ -460,7 +460,7 @@ export function BoardToolbar({
         <div
           id="board-filter-panel"
           data-board-filter-panel
-          className="flex flex-col gap-2 rounded-xl border border-mw-line bg-mw-card p-3"
+          className="flex flex-col gap-2 rounded-md border border-mw-line bg-mw-card p-3"
         >
           <div className="flex flex-wrap items-center gap-2">{facetChips}</div>
           <div className="flex items-center justify-between gap-2 border-t border-mw-line pt-2">

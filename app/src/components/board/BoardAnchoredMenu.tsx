@@ -217,7 +217,7 @@ export function BoardAnchoredMenu({
           maxHeight: position.maxHeight,
           visibility: position.ready ? "visible" : "hidden",
         }}
-        className="mw-layer-page-popover fixed overflow-y-auto rounded-xl border border-mw-line bg-mw-card p-1.5 text-left text-mw-fg shadow-xl"
+        className="mw-layer-page-popover fixed overflow-y-auto rounded-md border border-mw-line bg-mw-card p-1.5 text-left text-mw-fg shadow-xl"
       >
         {children}
       </div>

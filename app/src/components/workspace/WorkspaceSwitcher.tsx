@@ -299,7 +299,9 @@ export function WorkspaceSwitcher({
           <span className={styles.name}>{current.name}</span>
           <span className={styles.sub}>{ROLE_LABEL[current.role]} · 내 회사</span>
         </span>
-        <span className={styles.chevron} aria-hidden="true">⌄</span>
+        <svg className={styles.chevron} viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="m6 8 4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
 
       {/* ★ 실패를 status 로 읽어주면 보조기술 사용자는 «이동됐다» 로 듣는다(BBE-208).
@@ -333,7 +335,7 @@ export function WorkspaceSwitcher({
             <div className={styles.dialogHeader}>
               <div>
                 <h2 id={titleId}>회사 전환</h2>
-                <p className={styles.commandHint}>활성 회사만 선택할 수 있어요.</p>
+
               </div>
               <button type="button" className={styles.closeButton} onClick={() => close()} aria-label="회사 전환 닫기">
                 ×
@@ -393,14 +395,14 @@ export function WorkspaceSwitcher({
                 <span className={styles.actionIcon} aria-hidden="true">+</span>
                 <span className={styles.itemText}>
                   <span className={styles.name}>새 회사 만들기</span>
-                  <span className={styles.sub}>새 워크스페이스를 시작해요</span>
+
                 </span>
               </button>
               <button type="button" className={styles.action} data-destination={destinations.joinHref} onClick={() => void navigate(destinations.joinHref, "join")} disabled={!destinations.joinHref || busyKey !== null}>
                 <span className={styles.actionIcon} aria-hidden="true">↳</span>
                 <span className={styles.itemText}>
                   <span className={styles.name}>기존 회사에 합류하기</span>
-                  <span className={styles.sub}>초대 정보로 안전하게 찾아요</span>
+
                 </span>
               </button>
             </div>
@@ -412,7 +414,7 @@ export function WorkspaceSwitcher({
               </>
             ) : null}
 
-            <p className={styles.note}>승인 전에는 회사에 들어갈 수 없어요. 목록에는 내 소속만 보여요.</p>
+
           </section>
           </>
         </BodyPortal>

@@ -135,15 +135,8 @@ describe("BBE-183 ① 판정 — 응답을 tone 으로", () => {
 });
 
 describe("BBE-183 ② 배너 — tone 을 실제로 그린 결과", () => {
-  it("성공 배너에 오류 스타일이 붙지 않는다", () => {
-    const html = renderNotice(SUCCESS);
-
-    expect(html).toContain(styles.status);
-    expect(html).not.toContain(styles.error);
-    expect(html).toContain('role="status"');
-    expect(html).toContain('aria-live="polite"');
-    expect(html).not.toContain('role="alert"');
-    expect(html).toContain(SUCCESS.message);
+  it("성공 시 이동만 수행하고 중복 안내 배너를 표시하지 않는다", () => {
+    expect(renderNotice(SUCCESS)).toBe("");
   });
 
   it("실패 배너는 오류 스타일과 alert 을 함께 쓴다", () => {
@@ -164,13 +157,13 @@ describe("BBE-183 ② 배너 — tone 을 실제로 그린 결과", () => {
 
 describe("BBE-183 ③ 화면 — 배너를 실제로 붙이는가, 잠금이 버튼에 닿는가", () => {
   // 배너 컴포넌트가 아무리 옳아도 화면이 안 붙이면 사용자는 아무 피드백을 못 받는다.
-  it("성공 상태의 화면에 성공 배너가 실제로 붙는다", () => {
+  it("이동 중에는 중복 성공 안내 없이 버튼 잠금을 유지한다", () => {
     const html = renderView({ notice: { tone: "success", text: SUCCESS.message }, locked: true });
 
-    expect(html).toContain('data-tone="success"');
-    expect(html).toContain(styles.status);
-    expect(html).toContain('role="status"');
-    expect(html).toContain(SUCCESS.message);
+    expect(html).not.toContain('data-tone="success"');
+    expect(html).not.toContain(styles.status);
+    expect(html).not.toContain('role="status"');
+    expect(html).not.toContain(SUCCESS.message);
   });
 
   it("실패 상태의 화면에 실패 배너가 실제로 붙는다", () => {
@@ -338,8 +331,21 @@ describe("BBE-183 ⑤ 배선 — 화면이 실제로 부르는 것", () => {
     const html = renderToStaticMarkup(<WorkspaceChooser workspaces={WORKSPACES} />);
 
     expect(html).toContain("서울");
-    expect(html).toContain("/w/seoul");
+    expect(html).not.toContain("/w/seoul");
     expect(html).toContain("<button");
-    expect(html).toContain("들어갈 회사를 골라 주세요.");
+    expect(html).toContain("회사 선택");
   });
+});
+
+it("동명 회사에만 주소 식별자를 표시한다", () => {
+  const renderOptions = (workspaces: WorkspaceEntryOption[]) => renderToStaticMarkup(
+    <WorkspaceChooserView workspaces={workspaces} view={WORKSPACE_CHOOSER_IDLE} onSelect={() => {}} />,
+  );
+  const options = [{ orgId: "a", name: "Example", slug: "first-company" }, { orgId: "b", name: "Example", slug: "second-company" }] as WorkspaceEntryOption[];
+  const duplicated = renderOptions(options);
+  expect(duplicated).toContain("<small>first-company</small>");
+  expect(duplicated).toContain("<small>second-company</small>");
+  const unique = renderOptions([options[0]]);
+  expect(unique).toContain("Example");
+  expect(unique).not.toContain("<small>");
 });

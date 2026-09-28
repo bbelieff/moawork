@@ -1,3 +1,4 @@
+import { relativeRedirect } from "@/lib/auth/relative-redirect";
 import { NextResponse } from "next/server";
 import { loadPlatformActor } from "@/lib/platform/actor";
 import {
@@ -43,10 +44,10 @@ export async function POST(request: Request): Promise<Response> {
     // shape as the 2026-08-11 P0: a working action with no reachable
     // outcome). Send them to a page that explains it instead.
     url.searchParams.set("error", "config");
-    return NextResponse.redirect(url);
+    return relativeRedirect(url.pathname + url.search);
   }
 
-  const response = NextResponse.redirect(url);
+  const response = relativeRedirect(url.pathname + url.search);
   response.cookies.set(modePreferenceCookie.name, signed, modePreferenceCookie.options);
   return response;
 }

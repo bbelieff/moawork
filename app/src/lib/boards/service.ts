@@ -82,6 +82,44 @@ export interface SetCellsResult {
   undo: CellEditUndo | null;
 }
 
+/** strict 쌍원자 저장의 실제 커밋 범위 — touch 실패처럼 값은 반영됐는데 후처리가 실패한 경우를 꾸미지 않기 위함. */
+export type StrictCellCommit = "none" | "partial" | "all" | "unknown";
+
+export interface SetCellsStrictResult extends SetCellsResult {
+  /**
+   * 이번 호출로 실제로 반영된 범위. `none` 일 때만 "저장하지 않음"이라 말한다.
+   * `unknown` 은 쓰기 자체는 성공했으나 최종 재조회가 안 돼 반영을 확인하지 못한
+   * 경우다 — 저장 거부(none/partial)와 post-commit 확인불가를 구분한다.
+   */
+  committed: StrictCellCommit;
+  /** 커밋 범위가 `all` 이 아니거나 쓰기 후 확인에 실패했을 때의 설명. */
+  commitDetail: string | null;
+}
+
+/** 보드 화면 한 번을 그리는 데 필요한 읽기 스냅샷. */
+export interface BoardPageSnapshot {
+  detail: BoardDetail;
+  items: ItemWithValues[];
+  deletedItems: ItemWithValues[];
+  /** 153-draft 별도 보관 (휴지통과 독립). includeArchived가 거짓이면 빈 배열. */
+  archivedItems: ItemWithValues[];
+}
+
+export type BoardPageSnapshotTimingPhase = "metadata" | "items" | "hydrate";
+
+export interface BoardPageSnapshotTiming {
+  phase: BoardPageSnapshotTimingPhase;
+  offsetMs: number;
+  durationMs: number;
+}
+
+export interface KanbanLane {
+  key: string;
+  label: string;
+  color: string | null;
+  items: ItemWithValues[];
+}
+
 /** 새 보드에 기본 제공되는 컬럼(빈 보드가 바로 쓸 수 있도록). */
 export const DEFAULT_NEW_BOARD_COLUMNS: NewColumn[] = [
   {
@@ -243,7 +281,8 @@ export class BoardsService {
       this.getBoardDetail(ctx, boardId),
       this.repo.then((repo) => repo.listItems(ctx, boardId)),
     ]);
-    return this.compose(ctx, items, detail);
+    // 153-draft 별도 보관 행은 활성 목록에서 뺀다 (읽기는 한 번, 분리는 메모리에서 — BBE-214 왕복 예산 유지).
+    return this.compose(ctx, items.filter((item) => !item.archived_at), detail);
   }
 
   async listDeletedItems(ctx: Ctx, boardId: string): Promise<ItemWithValues[]> {
@@ -252,6 +291,101 @@ export class BoardsService {
       this.repo.then((repo) => repo.listDeletedItems(ctx, boardId)),
     ]);
     return this.compose(ctx, items, detail);
+  }
+
+  /**
+   * 보관 목록 — 휴지통과 같은 가시성 등급의 권한 뒤에 같은 읽기 파동으로 읽힌다.
+   * 보통 목록·검색·칸반·집계는 listItems(보관 제외)를 쓰므로 보관 행이 새지 않는다.
+   */
+  async listArchivedItems(ctx: Ctx, boardId: string): Promise<ItemWithValues[]> {
+    const [detail, items] = await Promise.all([
+      this.getBoardDetail(ctx, boardId),
+      this.repo.then((repo) => repo.listArchivedItems(ctx, boardId)),
+    ]);
+    return this.compose(ctx, items, detail);
+  }
+
+  /** 보관 행은 복구 전에는 보통 수정·이동·삭제 경로에서 거부한다. */
+  private async requireActiveItem(ctx: Ctx, itemId: string): Promise<void> {
+    const archived = await (await this.repo).getArchivedItem(ctx, itemId);
+    if (archived) {
+      throw new BoardRuleError("보관된 항목입니다. 보관 목록에서 복구한 뒤 수정할 수 있습니다.");
+    }
+  }
+
+  /**
+   * 보드 화면용 일관 스냅샷.
+   *
+   * 메타데이터는 한 번만 읽고, 활성/보관/휴지통 행은 같은 물결에서 가져온 뒤 셀 값도
+   * 한 번만 수화한다 (직렬 단계는 metadata→items→hydrate 그대로 — BBE-214 유지).
+   * 휴지통·보관 권한이 없으면 해당 query와 그 값 ID를 아예 발행하지 않는다.
+   * 시스템 보드는 기존 화면 계약대로 휴지통·보관을 읽지 않는다.
+   */
+  async loadPageSnapshot(
+    ctx: Ctx,
+    boardId: string,
+    options: {
+      includeDeleted?: boolean;
+      includeArchived?: boolean;
+      onTiming?: (timing: BoardPageSnapshotTiming) => void;
+    } = {},
+  ): Promise<BoardPageSnapshot> {
+    const startedAt = performance.now();
+    const measure = (
+      phase: BoardPageSnapshotTimingPhase,
+      phaseStartedAt: number,
+    ) => {
+      if (!options.onTiming) return;
+      const finishedAt = performance.now();
+      const finiteNonnegative = (value: number) => Number.isFinite(value) && value >= 0 ? value : 0;
+      options.onTiming({
+        phase,
+        offsetMs: finiteNonnegative(phaseStartedAt - startedAt),
+        durationMs: finiteNonnegative(finishedAt - phaseStartedAt),
+      });
+    };
+
+    const metadataStartedAt = performance.now();
+    const detail = await this.getBoardDetail(ctx, boardId);
+    measure("metadata", metadataStartedAt);
+    const repo = await this.repo;
+    const includeDeleted = options.includeDeleted === true && !detail.board.is_system;
+    // 보관 목록은 휴지통과 같은 가시성 등급(work.item_delete)으로 같은 스냅샷에서 분리한다.
+    // 명시 옵션이 없으면 includeDeleted를 따른다 — 호출문(권한 순서 계약)을 바꾸지 않고도
+    // 보관 패널이 휴지통과 같은 관문 뒤에 같은 왕복으로 읽힌다.
+    const includeArchived = (options.includeArchived ?? options.includeDeleted) === true && !detail.board.is_system;
+    const itemsStartedAt = performance.now();
+    // 보관 행은 listItems(활성 전용)에서 제외되므로 보관함이 필요할 때만 같은
+    // 파동에서 listArchivedItems를 함께 읽는다 (직렬 단계는 그대로 metadata→items→hydrate).
+    const [visibleItems, deletedItems, archivedOnly] = await Promise.all([
+      repo.listItems(ctx, boardId),
+      includeDeleted ? repo.listDeletedItems(ctx, boardId) : Promise.resolve([]),
+      includeArchived ? repo.listArchivedItems(ctx, boardId) : Promise.resolve([]),
+    ]);
+    measure("items", itemsStartedAt);
+
+    // 방어 분리: 보관 권한이 없으면 보관 행의 값 ID를 발행하지 않는다.
+    const activeItems = visibleItems.filter((item) => !item.archived_at);
+    const archivedItems = [...archivedOnly, ...visibleItems.filter((item) => Boolean(item.archived_at))];
+
+    const activeIds = new Set(activeItems.map((item) => item.id));
+    if (deletedItems.some((item) => activeIds.has(item.id))) {
+      throw new BoardRuleError("활성 항목과 휴지통 항목의 범위가 겹칩니다");
+    }
+
+    const hydrateStartedAt = performance.now();
+    const hydrated = await this.compose(
+      ctx,
+      [...activeItems, ...deletedItems, ...archivedItems],
+      detail,
+    );
+    measure("hydrate", hydrateStartedAt);
+    return {
+      detail,
+      items: hydrated.slice(0, activeItems.length),
+      deletedItems: hydrated.slice(activeItems.length, activeItems.length + deletedItems.length),
+      archivedItems: hydrated.slice(activeItems.length + deletedItems.length),
+    };
   }
 
   async getItem(ctx: Ctx, boardId: string, itemId: string): Promise<ItemWithValues> {
@@ -281,6 +415,7 @@ export class BoardsService {
 
   async updateItem(ctx: Ctx, boardId: string, itemId: string, patch: ItemPatch): Promise<ItemWithValues> {
     await this.requireEditableBoard(ctx, boardId);
+    await this.requireActiveItem(ctx, itemId);
     const item = await (await this.repo).updateItem(ctx, itemId, patch);
     if (!item) throw new NotFoundError("아이템을 찾을 수 없습니다");
     return this.getItem(ctx, boardId, itemId);
@@ -291,11 +426,13 @@ export class BoardsService {
       throw new BoardRuleError("전체 행을 볼 수 있는 사용자만 행 순서를 바꿀 수 있습니다");
     }
     await this.requireEditableBoard(ctx, boardId);
+    await this.requireActiveItem(ctx, request.itemId);
     return (await this.repo).moveRowAtomic(ctx, boardId, request);
   }
 
   async deleteItem(ctx: Ctx, boardId: string, itemId: string): Promise<void> {
     await this.requireEditableBoard(ctx, boardId);
+    await this.requireActiveItem(ctx, itemId);
     const repo = await this.repo;
     if (await repo.deleteItem(ctx, boardId, itemId)) return;
     const alreadyDeleted = (await repo.listDeletedItems(ctx, boardId)).some((item) => item.id === itemId);
@@ -332,6 +469,7 @@ export class BoardsService {
     requestId = crypto.randomUUID(),
   ): Promise<SetCellsResult> {
     const detail = await this.requireEditableBoardDetail(ctx, boardId);
+    await this.requireActiveItem(ctx, itemId);
     const before = await this.getItem(ctx, boardId, itemId);
 
     const { values, errors } = this.validateValues(detail.columns, patch, true);
@@ -369,6 +507,178 @@ export class BoardsService {
     } else await repo.setValues(ctx, itemId, values);
 
     return { item: await this.getItem(ctx, boardId, itemId), errors, undo };
+  }
+
+  /**
+   * 쌍원자 저장 — 지역 쌍처럼 "둘 다 아니면 둘 다 아니다"가 필요한 자리 전용.
+   * 기존 `setCells()` 의 부분저장 계약은 그대로 둔다(관대 정책 유지).
+   *
+   * 첫 쓰기 전에 끝내는 검사: 요청키 누락·컬럼 미존재·readonly·source·값 검증
+   * errors. 하나라도 실패하면 쓰지 않는다. 쓰기는 `repo.setValues` 단일
+   * upsert(이동이 있으면 기존 `setValuesAndMoveAtomic` RPC)로 한 번만 나간다.
+   *
+   * 쓰기 호출이 실패하면 재조회로 실제 반영 범위를 가려 `committed` 에 담는다.
+   * 값은 이미 반영됐는데 `items.updated_at` touch 같은 후처리가 실패한 경우를
+   * "둘 다 미저장"이라 꾸미지 않고, 실패한 후처리를 무시해 성공으로 돌리지도
+   * 않는다 — 범위를 분명히 한 errors 로 닫는다.
+   */
+  async setCellsStrict(
+    ctx: Ctx,
+    boardId: string,
+    itemId: string,
+    patch: Record<string, CellValue>,
+    requestId = crypto.randomUUID(),
+    requiredKeys: readonly string[] = [],
+  ): Promise<SetCellsStrictResult> {
+    const detail = await this.requireEditableBoardDetail(ctx, boardId);
+    const before = await this.getItem(ctx, boardId, itemId);
+    const byKey = new Map(detail.columns.map((c) => [c.key, c]));
+    const preErrors: CellError[] = [];
+
+    for (const required of requiredKeys) {
+      if (!(required in patch)) {
+        const col = byKey.get(required);
+        preErrors.push({
+          key: required,
+          label: col?.label ?? required,
+          message: "함께 저장할 값이 빠져 저장하지 않았습니다",
+        });
+      }
+    }
+    for (const key of Object.keys(patch)) {
+      if (!byKey.has(key)) {
+        preErrors.push({ key, label: key, message: "컬럼을 찾을 수 없어 저장하지 않았습니다" });
+      }
+    }
+    if (preErrors.length > 0) {
+      return { item: before, errors: preErrors, undo: null, committed: "none", commitDetail: null };
+    }
+
+    // 무결성 필드 throw 는 여기서 나간다 — 아직 쓰지 않았으므로 원자성이 깨지지 않는다.
+    const { values, errors } = this.validateValues(detail.columns, patch, true);
+    if (errors.length > 0) {
+      return { item: before, errors, undo: null, committed: "none", commitDetail: null };
+    }
+    const writtenKeys = Object.keys(values);
+    if (writtenKeys.length === 0) {
+      return { item: before, errors, undo: null, committed: "none", commitDetail: null };
+    }
+
+    const beforeValues = (await this.getItem(ctx, boardId, itemId)).values;
+    const undo: CellEditUndo = {
+      values: Object.fromEntries(writtenKeys.map((k) => [k, beforeValues[k] ?? null])),
+      group_id: before.group_id,
+    };
+
+    let target: string | null = null;
+    for (const key of writtenKeys) {
+      const resolved = resolveMoveTarget(byKey.get(key)!, values[key]);
+      if (resolved !== null) target = resolved;
+    }
+    const repo = await this.repo;
+    try {
+      if (target !== null && target !== before.group_id) {
+        await repo.setValuesAndMoveAtomic(ctx, boardId, {
+          itemId,
+          targetGroupId: target,
+          beforeItemId: null,
+          expectedVersion: detail.board.row_order_version ?? 0,
+          requestId,
+          values,
+        });
+      } else {
+        await repo.setValues(ctx, itemId, values);
+      }
+    } catch (error) {
+      // 쓰기 실패 뒤 실제 반영 범위를 재조회로 가린다 — 추측으로 "미저장"이라 하지 않는다.
+      let reread: ItemWithValues;
+      try {
+        reread = await this.getItem(ctx, boardId, itemId);
+      } catch {
+        const message = "저장 결과를 확인하지 못했습니다. 화면을 새로고침한 뒤 다시 시도해 주세요.";
+        return {
+          item: before,
+          errors: writtenKeys.map((key) => ({ key, label: byKey.get(key)?.label ?? key, message })),
+          undo: null,
+          committed: "unknown",
+          commitDetail: message,
+        };
+      }
+      const appliedKeys = writtenKeys.filter(
+        (key) => compareCells(reread.values[key] ?? null, values[key] ?? null) === 0,
+      );
+      const committed: StrictCellCommit =
+        appliedKeys.length === 0 ? "none" : appliedKeys.length === writtenKeys.length ? "all" : "partial";
+      const scope =
+        committed === "all"
+          ? "값은 저장됐으나 마무리 확인에 실패했습니다"
+          : committed === "partial"
+            ? `일부 값만 저장됐습니다(${appliedKeys.length}/${writtenKeys.length})`
+            : "저장하지 못했습니다";
+      const detailMessage = error instanceof Error && error.message ? ` (${error.message})` : "";
+      const message = `${scope}${detailMessage} 화면을 새로고침해 확인해 주세요.`;
+      const failedKeys = writtenKeys.filter((key) => !appliedKeys.includes(key));
+      const scopeErrors: CellError[] =
+        committed === "none"
+          ? writtenKeys.map((key) => ({
+              key,
+              label: byKey.get(key)?.label ?? key,
+              message,
+            }))
+          : [
+              {
+                key: (failedKeys[0] ?? appliedKeys[0] ?? writtenKeys[0]) as string,
+                label: byKey.get((failedKeys[0] ?? appliedKeys[0] ?? writtenKeys[0]) as string)?.label ??
+                  ((failedKeys[0] ?? appliedKeys[0] ?? writtenKeys[0]) as string),
+                message,
+              },
+            ];
+      return {
+        item: reread,
+        errors: scopeErrors,
+        undo: appliedKeys.length > 0
+          ? {
+              values: Object.fromEntries(appliedKeys.map((k) => [k, beforeValues[k] ?? null])),
+              group_id: before.group_id,
+            }
+          : null,
+        committed,
+        commitDetail: message,
+      };
+    }
+
+    // 쓰기는 성공했으나 최종 재조회가 안 되면 성공도 미저장도 단정하지 않는다.
+    // generic unsaved로 떨어뜨리면 "아무것도 안 저장됐다"며 중복 쓰기를 부르고,
+    // 성공으로 꾸미면 확인 안 된 값을 확정한다 — committed:"unknown"으로 닫고
+    // 호출부는 초안을 보존한 채 재조회 뒤 재시도해야 한다.
+    try {
+      return {
+        item: await this.getItem(ctx, boardId, itemId),
+        errors: [],
+        undo,
+        committed: "all",
+        commitDetail: null,
+      };
+    } catch (rereadError) {
+      const cause = rereadError instanceof Error && rereadError.message ? ` (${rereadError.message})` : "";
+      const message =
+        `저장됐을 수 있으나 방금 저장값을 확인하지 못했습니다${cause} ` +
+        `화면을 새로고침해 확인한 뒤 다시 시도해 주세요(확인 전에는 다시 저장하지 마세요).`;
+      const key = (requiredKeys[0] ?? writtenKeys[0]) as string;
+      return {
+        item: before,
+        errors: [
+          {
+            key,
+            label: byKey.get(key)?.label ?? key,
+            message,
+          },
+        ],
+        undo,
+        committed: "unknown",
+        commitDetail: message,
+      };
+    }
   }
 
   /**
@@ -414,9 +724,13 @@ export class BoardsService {
     ctx: Ctx,
     boardId: string,
     groupBy?: string,
-  ): Promise<{ key: string; label: string; color: string | null; items: ItemWithValues[] }[]> {
-    const detail = await this.getBoardDetail(ctx, boardId);
-    const items = await this.listItems(ctx, boardId);
+  ): Promise<KanbanLane[]> {
+    return this.kanbanFromSnapshot(await this.loadPageSnapshot(ctx, boardId), groupBy);
+  }
+
+  /** 이미 읽은 화면 스냅샷만 그룹핑한다 — 저장소 왕복은 0회다. */
+  kanbanFromSnapshot(snapshot: BoardPageSnapshot, groupBy?: string): KanbanLane[] {
+    const { detail, items } = snapshot;
 
     const col = groupBy ? detail.columns.find((c) => c.key === groupBy) : undefined;
     if (col && (col.type === "select" || col.type === "multiselect")) {

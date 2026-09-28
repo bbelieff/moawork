@@ -29,7 +29,7 @@ export function CompanyDetail({ company, deals, stageNames, workStartRequestId, 
   const homepage = safeHomepage(company.homepage);
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-4">
       <header className="flex flex-col gap-3">
         <Link
           href="/companies"
@@ -39,7 +39,7 @@ export function CompanyDetail({ company, deals, stageNames, workStartRequestId, 
         </Link>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-violet-700 dark:text-violet-300">고객사 상세</p>
+            <p className="text-sm font-medium text-mw-primary ">고객사 상세</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">{company.name}</h1>
           </div>
           <span className="rounded-full bg-zinc-100 px-3 py-1 text-sm text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
@@ -48,7 +48,7 @@ export function CompanyDetail({ company, deals, stageNames, workStartRequestId, 
         </div>
       </header>
 
-      <section aria-labelledby="company-profile-title" className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+      <section aria-labelledby="company-profile-title" className="rounded-md border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
         <div className="mb-5 flex flex-wrap items-start justify-between gap-2">
           <div>
             <h2 id="company-profile-title" className="font-semibold">기본 정보</h2>
@@ -68,7 +68,7 @@ export function CompanyDetail({ company, deals, stageNames, workStartRequestId, 
             <dt className="text-xs font-medium text-zinc-500">홈페이지</dt>
             <dd className="mt-1 break-all text-sm">
               {homepage ? (
-                <a className="rounded text-violet-700 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 dark:text-violet-300" href={homepage} target="_blank" rel="noreferrer">
+                <a className="rounded text-mw-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 " href={homepage} target="_blank" rel="noreferrer">
                   사이트 열기<span className="sr-only"> (새 창)</span>
                 </a>
               ) : company.homepage ? "확인할 수 없는 주소" : "—"}
@@ -81,12 +81,11 @@ export function CompanyDetail({ company, deals, stageNames, workStartRequestId, 
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 id="company-deals-title" className="font-semibold">관련 업무</h2>
-            <p className="mt-1 text-sm text-zinc-500">회사는 그대로 두고, 필요할 때만 업무를 시작합니다.</p>
           </div>
           <form action={startWorkAction}>
             <input type="hidden" name="companyId" value={company.id} />
             <input type="hidden" name="requestId" value={workStartRequestId} />
-            <button type="submit" className="min-h-11 rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
+            <button type="submit" className="min-h-11 rounded-lg bg-mw-primary px-4 py-2 text-sm font-semibold text-mw-on-accent hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mw-primary">
               업무 시작
             </button>
           </form>
@@ -97,7 +96,7 @@ export function CompanyDetail({ company, deals, stageNames, workStartRequestId, 
           <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">업무를 시작하지 못했습니다. 권한과 업무 보드 구성을 확인한 뒤 다시 시도해 주세요.</p>
         ) : null}
         {deals.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-zinc-300 px-5 py-10 text-center dark:border-zinc-700">
+          <div className="rounded-md border border-dashed border-zinc-300 px-5 py-6 text-center dark:border-zinc-700">
             <p className="font-medium">연결된 업무가 없습니다</p>
             <p className="mt-1 text-sm text-zinc-500">새 업무를 만들 때 이 고객사를 연결하면 여기에 표시됩니다.</p>
           </div>
@@ -107,7 +106,7 @@ export function CompanyDetail({ company, deals, stageNames, workStartRequestId, 
               <li key={deal.id}>
                 <Link
                   href={`/deals/${deal.id}`}
-                  className="flex min-h-24 flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-4 transition hover:border-violet-300 hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-violet-700"
+                  className="flex min-h-24 flex-col justify-between rounded-md border border-zinc-200 bg-white p-4 transition hover:border-mw-primary hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mw-primary dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-mw-primary"
                 >
                   <span className="font-medium">{deal.title}</span>
                   <span className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">

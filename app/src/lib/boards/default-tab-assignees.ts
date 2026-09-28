@@ -29,7 +29,7 @@ export async function loadDefaultTabAssignees(ctx: Ctx): Promise<DefaultTabAssig
     const summary = await loadMemberOrgSummary(ctx);
     const assignees = assigneesFromMemberSummary(summary);
     if (summary.kind !== "ready" || assignees.length === 0) {
-      throw new Error("활성 조직 멤버를 확인하지 못해 기본 탭 담당자를 동기화할 수 없습니다.");
+      throw new Error("활성 조직 구성원을 확인하지 못해 기본 탭 담당자를 동기화할 수 없습니다.");
     }
     return assignees;
   }
@@ -37,7 +37,7 @@ export async function loadDefaultTabAssignees(ctx: Ctx): Promise<DefaultTabAssig
   const members = await loadLocalAssignees(ctx);
   if (members.some((member) => member.userId === ctx.user.id)) return members;
   return [
-    { userId: ctx.user.id, displayName: ctx.user.name?.trim() || ctx.user.email?.trim() || "멤버" },
+    { userId: ctx.user.id, displayName: ctx.user.name?.trim() || ctx.user.email?.trim() || "구성원" },
     ...members,
   ];
 }
