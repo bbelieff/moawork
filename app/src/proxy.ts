@@ -11,7 +11,7 @@ import { WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
 //   1) 매 요청마다 Supabase 세션 토큰을 갱신(쿠키 재기록)한다. SSR 인증의 필수 절차.
 //   2) 인증되지 않은 사용자를 /login 으로 보낸다. 앱 전체가 로그인 뒤에 있다.
 //
-// 공개 경로(미인증 허용): /login, /auth/*(OAuth 콜백/로그아웃), exact health probes.
+// 공개 경로(미인증 허용): /login, /auth/*(OAuth 콜백/로그아웃), /join/*(초대 링크 미리보기), exact health probes.
 // 그 외 모든 경로는 세션이 없으면 /login 으로 리다이렉트한다.
 // 다른 트랙이 추가하는 앱 페이지는 이 계약에 따라 "인증된 사용자" 를 전제로 한다.
 //
@@ -38,7 +38,10 @@ import { WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
 //     세 번째가 진짜 회귀 모양이다(「새 출구가 생긴다」). 그러니 이 파일의 테스트를
 //     지우면 방어가 사라진다. 「타입이 막으니 안전하다」고 믿지 마라.
 
-const PUBLIC_PATHS = ["/login", "/auth"];
+// /join: 초대 링크를 받은 사람은 «무엇에 들어가는지» 로그인 전에 먼저 본다(#722).
+//   미리보기(peek_org_invite)는 anon 실행이 허용된 읽기이고, 실제로 들어가는
+//   redeem_org_invite 는 DB 가 auth.uid() 로 다시 막는다. 그래서 여기서 열어도 권한이 새지 않는다.
+const PUBLIC_PATHS = ["/login", "/auth", "/join"];
 const PUBLIC_HEALTH_PATHS = new Set([
   "/api/health/live",
   "/api/health/ready",
