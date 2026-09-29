@@ -117,6 +117,22 @@ describe("proxy health probe boundary", () => {
     }
   });
 
+  // #722: 초대 링크는 로그인 전에 «무엇에 들어가는지» 먼저 보여 준다. 게이트가 막으면 미리보기에 닿지 못한다.
+  it("lets a signed-out invitee reach the invite preview", async () => {
+    setup(null);
+    const response = await proxy(new NextRequest("https://www.moa-work.com/join/abc123token"));
+    expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("keeps lookalike join paths behind login", async () => {
+    for (const path of ["/joinx", "/join-other", "/joined/abc"]) {
+      mocks.createServerClient.mockReset();
+      setup(null);
+      const response = await proxy(new NextRequest(`https://www.moa-work.com${path}`));
+      expect(response.headers.get("location"), path).toContain("/login?next=");
+    }
+  });
+
   it("does not make lookalike health paths public", async () => {
     setup(null);
     const response = await proxy(
