@@ -314,3 +314,63 @@ describe("OAuth callback 플랫폼 관리자 분기", () => {
     );
   });
 });
+
+/*
+ * #722 — 초대 링크로 온 사람은 «그 링크로» 돌아와야 한다.
+ *
+ * ★ 이 갈래가 없으면 링크를 누른 사람이 로그인 뒤 「신청하세요」 화면에 떨어진다 —
+ *   소속이 0 이기 때문이다. 그러면 링크로 부르는 이유가 그대로 사라진다.
+ *
+ * ★★ 그리고 이 갈래는 «리다이렉트» 다. 모양 검사가 새면 열린 리다이렉트가 된다.
+ *   그래서 「돌아간다」보다 「아무 데로도 안 간다」를 더 많이 잰다.
+ */
+describe("OAuth callback 초대 링크 복귀 (#722)", () => {
+  beforeEach(() => mocks.createClient.mockReset());
+
+  const TOKEN = "aBc123XyZ0kkQwErTyUiOp12";
+
+  it("★ 소속이 0 이어도 초대 링크로 돌아간다 — 신청 화면으로 떨어지지 않는다", async () => {
+    setup({ rows: [] });
+    expect(location(await callback(`code=test-code&next=%2Fjoin%2F${TOKEN}`))).toBe(
+      `/join/${TOKEN}`,
+    );
+  });
+
+  it("★ 회사 쿠키를 심지 않는다 — 아직 들어간 것이 아니다", async () => {
+    setup({ rows: [] });
+    const response = await callback(`code=test-code&next=%2Fjoin%2F${TOKEN}`);
+    expect(response.headers.get("set-cookie")).toContain("mw_org=;");
+  });
+
+  it("이미 다른 회사에 속해 있어도 초대 링크가 이긴다", async () => {
+    setup({ rows: [membership("org-1", "alpha-team")] });
+    expect(location(await callback(`code=test-code&next=%2Fjoin%2F${TOKEN}`))).toBe(
+      `/join/${TOKEN}`,
+    );
+  });
+
+  it.each([
+    ["다른 사이트", "https%3A%2F%2Fevil.example%2Fjoin%2FaBc123XyZ0kkQwErTyUiOp12"],
+    ["프로토콜 상대 주소", "%2F%2Fevil.example%2Fjoin%2FaBc123XyZ0kkQwErTyUiOp12"],
+    ["경로 거슬러 오르기", "%2Fjoin%2F..%2Fsettings%2Fmembers"],
+    ["한 겹 더", "%2Fjoin%2FaBc123XyZ0kkQwErTyUiOp12%2Fextra"],
+    ["짧은 토큰", "%2Fjoin%2Fabc"],
+    ["빈 토큰", "%2Fjoin%2F"],
+    ["질의 붙임", "%2Fjoin%2FaBc123XyZ0kkQwErTyUiOp12%3Fx%3D1"],
+  ])("★ %s 는 /join 으로 «안» 보낸다", async (_label, next) => {
+    setup({ rows: [] });
+    const target = location(await callback(`code=test-code&next=${next}`)) ?? "";
+    expect(target.includes("/join/")).toBe(false);
+  });
+
+  it("★ 플랫폼 관리자는 기존 /mode 갈래를 그대로 탄다 — 초대가 그것을 가로채지 않는다", async () => {
+    setup({ rows: [], platformGranted: true });
+    expect((location(await callback(`code=test-code&next=%2Fjoin%2F${TOKEN}`)) ?? "").startsWith("/mode")).toBe(true);
+  });
+
+  it("★ 멤버십을 읽지 않는다 — 어차피 회사로 안 보내므로 왕복을 늘리지 않는다", async () => {
+    const { from } = setup({ rows: [] });
+    await callback(`code=test-code&next=%2Fjoin%2F${TOKEN}`);
+    expect(from).not.toHaveBeenCalledWith("org_members");
+  });
+});

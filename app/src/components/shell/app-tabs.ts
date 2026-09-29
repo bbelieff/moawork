@@ -88,6 +88,8 @@ export const OUT_OF_TAB_HREFS: readonly string[] = [
   "/onboarding",
   "/onboarding/practice",
   "/workspace-entry",
+  // #722: 초대 링크를 받은 사람이 들어오는 주소 — 아직 워크스페이스 밖이다.
+  "/join/[token]",
   "/workspaces",
   "/account",
   "/settings/account",

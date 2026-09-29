@@ -8,6 +8,8 @@ export const RESERVED_WORKSPACE_SLUGS = new Set([
   "contract",
   "dash",
   "deals",
+  // #722 — 「사람 부르기」 링크가 /join/<토큰> 으로 산다. 회사 주소가 이 말을 쓰면 충돌한다.
+  "join",
   "ledger",
   "login",
   "logout",

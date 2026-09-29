@@ -1,7 +1,7 @@
-import { PGlite } from "@electric-sql/pglite";
+import { PGlite, type PGliteInterface } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 /**
  * 「사람 부르기」 — 링크가 곧 허가다. 그래서 «누가 무엇을 할 수 있나» 를 DB 에서 직접 잰다.
@@ -10,10 +10,27 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
  *   이 기능은 «회사 안에 사람을 넣는» 것이라 특히 그렇다.
  */
 
-const migration = readFileSync(
-  resolve(process.cwd(), "../supabase/migrations/147_invite_links.sql"),
-  "utf8",
+/*
+ * ★ 147 «다음에» 150 을 얹는다 — 운영이 실제로 겪는 순서다.
+ *
+ *   147 은 이미 머지됐다(PR #723 · merge 6e75c6b). `begin_guarded_migration` 은
+ *   digest 가 아니라 **logical_key 로** 판정하므로(094:53), 147 파일을 고쳐 봐야
+ *   적용된 DB 에는 절대 안 닿는다. 실제로 그 실수를 한 번 했고 검수가 잡아 줬다.
+ *
+ *   그래서 이 시험도 «147 만» 읽으면 안 된다. 운영은 둘 다 지나간 상태이고,
+ *   여기서 순서대로 얹어야 「150 이 147 을 제대로 덮는가」까지 같이 재진다.
+ */
+const migrations = ["147_invite_links.sql", "165_invite_links_hardening.sql"].map((name) =>
+  readFileSync(resolve(process.cwd(), `../supabase/migrations/${name}`), "utf8"),
 );
+
+/*
+ * ★ 006:38-40 이 org_members.status 에 허용하는 «전부». active 를 뺀 여섯이다.
+ *   손으로 골라 적지 않는다 — 처음 판은 「suspended·inactive·removed」를 적었는데
+ *   `inactive` 는 006 이 허용하지도 않는 값이었고(시험 스텁에 제약이 없어 통과했다),
+ *   정작 운영에 실재하는 invited·pending·leave·expired 는 한 번도 안 밟았다.
+ */
+const NON_ACTIVE_STATUSES = ["invited", "pending", "suspended", "removed", "leave", "expired"] as const;
 
 const id = (suffix: string) => `00000000-0000-4000-8000-${suffix.padStart(12, "0")}`;
 const ids = {
@@ -51,7 +68,14 @@ const SCHEMA = `
 
   create type public.member_role as enum ('owner','admin','team_lead','member');
   create type public.member_scope as enum ('all','department','assigned');
-  create table public.orgs(id uuid primary key, slug text not null unique, name text not null);
+  create table public.orgs(
+    id uuid primary key, slug text not null unique, name text not null,
+    status text not null default 'active',
+    -- ★ 006:29-32 의 «진짜» 제약. 147 은 회사 상태를 아예 안 봤다 —
+    --   정지되거나 삭제 예정인 회사에도 링크로 들어가졌다.
+    constraint orgs_status_check check (
+      status in ('active','provisioning','suspended','pending_delete','deleted'))
+  );
   create table public.users(id uuid primary key);
   create table public.org_members(
     org_id uuid not null references public.orgs(id) on delete cascade,
@@ -59,7 +83,29 @@ const SCHEMA = `
     role public.member_role not null,
     scope public.member_scope not null default 'assigned',
     status text not null default 'active',
-    primary key(org_id, user_id)
+    primary key(org_id, user_id),
+    -- ★ 006:38-40 의 «진짜» 제약. 처음 판에는 이게 없어서 강등 버그가 안 보였다 —
+    --   시험이 아무 status 나 받으니 「suspended·inactive·removed」 같은 임의 값으로
+    --   돌았고, 정작 운영이 허용하는 여섯 상태를 다 못 밟았다. 검수가 이걸 짚었다.
+    constraint org_members_status_check check (
+      status in ('active','invited','pending','suspended','removed','leave','expired'))
+  );
+  -- 013:16-27 · 050:36-45 의 «진짜» 모양. 복귀 갈래가 잠자던 권한을 끄는지 재려면 있어야 한다.
+  create table public.member_scoped_permission_bindings(
+    org_id uuid not null references public.orgs(id) on delete cascade,
+    subject_user_id uuid not null references public.users(id),
+    scope_key text not null,
+    decision text not null check (decision in ('allow','deny')),
+    access_level text not null check (access_level in ('viewer','editor')),
+    updated_by uuid not null references public.users(id),
+    primary key (org_id, subject_user_id, scope_key)
+  );
+  create table public.department_members(
+    org_id uuid not null references public.orgs(id) on delete cascade,
+    dept_id uuid not null,
+    user_id uuid not null references public.users(id),
+    role text not null default 'member' check (role in ('head','member')),
+    primary key (dept_id, user_id)
   );
   create function public.begin_guarded_migration(
     p_logical_key text, p_file_name text, p_file_digest text,
@@ -68,7 +114,7 @@ const SCHEMA = `
 `;
 
 const SEED = `
-  insert into public.orgs values
+  insert into public.orgs(id, slug, name) values
     ('${ids.orgA}', 'alpha', '알파 회사'),
     ('${ids.orgB}', 'beta', '베타 회사');
   insert into public.users values
@@ -82,14 +128,25 @@ const SEED = `
     ('${ids.orgB}', '${ids.ownerB}', 'owner', 'all');
 `;
 
-describe("147 — 사람 부르기 링크", () => {
-  let db: PGlite;
+describe("147+150 — 사람 부르기 링크", () => {
+  let db: PGliteInterface;
+
+  /*
+   * 스키마·마이그레이션·시드를 한 번만 올린 기준 DB를 시험마다 «복제» 한다.
+   * 새 PGlite 를 띄우는 데 ~3초, 복제는 ~0.5초다. 시험끼리 DB 를 공유하지는 않는다 —
+   * 각 시험은 자기 복제본만 바꾸고 닫는다. (fast gate 120초 안에 들기 위해서다.)
+   */
+  let template: PGlite;
+  beforeAll(async () => {
+    template = new PGlite();
+    await template.exec(SCHEMA);
+    for (const sql of migrations) await template.exec(sql);
+    await template.exec(SEED);
+  });
+  afterAll(async () => { await template.close(); });
 
   beforeEach(async () => {
-    db = new PGlite();
-    await db.exec(SCHEMA);
-    await db.exec(migration);
-    await db.exec(SEED);
+    db = await template.clone();
   });
   afterEach(async () => { await db.close(); });
 
@@ -129,6 +186,41 @@ describe("147 — 사람 부르기 링크", () => {
       await expect(create(ids.owner, "member", "assigned", 400, null)).rejects.toThrow();
     });
 
+    /*
+     * ★ 승인 단계를 없앤 대가를 막는 것이 «유효기간 · 횟수 · 끄기» 셋인데,
+     *   처음 판은 앞의 둘을 «둘 다» 비울 수 있었다. 그러면 카톡방에 남은 링크가
+     *   끄기 전까지 영원히 살아 있는 열쇠가 된다 (총괄 결정 2026-09-07).
+     */
+    it("★ 「기한 없음 + 무제한」은 못 만든다 — 영원히 사는 열쇠가 된다", async () => {
+      await expect(create(ids.owner, "member", "assigned", null, null)).rejects.toThrow();
+    });
+
+    it("하나만 정하면 만들어진다 — 「기한없음·1명」도 「30일·무제한」도", async () => {
+      await expect(create(ids.owner, "member", "assigned", null, 1)).resolves.toBeTruthy();
+      await expect(create(ids.owner, "member", "assigned", 30, null)).resolves.toBeTruthy();
+    });
+
+    /*
+     * ★ 검수 P2 — 위 규칙이 «큰 수 하나» 로 뚫렸다.
+     *   `max_uses = 2147483647` 은 형식상 «제한» 이라 규칙을 통과하는데,
+     *   실질은 무제한이다. 기존 초대(006:643)가 쓰는 상한 1~1000 을 여기도 쓴다.
+     */
+    it("★ 「기한없음 + 21억번」으로 규칙을 우회하지 못한다", async () => {
+      await expect(create(ids.owner, "member", "assigned", null, 2147483647)).rejects.toThrow();
+      await expect(create(ids.owner, "member", "assigned", null, 1001)).rejects.toThrow();
+      await expect(create(ids.owner, "member", "assigned", null, 1000)).resolves.toBeTruthy();
+    });
+
+    /*
+     * ★ 총괄 결정(2026-09-07) — 관리자도 «관리자 자리» 링크를 만들 수 있다.
+     *   006 이 자리 배정을 대표 전용으로 두는 것과 «의도적으로» 다르다.
+     *   사고가 아니라 결정이라는 것을 시험으로도 못 박는다 —
+     *   다음 사람이 006 주석을 읽고 「이건 버그다」라며 되돌리지 않도록.
+     */
+    it("★ 관리자도 «관리자» 링크를 만들 수 있다 — 의도된 넓히기다", async () => {
+      await expect(create(ids.admin, "admin", "all", 7, null)).resolves.toBeTruthy();
+    });
+
     it("★ 토큰이 매번 다르다 — 같으면 하나가 다른 회사의 열쇠가 된다", async () => {
       const a = await create(ids.owner) as { token: string };
       const b = await create(ids.owner) as { token: string };
@@ -164,6 +256,179 @@ describe("147 — 사람 부르기 링크", () => {
       const used = await db.query<{ used_count: number }>(
         `select used_count from public.org_invite_links where token='${token}'`);
       expect(used.rows[0].used_count, "새로 들어온 사람이 아닌데 횟수가 올랐다").toBe(0);
+    });
+
+    /*
+     * ★ belie 2026-09-28 (#733): 예전에 있던 사람은 링크의 «자리» 로 돌아온다. 정지된 사람만 막는다.
+     *
+     *   되살리는 것은 자리뿐이다. 나가도 개인 권한 예외·부서장 자리가 그대로 남아 있고,
+     *   active 가 되는 순간 그것이 다시 켜진다. 그래서 복귀 때 «허용» 예외를 지우고 부서장을 내린다.
+     *   예전 역할도 되살리지 않는다 — 내보낸 팀장이 구성원 링크로 오면 구성원이다.
+     */
+    const REJOINABLE = NON_ACTIVE_STATUSES.filter((status) => status !== "suspended");
+    const DEPT = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+    it.each(REJOINABLE.map((s) => [s]))(
+      "★ %s 이던 사람은 링크의 자리로 돌아오고, 잠자던 권한은 켜지지 않는다",
+      async (status) => {
+        await db.exec(`
+          update public.org_members set status='${status}'
+           where org_id='${ids.orgA}' and user_id='${ids.lead}';
+          insert into public.member_scoped_permission_bindings
+            (org_id, subject_user_id, scope_key, decision, access_level, updated_by) values
+            ('${ids.orgA}', '${ids.lead}', 'boards:all', 'allow', 'editor', '${ids.owner}'),
+            ('${ids.orgA}', '${ids.lead}', 'ledger', 'deny', 'viewer', '${ids.owner}');
+          insert into public.department_members(org_id, dept_id, user_id, role)
+            values ('${ids.orgA}', '${DEPT}', '${ids.lead}', 'head');`);
+        const { token } = await create(ids.owner, "member", "assigned", null, 1) as { token: string };
+
+        as(ids.lead);
+        const out = await call<{ ok: boolean; already: boolean }>(
+          `select public.redeem_org_invite('${token}') as out`);
+        expect(out, `${status} → 못 돌아왔다`).toMatchObject({ ok: true, already: false });
+
+        const row = await db.query<{ role: string; scope: string; status: string }>(
+          `select role::text, scope::text, status from public.org_members
+            where org_id='${ids.orgA}' and user_id='${ids.lead}'`);
+        expect(row.rows[0], `${status} → 예전 자리(team_lead·department)가 되살아났다`).toEqual({
+          role: "member", scope: "assigned", status: "active",
+        });
+
+        const bindings = await db.query<{ decision: string }>(
+          `select decision from public.member_scoped_permission_bindings
+            where org_id='${ids.orgA}' and subject_user_id='${ids.lead}' order by decision`);
+        expect(bindings.rows.map((r) => r.decision), "허용 예외가 다시 켜졌거나 막기 예외가 사라졌다")
+          .toEqual(["deny"]);
+
+        const dept = await db.query<{ n: number }>(
+          `select count(*)::int as n from public.department_members where user_id='${ids.lead}'`);
+        expect(dept.rows[0].n, "예전 부서 소속이 남아 부서 가시성이 되살아난다").toBe(0);
+
+        const link = await db.query<{ used_count: number }>(
+          `select used_count from public.org_invite_links where token='${token}'`);
+        expect(link.rows[0].used_count).toBe(1);
+        const redeemed = await db.query<{ n: number }>(
+          `select count(*)::int as n from public.org_invite_redemptions where user_id='${ids.lead}'`);
+        expect(redeemed.rows[0].n).toBe(1);
+      },
+    );
+
+    it("★★ 내보낸 관리자가 예전에 만든 관리자 링크로는 못 돌아온다 — 만든 사람이 자격을 잃으면 링크가 죽는다", async () => {
+      const { token } = await create(ids.admin, "admin", "all", 30, null) as { token: string };
+      await db.exec(
+        `update public.org_members set status='removed'
+          where org_id='${ids.orgA}' and user_id='${ids.admin}'`);
+
+      as(ids.admin);
+      expect(await call<{ ok: boolean; reason: string }>(`select public.redeem_org_invite('${token}') as out`))
+        .toMatchObject({ ok: false, reason: "unusable" });
+      const row = await db.query<{ role: string; status: string }>(
+        `select role::text, status from public.org_members where org_id='${ids.orgA}' and user_id='${ids.admin}'`);
+      expect(row.rows[0]).toEqual({ role: "admin", status: "removed" });
+
+      // 새로 오는 사람에게도, 미리보기에서도 죽은 링크다.
+      as(ids.outsider);
+      expect(await call<{ ok: boolean }>(`select public.redeem_org_invite('${token}') as out`))
+        .toMatchObject({ ok: false, reason: "unusable" });
+      expect(await call<{ ok: boolean }>(`select public.peek_org_invite('${token}') as out`))
+        .toMatchObject({ ok: false, reason: "unusable" });
+    });
+
+    it("★ 같은 링크로 두 번 돌아와도 들어온 시각이 남는다", async () => {
+      const { token } = await create(ids.owner, "member", "assigned", 30, null) as { token: string };
+      const removeLead = `update public.org_members set status='removed'
+        where org_id='${ids.orgA}' and user_id='${ids.lead}'`;
+      await db.exec(removeLead);
+      as(ids.lead);
+      await call(`select public.redeem_org_invite('${token}') as out`);
+      await db.exec(`update public.org_invite_redemptions set redeemed_at = now() - interval '1 day'`);
+      await db.exec(removeLead);
+      await call(`select public.redeem_org_invite('${token}') as out`);
+
+      const r = await db.query<{ recent: boolean }>(
+        `select redeemed_at > now() - interval '1 hour' as recent from public.org_invite_redemptions
+          where user_id='${ids.lead}'`);
+      expect(r.rows[0].recent, "두 번째 입장이 기록되지 않았다").toBe(true);
+      const link = await db.query<{ used_count: number }>(
+        `select used_count from public.org_invite_links where token='${token}'`);
+      expect(link.rows[0].used_count).toBe(2);
+    });
+
+    it("★ 정지된 사람은 링크로 «못» 돌아온다 — 행도 권한도 손대지 않는다", async () => {
+      await db.exec(`
+        update public.org_members set status='suspended'
+         where org_id='${ids.orgA}' and user_id='${ids.lead}';
+        insert into public.member_scoped_permission_bindings
+          (org_id, subject_user_id, scope_key, decision, access_level, updated_by)
+          values ('${ids.orgA}', '${ids.lead}', 'boards:all', 'allow', 'editor', '${ids.owner}');`);
+      const { token } = await create(ids.owner, "member", "assigned") as { token: string };
+      as(ids.lead);
+      const out = await call<{ ok: boolean; reason: string }>(
+        `select public.redeem_org_invite('${token}') as out`);
+      expect(out).toMatchObject({ ok: false, reason: "needs_approval" });
+
+      const row = await db.query<{ role: string; scope: string; status: string }>(
+        `select role::text, scope::text, status from public.org_members
+          where org_id='${ids.orgA}' and user_id='${ids.lead}'`);
+      expect(row.rows[0]).toEqual({ role: "team_lead", scope: "department", status: "suspended" });
+      const bindings = await db.query<{ n: number }>(
+        `select count(*)::int as n from public.member_scoped_permission_bindings where subject_user_id='${ids.lead}'`);
+      expect(bindings.rows[0].n, "정지된 사람의 예외를 건드렸다").toBe(1);
+    });
+
+    /*
+     * ★ 검수가 낸 구체적 공격 그대로를 재현한다. 위 시험이 죽으면 이것도 죽지만,
+     *   «왜 그 규칙이 있는가» 를 다음 사람이 한눈에 보게 남긴다.
+     */
+    it("★★ 정지된 관리자가 자기 링크로 관리자로 «복귀» 하지 못한다", async () => {
+      const { token } = await create(ids.admin, "member", "assigned", 30, null) as { token: string };
+      await db.exec(
+        `update public.org_members set status='suspended'
+          where org_id='${ids.orgA}' and user_id='${ids.admin}'`);
+
+      as(ids.admin);
+      const out = await call<{ ok: boolean }>(`select public.redeem_org_invite('${token}') as out`);
+      expect(out).toMatchObject({ ok: false });
+
+      const row = await db.query<{ status: string }>(
+        `select status from public.org_members where org_id='${ids.orgA}' and user_id='${ids.admin}'`);
+      expect(row.rows[0].status, "정지가 풀렸다 — 내보내기가 무력화된다").toBe("suspended");
+
+      // 그리고 여전히 관리자 일을 못 한다.
+      await expect(create(ids.admin, "admin", "all", 7, null)).rejects.toThrow();
+    });
+
+    /*
+     * ★ 검수 P2 — 막힌 사람이 눌러도 링크가 «타면» 1회용 링크가 헛되이 소모된다.
+     *   진짜로 부른 사람이 못 들어온다. 이제 막히는 사람은 정지된 사람뿐이다.
+     */
+    it("★ 정지된 사람이 눌러도 1회용 링크가 «안 탄다»", async () => {
+      await db.exec(
+        `update public.org_members set status='suspended'
+          where org_id='${ids.orgA}' and user_id='${ids.lead}'`);
+      const { token } = await create(ids.owner, "member", "assigned", null, 1) as { token: string };
+
+      as(ids.lead);
+      await call(`select public.redeem_org_invite('${token}') as out`);
+
+      as(ids.outsider);
+      expect(await call<{ ok: boolean }>(`select public.redeem_org_invite('${token}') as out`))
+        .toMatchObject({ ok: true, already: false });
+    });
+
+    it("★ 돌아온 사람은 1회용 링크를 «정상으로» 쓴다 — 다음 사람은 못 쓴다", async () => {
+      await db.exec(
+        `update public.org_members set status='removed'
+          where org_id='${ids.orgA}' and user_id='${ids.lead}'`);
+      const { token } = await create(ids.owner, "member", "assigned", null, 1) as { token: string };
+
+      as(ids.lead);
+      expect(await call<{ ok: boolean }>(`select public.redeem_org_invite('${token}') as out`))
+        .toMatchObject({ ok: true, already: false });
+
+      as(ids.outsider);
+      expect(await call<{ ok: boolean; reason: string }>(`select public.redeem_org_invite('${token}') as out`))
+        .toMatchObject({ ok: false, reason: "unusable" });
     });
 
     it("★ 다른 회사에 속해 있어도 «추가로» 들어온다", async () => {
@@ -297,12 +562,148 @@ describe("147 — 사람 부르기 링크", () => {
     });
   });
 
-  describe("표에 직접 손대지 못한다", () => {
-    it("★ 토큰 목록을 «훑을» 수 있으면 그 자체가 사고다", async () => {
-      const grants = await db.query<{ n: number }>(`
-        select count(*)::int as n from information_schema.role_table_grants
-         where table_name = 'org_invite_links' and grantee in ('anon','authenticated','public')`);
-      expect(grants.rows[0].n, "표에 직접 권한이 남아 있다").toBe(0);
+  describe("★ 누가 들어왔는지 남는다 — 승인하는 사람이 없으므로 유일한 추적 수단이다", () => {
+    it("링크로 들어온 사람이 기록되고, 목록에서 보인다", async () => {
+      const { token } = await create(ids.owner) as { token: string };
+      as(ids.outsider);
+      await call(`select public.redeem_org_invite('${token}') as out`);
+      as(ids.owner);
+      const list = await call<Array<{ token: string; joined: Array<{ userId: string }> }>>(
+        `select public.list_org_invite_links('${ids.orgA}') as out`);
+      const row = list.find((l) => l.token === token);
+      expect(row?.joined.map((j) => j.userId), "누가 들어왔는지 안 보인다").toEqual([ids.outsider]);
     });
+
+    /*
+     * ★★ 이 시험은 처음에 «제목이 말하는 것을 재지 않았다». 검수가 돌연변이로 증명했다:
+     *
+     *     150 에서 `on conflict (link_id, user_id) do nothing` 을 «통째로» 지워도
+     *     → 49개 전부 통과. 안 빨개진다.
+     *
+     *   두 번째 redeem 이 `v_status='active'` 갈래에서 끊겨 redemption insert 에
+     *   «도달조차» 안 했기 때문이다. 제목은 「두 번 눌러도 한 번만」인데
+     *   두 번째 누름이 그 절을 한 번도 안 밟았다.
+     *
+     * ★ 그 절을 실제로 밟으려면 «행이 지워진 뒤 다시 들어오는» 경로가 필요하다.
+     *   그리고 그 경로는 마침 150 이 경고하는 바로 그 경로다 —
+     *   내보내기를 DELETE 로 만들면 needs_approval 방어가 무력화된다(#730).
+     *   그래서 이 시험 하나가 셋을 동시에 잡는다:
+     *     ① on conflict do nothing 이 «처음으로» 밟힌다
+     *     ② 제목이 사실이 된다
+     *     ③ used_count 와 redemptions 가 어긋나는 유일한 갈래를 «문서로» 남긴다
+     */
+    it("★ 행이 지워진 뒤 같은 링크로 다시 들어와도 «들어온 기록» 은 한 줄이다", async () => {
+      const { token } = await create(ids.owner) as { token: string };
+      as(ids.outsider);
+      await call(`select public.redeem_org_invite('${token}') as out`);
+
+      // ★ 내보내기를 «행 삭제» 로 만들었다고 가정한다 — 150 이 하지 말라고 경고하는 그것이다.
+      await db.exec(
+        `delete from public.org_members
+          where org_id='${ids.orgA}' and user_id='${ids.outsider}'`);
+
+      as(ids.outsider);
+      const back = await call<{ ok: boolean; already: boolean }>(
+        `select public.redeem_org_invite('${token}') as out`);
+      // 행이 없으니 «처음 오는 사람» 이 된다. 이게 바로 #730 이 경고하는 구멍이다.
+      expect(back, "행을 지우면 링크로 그냥 돌아온다 — 150 의 방어가 행 존재를 전제한다")
+        .toMatchObject({ ok: true, already: false });
+
+      const n = await db.query<{ n: number }>(
+        `select count(*)::int as n from public.org_invite_redemptions`);
+      expect(n.rows[0].n, "같은 사람이 두 줄로 남았다 — on conflict do nothing 이 안 돈다").toBe(1);
+
+      // ★ 「확인 못 함」이 아니라 «알고 있는 어긋남» 으로 남긴다:
+      //   기록은 한 줄인데 횟수는 둘이다. 뿌리는 위의 DELETE 다 (#730).
+      const used = await db.query<{ used_count: number }>(
+        `select used_count from public.org_invite_links where token='${token}'`);
+      expect(used.rows[0].used_count).toBe(2);
+    });
+
+    it("★ 「지우지 않는다 — 누가 들어왔는지는 남아야 한다」가 이제 «사실» 이다", async () => {
+      const { token } = await create(ids.owner) as { token: string };
+      as(ids.outsider);
+      await call(`select public.redeem_org_invite('${token}') as out`);
+      as(ids.owner);
+      await call(`select public.revoke_org_invite_link('${ids.orgA}','${token}') as out`);
+      const n = await db.query<{ n: number }>(
+        `select count(*)::int as n from public.org_invite_redemptions`);
+      expect(n.rows[0].n, "끄면 들어온 기록까지 사라진다").toBe(1);
+    });
+  });
+
+  /*
+   * ★ 검수 P2 — 147 은 회사 상태를 «아예» 안 봤다.
+   *   정지되거나 삭제 예정인 회사에도 링크로 들어가졌다. 들어가 봐야 RLS 가 막지만,
+   *   「들어왔다」고 말해 놓고 아무것도 안 보이는 것이 더 나쁘다.
+   */
+  describe("★ 문 닫은 회사에는 못 들어간다", () => {
+    it.each([["provisioning"], ["suspended"], ["pending_delete"], ["deleted"]])(
+      "%s 인 회사 → 죽은 링크와 같은 말을 한다",
+      async (status) => {
+        const { token } = await create(ids.owner) as { token: string };
+        await db.exec(`update public.orgs set status='${status}' where id='${ids.orgA}'`);
+
+        as(ids.outsider);
+        expect(await call(`select public.redeem_org_invite('${token}') as out`))
+          .toEqual({ ok: false, reason: "unusable" });
+
+        const n = await db.query<{ n: number }>(
+          `select count(*)::int as n from public.org_members
+            where org_id='${ids.orgA}' and user_id='${ids.outsider}'`);
+        expect(n.rows[0].n, "문 닫은 회사에 사람이 들어갔다").toBe(0);
+      },
+    );
+
+    it("미리보기도 «있다» 고 말하지 않는다", async () => {
+      const { token } = await create(ids.owner) as { token: string };
+      await db.exec(`update public.orgs set status='suspended' where id='${ids.orgA}'`);
+      anon();
+      expect(await call(`select public.peek_org_invite('${token}') as out`))
+        .toEqual({ ok: false, reason: "unusable" });
+    });
+
+    /*
+     * ★★ 150:204-212 가 「회사 상태 검사가 «구성원 검사보다 먼저» 와야 한다」를 주석으로
+     *   못 박아 놨는데, 그것을 재는 시험이 «없었다». 검수가 짚었다.
+     *
+     *   위 시험들은 전부 «한 번도 구성원이 아닌 사람»(outsider) 으로만 돈다.
+     *   순서가 뒤집혔을 때 새는 것은 «옛 구성원» 이다 — needs_approval 이 회사 «이름» 을
+     *   돌려주기 때문이다. 그 사람으로 안 밟으면 불변식이 안 지켜져도 조용하다.
+     *
+     * ★ 주석으로만 있고 시험이 없는 규칙은 다음 사람이 지울 수 있다.
+     */
+    it("★ 옛 구성원에게도 문 닫은 회사의 «이름» 이 새지 않는다 — 검사 순서 불변식", async () => {
+      const { token } = await create(ids.owner) as { token: string };
+      await db.exec(
+        `update public.org_members set status='removed'
+          where org_id='${ids.orgA}' and user_id='${ids.lead}'`);
+      await db.exec(`update public.orgs set status='pending_delete' where id='${ids.orgA}'`);
+
+      as(ids.lead);
+      const out = await call<Record<string, unknown>>(
+        `select public.redeem_org_invite('${token}') as out`);
+      // needs_approval 이 아니라 unusable 이어야 하고, name 키가 «아예 없어야» 한다.
+      expect(out, "구성원 검사가 먼저 돌아 삭제 예정 회사 이름이 샜다")
+        .toEqual({ ok: false, reason: "unusable" });
+    });
+  });
+
+  describe("표에 직접 손대지 못한다", () => {
+    /*
+     * ★ 처음 판은 grantee 에서 `service_role` 을 빼고 셌다 — 그래서 «남아 있는데도» 0 이 나왔다.
+     *   Supabase 의 service_role 은 BYPASSRLS 라 FORCE RLS 로도 안 막힌다.
+     *   136·139·146 이 전부 service_role 까지 뗀다. 검수가 이걸 짚었다.
+     */
+    it.each([["org_invite_links"], ["org_invite_redemptions"]])(
+      "★ %s — 토큰·기록을 «훑을» 수 있으면 그 자체가 사고다",
+      async (table) => {
+        const grants = await db.query<{ n: number }>(`
+          select count(*)::int as n from information_schema.role_table_grants
+           where table_name = '${table}'
+             and grantee in ('anon','authenticated','public','service_role')`);
+        expect(grants.rows[0].n, `${table} 에 직접 권한이 남아 있다`).toBe(0);
+      },
+    );
   });
 });
