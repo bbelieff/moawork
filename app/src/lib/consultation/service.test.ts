@@ -5,7 +5,6 @@ import {
   consultationErrorFromRpc,
   readHandoffReadiness,
   requestHandoff,
-  setChecklistStep,
   setConsultationMode,
 } from "./service";
 import type { ConsultationRpcClient } from "./supabaseConsultation";
@@ -22,13 +21,6 @@ const ITEM = "00000000-0000-4000-8000-000000000031";
 const DEAL = "00000000-0000-4000-8000-000000000040";
 const REQUEST = "00000000-0000-4000-8000-000000000099";
 
-function confirmedChecklist() {
-  const base = blankChecklist();
-  for (const step of Object.keys(base) as (keyof typeof base)[]) {
-    base[step] = { confirmed: true, actorId: "user-1", at: "2026-09-25T00:00:00.000Z" };
-  }
-  return base;
-}
 
 function snapshotRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -39,7 +31,8 @@ function snapshotRow(overrides: Record<string, unknown> = {}) {
     mode: "remote",
     version: 4,
     meeting_at: "2026-10-01T10:00:00+09:00",
-    checklist: confirmedChecklist(),
+    // ★ 167: 과거 4단계 체크리스트는 준비도에 쓰지 않는다 — 빈 기록이어도 DB ready 를 따른다.
+    checklist: blankChecklist(),
     ready: true,
     missing: [],
     seal_approved: true,
@@ -75,76 +68,55 @@ async function capture(promise: Promise<unknown>): Promise<ConsultationError> {
 }
 
 describe("상담 서비스 매퍼", () => {
+  const modeInput = {
+    orgId: ORG,
+    itemId: ITEM,
+    from: "remote" as const,
+    to: "inperson" as const,
+    meetingAt: "2026-10-01T10:00:00+09:00",
+    assigneeId: "user-1",
+    requestId: REQUEST,
+    expectedVersion: 0,
+  };
+
   it("성공 행을 버전·replay 그대로 돌려준다", async () => {
-    const client = clientWith(() => [
-      { item_id: ITEM, deal_id: DEAL, company_id: null, mode: "remote", version: 1, replayed: false },
-    ]);
-    const result = await setChecklistStep(client, {
-      orgId: ORG,
-      itemId: ITEM,
-      step: "contract_sent",
-      confirmed: true,
-      requestId: REQUEST,
-      expectedVersion: 0,
+    const calls: Array<Record<string, unknown>> = [];
+    const client = clientWith((_name, args) => {
+      calls.push(args);
+      return [{ item_id: ITEM, deal_id: DEAL, company_id: null, mode: "inperson", version: 1, replayed: false }];
     });
+    const result = await setConsultationMode(client, modeInput);
     expect(result).toMatchObject({ itemId: ITEM, version: 1, replayed: false });
+    // ★ 167: 남은 151 쓰기는 mode 뿐이다(check 퇴역).
+    expect(calls[0]).toMatchObject({ p_action: "mode", p_step: null, p_confirmed: null });
   });
 
   it("40001 을 입력 보존형 conflict 로 바꾼다", async () => {
-    const client = failingClient("40001", "consultation version conflict");
-    const failed = await capture(setChecklistStep(client, {
-      orgId: ORG,
-      itemId: ITEM,
-      step: "signed_copy_sent",
-      confirmed: true,
-      requestId: REQUEST,
-      expectedVersion: 0,
-    }));
+    const failed = await capture(setConsultationMode(failingClient("40001", "consultation version conflict"), modeInput));
     expect(failed).toBeInstanceOf(ConsultationError);
     expect(failed.code).toBe("conflict");
     expect(failed.field).toBe("version");
   });
 
-  it("순차 차단을 해당 단계 필드로 돌려준다", async () => {
-    const client = failingClient("22023", "consultation checklist blocked");
-    const failed = await capture(setChecklistStep(client, {
-      orgId: ORG,
-      itemId: ITEM,
-      step: "deposit_confirmed",
-      confirmed: true,
-      requestId: REQUEST,
-      expectedVersion: 3,
-    }));
-    expect(failed).toBeInstanceOf(ConsultationError);
-    expect(failed.code).toBe("checklist_blocked");
-    expect(failed.field).toBe("deposit_confirmed");
-    expect(failed.echo).toMatchObject({ step: "deposit_confirmed" });
+  it("167: 계약금 미완 직인·인계 거부를 contract_fee_required 로 돌려준다", () => {
+    const failed = consultationErrorFromRpc(
+      Object.assign(new Error("consultation contract fee required"), { code: "22023" }),
+      { itemId: ITEM },
+    );
+    expect(failed.code).toBe("contract_fee_required");
+    expect(failed.message).toBe("계약금 입금 확인이 필요합니다.");
+    expect(failed.field).toBe("contractFee");
+    expect(failed.echo).toEqual({ itemId: ITEM });
   });
 
   it("멱등 재사용은 requestId 필드로 돌려준다", async () => {
-    const client = failingClient("22023", "consultation idempotency key reuse");
-    const failed = await capture(setChecklistStep(client, {
-      orgId: ORG,
-      itemId: ITEM,
-      step: "contract_sent",
-      confirmed: true,
-      requestId: REQUEST,
-      expectedVersion: 0,
-    }));
+    const failed = await capture(setConsultationMode(failingClient("22023", "consultation idempotency key reuse"), modeInput));
     expect(failed.code).toBe("invalid_request");
     expect(failed.field).toBe("requestId");
   });
 
   it("42501 을 not_allowed 로 돌려준다", async () => {
-    const client = failingClient("42501", "consultation permission denied");
-    const failed = await capture(setChecklistStep(client, {
-      orgId: ORG,
-      itemId: ITEM,
-      step: "contract_sent",
-      confirmed: true,
-      requestId: REQUEST,
-      expectedVersion: 0,
-    }));
+    const failed = await capture(setConsultationMode(failingClient("42501", "consultation permission denied"), modeInput));
     expect(failed.code).toBe("not_allowed");
   });
 
@@ -211,11 +183,11 @@ describe("상담 서비스 매퍼", () => {
   });
 
   it("미완료 스냅샷은 남은 항목을 그대로 돌려준다", async () => {
-    const client = clientWith(() => [snapshotRow({ ready: false, missing: ["서명본 발송"] })]);
+    const client = clientWith(() => [snapshotRow({ ready: false, missing: ["계약금 입금 확인"] })]);
     const readiness = await readHandoffReadiness(client, { orgId: ORG, itemId: ITEM });
     expect(readiness.ready).toBe(false);
     expect(readiness.nextAction).toBeNull();
-    expect(readiness.missing).toContain("서명본 발송");
+    expect(readiness.missing).toContain("계약금 입금 확인");
   });
 
   it("낡은 버전 인계는 파이프라인 호출 없이 conflict 로 막는다", async () => {
@@ -238,7 +210,7 @@ describe("상담 서비스 매퍼", () => {
   });
 
   it("미완료 인계는 replay 확인 뒤 handoff_blocked 로 막는다(F6: 유실 응답 replay 우선)", async () => {
-    const client = clientWith(() => [snapshotRow({ ready: false, missing: ["착수금 입금 확인"] })]);
+    const client = clientWith(() => [snapshotRow({ ready: false, missing: ["계약금 입금 확인"] })]);
     let pipelineCalled = 0;
     let pipelineArgs: Record<string, unknown> | null = null;
     const pipeline = {
@@ -307,7 +279,7 @@ describe("상담 서비스 매퍼", () => {
   });
 
   it("F6: 미달 스냅샷이어도 커밋 replay 는 성공으로 돌려준다(유실 응답)", async () => {
-    const client = clientWith(() => [snapshotRow({ ready: false, missing: ["착수금 입금 확인"] })]);
+    const client = clientWith(() => [snapshotRow({ ready: false, missing: ["계약금 입금 확인"] })]);
     const pipeline = {
       rpc: async () => ({
         data: [{ status: "committed", deal_id: DEAL, company_id: null, reason: null }],

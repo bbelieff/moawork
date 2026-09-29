@@ -32,6 +32,10 @@ export interface ConsultationSnapshot {
   missing: string[];
   seal: { approved: boolean; detail: string };
   dealStageKind: string | null;
+  /** 167: 부재로 들어오기 전 단계(부재일 때만). */
+  absentFromPhase?: import("./phases").ConsultationPhase | null;
+  /** 167: 계약 확인 1단계 — 보드 계약금 칸 원값과 판정. */
+  contractFee?: { status: string | null; ready: boolean };
 }
 
 /** 전이 쓰기 결과 — `execute_consultation_transition` 행의 투영. */
@@ -49,3 +53,6 @@ export const WORK_MOVE_COLUMN_KEY = "work_move";
 export const WORK_MOVE_VALUE = "업무관리 이동";
 export const SEAL_STATUS_COLUMN_KEY = "seal_status";
 export const SEAL_APPROVED_VALUE = "완료";
+/** ★ 167 계약 확인 1단계 — 보드 «계약금 완료여부» 칸. 일반 보드 칸이라 셀 쓰기 권한으로 바뀐다. */
+export const CONTRACT_FEE_COLUMN_KEY = "contract_fee_status";
+export const CONTRACT_FEE_DONE_VALUE = "계약금 완";

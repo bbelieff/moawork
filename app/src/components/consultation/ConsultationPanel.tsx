@@ -1,13 +1,17 @@
 "use client";
 
 /**
- * 상담 확인 패널 — 리드컨택 행의 비대면/대면 보기 + 4단계 수동 확인 + 실무 인계.
+ * 상담 확인 패널 — 리드컨택 행의 비대면/대면 보기 + 계약 확인 2단계 + 실무 인계.
+ *
+ * ★ #830(167): 계약 확인은 1단계 «계약금 입금 확인»(보드 «계약금 완료여부» 칸) →
+ * 2단계 «직인»(대표·관리자 승인)이다. 4단계 체크리스트 UI 는 없앴다 — 1단계는
+ * 보드 칸에서 바꾸고, 이 패널은 두 단계의 상태를 읽기 전용으로 보여준다.
  *
  * 재사용 지점: ① 업무이동 대화상자(기존 ContactPipelineAction 옆, 호환 유지),
  * ② 표의 상담 진행 셀 팝오버(그 자리 확인), ③ 행 상세(ItemDetailPanel) 인라인.
  * 업무이동 메뉴를 찾아야만 닿는 구조가 아니라 세 자리 어디서든 같은 패널이 뜬다.
  *
- * 조회·확인·예약·보기전이·인계는 모두 `lib/consultation/actions` 서버 액션
+ * 조회·예약·보기전이·직인·인계는 모두 `lib/consultation/actions` 서버 액션
  * (151 RPC `execute_consultation_transition` / `read_consultation_snapshot` /
  * 정식 `contact_to_work` 파이프라인)으로만 수행한다. EAV·체크박스 거울 쓰기 없음.
  *
@@ -21,9 +25,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ResultBanner } from "@/lib/ui/ResultBanner";
-import { consultationPhase, CONSULTATION_PHASE_LABEL, REMOTE_PHASES, INPERSON_PHASES, phaseNeedsSchedule, type ConsultationPhase } from "@/lib/consultation/phases";
+import { consultationPhase, CONSULTATION_PHASE_LABEL, REMOTE_PHASES, INPERSON_PHASES, phaseLabel, phaseNeedsSchedule, type ConsultationPhase } from "@/lib/consultation/phases";
 import {
-  mutateConsultationChecklist,
   mutateConsultationHandoff,
   mutateConsultationSeal,
   mutateConsultationMode,
@@ -33,20 +36,13 @@ import {
   type ConsultationActionState,
 } from "@/lib/consultation/actions";
 import type { ConsultationSnapshot } from "@/lib/consultation/store";
-import {
-  CHECKLIST_DIRECTION,
-  CHECKLIST_LABEL,
-  CHECKLIST_STEPS,
-  type ChecklistStep,
-} from "@/lib/consultation/checklist";
 
 const CHECK_INITIAL: ConsultationActionState = { ok: false, message: "" };
 const READ_ERROR = "상담 기록을 불러오지 못했습니다. 잠시 후 다시 읽어 주세요.";
 const UNKNOWN_RESULT = "응답을 받지 못해 저장 여부를 확인할 수 없습니다. 입력은 유지했습니다. 같은 요청을 다시 확인해 주세요.";
 
 type Submission = Readonly<{
-  kind: "check" | "mode" | "handoff" | "workflow" | "seal";
-  step?: ChecklistStep;
+  kind: "mode" | "handoff" | "workflow" | "seal";
   fields: Readonly<Record<string, string>>;
   success: string;
   failure: string;
@@ -97,7 +93,6 @@ export function ConsultationPanel({
   const [handoffInfo, setHandoffInfo] = useState<{ ready: boolean; missing: readonly string[]; message: string; canApproveSeal: boolean; sealApproved: boolean } | null>(null);
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
-  const [pendingStep, setPendingStep] = useState<ChecklistStep | null>(null);
   const [modePending, setModePending] = useState(false);
   const [handoffPending, setHandoffPending] = useState(false);
   const [meetingDraft, setMeetingDraft] = useState(() => toDateTimeLocal(initialMeetingAt));
@@ -183,7 +178,7 @@ export function ConsultationPanel({
     void reloadBaseline(false).finally(() => setLoading(false));
   }
 
-  const busy = pendingStep !== null || modePending || handoffPending;
+  const busy = modePending || handoffPending;
   const locked = busy || uncertain;
 
   async function runSubmission(submission: Submission): Promise<void> {
@@ -191,17 +186,14 @@ export function ConsultationPanel({
     if (inFlight.current) return;
     inFlight.current = true;
     unresolved.current = submission;
-    setPendingStep(submission.kind === "check" ? submission.step ?? null : null);
     setModePending(submission.kind === "mode" || submission.kind === "workflow");
     setHandoffPending(submission.kind === "handoff" || submission.kind === "seal");
     setActionError("");
     setNotice("");
     try {
-      const mutate = submission.kind === "check"
-        ? mutateConsultationChecklist
-        : submission.kind === "mode"
-          ? mutateConsultationMode
-          : submission.kind === "workflow" ? mutateConsultationWorkflow : submission.kind === "seal" ? mutateConsultationSeal : mutateConsultationHandoff;
+      const mutate = submission.kind === "mode"
+        ? mutateConsultationMode
+        : submission.kind === "workflow" ? mutateConsultationWorkflow : submission.kind === "seal" ? mutateConsultationSeal : mutateConsultationHandoff;
       const result = await mutate(CHECK_INITIAL, formOf(submission.fields));
       if (result.field === "unknown_result") throw new Error(UNKNOWN_RESULT);
       // A structured response settles this request; a rejection may be retried
@@ -217,7 +209,6 @@ export function ConsultationPanel({
       setActionError(UNKNOWN_RESULT);
     } finally {
       inFlight.current = false;
-      setPendingStep(null);
       setModePending(false);
       setHandoffPending(false);
     }
@@ -225,25 +216,6 @@ export function ConsultationPanel({
 
   function retryUnresolved(): void {
     if (unresolved.current) void runSubmission(unresolved.current);
-  }
-
-  /** 체크 확인/취소 — 성공하면 새 기준으로 바로 갱신해 연속 확인이 된다. */
-  async function submitCheck(step: ChecklistStep, confirmed: boolean): Promise<void> {
-    const baseline = snapshot;
-    if (!baseline || inFlight.current || unresolved.current) return;
-    await runSubmission({
-      kind: "check",
-      step,
-      fields: {
-          itemId,
-          step,
-          confirmed: confirmed ? "true" : "false",
-          requestId: newRequestId(),
-          expectedVersion: String(baseline.version),
-      },
-      success: confirmed ? "확인했습니다." : "확인을 취소했습니다. 뒤 단계도 함께 무효가 됩니다.",
-      failure: "확인하지 못했습니다.",
-    });
   }
 
   /** 상담 보기 전환 — remote ↔ inperson, 같은 행·같은 deal 을 공유한다. 일정 필수. */
@@ -300,7 +272,7 @@ export function ConsultationPanel({
       success: "직인 승인을 기록했습니다.", failure: "직인 승인을 기록하지 못했습니다." });
   }
 
-  /** 명시적 인계 — 4완료 + 직인 조건을 DB 가 다시 강제한다. */
+  /** 명시적 인계 — 계약금 완 + 직인 조건을 DB 가 다시 강제한다. */
   async function submitHandoff(): Promise<void> {
     const baseline = snapshot;
     if (!baseline || inFlight.current || unresolved.current) return;
@@ -338,7 +310,7 @@ export function ConsultationPanel({
           {mode === "remote" ? "비대면 상담" : "대면 상담"}
         </p>
         <p className="mt-0.5 text-[11px] leading-5 text-mw-body">
-          완료한 절차를 확인해 주세요.
+          계약금 입금 확인 → 직인 순서로 진행합니다.
         </p>
       </header>
 
@@ -376,52 +348,24 @@ export function ConsultationPanel({
               <button type="button" disabled={locked} onClick={() => void submitWorkflow(phaseDraft)}
                 className="min-h-9 border border-mw-line px-3 text-xs font-semibold disabled:opacity-60">단계 저장</button>
             </div>
-            <table className="w-full border-collapse text-xs">
-              <caption className="sr-only">계약 확인 4단계 — 앞 단계부터 순서대로 확인합니다</caption>
-              <thead>
-                <tr className="text-left text-mw-sub">
-                  <th scope="col" className="w-10 py-1 font-normal">확인</th>
-                  <th scope="col" className="py-1 font-normal">단계</th>
-                  <th scope="col" className="py-1 font-normal">방향</th>
-                </tr>
-              </thead>
-              <tbody>
-                {CHECKLIST_STEPS.map((step, index) => {
-                  const entry = snapshot.checklist[step];
-                  const priorDone = CHECKLIST_STEPS.slice(0, index).every((prior) => snapshot.checklist[prior].confirmed);
-                  const blocked = !priorDone && !entry.confirmed;
-                  const stepPending = pendingStep === step;
-                  return (
-                    <tr key={step} className="border-t border-mw-line">
-                      <td className="py-1.5 pr-2">
-                        <input
-                          type="checkbox"
-                          checked={entry.confirmed}
-                          disabled={locked || blocked}
-                          aria-busy={stepPending}
-                          aria-label={`${CHECKLIST_LABEL[step]} ${entry.confirmed ? "확인 취소" : "확인"}`}
-                          title={blocked ? "앞 단계를 먼저 확인해 주세요." : CHECKLIST_DIRECTION[step]}
-                          onChange={() => {
-                            void submitCheck(step, !entry.confirmed);
-                          }}
-                        />
-                      </td>
-                      <td className="py-1.5 pr-2">
-                        <span className="font-medium">{CHECKLIST_LABEL[step]}</span>
-                        {entry.at ? (
-                          <span className="ml-1 text-[11px] text-mw-sub">
-                            {new Date(entry.at).toLocaleString("ko-KR")}
-                          </span>
-                        ) : blocked ? (
-                          <span className="ml-1 text-[11px] text-mw-sub">앞 단계 먼저</span>
-                        ) : null}
-                      </td>
-                      <td className="py-1.5 text-[11px] text-mw-sub">{CHECKLIST_DIRECTION[step]}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            {snapshot.phase === "absent" && snapshot.absentFromPhase ? (
+              <p className="mb-2 text-[11px] text-mw-sub">{phaseLabel("absent", snapshot.absentFromPhase)}</p>
+            ) : null}
+            <dl aria-label="계약 확인 2단계" className="text-xs">
+              <div className="flex flex-wrap items-baseline gap-x-2 border-t border-mw-line py-1.5">
+                <dt className="font-medium">1단계 계약금 입금 확인</dt>
+                <dd className={snapshot.contractFee?.ready ? "text-mw-success" : "text-mw-body"}>
+                  {snapshot.contractFee?.status ?? "계약금 미"}
+                </dd>
+                <dd className="w-full text-[11px] text-mw-sub">보드 «계약금 완료여부» 칸에서 바꿉니다</dd>
+              </div>
+              <div className="flex flex-wrap items-baseline gap-x-2 border-t border-mw-line py-1.5">
+                <dt className="font-medium">2단계 직인</dt>
+                <dd className={handoffInfo?.sealApproved ? "text-mw-success" : "text-mw-body"}>
+                  {handoffInfo?.sealApproved ? "완료" : "대기"}
+                </dd>
+              </div>
+            </dl>
             {actionError ? (
               <ResultBanner notice={{ ok: false, message: actionError }} okClassName="mt-1 text-xs text-mw-success" errorClassName="mt-1 text-xs text-mw-error" />
             ) : null}
@@ -439,10 +383,7 @@ export function ConsultationPanel({
             {notice && !actionError ? (
               <ResultBanner notice={{ ok: true, message: notice }} okClassName="mt-1 text-xs text-mw-success" errorClassName="mt-1 text-xs text-mw-error" />
             ) : null}
-            <p className="mt-1 text-[11px] leading-5 text-mw-sub">
-              앞 확인을 취소하면 뒤 확인은 함께 무효가 되며 기록으로 남습니다.
-              {busy ? " 저장 중…" : ""}
-            </p>
+            {busy ? <p className="mt-1 text-[11px] leading-5 text-mw-sub">저장 중…</p> : null}
 
             <form
               aria-busy={modePending}
@@ -504,7 +445,7 @@ export function ConsultationPanel({
                 <summary className="cursor-pointer">상담 변경 이력</summary>
                 <ol className="mt-1 space-y-1">
                   {snapshot.history.map((entry) => <li key={entry.id}>
-                    {new Date(entry.at).toLocaleString("ko-KR")} · {members.find((member) => member.id === entry.actorId)?.label ?? "담당자"} · {entry.kind === "seal_approved" ? "직인 승인 완료" : <>{CONSULTATION_PHASE_LABEL[entry.details.before.phase]} → {CONSULTATION_PHASE_LABEL[entry.details.after.phase]}
+                    {new Date(entry.at).toLocaleString("ko-KR")} · {members.find((member) => member.id === entry.actorId)?.label ?? "담당자"} · {entry.kind === "seal_approved" ? "직인 승인 완료" : <>{phaseLabel(entry.details.before.phase, entry.details.before.absentFromPhase)} → {phaseLabel(entry.details.after.phase, entry.details.after.absentFromPhase)}
                     {" · 담당 "}{members.find((member) => member.id === entry.details.after.assigneeId)?.label ?? "미지정"}
                     {" · "}{entry.details.before.meetingAt ? new Date(entry.details.before.meetingAt).toLocaleString("ko-KR") : "일정 없음"} → {entry.details.after.meetingAt ? new Date(entry.details.after.meetingAt).toLocaleString("ko-KR") : "일정 없음"}</>}
                   </li>)}
@@ -514,7 +455,8 @@ export function ConsultationPanel({
             <div className="mt-2 border-t border-mw-line pt-2">
               <p className="mb-2 text-xs text-mw-body">{handoffInfo?.sealApproved ? "직인 승인 완료" : "대표·관리자 직인 승인 대기"}</p>
               {handoffInfo?.canApproveSeal && !handoffInfo.sealApproved ? <button type="button"
-                disabled={locked || !CHECKLIST_STEPS.every((step) => snapshot.checklist[step].confirmed)}
+                disabled={locked || snapshot.contractFee?.ready !== true}
+                title={snapshot.contractFee?.ready ? undefined : "1단계 계약금 입금 확인 후 승인할 수 있습니다."}
                 onClick={() => void submitSeal()} className="mb-2 min-h-9 border border-mw-line px-3 text-xs font-semibold disabled:opacity-60" style={{ borderRadius: 11 }}>직인 승인 완료</button> : null}
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -527,7 +469,7 @@ export function ConsultationPanel({
                   className="min-h-9 bg-mw-primary px-3 text-xs font-semibold text-white disabled:opacity-60"
                   style={{ borderRadius: 11 }}
                 >
-                  {handoffPending ? "인계 중…" : "실무로 인계 (4단계 완료 후)"}
+                  {handoffPending ? "인계 중…" : "실무로 인계 (계약금·직인 완료 후)"}
                 </button>
                 <span className="text-[11px] text-mw-sub">
                   {handoffInfo?.ready

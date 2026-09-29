@@ -4,9 +4,10 @@
 
 import { useId } from "react";
 import { requestItemDetailOpen } from "@/lib/boards/item-detail-open";
-import { consultationPhase, CONSULTATION_PHASE_LABEL } from "@/lib/consultation/phases";
+import { consultationPhase, phaseLabel } from "@/lib/consultation/phases";
 import {
-  consultationProgressSummary,
+  CONTRACT_STEP_GROUPS,
+  contractStepGroupKey,
   type ConsultationBoardEntry,
 } from "@/lib/consultation/boardView";
 
@@ -26,26 +27,24 @@ export function ConsultationProgressCell({
 }>) {
   const descriptionId = useId();
   const phase = entry ? consultationPhase(entry) : null;
-  const summary = entry ? consultationProgressSummary(entry.checklist) : null;
+  // ★ 167: 계약 진행은 «1단계 · 계약금 입금 확인 → 2단계 · 직인 → 계약 확인 완료» 중 현재 자리를 보여준다.
+  const contractStep = entry && phase === "contract"
+    ? CONTRACT_STEP_GROUPS.find((group) => group.key === contractStepGroupKey(entry))!
+    : null;
 
   return (
     <div className="min-w-44">
       <p className="text-xs font-semibold text-mw-fg" aria-describedby={descriptionId}>
         {entry && phase !== "contract" ? (
-          <>{CONSULTATION_PHASE_LABEL[phase!]}{entry.meetingAt ? <span className="ml-1 font-normal text-mw-sub">{new Date(entry.meetingAt).toLocaleString("ko-KR")}</span> : null}</>
+          <>{phaseLabel(phase!, entry.absentFromPhase)}{entry.meetingAt ? <span className="ml-1 font-normal text-mw-sub">{new Date(entry.meetingAt).toLocaleString("ko-KR")}</span> : null}</>
         ) : entry ? (
-          <>
-            계약 {summary!.done}/{summary!.total}
-            <span className="ml-1 font-normal text-mw-sub">
-              {summary!.nextLabel ? `다음: ${summary!.nextLabel}` : "4단계 완료"}
-            </span>
-          </>
+          <>{contractStep!.title}</>
         ) : (
           <span className="font-normal text-mw-sub">상담 기록 없음</span>
         )}
       </p>
       <span id={descriptionId} className="sr-only">
-        계약서 송부 → 서명본 발송 → 상대 서명 확인 → 착수금 입금 확인 순서로 직접 확인합니다.
+        계약금 입금 확인 → 직인
       </span>
       <button
         type="button"

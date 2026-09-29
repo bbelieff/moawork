@@ -54,6 +54,7 @@ import {
   consultationModeForRow,
   contractStepGroupKey,
   CONTRACT_STEP_GROUPS,
+  withRowContractFee,
   type ConsultationBoardMap,
   type ConsultationView,
 } from "@/lib/consultation/boardView";
@@ -505,7 +506,7 @@ export function BoardWorkspace({
   );
   /**
    * 상담 단계 보기의 계약 단계 묶음 — 비대면·대면 «각각» 의 계약 단계 보드다.
-   * 같은 정본 행을 첫 미완료 단계 키로 묶는 가상 묶음이라 회사·딜·아이템을
+   * 같은 정본 행을 계약 단계 키(1단계 계약금 → 2단계 직인 → 완료)로 묶는 가상 묶음이라 회사·딜·아이템을
    * 복제하지 않고, 물리 그룹·순서·이동 규칙을 건드리지 않는다.
    */
   const consultationStageBlocks = useMemo<ReturnType<typeof buildBlocks> | null>(() => {
@@ -515,7 +516,8 @@ export function BoardWorkspace({
       const entry = consultationByItem[row.id];
       if (!entry) continue;
       const phase = consultationPhase(entry);
-      const key = phase === "contract" ? contractStepGroupKey(entry.checklist) : phase;
+      // ★ 167: 계약 진행은 1단계(계약금) → 2단계(직인) → 완료. 계약금 칸을 바꾸면 바로 옮겨간다.
+      const key = phase === "contract" ? contractStepGroupKey(withRowContractFee(entry, row.values)) : phase;
       const bucket = buckets.get(key);
       if (bucket) bucket.push(row);
       else buckets.set(key, [row]);

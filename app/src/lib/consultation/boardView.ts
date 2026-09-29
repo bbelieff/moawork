@@ -10,9 +10,9 @@ import { isConsultationPhase, type ConsultationPhase } from "./phases";
  * 서버 로더는 `./boardViewServer` 에 따로 둔다.
  */
 
-import type { ChecklistState, ChecklistStep } from "./checklist";
-import { CHECKLIST_LABEL, CHECKLIST_STEPS } from "./checklist";
+import type { ChecklistState } from "./checklist";
 import type { ConsultationStage } from "./stages";
+import { CONTRACT_FEE_COLUMN_KEY, CONTRACT_FEE_DONE_VALUE } from "./store";
 
 /** 단계 보기 식별자 — `all` 은 기존 리드컨택 전체 보기(호환 유지). */
 export type ConsultationView = "all" | "remote" | "inperson";
@@ -37,7 +37,14 @@ export interface ConsultationBoardEntry {
   version: number;
   meetingAt: string | null;
   phase?: ConsultationPhase;
+  /** 167: 부재로 오기 전 단계(부재일 때만). */
+  absentFromPhase?: ConsultationPhase | null;
+  /** 과거 4단계 기록(읽기 전용) — 167 부터 계약 판정에 쓰지 않는다. */
   checklist: ChecklistState;
+  /** 167 계약 확인 1단계 — 보드 «계약금 완료여부» = 계약금 완. */
+  contractFeeReady: boolean;
+  /** 167 계약 확인 2단계 — 직인(계약 정본 AND 보드 거울) 완료. */
+  sealDone: boolean;
   ready: boolean;
   missing: string[];
   sealApproved: boolean;
@@ -89,7 +96,10 @@ export function boardEntryFromRow(value: Record<string, unknown>): ConsultationB
     version: typeof value.version === "number" ? value.version : 0,
     meetingAt: text(value.meeting_at),
     phase: isConsultationPhase(value.phase) ? value.phase : undefined,
+    absentFromPhase: isConsultationPhase(value.absent_from_phase) ? value.absent_from_phase : null,
     checklist: checklistFrom(value.checklist),
+    contractFeeReady: value.contract_fee_ready === true,
+    sealDone: value.seal_done === true,
     ready: value.ready === true,
     missing,
     sealApproved: value.seal_approved === true,
@@ -196,30 +206,28 @@ export function filterRowIdsByConsultationView(
   return itemIds.filter((itemId) => consultationModeForRow(itemId, map) === view);
 }
 
-/** 다음에 확인할 단계 — 없으면(4완료) null. */
-export function nextPendingStep(checklist: ChecklistState): ChecklistStep | null {
-  return CHECKLIST_STEPS.find((step) => !checklist[step].confirmed) ?? null;
-}
+/**
+ * ★ 167 계약 단계 그룹 키 — 1단계(계약금 입금 확인) → 2단계(직인) → 완료.
+ * 비대면·대면 «각각» 의 보드가 이 키로 같은 정본 행을 묶는다(가상 묶음 — DB 변경 없음).
+ */
+export type ContractStepGroupKey = "fee" | "seal" | "done";
 
-/** 표에 읽히는 진행 요약 — `2/4 · 다음: 상대 서명 확인`. */
-export function consultationProgressSummary(checklist: ChecklistState): {
-  done: number;
-  total: number;
-  nextLabel: string | null;
-} {
-  const done = CHECKLIST_STEPS.filter((step) => checklist[step].confirmed).length;
-  const next = nextPendingStep(checklist);
-  return { done, total: CHECKLIST_STEPS.length, nextLabel: next ? CHECKLIST_LABEL[next] : null };
+export function contractStepGroupKey(input: Readonly<{ contractFeeReady: boolean; sealDone: boolean }>): ContractStepGroupKey {
+  if (!input.contractFeeReady) return "fee";
+  return input.sealDone ? "done" : "seal";
 }
 
 /**
- * 계약 단계 그룹 키 — 첫 미완료 단계가 그 행의 자리다. 4완료는 `done`.
- * 비대면·대면 «각각» 의 보드가 이 키로 같은 정본 행을 묶는다(가상 묶음 — DB 변경 없음).
+ * 보드 칸 값이 있으면 그것을 먼저 믿는다 — 계약금 칸을 바꾸면 새로 읽기 전에도
+ * 표의 묶음·진행 칸이 바로 옮겨간다. 칸 값이 없으면(미적재) 서버 판정을 쓴다.
  */
-export type ContractStepGroupKey = ChecklistStep | "done";
-
-export function contractStepGroupKey(checklist: ChecklistState): ContractStepGroupKey {
-  return nextPendingStep(checklist) ?? "done";
+export function withRowContractFee(
+  entry: ConsultationBoardEntry,
+  values: Readonly<Record<string, unknown>>,
+): ConsultationBoardEntry {
+  if (!Object.hasOwn(values, CONTRACT_FEE_COLUMN_KEY)) return entry;
+  const ready = values[CONTRACT_FEE_COLUMN_KEY] === CONTRACT_FEE_DONE_VALUE;
+  return ready === entry.contractFeeReady ? entry : { ...entry, contractFeeReady: ready };
 }
 
 export const CONTRACT_STEP_GROUPS: ReadonlyArray<{
@@ -227,19 +235,9 @@ export const CONTRACT_STEP_GROUPS: ReadonlyArray<{
   title: string;
   hint: string;
 }> = [
-  { key: "contract_sent", title: "계약 확인 1단계 · 계약서 송부", hint: "워크스페이스 회사 → 고객사 (수동 확인)" },
-  { key: "signed_copy_sent", title: "계약 확인 2단계 · 서명본 발송", hint: "워크스페이스 회사 → 고객사 (수동 확인)" },
-  {
-    key: "counterparty_signature_confirmed",
-    title: "계약 확인 3단계 · 상대 서명 확인",
-    hint: "고객사 서명을 사람이 직접 확인",
-  },
-  {
-    key: "deposit_confirmed",
-    title: "계약 확인 4단계 · 착수금 입금 확인",
-    hint: "입금을 사람이 직접 확인 (자동 조회 없음)",
-  },
-  { key: "done", title: "계약 확인 완료", hint: "4단계를 모두 확인 — 실무 인계 가능" },
+  { key: "fee", title: "1단계 · 계약금 입금 확인", hint: "보드 «계약금 완료여부» 칸을 계약금 완으로 바꿉니다" },
+  { key: "seal", title: "2단계 · 직인", hint: "대표·관리자가 직인 승인을 기록합니다" },
+  { key: "done", title: "계약 확인 완료", hint: "계약금·직인 완료 — 실무 인계 가능" },
 ];
 
 /** 상담 단계 라벨 — Sidebar·보드 헤더가 같은 말을 쓴다. */

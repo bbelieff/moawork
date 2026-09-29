@@ -18,7 +18,6 @@ import { ConsultationError } from "./errors";
 import {
   readConsultationSnapshotOrFail,
   consultationErrorFromRpc,
-  setChecklistStep,
   setConsultationMode,
   setConsultationWorkflow,
 } from "./service";
@@ -62,50 +61,6 @@ function versionOf(formData: FormData): number | null {
   if (!raw) return null;
   const version = Number(raw);
   return Number.isInteger(version) && version >= 0 ? version : null;
-}
-
-/** 체크리스트 확인/취소 — 순차·무효 전파·히스토리·멱등·낙관적 버전(RPC 원자). */
-export async function mutateConsultationChecklist(
-  _previous: ConsultationActionState,
-  formData: FormData,
-): Promise<ConsultationActionState> {
-  void _previous;
-  try {
-    const ctx = await getSession();
-    const itemId = text(formData, "itemId");
-    const step = text(formData, "step");
-    const requestId = text(formData, "requestId");
-    const expectedVersion = versionOf(formData);
-    const submitted = {
-      itemId,
-      step,
-      confirmed: String(formData.get("confirmed") ?? "true"),
-      requestId,
-      expectedVersion: String(formData.get("expectedVersion") ?? ""),
-    };
-    if (!itemId || !step || !requestId || expectedVersion === null) {
-      return { ok: false, message: "체크 요청을 다시 시작해 주세요.", echo: submitted };
-    }
-    const confirmed = String(formData.get("confirmed") ?? "true") !== "false";
-    const result = await setChecklistStep(await rpcClient(), {
-      orgId: ctx.org.id,
-      itemId,
-      step,
-      confirmed,
-      requestId,
-      expectedVersion,
-    });
-    return {
-      ok: true,
-      message: confirmed ? "확인했습니다." : "확인을 취소했습니다. 뒤 단계도 함께 무효가 됩니다.",
-      version: result.version,
-      replayed: result.replayed,
-      dealId: result.dealId,
-      companyId: result.companyId,
-    };
-  } catch (error) {
-    return fail(error, "확인하지 못했습니다.");
-  }
 }
 
 /** 상담 보기 전환 — remote ↔ inperson, 같은 행·같은 deal 을 공유한다. 일정 필수. */
@@ -209,7 +164,7 @@ export async function readConsultationHandoff(itemId: string): Promise<Consultat
 
 /**
  * 명시적 인계 — 버전 확인 뒤 정식 contact_to_work 파이프라인에 위임한다.
- * 활성 상담행의 4완료는 151 래퍼가 같은 트랜잭션 안에서 강제한다.
+ * 활성 상담행의 계약금 완·직인은 151 래퍼가 같은 트랜잭션 안에서 강제한다(★ 167).
  */
 export async function mutateConsultationHandoff(
   _previous: ConsultationActionState,

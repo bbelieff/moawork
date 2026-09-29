@@ -62,7 +62,8 @@ function rowOf(id: string, title: string, sortOrder: number) {
   };
 }
 
-function entryOf(itemId: string, mode: string, confirmed: readonly boolean[], version = 2) {
+// ★ 167: 계약 진행은 계약금(1단계)·직인(2단계) 판정으로 묶는다. 과거 체크리스트는 비워 둔다.
+function entryOf(itemId: string, mode: string, state: Readonly<{ phase?: string; fee?: boolean; seal?: boolean }> = {}, version = 2) {
   const keys = ["contract_sent", "signed_copy_sent", "counterparty_signature_confirmed", "deposit_confirmed"] as const;
   return boardEntryFromRow({
     item_id: itemId,
@@ -71,14 +72,10 @@ function entryOf(itemId: string, mode: string, confirmed: readonly boolean[], ve
     mode,
     version,
     meeting_at: null,
-    checklist: Object.fromEntries(
-      keys.map((key, index) => [
-        key,
-        confirmed[index]
-          ? { confirmed: true, actor: "user-1", at: "2026-09-26T10:00:00+09:00" }
-          : { confirmed: false, actor: null, at: null },
-      ]),
-    ),
+    phase: state.phase ?? "contract",
+    checklist: Object.fromEntries(keys.map((key) => [key, { confirmed: false, actor: null, at: null }])),
+    contract_fee_ready: state.fee === true,
+    seal_done: state.seal === true,
     ready: false,
     missing: [],
     seal_approved: false,
@@ -89,8 +86,8 @@ function entryOf(itemId: string, mode: string, confirmed: readonly boolean[], ve
 
 const rows = [rowOf("item-remote", "화상 상담 건", 0), rowOf("item-inperson", "방문 상담 건", 1)];
 const consultationByItem = {
-  "item-remote": entryOf("item-remote", "remote", [true, false, false, false]),
-  "item-inperson": entryOf("item-inperson", "inperson", [true, true, false, false]),
+  "item-remote": entryOf("item-remote", "remote", { fee: false }),
+  "item-inperson": entryOf("item-inperson", "inperson", { fee: true, seal: false }),
 };
 
 beforeEach(() => {
@@ -101,6 +98,7 @@ beforeEach(() => {
       version: entry.version, checklist: entry.checklist, phase: "contract",
       meetingAt: null, assigneeId: "user-1", history: [],
       ready: false, missing: [], seal: { approved: false, detail: "" },
+      contractFee: { status: entry.contractFeeReady ? "계약금 완" : null, ready: entry.contractFeeReady },
     } };
   });
   actionMocks.readHandoff.mockResolvedValue({ ok: true, ready: false, message: "승인 대기", missing: [] });
@@ -118,7 +116,7 @@ async function expectSharedConsultation(host: HTMLElement, title: string, itemId
   const panels = document.querySelectorAll('[role="dialog"][data-item-detail-backdrop]');
   expect(panels).toHaveLength(1);
   expect(panels[0].querySelector('[data-item-detail-header]')?.textContent).toContain(title);
-  expect(panels[0].querySelector('[data-item-detail-consultation]')?.textContent).toContain("계약서 송부");
+  expect(panels[0].querySelector('[data-item-detail-consultation]')?.textContent).toContain("1단계 계약금 입금 확인");
   expect(actionMocks.readSnapshot).toHaveBeenCalledWith(itemId);
   expect(actionMocks.readHandoff).toHaveBeenCalledWith(itemId);
   expect(window.location.hash).toContain(encodeURIComponent(itemId));
@@ -157,13 +155,15 @@ describe("BoardWorkspace consultation stage view", () => {
     const text = host.textContent ?? "";
     expect(renderedRowNames(host)).toEqual(["화상 상담 건"]);
     expect(host.querySelector('button[aria-label="방문 상담 건 상담 확인 열기"]')).toBeNull();
-    // 계약 단계 보드: 1단계 묶음에 1건.
-    expect(text).toContain("계약 확인 2단계 · 서명본 발송 (1)");
+    // 계약 단계 보드: 1단계(계약금) 묶음에 1건.
+    expect(text).toContain("1단계 · 계약금 입금 확인 (1)");
+    expect(text).toContain("2단계 · 직인 (0)");
+    expect(text).toContain("계약 확인 완료 (0)");
     expect(text).toContain("정보수집 (0)");
+    expect(text).toContain("부재 (0)");
     // 표에서 진행이 읽힌다.
     expect(text).toContain("상담 진행");
-    expect(text).toContain("계약 1/4");
-    expect(text).toContain("다음: 서명본 발송");
+    expect(text).not.toMatch(/\d\/4|4단계|계약서 송부/);
     // 첫열 체크박스(일괄 선택)는 그대로 있다.
     const checkbox = host.querySelector('input[type="checkbox"][aria-label="화상 상담 건 선택"]');
     expect(checkbox).not.toBeNull();
@@ -178,9 +178,12 @@ describe("BoardWorkspace consultation stage view", () => {
     const text = host.textContent ?? "";
     expect(renderedRowNames(host)).toEqual(["방문 상담 건"]);
     expect(host.querySelector('button[aria-label="화상 상담 건 상담 확인 열기"]')).toBeNull();
-    expect(text).toContain("계약 확인 3단계 · 상대 서명 확인 (1)");
-    expect(text).toContain("계약 2/4");
+    expect(text).toContain("2단계 · 직인 (1)");
+    expect(text).toContain("1단계 · 계약금 입금 확인 (0)");
     expect(text).toContain("대면상담예약 (0)");
+    expect(text).toContain("미팅취소 (0)");
+    expect(text).toContain("미팅 후 고민 중 (0)");
+    expect(text).not.toContain("부재 (");
     await expectSharedConsultation(host, "방문 상담 건", "item-inperson");
   });
 
@@ -206,13 +209,27 @@ describe("BoardWorkspace consultation stage view", () => {
     await act(async () => root?.render(workspace("remote")));
     expect(host.querySelector('[aria-label="화상 상담 건 위로 이동"]')).toBeNull();
   });
-  it("groups unstarted rows by actual phase and keeps only contract rows in four-step groups", async () => {
+  it("groups unstarted rows by actual phase and keeps only contract rows in two-stage groups", async () => {
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-    const map = { ...consultationByItem, "item-remote": { ...entryOf("item-remote","remote",[false,false,false,false]), phase: "consulting" as const } };
+    // 계약금이 이미 완이어도 단계가 계약 진행이 아니면 단계 묶음에 남는다.
+    const map = { ...consultationByItem, "item-remote": entryOf("item-remote","remote",{ phase: "absent", fee: true }) };
     await act(async () => root!.render(cloneElement(workspace("remote"), { consultationByItem: map })));
-    expect(host.textContent).toContain("상담중 (1)");
-    expect(host.textContent).toContain("계약 확인 1단계 · 계약서 송부 (0)");
-    expect(host.textContent).not.toContain("계약 0/4");
+    expect(host.textContent).toContain("부재 (1)");
+    expect(host.textContent).toContain("1단계 · 계약금 입금 확인 (0)");
+    expect(host.textContent).toContain("2단계 · 직인 (0)");
+  });
+
+  it("167: 보드 계약금 칸 값이 서버 판정보다 먼저다 — 칸을 바꾸면 새로 읽기 전에도 묶음이 옮겨간다", async () => {
+    const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    const edited = rows.map((row) => row.id === "item-remote" ? { ...row, values: { contract_fee_status: "계약금 완" } } : row);
+    await act(async () => root!.render(cloneElement(workspace("remote"), { rows: edited })));
+    expect(host.textContent).toContain("2단계 · 직인 (1)");
+    expect(host.textContent).toContain("1단계 · 계약금 입금 확인 (0)");
+    const map = { ...consultationByItem, "item-remote": entryOf("item-remote","remote",{ fee: true, seal: true }) };
+    const reverted = rows.map((row) => row.id === "item-remote" ? { ...row, values: { contract_fee_status: "계약금 미" } } : row);
+    await act(async () => root!.render(cloneElement(workspace("remote"), { rows: reverted, consultationByItem: map })));
+    expect(host.textContent).toContain("1단계 · 계약금 입금 확인 (1)");
+    expect(host.textContent).toContain("계약 확인 완료 (0)");
   });
 
 });

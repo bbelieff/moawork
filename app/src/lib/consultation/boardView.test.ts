@@ -6,14 +6,14 @@ import {
 import {
   boardEntryFromRow,
   consultationModeForRow,
-  consultationProgressSummary,
   consultationViewLabel,
   contractStepGroupKey,
+  CONTRACT_STEP_GROUPS,
   filterRowIdsByConsultationView,
-  nextPendingStep,
   parseConsultationView,
   readConsultationBoardView,
   readConsultationBoardViewInChunks,
+  withRowContractFee,
 } from "./boardView";
 
 function checklistOf(confirmed: readonly boolean[]): ChecklistState {
@@ -79,23 +79,35 @@ describe("boardView — 단계 보기 순수 도우미", () => {
     expect(filterRowIdsByConsultationView(["a", "b"], map, "all")).toEqual(["a", "b"]);
   });
 
-  it("진행 요약은 n/4 와 다음 단계 라벨을 함께 준다", () => {
-    expect(consultationProgressSummary(checklistOf([true, true, false, false]))).toEqual({
-      done: 2,
-      total: 4,
-      nextLabel: "상대 서명 확인",
-    });
-    expect(consultationProgressSummary(checklistOf([true, true, true, true]))).toEqual({
-      done: 4,
-      total: 4,
-      nextLabel: null,
-    });
+  it("167 계약 단계 그룹 키: 계약금 → 직인 → 완료 (과거 체크리스트는 보지 않는다)", () => {
+    expect(contractStepGroupKey({ contractFeeReady: false, sealDone: false })).toBe("fee");
+    // 직인이 먼저 끝나도 1단계(계약금)가 남으면 1단계 자리다.
+    expect(contractStepGroupKey({ contractFeeReady: false, sealDone: true })).toBe("fee");
+    expect(contractStepGroupKey({ contractFeeReady: true, sealDone: false })).toBe("seal");
+    expect(contractStepGroupKey({ contractFeeReady: true, sealDone: true })).toBe("done");
+    expect(CONTRACT_STEP_GROUPS.map((group) => group.title)).toEqual([
+      "1단계 · 계약금 입금 확인", "2단계 · 직인", "계약 확인 완료",
+    ]);
+    const allChecked = boardEntryFromRow(rowOf("a", { checklist: checklistOf([true, true, true, true]) }));
+    expect(contractStepGroupKey(allChecked)).toBe("fee");
   });
 
-  it("계약 단계 그룹 키는 첫 미완료 단계다", () => {
-    expect(nextPendingStep(checklistOf([true, false, false, false]))).toBe("signed_copy_sent");
-    expect(contractStepGroupKey(checklistOf([true, false, false, false]))).toBe("signed_copy_sent");
-    expect(contractStepGroupKey(checklistOf([true, true, true, true]))).toBe("done");
+  it("167 행 매핑: 계약금·직인·부재 출발 단계를 읽고, 모르는 값은 버린다", () => {
+    const entry = boardEntryFromRow(rowOf("a", {
+      phase: "absent", absent_from_phase: "scheduled", contract_fee_ready: true, seal_done: true,
+    }));
+    expect(entry).toMatchObject({ phase: "absent", absentFromPhase: "scheduled", contractFeeReady: true, sealDone: true });
+    expect(boardEntryFromRow(rowOf("b", { absent_from_phase: "bogus", contract_fee_ready: "yes" })))
+      .toMatchObject({ absentFromPhase: null, contractFeeReady: false, sealDone: false });
+  });
+
+  it("167 보드 칸 값이 있으면 먼저 믿는다 — 칸을 바꾸면 새로 읽기 전에도 묶음이 옮겨간다", () => {
+    const entry = boardEntryFromRow(rowOf("a", { contract_fee_ready: false, seal_done: true }));
+    expect(withRowContractFee(entry, {})).toBe(entry);
+    expect(contractStepGroupKey(withRowContractFee(entry, { contract_fee_status: "계약금 완" }))).toBe("done");
+    const ready = boardEntryFromRow(rowOf("b", { contract_fee_ready: true }));
+    expect(withRowContractFee(ready, { contract_fee_status: "계약금 미" }).contractFeeReady).toBe(false);
+    expect(withRowContractFee(ready, { contract_fee_status: "계약금 완" })).toBe(ready);
   });
 
   it("보기 라벨은 Sidebar 와 같은 말을 쓴다", () => {

@@ -12,6 +12,7 @@ export type ConsultationErrorCode =
   | "stage_contract"
   | "validation"
   | "checklist_blocked"
+  | "contract_fee_required"
   | "seal_required"
   | "conflict"
   | "handoff_blocked";

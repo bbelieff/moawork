@@ -29,8 +29,10 @@ export function consultationFeedEvent(event: ConsultationFeedEvent, members: rea
       changes.push(`상담 방식: ${mode(before.mode)} → ${mode(after.mode)}`);
     }
     if(before.phase!==after.phase && (before.phase||after.phase)) {
-      const phase=(value:unknown)=>isConsultationPhase(value) ? CONSULTATION_PHASE_LABEL[value] : "기록 없음";
-      changes.push(`상담 단계: ${phase(before.phase)} → ${phase(after.phase)}`);
+      // ★ 167: 부재는 어느 단계에서 왔는지 함께 남긴다 — «부재(상담예정에서)».
+      const phase=(value:unknown,from:unknown)=>!isConsultationPhase(value) ? "기록 없음"
+        : value==="absent" && isConsultationPhase(from) ? `${CONSULTATION_PHASE_LABEL.absent}(${CONSULTATION_PHASE_LABEL[from]}에서)` : CONSULTATION_PHASE_LABEL[value];
+      changes.push(`상담 단계: ${phase(before.phase,before.absentFromPhase)} → ${phase(after.phase,after.absentFromPhase)}`);
     }
     if(before.assigneeId!==after.assigneeId) changes.push(`담당자: ${person(before.assigneeId)} → ${person(after.assigneeId)}`);
     if(before.meetingAt!==after.meetingAt) changes.push(`상담 예약: ${dateLabel(before.meetingAt)} → ${dateLabel(after.meetingAt)}`);

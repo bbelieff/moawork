@@ -78,6 +78,9 @@ const full156 = readFileSync(resolve(process.cwd(), "../supabase/migrations/156_
 const full161 = readFileSync(resolve(process.cwd(), "../supabase/migrations/161_consultation_seal_handoff.sql"), "utf8");
 const body161 = full161.slice(full161.indexOf("alter table public.consultation_requests"));
 const body156 = full156.slice(full156.indexOf("alter table public.consultation_states add column phase"));
+// ★ #830: 167 본문(가드 호출 제외). 기본 setup 은 운영과 같이 167 까지 올린다.
+const full167 = readFileSync(resolve(process.cwd(), "../supabase/migrations/167_consultation_two_stage_contract.sql"), "utf8");
+const body167 = full167.slice(full167.indexOf("alter table public.consultation_states drop constraint consultation_phase_valid"));
 
 const ids = {
   org: "00000000-0000-4000-8000-000000000001",
@@ -105,7 +108,7 @@ afterAll(async () => { await sharedDb?.close(); });
 
 it("work-board audit remains readable through real151 RLS, never writable or visible to another assignee",async()=>{
   const db=await setup(); await asUser(db,ids.owner);
-  const version=await completeChecks(db,ids.item,"work-feed");
+  const version=await readyContract(db,ids.item,"work-feed");
   await db.exec(`update boards set source='core.default-tab/contract-work' where id='${ids.board}';
     update deals set stage_id='${ids.work}' where id='${ids.deal}';
     grant usage on schema auth to authenticated;
@@ -113,16 +116,16 @@ it("work-board audit remains readable through real151 RLS, never writable or vis
     set role authenticated;`);
   try {
     await asUser(db,ids.assignee);
-    expect((await db.query(`select * from consultation_events where org_id='${ids.org}' and item_id='${ids.item}'`)).rows).toHaveLength(4);
+    expect((await db.query(`select * from consultation_events where org_id='${ids.org}' and item_id='${ids.item}'`)).rows).toHaveLength(1);
     await expect(db.query(`delete from consultation_events where item_id='${ids.item}'`)).rejects.toMatchObject({code:"42501"});
     await expect(check(db,ids.item,"work-feed-edit","deposit_confirmed",false,version)).rejects.toThrow();
     await asUser(db,ids.stranger);
     expect((await db.query(`select * from consultation_events where org_id='${ids.org}' and item_id='${ids.item}'`)).rows).toHaveLength(0);
   } finally { await db.exec("reset role"); }
-  expect((await db.query(`select count(*)::int n from consultation_events where item_id='${ids.item}'`)).rows[0]).toEqual({n:4});
+  expect((await db.query(`select count(*)::int n from consultation_events where item_id='${ids.item}'`)).rows[0]).toEqual({n:1});
 });
 
-async function setup(withWorkflow = true): Promise<PGlite> {
+async function setup(withWorkflow = true, twoStage = withWorkflow): Promise<PGlite> {
   const db = sharedDb;
     // Reuse only the WASM engine. Every test still installs the real SQL on a
     // fresh schema with autocommit, fresh roles and no inherited actor/GUCs.
@@ -191,6 +194,7 @@ async function setup(withWorkflow = true): Promise<PGlite> {
   await db.exec(body152);
   await db.exec(archivedGuard153);
   if (withWorkflow) { await db.exec(body156); await db.exec(body161); }
+  if (twoStage) await db.exec(body167);
   await db.exec(`
     insert into orgs values ('${ids.org}');
     insert into users values ('${ids.owner}'), ('${ids.assignee}'), ('${ids.stranger}'),
@@ -268,6 +272,27 @@ async function completeChecks(db: PGlite, itemId: string, tag: string): Promise<
   return version;
 }
 
+/** 167 계약금 칸 — 일반 보드 칸이라 item_values 에 그대로 쓴다. */
+async function setFee(db: PGlite, itemId: string, value: string | null) {
+  if (value === null) {
+    await db.exec(`delete from item_values where item_id='${itemId}' and column_key='contract_fee_status'`);
+    return;
+  }
+  await db.exec(`insert into item_values values ('${ids.org}','${itemId}','contract_fee_status','"${value}"')
+    on conflict (item_id, column_key) do update set value_jsonb = excluded.value_jsonb`);
+}
+
+/** 167: 단계 «계약 진행» 저장(상담행 생성) + 1단계 계약금 완. 반환 = 현재 버전. */
+async function readyContract(db: PGlite, itemId: string, tag: string): Promise<number> {
+  const current = Number((await db.query<{ version: number }>(
+    `select version from read_consultation_snapshot('${ids.org}','${itemId}')`)).rows[0]!.version);
+  const r = await db.query<{ version: number }>(
+    "select version from execute_consultation_workflow($1,$2,$3,$4,'remote','contract',null,null,false)",
+    [ids.org, itemId, req(tag), current]);
+  await setFee(db, itemId, "계약금 완");
+  return Number(r.rows[0]!.version);
+}
+
 async function handoff(
   db: PGlite,
   itemId: string,
@@ -304,7 +329,7 @@ describe("CONSULTATION-REAL-CHAIN (실제 069/087/065)", () => {
   it("P1-직인: 계약-기준 직인 미승인이면 스냅샷이 ready를 주장하지 않는다", async () => {
     const db = await setup();
     await asUser(db, ids.assignee);
-    await completeChecks(db, ids.item, "seal01");
+    await readyContract(db, ids.item, "seal01");
     // 보드 거울은 완료, 계약 정본(deals.custom)은 대기 상태 그대로다.
     const snap = await db.query<{ ready: boolean; seal_approved: boolean; seal_detail: string }>(
       `select ready, seal_approved, seal_detail from read_consultation_snapshot('${ids.org}','${ids.item}')`,
@@ -317,7 +342,7 @@ describe("CONSULTATION-REAL-CHAIN (실제 069/087/065)", () => {
   it("P1-직인: 미승인 인계는 계약-기준 사유로 blocked, 승인 후 실제 065로 committed", async () => {
     const db = await setup();
     await asUser(db, ids.assignee);
-    await completeChecks(db, ids.item, "seal02");
+    await readyContract(db, ids.item, "seal02");
     const blocked = await handoff(db, ids.item, ids.deal, "seal0200");
     expect(blocked.rows[0]!.status).toBe("blocked");
     expect(blocked.rows[0]!.reason ?? "").toMatch(/계약 기준/);
@@ -345,7 +370,7 @@ describe("CONSULTATION-REAL-CHAIN (실제 069/087/065)", () => {
   it("P1-영수증: committed 영수증이 source_item을 묶고 같은 요청 replay가 성공한다", async () => {
     const db = await setup();
     await asUser(db, ids.assignee);
-    await completeChecks(db, ids.item, "rcpt01");
+    await readyContract(db, ids.item, "rcpt01");
     await db.exec(`update deals set custom = '{"seal_approval":"완료"}' where id = '${ids.deal}'`);
     const done = await handoff(db, ids.item, ids.deal, "rcpt0100");
     expect(done.rows[0]!.status).toBe("committed");
@@ -371,7 +396,7 @@ describe("CONSULTATION-REAL-CHAIN (실제 069/087/065)", () => {
   it("P1-영수증: 위조 item/deal/kind replay는 22023으로 거부된다", async () => {
     const db = await setup();
     await asUser(db, ids.assignee);
-    await completeChecks(db, ids.item, "rcpt02");
+    await readyContract(db, ids.item, "rcpt02");
     await db.exec(`update deals set custom = '{"seal_approval":"완료"}' where id = '${ids.deal}'`);
     await handoff(db, ids.item, ids.deal, "rcpt0200");
     // 같은 request에 다른 item
@@ -398,7 +423,8 @@ describe("CONSULTATION-REAL-CHAIN (실제 069/087/065)", () => {
   });
 
   it("P1-순서: 권한 박탈 후 replay는 42501이며 현재 행을 새지 않는다", async () => {
-    const db = await setup();
+    // 151 check 의미(167 에서 퇴역) — 161 까지의 역사 체인에서 확인한다.
+    const db = await setup(true, false);
     await asUser(db, ids.assignee);
     await check(db, ids.item, "ord01", "contract_sent", true, 0);
     await db.exec(
@@ -410,7 +436,8 @@ describe("CONSULTATION-REAL-CHAIN (실제 069/087/065)", () => {
   });
 
   it("P1-순서: 재배정 후 이전 담당자 replay는 42501이다", async () => {
-    const db = await setup();
+    // 151 check 의미(167 에서 퇴역) — 161 까지의 역사 체인에서 확인한다.
+    const db = await setup(true, false);
     await asUser(db, ids.assignee);
     await check(db, ids.item, "ord02", "contract_sent", true, 0);
     await db.exec(`update items set assigned_to = '${ids.stranger}' where id = '${ids.item}'`);
@@ -420,7 +447,8 @@ describe("CONSULTATION-REAL-CHAIN (실제 069/087/065)", () => {
   });
 
   it("P1-순서: 인증된 replay는 CAS/상태 전제조건보다 먼저 답한다", async () => {
-    const db = await setup();
+    // 151 check 의미(167 에서 퇴역) — 161 까지의 역사 체인에서 확인한다.
+    const db = await setup(true, false);
     await asUser(db, ids.assignee);
     const first = await check(db, ids.item, "ord03", "contract_sent", true, 0);
     expect(first.rows[0]).toMatchObject({ version: 1, replayed: false });
@@ -431,7 +459,7 @@ describe("CONSULTATION-REAL-CHAIN (실제 069/087/065)", () => {
   it("P1-순서: 인계 replay도 권한 뒤에 읽힌다(박탈 후 42501, 쓰기 없음)", async () => {
     const db = await setup();
     await asUser(db, ids.assignee);
-    await completeChecks(db, ids.item, "ord04");
+    await readyContract(db, ids.item, "ord04");
     await db.exec(`update deals set custom = '{"seal_approval":"완료"}' where id = '${ids.deal}'`);
     const done = await handoff(db, ids.item, ids.deal, "ord0400");
     expect(done.rows[0]!.status).toBe("committed");
@@ -449,7 +477,8 @@ describe("CONSULTATION-REAL-CHAIN (실제 069/087/065)", () => {
   });
 
   it("P2-부서: 팀리드는 같은 부서 상담을 확인하고 읽는다(진행·가시성 유지)", async () => {
-    const db = await setup();
+    // 151 check 의미(167 에서 퇴역) — 161 까지의 역사 체인에서 확인한다.
+    const db = await setup(true, false);
     await asUser(db, ids.teamLead);
     const r = await check(db, ids.itemDept, "dept01", "contract_sent", true, 0);
     expect(r.rows[0]).toMatchObject({ version: 1, replayed: false });
@@ -460,7 +489,8 @@ describe("CONSULTATION-REAL-CHAIN (실제 069/087/065)", () => {
   });
 
   it("P2-부서: 팀리드 인계는 체인 계약으로 거부되고 아무것도 쓰지 않는다", async () => {
-    const db = await setup();
+    // 151 check 의미(167 에서 퇴역) — 161 까지의 역사 체인에서 확인한다.
+    const db = await setup(true, false);
     await asUser(db, ids.deptMember);
     await check(db, ids.itemDept, "dept02", "contract_sent", true, 0);
     await asUser(db, ids.teamLead);
@@ -513,7 +543,7 @@ describe("CONSULTATION-REAL-CHAIN (실제 069/087/065)", () => {
   it("P1-엣지: 보드 직인 철회되면 ready=false이며 인계는 보드 사유로 blocked, company/stage 무변경", async () => {
     const db = await setup();
     await asUser(db, ids.assignee);
-    await completeChecks(db, ids.item, "edge01");
+    await readyContract(db, ids.item, "edge01");
     // 정본(계약) 승인은 유지한 채 보드 거울만 대기로 철회한다.
     await db.exec(`update deals set custom = '{"seal_approval":"완료"}' where id = '${ids.deal}'`);
     await db.exec(
@@ -557,7 +587,7 @@ describe("CONSULTATION-REAL-CHAIN (실제 069/087/065)", () => {
   it("P1-엣지: blocked->승인->같은 요청 재시도는 committed, 다른 target/kind/payload 재시도는 22023", async () => {
     const db = await setup();
     await asUser(db, ids.assignee);
-    await completeChecks(db, ids.item, "edge02");
+    await readyContract(db, ids.item, "edge02");
     // 정본 미승인 → 계약-기준 사유로 blocked (보드 거울은 완료 상태).
     const blocked = await handoff(db, ids.item, ids.deal, "edge0200");
     expect(blocked.rows[0]!.status).toBe("blocked");
@@ -648,14 +678,15 @@ describe("CONSULTATION-REAL-CHAIN (실제 069/087/065)", () => {
     await expect(workflow(db,"156outsider",1,"rejected")).rejects.toThrow(/permission denied/);
   });
 
-  it("156 mode transfer/cancel preserves contract checks and actual 151 handoff stays blocked until all four", async () => {
+  it("156 mode transfer/cancel keeps IDs and actual 151 handoff stays blocked until 계약금 완 (167)", async () => {
     const db = await setup(); await asUser(db, ids.assignee);
     await workflow(db,"156inperson",0,"meeting_scheduled","inperson","2026-10-02T10:00Z");
     await workflow(db,"156cancelinperson",1,"cancelled","inperson",null,true);
     expect((await handoff(db,ids.item,ids.deal,"156blocked")).rows[0].status).toBe("blocked");
     await workflow(db,"156contract",2,"contract","inperson");
-    for (let i=0;i<STEPS.length;i++) await check(db,ids.item,`156checks${i}`,STEPS[i],true,3+i);
     await db.exec(`update deals set custom='{"seal_approval":"완료"}' where id='${ids.deal}'`);
+    expect((await handoff(db,ids.item,ids.deal,"156nofee")).rows[0]).toMatchObject({status:"blocked",reason:"인계 조건이 남았습니다: 계약금 입금 확인"});
+    await setFee(db,ids.item,"계약금 완");
     expect((await handoff(db,ids.item,ids.deal,"156ready")).rows[0].status).toBe("committed");
   });
 
@@ -794,7 +825,7 @@ describe("160 explicit pipeline repair retains the real 151→087→069 gate", (
     expect((await db.query<Record<string, unknown>>(`select has_function_privilege('anon','${signature}','execute') a,has_function_privilege('service_role','${signature}','execute') s`)).rows[0]).toEqual({a:false,s:false});
     await db.query<Record<string, unknown>>(repair(true)); await db.query<Record<string, unknown>>(advance("160-to-contact"));
     await db.exec(`update boards set source='core.default-tab/contact'; update deals set custom='{"seal_approval":"완료"}' where id='${ids.deal}'`);
-    await check(db,ids.item,"160-partial","contract_sent",true,0);
+    await db.query("select * from execute_consultation_workflow($1,$2,$3,0,'remote','contract',null,null,false)",[ids.org,ids.item,req("160-partial")]);
     const result = await handoff(db,ids.item,ids.deal,"160-no-bypass");
     expect(result.rows[0].status).toBe("blocked");
     expect(result.rows[0].reason).toMatch(/계약|확인/);
@@ -809,8 +840,8 @@ describe("161 seal approval and protected handoff", () => {
       [ids.org,item,req(tag),version,operation,"테스트 회사"]);
   }
   it("owner approves both canonical and mirror once, intent and protected pipeline commit atomically", async () => {
-    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.item,"161-ok");
-    await db.exec(`delete from item_values where item_id='${ids.item}';`);
+    const db=await setup(); await asUser(db,ids.owner); const version=await readyContract(db,ids.item,"161-ok");
+    await db.exec(`delete from item_values where item_id='${ids.item}' and column_key in ('work_move','seal_status');`);
     const controls=await db.query<{can_approve_seal:boolean;ready:boolean}>(`select * from read_consultation_handoff_controls('${ids.org}','${ids.item}')`);
     expect(controls.rows[0]).toMatchObject({can_approve_seal:true,ready:false});
     expect((await submit(db,"seal_approval",version,"161-seal")).rows[0].version).toBe(version+1);
@@ -824,7 +855,7 @@ describe("161 seal approval and protected handoff", () => {
     expect((await submit(db,"handoff",version+1,"161-handoff")).rows[0].replayed).toBe(true);
   });
   it.each(["member","team_lead"])("%s including all-scope cannot approve, assigned member may handoff only after approval", async (role) => {
-    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.item,"161-role-"+role);
+    const db=await setup(); await asUser(db,ids.owner); const version=await readyContract(db,ids.item,"161-role-"+role);
     await db.exec(`update org_members set role='${role}',scope='all' where user_id='${ids.assignee}'`);
     await asUser(db,ids.assignee);
     expect((await db.query<{can_approve_seal:boolean}>(`select can_approve_seal from read_consultation_handoff_controls('${ids.org}','${ids.item}')`)).rows[0].can_approve_seal).toBe(false);
@@ -834,7 +865,7 @@ describe("161 seal approval and protected handoff", () => {
     await asUser(db,ids.assignee); expect((await submit(db,"handoff",version+1,"161-member-go-"+role)).rows[0].deal_id).toBe(ids.deal);
   });
   it("blocks revoked role, null auth, org inactive, archived item, feature denial and stale CAS", async () => {
-    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.item,"161-denials");
+    const db=await setup(); await asUser(db,ids.owner); const version=await readyContract(db,ids.item,"161-denials");
     await expect(submit(db,"seal_approval",version-1,"161-stale")).rejects.toThrow(/version conflict/);
     await db.exec(`select set_config('app.uid','',false)`);
     await expect(submit(db,"seal_approval",version,"161-noauth")).rejects.toThrow(/authentication/);
@@ -854,10 +885,10 @@ describe("161 seal approval and protected handoff", () => {
     await db.exec(`update org_members set role='member',scope='all' where user_id='${ids.owner}'`);
     await expect(submit(db,"seal_approval",version,"161-revoked")).rejects.toThrow(/permission/);
   });
-  it("rejects incomplete checklist, foreign tenant/association and request reuse", async () => {
+  it("rejects missing contract fee, foreign tenant/association and request reuse", async () => {
     const db=await setup(); await asUser(db,ids.owner);
-    await check(db,ids.item,"161-first","contract_sent",true,0);
-    await expect(submit(db,"seal_approval",1,"161-incomplete")).rejects.toThrow(/checklist blocked/);
+    await db.query("select * from execute_consultation_workflow($1,$2,$3,0,'remote','contract',null,null,false)",[ids.org,ids.item,req("161-first")]);
+    await expect(submit(db,"seal_approval",1,"161-incomplete")).rejects.toThrow(/contract fee required/);
     await db.exec(`update consultation_states set deal_id='${ids.dealDept}' where item_id='${ids.item}'`);
     await expect(submit(db,"seal_approval",1,"161-link")).rejects.toThrow(/association/);
     await db.exec(`update consultation_states set deal_id='${ids.deal}' where item_id='${ids.item}'`);
@@ -866,7 +897,7 @@ describe("161 seal approval and protected handoff", () => {
     await expect(submit(db,"seal_approval",1,"161-first")).rejects.toThrow(/key reuse/);
   });
   it("blocked downstream handoff rolls back intent and receipt; authenticated has RPC only", async () => {
-    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.item,"161-rollback");
+    const db=await setup(); await asUser(db,ids.owner); const version=await readyContract(db,ids.item,"161-rollback");
     await submit(db,"seal_approval",version,"161-rb-seal");
     await db.exec(`delete from item_values where item_id='${ids.item}' and column_key='work_move'; delete from stages where id='${ids.work}'`);
     await expect(submit(db,"handoff",version+1,"161-rb-go")).rejects.toThrow();
@@ -876,7 +907,7 @@ describe("161 seal approval and protected handoff", () => {
     expect(acl.rows[0]).toEqual({anon:false,service:false,auth:true});
   });
   it("admin uses the existing approver role; handoff replay rechecks current row scope and active membership", async () => {
-    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.item,"161-scope");
+    const db=await setup(); await asUser(db,ids.owner); const version=await readyContract(db,ids.item,"161-scope");
     await db.exec(`update org_members set role='admin' where user_id='${ids.owner}'`);
     await submit(db,"seal_approval",version,"161-admin-ok");
     await asUser(db,ids.stranger);
@@ -889,14 +920,14 @@ describe("161 seal approval and protected handoff", () => {
     await expect(submit(db,"handoff",version+1,"161-assignee-ok")).rejects.toMatchObject({code:"42501"});
   });
   it("mismatched pipeline and stage cannot receive a canonical approval", async () => {
-    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.item,"161-pipeline");
+    const db=await setup(); await asUser(db,ids.owner); const version=await readyContract(db,ids.item,"161-pipeline");
     await db.exec(`insert into pipelines values('${ids.stranger}','${ids.org}'); update stages set pipeline_id='${ids.stranger}' where id='${ids.meeting}'`);
     await expect(submit(db,"seal_approval",version,"161-bad-pipeline")).rejects.toThrow(/association/);
     expect((await db.query<{n:number}>("select count(*)::int n from consultation_events where kind='seal_approved'")).rows[0].n).toBe(0);
   });
 
   it("department visibility does not promise handoff permission; current item AND deal assignee must match", async () => {
-    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.itemDept,"161-dept-ready");
+    const db=await setup(); await asUser(db,ids.owner); const version=await readyContract(db,ids.itemDept,"161-dept-ready");
     await submit(db,"seal_approval",version,"161-dept-seal",ids.itemDept);
     const read=()=>db.query<{ready:boolean;can_approve_seal:boolean;missing:string[]}>(`select * from read_consultation_handoff_controls('${ids.org}','${ids.itemDept}')`);
     await asUser(db,ids.teamLead);
@@ -909,7 +940,7 @@ describe("161 seal approval and protected handoff", () => {
   });
 
   it("a prior handoff receipt cannot bypass current write scope through department visibility", async () => {
-    const db=await setup(); await asUser(db,ids.owner); const version=await completeChecks(db,ids.itemDept,"161-dept-replay");
+    const db=await setup(); await asUser(db,ids.owner); const version=await readyContract(db,ids.itemDept,"161-dept-replay");
     await submit(db,"seal_approval",version,"161-dept-replay-seal",ids.itemDept);
     await asUser(db,ids.deptMember); await submit(db,"handoff",version+1,"161-dept-replay-go",ids.itemDept);
     await db.exec(`update org_members set role='team_lead',scope='department' where user_id='${ids.deptMember}'; update deals set assigned_to='${ids.teamLead}' where id='${ids.dealDept}'; update items set assigned_to='${ids.teamLead}' where id='${ids.itemDept}'`);
@@ -917,4 +948,186 @@ describe("161 seal approval and protected handoff", () => {
     await expect(submit(db,"handoff",version+1,"161-dept-replay-go",ids.itemDept)).rejects.toMatchObject({code:"42501"});
   });
 
+});
+
+describe("167 two-stage contract (계약금 입금 확인 → 직인) + absent/deliberating", () => {
+  const submit = (db: PGlite, operation: string, version: number, tag: string, item = ids.item) =>
+    db.query<{ version: number; replayed: boolean; deal_id: string; company_id: string }>(
+      "select * from execute_consultation_seal_handoff($1,$2,$3,$4,$5,$6)",
+      [ids.org, item, req(tag), version, operation, "테스트 회사"]);
+  const workflow = (db: PGlite, tag: string, version: number, phase: string, mode = "remote", meeting: string | null = null) =>
+    db.query<{ version: number }>("select * from execute_consultation_workflow($1,$2,$3,$4,$5,$6,$7,$8,false)",
+      [ids.org, ids.item, req(tag), version, mode, phase, meeting, ids.assignee]);
+  const state = async (db: PGlite) => (await db.query<{ phase: string; absent_from_phase: string | null; version: number }>(
+    `select phase, absent_from_phase, version from consultation_states where item_id='${ids.item}'`)).rows[0]!;
+  const count = async (db: PGlite, sql: string) => (await db.query<{ n: number }>(sql)).rows[0]!.n;
+
+  it("seal approval needs 계약금 완 first and writes nothing without it; with it the seal and handoff commit", async () => {
+    const db = await setup(); await asUser(db, ids.owner);
+    const version = await readyContract(db, ids.item, "167-ok");
+    await setFee(db, ids.item, "계약금 미");
+    await expect(submit(db, "seal_approval", version, "167-nofee")).rejects.toMatchObject({ code: "22023", message: expect.stringMatching(/contract fee required/) });
+    expect(await count(db, `select count(*)::int n from consultation_requests where request_id='${req("167-nofee")}'`)).toBe(0);
+    expect(await count(db, "select count(*)::int n from consultation_events where kind='seal_approved'")).toBe(0);
+    expect((await db.query<{ custom: object }>(`select custom from deals where id='${ids.deal}'`)).rows[0]!.custom).toEqual({});
+    expect((await state(db)).version).toBe(version);
+    await setFee(db, ids.item, "계약금 완");
+    expect((await submit(db, "seal_approval", version, "167-seal")).rows[0]!.version).toBe(version + 1);
+    const done = await submit(db, "handoff", version + 1, "167-go");
+    expect(done.rows[0]!.deal_id).toBe(ids.deal);
+    expect((await db.query<{ stage_id: string }>(`select stage_id from deals where id='${ids.deal}'`)).rows[0]!.stage_id).toBe(ids.work);
+  });
+
+  it("handoff still requires the seal even when 계약금 완", async () => {
+    const db = await setup(); await asUser(db, ids.owner);
+    const version = await readyContract(db, ids.item, "167-noseal");
+    await expect(submit(db, "handoff", version, "167-noseal-go")).rejects.toThrow(/직인/);
+    expect((await db.query<{ stage_id: string }>(`select stage_id from deals where id='${ids.deal}'`)).rows[0]!.stage_id).toBe(ids.meeting);
+    expect(await count(db, "select count(*)::int n from contact_pipeline_transitions")).toBe(0);
+  });
+
+  it("fee back to 계약금 미 after the seal blocks both the protected handoff and the 069 work_move path", async () => {
+    const db = await setup(); await asUser(db, ids.owner);
+    const version = await readyContract(db, ids.item, "167-revert");
+    await submit(db, "seal_approval", version, "167-revert-seal");
+    await setFee(db, ids.item, "계약금 미");
+    const controls = (await db.query<{ ready: boolean }>(`select ready from read_consultation_handoff_controls('${ids.org}','${ids.item}')`)).rows[0]!;
+    expect(controls.ready).toBe(false);
+    await expect(submit(db, "handoff", version + 1, "167-revert-go")).rejects.toThrow(/contract fee required/);
+    const direct = await handoff(db, ids.item, ids.deal, "167-revert-069");
+    expect(direct.rows[0]).toMatchObject({ status: "blocked", reason: "인계 조건이 남았습니다: 계약금 입금 확인" });
+    expect((await db.query<{ stage_id: string; company_id: string | null }>(`select stage_id, company_id from deals where id='${ids.deal}'`)).rows[0])
+      .toEqual({ stage_id: ids.meeting, company_id: null });
+  });
+
+  it("an empty checklist is ready once 계약금 완 + seal + work_move; readiness reports only the fee as missing", async () => {
+    const db = await setup(); await asUser(db, ids.owner);
+    await readyContract(db, ids.item, "167-empty");
+    await setFee(db, ids.item, null);
+    const before = (await db.query<{ ready: boolean; missing: string[] }>(`select ready, missing from read_consultation_snapshot('${ids.org}','${ids.item}')`)).rows[0];
+    expect(before).toEqual({ ready: false, missing: ["계약금 입금 확인"] });
+    await setFee(db, ids.item, "계약금 완");
+    await db.exec(`update deals set custom='{"seal_approval":"완료"}' where id='${ids.deal}'`);
+    const snap = (await db.query<{ ready: boolean; missing: string[]; checklist: Record<string, { confirmed: boolean }> }>(
+      `select ready, missing, checklist from read_consultation_snapshot('${ids.org}','${ids.item}')`)).rows[0]!;
+    expect(snap).toMatchObject({ ready: true, missing: [] });
+    expect(Object.values(snap.checklist).some((step) => step.confirmed)).toBe(false);
+    const board = (await db.query<{ ready: boolean; missing: string[] }>(`select ready, missing from read_consultation_board_view('${ids.org}','${ids.board}',array['${ids.item}'::uuid])`)).rows[0];
+    expect(board).toEqual({ ready: true, missing: [] });
+  });
+
+  it("absent stores, keeps and clears its origin phase without a schedule; deliberating needs no schedule", async () => {
+    const db = await setup(); await asUser(db, ids.assignee);
+    await workflow(db, "167-sched", 0, "scheduled", "remote", "2026-10-02T10:00Z");
+    await workflow(db, "167-absent", 1, "absent", "remote", "2026-10-02T10:00Z");
+    expect(await state(db)).toMatchObject({ phase: "absent", absent_from_phase: "scheduled" });
+    // 같은 부재로 다시 저장해도 처음 출발 단계를 유지한다(변화 없음 = 버전 그대로).
+    expect((await workflow(db, "167-absent-again", 2, "absent", "remote", "2026-10-02T10:00Z")).rows[0]!.version).toBe(2);
+    expect(await state(db)).toMatchObject({ absent_from_phase: "scheduled" });
+    const history = (await db.query<{ history: { details: { after: { absentFromPhase?: string } } }[] }>(
+      `select history from read_consultation_snapshot_v2('${ids.org}','${ids.item}')`)).rows[0]!.history;
+    expect(history[0]!.details.after.absentFromPhase).toBe("scheduled");
+    await workflow(db, "167-consulting", 2, "consulting");
+    expect(await state(db)).toMatchObject({ phase: "consulting", absent_from_phase: null });
+    await workflow(db, "167-absent-noschedule", 3, "absent");
+    expect(await state(db)).toMatchObject({ phase: "absent", absent_from_phase: "consulting" });
+    // 151 mode 전환처럼 다른 경로로 부재를 떠나도 트리거가 출발 단계를 비운다.
+    await db.query(`select * from execute_consultation_transition('${ids.org}','${ids.item}','${req("167-mode")}','mode',null,null,'inperson','2026-10-03T10:00Z','${ids.assignee}',4)`);
+    expect(await state(db)).toMatchObject({ absent_from_phase: null });
+    expect((await state(db)).phase).not.toBe("absent");
+    await workflow(db, "167-deliberating", 5, "deliberating", "inperson");
+    expect(await state(db)).toMatchObject({ phase: "deliberating", absent_from_phase: null });
+    await expect(workflow(db, "167-absent-inperson", 6, "absent", "inperson")).rejects.toThrow(/phase unsupported/);
+    await expect(workflow(db, "167-deliberating-remote", 6, "deliberating", "remote", "2026-10-03T10:00Z")).rejects.toThrow(/phase unsupported/);
+  });
+
+  it("CHECK accepts the new phases and rejects an origin outside absent or an unknown origin", async () => {
+    const db = await setup(); await asUser(db, ids.assignee);
+    await workflow(db, "167-check", 0, "consulting");
+    await db.exec(`alter table consultation_states disable trigger consultation_phase_compat;
+      update consultation_states set phase='deliberating' where item_id='${ids.item}'`);
+    await expect(db.exec(`update consultation_states set absent_from_phase='consulting' where item_id='${ids.item}'`)).rejects.toThrow(/consultation_absent_from_valid/);
+    await expect(db.exec(`update consultation_states set phase='absent', absent_from_phase='absent' where item_id='${ids.item}'`)).rejects.toThrow(/consultation_absent_from_valid/);
+    await expect(db.exec(`update consultation_states set phase='bogus' where item_id='${ids.item}'`)).rejects.toThrow(/consultation_phase_valid/);
+    await db.exec(`update consultation_states set phase='absent', absent_from_phase='on_hold' where item_id='${ids.item}';
+      alter table consultation_states enable trigger consultation_phase_compat;`);
+    expect(await state(db)).toMatchObject({ phase: "absent", absent_from_phase: "on_hold" });
+  });
+
+  it("old 151 check is retired with 22023 and writes nothing; 151 mode still delegates", async () => {
+    const db = await setup(); await asUser(db, ids.assignee);
+    await expect(check(db, ids.item, "167-retired", "contract_sent", true, 0)).rejects.toMatchObject({ code: "22023", message: expect.stringMatching(/checklist retired/) });
+    for (const table of ["consultation_states", "consultation_requests", "consultation_events"]) {
+      expect(await count(db, `select count(*)::int n from ${table}`)).toBe(0);
+    }
+    const moved = await db.query<{ mode: string; version: number }>(`select mode, version from execute_consultation_transition('${ids.org}','${ids.item}','${req("167-mode-ok")}','mode',null,null,'inperson','2026-10-02T10:00Z','${ids.assignee}',0)`);
+    expect(moved.rows[0]).toEqual({ mode: "inperson", version: 1 });
+  });
+
+  it("v2 readers expose the added columns and board seal_done follows canonical AND board seal", async () => {
+    const db = await setup(); await asUser(db, ids.owner);
+    await readyContract(db, ids.item, "167-v2");
+    const snap = (await db.query<Record<string, unknown>>(`select absent_from_phase, contract_fee_status, contract_fee_ready from read_consultation_snapshot_v2('${ids.org}','${ids.item}')`)).rows[0];
+    expect(snap).toEqual({ absent_from_phase: null, contract_fee_status: "계약금 완", contract_fee_ready: true });
+    const read = async () => (await db.query<Record<string, unknown>>(`select absent_from_phase, contract_fee_ready, seal_done from read_consultation_board_view_v2('${ids.org}','${ids.board}',array['${ids.item}'::uuid])`)).rows[0]!;
+    expect(await read()).toEqual({ absent_from_phase: null, contract_fee_ready: true, seal_done: false });
+    await db.exec(`update deals set custom='{"seal_approval":"완료"}' where id='${ids.deal}'`);
+    expect((await read()).seal_done).toBe(true);
+    // work_move 선택 여부와 무관하다(152 seal_approved 와 다름).
+    await db.exec(`delete from item_values where item_id='${ids.item}' and column_key='work_move'`);
+    expect((await read()).seal_done).toBe(true);
+    await db.exec(`update item_values set value_jsonb='"대기"' where item_id='${ids.item}' and column_key='seal_status'`);
+    expect((await read()).seal_done).toBe(false);
+  });
+
+  it("internal helpers and the preserved 151 body are not executable by client roles; wrapper keeps its grants", async () => {
+    const db = await setup();
+    const priv = async (role: string, signature: string) => (await db.query<{ ok: boolean }>(
+      `select has_function_privilege('${role}','${signature}','execute') ok`)).rows[0]!.ok;
+    for (const signature of [
+      "public.consultation_contract_fee_ready(uuid,uuid)",
+      "public.consultation_contract_missing(uuid,uuid)",
+      "public.execute_consultation_transition_151(uuid,uuid,uuid,text,text,boolean,text,timestamptz,uuid,bigint)",
+    ]) {
+      for (const role of ["anon", "authenticated", "service_role"]) expect(await priv(role, signature)).toBe(false);
+    }
+    const wrapper = "public.execute_consultation_transition(uuid,uuid,uuid,text,text,boolean,text,timestamptz,uuid,bigint)";
+    expect([await priv("anon", wrapper), await priv("service_role", wrapper), await priv("authenticated", wrapper)]).toEqual([false, false, true]);
+    for (const signature of ["public.read_consultation_snapshot_v2(uuid,uuid)", "public.read_consultation_board_view_v2(uuid,uuid,uuid[],integer,integer)"]) {
+      expect([await priv("anon", signature), await priv("service_role", signature), await priv("authenticated", signature)]).toEqual([false, false, true]);
+    }
+  });
+
+  it("carry-over: deposit_confirmed → 계약금 완 once, archived rows skipped, state/events untouched, idempotent", async () => {
+    const db = await setup(true, false); await asUser(db, ids.owner);
+    await completeChecks(db, ids.item, "167-carry");
+    await completeChecks(db, ids.itemNull, "167-carry-archived");
+    await check(db, ids.itemDept, "167-carry-partial", "contract_sent", true, 0);
+    await setFee(db, ids.item, "계약금 미");
+    await db.exec(`update items set archived_at='2026-09-28T00:00:00Z' where id='${ids.itemNull}'`);
+    const statesBefore = (await db.query<Record<string, unknown>>("select * from consultation_states order by item_id")).rows;
+    const eventsBefore = await count(db, "select count(*)::int n from consultation_events");
+    await db.exec(body167);
+    const fee = async (item: string) => (await db.query<{ v: string }>(`select value_jsonb #>> '{}' v from item_values where item_id='${item}' and column_key='contract_fee_status'`)).rows[0]?.v ?? null;
+    expect([await fee(ids.item), await fee(ids.itemNull), await fee(ids.itemDept)]).toEqual(["계약금 완", null, null]);
+    expect((await db.query("select * from consultation_states order by item_id")).rows)
+      .toEqual(statesBefore.map((row) => ({ ...row, absent_from_phase: null })));
+    expect(await count(db, "select count(*)::int n from consultation_events")).toBe(eventsBefore);
+    const carry = body167.slice(body167.indexOf("insert into public.item_values(org_id, item_id, column_key, value_jsonb)"));
+    await db.exec(carry);
+    expect(await count(db, "select count(*)::int n from item_values where column_key='contract_fee_status'")).toBe(1);
+    // 이월된 행은 추가 체크 없이 바로 1단계 완료로 읽힌다.
+    expect((await db.query<{ contract_fee_ready: boolean }>(`select contract_fee_ready from read_consultation_snapshot_v2('${ids.org}','${ids.item}')`)).rows[0]!.contract_fee_ready).toBe(true);
+  });
+
+  it("carry-over stops before writing when an enabled messaging rule watches 계약금 완", async () => {
+    const db = await setup(true, false); await asUser(db, ids.owner);
+    await completeChecks(db, ids.item, "167-msg");
+    await db.exec(`create table public.messaging_trigger_rules(org_id uuid, board_id uuid, column_key text, trigger_value text, enabled boolean);
+      insert into public.messaging_trigger_rules values('${ids.org}','${ids.board}','contract_fee_status','계약금 완',true);`);
+    await expect(db.exec(`begin; ${body167} commit;`)).rejects.toThrow(/carry-over blocked/);
+    await db.exec("rollback");
+    expect(await count(db, "select count(*)::int n from item_values where column_key='contract_fee_status'")).toBe(0);
+    expect(await count(db, "select count(*)::int n from pg_proc where proname='consultation_contract_fee_ready'")).toBe(0);
+  });
 });

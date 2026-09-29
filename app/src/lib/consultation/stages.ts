@@ -4,9 +4,9 @@
  * - 신규리드(new_lead)는 보드 위치다. 상담 쓰기가 아니라 기존
  *   `advance_new_lead_to_contact`(lead_to_contact) 전이로만 옮긴다(ID 보존).
  * - contact 보드 행은 mode=remote(기본, backfill 없음) 또는 inperson 이다.
- *   두 뷰는 같은 item/deal 을 공유하며 어느 쪽도 인계에 4체크를 요구한다.
+ *   두 뷰는 같은 item/deal 을 공유하며 어느 쪽도 인계에 계약금 완·직인을 요구한다(★ 167).
  * - 실제 인계는 기존 contact_to_work 파이프라인이 수행하고, 151 래퍼가
- *   활성 상담행의 4완료를 같은 트랜잭션 안에서 강제한다.
+ *   활성 상담행의 계약금 완(167)을 같은 트랜잭션 안에서 강제한다.
  */
 
 import { ConsultationError } from "./errors";
