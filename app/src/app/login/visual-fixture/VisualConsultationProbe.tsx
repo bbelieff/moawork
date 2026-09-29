@@ -5,7 +5,7 @@ import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { ConsultationPanel } from "@/components/consultation/ConsultationPanel";
 import type { Board, BoardGroup, ItemWithValues } from "@/lib/boards/types";
 import type { ConsultationBoardMap, ConsultationView } from "@/lib/consultation/boardView";
-import { blankChecklist, CHECKLIST_STEPS, unconfirmStep } from "@/lib/consultation/checklist";
+import { blankChecklist } from "@/lib/consultation/checklist";
 import { REMOTE_PHASES, INPERSON_PHASES, CONSULTATION_PHASE_LABEL, phaseNeedsSchedule } from "@/lib/consultation/phases";
 import { VisualAppearanceProbe } from "./VisualAppearanceProbe";
 
@@ -29,23 +29,22 @@ const groups: BoardGroup[] = [{
   id: GROUP, org_id: ORG, board_id: BOARD, name: "가상 상담 담당", color: null, sort_order: 0,
 }];
 
-function checked(count: number) {
-  const checklist = blankChecklist();
-  for (const step of CHECKLIST_STEPS.slice(0, count)) {
-    checklist[step] = { confirmed: true, actorId: USER, at: AT };
-  }
-  return checklist;
-}
+// ★ #830(167): 계약 확인 2단계 — 1단계(계약금 미) · 2단계(계약금 완, 직인 대기) · 완료.
+const CONTRACT_STATES = [
+  { label: "1단계 · 계약금 미", fee: false, seal: false },
+  { label: "1단계 · 직인만 먼저 완료", fee: false, seal: true },
+  { label: "2단계 · 계약금 완 · 직인 대기", fee: true, seal: false },
+  { label: "계약 확인 완료", fee: true, seal: true },
+] as const;
 
 const rows: ItemWithValues[] = [];
 const consultationByItem: Record<string, ConsultationBoardMap[string]> = {};
 for (const mode of ["remote", "inperson"] as const) {
-  for (let index = 0; index < 6; index += 1) {
+  CONTRACT_STATES.forEach((state, index) => {
     const itemId = `visual-consultation-${mode}-${index}`;
     const dealId = `visual-consultation-deal-${mode}-${index}`;
-    const title = `${mode === "remote" ? "비대면" : "대면"} 가상 회사 ${index + 1} · ${
-      index === 5 ? "앞 단계 취소 · 뒤 확인 무효" : index === 4 ? "4단계 완료" : `${index}/4 확인`
-    }`;
+    const title = `${mode === "remote" ? "비대면" : "대면"} 가상 회사 ${index + 1} · ${state.label}`;
+    const done = state.fee && state.seal;
     rows.push({
       id: itemId, org_id: ORG, board_id: BOARD, group_id: GROUP, title,
       assigned_to: USER, deal_id: dealId, sort_order: rows.length,
@@ -54,17 +53,15 @@ for (const mode of ["remote", "inperson"] as const) {
     consultationByItem[itemId] = {
       itemId, dealId, companyId: `visual-consultation-company-${mode}-${index}`,
       mode, phase: "contract", version: index + 1, meetingAt: "2026-10-01T01:00:00.000Z",
-      checklist: index === 5
-        ? unconfirmStep(checked(4), "signed_copy_sent", USER, AT).state
-        : checked(index),
-      ready: index === 4, missing: index === 4 ? [] : ["계약 수동 확인 필요"],
-      sealApproved: index === 4, sealDetail: index === 4 ? "합성 직인 승인 상태" : "합성 직인 대기 상태",
+      checklist: blankChecklist(), contractFeeReady: state.fee, sealDone: state.seal,
+      ready: done, missing: state.fee ? [] : ["계약금 입금 확인"],
+      sealApproved: done, sealDetail: state.seal ? "합성 직인 승인 상태" : "합성 직인 대기 상태",
       dealStageKind: "meeting",
     };
-  }
+  });
 }
 
-// Actual phase groups, separate from the explicit contract 0–4 fixture above.
+// Actual phase groups, separate from the explicit contract-stage fixture above.
 for (const mode of ["remote", "inperson"] as const) {
   for (const phase of (mode === "remote" ? REMOTE_PHASES : INPERSON_PHASES).filter((value) => value !== "contract")) {
     const itemId = `visual-phase-${mode}-${phase}`;
@@ -74,7 +71,9 @@ for (const mode of ["remote", "inperson"] as const) {
       sort_order: rows.length, created_at: AT, updated_at: AT, values: {} });
     consultationByItem[itemId] = { itemId, dealId, companyId: null, mode, phase, version: 1,
       meetingAt: phaseNeedsSchedule(phase) ? "2026-10-01T01:00:00.000Z" : null,
-      checklist: blankChecklist(), ready: false, missing: [], sealApproved: false, sealDetail: "", dealStageKind: "meeting" };
+      absentFromPhase: phase === "absent" ? "scheduled" : null,
+      checklist: blankChecklist(), contractFeeReady: false, sealDone: false,
+      ready: false, missing: [], sealApproved: false, sealDetail: "", dealStageKind: "meeting" };
   }
 }
 
@@ -86,7 +85,7 @@ export function VisualConsultationProbe() {
       <header className="mb-4 space-y-2">
         <h1 className="text-lg font-semibold">상담 화면 QA</h1>
         <p className="text-xs leading-5 text-mw-sub">
-          합성 데이터 · 계약 0–4단계와 앞 단계 취소 후 상태입니다. 보기 전환은 같은 행 목록을 필터링합니다.
+          합성 데이터 · 계약 확인 2단계(계약금 입금 확인 → 직인)와 상담 단계별 상태입니다. 보기 전환은 같은 행 목록을 필터링합니다.
           저장·발송·입금은 수행하지 않습니다.
         </p>
         <nav aria-label="합성 상담 단계 보기" className="flex flex-wrap gap-2">
@@ -111,7 +110,7 @@ export function VisualConsultationProbe() {
         <h2 className="text-sm font-semibold">실제 패널 · 인증 및 합성 행 조회 오류 확인</h2>
         <p className="mt-1 text-xs leading-5 text-mw-sub">
           아래 패널과 표의 ‘확인 열기’는 실제 서버 조회를 사용합니다. 합성 행의 조회 실패는 예상된 결과이며,
-          체크 저장·취소 성공과 인계 검증을 뜻하지 않습니다.
+          직인 승인 성공과 인계 검증을 뜻하지 않습니다.
         </p>
         <ConsultationPanel
           itemId="visual-consultation-panel-unavailable" title="합성 상담 · 조회 실패와 다시 읽기"

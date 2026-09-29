@@ -50,7 +50,8 @@ export async function executeConsultationTransition(
     orgId: string;
     itemId: string;
     requestId: string;
-    action: "check" | "mode";
+    /** ★ 167: check(4단계 체크리스트)는 DB 가 22023 으로 퇴역시켰다. mode 만 남는다. */
+    action: "mode";
     step?: string | null;
     confirmed?: boolean | null;
     mode?: string | null;
@@ -128,6 +129,8 @@ export async function readConsultationSnapshot(
       detail: text(value.seal_detail) ?? "",
     },
     dealStageKind: text(value.deal_stage_kind),
+    absentFromPhase: isConsultationPhase(value.absent_from_phase) ? value.absent_from_phase : null,
+    contractFee: { status: text(value.contract_fee_status), ready: value.contract_fee_ready === true },
   };
 }
 

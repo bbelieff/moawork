@@ -49,6 +49,11 @@ describe("protected seal and handoff actions", () => {
     expect(result.field).not.toBe("unknown_result");
     expect(result.message).not.toContain("private");
   });
+  it.each(["seal_approval", "handoff"] as const)("167: %s before 계약금 완 is a settled, translated rejection", async (operation) => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { code: "22023", message: "consultation contract fee required" } });
+    const result = operation === "seal_approval" ? await mutateConsultationSeal(initial, form()) : await mutateConsultationHandoff(initial, form());
+    expect(result).toMatchObject({ ok: false, field: "contractFee", message: "계약금 입금 확인이 필요합니다." });
+  });
   it("missing version makes no RPC and unexpected SQL errors stay sanitized", async () => {
     const missing = form(); missing.delete("expectedVersion");
     expect((await mutateConsultationSeal(initial, missing)).ok).toBe(false);

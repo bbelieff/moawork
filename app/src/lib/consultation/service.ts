@@ -2,9 +2,9 @@
  * 상담 서비스 — 151 RPC 위의 얇은 조정자.
  *
  * 하는 일:
- * - 체크리스트 확인/취소(`check`)와 상담 보기 전환(`mode`)을 RPC 한 트랜잭션으로 보낸다.
+ * - 상담 보기 전환(`mode`)을 RPC 한 트랜잭션으로 보낸다. ★ 167: 4단계 체크(`check`)는 퇴역했다.
  * - 스냅샷·준비도를 읽고, 인계는 버전 확인 뒤 정식 contact_to_work 파이프라인에 위임한다.
- *   활성 상담행의 4완료는 151 래퍼가 같은 트랜잭션 안에서 강제하므로 UI 우회가 없다.
+ *   활성 상담행의 계약금 완(1단계)·직인(2단계)은 151 래퍼가 같은 트랜잭션 안에서 강제하므로 UI 우회가 없다.
  *
  * 하지 않는 일:
  * - 순차·CAS·replay 판정을 직접 하지 않는다. RPC가 정본이다.
@@ -12,7 +12,6 @@
  * - 담당자를 직접 바꾸지 않는다. 다른 담당자 값은 lineage 선행 요구로 돌려준다.
  */
 
-import { incompleteSteps, isChecklistComplete } from "./checklist";
 import { assertConsultationRequestId, ConsultationError } from "./errors";
 import { assertSchedulable, assertStageTransition, canRequestHandoff } from "./stages";
 import { executeContactPipelineTransition } from "../crm/supabaseContactPipeline";
@@ -67,6 +66,13 @@ export function consultationErrorFromRpc(
     });
   }
   if (code === "22023" || code === "") {
+    // ★ 167: 직인 승인·인계 모두 1단계(계약금 입금 확인)를 먼저 요구한다.
+    if (message.includes("contract fee required")) {
+      return new ConsultationError("contract_fee_required", "계약금 입금 확인이 필요합니다.", {
+        field: "contractFee",
+        echo,
+      });
+    }
     if (message.includes("checklist blocked")) {
       const step = typeof echo.step === "string" ? echo.step : null;
       return new ConsultationError("checklist_blocked", "앞 단계를 먼저 확인해 주세요.", {
@@ -130,33 +136,6 @@ async function runTransition(
   } catch (error) {
     throw consultationErrorFromRpc(error, echo);
   }
-}
-
-export async function setChecklistStep(
-  client: ConsultationRpcClient,
-  input: Readonly<{
-    orgId: string;
-    itemId: string;
-    step: string;
-    confirmed: boolean;
-    requestId: string;
-    expectedVersion: number;
-  }>,
-): Promise<ConsultationTransitionResult> {
-  const echo = { itemId: input.itemId, step: input.step, confirmed: input.confirmed };
-  return runTransition(
-    client,
-    {
-      orgId: input.orgId,
-      itemId: input.itemId,
-      requestId: input.requestId,
-      action: "check",
-      step: input.step,
-      confirmed: input.confirmed,
-      expectedVersion: input.expectedVersion,
-    },
-    echo,
-  );
 }
 
 export async function setConsultationMode(
@@ -237,11 +216,8 @@ export async function readHandoffReadiness(
   const missing = stageReady
     ? [...snapshot.missing]
     : ["상담 단계", ...snapshot.missing.filter((entry) => entry !== "상담 단계")];
-  const ready =
-    stageReady &&
-    snapshot.ready &&
-    isChecklistComplete(snapshot.checklist) &&
-    incompleteSteps(snapshot.checklist).length === 0;
+  // ★ 167: DB 스냅샷 ready 가 계약금·직인·단계를 이미 판정한다. 과거 체크리스트는 보지 않는다.
+  const ready = stageReady && snapshot.ready;
   return {
     itemId: snapshot.itemId,
     version: snapshot.version,
@@ -259,7 +235,7 @@ export async function readHandoffReadiness(
  * F2: 스냅샷의 정본 deal/company ID 를 보존해 전달한다(deal null 로 새 계약 생성 금지).
  * F6: 준비도 미달이어도 인증된 영수증 replay 를 먼저 시도한다(유실 응답 재시도).
  * 통과해도 이 함수가 행을 옮기지 않는다. 151 래퍼가 같은 트랜잭션 안에서
- * 활성 상담행의 4완료를 강제하므로 직접 파이프라인 호출 우회가 없다.
+ * 활성 상담행의 계약금 완·직인을 강제하므로(★ 167) 직접 파이프라인 호출 우회가 없다.
  */
 export async function requestHandoff(
   client: ConsultationRpcClient,

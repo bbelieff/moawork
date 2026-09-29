@@ -16,6 +16,12 @@ describe("readonly consultation handoff history",()=>{
     const body=consultationFeedEvent(event,[{id:"old",name:"이전 담당"},{id:"new",name:"새 담당"}]).body;
     expect(body).toContain("정보수집");expect(body).toContain("이전 담당 → 새 담당");expect(body).toContain("11:00");expect(body).not.toContain("assigneeId");
   });
+  it("167 absent keeps where it came from; old checklist events still render",()=>{
+    const event={...base,step:"phase",kind:"phase_changed",details:{before:{phase:"scheduled",assigneeId:"a",meetingAt:null},after:{phase:"absent",absentFromPhase:"scheduled",assigneeId:"a",meetingAt:null}}};
+    expect(consultationFeedEvent(event,[]).body).toBe("상담 단계: 상담예정 → 부재(상담예정에서)");
+    const back={...event,details:{before:{phase:"absent",absentFromPhase:"consulting",assigneeId:"a",meetingAt:null},after:{phase:"deliberating",assigneeId:"a",meetingAt:null}}};
+    expect(consultationFeedEvent(back,[]).body).toBe("상담 단계: 부재(상담중에서) → 미팅 후 고민 중");
+  });
   it("is attributed to the actor and remains uneditable/unremovable even for the owner",()=>{
     const viewer={viewerId:"actor",viewerRole:"owner",assignedTo:"actor"};
     expect(detailEventAuthorName("consultation","담당 이름")).toBe("담당 이름");

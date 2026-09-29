@@ -85,6 +85,7 @@ import {
 import { ConsultationProgressCell } from "@/components/consultation/ConsultationProgressCell";
 import {
   CONSULTATION_PROGRESS_KEY,
+  withRowContractFee,
   type ConsultationBoardEntry,
   type ConsultationBoardMap,
 } from "@/lib/consultation/boardView";
@@ -299,7 +300,7 @@ export function BoardCell({
       <ConsultationProgressCell
         itemId={row.id}
         title={row.title}
-        entry={consultationEntry ?? null}
+        entry={consultationEntry ? withRowContractFee(consultationEntry, row.values) : null}
         meetingAt={typeof row.values.meeting_at === "string" ? row.values.meeting_at : null}
         assigneeId={typeof row.assigned_to === "string" ? row.assigned_to : null}
         members={consultationMembers ?? []}
