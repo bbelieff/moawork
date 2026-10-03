@@ -62,6 +62,7 @@ import { getBoardColumnOrder } from "../groupLayout";
 import { presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
 import { applyNoticePerspective, parseNoticePerspective, projectNoticeMetadata } from "@/lib/notices/perspectives";
 import { NoticePerspectiveNav } from "@/components/notices/NoticePerspectiveNav";
+import { buildConsultationViewOptions } from "@/components/shell/active-nav";
 
 type PagePhaseTiming = { offsetMs: number; durationMs: number };
 
@@ -418,6 +419,31 @@ export default async function BoardPage({
     </div>
   );
 
+  const consultationViewToggle = board.source === CONTACT_TAB_SOURCE ? (
+    <nav
+      aria-label="상담 보기"
+      className="flex shrink-0 items-center rounded-full border border-mw-line p-0.5 text-xs"
+    >
+      {buildConsultationViewOptions(currentQuery.toString(), consultationView).map((option) => (
+        <Link
+          key={option.id}
+          href={option.href}
+          aria-current={option.active ? "page" : undefined}
+          className={`rounded-full px-2.5 py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mw-primary)] ${option.active ? "bg-mw-tint-blue font-semibold text-mw-record" : "text-mw-sub hover:text-mw-fg"}`}
+        >
+          {option.label}
+        </Link>
+      ))}
+    </nav>
+  ) : null;
+
+  const boardViewControls = (
+    <div className="flex max-w-full items-center gap-2 overflow-x-auto">
+      {consultationViewToggle}
+      {viewToggle}
+    </div>
+  );
+
   const workflowHelp = board.source === NEW_LEAD_TAB_SOURCE
     ? {
         title: "상담 단계와 리드컨택 이동",
@@ -529,7 +555,7 @@ export default async function BoardPage({
       readOnly={board.is_system||!canEditItems}
       canEditTitle={!board.is_system&&canManageSummaries}
       backSlot={backLink}
-      viewSlot={viewToggle}
+      viewSlot={boardViewControls}
       addItemSlot={board.source===NEW_LEAD_TAB_SOURCE&&groups[0]?(
         <NewLeadIntakeForm
           variant="header"
@@ -602,7 +628,7 @@ export default async function BoardPage({
       assigneeLabels={assigneeLabels}
       memberDirectory={memberDirectory}
       backSlot={backLink}
-      viewSlot={viewToggle}
+      viewSlot={boardViewControls}
       savedViewsSlot={
         <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={stageItems} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
       }

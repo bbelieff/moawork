@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   WorkspaceSwitcher,
   type WorkspaceSwitcherProps,
@@ -20,7 +19,7 @@ import {
   type NavBadgeKey,
   type NavItem,
 } from "./nav-items";
-import { resolveActiveNavKey, resolveConsultationNavKey } from "./active-nav";
+import { resolveActiveNavKey } from "./active-nav";
 import { workspaceHref } from "./workspace-href";
 
 // 사이드바 메뉴 목록 — 활성 표시를 위해 클라이언트 컴포넌트.
@@ -48,12 +47,7 @@ type Props = {
 };
 
 export function SidebarNav(props: Props) {
-  return <Suspense fallback={<SidebarNavContent {...props} search="" />}><SidebarNavQuery {...props} /></Suspense>;
-}
-
-function SidebarNavQuery(props: Props) {
-  const search = useSearchParams()?.toString() ?? "";
-  return <SidebarNavContent {...props} search={search} />;
+  return <SidebarNavContent {...props} />;
 }
 
 function SidebarNavContent({
@@ -63,16 +57,14 @@ function SidebarNavContent({
   workspaceSwitcher,
   workspaceBasePath,
   boardNavKeys,
-  search,
-}: Props & { search: string }) {
+}: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const locked = new Set(lockedFeatures);
 
   // 활성은 «항목마다» 가 아니라 «전체에서 하나» 다 — 둘이 켜지면 색으로 구분하는 목적이 깨진다.
-  // 같은 리드컨택 정본 보드라도 ?consultation=remote|inperson 이면 STEP2·STEP3 탭이 켜진다.
-  const consultationKey = resolveConsultationNavKey(pathname, search, boardNavKeys);
-  const resolvedActiveKey = consultationKey ?? resolveActiveNavKey(
+  // 상담 보기 쿼리가 달라도 같은 contact 정본 보드이므로 상담관리 하나만 켠다.
+  const activeKey = resolveActiveNavKey(
     pathname,
     [...NAV_ITEMS, ...WORK_TOOL_ITEMS].filter((item) => item.href).map((item) => ({
       key: item.key,
@@ -80,10 +72,11 @@ function SidebarNavContent({
     })),
     { basePath: workspaceBasePath, boardNavKeys },
   );
-  const activeKey = resolvedActiveKey === "contact" ? "consult-remote" : resolvedActiveKey;
 
   const renderItem = (item: NavItem, nested: boolean) => {
     const isLocked = item.feature ? locked.has(item.feature) : false;
+    // 기존 대시보드 업무명 계약은 보존하되, 왼쪽 메뉴에서는 통합된 상담 보기임을 명확히 한다.
+    const visibleLabel = item.key === "contact" ? "상담관리" : item.label;
     // 실제 라우트가 있는 잠금 메뉴는 안내 화면에 도달할 수 있도록 링크를 유지한다.
     const unavailable = !item.href;
     const resolvedHref = item.href ? workspaceHref(workspaceBasePath, item.href) : undefined;
@@ -100,7 +93,7 @@ function SidebarNavContent({
     const inner = (
       <>
         <Icon name={item.icon} />
-        <span className="flex-1 truncate">{item.label}</span>
+        <span className="flex-1 truncate">{visibleLabel}</span>
         {visibleBadge !== null ? (
           <span
             className="ml-auto font-bold"
@@ -118,7 +111,7 @@ function SidebarNavContent({
           </span>
         ) : showNotifyBadge ? (
           <span className="ml-auto flex items-center">
-            <Badge state={notifyBadge} label={item.label} />
+            <Badge state={notifyBadge} label={visibleLabel} />
           </span>
         ) : null}
         {isLocked ? (

@@ -1,3 +1,11 @@
+import {
+  CONSULTATION_CANONICAL_PATH,
+  CONSULTATION_LEGACY_PATHS,
+  CONSULTATION_VIEW_IDS,
+  resolveConsultationRoute,
+  type ConsultationViewId,
+} from "@/lib/workflow/precontract-routing";
+
 /**
  * 「지금 어느 탭에 있는가」를 «하나만» 고른다.
  *
@@ -26,6 +34,77 @@ export const TAB_SOURCE_NAV_KEY: Readonly<Record<string, string>> = {
 
 export type NavCandidate = { key: string; href: string };
 
+export type ConsultationSelectorView = Exclude<ConsultationViewId, "unspecified">;
+
+export type ConsultationEntryPath =
+  | typeof CONSULTATION_CANONICAL_PATH
+  | (typeof CONSULTATION_LEGACY_PATHS)[keyof typeof CONSULTATION_LEGACY_PATHS];
+
+export type ConsultationEntrySearchParams = Readonly<
+  Record<string, string | readonly string[] | undefined>
+>;
+
+const CONSULTATION_SELECTOR_LABELS: Readonly<Record<ConsultationSelectorView, string>> = {
+  all: "전체",
+  remote: "비대면 상담",
+  inperson: "대면 상담",
+};
+
+/**
+ * 같은 상담 보드 안에서 보기만 바꾸는 링크를 만든다.
+ * S0 계약이 허용한 쿼리만 남기며 경로를 넣지 않아 현재 workspace namespace와 board id를 보존한다.
+ */
+export function buildConsultationViewOptions(
+  search: string,
+  activeView: ConsultationSelectorView,
+): ReadonlyArray<Readonly<{
+  id: ConsultationSelectorView;
+  label: string;
+  href: string;
+  active: boolean;
+}>> {
+  const normalized = search.startsWith("?") ? search.slice(1) : search;
+  const resolved = resolveConsultationRoute(`/contract${normalized ? `?${normalized}` : ""}`);
+  const safeUrl = new URL(resolved?.canonicalHref ?? "/contract", "https://moawork.invalid");
+
+  return CONSULTATION_VIEW_IDS
+    .filter((view): view is ConsultationSelectorView => view !== "unspecified")
+    .map((view) => {
+      const params = new URLSearchParams(safeUrl.searchParams);
+      if (view === "all") params.delete("consultation");
+      else params.set("consultation", view);
+      const query = params.toString();
+      return {
+        id: view,
+        label: CONSULTATION_SELECTOR_LABELS[view],
+        href: query ? `?${query}` : "?",
+        active: view === activeView,
+      };
+    });
+}
+
+/**
+ * 상담 진입 주소의 안전한 보기 상태만 실제 보드 redirect에 이어 붙인다.
+ * 경로와 board id는 서버가 정한 값만 쓰고, S0 allowlist 밖 쿼리는 버린다.
+ */
+export function buildConsultationBoardRedirect(
+  boardId: string,
+  entryPath: ConsultationEntryPath,
+  searchParams: ConsultationEntrySearchParams,
+): string {
+  const input = new URLSearchParams();
+  for (const [key, rawValue] of Object.entries(searchParams)) {
+    const values = Array.isArray(rawValue) ? rawValue : [rawValue];
+    for (const value of values) {
+      if (typeof value === "string") input.append(key, value);
+    }
+  }
+
+  const query = input.toString();
+  const resolved = resolveConsultationRoute(`${entryPath}${query ? `?${query}` : ""}`);
+  const safeUrl = new URL(resolved?.canonicalHref ?? CONSULTATION_CANONICAL_PATH, "https://moawork.invalid");
+  return `/boards/${encodeURIComponent(boardId)}${safeUrl.search}${safeUrl.hash}`;
+}
 /** `/w/acme/boards/<id>` · `/boards/<id>` 에서 보드 id 를 뽑는다. 보드 화면이 아니면 null. */
 export function boardIdFromPathname(pathname: string): string | null {
   const match = /(?:^|\/)boards\/([^/?#]+)/.exec(pathname);
@@ -39,18 +118,19 @@ function covers(pathname: string, href: string): boolean {
 }
 
 /**
- * 상담 단계 보기의 활성 탭 — 같은 리드컨택 정본 보드(`/boards/<id>`)라도
- * `?consultation=remote|inperson` 이면 STEP2·STEP3 탭이 켜진다.
- * 쿼리가 없거나 contact 보드가 아니면 null(기존 판정 그대로).
+ * 상담 단계별 외관 강조를 위한 호환 판정이다.
+ * 사이드바 메뉴 활성에는 쓰지 않는다. 같은 contact 보드의 메뉴는 항상 `contact` 하나다.
  */
 export function resolveConsultationNavKey(
   pathname: string,
   search: string | null | undefined,
   boardNavKeys?: Readonly<Record<string, string>>,
 ): "consult-remote" | "consult-inperson" | null {
+  // 옛 진입 주소도 기존 외관 색을 유지한다. 이 값은 메뉴 활성이나 권한 판정에는 쓰이지 않는다.
+  if (/(?:^|\/)consult-remote\/?$/.test(pathname)) return "consult-remote";
+  if (/(?:^|\/)consult-inperson\/?$/.test(pathname)) return "consult-inperson";
   const boardId = boardIdFromPathname(pathname);
-  if (!boardId || boardNavKeys?.[boardId] !== "contact") return null;
-  if (!search) return null;
+  if (!boardId || boardNavKeys?.[boardId] !== "contact" || !search) return null;
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   const view = params.get("consultation");
   if (view === "remote") return "consult-remote";
