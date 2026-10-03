@@ -49,6 +49,7 @@ describe("Issue #834 S1A — 상담관리 메뉴와 보드 보기", () => {
     );
 
     expect(options.map((option) => option.id)).toEqual(["all", "remote", "inperson"]);
+    expect(options.map((option) => option.compactLabel)).toEqual(["전체", "비대면", "대면"]);
     expect(options.find((option) => option.id === "remote")?.active).toBe(true);
     expect(options.find((option) => option.id === "all")?.href).toBe(
       "?savedView=mine&view=kanban&group=status&mwFocus=owner",
@@ -110,6 +111,8 @@ describe("Issue #834 S1A — 상담관리 메뉴와 보드 보기", () => {
     expect(pageSource).toContain("items.filter((item) => consultationModeForRow(item.id, consultationByItem) === consultationView)");
     expect(pageSource).toContain("rows={stageItems}");
     expect(pageSource).toContain('aria-label="상담 보기"');
+    expect(pageSource).toContain('aria-label={option.label}');
+    expect(pageSource).toContain('className="sm:hidden">{option.compactLabel}');
     expect(pageSource).toContain("buildConsultationViewOptions(currentQuery.toString(), consultationView)");
     expect(pageSource).not.toMatch(/consultation[^\n]{0,80}\.(?:insert|upsert)\(/u);
   });
@@ -118,5 +121,7 @@ describe("Issue #834 S1A — 상담관리 메뉴와 보드 보기", () => {
     expect(visualFixtureSource).toContain("buildConsultationViewOptions(consultationSearch.toString(), consultationView)");
     expect(visualFixtureSource).toContain("viewSlot={consultationViewSlot}");
     expect(visualFixtureSource).toContain("data-visual-consultation-selector");
+    expect(visualFixtureSource).toContain('aria-label={option.label}');
+    expect(visualFixtureSource).toContain('className="sm:hidden">{option.compactLabel}');
   });
 });

@@ -50,6 +50,12 @@ const CONSULTATION_SELECTOR_LABELS: Readonly<Record<ConsultationSelectorView, st
   inperson: "대면 상담",
 };
 
+const CONSULTATION_SELECTOR_COMPACT_LABELS: Readonly<Record<ConsultationSelectorView, string>> = {
+  all: "전체",
+  remote: "비대면",
+  inperson: "대면",
+};
+
 /**
  * 같은 상담 보드 안에서 보기만 바꾸는 링크를 만든다.
  * S0 계약이 허용한 쿼리만 남기며 경로를 넣지 않아 현재 workspace namespace와 board id를 보존한다.
@@ -60,6 +66,7 @@ export function buildConsultationViewOptions(
 ): ReadonlyArray<Readonly<{
   id: ConsultationSelectorView;
   label: string;
+  compactLabel: string;
   href: string;
   active: boolean;
 }>> {
@@ -77,6 +84,7 @@ export function buildConsultationViewOptions(
       return {
         id: view,
         label: CONSULTATION_SELECTOR_LABELS[view],
+        compactLabel: CONSULTATION_SELECTOR_COMPACT_LABELS[view],
         href: query ? `?${query}` : "?",
         active: view === activeView,
       };

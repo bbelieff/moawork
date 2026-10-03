@@ -106,10 +106,10 @@ describe("사이드바 활성 판정", () => {
       "all",
     );
 
-    expect(options.map(({ id, label, active }) => ({ id, label, active }))).toEqual([
-      { id: "all", label: "전체", active: true },
-      { id: "remote", label: "비대면 상담", active: false },
-      { id: "inperson", label: "대면 상담", active: false },
+    expect(options.map(({ id, label, compactLabel, active }) => ({ id, label, compactLabel, active }))).toEqual([
+      { id: "all", label: "전체", compactLabel: "전체", active: true },
+      { id: "remote", label: "비대면 상담", compactLabel: "비대면", active: false },
+      { id: "inperson", label: "대면 상담", compactLabel: "대면", active: false },
     ]);
     expect(options[0].href).toBe("?savedView=team-view&view=flat&group=owner&mwFocus=status");
     expect(options[1].href).toBe("?savedView=team-view&view=flat&group=owner&mwFocus=status&consultation=remote");

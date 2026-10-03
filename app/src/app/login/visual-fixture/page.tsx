@@ -250,10 +250,12 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
           <Link
             key={option.id}
             href={`?tab=contact${suffix}`}
+            aria-label={option.label}
             aria-current={option.active ? "page" : undefined}
-            className={`rounded-full px-2.5 py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mw-primary)] ${option.active ? "bg-mw-tint-blue font-semibold text-mw-record" : "text-mw-sub hover:text-mw-fg"}`}
+            className={`rounded-full px-1.5 py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mw-primary)] sm:px-2.5 ${option.active ? "bg-mw-tint-blue font-semibold text-mw-record" : "text-mw-sub hover:text-mw-fg"}`}
           >
-            {option.label}
+            <span aria-hidden="true" className="sm:hidden">{option.compactLabel}</span>
+            <span aria-hidden="true" className="hidden sm:inline">{option.label}</span>
           </Link>
         );
       })}
