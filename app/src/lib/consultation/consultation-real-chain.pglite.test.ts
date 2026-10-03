@@ -1,7 +1,12 @@
 import { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { Worker as NodeWorker } from "node:worker_threads";
+import { PGliteWorker } from "@electric-sql/pglite/worker";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { PGliteWorkerLockBroker, workerWebLocksBootstrapSource } from "../assignment-lineage/pglite-worker-locks.test-support";
 
 /**
  * CONSULTATION-REAL-CHAIN — 실제 069/087/065 체인과의 정합 (REAL SQL, stub 없음).
@@ -81,6 +86,7 @@ const body156 = full156.slice(full156.indexOf("alter table public.consultation_s
 // ★ #830: 167 본문(가드 호출 제외). 기본 setup 은 운영과 같이 167 까지 올린다.
 const full167 = readFileSync(resolve(process.cwd(), "../supabase/migrations/167_consultation_two_stage_contract.sql"), "utf8");
 const body167 = full167.slice(full167.indexOf("alter table public.consultation_states drop constraint consultation_phase_valid"));
+const body168 = readFileSync(resolve(process.cwd(), "../supabase/migrations/168_consultation_handoff_safety.sql"), "utf8");
 
 const ids = {
   org: "00000000-0000-4000-8000-000000000001",
@@ -104,7 +110,70 @@ const ids = {
 
 let sharedDb: PGlite;
 beforeAll(async () => { sharedDb = new PGlite(); await sharedDb.waitReady; });
-afterAll(async () => { await sharedDb?.close(); });
+const workerDatabases: PGliteWorker[] = [];
+const workerLockBroker = new PGliteWorkerLockBroker();
+afterAll(async () => {
+  await Promise.all(workerDatabases.splice(0).map((db) => db.close()));
+  await sharedDb?.close();
+});
+
+function asWebWorker(nodeWorker: NodeWorker, isLockMessage: (value: unknown) => boolean): Worker {
+  const listeners = new Map<EventListenerOrEventListenerObject, (data: unknown) => void>();
+  return {
+    addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) {
+      if (type !== "message") return;
+      const callback = (data: unknown) => {
+        if (isLockMessage(data)) return;
+        if (typeof listener === "function") listener({ data } as MessageEvent);
+        else listener.handleEvent({ data } as MessageEvent);
+        if (typeof options === "object" && options.once) nodeWorker.off("message", callback);
+      };
+      listeners.set(listener, callback);
+      nodeWorker.on("message", callback);
+    },
+    removeEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+      if (type !== "message") return;
+      const callback = listeners.get(listener);
+      if (callback) nodeWorker.off("message", callback);
+      listeners.delete(listener);
+    },
+    postMessage(data: unknown) { nodeWorker.postMessage(data); },
+    terminate() { void nodeWorker.terminate(); },
+  } as unknown as Worker;
+}
+
+async function sharedWorkerClient(databaseId: string) {
+  workerLockBroker.installClient();
+  const require = createRequire(import.meta.url);
+  const pgliteUrl = pathToFileURL(require.resolve("@electric-sql/pglite")).href;
+  const workerUrl = pathToFileURL(require.resolve("@electric-sql/pglite/worker")).href;
+  const source = `
+    const { parentPort } = require("node:worker_threads");
+    ${workerWebLocksBootstrapSource()}
+    globalThis.postMessage = (data) => parentPort.postMessage(data);
+    globalThis.addEventListener = (type, listener, options) => {
+      if (type !== "message") return;
+      const callback = (data) => {
+        listener({ data });
+        if (options && options.once) parentPort.off("message", callback);
+      };
+      parentPort.on("message", callback);
+    };
+    void (async () => {
+      const [{ worker }, { PGlite }] = await Promise.all([
+        import(${JSON.stringify(workerUrl)}), import(${JSON.stringify(pgliteUrl)})
+      ]);
+      await worker({ init: (options) => new PGlite(options.dataDir || "memory://") });
+    })();
+  `;
+  const nodeWorker = new NodeWorker(source, { eval: true, stderr: true });
+  nodeWorker.stderr?.resume();
+  const lockBridge = workerLockBroker.connectWorker(nodeWorker);
+  nodeWorker.once("exit", () => lockBridge.dispose());
+  const client = await PGliteWorker.create(asWebWorker(nodeWorker, lockBridge.isProtocolMessage), { id: databaseId });
+  workerDatabases.push(client);
+  return client;
+}
 
 it("work-board audit remains readable through real151 RLS, never writable or visible to another assignee",async()=>{
   const db=await setup(); await asUser(db,ids.owner);
@@ -125,8 +194,9 @@ it("work-board audit remains readable through real151 RLS, never writable or vis
   expect((await db.query(`select count(*)::int n from consultation_events where item_id='${ids.item}'`)).rows[0]).toEqual({n:1});
 });
 
-async function setup(withWorkflow = true, twoStage = withWorkflow): Promise<PGlite> {
-  const db = sharedDb;
+type DatabaseClient = Pick<PGlite, "exec" | "query">;
+
+async function initialize(db: DatabaseClient, withWorkflow = true, twoStage = withWorkflow): Promise<void> {
     // Reuse only the WASM engine. Every test still installs the real SQL on a
     // fresh schema with autocommit, fresh roles and no inherited actor/GUCs.
     await db.exec(`reset role; reset all;
@@ -140,6 +210,14 @@ async function setup(withWorkflow = true, twoStage = withWorkflow): Promise<PGli
     create schema auth;
     create function auth.uid() returns uuid language sql stable
       as $$select nullif(current_setting('app.uid',true),'')::uuid$$;
+    create table public.migration_apply_guard(logical_key text primary key);
+    create function public.begin_guarded_migration(
+      p_logical_key text,p_file_name text,p_file_digest text,p_expected_predecessor text,
+      p_executor text,p_thread_id text,p_foundation boolean
+    ) returns void language plpgsql as $$begin
+      insert into public.migration_apply_guard values(p_logical_key)
+      on conflict(logical_key) do nothing;
+    end$$;
     create table public.orgs(id uuid primary key, status text not null default 'active');
     create table public.users(id uuid primary key);
     create table public.org_members(org_id uuid references public.orgs, user_id uuid references public.users,
@@ -175,6 +253,10 @@ async function setup(withWorkflow = true, twoStage = withWorkflow): Promise<PGli
       title text, custom jsonb not null default '{}', updated_at timestamptz default now());
     create table public.activities(id uuid primary key default gen_random_uuid(), org_id uuid, deal_id uuid, type text, content text, actor uuid);
     create table public.boards(id uuid primary key, org_id uuid, source text);
+    create table public.board_columns(
+      id uuid primary key default gen_random_uuid(), org_id uuid, board_id uuid,
+      key text, archived_at timestamptz, unique(board_id, key)
+    );
     create table public.items(id uuid primary key, org_id uuid, board_id uuid, title text,
       assigned_to uuid, deal_id uuid, deleted_at timestamptz, archived_at timestamptz, created_at timestamptz default now(), updated_at timestamptz default now());
     create table public.item_values(org_id uuid, item_id uuid, column_key text, value_jsonb jsonb, primary key(item_id, column_key));
@@ -182,7 +264,7 @@ async function setup(withWorkflow = true, twoStage = withWorkflow): Promise<PGli
   await db.exec(`
     grant select, insert, update, delete on public.orgs, public.users, public.org_members,
       public.pipelines, public.stages, public.companies, public.deals, public.activities,
-      public.boards, public.items, public.item_values, public.departments,
+      public.boards, public.board_columns, public.items, public.item_values, public.departments,
       public.department_members, public.test_permission_deny to anon, authenticated, service_role;
   `);
   // 실제 체인 원문 적용: 065 -> 069 -> 087(체인 부분) -> 151 -> 152
@@ -194,7 +276,7 @@ async function setup(withWorkflow = true, twoStage = withWorkflow): Promise<PGli
   await db.exec(body152);
   await db.exec(archivedGuard153);
   if (withWorkflow) { await db.exec(body156); await db.exec(body161); }
-  if (twoStage) await db.exec(body167);
+  if (twoStage) { await db.exec(body167); await db.exec(body168); }
   await db.exec(`
     insert into orgs values ('${ids.org}');
     insert into users values ('${ids.owner}'), ('${ids.assignee}'), ('${ids.stranger}'),
@@ -214,6 +296,8 @@ async function setup(withWorkflow = true, twoStage = withWorkflow): Promise<PGli
       ('${ids.meeting}','${ids.pipeline}','meeting'),
       ('${ids.work}','${ids.pipeline}','work');
     insert into boards values ('${ids.board}','${ids.org}','core.default-tab/contact');
+    insert into board_columns(org_id,board_id,key,archived_at)
+      values ('${ids.org}','${ids.board}','contract_fee_status',null);
     insert into deals (id, org_id, company_id, pipeline_id, stage_id, assigned_to, title, custom) values
       ('${ids.deal}','${ids.org}',null,'${ids.pipeline}','${ids.meeting}','${ids.assignee}','테스트 회사','{}'),
       ('${ids.dealDept}','${ids.org}',null,'${ids.pipeline}','${ids.meeting}','${ids.deptMember}','부서 건','{}'),
@@ -230,7 +314,11 @@ async function setup(withWorkflow = true, twoStage = withWorkflow): Promise<PGli
       ('${ids.org}','${ids.itemNull}','work_move','"업무관리 이동"'),
       ('${ids.org}','${ids.itemNull}','seal_status','"완료"');
   `);
-  return db;
+}
+
+async function setup(withWorkflow = true, twoStage = withWorkflow): Promise<PGlite> {
+  await initialize(sharedDb, withWorkflow, twoStage);
+  return sharedDb;
 }
 
 async function asUser(db: PGlite, userId: string) {
@@ -1130,4 +1218,127 @@ describe("167 two-stage contract (계약금 입금 확인 → 직인) + absent/d
     expect(await count(db, "select count(*)::int n from item_values where column_key='contract_fee_status'")).toBe(0);
     expect(await count(db, "select count(*)::int n from pg_proc where proname='consultation_contract_fee_ready'")).toBe(0);
   });
+});
+
+describe("168 consultation handoff safety", () => {
+  const submit = (db: PGlite, operation: string, version: number, tag: string, item = ids.item) =>
+    db.query<{ version: number; replayed: boolean; deal_id: string; company_id: string }>(
+      "select * from execute_consultation_seal_handoff($1,$2,$3,$4,$5,$6)",
+      [ids.org, item, req(tag), version, operation, "테스트 회사"],
+    );
+
+  it("상담 상태행이 없어도 069 인계가 계약금 공통 게이트를 건너뛰지 않는다", async () => {
+    const db = await setup();
+    await asUser(db, ids.owner);
+    await db.exec(`update deals set custom='{"seal_approval":"완료"}' where id='${ids.deal}'`);
+
+    const blocked = await handoff(db, ids.item, ids.deal, "168-no-state-blocked");
+    expect(blocked.rows[0]).toMatchObject({
+      status: "blocked",
+      reason: "인계 조건이 남았습니다: 계약금 입금 확인",
+    });
+    expect((await db.query<{ stage_id: string; company_id: string | null }>(
+      `select stage_id,company_id from deals where id='${ids.deal}'`,
+    )).rows[0]).toEqual({ stage_id: ids.meeting, company_id: null });
+
+    await setFee(db, ids.item, "계약금 완");
+    const committed = await handoff(db, ids.item, ids.deal, "168-no-state-ready");
+    expect(committed.rows[0]!.status).toBe("committed");
+    expect((await db.query<{ stage_id: string }>(`select stage_id from deals where id='${ids.deal}'`)).rows[0]!.stage_id)
+      .toBe(ids.work);
+  });
+
+  it("계약금 칸의 active·archived·absent 상태를 구분하고 보관/부재를 fail-closed 처리한다", async () => {
+    const db = await setup();
+    await asUser(db, ids.owner);
+    const version = await readyContract(db, ids.item, "168-column-state");
+    expect((await db.query<{ ready: boolean }>(
+      `select contract_fee_ready ready from read_consultation_snapshot_v2('${ids.org}','${ids.item}')`,
+    )).rows[0]!.ready).toBe(true);
+
+    await db.exec(`update board_columns set archived_at=now() where board_id='${ids.board}' and key='contract_fee_status'`);
+    const archived = (await db.query<{ ready: boolean; missing: string[] }>(
+      `select contract_fee_ready ready,missing from read_consultation_snapshot_v2('${ids.org}','${ids.item}')`,
+    )).rows[0]!;
+    expect(archived.ready).toBe(false);
+    expect(archived.missing).toContain("계약금 완료여부 칸 보관됨 — 보드 칸 관리에서 복원");
+    await expect(submit(db, "seal_approval", version, "168-column-archived"))
+      .rejects.toMatchObject({ code: "22023" });
+
+    await db.exec(`delete from board_columns where board_id='${ids.board}' and key='contract_fee_status'`);
+    const absent = (await db.query<{ ready: boolean; missing: string[] }>(
+      `select contract_fee_ready ready,missing from read_consultation_snapshot_v2('${ids.org}','${ids.item}')`,
+    )).rows[0]!;
+    expect(absent.ready).toBe(false);
+    expect(absent.missing).toContain("계약금 완료여부 칸 없음 — 보드 칸 관리에서 추가");
+    await expect(submit(db, "seal_approval", version, "168-column-absent"))
+      .rejects.toMatchObject({ code: "22023" });
+    expect((await db.query<{ custom: object }>(`select custom from deals where id='${ids.deal}'`)).rows[0]!.custom).toEqual({});
+    expect((await db.query<{ n: number }>("select count(*)::int n from consultation_events where kind='seal_approved'")).rows[0]!.n).toBe(0);
+  });
+
+  it("잠금 헬퍼는 client role에 공개되지 않고 기존 authenticated wrapper만 유지한다", async () => {
+    const db = await setup();
+    const signature = "public.consultation_contract_fee_ready_locked(uuid,uuid)";
+    for (const role of ["anon", "authenticated", "service_role"]) {
+      expect((await db.query<{ ok: boolean }>(
+        `select has_function_privilege('${role}','${signature}','execute') ok`,
+      )).rows[0]!.ok).toBe(false);
+    }
+    expect((await db.query<{ ok: boolean }>(
+      "select has_function_privilege('authenticated','public.execute_contact_pipeline_transition(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text,text,text,text,date,numeric)','execute') ok",
+    )).rows[0]!.ok).toBe(true);
+  });
+
+  it("두 client에서 인계와 계약금 되돌리기가 같은 값 잠금으로 직렬화된다", async () => {
+    const databaseId = `issue833-${crypto.randomUUID()}`;
+    const handoffClient = await sharedWorkerClient(databaseId);
+    await initialize(handoffClient);
+    const revertClient = await sharedWorkerClient(databaseId);
+    await handoffClient.exec(`select set_config('app.uid','${ids.owner}',false)`);
+    await revertClient.exec(`select set_config('app.uid','${ids.owner}',false)`);
+
+    const workflow = await handoffClient.query<{ version: number }>(
+      "select version from execute_consultation_workflow($1,$2,$3,$4,'remote','contract',null,null,false)",
+      [ids.org, ids.item, req("168-race-workflow"), 0],
+    );
+    const version = Number(workflow.rows[0]!.version);
+    await handoffClient.exec(`insert into item_values values ('${ids.org}','${ids.item}','contract_fee_status','"계약금 완"')
+      on conflict(item_id,column_key) do update set value_jsonb=excluded.value_jsonb`);
+    await handoffClient.query(
+      "select * from execute_consultation_seal_handoff($1,$2,$3,$4,'seal_approval',$5)",
+      [ids.org, ids.item, req("168-race-seal"), version, "테스트 회사"],
+    );
+
+    const definition = (await handoffClient.query<{ body: string }>(
+      "select pg_get_functiondef('public.consultation_contract_fee_ready_locked(uuid,uuid)'::regprocedure) body",
+    )).rows[0]!.body;
+    expect(definition).toMatch(/for update of c/iu);
+    expect(definition).toMatch(/for update of iv/iu);
+
+    const [handoffAttempt, revertAttempt] = await Promise.allSettled([
+      handoffClient.query<{ deal_id: string }>(
+        "select deal_id from execute_consultation_seal_handoff($1,$2,$3,$4,'handoff',$5)",
+        [ids.org, ids.item, req("168-race-handoff"), version + 1, "테스트 회사"],
+      ),
+      revertClient.query(
+        "update item_values set value_jsonb='\"계약금 미\"' where item_id=$1 and column_key='contract_fee_status'",
+        [ids.item],
+      ),
+    ]);
+    expect(revertAttempt.status).toBe("fulfilled");
+    const stage = (await handoffClient.query<{ stage_id: string }>(
+      `select stage_id from deals where id='${ids.deal}'`,
+    )).rows[0]!.stage_id;
+    if (handoffAttempt.status === "fulfilled") {
+      expect(handoffAttempt.value.rows[0]!.deal_id).toBe(ids.deal);
+      expect(stage).toBe(ids.work);
+    } else {
+      expect(String(handoffAttempt.reason)).toMatch(/contract fee required/iu);
+      expect(stage).toBe(ids.meeting);
+    }
+    expect((await handoffClient.query<{ fee: string }>(
+      `select value_jsonb#>>'{}' fee from item_values where item_id='${ids.item}' and column_key='contract_fee_status'`,
+    )).rows[0]!.fee).toBe("계약금 미");
+  }, 30_000);
 });

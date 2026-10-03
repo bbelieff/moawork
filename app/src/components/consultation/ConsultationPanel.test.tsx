@@ -64,10 +64,10 @@ function snapshotOf(stage: string, fee: string | null = null, version = 2, extra
   };
 }
 
-function handoffOf(ready: boolean) {
+function handoffOf(ready: boolean, missing: string[] = ["계약금 입금 확인"]) {
   return ready
     ? { ok: true, message: "인계 조건을 모두 채웠습니다.", version: 4, ready: true, missing: [], nextAction: { kind: "contact_to_work", dealId: "deal-1", sourceItemId: "item-1" } }
-    : { ok: false, message: "남은 조건 있음", version: 2, ready: false, missing: ["계약금 입금 확인"], nextAction: null };
+    : { ok: false, message: "남은 조건 있음", version: 2, ready: false, missing, nextAction: null };
 }
 
 let container: HTMLDivElement | null = null;
@@ -95,11 +95,11 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function renderPanel(props?: { stage?: string; fee?: string | null; handoffReady?: boolean; version?: number; canApproveSeal?: boolean; sealApproved?: boolean; extra?: SnapshotExtra }) {
+async function renderPanel(props?: { stage?: string; fee?: string | null; handoffReady?: boolean; handoffMissing?: string[]; version?: number; canApproveSeal?: boolean; sealApproved?: boolean; extra?: SnapshotExtra }) {
   const stage = props?.stage ?? "remote";
   const version = props?.version ?? 2;
   consultationActions.readSnapshot.mockResolvedValue(snapshotOf(stage, props?.fee ?? null, version, props?.extra));
-  consultationActions.readHandoff.mockResolvedValue({ ...handoffOf(props?.handoffReady ?? false), canApproveSeal: props?.canApproveSeal, sealApproved: props?.sealApproved });
+  consultationActions.readHandoff.mockResolvedValue({ ...handoffOf(props?.handoffReady ?? false, props?.handoffMissing), canApproveSeal: props?.canApproveSeal, sealApproved: props?.sealApproved });
   await act(async () => {
     root!.render(
       <ConsultationPanel
@@ -161,6 +161,18 @@ describe("ConsultationPanel", () => {
     const done = container!.querySelector('[aria-label="계약 확인 2단계"]')!;
     expect(done.textContent).toContain("계약금 완");
     expect(done.textContent).toContain("2단계 직인완료");
+  });
+
+  it.each([
+    "계약금 완료여부 칸 없음 — 보드 칸 관리에서 추가",
+    "계약금 완료여부 칸 보관됨 — 보드 칸 관리에서 복원",
+  ])("168: 계약금 칸 구조 문제를 가짜 성공 없이 그대로 안내한다 — %s", async (reason) => {
+    await renderPanel({ fee: null, handoffReady: false, handoffMissing: [reason] });
+    const stages = container!.querySelector('[aria-label="계약 확인 2단계"]')!;
+    expect(stages.textContent).toContain(reason);
+    expect(stages.textContent).not.toContain("보드 «계약금 완료여부» 칸에서 바꿉니다");
+    const handoff = [...container!.querySelectorAll("button")].find((button) => button.textContent?.includes("실무로 인계"));
+    expect((handoff as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("예약 일시·담당자·보기 전이를 같은 패널에서 입력한다", async () => {
