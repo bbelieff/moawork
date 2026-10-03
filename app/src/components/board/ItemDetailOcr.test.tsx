@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   OCR_BOARD_KEY_CANDIDATES,
   OCR_UNSUPPORTED_REASON,
@@ -152,5 +153,14 @@ describe("ocrRequireConfirm — 정정 저장은 확정 체크가 있어야 한�
     expect(ocrRequireConfirm("representative", true)).toBe(false);
     expect(ocrRequireConfirm("birthdate", true)).toBe(false);
     expect(ocrRequireConfirm("businessItem", true)).toBe(false);
+  });
+});
+
+describe("동일 업로드 File 연결", () => {
+  it("ItemDetailOcr가 선택된 동일 File을 DocumentOcrModal initialFile로만 전달한다", () => {
+    const source = readFileSync(new URL("./ItemDetailOcr.tsx", import.meta.url), "utf8");
+    expect(source).toContain("initialFile?: File | null");
+    expect(source).toContain("initialFile={initialFile}");
+    expect(source).not.toContain("downloadUrl");
   });
 });

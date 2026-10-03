@@ -149,6 +149,8 @@ export function ItemDetailOcr({
   boardLayout,
   layout,
   canEditItems,
+  initialFile = null,
+  buttonLabel = "사업자등록증 OCR로 읽기",
 }: {
   boardId: string;
   itemId: string;
@@ -159,6 +161,10 @@ export function ItemDetailOcr({
   boardLayout: readonly DetailLayoutEntry[];
   layout: readonly DetailLayoutEntry[];
   canEditItems: boolean;
+  /** 업로드에 사용한 같은 로컬 파일. 서버에서 다시 받지 않는다. */
+  initialFile?: File | null;
+  /** 업로드 결과 옆에서는 문서 종류를 명시하는 문구를 쓴다. */
+  buttonLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [loadingCurrent, setLoadingCurrent] = useState(false);
@@ -212,7 +218,7 @@ export function ItemDetailOcr({
           disabled={loadingCurrent}
           className="rounded-lg border border-mw-line px-3 py-2 text-xs font-bold"
         >
-          {loadingCurrent ? "비교 기준 읽는 중…" : "사업자등록증 OCR로 읽기"}
+          {loadingCurrent ? "비교 기준 읽는 중…" : buttonLabel}
         </button>
         <p className="text-xs text-mw-sub">
           파일은 이 브라우저 안에서만 읽습니다. 체크한 필드만 직접 반영됩니다.
@@ -232,6 +238,7 @@ export function ItemDetailOcr({
           boardLayout={boardLayout}
           layout={layout}
           extraCurrent={extraCurrent}
+          initialFile={initialFile}
           onClose={() => setOpen(false)}
         />
       ) : null}
@@ -249,6 +256,7 @@ function ItemDetailOcrDialog({
   boardLayout,
   layout,
   extraCurrent,
+  initialFile,
   onClose,
 }: {
   boardId: string;
@@ -266,6 +274,7 @@ function ItemDetailOcrDialog({
     linkedCompany: boolean;
     linkedCompanyName: string;
   } | null;
+  initialFile?: File | null;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -366,6 +375,7 @@ function ItemDetailOcrDialog({
       fieldMap={fieldMap}
       onApply={handleApply}
       onClose={onClose}
+      initialFile={initialFile}
       suggest={suggest}
       unsupportedReason={unsupportedReason}
       requireConfirm={requireConfirm}
