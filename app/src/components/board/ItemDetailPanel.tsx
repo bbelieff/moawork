@@ -96,7 +96,8 @@ import {
   searchSigungu,
 } from "@/lib/new-lead/region-search";
 import { DETAIL_FILE_GROUP_LABEL, groupDetailFiles } from "./detail-file-groups";
-import { ItemDetailOcr } from "./ItemDetailOcr";
+import { ItemDetailOcr, ocrCellText } from "./ItemDetailOcr";
+import { ItemDetailVatOcr } from "./ItemDetailVatOcr";
 import { ParentItemLabel } from "./ParentItemLabel";
 import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
 import { AssignmentLineagePopover } from "./AssignmentLineagePopover";
@@ -685,7 +686,15 @@ export function ItemDetailPanel({
   }, []);
   const [folderUrl, setFolderUrl] = useState(initialDetail?.cloudFolder?.url ?? "");
   // v17-detail 증빙 파일 — 파일별 성공/실패를 따로 들고, 성공분은 스냅샷에 남는다.
-  const [fileResults, setFileResults] = useState<readonly { name: string; ok: boolean; message: string }[]>([]);
+  const [fileResults, setFileResults] = useState<readonly {
+    name: string;
+    ok: boolean;
+    message: string;
+    /** 업로드에 쓴 같은 브라우저 객체. OCR 외 용도로 보내지 않는다. */
+    localFile?: File;
+    /** 업로드 requestId와 동일한 확정 첨부 ID. */
+    sourceFileId?: string;
+  }[]>([]);
   const [filePending, setFilePending] = useState(false);
   const [fileDragOver, setFileDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -968,17 +977,30 @@ export function ItemDetailPanel({
     if (files.length === 0 || filePending) return;
     setFilePending(true);
     setFileResults([]);
-    const results: { name: string; ok: boolean; message: string }[] = [];
+    const results: {
+      name: string;
+      ok: boolean;
+      message: string;
+      localFile?: File;
+      sourceFileId?: string;
+    }[] = [];
     let lastOk: ItemDetailSnapshot | null = null;
     for (const file of files) {
       const data = new FormData();
       data.set("file", file);
-      data.set("requestId", crypto.randomUUID());
+      const requestId = crypto.randomUUID();
+      data.set("requestId", requestId);
       try {
         const next = await uploadItemDetailFileAction(boardId, row.id, data);
         if (next.ok) {
           lastOk = next;
-          results.push({ name: file.name, ok: true, message: "올렸습니다." });
+          results.push({
+            name: file.name,
+            ok: true,
+            message: "올렸습니다.",
+            localFile: file,
+            sourceFileId: requestId,
+          });
         } else {
           results.push({ name: file.name, ok: false, message: next.message ?? "올리지 못했습니다." });
         }
@@ -1942,13 +1964,35 @@ export function ItemDetailPanel({
                       ) : null}
                       {fileResults.length > 0 ? (
                         <ul className="grid gap-1">
-                          {fileResults.map((result) => (
+                          {fileResults.map((result, resultIndex) => (
                             <li
-                              key={result.name}
-                              role={result.ok ? "status" : "alert"}
+                              key={result.sourceFileId ?? `${result.name}-${resultIndex}`}
                               className="text-xs text-mw-sub"
                             >
-                              {result.ok ? "✓" : "✕"} {result.name} · {result.message}
+                              <p role={result.ok ? "status" : "alert"}>
+                                {result.ok ? "✓" : "✕"} {result.name} · {result.message}
+                              </p>
+                              {result.ok && result.localFile && result.sourceFileId ? (
+                                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                  <ItemDetailOcr
+                                    boardId={boardId}
+                                    itemId={row.id}
+                                    dealId={canonicalNewLead ? row.deal_id : null}
+                                    values={row.values}
+                                    columns={columns}
+                                    boardLayout={boardLayout}
+                                    layout={layout}
+                                    canEditItems={canEditItems}
+                                    initialFile={result.localFile}
+                                    buttonLabel="사업자등록증으로 읽기"
+                                  />
+                                  <ItemDetailVatOcr
+                                    file={result.localFile}
+                                    sourceFileId={result.sourceFileId}
+                                    expectedBizNo={ocrCellText(row.values.biz_no)}
+                                  />
+                                </div>
+                              ) : null}
                             </li>
                           ))}
                         </ul>

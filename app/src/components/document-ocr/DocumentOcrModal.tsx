@@ -34,6 +34,11 @@ export type DocumentOcrModalProps = {
   onClose: () => void;
   title?: string;
   /**
+   * 보호 저장소 업로드에 사용한 동일 브라우저 File을 한 번 바로 읽는다.
+   * 없으면 기존 파일 선택 흐름을 그대로 쓴다. File은 서버로 다시 보내지 않는다.
+   */
+  initialFile?: File | null;
+  /**
    * 제안값 변환 (예: 과세 라벨 → 사업자유형 전체 문자열).
    * unsupportedReason을 돌려주면 그 행은 선택 불가 + 사유 표시가 된다.
    */
@@ -60,6 +65,7 @@ export function DocumentOcrModal({
   onApply,
   onClose,
   title = "사업자등록증 OCR 확인",
+  initialFile = null,
   suggest,
   unsupportedReason,
   requireConfirm,
@@ -68,6 +74,7 @@ export function DocumentOcrModal({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const previewUrlRef = useRef<string | null>(null);
+  const initialFileRunRef = useRef<File | null>(null);
   const [gate] = useState(() => createOcrRunGate());
   const headingId = useId();
   const descId = useId();
@@ -267,6 +274,18 @@ export function DocumentOcrModal({
     },
     [current, fieldMap, suggest, unsupportedReason, requireConfirm, revokePreview, gate],
   );
+
+  // 업로드 성공 뒤 사용자가 문서 종류를 명시적으로 골랐을 때만 같은 File을
+  // 한 번 이어받는다. 모달 재렌더·비교 기준 갱신으로 중복 OCR하지 않는다.
+  useEffect(() => {
+    if (!open) {
+      initialFileRunRef.current = null;
+      return;
+    }
+    if (!initialFile || initialFileRunRef.current === initialFile) return;
+    initialFileRunRef.current = initialFile;
+    void handleFile(initialFile);
+  }, [open, initialFile, handleFile]);
 
   const handleCancelRun = useCallback(() => {
     abortRef.current?.abort();

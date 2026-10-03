@@ -835,6 +835,15 @@ describe("BBE-565 목업 기준 실제 상세 패널", () => {
     expect(html).not.toContain("링크 이름");
   });
 
+  it("업로드 성공분만 동일 로컬 File의 문서 종류 선택을 열고 서버 재다운로드를 요구하지 않는다", () => {
+    const source = readFileSync(sourcePath, "utf8");
+    expect(source).toContain('buttonLabel="사업자등록증으로 읽기"');
+    expect(source).toContain("<ItemDetailVatOcr");
+    expect(source).toContain("localFile: file");
+    expect(source).toContain("sourceFileId: requestId");
+    expect(source).not.toContain("fetch(result.downloadUrl");
+  });
+
   it.each<CloseChannel>(["Escape", "backdrop", "close button"])(
     "%s 닫기는 실제 dialog를 제거하고 같은 opener로 포커스를 돌려준다",
     async (channel) => {
