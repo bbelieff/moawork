@@ -1,4 +1,5 @@
 import { VisualConsultationProbe } from "./VisualConsultationProbe";
+import Link from "next/link";
 import { ItemDetailPanel } from "@/components/board/ItemDetailPanel";
 import { SavedViewsController } from "@/components/view/SavedViewsController";
 import { NotificationCenterFixture } from "./NotificationCenterFixture";
@@ -16,6 +17,7 @@ import { VisualWorkspaceSwitcherProbe } from "./VisualWorkspaceSwitcherProbe";
 import { VisualAppearanceProbe } from "./VisualAppearanceProbe";
 import { VisualThemeProbe } from "./VisualThemeProbe";
 import { IconSprite } from "@/components/shell/icons";
+import { buildConsultationViewOptions, type ConsultationSelectorView } from "@/components/shell/active-nav";
 import { AccountHub } from "@/components/account/AccountHub";
 import accountStyles from "@/components/account/account.module.css";
 import { DepartmentManager } from "@/components/member-organization/DepartmentManager";
@@ -229,6 +231,36 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
   const draft = jar.get(`visual-workflow-${tab}-draft`)?.value ?? null;
   const error = jar.get(`visual-workflow-${tab}-error`)?.value ?? null;
   const data = fixture(tab, draft ?? saved, params.groups === "all");
+  const consultationView: ConsultationSelectorView = params.consultation === "remote" || params.consultation === "inperson"
+    ? params.consultation
+    : "all";
+  const consultationSearch = new URLSearchParams();
+  for (const key of ["savedView", "view", "group", "mwFocus", "consultation"] as const) {
+    if (typeof params[key] === "string") consultationSearch.set(key, params[key]);
+  }
+  const consultationViewSlot = tab === "contact" ? (
+    <nav
+      aria-label="상담 보기"
+      data-visual-consultation-selector
+      className="flex shrink-0 items-center rounded-full border border-mw-line p-0.5 text-xs"
+    >
+      {buildConsultationViewOptions(consultationSearch.toString(), consultationView).map((option) => {
+        const suffix = option.href === "?" ? "" : `&${option.href.slice(1)}`;
+        return (
+          <Link
+            key={option.id}
+            href={`?tab=contact${suffix}`}
+            aria-label={option.label}
+            aria-current={option.active ? "page" : undefined}
+            className={`rounded-full px-1.5 py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mw-primary)] sm:px-2.5 ${option.active ? "bg-mw-tint-blue font-semibold text-mw-record" : "text-mw-sub hover:text-mw-fg"}`}
+          >
+            <span aria-hidden="true" className="sm:hidden">{option.compactLabel}</span>
+            <span aria-hidden="true" className="hidden sm:inline">{option.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  ) : undefined;
   return (
     <main data-visual-fixture={tab} data-build-sha={process.env.MOAWORK_BUILD_SHA ?? "local"} className={`visual-mutation-${mutation} min-h-screen max-w-full bg-mw-bg p-4`}>
       <IconSprite />
@@ -259,6 +291,7 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
         canEditItems
         canManageColumns
         currentUserId="visual-user"
+        viewSlot={consultationViewSlot}
         settingsSlot={<VisualSettingsSlot />}
         onboardingSlot={tab === "new" ? <NewLeadOnboarding key="issue-554-help" /> : undefined}
         cellAction={visualSetCellAction}

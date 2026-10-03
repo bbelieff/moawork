@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
+import { buildConsultationBoardRedirect } from "@/components/shell/active-nav";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { repairContactBoardOnEntry } from "@/lib/contact/entry";
 import { createClient } from "@/lib/supabase/server";
+import { CONSULTATION_LEGACY_PATHS } from "@/lib/workflow/precontract-routing";
 
 /**
  * 비대면 상담(STEP2) 탭의 제품 진입점.
@@ -13,10 +15,10 @@ import { createClient } from "@/lib/supabase/server";
 export default async function ConsultRemotePage({
   searchParams,
 }: {
-  searchParams: Promise<{ as?: string }>;
+  searchParams: Promise<Record<string, string | readonly string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const ctx = applyAs(await getSession(), sp.as);
+  const ctx = applyAs(await getSession(), typeof sp.as === "string" ? sp.as : undefined);
   const result = await repairContactBoardOnEntry(ctx, await createClient());
   if (result.kind !== "ready") {
     const conflict = result.kind === "conflict";
@@ -40,7 +42,5 @@ export default async function ConsultRemotePage({
       </section>
     );
   }
-  const as = sp.as ? `as=${encodeURIComponent(sp.as)}&` : "";
-
-  redirect(`/boards/${encodeURIComponent(result.boardId)}?${as}consultation=remote`);
+  redirect(buildConsultationBoardRedirect(result.boardId, CONSULTATION_LEGACY_PATHS.remote, sp));
 }

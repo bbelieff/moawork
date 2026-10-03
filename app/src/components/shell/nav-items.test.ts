@@ -12,10 +12,10 @@ describe("BBE-103 — 사이드바 연결 누락 회귀 가드", () => {
     expect(hrefOf("contact")).toBe("/contract");
   });
 
-  it("상담 STEP 탭은 같은 리드컨택 정본의 단계 보기 경유지에 연결된다 — 기존 /contract 유지", () => {
+  it("상담관리는 같은 정본 보드의 canonical /contract 하나만 메뉴로 노출한다", () => {
     expect(hrefOf("contact")).toBe("/contract");
-    expect(hrefOf("consult-remote")).toBe("/consult-remote");
-    expect(hrefOf("consult-inperson")).toBe("/consult-inperson");
+    expect(hrefOf("consult-remote")).toBeUndefined();
+    expect(hrefOf("consult-inperson")).toBeUndefined();
   });
 
   it("업무관리는 /work 를 가리킨다 — 총괄 지시(2026-08-12, BBE-142 PR #166 인계)로 " +
@@ -55,10 +55,7 @@ describe("BBE-103 — 사이드바 연결 누락 회귀 가드", () => {
     ]);
     expect(navItemsForSection(NAV_SECTIONS[1]).map((item) => [item.label, item.href])).toEqual([
       ["신규리드 관리", "/newcust"],
-      // 상담 STEP 탭 — 같은 리드컨택 정본의 단계 보기(사용자 요청 moawork-v17-consultation-ui-complete-20260926).
-      // STEP1=신규리드 관리(/newcust), STEP2=비대면 상담, STEP3=대면 상담.
-      ["비대면 상담", "/consult-remote"],
-      ["대면 상담", "/consult-inperson"],
+      ["리드컨택 관리", "/contract"],
     ]);
     expect(navItemsForSection(NAV_SECTIONS[2]).map((item) => [item.label, item.href])).toEqual([
       ["계약업체 실무", "/work"],
