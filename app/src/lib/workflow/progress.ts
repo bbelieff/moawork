@@ -24,9 +24,9 @@ const SPECS: Readonly<Record<WorkflowProgressKind, WorkflowProgressSpec>> = {
     stageColumnKey: "consult_status",
     legacyMoveColumnKey: "contact_move",
     transitionValue: "리드컨택으로 넘기기",
-    transitionLabel: "비대면 상담으로 넘기기",
-    targetLabel: "비대면 상담",
-    targetHref: "/consult-remote",
+    transitionLabel: "상담관리로 넘기기",
+    targetLabel: "상담관리",
+    targetHref: "/contract",
     guardLabel: null,
   },
   contact: {

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
-import { presentWorkflowProgressColumns, withWorkflowProgressValues, WORKFLOW_PROGRESS_KEY } from "./progress";
+import {
+  presentWorkflowProgressColumns,
+  withWorkflowProgressValues,
+  workflowProgressSpec,
+  WORKFLOW_PROGRESS_KEY,
+} from "./progress";
 
 function column(key: string, rightPinned = false): BoardColumn {
   return {
@@ -46,5 +51,14 @@ describe("workflow progress presentation", () => {
 
   it("does not invent a column when the canonical stage column is absent", () => {
     expect(presentWorkflowProgressColumns("contact", [column("phone")]).map((entry) => entry.key)).toEqual(["phone"]);
+  });
+
+  it("presents a neutral consultation destination without changing the stored transition value", () => {
+    expect(workflowProgressSpec("new-lead")).toMatchObject({
+      transitionValue: "리드컨택으로 넘기기",
+      transitionLabel: "상담관리로 넘기기",
+      targetLabel: "상담관리",
+      targetHref: "/contract",
+    });
   });
 });
