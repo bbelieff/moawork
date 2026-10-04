@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   boardIdFromPathname,
+  buildConsultationViewOptions,
   resolveActiveNavKey,
-  resolveConsultationNavKey,
   TAB_SOURCE_NAV_KEY,
 } from "./active-nav";
 import {
@@ -84,22 +84,40 @@ describe("사이드바 활성 판정", () => {
     expect(TAB_SOURCE_NAV_KEY[NOTICE_TAB_SOURCE]).toBe("notice");
   });
 
-  it("같은 contact 보드라도 단계 보기 쿼리면 STEP2·STEP3 탭이 켜진다", () => {
+  it("같은 contact 보드는 보기 쿼리와 무관하게 상담관리 하나만 켠다", () => {
     const keys = { "b-contact": "contact" };
-    expect(resolveConsultationNavKey(`${BASE}/boards/b-contact`, "?consultation=remote", keys)).toBe(
-      "consult-remote",
-    );
-    expect(resolveConsultationNavKey(`${BASE}/boards/b-contact`, "?consultation=inperson", keys)).toBe(
-      "consult-inperson",
-    );
+    for (const suffix of ["", "?consultation=all", "?consultation=remote", "?consultation=inperson", "?consultation=unexpected"]) {
+      expect(resolveActiveNavKey(`${BASE}/boards/b-contact`, CANDIDATES, {
+        basePath: BASE,
+        boardNavKeys: keys,
+      }), suffix).toBe("contact");
+    }
   });
 
-  it("쿼리가 없거나 contact 보드가 아니면 단계 탭을 켜지 않는다", () => {
-    const keys = { "b-contact": "contact", "b-work": "work" };
-    expect(resolveConsultationNavKey(`${BASE}/boards/b-contact`, "", keys)).toBeNull();
-    expect(resolveConsultationNavKey(`${BASE}/boards/b-contact`, null, keys)).toBeNull();
-    expect(resolveConsultationNavKey(`${BASE}/boards/b-contact`, "?consultation=all", keys)).toBeNull();
-    expect(resolveConsultationNavKey(`${BASE}/boards/b-work`, "?consultation=remote", keys)).toBeNull();
-    expect(resolveConsultationNavKey(`${BASE}/companies`, "?consultation=remote", keys)).toBeNull();
+  it("옛 상담 진입 주소의 단계별 외관 강조는 호환 보존한다", async () => {
+    const { resolveConsultationNavKey } = await import("./active-nav");
+    expect(resolveConsultationNavKey("/consult-remote", "", {})).toBe("consult-remote");
+    expect(resolveConsultationNavKey(`${BASE}/consult-inperson`, "", {})).toBe("consult-inperson");
+  });
+
+  it("상담 보기 링크는 같은 보드에 머물며 안전한 현재 쿼리만 보존한다", () => {
+    const options = buildConsultationViewOptions(
+      "savedView=team-view&view=flat&group=owner&mwFocus=status&consultation=unexpected&unsafe=drop",
+      "all",
+    );
+
+    expect(options.map(({ id, label, compactLabel, active }) => ({ id, label, compactLabel, active }))).toEqual([
+      { id: "all", label: "전체", compactLabel: "전체", active: true },
+      { id: "remote", label: "비대면 상담", compactLabel: "비대면", active: false },
+      { id: "inperson", label: "대면 상담", compactLabel: "대면", active: false },
+    ]);
+    expect(options[0].href).toBe("?savedView=team-view&view=flat&group=owner&mwFocus=status");
+    expect(options[1].href).toBe("?savedView=team-view&view=flat&group=owner&mwFocus=status&consultation=remote");
+    expect(options[2].href).toBe("?savedView=team-view&view=flat&group=owner&mwFocus=status&consultation=inperson");
+    for (const option of options) {
+      expect(option.href.startsWith("?")).toBe(true);
+      expect(option.href).not.toContain("unsafe");
+      expect(option.href).not.toContain("/boards/");
+    }
   });
 });

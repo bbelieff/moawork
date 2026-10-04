@@ -14,14 +14,14 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("SidebarNav integration contract", () => {
-  it("selects exactly one consultation tab when only the query changes", () => {
+  it("keeps the one consultation menu active when only the view query changes", () => {
     route.pathname = "/w/sample-lab/boards/contact-board";
     for (const mode of ["remote", "inperson"] as const) {
       route.search = `consultation=${mode}`;
       const html = renderToStaticMarkup(<SidebarNav lockedFeatures={[]} workspaceBasePath="/w/sample-lab" boardNavKeys={{ "contact-board": "contact" }} />);
       const active = html.match(/<a[^>]*aria-current="page"[^>]*>/g) ?? [];
       expect(active).toHaveLength(1);
-      expect(active[0]).toContain(`data-nav-key="consult-${mode}"`);
+      expect(active[0]).toContain('data-nav-key="contact"');
     }
   });
   it("keeps a locked real route as an aria-disabled guidance link", () => {
@@ -58,9 +58,9 @@ describe("SidebarNav integration contract", () => {
     expect(html.match(/<a[^>]*data-nav-key="dash"[^>]*>/)?.[0]).toContain('href="/w/sample-lab"');
     expect(html.match(/<a[^>]*data-nav-key="notice"[^>]*>/)?.[0]).toContain('href="/w/sample-lab/notices"');
     expect(html.match(/<a[^>]*data-nav-key="company"[^>]*>/)?.[0]).toContain('href="/w/sample-lab/companies"');
-    expect(html).not.toContain('data-nav-key="contact"');
-    expect(html.match(/<a[^>]*data-nav-key="consult-remote"[^>]*>/)?.[0]).toContain('href="/w/sample-lab/consult-remote"');
-    expect(html.match(/<a[^>]*data-nav-key="consult-inperson"[^>]*>/)?.[0]).toContain('href="/w/sample-lab/consult-inperson"');
+    expect(html.match(/<a[^>]*data-nav-key="contact"[^>]*>/)?.[0]).toContain('href="/w/sample-lab/contract"');
+    expect(html).not.toContain('data-nav-key="consult-remote"');
+    expect(html).not.toContain('data-nav-key="consult-inperson"');
   });
 
   it("fails closed when the server cannot verify one active workspace", () => {
@@ -136,9 +136,9 @@ describe("SidebarNav integration contract", () => {
     expect(html).toContain('<details data-nav-section="coming-soon">');
     expect(html).not.toContain('<details data-nav-section="coming-soon" open="">');
     expect(html).toContain("신규리드 관리");
-    expect(html).not.toContain("리드컨택 관리");
-    expect(html).toContain("비대면 상담");
-    expect(html).toContain("대면 상담");
+    expect(html).toContain("상담관리");
+    expect(html).not.toContain("비대면 상담");
+    expect(html).not.toContain("대면 상담");
     expect(html).toContain("계약업체 실무");
     expect(html).toContain("업체관리 현황");
   });

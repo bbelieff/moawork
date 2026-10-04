@@ -30,9 +30,9 @@ export const APP_TABS: readonly AppTab[] = [
   },
   {
     key: "contact",
-    mockupLabel: "리드컨택 관리",
+    mockupLabel: "상담관리",
     canonicalHref: "/contract",
-    // 상담 STEP 탭은 같은 리드컨택 정본의 단계 보기라 contact 탭에 속한다.
+    // 옛 상담 주소는 같은 정본 보드의 보기 별칭이라 contact 탭에 속한다.
     altHrefs: ["/consult-remote", "/consult-inperson"],
   },
   {
