@@ -97,7 +97,7 @@ import {
 } from "@/lib/new-lead/region-search";
 import { DETAIL_FILE_GROUP_LABEL, groupDetailFiles } from "./detail-file-groups";
 import { ItemDetailOcr, ocrCellText } from "./ItemDetailOcr";
-import { ItemDetailVatOcr } from "./ItemDetailVatOcr";
+import { ItemDetailVatPersistence } from "./ItemDetailVatPersistence";
 import { ParentItemLabel } from "./ParentItemLabel";
 import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
 import { AssignmentLineagePopover } from "./AssignmentLineagePopover";
@@ -1986,7 +1986,9 @@ export function ItemDetailPanel({
                                     initialFile={result.localFile}
                                     buttonLabel="사업자등록증으로 읽기"
                                   />
-                                  <ItemDetailVatOcr
+                                  <ItemDetailVatPersistence
+                                    boardId={boardId}
+                                    itemId={row.id}
                                     file={result.localFile}
                                     sourceFileId={result.sourceFileId}
                                     expectedBizNo={ocrCellText(row.values.biz_no)}
