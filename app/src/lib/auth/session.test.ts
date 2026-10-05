@@ -5,15 +5,19 @@ import type { Ctx } from "@/lib/types";
 const mocks = vi.hoisted(() => ({
   cookies: vi.fn(),
   createClient: vi.fn(),
+  redirect: vi.fn((path: string) => {
+    throw new Error(`redirect:${path}`);
+  }),
 }));
 
 vi.mock("next/headers", () => ({ cookies: mocks.cookies }));
+vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 vi.mock("@/lib/supabase/env", () => ({ hasSupabaseEnv: () => true }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: mocks.createClient,
 }));
 
-import { applyAs, getSessionOrNull } from "./session";
+import { applyAs, getSession, getSessionOrNull } from "./session";
 
 const source = readFileSync(new URL("./session.ts", import.meta.url), "utf8");
 
@@ -230,6 +234,37 @@ describe("workspace session authorization", () => {
     releaseRead();
     const ctx = await pending;
     expect(ctx).toMatchObject({ org: { id: "org-1" }, isPlatformAdmin: true });
+  });
+
+  it("sends a multi-workspace user with no selected workspace to the chooser", async () => {
+    setup({
+      rows: [membership("org-1", "alpha-team"), membership("org-2", "beta-team")],
+    });
+    await expect(getSession()).rejects.toThrow("redirect:/workspaces");
+  });
+
+  it("sends a stale workspace cookie to the chooser while other memberships stay active", async () => {
+    setup({
+      rows: [membership("org-1", "alpha-team"), membership("org-2", "beta-team")],
+      preferredOrgId: "org-gone",
+    });
+    await expect(getSession()).rejects.toThrow("redirect:/workspaces");
+  });
+
+  it("keeps the membership error when no active workspace remains", async () => {
+    setup({ rows: [membership("org-1", "alpha-team", "member", "removed")] });
+    await expect(getSession()).rejects.toThrow("redirect:/login?error=membership");
+    setup({ rows: [], membershipError: { message: "denied" } });
+    await expect(getSession()).rejects.toThrow("redirect:/login?error=membership");
+  });
+
+  it("returns the selected session without redirecting", async () => {
+    setup({
+      rows: [membership("org-1", "alpha-team"), membership("org-2", "beta-team")],
+      preferredOrgId: "org-2",
+    });
+    await expect(getSession()).resolves.toMatchObject({ org: { id: "org-2" } });
+    expect(mocks.redirect).not.toHaveBeenCalled();
   });
 
   it("contains no legacy fallback or cookie-based role grant path", () => {
