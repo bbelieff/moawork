@@ -251,6 +251,11 @@ describe("workspace session authorization", () => {
     await expect(getSession()).rejects.toThrow("redirect:/workspaces");
   });
 
+  it("sends a stale cookie with a single active membership to the chooser", async () => {
+    setup({ rows: [membership("org-1", "alpha-team")], preferredOrgId: "org-gone" });
+    await expect(getSession()).rejects.toThrow("redirect:/workspaces");
+  });
+
   it("keeps the membership error when no active workspace remains", async () => {
     setup({ rows: [membership("org-1", "alpha-team", "member", "removed")] });
     await expect(getSession()).rejects.toThrow("redirect:/login?error=membership");
