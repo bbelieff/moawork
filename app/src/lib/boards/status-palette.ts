@@ -80,6 +80,20 @@ export function resolveStatusColor(option: FieldOption): string {
   return normalizeHex(option.color) ?? pickPaletteColor(option.id);
 }
 
+/**
+ * 2026-10-06 — 그룹 머리말 색 (#839 · 대표 지시 2026-10-06).
+ * 저장된 board_groups.color 가 hex 면 그 색, 아니면 그룹 id(안정 키)로 고정된 팔레트 색.
+ * 이름이 바뀌거나 순서가 바뀌어도 같은 그룹은 같은 색이다. hex 가 아닌 저장값은 버린다
+ * — 인라인 style 로 들어가므로 임의 CSS 문자열이 끼어들 틈을 두지 않는다.
+ * 안정 키도 없으면 null(호출부가 중립색을 쓴다).
+ */
+export function groupAccentColor(
+  stored: string | null | undefined,
+  stableKey: string | null | undefined,
+): string | null {
+  return normalizeHex(stored) ?? (stableKey ? pickPaletteColor(stableKey) : null);
+}
+
 /** 칩 글자색 후보 — 실제로 반환하는 두 색. */
 const TEXT_LIGHT = "#ffffff";
 const TEXT_DARK = "#1f1f1f";

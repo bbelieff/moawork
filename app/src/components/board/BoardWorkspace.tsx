@@ -77,6 +77,7 @@ import {
   groupKeyOf,
   reorderColumnKeys,
   resolveColumnOrder,
+  UNGROUPED_KEY,
   type GroupColumnOrder,
 } from "./layout";
 import {
@@ -100,7 +101,9 @@ import {
   withWorkflowProgressValues,
   workflowDetailHiddenKeys,
   workflowKindForSource,
+  workflowStageMoveTargets,
 } from "@/lib/workflow/progress";
+import { presentLabel, presentLabels } from "@/lib/boards/label-presentation";
 import {
   NEW_LEAD_SAVED_FILTER_PROJECTION,
   presentNewLeadSavedFilters,
@@ -592,6 +595,42 @@ export function BoardWorkspace({
     }
     return ids;
   }, [assigneeLabels, blocks, closedGroups, searchColumns, displayFilters, filterProjection]);
+
+  /**
+   * 2026-10-06 (#839) — 계약업체 실무 한정: 보드에 «보이는» 행 중 같은 제목(=회사명) 수.
+   * 2건 이상이면 제목 옆에 «같은 회사 N건» 을 단다. 필터로 숨긴 행은 세지 않고(보이는 것과
+   * 같은 답), 접힌 그룹의 행은 보드 위에 있으므로 센다. 표시 전용 — 제목·데이터는 그대로다.
+   */
+  const sameTitleCounts = useMemo(() => {
+    if (workflowProgressKind !== "work") return undefined;
+    const counts = new Map<string, number>();
+    for (const block of blocks) {
+      for (const row of applyFilters(block.rows, searchColumns, displayFilters, filterProjection, assigneeLabels)) {
+        counts.set(row.title, (counts.get(row.title) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [assigneeLabels, blocks, displayFilters, filterProjection, searchColumns, workflowProgressKind]);
+
+  /**
+   * 진행현황 선택지 중 «행을 옮기는» 것 → 목표 그룹 (#839). 화면용 진행현황 열은 이동 규칙을
+   * 비우므로 원본 단계 컬럼에서 읽는다. 단계별 가상 묶음(신규리드 단계 보기·상담 단계 보기)은
+   * 물리 그룹을 보여 주지 않으므로 나누지 않는다.
+   */
+  const workflowMoveTargets = useMemo(() => {
+    if (!workflowProgressKind || isNewLeadStageView || isConsultationStageView) return null;
+    return workflowStageMoveTargets(workflowProgressKind, physicalActiveColumns, orderedGroups);
+  }, [isConsultationStageView, isNewLeadStageView, orderedGroups, physicalActiveColumns, workflowProgressKind]);
+
+  /** 그룹 이름의 표시 전용 정리(앞머리 이모지) — 이모지만 다른 이름끼리는 원문을 지킨다. */
+  const blockDisplayNames = useMemo(() => {
+    const shown = presentLabels(blocks.map((block) => block.name));
+    return new Map(blocks.map((block, index) => [block.key, shown[index]]));
+  }, [blocks]);
+  const groupMoveOptions = useMemo(() => {
+    const shown = presentLabels(orderedGroups.map((group) => group.name));
+    return orderedGroups.map((group, index) => ({ id: group.id, name: shown[index] }));
+  }, [orderedGroups]);
 
   const bulkTargetIds = useMemo(
     () => intersectVisibleSelection(selectedIds, visibleOrderedIds),
@@ -1115,12 +1154,21 @@ export function BoardWorkspace({
               })}
               key={block.key}
               name={block.name}
+              displayName={blockDisplayNames.get(block.key)}
               color={block.color}
+              colorKey={block.group?.id ?? (block.key === UNGROUPED_KEY ? null : block.key)}
               columns={shown}
               rows={visibleRows}
               presetName={groupPresetName(board.name, block.name)}
               presetChanged={isGroupPresetChanged(optimisticOrder[durableLayoutKey(block.key)])}
-              nameEditor={block.group && !board.is_system && canManageSections ? <GroupNameEditor boardId={board.id} groupId={block.group.id} name={block.name} /> : undefined}
+              nameEditor={block.group && !board.is_system && canManageSections ? (
+                <GroupNameEditor
+                  boardId={board.id}
+                  groupId={block.group.id}
+                  name={block.name}
+                  display={(saved) => saved === block.name ? blockDisplayNames.get(block.key) ?? presentLabel(saved) : presentLabel(saved)}
+                />
+              ) : undefined}
               onOrderDragStart={block.group && !board.is_system && canManageSections ? () => { claimBoardTransientSurface(`board:${board.id}`,`group-drag:${board.id}`);draggedGroupRef.current = block.group!.id;setMoveNotice("그룹을 놓을 위치를 선택하세요."); } : undefined}
               onOrderDragEnd={block.group && !board.is_system && canManageSections ? ()=>{draggedGroupRef.current=null;setMoveNotice(null);} : undefined}
               onOrderDrop={block.group && !board.is_system && canManageSections ? () => dropGroup(block.group!.id) : undefined}
@@ -1205,6 +1253,8 @@ export function BoardWorkspace({
                 cellFlash={cellFlash}
                 cellAction={cellAction}
                 workflowProgressKind={workflowProgressKind}
+                workflowMoveTargets={workflowMoveTargets}
+                sameTitleCounts={sameTitleCounts}
                 onColumnDrop={(draggedKey, targetKey) =>
                   handleColumnDrop(block.key, resolvedColumns, draggedKey, targetKey)
                 }
@@ -1242,7 +1292,7 @@ export function BoardWorkspace({
                 }
                 onRowKeyboardMove={(rowId,direction)=>keyboardMoveRow(rowId,block.group?.id??null,visibleRows,direction)}
                 onRowMoveToGroup={keyboardMoveRowToGroup}
-                groupMoveOptions={orderedGroups.map((group)=>({id:group.id,name:group.name}))}
+                groupMoveOptions={groupMoveOptions}
                 renderWorkflowTransition={board.source === CONTACT_TAB_SOURCE ? (row) => (
                   workflowTransitionSlot ?? (
                     <>

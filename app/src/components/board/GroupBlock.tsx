@@ -8,8 +8,15 @@
  * [합계][프리셋 칩] — 좌우가 붙지 않게 `justify-between` 으로 갈라 둔다.
  *
  * 색은 `board_groups.color`(데이터)에서 온다. 컴포넌트가 hex 를 고르지 않으므로 토큰 규약
- * (globals.css: arbitrary hex 금지)에 걸리지 않고, 색이 없는 그룹은 --mw-record 로 수렴한다.
- * 밴드 배경은 `color-mix` 로 같은 색의 옅은 틴트를 만들어 다크 테마에서도 글자가 살아남는다.
+ * (globals.css: arbitrary hex 금지)에 걸리지 않는다. 색이 없는 그룹은 그룹 id 로 고정된
+ * 팔레트 색을 쓴다(groupAccentColor — 이름·순서가 바뀌어도 같은 색). id 도 없는 «그룹 없음»
+ * 묶음만 중립색이다. 밴드 배경은 `color-mix` 로 같은 색의 옅은 틴트를 만들어 다크 테마에서도
+ * 글자가 살아남고, 제목은 그룹색을 글자색에 섞어 밝은 색(노랑·연두)에서도 AA 명암비를 지킨다.
+ *
+ * 2026-10-06 (#839 · 대표 지시): v17(#761)이 이 띠를 8px 점으로 줄였던 것을 되돌렸다. 띠는
+ * 인라인으로 그린다 — html 단계 변수는 그룹마다 다른 색을 참조할 수 없다. 섹션에
+ * `--mw-group-accent` 를 달아 행 첫 칸의 그룹색 줄(globals.css)도 같은 색을 쓴다.
+ * 제목은 표시에서만 앞머리 이모지를 걷는다(presentLabel). 이름 편집은 원문 그대로다.
  *
  * 접기 상태는 로컬 state 로 든다(UI목업_신규업체보드_v5.md 3-4). `<details open>` 을 리터럴
  * `true` 로만 넘기면 React 가 매 리렌더마다 그 값을 다시 반영해 — 검색어 입력 등 상위 상태가
@@ -17,12 +24,16 @@
  * `key={block.key}` 로 그룹별 인스턴스가 유지되므로 필터가 바뀌어도 접힘 상태는 살아남는다.
  */
 
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
+import { groupAccentColor } from "@/lib/boards/status-palette";
+import { presentLabel } from "@/lib/boards/label-presentation";
 
 export function GroupBlock({
   name,
+  displayName,
   color,
+  colorKey = null,
   columns,
   rows,
   presetMenu,
@@ -38,8 +49,12 @@ export function GroupBlock({
   children,
 }: {
   name: string;
-  /** board_groups.color (hex) 또는 null. */
+  /** 화면에 보일 이름(표시 전용). 없으면 name 의 앞머리 이모지만 걷는다. */
+  displayName?: string;
+  /** board_groups.color (hex) 또는 null. hex 가 아니면 쓰지 않는다. */
   color: string | null;
+  /** 저장색이 없을 때 자동색을 고정할 키(그룹 id). 없으면 중립색. */
+  colorKey?: string | null;
   columns: readonly BoardColumn[];
   rows: readonly ItemWithValues[];
   /** 아이템 프리셋 이름 — `탭-그룹` 형식(PLAN-002 §5 WO-6 명명 규칙). */
@@ -66,7 +81,8 @@ export function GroupBlock({
   const [localOpen, setOpen] = useState(true);
   const open = controlledOpen ?? localOpen;
   const [dropState,setDropState]=useState<"valid"|"invalid"|null>(null);
-  const accent = color ?? "var(--mw-record)";
+  const accent = groupAccentColor(color, colorKey) ?? "var(--mw-sub)";
+  const shownName = displayName ?? presentLabel(name);
   void columns;
 
   return (
@@ -82,7 +98,12 @@ export function GroupBlock({
      * 그래서 머리말은 자기 위쪽 모서리를, 본문 래퍼는 자기 아래쪽 모서리를 각각 둥글린다.
      * 카드 모양은 그대로이고 팝오버만 밖으로 나올 수 있다.
      */
-    <section data-visual-block="group-table" className="min-w-0 max-w-full rounded-md border border-mw-line bg-mw-card">
+    <section
+      data-visual-block="group-table"
+      data-group-accent={accent}
+      className="min-w-0 max-w-full rounded-md border border-mw-line bg-mw-card"
+      style={{ "--mw-group-accent": accent } as CSSProperties}
+    >
       <details className="min-w-0 max-w-full" open={open} onToggle={(e) => {
         setOpen(e.currentTarget.open);
         onOpenChange?.(e.currentTarget.open);
@@ -107,8 +128,10 @@ export function GroupBlock({
           } : undefined}
           className={`flex select-none items-center gap-2 rounded-t-xl px-3 py-2 list-none [&::-webkit-details-marker]:hidden ${onOrderDragStart?"cursor-grab active:cursor-grabbing":"cursor-pointer"} ${dropState==="valid"?"border-t-2 border-mw-record bg-mw-tint-blue":dropState==="invalid"?"cursor-not-allowed":""}`}
           style={{
-            backgroundColor: `var(--mw-group-header-bg, color-mix(in srgb, ${accent} 14%, var(--mw-card)))`,
-            borderLeft: `var(--mw-group-rail-width, 3px) solid ${accent}`,
+            backgroundColor: dropState === "valid"
+              ? "var(--mw-tint-blue)"
+              : `color-mix(in srgb, ${accent} 14%, var(--mw-card))`,
+            borderLeft: `3px solid ${accent}`,
           }}
         >
           <span className="sr-only" aria-live="polite">{dropState==="invalid"?"같은 그룹 위치에는 놓을 수 없어요.":dropState==="valid"?"이 위치로 그룹을 이동합니다.":""}</span>
@@ -116,10 +139,14 @@ export function GroupBlock({
             {open ? "▼" : "▶"}
           </span>
           <span data-mw-group-color aria-hidden="true" style={{ backgroundColor: accent }} />
-          <span className="min-w-0 text-sm font-semibold" style={{ color: `var(--mw-group-title-ink, ${accent})` }}>
-            {nameEditor ?? name}
+          <span
+            data-group-title=""
+            className="min-w-0 text-sm font-semibold"
+            style={{ color: `color-mix(in srgb, ${accent} 40%, var(--mw-fg))` }}
+          >
+            {nameEditor ?? shownName}
           </span>
-          <span className="rounded-full bg-mw-card px-2 py-0.5 text-[0.65rem] text-mw-sub">
+          <span className="rounded-full bg-mw-card px-2 py-0.5 text-[length:var(--fs-11)] text-mw-sub">
             {rows.length}건{!open && " · 접힘"}
           </span>
 

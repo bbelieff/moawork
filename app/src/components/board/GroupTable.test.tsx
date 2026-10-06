@@ -165,7 +165,9 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     const html = renderTable([col({ key: "a", label: "일반" })], [row()]);
     expect(html).toContain("sticky left-0 z-[var(--mw-layer-board-cell)]");
     expect(html).toContain("sticky top-0 z-[var(--mw-layer-board-header)]");
-    expect(html).toContain("sticky left-0 z-[var(--mw-layer-board-cell)] bg-mw-card z-[var(--mw-layer-board-corner)]");
+    // #839 (2026-10-06) — 모서리 머리글은 머리글 줄 틴트(bg-mw-board-head), 본문 첫 칸은 카드색.
+    expect(html).toContain("sticky left-0 z-[var(--mw-layer-board-cell)] z-[var(--mw-layer-board-corner)] bg-mw-board-head");
+    expect(html).toContain("sticky left-0 z-[var(--mw-layer-board-cell)] bg-mw-card border-b");
     expect(html).toContain("relative isolate max-h-[70vh]");
   });
 

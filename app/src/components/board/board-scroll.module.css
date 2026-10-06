@@ -1,3 +1,5 @@
+/* #839 (대표 지시 2026-10-06): 탭 > 그룹 > 행 위계 — 보드 바탕만 옅게 깔고 그룹은 흰 카드로 띄운다.
+   전역 --mw-bg 는 그대로 둔다(다른 화면·QA 기준색이 움직이지 않게 보드 뷰포트에만). */
 .viewport {
   min-width: 0;
   max-width: 100%;
@@ -5,6 +7,7 @@
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-color: var(--mw-sub) var(--mw-card);
+  background: var(--mw-board-canvas);
 }
 
 .viewport:focus-visible {
@@ -15,7 +18,7 @@
 .groups {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: var(--sp-4);
   width: max-content;
   min-width: 100%;
 }

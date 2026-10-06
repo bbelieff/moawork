@@ -4,6 +4,7 @@ import {
   STATUS_EMPTY_COLOR,
   DUMMY_STATUS_OPTIONS,
   contrastTextColor,
+  groupAccentColor,
   normalizeHex,
   pickPaletteColor,
   resolveStatusColor,
@@ -116,5 +117,24 @@ describe("toStatusChip", () => {
   });
   it("옵션 목록이 없어도 안전", () => {
     expect(toStatusChip("x", null).label).toBe("x");
+  });
+});
+
+describe("groupAccentColor — 그룹 머리말 색", () => {
+  it("저장된 hex 를 우선하고 소문자로 정규화한다", () => {
+    expect(groupAccentColor("#9CD326", "g-1")).toBe("#9cd326");
+    expect(groupAccentColor("#fc0", "g-1")).toBe("#ffcc00");
+  });
+  it("색이 없으면 그룹 id 로 고정된 팔레트 색 — 렌더·이름·순서와 무관", () => {
+    const first = groupAccentColor(null, "group-a");
+    expect(STATUS_PALETTE).toContain(first);
+    expect(groupAccentColor(undefined, "group-a")).toBe(first);
+    const spread = new Set(Array.from({ length: 40 }, (_, i) => groupAccentColor(null, `group-${i}`)));
+    expect(spread.size).toBeGreaterThan(3);
+  });
+  it("hex 가 아닌 저장값(CSS 주입 시도 포함)은 버린다", () => {
+    expect(groupAccentColor("red; background:url(x)", "g-1")).toBe(pickPaletteColor("g-1"));
+    expect(groupAccentColor("var(--mw-fg)", null)).toBeNull();
+    expect(groupAccentColor(null, null)).toBeNull();
   });
 });

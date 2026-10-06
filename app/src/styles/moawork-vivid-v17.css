@@ -221,8 +221,11 @@ html[data-mw-accent][data-theme="dark"] {
   }
 }
 
-/* #761 approved v17: R3 labels / R7 controls / R11 panels; group colors as dots. */
-html[data-mw-accent]{--mw-r-1:3px;--mw-r-2:7px;--mw-r-3:11px;--mw-radius:7px;--mw-group-header-bg:var(--mw-card);--mw-group-rail-width:0px;--mw-group-title-ink:var(--mw-fg)}
+/* #761 approved v17: R3 labels / R7 controls / R11 panels.
+   #839 (대표 지시 2026-10-06): 그룹 머리말은 다시 «색 띠» 다 — 그룹색 틴트 + 3px 레일 + 그룹색을
+   섞은 진한 제목. 색은 그룹마다 다르므로 GroupBlock 이 인라인으로 그린다(html 단계 변수로는
+   그룹별 색을 참조할 수 없다). 8px 점은 띠 안의 색 견본으로 유지한다. */
+html[data-mw-accent]{--mw-r-1:3px;--mw-r-2:7px;--mw-r-3:11px;--mw-radius:7px}
 [data-mw-group-color]{display:none}
 html[data-mw-accent] [data-mw-group-color]{display:inline-block;flex:none;width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 1px var(--mw-line)}
 html[data-mw-accent] [data-visual-block="group-table"]{border-radius:7px}

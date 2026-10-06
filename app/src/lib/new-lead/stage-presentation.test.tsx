@@ -57,12 +57,21 @@ describe("v17 new-lead stage presentation", () => {
     const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
     try {
       await act(async () => root.render(<BoardWorkspace board={board} columns={columns} groups={groups} rows={rows} columnOrder={{}} cellFlash={null} assigneeLabels={{}} canEditItems canMoveRows />));
-      const select = host.querySelector<HTMLSelectElement>('select[aria-label="진행현황"]')!;
-      expect(select).not.toBeNull();
-      expect(select.value).toBe("상담 전");
-      expect(select.selectedOptions[0].textContent).toBe("통화대기");
-      expect(new FormData(select.form!).get("columnKey")).toBe("consult_status");
-      expect(new FormData(select.form!).get("value")).toBe("상담 전");
+      // #839 — 진행현황은 한 줄 칩(StagePicker)이다. 보이는 글자는 별칭, 제출값은 원래 id.
+      const trigger = host.querySelector<HTMLButtonElement>('button[role="combobox"][aria-label="진행현황"]')!;
+      expect(trigger).not.toBeNull();
+      expect(host.querySelector('select[aria-label="진행현황"]')).toBeNull();
+      expect(trigger.dataset.stageValue).toBe("상담 전");
+      expect(trigger.textContent).toBe("통화대기");
+      expect(new FormData(trigger.form!).get("columnKey")).toBe("consult_status");
+      expect(new FormData(trigger.form!).get("value")).toBe("상담 전");
+      await act(async () => trigger.click());
+      const alias = [...document.querySelectorAll<HTMLElement>("[data-stage-option]")]
+        .find((node) => node.getAttribute("data-stage-option") === "2차 상담예약");
+      expect(alias?.textContent).toContain("재통화");
+      // 신규리드 단계 보기는 물리 그룹을 보여 주지 않으므로 «보드 이동» 으로 나누지 않는다.
+      expect(document.querySelector("[data-stage-picker]")?.textContent).toContain("보드 안 단계");
+      expect(document.querySelector("[data-stage-picker]")?.textContent).not.toContain("보드 이동");
       expect(host.textContent).toContain("원본 사용자 그룹");
       expect(host.querySelectorAll('input[type="checkbox"][aria-label$=" 선택"]').length).toBeGreaterThanOrEqual(8);
       expect(host.querySelector('[aria-label="합성 행 0 위로 이동"]')).toBeNull();

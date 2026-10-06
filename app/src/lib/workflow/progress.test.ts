@@ -4,6 +4,7 @@ import {
   presentWorkflowProgressColumns,
   withWorkflowProgressValues,
   workflowProgressSpec,
+  workflowStageMoveTargets,
   WORKFLOW_PROGRESS_KEY,
 } from "./progress";
 
@@ -60,5 +61,24 @@ describe("workflow progress presentation", () => {
       targetLabel: "상담관리",
       targetHref: "/contract",
     });
+  });
+
+  it("reads move targets from the raw stage column even though the presented column drops the rule", () => {
+    const raw = {
+      ...column("progress_status"),
+      move_rule_jsonb: { "심사 중": "g-review", "📂소진공 혁신성장 대기": "g-gone" },
+    } satisfies BoardColumn;
+    const presented = presentWorkflowProgressColumns("work", [raw]).at(-1);
+    expect(presented?.move_rule_jsonb).toBeNull();
+
+    const targets = workflowStageMoveTargets("work", [raw], [{ id: "g-review", name: "🔂 심사 중" }]);
+    expect([...targets.entries()]).toEqual([
+      ["심사 중", { groupId: "g-review", groupName: "🔂 심사 중" }],
+      ["📂소진공 혁신성장 대기", { groupId: "g-gone", groupName: null }],
+    ]);
+    // 규칙이 없는 선택지(값만 바뀌는 단계)는 맵에 없다.
+    expect(targets.has("관리중")).toBe(false);
+    expect(workflowStageMoveTargets("work", [column("progress_status")], []).size).toBe(0);
+    expect(workflowStageMoveTargets("contact", [raw], []).size).toBe(0);
   });
 });

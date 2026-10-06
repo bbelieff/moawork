@@ -81,6 +81,7 @@ import {
   WORKFLOW_PROGRESS_KEY,
   workflowProgressSpec,
   type WorkflowProgressKind,
+  type WorkflowStageMoveTargets,
 } from "@/lib/workflow/progress";
 import { ConsultationProgressCell } from "@/components/consultation/ConsultationProgressCell";
 import {
@@ -104,6 +105,7 @@ import {
   BOARD_TABLE_CONTROL,
   BOARD_TABLE_HEADER_CELL,
   BOARD_TABLE_ROW,
+  BOARD_TABLE_TITLE_CONTROL,
 } from "./table-style";
 import { BoardInlineTitleEditor } from "./BoardInlineTitleEditor";
 import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
@@ -122,7 +124,9 @@ export function boardFileSelectionError(size: number): string | null {
 
 /** 헤더/셀 공통 — 첫 열(이름)을 가로 스크롤에서 고정한다. */
 // Both frozen edges belong to the shared scrollport at every viewport width.
-const STICKY_FIRST = "sticky left-0 z-[var(--mw-layer-board-cell)] bg-mw-card";
+// 배경은 따로 붙인다 — 머리글 줄은 옅은 틴트(--mw-board-head), 본문은 카드색(#839 · 2026-10-06).
+const STICKY_FIRST_BASE = "sticky left-0 z-[var(--mw-layer-board-cell)]";
+const STICKY_FIRST = `${STICKY_FIRST_BASE} bg-mw-card`;
 
 function inputTypeOf(type: BoardColumn["type"]): string {
   switch (type) {
@@ -196,6 +200,7 @@ export function BoardCell({
   error,
   workflowProgressKind,
   workflowTransitionAction,
+  workflowMoveTargets,
   consultationEntry,
   consultationMembers,
   cellAction,
@@ -213,6 +218,8 @@ export function BoardCell({
   error?: string | null;
   workflowProgressKind?: WorkflowProgressKind | null;
   workflowTransitionAction?: ReactNode;
+  /** 진행현황 선택지 중 행을 옮기는 것 → 목표 그룹(표시 전용, #839). */
+  workflowMoveTargets?: WorkflowStageMoveTargets | null;
   /** 상담 진행 가상 칸의 항목 — 없으면 안내만 그린다(표시 전용, 쓰기 없음). */
   consultationEntry?: ConsultationBoardEntry | null;
   /** 상담 담당자 선택지 — 확인 팝오버의 담당자 목록에 쓴다. */
@@ -289,6 +296,7 @@ export function BoardCell({
         transitionAction={workflowTransitionAction}
         cellAction={cellAction}
         bulkIntercept={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
+        moveTargets={workflowMoveTargets}
       />
     );
   }
@@ -622,6 +630,8 @@ export function GroupTable({
   groupMoveOptions=[],
   renderRowAction,
   workflowProgressKind = null,
+  workflowMoveTargets = null,
+  sameTitleCounts,
   renderWorkflowTransition,
   consultationByItem,
   consultationMembers = [],
@@ -717,6 +727,13 @@ export function GroupTable({
   renderRowAction?: (row: ItemWithValues) => ReactNode;
   /** 화면의 통합 진행현황 셀. 실제 저장은 기존 단계/이동 계약을 그대로 소비한다. */
   workflowProgressKind?: WorkflowProgressKind | null;
+  /** 진행현황 선택지 → 목표 그룹. 원본 단계 컬럼의 이동 규칙에서 만든 표시 전용 맵(#839). */
+  workflowMoveTargets?: WorkflowStageMoveTargets | null;
+  /**
+   * 계약업체 실무 전용 — 보드에 보이는 행 중 같은 제목(=회사명)이 몇 건인지.
+   * 2건 이상이면 제목 옆에 «같은 회사 N건» 을 단다(표시 전용, 데이터·제목은 그대로).
+   */
+  sameTitleCounts?: ReadonlyMap<string, number>;
   renderWorkflowTransition?: (row: ItemWithValues) => ReactNode;
   /**
    * 상담 단계 보기 적재분(item id → 항목). 있으면 «상담 진행» 가상 칸과
@@ -912,7 +929,7 @@ export function GroupTable({
           <tr>
             <th
               scope="col"
-              className={`${STICKY_FIRST} z-[var(--mw-layer-board-corner)] ${BOARD_TABLE_HEADER_CELL} min-w-44`}
+              className={`${STICKY_FIRST_BASE} z-[var(--mw-layer-board-corner)] bg-mw-board-head ${BOARD_TABLE_HEADER_CELL} min-w-44`}
               style={{ top: 0, position: "sticky" }}
             >
               <span className="flex items-center gap-1">
@@ -979,7 +996,7 @@ export function GroupTable({
                   data-view-focus={col.key === focusColumnKey || undefined}
                   data-column-key={col.key}
                   data-right-pinned={col.rightPinned || undefined}
-                   className={`relative sticky top-0 z-[var(--mw-layer-board-header)] min-w-20 ${BOARD_TABLE_HEADER_CELL} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-card"} ${
+                   className={`relative sticky top-0 z-[var(--mw-layer-board-header)] min-w-20 ${BOARD_TABLE_HEADER_CELL} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-board-head"} ${
                     !canManageColumns || structureLocked
                       ? ""
                       : "cursor-grab active:cursor-grabbing"
@@ -987,7 +1004,7 @@ export function GroupTable({
                     invalidColKey===col.key?"cursor-not-allowed":""
                   } ${
                     dragColKey === col.key ? "opacity-50" : ""
-                  } ${col.rightPinned ? "right-0 border-l-2 border-l-mw-primary text-mw-record" : ""}`}
+                  } ${col.rightPinned ? "right-0 text-mw-record" : ""}`}
                 >
                   <span className="flex items-center gap-1">
                     {canManageColumns && !structureLocked ? (
@@ -1070,6 +1087,7 @@ export function GroupTable({
             return (
               <tr
                 key={row.id}
+                data-board-row=""
                 onDragOver={acceptRow(index)}
                 onDragLeave={(event)=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null)&&overRowIndex===index)clearRowDrop();}}
                 onDrop={dropRow(index)}
@@ -1106,7 +1124,7 @@ export function GroupTable({
                     ) : null}
 
                     {readOnly ? (
-                      <span className="truncate text-xs font-medium text-mw-fg">
+                      <span className="truncate text-[length:var(--fs-13)] font-semibold text-mw-fg">
                         {row.title}
                       </span>
                     ) : (
@@ -1132,7 +1150,7 @@ export function GroupTable({
                             name="title"
                             defaultValue={row.title}
                             aria-label="행 이름"
-                            className={`${CELL_INPUT} font-medium`}
+                            className={BOARD_TABLE_TITLE_CONTROL}
                           />
                         </form>
                         {findCellError(cellFlash, row.id, "title") ? (
@@ -1145,6 +1163,16 @@ export function GroupTable({
                         ) : null}
                       </>
                     )}
+
+                    {(sameTitleCounts?.get(row.title) ?? 0) >= 2 ? (
+                      <span
+                        data-same-company-count={sameTitleCounts?.get(row.title)}
+                        title="이 보드에 같은 회사 이름의 건이 여러 개 있어요. 회사 1곳의 자금 건이 여러 개일 수 있습니다."
+                        className="shrink-0 whitespace-nowrap rounded-full border border-mw-line bg-mw-board-head px-1.5 text-[length:var(--fs-11)] leading-5 text-mw-sub"
+                      >
+                        같은 회사 {sameTitleCounts?.get(row.title)}건
+                      </span>
+                    ) : null}
 
                     <ItemDetailPanel
                       boardId={boardId}
@@ -1215,7 +1243,7 @@ export function GroupTable({
                       data-right-pinned={col.rightPinned || undefined}
                       className={`${BOARD_TABLE_BODY_CELL} group-hover:bg-mw-bg ${(col.wrap_mode ?? textMode) === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
                         col.rightPinned
-                          ? "sticky right-0 z-[var(--mw-layer-board-cell)] border-l-2 border-l-mw-primary bg-mw-tint-blue"
+                          ? "sticky right-0 z-[var(--mw-layer-board-cell)]"
                           : ""
                       }`}
                     >
@@ -1264,6 +1292,7 @@ export function GroupTable({
                           }
                           workflowProgressKind={workflowProgressKind}
                           workflowTransitionAction={renderWorkflowTransition?.(row)}
+                          workflowMoveTargets={workflowMoveTargets}
                           consultationEntry={consultationByItem?.[row.id] ?? null}
                           consultationMembers={consultationMembers}
                           cellAction={cellAction}

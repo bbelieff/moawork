@@ -93,6 +93,33 @@ export function presentWorkflowProgressColumns(
   return [...ordinary.filter((column) => !column.rightPinned), kind === "new-lead" ? presentNewLeadStageColumn(progress) : progress];
 }
 
+export type WorkflowStageMoveTargets = ReadonlyMap<string, Readonly<{ groupId: string; groupName: string | null }>>;
+
+/**
+ * 2026-10-06 — 진행현황 선택지 중 «행을 다른 그룹으로 옮기는» 것 (#839).
+ *
+ * 화면용 진행현황 열은 move_rule_jsonb 를 비운다(위 presentWorkflowProgressColumns —
+ * 검색·일괄 판정이 그 열을 쓰므로 비운 채로 둔다). 그래서 «원본» 단계 컬럼의 규칙에서
+ * 읽는다. 표시 전용이다 — 실제 이동은 지금처럼 서버의 setCells 가 같은 규칙으로 정한다.
+ * 규칙이 가리키는 그룹이 보드에 없으면 groupName 을 null 로 둔다(이름을 지어내지 않는다).
+ */
+export function workflowStageMoveTargets(
+  kind: WorkflowProgressKind,
+  rawColumns: readonly BoardColumn[],
+  groups: readonly Readonly<{ id: string; name: string }>[],
+): WorkflowStageMoveTargets {
+  const stage = rawColumns.find((column) => column.key === workflowProgressSpec(kind).stageColumnKey);
+  const rule = stage?.move_rule_jsonb;
+  const targets = new Map<string, Readonly<{ groupId: string; groupName: string | null }>>();
+  if (!rule) return targets;
+  const names = new Map(groups.map((group) => [group.id, group.name]));
+  for (const [optionId, groupId] of Object.entries(rule)) {
+    if (typeof groupId !== "string" || groupId === "") continue;
+    targets.set(optionId, { groupId, groupName: names.get(groupId) ?? null });
+  }
+  return targets;
+}
+
 export function withWorkflowProgressValues(
   kind: WorkflowProgressKind,
   rows: readonly ItemWithValues[],

@@ -27,7 +27,7 @@ export function StatusPill({
 }) {
   return (
     <span
-      className="inline-flex max-w-full items-center truncate rounded px-2 py-0.5 text-xs font-medium"
+      className="inline-flex max-w-full items-center truncate rounded px-2 py-0.5 text-xs font-semibold"
       style={{ backgroundColor: background, color }}
       title={title ?? label}
     >
