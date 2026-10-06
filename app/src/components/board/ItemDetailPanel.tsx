@@ -462,7 +462,7 @@ function SaveLayoutForm({
       <button
         type="submit"
         disabled={disabled}
-        className="min-h-9 rounded-lg border border-mw-line px-2 text-xs text-mw-body disabled:opacity-40"
+        className={styles.adminButton}
       >
         {label}
       </button>
@@ -698,6 +698,7 @@ export function ItemDetailPanel({
   const [filePending, setFilePending] = useState(false);
   const [fileDragOver, setFileDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const layoutAdminRef = useRef<HTMLDetailsElement>(null);
   const [folderEditing, setFolderEditing] = useState(!initialDetail?.cloudFolder);
   const [folderError, setFolderError] = useState("");
   const folderTouchedRef = useRef(false);
@@ -1056,6 +1057,25 @@ export function ItemDetailPanel({
     ].join("\n");
   };
 
+  const exportCsv = () =>
+    `항목,값\n${layout.map((entry) => {
+      const column = columnsByKey.get(entry.key);
+      const value = detailValueText(entry.type ?? column?.type, row.values[entry.key], row.values, column?.options_jsonb);
+      return `"${entry.label ?? entry.key}","${value.replaceAll('"', '""')}"`;
+    }).join("\n")}`;
+
+  /**
+   * 빈 상태의 「필드 배치」 — 접힌 관리자 영역을 펼치고 그 제목으로 초점을 옮긴다.
+   * 초점 이동이 정보 칸 안에서만 필요한 만큼 스크롤한다. scrollIntoView 는 overflow:hidden 인
+   * 바깥 서랍까지 밀어 올려 헤더가 화면 밖으로 나가므로 쓰지 않는다.
+   */
+  function openLayoutAdmin() {
+    const admin = layoutAdminRef.current;
+    if (!admin) return;
+    admin.open = true;
+    admin.querySelector<HTMLElement>("summary")?.focus();
+  }
+
   function download(filename: string, content: string, type: string) {
     const anchor = document.createElement("a");
     anchor.href = URL.createObjectURL(new Blob([content], { type }));
@@ -1181,6 +1201,7 @@ export function ItemDetailPanel({
                     <summary className={styles.moreButton} aria-label="회사 상세 추가 메뉴">⋯</summary>
                     <div className={styles.morePopover}>
                       <button type="button" onClick={() => download(`${row.title}.txt`, exportText(), "text/plain;charset=utf-8")}>TXT 내려받기</button>
+                      <button type="button" onClick={() => download(`${row.title}.csv`, exportCsv(), "text/csv;charset=utf-8")}>CSV 내려받기</button>
                       <button type="button" onClick={() => navigator.clipboard.writeText(exportText())}>회사 정보 복사</button>
                     </div>
                   </details>
@@ -1198,8 +1219,13 @@ export function ItemDetailPanel({
                       {consultationSection}
                     </div>
                   ) : null}
+                  {/*
+                    2026-10-06 소유자 피드백 「상세가 너무 복잡하다」 — 읽는 순서를 하나로 둔다.
+                    회사 정보 → 증빙 파일 → 클라우드 폴더 → (관리자만) 배치 편집. 메모·기록은 오른쪽.
+                    배치·순서·표 승격 같은 «설정» 은 전부 접힌 관리자 영역 한 곳에만 있다.
+                  */}
                   <div className={styles.infoHeader}>
-                    <h3 className="font-bold text-mw-fg">회사 정보</h3>
+                    <h3>회사 정보</h3>
                     <span
                       className={styles.saveState}
                       aria-live="polite"
@@ -1209,10 +1235,14 @@ export function ItemDetailPanel({
                   </div>
                   <div className={styles.fieldList}>
                     {layout.length === 0 && (
-                      <p className="rounded-md border border-dashed border-mw-line p-4 text-sm text-mw-sub">
-                        배치된 상세 필드가 없습니다. 값이 있다면 아래 미배치
-                        영역에서 다시 올릴 수 있습니다.
-                      </p>
+                      <div className={styles.emptyFields} data-detail-empty-fields>
+                        <p>{canManageColumns ? "표시할 필드가 없어요" : "표시할 정보가 없어요"}</p>
+                        {canManageColumns ? (
+                          <button type="button" className={styles.textButton} onClick={openLayoutAdmin}>
+                            필드 배치
+                          </button>
+                        ) : null}
+                      </div>
                     )}
                     {visibleLayout.filter((entry) => !canonicalNewLead || entry.key !== "collaborators").map((entry) => {
                       const column = columnsByKey.get(entry.key);
@@ -1256,7 +1286,6 @@ export function ItemDetailPanel({
                           id={`detail-field-${entry.key}`}
                           className={styles.fieldRow}
                         >
-                          <span aria-hidden="true" className={styles.fieldHandle}>⠿</span>
                           <label
                             id={fieldLabelId}
                             htmlFor={
@@ -1269,9 +1298,6 @@ export function ItemDetailPanel({
                             className={styles.fieldLabel}
                           >
                             {label}
-                            <span className={`${styles.fieldBadge} ${entry.source === "column" ? styles.columnBadge : ""}`}>
-                              {entry.source === "detail" ? "상세" : "표"}
-                            </span>
                           </label>
                           <div className={styles.fieldValue}>
                             {canonicalNewLead && entry.key === canonicalLoanEntryKey ? (
@@ -1400,392 +1426,173 @@ export function ItemDetailPanel({
                                   : inputValue(value) || "—"}
                               </p>
                             )}
-                            {/*
-                              #657 — 「표로 올리기」에 «되돌리기» 를 붙인다.
-                              전에는 올리는 버튼만 있었고, 그것도 source === "detail" 일 때만 그려져서
-                              한 번 누르면 버튼 자체가 사라졌다 — 되돌릴 수 없는 한 방향 문이었다.
-                              버튼 글자는 «가는 곳» 을 그대로 적는다. ⋯ 만으로는 무엇이 일어날지 모른다.
-                            */}
-                            {canManageColumns && entry.source === "detail" && (
-                              <form action={promoteDetailFieldAction}>
-                                <input type="hidden" name="boardId" value={boardId} />
-                                <input type="hidden" name="fieldKey" value={entry.key} />
-                                <button
-                                  type="submit"
-                                  className={styles.promoteButton}
-                                  title={`${label}${eulReul(label)} 표에도 보이게 합니다`}
-                                  aria-label={`${label}${eulReul(label)} 표에도 보이기`}
-                                >
-                                  표에도
-                                </button>
-                              </form>
-                            )}
-                            {/*
-                              ★ 원래부터 표 컬럼이던 칸(owner·industry …)에는 안 붙인다.
-                                그건 되돌리기가 아니라 구조 축소다(D71~D75).
-                                표에서 잠깐 감추는 일은 「표시 컬럼」이 이미 한다.
-                            */}
-                            {canManageColumns && entry.source === "column" && isDemotableDetailKey(entry.key) && (
-                              <form action={demoteDetailFieldAction}>
-                                <input type="hidden" name="boardId" value={boardId} />
-                                <input type="hidden" name="fieldKey" value={entry.key} />
-                                <button
-                                  type="submit"
-                                  className={styles.promoteButton}
-                                  title={`${label}${eulReul(label)} 표에서 내리고 상세에서만 보이게 합니다. 값은 그대로 남고 컬럼은 휴지통으로 갑니다`}
-                                  aria-label={`${label}${eulReul(label)} 표에서 내리기`}
-                                >
-                                  상세만
-                                </button>
-                              </form>
-                            )}
                           </div>
                         </div>
                       );
                     })}
-                    {canManageColumns ? (
-                      <details className={styles.detailFieldCreator}>
-                        <summary>+ 상세 전용 필드 추가</summary>
-                        <form action={addDetailFieldAction} className={styles.detailFieldCreatorForm}>
-                          <input type="hidden" name="boardId" value={boardId} />
-                          <input type="hidden" name="groupId" value={row.group_id ?? ""} />
-                          <input name="label" required placeholder="상세에서만 쓸 필드 이름" aria-label="상세 전용 필드 이름" />
-                          <select name="type" aria-label="상세 전용 필드 타입">
-                            <option value="text">텍스트</option>
-                            <option value="number">숫자</option>
-                            <option value="date">날짜</option>
-                            <option value="phone">전화</option>
-                            <option value="email">이메일</option>
-                            <option value="url">링크</option>
-                          </select>
-                          <DetailFieldSubmit idle="추가" />
-                        </form>
-                      </details>
-                    ) : null}
                   </div>
 
-                  <aside className={styles.orderRules} aria-label="상세 화면 순서 규칙">
-                    <b>순서 규칙</b>
-                    <p>이 화면의 순서는 상세에서만 바뀌며 보드 표의 컬럼 순서는 그대로예요.</p>
-                    <p>상세 전용 필드는 표에 나타나지 않으며, 필요할 때만 표 컬럼으로 올릴 수 있어요.</p>
-                    <p>표 컬럼과 상세 전용 필드를 섞어 원하는 순서에 놓아도 값은 하나로 함께 저장돼요.</p>
-                  </aside>
-
-                  {canManageColumns ? (
-                  <details className={styles.layoutAdmin}>
-                    <summary>관리자 · 상세 배치 편집</summary>
-                    <div className={styles.layoutAdminBody}>
-                  <details
-                    className={styles.compactTools}
-                  >
-                    <summary>
-                      이 화면에 배치되지 않은 항목 {unplaced.length}개
-                    </summary>
+                  <details className={styles.compactTools} open data-item-detail-evidence>
+                    <summary>증빙 파일{detail.files.length > 0 ? ` ${detail.files.length}개` : ""}</summary>
                     <div className={styles.compactToolsBody}>
-                      {unplaced.length === 0 && (
-                        <p className="text-xs text-mw-sub">
-                          모든 값이 현재 배치에 있습니다.
-                        </p>
-                      )}
-                      {unplaced.map((key) => (
-                        <div
-                          key={key}
-                          className="flex items-center justify-between gap-3 rounded-lg bg-mw-bg p-3"
-                        >
-                          <div className="min-w-0">
-                            <b className="block truncate text-xs text-mw-body">
-                              {newLeadPresentationLabel(key) ?? columnsByKey.get(key)?.label ?? key}
-                            </b>
-                            <span className="block truncate text-xs text-mw-sub">
-                              {detailValueText(
-                                columnsByKey.get(key)?.type,
-                                row.values[key],
-                                row.values,
-                                columnsByKey.get(key)?.options_jsonb,
-                              )}
+                      {canEditItems ? (
+                        <div className={styles.evidenceRow}>
+                          {/*
+                            이 drop zone은 보호 스토리지 업로드 전용이다. OCR은 파일을 서버로
+                            보내지 않으므로 옆의 ItemDetailOcr(브라우저 로컬 인식 + 사용자 확인
+                            diff)가 별도 진입점이다. OCR 모달은 이 zone «밖» 에 둔다 — 안에 두면
+                            모달에 끌어 놓은 파일이 증빙으로 올라간다.
+
+                            ★ input은 sr-only 1px 상자로만 숨긴다. display:none 이면 키보드로
+                              닿을 수 없고 시각 게이트의 isVisible 도 실패한다.
+                            ★ 끌기 이벤트는 여기서 멈춘다. 상세는 portal 이지만 React 이벤트는
+                              뒤의 표 행(<tr onDragOver/onDrop>)까지 올라가 엉뚱한 «놓을 수 없어요»
+                              안내를 띄웠다.
+                          */}
+                          <div
+                            data-evidence-drop
+                            data-dragover={fileDragOver ? "true" : "false"}
+                            data-pending={filePending ? "true" : "false"}
+                            className={styles.evidenceDrop}
+                            onDragOver={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setFileDragOver(true);
+                            }}
+                            onDragLeave={(event) => {
+                              event.stopPropagation();
+                              // 안쪽 자식 사이를 지날 때마다 꺼졌다 켜지며 깜빡이지 않게 한다.
+                              const next = event.relatedTarget;
+                              if (next instanceof Node && event.currentTarget.contains(next)) return;
+                              setFileDragOver(false);
+                            }}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setFileDragOver(false);
+                              void uploadEvidenceFiles(event.dataTransfer.files);
+                            }}
+                          >
+                            <input
+                              ref={fileInputRef}
+                              id={`${row.id}-evidence-files`}
+                              type="file"
+                              multiple
+                              className={styles.visuallyHidden}
+                              disabled={filePending || detailPending}
+                              onChange={(event) => {
+                                if (event.target.files) void uploadEvidenceFiles(event.target.files);
+                              }}
+                            />
+                            <label htmlFor={`${row.id}-evidence-files`} className={styles.evidencePick}>
+                              파일 올리기
+                            </label>
+                            {filePending ? null : (
+                              <span className={styles.evidenceHint} aria-hidden="true">
+                                또는 끌어다 놓기
+                              </span>
+                            )}
+                            <span className={styles.evidencePending} aria-live="polite">
+                              {filePending ? "올리는 중…" : ""}
                             </span>
                           </div>
-                          {canManageColumns && (
-                            <form action={addUnplacedDetailEntryAction}>
-                              <input
-                                type="hidden"
-                                name="boardId"
-                                value={boardId}
-                              />
-                              <input
-                                type="hidden"
-                                name="groupId"
-                                value={row.group_id ?? ""}
-                              />
-                              <input
-                                type="hidden"
-                                name="fieldKey"
-                                value={key}
-                              />
-                              <button
-                                type="submit"
-                                className="min-h-9 rounded-lg border border-mw-line px-2 text-xs font-semibold text-mw-record"
-                              >
-                                배치에 추가
-                              </button>
-                            </form>
-                          )}
+                          <ItemDetailOcr
+                            boardId={boardId}
+                            itemId={row.id}
+                            dealId={canonicalNewLead ? row.deal_id : null}
+                            values={row.values}
+                            columns={columns}
+                            boardLayout={boardLayout}
+                            layout={layout}
+                            canEditItems={canEditItems}
+                            buttonClassName={styles.secondaryButton}
+                          />
+                        </div>
+                      ) : null}
+                      {fileResults.length > 0 ? (
+                        <ul className={styles.fileResults}>
+                          {fileResults.map((result, resultIndex) => (
+                            <li key={result.sourceFileId ?? `${result.name}-${resultIndex}`}>
+                              <p role={result.ok ? "status" : "alert"}>
+                                {result.ok ? "✓" : "✕"} {result.name} · {result.message}
+                              </p>
+                              {result.ok && result.localFile && result.sourceFileId ? (
+                                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                  <ItemDetailOcr
+                                    boardId={boardId}
+                                    itemId={row.id}
+                                    dealId={canonicalNewLead ? row.deal_id : null}
+                                    values={row.values}
+                                    columns={columns}
+                                    boardLayout={boardLayout}
+                                    layout={layout}
+                                    canEditItems={canEditItems}
+                                    initialFile={result.localFile}
+                                    buttonLabel="사업자등록증으로 읽기"
+                                    buttonClassName={styles.secondaryButton}
+                                  />
+                                  <ItemDetailVatOcr
+                                    file={result.localFile}
+                                    sourceFileId={result.sourceFileId}
+                                    expectedBizNo={ocrCellText(row.values.biz_no)}
+                                    buttonClassName={styles.secondaryButton}
+                                  />
+                                </div>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {groupDetailFiles(detail.files).map(({ group, files }) => (
+                        <div key={group} className={styles.fileGroup}>
+                          <b className={styles.fileGroupTitle}>
+                            {DETAIL_FILE_GROUP_LABEL[group]} {files.length}개
+                          </b>
+                          <div className={styles.fileList}>
+                            {files.map((file) =>
+                              file.downloadUrl ? (
+                                <a
+                                  key={file.id}
+                                  href={file.downloadUrl}
+                                  className={styles.fileRow}
+                                  download
+                                >
+                                  <span className={styles.fileName}>{file.name}</span>
+                                  <span className={styles.fileMeta}>
+                                    {Math.ceil(file.size_bytes / 1024)}KB
+                                  </span>
+                                </a>
+                              ) : (
+                                <span
+                                  key={file.id}
+                                  className={styles.fileRow}
+                                  data-unavailable="true"
+                                >
+                                  <span className={styles.fileName}>{file.name}</span>
+                                  <span className={styles.fileMeta}>내려받기 링크를 만들지 못했어요</span>
+                                </span>
+                              ),
+                            )}
+                          </div>
                         </div>
                       ))}
+                      {detail.files.length === 0 && !filePending ? (
+                        <p className={styles.helper}>아직 올린 파일이 없어요</p>
+                      ) : null}
                     </div>
                   </details>
 
-                  {canManageColumns && (
-                    <details className={styles.compactTools}>
-                      <summary>
-                        이 아이템의 상세 배치 편집
-                      </summary>
-                      <div className={styles.compactToolsBody}>
-                        {inherited ? (
-                          <SaveLayoutForm
-                            boardId={boardId}
-                            groupId={row.group_id}
-                            layout={layout}
-                            label="현재 기본에서 분기해 편집"
-                            disabled={!row.group_id}
-                            canonicalNewLead={canonicalNewLead}
-                            sourceEntries={durableLayoutSources}
-                          />
-                        ) : row.group_id ? (
-                          <form action={resetGroupDetailLayoutAction}>
-                            <input
-                              type="hidden"
-                              name="boardId"
-                              value={boardId}
-                            />
-                            <input
-                              type="hidden"
-                              name="groupId"
-                              value={row.group_id}
-                            />
-                            <button
-                              type="submit"
-                              className="min-h-9 rounded-lg border border-mw-line px-2 text-xs font-semibold text-mw-record"
-                            >
-                              기본으로 되돌리기
-                            </button>
-                          </form>
-                        ) : null}
-                        {visibleLayout.map((entry, index) => (
-                          <div
-                            key={entry.key}
-                            className="flex flex-wrap items-center gap-2 rounded-lg bg-mw-bg p-2"
-                          >
-                            <span className="mr-auto text-xs text-mw-body">
-                              {entry.label ??
-                                columnsByKey.get(entry.key)?.label ??
-                                entry.key}
-                            </span>
-                            <SaveLayoutForm
-                              boardId={boardId}
-                              groupId={row.group_id}
-                              layout={moveDetailEntry(visibleLayout, entry.key, -1)}
-                              label="↑"
-                              disabled={index === 0 || !row.group_id}
-                              canonicalNewLead={canonicalNewLead}
-                              sourceEntries={durableLayoutSources}
-                            />
-                            <SaveLayoutForm
-                              boardId={boardId}
-                              groupId={row.group_id}
-                              layout={moveDetailEntry(visibleLayout, entry.key, 1)}
-                              label="↓"
-                              disabled={
-                                index === visibleLayout.length - 1 || !row.group_id
-                              }
-                              canonicalNewLead={canonicalNewLead}
-                              sourceEntries={durableLayoutSources}
-                            />
-                            <SaveLayoutForm
-                              boardId={boardId}
-                              groupId={row.group_id}
-                              layout={visibleLayout.filter(
-                                (candidate) => candidate.key !== entry.key,
-                              )}
-                              label="배치에서 빼기"
-                              disabled={!row.group_id}
-                              canonicalNewLead={canonicalNewLead}
-                              sourceEntries={durableLayoutSources}
-                            />
-                          </div>
-                        ))}
-                        {columns.filter(
-                          (column) =>
-                            (!canonicalNewLead || !CANONICAL_NEW_LEAD_LOAN_KEYS.has(column.key))
-                            && !visibleLayout.some((entry) => entry.key === column.key),
-                        ).length > 0 && (
-                          <div className="flex flex-wrap gap-2 rounded-md border border-dashed border-mw-line p-3">
-                            <span className="w-full text-xs font-semibold text-mw-sub">
-                              표 컬럼을 이 아이템 배치에 추가
-                            </span>
-                            {columns
-                              .filter(
-                                (column) =>
-                                  (!canonicalNewLead || !CANONICAL_NEW_LEAD_LOAN_KEYS.has(column.key))
-                                  && !visibleLayout.some(
-                                    (entry) => entry.key === column.key,
-                                  ),
-                              )
-                              .map((column) => (
-                                <SaveLayoutForm
-                                  key={column.key}
-                                  boardId={boardId}
-                                  groupId={row.group_id}
-                                  layout={[
-                                    ...visibleLayout,
-                                    {
-                                      key: column.key,
-                                      source: "column",
-                                      label: column.label,
-                                      type: column.type,
-                                    },
-                                  ]}
-                                  label={`+ ${column.label}`}
-                                  disabled={!row.group_id}
-                                  canonicalNewLead={canonicalNewLead}
-                                  sourceEntries={durableLayoutSources}
-                                />
-                              ))}
-                          </div>
-                        )}
-                      </div>
-                    </details>
-                  )}
-
-                  {canManageColumns && (
-                    <details className={styles.compactTools}>
-                      <summary>
-                        보드 기본 상세 배치
-                      </summary>
-                      <div className={styles.compactToolsBody}>
-                        {boardLayout.map((entry, index) => (
-                          <div
-                            key={entry.key}
-                            className="flex items-center gap-2 rounded-lg bg-mw-bg p-2"
-                          >
-                            <span className="mr-auto text-xs text-mw-body">
-                              {entry.label ??
-                                columnsByKey.get(entry.key)?.label ??
-                                entry.key}
-                            </span>
-                            <SaveLayoutForm
-                              boardId={boardId}
-                              groupId={null}
-                              layout={moveDetailEntry(
-                                boardLayout,
-                                entry.key,
-                                -1,
-                              )}
-                              label="↑"
-                              disabled={index === 0}
-                              canonicalNewLead={canonicalNewLead}
-                              sourceEntries={durableBoardLayoutSources}
-                            />
-                            <SaveLayoutForm
-                              boardId={boardId}
-                              groupId={null}
-                              layout={moveDetailEntry(
-                                boardLayout,
-                                entry.key,
-                                1,
-                              )}
-                              label="↓"
-                              disabled={index === boardLayout.length - 1}
-                              canonicalNewLead={canonicalNewLead}
-                              sourceEntries={durableBoardLayoutSources}
-                            />
-                            <SaveLayoutForm
-                              boardId={boardId}
-                              groupId={null}
-                              layout={boardLayout.filter(
-                                (candidate) => candidate.key !== entry.key,
-                              )}
-                              label="빼기"
-                              canonicalNewLead={canonicalNewLead}
-                              sourceEntries={durableBoardLayoutSources}
-                            />
-                          </div>
-                        ))}
-                        {columns.filter(
-                          (column) =>
-                            !boardLayout.some(
-                              (entry) => entry.key === column.key,
-                            ),
-                        ).length > 0 && (
-                          <div className="flex flex-wrap gap-2 rounded-md border border-dashed border-mw-line p-3">
-                            <span className="w-full text-xs font-semibold text-mw-sub">
-                              표 컬럼을 보드 기본 배치에 추가
-                            </span>
-                            {columns
-                              .filter(
-                                (column) =>
-                                  !boardLayout.some(
-                                    (entry) => entry.key === column.key,
-                                  ),
-                              )
-                              .map((column) => (
-                                <SaveLayoutForm
-                                  key={column.key}
-                                  boardId={boardId}
-                                  groupId={null}
-                                  layout={[
-                                    ...boardLayout,
-                                    {
-                                      key: column.key,
-                                      source: "column",
-                                      label: column.label,
-                                      type: column.type,
-                                    },
-                                  ]}
-                                  label={`+ ${column.label}`}
-                                  canonicalNewLead={canonicalNewLead}
-                                  sourceEntries={durableBoardLayoutSources}
-                                />
-                              ))}
-                          </div>
-                        )}
-                        <form
-                          action={addDetailFieldAction}
-                          className="grid gap-2 rounded-md border border-dashed border-mw-line p-3 sm:grid-cols-[1fr_9rem_auto]"
-                        >
-                          <input type="hidden" name="boardId" value={boardId} />
-                          <input type="hidden" name="groupId" value="" />
-                          <input
-                            name="label"
-                            required
-                            placeholder="보드 기본 상세 필드"
-                            className="min-h-11 rounded-lg border border-mw-line bg-mw-card px-3 text-sm"
-                          />
-                          <select
-                            name="type"
-                            className="min-h-11 rounded-lg border border-mw-line bg-mw-card px-2 text-sm"
-                          >
-                            <option value="text">텍스트</option>
-                            <option value="number">숫자</option>
-                            <option value="date">날짜</option>
-                          </select>
-                          <DetailFieldSubmit
-                            idle="기본에 추가"
-                            className="min-h-11 rounded-lg bg-mw-primary px-3 text-xs font-bold text-mw-on-accent disabled:opacity-60"
-                          />
-                        </form>
-                      </div>
-                    </details>
-                  )}
-                    </div>
-                  </details>
-                  ) : null}
-                  <details className={`${styles.compactTools} ${styles.cloudFolderTools}`} open>
-                    <summary>클라우드 폴더</summary>
+                  {/*
+                    클라우드 폴더는 연결돼 있을 때만 펼친다. 연결 전에는 한 줄로 접어 둔다 —
+                    대부분의 행에서 쓰지 않는 입력칸이 회사 정보 사이를 차지하던 것을 줄인다.
+                  */}
+                  <details
+                    className={`${styles.compactTools} ${styles.cloudFolderTools}`}
+                    open={Boolean(detail.cloudFolder)}
+                    data-item-detail-cloud-folder
+                  >
+                    <summary>{detail.cloudFolder || !canEditItems ? "클라우드 폴더" : "클라우드 폴더 연결"}</summary>
                     <div className={styles.compactToolsBody}>
-                      <p className="text-xs text-mw-sub">
-                        이 회사의 자료는 Google Drive·OneDrive·Dropbox 등의 폴더 하나로 모아 관리합니다. 폴더를 볼 사람에게 공유 권한이 있는지 확인해 주세요.
-                      </p>
                       {detail.cloudFolder && !folderEditing ? (
                         <div className={styles.cloudFolderCard}>
                           <span className={styles.cloudFolderProvider}>
@@ -1856,231 +1663,399 @@ export function ItemDetailPanel({
                               </button>
                             )}
                           </div>
+                          <p className={styles.helper}>볼 사람에게 폴더 공유 권한이 있어야 열려요.</p>
                           {folderError && <p role="alert" className={styles.cloudFolderError}>{folderError}</p>}
                         </div>
                       ) : (
-                        <p className="text-xs text-mw-sub">연결된 클라우드 폴더가 없습니다.</p>
+                        <p className={styles.helper}>연결된 폴더가 없어요</p>
                       )}
 
-                      <details className={styles.legacyMaterials}>
-                        <summary>이전 첨부·링크 {detail.files.length + detail.links.length}개</summary>
-                        <p>기존 자료는 삭제하거나 덮어쓰지 않고 읽기 전용으로 보존합니다.</p>
-                        <div className="grid gap-2">
-                          {detail.files.map((file) =>
-                            file.downloadUrl ? (
+                      {/*
+                        이전 자료는 «링크만» 여기 둔다. 파일은 위 증빙 목록에 이미 한 번 나온다 —
+                        저장소에는 증빙/이전 구분 칸이 없어 두 목록이 같은 파일을 두 번 보여 줬다.
+                      */}
+                      {detail.links.length > 0 ? (
+                        <details className={styles.legacyMaterials}>
+                          <summary>이전 링크 {detail.links.length}개</summary>
+                          <div className={styles.fileList}>
+                            {detail.links.map((link) => (
                               <a
-                                key={file.id}
-                                href={file.downloadUrl}
-                                className="rounded-lg border border-mw-line px-3 py-2 text-sm font-semibold text-mw-record"
-                                download
+                                key={link.id}
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={styles.fileRow}
                               >
-                                📎 {file.name}{" "}
-                                <span className="text-xs font-normal text-mw-sub">
-                                  {Math.ceil(file.size_bytes / 1024)}KB
-                                </span>
+                                <span className={styles.fileName}>{link.label}</span>
+                                <span className="sr-only"> (새 창)</span>
                               </a>
-                            ) : (
-                              <span
-                                key={file.id}
-                                className="rounded-lg border border-mw-line px-3 py-2 text-sm text-mw-sub"
-                              >
-                                📎 {file.name} · 내려받기 링크를 만들지 못했습니다.
-                              </span>
-                            ),
-                          )}
-                          {detail.links.map((link) => (
-                        <a
-                          key={link.id}
-                          href={link.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="rounded-lg border border-mw-line px-3 py-2 text-sm font-semibold text-mw-record underline"
-                        >
-                          🔗 {link.label}
-                          <span className="sr-only"> (새 창)</span>
-                        </a>
-                          ))}
-                          {detail.links.length === 0 && detail.files.length === 0 && (
-                            <p className="text-xs text-mw-sub">보존된 이전 자료가 없습니다.</p>
-                          )}
-                        </div>
-                      </details>
+                            ))}
+                          </div>
+                        </details>
+                      ) : null}
                     </div>
                   </details>
+
+                  {canManageColumns ? (
+                  <details ref={layoutAdminRef} className={styles.layoutAdmin}>
+                    <summary>관리자 · 상세 배치 편집</summary>
+                    <div className={styles.layoutAdminBody}>
+                  <p className={styles.orderRules}>
+                    <b>순서 규칙</b> 상세 순서만 바뀌고 표 컬럼 순서와 값은 그대로예요.
+                  </p>
+
                   <details className={styles.compactTools} open>
-                    <summary>증빙 파일 {detail.files.length > 0 ? `${detail.files.length}개` : ""}</summary>
+                    <summary>
+                      이 아이템의 상세 배치 편집
+                    </summary>
                     <div className={styles.compactToolsBody}>
-                      <p className="text-xs text-mw-sub">
-                        사업자등록증·부가세 자료를 보호 저장소에 직접 올립니다.
-                        클라우드 폴더 연결은 첨부 개수에 들어가지 않아요.
-                      </p>
-                      {canEditItems ? (
-                        <div
-                          data-evidence-drop
-                          data-dragover={fileDragOver ? "true" : "false"}
-                          onDragOver={(event) => {
-                            event.preventDefault();
-                            setFileDragOver(true);
-                          }}
-                          onDragLeave={() => setFileDragOver(false)}
-                          onDrop={(event) => {
-                            event.preventDefault();
-                            setFileDragOver(false);
-                            void uploadEvidenceFiles(event.dataTransfer.files);
-                          }}
-                        >
-                          {/*
-                            이 input은 보호 스토리지 업로드 전용이다. OCR은 파일을
-                            서버로 보내지 않으므로 아래 ItemDetailOcr(브라우저
-                            로컬 인식 + 사용자 확인 diff)가 별도 진입점이다.
-                          */}
-                          <label htmlFor={`${row.id}-evidence-files`}>
-                            증빙 파일 고르기(여러 개 가능·끌어다 놓기)
-                          </label>
+                      {inherited ? (
+                        <SaveLayoutForm
+                          boardId={boardId}
+                          groupId={row.group_id}
+                          layout={layout}
+                          label="현재 기본에서 분기해 편집"
+                          disabled={!row.group_id}
+                          canonicalNewLead={canonicalNewLead}
+                          sourceEntries={durableLayoutSources}
+                        />
+                      ) : row.group_id ? (
+                        <form action={resetGroupDetailLayoutAction}>
                           <input
-                            ref={fileInputRef}
-                            id={`${row.id}-evidence-files`}
-                            type="file"
-                            multiple
-                            disabled={filePending || detailPending}
-                            onChange={(event) => {
-                              if (event.target.files) void uploadEvidenceFiles(event.target.files);
-                            }}
+                            type="hidden"
+                            name="boardId"
+                            value={boardId}
+                          />
+                          <input
+                            type="hidden"
+                            name="groupId"
+                            value={row.group_id}
+                          />
+                          <button
+                            type="submit"
+                            className={styles.adminButton}
+                          >
+                            기본으로 되돌리기
+                          </button>
+                        </form>
+                      ) : null}
+                      {visibleLayout.map((entry, index) => {
+                        const entryLabel = entry.label ?? columnsByKey.get(entry.key)?.label ?? entry.key;
+                        return (
+                          <div key={entry.key} className={styles.adminRow}>
+                            <span className={styles.adminRowLabel}>
+                              {entryLabel}
+                              <span className={`${styles.fieldBadge} ${entry.source === "column" ? styles.columnBadge : ""}`}>
+                                {entry.source === "detail" ? "상세" : "표"}
+                              </span>
+                            </span>
+                            <SaveLayoutForm
+                              boardId={boardId}
+                              groupId={row.group_id}
+                              layout={moveDetailEntry(visibleLayout, entry.key, -1)}
+                              label="↑"
+                              disabled={index === 0 || !row.group_id}
+                              canonicalNewLead={canonicalNewLead}
+                              sourceEntries={durableLayoutSources}
+                            />
+                            <SaveLayoutForm
+                              boardId={boardId}
+                              groupId={row.group_id}
+                              layout={moveDetailEntry(visibleLayout, entry.key, 1)}
+                              label="↓"
+                              disabled={
+                                index === visibleLayout.length - 1 || !row.group_id
+                              }
+                              canonicalNewLead={canonicalNewLead}
+                              sourceEntries={durableLayoutSources}
+                            />
+                            <SaveLayoutForm
+                              boardId={boardId}
+                              groupId={row.group_id}
+                              layout={visibleLayout.filter(
+                                (candidate) => candidate.key !== entry.key,
+                              )}
+                              label="배치에서 빼기"
+                              disabled={!row.group_id}
+                              canonicalNewLead={canonicalNewLead}
+                              sourceEntries={durableLayoutSources}
+                            />
+                            {/*
+                              #657 — 「표로 올리기」에 «되돌리기» 를 붙인다.
+                              버튼 글자는 «가는 곳» 을 그대로 적는다. ⋯ 만으로는 무엇이 일어날지 모른다.
+                            */}
+                            {entry.source === "detail" && (
+                              <form action={promoteDetailFieldAction}>
+                                <input type="hidden" name="boardId" value={boardId} />
+                                <input type="hidden" name="fieldKey" value={entry.key} />
+                                <button
+                                  type="submit"
+                                  className={styles.adminButton}
+                                  title={`${entryLabel}${eulReul(entryLabel)} 표에도 보이게 합니다`}
+                                  aria-label={`${entryLabel}${eulReul(entryLabel)} 표에도 보이기`}
+                                >
+                                  표에도
+                                </button>
+                              </form>
+                            )}
+                            {/*
+                              ★ 원래부터 표 컬럼이던 칸(owner·industry …)에는 안 붙인다.
+                                그건 되돌리기가 아니라 구조 축소다(D71~D75).
+                                값은 그대로 남고 컬럼은 휴지통으로 간다.
+                            */}
+                            {entry.source === "column" && isDemotableDetailKey(entry.key) && (
+                              <form action={demoteDetailFieldAction}>
+                                <input type="hidden" name="boardId" value={boardId} />
+                                <input type="hidden" name="fieldKey" value={entry.key} />
+                                <button
+                                  type="submit"
+                                  className={styles.adminButton}
+                                  title={`${entryLabel}${eulReul(entryLabel)} 표에서 내리고 상세에서만 보이게 합니다. 값은 그대로 남고 컬럼은 휴지통으로 갑니다`}
+                                  aria-label={`${entryLabel}${eulReul(entryLabel)} 표에서 내리기`}
+                                >
+                                  상세만
+                                </button>
+                              </form>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {columns.filter(
+                        (column) =>
+                          (!canonicalNewLead || !CANONICAL_NEW_LEAD_LOAN_KEYS.has(column.key))
+                          && !visibleLayout.some((entry) => entry.key === column.key),
+                      ).length > 0 && (
+                        <div className={styles.adminAddList}>
+                          <span className={styles.adminAddTitle}>
+                            표 컬럼을 이 아이템 배치에 추가
+                          </span>
+                          {columns
+                            .filter(
+                              (column) =>
+                                (!canonicalNewLead || !CANONICAL_NEW_LEAD_LOAN_KEYS.has(column.key))
+                                && !visibleLayout.some(
+                                  (entry) => entry.key === column.key,
+                                ),
+                            )
+                            .map((column) => (
+                              <SaveLayoutForm
+                                key={column.key}
+                                boardId={boardId}
+                                groupId={row.group_id}
+                                layout={[
+                                  ...visibleLayout,
+                                  {
+                                    key: column.key,
+                                    source: "column",
+                                    label: column.label,
+                                    type: column.type,
+                                  },
+                                ]}
+                                label={`+ ${column.label}`}
+                                disabled={!row.group_id}
+                                canonicalNewLead={canonicalNewLead}
+                                sourceEntries={durableLayoutSources}
+                              />
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  </details>
+
+                  <details className={styles.detailFieldCreator}>
+                    <summary>+ 상세 전용 필드 추가</summary>
+                    <form action={addDetailFieldAction} className={styles.detailFieldCreatorForm}>
+                      <input type="hidden" name="boardId" value={boardId} />
+                      <input type="hidden" name="groupId" value={row.group_id ?? ""} />
+                      <input name="label" required placeholder="상세에서만 쓸 필드 이름" aria-label="상세 전용 필드 이름" />
+                      <select name="type" aria-label="상세 전용 필드 타입">
+                        <option value="text">텍스트</option>
+                        <option value="number">숫자</option>
+                        <option value="date">날짜</option>
+                        <option value="phone">전화</option>
+                        <option value="email">이메일</option>
+                        <option value="url">링크</option>
+                      </select>
+                      <DetailFieldSubmit idle="추가" />
+                    </form>
+                  </details>
+
+                  <details
+                    className={styles.compactTools}
+                  >
+                    <summary>
+                      이 화면에 배치되지 않은 항목 {unplaced.length}개
+                    </summary>
+                    <div className={styles.compactToolsBody}>
+                      {unplaced.length === 0 && (
+                        <p className={styles.helper}>
+                          모든 값이 현재 배치에 있습니다.
+                        </p>
+                      )}
+                      {unplaced.map((key) => (
+                        <div
+                          key={key}
+                          className={styles.adminRow}
+                        >
+                          <div className={styles.adminRowLabel}>
+                            <b>
+                              {newLeadPresentationLabel(key) ?? columnsByKey.get(key)?.label ?? key}
+                            </b>
+                            <span className={styles.adminRowMeta}>
+                              {detailValueText(
+                                columnsByKey.get(key)?.type,
+                                row.values[key],
+                                row.values,
+                                columnsByKey.get(key)?.options_jsonb,
+                              )}
+                            </span>
+                          </div>
+                          <form action={addUnplacedDetailEntryAction}>
+                            <input
+                              type="hidden"
+                              name="boardId"
+                              value={boardId}
+                            />
+                            <input
+                              type="hidden"
+                              name="groupId"
+                              value={row.group_id ?? ""}
+                            />
+                            <input
+                              type="hidden"
+                              name="fieldKey"
+                              value={key}
+                            />
+                            <button
+                              type="submit"
+                              className={styles.adminButton}
+                            >
+                              배치에 추가
+                            </button>
+                          </form>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+
+                  <details className={styles.compactTools}>
+                    <summary>
+                      보드 기본 상세 배치
+                    </summary>
+                    <div className={styles.compactToolsBody}>
+                      {boardLayout.map((entry, index) => (
+                        <div
+                          key={entry.key}
+                          className={styles.adminRow}
+                        >
+                          <span className={styles.adminRowLabel}>
+                            {entry.label ??
+                              columnsByKey.get(entry.key)?.label ??
+                              entry.key}
+                          </span>
+                          <SaveLayoutForm
+                            boardId={boardId}
+                            groupId={null}
+                            layout={moveDetailEntry(
+                              boardLayout,
+                              entry.key,
+                              -1,
+                            )}
+                            label="↑"
+                            disabled={index === 0}
+                            canonicalNewLead={canonicalNewLead}
+                            sourceEntries={durableBoardLayoutSources}
+                          />
+                          <SaveLayoutForm
+                            boardId={boardId}
+                            groupId={null}
+                            layout={moveDetailEntry(
+                              boardLayout,
+                              entry.key,
+                              1,
+                            )}
+                            label="↓"
+                            disabled={index === boardLayout.length - 1}
+                            canonicalNewLead={canonicalNewLead}
+                            sourceEntries={durableBoardLayoutSources}
+                          />
+                          <SaveLayoutForm
+                            boardId={boardId}
+                            groupId={null}
+                            layout={boardLayout.filter(
+                              (candidate) => candidate.key !== entry.key,
+                            )}
+                            label="빼기"
+                            canonicalNewLead={canonicalNewLead}
+                            sourceEntries={durableBoardLayoutSources}
                           />
                         </div>
-                      ) : null}
-                      <ItemDetailOcr
-                        boardId={boardId}
-                        itemId={row.id}
-                        dealId={canonicalNewLead ? row.deal_id : null}
-                        values={row.values}
-                        columns={columns}
-                        boardLayout={boardLayout}
-                        layout={layout}
-                        canEditItems={canEditItems}
-                      />
-                      {filePending ? (
-                        <p aria-live="polite" className="text-xs text-mw-sub">올리는 중…</p>
-                      ) : null}
-                      {fileResults.length > 0 ? (
-                        <ul className="grid gap-1">
-                          {fileResults.map((result, resultIndex) => (
-                            <li
-                              key={result.sourceFileId ?? `${result.name}-${resultIndex}`}
-                              className="text-xs text-mw-sub"
-                            >
-                              <p role={result.ok ? "status" : "alert"}>
-                                {result.ok ? "✓" : "✕"} {result.name} · {result.message}
-                              </p>
-                              {result.ok && result.localFile && result.sourceFileId ? (
-                                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                                  <ItemDetailOcr
-                                    boardId={boardId}
-                                    itemId={row.id}
-                                    dealId={canonicalNewLead ? row.deal_id : null}
-                                    values={row.values}
-                                    columns={columns}
-                                    boardLayout={boardLayout}
-                                    layout={layout}
-                                    canEditItems={canEditItems}
-                                    initialFile={result.localFile}
-                                    buttonLabel="사업자등록증으로 읽기"
-                                  />
-                                  <ItemDetailVatOcr
-                                    file={result.localFile}
-                                    sourceFileId={result.sourceFileId}
-                                    expectedBizNo={ocrCellText(row.values.biz_no)}
-                                  />
-                                </div>
-                              ) : null}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      <div className="grid gap-2">
-                        {groupDetailFiles(detail.files).map(({ group, files }) => (
-                          <div key={group}>
-                            <b className="block text-xs text-mw-body">
-                              {DETAIL_FILE_GROUP_LABEL[group]} {files.length}개
-                            </b>
-                            <div className="grid gap-2">
-                              {files.map((file) =>
-                                file.downloadUrl ? (
-                                  <a
-                                    key={file.id}
-                                    href={file.downloadUrl}
-                                    className="rounded-lg border border-mw-line px-3 py-2 text-sm font-semibold text-mw-record"
-                                    download
-                                  >
-                                    📎 {file.name}{" "}
-                                    <span className="text-xs font-normal text-mw-sub">
-                                      {Math.ceil(file.size_bytes / 1024)}KB
-                                    </span>
-                                  </a>
-                                ) : (
-                                  <span
-                                    key={file.id}
-                                    className="rounded-lg border border-mw-line px-3 py-2 text-sm text-mw-sub"
-                                  >
-                                    📎 {file.name} · 내려받기 링크를 만들지 못했습니다.
-                                  </span>
+                      ))}
+                      {columns.filter(
+                        (column) =>
+                          !boardLayout.some(
+                            (entry) => entry.key === column.key,
+                          ),
+                      ).length > 0 && (
+                        <div className={styles.adminAddList}>
+                          <span className={styles.adminAddTitle}>
+                            표 컬럼을 보드 기본 배치에 추가
+                          </span>
+                          {columns
+                            .filter(
+                              (column) =>
+                                !boardLayout.some(
+                                  (entry) => entry.key === column.key,
                                 ),
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                        {detail.files.length === 0 && !filePending ? (
-                          <p className="text-xs text-mw-sub">올린 증빙 파일이 없습니다.</p>
-                        ) : null}
-                      </div>
+                            )
+                            .map((column) => (
+                              <SaveLayoutForm
+                                key={column.key}
+                                boardId={boardId}
+                                groupId={null}
+                                layout={[
+                                  ...boardLayout,
+                                  {
+                                    key: column.key,
+                                    source: "column",
+                                    label: column.label,
+                                    type: column.type,
+                                  },
+                                ]}
+                                label={`+ ${column.label}`}
+                                canonicalNewLead={canonicalNewLead}
+                                sourceEntries={durableBoardLayoutSources}
+                              />
+                            ))}
+                        </div>
+                      )}
+                      <form
+                        action={addDetailFieldAction}
+                        className={styles.detailFieldCreatorForm}
+                      >
+                        <input type="hidden" name="boardId" value={boardId} />
+                        <input type="hidden" name="groupId" value="" />
+                        <input
+                          name="label"
+                          required
+                          placeholder="보드 기본 상세 필드"
+                          aria-label="보드 기본 상세 필드 이름"
+                        />
+                        <select
+                          name="type"
+                          aria-label="보드 기본 상세 필드 타입"
+                        >
+                          <option value="text">텍스트</option>
+                          <option value="number">숫자</option>
+                          <option value="date">날짜</option>
+                        </select>
+                        <DetailFieldSubmit idle="기본에 추가" />
+                      </form>
                     </div>
                   </details>
-                  <details className={styles.compactTools}>
-                    <summary>내보내기</summary>
-                    <div className={styles.compactToolsBody}>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          download(
-                            `${row.title}.txt`,
-                            exportText(),
-                            "text/plain;charset=utf-8",
-                          )
-                        }
-                        className="rounded-lg border border-mw-line px-3 py-2 text-xs font-bold"
-                      >
-                        TXT 추출
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          navigator.clipboard.writeText(exportText())
-                        }
-                        className="rounded-lg border border-mw-line px-3 py-2 text-xs font-bold"
-                      >
-                        복사
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          download(
-                            `${row.title}.csv`,
-                            `항목,값\n${layout.map((entry) => {
-                              const column = columnsByKey.get(entry.key);
-                              const value = detailValueText(entry.type ?? column?.type, row.values[entry.key], row.values, column?.options_jsonb);
-                              return `"${entry.label ?? entry.key}","${value.replaceAll('"', '""')}"`;
-                            }).join("\n")}`,
-                            "text/csv;charset=utf-8",
-                          )
-                        }
-                        className="rounded-lg border border-mw-line px-3 py-2 text-xs font-bold"
-                      >
-                        ⬇ CSV
-                      </button>
-                    </div>
                     </div>
                   </details>
+                  ) : null}
                 </div>
 
                 <aside className={styles.mainPane} data-item-detail-main>
@@ -2270,8 +2245,8 @@ export function ItemDetailPanel({
                                 className={styles.fieldInput}
                               />
                               {editBaseline?.id === event.id && (editBaseline.body !== event.body || editBaseline.count !== (event.edit_count ?? 0)) ? (
-                                <div className="my-2 rounded border border-mw-line p-2 text-sm">
-                                  <p className="font-semibold">다른 수정 내용이 있습니다</p>
+                                <div className={styles.editConflict}>
+                                  <p className={styles.editConflictTitle}>다른 수정 내용이 있습니다</p>
                                   <p className="whitespace-pre-wrap">{event.body}</p>
                                   <button type="button" className={styles.historyRemove} disabled={detailPending}
                                     onClick={() => {
@@ -2544,9 +2519,6 @@ export function ItemDetailPanel({
                             ))}
                           </div>
                         </div>
-                        <span className="text-xs text-mw-sub">
-                          @ 멘션
-                        </span>
                         <button
                           type="button"
                           disabled={detailPending || !composer.trim()}
