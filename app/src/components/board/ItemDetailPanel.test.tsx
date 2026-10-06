@@ -23,9 +23,11 @@ vi.mock("@/app/(app)/boards/assignment-lineage-actions", () => ({
   cancelAssignmentHandoffAction: lineageActions.cancel,
 }));
 
-import { detailValueText, ItemDetailPanel } from "./ItemDetailPanel";
+import { detailMemberText, detailValueText, ItemDetailPanel } from "./ItemDetailPanel";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { emptyOtherInfoValue, updateOtherInfoEntry } from "@/lib/boards/structured-field";
+import { resolveBoardDetailLayout } from "@/lib/boards/detail-layout";
+import { CONTRACT_WORK_TAB } from "@/lib/default-tabs/contract-work";
 
 const columns: BoardColumn[] = [
   {
@@ -1362,5 +1364,100 @@ describe("2026-10-06 상세 정리", () => {
     const source = readFileSync(sourcePath, "utf8");
     const panelBody = source.slice(source.indexOf("{open && ("));
     expect(panelBody).not.toMatch(/\b(text-xs|text-sm|text-base|font-bold|font-semibold|font-normal)\b/);
+  });
+});
+
+/*
+ * 2026-10-06 검토 P1 — 계약업체 실무 상세의 첫 칸이 담당자(person)였고, 일반 글자 입력으로 떨어져
+ *   구성원 id 를 날것으로 보여 줬다. 그 입력에 이름을 치면 담당자가 구성원 아닌 글자로 저장됐다.
+ */
+describe("2026-10-06 구성원 칸은 글자 입력도, 날것 id 도 아니다", () => {
+  const KNOWN = "8b1f3c9e-1111-2222-3333-444455556666";
+  const GONE = "0d6c2a71-9999-4888-8777-666655554444";
+  const members = [{ id: KNOWN, label: "김담당" }];
+
+  function staticHost(html: string) {
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    return host;
+  }
+
+  const workColumns: BoardColumn[] = CONTRACT_WORK_TAB.columns.map((definition, index) => ({
+    id: `col-${definition.key}`, org_id: "org-a", board_id: "board-work", key: definition.key,
+    label: definition.label, type: definition.type, source: definition.source,
+    rightPinned: definition.rightPinned ?? false,
+    options_jsonb: definition.options ? { options: definition.options } : null,
+    sort_order: index, width: definition.width ?? null,
+  }));
+
+  it.each([true, false])("계약업체 실무 기본 배치(canEditItems=%s)에 담당자 입력이 없고 id 가 보이지 않는다", (canEditItems) => {
+    const layout = resolveBoardDetailLayout(CONTRACT_WORK_TAB.source, [], workColumns);
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-work"
+        row={{ ...row, board_id: "board-work", assigned_to: KNOWN, values: { owner: KNOWN, engagement_kind: "자금" } }}
+        columns={workColumns}
+        boardLayout={layout}
+        layout={layout}
+        inherited
+        canEditItems={canEditItems}
+        canManageColumns={canEditItems}
+        memberOptions={members}
+        defaultOpen
+        initialDetail={{ ok: true, events: [], links: [], files: [], members: [] }}
+      />,
+    );
+    const host = staticHost(html);
+    expect(host.querySelector("#item-a-owner")).toBeNull();
+    expect(host.querySelector("#detail-field-owner")).toBeNull();
+    expect(html).not.toContain(KNOWN);
+    // 담당자는 연관담당 줄의 「담당자」로 이름이 보인다.
+    expect(host.querySelector("[data-item-detail-watchers]")?.textContent).toContain("김담당담당자");
+  });
+
+  it.each([true, false])("배치에 놓인 구성원 칸(canEditItems=%s)은 이름만 읽기 전용으로 보여 준다", (canEditItems) => {
+    const memberColumns: BoardColumn[] = [
+      { ...columns[0], id: "col-owner", key: "owner", label: "담당자", type: "person", sort_order: 0 },
+      { ...columns[0], id: "col-reviewer", key: "reviewer", label: "검토자", type: "person", sort_order: 1 },
+      { ...columns[0], id: "col-team", key: "team", label: "참여자", type: "people", sort_order: 2 },
+      { ...columns[0], id: "col-legacy", key: "legacy_owner", label: "옛 담당", type: "person", sort_order: 3 },
+    ];
+    const layout = memberColumns.map((column) => ({ key: column.key, source: "column" as const }));
+    const html = renderStaticPanel(
+      <ItemDetailPanel
+        boardId="board-a"
+        row={{ ...row, values: { owner: KNOWN, reviewer: GONE, team: [KNOWN, GONE], legacy_owner: "홍길동" } }}
+        columns={memberColumns}
+        boardLayout={layout}
+        layout={layout}
+        inherited
+        canEditItems={canEditItems}
+        canManageColumns={false}
+        memberOptions={members}
+        defaultOpen
+        initialDetail={{ ok: true, events: [], links: [], files: [], members: [] }}
+      />,
+    );
+    const host = staticHost(html);
+    for (const column of memberColumns) {
+      expect(host.querySelector(`#item-a-${column.key}`), column.key).toBeNull();
+      const field = host.querySelector(`#detail-field-${column.key}`)!;
+      expect(field.querySelector("input, textarea, select"), column.key).toBeNull();
+      expect(field.querySelector("label")?.hasAttribute("for"), column.key).toBe(false);
+    }
+    const text = (key: string) => host.querySelector(`#detail-field-${key} [data-detail-member-field]`)?.textContent;
+    expect(text("owner")).toBe("김담당");
+    expect(text("reviewer")).toBe("알 수 없는 구성원");
+    expect(text("team")).toBe("김담당, 알 수 없는 구성원");
+    expect(text("legacy_owner")).toBe("홍길동");
+    expect(html).not.toContain(KNOWN);
+    expect(html).not.toContain(GONE);
+  });
+
+  it("내보내기·미배치 목록이 쓰는 값 문구도 구성원 이름이다", () => {
+    expect(detailValueText("person", KNOWN, {}, null, members)).toBe("김담당");
+    expect(detailValueText("people", [KNOWN, GONE], {}, null, members)).toBe("김담당, 알 수 없는 구성원");
+    expect(detailValueText("person", null, {}, null, members)).toBe("—");
+    expect(detailMemberText(GONE, [])).toBe("알 수 없는 구성원");
   });
 });

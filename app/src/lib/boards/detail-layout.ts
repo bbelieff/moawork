@@ -53,6 +53,17 @@ const COLUMN_FALLBACK_SOURCES: ReadonlySet<string> = new Set([
   CONTRACT_WORK_TAB_SOURCE,
 ]);
 
+/**
+ * 구성원 칸(담당자 `person` · 여러 명 `people`). 값은 구성원 id 다.
+ *
+ * ★ 상세의 일반 자동저장 입력은 글자를 그대로 저장한다. 이 칸이 거기로 가면 담당자 자리에
+ *   구성원 id 가 날것으로 보이고, 이름·오타가 그대로 담당자로 박제된다 — 표의 담당자 선택·
+ *   담당자 필터·업체관리 현황이 모두 이 칸을 읽는다 (2026-10-06 검토 P1).
+ */
+export function isMemberFieldType(type: string | null | undefined): boolean {
+  return type === "person" || type === "people";
+}
+
 export function resolveBoardDetailLayout(
   boardSource: string | null,
   boardLayout: unknown,
@@ -64,8 +75,12 @@ export function resolveBoardDetailLayout(
   }
   const kind = workflowKindForSource(boardSource);
   const hidden: ReadonlySet<string> = kind ? workflowDetailHiddenKeys(kind) : new Set();
+  // 신규리드 상세에는 담당자 전용 편집기(「담당자 흐름」)가 있다. 그 밖의 기본 탭은 담당자를
+  // 연관담당 줄의 「담당자」로 이미 보여 주므로, 기본 배치의 회사 정보에 구성원 칸을 넣지 않는다.
+  const keepMemberColumns = boardSource === NEW_LEAD_TAB_SOURCE;
   return activeColumns
     .filter((column) => !hidden.has(column.key))
+    .filter((column) => keepMemberColumns || !isMemberFieldType(column.type))
     .map((column) => ({
       key: column.key,
       source: "column",

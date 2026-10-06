@@ -44,6 +44,7 @@ import type {
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
 import {
   isDemotableDetailKey,
+  isMemberFieldType,
   moveDetailEntry,
   unplacedDetailKeys,
 } from "@/lib/boards/detail-layout";
@@ -382,15 +383,38 @@ function inputValue(value: CellValue | undefined): string | number {
   return typeof value === "number" ? value : String(value);
 }
 
+const MEMBER_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * 구성원 칸(담당자·연관담당)의 표시 문구. 저장값은 구성원 id 라서 이름으로 바꿔 보여 준다.
+ * ★ 목록에 없는 id 는 날것으로 내보이지 않는다. id 꼴이 아닌 옛 글자 값(이관된 이름 등)은
+ *   사람이 읽을 수 있는 기록이므로 그대로 보여 준다.
+ */
+export function detailMemberText(
+  value: CellValue | undefined,
+  members: readonly MemberPickerMember[],
+): string {
+  const ids = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+  return ids
+    .filter((id): id is string => typeof id === "string" && id.trim() !== "")
+    .map((id) =>
+      members.find((member) => member.id === id)?.label
+      ?? (MEMBER_ID_SHAPE.test(id.trim()) ? "알 수 없는 구성원" : id.trim()),
+    )
+    .join(", ");
+}
+
 export function detailValueText(
   type: string | undefined,
   value: CellValue | undefined,
   values: ItemWithValues["values"],
   options?: BoardColumn["options_jsonb"],
+  members: readonly MemberPickerMember[] = [],
 ): string {
   if (type === "other_info") {
     return otherInfoDetailText(value, otherInfoLegacyFromValues(values));
   }
+  if (isMemberFieldType(type)) return detailMemberText(value, members) || "—";
   if (!type) return inputValue(value).toString();
   return formatCell(type as BoardColumn["type"], value ?? null, options?.options ?? []) || "—";
 }
@@ -1040,7 +1064,7 @@ export function ItemDetailPanel({
     const fields = layout.map(
       (entry) => {
         const column = columnsByKey.get(entry.key);
-        return `${entry.label ?? column?.label ?? entry.key}: ${detailValueText(entry.type ?? column?.type, row.values[entry.key], row.values, column?.options_jsonb)}`;
+        return `${entry.label ?? column?.label ?? entry.key}: ${detailValueText(entry.type ?? column?.type, row.values[entry.key], row.values, column?.options_jsonb, memberOptions)}`;
       },
     );
     const history = visibleHistory.map(
@@ -1060,7 +1084,7 @@ export function ItemDetailPanel({
   const exportCsv = () =>
     `항목,값\n${layout.map((entry) => {
       const column = columnsByKey.get(entry.key);
-      const value = detailValueText(entry.type ?? column?.type, row.values[entry.key], row.values, column?.options_jsonb);
+      const value = detailValueText(entry.type ?? column?.type, row.values[entry.key], row.values, column?.options_jsonb, memberOptions);
       return `"${entry.label ?? entry.key}","${value.replaceAll('"', '""')}"`;
     }).join("\n")}`;
 
@@ -1270,6 +1294,15 @@ export function ItemDetailPanel({
                         ),
                       );
                       const structuredCompositeField = type === "other_info";
+                      /*
+                       * 2026-10-06 검토 P1 — 구성원 칸(담당자·연관담당)은 일반 자동저장 입력으로 보내지 않는다.
+                       *   그 입력은 글자를 그대로 저장해서, 담당자 자리에 구성원 id 가 날것으로 보이고
+                       *   이름·오타가 담당자로 박제됐다. 전용 편집기(신규리드 「담당자 흐름」)가 없는 자리에서는
+                       *   구성원 이름만 읽기 전용으로 보여 주고, 바꾸기는 표의 구성원 선택이 맡는다.
+                       */
+                      const memberField =
+                        !assignmentLineageField &&
+                        (isMemberFieldType(column?.type) || isMemberFieldType(type));
                       const loanCompositeField = Boolean(
                         canonicalNewLead && entry.key === canonicalLoanEntryKey,
                       );
@@ -1291,7 +1324,7 @@ export function ItemDetailPanel({
                             htmlFor={
                               loanCompositeField && canEditItems
                                 ? `${row.id}-${entry.key}`
-                                : editable && !assignmentLineageField && !financialCompositeField && !structuredCompositeField
+                                : editable && !assignmentLineageField && !memberField && !financialCompositeField && !structuredCompositeField
                                   ? `${row.id}-${entry.key}`
                                   : undefined
                             }
@@ -1376,6 +1409,10 @@ export function ItemDetailPanel({
                                   readOnly={!canEditItems}
                                 />
                               </div>
+                            ) : memberField ? (
+                              <p className={styles.readonlyValue} data-detail-member-field>
+                                {detailMemberText(value, memberOptions) || "—"}
+                              </p>
                             ) : regionKind && editable ? (
                               <RegionAutoSaveField
                                 boardId={boardId}
@@ -1907,6 +1944,7 @@ export function ItemDetailPanel({
                                 row.values[key],
                                 row.values,
                                 columnsByKey.get(key)?.options_jsonb,
+                                memberOptions,
                               )}
                             </span>
                           </div>

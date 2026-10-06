@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { CONTRACT_WORK_TAB } from "@/lib/default-tabs/contract-work";
+import { NEW_LEAD_TAB } from "@/lib/default-tabs/new-lead";
+import type { DefaultTab } from "@/lib/default-tabs/types";
+import type { BoardColumn } from "./types";
 import {
   detailKeyFromLabel,
+  isMemberFieldType,
   moveDetailEntry,
   normalizeDetailLayout,
   resolveBoardDetailLayout,
@@ -119,5 +124,45 @@ describe("BBE-107 상세 필드 레이아웃", () => {
     }));
     expect(resolveBoardDetailLayout("core.default-tab/new-lead", [], columns).map((entry) => entry.key))
       .toEqual(["company", "phone"]);
+  });
+
+  /*
+   * 2026-10-06 검토 P1 — 계약업체 실무 fallback 이 활성 컬럼을 «전부» 넣으면 첫 칸이 담당자(person)다.
+   *   상세에는 계약업체 실무용 구성원 편집기가 없어 일반 글자 입력으로 떨어졌고, 담당자 자리에
+   *   구성원 id 가 날것으로 보이며 아무 글자나 담당자로 저장됐다.
+   */
+  describe("구성원 칸(담당자·연관담당)", () => {
+    // 실제 설치 정의 그대로의 컬럼 — 서버 호출부처럼 숨기기 전 전체를 넘긴다.
+    const installed = (tab: DefaultTab): BoardColumn[] => tab.columns.map((definition, index) => ({
+      id: `column-${definition.key}`, org_id: "org-a", board_id: `board-${tab.key}`,
+      key: definition.key, label: definition.label, type: definition.type, source: definition.source,
+      rightPinned: definition.rightPinned ?? false,
+      options_jsonb: definition.options ? { options: definition.options } : null,
+      sort_order: index, width: definition.width ?? null,
+    }));
+
+    it("계약업체 실무 기본 배치에는 구성원 칸이 없다 — 담당자는 연관담당 줄이 보여 준다", () => {
+      const columns = installed(CONTRACT_WORK_TAB);
+      expect(columns[0]).toMatchObject({ key: "owner", type: "person" });
+      const resolved = resolveBoardDetailLayout(CONTRACT_WORK_TAB.source, [], columns);
+      expect(resolved.length).toBeGreaterThan(0);
+      expect(resolved.map((entry) => entry.key)).not.toContain("owner");
+      expect(resolved.filter((entry) => isMemberFieldType(entry.type))).toEqual([]);
+      // 구성원 칸만 빠지고 나머지 순서는 설치 정의 그대로다.
+      expect(resolved[0].key).toBe(columns.find((column) => !isMemberFieldType(column.type))!.key);
+    });
+
+    it("신규리드는 담당자 전용 편집기(담당자 흐름)가 있어 기본 배치에 담당자를 남긴다", () => {
+      const resolved = resolveBoardDetailLayout(NEW_LEAD_TAB.source, [], installed(NEW_LEAD_TAB));
+      expect(resolved.map((entry) => entry.key)).toEqual(expect.arrayContaining(["owner", "collaborators"]));
+    });
+
+    it("person·people 만 구성원 칸이다", () => {
+      expect(isMemberFieldType("person")).toBe(true);
+      expect(isMemberFieldType("people")).toBe(true);
+      for (const other of ["text", "status", "select", "multiselect", undefined, null]) {
+        expect(isMemberFieldType(other)).toBe(false);
+      }
+    });
   });
 });
