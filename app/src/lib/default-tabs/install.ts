@@ -21,7 +21,7 @@
 
 import type { Ctx, FieldOption } from "@/lib/types";
 import type { BoardsRepo, NewColumn } from "@/lib/boards/store";
-import type { Board } from "@/lib/boards/types";
+import type { Board, BoardColumn } from "@/lib/boards/types";
 import { plainGroupName } from "@/lib/boards/moveRules";
 import { createRequestBoardsRepo } from "@/lib/boards/request-repo";
 import { CONTACT_TAB } from "./contact";
@@ -29,7 +29,13 @@ import { CONTRACT_WORK_TAB } from "./contract-work";
 import { NEW_LEAD_TAB } from "./new-lead";
 import { NOTICE_TAB } from "./notice";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
-import { countLiveRowsByGroup, linkedStageSyncNeedsLiveRowCounts, planLinkedStageSync } from "@/lib/boards/stage-link";
+import {
+  countLiveRowsByGroup,
+  groupLinkedStageColumnKey,
+  isGroupLinkedStageColumn,
+  linkedStageSyncNeedsLiveRowCounts,
+  planLinkedStageSync,
+} from "@/lib/boards/stage-link";
 import type { DefaultTab, DefaultTabAssignee, DefaultTabColumn } from "./types";
 
 export { countLiveRowsByGroup } from "@/lib/boards/stage-link";
@@ -71,13 +77,54 @@ function sameJson(left: unknown, right: unknown): boolean {
  *   그 어긋남은 정상 케이스만 테스트하면 절대 안 보인다. 한 눈을 공유하면 어긋날 수가 없다.
  */
 function findExistingGroup<TGroup extends { id: string; name: string; sort_order?: number }>(
+  tab: DefaultTab,
   definition: DefaultTab["groups"][number],
   groups: readonly TGroup[],
+  columns: readonly StageLinkColumn[],
   assignees: readonly DefaultTabAssignee[],
 ): TGroup | undefined {
   const assignee = definition.assigneeSlot === undefined ? undefined : assignees[definition.assigneeSlot];
   if (assignee) return groups.find((group) => assigneeOwnerFromGroupName(group.name) === assignee.userId);
-  return findEquivalentGroup(definition.name, groups);
+  return findStageLinkedGroup(tab, definition.name, groups, columns) ?? findEquivalentGroup(definition.name, groups);
+}
+
+type StageLinkColumn = Readonly<{
+  key: string;
+  type: BoardColumn["type"];
+  move_rule_jsonb?: Record<string, string> | null;
+}>;
+
+/**
+ * 2026-10-06(#845 리뷰 P1) — 단계가 연결된 탭에서는 정의 그룹을 «이름» 이 아니라 «연결» 로 찾는다.
+ *
+ * ★ 왜: «단계 = 보드 그룹» 이라서 회사는 띠 이름을 마음대로 바꾼다(그러면 단계 라벨이 따라 바뀐다).
+ *   «🔂 심사 중» → «1차 심사» 처럼 본문까지 바꾸면 이름으로는 같은 그룹을 못 알아본다. 그러면
+ *   다음 진입 repair·부트스트랩이 빈 «🔂 심사 중» 을 맨 뒤에 다시 만들고, 동기화가 그 유령에
+ *   새 단계(`group:<id>`)와 이동 규칙까지 붙였다. 지워도 다음 repair 가 또 만든다.
+ *
+ * 연결의 근거: 정의 이동 규칙(`moveTo`)에서 이 정의 그룹을 가리키는 선택지 id(예: «심사 중») 를
+ *   저장된 단계 칸 규칙이 «살아 있는» 그룹에 잇고 있으면, 그 그룹이 이 정의 그룹이다.
+ *   선택지 id 는 동기화가 절대 바꾸지 않고, 그룹 이름을 바꿔도 규칙은 그대로다.
+ *   규칙이 꺼진 칸(비었음)·연결되지 않은 탭·규칙 항목이 없는 경우는 근거가 없으니 이름으로 찾는다.
+ */
+function findStageLinkedGroup<TGroup extends { id: string }>(
+  tab: DefaultTab,
+  definitionName: string,
+  groups: readonly TGroup[],
+  columns: readonly StageLinkColumn[],
+): TGroup | undefined {
+  const key = groupLinkedStageColumnKey(tab.source);
+  if (!key) return undefined;
+  const moveTo = tab.columns.find((column) => column.key === key)?.moveTo;
+  const stored = columns.find((column) => column.key === key);
+  if (!moveTo || !stored || !isGroupLinkedStageColumn(tab.source, stored)) return undefined;
+  const rule = stored.move_rule_jsonb ?? {};
+  for (const [optionId, groupName] of Object.entries(moveTo)) {
+    if (groupName !== definitionName || !Object.hasOwn(rule, optionId)) continue;
+    const linked = groups.find((group) => group.id === rule[optionId]);
+    if (linked) return linked;
+  }
+  return undefined;
 }
 
 /**
@@ -183,7 +230,7 @@ export async function readDefaultTabBoardDrift(
       // ensure 가 «건너뛰는» 정의는 여기서도 건너뛴다 — 같은 눈이어야 한다.
       const assignee = definition.assigneeSlot === undefined ? undefined : assignees[definition.assigneeSlot];
       if (definition.assigneeSlot !== undefined && !assignee) return false;
-      return !findExistingGroup(definition, groups, assignees);
+      return !findExistingGroup(tab, definition, groups, columns, assignees);
     })
     .map((definition) => definition.name);
 
@@ -647,7 +694,12 @@ export async function ensureDefaultTabAdditive(
     source: tab.source,
   });
 
-  const groups = await store.listGroups(ctx, board.id);
+  // 컬럼을 그룹보다 먼저 읽는다 — 단계가 연결된 탭은 저장된 단계 규칙으로 정의 그룹을 찾는다(findExistingGroup).
+  //   아래 그룹 쓰기는 컬럼을 바꾸지 않으므로 이 목록은 컬럼 보장 단계까지 그대로 유효하다.
+  const [groups, columns] = await Promise.all([
+    store.listGroups(ctx, board.id),
+    store.listColumns(ctx, board.id),
+  ]);
   let nextGroupOrder = groups.length === 0 ? 0 : Math.max(...groups.map((group) => group.sort_order)) + 1;
   const groupIds: Record<string, string> = {};
   for (const definition of tab.groups) {
@@ -657,7 +709,7 @@ export async function ensureDefaultTabAdditive(
     if (definition.assigneeSlot !== undefined && !assignee) continue;
     const expectedName = assignee ? assigneeGroupName(definition.name, assignee) : definition.name;
     // 판정(readDefaultTabDrift)과 «같은 눈» 을 쓴다 — 어긋나면 「없다고 보고 안 만드는」 구멍이 생긴다.
-    const existing = findExistingGroup(definition, groups, assignees);
+    const existing = findExistingGroup(tab, definition, groups, columns, assignees);
     const group = existing ?? await store.createGroup(ctx, board.id, {
       name: expectedName,
       color: definition.color,
@@ -667,7 +719,6 @@ export async function ensureDefaultTabAdditive(
     if (!existing) { groups.push(group); nextGroupOrder += 1; }
   }
 
-  const columns = await store.listColumns(ctx, board.id);
   let nextSortOrder = nextColumnSortOrder(columns);
   for (const definition of tab.columns) {
     // 위와 같은 이유로 판정과 같은 눈을 쓴다.
@@ -726,18 +777,22 @@ export async function ensureDefaultTab(
     : [];
   const existing = (await store.listBoards(ctx)).find((board) => board.source === tab.source);
   if (existing) {
-    const currentGroups = await store.listGroups(ctx, existing.id);
+    // 컬럼을 그룹 보장보다 먼저 읽는다 — 단계가 연결된 탭은 저장된 단계 규칙으로 정의 그룹을 찾는다.
+    //   그룹 보장·담당자 그룹 정리는 컬럼을 바꾸지 않으므로 이 목록을 컬럼 보장에도 그대로 쓴다.
+    const [currentGroups, columns] = await Promise.all([
+      store.listGroups(ctx, existing.id),
+      store.listColumns(ctx, existing.id),
+    ]);
     let nextGroupOrder = currentGroups.length === 0 ? 0 : Math.max(...currentGroups.map((group) => group.sort_order)) + 1;
     for (const definition of tab.groups.filter((group) => group.assigneeSlot === undefined)) {
-      // 2026-10-06 — 판정과 «같은 눈» (앞머리 장식만 다른 이름은 같은 그룹). 정확한 이름만 보면
-      //   회사가 «🔂 심사 중» → «심사 중» 으로 고친 보드에 빈 «🔂 심사 중» 을 또 만든다.
-      if (!findExistingGroup(definition, currentGroups, assignees)) {
+      // 2026-10-06 — 판정과 «같은 눈» (앞머리 장식만 다른 이름은 같은 그룹, 단계가 연결된 탭은 연결로도 찾는다).
+      //   정확한 이름만 보면 회사가 «🔂 심사 중» → «심사 중»·«1차 심사» 로 고친 보드에 빈 «🔂 심사 중» 을 또 만든다.
+      if (!findExistingGroup(tab, definition, currentGroups, columns, assignees)) {
         await store.createGroup(ctx, existing.id, { name: definition.name, color: definition.color, sortOrder: nextGroupOrder });
         nextGroupOrder += 1;
       }
     }
-    const groupIds = await reconcileAssigneeGroups(ctx, store, existing.id, tab, assignees);
-    const columns = await store.listColumns(ctx, existing.id);
+    const groupIds = await reconcileAssigneeGroups(ctx, store, existing.id, tab, assignees, columns);
     let nextSortOrder = nextColumnSortOrder(columns);
     for (const definition of tab.columns) {
       const column = columns.find((candidate) => candidate.key === definition.key);
@@ -917,6 +972,7 @@ async function reconcileAssigneeGroups(
   boardId: string,
   tab: DefaultTab,
   assignees: readonly DefaultTabAssignee[],
+  columns: readonly StageLinkColumn[],
 ): Promise<Record<string, string>> {
   const groups = await store.listGroups(ctx, boardId);
   const slotDefinitions = tab.groups.filter(
@@ -924,7 +980,8 @@ async function reconcileAssigneeGroups(
   );
   const groupIds: Record<string, string> = {};
   for (const definition of tab.groups.filter((group) => group.assigneeSlot === undefined)) {
-    const existing = findEquivalentGroup(definition.name, groups);
+    // 그룹 보장과 «같은 눈» — 이름이 바뀐 연결 그룹도 같은 정의 그룹으로 매핑한다.
+    const existing = findExistingGroup(tab, definition, groups, columns, assignees);
     if (existing) groupIds[definition.name] = existing.id;
   }
 

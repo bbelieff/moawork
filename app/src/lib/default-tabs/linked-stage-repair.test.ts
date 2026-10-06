@@ -169,6 +169,83 @@ describe("운영 모양 — 이름 바뀐 원래 그룹 + 빈 설치기 복제 9
   });
 });
 
+describe("본문까지 바꾼 띠 이름 — 설치기가 «연결» 로 같은 그룹을 알아본다(리뷰 P1)", () => {
+  // 제품 결정은 «띠 이름을 바꾸면 단계가 따라 바뀐다» 다. 그러니 «🔂 심사 중» → «1차 심사» 같은 이름 변경은
+  // 흔하다. 이름으로만 찾으면 다음 진입 repair·부트스트랩이 빈 «🔂 심사 중» 을 다시 만들고, 동기화가 그 유령에
+  // 새 단계(`group:<id>`)와 이동 규칙을 붙인다. 정의 이동 규칙의 선택지 id(«심사 중») 가 저장된 규칙에서
+  // 살아 있는 그룹을 가리키면 그 그룹이 정의 그룹이다.
+  const RENAMES = [
+    ["🔂 심사 중", "1차 심사"],
+    ["📂 소진공 취약자금 접수예정", "취약 접수 준비"],
+    ["업체관리", "거래처 관리"],
+  ] as const;
+
+  async function renamedThroughService() {
+    const local = new LocalBoardsRepo();
+    const store = toAsyncBoardsRepo(local);
+    const svc = new BoardsService(store);
+    const { boardId } = await ensureDefaultTab(ctx, CONTRACT_WORK_TAB, store, []);
+    const before = await store.listGroups(ctx, boardId);
+    const renamedIds = new Map<string, string>();
+    for (const [from, to] of RENAMES) {
+      const group = before.find((candidate) => candidate.name === from)!;
+      await svc.renameGroup(ctx, boardId, group.id, to);
+      renamedIds.set(from, group.id);
+    }
+    const board = (await store.listBoards(ctx)).find((candidate) => candidate.id === boardId)!;
+    const stage = async () => (await store.listColumns(ctx, boardId)).find((column) => column.key === "progress_status")!;
+    return { local, store, boardId, board, stage, renamedIds, groupCount: before.length };
+  }
+
+  async function expectNoGhost(
+    fixture: Awaited<ReturnType<typeof renamedThroughService>>,
+  ) {
+    const { store, boardId, stage, renamedIds, groupCount } = fixture;
+    const groups = await store.listGroups(ctx, boardId);
+    expect(groups).toHaveLength(groupCount);
+    for (const [from] of RENAMES) expect(groups.some((group) => group.name === from), from).toBe(false);
+    const column = await stage();
+    const options = column.options_jsonb!.options;
+    expect(options).toHaveLength(14);
+    expect(options.filter((option) => option.id.startsWith("group:"))).toEqual([]);
+    expect(column.move_rule_jsonb?.["심사 중"]).toBe(renamedIds.get("🔂 심사 중"));
+    expect(options.find((option) => option.id === "심사 중")?.label).toBe("1차 심사");
+    expect(options.find((option) => option.id === "📂소진공 신용취약 대기")?.label).toBe("취약 접수 준비");
+    expect(options.find((option) => option.id === "업체관리")?.label).toBe("거래처 관리");
+    expect(options.map((option) => option.label)).toEqual(groups.map((group) => group.name));
+  }
+
+  it("드리프트 판정은 «고칠 것 없음» 이다(빠진 그룹 없음) — 진입 repair 가 리스를 잡지 않는다", async () => {
+    const fixture = await renamedThroughService();
+    const drift = await readDefaultTabBoardDrift(ctx, CONTRACT_WORK_TAB, fixture.board, fixture.store, []);
+    expect(drift.missingGroupNames).toEqual([]);
+    expect(drift.hasWork).toBe(false);
+    expect((await readDefaultTabBootstrapDrift(ctx, CONTRACT_WORK_TAB, fixture.board, fixture.store, [])).hasWork).toBe(false);
+  });
+
+  it("진입 repair(additive)는 그룹을 만들지 않고 단계 14개를 지킨다 — 정의 이름은 이름 바뀐 그룹에 매핑된다", async () => {
+    const fixture = await renamedThroughService();
+    const createGroup = vi.spyOn(fixture.local, "createGroup");
+
+    const ensured = await ensureDefaultTabAdditive(ctx, CONTRACT_WORK_TAB, fixture.store, []);
+
+    expect(createGroup).not.toHaveBeenCalled();
+    for (const [from] of RENAMES) expect(ensured.groupIds[from], from).toBe(fixture.renamedIds.get(from));
+    await expectNoGhost(fixture);
+  });
+
+  it("부트스트랩 보장(ensureDefaultTab)도 그룹을 만들지 않고 단계 14개를 지킨다", async () => {
+    const fixture = await renamedThroughService();
+    const createGroup = vi.spyOn(fixture.local, "createGroup");
+
+    await ensureDefaultTab(ctx, CONTRACT_WORK_TAB, fixture.store, []);
+    await ensureDefaultTabAdditive(ctx, CONTRACT_WORK_TAB, fixture.store, []);
+
+    expect(createGroup).not.toHaveBeenCalled();
+    await expectNoGhost(fixture);
+  });
+});
+
 describe("stage-link — 어느 칸이 연결돼 있나", () => {
   it("계약업체 실무의 progress_status 만, 이동 규칙이 켜져 있을 때만 연결된다", () => {
     expect(groupLinkedStageColumnKey(CONTRACT_WORK_TAB.source)).toBe("progress_status");

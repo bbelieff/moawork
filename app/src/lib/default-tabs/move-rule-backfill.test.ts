@@ -367,8 +367,27 @@ describe("2026-10-06 — 이름 바꾼 기본 그룹을 다시 만들지 않는�
     expect(await store.listGroups(ctx, boardId)).toHaveLength(14);
   });
 
-  it("본문이 다른 이름(회사가 완전히 바꾼 그룹)은 여전히 «빠진 것» 으로 본다", async () => {
+  it("본문이 다른 이름도 단계 규칙이 그 그룹을 잇고 있으면 같은 그룹이다(#845 — 연결로 찾는다)", async () => {
     const { store, boardId } = await installAndRename("🔂 심사 중", "심사 완료");
+    const board = (await store.listBoards(ctx)).find((candidate) => candidate.id === boardId)!;
+    const drift = await readDefaultTabBoardDrift(ctx, CONTRACT_WORK_TAB, board, store, []);
+    expect(drift.missingGroupNames).toEqual([]);
+  });
+
+  it("단계 규칙을 끈 보드(연결 근거 없음)에서는 본문이 다른 이름을 여전히 «빠진 것» 으로 본다", async () => {
+    const { store, boardId } = await installAndRename("🔂 심사 중", "심사 완료");
+    const status = (await store.listColumns(ctx, boardId)).find((column) => column.key === "progress_status")!;
+    await store.updateColumn(ctx, status.id, { moveRule: {} });
+    const board = (await store.listBoards(ctx)).find((candidate) => candidate.id === boardId)!;
+    const drift = await readDefaultTabBoardDrift(ctx, CONTRACT_WORK_TAB, board, store, []);
+    expect(drift.missingGroupNames).toEqual(["🔂 심사 중"]);
+  });
+
+  it("규칙이 «지워진» 그룹을 가리키면 연결 근거가 아니다 — 살아 있는 그룹만 같은 그룹으로 본다", async () => {
+    const { store, boardId, renamedId } = await installAndRename("🔂 심사 중", "심사 완료");
+    await store.deleteGroup(ctx, renamedId);
+    const status = (await store.listColumns(ctx, boardId)).find((column) => column.key === "progress_status")!;
+    expect(status.move_rule_jsonb?.["심사 중"]).toBe(renamedId);
     const board = (await store.listBoards(ctx)).find((candidate) => candidate.id === boardId)!;
     const drift = await readDefaultTabBoardDrift(ctx, CONTRACT_WORK_TAB, board, store, []);
     expect(drift.missingGroupNames).toEqual(["🔂 심사 중"]);
