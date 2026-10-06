@@ -10,6 +10,7 @@
  * 순수 함수만 담는다(도메인 규칙과 저장 부수효과를 분리 — service.ts 가 조합).
  */
 
+import type { FieldOption } from "@/lib/types";
 import type { BoardColumn, CellValue } from "./types";
 
 /**
@@ -80,6 +81,9 @@ export function primaryStageForGroup(
   if (candidates.length === 0) return null;
   const group = groups.find((candidate) => candidate.id === groupId);
   if (!group) return null;
+  // #845 동기화 뒤에는 대표의 라벨이 그룹 이름과 «정확히» 같다 — 그것을 먼저 본다.
+  const exact = candidates.filter((option) => option.label === group.name);
+  if (exact.length === 1) return exact[0].id;
   const groupKey = plainGroupName(group.name);
   const named = candidates.filter((option) => plainGroupName(option.label) === groupKey);
   return named.length === 1 ? named[0].id : null;
@@ -115,4 +119,190 @@ export function planStageBackSync(input: Readonly<{
   if (input.sourceGroupId === input.targetGroupId) return null;
   if (current !== null && resolveMoveTarget(column, current) === input.targetGroupId) return null;
   return primary;
+}
+
+/** 그룹에 대표 단계가 없을 때 새로 만드는 선택지 id — 그룹 id 에서 나오므로 다시 계산해도 같다. */
+export function stageOptionIdForGroup(groupId: string): string {
+  return `group:${groupId}`;
+}
+
+export type StageSyncGroup = Readonly<{ id: string; name: string; sort_order: number; color?: string | null }>;
+
+export type StageSyncSettings = Readonly<{
+  /**
+   * 설치기가 만드는 그룹 이름(정의 이름 그대로). 빈 설치기 복제는 이 이름과 «정확히» 같을 때만
+   * 복제로 본다 — 회사가 손으로 만든 같은 본문 이름의 그룹은 복제가 아니다. 없으면 이름으로 거르지 않는다.
+   */
+  installerGroupNames?: ReadonlySet<string>;
+}>;
+
+export type StageSyncPlan = Readonly<{
+  options: FieldOption[];
+  moveRule: Record<string, string>;
+  /** 저장된 선택지·규칙과 다른가 — false 면 쓰지 않는다(두 번째 동기화는 쓰기 0). */
+  changed: boolean;
+}>;
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function sortGroups(groups: readonly StageSyncGroup[]): StageSyncGroup[] {
+  return [...groups].sort((left, right) =>
+    left.sort_order - right.sort_order || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+}
+
+/**
+ * 정렬된 그룹 중 «앞선 같은 본문 이름의 그룹이 있는» 그룹 → 그 맨 앞 그룹(원래 그룹).
+ * 빈 설치기 복제의 후보다. 설치기 이름 그대로인 그룹만 후보다(`installerGroupNames` 가 있으면).
+ */
+function duplicateCandidates(
+  sorted: readonly StageSyncGroup[],
+  settings: StageSyncSettings,
+): Map<string, StageSyncGroup> {
+  const firstByName = new Map<string, StageSyncGroup>();
+  const keeperOf = new Map<string, StageSyncGroup>();
+  for (const group of sorted) {
+    const key = plainGroupName(group.name);
+    const first = firstByName.get(key);
+    if (!first) {
+      firstByName.set(key, group);
+      continue;
+    }
+    if (!settings.installerGroupNames || settings.installerGroupNames.has(group.name)) keeperOf.set(group.id, first);
+  }
+  return keeperOf;
+}
+
+/** 같은 본문 이름의 «다른» 그룹을 규칙이 가리키는가. */
+function sameNameGroupLinked(
+  group: StageSyncGroup,
+  sorted: readonly StageSyncGroup[],
+  rule: Readonly<Record<string, string>>,
+): boolean {
+  const key = plainGroupName(group.name);
+  const targets = new Set(Object.values(rule));
+  return sorted.some((other) => other.id !== group.id && targets.has(other.id) && plainGroupName(other.name) === key);
+}
+
+/**
+ * 동기화가 «빈 설치기 복제» 를 가리려면 행 수가 필요한가 — 복제 후보가 하나라도 있을 때만 그렇다.
+ * 없으면 호출부는 행을 읽지 않는다(왕복을 늘리지 않는다).
+ */
+export function stageSyncNeedsLiveRowCounts(
+  groups: readonly StageSyncGroup[],
+  settings: StageSyncSettings = {},
+): boolean {
+  return duplicateCandidates(sortGroups(groups), settings).size > 0;
+}
+
+/**
+ * 그룹 ↔ 진행현황 단계 연결(2026-10-06 제품 책임자 결정, #845) — «단계 = 보드 그룹».
+ *
+ * 그룹(띠)의 이름·순서·추가가 바뀌면 단계 목록이 그대로 따라오게 선택지와 이동 규칙을 다시 짠다.
+ * 순수 함수다 — 쓰기는 호출부(서비스·설치기)가 `changed` 일 때만 한다.
+ *
+ *   · 그룹마다(정렬 순서대로) «대표 선택지» 하나 = 규칙이 그 그룹을 가리키는 선택지.
+ *     여럿이면 라벨이 그룹 이름과 같은 것 → 본문이 같은 것 → 목록에서 앞선 것.
+ *     대표의 라벨 = 그룹 이름, 선택지 순서 = 그룹 순서. **선택지 id 는 절대 안 바뀐다**
+ *     (`item_values`·발송 규칙의 trigger_value 가 id 로 묶여 있다).
+ *   · 대표가 없는 그룹 → 그룹 id 에서 나온 고정 id 로 새 선택지 + 규칙 항목.
+ *   · 그룹이 사라진 선택지 → id 는 그대로, 규칙만 잃는다(값만 바뀌는 단계, 맨 뒤).
+ *   · 빈 설치기 복제(앞선 같은 본문 이름의 그룹이 있고 · 설치기 이름 그대로이고 · 살아 있는 행 0)
+ *     → 선택지를 받지 않는다. 그 복제를 가리키던 규칙은 같은 본문 이름의 «원래» 그룹으로 옮긴다.
+ *   · 대표가 아닌 나머지(같은 그룹을 가리키는 별칭)는 라벨·규칙을 그대로 두고 대표들 뒤에 둔다.
+ *
+ * 행 수(`liveRowCounts`)를 모르면 «증거» 로만 판단한다: 아무 규칙도 가리키지 않는 후보만 빈 복제로 보고,
+ * 규칙이 가리키는 후보는 그대로 둔다(새 선택지를 만들지도, 규칙을 옮기지도 않는다).
+ *
+ * 규칙이 비었거나 없으면(회사가 «이동 끄기» 로 둔 칸) 연결하지 않는다 — null.
+ * 그룹이 하나도 없어도 null(규칙을 지울 근거로 쓰지 않는다).
+ */
+export function syncGroupLinkedStageColumn(
+  column: Pick<BoardColumn, "type" | "move_rule_jsonb" | "options_jsonb">,
+  groups: readonly StageSyncGroup[],
+  liveRowCounts?: ReadonlyMap<string, number>,
+  settings: StageSyncSettings = {},
+): StageSyncPlan | null {
+  if (column.type !== "select" && column.type !== "status") return null;
+  const storedRule = column.move_rule_jsonb;
+  if (!storedRule || Object.keys(storedRule).length === 0) return null;
+  if (groups.length === 0) return null;
+
+  const storedOptions = column.options_jsonb?.options ?? [];
+  const sorted = sortGroups(groups);
+  const groupIds = new Set(sorted.map((group) => group.id));
+  const ruleTargets = new Set(Object.values(storedRule));
+
+  // 빈 설치기 복제 → 그 복제가 대신하려던 원래 그룹(같은 본문 이름 중 맨 앞).
+  const ignored = new Map<string, string>();
+  for (const [groupId, keeper] of duplicateCandidates(sorted, settings)) {
+    const empty = liveRowCounts
+      ? (liveRowCounts.get(groupId) ?? 0) === 0
+      : !ruleTargets.has(groupId);
+    if (empty) ignored.set(groupId, keeper.id);
+  }
+
+  // 규칙 정리 — 사라진 그룹은 버리고, 빈 복제를 가리키던 항목은 원래 그룹으로 옮긴다.
+  const rule: Record<string, string> = {};
+  for (const [key, target] of Object.entries(storedRule)) {
+    if (typeof target !== "string" || !groupIds.has(target)) continue;
+    rule[key] = ignored.get(target) ?? target;
+  }
+
+  const indexOf = new Map(storedOptions.map((option, index) => [option.id, index]));
+  const optionById = new Map(storedOptions.map((option) => [option.id, option]));
+  const primaries: FieldOption[] = [];
+  const primaryIds = new Set<string>();
+  for (const group of sorted) {
+    if (ignored.has(group.id)) continue;
+    const candidates = storedOptions.filter((option) => option.archived !== true && rule[option.id] === group.id);
+    let primary: FieldOption | undefined;
+    if (candidates.length > 0) {
+      const groupKey = plainGroupName(group.name);
+      primary = candidates.find((option) => option.label === group.name)
+        ?? candidates.find((option) => plainGroupName(option.label) === groupKey)
+        ?? [...candidates].sort((left, right) => (indexOf.get(left.id) ?? 0) - (indexOf.get(right.id) ?? 0))[0];
+    }
+    const derivedId = stageOptionIdForGroup(group.id);
+    // 손으로 고친 규칙이 이 그룹의 고정 id 를 다른 그룹의 대표로 써 버렸다 — 같은 id 를 둘 만들 수 없으니 건너뛴다.
+    if (!primary && primaryIds.has(derivedId)) continue;
+    // 행 수를 모르면(증거만) 같은 본문 이름의 다른 그룹이 이미 단계를 받고 있을 때 새 단계를 만들지 않는다.
+    // 그 다른 그룹이 «규칙이 가리키는 빈 복제» 일 수 있다 — 행 수를 아는 동기화가 규칙을 이 그룹으로 옮기며
+    // 정리한다. 여기서 만들면 그때 같은 그룹에 단계가 둘(대표 + 옛 이름 별칭) 남는다.
+    if (!primary && !optionById.has(derivedId) && !liveRowCounts && sameNameGroupLinked(group, sorted, rule)) continue;
+    if (!primary && optionById.has(derivedId)) {
+      // 예전에 이 그룹을 위해 만든 선택지가 규칙만 잃고 남아 있다 — 새로 만들지 않고 다시 잇는다.
+      primary = optionById.get(derivedId);
+    }
+    const next: FieldOption = primary
+      ? { ...primary, label: group.name }
+      : {
+        id: derivedId,
+        label: group.name,
+        ...(group.color && HEX_COLOR.test(group.color) ? { color: group.color } : {}),
+      };
+    delete next.archived;
+    rule[next.id] = group.id;
+    primaryIds.add(next.id);
+    primaries.push(next);
+  }
+
+  const linked = (option: FieldOption) => option.archived !== true && rule[option.id] !== undefined;
+  const aliases = storedOptions.filter((option) => !primaryIds.has(option.id) && linked(option));
+  const rest = storedOptions.filter((option) => !primaryIds.has(option.id) && !linked(option));
+  const options = [...primaries, ...aliases, ...rest].map((option, order) => ({ ...option, order }));
+
+  const changed = canonical(options) !== canonical(storedOptions) || canonical(rule) !== canonical(storedRule);
+  return { options, moveRule: rule, changed };
 }

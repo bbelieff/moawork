@@ -29,7 +29,10 @@ import { CONTRACT_WORK_TAB } from "./contract-work";
 import { NEW_LEAD_TAB } from "./new-lead";
 import { NOTICE_TAB } from "./notice";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
+import { countLiveRowsByGroup, linkedStageSyncNeedsLiveRowCounts, planLinkedStageSync } from "@/lib/boards/stage-link";
 import type { DefaultTab, DefaultTabAssignee, DefaultTabColumn } from "./types";
+
+export { countLiveRowsByGroup } from "@/lib/boards/stage-link";
 
 /** 제품이 새 워크스페이스에 주는 기본 탭. 지금은 신규리드 하나 — 나머지 5탭은 복제 작업이다. */
 export const DEFAULT_TABS: DefaultTab[] = [NEW_LEAD_TAB, CONTACT_TAB, CONTRACT_WORK_TAB, NOTICE_TAB];
@@ -219,13 +222,24 @@ export async function readDefaultTabBoardDrift(
   // 아직 안 메꿔졌으면 고칠 일이 있다. 판정과 치유가 같은 눈을 쓰도록
   // planMoveRuleBackfill 하나로 본다.
   const moveRuleBackfillPending = planMoveRuleBackfill(tab, columns, groups).length > 0;
+  const otherWork = missingGroupNames.length > 0 || missingColumnKeys.length > 0 || definitionRevisionBehind || moveRuleBackfillPending;
+  // 2026-10-06(#845) — 그룹과 단계가 어긋났으면(이름·순서·새 그룹) 고칠 일이 있다. 진입 repair 와 «같은 눈»:
+  //   빈 설치기 복제 후보가 있을 때만 행을 읽어 정확히 가린다. 이미 고칠 일이 있으면 읽지 않는다.
+  const linkedStageSyncPending = !otherWork && planLinkedStageSync(
+    tab.source,
+    columns,
+    groups,
+    linkedStageSyncNeedsLiveRowCounts(tab.source, columns, groups)
+      ? countLiveRowsByGroup(await store.listItems(ctx, board.id))
+      : undefined,
+  ) !== null;
 
   return {
     boardMissing: false,
     missingGroupNames,
     missingColumnKeys,
     definitionRevisionBehind,
-    hasWork: missingGroupNames.length > 0 || missingColumnKeys.length > 0 || definitionRevisionBehind || moveRuleBackfillPending,
+    hasWork: otherWork || linkedStageSyncPending,
   };
 }
 
@@ -536,16 +550,33 @@ async function applyMoveRuleBackfill(
   }
 }
 
-/** 행 목록 → 그룹별 살아 있는 행 수(휴지통·보관 제외). */
-export function countLiveRowsByGroup(
-  items: readonly { group_id: string | null; deleted_at?: string | null; archived_at?: string | null }[],
-): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const item of items) {
-    if (item.group_id === null || item.deleted_at || item.archived_at) continue;
-    counts.set(item.group_id, (counts.get(item.group_id) ?? 0) + 1);
-  }
-  return counts;
+/**
+ * 그룹 ↔ 진행현황 단계 연결(#845)을 맞춘다 — 단계 라벨 = 그룹 이름, 단계 순서 = 그룹 순서,
+ * 그룹마다 단계 하나(없으면 새 선택지). 바뀔 것이 없으면 아무것도 쓰지 않는다.
+ *
+ * `rowCounts`:
+ *   · "exact" — 빈 설치기 복제 후보가 있을 때만 행을 읽어 정확히 가린다(진입 repair).
+ *   · "evidence" — 행을 읽지 않고 «규칙이 가리키는가» 로만 가린다(부트스트랩 보장).
+ *     부트스트랩의 읽기 전용 드리프트 검사는 행 읽기를 «고칠 것 있음» 으로 보므로 행을 읽지 않아야
+ *     깨끗한 보드에서 리스를 잡지 않는다. evidence 는 새 선택지를 만들거나 규칙을 옮기는 쪽으로
+ *     틀리지 않는다(exact 결과 위에서 돌면 아무것도 안 바꾼다) — 두 경로가 서로 되돌리지 않는다.
+ */
+async function applyLinkedStageSync(
+  ctx: Ctx,
+  tab: DefaultTab,
+  store: BoardsRepo,
+  boardId: string,
+  rowCounts: "exact" | "evidence",
+): Promise<void> {
+  const [columns, groups] = await Promise.all([
+    store.listColumns(ctx, boardId),
+    store.listGroups(ctx, boardId),
+  ]);
+  const liveRowCounts = rowCounts === "exact" && linkedStageSyncNeedsLiveRowCounts(tab.source, columns, groups)
+    ? countLiveRowsByGroup(await store.listItems(ctx, boardId))
+    : undefined;
+  const patch = planLinkedStageSync(tab.source, columns, groups, liveRowCounts);
+  if (patch) await store.updateColumn(ctx, patch.columnId, { options: patch.options, moveRule: patch.moveRule });
 }
 
 export type InstallerDuplicateGroup = Readonly<{
@@ -661,6 +692,8 @@ export async function ensureDefaultTabAdditive(
   // 2026-09-26 — 정의가 나중에 추가한 이동 규칙 항목을 빠진 쪽만 메꾼다
   // (planMoveRuleBackfill — 사용자 손댄 항목·그룹·선택지는 그대로).
   await applyMoveRuleBackfill(ctx, tab, store, board.id);
+  // 2026-10-06(#845) — 단계 목록을 그룹 이름·순서에 맞춘다(선택지 id 는 그대로).
+  await applyLinkedStageSync(ctx, tab, store, board.id, "exact");
 
   return {
     tabKey: tab.key,
@@ -734,6 +767,7 @@ export async function ensureDefaultTab(
     const reconciledColumns = await store.listColumns(ctx, existing.id);
     await reconcileDefaultDefinition(ctx, tab, store, existing.id);
     await applyMoveRuleBackfill(ctx, tab, store, existing.id);
+    await applyLinkedStageSync(ctx, tab, store, existing.id, "evidence");
     return {
       tabKey: tab.key,
       boardId: existing.id,
@@ -785,6 +819,8 @@ export async function ensureDefaultTab(
   }
 
   await reconcileDefaultDefinition(ctx, tab, store, board.id);
+  // 새 보드도 단계 라벨·순서를 그룹에 맞춰 둔다 — 이후 진입마다 «고칠 것 있음» 이 되지 않게.
+  await applyLinkedStageSync(ctx, tab, store, board.id, "evidence");
 
   return { tabKey: tab.key, boardId: board.id, created: true, groupIds, columnKeys };
 }

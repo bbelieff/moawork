@@ -14,7 +14,7 @@ it("registers the contract-work tab for default workspace installation", () => {
   expect(DEFAULT_TABS.find((tab) => tab.key === "work")).toBe(CONTRACT_WORK_TAB);
 });
 
-it("persists the 11 groups, 29 columns, and eleven resolved move targets", async () => {
+it("persists the 14 groups, 29 columns, and fourteen resolved move targets", async () => {
   const ctx = {
     org: { id: "org-contract-work", name: "Test organization" },
     user: { id: "owner-contract-work", name: "Owner", email: "owner@example.test" },
@@ -26,27 +26,39 @@ it("persists the 11 groups, 29 columns, and eleven resolved move targets", async
   const groups = local.listGroups(ctx, result.boardId);
   const status = local.listColumns(ctx, result.boardId).find((column) => column.key === "progress_status");
 
-  expect(groups).toHaveLength(11);
+  expect(groups).toHaveLength(14);
   expect(local.listColumns(ctx, result.boardId)).toHaveLength(29);
-  expect(Object.keys(status?.move_rule_jsonb ?? {})).toHaveLength(11);
-  expect(new Set(Object.values(status?.move_rule_jsonb ?? {}))).toEqual(
-    new Set(groups.filter((group) => Object.values(CONTRACT_WORK_TAB.columns.find((column) => column.key === "progress_status")!.moveTo!).includes(group.name)).map((group) => group.id)),
+  expect(Object.keys(status?.move_rule_jsonb ?? {})).toHaveLength(14);
+  // 2026-10-06(#845) 단계 = 보드 그룹: 14개 선택지가 14개 그룹을 하나씩 가리킨다.
+  expect(new Set(Object.values(status?.move_rule_jsonb ?? {}))).toEqual(new Set(groups.map((group) => group.id)));
+  // 설치 직후부터 단계 라벨·순서가 그룹 이름·순서와 같다(선택지 id 는 먼데이 사전 그대로).
+  expect(status?.options_jsonb?.options.map((option) => option.label)).toEqual(groups.map((group) => group.name));
+  expect(new Set(status?.options_jsonb?.options.map((option) => option.id))).toEqual(
+    new Set(CONTRACT_WORK_TAB.columns.find((column) => column.key === "progress_status")!.options!.map((option) => option.id)),
   );
 });
 
 describe("BBE-150 계약업체 실무 기본 탭", () => {
   it("BBE-144 전량 구조를 축소하지 않는다", () => {
-    expect(CONTRACT_WORK_TAB.groups).toHaveLength(11);
+    // 이관 사전 11개 + 2026-10-06(#845) 받아줄 그룹이 없던 단계의 새 그룹 3개.
+    expect(CONTRACT_WORK_TAB.groups).toHaveLength(14);
     expect(byLabel.get("진행기관")?.options).toHaveLength(18);
     expect(byLabel.get("세부명칭")?.options).toHaveLength(59);
     expect(byLabel.get("진행상황")?.options).toHaveLength(14);
   });
 
-  it("전량 선택지와 그룹은 이관 매핑 사전과 내용·순서가 같다", () => {
+  it("전량 선택지와 그룹은 이관 매핑 사전과 내용·순서가 같다 (새 3개 그룹은 목업 자리에 끼운다)", () => {
     const mapped = (label: string) => POLICYFUND_WORK_BOARD.columns.find((column) => column.label === label)!;
-    expect(CONTRACT_WORK_TAB.groups.map((group) => group.name.replace(/^\P{L}+/u, "").trim())).toEqual(
-      POLICYFUND_WORK_BOARD.sections.map((section) => section.groupName.replace(/^\P{L}+/u, "").trim()),
+    const plain = (name: string) => name.replace(/^\P{L}+/u, "").trim();
+    const added = new Set(["소공인(상생)", "해당연도 매출", "업체관리"]);
+    // 사전 11개 그룹의 내용·순서는 그대로다 — 새 그룹을 빼면 사전과 같다.
+    expect(CONTRACT_WORK_TAB.groups.map((group) => plain(group.name)).filter((name) => !added.has(name))).toEqual(
+      POLICYFUND_WORK_BOARD.sections.map((section) => plain(section.groupName)),
     );
+    // 새 그룹은 승인된 목업의 곁가지 축 순서(기업인증 진행 → 소공인(상생) → 관리중 → 해당연도 매출 → 업체관리) 자리에 있다.
+    expect(CONTRACT_WORK_TAB.groups.map((group) => plain(group.name)).slice(-6)).toEqual([
+      "기업인증 진행", "소공인(상생)", "관리중", "해당연도 매출", "업체관리", "대출불가",
+    ]);
     expect(byLabel.get("진행기관")?.options?.map((option) => option.label)).toEqual(
       mapped("진행 기관").options?.map((option) => option.label),
     );
@@ -113,16 +125,18 @@ describe("BBE-150 계약업체 실무 기본 탭", () => {
     for (const column of [...linked, ...calculated]) expect(column.readOnly, column.label).toBe(true);
   });
 
-  it("진행상황 자동 이동 11규칙이 전량 그룹을 가리킨다", () => {
+  it("진행상황 자동 이동 14규칙이 전량 그룹을 가리킨다", () => {
     const moveTo = byLabel.get("진행상황")?.moveTo;
     // 2026-09-26 — «대기중 → 준비단계» 가 다섯째로 들어갔다. 대기중으로 되돌린 카드가
     // 진행중 그룹에 갇히는 회귀를 막는다.
     // 2026-10-06 — 받아줄 그룹이 이미 있는 6개(관리중·기업인증 진행·소진공 4종)를 이었다.
     //   이게 없으면 그 단계를 골라도 값만 바뀌고 행은 제자리에 남는다.
+    // 2026-10-06(#845) — 받아줄 그룹이 없던 3개는 같은 이름의 새 그룹으로 간다(제품 책임자 결정 2).
     expect(Object.keys(moveTo ?? {})).toEqual([
       "대기중", "진행중", "심사 중", "승인", "불가",
       "관리중", "기업인증 진행",
       "📂소진공 혁신성장 대기", "📂소진공 신용취약 대기", "📂소진공 일시적경영애로 대기", "📂소진공 재도전 대기",
+      "소공인(상생)", "해당연도 매출", "업체관리",
     ]);
     expect(moveTo).toMatchObject({
       "관리중": "관리중",
@@ -131,6 +145,9 @@ describe("BBE-150 계약업체 실무 기본 탭", () => {
       "📂소진공 신용취약 대기": "📂 소진공 취약자금 접수예정",
       "📂소진공 일시적경영애로 대기": "📂 소진공 일시적경영애로 접수예정",
       "📂소진공 재도전 대기": "📂 소진공 재도전 접수예정",
+      "소공인(상생)": "소공인(상생)",
+      "해당연도 매출": "해당연도 매출",
+      "업체관리": "업체관리",
     });
     const groups = new Set(CONTRACT_WORK_TAB.groups.map((group) => group.name));
     for (const target of Object.values(moveTo ?? {})) expect(groups.has(target), target).toBe(true);
@@ -139,14 +156,15 @@ describe("BBE-150 계약업체 실무 기본 탭", () => {
     for (const optionId of Object.keys(moveTo ?? {})) expect(optionIds.has(optionId), optionId).toBe(true);
   });
 
-  it("받아줄 그룹이 없는 3단계는 아직 «값만 바뀌는 단계» 다 (제품 결정 대기)", () => {
+  it("값만 바뀌는 단계가 더는 없다 — 14개 선택지가 14개 그룹을 하나씩 가리킨다", () => {
     const moveTo = byLabel.get("진행상황")?.moveTo ?? {};
-    for (const valueOnly of ["소공인(상생)", "해당연도 매출", "업체관리"]) {
-      expect(Object.hasOwn(moveTo, valueOnly), valueOnly).toBe(false);
+    for (const option of byLabel.get("진행상황")?.options ?? []) {
+      expect(Object.hasOwn(moveTo, option.id), option.id).toBe(true);
     }
+    expect(new Set(Object.values(moveTo)).size).toBe(CONTRACT_WORK_TAB.groups.length);
   });
 
-  it("11개 그룹마다 «대표 단계» 가 정확히 하나 정해진다 — 그룹으로 옮기면 단계를 되맞출 수 있다", () => {
+  it("14개 그룹마다 «대표 단계» 가 정확히 하나 정해진다 — 그룹으로 옮기면 단계를 되맞출 수 있다", () => {
     // 1:1 전단사가 아니라 «대표 하나» 를 요구한다. 나중에 한 그룹에 선택지를 더 이어도
     // 그룹 이름과 같은 선택지가 있으면 대표는 그대로다(primaryStageForGroup).
     const status = byLabel.get("진행상황")!;

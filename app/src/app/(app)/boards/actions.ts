@@ -490,8 +490,11 @@ export async function setCellAction(formData: FormData): Promise<void> {
       }
     }
     const patch: Record<string, import("@/lib/boards/types").CellValue> = { [columnKey]: normalized };
-    const { errors } = await svc.setCells(ctx, boardId, itemId, patch);
-    await flashCellErrors(itemId, errors);
+    const saved = await svc.setCells(ctx, boardId, itemId, patch);
+    const { errors } = saved;
+    // 저장 실패(errors)가 없으면 «저장은 됐지만 알릴 것»(notices — 예: 옮길 그룹이 없어 값만 저장)을
+    // 같은 셀 자리에 보여 준다. 실패로 세지 않는다 — 아래 상태 알림도 그대로 보낸다(검토 P3).
+    await flashCellErrors(itemId, errors.length > 0 ? errors : saved.notices ?? []);
     if (graph.client && errors.length === 0 && changedColumn?.type === "status") {
       try {
         await notifyBoardItemMoved(graph.client, ctx, {
@@ -529,7 +532,8 @@ export async function renameItemAction(formData: FormData): Promise<void> {
  * (dnd 라이브러리 도입 전까지 폼 기반 이동 — 결과는 동일)
  */
 export type MoveItemActionResult =
-  | { ok:true; version:number|null; replayed:boolean }
+  /** notice — 저장은 됐지만 알릴 것(예: 옮길 그룹이 없어 값만 저장). 실패가 아니다. */
+  | { ok:true; version:number|null; replayed:boolean; notice?:string }
   | { ok:false; stale:boolean; message:string };
 
 export async function moveItemAction(formData: FormData): Promise<MoveItemActionResult> {
@@ -543,12 +547,17 @@ export async function moveItemAction(formData: FormData): Promise<MoveItemAction
     const eventKey = moveEventKey(formData);
     const graph = await createRequestBoards();
     const svc = graph.service;
+    let notice: string | undefined;
     if (groupBy) {
-      const { errors } = await svc.setCells(ctx, boardId, itemId, {
+      const saved = await svc.setCells(ctx, boardId, itemId, {
         [groupBy]: lane === "" ? null : lane,
       },eventKey);
+      const { errors } = saved;
       if(errors.length>0)return{ok:false,stale:false,message:errors[0]?.message??"행 이동을 저장하지 못했어요."};
-      await flashCellErrors(itemId, []);
+      // 알림(값만 저장)은 실패가 아니다 — 성공으로 돌려주고 문구만 함께 싣는다.
+      const notices = saved.notices ?? [];
+      notice = notices[0]?.message;
+      await flashCellErrors(itemId, notices);
     } else {
       if(!formData.has("groupId"))formData.set("groupId",lane);
       if(!formData.has("beforeItemId"))formData.set("beforeItemId","");
@@ -570,7 +579,7 @@ export async function moveItemAction(formData: FormData): Promise<MoveItemAction
       });
     }
     revalidatePath(`/boards/${boardId}`);
-    return{ok:true,version:null,replayed:false};
+    return notice ? {ok:true,version:null,replayed:false,notice} : {ok:true,version:null,replayed:false};
   }catch(error){
     console.error("[board kanban move]",error);
     // 셀 저장 경로(setCells)는 낡은 버전을 한 번 다시 시도한 뒤 사람 말로 바꿔 던진다 — 원문·변환문 모두 같은 종류로 읽는다.

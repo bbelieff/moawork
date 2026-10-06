@@ -175,6 +175,12 @@ export interface BoardsRepo {
   // 셀 값(EAV)
   listValues(ctx: Ctx, itemIds: string[]): Promise<ItemValue[]>;
   setValues(ctx: Ctx, itemId: string, patch: Record<string, CellValue>): Promise<void>;
+  /**
+   * 이 보드·칸에 켜진 발송 규칙(041 `messaging_trigger_rules`)이 하나라도 있는가 — 2026-10-06(#845).
+   * 값을 «암묵적으로» 쓰는 경로(드래그 → 단계 역동기화)가 고객 발송을 일으키지 않게 미리 본다.
+   * 읽지 못하면 던진다(호출부가 «있다» 로 닫는다). 구현이 없는 저장소도 호출부는 «있다» 로 본다.
+   */
+  hasEnabledMessagingTriggerRules?(ctx: Ctx, boardId: string, columnKey: string): Promise<boolean>;
 
   // 뷰
   listViews(ctx: Ctx, boardId: string): Promise<BoardView[]>;

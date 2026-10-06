@@ -347,17 +347,24 @@ describe("2026-10-06 — 이름 바꾼 기본 그룹을 다시 만들지 않는�
     const board = (await store.listBoards(ctx)).find((candidate) => candidate.id === boardId)!;
     const drift = await readDefaultTabBoardDrift(ctx, CONTRACT_WORK_TAB, board, store, []);
     expect(drift.missingGroupNames).toEqual([]);
-    expect(drift.hasWork).toBe(false);
+    // 2026-10-06(#845) — 서비스를 거치지 않은 이름 변경이라 단계 라벨이 아직 옛 이름이다 → 고칠 일은 «라벨 맞추기» 뿐.
+    expect(drift.hasWork).toBe(true);
+    await ensureDefaultTabAdditive(ctx, CONTRACT_WORK_TAB, store, []);
+    expect(await store.listGroups(ctx, boardId)).toHaveLength(14);
+    const status = (await store.listColumns(ctx, boardId)).find((column) => column.key === "progress_status")!;
+    expect(status.options_jsonb?.options.find((option) => option.id === "심사 중")?.label).toBe("심사 중");
+    const after = await readDefaultTabBoardDrift(ctx, CONTRACT_WORK_TAB, board, store, []);
+    expect(after.hasWork).toBe(false);
   });
 
   it("진입 repair(additive)와 부트스트랩 보장 모두 빈 복제를 만들지 않는다", async () => {
     const { store, boardId, renamedId } = await installAndRename("⏹️ 준비단계", "준비단계");
     const ensuredAdditive = await ensureDefaultTabAdditive(ctx, CONTRACT_WORK_TAB, store, []);
-    expect(await store.listGroups(ctx, boardId)).toHaveLength(11);
+    expect(await store.listGroups(ctx, boardId)).toHaveLength(14);
     // 정의 이름 → 실제 그룹 매핑도 이름 바뀐 원래 그룹을 가리킨다.
     expect(ensuredAdditive.groupIds["⏹️ 준비단계"]).toBe(renamedId);
     await ensureDefaultTab(ctx, CONTRACT_WORK_TAB, store, []);
-    expect(await store.listGroups(ctx, boardId)).toHaveLength(11);
+    expect(await store.listGroups(ctx, boardId)).toHaveLength(14);
   });
 
   it("본문이 다른 이름(회사가 완전히 바꾼 그룹)은 여전히 «빠진 것» 으로 본다", async () => {

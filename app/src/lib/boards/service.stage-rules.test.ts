@@ -383,7 +383,12 @@ describe("[1] 그룹을 옮기는 단계 변경의 실패를 뭉개지 않는다
   });
 
   it("행을 옮길 수 없는 담당 범위 멤버: 옮기는 단계는 사유와 함께 저장하지 않고, 값만 바뀌는 단계는 저장한다", async () => {
-    const { svc, boardId, group } = await contractWorkBoard();
+    const { store, svc, boardId, group } = await contractWorkBoard();
+    // #845 이후 기본 14단계는 모두 그룹을 옮긴다. «값만 바뀌는 단계» 는 회사가 규칙을 뗀 단계로 만든다.
+    const status = (await store.listColumns(owner, boardId)).find((column) => column.key === "progress_status")!;
+    const valueOnlyRule = { ...status.move_rule_jsonb };
+    delete valueOnlyRule["업체관리"];
+    await store.updateColumn(owner, status.id, { moveRule: valueOnlyRule });
     const item = await svc.createItem(member, boardId, { title: "멤버 건", group_id: group("🔂 심사 중").id });
 
     const moving = await svc.setCells(member, boardId, item.id, { progress_status: "승인" });
@@ -420,7 +425,9 @@ describe("[1] 그룹을 옮기는 단계 변경의 실패를 뭉개지 않는다
 
     expect(result.item.values.progress_status).toBe("승인");
     expect(result.item.group_id).toBe(group("🔂 심사 중").id);
-    expect(result.errors).toEqual([{ key: "progress_status", label: "진행상황", message: ROW_MOVE_VALUE_ONLY_NOTICE }]);
+    // 검토 P3 — 저장은 성공했다. 알림은 errors 가 아니라 notices 로만 온다(호출부가 성공을 실패로 읽지 않게).
+    expect(result.errors).toEqual([]);
+    expect(result.notices).toEqual([{ key: "progress_status", label: "진행상황", message: ROW_MOVE_VALUE_ONLY_NOTICE }]);
   });
 
   it("RPC 가 대상 그룹 없음을 알려도(경합으로 방금 사라짐) 값만 저장한다", async () => {
@@ -434,6 +441,90 @@ describe("[1] 그룹을 옮기는 단계 변경의 실패를 뭉개지 않는다
 
     expect(result.item.values.progress_status).toBe("승인");
     expect(result.item.group_id).toBe(group("🔂 심사 중").id);
-    expect(result.errors.map((error) => error.message)).toEqual([ROW_MOVE_VALUE_ONLY_NOTICE]);
+    expect(result.errors).toEqual([]);
+    expect(result.notices.map((notice) => notice.message)).toEqual([ROW_MOVE_VALUE_ONLY_NOTICE]);
+  });
+
+  it("쌍원자 저장(strict)도 «값만 저장» 을 실패가 아니라 committed=all + notices 로 돌려준다", async () => {
+    const { store, svc, boardId, group } = await contractWorkBoard();
+    const status = (await store.listColumns(owner, boardId)).find((column) => column.key === "progress_status")!;
+    await store.updateColumn(owner, status.id, { moveRule: { ...status.move_rule_jsonb, "승인": "group-that-was-deleted" } });
+    const item = await svc.createItem(owner, boardId, { title: "strict 알림", group_id: group("🔂 심사 중").id });
+
+    const result = await svc.setCellsStrict(owner, boardId, item.id, { progress_status: "승인" });
+
+    expect(result.committed).toBe("all");
+    expect(result.errors).toEqual([]);
+    expect(result.commitDetail).toBeNull();
+    expect(result.notices.map((notice) => notice.message)).toEqual([ROW_MOVE_VALUE_ONLY_NOTICE]);
+    expect(result.item.values.progress_status).toBe("승인");
+  });
+});
+
+describe("검토 P2 — 켜진 발송 규칙이 있으면 드래그는 단계를 쓰지 않는다", () => {
+  it("progress_status 에 켜진 messaging_trigger_rules 가 있으면 값 없이 위치만 옮긴다", async () => {
+    const { local, svc, boardId, group, version } = await contractWorkBoard();
+    const rules = vi.spyOn(local, "hasEnabledMessagingTriggerRules").mockReturnValue(true);
+    const valueMove = vi.spyOn(local, "setValuesAndMoveAtomic");
+    const item = await svc.createItem(owner, boardId, { title: "발송 규칙", group_id: group("🔂 심사 중").id, values: { progress_status: "심사 중" } });
+
+    await svc.moveRowAtomic(owner, boardId, {
+      itemId: item.id, targetGroupId: group("💰 승인").id, beforeItemId: null, expectedVersion: await version(), requestId: crypto.randomUUID(),
+    });
+
+    expect(rules).toHaveBeenCalledWith(owner, boardId, "progress_status");
+    expect(valueMove).not.toHaveBeenCalled();
+    const after = await svc.getItem(owner, boardId, item.id);
+    expect(after.group_id).toBe(group("💰 승인").id);
+    expect(after.values.progress_status).toBe("심사 중");
+  });
+
+  it("발송 규칙을 읽지 못하면(RLS·네트워크) 보내질 수 있다고 보고 값 없이 옮긴다", async () => {
+    const { local, svc, boardId, group, version } = await contractWorkBoard();
+    vi.spyOn(local, "hasEnabledMessagingTriggerRules").mockImplementation(() => {
+      throw new Error("permission denied for table messaging_trigger_rules");
+    });
+    const valueMove = vi.spyOn(local, "setValuesAndMoveAtomic");
+    const item = await svc.createItem(owner, boardId, { title: "읽기 실패", group_id: group("🔂 심사 중").id, values: { progress_status: "심사 중" } });
+
+    await svc.moveRowAtomic(owner, boardId, {
+      itemId: item.id, targetGroupId: group("💰 승인").id, beforeItemId: null, expectedVersion: await version(), requestId: crypto.randomUUID(),
+    });
+
+    expect(valueMove).not.toHaveBeenCalled();
+    const after = await svc.getItem(owner, boardId, item.id);
+    expect(after.group_id).toBe(group("💰 승인").id);
+    expect(after.values.progress_status).toBe("심사 중");
+  });
+
+  it("발송 규칙을 확인할 수 없는 저장소(메서드 없음)도 값을 쓰지 않는다", async () => {
+    const { local, boardId, group, version } = await contractWorkBoard();
+    const store = toAsyncBoardsRepo(local);
+    const withoutRules = new Proxy(store, {
+      get: (target, property) => (property === "hasEnabledMessagingTriggerRules" ? undefined : Reflect.get(target, property)),
+    });
+    const svc = new BoardsService(withoutRules);
+    const valueMove = vi.spyOn(local, "setValuesAndMoveAtomic");
+    const item = await svc.createItem(owner, boardId, { title: "메서드 없음", group_id: group("🔂 심사 중").id, values: { progress_status: "심사 중" } });
+
+    await svc.moveRowAtomic(owner, boardId, {
+      itemId: item.id, targetGroupId: group("💰 승인").id, beforeItemId: null, expectedVersion: await version(), requestId: crypto.randomUUID(),
+    });
+
+    expect(valueMove).not.toHaveBeenCalled();
+    expect((await svc.getItem(owner, boardId, item.id)).values.progress_status).toBe("심사 중");
+  });
+
+  it("켜진 규칙이 없으면(대조군) 드래그가 단계를 맞춘다", async () => {
+    const { local, svc, boardId, group, version } = await contractWorkBoard();
+    const rules = vi.spyOn(local, "hasEnabledMessagingTriggerRules");
+    const item = await svc.createItem(owner, boardId, { title: "규칙 없음", group_id: group("🔂 심사 중").id, values: { progress_status: "심사 중" } });
+
+    await svc.moveRowAtomic(owner, boardId, {
+      itemId: item.id, targetGroupId: group("💰 승인").id, beforeItemId: null, expectedVersion: await version(), requestId: crypto.randomUUID(),
+    });
+
+    expect(rules).toHaveBeenCalled();
+    expect((await svc.getItem(owner, boardId, item.id)).values.progress_status).toBe("승인");
   });
 });
