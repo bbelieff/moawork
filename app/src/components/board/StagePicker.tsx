@@ -165,15 +165,18 @@ export function StagePicker({
     const toRow = (option: FieldOption): PickerRow => {
       const target = moveTargets?.get(option.id) ?? null;
       const movesAway = Boolean(target && target.groupId !== currentGroupId);
+      const label = displayById.get(option.id) ?? option.label;
+      const targetLabel = target?.groupName ? presentLabel(target.groupName) : null;
+      // 단계 = 그룹으로 연결된 보드에서는 단계 이름이 곧 그룹 이름이다 — «X → X» 를 반복하지 않는다.
       const hint = target
         ? !movesAway
           ? "지금 그룹"
-          : target.groupName ? presentLabel(target.groupName) : "다른 그룹"
+          : targetLabel && normalizeLabelKey(targetLabel) !== normalizeLabelKey(label) ? targetLabel : targetLabel ? null : "다른 그룹"
         : null;
       return {
         kind: "option",
         option,
-        label: displayById.get(option.id) ?? option.label,
+        label,
         color: optionColor(option, target),
         hint,
         disabled: movesAway && !canMoveRows,

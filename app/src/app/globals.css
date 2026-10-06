@@ -55,7 +55,7 @@
   /* 보드 위계 토큰 (#839 · 2026-10-06) — 탭 바탕 > 그룹 카드 > 행 > 칸.
      모두 기존 정본색(--mw-fg·--mw-card·--mw-record)의 혼합이라 테마를 따라 바뀐다. */
   --mw-board-canvas: color-mix(in srgb, var(--mw-fg) 3%, var(--mw-card)); /* 보드 스크롤 바탕 */
-  --mw-board-head: color-mix(in srgb, var(--mw-fg) 4%, var(--mw-card)); /* 표 머리글 줄 */
+  --mw-board-head: color-mix(in srgb, var(--mw-fg) 3%, var(--mw-card)); /* 표 머리글 줄 — 12px 보조 글자 AA(4.5:1) 유지 */
   --mw-grid-line: color-mix(in srgb, var(--mw-fg) 10%, var(--mw-card)); /* 칸·행 구분선 */
   --mw-row-hover: color-mix(in srgb, var(--mw-record) 5%, var(--mw-card)); /* 행 호버 */
   --mw-pinned-body: color-mix(in srgb, var(--mw-record) 6%, var(--mw-card)); /* 진행현황 본문 */
@@ -360,6 +360,16 @@ nav[aria-label="주요 메뉴"]::-webkit-scrollbar-button { display: none; }
   [data-mw-stage-dot] {
     forced-color-adjust: none;
     background: CanvasText !important;
+  }
+}
+
+/* #845 — 업체명(첫 번째·고정) 열의 사람별 폭. 640px 이상에서만 — 휴대폰의 고정 열 상한(8rem)을 지킨다. */
+@media (min-width: 640px) {
+  [data-board-title-column][data-title-width],
+  [data-board-title-cell][data-title-width] {
+    width: var(--mw-title-width);
+    min-width: var(--mw-title-width);
+    max-width: var(--mw-title-width);
   }
 }
 

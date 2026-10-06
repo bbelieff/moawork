@@ -506,10 +506,13 @@ export function BoardWorkspace({
       await reorderGroupsAction(fd);
     });
   }, [board.id, setOrderedGroups]);
+  // 접힌 빈 그룹(#845)은 화면에 없으므로 ↑/↓ 는 그것을 건너뛰어 «보이는» 이웃과 자리를 바꾼다.
+  const foldedGroupIdsRef = useRef<ReadonlySet<string>>(new Set());
   const moveGroup = useCallback((groupId: string, delta: number) => {
     const from = orderedGroups.findIndex((group) => group.id === groupId);
-    const to = Math.max(0, Math.min(orderedGroups.length - 1, from + delta));
-    if (from < 0 || from === to) return;
+    let to = from + delta;
+    while (to >= 0 && to < orderedGroups.length && foldedGroupIdsRef.current.has(orderedGroups[to].id)) to += delta;
+    if (from < 0 || to < 0 || to >= orderedGroups.length || from === to) return;
     const next = [...orderedGroups];
     const [moved] = next.splice(from, 1); next.splice(to, 0, moved);
     persistGroupOrder(next);
@@ -1039,10 +1042,18 @@ export function BoardWorkspace({
     // 검색(q)은 인가된 전체 active 컬럼을 대상으로 삼는다 — UI 열 숨김은 권한 숨김이 아니다.
     const visibleRows = applyFilters(block.rows, searchColumns, displayFilters, filterProjection, assigneeLabels);
     const createdThisSession = Boolean(block.group && !sessionGroupBaseline.ids.has(block.group.id));
-    const foldable = index > 0 && block.group !== null && visibleRows.length === 0 && !createdThisSession;
+    // 계약업체 실무 보드에서만, 실제로 행이 0건인 그룹만 접는다(검색·필터로 0건이 된 그룹은 접지 않는다).
+    const foldable = workflowProgressKind === "work" && index > 0 && block.group !== null
+      && block.rows.length === 0 && !createdThisSession;
     return { block, visibleRows, foldable };
   });
   const foldedEmptyCount = blockViews.filter((view) => view.foldable).length;
+  const foldedGroupIdsKey = emptyGroupsOpen
+    ? ""
+    : blockViews.filter((view) => view.foldable && view.block.group).map((view) => view.block.group!.id).join(",");
+  useEffect(() => {
+    foldedGroupIdsRef.current = new Set(foldedGroupIdsKey ? foldedGroupIdsKey.split(",") : []);
+  }, [foldedGroupIdsKey]);
   // 행을 끄는 동안에는 빈 그룹도 놓을 자리로 보여 준다 — 끌기가 시작된 뒤에(useDeferredDragReveal).
   const shownBlockViews = emptyGroupsOpen || dragRevealGroups
     ? blockViews
