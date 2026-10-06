@@ -89,7 +89,7 @@ describe("새 회사 등록 + 업무 시작 (155 원자 경로)", () => {
 
   it("원자 RPC로 잇고 세션 조직으로 시작한다 — 예전 두 단계는 타지 않는다", async () => {
     const result = await startCompanyWorkFromNewCompanyAction({ ok: null, message: "" }, form(BASE));
-    expect(result).toEqual({ ok: true, message: "새 회사를 등록하고 업무를 시작했어요.", createdCompanyId: "company-new" });
+    expect(result).toEqual({ ok: true, message: "새 회사를 등록하고 업무를 시작했어요.", createdCompanyId: "company-new", itemId: "item-1" });
     expect(mocks.intakeRpc).toHaveBeenCalledWith(expect.objectContaining({
       p_org_id: "org-session",
       p_board_id: "board-1",
@@ -133,6 +133,7 @@ describe("새 회사 등록 + 업무 시작 (155 원자 경로)", () => {
       ok: true,
       message: "이미 등록된 요청이에요. 같은 회사로 진행합니다.",
       createdCompanyId: "company-new",
+      itemId: "item-1",
     });
     expect(mocks.createCompany).not.toHaveBeenCalled();
   });
@@ -163,6 +164,7 @@ describe("새 회사 등록 + 업무 시작 (155 원자 경로)", () => {
       ok: true,
       message: "이미 등록된 요청이에요. 같은 회사로 진행합니다.",
       createdCompanyId: "company-new",
+      itemId: "item-1",
     });
     expect(mocks.intakeRpc).toHaveBeenCalledTimes(1);
     expect(mocks.createCompany).not.toHaveBeenCalled();

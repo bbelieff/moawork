@@ -68,6 +68,11 @@ export type CompanyIntakeActionState = Readonly<{
   conflictCandidates?: readonly NewCompanyCandidate[];
   /** 방금 만든 회사 id (성공·재시도 분기 확인용). */
   createdCompanyId?: string | null;
+  /**
+   * 성공으로 생긴(또는 replay 로 확인된) 보드 행 id — 화면이 그 줄로 스크롤하고 잠깐 강조한다(#7).
+   * 실패 결과에는 붙지 않는다.
+   */
+  itemId?: string | null;
 }>;
 
 export async function startCompanyWorkFromBoardAction(
@@ -81,17 +86,18 @@ export async function startCompanyWorkFromBoardAction(
     return { ok: false, outcome: "rejected", message: "업체를 선택한 뒤 다시 시도해 주세요." };
   }
 
+  let itemId: string;
   try {
     const ctx = await getSession();
     const client = await createClient();
     // groupId 는 «누른 그룹» 이다. 없으면(그룹 없음 블록) 서버가 첫 그룹을 고른다.
     // 서버가 그 그룹이 이 조직·이 보드의 것인지 다시 확인한다 — 화면 값을 믿지 않는다.
-    await startCompanyWork(client as unknown as CompanyStartWorkClient, {
+    ({ itemId } = await startCompanyWork(client as unknown as CompanyStartWorkClient, {
       orgId: ctx.org.id,
       companyId,
       requestId,
       groupId: text(formData, "groupId") || null,
-    });
+    }));
   } catch (error) {
     // DB 원문은 화면에 노출하지 않고 서버 로그에만 남긴다.
     console.error("[company intake] failed to start work", error);
@@ -107,7 +113,8 @@ export async function startCompanyWorkFromBoardAction(
   revalidatePath("/work");
   revalidatePath("/companies");
   revalidatePath(`/companies/${companyId}`);
-  return { ok: true, message: "업무를 시작했어요." };
+  // 새 행 id 를 버리지 않는다 — 화면이 패널을 닫고 그 줄을 보여 준다(#7).
+  return { ok: true, message: "업무를 시작했어요.", itemId };
 }
 
 function candidateDetail(company: Company): string {
@@ -300,6 +307,7 @@ export async function startCompanyWorkFromNewCompanyAction(
         ? "이미 등록된 요청이에요. 같은 회사로 진행합니다."
         : "새 회사를 등록하고 업무를 시작했어요.",
       createdCompanyId: result.companyId,
+      itemId: result.itemId,
     };
   } catch (error) {
     if (error instanceof CompanyIntakeError) {

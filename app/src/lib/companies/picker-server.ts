@@ -2,6 +2,7 @@ import { AsyncCrmService } from "@/lib/crm/asyncService";
 import { SupabaseCrmSource } from "@/lib/repo/supabase/supabaseCrmSource";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
 import type { CompanyPickerRow } from "./search";
 import type { Company, Ctx, Deal } from "@/lib/types";
 
@@ -54,15 +55,52 @@ export interface CompanyPickerSource {
   listDeals(ctx: Ctx): Promise<Deal[]>;
 }
 
+/**
+ * 「이 탭의 행」 중 회사 수를 세는 데 필요한 최소 모양 — 보드 화면이 이미 읽은 행을 그대로 받는다.
+ * 지운·보관한 행은 «살아 있지 않다» 로 본다.
+ */
+export type CompanyPickerBoardItem = Readonly<{
+  deal_id: string | null;
+  deleted_at?: string | null;
+  archived_at?: string | null;
+}>;
+
+/**
+ * 회사별 «지금 이 탭에 살아 있는 행» 수 — 행의 deal_id 를 딜의 company_id 로 잇는다.
+ *
+ * ★ 새로 읽지 않는다. 보드 화면이 권한(D24)으로 걸러 이미 읽은 행과, 이 목록이 RLS 로 읽은 딜만 쓴다.
+ *   그래서 보는 사람에게 안 보이는 행·딜은 세지 않는다 — 안 보이는 줄의 존재를 숫자로 흘리지 않는다.
+ * ★ 딜 목록에 없는 딜(상한 밖·안 보이는 딜)의 행은 셀 수 없어 0 쪽으로 남는다. 확인을 묻는
+ *   근거일 뿐이고 막는 규칙이 아니라서, 모를 때 «묻지 않는» 쪽이 1:N 정상 흐름을 해치지 않는다.
+ */
+function liveItemCountsByCompany(
+  deals: readonly Deal[],
+  boardItems: readonly CompanyPickerBoardItem[],
+): Map<string, number> {
+  const companyByDeal = new Map<string, string>();
+  for (const deal of deals) {
+    if (deal.company_id) companyByDeal.set(deal.id, deal.company_id);
+  }
+  const counts = new Map<string, number>();
+  for (const item of boardItems) {
+    if (!item.deal_id || item.deleted_at || item.archived_at) continue;
+    const companyId = companyByDeal.get(item.deal_id);
+    if (companyId) counts.set(companyId, (counts.get(companyId) ?? 0) + 1);
+  }
+  return counts;
+}
+
 export function buildCompanyPickerRows(
   companies: readonly Company[],
   deals: readonly Deal[],
+  boardItems: readonly CompanyPickerBoardItem[] = [],
 ): CompanyPickerRow[] {
   const counts = new Map<string, number>();
   for (const deal of deals) {
     if (!deal.company_id) continue;
     counts.set(deal.company_id, (counts.get(deal.company_id) ?? 0) + 1);
   }
+  const liveCounts = liveItemCountsByCompany(deals, boardItems);
 
   return companies.map((company) => ({
     company: {
@@ -76,6 +114,7 @@ export function buildCompanyPickerRows(
       homepage: company.homepage,
     },
     dealCount: counts.get(company.id) ?? 0,
+    liveItemCount: liveCounts.get(company.id) ?? 0,
   }));
 }
 
@@ -89,7 +128,14 @@ export function buildCompanyPickerRows(
  */
 export async function loadCompanyPickerRows(
   ctx: Ctx,
-  options: { source?: CompanyPickerSource } = {},
+  options: {
+    source?: CompanyPickerSource;
+    /**
+     * 이 보드에서 «보는 사람에게 보이는» 행 — 회사별 `liveItemCount` 의 근거다.
+     * 보드 화면이 권한으로 걸러 이미 읽은 것을 넘긴다(왕복 추가 없음, BBE-214).
+     */
+    boardItems?: readonly CompanyPickerBoardItem[];
+  } = {},
 ): Promise<CompanyPickerLoadResult> {
   if (!options.source && !hasSupabaseEnv()) return { rows: [], error: COMPANY_PICKER_READ_ERROR, truncated: false };
   try {
@@ -99,9 +145,64 @@ export async function loadCompanyPickerRows(
     // `>=` 다: 정확히 상한만큼 받으면 잘렸는지 알 수 없으므로 «모른다» 쪽으로 말한다.
     const truncated = companies.length >= COMPANY_PICKER_LIMIT;
     const bounded = truncated ? companies.slice(0, COMPANY_PICKER_LIMIT) : companies;
-    return { rows: buildCompanyPickerRows(bounded, deals), error: null, truncated };
+    return { rows: buildCompanyPickerRows(bounded, deals, options.boardItems ?? []), error: null, truncated };
   } catch (error) {
     console.error("[company picker] failed to load", error);
     return { rows: [], error: COMPANY_PICKER_READ_ERROR, truncated: false };
+  }
+}
+
+/** 회사 상세 «업무 시작» 확인용 — 이 조직의 계약업체 실무 탭에 살아 있는 행 수를 센다. */
+export type CompanyLiveWorkRowCounter = (input: Readonly<{ orgId: string; dealIds: readonly string[] }>) => Promise<number>;
+
+/**
+ * 평평한 조회 두 번 — 임베드를 쓰지 않는다. `items` 는 `boards` 로 가는 FK 가 둘이라
+ * 관계가 모호해 PGRST201 로 실패한다(lib/accounting/boardValues.ts 와 같은 이유).
+ * 요청 클라이언트(RLS)로만 읽는다. service_role 을 쓰지 않는다.
+ */
+const supabaseLiveWorkRowCounter: CompanyLiveWorkRowCounter = async ({ orgId, dealIds }) => {
+  const client = await createClient();
+  const boards = await client
+    .from("boards")
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("source", CONTRACT_WORK_TAB_SOURCE);
+  if (boards.error) throw boards.error;
+  const boardIds = ((boards.data ?? []) as { id?: unknown }[])
+    .map((board) => board.id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  if (boardIds.length === 0) return 0;
+  const items = await client
+    .from("items")
+    .select("id", { count: "exact", head: true })
+    .eq("org_id", orgId)
+    .in("board_id", boardIds)
+    .in("deal_id", [...dealIds])
+    .is("deleted_at", null)
+    .is("archived_at", null);
+  if (items.error) throw items.error;
+  return items.count ?? 0;
+};
+
+/**
+ * 회사 상세의 «업무 시작» 전에 «이미 진행 중인 행이 있나» 를 센다 (#6).
+ *
+ * ★ 넘겨받는 deal id 는 «보는 사람에게 보이는» 이 회사의 딜뿐이다(상세 화면이 읽은 것).
+ *   그 딜들의 행만 세므로 안 보이는 업무의 존재를 숫자로 흘리지 않는다.
+ * ★ 모르면 null — 확인 질문의 근거일 뿐이라, 못 셌다고 화면을 막지 않는다.
+ *   (회사 상세의 이중 클릭은 같은 요청 열쇠 + 제출 중 비활성으로 따로 막는다.)
+ */
+export async function loadCompanyLiveWorkRowCount(
+  ctx: Ctx,
+  dealIds: readonly string[],
+  options: { count?: CompanyLiveWorkRowCounter } = {},
+): Promise<number | null> {
+  if (dealIds.length === 0) return 0;
+  if (!options.count && !hasSupabaseEnv()) return null;
+  try {
+    return await (options.count ?? supabaseLiveWorkRowCounter)({ orgId: ctx.org.id, dealIds });
+  } catch (error) {
+    console.error("[company detail] failed to count live work rows", error);
+    return null;
   }
 }
