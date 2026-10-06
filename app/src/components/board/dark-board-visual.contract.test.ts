@@ -17,7 +17,8 @@ describe("Issue #582 dark board visual contract", () => {
     expect(globals).toContain('.relative.isolate::-webkit-scrollbar-thumb');
     expect(globals).toContain(':is(tbody td, input, select, textarea)');
     expect(table).toContain("max-w-full overflow-auto");
-    expect(group).toContain("14%, var(--mw-card)");
+    // #845: 그룹 띠 틴트는 톤 16%(승인 목업 Palette.dc 의 rgba(.16)).
+    expect(group).toContain("16%, var(--mw-card)");
     expect(group).not.toContain("14%, transparent");
   });
 
@@ -47,6 +48,35 @@ describe("Issue #582 dark board visual contract", () => {
     // v17 의 «그룹색은 점만» 변수 덮어쓰기는 걷어 냈다(띠는 GroupBlock 인라인).
     expect(vivid).not.toContain("--mw-group-header-bg");
     expect(vivid).not.toContain("--mw-group-rail-width:0px");
+  });
+
+  it("#845 group tones: every route accent defines a 2-color × 5-depth ramp in light and both dark paths", () => {
+    const globals = read("../../app/globals.css");
+    const vivid = read("../../styles/moawork-vivid-v17.css");
+    const tokens = [1, 2, 3, 4, 5].flatMap((level) => [`--mw-tab-a-${level}`, `--mw-tab-b-${level}`]);
+    // 기본값(강조 라우트 없음) — 라이트 + 다크 두 경로, 멈춤 회색 포함.
+    for (const token of [...tokens, "--mw-tab-stop"]) {
+      expect(globals.match(new RegExp(`${token}:`, "g")), token).toHaveLength(3);
+    }
+    // 탭별 사다리 — 실제 강조 라우트 7종 모두(라이트 · 명시 다크 · OS 다크).
+    const rules = [...vivid.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .map((match) => ({ selectors: match[1].split(",").map((selector) => selector.trim()), body: match[2] }));
+    for (const route of ["new", "contact", "inperson", "work", "company", "news", "dash"]) {
+      for (const selector of [
+        `html[data-mw-accent="${route}"]`,
+        `html[data-mw-accent="${route}"][data-theme="dark"]`,
+        `html[data-mw-accent="${route}"]:not([data-theme="light"])`,
+      ]) {
+        const ladder = rules.find((rule) => rule.selectors.includes(selector) && rule.body.includes("--mw-tab-a-1"));
+        expect(ladder, selector).toBeDefined();
+        for (const token of tokens) expect(ladder!.body, `${selector} ${token}`).toContain(`${token}:`);
+      }
+    }
+    // 계약업체 실무(work)는 승인 목업 Palette.dc 의 초록·연두 사다리 그대로다.
+    expect(vivid).toContain("--mw-tab-a-1: #86efac; --mw-tab-a-2: #4ade80; --mw-tab-a-3: #22c55e; --mw-tab-a-4: #16a34a; --mw-tab-a-5: #15803d;");
+    expect(vivid).toContain("--mw-tab-b-1: #bef264; --mw-tab-b-2: #a3e635; --mw-tab-b-3: #84cc16; --mw-tab-b-4: #65a30d; --mw-tab-b-5: #4d7c0f;");
+    // 라우트 사다리는 라이트 6 + 명시 다크 6 + OS 다크 6 규칙(contact·dash 는 한 규칙을 함께 쓴다).
+    expect(vivid.match(/--mw-tab-a-1:/g)).toHaveLength(18);
   });
 
   it("does not create cross-axis scrollbars in single-line board controls", () => {

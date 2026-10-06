@@ -308,9 +308,15 @@ export function RegionCell({
   }
 
   const invalid = !status.startsWith("✓") && status !== "저장 중…" && status !== "입력 중…";
+  // #845 (대표 지시 2026-10-06 · 검토 후속) — 상태 줄은 «고칠 것이 있을 때» 만 눈에 보인다.
+  // 저장됨·입력 중·저장 중은 화면 낭독기에만 알리고(aria-live 는 그대로), 눈에는 칸 자체의
+  // 잠김(저장 중)과 마우스를 올렸을 때의 안내(title)로만 보인다. 전에는 «✓ 자동 저장됨» 줄이 늘
+  // 쌓여 계약업체 실무 행이 두 줄(약 72px)이 됐다 — 행은 한 줄이어야 하위 행처럼 안 보인다.
+  const statusText = snapshot.requiresReload ? "저장 결과를 다시 확인해야 합니다." : status;
+  const statusVisible = invalid || snapshot.requiresReload;
 
   return (
-    <span className="flex flex-col" onBlur={handleBlur}>
+    <span className="flex flex-col" onBlur={handleBlur} title={statusVisible ? undefined : statusText}>
       <RegionCombobox
         name={`${itemId}-${kind === "sido" ? sidoKey : sigunguKey}-region`}
         label={kind === "sido" ? "시도" : "시군구"}
@@ -324,8 +330,13 @@ export function RegionCell({
         disabled={disabled}
         invalid={invalid}
       />
-      <span aria-live="polite" className="px-1.5 text-[0.65rem] text-mw-sub" data-saved={!snapshot.requiresReload && status.startsWith("✓")}>
-        {snapshot.requiresReload ? "저장 결과를 다시 확인해야 합니다." : status}
+      <span
+        aria-live="polite"
+        className={statusVisible ? "px-1.5 text-[0.65rem] text-mw-error" : "sr-only"}
+        data-saved={!snapshot.requiresReload && status.startsWith("✓")}
+        data-region-status={statusVisible ? "visible" : "hidden"}
+      >
+        {statusText}
       </span>
       {snapshot.requiresReload && <button type="button" onClick={() => window.location.reload()} className="text-xs underline">새로고침하여 확인</button>}
     </span>

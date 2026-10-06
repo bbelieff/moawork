@@ -62,6 +62,23 @@
   --mw-pinned-line: color-mix(in srgb, var(--mw-record) 22%, var(--mw-card)); /* 진행현황 행 구분 */
   --mw-pinned-shadow: color-mix(in srgb, var(--mw-fg) 22%, transparent); /* 고정 열 떠 있는 그림자 */
 
+  /* 그룹 톤 (#845 · 대표 지시 2026-10-06, 승인 방향 Palette.dc) — 탭의 메인 2색 × 깊이 1~5.
+     a = 본 진행(깊을수록 진함), b = 곁가지, stop = 멈춤(불가·거절·취소) 회색.
+     여기 값은 강조 라우트가 없을 때의 기본(대시보드 폴백과 같은 파랑·보라)이다. 탭별 값은
+     moawork-vivid-v17.css 의 html[data-mw-accent] 가 덮는다. 쓰는 곳은 group-tone.ts 뿐이다
+     (그룹 띠·행 첫 칸 줄·진행현황 칩이 모두 이 토큰을 거친다). */
+  --mw-tab-a-1: #93c5fd;
+  --mw-tab-a-2: #60a5fa;
+  --mw-tab-a-3: #3b82f6;
+  --mw-tab-a-4: #2563eb;
+  --mw-tab-a-5: #1d4ed8;
+  --mw-tab-b-1: #c4b5fd;
+  --mw-tab-b-2: #a78bfa;
+  --mw-tab-b-3: #8b5cf6;
+  --mw-tab-b-4: #7c3aed;
+  --mw-tab-b-5: #6d28d9;
+  --mw-tab-stop: #9ca3af;
+
   /* 레이어 소유권 — 숫자를 컴포넌트에 직접 쓰지 않는다.
      page popover < shell < shell popover < tooltip < scrim < dialog < toast. */
   --mw-layer-board-cell: 10;
@@ -113,6 +130,18 @@
   --mw-tint-violet: rgba(138, 124, 255, 0.16);
   /* 다크에서는 바탕이 카드보다 어두워야 카드가 떠 보인다. */
   --mw-board-canvas: var(--mw-bg);
+  /* 그룹 톤 다크 — 어두운 바탕에서는 깊을수록 «또렷하게»(600 → 200). 단계가 나아갈수록 대비가 커진다. */
+  --mw-tab-a-1: #2563eb;
+  --mw-tab-a-2: #3b82f6;
+  --mw-tab-a-3: #60a5fa;
+  --mw-tab-a-4: #93c5fd;
+  --mw-tab-a-5: #bfdbfe;
+  --mw-tab-b-1: #7c3aed;
+  --mw-tab-b-2: #8b5cf6;
+  --mw-tab-b-3: #a78bfa;
+  --mw-tab-b-4: #c4b5fd;
+  --mw-tab-b-5: #ddd6fe;
+  --mw-tab-stop: #6b7280;
 }
 
 /* data-theme 미지정(최초 방문)일 때 OS 설정을 따른다 — 토글하면 data-theme 로 확정. */
@@ -144,6 +173,17 @@
     --mw-tint-amber: rgba(240, 184, 73, 0.15);
     --mw-tint-violet: rgba(138, 124, 255, 0.16);
     --mw-board-canvas: var(--mw-bg);
+    --mw-tab-a-1: #2563eb;
+    --mw-tab-a-2: #3b82f6;
+    --mw-tab-a-3: #60a5fa;
+    --mw-tab-a-4: #93c5fd;
+    --mw-tab-a-5: #bfdbfe;
+    --mw-tab-b-1: #7c3aed;
+    --mw-tab-b-2: #8b5cf6;
+    --mw-tab-b-3: #a78bfa;
+    --mw-tab-b-4: #c4b5fd;
+    --mw-tab-b-5: #ddd6fe;
+    --mw-tab-stop: #6b7280;
   }
 }
 
