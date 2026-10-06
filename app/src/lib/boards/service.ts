@@ -34,7 +34,14 @@ import type {
   ItemWithValues,
 } from "./types";
 import { compareCells, isEmptyCell, validateCell } from "./cells";
-import { resolveMoveTarget } from "./moveRules";
+import { planStageBackSync, resolveMoveTarget } from "./moveRules";
+import {
+  classifyRowMoveFailure,
+  ROW_MOVE_FAILURE_MESSAGES,
+  ROW_MOVE_VALUE_ONLY_NOTICE,
+  UserFacingActionError,
+} from "./boardActionFlash";
+import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
 import { isIntegrityField } from "@/lib/custom/field-types";
 import { isSourceEditable } from "@/lib/field/source";
 import { pickDefaultView } from "@/lib/custom/views";
@@ -118,6 +125,43 @@ export interface KanbanLane {
   label: string;
   color: string | null;
   items: ItemWithValues[];
+}
+
+/** 행을 다른 그룹으로 옮길 수 있는 사람 — move_board_row_atomic 의 관문과 같다(owner/admin 또는 scope=all). */
+function canMoveRows(ctx: Ctx): boolean {
+  return ctx.role === "owner" || ctx.role === "admin" || ctx.scope === "all";
+}
+
+/**
+ * 그룹 → 단계 역동기화(2026-10-06)를 켜는 보드 출처와 그 단계 칸.
+ *
+ * 계약업체 실무만 켠다. 리드컨택은 이동 규칙이 «담당자» 를 다시 배정하고, 신규리드의 상담 단계
+ * 정본은 deals 라서 «그룹을 옮겼으니 값도 바꾼다» 가 다른 뜻이 된다 — 별도 결정 전에는 넣지 않는다.
+ */
+const STAGE_BACK_SYNC_COLUMN_BY_SOURCE: ReadonlyMap<string, string> = new Map([
+  [CONTRACT_WORK_TAB_SOURCE, "progress_status"],
+]);
+
+/** 패치에서 이동 규칙이 정하는 최종 목적지 — 패치 순서상 나중 키가 이긴다. */
+function ruleMoveTarget(
+  columns: readonly BoardColumn[],
+  values: Record<string, CellValue>,
+): { target: string; key: string } | null {
+  const byKey = new Map(columns.map((column) => [column.key, column]));
+  let decided: { target: string; key: string } | null = null;
+  for (const [key, value] of Object.entries(values)) {
+    const column = byKey.get(key);
+    if (!column) continue;
+    const resolved = resolveMoveTarget(column, value);
+    if (resolved !== null) decided = { target: resolved, key };
+  }
+  return decided;
+}
+
+/** 아는 행 이동 실패는 사람 말로 바꾸고, 모르는 실패는 원래 예외 그대로 다시 던진다. */
+function toRowMoveError(error: unknown): unknown {
+  const failure = classifyRowMoveFailure(error);
+  return failure ? new UserFacingActionError(ROW_MOVE_FAILURE_MESSAGES[failure]) : error;
 }
 
 /** 새 보드에 기본 제공되는 컬럼(빈 보드가 바로 쓸 수 있도록). */
@@ -421,13 +465,56 @@ export class BoardsService {
     return this.getItem(ctx, boardId, itemId);
   }
 
+  /**
+   * 행 이동(드래그·행별 그룹 이동·일괄 그룹 이동·키보드) — 한 경로.
+   *
+   * 2026-10-06 — 계약업체 실무에서 행을 다른 그룹으로 옮기면 «진행상황» 도 그 그룹의 대표 단계로
+   * 맞춘다(그룹 → 단계 역동기화). 값과 위치는 기존 `set_board_item_values_with_atomic_move`
+   * 한 트랜잭션으로 같이 쓴다 — 같은 requestId·expectedVersion·beforeItemId 의미 그대로다.
+   * 무엇을 쓸지는 `planStageBackSync` 가 «지금 상태» 만 보고 결정적으로 정하므로,
+   * 응답이 유실돼 같은 requestId 로 다시 보내도 같은 요청이 되어 receipt 가 재생된다.
+   */
   async moveRowAtomic(ctx: Ctx, boardId: string, request: RowMoveRequest): Promise<RowMoveReceipt> {
-    if (!(ctx.role === "owner" || ctx.role === "admin" || ctx.scope === "all")) {
+    if (!canMoveRows(ctx)) {
       throw new BoardRuleError("전체 행을 볼 수 있는 사용자만 행 순서를 바꿀 수 있습니다");
     }
-    await this.requireEditableBoard(ctx, boardId);
+    const board = await this.requireEditableBoard(ctx, boardId);
     await this.requireActiveItem(ctx, request.itemId);
-    return (await this.repo).moveRowAtomic(ctx, boardId, request);
+    const repo = await this.repo;
+    const values = await this.planRowMoveStage(ctx, board, request);
+    return values
+      ? repo.setValuesAndMoveAtomic(ctx, boardId, { ...request, values })
+      : repo.moveRowAtomic(ctx, boardId, request);
+  }
+
+  /** 행 이동에 실어 보낼 단계 값 — 역동기화 대상 보드·칸이 아니거나 바꿀 것이 없으면 null. */
+  private async planRowMoveStage(
+    ctx: Ctx,
+    board: Board,
+    request: RowMoveRequest,
+  ): Promise<Record<string, CellValue> | null> {
+    const stageKey = board.source ? STAGE_BACK_SYNC_COLUMN_BY_SOURCE.get(board.source) : undefined;
+    if (!stageKey || request.targetGroupId === null) return null;
+    const repo = await this.repo;
+    const [columns, groups, item, values] = await Promise.all([
+      repo.listColumns(ctx, board.id),
+      repo.listGroups(ctx, board.id),
+      repo.getItem(ctx, request.itemId),
+      repo.listValues(ctx, [request.itemId]),
+    ]);
+    const column = columns.find((candidate) => candidate.key === stageKey);
+    // 행이 없거나 다른 보드 것이면 판단하지 않는다 — 이동 RPC 가 그 이유로 거부한다.
+    if (!column || !item || item.board_id !== board.id) return null;
+    const current = values.find((value) => value.item_id === request.itemId && value.column_key === stageKey);
+    const stage = planStageBackSync({
+      column,
+      editable: isSourceEditable(column.source),
+      groups,
+      currentValue: current?.value_jsonb ?? null,
+      sourceGroupId: item.group_id,
+      targetGroupId: request.targetGroupId,
+    });
+    return stage === null ? null : { [stageKey]: stage };
   }
 
   async deleteItem(ctx: Ctx, boardId: string, itemId: string): Promise<void> {
@@ -460,6 +547,12 @@ export class BoardsService {
    *
    * 되돌리기: 쓰기 **전** 값과 group_id 를 스냅샷해 `undo` 로 돌려준다.
    * 호출부는 이걸 그대로 `undoCells()` 에 넘기면 된다.
+   *
+   * 2026-10-06 — 그룹을 옮기는 값의 실패를 뭉개지 않는다(`writeValuesWithRuleMove`).
+   *   · 행을 옮길 권한이 없으면(전체 범위 아님) 그 칸만 사유와 함께 돌려주고 나머지는 저장한다.
+   *     값만 바뀌는 단계는 예전처럼 저장된다.
+   *   · 다른 사용자가 먼저 순서를 바꿔 버전이 낡았으면 다시 읽고 «한 번만» 다시 시도한다.
+   *   · 옮길 그룹이 없으면 값만 저장하고 그 사실을 알린다.
    */
   async setCells(
     ctx: Ctx,
@@ -472,7 +565,10 @@ export class BoardsService {
     await this.requireActiveItem(ctx, itemId);
     const before = await this.getItem(ctx, boardId, itemId);
 
-    const { values, errors } = this.validateValues(detail.columns, patch, true);
+    const validated = this.validateValues(detail.columns, patch, true);
+    const gate = this.gateRuleMove(ctx, detail.columns, before.group_id, validated.values);
+    const values = gate.values;
+    const errors = [...validated.errors, ...gate.errors];
     const writtenKeys = Object.keys(values);
     if (writtenKeys.length === 0) {
       return { item: await this.getItem(ctx, boardId, itemId), errors, undo: null };
@@ -485,28 +581,96 @@ export class BoardsService {
       group_id: before.group_id,
     };
 
-    // 조작 열 이동 — 패치 순서상 나중 키가 최종 목적지를 정한다.
-    const byKey = new Map(detail.columns.map((c) => [c.key, c]));
-    let target: string | null = null;
-    for (const key of writtenKeys) {
-      const col = byKey.get(key);
-      if (!col) continue;
-      const resolved = resolveMoveTarget(col, values[key]);
-      if (resolved !== null) target = resolved;
-    }
-    const repo = await this.repo;
-    if (target !== null && target !== before.group_id) {
-      await repo.setValuesAndMoveAtomic(ctx, boardId, {
-        itemId,
-        targetGroupId: target,
-        beforeItemId: null,
-        expectedVersion: detail.board.row_order_version ?? 0,
-        requestId,
-        values,
-      });
-    } else await repo.setValues(ctx, itemId, values);
+    const notices = await this.writeValuesWithRuleMove(ctx, boardId, itemId, detail, before.group_id, values, requestId);
 
-    return { item: await this.getItem(ctx, boardId, itemId), errors, undo };
+    return { item: await this.getItem(ctx, boardId, itemId), errors: [...errors, ...notices], undo };
+  }
+
+  /**
+   * 행을 옮길 수 없는 사람(전체 범위 아님)이 «그룹을 옮기는 값» 을 고르면 그 칸만 빼고 사유를 돌려준다.
+   *
+   * 왜 미리 보나: RPC 관문(`row move permission denied`)에 걸리면 값도 그룹도 통째로 롤백되고
+   * 「항목을 저장하지 못했어요」 만 남았다. 값만 저장하고 행을 두면 단계와 그룹이 어긋난다.
+   * 그래서 그 칸은 저장하지 않고 이유를 말한다. 값만 바뀌는 단계(규칙 없음)는 그대로 저장된다.
+   */
+  private gateRuleMove(
+    ctx: Ctx,
+    columns: readonly BoardColumn[],
+    beforeGroupId: string | null,
+    values: Record<string, CellValue>,
+  ): { values: Record<string, CellValue>; errors: CellError[] } {
+    const decided = ruleMoveTarget(columns, values);
+    if (!decided || decided.target === beforeGroupId || canMoveRows(ctx)) return { values, errors: [] };
+    const byKey = new Map(columns.map((column) => [column.key, column]));
+    const kept: Record<string, CellValue> = {};
+    const errors: CellError[] = [];
+    for (const [key, value] of Object.entries(values)) {
+      const column = byKey.get(key);
+      const resolved = column ? resolveMoveTarget(column, value) : null;
+      if (column && resolved !== null && resolved !== beforeGroupId) {
+        errors.push({ key, label: column.label, message: ROW_MOVE_FAILURE_MESSAGES.permission });
+      } else kept[key] = value;
+    }
+    return { values: kept, errors };
+  }
+
+  /**
+   * 값 쓰기 — 이동 규칙이 다른 그룹을 가리키면 값과 위치를 한 트랜잭션으로 같이 쓴다.
+   * 돌려주는 것은 «저장은 됐지만 알릴 것» (옮길 그룹이 없어 값만 저장한 경우)뿐이다.
+   *
+   * 낡은 버전(`row move stale version`)만 «한 번» 다시 시도한다. 실패한 시도는 통째로 롤백되어
+   * receipt 도 남기지 않으므로 같은 requestId 로 다시 보내도 안전하다. 목적지는 새로 읽은
+   * 규칙·행 위치로 다시 계산한다. 그 밖의(전송·알 수 없는) 오류는 다시 시도하지 않는다 —
+   * 실제로는 커밋됐는데 응답만 잃은 경우 다른 버전으로 보내면 «replay conflict» 가 된다.
+   */
+  private async writeValuesWithRuleMove(
+    ctx: Ctx,
+    boardId: string,
+    itemId: string,
+    detail: BoardDetail,
+    beforeGroupId: string | null,
+    values: Record<string, CellValue>,
+    requestId: string,
+  ): Promise<CellError[]> {
+    const repo = await this.repo;
+    const valueOnly = async (decidedKey: string, columns: readonly BoardColumn[]): Promise<CellError[]> => {
+      await repo.setValues(ctx, itemId, values);
+      const label = columns.find((column) => column.key === decidedKey)?.label ?? decidedKey;
+      return [{ key: decidedKey, label, message: ROW_MOVE_VALUE_ONLY_NOTICE }];
+    };
+    const attempt = async (current: BoardDetail, groupId: string | null): Promise<CellError[] | "stale"> => {
+      const decided = ruleMoveTarget(current.columns, values);
+      if (!decided || decided.target === groupId) {
+        await repo.setValues(ctx, itemId, values);
+        return [];
+      }
+      if (!current.groups.some((group) => group.id === decided.target)) return valueOnly(decided.key, current.columns);
+      try {
+        await repo.setValuesAndMoveAtomic(ctx, boardId, {
+          itemId,
+          targetGroupId: decided.target,
+          beforeItemId: null,
+          expectedVersion: current.board.row_order_version ?? 0,
+          requestId,
+          values,
+        });
+        return [];
+      } catch (error) {
+        const failure = classifyRowMoveFailure(error);
+        if (failure === "stale") return "stale";
+        if (failure === "target_missing") return valueOnly(decided.key, current.columns);
+        throw toRowMoveError(error);
+      }
+    };
+
+    const first = await attempt(detail, beforeGroupId);
+    if (first !== "stale") return first;
+    const fresh = await this.getBoardDetail(ctx, boardId);
+    const moved = await repo.getItem(ctx, itemId);
+    if (!moved || moved.board_id !== boardId) throw new NotFoundError("아이템을 찾을 수 없습니다");
+    const second = await attempt(fresh, moved.group_id);
+    if (second === "stale") throw new UserFacingActionError(ROW_MOVE_FAILURE_MESSAGES.stale);
+    return second;
   }
 
   /**
@@ -563,6 +727,11 @@ export class BoardsService {
     if (writtenKeys.length === 0) {
       return { item: before, errors, undo: null, committed: "none", commitDetail: null };
     }
+    // 행을 옮길 수 없는 사람이 그룹을 옮기는 값을 섞으면 «하나도» 쓰지 않는다(쌍원자 계약).
+    const gate = this.gateRuleMove(ctx, detail.columns, before.group_id, values);
+    if (gate.errors.length > 0) {
+      return { item: before, errors: gate.errors, undo: null, committed: "none", commitDetail: null };
+    }
 
     const beforeValues = (await this.getItem(ctx, boardId, itemId)).values;
     const undo: CellEditUndo = {
@@ -570,25 +739,9 @@ export class BoardsService {
       group_id: before.group_id,
     };
 
-    let target: string | null = null;
-    for (const key of writtenKeys) {
-      const resolved = resolveMoveTarget(byKey.get(key)!, values[key]);
-      if (resolved !== null) target = resolved;
-    }
-    const repo = await this.repo;
+    let notices: CellError[] = [];
     try {
-      if (target !== null && target !== before.group_id) {
-        await repo.setValuesAndMoveAtomic(ctx, boardId, {
-          itemId,
-          targetGroupId: target,
-          beforeItemId: null,
-          expectedVersion: detail.board.row_order_version ?? 0,
-          requestId,
-          values,
-        });
-      } else {
-        await repo.setValues(ctx, itemId, values);
-      }
+      notices = await this.writeValuesWithRuleMove(ctx, boardId, itemId, detail, before.group_id, values, requestId);
     } catch (error) {
       // 쓰기 실패 뒤 실제 반영 범위를 재조회로 가린다 — 추측으로 "미저장"이라 하지 않는다.
       let reread: ItemWithValues;
@@ -654,10 +807,11 @@ export class BoardsService {
     try {
       return {
         item: await this.getItem(ctx, boardId, itemId),
-        errors: [],
+        // 값은 전부 저장됐다. 옮길 그룹이 없어 행만 두었으면 그 알림만 싣는다.
+        errors: notices,
         undo,
         committed: "all",
-        commitDetail: null,
+        commitDetail: notices[0]?.message ?? null,
       };
     } catch (rereadError) {
       const cause = rereadError instanceof Error && rereadError.message ? ` (${rereadError.message})` : "";
