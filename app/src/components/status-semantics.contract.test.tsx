@@ -219,10 +219,9 @@ describe("BBE-193 성공/실패 표현 계약", () => {
       ["WorkBoardSurface", "./work-management/NotificationWorkBoard.tsx"],
       // BBE-240: DealLedgerPanel 이 처음으로 소비처를 얻었다 — 보드 행 원장 팝업(DealLedgerButton).
       ["DealLedgerPanel", "./board/DealLedgerButton.tsx"],
-      // BBE-240: DealLedgerButton 도 이제 소비처가 있다 — 계약업체 실무 등 보드 행(deal_id
-      // 있는 행에만 조건부 렌더, GroupTable.tsx). /deals/[dealId] 페이지에도 같은 컴포넌트가
-      // 「회계 원장」 섹션으로 붙었다(대표 소비처 하나만 여기 적는다, 위 패턴과 동일).
-      ["DealLedgerButton", "./board/GroupTable.tsx"],
+      // BBE-240: DealLedgerButton 도 이제 소비처가 있다 — 2026-10-07 대표 피드백으로 보드 행에서
+      // 상세(열기) 머리말로 옮겼다(deal_id 있는 행에만 조건부 렌더, ItemDetailPanel.tsx).
+      ["DealLedgerButton", "./board/ItemDetailPanel.tsx"],
       // BBE-198: LedgerExportButton 이 드디어 소비처를 얻었다 — /ledger 「리포트」 탭의
       // 필터바 오른쪽 두 버튼 중 하나(다른 하나는 window.print()). 총괄 승인 설계가
       // 「화면 리포트를 정본으로, 거기서 인쇄 + CSV 두 개만」 이었고 그 CSV 가 이것이다.

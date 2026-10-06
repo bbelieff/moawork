@@ -101,18 +101,21 @@ function dragEvent(type: string) {
 }
 
 describe("BoardWorkspace 계약업체 실무 화면 연결 (#839)", () => {
-  it("원본 이동 규칙으로 진행현황 선택지를 «보드 이동 / 상태만 바꾸기» 로 나눈다", async () => {
+  it("원본 이동 규칙으로 단계 = 보드: 보드 없는 단계는 빠지고 단계 이름은 보드 이름이다 (2026-10-07)", async () => {
     const host = await mount(CONTRACT_WORK_TAB_SOURCE);
+    // 보드가 없는 저장값은 칩에 원래 이름(이모지 걷음)으로 보이되 고를 수는 없다.
     const trigger = host.querySelector<HTMLButtonElement>('button[role="combobox"][data-stage-value="📂소진공 혁신성장 대기"]')!;
     expect(trigger.textContent).toBe("소진공 혁신성장 대기");
     await act(async () => trigger.click());
     const picker = document.querySelector<HTMLElement>("[data-stage-picker]")!;
     const option = (id: string) => [...picker.querySelectorAll<HTMLElement>("[data-stage-option]")]
-      .find((node) => node.getAttribute("data-stage-option") === id)!;
-    expect(option("대기중").closest('[role="group"]')?.textContent).toContain("보드 이동");
-    expect(option("대기중").textContent).toContain("→ 준비단계");
-    expect(option("심사 중").textContent).toContain("지금 그룹");
-    expect(option("📂소진공 혁신성장 대기").closest('[role="group"]')?.textContent).toContain("상태만 바꾸기 (보드 그대로)");
+      .find((node) => node.getAttribute("data-stage-option") === id);
+    expect(option("대기중")?.closest('[role="group"]')?.textContent).toContain("단계");
+    expect(option("대기중")?.textContent).toContain("준비단계");
+    expect(option("대기중")?.textContent).not.toContain("→");
+    expect(option("심사 중")?.textContent).toContain("지금 그룹");
+    expect(option("📂소진공 혁신성장 대기")).toBeUndefined();
+    expect(picker.textContent).not.toContain("상태만 바꾸기");
   });
 
   it("같은 회사 이름이 2건 이상인 행에만 «같은 회사 N건» — 다른 보드에는 없다", async () => {

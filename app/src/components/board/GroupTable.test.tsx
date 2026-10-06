@@ -179,11 +179,10 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     expect(html).toContain("삭제");
   });
 
-  it("BBE-240 · deal_id 가 있는 행에만 원장 버튼이 뜬다", () => {
+  it("BBE-240 · 원장 버튼은 행에 없다 — 상세(열기) 머리말로 옮겼다 (2026-10-07)", () => {
     const columns = [col({ key: "a", label: "일반" })];
-    const withDeal = renderTable(columns, [row({}, "deal-1")]);
-    expect(withDeal).toContain("📒 원장");
-    const withoutDeal = renderTable(columns, [row()]);
-    expect(withoutDeal).not.toContain("📒 원장");
+    // 행 칸에는 이름·열기·삭제만. 원장은 ItemDetailPanel 머리말(ItemDetailPanel.test.tsx)에서 확인한다.
+    expect(renderTable(columns, [row({}, "deal-1")])).not.toContain("📒 원장");
+    expect(renderTable(columns, [row()])).not.toContain("📒 원장");
   });
 });

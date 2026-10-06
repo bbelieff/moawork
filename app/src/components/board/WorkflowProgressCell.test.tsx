@@ -64,7 +64,7 @@ async function renderCell(props: Partial<React.ComponentProps<typeof WorkflowPro
   document.body.append(host);
   root = createRoot(host);
   const element = (extra: Partial<React.ComponentProps<typeof WorkflowProgressCell>> = {}) => (
-    <WorkflowProgressCell boardId="b-1" row={row("심사 중")} column={column()} kind="work" readOnly={false} moveTargets={MOVES} {...props} {...extra} />
+    <WorkflowProgressCell boardId="b-1" row={row("심사 중")} column={column()} kind="work" readOnly={false} moveTargets={MOVES} linkedStages={false} {...props} {...extra} />
   );
   await act(async () => root!.render(element()));
   return { host, rerender: async (extra: Partial<React.ComponentProps<typeof WorkflowProgressCell>>) => act(async () => root!.render(element(extra))) };
@@ -258,5 +258,19 @@ describe("WorkflowProgressCell — 한 줄 진행현황 칩 (#839)", () => {
     expect(trigger(host).disabled).toBe(true);
     await act(async () => trigger(host).click());
     expect(popover()).toBeNull();
+  });
+
+  it("단계 = 보드로 연결된 탭: 보드 없는 단계는 목록에 없고, 이름은 보드 이름이다 (2026-10-07)", async () => {
+    const { host } = await renderCell({ linkedStages: true });
+    expect(trigger(host).textContent).toContain("심사 중");
+    await openPicker(host);
+    expect(groupTitles()).toEqual(["단계", "다음 업무로 이동"]);
+    const ids = [...document.querySelectorAll<HTMLElement>("[data-stage-option]")].map((node) => node.getAttribute("data-stage-option"));
+    expect(ids).toEqual(expect.arrayContaining(["대기중", "심사 중"]));
+    // 보드가 없는 단계(관리중·📂소진공 혁신성장 대기·업체관리·해당연도 매출)는 고를 수 없다.
+    for (const missing of ["관리중", "📂소진공 혁신성장 대기", "업체관리", "해당연도 매출"]) expect(ids).not.toContain(missing);
+    // 단계 이름은 보드 이름(앞머리 이모지는 화면에서만 걷는다) — «대기중» 이 아니라 «준비단계».
+    expect(option("대기중").textContent).toContain("준비단계");
+    expect(option("대기중").textContent).not.toContain("→");
   });
 });

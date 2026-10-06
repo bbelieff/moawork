@@ -77,7 +77,7 @@ export function stageChipStyle(color: string | null): { backgroundColor: string;
     };
   }
   return {
-    backgroundColor: `color-mix(in srgb, ${color} 16%, var(--mw-card))`,
+    backgroundColor: `color-mix(in srgb, ${color} 22%, var(--mw-card))`,
     color: `color-mix(in srgb, ${color} 40%, var(--mw-fg))`,
   };
 }
@@ -109,6 +109,7 @@ export function StagePicker({
   transitionLabel,
   disabled = false,
   canMoveRows = true,
+  linkedStages = false,
   describedBy,
   searchClassName,
   onSelect,
@@ -128,6 +129,11 @@ export function StagePicker({
   disabled?: boolean;
   /** false 면 다른 그룹으로 옮기는 선택지를 비활성으로 보여 준다(보드의 행 이동 권한). */
   canMoveRows?: boolean;
+  /**
+   * 2026-10-07 대표 피드백 — 단계 = 보드(그룹)로 연결된 보드(계약업체 실무). 선택지 이름은 그 보드 이름이고,
+   * 맞는 보드가 없는 선택지는 목록에서 뺀다(«소진공 혁신성장 대기» 처럼 보드 없는 단계가 보이지 않게).
+   */
+  linkedStages?: boolean;
   describedBy?: string;
   /** 팝오버 안 검색칸 서식 — 보드 표 공통 컨트롤 서식을 부모가 넘긴다. */
   searchClassName: string;
@@ -149,8 +155,12 @@ export function StagePicker({
 
   const displayById = useMemo(() => {
     const labels = presentLabels(options.map((option) => option.label));
-    return new Map(options.map((option, index) => [option.id, labels[index]]));
-  }, [options]);
+    return new Map(options.map((option, index) => {
+      const target = linkedStages ? moveTargets?.get(option.id) : undefined;
+      // 연결된 보드: 단계 이름 = 보드 이름(동기화 전·중간 상태에서도 화면은 보드 이름을 보인다).
+      return [option.id, target?.groupName ? presentLabel(target.groupName) : labels[index]] as const;
+    }));
+  }, [linkedStages, moveTargets, options]);
 
   const current = options.find((option) => option.id === value) ?? null;
   const currentColor = current ? optionColor(current, moveTargets?.get(current.id)) : null;
@@ -185,7 +195,9 @@ export function StagePicker({
     const visible = options.filter((option) => needle === ""
       || normalizeLabelKey(`${labelSearchText(option.label)} ${displayById.get(option.id) ?? ""} ${option.id}`).includes(needle));
     const clear: PickerRow[] = value !== "" && needle === "" ? [{ kind: "clear", disabled: false }] : [];
-    const stageSections: PickerSection[] = moveTargets
+    const stageSections: PickerSection[] = moveTargets && linkedStages
+      ? [{ key: "move", title: "단계", rows: [...visible.filter((option) => moveTargets.has(option.id)).map(toRow), ...clear] }]
+      : moveTargets
       ? [
           { key: "move", title: "보드 이동", rows: visible.filter((option) => moveTargets.has(option.id)).map(toRow) },
           { key: "stay", title: "상태만 바꾸기 (보드 그대로)", rows: [...visible.filter((option) => !moveTargets.has(option.id)).map(toRow), ...clear] },
@@ -195,7 +207,7 @@ export function StagePicker({
       ...stageSections.filter((section) => section.rows.length > 0),
       { key: "transfer", title: "다음 업무로 이동", rows: [{ kind: "transfer", disabled: false }] },
     ];
-  }, [canMoveRows, currentGroupId, displayById, moveTargets, options, value]);
+  }, [canMoveRows, currentGroupId, displayById, linkedStages, moveTargets, options, value]);
   const sections = useMemo(() => sectionsFor(query), [query, sectionsFor]);
 
   const rows = useMemo(() => sections.flatMap((section) => section.rows), [sections]);

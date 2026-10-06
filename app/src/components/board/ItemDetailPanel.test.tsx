@@ -230,6 +230,20 @@ const stylePath = resolve(
 );
 
 describe("BBE-565 목업 기준 실제 상세 패널", () => {
+  it("BBE-240 원장 버튼은 상세 머리말에 — 자금건(deal_id)이 있을 때만 (2026-10-07)", () => {
+    const render = (dealId: string | null) => {
+      const host = document.createElement("div");
+      host.innerHTML = renderStaticPanel(
+        <ItemDetailPanel boardId="board-a" row={{ ...row, deal_id: dealId }} columns={columns}
+          boardLayout={[{ key: "company", source: "column" }]}
+          layout={[{ key: "company", source: "column" }]} inherited defaultOpen canEditItems canManageColumns />,
+      );
+      return host.querySelector("[data-item-detail-header]")!;
+    };
+    expect(render("deal-a").textContent).toContain("📒 원장");
+    expect(render(null).textContent).not.toContain("원장");
+  });
+
   it("상담은 두 행 shell의 새 행이 아니라 정보 rail 안에서 스크롤된다", () => {
     const html = renderStaticPanel(
       <ItemDetailPanel boardId="board-a" row={row} columns={columns}

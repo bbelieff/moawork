@@ -47,7 +47,6 @@ import type { AddLabelOptionInput, AddLabelOptionResult } from "@/app/(app)/boar
 import { SourceBadge } from "./FieldBadge";
 import { clampWidth } from "./layout";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
-import { DealLedgerButton } from "./DealLedgerButton";
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import type { ItemDetailSnapshot } from "@/app/(app)/boards/item-detail-actions";
 import { TrashItemButton } from "./ItemTrashControls";
@@ -1300,9 +1299,7 @@ export function GroupTable({
                       }
                     />
 
-                    {/* BBE-240 — 자금건과 연결된 행(BBE-235 프로젝션 트리거가 채운 deal_id)에만
-                        뜬다. 컬럼이 아니라 행 자체에 조건부로 붙인다 — TrashItemButton 과 같은 자리. */}
-                    {!canonicalNewLead && row.deal_id && <DealLedgerButton dealId={row.deal_id} />}
+                    {/* BBE-240 원장 버튼은 2026-10-07 대표 피드백으로 상세(열기) 머리말로 옮겼다 — 행은 이름·열기·삭제만. */}
 
                     {canDeleteRow && (
                       <TrashItemButton

@@ -142,9 +142,6 @@ export function GroupBlock({
           }}
         >
           <span className="sr-only" aria-live="polite">{dropState==="invalid"?"같은 그룹 위치에는 놓을 수 없어요.":dropState==="valid"?"이 위치로 그룹을 이동합니다.":""}</span>
-          <span aria-hidden="true" className="text-[0.6rem] text-mw-sub">
-            {open ? "▼" : "▶"}
-          </span>
           <span data-mw-group-color aria-hidden="true" style={{ backgroundColor: accent }} />
           <span
             data-group-title=""
@@ -159,6 +156,8 @@ export function GroupBlock({
 
           <span className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 text-[0.65rem] text-mw-sub">
             {summarySlot}
+            {/* 2026-10-07 대표 피드백 — 띠를 단정하게: 순서·프리셋 도구는 띠에 올리거나 초점이 갈 때만 보인다(globals.css). */}
+            <span data-group-banner-tools="" className="flex items-center gap-2">
             {orderControls}
             {/*
               프리셋 칩 — 이 그룹의 컬럼 구성을 가리키는 아이템 프리셋.
@@ -173,6 +172,7 @@ export function GroupBlock({
               화면(읽기 전용 시스템 보드 등)에서도 이 블록을 그대로 쓸 수 있다.
             */}
             {presetMenu}
+            </span>
           </span>
         </summary>
 
