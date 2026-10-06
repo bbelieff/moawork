@@ -106,6 +106,7 @@ import {
 } from "@/lib/workflow/progress";
 import { presentLabel, presentLabels } from "@/lib/boards/label-presentation";
 import { groupToneAccent, resolveGroupTones } from "@/lib/boards/group-tone";
+import { primaryStageForGroup } from "@/lib/boards/moveRules";
 import {
   NEW_LEAD_SAVED_FILTER_PROJECTION,
   presentNewLeadSavedFilters,
@@ -638,13 +639,25 @@ export function BoardWorkspace({
    * 그룹 띠·행 첫 칸 줄·진행현황 선택지 점이 모두 같은 톤을 쓴다(단계 색 = 그룹 띠 색).
    * «그룹 없음» 묶음은 톤이 없다(중립색).
    */
-  const groupTones = useMemo(
-    () => resolveGroupTones(
+  const groupTones = useMemo(() => {
+    // 단계 = 그룹으로 연결된 탭(계약업체 실무)은 그룹마다 이동 규칙이 가리키는 대표 단계 id 로
+    // 톤을 정한다 — 띠 이름을 바꿔도 깊이가 유지된다(#845 단계-그룹 연동).
+    const stageColumn = workflowProgressKind === "work"
+      ? physicalActiveColumns.find((column) => column.key === "progress_status") ?? null
+      : null;
+    const stageByGroup = new Map<string, string>();
+    if (stageColumn) {
+      for (const group of orderedGroups) {
+        const stage = primaryStageForGroup(stageColumn, orderedGroups, group.id);
+        if (stage) stageByGroup.set(group.id, stage);
+      }
+    }
+    return resolveGroupTones(
       board.source,
       blocks.filter((block) => block.key !== UNGROUPED_KEY).map((block) => ({ key: block.key, name: block.name })),
-    ),
-    [blocks, board.source],
-  );
+      stageByGroup,
+    );
+  }, [blocks, board.source, orderedGroups, physicalActiveColumns, workflowProgressKind]);
 
   /**
    * 진행현황 선택지 중 «행을 옮기는» 것 → 목표 그룹 (#839). 화면용 진행현황 열은 이동 규칙을

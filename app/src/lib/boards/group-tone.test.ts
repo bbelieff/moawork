@@ -93,6 +93,15 @@ describe("group-tone — 탭 2색 × 깊이 (#845, 대표 지시 2026-10-06)", (
     });
   });
 
+  it("단계와 연결된 그룹은 이름을 바꿔도 대표 단계 id 로 같은 깊이를 유지한다", () => {
+    const groups = named("승인 완료", "1차 심사", "소진공 신생 접수", "새 그룹");
+    const stageByGroup = new Map([["g0", "승인"], ["g1", "심사 중"], ["g2", "📂소진공 혁신성장 대기"]]);
+    const tones = resolveGroupTones(CONTRACT_WORK_TAB_SOURCE, groups, stageByGroup);
+    expect(groups.map((group) => groupToneLabel(tones.get(group.key)))).toEqual(["A5", "A4", "A3", "A3"]);
+    // 연결이 없으면 이름표로 — 바뀐 이름은 표에 없어 순서 규칙으로 떨어진다(연결이 필요한 이유).
+    expect(groupToneLabel(resolveGroupTones(CONTRACT_WORK_TAB_SOURCE, groups).get("g0"))).not.toBe("A5");
+  });
+
   it("톤 → 탭 색 토큰. 톤 없는 «그룹 없음» 은 중립색이다", () => {
     expect(groupToneAccent({ axis: "A", level: 3 })).toBe("var(--mw-tab-a-3)");
     expect(groupToneAccent({ axis: "B", level: 5 })).toBe("var(--mw-tab-b-5)");

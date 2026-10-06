@@ -113,6 +113,7 @@ import { selectionTriState } from "./bulk-selection";
 import { MAX_FILE_BYTES } from "@/lib/services/file-contract";
 import { RegionCell } from "./RegionPairCell";
 import { isRegionSidoKey, isRegionSigunguKey } from "@/lib/new-lead/region-pair";
+import { clampTitleWidth, TITLE_COLUMN_MAX, TITLE_COLUMN_MIN, TITLE_COLUMN_STEP, useTitleColumnWidth } from "./title-column-width";
 
 const CELL_INPUT = BOARD_TABLE_CONTROL;
 
@@ -889,6 +890,54 @@ export function GroupTable({
     };
   }, [commitWidth]);
 
+  /**
+   * #845 — 업체명(첫 번째·고정) 열 폭. 사람별·보드별 내 화면 설정(브라우저 저장)이라
+   * 관리자 권한 없이 누구나 조절한다. 그룹마다 표가 따로라도 같은 저장소를 구독해 함께 움직인다.
+   */
+  const titleColumn = useTitleColumnWidth(boardId);
+  const titleResizeRef = useRef<{ startX: number; startWidth: number; current: number } | null>(null);
+  const { preview: previewTitleWidth, commit: commitTitleWidth } = titleColumn;
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      const r = titleResizeRef.current;
+      if (!r) return;
+      r.current = clampTitleWidth(r.startWidth + (e.clientX - r.startX));
+      previewTitleWidth(r.current);
+    }
+    function onUp() {
+      const r = titleResizeRef.current;
+      titleResizeRef.current = null;
+      if (r) commitTitleWidth(r.current);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [commitTitleWidth, previewTitleWidth]);
+  const startTitleResize = (e: React.MouseEvent<HTMLSpanElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const th = e.currentTarget.closest("th");
+    const startWidth = th ? th.getBoundingClientRect().width : TITLE_COLUMN_MIN;
+    titleResizeRef.current = { startX: e.clientX, startWidth, current: startWidth };
+  };
+  const nudgeTitleWidth = (e: React.KeyboardEvent<HTMLSpanElement>) => {
+    const th = e.currentTarget.closest("th");
+    const current = titleColumn.width ?? (th ? th.getBoundingClientRect().width : TITLE_COLUMN_MIN);
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      commitTitleWidth(current + (e.key === "ArrowRight" ? TITLE_COLUMN_STEP : -TITLE_COLUMN_STEP));
+    } else if (e.key === "Home" || e.key === "Escape") {
+      e.preventDefault();
+      titleColumn.reset();
+    }
+  };
+  const titleCellStyle = titleColumn.width
+    ? { width: titleColumn.width, minWidth: titleColumn.width, maxWidth: titleColumn.width }
+    : undefined;
+
   const startResize =
     (columnId: string) => (e: React.MouseEvent<HTMLSpanElement>) => {
       e.preventDefault();
@@ -940,7 +989,8 @@ export function GroupTable({
             <th
               scope="col"
               className={`${STICKY_FIRST_BASE} z-[var(--mw-layer-board-corner)] bg-mw-board-head ${BOARD_TABLE_HEADER_CELL} min-w-44`}
-              style={{ top: 0, position: "sticky" }}
+              style={{ top: 0, position: "sticky", ...titleCellStyle }}
+              data-board-title-column
             >
               <span className="flex items-center gap-1">
                 {selection && onToggleGroup ? (
@@ -959,6 +1009,23 @@ export function GroupTable({
                   <><SourceBadge source="auto" />회사명</>
                 ) : "이름"}
               </span>
+              <span
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={`${canonicalNewLead ? "회사명" : "이름"} 열 폭 조절 · 좌우 화살표로 조절, Home 으로 원래대로`}
+                aria-valuemin={TITLE_COLUMN_MIN}
+                aria-valuemax={TITLE_COLUMN_MAX}
+                aria-valuenow={titleColumn.width ?? undefined}
+                tabIndex={0}
+                data-no-drag
+                data-board-title-resize
+                draggable={false}
+                onMouseDown={startTitleResize}
+                onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); titleColumn.reset(); }}
+                onKeyDown={nudgeTitleWidth}
+                title="끌어서 폭 조절 · 두 번 누르면 원래대로"
+                className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize border-r-2 border-transparent transition-colors hover:border-mw-record focus-visible:border-mw-record focus-visible:outline-none"
+              />
             </th>
             {columns.map((col) => {
               const isTarget = overColKey === col.key && dragColKey !== col.key;
@@ -1114,6 +1181,7 @@ export function GroupTable({
                   }:undefined}
                   onDragEnd={()=>{onRowDragEnd();clearRowDrop();setDropMessage(null);}}
                   className={`${STICKY_FIRST} ${BOARD_TABLE_BODY_CELL} group-hover:bg-mw-bg ${rowDragEnabled?"cursor-grab active:cursor-grabbing":""}`}
+                  style={titleCellStyle}
                 >
                   <div className="flex items-center gap-1">
                     {selection && onToggleRow ? (

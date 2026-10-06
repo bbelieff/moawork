@@ -49,6 +49,12 @@ type ToneTable = Readonly<{
   patterns?: readonly ToneRule[];
   /** 표에 없는 그룹의 톤. 없으면 아래 규칙(멈춤·곁가지 낱말 → 순서)으로 정한다. */
   unknown?: GroupTone;
+  /**
+   * 그룹에 연결된 «대표 단계» id(이동 규칙의 option id — 바뀌지 않는 값) → 톤.
+   * 단계 = 그룹으로 연결된 탭에서는 이름보다 이것을 먼저 본다. 대표가 띠 이름을
+   * 바꿔도(예: 「승인」→「승인 완료」) 깊이와 단계 칩 색이 그대로 남는다.
+   */
+  stages?: Readonly<{ exact: Readonly<Record<string, GroupTone>>; patterns?: readonly ToneRule[] }>;
 }>;
 
 /**
@@ -70,6 +76,21 @@ const CONTRACT_WORK_TONES: ToneTable = {
     대출불가: STOP,
   },
   patterns: [{ match: (key) => key.startsWith("소진공") && key.endsWith("접수예정"), tone: tone("A", 3) }],
+  stages: {
+    exact: {
+      대기중: tone("A", 1),
+      진행중: tone("A", 2),
+      심사중: tone("A", 4),
+      승인: tone("A", 5),
+      기업인증진행: tone("B", 1),
+      "소공인(상생)": tone("B", 2),
+      관리중: tone("B", 3),
+      해당연도매출: tone("B", 4),
+      업체관리: tone("B", 5),
+      불가: STOP,
+    },
+    patterns: [{ match: (key) => key.startsWith("소진공") && key.endsWith("대기"), tone: tone("A", 3) }],
+  },
 };
 
 /**
@@ -203,6 +224,14 @@ function tableTone(table: ToneTable, name: string): GroupTone | null {
   return table.patterns?.find((rule) => rule.match(key))?.tone ?? null;
 }
 
+function stageTone(table: ToneTable, stageId: string | null | undefined): GroupTone | null {
+  if (!stageId || !table.stages) return null;
+  const key = groupToneKey(stageId);
+  const exact = Object.hasOwn(table.stages.exact, key) ? table.stages.exact[key] : undefined;
+  if (exact) return exact;
+  return table.stages.patterns?.find((rule) => rule.match(key))?.tone ?? null;
+}
+
 /** 기본 탭의 표에 «이름으로» 있는 톤만(낱말·순서 규칙은 쓰지 않는다). 표가 없으면 null. */
 export function groupToneFromTable(source: string | null | undefined, name: string): GroupTone | null {
   const table = source ? TABLES[source] : undefined;
@@ -216,13 +245,15 @@ export function groupToneFromTable(source: string | null | undefined, name: stri
 export function resolveGroupTones(
   source: string | null | undefined,
   groups: readonly GroupToneInput[],
+  /** 블록 키 → 연결된 대표 단계 id(이동 규칙 역조회). 있으면 이름보다 먼저 쓴다. */
+  stageByGroup?: ReadonlyMap<string, string>,
 ): Map<string, GroupTone> {
   const table = source ? TABLES[source] : undefined;
   if (!table) return fallbackGroupTones(groups);
   const result = new Map<string, GroupTone>();
   const unknown: GroupToneInput[] = [];
   for (const group of groups) {
-    const known = tableTone(table, group.name);
+    const known = stageTone(table, stageByGroup?.get(group.key)) ?? tableTone(table, group.name);
     if (known) result.set(group.key, known);
     else if (table.unknown) result.set(group.key, table.unknown);
     else unknown.push(group);
