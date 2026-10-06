@@ -46,6 +46,42 @@ export function userFacingMessage(error: unknown): string {
   return "항목을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.";
 }
 
+/**
+ * 값과 함께 행을 옮기는 저장(`set_board_item_values_with_atomic_move` → `move_board_row_atomic`)이
+ * 실패한 «이유의 종류» — 2026-10-06.
+ *
+ * 왜: 진행현황처럼 «그룹을 옮기는» 단계 변경이 RPC 관문에 걸리면 값도 그룹도 안 바뀌는데
+ * 화면에는 「항목을 저장하지 못했어요」 만 떴다. 무엇을 하면 되는지(새로고침·권한) 알 수 없었다.
+ * DB 원문을 그대로 보여주지 않고(위 규칙) 종류만 가려 사람 말로 바꾼다.
+ */
+export type RowMoveFailure = "stale" | "permission" | "target_missing";
+
+export const ROW_MOVE_FAILURE_MESSAGES: Readonly<Record<RowMoveFailure, string>> = {
+  stale: "다른 사용자가 먼저 순서를 바꿨어요. 새로고침 후 다시 시도해 주세요.",
+  permission: "이 단계는 행을 다른 그룹으로 옮겨요. 전체 행 권한이 있는 사람만 바꿀 수 있어요.",
+  target_missing: "옮길 그룹을 찾지 못했어요. 새로고침 후 다시 시도해 주세요.",
+};
+
+/** 옮길 그룹이 사라져 값만 저장했을 때 — 저장은 됐으므로 «실패» 가 아니라 알림이다. */
+export const ROW_MOVE_VALUE_ONLY_NOTICE = "값은 저장했어요. 옮길 그룹이 없어 행은 그대로 두었어요.";
+
+const ROW_MOVE_FAILURE_PATTERNS: ReadonlyArray<readonly [RowMoveFailure, readonly string[]]> = [
+  // Supabase RPC 원문(153 move_board_row_atomic) · 로컬 어댑터 원문 순서다.
+  ["stale", ["row move stale version", "행 순서가 변경되었습니다"]],
+  ["permission", ["row move permission denied", "전체 행을 볼 수 있는 사용자만"]],
+  ["target_missing", ["target group unavailable", "대상 그룹을 찾을 수 없습니다"]],
+];
+
+/** 행 이동 실패를 종류로 가린다. 이미 사람 말로 바꾼 문장도 같은 종류로 읽는다. 모르면 null. */
+export function classifyRowMoveFailure(error: unknown): RowMoveFailure | null {
+  const raw = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  if (!raw) return null;
+  for (const [kind, patterns] of ROW_MOVE_FAILURE_PATTERNS) {
+    if (raw === ROW_MOVE_FAILURE_MESSAGES[kind] || patterns.some((pattern) => raw.includes(pattern))) return kind;
+  }
+  return null;
+}
+
 /** 플래시 쿠키 이름. */
 export const BOARD_ACTION_FLASH_COOKIE = "mw_board_err";
 

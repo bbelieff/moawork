@@ -28,7 +28,9 @@ import {
 import {
   BOARD_ACTION_FLASH_COOKIE,
   BOARD_ACTION_FLASH_MAX_AGE,
+  classifyRowMoveFailure,
   encodeBoardActionFlash,
+  ROW_MOVE_FAILURE_MESSAGES,
   UserFacingActionError,
   userFacingMessage,
 } from "@/lib/boards/boardActionFlash";
@@ -571,8 +573,8 @@ export async function moveItemAction(formData: FormData): Promise<MoveItemAction
     return{ok:true,version:null,replayed:false};
   }catch(error){
     console.error("[board kanban move]",error);
-    const raw=error instanceof Error?error.message:"";
-    return{ok:false,stale:raw.includes("stale")||raw.includes("순서가 변경"),message:userFacingMessage(error)};
+    // 셀 저장 경로(setCells)는 낡은 버전을 한 번 다시 시도한 뒤 사람 말로 바꿔 던진다 — 원문·변환문 모두 같은 종류로 읽는다.
+    return{ok:false,stale:classifyRowMoveFailure(error)==="stale",message:userFacingMessage(error)};
   }
 }
 
@@ -680,11 +682,11 @@ export async function moveRowAction(formData: FormData): Promise<MoveRowActionRe
     return { ok:true,version:receipt.version,replayed:receipt.replayed };
   } catch (error) {
     console.error("[board row move]",error);
-    const raw=error instanceof Error?error.message:"";
+    const stale=classifyRowMoveFailure(error)==="stale";
     return {
       ok:false,
-      stale:raw.includes("stale")||raw.includes("순서가 변경"),
-      message:raw.includes("stale")?"다른 사용자가 먼저 순서를 바꿨어요. 새로고침 후 다시 시도해 주세요.":userFacingMessage(error),
+      stale,
+      message:stale?ROW_MOVE_FAILURE_MESSAGES.stale:userFacingMessage(error),
     };
   }
 }
