@@ -273,4 +273,13 @@ describe("WorkflowProgressCell — 한 줄 진행현황 칩 (#839)", () => {
     expect(option("대기중").textContent).toContain("준비단계");
     expect(option("대기중").textContent).not.toContain("→");
   });
+
+  it("연결된 탭에서 같은 보드를 가리키는 선택지가 여럿이면 하나만 — 정의 선택지를 먼저 보인다", async () => {
+    const ghost = { id: "group:g-review", label: "🔂 심사 중" };
+    const moves: WorkflowStageMoveTargets = new Map([...MOVES, ["group:g-review", { groupId: "g-review", groupName: "🔂 심사 중" }]]);
+    const { host } = await renderCell({ linkedStages: true, column: column([ghost, ...STAGES]), moveTargets: moves });
+    await openPicker(host);
+    const ids = [...document.querySelectorAll<HTMLElement>("[data-stage-option]")].map((node) => node.getAttribute("data-stage-option"));
+    expect(ids.filter((id) => id === "심사 중" || id === "group:g-review")).toEqual(["심사 중"]);
+  });
 });

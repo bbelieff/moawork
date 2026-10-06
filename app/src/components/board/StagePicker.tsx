@@ -195,8 +195,22 @@ export function StagePicker({
     const visible = options.filter((option) => needle === ""
       || normalizeLabelKey(`${labelSearchText(option.label)} ${displayById.get(option.id) ?? ""} ${option.id}`).includes(needle));
     const clear: PickerRow[] = value !== "" && needle === "" ? [{ kind: "clear", disabled: false }] : [];
+    // 연결된 탭은 «보드 하나 = 단계 하나» 로 보인다. 같은 보드를 가리키는 선택지가 여럿이면(동기화 전·사고 뒤
+    // 남은 `group:<id>` 선택지 등) 정의 선택지를 먼저, 없으면 첫 선택지 하나만 보인다.
+    const linkedRows = (): FieldOption[] => {
+      if (!moveTargets) return [];
+      const byGroup = new Map<string, FieldOption>();
+      for (const option of visible) {
+        const target = moveTargets.get(option.id);
+        if (!target) continue;
+        const kept = byGroup.get(target.groupId);
+        if (!kept || (kept.id.startsWith("group:") && !option.id.startsWith("group:"))) byGroup.set(target.groupId, option);
+      }
+      const keep = new Set([...byGroup.values()].map((option) => option.id));
+      return visible.filter((option) => keep.has(option.id));
+    };
     const stageSections: PickerSection[] = moveTargets && linkedStages
-      ? [{ key: "move", title: "단계", rows: [...visible.filter((option) => moveTargets.has(option.id)).map(toRow), ...clear] }]
+      ? [{ key: "move", title: "단계", rows: [...linkedRows().map(toRow), ...clear] }]
       : moveTargets
       ? [
           { key: "move", title: "보드 이동", rows: visible.filter((option) => moveTargets.has(option.id)).map(toRow) },
