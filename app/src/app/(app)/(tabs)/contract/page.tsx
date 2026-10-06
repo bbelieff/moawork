@@ -15,7 +15,7 @@ export default async function ContactBoardPage({
 }) {
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
-  const result = await repairContactBoardOnEntry(ctx, await createClient());
+  const result = await repairContactBoardOnEntry(ctx, await createClient({ noStore: true }));
   if (result.kind !== "ready") {
     const conflict = result.kind === "conflict";
     const permission = result.kind === "permission";
