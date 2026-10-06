@@ -3,7 +3,10 @@ import { redirect } from "next/navigation";
 import type { Ctx, Org, User } from "@/lib/types";
 import { isMemberRole, isMemberScope } from "@/lib/auth/roles";
 import { parseAdminRole } from "@/lib/auth/admin";
-import { chooseSessionMembership } from "@/lib/auth/workspace-routing";
+import {
+  chooseSessionMembership,
+  parseActiveMembershipRows,
+} from "@/lib/auth/workspace-routing";
 import { getRepo } from "@/lib/repo";
 import { SEED_ORG_ID } from "@/lib/repo/local/seed";
 import { createClient } from "@/lib/supabase/server";
@@ -48,15 +51,28 @@ function parseMembership(row: MembershipRow | null) {
   return { org, role: row.role, scope: row.scope };
 }
 
+// When no session is selected, «chooser» means the verified user still has
+// active workspaces but none was picked (no or stale mw_org cookie with two or
+// more memberships). That user belongs on the workspace chooser, not on the
+// membership error. It never grants anything: the chooser re-reads membership.
+type SupabaseSessionResult = { ctx: Ctx | null; chooser: boolean };
+
 async function getSupabaseSession(
   preferredOrgId: string | undefined,
 ): Promise<Ctx | null> {
+  return (await resolveSupabaseSession(preferredOrgId)).ctx;
+}
+
+async function resolveSupabaseSession(
+  preferredOrgId: string | undefined,
+): Promise<SupabaseSessionResult> {
+  const denied = { ctx: null, chooser: false };
   const supabase = await createClient();
   const {
     data: { user: authUser },
     error: userError,
   } = await supabase.auth.getUser();
-  if (userError || !authUser) return null;
+  if (userError || !authUser) return denied;
   const authUserId = authUser.id;
 
   // The tenant membership read and the platform identity read are independent
@@ -82,13 +98,18 @@ async function getSupabaseSession(
   const [membershipResult, platformRoleResult] =
     await Promise.all([membershipPromise, platformRolePromise]);
   const { data: membershipRows, error: membershipError } = membershipResult;
-  if (membershipError) return null;
+  if (membershipError) return denied;
 
   const selected = chooseSessionMembership(membershipRows, preferredOrgId);
-  const membership = selected
-    ? parseMembership(selected.source as MembershipRow)
-    : null;
-  if (!membership) return null;
+  if (!selected) {
+    const parsed = parseActiveMembershipRows(membershipRows);
+    return {
+      ctx: null,
+      chooser: parsed.ok && parsed.memberships.length > 0,
+    };
+  }
+  const membership = parseMembership(selected.source as MembershipRow);
+  if (!membership) return denied;
 
   let platformRole = null;
   if (platformRoleResult && !platformRoleResult.error) {
@@ -105,11 +126,14 @@ async function getSupabaseSession(
   };
 
   return {
-    user,
-    org: membership.org,
-    role: membership.role,
-    scope: membership.scope,
-    isPlatformAdmin: platformRole !== null,
+    ctx: {
+      user,
+      org: membership.org,
+      role: membership.role,
+      scope: membership.scope,
+      isPlatformAdmin: platformRole !== null,
+    },
+    chooser: false,
   };
 }
 
@@ -152,6 +176,14 @@ export async function getSessionOrNull(): Promise<Ctx | null> {
 }
 
 export async function getSession(): Promise<Ctx> {
+  if (hasSupabaseEnv()) {
+    const jar = await cookies();
+    const { ctx, chooser } = await resolveSupabaseSession(
+      jar.get(SESSION_COOKIE.org)?.value,
+    );
+    if (ctx) return ctx;
+    redirect(chooser ? "/workspaces" : "/login?error=membership");
+  }
   const ctx = await getSessionOrNull();
   if (!ctx) redirect("/login?error=membership");
   return ctx;
