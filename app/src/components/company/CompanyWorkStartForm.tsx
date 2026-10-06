@@ -11,6 +11,9 @@ import { useFormStatus } from "react-dom";
  * ★ 이 회사에 «이미 살아 있는 업무 행» 이 있으면 한 번 묻는다.
  *   막지는 않는다 — 한 회사에 자금 건이 여러 번 생기는 것이 정상이다(1:N).
  *   성공 뒤 페이지가 새 열쇠로 다시 그려지므로, 묻지 않으면 다음 클릭이 줄을 하나 더 만든다.
+ * ★ 확인은 «그 요청 열쇠» 에만 속한다. 결과 redirect 는 검색어만 바뀌어 Next 가 이 컴포넌트의
+ *   상태를 그대로 둔다 — 열쇠에 묶지 않으면 성공 배너 옆에 지난 확인과 「하나 더 시작」 이 남아,
+ *   한 번 더 누르면 새 열쇠로 줄이 하나 더 생긴다. 새 열쇠면 확인은 닫힌 상태에서 다시 묻는다.
  */
 export function CompanyWorkStartForm({
   companyId,
@@ -23,7 +26,9 @@ export function CompanyWorkStartForm({
   liveWorkRowCount: number;
   action: (formData: FormData) => Promise<void>;
 }) {
-  const [confirming, setConfirming] = useState(false);
+  // 확인을 연 «요청 열쇠». 렌더의 열쇠와 같을 때만 열려 있다 — 새 열쇠가 오면 저절로 닫힌다.
+  const [confirmingFor, setConfirmingFor] = useState<string | null>(null);
+  const confirming = confirmingFor === requestId;
   // 「하나 더 시작」 을 «이번 제출에서» 눌렀는지. 제출마다 한 번 읽고 지운다.
   const confirmed = useRef(false);
 
@@ -35,7 +40,7 @@ export function CompanyWorkStartForm({
         confirmed.current = false;
         if (liveWorkRowCount > 0 && !wasConfirmed) {
           event.preventDefault();
-          setConfirming(true);
+          setConfirmingFor(requestId);
         }
       }}
       className="flex flex-col items-end gap-2"
@@ -46,7 +51,7 @@ export function CompanyWorkStartForm({
         confirming={confirming}
         liveWorkRowCount={liveWorkRowCount}
         onConfirm={() => { confirmed.current = true; }}
-        onCancel={() => setConfirming(false)}
+        onCancel={() => setConfirmingFor(null)}
       />
     </form>
   );

@@ -36,22 +36,37 @@ const company: Company = {
   created_at: "2026-01-01T00:00:00.000Z",
 };
 
-async function render(liveWorkRowCount: number, action: (formData: FormData) => Promise<void>) {
-  const host = document.createElement("div");
-  document.body.append(host);
-  root = createRoot(host);
+type RenderState = {
+  liveWorkRowCount: number;
+  requestId?: string;
+  workStartStatus?: "ok" | "failed" | "invalid";
+};
+
+/**
+ * 같은 root 에 다시 그리면 React 는 같은 자리의 상태를 이어 간다.
+ * Next 가 «검색어만 바뀐» redirect(`?workStart=ok&dealId=…`) 뒤 페이지를 다시 그릴 때와 같은 조건이다.
+ */
+async function draw(action: (formData: FormData) => Promise<void>, state: RenderState) {
   await act(async () => {
     root!.render(
       <CompanyDetail
         company={company}
         deals={[]}
         stageNames={new Map()}
-        workStartRequestId="request-1"
+        workStartRequestId={state.requestId ?? "request-1"}
+        workStartStatus={state.workStartStatus}
         startWorkAction={action}
-        liveWorkRowCount={liveWorkRowCount}
+        liveWorkRowCount={state.liveWorkRowCount}
       />,
     );
   });
+}
+
+async function render(liveWorkRowCount: number, action: (formData: FormData) => Promise<void>) {
+  const host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  await draw(action, { liveWorkRowCount });
   return host;
 }
 
@@ -78,6 +93,42 @@ describe("회사 상세 — 업무 시작", () => {
     expect(action).not.toHaveBeenCalled();
     await act(async () => button(host, "하나 더 시작")?.click());
     expect(seen).toEqual([["company-1", "request-1"]]);
+  });
+
+  it.each(["ok", "failed"] as const)(
+    "서버가 새 요청 열쇠로 다시 그리면(%s) 지난 확인을 지운다 — 다음 시작은 다시 묻는다",
+    async (workStartStatus) => {
+      const seen: string[] = [];
+      const action = vi.fn(async (formData: FormData) => {
+        seen.push(String(formData.get("requestId")));
+      });
+      const host = await render(2, action);
+
+      await act(async () => button(host, "업무 시작")?.click());
+      await act(async () => button(host, "하나 더 시작")?.click());
+      expect(seen).toEqual(["request-1"]);
+
+      // 결과를 들고 같은 경로로 돌아온다 — 새 열쇠, 행은 하나 늘었다.
+      await draw(action, { liveWorkRowCount: 3, requestId: "request-2", workStartStatus });
+      expect(host.textContent).not.toContain("하나 더 시작할까요?");
+      expect(button(host, "하나 더 시작")).toBeUndefined();
+
+      await act(async () => button(host, "업무 시작")?.click());
+      expect(seen).toEqual(["request-1"]);
+      expect(host.textContent).toContain("이 업체는 이미 진행 중인 업무가 3건 있어요 · 하나 더 시작할까요?");
+
+      await act(async () => button(host, "하나 더 시작")?.click());
+      expect(seen).toEqual(["request-1", "request-2"]);
+    },
+  );
+
+  it("같은 열쇠로 다시 그려지는 동안에는 열어 둔 확인을 유지한다", async () => {
+    const action = vi.fn(async () => {});
+    const host = await render(2, action);
+    await act(async () => button(host, "업무 시작")?.click());
+    await draw(action, { liveWorkRowCount: 2 });
+    expect(host.textContent).toContain("하나 더 시작할까요?");
+    expect(action).not.toHaveBeenCalled();
   });
 
   it("업무 행이 없으면 묻지 않고 바로 시작한다", async () => {
