@@ -24,7 +24,7 @@ export default async function NewCustomerPage({
   const startedAt = performance.now();
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
-  const result = await repairNewcustBoardOnEntry(ctx, await createClient());
+  const result = await repairNewcustBoardOnEntry(ctx, await createClient({ noStore: true }));
   if (process.env.NODE_ENV === "production") {
     console.info(JSON.stringify({
       event: "mw.performance",

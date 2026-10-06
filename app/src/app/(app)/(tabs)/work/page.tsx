@@ -29,7 +29,7 @@ export default async function ContractWorkBoardPage({
 }) {
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
-  const result = await repairContractWorkBoardOnEntry(ctx, await createClient());
+  const result = await repairContractWorkBoardOnEntry(ctx, await createClient({ noStore: true }));
   if (result.kind !== "ready") {
     const conflict = result.kind === "conflict";
     const permission = result.kind === "permission";
