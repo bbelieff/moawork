@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Company, Deal } from "@/lib/types";
+import { CompanyWorkStartForm } from "./CompanyWorkStartForm";
 
 export interface CompanyDetailProps {
   company: Company;
@@ -9,6 +10,11 @@ export interface CompanyDetailProps {
   workStartStatus?: "ok" | "failed" | "invalid";
   startedDealId?: string;
   startWorkAction: (formData: FormData) => Promise<void>;
+  /**
+   * 이 회사의 «보이는» 딜 중 계약업체 실무에 살아 있는 행 수 (#6).
+   * 0 보다 크면 「업무 시작」 이 한 번 묻는다. 모르면 0 (묻지 않는다 — 막는 규칙이 아니다).
+   */
+  liveWorkRowCount?: number;
 }
 
 function formatRevenue(value: number | null): string {
@@ -25,7 +31,7 @@ function safeHomepage(value: string | null): string | null {
   }
 }
 
-export function CompanyDetail({ company, deals, stageNames, workStartRequestId, workStartStatus, startedDealId, startWorkAction }: CompanyDetailProps) {
+export function CompanyDetail({ company, deals, stageNames, workStartRequestId, workStartStatus, startedDealId, startWorkAction, liveWorkRowCount = 0 }: CompanyDetailProps) {
   const homepage = safeHomepage(company.homepage);
 
   return (
@@ -82,13 +88,12 @@ export function CompanyDetail({ company, deals, stageNames, workStartRequestId, 
           <div>
             <h2 id="company-deals-title" className="font-semibold">관련 업무</h2>
           </div>
-          <form action={startWorkAction}>
-            <input type="hidden" name="companyId" value={company.id} />
-            <input type="hidden" name="requestId" value={workStartRequestId} />
-            <button type="submit" className="min-h-11 rounded-lg bg-mw-primary px-4 py-2 text-sm font-semibold text-mw-on-accent hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mw-primary">
-              업무 시작
-            </button>
-          </form>
+          <CompanyWorkStartForm
+            companyId={company.id}
+            requestId={workStartRequestId}
+            liveWorkRowCount={liveWorkRowCount}
+            action={startWorkAction}
+          />
         </div>
         {workStartStatus === "ok" ? (
           <p role="status" className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">업무를 시작했습니다. {startedDealId ? <Link className="font-semibold underline" href={`/deals/${startedDealId}`}>업무 열기</Link> : null}</p>

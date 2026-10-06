@@ -142,6 +142,15 @@ export interface CompanyPickerRow {
   company: CompanyPickerCompany;
   /** 이 회사로 이미 진행한 자금 건 수. 0 이면 «이력 없음». */
   dealCount: number;
+  /**
+   * «지금 이 탭에» 살아 있는 이 회사의 행 수 — 지운·보관한 행은 빼고, 보는 사람에게 보이는 행만.
+   *
+   * ★ dealCount 와 다르다. dealCount 는 리드·종료 건까지 «모든 이력» 이라 돌아온 회사마다 0 이 아니다.
+   *   이 값은 「이미 이 표에 이 회사 줄이 있다」 는 사실만 센다 — 한 번 더 시작하기 전에 확인을
+   *   물을 근거다(#6: 성공 뒤 열린 목록에서 같은 회사를 다시 눌러 줄이 두 개 생겼다).
+   *   없으면(옛 호출부) 0 으로 본다.
+   */
+  liveItemCount?: number;
 }
 
 /**

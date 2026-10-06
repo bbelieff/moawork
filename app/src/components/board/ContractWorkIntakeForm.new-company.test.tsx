@@ -184,10 +184,16 @@ describe("업체 추가 — 새 회사 탭", () => {
     expect(seen).toHaveLength(2);
     expect(seen[1]).toEqual(seen[0]);
     expect(seen[0].workRequestId).not.toBe("");
-    // A repeated confirmed submit is still the same logical request.
+    // #7 — the confirmed success closes the panel and clears the fields; reopening starts on «기존 회사».
+    expect(host.querySelector('input[name="companyName"]')).toBeNull();
+    await reopenNewTab(host);
+    expect((host.querySelector('input[name="companyName"]') as HTMLInputElement).value).toBe("");
+    // A repeated confirmed submit (same content typed again) is still the same logical request.
+    await act(async () => setInput(host, "companyName", "Replay company"));
     await act(async () => newCompanyForm(host).requestSubmit());
-    expect(seen[2].workRequestId).toBe(seen[0].workRequestId);
+    expect(seen[2]).toEqual(seen[0]);
     // Only a confirmed request with deliberately changed content starts a new one.
+    await reopenNewTab(host);
     await act(async () => setInput(host, "companyName", "Another company"));
     await act(async () => newCompanyForm(host).requestSubmit());
     expect(seen[3].workRequestId).not.toBe(seen[0].workRequestId);
@@ -210,12 +216,59 @@ describe("업체 추가 — 새 회사 탭", () => {
     await act(async () => newCompanyForm(host).requestSubmit());
     await act(async () => setInput(host, "companyName", "Corrected name"));
     await act(async () => newCompanyForm(host).requestSubmit());
+    // The success closed the panel (#7); the same content resubmitted after reopening replays.
+    await reopenNewTab(host);
+    await act(async () => setInput(host, "companyName", "Corrected name"));
     await act(async () => newCompanyForm(host).requestSubmit());
     expect(seen[1].workRequestId).toBe(seen[0].workRequestId);
     expect(seen[2]).toEqual(seen[1]);
   });
 
+  it("#7 확정 성공이면 닫고, 다시 열면 지난 성공 문구 없이 «기존 회사» 부터 보인다", async () => {
+    const { newAction, existingAction, host } = mountNewAction(() => ({
+      ok: true,
+      message: "새 회사를 등록하고 업무를 시작했어요.",
+      createdCompanyId: "company-new",
+      itemId: "item-new",
+    }));
+    await renderForm(host, { newAction: newAction as never, existingAction: existingAction as never });
+    await act(async () => setInput(host, "companyName", "새회사"));
+    await act(async () => newCompanyForm(host).requestSubmit());
+
+    expect(host.querySelector('input[name="companyName"]')).toBeNull();
+    expect(host.querySelector('[aria-live="polite"]')?.textContent).toBe("새회사 추가했어요");
+    const trigger = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("업체 추가"));
+    await act(async () => trigger?.click());
+    expect(host.querySelector('input[aria-label="업체 검색"]')).not.toBeNull();
+    const tab = [...host.querySelectorAll('[role="tab"]')].find((b) => b.textContent?.includes("새 회사"));
+    await act(async () => (tab as HTMLElement).click());
+    expect(host.textContent).not.toContain("새 회사를 등록하고 업무를 시작했어요.");
+    expect((host.querySelector('input[name="companyName"]') as HTMLInputElement).value).toBe("");
+  });
+
+  it("후보·실패 결과는 열어 둔다 — 입력값도 그대로", async () => {
+    const { newAction, existingAction, host } = mountNewAction(() => ({
+      ok: false,
+      outcome: "rejected",
+      message: "같은 이름의 회사가 이미 있어요.",
+      conflictCandidates: [{ id: "c-1", name: "가나상사", detail: "" }],
+    }));
+    await renderForm(host, { newAction: newAction as never, existingAction: existingAction as never });
+    await act(async () => setInput(host, "companyName", "가나상사"));
+    await act(async () => newCompanyForm(host).requestSubmit());
+    expect((host.querySelector('input[name="companyName"]') as HTMLInputElement).value).toBe("가나상사");
+    expect([...host.querySelectorAll("button")].some((b) => b.textContent === "이 회사로 진행")).toBe(true);
+  });
+
 });
+
+/** 확정 성공으로 닫힌 패널을 다시 열고 «새 회사» 탭으로 간다. */
+async function reopenNewTab(host: HTMLElement) {
+  const trigger = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("업체 추가"));
+  await act(async () => trigger?.click());
+  const tab = [...host.querySelectorAll('[role="tab"]')].find((b) => b.textContent?.includes("새 회사"));
+  await act(async () => (tab as HTMLElement)?.click());
+}
 
 
 it("duplicate candidate retry retains its ID after response loss and exposes the result", async () => {

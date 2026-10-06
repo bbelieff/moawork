@@ -76,6 +76,9 @@ describe("업체 추가 — 멱등 열쇠", () => {
     await open(host);
 
     await act(async () => submitFor(host, "c-1")?.requestSubmit());
+    // #7 — 확정 성공이면 패널이 닫힌다. 회사B 는 «다시 열어서» 고른다.
+    expect(submitFor(host, "c-2")).toBeUndefined();
+    await open(host);
     await act(async () => submitFor(host, "c-2")?.requestSubmit());
 
     expect(seen.map((s) => s.companyId)).toEqual(["c-1", "c-2"]);
@@ -182,6 +185,9 @@ describe("existing company response loss", () => {
     await act(async () => submitFor(host, "c-1")?.requestSubmit());
     expect(seen).toHaveLength(2);
     expect(seen[1].requestId).toBe(seen[0].requestId);
+    // 확인된 성공은 패널을 닫는다(#7) — 같은 회사로 «한 건 더» 는 다시 열고 고르는 일이다.
+    expect(submitFor(host, "c-1")).toBeUndefined();
+    await open(host);
     await act(async () => submitFor(host, "c-1")?.requestSubmit());
     expect(seen[2].requestId).not.toBe(seen[0].requestId);
   });
