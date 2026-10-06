@@ -30,6 +30,7 @@ export function ItemDetailVatOcr({
   sourceFileId,
   expectedBizNo,
   onConfirm,
+  buttonClassName,
 }: {
   /** 보호 저장소 업로드에 사용한 바로 그 브라우저 File 객체. 재다운로드하지 않는다. */
   file: File;
@@ -39,6 +40,8 @@ export function ItemDetailVatOcr({
   expectedBizNo: string;
   /** Phase B 서버 액션 연결점. 없으면 제안 확인까지만 하고 저장은 잠근다. */
   onConfirm?: (confirmation: VatPeriodConfirmation) => Promise<VatPeriodConfirmResult>;
+  /** 상세 패널이 증빙 줄의 보조 버튼 모양을 넘긴다. 글자 크기는 패널 토큰을 따른다. */
+  buttonClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [running, setRunning] = useState(false);
@@ -109,7 +112,7 @@ export function ItemDetailVatOcr({
     <div className="grid gap-2">
       <button
         type="button"
-        className="min-h-11 rounded-lg border border-mw-line px-3 py-2 text-xs font-bold"
+        className={buttonClassName ?? "min-h-11 rounded-lg border border-mw-line px-3 py-2"}
         onClick={() => void run()}
       >
         부가세 증명원으로 읽기
@@ -121,26 +124,26 @@ export function ItemDetailVatOcr({
           className="grid gap-3 rounded-xl border border-mw-line bg-mw-panel p-3"
         >
           <div className="flex items-center justify-between gap-2">
-            <b className="text-sm text-mw-strong">과세기간·매출액 제안</b>
-            <button type="button" className="min-h-11 px-3 text-xs" onClick={close} aria-label="부가세 제안 닫기">
+            <b className="text-mw-strong">과세기간·매출액 제안</b>
+            <button type="button" className="min-h-11 px-3" onClick={close} aria-label="부가세 제안 닫기">
               닫기
             </button>
           </div>
-          <p className="text-xs text-mw-sub">
+          <p className="text-mw-sub">
             이미 올라간 첨부는 그대로 두고, 같은 로컬 파일만 브라우저에서 읽습니다. 합계나 연간 매출은 추론하지 않습니다.
           </p>
-          {running ? <p role="status" className="text-xs text-mw-sub">로컬에서 읽는 중…</p> : null}
+          {running ? <p role="status" className="text-mw-sub">로컬에서 읽는 중…</p> : null}
           {error ? (
             <div className="grid gap-2" role="alert">
-              <p className="text-xs text-mw-error">{error} 첨부는 이미 보존되어 있습니다.</p>
-              <button type="button" className="min-h-11 rounded-lg border px-3 text-xs" onClick={() => void run()}>
+              <p className="text-mw-error">{error} 첨부는 이미 보존되어 있습니다.</p>
+              <button type="button" className="min-h-11 rounded-lg border px-3" onClick={() => void run()}>
                 같은 파일 다시 읽기
               </button>
             </div>
           ) : null}
           {result ? (
             <>
-              <div className="grid gap-1 rounded-lg bg-mw-surface p-2 text-xs">
+              <div className="grid gap-1 rounded-lg bg-mw-surface p-2">
                 <span>문서 사업자번호: {result.bizNo || "읽지 못함"}</span>
                 {!expectedBizNo ? (
                   <strong className="text-mw-error" role="alert">현재 항목의 정본 사업자번호가 없어 확정할 수 없습니다.</strong>
@@ -151,12 +154,12 @@ export function ItemDetailVatOcr({
                 )}
               </div>
               {result.documentWarnings.length > 0 ? (
-                <ul className="grid gap-1 text-xs text-mw-sub">
+                <ul className="grid gap-1 text-mw-sub">
                   {result.documentWarnings.map((warning) => <li key={warning}>• {warning}</li>)}
                 </ul>
               ) : null}
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[32rem] text-left text-xs">
+                <table className="w-full min-w-[32rem] text-left">
                   <thead><tr><th>반영</th><th>과세기간</th><th>매출액</th><th>확인</th></tr></thead>
                   <tbody>
                     {result.periods.map((row, index) => (
@@ -183,8 +186,8 @@ export function ItemDetailVatOcr({
                   </tbody>
                 </table>
               </div>
-              {result.periods.length === 0 ? <p role="alert" className="text-xs text-mw-error">확정할 기간별 제안이 없습니다.</p> : null}
-              <label className="flex min-h-11 items-center gap-2 text-xs">
+              {result.periods.length === 0 ? <p role="alert" className="text-mw-error">확정할 기간별 제안이 없습니다.</p> : null}
+              <label className="flex min-h-11 items-center gap-2">
                 <input
                   type="checkbox"
                   checked={confirmed}
@@ -194,20 +197,20 @@ export function ItemDetailVatOcr({
                 문서 번호와 선택한 과세기간·매출액을 직접 확인했습니다.
               </label>
               {!onConfirm ? (
-                <p className="text-xs text-mw-sub" role="status">
+                <p className="text-mw-sub" role="status">
                   저장 연결은 다음 단계에서 열립니다. 지금은 제안 확인까지만 가능합니다.
                 </p>
               ) : null}
               <button
                 type="button"
-                className="min-h-11 rounded-lg bg-mw-accent px-3 text-xs font-bold text-white disabled:opacity-50"
+                className="min-h-11 rounded-lg bg-mw-accent px-3 text-white disabled:opacity-50"
                 disabled={!onConfirm || !matched || !confirmed || selected.size === 0 || saving || validRows.length === 0}
                 onClick={() => void confirm()}
               >
                 {saving ? "확정 중…" : `선택 ${selected.size}개 확정`}
               </button>
               {saveMessage ? (
-                <p role={saveMessage.ok ? "status" : "alert"} className={saveMessage.ok ? "text-xs text-mw-success" : "text-xs text-mw-error"}>
+                <p role={saveMessage.ok ? "status" : "alert"} className={saveMessage.ok ? "text-mw-success" : "text-mw-error"}>
                   {saveMessage.message}
                 </p>
               ) : null}

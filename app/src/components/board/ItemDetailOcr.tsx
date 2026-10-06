@@ -151,6 +151,7 @@ export function ItemDetailOcr({
   canEditItems,
   initialFile = null,
   buttonLabel = "사업자등록증 OCR로 읽기",
+  buttonClassName,
 }: {
   boardId: string;
   itemId: string;
@@ -165,6 +166,8 @@ export function ItemDetailOcr({
   initialFile?: File | null;
   /** 업로드 결과 옆에서는 문서 종류를 명시하는 문구를 쓴다. */
   buttonLabel?: string;
+  /** 상세 패널이 증빙 줄의 보조 버튼 모양을 넘긴다. 글자 크기는 패널 토큰을 따른다. */
+  buttonClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [loadingCurrent, setLoadingCurrent] = useState(false);
@@ -212,20 +215,21 @@ export function ItemDetailOcr({
   return (
     <>
       <div className="grid gap-1">
+        {/*
+          개인정보 안내(「파일은 이 브라우저 안에서만 읽습니다」)는 파일을 고르기 전에
+          열리는 DocumentOcrModal 첫 줄이 말한다. 업로드 결과마다 같은 문장을 되풀이하지 않는다.
+        */}
         <button
           type="button"
           onClick={() => void handleOpen()}
           disabled={loadingCurrent}
-          className="rounded-lg border border-mw-line px-3 py-2 text-xs font-bold"
+          className={buttonClassName ?? "rounded-lg border border-mw-line px-3 py-2"}
         >
           {loadingCurrent ? "비교 기준 읽는 중…" : buttonLabel}
         </button>
-        <p className="text-xs text-mw-sub">
-          파일은 이 브라우저 안에서만 읽습니다. 체크한 필드만 직접 반영됩니다.
-        </p>
         {loadError ? (
           <ResultBanner notice={loadError}
-            okClassName="text-xs text-mw-success" errorClassName="text-xs text-mw-error" />
+            okClassName="text-mw-success" errorClassName="text-mw-error" />
         ) : null}
       </div>
       {open ? (

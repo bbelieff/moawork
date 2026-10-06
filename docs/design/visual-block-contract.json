@@ -7,6 +7,15 @@
     "multipleFileInput": true,
     "dropZone": "[data-evidence-drop]"
   },
+  "detailPanelOverride": {
+    "issue": null,
+    "date": "2026-10-06",
+    "rationale": "owner feedback: detail panel too complex. 소유자 피드백에 따라 모든 보드가 함께 쓰는 상세 drawer를 정리한다. 목업 v6의 필드 ⠿ 손잡이(실제 끌기 동작 없음)와 항상 보이던 순서 규칙 상자를 걷고, 순서 규칙·상세 전용 필드 추가·표 승격/내리기·상세/표 배지는 접힌 관리자 영역 한 곳에만 둔다. 증빙 업로드는 브라우저 기본 파일 선택 대신 「파일 올리기」 놓는 자리 한 줄로 바꾸되 #797의 다중 선택·드롭·접근성(sr-only 1px input) 계약은 유지한다. 글자는 --fs 토큰 네 단계와 400/600 굵기만 쓴다. 상세 헤더·정보 칸·히스토리·작성기 기하 검사는 그대로다.",
+    "evidenceLabel": "파일 올리기",
+    "orderRulesVisible": false,
+    "adminCollapsed": true,
+    "removed": ["detail field drag handle ⠿", "duplicate 내보내기 section (export stays in the ⋯ menu)", "duplicate file list in 이전 첨부"]
+  },
   "evaluation": {
     "visual": 70,
     "behavior": 15,
