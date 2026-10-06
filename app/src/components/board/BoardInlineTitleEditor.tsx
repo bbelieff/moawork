@@ -4,11 +4,13 @@ import { useRef,useState } from "react";
 import type { InlineTitleResult } from "@/app/(app)/boards/title-actions";
 import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
 
-export function BoardInlineTitleEditor({name,label,onSave,className=""}:{
+export function BoardInlineTitleEditor({name,label,onSave,className="",display}:{
   name:string;
   label:string;
   onSave:(name:string)=>Promise<InlineTitleResult>;
   className?:string;
+  /** 편집 중이 아닐 때 보일 글자(표시 전용). 편집칸은 언제나 저장된 원문으로 시작한다. */
+  display?:(saved:string)=>string;
 }){
   const [editing,setEditing]=useState(false);
   const [draft,setDraft]=useState(name);
@@ -62,7 +64,7 @@ export function BoardInlineTitleEditor({name,label,onSave,className=""}:{
       }}
       className="h-8 min-w-24 max-w-full rounded border border-mw-record bg-mw-card px-2 text-inherit text-mw-fg outline-none focus:ring-2 focus:ring-mw-primary"
     />:<button type="button" onClick={(event)=>{stop(event);begin();}} className="max-w-full truncate rounded px-1 text-left font-inherit text-inherit focus:outline-none focus:ring-2 focus:ring-mw-primary" aria-label={`${label} 편집`}>
-      {pending?"저장 중…":shown}
+      {pending?"저장 중…":display?display(shown):shown}
     </button>}
     {error?<span role={noticeRole(false)} aria-live={noticeLive(false)} className="ml-1 text-[0.65rem] font-normal text-mw-error">{error}</span>:null}
   </span>;

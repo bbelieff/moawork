@@ -3,9 +3,13 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   BOARD_ACTION_FLASH_COOKIE,
+  classifyRowMoveFailure,
   decodeBoardActionFlash,
   encodeBoardActionFlash,
   findBoardActionError,
+  ROW_MOVE_FAILURE_MESSAGES,
+  UserFacingActionError,
+  userFacingMessage,
 } from "./boardActionFlash";
 
 // BBE-201 — 플래시 자체의 성질 + «그 값이 화면까지 도달하는가».
@@ -67,5 +71,32 @@ describe("배선 — 디코드한 값이 보드 화면까지 도달한다", () =
 
   it("★ 실패는 alert 로 알린다 — 성공처럼 보이면 안 된다", () => {
     expect(body).toMatch(/role="alert"/u);
+  });
+});
+
+describe("classifyRowMoveFailure — 값과 함께 옮기는 저장의 실패 종류 (2026-10-06)", () => {
+  it("Supabase RPC 원문과 로컬 어댑터 원문을 같은 종류로 읽는다", () => {
+    expect(classifyRowMoveFailure(new Error("row move stale version"))).toBe("stale");
+    expect(classifyRowMoveFailure(new Error("행 순서가 변경되었습니다. 새로고침 후 다시 시도해 주세요."))).toBe("stale");
+    expect(classifyRowMoveFailure(new Error("row move permission denied"))).toBe("permission");
+    expect(classifyRowMoveFailure(new Error("전체 행을 볼 수 있는 사용자만 행 순서를 바꿀 수 있습니다."))).toBe("permission");
+    expect(classifyRowMoveFailure(new Error("target group unavailable"))).toBe("target_missing");
+    expect(classifyRowMoveFailure(new Error("대상 그룹을 찾을 수 없습니다."))).toBe("target_missing");
+  });
+
+  it("이미 사람 말로 바꾼 문장도 같은 종류다 — 상위 액션이 «낡음» 신호를 잃지 않는다", () => {
+    expect(classifyRowMoveFailure(new UserFacingActionError(ROW_MOVE_FAILURE_MESSAGES.stale))).toBe("stale");
+  });
+
+  it("모르는 실패는 null — 추측으로 분류하지 않는다", () => {
+    expect(classifyRowMoveFailure(new Error("value move replay conflict"))).toBeNull();
+    expect(classifyRowMoveFailure(new Error("network lost"))).toBeNull();
+    expect(classifyRowMoveFailure(null)).toBeNull();
+  });
+
+  it("사람 말로 바꾼 문장은 화면에 그대로 간다 — DB 원문은 아니다", () => {
+    const mapped = new UserFacingActionError(ROW_MOVE_FAILURE_MESSAGES.permission);
+    expect(userFacingMessage(mapped)).toBe(ROW_MOVE_FAILURE_MESSAGES.permission);
+    expect(userFacingMessage(new Error("row move permission denied"))).not.toMatch(/row move/);
   });
 });

@@ -277,7 +277,8 @@ export default async function BoardPage({
     })(),
     getBoardColumnOrder(repo, ctx, id),
       board.source === CONTRACT_WORK_TAB_SOURCE
-      ? loadCompanyPickerRows(ctx)
+      // 권한(D24)으로 거른 이 보드의 행을 넘긴다 — 회사별 «이 탭에 이미 N건» 의 근거(#6). 새 왕복 없음.
+      ? loadCompanyPickerRows(ctx, { boardItems: permissionItems })
       : Promise.resolve({ rows: [], error: null, truncated: false }),
   ]);
   independentTailReads.catch(() => {});

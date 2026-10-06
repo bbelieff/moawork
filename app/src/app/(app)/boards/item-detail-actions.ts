@@ -11,7 +11,8 @@ import {
 import { sanitizeFileName } from "@/lib/services/files";
 import { consultationFeedEvent, type ConsultationFeedEvent } from "@/lib/consultation/detail-history";
 import { createRequestBoards } from "@/lib/boards/server";
-import { resolveBoardDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
+import { isMemberFieldType, resolveBoardDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
+import { eunNeun } from "@/lib/text/josa";
 import type { CellValue } from "@/lib/boards/types";
 import type {
   DetailEventKind,
@@ -661,6 +662,14 @@ export async function saveItemDetailFieldAction(input: {
       if (!actualColumn) {
         throw new Error(
           "요청한 저장 위치와 실제 배치가 일치하지 않습니다. 새로고침 후 다시 시도하세요. 저장하지 않았습니다.",
+        );
+      }
+      // 구성원 칸(담당자·연관담당)은 구성원 id 만 담는다. 이 경로는 상세 자동저장·OCR 의 «글자»
+      // 저장이라, 받으면 이름·오타가 담당자로 박제된다(person 검증은 아직 구성원 여부를 보지 않는다).
+      // 상세 화면은 이 칸을 읽기 전용으로만 그리므로, 여기 오는 요청은 거부한다 (2026-10-06 검토 P1).
+      if (isMemberFieldType(actualColumn.type)) {
+        throw new Error(
+          `${actualColumn.label}${eunNeun(actualColumn.label)} 표에서 구성원을 골라 바꿔 주세요. 저장하지 않았습니다.`,
         );
       }
       let storedValue: CellValue = input.value;

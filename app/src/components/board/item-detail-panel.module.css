@@ -9,6 +9,18 @@
   background: color-mix(in srgb, var(--mw-fg) 46%, transparent);
 }
 
+/*
+ * 2026-10-06 소유자 피드백 「상세가 너무 복잡하다」 — 글자 단계를 넷으로 고정한다.
+ *
+ *   제목(회사명)           var(--fs-16) / 600
+ *   구역 제목(h3·summary)  var(--fs-13) / 600
+ *   값·입력·본문           var(--fs-13) / 400
+ *   라벨·보조·배지·시간    var(--fs-12) 또는 var(--fs-11) / 400 (배지 600)
+ *
+ * ★ --fs-11 아래로 내려가지 않는다. 굵기는 400/600 두 단계뿐이다(토큰 §9).
+ * ★ .surface·.infoRail 에 기본 크기를 둔다. 클래스가 없는 글자(이전엔 증빙 label)가
+ *   브라우저 기본 16px 로 떨어져 «혼자 큰 글자» 가 되던 것을 막는다.
+ */
 .surface {
   width: calc(100% - 6rem);
   height: 100dvh;
@@ -17,6 +29,13 @@
   background: var(--mw-card);
   box-shadow: -12px 0 32px color-mix(in srgb, var(--mw-fg) 16%, transparent);
   color: var(--mw-fg);
+  font-size: var(--fs-13);
+  line-height: var(--lh-ui);
+}
+
+.surface b,
+.surface strong {
+  font-weight: var(--fw-semibold);
 }
 
 .shell {
@@ -48,14 +67,14 @@
   background: var(--mw-card);
   color: var(--mw-body);
   font: inherit;
-  font-size: 0.75rem;
+  font-size: var(--fs-12);
   cursor: pointer;
 }
 
 .closeButton {
   min-width: 2rem;
   border-color: transparent;
-  font-size: 1.25rem;
+  font-size: var(--fs-18);
 }
 
 .headerButton,
@@ -93,14 +112,14 @@
   max-width: 18rem;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.95rem;
-  font-weight: 800;
+  font-size: var(--fs-16);
+  font-weight: var(--fw-semibold);
 }
 
 .breadcrumb {
   overflow: hidden;
   color: var(--mw-sub);
-  font-size: 0.72rem;
+  font-size: var(--fs-12);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -145,7 +164,7 @@
   background: transparent;
   color: var(--mw-body);
   font: inherit;
-  font-size: 0.7rem;
+  font-size: var(--fs-12);
   text-align: left;
   cursor: pointer;
 }
@@ -171,6 +190,8 @@
   border-right: 1px solid var(--mw-line);
   padding: 0.65rem 1rem 1.25rem;
   scrollbar-gutter: stable;
+  font-size: var(--fs-12);
+  line-height: var(--lh-ui);
 }
 
 .consultationSection {
@@ -180,10 +201,6 @@
   max-width: 100%;
   overflow-x: auto;
   padding-bottom: var(--sp-3);
-}
-
-.infoHeader {
-  order: -2;
 }
 
 .infoHeader,
@@ -198,15 +215,62 @@
 .infoHeader h3,
 .historyHeader h3 {
   margin: 0;
-  font-size: 0.8rem;
-  font-weight: 800;
+  color: var(--mw-fg);
+  font-size: var(--fs-13);
+  font-weight: var(--fw-semibold);
 }
 
 .saveState {
   margin-left: auto;
   color: var(--mw-success);
-  font-size: 0.67rem;
-  font-weight: 700;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-normal);
+}
+
+/* 배치된 필드가 없을 때 한 줄. 관리자만 「필드 배치」로 접힌 편집 영역을 연다. */
+.emptyFields {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
+  border: 1px dashed var(--mw-line);
+  border-radius: var(--mw-r-2);
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--mw-sub);
+  font-size: var(--fs-12);
+}
+
+.emptyFields p {
+  margin: 0;
+}
+
+.textButton {
+  margin-left: auto;
+  border: 0;
+  border-radius: var(--mw-r-1);
+  background: transparent;
+  padding: var(--sp-1) var(--sp-2);
+  color: var(--mw-record);
+  font: inherit;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+
+.textButton:hover {
+  background: var(--mw-tint-blue);
+}
+
+.textButton:focus-visible {
+  outline: 2px solid var(--mw-primary);
+  outline-offset: 2px;
+}
+
+/* 보조 설명은 최대 한 줄, 흐린 글자 하나로만 쓴다. */
+.helper {
+  margin: 0;
+  color: var(--mw-sub);
+  font-size: var(--fs-12);
 }
 
 .fieldList {
@@ -217,18 +281,11 @@
   display: grid;
   min-width: 0;
   min-height: 2.15rem;
-  grid-template-columns: 1rem minmax(6.7rem, 7.5rem) minmax(0, 1fr);
+  grid-template-columns: minmax(6.7rem, 7.5rem) minmax(0, 1fr);
   align-items: center;
   border-bottom: 1px solid var(--mw-line);
   color: var(--mw-body);
-  font-size: 0.75rem;
-}
-
-.fieldHandle {
-  color: color-mix(in srgb, var(--mw-sub) 56%, transparent);
-  font-size: 0.7rem;
-  letter-spacing: -0.14rem;
-  user-select: none;
+  font-size: var(--fs-12);
 }
 
 .fieldLabel {
@@ -248,8 +305,8 @@
   padding: 0.05rem 0.22rem;
   background: var(--mw-bg);
   color: var(--mw-sub);
-  font-size: 0.58rem;
-  font-weight: 700;
+  font-size: var(--fs-11);
+  font-weight: var(--fw-semibold);
 }
 
 .columnBadge {
@@ -269,25 +326,6 @@
   flex: 1;
 }
 
-.promoteButton {
-  display: inline-grid;
-  width: 1.6rem;
-  min-width: 1.6rem;
-  height: 1.6rem;
-  place-items: center;
-  border: 0;
-  border-radius: 0.35rem;
-  background: transparent;
-  color: var(--mw-sub);
-  font: inherit;
-  cursor: pointer;
-}
-
-.promoteButton:hover {
-  background: var(--mw-bg);
-  color: var(--mw-record);
-}
-
 .fieldEditor {
   position: relative;
   min-width: 0;
@@ -303,7 +341,7 @@
   padding: 0.25rem 0.45rem;
   color: var(--mw-fg);
   font: inherit;
-  font-size: 0.77rem;
+  font-size: var(--fs-13);
 }
 
 .fieldInput:hover {
@@ -320,7 +358,7 @@
   background: var(--mw-card);
   padding: 0 0.2rem;
   color: var(--mw-sub);
-  font-size: 0.55rem;
+  font-size: var(--fs-11);
   line-height: 1.1;
 }
 
@@ -338,7 +376,7 @@
   overflow: hidden;
   padding: 0.35rem 0.45rem;
   color: var(--mw-body);
-  font-size: 0.77rem;
+  font-size: var(--fs-13);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -360,9 +398,9 @@
   min-height: 2.2rem;
   cursor: pointer;
   align-items: center;
-  color: var(--mw-body);
-  font-size: 0.72rem;
-  font-weight: 700;
+  color: var(--mw-fg);
+  font-size: var(--fs-13);
+  font-weight: var(--fw-semibold);
   list-style: none;
 }
 
@@ -386,8 +424,190 @@
   padding: 0.2rem 0 0.8rem;
 }
 
-.cloudFolderTools {
-  order: -1;
+.cloudFolderTools > summary {
+  color: var(--mw-body);
+}
+
+/*
+ * 증빙 파일 — 브라우저 기본 「파일 선택 / 선택된 파일 없음」 대신 한 줄짜리 놓는 자리.
+ *
+ * ★ input 은 sr-only 1px 상자로만 숨긴다(.visuallyHidden). display:none 이나 0 크기면
+ *   키보드로 닿지 못하고 시각 게이트의 isVisible 도 실패한다.
+ * ★ label 은 초점을 받지 못하므로 :focus-within 으로 테두리 링을 띄운다.
+ */
+.evidenceRow {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.evidenceDrop {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: var(--mw-hit-min-loose);
+  flex: 1 1 12rem;
+  align-items: center;
+  gap: var(--sp-2);
+  border: 1px dashed var(--mw-line);
+  border-radius: var(--mw-r-2);
+  background: var(--mw-card);
+  padding: var(--sp-1) var(--sp-2);
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.evidenceDrop[data-dragover="true"] {
+  border-color: var(--mw-primary);
+  background: var(--mw-tint-blue);
+}
+
+.evidenceDrop:focus-within {
+  outline: 2px solid var(--mw-primary);
+  outline-offset: 2px;
+}
+
+.evidencePick,
+.secondaryButton,
+.adminButton {
+  display: inline-flex;
+  min-height: var(--mw-hit-min);
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--mw-line);
+  border-radius: var(--mw-r-1);
+  background: var(--mw-card);
+  padding: 0 var(--sp-2);
+  color: var(--mw-body);
+  font: inherit;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.evidencePick {
+  border-color: transparent;
+  background: var(--mw-primary);
+  color: var(--mw-on-accent);
+}
+
+.secondaryButton {
+  min-height: var(--mw-hit-min-loose);
+}
+
+.secondaryButton:hover,
+.adminButton:hover:not(:disabled) {
+  background: var(--mw-bg);
+}
+
+.secondaryButton:focus-visible,
+.adminButton:focus-visible {
+  outline: 2px solid var(--mw-primary);
+  outline-offset: 2px;
+}
+
+.secondaryButton:disabled,
+.adminButton:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.evidenceDrop[data-pending="true"] .evidencePick {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.evidenceHint,
+.evidencePending {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--mw-sub);
+  font-size: var(--fs-12);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  margin: -1px;
+  border: 0;
+  padding: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.fileResults {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  color: var(--mw-sub);
+  font-size: var(--fs-12);
+  list-style: none;
+}
+
+.fileResults p {
+  margin: 0;
+}
+
+.fileGroup {
+  display: grid;
+  gap: var(--sp-1);
+}
+
+.fileGroupTitle {
+  color: var(--mw-body);
+  font-size: var(--fs-12);
+}
+
+.fileList {
+  display: grid;
+  gap: var(--sp-1);
+}
+
+.fileRow {
+  display: flex;
+  min-width: 0;
+  min-height: var(--mw-hit-min);
+  align-items: center;
+  gap: var(--sp-2);
+  border: 1px solid var(--mw-line);
+  border-radius: var(--mw-r-1);
+  padding: var(--sp-1) var(--sp-2);
+  color: var(--mw-record);
+  font-size: var(--fs-13);
+  text-decoration: none;
+}
+
+a.fileRow:hover {
+  background: var(--mw-bg);
+}
+
+.fileRow[data-unavailable="true"] {
+  color: var(--mw-sub);
+}
+
+.fileName {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileMeta {
+  flex: none;
+  color: var(--mw-sub);
+  font-size: var(--fs-12);
 }
 
 .cloudFolderCard {
@@ -407,15 +627,15 @@
   background: var(--mw-tint-blue);
   padding: 0.18rem 0.48rem;
   color: var(--mw-record);
-  font-size: 0.62rem;
-  font-weight: 800;
+  font-size: var(--fs-11);
+  font-weight: var(--fw-semibold);
   white-space: nowrap;
 }
 
 .cloudFolderUrl {
   overflow: hidden;
   color: var(--mw-sub);
-  font-size: 0.65rem;
+  font-size: var(--fs-12);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -433,8 +653,8 @@
   padding: 0 0.55rem;
   color: var(--mw-body);
   font: inherit;
-  font-size: 0.65rem;
-  font-weight: 750;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semibold);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -462,8 +682,8 @@
 
 .cloudFolderEditor > label {
   color: var(--mw-body);
-  font-size: 0.67rem;
-  font-weight: 750;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-normal);
 }
 
 .cloudFolderInputRow {
@@ -482,7 +702,7 @@
   padding: 0 0.55rem;
   color: var(--mw-fg);
   font: inherit;
-  font-size: 0.68rem;
+  font-size: var(--fs-13);
 }
 
 .cloudFolderInputRow button:first-of-type {
@@ -494,7 +714,7 @@
 .cloudFolderError {
   margin: 0;
   color: var(--mw-error);
-  font-size: 0.65rem;
+  font-size: var(--fs-12);
 }
 
 /* #654 — 보드 오류 배너가 패널 뒤에 가려지므로 패널 안에서 같은 사유를 보인다. */
@@ -505,7 +725,7 @@
   background: var(--mw-card);
   color: var(--mw-fg);
   padding: 0.5rem 0.75rem;
-  font-size: 0.8rem;
+  font-size: var(--fs-13);
 }
 
 .legacyMaterials {
@@ -514,16 +734,13 @@
 }
 
 .legacyMaterials > summary {
+  display: flex;
   min-height: 1.8rem;
+  align-items: center;
   color: var(--mw-sub);
-  font-size: 0.65rem;
-  font-weight: 700;
-}
-
-.legacyMaterials > p {
-  margin: 0 0 0.45rem;
-  color: var(--mw-sub);
-  font-size: 0.62rem;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-normal);
+  cursor: pointer;
 }
 
 .detailFieldCreator {
@@ -536,8 +753,8 @@
   cursor: pointer;
   align-items: center;
   color: var(--mw-record);
-  font-size: 0.7rem;
-  font-weight: 750;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semibold);
   list-style: none;
 }
 
@@ -561,37 +778,28 @@
   padding: 0 0.5rem;
   color: var(--mw-body);
   font: inherit;
-  font-size: 0.68rem;
+  font-size: var(--fs-13);
 }
 
 .detailFieldCreatorForm button {
   border-color: transparent;
   background: var(--mw-primary);
   color: var(--mw-on-accent);
-  font-weight: 750;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semibold);
   cursor: pointer;
 }
 
+/* 관리자 영역 안의 한 줄 규칙. 세 문장 상자였던 것을 줄였다. */
 .orderRules {
-  display: grid;
-  gap: 0.32rem;
-  margin: 0.75rem 0;
-  border-radius: 0.55rem;
-  background: var(--mw-bg);
-  padding: 0.7rem 0.75rem;
+  margin: var(--sp-2) 0;
   color: var(--mw-sub);
-  font-size: 0.68rem;
-  line-height: 1.55;
+  font-size: var(--fs-12);
 }
 
 .orderRules b {
+  margin-right: var(--sp-1);
   color: var(--mw-body);
-  font-size: 0.72rem;
-}
-
-.orderRules p::before {
-  margin-right: 0.35rem;
-  content: "·";
 }
 
 .layoutAdmin {
@@ -604,8 +812,8 @@
   cursor: pointer;
   align-items: center;
   color: var(--mw-sub);
-  font-size: 0.68rem;
-  font-weight: 700;
+  font-size: var(--fs-13);
+  font-weight: var(--fw-semibold);
   list-style: none;
 }
 
@@ -621,6 +829,59 @@
 .layoutAdminBody {
   border-left: 2px solid var(--mw-line);
   padding-left: 0.65rem;
+}
+
+.adminRow {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+  border-radius: var(--mw-r-1);
+  background: var(--mw-bg);
+  padding: var(--sp-1) var(--sp-2);
+}
+
+.adminRowLabel {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 8rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+  overflow: hidden;
+  color: var(--mw-body);
+  font-size: var(--fs-12);
+}
+
+.adminRowLabel > b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adminRowMeta {
+  width: 100%;
+  overflow: hidden;
+  color: var(--mw-sub);
+  font-size: var(--fs-12);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adminAddList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  border: 1px dashed var(--mw-line);
+  border-radius: var(--mw-r-2);
+  padding: var(--sp-2);
+}
+
+.adminAddTitle {
+  width: 100%;
+  color: var(--mw-sub);
+  font-size: var(--fs-12);
 }
 
 .mainPane {
@@ -691,13 +952,13 @@
   align-items: center;
   gap: 0.35rem;
   color: var(--mw-sub);
-  font-size: 0.7rem;
+  font-size: var(--fs-12);
 }
 
 .watcherCopy > b {
   margin-right: 0.15rem;
   color: var(--mw-body);
-  font-size: 0.72rem;
+  font-size: var(--fs-12);
 }
 
 .watcherChip {
@@ -709,8 +970,8 @@
   background: var(--mw-card);
   padding: 0.16rem 0.48rem;
   color: var(--mw-body);
-  font-size: 0.68rem;
-  font-weight: 700;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semibold);
 }
 
 .watcherChip small {
@@ -718,15 +979,16 @@
   background: var(--mw-bg);
   padding: 0.04rem 0.2rem;
   color: var(--mw-sub);
-  font-size: 0.52rem;
+  font-size: var(--fs-11);
+  font-weight: var(--fw-normal);
 }
 
 .ruleWatcherChip { border: 1px solid var(--mw-line); }
 
 .watcherMore {
   color: var(--mw-record);
-  font-size: 0.66rem;
-  font-weight: 750;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semibold);
 }
 
 .watcherForm { flex: none; }
@@ -739,7 +1001,7 @@
   border-radius: 50%;
   background: var(--mw-tint-blue);
   color: var(--mw-record);
-  font-size: 0.55rem;
+  font-size: var(--fs-11);
 }
 
 .watcherChange {
@@ -751,7 +1013,7 @@
   padding: 0 0.55rem;
   color: var(--mw-body);
   font: inherit;
-  font-size: 0.67rem;
+  font-size: var(--fs-12);
   cursor: pointer;
 }
 
@@ -770,7 +1032,7 @@
 .historyMeta {
   margin-left: auto;
   color: var(--mw-sub);
-  font-size: 0.65rem;
+  font-size: var(--fs-12);
 }
 
 .historyScroll {
@@ -797,8 +1059,8 @@
   border-radius: 50%;
   background: var(--mw-tint-blue);
   color: var(--mw-record);
-  font-size: 0.65rem;
-  font-weight: 800;
+  font-size: var(--fs-11);
+  font-weight: var(--fw-semibold);
 }
 
 /*
@@ -818,7 +1080,7 @@
   align-items: center;
   gap: 0.4rem;
   color: var(--mw-body);
-  font-size: 0.7rem;
+  font-size: var(--fs-12);
 }
 
 .historyKind {
@@ -826,8 +1088,8 @@
   background: var(--mw-tint-blue);
   padding: 0.05rem 0.25rem;
   color: var(--mw-record);
-  font-size: 0.58rem;
-  font-weight: 700;
+  font-size: var(--fs-11);
+  font-weight: var(--fw-semibold);
 }
 
 /*
@@ -886,7 +1148,7 @@
   padding: 0.1rem 0.35rem;
   color: var(--mw-sub);
   font: inherit;
-  font-size: 0.72rem;
+  font-size: var(--fs-12);
   cursor: pointer;
   opacity: 1;
   transition: opacity 140ms ease;
@@ -936,9 +1198,27 @@
   overflow-wrap: anywhere;
   margin: 0.25rem 0 0;
   color: var(--mw-fg);
-  font-size: 0.75rem;
+  font-size: var(--fs-13);
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+/* 메모 고치기 중 다른 사람이 먼저 고친 경우의 비교 상자. */
+.editConflict {
+  margin: var(--sp-2) 0;
+  border: 1px solid var(--mw-line);
+  border-radius: var(--mw-r-1);
+  padding: var(--sp-2);
+  font-size: var(--fs-13);
+}
+
+.editConflict p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.editConflictTitle {
+  font-weight: var(--fw-semibold);
 }
 
 @media (max-width: 600px) {
@@ -953,7 +1233,7 @@
   border-radius: 0.65rem;
   padding: 0.85rem;
   color: var(--mw-sub);
-  font-size: 0.73rem;
+  font-size: var(--fs-12);
 }
 
 .historyError {
@@ -987,7 +1267,7 @@
   padding: 0.58rem 0.7rem;
   color: var(--mw-fg);
   font: inherit;
-  font-size: 0.75rem;
+  font-size: var(--fs-13);
 }
 
 /*
@@ -1047,7 +1327,7 @@
   padding: 0 0.65rem;
   color: var(--mw-body);
   font: inherit;
-  font-size: 0.68rem;
+  font-size: var(--fs-12);
   cursor: pointer;
 }
 
@@ -1056,7 +1336,7 @@
   border-color: transparent;
   background: var(--mw-primary);
   color: var(--mw-on-accent);
-  font-weight: 800;
+  font-weight: var(--fw-semibold);
 }
 
 .composerActions button[aria-pressed="true"],
@@ -1088,11 +1368,11 @@
   border-color: var(--mw-primary);
   background: var(--mw-tint-blue);
   color: var(--mw-record);
-  font-weight: 700;
+  font-weight: var(--fw-semibold);
 }
 
 .kindChevron {
-  font-size: 0.55rem;
+  font-size: var(--fs-11);
   line-height: 1;
   transition: transform 180ms ease;
 }
@@ -1158,13 +1438,13 @@
   background: transparent;
   padding: 0 0.35rem;
   color: var(--mw-sub);
-  font-size: 0.65rem;
+  font-size: var(--fs-12);
 }
 
 .composerActions .kindOptions button[aria-checked="true"] {
   background: transparent;
   color: var(--mw-record);
-  font-weight: 800;
+  font-weight: var(--fw-semibold);
 }
 
 .composerActions .kindOptions[data-kind="call"] button[aria-checked="true"] {
@@ -1182,7 +1462,8 @@
 @media (prefers-reduced-motion: reduce) {
   .kindOptions,
   .kindThumb,
-  .kindChevron {
+  .kindChevron,
+  .evidenceDrop {
     transition: none;
   }
 }
@@ -1234,7 +1515,7 @@
   }
 
   .fieldRow {
-    grid-template-columns: 0.8rem minmax(5.6rem, 6.5rem) minmax(0, 1fr);
+    grid-template-columns: minmax(5.6rem, 6.5rem) minmax(0, 1fr);
   }
 
   .detailFieldCreatorForm { grid-template-columns: 1fr 5.5rem; }

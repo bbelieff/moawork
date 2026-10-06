@@ -76,10 +76,10 @@ test("option-like, traversal, backslash, and control-character paths fail closed
 });
 
 test("declared runtime dotenv and generated outputs are allowed without admitting hidden source or config", () => {
-  for (const value of [".env.local", "app/.env.development.local", "worker/.env", "node_modules/pkg/index.js", "app/.next/server.js", "app/next-env.d.ts"]) {
+  for (const value of [".env.local", "app/.env.development.local", "worker/.env", "node_modules/pkg/index.js", "app/.next/server.js", "app/next-env.d.ts", ".claude/settings.local.json"]) {
     assert.equal(isKnownIgnoredOutput(value), true, value);
   }
-  for (const value of ["app/.env.preview", "app/src/.env.local", "app/ignored-source.ts", "worker/hidden-config.json", "next-env.d.ts", "app/next-env.ts", "app/src/next-env.d.ts"]) {
+  for (const value of ["app/.env.preview", "app/src/.env.local", "app/ignored-source.ts", "worker/hidden-config.json", "next-env.d.ts", "app/next-env.ts", "app/src/next-env.d.ts", ".claude/settings.json", "app/.claude/settings.local.json"]) {
     assert.equal(isKnownIgnoredOutput(value), false, value);
   }
 });

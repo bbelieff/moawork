@@ -81,6 +81,7 @@ import {
   WORKFLOW_PROGRESS_KEY,
   workflowProgressSpec,
   type WorkflowProgressKind,
+  type WorkflowStageMoveTargets,
 } from "@/lib/workflow/progress";
 import { ConsultationProgressCell } from "@/components/consultation/ConsultationProgressCell";
 import {
@@ -104,6 +105,7 @@ import {
   BOARD_TABLE_CONTROL,
   BOARD_TABLE_HEADER_CELL,
   BOARD_TABLE_ROW,
+  BOARD_TABLE_TITLE_CONTROL,
 } from "./table-style";
 import { BoardInlineTitleEditor } from "./BoardInlineTitleEditor";
 import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
@@ -111,6 +113,7 @@ import { selectionTriState } from "./bulk-selection";
 import { MAX_FILE_BYTES } from "@/lib/services/file-contract";
 import { RegionCell } from "./RegionPairCell";
 import { isRegionSidoKey, isRegionSigunguKey } from "@/lib/new-lead/region-pair";
+import { clampTitleWidth, TITLE_COLUMN_DEFAULT, TITLE_COLUMN_MAX, TITLE_COLUMN_MIN, TITLE_COLUMN_STEP, useTitleColumnWidth } from "./title-column-width";
 
 const CELL_INPUT = BOARD_TABLE_CONTROL;
 
@@ -122,7 +125,9 @@ export function boardFileSelectionError(size: number): string | null {
 
 /** 헤더/셀 공통 — 첫 열(이름)을 가로 스크롤에서 고정한다. */
 // Both frozen edges belong to the shared scrollport at every viewport width.
-const STICKY_FIRST = "sticky left-0 z-[var(--mw-layer-board-cell)] bg-mw-card";
+// 배경은 따로 붙인다 — 머리글 줄은 옅은 틴트(--mw-board-head), 본문은 카드색(#839 · 2026-10-06).
+const STICKY_FIRST_BASE = "sticky left-0 z-[var(--mw-layer-board-cell)]";
+const STICKY_FIRST = `${STICKY_FIRST_BASE} bg-mw-card`;
 
 function inputTypeOf(type: BoardColumn["type"]): string {
   switch (type) {
@@ -196,6 +201,8 @@ export function BoardCell({
   error,
   workflowProgressKind,
   workflowTransitionAction,
+  workflowMoveTargets,
+  canMoveRows = true,
   consultationEntry,
   consultationMembers,
   cellAction,
@@ -213,6 +220,10 @@ export function BoardCell({
   error?: string | null;
   workflowProgressKind?: WorkflowProgressKind | null;
   workflowTransitionAction?: ReactNode;
+  /** 진행현황 선택지 중 행을 옮기는 것 → 목표 그룹(표시 전용, #839). */
+  workflowMoveTargets?: WorkflowStageMoveTargets | null;
+  /** #845 — 행을 다른 그룹으로 옮길 권한. false 면 진행현황의 «보드 이동» 선택지가 비활성이다. */
+  canMoveRows?: boolean;
   /** 상담 진행 가상 칸의 항목 — 없으면 안내만 그린다(표시 전용, 쓰기 없음). */
   consultationEntry?: ConsultationBoardEntry | null;
   /** 상담 담당자 선택지 — 확인 팝오버의 담당자 목록에 쓴다. */
@@ -289,6 +300,8 @@ export function BoardCell({
         transitionAction={workflowTransitionAction}
         cellAction={cellAction}
         bulkIntercept={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
+        moveTargets={workflowMoveTargets}
+        canMoveRows={canMoveRows}
       />
     );
   }
@@ -622,6 +635,9 @@ export function GroupTable({
   groupMoveOptions=[],
   renderRowAction,
   workflowProgressKind = null,
+  workflowMoveTargets = null,
+  canMoveRows = true,
+  sameTitleCounts,
   renderWorkflowTransition,
   consultationByItem,
   consultationMembers = [],
@@ -717,6 +733,18 @@ export function GroupTable({
   renderRowAction?: (row: ItemWithValues) => ReactNode;
   /** 화면의 통합 진행현황 셀. 실제 저장은 기존 단계/이동 계약을 그대로 소비한다. */
   workflowProgressKind?: WorkflowProgressKind | null;
+  /** 진행현황 선택지 → 목표 그룹. 원본 단계 컬럼의 이동 규칙에서 만든 표시 전용 맵(#839). */
+  workflowMoveTargets?: WorkflowStageMoveTargets | null;
+  /**
+   * #845 — 행을 다른 그룹으로 옮길 권한(보드의 canMoveRows). 정렬·저장 중 같은 «지금 못 끄는»
+   * 상태가 아니라 권한만 뜻한다 — 진행현황 값으로 옮기는 것은 정렬과 무관하다.
+   */
+  canMoveRows?: boolean;
+  /**
+   * 계약업체 실무 전용 — 보드에 보이는 행 중 같은 제목(=회사명)이 몇 건인지.
+   * 2건 이상이면 제목 옆에 «같은 회사 N건» 을 단다(표시 전용, 데이터·제목은 그대로).
+   */
+  sameTitleCounts?: ReadonlyMap<string, number>;
   renderWorkflowTransition?: (row: ItemWithValues) => ReactNode;
   /**
    * 상담 단계 보기 적재분(item id → 항목). 있으면 «상담 진행» 가상 칸과
@@ -862,6 +890,62 @@ export function GroupTable({
     };
   }, [commitWidth]);
 
+  /**
+   * #845 — 업체명(첫 번째·고정) 열 폭. 사람별·보드별 내 화면 설정(브라우저 저장)이라
+   * 관리자 권한 없이 누구나 조절한다. 그룹마다 표가 따로라도 같은 저장소를 구독해 함께 움직인다.
+   */
+  const titleColumn = useTitleColumnWidth(boardId, currentUserId);
+  const titleResizeRef = useRef<{ startX: number; startWidth: number; current: number; moved: boolean } | null>(null);
+  const { preview: previewTitleWidth, commit: commitTitleWidth } = titleColumn;
+  useEffect(() => {
+    function onMove(e: PointerEvent | MouseEvent) {
+      const r = titleResizeRef.current;
+      if (!r) return;
+      if (!r.moved && Math.abs(e.clientX - r.startX) < 2) return;
+      r.moved = true;
+      r.current = clampTitleWidth(r.startWidth + (e.clientX - r.startX));
+      previewTitleWidth(r.current);
+    }
+    function onUp() {
+      const r = titleResizeRef.current;
+      titleResizeRef.current = null;
+      // 누르기만 하고 움직이지 않았으면 저장하지 않는다(지금 폭을 고정해 버리지 않게).
+      if (r?.moved) commitTitleWidth(r.current);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [commitTitleWidth, previewTitleWidth]);
+  const startTitleResize = (e: React.PointerEvent<HTMLSpanElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const th = e.currentTarget.closest("th");
+    const startWidth = th ? th.getBoundingClientRect().width : TITLE_COLUMN_MIN;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    titleResizeRef.current = { startX: e.clientX, startWidth, current: startWidth, moved: false };
+  };
+  const nudgeTitleWidth = (e: React.KeyboardEvent<HTMLSpanElement>) => {
+    const th = e.currentTarget.closest("th");
+    const current = titleColumn.width ?? (th ? th.getBoundingClientRect().width : TITLE_COLUMN_MIN);
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      commitTitleWidth(current + (e.key === "ArrowRight" ? TITLE_COLUMN_STEP : -TITLE_COLUMN_STEP));
+    } else if (e.key === "Home" || e.key === "End") {
+      e.preventDefault();
+      commitTitleWidth(e.key === "Home" ? TITLE_COLUMN_MIN : TITLE_COLUMN_MAX);
+    }
+  };
+  // 폭은 CSS 변수로만 넘기고 실제 적용은 globals.css 의 640px 이상 규칙이 한다(휴대폰 고정 열 상한 유지).
+  const titleCellStyle = titleColumn.width
+    ? ({ "--mw-title-width": `${titleColumn.width}px` } as React.CSSProperties)
+    : undefined;
+  const titleWidthAttr = titleColumn.width ? String(titleColumn.width) : undefined;
+
   const startResize =
     (columnId: string) => (e: React.MouseEvent<HTMLSpanElement>) => {
       e.preventDefault();
@@ -912,8 +996,10 @@ export function GroupTable({
           <tr>
             <th
               scope="col"
-              className={`${STICKY_FIRST} z-[var(--mw-layer-board-corner)] ${BOARD_TABLE_HEADER_CELL} min-w-44`}
-              style={{ top: 0, position: "sticky" }}
+              className={`${STICKY_FIRST_BASE} z-[var(--mw-layer-board-corner)] bg-mw-board-head ${BOARD_TABLE_HEADER_CELL} min-w-44`}
+              style={{ top: 0, position: "sticky", ...titleCellStyle }}
+              data-board-title-column
+              data-title-width={titleWidthAttr}
             >
               <span className="flex items-center gap-1">
                 {selection && onToggleGroup ? (
@@ -932,6 +1018,23 @@ export function GroupTable({
                   <><SourceBadge source="auto" />회사명</>
                 ) : "이름"}
               </span>
+              <span
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={`${canonicalNewLead ? "회사명" : "이름"} 열 폭 조절 · 좌우 화살표로 조절, 두 번 누르면 원래대로`}
+                aria-valuemin={TITLE_COLUMN_MIN}
+                aria-valuemax={TITLE_COLUMN_MAX}
+                aria-valuenow={titleColumn.width ?? TITLE_COLUMN_DEFAULT}
+                tabIndex={0}
+                data-no-drag
+                data-board-title-resize
+                draggable={false}
+                onPointerDown={startTitleResize}
+                onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); titleColumn.reset(); }}
+                onKeyDown={nudgeTitleWidth}
+                title="끌어서 폭 조절 · 두 번 누르면 원래대로"
+                className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize border-r-2 border-transparent transition-colors hover:border-mw-record focus-visible:border-mw-record focus-visible:outline-none"
+              />
             </th>
             {columns.map((col) => {
               const isTarget = overColKey === col.key && dragColKey !== col.key;
@@ -979,7 +1082,7 @@ export function GroupTable({
                   data-view-focus={col.key === focusColumnKey || undefined}
                   data-column-key={col.key}
                   data-right-pinned={col.rightPinned || undefined}
-                   className={`relative sticky top-0 z-[var(--mw-layer-board-header)] min-w-20 ${BOARD_TABLE_HEADER_CELL} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-card"} ${
+                   className={`relative sticky top-0 z-[var(--mw-layer-board-header)] min-w-20 ${BOARD_TABLE_HEADER_CELL} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-board-head"} ${
                     !canManageColumns || structureLocked
                       ? ""
                       : "cursor-grab active:cursor-grabbing"
@@ -987,7 +1090,7 @@ export function GroupTable({
                     invalidColKey===col.key?"cursor-not-allowed":""
                   } ${
                     dragColKey === col.key ? "opacity-50" : ""
-                  } ${col.rightPinned ? "right-0 border-l-2 border-l-mw-primary text-mw-record" : ""}`}
+                  } ${col.rightPinned ? "right-0 text-mw-record" : ""}`}
                 >
                   <span className="flex items-center gap-1">
                     {canManageColumns && !structureLocked ? (
@@ -1070,6 +1173,7 @@ export function GroupTable({
             return (
               <tr
                 key={row.id}
+                data-board-row=""
                 onDragOver={acceptRow(index)}
                 onDragLeave={(event)=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null)&&overRowIndex===index)clearRowDrop();}}
                 onDrop={dropRow(index)}
@@ -1086,6 +1190,9 @@ export function GroupTable({
                   }:undefined}
                   onDragEnd={()=>{onRowDragEnd();clearRowDrop();setDropMessage(null);}}
                   className={`${STICKY_FIRST} ${BOARD_TABLE_BODY_CELL} group-hover:bg-mw-bg ${rowDragEnabled?"cursor-grab active:cursor-grabbing":""}`}
+                  style={titleCellStyle}
+                  data-board-title-cell
+                  data-title-width={titleWidthAttr}
                 >
                   <div className="flex items-center gap-1">
                     {selection && onToggleRow ? (
@@ -1106,7 +1213,7 @@ export function GroupTable({
                     ) : null}
 
                     {readOnly ? (
-                      <span className="truncate text-xs font-medium text-mw-fg">
+                      <span className="truncate text-[length:var(--fs-13)] font-semibold text-mw-fg">
                         {row.title}
                       </span>
                     ) : (
@@ -1132,7 +1239,7 @@ export function GroupTable({
                             name="title"
                             defaultValue={row.title}
                             aria-label="행 이름"
-                            className={`${CELL_INPUT} font-medium`}
+                            className={BOARD_TABLE_TITLE_CONTROL}
                           />
                         </form>
                         {findCellError(cellFlash, row.id, "title") ? (
@@ -1145,6 +1252,16 @@ export function GroupTable({
                         ) : null}
                       </>
                     )}
+
+                    {(sameTitleCounts?.get(row.title) ?? 0) >= 2 ? (
+                      <span
+                        data-same-company-count={sameTitleCounts?.get(row.title)}
+                        title="이 보드에 같은 회사 이름의 건이 여러 개 있어요. 회사 1곳의 자금 건이 여러 개일 수 있습니다."
+                        className="shrink-0 whitespace-nowrap rounded-full border border-mw-line bg-mw-board-head px-1.5 text-[length:var(--fs-11)] leading-5 text-mw-sub"
+                      >
+                        같은 회사 {sameTitleCounts?.get(row.title)}건
+                      </span>
+                    ) : null}
 
                     <ItemDetailPanel
                       boardId={boardId}
@@ -1215,7 +1332,7 @@ export function GroupTable({
                       data-right-pinned={col.rightPinned || undefined}
                       className={`${BOARD_TABLE_BODY_CELL} group-hover:bg-mw-bg ${(col.wrap_mode ?? textMode) === "wrap" ? "whitespace-normal break-words" : "max-w-80 truncate whitespace-nowrap"} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : ""} ${
                         col.rightPinned
-                          ? "sticky right-0 z-[var(--mw-layer-board-cell)] border-l-2 border-l-mw-primary bg-mw-tint-blue"
+                          ? "sticky right-0 z-[var(--mw-layer-board-cell)]"
                           : ""
                       }`}
                     >
@@ -1264,6 +1381,8 @@ export function GroupTable({
                           }
                           workflowProgressKind={workflowProgressKind}
                           workflowTransitionAction={renderWorkflowTransition?.(row)}
+                          workflowMoveTargets={workflowMoveTargets}
+                          canMoveRows={canMoveRows}
                           consultationEntry={consultationByItem?.[row.id] ?? null}
                           consultationMembers={consultationMembers}
                           cellAction={cellAction}
@@ -1287,7 +1406,11 @@ export function GroupTable({
               onDragLeave={()=>clearRowDrop()}
               onDrop={dropRow(rows.length)}
             >
-              <td className={`${STICKY_FIRST} px-2 py-1 ${overRowIndex === rows.length ? "bg-mw-tint-blue" : ""}`}>
+              {/*
+                추가 줄은 표 너비 전체를 쓴다(colSpan) — 펼친 접수 패널이 이름 열 폭(#845 사람별 폭)에
+                눌려 찌그러지지 않고, 패널을 열어도 다른 행의 이름 열 폭이 바뀌지 않는다.
+              */}
+              <td colSpan={columns.length + 1} className={`${STICKY_FIRST} px-2 py-1 ${overRowIndex === rows.length ? "bg-mw-tint-blue" : ""}`}>
                 {canonicalNewLead && groupId ? (
                   <NewLeadIntakeForm
                     boardId={boardId}
@@ -1316,7 +1439,6 @@ export function GroupTable({
                   />
                 )}
               </td>
-              {columns.map((column)=><td key={column.id} aria-hidden="true" className="border-t border-mw-line bg-mw-card" />)}
             </tr>
           )}
         </tbody>

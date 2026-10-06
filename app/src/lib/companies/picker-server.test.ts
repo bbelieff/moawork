@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Company, Ctx, Deal } from "@/lib/types";
-import { buildCompanyPickerRows, COMPANY_PICKER_LIMIT, loadCompanyPickerRows } from "./picker-server";
+import {
+  buildCompanyPickerRows,
+  COMPANY_PICKER_LIMIT,
+  loadCompanyLiveWorkRowCount,
+  loadCompanyPickerRows,
+} from "./picker-server";
 
 const ctx = { user: { id: "user-1" }, org: { id: "org-1" }, role: "owner", scope: "all" } as Ctx;
 const company: Company = {
@@ -45,6 +50,7 @@ describe("company picker server boundary", () => {
         homepage: "https://example.test",
       },
       dealCount: 2,
+      liveItemCount: 0,
     });
     expect(row.company).not.toHaveProperty("org_id");
     expect(row.company).not.toHaveProperty("revenue");
@@ -102,5 +108,70 @@ describe("company picker server boundary", () => {
   it("★ 우리 상한이 DB 상한보다 낮으면 안 된다", () => {
     const POSTGREST_DEFAULT_MAX_ROWS = 1000;
     expect(COMPANY_PICKER_LIMIT).toBeGreaterThanOrEqual(POSTGREST_DEFAULT_MAX_ROWS);
+  });
+});
+
+/**
+ * #6 — 「이미 이 탭에 N건」 은 «모든 딜 이력» 이 아니라 «이 보드에 살아 있는, 보이는 행» 이다.
+ *   dealCount 로 물으면 돌아온 회사마다 확인창이 떠서 1:N 정상 흐름이 막힌다.
+ */
+describe("company picker — 이 탭에 살아 있는 행 수", () => {
+  const other: Company = { ...company, id: "company-2", name: "다라물산" };
+  const deals: Deal[] = [
+    deal,
+    { ...deal, id: "deal-2" },
+    { ...deal, id: "deal-3" },
+    { ...deal, id: "deal-old" },
+    { ...deal, id: "deal-other", company_id: "company-2" },
+  ];
+
+  it("이 보드의 살아 있는 행만 회사별로 센다 — 지운·보관·딜 없는·안 보이는 딜의 행은 빼고", () => {
+    const rows = buildCompanyPickerRows([company, other], deals, [
+      { deal_id: "deal-1" },
+      { deal_id: "deal-2", deleted_at: null, archived_at: null },
+      { deal_id: "deal-3", deleted_at: "2026-10-01T00:00:00.000Z" },
+      { deal_id: "deal-old", archived_at: "2026-10-01T00:00:00.000Z" },
+      { deal_id: null },
+      // 딜 목록(RLS)에 없는 딜 — 어느 회사인지 모르므로 세지 않는다.
+      { deal_id: "deal-invisible" },
+    ]);
+    expect(rows.map((row) => [row.company.id, row.dealCount, row.liveItemCount])).toEqual([
+      ["company-1", 4, 2],
+      ["company-2", 1, 0],
+    ]);
+  });
+
+  it("보드 행을 넘기면 목록 결과에 실린다", async () => {
+    const result = await loadCompanyPickerRows(ctx, {
+      source: { listCompanies: vi.fn(async () => [company, other]), listDeals: vi.fn(async () => deals) },
+      boardItems: [{ deal_id: "deal-other" }],
+    });
+    expect(result.rows.find((row) => row.company.id === "company-2")?.liveItemCount).toBe(1);
+    expect(result.rows.find((row) => row.company.id === "company-1")?.liveItemCount).toBe(0);
+  });
+});
+
+describe("회사 상세 — 살아 있는 업무 행 수", () => {
+  it("보이는 딜 id 로만 세고 세션 조직을 쓴다", async () => {
+    const count = vi.fn(async () => 2);
+    await expect(loadCompanyLiveWorkRowCount(ctx, ["deal-1", "deal-2"], { count })).resolves.toBe(2);
+    expect(count).toHaveBeenCalledWith({ orgId: "org-1", dealIds: ["deal-1", "deal-2"] });
+  });
+
+  it("딜이 없으면 묻지 않고 0 — 조회도 하지 않는다", async () => {
+    const count = vi.fn(async () => 5);
+    await expect(loadCompanyLiveWorkRowCount(ctx, [], { count })).resolves.toBe(0);
+    expect(count).not.toHaveBeenCalled();
+  });
+
+  it("못 세면 null — 확인 근거일 뿐이라 화면을 막지 않는다", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await expect(loadCompanyLiveWorkRowCount(ctx, ["deal-1"], {
+        count: vi.fn(async () => { throw new Error("private database detail"); }),
+      })).resolves.toBeNull();
+    } finally {
+      error.mockRestore();
+    }
   });
 });

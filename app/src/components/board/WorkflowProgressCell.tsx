@@ -2,15 +2,17 @@
 
 import Link from "next/link";
 import { newLeadStageLabel } from "@/lib/new-lead/stage-presentation";
-import { useId, useRef, useState, type ReactNode } from "react";
+import { useId, useOptimistic, useRef, useState, type ReactNode } from "react";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { setCellAction } from "@/app/(app)/boards/actions";
 import {
   workflowProgressSpec,
   type WorkflowProgressKind,
+  type WorkflowStageMoveTargets,
 } from "@/lib/workflow/progress";
 import { BOARD_TABLE_CONTROL } from "./table-style";
 import { NewLeadPipelineRepair } from "./NewLeadPipelineRepair";
+import { StagePicker } from "./StagePicker";
 
 const TRANSFER = "__workflow_transfer__";
 
@@ -24,6 +26,8 @@ export function WorkflowProgressCell({
   transitionAction,
   cellAction,
   bulkIntercept,
+  moveTargets,
+  canMoveRows = true,
 }: Readonly<{
   boardId: string;
   row: ItemWithValues;
@@ -38,6 +42,16 @@ export function WorkflowProgressCell({
    * true 를 돌려주면 낱개 저장·전이 대화를 건너뛰고 표시값으로 되돌린다.
    */
   bulkIntercept?: (nextValue: string) => boolean;
+  /**
+   * 2026-10-06 (#839) — 이 보드에서 «행을 옮기는» 선택지 → 목표 그룹. 원본 단계 컬럼의
+   * 이동 규칙에서 만든 표시 전용 정보다. 없으면 한 묶음(보드 안 단계)으로 보여 준다.
+   */
+  moveTargets?: WorkflowStageMoveTargets | null;
+  /**
+   * #845 — 이 사람이 행을 다른 그룹으로 옮길 수 있는가(보드의 행 이동 권한). false 면 다른 그룹으로
+   * 옮기는 선택지를 «권한 없음» 으로 비활성 표시한다. 서버도 같은 경우를 거절한다.
+   */
+  canMoveRows?: boolean;
 }>) {
   const spec = workflowProgressSpec(kind);
   const current = typeof row.values[spec.stageColumnKey] === "string"
@@ -45,75 +59,66 @@ export function WorkflowProgressCell({
     : "";
   const [dialogOpen, setDialogOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
+  const valueInput = useRef<HTMLInputElement>(null);
   const descriptionId = useId();
   const repairAvailable = Boolean(error?.includes("현재 단계에서는 이 관문을 넘을 수 없습니다"));
-  // ★ 기존 단계 «검색» — 진행 셀은 native select를 그대로 둔다.
-  //   만들기 입구는 없다(단계값은 전이·이동규칙과 묶여 있어 새 값을 넣으면
-  //   «골랐는데 카드가 안 움직이는» 상태가 된다 — LabelCombobox로 바꾸지 않는다).
-  //   필터는 보여주는 항목만 좁히고, 제출·전이 대화·일괄 가로채기는 그대로다.
-  const [stageFilter, setStageFilter] = useState("");
+  // ★ 2026-10-06 (#839) — 칸에는 색 칩 하나(StagePicker)만 둔다. 검색은 팝오버 «안» 에 있다.
+  //   만들기 입구는 여전히 없다(StagePicker 에 만들기 경로가 없다 — 단계값은 전이·이동규칙과
+  //   묶여 있어 새 값을 넣으면 «골랐는데 카드가 안 움직이는» 상태가 된다).
+  //   제출·전이 대화·일괄 가로채기 계약은 그대로다: hidden value 에 고른 id 를 직접 쓰고
+  //   form.requestSubmit() — 팝오버는 body 로 포털되므로 폼 밖이다(LabelCombobox 와 같은 방식).
   const stageOptions = column.options_jsonb?.options ?? [];
-  const filterText = stageFilter.trim().toLowerCase();
-  const visibleStages = filterText === ""
-    ? stageOptions
-    : stageOptions.filter(
-        (option) =>
-          option.label.toLowerCase().includes(filterText)
-          || option.id.toLowerCase().includes(filterText),
-      );
+  // 낙관적 표시 — «액션 수명» 에 묶는다(#845 검토 후속). 폼 액션이 진행되는 동안만 고른 값을
+  // 보여 주고, 액션이 끝나면 React 가 저장값(current)으로 되돌린다. 성공하면 같은 전환에서
+  // 서버 재조회가 current 를 새 값으로 바꾸고, 거절되면 옛 저장값이 그대로 보인다.
+  // (전에는 «오류 문자열이 바뀌었는가» 로 판단해서, 같은 문구로 두 번 연속 거절되면 저장되지
+  // 않은 단계가 칩에 남았다.)
+  const action = cellAction ?? setCellAction;
+  const [shown, showOptimistic] = useOptimistic(current, (_saved: string, next: string) => next);
+  const fallbackLabel = kind === "new-lead" ? newLeadStageLabel(shown) : shown;
+  async function submitStage(formData: FormData) {
+    const next = formData.get("value");
+    if (typeof next === "string") showOptimistic(next);
+    await action(formData);
+  }
+
+  function selectStage(next: string) {
+    if (bulkIntercept?.(next)) return;
+    if (next === TRANSFER) {
+      setDialogOpen(true);
+      dialog.current?.showModal();
+      return;
+    }
+    const input = valueInput.current;
+    if (!input?.form || next === shown) return;
+    input.value = next;
+    input.form.requestSubmit();
+  }
 
   return (
     <div className="min-w-40">
-      {stageOptions.length > 4 ? (
-        <input
-          type="search"
-          value={stageFilter}
-          onChange={(event) => setStageFilter(event.target.value)}
-          placeholder="단계 검색"
-          aria-label="진행 단계 검색"
-          className={`${BOARD_TABLE_CONTROL} mb-1 font-normal`}
-        />
-      ) : null}
-      <form action={cellAction ?? setCellAction}>
+      <form action={submitStage}>
         <input type="hidden" name="boardId" value={boardId} />
         <input type="hidden" name="itemId" value={row.id} />
         <input type="hidden" name="columnKey" value={spec.stageColumnKey} />
-        <select
-          name="value"
-          key={`${row.id}:${current}`}
-          defaultValue={current}
+        <input ref={valueInput} key={`value:${row.id}:${current}`} type="hidden" name="value" defaultValue={current} />
+        <StagePicker
+          key={`picker:${row.id}:${current}`}
+          boardId={boardId}
+          itemId={row.id}
+          options={stageOptions}
+          value={shown}
+          fallbackLabel={fallbackLabel}
+          moveTargets={moveTargets}
+          currentGroupId={row.group_id}
+          transitionLabel={spec.transitionLabel}
           disabled={readOnly}
-          aria-label="진행현황"
-          aria-describedby={descriptionId}
-          className={`${BOARD_TABLE_CONTROL} font-semibold focus:ring-2 focus:ring-mw-primary/20 disabled:cursor-not-allowed disabled:opacity-70`}
-          onChange={(event) => {
-            if (bulkIntercept?.(event.currentTarget.value)) {
-              event.currentTarget.value = current;
-              return;
-            }
-            if (event.currentTarget.value === TRANSFER) {
-              event.preventDefault();
-              event.currentTarget.value = current;
-              setDialogOpen(true);
-              dialog.current?.showModal();
-              return;
-            }
-            event.currentTarget.form?.requestSubmit();
-          }}
-        >
-          <option value="">미선택</option>
-          {current && !visibleStages.some((option) => option.id === current) ? (
-            <option value={current}>{stageOptions.find((option) => option.id === current)?.label ?? (kind === "new-lead" ? newLeadStageLabel(current) : current)}</option>
-          ) : null}
-          <optgroup label="보드 안 단계">
-            {visibleStages.map((option) => (
-              <option key={option.id} value={option.id}>{option.label}</option>
-            ))}
-          </optgroup>
-          <optgroup label="다음 업무로 이동">
-            <option value={TRANSFER}>→ {spec.transitionLabel}</option>
-          </optgroup>
-        </select>
+          canMoveRows={canMoveRows}
+          describedBy={descriptionId}
+          searchClassName={BOARD_TABLE_CONTROL}
+          onSelect={selectStage}
+          onTransfer={() => selectStage(TRANSFER)}
+        />
       </form>
       <span id={descriptionId} className="sr-only">
         보드 안 단계는 즉시 저장되고, 다음 업무로 이동은 확인 후 실행됩니다.
@@ -154,7 +159,7 @@ export function WorkflowProgressCell({
             <NewLeadPipelineRepair key={row.id} itemId={row.id} available={repairAvailable} />
           ) : null}
           {kind === "new-lead" ? (
-            <form action={cellAction ?? setCellAction} className="mt-4 flex justify-end gap-2">
+            <form action={action} className="mt-4 flex justify-end gap-2">
               <input type="hidden" name="boardId" value={boardId} />
               <input type="hidden" name="itemId" value={row.id} />
               <input type="hidden" name="columnKey" value={spec.stageColumnKey} />

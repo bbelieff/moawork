@@ -96,6 +96,93 @@ html[data-mw-accent="dash"] {
   --mw-accent-deep: #2b3a9e;
 }
 
+/* ── 그룹 톤: 탭의 메인 2색 × 깊이 (#845 · 대표 지시 2026-10-06, 승인 방향 목업 Palette.dc) ──
+   색 1(a) = 그 탭 CTA 그라디언트의 첫 스톱 계열 = 본 진행, 단계가 나아갈수록 깊어진다.
+   색 2(b) = 둘째 스톱 계열 = 곁가지. 멈춤 회색(--mw-tab-stop)은 globals.css 공통값.
+   값 출처: Palette.dc 의 5탭 사다리(Tailwind CSS 기본 팔레트 300→700, MIT) 그대로.
+   news(두 스톱이 모두 시안)는 b 를 청록(teal)으로, dash 는 contact 와 같은 파랑·보라로 각색했다.
+   다크는 600→200 — 어두운 바탕에서는 «깊을수록 또렷하게» 가 같은 위계다.
+   그룹이 어느 축·몇 단계인지는 app/src/lib/boards/group-tone.ts 가 정한다. */
+html[data-mw-accent="new"] {
+  --mw-tab-a-1: #fdba74; --mw-tab-a-2: #fb923c; --mw-tab-a-3: #f97316; --mw-tab-a-4: #ea580c; --mw-tab-a-5: #c2410c;
+  --mw-tab-b-1: #fde047; --mw-tab-b-2: #facc15; --mw-tab-b-3: #eab308; --mw-tab-b-4: #ca8a04; --mw-tab-b-5: #a16207;
+}
+html[data-mw-accent="contact"],
+html[data-mw-accent="dash"] {
+  --mw-tab-a-1: #93c5fd; --mw-tab-a-2: #60a5fa; --mw-tab-a-3: #3b82f6; --mw-tab-a-4: #2563eb; --mw-tab-a-5: #1d4ed8;
+  --mw-tab-b-1: #c4b5fd; --mw-tab-b-2: #a78bfa; --mw-tab-b-3: #8b5cf6; --mw-tab-b-4: #7c3aed; --mw-tab-b-5: #6d28d9;
+}
+html[data-mw-accent="inperson"] {
+  --mw-tab-a-1: #fca5a5; --mw-tab-a-2: #f87171; --mw-tab-a-3: #ef4444; --mw-tab-a-4: #dc2626; --mw-tab-a-5: #b91c1c;
+  --mw-tab-b-1: #f9a8d4; --mw-tab-b-2: #f472b6; --mw-tab-b-3: #ec4899; --mw-tab-b-4: #db2777; --mw-tab-b-5: #be185d;
+}
+html[data-mw-accent="work"] {
+  --mw-tab-a-1: #86efac; --mw-tab-a-2: #4ade80; --mw-tab-a-3: #22c55e; --mw-tab-a-4: #16a34a; --mw-tab-a-5: #15803d;
+  --mw-tab-b-1: #bef264; --mw-tab-b-2: #a3e635; --mw-tab-b-3: #84cc16; --mw-tab-b-4: #65a30d; --mw-tab-b-5: #4d7c0f;
+}
+html[data-mw-accent="company"] {
+  --mw-tab-a-1: #7dd3fc; --mw-tab-a-2: #38bdf8; --mw-tab-a-3: #0ea5e9; --mw-tab-a-4: #0284c7; --mw-tab-a-5: #0369a1;
+  --mw-tab-b-1: #67e8f9; --mw-tab-b-2: #22d3ee; --mw-tab-b-3: #06b6d4; --mw-tab-b-4: #0891b2; --mw-tab-b-5: #0e7490;
+}
+html[data-mw-accent="news"] {
+  --mw-tab-a-1: #67e8f9; --mw-tab-a-2: #22d3ee; --mw-tab-a-3: #06b6d4; --mw-tab-a-4: #0891b2; --mw-tab-a-5: #0e7490;
+  --mw-tab-b-1: #5eead4; --mw-tab-b-2: #2dd4bf; --mw-tab-b-3: #14b8a6; --mw-tab-b-4: #0d9488; --mw-tab-b-5: #0f766e;
+}
+/* 다크(명시 테마) */
+html[data-mw-accent="new"][data-theme="dark"] {
+  --mw-tab-a-1: #ea580c; --mw-tab-a-2: #f97316; --mw-tab-a-3: #fb923c; --mw-tab-a-4: #fdba74; --mw-tab-a-5: #fed7aa;
+  --mw-tab-b-1: #ca8a04; --mw-tab-b-2: #eab308; --mw-tab-b-3: #facc15; --mw-tab-b-4: #fde047; --mw-tab-b-5: #fef08a;
+}
+html[data-mw-accent="contact"][data-theme="dark"],
+html[data-mw-accent="dash"][data-theme="dark"] {
+  --mw-tab-a-1: #2563eb; --mw-tab-a-2: #3b82f6; --mw-tab-a-3: #60a5fa; --mw-tab-a-4: #93c5fd; --mw-tab-a-5: #bfdbfe;
+  --mw-tab-b-1: #7c3aed; --mw-tab-b-2: #8b5cf6; --mw-tab-b-3: #a78bfa; --mw-tab-b-4: #c4b5fd; --mw-tab-b-5: #ddd6fe;
+}
+html[data-mw-accent="inperson"][data-theme="dark"] {
+  --mw-tab-a-1: #dc2626; --mw-tab-a-2: #ef4444; --mw-tab-a-3: #f87171; --mw-tab-a-4: #fca5a5; --mw-tab-a-5: #fecaca;
+  --mw-tab-b-1: #db2777; --mw-tab-b-2: #ec4899; --mw-tab-b-3: #f472b6; --mw-tab-b-4: #f9a8d4; --mw-tab-b-5: #fbcfe8;
+}
+html[data-mw-accent="work"][data-theme="dark"] {
+  --mw-tab-a-1: #16a34a; --mw-tab-a-2: #22c55e; --mw-tab-a-3: #4ade80; --mw-tab-a-4: #86efac; --mw-tab-a-5: #bbf7d0;
+  --mw-tab-b-1: #65a30d; --mw-tab-b-2: #84cc16; --mw-tab-b-3: #a3e635; --mw-tab-b-4: #bef264; --mw-tab-b-5: #d9f99d;
+}
+html[data-mw-accent="company"][data-theme="dark"] {
+  --mw-tab-a-1: #0284c7; --mw-tab-a-2: #0ea5e9; --mw-tab-a-3: #38bdf8; --mw-tab-a-4: #7dd3fc; --mw-tab-a-5: #bae6fd;
+  --mw-tab-b-1: #0891b2; --mw-tab-b-2: #06b6d4; --mw-tab-b-3: #22d3ee; --mw-tab-b-4: #67e8f9; --mw-tab-b-5: #a5f3fc;
+}
+html[data-mw-accent="news"][data-theme="dark"] {
+  --mw-tab-a-1: #0891b2; --mw-tab-a-2: #06b6d4; --mw-tab-a-3: #22d3ee; --mw-tab-a-4: #67e8f9; --mw-tab-a-5: #a5f3fc;
+  --mw-tab-b-1: #0d9488; --mw-tab-b-2: #14b8a6; --mw-tab-b-3: #2dd4bf; --mw-tab-b-4: #5eead4; --mw-tab-b-5: #99f6e4;
+}
+/* 다크(OS 추종 — data-theme 미지정) */
+@media (prefers-color-scheme: dark) {
+  html[data-mw-accent="new"]:not([data-theme="light"]) {
+    --mw-tab-a-1: #ea580c; --mw-tab-a-2: #f97316; --mw-tab-a-3: #fb923c; --mw-tab-a-4: #fdba74; --mw-tab-a-5: #fed7aa;
+    --mw-tab-b-1: #ca8a04; --mw-tab-b-2: #eab308; --mw-tab-b-3: #facc15; --mw-tab-b-4: #fde047; --mw-tab-b-5: #fef08a;
+  }
+  html[data-mw-accent="contact"]:not([data-theme="light"]),
+  html[data-mw-accent="dash"]:not([data-theme="light"]) {
+    --mw-tab-a-1: #2563eb; --mw-tab-a-2: #3b82f6; --mw-tab-a-3: #60a5fa; --mw-tab-a-4: #93c5fd; --mw-tab-a-5: #bfdbfe;
+    --mw-tab-b-1: #7c3aed; --mw-tab-b-2: #8b5cf6; --mw-tab-b-3: #a78bfa; --mw-tab-b-4: #c4b5fd; --mw-tab-b-5: #ddd6fe;
+  }
+  html[data-mw-accent="inperson"]:not([data-theme="light"]) {
+    --mw-tab-a-1: #dc2626; --mw-tab-a-2: #ef4444; --mw-tab-a-3: #f87171; --mw-tab-a-4: #fca5a5; --mw-tab-a-5: #fecaca;
+    --mw-tab-b-1: #db2777; --mw-tab-b-2: #ec4899; --mw-tab-b-3: #f472b6; --mw-tab-b-4: #f9a8d4; --mw-tab-b-5: #fbcfe8;
+  }
+  html[data-mw-accent="work"]:not([data-theme="light"]) {
+    --mw-tab-a-1: #16a34a; --mw-tab-a-2: #22c55e; --mw-tab-a-3: #4ade80; --mw-tab-a-4: #86efac; --mw-tab-a-5: #bbf7d0;
+    --mw-tab-b-1: #65a30d; --mw-tab-b-2: #84cc16; --mw-tab-b-3: #a3e635; --mw-tab-b-4: #bef264; --mw-tab-b-5: #d9f99d;
+  }
+  html[data-mw-accent="company"]:not([data-theme="light"]) {
+    --mw-tab-a-1: #0284c7; --mw-tab-a-2: #0ea5e9; --mw-tab-a-3: #38bdf8; --mw-tab-a-4: #7dd3fc; --mw-tab-a-5: #bae6fd;
+    --mw-tab-b-1: #0891b2; --mw-tab-b-2: #06b6d4; --mw-tab-b-3: #22d3ee; --mw-tab-b-4: #67e8f9; --mw-tab-b-5: #a5f3fc;
+  }
+  html[data-mw-accent="news"]:not([data-theme="light"]) {
+    --mw-tab-a-1: #0891b2; --mw-tab-a-2: #06b6d4; --mw-tab-a-3: #22d3ee; --mw-tab-a-4: #67e8f9; --mw-tab-a-5: #a5f3fc;
+    --mw-tab-b-1: #0d9488; --mw-tab-b-2: #14b8a6; --mw-tab-b-3: #2dd4bf; --mw-tab-b-4: #5eead4; --mw-tab-b-5: #99f6e4;
+  }
+}
+
 /* 승인 팔레트: s3 로즈는 대면 상담에서 소비하며 허니·파트너는 미배선이다. */
 html[data-mw-accent] {
   --mw-palette-s3rose: linear-gradient(310deg, #ef4444 0%, #ec4899 100%);
@@ -221,10 +308,13 @@ html[data-mw-accent][data-theme="dark"] {
   }
 }
 
-/* #761 approved v17: R3 labels / R7 controls / R11 panels; group colors as dots. */
-html[data-mw-accent]{--mw-r-1:3px;--mw-r-2:7px;--mw-r-3:11px;--mw-radius:7px;--mw-group-header-bg:var(--mw-card);--mw-group-rail-width:0px;--mw-group-title-ink:var(--mw-fg)}
+/* #761 approved v17: R3 labels / R7 controls / R11 panels.
+   #839 (대표 지시 2026-10-06): 그룹 머리말은 다시 «색 띠» 다 — 그룹 톤 틴트 + 3px 레일 + 톤을
+   섞은 진한 제목. 톤은 그룹마다 다르므로 GroupBlock 이 --mw-group-accent 로 단다(#845: 탭 2색 ×
+   깊이 토큰 --mw-tab-*). 색 견본은 목업(Main.dc)처럼 10px 둥근 네모다. */
+html[data-mw-accent]{--mw-r-1:3px;--mw-r-2:7px;--mw-r-3:11px;--mw-radius:7px}
 [data-mw-group-color]{display:none}
-html[data-mw-accent] [data-mw-group-color]{display:inline-block;flex:none;width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 1px var(--mw-line)}
+html[data-mw-accent] [data-mw-group-color]{display:inline-block;flex:none;width:10px;height:10px;border-radius:3px}
 html[data-mw-accent] [data-visual-block="group-table"]{border-radius:7px}
 html[data-mw-accent] [data-visual-block="group-table"]>details>summary{border-radius:7px 7px 0 0;border-bottom:1px solid var(--mw-line)}
 html[data-mw-accent] [data-visual-block="board-header"] h1>span[aria-hidden="true"]{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:7px;background:var(--mw-cta-grad);color:var(--mw-cta-ink);font-size:16px}

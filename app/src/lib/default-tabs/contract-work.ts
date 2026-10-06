@@ -22,7 +22,7 @@
 import type { FieldOption } from "@/lib/types";
 import { POLICYFUND_OPTION_SETS } from "@/lib/migration/monday-mapping/policyfund-pack";
 import { POLICYFUND_WORK_BOARD } from "@/lib/migration/monday-mapping/policyfund-work";
-import type { DefaultTab, DefaultTabColumn } from "./types";
+import type { DefaultTab, DefaultTabColumn, DefaultTabGroup } from "./types";
 
 export const CONTRACT_WORK_TAB_SOURCE = "core.default-tab/contract-work";
 
@@ -56,13 +56,34 @@ function productGroupName(name: string): string {
   return name.replace(/^(\p{Extended_Pictographic}(?:\uFE0F)?)(?!\s)/u, "$1 ");
 }
 
-const workGroups = POLICYFUND_WORK_BOARD.sections.map((section) => ({
-  name: productGroupName(section.groupName),
-  color: section.color,
-}));
+/**
+ * ★ 2026-10-06 제품 책임자 결정(#845) — «받아줄 그룹이 없던» 진행상황 3단계에 그룹을 새로 둔다.
+ *   진행상황 단계 = 보드 그룹이라서, 그룹이 없는 단계는 골라도 행이 어디로도 안 간다.
+ *   이관 사전(먼데이 실측 아카이브)은 고치지 않는다 — 그 11개 그룹의 내용·순서는 그대로 두고
+ *   승인된 목업의 자리(곁가지 축: 기업인증 진행 → 소공인(상생) → 관리중 → 해당연도 매출 → 업체관리)에 끼운다.
+ *   색은 목업 팔레트의 곁가지 축(B) 깊이 2·4·5 다. 이미 깔린 보드에는 설치기·진입 repair 가 맨 뒤에 붙인다
+ *   (본문 이름이 같은 그룹이 있으면 만들지 않는다 — findExistingGroup).
+ */
+const ADDED_STAGE_GROUPS: ReadonlyArray<Readonly<{ after: string; name: string; color: string }>> = [
+  { after: "기업인증 진행", name: "소공인(상생)", color: "#a3e635" },
+  { after: "관리중", name: "해당연도 매출", color: "#65a30d" },
+  { after: "해당연도 매출", name: "업체관리", color: "#4d7c0f" },
+];
+
+const plainName = (name: string) => name.replace(/^\P{L}+/u, "").trim();
+
+const workGroups: DefaultTabGroup[] = [];
+for (const section of POLICYFUND_WORK_BOARD.sections) {
+  workGroups.push({ name: productGroupName(section.groupName), color: section.color });
+  let anchor = plainName(section.groupName);
+  for (let added = ADDED_STAGE_GROUPS.find((group) => group.after === anchor); added; added = ADDED_STAGE_GROUPS.find((group) => group.after === anchor)) {
+    workGroups.push({ name: added.name, color: added.color });
+    anchor = added.name;
+  }
+}
 
 const groupByPlainName = (plain: string): string => {
-  const group = workGroups.find(({ name }) => name.replace(/^\P{L}+/u, "").trim() === plain);
+  const group = workGroups.find(({ name }) => plainName(name) === plain);
   if (!group) throw new Error(`계약업체 이동 대상 그룹을 찾을 수 없습니다: ${plain}`);
   return group.name;
 };
@@ -112,6 +133,24 @@ const columns: DefaultTabColumn[] = [
       "심사 중": groupByPlainName("심사 중"),
       "승인": groupByPlainName("승인"),
       "불가": groupByPlainName("대출불가"),
+      // ★ 2026-10-06 — 14개 선택지 중 5개만 규칙이 있어서, 나머지를 고르면 값만 바뀌고
+      //   행은 제자리에 남았다(운영 실측: «📂소진공 혁신성장 대기» 인데 «심사 중» 그룹).
+      //   받아줄 그룹이 «이미 있는» 6개를 잇는다. 선택지 이름은 «…대기», 그룹 이름은
+      //   «…접수예정» 이라 이름 맞추기로는 못 찾았다 — 여기서 명시한다.
+      //   «신용취약 → 취약자금» 짝은 2026-10-06 제품 책임자가 «같은 것» 으로 확인했다(#845 결정 3).
+      //   이미 깔린 보드는 planMoveRuleBackfill 이 빠진 항목만 메꾼다(회사가 바꾼 항목은 그대로).
+      "관리중": groupByPlainName("관리중"),
+      "기업인증 진행": groupByPlainName("기업인증 진행"),
+      "📂소진공 혁신성장 대기": groupByPlainName("소진공 혁신성장 접수예정"),
+      "📂소진공 신용취약 대기": groupByPlainName("소진공 취약자금 접수예정"),
+      "📂소진공 일시적경영애로 대기": groupByPlainName("소진공 일시적경영애로 접수예정"),
+      "📂소진공 재도전 대기": groupByPlainName("소진공 재도전 접수예정"),
+      // ★ 2026-10-06 제품 책임자 결정(#845) — 받아줄 그룹이 없던 3단계는 같은 이름의 «새 그룹» 으로 간다.
+      //   이제 14개 선택지가 모두 그룹 하나씩을 가리킨다(단계 = 보드 그룹).
+      //   설치된 보드에서 단계 라벨·순서는 그룹 이름·순서를 따른다(stage-link.ts · syncGroupLinkedStageColumn).
+      "소공인(상생)": groupByPlainName("소공인(상생)"),
+      "해당연도 매출": groupByPlainName("해당연도 매출"),
+      "업체관리": groupByPlainName("업체관리"),
     },
     width: 150,
   },

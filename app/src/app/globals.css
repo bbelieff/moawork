@@ -52,6 +52,33 @@
   --mw-tint-violet: #efecff; /* 미팅 배지 바탕 (#662) */
   --mw-radius: 6px;
 
+  /* 보드 위계 토큰 (#839 · 2026-10-06) — 탭 바탕 > 그룹 카드 > 행 > 칸.
+     모두 기존 정본색(--mw-fg·--mw-card·--mw-record)의 혼합이라 테마를 따라 바뀐다. */
+  --mw-board-canvas: color-mix(in srgb, var(--mw-fg) 3%, var(--mw-card)); /* 보드 스크롤 바탕 */
+  --mw-board-head: color-mix(in srgb, var(--mw-fg) 3%, var(--mw-card)); /* 표 머리글 줄 — 12px 보조 글자 AA(4.5:1) 유지 */
+  --mw-grid-line: color-mix(in srgb, var(--mw-fg) 10%, var(--mw-card)); /* 칸·행 구분선 */
+  --mw-row-hover: color-mix(in srgb, var(--mw-record) 5%, var(--mw-card)); /* 행 호버 */
+  --mw-pinned-body: color-mix(in srgb, var(--mw-record) 6%, var(--mw-card)); /* 진행현황 본문 */
+  --mw-pinned-line: color-mix(in srgb, var(--mw-record) 22%, var(--mw-card)); /* 진행현황 행 구분 */
+  --mw-pinned-shadow: color-mix(in srgb, var(--mw-fg) 22%, transparent); /* 고정 열 떠 있는 그림자 */
+
+  /* 그룹 톤 (#845 · 대표 지시 2026-10-06, 승인 방향 Palette.dc) — 탭의 메인 2색 × 깊이 1~5.
+     a = 본 진행(깊을수록 진함), b = 곁가지, stop = 멈춤(불가·거절·취소) 회색.
+     여기 값은 강조 라우트가 없을 때의 기본(대시보드 폴백과 같은 파랑·보라)이다. 탭별 값은
+     moawork-vivid-v17.css 의 html[data-mw-accent] 가 덮는다. 쓰는 곳은 group-tone.ts 뿐이다
+     (그룹 띠·행 첫 칸 줄·진행현황 칩이 모두 이 토큰을 거친다). */
+  --mw-tab-a-1: #93c5fd;
+  --mw-tab-a-2: #60a5fa;
+  --mw-tab-a-3: #3b82f6;
+  --mw-tab-a-4: #2563eb;
+  --mw-tab-a-5: #1d4ed8;
+  --mw-tab-b-1: #c4b5fd;
+  --mw-tab-b-2: #a78bfa;
+  --mw-tab-b-3: #8b5cf6;
+  --mw-tab-b-4: #7c3aed;
+  --mw-tab-b-5: #6d28d9;
+  --mw-tab-stop: #9ca3af;
+
   /* 레이어 소유권 — 숫자를 컴포넌트에 직접 쓰지 않는다.
      page popover < shell < shell popover < tooltip < scrim < dialog < toast. */
   --mw-layer-board-cell: 10;
@@ -101,6 +128,20 @@
   --mw-tint-coral: rgba(255, 138, 128, 0.15);
   --mw-tint-amber: rgba(240, 184, 73, 0.15);
   --mw-tint-violet: rgba(138, 124, 255, 0.16);
+  /* 다크에서는 바탕이 카드보다 어두워야 카드가 떠 보인다. */
+  --mw-board-canvas: var(--mw-bg);
+  /* 그룹 톤 다크 — 어두운 바탕에서는 깊을수록 «또렷하게»(600 → 200). 단계가 나아갈수록 대비가 커진다. */
+  --mw-tab-a-1: #2563eb;
+  --mw-tab-a-2: #3b82f6;
+  --mw-tab-a-3: #60a5fa;
+  --mw-tab-a-4: #93c5fd;
+  --mw-tab-a-5: #bfdbfe;
+  --mw-tab-b-1: #7c3aed;
+  --mw-tab-b-2: #8b5cf6;
+  --mw-tab-b-3: #a78bfa;
+  --mw-tab-b-4: #c4b5fd;
+  --mw-tab-b-5: #ddd6fe;
+  --mw-tab-stop: #6b7280;
 }
 
 /* data-theme 미지정(최초 방문)일 때 OS 설정을 따른다 — 토글하면 data-theme 로 확정. */
@@ -131,6 +172,18 @@
     --mw-tint-coral: rgba(255, 138, 128, 0.15);
     --mw-tint-amber: rgba(240, 184, 73, 0.15);
     --mw-tint-violet: rgba(138, 124, 255, 0.16);
+    --mw-board-canvas: var(--mw-bg);
+    --mw-tab-a-1: #2563eb;
+    --mw-tab-a-2: #3b82f6;
+    --mw-tab-a-3: #60a5fa;
+    --mw-tab-a-4: #93c5fd;
+    --mw-tab-a-5: #bfdbfe;
+    --mw-tab-b-1: #7c3aed;
+    --mw-tab-b-2: #8b5cf6;
+    --mw-tab-b-3: #a78bfa;
+    --mw-tab-b-4: #c4b5fd;
+    --mw-tab-b-5: #ddd6fe;
+    --mw-tab-stop: #6b7280;
   }
 }
 
@@ -174,6 +227,8 @@
   --color-mw-tint-violet: var(--mw-tint-violet);
   --color-mw-admin: var(--mw-admin);
   --color-mw-meeting: var(--mw-meeting);
+  --color-mw-board-head: var(--mw-board-head);
+  --color-mw-grid-line: var(--mw-grid-line);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -246,9 +301,82 @@ nav[aria-label="주요 메뉴"]::-webkit-scrollbar-button { display: none; }
   display: none;
 }
 
-/* sticky/focus 열은 반투명 tint가 아니라 불투명 card 위에 섞어 뒤 글자가 비치지 않는다. */
-[data-visual-block="group-table"] :is([data-right-pinned="true"], [data-view-focus="true"]) {
+/* sticky/focus 열은 반투명 tint가 아니라 불투명 card 위에 섞어 뒤 글자가 비치지 않는다.
+   #839 (2026-10-06): 진행현황 머리글은 14% 그대로, 본문은 더 옅게(6%) — 칸 구분이 보이게 한다. */
+[data-visual-block="group-table"] :is(th[data-right-pinned="true"], [data-view-focus="true"]) {
   background: color-mix(in srgb, var(--mw-record) 14%, var(--mw-card)) !important;
+}
+[data-visual-block="group-table"] td[data-right-pinned="true"] {
+  background: var(--mw-pinned-body) !important;
+}
+
+/* ── 보드 위계 (#839 · 대표 지시 2026-10-06) ─────────────────────────────
+   sticky 칸의 collapse 테두리는 칸과 함께 움직이지 않는다(격자 자리에 남는다). 그래서 고정 칸의
+   선은 테두리 대신 «칸 안쪽 그림자» 로 그린다 — 가로 스크롤 중에도 칸과 함께 움직인다.
+   원래 테두리는 투명으로 둔다(칸 배경이 비쳐 이중선이 생기지 않는다). */
+[data-visual-block="group-table"] {
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--mw-fg) 6%, transparent);
+}
+[data-visual-block="group-table"] :is(thead > tr > th, tbody > tr > td):first-child {
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  box-shadow: inset -1px 0 0 var(--mw-grid-line), inset 0 -1px 0 var(--mw-grid-line);
+}
+/* 행의 첫 칸: 그룹색 3px 줄(GroupBlock 이 --mw-group-accent 를 단다). */
+[data-visual-block="group-table"] tbody > tr[data-board-row] > td:first-child {
+  box-shadow:
+    inset 3px 0 0 var(--mw-group-accent, transparent),
+    inset -1px 0 0 var(--mw-grid-line),
+    inset 0 -1px 0 var(--mw-grid-line);
+}
+/* 진행현황: 2px 강조 왼쪽 선 + 행 구분선 + 떠 있는 그림자. */
+[data-visual-block="group-table"] :is(th, td)[data-right-pinned="true"] {
+  border-bottom-color: transparent;
+  box-shadow:
+    inset 2px 0 0 var(--mw-primary),
+    inset 0 -1px 0 var(--mw-pinned-line),
+    -8px 0 10px -8px var(--mw-pinned-shadow);
+}
+/* 행 호버 — 위 카드색 규칙(무계층)보다 구체적이어야 실제로 보인다. */
+[data-visual-block="group-table"] tbody > tr[data-board-row]:hover > td {
+  background-color: var(--mw-row-hover);
+}
+[data-visual-block="group-table"] tbody > tr[data-board-row]:hover > td[data-right-pinned="true"] {
+  background: color-mix(in srgb, var(--mw-record) 10%, var(--mw-card)) !important;
+}
+/* 방금 추가된 행 — 접수 흐름이 tr 에 data-just-added="true" 를 단다. 강조색이 서서히 빠진다. */
+@keyframes mw-row-just-added {
+  from { background-color: color-mix(in srgb, var(--mw-record) 18%, var(--mw-card)); }
+  to { background-color: var(--mw-card); }
+}
+/* 한 번만 흐려지고 끝난다 — 속성이 남아 있어도 계속 칠해 두지 않는다. */
+[data-visual-block="group-table"] tbody > tr[data-just-added="true"] > td {
+  animation: mw-row-just-added 2.4s ease-out 1;
+}
+@media (forced-colors: active) {
+  [data-visual-block="group-table"] :is(th, td) {
+    box-shadow: none !important;
+  }
+  [data-mw-stage-dot] {
+    forced-color-adjust: none;
+    background: CanvasText !important;
+  }
+}
+
+/* #845 — 업체명(첫 번째·고정) 열의 사람별 폭. 640px 이상에서만 — 휴대폰의 고정 열 상한(8rem)을 지킨다. */
+@media (min-width: 640px) {
+  [data-board-title-column][data-title-width],
+  [data-board-title-cell][data-title-width] {
+    width: var(--mw-title-width);
+    min-width: var(--mw-title-width);
+    max-width: var(--mw-title-width);
+  }
+}
+
+/* #845 — 옅은 깊이(1~2단계)의 단계 점·그룹 견본도 흰 카드 위에서 경계가 보이게 얇은 테두리. */
+[data-mw-stage-dot],
+html[data-mw-accent] [data-mw-group-color] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mw-fg) 18%, transparent);
 }
 
 .mw-layer-page-popover { z-index: var(--mw-layer-page-popover); }

@@ -46,6 +46,7 @@ import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
 import { GroupTable } from "./GroupTable";
 import type { MemberPickerMember } from "./MemberPicker";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
+import { useDeferredDragReveal } from "./use-deferred-drag-reveal";
 import { groupPresetName, isGroupPresetChanged } from "@/lib/presets/group-preset";
 import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
 import { ConsultationPanel } from "@/components/consultation/ConsultationPanel";
@@ -77,6 +78,7 @@ import {
   groupKeyOf,
   reorderColumnKeys,
   resolveColumnOrder,
+  UNGROUPED_KEY,
   type GroupColumnOrder,
 } from "./layout";
 import {
@@ -100,7 +102,11 @@ import {
   withWorkflowProgressValues,
   workflowDetailHiddenKeys,
   workflowKindForSource,
+  workflowStageMoveTargets,
 } from "@/lib/workflow/progress";
+import { presentLabel, presentLabels } from "@/lib/boards/label-presentation";
+import { groupToneAccent, resolveGroupTones } from "@/lib/boards/group-tone";
+import { primaryStageForGroup } from "@/lib/boards/moveRules";
 import {
   NEW_LEAD_SAVED_FILTER_PROJECTION,
   presentNewLeadSavedFilters,
@@ -410,6 +416,11 @@ export function BoardWorkspace({
    */
   const dragRowRef = useRef<string | null>(null);
   const [dragRowId, setDragRowId] = useState<string | null>(null);
+  /*
+   * 끄는 동안 빈 그룹을 놓을 자리로 펼치는 표시(#845). dragRowId 와 따로 둔다 — dragstart 에서
+   * 행 배치가 움직이면 브라우저가 끌기를 취소하므로, 펼치기는 끌기가 시작된 다음 작업에서 켠다.
+   */
+  const { revealed: dragRevealGroups, schedule: scheduleDragReveal, cancel: cancelDragReveal } = useDeferredDragReveal();
   const rowOrderVersionRef = useRef(board.row_order_version ?? 0);
   const latestRowOrderVersionPropRef = useRef(board.row_order_version ?? 0);
   const rowMoveInFlightRef = useRef(false);
@@ -452,11 +463,25 @@ export function BoardWorkspace({
   const [selectionScope, setSelectionScope] = useState(() => selectionScopeKey(board.id, `${savedViewId ?? savedViewActive}|${consultationView}`));
   const currentSelectionScope = selectionScopeKey(board.id, `${savedViewId ?? savedViewActive}|${consultationView}`);
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
+  /*
+   * #845 (대표 지시 2026-10-06, 승인 방향 목업 Main.dc) — 보이는 행이 0건인 그룹은 끝의 컨트롤
+   * 하나(«빈 보드 N개 보기»)로 접는다. 펼치면 제자리 순서로 다시 나오고, 행을 끄는 동안에는
+   * 놓을 자리로 모두 나온다. 이 세션에 새로 생긴 그룹은 접지 않는다(만들자마자 사라지지 않게).
+   */
+  const [emptyGroupsOpen, setEmptyGroupsOpen] = useState(false);
+  const [sessionGroupBaseline, setSessionGroupBaseline] = useState(() => ({
+    boardId: board.id,
+    ids: new Set(groups.map((group) => group.id)),
+  }));
+  if (sessionGroupBaseline.boardId !== board.id) {
+    setSessionGroupBaseline({ boardId: board.id, ids: new Set(groups.map((group) => group.id)) });
+  }
   if (selectionScope !== currentSelectionScope) {
     setSelectionScope(currentSelectionScope);
     setSelectedIds(new Set());
     setBulkDialog(null);
     setBulkNotice(null);
+    setEmptyGroupsOpen(false);
   }
   // Shift-범위 기준점 — 보이는 순서에서의 마지막 토글 위치.
   const lastToggledRef = useRef<string | null>(null);
@@ -481,10 +506,13 @@ export function BoardWorkspace({
       await reorderGroupsAction(fd);
     });
   }, [board.id, setOrderedGroups]);
+  // 접힌 빈 그룹(#845)은 화면에 없으므로 ↑/↓ 는 그것을 건너뛰어 «보이는» 이웃과 자리를 바꾼다.
+  const foldedGroupIdsRef = useRef<ReadonlySet<string>>(new Set());
   const moveGroup = useCallback((groupId: string, delta: number) => {
     const from = orderedGroups.findIndex((group) => group.id === groupId);
-    const to = Math.max(0, Math.min(orderedGroups.length - 1, from + delta));
-    if (from < 0 || from === to) return;
+    let to = from + delta;
+    while (to >= 0 && to < orderedGroups.length && foldedGroupIdsRef.current.has(orderedGroups[to].id)) to += delta;
+    if (from < 0 || to < 0 || to >= orderedGroups.length || from === to) return;
     const next = [...orderedGroups];
     const [moved] = next.splice(from, 1); next.splice(to, 0, moved);
     persistGroupOrder(next);
@@ -592,6 +620,72 @@ export function BoardWorkspace({
     }
     return ids;
   }, [assigneeLabels, blocks, closedGroups, searchColumns, displayFilters, filterProjection]);
+
+  /**
+   * 2026-10-06 (#839) — 계약업체 실무 한정: 보드에 «보이는» 행 중 같은 제목(=회사명) 수.
+   * 2건 이상이면 제목 옆에 «같은 회사 N건» 을 단다. 필터로 숨긴 행은 세지 않고(보이는 것과
+   * 같은 답), 접힌 그룹의 행은 보드 위에 있으므로 센다. 표시 전용 — 제목·데이터는 그대로다.
+   */
+  const sameTitleCounts = useMemo(() => {
+    if (workflowProgressKind !== "work") return undefined;
+    const counts = new Map<string, number>();
+    for (const block of blocks) {
+      for (const row of applyFilters(block.rows, searchColumns, displayFilters, filterProjection, assigneeLabels)) {
+        counts.set(row.title, (counts.get(row.title) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [assigneeLabels, blocks, displayFilters, filterProjection, searchColumns, workflowProgressKind]);
+
+  /**
+   * #845 (대표 지시 2026-10-06) — 그룹 톤: 탭의 메인 2색 × 깊이. 블록 키별로 한 번 정하고
+   * 그룹 띠·행 첫 칸 줄·진행현황 선택지 점이 모두 같은 톤을 쓴다(단계 색 = 그룹 띠 색).
+   * «그룹 없음» 묶음은 톤이 없다(중립색).
+   */
+  const groupTones = useMemo(() => {
+    // 단계 = 그룹으로 연결된 탭(계약업체 실무)은 그룹마다 이동 규칙이 가리키는 대표 단계 id 로
+    // 톤을 정한다 — 띠 이름을 바꿔도 깊이가 유지된다(#845 단계-그룹 연동).
+    const stageColumn = workflowProgressKind === "work"
+      ? physicalActiveColumns.find((column) => column.key === "progress_status") ?? null
+      : null;
+    const stageByGroup = new Map<string, string>();
+    if (stageColumn) {
+      for (const group of orderedGroups) {
+        const stage = primaryStageForGroup(stageColumn, orderedGroups, group.id);
+        if (stage) stageByGroup.set(group.id, stage);
+      }
+    }
+    return resolveGroupTones(
+      board.source,
+      blocks.filter((block) => block.key !== UNGROUPED_KEY).map((block) => ({ key: block.key, name: block.name })),
+      stageByGroup,
+    );
+  }, [blocks, board.source, orderedGroups, physicalActiveColumns, workflowProgressKind]);
+
+  /**
+   * 진행현황 선택지 중 «행을 옮기는» 것 → 목표 그룹 (#839). 화면용 진행현황 열은 이동 규칙을
+   * 비우므로 원본 단계 컬럼에서 읽는다. 단계별 가상 묶음(신규리드 단계 보기·상담 단계 보기)은
+   * 물리 그룹을 보여 주지 않으므로 나누지 않는다. 목표 그룹의 톤(accent)을 함께 실어 선택지
+   * 점이 그 그룹 띠와 같은 색이 되게 한다(#845). 보드에 없는 그룹을 가리키는 규칙은 뺀다.
+   */
+  const workflowMoveTargets = useMemo(() => {
+    if (!workflowProgressKind || isNewLeadStageView || isConsultationStageView) return null;
+    const toned = orderedGroups.map((group) => {
+      const tone = groupTones.get(group.id);
+      return { id: group.id, name: group.name, accent: tone ? groupToneAccent(tone) : null };
+    });
+    return workflowStageMoveTargets(workflowProgressKind, physicalActiveColumns, toned);
+  }, [groupTones, isConsultationStageView, isNewLeadStageView, orderedGroups, physicalActiveColumns, workflowProgressKind]);
+
+  /** 그룹 이름의 표시 전용 정리(앞머리 이모지) — 이모지만 다른 이름끼리는 원문을 지킨다. */
+  const blockDisplayNames = useMemo(() => {
+    const shown = presentLabels(blocks.map((block) => block.name));
+    return new Map(blocks.map((block, index) => [block.key, shown[index]]));
+  }, [blocks]);
+  const groupMoveOptions = useMemo(() => {
+    const shown = presentLabels(orderedGroups.map((group) => group.name));
+    return orderedGroups.map((group, index) => ({ id: group.id, name: shown[index] }));
+  }, [orderedGroups]);
 
   const bulkTargetIds = useMemo(
     () => intersectVisibleSelection(selectedIds, visibleOrderedIds),
@@ -856,16 +950,19 @@ export function BoardWorkspace({
     return at < 0 ? withoutMoving.length : at;
   };
 
+  // dragstart 안에서는 행 배치를 바꾸지 않는다 — 반투명·안내문만 바꾸고, 빈 그룹 펼치기는 예약한다.
   const startRowDrag = useCallback((itemId: string) => {
     dragRowRef.current = itemId;
     setDragRowId(itemId);
     setMoveNotice("이동할 위치를 선택하세요.");
-  }, []);
+    scheduleDragReveal();
+  }, [scheduleDragReveal]);
 
   const endRowDrag = useCallback(() => {
     dragRowRef.current = null;
     setDragRowId(null);
-  }, []);
+    cancelDragReveal();
+  }, [cancelDragReveal]);
 
   const canDropRow = useCallback(
     () => rowDragEnabled && dragRowRef.current !== null,
@@ -933,6 +1030,34 @@ export function BoardWorkspace({
     const target=blocks.find((block)=>(block.group?.id??null)===targetGroupId);
     persistRowMove(rowId,targetGroupId,null,target?.rows.length??0);
   };
+
+  /*
+   * 블록별 «보이는 행» 과 빈 그룹 접기(#845). 접는 것은 화면 배치뿐이다 — 그룹·행·순서·합계는
+   * 그대로다. 접지 않는 것:
+   *   · 첫 블록 — 새 행이 들어오는 자리(start_company_work 의 첫 그룹)라 늘 보인다.
+   *   · 이 세션에 새로 생긴 그룹 — 만들자마자 사라지지 않게(이름 바꾸기·행 추가가 바로 된다).
+   *   · 가상 단계 묶음(상담 단계 보기·신규리드 단계 보기) — 고정 단계표라 «(0)» 도 정보다.
+   */
+  const blockViews = blocks.map((block, index) => {
+    // 검색(q)은 인가된 전체 active 컬럼을 대상으로 삼는다 — UI 열 숨김은 권한 숨김이 아니다.
+    const visibleRows = applyFilters(block.rows, searchColumns, displayFilters, filterProjection, assigneeLabels);
+    const createdThisSession = Boolean(block.group && !sessionGroupBaseline.ids.has(block.group.id));
+    // 계약업체 실무 보드에서만, 실제로 행이 0건인 그룹만 접는다(검색·필터로 0건이 된 그룹은 접지 않는다).
+    const foldable = workflowProgressKind === "work" && index > 0 && block.group !== null
+      && block.rows.length === 0 && !createdThisSession;
+    return { block, visibleRows, foldable };
+  });
+  const foldedEmptyCount = blockViews.filter((view) => view.foldable).length;
+  const foldedGroupIdsKey = emptyGroupsOpen
+    ? ""
+    : blockViews.filter((view) => view.foldable && view.block.group).map((view) => view.block.group!.id).join(",");
+  useEffect(() => {
+    foldedGroupIdsRef.current = new Set(foldedGroupIdsKey ? foldedGroupIdsKey.split(",") : []);
+  }, [foldedGroupIdsKey]);
+  // 행을 끄는 동안에는 빈 그룹도 놓을 자리로 보여 준다 — 끌기가 시작된 뒤에(useDeferredDragReveal).
+  const shownBlockViews = emptyGroupsOpen || dragRevealGroups
+    ? blockViews
+    : blockViews.filter((view) => !view.foldable);
 
   return (
     /*
@@ -1070,7 +1195,7 @@ export function BoardWorkspace({
           그룹이 없습니다. 아래 «그룹 추가»로 첫 그룹을 만드세요.
         </p>
       ) : (
-        blocks.map((block) => {
+        shownBlockViews.map(({ block, visibleRows }) => {
           const storedOrder = canonicalNewLead
             ? presentNewLeadColumnKeys(optimisticOrder[durableLayoutKey(block.key)])
             : optimisticOrder[durableLayoutKey(block.key)];
@@ -1079,8 +1204,6 @@ export function BoardWorkspace({
           // 서버의 sort_order와 그룹별 사용자 배치를 정본으로 삼는다. 기본 신규리드 순서는
           // revision installer가 안전하게 재배치하며, 회사가 직접 바꾼 순서는 여기서 덮지 않는다.
           const shown = columnsForBlock(block.key);
-          // 검색(q)은 인가된 전체 active 컬럼을 대상으로 삼는다 — UI 열 숨김은 권한 숨김이 아니다.
-          const visibleRows = applyFilters(block.rows, searchColumns, displayFilters, filterProjection, assigneeLabels);
           const summaryScope = savedViewActive
             ? { kind: "saved-view" as const, totalCount: block.rows.length }
             : activeFilterCount(displayFilters) > 0
@@ -1115,12 +1238,20 @@ export function BoardWorkspace({
               })}
               key={block.key}
               name={block.name}
-              color={block.color}
+              displayName={blockDisplayNames.get(block.key)}
+              tone={groupTones.get(block.key) ?? null}
               columns={shown}
               rows={visibleRows}
               presetName={groupPresetName(board.name, block.name)}
               presetChanged={isGroupPresetChanged(optimisticOrder[durableLayoutKey(block.key)])}
-              nameEditor={block.group && !board.is_system && canManageSections ? <GroupNameEditor boardId={board.id} groupId={block.group.id} name={block.name} /> : undefined}
+              nameEditor={block.group && !board.is_system && canManageSections ? (
+                <GroupNameEditor
+                  boardId={board.id}
+                  groupId={block.group.id}
+                  name={block.name}
+                  display={(saved) => saved === block.name ? blockDisplayNames.get(block.key) ?? presentLabel(saved) : presentLabel(saved)}
+                />
+              ) : undefined}
               onOrderDragStart={block.group && !board.is_system && canManageSections ? () => { claimBoardTransientSurface(`board:${board.id}`,`group-drag:${board.id}`);draggedGroupRef.current = block.group!.id;setMoveNotice("그룹을 놓을 위치를 선택하세요."); } : undefined}
               onOrderDragEnd={block.group && !board.is_system && canManageSections ? ()=>{draggedGroupRef.current=null;setMoveNotice(null);} : undefined}
               onOrderDrop={block.group && !board.is_system && canManageSections ? () => dropGroup(block.group!.id) : undefined}
@@ -1215,6 +1346,9 @@ export function BoardWorkspace({
                 cellFlash={cellFlash}
                 cellAction={cellAction}
                 workflowProgressKind={workflowProgressKind}
+                workflowMoveTargets={workflowMoveTargets}
+                canMoveRows={canMoveRows}
+                sameTitleCounts={sameTitleCounts}
                 onColumnDrop={(draggedKey, targetKey) =>
                   handleColumnDrop(block.key, resolvedColumns, draggedKey, targetKey)
                 }
@@ -1252,7 +1386,7 @@ export function BoardWorkspace({
                 }
                 onRowKeyboardMove={(rowId,direction)=>keyboardMoveRow(rowId,block.group?.id??null,visibleRows,direction)}
                 onRowMoveToGroup={keyboardMoveRowToGroup}
-                groupMoveOptions={orderedGroups.map((group)=>({id:group.id,name:group.name}))}
+                groupMoveOptions={groupMoveOptions}
                 renderWorkflowTransition={board.source === CONTACT_TAB_SOURCE ? (row) => (
                   workflowTransitionSlot ?? (
                     <>
@@ -1290,6 +1424,18 @@ export function BoardWorkspace({
           );
         })
       )}
+      {foldedEmptyCount > 0 ? (
+        <div className="sticky left-0 self-start" data-empty-groups-toggle="">
+          <button
+            type="button"
+            aria-expanded={emptyGroupsOpen}
+            onClick={() => setEmptyGroupsOpen((open) => !open)}
+            className="h-8 rounded-[var(--mw-r-2)] px-3 text-[length:var(--fs-13)] text-mw-sub outline-none hover:bg-mw-card hover:text-mw-fg focus-visible:ring-2 focus-visible:ring-mw-primary"
+          >
+            {emptyGroupsOpen ? "빈 보드 접기" : `빈 보드 ${foldedEmptyCount}개 보기`}
+          </button>
+        </div>
+      ) : null}
       </BoardScrollViewport>
     </div>
   );

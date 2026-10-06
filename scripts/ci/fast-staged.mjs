@@ -86,7 +86,10 @@ export function isKnownIgnoredOutput(value) {
     || repoPath.startsWith("supabase/.branches/") || repoPath.startsWith("_shots640/")
     || repoPath === "app/next-env.d.ts"
     || /^docs\/design\/round-BBE-148\/[^/]+\.html$/u.test(repoPath)
-    || repoPath === "tools/board/fuel.json") return true;
+    || repoPath === "tools/board/fuel.json"
+    // Claude Code writes this local permission file into every session worktree;
+    // it is gitignored and never read by the app, worker or checks.
+    || repoPath === ".claude/settings.local.json") return true;
   return /(?:^|\/)(?:[^/]+\.log|[^/]+\.pid|[^/]+\.pid\.lock|[^/]+\.tsbuildinfo|\.eslintcache)$/u.test(repoPath);
 }
 

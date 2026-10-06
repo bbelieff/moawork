@@ -33,8 +33,11 @@ function button(label: string, container: ParentNode = host) {
   return [...container.querySelectorAll("button")].find((node) => node.textContent === label)!;
 }
 async function openTransition() {
-  const select = host.querySelector("select")!;
-  await act(async () => { select.value = "__workflow_transfer__"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+  // #839 — 진행현황은 칩 + 팝오버다. 칩을 열고 «다음 업무로 이동» 선택지를 누른다.
+  const trigger = host.querySelector<HTMLButtonElement>('button[role="combobox"][aria-label="진행현황"]')!;
+  await act(async () => trigger.click());
+  const transfer = document.querySelector<HTMLElement>('[data-stage-option="transfer"]')!;
+  await act(async () => transfer.click());
 }
 
 describe("workflow dialog pipeline repair across server refresh", () => {

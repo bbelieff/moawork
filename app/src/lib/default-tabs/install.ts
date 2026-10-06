@@ -21,14 +21,24 @@
 
 import type { Ctx, FieldOption } from "@/lib/types";
 import type { BoardsRepo, NewColumn } from "@/lib/boards/store";
-import type { Board } from "@/lib/boards/types";
+import type { Board, BoardColumn } from "@/lib/boards/types";
+import { plainGroupName } from "@/lib/boards/moveRules";
 import { createRequestBoardsRepo } from "@/lib/boards/request-repo";
 import { CONTACT_TAB } from "./contact";
 import { CONTRACT_WORK_TAB } from "./contract-work";
 import { NEW_LEAD_TAB } from "./new-lead";
 import { NOTICE_TAB } from "./notice";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
+import {
+  countLiveRowsByGroup,
+  groupLinkedStageColumnKey,
+  isGroupLinkedStageColumn,
+  linkedStageSyncNeedsLiveRowCounts,
+  planLinkedStageSync,
+} from "@/lib/boards/stage-link";
 import type { DefaultTab, DefaultTabAssignee, DefaultTabColumn } from "./types";
+
+export { countLiveRowsByGroup } from "@/lib/boards/stage-link";
 
 /** 제품이 새 워크스페이스에 주는 기본 탭. 지금은 신규리드 하나 — 나머지 5탭은 복제 작업이다. */
 export const DEFAULT_TABS: DefaultTab[] = [NEW_LEAD_TAB, CONTACT_TAB, CONTRACT_WORK_TAB, NOTICE_TAB];
@@ -66,15 +76,76 @@ function sameJson(left: unknown, right: unknown): boolean {
  *   「없다고 판정 → 그런데 치유는 있다고 보고 안 만듦」 같은 어긋남이 생긴다.
  *   그 어긋남은 정상 케이스만 테스트하면 절대 안 보인다. 한 눈을 공유하면 어긋날 수가 없다.
  */
-function findExistingGroup<TGroup extends { id: string; name: string }>(
+function findExistingGroup<TGroup extends { id: string; name: string; sort_order?: number }>(
+  tab: DefaultTab,
   definition: DefaultTab["groups"][number],
   groups: readonly TGroup[],
+  columns: readonly StageLinkColumn[],
   assignees: readonly DefaultTabAssignee[],
 ): TGroup | undefined {
   const assignee = definition.assigneeSlot === undefined ? undefined : assignees[definition.assigneeSlot];
-  return groups.find((group) => assignee
-    ? assigneeOwnerFromGroupName(group.name) === assignee.userId
-    : group.name === definition.name);
+  if (assignee) return groups.find((group) => assigneeOwnerFromGroupName(group.name) === assignee.userId);
+  return findStageLinkedGroup(tab, definition.name, groups, columns) ?? findEquivalentGroup(definition.name, groups);
+}
+
+type StageLinkColumn = Readonly<{
+  key: string;
+  type: BoardColumn["type"];
+  move_rule_jsonb?: Record<string, string> | null;
+}>;
+
+/**
+ * 2026-10-06(#845 리뷰 P1) — 단계가 연결된 탭에서는 정의 그룹을 «이름» 이 아니라 «연결» 로 찾는다.
+ *
+ * ★ 왜: «단계 = 보드 그룹» 이라서 회사는 띠 이름을 마음대로 바꾼다(그러면 단계 라벨이 따라 바뀐다).
+ *   «🔂 심사 중» → «1차 심사» 처럼 본문까지 바꾸면 이름으로는 같은 그룹을 못 알아본다. 그러면
+ *   다음 진입 repair·부트스트랩이 빈 «🔂 심사 중» 을 맨 뒤에 다시 만들고, 동기화가 그 유령에
+ *   새 단계(`group:<id>`)와 이동 규칙까지 붙였다. 지워도 다음 repair 가 또 만든다.
+ *
+ * 연결의 근거: 정의 이동 규칙(`moveTo`)에서 이 정의 그룹을 가리키는 선택지 id(예: «심사 중») 를
+ *   저장된 단계 칸 규칙이 «살아 있는» 그룹에 잇고 있으면, 그 그룹이 이 정의 그룹이다.
+ *   선택지 id 는 동기화가 절대 바꾸지 않고, 그룹 이름을 바꿔도 규칙은 그대로다.
+ *   규칙이 꺼진 칸(비었음)·연결되지 않은 탭·규칙 항목이 없는 경우는 근거가 없으니 이름으로 찾는다.
+ */
+function findStageLinkedGroup<TGroup extends { id: string }>(
+  tab: DefaultTab,
+  definitionName: string,
+  groups: readonly TGroup[],
+  columns: readonly StageLinkColumn[],
+): TGroup | undefined {
+  const key = groupLinkedStageColumnKey(tab.source);
+  if (!key) return undefined;
+  const moveTo = tab.columns.find((column) => column.key === key)?.moveTo;
+  const stored = columns.find((column) => column.key === key);
+  if (!moveTo || !stored || !isGroupLinkedStageColumn(tab.source, stored)) return undefined;
+  const rule = stored.move_rule_jsonb ?? {};
+  for (const [optionId, groupName] of Object.entries(moveTo)) {
+    if (groupName !== definitionName || !Object.hasOwn(rule, optionId)) continue;
+    const linked = groups.find((group) => group.id === rule[optionId]);
+    if (linked) return linked;
+  }
+  return undefined;
+}
+
+/**
+ * 2026-10-06 — 정의 그룹 이름과 «같은 그룹» 을 고른다(앞머리 장식만 다른 이름도 같다고 본다).
+ *
+ * ★ 왜: 정확한 이름만 보면 회사가 «🔂 심사 중» → «심사 중» 으로 고쳐 쓴 순간 「없다」 가 되고,
+ *   owner/admin 이 들어올 때마다 빈 «🔂 심사 중» 이 다시 생겼다(운영 실측: 빈 복제 9개).
+ *   본문(`plainGroupName`)이 같으면 같은 그룹이다. 숫자는 지키므로 «1차»·«2차» 는 다르다.
+ *
+ * 여럿이면 sort_order 가 가장 앞선 것 — 회사가 쓰던 원래 그룹이다(설치기가 만든 복제는 늘 맨 뒤에 붙는다).
+ */
+function findEquivalentGroup<TGroup extends { id: string; name: string; sort_order?: number }>(
+  name: string,
+  groups: readonly TGroup[],
+): TGroup | undefined {
+  const key = plainGroupName(name);
+  const matches = groups.filter((group) => group.name === name || plainGroupName(group.name) === key);
+  return matches.reduce<TGroup | undefined>((best, group) =>
+    best === undefined || (group.sort_order ?? Number.POSITIVE_INFINITY) < (best.sort_order ?? Number.POSITIVE_INFINITY)
+      ? group
+      : best, undefined);
 }
 
 /** 「이 컬럼 정의가 이미 있는가」 — 위와 같은 이유로 공유한다. */
@@ -159,7 +230,7 @@ export async function readDefaultTabBoardDrift(
       // ensure 가 «건너뛰는» 정의는 여기서도 건너뛴다 — 같은 눈이어야 한다.
       const assignee = definition.assigneeSlot === undefined ? undefined : assignees[definition.assigneeSlot];
       if (definition.assigneeSlot !== undefined && !assignee) return false;
-      return !findExistingGroup(definition, groups, assignees);
+      return !findExistingGroup(tab, definition, groups, columns, assignees);
     })
     .map((definition) => definition.name);
 
@@ -198,13 +269,24 @@ export async function readDefaultTabBoardDrift(
   // 아직 안 메꿔졌으면 고칠 일이 있다. 판정과 치유가 같은 눈을 쓰도록
   // planMoveRuleBackfill 하나로 본다.
   const moveRuleBackfillPending = planMoveRuleBackfill(tab, columns, groups).length > 0;
+  const otherWork = missingGroupNames.length > 0 || missingColumnKeys.length > 0 || definitionRevisionBehind || moveRuleBackfillPending;
+  // 2026-10-06(#845) — 그룹과 단계가 어긋났으면(이름·순서·새 그룹) 고칠 일이 있다. 진입 repair 와 «같은 눈»:
+  //   빈 설치기 복제 후보가 있을 때만 행을 읽어 정확히 가린다. 이미 고칠 일이 있으면 읽지 않는다.
+  const linkedStageSyncPending = !otherWork && planLinkedStageSync(
+    tab.source,
+    columns,
+    groups,
+    linkedStageSyncNeedsLiveRowCounts(tab.source, columns, groups)
+      ? countLiveRowsByGroup(await store.listItems(ctx, board.id))
+      : undefined,
+  ) !== null;
 
   return {
     boardMissing: false,
     missingGroupNames,
     missingColumnKeys,
     definitionRevisionBehind,
-    hasWork: missingGroupNames.length > 0 || missingColumnKeys.length > 0 || definitionRevisionBehind || moveRuleBackfillPending,
+    hasWork: otherWork || linkedStageSyncPending,
   };
 }
 
@@ -422,14 +504,48 @@ type MoveRuleBackfillColumn = Readonly<{
   move_rule_jsonb?: Record<string, string> | null;
 }>;
 
-function plainGroupName(name: string): string {
-  return name.replace(/^\P{L}+/u, "").trim();
+type BackfillGroup = Readonly<{ id: string; name: string; sort_order?: number }>;
+
+/**
+ * 이름이 같은(앞머리 장식만 다른) 후보가 여럿일 때 «진짜» 를 고른다 — 2026-10-06.
+ *
+ * 운영 실측: 회사가 «⏹️ 준비단계» 를 «준비단계» 로 고친 뒤 설치기가 빈 «⏹️ 준비단계» 를
+ * 다시 만들었다. 옛 코드는 «정확한 이름 먼저» 라서 새 규칙 항목이 그 빈 복제를 가리킬 뻔했다.
+ * 그래서 정확한 이름보다 아래 순서를 먼저 본다.
+ *   1. 같은 컬럼의 기존 규칙이 이미 가리키는 그룹 — 회사가 실제로 쓰는 그룹이다.
+ *   2. 살아 있는 행이 있는 그룹(행 수를 읽었을 때만).
+ *   3. sort_order 가 앞선 그룹 — 설치기가 만든 복제는 늘 맨 뒤에 붙는다.
+ *   4. 정확한 이름이 같은 그룹.
+ */
+function pickBackfillTarget(
+  groupName: string,
+  groups: readonly BackfillGroup[],
+  ruleTargets: ReadonlySet<string>,
+  liveRowCountByGroup: ReadonlyMap<string, number> | undefined,
+): BackfillGroup | undefined {
+  const key = plainGroupName(groupName);
+  const candidates = groups.filter((group) => group.name === groupName || plainGroupName(group.name) === key);
+  const rank = (group: BackfillGroup) => [
+    ruleTargets.has(group.id) ? 0 : 1,
+    (liveRowCountByGroup?.get(group.id) ?? 0) > 0 ? 0 : 1,
+    group.sort_order ?? Number.POSITIVE_INFINITY,
+    group.name === groupName ? 0 : 1,
+  ];
+  return [...candidates].sort((left, right) => {
+    const a = rank(left);
+    const b = rank(right);
+    for (let index = 0; index < a.length; index += 1) {
+      if (a[index] !== b[index]) return a[index] < b[index] ? -1 : 1;
+    }
+    return left.id.localeCompare(right.id);
+  })[0];
 }
 
 export function planMoveRuleBackfill(
   tab: DefaultTab,
   columns: readonly MoveRuleBackfillColumn[],
-  groups: readonly { id: string; name: string }[],
+  groups: readonly BackfillGroup[],
+  liveRowCountByGroup?: ReadonlyMap<string, number>,
 ): MoveRuleBackfill[] {
   const patches: MoveRuleBackfill[] = [];
   for (const definition of tab.columns) {
@@ -444,14 +560,14 @@ export function planMoveRuleBackfill(
     );
     // 선택지 기록이 없으면 «어느 값이 살아 있는지» 를 판단할 근거가 없다 — 손대지 않는다.
     if (storedOptionIds.size === 0) continue;
+    const ruleTargets = new Set(Object.values(rule));
     const additions: Record<string, string> = {};
     for (const [optionId, groupName] of Object.entries(definition.moveTo)) {
       if (Object.hasOwn(rule, optionId)) continue;
       if (!storedOptionIds.has(optionId)) continue;
-      const target = groups.find((group) => group.name === groupName)
-        // «⏹️준비단계» → «준비단계» 같은 표시 다듬기는 같은 그룹으로 읽는다.
-        // 앞머리 장식(prefix)만 벗기고, 본문이 다르면 다른 그룹이다.
-        ?? groups.find((group) => plainGroupName(group.name) === plainGroupName(groupName));
+      // «⏹️준비단계» → «준비단계» 같은 표시 다듬기는 같은 그룹으로 읽는다.
+      // 앞머리 장식(prefix)만 벗기고, 본문이 다르면 다른 그룹이다.
+      const target = pickBackfillTarget(groupName, groups, ruleTargets, liveRowCountByGroup);
       if (!target) continue;
       additions[optionId] = target.id;
     }
@@ -472,10 +588,88 @@ async function applyMoveRuleBackfill(
     store.listColumns(ctx, boardId),
     store.listGroups(ctx, boardId),
   ]);
-  for (const patch of planMoveRuleBackfill(tab, columns, groups)) {
+  // 메꿀 것이 없으면 행을 읽지 않는다 — 판정(드리프트)과 부트스트랩 읽기 전용 검사는 행을 안 본다.
+  if (planMoveRuleBackfill(tab, columns, groups).length === 0) return;
+  // 메꿀 것이 있을 때만 한 번 읽어 «행이 있는 그룹» 을 우선한다(빈 복제 그룹을 가리키지 않게).
+  const liveRowCountByGroup = countLiveRowsByGroup(await store.listItems(ctx, boardId));
+  for (const patch of planMoveRuleBackfill(tab, columns, groups, liveRowCountByGroup)) {
     await store.updateColumn(ctx, patch.columnId, { moveRule: patch.moveRule });
   }
 }
+
+/**
+ * 그룹 ↔ 진행현황 단계 연결(#845)을 맞춘다 — 단계 라벨 = 그룹 이름, 단계 순서 = 그룹 순서,
+ * 그룹마다 단계 하나(없으면 새 선택지). 바뀔 것이 없으면 아무것도 쓰지 않는다.
+ *
+ * `rowCounts`:
+ *   · "exact" — 빈 설치기 복제 후보가 있을 때만 행을 읽어 정확히 가린다(진입 repair).
+ *   · "evidence" — 행을 읽지 않고 «규칙이 가리키는가» 로만 가린다(부트스트랩 보장).
+ *     부트스트랩의 읽기 전용 드리프트 검사는 행 읽기를 «고칠 것 있음» 으로 보므로 행을 읽지 않아야
+ *     깨끗한 보드에서 리스를 잡지 않는다. evidence 는 새 선택지를 만들거나 규칙을 옮기는 쪽으로
+ *     틀리지 않는다(exact 결과 위에서 돌면 아무것도 안 바꾼다) — 두 경로가 서로 되돌리지 않는다.
+ */
+async function applyLinkedStageSync(
+  ctx: Ctx,
+  tab: DefaultTab,
+  store: BoardsRepo,
+  boardId: string,
+  rowCounts: "exact" | "evidence",
+): Promise<void> {
+  const [columns, groups] = await Promise.all([
+    store.listColumns(ctx, boardId),
+    store.listGroups(ctx, boardId),
+  ]);
+  const liveRowCounts = rowCounts === "exact" && linkedStageSyncNeedsLiveRowCounts(tab.source, columns, groups)
+    ? countLiveRowsByGroup(await store.listItems(ctx, boardId))
+    : undefined;
+  const patch = planLinkedStageSync(tab.source, columns, groups, liveRowCounts);
+  if (patch) await store.updateColumn(ctx, patch.columnId, { options: patch.options, moveRule: patch.moveRule });
+}
+
+export type InstallerDuplicateGroup = Readonly<{
+  groupId: string;
+  name: string;
+  /** 이 복제가 «대신하려던» 원래 그룹 — 같은 본문 이름 중 sort_order 가 가장 앞선 것. */
+  keeperGroupId: string;
+}>;
+
+/**
+ * 설치기가 «이름 바뀐 기본 그룹» 을 못 알아보고 다시 만든 **빈 복제 그룹** 을 찾는다 — 2026-10-06.
+ *
+ * ⚠ 읽기 전용 판정이다. **아무것도 지우지 않는다.** 자동으로 도는 경로(진입 repair·부트스트랩)
+ *   에서 부르지 않는다. 지우는 것은 소유자 승인을 받은 1회성 정리 단계의 몫이다.
+ *
+ * 복제로 보는 조건(전부 만족해야 한다 — 하나라도 어긋나면 회사 것일 수 있으니 남긴다):
+ *   · 이름이 정의 그룹 이름과 «정확히» 같다(설치기는 정의 이름 그대로만 만든다).
+ *   · 같은 본문 이름(`plainGroupName`)의 다른 그룹이 있고, 그쪽 sort_order 가 «더 앞선다».
+ *   · 살아 있는 행이 0개다.
+ *   · 어떤 이동 규칙도 이 그룹을 가리키지 않는다(지우면 규칙이 «없는 그룹» 을 가리킨다).
+ */
+export function findEmptyInstallerDuplicateGroups(
+  tab: DefaultTab,
+  groups: readonly { id: string; name: string; sort_order: number }[],
+  liveRowCountByGroup: ReadonlyMap<string, number>,
+  columns: readonly { move_rule_jsonb?: Record<string, string> | null }[] = [],
+): InstallerDuplicateGroup[] {
+  const definitionNames = new Set(
+    tab.groups.filter((group) => group.assigneeSlot === undefined).map((group) => group.name),
+  );
+  const ruleTargets = new Set(columns.flatMap((column) => Object.values(column.move_rule_jsonb ?? {})));
+  const duplicates: InstallerDuplicateGroup[] = [];
+  for (const group of groups) {
+    if (!definitionNames.has(group.name)) continue;
+    if ((liveRowCountByGroup.get(group.id) ?? 0) > 0) continue;
+    if (ruleTargets.has(group.id)) continue;
+    const key = plainGroupName(group.name);
+    const keeper = groups
+      .filter((candidate) => candidate.id !== group.id && plainGroupName(candidate.name) === key)
+      .sort((left, right) => left.sort_order - right.sort_order || left.id.localeCompare(right.id))[0];
+    if (!keeper || keeper.sort_order >= group.sort_order) continue;
+    duplicates.push({ groupId: group.id, name: group.name, keeperGroupId: keeper.id });
+  }
+  return duplicates;
+}
+
 
 /**
  * Repairs one product tab without rewriting customer-owned structure.
@@ -500,7 +694,12 @@ export async function ensureDefaultTabAdditive(
     source: tab.source,
   });
 
-  const groups = await store.listGroups(ctx, board.id);
+  // 컬럼을 그룹보다 먼저 읽는다 — 단계가 연결된 탭은 저장된 단계 규칙으로 정의 그룹을 찾는다(findExistingGroup).
+  //   아래 그룹 쓰기는 컬럼을 바꾸지 않으므로 이 목록은 컬럼 보장 단계까지 그대로 유효하다.
+  const [groups, columns] = await Promise.all([
+    store.listGroups(ctx, board.id),
+    store.listColumns(ctx, board.id),
+  ]);
   let nextGroupOrder = groups.length === 0 ? 0 : Math.max(...groups.map((group) => group.sort_order)) + 1;
   const groupIds: Record<string, string> = {};
   for (const definition of tab.groups) {
@@ -510,7 +709,7 @@ export async function ensureDefaultTabAdditive(
     if (definition.assigneeSlot !== undefined && !assignee) continue;
     const expectedName = assignee ? assigneeGroupName(definition.name, assignee) : definition.name;
     // 판정(readDefaultTabDrift)과 «같은 눈» 을 쓴다 — 어긋나면 「없다고 보고 안 만드는」 구멍이 생긴다.
-    const existing = findExistingGroup(definition, groups, assignees);
+    const existing = findExistingGroup(tab, definition, groups, columns, assignees);
     const group = existing ?? await store.createGroup(ctx, board.id, {
       name: expectedName,
       color: definition.color,
@@ -520,7 +719,6 @@ export async function ensureDefaultTabAdditive(
     if (!existing) { groups.push(group); nextGroupOrder += 1; }
   }
 
-  const columns = await store.listColumns(ctx, board.id);
   let nextSortOrder = nextColumnSortOrder(columns);
   for (const definition of tab.columns) {
     // 위와 같은 이유로 판정과 같은 눈을 쓴다.
@@ -545,6 +743,8 @@ export async function ensureDefaultTabAdditive(
   // 2026-09-26 — 정의가 나중에 추가한 이동 규칙 항목을 빠진 쪽만 메꾼다
   // (planMoveRuleBackfill — 사용자 손댄 항목·그룹·선택지는 그대로).
   await applyMoveRuleBackfill(ctx, tab, store, board.id);
+  // 2026-10-06(#845) — 단계 목록을 그룹 이름·순서에 맞춘다(선택지 id 는 그대로).
+  await applyLinkedStageSync(ctx, tab, store, board.id, "exact");
 
   return {
     tabKey: tab.key,
@@ -577,16 +777,22 @@ export async function ensureDefaultTab(
     : [];
   const existing = (await store.listBoards(ctx)).find((board) => board.source === tab.source);
   if (existing) {
-    const currentGroups = await store.listGroups(ctx, existing.id);
+    // 컬럼을 그룹 보장보다 먼저 읽는다 — 단계가 연결된 탭은 저장된 단계 규칙으로 정의 그룹을 찾는다.
+    //   그룹 보장·담당자 그룹 정리는 컬럼을 바꾸지 않으므로 이 목록을 컬럼 보장에도 그대로 쓴다.
+    const [currentGroups, columns] = await Promise.all([
+      store.listGroups(ctx, existing.id),
+      store.listColumns(ctx, existing.id),
+    ]);
     let nextGroupOrder = currentGroups.length === 0 ? 0 : Math.max(...currentGroups.map((group) => group.sort_order)) + 1;
     for (const definition of tab.groups.filter((group) => group.assigneeSlot === undefined)) {
-      if (!currentGroups.some((group) => group.name === definition.name)) {
+      // 2026-10-06 — 판정과 «같은 눈» (앞머리 장식만 다른 이름은 같은 그룹, 단계가 연결된 탭은 연결로도 찾는다).
+      //   정확한 이름만 보면 회사가 «🔂 심사 중» → «심사 중»·«1차 심사» 로 고친 보드에 빈 «🔂 심사 중» 을 또 만든다.
+      if (!findExistingGroup(tab, definition, currentGroups, columns, assignees)) {
         await store.createGroup(ctx, existing.id, { name: definition.name, color: definition.color, sortOrder: nextGroupOrder });
         nextGroupOrder += 1;
       }
     }
-    const groupIds = await reconcileAssigneeGroups(ctx, store, existing.id, tab, assignees);
-    const columns = await store.listColumns(ctx, existing.id);
+    const groupIds = await reconcileAssigneeGroups(ctx, store, existing.id, tab, assignees, columns);
     let nextSortOrder = nextColumnSortOrder(columns);
     for (const definition of tab.columns) {
       const column = columns.find((candidate) => candidate.key === definition.key);
@@ -616,6 +822,7 @@ export async function ensureDefaultTab(
     const reconciledColumns = await store.listColumns(ctx, existing.id);
     await reconcileDefaultDefinition(ctx, tab, store, existing.id);
     await applyMoveRuleBackfill(ctx, tab, store, existing.id);
+    await applyLinkedStageSync(ctx, tab, store, existing.id, "evidence");
     return {
       tabKey: tab.key,
       boardId: existing.id,
@@ -667,6 +874,8 @@ export async function ensureDefaultTab(
   }
 
   await reconcileDefaultDefinition(ctx, tab, store, board.id);
+  // 새 보드도 단계 라벨·순서를 그룹에 맞춰 둔다 — 이후 진입마다 «고칠 것 있음» 이 되지 않게.
+  await applyLinkedStageSync(ctx, tab, store, board.id, "evidence");
 
   return { tabKey: tab.key, boardId: board.id, created: true, groupIds, columnKeys };
 }
@@ -763,6 +972,7 @@ async function reconcileAssigneeGroups(
   boardId: string,
   tab: DefaultTab,
   assignees: readonly DefaultTabAssignee[],
+  columns: readonly StageLinkColumn[],
 ): Promise<Record<string, string>> {
   const groups = await store.listGroups(ctx, boardId);
   const slotDefinitions = tab.groups.filter(
@@ -770,7 +980,8 @@ async function reconcileAssigneeGroups(
   );
   const groupIds: Record<string, string> = {};
   for (const definition of tab.groups.filter((group) => group.assigneeSlot === undefined)) {
-    const existing = groups.find((group) => group.name === definition.name);
+    // 그룹 보장과 «같은 눈» — 이름이 바뀐 연결 그룹도 같은 정의 그룹으로 매핑한다.
+    const existing = findExistingGroup(tab, definition, groups, columns, assignees);
     if (existing) groupIds[definition.name] = existing.id;
   }
 

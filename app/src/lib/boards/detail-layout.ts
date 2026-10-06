@@ -1,6 +1,8 @@
 import type { BoardColumn, CellValue } from "./types";
 import type { FieldType } from "@/lib/types";
 import { NEW_LEAD_TAB_SOURCE } from "@/lib/default-tabs/types";
+import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
+import { workflowDetailHiddenKeys, workflowKindForSource } from "@/lib/workflow/progress";
 
 export type DetailLayoutSource = "column" | "detail";
 
@@ -36,24 +38,55 @@ export function normalizeDetailLayout(value: unknown): DetailLayoutEntry[] {
 }
 
 /**
- * Canonical 신규리드 보드는 설치된 활성 컬럼 자체가 제품 기본 상세 배치다.
+ * 기본 탭 보드(신규리드·계약업체 실무)는 설치된 활성 컬럼 자체가 제품 기본 상세 배치다.
  * DB의 역사적 기본값 `[]`만으로는 "아직 초기화되지 않음"과 "사용자가 비움"을
- * 구분할 수 없으므로 이 fallback은 canonical source에만 한정한다. 임의 보드의
+ * 구분할 수 없으므로 이 fallback은 아래 canonical source에만 한정한다. 임의 보드의
  * 빈 배열은 BBE-107 계약대로 계속 의도적인 빈 배치다.
+ *
+ * ★ 진행현황 원본 키(단계·옛 이동 컬럼)는 fallback에서 뺀다. 화면은 이 칸들을
+ *   진행현황 하나로만 보여 주는데, 서버 호출부(배치 저장·상세 필드 추가)는 숨기기 전
+ *   전체 컬럼을 넘긴다. 여기서 같이 거르지 않으면 관리자가 처음 저장하는 순간 원본
+ *   단계 칸이 배치에 박제되어 모든 상세 화면에 날것으로 드러난다 (2026-10-06).
  */
+const COLUMN_FALLBACK_SOURCES: ReadonlySet<string> = new Set([
+  NEW_LEAD_TAB_SOURCE,
+  CONTRACT_WORK_TAB_SOURCE,
+]);
+
+/**
+ * 구성원 칸(담당자 `person` · 여러 명 `people`). 값은 구성원 id 다.
+ *
+ * ★ 상세의 일반 자동저장 입력은 글자를 그대로 저장한다. 이 칸이 거기로 가면 담당자 자리에
+ *   구성원 id 가 날것으로 보이고, 이름·오타가 그대로 담당자로 박제된다 — 표의 담당자 선택·
+ *   담당자 필터·업체관리 현황이 모두 이 칸을 읽는다 (2026-10-06 검토 P1).
+ */
+export function isMemberFieldType(type: string | null | undefined): boolean {
+  return type === "person" || type === "people";
+}
+
 export function resolveBoardDetailLayout(
   boardSource: string | null,
   boardLayout: unknown,
   activeColumns: readonly BoardColumn[],
 ): DetailLayoutEntry[] {
   const normalized = normalizeDetailLayout(boardLayout);
-  if (boardSource !== NEW_LEAD_TAB_SOURCE || normalized.length > 0) return normalized;
-  return activeColumns.map((column) => ({
-    key: column.key,
-    source: "column",
-    label: column.label,
-    type: column.type,
-  }));
+  if (!boardSource || !COLUMN_FALLBACK_SOURCES.has(boardSource) || normalized.length > 0) {
+    return normalized;
+  }
+  const kind = workflowKindForSource(boardSource);
+  const hidden: ReadonlySet<string> = kind ? workflowDetailHiddenKeys(kind) : new Set();
+  // 신규리드 상세에는 담당자 전용 편집기(「담당자 흐름」)가 있다. 그 밖의 기본 탭은 담당자를
+  // 연관담당 줄의 「담당자」로 이미 보여 주므로, 기본 배치의 회사 정보에 구성원 칸을 넣지 않는다.
+  const keepMemberColumns = boardSource === NEW_LEAD_TAB_SOURCE;
+  return activeColumns
+    .filter((column) => !hidden.has(column.key))
+    .filter((column) => keepMemberColumns || !isMemberFieldType(column.type))
+    .map((column) => ({
+      key: column.key,
+      source: "column",
+      label: column.label,
+      type: column.type,
+    }));
 }
 
 /** null/undefined인 그룹만 보드 기본을 상속한다. []는 의도적인 빈 오버라이드다. */

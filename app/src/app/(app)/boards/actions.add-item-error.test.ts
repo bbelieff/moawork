@@ -205,4 +205,13 @@ describe("BBE-201 setCellAction 도 실패를 화면 안에서 말한다", () =>
     await setCellAction(cellForm());
     expect(cellFlashed()).toBeNull(); // ★ 성공 뒤에는 셀 아래에 아무것도 없어야 한다
   });
+
+  // #845 검토 P3 — «값만 저장» 알림은 errors 가 아니라 notices 로 온다. 실패가 아니지만 사용자는 알아야 한다.
+  it("저장은 됐지만 알릴 것(notices)은 같은 셀 자리에 보여 준다", async () => {
+    const notice = "값은 저장했어요. 옮길 그룹이 없어 행은 그대로 두었어요.";
+    setCells.mockImplementation(async () => ({ errors: [], notices: [{ key: "industry", label: "업종", message: notice }] }));
+
+    await expect(setCellAction(cellForm())).resolves.toBeUndefined();
+    expect(cellFlashed()?.errors.map((entry) => entry.message)).toEqual([notice]);
+  });
 });

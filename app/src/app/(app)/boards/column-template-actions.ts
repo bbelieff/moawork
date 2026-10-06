@@ -13,6 +13,7 @@ import {
   type ColumnTemplateScope,
 } from "@/lib/presets/column-template";
 import type { ColumnTemplateActionState } from "./column-template-state";
+import { isGroupLinkedStageColumn, LINKED_STAGE_EDIT_MESSAGE } from "@/lib/boards/stage-link";
 
 function required(formData: FormData, key: string): string {
   const value = String(formData.get(key) ?? "").trim();
@@ -49,6 +50,7 @@ function failure(error: unknown): string {
   if (error instanceof Error && error.message === "ORG_PUBLISH_DENIED") return "회사 공개 템플릿은 오너 또는 관리자만 저장할 수 있습니다.";
   if (error instanceof Error && error.message === "TYPE_MISMATCH") return "타입이 다른 기존 컬럼에는 설정을 적용할 수 없습니다. 새 컬럼으로 적용해 주세요.";
   if (error instanceof Error && error.message === "DENIED") return "이 템플릿을 변경할 권한이 없습니다.";
+  if (error instanceof Error && error.message === "LINKED_STAGE") return LINKED_STAGE_EDIT_MESSAGE;
   console.error("[BBE-180] 컬럼 템플릿 처리 실패", error);
   return "컬럼 템플릿을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 }
@@ -114,6 +116,8 @@ export async function mutateColumnTemplateAction(
       if (!selected) throw new Error("DENIED");
       const targetId = String(formData.get("targetColumnId") ?? "").trim();
       const target = targetId ? detail.columns.find((column) => column.id === targetId) : undefined;
+      // #845 — 그룹과 연결된 진행현황 칸의 선택지·이동 규칙은 그룹이 정한다(템플릿으로 덮어쓰지 않는다).
+      if (target && isGroupLinkedStageColumn(detail.board.source, target)) throw new Error("LINKED_STAGE");
       if (target && target.type !== selected.column.type) throw new Error("TYPE_MISMATCH");
       const rpc = await requireRequestClient(client, "컬럼 템플릿 적용").rpc("execute_board_column_command", {
         p_org_id: ctx.org.id,

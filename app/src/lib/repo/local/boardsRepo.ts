@@ -585,6 +585,12 @@ export class LocalBoardsRepo {
     if (item) item.updated_at = now();
   }
 
+  /** 로컬 시드에는 발송 규칙 저장소(041)가 없다 — 켜진 규칙도 없다. 테스트는 이 메서드를 바꿔 «있다» 를 흉내 낸다. */
+  //   (ctx, boardId, columnKey) 를 받지만 쓰지 않는다 — 규칙이 없으니 답은 늘 false 다.
+  hasEnabledMessagingTriggerRules(): boolean {
+    return false;
+  }
+
   // ── 뷰 ──
   listViews(ctx: Ctx, boardId: string): BoardView[] {
     return db().boardViews.filter(

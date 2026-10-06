@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { CONTRACT_WORK_TAB } from "@/lib/default-tabs/contract-work";
+import { NEW_LEAD_TAB } from "@/lib/default-tabs/new-lead";
+import type { DefaultTab } from "@/lib/default-tabs/types";
+import type { BoardColumn } from "./types";
 import {
   detailKeyFromLabel,
+  isMemberFieldType,
   moveDetailEntry,
   normalizeDetailLayout,
   resolveBoardDetailLayout,
@@ -73,6 +78,93 @@ describe("BBE-107 상세 필드 레이아웃", () => {
       sort_order: 0, width: null,
     }];
     expect(resolveBoardDetailLayout("core.default-tab/new-lead", board, columns)).toEqual(board);
+  });
+
+  /*
+   * 2026-10-06 — 계약업체 실무 상세의 회사 정보가 통째로 비어 있었다.
+   * 설치기는 상세 배치를 저장하지 않으므로 DB 값은 `[]`이고, fallback이 신규리드에만 있었다.
+   */
+  describe("계약업체 실무 기본 탭", () => {
+    const column = (key: string, label: string, sort_order: number) => ({
+      id: `column-${key}`, org_id: "org-a", board_id: "board-work", key, label,
+      type: "text" as const, source: "in" as const, rightPinned: false, options_jsonb: null,
+      sort_order, width: null,
+    });
+    // 서버 호출부(actions·service·ocr)는 숨기기 전 «전체» 컬럼을 넘긴다.
+    const serverColumns = [
+      column("company_name", "회사명", 0),
+      column("progress_status", "진행현황", 1),
+      column("ceo", "대표자", 2),
+    ];
+
+    it("빈 배치는 활성 컬럼을 상속하되 진행현황 원본 키는 서버 호출에서도 빠진다", () => {
+      const resolved = resolveBoardDetailLayout("core.default-tab/contract-work", [], serverColumns);
+      expect(resolved.map((entry) => entry.key)).toEqual(["company_name", "ceo"]);
+      expect(resolved[0]).toEqual({ key: "company_name", source: "column", label: "회사명", type: "text" });
+      // 클라이언트가 미리 거른 목록을 넘겨도 결과가 같다 — 관리자 첫 저장이 원본 키를 박제하지 않는다.
+      const clientColumns = serverColumns.filter((candidate) => candidate.key !== "progress_status");
+      expect(resolveBoardDetailLayout("core.default-tab/contract-work", null, clientColumns)).toEqual(resolved);
+    });
+
+    it("저장된 배치가 있으면 fallback으로 덮지 않는다", () => {
+      expect(resolveBoardDetailLayout("core.default-tab/contract-work", board, serverColumns)).toEqual(board);
+    });
+
+    it("다른 기본 탭(리드컨택)과 임의 보드의 빈 배치는 그대로 비어 있다", () => {
+      expect(resolveBoardDetailLayout("core.default-tab/contact", [], serverColumns)).toEqual([]);
+      expect(resolveBoardDetailLayout(null, [], serverColumns)).toEqual([]);
+    });
+  });
+
+  it("신규리드 fallback도 진행현황 원본·옛 이동 키를 서버 호출에서 뺀다", () => {
+    const keys = ["company", "consult_status", "contact_move", "workflow_progress", "phone"];
+    const columns = keys.map((key, index) => ({
+      id: `column-${key}`, org_id: "org-a", board_id: "board-a", key, label: key,
+      type: "text" as const, source: "in" as const, rightPinned: false, options_jsonb: null,
+      sort_order: index, width: null,
+    }));
+    expect(resolveBoardDetailLayout("core.default-tab/new-lead", [], columns).map((entry) => entry.key))
+      .toEqual(["company", "phone"]);
+  });
+
+  /*
+   * 2026-10-06 검토 P1 — 계약업체 실무 fallback 이 활성 컬럼을 «전부» 넣으면 첫 칸이 담당자(person)다.
+   *   상세에는 계약업체 실무용 구성원 편집기가 없어 일반 글자 입력으로 떨어졌고, 담당자 자리에
+   *   구성원 id 가 날것으로 보이며 아무 글자나 담당자로 저장됐다.
+   */
+  describe("구성원 칸(담당자·연관담당)", () => {
+    // 실제 설치 정의 그대로의 컬럼 — 서버 호출부처럼 숨기기 전 전체를 넘긴다.
+    const installed = (tab: DefaultTab): BoardColumn[] => tab.columns.map((definition, index) => ({
+      id: `column-${definition.key}`, org_id: "org-a", board_id: `board-${tab.key}`,
+      key: definition.key, label: definition.label, type: definition.type, source: definition.source,
+      rightPinned: definition.rightPinned ?? false,
+      options_jsonb: definition.options ? { options: definition.options } : null,
+      sort_order: index, width: definition.width ?? null,
+    }));
+
+    it("계약업체 실무 기본 배치에는 구성원 칸이 없다 — 담당자는 연관담당 줄이 보여 준다", () => {
+      const columns = installed(CONTRACT_WORK_TAB);
+      expect(columns[0]).toMatchObject({ key: "owner", type: "person" });
+      const resolved = resolveBoardDetailLayout(CONTRACT_WORK_TAB.source, [], columns);
+      expect(resolved.length).toBeGreaterThan(0);
+      expect(resolved.map((entry) => entry.key)).not.toContain("owner");
+      expect(resolved.filter((entry) => isMemberFieldType(entry.type))).toEqual([]);
+      // 구성원 칸만 빠지고 나머지 순서는 설치 정의 그대로다.
+      expect(resolved[0].key).toBe(columns.find((column) => !isMemberFieldType(column.type))!.key);
+    });
+
+    it("신규리드는 담당자 전용 편집기(담당자 흐름)가 있어 기본 배치에 담당자를 남긴다", () => {
+      const resolved = resolveBoardDetailLayout(NEW_LEAD_TAB.source, [], installed(NEW_LEAD_TAB));
+      expect(resolved.map((entry) => entry.key)).toEqual(expect.arrayContaining(["owner", "collaborators"]));
+    });
+
+    it("person·people 만 구성원 칸이다", () => {
+      expect(isMemberFieldType("person")).toBe(true);
+      expect(isMemberFieldType("people")).toBe(true);
+      for (const other of ["text", "status", "select", "multiselect", undefined, null]) {
+        expect(isMemberFieldType(other)).toBe(false);
+      }
+    });
   });
 });
 

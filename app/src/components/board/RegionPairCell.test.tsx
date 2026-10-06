@@ -332,3 +332,52 @@ describe("RegionPairCell 행단위 공유 pending", () => {
   });
 
 });
+
+describe("RegionPairCell 한 줄 행 (#845 · 대표 지시 2026-10-06)", () => {
+  const statusOf = (host: HTMLElement) => host.querySelector<HTMLElement>("[data-region-status]")!;
+
+  it("저장됨·입력 중·저장 중은 화면 낭독기에만 알리고 눈에 보이는 줄을 쌓지 않는다", async () => {
+    let resolveSave: ((value: unknown) => void) | null = null;
+    boardActionMock.mockImplementation(() => new Promise((resolve) => { resolveSave = resolve; }));
+    const { host, root, base } = renderPair();
+    await act(async () => { root.render(<RegionCell {...base} kind="sido" />); });
+
+    // 처음(저장됨): 상태는 sr-only, 낭독 영역(aria-live)은 그대로 있다.
+    expect(statusOf(host).className).toBe("sr-only");
+    expect(statusOf(host).getAttribute("aria-live")).toBe("polite");
+    expect(statusOf(host).textContent).toBe("✓ 자동 저장됨");
+    expect(statusOf(host).dataset.regionStatus).toBe("hidden");
+
+    await act(async () => { typeInto(sidoInput(host), "부산"); });
+    expect(statusOf(host).className).toBe("sr-only");
+    expect(statusOf(host).textContent).toBe("입력 중…");
+
+    await act(async () => { blurOut(sidoInput(host)); });
+    expect(statusOf(host).className).toBe("sr-only");
+    expect(statusOf(host).textContent).toBe("저장 중…");
+    // 저장 중은 칸 잠김으로 보인다.
+    expect(sidoInput(host).disabled).toBe(true);
+
+    await act(async () => { resolveSave!({ ok: true, message: "✓ 자동 저장됨", sido: "부산", sigungu: "" }); });
+    expect(statusOf(host).className).toBe("sr-only");
+    expect(statusOf(host).textContent).toBe("✓ 자동 저장됨");
+    await act(async () => { root.unmount(); });
+  });
+
+  it("고칠 것이 있을 때(거절·검증 실패)만 상태 줄이 보인다", async () => {
+    boardActionMock.mockImplementation(async () => ({ ok: false, message: "이 지역을 저장할 권한이 없습니다." }));
+    const { host, root, base } = renderPair();
+    await act(async () => { root.render(<RegionCell {...base} kind="sido" />); });
+    await act(async () => {
+      typeInto(sidoInput(host), "부산");
+      blurOut(sidoInput(host));
+    });
+    await act(async () => {});
+    expect(statusOf(host).dataset.regionStatus).toBe("visible");
+    expect(statusOf(host).className).not.toContain("sr-only");
+    expect(statusOf(host).textContent).toBe("이 지역을 저장할 권한이 없습니다.");
+    // 입력은 보존된다.
+    expect(sidoInput(host).value).toBe("부산");
+    await act(async () => { root.unmount(); });
+  });
+});

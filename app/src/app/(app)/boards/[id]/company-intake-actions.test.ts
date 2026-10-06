@@ -32,6 +32,8 @@ describe("contract-work company intake action", () => {
     await expect(startCompanyWorkFromBoardAction({ ok: null, message: "" }, form())).resolves.toEqual({
       ok: true,
       message: "업무를 시작했어요.",
+      // 새 행 id 를 돌려준다 — 화면이 패널을 닫고 그 줄로 스크롤·강조한다(#7).
+      itemId: "item-1",
     });
     expect(mocks.start).toHaveBeenCalledWith(expect.anything(), {
       // groupId — 누른 그룹을 그대로 넘긴다(#588). 폼이 안 보내면 null 이고,
