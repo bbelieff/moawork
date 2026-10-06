@@ -717,6 +717,17 @@ a.fileRow:hover {
   font-size: var(--fs-12);
 }
 
+/* #654 — 보드 오류 배너가 패널 뒤에 가려지므로 패널 안에서 같은 사유를 보인다. */
+.actionError {
+  margin: 0;
+  border: 1px solid var(--mw-error);
+  border-radius: 0.5rem;
+  background: var(--mw-card);
+  color: var(--mw-fg);
+  padding: 0.5rem 0.75rem;
+  font-size: var(--fs-13);
+}
+
 .legacyMaterials {
   border-top: 1px solid var(--mw-line);
   padding-top: 0.25rem;

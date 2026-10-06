@@ -92,7 +92,7 @@ import {
   selectVisibleColumns,
   type BoardFilterState,
 } from "./filters";
-import { resolveBoardDetailLayout, resolveDetailLayout } from "@/lib/boards/detail-layout";
+import { resolveBoardDetailLayout, resolveDetailLayout, resolveRowDetailLayout } from "@/lib/boards/detail-layout";
 import type { ItemDetailSnapshot } from "@/app/(app)/boards/item-detail-actions";
 import { runColumnCommandAction } from "@/app/(app)/boards/column-command-actions";
 import { INITIAL_COLUMN_COMMAND_STATE } from "@/app/(app)/boards/column-command-state";
@@ -1274,9 +1274,19 @@ export function BoardWorkspace({
                 durableBoardDetailLayout={rawBoardDetailLayout}
                 durableDetailLayout={rawResolvedDetailLayout.entries}
                 rowDetailLayout={isNewLeadStageView ? (row) => {
-                  const originalGroup = orderedGroups.find((group) => group.id === row.group_id);
-                  const resolved = resolveDetailLayout(rawBoardDetailLayout, originalGroup?.detail_layout_jsonb);
+                  const resolved = resolveRowDetailLayout(rawBoardDetailLayout, orderedGroups, row.group_id);
                   return { durable: resolved.entries, presented: presentNewLeadDetailLayout(resolved.entries), inherited: resolved.inherited };
+                } : !block.group ? (row) => {
+                  // #654 — 상담 단계 보기의 묶음은 가상이라 물리 그룹이 없다. 추가 폼이 쓰는 곳(row.group_id)을 읽는다.
+                  const resolved = resolveRowDetailLayout(rawBoardDetailLayout, orderedGroups, row.group_id);
+                  const presented = canonicalNewLead ? presentNewLeadDetailLayout(resolved.entries) : resolved.entries;
+                  return {
+                    durable: resolved.entries,
+                    presented: presented.filter(
+                      (entry) => entry.source === "detail" || detailColumns.some((column) => column.key === entry.key),
+                    ),
+                    inherited: resolved.inherited,
+                  };
                 } : undefined}
                 detailLayout={presentedDetailLayout.filter(
                   (entry) => entry.source === "detail" || detailColumns.some((column) => column.key === entry.key),

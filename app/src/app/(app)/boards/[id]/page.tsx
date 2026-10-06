@@ -62,6 +62,7 @@ import { getBoardColumnOrder } from "../groupLayout";
 import { presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
 import { applyNoticePerspective, parseNoticePerspective, projectNoticeMetadata } from "@/lib/notices/perspectives";
 import { NoticePerspectiveNav } from "@/components/notices/NoticePerspectiveNav";
+import { BoardActionErrorProvider } from "@/components/board/BoardActionErrorContext";
 
 type PagePhaseTiming = { offsetMs: number; durationMs: number };
 
@@ -692,7 +693,8 @@ export default async function BoardPage({
         </p>
       ) : null}
       {/* 뷰별 내용은 이 공통 셸 안에만 들어간다. 새 뷰도 오류 배너를 자동 상속한다(BBE-212). */}
-      {boardContent}
+      {/* 상세 패널은 화면 전체를 덮어 위 배너를 가린다 — 같은 사유를 패널 안에서도 읽게 흘린다(#654). */}
+      <BoardActionErrorProvider message={boardActionError}>{boardContent}</BoardActionErrorProvider>
 
       {trashPanel}
 

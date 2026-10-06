@@ -10,6 +10,7 @@ import {
   normalizeDetailLayout,
   resolveBoardDetailLayout,
   resolveDetailLayout,
+  resolveRowDetailLayout,
   unplacedDetailKeys,
 } from "./detail-layout";
 
@@ -164,5 +165,30 @@ describe("BBE-107 상세 필드 레이아웃", () => {
         expect(isMemberFieldType(other)).toBe(false);
       }
     });
+  });
+});
+
+/*
+ * #654 — 상세 패널의 추가 폼은 row.group_id 로 쓴다. 상담 단계 보기처럼 묶음에 물리 그룹이
+ * 없는 화면도 «그 행의 그룹» 으로 읽어야 방금 추가한 필드가 보인다.
+ */
+describe("#654 행 단위 상세 배치", () => {
+  const boardLayout = [{ key: "detail_board", source: "detail" as const, label: "보드 기본" }];
+  const groups = [
+    { id: "group-contact", detail_layout_jsonb: [{ key: "detail_qa", source: "detail", label: "QA-654 확인용" }] },
+    { id: "group-inherit", detail_layout_jsonb: null },
+  ];
+
+  it("행의 그룹에 덮어쓰기 배치가 있으면 그것을 읽는다", () => {
+    expect(resolveRowDetailLayout(boardLayout, groups, "group-contact")).toEqual({
+      entries: [{ key: "detail_qa", source: "detail", label: "QA-654 확인용" }],
+      inherited: false,
+    });
+  });
+
+  it("그룹이 상속 중이거나 행에 그룹이 없거나 모르는 그룹이면 보드 기본을 읽는다", () => {
+    for (const groupId of ["group-inherit", null, undefined, "group-unknown"]) {
+      expect(resolveRowDetailLayout(boardLayout, groups, groupId)).toEqual({ entries: boardLayout, inherited: true });
+    }
   });
 });

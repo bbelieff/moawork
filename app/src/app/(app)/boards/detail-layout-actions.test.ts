@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { presentNewLeadDetailLayout } from "@/lib/default-tabs/new-lead";
+import { BOARD_ACTION_FLASH_COOKIE, decodeBoardActionFlash } from "@/lib/boards/boardActionFlash";
 
 const mocks = vi.hoisted(() => ({
   guard: vi.fn(),
@@ -9,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   createColumn: vi.fn(),
   deleteColumn: vi.fn(),
   getItem: vi.fn(),
+  cookieSet: vi.fn(),
   detail: {
     board: { id: "board-a", org_id: "org-a", source: null as string | null, detail_layout_jsonb: [{ key: "detail_note", source: "detail", label: "메모", type: "text" }] as Array<Record<string, unknown>> },
     columns: [] as Array<Record<string, unknown>>,
@@ -18,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
-vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ set: vi.fn() })) }));
+vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ set: mocks.cookieSet })) }));
 vi.mock("@/lib/auth/session", () => ({ getSession: vi.fn(async () => ({ org: { id: "org-a" }, user: { id: "user-a" }, role: "owner", scope: "all" })) }));
 vi.mock("@/lib/perm/guard", () => ({ loadPermGuard: mocks.guard }));
 vi.mock("@/lib/perm/server", () => ({ recordRiskyAction: vi.fn(async () => ({ ok: true })) }));
@@ -41,6 +43,7 @@ import {
   addUnplacedDetailEntryAction,
   demoteDetailFieldAction,
   promoteDetailFieldAction,
+  resetGroupDetailLayoutAction,
   saveDetailLayoutAction,
   setDetailValueAction,
 } from "./actions";
@@ -63,9 +66,11 @@ describe("BBE-107 action permission/value preservation", () => {
     mocks.setGroupLayout.mockImplementation(async (_ctx, groupId: string, layout: Array<Record<string, unknown>>) => {
       const group = mocks.detail.groups.find((candidate) => candidate.id === groupId);
       if (group) group.detail_layout_jsonb = layout;
+      return group;
     });
     mocks.setBoardLayout.mockImplementation(async (_ctx, _boardId: string, layout: Array<Record<string, unknown>>) => {
       mocks.detail.board.detail_layout_jsonb = layout;
+      return mocks.detail.board;
     });
   });
 
@@ -234,10 +239,12 @@ describe("#657 표로 올린 상세 필드를 다시 내린다", () => {
     mocks.guard.mockResolvedValue({ kind: "allowed" });
     mocks.setBoardLayout.mockImplementation(async (_ctx, _boardId: string, layout: Array<Record<string, unknown>>) => {
       mocks.detail.board.detail_layout_jsonb = layout;
+      return mocks.detail.board;
     });
     mocks.setGroupLayout.mockImplementation(async (_ctx, groupId: string, layout: Array<Record<string, unknown>>) => {
       const group = mocks.detail.groups.find((candidate) => candidate.id === groupId);
       if (group) group.detail_layout_jsonb = layout;
+      return group;
     });
     mocks.detail.board.source = null;
     mocks.detail.columns = [{ id: "col-1", key: "detail_법인공동인증서", label: "법인공동인증서", type: "text" }];
@@ -296,5 +303,107 @@ describe("#657 표로 올린 상세 필드를 다시 내린다", () => {
 
     expect(mocks.setBoardLayout).not.toHaveBeenCalled();
     expect(mocks.deleteColumn).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * #654 (2026-10-06 운영) — 「추가하는 중…」 뒤에 아무것도 안 생겼다.
+ *
+ * 저장소의 update … maybeSingle() 은 RLS 가 행을 걸러 0행이면 오류 없이 undefined 를 준다.
+ * 액션이 그걸 성공으로 치면 화면엔 오류도 필드도 없다. 그래서 «돌아온 행이 있고 그 배치가
+ * 보낸 배치와 같다» 일 때만 성공으로 친다. runBoardAction 이 오류를 플래시로 바꾸므로
+ * «사용자에게 남긴 문장» 으로 잰다.
+ */
+describe("#654 상세 배치 저장은 실제로 저장됐을 때만 성공이다", () => {
+  function flashedMessage(): string | null {
+    const call = mocks.cookieSet.mock.calls.find(([name, value]) => name === BOARD_ACTION_FLASH_COOKIE && value);
+    return call ? decodeBoardActionFlash(call[1] as string)?.message ?? null : null;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.guard.mockResolvedValue({ kind: "allowed" });
+    mocks.detail.board.source = "core.default-tab/contact";
+    mocks.detail.board.detail_layout_jsonb = [];
+    mocks.detail.columns = [];
+    mocks.detail.groups[0].detail_layout_jsonb = null;
+    mocks.setGroupLayout.mockImplementation(async (_ctx, groupId: string, layout: Array<Record<string, unknown>>) => {
+      const group = mocks.detail.groups.find((candidate) => candidate.id === groupId);
+      if (group) group.detail_layout_jsonb = layout;
+      return group;
+    });
+    mocks.setBoardLayout.mockImplementation(async (_ctx, _boardId: string, layout: Array<Record<string, unknown>>) => {
+      mocks.detail.board.detail_layout_jsonb = layout;
+      return mocks.detail.board;
+    });
+  });
+
+  it("그룹 배치 update 가 0행이면(RLS) 「저장하지 못했어요」를 남긴다 — 조용한 성공이 아니다", async () => {
+    mocks.setGroupLayout.mockResolvedValue(undefined);
+
+    await addDetailFieldAction(form({ boardId: "board-a", groupId: "group-a", label: "QA-654 확인용", type: "text" }));
+
+    expect(mocks.setGroupLayout).toHaveBeenCalledTimes(1);
+    expect(flashedMessage()).toContain("상세 배치를 저장하지 못했어요");
+  });
+
+  it("보드 기본 배치 update 가 0행이어도(보드 RLS 는 tab_manage 를 따로 요구) 오류를 남긴다", async () => {
+    mocks.setBoardLayout.mockResolvedValue(undefined);
+
+    await addDetailFieldAction(form({ boardId: "board-a", groupId: "", label: "QA-654 확인용", type: "text" }));
+
+    expect(mocks.setBoardLayout).toHaveBeenCalledTimes(1);
+    expect(flashedMessage()).toContain("상세 배치를 저장하지 못했어요");
+  });
+
+  it("돌아온 행의 배치가 보낸 배치와 다르면(새 필드 없음) 성공으로 치지 않는다", async () => {
+    mocks.setGroupLayout.mockResolvedValue({ ...mocks.detail.groups[0], detail_layout_jsonb: [] });
+
+    await addDetailFieldAction(form({ boardId: "board-a", groupId: "group-a", label: "QA-654 확인용", type: "text" }));
+
+    expect(flashedMessage()).toContain("상세 배치를 저장하지 못했어요");
+  });
+
+  it("정상 저장이면 오류를 남기지 않고, 그 그룹 배치에 새 필드가 있다", async () => {
+    await addDetailFieldAction(form({ boardId: "board-a", groupId: "group-a", label: "QA-654 확인용", type: "text" }));
+
+    expect(flashedMessage()).toBeNull();
+    expect(mocks.detail.groups[0].detail_layout_jsonb).toEqual([
+      expect.objectContaining({ source: "detail", label: "QA-654 확인용", type: "text" }),
+    ]);
+  });
+
+  it("같은 이름이면 「이미 있어요」가 그대로 사용자에게 간다 — 일반 저장 실패 문구로 뭉개지지 않는다", async () => {
+    await addDetailFieldAction(form({ boardId: "board-a", groupId: "group-a", label: "QA-654 확인용", type: "text" }));
+    mocks.cookieSet.mockClear();
+
+    await addDetailFieldAction(form({ boardId: "board-a", groupId: "group-a", label: "QA-654 확인용", type: "text" }));
+
+    expect(mocks.setGroupLayout).toHaveBeenCalledTimes(1);
+    expect(flashedMessage()).toBe("「QA-654 확인용」 필드가 이미 있어요. 다른 이름을 써 주세요.");
+  });
+
+  it("그룹에만 있는 필드를 올릴 때 바뀌지 않는 보드 기본 배치는 쓰지 않는다 — 보드 쓰기 권한 없이도 된다", async () => {
+    mocks.detail.board.detail_layout_jsonb = [];
+    mocks.detail.groups[0].detail_layout_jsonb = [{ key: "detail_qa", source: "detail", label: "QA", type: "text" }];
+    mocks.setBoardLayout.mockResolvedValue(undefined);
+
+    await promoteDetailFieldAction(form({ boardId: "board-a", fieldKey: "detail_qa" }));
+
+    expect(mocks.setBoardLayout).not.toHaveBeenCalled();
+    expect(mocks.setGroupLayout).toHaveBeenCalledWith(expect.anything(), "group-a", [
+      expect.objectContaining({ key: "detail_qa", source: "column" }),
+    ]);
+    expect(flashedMessage()).toBeNull();
+  });
+
+  it("기본으로 되돌리기(null)도 되읽은 값이 null 일 때만 성공이다", async () => {
+    mocks.detail.groups[0].detail_layout_jsonb = [{ key: "detail_x", source: "detail", label: "x", type: "text" }];
+    mocks.setGroupLayout.mockResolvedValue(undefined);
+
+    await resetGroupDetailLayoutAction(form({ boardId: "board-a", groupId: "group-a" }));
+
+    expect(flashedMessage()).toContain("상세 배치를 저장하지 못했어요");
   });
 });

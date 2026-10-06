@@ -100,6 +100,7 @@ import { DETAIL_FILE_GROUP_LABEL, groupDetailFiles } from "./detail-file-groups"
 import { ItemDetailOcr, ocrCellText } from "./ItemDetailOcr";
 import { ItemDetailVatOcr } from "./ItemDetailVatOcr";
 import { ParentItemLabel } from "./ParentItemLabel";
+import { useBoardActionError } from "./BoardActionErrorContext";
 import { MemberPicker, type MemberPickerMember } from "./MemberPicker";
 import { AssignmentLineagePopover } from "./AssignmentLineagePopover";
 import { NewLeadCreditScoresCell } from "./NewLeadCreditScoresCell";
@@ -545,6 +546,7 @@ export function ItemDetailPanel({
   consultationSection?: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const boardActionError = useBoardActionError();
   const [detail, setDetail] = useState<ItemDetailSnapshot>(initialDetail ?? {
     ok: true,
     events: [],
@@ -1467,6 +1469,15 @@ export function ItemDetailPanel({
                         </div>
                       );
                     })}
+                    {/*
+                      #654 — 보드 오류 배너는 이 패널 «뒤» 에 그려져 안 보인다.
+                      방금 누른 «추가» 가 실패했다면 그 자리에서 말한다.
+                    */}
+                    {boardActionError ? (
+                      <p role="alert" className={styles.actionError} data-item-detail-action-error>
+                        {boardActionError}
+                      </p>
+                    ) : null}
                   </div>
 
                   <details className={styles.compactTools} open data-item-detail-evidence>

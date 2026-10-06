@@ -75,6 +75,73 @@ function sameDetailLayout(left: readonly DetailLayoutEntry[], right: readonly De
     });
 }
 
+/**
+ * 상세 배치 저장은 «정말 저장됐는지» 까지 확인한다 (#654).
+ *
+ * ★ 저장소는 `update … select … maybeSingle()` 이라, RLS 가 행을 걸러 0행이 되어도 오류 없이
+ *   undefined 를 돌려준다. 그대로 두면 액션은 성공으로 끝나고 화면엔 아무것도 안 생긴다 —
+ *   사용자는 「안 눌렸나」 하고 다시 누를 수밖에 없다. (보드 기본 배치는 RLS 가
+ *   structure.tab_manage 를 따로 요구한다. 이 액션들이 확인하는 column_manage 와 다르다.)
+ *   그래서 «돌아온 행이 있고, 그 행의 배치가 보낸 배치와 같다» 일 때만 성공으로 친다.
+ */
+const DETAIL_LAYOUT_NOT_SAVED = "상세 배치를 저장하지 못했어요. 권한을 확인하고 새로고침한 뒤 다시 시도해 주세요.";
+
+type DetailLayoutRepo = Awaited<ReturnType<typeof createRequestBoards>>["repo"];
+
+function storedLayoutMatches(stored: unknown, sent: readonly DetailLayoutEntry[] | null): boolean {
+  if (sent === null) return stored === null || stored === undefined;
+  return Array.isArray(stored) && sameDetailLayout(normalizeDetailLayout(stored), sent);
+}
+
+async function writeGroupDetailLayout(
+  repo: DetailLayoutRepo,
+  ctx: Ctx,
+  groupId: string,
+  layout: DetailLayoutEntry[] | null,
+): Promise<void> {
+  const saved = await repo.setGroupDetailLayout(ctx, groupId, layout);
+  if (!saved || !storedLayoutMatches(saved.detail_layout_jsonb, layout)) {
+    throw new UserFacingActionError(DETAIL_LAYOUT_NOT_SAVED);
+  }
+}
+
+async function writeBoardDetailLayout(
+  repo: DetailLayoutRepo,
+  ctx: Ctx,
+  boardId: string,
+  layout: DetailLayoutEntry[],
+): Promise<void> {
+  const saved = await repo.setBoardDetailLayout(ctx, boardId, layout);
+  if (!saved || !storedLayoutMatches(saved.detail_layout_jsonb, layout)) {
+    throw new UserFacingActionError(DETAIL_LAYOUT_NOT_SAVED);
+  }
+}
+
+/**
+ * 보드 기본·그룹별 배치에 같은 변환을 적용하되 «바뀌는 배치만» 쓴다 (#654).
+ *
+ * ★ 이제 쓰기는 0행이면 실패다. 바뀌지 않는 배치까지 쓰면, 그 쓰기에 필요한 권한
+ *   (보드 기본은 tab_manage)이 없는 사람이 «그룹에만 있는 필드» 를 올리고 내릴 때
+ *   쓸 필요도 없던 보드 쪽에서 실패한다.
+ */
+async function rewriteDetailLayouts(
+  repo: DetailLayoutRepo,
+  ctx: Ctx,
+  boardId: string,
+  detail: { board: { detail_layout_jsonb?: unknown }; groups: readonly { id: string; detail_layout_jsonb?: unknown }[] },
+  transform: (layout: readonly DetailLayoutEntry[]) => DetailLayoutEntry[],
+): Promise<void> {
+  const boardLayout = normalizeDetailLayout(detail.board.detail_layout_jsonb);
+  const nextBoardLayout = transform(boardLayout);
+  if (!sameDetailLayout(boardLayout, nextBoardLayout)) await writeBoardDetailLayout(repo, ctx, boardId, nextBoardLayout);
+  await Promise.all(detail.groups.map(async (group) => {
+    if (group.detail_layout_jsonb === null || group.detail_layout_jsonb === undefined) return;
+    const current = normalizeDetailLayout(group.detail_layout_jsonb);
+    const next = transform(current);
+    if (!sameDetailLayout(current, next)) await writeGroupDetailLayout(repo, ctx, group.id, next);
+  }));
+}
+
 function moveEventKey(formData: FormData): string {
   const value = str(formData, "eventKey");
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
@@ -762,9 +829,9 @@ export async function saveDetailLayoutAction(formData: FormData): Promise<void> 
     );
     if (groupId) {
       if (!detail.groups.some((group) => group.id === groupId)) throw new NotFoundError("아이템을 찾을 수 없습니다.");
-      await graph.repo.setGroupDetailLayout(ctx, groupId, layout);
+      await writeGroupDetailLayout(graph.repo, ctx, groupId, layout);
     } else {
-      await graph.repo.setBoardDetailLayout(ctx, boardId, layout);
+      await writeBoardDetailLayout(graph.repo, ctx, boardId, layout);
     }
     revalidatePath(`/boards/${boardId}`);
   });
@@ -779,7 +846,7 @@ export async function resetGroupDetailLayoutAction(formData: FormData): Promise<
     const graph = await createRequestBoards();
     const detail = await graph.service.getBoardDetail(ctx, boardId);
     if (!detail.groups.some((group) => group.id === groupId)) throw new NotFoundError("아이템을 찾을 수 없습니다.");
-    await graph.repo.setGroupDetailLayout(ctx, groupId, null);
+    await writeGroupDetailLayout(graph.repo, ctx, groupId, null);
     revalidatePath(`/boards/${boardId}`);
   });
 }
@@ -792,7 +859,7 @@ export async function addDetailFieldAction(formData: FormData): Promise<void> {
     const groupId = str(formData, "groupId");
     const label = str(formData, "label").trim();
     const type = str(formData, "type") || "text";
-    if (!label || !isFieldType(type)) throw new Error("상세 필드 이름과 타입을 확인해 주세요.");
+    if (!label || !isFieldType(type)) throw new UserFacingActionError("상세 필드 이름과 타입을 확인해 주세요.");
     const graph = await createRequestBoards();
     const detail = await graph.service.getBoardDetail(ctx, boardId);
     const group = groupId ? detail.groups.find((candidate) => candidate.id === groupId) : undefined;
@@ -813,15 +880,16 @@ export async function addDetailFieldAction(formData: FormData): Promise<void> {
     const duplicate = current.find(
       (entry) => entry.source === "detail" && entry.label?.trim() === label,
     );
-    if (duplicate) throw new Error(`「${label}」 필드가 이미 있어요. 다른 이름을 써 주세요.`);
+    // 사람에게 하는 말이라 UserFacingActionError 로 던진다 — 일반 Error 는 「저장하지 못했어요」로 뭉개진다.
+    if (duplicate) throw new UserFacingActionError(`「${label}」 필드가 이미 있어요. 다른 이름을 써 주세요.`);
 
     const occupied = new Set([...detail.columns.map((column) => column.key), ...current.map((entry) => entry.key)]);
     const base = detailKeyFromLabel(label);
     let key = base;
     for (let suffix = 2; occupied.has(key); suffix += 1) key = `${base}_${suffix}`.slice(0, 80);
     const next = [...current, { key, source: "detail" as const, label, type }];
-    if (group) await graph.repo.setGroupDetailLayout(ctx, group.id, next);
-    else await graph.repo.setBoardDetailLayout(ctx, boardId, next);
+    if (group) await writeGroupDetailLayout(graph.repo, ctx, group.id, next);
+    else await writeBoardDetailLayout(graph.repo, ctx, boardId, next);
     revalidatePath(`/boards/${boardId}`);
   });
 }
@@ -901,8 +969,8 @@ export async function addUnplacedDetailEntryAction(formData: FormData): Promise<
       }));
       const next = durableNewLeadDetailLayout(nextPresented, [...columnEntries, ...current]);
       if (sameDetailLayout(current, next)) return;
-      if (group) await graph.repo.setGroupDetailLayout(ctx, group.id, next);
-      else await graph.repo.setBoardDetailLayout(ctx, boardId, next);
+      if (group) await writeGroupDetailLayout(graph.repo, ctx, group.id, next);
+      else await writeBoardDetailLayout(graph.repo, ctx, boardId, next);
       revalidatePath(`/boards/${boardId}`);
       return;
     }
@@ -917,8 +985,8 @@ export async function addUnplacedDetailEntryAction(formData: FormData): Promise<
         ? { key, source: "column", label: column.label, type: column.type }
         : { key, source: "detail", label: key, type: "text" },
     ];
-    if (group) await graph.repo.setGroupDetailLayout(ctx, group.id, next);
-    else await graph.repo.setBoardDetailLayout(ctx, boardId, next);
+    if (group) await writeGroupDetailLayout(graph.repo, ctx, group.id, next);
+    else await writeBoardDetailLayout(graph.repo, ctx, boardId, next);
     revalidatePath(`/boards/${boardId}`);
   });
 }
@@ -947,11 +1015,7 @@ export async function promoteDetailFieldAction(formData: FormData): Promise<void
     const promote = (layout: readonly DetailLayoutEntry[]) => layout.map((candidate) =>
       candidate.key === key ? { ...candidate, source: "column" as const } : candidate,
     );
-    await graph.repo.setBoardDetailLayout(ctx, boardId, promote(normalizeDetailLayout(detail.board.detail_layout_jsonb)));
-    await Promise.all(detail.groups.map(async (group) => {
-      if (group.detail_layout_jsonb === null || group.detail_layout_jsonb === undefined) return;
-      await graph.repo.setGroupDetailLayout(ctx, group.id, promote(normalizeDetailLayout(group.detail_layout_jsonb)));
-    }));
+    await rewriteDetailLayouts(graph.repo, ctx, boardId, detail, promote);
     revalidatePath(`/boards/${boardId}`);
   });
 }
@@ -992,11 +1056,7 @@ export async function demoteDetailFieldAction(formData: FormData): Promise<void>
     const demote = (layout: readonly DetailLayoutEntry[]) => layout.map((candidate) =>
       candidate.key === key ? { ...candidate, source: "detail" as const } : candidate,
     );
-    await graph.repo.setBoardDetailLayout(ctx, boardId, demote(normalizeDetailLayout(detail.board.detail_layout_jsonb)));
-    await Promise.all(detail.groups.map(async (group) => {
-      if (group.detail_layout_jsonb === null || group.detail_layout_jsonb === undefined) return;
-      await graph.repo.setGroupDetailLayout(ctx, group.id, demote(normalizeDetailLayout(group.detail_layout_jsonb)));
-    }));
+    await rewriteDetailLayouts(graph.repo, ctx, boardId, detail, demote);
 
     // 배치를 먼저 내린 뒤에 컬럼을 치운다 — 순서가 반대면 «표에도 없고 상세에도 없는» 순간이 생긴다.
     const column = detail.columns.find((candidate) => candidate.key === key);
