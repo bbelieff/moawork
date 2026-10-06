@@ -30,6 +30,7 @@ afterEach(async () => {
   if (root) await act(async () => root?.unmount());
   root = null;
   document.body.replaceChildren();
+  vi.useRealTimers();
 });
 
 const groups = [
@@ -197,16 +198,47 @@ describe("BoardWorkspace 빈 그룹 접기 (#845, 승인 목업 Main.dc)", () =>
     expect(titles(host)).toEqual(["준비단계", "심사 중"]);
   });
 
-  it("행을 끄는 동안에는 빈 그룹이 놓을 자리로 모두 나왔다가, 끝나면 다시 접힌다", async () => {
+  /*
+   * Chromium·WebKit 은 dragstart 직후(같은 작업, 마이크로태스크 뒤) 처음 누른 자리를 다시
+   * hit-test 하고, 끌던 행이 거기 없으면 끌기를 취소한다(곧바로 dragend). 그래서 dragstart 와
+   * 그 React 갱신이 끝난 시점까지는 끌던 행 위쪽의 배치가 그대로여야 하고, 빈 그룹은 다음
+   * 작업(타이머)에서 펼친다. 타이머는 가짜로 돌려 «dragstart 직후» 와 «다음 작업» 을 가른다.
+   * 실제 Chrome 154 확인(2026-10-06, CDP Input.setInterceptDrags): dragstart 에서 위쪽 빈 그룹을
+   * 펼치면 끌기가 시작되지 않고 곧바로 dragend, 다음 작업으로 미루면 끌기·펼친 그룹에 놓기 성공.
+   */
+  it("행을 끄는 동안 빈 그룹은 끌기가 시작된 다음 작업에서 펼쳐지고, 끝나면 다시 접힌다", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const host = await mount(CONTRACT_WORK_TAB_SOURCE, {
       groups: many,
       rows: [row("r1", "단독회사", "g-3", "심사 중")],
     });
     const handle = host.querySelector<HTMLElement>("tr[data-board-row] > td:first-child")!;
     await act(async () => handle.dispatchEvent(dragEvent("dragstart")));
+    // dragstart 의 갱신이 다 반영된 뒤에도 끌던 행 위쪽 배치는 그대로 — 반투명 표시만 바뀐다.
+    expect(titles(host)).toEqual(["준비단계", "심사 중"]);
+    expect(handle.closest("tr")!.className).toContain("opacity-40");
+    await act(async () => vi.runOnlyPendingTimers());
     expect(titles(host)).toEqual(["준비단계", "진행중", "심사 중", "승인"]);
+    // 펼쳐도 끌던 행은 다시 그려지지 않는다(같은 노드) — dragend 가 그 행에서 온다.
+    expect(host.contains(handle)).toBe(true);
     await act(async () => handle.dispatchEvent(dragEvent("dragend")));
     expect(titles(host)).toEqual(["준비단계", "심사 중"]);
+  });
+
+  it("브라우저가 끌기를 곧바로 취소하면(dragstart 직후 dragend) 빈 그룹을 펼치지 않는다", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const host = await mount(CONTRACT_WORK_TAB_SOURCE, {
+      groups: many,
+      rows: [row("r1", "단독회사", "g-3", "심사 중")],
+    });
+    const handle = host.querySelector<HTMLElement>("tr[data-board-row] > td:first-child")!;
+    await act(async () => {
+      handle.dispatchEvent(dragEvent("dragstart"));
+      handle.dispatchEvent(dragEvent("dragend"));
+    });
+    await act(async () => vi.runOnlyPendingTimers());
+    expect(titles(host)).toEqual(["준비단계", "심사 중"]);
+    expect(handle.closest("tr")!.className).not.toContain("opacity-40");
   });
 
   it("이 세션에 새로 만든 그룹은 비어 있어도 접지 않는다 — 만들자마자 사라지지 않는다", async () => {

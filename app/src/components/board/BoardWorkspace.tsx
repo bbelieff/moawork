@@ -46,6 +46,7 @@ import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
 import { GroupTable } from "./GroupTable";
 import type { MemberPickerMember } from "./MemberPicker";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
+import { useDeferredDragReveal } from "./use-deferred-drag-reveal";
 import { groupPresetName, isGroupPresetChanged } from "@/lib/presets/group-preset";
 import { ContactPipelineAction } from "@/components/crm/ContactPipelineAction";
 import { ConsultationPanel } from "@/components/consultation/ConsultationPanel";
@@ -414,6 +415,11 @@ export function BoardWorkspace({
    */
   const dragRowRef = useRef<string | null>(null);
   const [dragRowId, setDragRowId] = useState<string | null>(null);
+  /*
+   * 끄는 동안 빈 그룹을 놓을 자리로 펼치는 표시(#845). dragRowId 와 따로 둔다 — dragstart 에서
+   * 행 배치가 움직이면 브라우저가 끌기를 취소하므로, 펼치기는 끌기가 시작된 다음 작업에서 켠다.
+   */
+  const { revealed: dragRevealGroups, schedule: scheduleDragReveal, cancel: cancelDragReveal } = useDeferredDragReveal();
   const rowOrderVersionRef = useRef(board.row_order_version ?? 0);
   const latestRowOrderVersionPropRef = useRef(board.row_order_version ?? 0);
   const rowMoveInFlightRef = useRef(false);
@@ -928,16 +934,19 @@ export function BoardWorkspace({
     return at < 0 ? withoutMoving.length : at;
   };
 
+  // dragstart 안에서는 행 배치를 바꾸지 않는다 — 반투명·안내문만 바꾸고, 빈 그룹 펼치기는 예약한다.
   const startRowDrag = useCallback((itemId: string) => {
     dragRowRef.current = itemId;
     setDragRowId(itemId);
     setMoveNotice("이동할 위치를 선택하세요.");
-  }, []);
+    scheduleDragReveal();
+  }, [scheduleDragReveal]);
 
   const endRowDrag = useCallback(() => {
     dragRowRef.current = null;
     setDragRowId(null);
-  }, []);
+    cancelDragReveal();
+  }, [cancelDragReveal]);
 
   const canDropRow = useCallback(
     () => rowDragEnabled && dragRowRef.current !== null,
@@ -1021,8 +1030,8 @@ export function BoardWorkspace({
     return { block, visibleRows, foldable };
   });
   const foldedEmptyCount = blockViews.filter((view) => view.foldable).length;
-  // 행을 끄는 동안에는 빈 그룹도 놓을 자리로 보여 준다.
-  const shownBlockViews = emptyGroupsOpen || dragRowId !== null
+  // 행을 끄는 동안에는 빈 그룹도 놓을 자리로 보여 준다 — 끌기가 시작된 뒤에(useDeferredDragReveal).
+  const shownBlockViews = emptyGroupsOpen || dragRevealGroups
     ? blockViews
     : blockViews.filter((view) => !view.foldable);
 
