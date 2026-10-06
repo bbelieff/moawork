@@ -133,6 +133,24 @@ function canMoveRows(ctx: Ctx): boolean {
 }
 
 /**
+ * 컬럼의 편집·보기 제한(`edit_policy_jsonb`·`view_policy_jsonb`)이 이 사용자에게 열려 있는가.
+ *
+ * DB `board_column_policy_allows`(089) 와 같은 규칙이다 — 빈 정책(없음·`{}`)이면 허용하고,
+ * `roles`·`scopes`·`userIds` 는 «있는 키만» 모두 맞아야 한다(roles∋role, scopes∋scope, userIds∋user.id).
+ * 키는 있는데 배열이 아니면 닫힌 쪽(false)으로 본다. 이 판정은 «값을 같이 쓸 수 있는가» 에만 쓰므로,
+ * 닫혀도 행 이동 자체는 값 없이 그대로 진행된다.
+ */
+export function columnPolicyAllows(ctx: Ctx, policy: Readonly<Record<string, unknown>> | null | undefined): boolean {
+  if (!policy || Object.keys(policy).length === 0) return true;
+  const matches = (key: string, actual: string): boolean => {
+    if (!Object.prototype.hasOwnProperty.call(policy, key)) return true;
+    const allowed = policy[key];
+    return Array.isArray(allowed) && allowed.includes(actual);
+  };
+  return matches("roles", ctx.role) && matches("scopes", ctx.scope) && matches("userIds", ctx.user.id);
+}
+
+/**
  * 그룹 → 단계 역동기화(2026-10-06)를 켜는 보드 출처와 그 단계 칸.
  *
  * 계약업체 실무만 켠다. 리드컨택은 이동 규칙이 «담당자» 를 다시 배정하고, 신규리드의 상담 단계
@@ -506,9 +524,17 @@ export class BoardsService {
     // 행이 없거나 다른 보드 것이면 판단하지 않는다 — 이동 RPC 가 그 이유로 거부한다.
     if (!column || !item || item.board_id !== board.id) return null;
     const current = values.find((value) => value.item_id === request.itemId && value.column_key === stageKey);
+    // 값을 실을 수 있는지는 RPC(`issue602_board_cell_value_is_valid` → `board_column_value_editable`)와
+    // 같은 기준으로 «여기서» 정한다. 회사가 단계 칸을 «관리자만 편집/보기» 로 묶어 두었으면 값을
+    // 싣는 순간 이동 전체가 거부되므로(같은 그룹 재정렬 포함), 그때는 값 없이 위치만 옮긴다.
+    // 보기 제한이면 현재 값을 못 읽어 «보지 못한 값» 을 덮어쓰게 되므로 역시 싣지 않는다.
+    // 거부를 받고 순수 이동으로 다시 보내는 방식은 같은 requestId 의 재생 결정성을 깨므로 쓰지 않는다.
+    const editable = isSourceEditable(column.source)
+      && columnPolicyAllows(ctx, column.edit_policy_jsonb)
+      && columnPolicyAllows(ctx, column.view_policy_jsonb);
     const stage = planStageBackSync({
       column,
-      editable: isSourceEditable(column.source),
+      editable,
       groups,
       currentValue: current?.value_jsonb ?? null,
       sourceGroupId: item.group_id,

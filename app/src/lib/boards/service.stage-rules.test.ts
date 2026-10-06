@@ -8,7 +8,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { BoardsService } from "./service";
+import { BoardsService, columnPolicyAllows } from "./service";
 import { ROW_MOVE_FAILURE_MESSAGES, ROW_MOVE_VALUE_ONLY_NOTICE, UserFacingActionError } from "./boardActionFlash";
 import type { AtomicValueMoveRequest } from "./store";
 import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
@@ -29,6 +29,14 @@ const member = {
   user: { id: "member-stage", name: "Member", email: "member@example.test" },
   role: "member",
   scope: "assigned",
+} as unknown as Ctx;
+
+/** 전체 범위 팀장 — 행 이동 관문(owner/admin 또는 scope=all)은 통과하지만 관리자는 아니다. */
+const teamLead = {
+  org: owner.org,
+  user: { id: "lead-stage", name: "Lead", email: "lead@example.test" },
+  role: "team_lead",
+  scope: "all",
 } as unknown as Ctx;
 
 beforeEach(() => {
@@ -188,6 +196,119 @@ describe("[3] 행을 다른 그룹으로 옮기면 진행현황도 맞춘다", (
     const after = await svc.getItem(owner, detail.board.id, item.id);
     expect(after.group_id).toBe(done.id);
     expect(after.values[column.key]).toBe("wait");
+  });
+});
+
+describe("[3] 단계 칸의 편집·보기 제한 — 값을 못 쓰는 사람의 이동은 값 없이 그대로 성공한다", () => {
+  const MANAGERS_ONLY = { roles: ["owner", "admin"] };
+  type PolicyKey = "edit_policy_jsonb" | "view_policy_jsonb";
+
+  /** 회사가 컬럼 설정에서 진행상황 칸을 «관리자만» 으로 묶었다(로컬 저장소는 컬럼 행을 그대로 돌려준다). */
+  async function restrictedBoard(policyKey: PolicyKey, policy: Record<string, unknown> = MANAGERS_ONLY) {
+    const board = await contractWorkBoard();
+    const status = board.local.listColumns(owner, board.boardId).find((column) => column.key === "progress_status")!;
+    status[policyKey] = policy;
+    return board;
+  }
+
+  /** 로컬 저장소는 컬럼 제한을 강제하지 않는다 — 운영 RPC(issue602_board_cell_value_is_valid)처럼 값-이동을 거부한다. */
+  function rejectValueMoves(local: LocalBoardsRepo) {
+    return vi.spyOn(local, "setValuesAndMoveAtomic").mockImplementation(() => {
+      throw new Error("cell value is not editable or valid");
+    });
+  }
+
+  it.each<PolicyKey>(["edit_policy_jsonb", "view_policy_jsonb"])("%s=관리자만 · 전체 범위 팀장: 심사 중 → 승인 드래그는 값 없이 옮겨진다", async (policyKey) => {
+    const { local, svc, boardId, group, version } = await restrictedBoard(policyKey);
+    const valueMove = rejectValueMoves(local);
+    const item = await svc.createItem(owner, boardId, { title: "제한 드래그", group_id: group("🔂 심사 중").id, values: { progress_status: "심사 중" } });
+
+    const receipt = await svc.moveRowAtomic(teamLead, boardId, {
+      itemId: item.id, targetGroupId: group("💰 승인").id, beforeItemId: null, expectedVersion: await version(), requestId: crypto.randomUUID(),
+    });
+
+    expect(receipt.replayed).toBe(false);
+    expect(valueMove).not.toHaveBeenCalled();
+    const after = await svc.getItem(owner, boardId, item.id);
+    expect(after.group_id).toBe(group("💰 승인").id);
+    expect(after.values.progress_status).toBe("심사 중");
+  });
+
+  it.each<PolicyKey>(["edit_policy_jsonb", "view_policy_jsonb"])("%s=관리자만 · 전체 범위 팀장: 대표 단계와 같은 행의 같은 그룹 재정렬도 성공한다", async (policyKey) => {
+    const { local, svc, boardId, group, version } = await restrictedBoard(policyKey);
+    const valueMove = rejectValueMoves(local);
+    const approved = group("💰 승인").id;
+    const first = await svc.createItem(owner, boardId, { title: "첫째", group_id: approved, values: { progress_status: "승인" } });
+    const second = await svc.createItem(owner, boardId, { title: "둘째", group_id: approved, values: { progress_status: "승인" } });
+
+    await svc.moveRowAtomic(teamLead, boardId, {
+      itemId: first.id, targetGroupId: approved, beforeItemId: null, expectedVersion: await version(), requestId: crypto.randomUUID(),
+    });
+
+    expect(valueMove).not.toHaveBeenCalled();
+    const rows = await svc.listItems(owner, boardId);
+    expect(rows.filter((row) => row.group_id === approved).map((row) => row.id)).toEqual([second.id, first.id]);
+  });
+
+  it("편집=관리자만 · 전체 범위 팀장의 일괄 그룹 이동(receipt.version 이어 쓰기)도 값 없이 모두 옮겨진다", async () => {
+    const { local, svc, boardId, group, version } = await restrictedBoard("edit_policy_jsonb");
+    const valueMove = rejectValueMoves(local);
+    const review = group("🔂 심사 중").id;
+    const rejected = group("⛔ 대출불가").id;
+    const a = await svc.createItem(owner, boardId, { title: "a", group_id: review, values: { progress_status: "심사 중" } });
+    const b = await svc.createItem(owner, boardId, { title: "b", group_id: review, values: { progress_status: "업체관리" } });
+    let expectedVersion = await version();
+    for (const itemId of [a.id, b.id]) {
+      const receipt = await svc.moveRowAtomic(teamLead, boardId, { itemId, targetGroupId: rejected, beforeItemId: null, expectedVersion, requestId: crypto.randomUUID() });
+      expectedVersion = receipt.version;
+    }
+
+    expect(valueMove).not.toHaveBeenCalled();
+    const rows = await svc.listItems(owner, boardId);
+    expect(rows.filter((row) => row.group_id === rejected).map((row) => [row.id, row.values.progress_status])).toEqual([
+      [a.id, "심사 중"],
+      [b.id, "업체관리"],
+    ]);
+  });
+
+  it("같은 제한이어도 제한이 열린 사람(owner)의 드래그는 단계를 맞춘다", async () => {
+    const { svc, boardId, group, version } = await restrictedBoard("edit_policy_jsonb");
+    const item = await svc.createItem(owner, boardId, { title: "관리자 드래그", group_id: group("🔂 심사 중").id, values: { progress_status: "심사 중" } });
+
+    await svc.moveRowAtomic(owner, boardId, {
+      itemId: item.id, targetGroupId: group("💰 승인").id, beforeItemId: null, expectedVersion: await version(), requestId: crypto.randomUUID(),
+    });
+
+    expect((await svc.getItem(owner, boardId, item.id)).values.progress_status).toBe("승인");
+  });
+
+  it("제한이 팀장에게도 열려 있으면(scopes=all) 팀장의 드래그도 단계를 맞춘다", async () => {
+    const { svc, boardId, group, version } = await restrictedBoard("edit_policy_jsonb", { scopes: ["all"] });
+    const item = await svc.createItem(owner, boardId, { title: "범위 허용", group_id: group("🔂 심사 중").id, values: { progress_status: "심사 중" } });
+
+    await svc.moveRowAtomic(teamLead, boardId, {
+      itemId: item.id, targetGroupId: group("💰 승인").id, beforeItemId: null, expectedVersion: await version(), requestId: crypto.randomUUID(),
+    });
+
+    expect((await svc.getItem(owner, boardId, item.id)).values.progress_status).toBe("승인");
+  });
+});
+
+describe("columnPolicyAllows — DB board_column_policy_allows(089) 와 같은 규칙", () => {
+  it.each<[string, Record<string, unknown> | null | undefined, boolean]>([
+    ["정책 없음", undefined, true],
+    ["null", null, true],
+    ["빈 객체", {}, true],
+    ["관리자만", { roles: ["owner", "admin"] }, false],
+    ["팀장 포함", { roles: ["team_lead"] }, true],
+    ["전체 범위", { scopes: ["all"] }, true],
+    ["담당 범위만", { scopes: ["assigned"] }, false],
+    ["이 사용자", { userIds: ["lead-stage"] }, true],
+    ["다른 사용자", { userIds: ["someone-else"] }, false],
+    ["모든 키가 맞아야 한다", { roles: ["team_lead"], scopes: ["department"] }, false],
+    ["배열이 아니면 닫힌다", { roles: "team_lead" }, false],
+  ])("%s", (_name, policy, expected) => {
+    expect(columnPolicyAllows(teamLead, policy)).toBe(expected);
   });
 });
 
