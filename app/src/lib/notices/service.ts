@@ -17,6 +17,10 @@ import type { Board, CellValue, ItemWithValues } from "@/lib/boards/types";
 import type { BoardsRepo } from "@/lib/boards/store";
 import { slugifyKey } from "@/lib/repo/local/boardsRepo";
 import { createRequestBoardsRepo } from "@/lib/boards/request-repo";
+import { DefaultTabDismissedError } from "@/lib/boards/trash-errors";
+
+/** 제품 기본 공지 탭의 source — default-tabs/notice.ts NOTICE_TAB.source 와 같다. */
+const NOTICE_DEFAULT_TAB_SOURCE = "core.default-tab/notice";
 import {
   NOTICE_AUDIENCE_MANAGERS,
   NOTICE_AUDIENCE_OPTIONS,
@@ -117,6 +121,11 @@ export class NoticesService {
     }
 
     const repo = await this.repo;
+    // #849 — 지운 공지 탭을 이 옛 경로가 몰래 다시 만들지 않게 한다.
+    const dismissals = await repo.listDefaultTabDismissals(ctx);
+    if (dismissals.some((dismissal) => dismissal.source === NOTICE_DEFAULT_TAB_SOURCE)) {
+      throw new DefaultTabDismissedError();
+    }
     const board = await repo.createBoard(ctx, {
       name: NOTICE_BOARD_NAME,
       description: "조직 전체 공지 — 상단고정 공지가 먼저 보입니다",

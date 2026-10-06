@@ -58,6 +58,7 @@ import { ColumnEditor } from "@/components/boards/ColumnEditor";
 import { GroupPresetMenu } from "@/components/board/GroupPresetMenu";
 import { groupPresetName } from "@/lib/presets/group-preset";
 import { addGroupAction, deleteBoardAction } from "../actions";
+import { BoardTrashSection } from "@/components/workspace-builder/TabTrashSurface";
 import { getBoardColumnOrder } from "../groupLayout";
 import { presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
 import { applyNoticePerspective, parseNoticePerspective, projectNoticeMetadata } from "@/lib/notices/perspectives";
@@ -494,16 +495,14 @@ export default async function BoardPage({
           </form>
         </section>}
 
-        {canDeleteBoard && <section className="rounded-md border border-mw-error/40 p-3" aria-labelledby="danger-heading">
-          <h2 id="danger-heading" className="font-semibold text-mw-error">위험 구역</h2>
-          <p className="mb-2 text-xs text-mw-sub">보드 전체를 삭제합니다. 기록 항목 숨김이나 그룹 순서 변경과는 별개입니다.</p>
-          <form action={deleteBoardAction}>
-          <input type="hidden" name="boardId" value={id} />
-          <button type="submit" className="text-xs text-mw-sub hover:text-mw-error">
-            이 보드 삭제
-          </button>
-          </form>
-        </section>}
+        {/* #849 탭 삭제 = 휴지통. 지울 내용 개수는 이 서버 부품이 렌더될 때 따로 읽는다
+            (위 스냅샷 왕복 예산 밖, Suspense 로 스트리밍). 보드는 위에서 이미 읽어 저장소에서 바로 센다. */}
+        {canDeleteBoard && <BoardTrashSection
+          boardId={id}
+          boardName={board.name}
+          deleteAction={deleteBoardAction}
+          loadImpact={repo.readBoardTrashImpact.bind(repo, ctx, id)}
+        />}
       </div>
     </details>
   );

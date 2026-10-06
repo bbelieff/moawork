@@ -124,8 +124,13 @@ export async function bootstrapApprovedWorkspace(
     const clean = await timer.time("fast-drift-check", async () => {
       const store = plainRepo;
       const boards = await store.listBoards(ctx);
+      // #849 — 회사가 지운 기본 탭은 «깨끗함» 이다(리스도, 다시 만들기도 없다).
+      //   지운 기록은 빠진 탭이 있을 때만 읽는다 — 건강한 진입에 왕복을 더하지 않는다.
+      const anyMissing = DEFAULT_TABS.some((tab) => !boards.some((board) => board.source === tab.source));
+      const dismissed = new Set(anyMissing ? (await store.listDefaultTabDismissals(ctx)).map((row) => row.source) : []);
       const drifts = await Promise.all(DEFAULT_TABS.map((tab) => {
         const matches = boards.filter((board) => board.source === tab.source);
+        if (matches.length === 0 && dismissed.has(tab.source)) return { hasWork: false };
         if (matches.length !== 1) return { hasWork: true };
         return readDefaultTabBootstrapDrift(ctx, tab, matches[0], store, assignees);
       }));

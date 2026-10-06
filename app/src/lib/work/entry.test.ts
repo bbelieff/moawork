@@ -118,4 +118,16 @@ describe("repairContractWorkBoardOnEntry", () => {
     expect(first).toEqual(second);
     expect(local.listBoards(ctx).filter((b) => b.source === CONTRACT_WORK_TAB_SOURCE)).toHaveLength(1);
   });
+
+  it("#849 지운 기본 탭은 고치지 않고 «지움» 을 돌려준다", async () => {
+    const local = new LocalBoardsRepo();
+    const repo = toAsyncBoardsRepo(local);
+    const { boardId } = await ensureDefaultTab(ctx, CONTRACT_WORK_TAB, repo);
+    local.trashBoard(ctx, boardId);
+    expect(await resolveExistingContractWorkBoard(ctx, repo)).toEqual({ kind: "dismissed" });
+    const request = fakeClient(repo);
+    expect(await repairContractWorkBoardOnEntry(ctx, request as never)).toEqual({ kind: "dismissed" });
+    expect(request.rpc).not.toHaveBeenCalled();
+    expect(local.listBoards(ctx).some((b) => b.source === CONTRACT_WORK_TAB_SOURCE)).toBe(false);
+  });
 });

@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { repairContractWorkBoardOnEntry } from "@/lib/work/entry";
 import { createClient } from "@/lib/supabase/server";
+import { CONTRACT_WORK_TAB } from "@/lib/default-tabs/contract-work";
+import { DismissedDefaultTabNotice } from "@/components/default-tabs/DismissedDefaultTabNotice";
 
 /**
  * 계약업체 실무 기본 탭의 제품 진입점 — 리드컨택(`/contract`)과 «같은 형태» 다.
@@ -30,6 +32,7 @@ export default async function ContractWorkBoardPage({
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
   const result = await repairContractWorkBoardOnEntry(ctx, await createClient({ noStore: true }));
+  if (result.kind === "dismissed") return <DismissedDefaultTabNotice tabName={CONTRACT_WORK_TAB.name} />;
   if (result.kind !== "ready") {
     const conflict = result.kind === "conflict";
     const permission = result.kind === "permission";

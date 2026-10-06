@@ -545,5 +545,6 @@ export function seedDb(): Db {
     boardItems: [...boardItems, ...noticeItems, ...newLeadItems],
     itemValues: [...itemValues, ...noticeValues, ...newLeadValues],
     boardViews: [],
+    defaultTabDismissals: [],
   };
 }

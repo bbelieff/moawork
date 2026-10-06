@@ -525,13 +525,72 @@ describe("시스템 보드 가드 — 정책자금은 deals 소유", () => {
   });
 });
 
-describe("보드 삭제", () => {
-  it("사용자 보드 삭제 시 아이템/셀도 정리", async () => {
+describe("보드 삭제 = 휴지통 (#849)", () => {
+  it("삭제하면 휴지통으로 가서 보통 읽기에서 빠지고, 복구하면 행이 그대로 돌아온다", async () => {
     const detail = await svc.createBoard(owner, { name: "임시" });
     const item = await svc.createItem(owner, detail.board.id, { title: "t" });
     await svc.deleteBoard(owner, detail.board.id);
     await expect(async () => (await svc.getBoardDetail(owner, detail.board.id))).rejects.toThrow(NotFoundError);
     await expect(async () => (await svc.getItem(owner, detail.board.id, item.id))).rejects.toThrow(NotFoundError);
+    expect((await svc.listBoards(owner)).some((board) => board.id === detail.board.id)).toBe(false);
+    expect((await svc.listTrashedBoards(owner)).map((board) => board.id)).toEqual([detail.board.id]);
+
+    await svc.restoreBoard(owner, detail.board.id);
+    expect((await svc.getItem(owner, detail.board.id, item.id)).title).toBe("t");
+    expect(await svc.listTrashedBoards(owner)).toEqual([]);
+  });
+
+  it("새 탭은 기본 아이템 1개와 기본 열 3개를 갖고, 열은 한 번만 채운다", async () => {
+    const detail = await svc.createBoard(owner, { name: "새 탭" });
+    expect(detail.groups.map((group) => group.name)).toEqual(["새 아이템"]);
+    expect(detail.columns.map((column) => column.key)).toEqual(["status", "owner", "due"]);
+    expect(detail.board.nav_section).toBe("after-contract");
+  });
+
+  it("휴지통 탭이 있어도 남은 탭의 순서를 저장한다", async () => {
+    const kept = await svc.createBoard(owner, { name: "남길 탭" });
+    const trashed = await svc.createBoard(owner, { name: "지울 탭" });
+    await svc.trashBoard(owner, trashed.board.id);
+    const editable = (await svc.listBoards(owner)).filter((board) => !board.is_system).map((board) => board.id);
+    expect(editable).toContain(kept.board.id);
+    const reversed = [...editable].reverse();
+    const result = await svc.reorderBoards(owner, reversed, "request-order-after-trash");
+    expect(result.filter((board) => !board.is_system).map((board) => board.id)).toEqual(reversed);
+    expect(result.some((board) => board.id === trashed.board.id)).toBe(false);
+  });
+
+  it("완전 삭제는 휴지통 탭만 받는다", async () => {
+    const detail = await svc.createBoard(owner, { name: "지울 탭" });
+    await expect(svc.purgeBoard(owner, detail.board.id)).rejects.toThrow(NotFoundError);
+    await svc.trashBoard(owner, detail.board.id);
+    await expect(svc.purgeBoard(owner, detail.board.id)).resolves.toBe(0);
+    expect(await svc.listTrashedBoards(owner)).toEqual([]);
+    await expect(svc.restoreBoard(owner, detail.board.id)).rejects.toThrow(NotFoundError);
+  });
+
+  it("시스템 보드는 휴지통에 보낼 수도 개수를 읽을 수도 없다", async () => {
+    await expect(svc.trashBoard(owner, SEED_BOARD_PIPELINE)).rejects.toThrow(BoardRuleError);
+    await expect(svc.readBoardTrashImpact(owner, SEED_BOARD_PIPELINE)).rejects.toThrow(BoardRuleError);
+    const detail = await svc.createBoard(owner, { name: "개수" });
+    await expect(svc.readBoardTrashImpact(owner, detail.board.id)).resolves.toMatchObject({ groups: 1, rows: 0 });
+  });
+
+  it("다른 회사의 휴지통 탭은 되살리거나 지울 수 없다", async () => {
+    const detail = await svc.createBoard(owner, { name: "우리 탭" });
+    await svc.trashBoard(owner, detail.board.id);
+    const foreign: Ctx = { ...owner, org: { ...owner.org, id: "org-foreign" } };
+    await expect(svc.restoreBoard(foreign, detail.board.id)).rejects.toThrow(NotFoundError);
+    await expect(svc.purgeBoard(foreign, detail.board.id)).rejects.toThrow(NotFoundError);
+    expect((await svc.listTrashedBoards(owner)).map((board) => board.id)).toEqual([detail.board.id]);
+  });
+
+  it("지운 기본 탭 기록은 기본 탭 출처만 지운다", async () => {
+    const tab = await svc.createBoard(owner, { name: "기본", source: "core.default-tab/sample" });
+    await svc.deleteBoard(owner, tab.board.id);
+    expect((await svc.listDefaultTabDismissals(owner)).map((row) => row.source)).toEqual(["core.default-tab/sample"]);
+    await expect(svc.clearDefaultTabDismissal(owner, "user.section-preset/x")).rejects.toThrow(BoardRuleError);
+    await expect(svc.clearDefaultTabDismissal(owner, "core.default-tab/sample")).resolves.toBe(true);
+    expect(await svc.listDefaultTabDismissals(owner)).toEqual([]);
   });
 });
 

@@ -12,6 +12,8 @@ import { BoardsService } from "@/lib/boards/service";
 import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
 import { createClient } from "@/lib/supabase/server";
 import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
+import { NOTICE_TAB } from "@/lib/default-tabs/notice";
+import { DismissedDefaultTabNotice } from "@/components/default-tabs/DismissedDefaultTabNotice";
 import { isManager } from "@/lib/auth/roles";
 import { loadVerifiedWorkspaceBasePath } from "@/lib/auth/workspace-href-server";
 import { workspaceHref } from "@/components/shell/workspace-href";
@@ -69,10 +71,11 @@ export default async function NoticesPage({
   // 막는 일이다(scripts/check-production-repo-boundaries.mjs).
   if (canUseLocalSeedFallback()) return <NoticesNotConnected />;
 
-  const client = await createClient();
+  // 진입 repair 는 «늘 새로 읽는» 클라이언트여야 한다(#851 — 같은 요청의 GET 기억으로 낡은 구조를 읽는다).
+  const client = await createClient({ noStore: true });
   const workspaceBasePath = await loadVerifiedWorkspaceBasePath();
   const repo = new SupabaseBoardsRepo(client);
-  let noticeEntryState: "conflict" | "missing" | "permission" | "unavailable" | null = null;
+  let noticeEntryState: "conflict" | "dismissed" | "missing" | "permission" | "unavailable" | null = null;
   try {
     const productBoard = await repairNoticeBoardOnEntry(ctx, client);
     if (productBoard.kind === "ready") {
@@ -85,6 +88,7 @@ export default async function NoticesPage({
     unstable_rethrow(error);
     noticeEntryState = "unavailable";
   }
+  if (noticeEntryState === "dismissed") return <DismissedDefaultTabNotice tabName={NOTICE_TAB.name} />;
   if (noticeEntryState === "conflict") {
     return (
       <section className="rounded-md border border-mw-line bg-mw-card p-5" aria-labelledby="notice-entry-title">

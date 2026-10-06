@@ -1,13 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Ctx } from "@/lib/types";
 import type {
-  Board, BoardColumn, BoardGroup, BoardItem, BoardView, CellValue, ItemValue,
+  Board, BoardColumn, BoardGroup, BoardItem, BoardTrashImpact, BoardView, CellValue, DefaultTabDismissal, ItemValue,
 } from "@/lib/boards/types";
 import type {
   AtomicValueMoveRequest, BoardPatch, BoardsRepo, ColumnPatch, DefaultDefinitionState, GroupPatch, ItemPatch, NewBoard, NewColumn,
   NewGroup, NewItem, NewView, RowMoveReceipt, RowMoveRequest, ViewPatch,
 } from "@/lib/boards/store";
 import { slugifyKey } from "@/lib/repo/local/boardsRepo";
+import { toBoardTrashError } from "@/lib/boards/trash-errors";
 import { isSectionPresetSource } from "@/lib/presets/section-presets";
 import { normalizeDetailLayout, type DetailLayoutEntry } from "@/lib/boards/detail-layout";
 import {
@@ -39,6 +40,18 @@ function many<T>(data: unknown, error: { message?: string } | null): T[] {
   return (data ?? []) as T[];
 }
 
+/** 휴지통 RPC 는 boards 행 하나를 돌려준다. 오류는 사람 말로 바꾼다. */
+function trashRow(data: unknown, error: { message?: string; code?: string } | null): Board {
+  if (error) throw toBoardTrashError(error);
+  return one<Board>(Array.isArray(data) ? data[0] : data, null);
+}
+
+/** RPC 의 integer·jsonb 숫자 → 0 이상 정수. 모르는 값은 0. */
+function count(value: unknown): number {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0;
+}
+
 function columnRow(row: Row): BoardColumn {
   return {
     ...(row as unknown as BoardColumn),
@@ -53,16 +66,17 @@ function columnRow(row: Row): BoardColumn {
 export class SupabaseBoardsRepo implements BoardsRepo {
   constructor(private readonly client: SupabaseClient) {}
 
+  // #849 — 휴지통 탭(deleted_at)은 보통 읽기에서 뺀다. 휴지통 목록은 listTrashedBoards.
   async listBoards(ctx: Ctx): Promise<Board[]> {
-    const q = await this.client.from("boards").select("*").eq("org_id", ctx.org.id).order("sort_order");
+    const q = await this.client.from("boards").select("*").eq("org_id", ctx.org.id).is("deleted_at", null).order("sort_order");
     return many<Board>(q.data, q.error).filter((board) => !isSectionPresetSource(board.source));
   }
   async listSectionPresetBoards(ctx: Ctx): Promise<Board[]> {
-    const q = await this.client.from("boards").select("*").eq("org_id", ctx.org.id).like("source", "user.section-preset/%").order("sort_order");
+    const q = await this.client.from("boards").select("*").eq("org_id", ctx.org.id).is("deleted_at", null).like("source", "user.section-preset/%").order("sort_order");
     return many<Board>(q.data, q.error);
   }
   async getBoard(ctx: Ctx, id: string): Promise<Board | undefined> {
-    const q = await this.client.from("boards").select("*").eq("org_id", ctx.org.id).eq("id", id).maybeSingle();
+    const q = await this.client.from("boards").select("*").eq("org_id", ctx.org.id).eq("id", id).is("deleted_at", null).maybeSingle();
     if (q.error) throw new Error(q.error.message); return (q.data ?? undefined) as Board | undefined;
   }
   async createBoard(ctx: Ctx, input: NewBoard, requestId = crypto.randomUUID()): Promise<Board> {
@@ -73,7 +87,11 @@ export class SupabaseBoardsRepo implements BoardsRepo {
       p_icon: input.icon ?? null,
       p_source: input.source ?? null,
       p_request_id: requestId,
+      // 자리를 고른 사용자 탭만 넘긴다. 기본 탭·프리셋 만들기는 169 이전 6인자 RPC 로도 돈다.
+      ...(input.nav_section ? { p_nav_section: input.nav_section } : {}),
     });
+    // 지운 기본 탭만 종류를 붙인다. 나머지 오류는 지금처럼 원문 그대로.
+    if (q.error?.message?.includes("default_tab_dismissed")) throw toBoardTrashError(q.error);
     return one<Board>(Array.isArray(q.data) ? q.data[0] : q.data, q.error);
   }
   async updateBoard(ctx: Ctx, id: string, patch: BoardPatch): Promise<Board | undefined> {
@@ -87,7 +105,8 @@ export class SupabaseBoardsRepo implements BoardsRepo {
       p_request_id: requestId,
     });
     if (q.error) throw new Error(q.error.message);
-    return (q.data ?? []) as Board[];
+    // listBoards 와 같게 휴지통 탭은 뺀다.
+    return ((q.data ?? []) as Board[]).filter((board) => !board.deleted_at);
   }
   async getDefaultDefinitionState(ctx: Ctx, boardId: string): Promise<DefaultDefinitionState | null> {
     const q = await this.client.rpc("read_default_board_definition_state", { p_org_id: ctx.org.id, p_board_id: boardId });
@@ -99,6 +118,59 @@ export class SupabaseBoardsRepo implements BoardsRepo {
     if (q.error) throw new Error(q.error.message);
   }
   async deleteBoard(ctx: Ctx, id: string): Promise<boolean> { const q = await this.client.from("boards").delete().eq("org_id", ctx.org.id).eq("id", id).select("id"); if (q.error) throw new Error(q.error.message); return (q.data?.length ?? 0) > 0; }
+
+  // ── #849 휴지통 (169 RPC) ──
+  async trashBoard(ctx: Ctx, id: string): Promise<Board> {
+    const q = await this.client.rpc("trash_workspace_board", { p_org_id: ctx.org.id, p_board_id: id });
+    return trashRow(q.data, q.error);
+  }
+  async restoreBoard(ctx: Ctx, id: string): Promise<Board> {
+    const q = await this.client.rpc("restore_workspace_board", { p_org_id: ctx.org.id, p_board_id: id });
+    return trashRow(q.data, q.error);
+  }
+  async purgeBoard(ctx: Ctx, id: string): Promise<number> {
+    const q = await this.client.rpc("purge_workspace_board", { p_org_id: ctx.org.id, p_board_id: id });
+    if (q.error) throw toBoardTrashError(q.error);
+    return count(q.data);
+  }
+  async purgeExpiredBoards(ctx: Ctx): Promise<number> {
+    const q = await this.client.rpc("purge_expired_workspace_boards", { p_org_id: ctx.org.id });
+    if (q.error) throw toBoardTrashError(q.error);
+    return count(q.data);
+  }
+  async listTrashedBoards(ctx: Ctx): Promise<Board[]> {
+    const q = await this.client.from("boards").select("*").eq("org_id", ctx.org.id).not("deleted_at", "is", null).order("deleted_at", { ascending: false });
+    return many<Board>(q.data, q.error).filter((board) => !isSectionPresetSource(board.trashed_source));
+  }
+  async readBoardTrashImpact(ctx: Ctx, id: string): Promise<BoardTrashImpact> {
+    const q = await this.client.rpc("read_board_trash_impact", { p_org_id: ctx.org.id, p_board_id: id });
+    if (q.error) throw toBoardTrashError(q.error);
+    const row = (q.data ?? {}) as Record<string, unknown>;
+    return {
+      groups: count(row.groups), rows: count(row.rows), memos: count(row.memos), files: count(row.files),
+      views: count(row.views), automations: count(row.automations), messaging: count(row.messaging),
+    };
+  }
+  async listDefaultTabDismissals(ctx: Ctx): Promise<DefaultTabDismissal[]> {
+    const q = await this.client.from("default_tab_dismissals").select("org_id,source,dismissed_at,dismissed_by").eq("org_id", ctx.org.id).order("dismissed_at", { ascending: false });
+    return many<DefaultTabDismissal>(q.data, q.error);
+  }
+  async clearDefaultTabDismissal(ctx: Ctx, source: string): Promise<boolean> {
+    const q = await this.client.rpc("clear_default_tab_dismissal", { p_org_id: ctx.org.id, p_source: source });
+    if (q.error) throw toBoardTrashError(q.error);
+    return q.data === true;
+  }
+  async listStoragePurgeQueue(ctx: Ctx, limit = 100): Promise<string[]> {
+    const q = await this.client.rpc("list_board_storage_purge_queue", { p_org_id: ctx.org.id, p_limit: limit });
+    if (q.error) throw toBoardTrashError(q.error);
+    return ((q.data ?? []) as unknown[]).filter((path): path is string => typeof path === "string");
+  }
+  async ackStoragePurge(ctx: Ctx, paths: readonly string[]): Promise<number> {
+    if (paths.length === 0) return 0;
+    const q = await this.client.rpc("ack_board_storage_purge", { p_org_id: ctx.org.id, p_paths: [...paths] });
+    if (q.error) throw toBoardTrashError(q.error);
+    return count(q.data);
+  }
   async setBoardDetailLayout(ctx: Ctx, id: string, layout: DetailLayoutEntry[]): Promise<Board | undefined> {
     const q = await this.client.from("boards").update({ detail_layout_jsonb: normalizeDetailLayout(layout), updated_at: new Date().toISOString() }).eq("org_id", ctx.org.id).eq("id", id).select("*").maybeSingle();
     if (q.error) throw new Error(q.error.message);

@@ -59,8 +59,14 @@ describe("boards UI consumes effective permissions", () => {
     expect(source).toContain('id="board-work-forms"');
     expect(source).toContain("groups.map((group) =>");
     expect(source).toContain("<GroupPresetMenu key={group.id}");
-    expect(source).toContain('canDeleteBoard && <section className="rounded-md border border-mw-error/40');
-    expect(source).toContain('<form action={deleteBoardAction}>');
+    // #849 탭 삭제(휴지통) 폼은 BoardTrashSection 안에 있다 — 여전히 danger 권한 뒤에서만 그린다.
+    expect(source).toContain("canDeleteBoard && <BoardTrashSection");
+    expect(source).toContain("deleteAction={deleteBoardAction}");
+    const trashSection = readFileSync(
+      join(__dirname, "..", "..", "components", "workspace-builder", "TabTrashSurface.tsx"),
+      "utf8",
+    );
+    expect(trashSection).toContain("<form action={deleteAction}");
     const table = readFileSync(join(__dirname, "..", "..", "components", "board", "GroupTable.tsx"), "utf8");
     expect(table).toContain("canManageColumns && !structureLocked ? (");
     expect(table).toContain("<ColumnContextMenu");

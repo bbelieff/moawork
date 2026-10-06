@@ -3,7 +3,12 @@ import type { Board } from "@/lib/boards/types";
 import type { BoardsRepo } from "@/lib/boards/store";
 import { NEW_LEAD_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { NEW_LEAD_TAB } from "@/lib/default-tabs/new-lead";
-import { ensureDefaultTabAdditive, readDefaultTabBoardDrift } from "@/lib/default-tabs/install";
+import {
+  ensureDefaultTabAdditive,
+  isDefaultTabDismissed,
+  isDefaultTabDismissedError,
+  readDefaultTabBoardDrift,
+} from "@/lib/default-tabs/install";
 import { assigneesFromMemberSummary } from "@/lib/boards/default-tab-assignees";
 import { loadMemberOrgSummaryWithClient } from "@/lib/auth/member-org-summary";
 import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
@@ -13,12 +18,15 @@ export type NewcustEntryResolution =
   | { kind: "ready"; boardId: string }
   | { kind: "missing" }
   | { kind: "conflict" }
-  | { kind: "permission" };
+  | { kind: "permission" }
+  /** #849 — 회사가 지운 기본 탭. 누구의 진입에서도 다시 만들지 않는다. */
+  | { kind: "dismissed" };
 
 type ExistingNewcustBoard =
   | { kind: "ready"; board: Board }
   | { kind: "missing" }
-  | { kind: "conflict" };
+  | { kind: "conflict" }
+  | { kind: "dismissed" };
 
 export const NEWCUST_BOARD_SOURCE = NEW_LEAD_TAB_SOURCE;
 const REPAIR_LEASE_ATTEMPTS = 40;
@@ -32,7 +40,10 @@ async function readExistingNewcustBoard(
   const matches = (await repo.listBoards(ctx)).filter(
     (board) => board.source === NEWCUST_BOARD_SOURCE,
   );
-  if (matches.length === 0) return { kind: "missing" };
+  // #849 — 회사가 지운 탭이면 «고칠 것» 이 아니다.
+  if (matches.length === 0) {
+    return await isDefaultTabDismissed(ctx, repo, NEWCUST_BOARD_SOURCE) ? { kind: "dismissed" } : { kind: "missing" };
+  }
   if (matches.length > 1) return { kind: "conflict" };
   return { kind: "ready", board: matches[0] };
 }
@@ -64,7 +75,7 @@ export async function repairNewcustBoardOnEntry(
   const repo = new SupabaseBoardsRepo(client);
   if (ctx.role !== "owner" && ctx.role !== "admin") {
     const existing = await readExistingNewcustBoard(ctx, repo);
-    if (existing.kind === "conflict") return existing;
+    if (existing.kind === "conflict" || existing.kind === "dismissed") return existing;
     return existing.kind === "ready" ? toEntryResolution(existing) : { kind: "permission" };
   }
 
@@ -77,7 +88,7 @@ export async function repairNewcustBoardOnEntry(
   ]);
   if (existingResult.status === "rejected") throw existingResult.reason;
   const existing = existingResult.value;
-  if (existing.kind === "conflict") return existing;
+  if (existing.kind === "conflict" || existing.kind === "dismissed") return existing;
   if (summaryResult.status === "rejected") throw summaryResult.reason;
   const summary = summaryResult.value;
   const assignees = assigneesFromMemberSummary(summary);
@@ -139,8 +150,13 @@ export async function repairNewcustBoardOnEntry(
   try {
     await renew();
     const before = await resolveExistingNewcustBoard(ctx, repo);
-    if (before.kind === "conflict") return before;
-    const ensured = await ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, repo, assignees);
+    if (before.kind === "conflict" || before.kind === "dismissed") return before;
+    // 방금 읽은 뒤 누가 지웠으면(경쟁) 만들지 않고 «지움» 으로 돌려준다.
+    const ensured = await ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, repo, assignees).catch((error: unknown) => {
+      if (isDefaultTabDismissedError(error)) return null;
+      throw error;
+    });
+    if (!ensured) return { kind: "dismissed" };
     await renew();
     return { kind: "ready", boardId: ensured.boardId };
   } finally {
