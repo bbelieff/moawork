@@ -67,6 +67,23 @@ export function resolveDetailLayout(
   return { entries: normalizeDetailLayout(groupLayout), inherited: false };
 }
 
+/**
+ * 한 행의 상세 배치 — «그 행이 실제로 속한 그룹» 으로 푼다 (#654).
+ *
+ * ★ 상세 패널의 추가·저장 폼은 `row.group_id` 로 쓴다. 그러니 읽기도 `row.group_id` 여야 한다.
+ *   상담 단계 보기처럼 행을 «가상 묶음» 으로 다시 묶는 화면은 묶음에 물리 그룹이 없어서
+ *   (block.group === null) 보드 기본 배치를 읽고 있었다. 그러면 그룹 배치에 저장된 필드는
+ *   DB 에는 있는데 그 화면에서는 영영 안 보인다 — 「추가」를 눌러도 아무 일도 없는 것처럼 보인다.
+ */
+export function resolveRowDetailLayout(
+  boardLayout: unknown,
+  groups: readonly { id: string; detail_layout_jsonb?: unknown }[],
+  groupId: string | null | undefined,
+): { entries: DetailLayoutEntry[]; inherited: boolean } {
+  const group = groupId ? groups.find((candidate) => candidate.id === groupId) : undefined;
+  return resolveDetailLayout(boardLayout, group?.detail_layout_jsonb);
+}
+
 export function moveDetailEntry(
   entries: readonly DetailLayoutEntry[],
   key: string,

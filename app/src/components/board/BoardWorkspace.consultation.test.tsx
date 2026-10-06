@@ -20,6 +20,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { BoardWorkspace } from "./BoardWorkspace";
+import { BoardActionErrorProvider } from "./BoardActionErrorContext";
 import { boardEntryFromRow } from "@/lib/consultation/boardView";
 
 let root: Root | null = null;
@@ -230,6 +231,72 @@ describe("BoardWorkspace consultation stage view", () => {
     await act(async () => root!.render(cloneElement(workspace("remote"), { rows: reverted, consultationByItem: map })));
     expect(host.textContent).toContain("1단계 · 계약금 입금 확인 (1)");
     expect(host.textContent).toContain("계약 확인 완료 (0)");
+  });
+
+  /*
+   * #654 (2026-10-06 운영) — 상담 보기 패널에서 「+ 상세 전용 필드 추가」를 눌러도 필드가 안 보였다.
+   *
+   * DB 에는 저장돼 있었다 — 추가 폼은 row.group_id(「💰 컨텍」 같은 실제 그룹)에 쓴다.
+   * 그런데 상담 단계 묶음은 가상이라 물리 그룹이 없어서 패널이 «보드 기본 배치»(빈 배열)를 읽었다.
+   * 쓰는 곳과 읽는 곳이 달랐다.
+   */
+  describe("#654 상담 보기 패널은 행의 실제 그룹 상세 배치를 읽는다", () => {
+    const groupWithField = {
+      ...group,
+      detail_layout_jsonb: [{ key: "detail_qa-654_확인용", source: "detail", label: "QA-654 확인용", type: "text" }],
+    };
+
+    async function openPanelText(element: ReturnType<typeof workspace>, title: string): Promise<HTMLElement> {
+      const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+      await act(async () => root!.render(element));
+      const entry = host.querySelector<HTMLButtonElement>(`button[aria-label="${title} 상담 확인 열기"]`);
+      expect(entry).not.toBeNull();
+      await act(async () => entry!.click());
+      const panel = document.querySelector<HTMLElement>('[role="dialog"][data-item-detail-backdrop]');
+      expect(panel).not.toBeNull();
+      return panel!;
+    }
+
+    it("비대면 상담 보기에서도 그룹 배치의 상세 전용 필드가 보인다", async () => {
+      const panel = await openPanelText(
+        cloneElement(workspace("remote"), { board: { ...board, detail_layout_jsonb: [] }, groups: [groupWithField] }),
+        "화상 상담 건",
+      );
+      const rail = panel.querySelector('[data-item-detail-info-rail]')?.textContent ?? "";
+      expect(rail).toContain("QA-654 확인용");
+      expect(rail).not.toContain("배치된 상세 필드가 없습니다");
+    });
+
+    it("전체 보기도 같은 필드를 보여준다 — 두 보기가 같은 배치를 읽는다", async () => {
+      const panel = await openPanelText(
+        cloneElement(workspace("all"), { board: { ...board, detail_layout_jsonb: [] }, groups: [groupWithField] }),
+        "화상 상담 건",
+      );
+      expect(panel.querySelector('[data-item-detail-info-rail]')?.textContent ?? "").toContain("QA-654 확인용");
+    });
+
+    it("그룹이 상속 중(null)이면 상담 보기도 보드 기본 배치를 읽는다", async () => {
+      const panel = await openPanelText(
+        cloneElement(workspace("remote"), {
+          board: { ...board, detail_layout_jsonb: [{ key: "detail_board_note", source: "detail", label: "보드 기본 메모", type: "text" }] },
+          groups: [{ ...group, detail_layout_jsonb: null }],
+        }),
+        "화상 상담 건",
+      );
+      expect(panel.querySelector('[data-item-detail-info-rail]')?.textContent ?? "").toContain("보드 기본 메모");
+    });
+
+    it("패널을 연 채 액션이 실패하면 사유를 패널 안에서 말한다 — 페이지 배너는 패널 뒤에 가려진다", async () => {
+      const panel = await openPanelText(
+        <BoardActionErrorProvider message="상세 배치를 저장하지 못했어요. 권한을 확인하고 새로고침한 뒤 다시 시도해 주세요.">
+          {workspace("remote")}
+        </BoardActionErrorProvider> as unknown as ReturnType<typeof workspace>,
+        "화상 상담 건",
+      );
+      const alert = panel.querySelector('[data-item-detail-action-error]');
+      expect(alert?.getAttribute("role")).toBe("alert");
+      expect(alert?.textContent).toContain("상세 배치를 저장하지 못했어요");
+    });
   });
 
 });
