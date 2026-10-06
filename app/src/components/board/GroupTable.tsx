@@ -201,6 +201,7 @@ export function BoardCell({
   workflowProgressKind,
   workflowTransitionAction,
   workflowMoveTargets,
+  canMoveRows = true,
   consultationEntry,
   consultationMembers,
   cellAction,
@@ -220,6 +221,8 @@ export function BoardCell({
   workflowTransitionAction?: ReactNode;
   /** 진행현황 선택지 중 행을 옮기는 것 → 목표 그룹(표시 전용, #839). */
   workflowMoveTargets?: WorkflowStageMoveTargets | null;
+  /** #845 — 행을 다른 그룹으로 옮길 권한. false 면 진행현황의 «보드 이동» 선택지가 비활성이다. */
+  canMoveRows?: boolean;
   /** 상담 진행 가상 칸의 항목 — 없으면 안내만 그린다(표시 전용, 쓰기 없음). */
   consultationEntry?: ConsultationBoardEntry | null;
   /** 상담 담당자 선택지 — 확인 팝오버의 담당자 목록에 쓴다. */
@@ -297,6 +300,7 @@ export function BoardCell({
         cellAction={cellAction}
         bulkIntercept={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
         moveTargets={workflowMoveTargets}
+        canMoveRows={canMoveRows}
       />
     );
   }
@@ -631,6 +635,7 @@ export function GroupTable({
   renderRowAction,
   workflowProgressKind = null,
   workflowMoveTargets = null,
+  canMoveRows = true,
   sameTitleCounts,
   renderWorkflowTransition,
   consultationByItem,
@@ -729,6 +734,11 @@ export function GroupTable({
   workflowProgressKind?: WorkflowProgressKind | null;
   /** 진행현황 선택지 → 목표 그룹. 원본 단계 컬럼의 이동 규칙에서 만든 표시 전용 맵(#839). */
   workflowMoveTargets?: WorkflowStageMoveTargets | null;
+  /**
+   * #845 — 행을 다른 그룹으로 옮길 권한(보드의 canMoveRows). 정렬·저장 중 같은 «지금 못 끄는»
+   * 상태가 아니라 권한만 뜻한다 — 진행현황 값으로 옮기는 것은 정렬과 무관하다.
+   */
+  canMoveRows?: boolean;
   /**
    * 계약업체 실무 전용 — 보드에 보이는 행 중 같은 제목(=회사명)이 몇 건인지.
    * 2건 이상이면 제목 옆에 «같은 회사 N건» 을 단다(표시 전용, 데이터·제목은 그대로).
@@ -1293,6 +1303,7 @@ export function GroupTable({
                           workflowProgressKind={workflowProgressKind}
                           workflowTransitionAction={renderWorkflowTransition?.(row)}
                           workflowMoveTargets={workflowMoveTargets}
+                          canMoveRows={canMoveRows}
                           consultationEntry={consultationByItem?.[row.id] ?? null}
                           consultationMembers={consultationMembers}
                           cellAction={cellAction}

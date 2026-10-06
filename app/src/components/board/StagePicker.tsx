@@ -14,6 +14,13 @@
  *   · 이동 규칙이 있는 단계는 «보드 이동», 없는 단계는 «상태만 바꾸기 (보드 그대로)» 로
  *     나눠 보여 준다 — 어느 선택이 행을 옮기는지 고르기 전에 안다.
  *   · 표시만 이모지를 걷는다(presentLabel). 제출값은 언제나 원래 선택지 id 다.
+ *   · 점·칩 색은 «옮겨 갈 그룹의 톤» 이다(#845) — 그룹 띠와 같은 색이라 단계 = 그룹이 눈에 보인다.
+ *     옮겨 갈 그룹이 없는 단계만 상태 팔레트 색을 쓴다.
+ *   · 행을 옮길 권한이 없으면(canMoveRows=false) 다른 그룹으로 옮기는 선택지는 «권한 없음» 으로
+ *     비활성이다 — 서버도 그 값을 저장하지 않고 사유를 돌려준다(같은 답).
+ *   · 접근성(#845 검토 후속): 검색칸은 role=combobox + aria-expanded/aria-autocomplete, 결과 없음
+ *     안내는 listbox 밖의 status, 활성 행이 없으면 Enter 는 아무것도 하지 않는다(검색 결과가 0건일 때
+ *     «다음 업무로 이동» 이 Enter 한 번에 열리지 않게), Home/End 는 처음/끝 선택지로 간다.
  *
  * 저장·전이·일괄 가로채기는 이 컴포넌트가 하지 않는다 — `onSelect`/`onTransfer` 로 부모
  * (WorkflowProgressCell)에 넘긴다. 부모가 기존 폼 계약(hidden value + requestSubmit)을 지킨다.
@@ -40,13 +47,24 @@ import {
   type BoardTransientSurfaceDetail,
 } from "./BoardAnchoredMenu";
 
-/** 선택지 id → 이 보드에서 옮겨 갈 그룹. 없으면 그 선택은 값만 바꾼다. */
-export type StageMoveTarget = Readonly<{ groupId: string; groupName: string | null }>;
+/**
+ * 선택지 id → 이 보드에서 옮겨 갈 그룹. 없으면 그 선택은 값만 바꾼다.
+ * accent 는 그 그룹의 톤 색(CSS) — 없으면 상태 팔레트 색.
+ */
+export type StageMoveTarget = Readonly<{ groupId: string; groupName: string | null; accent?: string | null }>;
 
 type PickerRow =
-  | Readonly<{ kind: "option"; option: FieldOption; label: string; color: string; hint: string | null }>
-  | Readonly<{ kind: "clear" }>
-  | Readonly<{ kind: "transfer" }>;
+  | Readonly<{ kind: "option"; option: FieldOption; label: string; color: string; hint: string | null; disabled: boolean }>
+  | Readonly<{ kind: "clear"; disabled: false }>
+  | Readonly<{ kind: "transfer"; disabled: false }>;
+
+/** 다른 그룹으로 옮기는 선택지를 고를 수 없을 때의 안내(서버 거절과 같은 뜻). */
+export const STAGE_MOVE_LOCKED_HINT = "행을 다른 그룹으로 옮기는 단계예요. 전체 행 권한이 있는 사람만 바꿀 수 있어요.";
+
+/** 선택지의 점·칩 색 — 옮겨 갈 그룹의 톤이 있으면 그것, 없으면 상태 팔레트. */
+function optionColor(option: FieldOption, target: StageMoveTarget | null | undefined): string {
+  return target?.accent ?? resolveStatusColor(option);
+}
 
 type PickerSection = Readonly<{ key: string; title: string; rows: readonly PickerRow[] }>;
 
@@ -90,6 +108,7 @@ export function StagePicker({
   currentGroupId = null,
   transitionLabel,
   disabled = false,
+  canMoveRows = true,
   describedBy,
   searchClassName,
   onSelect,
@@ -107,6 +126,8 @@ export function StagePicker({
   currentGroupId?: string | null;
   transitionLabel: string;
   disabled?: boolean;
+  /** false 면 다른 그룹으로 옮기는 선택지를 비활성으로 보여 준다(보드의 행 이동 권한). */
+  canMoveRows?: boolean;
   describedBy?: string;
   /** 팝오버 안 검색칸 서식 — 보드 표 공통 컨트롤 서식을 부모가 넘긴다. */
   searchClassName: string;
@@ -121,7 +142,8 @@ export function StagePicker({
   const searchRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
+  /** 키보드 활성 행(평평한 순번). null 이면 활성 행이 없다 — Enter 가 아무것도 하지 않는다. */
+  const [active, setActive] = useState<number | null>(null);
   const scope = `board:${boardId}`;
   const owner = `stage-picker:${itemId}`;
 
@@ -131,19 +153,20 @@ export function StagePicker({
   }, [options]);
 
   const current = options.find((option) => option.id === value) ?? null;
-  const currentColor = current ? resolveStatusColor(current) : null;
+  const currentColor = current ? optionColor(current, moveTargets?.get(current.id)) : null;
   const currentLabel = value === ""
     ? "미선택"
     : current
       ? displayById.get(current.id) ?? current.label
       : presentLabel(fallbackLabel);
 
-  const sections = useMemo<PickerSection[]>(() => {
-    const needle = normalizeLabelKey(query);
+  const sectionsFor = useCallback((search: string): PickerSection[] => {
+    const needle = normalizeLabelKey(search);
     const toRow = (option: FieldOption): PickerRow => {
       const target = moveTargets?.get(option.id) ?? null;
+      const movesAway = Boolean(target && target.groupId !== currentGroupId);
       const hint = target
-        ? target.groupId === currentGroupId
+        ? !movesAway
           ? "지금 그룹"
           : target.groupName ? presentLabel(target.groupName) : "다른 그룹"
         : null;
@@ -151,13 +174,14 @@ export function StagePicker({
         kind: "option",
         option,
         label: displayById.get(option.id) ?? option.label,
-        color: resolveStatusColor(option),
+        color: optionColor(option, target),
         hint,
+        disabled: movesAway && !canMoveRows,
       };
     };
     const visible = options.filter((option) => needle === ""
       || normalizeLabelKey(`${labelSearchText(option.label)} ${displayById.get(option.id) ?? ""} ${option.id}`).includes(needle));
-    const clear: PickerRow[] = value !== "" && needle === "" ? [{ kind: "clear" }] : [];
+    const clear: PickerRow[] = value !== "" && needle === "" ? [{ kind: "clear", disabled: false }] : [];
     const stageSections: PickerSection[] = moveTargets
       ? [
           { key: "move", title: "보드 이동", rows: visible.filter((option) => moveTargets.has(option.id)).map(toRow) },
@@ -166,9 +190,10 @@ export function StagePicker({
       : [{ key: "stage", title: "보드 안 단계", rows: [...visible.map(toRow), ...clear] }];
     return [
       ...stageSections.filter((section) => section.rows.length > 0),
-      { key: "transfer", title: "다음 업무로 이동", rows: [{ kind: "transfer" }] },
+      { key: "transfer", title: "다음 업무로 이동", rows: [{ kind: "transfer", disabled: false }] },
     ];
-  }, [currentGroupId, displayById, moveTargets, options, query, value]);
+  }, [canMoveRows, currentGroupId, displayById, moveTargets, options, value]);
+  const sections = useMemo(() => sectionsFor(query), [query, sectionsFor]);
 
   const rows = useMemo(() => sections.flatMap((section) => section.rows), [sections]);
   /** 섹션별 행에 «평평한» 순번을 붙인다 — 키보드 이동·aria-activedescendant 가 같은 번호를 쓴다. */
@@ -180,6 +205,15 @@ export function StagePicker({
     }));
   }, [sections]);
   const stageMatches = rows.some((row) => row.kind === "option");
+  /** 고를 수 있는 행의 순번들(비활성 선택지 제외) — 키보드 이동은 이 안에서만 돈다. */
+  const enabledIndexes = useMemo(
+    () => rows.flatMap((row, index) => (row.disabled ? [] : [index])),
+    [rows],
+  );
+  const rowId = (index: number) => `${baseId}-row-${index}`;
+  const activeIndex = active !== null && active < rows.length && !rows[active].disabled ? active : null;
+  const statusId = `${baseId}-status`;
+  const noStageMessage = query.trim() !== "" && !stageMatches ? `「${query.trim()}」 단계가 없어요` : "";
 
   const close = useCallback((restoreFocus: boolean) => {
     setOpen(false);
@@ -221,31 +255,51 @@ export function StagePicker({
     };
   }, [close, open, owner, scope]);
 
+  /** 검색어를 바꾼 뒤의 활성 행 — 첫 «단계» 행. 단계가 하나도 안 맞으면 활성 행 없음. */
+  function firstStageIndex(candidates: readonly PickerRow[]): number | null {
+    const index = candidates.findIndex((row) => (row.kind === "option" || row.kind === "clear") && !row.disabled);
+    return index < 0 ? null : index;
+  }
+
   function openPicker() {
     if (disabled) return;
     claimBoardTransientSurface(scope, owner);
     setQuery("");
-    const currentIndex = rows.findIndex((row) => row.kind === "option" && row.option.id === value);
-    setActive(Math.max(0, currentIndex));
+    const all = sectionsFor("").flatMap((section) => section.rows);
+    const currentIndex = all.findIndex((row) => row.kind === "option" && row.option.id === value && !row.disabled);
+    setActive(currentIndex >= 0 ? currentIndex : firstStageIndex(all));
     setOpen(true);
   }
 
   function choose(row: PickerRow) {
+    if (row.disabled) return;
     close(true);
     if (row.kind === "transfer") onTransfer();
     else if (row.kind === "clear") onSelect("");
     else onSelect(row.option.id);
   }
 
+  function moveActive(step: 1 | -1) {
+    if (enabledIndexes.length === 0) return;
+    const at = activeIndex === null ? -1 : enabledIndexes.indexOf(activeIndex);
+    const next = at < 0
+      ? (step === 1 ? 0 : enabledIndexes.length - 1)
+      : (at + step + enabledIndexes.length) % enabledIndexes.length;
+    setActive(enabledIndexes[next]);
+  }
+
   function onSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      if (rows.length === 0) return;
-      const step = event.key === "ArrowDown" ? 1 : -1;
-      setActive((previous) => (Math.min(previous, rows.length - 1) + step + rows.length) % rows.length);
+      moveActive(event.key === "ArrowDown" ? 1 : -1);
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      if (enabledIndexes.length === 0) return;
+      setActive(event.key === "Home" ? enabledIndexes[0] : enabledIndexes[enabledIndexes.length - 1]);
     } else if (event.key === "Enter") {
       event.preventDefault();
-      const row = rows[Math.min(active, rows.length - 1)];
+      // 활성 행이 없으면(예: 검색 결과 0건) 아무것도 하지 않는다 — 전이 확인이 우연히 열리지 않게.
+      const row = activeIndex === null ? null : rows[activeIndex];
       if (row) choose(row);
     } else if (event.key === "Escape") {
       event.preventDefault();
@@ -257,8 +311,6 @@ export function StagePicker({
     }
   }
 
-  const rowId = (index: number) => `${baseId}-row-${index}`;
-  const activeIndex = rows.length === 0 ? -1 : Math.min(active, rows.length - 1);
 
   return (
     <>
@@ -316,13 +368,18 @@ export function StagePicker({
               type="search"
               value={query}
               placeholder="단계 검색"
+              role="combobox"
               aria-label="진행 단계 검색"
+              aria-expanded="true"
+              aria-autocomplete="list"
               aria-controls={listboxId}
-              aria-activedescendant={activeIndex >= 0 ? rowId(activeIndex) : undefined}
+              aria-describedby={statusId}
+              aria-activedescendant={activeIndex !== null ? rowId(activeIndex) : undefined}
               autoComplete="off"
               onChange={(event) => {
-                setQuery(event.target.value);
-                setActive(0);
+                const next = event.target.value;
+                setQuery(next);
+                setActive(firstStageIndex(sectionsFor(next).flatMap((section) => section.rows)));
               }}
               onKeyDown={onSearchKeyDown}
               className={`${searchClassName} mb-1 shrink-0 font-normal`}
@@ -350,12 +407,14 @@ export function StagePicker({
                         id={rowId(index)}
                         role="option"
                         aria-selected={selected}
+                        aria-disabled={row.disabled || undefined}
+                        title={row.disabled ? STAGE_MOVE_LOCKED_HINT : undefined}
                         data-active={index === activeIndex || undefined}
                         data-stage-option={row.kind === "option" ? row.option.id : row.kind}
                         onMouseDown={(event) => event.preventDefault()}
-                        onMouseEnter={() => setActive(index)}
+                        onMouseEnter={() => { if (!row.disabled) setActive(index); }}
                         onClick={() => choose(row)}
-                        className="flex min-h-8 cursor-pointer items-center gap-2 rounded-[var(--mw-r-2)] px-2 text-[length:var(--fs-13)] text-mw-fg data-[active=true]:bg-mw-tint-blue"
+                        className={`flex min-h-8 items-center gap-2 rounded-[var(--mw-r-2)] px-2 text-[length:var(--fs-13)] text-mw-fg data-[active=true]:bg-mw-tint-blue ${row.disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
                       >
                         {row.kind === "option" ? (
                           <>
@@ -363,6 +422,9 @@ export function StagePicker({
                             <span className={`min-w-0 flex-1 truncate ${selected ? "font-semibold" : ""}`}>{row.label}</span>
                             {row.hint ? (
                               <span className="max-w-[45%] shrink-0 truncate text-[length:var(--fs-11)] text-mw-sub">→ {row.hint}</span>
+                            ) : null}
+                            {row.disabled ? (
+                              <span data-stage-locked="" className="shrink-0 text-[length:var(--fs-11)] text-mw-sub">권한 없음</span>
                             ) : null}
                             {selected ? <span className="text-mw-primary"><CheckIcon /></span> : null}
                           </>
@@ -376,10 +438,15 @@ export function StagePicker({
                   })}
                 </div>
               ))}
-              {query.trim() !== "" && !stageMatches ? (
-                <p role="status" className="px-2 py-1.5 text-[length:var(--fs-12)] text-mw-sub">「{query.trim()}」 단계가 없어요</p>
-              ) : null}
             </div>
+            {/* listbox 의 자식은 option/group 만 허용된다 — 안내는 밖에 둔다. 영역은 늘 두고 글만 바꾼다. */}
+            <p
+              id={statusId}
+              role="status"
+              className={noStageMessage ? "px-2 py-1.5 text-[length:var(--fs-12)] text-mw-sub" : "sr-only"}
+            >
+              {noStageMessage}
+            </p>
           </div>
         </BoardDialogPortal>
       ) : null}

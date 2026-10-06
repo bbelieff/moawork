@@ -71,11 +71,14 @@ describe("workflow progress presentation", () => {
     const presented = presentWorkflowProgressColumns("work", [raw]).at(-1);
     expect(presented?.move_rule_jsonb).toBeNull();
 
-    const targets = workflowStageMoveTargets("work", [raw], [{ id: "g-review", name: "🔂 심사 중" }]);
+    const targets = workflowStageMoveTargets("work", [raw], [{ id: "g-review", name: "🔂 심사 중", accent: "var(--mw-tab-a-4)" }]);
+    // 보드에 없는 그룹(g-gone)을 가리키는 규칙은 이동 대상이 아니다 — 서버도 값만 저장한다(#845).
     expect([...targets.entries()]).toEqual([
-      ["심사 중", { groupId: "g-review", groupName: "🔂 심사 중" }],
-      ["📂소진공 혁신성장 대기", { groupId: "g-gone", groupName: null }],
+      ["심사 중", { groupId: "g-review", groupName: "🔂 심사 중", accent: "var(--mw-tab-a-4)" }],
     ]);
+    expect(targets.has("📂소진공 혁신성장 대기")).toBe(false);
+    // 톤을 모르면 accent 는 null(선택지 색은 상태 팔레트로 돌아간다).
+    expect(workflowStageMoveTargets("work", [raw], [{ id: "g-review", name: "심사 중" }]).get("심사 중")?.accent).toBeNull();
     // 규칙이 없는 선택지(값만 바뀌는 단계)는 맵에 없다.
     expect(targets.has("관리중")).toBe(false);
     expect(workflowStageMoveTargets("work", [column("progress_status")], []).size).toBe(0);

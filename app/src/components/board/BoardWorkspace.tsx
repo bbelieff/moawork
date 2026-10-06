@@ -104,6 +104,7 @@ import {
   workflowStageMoveTargets,
 } from "@/lib/workflow/progress";
 import { presentLabel, presentLabels } from "@/lib/boards/label-presentation";
+import { groupToneAccent, resolveGroupTones } from "@/lib/boards/group-tone";
 import {
   NEW_LEAD_SAVED_FILTER_PROJECTION,
   presentNewLeadSavedFilters,
@@ -455,11 +456,25 @@ export function BoardWorkspace({
   const [selectionScope, setSelectionScope] = useState(() => selectionScopeKey(board.id, `${savedViewId ?? savedViewActive}|${consultationView}`));
   const currentSelectionScope = selectionScopeKey(board.id, `${savedViewId ?? savedViewActive}|${consultationView}`);
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
+  /*
+   * #845 (대표 지시 2026-10-06, 승인 방향 목업 Main.dc) — 보이는 행이 0건인 그룹은 끝의 컨트롤
+   * 하나(«빈 보드 N개 보기»)로 접는다. 펼치면 제자리 순서로 다시 나오고, 행을 끄는 동안에는
+   * 놓을 자리로 모두 나온다. 이 세션에 새로 생긴 그룹은 접지 않는다(만들자마자 사라지지 않게).
+   */
+  const [emptyGroupsOpen, setEmptyGroupsOpen] = useState(false);
+  const [sessionGroupBaseline, setSessionGroupBaseline] = useState(() => ({
+    boardId: board.id,
+    ids: new Set(groups.map((group) => group.id)),
+  }));
+  if (sessionGroupBaseline.boardId !== board.id) {
+    setSessionGroupBaseline({ boardId: board.id, ids: new Set(groups.map((group) => group.id)) });
+  }
   if (selectionScope !== currentSelectionScope) {
     setSelectionScope(currentSelectionScope);
     setSelectedIds(new Set());
     setBulkDialog(null);
     setBulkNotice(null);
+    setEmptyGroupsOpen(false);
   }
   // Shift-범위 기준점 — 보이는 순서에서의 마지막 토글 위치.
   const lastToggledRef = useRef<string | null>(null);
@@ -613,14 +628,32 @@ export function BoardWorkspace({
   }, [assigneeLabels, blocks, displayFilters, filterProjection, searchColumns, workflowProgressKind]);
 
   /**
+   * #845 (대표 지시 2026-10-06) — 그룹 톤: 탭의 메인 2색 × 깊이. 블록 키별로 한 번 정하고
+   * 그룹 띠·행 첫 칸 줄·진행현황 선택지 점이 모두 같은 톤을 쓴다(단계 색 = 그룹 띠 색).
+   * «그룹 없음» 묶음은 톤이 없다(중립색).
+   */
+  const groupTones = useMemo(
+    () => resolveGroupTones(
+      board.source,
+      blocks.filter((block) => block.key !== UNGROUPED_KEY).map((block) => ({ key: block.key, name: block.name })),
+    ),
+    [blocks, board.source],
+  );
+
+  /**
    * 진행현황 선택지 중 «행을 옮기는» 것 → 목표 그룹 (#839). 화면용 진행현황 열은 이동 규칙을
    * 비우므로 원본 단계 컬럼에서 읽는다. 단계별 가상 묶음(신규리드 단계 보기·상담 단계 보기)은
-   * 물리 그룹을 보여 주지 않으므로 나누지 않는다.
+   * 물리 그룹을 보여 주지 않으므로 나누지 않는다. 목표 그룹의 톤(accent)을 함께 실어 선택지
+   * 점이 그 그룹 띠와 같은 색이 되게 한다(#845). 보드에 없는 그룹을 가리키는 규칙은 뺀다.
    */
   const workflowMoveTargets = useMemo(() => {
     if (!workflowProgressKind || isNewLeadStageView || isConsultationStageView) return null;
-    return workflowStageMoveTargets(workflowProgressKind, physicalActiveColumns, orderedGroups);
-  }, [isConsultationStageView, isNewLeadStageView, orderedGroups, physicalActiveColumns, workflowProgressKind]);
+    const toned = orderedGroups.map((group) => {
+      const tone = groupTones.get(group.id);
+      return { id: group.id, name: group.name, accent: tone ? groupToneAccent(tone) : null };
+    });
+    return workflowStageMoveTargets(workflowProgressKind, physicalActiveColumns, toned);
+  }, [groupTones, isConsultationStageView, isNewLeadStageView, orderedGroups, physicalActiveColumns, workflowProgressKind]);
 
   /** 그룹 이름의 표시 전용 정리(앞머리 이모지) — 이모지만 다른 이름끼리는 원문을 지킨다. */
   const blockDisplayNames = useMemo(() => {
@@ -973,6 +1006,26 @@ export function BoardWorkspace({
     persistRowMove(rowId,targetGroupId,null,target?.rows.length??0);
   };
 
+  /*
+   * 블록별 «보이는 행» 과 빈 그룹 접기(#845). 접는 것은 화면 배치뿐이다 — 그룹·행·순서·합계는
+   * 그대로다. 접지 않는 것:
+   *   · 첫 블록 — 새 행이 들어오는 자리(start_company_work 의 첫 그룹)라 늘 보인다.
+   *   · 이 세션에 새로 생긴 그룹 — 만들자마자 사라지지 않게(이름 바꾸기·행 추가가 바로 된다).
+   *   · 가상 단계 묶음(상담 단계 보기·신규리드 단계 보기) — 고정 단계표라 «(0)» 도 정보다.
+   */
+  const blockViews = blocks.map((block, index) => {
+    // 검색(q)은 인가된 전체 active 컬럼을 대상으로 삼는다 — UI 열 숨김은 권한 숨김이 아니다.
+    const visibleRows = applyFilters(block.rows, searchColumns, displayFilters, filterProjection, assigneeLabels);
+    const createdThisSession = Boolean(block.group && !sessionGroupBaseline.ids.has(block.group.id));
+    const foldable = index > 0 && block.group !== null && visibleRows.length === 0 && !createdThisSession;
+    return { block, visibleRows, foldable };
+  });
+  const foldedEmptyCount = blockViews.filter((view) => view.foldable).length;
+  // 행을 끄는 동안에는 빈 그룹도 놓을 자리로 보여 준다.
+  const shownBlockViews = emptyGroupsOpen || dragRowId !== null
+    ? blockViews
+    : blockViews.filter((view) => !view.foldable);
+
   return (
     /*
      * 원칙 2·8 — 인위적 max-width 없이 뷰포트 폭을 그대로 쓴다.
@@ -1109,7 +1162,7 @@ export function BoardWorkspace({
           그룹이 없습니다. 아래 «그룹 추가»로 첫 그룹을 만드세요.
         </p>
       ) : (
-        blocks.map((block) => {
+        shownBlockViews.map(({ block, visibleRows }) => {
           const storedOrder = canonicalNewLead
             ? presentNewLeadColumnKeys(optimisticOrder[durableLayoutKey(block.key)])
             : optimisticOrder[durableLayoutKey(block.key)];
@@ -1118,8 +1171,6 @@ export function BoardWorkspace({
           // 서버의 sort_order와 그룹별 사용자 배치를 정본으로 삼는다. 기본 신규리드 순서는
           // revision installer가 안전하게 재배치하며, 회사가 직접 바꾼 순서는 여기서 덮지 않는다.
           const shown = columnsForBlock(block.key);
-          // 검색(q)은 인가된 전체 active 컬럼을 대상으로 삼는다 — UI 열 숨김은 권한 숨김이 아니다.
-          const visibleRows = applyFilters(block.rows, searchColumns, displayFilters, filterProjection, assigneeLabels);
           const summaryScope = savedViewActive
             ? { kind: "saved-view" as const, totalCount: block.rows.length }
             : activeFilterCount(displayFilters) > 0
@@ -1155,8 +1206,7 @@ export function BoardWorkspace({
               key={block.key}
               name={block.name}
               displayName={blockDisplayNames.get(block.key)}
-              color={block.color}
-              colorKey={block.group?.id ?? (block.key === UNGROUPED_KEY ? null : block.key)}
+              tone={groupTones.get(block.key) ?? null}
               columns={shown}
               rows={visibleRows}
               presetName={groupPresetName(board.name, block.name)}
@@ -1254,6 +1304,7 @@ export function BoardWorkspace({
                 cellAction={cellAction}
                 workflowProgressKind={workflowProgressKind}
                 workflowMoveTargets={workflowMoveTargets}
+                canMoveRows={canMoveRows}
                 sameTitleCounts={sameTitleCounts}
                 onColumnDrop={(draggedKey, targetKey) =>
                   handleColumnDrop(block.key, resolvedColumns, draggedKey, targetKey)
@@ -1330,6 +1381,18 @@ export function BoardWorkspace({
           );
         })
       )}
+      {foldedEmptyCount > 0 ? (
+        <div className="sticky left-0 self-start" data-empty-groups-toggle="">
+          <button
+            type="button"
+            aria-expanded={emptyGroupsOpen}
+            onClick={() => setEmptyGroupsOpen((open) => !open)}
+            className="h-8 rounded-[var(--mw-r-2)] px-3 text-[length:var(--fs-13)] text-mw-sub outline-none hover:bg-mw-card hover:text-mw-fg focus-visible:ring-2 focus-visible:ring-mw-primary"
+          >
+            {emptyGroupsOpen ? "빈 보드 접기" : `빈 보드 ${foldedEmptyCount}개 보기`}
+          </button>
+        </div>
+      ) : null}
       </BoardScrollViewport>
     </div>
   );

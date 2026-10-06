@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { newLeadStageLabel } from "@/lib/new-lead/stage-presentation";
-import { useId, useRef, useState, type ReactNode } from "react";
+import { useId, useOptimistic, useRef, useState, type ReactNode } from "react";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { setCellAction } from "@/app/(app)/boards/actions";
 import {
@@ -27,6 +27,7 @@ export function WorkflowProgressCell({
   cellAction,
   bulkIntercept,
   moveTargets,
+  canMoveRows = true,
 }: Readonly<{
   boardId: string;
   row: ItemWithValues;
@@ -46,6 +47,11 @@ export function WorkflowProgressCell({
    * 이동 규칙에서 만든 표시 전용 정보다. 없으면 한 묶음(보드 안 단계)으로 보여 준다.
    */
   moveTargets?: WorkflowStageMoveTargets | null;
+  /**
+   * #845 — 이 사람이 행을 다른 그룹으로 옮길 수 있는가(보드의 행 이동 권한). false 면 다른 그룹으로
+   * 옮기는 선택지를 «권한 없음» 으로 비활성 표시한다. 서버도 같은 경우를 거절한다.
+   */
+  canMoveRows?: boolean;
 }>) {
   const spec = workflowProgressSpec(kind);
   const current = typeof row.values[spec.stageColumnKey] === "string"
@@ -62,13 +68,19 @@ export function WorkflowProgressCell({
   //   제출·전이 대화·일괄 가로채기 계약은 그대로다: hidden value 에 고른 id 를 직접 쓰고
   //   form.requestSubmit() — 팝오버는 body 로 포털되므로 폼 밖이다(LabelCombobox 와 같은 방식).
   const stageOptions = column.options_jsonb?.options ?? [];
-  // 낙관적 표시 — 저장값이 바뀌거나(이동·재조회) 새 오류가 오면 버리고 저장값을 다시 보여 준다.
-  const [optimistic, setOptimistic] = useState<{ base: string; value: string; error: string | null } | null>(null);
-  if (optimistic && (optimistic.base !== current || optimistic.error !== (error ?? null))) setOptimistic(null);
-  const shown = optimistic && optimistic.base === current && optimistic.error === (error ?? null)
-    ? optimistic.value
-    : current;
+  // 낙관적 표시 — «액션 수명» 에 묶는다(#845 검토 후속). 폼 액션이 진행되는 동안만 고른 값을
+  // 보여 주고, 액션이 끝나면 React 가 저장값(current)으로 되돌린다. 성공하면 같은 전환에서
+  // 서버 재조회가 current 를 새 값으로 바꾸고, 거절되면 옛 저장값이 그대로 보인다.
+  // (전에는 «오류 문자열이 바뀌었는가» 로 판단해서, 같은 문구로 두 번 연속 거절되면 저장되지
+  // 않은 단계가 칩에 남았다.)
+  const action = cellAction ?? setCellAction;
+  const [shown, showOptimistic] = useOptimistic(current, (_saved: string, next: string) => next);
   const fallbackLabel = kind === "new-lead" ? newLeadStageLabel(shown) : shown;
+  async function submitStage(formData: FormData) {
+    const next = formData.get("value");
+    if (typeof next === "string") showOptimistic(next);
+    await action(formData);
+  }
 
   function selectStage(next: string) {
     if (bulkIntercept?.(next)) return;
@@ -80,13 +92,12 @@ export function WorkflowProgressCell({
     const input = valueInput.current;
     if (!input?.form || next === shown) return;
     input.value = next;
-    setOptimistic({ base: current, value: next, error: error ?? null });
     input.form.requestSubmit();
   }
 
   return (
     <div className="min-w-40">
-      <form action={cellAction ?? setCellAction}>
+      <form action={submitStage}>
         <input type="hidden" name="boardId" value={boardId} />
         <input type="hidden" name="itemId" value={row.id} />
         <input type="hidden" name="columnKey" value={spec.stageColumnKey} />
@@ -102,6 +113,7 @@ export function WorkflowProgressCell({
           currentGroupId={row.group_id}
           transitionLabel={spec.transitionLabel}
           disabled={readOnly}
+          canMoveRows={canMoveRows}
           describedBy={descriptionId}
           searchClassName={BOARD_TABLE_CONTROL}
           onSelect={selectStage}
@@ -147,7 +159,7 @@ export function WorkflowProgressCell({
             <NewLeadPipelineRepair key={row.id} itemId={row.id} available={repairAvailable} />
           ) : null}
           {kind === "new-lead" ? (
-            <form action={cellAction ?? setCellAction} className="mt-4 flex justify-end gap-2">
+            <form action={action} className="mt-4 flex justify-end gap-2">
               <input type="hidden" name="boardId" value={boardId} />
               <input type="hidden" name="itemId" value={row.id} />
               <input type="hidden" name="columnKey" value={spec.stageColumnKey} />

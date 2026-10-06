@@ -7,16 +7,20 @@
  * 여백을 두고, 헤더 밴드에 그룹색을 칠한다. 밴드 좌측은 [접기][그룹명][건수], 우측은
  * [합계][프리셋 칩] — 좌우가 붙지 않게 `justify-between` 으로 갈라 둔다.
  *
- * 색은 `board_groups.color`(데이터)에서 온다. 컴포넌트가 hex 를 고르지 않으므로 토큰 규약
- * (globals.css: arbitrary hex 금지)에 걸리지 않는다. 색이 없는 그룹은 그룹 id 로 고정된
- * 팔레트 색을 쓴다(groupAccentColor — 이름·순서가 바뀌어도 같은 색). id 도 없는 «그룹 없음»
- * 묶음만 중립색이다. 밴드 배경은 `color-mix` 로 같은 색의 옅은 틴트를 만들어 다크 테마에서도
- * 글자가 살아남고, 제목은 그룹색을 글자색에 섞어 밝은 색(노랑·연두)에서도 AA 명암비를 지킨다.
+ * 색은 «그룹 톤» 에서 온다(#845 · 대표 지시 2026-10-06, 승인 방향 Palette.dc). 탭마다 메인 2색
+ * (그 탭 강조 그라디언트의 두 스톱)이 있고, 그룹은 깊이로 구별한다 — 본 진행(색 1)은 단계가
+ * 나아갈수록 깊어지고, 곁가지는 색 2, 멈춘 상태(불가·거절·취소)는 회색이다. 어느 축의 몇 단계인지는
+ * 보드가 `resolveGroupTones`(lib/boards/group-tone.ts)로 정해 `tone` 으로 넘긴다. 실제 색은
+ * `--mw-tab-*` 토큰이라 컴포넌트가 hex 를 고르지 않는다(globals.css: arbitrary hex 금지).
+ * 톤이 없는 «그룹 없음» 묶음만 중립색이다.
  *
- * 2026-10-06 (#839 · 대표 지시): v17(#761)이 이 띠를 8px 점으로 줄였던 것을 되돌렸다. 띠는
- * 인라인으로 그린다 — html 단계 변수는 그룹마다 다른 색을 참조할 수 없다. 섹션에
- * `--mw-group-accent` 를 달아 행 첫 칸의 그룹색 줄(globals.css)도 같은 색을 쓴다.
- * 제목은 표시에서만 앞머리 이모지를 걷는다(presentLabel). 이름 편집은 원문 그대로다.
+ * ★ 저장된 `board_groups.color`(먼데이에서 옮겨 온 색)는 지금 쓰지 않는다 — 같은 탭에서 그룹마다
+ *   제각각인 색이 «어디가 본 진행인가» 를 가렸다. 사용자가 그룹 색을 직접 고르는 기능(#839)이
+ *   들어오면 그 명시 선택이 이 자동 톤을 덮는 override 가 된다. `color` prop 은 그 자리다.
+ *
+ * 띠 = 톤 16% 틴트 + 3px 레일 + 톤을 글자색에 섞은 진한 제목(라이트는 진한 잉크, 다크는 밝은
+ * 잉크 — 어느 쪽이든 AA). 섹션에 `--mw-group-accent` 를 달아 행 첫 칸의 줄(globals.css)과
+ * 진행현황 칩이 같은 색을 쓴다. 제목은 표시에서만 앞머리 이모지를 걷는다(presentLabel).
  *
  * 접기 상태는 로컬 state 로 든다(UI목업_신규업체보드_v5.md 3-4). `<details open>` 을 리터럴
  * `true` 로만 넘기면 React 가 매 리렌더마다 그 값을 다시 반영해 — 검색어 입력 등 상위 상태가
@@ -26,14 +30,13 @@
 
 import { useState, type CSSProperties, type ReactNode } from "react";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
-import { groupAccentColor } from "@/lib/boards/status-palette";
+import { groupToneAccent, groupToneLabel, type GroupTone } from "@/lib/boards/group-tone";
 import { presentLabel } from "@/lib/boards/label-presentation";
 
 export function GroupBlock({
   name,
   displayName,
-  color,
-  colorKey = null,
+  tone = null,
   columns,
   rows,
   presetMenu,
@@ -51,10 +54,13 @@ export function GroupBlock({
   name: string;
   /** 화면에 보일 이름(표시 전용). 없으면 name 의 앞머리 이모지만 걷는다. */
   displayName?: string;
-  /** board_groups.color (hex) 또는 null. hex 가 아니면 쓰지 않는다. */
-  color: string | null;
-  /** 저장색이 없을 때 자동색을 고정할 키(그룹 id). 없으면 중립색. */
-  colorKey?: string | null;
+  /**
+   * board_groups.color — 지금은 쓰지 않는다(위 머리말 주석). #839 의 사용자 색 선택이
+   * 들어오면 «명시 override» 로 이 자리를 쓴다.
+   */
+  color?: string | null;
+  /** 이 그룹의 톤(탭 2색 × 깊이). 없으면(«그룹 없음») 중립색. */
+  tone?: GroupTone | null;
   columns: readonly BoardColumn[];
   rows: readonly ItemWithValues[];
   /** 아이템 프리셋 이름 — `탭-그룹` 형식(PLAN-002 §5 WO-6 명명 규칙). */
@@ -81,7 +87,7 @@ export function GroupBlock({
   const [localOpen, setOpen] = useState(true);
   const open = controlledOpen ?? localOpen;
   const [dropState,setDropState]=useState<"valid"|"invalid"|null>(null);
-  const accent = groupAccentColor(color, colorKey) ?? "var(--mw-sub)";
+  const accent = groupToneAccent(tone);
   const shownName = displayName ?? presentLabel(name);
   void columns;
 
@@ -101,6 +107,7 @@ export function GroupBlock({
     <section
       data-visual-block="group-table"
       data-group-accent={accent}
+      data-group-tone={groupToneLabel(tone) ?? undefined}
       className="min-w-0 max-w-full rounded-md border border-mw-line bg-mw-card"
       style={{ "--mw-group-accent": accent } as CSSProperties}
     >
@@ -130,7 +137,7 @@ export function GroupBlock({
           style={{
             backgroundColor: dropState === "valid"
               ? "var(--mw-tint-blue)"
-              : `color-mix(in srgb, ${accent} 14%, var(--mw-card))`,
+              : `color-mix(in srgb, ${accent} 16%, var(--mw-card))`,
             borderLeft: `3px solid ${accent}`,
           }}
         >

@@ -133,6 +133,11 @@ describe("WorkflowProgressCell — 한 줄 진행현황 칩 (#839)", () => {
   });
 
   it("이모지는 화면에서만 걷고 제출값은 원래 id 다", async () => {
+    // 저장이 진행되는 동안(액션 수명 안)만 고른 값을 미리 보여 준다.
+    // (끝에 반드시 풀어 준다 — React 는 겹친 비동기 전환을 한 묶음으로 기다리므로, 안 풀린 액션이
+    //  남으면 뒤 테스트의 낙관값도 끝나지 않는다.)
+    let release: () => void = () => {};
+    setCellAction.mockImplementationOnce(() => new Promise<undefined>((resolve) => { release = () => resolve(undefined); }));
     const { host } = await renderCell();
     await openPicker(host);
     const emoji = option("📂소진공 혁신성장 대기");
@@ -146,6 +151,9 @@ describe("WorkflowProgressCell — 한 줄 진행현황 칩 (#839)", () => {
     expect(submitted.get("value")).toBe("📂소진공 혁신성장 대기");
     expect(trigger(host).textContent).toContain("소진공 혁신성장 대기");
     expect(document.activeElement).toBe(trigger(host));
+    // 저장이 끝났는데 재조회가 값을 바꾸지 않았으면(거절) 저장값으로 돌아간다.
+    await act(async () => release());
+    expect(trigger(host).textContent).toContain("심사 중");
   });
 
   it("↑↓·Enter 로 고르고 Esc 는 값을 바꾸지 않고 칩으로 돌아간다", async () => {
@@ -186,16 +194,59 @@ describe("WorkflowProgressCell — 한 줄 진행현황 칩 (#839)", () => {
     expect(trigger(host).textContent).toContain("심사 중");
   });
 
-  it("서버가 거절해 오류가 오면 낙관적 표시를 버리고 저장값을 보여 준다", async () => {
-    const { host, rerender } = await renderCell();
+  it("낙관값은 액션 수명에 묶인다 — 저장 중에만 보이고, 끝나면 저장값(재조회 결과)을 보여 준다", async () => {
+    const settle: Array<() => void> = [];
+    const cellAction = vi.fn<(formData: FormData) => Promise<void>>(() => new Promise<void>((resolve) => { settle.push(resolve); }));
+    const { host, rerender } = await renderCell({ cellAction });
+    await openPicker(host);
+    await act(async () => option("관리중").click());
+    expect(cellAction).toHaveBeenCalledTimes(1);
+    expect(trigger(host).textContent).toContain("관리중");
+    // 성공: 같은 전환에서 서버 재조회가 저장값을 새 값으로 바꾼다.
+    await act(async () => settle.shift()!());
+    await rerender({ cellAction, row: { ...row("관리중") } });
+    expect(trigger(host).textContent).toContain("관리중");
+  });
+
+  it("같은 문구로 두 번 연속 거절돼도 저장되지 않은 단계가 칩에 남지 않는다 (#845 검토 후속)", async () => {
+    const settle: Array<() => void> = [];
+    const cellAction = vi.fn<(formData: FormData) => Promise<void>>(() => new Promise<void>((resolve) => { settle.push(resolve); }));
+    const rejected = "항목을 저장하지 못했어요.";
+    const { host, rerender } = await renderCell({ cellAction });
+
     await openPicker(host);
     await act(async () => option("관리중").click());
     expect(trigger(host).textContent).toContain("관리중");
-    await rerender({ error: "항목을 저장하지 못했어요." });
+    await act(async () => settle.shift()!());
+    await rerender({ cellAction, error: rejected });
     expect(trigger(host).textContent).toContain("심사 중");
+
+    // 두 번째 거절 — 오류 문구가 «바뀌지 않아도» 액션이 끝나면 저장값으로 돌아간다.
+    await openPicker(host);
+    await act(async () => option("관리중").click());
+    expect(cellAction).toHaveBeenCalledTimes(2);
+    expect(trigger(host).textContent).toContain("관리중");
+    await act(async () => settle.shift()!());
+    await rerender({ cellAction, error: rejected });
+    expect(trigger(host).textContent).toContain("심사 중");
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe(rejected);
     // 부모가 오류를 소비해도 낙관값이 되살아나지 않는다.
-    await rerender({ error: null });
+    await rerender({ cellAction, error: null });
     expect(trigger(host).textContent).toContain("심사 중");
+  });
+
+  it("행을 옮길 권한이 없으면 다른 그룹으로 옮기는 단계만 비활성이다 (#845)", async () => {
+    const { host } = await renderCell({ canMoveRows: false });
+    await openPicker(host);
+    expect(option("대기중").getAttribute("aria-disabled")).toBe("true");
+    expect(option("대기중").textContent).toContain("권한 없음");
+    // 지금 그룹으로 가는 단계·값만 바뀌는 단계·다음 업무로 이동은 그대로 고를 수 있다.
+    expect(option("심사 중").hasAttribute("aria-disabled")).toBe(false);
+    expect(option("관리중").hasAttribute("aria-disabled")).toBe(false);
+    expect(option("transfer").hasAttribute("aria-disabled")).toBe(false);
+    await act(async () => option("대기중").click());
+    expect(setCellAction).not.toHaveBeenCalled();
+    expect(popover()).not.toBeNull();
   });
 
   it("이동 정보를 모르는 화면은 한 묶음(보드 안 단계)으로 보여 주고, 읽기 전용이면 열리지 않는다", async () => {

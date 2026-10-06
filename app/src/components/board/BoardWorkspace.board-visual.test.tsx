@@ -56,20 +56,47 @@ function row(id: string, title: string, groupId: string, stage: string): ItemWit
   };
 }
 
-async function mount(source: string) {
+const DEFAULT_ROWS = [
+  row("r1", "QA합성회사", "g-review", "심사 중"),
+  row("r2", "QA합성회사", "g-review", "📂소진공 혁신성장 대기"),
+  row("r3", "단독회사", "g-ready", "대기중"),
+];
+
+async function mount(
+  source: string,
+  options: { rows?: ItemWithValues[]; groups?: BoardGroup[]; canMoveRows?: boolean } = {},
+) {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
   const board = { id: "b", org_id: "o", name: "계약업체 실무", source, is_system: false, sort_order: 0 } as Board;
-  const rows = [
-    row("r1", "QA합성회사", "g-review", "심사 중"),
-    row("r2", "QA합성회사", "g-review", "📂소진공 혁신성장 대기"),
-    row("r3", "단독회사", "g-ready", "대기중"),
-  ];
-  await act(async () => root!.render(
-    <BoardWorkspace board={board} columns={columns} groups={groups} rows={rows} columnOrder={{}} cellFlash={null} assigneeLabels={{}} canEditItems canMoveRows />,
-  ));
-  return host;
+  const element = (nextGroups: BoardGroup[]) => (
+    <BoardWorkspace
+      board={board}
+      columns={columns}
+      groups={nextGroups}
+      rows={options.rows ?? DEFAULT_ROWS}
+      columnOrder={{}}
+      cellFlash={null}
+      assigneeLabels={{}}
+      canEditItems
+      canMoveRows={options.canMoveRows ?? true}
+    />
+  );
+  await act(async () => root!.render(element(options.groups ?? groups)));
+  return Object.assign(host, {
+    rerenderGroups: async (nextGroups: BoardGroup[]) => act(async () => root!.render(element(nextGroups))),
+  });
+}
+
+const titles = (host: ParentNode) => [...host.querySelectorAll("[data-group-title]")].map((node) => node.textContent);
+const foldToggle = (host: ParentNode) => host.querySelector<HTMLButtonElement>("[data-empty-groups-toggle] button");
+
+/** jsdom 의 dragstart 에는 dataTransfer 가 없다 — 표가 쓰는 만큼만 단다. */
+function dragEvent(type: string) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "dataTransfer", { value: { effectAllowed: "", dropEffect: "", setData() {}, getData: () => "" } });
+  return event;
 }
 
 describe("BoardWorkspace 계약업체 실무 화면 연결 (#839)", () => {
@@ -100,11 +127,106 @@ describe("BoardWorkspace 계약업체 실무 화면 연결 (#839)", () => {
 
   it("그룹 띠 제목은 앞머리 이모지를 걷되, 이모지만 다른 중복 이름은 원문을 지킨다", async () => {
     const host = await mount(CONTRACT_WORK_TAB_SOURCE);
-    const titles = [...host.querySelectorAll("[data-group-title]")].map((node) => node.textContent);
-    expect(titles).toEqual(["준비단계", "심사 중", "⏹️ 준비단계"]);
-    const accents = [...host.querySelectorAll<HTMLElement>("[data-visual-block='group-table']")].map((node) => node.dataset.groupAccent);
-    expect(accents[0]).toBe("#00c875");
-    expect(accents[1]).toBe("#9cd326");
-    expect(accents[2]).toMatch(/^#[0-9a-f]{6}$/);
+    // 빈 설치 복제(⏹️ 준비단계)는 접혀 있다가 펼치면 제자리에 나온다(#845).
+    expect(titles(host)).toEqual(["준비단계", "심사 중"]);
+    await act(async () => foldToggle(host)!.click());
+    expect(titles(host)).toEqual(["준비단계", "심사 중", "⏹️ 준비단계"]);
+  });
+});
+
+describe("BoardWorkspace 그룹 톤 — 탭 2색 × 깊이 (#845, 대표 지시 2026-10-06)", () => {
+  it("그룹 띠·행 줄은 저장된 이관 색이 아니라 그룹 톤 토큰이다", async () => {
+    const host = await mount(CONTRACT_WORK_TAB_SOURCE);
+    await act(async () => foldToggle(host)!.click());
+    const sections = [...host.querySelectorAll<HTMLElement>("[data-visual-block='group-table']")];
+    expect(sections.map((node) => node.dataset.groupTone)).toEqual(["A1", "A4", "A1"]);
+    expect(sections.map((node) => node.dataset.groupAccent)).toEqual(["var(--mw-tab-a-1)", "var(--mw-tab-a-4)", "var(--mw-tab-a-1)"]);
+    // 저장색(#00c875 · #9cd326)은 띠에 쓰지 않는다 — #839 사용자 선택이 들어오면 override 가 된다.
+    expect(sections.some((node) => (node.getAttribute("style") ?? "").includes("#"))).toBe(false);
+  });
+
+  it("진행현황 선택지의 점은 옮겨 갈 그룹의 띠와 같은 톤이다", async () => {
+    const host = await mount(CONTRACT_WORK_TAB_SOURCE);
+    const trigger = host.querySelector<HTMLButtonElement>('button[role="combobox"][data-stage-value="심사 중"]')!;
+    expect(trigger.querySelector<HTMLElement>("[data-mw-stage-dot]")!.style.backgroundColor).toBe("var(--mw-tab-a-4)");
+    await act(async () => trigger.click());
+    const dot = (id: string) => [...document.querySelectorAll<HTMLElement>("[data-stage-option]")]
+      .find((node) => node.getAttribute("data-stage-option") === id)!
+      .querySelector<HTMLElement>("[data-mw-stage-dot]")!.style.backgroundColor;
+    expect(dot("대기중")).toBe("var(--mw-tab-a-1)");
+    expect(dot("심사 중")).toBe("var(--mw-tab-a-4)");
+  });
+
+  it("행을 옮길 권한이 없으면 다른 그룹으로 옮기는 진행현황 선택지가 비활성이다", async () => {
+    const host = await mount(CONTRACT_WORK_TAB_SOURCE, { canMoveRows: false });
+    const trigger = host.querySelector<HTMLButtonElement>('button[role="combobox"][data-stage-value="심사 중"]')!;
+    await act(async () => trigger.click());
+    const option = (id: string) => [...document.querySelectorAll<HTMLElement>("[data-stage-option]")]
+      .find((node) => node.getAttribute("data-stage-option") === id)!;
+    expect(option("대기중").getAttribute("aria-disabled")).toBe("true");
+    expect(option("심사 중").hasAttribute("aria-disabled")).toBe(false);
+  });
+});
+
+describe("BoardWorkspace 빈 그룹 접기 (#845, 승인 목업 Main.dc)", () => {
+  const many = [
+    { id: "g-1", org_id: "o", board_id: "b", name: "준비단계", color: null, sort_order: 0 },
+    { id: "g-2", org_id: "o", board_id: "b", name: "진행중", color: null, sort_order: 1 },
+    { id: "g-3", org_id: "o", board_id: "b", name: "🔂 심사 중", color: null, sort_order: 2 },
+    { id: "g-4", org_id: "o", board_id: "b", name: "승인", color: null, sort_order: 3 },
+  ] as BoardGroup[];
+
+  it("보이는 행이 0건인 그룹은 끝의 컨트롤 하나로 접히고, 펼치면 제자리 순서로 다시 나온다", async () => {
+    const host = await mount(CONTRACT_WORK_TAB_SOURCE, {
+      groups: many,
+      rows: [row("r1", "단독회사", "g-3", "심사 중")],
+    });
+    // 첫 그룹(새 행이 들어오는 자리)은 비어도 접지 않는다.
+    expect(titles(host)).toEqual(["준비단계", "심사 중"]);
+    const toggle = foldToggle(host)!;
+    expect(toggle.textContent).toBe("빈 보드 2개 보기");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => toggle.click());
+    expect(titles(host)).toEqual(["준비단계", "진행중", "심사 중", "승인"]);
+    expect(foldToggle(host)!.textContent).toBe("빈 보드 접기");
+    expect(foldToggle(host)!.getAttribute("aria-expanded")).toBe("true");
+    // 펼친 빈 그룹도 이름 편집·행 추가 줄이 그대로 있다.
+    const approved = [...host.querySelectorAll<HTMLElement>("[data-visual-block='group-table']")][3];
+    expect(approved.querySelector("tbody tr:last-child")).not.toBeNull();
+    await act(async () => foldToggle(host)!.click());
+    expect(titles(host)).toEqual(["준비단계", "심사 중"]);
+  });
+
+  it("행을 끄는 동안에는 빈 그룹이 놓을 자리로 모두 나왔다가, 끝나면 다시 접힌다", async () => {
+    const host = await mount(CONTRACT_WORK_TAB_SOURCE, {
+      groups: many,
+      rows: [row("r1", "단독회사", "g-3", "심사 중")],
+    });
+    const handle = host.querySelector<HTMLElement>("tr[data-board-row] > td:first-child")!;
+    await act(async () => handle.dispatchEvent(dragEvent("dragstart")));
+    expect(titles(host)).toEqual(["준비단계", "진행중", "심사 중", "승인"]);
+    await act(async () => handle.dispatchEvent(dragEvent("dragend")));
+    expect(titles(host)).toEqual(["준비단계", "심사 중"]);
+  });
+
+  it("이 세션에 새로 만든 그룹은 비어 있어도 접지 않는다 — 만들자마자 사라지지 않는다", async () => {
+    const host = await mount(CONTRACT_WORK_TAB_SOURCE, {
+      groups: many,
+      rows: [row("r1", "단독회사", "g-3", "심사 중")],
+    });
+    await host.rerenderGroups([
+      ...many,
+      { id: "g-new", org_id: "o", board_id: "b", name: "새 그룹", color: null, sort_order: 4 } as BoardGroup,
+    ]);
+    expect(titles(host)).toEqual(["준비단계", "심사 중", "새 그룹"]);
+    expect(foldToggle(host)!.textContent).toBe("빈 보드 2개 보기");
+  });
+
+  it("접을 빈 그룹이 없으면 컨트롤도 없다", async () => {
+    const host = await mount(CONTRACT_WORK_TAB_SOURCE, {
+      groups: many.slice(0, 2),
+      rows: [row("r1", "a", "g-1", "대기중"), row("r2", "b", "g-2", "대기중")],
+    });
+    expect(foldToggle(host)).toBeNull();
   });
 });
