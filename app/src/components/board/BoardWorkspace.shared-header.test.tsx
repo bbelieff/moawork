@@ -172,6 +172,18 @@ describe("계약업체 실무의 「업체 추가」 는 머리말 단추 + 배�
     expect(sections(host)[1].querySelector("details")!.open).toBe(true);
   });
 
+  it("두 보드의 패널을 열고 하나를 닫으면 포커스는 그 패널을 연 ＋ 로 돌아간다", async () => {
+    const host = await mount(CONTRACT_WORK_TAB_SOURCE);
+    const [readyAdd, reviewAdd] = sections(host).map((section) => section.querySelector<HTMLButtonElement>("[data-group-add]")!);
+    await act(async () => readyAdd.click());
+    await act(async () => reviewAdd.click());
+    expect(intakePanels(host)).toEqual(["준비단계", "심사 중"]);
+    const closeReady = [...sections(host)[0].querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "닫기")!;
+    await act(async () => closeReady.click());
+    expect(intakePanels(host)).toEqual(["심사 중"]);
+    expect(document.activeElement).toBe(readyAdd);
+  });
+
   it("다른 보드는 지금처럼 그룹마다 추가 줄이 있고 배너 ＋ 는 없다", async () => {
     const host = await mount("core.default-tab/contact");
     expect(host.querySelector("[data-group-add]")).toBeNull();

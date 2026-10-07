@@ -174,6 +174,17 @@ export function defaultColumnWidth(column: Pick<BoardColumn, "type" | "rightPinn
   return DEFAULT_WIDTH_BY_TYPE[column.type] ?? 140;
 }
 
+/**
+ * 고정 폭 표에서 편집기가 잘리지 않는 최소 폭. 자동 폭 표는 내용이 칸을 넓혔지만 고정 폭 표는
+ * 저장된 폭 그대로라, 날짜 입력(달력 단추 포함)이 120px 칸에서 「2026-08-0」 으로 잘렸다(2026-10-08 실측).
+ */
+const MIN_WIDTH_BY_TYPE: Partial<Record<BoardColumn["type"], number>> = { date: 140, datetime: 200 };
+
+export function fixedColumnWidth(column: Pick<BoardColumn, "type" | "rightPinned" | "width">, live?: number): number {
+  const width = live ?? column.width ?? defaultColumnWidth(column);
+  return Math.max(width, MIN_WIDTH_BY_TYPE[column.type] ?? COLUMN_MIN_WIDTH);
+}
+
 /** 드래그 중 픽셀 값을 저장 가능한 폭으로 좁힌다. 서버 액션에서도 같은 함수로 재검증한다. */
 export function clampWidth(px: number): number {
   return Math.min(COLUMN_MAX_WIDTH, Math.max(COLUMN_MIN_WIDTH, Math.round(px)));

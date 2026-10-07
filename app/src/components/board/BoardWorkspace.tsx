@@ -470,11 +470,11 @@ export function BoardWorkspace({
    * 누를 때마다 seq 가 올라 그 그룹의 추가 패널이 열린다(이미 열려 있으면 그대로).
    */
   const [addRequest, setAddRequest] = useState<{ key: string; seq: number } | null>(null);
-  // 패널을 닫으면 포커스를 연 단추로 돌린다(그룹마다의 「＋ 업체 추가」 단추가 이제 없다).
-  const addOpenerRef = useRef<HTMLElement | null>(null);
-  const addReturnFocus = useCallback(() => addOpenerRef.current, []);
+  // 패널을 닫으면 포커스를 그 패널을 연 단추로 돌린다(그룹마다의 「＋ 업체 추가」 단추가 이제 없다).
+  // 그룹마다 따로 기억한다 — A 를 열고 B 를 연 뒤 A 를 닫아도 A 를 연 단추로 돌아간다.
+  const addOpenersRef = useRef(new Map<string, HTMLElement | null>());
   const requestAdd = (blockKey: string, opener: HTMLElement | null) => {
-    addOpenerRef.current = opener;
+    addOpenersRef.current.set(blockKey, opener);
     setClosedGroups((current) => {
       if (!current.has(blockKey)) return current;
       const next = new Set(current);
@@ -587,6 +587,13 @@ export function BoardWorkspace({
   const newLeadStageBlocks = useMemo(() => isNewLeadStageView ? buildNewLeadStageBlocks(orderedGroups, displayRows) : null,
     [isNewLeadStageView, orderedGroups, displayRows]);
   const blocks = consultationStageBlocks ?? newLeadStageBlocks ?? physicalBlocks;
+  // 그룹마다 «패널을 연 단추로 포커스 돌리기» 함수 — 그룹 구성이 그대로면 같은 함수라 접수 폼의 효과가 다시 돌지 않는다.
+  const blockKeysSignature = JSON.stringify(blocks.map((block) => block.key));
+  const addReturnFocusByKey = useMemo(
+    () => new Map((JSON.parse(blockKeysSignature) as string[]).map((key) => [key, () => addOpenersRef.current.get(key) ?? null] as const)),
+    [blockKeysSignature],
+  );
+  const addReturnFocusFor = (key: string) => addReturnFocusByKey.get(key);
   const durableLayoutKey = useCallback((key: string) => {
     const block = isNewLeadStageView ? blocks.find((candidate) => candidate.key === key) : undefined;
     return block ? durableNewLeadBlockKey(block, orderedGroups) : key;
@@ -957,7 +964,13 @@ export function BoardWorkspace({
    * 보드 포함)에 같은 이동을 적용한다. 그룹마다 저장된 배치가 달라도 «같은 컬럼을 같은 자리로»
    * 옮기므로 보이는 순서는 하나로 남는다. 저장은 한 번에(setGroupColumnOrdersAction).
    */
+  // 저장할 수 있는 키는 실제 그룹 id 와 «그룹 없음» 뿐이다. 상담 단계 보기처럼 가상 묶음만 있는
+  // 화면에서는 맨 위 제목행의 컬럼 옮기기를 끈다(저장할 곳이 없어 늘 실패하던 동작).
+  const durableGroupKeys = new Set([UNGROUPED_KEY, ...orderedGroups.map((group) => group.id)]);
+  const sharedColumnsMovable = blocks.length > 0
+    && blocks.every((block) => durableGroupKeys.has(durableLayoutKey(block.key)));
   const applySharedColumnMove = (move: (fullColumns: BoardColumn[]) => string[] | null) => {
+    if (!sharedColumnsMovable) return;
     const entries = new Map<string, string[]>();
     for (const block of blocks) {
       const groupKey = durableLayoutKey(block.key);
@@ -1284,7 +1297,7 @@ export function BoardWorkspace({
           columns={columnsForBlock(shownBlockViews[0].block.key)}
           rows={sharedHeaderRows}
           readOnly={readOnly}
-          canManageColumns={!board.is_system && canManageColumns}
+          canManageColumns={!board.is_system && canManageColumns && sharedColumnsMovable}
           focusColumnKey={savedPresentation.focusColumnKey}
           onColumnArchived={(columnId) => setArchivedColumnIds((current) => new Set(current).add(columnId))}
           scheduleItems={scheduleItems}
@@ -1407,7 +1420,7 @@ export function BoardWorkspace({
                 tablePart={sharedHeader ? "body" : "full"}
                 addRowMode={onDemandAdd ? "on-demand" : "always"}
                 addRequest={addRequest?.key === block.key ? addRequest.seq : 0}
-                addReturnFocus={addReturnFocus}
+                addReturnFocus={addReturnFocusFor(block.key)}
                 boardId={board.id}
                 boardName={board.name}
                 groupName={block.name}

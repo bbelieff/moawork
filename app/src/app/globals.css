@@ -376,7 +376,8 @@ nav[aria-label="주요 메뉴"]::-webkit-scrollbar-button { display: none; }
     opacity: 0;
     transition: opacity 0.12s;
   }
-  [data-visual-block="group-table"] summary:is(:hover, :focus-within) [data-group-banner-tools] {
+  [data-visual-block="group-table"] summary:is(:hover, :focus-within) [data-group-banner-tools],
+  [data-visual-block="group-table"] [data-group-banner-tools]:has(input[type="checkbox"]:is(:checked, :indeterminate)) {
     opacity: 1;
   }
 }

@@ -45,7 +45,7 @@ import { LabelCombobox } from "./LabelCombobox";
 import { canCreateLabelForColumn, newLabelRequestId } from "@/lib/boards/label-options";
 import type { AddLabelOptionInput, AddLabelOptionResult } from "@/app/(app)/boards/label-option-actions";
 import { SourceBadge } from "./FieldBadge";
-import { clampWidth, defaultColumnWidth } from "./layout";
+import { clampWidth, fixedColumnWidth } from "./layout";
 import { useLiveColumnWidths } from "./column-live-width";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
 import { ItemDetailPanel } from "./ItemDetailPanel";
@@ -999,11 +999,12 @@ export function GroupTable({
   const fixedLayout = tablePart !== "full";
   // 첫 열 이름 — 계약업체 실무는 목업대로 「업체」(한 줄이 «어느 업체의 자금 건» 이다).
   const titleLabel = canonicalNewLead ? "회사명" : workflowProgressKind === "work" ? "업체" : "이름";
-  // 2026-10-08 — 「업체 추가」 는 도구줄·배너 ＋ 에서만 연다. 닫혀 있으면 추가 줄은 끝 드롭 자리(얇은 띠)만 남는다.
+  // 2026-10-08 — 「업체 추가」 는 머리말 단추·배너 ＋ 에서만 연다. 닫혀 있으면 추가 줄은 그룹 끝 드롭 자리만
+  // 남는다 — 평소엔 얇은 띠, 행을 끄는 동안엔 한 줄 높이(그룹 맨 끝에 놓을 수 있게).
   const onDemandAdd = addRowMode === "on-demand" && Boolean(companyPicker) && !(canonicalNewLead && groupId);
   const [addPanelOpen, setAddPanelOpen] = useState(false);
   const columnWidth = (col: BoardColumn): number | undefined =>
-    liveWidths[col.id] ?? col.width ?? (fixedLayout ? defaultColumnWidth(col) : undefined);
+    fixedLayout ? fixedColumnWidth(col, liveWidths[col.id]) : liveWidths[col.id] ?? col.width ?? undefined;
   const tableStyle: React.CSSProperties | undefined = fixedLayout
     ? {
       tableLayout: "fixed",
@@ -1494,7 +1495,7 @@ export function GroupTable({
                 추가 줄은 표 너비 전체를 쓴다(colSpan) — 펼친 접수 패널이 이름 열 폭(#845 사람별 폭)에
                 눌려 찌그러지지 않고, 패널을 열어도 다른 행의 이름 열 폭이 바뀌지 않는다.
               */}
-              <td colSpan={columns.length + 1} className={`${STICKY_FIRST} ${onDemandAdd && !addPanelOpen ? "h-2 p-0" : "px-2 py-1"} ${overRowIndex === rows.length ? "bg-mw-tint-blue" : ""}`}>
+              <td colSpan={columns.length + 1} className={`${STICKY_FIRST} ${onDemandAdd && !addPanelOpen ? (dragRowId ? "h-9 p-0" : "h-2 p-0") : "px-2 py-1"} ${overRowIndex === rows.length ? "bg-mw-tint-blue" : ""}`}>
                 {canonicalNewLead && groupId ? (
                   <NewLeadIntakeForm
                     boardId={boardId}

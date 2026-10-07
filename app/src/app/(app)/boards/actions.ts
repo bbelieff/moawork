@@ -20,7 +20,7 @@ import { COLUMN_DELETE_CONFIRM, parseNewBoard, parseNewColumn, parseNewItem, isF
 import type { Ctx, FieldOption } from "@/lib/types";
 import { boardCellValueFromFormData } from "@/lib/boards/form-values";
 import type { CellError } from "@/lib/boards/service";
-import { clampWidth } from "@/components/board/layout";
+import { clampWidth, UNGROUPED_KEY } from "@/components/board/layout";
 import { setGroupColumnOrder } from "./groupLayout";
 import {
   CELL_FLASH_COOKIE,
@@ -831,8 +831,11 @@ export async function setGroupColumnOrdersAction(formData: FormData): Promise<vo
     const boardId = str(formData, "boardId");
 
     const graph = await createRequestBoards();
-    const { columns } = await graph.service.getBoardDetail(ctx, boardId);
+    const { columns, groups } = await graph.service.getBoardDetail(ctx, boardId);
     const valid = new Set(columns.map((c) => c.key));
+    // 쓰기 전에 모든 그룹 키를 이 보드의 그룹과 대조한다 — 하나라도 없으면 아무것도 쓰지 않는다
+    // (앞 그룹만 저장되면 새로고침 뒤 그룹마다 배치가 갈라진다).
+    const validGroups = new Set([UNGROUPED_KEY, ...groups.map((group) => group.id)]);
 
     let entries: { groupKey: string; order: string[] }[];
     try {
@@ -849,6 +852,10 @@ export async function setGroupColumnOrdersAction(formData: FormData): Promise<vo
       });
     } catch {
       throw new UserFacingActionError("컬럼 순서를 읽지 못했어요. 새로고침 후 다시 시도해 주세요.");
+    }
+    if (new Set(entries.map((entry) => entry.groupKey)).size !== entries.length
+      || entries.some((entry) => !validGroups.has(entry.groupKey))) {
+      throw new UserFacingActionError("그룹 구성이 바뀌었어요. 새로고침 후 다시 시도해 주세요.");
     }
 
     for (const entry of entries) {

@@ -4,6 +4,7 @@ import {
   clampWidth,
   COLUMN_MAX_WIDTH,
   COLUMN_MIN_WIDTH,
+  fixedColumnWidth,
   groupKeyOf,
   moveWithin,
   pinActionColumnsRight,
@@ -281,5 +282,21 @@ describe("filters", () => {
         visibleColumnKeys: ["name", "status"],
       }),
     ).toBe(5);
+  });
+});
+
+describe("fixedColumnWidth — 제목행 하나(고정 폭 표)의 열 폭 (2026-10-08)", () => {
+  const col = (type: string, width: number | null, rightPinned = false) =>
+    ({ type, width, rightPinned }) as unknown as Parameters<typeof fixedColumnWidth>[0];
+  it("저장된 폭 → 끄는 중의 폭 → 타입 기본 폭 순으로 쓴다", () => {
+    expect(fixedColumnWidth(col("text", 180))).toBe(180);
+    expect(fixedColumnWidth(col("text", 180), 220)).toBe(220);
+    expect(fixedColumnWidth(col("text", null))).toBe(150);
+    expect(fixedColumnWidth(col("status", null, true))).toBe(176);
+  });
+  it("날짜 입력은 저장된 폭이 좁아도 잘리지 않는 최소 폭을 지킨다", () => {
+    expect(fixedColumnWidth(col("date", 120))).toBe(140);
+    expect(fixedColumnWidth(col("datetime", 150))).toBe(200);
+    expect(fixedColumnWidth(col("text", 40))).toBe(64);
   });
 });
