@@ -23,6 +23,7 @@ import {
 import { NotificationBell } from "@/components/notify/NotificationBell";
 import { loadNotifySnapshot } from "@/lib/notify/server";
 import { loadBoardNavKeys } from "@/lib/shell/board-nav-map";
+import { purgeExpiredTrashedTabs } from "@/lib/boards/trash-maintenance";
 import { createRequestBoards } from "@/lib/boards/server";
 import { loadPlatformActor } from "@/lib/platform/actor";
 import { ensureApprovedWorkspaceOnEntry } from "@/lib/workspace-entry/bootstrap";
@@ -113,6 +114,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     //   위에서 뺀 것은 «직렬로 붙던» 조회였고 이것은 이 Promise.all 안에서 같이 출발하므로
     //   벽시계 시간이 늘지 않는다. 실패하면 빈 지도라 셸은 그대로 뜬다.
     (async () => loadBoardNavKeys(ctx, (await createRequestBoards()).repo))(),
+    // #849 — 7일 지난 휴지통 탭 정리. 같은 Promise.all 안이라 기다리는 시간이 늘지 않는다.
+    purgeExpiredTrashedTabs(ctx),
   ]);
   logEntryTimings("workspace-layout", entryTimer.snapshot(), "ready");
   const switcherWorkspaces = routing.kind === "ready"

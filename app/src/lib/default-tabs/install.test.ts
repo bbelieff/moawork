@@ -6,7 +6,7 @@
  * 특히 이동 규칙의 «그룹 이름 → group id» 해석은 여기서만 검증된다.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
 import { db } from "@/lib/repo/local/store";
@@ -16,7 +16,14 @@ import type { Ctx } from "@/lib/types";
 import type { BoardsRepo, NewColumn } from "@/lib/boards/store";
 import { CONTACT_GROUPS, CONTACT_TAB } from "./contact";
 import { NEW_LEAD_GROUPS, NEW_LEAD_TAB } from "./new-lead";
-import { ensureDefaultTab, ensureDefaultTabAdditive, ensureDefaultTabs } from "./install";
+import { DefaultTabDismissedError } from "@/lib/boards/trash-errors";
+import {
+  DEFAULT_TABS,
+  ensureDefaultTab,
+  ensureDefaultTabAdditive,
+  ensureDefaultTabs,
+  readDefaultTabDrift,
+} from "./install";
 
 const ctx: Ctx = {
   org: { id: "org-default-tabs", name: "테스트 회사" },
@@ -467,5 +474,92 @@ describe("자동 이동 — 값을 바꾸면 카드가 그 그룹으로 간다 (
       .listColumns(ctx, result.boardId)
       .find((column) => column.key === "contact_move")!;
     expect(move.move_rule_jsonb).toBeNull();
+  });
+});
+
+describe("#849 지운 기본 탭은 어떤 경로도 다시 만들지 않는다", () => {
+  async function installThenTrash(tab: typeof NEW_LEAD_TAB) {
+    const store = toAsyncBoardsRepo(repo);
+    const { boardId } = await ensureDefaultTab(ctx, tab, store, assignees);
+    repo.trashBoard(ctx, boardId);
+    return store;
+  }
+
+  it("ensureDefaultTabs 는 지운 탭을 건너뛰고 나머지만 보장한다", async () => {
+    const store = await installThenTrash(CONTACT_TAB);
+
+    const ensured = await ensureDefaultTabs(ctx, store, assignees);
+
+    expect(ensured.map((tab) => tab.tabKey)).toEqual(
+      DEFAULT_TABS.filter((tab) => tab.key !== CONTACT_TAB.key).map((tab) => tab.key),
+    );
+    expect(repo.listBoards(ctx).some((board) => board.source === CONTACT_TAB.source)).toBe(false);
+  });
+
+  it("탭 하나를 보장하는 두 길도 만들지 않고 DefaultTabDismissedError 로 멈춘다", async () => {
+    const store = await installThenTrash(NEW_LEAD_TAB);
+    const createBoard = vi.spyOn(repo, "createBoard");
+
+    await expect(ensureDefaultTab(ctx, NEW_LEAD_TAB, store, assignees)).rejects.toBeInstanceOf(DefaultTabDismissedError);
+    await expect(ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, store, assignees)).rejects.toBeInstanceOf(DefaultTabDismissedError);
+    expect(createBoard).not.toHaveBeenCalled();
+  });
+
+  it("드리프트 판정은 지운 탭을 «고칠 것 없음» 으로 본다 — 리스를 잡을 이유가 없다", async () => {
+    const store = await installThenTrash(NEW_LEAD_TAB);
+
+    expect(await readDefaultTabDrift(ctx, NEW_LEAD_TAB, store, assignees)).toEqual({
+      boardMissing: true,
+      missingGroupNames: [],
+      missingColumnKeys: [],
+      definitionRevisionBehind: false,
+      dismissed: true,
+      hasWork: false,
+    });
+  });
+
+  it("기록을 읽은 뒤 누가 막 지운 경쟁(만들기가 default_tab_dismissed)도 실패가 아니라 건너뛰기다", async () => {
+    const store = await installThenTrash(NEW_LEAD_TAB);
+    const staleRead = new Proxy(store, {
+      get: (target, property, receiver) => property === "listDefaultTabDismissals"
+        ? async () => []
+        : Reflect.get(target, property, receiver),
+    });
+
+    const ensured = await ensureDefaultTabs(ctx, staleRead, assignees);
+
+    expect(ensured.map((tab) => tab.tabKey)).not.toContain(NEW_LEAD_TAB.key);
+    expect(repo.listBoards(ctx).some((board) => board.source === NEW_LEAD_TAB.source)).toBe(false);
+  });
+
+  it("지운 적 없는 빠진 탭은 예전처럼 만들고, 지운 기록은 한 번만 읽는다", async () => {
+    const reads = vi.spyOn(repo, "listDefaultTabDismissals");
+
+    const ensured = await ensureDefaultTabs(ctx, toAsyncBoardsRepo(repo), assignees);
+
+    expect(ensured.every((tab) => tab.created)).toBe(true);
+    expect(ensured).toHaveLength(DEFAULT_TABS.length);
+    expect(reads).toHaveBeenCalledTimes(1);
+  });
+
+  it("빠진 탭이 없으면 지운 기록을 읽지 않는다 — 건강한 진입에 왕복을 더하지 않는다", async () => {
+    const store = toAsyncBoardsRepo(repo);
+    await ensureDefaultTabs(ctx, store, assignees);
+    const reads = vi.spyOn(repo, "listDefaultTabDismissals");
+
+    await ensureDefaultTabs(ctx, store, assignees);
+    await ensureDefaultTabAdditive(ctx, NEW_LEAD_TAB, store, assignees);
+    await readDefaultTabDrift(ctx, NEW_LEAD_TAB, store, assignees);
+
+    expect(reads).not.toHaveBeenCalled();
+  });
+
+  it("지운 기록을 못 읽으면 만들지 않는다(실패로 닫힌다)", async () => {
+    vi.spyOn(repo, "listDefaultTabDismissals").mockImplementation(() => {
+      throw new Error("dismissals unavailable");
+    });
+
+    await expect(ensureDefaultTabs(ctx, toAsyncBoardsRepo(repo), assignees)).rejects.toThrow("dismissals unavailable");
+    expect(repo.listBoards(ctx).filter((board) => board.source?.startsWith("core.default-tab/"))).toEqual([]);
   });
 });

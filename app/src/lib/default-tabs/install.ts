@@ -16,7 +16,8 @@
  * 그래서 판정 기준이 «보드가 있나» 가 아니라 «이 워크스페이스가 초기화된 적이 있나» 여야 하는데,
  * 그 표식을 둘 자리가 아직 없다(`orgs` 컬럼 추가 = DG-02 소유).
  * 지금은 **워크스페이스 생성 시 1회 호출**로만 쓰고, 지워진 탭을 되살리지 않는다.
- * → 후속: 초기화 표식 컬럼. 그게 없으면 «탭 0개» 상태(D77)가 새로고침마다 되살아난다.
+ * → #849: 회사가 지운 기본 탭은 default_tab_dismissals 에 남고, 이 파일의 모든 «만들기» 가
+ *   그 기록을 보고 건너뛴다(`readDismissedDefaultTabSources`).
  */
 
 import type { Ctx, FieldOption } from "@/lib/types";
@@ -24,6 +25,7 @@ import type { BoardsRepo, NewColumn } from "@/lib/boards/store";
 import type { Board, BoardColumn } from "@/lib/boards/types";
 import { plainGroupName } from "@/lib/boards/moveRules";
 import { createRequestBoardsRepo } from "@/lib/boards/request-repo";
+import { DefaultTabDismissedError } from "@/lib/boards/trash-errors";
 import { CONTACT_TAB } from "./contact";
 import { CONTRACT_WORK_TAB } from "./contract-work";
 import { NEW_LEAD_TAB } from "./new-lead";
@@ -52,6 +54,36 @@ export interface EnsuredTab {
   groupIds: Record<string, string>;
   /** 만들어진 컬럼 key — 정의 순서와 1:1. */
   columnKeys: string[];
+}
+
+/**
+ * #849 — 지운 기본 탭(169 default_tab_dismissals). 여기 있는 source 는 어떤 경로도 자동으로
+ * 다시 만들지 않는다. 기록을 지우는 것은 «기본 탭 다시 설치» 뿐이다.
+ * 보드가 «없을 때만» 읽는다 — 건강한 진입에 왕복을 하나 더 얹지 않는다.
+ */
+export async function readDismissedDefaultTabSources(
+  ctx: Ctx,
+  store: Pick<BoardsRepo, "listDefaultTabDismissals">,
+): Promise<ReadonlySet<string>> {
+  return new Set((await store.listDefaultTabDismissals(ctx)).map((row) => row.source));
+}
+
+export async function isDefaultTabDismissed(
+  ctx: Ctx,
+  store: Pick<BoardsRepo, "listDefaultTabDismissals">,
+  source: string,
+): Promise<boolean> {
+  return (await readDismissedDefaultTabSources(ctx, store)).has(source);
+}
+
+/**
+ * 설치 경로는 이 오류를 «건너뛰기» 로 읽는다. 이 파일이 직접 던진 것이거나, 169 create_workspace_board 가
+ * 같은 잠금 안에서 낸 'default_tab_dismissed'(55000) — 기록을 읽은 뒤 누가 막 지운 경쟁이다.
+ * 어댑터가 RPC 문구를 그대로 실어 보내도 잡히게 문구도 본다.
+ */
+export function isDefaultTabDismissedError(error: unknown): boolean {
+  return error instanceof DefaultTabDismissedError
+    || (error instanceof Error && /\bdefault_tab_dismissed\b/u.test(error.message));
 }
 
 function canonicalJson(value: unknown): string {
@@ -166,6 +198,8 @@ export type DefaultTabDrift = {
   missingGroupNames: string[];
   missingColumnKeys: string[];
   definitionRevisionBehind: boolean;
+  /** #849 — 회사가 지운 기본 탭이다. 없어도 «고칠 것» 이 아니다. */
+  dismissed: boolean;
   /** 하나라도 만들 것이 있는가. false 면 ensureDefaultTabAdditive 는 «아무것도 쓰지 않는다». */
   hasWork: boolean;
 };
@@ -195,12 +229,15 @@ export async function readDefaultTabDrift(
   if (matches.length > 1) throw new Error("default tab source conflict");
   const board = matches[0];
   if (!board) {
+    // #849 — 지운 기본 탭은 깨끗하다. 리스를 잡지도, 다시 만들지도 않는다.
+    const dismissed = await isDefaultTabDismissed(ctx, store, tab.source);
     return {
       boardMissing: true,
-      missingGroupNames: tab.groups.map((group) => group.name),
-      missingColumnKeys: tab.columns.map((column) => column.key),
+      missingGroupNames: dismissed ? [] : tab.groups.map((group) => group.name),
+      missingColumnKeys: dismissed ? [] : tab.columns.map((column) => column.key),
       definitionRevisionBehind: false,
-      hasWork: true,
+      dismissed,
+      hasWork: !dismissed,
     };
   }
   return readDefaultTabBoardDrift(ctx, tab, board, store, assignees);
@@ -286,6 +323,7 @@ export async function readDefaultTabBoardDrift(
     missingGroupNames,
     missingColumnKeys,
     definitionRevisionBehind,
+    dismissed: false,
     hasWork: otherWork || linkedStageSyncPending,
   };
 }
@@ -687,6 +725,8 @@ export async function ensureDefaultTabAdditive(
   const matches = (await store.listBoards(ctx)).filter((board) => board.source === tab.source);
   if (matches.length > 1) throw new Error("default tab source conflict");
   const created = matches.length === 0;
+  // #849 — 지운 기본 탭은 다시 만들지 않는다. 진입 repair 는 이 오류를 «지움» 결과로 바꾼다.
+  if (created && await isDefaultTabDismissed(ctx, store, tab.source)) throw new DefaultTabDismissedError();
   const board = matches[0] ?? await store.createBoard(ctx, {
     name: tab.name,
     description: tab.description,
@@ -770,6 +810,17 @@ export async function ensureDefaultTab(
   assigneesOverride?: readonly DefaultTabAssignee[],
 ): Promise<EnsuredTab> {
   const store = repo ?? await createRequestBoardsRepo();
+  return ensureDefaultTabWith(ctx, tab, store, assigneesOverride, () => readDismissedDefaultTabSources(ctx, store));
+}
+
+/** `readDismissed` 는 보드를 새로 만들어야 할 때만 부른다 — 여러 탭을 돌 때 한 번 읽은 값을 나눠 쓴다. */
+async function ensureDefaultTabWith(
+  ctx: Ctx,
+  tab: DefaultTab,
+  store: BoardsRepo,
+  assigneesOverride: readonly DefaultTabAssignee[] | undefined,
+  readDismissed: () => Promise<ReadonlySet<string>>,
+): Promise<EnsuredTab> {
   const needsAssignees = tab.groups.some((group) => group.assigneeSlot !== undefined)
     || tab.columns.some((column) => column.assigneeMove !== undefined);
   const assignees = needsAssignees
@@ -832,6 +883,8 @@ export async function ensureDefaultTab(
     };
   }
 
+  // #849 — 회사가 지운 기본 탭은 다시 만들지 않는다.
+  if ((await readDismissed()).has(tab.source)) throw new DefaultTabDismissedError();
   const board = await store.createBoard(ctx, {
     name: tab.name,
     description: tab.description,
@@ -1067,16 +1120,25 @@ async function reconcileAssigneeGroups(
   return groupIds;
 }
 
-/** 워크스페이스 생성 시 1회 호출. 이미 있는 탭은 건너뛴다. */
+/**
+ * 워크스페이스 생성 시 1회 호출. 이미 있는 탭은 건너뛴다.
+ * #849 — 회사가 지운 기본 탭도 건너뛴다(결과에 넣지 않는다). 지운 기록은 빠진 탭이 있을 때 한 번만 읽는다.
+ */
 export async function ensureDefaultTabs(
   ctx: Ctx,
   repo?: BoardsRepo,
   assigneesOverride?: readonly DefaultTabAssignee[],
 ): Promise<EnsuredTab[]> {
   const store = repo ?? await createRequestBoardsRepo();
+  let dismissed: Promise<ReadonlySet<string>> | undefined;
+  const readDismissed = () => (dismissed ??= readDismissedDefaultTabSources(ctx, store));
   const ensured: EnsuredTab[] = [];
   for (const tab of DEFAULT_TABS) {
-    ensured.push(await ensureDefaultTab(ctx, tab, store, assigneesOverride));
+    try {
+      ensured.push(await ensureDefaultTabWith(ctx, tab, store, assigneesOverride, readDismissed));
+    } catch (error) {
+      if (!isDefaultTabDismissedError(error)) throw error;
+    }
   }
   return ensured;
 }

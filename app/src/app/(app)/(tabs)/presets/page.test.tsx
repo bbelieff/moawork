@@ -13,6 +13,12 @@ describe("BBE-158 프리셋 라이브러리", () => {
     expect(page).toContain("deleteTabAction");
   });
 
+  it("#849 탭 만들기는 요청 열쇠를 싣고, 삭제는 휴지통으로 보낸다고 말한다", () => {
+    expect(page).toMatch(/<input type="hidden" name="requestId" value=\{crypto\.randomUUID\(\)\} \/>/);
+    expect(page).toContain("휴지통으로 삭제");
+    expect(page).toContain("BOARD_TRASH_RETENTION_DAYS");
+  });
+
   it("아이템 묶음 구조를 저장하고 다른 탭에서 재사용한다", () => {
     expect(page).toContain("saveSectionPresetAction");
     expect(page).toContain("applySectionPresetAction");

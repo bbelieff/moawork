@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { getBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { SectionPresetRepo, type SectionPresetBoardsRepo } from "@/lib/presets/section-presets";
+import { BOARD_TRASH_RETENTION_DAYS } from "@/lib/boards/types";
 import { ChecklistService, CHECKLIST_PRODUCT_LABELS, SupabaseChecklistStore } from "@/lib/policyfund/checklist";
 import { ProductChecklistAdmin } from "@/components/policyfund/ProductChecklistAdmin";
 import {
@@ -87,9 +88,12 @@ export default async function PresetsPage({
           <div>
             <h2 id="tabs-heading" className="font-semibold text-mw-fg">우리 회사 탭</h2>
             <p className="text-sm text-mw-sub">목업 구조는 처음 시작할 때의 기본값이며, 이후 구조는 회사가 소유합니다.</p>
+            <p className="text-xs text-mw-sub">지운 탭은 {BOARD_TRASH_RETENTION_DAYS}일 동안 탭 관리 › 휴지통에 있다가 완전히 지워져요.</p>
           </div>
           {canManageTabs && (
             <form action={createTabAction} className="flex gap-2">
+              {/* 같은 «만들기» 를 두 번 눌러도 탭이 둘 생기지 않게 하는 열쇠. 서버가 발급한다. */}
+              <input type="hidden" name="requestId" value={crypto.randomUUID()} />
               <input name="name" required placeholder="새 탭 이름" className="min-w-0 rounded-lg border border-mw-line bg-mw-bg px-3 py-2 text-sm text-mw-fg" />
               <button className="rounded-lg bg-mw-primary px-3 py-2 text-sm font-semibold text-mw-on-accent">+ 탭 만들기</button>
             </form>
@@ -115,7 +119,12 @@ export default async function PresetsPage({
                   {canManageTabs && (
                     <form action={deleteTabAction}>
                       <input type="hidden" name="boardId" value={board.id} />
-                      <button className="text-xs font-medium text-red-600">삭제</button>
+                      <button
+                        title={`${BOARD_TRASH_RETENTION_DAYS}일 안에는 탭 관리 › 휴지통에서 그대로 복구할 수 있어요`}
+                        className="text-xs font-medium text-mw-error"
+                      >
+                        휴지통으로 삭제
+                      </button>
                     </form>
                   )}
                 </div>

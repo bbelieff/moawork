@@ -19,6 +19,7 @@ import type {
   BoardGroup,
   BoardItem,
   BoardView,
+  DefaultTabDismissal,
   ItemValue,
 } from "@/lib/boards/types";
 import { seedDb } from "./seed";
@@ -48,6 +49,8 @@ export interface Db {
   boardItems: BoardItem[];
   itemValues: ItemValue[];
   boardViews: BoardView[];
+  /** #849 지운 기본 탭 기록(169 default_tab_dismissals). */
+  defaultTabDismissals: DefaultTabDismissal[];
 }
 
 // HMR/요청 간에 상태를 유지하도록 globalThis 에 보관(dev 편의).
@@ -57,6 +60,8 @@ export function db(): Db {
   if (!globalStore.__moaworkDb) {
     globalStore.__moaworkDb = seedDb();
   }
+  // HMR 로 남아 있던 예전 상태에는 #849 기록 칸이 없다.
+  globalStore.__moaworkDb.defaultTabDismissals ??= [];
   return globalStore.__moaworkDb;
 }
 

@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { repairContactBoardOnEntry } from "@/lib/contact/entry";
 import { createClient } from "@/lib/supabase/server";
+import { CONTACT_TAB } from "@/lib/default-tabs/contact";
+import { DismissedDefaultTabNotice } from "@/components/default-tabs/DismissedDefaultTabNotice";
 
 /**
  * 대면 상담(STEP3) 탭의 제품 진입점.
@@ -18,6 +20,7 @@ export default async function ConsultInpersonPage({
   const sp = await searchParams;
   const ctx = applyAs(await getSession(), sp.as);
   const result = await repairContactBoardOnEntry(ctx, await createClient({ noStore: true }));
+  if (result.kind === "dismissed") return <DismissedDefaultTabNotice tabName={CONTACT_TAB.name} />;
   if (result.kind !== "ready") {
     const conflict = result.kind === "conflict";
     const permission = result.kind === "permission";

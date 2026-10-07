@@ -99,6 +99,38 @@ describe("approved workspace repeat entry", () => {
     expect(request.rpc.mock.calls.map(([name]) => name)).toContain("acquire_workspace_bootstrap_lease");
   });
 
+  it("#849 counts a trashed default tab as clean — no lease, no recreation", async () => {
+    const trashed = (await repo.listBoards(ctx)).find((row) => row.source === DEFAULT_TABS[1].source)!;
+    await repo.trashBoard(ctx, trashed.id);
+    const create = vi.spyOn(repo, "createBoard");
+    const request = client();
+    await ensureApprovedWorkspaceOnEntry(request as never, "entry-qa");
+    await ensureApprovedWorkspaceOnEntry(request as never, "entry-qa");
+    expect(request.rpc.mock.calls.map(([name]) => name)).not.toContain("acquire_workspace_bootstrap_lease");
+    expect(create).not.toHaveBeenCalled();
+    expect((await repo.listBoards(ctx)).some((row) => row.source === DEFAULT_TABS[1].source)).toBe(false);
+  });
+
+  it("#849 repairs a lost default tab under the lease but leaves the trashed one alone", async () => {
+    const boards = await repo.listBoards(ctx);
+    const trashed = boards.find((row) => row.source === DEFAULT_TABS[1].source)!;
+    const lost = boards.find((row) => row.source === DEFAULT_TABS[2].source)!;
+    await repo.trashBoard(ctx, trashed.id);
+    await repo.deleteBoard(ctx, lost.id);
+    const request = client();
+    await ensureApprovedWorkspaceOnEntry(request as never, "entry-qa");
+    const sources = (await repo.listBoards(ctx)).map((row) => row.source);
+    expect(sources).toContain(DEFAULT_TABS[2].source);
+    expect(sources).not.toContain(DEFAULT_TABS[1].source);
+    expect(request.rpc.mock.calls.map(([name]) => name)).toContain("acquire_workspace_bootstrap_lease");
+  });
+
+  it("does not read dismissals when every default tab is present", async () => {
+    const reads = vi.spyOn(repo, "listDefaultTabDismissals");
+    await ensureApprovedWorkspaceOnEntry(client() as never, "entry-qa");
+    expect(reads).not.toHaveBeenCalled();
+  });
+
   it("falls back to the guarded path when the read-only probe fails", async () => {
     vi.spyOn(repo, "listBoards").mockRejectedValueOnce(new Error("read unavailable"));
     const request = client();

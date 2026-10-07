@@ -39,7 +39,45 @@ export interface Board {
   detail_layout_jsonb?: DetailLayoutEntry[];
   /** 보드 전체가 공유하는 최대 3개 한줄 요약 설정. URL/저장 뷰와 독립이다. */
   summary_config_jsonb?: BoardSummaryMetricConfig[];
+  /**
+   * #849 휴지통 — 169. 값이 있으면 휴지통 탭이다(7일 뒤 완전 삭제). 휴지통에 있는 동안
+   * source 는 'trash/<id>/<원래 source>' 로 바뀌고 원래 값은 trashed_source 에 있다.
+   */
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  trashed_source?: string | null;
+  /** 사용자 탭의 사이드바 자리(업무 › 계약 전/계약 후). 기본 탭은 null(고정 메뉴). */
+  nav_section?: BoardNavSection | null;
 }
+
+/** 사용자 탭이 사이드바에 들어가는 자리 — nav-items.ts NAV_SECTIONS 의 key 와 같다. */
+export const BOARD_NAV_SECTIONS = ["before-contract", "after-contract"] as const;
+export type BoardNavSection = (typeof BOARD_NAV_SECTIONS)[number];
+export function isBoardNavSection(value: unknown): value is BoardNavSection {
+  return typeof value === "string" && (BOARD_NAV_SECTIONS as readonly string[]).includes(value);
+}
+
+/** 휴지통에 보내기 전에 보여 주는 개수 — 169 read_board_trash_impact. */
+export interface BoardTrashImpact {
+  groups: number;
+  rows: number;
+  memos: number;
+  files: number;
+  views: number;
+  automations: number;
+  messaging: number;
+}
+
+/** 지운 기본 탭 기록 — 169 default_tab_dismissals. 이 기록이 있으면 기본 탭을 자동으로 다시 만들지 않는다. */
+export interface DefaultTabDismissal {
+  org_id: string;
+  source: string;
+  dismissed_at: string;
+  dismissed_by: string | null;
+}
+
+/** 휴지통에 머무는 날 수. 169 purge_expired_* 의 interval 과 같아야 한다. */
+export const BOARD_TRASH_RETENTION_DAYS = 7;
 
 export interface BoardGroup {
   id: string;

@@ -18,9 +18,12 @@ import type {
   BoardColumn,
   BoardGroup,
   BoardItem,
+  BoardNavSection,
+  BoardTrashImpact,
   BoardView,
   BoardViewKind,
   CellValue,
+  DefaultTabDismissal,
   ItemValue,
 } from "./types";
 import type { DetailLayoutEntry } from "./detail-layout";
@@ -31,8 +34,10 @@ export interface NewBoard {
   description?: string | null;
   icon?: string | null;
   source?: string | null;
+  /** 사용자 탭만: 사이드바 자리. 비우면 '계약 후'. source 가 있으면 무시된다. */
+  nav_section?: BoardNavSection | null;
 }
-export type BoardPatch = Partial<NewBoard> & { sort_order?: number };
+export type BoardPatch = Partial<Omit<NewBoard, "source">> & { sort_order?: number; source?: string | null };
 
 export interface DefaultDefinitionState {
   revision: number;
@@ -135,6 +140,22 @@ export interface BoardsRepo {
   getDefaultDefinitionState?(ctx: Ctx, boardId: string): Promise<DefaultDefinitionState | null>;
   setDefaultDefinitionState?(ctx: Ctx, boardId: string, state: DefaultDefinitionState): Promise<void>;
   deleteBoard(ctx: Ctx, id: string): Promise<boolean>;
+  // #849 휴지통 — 169. 지우기 = 휴지통(7일) → 완전 삭제. 기본 탭도 같다.
+  /** 휴지통으로 보낸다. 이미 휴지통이면 그대로 돌려준다. 권한: danger.bulk_edit_delete. */
+  trashBoard(ctx: Ctx, id: string): Promise<Board>;
+  /** 휴지통에서 그대로 되살린다. 같은 기본 탭이 이미 다시 설치돼 있으면 막는다. */
+  restoreBoard(ctx: Ctx, id: string): Promise<Board>;
+  /** 휴지통 탭을 지금 완전히 지운다. 정리할 저장소 파일 수를 돌려준다. */
+  purgeBoard(ctx: Ctx, id: string): Promise<number>;
+  /** 7일 지난 휴지통 탭을 지운다(탭 관리 권한). 지운 탭 수. */
+  purgeExpiredBoards(ctx: Ctx): Promise<number>;
+  listTrashedBoards(ctx: Ctx): Promise<Board[]>;
+  readBoardTrashImpact(ctx: Ctx, id: string): Promise<BoardTrashImpact>;
+  listDefaultTabDismissals(ctx: Ctx): Promise<DefaultTabDismissal[]>;
+  /** 지운 기본 탭 기록을 지운다(다시 설치 전 단계). 기록이 있었으면 true. */
+  clearDefaultTabDismissal(ctx: Ctx, source: string): Promise<boolean>;
+  listStoragePurgeQueue(ctx: Ctx, limit?: number): Promise<string[]>;
+  ackStoragePurge(ctx: Ctx, paths: readonly string[]): Promise<number>;
   setBoardDetailLayout(ctx: Ctx, id: string, layout: DetailLayoutEntry[]): Promise<Board | undefined>;
   applyBoardSummarySettings(ctx: Ctx, boardId: string, request: BoardSummarySettingsRequest): Promise<BoardSummarySettingsReceipt>;
 

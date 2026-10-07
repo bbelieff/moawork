@@ -7,15 +7,25 @@
 import type { Ctx } from "@/lib/types";
 import { isManager } from "@/lib/auth/roles";
 import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
-import type {
-  Board,
-  BoardColumn,
-  BoardGroup,
-  BoardItem,
-  BoardView,
-  CellValue,
-  ItemValue,
+import {
+  BOARD_TRASH_RETENTION_DAYS,
+  isBoardNavSection,
+  type Board,
+  type BoardColumn,
+  type BoardGroup,
+  type BoardItem,
+  type BoardNavSection,
+  type BoardTrashImpact,
+  type BoardView,
+  type CellValue,
+  type DefaultTabDismissal,
+  type ItemValue,
 } from "@/lib/boards/types";
+import {
+  BoardTrashError,
+  DefaultTabAlreadyInstalledError,
+  DefaultTabDismissedError,
+} from "@/lib/boards/trash-errors";
 import { isSectionPresetSource } from "@/lib/presets/section-presets";
 import { normalizeDetailLayout, type DetailLayoutEntry } from "@/lib/boards/detail-layout";
 import {
@@ -58,6 +68,21 @@ function canSeeAll(ctx: Ctx): boolean {
   return isManager(ctx.role) || ctx.scope === "all";
 }
 
+const DEFAULT_TAB_PREFIX = "core.default-tab/";
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** #849 — 보드와 그 행·값·컬럼·그룹·뷰를 지운다(deleteBoard·완전 삭제가 같이 쓴다). */
+function removeBoardData(id: string): void {
+  const d = db();
+  d.boards = d.boards.filter((x) => x.id !== id);
+  const itemIds = new Set(d.boardItems.filter((i) => i.board_id === id).map((i) => i.id));
+  d.boardItems = d.boardItems.filter((i) => i.board_id !== id);
+  d.itemValues = d.itemValues.filter((v) => !itemIds.has(v.item_id));
+  d.boardColumns = d.boardColumns.filter((c) => c.board_id !== id);
+  d.boardGroups = d.boardGroups.filter((g) => g.board_id !== id);
+  d.boardViews = d.boardViews.filter((v) => v.board_id !== id);
+}
+
 /** 라벨 → 컬럼 key slug(유니코드 보존). 보드 내 유일성은 호출측에서 보장. */
 export function slugifyKey(label: string): string {
   const base = label.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^\p{L}\p{N}_]/gu, "");
@@ -70,20 +95,21 @@ export class LocalBoardsRepo {
   private readonly summaryRequests = new Map<string, { actorId: string; payload: string; result: BoardSummarySettingsReceipt }>();
   private readonly rowMoveRequests = new Map<string, { actorId: string; payload: string; result: RowMoveReceipt }>();
   // ── 보드 ──
+  // #849 — 휴지통 탭(deleted_at)은 보통 읽기에서 뺀다. 휴지통 목록은 listTrashedBoards.
   listBoards(ctx: Ctx): Board[] {
     return db()
-      .boards.filter((b) => b.org_id === ctx.org.id && !isSectionPresetSource(b.source))
+      .boards.filter((b) => b.org_id === ctx.org.id && !b.deleted_at && !isSectionPresetSource(b.source))
       .sort((a, b) => a.sort_order - b.sort_order);
   }
 
   listSectionPresetBoards(ctx: Ctx): Board[] {
     return db()
-      .boards.filter((b) => b.org_id === ctx.org.id && isSectionPresetSource(b.source))
+      .boards.filter((b) => b.org_id === ctx.org.id && !b.deleted_at && isSectionPresetSource(b.source))
       .sort((a, b) => a.sort_order - b.sort_order);
   }
 
   getBoard(ctx: Ctx, id: string): Board | undefined {
-    return db().boards.find((b) => b.id === id && b.org_id === ctx.org.id);
+    return db().boards.find((b) => b.id === id && b.org_id === ctx.org.id && !b.deleted_at);
   }
 
   createBoard(ctx: Ctx, input: NewBoard, requestId = crypto.randomUUID()): Board {
@@ -96,6 +122,19 @@ export class LocalBoardsRepo {
       if (!replayed) throw new Error("생성한 보드를 찾을 수 없습니다.");
       return replayed;
     }
+    const source = input.source?.trim() || null;
+    if (source?.startsWith("trash/")) throw new Error("탭 출처를 다시 확인해 주세요.");
+    if (source?.startsWith(DEFAULT_TAB_PREFIX)
+      && db().defaultTabDismissals.some((d) => d.org_id === ctx.org.id && d.source === source)) {
+      throw new DefaultTabDismissedError();
+    }
+    // 사이드바 자리는 사용자 탭만 갖는다(169 create_workspace_board 와 같다).
+    let navSection: BoardNavSection | null = null;
+    if (source === null) {
+      const requested = input.nav_section ?? "after-contract";
+      if (!isBoardNavSection(requested)) throw new Error("탭을 넣을 자리를 다시 골라 주세요.");
+      navSection = requested;
+    }
     const ts = now();
     const board: Board = {
       id: crypto.randomUUID(),
@@ -104,15 +143,20 @@ export class LocalBoardsRepo {
       description: input.description ?? null,
       icon: input.icon ?? null,
       is_system: false,
-      source: input.source ?? null,
+      source,
       sort_order: db().boards.filter((b) => b.org_id === ctx.org.id).length,
       created_by: ctx.user.id,
       created_at: ts,
       updated_at: ts,
       summary_config_jsonb: [],
       row_order_version: 0,
+      deleted_at: null,
+      deleted_by: null,
+      trashed_source: null,
+      nav_section: navSection,
     };
     db().boards.push(board);
+    if (source === null) this.createGroup(ctx, board.id, { name: "새 아이템", sortOrder: 0 });
     this.createdBoardRequests.set(requestKey, { input: payload, boardId: board.id });
     return board;
   }
@@ -190,15 +234,113 @@ export class LocalBoardsRepo {
   deleteBoard(ctx: Ctx, id: string): boolean {
     const b = this.getBoard(ctx, id);
     if (!b) return false;
-    const d = db();
-    d.boards = d.boards.filter((x) => x.id !== id);
-    const itemIds = d.boardItems.filter((i) => i.board_id === id).map((i) => i.id);
-    d.boardItems = d.boardItems.filter((i) => i.board_id !== id);
-    d.itemValues = d.itemValues.filter((v) => !itemIds.includes(v.item_id));
-    d.boardColumns = d.boardColumns.filter((c) => c.board_id !== id);
-    d.boardGroups = d.boardGroups.filter((g) => g.board_id !== id);
-    d.boardViews = d.boardViews.filter((v) => v.board_id !== id);
+    removeBoardData(id);
     return true;
+  }
+
+  // ── #849 휴지통 — 169 RPC 와 같은 규칙(권한은 서비스·액션이 본다) ──
+  /** 휴지통 탭까지 포함해 찾는다. */
+  private findAnyBoard(ctx: Ctx, id: string): Board | undefined {
+    return db().boards.find((b) => b.id === id && b.org_id === ctx.org.id);
+  }
+
+  trashBoard(ctx: Ctx, id: string): Board {
+    const b = this.findAnyBoard(ctx, id);
+    if (!b) throw new BoardTrashError("board_unavailable");
+    if (b.is_system) throw new BoardTrashError("system_board");
+    if (b.deleted_at) return b;
+    const ts = now();
+    const original = b.source ?? null;
+    b.deleted_at = ts;
+    b.deleted_by = ctx.user.id;
+    b.trashed_source = original;
+    b.source = original === null ? null : `trash/${b.id}/${original}`;
+    b.updated_at = ts;
+    if (original?.startsWith(DEFAULT_TAB_PREFIX)) {
+      const d = db();
+      d.defaultTabDismissals = d.defaultTabDismissals.filter((x) => !(x.org_id === ctx.org.id && x.source === original));
+      d.defaultTabDismissals.push({ org_id: ctx.org.id, source: original, dismissed_at: ts, dismissed_by: ctx.user.id });
+    }
+    return b;
+  }
+
+  restoreBoard(ctx: Ctx, id: string): Board {
+    const b = this.findAnyBoard(ctx, id);
+    if (!b) throw new BoardTrashError("board_unavailable");
+    if (!b.deleted_at) return b;
+    const original = b.trashed_source ?? null;
+    if (original?.startsWith(DEFAULT_TAB_PREFIX)
+      && db().boards.some((x) => x.org_id === ctx.org.id && x.source === original)) {
+      throw new DefaultTabAlreadyInstalledError();
+    }
+    b.source = original;
+    b.trashed_source = null;
+    b.deleted_at = null;
+    b.deleted_by = null;
+    b.updated_at = now();
+    if (original?.startsWith(DEFAULT_TAB_PREFIX)) {
+      const d = db();
+      d.defaultTabDismissals = d.defaultTabDismissals.filter((x) => !(x.org_id === ctx.org.id && x.source === original));
+    }
+    return b;
+  }
+
+  /** 로컬엔 저장소 파일이 없어 정리할 파일 수는 늘 0이다. */
+  purgeBoard(ctx: Ctx, id: string): number {
+    const b = this.findAnyBoard(ctx, id);
+    if (!b?.deleted_at) throw new BoardTrashError("board_not_in_trash");
+    removeBoardData(id);
+    return 0;
+  }
+
+  purgeExpiredBoards(ctx: Ctx): number {
+    const cutoff = Date.now() - BOARD_TRASH_RETENTION_DAYS * DAY_MS;
+    const expired = db().boards.filter((b) => b.org_id === ctx.org.id && b.deleted_at && Date.parse(b.deleted_at) < cutoff);
+    for (const b of expired) removeBoardData(b.id);
+    return expired.length;
+  }
+
+  listTrashedBoards(ctx: Ctx): Board[] {
+    return db()
+      .boards.filter((b) => b.org_id === ctx.org.id && Boolean(b.deleted_at) && !isSectionPresetSource(b.trashed_source))
+      .sort((a, b) => String(b.deleted_at).localeCompare(String(a.deleted_at)));
+  }
+
+  /** 로컬엔 메모·파일·자동화·발송 규칙 저장소가 없어 그 개수는 0이다. */
+  readBoardTrashImpact(ctx: Ctx, id: string): BoardTrashImpact {
+    if (!this.findAnyBoard(ctx, id)) throw new BoardTrashError("board_unavailable");
+    const d = db();
+    return {
+      groups: d.boardGroups.filter((g) => g.org_id === ctx.org.id && g.board_id === id).length,
+      rows: d.boardItems.filter((i) => i.org_id === ctx.org.id && i.board_id === id && !i.deleted_at).length,
+      memos: 0,
+      files: 0,
+      views: d.boardViews.filter((v) => v.org_id === ctx.org.id && v.board_id === id
+        && !isGroupLayoutView(v) && v.name !== "__mw_default_definition__").length,
+      automations: 0,
+      messaging: 0,
+    };
+  }
+
+  listDefaultTabDismissals(ctx: Ctx): DefaultTabDismissal[] {
+    return db().defaultTabDismissals.filter((d) => d.org_id === ctx.org.id);
+  }
+
+  clearDefaultTabDismissal(ctx: Ctx, source: string): boolean {
+    if (!source.startsWith(DEFAULT_TAB_PREFIX)) throw new Error("기본 탭만 다시 설치할 수 있어요.");
+    const d = db();
+    const before = d.defaultTabDismissals.length;
+    d.defaultTabDismissals = d.defaultTabDismissals.filter((x) => !(x.org_id === ctx.org.id && x.source === source));
+    return d.defaultTabDismissals.length < before;
+  }
+
+  // 로컬엔 저장소(버킷)가 없다 — 정리할 파일도 없다.
+  listStoragePurgeQueue(): string[] {
+    return [];
+  }
+
+  ackStoragePurge(): number {
+    return 0;
   }
 
   setBoardDetailLayout(ctx: Ctx, id: string, layout: DetailLayoutEntry[]): Board | undefined {

@@ -65,6 +65,12 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: { bodySizeLimit: "16mb" },
   },
+  /*
+   * 2026-10-08 — VPS 빌드가 «Running TypeScript» 단계에서 힙(1 GB)을 넘겨 두 번 연속 실패했다.
+   * 타입 검사는 이미 세 곳이 막는다: 커밋 전 fast gate, PR CI(check), merge-pr 의 CI 성공 확인.
+   * 그래서 운영 빌드에서는 같은 검사를 한 번 더 돌리지 않는다. 컴파일 오류는 여전히 빌드를 멈춘다.
+   */
+  typescript: { ignoreBuildErrors: true },
   async rewrites() {
     return posthogRewrites();
   },

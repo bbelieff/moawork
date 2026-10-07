@@ -13,6 +13,8 @@ import { getSession } from "@/lib/auth/session";
 import { loadPermGuard } from "@/lib/perm/guard";
 import { recordRiskyAction } from "@/lib/perm/server";
 import { NotFoundError } from "@/lib/boards";
+import type { NewBoard } from "@/lib/boards/store";
+import { isBoardNavSection } from "@/lib/boards/types";
 import { createRequestBoards } from "@/lib/boards/server";
 import { COLUMN_DELETE_CONFIRM, parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
 import type { Ctx, FieldOption } from "@/lib/types";
@@ -293,11 +295,16 @@ function parseOptionsCsv(csv: string): FieldOption[] {
 export async function createBoardAction(formData: FormData): Promise<void> {
   const ctx = await getSession();
   await requirePermission(ctx, "structure.tab_manage");
-  const input = parseNewBoard({
-    name: str(formData, "name"),
-    description: str(formData, "description"),
-    icon: str(formData, "icon"),
-  });
+  const navSection = str(formData, "nav_section");
+  const input: NewBoard = {
+    ...parseNewBoard({
+      name: str(formData, "name"),
+      description: str(formData, "description"),
+      icon: str(formData, "icon"),
+    }),
+    // #849 사이드바 자리(업무 › 계약 전/계약 후). 비었거나 모르는 값이면 '계약 후'.
+    nav_section: isBoardNavSection(navSection) ? navSection : "after-contract",
+  };
   const detail = await (await boardsService()).createBoard(ctx, input, str(formData, "requestId") || crypto.randomUUID());
   revalidatePath("/boards");
   redirect(`/boards/${detail.board.id}`);
@@ -313,13 +320,19 @@ export async function reorderBoardsAction(formData: FormData): Promise<void> {
   });
 }
 
+/** #849 탭 삭제 = 휴지통. 7일 안에는 탭 관리 › 휴지통에서 되살린다. */
 export async function deleteBoardAction(formData: FormData): Promise<void> {
   return runBoardAction(formData, async () => {
     const ctx = await getSession();
     await requirePermission(ctx, "danger.bulk_edit_delete", "danger.bulk_edit_delete");
-    await (await boardsService()).deleteBoard(ctx, str(formData, "boardId"));
+    const boardId = str(formData, "boardId");
+    await (await boardsService()).deleteBoard(ctx, boardId);
     revalidatePath("/boards");
-    redirect("/boards");
+    revalidatePath("/settings/workspace-builder");
+    // 휴지통 화면은 대표 전용이다. 권한을 받은 다른 역할은 탭 목록으로 보낸다.
+    redirect(ctx.role === "owner"
+      ? `/settings/workspace-builder?section=tabs&trashed=${encodeURIComponent(boardId)}`
+      : "/boards");
   });
 }
 

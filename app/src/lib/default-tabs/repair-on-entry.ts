@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Ctx } from "@/lib/types";
 import type { BoardsRepo } from "@/lib/boards/store";
 import type { DefaultTab } from "./types";
-import { ensureDefaultTabAdditive, readDefaultTabDrift } from "./install";
+import { ensureDefaultTabAdditive, isDefaultTabDismissedError, readDefaultTabDrift } from "./install";
 import { assigneesFromMemberSummary } from "@/lib/boards/default-tab-assignees";
 import { loadMemberOrgSummaryWithClient } from "@/lib/auth/member-org-summary";
 import { SupabaseBoardsRepo } from "@/lib/repo/supabase/boardsRepo";
@@ -11,7 +11,9 @@ export type DefaultTabEntryResolution =
   | { kind: "ready"; boardId: string }
   | { kind: "missing" }
   | { kind: "conflict" }
-  | { kind: "permission" };
+  | { kind: "permission" }
+  /** #849 — 회사가 지운 기본 탭. 누구의 진입에서도 다시 만들지 않는다. */
+  | { kind: "dismissed" };
 
 const REPAIR_LEASE_ATTEMPTS = 40;
 const REPAIR_LEASE_WAIT_MS = 250;
@@ -34,7 +36,7 @@ export async function repairDefaultTabOnEntry(
 ): Promise<DefaultTabEntryResolution> {
   const repo = new SupabaseBoardsRepo(client);
   const existing = await resolveExisting(ctx, repo);
-  if (existing.kind === "conflict") return existing;
+  if (existing.kind === "conflict" || existing.kind === "dismissed") return existing;
   if (ctx.role !== "owner" && ctx.role !== "admin") {
     return existing.kind === "ready" ? existing : { kind: "permission" };
   }
@@ -89,8 +91,13 @@ export async function repairDefaultTabOnEntry(
   try {
     await renew();
     const before = await resolveExisting(ctx, repo);
-    if (before.kind === "conflict") return before;
-    const ensured = await ensureDefaultTabAdditive(ctx, tab, repo, assignees);
+    if (before.kind === "conflict" || before.kind === "dismissed") return before;
+    // 방금 읽은 뒤 누가 지웠으면(경쟁) 만들지 않고 «지움» 으로 돌려준다.
+    const ensured = await ensureDefaultTabAdditive(ctx, tab, repo, assignees).catch((error: unknown) => {
+      if (isDefaultTabDismissedError(error)) return null;
+      throw error;
+    });
+    if (!ensured) return { kind: "dismissed" };
     await renew();
     return { kind: "ready", boardId: ensured.boardId };
   } finally {

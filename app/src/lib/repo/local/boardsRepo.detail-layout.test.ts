@@ -22,10 +22,12 @@ describe("LocalBoardsRepo BBE-107 저장 계약", () => {
     repo.setBoardDetailLayout(ctx, board.id, [{ key: "company", source: "column" }]);
     repo.setGroupDetailLayout(ctx, group.id, [{ key: "memo", source: "detail", label: "메모", type: "text" }]);
     expect(repo.getBoard(ctx, board.id)?.detail_layout_jsonb).toEqual([{ key: "company", source: "column" }]);
-    expect(repo.listGroups(ctx, board.id)[0].detail_layout_jsonb).toEqual([{ key: "memo", source: "detail", label: "메모", type: "text" }]);
+    // #849 — 새 탭엔 기본 아이템 「새 아이템」이 먼저 있다. id 로 찾는다.
+    const stored = () => repo.listGroups(ctx, board.id).find((candidate) => candidate.id === group.id);
+    expect(stored()?.detail_layout_jsonb).toEqual([{ key: "memo", source: "detail", label: "메모", type: "text" }]);
 
     repo.setGroupDetailLayout(ctx, group.id, null);
-    expect(repo.listGroups(ctx, board.id)[0].detail_layout_jsonb).toBeNull();
+    expect(stored()?.detail_layout_jsonb).toBeNull();
   });
 
   it("그룹 왕복 이동과 레이아웃 삭제 뒤에도 값 개수가 그대로다", () => {
@@ -51,8 +53,9 @@ describe("LocalBoardsRepo BBE-107 저장 계약", () => {
     const a = repo.createGroup(ctx, board.id, { name: "A", sortOrder: 7 });
     const b = repo.createGroup(ctx, board.id, { name: "B" });
     const outside = repo.createGroup(ctx, other.id, { name: "외부" });
+    const seeded = repo.listGroups(ctx, board.id).find((group) => group.name === "새 아이템")!;
     expect(b.sort_order).toBe(8);
-    expect(repo.reorderGroups(ctx, board.id, [b.id, a.id]).map((group) => group.id)).toEqual([b.id, a.id]);
+    expect(repo.reorderGroups(ctx, board.id, [b.id, a.id, seeded.id]).map((group) => group.id)).toEqual([b.id, a.id, seeded.id]);
     expect(() => repo.reorderGroups(ctx, board.id, [a.id, outside.id])).toThrow(/현재 보드/u);
   });
 });
