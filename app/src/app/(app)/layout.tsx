@@ -22,7 +22,8 @@ import {
 } from "@/lib/workspace-entry/server";
 import { NotificationBell } from "@/components/notify/NotificationBell";
 import { loadNotifySnapshot } from "@/lib/notify/server";
-import { loadBoardNavKeys } from "@/lib/shell/board-nav-map";
+import { loadSidebarBoards } from "@/lib/shell/board-nav-map";
+import { loadPermGuard } from "@/lib/perm/guard";
 import { purgeExpiredTrashedTabs } from "@/lib/boards/trash-maintenance";
 import { createRequestBoards } from "@/lib/boards/server";
 import { loadPlatformActor } from "@/lib/platform/actor";
@@ -94,7 +95,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // BBE-214 — bootstrap 뒤의 셸 읽기는 서로 결과에 의존하지 않는다. 각각을 직렬로
   // 기다리면 모든 hard-load가 네트워크 지연을 그대로 합산한다. 같은 요청 안에서 함께
   // 시작하되, auth/RLS 판정과 실패 의미는 각 loader가 계속 소유한다.
-  const [workspaceApprovals, workspaceEntryContext, platformActor, orgLogoUrls, lockedFeatures, notify, boardNavKeys] = await Promise.all([
+  const [workspaceApprovals, workspaceEntryContext, platformActor, orgLogoUrls, lockedFeatures, notify, sidebarBoards, canCreateTab] = await Promise.all([
     trustedOwnerOrgId ? loadWorkspaceApprovals(trustedOwnerOrgId) : Promise.resolve<WorkspaceApprovals | null>(null),
     loadWorkspaceEntryContext(),
     loadPlatformActor(),
@@ -113,11 +114,26 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     //   **탭에 들어가 있는데 사이드바가 통째로 회색이었다.**
     //   위에서 뺀 것은 «직렬로 붙던» 조회였고 이것은 이 Promise.all 안에서 같이 출발하므로
     //   벽시계 시간이 늘지 않는다. 실패하면 빈 지도라 셸은 그대로 뜬다.
-    (async () => loadBoardNavKeys(ctx, (await createRequestBoards()).repo))(),
+    //
+    // #849 — 같은 한 번의 읽기에서 사용자 탭(업무 › 계약 전/계약 후 끝)과 지운 기본 탭(숨길 메뉴)도
+    //   함께 만든다. 지운 기본 탭 기록은 보드 목록과 같이 출발한다. 실패하면 그 부분만 빈 값이다.
+    (async () => {
+      try {
+        return await loadSidebarBoards(ctx, (await createRequestBoards()).repo);
+      } catch {
+        return { boardNavKeys: {}, userTabs: [], dismissedSources: [] };
+      }
+    })(),
+    // #849 — 「새 탭」 줄은 탭 관리 권한이 있을 때만. 판정 불능은 «없음» 으로 닫는다(셸은 그대로 뜬다).
+    loadPermGuard(ctx.org.id, "structure.tab_manage").then(
+      (permission) => permission.kind === "allowed",
+      () => false,
+    ),
     // #849 — 7일 지난 휴지통 탭 정리. 같은 Promise.all 안이라 기다리는 시간이 늘지 않는다.
     purgeExpiredTrashedTabs(ctx),
   ]);
   logEntryTimings("workspace-layout", entryTimer.snapshot(), "ready");
+  const { boardNavKeys, userTabs, dismissedSources } = sidebarBoards;
   const switcherWorkspaces = routing.kind === "ready"
     ? buildSwitcherWorkspaces(routing.memberships, orgLogoUrls)
     : [];
@@ -173,6 +189,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           <SidebarNav
             workspaceBasePath={workspaceBasePath}
             boardNavKeys={boardNavKeys}
+            userTabs={userTabs}
+            dismissedSources={dismissedSources}
+            canCreateTab={canCreateTab}
             lockedFeatures={lockedFeatures}
             badges={workspaceApprovals
               ? { workspaceApprovals: workspaceApprovals.pendingCount }

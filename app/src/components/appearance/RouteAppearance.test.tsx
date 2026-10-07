@@ -10,7 +10,8 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(location.search),
 }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-const boardNavKeys = { "contact-board": "contact", "work-board": "work" };
+// Issue 849 — 사용자 탭은 «board:<id>» 키로 지도에 들어온다.
+const boardNavKeys = { "contact-board": "contact", "work-board": "work", "user-tab": "board:user-tab" };
 let root: Root | undefined;
 
 async function navigate(pathname: string, search = "", basePath?: string) {
@@ -52,6 +53,13 @@ describe("상담 경로 및 쿼리의 반응형 외관", () => {
     expect(await navigate(`${base}/boards/unknown`, "consultation=inperson", base)).toBe("dash");
     expect(await navigate(`${base}/companies`, "consultation=inperson", base)).toBe("company");
     expect(await navigate(`${base}/newcust`, "", base)).toBe("new");
+  });
+
+  it("사용자 탭 보드(board:<id>)는 기본(대시보드) 강조로 폴백한다 — 상담 쿼리도 무시한다", async () => {
+    const base = "/w/sample-lab";
+    expect(await navigate(`${base}/boards/user-tab`, "", base)).toBe("dash");
+    expect(await navigate(`${base}/boards/user-tab`, "consultation=inperson", base)).toBe("dash");
+    expect(await navigate("/boards/user-tab")).toBe("dash");
   });
 
   it("언마운트에서 경로 강조를 제거한다", async () => {

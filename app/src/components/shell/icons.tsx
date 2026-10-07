@@ -27,6 +27,9 @@ const PATHS: Record<string, string> = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>',
   moon: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z"/>',
   "circle-half": '<circle cx="12" cy="12" r="9"/><path d="M12 3v18"/>',
+  // #849 사용자 탭(폴더)·「새 탭」(더하기) — 2026-10-06 승인 목업 L01 사이드바 줄의 선 그대로.
+  folder: '<path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
 };
 
 export type IconName = keyof typeof PATHS;

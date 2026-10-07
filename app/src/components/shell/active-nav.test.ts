@@ -102,4 +102,20 @@ describe("사이드바 활성 판정", () => {
     expect(resolveConsultationNavKey(`${BASE}/boards/b-work`, "?consultation=remote", keys)).toBeNull();
     expect(resolveConsultationNavKey(`${BASE}/companies`, "?consultation=remote", keys)).toBeNull();
   });
+
+  // #849 사용자 탭 — 보드 id 지도에 «board:<id>» 로 들어간다.
+  it("#849 사용자 탭 보드에서는 그 탭 줄(board:<id>) 하나만 켜진다 — 워크스페이스 주소든 맨 주소든", () => {
+    const boardNavKeys = { u1: "board:u1", "b-work": "work" };
+    const candidates = [...CANDIDATES, { key: "board:u1", href: `${BASE}/boards/u1` }];
+    expect(resolveActiveNavKey(`${BASE}/boards/u1`, candidates, { basePath: BASE, boardNavKeys })).toBe("board:u1");
+    expect(resolveActiveNavKey("/boards/u1", candidates, { basePath: BASE, boardNavKeys })).toBe("board:u1");
+    // 줄 후보가 없어도(주소 접두어가 달라도) 지도만으로 켜진다.
+    expect(resolveActiveNavKey("/boards/u1", CANDIDATES, { basePath: BASE, boardNavKeys })).toBe("board:u1");
+  });
+
+  it("#849 사용자 탭 보드에 상담 단계 쿼리가 붙어도 STEP2·STEP3 탭을 켜지 않는다", () => {
+    const boardNavKeys = { u1: "board:u1", "b-contact": "contact" };
+    expect(resolveConsultationNavKey(`${BASE}/boards/u1`, "consultation=remote", boardNavKeys)).toBeNull();
+    expect(resolveConsultationNavKey("/boards/u1", "?consultation=inperson", boardNavKeys)).toBeNull();
+  });
 });

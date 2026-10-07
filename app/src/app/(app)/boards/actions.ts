@@ -22,6 +22,8 @@ import { boardCellValueFromFormData } from "@/lib/boards/form-values";
 import type { CellError } from "@/lib/boards/service";
 import { clampWidth } from "@/components/board/layout";
 import { setGroupColumnOrder } from "./groupLayout";
+// ★ 상태 모양·문장은 순수 모듈에 있다("use server" 파일은 async 함수만 export 할 수 있다).
+import { createTabFailureMessage, type CreateTabActionState } from "./create-tab-action-state";
 import {
   CELL_FLASH_COOKIE,
   CELL_FLASH_MAX_AGE,
@@ -293,6 +295,13 @@ function parseOptionsCsv(csv: string): FieldOption[] {
  *   actions.guard.test.ts 의 예외 목록에 같은 이유가 적혀 있고, 그 목록은 개수까지 고정돼 있다.
  */
 export async function createBoardAction(formData: FormData): Promise<void> {
+  const boardId = await createBoardFromForm(formData);
+  revalidatePath("/boards");
+  redirect(`/boards/${boardId}`);
+}
+
+/** 보드 만들기 본문 — 권한 확인·입력 검증·생성까지. 만든 보드 id 를 돌려준다(이동은 호출부). */
+async function createBoardFromForm(formData: FormData): Promise<string> {
   const ctx = await getSession();
   await requirePermission(ctx, "structure.tab_manage");
   const navSection = str(formData, "nav_section");
@@ -306,8 +315,33 @@ export async function createBoardAction(formData: FormData): Promise<void> {
     nav_section: isBoardNavSection(navSection) ? navSection : "after-contract",
   };
   const detail = await (await boardsService()).createBoard(ctx, input, str(formData, "requestId") || crypto.randomUUID());
+  return detail.board.id;
+}
+
+/**
+ * #849 사이드바 「새 탭 만들기」 — createBoardAction 과 같은 본문이지만 실패를 «던지지 않고» 상태로 돌려준다.
+ *
+ * ★ 이 폼은 모든 화면의 사이드바(지속 레이아웃) 안에 있고, 그 위에는 오류 경계(error.tsx)가 없다.
+ *   던지면 어느 화면에 있든 셸 전체가 Next 기본 오류 화면으로 덮인다. 그래서 실패는 폼 아래 한 줄
+ *   (role="alert")로 끝낸다. 권한 확인(structure.tab_manage)은 위 본문이 서버에서 그대로 한다.
+ * ★ redirect 는 try 밖에서 부른다 — 예외로 구현된 제어 흐름이라 삼키면 새 탭으로 못 간다.
+ *   본문 안에서 나는 redirect/notFound(로그인 이동 등)도 되던진다.
+ */
+export async function createTabFromSidebarAction(
+  _previous: CreateTabActionState,
+  formData: FormData,
+): Promise<CreateTabActionState> {
+  let boardId: string;
+  try {
+    boardId = await createBoardFromForm(formData);
+  } catch (error) {
+    if (isNextControlFlow(error)) throw error;
+    // 원인은 서버 로그에 남긴다 — 화면에서 감춘다고 조사까지 못 하게 하면 안 된다.
+    console.error("[sidebar create tab]", error);
+    return { error: createTabFailureMessage(error) };
+  }
   revalidatePath("/boards");
-  redirect(`/boards/${detail.board.id}`);
+  redirect(`/boards/${boardId}`);
 }
 
 export async function reorderBoardsAction(formData: FormData): Promise<void> {
