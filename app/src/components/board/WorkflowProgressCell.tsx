@@ -28,6 +28,7 @@ export function WorkflowProgressCell({
   bulkIntercept,
   moveTargets,
   canMoveRows = true,
+  linkedStages = kind === "work",
 }: Readonly<{
   boardId: string;
   row: ItemWithValues;
@@ -52,6 +53,10 @@ export function WorkflowProgressCell({
    * 옮기는 선택지를 «권한 없음» 으로 비활성 표시한다. 서버도 같은 경우를 거절한다.
    */
   canMoveRows?: boolean;
+  /**
+   * 2026-10-07 — 단계 = 보드로 연결된 탭(기본: 계약업체 실무). 보드 없는 단계는 목록에서 빼고 단계 이름은 보드 이름이다.
+   */
+  linkedStages?: boolean;
 }>) {
   const spec = workflowProgressSpec(kind);
   const current = typeof row.values[spec.stageColumnKey] === "string"
@@ -114,6 +119,7 @@ export function WorkflowProgressCell({
           transitionLabel={spec.transitionLabel}
           disabled={readOnly}
           canMoveRows={canMoveRows}
+          linkedStages={linkedStages}
           describedBy={descriptionId}
           searchClassName={BOARD_TABLE_CONTROL}
           onSelect={selectStage}

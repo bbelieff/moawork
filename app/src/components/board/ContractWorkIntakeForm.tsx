@@ -165,6 +165,10 @@ export function ContractWorkIntakeForm({
   boardId,
   groupId,
   inputClassName,
+  trigger = "inline",
+  openRequest = 0,
+  onOpenChange,
+  returnFocusTarget,
 }: {
   rows: readonly CompanyPickerRow[];
   loadError?: string | null;
@@ -198,6 +202,16 @@ export function ContractWorkIntakeForm({
    */
   groupId: string | null;
   inputClassName?: string;
+  /**
+   * 2026-10-08 대표 결정 — 「업체 추가」 는 보드마다 늘어놓지 않는다. "none" 이면 닫힌 동안
+   * 「＋ 업체 추가」 단추를 그리지 않고, 도구줄·배너의 ＋ 가 `openRequest` 를 올릴 때 연다.
+   */
+  trigger?: "inline" | "none";
+  /** 0 보다 크고 바뀔 때마다 패널을 연다. */
+  openRequest?: number;
+  onOpenChange?: (open: boolean) => void;
+  /** trigger="none" 일 때 닫으면 포커스를 돌려줄 곳(패널을 연 도구줄·배너 단추). */
+  returnFocusTarget?: () => HTMLElement | null;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -370,25 +384,40 @@ export function ContractWorkIntakeForm({
   useEffect(() => {
     if (!justAdded) return;
     const active = document.activeElement;
-    if (!active || active === document.body) triggerRef.current?.focus({ preventScroll: true });
+    if (!active || active === document.body) (triggerRef.current ?? returnFocusTarget?.() ?? null)?.focus({ preventScroll: true });
     const stopHighlight = justAdded.itemId ? highlightAddedRow(justAdded.itemId) : undefined;
     const clearAnnouncement = setTimeout(() => setAnnouncement(""), ADDED_ANNOUNCEMENT_MS);
     return () => {
       stopHighlight?.();
       clearTimeout(clearAnnouncement);
     };
-  }, [justAdded]);
+  }, [justAdded, returnFocusTarget]);
 
   // 「닫기」 로 닫으면 포커스가 사라진 패널에 남지 않게 트리거로 돌린다.
   useEffect(() => {
     if (open || !restoreTriggerFocus.current) return;
     restoreTriggerFocus.current = false;
-    triggerRef.current?.focus();
-  }, [open]);
+    (triggerRef.current ?? returnFocusTarget?.() ?? null)?.focus();
+  }, [open, returnFocusTarget]);
+
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [onOpenChange, open]);
 
   function openPanel() {
     setAnnouncement("");
     setOpen(true);
+  }
+
+  // 머리말의 「＋ 업체 추가」·배너 ＋ — 누를 때마다 값이 올라온다. 이미 열려 있으면 그대로 둔다.
+  // 값이 바뀐 렌더에서 바로 연다(효과로 미루면 한 번 더 그린다).
+  const [seenOpenRequest, setSeenOpenRequest] = useState(openRequest);
+  if (openRequest !== seenOpenRequest) {
+    setSeenOpenRequest(openRequest);
+    if (openRequest > 0) {
+      setAnnouncement("");
+      setOpen(true);
+    }
   }
 
   // 확정 성공 «까지» 의 결과(「업무를 시작했어요」·같은 이름 후보)는 다시 열어도 보이지 않는다.
@@ -406,7 +435,7 @@ export function ContractWorkIntakeForm({
   // 바깥 틀과 안내 영역(role=status)은 열고 닫아도 «그대로» 있다 — 내용이 바뀔 때 읽어 주게.
   return (
     <div className={open ? "flex w-full max-w-2xl flex-col gap-2" : "flex min-w-0 items-center gap-2"}>
-      {!open ? (
+      {!open ? (trigger === "none" ? null : (
         <button
           ref={triggerRef}
           type="button"
@@ -415,7 +444,7 @@ export function ContractWorkIntakeForm({
         >
           <span aria-hidden="true">＋</span> 업체 추가
         </button>
-      ) : (
+      )) : (
       <>
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold">

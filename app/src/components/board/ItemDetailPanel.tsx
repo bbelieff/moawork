@@ -114,6 +114,7 @@ import {
   otherInfoLegacyFromValues,
 } from "@/lib/boards/structured-field";
 import { eulReul } from "@/lib/text/josa";
+import { DealLedgerButton } from "./DealLedgerButton";
 import styles from "./item-detail-panel.module.css";
 
 const CANONICAL_NEW_LEAD_DETAIL_KEYS = new Set([
@@ -1189,6 +1190,8 @@ export function ItemDetailPanel({
                   </span>
                 </div>
                 <nav aria-label="회사 상세 탐색" className={styles.headerActions}>
+                  {/* BBE-240 — 자금건과 연결된 행의 원장. 2026-10-07 행에서 이 자리로 옮겼다. */}
+                  {!canonicalNewLead && row.deal_id ? <DealLedgerButton dealId={row.deal_id} /> : null}
                   <button
                     type="button"
                     disabled={!previousItem}

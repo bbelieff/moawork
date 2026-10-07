@@ -36,11 +36,13 @@ import {
   moveRowAction,
   reorderGroupsAction,
   setGroupColumnOrderAction,
+  setGroupColumnOrdersAction,
 } from "@/app/(app)/boards/actions";
 import { BoardHeader } from "./BoardHeader";
+import { selectionTriState } from "./bulk-selection";
 import { BoardScrollViewport } from "./BoardScrollViewport";
 import { BoardToolbar } from "./BoardToolbar";
-import { GroupBlock } from "./GroupBlock";
+import { GroupBlock, GroupSelectAll } from "./GroupBlock";
 import { GroupNameEditor } from "./GroupNameEditor";
 import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
 import { GroupTable } from "./GroupTable";
@@ -463,6 +465,24 @@ export function BoardWorkspace({
   const [selectionScope, setSelectionScope] = useState(() => selectionScopeKey(board.id, `${savedViewId ?? savedViewActive}|${consultationView}`));
   const currentSelectionScope = selectionScopeKey(board.id, `${savedViewId ?? savedViewActive}|${consultationView}`);
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
+  /**
+   * 2026-10-08 대표 결정 — 「업체 추가」 는 머리말의 주 단추 하나 + 배너 ＋ 로만 연다.
+   * 누를 때마다 seq 가 올라 그 그룹의 추가 패널이 열린다(이미 열려 있으면 그대로).
+   */
+  const [addRequest, setAddRequest] = useState<{ key: string; seq: number } | null>(null);
+  // 패널을 닫으면 포커스를 그 패널을 연 단추로 돌린다(그룹마다의 「＋ 업체 추가」 단추가 이제 없다).
+  // 그룹마다 따로 기억한다 — A 를 열고 B 를 연 뒤 A 를 닫아도 A 를 연 단추로 돌아간다.
+  const addOpenersRef = useRef(new Map<string, HTMLElement | null>());
+  const requestAdd = (blockKey: string, opener: HTMLElement | null) => {
+    addOpenersRef.current.set(blockKey, opener);
+    setClosedGroups((current) => {
+      if (!current.has(blockKey)) return current;
+      const next = new Set(current);
+      next.delete(blockKey);
+      return next;
+    });
+    setAddRequest((current) => ({ key: blockKey, seq: (current?.seq ?? 0) + 1 }));
+  };
   /*
    * #845 (대표 지시 2026-10-06, 승인 방향 목업 Main.dc) — 보이는 행이 0건인 그룹은 끝의 컨트롤
    * 하나(«빈 보드 N개 보기»)로 접는다. 펼치면 제자리 순서로 다시 나오고, 행을 끄는 동안에는
@@ -567,6 +587,13 @@ export function BoardWorkspace({
   const newLeadStageBlocks = useMemo(() => isNewLeadStageView ? buildNewLeadStageBlocks(orderedGroups, displayRows) : null,
     [isNewLeadStageView, orderedGroups, displayRows]);
   const blocks = consultationStageBlocks ?? newLeadStageBlocks ?? physicalBlocks;
+  // 그룹마다 «패널을 연 단추로 포커스 돌리기» 함수 — 그룹 구성이 그대로면 같은 함수라 접수 폼의 효과가 다시 돌지 않는다.
+  const blockKeysSignature = JSON.stringify(blocks.map((block) => block.key));
+  const addReturnFocusByKey = useMemo(
+    () => new Map((JSON.parse(blockKeysSignature) as string[]).map((key) => [key, () => addOpenersRef.current.get(key) ?? null] as const)),
+    [blockKeysSignature],
+  );
+  const addReturnFocusFor = (key: string) => addReturnFocusByKey.get(key);
   const durableLayoutKey = useCallback((key: string) => {
     const block = isNewLeadStageView ? blocks.find((candidate) => candidate.key === key) : undefined;
     return block ? durableNewLeadBlockKey(block, orderedGroups) : key;
@@ -933,6 +960,53 @@ export function BoardWorkspace({
   };
 
   /**
+   * 2026-10-08 대표 결정 — 제목행이 보드 맨 위 하나일 때, 거기서 컬럼을 옮기면 모든 그룹(접힌 빈
+   * 보드 포함)에 같은 이동을 적용한다. 그룹마다 저장된 배치가 달라도 «같은 컬럼을 같은 자리로»
+   * 옮기므로 보이는 순서는 하나로 남는다. 저장은 한 번에(setGroupColumnOrdersAction).
+   */
+  // 저장할 수 있는 키는 실제 그룹 id 와 «그룹 없음» 뿐이다. 상담 단계 보기처럼 가상 묶음만 있는
+  // 화면에서는 맨 위 제목행의 컬럼 옮기기를 끈다(저장할 곳이 없어 늘 실패하던 동작).
+  const durableGroupKeys = new Set([UNGROUPED_KEY, ...orderedGroups.map((group) => group.id)]);
+  const sharedColumnsMovable = blocks.length > 0
+    && blocks.every((block) => durableGroupKeys.has(durableLayoutKey(block.key)));
+  const applySharedColumnMove = (move: (fullColumns: BoardColumn[]) => string[] | null) => {
+    if (!sharedColumnsMovable) return;
+    const entries = new Map<string, string[]>();
+    for (const block of blocks) {
+      const groupKey = durableLayoutKey(block.key);
+      if (entries.has(groupKey)) continue;
+      const storedOrder = canonicalNewLead
+        ? presentNewLeadColumnKeys(optimisticOrder[groupKey])
+        : optimisticOrder[groupKey];
+      const keys = move(resolveColumnOrder(tableColumns, storedOrder ?? undefined));
+      if (keys) entries.set(groupKey, keys);
+    }
+    if (entries.size === 0) return;
+    startTransition(async () => {
+      for (const [groupKey, keys] of entries) setOrderOptimistic({ groupKey, keys });
+      const fd = new FormData();
+      fd.set("boardId", board.id);
+      fd.set("entries", JSON.stringify([...entries].map(([groupKey, keys]) => ({
+        groupKey,
+        order: canonicalNewLead ? durableNewLeadColumnKeys(keys) : keys,
+      }))));
+      await setGroupColumnOrdersAction(fd);
+    });
+  };
+  const handleSharedColumnDrop = (draggedKey: string, targetKey: string) =>
+    applySharedColumnMove((fullColumns) => reorderColumnKeys(fullColumns, draggedKey, targetKey));
+  const handleSharedColumnKeyboardMove = (columnKey: string, delta: number) =>
+    applySharedColumnMove((fullColumns) => {
+      const keys = fullColumns.map((column) => column.key);
+      const from = keys.indexOf(columnKey);
+      const to = Math.max(0, Math.min(keys.length - 1, from + delta));
+      if (from < 0 || from === to) return null;
+      const [moved] = keys.splice(from, 1);
+      keys.splice(to, 0, moved);
+      return keys;
+    });
+
+  /**
    * 보이는 목록 기준 인덱스 → 그룹 전체 기준 인덱스.
    * 드롭 지점의 바로 아래 행(anchor)이 전체 목록에서 몇 번째인지로 환산한다.
    * 목록 끝에 놓았으면 anchor 가 없으므로 전체 길이가 된다.
@@ -1058,6 +1132,17 @@ export function BoardWorkspace({
   const shownBlockViews = emptyGroupsOpen || dragRevealGroups
     ? blockViews
     : blockViews.filter((view) => !view.foldable);
+  /*
+   * 2026-10-08 대표 결정 — 제목행은 보드 맨 위 하나, 내려가도 따라온다(아사나·노션 방식).
+   * 보이는 그룹의 열 구성이 모두 같을 때만 하나로 합친다. 어떤 그룹이 따로 열 순서를 바꿔
+   * 구성이 다르면 그 차이를 숨기지 않도록 지금처럼 그룹마다 제목행을 그린다(데이터는 그대로).
+   */
+  const shownColumnSignatures = shownBlockViews.map(({ block }) => columnsForBlock(block.key).map((column) => column.key).join(","));
+  const sharedHeader = shownBlockViews.length > 0
+    && shownColumnSignatures.every((signature) => signature === shownColumnSignatures[0]);
+  const sharedHeaderRows = sharedHeader ? shownBlockViews.flatMap((view) => view.visibleRows) : [];
+  // 「업체 추가」 를 머리말 단추·배너 ＋ 로만 여는 보드 — 회사를 먼저 고르는 계약업체 실무.
+  const onDemandAdd = Boolean(companyPickerProps.companyPicker) && !readOnly;
 
   return (
     /*
@@ -1079,7 +1164,17 @@ export function BoardWorkspace({
         backSlot={backSlot}
         helpSlot={onboardingSlot}
         viewSlot={viewSlot}
-        addItemSlot={board.source === NEW_LEAD_TAB_SOURCE && groups[0] ? (
+        addItemSlot={onDemandAdd && blocks[0] ? (
+          /* 2026-10-08 — 계약업체 실무의 주 단추. 이름만 받는 「＋ 새 항목」 대신 회사부터 고르는 첫 보드의 추가 패널을 연다. */
+          <button
+            type="button"
+            data-mw-cta="primary"
+            onClick={(event) => requestAdd(blocks[0].key, event.currentTarget)}
+            className="flex h-9 shrink-0 items-center rounded-full bg-mw-primary px-3.5 text-xs font-semibold text-mw-on-accent"
+          >
+            ＋ 업체 추가
+          </button>
+        ) : board.source === NEW_LEAD_TAB_SOURCE && groups[0] ? (
           <NewLeadIntakeForm
             variant="header"
             boardId={board.id}
@@ -1189,6 +1284,38 @@ export function BoardWorkspace({
       {restoreError ? <p role={noticeRole(false)} aria-live={noticeLive(false)} className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{restoreError}</p> : null}
 
       <BoardScrollViewport>
+      {sharedHeader ? (
+        <GroupTable
+          tablePart="head"
+          cellFlash={cellFlash}
+          workflowProgressKind={workflowProgressKind}
+          boardId={board.id}
+          boardName={board.name}
+          canonicalNewLead={canonicalNewLead}
+          currentUserId={currentUserId}
+          groupId={null}
+          columns={columnsForBlock(shownBlockViews[0].block.key)}
+          rows={sharedHeaderRows}
+          readOnly={readOnly}
+          canManageColumns={!board.is_system && canManageColumns && sharedColumnsMovable}
+          focusColumnKey={savedPresentation.focusColumnKey}
+          onColumnArchived={(columnId) => setArchivedColumnIds((current) => new Set(current).add(columnId))}
+          scheduleItems={scheduleItems}
+          scheduleRecipients={scheduleRecipients}
+          hideAddRow
+          rowDragEnabled={false}
+          dragRowId={null}
+          canDropRow={() => false}
+          onRowDragStart={startRowDrag}
+          onRowDragEnd={endRowDrag}
+          onRowDrop={() => {}}
+          onColumnDrop={handleSharedColumnDrop}
+          onColumnKeyboardMove={handleSharedColumnKeyboardMove}
+          selection={selectedIds}
+          onToggleRow={toggleRow}
+          onToggleGroup={(checked) => toggleGroupIds(sharedHeaderRows.map((row) => row.id), checked)}
+        />
+      ) : null}
       {blocks.length === 0 ? (
         /* 원칙 5 — 화면 전체를 차지하는 빈 상태 금지. 한 줄 + 다음 행동. */
         <p className="rounded-md border border-dashed border-mw-line px-3 py-4 text-xs text-mw-sub">
@@ -1274,6 +1401,14 @@ export function BoardWorkspace({
                   }
                 />
               }
+              onAddRow={onDemandAdd && !(isConsultationStageView || (isNewLeadStageView && !block.group && block.key !== "new-lead-stage:0")) ? (opener) => requestAdd(block.key, opener) : undefined}
+              selectControl={sharedHeader ? (
+                <GroupSelectAll
+                  name={blockDisplayNames.get(block.key) ?? block.name}
+                  state={selectionTriState(selectedIds, visibleRows.map((row) => row.id))}
+                  onChange={(checked) => toggleGroupIds(visibleRows.map((row) => row.id), checked)}
+                />
+              ) : undefined}
               orderControls={block.group && !board.is_system && canManageSections ? (
                 <span className="inline-flex" aria-label={`${block.name} 그룹 순서`}>
                   <button type="button" aria-label={`${block.name} 위로 이동`} onClick={() => moveGroup(block.group!.id, -1)} className="rounded px-1 focus:outline-none focus:ring-2 focus:ring-mw-primary">↑</button>
@@ -1282,6 +1417,10 @@ export function BoardWorkspace({
               ) : undefined}
             >
               <GroupTable
+                tablePart={sharedHeader ? "body" : "full"}
+                addRowMode={onDemandAdd ? "on-demand" : "always"}
+                addRequest={addRequest?.key === block.key ? addRequest.seq : 0}
+                addReturnFocus={addReturnFocusFor(block.key)}
                 boardId={board.id}
                 boardName={board.name}
                 groupName={block.name}

@@ -27,11 +27,13 @@ describe("Issue #582 dark board visual contract", () => {
     const vivid = read("../../styles/moawork-vivid-v17.css");
     const scroll = read("./board-scroll.module.css");
 
-    // 진행현황: 머리글은 14% 그대로, 본문만 옅게 — 칸 구분선이 보이게.
+    // 진행현황(2026-10-07 대표 피드백): 머리글은 다른 머리글과 같은 탭 테마색 줄, 본문은 카드색 — 칙칙한 틴트를 뺐다.
     expect(globals).toContain('td[data-right-pinned="true"] {\n  background: var(--mw-pinned-body) !important;');
-    expect(globals).toContain("--mw-pinned-body: color-mix(in srgb, var(--mw-record) 6%, var(--mw-card))");
+    expect(globals).toContain("--mw-pinned-body: var(--mw-card)");
+    expect(globals).toContain('th[data-right-pinned="true"] {\n  background: var(--mw-board-head) !important;');
+    expect(globals).toContain("--mw-board-head: color-mix(in srgb, var(--mw-cta-solid, var(--mw-fg)) 12%, var(--mw-card))");
     // sticky 칸의 선은 collapse 테두리가 아니라 안쪽 그림자 — 가로 스크롤 중에도 칸과 함께 움직인다.
-    expect(globals).toContain("inset 2px 0 0 var(--mw-primary)");
+    expect(globals).toContain("inset 1px 0 0 var(--mw-grid-line)");
     expect(globals).toContain("inset 0 -1px 0 var(--mw-pinned-line)");
     expect(globals).toContain("inset 3px 0 0 var(--mw-group-accent, transparent)");
     // 행 호버는 무계층 카드색 규칙보다 구체적인 무계층 선택자로(Tailwind 유틸은 진다).

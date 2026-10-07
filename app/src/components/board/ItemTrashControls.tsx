@@ -21,6 +21,7 @@ export function TrashItemButton({ boardId, itemId, title }: ItemActionProps) {
         type="submit"
         disabled={pending}
         aria-label={`${title} 휴지통으로 이동`}
+        data-row-trash=""
         className="px-1 text-xs text-mw-sub opacity-60 hover:text-mw-error focus-visible:opacity-100 disabled:opacity-40 group-hover:opacity-100"
       >
         {pending ? "…" : "삭제"}

@@ -141,6 +141,50 @@ export function reorderColumnKeys(
 export const COLUMN_MIN_WIDTH = 64;
 export const COLUMN_MAX_WIDTH = 560;
 
+/**
+ * 2026-10-08 대표 결정 — 제목행을 보드 맨 위 하나로 합쳤다. 맨 위 표와 그룹마다의 표가
+ * 줄을 맞추려면 모두 같은 폭을 써야 해서, 폭이 저장되지 않은 컬럼도 내용 따라 늘어나는
+ * 자동 폭 대신 타입별 기본 폭을 쓴다(저장된 폭이 있으면 그것이 이긴다).
+ */
+const DEFAULT_WIDTH_BY_TYPE: Partial<Record<BoardColumn["type"], number>> = {
+  text: 150,
+  longtext: 220,
+  number: 110,
+  money: 130,
+  date: 120,
+  datetime: 150,
+  select: 140,
+  multiselect: 170,
+  status: 150,
+  phone: 130,
+  email: 180,
+  file: 140,
+  person: 130,
+  people: 160,
+  url: 170,
+  checkbox: 80,
+  calc: 120,
+  other_info: 180,
+};
+/** 우측 고정 열(진행현황 등) — 단계 이름이 한 줄에 들어가는 폭. */
+export const RIGHT_PINNED_DEFAULT_WIDTH = 176;
+
+export function defaultColumnWidth(column: Pick<BoardColumn, "type" | "rightPinned">): number {
+  if (column.rightPinned) return RIGHT_PINNED_DEFAULT_WIDTH;
+  return DEFAULT_WIDTH_BY_TYPE[column.type] ?? 140;
+}
+
+/**
+ * 고정 폭 표에서 편집기가 잘리지 않는 최소 폭. 자동 폭 표는 내용이 칸을 넓혔지만 고정 폭 표는
+ * 저장된 폭 그대로라, 날짜 입력(달력 단추 포함)이 120px 칸에서 「2026-08-0」 으로 잘렸다(2026-10-08 실측).
+ */
+const MIN_WIDTH_BY_TYPE: Partial<Record<BoardColumn["type"], number>> = { date: 140, datetime: 200 };
+
+export function fixedColumnWidth(column: Pick<BoardColumn, "type" | "rightPinned" | "width">, live?: number): number {
+  const width = live ?? column.width ?? defaultColumnWidth(column);
+  return Math.max(width, MIN_WIDTH_BY_TYPE[column.type] ?? COLUMN_MIN_WIDTH);
+}
+
 /** 드래그 중 픽셀 값을 저장 가능한 폭으로 좁힌다. 서버 액션에서도 같은 함수로 재검증한다. */
 export function clampWidth(px: number): number {
   return Math.min(COLUMN_MAX_WIDTH, Math.max(COLUMN_MIN_WIDTH, Math.round(px)));

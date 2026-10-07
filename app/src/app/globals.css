@@ -55,11 +55,13 @@
   /* 보드 위계 토큰 (#839 · 2026-10-06) — 탭 바탕 > 그룹 카드 > 행 > 칸.
      모두 기존 정본색(--mw-fg·--mw-card·--mw-record)의 혼합이라 테마를 따라 바뀐다. */
   --mw-board-canvas: color-mix(in srgb, var(--mw-fg) 3%, var(--mw-card)); /* 보드 스크롤 바탕 */
-  --mw-board-head: color-mix(in srgb, var(--mw-fg) 3%, var(--mw-card)); /* 표 머리글 줄 — 12px 보조 글자 AA(4.5:1) 유지 */
+  /* 표 머리글 줄 — 2026-10-07 대표 피드백: 탭 테마색(그 탭 강조색)으로 옅게 칠하고 글자는 테마색을 섞은 진한 색(AA). */
+  --mw-board-head: color-mix(in srgb, var(--mw-cta-solid, var(--mw-fg)) 12%, var(--mw-card));
+  --mw-board-head-ink: color-mix(in srgb, var(--mw-cta-solid, var(--mw-fg)) 30%, var(--mw-body));
   --mw-grid-line: color-mix(in srgb, var(--mw-fg) 10%, var(--mw-card)); /* 칸·행 구분선 */
   --mw-row-hover: color-mix(in srgb, var(--mw-record) 5%, var(--mw-card)); /* 행 호버 */
-  --mw-pinned-body: color-mix(in srgb, var(--mw-record) 6%, var(--mw-card)); /* 진행현황 본문 */
-  --mw-pinned-line: color-mix(in srgb, var(--mw-record) 22%, var(--mw-card)); /* 진행현황 행 구분 */
+  --mw-pinned-body: var(--mw-card); /* 진행현황 본문 — 2026-10-07 칙칙한 바탕 대신 카드색(칩 색이 살아난다) */
+  --mw-pinned-line: var(--mw-grid-line); /* 진행현황 행 구분 */
   --mw-pinned-shadow: color-mix(in srgb, var(--mw-fg) 22%, transparent); /* 고정 열 떠 있는 그림자 */
 
   /* 그룹 톤 (#845 · 대표 지시 2026-10-06, 승인 방향 Palette.dc) — 탭의 메인 2색 × 깊이 1~5.
@@ -302,9 +304,17 @@ nav[aria-label="주요 메뉴"]::-webkit-scrollbar-button { display: none; }
 }
 
 /* sticky/focus 열은 반투명 tint가 아니라 불투명 card 위에 섞어 뒤 글자가 비치지 않는다.
-   #839 (2026-10-06): 진행현황 머리글은 14% 그대로, 본문은 더 옅게(6%) — 칸 구분이 보이게 한다. */
-[data-visual-block="group-table"] :is(th[data-right-pinned="true"], [data-view-focus="true"]) {
+   2026-10-07 대표 피드백: 진행현황 머리글은 다른 머리글과 같은 테마색 줄, 본문은 카드색.
+   2026-10-08: 제목행이 보드 맨 위 하나(data-board-table-part="head")가 되어 그룹 카드 밖에 있다 —
+   머리글 규칙은 그 줄에도 같이 건다. */
+:is([data-visual-block="group-table"], [data-board-table-part="head"]) th[data-right-pinned="true"] {
+  background: var(--mw-board-head) !important;
+}
+:is([data-visual-block="group-table"], [data-board-table-part="head"]) [data-view-focus="true"] {
   background: color-mix(in srgb, var(--mw-record) 14%, var(--mw-card)) !important;
+}
+:is([data-visual-block="group-table"], [data-board-table-part="head"]) thead > tr > th {
+  color: var(--mw-board-head-ink);
 }
 [data-visual-block="group-table"] td[data-right-pinned="true"] {
   background: var(--mw-pinned-body) !important;
@@ -317,7 +327,7 @@ nav[aria-label="주요 메뉴"]::-webkit-scrollbar-button { display: none; }
 [data-visual-block="group-table"] {
   box-shadow: 0 1px 2px color-mix(in srgb, var(--mw-fg) 6%, transparent);
 }
-[data-visual-block="group-table"] :is(thead > tr > th, tbody > tr > td):first-child {
+:is([data-visual-block="group-table"], [data-board-table-part="head"]) :is(thead > tr > th, tbody > tr > td):first-child {
   border-right-color: transparent;
   border-bottom-color: transparent;
   box-shadow: inset -1px 0 0 var(--mw-grid-line), inset 0 -1px 0 var(--mw-grid-line);
@@ -329,11 +339,11 @@ nav[aria-label="주요 메뉴"]::-webkit-scrollbar-button { display: none; }
     inset -1px 0 0 var(--mw-grid-line),
     inset 0 -1px 0 var(--mw-grid-line);
 }
-/* 진행현황: 2px 강조 왼쪽 선 + 행 구분선 + 떠 있는 그림자. */
-[data-visual-block="group-table"] :is(th, td)[data-right-pinned="true"] {
+/* 진행현황: 얇은 왼쪽 구분선 + 행 구분선 + 떠 있는 그림자(파란 강조선은 칙칙해 보여 뺐다, 2026-10-07). */
+:is([data-visual-block="group-table"], [data-board-table-part="head"]) :is(th, td)[data-right-pinned="true"] {
   border-bottom-color: transparent;
   box-shadow:
-    inset 2px 0 0 var(--mw-primary),
+    inset 1px 0 0 var(--mw-grid-line),
     inset 0 -1px 0 var(--mw-pinned-line),
     -8px 0 10px -8px var(--mw-pinned-shadow);
 }
@@ -342,7 +352,37 @@ nav[aria-label="주요 메뉴"]::-webkit-scrollbar-button { display: none; }
   background-color: var(--mw-row-hover);
 }
 [data-visual-block="group-table"] tbody > tr[data-board-row]:hover > td[data-right-pinned="true"] {
-  background: color-mix(in srgb, var(--mw-record) 10%, var(--mw-card)) !important;
+  background: var(--mw-row-hover) !important;
+}
+
+/* ── 2026-10-07 대표 피드백 «목업처럼» ────────────────────────────────────
+   칸은 값만 보이는 «글자» 처럼: 입력칸 테두리·바탕은 올리거나 초점이 갈 때만, «검색…» 같은 빈 칸
+   안내 글자는 초점이 갈 때만. 행 동작(열기·삭제)과 띠 도구(순서·프리셋)는 올리거나 초점이 갈 때만.
+   마우스가 없는 기기(터치)에서는 숨기지 않는다 — 올릴 수 없으면 찾을 수 없다. */
+@media (hover: hover) {
+  [data-visual-block="group-table"] tbody > tr[data-board-row] > td :is(input:not([type="checkbox"]):not([type="hidden"]):not([type="file"]), select, textarea):not(:hover):not(:focus) {
+    border-color: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+  }
+  [data-visual-block="group-table"] tbody > tr[data-board-row] > td :is([data-item-detail-trigger], [data-row-trash]) {
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  [data-visual-block="group-table"] tbody > tr[data-board-row]:is(:hover, :focus-within) > td :is([data-item-detail-trigger], [data-row-trash]) {
+    opacity: 1;
+  }
+  [data-visual-block="group-table"] [data-group-banner-tools] {
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  [data-visual-block="group-table"] summary:is(:hover, :focus-within) [data-group-banner-tools],
+  [data-visual-block="group-table"] [data-group-banner-tools]:has(input[type="checkbox"]:is(:checked, :indeterminate)) {
+    opacity: 1;
+  }
+}
+[data-visual-block="group-table"] tbody > tr[data-board-row] > td input:not(:focus)::placeholder {
+  color: transparent;
 }
 /* 방금 추가된 행 — 접수 흐름이 tr 에 data-just-added="true" 를 단다. 강조색이 서서히 빠진다. */
 @keyframes mw-row-just-added {
@@ -354,7 +394,7 @@ nav[aria-label="주요 메뉴"]::-webkit-scrollbar-button { display: none; }
   animation: mw-row-just-added 2.4s ease-out 1;
 }
 @media (forced-colors: active) {
-  [data-visual-block="group-table"] :is(th, td) {
+  :is([data-visual-block="group-table"], [data-board-table-part="head"]) :is(th, td) {
     box-shadow: none !important;
   }
   [data-mw-stage-dot] {
