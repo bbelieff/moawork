@@ -62,23 +62,9 @@ export function DealLedgerButton({ dealId }: DealLedgerButtonProps) {
     });
   }
 
-  // 행을 열어보지 않아도 "수납종료" 뱃지가 바로 보이도록 마운트 시점에 미리 읽는다
-  // (보드 한 화면 분량 — 수십 행 — 을 기준으로 한 딜당 한 번, N+1 이지만 가볍다).
-  // ★ refresh() 를 그대로 부르지 않는다 — 그건 setState({kind:"loading"}) 를 이펙트
-  //   본문에서 동기 호출하게 돼 react-hooks/set-state-in-effect 에 걸린다. 초기값이
-  //   이미 loading 이라 재설정이 필요 없다 — 비동기 콜백에서만 setState 한다.
-  useEffect(() => {
-    let cancelled = false;
-    startTransition(() => {
-      void loadDealLedgerAction(dealId).then((next) => {
-        if (!cancelled) setState(next);
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [dealId]);
-
+  // 2026-10-07 — 이 버튼은 보드 행이 아니라 상세(열기) 머리말에 있다. 상세를 열 때마다 원장을 미리
+  // 읽지 않고, 「📒 원장」 을 누를 때 읽는다(수납종료 뱃지도 그때부터 보인다). 상세를 여는 일이
+  // 원장 조회를 부르지 않게 한다.
   function openPanel(): void {
     setOpen(true);
     refresh();
