@@ -3,8 +3,20 @@
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type { CompanyIntakeActionState } from "@/app/(app)/boards/[id]/company-intake-actions";
 
 const PATH = "/login/visual-fixture";
+
+/**
+ * 계약업체 실무 시험 화면(tab=work)의 「업체 추가」 — 합성 화면이라 아무것도 만들지 않는다.
+ * 패널의 열기·닫기·포커스·배치만 확인하는 용도다.
+ */
+export async function visualStartCompanyWorkAction(
+  _previous: CompanyIntakeActionState,
+  _formData: FormData,
+): Promise<CompanyIntakeActionState> {
+  return { ok: false, outcome: "rejected", message: "시험 화면이라 저장하지 않아요." };
+}
 
 export async function visualSetCellAction(formData: FormData): Promise<void> {
   const boardId = String(formData.get("boardId") ?? "");

@@ -68,3 +68,17 @@
     width: 7rem;
   }
 }
+
+/* 2026-10-08 대표 결정 — 제목행은 보드 맨 위 하나(BoardWorkspace 의 tablePart="head").
+   둥근 띠 모서리 밖으로 칸 배경이 비어져 나오지 않게 양 끝 칸을 같이 둥글린다. */
+.groups > [data-board-table-part="head"] {
+  margin-bottom: calc(var(--sp-2) - var(--sp-4));
+}
+.groups [data-board-table-part="head"] > table > thead > tr > th:first-child {
+  border-top-left-radius: calc(0.375rem - 1px);
+  border-bottom-left-radius: calc(0.375rem - 1px);
+}
+.groups [data-board-table-part="head"] > table > thead > tr > th:last-child {
+  border-top-right-radius: calc(0.375rem - 1px);
+  border-bottom-right-radius: calc(0.375rem - 1px);
+}

@@ -45,7 +45,8 @@ import { LabelCombobox } from "./LabelCombobox";
 import { canCreateLabelForColumn, newLabelRequestId } from "@/lib/boards/label-options";
 import type { AddLabelOptionInput, AddLabelOptionResult } from "@/app/(app)/boards/label-option-actions";
 import { SourceBadge } from "./FieldBadge";
-import { clampWidth } from "./layout";
+import { clampWidth, defaultColumnWidth } from "./layout";
+import { useLiveColumnWidths } from "./column-live-width";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import type { ItemDetailSnapshot } from "@/app/(app)/boards/item-detail-actions";
@@ -642,6 +643,10 @@ export function GroupTable({
   consultationMembers = [],
   renderConsultationSection,
   hideAddRow = false,
+  addRowMode = "always",
+  addRequest = 0,
+  addReturnFocus,
+  tablePart = "full",
   textMode = "single",
   focusColumnKey = null,
   onColumnArchived,
@@ -756,6 +761,24 @@ export function GroupTable({
   renderConsultationSection?: (row: ItemWithValues) => ReactNode;
   /** 상담 단계 보기(가상 계약 단계 묶음)에서는 새 행 추가 줄을 감춘다. */
   hideAddRow?: boolean;
+  /**
+   * 2026-10-08 대표 결정 — 「업체 추가」 를 보드마다 늘어놓지 않는다.
+   * "on-demand" 면 추가 줄의 펼침 단추를 그리지 않고, 도구줄의 「＋ 업체 추가」·배너의 ＋ 가
+   * `addRequest` 를 올릴 때만 입력 패널을 연다. 기본("always")은 지금까지처럼 늘 보인다.
+   */
+  addRowMode?: "always" | "on-demand";
+  /** 0 보다 크고 바뀔 때마다 이 그룹의 추가 패널을 연다("on-demand" 전용). */
+  addRequest?: number;
+  /** 추가 패널을 닫으면 포커스를 돌려줄 곳 — 패널을 연 머리말·배너 단추. */
+  addReturnFocus?: () => HTMLElement | null;
+  /**
+   * 2026-10-08 대표 결정 — 제목행은 보드 맨 위 하나만 두고 내려가도 따라오게 한다.
+   *   · "head": 제목행만 그린다(BoardWorkspace 가 맨 위에 한 번).
+   *   · "body": 제목행은 보조기기용 이름만 남기고(높이 0) 행만 그린다.
+   *   · "full": 지금까지처럼 그룹마다 제목행(그룹마다 열 구성이 다를 때·단독 사용).
+   * "head"/"body" 는 고정 폭 표(table-layout: fixed)라 모든 표의 열이 같은 자리에 선다.
+   */
+  tablePart?: "full" | "head" | "body";
   textMode?: "single" | "wrap";
   focusColumnKey?: string | null;
   onColumnArchived?: (columnId: string) => void;
@@ -853,7 +876,8 @@ export function GroupTable({
     startWidth: number;
     current: number;
   } | null>(null);
-  const [liveWidths, setLiveWidths] = useState<Record<string, number>>({});
+  // 맨 위 제목행과 그룹마다의 표가 끄는 동안의 폭을 같이 본다(column-live-width).
+  const { widths: liveWidths, set: setLiveWidth } = useLiveColumnWidths(boardId);
 
   const commitWidth = useCallback(
     (columnId: string, width: number | null) => {
@@ -873,7 +897,7 @@ export function GroupTable({
       const r = resizeRef.current;
       if (!r) return;
       r.current = clampWidth(r.startWidth + (e.clientX - r.startX));
-      setLiveWidths((w) => ({ ...w, [r.columnId]: r.current }));
+      setLiveWidth(r.columnId, r.current);
     }
     function onUp() {
       const r = resizeRef.current;
@@ -887,7 +911,7 @@ export function GroupTable({
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, [commitWidth]);
+  }, [commitWidth, setLiveWidth]);
 
   /**
    * #845 — 업체명(첫 번째·고정) 열 폭. 사람별·보드별 내 화면 설정(브라우저 저장)이라
@@ -962,13 +986,32 @@ export function GroupTable({
   const resetWidth = (columnId: string) => (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setLiveWidths((w) => {
-      const next = { ...w };
-      delete next[columnId];
-      return next;
-    });
+    setLiveWidth(columnId, null);
     commitWidth(columnId, null);
   };
+
+  /*
+   * 2026-10-08 대표 결정 — 제목행은 보드 맨 위 하나("head"), 행은 그룹마다("body").
+   * 두 표가 다른 <table> 이므로 둘 다 고정 폭 표로 그리고 같은 폭 계산을 쓴다 —
+   * 그래야 모든 그룹의 열이 맨 위 제목 아래 같은 자리에 선다. 이름 열은 사람별 폭이 있으면
+   * globals.css(640px 이상)가, 없으면 기본 폭 클래스가 정한다(휴대폰 8rem 상한은 그대로).
+   */
+  const fixedLayout = tablePart !== "full";
+  // 첫 열 이름 — 계약업체 실무는 목업대로 「업체」(한 줄이 «어느 업체의 자금 건» 이다).
+  const titleLabel = canonicalNewLead ? "회사명" : workflowProgressKind === "work" ? "업체" : "이름";
+  // 2026-10-08 — 「업체 추가」 는 도구줄·배너 ＋ 에서만 연다. 닫혀 있으면 추가 줄은 끝 드롭 자리(얇은 띠)만 남는다.
+  const onDemandAdd = addRowMode === "on-demand" && Boolean(companyPicker) && !(canonicalNewLead && groupId);
+  const [addPanelOpen, setAddPanelOpen] = useState(false);
+  const columnWidth = (col: BoardColumn): number | undefined =>
+    liveWidths[col.id] ?? col.width ?? (fixedLayout ? defaultColumnWidth(col) : undefined);
+  const tableStyle: React.CSSProperties | undefined = fixedLayout
+    ? {
+      tableLayout: "fixed",
+      width: `${(titleColumn.width ?? TITLE_COLUMN_DEFAULT) + columns.reduce((sum, col) => sum + (columnWidth(col) ?? 0), 0)}px`,
+      minWidth: "100%",
+    }
+    : undefined;
+  const titleWidthClass = fixedLayout && !titleColumn.width ? "w-44" : "";
 
   const acceptRow = (index: number) => (e: React.DragEvent) => {
     if (!rowDragEnabled || !canDropRow()) {setOverRowIndex(null);setInvalidRowIndex(index);setDropMessage("이 보기에서는 행을 옮길 수 없어요.");return;}
@@ -988,14 +1031,56 @@ export function GroupTable({
   };
 
   return (
-    <div data-board-table-format="uniform" className="relative isolate max-h-[70vh] min-w-0 max-w-full overflow-auto">
+    <div
+      data-board-table-format="uniform"
+      data-board-table-part={tablePart === "full" ? undefined : tablePart}
+      className={tablePart === "head"
+        ? "sticky top-0 z-[var(--mw-layer-board-corner)] min-w-0 rounded-md border border-mw-line bg-mw-board-head"
+        : "relative isolate max-h-[70vh] min-w-0 max-w-full overflow-auto"}
+    >
       <p className="sr-only" aria-live="polite">{dropMessage}</p>
-      <table className="w-full border-collapse text-left">
+      <table
+        className={`${fixedLayout ? "" : "w-full "}border-collapse text-left`}
+        style={tableStyle}
+        aria-label={tablePart === "head" ? "열 제목" : undefined}
+      >
+        {tablePart === "body" ? (
+          /* 제목은 맨 위 표에 있다 — 여기는 보조기기가 칸 이름을 읽을 수 있게 이름만, 높이 0 으로 둔다.
+             첫 칸·우측 고정 칸은 화면 표와 똑같이 sticky 다(공유 스크롤의 고정 열 계약 #759). */
+          <thead data-board-head-labels="">
+            <tr>
+              <th
+                scope="col"
+                className={`${STICKY_FIRST_BASE} h-0 border-0 p-0 ${titleWidthClass}`}
+                style={titleCellStyle}
+                data-board-title-column
+                data-title-width={titleWidthAttr}
+              >
+                <span className="sr-only">{titleLabel}</span>
+              </th>
+              {columns.map((col) => {
+                const width = columnWidth(col);
+                return (
+                  <th
+                    key={col.id}
+                    scope="col"
+                    className={`h-0 border-0 p-0 ${col.rightPinned ? "sticky right-0" : ""}`}
+                    style={width ? { width, minWidth: width } : undefined}
+                    data-column-key={col.key}
+                    data-right-pinned={col.rightPinned || undefined}
+                  >
+                    <span className="sr-only">{col.label}</span>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+        ) : (
         <thead>
           <tr>
             <th
               scope="col"
-              className={`${STICKY_FIRST_BASE} z-[var(--mw-layer-board-corner)] bg-mw-board-head ${BOARD_TABLE_HEADER_CELL} min-w-44`}
+              className={`${STICKY_FIRST_BASE} z-[var(--mw-layer-board-corner)] bg-mw-board-head ${BOARD_TABLE_HEADER_CELL} min-w-44 ${titleWidthClass}`}
               style={{ top: 0, position: "sticky", ...titleCellStyle }}
               data-board-title-column
               data-title-width={titleWidthAttr}
@@ -1007,7 +1092,7 @@ export function GroupTable({
                     type="checkbox"
                     checked={groupTriState === "full"}
                     aria-checked={groupTriState === "partial" ? "mixed" : undefined}
-                    aria-label={`${groupName ?? "그룹"} 전체 선택`}
+                    aria-label={tablePart === "head" ? "보이는 행 전체 선택" : `${groupName ?? "그룹"} 전체 선택`}
                     onChange={(event) => onToggleGroup(event.currentTarget.checked)}
                     className="h-3.5 w-3.5 shrink-0"
                     data-no-drag
@@ -1015,12 +1100,12 @@ export function GroupTable({
                 ) : null}
                 {canonicalNewLead ? (
                   <><SourceBadge source="auto" />회사명</>
-                ) : "이름"}
+                ) : titleLabel}
               </span>
               <span
                 role="separator"
                 aria-orientation="vertical"
-                aria-label={`${canonicalNewLead ? "회사명" : "이름"} 열 폭 조절 · 좌우 화살표로 조절, 두 번 누르면 원래대로`}
+                aria-label={`${canonicalNewLead ? "회사명" : titleLabel} 열 폭 조절 · 좌우 화살표로 조절, 두 번 누르면 원래대로`}
                 aria-valuemin={TITLE_COLUMN_MIN}
                 aria-valuemax={TITLE_COLUMN_MAX}
                 aria-valuenow={titleColumn.width ?? TITLE_COLUMN_DEFAULT}
@@ -1037,7 +1122,7 @@ export function GroupTable({
             </th>
             {columns.map((col) => {
               const isTarget = overColKey === col.key && dragColKey !== col.key;
-              const width = liveWidths[col.id] ?? col.width ?? undefined;
+              const width = columnWidth(col);
               const workflowLocked = col.key === WORKFLOW_PROGRESS_KEY;
               const presentationOnlyStructure = canonicalNewLead
                 && isNewLeadPresentationOnlyStructure(col);
@@ -1075,7 +1160,7 @@ export function GroupTable({
                   title={
                     !canManageColumns || structureLocked
                       ? cellTitle(col)
-                      : `${cellTitle(col)} — 끌어서 이 그룹의 컬럼 순서 변경`
+                      : `${cellTitle(col)} — 끌어서 ${tablePart === "head" ? "" : "이 그룹의 "}컬럼 순서 변경`
                   }
                   style={width ? { width, minWidth: width } : undefined}
                   data-view-focus={col.key === focusColumnKey || undefined}
@@ -1142,7 +1227,9 @@ export function GroupTable({
             })}
           </tr>
         </thead>
+        )}
 
+        {tablePart === "head" ? null : (
         <tbody>
           {rows.length === 0 && (
             /* 원칙 5 — 빈 상태는 표 안 1줄. 동시에 첫 행의 드롭 자리이기도 하다. */
@@ -1407,7 +1494,7 @@ export function GroupTable({
                 추가 줄은 표 너비 전체를 쓴다(colSpan) — 펼친 접수 패널이 이름 열 폭(#845 사람별 폭)에
                 눌려 찌그러지지 않고, 패널을 열어도 다른 행의 이름 열 폭이 바뀌지 않는다.
               */}
-              <td colSpan={columns.length + 1} className={`${STICKY_FIRST} px-2 py-1 ${overRowIndex === rows.length ? "bg-mw-tint-blue" : ""}`}>
+              <td colSpan={columns.length + 1} className={`${STICKY_FIRST} ${onDemandAdd && !addPanelOpen ? "h-2 p-0" : "px-2 py-1"} ${overRowIndex === rows.length ? "bg-mw-tint-blue" : ""}`}>
                 {canonicalNewLead && groupId ? (
                   <NewLeadIntakeForm
                     boardId={boardId}
@@ -1426,6 +1513,10 @@ export function GroupTable({
                     // 누른 그룹을 그대로 넘긴다 — 이 값이 없으면 서버가 첫 그룹에 넣는다(#588).
                     groupId={groupId}
                     inputClassName={`${CELL_INPUT} w-full max-w-md`}
+                    trigger={onDemandAdd ? "none" : "inline"}
+                    openRequest={onDemandAdd ? addRequest : 0}
+                    onOpenChange={setAddPanelOpen}
+                    returnFocusTarget={onDemandAdd ? addReturnFocus : undefined}
                   />
                 ) : (
                   <AddItemForm
@@ -1439,6 +1530,7 @@ export function GroupTable({
             </tr>
           )}
         </tbody>
+        )}
       </table>
     </div>
   );

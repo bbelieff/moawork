@@ -47,6 +47,8 @@ export function GroupBlock({
   onOrderDrop,
   canOrderDrop,
   summarySlot,
+  onAddRow,
+  selectControl,
   open: controlledOpen,
   onOpenChange,
   children,
@@ -80,6 +82,13 @@ export function GroupBlock({
   canOrderDrop?:()=>boolean;
   /** 보드 공통 설정을 이 그룹의 filtered rows로 계산한 한줄 요약. */
   summarySlot?: ReactNode;
+  /**
+   * 2026-10-08 대표 결정 — 「업체 추가」 를 보드마다 늘어놓지 않는다. 있으면 띠에 올렸을 때만
+   * 보이는 ＋ 를 그리고, 누르면 이 보드에 바로 넣는 추가 패널을 연다.
+   */
+  onAddRow?: (opener: HTMLElement) => void;
+  /** 제목행이 보드 맨 위 하나일 때 — 그룹 머리 제목칸에 있던 «이 그룹 전체 선택» 이 띠로 온다. */
+  selectControl?: ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   children: ReactNode;
@@ -158,6 +167,19 @@ export function GroupBlock({
             {summarySlot}
             {/* 2026-10-07 대표 피드백 — 띠를 단정하게: 순서·프리셋 도구는 띠에 올리거나 초점이 갈 때만 보인다(globals.css). */}
             <span data-group-banner-tools="" className="flex items-center gap-2">
+            {selectControl}
+            {onAddRow ? (
+              <button
+                type="button"
+                data-group-add=""
+                aria-label={`${shownName}에 업체 추가`}
+                title="이 보드에 업체 추가"
+                onClick={(event) => { event.preventDefault(); onAddRow(event.currentTarget); }}
+                className="flex h-6 w-6 items-center justify-center rounded text-sm text-mw-sub hover:bg-mw-card hover:text-mw-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-mw-primary"
+              >
+                ＋
+              </button>
+            ) : null}
             {orderControls}
             {/*
               프리셋 칩 — 이 그룹의 컬럼 구성을 가리키는 아이템 프리셋.
@@ -179,5 +201,33 @@ export function GroupBlock({
         <div className="min-w-0 max-w-full overflow-hidden rounded-b-xl">{children}</div>
       </details>
     </section>
+  );
+}
+
+/**
+ * 2026-10-08 — 제목행이 보드 맨 위 하나가 되면서 그룹 머리 제목칸에 있던 «이 그룹 전체 선택»
+ * 체크박스가 띠로 왔다. 표준 체크박스(키보드로 켜고 끔)에 일부 선택은 indeterminate 로 보인다.
+ */
+export function GroupSelectAll({
+  name,
+  state,
+  onChange,
+}: {
+  name: string;
+  state: "empty" | "partial" | "full";
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <input
+      ref={(element) => { if (element) element.indeterminate = state === "partial"; }}
+      type="checkbox"
+      checked={state === "full"}
+      aria-checked={state === "partial" ? "mixed" : undefined}
+      aria-label={`${name} 전체 선택`}
+      onChange={(event) => onChange(event.currentTarget.checked)}
+      onClick={(event) => event.stopPropagation()}
+      className="h-3.5 w-3.5 shrink-0"
+      data-no-drag
+    />
   );
 }

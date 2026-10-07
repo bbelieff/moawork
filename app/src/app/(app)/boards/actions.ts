@@ -806,6 +806,45 @@ export async function setGroupColumnOrderAction(formData: FormData): Promise<voi
   });
 }
 
+/**
+ * 2026-10-08 대표 결정 — 제목행이 보드 맨 위 하나다. 그 제목행에서 컬럼을 옮기면 모든 그룹의
+ * 배치를 같은 순서로 맞춘다. 그룹마다 위 액션을 따로 부르면 그룹 수만큼 화면을 다시 그리므로
+ * 한 번에 저장하고 한 번만 다시 그린다. 검증·권한은 위 액션과 같다.
+ */
+export async function setGroupColumnOrdersAction(formData: FormData): Promise<void> {
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.column_manage");
+    const boardId = str(formData, "boardId");
+
+    const graph = await createRequestBoards();
+    const { columns } = await graph.service.getBoardDetail(ctx, boardId);
+    const valid = new Set(columns.map((c) => c.key));
+
+    let entries: { groupKey: string; order: string[] }[];
+    try {
+      const parsed: unknown = JSON.parse(str(formData, "entries"));
+      if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > 200) throw new Error();
+      entries = parsed.map((entry: unknown) => {
+        const { groupKey, order } = (entry ?? {}) as { groupKey?: unknown; order?: unknown };
+        if (typeof groupKey !== "string" || groupKey.trim() === "" || !Array.isArray(order)) throw new Error();
+        if (order.some((key) => typeof key !== "string")) throw new Error();
+        return {
+          groupKey,
+          order: (order as string[]).map((key) => key.trim()).filter((key) => key !== "" && valid.has(key)),
+        };
+      });
+    } catch {
+      throw new UserFacingActionError("컬럼 순서를 읽지 못했어요. 새로고침 후 다시 시도해 주세요.");
+    }
+
+    for (const entry of entries) {
+      await setGroupColumnOrder(graph.repo, ctx, boardId, entry.groupKey, entry.order);
+    }
+    revalidatePath(`/boards/${boardId}`);
+  });
+}
+
 function layoutFromFormData(formData: FormData): DetailLayoutEntry[] {
   try {
     return normalizeDetailLayout(JSON.parse(str(formData, "layout")));

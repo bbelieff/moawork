@@ -4,13 +4,13 @@ import { SavedViewsController } from "@/components/view/SavedViewsController";
 import { NotificationCenterFixture } from "./NotificationCenterFixture";
 import { VisualDocumentOcrProbe } from "./VisualDocumentOcrProbe";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
-import { CONTACT_TAB, NEW_LEAD_TAB } from "@/lib/default-tabs";
+import { CONTACT_TAB, CONTRACT_WORK_TAB, NEW_LEAD_TAB } from "@/lib/default-tabs";
 import type { Board, BoardColumn, BoardGroup, ItemWithValues } from "@/lib/boards/types";
 import { VisualSettingsSlot } from "./VisualSettingsSlot";
 import { NewLeadOnboarding } from "@/components/board/NewLeadOnboarding";
 import { cookies } from "next/headers";
 import { VisualCompaniesProbe } from "./VisualCompaniesProbe";
-import { visualSetCellAction } from "./actions";
+import { visualSetCellAction, visualStartCompanyWorkAction } from "./actions";
 import { VisualLayerProbe } from "./VisualLayerProbe";
 import { VisualWorkspaceSwitcherProbe } from "./VisualWorkspaceSwitcherProbe";
 import { VisualAppearanceProbe } from "./VisualAppearanceProbe";
@@ -31,7 +31,7 @@ import {
 } from "./department-actions";
 
 function fixture(tabKey: string, workflowValue: string | null, showAllGroups = false) {
-  const definition = tabKey === "contact" ? CONTACT_TAB : NEW_LEAD_TAB;
+  const definition = tabKey === "contact" ? CONTACT_TAB : tabKey === "work" ? CONTRACT_WORK_TAB : NEW_LEAD_TAB;
   const board = {
     id: `visual-${definition.key}`, org_id: "visual-org", name: definition.name,
     description: definition.description, icon: definition.icon, is_system: false,
@@ -65,6 +65,23 @@ function fixture(tabKey: string, workflowValue: string | null, showAllGroups = f
     consult_status: "상담 전",
     contact_move: workflowValue ?? "컨택 대기",
   } : workflowValue ? { work_move: workflowValue } : {};
+  // 계약업체 실무(tab=work) — 앞 세 보드에만 합성 행(2·1·1건)을 둔다. 나머지는 빈 보드(접힘 확인용).
+  if (tabKey === "work") {
+    const workRows = [0, 0, 1, 2].flatMap((groupIndex, index) => groups[groupIndex] ? [{
+      id: index === 0 ? "visual-item" : `visual-item-${index}`,
+      org_id: board.org_id,
+      board_id: board.id,
+      group_id: groups[groupIndex].id,
+      title: ["(주)가나정밀", "다라식품", "(주)마바테크", "사아물산"][index],
+      assigned_to: index % 2 === 0 ? "review-user" : "visual-user",
+      deal_id: null,
+      sort_order: index,
+      created_at: "",
+      updated_at: "",
+      values: { rep_name: ["김가나", "이다라", "박마바", "최사아"][index], phone: `010-0000-000${index}` },
+    }] : []) satisfies ItemWithValues[];
+    return { board, groups, columns, rows: workRows };
+  }
   const rows = groups.map((group, index) => ({
     id: index === 0 ? "visual-item" : `visual-item-${index}`,
     org_id: board.org_id,
@@ -220,7 +237,7 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
       </main>
     );
   }
-  const tab = params.tab === "contact" ? "contact" : "new";
+  const tab = params.tab === "contact" ? "contact" : params.tab === "work" ? "work" : "new";
   const mutation = typeof params.mutation === "string" ? params.mutation : "none";
   const layer = params.layer === "workspace" ? "workspace" : "none";
   const theme = params.theme === "dark" ? "dark" : params.theme === "light" ? "light" : null;
@@ -262,6 +279,17 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
         settingsSlot={<VisualSettingsSlot />}
         onboardingSlot={tab === "new" ? <NewLeadOnboarding key="issue-554-help" /> : undefined}
         cellAction={visualSetCellAction}
+        {...(tab === "work" ? {
+          contractWorkCompanyPicker: {
+            rows: [
+              { company: { id: "visual-company-1", name: "(주)가나정밀", biz_type: "법인사업자", region: "경기 화성시", owner_name: "김가나", phone: null, email: null, homepage: null }, dealCount: 1, liveItemCount: 1 },
+              { company: { id: "visual-company-2", name: "자차식품", biz_type: "개인사업자", region: "서울 성동구", owner_name: "정자차", phone: null, email: null, homepage: null }, dealCount: 0, liveItemCount: 0 },
+            ],
+            error: null,
+            truncated: false,
+          },
+          startCompanyWorkAction: visualStartCompanyWorkAction,
+        } : {})}
         itemDetailFixture={tab === "new" ? {
           ok: true,
           viewerId: "visual-user",
