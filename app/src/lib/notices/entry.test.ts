@@ -133,4 +133,18 @@ describe("BBE-236 notice entry additive repair", () => {
     await expect(repairNoticeBoardOnEntry(ctx, request as never))
       .rejects.toThrow("default tab repair members unavailable");
   });
+
+  it("#849 a trashed notice tab resolves as dismissed and is never recreated", async () => {
+    const local = new LocalBoardsRepo();
+    const repo = toAsyncBoardsRepo(local);
+    const { boardId } = await ensureDefaultTab(ctx, NOTICE_TAB, repo);
+    local.trashBoard(ctx, boardId);
+    expect(await resolveExistingNoticeBoard(ctx, repo)).toEqual({ kind: "dismissed" });
+    for (const role of ["owner", "member"] as const) {
+      const request = fakeClient(repo);
+      await expect(repairNoticeBoardOnEntry({ ...ctx, role }, request as never)).resolves.toEqual({ kind: "dismissed" });
+      expect(request.rpc).not.toHaveBeenCalled();
+    }
+    expect(local.listBoards(ctx).some((board) => board.source === NOTICE_TAB.source)).toBe(false);
+  });
 });

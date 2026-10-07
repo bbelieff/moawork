@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
 describe("BBE-151 notice entry production boundary", () => {
   it("shares one request-scoped Supabase adapter and keeps LocalBoardsRepo out", () => {
     const source = readFileSync(join(process.cwd(), "src/app/(app)/(tabs)/notices/page.tsx"), "utf8");
-    expect(source).toContain("const client = await createClient()");
+    // 2026-10-06(#851) — 진입 repair 가 쓰는 한 클라이언트는 noStore 여야 한다.
+    expect(source).toContain("const client = await createClient({ noStore: true })");
+    expect(source.match(/await createClient\(/g)).toHaveLength(1);
     expect(source).toContain("const repo = new SupabaseBoardsRepo(client)");
     expect(source).toContain("repairNoticeBoardOnEntry(ctx, client)");
     expect(source).not.toContain("ensureNoticeTabAtomic");

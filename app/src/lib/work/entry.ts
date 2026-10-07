@@ -2,12 +2,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BoardsRepo } from "@/lib/boards/store";
 import { CONTRACT_WORK_TAB, CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
 import { repairDefaultTabOnEntry } from "@/lib/default-tabs/repair-on-entry";
+import { isDefaultTabDismissed } from "@/lib/default-tabs/install";
 import type { Ctx } from "@/lib/types";
 
 export type ContractWorkEntryResolution =
   | { kind: "ready"; boardId: string }
   | { kind: "missing" }
-  | { kind: "conflict" };
+  | { kind: "conflict" }
+  | { kind: "dismissed" };
 
 /** Resolve the product-owned contract-work board without mutating data on GET. */
 export async function resolveExistingContractWorkBoard(
@@ -17,7 +19,10 @@ export async function resolveExistingContractWorkBoard(
   const matches = (await repo.listBoards(ctx)).filter(
     (board) => board.source === CONTRACT_WORK_TAB_SOURCE,
   );
-  if (matches.length === 0) return { kind: "missing" };
+  // #849 — 회사가 지운 탭이면 «고칠 것» 이 아니다.
+  if (matches.length === 0) {
+    return await isDefaultTabDismissed(ctx, repo, CONTRACT_WORK_TAB_SOURCE) ? { kind: "dismissed" } : { kind: "missing" };
+  }
   if (matches.length > 1) return { kind: "conflict" };
   return { kind: "ready", boardId: matches[0].id };
 }

@@ -74,7 +74,8 @@ describe("judgeQuest — item_in_group", () => {
   it("항목이 첫 그룹에 그대로 있으면 미통과", async () => {
     const ctx = ctxFor(ORG_A);
     const board = repo().createBoard(ctx, { name: "board" });
-    const g1 = repo().createGroup(ctx, board.id, { name: "시작" });
+    // #849 — 새 탭은 기본 아이템 「새 아이템」을 갖고 태어난다. 그것이 첫 그룹이다.
+    const g1 = repo().listGroups(ctx, board.id)[0];
     repo().createGroup(ctx, board.id, { name: "다음" });
     const item = repo().createItem(ctx, board.id, { title: "item" });
     repo().updateItem(ctx, item.id, { group_id: g1.id });

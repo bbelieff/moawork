@@ -133,4 +133,44 @@ describe("repairContactBoardOnEntry", () => {
     expect(result).toEqual({ kind: "conflict" });
     expect(local.listBoards(ctx)).toHaveLength(2);
   });
+
+  // #849 — 지운 기본 탭은 누구의 진입에서도 다시 만들지 않고, 진입 화면이 «지움» 을 안내한다.
+  describe("지운 기본 탭", () => {
+    async function trashedContact() {
+      const local = new LocalBoardsRepo();
+      const repo = toAsyncBoardsRepo(local);
+      const { boardId } = await ensureDefaultTab(ctx, CONTACT_TAB, repo);
+      local.trashBoard(ctx, boardId);
+      return { local, repo };
+    }
+
+    it("조회는 «없음» 이 아니라 «지움» 이다", async () => {
+      const { repo } = await trashedContact();
+      expect(await resolveExistingContactBoard(ctx, repo)).toEqual({ kind: "dismissed" });
+    });
+
+    it.each(["owner", "member"] as const)("%s 진입은 리스 없이 «지움» 을 돌려주고 만들지 않는다", async (role) => {
+      const { local, repo } = await trashedContact();
+      const request = fakeClient(repo);
+      const result = await repairContactBoardOnEntry({ ...ctx, role }, request as never);
+      expect(result).toEqual({ kind: "dismissed" });
+      expect(request.rpc).not.toHaveBeenCalled();
+      expect(local.listBoards(ctx).some((b) => b.source === CONTACT_TAB_SOURCE)).toBe(false);
+    });
+
+    it("리스를 잡은 뒤 지운 경쟁에서도 만들지 않고 «지움» 이다", async () => {
+      const { local, repo } = await trashedContact();
+      // 지운 기록을 «아직 못 본» 읽기 — 만들기 단계에서야 지운 탭임을 알게 된다.
+      const stale = new Proxy(repo, {
+        get: (target, property, receiver) => property === "listDefaultTabDismissals"
+          ? async () => []
+          : Reflect.get(target, property, receiver),
+      });
+      const request = fakeClient(stale);
+      const result = await repairContactBoardOnEntry(ctx, request as never);
+      expect(result).toEqual({ kind: "dismissed" });
+      expect(request.rpc.mock.calls.map(([name]) => name)).toContain("release_default_tab_repair_lease");
+      expect(local.listBoards(ctx).some((b) => b.source === CONTACT_TAB_SOURCE)).toBe(false);
+    });
+  });
 });

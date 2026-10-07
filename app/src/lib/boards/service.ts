@@ -29,8 +29,10 @@ import type {
   BoardColumn,
   BoardDetail,
   BoardItem,
+  BoardTrashImpact,
   BoardView,
   CellValue,
+  DefaultTabDismissal,
   ItemWithValues,
 } from "./types";
 import { compareCells, isEmptyCell, validateCell } from "./cells";
@@ -51,6 +53,7 @@ import {
 } from "./stage-link";
 import { isIntegrityField } from "@/lib/custom/field-types";
 import { isSourceEditable } from "@/lib/field/source";
+import { isSectionPresetSource } from "@/lib/presets/section-presets";
 import { pickDefaultView } from "@/lib/custom/views";
 import { resolveBoardDetailLayout, resolveDetailLayout } from "./detail-layout";
 import { parseBoardSummarySettingsRequest, type BoardSummarySettingsReceipt } from "./summary-settings";
@@ -226,7 +229,10 @@ export class BoardsService {
     return { board, columns, groups };
   }
 
-  /** 사용자 보드 생성 — 기본 컬럼 2~3개를 함께 프로비저닝. */
+  /**
+   * 사용자 보드 생성 — 기본 컬럼 2~3개를 함께 프로비저닝.
+   * 169 부터는 RPC 가 사용자 탭에 기본 아이템·열을 같이 만든다. 열이 비어 있을 때만 채운다(로컬·옛 RPC).
+   */
   async createBoard(ctx: Ctx, input: NewBoard, requestId = crypto.randomUUID()): Promise<BoardDetail> {
     const repo = await this.repo;
     const board = await repo.createBoard(ctx, input, requestId);
@@ -263,9 +269,66 @@ export class BoardsService {
     return (await this.repo).reorderBoards(ctx, boardIds, requestId);
   }
 
+  /** #849 — 탭 삭제 = 휴지통(7일 안에 그대로 복구). 이름은 기존 호출부를 위해 남긴다. */
   async deleteBoard(ctx: Ctx, boardId: string): Promise<void> {
-    await this.requireEditableBoard(ctx, boardId);
-    if (!await (await this.repo).deleteBoard(ctx, boardId)) throw new NotFoundError("보드를 찾을 수 없습니다");
+    await this.trashBoard(ctx, boardId);
+  }
+
+  // ── 탭 휴지통 (#849) ── 권한(danger.bulk_edit_delete)은 액션과 RPC 가 본다.
+  async trashBoard(ctx: Ctx, boardId: string): Promise<Board> {
+    const repo = await this.repo;
+    if (!await repo.getBoard(ctx, boardId)) {
+      // 두 번 눌렀거나 다른 창에서 이미 지웠다 — 휴지통에 있으면 그대로 성공으로 본다.
+      const trashed = (await repo.listTrashedBoards(ctx)).find((candidate) => candidate.id === boardId);
+      if (trashed) return trashed;
+    }
+    const board = await this.requireEditableBoard(ctx, boardId);
+    if (isSectionPresetSource(board.source)) {
+      throw new BoardRuleError("아이템 프리셋은 프리셋 화면에서 지워 주세요");
+    }
+    return repo.trashBoard(ctx, board.id);
+  }
+
+  async listTrashedBoards(ctx: Ctx): Promise<Board[]> {
+    return (await this.repo).listTrashedBoards(ctx);
+  }
+
+  async restoreBoard(ctx: Ctx, boardId: string): Promise<Board> {
+    const board = await this.requireTrashedBoard(ctx, boardId);
+    return (await this.repo).restoreBoard(ctx, board.id);
+  }
+
+  /** 휴지통 탭만 지금 완전히 지운다. 정리할 저장소 파일 수를 돌려준다. */
+  async purgeBoard(ctx: Ctx, boardId: string): Promise<number> {
+    const board = await this.requireTrashedBoard(ctx, boardId);
+    return (await this.repo).purgeBoard(ctx, board.id);
+  }
+
+  async purgeExpiredBoards(ctx: Ctx): Promise<number> {
+    return (await this.repo).purgeExpiredBoards(ctx);
+  }
+
+  /** 휴지통에 보내기 전 확인 창에 보여 줄 개수. */
+  async readBoardTrashImpact(ctx: Ctx, boardId: string): Promise<BoardTrashImpact> {
+    const board = await this.requireEditableBoard(ctx, boardId);
+    return (await this.repo).readBoardTrashImpact(ctx, board.id);
+  }
+
+  async listDefaultTabDismissals(ctx: Ctx): Promise<DefaultTabDismissal[]> {
+    return (await this.repo).listDefaultTabDismissals(ctx);
+  }
+
+  /** «기본 탭 다시 설치» 전 단계 — 지운 기록만 지운다. 빈 탭은 기본 탭 설치 경로가 만든다. */
+  async clearDefaultTabDismissal(ctx: Ctx, source: string): Promise<boolean> {
+    if (!source.startsWith("core.default-tab/")) throw new BoardRuleError("기본 탭만 다시 설치할 수 있어요");
+    return (await this.repo).clearDefaultTabDismissal(ctx, source);
+  }
+
+  /** 휴지통 탭은 getBoard 에 안 보인다 — 휴지통 목록에서 찾는다. */
+  private async requireTrashedBoard(ctx: Ctx, boardId: string): Promise<Board> {
+    const board = (await (await this.repo).listTrashedBoards(ctx)).find((candidate) => candidate.id === boardId);
+    if (!board) throw new NotFoundError("휴지통에서 탭을 찾을 수 없습니다. 새로고침 후 다시 확인해 주세요");
+    return board;
   }
 
   // ── 컬럼 ──

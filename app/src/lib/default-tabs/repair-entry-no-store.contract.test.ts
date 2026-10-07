@@ -28,6 +28,13 @@ describe("진입 repair 는 noStore 클라이언트로만 (2026-10-06 사고)", 
     for (const call of calls) expect(call).toContain("createClient({ noStore: true }");
   });
 
+  it("(tabs)/notices/page.tsx — 공지 목록과 같은 한 클라이언트를 noStore 로 만든다", () => {
+    const source = readFileSync(path.join(APP, "(tabs)/notices/page.tsx"), "utf8");
+    expect(source).toContain("const client = await createClient({ noStore: true })");
+    expect(source).toContain("repairNoticeBoardOnEntry(ctx, client)");
+    expect(source.match(/await createClient\(/g)).toHaveLength(1);
+  });
+
   it("레이아웃 부트스트랩도 noStore 를 유지한다", () => {
     const source = readFileSync(path.join(APP, "layout.tsx"), "utf8");
     expect(source).toContain("createClient({ noStore: true })");

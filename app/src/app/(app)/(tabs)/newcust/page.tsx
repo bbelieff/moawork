@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { repairNewcustBoardOnEntry } from "@/lib/newcust/entry";
 import { createClient } from "@/lib/supabase/server";
+import { NEW_LEAD_TAB } from "@/lib/default-tabs/new-lead";
+import { DismissedDefaultTabNotice } from "@/components/default-tabs/DismissedDefaultTabNotice";
 
 /**
  * 신규업체(신규리드)의 단일 제품 진입점(BBE-26 · BBE-145).
@@ -33,6 +35,7 @@ export default async function NewCustomerPage({
       total_ms: Math.round(performance.now() - startedAt),
     }));
   }
+  if (result.kind === "dismissed") return <DismissedDefaultTabNotice tabName={NEW_LEAD_TAB.name} />;
   if (result.kind !== "ready") {
     const conflict = result.kind === "conflict";
     const permission = result.kind === "permission";

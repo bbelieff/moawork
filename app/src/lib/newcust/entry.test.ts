@@ -306,4 +306,36 @@ describe("repairNewcustBoardOnEntry", () => {
     expect(local.listGroups(owner(), board.id)).toHaveLength(NEW_LEAD_TAB.groups.length);
     expect(local.listColumns(owner(), board.id)).toHaveLength(NEW_LEAD_TAB.columns.length);
   });
+
+  it.each(["owner", "member"] as const)("#849 a trashed new-lead tab stays dismissed for a %s — no lease, no recreation", async (role) => {
+    const local = new LocalBoardsRepo();
+    const repo = toAsyncBoardsRepo(local);
+    const { boardId } = await ensureDefaultTab(owner(), NEW_LEAD_TAB, repo);
+    local.trashBoard(owner(), boardId);
+    expect(await resolveExistingNewcustBoard(owner(), repo)).toEqual({ kind: "dismissed" });
+
+    const request = client(repo);
+    const result = await repairNewcustBoardOnEntry({ ...owner(), role, scope: role === "member" ? "assigned" : "all" }, request as never);
+
+    expect(result).toEqual({ kind: "dismissed" });
+    expect(request.rpc).not.toHaveBeenCalled();
+    expect(local.listBoards(owner()).some((board) => board.source === NEWCUST_BOARD_SOURCE)).toBe(false);
+  });
+
+  it("#849 a trash that lands after the lease is taken still ends as dismissed, not a new board", async () => {
+    const local = new LocalBoardsRepo();
+    const repo = toAsyncBoardsRepo(local);
+    const { boardId } = await ensureDefaultTab(owner(), NEW_LEAD_TAB, repo);
+    local.trashBoard(owner(), boardId);
+    const stale = new Proxy(repo, {
+      get: (target, property, receiver) => property === "listDefaultTabDismissals"
+        ? async () => []
+        : Reflect.get(target, property, receiver),
+    });
+    const request = client(stale);
+
+    await expect(repairNewcustBoardOnEntry(owner(), request as never)).resolves.toEqual({ kind: "dismissed" });
+    expect(request.rpc.mock.calls.map(([name]) => name).at(-1)).toBe("release_default_tab_repair_lease");
+    expect(local.listBoards(owner()).some((board) => board.source === NEWCUST_BOARD_SOURCE)).toBe(false);
+  });
 });
