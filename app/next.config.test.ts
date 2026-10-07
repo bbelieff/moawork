@@ -42,6 +42,14 @@ afterEach(() => {
   vi.resetModules();
 });
 
+describe("production build", () => {
+  // 타입 검사는 fast gate·CI·merge-pr 가 맡는다. 운영 빌드에서 또 돌리면 VPS 힙을 넘긴다.
+  it("leaves the duplicate type check to CI", async () => {
+    const config = await loadConfig({});
+    expect(config.typescript?.ignoreBuildErrors).toBe(true);
+  });
+});
+
 describe("self-hosted build identity", () => {
   // 매니지드 플랫폼 변수는 빌드 신원의 근거가 아니다. 그 변수가 빌드 환경에
   // 흘러들어온 것만으로 릴리스가 식별되면 안 된다.
