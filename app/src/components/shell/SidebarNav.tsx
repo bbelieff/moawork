@@ -12,6 +12,8 @@ import { AccessibleTooltip } from "@/components/ui/AccessibleTooltip";
 import type { BadgeState } from "@/lib/notify/types";
 import { navigationKindFor } from "@/lib/workspace/switch-navigation";
 import { Icon } from "./icons";
+import { SidebarNewTab } from "./SidebarNewTab";
+import { withoutDismissedDefaults, workNavSections, type SidebarUserTab } from "./user-tabs";
 import {
   NAV_ITEMS,
   NAV_SECTIONS,
@@ -45,6 +47,12 @@ type Props = {
    * 이게 없으면 정작 탭에 들어가 있을 때 사이드바가 전부 회색이 된다.
    */
   boardNavKeys?: Readonly<Record<string, string>>;
+  /** Issue 849 사용자 탭 — 업무 › 계약 전/계약 후 맨 끝에 정렬 순서대로 붙는다(서버가 정렬·필터를 끝낸 값). */
+  userTabs?: readonly SidebarUserTab[];
+  /** Issue 849 회사가 지운 기본 탭의 source — 해당 기본 메뉴를 숨긴다. */
+  dismissedSources?: readonly string[];
+  /** Issue 849 structure.tab_manage 서버 판정 — 참일 때만 업무 끝에 「새 탭」 줄을 그린다. */
+  canCreateTab?: boolean;
 };
 
 export function SidebarNav(props: Props) {
@@ -57,6 +65,9 @@ function SidebarNavQuery(props: Props) {
 }
 
 function SidebarNavContent({
+  userTabs,
+  dismissedSources,
+  canCreateTab = false,
   lockedFeatures,
   badges,
   notifyBadges,
@@ -239,7 +250,7 @@ function SidebarNavContent({
           <h2 className="font-semibold" style={{ color: "var(--mw-sub)", fontSize: "var(--fs-11)", padding: "var(--sp-2) var(--sp-3)" }}>
             종합
           </h2>
-          {navItemsForSection(NAV_SECTIONS[0]).map((item) => renderItem(item, false))}
+          {withoutDismissedDefaults(navItemsForSection(NAV_SECTIONS[0]), dismissedSources).map((item) => renderItem(item, false))}
         </div>
 
         <details
@@ -271,12 +282,14 @@ function SidebarNavContent({
           <h2 className="font-semibold" style={{ color: "var(--mw-sub)", fontSize: "var(--fs-11)", padding: "var(--sp-2) var(--sp-3)" }}>
             업무
           </h2>
-          {NAV_SECTIONS.slice(1, 3).map((section) => (
+          {/* Issue 849 — 지운 기본 탭은 숨기고, 사용자 탭은 그 묶음 «맨 끝» 에 같은 줄 모양으로 붙인다.
+              줄이 하나도 남지 않은 묶음(계약 전/계약 후)은 제목째 그리지 않는다. */}
+          {workNavSections(NAV_SECTIONS.slice(1, 3), userTabs, dismissedSources).map(({ section, items }) => (
             <section key={section.key} aria-labelledby={`sidebar-${section.key}`}>
               <h3 id={`sidebar-${section.key}`} className="font-semibold" style={{ color: "var(--mw-sub)", fontSize: "var(--fs-11)", padding: "var(--sp-2) var(--sp-6) var(--sp-1)" }}>
                 {section.label}
               </h3>
-              {navItemsForSection(section).map((item) => renderItem(item, true))}
+              {items.map((item) => renderItem(item, true))}
             </section>
           ))}
           <details data-nav-section="coming-soon">
@@ -288,6 +301,8 @@ function SidebarNavContent({
             </summary>
             {navItemsForSection(NAV_SECTIONS[3]).map((item) => renderItem(item, true))}
           </details>
+          {/* Issue 849 — 「새 탭」 은 탭 관리 권한(structure.tab_manage)이 있을 때만. 판정은 서버가 한다. */}
+          {canCreateTab ? <SidebarNewTab /> : null}
         </div>
 
         <div style={{ paddingBlock: "var(--sp-2)" }}>

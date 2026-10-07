@@ -60,6 +60,9 @@ vi.mock("@/components/notify/NotificationBell", () => ({ NotificationBell: () =>
 // contact/entry 목은 «되살아나지 않았는지» 를 재기 위해 남긴다(위 테스트가 not.toHaveBeenCalled 로 본다).
 vi.mock("@/lib/contact/entry", () => ({ resolveExistingContactBoard: mocks.resolveExistingContactBoard }));
 vi.mock("@/lib/repo/supabase/boardsRepo", () => ({ SupabaseBoardsRepo: class { constructor(public client: unknown) {} } }));
+// Issue 849 — 「새 탭」 권한 판정. 실제 판정기는 Supabase 없는 개발 모드에서 세션을 한 번 더 읽어
+// 위 «getSession 한 번» 검사를 흐린다(운영에서는 RPC 만 부른다). 배선은 layout.sidebar-tabs.test 가 잰다.
+vi.mock("@/lib/perm/guard", () => ({ loadPermGuard: vi.fn(async () => ({ kind: "allowed" })) }));
 
 import AppLayout from "./layout";
 
