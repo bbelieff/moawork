@@ -35,6 +35,9 @@ describe("boards UI consumes effective permissions", () => {
     expect(source.indexOf("if (!scopedItems.ok) notFound()")).toBeLessThan(
       source.indexOf("svc.loadPageSnapshot(ctx, id, {"),
     );
+    // Issue 857 — 기억한 보드 종류로 꼬리 읽기를 띄우는 것도 두 판정 «뒤» 다.
+    expect(source).toContain("recallBoardSource(id)");
+    expect(source.indexOf("if (!scopedItems.ok) notFound()")).toBeLessThan(source.indexOf("recallBoardSource(id)"));
     // 보관함도 같은 관문 뒤 같은 물결에서 읽는다 (휴지통과 같은 등급).
     expect(source).toContain("includeDeleted: canDeleteItems,");
     expect(source).toContain("includeArchived: canDeleteItems,");
