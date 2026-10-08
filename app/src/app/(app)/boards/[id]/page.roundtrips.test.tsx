@@ -153,6 +153,8 @@ const probe = vi.hoisted(() => {
     "effective_permissions",
     "read_permission_scoped_work_items",
     "get_member_account_profile",
+    // 170: language plpgsql · stable · select 전용(회원 표시 정보를 한 번에).
+    "list_member_account_profiles",
     // 017: language sql · stable · select 전용
     "is_platform_admin",
     // 008: plpgsql · stable · 본문에 update/insert 없음
@@ -352,6 +354,7 @@ function seed() {
   };
   probe.rpcs.read_permission_scoped_work_items = { itemIds: ["item-1"], hiddenCount: 0 };
   probe.rpcs.get_member_account_profile = { id: "user-1", name: "멤버", title: null, team_key: "team-a" };
+  probe.rpcs.list_member_account_profiles = [{ id: "user-1", name: "멤버", title: null, team_key: "team-a" }];
 }
 
 type BoardRun = {
@@ -497,9 +500,10 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
     // 담당자 목록과 그룹 컬럼 배치를 같은 물결에 실은 뒤 측정값 8.
     // Issue 857 — 보드 정보와 행 목록을 한 물결로, 그룹 컬럼 배치를 스냅샷과 같은 물결로, 기본 담당자
     //   목록은 보드 종류를 안 순간(메타데이터) 띄워 6. 이어서 판정을 세션 확인과 같이 출발시키고(mw_org),
-    //   값을 행과 함께 읽어 5. 세션 → 메타‖행(값 포함) 순서를 다시 줄 세우면 넘는다.
+    //   값을 행과 함께 읽어 5. 회원 표시 정보를 한 번에(170) 읽어 회원 목록과 같은 물결로 4.
+    //   세션 → 메타‖행(값 포함) 순서를 다시 줄 세우면 넘는다.
     expect(run.serialStages, "보드 화면의 직렬 DB 단계가 늘었다 — 어디서 await 이 줄 섰는지 확인해라")
-      .toBe(5);
+      .toBe(4);
     // 보관 읽기는 활성·휴지통과 같은 물결에 탄다 (직렬 단계 추가 없음, 왕복 +1). 값은 행에 묶여 와서 따로 안 센다.
     expect(run.total, "보드 화면의 읽기 왕복 계약이 바뀌었다 — 로그 계측은 쿼리를 더하면 안 된다")
       .toBe(14);
@@ -537,7 +541,7 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
 
       for (const run of [valid, missing, invalid]) {
         expect(run.total).toBe(14);
-        expect(run.serialStages).toBe(5);
+        expect(run.serialStages).toBe(4);
       }
 
       const logs = info.mock.calls

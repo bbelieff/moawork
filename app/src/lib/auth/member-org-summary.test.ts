@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { applyMemberProfiles, buildMemberOrgSummary } from "./member-org-summary";
+import { describe, expect, it, vi } from "vitest";
+import { applyMemberProfiles, buildMemberOrgSummary, loadMemberOrgSummaryWithClient } from "./member-org-summary";
 import { MEMBER_ROLES, MEMBER_SCOPES } from "@/lib/types";
 
 describe("buildMemberOrgSummary", () => {
@@ -99,5 +99,48 @@ describe("#683 역할·범위 가드는 정본보다 좁으면 안 된다", () =
     ]);
     if (summary.kind !== "ready") throw new Error("expected ready");
     expect([...summary.admins, ...summary.members].map((member) => member.userId)).not.toContain("bogus");
+  });
+});
+
+describe("Issue 857 — 회원 표시 정보는 한 번에(170) 읽는다", () => {
+  const ctx = { org: { id: "org-a" } } as never;
+  const rows = [
+    { org_id: "org-a", user_id: "owner-a", role: "owner", scope: "all", created_at: "2026-01-01T00:00:00Z", users: { name: "대표" } },
+    { org_id: "org-a", user_id: "member-a", role: "member", scope: "assigned", created_at: "2026-01-02T00:00:00Z", users: { name: "사원" } },
+  ];
+  function client(batch: { data: unknown; error: { code?: string; message?: string } | null }) {
+    const order = vi.fn(async () => ({ data: rows, error: null }));
+    const query = { select: () => query, eq: () => query, order };
+    const rpc = vi.fn(async (name: string, args: { p_target_user_id?: string }) => name === "list_member_account_profiles"
+      ? batch
+      : { data: { id: args.p_target_user_id, name: "하나씩", title: null, team_key: null }, error: null });
+    return { client: { from: () => query, rpc } as never, rpc };
+  }
+
+  it("회원 목록과 표시 정보를 같이 읽고 사람마다 따로 묻지 않는다", async () => {
+    const { client: supabase, rpc } = client({
+      data: [
+        { id: "owner-a", name: "대표", title: null, team_key: null },
+        { id: "member-a", name: "사원", title: "매니저", team_key: "team-1" },
+      ],
+      error: null,
+    });
+    const summary = await loadMemberOrgSummaryWithClient(supabase, ctx);
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual(["list_member_account_profiles"]);
+    expect(summary).toMatchObject({ kind: "ready", owner: { userId: "owner-a" }, members: [{ userId: "member-a", title: "매니저", teamKey: "team-1" }] });
+  });
+
+  it("함수가 아직 없는 DB 에서만 예전처럼 사람마다 읽는다", async () => {
+    const { client: supabase, rpc } = client({ data: null, error: { code: "PGRST202", message: "Could not find the function" } });
+    const summary = await loadMemberOrgSummaryWithClient(supabase, ctx);
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual([
+      "list_member_account_profiles", "get_member_account_profile", "get_member_account_profile",
+    ]);
+    expect(summary.kind).toBe("ready");
+  });
+
+  it("다른 실패는 닫는다(권한 없음 등)", async () => {
+    const { client: supabase } = client({ data: null, error: { code: "42501", message: "active membership required" } });
+    expect(await loadMemberOrgSummaryWithClient(supabase, ctx)).toEqual({ kind: "error" });
   });
 });

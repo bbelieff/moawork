@@ -112,6 +112,8 @@ const probe = vi.hoisted(() => {
     "effective_permission",
     "read_permission_scoped_work_items",
     "get_member_account_profile",
+    // 170: language plpgsql · stable · select 전용(회원 표시 정보를 한 번에).
+    "list_member_account_profiles",
     // 017: language sql · stable · select 전용
     "is_platform_admin",
     // 008: plpgsql · stable · 본문에 update/insert 없음
