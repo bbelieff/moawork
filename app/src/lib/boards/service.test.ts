@@ -448,6 +448,27 @@ describe("보드 화면 스냅샷", () => {
     expect(listValues).toHaveBeenCalledOnce();
   });
 
+  it("Issue 857 — 보드를 못 찾으면 같은 물결의 행 읽기가 실패해도 «없음» 으로 끝난다", async () => {
+    const { repo, service, boardId } = await setupSnapshotBoard();
+    repo.getBoard = async () => undefined;
+    repo.listItems = async () => { throw new Error("network"); };
+    await expect(service.loadPageSnapshot(owner, boardId, { includeDeleted: true }))
+      .rejects.toThrow("보드를 찾을 수 없습니다");
+  });
+
+  it("Issue 857 — 시스템 보드는 휴지통 행을 같이 읽어도 버리고 그 값 ID 를 발행하지 않는다", async () => {
+    const { repo, service, boardId, active } = await setupSnapshotBoard();
+    const original = repo.getBoard.bind(repo);
+    repo.getBoard = async (ctx, id) => {
+      const board = await original(ctx, id);
+      return board ? { ...board, is_system: true } : board;
+    };
+    const listValues = vi.spyOn(repo, "listValues");
+    const snapshot = await service.loadPageSnapshot(owner, boardId, { includeDeleted: true });
+    expect(snapshot.deletedItems).toEqual([]);
+    expect(listValues).toHaveBeenCalledWith(owner, [active.id]);
+  });
+
   it("휴지통을 허용하지 않으면 deleted read와 deleted value ID를 발행하지 않는다", async () => {
     const { local, service, boardId, active } = await setupSnapshotBoard();
     const listDeletedItems = vi.spyOn(local, "listDeletedItems");

@@ -484,10 +484,11 @@ export class BoardsService {
   /**
    * 보드 화면용 일관 스냅샷.
    *
-   * 메타데이터는 한 번만 읽고, 활성/보관/휴지통 행은 같은 물결에서 가져온 뒤 셀 값도
-   * 한 번만 수화한다 (직렬 단계는 metadata→items→hydrate 그대로 — BBE-214 유지).
+   * 메타데이터와 활성/보관/휴지통 행을 한 물결에서 가져온 뒤 셀 값도 한 번만 수화한다
+   * (Issue 857: 직렬 단계 metadata‖items → hydrate).
    * 휴지통·보관 권한이 없으면 해당 query와 그 값 ID를 아예 발행하지 않는다.
-   * 시스템 보드는 기존 화면 계약대로 휴지통·보관을 읽지 않는다.
+   * 시스템 보드는 휴지통·보관 행을 같이 읽더라도 버린다(화면 계약은 그대로 «안 보임»).
+   * onDetail 은 메타데이터가 오는 순간 불린다 — 호출부가 보드 종류에 따라 다음 읽기를 미리 띄운다.
    */
   async loadPageSnapshot(
     ctx: Ctx,
@@ -496,6 +497,7 @@ export class BoardsService {
       includeDeleted?: boolean;
       includeArchived?: boolean;
       onTiming?: (timing: BoardPageSnapshotTiming) => void;
+      onDetail?: (detail: BoardDetail) => void;
     } = {},
   ): Promise<BoardPageSnapshot> {
     const startedAt = performance.now();
@@ -514,23 +516,30 @@ export class BoardsService {
     };
 
     const metadataStartedAt = performance.now();
-    const detail = await this.getBoardDetail(ctx, boardId);
-    measure("metadata", metadataStartedAt);
     const repo = await this.repo;
-    const includeDeleted = options.includeDeleted === true && !detail.board.is_system;
     // 보관 목록은 휴지통과 같은 가시성 등급(work.item_delete)으로 같은 스냅샷에서 분리한다.
     // 명시 옵션이 없으면 includeDeleted를 따른다 — 호출문(권한 순서 계약)을 바꾸지 않고도
     // 보관 패널이 휴지통과 같은 관문 뒤에 같은 왕복으로 읽힌다.
-    const includeArchived = (options.includeArchived ?? options.includeDeleted) === true && !detail.board.is_system;
-    const itemsStartedAt = performance.now();
-    // 보관 행은 listItems(활성 전용)에서 제외되므로 보관함이 필요할 때만 같은
-    // 파동에서 listArchivedItems를 함께 읽는다 (직렬 단계는 그대로 metadata→items→hydrate).
-    const [visibleItems, deletedItems, archivedOnly] = await Promise.all([
+    const wantsDeleted = options.includeDeleted === true;
+    const wantsArchived = (options.includeArchived ?? options.includeDeleted) === true;
+    const itemsStartedAt = metadataStartedAt;
+    // Issue 857 — 보드 정보와 행 목록은 서로 기다리지 않는다(한 물결: metadata ‖ items → hydrate).
+    //   행 읽기는 RLS·org 범위 그대로라, 보드를 못 찾으면 아래에서 NotFound 로 끝나고 읽은 행은 버린다.
+    //   시스템 보드는 휴지통·보관 행을 쓰지 않으므로 같이 읽었더라도 버린다.
+    const itemReads = Promise.all([
       repo.listItems(ctx, boardId),
-      includeDeleted ? repo.listDeletedItems(ctx, boardId) : Promise.resolve([]),
-      includeArchived ? repo.listArchivedItems(ctx, boardId) : Promise.resolve([]),
+      wantsDeleted ? repo.listDeletedItems(ctx, boardId) : Promise.resolve([]),
+      wantsArchived ? repo.listArchivedItems(ctx, boardId) : Promise.resolve([]),
     ]);
+    // 보드를 못 찾으면 행 읽기 실패보다 NotFound 가 먼저다(404 가 500 으로 바뀌지 않게).
+    itemReads.catch(() => {});
+    const detail = await this.getBoardDetail(ctx, boardId);
+    measure("metadata", metadataStartedAt);
+    options.onDetail?.(detail);
+    const [visibleItems, deletedCandidates, archivedCandidates] = await itemReads;
     measure("items", itemsStartedAt);
+    const deletedItems = wantsDeleted && !detail.board.is_system ? deletedCandidates : [];
+    const archivedOnly = wantsArchived && !detail.board.is_system ? archivedCandidates : [];
 
     // 방어 분리: 보관 권한이 없으면 보관 행의 값 ID를 발행하지 않는다.
     const activeItems = visibleItems.filter((item) => !item.archived_at);
