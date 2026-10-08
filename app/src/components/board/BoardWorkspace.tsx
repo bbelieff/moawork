@@ -18,6 +18,10 @@ import { consultationPhase, REMOTE_PHASES, INPERSON_PHASES, CONSULTATION_PHASE_L
  *
  * 정렬 칩이 켜져 있는 동안에는 행 드래그를 잠근다 — 보이는 순서가 저장된 순서가 아니라서
  * "여기 놓았는데 저기 꽂히는" 거짓말이 되기 때문이다.
+ *
+ * #845 7단계 — 나눠 보기. 사람·목록·상태 칸을 고르면 블록이 «보드» 대신 그 칸의 «값 묶음» 이 된다
+ * (buildValueBlocks). 그때 행을 다른 묶음으로 끌면 순서가 아니라 그 칸의 값을 바꾼다(setGroupValueAction ·
+ * 낙관적 + 실패 시 되돌림). 묶음 안의 순서는 저장하지 않는다(보이는 순서 = 보드 순서 또는 줄 세우기).
  */
 
 import {
@@ -30,13 +34,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Board, BoardColumn, BoardGroup, ItemWithValues } from "@/lib/boards/types";
+import type { Board, BoardColumn, BoardGroup, CellValue, ItemWithValues } from "@/lib/boards/types";
 import type { CellFlash } from "@/lib/boards/cellFlash";
 import {
   moveRowAction,
   reorderGroupsAction,
   setGroupColumnOrderAction,
   setGroupColumnOrdersAction,
+  setGroupValueAction,
 } from "@/app/(app)/boards/actions";
 import { BoardHeader } from "./BoardHeader";
 import { TabChromeProvider, type TabSettingsSection } from "./tab-chrome";
@@ -44,7 +49,7 @@ import { selectionTriState } from "./bulk-selection";
 import { BoardScrollViewport } from "./BoardScrollViewport";
 import { BoardViewBar } from "./BoardViewBar";
 import { hasToolbarFacet, type ToolbarFilterFocus } from "./ViewConditionsPanel";
-import type { ColumnViewRequest } from "./column-menu-model";
+import { columnPlainName, type ColumnViewRequest } from "./column-menu-model";
 import { GroupBlock, GroupSelectAll } from "./GroupBlock";
 import { GroupNameEditor } from "./GroupNameEditor";
 import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
@@ -79,7 +84,21 @@ import {
   presentNewLeadDetailLayout,
 } from "@/lib/default-tabs/new-lead";
 import { NOTICE_KEYS } from "@/lib/notices/types";
-import { buildBlocks, buildNewLeadStageBlocks, durableNewLeadBlockKey } from "./blocks";
+import {
+  buildBlocks,
+  buildNewLeadStageBlocks,
+  buildValueBlocks,
+  durableNewLeadBlockKey,
+  valueBlockKey,
+  type BoardBlock,
+} from "./blocks";
+import {
+  groupValueEditBlock,
+  isTableGroupColumn,
+  movedGroupValue,
+  ownerModeForSource,
+  prefillGroupValue,
+} from "@/lib/view/group-by";
 import {
   groupKeyOf,
   reorderColumnKeys,
@@ -166,8 +185,23 @@ export function companyRevenue(value: unknown): string {
   return /^-?\d+(?:\.\d+)?$/.test(text) ? text : "";
 }
 
-/** 낙관적 행 이동 — 서버의 moveRowAction 과 같은 규칙(그룹 내 재색인)을 화면에서 미리 흉내낸다. */
-function rowMoveReducer(rows: ItemWithValues[], move: RowMove): ItemWithValues[] {
+/** #845 7단계 — 나눠 보기에서 다른 묶음으로 끌어 놓은 행의 새 값(낙관적). */
+interface RowValuePatch {
+  itemId: string;
+  columnKey: string;
+  value: CellValue;
+}
+
+/**
+ * 낙관적 행 이동 — 서버의 moveRowAction 과 같은 규칙(그룹 내 재색인)을 화면에서 미리 흉내낸다.
+ * 나눠 보기의 값 바꾸기(RowValuePatch)는 그 행의 칸 값만 먼저 바꾼다.
+ */
+function rowMoveReducer(rows: ItemWithValues[], move: RowMove | RowValuePatch): ItemWithValues[] {
+  if ("columnKey" in move) {
+    return rows.map((row) => row.id === move.itemId
+      ? { ...row, values: { ...row.values, [move.columnKey]: move.value } }
+      : row);
+  }
   const moving = rows.find((r) => r.id === move.itemId);
   if (!moving) return rows;
 
@@ -393,6 +427,27 @@ export function BoardWorkspace({
     }
     return base;
   }, [activeColumns, board.source, consultationProgressColumn]);
+  /*
+   * #845 7단계 — 나눠 보기. 기본은 보드별(탭 안의 그룹 = 단계). 사람·목록·상태 칸을 고르면 모든 보드의 행을
+   * 그 칸의 값 묶음으로 다시 나눈다. 고른 값은 주소(?group=)에 남고 «저장» 이 뷰에 담는다(보기 조건 groupBy).
+   * 바꾸기는 화면 안에서 한다(다시 읽지 않는다). 서버가 새로 그려 주소 값이 바뀌면(뷰 고르기) 그 값을 따른다.
+   */
+  const [groupBySource, setGroupBySource] = useState(groupBy);
+  const [groupByKey, setGroupByKey] = useState(() => (canonicalNewLead && groupBy ? newLeadPresentationKey(groupBy) : groupBy));
+  if (groupBySource !== groupBy) {
+    setGroupBySource(groupBy);
+    setGroupByKey(canonicalNewLead && groupBy ? newLeadPresentationKey(groupBy) : groupBy);
+  }
+  const groupColumns = useMemo(() => tableColumns.filter((column) => isTableGroupColumn(column)), [tableColumns]);
+  const groupColumn = useMemo(
+    () => (groupByKey ? groupColumns.find((column) => column.key === groupByKey) ?? null : null),
+    [groupColumns, groupByKey],
+  );
+  const groupByOptions = useMemo(
+    () => groupColumns.map((column) => ({ key: column.key, label: columnPlainName(column.label) })),
+    [groupColumns],
+  );
+  const ownerMode = useMemo(() => ownerModeForSource(board.source), [board.source]);
   const detailColumns = useMemo(
     () => {
       const hidden = new Set(workflowProgressKind ? workflowDetailHiddenKeys(workflowProgressKind) : []);
@@ -492,6 +547,8 @@ export function BoardWorkspace({
   // 패널을 닫으면 포커스를 그 패널을 연 단추로 돌린다(그룹마다의 「＋ 업체 추가」 단추가 이제 없다).
   // 그룹마다 따로 기억한다 — A 를 열고 B 를 연 뒤 A 를 닫아도 A 를 연 단추로 돌아간다.
   const addOpenersRef = useRef(new Map<string, HTMLElement | null>());
+  /** 지금 접혀 있는 빈 블록의 키 — 추가 요청이 그 블록을 가리키면 먼저 펼친다. */
+  const foldedBlockKeysRef = useRef<ReadonlySet<string>>(new Set());
   const requestAdd = (blockKey: string, opener: HTMLElement | null) => {
     addOpenersRef.current.set(blockKey, opener);
     setClosedGroups((current) => {
@@ -500,7 +557,15 @@ export function BoardWorkspace({
       next.delete(blockKey);
       return next;
     });
-    setAddRequest((current) => ({ key: blockKey, seq: (current?.seq ?? 0) + 1 }));
+    const bump = () => setAddRequest((current) => ({ key: blockKey, seq: (current?.seq ?? 0) + 1 }));
+    // 접혀 있는 빈 블록(나눠 보기의 「(없음)」 등)에 추가하려면 먼저 펼친다. 추가 패널은 «값이 바뀔 때» 열리므로
+    // 펼친 블록이 그려진 다음에 요청을 올린다.
+    if (foldedBlockKeysRef.current.has(blockKey)) {
+      setEmptyGroupsOpen(true);
+      window.setTimeout(bump, 0);
+      return;
+    }
+    bump();
   };
   /*
    * #845 (대표 지시 2026-10-06, 승인 방향 목업 Main.dc) — 보이는 행이 0건인 그룹은 끝의 컨트롤
@@ -530,6 +595,16 @@ export function BoardWorkspace({
   // 상담 단계 보기는 가상 계약 단계 묶음이라 행 순서를 옮기지 않는다 —
   // 순서는 리드컨택 전체 보기(물리 그룹)에서만 바꾼다.
   const rowDragEnabled = !readOnly && canMoveRows && !sortActive && !rowMovePending && !isConsultationStageView;
+  /*
+   * #845 7단계 — 나눠 보기에서 끌기는 «값 바꾸기» 다. 행 순서 권한(canMoveRows)이 아니라 항목 수정 권한과
+   * 그 칸을 이 길로 바꿀 수 있는지(groupValueEditBlock — 고칠 수 없는 칸·✉ 발송 칸·신규리드 정본·배정 담당)로 정한다.
+   * 줄 세우기와는 상관없다(순서를 저장하지 않는다). 서버(setGroupValueAction)가 같은 규칙으로 다시 막는다.
+   */
+  const groupValueBlocked = groupColumn ? groupValueEditBlock(groupColumn, { canonicalNewLead, ownerMode }) : null;
+  const groupValueEditable = Boolean(groupColumn) && !readOnly && groupValueBlocked === null;
+  const groupValueInFlightRef = useRef(false);
+  const [groupValuePending, setGroupValuePending] = useState(false);
+  const [groupValueError, setGroupValueError] = useState<string | null>(null);
 
   const [orderedGroups, setOrderedGroups] = useOptimistic(
     [...groups].sort((a, b) => a.sort_order - b.sort_order),
@@ -605,7 +680,23 @@ export function BoardWorkspace({
   }, [consultationByItem, consultationView, displayRows, isConsultationStageView]);
   const newLeadStageBlocks = useMemo(() => isNewLeadStageView ? buildNewLeadStageBlocks(orderedGroups, displayRows) : null,
     [isNewLeadStageView, orderedGroups, displayRows]);
-  const blocks = consultationStageBlocks ?? newLeadStageBlocks ?? physicalBlocks;
+  // 사람 칸 묶음의 순서 = 구성원 순서(사람 선택기·담당자 탭과 같은 원천).
+  const groupMembers = useMemo(
+    () => memberDirectory?.length
+      ? memberDirectory.map((member) => ({ id: member.id, label: member.label }))
+      : Object.entries(assigneeLabels).map(([id, label]) => ({ id, label: label || "이름 없는 구성원" })),
+    [assigneeLabels, memberDirectory],
+  );
+  /** #845 7단계 — 나눠 보기 묶음. 보드별(기본)이면 null 이고 아래 보드·단계 블록을 그대로 쓴다. */
+  const valueBlocks = useMemo(
+    () => groupColumn
+      ? buildValueBlocks({ column: groupColumn, groups: orderedGroups, rows: displayRows, members: groupMembers, memberLabels: assigneeLabels, ownerMode })
+      : null,
+    [assigneeLabels, displayRows, groupColumn, groupMembers, orderedGroups, ownerMode],
+  );
+  const valueMode = valueBlocks !== null;
+  const blocks = valueBlocks ?? consultationStageBlocks ?? newLeadStageBlocks ?? physicalBlocks;
+  const firstGroupId = orderedGroups[0]?.id ?? null;
   // 그룹마다 «패널을 연 단추로 포커스 돌리기» 함수 — 그룹 구성이 그대로면 같은 함수라 접수 폼의 효과가 다시 돌지 않는다.
   const blockKeysSignature = JSON.stringify(blocks.map((block) => block.key));
   const addReturnFocusByKey = useMemo(
@@ -614,9 +705,11 @@ export function BoardWorkspace({
   );
   const addReturnFocusFor = (key: string) => addReturnFocusByKey.get(key);
   const durableLayoutKey = useCallback((key: string) => {
+    // 값 묶음은 보드가 아니다 — 칸 순서는 보드 전체의 것이라 첫 보드의 배치를 함께 쓴다(제목행 하나).
+    if (valueMode) return firstGroupId ?? UNGROUPED_KEY;
     const block = isNewLeadStageView ? blocks.find((candidate) => candidate.key === key) : undefined;
     return block ? durableNewLeadBlockKey(block, orderedGroups) : key;
-  }, [blocks, isNewLeadStageView, orderedGroups]);
+  }, [blocks, firstGroupId, isNewLeadStageView, orderedGroups, valueMode]);
 
   // 사라진 행 id는 렌더 중에 털어낸다 — effect로 미루면 삭제된 id가 복구·필터 전환 때
   // 다시 보이는 «예상 밖 재등장»이 된다. 필터로 숨겨진 행은 여기서 지우지 않는다
@@ -701,12 +794,14 @@ export function BoardWorkspace({
         if (stage) stageByGroup.set(group.id, stage);
       }
     }
+    // 나눠 보기 묶음은 톤이 없다(선택지 색·중립색) — 진행현황 점의 톤은 실제 보드로 정한다.
+    const toneBlocks = valueMode ? physicalBlocks : blocks;
     return resolveGroupTones(
       board.source,
-      blocks.filter((block) => block.key !== UNGROUPED_KEY).map((block) => ({ key: block.key, name: block.name })),
+      toneBlocks.filter((block) => block.key !== UNGROUPED_KEY).map((block) => ({ key: block.key, name: block.name })),
       stageByGroup,
     );
-  }, [blocks, board.source, orderedGroups, physicalActiveColumns, workflowProgressKind]);
+  }, [blocks, board.source, orderedGroups, physicalActiveColumns, physicalBlocks, valueMode, workflowProgressKind]);
 
   /**
    * 진행현황 선택지 중 «행을 옮기는» 것 → 목표 그룹 (#839). 화면용 진행현황 열은 이동 규칙을
@@ -732,6 +827,11 @@ export function BoardWorkspace({
     const shown = presentLabels(orderedGroups.map((group) => group.name));
     return orderedGroups.map((group, index) => ({ id: group.id, name: shown[index] }));
   }, [orderedGroups]);
+  /** 나눠 보기의 키보드 「묶음으로 이동」 선택지 — 묶음 키와 이름. */
+  const valueMoveOptions = useMemo(
+    () => valueMode ? blocks.map((block) => ({ id: block.key, name: blockDisplayNames.get(block.key) ?? block.name })) : [],
+    [blockDisplayNames, blocks, valueMode],
+  );
 
   const bulkTargetIds = useMemo(
     () => intersectVisibleSelection(selectedIds, visibleOrderedIds),
@@ -951,10 +1051,25 @@ export function BoardWorkspace({
    * 보기 줄과 똑같이 화면 key(displayFilters) 기준으로 고친다 — 신규리드 durable/present key 변환은 그대로 돈다.
    */
   const [filterFocus, setFilterFocus] = useState<ToolbarFilterFocus | null>(null);
+  /** 나눠 보기 바꾸기(보기 줄 · 칸 메뉴) — 화면 안에서 묶음을 바꾸고 주소의 group 만 고친다. */
+  const changeGroupBy = useCallback((key: string) => {
+    setGroupByKey(key);
+    setEmptyGroupsOpen(false);
+    setGroupValueError(null);
+    const url = new URL(window.location.href);
+    const stored = key && canonicalNewLead ? durableNewLeadColumnKeys([key])[0] ?? key : key;
+    if (stored) url.searchParams.set("group", stored);
+    else url.searchParams.delete("group");
+    window.history.replaceState(window.history.state, "", url);
+  }, [canonicalNewLead]);
   const tableColumnKeys = tableColumns.map((column) => column.key).join(",");
   const onRequestViewCondition = useCallback((request: ColumnViewRequest) => {
     if (request.kind === "filter") {
       setFilterFocus((current) => ({ columnKey: request.columnKey, seq: (current?.seq ?? 0) + 1 }));
+      return;
+    }
+    if (request.kind === "group") {
+      changeGroupBy(request.on ? request.columnKey : "");
       return;
     }
     setFilters((current) => {
@@ -978,8 +1093,9 @@ export function BoardWorkspace({
       const visible = shown.visibleColumnKeys ?? allKeys;
       return { ...shown, columnLimit: 0, visibleColumnKeys: visible.filter((key) => key !== request.columnKey) };
     });
-  }, [canonicalNewLead, tableColumnKeys]);
+  }, [canonicalNewLead, changeGroupBy, tableColumnKeys]);
   const canFilterColumn = useCallback((column: BoardColumn) => hasToolbarFacet(column), []);
+  const canGroupColumn = useCallback((column: BoardColumn) => isTableGroupColumn(column), []);
   const activeSorts = displayFilters.sorts?.length
     ? displayFilters.sorts
     : displayFilters.sortKey
@@ -1106,6 +1222,76 @@ export function BoardWorkspace({
     () => rowDragEnabled && dragRowRef.current !== null,
     [rowDragEnabled],
   );
+  // 나눠 보기: 끌기가 켜져 있고, 끄는 행이 지금 묶음의 것이 아닐 때만 놓을 수 있다(같은 묶음 안 순서는 저장하지 않는다).
+  const valueDragEnabled = groupValueEditable && !groupValuePending;
+  const valueSectionByRow = useMemo(
+    () => valueMode ? new Map(blocks.flatMap((block) => block.rows.map((row) => [row.id, block.key] as const))) : null,
+    [blocks, valueMode],
+  );
+  const canDropInto = (blockKey: string) => valueMode
+    ? () => valueDragEnabled && dragRowRef.current !== null && valueSectionByRow?.get(dragRowRef.current) !== blockKey
+    : canDropRow;
+
+  const groupValueForm = (itemId: string, columnKey: string, value: CellValue) => {
+    const fd = new FormData();
+    fd.set("boardId", board.id);
+    fd.set("itemId", itemId);
+    fd.set("columnKey", columnKey);
+    fd.set("value", JSON.stringify(value));
+    return fd;
+  };
+  /** 행을 다른 묶음으로 — 먼저 옮겨 보이고(낙관적), 서버가 거절하면 제자리로 돌아가며 까닭을 보인다. */
+  const persistGroupValue = (row: ItemWithValues, target: BoardBlock) => {
+    if (!groupColumn || !target.groupValue) return;
+    if (groupValueInFlightRef.current) { setMoveNotice("이전 변경을 저장하고 있어요."); return; }
+    groupValueInFlightRef.current = true;
+    setGroupValuePending(true);
+    setGroupValueError(null);
+    const columnKey = groupColumn.key;
+    const value = movedGroupValue(groupColumn, row.values[columnKey] ?? null, target.groupValue.id);
+    const targetName = blockDisplayNames.get(target.key) ?? target.name;
+    startTransition(async () => {
+      moveRowOptimistic({ itemId: row.id, columnKey, value });
+      try {
+        const result = await setGroupValueAction(groupValueForm(row.id, columnKey, value));
+        if (result.ok) setMoveNotice(result.notice ?? `「${targetName}」에 옮겼어요.`);
+        else { setMoveNotice(result.message); setGroupValueError(result.message); }
+      } catch {
+        const message = "값을 바꾸지 못했어요. 다시 시도해 주세요.";
+        setMoveNotice(message);
+        setGroupValueError(message);
+      } finally {
+        groupValueInFlightRef.current = false;
+        setGroupValuePending(false);
+      }
+    });
+  };
+  const handleValueDrop = (target: BoardBlock) => {
+    const itemId = dragRowRef.current;
+    endRowDrag();
+    if (!itemId || !valueDragEnabled) return;
+    if (valueSectionByRow?.get(itemId) === target.key) { setMoveNotice("같은 묶음 안에서는 순서를 바꾸지 않아요."); return; }
+    const row = rowById.get(itemId);
+    if (row) persistGroupValue(row, target);
+  };
+  const moveRowToValueSection = (rowId: string, targetKey: string | null) => {
+    const target = blocks.find((block) => block.key === targetKey);
+    const row = rowById.get(rowId);
+    if (!target || !row || !valueDragEnabled) return;
+    if (valueSectionByRow?.get(rowId) === target.key) { setMoveNotice("이미 이 묶음에 있어요."); return; }
+    persistGroupValue(row, target);
+  };
+  /** 회사부터 고르는 추가(계약업체 실무)는 만든 뒤에 묶음 값을 넣는다 — 같은 값 바꾸기 길(권한 확인 포함). */
+  const applyCreatedPrefill = (itemId: string, prefill: { columnKey: string; value: CellValue }) => {
+    startTransition(async () => {
+      try {
+        const result = await setGroupValueAction(groupValueForm(itemId, prefill.columnKey, prefill.value));
+        if (!result.ok) setGroupValueError(result.message);
+      } catch {
+        setGroupValueError("묶음 값을 넣지 못했어요. 칸에서 골라 주세요.");
+      }
+    });
+  };
 
   const persistRowMove = useCallback((itemId:string,groupId:string|null,beforeItemId:string|null,index:number)=>{
     if(rowMoveInFlightRef.current){setMoveNotice("이전 이동을 저장하고 있어요.");return false;}
@@ -1181,8 +1367,11 @@ export function BoardWorkspace({
     const visibleRows = applyFilters(block.rows, searchColumns, displayFilters, filterProjection, assigneeLabels);
     const createdThisSession = Boolean(block.group && !sessionGroupBaseline.ids.has(block.group.id));
     // 계약업체 실무 보드에서만, 실제로 행이 0건인 그룹만 접는다(검색·필터로 0건이 된 그룹은 접지 않는다).
-    const foldable = workflowProgressKind === "work" && index > 0 && block.group !== null
-      && block.rows.length === 0 && !createdThisSession;
+    // 나눠 보기는 모든 보드에서 빈 묶음(행 0건인 값)을 접는다 — 끄는 동안에는 놓을 자리로 나온다.
+    const foldable = valueMode
+      ? block.rows.length === 0
+      : workflowProgressKind === "work" && index > 0 && block.group !== null
+        && block.rows.length === 0 && !createdThisSession;
     return { block, visibleRows, foldable };
   });
   const foldedEmptyCount = blockViews.filter((view) => view.foldable).length;
@@ -1192,6 +1381,12 @@ export function BoardWorkspace({
   useEffect(() => {
     foldedGroupIdsRef.current = new Set(foldedGroupIdsKey ? foldedGroupIdsKey.split(",") : []);
   }, [foldedGroupIdsKey]);
+  const foldedBlockKeysKey = emptyGroupsOpen
+    ? ""
+    : JSON.stringify(blockViews.filter((view) => view.foldable).map((view) => view.block.key));
+  useEffect(() => {
+    foldedBlockKeysRef.current = new Set(foldedBlockKeysKey ? JSON.parse(foldedBlockKeysKey) as string[] : []);
+  }, [foldedBlockKeysKey]);
   // 행을 끄는 동안에는 빈 그룹도 놓을 자리로 보여 준다 — 끌기가 시작된 뒤에(useDeferredDragReveal).
   const shownBlockViews = emptyGroupsOpen || dragRevealGroups
     ? blockViews
@@ -1239,11 +1434,14 @@ export function BoardWorkspace({
         backSlot={backSlot}
         helpSlot={onboardingSlot}
         addItemSlot={onDemandAdd && blocks[0] ? (
-          /* 2026-10-08 — 계약업체 실무의 주 단추. 이름만 받는 「＋ 새 항목」 대신 회사부터 고르는 첫 보드의 추가 패널을 연다. */
+          /*
+           * 2026-10-08 — 계약업체 실무의 주 단추. 이름만 받는 「＋ 새 항목」 대신 회사부터 고르는 첫 보드의 추가 패널을 연다.
+           * 나눠 보기 중이면 값을 미리 넣지 않는 「(없음)」 묶음의 패널을 연다(새 행은 첫 보드에 들어간다).
+           */
           <button
             type="button"
             data-mw-cta="primary"
-            onClick={(event) => requestAdd(blocks[0].key, event.currentTarget)}
+            onClick={(event) => requestAdd(groupColumn ? valueBlockKey(groupColumn.key, null) : blocks[0].key, event.currentTarget)}
             className="flex h-[34px] shrink-0 items-center rounded-[var(--mw-r-2)] bg-mw-primary px-3.5 text-[length:var(--fs-13)] font-semibold text-mw-on-accent"
           >
             ＋ 업체 추가
@@ -1267,7 +1465,9 @@ export function BoardWorkspace({
         mode={viewMode}
         filters={displayFilters}
         onChange={setFilters}
-        groupBy={groupBy}
+        groupBy={groupColumn?.key ?? ""}
+        groupByOptions={groupByOptions}
+        onGroupByChange={changeGroupBy}
         columns={tableColumns}
         rows={displayRows}
         people={people}
@@ -1289,11 +1489,16 @@ export function BoardWorkspace({
         </p>
       )}
 
-      {sortActive && !readOnly && (
+      {sortActive && !readOnly && !valueMode && (
         <p className="text-xs text-mw-sub">
           줄 세우기 중에는 행을 끌어 옮길 수 없어요 · 「원래 순서」로 바꾸면 옮길 수 있어요
         </p>
       )}
+      {groupValueError ? (
+        <p role="alert" data-group-value-error="" className="rounded-lg border border-mw-line bg-mw-card px-3 py-2 text-xs text-mw-error">
+          {groupValueError}
+        </p>
+      ) : null}
       {selectedIds.size > 0 || bulkDialog !== null ? (
         <BulkActionBar
           boardId={board.id}
@@ -1397,6 +1602,8 @@ export function BoardWorkspace({
           onColumnKeyboardMove={handleSharedColumnKeyboardMove}
           onRequestViewCondition={onRequestViewCondition}
           canFilterColumn={canFilterColumn}
+          canGroupColumn={canGroupColumn}
+          groupByKey={groupColumn?.key ?? ""}
           activeSorts={activeSorts}
           columnCatalog={physicalActiveColumns}
           boardRows={optimisticRows}
@@ -1442,6 +1649,16 @@ export function BoardWorkspace({
             : rawResolvedDetailLayout.entries;
           // `start_company_work`는 정본상 첫 그룹에 넣는다. 다른 그룹 아래에도 선택기를
           // 보여주면 누른 위치와 생성 위치가 달라지므로 첫 그룹에만 둔다.
+          /*
+           * #845 7단계 — 나눠 보기 묶음의 추가: 새 행은 첫 보드에 들어가고 그 묶음의 값을 미리 넣는다.
+           * 값을 이 길로 넣을 수 없는 칸이면 「(없음)」 묶음에서만(값 없이) 추가한다. 신규리드는 머리말 등록만 쓴다.
+           */
+          const valuePrefill = groupColumn && groupValueEditable && block.groupValue?.id
+            ? { columnKey: groupColumn.key, value: prefillGroupValue(groupColumn, block.groupValue.id) }
+            : null;
+          const valueAddAllowed = !readOnly && !canonicalNewLead
+            && (valuePrefill !== null || block.groupValue?.id === null);
+          const shownName = blockDisplayNames.get(block.key) ?? block.name;
 
           return (
             <GroupBlock
@@ -1455,7 +1672,9 @@ export function BoardWorkspace({
               key={block.key}
               name={block.name}
               displayName={blockDisplayNames.get(block.key)}
-              tone={groupTones.get(block.key) ?? null}
+              tone={valueMode ? null : groupTones.get(block.key) ?? null}
+              accentColor={block.groupValue?.accent ?? null}
+              addLabel={valueMode ? `${shownName}에 ${onDemandAdd ? "업체" : "새 항목"} 추가` : undefined}
               columns={shown}
               rows={visibleRows}
               presetName={groupPresetName(board.name, block.name)}
@@ -1490,7 +1709,9 @@ export function BoardWorkspace({
                   }
                 />
               }
-              onAddRow={onDemandAdd && !(isConsultationStageView || (isNewLeadStageView && !block.group && block.key !== "new-lead-stage:0")) ? (opener) => requestAdd(block.key, opener) : undefined}
+              onAddRow={valueMode
+                ? (valueAddAllowed ? (opener) => requestAdd(block.key, opener) : undefined)
+                : onDemandAdd && !(isConsultationStageView || (isNewLeadStageView && !block.group && block.key !== "new-lead-stage:0")) ? (opener) => requestAdd(block.key, opener) : undefined}
               selectControl={sharedBlockKeys.has(block.key) ? (
                 <GroupSelectAll
                   name={blockDisplayNames.get(block.key) ?? block.name}
@@ -1518,7 +1739,9 @@ export function BoardWorkspace({
                 {...companyPickerProps}
                 itemDetailFixture={itemDetailFixture}
                 currentUserId={currentUserId}
-                groupId={block.group?.id ?? (isNewLeadStageView && block.key === "new-lead-stage:0" ? orderedGroups[0]?.id ?? null : null)}
+                groupId={valueMode ? firstGroupId : block.group?.id ?? (isNewLeadStageView && block.key === "new-lead-stage:0" ? orderedGroups[0]?.id ?? null : null)}
+                addPrefill={valuePrefill}
+                onRowCreated={valuePrefill ? (itemId) => applyCreatedPrefill(itemId, valuePrefill) : undefined}
                 columns={shown}
                 detailColumns={[...detailColumns]}
                 boardDetailLayout={boardDetailLayout}
@@ -1569,8 +1792,8 @@ export function BoardWorkspace({
                     initialCompanyName={row.title}
                   />
                 ) : undefined}
-                hideAddRow={isConsultationStageView || (isNewLeadStageView && !block.group && block.key !== "new-lead-stage:0")}
-                rowDragEnabled={rowDragEnabled && (!isNewLeadStageView || Boolean(block.group))}
+                hideAddRow={valueMode ? !valueAddAllowed : isConsultationStageView || (isNewLeadStageView && !block.group && block.key !== "new-lead-stage:0")}
+                rowDragEnabled={valueMode ? valueDragEnabled : rowDragEnabled && (!isNewLeadStageView || Boolean(block.group))}
                 cellFlash={cellFlash}
                 cellAction={cellAction}
                 workflowProgressKind={workflowProgressKind}
@@ -1583,11 +1806,13 @@ export function BoardWorkspace({
                 onColumnKeyboardMove={(columnKey,delta)=>handleColumnKeyboardMove(block.key,resolvedColumns,columnKey,delta)}
                 onRequestViewCondition={onRequestViewCondition}
                 canFilterColumn={canFilterColumn}
+                canGroupColumn={canGroupColumn}
+                groupByKey={groupColumn?.key ?? ""}
                 activeSorts={activeSorts}
                 columnCatalog={physicalActiveColumns}
                 boardRows={optimisticRows}
-                dragRowId={rowDragEnabled ? dragRowId : null}
-                canDropRow={canDropRow}
+                dragRowId={(valueMode ? valueDragEnabled : rowDragEnabled) ? dragRowId : null}
+                canDropRow={canDropInto(block.key)}
                 selection={selectedIds}
                 onToggleRow={toggleRow}
                 onToggleGroup={(checked) => toggleGroupIds(visibleRows.map((row) => row.id), checked)}
@@ -1614,12 +1839,15 @@ export function BoardWorkspace({
                 }}
                 onRowDragStart={startRowDrag}
                 onRowDragEnd={endRowDrag}
-                onRowDrop={(index) =>
-                  handleRowDrop(block.group?.id ?? null, block.rows, visibleRows, index)
+                onRowDrop={(index) => valueMode
+                  ? handleValueDrop(block)
+                  : handleRowDrop(block.group?.id ?? null, block.rows, visibleRows, index)
                 }
-                onRowKeyboardMove={(rowId,direction)=>keyboardMoveRow(rowId,block.group?.id??null,visibleRows,direction)}
-                onRowMoveToGroup={keyboardMoveRowToGroup}
-                groupMoveOptions={groupMoveOptions}
+                onRowKeyboardMove={valueMode
+                  ? () => setMoveNotice("이 보기에서는 순서를 바꾸지 않아요.")
+                  : (rowId,direction)=>keyboardMoveRow(rowId,block.group?.id??null,visibleRows,direction)}
+                onRowMoveToGroup={valueMode ? moveRowToValueSection : keyboardMoveRowToGroup}
+                groupMoveOptions={valueMode ? valueMoveOptions : groupMoveOptions}
                 renderWorkflowTransition={board.source === CONTACT_TAB_SOURCE ? (row) => (
                   workflowTransitionSlot ?? (
                     <>
@@ -1665,7 +1893,9 @@ export function BoardWorkspace({
             onClick={() => setEmptyGroupsOpen((open) => !open)}
             className="h-8 rounded-[var(--mw-r-2)] px-3 text-[length:var(--fs-13)] text-mw-sub outline-none hover:bg-mw-card hover:text-mw-fg focus-visible:ring-2 focus-visible:ring-mw-primary"
           >
-            {emptyGroupsOpen ? "빈 보드 접기" : `빈 보드 ${foldedEmptyCount}개 보기`}
+            {valueMode
+              ? (emptyGroupsOpen ? "빈 묶음 접기" : `빈 묶음 ${foldedEmptyCount}개 보기`)
+              : (emptyGroupsOpen ? "빈 보드 접기" : `빈 보드 ${foldedEmptyCount}개 보기`)}
           </button>
         </div>
       ) : null}

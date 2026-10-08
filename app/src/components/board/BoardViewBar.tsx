@@ -290,6 +290,7 @@ export function BoardViewBar({
   onChange,
   groupBy = "",
   groupByOptions = [],
+  onGroupByChange,
   columns,
   rows,
   people,
@@ -311,9 +312,15 @@ export function BoardViewBar({
   /** 지금 조건(화면 key). 검색어(q)도 여기 들어 있다. */
   filters: BoardFilterState;
   onChange: (next: BoardFilterState) => void;
-  /** 나눠 보기 — 지금은 칸반의 목록 칸 묶기만 실제로 바뀐다. 빈 값 = 보드별. */
+  /** 나눠 보기 — 빈 값 = 보드별. 칸반은 목록 칸으로 레인을, 메인 표는 사람·목록·상태 칸으로 묶음을 나눈다(#845 7단계). */
   groupBy?: string;
+  /** 나눠 보기로 고를 수 있는 칸(보드별 말고). 화면이 정한다 — 칸반은 목록 칸, 메인 표는 사람·목록·상태 칸. */
   groupByOptions?: readonly { key: string; label: string }[];
+  /**
+   * 있으면 나눠 보기를 화면 안에서 바꾼다(메인 표 — 주소만 고치고 다시 읽지 않는다).
+   * 없으면 주소를 바꿔 서버가 다시 그린다(칸반 레인).
+   */
+  onGroupByChange?: (key: string) => void;
   /** 화면 칸 — 골라 보기·줄 세우기·보이는 칸의 대상. */
   columns: readonly BoardColumn[];
   rows: readonly ItemWithValues[];
@@ -447,8 +454,9 @@ export function BoardViewBar({
   const revert = () => {
     if (!baseline) return;
     setNotice(null);
-    if (baseline.mode === mode && baseline.groupBy === groupBy) {
+    if (baseline.mode === mode && (baseline.groupBy === groupBy || onGroupByChange)) {
       onChange(filtersForConditions(baseline, filters));
+      if (baseline.groupBy !== groupBy) onGroupByChange?.(baseline.groupBy);
       return;
     }
     const target = rawActive
@@ -468,6 +476,10 @@ export function BoardViewBar({
   };
   const changeGroupBy = (key: string) => {
     if (key === groupBy) return;
+    if (onGroupByChange) {
+      onGroupByChange(key);
+      return;
+    }
     navigateTo(new URL(boardViewSwitchUrl(mode, window.location.href, key), window.location.href).toString());
   };
   const renameActive = async (name: string) => {
@@ -525,7 +537,7 @@ export function BoardViewBar({
       legacyFacetLabels={legacyFacetLabels}
       focusFilter={variant === "panel" ? chipFocus : null}
       groupBy={groupBy}
-      groupByOptions={mode === "kanban" ? groupByOptions : []}
+      groupByOptions={groupByOptions}
       onGroupBy={changeGroupBy}
       onClose={variant === "panel" ? closePanel : undefined}
       footer={footer}

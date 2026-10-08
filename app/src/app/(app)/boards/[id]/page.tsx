@@ -49,6 +49,7 @@ import {
   parseSavedStringList,
 } from "@/lib/view/board-saved";
 import { resolveSavedPersonRuntime } from "@/lib/view/server";
+import { isTableGroupColumn } from "@/lib/view/group-by";
 import { decodeBoardFilters } from "@/components/board/filters";
 import { KanbanViewWorkspace } from "@/components/boards/KanbanViewWorkspace";
 import { ColumnEditor } from "@/components/boards/ColumnEditor";
@@ -203,6 +204,8 @@ export default async function BoardPage({
     (c) => c.type === "select" || c.type === "multiselect",
   );
   const groupBy = sp.group && selectColumns.some((c) => c.key === sp.group) ? sp.group : "";
+  // #845 7단계 — 메인 표의 나눠 보기는 사람·목록·상태 칸으로 묶는다(칸반 레인은 위 groupBy 그대로).
+  const tableGroupBy = sp.group && columns.some((c) => c.key === sp.group && isTableGroupColumn(c)) ? sp.group : "";
   const noticePerspective = parseNoticePerspective(sp.noticeView);
   const visibleItemIds = new Set(scopedItems.result.itemIds);
   const projectedItems = board.source === NOTICE_TAB_SOURCE
@@ -545,7 +548,7 @@ export default async function BoardPage({
       assigneeLabels={assigneeLabels}
       memberDirectory={memberDirectory}
       backSlot={backLink}
-      groupBy={groupBy}
+      groupBy={tableGroupBy}
       loadSavedViews
       calendarAvailable={calendarAvailable}
       tabSettingsSlot={tabSettingsDialog}

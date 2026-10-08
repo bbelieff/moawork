@@ -29,6 +29,7 @@ import {
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { FIELD_TYPES } from "@/lib/types";
 import { fieldTypeLabel } from "@/lib/field/type-labels";
+import { groupByChoiceLabel } from "@/lib/view/group-by";
 import { runColumnCommandAction } from "@/app/(app)/boards/column-command-actions";
 import { INITIAL_COLUMN_COMMAND_STATE } from "@/app/(app)/boards/column-command-state";
 import { renameColumnTitleAction } from "@/app/(app)/boards/title-actions";
@@ -53,6 +54,7 @@ import {
   columnFillCount,
   columnMetaParts,
   columnSendsMessage,
+  columnPlainName,
   columnSortOptions,
   type ColumnSortDirection,
   type ColumnViewRequest,
@@ -66,6 +68,10 @@ export type ColumnMenuView = Readonly<{
   sortDirection: ColumnSortDirection | null;
   /** 이 칸의 「골라 보기…」 를 열 수 있는가. */
   canFilter: boolean;
+  /** 「{칸}별로 나눠 보기」 를 보이는가(#845 7단계 — 사람·목록·상태 칸, 메인 표). 없으면 false. */
+  canGroup?: boolean;
+  /** 지금 이 칸으로 나눠 보고 있는가 — 체크 표시, 다시 누르면 보드별로 돌아간다. */
+  grouped?: boolean;
   onRequest(request: ColumnViewRequest): void;
 }>;
 
@@ -300,6 +306,15 @@ export function ColumnContextMenu({
                 onClick={() => run(() => view.onRequest({ kind: "filter", columnKey: column.key }), false)}
               />
             ) : null}
+            {view.canGroup ? (
+              <ColumnMenuItem
+                role="menuitemcheckbox"
+                checked={Boolean(view.grouped)}
+                icon="group"
+                label={groupByChoiceLabel(columnPlainName(column.label))}
+                onClick={() => run(() => view.onRequest({ kind: "group", columnKey: column.key, on: !view.grouped }), true)}
+              />
+            ) : null}
             <ColumnMenuItem
               icon="hide"
               label={T.hide}
@@ -412,7 +427,7 @@ function SectionLabel({ id, name, tag }: { id: string; name: string; tag: string
 }
 
 type ColumnMenuIconName =
-  | "sortAsc" | "sortDesc" | "reset" | "filter" | "hide"
+  | "sortAsc" | "sortDesc" | "reset" | "filter" | "group" | "hide"
   | "rename" | "settings" | "left" | "right" | "add" | "copy" | "trash";
 
 /** 메뉴 아이콘 — 탭 아이콘(board-icons)과 같은 24 격자 · 선 굵기 1.8 · currentColor. */
@@ -421,6 +436,7 @@ const ICON_PATHS: Record<ColumnMenuIconName, string> = {
   sortDesc: "M4 6h14M4 12h10M4 18h7",
   reset: "M4 12a8 8 0 1 0 2.4-5.7M4 4v4.5h4.5",
   filter: "M4 5h16l-6 7.2V19l-4 1.5v-8.3L4 5z",
+  group: "M4 5h16M4 9h11M4 15h16M4 19h11",
   hide: "M3 3l18 18M10.6 6.1c.5-.1.9-.1 1.4-.1 4.8 0 8.3 3.7 9.5 6-.5 1-1.3 2.2-2.4 3.2M6.6 7.6C4.7 8.8 3.3 10.5 2.5 12c1.2 2.3 4.7 6 9.5 6 1.5 0 2.9-.4 4.1-1M9.9 9.9a3 3 0 0 0 4.2 4.2",
   rename: "M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4",
   settings: "M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4",
@@ -453,13 +469,14 @@ function ColumnMenuItem({
   onClick(): void;
   danger?: boolean;
   disabled?: boolean;
-  role?: "menuitem" | "menuitemradio";
+  role?: "menuitem" | "menuitemradio" | "menuitemcheckbox";
   checked?: boolean;
 }) {
+  const checkable = role === "menuitemradio" || role === "menuitemcheckbox";
   return (
     <button
       role={role}
-      aria-checked={role === "menuitemradio" ? Boolean(checked) : undefined}
+      aria-checked={checkable ? Boolean(checked) : undefined}
       aria-disabled={disabled || undefined}
       tabIndex={-1}
       draggable={false}
@@ -475,7 +492,7 @@ function ColumnMenuItem({
     >
       <ColumnMenuIcon name={icon} />
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {role === "menuitemradio" ? (
+      {checkable ? (
         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" className="shrink-0" style={{ visibility: checked ? "visible" : "hidden" }}>
           <path d="M4 12l5 5L20 6" />
         </svg>

@@ -658,6 +658,10 @@ export function GroupTable({
   onBulkStatusRequest,
   onRequestViewCondition,
   canFilterColumn,
+  canGroupColumn,
+  groupByKey = "",
+  addPrefill = null,
+  onRowCreated,
   activeSorts = [],
   columnCatalog,
   boardRows,
@@ -817,6 +821,17 @@ export function GroupTable({
   onRequestViewCondition?: (request: ColumnViewRequest) => void;
   /** 이 칸의 「골라 보기…」 를 지금 열 수 있는가(보드의 골라 보기 화면이 그 칸을 다루는가). */
   canFilterColumn?: (column: BoardColumn) => boolean;
+  /** #845 7단계 — 칸 메뉴에 「{칸}별로 나눠 보기」 를 보이는가(사람·목록·상태 칸). 없으면 감춘다. */
+  canGroupColumn?: (column: BoardColumn) => boolean;
+  /** 지금 나눠 보는 칸 key(보드별이면 ""). 칸 메뉴의 체크 표시. */
+  groupByKey?: string;
+  /**
+   * #845 7단계 — 나눠 보기 묶음의 추가 줄이 새 행에 미리 넣는 값(칸 key · 값). 이름만 받는 추가는
+   * 서버가 만들 때 같이 넣고, 회사부터 고르는 추가는 만든 뒤 `onRowCreated` 로 화면이 넣는다.
+   */
+  addPrefill?: { columnKey: string; value: CellValue } | null;
+  /** 회사부터 고르는 추가(계약업체 실무)가 새 행을 만들었을 때 — 그 행 id. */
+  onRowCreated?: (itemId: string) => void;
   /** 지금 걸린 줄 세우기 — 칸 메뉴의 그 항목에 체크 표시를 단다. */
   activeSorts?: readonly { columnKey: string; direction: "asc" | "desc" }[];
   /** 지우기 확인 창이 «멈추는 계산 칸» 을 찾을 같은 탭의 칸 정의(기본 detailColumns). */
@@ -1201,7 +1216,13 @@ export function GroupTable({
               const movable = manageStructure && canMoveColumns;
               const sortDirection = activeSorts.find((sort) => sort.columnKey === col.key)?.direction ?? null;
               const columnView = onRequestViewCondition
-                ? { sortDirection, canFilter: canFilterColumn?.(col) ?? false, onRequest: onRequestViewCondition }
+                ? {
+                    sortDirection,
+                    canFilter: canFilterColumn?.(col) ?? false,
+                    canGroup: canGroupColumn?.(col) ?? false,
+                    grouped: groupByKey !== "" && groupByKey === col.key,
+                    onRequest: onRequestViewCondition,
+                  }
                 : null;
               // 가상 칸(신규리드 합성 칸·상담 진행)은 행 값이 그 key 에 없어 «몇 건 채움» 을 셀 수 없다.
               const fillKnown = !(canonicalNewLead && isNewLeadPresentationOnlyStructure(col)) && col.key !== CONSULTATION_PROGRESS_KEY;
@@ -1599,12 +1620,15 @@ export function GroupTable({
                     openRequest={onDemandAdd ? addRequest : 0}
                     onOpenChange={setAddPanelOpen}
                     returnFocusTarget={onDemandAdd ? addReturnFocus : undefined}
+                    onAdded={onRowCreated}
                   />
                 ) : (
                   <AddItemForm
                     boardId={boardId}
                     variant="inline"
                     groupId={groupId}
+                    prefill={addPrefill}
+                    focusRequest={addRequest}
                     inputClassName={`${CELL_INPUT} max-w-64`}
                   />
                 )}

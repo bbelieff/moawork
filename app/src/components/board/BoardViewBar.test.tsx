@@ -310,3 +310,60 @@ describe("휴대폰(640px 아래) — [뷰 이름 •▾] [보기 조건 N] [찾
     expect(viewsButton.getAttribute("aria-label")).toBe("뷰 목록 · 메인 테이블 · 바뀐 조건 1개");
   });
 });
+
+describe("나눠 보기(#845 7단계) — 메인 표는 화면 안에서 바꾸고 «저장» 이 뷰에 담는다", () => {
+  function GroupHarness(props: Partial<BarProps> & { initialGroup?: string }) {
+    const [groupBy, setGroupBy] = useState(props.initialGroup ?? "");
+    return (
+      <Harness
+        groupBy={groupBy}
+        groupByOptions={[{ key: "status", label: "상태" }]}
+        onGroupByChange={setGroupBy}
+        {...props}
+      />
+    );
+  }
+  async function mountGroup(props: Partial<BarProps> & { initialGroup?: string } = {}) {
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => root!.render(<GroupHarness {...props} />));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    return host;
+  }
+
+  it("고르면 다시 읽지 않고 칩이 바뀌며 바뀐 조건 1개 — 새 뷰에 groupBy 로 담고 주소에도 남긴다", async () => {
+    const host = await mountGroup();
+    await click(chip(host, "group"));
+    const options = [...host.querySelectorAll<HTMLButtonElement>("#board-filter-panel [role=tabpanel] button")];
+    expect(options.map((button) => button.textContent?.replace("✓", ""))).toEqual(["보드별로 나눠 보기", "상태별로 나눠 보기"]);
+    await click(options[1]);
+    expect(nav.navigateTo).not.toHaveBeenCalled();
+    expect(chip(host, "group")!.textContent).toBe("나눠 보기 · 상태별");
+    expect(host.querySelector('[data-view-tab="main"]')!.getAttribute("title")).toBe("바뀐 조건 1개");
+
+    await click(host.querySelector("[data-view-tab-create]"));
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-label="새 뷰로 저장"]')!;
+    expect([...dialog.querySelectorAll('[aria-label="담을 조건"] li')].map((item) => item.textContent)).toEqual(["표", "상태별"]);
+    await type(dialog.querySelector<HTMLInputElement>('input[aria-label="뷰 이름"]')!, "상태별 보기");
+    await act(async () => dialog.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    const created = calls.find((call) => call.method === "POST")!;
+    expect((created.body as { config: { kind: string; groupBy: string } }).config).toMatchObject({ kind: "grouped", groupBy: "status" });
+    expect(new URL(nav.navigateTo.mock.calls[0][0]).searchParams.get("group")).toBe("status");
+  });
+
+  it("뷰에 저장된 나눠 보기는 기준이다 — 보드별로 바꾸면 바뀜, 되돌리면 그 뷰의 묶음으로 화면 안에서 돌아간다", async () => {
+    listed = [view("grouped", { ownerId: "me", canEdit: true }, { groupBy: "status" })];
+    const host = await mountGroup({ activeViewId: "grouped", initialGroup: "status" });
+    expect(dirtyDot(host)).toBeNull();
+    await click(chip(host, "group"));
+    await click(host.querySelectorAll<HTMLButtonElement>("#board-filter-panel [role=tabpanel] button")[0]);
+    expect(chip(host, "group")!.textContent).toBe("나눠 보기 · 보드별");
+    expect(dirtyDot(host)).not.toBeNull();
+    await click([...host.querySelectorAll<HTMLButtonElement>("[data-view-dirty-actions] button")].find((button) => button.textContent === "되돌리기"));
+    expect(nav.navigateTo).not.toHaveBeenCalled();
+    expect(chip(host, "group")!.textContent).toBe("나눠 보기 · 상태별");
+    expect(dirtyDot(host)).toBeNull();
+  });
+});

@@ -370,3 +370,17 @@ describe("#845 6단계 — 보기 방식·메인 테이블·덮어쓰기 권한"
     expect(canOverwriteSavedView({ ownerId: null }, { userId: "u1", role: "member" })).toBe(false);
   });
 });
+
+describe("#845 7단계 — 나눠 보기는 뷰 설정의 groupBy 그대로", () => {
+  it("저장된 표 뷰의 groupBy(사람·목록 칸)가 주소 group 으로 열리고, 신규리드 durable/present 변환을 지나도 같은 칸이다", () => {
+    const config = parseSavedBoardViewConfig({ kind: "grouped", groupBy: "collaborators" });
+    expect(config.groupBy).toBe("collaborators");
+    const view = { id: "v1", name: "뷰", visibility: "private" as const, ownerId: "u1", isDefault: false, lastUsedAt: null, config };
+    expect(new URL(savedViewUrl(view, "https://app.test/boards/b")).searchParams.get("group")).toBe("collaborators");
+    expect(presentNewLeadSavedViewConfig(config).groupBy).toBe("collaborators");
+    expect(durableNewLeadSavedViewConfig(presentNewLeadSavedViewConfig(config)).groupBy).toBe("collaborators");
+    // 보드별(빈 값)은 주소에서 group 을 지운다.
+    const plain = { ...view, config: parseSavedBoardViewConfig({ kind: "grouped" }) };
+    expect(new URL(savedViewUrl(plain, "https://app.test/boards/b?group=owner")).searchParams.has("group")).toBe(false);
+  });
+});

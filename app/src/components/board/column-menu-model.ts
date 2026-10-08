@@ -17,11 +17,13 @@ export type ColumnSortDirection = "asc" | "desc";
  *   · sort   — 이 칸 하나로 줄 세우기(direction null = 원래 순서로)
  *   · filter — 「골라 보기…」: 이 칸의 골라 보기 화면을 연다
  *   · hide   — 「숨기기」: 이 뷰의 보이는 칸에서 뺀다
+ *   · group  — 「{칸}별로 나눠 보기」(#845 7단계): on=false 면 보드별로 되돌린다
  */
 export type ColumnViewRequest =
   | { kind: "sort"; columnKey: string; direction: ColumnSortDirection | null }
   | { kind: "filter"; columnKey: string }
-  | { kind: "hide"; columnKey: string };
+  | { kind: "hide"; columnKey: string }
+  | { kind: "group"; columnKey: string; on: boolean };
 
 /** 메뉴 글자 — 한 줄씩, 쉬운 말. */
 export const COLUMN_MENU_TEXT = {

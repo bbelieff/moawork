@@ -169,6 +169,7 @@ export function ContractWorkIntakeForm({
   openRequest = 0,
   onOpenChange,
   returnFocusTarget,
+  onAdded,
 }: {
   rows: readonly CompanyPickerRow[];
   loadError?: string | null;
@@ -212,6 +213,8 @@ export function ContractWorkIntakeForm({
   onOpenChange?: (open: boolean) => void;
   /** trigger="none" 일 때 닫으면 포커스를 돌려줄 곳(패널을 연 도구줄·배너 단추). */
   returnFocusTarget?: () => HTMLElement | null;
+  /** 확정 성공으로 새 행이 생겼을 때(#845 7단계 — 나눠 보기 묶음이 그 행에 묶음 값을 넣는다). */
+  onAdded?: (itemId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -263,6 +266,7 @@ export function ContractWorkIntakeForm({
    * 액션 안의 await 뒤라 transition 으로 묶어 결과 화면과 같이 그린다.
    */
   function finishAdded(itemId: string | null, name: string, seq: number) {
+    if (itemId) onAdded?.(itemId);
     startTransition(() => {
       setDismissedThrough(seq);
       setOpen(false);
