@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import type { Board, BoardColumn } from "@/lib/boards/types";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
+import { TabSettingsDialog } from "@/components/board/TabSettingsDialog";
 import { resolveColumnOrder } from "@/components/board/layout";
 import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
@@ -16,6 +17,7 @@ const ctx = { org: { id: "org-parity", name: "QA" }, user: { id: "user", name: "
 describe("actual board rendering and definition reconciliation", () => {
   beforeEach(() => resetDb());
 
+  // #845 (2026-10-08): the single settings entry is the header's top-right 「탭 설정」 button; it opens a dialog.
   it("renders the one settings entry above board groups and keeps the workflow gate last", () => {
     const columns = CONTACT_TAB.columns.map((definition, sort_order) => ({
       id: definition.key, org_id: ctx.org.id, board_id: "board", key: definition.key,
@@ -27,11 +29,15 @@ describe("actual board rendering and definition reconciliation", () => {
     const board = { id: "board", org_id: ctx.org.id, name: "리드컨택 관리", description: null, icon: null, is_system: false, source: CONTACT_TAB.source, sort_order: 0, created_by: "user", created_at: "", updated_at: "" } as Board;
     const html = renderToStaticMarkup(createElement(BoardWorkspace, {
       board, columns, groups: [], rows: [], columnOrder: {}, cellFlash: null,
-      assigneeLabels: {}, settingsSlot: createElement("button", null, "보드 설정"),
+      assigneeLabels: {}, tabSettingsSlot: createElement(TabSettingsDialog, { general: createElement("p", null, "열린 설정") }),
+      tabSettingsSections: ["general", "fields", "stages"],
     }));
-    expect(html.indexOf("보드 설정")).toBeGreaterThan(-1);
-    expect(html.indexOf("보드 설정")).toBeLessThan(html.indexOf("그룹이 없습니다"));
-    expect((html.match(/보드 설정/g) ?? [])).toHaveLength(1);
+    expect(html.indexOf("data-board-tab-settings")).toBeGreaterThan(-1);
+    expect(html.indexOf("탭 설정")).toBeLessThan(html.indexOf("그룹이 없습니다"));
+    expect((html.match(/탭 설정/g) ?? [])).toHaveLength(1);
+    expect(html).not.toContain("보드 설정");
+    // The dialog stays closed until the entry is pressed.
+    expect(html).not.toContain("열린 설정");
   });
 
   it("reconciles only the untouched legacy readOnly property and survives a new repo instance", async () => {

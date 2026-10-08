@@ -24,7 +24,7 @@ import { renameBoardTitleAction } from "@/app/(app)/boards/title-actions";
 import { BoardInlineTitleEditor, type BoardInlineTitleEditorHandle } from "./BoardInlineTitleEditor";
 import { AssigneeMenu, DescriptionHint, TabSettingsButton, TabTitleMenu } from "./BoardHeaderMenus";
 import { TabIcon } from "./TabIcon";
-import type { TabSettingsSection } from "./tab-chrome";
+import { useTabChrome, type TabSettingsOpenRequest } from "./tab-chrome";
 
 export function BoardHeader({
   boardId,
@@ -68,12 +68,20 @@ export function BoardHeader({
   groups: readonly BoardGroup[];
   readOnly: boolean;
   canEditTitle?: boolean;
-  /** 「탭 설정」 을 연다. 없으면 오른쪽 위 단추와 ▾ 메뉴의 설정 항목을 감춘다. */
-  onOpenSettings?: (section: TabSettingsSection) => void;
-  /** 「휴지통으로 이동」 확인을 연다. 없으면 ▾ 메뉴에서 감춘다(권한 없음·시스템 보드). */
-  onRequestTrash?: () => void;
+  /**
+   * 「탭 설정」 을 연다. 없으면 감싼 TabChromeProvider 의 것을 쓰고, 그것도 없으면
+   * 오른쪽 위 단추와 ▾ 메뉴의 설정 항목을 감춘다.
+   */
+  onOpenSettings?: (request: TabSettingsOpenRequest) => void;
+  /** 「휴지통으로 이동」 확인을 연다. 없으면 제공자의 것, 그것도 없으면 ▾ 메뉴에서 감춘다(권한 없음·시스템 보드). */
+  onRequestTrash?: (opener: HTMLElement | null) => void;
 }) {
   const titleRef = useRef<BoardInlineTitleEditorHandle>(null);
+  const chrome = useTabChrome();
+  const openSettings = onOpenSettings ?? chrome?.openSettings;
+  const requestTrash = onRequestTrash ?? chrome?.requestTrash;
+  // 제공자가 정한 칸만 연다 — 일반 칸이 없으면(탭 관리 권한 없음) 「아이콘·설명」 항목을 감춘다.
+  const canEditGeneral = onOpenSettings ? true : Boolean(chrome?.settingsSections.includes("general"));
   const iconKey = resolveBoardIconKey(icon, source);
   const showSecondRow = Boolean(viewSlot) || people.length > 0;
 
@@ -100,15 +108,16 @@ export function BoardHeader({
             boardId={boardId}
             tabName={name}
             onRename={canEditTitle ? () => titleRef.current?.beginEdit() : undefined}
-            onOpenSettings={onOpenSettings}
-            onRequestTrash={onRequestTrash}
+            onOpenSettings={openSettings}
+            canEditGeneral={canEditGeneral}
+            onRequestTrash={requestTrash}
           />
           {description ? <DescriptionHint text={description} /> : null}
           {helpSlot}
         </div>
 
         <div data-board-action-rail className="mw-layer-board-header relative z-[var(--mw-layer-board-header)] flex shrink-0 items-center gap-2 bg-mw-bg">
-          {onOpenSettings ? <TabSettingsButton onOpen={() => onOpenSettings("general")} /> : null}
+          {openSettings ? <TabSettingsButton onOpen={(opener) => openSettings({ opener })} /> : null}
 
           {!readOnly && groups.length > 0 && (addItemSlot ?? (
             <details name="mw-board-header" className="relative shrink-0">

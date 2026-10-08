@@ -39,7 +39,7 @@ import {
   setGroupColumnOrdersAction,
 } from "@/app/(app)/boards/actions";
 import { BoardHeader } from "./BoardHeader";
-import { TabChromeContext, type TabChromeState, type TabSettingsSection } from "./tab-chrome";
+import { TabChromeProvider, type TabSettingsSection } from "./tab-chrome";
 import { selectionTriState } from "./bulk-selection";
 import { BoardScrollViewport } from "./BoardScrollViewport";
 import { BoardToolbar } from "./BoardToolbar";
@@ -208,8 +208,8 @@ export function BoardWorkspace({
   backSlot,
   viewSlot,
   savedViewsSlot,
-  settingsSlot,
   tabSettingsSlot,
+  tabSettingsSections,
   tabTrashSlot,
   onboardingSlot,
   canEditItems = false,
@@ -269,14 +269,15 @@ export function BoardWorkspace({
    * 뷰는 «보드에 속한 것» 이라 소속처보다 위에 두면 위계가 뒤집혀 보인다.
    */
   savedViewsSlot?: ReactNode;
-  /** 보드 상단에서 즉시 발견되는 단일 설정 진입점. */
-  settingsSlot?: ReactNode;
   /**
-   * #845 개선안 — 머리말 「탭 설정」 이 여는 대화상자(일반·항목·단계). 열림 상태는 TabChromeContext 로 읽는다.
-   * 없으면 「탭 설정」 은 위 settingsSlot(보드 설정 펼침)을 펼쳐 준다.
+   * #845 개선안(2026-10-08) — 머리말 오른쪽 위 「탭 설정」 이 여는 대화상자(일반·항목·단계).
+   * 옛 「⚙ 보드 설정」 펼침을 대신한다. 열림 상태는 TabChromeProvider 가 들고 문맥으로 알린다.
+   * `tabSettingsSections` 가 비면 「탭 설정」 단추·▾ 설정 항목이 없다(권한 없음·시스템 보드).
    */
   tabSettingsSlot?: ReactNode;
-  /** #845 개선안 — 제목 ▾ 「휴지통으로 이동」 확인. 열림 상태는 TabChromeContext 로 읽는다. 없으면 메뉴에서 감춘다. */
+  /** 이 탭에서 열 수 있는 설정 칸 — 화면이 권한으로 정한다. */
+  tabSettingsSections?: readonly TabSettingsSection[];
+  /** #845 개선안 — 제목 ▾ 「휴지통으로 이동」 확인. 없으면 메뉴에서 감춘다(지울 권한 없음·시스템 보드). */
   tabTrashSlot?: ReactNode;
   /** 서버가 판정한 신규리드 1회 온보딩. 권한 판정에는 사용하지 않는다. */
   onboardingSlot?: ReactNode;
@@ -937,41 +938,6 @@ export function BoardWorkspace({
   const pickAssignee = (value: string | null) =>
     setFilters((f) => ({ ...f, assignees: value === null ? [] : [value] }));
 
-  /*
-   * #845 개선안(2026-10-08) — 머리말 「탭 설정」 과 제목 ▾ 「휴지통으로 이동」 이 여는 표면.
-   * 내용은 화면(page)이 슬롯으로 넘기고, 열림 상태만 여기서 들고 TabChromeContext 로 알려 준다
-   * (서버 화면은 함수를 넘길 수 없다). 탭 설정 대화상자 슬롯이 아직 없으면 「탭 설정」 은 기존
-   * 보드 설정 펼침(settingsSlot)을 열어 준다.
-   */
-  const [tabSettingsSection, setTabSettingsSection] = useState<TabSettingsSection | null>(null);
-  const [tabTrashOpen, setTabTrashOpen] = useState(false);
-  const legacySettingsRef = useRef<HTMLDivElement>(null);
-  const tabChrome = useMemo<TabChromeState>(() => ({
-    settingsSection: tabSettingsSection,
-    openSettings: setTabSettingsSection,
-    closeSettings: () => setTabSettingsSection(null),
-    trashOpen: tabTrashOpen,
-    closeTrash: () => setTabTrashOpen(false),
-  }), [tabSettingsSection, tabTrashOpen]);
-  const openLegacySettings = useCallback(() => {
-    const host = legacySettingsRef.current;
-    if (!host) return;
-    const details = host.querySelector("details");
-    if (details) {
-      details.open = true;
-      details.scrollIntoView?.({ block: "nearest" });
-      details.querySelector<HTMLElement>("summary")?.focus();
-      return;
-    }
-    host.querySelector<HTMLElement>("button, summary, a[href]")?.click();
-  }, []);
-  const openTabSettings = tabSettingsSlot
-    ? (section: TabSettingsSection) => setTabSettingsSection(section)
-    : settingsSlot
-      ? () => openLegacySettings()
-      : undefined;
-  const requestTabTrash = tabTrashSlot ? () => setTabTrashOpen(true) : undefined;
-
   const handleColumnDrop = (
     groupKey: string,
     /** 그 그룹의 **전체** 컬럼 순서(컬럼수 제한 적용 전). */
@@ -1205,7 +1171,13 @@ export function BoardWorkspace({
     /*
      * 원칙 2·8 — 인위적 max-width 없이 뷰포트 폭을 그대로 쓴다.
      * 세로 여백(gap-3)은 "그룹 사이 구획"이라는 위계 표현으로만 쓴다(원칙 10).
+     * 탭 설정·휴지통 확인은 머리말이 열고 화면이 넘긴 슬롯이 그린다(#845 — 열림 상태는 제공자가 든다).
      */
+    <TabChromeProvider
+      settings={tabSettingsSlot}
+      settingsSections={board.is_system ? [] : tabSettingsSections}
+      trash={board.is_system ? undefined : tabTrashSlot}
+    >
     <div className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden">
       <BoardHeader
         boardId={board.id}
@@ -1219,8 +1191,6 @@ export function BoardWorkspace({
         readOnly={readOnly}
         canEditTitle={!board.is_system&&canManageSummaries}
         source={board.source}
-        onOpenSettings={openTabSettings}
-        onRequestTrash={requestTabTrash}
         backSlot={backSlot}
         helpSlot={onboardingSlot}
         viewSlot={viewSlot}
@@ -1248,15 +1218,6 @@ export function BoardWorkspace({
 
       {/* 보드 이름 «아래» · 필터 «위» — 목업 head() 의 `.vrow` 자리다 (BBE-214). */}
       {savedViewsSlot}
-
-      {settingsSlot ? <div ref={legacySettingsRef} data-visual-block="board-settings">{settingsSlot}</div> : null}
-
-      {tabSettingsSlot || tabTrashSlot ? (
-        <TabChromeContext.Provider value={tabChrome}>
-          {tabSettingsSlot}
-          {tabTrashSlot}
-        </TabChromeContext.Provider>
-      ) : null}
 
       <BoardToolbar
         columns={tableColumns}
@@ -1645,5 +1606,6 @@ export function BoardWorkspace({
       ) : null}
       </BoardScrollViewport>
     </div>
+    </TabChromeProvider>
   );
 }

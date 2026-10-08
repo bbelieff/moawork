@@ -16,7 +16,8 @@ import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
 /**
  * #849 탭 휴지통 화면 조각.
  *
- * - BoardTrashSection: 보드 설정 › «탭 삭제» (지울 내용 개수 + 휴지통으로 삭제)
+ * - BoardTrashImpactNotes: 지울 내용 개수 + 휴지통 안내 (머리말 「휴지통으로 이동」 확인이 쓴다, #845)
+ * - BoardTrashSection: «탭 삭제» 조각 (지울 내용 개수 + 휴지통으로 삭제)
  * - TabTrashSurface: 탭 관리 › «탭 목록·휴지통» (탭 목록 · 휴지통 · 지운 기본 탭)
  *
  * 서버 컴포넌트 + `<details>` + 서버 액션 — 클라이언트 JS 없이 동작한다(NewBoardInline 과 같은 방식).
@@ -159,6 +160,26 @@ export async function BoardTrashImpactSummary({ loadImpact }: Readonly<{ loadImp
   return <p className="mt-1 text-xs font-medium text-mw-body" data-testid="board-trash-impact">{formatTrashImpact(impact)}</p>;
 }
 
+/**
+ * 지울 내용 개수 + 휴지통 안내 두 줄 — 탭 삭제 화면 조각과 머리말 「휴지통으로 이동」 확인(#845)이 함께 쓴다.
+ * 개수는 렌더할 때 한 번 읽는다 — 보드 화면의 왕복 예산(BBE-214) 밖에서 Suspense 로 스트리밍된다.
+ */
+export function BoardTrashImpactNotes({ loadImpact }: Readonly<{ loadImpact: () => Promise<BoardTrashImpact> }>) {
+  return (
+    <>
+      <Suspense fallback={<p className="mt-1 text-xs text-mw-sub">지울 내용을 세는 중…</p>}>
+        <BoardTrashImpactSummary loadImpact={loadImpact} />
+      </Suspense>
+      <p className="mt-2 rounded-md bg-mw-tint-blue px-2.5 py-2 text-xs leading-5 text-mw-body">
+        삭제하면 바로 휴지통으로 옮겨져요. 사이드바에서 사라지고 문자·자동화 규칙은 멈춰요.
+      </p>
+      <p className="mt-1.5 rounded-md bg-mw-tint-amber px-2.5 py-2 text-xs leading-5 text-mw-body">
+        {BOARD_TRASH_RETENTION_DAYS}일 안에는 탭 관리 › 휴지통에서 그대로 복구할 수 있어요. {BOARD_TRASH_RETENTION_DAYS}일이 지나면 완전히 지워져요.
+      </p>
+    </>
+  );
+}
+
 export function BoardTrashSection({
   boardId,
   boardName,
@@ -174,15 +195,7 @@ export function BoardTrashSection({
   return (
     <section className="rounded-md border border-mw-error/40 p-3" aria-labelledby="danger-heading">
       <h2 id="danger-heading" className="font-semibold text-mw-error">탭 삭제</h2>
-      <Suspense fallback={<p className="mt-1 text-xs text-mw-sub">지울 내용을 세는 중…</p>}>
-        <BoardTrashImpactSummary loadImpact={loadImpact} />
-      </Suspense>
-      <p className="mt-2 rounded-md bg-mw-tint-blue px-2.5 py-2 text-xs leading-5 text-mw-body">
-        삭제하면 바로 휴지통으로 옮겨져요. 사이드바에서 사라지고 문자·자동화 규칙은 멈춰요.
-      </p>
-      <p className="mt-1.5 rounded-md bg-mw-tint-amber px-2.5 py-2 text-xs leading-5 text-mw-body">
-        {BOARD_TRASH_RETENTION_DAYS}일 안에는 탭 관리 › 휴지통에서 그대로 복구할 수 있어요. {BOARD_TRASH_RETENTION_DAYS}일이 지나면 완전히 지워져요.
-      </p>
+      <BoardTrashImpactNotes loadImpact={loadImpact} />
       <details className="group mt-3">
         <summary className="inline-flex cursor-pointer select-none list-none rounded-md border border-mw-error/40 px-3 py-1.5 text-xs font-semibold text-mw-error hover:bg-mw-tint-coral [&::-webkit-details-marker]:hidden">
           <span className="group-open:hidden">이 탭 삭제</span>

@@ -78,7 +78,7 @@ describe("탭 아이콘 — 선 아이콘 하나, 색 칸 없음", () => {
 });
 
 describe("제목 ▾ 메뉴", () => {
-  it("메뉴를 열면 다섯 항목이 순서대로 있고, 설정 항목은 탭 설정(일반)을 연다", async () => {
+  it("메뉴를 열면 다섯 항목이 순서대로 있고, 설정 항목은 탭 설정(일반)을 연다 — 닫히면 ▾ 로 초점이 돌아오게 단추를 넘긴다", async () => {
     const onOpenSettings = vi.fn();
     const onRequestTrash = vi.fn();
     const { host } = await mount({ canEditTitle: true, onOpenSettings, onRequestTrash });
@@ -94,14 +94,26 @@ describe("제목 ▾ 메뉴", () => {
 
     const item = [...menu()!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((node) => node.textContent === "아이콘 바꾸기")!;
     await act(async () => item.click());
-    expect(onOpenSettings).toHaveBeenCalledWith("general");
+    expect(onOpenSettings).toHaveBeenLastCalledWith({ section: "general", field: "icon", opener: button });
     expect(menu()).toBeNull();
+
+    await act(async () => button.click());
+    const description = [...menu()!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((node) => node.textContent === "설명 고치기")!;
+    await act(async () => description.click());
+    expect(onOpenSettings).toHaveBeenLastCalledWith({ section: "general", field: "description", opener: button });
+
+    // 「탭 설정…」 은 칸을 정하지 않는다 — 마지막에 본 칸(처음이면 일반)을 연다.
+    await act(async () => button.click());
+    const settings = [...menu()!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((node) => node.textContent === "탭 설정…")!;
+    await act(async () => settings.click());
+    expect(onOpenSettings).toHaveBeenLastCalledWith({ opener: button });
 
     await act(async () => button.click());
     const trash = [...menu()!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((node) => node.textContent === "휴지통으로 이동")!;
     expect(trash.style.color).toBe("var(--mw-error)");
     await act(async () => trash.click());
     expect(onRequestTrash).toHaveBeenCalledTimes(1);
+    expect(onRequestTrash).toHaveBeenCalledWith(button);
     expect(menu()).toBeNull();
   });
 
@@ -155,14 +167,17 @@ describe("제목 ▾ 메뉴", () => {
 });
 
 describe("오른쪽 위 「탭 설정」 과 주 단추", () => {
-  it("설정 처리기가 있을 때만 보이고 누르면 일반 칸을 연다 — 주 단추는 하나", async () => {
+  it("설정 처리기가 있을 때만 보이고 누르면 탭 설정을 연다 — 주 단추는 하나", async () => {
     const onOpenSettings = vi.fn();
     const { host, render } = await mount({ onOpenSettings });
     const rail = host.querySelector("[data-board-action-rail]")!;
     const settings = rail.querySelector<HTMLButtonElement>("button[data-board-tab-settings]")!;
     expect(settings.textContent).toBe("탭 설정");
     await act(async () => settings.click());
-    expect(onOpenSettings).toHaveBeenCalledWith("general");
+    expect(onOpenSettings).toHaveBeenCalledWith({ opener: settings });
+    // 시각 계약의 board-settings 블록은 이 단추를 감싼 칸이다(#845 — 보드 설정 진입점이 오른쪽 위로).
+    expect(settings.closest('[data-visual-block="board-settings"]')?.parentElement).toBe(rail);
+    expect(settings.getAttribute("aria-haspopup")).toBe("dialog");
     // 채운 단추(주 단추)는 「새 항목」 하나다 — 「탭 설정」 은 테두리만 있는 단추다.
     const filled = [...rail.querySelectorAll('[data-mw-cta="primary"]')].filter((node) => !node.closest("form"));
     expect(filled).toHaveLength(1);

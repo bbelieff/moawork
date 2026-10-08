@@ -56,10 +56,14 @@ import { resolveSavedPersonRuntime } from "@/lib/view/server";
 import { decodeBoardFilters } from "@/components/board/filters";
 import { GenericBoardKanban } from "@/components/boards/GenericBoardKanban";
 import { ColumnEditor } from "@/components/boards/ColumnEditor";
-import { GroupPresetMenu } from "@/components/board/GroupPresetMenu";
-import { groupPresetName } from "@/lib/presets/group-preset";
-import { addGroupAction, deleteBoardAction } from "../actions";
-import { BoardTrashSection } from "@/components/workspace-builder/TabTrashSurface";
+import { deleteBoardAction } from "../actions";
+import { BoardTrashImpactNotes, quotedObject } from "@/components/workspace-builder/TabTrashSurface";
+import { TabSettingsDialog } from "@/components/board/TabSettingsDialog";
+import { TabSettingsGeneral } from "@/components/board/TabSettingsGeneral";
+import { TabSettingsStages } from "@/components/board/TabSettingsStages";
+import { TabTrashDialog } from "@/components/board/TabTrashDialog";
+import { TabChromeProvider, type TabSettingsSection } from "@/components/board/tab-chrome";
+import { tabSettingsSubtitles, tabStageNote, tabStageRows } from "@/lib/boards/tab-settings";
 import { getBoardColumnOrder } from "../groupLayout";
 import { presentNewLeadColumns } from "@/lib/default-tabs/new-lead";
 import { applyNoticePerspective, parseNoticePerspective, projectNoticeMetadata } from "@/lib/notices/perspectives";
@@ -141,7 +145,6 @@ export default async function BoardPage({
         "structure.section_manage",
         "danger.bulk_edit_delete",
         "danger.csv_export",
-        "structure.preset_edit",
         "structure.tab_manage",
       ])),
     measurePagePhase(startedAt, () => loadPermissionScopedWorkItems(ctx.org.id)),
@@ -159,7 +162,6 @@ export default async function BoardPage({
   const columnManage = permissions["structure.column_manage"];
   const sectionManage = permissions["structure.section_manage"];
   const boardDelete = permissions["danger.bulk_edit_delete"];
-  const presetEdit = permissions["structure.preset_edit"];
   const tabManage = permissions["structure.tab_manage"];
   // Permission and D24 scope are resolved before any board metadata or item read.
   if (!scopedItems.ok) notFound();
@@ -168,7 +170,6 @@ export default async function BoardPage({
   const canManageColumns = columnManage.kind === "allowed";
   const canManageSections = sectionManage.kind === "allowed";
   const canDeleteBoard = boardDelete.kind === "allowed";
-  const canEditPresets = presetEdit.kind === "allowed";
   const canManageSummaries = tabManage.kind === "allowed";
   const { client, repo, service: svc } = await createRequestBoards();
 
@@ -415,91 +416,43 @@ export default async function BoardPage({
     />
   );
 
-  const workflowHelp = board.source === NEW_LEAD_TAB_SOURCE
-    ? {
-        title: "상담 단계와 리드컨택 이동",
-        gate: "컨택 이동",
-        description: "상담 상황을 바꾸면 행이 맞는 그룹으로 이동합니다. 다음 탭으로 넘길 때는 표 맨 오른쪽에 고정된 «진행현황»을 사용합니다.",
-      }
-    : board.source === CONTACT_TAB_SOURCE
-      ? {
-          title: "리드컨택에서 업무관리로 넘기기",
-          gate: "업무이동",
-          description: "표 맨 오른쪽에 고정된 «업무이동»을 «업무관리 이동»으로 바꾸면 이름 아래에 이동 실행 버튼이 나타납니다. 필수 정보를 확인한 뒤 그 버튼으로 업무관리 탭에 넘깁니다.",
-        }
-      : null;
-
-  /** 실무 목적별 보드 설정 — 기록 항목/업무 양식/그룹 순서/위험 구역. */
-  const boardSettings = !board.is_system && (canManageColumns || canManageSections || canDeleteBoard) && (
-    <details id="board-settings" className="rounded-md border border-mw-line bg-mw-card">
-      <summary className="cursor-pointer select-none px-3 py-2 text-xs text-mw-sub list-none [&::-webkit-details-marker]:hidden">
-        ⚙ 보드 설정
-      </summary>
-      <div className="flex flex-col gap-3 border-t border-mw-line p-3">
-        {workflowHelp ? <section className="rounded-md border border-mw-primary/30 bg-mw-tint-blue p-3" aria-labelledby="workflow-settings-heading">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <h2 id="workflow-settings-heading" className="font-semibold text-mw-fg">업무 흐름 · {workflowHelp.title}</h2>
-              <p className="mt-1 max-w-4xl text-xs leading-5 text-mw-body">{workflowHelp.description}</p>
-            </div>
-            <span className="shrink-0 rounded-full border border-mw-primary/30 bg-mw-card px-2.5 py-1 text-xs font-semibold text-mw-record">
-              오른쪽 고정 · {workflowHelp.gate}
-            </span>
-          </div>
-          <p className="mt-2 text-[0.68rem] text-mw-sub">이 관문은 가로로 스크롤해도 오른쪽에 남습니다. 항목을 삭제하거나 새 컬럼을 만드는 기능과는 별개입니다.</p>
-        </section> : null}
-        {canManageColumns && <section className="rounded-md border border-mw-line p-3" aria-labelledby="record-fields-heading">
-          <h2 id="record-fields-heading" className="font-semibold text-mw-fg">기록 항목(컬럼)</h2>
-          <p className="mb-3 text-xs text-mw-sub">이 보드가 기록하는 정보입니다. 추가하고, 각 머리말 메뉴에서 이름·타입·선택지·순서·숨김을 바꾸며 숨긴 항목은 여기서 복구합니다.</p>
+  /*
+   * #845 개선안(2026-10-08 대표 결정) — 옛 「⚙ 보드 설정」 펼침 대신 머리말 오른쪽 위 「탭 설정」 대화상자.
+   *   일반(이름·아이콘·설명) = 탭 관리 권한 · 항목(컬럼) = 컬럼 관리 권한 · 단계(그룹) = 그룹 관리 권한.
+   *   업무 양식(그룹별 열 묶음 저장)과 「그룹 순서」 칸은 빠졌다 — 순서·이름·추가는 «단계» 칸 한곳에서 한다.
+   * 시스템 보드와 권한이 하나도 없는 사람에게는 단추·▾ 설정 항목이 없다.
+   */
+  const settingsSections: TabSettingsSection[] = board.is_system ? [] : [
+    ...(canManageSummaries ? ["general" as const] : []),
+    ...(canManageColumns ? ["fields" as const] : []),
+    ...(canManageSections ? ["stages" as const] : []),
+  ];
+  const stageRows = canManageSections ? tabStageRows(board.source, columns, groups, permissionItems) : [];
+  const tabSettingsDialog = settingsSections.length > 0 ? (
+    <TabSettingsDialog
+      subtitles={tabSettingsSubtitles(board.source, columns.length, groups.length)}
+      general={canManageSummaries ? (
+        <TabSettingsGeneral boardId={id} name={board.name} icon={board.icon} source={board.source} description={board.description} />
+      ) : undefined}
+      fields={canManageColumns ? (
+        <div className="flex flex-col gap-3">
+          <p className="text-xs text-mw-sub">이 탭이 기록하는 정보예요. 여기서 추가하고, 표 머리말 메뉴에서 이름·종류·선택지·순서·숨김을 바꿔요. 숨긴 항목은 여기서 되살려요.</p>
           <ColumnEditor boardId={id} columns={columns} />
-        </section>}
-        {(canManageColumns || canEditPresets) && <section id="board-work-forms" className="rounded-md border border-mw-line p-3" aria-labelledby="work-form-heading">
-          <h2 id="work-form-heading" className="font-semibold text-mw-fg">업무 양식</h2>
-          <p className="mb-3 text-xs text-mw-sub">각 업무 단계의 현재 기록 항목 묶음을 저장해 회사에서 재사용합니다. 적용 전 추가·유지 항목과 값 보존을 미리 확인합니다.</p>
-          <div className="flex flex-wrap gap-2">
-            {groups.map((group) => {
-              const order = activeColumnOrder[group.id];
-              const rank = new Map((order ?? []).map((key, index) => [key, index]));
-              const formColumns = [...columns].sort((a, b) => (rank.get(a.key) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.key) ?? Number.MAX_SAFE_INTEGER) || a.sort_order - b.sort_order);
-              return <GroupPresetMenu key={group.id} boardId={id} groupKey={group.id} savable presetName={groupPresetName(board.name, group.name)} columns={formColumns} order={order} canEditPresets={canEditPresets} canManageColumns={canManageColumns} />;
-            })}
-          </div>
-        </section>}
+        </div>
+      ) : undefined}
+      stages={canManageSections ? (
+        <TabSettingsStages boardId={id} stages={stageRows} note={tabStageNote(board.source)} />
+      ) : undefined}
+    />
+  ) : undefined;
 
-        {canManageSections && <section className="rounded-md border border-mw-line p-3" aria-labelledby="group-order-heading">
-          <h2 id="group-order-heading" className="font-semibold text-mw-fg">그룹 순서</h2>
-          <p className="mb-3 text-xs text-mw-sub">그룹은 상담·업무 단계입니다. 표의 그룹 머리말을 끌거나 ↑↓ 버튼으로 옮기면 즉시 회사 보드에 저장됩니다.</p>
-          <form action={addGroupAction} className="flex flex-wrap items-end gap-2">
-          <input type="hidden" name="boardId" value={id} />
-          <label className="flex flex-col gap-1 text-xs">
-            <span className="text-mw-sub">새 그룹</span>
-            <input
-              name="name"
-              required
-              placeholder="예: 이번 주"
-              className="h-9 rounded-lg border border-mw-line bg-mw-card px-2 text-sm text-mw-fg outline-none focus:border-mw-record"
-            />
-          </label>
-          <button
-            type="submit"
-            className="h-9 rounded-lg border border-mw-line px-3 text-sm text-mw-body hover:bg-mw-bg"
-          >
-            새 업무 단계 추가
-          </button>
-          </form>
-        </section>}
-
-        {/* #849 탭 삭제 = 휴지통. 지울 내용 개수는 이 서버 부품이 렌더될 때 따로 읽는다
-            (위 스냅샷 왕복 예산 밖, Suspense 로 스트리밍). 보드는 위에서 이미 읽어 저장소에서 바로 센다. */}
-        {canDeleteBoard && <BoardTrashSection
-          boardId={id}
-          boardName={board.name}
-          deleteAction={deleteBoardAction}
-          loadImpact={repo.readBoardTrashImpact.bind(repo, ctx, id)}
-        />}
-      </div>
-    </details>
-  );
+  /* #849 탭 삭제 = 휴지통. 제목 ▾ 「휴지통으로 이동」 이 여는 확인 안에 지울 내용 개수를 보인다 —
+     개수는 이 서버 부품이 렌더될 때 따로 읽는다(위 스냅샷 왕복 예산 밖, Suspense 로 스트리밍). */
+  const tabTrashDialog = !board.is_system && canDeleteBoard ? (
+    <TabTrashDialog boardId={id} title={`${quotedObject(board.name)} 휴지통으로 옮길까요?`} deleteAction={deleteBoardAction}>
+      <BoardTrashImpactNotes loadImpact={repo.readBoardTrashImpact.bind(repo, ctx, id)} />
+    </TabTrashDialog>
+  ) : undefined;
 
   const trashPanel = (
     <BoardTrashPanel boardId={id} items={deletedItems} groups={groups} />
@@ -512,7 +465,9 @@ export default async function BoardPage({
     <BoardArchivePanel boardId={id} items={snapshot.archivedItems} groups={groups} />
   );
 
+  // 칸반·달력 보기도 같은 「탭 설정」·「휴지통으로 이동」 을 연다 — 열림 상태는 제공자가 든다.
   const alternateViewHeader=(
+    <TabChromeProvider settings={tabSettingsDialog} settingsSections={settingsSections} trash={tabTrashDialog}>
     <BoardHeader
       boardId={id}
       icon={board.icon}
@@ -537,6 +492,7 @@ export default async function BoardPage({
         />
       ):undefined}
     />
+    </TabChromeProvider>
   );
 
   const boardContent = view === "kanban" ? (
@@ -544,7 +500,6 @@ export default async function BoardPage({
         {alternateViewHeader}
         {/* 보드 이름 아래 — 목업 head() 순서(이름 → 보기). 테이블 뷰와 같은 위계다(BBE-214). */}
         <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={stageItems} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
-        {boardSettings}
 
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto text-xs">
           <span className="shrink-0 text-mw-sub">그룹 기준</span>
@@ -578,7 +533,6 @@ export default async function BoardPage({
     <>
         {alternateViewHeader}
         <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={stageItems} renderMode={view} boardSource={board.source} canEditItems={canEditItems} canBulkEditItems={boardDelete.kind === "allowed"} canDeleteItems={canDeleteItems} canExportItems={permissions["danger.csv_export"].kind === "allowed"} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
-        {boardSettings}
     </>
   ) : (
     <BoardWorkspace
@@ -602,7 +556,9 @@ export default async function BoardPage({
       savedViewsSlot={
         <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={stageItems} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
       }
-      settingsSlot={boardSettings}
+      tabSettingsSlot={tabSettingsDialog}
+      tabSettingsSections={settingsSections}
+      tabTrashSlot={tabTrashDialog}
       onboardingSlot={board.source === NEW_LEAD_TAB_SOURCE ? (
         <NewLeadOnboarding />
       ) : undefined}

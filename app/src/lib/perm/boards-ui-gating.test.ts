@@ -56,17 +56,27 @@ describe("boards UI consumes effective permissions", () => {
     expect(source).toContain('ctx.role === "owner" || ctx.role === "admin" || ctx.scope === "all"');
     expect(source).toContain("canMoveRows={canMoveRows}");
     expect(source).toContain("isSystem={board.is_system}");
-    expect(source).toContain('id="board-work-forms"');
-    expect(source).toContain("groups.map((group) =>");
-    expect(source).toContain("<GroupPresetMenu key={group.id}");
-    // #849 탭 삭제(휴지통) 폼은 BoardTrashSection 안에 있다 — 여전히 danger 권한 뒤에서만 그린다.
-    expect(source).toContain("canDeleteBoard && <BoardTrashSection");
+    // #845 (2026-10-08) — 「⚙ 보드 설정」 펼침·업무 양식·그룹 순서 칸이 빠지고 머리말 「탭 설정」 대화상자가 된다.
+    //   칸마다 그 칸의 권한 뒤에서만 그린다: 일반 = 탭 관리, 항목 = 컬럼 관리, 단계 = 그룹 관리. 시스템 보드는 없다.
+    expect(source).not.toContain('id="board-settings"');
+    expect(source).not.toContain("<GroupPresetMenu");
+    expect(source).toContain("const settingsSections: TabSettingsSection[] = board.is_system ? [] : [");
+    expect(source).toContain('...(canManageSummaries ? ["general" as const] : [])');
+    expect(source).toContain('...(canManageColumns ? ["fields" as const] : [])');
+    expect(source).toContain('...(canManageSections ? ["stages" as const] : [])');
+    expect(source).toContain("general={canManageSummaries ? (");
+    expect(source).toContain("fields={canManageColumns ? (");
+    expect(source).toContain("stages={canManageSections ? (");
+    expect(source).toContain("tabSettingsSections={settingsSections}");
+    // #849 탭 삭제(휴지통) 확인은 여전히 danger 권한 뒤에서만, 시스템 보드가 아닐 때만 그린다.
+    expect(source).toContain("const tabTrashDialog = !board.is_system && canDeleteBoard ? (");
     expect(source).toContain("deleteAction={deleteBoardAction}");
-    const trashSection = readFileSync(
-      join(__dirname, "..", "..", "components", "workspace-builder", "TabTrashSurface.tsx"),
+    expect(source).toContain("tabTrashSlot={tabTrashDialog}");
+    const trashDialog = readFileSync(
+      join(__dirname, "..", "..", "components", "board", "TabTrashDialog.tsx"),
       "utf8",
     );
-    expect(trashSection).toContain("<form action={deleteAction}");
+    expect(trashDialog).toContain("<form action={deleteAction}");
     const table = readFileSync(join(__dirname, "..", "..", "components", "board", "GroupTable.tsx"), "utf8");
     expect(table).toContain("canManageColumns && !structureLocked ? (");
     expect(table).toContain("<ColumnContextMenu");

@@ -27,7 +27,7 @@ import {
   type BoardTransientSurfaceDetail,
 } from "./BoardAnchoredMenu";
 import { BoardDialogPortal } from "./BoardDialogPortal";
-import type { TabSettingsSection } from "./tab-chrome";
+import type { TabSettingsOpenRequest } from "./tab-chrome";
 
 /** 같은 보드의 다른 표면(컬럼 메뉴 등)이 열리면 닫히고, 열 때는 다른 표면을 닫게 한다. */
 function useBoardSurface(boardId: string, closeQuietly: () => void) {
@@ -110,24 +110,31 @@ export function TabTitleMenu({
   tabName,
   onRename,
   onOpenSettings,
+  canEditGeneral = true,
   onRequestTrash,
 }: {
   boardId: string;
   tabName: string;
   /** 제목 편집칸을 연다. 없으면 「이름 바꾸기」 를 감춘다(이름을 바꿀 권한이 없다). */
   onRename?: () => void;
-  onOpenSettings?: (section: TabSettingsSection) => void;
-  onRequestTrash?: () => void;
+  /** 탭 설정을 연다. 없으면 설정 항목을 감춘다. */
+  onOpenSettings?: (request: TabSettingsOpenRequest) => void;
+  /** 탭 설정에 «일반» 칸이 있는가 — 없으면 「아이콘 바꾸기」·「설명 고치기」 를 감춘다. */
+  canEditGeneral?: boolean;
+  /** 휴지통으로 이동 확인을 연다. 인자는 닫힌 뒤 초점을 돌려줄 단추다. */
+  onRequestTrash?: (opener: HTMLElement | null) => void;
 }) {
   const { open, triggerRef, menuRef, menuId, close, show } = useMenuState(boardId);
   if (!onRename && !onOpenSettings && !onRequestTrash) return null;
 
   // 메뉴를 닫고 고른 일을 한다. 초점은 고른 일이 연 곳(편집칸·설정)으로 가야 하므로 단추로 되돌리지 않는다.
+  // 연 곳이 닫히면 초점은 이 ▾ 단추로 돌아온다(사라지는 메뉴 항목이 아니라).
   const run = (action: () => void) => {
     close(false);
     action();
   };
   const label = `${tabName} 탭 메뉴`;
+  const showGeneral = Boolean(onOpenSettings) && canEditGeneral;
 
   return (
     <>
@@ -152,17 +159,19 @@ export function TabTitleMenu({
       </button>
       <BoardAnchoredMenu id={menuId} open={open} anchorRef={triggerRef} menuRef={menuRef} label={label} onClose={close}>
         {onRename ? <MenuItem onClick={() => run(onRename)}>이름 바꾸기</MenuItem> : null}
-        {onOpenSettings ? (
+        {showGeneral && onOpenSettings ? (
           <>
-            <MenuItem onClick={() => run(() => onOpenSettings("general"))}>아이콘 바꾸기</MenuItem>
-            <MenuItem onClick={() => run(() => onOpenSettings("general"))}>설명 고치기</MenuItem>
-            <MenuItem onClick={() => run(() => onOpenSettings("general"))}>탭 설정…</MenuItem>
+            <MenuItem onClick={() => run(() => onOpenSettings({ section: "general", field: "icon", opener: triggerRef.current }))}>아이콘 바꾸기</MenuItem>
+            <MenuItem onClick={() => run(() => onOpenSettings({ section: "general", field: "description", opener: triggerRef.current }))}>설명 고치기</MenuItem>
           </>
+        ) : null}
+        {onOpenSettings ? (
+          <MenuItem onClick={() => run(() => onOpenSettings({ opener: triggerRef.current }))}>탭 설정…</MenuItem>
         ) : null}
         {onRequestTrash ? (
           <>
             {onRename || onOpenSettings ? <div role="separator" className="my-1 border-t border-mw-line" /> : null}
-            <MenuItem danger onClick={() => run(onRequestTrash)}>휴지통으로 이동</MenuItem>
+            <MenuItem danger onClick={() => run(() => onRequestTrash(triggerRef.current))}>휴지통으로 이동</MenuItem>
           </>
         ) : null}
       </BoardAnchoredMenu>
@@ -316,22 +325,28 @@ export function DescriptionHint({ text }: { text: string }) {
   );
 }
 
-/** 오른쪽 위 「탭 설정」 — 테두리만 있는 단추. 640px 아래에서는 글자를 숨기고 40px 아이콘 단추가 된다. */
-export function TabSettingsButton({ onOpen }: { onOpen: () => void }) {
+/**
+ * 오른쪽 위 「탭 설정」 — 테두리만 있는 단추. 640px 아래에서는 글자를 숨기고 40px 아이콘 단추가 된다.
+ * 감싼 칸이 시각 계약의 board-settings 블록이다(#845 — 보드 설정 진입점이 머리말 오른쪽 위로 옮겨 왔다).
+ */
+export function TabSettingsButton({ onOpen }: { onOpen: (opener: HTMLElement) => void }) {
   return (
-    <button
-      type="button"
-      data-board-tab-settings
-      onClick={onOpen}
-      className="flex h-[34px] shrink-0 items-center gap-1.5 rounded-[var(--mw-r-2)] border border-mw-line bg-mw-card px-3 text-[length:var(--fs-13)] text-mw-body hover:bg-[color:var(--mw-board-canvas)] hover:text-mw-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-primary max-sm:size-10 max-sm:justify-center max-sm:px-0"
-    >
-      <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" style={{ flex: "none" }}>
-        <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12" />
-        <circle cx="16" cy="6" r="2" />
-        <circle cx="10" cy="12" r="2" />
-        <circle cx="18" cy="18" r="2" />
-      </svg>
-      <span className="max-sm:sr-only">탭 설정</span>
-    </button>
+    <span data-visual-block="board-settings" className="inline-flex shrink-0">
+      <button
+        type="button"
+        data-board-tab-settings
+        aria-haspopup="dialog"
+        onClick={(event) => onOpen(event.currentTarget)}
+        className="flex h-[34px] shrink-0 items-center gap-1.5 rounded-[var(--mw-r-2)] border border-mw-line bg-mw-card px-3 text-[length:var(--fs-13)] text-mw-body hover:bg-[color:var(--mw-board-canvas)] hover:text-mw-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-primary max-sm:size-10 max-sm:justify-center max-sm:px-0"
+      >
+        <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" style={{ flex: "none" }}>
+          <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12" />
+          <circle cx="16" cy="6" r="2" />
+          <circle cx="10" cy="12" r="2" />
+          <circle cx="18" cy="18" r="2" />
+        </svg>
+        <span className="max-sm:sr-only">탭 설정</span>
+      </button>
+    </span>
   );
 }

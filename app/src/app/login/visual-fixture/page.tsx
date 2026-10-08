@@ -7,6 +7,7 @@ import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { CONTACT_TAB, CONTRACT_WORK_TAB, NEW_LEAD_TAB } from "@/lib/default-tabs";
 import type { Board, BoardColumn, BoardGroup, ItemWithValues } from "@/lib/boards/types";
 import { VisualSettingsSlot } from "./VisualSettingsSlot";
+import { tabSettingsSubtitles, tabStageNote, tabStageRows } from "@/lib/boards/tab-settings";
 import { NewLeadOnboarding } from "@/components/board/NewLeadOnboarding";
 import { cookies } from "next/headers";
 import { VisualCompaniesProbe } from "./VisualCompaniesProbe";
@@ -276,7 +277,26 @@ export default async function VisualFixturePage({ searchParams }: { searchParams
         canEditItems
         canManageColumns
         currentUserId="visual-user"
-        settingsSlot={<VisualSettingsSlot />}
+        tabSettingsSlot={(
+          <VisualSettingsSlot
+            board={data.board}
+            stages={tabStageRows(data.board.source, data.columns, data.groups, data.rows)}
+            stageNote={tabStageNote(data.board.source)}
+            subtitles={tabSettingsSubtitles(data.board.source, data.columns.length, data.groups.length)}
+            // 제품의 항목 칸(ColumnEditor)은 보관 컬럼을 로그인 세션으로 읽는다 — 픽스처에는 세션이 없어 목록만 그린다.
+            fields={(
+              <ul aria-label="기록 항목" className="divide-y divide-mw-line overflow-hidden rounded-[10px] border border-mw-line text-[length:var(--fs-13)]">
+                {data.columns.map((column) => (
+                  <li key={column.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                    <span className="font-medium text-mw-fg">{column.label}</span>
+                    <span className="text-[length:var(--fs-12)] text-mw-sub">{column.type}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          />
+        )}
+        tabSettingsSections={["general", "fields", "stages"]}
         onboardingSlot={tab === "new" ? <NewLeadOnboarding key="issue-554-help" /> : undefined}
         cellAction={visualSetCellAction}
         {...(tab === "work" ? {

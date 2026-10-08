@@ -227,7 +227,6 @@ export function ColumnContextMenu({
                 recipients={scheduleRecipients}
                 onPendingChange={setSettingsPending}
                 onSaved={() => closeSurface(true, true)}
-                onRequestClose={() => closeSurface(true, true)}
               />
             ) : null}
             {surface === "archive" ? (

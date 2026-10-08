@@ -5,7 +5,7 @@ vi.mock("@/lib/auth/session",()=>({getSession:async()=>({org:{id:"org-a"},user:{
 vi.mock("@/lib/perm/guard",()=>({loadPermGuard:mocks.guard}));
 vi.mock("@/lib/boards/server",()=>({createRequestBoards:async()=>({service:{updateBoard:mocks.updateBoard,renameGroup:mocks.renameGroup}})}));
 vi.mock("./column-command-actions",()=>({runColumnCommandAction:mocks.column}));
-import { renameBoardTitleAction,renameColumnTitleAction,renameGroupTitleAction } from "./title-actions";
+import { renameBoardTitleAction,renameColumnTitleAction,renameGroupTitleAction,updateBoardIdentityAction } from "./title-actions";
 
 describe("direct board title actions",()=>{
   beforeEach(()=>Object.values(mocks).forEach((mock)=>mock.mockClear()));
@@ -28,5 +28,41 @@ describe("direct board title actions",()=>{
   it("logs infrastructure failures without returning raw database details",async()=>{
     const log=vi.spyOn(console,"error").mockImplementation(()=>undefined);mocks.updateBoard.mockRejectedValueOnce(new Error("relation public.secret does not exist"));
     const result=await renameBoardTitleAction("board-a","변경");expect(result).toMatchObject({ok:false});if(result.ok)throw new Error("expected failure");expect(result.message).not.toContain("public.secret");expect(log).toHaveBeenCalled();log.mockRestore();
+  });
+});
+
+describe("tab identity action (#845 탭 설정 › 일반)",()=>{
+  beforeEach(()=>Object.values(mocks).forEach((mock)=>mock.mockClear()));
+  it("saves a known monoline icon key under the tab-manage permission",async()=>{
+    await expect(updateBoardIdentityAction("board-a",{icon:"star"})).resolves.toEqual({ok:true,icon:"star"});
+    expect(mocks.guard).toHaveBeenCalledWith("org-a","structure.tab_manage");
+    expect(mocks.updateBoard).toHaveBeenCalledWith(expect.anything(),"board-a",{icon:"star"});
+    expect(mocks.revalidate).toHaveBeenCalledWith("/boards/board-a");
+  });
+  it("trims the description, clears it when empty and keeps the icon untouched",async()=>{
+    await expect(updateBoardIdentityAction("board-a",{description:"  계약 이후 진행을 봐요  "})).resolves.toEqual({ok:true,description:"계약 이후 진행을 봐요"});
+    expect(mocks.updateBoard).toHaveBeenLastCalledWith(expect.anything(),"board-a",{description:"계약 이후 진행을 봐요"});
+    await expect(updateBoardIdentityAction("board-a",{description:"   "})).resolves.toEqual({ok:true,description:null});
+    expect(mocks.updateBoard).toHaveBeenLastCalledWith(expect.anything(),"board-a",{description:null});
+  });
+  it("writes nothing when the permission is denied or unavailable",async()=>{
+    mocks.guard.mockResolvedValueOnce({kind:"denied",reason:"permission"} as never);
+    expect(await updateBoardIdentityAction("board-a",{icon:"star"})).toMatchObject({ok:false});
+    mocks.guard.mockResolvedValueOnce({kind:"denied",reason:"unavailable"} as never);
+    expect(await updateBoardIdentityAction("board-a",{description:"설명"})).toMatchObject({ok:false});
+    expect(mocks.updateBoard).not.toHaveBeenCalled();
+  });
+  it("rejects an icon outside the set (emoji, unknown key) and a description over 200 characters without writing",async()=>{
+    expect(await updateBoardIdentityAction("board-a",{icon:"💡"})).toEqual({ok:false,message:"고를 수 없는 아이콘이에요."});
+    expect(await updateBoardIdentityAction("board-a",{icon:"rocket"})).toMatchObject({ok:false});
+    expect(await updateBoardIdentityAction("board-a",{icon:"star",description:"가".repeat(201)})).toEqual({ok:false,message:"설명은 200자까지 쓸 수 있어요."});
+    expect(await updateBoardIdentityAction("board-a",{})).toMatchObject({ok:false});
+    expect(mocks.updateBoard).not.toHaveBeenCalled();
+    await expect(updateBoardIdentityAction("board-a",{description:"가".repeat(200)})).resolves.toMatchObject({ok:true});
+  });
+  it("hides infrastructure details behind a plain message",async()=>{
+    const log=vi.spyOn(console,"error").mockImplementation(()=>undefined);mocks.updateBoard.mockRejectedValueOnce(new Error("relation public.secret does not exist"));
+    const result=await updateBoardIdentityAction("board-a",{icon:"flag"});
+    expect(result).toMatchObject({ok:false});if(result.ok)throw new Error("expected failure");expect(result.message).not.toContain("public.secret");expect(log).toHaveBeenCalled();log.mockRestore();
   });
 });
