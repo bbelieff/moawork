@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { Suspense } from "react";
+import { BoardTrashImpactOnOpen } from "@/components/board/BoardTrashImpactOnOpen";
+import { formatTrashImpact } from "@/lib/boards/trash-impact-format";
 import {
   BOARD_TRASH_RETENTION_DAYS,
   type Board,
-  type BoardTrashImpact,
   type DefaultTabDismissal,
 } from "@/lib/boards/types";
 import {
@@ -54,18 +54,7 @@ export function quotedObject(name: string): string {
   return `‘${name}’${code % 28 === 0 ? "를" : "을"}`;
 }
 
-export function formatTrashImpact(impact: BoardTrashImpact): string {
-  const parts: Array<[string, number]> = [
-    ["아이템", impact.groups],
-    ["행", impact.rows],
-    ["메모", impact.memos],
-    ["첨부 파일", impact.files],
-    ["저장된 보기", impact.views],
-    ["자동화 규칙", impact.automations],
-    ["문자 규칙", impact.messaging],
-  ];
-  return parts.map(([label, count]) => `${label} ${(Number(count) || 0).toLocaleString("ko-KR")}`).join(" · ");
-}
+export { formatTrashImpact };
 
 function isDefaultTabSource(source: string | null | undefined): boolean {
   return typeof source === "string" && source.startsWith(DEFAULT_TAB_PREFIX);
@@ -151,32 +140,20 @@ export function reinstallableDefaultTabs(
 
 // ── 보드 설정 › 탭 삭제 ──────────────────────────────────────────────────────
 
-export async function BoardTrashImpactSummary({ loadImpact }: Readonly<{ loadImpact: () => Promise<BoardTrashImpact> }>) {
-  const impact = await loadImpact().catch(() => null);
-  if (!impact) {
-    return <p className="mt-1 text-xs text-mw-sub">지울 내용의 개수를 불러오지 못했어요. 삭제와 복구는 그대로 할 수 있어요.</p>;
-  }
-  return <p className="mt-1 text-xs font-medium text-mw-body" data-testid="board-trash-impact">{formatTrashImpact(impact)}</p>;
-}
-
 export function BoardTrashSection({
   boardId,
   boardName,
   deleteAction,
-  loadImpact,
 }: Readonly<{
   boardId: string;
   boardName: string;
   deleteAction: (formData: FormData) => Promise<void>;
-  /** 렌더할 때 한 번 읽는다 — 보드 화면의 왕복 예산(BBE-214) 밖에서 스트리밍된다. */
-  loadImpact: () => Promise<BoardTrashImpact>;
 }>) {
   return (
     <section className="rounded-md border border-mw-error/40 p-3" aria-labelledby="danger-heading">
       <h2 id="danger-heading" className="font-semibold text-mw-error">탭 삭제</h2>
-      <Suspense fallback={<p className="mt-1 text-xs text-mw-sub">지울 내용을 세는 중…</p>}>
-        <BoardTrashImpactSummary loadImpact={loadImpact} />
-      </Suspense>
+      {/* Issue 857 — 개수는 «탭 설정» 을 열 때만 읽는다(보드 화면을 열 때마다 세지 않는다). */}
+      <BoardTrashImpactOnOpen boardId={boardId} />
       <p className="mt-2 rounded-md bg-mw-tint-blue px-2.5 py-2 text-xs leading-5 text-mw-body">
         삭제하면 바로 휴지통으로 옮겨져요. 사이드바에서 사라지고 문자·자동화 규칙은 멈춰요.
       </p>

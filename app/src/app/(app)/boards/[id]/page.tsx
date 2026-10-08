@@ -559,13 +559,12 @@ export default async function BoardPage({
           </form>
         </section>}
 
-        {/* #849 탭 삭제 = 휴지통. 지울 내용 개수는 이 서버 부품이 렌더될 때 따로 읽는다
-            (위 스냅샷 왕복 예산 밖, Suspense 로 스트리밍). 보드는 위에서 이미 읽어 저장소에서 바로 센다. */}
+        {/* #849 탭 삭제 = 휴지통. Issue 857 — 지울 내용 개수는 «탭 설정» 을 열 때 화면이 따로 읽는다
+            (GET /api/boards/[id]/trash-impact). 보드 화면을 열 때마다 세지 않는다. */}
         {canDeleteBoard && <BoardTrashSection
           boardId={id}
           boardName={board.name}
           deleteAction={deleteBoardAction}
-          loadImpact={repo.readBoardTrashImpact.bind(repo, ctx, id)}
         />}
       </div>
     </details>
