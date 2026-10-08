@@ -504,6 +504,25 @@ describe("Issue 857 · 프록시의 회사 목록 기억(들어갈 수 있다 �
     expect(response.headers.get("x-middleware-request-cookie")).toContain("mw_org=org-alpha");
   });
 
+  it("추적 id 가 붙은 요청만 프록시 시간을 남긴다 — 숫자와 고정 낱말뿐", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    setup({ id: "user-1" }, [membership("org-acme", "acme")]);
+    await proxy(new NextRequest("https://www.moa-work.com/w/acme/work"));
+    expect(info).not.toHaveBeenCalled();
+    await proxy(new NextRequest("https://www.moa-work.com/w/acme/work", {
+      headers: { "x-mw-trace-id": "25d4b269-0122-4a69-934a-c18c9b10dc7b" },
+    }));
+    await proxy(new NextRequest("https://www.moa-work.com/w/acme/work", { headers: { "x-mw-trace-id": "not-a-trace" } }));
+    expect(info).toHaveBeenCalledTimes(1);
+    const entry = JSON.parse(String(info.mock.calls[0][0])) as Record<string, unknown>;
+    expect(entry).toMatchObject({ event: "mw.proxy", trace_id: "25d4b269-0122-4a69-934a-c18c9b10dc7b", membership: "memo", membership_ms: null });
+    expect(typeof entry.total_ms).toBe("number");
+    expect(typeof entry.claims_ms).toBe("number");
+    expect(JSON.stringify(entry)).not.toContain("user-1");
+    expect(JSON.stringify(entry)).not.toContain("org-acme");
+    info.mockRestore();
+  });
+
   it("1분이 지난 기억은 버리고 다시 읽는다(탈퇴가 주소 판정에도 반영)", async () => {
     rememberMembershipRows("user-1", [membership("org-acme", "acme")], Date.now() - 61_000);
     const { from } = setup({ id: "user-1" }, []);
