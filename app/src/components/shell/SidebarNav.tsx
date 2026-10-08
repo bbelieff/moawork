@@ -1,7 +1,7 @@
 "use client";
 
 import Link, { useLinkStatus } from "next/link";
-import { Suspense, useEffect, useState, type MouseEvent } from "react";
+import { Suspense, useEffect, useRef, useState, type MouseEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   WorkspaceSwitcher,
@@ -10,7 +10,7 @@ import {
 import { Badge } from "@/components/notify/Badge";
 import { AccessibleTooltip } from "@/components/ui/AccessibleTooltip";
 import type { BadgeState } from "@/lib/notify/types";
-import { navigationKindFor } from "@/lib/workspace/switch-navigation";
+import { NAVIGATION_STALL_MS, navigationKindFor } from "@/lib/workspace/switch-navigation";
 import { Icon } from "./icons";
 import { RouteLoading } from "./RouteLoading";
 import { SidebarNewTab } from "./SidebarNewTab";
@@ -65,9 +65,17 @@ function SidebarNavQuery(props: Props) {
   return <SidebarNavContent {...props} search={search} />;
 }
 
-/** Issue 857 — 누른 메뉴의 다음 화면이 올 때까지 도는 작은 표시. Link 안에서만 의미가 있다. */
-function NavPending() {
+/**
+ * Issue 857 — 누른 메뉴의 다음 화면이 올 때까지 도는 작은 표시. Link 안에서만 의미가 있다.
+ * 이동이 끝나면 부모에 알린다 — 같은 주소로 돌아오는 이동(경유지 → 원래 화면)에서도 누른 표시를 내려놓게.
+ */
+function NavPending({ onSettled }: { onSettled: () => void }) {
   const { pending } = useLinkStatus();
+  const wasPending = useRef(false);
+  useEffect(() => {
+    if (wasPending.current && !pending) onSettled();
+    wasPending.current = pending;
+  }, [pending, onSettled]);
   return pending ? <span aria-hidden="true" data-nav-pending className="mw-nav-pending" /> : null;
 }
 
@@ -92,18 +100,26 @@ function SidebarNavContent({
   const router = useRouter();
   const locked = new Set(lockedFeatures);
   // Issue 857 — 누른 순간 그 메뉴를 켠다. 서버가 다음 화면을 보내는 1~2초 동안 «눌렸는지» 모르던 문제.
-  //   주소가 바뀌면 from 이 안 맞아 저절로 실제 주소 기준 판정으로 돌아간다(지우는 effect 가 없다).
+  //   주소가 바뀌거나(뒤로 가기 포함) 이동이 끝나면 내려놓고 실제 주소 기준 판정으로 돌아간다.
   const location = search ? `${pathname}?${search}` : pathname;
   const [pendingNav, setPendingNav] = useState<{ key: string; from: string } | null>(null);
+  if (pendingNav && pendingNav.from !== location) setPendingNav(null);
+  const [settleNav] = useState(() => () => setPendingNav(null));
   const [switchingWorkspace, setSwitchingWorkspace] = useState(false);
-  // 뒤로 가기로 bfcache 에서 되살아난 화면에는 «바꾸는 중» 이 남아 있으면 안 된다.
+  // 회사 전환 덮개는 이동이 시작되지 않으면(전환기가 4초 뒤 다시 열리는 경우) 걷는다.
+  // 뒤로 가기로 bfcache 에서 되살아난 화면에도 남아 있으면 안 된다.
   useEffect(() => {
+    if (!switchingWorkspace) return;
+    const timer = window.setTimeout(() => setSwitchingWorkspace(false), NAVIGATION_STALL_MS);
     const reset = (event: PageTransitionEvent) => {
       if (event.persisted) setSwitchingWorkspace(false);
     };
     window.addEventListener("pageshow", reset);
-    return () => window.removeEventListener("pageshow", reset);
-  }, []);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pageshow", reset);
+    };
+  }, [switchingWorkspace]);
 
   // 활성은 «항목마다» 가 아니라 «전체에서 하나» 다 — 둘이 켜지면 색으로 구분하는 목적이 깨진다.
   // 같은 리드컨택 정본 보드라도 ?consultation=remote|inperson 이면 STEP2·STEP3 탭이 켜진다.
@@ -233,7 +249,7 @@ function SidebarNavContent({
         }
       >
         {inner}
-        <NavPending />
+        <NavPending onSettled={settleNav} />
       </Link>
     );
 

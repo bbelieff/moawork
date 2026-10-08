@@ -387,7 +387,7 @@ nav[aria-label="주요 메뉴"]::-webkit-scrollbar-button { display: none; }
   color: transparent;
 }
 /* 고른 값은 안내 글자가 아니라 값이다 — 값 글자색으로. 저장 중(Issue 857 즉시 표시)엔 살짝 흐리게. */
-[data-visual-block="group-table"] tbody > tr[data-board-row] > td input[data-has-value]::placeholder {
+[data-visual-block="group-table"] tbody > tr[data-board-row] > td input[data-has-value]:not(:focus)::placeholder {
   color: var(--mw-fg);
   opacity: 1;
 }
@@ -421,7 +421,8 @@ nav[aria-label="주요 메뉴"]::-webkit-scrollbar-button { display: none; }
 .mw-workspace-switching {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  /* 전환기 선택창(60)보다 아래 — 이동이 막혀 선택창이 다시 열리면 그 위를 덮지 않는다. */
+  z-index: 59;
   display: grid;
   place-items: center;
   background: color-mix(in srgb, var(--mw-bg) 72%, transparent);

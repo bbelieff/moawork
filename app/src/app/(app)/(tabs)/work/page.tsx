@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { workspaceHref } from "@/components/shell/workspace-href";
+import { withWorkspaceBase } from "@/components/shell/workspace-href";
 import { startVerifiedWorkspaceBasePath } from "@/lib/auth/workspace-href-server";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { repairContractWorkBoardOnEntry } from "@/lib/work/entry";
@@ -66,5 +66,5 @@ export default async function ContractWorkBoardPage({
   if (sp.notification) params.set("mwFocus", sp.notification);
   const query = params.size > 0 ? `?${params.toString()}` : "";
 
-  redirect(workspaceHref(await basePath, `/boards/${encodeURIComponent(result.boardId)}${query}`));
+  redirect(withWorkspaceBase(await basePath, `/boards/${encodeURIComponent(result.boardId)}${query}`));
 }

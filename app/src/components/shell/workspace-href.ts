@@ -14,6 +14,15 @@ export function workspaceHref(base: string | undefined, href: string): string {
 }
 
 /**
+ * Issue 857 — base 를 확인했을 때만 붙인다. 못 읽었으면 받은 주소 그대로 둔다(프록시가 회사 쿠키
+ * 기준으로 보낸다) — 이동을 오류 화면으로 바꾸지 않는다. 이미 `/w/...` 인 주소는 다시 붙이지 않는다.
+ */
+export function withWorkspaceBase(base: string | null | undefined, href: string): string {
+  if (!base || href.startsWith("/w/")) return href;
+  return workspaceHref(base, href);
+}
+
+/**
  * 현재 주소에서 워크스페이스 뿌리(`/w/acme`)를 되읽는다.
  *
  * 클라이언트 부품이 다른 탭으로 보내는 링크를 만들 때 쓴다. 서버가 계산한 base 를

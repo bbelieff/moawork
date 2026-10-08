@@ -32,4 +32,9 @@ describe("WorkspaceLink — 워크스페이스 뿌리 아래로 보낸다", () =
     pathname = "/w/UPPER/boards/b1";
     expect(renderHref("/boards/b2?view=kanban")).toContain('href="/boards/b2?view=kanban"');
   });
+
+  it("이미 워크스페이스 주소면 뿌리를 두 번 붙이지 않는다", () => {
+    pathname = "/w/acme/boards/b1";
+    expect(renderHref("/w/acme/boards/b2")).toContain('href="/w/acme/boards/b2"');
+  });
 });

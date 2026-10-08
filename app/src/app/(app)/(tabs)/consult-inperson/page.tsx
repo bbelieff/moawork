@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { workspaceHref } from "@/components/shell/workspace-href";
+import { withWorkspaceBase } from "@/components/shell/workspace-href";
 import { startVerifiedWorkspaceBasePath } from "@/lib/auth/workspace-href-server";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { repairContactBoardOnEntry } from "@/lib/contact/entry";
@@ -49,5 +49,5 @@ export default async function ConsultInpersonPage({
   }
   const as = sp.as ? `as=${encodeURIComponent(sp.as)}&` : "";
 
-  redirect(workspaceHref(await basePath, `/boards/${encodeURIComponent(result.boardId)}?${as}consultation=inperson`));
+  redirect(withWorkspaceBase(await basePath, `/boards/${encodeURIComponent(result.boardId)}?${as}consultation=inperson`));
 }

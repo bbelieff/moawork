@@ -6,8 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SidebarNav } from "./SidebarNav";
 
+let pathname = "/w/sample-lab/settings/members";
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/w/sample-lab/settings/members",
+  usePathname: () => pathname,
   useRouter: () => ({ push: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
@@ -34,6 +35,7 @@ vi.mock("next/link", () => ({
 let root: Root | null = null;
 
 afterEach(async () => {
+  pathname = "/w/sample-lab/settings/members";
   if (root) await act(async () => root?.unmount());
   root = null;
   document.body.replaceChildren();
@@ -86,5 +88,20 @@ describe("SidebarNav — 누른 메뉴가 즉시 켜진다", () => {
     await act(async () => click(target, { ctrlKey: true }));
     expect(activeKey(host)).toBe(before);
     expect(target.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("다른 화면에 갔다가 뒤로 돌아오면 누른 표시가 남지 않는다", async () => {
+    const host = mount();
+    await renderNav();
+    const before = activeKey(host);
+    const target = inactiveLink(host);
+    await act(async () => click(target));
+    expect(activeKey(host)).toBe(target.getAttribute("data-nav-key"));
+
+    pathname = "/w/sample-lab/notifications";
+    await renderNav();
+    pathname = "/w/sample-lab/settings/members";
+    await renderNav();
+    expect(activeKey(host)).toBe(before);
   });
 });

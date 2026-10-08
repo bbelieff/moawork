@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ComponentProps } from "react";
-import { workspaceBaseFromPathname, workspaceHref } from "./workspace-href";
+import { withWorkspaceBase, workspaceBaseFromPathname } from "./workspace-href";
 
 /**
  * Issue 857 — 서버 화면이 만든 앱 안 링크(`/boards/<id>?view=kanban` 등)를 지금 주소의 워크스페이스
@@ -17,5 +17,5 @@ import { workspaceBaseFromPathname, workspaceHref } from "./workspace-href";
  */
 export function WorkspaceLink({ href, ...rest }: Omit<ComponentProps<typeof Link>, "href"> & { href: string }) {
   const base = workspaceBaseFromPathname(usePathname() ?? "");
-  return <Link {...rest} href={base ? workspaceHref(base, href) : href} />;
+  return <Link {...rest} href={withWorkspaceBase(base, href)} />;
 }
