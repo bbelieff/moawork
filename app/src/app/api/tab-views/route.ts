@@ -2,7 +2,12 @@ import { createRequestBoards } from "@/lib/boards/server";
 import { jsonOk, readJson, requireCtx, toErrorResponse } from "@/lib/boards/http";
 import { createClient } from "@/lib/supabase/server";
 import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
-import { parsePersonScopeInput, parseSavedBoardViewConfig, savedBoardViewFromRow } from "@/lib/view/board-saved";
+import {
+  parsePersonScopeInput,
+  parseSavedBoardViewConfig,
+  savedBoardViewFromRow,
+  tabViewDbKind,
+} from "@/lib/view/board-saved";
 import { requireActiveFixedPerson } from "@/lib/view/server";
 
 const COLS = "id,name,visibility,owner_id,person_scope,person_scope_user_id,config_jsonb,is_default,last_used_at";
@@ -34,6 +39,7 @@ export async function GET(req: Request): Promise<Response> {
       .order("last_used_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: true });
     if (error) throw error;
+    // 「이 뷰에 저장」·이름 바꾸기·지우기를 보일지 — 서버(PATCH·DELETE)가 같은 규칙으로 다시 막는다.
     const canManageShared = ctx.role === "owner" || ctx.role === "admin";
     return jsonOk((data ?? []).map((row) => savedBoardViewFromRow(
       row as Record<string, unknown>,
@@ -71,7 +77,7 @@ export async function POST(req: Request): Promise<Response> {
       board_key: boardId,
       owner_id: ctx.user.id,
       name,
-      kind: config.kind === "table" ? "flat" : config.kind === "calendar" ? "cal" : "board",
+      kind: tabViewDbKind(config.kind),
       visibility,
       person_scope: scope.personScope,
       person_scope_user_id: scope.personScopeUserId,

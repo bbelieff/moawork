@@ -37,16 +37,17 @@ describe("Issue #576 신규리드 순서와 표시 컬럼", () => {
     expect(selectVisibleColumns(columns, null)).toEqual(columns);
   });
 
-  it("도구줄은 8/12/16을 없애고 전체 보기와 실제 컬럼 이름을 설명한다", () => {
-    const source = readFileSync(new URL("./BoardToolbar.tsx", import.meta.url), "utf8");
-    expect(source).toContain('label="표시 컬럼"');
-    expect(source).toContain("전체 보기");
+  it("보이는 칸은 8/12/16을 없애고 「모두 보기」와 실제 칸 이름으로 고른다 (#845 6단계)", () => {
+    const source = readFileSync(new URL("./ViewConditionsPanel.tsx", import.meta.url), "utf8");
+    expect(source).toContain('{ id: "columns", label: "보이는 칸" }');
+    expect(source).toContain("모두 보기 (${columns.length})");
     expect(source).toContain("column.label");
-    expect(source).toContain("현재 주소에 남습니다");
     expect(source).not.toContain("COLUMN_LIMITS");
     expect(source).not.toContain("8개");
     expect(source).not.toContain("12개");
     expect(source).not.toContain("16개");
+    const bar = readFileSync(new URL("./BoardViewBar.tsx", import.meta.url), "utf8");
+    expect(bar).toContain("보이는 칸 {visibleCount}/{columns.length}");
   });
 
   it("화면은 회사가 저장한 컬럼 순서를 다시 덮어쓰지 않는다", () => {

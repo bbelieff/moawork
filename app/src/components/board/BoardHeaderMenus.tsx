@@ -3,7 +3,7 @@
 /**
  * 탭 머리말의 작은 부품들 (#845 개선안 · 2026-10-08 대표 결정).
  *   · TabTitleMenu   — 제목 옆 ▾ : 이름 바꾸기 · 아이콘 바꾸기 · 설명 고치기 · 탭 설정… | 휴지통으로 이동
- *   · AssigneeMenu   — 둘째 줄 「담당자 · 전체 ▾」 : 한 사람만 고른다(도구줄 담당자 필터와 같은 값)
+ *   · (담당자 고르기는 #845 6단계에서 보기 줄의 「담당」 조건으로 옮겼다)
  *   · DescriptionHint — 설명은 줄글 대신 ⓘ 에 올리거나 초점을 주면 보인다
  *   · TabSettingsButton — 오른쪽 위 「탭 설정」 (640px 아래는 아이콘만 40px)
  *
@@ -44,8 +44,8 @@ export function useBoardSurface(boardId: string, closeQuietly: () => void) {
   return useCallback(() => claimBoardTransientSurface(scope, owner), [owner, scope]);
 }
 
-/** 메뉴 하나의 열림·닫힘과 초점 되돌리기. */
-function useMenuState(boardId: string) {
+/** 메뉴 하나의 열림·닫힘과 초점 되돌리기. 보기 줄(BoardViewBar·ViewTabs)의 메뉴도 같은 것을 쓴다. */
+export function useMenuState(boardId: string) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -63,7 +63,7 @@ function useMenuState(boardId: string) {
   return { open, triggerRef, menuRef, menuId, close, show };
 }
 
-function Chevron({ size = 16 }: { size?: number }) {
+export function Chevron({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" style={{ flex: "none" }}>
       <path d="M6 9l6 6 6-6" />
@@ -175,63 +175,6 @@ export function TabTitleMenu({
             <MenuItem danger onClick={() => run(() => onRequestTrash(triggerRef.current))}>휴지통으로 이동</MenuItem>
           </>
         ) : null}
-      </BoardAnchoredMenu>
-    </>
-  );
-}
-
-export function AssigneeMenu({
-  boardId,
-  people,
-  selected,
-  onSelect,
-}: {
-  boardId: string;
-  people: readonly { value: string; label: string }[];
-  /** 지금 고른 담당자. 빈 배열 = 전체. 도구줄 필터에서 여럿을 고르면 「N명」 으로 보인다. */
-  selected: readonly string[];
-  onSelect: (value: string | null) => void;
-}) {
-  const { open, triggerRef, menuRef, menuId, close, show } = useMenuState(boardId);
-  const current = selected.length === 0
-    ? "전체"
-    : selected.length === 1
-      ? people.find((person) => person.value === selected[0])?.label ?? "1명"
-      : `${selected.length}명`;
-  const single = selected.length === 1 ? selected[0] : null;
-  const pick = (value: string | null) => {
-    onSelect(value);
-    close(true);
-  };
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        data-board-assignee-menu
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        onClick={() => (open ? close(false) : show())}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            event.preventDefault();
-            show();
-          }
-        }}
-        className={`flex h-9 shrink-0 items-center gap-1 border-b-2 border-transparent text-[length:var(--fs-13)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-primary ${selected.length > 0 ? "font-semibold text-mw-fg" : "text-mw-sub hover:text-mw-fg"}`}
-      >
-        <span>담당자 · {current}</span>
-        <Chevron size={13} />
-      </button>
-      <BoardAnchoredMenu id={menuId} open={open} anchorRef={triggerRef} menuRef={menuRef} label="담당자 고르기" onClose={close}>
-        <MenuItem role="menuitemradio" checked={selected.length === 0} onClick={() => pick(null)}>전체</MenuItem>
-        {people.map((person) => (
-          <MenuItem key={person.value} role="menuitemradio" checked={single === person.value} onClick={() => pick(person.value)}>
-            {person.label}
-          </MenuItem>
-        ))}
       </BoardAnchoredMenu>
     </>
   );

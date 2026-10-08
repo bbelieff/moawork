@@ -68,7 +68,8 @@ describe("Issue #542 filter portal", () => {
   it("팝오버 안에 필터 이름·선택 해제·완료가 함께 보여 고립된 검색 상자가 되지 않는다", async () => {
     const { dialog } = await mountFilter();
     expect(dialog.textContent).toContain("상담상황");
-    expect(dialog.textContent).toContain("원하는 값을 여러 개 고를 수 있어요");
+    // 풀이 줄 없이 이름 한 줄(#845 6단계 — 메뉴는 짧게).
+    expect(dialog.textContent).not.toContain("원하는 값을 여러 개 고를 수 있어요");
     expect(dialog.textContent).toContain("선택 해제");
     const done = [...dialog.querySelectorAll("button")].find((button) => button.textContent === "완료")!;
     await act(async () => done.click());

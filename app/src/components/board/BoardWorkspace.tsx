@@ -3,7 +3,7 @@
 import { consultationPhase, REMOTE_PHASES, INPERSON_PHASES, CONSULTATION_PHASE_LABEL } from "@/lib/consultation/phases";
 
 /**
- * 보드 화면 셸 — 헤더 1줄 + 도구줄 1줄 + **블록 리스트** (PLAN-002 WO-2).
+ * 보드 화면 셸 — 헤더 1줄 + 보기 줄 1줄(#845 6단계 BoardViewBar) + **블록 리스트** (PLAN-002 WO-2).
  *
  * 이 파일이 갖는 상태는 세 가지뿐이다:
  *  ① 필터(클라이언트 전용 — 서버에 저장하지 않는다. 저장 뷰는 WO-3 범위)
@@ -42,7 +42,8 @@ import { BoardHeader } from "./BoardHeader";
 import { TabChromeProvider, type TabSettingsSection } from "./tab-chrome";
 import { selectionTriState } from "./bulk-selection";
 import { BoardScrollViewport } from "./BoardScrollViewport";
-import { BoardToolbar, hasToolbarFacet, type ToolbarFilterFocus } from "./BoardToolbar";
+import { BoardViewBar } from "./BoardViewBar";
+import { hasToolbarFacet, type ToolbarFilterFocus } from "./ViewConditionsPanel";
 import type { ColumnViewRequest } from "./column-menu-model";
 import { GroupBlock, GroupSelectAll } from "./GroupBlock";
 import { GroupNameEditor } from "./GroupNameEditor";
@@ -208,8 +209,10 @@ export function BoardWorkspace({
   assigneeLabels,
   memberDirectory,
   backSlot,
-  viewSlot,
-  savedViewsSlot,
+  viewMode = "table",
+  groupBy = "",
+  loadSavedViews = false,
+  calendarAvailable = false,
   tabSettingsSlot,
   tabSettingsSections,
   tabTrashSlot,
@@ -261,16 +264,19 @@ export function BoardWorkspace({
   assigneeLabels: Record<string, string>;
   /** 활성 조직 멤버의 사람 선택기 표시 정보. 조직도 공급자가 붙으면 이 경계만 교체한다. */
   memberDirectory?: readonly MemberPickerMember[];
-  /** 헤더 1줄 안에 얹을 화면 고유 컨트롤(뒤로가기·뷰 전환) — 줄을 늘리지 않기 위한 슬롯. */
+  /** 헤더 1줄 안에 얹을 화면 고유 컨트롤(뒤로가기) — 줄을 늘리지 않기 위한 슬롯. */
   backSlot?: ReactNode;
-  viewSlot?: ReactNode;
   /**
-   * 저장된 뷰 줄 — 목업 순서상 «보드 이름 아래 · 필터 위» 다 (BBE-214).
-   * 근거: UI목업_워크스페이스_최종_v6.html 의 head() —
-   *   :1810 `.hrow > .h1` 보드 이름 → :1821 `.vrow` 보기 → :1841 filterbar 필터.
-   * 뷰는 «보드에 속한 것» 이라 소속처보다 위에 두면 위계가 뒤집혀 보인다.
+   * #845 6단계 — 보드 이름 아래 «보기 줄» 하나(뷰 탭 · 보기 조건 칩 · 저장 · 찾기)가 예전의
+   * 저장된 뷰 줄 · 머리말 둘째 줄 · 도구줄을 대신한다. 이 화면은 메인 표(?view=table)다.
    */
-  savedViewsSlot?: ReactNode;
+  viewMode?: "table";
+  /** 주소의 나눠 보기(?group=). 표는 다음 단계에서 이 값으로 묶는다. */
+  groupBy?: string;
+  /** 저장된 뷰를 /api/tab-views 에서 읽는다. 화면 fixture·시험은 끈다. */
+  loadSavedViews?: boolean;
+  /** 날짜 칸이 있어 캘린더로 볼 수 있는가. */
+  calendarAvailable?: boolean;
   /**
    * #845 개선안(2026-10-08) — 머리말 오른쪽 위 「탭 설정」 이 여는 대화상자(일반·항목·단계).
    * 옛 「⚙ 보드 설정」 펼침을 대신한다. 열림 상태는 TabChromeProvider 가 들고 문맥으로 알린다.
@@ -936,17 +942,13 @@ export function BoardWorkspace({
     return result;
   }, [board.id]);
 
-  /** 도구줄 담당자 필터 ↔ 헤더 담당자 탭의 단일 소스. null = 전체. */
-  const pickAssignee = (value: string | null) =>
-    setFilters((f) => ({ ...f, assignees: value === null ? [] : [value] }));
-
   /*
-   * #845 5단계 — 칸 메뉴 「보기 · 나만」 의 요청을 받는 곳(onRequestViewCondition). 도구줄과 같은 보기 상태
-   * (주소에 남고 «뷰로 저장» 이 담는다)를 바꾼다. 칸 순서처럼 모두에게 바뀌는 것은 여기서 다루지 않는다.
+   * #845 5단계 — 칸 메뉴 「보기 · 나만」 의 요청을 받는 곳(onRequestViewCondition). 보기 줄과 같은 보기 조건
+   * (주소에 남고 «저장» 이 담는다)을 바꾼다 — 그래서 뷰가 «바뀜» 이 된다. 칸 순서처럼 모두에게 바뀌는 것은 여기서 다루지 않는다.
    *   · sort   — 이 칸 하나로 줄 세운다(다른 줄 세우기는 걷는다) · null 이면 이 칸만 뺀다
-   *   · filter — 「골라 보기…」: 지금은 도구줄 필터 패널을 펴고 그 칸 칩을 연다(다음 단계가 보기 조건 칸으로 돌린다)
+   *   · filter — 「골라 보기…」: 보기 조건 칸을 골라 보기 탭으로 펴고 그 칸 칩을 연다(6단계)
    *   · hide   — 「숨기기」: 보이는 칸에서 뺀다
-   * 도구줄과 똑같이 화면 key(displayFilters) 기준으로 고친다 — 신규리드 durable/present key 변환은 그대로 돈다.
+   * 보기 줄과 똑같이 화면 key(displayFilters) 기준으로 고친다 — 신규리드 durable/present key 변환은 그대로 돈다.
    */
   const [filterFocus, setFilterFocus] = useState<ToolbarFilterFocus | null>(null);
   const tableColumnKeys = tableColumns.map((column) => column.key).join(",");
@@ -1151,7 +1153,7 @@ export function BoardWorkspace({
   };
 
   const keyboardMoveRow=(rowId:string,groupId:string|null,visibleRows:readonly ItemWithValues[],direction:"up"|"down")=>{
-    if(!rowDragEnabled){setMoveNotice(rowMoveInFlightRef.current?"이전 이동을 저장하고 있어요.":sortActive?"정렬 중에는 행 순서를 바꿀 수 없어요.":"행을 옮길 권한이 없어요.");return;}
+    if(!rowDragEnabled){setMoveNotice(rowMoveInFlightRef.current?"이전 이동을 저장하고 있어요.":sortActive?"줄 세우기 중에는 행 순서를 바꿀 수 없어요.":"행을 옮길 권한이 없어요.");return;}
     const at=visibleRows.findIndex((row)=>row.id===rowId);
     if(at<0)return;
     const targetIndex=direction==="up"?at-1:at+2;
@@ -1230,16 +1232,12 @@ export function BoardWorkspace({
         icon={board.icon}
         name={board.name}
         description={board.description}
-        people={people}
-        selected={filters.assignees}
-        onSelect={pickAssignee}
         groups={groups}
         readOnly={readOnly}
         canEditTitle={!board.is_system&&canManageSummaries}
         source={board.source}
         backSlot={backSlot}
         helpSlot={onboardingSlot}
-        viewSlot={viewSlot}
         addItemSlot={onDemandAdd && blocks[0] ? (
           /* 2026-10-08 — 계약업체 실무의 주 단추. 이름만 받는 「＋ 새 항목」 대신 회사부터 고르는 첫 보드의 추가 패널을 연다. */
           <button
@@ -1262,19 +1260,27 @@ export function BoardWorkspace({
         ) : undefined}
       />
 
-      {/* 보드 이름 «아래» · 필터 «위» — 목업 head() 의 `.vrow` 자리다 (BBE-214). */}
-      {savedViewsSlot}
-
-      <BoardToolbar
-        columns={tableColumns}
-        rows={displayRows}
+      {/* 보드 이름 «아래» 의 보기 줄 하나 — 뷰 탭 · 보기 조건 · 저장 · 찾기 (BBE-214 순서 · #845 6단계). */}
+      <BoardViewBar
+        boardId={board.id}
+        currentUserId={currentUserId}
+        mode={viewMode}
         filters={displayFilters}
         onChange={setFilters}
+        groupBy={groupBy}
+        columns={tableColumns}
+        rows={displayRows}
+        people={people}
         matched={matched}
         total={displayRows.length}
-        people={people}
         legacyFacetLabels={canonicalNewLead ? NEW_LEAD_LEGACY_FACET_LABELS : undefined}
         focusFilter={filterFocus}
+        canonicalNewLead={canonicalNewLead}
+        loadSavedViews={loadSavedViews}
+        activeViewId={savedViewId}
+        calendarAvailable={calendarAvailable}
+        defaultCalendarFieldKey={tableColumns.find((column) => column.type === "date")?.key ?? null}
+        ready={filterUrlReady}
       />
 
       {board.is_system && (
@@ -1285,7 +1291,7 @@ export function BoardWorkspace({
 
       {sortActive && !readOnly && (
         <p className="text-xs text-mw-sub">
-          정렬이 켜져 있어 행 드래그를 잠갔습니다. 직접 배치하려면 정렬을 «기본 순서»로 되돌리세요.
+          줄 세우기 중에는 행을 끌어 옮길 수 없어요 · 「원래 순서」로 바꾸면 옮길 수 있어요
         </p>
       )}
       {selectedIds.size > 0 || bulkDialog !== null ? (

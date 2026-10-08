@@ -153,11 +153,9 @@ export function FilterChip({
               className="fixed flex flex-col overflow-hidden rounded-md border border-mw-line bg-mw-card text-mw-fg shadow-xl"
             >
               <div className="flex shrink-0 items-center gap-2 border-b border-mw-line px-3 py-2.5">
+                {/* #845 6단계 — 메뉴·칸은 짧게(대표 2026-10-08). 이름 한 줄만 두고 풀이 줄은 두지 않는다. */}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-mw-fg">{label}</p>
-                  <p className="text-[0.68rem] text-mw-sub">
-                    {active ? `${summary ?? "값"} 선택 중` : "원하는 값을 여러 개 고를 수 있어요"}
-                  </p>
                 </div>
                 <button
                   type="button"

@@ -40,21 +40,17 @@ import { NewLeadIntakeForm } from "@/components/board/NewLeadIntakeForm";
 import { renameColumnTitleAction } from "@/app/(app)/boards/title-actions";
 import { reorderColumnsAction } from "@/app/(app)/boards/actions";
 import { BoardTrashPanel } from "@/components/board/BoardTrashPanel";
-import { BoardViewTabs } from "@/components/board/BoardViewTabs";
 import { BoardArchivePanel } from "@/components/board/BoardArchivePanel";
 import { SavedViewsController } from "@/components/view";
 import {
-  applySavedKanbanView,
   applySavedPersonScope,
   boardViewSwitchUrl,
-  NEW_LEAD_SAVED_FILTER_PROJECTION,
   parseSavedBoardLayout,
   parseSavedStringList,
-  presentNewLeadSavedFilters,
 } from "@/lib/view/board-saved";
 import { resolveSavedPersonRuntime } from "@/lib/view/server";
 import { decodeBoardFilters } from "@/components/board/filters";
-import { GenericBoardKanban } from "@/components/boards/GenericBoardKanban";
+import { KanbanViewWorkspace } from "@/components/boards/KanbanViewWorkspace";
 import { ColumnEditor } from "@/components/boards/ColumnEditor";
 import { deleteBoardAction } from "../actions";
 import { BoardTrashImpactNotes, quotedObject } from "@/components/workspace-builder/TabTrashSurface";
@@ -350,15 +346,11 @@ export default async function BoardPage({
     : items.filter((item) => consultationModeForRow(item.id, consultationByItem) === consultationView);
   const canonicalNewLead = board.source === NEW_LEAD_TAB_SOURCE;
   const savedViewColumns = canonicalNewLead ? presentNewLeadColumns(columns) : columns;
-  const savedViewFilters = canonicalNewLead
-    ? presentNewLeadSavedFilters(decodeBoardFilters(sp.mwFilters ?? null))
-    : decodeBoardFilters(sp.mwFilters ?? null);
+  // 주소의 보기 조건(mwFilters) — 칸반·목록·캘린더가 첫 화면부터 같은 조건으로 그린다(#845 6단계).
+  const urlFilters = decodeBoardFilters(sp.mwFilters ?? null);
+  // 칸반 레인은 권한·상담 단계로만 거른다. 보기 조건은 KanbanViewWorkspace 가 바로 적용한다(applySavedKanbanView).
   const lanes = view === "kanban"
-    ? applySavedKanbanView(
-        svc.kanbanFromSnapshot(snapshot, groupBy || undefined).map((lane) => ({ ...lane, items: lane.items.filter((item) => visibleItemIds.has(item.id) && (consultationView === "all" || consultationModeForRow(item.id, consultationByItem) === consultationView)) })),
-        items, savedViewColumns, savedViewFilters,
-        canonicalNewLead ? NEW_LEAD_SAVED_FILTER_PROJECTION : undefined,
-      )
+    ? svc.kanbanFromSnapshot(snapshot, groupBy || undefined).map((lane) => ({ ...lane, items: lane.items.filter((item) => visibleItemIds.has(item.id) && (consultationView === "all" || consultationModeForRow(item.id, consultationByItem) === consultationView)) }))
     : [];
 
   // 직전 셀 편집에서 저장되지 못한 값의 사유(1회성). 없으면 null.
@@ -406,15 +398,10 @@ export default async function BoardPage({
     </Link>
   );
 
-  // #845 개선안 — 보기 전환은 머리말 둘째 줄의 밑줄 탭이다(지금 보기만 진한 글자 + 밑줄).
-  const viewToggle = (
-    <BoardViewTabs
-      tabs={[
-        { view: "table", label: "테이블", href: switchView("table", groupBy), active: view === "table" },
-        { view: "kanban", label: "칸반", href: switchView("kanban", groupBy), active: view === "kanban" },
-      ]}
-    />
-  );
+  // #845 6단계 — 보기 방식(표·칸반·캘린더)·뷰 탭·보기 조건은 모든 보기가 같은 보기 줄(BoardViewBar) 하나로 고른다.
+  const savedViewId = personRuntime.view ? (sp.savedView ?? null) : null;
+  const calendarAvailable = columns.some((column) => column.type === "date" || column.type === "datetime");
+  const groupByOptions = selectColumns.map((column) => ({ key: column.key, label: column.label }));
 
   /*
    * #845 개선안(2026-10-08 대표 결정) — 옛 「⚙ 보드 설정」 펼침 대신 머리말 오른쪽 위 「탭 설정」 대화상자.
@@ -474,13 +461,10 @@ export default async function BoardPage({
       source={board.source}
       name={board.name}
       description={board.description}
-      people={[]}
-      selected={[]}
       groups={groups}
       readOnly={board.is_system||!canEditItems}
       canEditTitle={!board.is_system&&canManageSummaries}
       backSlot={backLink}
-      viewSlot={viewToggle}
       addItemSlot={board.source===NEW_LEAD_TAB_SOURCE&&groups[0]?(
         <NewLeadIntakeForm
           variant="header"
@@ -498,9 +482,27 @@ export default async function BoardPage({
   const boardContent = view === "kanban" ? (
     <>
         {alternateViewHeader}
-        {/* 보드 이름 아래 — 목업 head() 순서(이름 → 보기). 테이블 뷰와 같은 위계다(BBE-214). */}
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={stageItems} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
-
+        {/* 보드 이름 아래 — 표와 같은 보기 줄 하나(BBE-214 순서 · #845 6단계). */}
+        <KanbanViewWorkspace
+          boardId={id}
+          currentUserId={ctx.user.id}
+          lanes={lanes}
+          items={stageItems}
+          columns={savedViewColumns}
+          canonicalNewLead={canonicalNewLead}
+          initialFilters={urlFilters}
+          groupBy={groupBy}
+          groupByOptions={groupByOptions}
+          assigneeLabels={assigneeLabels}
+          activeViewId={savedViewId}
+          calendarAvailable={calendarAvailable}
+          loadSavedViews
+          readOnly={board.is_system || !canEditItems}
+          rowOrderVersion={board.row_order_version ?? 0}
+          canMoveRows={canMoveRows}
+          canManageSections={canManageSections}
+          isSystem={board.is_system}
+        >
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto text-xs">
           <span className="shrink-0 text-mw-sub">그룹 기준</span>
           <Link
@@ -517,22 +519,13 @@ export default async function BoardPage({
             </span>
           ))}
         </div>
-
-        <GenericBoardKanban
-          boardId={id}
-          lanes={lanes}
-          groupBy={groupBy}
-          readOnly={board.is_system || !canEditItems}
-          rowOrderVersion={board.row_order_version ?? 0}
-          canMoveRows={canMoveRows}
-          canManageSections={canManageSections}
-          isSystem={board.is_system}
-        />
+        </KanbanViewWorkspace>
     </>
   ) : view === "flat" || view === "calendar" ? (
     <>
         {alternateViewHeader}
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={stageItems} renderMode={view} boardSource={board.source} canEditItems={canEditItems} canBulkEditItems={boardDelete.kind === "allowed"} canDeleteItems={canDeleteItems} canExportItems={permissions["danger.csv_export"].kind === "allowed"} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
+        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} columns={visibleColumns} rows={stageItems} renderMode={view} boardSource={board.source} canEditItems={canEditItems} canBulkEditItems={boardDelete.kind === "allowed"} canDeleteItems={canDeleteItems} canExportItems={permissions["danger.csv_export"].kind === "allowed"} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system}
+          initialFilters={urlFilters} initialSearch={currentQuery.toString()} savedViewId={savedViewId} loadSavedViews />
     </>
   ) : (
     <BoardWorkspace
@@ -552,10 +545,9 @@ export default async function BoardPage({
       assigneeLabels={assigneeLabels}
       memberDirectory={memberDirectory}
       backSlot={backLink}
-      viewSlot={viewToggle}
-      savedViewsSlot={
-        <SavedViewsController boardId={id} orgId={ctx.org.id} currentUserId={ctx.user.id} teamMemberIds={personRuntime.memberIds} layout={activeColumnOrder} columns={visibleColumns} rows={stageItems} canEditItems={canEditItems} canonicalNewLead={canonicalNewLead} memberOptions={memberDirectory} groups={groups} rowOrderVersion={board.row_order_version??0} canMoveRows={canMoveRows} canManageColumns={canManageColumns} canManageSections={canManageSections} isSystem={board.is_system} />
-      }
+      groupBy={groupBy}
+      loadSavedViews
+      calendarAvailable={calendarAvailable}
       tabSettingsSlot={tabSettingsDialog}
       tabSettingsSections={settingsSections}
       tabTrashSlot={tabTrashDialog}
@@ -571,7 +563,7 @@ export default async function BoardPage({
       canManageSummaries={canManageSummaries}
       canMoveRows={canMoveRows}
       savedViewActive={Boolean(personRuntime.view)}
-      savedViewId={personRuntime.view ? (sp.savedView ?? null) : null}
+      savedViewId={savedViewId}
       currentUserId={ctx.user.id}
       consultationView={consultationView}
       consultationByItem={consultationByItem}

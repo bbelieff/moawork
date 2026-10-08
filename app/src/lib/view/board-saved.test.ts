@@ -6,14 +6,18 @@ import {
   applySavedKanbanView,
   applySavedPersonScope,
   boardViewSwitchUrl,
+  canOverwriteSavedView,
   durableNewLeadSavedViewConfig,
+  modeForSavedKind,
   NEW_LEAD_SAVED_FILTER_PROJECTION,
   parsePersonScopeInput,
   parseSavedBoardViewConfig,
   presentNewLeadSavedViewConfig,
   savedBoardViewFromRow,
+  savedKindForMode,
   savedViewUrl,
   systemViewUrl,
+  tabViewDbKind,
 } from "./board-saved";
 
 describe("parseSavedBoardViewConfig", () => {
@@ -323,5 +327,46 @@ describe("parseSavedBoardViewConfig", () => {
       textMode: "single",
       focusColumnKey: null,
     });
+  });
+});
+
+describe("#845 6단계 — 보기 방식·메인 테이블·덮어쓰기 권한", () => {
+  const view = (kind: string) => ({
+    id: "v1", name: "뷰", visibility: "shared" as const, ownerId: "u2", isDefault: false, lastUsedAt: null,
+    config: parseSavedBoardViewConfig({ kind, layout: { g1: ["memo", "status"] } }),
+  });
+
+  it("표(grouped)·칸반·목록·캘린더가 주소의 view 와 서로 바뀐다 — 예전 table=목록, board=칸반은 그대로 읽는다", () => {
+    for (const mode of ["table", "kanban", "flat", "calendar"] as const) {
+      expect(modeForSavedKind(savedKindForMode(mode))).toBe(mode);
+    }
+    expect(parseSavedBoardViewConfig({ kind: "grouped" }).kind).toBe("grouped");
+    expect(new URL(savedViewUrl(view("grouped"), "https://app.test/boards/b")).searchParams.get("view")).toBe("table");
+    expect(new URL(savedViewUrl(view("table"), "https://app.test/boards/b")).searchParams.get("view")).toBe("flat");
+    expect(new URL(savedViewUrl(view("board"), "https://app.test/boards/b")).searchParams.get("view")).toBe("kanban");
+    // DB 의 정규화 열은 세 값만 받는다(072 check) — 표는 'board' 로 둔다. 읽을 때는 config_jsonb 가 정본이다.
+    expect(tabViewDbKind("grouped")).toBe("board");
+    expect(tabViewDbKind("table")).toBe("flat");
+    expect(tabViewDbKind("calendar")).toBe("cal");
+  });
+
+  it("칸 순서는 보드 전체의 것 — 저장된 뷰를 열어도 예전 layout 으로 보드 순서를 덮지 않는다", () => {
+    const url = new URL(savedViewUrl(view("grouped"), "https://app.test/boards/b?mwLayout=%7B%7D"));
+    expect(url.searchParams.has("mwLayout")).toBe(false);
+  });
+
+  it("「메인 테이블」 은 묶인 메인 표(?view=table)를 연다 — 묶지 않은 목록이 아니다", () => {
+    const url = new URL(systemViewUrl("table", "https://app.test/boards/b?savedView=v1&view=flat&mwFilters=x&group=status"));
+    expect(url.searchParams.get("view")).toBe("table");
+    expect([...url.searchParams.keys()]).toEqual(["view"]);
+  });
+
+  it("뷰를 덮어쓰거나 지우는 것은 만든 사람과 워크스페이스 소유자·관리자만", () => {
+    expect(canOverwriteSavedView({ ownerId: "u1" }, { userId: "u1", role: "member" })).toBe(true);
+    expect(canOverwriteSavedView({ ownerId: "u2" }, { userId: "u1", role: "member" })).toBe(false);
+    expect(canOverwriteSavedView({ ownerId: "u2" }, { userId: "u1", role: "team_lead" })).toBe(false);
+    expect(canOverwriteSavedView({ ownerId: "u2" }, { userId: "u1", role: "admin" })).toBe(true);
+    expect(canOverwriteSavedView({ ownerId: "u2" }, { userId: "u1", role: "owner" })).toBe(true);
+    expect(canOverwriteSavedView({ ownerId: null }, { userId: "u1", role: "member" })).toBe(false);
   });
 });

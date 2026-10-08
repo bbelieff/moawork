@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 /**
  * #845 5단계(2026-10-08) — 칸 메뉴 「보기 · 나만」 이 보드의 보기 상태를 실제로 바꾸는지 «그려진 결과» 로 잰다.
- *   · 줄 세우기 → 행 순서가 바뀌고 도구줄 줄 세우기 칩이 켜진다(주소·«뷰로 저장» 이 담는 같은 상태)
+ *   · 줄 세우기 → 행 순서가 바뀌고 보기 줄 「줄 세우기」 칩이 켜진다(주소·«저장» 이 담는 같은 상태 — 뷰가 «바뀜»)
  *   · 숨기기 → 그 칸이 이 뷰에서 빠진다(보이는 칸)
- *   · 골라 보기… → (다음 단계 전까지) 도구줄 필터 패널이 펴지고 그 칸의 칩이 열린다
+ *   · 골라 보기… → 「보기 조건」 칸이 골라 보기 탭으로 펴지고 그 칸의 칩이 열린다(6단계)
  *   · 사람·목록 칸 줄 세우기는 저장값(id)이 아니라 이름으로
  *   · 칸 순서는 여전히 보드 전체 저장(모두에게) — 보기 상태(필터)를 바꾸지 않는다
  */
@@ -99,12 +99,18 @@ async function choose(host: ParentNode, columnLabel: string, itemLabel: string) 
 }
 
 describe("칸 메뉴 「보기」 → 보드의 보기 상태", () => {
-  it("줄 세우기는 행 순서를 바꾸고 도구줄 줄 세우기 칩이 켜지며, 되돌리면 원래 순서", async () => {
+  it("줄 세우기는 행 순서를 바꾸고 보기 줄 「줄 세우기」 칩이 켜지며(뷰가 바뀜), 되돌리면 원래 순서", async () => {
     const host = await mount();
     expect(rowNames(host)).toEqual(["가나정밀", "다라식품"]);
     await choose(host, "대표자명", "가나다순");
     expect(rowNames(host)).toEqual(["다라식품", "가나정밀"]);
-    expect(host.querySelector("[data-board-toolbar]")!.textContent).toContain("대표자명 ↑");
+    const sortChip = host.querySelector<HTMLElement>('[data-view-chip="sort"]')!;
+    expect(sortChip.textContent).toBe("줄 세우기1");
+    expect(sortChip.className).toContain("bg-mw-tint-blue");
+    // 메인 테이블 기준(조건 없음)과 달라졌다 — 탭에 점, 되돌리기·저장이 선다.
+    expect(host.querySelector('[data-view-tab="main"] [data-view-dirty-dot]')).not.toBeNull();
+    expect(host.querySelector('[data-view-tab="main"]')!.getAttribute("title")).toBe("바뀐 조건 1개");
+    expect(host.querySelector("[data-view-dirty-actions]")!.textContent).toContain("되돌리기");
     expect(new URL(window.location.href).searchParams.get("mwFilters")).toContain('"sorts":[{"columnKey":"rep_name","direction":"asc"}]');
     await choose(host, "대표자명", "원래 순서로");
     expect(rowNames(host)).toEqual(["가나정밀", "다라식품"]);
@@ -119,11 +125,12 @@ describe("칸 메뉴 「보기」 → 보드의 보기 상태", () => {
     expect(actionMocks.setGroupColumnOrdersAction).not.toHaveBeenCalled();
   });
 
-  it("골라 보기…는 도구줄 필터 패널을 펴고 그 칸의 칩을 연다", async () => {
+  it("골라 보기…는 보기 조건 칸을 골라 보기 탭으로 펴고 그 칸의 칩을 연다", async () => {
     const host = await mount();
     expect(host.querySelector("#board-filter-panel")).toBeNull();
     await choose(host, "구분", "골라 보기…");
     expect(host.querySelector("#board-filter-panel")).not.toBeNull();
+    expect(host.querySelector('#board-filter-panel [role="tab"][aria-selected="true"]')!.textContent).toBe("골라 보기");
     const chip = document.querySelector('[role="dialog"][aria-label="구분 필터"]');
     expect(chip).not.toBeNull();
     expect(chip!.textContent).toContain("법인");

@@ -84,7 +84,7 @@ describe("Issue #582 dark board visual contract", () => {
   it("does not create cross-axis scrollbars in single-line board controls", () => {
     const globals = read("../../app/globals.css");
     const header = read("./BoardHeader.tsx");
-    const toolbar = read("./BoardToolbar.tsx");
+    const toolbar = read("./BoardViewBar.tsx");
 
     expect(globals).toContain(".mw-board-inline-scroll::-webkit-scrollbar");
     expect(globals).toContain("scrollbar-width: none");

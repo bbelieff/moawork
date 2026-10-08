@@ -4,7 +4,7 @@
  *   · 아이콘: 이모지·색 칸 없이 선 아이콘 하나(22px). 옛 이모지 저장값도 같은 그림.
  *   · 제목 ▾ 메뉴: 이름 바꾸기 · 아이콘 바꾸기 · 설명 고치기 · 탭 설정… | 휴지통으로 이동
  *   · 설명은 줄글 대신 ⓘ (올리거나 초점을 주면 보임, Esc 로 닫힘)
- *   · 오른쪽 위 「탭 설정」 단추, 둘째 줄의 보기 탭 + 「담당자 · 전체 ▾」 한 칸
+ *   · 오른쪽 위 「탭 설정」 단추 (보기 탭·담당자는 #845 6단계부터 보기 줄 BoardViewBar 에 있다)
  */
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -22,10 +22,6 @@ afterEach(async () => {
 });
 
 const groups = [{ id: "g-1", org_id: "o", board_id: "b", name: "첫 단계", color: null, sort_order: 0 }] as unknown as BoardGroup[];
-const people = [
-  { value: "u-1", label: "가담당" },
-  { value: "u-2", label: "나담당" },
-];
 
 type HeaderProps = ComponentProps<typeof BoardHeader>;
 
@@ -39,8 +35,6 @@ async function mount(overrides: Partial<HeaderProps> = {}) {
     source: "core.default-tab/contact",
     name: "탭이름",
     description: "리드를 담당자와 계약 상황에 따라 관리한다",
-    people: [],
-    selected: [],
     groups,
     readOnly: false,
     ...overrides,
@@ -215,48 +209,12 @@ describe("설명은 ⓘ 로", () => {
   });
 });
 
-describe("둘째 줄 — 보기 탭 + 「담당자 · 전체 ▾」", () => {
-  it("보기 탭 다음에 담당자 메뉴가 오고, 두 줄 모두 머리말 블록 밖 둘째 줄에 있다", async () => {
-    const { host } = await mount({ people, viewSlot: <nav aria-label="보기 전환">보기표식</nav> });
-    const header = host.querySelector('[data-visual-block="board-header"]')!;
-    const row = host.querySelector('[data-board-header-row="views"]')!;
-    expect(header.contains(row)).toBe(false);
-    expect(header.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(row.textContent).toMatch(/^보기표식담당자 · 전체/u);
-    // 예전 담당자 탭 줄(전체·이름이 단추로 늘어선 줄)은 없다.
-    expect(host.querySelector('nav[aria-label="담당자 탭"]')).toBeNull();
-  });
-
-  it("한 사람을 고르면 같은 onSelect 로 알리고, 고른 이름과 체크 표시가 보인다", async () => {
-    const onSelect = vi.fn();
-    const { host, render } = await mount({ people, onSelect });
-    const assignee = host.querySelector<HTMLButtonElement>("button[data-board-assignee-menu]")!;
-    expect(assignee.getAttribute("aria-haspopup")).toBe("menu");
-    await act(async () => assignee.click());
-    const radios = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
-    expect(radios.map((radio) => [radio.textContent, radio.getAttribute("aria-checked")])).toEqual([
-      ["전체", "true"],
-      ["가담당", "false"],
-      ["나담당", "false"],
-    ]);
-    await act(async () => radios[2].click());
-    expect(onSelect).toHaveBeenCalledWith("u-2");
-    expect(menu()).toBeNull();
-
-    await render({ selected: ["u-2"] });
-    expect(assignee.textContent).toBe("담당자 · 나담당");
-    await act(async () => assignee.click());
-    expect(document.querySelector('[role="menuitemradio"][aria-checked="true"]')?.textContent).toBe("나담당");
-    await act(async () => document.querySelector<HTMLButtonElement>('[role="menuitemradio"]')!.click());
-    expect(onSelect).toHaveBeenLastCalledWith(null);
-
-    // 도구줄 필터에서 여럿을 고르면 「N명」 으로 보인다.
-    await render({ selected: ["u-1", "u-2"] });
-    expect(assignee.textContent).toBe("담당자 · 2명");
-  });
-
-  it("보기·담당자 둘 다 없으면 둘째 줄을 그리지 않는다", async () => {
+describe("머리말은 한 줄 — 보기 줄은 BoardViewBar 가 맡는다(#845 6단계)", () => {
+  it("예전 둘째 줄(테이블·칸반 탭 · 담당자 메뉴)을 그리지 않는다", async () => {
     const { host } = await mount();
     expect(host.querySelector('[data-board-header-row="views"]')).toBeNull();
+    expect(host.querySelector("button[data-board-assignee-menu]")).toBeNull();
+    expect(host.querySelector('nav[aria-label="보기 전환"]')).toBeNull();
+    expect(host.querySelectorAll('[data-visual-block="board-header"]')).toHaveLength(1);
   });
 });

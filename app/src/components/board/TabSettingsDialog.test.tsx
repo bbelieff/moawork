@@ -59,8 +59,6 @@ async function mount({
     source: "core.default-tab/contact",
     name: "리드컨택 관리",
     description: "리드를 담당자와 계약 상황에 따라 관리한다",
-    people: [],
-    selected: [],
     groups: [],
     readOnly: true,
     canEditTitle: true,

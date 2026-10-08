@@ -30,8 +30,9 @@ describe("ViewTabs", () => {
     expect(html).toContain("메인 테이블");
     expect(html).toContain("오늘 연락");
     expect(html).toContain("내 후속");
-    expect(html).toContain("공용");
+    expect(html).toContain("팀");
     expect(html).toContain("나만");
+    expect(html).not.toContain("공용");
     expect(html).toContain('aria-current="page"');
     expect(html).not.toContain("고객관리");
   });

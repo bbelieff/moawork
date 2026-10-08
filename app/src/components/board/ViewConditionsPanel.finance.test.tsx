@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BoardColumn } from "@/lib/boards/types";
 import { EMPTY_FILTERS } from "./filters";
-import { BoardToolbar } from "./BoardToolbar";
+import { ViewConditionsPanel } from "./ViewConditionsPanel";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -25,7 +25,9 @@ describe("#602 hidden legacy finance facet", () => {
       rightPinned: false, options_jsonb: null, sort_order: 0, width: null,
     }];
     await act(async () => root.render(
-      <BoardToolbar
+      <ViewConditionsPanel
+        tab="filter"
+        onTab={() => {}}
         columns={columns}
         rows={[]}
         filters={{
@@ -33,9 +35,8 @@ describe("#602 hidden legacy finance facet", () => {
           byColumn: { revenue_band: ["10억~30억"], credit_score_ncb: ["812"] },
         }}
         onChange={onChange}
-        matched={1}
-        total={1}
         people={[]}
+        groupBy=""
         legacyFacetLabels={{ revenue_band: "기존 매출구간" }}
       />,
     ));

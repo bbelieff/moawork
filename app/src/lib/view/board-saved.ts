@@ -11,7 +11,45 @@ import {
 } from "@/lib/new-lead/financial-profile";
 import type { PersonScope } from "./contracts";
 
-export type SavedBoardViewKind = "board" | "table" | "calendar";
+/**
+ * 저장된 뷰의 보기 방식. 주소의 `view` 와 이름이 어긋나 있으니 아래 두 함수로만 바꾼다.
+ *   grouped  = 표(그룹으로 묶인 메인 표, ?view=table) — #845 6단계에서 새로 생겼다.
+ *   board    = 칸반(?view=kanban) — 예전 저장값. 표에서 저장해도 이 값이 들어가던 버그가 있었다.
+ *   table    = 목록(묶지 않은 표, ?view=flat) — 예전 저장값.
+ *   calendar = 캘린더(?view=calendar)
+ */
+export type SavedBoardViewKind = "grouped" | "board" | "table" | "calendar";
+
+/** 주소의 보기 방식(`?view=`). 없으면 메인 표다. */
+export type BoardViewMode = "table" | "kanban" | "flat" | "calendar";
+
+export function parseBoardViewMode(value: string | null | undefined): BoardViewMode {
+  return value === "kanban" || value === "flat" || value === "calendar" ? value : "table";
+}
+
+export function savedKindForMode(mode: BoardViewMode): SavedBoardViewKind {
+  return mode === "kanban" ? "board" : mode === "flat" ? "table" : mode === "calendar" ? "calendar" : "grouped";
+}
+
+export function modeForSavedKind(kind: SavedBoardViewKind): BoardViewMode {
+  return kind === "board" ? "kanban" : kind === "table" ? "flat" : kind === "calendar" ? "calendar" : "table";
+}
+
+/** tab_views.kind(정규화 열) — 표·칸반은 'board', 목록은 'flat', 캘린더는 'cal'. 읽을 때는 config_jsonb 가 정본이다. */
+export function tabViewDbKind(kind: SavedBoardViewKind): "board" | "flat" | "cal" {
+  return kind === "table" ? "flat" : kind === "calendar" ? "cal" : "board";
+}
+
+/**
+ * 저장된 뷰를 덮어쓰거나(조건·이름·공개 범위) 지울 수 있는 사람 — 만든 사람, 그리고 워크스페이스 소유자·관리자.
+ * 화면(「이 뷰에 저장」 표시)과 서버(PATCH·DELETE 거절)가 같은 규칙을 쓴다. RLS(072 tabviews_update/delete)도 같다.
+ */
+export function canOverwriteSavedView(
+  view: { ownerId: string | null },
+  viewer: { userId: string; role: string },
+): boolean {
+  return view.ownerId === viewer.userId || viewer.role === "owner" || viewer.role === "admin";
+}
 
 export interface SavedBoardViewConfig {
   kind: SavedBoardViewKind;
@@ -202,7 +240,7 @@ export function parseSavedBoardViewConfig(value: unknown): SavedBoardViewConfig 
   const rawLayout = root.layout && typeof root.layout === "object"
     ? root.layout as Record<string, unknown>
     : {};
-  const kind = root.kind === "table" || root.kind === "calendar" ? root.kind : "board";
+  const kind: SavedBoardViewKind = root.kind === "grouped" || root.kind === "table" || root.kind === "calendar" ? root.kind : "board";
   const parsedSorts = sorts(root.sorts);
   const legacySorts = typeof rawFilters.sortKey === "string" && rawFilters.sortKey
     ? [{ columnKey: rawFilters.sortKey, direction: rawFilters.sortDir === "desc" ? "desc" as const : "asc" as const }]
@@ -248,8 +286,9 @@ export function savedBoardViewFromRow(row: Record<string, unknown>, canEdit?: bo
 export function savedViewUrl(view: SavedBoardView, current: string): string {
   const url = new URL(current);
   url.searchParams.set("savedView", view.id);
-  url.searchParams.set("view", view.config.kind === "board" ? "kanban" : view.config.kind === "calendar" ? "calendar" : "flat");
-  url.searchParams.set("mwLayout", JSON.stringify(view.config.layout));
+  url.searchParams.set("view", modeForSavedKind(view.config.kind));
+  // 칸 순서는 보드 전체의 것이다(#845 6단계) — 예전 뷰가 품은 layout 은 읽기만 하고 화면에 덮어쓰지 않는다.
+  url.searchParams.delete("mwLayout");
   url.searchParams.set("mwHidden", JSON.stringify(view.config.hiddenColumns));
   url.searchParams.set("mwOrder", JSON.stringify(view.config.columnOrder));
   url.searchParams.set("mwFilters", encodeBoardFilters({ ...view.config.filters, sorts: [...view.config.sorts] }));
@@ -262,17 +301,17 @@ export function savedViewUrl(view: SavedBoardView, current: string): string {
   return url.toString();
 }
 
-export function systemViewUrl(kind: "board" | "flat" | "cal", current: string): string {
+export function systemViewUrl(kind: "table" | "board" | "flat" | "cal", current: string): string {
   const url = new URL(current);
   for (const key of ["savedView", "mwFilters", "mwLayout", "mwHidden", "mwOrder", "mwSort", "mwText", "mwFocus", "group", "sort", "calendarField"]) {
     url.searchParams.delete(key);
   }
-  url.searchParams.set("view", kind === "board" ? "kanban" : kind === "cal" ? "calendar" : "flat");
+  url.searchParams.set("view", kind === "table" ? "table" : kind === "board" ? "kanban" : kind === "cal" ? "calendar" : "flat");
   return url.toString();
 }
 
 export function boardViewSwitchUrl(
-  kind: "table" | "kanban" | "calendar",
+  kind: BoardViewMode,
   current: string,
   groupBy?: string,
 ): string {
