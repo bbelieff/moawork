@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({ createServerClient: vi.fn() }));
 vi.mock("@supabase/ssr", () => ({ createServerClient: mocks.createServerClient }));
 
 import { proxy } from "./proxy";
+import { rememberMembershipRows, resetMembershipMemo } from "@/lib/auth/proxy-membership-memo";
 import nextConfig from "../next.config";
 import { adapter } from "next/dist/server/web/adapter";
 import { getRelativeURL } from "next/dist/shared/lib/router/utils/relativize-url";
@@ -18,12 +19,17 @@ function claimsFor(user: { id: string } | null) {
   return user ? { data: { claims: { sub: user.id } }, error: null } : { data: null, error: null };
 }
 
+// Issue 857 — 프록시의 회사 목록 기억이 시험끼리 새지 않게.
+beforeEach(() => resetMembershipMemo());
+
 function setup(user: { id: string } | null, rows: unknown[] = []) {
   const order = vi.fn().mockResolvedValue({ data: rows, error: null });
   const eq = vi.fn(() => ({ order }));
   const select = vi.fn(() => ({ eq }));
+  const from = vi.fn(() => ({ select }));
   // Issue 857 — 프록시는 토큰 서명 확인(getClaims)으로 사람을 안다.
-  mocks.createServerClient.mockReturnValue({ auth: { getClaims: vi.fn().mockResolvedValue(claimsFor(user)) }, from: vi.fn(() => ({ select })) });
+  mocks.createServerClient.mockReturnValue({ auth: { getClaims: vi.fn().mockResolvedValue(claimsFor(user)) }, from });
+  return { from };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -418,6 +424,62 @@ describe("proxy workspace namespace", () => {
   it("fails closed for a protected root link without a verified workspace slug", async () => {
     setup({ id: "user-1" }, [membership("org-acme", "acme")]);
     const response = await proxy(new NextRequest("https://www.moa-work.com/notices"));
+    expect(response.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+  });
+});
+
+describe("Issue 857 · 프록시의 회사 목록 기억(들어갈 수 있다 판정에만)", () => {
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.test";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "public-anon-test-key";
+    mocks.createServerClient.mockReset();
+  });
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  });
+
+  it("같은 사람이 이어서 오면 회사 목록을 다시 읽지 않고 같은 회사로 넘긴다", async () => {
+    const { from } = setup({ id: "user-1" }, [membership("org-acme", "acme")]);
+    const first = await proxy(new NextRequest("https://www.moa-work.com/w/acme/boards/b-1"));
+    const second = await proxy(new NextRequest("https://www.moa-work.com/w/acme/boards/b-2"));
+    expect(from).toHaveBeenCalledTimes(1);
+    expect(second.headers.get("x-middleware-rewrite")).toBe("https://www.moa-work.com/boards/b-2");
+    expect(second.headers.get("x-middleware-request-cookie")).toContain("mw_org=org-acme");
+    expect(first.headers.get("x-middleware-request-cookie")).toContain("mw_org=org-acme");
+  });
+
+  it("기억으로 거부가 나오면 믿지 않고 지금 다시 읽는다 — 방금 가입한 회사가 막히지 않는다", async () => {
+    rememberMembershipRows("user-1", [membership("org-acme", "acme")]);
+    const { from } = setup({ id: "user-1" }, [membership("org-acme", "acme"), membership("org-new", "new-team")]);
+    const response = await proxy(new NextRequest("https://www.moa-work.com/w/new-team/work"));
+    expect(from).toHaveBeenCalledTimes(1);
+    expect(response.headers.get("x-middleware-rewrite")).toBe("https://www.moa-work.com/work");
+    expect(response.headers.get("x-middleware-request-cookie")).toContain("mw_org=org-new");
+  });
+
+  it("거부는 기억하지 않는다 — 다음 요청도 다시 읽는다", async () => {
+    const { from } = setup({ id: "user-1" }, []);
+    const first = await proxy(new NextRequest("https://www.moa-work.com/w/acme/work"));
+    const second = await proxy(new NextRequest("https://www.moa-work.com/w/acme/work"));
+    expect(first.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+    expect(second.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+    expect(from).toHaveBeenCalledTimes(2);
+  });
+
+  it("다른 사람의 기억은 쓰지 않는다", async () => {
+    rememberMembershipRows("user-1", [membership("org-acme", "acme")]);
+    const { from } = setup({ id: "user-2" }, []);
+    const response = await proxy(new NextRequest("https://www.moa-work.com/w/acme/work"));
+    expect(from).toHaveBeenCalledTimes(1);
+    expect(response.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+  });
+
+  it("1분이 지난 기억은 버리고 다시 읽는다(탈퇴가 주소 판정에도 반영)", async () => {
+    rememberMembershipRows("user-1", [membership("org-acme", "acme")], Date.now() - 61_000);
+    const { from } = setup({ id: "user-1" }, []);
+    const response = await proxy(new NextRequest("https://www.moa-work.com/w/acme/work"));
+    expect(from).toHaveBeenCalledTimes(1);
     expect(response.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
   });
 });

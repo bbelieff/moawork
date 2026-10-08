@@ -5,6 +5,7 @@ import { safeNextPath } from "@/lib/auth/oauth";
 import { getVerifiedAuthUser } from "@/lib/auth/verified-user";
 import { SESSION_COOKIE } from "@/lib/auth/session";
 import { decideWorkspaceNamespace, isWorkspaceNamespaceCandidate } from "@/lib/auth/workspace-namespace";
+import { forgetMembershipRows, recallMembershipRows, rememberMembershipRows } from "@/lib/auth/proxy-membership-memo";
 import { WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
 
 // Next 16: `middleware` 는 `proxy` 로 대체됐다(node_modules/next/dist/docs — proxy.ts 규약).
@@ -200,12 +201,24 @@ async function routeRequest(
   }
 
   if (user && isWorkspaceNamespaceCandidate(pathname)) {
-    const { data: membershipRows, error: membershipError } = await supabase
-      .from("org_members")
-      .select("org_id, status, role, scope, created_at, orgs!inner(id, slug, status, name, plan_tier, created_at)")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: true });
-    const decision = decideWorkspaceNamespace(`${pathname}${search}`, membershipError ? null : membershipRows);
+    const pathWithSearch = `${pathname}${search}`;
+    // Issue 857 — 같은 사람이 1분 안에 다시 오면 기억한 회사 목록으로 «들어갈 수 있다» 만 판정한다
+    //   (lib/auth/proxy-membership-memo.ts). 거부·없음은 기억을 믿지 않고 지금 다시 읽는다.
+    const remembered = recallMembershipRows(user.id);
+    let decision = remembered === undefined ? null : decideWorkspaceNamespace(pathWithSearch, remembered);
+    if (!decision || (decision.kind !== "rewrite" && decision.kind !== "alias")) {
+      const { data: membershipRows, error: membershipError } = await supabase
+        .from("org_members")
+        .select("org_id, status, role, scope, created_at, orgs!inner(id, slug, status, name, plan_tier, created_at)")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true });
+      decision = decideWorkspaceNamespace(pathWithSearch, membershipError ? null : membershipRows);
+      if (!membershipError && (decision.kind === "rewrite" || decision.kind === "alias")) {
+        rememberMembershipRows(user.id, membershipRows);
+      } else {
+        forgetMembershipRows(user.id);
+      }
+    }
     if (decision.kind === "deny" || decision.kind === "none") {
       const denied = new URL(request.url);
       denied.pathname = "/workspace-entry";
