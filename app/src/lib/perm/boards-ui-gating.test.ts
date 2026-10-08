@@ -84,7 +84,15 @@ describe("boards UI consumes effective permissions", () => {
     expect(table).not.toContain("⠿");
     // BBE-239 — 공지사항 작성자 예외로 canDeleteRow 가 됐지만, role 권한(canDeleteItems)은
     // 여전히 그 계산식 안에 있어야 한다(작성자 예외가 role 권한을 대체하면 안 된다).
-    expect(table).toContain("{canDeleteRow && (");
+    // #845 (2026-10-08) — 업체명 칸의 「삭제」 단추가 빠지고 행 우클릭 메뉴·상세 ⋯ 메뉴로 옮겼다.
+    // 두 진입점 모두 같은 canDeleteRow 로만 「휴지통으로 이동」 을 보인다.
     expect(table).toContain("canDeleteItems ||");
+    expect(table).toContain("openRowMenuFromEvent(event, row, canDeleteRow)");
+    expect(table).toContain("canTrash={canDeleteRow}");
+    const rowMenu = readFileSync(join(__dirname, "..", "..", "components", "board", "RowContextMenu.tsx"), "utf8");
+    expect(rowMenu).toContain("{request.canTrash ? (");
+    const detailPanel = readFileSync(join(__dirname, "..", "..", "components", "board", "ItemDetailPanel.tsx"), "utf8");
+    expect(detailPanel).toContain("canTrash = false,");
+    expect(detailPanel).toContain("{canTrash ? (");
   });
 });

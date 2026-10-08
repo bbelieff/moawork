@@ -70,7 +70,10 @@ describe("Issue #568 global overlay contract", () => {
 
   it("보드 모달은 scrim과 dialog를 별도 의미 레이어로 렌더한다", () => {
     expect(boardDialogPortal).toContain('className="mw-layer-scrim fixed inset-0 bg-black/45"');
-    expect(boardDialogPortal).toContain('className="mw-layer-dialog fixed inset-0');
+    // #845 (2026-10-08) — 패널 자리(정렬·여백)만 layerClassName 으로 바꿀 수 있다(탭 설정의 모바일 바닥 시트).
+    // 의미 레이어와 전체 덮기(fixed inset-0)는 바꿀 수 없고, 기본 자리는 여전히 가운데다.
+    expect(boardDialogPortal).toContain("className={`mw-layer-dialog fixed inset-0 flex ${layerClassName}`}");
+    expect(boardDialogPortal).toContain('layerClassName = "items-center justify-center p-3"');
     expect(boardDialogPortal.indexOf("mw-layer-scrim")).toBeLessThan(boardDialogPortal.indexOf("mw-layer-dialog"));
   });
 });
