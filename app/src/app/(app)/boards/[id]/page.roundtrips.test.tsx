@@ -63,6 +63,9 @@ const probe = vi.hoisted(() => {
   const tables: Record<string, unknown[]> = {};
   const rpcs: Record<string, unknown> = {};
   const rpcErrors: Record<string, unknown> = {};
+  // Issue 857 — 어느 회사로 판정했는지 본다(이른 판정을 버리는 경로 확인용). 값이 함수면 인자로 응답을 고른다.
+  const rpcCalls: Array<{ name: string; args: Record<string, unknown> | undefined; wave: number }> = [];
+  let cookieOrg: string | null = "org-1";
 
   function thenable(label: string, produce: () => unknown, error: () => unknown = () => null) {
     return {
@@ -112,7 +115,7 @@ const probe = vi.hoisted(() => {
       };
     }
     q.select = (columns?: string) => {
-      if (typeof columns === "string" && columns.includes("item_values(")) embedsValues = true;
+      if (typeof columns === "string" && /item_values[!(]/.test(columns)) embedsValues = true;
       return q;
     };
     q.is = (column: string, value: unknown) => {
@@ -184,7 +187,15 @@ const probe = vi.hoisted(() => {
         }),
     },
     from: (table: string) => makeQuery(table),
-    rpc: (name: string) => thenable(rpcLabel(name), () => rpcs[name] ?? null, () => rpcErrors[name] ?? null),
+    rpc: (name: string, args?: Record<string, unknown>) => {
+      rpcCalls.push({ name, args, wave });
+      const value = rpcs[name];
+      return thenable(
+        rpcLabel(name),
+        () => (typeof value === "function" ? (value as (input: typeof args) => unknown)(args) : value) ?? null,
+        () => rpcErrors[name] ?? null,
+      );
+    },
   };
 
   return {
@@ -192,7 +203,10 @@ const probe = vi.hoisted(() => {
     tables,
     rpcs,
     rpcErrors,
+    rpcCalls,
     trips,
+    get cookieOrg() { return cookieOrg; },
+    set cookieOrg(value: string | null) { cookieOrg = value; },
     get traceId() { return traceId; },
     set traceId(value: string | null) { traceId = value; },
     get requestStart() { return requestStart; },
@@ -204,6 +218,8 @@ const probe = vi.hoisted(() => {
       traceId = null;
       requestStart = null;
       trips.length = 0;
+      rpcCalls.length = 0;
+      cookieOrg = "org-1";
       for (const key of Object.keys(rpcErrors)) delete rpcErrors[key];
     },
   };
@@ -217,7 +233,11 @@ vi.mock("@/lib/supabase/env", () => ({
 }));
 vi.mock("next/headers", () => ({
   // Issue 857 — 프록시가 이 요청에서 확인해 심은 회사(mw_org). 화면은 이것으로 판정을 세션과 같이 출발시킨다.
-  cookies: async () => ({ get: (name: string) => (name === "mw_org" ? { value: "org-1" } : undefined), getAll: () => [], set: () => {} }),
+  cookies: async () => ({
+    get: (name: string) => (name === "mw_org" && probe.cookieOrg ? { value: probe.cookieOrg } : undefined),
+    getAll: () => [],
+    set: () => {},
+  }),
   headers: async () => ({
     get: (name: string) => {
       const normalized = name.toLowerCase();
@@ -618,6 +638,46 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
       expect(run.countOf("select:board_views")).toBe(0);
       expect(run.countOf("select:org_members")).toBeLessThanOrEqual(1);
     }
+  });
+
+  describe("Issue 857 · 이른 판정은 세션이 고른 회사일 때만 쓴다", () => {
+    const allowAll = () => ({ ...(probe.rpcs.effective_permissions as Record<string, boolean>) });
+    const orgsAsked = () => probe.rpcCalls
+      .filter((call) => call.name === "effective_permissions")
+      .map((call) => call.args?.p_org_id);
+
+    // 세션은 같은 쿠키 회사를 고른다(chooseSessionMembership) — 회원이 아닌 회사면 세션 자체가 없다.
+    //   그래서 «다른 회사» 의 이른 판정은 결과가 어떻든 보드 읽기로 이어지지 않아야 한다.
+    it("쿠키가 회원 아닌 회사를 가리키면 그 판정(허용)과 상관없이 보드를 한 줄도 읽지 않는다", async () => {
+      const run = await renderBoardAttempt({}, () => {
+        probe.cookieOrg = "org-x";
+        const allowed = allowAll();
+        probe.rpcs.effective_permissions = () => allowed;
+      });
+      expect((run.error as Error)?.message).toBe("HARNESS_REDIRECT");
+      expect(orgsAsked()).toEqual(["org-x"]);
+      expect(run.countOf("select:boards")).toBe(0);
+      expect(run.countOf("select:board_columns")).toBe(0);
+      expect(run.countOf("select:items:active")).toBe(0);
+      expect(run.countOf("select:board_views")).toBe(0);
+    });
+
+    it("쿠키가 없으면 세션 뒤에 세션 회사로 한 번만 판정한다", async () => {
+      const run = await renderBoardAttempt({}, () => {
+        probe.cookieOrg = null;
+      });
+      expect(run.error).toBeNull();
+      expect(orgsAsked()).toEqual(["org-1"]);
+      const sessionWave = Math.min(...run.trips.filter((trip) => trip.label === "select:org_members").map((trip) => trip.wave));
+      const guardWave = run.trips.find((trip) => trip.label === "rpc:effective_permissions")?.wave;
+      expect(guardWave).toBeGreaterThan(sessionWave);
+    });
+
+    it("쿠키가 세션 회사와 같으면 이른 판정을 그대로 쓴다(다시 묻지 않음)", async () => {
+      const run = await renderBoard();
+      expect(orgsAsked()).toEqual(["org-1"]);
+      expect(run.trips.find((trip) => trip.label === "rpc:effective_permissions")?.wave).toBe(0);
+    });
   });
 
   it("휴지통·보관 권한이 없으면 deleted/archived read 0, 있으면 1이며 값은 둘 다 행과 함께 온다", async () => {
