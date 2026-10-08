@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/purity -- Async Server Component timing is emitted only to an operational log, never rendered. */
 import { WorkspaceLink } from "@/components/shell/WorkspaceLink";
+import { scheduleDefaultTabRepair } from "@/lib/workspace-entry/default-tab-repair";
 import { notFound } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { applyAs, getSession } from "@/lib/auth/session";
@@ -198,6 +199,8 @@ export default async function BoardPage({
 
   const { detail, items: loadedItems, deletedItems } = snapshot;
   const { board, columns, groups } = detail;
+  // Issue 857 — 사이드바가 기본 탭으로 바로 오면 경유지 점검을 안 거친다. 응답 뒤에 대신 돌린다.
+  await scheduleDefaultTabRepair(ctx, board.source);
   const canMoveRows = !board.is_system && canEditItems
     && (ctx.role === "owner" || ctx.role === "admin" || ctx.scope === "all");
   const view = sp.view === "kanban" ? "kanban" : sp.view === "flat" ? "flat" : sp.view === "calendar" ? "calendar" : "table";
