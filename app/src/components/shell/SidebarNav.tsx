@@ -25,6 +25,7 @@ import {
 } from "./nav-items";
 import { resolveActiveNavKey, resolveConsultationNavKey } from "./active-nav";
 import { workspaceHref } from "./workspace-href";
+import { directBoardHref } from "./direct-tab-href";
 
 // 사이드바 메뉴 목록 — 활성 표시를 위해 클라이언트 컴포넌트.
 // 잠금/미구현 판정은 서버(레이아웃)에서 내려받는다(엔타이틀먼트는 서버 진실).
@@ -139,7 +140,10 @@ function SidebarNavContent({
     const isLocked = item.feature ? locked.has(item.feature) : false;
     // 실제 라우트가 있는 잠금 메뉴는 안내 화면에 도달할 수 있도록 링크를 유지한다.
     const unavailable = !item.href;
-    const resolvedHref = item.href ? workspaceHref(workspaceBasePath, item.href) : undefined;
+    // Issue 857 — 기본 탭은 그 보드가 딱 하나면 경유지를 거치지 않고 바로 간다.
+    const resolvedHref = item.href
+      ? workspaceHref(workspaceBasePath, directBoardHref(item.key, boardNavKeys) ?? item.href)
+      : undefined;
     const active = !isLocked && !unavailable && item.key === activeKey;
 
     const badge = item.badgeKey ? badges?.[item.badgeKey] : undefined;
