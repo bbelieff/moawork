@@ -108,7 +108,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const shellReads = Promise.all([
     trustedOwnerOrgId ? loadWorkspaceApprovals(trustedOwnerOrgId) : Promise.resolve<WorkspaceApprovals | null>(null),
     // Issue 857 — 위에서 검증한 세션을 넘겨 인증 서버 재확인(getUser)·관리자 폴백 RPC 를 다시 하지 않는다.
-    loadWorkspaceEntryContext(undefined, { email: ctx.user.email, isAppAdmin: ctx.isPlatformAdmin === true }),
+    //   레이아웃은 요청 목록만 쓴다 — 플랫폼 생성 요청 대기열은 읽지 않는다(관리자의 둘째 물결).
+    loadWorkspaceEntryContext(undefined, { email: ctx.user.email, isAppAdmin: ctx.isPlatformAdmin === true, skipPlatformQueue: true }),
     loadPlatformActor(undefined, { userId: ctx.user.id }),
     routing.kind === "ready"
       ? loadOrgLogoSignedUrls(routing.memberships.map((membership) => membership.orgId))

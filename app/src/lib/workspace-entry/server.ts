@@ -195,6 +195,8 @@ export async function readWorkspaceEntryContext(
    * 주면 폴백 RPC 를 다시 부르지 않는다(셸 읽기의 셋째 물결). 안 주면 지금처럼 부른다.
    */
   knownAppAdmin?: boolean,
+  /** Issue 857 — 플랫폼 생성 요청 대기열을 쓰지 않는 호출부(레이아웃)는 읽지 않는다(관리자의 둘째 물결). */
+  skipPlatformQueue?: boolean,
 ): Promise<WorkspaceEntryContext> {
   const [platformResult, requestsResult] = await Promise.all([
     client.rpc("is_platform_admin"),
@@ -227,7 +229,7 @@ export async function readWorkspaceEntryContext(
   if (!requests) return { kind: "error" };
 
   let platformCreateRequests: PlatformCreateRequest[] = [];
-  if (isPlatformAdmin) {
+  if (isPlatformAdmin && !skipPlatformQueue) {
     const result = await client.rpc("list_pending_workspace_create_requests");
     if (result.error) return { kind: "error" };
     const parsed = parsePlatformQueue(result.data);
@@ -258,8 +260,9 @@ export async function loadWorkspaceEntryContext(
   /**
    * Issue 857 — 이 요청에서 이미 검증한 세션(getSession: 토큰 서명 + app_admin_role)을 넘기면
    * 인증 서버에 이메일을 다시 묻지 않고(getUser 왕복), 폴백 RPC 도 다시 부르지 않는다.
+   * skipPlatformQueue: 플랫폼 생성 요청 대기열을 쓰지 않으면 읽지 않는다(빈 목록).
    */
-  verified?: { email: string | null; isAppAdmin: boolean },
+  verified?: { email: string | null; isAppAdmin: boolean; skipPlatformQueue?: boolean },
 ): Promise<WorkspaceEntryContext> {
   // 위와 같은 이유. «조회 불가» 는 이미 있는 error 종류로 표현한다 — 호출부가 ready 만 소비한다.
   if (!hasSupabaseEnv()) return { kind: "error" };
@@ -270,6 +273,7 @@ export async function loadWorkspaceEntryContext(
       ownerOrgId,
       verified.email,
       verified.isAppAdmin,
+      verified.skipPlatformQueue,
     );
   }
   // 폴백 판정용 이메일. 실패해도 진행한다 — 이메일이 없으면 폴백만 건너뛴다.

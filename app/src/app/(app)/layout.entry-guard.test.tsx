@@ -141,6 +141,7 @@ describe("BBE-139 root entry guard", () => {
     expect(mocks.loadWorkspaceEntryContext).toHaveBeenCalledWith(undefined, {
       email: sessionCtx.user.email ?? null,
       isAppAdmin: sessionCtx.isPlatformAdmin === true,
+      skipPlatformQueue: true,
     });
     // 앞에서 통과한 점검을 기억해야 다음 화면부터 미룰 수 있다.
     expect(mocks.markBootstrapChecked).toHaveBeenCalledWith(sessionCtx.org.id, sessionCtx.user.id);
