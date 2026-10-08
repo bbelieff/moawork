@@ -165,9 +165,11 @@ const probe = vi.hoisted(() => {
 
   const client = {
     auth: {
-      getUser: () =>
-        roundtrip("auth.getUser", {
-          data: { user: { id: "user-1", email: "member@example.test" } },
+      // Issue 857 — 세션은 getClaims 로 확인한다. 비대칭 키면 왕복이 없지만, 대칭 키(getUser 폴백)일
+      //   수도 있으므로 계측은 보수적으로 한 번의 왕복으로 센다.
+      getClaims: () =>
+        roundtrip("auth.getClaims", {
+          data: { claims: { sub: "user-1", email: "member@example.test" } },
           error: null,
         }),
     },
@@ -367,7 +369,7 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
   // 왕복 수가 «작게» 나와서 «빨라 보이는» 거짓 통과가 된다. 그래서 먼저 경로를 확인한다.
   it("하니스가 실제 데이터 경로를 탄다 — 조기 이탈이 아니다", async () => {
     const run = await renderBoard();
-    expect(run.countOf("auth.getUser")).toBe(1);
+    expect(run.countOf("auth.getClaims")).toBe(1);
     expect(run.countOf("select:boards")).toBeGreaterThan(0);
     expect(run.countOf("select:items:active")).toBeGreaterThan(0);
   });

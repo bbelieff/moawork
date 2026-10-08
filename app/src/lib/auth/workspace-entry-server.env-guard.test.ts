@@ -28,7 +28,7 @@ describe("loadWorkspaceRoutingSnapshot — Supabase 미설정 가드", () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon-key-for-test");
     createClient.mockResolvedValue({
-      auth: { getUser: async () => ({ data: { user: null }, error: null }) },
+      auth: { getClaims: async () => ({ data: null, error: null }) },
     });
     const { loadWorkspaceRoutingSnapshot } = await import("./workspace-entry-server");
 

@@ -14,20 +14,25 @@ function membership(orgId: string, slug: string) {
   return { org_id: orgId, status: "active", role: "member", scope: "assigned", created_at: "2026-01-01T00:00:00Z", orgs: { id: orgId, slug, status: "active", name: "샘플", plan_tier: "t1_3", created_at: "2026-01-01T00:00:00Z" } };
 }
 
+function claimsFor(user: { id: string } | null) {
+  return user ? { data: { claims: { sub: user.id } }, error: null } : { data: null, error: null };
+}
+
 function setup(user: { id: string } | null, rows: unknown[] = []) {
   const order = vi.fn().mockResolvedValue({ data: rows, error: null });
   const eq = vi.fn(() => ({ order }));
   const select = vi.fn(() => ({ eq }));
-  mocks.createServerClient.mockReturnValue({ auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) }, from: vi.fn(() => ({ select })) });
+  // Issue 857 — 프록시는 토큰 서명 확인(getClaims)으로 사람을 안다.
+  mocks.createServerClient.mockReturnValue({ auth: { getClaims: vi.fn().mockResolvedValue(claimsFor(user)) }, from: vi.fn(() => ({ select })) });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BBE-200 — 갱신 세션 쿠키가 «모든» 응답에 실리는가
 //
 // 기존 테스트가 이 결함을 통과시킨 이유: 위 setup() 의 가짜 클라이언트는
-// getUser() 가 쿠키 어댑터의 setAll 을 «한 번도 부르지 않는다». 즉 토큰 회전이
+// 토큰 확인(당시 getUser, 지금 getClaims) 이 쿠키 어댑터의 setAll 을 «한 번도 부르지 않는다». 즉 토큰 회전이
 // 일어나지 않는 세계만 검사했다 — 검사 경계가 실제 실행 경로보다 좁았다.
-// 아래 setupRotating() 은 getUser() 안에서 실제로 setAll 을 호출해
+// 아래 setupRotating() 은 토큰 확인 안에서 실제로 setAll 을 호출해
 // @supabase/ssr 의 토큰 회전을 재현한다.
 // (쿠키 값은 전부 가짜다. 실제 토큰·키를 쓰지 않는다 — AGENTS.md §9.2)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,9 +61,9 @@ function setupRotating(user: { id: string } | null, rows: unknown[], refresh: Re
   mocks.createServerClient.mockImplementation(
     (_url: string, _anonKey: string, options: { cookies: { setAll: (cookies: WrittenCookie[]) => void } }) => ({
       auth: {
-        getUser: vi.fn(async () => {
+        getClaims: vi.fn(async () => {
           refresh((cookies) => options.cookies.setAll(cookies));
-          return { data: { user } };
+          return claimsFor(user);
         }),
       },
       from: vi.fn(() => ({ select })),
