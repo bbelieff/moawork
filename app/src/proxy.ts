@@ -5,6 +5,7 @@ import { safeNextPath } from "@/lib/auth/oauth";
 import { getVerifiedAuthUser } from "@/lib/auth/verified-user";
 import { SESSION_COOKIE } from "@/lib/auth/session";
 import { decideWorkspaceNamespace, isWorkspaceNamespaceCandidate } from "@/lib/auth/workspace-namespace";
+import { forgetMembershipRows, recallMembershipRows, rememberMembershipRows } from "@/lib/auth/proxy-membership-memo";
 import { WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
 
 // Next 16: `middleware` 는 `proxy` 로 대체됐다(node_modules/next/dist/docs — proxy.ts 규약).
@@ -106,6 +107,9 @@ function createRefreshedCookieJar() {
     upsert(cookies: RefreshedCookie[]) {
       for (const cookie of cookies) pending.set(cookie.name, cookie);
     },
+    count() {
+      return pending.size;
+    },
     applyTo(response: NextResponse) {
       for (const cookie of pending.values()) {
         response.cookies.set(cookie.name, cookie.value, cookie.options);
@@ -129,9 +133,33 @@ function isPublicPath(pathname: string): boolean {
   );
 }
 
+/**
+ * Issue 857 — 프록시 한 번에 걸린 시간(토큰 확인·회사 목록). 화면·액션 요청에만 남긴다(추적 id 가 붙은 요청).
+ * 값은 숫자와 고정 낱말뿐 — 사용자·회사 식별자나 쿠키는 남기지 않는다.
+ */
+type ProxyTiming = { claimsMs: number | null; membership: "none" | "memo" | "read"; membershipMs: number | null };
+
+const TRACE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function logProxyTiming(request: NextRequest, startedAt: number, timing: ProxyTiming, refreshedCookies: number) {
+  const traceId = request.headers.get("x-mw-trace-id");
+  if (!traceId || !TRACE_ID_PATTERN.test(traceId)) return;
+  const round = (value: number | null) => (value === null ? null : Math.round(value * 10) / 10);
+  console.info(JSON.stringify({
+    event: "mw.proxy",
+    trace_id: traceId,
+    total_ms: round(performance.now() - startedAt),
+    claims_ms: round(timing.claimsMs),
+    membership: timing.membership,
+    membership_ms: round(timing.membershipMs),
+    refreshed_cookies: refreshedCookies,
+  }));
+}
+
 async function routeRequest(
   request: NextRequest,
   jar: ReturnType<typeof createRefreshedCookieJar>,
+  timing: ProxyTiming,
 ): Promise<RouteDecision> {
   // nextUrl normalizes loopback hosts; request.url preserves the router origin
   // with skipProxyUrlNormalize. Use that origin for every rewrite and redirect.
@@ -182,7 +210,9 @@ async function routeRequest(
 
   // 토큰을 검증·갱신한다(세션 유지의 핵심). Issue 857 — getUser 대신 서명 확인(getClaims):
   // 비대칭 키면 인증 서버 왕복 없이 끝난다. 이 줄은 모든 요청(이동·액션·미리 받기)이 지난다.
+  const claimsStartedAt = performance.now();
   const user = await getVerifiedAuthUser(supabase);
+  timing.claimsMs = performance.now() - claimsStartedAt;
 
   // 미인증 + 비공개 경로 → 로그인으로.
   // ★ 이 응답도 갱신 쿠키를 실어야 한다. refresh 실패 시 @supabase/ssr 은
@@ -200,12 +230,28 @@ async function routeRequest(
   }
 
   if (user && isWorkspaceNamespaceCandidate(pathname)) {
-    const { data: membershipRows, error: membershipError } = await supabase
-      .from("org_members")
-      .select("org_id, status, role, scope, created_at, orgs!inner(id, slug, status, name, plan_tier, created_at)")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: true });
-    const decision = decideWorkspaceNamespace(`${pathname}${search}`, membershipError ? null : membershipRows);
+    const pathWithSearch = `${pathname}${search}`;
+    // Issue 857 — 같은 사람이 1분 안에 다시 오면 기억한 회사 목록으로 «들어갈 수 있다» 만 판정한다
+    //   (lib/auth/proxy-membership-memo.ts). 거부·없음은 기억을 믿지 않고 지금 다시 읽는다.
+    const remembered = recallMembershipRows(user.id);
+    let decision = remembered === undefined ? null : decideWorkspaceNamespace(pathWithSearch, remembered);
+    timing.membership = "memo";
+    if (!decision || (decision.kind !== "rewrite" && decision.kind !== "alias")) {
+      timing.membership = "read";
+      const membershipStartedAt = performance.now();
+      const { data: membershipRows, error: membershipError } = await supabase
+        .from("org_members")
+        .select("org_id, status, role, scope, created_at, orgs!inner(id, slug, status, name, plan_tier, created_at)")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true });
+      timing.membershipMs = performance.now() - membershipStartedAt;
+      decision = decideWorkspaceNamespace(pathWithSearch, membershipError ? null : membershipRows);
+      if (!membershipError && (decision.kind === "rewrite" || decision.kind === "alias")) {
+        rememberMembershipRows(user.id, membershipRows);
+      } else {
+        forgetMembershipRows(user.id);
+      }
+    }
     if (decision.kind === "deny" || decision.kind === "none") {
       const denied = new URL(request.url);
       denied.pathname = "/workspace-entry";
@@ -280,8 +326,11 @@ function buildResponse(request: NextRequest, decision: RouteDecision, jar: Retur
 }
 
 export async function proxy(request: NextRequest) {
+  const startedAt = performance.now();
   const jar = createRefreshedCookieJar();
-  const decision = await routeRequest(request, jar);
+  const timing: ProxyTiming = { claimsMs: null, membership: "none", membershipMs: null };
+  const decision = await routeRequest(request, jar, timing);
+  logProxyTiming(request, startedAt, timing, jar.count());
   if (decision.kind === "rewrite") {
     const requestHeaders = new Headers(decision.requestHeaders);
     // BBE-222: this is a trusted path hint only. Strip any caller-supplied
