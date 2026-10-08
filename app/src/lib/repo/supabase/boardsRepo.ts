@@ -63,6 +63,13 @@ function columnRow(row: Row): BoardColumn {
 }
 
 /** Request-scoped authenticated adapter. The injected client carries the user's cookies; RLS owns isolation. */
+/**
+ * 행에 값을 묶어 읽는 select. item_values → items 외래키가 둘이라(003 의 item_id 단일 키, 087 의
+ * (org_id,item_id) 복합 키) 이름 없이 `item_values(*)` 로 묶으면 PostgREST 가 PGRST201(관계 모호)로
+ * 거부한다(운영 실측). 회사 일치까지 보장하는 087 복합 키로 고정한다.
+ */
+export const ITEMS_WITH_VALUES_SELECT = "*, item_values!item_values_org_item_fkey(*)";
+
 export class SupabaseBoardsRepo implements BoardsRepo {
   constructor(private readonly client: SupabaseClient) {}
 
@@ -254,6 +261,23 @@ export class SupabaseBoardsRepo implements BoardsRepo {
   async listItems(ctx: Ctx, boardId: string): Promise<BoardItem[]> { const q=await this.client.from("items").select("*").eq("org_id",ctx.org.id).eq("board_id",boardId).is("deleted_at",null).is("archived_at",null).order("sort_order"); return many<BoardItem>(q.data,q.error); }
   async listDeletedItems(ctx: Ctx, boardId: string): Promise<BoardItem[]> { const q=await this.client.from("items").select("*").eq("org_id",ctx.org.id).eq("board_id",boardId).not("deleted_at","is",null).order("deleted_at",{ascending:false}); return many<BoardItem>(q.data,q.error); }
   async listArchivedItems(ctx: Ctx, boardId: string): Promise<BoardItem[]> { const q=await this.client.from("items").select("*").eq("org_id",ctx.org.id).eq("board_id",boardId).is("deleted_at",null).not("archived_at","is",null).order("archived_at",{ascending:false}); return many<BoardItem>(q.data,q.error); }
+  async listItemsWithValues(ctx: Ctx, boardId: string, scope: "active" | "deleted" | "archived"): Promise<{ items: BoardItem[]; values: ItemValue[] }> {
+    // Issue 857 — 행과 값을 한 왕복으로. 값은 같은 RLS 아래 행에 묶여 온다(각 행의 값이라 행 수 제한에 함께 묶이지 않는다).
+    const base = () => this.client.from("items").select(ITEMS_WITH_VALUES_SELECT).eq("org_id", ctx.org.id).eq("board_id", boardId);
+    const result = scope === "active"
+      ? await base().is("deleted_at", null).is("archived_at", null).order("sort_order")
+      : scope === "deleted"
+        ? await base().not("deleted_at", "is", null).order("deleted_at", { ascending: false })
+        : await base().is("deleted_at", null).not("archived_at", "is", null).order("archived_at", { ascending: false });
+    const rows = many<BoardItem & { item_values?: ItemValue[] | null }>(result.data, result.error);
+    const items: BoardItem[] = [];
+    const values: ItemValue[] = [];
+    for (const { item_values: embedded, ...item } of rows) {
+      items.push(item);
+      for (const value of embedded ?? []) if (value.org_id === ctx.org.id) values.push(value);
+    }
+    return { items, values };
+  }
   async getItem(ctx: Ctx,id:string):Promise<BoardItem|undefined>{const q=await this.client.from("items").select("*").eq("org_id",ctx.org.id).eq("id",id).is("deleted_at",null).is("archived_at",null).maybeSingle();if(q.error)throw new Error(q.error.message);return(q.data??undefined)as BoardItem|undefined;}
   async getArchivedItem(ctx: Ctx,id:string):Promise<BoardItem|undefined>{const q=await this.client.from("items").select("*").eq("org_id",ctx.org.id).eq("id",id).is("deleted_at",null).not("archived_at","is",null).maybeSingle();if(q.error)throw new Error(q.error.message);return(q.data??undefined)as BoardItem|undefined;}
   async createItem(ctx:Ctx,boardId:string,input:NewItem):Promise<BoardItem>{const rows=await this.listItems(ctx,boardId);const assignedTo=canSeeAll(ctx)?(input.assigned_to??null):ctx.user.id;const q=await this.client.from("items").insert({org_id:ctx.org.id,board_id:boardId,group_id:input.group_id??null,title:input.title,assigned_to:assignedTo,sort_order:rows.length}).select("*").single();const item=one<BoardItem>(q.data,q.error);if(input.values)await this.setValues(ctx,item.id,input.values);return item;}

@@ -193,6 +193,12 @@ export interface BoardsRepo {
   deleteItem(ctx: Ctx, boardId: string, id: string): Promise<boolean>;
   restoreItem(ctx: Ctx, boardId: string, id: string): Promise<BoardItem | undefined>;
 
+  /**
+   * Issue 857 — 행과 그 셀 값을 한 번에(한 왕복) 읽는다. 보드 화면 스냅샷만 쓴다.
+   * 없으면(로컬 저장소) 서비스가 행 → 값 두 번으로 읽는다. 범위는 listItems/listDeletedItems/listArchivedItems 와 같다.
+   */
+  listItemsWithValues?(ctx: Ctx, boardId: string, scope: "active" | "deleted" | "archived"): Promise<{ items: BoardItem[]; values: ItemValue[] }>;
+
   // 셀 값(EAV)
   listValues(ctx: Ctx, itemIds: string[]): Promise<ItemValue[]>;
   setValues(ctx: Ctx, itemId: string, patch: Record<string, CellValue>): Promise<void>;

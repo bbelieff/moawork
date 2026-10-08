@@ -3,7 +3,7 @@ import { WorkspaceLink } from "@/components/shell/WorkspaceLink";
 import { scheduleDefaultTabRepair } from "@/lib/workspace-entry/default-tab-repair";
 import { notFound } from "next/navigation";
 import { cookies, headers } from "next/headers";
-import { applyAs, getSession } from "@/lib/auth/session";
+import { applyAs, getSession, SESSION_COOKIE } from "@/lib/auth/session";
 import { CELL_FLASH_COOKIE, decodeCellFlash } from "@/lib/boards/cellFlash";
 import {
   BOARD_ACTION_FLASH_COOKIE,
@@ -138,12 +138,10 @@ export default async function BoardPage({
   const sessionStartedAt = performance.now();
   const { id } = await params;
   const sp = await searchParams;
-  const ctx = applyAs(await getSession(), sp.as);
-  const sessionTiming = phaseTiming(startedAt, sessionStartedAt);
-  // BBE-214 — 두 판정은 같은 ctx만 소비하고 서로의 결과에 의존하지 않는다.
+  // BBE-214 — 두 판정은 같은 회사 id만 소비하고 서로의 결과에 의존하지 않는다.
   // 둘 다 통과하기 전에는 board metadata를 읽지 않으므로 fail-closed 순서는 유지한다.
-  const [permissionsMeasured, scopedItemsMeasured] = await Promise.all([
-    measurePagePhase(startedAt, () => loadPermGuards(ctx.org.id, [
+  const readGuards = (guardOrgId: string) => Promise.all([
+    measurePagePhase(startedAt, () => loadPermGuards(guardOrgId, [
         "work.view_tabs",
         "work.item_upsert",
         "work.item_delete",
@@ -154,8 +152,19 @@ export default async function BoardPage({
         "structure.preset_edit",
         "structure.tab_manage",
       ])),
-    measurePagePhase(startedAt, () => loadPermissionScopedWorkItems(ctx.org.id)),
+    measurePagePhase(startedAt, () => loadPermissionScopedWorkItems(guardOrgId)),
   ]);
+  // Issue 857 — 판정은 회사 id 만 있으면 된다. 프록시가 이 요청에서 멤버십을 확인해 심은 회사(mw_org)로
+  //   세션 확인과 «같이» 출발시키고, 세션이 고른 회사와 다르면 버리고 세션 회사로 다시 판정한다.
+  //   판정은 DB 가 이 사람(auth.uid())으로 하므로 일찍 출발해도 권한이 넓어지지 않는다.
+  const presetOrgId = (await cookies()).get(SESSION_COOKIE.org)?.value ?? null;
+  const earlyGuards = presetOrgId ? readGuards(presetOrgId) : null;
+  earlyGuards?.catch(() => {});
+  const ctx = applyAs(await getSession(), sp.as);
+  const sessionTiming = phaseTiming(startedAt, sessionStartedAt);
+  const [permissionsMeasured, scopedItemsMeasured] = await (
+    earlyGuards && presetOrgId === ctx.org.id ? earlyGuards : readGuards(ctx.org.id)
+  );
   const permissions = permissionsMeasured.value;
   const scopedItems = scopedItemsMeasured.value;
   const viewTabs = permissions["work.view_tabs"];
