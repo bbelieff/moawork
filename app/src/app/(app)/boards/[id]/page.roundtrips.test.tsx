@@ -692,6 +692,29 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
       expect(run.countOf("select:departments")).toBe(1);
     });
 
+    it("기억이 «신규리드» 인데 실제가 계약업체면 꼬리에서 회사·건 목록을 한 번 읽는다", async () => {
+      await renderBoard({}, newLead);
+      const run = await renderBoard({}, contract, { keepBoardSourceMemo: true });
+      expect(run.countOf("select:companies")).toBe(1);
+      expect(run.countOf("select:deals")).toBe(1);
+      expect(waveOf(run, "select:companies")).toBeGreaterThan(waveOf(run, "select:items:active") ?? 0);
+    });
+
+    it("기억이 있어도 권한이 거부되면 꼬리 읽기를 하나도 띄우지 않는다", async () => {
+      await renderBoard({}, contract);
+      const denied = await renderBoardAttempt({}, () => {
+        contract();
+        probe.rpcs.effective_permissions = {
+          ...(probe.rpcs.effective_permissions as Record<string, boolean>),
+          "work.view_tabs": false,
+        };
+      }, { keepBoardSourceMemo: true });
+      expect((denied.error as Error)?.message).toBe("HARNESS_NOT_FOUND");
+      for (const label of ["select:companies", "select:deals", "select:departments", "select:department_members", "rpc:list_member_account_profiles"]) {
+        expect(denied.countOf(label), label).toBe(0);
+      }
+    });
+
     it("두 번째 방문은 꼬리 읽기가 행과 같은 물결이라 직렬 단계가 하나 준다(왕복 수는 같음)", async () => {
       const first = await renderBoard();
       const second = await renderBoard({}, undefined, { keepBoardSourceMemo: true });
