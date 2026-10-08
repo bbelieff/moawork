@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { workspaceHref } from "@/components/shell/workspace-href";
+import { startVerifiedWorkspaceBasePath } from "@/lib/auth/workspace-href-server";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { repairContractWorkBoardOnEntry } from "@/lib/work/entry";
 import { createClient } from "@/lib/supabase/server";
@@ -30,6 +32,8 @@ export default async function ContractWorkBoardPage({
   searchParams: Promise<{ as?: string; notification?: string }>;
 }) {
   const sp = await searchParams;
+  // Issue 857 — base 경로는 점검과 동시에 읽어 둔다(307 한 번 없애기, 기다림은 안 늘어남).
+  const basePath = startVerifiedWorkspaceBasePath();
   const ctx = applyAs(await getSession(), sp.as);
   const result = await repairContractWorkBoardOnEntry(ctx, await createClient({ noStore: true }));
   if (result.kind === "dismissed") return <DismissedDefaultTabNotice tabName={CONTRACT_WORK_TAB.name} />;
@@ -62,5 +66,5 @@ export default async function ContractWorkBoardPage({
   if (sp.notification) params.set("mwFocus", sp.notification);
   const query = params.size > 0 ? `?${params.toString()}` : "";
 
-  redirect(`/boards/${encodeURIComponent(result.boardId)}${query}`);
+  redirect(workspaceHref(await basePath, `/boards/${encodeURIComponent(result.boardId)}${query}`));
 }

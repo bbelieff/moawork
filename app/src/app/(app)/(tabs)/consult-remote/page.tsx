@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { workspaceHref } from "@/components/shell/workspace-href";
+import { startVerifiedWorkspaceBasePath } from "@/lib/auth/workspace-href-server";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { repairContactBoardOnEntry } from "@/lib/contact/entry";
 import { createClient } from "@/lib/supabase/server";
@@ -18,6 +20,8 @@ export default async function ConsultRemotePage({
   searchParams: Promise<{ as?: string }>;
 }) {
   const sp = await searchParams;
+  // Issue 857 — base 경로는 점검과 동시에 읽어 둔다(307 한 번 없애기, 기다림은 안 늘어남).
+  const basePath = startVerifiedWorkspaceBasePath();
   const ctx = applyAs(await getSession(), sp.as);
   const result = await repairContactBoardOnEntry(ctx, await createClient({ noStore: true }));
   if (result.kind === "dismissed") return <DismissedDefaultTabNotice tabName={CONTACT_TAB.name} />;
@@ -45,5 +49,5 @@ export default async function ConsultRemotePage({
   }
   const as = sp.as ? `as=${encodeURIComponent(sp.as)}&` : "";
 
-  redirect(`/boards/${encodeURIComponent(result.boardId)}?${as}consultation=remote`);
+  redirect(workspaceHref(await basePath, `/boards/${encodeURIComponent(result.boardId)}?${as}consultation=remote`));
 }

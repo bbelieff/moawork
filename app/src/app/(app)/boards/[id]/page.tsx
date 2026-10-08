@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/purity -- Async Server Component timing is emitted only to an operational log, never rendered. */
-import Link from "next/link";
+import { WorkspaceLink } from "@/components/shell/WorkspaceLink";
 import { notFound } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { applyAs, getSession } from "@/lib/auth/session";
@@ -395,29 +395,29 @@ export default async function BoardPage({
     boardViewSwitchUrl(nextView, `https://app.local/boards/${id}?${currentQuery}`, nextGroup);
 
   const backLink = (
-    <Link
+    <WorkspaceLink
       href="/boards"
       aria-label="보드 목록으로"
       className="shrink-0 rounded-full px-1.5 text-sm text-mw-sub hover:text-mw-fg"
     >
       ←
-    </Link>
+    </WorkspaceLink>
   );
 
   const viewToggle = (
     <div className="flex shrink-0 items-center rounded-full border border-mw-line p-0.5 text-xs">
-      <Link
+      <WorkspaceLink
         href={switchView("table", groupBy)}
         className={`rounded-full px-2.5 py-1 ${view === "table" ? "bg-mw-tint-blue font-semibold text-mw-record" : "text-mw-sub hover:text-mw-fg"}`}
       >
         테이블
-      </Link>
-      <Link
+      </WorkspaceLink>
+      <WorkspaceLink
         href={switchView("kanban", groupBy)}
         className={`rounded-full px-2.5 py-1 ${view === "kanban" ? "bg-mw-tint-blue font-semibold text-mw-record" : "text-mw-sub hover:text-mw-fg"}`}
       >
         칸반
-      </Link>
+      </WorkspaceLink>
     </div>
   );
 
@@ -553,16 +553,16 @@ export default async function BoardPage({
 
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto text-xs">
           <span className="shrink-0 text-mw-sub">그룹 기준</span>
-          <Link
+          <WorkspaceLink
             href={switchView("kanban", "")}
             className={`shrink-0 rounded-full border px-2.5 py-1 ${groupBy === "" ? "border-mw-record bg-mw-tint-blue text-mw-record" : "border-mw-line text-mw-body"}`}
           >
             그룹
-          </Link>
+          </WorkspaceLink>
           {selectColumns.map((c) => (
             <span key={c.id} className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 ${groupBy===c.key?"border-mw-record bg-mw-tint-blue text-mw-record":"border-mw-line text-mw-body"}`}>
               {!board.is_system&&canManageColumns?<BoardInlineTitleEditor name={c.label} label="컬럼 이름" onSave={renameColumnTitleAction.bind(null,id,c.id)}/>:c.label}
-              <Link href={switchView("kanban",c.key)} aria-label={`${c.label} 기준 칸반 보기`} className="text-[0.65rem] text-mw-sub">보기</Link>
+              <WorkspaceLink href={switchView("kanban",c.key)} aria-label={`${c.label} 기준 칸반 보기`} className="text-[0.65rem] text-mw-sub">보기</WorkspaceLink>
               {!board.is_system&&canManageColumns?<span className="sr-only focus-within:not-sr-only">{([-1,1] as const).map((delta)=>{const ordered=columns.map((column)=>column.id);const from=ordered.indexOf(c.id);const to=Math.max(0,Math.min(ordered.length-1,from+delta));if(from!==to){const [moved]=ordered.splice(from,1);ordered.splice(to,0,moved);}return <form key={delta} action={reorderColumnsAction} className="inline"><input type="hidden" name="boardId" value={id}/><input type="hidden" name="columnIds" value={JSON.stringify(ordered)}/><button type="submit" disabled={from===to} aria-label={`${c.label} ${delta<0?"왼쪽":"오른쪽"}으로 이동`}>{delta<0?"←":"→"}</button></form>;})}</span>:null}
             </span>
           ))}

@@ -1,5 +1,7 @@
 /* eslint-disable react-hooks/purity -- Async Server Component timing is emitted only to an operational log, never rendered. */
 import { redirect } from "next/navigation";
+import { workspaceHref } from "@/components/shell/workspace-href";
+import { startVerifiedWorkspaceBasePath } from "@/lib/auth/workspace-href-server";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { repairNewcustBoardOnEntry } from "@/lib/newcust/entry";
 import { createClient } from "@/lib/supabase/server";
@@ -25,6 +27,8 @@ export default async function NewCustomerPage({
 }) {
   const startedAt = performance.now();
   const sp = await searchParams;
+  // Issue 857 — base 경로는 점검과 동시에 읽어 둔다(307 한 번 없애기, 기다림은 안 늘어남).
+  const basePath = startVerifiedWorkspaceBasePath();
   const ctx = applyAs(await getSession(), sp.as);
   const result = await repairNewcustBoardOnEntry(ctx, await createClient({ noStore: true }));
   if (process.env.NODE_ENV === "production") {
@@ -60,5 +64,5 @@ export default async function NewCustomerPage({
   }
   const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
 
-  redirect(`/boards/${encodeURIComponent(result.boardId)}${query}`);
+  redirect(workspaceHref(await basePath, `/boards/${encodeURIComponent(result.boardId)}${query}`));
 }

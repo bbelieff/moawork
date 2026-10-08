@@ -19,6 +19,7 @@
 import { ResultBanner } from "@/lib/ui/ResultBanner";
 import type { ResultNotice } from "@/lib/ui/result-notice";
 import { useId, useMemo, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 import { filterLabelOptions, normalizeLabelKey } from "@/lib/boards/label-options";
 
 export type LabelComboOption = Readonly<{ id: string; label: string }>;
@@ -41,6 +42,7 @@ export function LabelCombobox({
   onCreated,
   onSelect,
   interceptChange,
+  optimistic = true,
   disabled = false,
   className,
 }: {
@@ -62,6 +64,11 @@ export function LabelCombobox({
   onSelect?: (next: string | string[]) => void;
   /** true 를 돌려주면 저장을 건너뛰고 표시를 되돌린다 — 낱개→일괄 가로채기. */
   interceptChange?: (nextValue: string) => boolean;
+  /**
+   * Issue 857 단일 + 폼 제출 자리: 고른 값을 저장이 끝나기 전에 바로 보여 준다(기본 켬).
+   * 제출 전에 확인 창으로 취소될 수 있는 셀(문자 발송 컬럼)은 끈다 — 취소돼도 새 값이 남으면 안 된다.
+   */
+  optimistic?: boolean;
   disabled?: boolean;
   className?: string;
 }) {
@@ -94,7 +101,23 @@ export function LabelCombobox({
    */
   const selectionKey = JSON.stringify(propSelectedIds);
   const [localMulti, setLocalMulti] = useState<{ source: string; values: string[] } | null>(null);
-  const selectedIds: readonly string[] = onSelect || !multiple ? propSelectedIds : (localMulti?.source === selectionKey ? localMulti.values : propSelectedIds);
+  /**
+   * Issue 857 — 단일 + 폼 제출 자리의 «방금 고른 값». 서버가 화면을 다시 보내기 전(1~5초)에도
+   * 칸이 새 값을 보여 준다. 그 제출이 끝나면(pending true→false) 내려놓는다 — 그때 부모 value 가
+   * 서버 진실이다(성공이면 새 값, 실패면 원래 값 + 칸 아래 오류). 부모 value 가 바뀌어도 source 가
+   * 안 맞아 저절로 버려진다.
+   */
+  const { pending: formPending } = useFormStatus();
+  const [localSingle, setLocalSingle] = useState<{ source: string; id: string; sawPending: boolean } | null>(null);
+  if (localSingle && formPending && !localSingle.sawPending) setLocalSingle({ ...localSingle, sawPending: true });
+  if (localSingle && !formPending && localSingle.sawPending) setLocalSingle(null);
+  const optimisticSingle = !multiple && !onSelect && localSingle?.source === selectionKey ? localSingle.id : null;
+  const selectedIds: readonly string[] = useMemo(() => {
+    if (optimisticSingle !== null) return [optimisticSingle];
+    if (onSelect || !multiple) return propSelectedIds;
+    return localMulti?.source === selectionKey ? localMulti.values : propSelectedIds;
+  }, [optimisticSingle, onSelect, multiple, propSelectedIds, localMulti, selectionKey]);
+  const savingSingle = !multiple && !onSelect && formPending;
 
   const selectedLabel = useMemo(() => {
     if (multiple || selectedIds.length !== 1) return "";
@@ -123,6 +146,7 @@ export function LabelCombobox({
           (entry) => entry instanceof HTMLInputElement && entry.name === name,
         ) as HTMLInputElement | undefined;
         if (hidden) hidden.value = id;
+        if (optimistic) setLocalSingle({ source: selectionKey, id, sawPending: false });
         form.requestSubmit();
       }
     }
@@ -245,7 +269,7 @@ export function LabelCombobox({
               </span>
             ))
           : (
-            <input type="hidden" name={name} value={Array.isArray(value) ? "" : (value ?? "")} />
+            <input type="hidden" name={name} value={optimisticSingle ?? (Array.isArray(value) ? "" : (value ?? ""))} />
           )}
         <input
           ref={inputRef}
@@ -254,6 +278,10 @@ export function LabelCombobox({
           aria-controls={listboxId}
           aria-activedescendant={activeId}
           aria-label={label}
+          aria-busy={savingSingle || undefined}
+          data-saving={savingSingle ? "true" : undefined}
+          // 고른 값은 placeholder 로 보인다 — 표의 «안내 글자 숨김» 규칙이 이 값을 숨기지 않게 표시한다.
+          data-has-value={!multiple && selectedLabel ? "true" : undefined}
           autoComplete="off"
           disabled={disabled || creating}
           placeholder={multiple ? "검색…" : selectedLabel || "검색…"}
