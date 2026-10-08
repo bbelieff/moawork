@@ -3,7 +3,8 @@ import { Suspense } from "react";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
 import { FEATURES } from "@/lib/product";
-import { loadTodayHome } from "@/lib/dash/today-server";
+import { loadTodayHome, type TodayHomeState } from "@/lib/dash/today-server";
+import { RouteLoading } from "@/components/shell/RouteLoading";
 import { TodayHome } from "@/components/dash/TodayHome";
 import { CompanyStatusSection, CompanyStatusSectionFallback } from "@/components/dash/CompanyStatusSection";
 import { MEMBER_ROLES, type MemberRole } from "@/lib/types";
@@ -23,6 +24,11 @@ import { PlatformAccessNotice } from "@/components/platform/PlatformAccessNotice
 //
 //   ★ 옛 지시를 «지우지 않고» 뒤집힌 경위를 남긴다. 안 그러면 다음 사람이 이 절을 보고
 //     「BBE-186 을 어겼네」로 읽고 되돌린다. 규칙이 바뀐 것이지 어긴 것이 아니다.
+/** «오늘» 을 다 읽으면 그린다 — 기다리는 동안 위 머리말과 아래 회사 현황은 먼저 진행된다. */
+async function TodayHomeWhenReady({ today }: { today: Promise<TodayHomeState> }) {
+  return <TodayHome state={await today} />;
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -36,7 +42,9 @@ export default async function DashboardPage({
   const base = await getSession();
   const devToolsEnabled = process.env.NODE_ENV !== "production";
   const ctx = devToolsEnabled ? applyAs(base, asParam) : base;
-  const today = await loadTodayHome(ctx.org.id);
+  // Issue 857 — «오늘» 읽기를 기다리지 않는다. 오늘과 회사 현황이 각자 기다리며 같이 읽는다
+  //   (전: 오늘을 다 읽은 뒤에야 회사 현황이 읽기 시작해 두 시간이 더해졌다). loadTodayHome 은 던지지 않는다.
+  const today = loadTodayHome(ctx.org.id);
   /*
    * ★ 목록을 손으로 좁혀 적지 않는다. 정본을 그대로 쓴다.
    *   전에는 `const roles: MemberRole[] = ["owner","admin","member"]` 였다 —
@@ -75,7 +83,9 @@ export default async function DashboardPage({
       </header>
 
       <FeatureGateServer orgId={ctx.org.id} feature={FEATURES.dash} label="대시보드">
-        <TodayHome state={today} />
+        <Suspense fallback={<RouteLoading label="오늘 할 일을 불러오는 중이에요." />}>
+          <TodayHomeWhenReady today={today} />
+        </Suspense>
       </FeatureGateServer>
 
       {/* ── 아래 절: 회사 현황 (BBE-215) ──
