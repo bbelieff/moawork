@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { Ctx } from "@/lib/types";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { getSession } from "@/lib/auth/session";
@@ -24,14 +25,23 @@ import { NotificationBell } from "@/components/notify/NotificationBell";
 import { loadNotifySnapshot } from "@/lib/notify/server";
 import { loadSidebarBoards } from "@/lib/shell/board-nav-map";
 import { loadPermGuard } from "@/lib/perm/guard";
-import { purgeExpiredTrashedTabs } from "@/lib/boards/trash-maintenance";
+import { scheduleExpiredTrashPurge } from "@/lib/boards/trash-maintenance";
 import { createRequestBoards } from "@/lib/boards/server";
 import { loadPlatformActor } from "@/lib/platform/actor";
-import { ensureApprovedWorkspaceOnEntry } from "@/lib/workspace-entry/bootstrap";
+import { ensureApprovedWorkspaceOnEntry, type BootstrapOutcome } from "@/lib/workspace-entry/bootstrap";
 import { createClient } from "@/lib/supabase/server";
 import { loadOrgLogoSignedUrls } from "@/lib/org-logo/server";
 import { buildSwitcherWorkspaces } from "@/lib/org-logo/switcher";
 import { createEntryTimer, logEntryTimings } from "@/lib/entry-timing";
+
+/** 사이드바가 쓰는 보드 지도. 못 읽으면 빈 지도 — 셸은 그대로 뜬다. */
+async function readSidebarBoards(ctx: Ctx) {
+  try {
+    return await loadSidebarBoards(ctx, (await createRequestBoards()).repo);
+  } catch {
+    return { boardNavKeys: {}, userTabs: [], dismissedSources: [] };
+  }
+}
 
 function WorkspaceBootstrapUnavailable({ slug }: { slug: string }) {
   return (
@@ -69,14 +79,6 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const requestClient = (ctx.role === "owner" && currentWorkspace.length === 1) || appTabRequest
     ? await createClient({ noStore: true })
     : undefined;
-  if (ctx.role === "owner" && currentWorkspace.length === 1) {
-    try {
-      await entryTimer.time("bootstrap", () => ensureApprovedWorkspaceOnEntry(requestClient!, currentWorkspace[0].slug));
-    } catch {
-      logEntryTimings("workspace-layout", entryTimer.snapshot(), "unavailable");
-      return <WorkspaceBootstrapUnavailable slug={currentWorkspace[0].slug} />;
-    }
-  }
   const logoHref = currentWorkspace.length === 1
     ? `/w/${currentWorkspace[0].slug}`
     : "/workspaces";
@@ -92,10 +94,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       ),
     ),
   );
-  // BBE-214 — bootstrap 뒤의 셸 읽기는 서로 결과에 의존하지 않는다. 각각을 직렬로
-  // 기다리면 모든 hard-load가 네트워크 지연을 그대로 합산한다. 같은 요청 안에서 함께
-  // 시작하되, auth/RLS 판정과 실패 의미는 각 loader가 계속 소유한다.
-  const [workspaceApprovals, workspaceEntryContext, platformActor, orgLogoUrls, lockedFeatures, notify, sidebarBoards, canCreateTab] = await Promise.all([
+  // BBE-214 — 셸 읽기는 서로 결과에 의존하지 않는다. 각각을 직렬로 기다리면 모든 hard-load가
+  // 네트워크 지연을 그대로 합산한다. 같은 요청 안에서 함께 시작하되, auth/RLS 판정과 실패 의미는
+  // 각 loader가 계속 소유한다.
+  // Issue 857 — 기본 탭 점검(bootstrap)도 기다리지 않고 함께 출발한다. 셸 읽기는 점검 결과를 쓰지
+  //   않는다. 점검이 실패하면 아래에서 그대로 «준비 못 함» 화면을 낸다(셸 결과는 버린다).
+  const shellReads = Promise.all([
     trustedOwnerOrgId ? loadWorkspaceApprovals(trustedOwnerOrgId) : Promise.resolve<WorkspaceApprovals | null>(null),
     loadWorkspaceEntryContext(),
     loadPlatformActor(),
@@ -117,21 +121,28 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     //
     // #849 — 같은 한 번의 읽기에서 사용자 탭(업무 › 계약 전/계약 후 끝)과 지운 기본 탭(숨길 메뉴)도
     //   함께 만든다. 지운 기본 탭 기록은 보드 목록과 같이 출발한다. 실패하면 그 부분만 빈 값이다.
-    (async () => {
-      try {
-        return await loadSidebarBoards(ctx, (await createRequestBoards()).repo);
-      } catch {
-        return { boardNavKeys: {}, userTabs: [], dismissedSources: [] };
-      }
-    })(),
+    readSidebarBoards(ctx),
     // #849 — 「새 탭」 줄은 탭 관리 권한이 있을 때만. 판정 불능은 «없음» 으로 닫는다(셸은 그대로 뜬다).
     loadPermGuard(ctx.org.id, "structure.tab_manage").then(
       (permission) => permission.kind === "allowed",
       () => false,
     ),
-    // #849 — 7일 지난 휴지통 탭 정리. 같은 Promise.all 안이라 기다리는 시간이 늘지 않는다.
-    purgeExpiredTrashedTabs(ctx),
   ]);
+  shellReads.catch(() => undefined);
+  let bootstrapOutcome: BootstrapOutcome = "skipped";
+  if (ctx.role === "owner" && currentWorkspace.length === 1) {
+    try {
+      bootstrapOutcome = await entryTimer.time("bootstrap", () => ensureApprovedWorkspaceOnEntry(requestClient!, currentWorkspace[0].slug, { ctx }));
+    } catch {
+      logEntryTimings("workspace-layout", entryTimer.snapshot(), "unavailable");
+      return <WorkspaceBootstrapUnavailable slug={currentWorkspace[0].slug} />;
+    }
+  }
+  const [workspaceApprovals, workspaceEntryContext, platformActor, orgLogoUrls, lockedFeatures, notify, shellSidebarBoards, canCreateTab] = await entryTimer.time("shell", () => shellReads);
+  // 점검이 이번 요청에서 탭을 고쳤으면(첫 진입·복구) 먼저 읽은 보드 목록은 낡았다 — 그때만 다시 읽는다.
+  const sidebarBoards = bootstrapOutcome === "repaired" ? await readSidebarBoards(ctx) : shellSidebarBoards;
+  // #849 — 7일 지난 휴지통 탭 정리. Issue 857 — 응답 뒤에, 회사마다 몇 시간에 한 번(탭 관리 권한이 있을 때).
+  await scheduleExpiredTrashPurge(ctx, canCreateTab);
   logEntryTimings("workspace-layout", entryTimer.snapshot(), "ready");
   const { boardNavKeys, userTabs, dismissedSources } = sidebarBoards;
   const switcherWorkspaces = routing.kind === "ready"

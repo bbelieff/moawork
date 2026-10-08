@@ -119,12 +119,29 @@ describe("BBE-139 root entry guard", () => {
     expect(mocks.getSession).toHaveBeenCalledOnce();
     expect(mocks.loadWorkspaceRoutingSnapshot).toHaveBeenCalledOnce();
     expect(mocks.createClient).toHaveBeenCalledWith({ noStore: true });
+    // Issue 857 — 이 요청에서 검증된 세션을 그대로 넘겨 점검이 getUser·회사·멤버십을 다시 읽지 않는다.
+    const sessionCtx = await mocks.getSession.mock.results[0].value;
     expect(mocks.ensureApprovedWorkspaceOnEntry).toHaveBeenCalledWith(
       { requestScoped: true },
       "test-company",
+      { ctx: sessionCtx },
     );
     expect(html).toContain("trusted-sidebar");
     expect(html).toContain("root-dashboard");
+  });
+
+  it("Issue 857 — 셸 읽기를 기본 탭 점검과 같이 출발시킨다", async () => {
+    let releaseBootstrap!: () => void;
+    mocks.ensureApprovedWorkspaceOnEntry.mockImplementation(() => new Promise<void>((resolve) => {
+      releaseBootstrap = resolve;
+    }));
+    const pending = AppLayout({ children: createElement("p", null, "overlapped-shell") });
+    // 점검이 끝나기 전에 알림 읽기가 출발해야 한다 — 직렬이면 점검이 풀릴 때까지 시작되지 않는다.
+    await vi.waitFor(() => {
+      expect(mocks.loadNotifySnapshot).toHaveBeenCalled();
+    }, { timeout: 2000, interval: 10 });
+    releaseBootstrap();
+    expect(renderToStaticMarkup(await pending)).toContain("overlapped-shell");
   });
 
   it("starts the session and the routing snapshot together, not in series", async () => {

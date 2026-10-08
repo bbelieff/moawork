@@ -166,3 +166,43 @@ describe("approved workspace repeat entry", () => {
     expect(await repo.listBoards(ctx)).toHaveLength(DEFAULT_TABS.length);
   });
 });
+
+describe("Issue 857 — 이 요청에서 검증된 세션을 넘기면", () => {
+  it("getUser·회사·멤버십을 다시 읽지 않고, 승인 확인은 세션의 회사로 한다", async () => {
+    const request = client();
+    await ensureApprovedWorkspaceOnEntry(request as never, "entry-qa", { ctx });
+    expect(request.auth.getUser).not.toHaveBeenCalled();
+    expect(request.from).not.toHaveBeenCalled();
+    expect(request.rpc).toHaveBeenCalledWith("is_my_approved_workspace_creator", { p_org_id: ctx.org.id });
+  });
+
+  it("담당자 목록과 보드 목록을 같이 출발시킨다", async () => {
+    let releaseSummary!: () => void;
+    harness.summary.mockReset().mockImplementation(() => new Promise((resolve) => {
+      releaseSummary = () => resolve({ kind: "ready", owner: assignees[0], admins: [], members: [] });
+    }));
+    const list = vi.spyOn(repo, "listBoards");
+    const entry = ensureApprovedWorkspaceOnEntry(client() as never, "entry-qa", { ctx });
+    await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+    releaseSummary();
+    await entry;
+    expect(harness.summary).toHaveBeenCalledTimes(1);
+  });
+
+  it("승인된 만든이가 아니면 아무것도 읽지 않고 끝난다", async () => {
+    const list = vi.spyOn(repo, "listBoards");
+    await ensureApprovedWorkspaceOnEntry(client({ approved: false }) as never, "entry-qa", { ctx });
+    expect(list).not.toHaveBeenCalled();
+    expect(harness.summary).not.toHaveBeenCalled();
+  });
+
+  it("담당자 목록을 못 읽으면 예전처럼 «준비 못 함» 으로 닫힌다", async () => {
+    harness.summary.mockReset().mockResolvedValue({ kind: "error" });
+    await expect(ensureApprovedWorkspaceOnEntry(client() as never, "entry-qa", { ctx })).rejects.toThrow(/assignees unavailable/);
+  });
+
+  it("고칠 것이 없으면 clean, 승인된 만든이가 아니면 skipped 를 돌려준다", async () => {
+    await expect(ensureApprovedWorkspaceOnEntry(client() as never, "entry-qa", { ctx })).resolves.toBe("clean");
+    await expect(ensureApprovedWorkspaceOnEntry(client({ approved: false }) as never, "entry-qa", { ctx })).resolves.toBe("skipped");
+  });
+});
