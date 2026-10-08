@@ -195,4 +195,14 @@ describe("Issue 857 — 이 요청에서 검증된 세션을 넘기면", () => {
     expect(list).not.toHaveBeenCalled();
     expect(harness.summary).not.toHaveBeenCalled();
   });
+
+  it("담당자 목록을 못 읽으면 예전처럼 «준비 못 함» 으로 닫힌다", async () => {
+    harness.summary.mockReset().mockResolvedValue({ kind: "error" });
+    await expect(ensureApprovedWorkspaceOnEntry(client() as never, "entry-qa", { ctx })).rejects.toThrow(/assignees unavailable/);
+  });
+
+  it("고칠 것이 없으면 clean, 승인된 만든이가 아니면 skipped 를 돌려준다", async () => {
+    await expect(ensureApprovedWorkspaceOnEntry(client() as never, "entry-qa", { ctx })).resolves.toBe("clean");
+    await expect(ensureApprovedWorkspaceOnEntry(client({ approved: false }) as never, "entry-qa", { ctx })).resolves.toBe("skipped");
+  });
 });

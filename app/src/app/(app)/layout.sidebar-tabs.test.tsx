@@ -160,6 +160,21 @@ describe("셸 → 사이드바 사용자 탭 배선", () => {
     expect(mocks.sidebarProps.at(-1)!.canCreateTab).toBe(false);
   });
 
+  it("Issue 857 — 점검이 이번 요청에서 탭을 고쳤으면 사이드바 지도를 다시 읽어 그 결과를 쓴다", async () => {
+    const repaired = { ...SIDEBAR_BOARDS, boardNavKeys: { "board-new": "new" } };
+    mocks.ensureApprovedWorkspaceOnEntry.mockResolvedValue("repaired");
+    mocks.loadSidebarBoards.mockResolvedValueOnce(SIDEBAR_BOARDS).mockResolvedValueOnce(repaired);
+    await renderShell();
+    expect(mocks.loadSidebarBoards).toHaveBeenCalledTimes(2);
+    expect(mocks.sidebarProps.at(-1)!.boardNavKeys).toEqual(repaired.boardNavKeys);
+  });
+
+  it("Issue 857 — 고칠 것이 없었으면 사이드바 지도는 한 번만 읽는다", async () => {
+    mocks.ensureApprovedWorkspaceOnEntry.mockResolvedValue("clean");
+    await renderShell();
+    expect(mocks.loadSidebarBoards).toHaveBeenCalledTimes(1);
+  });
+
   it("보드 읽기와 권한 판정을 같이 출발시킨다 — 한쪽을 기다렸다가 다른 쪽을 시작하지 않는다", async () => {
     let releaseBoards!: () => void;
     mocks.loadSidebarBoards.mockImplementation(() => new Promise((resolve) => {

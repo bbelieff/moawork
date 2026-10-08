@@ -23,7 +23,7 @@ beforeEach(() => {
 
 describe("Issue 857 — 휴지통 만료 정리는 화면을 기다리게 하지 않는다", () => {
   it("응답 뒤로 미루고, 미룬 일이 돌 때 정리한다", async () => {
-    await scheduleExpiredTrashPurge(ctxFor("org-after", "owner"));
+    await scheduleExpiredTrashPurge(ctxFor("org-after", "owner"), true);
     expect(mocks.after).toHaveBeenCalledTimes(1);
     expect(mocks.purgeExpiredBoards).not.toHaveBeenCalled();
     await mocks.after.mock.calls[0][0]();
@@ -31,13 +31,21 @@ describe("Issue 857 — 휴지통 만료 정리는 화면을 기다리게 하지
   });
 
   it("같은 회사는 몇 시간에 한 번만 돈다", async () => {
-    await scheduleExpiredTrashPurge(ctxFor("org-throttle", "owner"));
-    await scheduleExpiredTrashPurge(ctxFor("org-throttle", "admin"));
+    await scheduleExpiredTrashPurge(ctxFor("org-throttle", "owner"), true);
+    await scheduleExpiredTrashPurge(ctxFor("org-throttle", "admin"), true);
     expect(mocks.after).toHaveBeenCalledTimes(1);
   });
 
-  it("관리 권한이 없는 역할은 건드리지 않는다", async () => {
-    await scheduleExpiredTrashPurge(ctxFor("org-member", "member"));
+  it("탭 관리 권한이 없으면 건드리지 않는다", async () => {
+    await scheduleExpiredTrashPurge(ctxFor("org-member", "admin"), false);
     expect(mocks.after).not.toHaveBeenCalled();
+  });
+
+  it("정리가 실패하면 다음 화면에서 다시 시도한다", async () => {
+    mocks.purgeExpiredBoards.mockRejectedValueOnce(new Error("permission_denied"));
+    await scheduleExpiredTrashPurge(ctxFor("org-retry", "owner"), true);
+    await mocks.after.mock.calls[0][0]();
+    await scheduleExpiredTrashPurge(ctxFor("org-retry", "owner"), true);
+    expect(mocks.after).toHaveBeenCalledTimes(2);
   });
 });

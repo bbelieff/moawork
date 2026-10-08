@@ -62,16 +62,19 @@ export type BootstrapEntryPrelude = {
  */
 export type BootstrapVerifiedSession = { ctx: Ctx };
 
+/** 점검 결과 — repaired 면 이 요청에서 보드 구조를 고쳤다(먼저 읽어 둔 보드 목록은 낡았다). */
+export type BootstrapOutcome = "skipped" | "clean" | "repaired";
+
 /** Ensures the approved workspace product structure using the same authenticated request client. */
 export async function bootstrapApprovedWorkspace(
   client: SupabaseClient,
   slug: string,
   prelude?: BootstrapEntryPrelude,
   verified?: BootstrapVerifiedSession,
-): Promise<void> {
+): Promise<Exclude<BootstrapOutcome, "skipped">> {
   const timer = createEntryTimer();
   const ctx = verified?.ctx ?? await loadBootstrapCtx(client, slug, prelude, timer);
-  await bootstrapWithCtx(client, ctx, timer);
+  return bootstrapWithCtx(client, ctx, timer);
 }
 
 async function loadBootstrapCtx(
@@ -131,7 +134,7 @@ async function bootstrapWithCtx(
   client: SupabaseClient,
   ctx: Ctx,
   timer: ReturnType<typeof createEntryTimer>,
-): Promise<void> {
+): Promise<Exclude<BootstrapOutcome, "skipped">> {
   const orgId = ctx.org.id;
   // Issue 857 — 담당자 목록과 보드 목록은 서로 기다릴 이유가 없어 같이 출발한다.
   const summaryRead = timer.time("member-summary", () => loadMemberOrgSummaryWithClient(client, ctx));
@@ -165,7 +168,7 @@ async function bootstrapWithCtx(
     });
     if (clean) {
       logEntryTimings("workspace-bootstrap", timer.snapshot(), "fast-skip");
-      return;
+      return "clean";
     }
   } catch {
     // Fall through: the slow path re-reads and owns every error shape.
@@ -221,6 +224,7 @@ async function bootstrapWithCtx(
     }
   });
   logEntryTimings("workspace-bootstrap", timer.snapshot(), "repaired");
+  return "repaired";
 }
 
 /**
@@ -231,13 +235,12 @@ export async function ensureApprovedWorkspaceOnEntry(
   client: SupabaseClient,
   slug: string,
   verified?: BootstrapVerifiedSession,
-): Promise<void> {
+): Promise<BootstrapOutcome> {
   if (verified) {
     const requestResult = await client.rpc("is_my_approved_workspace_creator", { p_org_id: verified.ctx.org.id });
     if (requestResult.error) throw new Error("workspace bootstrap approval unavailable");
-    if (requestResult.data !== true) return;
-    await bootstrapApprovedWorkspace(client, slug, undefined, verified);
-    return;
+    if (requestResult.data !== true) return "skipped";
+    return bootstrapApprovedWorkspace(client, slug, undefined, verified);
   }
   const { data: auth } = await client.auth.getUser();
   if (!auth.user) throw new Error("workspace bootstrap context unavailable");
@@ -249,8 +252,8 @@ export async function ensureApprovedWorkspaceOnEntry(
     p_org_id: orgId,
   });
   if (requestResult.error) throw new Error("workspace bootstrap approval unavailable");
-  if (requestResult.data !== true) return;
-  await bootstrapApprovedWorkspace(client, slug, {
+  if (requestResult.data !== true) return "skipped";
+  return bootstrapApprovedWorkspace(client, slug, {
     authUser: auth.user as PreludeAuthUser,
     orgRow: orgResult.data as Row,
   });
