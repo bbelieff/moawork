@@ -23,6 +23,7 @@ import {
 } from "@/components/dash/DashboardSourceSummary";
 import { ChecklistCompletionCell } from "@/components/policyfund/ChecklistCompletionCell";
 import { SupabaseChecklistStore } from "@/lib/policyfund/checklist";
+import type { DealChecklistState } from "@/lib/policyfund/checklist/types";
 import { createClient } from "@/lib/supabase/server";
 import { MonthlyCollection } from "./MonthlyCollection";
 import { RouteLoading } from "@/components/shell/RouteLoading";
@@ -35,6 +36,18 @@ import { RouteLoading } from "@/components/shell/RouteLoading";
 //
 // 진입점: 없다 — 홈 한 화면의 아래 절이라 «가는 링크» 가 필요 없다(BBE-215 로 바로가기를 뺐다).
 //   사이드바(nav-items.ts)는 목업 D05 정본이라 건드리지 않았다.
+/** 거래 목록을 안 순간 체크리스트 읽기를 띄우고, 나중에 그 결과를 받는다(못 띄웠으면 그때 읽는다). */
+function earlyChecklistRead(store: SupabaseChecklistStore, orgId: string) {
+  let read: Promise<Map<string, DealChecklistState>> | null = null;
+  return {
+    start: (dealIds: string[]) => {
+      read = store.listDealChecklists(orgId, dealIds);
+      read.catch(() => {});
+    },
+    result: (dealIds: string[]) => read ?? store.listDealChecklists(orgId, dealIds),
+  };
+}
+
 function CompanyStatusHeader() {
   return (
     <header className="flex flex-wrap items-baseline justify-between gap-[var(--sp-2)]">
@@ -84,17 +97,14 @@ export async function CompanyStatusSection({
     );
   }
 
-  const model = await loadDashboardPageData(ctx, { month });
+  // Issue 857 — 거래별 체크리스트를 한 번에, 거래 목록을 안 물결에 같이 읽는다(전: 거래마다 한 번, 대시보드 뒤
+  //   한 물결 더). 결과는 거래 목록이 «준비됨» 일 때만 쓴다 — 실패하면 전처럼 이 절이 오류로 끝난다.
+  const checklistRead = earlyChecklistRead(new SupabaseChecklistStore(await createClient()), ctx.org.id);
+  const model = await loadDashboardPageData(ctx, { month, onCrmDeals: checklistRead.start });
   const core = model.core.status === "ready" ? model.core.data : null;
-  const checklistStore = new SupabaseChecklistStore(await createClient());
-  const checklists = new Map(
-    await Promise.all(
-      (core?.deals ?? []).map(async (deal) => [
-        deal.id,
-        await checklistStore.getDealChecklist(ctx.org.id, deal.id),
-      ] as const),
-    ),
-  );
+  const checklists: Map<string, DealChecklistState> = core
+    ? await checklistRead.result(core.deals.map((deal) => deal.id))
+    : new Map();
   const displayMonth = core?.dash.month ?? month ?? currentMonthKst();
   const stageName = (id: string | null) =>
     core?.stages.find((stage) => stage.id === id)?.name ?? "-";

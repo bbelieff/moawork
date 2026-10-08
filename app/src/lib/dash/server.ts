@@ -299,6 +299,11 @@ export async function loadDashboardPageData(
     now?: () => Date;
     source?: DashboardSource;
     clientFactory?: () => Promise<SupabaseClient>;
+    /**
+     * Issue 857 — 거래 목록을 안 순간(다음 물결을 띄우기 직전) 한 번 불린다. 호출부가 거래별 읽기
+     * (예: 체크리스트)를 이 물결에 같이 띄우게 한다 — 전에는 대시보드를 다 읽은 «뒤» 한 물결 더 섰다.
+     */
+    onCrmDeals?: (dealIds: string[]) => void;
   } = {},
 ): Promise<DashboardPageData> {
   // createClient is cookie-bound. It must run once per page request and that
@@ -326,6 +331,7 @@ export async function loadDashboardPageData(
     capture("notices", () => source.loadNotices(ctx)),
   ]);
   const now = options.now?.() ?? new Date();
+  if (crm.status === "ready") options.onCrmDeals?.(crm.data.deals.map((deal) => deal.id));
 
   //   ★ core(=inputs) 와 ledger 는 «둘 다» crm.data.deals 만 입력으로 쓴다. 서로는 무관하다.
   //     그러니 crm 뒤의 «한 물결» 에 같이 실어야 한다 — 줄 세우면 단계가 하나 더 는다.

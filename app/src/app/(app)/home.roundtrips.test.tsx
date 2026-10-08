@@ -237,6 +237,27 @@ describe("BBE-215 · 홈 직렬 단계 예산", () => {
       .toBeLessThanOrEqual(3);
   });
 
+  it("Issue 857 — 거래별 체크리스트를 한 번에, 거래 목록을 안 물결에 같이 읽는다", async () => {
+    const ctx = { user: { id: "user-1" }, org: { id: "org-1" }, role: "owner", scope: "all", isPlatformAdmin: false } as never;
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
+    probe.reset();
+    seedRows();
+    probe.tables.deals = ["deal-1", "deal-2", "deal-3"].map((id, index) => ({
+      id, org_id: "org-1", company_id: null, pipeline_id: null, stage_id: null, title: `거래 ${index}`,
+      amount: 0, assigned_to: null, created_at: "2026-01-01", updated_at: "2026-01-01",
+    }));
+    probe.tables.deal_document_checklists = [];
+    try {
+      await CompanyStatusSection({ ctx, month: undefined, today: { kind: "unconfigured" } });
+    } catch { /* 시드가 모자라 절이 실패해도 왕복 모양은 본다 */ }
+    const reads = probe.trips.filter((t) => t.label === "select:deal_document_checklists");
+    expect(reads, "체크리스트를 거래마다 따로 읽었다").toHaveLength(1);
+    const dealsWave = probe.trips.find((t) => t.label === "select:deals")?.wave ?? -1;
+    expect(reads[0].wave, "체크리스트가 거래 목록 다음 물결보다 늦게 섰다").toBe(dealsWave + 1);
+    const stages = new Set(probe.trips.map((t) => t.wave)).size;
+    expect(stages).toBeLessThanOrEqual(3);
+  });
+
   it("★ 홈 위쪽(오늘)의 직렬 단계가 예산을 넘지 않는다", async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
     probe.reset();
