@@ -107,8 +107,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   //   않는다. 점검이 실패하면 아래에서 그대로 «준비 못 함» 화면을 낸다(셸 결과는 버린다).
   const shellReads = Promise.all([
     trustedOwnerOrgId ? loadWorkspaceApprovals(trustedOwnerOrgId) : Promise.resolve<WorkspaceApprovals | null>(null),
-    loadWorkspaceEntryContext(),
-    loadPlatformActor(),
+    // Issue 857 — 위에서 검증한 세션을 넘겨 인증 서버 재확인(getUser)·관리자 폴백 RPC 를 다시 하지 않는다.
+    loadWorkspaceEntryContext(undefined, { email: ctx.user.email, isAppAdmin: ctx.isPlatformAdmin === true }),
+    loadPlatformActor(undefined, { userId: ctx.user.id }),
     routing.kind === "ready"
       ? loadOrgLogoSignedUrls(routing.memberships.map((membership) => membership.orgId))
       : Promise.resolve(new Map<string, string>()),

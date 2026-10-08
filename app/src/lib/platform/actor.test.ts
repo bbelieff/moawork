@@ -23,6 +23,16 @@ describe("platform actor boundary", () => {
     await expect(loadPlatformActor(client(true))).resolves.toEqual({ kind: "granted" });
   });
 
+  it("Issue 857 — 이 요청에서 이미 확인한 사람을 받으면 인증 서버에 다시 묻지 않고, 판정은 서버 RPC 가 한다", async () => {
+    const getUser = vi.fn(async () => ({ data: { user }, error: null }));
+    const rpc = vi.fn(async () => ({ data: true, error: null }));
+    await expect(loadPlatformActor({ auth: { getUser }, rpc }, { userId: user.id })).resolves.toEqual({ kind: "granted" });
+    expect(getUser).not.toHaveBeenCalled();
+    expect(rpc).toHaveBeenCalledWith("is_platform_admin");
+    const denyRpc = vi.fn(async () => ({ data: false, error: null }));
+    await expect(loadPlatformActor({ auth: { getUser }, rpc: denyRpc }, { userId: user.id })).resolves.toEqual({ kind: "denied", reason: "not_platform" });
+  });
+
   it("denies unauthenticated and ordinary authenticated users", () => {
     expect(result(null, null)).toEqual({ kind: "denied", reason: "unauthenticated" });
     expect(result(user, null, false)).toEqual({ kind: "denied", reason: "not_platform" });

@@ -136,6 +136,12 @@ describe("BBE-139 root entry guard", () => {
       "test-company",
       { ctx: sessionCtx },
     );
+    // Issue 857 — 셸 읽기는 검증된 세션을 받아 인증 서버 재확인·관리자 폴백을 다시 하지 않는다.
+    expect(mocks.loadPlatformActor).toHaveBeenCalledWith(undefined, { userId: sessionCtx.user.id });
+    expect(mocks.loadWorkspaceEntryContext).toHaveBeenCalledWith(undefined, {
+      email: sessionCtx.user.email ?? null,
+      isAppAdmin: sessionCtx.isPlatformAdmin === true,
+    });
     // 앞에서 통과한 점검을 기억해야 다음 화면부터 미룰 수 있다.
     expect(mocks.markBootstrapChecked).toHaveBeenCalledWith(sessionCtx.org.id, sessionCtx.user.id);
     expect(html).toContain("trusted-sidebar");
