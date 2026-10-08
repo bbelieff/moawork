@@ -43,10 +43,18 @@ export function resolvePlatformActor(
  */
 export async function loadPlatformActor(
   client?: PlatformActorClient,
+  /**
+   * Issue 857 — 이 요청에서 이미 토큰 서명으로 확인한 사람(getSession). 주면 인증 서버에 다시 묻지
+   * 않는다(getUser 왕복). 관리자 판정은 그대로 is_platform_admin() 이 auth.uid() 로 한다.
+   * 플랫폼 화면·가드는 이것을 넘기지 않는다 — 지금처럼 getUser 로 확인한다.
+   */
+  verified?: { userId: string },
 ): Promise<PlatformActor> {
   try {
     const supabase = client ?? await createClient();
-    const userResult = await supabase.auth.getUser();
+    const userResult = verified
+      ? { data: { user: { id: verified.userId } }, error: null }
+      : await supabase.auth.getUser();
     if (userResult.error) {
       logPlatformActorFailure("auth_error");
       return resolvePlatformActor(userResult);

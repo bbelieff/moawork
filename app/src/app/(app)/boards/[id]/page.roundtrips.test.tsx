@@ -153,6 +153,8 @@ const probe = vi.hoisted(() => {
     "effective_permissions",
     "read_permission_scoped_work_items",
     "get_member_account_profile",
+    // 170: language plpgsql · stable · select 전용(회원 표시 정보를 한 번에).
+    "list_member_account_profiles",
     // 017: language sql · stable · select 전용
     "is_platform_admin",
     // 008: plpgsql · stable · 본문에 update/insert 없음
@@ -288,6 +290,7 @@ import BoardPage from "./page";
 import ContactBoardPage from "../../(tabs)/contract/page";
 import NewCustomerPage from "../../(tabs)/newcust/page";
 import { NEW_LEAD_TAB } from "@/lib/default-tabs/new-lead";
+import { resetBoardSourceMemo } from "@/lib/boards/board-source-memo";
 import AppLayout from "../../layout";
 
 const BOARD_ID = "board-1";
@@ -352,6 +355,7 @@ function seed() {
   };
   probe.rpcs.read_permission_scoped_work_items = { itemIds: ["item-1"], hiddenCount: 0 };
   probe.rpcs.get_member_account_profile = { id: "user-1", name: "멤버", title: null, team_key: "team-a" };
+  probe.rpcs.list_member_account_profiles = [{ id: "user-1", name: "멤버", title: null, team_key: "team-a" }];
 }
 
 type BoardRun = {
@@ -365,8 +369,11 @@ type BoardRun = {
 async function renderBoardAttempt(
   searchParams: Record<string, string> = {},
   configure?: () => void,
+  options: { keepBoardSourceMemo?: boolean } = {},
 ): Promise<BoardRun> {
   probe.reset();
+  // Issue 857 — 보드 종류 기억이 시험끼리 새지 않게(두 번째 방문을 재는 시험만 남긴다).
+  if (!options.keepBoardSourceMemo) resetBoardSourceMemo();
   seed();
   configure?.();
   let error: unknown = null;
@@ -388,8 +395,12 @@ async function renderBoardAttempt(
   };
 }
 
-async function renderBoard(searchParams: Record<string, string> = {}, configure?: () => void) {
-  const run = await renderBoardAttempt(searchParams, configure);
+async function renderBoard(
+  searchParams: Record<string, string> = {},
+  configure?: () => void,
+  options: { keepBoardSourceMemo?: boolean } = {},
+) {
+  const run = await renderBoardAttempt(searchParams, configure, options);
   if (run.error) throw run.error;
   return run;
 }
@@ -497,9 +508,10 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
     // 담당자 목록과 그룹 컬럼 배치를 같은 물결에 실은 뒤 측정값 8.
     // Issue 857 — 보드 정보와 행 목록을 한 물결로, 그룹 컬럼 배치를 스냅샷과 같은 물결로, 기본 담당자
     //   목록은 보드 종류를 안 순간(메타데이터) 띄워 6. 이어서 판정을 세션 확인과 같이 출발시키고(mw_org),
-    //   값을 행과 함께 읽어 5. 세션 → 메타‖행(값 포함) 순서를 다시 줄 세우면 넘는다.
+    //   값을 행과 함께 읽어 5. 회원 표시 정보를 한 번에(170) 읽어 회원 목록과 같은 물결로 4.
+    //   세션 → 메타‖행(값 포함) 순서를 다시 줄 세우면 넘는다.
     expect(run.serialStages, "보드 화면의 직렬 DB 단계가 늘었다 — 어디서 await 이 줄 섰는지 확인해라")
-      .toBe(5);
+      .toBe(4);
     // 보관 읽기는 활성·휴지통과 같은 물결에 탄다 (직렬 단계 추가 없음, 왕복 +1). 값은 행에 묶여 와서 따로 안 센다.
     expect(run.total, "보드 화면의 읽기 왕복 계약이 바뀌었다 — 로그 계측은 쿼리를 더하면 안 된다")
       .toBe(14);
@@ -537,7 +549,7 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
 
       for (const run of [valid, missing, invalid]) {
         expect(run.total).toBe(14);
-        expect(run.serialStages).toBe(5);
+        expect(run.serialStages).toBe(4);
       }
 
       const logs = info.mock.calls
@@ -640,6 +652,85 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
       expect(run.countOf("select:board_views")).toBe(0);
       expect(run.countOf("select:org_members")).toBeLessThanOrEqual(1);
     }
+  });
+
+  describe("Issue 857 · 보드 종류별 꼬리 읽기는 행 읽기와 같은 물결", () => {
+    const waveOf = (run: BoardRun, label: string) => run.trips.find((trip) => trip.label === label)?.wave;
+
+    const contract = () => {
+      (probe.tables.boards[0] as { source: string }).source = "core.default-tab/contract-work";
+    };
+    const newLead = () => {
+      (probe.tables.boards[0] as { source: string }).source = "core.default-tab/new-lead";
+    };
+
+    it("처음 본 보드는 메타데이터를 읽은 순간 꼬리 읽기를 띄운다(행보다 한 물결 뒤, 꼬리 대기 없음)", async () => {
+      const run = await renderBoard({}, contract);
+      const itemsWave = waveOf(run, "select:items:active");
+      expect(waveOf(run, "select:companies")).toBe((itemsWave ?? 0) + 1);
+      expect(run.countOf("select:companies")).toBe(1);
+    });
+
+    it("계약업체 실무(두 번째 방문): 회사·건 목록을 행과 같은 물결에 읽고, 꼬리에서 다시 읽지 않는다", async () => {
+      await renderBoard({}, contract);
+      const run = await renderBoard({}, contract, { keepBoardSourceMemo: true });
+      const itemsWave = waveOf(run, "select:items:active");
+      expect(itemsWave).toBeDefined();
+      expect(waveOf(run, "select:companies")).toBe(itemsWave);
+      expect(waveOf(run, "select:deals")).toBe(itemsWave);
+      expect(run.countOf("select:companies")).toBe(1);
+      expect(run.countOf("select:deals")).toBe(1);
+    });
+
+    it("신규리드(두 번째 방문): 조직도(부서·배정·구성원)를 행과 같은 물결에 읽는다", async () => {
+      await renderBoard({}, newLead);
+      const run = await renderBoard({}, newLead, { keepBoardSourceMemo: true });
+      const itemsWave = waveOf(run, "select:items:active");
+      expect(itemsWave).toBeDefined();
+      expect(waveOf(run, "select:departments")).toBe(itemsWave);
+      expect(waveOf(run, "select:department_members")).toBe(itemsWave);
+      expect(run.countOf("select:departments")).toBe(1);
+    });
+
+    it("기억이 «신규리드» 인데 실제가 계약업체면 꼬리에서 회사·건 목록을 한 번 읽는다", async () => {
+      await renderBoard({}, newLead);
+      const run = await renderBoard({}, contract, { keepBoardSourceMemo: true });
+      expect(run.countOf("select:companies")).toBe(1);
+      expect(run.countOf("select:deals")).toBe(1);
+      expect(waveOf(run, "select:companies")).toBeGreaterThan(waveOf(run, "select:items:active") ?? 0);
+    });
+
+    it("기억이 있어도 권한이 거부되면 꼬리 읽기를 하나도 띄우지 않는다", async () => {
+      await renderBoard({}, contract);
+      const denied = await renderBoardAttempt({}, () => {
+        contract();
+        probe.rpcs.effective_permissions = {
+          ...(probe.rpcs.effective_permissions as Record<string, boolean>),
+          "work.view_tabs": false,
+        };
+      }, { keepBoardSourceMemo: true });
+      expect((denied.error as Error)?.message).toBe("HARNESS_NOT_FOUND");
+      for (const label of ["select:companies", "select:deals", "select:departments", "select:department_members", "rpc:list_member_account_profiles"]) {
+        expect(denied.countOf(label), label).toBe(0);
+      }
+    });
+
+    it("두 번째 방문은 꼬리 읽기가 행과 같은 물결이라 직렬 단계가 하나 준다(왕복 수는 같음)", async () => {
+      const first = await renderBoard();
+      const second = await renderBoard({}, undefined, { keepBoardSourceMemo: true });
+      expect(second.serialStages).toBe(first.serialStages - 1);
+      expect(second.total).toBe(first.total);
+    });
+
+    it("기억한 종류가 틀렸으면 미리 띄운 결과를 버리고 이번 종류로 다시 읽는다(결과 같음, 한 물결 늦음)", async () => {
+      await renderBoard({}, contract);
+      const run = await renderBoard({}, newLead, { keepBoardSourceMemo: true });
+      expect(run.countOf("select:departments")).toBe(1);
+      expect(waveOf(run, "select:departments")).toBeGreaterThan(waveOf(run, "select:items:active") ?? 0);
+      // 다음 방문부터는 바로잡힌 종류로 같은 물결에 읽는다.
+      const next = await renderBoard({}, newLead, { keepBoardSourceMemo: true });
+      expect(waveOf(next, "select:departments")).toBe(waveOf(next, "select:items:active"));
+    });
   });
 
   describe("Issue 857 · 이른 판정은 세션이 고른 회사일 때만 쓴다", () => {

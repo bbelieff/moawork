@@ -190,6 +190,13 @@ export async function readWorkspaceEntryContext(
   ownerOrgId?: string,
   /** 로그인 사용자 이메일. is_platform_admin() 이 false 일 때 폴백 판정에 쓴다. */
   actorEmail?: string | null,
+  /**
+   * Issue 857 — 같은 요청의 세션이 이미 app_admin_role(email) 을 읽었으면 그 결과(관리자 역할 있음).
+   * 주면 폴백 RPC 를 다시 부르지 않는다(셸 읽기의 셋째 물결). 안 주면 지금처럼 부른다.
+   */
+  knownAppAdmin?: boolean,
+  /** Issue 857 — 플랫폼 생성 요청 대기열을 쓰지 않는 호출부(레이아웃)는 읽지 않는다(관리자의 둘째 물결). */
+  skipPlatformQueue?: boolean,
 ): Promise<WorkspaceEntryContext> {
   const [platformResult, requestsResult] = await Promise.all([
     client.rpc("is_platform_admin"),
@@ -206,7 +213,9 @@ export async function readWorkspaceEntryContext(
   // 014_platform_metrics_daily 도 이미 `app_admin_role(...) is not null` 패턴을 쓴다.
   // 017 적용 후에는 위 판정이 곧바로 true 라 이 블록은 자연히 no-op 이 된다.
   // 방향은 한쪽뿐이다 — false→true 승격만 하고, true 를 뒤집지는 않는다.
-  if (!isPlatformAdmin && actorEmail) {
+  if (!isPlatformAdmin && knownAppAdmin !== undefined) {
+    isPlatformAdmin = knownAppAdmin;
+  } else if (!isPlatformAdmin && actorEmail) {
     try {
       const fallback = await client.rpc("app_admin_role", { p_email: actorEmail });
       if (fallback && !fallback.error && parseAdminRole(fallback.data) !== null) {
@@ -220,7 +229,7 @@ export async function readWorkspaceEntryContext(
   if (!requests) return { kind: "error" };
 
   let platformCreateRequests: PlatformCreateRequest[] = [];
-  if (isPlatformAdmin) {
+  if (isPlatformAdmin && !skipPlatformQueue) {
     const result = await client.rpc("list_pending_workspace_create_requests");
     if (result.error) return { kind: "error" };
     const parsed = parsePlatformQueue(result.data);
@@ -246,10 +255,27 @@ export async function readWorkspaceEntryContext(
   return { kind: "ready", isPlatformAdmin, requests, platformCreateRequests, ownerJoinRequests, ownerPendingApprovalCount };
 }
 
-export async function loadWorkspaceEntryContext(ownerOrgId?: string): Promise<WorkspaceEntryContext> {
+export async function loadWorkspaceEntryContext(
+  ownerOrgId?: string,
+  /**
+   * Issue 857 — 이 요청에서 이미 검증한 세션(getSession: 토큰 서명 + app_admin_role)을 넘기면
+   * 인증 서버에 이메일을 다시 묻지 않고(getUser 왕복), 폴백 RPC 도 다시 부르지 않는다.
+   * skipPlatformQueue: 플랫폼 생성 요청 대기열을 쓰지 않으면 읽지 않는다(빈 목록).
+   */
+  verified?: { email: string | null; isAppAdmin: boolean; skipPlatformQueue?: boolean },
+): Promise<WorkspaceEntryContext> {
   // 위와 같은 이유. «조회 불가» 는 이미 있는 error 종류로 표현한다 — 호출부가 ready 만 소비한다.
   if (!hasSupabaseEnv()) return { kind: "error" };
   const supabase = await createClient();
+  if (verified) {
+    return readWorkspaceEntryContext(
+      supabase as unknown as WorkspaceEntryRpcClient,
+      ownerOrgId,
+      verified.email,
+      verified.isAppAdmin,
+      verified.skipPlatformQueue,
+    );
+  }
   // 폴백 판정용 이메일. 실패해도 진행한다 — 이메일이 없으면 폴백만 건너뛴다.
   let actorEmail: string | null = null;
   try {

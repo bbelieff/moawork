@@ -26,13 +26,14 @@ import {
   type ConsultationView,
 } from "@/lib/consultation/boardView";
 import { loadConsultationBoardView } from "@/lib/consultation/boardViewServer";
-import { loadCompanyPickerRows } from "@/lib/companies/picker-server";
+import { buildCompanyPickerResult, loadCompanyPickerRows, readCompanyPickerSources } from "@/lib/companies/picker-server";
 import { startCompanyWorkFromBoardAction, startCompanyWorkFromNewCompanyAction } from "./company-intake-actions";
 import { addBoardLabelOptionAction } from "@/app/(app)/boards/label-option-actions";
 import { NewLeadOnboarding } from "@/components/board/NewLeadOnboarding";
 import { loadDefaultTabAssignees } from "@/lib/boards/default-tab-assignees";
 import { legacyMemberPickerEntries, memberPickerEntries } from "@/lib/boards/member-directory";
 import { loadOrgChart } from "@/lib/org/departments";
+import { recallBoardSource, rememberBoardSource } from "@/lib/boards/board-source-memo";
 import { loadPermGuards } from "@/lib/perm/guard";
 import { PermissionUnavailable } from "@/components/perm/PermissionUnavailable";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
@@ -195,8 +196,21 @@ export default async function BoardPage({
   const defaultAssigneesRead = boardSource.promise.then((source) =>
     source === NEW_LEAD_TAB_SOURCE && client ? null : loadDefaultTabAssignees(ctx));
   defaultAssigneesRead.catch(() => {});
+  // Issue 857 — 신규리드의 조직도, 계약업체 실무의 회사·건 목록도 보드 종류를 안 순간 띄운다(행 읽기와 같은
+  //   물결). 전에는 행을 다 읽은 «뒤» 꼬리에서 한 물결 더 기다렸다. 회사별 건수는 행을 읽은 뒤 센다.
+  const orgChartRead = boardSource.promise.then((source) =>
+    source === NEW_LEAD_TAB_SOURCE && client ? loadOrgChart(ctx, async () => client) : null);
+  orgChartRead.catch(() => {});
+  const companyPickerSourcesRead = boardSource.promise.then((source) =>
+    source === CONTRACT_WORK_TAB_SOURCE ? readCompanyPickerSources(ctx) : null);
+  companyPickerSourcesRead.catch(() => {});
 
   let snapshot;
+  // Issue 857 — 이 보드의 종류를 전에 봤으면(종류는 바뀌지 않는다) 판정을 통과한 지금 꼬리 읽기를 띄운다 —
+  //   행 읽기와 같은 물결. 처음이면 메타데이터를 읽은 순간(onDetail) 띄운다. 기억이 틀려도 아래 꼬리에서
+  //   이번 메타데이터의 종류로 다시 판단하므로 결과는 같다(lib/boards/board-source-memo.ts).
+  const rememberedSource = recallBoardSource(id);
+  if (rememberedSource !== undefined) boardSource.resolve(rememberedSource);
   const snapshotStartedOffsetMs = performance.now() - startedAt;
   const snapshotTimings: Record<"metadata" | "items" | "hydrate", PagePhaseTiming> = {
     metadata: { offsetMs: snapshotStartedOffsetMs, durationMs: 0 },
@@ -208,7 +222,10 @@ export default async function BoardPage({
     snapshot = await svc.loadPageSnapshot(ctx, id, {
       includeDeleted: canDeleteItems,
       includeArchived: canDeleteItems,
-      onDetail: (loaded) => boardSource.resolve(loaded.board.source),
+      onDetail: (loaded) => {
+        rememberBoardSource(id, loaded.board.source);
+        boardSource.resolve(loaded.board.source);
+      },
       onTiming: ({ phase, offsetMs, durationMs }) => {
         snapshotTimings[phase] = {
           offsetMs: Math.max(0, snapshotStartedOffsetMs + offsetMs),
@@ -303,7 +320,7 @@ export default async function BoardPage({
     (async () => {
       // 담당자 탭·칩에 쓸 표시 이름. items.assigned_to 는 사용자 id 라서 이 맵이 없으면 UUID 가 노출된다.
       const orgChart = board.source === NEW_LEAD_TAB_SOURCE && client
-        ? await loadOrgChart(ctx, async () => client)
+        ? (await orgChartRead) ?? await loadOrgChart(ctx, async () => client)
         : null;
       const defaultTabAssignees = orgChart?.kind === "ready"
         ? []
@@ -322,7 +339,9 @@ export default async function BoardPage({
     columnOrderRead,
       board.source === CONTRACT_WORK_TAB_SOURCE
       // 권한(D24)으로 거른 이 보드의 행을 넘긴다 — 회사별 «이 탭에 이미 N건» 의 근거(#6). 새 왕복 없음.
-      ? loadCompanyPickerRows(ctx, { boardItems: permissionItems })
+      ? companyPickerSourcesRead.then((sources) => sources
+        ? buildCompanyPickerResult(sources, permissionItems)
+        : loadCompanyPickerRows(ctx, { boardItems: permissionItems }))
       : Promise.resolve({ rows: [], error: null, truncated: false }),
   ]);
   independentTailReads.catch(() => {});
@@ -477,10 +496,10 @@ export default async function BoardPage({
   ) : undefined;
 
   /* #849 탭 삭제 = 휴지통. 제목 ▾ 「휴지통으로 이동」 이 여는 확인 안에 지울 내용 개수를 보인다 —
-     개수는 이 서버 부품이 렌더될 때 따로 읽는다(위 스냅샷 왕복 예산 밖, Suspense 로 스트리밍). */
+     Issue 857: 개수는 확인을 열 때 화면이 따로 읽는다(GET /api/boards/[id]/trash-impact). 보드를 열 때마다 세지 않는다. */
   const tabTrashDialog = !board.is_system && canDeleteBoard ? (
     <TabTrashDialog boardId={id} title={`${quotedObject(board.name)} 휴지통으로 옮길까요?`} deleteAction={deleteBoardAction}>
-      <BoardTrashImpactNotes loadImpact={repo.readBoardTrashImpact.bind(repo, ctx, id)} />
+      <BoardTrashImpactNotes boardId={id} />
     </TabTrashDialog>
   ) : undefined;
 

@@ -12,7 +12,6 @@ vi.mock("@/app/(app)/settings/workspace-builder/tab-actions", () => ({
 }));
 
 import {
-  BoardTrashImpactSummary,
   BoardTrashSection,
   formatTrashImpact,
   quotedObject,
@@ -174,7 +173,7 @@ describe("탭 관리 › 탭 목록·휴지통", () => {
 describe("보드 설정 › 탭 삭제", () => {
   it("휴지통 안내와 확인 단계를 거쳐 휴지통으로 삭제를 보낸다", () => {
     const html = renderToStaticMarkup(
-      <BoardTrashSection boardId="board-a" boardName="옛 탭" deleteAction={async () => {}} loadImpact={async () => ({ groups: 0, rows: 0, memos: 0, files: 0, views: 0, automations: 0, messaging: 0 })} />,
+      <BoardTrashSection boardId="board-a" boardName="옛 탭" deleteAction={async () => {}} />,
     );
     expect(html).toContain(">탭 삭제</h2>");
     expect(html).not.toContain("위험 구역");
@@ -185,13 +184,11 @@ describe("보드 설정 › 탭 삭제", () => {
     expect(html).toContain("휴지통으로 삭제</button>");
   });
 
-  it("지울 내용 개수를 읽고, 못 읽으면 삭제를 막지 않고 알려 준다", async () => {
-    const counts = renderToStaticMarkup(await BoardTrashImpactSummary({
-      loadImpact: async () => ({ groups: 1, rows: 12, memos: 3, files: 2, views: 1, automations: 1, messaging: 2 }),
-    }));
-    expect(counts).toContain("아이템 1 · 행 12 · 메모 3 · 첨부 파일 2 · 저장된 보기 1 · 자동화 규칙 1 · 문자 규칙 2");
-
-    const failed = renderToStaticMarkup(await BoardTrashImpactSummary({ loadImpact: async () => { throw new Error("rpc down"); } }));
-    expect(failed).toContain("지울 내용의 개수를 불러오지 못했어요");
+  it("Issue 857 — 서버에서 그릴 때는 개수를 읽지 않는다(탭 설정을 열 때 화면이 읽는다)", () => {
+    const html = renderToStaticMarkup(
+      <BoardTrashSection boardId="board-a" boardName="옛 탭" deleteAction={async () => {}} />,
+    );
+    expect(html).toContain("탭 설정을 열면 지울 내용을 세어 보여 줘요.");
+    expect(html).not.toContain('data-testid="board-trash-impact"');
   });
 });

@@ -138,6 +138,14 @@ export function applyMemberProfiles(
   return { kind: "ready", owner, admins: admins as MemberSummaryRow[], members: members as MemberSummaryRow[] };
 }
 
+/** 일괄 함수가 없어 예전 방식으로 읽은 사실을 프로세스당 한 번 남긴다(서명 불일치가 조용히 묻히지 않게). */
+let warnedMissingBatch = false;
+
+/** PostgREST 가 «그런 함수 없음» 이라고 답했나(마이그레이션 적용 전). */
+function isMissingFunction(error: { code?: string; message?: string } | null): boolean {
+  return error?.code === "PGRST202" || error?.code === "42883";
+}
+
 /** Authenticated RLS read only. This module never mutates org_members. */
 export async function loadMemberOrgSummary(ctx: Ctx): Promise<MemberOrgSummary> {
   if (!hasSupabaseEnv()) return { kind: "unavailable" };
@@ -149,15 +157,36 @@ export async function loadMemberOrgSummaryWithClient(
   supabase: SupabaseClient,
   ctx: Ctx,
 ): Promise<MemberOrgSummary> {
-  const { data, error } = await supabase
-    .from("org_members")
-    .select("org_id, user_id, role, scope, created_at, users!inner(name)")
-    .eq("org_id", ctx.org.id)
-    .eq("status", "active")
-    .order("created_at", { ascending: true });
+  // Issue 857 — 회원 목록과 표시 정보(170: 한 번에)를 같이 읽는다. 전에는 목록 → 사람마다 한 번이었다.
+  const [membersResult, profilesResult] = await Promise.all([
+    supabase
+      .from("org_members")
+      .select("org_id, user_id, role, scope, created_at, users!inner(name)")
+      .eq("org_id", ctx.org.id)
+      .eq("status", "active")
+      .order("created_at", { ascending: true }),
+    supabase.rpc("list_member_account_profiles", { p_org_id: ctx.org.id }),
+  ]);
+  const { data, error } = membersResult;
   if (error || !Array.isArray(data)) return { kind: "error" };
   const summary = buildMemberOrgSummary(ctx.org.id, data as MembershipDbRow[]);
   if (summary.kind !== "ready") return summary;
+
+  if (!profilesResult.error) {
+    if (!Array.isArray(profilesResult.data)) return { kind: "error" };
+    const byId = new Map<string, unknown>();
+    for (const profile of profilesResult.data) {
+      const profileId = (profile as { id?: unknown } | null)?.id;
+      if (typeof profileId === "string") byId.set(profileId, profile);
+    }
+    return applyMemberProfiles(summary, byId);
+  }
+  // 함수가 아직 없는 DB(170 적용 전)에서만 예전처럼 사람마다 읽는다. 다른 실패는 닫는다.
+  if (!isMissingFunction(profilesResult.error)) return { kind: "error" };
+  if (!warnedMissingBatch) {
+    warnedMissingBatch = true;
+    console.warn(JSON.stringify({ event: "mw.member_profiles_batch_missing", code: profilesResult.error.code ?? null }));
+  }
 
   const allMembers = [summary.owner, ...summary.admins, ...summary.members];
   const profileResults = await Promise.all(
