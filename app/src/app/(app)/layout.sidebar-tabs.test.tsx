@@ -45,6 +45,13 @@ vi.mock("@/lib/platform/actor", () => ({ loadPlatformActor: mocks.loadPlatformAc
 vi.mock("@/lib/entitlements/server", () => ({ loadLockedFeatures: mocks.loadLockedFeatures }));
 vi.mock("@/lib/notify/server", () => ({ loadNotifySnapshot: mocks.loadNotifySnapshot }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: mocks.createClient }));
+// 점검 기억(Issue 857)은 이 시험의 관심이 아니다 — 매번 앞에서 점검하게 둔다.
+vi.mock("@/lib/workspace-entry/bootstrap-verdict", () => ({
+  hasRecentCleanBootstrap: () => false,
+  deferBootstrapCheck: () => false,
+  markBootstrapChecked: () => {},
+  forgetBootstrapOutcome: () => {},
+}));
 vi.mock("@/lib/workspace-entry/bootstrap", () => ({
   ensureApprovedWorkspaceOnEntry: mocks.ensureApprovedWorkspaceOnEntry,
 }));

@@ -3,6 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  hasRecentCleanBootstrap: vi.fn(() => false),
+  deferBootstrapCheck: vi.fn(() => true),
+  markBootstrapChecked: vi.fn(),
+  forgetBootstrapOutcome: vi.fn(),
   getSession: vi.fn(),
   loadWorkspaceRoutingSnapshot: vi.fn(),
   loadWorkspaceApprovals: vi.fn(),
@@ -35,6 +39,12 @@ vi.mock("@/lib/notify/server", () => ({ loadNotifySnapshot: mocks.loadNotifySnap
 vi.mock("@/lib/supabase/server", () => ({ createClient: mocks.createClient }));
 vi.mock("@/lib/workspace-entry/bootstrap", () => ({
   ensureApprovedWorkspaceOnEntry: mocks.ensureApprovedWorkspaceOnEntry,
+}));
+vi.mock("@/lib/workspace-entry/bootstrap-verdict", () => ({
+  hasRecentCleanBootstrap: mocks.hasRecentCleanBootstrap,
+  deferBootstrapCheck: mocks.deferBootstrapCheck,
+  markBootstrapChecked: mocks.markBootstrapChecked,
+  forgetBootstrapOutcome: mocks.forgetBootstrapOutcome,
 }));
 vi.mock("@/lib/account/presentation", () => ({
   buildAccountViewModel: () => ({
@@ -142,6 +152,24 @@ describe("BBE-139 root entry guard", () => {
     }, { timeout: 2000, interval: 10 });
     releaseBootstrap();
     expect(renderToStaticMarkup(await pending)).toContain("overlapped-shell");
+  });
+
+  it("Issue 857 — 최근 점검을 통과했으면 이번 화면은 점검을 기다리지 않고 응답 뒤로 미룬다", async () => {
+    mocks.hasRecentCleanBootstrap.mockReturnValueOnce(true);
+    mocks.ensureApprovedWorkspaceOnEntry.mockImplementation(() => new Promise<void>(() => {}));
+    const html = renderToStaticMarkup(await AppLayout({ children: createElement("p", null, "deferred-check") }));
+    expect(html).toContain("deferred-check");
+    expect(mocks.deferBootstrapCheck).toHaveBeenCalledTimes(1);
+    expect(mocks.ensureApprovedWorkspaceOnEntry).not.toHaveBeenCalled();
+    mocks.hasRecentCleanBootstrap.mockReturnValue(false);
+  });
+
+  it("Issue 857 — 앞에서 점검이 실패하면 기억을 지우고 «준비 못 함» 으로 닫는다", async () => {
+    mocks.ensureApprovedWorkspaceOnEntry.mockRejectedValueOnce(new Error("unavailable"));
+    const html = renderToStaticMarkup(await AppLayout({ children: createElement("p", null, "never") }));
+    expect(html).not.toContain("never");
+    expect(mocks.forgetBootstrapOutcome).toHaveBeenCalled();
+    expect(mocks.markBootstrapChecked).not.toHaveBeenCalled();
   });
 
   it("starts the session and the routing snapshot together, not in series", async () => {
