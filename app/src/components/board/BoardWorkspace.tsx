@@ -32,6 +32,11 @@ import {
 } from "react";
 import type { Board, BoardColumn, BoardGroup, ItemWithValues } from "@/lib/boards/types";
 import type { CellFlash } from "@/lib/boards/cellFlash";
+import { boardCellValueFromFormData } from "@/lib/boards/form-values";
+import { applySavedItems, cellSaveMessage, patchCellValue, type CellSaveResult } from "@/lib/boards/cell-save-result";
+import { saveCellValueAction } from "@/app/(app)/boards/cell-save-actions";
+import { CellSaveContext, type CellSaveApi } from "./cell-save-context";
+import { useRouter } from "next/navigation";
 import {
   moveRowAction,
   reorderGroupsAction,
@@ -161,6 +166,9 @@ export function companyRevenue(value: unknown): string {
   const text = String(value ?? "").trim().replaceAll(",", "");
   return /^-?\d+(?:\.\d+)?$/.test(text) ? text : "";
 }
+
+/** Issue 857 — 셀 저장이 이만큼 멈추면 화면 데이터를 조용히 새로 받는다. */
+const CELL_SAVE_QUIET_REFRESH_MS = 2000;
 
 /** 낙관적 행 이동 — 서버의 moveRowAction 과 같은 규칙(그룹 내 재색인)을 화면에서 미리 흉내낸다. */
 function rowMoveReducer(rows: ItemWithValues[], move: RowMove): ItemWithValues[] {
@@ -436,7 +444,74 @@ export function BoardWorkspace({
     if(!rowMoveInFlightRef.current)rowOrderVersionRef.current=next;
   },[board.row_order_version]);
 
-  const [optimisticRows, moveRowOptimistic] = useOptimistic(rows, rowMoveReducer);
+  /*
+   * Issue 857 — 셀 저장은 화면 전체를 다시 그리지 않는다.
+   *   ① 누른 순간 useOptimistic 으로 그 칸 값을 먼저 그리고 ② 서버가 돌려준 행을 savedRows 에 얹는다.
+   *   서버가 화면을 새로 보내면(rows 가 바뀜) 얹은 것은 버린다 — 언제나 서버가 이긴다.
+   */
+  const [savedRows, setSavedRows] = useState<{ source: ItemWithValues[]; items: Record<string, ItemWithValues> }>(
+    () => ({ source: rows, items: {} }),
+  );
+  const [cellMessages, setCellMessages] = useState<{ source: ItemWithValues[]; byCell: Record<string, string | null> }>(
+    () => ({ source: rows, byCell: {} }),
+  );
+  const latestRowsRef = useRef(rows);
+  useEffect(() => {
+    latestRowsRef.current = rows;
+  }, [rows]);
+  const baseRows = useMemo(
+    () => (savedRows.source === rows ? applySavedItems(rows, savedRows.items) : rows),
+    [rows, savedRows],
+  );
+  const [cellPatchedRows, patchCellOptimistic] = useOptimistic(baseRows, patchCellValue);
+  const [optimisticRows, moveRowOptimistic] = useOptimistic(cellPatchedRows, rowMoveReducer);
+  /*
+   * 저장이 잠시 멈추면(2초) 화면 데이터를 조용히 한 번 새로 받는다. 서버가 계산하는 값(저장된 보기의
+   * 담당 범위·건수·행 순서 버전)과 브라우저 뒤로 가기 기억을 맞추려는 것이다. 새로 받는 동안에도
+   * 화면은 그대로 보이고, Next 가 액션을 차례로 처리해 그 사이 저장한 값이 되돌아가지 않는다.
+   */
+  const router = useRouter();
+  const quietRefreshTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (quietRefreshTimer.current !== null) window.clearTimeout(quietRefreshTimer.current);
+  }, []);
+  const scheduleQuietRefresh = useCallback(() => {
+    if (quietRefreshTimer.current !== null) window.clearTimeout(quietRefreshTimer.current);
+    quietRefreshTimer.current = window.setTimeout(() => {
+      quietRefreshTimer.current = null;
+      router.refresh();
+    }, CELL_SAVE_QUIET_REFRESH_MS);
+  }, [router]);
+  const saveCell = useCallback(async (formData: FormData) => {
+    const itemId = String(formData.get("itemId") ?? "");
+    const columnKey = String(formData.get("columnKey") ?? "");
+    patchCellOptimistic({ itemId, key: columnKey, value: boardCellValueFromFormData(formData) });
+    let result: CellSaveResult;
+    try {
+      result = await saveCellValueAction(formData);
+    } catch {
+      result = { ok: false, errors: [{ key: columnKey, label: columnKey, message: "저장하지 못했어요. 잠시 후 다시 시도해 주세요." }] };
+    }
+    const current = latestRowsRef.current;
+    if (result.ok) {
+      const saved = result.item;
+      setSavedRows((prev) => ({ source: current, items: { ...(prev.source === current ? prev.items : {}), [itemId]: saved } }));
+      scheduleQuietRefresh();
+    }
+    const message = cellSaveMessage(result, columnKey);
+    setCellMessages((prev) => ({
+      source: current,
+      byCell: { ...(prev.source === current ? prev.byCell : {}), [`${itemId}\u0000${columnKey}`]: message },
+    }));
+  }, [patchCellOptimistic, scheduleQuietRefresh]);
+  const cellSaveApi = useMemo<CellSaveApi>(() => ({
+    save: saveCell,
+    messageFor: (itemId, columnKey) => {
+      if (cellMessages.source !== rows) return undefined;
+      const key = `${itemId}\u0000${columnKey}`;
+      return key in cellMessages.byCell ? cellMessages.byCell[key] : undefined;
+    },
+  }), [cellMessages, rows, saveCell]);
   const displayRows = useMemo(() => {
     // 상담 단계 보기 — 같은 정본 행을 서버 적재분의 mode 로 가른다. 적재된 레거시 remote 는
     // SQL 의도된 기본값이며, 미조회(null)는 특정 보기에 넣지 않는다(F5). 새로고침해도 mode 는 DB 값 그대로다.
@@ -1161,6 +1236,7 @@ export function BoardWorkspace({
      * 원칙 2·8 — 인위적 max-width 없이 뷰포트 폭을 그대로 쓴다.
      * 세로 여백(gap-3)은 "그룹 사이 구획"이라는 위계 표현으로만 쓴다(원칙 10).
      */
+    <CellSaveContext.Provider value={cellAction ? null : cellSaveApi}>
     <div className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden">
       <BoardHeader
         boardId={board.id}
@@ -1590,5 +1666,6 @@ export function BoardWorkspace({
       ) : null}
       </BoardScrollViewport>
     </div>
+    </CellSaveContext.Provider>
   );
 }
