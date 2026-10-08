@@ -4,13 +4,14 @@ import { BOARD_ACTION_FLASH_COOKIE, decodeBoardActionFlash } from "@/lib/boards/
 /**
  * #845 7단계 — 나눠 보기의 값 바꾸기(묶음 사이 끌기)와 묶음 ＋ 미리 채우기는 서버가 다시 막는다.
  *   · 항목 수정 권한이 없으면 거절(화면이 끌기를 감춰도 서버가 막는다)
- *   · 고칠 수 없는 칸 · ✉ 발송 칸 · 신규리드 정본 · 배정 담당 · 넘기기 값 · 회사 밖 사람은 거절
+ *   · 고칠 수 없는 칸 · 편집 제한 칸(관리자만) · ✉ 발송 칸 · 신규리드 정본 · 배정 담당 · 넘기기 값 · 회사 밖 사람은 거절
  *   · 통과하면 칸 편집과 같은 setCells 경로로 쓴다
  */
 
 const h = vi.hoisted(() => ({
   guard: { kind: "allowed", reason: undefined as string | undefined },
   source: "user" as string,
+  role: "member" as string,
   activeMembers: ["u1", "u2"] as string[],
   setCells: vi.fn<(...args: unknown[]) => Promise<{ errors: { key: string; label: string; message: string }[]; notices?: unknown[] }>>(async () => ({ errors: [] })),
   createItem: vi.fn<(...args: unknown[]) => Promise<{ id: string }>>(async () => ({ id: "new-1" })),
@@ -34,13 +35,19 @@ const columns = [
   { key: "owner", label: "담당자", type: "person", source: "act", is_readonly: false, options_jsonb: null, move_rule_jsonb: null },
   { key: "contact_move", label: "컨택 이동", type: "status", source: "act", is_readonly: false, options_jsonb: null, move_rule_jsonb: null },
   { key: "memo", label: "메모", type: "text", source: "in", is_readonly: false, options_jsonb: null, move_rule_jsonb: null },
+  // 칸 설정 「편집 가능 · 관리자만」 — DB(itemvals_insert → board_column_policy_allows)가 구성원의 값 쓰기를 거부한다.
+  {
+    key: "grade", label: "등급", type: "select", source: "act", is_readonly: false,
+    options_jsonb: { options: [{ id: "a", label: "A" }] }, move_rule_jsonb: null,
+    edit_policy_jsonb: { roles: ["owner", "admin"] },
+  },
 ];
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn(), notFound: vi.fn() }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ set: h.cookieSet }) }));
 vi.mock("@/lib/auth/session", () => ({
-  getSession: async () => ({ org: { id: "org-1" }, user: { id: "u1" }, role: "member", scope: "own" }),
+  getSession: async () => ({ org: { id: "org-1" }, user: { id: "u1" }, role: h.role, scope: "own" }),
   applyAs: (ctx: unknown) => ctx,
 }));
 vi.mock("@/lib/perm/guard", () => ({ loadPermGuard: async () => h.guard }));
@@ -93,6 +100,7 @@ beforeEach(() => {
   h.guard.kind = "allowed";
   h.guard.reason = undefined;
   h.source = "user";
+  h.role = "member";
   h.activeMembers = ["u1", "u2"];
   h.setCells.mockImplementation(async () => ({ errors: [] }));
 });
@@ -139,6 +147,17 @@ describe("setGroupValueAction — 묶음 사이 끌기", () => {
     await expect(move("owner", "u2")).resolves.toEqual({ ok: true });
   });
 
+  it("편집 제한(관리자만) 칸은 구성원이면 쓰지 않고 까닭을 돌려준다 · 대표·관리자는 옮긴다", async () => {
+    await expect(move("grade", "a")).resolves.toEqual({ ok: false, message: "이 칸을 고칠 권한이 없어요." });
+    expect(h.setCells).not.toHaveBeenCalled();
+    for (const role of ["owner", "admin"]) {
+      h.role = role;
+      await expect(move("grade", "a")).resolves.toEqual({ ok: true });
+    }
+    expect(h.setCells).toHaveBeenCalledTimes(2);
+    expect(h.setCells).toHaveBeenLastCalledWith(expect.anything(), "board-1", "item-1", { grade: "a" });
+  });
+
   it("setCells 가 그 칸을 거절하면(예: 행을 옮길 권한) 실패로 돌려준다", async () => {
     h.setCells.mockImplementationOnce(async () => ({ errors: [{ key: "stage", label: "단계", message: "전체 행을 볼 수 있는 사용자만 행을 옮길 수 있어요." }] }));
     await expect(move("stage", "review")).resolves.toEqual({ ok: false, message: "전체 행을 볼 수 있는 사용자만 행을 옮길 수 있어요." });
@@ -168,6 +187,17 @@ describe("addItemAction — 묶음 ＋ 미리 채우기", () => {
     expect(h.createItem).not.toHaveBeenCalled();
     const call = [...h.cookieSet.mock.calls].reverse().find(([name]) => name === BOARD_ACTION_FLASH_COOKIE);
     expect(decodeBoardActionFlash(call?.[1] as string)?.message).toBe("고칠 수 없는 칸이에요.");
+  });
+
+  it("편집 제한(관리자만) 칸이면 구성원은 행을 만들지 않는다 — 값 없는 행이 남지 않는다", async () => {
+    await add({ prefillKey: "grade", prefillValue: JSON.stringify("a") });
+    expect(h.createItem).not.toHaveBeenCalled();
+    const call = [...h.cookieSet.mock.calls].reverse().find(([name]) => name === BOARD_ACTION_FLASH_COOKIE);
+    expect(decodeBoardActionFlash(call?.[1] as string)?.message).toBe("이 칸을 고칠 권한이 없어요.");
+
+    h.role = "admin";
+    await add({ prefillKey: "grade", prefillValue: JSON.stringify("a") });
+    expect(h.createItem).toHaveBeenCalledWith(expect.anything(), "board-1", expect.objectContaining({ values: { grade: "a" } }));
   });
 
   it("미리 채우기가 없으면 예전과 같다", async () => {

@@ -4,7 +4,7 @@
  * 탭 머리말의 작은 부품들 (#845 개선안 · 2026-10-08 대표 결정).
  *   · TabTitleMenu   — 제목 옆 ▾ : 이름 바꾸기 · 아이콘 바꾸기 · 설명 고치기 · 탭 설정… | 휴지통으로 이동
  *   · (담당자 고르기는 #845 6단계에서 보기 줄의 「담당」 조건으로 옮겼다)
- *   · DescriptionHint — 설명은 줄글 대신 ⓘ 에 올리거나 초점을 주면 보인다
+ *   · DescriptionHint — 설명은 줄글 대신 ⓘ 에 올리거나 초점을 주거나 누르면 보인다
  *   · TabSettingsButton — 오른쪽 위 「탭 설정」 (640px 아래는 아이콘만 40px)
  *
  * 메뉴는 표의 컬럼 메뉴와 같은 BoardAnchoredMenu(본문 포털·화살표 이동·Esc·바깥 누르기 닫힘)를 쓰고,
@@ -17,6 +17,7 @@ import {
   useId,
   useRef,
   useState,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import {
@@ -180,12 +181,17 @@ export function TabTitleMenu({
   );
 }
 
-/** 탭 설명 — ⓘ 에 마우스를 올리거나 초점을 주면 본문 위에 뜬다(Esc 로 닫힘). 줄글은 보조기기에 늘 읽힌다. */
+/**
+ * 탭 설명 — ⓘ 에 마우스를 올리거나 초점을 주면 본문 위에 뜬다(Esc 로 닫힘). 줄글은 보조기기에 늘 읽힌다.
+ * 터치는 누를 때마다 열고 닫는다 — iOS 의 누르기는 초점을 주지 않아 blur 로 닫히지 않으므로 바깥을 누르면 닫는다.
+ */
 export function DescriptionHint({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<number | null>(null);
+  // 누르기 직전의 열림 — 누르는 사이 초점(안드로이드)이 먼저 열어도 누르기는 그 전 상태를 뒤집는다.
+  const pressRef = useRef<{ open: boolean; pointerType: string } | null>(null);
   const descriptionId = `${useId().replace(/:/gu, "")}-description`;
   const hide = useCallback(() => setOpen(false), []);
   const position = useAnchoredPosition({
@@ -210,6 +216,13 @@ export function DescriptionHint({ text }: { text: string }) {
     cancelHide();
     hideTimer.current = window.setTimeout(() => setOpen(false), 120);
   };
+  // 올리기·떠나기는 마우스·펜만 — 터치는 누른 뒤 곧바로 «떠나기» 가 와서 열자마자 닫힌다.
+  const hoverIn = (event: ReactPointerEvent) => {
+    if (event.pointerType !== "touch") showNow();
+  };
+  const hoverOut = (event: ReactPointerEvent) => {
+    if (event.pointerType !== "touch") hideSoon();
+  };
 
   useEffect(() => () => {
     if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
@@ -219,8 +232,17 @@ export function DescriptionHint({ text }: { text: string }) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && (anchorRef.current?.contains(target) || surfaceRef.current?.contains(target))) return;
+      setOpen(false);
+    };
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
   }, [open]);
 
   return (
@@ -231,11 +253,21 @@ export function DescriptionHint({ text }: { text: string }) {
         data-board-description
         aria-label="탭 설명"
         aria-describedby={descriptionId}
-        onPointerEnter={showNow}
-        onPointerLeave={hideSoon}
+        onPointerEnter={hoverIn}
+        onPointerLeave={hoverOut}
+        onPointerDown={(event) => { pressRef.current = { open, pointerType: event.pointerType }; }}
         onFocus={showNow}
         onBlur={() => setOpen(false)}
-        onClick={showNow}
+        onClick={() => {
+          const press = pressRef.current;
+          pressRef.current = null;
+          // 마우스는 올리기가 이미 열었다 — 누르기는 열어 둔다. 터치·키보드는 누를 때마다 뒤집는다.
+          if (press?.pointerType === "mouse" || !(press?.open ?? open)) showNow();
+          else {
+            cancelHide();
+            setOpen(false);
+          }
+        }}
         className="grid size-7 shrink-0 place-items-center rounded-full text-mw-sub hover:text-mw-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-primary"
       >
         <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
@@ -250,8 +282,8 @@ export function DescriptionHint({ text }: { text: string }) {
             ref={surfaceRef}
             aria-hidden="true"
             data-board-description-tip
-            onPointerEnter={showNow}
-            onPointerLeave={hideSoon}
+            onPointerEnter={hoverIn}
+            onPointerLeave={hoverOut}
             style={{
               left: position.left,
               top: position.top,

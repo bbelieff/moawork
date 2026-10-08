@@ -158,6 +158,35 @@ describe("제목 ▾ 메뉴", () => {
     expect(input!.value).toBe("탭이름");
     expect(document.activeElement).toBe(input);
   });
+
+  it("▾ 로 시작한 이름 편집을 Enter·Esc 로 끝내면 초점이 ▾ 로, 제목을 눌러 시작했으면 제목으로 돌아온다", async () => {
+    const { host } = await mount({ canEditTitle: true });
+    const button = trigger(host)!;
+    const input = () => host.querySelector<HTMLInputElement>('input[aria-label="보드 이름"]')!;
+    const renameFromMenu = async () => {
+      await act(async () => button.click());
+      await act(async () => menu()!.querySelector<HTMLButtonElement>('[role="menuitem"]')!.click());
+      expect(document.activeElement).toBe(input());
+    };
+
+    await renameFromMenu();
+    await act(async () => { input().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+    await nextFrame();
+    expect(document.activeElement).toBe(button);
+
+    // 바꾸지 않은 이름의 Enter 는 저장 없이 닫는다.
+    await renameFromMenu();
+    await act(async () => { input().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+    await nextFrame();
+    expect(document.activeElement).toBe(button);
+
+    const title = () => host.querySelector<HTMLButtonElement>('button[aria-label="보드 이름 편집"]')!;
+    await act(async () => title().click());
+    expect(document.activeElement).toBe(input());
+    await act(async () => { input().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+    await nextFrame();
+    expect(document.activeElement).toBe(title());
+  });
 });
 
 describe("오른쪽 위 「탭 설정」 과 주 단추", () => {
@@ -201,6 +230,38 @@ describe("설명은 ⓘ 로", () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
     expect(document.querySelector("[data-board-description-tip]")).toBeNull();
+  });
+
+  it("터치는 눌러서 열고 닫는다 — 초점을 주지 않는 탭(iOS)도 바깥을 누르면 닫힌다", async () => {
+    const { host } = await mount();
+    const info = host.querySelector<HTMLButtonElement>("button[data-board-description]")!;
+    const tip = () => document.querySelector("[data-board-description-tip]");
+    // jsdom 에는 PointerEvent 가 없다 — 처리기는 pointerType 만 본다.
+    const pointer = (target: EventTarget, type: string) => {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "pointerType", { value: "touch" });
+      target.dispatchEvent(event);
+    };
+    // iOS 의 한 번 누르기: 올림·누름·뗌·내림 뒤 click — 초점은 오지 않는다.
+    const tap = (target: HTMLElement) => act(async () => {
+      for (const type of ["pointerover", "pointerdown", "pointerup", "pointerout"]) pointer(target, type);
+      target.click();
+    });
+
+    await tap(info);
+    expect(tip()).not.toBeNull();
+    expect(document.activeElement).not.toBe(info);
+    // 손가락이 떠난 뒤에도(누름 끝) 저절로 닫히지 않는다.
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 200)));
+    expect(tip()).not.toBeNull();
+    // 바깥을 누르면 닫힌다.
+    await act(async () => pointer(document.body, "pointerdown"));
+    expect(tip()).toBeNull();
+    // 다시 누르면 열고, 한 번 더 누르면 닫는다.
+    await tap(info);
+    expect(tip()).not.toBeNull();
+    await tap(info);
+    expect(tip()).toBeNull();
   });
 
   it("설명이 없으면 ⓘ 도 없다", async () => {

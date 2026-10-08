@@ -283,7 +283,20 @@ export function savedBoardViewFromRow(row: Record<string, unknown>, canEdit?: bo
   };
 }
 
-export function savedViewUrl(view: SavedBoardView, current: string): string {
+/**
+ * D26 — 보는 사람 기준(viewer) 뷰의 담당 조건. 뷰에는 사람 id 를 박지 않으므로, 담당이 비어 있으면 «보는 사람» 이다.
+ * 담당 칩이 「나」 로 서고, 연 그대로는 «바뀜» 이 아니다.
+ */
+export function viewerScopedAssignees(
+  view: Pick<SavedBoardView, "personScope"> & { config: Pick<SavedBoardViewConfig, "filters"> },
+  viewerId?: string | null,
+): string[] {
+  const saved = view.config.filters.assignees;
+  return view.personScope === "viewer" && viewerId && saved.length === 0 ? [viewerId] : [...saved];
+}
+
+/** 저장된 뷰를 여는 주소. viewerId 를 주면 보는 사람 기준 뷰의 담당을 그 사람으로 채운다(viewerScopedAssignees). */
+export function savedViewUrl(view: SavedBoardView, current: string, viewerId?: string | null): string {
   const url = new URL(current);
   url.searchParams.set("savedView", view.id);
   url.searchParams.set("view", modeForSavedKind(view.config.kind));
@@ -291,13 +304,20 @@ export function savedViewUrl(view: SavedBoardView, current: string): string {
   url.searchParams.delete("mwLayout");
   url.searchParams.set("mwHidden", JSON.stringify(view.config.hiddenColumns));
   url.searchParams.set("mwOrder", JSON.stringify(view.config.columnOrder));
-  url.searchParams.set("mwFilters", encodeBoardFilters({ ...view.config.filters, sorts: [...view.config.sorts] }));
+  url.searchParams.set("mwFilters", encodeBoardFilters({
+    ...view.config.filters,
+    assignees: viewerScopedAssignees(view, viewerId),
+    sorts: [...view.config.sorts],
+  }));
   url.searchParams.set("mwSort", JSON.stringify(view.config.sorts));
   url.searchParams.set("mwText", view.config.textMode);
   if (view.config.focusColumnKey) url.searchParams.set("mwFocus", view.config.focusColumnKey);
   else url.searchParams.delete("mwFocus");
   if (view.config.groupBy) url.searchParams.set("group", view.config.groupBy);
   else url.searchParams.delete("group");
+  // 캘린더 날짜 칸도 이 뷰의 것으로 — 앞 뷰의 칸이 주소에 남아 다음 뷰를 덮지 않게.
+  if (view.config.calendarFieldKey) url.searchParams.set("calendarField", view.config.calendarFieldKey);
+  else url.searchParams.delete("calendarField");
   return url.toString();
 }
 
@@ -330,8 +350,10 @@ export function boardViewSwitchUrl(
 export function applySavedKanbanView<T extends { items: readonly ItemWithValues[] }>(
   lanes: readonly T[], rows: readonly ItemWithValues[], columns: readonly BoardColumn[], filters: BoardFilterState,
   projection?: BoardFilterProjection,
+  /** 사람 id → 이름. 사람 칸 「이름순」 이 id 순이 되지 않게. */
+  assigneeLabels?: Readonly<Record<string, string>>,
 ): Array<T & { items: ItemWithValues[] }> {
-  const filtered = applyFilters(rows, columns, filters, projection);
+  const filtered = applyFilters(rows, columns, filters, projection, assigneeLabels);
   const rank = new Map(filtered.map((item, index) => [item.id, index]));
   return lanes.map((lane) => ({
     ...lane,

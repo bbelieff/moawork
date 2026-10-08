@@ -7,6 +7,7 @@
  * · 아이콘은 선 아이콘 한 벌(16개) 중 하나를 누르면 바로 저장한다. 옛 이모지 저장값은 같은 그림이 골라진 채로 보인다.
  * · 설명은 200자까지, 칸을 떠나거나 Enter 로 저장한다. 비우면 지운다.
  * · 고치던 글자가 있을 때 Esc 는 그 글자를 되돌린다(대화상자는 닫히지 않는다). 다시 누르면 닫힌다.
+ * · 바깥 누르기·닫기로 창이 먼저 닫혀도 고치던 글자는 그때 한 번 저장한다.
  * 저장 함수는 바꿔 끼울 수 있다 — 시각 픽스처가 저장소 경계만 대신한다.
  */
 
@@ -18,6 +19,7 @@ import { TabIcon } from "./TabIcon";
 import { OWNS_ESCAPE_ATTRIBUTE, useTabChrome } from "./tab-chrome";
 
 const DESCRIPTION_MAX = 200;
+/** 넓은 화면의 한 줄 칸 수 — 그려진 격자를 읽지 못할 때 쓴다(640px 아래는 6칸). */
 const ICON_COLUMNS = 8;
 const INPUT = "h-[38px] w-full rounded-[9px] border border-mw-line bg-mw-card px-3 text-[length:var(--fs-14)] font-normal text-mw-fg outline-none focus:border-[color:var(--mw-tab-icon,var(--mw-record))] focus:ring-2 focus:ring-mw-primary/30 aria-busy:opacity-60";
 
@@ -76,6 +78,7 @@ export function TabSettingsGeneral({
       <IconPicker
         gridRef={iconGridRef}
         labelId={`${base}-icon-label`}
+        stored={icon}
         initial={resolveBoardIconKey(icon, source)}
         onSave={async (key) => {
           const result = await identityAction(boardId, { icon: key });
@@ -155,6 +158,20 @@ function TextSetting({
   }
   const dirty = draft !== saved;
 
+  // 바깥 누르기는 pointerdown 에서 대화상자를 닫는다 — 입력칸은 blur 없이 사라진다. 고치던 글자는 그때 저장한다
+  // (칸을 떠나 이미 저장 중이면 다시 보내지 않는다). 창이 닫혔으니 결과 알림은 없다.
+  const latestRef = useRef({ draft, saved, requiredMessage, onSave });
+  useEffect(() => {
+    latestRef.current = { draft, saved, requiredMessage, onSave };
+  });
+  useEffect(() => () => {
+    if (pendingRef.current) return;
+    const latest = latestRef.current;
+    const next = latest.draft.trim();
+    if (next === latest.saved.trim() || (latest.requiredMessage && !next)) return;
+    void latest.onSave(next).catch(() => undefined);
+  }, []);
+
   const commit = async () => {
     if (pendingRef.current) return;
     const next = draft.trim();
@@ -222,36 +239,50 @@ function TextSetting({
   );
 }
 
+/** 격자 한 줄의 칸 수 — 화면이 그린 열을 센다. 읽을 수 없으면 넓은 화면의 8칸으로 본다. */
+function iconColumns(grid: HTMLElement | null): number {
+  const tracks = grid ? getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/u).filter((track) => /^\d/u.test(track)).length : 0;
+  return tracks > 0 ? tracks : ICON_COLUMNS;
+}
+
 function IconPicker({
   gridRef,
   labelId,
+  stored,
   initial,
   onSave,
   onNotice,
 }: {
   gridRef: RefObject<HTMLDivElement | null>;
   labelId: string;
+  /** 저장소에 적힌 값 그대로(아이콘 키·옛 이모지·빈 값). */
+  stored: string | null;
   initial: TabIconKey;
   onSave(key: TabIconKey): Promise<{ ok: boolean; message: string }>;
   onNotice(notice: ResultNotice): void;
 }) {
-  const [observed, setObserved] = useState(initial);
+  const [observed, setObserved] = useState({ stored, initial });
   const [selected, setSelected] = useState(initial);
+  // 실제로 저장된 값 — 옛 이모지·빈 값은 같은 그림이 골라져 보여도 아직 아이콘 키가 아니다.
+  const [savedRaw, setSavedRaw] = useState(stored);
   const [focusIndex, setFocusIndex] = useState(() => Math.max(0, TAB_ICON_KEYS.indexOf(initial)));
   const [pending, setPending] = useState(false);
-  if (initial !== observed && !pending) {
-    setObserved(initial);
+  if ((stored !== observed.stored || initial !== observed.initial) && !pending) {
+    setObserved({ stored, initial });
     setSelected(initial);
+    setSavedRaw(stored);
   }
 
   const pick = async (key: TabIconKey) => {
-    if (pending || key === selected) return;
+    // 이미 그 키로 저장돼 있을 때만 건너뛴다 — 옛 값으로 보이던 그림을 누르면 키로 고쳐 저장한다.
+    if (pending || (key === selected && savedRaw === key)) return;
     const previous = selected;
     setSelected(key);
     setPending(true);
     try {
       const result = await onSave(key);
-      if (!result.ok) setSelected(previous);
+      if (result.ok) setSavedRaw(key);
+      else setSelected(previous);
       onNotice(result);
     } catch {
       setSelected(previous);
@@ -261,13 +292,14 @@ function IconPicker({
     }
   };
 
-  // 한 칸만 Tab 으로 들어오고, 그 안에서는 화살표로 옮긴다(8칸씩 한 줄).
+  // 한 칸만 Tab 으로 들어오고, 그 안에서는 화살표로 옮긴다(↑↓ 는 그려진 한 줄 — 8칸, 640px 아래 6칸).
   const onKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
     const last = TAB_ICON_KEYS.length - 1;
+    const columns = iconColumns(gridRef.current);
     const next = event.key === "ArrowRight" ? Math.min(last, index + 1)
       : event.key === "ArrowLeft" ? Math.max(0, index - 1)
-        : event.key === "ArrowDown" ? Math.min(last, index + ICON_COLUMNS)
-          : event.key === "ArrowUp" ? Math.max(0, index - ICON_COLUMNS)
+        : event.key === "ArrowDown" ? Math.min(last, index + columns)
+          : event.key === "ArrowUp" ? Math.max(0, index - columns)
             : event.key === "Home" ? 0
               : event.key === "End" ? last
                 : null;

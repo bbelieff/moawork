@@ -18,7 +18,11 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
-/** 주소 이동 — 시험에서 바꿔 끼울 수 있게 한곳에 둔다. */
+/**
+ * 주소 이동(새로 읽기) — 시험에서 바꿔 끼울 수 있게 한곳에 둔다.
+ * 뷰를 고르거나 저장·되돌리기·지우기는 화면 상태(조건·칸 순서)를 주소에서 처음부터 다시 읽어야 해서 이것을 쓴다.
+ * 보기 방식·칸반 나눠 보기 바꾸기는 다시 읽을 것이 없어 router.push(BoardViewBar)로 부드럽게 옮긴다.
+ */
 export function navigateTo(url: string) {
   window.location.assign(url);
 }
@@ -67,12 +71,17 @@ export function useSavedViews(boardId: string, enabled: boolean) {
     body: JSON.stringify({ boardId, ...input }),
   }), [boardId]);
 
-  const overwrite = useCallback(async (view: SavedBoardView, config: SavedBoardViewConfig) => {
+  /** scope 를 주면 사람 범위도 같이 바꾼다(「담당 · 나」 ↔ 보는 사람 기준 — D26). */
+  const overwrite = useCallback(async (
+    view: SavedBoardView,
+    config: SavedBoardViewConfig,
+    scope?: Pick<NewViewInput, "personScope" | "personScopeUserId">,
+  ) => {
     const saved = await request<SavedBoardView>(`/api/tab-views/${view.id}`, {
-      method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ config }),
+      method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ config, ...scope }),
     });
     setViews((current) => current.map((candidate) => candidate.id === view.id
-      ? { ...candidate, config: saved?.config ?? config }
+      ? { ...candidate, ...scope, config: saved?.config ?? config }
       : candidate));
     return saved;
   }, []);

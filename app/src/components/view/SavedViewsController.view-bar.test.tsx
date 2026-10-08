@@ -4,7 +4,7 @@
  *   · 보기 조건은 화면이 들고 주소(mwFilters)에 남긴다 — 저장된 뷰가 «덮어쓰지» 않는다.
  *   · 저장된 뷰가 없을 때 옮긴 칸 순서를 잃지 않는다(mwOrder 를 JSON 으로 — 예전에는 쉼표로 남겨 다시 못 읽었다).
  */
-import { act } from "react";
+import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,10 +14,12 @@ vi.mock("@/app/(app)/boards/actions", async (importOriginal) => ({
   reorderGroupsAction: vi.fn(),
 }));
 vi.mock("@/app/(app)/boards/title-actions", () => ({ renameColumnTitleAction: vi.fn() }));
+// 보기 줄은 보기 방식을 router.push 로 바꾼다 — 앱 라우터 밖에서 그리므로 바꿔 끼운다.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: () => undefined }) }));
 
 import { SavedViewsController } from "./SavedViewsController";
 import { decodeBoardFilters, EMPTY_FILTERS } from "@/components/board/filters";
-import { parseSavedStringList } from "@/lib/view/board-saved";
+import { parseSavedBoardViewConfig, parseSavedStringList, savedViewUrl, type SavedBoardView } from "@/lib/view/board-saved";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -96,5 +98,72 @@ describe("#845 6단계 — 목록 보기의 보기 줄", () => {
     const host = await mount("view=flat", { ...EMPTY_FILTERS, visibleColumnKeys: ["second"] });
     expect(headers(host)).toEqual(["second"]);
     expect(host.querySelector('[data-view-chip="columns"]')!.textContent).toBe("보이는 칸 1/2");
+  });
+});
+
+describe("저장된 뷰로 연 목록·캘린더", () => {
+  const savedView = (over: Partial<SavedBoardView>, config: Record<string, unknown>): SavedBoardView => ({
+    id: "v", name: "뷰", visibility: "shared", ownerId: "other", isDefault: false, lastUsedAt: null, canEdit: false,
+    config: parseSavedBoardViewConfig(config),
+    ...over,
+  });
+  const serve = (views: SavedBoardView[]) => vi.stubGlobal("fetch", vi.fn(async () => new Response(
+    JSON.stringify({ data: views }), { status: 200, headers: { "content-type": "application/json" } },
+  )));
+  afterEach(() => vi.unstubAllGlobals());
+  const titles = (host: ParentNode) => [...host.querySelectorAll('tbody td[data-column-key="__title"]')].map((cell) => cell.textContent);
+
+  async function render(element: ReactElement) {
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => root!.render(element));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    return host;
+  }
+
+  it("계약일로 저장한 캘린더 뷰는 주소에 날짜 칸이 없어도 계약일로 연다", async () => {
+    const date = (key: string, label: string, sort: number) => ({ ...column(key, label, sort), type: "date" }) as BoardColumn;
+    serve([savedView({ id: "cal" }, { kind: "calendar", calendarFieldKey: "contract_date" })]);
+    window.history.replaceState(null, "", "/boards/b?view=calendar&savedView=cal");
+    const host = await render(
+      <SavedViewsController boardId="b" currentUserId="me" columns={[date("start_date", "시작일", 0), date("contract_date", "계약일", 1)]}
+        rows={rows} renderMode="calendar" initialSearch="view=calendar&savedView=cal" savedViewId="cal" loadSavedViews />,
+    );
+    expect(host.querySelector<HTMLSelectElement>("select")!.value).toBe("contract_date");
+  });
+
+  it("목록의 사람 칸 「이름순」 은 계정 id 가 아니라 이름으로 줄 세운다", async () => {
+    const owner = { ...column("owner", "담당자", 0), type: "person" } as BoardColumn;
+    const people = [
+      { ...rows[0], id: "p-1", title: "하늘 담당 건", values: { owner: "u-1" } },
+      { ...rows[1], id: "p-2", title: "가람 담당 건", values: { owner: "u-2" } },
+    ];
+    const host = await render(
+      <SavedViewsController boardId="b" currentUserId="me" columns={[owner]} rows={people} renderMode="flat"
+        memberOptions={[{ id: "u-1", label: "하늘" }, { id: "u-2", label: "가람" }]}
+        initialFilters={{ ...EMPTY_FILTERS, sorts: [{ columnKey: "owner", direction: "asc" }] }} />,
+    );
+    expect(titles(host)).toEqual(["가람 담당 건", "하늘 담당 건"]);
+  });
+
+  it("D26 — A 가 「나」 로 저장한 팀 뷰를 B 가 열면 B 의 행만, 담당 칩은 「나」, 바뀜 없음", async () => {
+    const team = savedView({ id: "team", ownerId: "u-a", personScope: "viewer", personScopeUserId: null }, { kind: "table" });
+    serve([team]);
+    const mine = [
+      { ...rows[0], id: "a-row", title: "A 의 건", assigned_to: "u-a" },
+      { ...rows[1], id: "b-row", title: "B 의 건", assigned_to: "u-b" },
+    ];
+    const url = new URL(savedViewUrl(team, "https://app.test/boards/b?view=flat", "u-b"));
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+    const host = await render(
+      <SavedViewsController boardId="b" currentUserId="u-b" teamMemberIds={["u-b"]} columns={columns} rows={mine} renderMode="flat"
+        memberOptions={[{ id: "u-a", label: "에이" }, { id: "u-b", label: "비" }]}
+        initialSearch={url.searchParams.toString()} initialFilters={decodeBoardFilters(url.searchParams.get("mwFilters"))}
+        savedViewId="team" loadSavedViews />,
+    );
+    expect(titles(host)).toEqual(["B 의 건"]);
+    expect(host.querySelector('[data-view-chip="assignee"]')!.textContent).toBe("담당 · 나");
+    expect(host.querySelector("[data-view-dirty-dot]")).toBeNull();
   });
 });

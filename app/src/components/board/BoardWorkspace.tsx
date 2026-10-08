@@ -171,6 +171,7 @@ import { parseBoardSummaryConfig, type BoardSummarySettingsRequest } from "@/lib
 import { saveBoardSummarySettingsAction } from "@/app/(app)/boards/[id]/summary-actions";
 
 const NEW_LEAD_LEGACY_FACET_LABELS = { revenue_band: "기존 매출구간" } as const;
+const NO_COLUMN_KEYS: readonly string[] = [];
 
 interface RowMove {
   itemId: string;
@@ -190,8 +191,98 @@ export function companyRevenue(value: unknown): string {
   return /^-?\d+(?:\.\d+)?$/.test(text) ? text : "";
 }
 
+/**
+ * 주소의 보기 조건(mwFilters · group)만 바꾼다 — 화면은 다시 받지 않는다.
+ * ★ 상태는 null 로 넘긴다(ItemDetailPanel.pushItemDetailHash 와 같은 이유). Next 가 넣어 둔 history.state 를
+ *   그대로 넘기면 그 표식(__NA) 때문에 Next 가 «자기가 쓴 기록» 으로 보고 라우터 주소를 맞추지 않는다.
+ *   그러면 칸 저장 뒤의 조용한 새로 받기(router.refresh)·묶음 끌기의 revalidate 가 옛 주소로 되돌려
+ *   ?group= 이 주소창에서 사라진다. null 이면 Next 가 이 주소를 라우터 상태로 받아 둔다.
+ */
+function replaceBoardUrl(url: URL) {
+  window.history.replaceState(null, "", url);
+}
+
 /** Issue 857 — 셀 저장이 이만큼 멈추면 화면 데이터를 조용히 새로 받는다. */
 const CELL_SAVE_QUIET_REFRESH_MS = 2000;
+
+/**
+ * Issue 857 — 칸 저장이 화면에 얹어 둔 것. 행 id(칸 한 줄은 행 id + 칸 key)로 든다.
+ *   saved    — 서버가 돌려준 행(그 판 = updated_at).
+ *   messages — 칸 아래 한 줄(null = 지난 사유를 지움). 성공은 돌려받은 행의 판, 실패는 저장할 때 보던 행의 판을 든다.
+ *   staleSeen — 저장한 판보다 «옛» 서버 화면을 몇 번 넘겼나.
+ */
+type SavedCellRow = { item: ItemWithValues; staleSeen: number };
+type SavedCellMessage = { message: string | null; version: string; failed: boolean; staleSeen: number };
+type CellSaveOverlay = {
+  rows: ItemWithValues[];
+  saved: Readonly<Record<string, SavedCellRow>>;
+  messages: Readonly<Record<string, SavedCellMessage>>;
+};
+
+function cellMessageKey(itemId: string, columnKey: string): string {
+  return `${itemId}\u0000${columnKey}`;
+}
+
+/** 행의 판(updated_at) → 비교할 수 있는 시각. 읽지 못하면 NaN(= 모름). */
+function rowVersionTime(version: string | null | undefined): number {
+  return typeof version === "string" && version ? Date.parse(version) : Number.NaN;
+}
+
+/** 서버 행이 저장한 판을 «따라잡았나»(같거나 새 판). 둘 중 하나라도 모르면 false. */
+function serverCaughtUp(serverVersion: string | undefined, savedVersion: string): boolean {
+  const server = rowVersionTime(serverVersion);
+  const saved = rowVersionTime(savedVersion);
+  return !Number.isNaN(server) && !Number.isNaN(saved) && server >= saved;
+}
+
+/** 아직 서버보다 앞선 저장 행만 — 서버가 따라잡은(같거나 새 판) 행은 서버 것을 그린다. */
+function savedItemsAhead(
+  rows: readonly ItemWithValues[],
+  saved: Readonly<Record<string, SavedCellRow>>,
+): Record<string, ItemWithValues> {
+  const ids = Object.keys(saved);
+  if (ids.length === 0) return {};
+  const serverVersion = new Map(rows.map((row) => [row.id, row.updated_at]));
+  const ahead: Record<string, ItemWithValues> = {};
+  for (const id of ids) {
+    if (!serverCaughtUp(serverVersion.get(id), saved[id].item.updated_at)) ahead[id] = saved[id].item;
+  }
+  return ahead;
+}
+
+/**
+ * 서버가 화면을 새로 보냈을 때(rows 가 바뀜) 얹어 둔 것을 가린다 — #857 «언제나 서버가 이긴다» 를 지킨다.
+ *   · 그 행을 같거나 새 판으로 보냈다 → 버린다(서버가 이긴다).
+ *   · 옛 판이다 → 저장 «전» 에 출발한 응답(묶음 끌기의 revalidate 등)이다. 한 번은 얹은 것을 지킨다.
+ *     두 번째 옛 판에서는 서버를 따른다 — 칸 저장(앱 서버 시계)과 행 이동(DB 시계)의 판이 어긋나
+ *     새 값이 옛 판처럼 보여도 영영 가려지지 않게.
+ *   · 판을 읽을 수 없거나 그 행이 없어졌다 → 버린다(예전처럼).
+ * 실패 사유는 그 칸을 다시 저장하거나 서버가 그 행의 «더 새» 판을 보낼 때까지 둔다.
+ */
+function reconcileCellSaveOverlay(overlay: CellSaveOverlay, rows: ItemWithValues[]): CellSaveOverlay {
+  const serverVersion = new Map(rows.map((row) => [row.id, row.updated_at]));
+  const keepAhead = (itemId: string, version: string, staleSeen: number): boolean => {
+    const server = serverVersion.get(itemId);
+    if (Number.isNaN(rowVersionTime(server)) || Number.isNaN(rowVersionTime(version))) return false;
+    return !serverCaughtUp(server, version) && staleSeen < 1;
+  };
+  const saved: Record<string, SavedCellRow> = {};
+  for (const [itemId, entry] of Object.entries(overlay.saved)) {
+    if (keepAhead(itemId, entry.item.updated_at, entry.staleSeen)) saved[itemId] = { ...entry, staleSeen: entry.staleSeen + 1 };
+  }
+  const messages: Record<string, SavedCellMessage> = {};
+  for (const [key, entry] of Object.entries(overlay.messages)) {
+    const itemId = key.slice(0, key.indexOf("\u0000"));
+    if (entry.failed) {
+      const server = rowVersionTime(serverVersion.get(itemId));
+      const before = rowVersionTime(entry.version);
+      if (!Number.isNaN(server) && !Number.isNaN(before) && server <= before) messages[key] = entry;
+    } else if (keepAhead(itemId, entry.version, entry.staleSeen)) {
+      messages[key] = { ...entry, staleSeen: entry.staleSeen + 1 };
+    }
+  }
+  return { rows, saved, messages };
+}
 
 /** #845 7단계 — 나눠 보기에서 다른 묶음으로 끌어 놓은 행의 새 값(낙관적). */
 interface RowValuePatch {
@@ -267,6 +358,7 @@ export function BoardWorkspace({
   canManageSections = false,
   canManageSummaries = false,
   canMoveRows = false,
+  editLockedColumnKeys = NO_COLUMN_KEYS,
   savedViewActive = false,
   savedViewId = null,
   currentUserId,
@@ -340,6 +432,11 @@ export function BoardWorkspace({
   canManageSummaries?: boolean;
   /** Whole-group reindex is available only to owner/admin/all-scope sessions. */
   canMoveRows?: boolean;
+  /**
+   * 칸의 편집 제한(edit_policy_jsonb, 예: 「관리자만」)이 이 사람에게 닫힌 칸 key — 서버가 columnPolicyAllows 로
+   * 판정해 넘긴다(화면은 역할을 모른다). 나눠 보기의 끌기·묶음 ＋ 를 그 칸에서는 내놓지 않는다.
+   */
+  editLockedColumnKeys?: readonly string[];
   savedViewActive?: boolean;
   savedViewId?: string | null;
   /** BBE-239 — 공지사항에서 작성자 본인 삭제 예외를 판정하는 데 쓴다. */
@@ -492,7 +589,7 @@ export function BoardWorkspace({
     const url = new URL(window.location.href);
     if (activeFilterCount(filters) === 0) url.searchParams.delete(BOARD_FILTER_QUERY_KEY);
     else url.searchParams.set(BOARD_FILTER_QUERY_KEY, encodeBoardFilters(filters));
-    window.history.replaceState(window.history.state, "", url);
+    replaceBoardUrl(url);
   }, [filterUrlReady, filters]);
   /*
    * 끌고 있는 행: ref 가 정본(드롭 판정), state 는 표시(반투명·드롭 안내문)용.
@@ -520,22 +617,24 @@ export function BoardWorkspace({
 
   /*
    * Issue 857 — 셀 저장은 화면 전체를 다시 그리지 않는다.
-   *   ① 누른 순간 useOptimistic 으로 그 칸 값을 먼저 그리고 ② 서버가 돌려준 행을 savedRows 에 얹는다.
-   *   서버가 화면을 새로 보내면(rows 가 바뀜) 얹은 것은 버린다 — 언제나 서버가 이긴다.
+   *   ① 누른 순간 useOptimistic 으로 그 칸 값을 먼저 그리고 ② 서버가 돌려준 행을 얹어 둔다(cellOverlay).
+   *   서버가 화면을 새로 보내면(rows 가 바뀜) 행의 판(updated_at)으로 가린다 — 규칙은 reconcileCellSaveOverlay.
+   *   그 행을 같거나 새 판으로 보내면 서버가 이긴다. 저장 «전» 에 출발한 응답(묶음 끌기의 revalidate 등)이
+   *   옛 판을 들고 오면 방금 저장한 값을 지운 채 그리지 않는다.
    */
-  const [savedRows, setSavedRows] = useState<{ source: ItemWithValues[]; items: Record<string, ItemWithValues> }>(
-    () => ({ source: rows, items: {} }),
-  );
-  const [cellMessages, setCellMessages] = useState<{ source: ItemWithValues[]; byCell: Record<string, string | null> }>(
-    () => ({ source: rows, byCell: {} }),
-  );
+  const [cellOverlay, setCellOverlay] = useState<CellSaveOverlay>(() => ({ rows, saved: {}, messages: {} }));
+  if (cellOverlay.rows !== rows) {
+    // 화면 데이터가 바뀌었다 — 얹어 둔 것을 새 rows 에 맞춰 가린다(지난 값을 상태로 들고 렌더 중에 비교하는 방식).
+    // 함수로 넘긴다 — 아직 처리되지 않은 저장 결과(앞선 갱신)를 덮어쓰지 않고 그 위에서 가린다.
+    setCellOverlay((current) => (current.rows === rows ? current : reconcileCellSaveOverlay(current, rows)));
+  }
   const latestRowsRef = useRef(rows);
   useEffect(() => {
     latestRowsRef.current = rows;
   }, [rows]);
   const baseRows = useMemo(
-    () => (savedRows.source === rows ? applySavedItems(rows, savedRows.items) : rows),
-    [rows, savedRows],
+    () => applySavedItems(rows, savedItemsAhead(rows, cellOverlay.saved)),
+    [rows, cellOverlay.saved],
   );
   const [cellPatchedRows, patchCellOptimistic] = useOptimistic(baseRows, patchCellValue);
   const [optimisticRows, moveRowOptimistic] = useOptimistic(cellPatchedRows, rowMoveReducer);
@@ -566,26 +665,29 @@ export function BoardWorkspace({
     } catch {
       result = { ok: false, errors: [{ key: columnKey, label: columnKey, message: "저장하지 못했어요. 잠시 후 다시 시도해 주세요." }] };
     }
-    const current = latestRowsRef.current;
+    const message = cellSaveMessage(result, columnKey);
+    const cellKey = cellMessageKey(itemId, columnKey);
     if (result.ok) {
       const saved = result.item;
-      setSavedRows((prev) => ({ source: current, items: { ...(prev.source === current ? prev.items : {}), [itemId]: saved } }));
+      setCellOverlay((prev) => ({
+        ...prev,
+        saved: { ...prev.saved, [itemId]: { item: saved, staleSeen: 0 } },
+        messages: { ...prev.messages, [cellKey]: { message, version: saved.updated_at, failed: false, staleSeen: 0 } },
+      }));
       scheduleQuietRefresh();
+      return;
     }
-    const message = cellSaveMessage(result, columnKey);
-    setCellMessages((prev) => ({
-      source: current,
-      byCell: { ...(prev.source === current ? prev.byCell : {}), [`${itemId}\u0000${columnKey}`]: message },
+    // 실패 사유는 그 칸을 다시 저장하거나 서버가 그 행의 더 새 판을 보낼 때까지 둔다 — 기준은 지금 보던 행의 판.
+    const before = latestRowsRef.current.find((row) => row.id === itemId)?.updated_at ?? "";
+    setCellOverlay((prev) => ({
+      ...prev,
+      messages: { ...prev.messages, [cellKey]: { message, version: before, failed: true, staleSeen: 0 } },
     }));
   }, [patchCellOptimistic, scheduleQuietRefresh]);
   const cellSaveApi = useMemo<CellSaveApi>(() => ({
     save: saveCell,
-    messageFor: (itemId, columnKey) => {
-      if (cellMessages.source !== rows) return undefined;
-      const key = `${itemId}\u0000${columnKey}`;
-      return key in cellMessages.byCell ? cellMessages.byCell[key] : undefined;
-    },
-  }), [cellMessages, rows, saveCell]);
+    messageFor: (itemId, columnKey) => cellOverlay.messages[cellMessageKey(itemId, columnKey)]?.message,
+  }), [cellOverlay.messages, saveCell]);
   const displayRows = useMemo(() => {
     // 상담 단계 보기 — 같은 정본 행을 서버 적재분의 mode 로 가른다. 적재된 레거시 remote 는
     // SQL 의도된 기본값이며, 미조회(null)는 특정 보기에 넣지 않는다(F5). 새로고침해도 mode 는 DB 값 그대로다.
@@ -672,10 +774,16 @@ export function BoardWorkspace({
   const rowDragEnabled = !readOnly && canMoveRows && !sortActive && !rowMovePending && !isConsultationStageView;
   /*
    * #845 7단계 — 나눠 보기에서 끌기는 «값 바꾸기» 다. 행 순서 권한(canMoveRows)이 아니라 항목 수정 권한과
-   * 그 칸을 이 길로 바꿀 수 있는지(groupValueEditBlock — 고칠 수 없는 칸·✉ 발송 칸·신규리드 정본·배정 담당)로 정한다.
+   * 그 칸을 이 길로 바꿀 수 있는지(groupValueEditBlock — 고칠 수 없는 칸·편집 제한 칸·✉ 발송 칸·신규리드 정본·배정 담당)로 정한다.
    * 줄 세우기와는 상관없다(순서를 저장하지 않는다). 서버(setGroupValueAction)가 같은 규칙으로 다시 막는다.
    */
-  const groupValueBlocked = groupColumn ? groupValueEditBlock(groupColumn, { canonicalNewLead, ownerMode }) : null;
+  const groupValueBlocked = groupColumn
+    ? groupValueEditBlock(groupColumn, {
+      canonicalNewLead,
+      ownerMode,
+      editPolicyAllows: !editLockedColumnKeys.includes(groupColumn.key),
+    })
+    : null;
   const groupValueEditable = Boolean(groupColumn) && !readOnly && groupValueBlocked === null;
   const groupValueInFlightRef = useRef(false);
   const [groupValuePending, setGroupValuePending] = useState(false);
@@ -1135,7 +1243,7 @@ export function BoardWorkspace({
     const stored = key && canonicalNewLead ? durableNewLeadColumnKeys([key])[0] ?? key : key;
     if (stored) url.searchParams.set("group", stored);
     else url.searchParams.delete("group");
-    window.history.replaceState(window.history.state, "", url);
+    replaceBoardUrl(url);
   }, [canonicalNewLead]);
   const tableColumnKeys = tableColumns.map((column) => column.key).join(",");
   const onRequestViewCondition = useCallback((request: ColumnViewRequest) => {
@@ -1497,7 +1605,7 @@ export function BoardWorkspace({
       settingsSections={board.is_system ? [] : tabSettingsSections}
       trash={board.is_system ? undefined : tabTrashSlot}
     >
-    <div className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden">
+    <div data-board-workspace="" className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden">
       <BoardHeader
         boardId={board.id}
         icon={board.icon}

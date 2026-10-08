@@ -155,6 +155,17 @@ describe("탭 설정 대화상자 — 모달", () => {
     expect(document.activeElement).toBe(focusables[0]);
   });
 
+  it("「단계」 칸을 고른 채로도 Shift+Tab 은 대화상자 밖으로 새지 않는다", async () => {
+    const { host } = await mount();
+    await openFromHeader(host);
+    await act(async () => tab("단계").click());
+    tab("단계").focus();
+    // 고르지 않은 「일반」·「항목」 탭은 tabindex=-1 이다 — 이 칸이 Tab 목록의 처음이다.
+    await press(tab("단계"), "Tab", { shiftKey: true });
+    expect(dialog()!.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).toBe(dialog()!.querySelector("[data-tab-stage-add]"));
+  });
+
   it("▾ 메뉴로 열면 닫힌 뒤 ▾ 단추로 초점이 돌아온다", async () => {
     const { host } = await mount();
     const trigger = host.querySelector<HTMLButtonElement>("button[data-board-tab-menu-trigger]")!;
@@ -286,6 +297,35 @@ describe("탭 설정 › 일반", () => {
     expect(dialog()!.querySelector("[data-tab-settings-notice]")?.textContent).toBe("탭 이름을 입력해 주세요.");
   });
 
+  it("옛 이모지로 저장된 탭은 같은 그림을 눌러도 아이콘 키로 고쳐 저장한다 — 한 번만", async () => {
+    const { host, calls } = await mount();
+    await openFromHeader(host);
+    // 💰 는 「전화」 로 보인다. 저장값은 아직 이모지다.
+    expect(buttonNamed("전화").getAttribute("aria-pressed")).toBe("true");
+    await act(async () => buttonNamed("전화").click());
+    expect(calls.identity).toHaveBeenCalledTimes(1);
+    expect(calls.identity).toHaveBeenCalledWith("b", { icon: "phone" });
+    await act(async () => buttonNamed("전화").click());
+    expect(calls.identity).toHaveBeenCalledTimes(1);
+  });
+
+  it("↑↓ 는 그려진 격자의 한 줄 칸 수만큼 옮긴다(640px 아래 6칸)", async () => {
+    const { host } = await mount();
+    await openFromHeader(host);
+    const grid = dialog()!.querySelector<HTMLElement>("[data-tab-icon-picker]")!;
+    const options = () => [...grid.querySelectorAll<HTMLButtonElement>("[data-tab-icon-option]")];
+    grid.style.gridTemplateColumns = "44px 44px 44px 44px 44px 44px";
+    options()[0].focus();
+    await press(options()[0], "ArrowDown");
+    expect(document.activeElement).toBe(options()[6]);
+    await press(options()[6], "ArrowUp");
+    expect(document.activeElement).toBe(options()[0]);
+    // 격자를 읽을 수 없으면 넓은 화면의 8칸으로 본다.
+    grid.style.gridTemplateColumns = "";
+    await press(options()[0], "ArrowDown");
+    expect(document.activeElement).toBe(options()[8]);
+  });
+
   it("휴지통 안내는 지울 수 있을 때만 보인다", async () => {
     const first = await mount();
     await openFromHeader(first.host);
@@ -296,6 +336,73 @@ describe("탭 설정 › 일반", () => {
     const second = await mount({ withTrash: false });
     await openFromHeader(second.host);
     expect(dialog()!.textContent).not.toContain("휴지통으로 이동");
+  });
+});
+
+describe("탭 설정 — 고치던 글자는 닫아도 남는다", () => {
+  // 바깥 누르기는 pointerdown 에서 닫는다 — 입력칸은 blur 없이 사라진다.
+  const pressOutside = () => act(async () => {
+    document.querySelector("[data-board-modal-layer]")!.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+  });
+
+  it("탭 이름·설명을 고치다 바깥을 누르면 닫히면서 한 번씩 저장한다", async () => {
+    const { host, calls } = await mount();
+    await openFromHeader(host);
+    const name = dialog()!.querySelector<HTMLInputElement>("[data-tab-settings-general] input")!;
+    name.focus();
+    await typeInto(name, "바깥 이름");
+    await pressOutside();
+    expect(dialog()).toBeNull();
+    expect(calls.rename).toHaveBeenCalledTimes(1);
+    expect(calls.rename).toHaveBeenCalledWith("b", "바깥 이름");
+
+    await openFromHeader(host);
+    const description = dialog()!.querySelectorAll<HTMLInputElement>("[data-tab-settings-general] input")[1];
+    description.focus();
+    await typeInto(description, "바깥 설명");
+    await act(async () => buttonNamed("닫기").click());
+    expect(dialog()).toBeNull();
+    expect(calls.identity).toHaveBeenCalledTimes(1);
+    expect(calls.identity).toHaveBeenCalledWith("b", { description: "바깥 설명" });
+  });
+
+  it("칸을 떠나 저장 중일 때 닫아도 다시 저장하지 않고, 빈 이름·되돌린 글자는 저장하지 않는다", async () => {
+    const calls = actions();
+    calls.rename.mockImplementationOnce(() => new Promise(() => {}));
+    const { host } = await mount({ calls });
+    await openFromHeader(host);
+    let name = dialog()!.querySelector<HTMLInputElement>("[data-tab-settings-general] input")!;
+    name.focus();
+    await typeInto(name, "한 번만");
+    await act(async () => { name.blur(); });
+    await pressOutside();
+    expect(calls.rename).toHaveBeenCalledTimes(1);
+
+    await openFromHeader(host);
+    name = dialog()!.querySelector<HTMLInputElement>("[data-tab-settings-general] input")!;
+    name.focus();
+    await typeInto(name, "   ");
+    await pressOutside();
+    await openFromHeader(host);
+    name = dialog()!.querySelector<HTMLInputElement>("[data-tab-settings-general] input")!;
+    name.focus();
+    await typeInto(name, "버릴 이름");
+    await press(name, "Escape");
+    await pressOutside();
+    expect(calls.rename).toHaveBeenCalledTimes(1);
+  });
+
+  it("단계 이름을 고치다 바깥을 누르면 닫히면서 한 번 저장한다", async () => {
+    const { host, calls } = await mount();
+    await openFromHeader(host);
+    await act(async () => tab("단계").click());
+    await act(async () => buttonNamed("승인 이름 바꾸기").click());
+    const input = dialog()!.querySelector<HTMLInputElement>('input[aria-label="승인 단계 이름"]')!;
+    await typeInto(input, "최종 승인");
+    await pressOutside();
+    expect(dialog()).toBeNull();
+    expect(calls.renameStage).toHaveBeenCalledTimes(1);
+    expect(calls.renameStage).toHaveBeenCalledWith("b", "g3", "최종 승인");
   });
 });
 
@@ -314,11 +421,22 @@ describe("탭 설정 › 단계", () => {
     expect((dialog()!.querySelector("[data-tab-stage-dot]") as HTMLElement).style.background).toBe("var(--mw-tab-a-1)");
     expect(dialog()!.textContent).toContain("2건");
 
-    await act(async () => buttonNamed("심사 중 아래로").click());
+    const down = buttonNamed("심사 중 아래로");
+    down.focus();
+    await act(async () => {
+      down.click();
+      // 브라우저는 옮겨진 줄(li)의 초점을 문서로 떨어뜨린다 — jsdom 은 지키므로 그 상태를 흉내 낸다.
+      down.blur();
+    });
     expect(rowNames()).toEqual(["g1", "g3", "g2"]);
     const sent = calls.reorder.mock.calls[0][0];
     expect(sent.get("boardId")).toBe("b");
     expect(JSON.parse(String(sent.get("groupIds")))).toEqual(["g1", "g3", "g2"]);
+
+    // 옮긴 줄의 같은 단추에 초점이 남는다(줄이 옮겨지며 문서로 떨어지지 않는다).
+    await nextFrame();
+    expect(document.activeElement).toBe(buttonNamed("심사 중 아래로"));
+    expect(dialog()!.contains(document.activeElement)).toBe(true);
 
     // 맨 위의 「위로」 는 잠겨 있고 눌러도 부르지 않는다(초점은 그대로 둔다).
     const up = buttonNamed("준비 위로");

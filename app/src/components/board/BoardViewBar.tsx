@@ -14,9 +14,11 @@
  *   바뀌면 탭에 점, 그리고 「되돌리기」·「저장 ▾」 가 선다. 조건은 주소에 남아 새로고침해도 그대로다.
  * · 「이 뷰에 저장」 은 만든 사람·관리자만(서버도 같은 규칙으로 막는다). 다른 사람은 「새 뷰로 저장」(나만).
  * · 640px 아래: [뷰 이름 •▾] [보기 조건 N] [찾기] — 뷰 목록과 조건·저장은 바닥 시트로 연다.
+ * · 「담당 · 나」 는 보는 사람 기준으로 저장한다(D26) — 뷰에 사람 id 를 박지 않는다.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
+import { useRouter } from "next/navigation";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import {
   boardViewSwitchUrl,
@@ -33,7 +35,8 @@ import {
   changedConditions,
   changedConditionsLabel,
   conditionsFromFilters,
-  conditionsFromSavedConfig,
+  conditionsFromSavedView,
+  draftPersonScope,
   draftViewConfig,
   effectiveSorts,
   filtersForConditions,
@@ -65,6 +68,12 @@ const chipClass = (active: boolean, expanded = false) => `${CHIP_BASE} ${active
     ? "border-mw-sub bg-mw-card text-mw-fg"
     : "border-mw-line bg-mw-card text-mw-body hover:border-mw-sub"}`;
 const BUTTON = "inline-flex h-7 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-primary";
+
+/** 640px 아래(sm 미만) — 펼침 칸 대신 바닥 시트를 쓰는 화면. */
+function narrowViewport(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function"
+    && window.matchMedia("(max-width: 639px)").matches;
+}
 
 function CountBadge({ count }: { count: number }) {
   return count > 0 ? (
@@ -341,6 +350,7 @@ export function BoardViewBar({
   /** 화면이 저장된 뷰 목록을 이미 들고 있으면(목록 보기) 그것을 같이 쓴다 — 두 번 읽지 않는다. */
   savedViews?: SavedViewsState;
 }) {
+  const router = useRouter();
   const ownSaved = useSavedViews(boardId, loadSavedViews && !savedViews);
   const saved = savedViews ?? ownSaved;
   const displayViews = useMemo(
@@ -356,21 +366,42 @@ export function BoardViewBar({
     () => conditionsFromFilters(filters, mode, groupBy, allColumnKeys),
     [allColumnKeys, filters, groupBy, mode],
   );
+  // 나눠 보기는 이 화면이 걸 수 있는 칸만 견준다 — 지금 걸린 것(groupBy)도 그 하나다.
+  const groupByKeys = useMemo(
+    () => [...groupByOptions.map((option) => option.key), ...(groupBy ? [groupBy] : [])],
+    [groupBy, groupByOptions],
+  );
   const baseline: ViewConditions | null = activeViewId
-    ? activeSaved ? conditionsFromSavedConfig(activeSaved.config, allColumnKeys) : null
+    ? activeSaved
+      ? conditionsFromSavedView(activeSaved, {
+        allColumnKeys,
+        groupByKeys,
+        groupByAliases: rawActive ? [rawActive.config.groupBy] : [],
+        currentUserId,
+      })
+      : null
     : MAIN_TABLE_CONDITIONS;
   const changes = ready && baseline ? changedConditions(current, baseline) : [];
   const dirty = changes.length > 0;
   const canOverwrite = Boolean(activeSaved?.canEdit);
 
   /* ── 보기 조건 칸 ── */
+  const [sheet, setSheet] = useState<null | "views" | "conditions" | "new" | "rename">(null);
   const [panelTab, setPanelTab] = useState<ConditionTab | null>(null);
   const [handledFocusSeq, setHandledFocusSeq] = useState(0);
   const [chipFocus, setChipFocus] = useState<ToolbarFilterFocus | null>(null);
+  // 휴대폰 시트에서 펼칠 칸 — 펼침 칸(chipFocus)과 따로 둔다. 숨은 펼침 칸이 팝오버를 띄우지 않게.
+  const [sheetFocus, setSheetFocus] = useState<ToolbarFilterFocus | null>(null);
   if (focusFilter && focusFilter.seq !== handledFocusSeq) {
     setHandledFocusSeq(focusFilter.seq);
     setPanelTab("filter");
-    setChipFocus(focusFilter);
+    if (narrowViewport()) {
+      // 640px 아래에는 펼침 칸이 없다 — 보기 조건 시트를 골라 보기 탭으로 열고 그 칸을 펼친다.
+      setSheetFocus(focusFilter);
+      setSheet("conditions");
+    } else {
+      setChipFocus(focusFilter);
+    }
   }
   const chipFocusSeq = chipFocus?.seq ?? 0;
   useEffect(() => {
@@ -401,7 +432,6 @@ export function BoardViewBar({
     if (restoreFocus) window.requestAnimationFrame(() => panelAnchorRef.current?.focus());
   }, [setFloating]);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [sheet, setSheet] = useState<null | "views" | "conditions" | "new" | "rename">(null);
   const [mobileSearch, setMobileSearch] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -425,7 +455,10 @@ export function BoardViewBar({
       active: activeSaved?.config ?? null,
       defaultCalendarFieldKey,
     });
-    return canonicalNewLead ? durableNewLeadSavedViewConfig(presentNewLeadSavedViewConfig(draft)) : draft;
+    // 나눠 보기는 화면 key 그대로 — 칸반은 physical 목록 칸(예: export_status)이라 합성 key 를 지나면 다른 칸이 된다.
+    return canonicalNewLead
+      ? { ...durableNewLeadSavedViewConfig(presentNewLeadSavedViewConfig(draft)), groupBy: draft.groupBy }
+      : draft;
   };
   const durableView = (view: SavedBoardView): SavedBoardView =>
     canonicalNewLead ? { ...view, config: durableNewLeadSavedViewConfig(view.config) } : view;
@@ -434,22 +467,28 @@ export function BoardViewBar({
     if (!rawActive || !canOverwrite) return;
     setNotice(null);
     try {
-      await saved.overwrite(rawActive, durableDraft());
+      const draft = draftPersonScope(durableDraft(), rawActive, currentUserId);
+      const scopeChanged = draft.personScope !== (rawActive.personScope ?? "none")
+        || draft.personScopeUserId !== (rawActive.personScopeUserId ?? null);
+      await saved.overwrite(rawActive, draft.config, scopeChanged
+        ? { personScope: draft.personScope, personScopeUserId: draft.personScopeUserId }
+        : undefined);
       setNotice("이 뷰에 저장했어요");
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : "저장하지 못했어요");
     }
   };
   const saveNew = async (name: string, visibility: "private" | "shared") => {
+    // 「담당 · 나」 는 보는 사람 기준으로, 그 밖에는 지금 뷰의 사람 범위를 잇는다(보이던 행이 달라지지 않게).
+    const draft = draftPersonScope(durableDraft(), rawActive, currentUserId);
     const created = await saved.create({
       name,
       visibility,
-      // 지금 뷰의 사람 범위는 그대로 잇는다(보이던 행이 달라지지 않게). 메인 테이블에서는 조건 없음.
-      personScope: rawActive?.personScope ?? "none",
-      personScopeUserId: rawActive?.personScope === "fixed" ? rawActive.personScopeUserId ?? null : null,
-      config: durableDraft(),
+      personScope: draft.personScope,
+      personScopeUserId: draft.personScopeUserId,
+      config: draft.config,
     });
-    navigateTo(withSearchText(savedViewUrl(durableView(created), window.location.href), filters.q));
+    navigateTo(withSearchText(savedViewUrl(durableView(created), window.location.href, currentUserId), filters.q));
   };
   const revert = () => {
     if (!baseline) return;
@@ -460,7 +499,7 @@ export function BoardViewBar({
       return;
     }
     const target = rawActive
-      ? savedViewUrl(durableView(rawActive), window.location.href)
+      ? savedViewUrl(durableView(rawActive), window.location.href, currentUserId)
       : systemViewUrl("table", window.location.href);
     navigateTo(withSearchText(target, filters.q));
   };
@@ -468,11 +507,13 @@ export function BoardViewBar({
   const selectView = async (view: SavedBoardView) => {
     const raw = saved.views.find((candidate) => candidate.id === view.id) ?? view;
     await saved.select(raw);
-    navigateTo(savedViewUrl(durableView(raw), window.location.href));
+    navigateTo(savedViewUrl(durableView(raw), window.location.href, currentUserId));
   };
+  // 보기 방식·칸반 나눠 보기는 조건을 주소에 그대로 둔 채 그리는 화면만 바뀐다 — 다시 읽지 않고 부드럽게 옮긴다.
+  // 주소는 지금 주소(워크스페이스 뿌리 /w/<slug> 포함)에서 만든다.
   const changeMode = (next: BoardViewMode) => {
     if (next === mode) return;
-    navigateTo(new URL(boardViewSwitchUrl(next, window.location.href), window.location.href).toString());
+    router.push(boardViewSwitchUrl(next, window.location.href));
   };
   const changeGroupBy = (key: string) => {
     if (key === groupBy) return;
@@ -480,7 +521,7 @@ export function BoardViewBar({
       onGroupByChange(key);
       return;
     }
-    navigateTo(new URL(boardViewSwitchUrl(mode, window.location.href, key), window.location.href).toString());
+    router.push(boardViewSwitchUrl(mode, window.location.href, key));
   };
   const renameActive = async (name: string) => {
     if (!rawActive) return;
@@ -497,7 +538,7 @@ export function BoardViewBar({
     try {
       const result = await saved.remove(rawActive);
       navigateTo(result.fallback
-        ? savedViewUrl(durableView(result.fallback), window.location.href)
+        ? savedViewUrl(durableView(result.fallback), window.location.href, currentUserId)
         : systemViewUrl("table", window.location.href));
     } catch (cause) {
       setConfirmDelete(false);
@@ -526,6 +567,7 @@ export function BoardViewBar({
       tab={panelTab ?? "filter"}
       onTab={(tab) => {
         setChipFocus(null);
+        setSheetFocus(null);
         setPanelTab(tab);
       }}
       columns={columns}
@@ -535,7 +577,7 @@ export function BoardViewBar({
       people={people}
       currentUserId={currentUserId}
       legacyFacetLabels={legacyFacetLabels}
-      focusFilter={variant === "panel" ? chipFocus : null}
+      focusFilter={variant === "panel" ? chipFocus : sheetFocus}
       groupBy={groupBy}
       groupByOptions={groupByOptions}
       onGroupBy={changeGroupBy}
@@ -673,6 +715,7 @@ export function BoardViewBar({
           type="button"
           aria-haspopup="dialog"
           onClick={() => {
+            setSheetFocus(null);
             setPanelTab((tab) => tab ?? "filter");
             setSheet("conditions");
           }}
@@ -746,30 +789,30 @@ export function BoardViewBar({
       {/* ── 휴대폰 시트 ── */}
       {sheet === "views" ? (
         <BottomSheet label="뷰" onClose={() => setSheet(null)}>
-          <div className="flex flex-col gap-0.5" role="list">
+          <ul aria-label="뷰 목록" className="flex flex-col gap-0.5">
             {[{ id: null as string | null, name: "메인 테이블", tag: null as string | null, view: null as SavedBoardView | null },
               ...displayViews.map((view) => ({ id: view.id as string | null, name: view.name, tag: visibilityTag(view), view }))].map((entry) => {
               const active = (entry.id ?? null) === (activeSaved?.id ?? null);
               return (
-                <button
-                  key={entry.id ?? "main"}
-                  type="button"
-                  role="listitem"
-                  aria-current={active ? "page" : undefined}
-                  onClick={() => {
-                    setSheet(null);
-                    if (entry.view) void selectView(entry.view);
-                    else selectMain();
-                  }}
-                  className={`flex min-h-11 items-center gap-2 rounded-lg px-3 text-left text-[length:var(--fs-13)] ${active ? "bg-mw-tint-blue font-semibold text-mw-record" : "text-mw-body hover:bg-mw-bg"}`}
-                >
-                  <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-                  {entry.tag ? <small className="text-[11px] text-mw-sub">{entry.tag}</small> : null}
-                  {active && dirty ? <span aria-hidden="true" className="size-1.5 rounded-full bg-mw-record" /> : null}
-                </button>
+                <li key={entry.id ?? "main"}>
+                  <button
+                    type="button"
+                    aria-current={active ? "page" : undefined}
+                    onClick={() => {
+                      setSheet(null);
+                      if (entry.view) void selectView(entry.view);
+                      else selectMain();
+                    }}
+                    className={`flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-[length:var(--fs-13)] ${active ? "bg-mw-tint-blue font-semibold text-mw-record" : "text-mw-body hover:bg-mw-bg"}`}
+                  >
+                    <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                    {entry.tag ? <small className="text-[11px] text-mw-sub">{entry.tag}</small> : null}
+                    {active && dirty ? <span aria-hidden="true" className="size-1.5 rounded-full bg-mw-record" /> : null}
+                  </button>
+                </li>
               );
             })}
-          </div>
+          </ul>
           <div className="mt-2 flex flex-wrap gap-2 border-t border-mw-line pt-2">
             <button type="button" onClick={() => setSheet("new")} className={`${BUTTON} h-10 border border-mw-line text-mw-body`}>새 뷰로 저장…</button>
             {canOverwrite && activeSaved ? (

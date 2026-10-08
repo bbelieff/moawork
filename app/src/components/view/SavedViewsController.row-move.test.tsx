@@ -6,6 +6,8 @@ import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 const actions=vi.hoisted(()=>({moveRowAction:vi.fn(),reorderGroupsAction:vi.fn()}));
 vi.mock("@/app/(app)/boards/actions",()=>actions);
 vi.mock("@/app/(app)/boards/title-actions",()=>({renameColumnTitleAction:vi.fn()}));
+// 보기 줄은 보기 방식을 router.push 로 바꾼다 — 앱 라우터 밖에서 그리므로 바꿔 끼운다.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: () => undefined }) }));
 import { SavedViewsController } from "./SavedViewsController";
 
 const group={id:"group-1",org_id:"org-1",board_id:"board-1",name:"대기",color:null,sort_order:0};

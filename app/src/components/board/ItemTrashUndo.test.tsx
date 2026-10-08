@@ -37,6 +37,7 @@ async function mountToast(boardId = "b1") {
 }
 
 const toast = () => document.querySelector<HTMLElement>("[data-item-trash-toast]");
+const live = (kind: "status" | "alert") => document.querySelector<HTMLElement>(`[data-item-trash-live="${kind}"]`);
 const undoButton = () => [...(toast()?.querySelectorAll("button") ?? [])].find((button) => button.textContent === "되돌리기");
 
 describe("되돌리기 알림", () => {
@@ -69,11 +70,32 @@ describe("되돌리기 알림", () => {
     await mountToast();
     await act(async () => { await moveItemToTrash({ boardId: "b1", itemId: "i1", title: "다온디자인" }); });
     await act(async () => { undoButton()!.click(); });
-    expect(toast()?.getAttribute("role")).toBe("alert");
+    expect(live("alert")?.textContent).toBe("이 항목을 삭제하거나 복구할 권한이 없습니다.");
+    expect(live("status")?.textContent).toBe("");
     expect(toast()?.textContent).toContain("이 항목을 삭제하거나 복구할 권한이 없습니다.");
     await act(async () => { undoButton()!.click(); });
     expect(trash.restoreItemAction).toHaveBeenCalledTimes(2);
     expect(toast()).toBeNull();
+  });
+
+  it("알림 영역은 늘 붙어 있고 글자만 바뀐다 — 성공은 status(polite), 실패는 alert, 사라지면 비운다", async () => {
+    await mountToast();
+    const status = live("status")!;
+    const alert = live("alert")!;
+    expect([status.getAttribute("role"), status.getAttribute("aria-live"), status.textContent]).toEqual(["status", "polite", ""]);
+    expect([alert.getAttribute("role"), alert.getAttribute("aria-live"), alert.textContent]).toEqual(["alert", "assertive", ""]);
+
+    await act(async () => { await moveItemToTrash({ boardId: "b1", itemId: "i1", title: "리드건설" }); });
+    // 같은 노드에 글자만 들어간다(새로 붙이지 않는다). 보이는 알림은 live 속성을 두지 않아 두 번 읽히지 않는다.
+    expect(live("status")).toBe(status);
+    expect(status.textContent).toBe("「리드건설」을 휴지통으로 옮겼어요");
+    expect(toast()?.hasAttribute("aria-live")).toBe(false);
+    expect(toast()?.hasAttribute("role")).toBe(false);
+
+    await act(async () => { vi.advanceTimersByTime(ITEM_TRASH_UNDO_MS + 10); });
+    expect(toast()).toBeNull();
+    expect(live("status")).toBe(status);
+    expect(status.textContent).toBe("");
   });
 
   it("다른 보드의 알림은 띄우지 않고, 닫기로 바로 걷는다", async () => {

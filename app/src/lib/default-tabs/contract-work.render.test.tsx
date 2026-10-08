@@ -1,5 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+// 보기 줄은 표·칸반 전환에 앱 라우터를 쓴다(#845) — 정적 렌더에는 라우터가 없다.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: () => undefined }) }));
 import { BoardViewBar } from "@/components/board/BoardViewBar";
 import { ViewConditionsPanel } from "@/components/board/ViewConditionsPanel";
 import { EMPTY_FILTERS } from "@/components/board/filters";

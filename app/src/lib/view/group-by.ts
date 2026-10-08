@@ -103,13 +103,23 @@ export function prefillGroupValue(column: Pick<BoardColumn, "type">, target: str
 /**
  * 이 칸의 값을 «묶음 사이 끌기» · «묶음에서 새 행» 으로 바꿀 수 없는 까닭(짧은 한 줄). 바꿀 수 있으면 null.
  * 화면은 끌기·＋ 를 감추는 데, 서버는 거절하는 데 같은 답을 쓴다.
+ *
+ * editPolicyAllows — 칸의 편집 제한(edit_policy_jsonb, 예: 「관리자만」)이 이 사람에게 열려 있는가.
+ *   판정은 부르는 쪽이 한다(서버 columnPolicyAllows · 화면은 서버가 넘긴 결과). 이 파일은 화면도 읽으므로
+ *   서버 서비스를 import 하지 않는다. 닫혀 있으면 DB(itemvals_insert)가 값 쓰기를 거부한다 — ＋ 로 만들면
+ *   행만 생기고 값은 빠진 «반쯤 만든 행» 이 남으므로 먼저 막는다.
  */
 export function groupValueEditBlock(
   column: Pick<BoardColumn, "key" | "type" | "source" | "is_readonly">,
-  { canonicalNewLead = false, ownerMode = "never" }: { canonicalNewLead?: boolean; ownerMode?: AssignmentOwnerMode } = {},
+  {
+    canonicalNewLead = false,
+    ownerMode = "never",
+    editPolicyAllows = true,
+  }: { canonicalNewLead?: boolean; ownerMode?: AssignmentOwnerMode; editPolicyAllows?: boolean } = {},
 ): string | null {
   if (!isTableGroupColumn(column)) return "이 칸으로는 나눌 수 없어요.";
   if (column.is_readonly === true || !isSourceEditable(column.source)) return "고칠 수 없는 칸이에요.";
+  if (!editPolicyAllows) return "이 칸을 고칠 권한이 없어요.";
   // ✉ 발송 칸 — 값을 바꾸면 문자가 나간다. 칸의 확인 창을 거쳐야 한다.
   if (sourceRequiresConfirm(column.source)) return "문자가 나가는 칸은 칸에서 바꿔요.";
   // 신규리드 정본 — 칸마다 따로 기록되는 길(딜 필드·넘기기)이 있어 칸에서만 바꾼다.

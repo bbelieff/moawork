@@ -6,10 +6,13 @@ import {
   type SavedBoardViewConfig,
 } from "./board-saved";
 import {
+  applicableGroupBy,
   assigneeChipValue,
   changedConditions,
   conditionsFromFilters,
   conditionsFromSavedConfig,
+  conditionsFromSavedView,
+  draftPersonScope,
   draftViewConfig,
   filtersForConditions,
   MAIN_TABLE_CONDITIONS,
@@ -175,5 +178,64 @@ describe("#845 6단계 — 칩·건수 글자", () => {
       filters: { ...EMPTY_FILTERS, assignees: ["u2"], byColumn: { status: ["a"], memo: [] }, q: "서울" },
       people, currentUserId: "me", matched: 2, total: 40,
     })).toBe("가담당 담당 · 골라 보기 1 · 찾기 “서울” · 40건 중 2건");
+  });
+});
+
+describe("나눠 보기 기준 — 이 화면이 걸 수 있는 값만 견준다", () => {
+  const saved = (groupBy: string, kind = "grouped") => ({ config: config({ kind, groupBy } as Partial<SavedBoardViewConfig>), personScope: "none" as const });
+
+  it("목록·캘린더(나눠 보기 없음)와 지워진·종류가 바뀐 칸은 보드별로 본다 — 손대지 않은 예전 뷰는 바뀜이 아니다", () => {
+    const flat = conditionsFromSavedView(saved("status", "table"), { allColumnKeys: ALL, groupByKeys: [] });
+    expect(flat.groupBy).toBe("");
+    expect(changedConditions(conditionsFromFilters(EMPTY_FILTERS, "flat", "", ALL), flat)).toEqual([]);
+    expect(conditionsFromSavedView(saved("gone"), { allColumnKeys: ALL, groupByKeys: ["status", "owner"] }).groupBy).toBe("");
+    expect(conditionsFromSavedView(saved("owner"), { allColumnKeys: ALL, groupByKeys: ["status", "owner"] }).groupBy).toBe("owner");
+  });
+
+  it("신규리드 칸반: 화면에 보이는 합성 key(other_info)가 아니라 저장값 physical key 로 맞춘다", () => {
+    const presented = conditionsFromSavedView(saved("other_info", "board"), {
+      allColumnKeys: ALL, groupByKeys: ["closed_business", "export_status"], groupByAliases: ["export_status"],
+    });
+    expect(presented.groupBy).toBe("export_status");
+    expect(applicableGroupBy(["revenue_3y_million", "revenue_band"], ["revenue_band"])).toBe("revenue_band");
+    expect(applicableGroupBy([null, undefined, ""], [""])).toBe("");
+  });
+
+  it("되돌리기는 같은 자리로 돌아오고 다시 바뀜이 되지 않는다", () => {
+    const baseline = conditionsFromSavedView(saved("status", "table"), { allColumnKeys: ALL, groupByKeys: [] });
+    const changed = { ...EMPTY_FILTERS, sorts: [{ columnKey: "memo", direction: "asc" as const }] };
+    const reverted = filtersForConditions(baseline, changed);
+    expect(changedConditions(conditionsFromFilters(reverted, "flat", "", ALL), baseline)).toEqual([]);
+  });
+});
+
+describe("D26 — 담당 · 나 는 보는 사람 기준", () => {
+  const viewer = { personScope: "viewer" as const, personScopeUserId: null, config: config() };
+
+  it("보는 사람 기준 뷰의 담당 기준은 «지금 보는 사람» 이다 — 주소의 담당과 같으면 바뀜이 아니다", () => {
+    const forB = conditionsFromSavedView(viewer, { allColumnKeys: ALL, groupByKeys: [], currentUserId: "u2" });
+    expect(forB.assignees).toEqual(["u2"]);
+    const url = new URL(savedViewUrl({ id: "v", name: "내 담당", visibility: "shared", ownerId: "me", isDefault: false, lastUsedAt: null, ...viewer }, "https://app.test/boards/b", "u2"));
+    const opened = decodeBoardFilters(url.searchParams.get("mwFilters"));
+    expect(opened.assignees).toEqual(["u2"]);
+    expect(assigneeChipValue(opened.assignees, people, "u2")).toBe("나");
+    expect(changedConditions(conditionsFromFilters(opened, "table", "", ALL), forB)).toEqual([]);
+    // 담당이 박힌 뷰·사람 범위가 없는 뷰는 그대로다.
+    expect(conditionsFromSavedView({ ...viewer, config: config({ filters: { ...EMPTY_FILTERS, assignees: ["u2"] } }) }, { groupByKeys: [], currentUserId: "me" }).assignees).toEqual(["u2"]);
+    expect(conditionsFromSavedView({ ...viewer, personScope: "none" }, { groupByKeys: [], currentUserId: "me" }).assignees).toEqual([]);
+  });
+
+  it("「나」 하나만 걸린 조건은 viewer 로 담고 id 를 뺀다 · 풀면 viewer 도 푼다 · 팀·고정은 잇는다", () => {
+    const mine = config({ filters: { ...EMPTY_FILTERS, assignees: ["me"] } });
+    expect(draftPersonScope(mine, null, "me")).toMatchObject({ personScope: "viewer", personScopeUserId: null, config: { filters: { assignees: [] } } });
+    // 다른 사람이 들어 있으면 그대로 담는다(사람을 고른 것이다).
+    const two = config({ filters: { ...EMPTY_FILTERS, assignees: ["me", "u2"] } });
+    expect(draftPersonScope(two, null, "me")).toMatchObject({ personScope: "none", config: { filters: { assignees: ["me", "u2"] } } });
+    expect(draftPersonScope(config(), viewer, "me")).toMatchObject({ personScope: "none" });
+    expect(draftPersonScope(config(), { ...viewer, personScope: "team" }, "me")).toMatchObject({ personScope: "team", personScopeUserId: null });
+    expect(draftPersonScope(config(), { ...viewer, personScope: "fixed", personScopeUserId: "u2" }, "me")).toMatchObject({ personScope: "fixed", personScopeUserId: "u2" });
+    // 담당이 박힌 예전 viewer 뷰는 손대지 않으면 viewer 그대로다.
+    const legacy = { ...viewer, config: config({ filters: { ...EMPTY_FILTERS, assignees: ["u2"] } }) };
+    expect(draftPersonScope(legacy.config, legacy, "me")).toMatchObject({ personScope: "viewer" });
   });
 });

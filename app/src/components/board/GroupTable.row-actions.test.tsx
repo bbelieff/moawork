@@ -51,7 +51,9 @@ async function mount({
   canDeleteItems = true,
   readOnly = false,
   work = true,
-}: { canDeleteItems?: boolean; readOnly?: boolean; work?: boolean } = {}) {
+  columns = [textColumn],
+  rows = [row("row-a", "다온디자인"), row("row-b", "리드건설")],
+}: { canDeleteItems?: boolean; readOnly?: boolean; work?: boolean; columns?: BoardColumn[]; rows?: ItemWithValues[] } = {}) {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -61,8 +63,8 @@ async function mount({
         boardId="b1"
         groupId="g1"
         groupName="준비단계"
-        columns={[textColumn]}
-        rows={[row("row-a", "다온디자인"), row("row-b", "리드건설")]}
+        columns={columns}
+        rows={rows}
         readOnly={readOnly}
         canDeleteItems={canDeleteItems}
         workflowProgressKind={work ? "work" : null}
@@ -177,6 +179,21 @@ describe("행 우클릭 메뉴", () => {
     expect(menu()).toBeNull();
   });
 
+  it("링크(파일 칸 「내려받기」)는 브라우저 링크 메뉴를 그대로 두고, 업체명 단추는 행 메뉴를 연다", async () => {
+    const fileColumn: BoardColumn = { ...textColumn, id: "col-file", key: "doc", label: "서류", type: "file" };
+    const withFile = (id: string, title: string) => ({ ...row(id, title), values: { doc: "/api/files/sample" } });
+    const host = await mount({ columns: [fileColumn], rows: [withFile("row-a", "다온디자인")] });
+    const link = host.querySelector<HTMLAnchorElement>('tbody tr[data-board-row] a[href="/api/files/sample"]')!;
+    expect(link.textContent?.trim()).toBe("내려받기");
+    const event = await rightClick(link);
+    expect(event.defaultPrevented).toBe(false);
+    expect(menu()).toBeNull();
+
+    const onName = await rightClick(nameButton(host, "다온디자인"));
+    expect(onName.defaultPrevented).toBe(true);
+    expect(menu()?.getAttribute("aria-label")).toBe("다온디자인 행 메뉴");
+  });
+
   it("「옆에 열기」 는 상세를 열고, 「업체명 바꾸기」 는 상세 제목을 고치는 칸으로 연다", async () => {
     const host = await mount();
     await rightClick(host.querySelector("tbody tr[data-board-row]")!);
@@ -204,7 +221,7 @@ describe("행 우클릭 메뉴", () => {
     expect([sent.get("boardId"), sent.get("itemId")]).toEqual(["b1", "row-a"]);
 
     const toast = document.querySelector<HTMLElement>('[data-item-trash-toast="trashed"]');
-    expect(toast?.getAttribute("role")).toBe("status");
+    expect(document.querySelector('[data-item-trash-live="status"]')?.textContent).toBe("「다온디자인」을 휴지통으로 옮겼어요");
     expect(toast?.textContent).toContain("「다온디자인」을 휴지통으로 옮겼어요");
     const undo = [...toast!.querySelectorAll("button")].find((button) => button.textContent === "되돌리기")!;
     await act(async () => { undo.click(); });
@@ -214,13 +231,35 @@ describe("행 우클릭 메뉴", () => {
     expect(document.querySelector("[data-item-trash-toast]")).toBeNull();
   });
 
+  it("옮긴 뒤 초점은 다음 행 이름으로 — 마지막 행이면 앞 행 이름(<body> 로 떨어지지 않는다)", async () => {
+    const host = await mount();
+    await rightClick(host.querySelector("tbody tr[data-board-row]")!);
+    await clickMenuItem("휴지통으로 이동");
+    await act(async () => { await Promise.resolve(); });
+    expect(document.activeElement).toBe(nameButton(host, "리드건설"));
+
+    await rightClick(host.querySelectorAll("tbody tr[data-board-row]")[1]);
+    await clickMenuItem("휴지통으로 이동");
+    await act(async () => { await Promise.resolve(); });
+    expect(document.activeElement).toBe(nameButton(host, "다온디자인"));
+  });
+
+  it("옮기지 못하면 초점은 그 행 이름에 남는다", async () => {
+    trash.trashItemAction.mockResolvedValueOnce({ ok: false, message: "이 항목을 삭제하거나 복구할 권한이 없습니다." });
+    const host = await mount();
+    await rightClick(host.querySelector("tbody tr[data-board-row]")!);
+    await clickMenuItem("휴지통으로 이동");
+    await act(async () => { await Promise.resolve(); });
+    expect(document.activeElement).toBe(nameButton(host, "다온디자인"));
+  });
+
   it("옮기지 못하면 사유를 알림(alert)으로 말하고 되돌리기는 없다", async () => {
     trash.trashItemAction.mockResolvedValueOnce({ ok: false, message: "이 항목을 삭제하거나 복구할 권한이 없습니다." });
     const host = await mount();
     await rightClick(host.querySelector("tbody tr[data-board-row]")!);
     await clickMenuItem("휴지통으로 이동");
     const toast = document.querySelector<HTMLElement>('[data-item-trash-toast="error"]');
-    expect(toast?.getAttribute("role")).toBe("alert");
+    expect(document.querySelector('[data-item-trash-live="alert"]')?.textContent).toBe("이 항목을 삭제하거나 복구할 권한이 없습니다.");
     expect(toast?.textContent).toContain("이 항목을 삭제하거나 복구할 권한이 없습니다.");
     expect([...toast!.querySelectorAll("button")].some((button) => button.textContent === "되돌리기")).toBe(false);
   });
@@ -304,6 +343,15 @@ describe("터치 길게 누르기 — 우클릭과 같은 행 메뉴", () => {
 
     const input = host.querySelector<HTMLInputElement>('tbody tr[data-board-row] input[aria-label="메모"]')!;
     await pointer("pointerdown", input);
+    await wait(550);
+    expect(menu()).toBeNull();
+  });
+
+  it("링크를 길게 누르면 행 메뉴 대신 기기의 링크 메뉴를 둔다", async () => {
+    const fileColumn: BoardColumn = { ...textColumn, id: "col-file", key: "doc", label: "서류", type: "file" };
+    const host = await mount({ columns: [fileColumn], rows: [{ ...row("row-a", "다온디자인"), values: { doc: "/api/files/sample" } }] });
+    const link = host.querySelector<HTMLAnchorElement>('tbody tr[data-board-row] a[href="/api/files/sample"]')!;
+    await pointer("pointerdown", link);
     await wait(550);
     expect(menu()).toBeNull();
   });

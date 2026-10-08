@@ -51,7 +51,7 @@ import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import type { ItemDetailSnapshot } from "@/app/(app)/boards/item-detail-actions";
 import { moveItemToTrash } from "./ItemTrashUndo";
-import { RowContextMenu, rowContextMenuPoint, type RowContextMenuRequest } from "./RowContextMenu";
+import { RowContextMenu, rememberTrashFocus, rowContextMenuPoint, type RowContextMenuRequest } from "./RowContextMenu";
 import { LONG_PRESS_IGNORE_SELECTOR, useTouchLongPress } from "./use-touch-long-press";
 import { requestItemDetailOpen } from "@/lib/boards/item-detail-open";
 import { AddItemForm } from "./AddItemForm";
@@ -882,13 +882,20 @@ export function GroupTable({
   const renameRow = (rowId: string) => requestItemDetailOpen(rowId, nameButtons.current.get(rowId), { editTitle: true });
   const trashRow = (rowId: string) => {
     const target = rows.find((candidate) => candidate.id === rowId);
-    if (target) void moveItemToTrash({ boardId, itemId: target.id, title: target.title });
+    if (!target) return;
+    // 메뉴가 닫히며 초점이 <body> 로 떨어지지 않게 먼저 그 행 이름으로 — 옮기고 나면(행이 사라지면) 이웃 행으로.
+    const nameButton = nameButtons.current.get(rowId);
+    nameButton?.focus();
+    const focusAfterTrash = nameButton ? rememberTrashFocus(nameButton) : null;
+    void moveItemToTrash({ boardId, itemId: target.id, title: target.title }).then((result) => {
+      if (result.ok) focusAfterTrash?.();
+    });
   };
   const openRowMenuAt = (row: ItemWithValues, canTrash: boolean, point: { x: number; y: number }) =>
     setRowMenu({ rowId: row.id, title: row.title, x: point.x, y: point.y, canRename: !readOnly, canTrash });
   /** 터치 길게 누르기(약 0.5초) — iOS 는 contextmenu 를 보내지 않으므로 같은 메뉴를 직접 연다. */
   const longPress = useTouchLongPress();
-  /** 우클릭·Shift+F10·메뉴 키. 글자를 고치는 칸에서는 브라우저 기본 메뉴(붙여넣기 등)를 그대로 둔다. */
+  /** 우클릭·Shift+F10·메뉴 키. 글자를 고치는 칸·링크에서는 브라우저 기본 메뉴(붙여넣기·링크 저장 등)를 그대로 둔다. */
   const openRowMenuFromEvent = (
     event: React.MouseEvent<HTMLTableRowElement> | React.KeyboardEvent<HTMLTableRowElement>,
     row: ItemWithValues,

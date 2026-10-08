@@ -81,7 +81,7 @@ const rows = [
   row("r3", "다회사", "g2", {}, 1),
 ];
 
-async function mount(over: { groupBy?: string; canEditItems?: boolean } = {}) {
+async function mount(over: { groupBy?: string; canEditItems?: boolean; editLockedColumnKeys?: string[] } = {}) {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -98,6 +98,7 @@ async function mount(over: { groupBy?: string; canEditItems?: boolean } = {}) {
       memberDirectory={[{ id: "u1", label: "가나" }, { id: "u2", label: "다라" }]}
       groupBy={over.groupBy ?? ""}
       canEditItems={over.canEditItems ?? true}
+      editLockedColumnKeys={over.editLockedColumnKeys}
       canManageColumns
       canMoveRows
     />,
@@ -213,6 +214,23 @@ describe("값 묶음", () => {
     expect(host.querySelector("[data-group-add]")).toBeNull();
   });
 
+  it("편집 제한(관리자만)이 닫힌 칸이면 끌기·값 미리 채우기를 내놓지 않는다 — 「(없음)」 에서만 값 없이 추가", async () => {
+    const host = await mount({ groupBy: "institution", editLockedColumnKeys: ["institution"] });
+    expect(titleCell(host, "가회사").getAttribute("draggable")).not.toBe("true");
+    expect(host.querySelector('input[name="prefillKey"]')).toBeNull();
+    expect(sectionOf(host, "기술보증기금").querySelector("[data-group-add]")).toBeNull();
+    expect(sectionOf(host, "(없음)").querySelector("[data-group-add]")).not.toBeNull();
+    const { accepted } = await dragRow(host, "가회사", rowOf(host, "나회사"));
+    expect(accepted).toBe(false);
+    expect(actionMocks.setGroupValueAction).not.toHaveBeenCalled();
+  });
+
+  it("다른 칸의 편집 제한은 이 묶음을 막지 않는다", async () => {
+    const host = await mount({ groupBy: "institution", editLockedColumnKeys: ["owner"] });
+    expect(titleCell(host, "가회사").getAttribute("draggable")).toBe("true");
+    expect(sectionOf(host, "기술보증기금").querySelector('input[name="prefillKey"]')).not.toBeNull();
+  });
+
   it("묶음의 추가 줄은 첫 보드에 만들고 그 묶음 값을 미리 넣는다 · 「(없음)」 은 값 없이", async () => {
     const host = await mount({ groupBy: "institution" });
     const kibo = sectionOf(host, "기술보증기금");
@@ -255,6 +273,22 @@ describe("고르는 곳 — 「나눠 보기」 칩 · 칸 메뉴", () => {
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>("[data-view-dirty-actions] button")].find((button) => button.textContent === "되돌리기")!.click());
     expect(sections(host).map(({ title }) => title)).toEqual(["준비단계", "진행중"]);
     expect(new URL(window.location.href).searchParams.has("group")).toBe(false);
+  });
+
+  it("주소의 group 은 history.state 없이(null) 고친다 — Next 표식(__NA)을 넘기면 조용한 새로 받기가 group 을 지운다", async () => {
+    window.history.replaceState({ __NA: true, __PRIVATE_NEXTJS_INTERNALS_TREE: {} }, "", "/boards/b?view=table");
+    const host = await mount();
+    const replace = vi.spyOn(window.history, "replaceState");
+    try {
+      await act(async () => columnTitle(host, "진행기관").click());
+      await act(async () => menuItem("진행기관별로 나눠 보기")!.click());
+      const groupWrite = replace.mock.calls.find(([, , url]) => new URL(String(url)).searchParams.get("group") === "institution");
+      expect(groupWrite).toBeDefined();
+      expect(groupWrite![0]).toBeNull();
+      expect(replace.mock.calls.every(([state]) => state === null)).toBe(true);
+    } finally {
+      replace.mockRestore();
+    }
   });
 
   it("칸 메뉴 「진행기관별로 나눠 보기」 — 나눌 수 있는 칸에만, 다시 누르면 보드별로", async () => {

@@ -9,7 +9,7 @@
  *   · 손가락이 10px 넘게 움직이거나, 떼거나, 브라우저가 스크롤로 가져가면(pointercancel) 취소한다.
  *   · 메뉴가 열린 뒤 손을 떼면 그 자리의 click(업체명 → 상세 열기)은 삼킨다.
  *   · 안드로이드처럼 브라우저가 길게 누르기에 contextmenu 도 보내면, 한 몸짓에 메뉴는 한 번만 연다.
- *   · 글자를 고치는 칸에서는 시작하지 않는다(그 칸의 기본 동작 — 글자 고르기·붙여넣기 — 을 둔다).
+ *   · 글자를 고치는 칸·링크에서는 시작하지 않는다(그 자리의 기본 동작 — 글자 고르기·붙여넣기·링크 메뉴 — 을 둔다).
  */
 
 import { useCallback, useEffect, useRef } from "react";
@@ -24,8 +24,11 @@ export const TOUCH_LONG_PRESS_SLOP = 10;
 /** 손을 뗀 뒤 이 시간(ms) 안의 click 하나를 삼킨다. */
 const SUPPRESS_CLICK_MS = 600;
 
-/** 행 우클릭 메뉴와 같은 기준 — 글자를 고치는 칸은 그 칸의 기본 동작을 둔다. */
-export const LONG_PRESS_IGNORE_SELECTOR = 'input:not([type="checkbox"]),textarea,select,[contenteditable="true"]';
+/**
+ * 행 우클릭 메뉴와 같은 기준 — 글자를 고치는 칸과 링크(파일 칸 「내려받기」 등)는 그 자리의 기본 동작
+ * (붙여넣기 · 링크 열기/저장 메뉴)을 둔다. 단추는 넣지 않는다 — 업체명 단추에서도 행 메뉴가 열려야 한다.
+ */
+export const LONG_PRESS_IGNORE_SELECTOR = 'input:not([type="checkbox"]),textarea,select,[contenteditable="true"],a[href]';
 
 type Press = {
   pointerId: number;

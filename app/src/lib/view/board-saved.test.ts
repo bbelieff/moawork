@@ -18,6 +18,8 @@ import {
   savedViewUrl,
   systemViewUrl,
   tabViewDbKind,
+  viewerScopedAssignees,
+  type SavedBoardView,
 } from "./board-saved";
 
 describe("parseSavedBoardViewConfig", () => {
@@ -382,5 +384,38 @@ describe("#845 7단계 — 나눠 보기는 뷰 설정의 groupBy 그대로", ()
     // 보드별(빈 값)은 주소에서 group 을 지운다.
     const plain = { ...view, config: parseSavedBoardViewConfig({ kind: "grouped" }) };
     expect(new URL(savedViewUrl(plain, "https://app.test/boards/b?group=owner")).searchParams.has("group")).toBe(false);
+  });
+});
+
+describe("저장된 뷰 주소 — 캘린더 날짜 칸 · 보는 사람 기준 담당", () => {
+  const view = (id: string, config: Record<string, unknown>, over: Partial<SavedBoardView> = {}): SavedBoardView => ({
+    id, name: id, visibility: "shared", ownerId: "u1", isDefault: false, lastUsedAt: null,
+    config: parseSavedBoardViewConfig(config), ...over,
+  });
+
+  it("뷰의 캘린더 날짜 칸을 주소에 싣고, 날짜 칸이 없는 뷰로 옮기면 앞 뷰의 칸을 지운다", () => {
+    const contract = new URL(savedViewUrl(view("a", { kind: "calendar", calendarFieldKey: "contract_date" }), "https://app.test/boards/b?view=table"));
+    expect(contract.searchParams.get("calendarField")).toBe("contract_date");
+    const next = new URL(savedViewUrl(view("b", { kind: "calendar" }), contract.toString()));
+    expect(next.searchParams.has("calendarField")).toBe(false);
+  });
+
+  it("보는 사람 기준(viewer) 뷰는 담당을 여는 사람으로 채우고, 사람 id 를 박은 뷰·다른 범위는 그대로 둔다", () => {
+    const viewer = view("me", { kind: "grouped" }, { personScope: "viewer", personScopeUserId: null });
+    const filters = (url: string) => decodeBoardFilters(new URL(url).searchParams.get("mwFilters"));
+    expect(filters(savedViewUrl(viewer, "https://app.test/boards/b", "u2")).assignees).toEqual(["u2"]);
+    expect(filters(savedViewUrl(viewer, "https://app.test/boards/b")).assignees).toEqual([]);
+    expect(viewerScopedAssignees({ ...viewer, personScope: "team" }, "u2")).toEqual([]);
+    expect(viewerScopedAssignees(view("x", { filters: { assignees: ["u3"] } }, { personScope: "viewer" }), "u2")).toEqual(["u3"]);
+  });
+
+  it("칸반 사람 칸 「이름순」 은 이름표로 줄 세운다(계정 id 순이 아니다)", () => {
+    const owner = { id: "c-owner", org_id: "o1", board_id: "b1", key: "owner", label: "담당자", type: "person", source: "in", rightPinned: false, options_jsonb: null, sort_order: 0, width: null } as BoardColumn;
+    const card = (id: string, ownerId: string): ItemWithValues => ({ id, org_id: "o1", board_id: "b1", group_id: "g1", title: id, assigned_to: ownerId, deal_id: null, sort_order: 0, created_at: "", updated_at: "", values: { owner: ownerId } });
+    const rows = [card("sky", "u-1"), card("garam", "u-2")];
+    const filters = { q: "", assignees: [], byColumn: {}, sortKey: "", sortDir: "asc" as const, sorts: [{ columnKey: "owner", direction: "asc" as const }], columnLimit: 0 };
+    const labels = { "u-1": "하늘", "u-2": "가람" };
+    expect(applySavedKanbanView([{ id: "lane", items: rows }], rows, [owner], filters)[0].items.map((row) => row.id)).toEqual(["sky", "garam"]);
+    expect(applySavedKanbanView([{ id: "lane", items: rows }], rows, [owner], filters, undefined, labels)[0].items.map((row) => row.id)).toEqual(["garam", "sky"]);
   });
 });

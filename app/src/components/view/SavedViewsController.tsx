@@ -109,7 +109,7 @@ export function SavedViewsController({
     const url = new URL(window.location.href);
     if (activeFilterCount(filters) === 0) url.searchParams.delete(BOARD_FILTER_QUERY_KEY);
     else url.searchParams.set(BOARD_FILTER_QUERY_KEY, encodeBoardFilters(filters));
-    window.history.replaceState(window.history.state, "", url);
+    window.history.replaceState(null, "", url); // null — Next 가 이 주소를 라우터 상태로 받는다(BoardWorkspace.replaceBoardUrl 참고)
   }, [filters]);
 
   const activeRaw = savedViewId ? saved.views.find((view) => view.id === savedViewId) ?? null : null;
@@ -129,7 +129,9 @@ export function SavedViewsController({
   }, [canonicalNewLead, params]);
   const textMode: "single" | "wrap" = params.get("mwText") === "wrap" ? "wrap" : "single";
   const focusColumnKey = presentKey(params.get("mwFocus"));
-  const [calendarFieldKey, setCalendarFieldKey] = useState<string | null>(() => presentKey(params.get("calendarField")));
+  const [pickedCalendarFieldKey, setCalendarFieldKey] = useState<string | null>(() => presentKey(params.get("calendarField")));
+  // 주소에 날짜 칸이 없으면 지금 뷰에 저장된 칸 — 계약일로 저장한 캘린더 뷰가 첫 날짜 칸으로 열리지 않게.
+  const calendarFieldKey = pickedCalendarFieldKey ?? activeSaved?.config.calendarFieldKey ?? null;
 
   const persistToActive = async (patch: { columnOrder?: readonly string[]; calendarFieldKey?: string | null }) => {
     if (!activeRaw || !activeSaved?.canEdit) return;
@@ -143,7 +145,7 @@ export function SavedViewsController({
   const replaceUrlParam = (key: string, value: string) => {
     const url = new URL(window.location.href);
     url.searchParams.set(key, value);
-    window.history.replaceState(window.history.state, "", url);
+    window.history.replaceState(null, "", url); // null — Next 가 이 주소를 라우터 상태로 받는다(BoardWorkspace.replaceBoardUrl 참고)
   };
   const changeCalendarField = async (key: string) => {
     setCalendarFieldKey(key);
@@ -152,14 +154,23 @@ export function SavedViewsController({
   };
 
   const personColumnKey = displayColumns.find((column) => column.type === "person")?.key ?? null;
+  // 사람 범위는 서버가 이 화면을 그릴 때 읽은 뷰의 것으로 건다(teamMemberIds 도 그 범위로 계산됐다).
+  // 「이 뷰에 저장」 이 범위를 바꿔도(담당 · 나 → 보는 사람 기준) 다시 읽기 전까지 행이 사라지지 않게.
+  const [scopeView, setScopeView] = useState<typeof activeSaved>(null);
+  if (activeSaved && scopeView?.id !== activeSaved.id) setScopeView(activeSaved);
   const personScopedRows = useMemo(
-    () => applySavedPersonScope(rows, activeSaved, currentUserId, personColumnKey, teamMemberIds, canonicalNewLead),
-    [rows, activeSaved, currentUserId, personColumnKey, teamMemberIds, canonicalNewLead],
+    () => applySavedPersonScope(rows, scopeView, currentUserId, personColumnKey, teamMemberIds, canonicalNewLead),
+    [rows, scopeView, currentUserId, personColumnKey, teamMemberIds, canonicalNewLead],
   );
   const filterProjection = canonicalNewLead ? NEW_LEAD_SAVED_FILTER_PROJECTION : undefined;
+  // 사람 id → 이름. 찾기와 사람 칸 「이름순」 이 계정 id 가 아니라 이름으로 된다.
+  const memberLabels = useMemo(
+    () => Object.fromEntries(memberOptions.map((member) => [member.id, member.label])),
+    [memberOptions],
+  );
   const filteredRows = useMemo(
-    () => applyFilters(personScopedRows, displayColumns, filters, filterProjection),
-    [personScopedRows, displayColumns, filters, filterProjection],
+    () => applyFilters(personScopedRows, displayColumns, filters, filterProjection, memberLabels),
+    [personScopedRows, displayColumns, filters, filterProjection, memberLabels],
   );
   const orderedColumns = useMemo(() => {
     const hidden = new Set(hiddenColumns);
@@ -175,10 +186,7 @@ export function SavedViewsController({
   const dateColumns = displayColumns.filter((column) => column.type === "date" || column.type === "datetime");
   const dateColumn = dateColumns.find((column) => column.key === calendarFieldKey) ?? dateColumns.find((column) => column.type === "date") ?? dateColumns[0];
   const sortActive=(filters.sorts?.length??0)>0||Boolean(filters.sortKey);
-  const people = useMemo(
-    () => assigneeOptions(rows, Object.fromEntries(memberOptions.map((member) => [member.id, member.label]))),
-    [memberOptions, rows],
-  );
+  const people = useMemo(() => assigneeOptions(rows, memberLabels), [memberLabels, rows]);
   const config = { textMode, focusColumnKey };
   const submitFlatRowMove=(form:HTMLFormElement)=>{
     if(rowMovePendingRef.current){setError("이전 이동을 저장하고 있어요.");return;}

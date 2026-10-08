@@ -175,6 +175,17 @@ export function ColumnContextMenu({
     });
   };
 
+  /**
+   * 「숨기기」 뒤 초점 — 이 칸은 곧 사라져 초점이 <body> 로 떨어진다. 같은 제목행의 오른쪽 칸 이름,
+   * 없으면 왼쪽 칸 이름으로 옮긴다(칸이 사라지기 전에 옮겨 두면 메뉴가 닫혀도 그 자리에 남는다).
+   */
+  const focusNeighbourTitle = () => {
+    const own = triggerRef.current;
+    const titles = [...(own?.closest("tr")?.querySelectorAll<HTMLElement>("[data-column-title]") ?? [])];
+    const at = own ? titles.indexOf(own) : -1;
+    if (at >= 0) (titles[at + 1] ?? titles[at - 1])?.focus();
+  };
+
   /** 메뉴를 닫고 고른 일을 한다. 초점은 restoreFocus 일 때만 이름으로 돌아간다. */
   const run = (action: () => void, restoreFocus: boolean) => {
     closeSurface(restoreFocus, true);
@@ -318,7 +329,10 @@ export function ColumnContextMenu({
             <ColumnMenuItem
               icon="hide"
               label={T.hide}
-              onClick={() => run(() => view.onRequest({ kind: "hide", columnKey: column.key }), false)}
+              onClick={() => run(() => {
+                focusNeighbourTitle();
+                view.onRequest({ kind: "hide", columnKey: column.key });
+              }, false)}
             />
           </div>
         ) : null}

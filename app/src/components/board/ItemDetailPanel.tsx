@@ -812,6 +812,19 @@ export function ItemDetailPanel({
       }
     });
   };
+  // 바깥(덮개) pointerdown·×·뒤로 가기로 닫히면 제목 칸은 blur 없이 사라진다 — 고치던 이름은 닫힐 때 한 번 저장한다
+  // (Enter·칸 떠나기로 이미 저장했으면 titleSessionRef 가 막고, 비웠으면 버린다).
+  const flushTitleRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    flushTitleRef.current = () => {
+      if (!titleSessionRef.current) return;
+      if (titleDraft.trim()) commitTitle();
+      else cancelTitleEdit();
+    };
+  });
+  useEffect(() => {
+    if (!open) flushTitleRef.current();
+  }, [open]);
   const columnsByKey = new Map(columns.map((column) => [column.key, column]));
   const historyEntries = detail.events.map((event) => ({
     event,

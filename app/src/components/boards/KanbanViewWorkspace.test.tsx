@@ -7,6 +7,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/app/(app)/boards/actions", () => ({ moveItemAction: vi.fn(), moveRowAction: vi.fn(), reorderGroupsAction: vi.fn() }));
+const router = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
 import { KanbanViewWorkspace } from "./KanbanViewWorkspace";
 import { decodeBoardFilters, EMPTY_FILTERS } from "@/components/board/filters";
@@ -32,6 +34,7 @@ afterEach(async () => {
   if (root) await act(async () => root?.unmount());
   root = null;
   document.body.replaceChildren();
+  router.push.mockReset();
 });
 
 async function mount(initialFilters = EMPTY_FILTERS) {
@@ -73,5 +76,43 @@ describe("#845 6단계 — 칸반의 보기 줄", () => {
     await act(async () => host.querySelector<HTMLButtonElement>('[data-view-chip="group"]')!.click());
     const labels = [...host.querySelectorAll("#board-filter-panel [role=tabpanel] button")].map((button) => button.textContent?.replace("✓", ""));
     expect(labels).toEqual(["보드별로 나눠 보기", "상태별로 나눠 보기"]);
+  });
+});
+
+describe("#845 — 칸반 레인 기준은 보기 줄의 「나눠 보기」 하나로", () => {
+  it("상태별을 고르면 그 칸으로 레인을 다시 그린다 — 다시 읽지 않는 이동(router.push), 지금 조건은 주소에 남는다", async () => {
+    const host = await mount({ ...EMPTY_FILTERS, byColumn: { status: ["new"] } });
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-view-chip="group"]')!.click());
+    const byStatus = [...host.querySelectorAll<HTMLButtonElement>("#board-filter-panel [role=tabpanel] button")]
+      .find((button) => button.textContent?.replace("✓", "") === "상태별로 나눠 보기")!;
+    await act(async () => byStatus.click());
+    expect(router.push).toHaveBeenCalledTimes(1);
+    const next = new URL(router.push.mock.calls[0][0], "https://app.test");
+    expect(next.pathname).toBe("/boards/b");
+    expect(next.searchParams.get("view")).toBe("kanban");
+    expect(next.searchParams.get("group")).toBe("status");
+    expect(decodeBoardFilters(next.searchParams.get("mwFilters")).byColumn).toEqual({ status: ["new"] });
+  });
+
+  it("사람 칸 「이름순」 은 계정 id 가 아니라 이름으로 카드를 줄 세운다", async () => {
+    const owner = {
+      id: "c-owner", org_id: "o", board_id: "b", key: "owner", label: "담당자", type: "person", source: "in",
+      rightPinned: false, sort_order: 1, width: null, move_rule_jsonb: null, options_jsonb: null,
+    } as BoardColumn;
+    const people = [
+      { ...item("1", "하늘 건", "new", "u-1"), values: { status: "new", owner: "u-1" } },
+      { ...item("2", "가람 건", "new", "u-2"), values: { status: "new", owner: "u-2" } },
+    ];
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => root!.render(
+      <KanbanViewWorkspace boardId="b" currentUserId="me" lanes={[{ key: "g1", label: "접수", color: null, items: people }]}
+        items={people} columns={[...columns, owner]}
+        initialFilters={{ ...EMPTY_FILTERS, sorts: [{ columnKey: "owner", direction: "asc" }] }}
+        groupBy="" groupByOptions={[]} assigneeLabels={{ "u-1": "하늘", "u-2": "가람" }}
+        readOnly rowOrderVersion={0} canMoveRows={false} canManageSections={false} isSystem={false} />,
+    ));
+    expect(cards(host)).toEqual(["가람 건", "하늘 건"]);
   });
 });

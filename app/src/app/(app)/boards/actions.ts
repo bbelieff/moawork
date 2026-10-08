@@ -19,7 +19,7 @@ import { createRequestBoards } from "@/lib/boards/server";
 import { COLUMN_DELETE_CONFIRM, parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
 import type { Ctx, FieldOption } from "@/lib/types";
 import { writeBoardCell } from "@/lib/boards/cell-save";
-import type { CellError } from "@/lib/boards/service";
+import { columnPolicyAllows, type CellError } from "@/lib/boards/service";
 import { clampWidth, UNGROUPED_KEY } from "@/components/board/layout";
 import { setGroupColumnOrder } from "./groupLayout";
 // ★ 상태 모양·문장은 순수 모듈에 있다("use server" 파일은 async 함수만 export 할 수 있다).
@@ -180,7 +180,9 @@ async function assertActiveMembers(graph: BoardGraph, ctx: Ctx, ids: readonly st
 
 /**
  * #845 7단계 — 나눠 보기 묶음의 값(칸 key · 값 JSON)을 검증한다. 끌어 옮기기와 묶음 ＋ 미리 채우기가 같이 쓴다.
- * 화면이 감춘 것(고칠 수 없는 칸·✉ 발송 칸·신규리드 정본·배정 담당·넘기기 값)을 서버가 다시 막는다.
+ * 화면이 감춘 것(고칠 수 없는 칸·편집 제한 칸·✉ 발송 칸·신규리드 정본·배정 담당·넘기기 값)을 서버가 다시 막는다.
+ * ★ 편집 제한(「관리자만」 등)은 DB 가 값 쓰기를 거부한다 — 그런데 ＋ 는 행을 먼저 만들므로, 여기서 막지 않으면
+ *   값 없는 행만 남고 다시 누를 때마다 하나씩 늘어난다. 그래서 행을 만들기 «전» 에 같은 규칙으로 거절한다.
  */
 async function resolveGroupValue(
   graph: BoardGraph,
@@ -195,6 +197,7 @@ async function resolveGroupValue(
   const blocked = groupValueEditBlock(column, {
     canonicalNewLead: detail.board.source === NEW_LEAD_TAB_SOURCE,
     ownerMode: ownerModeForSource(detail.board.source),
+    editPolicyAllows: columnPolicyAllows(ctx, column.edit_policy_jsonb),
   });
   if (blocked) throw new UserFacingActionError(blocked);
   const value = parseGroupCellValue(column.type, rawValue);
@@ -743,7 +746,7 @@ export async function moveItemAction(formData: FormData): Promise<MoveItemAction
  * #845 7단계 — 나눠 보기에서 행을 다른 묶음으로 끌어 놓으면 그 칸의 값을 바꾼다(칸 편집과 같은 setCells 경로).
  * 화면은 먼저 옮겨 보이고(낙관적), 실패하면 되돌린 뒤 이 문구를 보인다. 던지지 않는다.
  *   · 권한: 항목 수정(work.item_upsert). 행을 옮기는 단계 값은 setCells 가 행 이동 권한을 다시 본다.
- *   · 막는 것: 고칠 수 없는 칸 · ✉ 발송 칸 · 신규리드 정본 · 배정으로 관리하는 담당 · 넘기기 값 · 회사 밖 사람
+ *   · 막는 것: 고칠 수 없는 칸 · 편집 제한 칸 · ✉ 발송 칸 · 신규리드 정본 · 배정으로 관리하는 담당 · 넘기기 값 · 회사 밖 사람
  */
 export type SetGroupValueActionResult =
   | { ok: true; notice?: string }

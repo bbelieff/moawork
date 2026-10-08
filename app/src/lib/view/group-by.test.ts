@@ -93,6 +93,11 @@ describe("끌기·미리 채우기로 바꿀 수 없는 칸", () => {
     expect(groupValueEditBlock(column("memo", "text"))).toBe("이 칸으로는 나눌 수 없어요.");
   });
 
+  it("편집 제한(관리자만 등)이 이 사람에게 닫힌 칸은 막는다 — 열려 있으면(기본) 그대로", () => {
+    expect(groupValueEditBlock(column("grade", "select"), { editPolicyAllows: false })).toBe("이 칸을 고칠 권한이 없어요.");
+    expect(groupValueEditBlock(column("grade", "select"), { editPolicyAllows: true })).toBeNull();
+  });
+
   it("넘기기 값(컨택 이동·리드컨택으로 넘기기)은 칸의 확인 흐름으로만", () => {
     expect(isTransitionGroupValue("contact_move", "컨택 이동")).toBe(true);
     expect(isTransitionGroupValue("consult_status", "리드컨택으로 넘기기")).toBe(true);

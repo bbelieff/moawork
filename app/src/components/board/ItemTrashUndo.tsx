@@ -102,13 +102,15 @@ export function ItemTrashUndoToast({ boardId, durationMs = ITEM_TRASH_UNDO_MS }:
     };
   }, [boardId, startTimer, stopTimer]);
 
-  if (!toast) return null;
-
+  const failed = toast !== null && (toast.kind === "error" || toast.error !== null);
+  const message = toast === null ? ""
+    : toast.kind === "error" ? toast.message
+      : toast.error ?? `「${toast.target.title}」${eulReul(toast.target.title)} 휴지통으로 옮겼어요`;
   const hold = () => { heldRef.current = true; stopTimer(); };
   const release = () => { heldRef.current = false; if (!restoring) startTimer(); };
 
   const undo = () => {
-    if (toast.kind !== "trashed") return;
+    if (toast?.kind !== "trashed") return;
     const target = toast.target;
     stopTimer();
     startRestore(async () => {
@@ -127,46 +129,55 @@ export function ItemTrashUndoToast({ boardId, durationMs = ITEM_TRASH_UNDO_MS }:
     });
   };
 
-  const failed = toast.kind === "error" || toast.error !== null;
-  const message = toast.kind === "error"
-    ? toast.message
-    : toast.error ?? `「${toast.target.title}」${eulReul(toast.target.title)} 휴지통으로 옮겼어요`;
-
+  /*
+   * ★ 알림 영역은 늘 붙어 있고 글자만 바뀐다 — 영역과 글자가 함께 생기면 화면낭독기가 놓치기 쉽다.
+   *   성공은 status(polite), 실패는 alert(assertive) 로 따로 둔다(판정에서 role·live 를 함께 얻는다).
+   *   눈에 보이는 알림은 포털에 따로 그리고 live 속성을 두지 않는다(두 번 읽히지 않게).
+   *   포털 밖(이 자리)에 두어 서버 렌더와 첫 화면이 같다.
+   */
   return (
-    <BoardDialogPortal>
-      <div
-        role={noticeRole(!failed)}
-        aria-live={noticeLive(!failed)}
-        data-item-trash-toast={toast.kind}
-        onMouseEnter={hold}
-        onMouseLeave={release}
-        onFocus={hold}
-        onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) release(); }}
-        className="mw-layer-toast fixed bottom-5 left-1/2 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-[var(--mw-r-2)] bg-mw-fg py-2 pl-4 pr-2 text-[length:var(--fs-13)] text-mw-card shadow-xl"
-      >
-        <span className="min-w-0 truncate">{message}</span>
-        {toast.kind === "trashed" ? (
-          <button
-            type="button"
-            onClick={undo}
-            disabled={restoring}
-            className="shrink-0 rounded-md px-2 py-1 font-semibold underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-card disabled:opacity-60"
-            style={{ color: "color-mix(in srgb, var(--mw-record) 40%, var(--mw-card))" }}
+    <>
+      <p className="sr-only" role={noticeRole(true)} aria-live={noticeLive(true)} data-item-trash-live="status">
+        {toast && !failed ? message : ""}
+      </p>
+      <p className="sr-only" role={noticeRole(false)} aria-live={noticeLive(false)} data-item-trash-live="alert">
+        {failed ? message : ""}
+      </p>
+      {toast ? (
+        <BoardDialogPortal>
+          <div
+            data-item-trash-toast={toast.kind}
+            onMouseEnter={hold}
+            onMouseLeave={release}
+            onFocus={hold}
+            onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) release(); }}
+            className="mw-layer-toast fixed bottom-5 left-1/2 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-[var(--mw-r-2)] bg-mw-fg py-2 pl-4 pr-2 text-[length:var(--fs-13)] text-mw-card shadow-xl"
           >
-            {restoring ? "되돌리는 중…" : "되돌리기"}
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => { stopTimer(); heldRef.current = false; setToast(null); }}
-          aria-label="알림 닫기"
-          className="grid size-7 shrink-0 place-items-center rounded-md opacity-70 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-card"
-        >
-          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true" focusable="false">
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
-      </div>
-    </BoardDialogPortal>
+            <span className="min-w-0 truncate">{message}</span>
+            {toast.kind === "trashed" ? (
+              <button
+                type="button"
+                onClick={undo}
+                disabled={restoring}
+                className="shrink-0 rounded-md px-2 py-1 font-semibold underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-card disabled:opacity-60"
+                style={{ color: "color-mix(in srgb, var(--mw-record) 40%, var(--mw-card))" }}
+              >
+                {restoring ? "되돌리는 중…" : "되돌리기"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => { stopTimer(); heldRef.current = false; setToast(null); }}
+              aria-label="알림 닫기"
+              className="grid size-7 shrink-0 place-items-center rounded-md opacity-70 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-card"
+            >
+              <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true" focusable="false">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </div>
+        </BoardDialogPortal>
+      ) : null}
+    </>
   );
 }

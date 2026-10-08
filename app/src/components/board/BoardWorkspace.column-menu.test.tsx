@@ -11,11 +11,15 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const actionMocks = vi.hoisted(() => ({ setGroupColumnOrdersAction: vi.fn(async () => {}) }));
+const actionMocks = vi.hoisted(() => ({
+  setGroupColumnOrdersAction: vi.fn(async () => {}),
+  runColumnCommandAction: vi.fn<(state: unknown, data: FormData) => Promise<{ ok: boolean; message: string | null; archivedColumnId?: string }>>(),
+}));
 vi.mock("@/app/(app)/boards/actions", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/app/(app)/boards/actions")>()),
   setGroupColumnOrdersAction: actionMocks.setGroupColumnOrdersAction,
 }));
+vi.mock("@/app/(app)/boards/column-command-actions", () => ({ runColumnCommandAction: actionMocks.runColumnCommandAction }));
 vi.mock("next/navigation", () => ({
   usePathname: () => "/boards/b",
   useRouter: () => ({ refresh: vi.fn(), replace: vi.fn(), push: vi.fn() }),
@@ -37,6 +41,7 @@ afterEach(async () => {
   document.body.replaceChildren();
   window.history.replaceState(null, "", "/");
   actionMocks.setGroupColumnOrdersAction.mockClear();
+  actionMocks.runColumnCommandAction.mockReset();
 });
 
 const groups = [{ id: "g1", org_id: "o", board_id: "b", name: "접수", color: null, sort_order: 0 }] as BoardGroup[];
@@ -125,6 +130,16 @@ describe("칸 메뉴 「보기」 → 보드의 보기 상태", () => {
     expect(actionMocks.setGroupColumnOrdersAction).not.toHaveBeenCalled();
   });
 
+  it("숨긴 뒤 초점은 옆 칸 이름으로 — 오른쪽이 없으면 왼쪽(<body> 로 떨어지지 않는다)", async () => {
+    const host = await mount({
+      columns: [...columns, column("c-memo", "memo", "메모", 2)],
+    });
+    await choose(host, "대표자명", "숨기기");
+    expect(document.activeElement).toBe(title(host, "메모"));
+    await choose(host, "메모", "숨기기");
+    expect(document.activeElement).toBe(title(host, "구분"));
+  });
+
   it("골라 보기…는 보기 조건 칸을 골라 보기 탭으로 펴고 그 칸의 칩을 연다", async () => {
     const host = await mount();
     expect(host.querySelector("#board-filter-panel")).toBeNull();
@@ -169,5 +184,38 @@ describe("칸 메뉴 「보기」 → 보드의 보기 상태", () => {
     await choose(host, "대표자명", "왼쪽으로");
     expect(actionMocks.setGroupColumnOrdersAction).toHaveBeenCalledTimes(1);
     expect(new URL(window.location.href).searchParams.get("mwFilters")).toBeNull();
+  });
+});
+
+/*
+ * #845 검토(gates-column-undo-string-only) — 칸 메뉴 「지우기」 → 확인 → 칸이 이 화면에서 빠지고
+ * 「칸을 휴지통으로 옮겼어요.」 줄의 「되돌리기」 가 같은 칸의 restore 를 보낸다(글자 확인이 아니라 행동으로).
+ */
+describe("칸 지우기 → 되돌리기", () => {
+  it("지운 칸은 빠지고 알림 줄이 뜨며, 되돌리기는 operation=restore 로 그 칸을 보낸다", async () => {
+    actionMocks.runColumnCommandAction.mockImplementation(async (_state, data) => (
+      data.get("operation") === "archive"
+        ? { ok: true, message: null, archivedColumnId: String(data.get("columnId")) }
+        : { ok: true, message: null }
+    ));
+    const host = await mount();
+    await choose(host, "대표자명", "지우기");
+    const confirm = document.querySelector<HTMLElement>("[data-column-delete-confirm]")!;
+    const remove = [...confirm.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "지우기")!;
+    await act(async () => remove.click());
+
+    const archive = actionMocks.runColumnCommandAction.mock.calls[0][1];
+    expect([archive.get("operation"), archive.get("columnId"), archive.get("boardId")]).toEqual(["archive", "c-rep", "b"]);
+    expect(head(host).querySelector('th[data-column-key="rep_name"]')).toBeNull();
+    const notice = [...host.querySelectorAll<HTMLElement>('[role="status"]')].find((node) => node.textContent?.includes("칸을 휴지통으로 옮겼어요."));
+    expect(notice).toBeDefined();
+
+    const undo = [...notice!.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "되돌리기")!;
+    await act(async () => undo.click());
+    expect(actionMocks.runColumnCommandAction).toHaveBeenCalledTimes(2);
+    const restore = actionMocks.runColumnCommandAction.mock.calls[1][1];
+    expect([restore.get("operation"), restore.get("columnId"), restore.get("boardId")]).toEqual(["restore", "c-rep", "b"]);
+    expect(head(host).querySelector('th[data-column-key="rep_name"]')).not.toBeNull();
+    expect(host.textContent).not.toContain("칸을 휴지통으로 옮겼어요.");
   });
 });

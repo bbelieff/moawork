@@ -48,9 +48,11 @@ export function BoardModalLayer({
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
     const explicitReturnFocus = returnFocusRef?.current;
+    // Tab 으로 닿는 것만 — 로빙 tabindex=-1 단추(탭 목록·메뉴 항목)는 화살표로만 간다.
     const focusable = () => [...(dialogRef.current?.querySelectorAll<HTMLElement>(
       'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex]:not([tabindex="-1"])',
-    ) ?? [])].filter((element) => !element.hasAttribute("hidden"));
+    ) ?? [])].filter((element) => element.tabIndex >= 0 && !element.hasAttribute("hidden"));
+    const follows = (from: Node, to: Node) => Boolean(from.compareDocumentPosition(to) & Node.DOCUMENT_POSITION_FOLLOWING);
     const frame = window.requestAnimationFrame(() => {
       // A form may already focus its title or invalid field during mount.
       if (!dialogRef.current?.contains(document.activeElement)) {
@@ -74,12 +76,16 @@ export function BoardModalLayer({
       }
       const first = items[0];
       const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      const active = document.activeElement;
+      // 대화상자 밖(그 위에 겹쳐 연 다른 대화상자 등)의 초점은 그쪽이 맡는다.
+      if (!active || !dialogRef.current?.contains(active)) return;
+      // 화살표로 간 tabindex=-1 자리여도 문서 순서로 앞뒤를 가린다 — 더 갈 곳이 없으면 반대 끝으로 돈다.
+      const hasNext = event.shiftKey
+        ? items.some((item) => follows(item, active))
+        : items.some((item) => follows(active, item));
+      if (!hasNext) {
         event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
+        (event.shiftKey ? last : first).focus();
       }
     };
     document.addEventListener("keydown", onKeyDown, true);

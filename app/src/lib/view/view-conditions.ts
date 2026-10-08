@@ -22,9 +22,12 @@ import {
   parseSavedStringList,
   savedKindForMode,
   modeForSavedKind,
+  viewerScopedAssignees,
   type BoardViewMode,
+  type SavedBoardView,
   type SavedBoardViewConfig,
 } from "./board-saved";
+import type { PersonScope } from "./contracts";
 
 export type ViewSort = { columnKey: string; direction: "asc" | "desc" };
 
@@ -93,6 +96,42 @@ export function conditionsFromSavedConfig(
     config.groupBy,
     allColumnKeys,
   );
+}
+
+/**
+ * 저장된 나눠 보기 → 이 화면이 «걸 수 있는» 값. 못 걸면 보드별("").
+ * 목록·캘린더는 나눠 보기가 없고, 지운·숨긴·종류가 바뀐 칸도 못 건다. 신규리드는 저장값(physical)과
+ * 화면 key(합성)가 다를 수 있어 후보를 차례로 맞춰 본다. 못 거는 값을 견주면 열자마자 «바뀜» 이고,
+ * 되돌려도 같은 자리로 돌아온다.
+ */
+export function applicableGroupBy(
+  candidates: readonly (string | null | undefined)[],
+  groupByKeys: readonly string[],
+): string {
+  return candidates.find((key): key is string => Boolean(key) && groupByKeys.includes(key as string)) ?? "";
+}
+
+/**
+ * 저장된 뷰 → 이 화면에서 견줄 기준 조건.
+ *   · 나눠 보기는 이 화면이 걸 수 있는 값으로(applicableGroupBy).
+ *   · 보는 사람 기준(viewer) 뷰의 담당은 «나»(D26 — viewerScopedAssignees).
+ */
+export function conditionsFromSavedView(
+  view: Pick<SavedBoardView, "config" | "personScope">,
+  screen: {
+    allColumnKeys?: readonly string[];
+    /** 이 화면이 걸 수 있는 나눠 보기 칸. 목록·캘린더는 비어 있다. */
+    groupByKeys: readonly string[];
+    /** 같은 뷰가 저장값으로 든 나눠 보기(신규리드 physical key). 화면 key 가 다를 때 이어서 맞춰 본다. */
+    groupByAliases?: readonly string[];
+    currentUserId?: string | null;
+  },
+): ViewConditions {
+  return {
+    ...conditionsFromSavedConfig(view.config, screen.allColumnKeys),
+    assignees: [...new Set(viewerScopedAssignees(view, screen.currentUserId))].sort(),
+    groupBy: applicableGroupBy([view.config.groupBy, ...(screen.groupByAliases ?? [])], screen.groupByKeys),
+  };
 }
 
 const sameList = (left: readonly string[], right: readonly string[]) =>
@@ -248,6 +287,27 @@ export function draftViewConfig({
       : active?.textMode ?? "single",
     focusColumnKey: params.has("mwFocus") ? (params.get("mwFocus") || null) : active?.focusColumnKey ?? null,
   };
+}
+
+/**
+ * 저장할 사람 범위 — D26: 사람 조건은 동적이 기본이다.
+ * 담당이 「나」 하나뿐이면 보는 사람 기준(viewer)으로 담고 id 는 뺀다 — 팀 뷰를 연 다른 사람에게는 그 사람의 행이 보인다.
+ * 「나」 로 담겨 있던 뷰에서 담당을 바꿨으면 viewer 를 풀고, 팀·고정 범위는 그대로 잇는다.
+ */
+export function draftPersonScope(
+  config: SavedBoardViewConfig,
+  active: (Pick<SavedBoardView, "personScope" | "personScopeUserId"> & { config: Pick<SavedBoardViewConfig, "filters"> }) | null,
+  currentUserId?: string | null,
+): { config: SavedBoardViewConfig; personScope: PersonScope; personScopeUserId: string | null } {
+  const assignees = config.filters.assignees;
+  if (currentUserId && assignees.length === 1 && assignees[0] === currentUserId) {
+    return { config: { ...config, filters: { ...config.filters, assignees: [] } }, personScope: "viewer", personScopeUserId: null };
+  }
+  const scope = active?.personScope ?? "none";
+  if (scope === "viewer" && active?.config.filters.assignees.length === 0) {
+    return { config, personScope: "none", personScopeUserId: null };
+  }
+  return { config, personScope: scope, personScopeUserId: scope === "fixed" ? active?.personScopeUserId ?? null : null };
 }
 
 /** 주소의 mwFilters 에 지금 검색어를 다시 넣는다 — 뷰를 바꾸거나 되돌려도 찾던 글자는 남긴다. */

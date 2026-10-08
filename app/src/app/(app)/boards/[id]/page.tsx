@@ -11,6 +11,7 @@ import {
   findBoardActionError,
 } from "@/lib/boards/boardActionFlash";
 import { NotFoundError } from "@/lib/boards";
+import { columnPolicyAllows } from "@/lib/boards/service";
 import { createRequestBoards, requireRequestClient } from "@/lib/boards/server";
 import { markNoticeItemsReadAtomic } from "@/lib/notices/atomic";
 import { after } from "next/server";
@@ -37,16 +38,12 @@ import { PermissionUnavailable } from "@/components/perm/PermissionUnavailable";
 import { loadPermissionScopedWorkItems } from "@/lib/perm/server";
 import { BoardWorkspace } from "@/components/board/BoardWorkspace";
 import { BoardHeader } from "@/components/board/BoardHeader";
-import { BoardInlineTitleEditor } from "@/components/board/BoardInlineTitleEditor";
 import { NewLeadIntakeForm } from "@/components/board/NewLeadIntakeForm";
-import { renameColumnTitleAction } from "@/app/(app)/boards/title-actions";
-import { reorderColumnsAction } from "@/app/(app)/boards/actions";
 import { BoardTrashPanel } from "@/components/board/BoardTrashPanel";
 import { BoardArchivePanel } from "@/components/board/BoardArchivePanel";
 import { SavedViewsController } from "@/components/view";
 import {
   applySavedPersonScope,
-  boardViewSwitchUrl,
   parseSavedBoardLayout,
   parseSavedStringList,
 } from "@/lib/view/board-saved";
@@ -433,8 +430,6 @@ export default async function BoardPage({
   const currentQuery = new URLSearchParams(
     Object.entries(sp).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   );
-  const switchView = (nextView: "table" | "kanban" | "calendar", nextGroup?: string) =>
-    boardViewSwitchUrl(nextView, `https://app.local/boards/${id}?${currentQuery}`, nextGroup);
 
   const backLink = (
     <WorkspaceLink
@@ -530,7 +525,7 @@ export default async function BoardPage({
   const boardContent = view === "kanban" ? (
     <>
         {alternateViewHeader}
-        {/* 보드 이름 아래 — 표와 같은 보기 줄 하나(BBE-214 순서 · #845 6단계). */}
+        {/* 보드 이름 아래 — 표와 같은 보기 줄 하나(BBE-214 순서 · #845 6단계). 레인 기준도 그 줄의 「나눠 보기」 로 고른다. */}
         <KanbanViewWorkspace
           boardId={id}
           currentUserId={ctx.user.id}
@@ -550,24 +545,7 @@ export default async function BoardPage({
           canMoveRows={canMoveRows}
           canManageSections={canManageSections}
           isSystem={board.is_system}
-        >
-        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto text-xs">
-          <span className="shrink-0 text-mw-sub">그룹 기준</span>
-          <WorkspaceLink
-            href={switchView("kanban", "")}
-            className={`shrink-0 rounded-full border px-2.5 py-1 ${groupBy === "" ? "border-mw-record bg-mw-tint-blue text-mw-record" : "border-mw-line text-mw-body"}`}
-          >
-            그룹
-          </WorkspaceLink>
-          {selectColumns.map((c) => (
-            <span key={c.id} className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 ${groupBy===c.key?"border-mw-record bg-mw-tint-blue text-mw-record":"border-mw-line text-mw-body"}`}>
-              {!board.is_system&&canManageColumns?<BoardInlineTitleEditor name={c.label} label="컬럼 이름" onSave={renameColumnTitleAction.bind(null,id,c.id)}/>:c.label}
-              <WorkspaceLink href={switchView("kanban",c.key)} aria-label={`${c.label} 기준 칸반 보기`} className="text-[0.65rem] text-mw-sub">보기</WorkspaceLink>
-              {!board.is_system&&canManageColumns?<span className="sr-only focus-within:not-sr-only">{([-1,1] as const).map((delta)=>{const ordered=columns.map((column)=>column.id);const from=ordered.indexOf(c.id);const to=Math.max(0,Math.min(ordered.length-1,from+delta));if(from!==to){const [moved]=ordered.splice(from,1);ordered.splice(to,0,moved);}return <form key={delta} action={reorderColumnsAction} className="inline"><input type="hidden" name="boardId" value={id}/><input type="hidden" name="columnIds" value={JSON.stringify(ordered)}/><button type="submit" disabled={from===to} aria-label={`${c.label} ${delta<0?"왼쪽":"오른쪽"}으로 이동`}>{delta<0?"←":"→"}</button></form>;})}</span>:null}
-            </span>
-          ))}
-        </div>
-        </KanbanViewWorkspace>
+        />
     </>
   ) : view === "flat" || view === "calendar" ? (
     <>
@@ -603,6 +581,7 @@ export default async function BoardPage({
         <NewLeadOnboarding />
       ) : undefined}
       canEditItems={canEditItems}
+      editLockedColumnKeys={columns.filter((column) => !columnPolicyAllows(ctx, column.edit_policy_jsonb)).map((column) => column.key)}
       canDeleteItems={canDeleteItems}
       canBulkEditItems={boardDelete.kind === "allowed"}
       canExportItems={permissions["danger.csv_export"].kind === "allowed"}

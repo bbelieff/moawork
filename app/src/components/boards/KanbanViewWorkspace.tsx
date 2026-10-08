@@ -2,12 +2,13 @@
 
 /**
  * 칸반 보기 — #845 6단계. 표와 같은 보기 줄(뷰 탭 · 보기 조건 칩 · 저장 · 찾기)을 쓴다.
+ * 레인 기준(목록 칸)도 보기 줄의 「나눠 보기」 로 고른다 — 따로 선 「그룹 기준」 줄은 없앴다.
  *
  * 레인은 서버가 권한·상담 단계로 걸러 넘긴다. 보기 조건(찾기·골라 보기·담당·줄 세우기)은
  * 여기서 바로 적용한다 — 주소(mwFilters)에 남으므로 새로고침해도 그대로다.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import {
   activeFilterCount,
@@ -46,7 +47,6 @@ export function KanbanViewWorkspace({
   canMoveRows,
   canManageSections,
   isSystem,
-  children,
 }: {
   boardId: string;
   currentUserId: string;
@@ -70,8 +70,6 @@ export function KanbanViewWorkspace({
   canMoveRows: boolean;
   canManageSections: boolean;
   isSystem: boolean;
-  /** 보기 줄과 칸반 사이(예: 목록 칸 이름 고치기 줄). */
-  children?: ReactNode;
 }) {
   const [filters, setFilters] = useState<BoardFilterState>(() =>
     canonicalNewLead ? presentNewLeadSavedFilters(initialFilters) : initialFilters);
@@ -79,17 +77,18 @@ export function KanbanViewWorkspace({
     const url = new URL(window.location.href);
     if (activeFilterCount(filters) === 0) url.searchParams.delete(BOARD_FILTER_QUERY_KEY);
     else url.searchParams.set(BOARD_FILTER_QUERY_KEY, encodeBoardFilters(filters));
-    window.history.replaceState(window.history.state, "", url);
+    window.history.replaceState(null, "", url); // null — Next 가 이 주소를 라우터 상태로 받는다(BoardWorkspace.replaceBoardUrl 참고)
   }, [filters]);
 
   const projection = canonicalNewLead ? NEW_LEAD_SAVED_FILTER_PROJECTION : undefined;
   const allLanes = useMemo(
-    () => applySavedKanbanView(lanes, items, columns, EMPTY_FILTERS, projection),
-    [columns, items, lanes, projection],
+    () => applySavedKanbanView(lanes, items, columns, EMPTY_FILTERS, projection, assigneeLabels),
+    [assigneeLabels, columns, items, lanes, projection],
   );
   const shownLanes = useMemo(
-    () => applySavedKanbanView(lanes, items, columns, filters, projection),
-    [columns, filters, items, lanes, projection],
+    // 사람 칸 「이름순」 은 계정 id 가 아니라 이름으로.
+    () => applySavedKanbanView(lanes, items, columns, filters, projection, assigneeLabels),
+    [assigneeLabels, columns, filters, items, lanes, projection],
   );
   const total = allLanes.reduce((sum, lane) => sum + lane.items.length, 0);
   const matched = shownLanes.reduce((sum, lane) => sum + lane.items.length, 0);
@@ -116,7 +115,6 @@ export function KanbanViewWorkspace({
         calendarAvailable={calendarAvailable}
         defaultCalendarFieldKey={columns.find((column) => column.type === "date")?.key ?? null}
       />
-      {children}
       <GenericBoardKanban
         boardId={boardId}
         lanes={shownLanes}

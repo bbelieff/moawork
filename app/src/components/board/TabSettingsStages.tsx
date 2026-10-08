@@ -5,7 +5,7 @@
  *
  * 옛 보드 설정의 「그룹 순서」(이름과 달리 추가 칸뿐이었다)와 「업무 흐름」 안내 상자를 대신한다.
  *   · 순서: 손잡이를 끌거나 ↑↓ 단추 → reorderGroupsAction (표의 그룹 머리말 ↑↓ 와 같은 저장 경로)
- *   · 이름: 「이름 바꾸기」 → 그 자리 입력칸, Enter·칸 떠나기로 저장 / Esc 로 취소
+ *   · 이름: 「이름 바꾸기」 → 그 자리 입력칸, Enter·칸 떠나기로 저장 / Esc 로 취소(창이 먼저 닫혀도 저장)
  *          (renameGroupTitleAction — 그룹 머리말 이름 편집과 같은 권한·같은 서비스 호출)
  *   · 추가: 「＋ 단계 추가」 → addGroupAction
  *   · 지우기: 지금은 그룹을 지우는 액션이 없다. 새 파괴 경로를 만들지 않고 단추를 잠가 이유만 알려 준다
@@ -14,7 +14,7 @@
  * 맨 위 한 줄 안내가 그것을 말한다. 저장 함수는 바꿔 끼울 수 있다(시각 픽스처).
  */
 
-import { useId, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { addGroupAction, reorderGroupsAction } from "@/app/(app)/boards/actions";
 import { renameGroupTitleAction, type InlineTitleResult } from "@/app/(app)/boards/title-actions";
 import { presentLabel } from "@/lib/boards/label-presentation";
@@ -80,6 +80,15 @@ export function TabSettingsStages({
     const [moved] = next.splice(index, 1);
     next.splice(to, 0, moved);
     persist(next, moved);
+    // 줄(li)이 자리를 옮기면 브라우저는 그 안의 초점을 문서로 떨어뜨린다 — 옮긴 줄의 같은 단추로 돌려준다
+    // (그새 다른 곳을 눌렀으면 그대로 둔다).
+    window.requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (active && active !== document.body) return;
+      const row = [...(listRef.current?.querySelectorAll<HTMLElement>("[data-tab-stage-row]") ?? [])]
+        .find((node) => node.dataset.tabStageRow === moved.id);
+      row?.querySelector<HTMLElement>(`[data-tab-stage-move="${delta < 0 ? "up" : "down"}"]`)?.focus();
+    });
   };
 
   const drop = (targetId: string) => {
@@ -263,10 +272,10 @@ function StageRow({
         <span className="min-w-0 flex-1 truncate text-[length:var(--fs-13)] font-semibold text-mw-fg">{shown}</span>
       )}
       <span className="w-14 shrink-0 text-right text-[length:var(--fs-12)] text-mw-sub max-sm:w-auto max-sm:pe-1">{stage.rowCount}건</span>
-      <button type="button" aria-label={`${shown} 위로`} aria-disabled={index === 0} onClick={() => { if (index > 0) onMove(-1); }} className={SMALL_BUTTON}>
+      <button type="button" aria-label={`${shown} 위로`} aria-disabled={index === 0} data-tab-stage-move="up" onClick={() => { if (index > 0) onMove(-1); }} className={SMALL_BUTTON}>
         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
       </button>
-      <button type="button" aria-label={`${shown} 아래로`} aria-disabled={index === count - 1} onClick={() => { if (index < count - 1) onMove(1); }} className={SMALL_BUTTON}>
+      <button type="button" aria-label={`${shown} 아래로`} aria-disabled={index === count - 1} data-tab-stage-move="down" onClick={() => { if (index < count - 1) onMove(1); }} className={SMALL_BUTTON}>
         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12l7 7 7-7" /></svg>
       </button>
       {editing ? null : (
@@ -313,6 +322,20 @@ function StageNameInput({
   const [draft, setDraft] = useState(initial);
   const [pending, setPending] = useState(false);
   const doneRef = useRef(false);
+
+  // 바깥 누르기로 대화상자가 닫히면 입력칸은 blur 없이 사라진다 — 고치던 이름은 그때 한 번 저장한다
+  // (Enter·칸 떠나기·Esc 로 이미 끝냈으면 doneRef 가 막는다).
+  const latestRef = useRef({ draft, initial, onSave });
+  useEffect(() => {
+    latestRef.current = { draft, initial, onSave };
+  });
+  useEffect(() => () => {
+    const latest = latestRef.current;
+    const next = latest.draft.trim();
+    if (doneRef.current || !next || next === latest.initial) return;
+    doneRef.current = true;
+    void latest.onSave(next).catch(() => false);
+  }, []);
 
   const commit = async () => {
     if (doneRef.current) return;

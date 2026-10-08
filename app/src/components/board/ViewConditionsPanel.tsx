@@ -11,7 +11,7 @@
  * 휴대폰(바닥 시트)에서는 골라 보기도 팝오버 대신 그 자리에서 펼친다.
  */
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import {
   OTHER_INFO_KEYS,
@@ -107,12 +107,22 @@ export function OptionPicker({
   );
 }
 
-/** 휴대폰 시트의 골라 보기 한 칸 — 팝오버 대신 그 자리에서 펼친다. */
-function InlineFacet({ label, summary, children }: { label: string; summary?: string; children: ReactNode }) {
+/** 휴대폰 시트의 골라 보기 한 칸 — 팝오버 대신 그 자리에서 펼친다. openSignal 이 바뀌면(칸 메뉴 「골라 보기…」) 펼쳐 보인다. */
+function InlineFacet({ label, summary, openSignal, children }: { label: string; summary?: string; openSignal?: number; children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [seenSignal, setSeenSignal] = useState<number | undefined>(undefined);
+  if (openSignal !== undefined && openSignal !== seenSignal) {
+    setSeenSignal(openSignal);
+    setOpen(true);
+  }
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (seenSignal !== undefined) triggerRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [seenSignal]);
   return (
     <div className="rounded-lg border border-mw-line">
       <button
+        ref={triggerRef}
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
@@ -158,7 +168,7 @@ export function ViewConditionsPanel({
   currentUserId?: string;
   /** 화면에서 감춘 예전 칸이 아직 걸려 있을 때 지울 수 있게 보이는 이름. */
   legacyFacetLabels?: Readonly<Record<string, string>>;
-  /** 칸 메뉴 「골라 보기…」 — 그 칸의 칩을 연다. */
+  /** 칸 메뉴 「골라 보기…」 — 그 칸의 칩을 연다(시트에서는 그 칸을 펼친다). */
   focusFilter?: ToolbarFilterFocus | null;
   groupBy: string;
   /** 나눠 보기에 고를 수 있는 칸(보드별 말고). 없으면 「보드별」 하나다. */
@@ -228,7 +238,14 @@ export function ViewConditionsPanel({
             />
           );
           return sheet ? (
-            <InlineFacet key={col.id} label={col.label} summary={summaryOf(picked, options)}>{picker}</InlineFacet>
+            <InlineFacet
+              key={col.id}
+              label={col.label}
+              summary={summaryOf(picked, options)}
+              openSignal={focusFilter?.columnKey === col.key ? focusFilter.seq : undefined}
+            >
+              {picker}
+            </InlineFacet>
           ) : (
             <FilterChip
               key={col.id}

@@ -28,6 +28,31 @@ export type RowContextMenuRequest = Readonly<{
   canTrash: boolean;
 }>;
 
+/**
+ * 「휴지통으로 이동」 뒤 초점을 둘 곳을 «옮기기 전» 에 정해 두고, 옮긴 뒤 부를 함수를 돌려준다.
+ * 그 행은 곧 화면에서 사라져 초점이 <body> 로 떨어진다. 그래서 보드 안 행 이름 순서를 적어 두었다가
+ * 다음 행 이름 → 앞 행 이름 → 머리말 주 단추(＋ 새 항목 등) → 탭 ▾ 순으로 아직 화면에 있는 첫 곳에 둔다.
+ * 그 사이 사용자가 다른 곳으로 초점을 옮겼으면 건드리지 않는다.
+ */
+export function rememberTrashFocus(nameButton: HTMLElement): () => void {
+  const doc = nameButton.ownerDocument;
+  const root: ParentNode = nameButton.closest("[data-board-workspace]") ?? doc;
+  const rowIdOf = (element: Element) => element.getAttribute("data-item-detail-trigger");
+  const nameButtons = () => [...root.querySelectorAll<HTMLElement>("button[data-row-name]")];
+  const order = nameButtons().map(rowIdOf);
+  const at = order.indexOf(rowIdOf(nameButton));
+  const preferred = at < 0 ? [] : [...order.slice(at + 1), ...order.slice(0, at).reverse()];
+  return () => {
+    const active = doc.activeElement;
+    if (active && active !== doc.body && active !== nameButton) return;
+    const present = nameButtons().filter((button) => button !== nameButton);
+    const next = preferred.map((id) => present.find((button) => rowIdOf(button) === id)).find(Boolean)
+      ?? root.querySelector<HTMLElement>('[data-board-action-rail] [data-mw-cta="primary"]')
+      ?? root.querySelector<HTMLElement>("button[data-board-tab-menu-trigger]");
+    next?.focus();
+  };
+}
+
 /** 우클릭이면 누른 자리, 키보드면 초점이 있는 요소의 왼쪽 아래. */
 export function rowContextMenuPoint(event: { clientX: number; clientY: number }, target: Element | null): { x: number; y: number } {
   if ((event.clientX !== 0 || event.clientY !== 0) || !target) return { x: event.clientX, y: event.clientY };

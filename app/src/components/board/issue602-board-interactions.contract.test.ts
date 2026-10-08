@@ -35,6 +35,7 @@ describe("Issue #602 final board interaction wiring",()=>{
     const kanban=readBoards("GenericBoardKanban.tsx");
     expect(kanban).not.toContain("zinc-");expect(kanban).toContain("border-mw-line");expect(kanban).toContain('fd.set("expectedVersion"');
     expect(kanban).toContain("pendingRef.current");expect(kanban).toContain("intentRef.current");expect(kanban).toContain("beforeItemId");expect(kanban).toContain("moveRowAction");expect(kanban).toContain("GroupNameEditor");
-    expect(readPage()).toContain("reorderColumnsAction");
+    // #845 — 칸반의 「그룹 기준」 줄은 보기 줄의 「나눠 보기」 칩으로 합쳤다. 칸 순서는 표 칸 메뉴(왼쪽으로·오른쪽으로)가 맡는다.
+    expect(readPage()).not.toContain("그룹 기준");
   });
 });

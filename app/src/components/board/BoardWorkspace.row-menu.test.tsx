@@ -71,7 +71,11 @@ const rows = [
   row("r2", "나회사", "g2", { institution: "kibo" }),
 ];
 
-async function mount({ groupBy = "", canDeleteItems = true }: { groupBy?: string; canDeleteItems?: boolean } = {}) {
+async function mount({
+  groupBy = "",
+  canDeleteItems = true,
+  boardRows = rows,
+}: { groupBy?: string; canDeleteItems?: boolean; boardRows?: ItemWithValues[] } = {}) {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -81,7 +85,7 @@ async function mount({ groupBy = "", canDeleteItems = true }: { groupBy?: string
       board={board}
       columns={columns}
       groups={groups}
-      rows={rows}
+      rows={boardRows}
       columnOrder={{}}
       cellFlash={null}
       assigneeLabels={{}}
@@ -162,6 +166,27 @@ describe.each([
     expect(menuLabels()).toEqual(["옆에 열기", "이름 바꾸기"]);
     await clickMenuItem("옆에 열기");
     expect(detail()?.querySelector("[data-item-detail-trash]")).toBeNull();
+  });
+});
+
+describe("휴지통으로 옮긴 뒤 초점", () => {
+  const nameOf = (host: ParentNode, rowTitle: string) => titleCell(host, rowTitle).querySelector<HTMLElement>("[data-row-name]")!;
+
+  it("보드 안 다음 행 이름 → 없으면 앞 행 이름(다른 보드 띠여도)", async () => {
+    const host = await mount();
+    await rightClick(rowOf(host, "나회사"));
+    await clickMenuItem("휴지통으로 이동");
+    await act(async () => { await Promise.resolve(); });
+    expect(document.activeElement).toBe(nameOf(host, "가회사"));
+  });
+
+  it("남은 행이 없으면 머리말 주 단추(＋ 새 항목)로", async () => {
+    const host = await mount({ boardRows: [rows[0]] });
+    await rightClick(rowOf(host, "가회사"));
+    await clickMenuItem("휴지통으로 이동");
+    await act(async () => { await Promise.resolve(); });
+    expect(document.activeElement).toBe(host.querySelector('[data-board-action-rail] [data-mw-cta="primary"]'));
+    expect(document.activeElement?.textContent).toContain("＋ 새 항목");
   });
 });
 

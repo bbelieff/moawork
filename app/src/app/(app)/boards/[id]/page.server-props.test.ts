@@ -16,7 +16,13 @@ describe("board page server-to-client props", () => {
     expect([...inline, ...functions]).toEqual([]);
   });
 
-  it("binds the kanban column rename to its server action", () => {
-    expect(source).toMatch(/onSave=\{renameColumnTitleAction\.bind\(null,\s*id,\s*c\.id\)\}/u);
+  // #845 — 칸반 레인 기준은 보기 줄 「나눠 보기」 하나로 고른다. 서버가 그린 「그룹 기준」 줄은 주소가
+  // 그려질 때의 조건(mwFilters)을 박아 두어, 조건을 바꾼 뒤 누르면 예전 조건으로 돌아갔다.
+  it("has no separate kanban 「그룹 기준」 strip — grouping lives in the view bar", () => {
+    expect(source).not.toContain("그룹 기준");
+    expect(source).not.toContain("boardViewSwitchUrl");
+    const kanban = source.match(/<KanbanViewWorkspace\b[\s\S]*?\/>/u)?.[0] ?? "";
+    expect(kanban).toContain("groupBy={groupBy}");
+    expect(kanban).toContain("groupByOptions={groupByOptions}");
   });
 });

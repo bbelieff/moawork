@@ -68,6 +68,9 @@ export function BoardHeader({
   onRequestTrash?: (opener: HTMLElement | null) => void;
 }) {
   const titleRef = useRef<BoardInlineTitleEditorHandle>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  // 이름 편집을 ▾ 메뉴에서 시작했는가 — 끝나면 초점을 그 ▾ 로, 아니면 제목으로 돌려준다.
+  const renameFromMenuRef = useRef(false);
   const chrome = useTabChrome();
   const openSettings = onOpenSettings ?? chrome?.openSettings;
   const requestTrash = onRequestTrash ?? chrome?.requestTrash;
@@ -76,7 +79,7 @@ export function BoardHeader({
   const iconKey = resolveBoardIconKey(icon, source);
 
   return (
-    <div data-visual-block="board-header" className="relative flex min-w-0 max-w-full items-center gap-3">
+    <div ref={headerRef} data-visual-block="board-header" className="relative flex min-w-0 max-w-full items-center gap-3">
       <div className="mw-board-inline-scroll flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto overflow-y-hidden pe-2 [scroll-padding-inline-end:0.5rem]">
         {backSlot}
 
@@ -88,6 +91,16 @@ export function BoardHeader({
               name={name}
               label="보드 이름"
               onSave={(value) => renameBoardTitleAction(boardId, value)}
+              onEditEnd={() => {
+                const fromMenu = renameFromMenuRef.current;
+                renameFromMenuRef.current = false;
+                window.requestAnimationFrame(() => {
+                  // 편집칸이 사라져 초점을 잃었을 때만 돌려준다(그새 다른 곳을 눌렀으면 그대로).
+                  const active = document.activeElement;
+                  if (active && active !== document.body) return;
+                  headerRef.current?.querySelector<HTMLElement>(fromMenu ? "button[data-board-tab-menu-trigger]" : "h1 button")?.focus();
+                });
+              }}
             />
           ) : (
             <span>{name}</span>
@@ -96,7 +109,10 @@ export function BoardHeader({
         <TabTitleMenu
           boardId={boardId}
           tabName={name}
-          onRename={canEditTitle ? () => titleRef.current?.beginEdit() : undefined}
+          onRename={canEditTitle ? () => {
+            renameFromMenuRef.current = true;
+            titleRef.current?.beginEdit();
+          } : undefined}
           onOpenSettings={openSettings}
           canEditGeneral={canEditGeneral}
           onRequestTrash={requestTrash}

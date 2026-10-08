@@ -1,8 +1,11 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+// 보기 줄은 보기 방식을 router.push 로 바꾼다 — 앱 라우터 밖에서 그리므로 바꿔 끼운다.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+
 import { SavedViewsController } from "./SavedViewsController";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards";
 
@@ -65,7 +68,7 @@ describe("saved view production consumer", () => {
     expect(controller).toContain("filters.sorts");
     expect(controller).toContain("textMode={config.textMode}");
     expect(controller).toContain("focusColumnKey={config.focusColumnKey}");
-    expect(controller).toContain("applySavedPersonScope(rows, activeSaved, currentUserId, personColumnKey, teamMemberIds, canonicalNewLead)");
+    expect(controller).toContain("applySavedPersonScope(rows, scopeView, currentUserId, personColumnKey, teamMemberIds, canonicalNewLead)");
     expect(page).toContain("const items = applySavedPersonScope(permissionItems, personRuntime.view");
     expect(page).toContain("personRuntime.memberIds, board.source === NEW_LEAD_TAB_SOURCE)");
     expect(page).toContain("teamMemberIds={personRuntime.memberIds}");
@@ -81,7 +84,7 @@ describe("saved view production consumer", () => {
     expect(controller).toContain("presentNewLeadSavedViewConfig(activeRaw.config)");
     expect(viewBar).toContain("presentNewLeadSavedViewConfig(view.config)");
     expect(viewBar).toContain("durableNewLeadSavedViewConfig(presentNewLeadSavedViewConfig(draft))");
-    expect(controller).toContain("applyFilters(personScopedRows, displayColumns, filters, filterProjection)");
+    expect(controller).toContain("applyFilters(personScopedRows, displayColumns, filters, filterProjection, memberLabels)");
     const boardCell = controller.match(/<BoardCell\b[\s\S]*?\/>/)?.[0] ?? "";
     expect(boardCell).toContain("canonicalNewLead={canonicalNewLead}");
     expect(boardCell).toContain("canonicalOwner={workflowKindForSource(boardSource ?? null) !== null}");
@@ -109,7 +112,8 @@ describe("saved view production consumer", () => {
     expect(collectionRoute).toContain("sort_jsonb: config.sorts");
     expect(collectionRoute).toContain("person_scope: scope.personScope");
     expect(collectionRoute).toContain("person_scope_user_id: scope.personScopeUserId");
-    expect(viewBar).toContain('personScope: rawActive?.personScope ?? "none"');
+    // D26 — 「담당 · 나」 는 보는 사람 기준으로, 그 밖에는 지금 뷰의 사람 범위를 잇는다.
+    expect(viewBar).toContain("draftPersonScope(durableDraft(), rawActive, currentUserId)");
     expect(itemRoute).toContain("patch.sort_jsonb = config.sorts");
     expect(itemRoute).toContain("patch.person_scope = scope.personScope");
     expect(collectionRoute).toContain("requireActiveFixedPerson(ctx.org.id, scope");
