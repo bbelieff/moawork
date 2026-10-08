@@ -19,7 +19,7 @@ import { WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
 // ★ BBE-200 — 세션 유지의 구조 규약 (깨뜨리지 마라)
 //   Supabase 는 refresh token 을 «회전» 시킨다. 갱신이 일어나는 순간 옛 토큰은
 //   서버에서 폐기되므로, 그 요청의 «응답» 이 새 쿠키를 싣지 못하면 브라우저에는
-//   이미 죽은 쿠키만 남는다. 다음 요청의 getUser() 가 실패해 사용자는
+//   이미 죽은 쿠키만 남는다. 다음 요청의 토큰 확인(getClaims → 갱신)이 실패해 사용자는
 //   «가만히 있었는데 로그아웃됐다» 를 겪는다. 서버 컴포넌트는 쿠키를 쓸 수 없으므로
 //   (lib/supabase/server.ts:21-24) proxy 가 «유일한 갱신 지점» 이다.
 //
@@ -300,7 +300,7 @@ export const config = {
   //
   // /mw-sig 를 빼는 이유 두 가지:
   //   1) 로그인 화면에서도 이벤트가 나가야 한다. 인증 게이트에 걸리면 미인증 구간이 통째로 빈다.
-  //   2) 수집 요청마다 supabase.auth.getUser() 왕복이 붙으면 비콘 비용이 인증 비용이 된다.
+  //   2) 수집 요청마다 토큰 확인(갱신 왕복 포함)이 붙으면 비콘 비용이 인증 비용이 된다.
   // 값은 `lib/analytics/config.ts` 의 ANALYTICS_PROXY_PATH 와 같아야 한다.
   // (Next 는 matcher 를 정적으로 읽으므로 상수를 끼워 넣을 수 없어 문자열로 둔다.
   //  둘이 어긋나면 proxy.test.ts 가 빨간불로 잡는다.)

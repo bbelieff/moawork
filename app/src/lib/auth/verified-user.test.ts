@@ -20,6 +20,13 @@ describe("Issue 857 — 토큰 서명으로 확인한 사람", () => {
     expect(await getVerifiedAuthUser(client({ data: { claims: { sub: "" } }, error: null }))).toBeNull();
   });
 
+  it("확인 중 예상 밖 예외(깨진 토큰·지원 안 하는 서명 방식)도 로그인하지 않은 것으로 닫는다 — 500 이 아니다", async () => {
+    const throwing = { auth: { getClaims: async () => { throw new SyntaxError("Unexpected token in JSON"); } } };
+    expect(await getVerifiedAuthUser(throwing)).toBeNull();
+    const rejecting = { auth: { getClaims: () => Promise.reject(new Error("Invalid alg claim")) } };
+    expect(await getVerifiedAuthUser(rejecting)).toBeNull();
+  });
+
   it("이메일·표시 정보가 없거나 모양이 틀리면 비워 둔다", async () => {
     const user = await getVerifiedAuthUser(client({ data: { claims: { sub: "user-2", email: "", user_metadata: ["x"] } }, error: null }));
     expect(user).toEqual({ id: "user-2", email: null, user_metadata: {} });
