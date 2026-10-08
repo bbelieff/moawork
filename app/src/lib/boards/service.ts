@@ -33,6 +33,7 @@ import type {
   BoardView,
   CellValue,
   DefaultTabDismissal,
+  ItemValue,
   ItemWithValues,
 } from "./types";
 import { compareCells, isEmptyCell, validateCell } from "./cells";
@@ -526,17 +527,30 @@ export class BoardsService {
     // Issue 857 — 보드 정보와 행 목록은 서로 기다리지 않는다(한 물결: metadata ‖ items → hydrate).
     //   행 읽기는 RLS·org 범위 그대로라, 보드를 못 찾으면 아래에서 NotFound 로 끝나고 읽은 행은 버린다.
     //   시스템 보드는 휴지통·보관 행을 쓰지 않으므로 같이 읽었더라도 버린다.
+    // Issue 857 — 저장소가 행과 값을 한 왕복으로 줄 수 있으면 그렇게 읽는다(값 읽기 물결이 사라진다).
+    const listWithValues = repo.listItemsWithValues?.bind(repo);
+    const noRows: { items: BoardItem[]; values: ItemValue[] | null } = { items: [], values: [] };
+    const read = (scope: "active" | "deleted" | "archived", list: () => Promise<BoardItem[]>) =>
+      listWithValues
+        ? listWithValues(ctx, boardId, scope)
+        : list().then((items) => ({ items, values: null as ItemValue[] | null }));
     const itemReads = Promise.all([
-      repo.listItems(ctx, boardId),
-      wantsDeleted ? repo.listDeletedItems(ctx, boardId) : Promise.resolve([]),
-      wantsArchived ? repo.listArchivedItems(ctx, boardId) : Promise.resolve([]),
+      read("active", () => repo.listItems(ctx, boardId)),
+      wantsDeleted ? read("deleted", () => repo.listDeletedItems(ctx, boardId)) : Promise.resolve(noRows),
+      wantsArchived ? read("archived", () => repo.listArchivedItems(ctx, boardId)) : Promise.resolve(noRows),
     ]);
     // 보드를 못 찾으면 행 읽기 실패보다 NotFound 가 먼저다(404 가 500 으로 바뀌지 않게).
     itemReads.catch(() => {});
     const detail = await this.getBoardDetail(ctx, boardId);
     measure("metadata", metadataStartedAt);
     options.onDetail?.(detail);
-    const [visibleItems, deletedCandidates, archivedCandidates] = await itemReads;
+    const [activeRead, deletedRead, archivedRead] = await itemReads;
+    const visibleItems = activeRead.items;
+    const deletedCandidates = deletedRead.items;
+    const archivedCandidates = archivedRead.items;
+    const preloadedValues = activeRead.values === null
+      ? undefined
+      : [...activeRead.values, ...(deletedRead.values ?? []), ...(archivedRead.values ?? [])];
     measure("items", itemsStartedAt);
     const deletedItems = wantsDeleted && !detail.board.is_system ? deletedCandidates : [];
     const archivedOnly = wantsArchived && !detail.board.is_system ? archivedCandidates : [];
@@ -555,6 +569,7 @@ export class BoardsService {
       ctx,
       [...activeItems, ...deletedItems, ...archivedItems],
       detail,
+      preloadedValues,
     );
     measure("hydrate", hydrateStartedAt);
     return {
@@ -1101,7 +1116,12 @@ export class BoardsService {
   }
 
   // ── 내부 ──
-  private async compose(ctx: Ctx, items: BoardItem[], detail: BoardDetail): Promise<ItemWithValues[]> {
+  private async compose(
+    ctx: Ctx,
+    items: BoardItem[],
+    detail: BoardDetail,
+    preloadedValues?: readonly ItemValue[],
+  ): Promise<ItemWithValues[]> {
     if (items.length === 0) return [];
     const columnKeys = new Set(detail.columns.map((column) => column.key));
     const boardLayout = resolveBoardDetailLayout(
@@ -1125,7 +1145,10 @@ export class BoardsService {
       ]),
     );
     const itemById = new Map(items.map((item) => [item.id, item]));
-    const values = await (await this.repo).listValues(ctx, items.map((i) => i.id));
+    // 함께 읽어 온 값이 있으면 그것을 쓴다 — 넘긴 행의 값만(버린 휴지통·보관 행의 값은 뺀다).
+    const values = preloadedValues
+      ? preloadedValues.filter((value) => itemById.has(value.item_id))
+      : await (await this.repo).listValues(ctx, items.map((i) => i.id));
     const byItem = new Map<string, Record<string, CellValue>>();
     const statusesByItem = new Map<string, Record<string, "normalized" | "needs_review">>();
     for (const v of values) {
