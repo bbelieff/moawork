@@ -1,12 +1,11 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { RouteLoading } from "@/components/shell/RouteLoading";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
 import { FEATURES } from "@/lib/product";
 import { loadTodayHome } from "@/lib/dash/today-server";
 import { TodayHome } from "@/components/dash/TodayHome";
-import { CompanyStatusSection } from "@/components/dash/CompanyStatusSection";
+import { CompanyStatusSection, CompanyStatusSectionFallback } from "@/components/dash/CompanyStatusSection";
 import { MEMBER_ROLES, type MemberRole } from "@/lib/types";
 import { PlatformAccessNotice } from "@/components/platform/PlatformAccessNotice";
 
@@ -82,7 +81,7 @@ export default async function DashboardPage({
       {/* ── 아래 절: 회사 현황 (BBE-215) ──
           Issue 857 — 이 절은 읽을 것이 많다(업무·원장·공지·업무별 체크리스트). 위 «오늘» 이 먼저 보이고
           이 절은 준비되는 대로 이어서 그려지게 따로 기다린다. */}
-      <Suspense fallback={<RouteLoading label="회사 현황을 불러오는 중이에요." />}>
+      <Suspense fallback={<CompanyStatusSectionFallback />}>
         <CompanyStatusSection ctx={ctx} month={month} today={today} />
       </Suspense>
     </div>
