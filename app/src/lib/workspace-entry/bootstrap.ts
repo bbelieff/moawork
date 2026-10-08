@@ -55,13 +55,31 @@ export type BootstrapEntryPrelude = {
   orgRow: Row;
 };
 
+/**
+ * Issue 857 — 이 요청에서 이미 검증된 세션(getSession: 사용자·활성 멤버십·회사).
+ * 앱 레이아웃이 넘기면 getUser·회사 주소 조회·멤버십 재확인 3번을 건너뛴다. 같은 요청의 값이라
+ * 권한 회수는 그대로 바로 반영된다(요청을 넘어 저장하지 않는다).
+ */
+export type BootstrapVerifiedSession = { ctx: Ctx };
+
 /** Ensures the approved workspace product structure using the same authenticated request client. */
 export async function bootstrapApprovedWorkspace(
   client: SupabaseClient,
   slug: string,
   prelude?: BootstrapEntryPrelude,
+  verified?: BootstrapVerifiedSession,
 ): Promise<void> {
   const timer = createEntryTimer();
+  const ctx = verified?.ctx ?? await loadBootstrapCtx(client, slug, prelude, timer);
+  await bootstrapWithCtx(client, ctx, timer);
+}
+
+async function loadBootstrapCtx(
+  client: SupabaseClient,
+  slug: string,
+  prelude: BootstrapEntryPrelude | undefined,
+  timer: ReturnType<typeof createEntryTimer>,
+): Promise<Ctx> {
   const loaded = prelude
     ? { authUser: prelude.authUser as PreludeAuthUser | null, orgRow: prelude.orgRow as Row | null, orgError: null as unknown }
     : await timer.time("bootstrap-context", async () => {
@@ -106,11 +124,18 @@ export async function bootstrapApprovedWorkspace(
     plan_tier: text(orgRow.plan_tier) ?? "free",
     created_at: text(orgRow.created_at) ?? new Date(0).toISOString(),
   };
-  const ctx: Ctx = { user, org, role: memberRole, scope: memberScope };
-  const assignees = assigneesFromMemberSummary(
-    await timer.time("member-summary", () => loadMemberOrgSummaryWithClient(client, ctx)),
-  );
-  if (assignees.length === 0) throw new Error("workspace bootstrap assignees unavailable");
+  return { user, org, role: memberRole, scope: memberScope };
+}
+
+async function bootstrapWithCtx(
+  client: SupabaseClient,
+  ctx: Ctx,
+  timer: ReturnType<typeof createEntryTimer>,
+): Promise<void> {
+  const orgId = ctx.org.id;
+  // Issue 857 — 담당자 목록과 보드 목록은 서로 기다릴 이유가 없어 같이 출발한다.
+  const summaryRead = timer.time("member-summary", () => loadMemberOrgSummaryWithClient(client, ctx));
+  summaryRead.catch(() => undefined);
 
   // Fast path — the common repeat entry. Read-only drift probe over all four
   // tabs (one boards list, per-board reads in parallel, using the complete
@@ -123,7 +148,9 @@ export async function bootstrapApprovedWorkspace(
   try {
     const clean = await timer.time("fast-drift-check", async () => {
       const store = plainRepo;
-      const boards = await store.listBoards(ctx);
+      const [summary, boards] = await Promise.all([summaryRead, store.listBoards(ctx)]);
+      const assignees = assigneesFromMemberSummary(summary);
+      if (assignees.length === 0) throw new Error("workspace bootstrap assignees unavailable");
       // #849 — 회사가 지운 기본 탭은 «깨끗함» 이다(리스도, 다시 만들기도 없다).
       //   지운 기록은 빠진 탭이 있을 때만 읽는다 — 건강한 진입에 왕복을 더하지 않는다.
       const anyMissing = DEFAULT_TABS.some((tab) => !boards.some((board) => board.source === tab.source));
@@ -144,6 +171,8 @@ export async function bootstrapApprovedWorkspace(
     // Fall through: the slow path re-reads and owns every error shape.
   }
 
+  const assignees = assigneesFromMemberSummary(await summaryRead);
+  if (assignees.length === 0) throw new Error("workspace bootstrap assignees unavailable");
   const holder = crypto.randomUUID();
   await timer.time("lease-repair", async () => {
     let acquired = false;
@@ -198,7 +227,18 @@ export async function bootstrapApprovedWorkspace(
  * Repairs a manually-approved workspace when its creator first enters it.
  * Legacy/customer workspaces without an approved create request are never backfilled.
  */
-export async function ensureApprovedWorkspaceOnEntry(client: SupabaseClient, slug: string): Promise<void> {
+export async function ensureApprovedWorkspaceOnEntry(
+  client: SupabaseClient,
+  slug: string,
+  verified?: BootstrapVerifiedSession,
+): Promise<void> {
+  if (verified) {
+    const requestResult = await client.rpc("is_my_approved_workspace_creator", { p_org_id: verified.ctx.org.id });
+    if (requestResult.error) throw new Error("workspace bootstrap approval unavailable");
+    if (requestResult.data !== true) return;
+    await bootstrapApprovedWorkspace(client, slug, undefined, verified);
+    return;
+  }
   const { data: auth } = await client.auth.getUser();
   if (!auth.user) throw new Error("workspace bootstrap context unavailable");
   const orgResult = await client.from("orgs").select("id,name,plan_tier,created_at").eq("slug", slug).maybeSingle();

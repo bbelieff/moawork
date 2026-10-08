@@ -24,7 +24,7 @@ import { NotificationBell } from "@/components/notify/NotificationBell";
 import { loadNotifySnapshot } from "@/lib/notify/server";
 import { loadSidebarBoards } from "@/lib/shell/board-nav-map";
 import { loadPermGuard } from "@/lib/perm/guard";
-import { purgeExpiredTrashedTabs } from "@/lib/boards/trash-maintenance";
+import { scheduleExpiredTrashPurge } from "@/lib/boards/trash-maintenance";
 import { createRequestBoards } from "@/lib/boards/server";
 import { loadPlatformActor } from "@/lib/platform/actor";
 import { ensureApprovedWorkspaceOnEntry } from "@/lib/workspace-entry/bootstrap";
@@ -69,14 +69,6 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const requestClient = (ctx.role === "owner" && currentWorkspace.length === 1) || appTabRequest
     ? await createClient({ noStore: true })
     : undefined;
-  if (ctx.role === "owner" && currentWorkspace.length === 1) {
-    try {
-      await entryTimer.time("bootstrap", () => ensureApprovedWorkspaceOnEntry(requestClient!, currentWorkspace[0].slug));
-    } catch {
-      logEntryTimings("workspace-layout", entryTimer.snapshot(), "unavailable");
-      return <WorkspaceBootstrapUnavailable slug={currentWorkspace[0].slug} />;
-    }
-  }
   const logoHref = currentWorkspace.length === 1
     ? `/w/${currentWorkspace[0].slug}`
     : "/workspaces";
@@ -92,10 +84,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       ),
     ),
   );
-  // BBE-214 — bootstrap 뒤의 셸 읽기는 서로 결과에 의존하지 않는다. 각각을 직렬로
-  // 기다리면 모든 hard-load가 네트워크 지연을 그대로 합산한다. 같은 요청 안에서 함께
-  // 시작하되, auth/RLS 판정과 실패 의미는 각 loader가 계속 소유한다.
-  const [workspaceApprovals, workspaceEntryContext, platformActor, orgLogoUrls, lockedFeatures, notify, sidebarBoards, canCreateTab] = await Promise.all([
+  // BBE-214 — 셸 읽기는 서로 결과에 의존하지 않는다. 각각을 직렬로 기다리면 모든 hard-load가
+  // 네트워크 지연을 그대로 합산한다. 같은 요청 안에서 함께 시작하되, auth/RLS 판정과 실패 의미는
+  // 각 loader가 계속 소유한다.
+  // Issue 857 — 기본 탭 점검(bootstrap)도 기다리지 않고 함께 출발한다. 셸 읽기는 점검 결과를 쓰지
+  //   않는다. 점검이 실패하면 아래에서 그대로 «준비 못 함» 화면을 낸다(셸 결과는 버린다).
+  const shellReads = Promise.all([
     trustedOwnerOrgId ? loadWorkspaceApprovals(trustedOwnerOrgId) : Promise.resolve<WorkspaceApprovals | null>(null),
     loadWorkspaceEntryContext(),
     loadPlatformActor(),
@@ -129,9 +123,19 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       (permission) => permission.kind === "allowed",
       () => false,
     ),
-    // #849 — 7일 지난 휴지통 탭 정리. 같은 Promise.all 안이라 기다리는 시간이 늘지 않는다.
-    purgeExpiredTrashedTabs(ctx),
   ]);
+  shellReads.catch(() => undefined);
+  if (ctx.role === "owner" && currentWorkspace.length === 1) {
+    try {
+      await entryTimer.time("bootstrap", () => ensureApprovedWorkspaceOnEntry(requestClient!, currentWorkspace[0].slug, { ctx }));
+    } catch {
+      logEntryTimings("workspace-layout", entryTimer.snapshot(), "unavailable");
+      return <WorkspaceBootstrapUnavailable slug={currentWorkspace[0].slug} />;
+    }
+  }
+  const [workspaceApprovals, workspaceEntryContext, platformActor, orgLogoUrls, lockedFeatures, notify, sidebarBoards, canCreateTab] = await entryTimer.time("shell", () => shellReads);
+  // #849 — 7일 지난 휴지통 탭 정리. Issue 857 — 응답 뒤에, 회사마다 몇 시간에 한 번.
+  await scheduleExpiredTrashPurge(ctx);
   logEntryTimings("workspace-layout", entryTimer.snapshot(), "ready");
   const { boardNavKeys, userTabs, dismissedSources } = sidebarBoards;
   const switcherWorkspaces = routing.kind === "ready"

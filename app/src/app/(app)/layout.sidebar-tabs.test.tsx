@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => ({
   loadSidebarBoards: vi.fn(),
   loadPermGuard: vi.fn(),
   createRequestBoards: vi.fn(),
-  purgeExpiredTrashedTabs: vi.fn(),
+  scheduleExpiredTrashPurge: vi.fn(),
   sidebarProps: [] as Record<string, unknown>[],
   routeAppearanceProps: [] as Record<string, unknown>[],
 }));
@@ -51,7 +51,7 @@ vi.mock("@/lib/workspace-entry/bootstrap", () => ({
 vi.mock("@/lib/shell/board-nav-map", () => ({ loadSidebarBoards: mocks.loadSidebarBoards }));
 vi.mock("@/lib/perm/guard", () => ({ loadPermGuard: mocks.loadPermGuard }));
 vi.mock("@/lib/boards/server", () => ({ createRequestBoards: mocks.createRequestBoards }));
-vi.mock("@/lib/boards/trash-maintenance", () => ({ purgeExpiredTrashedTabs: mocks.purgeExpiredTrashedTabs }));
+vi.mock("@/lib/boards/trash-maintenance", () => ({ scheduleExpiredTrashPurge: mocks.scheduleExpiredTrashPurge }));
 vi.mock("@/lib/account/presentation", () => ({
   buildAccountViewModel: () => ({
     displayName: "대표",
@@ -131,7 +131,7 @@ describe("셸 → 사이드바 사용자 탭 배선", () => {
     mocks.createRequestBoards.mockResolvedValue({ repo: REPO });
     mocks.loadSidebarBoards.mockResolvedValue(SIDEBAR_BOARDS);
     mocks.loadPermGuard.mockResolvedValue({ kind: "allowed" });
-    mocks.purgeExpiredTrashedTabs.mockResolvedValue(0);
+    mocks.scheduleExpiredTrashPurge.mockResolvedValue(undefined);
   });
 
   it("한 번의 보드 읽기 결과와 탭 관리 권한을 사이드바·라우트 강조에 넘긴다", async () => {

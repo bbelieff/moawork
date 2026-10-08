@@ -34,8 +34,10 @@ describe("사이드바 배선 — 로고 URL이 «값으로» 스위처까지 �
 
   it("★ 로더 결과가 «이름에 묶이고» 그 이름이 스위처 입력으로 흘러간다", () => {
     // 병렬 shell read의 Promise.all 결과가 orgLogoUrls 이름에 묶여야 한다.
+    // Issue 857 — 셸 읽기는 기본 탭 점검과 함께 출발해 두고(shellReads) 나중에 받는다.
+    expect(layoutBody).toMatch(/const\s+shellReads\s*=\s*Promise\.all\s*\(/u);
     expect(layoutBody).toMatch(
-      /const\s+\[[^\]]*\borgLogoUrls\b[^\]]*\]\s*=\s*await\s+Promise\.all\s*\(/u,
+      /const\s+\[[^\]]*\borgLogoUrls\b[^\]]*\]\s*=\s*await\s+entryTimer\.time\(\s*"shell",\s*\(\)\s*=>\s*shellReads\s*\)/u,
     );
 
     // 그 «바로 그 이름» 이 스위처 입력을 만드는 자리로 전달돼야 한다.

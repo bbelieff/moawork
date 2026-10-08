@@ -46,7 +46,8 @@ export async function loadNotifySnapshot(ctx: Ctx, now = new Date(), routingPort
   try {
     const supabase = await createClient();
 
-    const [notifRes, feedRes, seenRes] = await Promise.all([
+    // Issue 857 — 담당 범위 읽기는 위 세 읽기와 무관해 같이 출발한다(레이아웃 매 렌더의 왕복 한 번).
+    const [[notifRes, feedRes, seenRes], scopeCtx] = await Promise.all([Promise.all([
       supabase
         .from("notifications")
         .select("*")
@@ -65,7 +66,7 @@ export async function loadNotifySnapshot(ctx: Ctx, now = new Date(), routingPort
         .select("surface_key, seen_at")
         .eq("org_id", ctx.org.id)
         .eq("user_id", ctx.user.id),
-    ]);
+    ]), buildScopeContext(ctx, supabase)]);
 
     if (notifRes.error || feedRes.error || seenRes.error) return { ...EMPTY_SNAPSHOT, loadError: true };
     // 알림 화면에서 조회 실패와 빈 수신함을 구분한다.
@@ -73,14 +74,14 @@ export async function loadNotifySnapshot(ctx: Ctx, now = new Date(), routingPort
     const rawFeed = (feedRes.data ?? []) as FeedItem[];
     const seen = (seenRes.data ?? []) as SurfaceSeen[];
 
-    const scopeCtx = await buildScopeContext(ctx, supabase);
-
     // RLS 가 1차 방어선이지만 앱에서도 같은 규칙을 다시 적용한다(다중 방어).
     const mine = myNotificationsFor(rawNotifications, ctx.org.id, ctx.user.id);
     const feed = orgFeedFor(rawFeed, ctx.org.id, scopeCtx);
-    const routedFeed = await routeFeedToCurrentUser(feed, ctx, routingPort ?? new CurrentMainRoutingPort(ctx.org.id, supabase));
-
-    const actorNames = await loadActorNames(feed, mine, supabase);
+    // 받는 사람 판정과 주어 이름은 서로 기다리지 않는다.
+    const [routedFeed, actorNames] = await Promise.all([
+      routeFeedToCurrentUser(feed, ctx, routingPort ?? new CurrentMainRoutingPort(ctx.org.id, supabase)),
+      loadActorNames(feed, mine, supabase),
+    ]);
 
     return {
       bell: bellBadge(mine),
