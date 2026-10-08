@@ -1,58 +1,66 @@
 "use client";
 
 /**
- * 헤더 **1줄** (ui-guidelines 원칙 3).
+ * 탭 머리말 — #845 개선안(2026-10-08 대표 결정, 승인 목업 「개선안」 Header 판).
  *
- *   [🔥 탭명] [담당자 탭: 전체·…·미배정] ---- [새 항목]
+ *   1줄  [←] [아이콘 22px] 탭 이름 [▾] [ⓘ] ……………… [탭 설정] [＋ 새 항목]
+ *   2줄  테이블 · 칸반 (밑줄 탭)   담당자 · 전체 ▾
  *
- * 원칙 3 이 금지한 것은 화면 우상단에 떠 있는 분리형 패널이다. 그래서 "새 항목"은 헤더 줄
- * 안의 버튼이고, 눌렀을 때 뜨는 입력도 그 자리에 붙는 팝오버다(별도 패널·모달 아님).
+ * · 바탕은 화면 바탕 그대로다 — 색 띠·색 칸이 없다. 탭 색은 아이콘 선·주 단추·선택 표시에만 쓴다.
+ *   채운 단추는 주 단추 하나(그라디언트 없이 탭 색 단색).
+ * · 아이콘은 이모지 대신 선 아이콘 한 벌(lib/boards/board-icons.ts)이다. 옛 저장값(💡 등)도 같은 그림으로 그린다.
+ * · 탭에 대한 일(이름·아이콘·설명·설정·휴지통)은 제목 옆 ▾ 메뉴에 모은다. 설명은 ⓘ 에 올리면 보인다.
+ * · 「＋ 새 항목」 은 헤더 줄 안의 버튼이고 입력은 그 자리에 붙는 팝오버다(원칙 3 — 떠 있는 분리형 패널 금지).
+ * · 담당자 고르기는 별도 상태 없이 도구줄 담당자 필터와 같은 값(selected/onSelect)을 읽고 쓴다.
  *
- * 담당자 탭은 별도 상태를 갖지 않고 **도구줄의 담당자 필터와 같은 값**을 읽고 쓴다.
- * 탭과 칩이 각자 상태를 들면 둘이 어긋나는 순간 화면이 거짓말을 한다 — 단일 소스로 묶었다.
- * (담당자별 기본 탭의 시드·저장 뷰는 WO-3 범위. 여기서는 데이터에 실재하는 담당자로 만든다.)
+ * 1줄만 시각 계약의 board-header 블록이다(제목·주 단추가 한 줄). 2줄은 그 아래 형제로 그린다.
  */
 
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import type { BoardGroup } from "@/lib/boards/types";
+import { resolveBoardIconKey } from "@/lib/boards/board-icons";
 import { addItemAction } from "@/app/(app)/boards/actions";
 import { renameBoardTitleAction } from "@/app/(app)/boards/title-actions";
-import { BoardInlineTitleEditor } from "./BoardInlineTitleEditor";
-import { Icon } from "@/components/shell/icons";
-
-const DEFAULT_BOARD_ICONS: Readonly<Record<string, string>> = {
-  "💡": "new", "💰": "contact", "🔁": "work", "📢": "notice", "📞": "contact", "📍": "meeting",
-};
+import { BoardInlineTitleEditor, type BoardInlineTitleEditorHandle } from "./BoardInlineTitleEditor";
+import { AssigneeMenu, DescriptionHint, TabSettingsButton, TabTitleMenu } from "./BoardHeaderMenus";
+import { TabIcon } from "./TabIcon";
+import type { TabSettingsSection } from "./tab-chrome";
 
 export function BoardHeader({
   boardId,
   icon,
+  source,
   name,
   description,
   people,
   selected,
-  onSelect=()=>{},
+  onSelect = () => {},
   groups,
   readOnly,
   backSlot,
   helpSlot,
   viewSlot,
   addItemSlot,
-  canEditTitle=false,
+  canEditTitle = false,
+  onOpenSettings,
+  onRequestTrash,
 }: {
   boardId: string;
+  /** 보드에 저장된 아이콘 값(아이콘 키·옛 이모지·빈 값). 그릴 때만 해석한다. */
   icon: string | null;
+  /** 탭 출처 — 저장된 아이콘이 없거나 모를 때 기본 아이콘을 정한다. */
+  source?: string | null;
   name: string;
   description: string | null;
   /** 상위 화면으로 돌아가는 링크(서버에서 렌더해 내려준다). */
   backSlot?: ReactNode;
   /** 제목 바로 옆의 짧은 도움말. */
   helpSlot?: ReactNode;
-  /** 뷰 전환 등 화면 고유 컨트롤. 헤더 줄 오른쪽 무리에 들어간다. */
+  /** 보기 전환(테이블·칸반 밑줄 탭). 둘째 줄 왼쪽에 들어간다. */
   viewSlot?: ReactNode;
   /** 보드별 기본 등록 폼. 신규리드는 회사 기본 정보를 함께 저장하는 전용 폼을 쓴다. */
   addItemSlot?: ReactNode;
-  /** 담당자 탭 선택지(도구줄과 동일 소스). */
+  /** 담당자 선택지(도구줄과 동일 소스). */
   people: { value: string; label: string }[];
   /** 현재 선택된 담당자. 빈 배열 = "전체". */
   selected: string[];
@@ -60,100 +68,102 @@ export function BoardHeader({
   groups: readonly BoardGroup[];
   readOnly: boolean;
   canEditTitle?: boolean;
+  /** 「탭 설정」 을 연다. 없으면 오른쪽 위 단추와 ▾ 메뉴의 설정 항목을 감춘다. */
+  onOpenSettings?: (section: TabSettingsSection) => void;
+  /** 「휴지통으로 이동」 확인을 연다. 없으면 ▾ 메뉴에서 감춘다(권한 없음·시스템 보드). */
+  onRequestTrash?: () => void;
 }) {
-  const activeTab = selected.length === 1 ? selected[0] : null;
-
-  const tabClass = (on: boolean) =>
-    `h-9 shrink-0 rounded-full px-3 text-xs transition-colors ${
-      on
-        ? "bg-mw-tint-blue font-semibold text-mw-record"
-        : "text-mw-sub hover:bg-mw-bg hover:text-mw-fg"
-    }`;
+  const titleRef = useRef<BoardInlineTitleEditorHandle>(null);
+  const iconKey = resolveBoardIconKey(icon, source);
+  const showSecondRow = Boolean(viewSlot) || people.length > 0;
 
   return (
-    <div data-visual-block="board-header" className="relative flex min-w-0 max-w-full items-center">
-      <div className="mw-board-inline-scroll flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden pe-4 [scroll-padding-inline-end:1rem]">
-        {backSlot}
+    <>
+      <div data-visual-block="board-header" className="relative flex min-w-0 max-w-full items-center gap-3">
+        <div className="mw-board-inline-scroll flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto overflow-y-hidden pe-2 [scroll-padding-inline-end:0.5rem]">
+          {backSlot}
 
-        <h1 className="flex shrink-0 items-center gap-1.5 text-lg font-semibold text-mw-fg">
-          {icon && <span aria-hidden="true">{DEFAULT_BOARD_ICONS[icon] ? <Icon name={DEFAULT_BOARD_ICONS[icon]} /> : icon}</span>}
-          {canEditTitle?<BoardInlineTitleEditor name={name} label="보드 이름" onSave={(value)=>renameBoardTitleAction(boardId,value)}/>:<span>{name}</span>}
-        </h1>
-        {helpSlot}
+          <h1 className="flex shrink-0 items-center gap-2 text-[length:var(--fs-18)] font-semibold tracking-[var(--ls-tight)] text-mw-fg sm:text-[length:var(--fs-22)]">
+            <TabIcon name={iconKey} size={22} style={{ color: "var(--mw-tab-icon, var(--mw-record))" }} />
+            {canEditTitle ? (
+              <BoardInlineTitleEditor
+                ref={titleRef}
+                name={name}
+                label="보드 이름"
+                onSave={(value) => renameBoardTitleAction(boardId, value)}
+              />
+            ) : (
+              <span>{name}</span>
+            )}
+          </h1>
+          <TabTitleMenu
+            boardId={boardId}
+            tabName={name}
+            onRename={canEditTitle ? () => titleRef.current?.beginEdit() : undefined}
+            onOpenSettings={onOpenSettings}
+            onRequestTrash={onRequestTrash}
+          />
+          {description ? <DescriptionHint text={description} /> : null}
+          {helpSlot}
+        </div>
 
-        {description && (
-          <span className="shrink-0 truncate text-xs text-mw-sub" title={description}>
-            {description}
-          </span>
-        )}
+        <div data-board-action-rail className="mw-layer-board-header relative z-[var(--mw-layer-board-header)] flex shrink-0 items-center gap-2 bg-mw-bg">
+          {onOpenSettings ? <TabSettingsButton onOpen={() => onOpenSettings("general")} /> : null}
 
-        {people.length > 0 && (
-        <nav aria-label="담당자 탭" className="ml-3 flex shrink-0 items-center gap-0.5">
-          <button
-            type="button"
-            onClick={() => onSelect(null)}
-            className={tabClass(selected.length === 0)}
-          >
-            전체
-          </button>
-          {people.map((p) => (
-            <button
-              key={p.value}
-              type="button"
-              onClick={() => onSelect(p.value)}
-              className={tabClass(activeTab === p.value)}
-            >
-              {p.label}
-            </button>
+          {!readOnly && groups.length > 0 && (addItemSlot ?? (
+            <details name="mw-board-header" className="relative shrink-0">
+              <summary data-mw-cta="primary" className="flex h-[34px] cursor-pointer select-none items-center rounded-[var(--mw-r-2)] bg-mw-primary px-3.5 text-[length:var(--fs-13)] font-semibold text-mw-on-accent list-none [&::-webkit-details-marker]:hidden">
+                ＋ 새 항목
+              </summary>
+
+              <form
+                action={addItemAction}
+                className="mw-layer-page-popover absolute end-0 top-full mt-1 flex w-64 flex-col gap-2 rounded-md border border-mw-line bg-mw-card p-2 shadow-lg"
+              >
+                <input type="hidden" name="boardId" value={boardId} />
+                <input
+                  name="title"
+                  required
+                  placeholder="항목 이름"
+                  aria-label="항목 이름"
+                  className="h-9 rounded-lg border border-mw-line bg-mw-card px-2 text-xs text-mw-fg outline-none focus:border-mw-record"
+                />
+                <select
+                  name="groupId"
+                  defaultValue={groups[0]?.id ?? ""}
+                  aria-label="그룹"
+                  className="h-9 rounded-lg border border-mw-line bg-mw-card px-2 text-xs text-mw-fg outline-none focus:border-mw-record"
+                >
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  data-mw-cta="primary"
+                  className="h-9 rounded-lg bg-mw-primary text-xs font-semibold text-mw-on-accent"
+                >
+                  추가
+                </button>
+              </form>
+            </details>
           ))}
-        </nav>
-        )}
+        </div>
       </div>
 
-      <div data-board-action-rail className="mw-layer-board-header relative z-[var(--mw-layer-board-header)] flex shrink-0 items-center gap-2 border-s border-mw-line bg-mw-card ps-3 shadow-[-10px_0_14px_-12px_color-mix(in_srgb,var(--mw-fg)_45%,transparent)] rtl:shadow-[10px_0_14px_-12px_color-mix(in_srgb,var(--mw-fg)_45%,transparent)]">
-        {viewSlot}
-
-      {!readOnly && groups.length > 0 && (addItemSlot ?? (
-        <details name="mw-board-header" className="relative shrink-0">
-          <summary data-mw-cta="primary" className="flex h-9 cursor-pointer select-none items-center rounded-full bg-mw-primary px-3.5 text-xs font-semibold text-mw-on-accent list-none [&::-webkit-details-marker]:hidden">
-            ＋ 새 항목
-          </summary>
-
-          <form
-            action={addItemAction}
-            className="mw-layer-page-popover absolute end-0 top-full mt-1 flex w-64 flex-col gap-2 rounded-md border border-mw-line bg-mw-card p-2 shadow-lg"
-          >
-            <input type="hidden" name="boardId" value={boardId} />
-            <input
-              name="title"
-              required
-              placeholder="항목 이름"
-              aria-label="항목 이름"
-              className="h-9 rounded-lg border border-mw-line bg-mw-card px-2 text-xs text-mw-fg outline-none focus:border-mw-record"
-            />
-            <select
-              name="groupId"
-              defaultValue={groups[0]?.id ?? ""}
-              aria-label="그룹"
-              className="h-9 rounded-lg border border-mw-line bg-mw-card px-2 text-xs text-mw-fg outline-none focus:border-mw-record"
-            >
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              data-mw-cta="primary"
-              className="h-9 rounded-lg bg-mw-primary text-xs font-semibold text-mw-on-accent"
-            >
-              추가
-            </button>
-          </form>
-        </details>
-      ))}
-      </div>
-    </div>
+      {showSecondRow ? (
+        <div
+          data-board-header-row="views"
+          className="mw-board-inline-scroll flex min-w-0 max-w-full flex-nowrap items-end gap-5 overflow-x-auto overflow-y-hidden border-b border-mw-line"
+        >
+          {viewSlot}
+          {people.length > 0 ? (
+            <AssigneeMenu boardId={boardId} people={people} selected={selected} onSelect={onSelect} />
+          ) : null}
+        </div>
+      ) : null}
+    </>
   );
 }

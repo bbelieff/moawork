@@ -155,3 +155,54 @@ describe("「새 탭」 줄", () => {
     expect(style).toContain("color:var(--mw-sub)");
   });
 });
+
+/**
+ * #845 대표 결정(2026-10-08) — 탭 아이콘 한 벌을 사이드바에도 쓴다(머리말과 같은 그림).
+ * 아이콘은 16px 회색, 지금 탭만 탭 색으로 진하다. 사용자 탭은 고른 아이콘 키가 있을 때만 그 그림, 아니면 폴더.
+ */
+describe("사이드바 탭 아이콘", () => {
+  const rowOf = (html: string, key: string) => html.match(new RegExp(`<a[^>]*data-nav-key="${key}"[^>]*>([\\s\\S]*?)</a>`))?.[1] ?? "";
+
+  it("업무 탭 줄은 머리말과 같은 16px 선 아이콘을 쓴다", () => {
+    const html = render();
+    const expected: Record<string, string> = {
+      new: "lead",
+      "consult-remote": "video",
+      "consult-inperson": "people",
+      work: "case",
+      company: "building",
+      acct: "receipt",
+      notice: "notice",
+    };
+    for (const [key, icon] of Object.entries(expected)) {
+      const row = rowOf(html, key);
+      expect(row, key).toContain(`data-tab-icon="${icon}"`);
+      expect(row, key).toContain('width="16"');
+      expect(row, key).not.toContain('href="#i-');
+    }
+    // 탭이 아닌 메뉴(대시보드 등)는 셸 아이콘 그대로다.
+    expect(rowOf(html, "dash")).toContain('href="#i-grid"');
+  });
+
+  it("아이콘은 회색이고 지금 탭만 탭 색으로 진하다", () => {
+    route.pathname = `${BASE}/work`;
+    const html = render();
+    const iconColor = (key: string) => rowOf(html, key).match(/<span aria-hidden="true"[^>]*style="color:([^"]+)"/)?.[1];
+    expect(iconColor("work")).toBe("var(--mw-tab-icon, currentColor)");
+    expect(iconColor("company")).toBe("var(--mw-sub)");
+    expect(iconColor("dash")).toBe("var(--mw-sub)");
+  });
+
+  it("사용자 탭은 고른 아이콘 키면 그 그림, 비었거나 이모지면 폴더", () => {
+    const html = render({
+      userTabs: [
+        { id: "t-key", name: "달력 탭", icon: "calendar", navSection: "after-contract" },
+        { id: "t-emoji", name: "이모지 탭", icon: "📋", navSection: "after-contract" },
+      ],
+    });
+    expect(rowOf(html, "board:t-key")).toContain('data-tab-icon="calendar"');
+    expect(rowOf(html, "board:t-key")).not.toContain('href="#i-folder"');
+    expect(rowOf(html, "board:t-emoji")).toContain('href="#i-folder"');
+    expect(rowOf(html, "board:t-emoji")).not.toContain("📋");
+  });
+});

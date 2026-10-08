@@ -1,16 +1,20 @@
 "use client";
 
-import { useRef,useState } from "react";
+import { useImperativeHandle,useRef,useState,type Ref } from "react";
 import type { InlineTitleResult } from "@/app/(app)/boards/title-actions";
 import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
 
-export function BoardInlineTitleEditor({name,label,onSave,className="",display}:{
+/** 메뉴의 「이름 바꾸기」 처럼 바깥에서 편집을 시작할 때 쓴다(#845 탭 제목 ▾ 메뉴). */
+export type BoardInlineTitleEditorHandle={beginEdit():void};
+
+export function BoardInlineTitleEditor({name,label,onSave,className="",display,ref}:{
   name:string;
   label:string;
   onSave:(name:string)=>Promise<InlineTitleResult>;
   className?:string;
   /** 편집 중이 아닐 때 보일 글자(표시 전용). 편집칸은 언제나 저장된 원문으로 시작한다. */
   display?:(saved:string)=>string;
+  ref?:Ref<BoardInlineTitleEditorHandle>;
 }){
   const [editing,setEditing]=useState(false);
   const [draft,setDraft]=useState(name);
@@ -29,6 +33,7 @@ export function BoardInlineTitleEditor({name,label,onSave,className="",display}:
 
   const shown=saved;
   const begin=()=>{if(pendingRef.current)return;cancelledRef.current=false;setDraft(shown);setError(null);setEditing(true);};
+  useImperativeHandle(ref,()=>({beginEdit:begin}));
   const commit=async()=>{
     if(pendingRef.current||cancelledRef.current)return;
     const next=draft.trim();

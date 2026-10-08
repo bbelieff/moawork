@@ -171,7 +171,7 @@ export function NewLeadIntakeForm({
 
   return (
     <>
-          <button ref={headerOpenerRef} type="button" onClick={prepareOpen} data-mw-cta={variant === "header" ? "primary" : undefined} className={variant === "inline" ? "inline-flex min-h-11 items-center rounded-md px-2 text-xs text-mw-sub hover:bg-mw-bg hover:text-mw-fg" : "flex h-9 shrink-0 items-center rounded-md bg-mw-primary px-3.5 text-xs font-semibold text-mw-on-accent"}>
+          <button ref={headerOpenerRef} type="button" onClick={prepareOpen} data-mw-cta={variant === "header" ? "primary" : undefined} className={variant === "inline" ? "inline-flex min-h-11 items-center rounded-md px-2 text-xs text-mw-sub hover:bg-mw-bg hover:text-mw-fg" : "flex h-[34px] shrink-0 items-center rounded-[var(--mw-r-2)] bg-mw-primary px-3.5 text-[length:var(--fs-13)] font-semibold text-mw-on-accent"}>
             {variant === "inline" ? "＋ 새 항목" : "＋ 새 회사"}
           </button>
           {open ? <BoardModalLayer label="새 회사 등록" dismissible={!pending} returnFocusRef={headerOpenerRef} onClose={() => closeEditor(false)}>

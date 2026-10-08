@@ -67,7 +67,15 @@ describe("v17 vivid 배선", () => {
     expect(css).toContain("@media (forced-colors: active)");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain("[data-workspace-mark]");
-    expect(css).toContain("[data-visual-block=\"board-header\"]");
+    // #845 대표 결정(2026-10-08): 탭 머리말에는 색 띠(워시)·아이콘 색 칸이 없고, 탭 색은 아이콘 선·주 단추에만.
+    // 주 단추는 그라디언트 없이 단색 하나다. 아이콘 선 색은 --mw-tab-icon 하나로 라이트·다크를 나눈다.
+    expect(css).not.toContain("[data-visual-block=\"board-header\"]");
+    expect(css).not.toContain("--mw-header-wash");
+    const ctaOn = css.slice(css.indexOf('html[data-mw-accent][data-mw-effects="on"] [data-mw-cta="primary"]'));
+    expect(ctaOn.slice(0, ctaOn.indexOf("}"))).toContain("background: var(--mw-cta-solid);");
+    expect(css).not.toMatch(/\[data-mw-cta="primary"\][^{]*\{[^}]*--mw-cta-grad/u);
+    expect(css).toContain("--mw-tab-icon: var(--mw-accent-deep);");
+    expect(css).toContain("--mw-tab-icon: var(--mw-tab-a-4);");
     // 출처 스톱이 그대로다.
     for (const stop of ["#ea580c", "#facc15", "#ef4444", "#ec4899", "#22c55e", "#98ec2d", "#0ea5e9", "#06b6d4", "#3969e7", "#7d2ae7", "#07b9ce"]) {
       expect(css).toContain(stop);

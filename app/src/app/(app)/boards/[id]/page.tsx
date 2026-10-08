@@ -40,6 +40,7 @@ import { NewLeadIntakeForm } from "@/components/board/NewLeadIntakeForm";
 import { renameColumnTitleAction } from "@/app/(app)/boards/title-actions";
 import { reorderColumnsAction } from "@/app/(app)/boards/actions";
 import { BoardTrashPanel } from "@/components/board/BoardTrashPanel";
+import { BoardViewTabs } from "@/components/board/BoardViewTabs";
 import { BoardArchivePanel } from "@/components/board/BoardArchivePanel";
 import { SavedViewsController } from "@/components/view";
 import {
@@ -404,21 +405,14 @@ export default async function BoardPage({
     </Link>
   );
 
+  // #845 개선안 — 보기 전환은 머리말 둘째 줄의 밑줄 탭이다(지금 보기만 진한 글자 + 밑줄).
   const viewToggle = (
-    <div className="flex shrink-0 items-center rounded-full border border-mw-line p-0.5 text-xs">
-      <Link
-        href={switchView("table", groupBy)}
-        className={`rounded-full px-2.5 py-1 ${view === "table" ? "bg-mw-tint-blue font-semibold text-mw-record" : "text-mw-sub hover:text-mw-fg"}`}
-      >
-        테이블
-      </Link>
-      <Link
-        href={switchView("kanban", groupBy)}
-        className={`rounded-full px-2.5 py-1 ${view === "kanban" ? "bg-mw-tint-blue font-semibold text-mw-record" : "text-mw-sub hover:text-mw-fg"}`}
-      >
-        칸반
-      </Link>
-    </div>
+    <BoardViewTabs
+      tabs={[
+        { view: "table", label: "테이블", href: switchView("table", groupBy), active: view === "table" },
+        { view: "kanban", label: "칸반", href: switchView("kanban", groupBy), active: view === "kanban" },
+      ]}
+    />
   );
 
   const workflowHelp = board.source === NEW_LEAD_TAB_SOURCE
@@ -522,6 +516,7 @@ export default async function BoardPage({
     <BoardHeader
       boardId={id}
       icon={board.icon}
+      source={board.source}
       name={board.name}
       description={board.description}
       people={[]}

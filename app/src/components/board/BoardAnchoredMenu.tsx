@@ -115,7 +115,8 @@ export function useAnchoredPosition({
 }
 
 function menuItems(menu: HTMLElement | null): HTMLElement[] {
-  return [...(menu?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])') ?? [])]
+  // menuitem · menuitemradio · menuitemcheckbox 모두 — 담당자 고르기처럼 하나만 고르는 메뉴도 같은 키보드 이동을 쓴다.
+  return [...(menu?.querySelectorAll<HTMLElement>('[role^="menuitem"]:not([aria-disabled="true"])') ?? [])]
     .filter((item) => !(item instanceof HTMLButtonElement) || !item.disabled);
 }
 
