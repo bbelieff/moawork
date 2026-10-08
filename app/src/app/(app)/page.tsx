@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { RouteLoading } from "@/components/shell/RouteLoading";
 import { applyAs, getSession } from "@/lib/auth/session";
 import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
 import { FEATURES } from "@/lib/product";
@@ -77,8 +79,12 @@ export default async function DashboardPage({
         <TodayHome state={today} />
       </FeatureGateServer>
 
-      {/* ── 아래 절: 회사 현황 (BBE-215) ── */}
-      <CompanyStatusSection ctx={ctx} month={month} today={today} />
+      {/* ── 아래 절: 회사 현황 (BBE-215) ──
+          Issue 857 — 이 절은 읽을 것이 많다(업무·원장·공지·업무별 체크리스트). 위 «오늘» 이 먼저 보이고
+          이 절은 준비되는 대로 이어서 그려지게 따로 기다린다. */}
+      <Suspense fallback={<RouteLoading label="회사 현황을 불러오는 중이에요." />}>
+        <CompanyStatusSection ctx={ctx} month={month} today={today} />
+      </Suspense>
     </div>
   );
 }
