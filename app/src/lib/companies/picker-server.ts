@@ -137,15 +137,41 @@ export async function loadCompanyPickerRows(
     boardItems?: readonly CompanyPickerBoardItem[];
   } = {},
 ): Promise<CompanyPickerLoadResult> {
-  if (!options.source && !hasSupabaseEnv()) return { rows: [], error: COMPANY_PICKER_READ_ERROR, truncated: false };
+  return buildCompanyPickerResult(await readCompanyPickerSources(ctx, options.source), options.boardItems ?? []);
+}
+
+/**
+ * Issue 857 — 회사·건 목록 «읽기» 만(한 물결). 보드 화면은 보드 종류를 안 순간 이것을 띄우고,
+ * 행을 다 읽은 뒤 buildCompanyPickerResult 로 회사별 건수를 센다(읽기가 행 읽기와 같은 물결에 탄다).
+ */
+export type CompanyPickerSources =
+  | Readonly<{ ok: true; companies: Company[]; deals: Deal[] }>
+  | Readonly<{ ok: false }>;
+
+export async function readCompanyPickerSources(ctx: Ctx, source?: CompanyPickerSource): Promise<CompanyPickerSources> {
+  if (!source && !hasSupabaseEnv()) return { ok: false };
   try {
-    const crm = options.source ?? new AsyncCrmService(new SupabaseCrmSource(await createClient()));
+    const crm = source ?? new AsyncCrmService(new SupabaseCrmSource(await createClient()));
     const [companies, deals] = await Promise.all([crm.listCompanies(ctx), crm.listDeals(ctx)]);
+    return { ok: true, companies, deals };
+  } catch (error) {
+    console.error("[company picker] failed to load", error);
+    return { ok: false };
+  }
+}
+
+export function buildCompanyPickerResult(
+  sources: CompanyPickerSources,
+  boardItems: readonly CompanyPickerBoardItem[] = [],
+): CompanyPickerLoadResult {
+  if (!sources.ok) return { rows: [], error: COMPANY_PICKER_READ_ERROR, truncated: false };
+  try {
+    const { companies, deals } = sources;
     // 상한을 «여기서» 자른다. 자른 사실은 숨기지 않는다 — truncated 참조.
     // `>=` 다: 정확히 상한만큼 받으면 잘렸는지 알 수 없으므로 «모른다» 쪽으로 말한다.
     const truncated = companies.length >= COMPANY_PICKER_LIMIT;
     const bounded = truncated ? companies.slice(0, COMPANY_PICKER_LIMIT) : companies;
-    return { rows: buildCompanyPickerRows(bounded, deals, options.boardItems ?? []), error: null, truncated };
+    return { rows: buildCompanyPickerRows(bounded, deals, boardItems), error: null, truncated };
   } catch (error) {
     console.error("[company picker] failed to load", error);
     return { rows: [], error: COMPANY_PICKER_READ_ERROR, truncated: false };
