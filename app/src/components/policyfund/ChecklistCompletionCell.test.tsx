@@ -26,7 +26,9 @@ test("dashboard and detail both consume the request-scoped persisted checklist",
     readFile(path.join(appRoot, "components", "policyfund", "ChecklistPanel.tsx"), "utf8"),
   ]);
   assert.match(dashboard, /SupabaseChecklistStore/);
-  assert.match(dashboard, /getDealChecklist\(ctx\.org\.id, deal\.id\)/);
+  // Issue 857 — 거래마다 읽던 것을 한 번에(요청 클라이언트 저장소, 같은 회사 범위).
+  assert.match(dashboard, /earlyChecklistRead\(new SupabaseChecklistStore\(await createClient\(\)\), ctx\.org\.id\)/);
+  assert.match(dashboard, /listDealChecklists\(orgId, dealIds\)/);
   assert.match(dashboard, /<ChecklistCompletionCell/);
   assert.match(detail, /SupabaseChecklistStore/);
   assert.match(detail, /ctx\.org\.id/);
