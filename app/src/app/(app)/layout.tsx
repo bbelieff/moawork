@@ -29,6 +29,12 @@ import { scheduleExpiredTrashPurge } from "@/lib/boards/trash-maintenance";
 import { createRequestBoards } from "@/lib/boards/server";
 import { loadPlatformActor } from "@/lib/platform/actor";
 import { ensureApprovedWorkspaceOnEntry, type BootstrapOutcome } from "@/lib/workspace-entry/bootstrap";
+import {
+  deferBootstrapCheck,
+  forgetBootstrapOutcome,
+  hasRecentCleanBootstrap,
+  markBootstrapChecked,
+} from "@/lib/workspace-entry/bootstrap-verdict";
 import { createClient } from "@/lib/supabase/server";
 import { loadOrgLogoSignedUrls } from "@/lib/org-logo/server";
 import { buildSwitcherWorkspaces } from "@/lib/org-logo/switcher";
@@ -131,11 +137,20 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   shellReads.catch(() => undefined);
   let bootstrapOutcome: BootstrapOutcome = "skipped";
   if (ctx.role === "owner" && currentWorkspace.length === 1) {
-    try {
-      bootstrapOutcome = await entryTimer.time("bootstrap", () => ensureApprovedWorkspaceOnEntry(requestClient!, currentWorkspace[0].slug, { ctx }));
-    } catch {
-      logEntryTimings("workspace-layout", entryTimer.snapshot(), "unavailable");
-      return <WorkspaceBootstrapUnavailable slug={currentWorkspace[0].slug} />;
+    const slug = currentWorkspace[0].slug;
+    const checkStructure = () => ensureApprovedWorkspaceOnEntry(requestClient!, slug, { ctx });
+    // Issue 857 — 최근(10분) 점검을 통과했으면 이번 화면은 기다리지 않고 같은 점검을 응답 뒤에 돌린다.
+    const deferred = hasRecentCleanBootstrap(ctx.org.id, ctx.user.id)
+      && deferBootstrapCheck(ctx.org.id, ctx.user.id, checkStructure);
+    if (!deferred) {
+      try {
+        bootstrapOutcome = await entryTimer.time("bootstrap", checkStructure);
+        markBootstrapChecked(ctx.org.id, ctx.user.id);
+      } catch {
+        forgetBootstrapOutcome(ctx.org.id, ctx.user.id);
+        logEntryTimings("workspace-layout", entryTimer.snapshot(), "unavailable");
+        return <WorkspaceBootstrapUnavailable slug={slug} />;
+      }
     }
   }
   const [workspaceApprovals, workspaceEntryContext, platformActor, orgLogoUrls, lockedFeatures, notify, shellSidebarBoards, canCreateTab] = await entryTimer.time("shell", () => shellReads);
