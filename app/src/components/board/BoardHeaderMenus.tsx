@@ -29,8 +29,8 @@ import {
 import { BoardDialogPortal } from "./BoardDialogPortal";
 import type { TabSettingsOpenRequest } from "./tab-chrome";
 
-/** 같은 보드의 다른 표면(컬럼 메뉴 등)이 열리면 닫히고, 열 때는 다른 표면을 닫게 한다. */
-function useBoardSurface(boardId: string, closeQuietly: () => void) {
+/** 같은 보드의 다른 표면(컬럼 메뉴 등)이 열리면 닫히고, 열 때는 다른 표면을 닫게 한다. 행 우클릭 메뉴도 쓴다. */
+export function useBoardSurface(boardId: string, closeQuietly: () => void) {
   const owner = useId();
   const scope = `board:${boardId}`;
   useEffect(() => {
@@ -71,7 +71,8 @@ function Chevron({ size = 16 }: { size?: number }) {
   );
 }
 
-function MenuItem({
+/** 보드 메뉴 항목 한 줄 — 탭 ▾ 메뉴와 행 우클릭 메뉴가 같은 모양을 쓴다. */
+export function MenuItem({
   children,
   onClick,
   danger = false,

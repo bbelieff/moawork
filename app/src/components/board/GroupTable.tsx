@@ -50,7 +50,9 @@ import { useLiveColumnWidths } from "./column-live-width";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import type { ItemDetailSnapshot } from "@/app/(app)/boards/item-detail-actions";
-import { TrashItemButton } from "./ItemTrashControls";
+import { moveItemToTrash } from "./ItemTrashUndo";
+import { RowContextMenu, rowContextMenuPoint, type RowContextMenuRequest } from "./RowContextMenu";
+import { requestItemDetailOpen } from "@/lib/boards/item-detail-open";
 import { AddItemForm } from "./AddItemForm";
 import { ContractWorkIntakeForm } from "./ContractWorkIntakeForm";
 import type { CompanyPickerRow } from "@/lib/companies/search";
@@ -93,10 +95,8 @@ import {
 import {
   updateNewLeadFieldAction,
   updateNewLeadMetaAction,
-  updateNewLeadTitleAction,
 } from "@/app/(app)/boards/new-lead-actions";
 import {
-  renameItemAction,
   setCellAction,
   setColumnWidthAction,
 } from "@/app/(app)/boards/actions";
@@ -105,7 +105,7 @@ import {
   BOARD_TABLE_CONTROL,
   BOARD_TABLE_HEADER_CELL,
   BOARD_TABLE_ROW,
-  BOARD_TABLE_TITLE_CONTROL,
+  BOARD_TABLE_TITLE_NAME,
 } from "./table-style";
 import { BoardInlineTitleEditor } from "./BoardInlineTitleEditor";
 import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
@@ -821,6 +821,37 @@ export function GroupTable({
   const [overRowIndex, setOverRowIndex] = useState<number | null>(null);
   const [invalidRowIndex,setInvalidRowIndex]=useState<number|null>(null);
   const [dropMessage,setDropMessage]=useState<string|null>(null);
+  /*
+   * #845 개선안(2026-10-08) — 행 우클릭 메뉴(옆에 열기 · 업체명 바꾸기 | 휴지통으로 이동). 표마다 하나.
+   * 업체명 단추를 행 id 로 기억해 둔다 — 메뉴가 연 상세가 닫히면 초점이 그 단추로 돌아간다.
+   */
+  const [rowMenu, setRowMenu] = useState<RowContextMenuRequest | null>(null);
+  const nameButtons = useRef(new Map<string, HTMLButtonElement>());
+  const closeRowMenu = useCallback((restoreFocus: boolean) => {
+    const rowId = rowMenu?.rowId;
+    setRowMenu(null);
+    if (restoreFocus && rowId) window.requestAnimationFrame(() => nameButtons.current.get(rowId)?.focus());
+  }, [rowMenu]);
+  const openRowBeside = (rowId: string) => requestItemDetailOpen(rowId, nameButtons.current.get(rowId));
+  const renameRow = (rowId: string) => requestItemDetailOpen(rowId, nameButtons.current.get(rowId), { editTitle: true });
+  const trashRow = (rowId: string) => {
+    const target = rows.find((candidate) => candidate.id === rowId);
+    if (target) void moveItemToTrash({ boardId, itemId: target.id, title: target.title });
+  };
+  /** 우클릭·Shift+F10·메뉴 키. 글자를 고치는 칸에서는 브라우저 기본 메뉴(붙여넣기 등)를 그대로 둔다. */
+  const openRowMenuFromEvent = (
+    event: React.MouseEvent<HTMLTableRowElement> | React.KeyboardEvent<HTMLTableRowElement>,
+    row: ItemWithValues,
+    canTrash: boolean,
+  ) => {
+    const target = event.target as HTMLElement;
+    // 행 «안» 의 DOM 에서 일어난 것만 — 칸이 띄운 포털(선택지 팝오버 등)에서 올라온 것은 행 메뉴가 아니다.
+    if (!event.currentTarget.contains(target)) return;
+    if (target.closest('input:not([type="checkbox"]),textarea,select,[contenteditable="true"]')) return;
+    event.preventDefault();
+    const point = rowContextMenuPoint("clientX" in event ? event : { clientX: 0, clientY: 0 }, target);
+    setRowMenu({ rowId: row.id, title: row.title, x: point.x, y: point.y, canRename: !readOnly, canTrash });
+  };
 
   const clearColDrag = useCallback(() => {
     dragColRef.current = null;
@@ -1005,6 +1036,10 @@ export function GroupTable({
   const fixedLayout = tablePart !== "full";
   // 첫 열 이름 — 계약업체 실무는 목업대로 「업체」(한 줄이 «어느 업체의 자금 건» 이다).
   const titleLabel = canonicalNewLead ? "회사명" : workflowProgressKind === "work" ? "업체" : "이름";
+  // 이름을 부르는 말 — 우클릭 「업체명 바꾸기」 와 상세 제목 칸의 이름.
+  const titleNoun = canonicalNewLead ? "회사명" : workflowProgressKind === "work" ? "업체명" : "이름";
+  // 메뉴를 연 행이 화면에서 사라졌으면(옮김·걸러짐) 메뉴도 닫힌 것으로 본다.
+  const rowMenuOpen = rowMenu && rows.some((candidate) => candidate.id === rowMenu.rowId) ? rowMenu : null;
   // 2026-10-08 — 「업체 추가」 는 머리말 단추·배너 ＋ 에서만 연다. 닫혀 있으면 추가 줄은 그룹 끝 드롭 자리만
   // 남는다 — 평소엔 얇은 띠, 행을 끄는 동안엔 한 줄 높이(그룹 맨 끝에 놓을 수 있게).
   const onDemandAdd = addRowMode === "on-demand" && Boolean(companyPicker) && !(canonicalNewLead && groupId);
@@ -1046,6 +1081,18 @@ export function GroupTable({
         : "relative isolate max-h-[70vh] min-w-0 max-w-full overflow-auto"}
     >
       <p className="sr-only" aria-live="polite">{dropMessage}</p>
+      {rowMenuOpen ? (
+        <RowContextMenu
+          key={`${rowMenuOpen.rowId}:${rowMenuOpen.x}:${rowMenuOpen.y}`}
+          boardId={boardId}
+          request={rowMenuOpen}
+          renameLabel={`${titleNoun} 바꾸기`}
+          onClose={closeRowMenu}
+          onOpenBeside={openRowBeside}
+          onRename={renameRow}
+          onTrash={trashRow}
+        />
+      ) : null}
       <table
         className={`${fixedLayout ? "" : "w-full "}border-collapse text-left`}
         style={tableStyle}
@@ -1101,7 +1148,8 @@ export function GroupTable({
                     aria-checked={groupTriState === "partial" ? "mixed" : undefined}
                     aria-label={tablePart === "head" ? "보이는 행 전체 선택" : `${groupName ?? "그룹"} 전체 선택`}
                     onChange={(event) => onToggleGroup(event.currentTarget.checked)}
-                    className="h-3.5 w-3.5 shrink-0"
+                    className="shrink-0"
+                    data-row-select
                     data-no-drag
                   />
                 ) : null}
@@ -1267,6 +1315,11 @@ export function GroupTable({
               <tr
                 key={row.id}
                 data-board-row=""
+                onContextMenu={(event) => openRowMenuFromEvent(event, row, canDeleteRow)}
+                onKeyDown={(event) => {
+                  if (!((event.shiftKey && event.key === "F10") || event.key === "ContextMenu")) return;
+                  openRowMenuFromEvent(event, row, canDeleteRow);
+                }}
                 onDragOver={acceptRow(index)}
                 onDragLeave={(event)=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null)&&overRowIndex===index)clearRowDrop();}}
                 onDrop={dropRow(index)}
@@ -1277,7 +1330,8 @@ export function GroupTable({
                 <td
                   draggable={rowDragEnabled}
                   onDragStart={rowDragEnabled?(event)=>{
-                    if((event.target as HTMLElement).closest("button,input,select,textarea,a,[role=menu],[contenteditable=true],[data-no-drag]")){event.preventDefault();clearRowDrop();setDropMessage("편집 중인 컨트롤에서는 끌 수 없어요.");return;}
+                    // 업체명 단추는 칸을 채우므로 그 위에서도 끌 수 있다(누르면 열고, 끌면 옮긴다).
+                    if((event.target as HTMLElement).closest("button:not([data-row-name]),input,select,textarea,a,[role=menu],[contenteditable=true],[data-no-drag]")){event.preventDefault();clearRowDrop();setDropMessage("편집 중인 컨트롤에서는 끌 수 없어요.");return;}
                     claimBoardTransientSurface(`board:${boardId}`,`row-drag:${boardId}`);
                     event.dataTransfer.effectAllowed="move";onRowDragStart(row.id);
                   }:undefined}
@@ -1287,7 +1341,7 @@ export function GroupTable({
                   data-board-title-cell
                   data-title-width={titleWidthAttr}
                 >
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5">
                     {selection && onToggleRow ? (
                       <input
                         type="checkbox"
@@ -1300,51 +1354,31 @@ export function GroupTable({
                             : false;
                           onToggleRow(row.id, event.currentTarget.checked, shift);
                         }}
-                        className="h-3.5 w-3.5 shrink-0"
+                        className="shrink-0"
+                        data-row-select
                         data-no-drag
                       />
                     ) : null}
 
-                    {readOnly ? (
-                      <span className="truncate text-[length:var(--fs-13)] font-semibold text-mw-fg">
-                        {row.title}
-                      </span>
-                    ) : (
-                      <>
-                        <form
-                          action={
-                            canonicalNewLead && row.deal_id
-                              ? updateNewLeadTitleAction
-                              : renameItemAction
-                          }
-                          className="min-w-0 flex-1"
-                        >
-                          <input type="hidden" name="boardId" value={boardId} />
-                          <input type="hidden" name="itemId" value={row.id} />
-                          {canonicalNewLead && row.deal_id ? (
-                            <input
-                              type="hidden"
-                              name="dealId"
-                              value={row.deal_id}
-                            />
-                          ) : null}
-                          <input
-                            name="title"
-                            defaultValue={row.title}
-                            aria-label="행 이름"
-                            className={BOARD_TABLE_TITLE_CONTROL}
-                          />
-                        </form>
-                        {findCellError(cellFlash, row.id, "title") ? (
-                          <p
-                            role="alert"
-                            className="text-[0.65rem] text-mw-error"
-                          >
-                            {findCellError(cellFlash, row.id, "title")}
-                          </p>
-                        ) : null}
-                      </>
-                    )}
+                    {/*
+                      #845 개선안(2026-10-08, 승인 목업 Rows) — 이름이 곧 «열기». 「열기 ↗」·「삭제」 단추는 걷었다.
+                      이름 고치기는 열린 상세의 제목에서(또는 우클릭 「업체명 바꾸기」), 지우기는 상세 ⋯·우클릭·일괄 막대에서.
+                    */}
+                    <button
+                      ref={(element) => {
+                        if (element) nameButtons.current.set(row.id, element);
+                        else nameButtons.current.delete(row.id);
+                      }}
+                      type="button"
+                      onClick={(event) => requestItemDetailOpen(row.id, event.currentTarget)}
+                      aria-label={`${row.title} 상세 열기`}
+                      title={row.title}
+                      data-item-detail-trigger={row.id}
+                      data-row-name
+                      className={BOARD_TABLE_TITLE_NAME}
+                    >
+                      {row.title}
+                    </button>
 
                     {(sameTitleCounts?.get(row.title) ?? 0) >= 2 ? (
                       <span
@@ -1356,7 +1390,26 @@ export function GroupTable({
                       </span>
                     ) : null}
 
+                    {/* 옆에 열기 — 줄에 올리거나 초점이 갈 때만(터치 기기는 흐리게 늘). globals.css [data-row-side-open]. */}
+                    <button
+                      type="button"
+                      onClick={() => openRowBeside(row.id)}
+                      aria-label={`${row.title} 옆에 열기`}
+                      title="옆에 열기"
+                      data-row-side-open
+                      className="grid size-[26px] shrink-0 place-items-center rounded-[7px] border border-mw-line bg-mw-card text-mw-sub hover:text-mw-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-primary"
+                    >
+                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                        <rect x="3" y="4" width="18" height="16" rx="2" />
+                        <path d="M14 4v16" />
+                      </svg>
+                    </button>
+
                     <ItemDetailPanel
+                      trigger="none"
+                      canTrash={canDeleteRow}
+                      titleNoun={titleNoun}
+                      titleError={findCellError(cellFlash, row.id, "title")}
                       boardId={boardId}
                       boardName={boardName}
                       groupName={groupName}
@@ -1393,21 +1446,17 @@ export function GroupTable({
                       }
                     />
 
-                    {/* BBE-240 원장 버튼은 2026-10-07 대표 피드백으로 상세(열기) 머리말로 옮겼다 — 행은 이름·열기·삭제만. */}
-
-                    {canDeleteRow && (
-                      <TrashItemButton
-                        boardId={boardId}
-                        itemId={row.id}
-                        title={row.title}
-                      />
-                    )}
                     {rowDragEnabled?<span className="sr-only focus-within:not-sr-only">
                       <button type="button" onClick={()=>onRowKeyboardMove(row.id,"up")} aria-label={`${row.title} 위로 이동`}>위로 이동</button>
                       <button type="button" onClick={()=>onRowKeyboardMove(row.id,"down")} aria-label={`${row.title} 아래로 이동`}>아래로 이동</button>
                       <label><span>그룹으로 이동</span><select aria-label={`${row.title} 이동할 그룹`} defaultValue="" onChange={(event)=>{if(event.target.value)onRowMoveToGroup(row.id,event.target.value);event.currentTarget.value="";}}><option value="">그룹 선택</option>{groupMoveOptions.filter((group)=>group.id!==groupId).map((group)=><option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
                     </span>:null}
                   </div>
+                  {findCellError(cellFlash, row.id, "title") ? (
+                    <p role="alert" className="text-[0.65rem] text-mw-error">
+                      {findCellError(cellFlash, row.id, "title")}
+                    </p>
+                  ) : null}
                   {renderRowAction?.(row)}
                 </td>
 

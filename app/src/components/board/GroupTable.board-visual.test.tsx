@@ -100,7 +100,8 @@ describe("GroupTable 보드 위계 (#839)", () => {
     const html = render(rows, new Map([["QA합성회사", 2], ["단독회사", 1]]));
     expect(html.match(/같은 회사 2건/g)).toHaveLength(2);
     expect(html).not.toContain("같은 회사 1건");
-    expect(html.match(/name="title" value="QA합성회사"/g)).toHaveLength(2);
+    // 제목은 그대로 — 두 행 모두 같은 업체명 단추(#845 개선안: 이름이 곧 «열기»)를 그린다.
+    expect(html.match(/aria-label="QA합성회사 상세 열기"/g)).toHaveLength(2);
     // 다른 보드(카운트 없음)에는 달지 않는다.
     expect(render(rows)).not.toContain("같은 회사");
   });

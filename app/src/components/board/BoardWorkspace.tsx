@@ -47,6 +47,7 @@ import { GroupBlock, GroupSelectAll } from "./GroupBlock";
 import { GroupNameEditor } from "./GroupNameEditor";
 import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
 import { GroupTable } from "./GroupTable";
+import { ItemTrashUndoToast } from "./ItemTrashUndo";
 import type { MemberPickerMember } from "./MemberPicker";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
 import { useDeferredDragReveal } from "./use-deferred-drag-reveal";
@@ -1310,6 +1311,8 @@ export function BoardWorkspace({
         </div>
       ) : null}
       {restoreError ? <p role={noticeRole(false)} aria-live={noticeLive(false)} className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{restoreError}</p> : null}
+      {/* #845 개선안 — 상세 ⋯·행 우클릭으로 휴지통에 옮긴 행의 「되돌리기」 알림. 행은 곧 사라지므로 보드가 하나 든다. */}
+      <ItemTrashUndoToast boardId={board.id} />
 
       <BoardScrollViewport>
       {sharedHeader ? (

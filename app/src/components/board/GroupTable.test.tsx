@@ -171,17 +171,20 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     expect(html).toContain("relative isolate max-h-[70vh]");
   });
 
-  it("삭제 권한이 있으면 hard delete 대신 휴지통 서버 액션을 렌더한다", () => {
+  it("#845 개선안 — 이름 칸에 「열기 ↗」·「삭제」 단추가 없고, 이름이 곧 상세 열기다(삭제 권한이 있어도)", () => {
     const html = renderTable([col({ key: "a", label: "일반" })], [row()], true);
-    expect(html).toContain('name="boardId" value="b1"');
-    expect(html).toContain('name="itemId" value="row-1"');
-    expect(html).toContain("행1 휴지통으로 이동");
-    expect(html).toContain("삭제");
+    expect(html).not.toContain("열기 ↗");
+    expect(html).not.toContain("data-row-trash");
+    expect(html).not.toContain("행1 휴지통으로 이동");
+    expect(html).not.toContain('aria-label="행 이름"');
+    // 이름 단추가 상세 여는 단추다(data-item-detail-trigger) — 같은 행의 「옆에 열기」 아이콘도 함께.
+    expect(html).toMatch(/<button[^>]*aria-label="행1 상세 열기"[^>]*data-item-detail-trigger="row-1"[^>]*data-row-name="true"/);
+    expect(html).toContain('aria-label="행1 옆에 열기"');
   });
 
   it("BBE-240 · 원장 버튼은 행에 없다 — 상세(열기) 머리말로 옮겼다 (2026-10-07)", () => {
     const columns = [col({ key: "a", label: "일반" })];
-    // 행 칸에는 이름·열기·삭제만. 원장은 ItemDetailPanel 머리말(ItemDetailPanel.test.tsx)에서 확인한다.
+    // 행 칸에는 체크·이름·옆에 열기만. 원장은 ItemDetailPanel 머리말(ItemDetailPanel.test.tsx)에서 확인한다.
     expect(renderTable(columns, [row({}, "deal-1")])).not.toContain("📒 원장");
     expect(renderTable(columns, [row()])).not.toContain("📒 원장");
   });
