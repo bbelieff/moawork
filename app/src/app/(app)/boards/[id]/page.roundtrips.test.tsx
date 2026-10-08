@@ -460,10 +460,10 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
   it("보드 화면의 직렬 단계가 예산을 넘지 않는다 — 병렬을 직렬로 되돌리면 빨개진다", async () => {
     const run = await renderBoard();
     // 담당자 목록과 그룹 컬럼 배치를 같은 물결에 실은 뒤 측정값 8.
-    // Issue 857 — 보드 정보와 행 목록을 한 물결로, 두 독립 꼬리 읽기를 스냅샷과 같은 물결로 띄워 5.
-    // 권한·D24 → 메타‖행‖꼬리 → 값 순서를 다시 줄 세우면 즉시 넘는다.
+    // Issue 857 — 보드 정보와 행 목록을 한 물결로, 그룹 컬럼 배치를 스냅샷과 같은 물결로, 기본 담당자
+    //   목록은 보드 종류를 안 순간(메타데이터) 띄워 6. 권한·D24 → 메타‖행 → 값 순서를 다시 줄 세우면 넘는다.
     expect(run.serialStages, "보드 화면의 직렬 DB 단계가 늘었다 — 어디서 await 이 줄 섰는지 확인해라")
-      .toBe(5);
+      .toBe(6);
     // 보관 읽기는 활성·휴지통과 같은 물결에 탄다 (직렬 단계 추가 없음, 왕복 +1).
     expect(run.total, "보드 화면의 읽기 왕복 계약이 바뀌었다 — 로그 계측은 쿼리를 더하면 안 된다")
       .toBe(15);
@@ -475,9 +475,12 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
       .filter((trip) => trip.label === "select:org_members")
       .map((trip) => trip.wave);
     const groupLayoutWave = run.trips.find((trip) => trip.label === "select:board_views")?.wave;
+    const metadataWave = run.trips.find((trip) => trip.label === "select:boards")?.wave;
     expect(groupLayoutWave, "그룹 컬럼 배치 읽기를 못 찾았다").toBeTypeOf("number");
-    expect(assigneeWaves, "그룹 컬럼 배치와 같은 물결에서 시작한 담당자 목록 읽기를 못 찾았다")
-      .toContain(groupLayoutWave);
+    // Issue 857 — 그룹 컬럼 배치는 스냅샷(메타데이터)과 같은 물결, 기본 담당자 목록은 메타데이터 바로 다음 물결.
+    expect(groupLayoutWave, "그룹 컬럼 배치가 스냅샷과 같은 물결에서 시작하지 않았다").toBe(metadataWave);
+    expect(assigneeWaves, "보드 종류를 안 바로 다음 물결에서 시작한 담당자 목록 읽기를 못 찾았다")
+      .toContain((metadataWave ?? 0) + 1);
   });
 
   it("한 요청에 한 로그만 남기고 검증된 UUID와 유한한 비음수 단계만 기록한다", async () => {
@@ -498,7 +501,7 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
 
       for (const run of [valid, missing, invalid]) {
         expect(run.total).toBe(15);
-        expect(run.serialStages).toBe(5);
+        expect(run.serialStages).toBe(6);
       }
 
       const logs = info.mock.calls
@@ -596,6 +599,9 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
       expect(run.countOf("select:items:deleted")).toBe(0);
       expect(run.countOf("select:items:archived")).toBe(0);
       expect(run.countOf("select:item_values")).toBe(0);
+      // Issue 857 — 스냅샷과 같은 물결로 앞당긴 꼬리 읽기도 판정 «뒤» 여야 한다.
+      expect(run.countOf("select:board_views")).toBe(0);
+      expect(run.countOf("select:org_members")).toBeLessThanOrEqual(1);
     }
   });
 
