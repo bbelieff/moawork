@@ -13,8 +13,8 @@ vi.mock("@/lib/contact/entry", () => ({ repairContactBoardOnEntry: vi.fn() }));
 vi.mock("@/lib/notices/entry", () => ({ repairNoticeBoardOnEntry: vi.fn() }));
 vi.mock("@/lib/work/entry", () => ({ repairContractWorkBoardOnEntry: vi.fn() }));
 
-import { scheduleDefaultTabRepair } from "./background-repair";
-import { NEW_LEAD_TAB_SOURCE } from "./types";
+import { scheduleDefaultTabRepair } from "./default-tab-repair";
+import { NEW_LEAD_TAB_SOURCE } from "@/lib/default-tabs/types";
 
 function ctxFor(orgId: string, role: Ctx["role"]): Ctx {
   return { org: { id: orgId, name: "합성 회사", plan_tier: "free", created_at: "" }, user: { id: "u1", name: "합성", created_at: "" }, role, scope: "all" } as Ctx;

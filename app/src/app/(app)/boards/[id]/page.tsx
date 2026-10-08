@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/purity -- Async Server Component timing is emitted only to an operational log, never rendered. */
 import { WorkspaceLink } from "@/components/shell/WorkspaceLink";
-import { scheduleDefaultTabRepair } from "@/lib/default-tabs/background-repair";
+import { scheduleDefaultTabRepair } from "@/lib/workspace-entry/default-tab-repair";
 import { notFound } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { applyAs, getSession } from "@/lib/auth/session";

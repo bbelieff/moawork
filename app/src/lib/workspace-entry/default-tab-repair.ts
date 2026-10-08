@@ -6,8 +6,8 @@ import { repairContactBoardOnEntry } from "@/lib/contact/entry";
 import { repairNewcustBoardOnEntry } from "@/lib/newcust/entry";
 import { repairNoticeBoardOnEntry } from "@/lib/notices/entry";
 import { repairContractWorkBoardOnEntry } from "@/lib/work/entry";
-import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "./types";
-import { CONTRACT_WORK_TAB_SOURCE } from "./contract-work";
+import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
+import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
 
 const REPAIRS: Readonly<Record<string, (ctx: Ctx, client: SupabaseClient) => Promise<unknown>>> = {
   [NEW_LEAD_TAB_SOURCE]: repairNewcustBoardOnEntry,
