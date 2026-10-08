@@ -126,7 +126,11 @@ describe("제목행은 보드 맨 위 하나 (2026-10-08)", () => {
   it("맨 위 제목행에서 컬럼을 옮기면 모든 그룹의 배치를 한 번에 저장한다", async () => {
     const host = await mount(CONTRACT_WORK_TAB_SOURCE);
     const head = host.querySelector('[data-board-table-part="head"]')!;
-    const moveLeft = [...head.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.getAttribute("aria-label") === "대표자명 왼쪽으로 이동");
+    // #845 5단계 — 옮기기는 칸 이름을 눌러 여는 칸 메뉴의 「왼쪽으로」 다.
+    const repTitle = [...head.querySelectorAll<HTMLElement>("[data-column-title]")].find((node) => node.textContent === "대표자명");
+    expect(repTitle).toBeDefined();
+    await act(async () => repTitle!.click());
+    const moveLeft = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')].find((item) => item.textContent === "왼쪽으로");
     expect(moveLeft).toBeDefined();
     await act(async () => moveLeft!.click());
     expect(actionMocks.setGroupColumnOrdersAction).toHaveBeenCalledTimes(1);

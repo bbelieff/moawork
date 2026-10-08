@@ -100,7 +100,8 @@ describe("리드컨택 공용 보드 화면", () => {
   it("미팅확정 메세지는 일반 칸이 아니라 msg 출처의 공용 확인 경로로 렌더한다", () => {
     const html = renderTab(repo.listColumns(ctx, boardId));
     expect(html).toContain('name="columnKey" value="meeting_confirm_message"');
-    expect(html).toContain("✉");
+    // #845 5단계 — 머리글의 ✉ 기호는 걷혔고, 발송 칸이라는 사실은 칸 풀이(title)가 말한다.
+    expect(html).toContain("발송(바꾸면 고객에게 문자가 나가고 비용이 듭니다)");
   });
 
   it("기타정보 한 셀을 저장·reload하고 actual 표에서 체크 수로 렌더한다", async () => {

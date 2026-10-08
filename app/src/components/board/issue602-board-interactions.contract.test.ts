@@ -22,11 +22,14 @@ describe("Issue #602 final board interaction wiring",()=>{
     expect(read("GroupTable.tsx")).toContain("setOverRowIndex(null);setInvalidRowIndex(index)");
     expect(read("GroupTable.tsx")).toContain("data-no-drag");
   });
-  it("uses one direct title editor and never adds a rename menu item",()=>{
+  it("uses one direct title editor; a menu rename item only starts that same inline editor",()=>{
     expect(read("BoardHeader.tsx")).toContain("BoardInlineTitleEditor");
     expect(read("GroupNameEditor.tsx")).toContain("BoardInlineTitleEditor");
-    expect(read("GroupTable.tsx")).toContain("BoardInlineTitleEditor");
-    expect(read("ColumnContextMenu.tsx")).not.toContain("이름 바꾸기");
+    // #845 5단계 — 칸 이름은 칸 메뉴의 「칸 이름 바꾸기」 가 머리글의 같은 편집칸을 연다(따로 이름 바꾸기 창이 없다).
+    const columnMenu=read("ColumnContextMenu.tsx");
+    expect(columnMenu).toContain("BoardInlineTitleEditor");
+    expect(columnMenu).toContain("editorRef.current?.beginEdit()");
+    expect(columnMenu).not.toContain('surface === "rename"');
   });
   it("keeps generic kanban on the same tokens and atomic physical-group move contract",()=>{
     const kanban=readBoards("GenericBoardKanban.tsx");

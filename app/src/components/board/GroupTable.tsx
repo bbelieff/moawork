@@ -24,7 +24,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { renameColumnTitleAction } from "@/app/(app)/boards/title-actions";
 import type {
   BoardColumn,
   CellValue,
@@ -44,7 +43,6 @@ import { StatusCell } from "@/components/boards/StatusCell";
 import { LabelCombobox } from "./LabelCombobox";
 import { canCreateLabelForColumn, newLabelRequestId } from "@/lib/boards/label-options";
 import type { AddLabelOptionInput, AddLabelOptionResult } from "@/app/(app)/boards/label-option-actions";
-import { SourceBadge } from "./FieldBadge";
 import { clampWidth, fixedColumnWidth } from "./layout";
 import { useLiveColumnWidths } from "./column-live-width";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
@@ -58,6 +56,7 @@ import { ContractWorkIntakeForm } from "./ContractWorkIntakeForm";
 import type { CompanyPickerRow } from "@/lib/companies/search";
 import type { CompanyIntakeActionState } from "@/app/(app)/boards/[id]/company-intake-actions";
 import { ColumnContextMenu } from "./ColumnContextMenu";
+import type { ColumnViewRequest } from "./column-menu-model";
 import type {
   ColumnScheduleItemOption,
   ColumnScheduleRecipientOption,
@@ -107,7 +106,6 @@ import {
   BOARD_TABLE_ROW,
   BOARD_TABLE_TITLE_NAME,
 } from "./table-style";
-import { BoardInlineTitleEditor } from "./BoardInlineTitleEditor";
 import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
 import { selectionTriState } from "./bulk-selection";
 import { MAX_FILE_BYTES } from "@/lib/services/file-contract";
@@ -658,6 +656,11 @@ export function GroupTable({
   onToggleRow,
   onToggleGroup,
   onBulkStatusRequest,
+  onRequestViewCondition,
+  canFilterColumn,
+  activeSorts = [],
+  columnCatalog,
+  boardRows,
 }: {
   boardId: string;
   boardName?: string;
@@ -807,6 +810,19 @@ export function GroupTable({
    * 그 칸이 스스로 편집되게 한다.
    */
   onBulkStatusRequest?: (rowId: string, columnKey: string, presetValue: string) => boolean;
+  /**
+   * #845 5단계 — 칸 메뉴 「보기 · 나만」(줄 세우기 · 골라 보기… · 숨기기)을 보드에 올린다.
+   * 없으면 칸 메뉴에 그 묶음이 없다(칸 관리 권한도 없으면 머리글은 이름 글자만 남는다).
+   */
+  onRequestViewCondition?: (request: ColumnViewRequest) => void;
+  /** 이 칸의 「골라 보기…」 를 지금 열 수 있는가(보드의 골라 보기 화면이 그 칸을 다루는가). */
+  canFilterColumn?: (column: BoardColumn) => boolean;
+  /** 지금 걸린 줄 세우기 — 칸 메뉴의 그 항목에 체크 표시를 단다. */
+  activeSorts?: readonly { columnKey: string; direction: "asc" | "desc" }[];
+  /** 지우기 확인 창이 «멈추는 계산 칸» 을 찾을 같은 탭의 칸 정의(기본 detailColumns). */
+  columnCatalog?: readonly BoardColumn[];
+  /** 지우기 확인 창의 «값 N건» 기준 — 걸러지기 전 탭의 행(기본 rows). */
+  boardRows?: readonly ItemWithValues[];
 }) {
   /*
    * 드래그 중인 대상은 **ref 가 정본**이고 state 는 표시(반투명·강조)에만 쓴다.
@@ -1036,6 +1052,9 @@ export function GroupTable({
   const fixedLayout = tablePart !== "full";
   // 첫 열 이름 — 계약업체 실무는 목업대로 「업체」(한 줄이 «어느 업체의 자금 건» 이다).
   const titleLabel = canonicalNewLead ? "회사명" : workflowProgressKind === "work" ? "업체" : "이름";
+  // 진행현황(화면용 통합 칸)·신규리드 합성 칸은 구조(이름·순서·폭·지우기)를 바꿀 수 없다 — 보는 방법만 고른다.
+  const isStructureLocked = (column: BoardColumn) =>
+    column.key === WORKFLOW_PROGRESS_KEY || (canonicalNewLead && isNewLeadPresentationOnlyStructure(column));
   // 이름을 부르는 말 — 우클릭 「업체명 바꾸기」 와 상세 제목 칸의 이름.
   const titleNoun = canonicalNewLead ? "회사명" : workflowProgressKind === "work" ? "업체명" : "이름";
   // 메뉴를 연 행이 화면에서 사라졌으면(옮김·걸러짐) 메뉴도 닫힌 것으로 본다.
@@ -1153,9 +1172,7 @@ export function GroupTable({
                     data-no-drag
                   />
                 ) : null}
-                {canonicalNewLead ? (
-                  <><SourceBadge source="auto" />회사명</>
-                ) : titleLabel}
+                {titleLabel}
               </span>
               <span
                 role="separator"
@@ -1175,18 +1192,26 @@ export function GroupTable({
                 className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize border-r-2 border-transparent transition-colors hover:border-mw-record focus-visible:border-mw-record focus-visible:outline-none"
               />
             </th>
-            {columns.map((col) => {
+            {columns.map((col, columnIndex) => {
               const isTarget = overColKey === col.key && dragColKey !== col.key;
               const width = columnWidth(col);
-              const workflowLocked = col.key === WORKFLOW_PROGRESS_KEY;
-              const presentationOnlyStructure = canonicalNewLead
-                && isNewLeadPresentationOnlyStructure(col);
-              const structureLocked = workflowLocked || presentationOnlyStructure;
+              const structureLocked = isStructureLocked(col);
+              // #845 5단계 — 이름이 곧 칸 메뉴 단추다. 「칸 · 모두」 묶음은 칸 관리 권한 + 구조를 바꿀 수 있는 칸만.
+              const manageStructure = canManageColumns && !structureLocked;
+              const movable = manageStructure && canMoveColumns;
+              const sortDirection = activeSorts.find((sort) => sort.columnKey === col.key)?.direction ?? null;
+              const columnView = onRequestViewCondition
+                ? { sortDirection, canFilter: canFilterColumn?.(col) ?? false, onRequest: onRequestViewCondition }
+                : null;
+              // 가상 칸(신규리드 합성 칸·상담 진행)은 행 값이 그 key 에 없어 «몇 건 채움» 을 셀 수 없다.
+              const fillKnown = !(canonicalNewLead && isNewLeadPresentationOnlyStructure(col)) && col.key !== CONSULTATION_PROGRESS_KEY;
+              const previous = columns[columnIndex - 1];
+              const next = columns[columnIndex + 1];
               return (
                 <th
                   key={col.id}
                   scope="col"
-                  draggable={canManageColumns && canMoveColumns && !structureLocked}
+                  draggable={movable}
                    onDragStart={(event) => {
                      if (structureLocked) return;
                      if((event.target as HTMLElement).closest("button,input,select,textarea,a,[role=menu],[contenteditable=true],[data-no-drag]")){event.preventDefault();setOverColKey(null);return;}
@@ -1196,9 +1221,9 @@ export function GroupTable({
                   }}
                   onDragEnd={clearColDrag}
                    onDragOver={(e) => {
-                     if (structureLocked) {setOverColKey(null);setInvalidColKey(col.key);setDropMessage("이 컬럼은 구조를 바꿀 수 없어요.");return;}
+                     if (structureLocked) {setOverColKey(null);setInvalidColKey(col.key);setDropMessage("이 칸은 자리를 바꿀 수 없어요.");return;}
                     if (!dragColRef.current) return;
-                    if(dragColRef.current===col.key){setOverColKey(null);setInvalidColKey(col.key);setDropMessage("같은 컬럼 위치에는 놓을 수 없어요.");return;}
+                    if(dragColRef.current===col.key){setOverColKey(null);setInvalidColKey(col.key);setDropMessage("같은 칸 자리에는 놓을 수 없어요.");return;}
                     e.preventDefault();
                     setInvalidColKey(null);
                     setOverColKey(col.key);
@@ -1213,44 +1238,47 @@ export function GroupTable({
                     clearColDrag();
                   }}
                   title={
-                    !canManageColumns || !canMoveColumns || structureLocked
-                      ? cellTitle(col)
-                      : `${cellTitle(col)} — 끌어서 ${tablePart === "head" ? "" : "이 그룹의 "}컬럼 순서 변경`
+                    movable
+                      ? `${cellTitle(col)} — 끌어서 ${tablePart === "head" ? "" : "이 그룹의 "}칸 순서 바꾸기`
+                      : cellTitle(col)
                   }
                   style={width ? { width, minWidth: width } : undefined}
                   data-view-focus={col.key === focusColumnKey || undefined}
                   data-column-key={col.key}
                   data-right-pinned={col.rightPinned || undefined}
-                   className={`relative sticky top-0 z-[var(--mw-layer-board-header)] min-w-20 ${BOARD_TABLE_HEADER_CELL} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-board-head"} ${
-                    !canManageColumns || !canMoveColumns || structureLocked
-                      ? ""
-                      : "cursor-grab active:cursor-grabbing"
+                  data-column-manage={manageStructure || undefined}
+                   className={`group/colhead relative sticky top-0 z-[var(--mw-layer-board-header)] min-w-20 ${BOARD_TABLE_HEADER_CELL} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-board-head"} ${
+                    movable ? "cursor-grab active:cursor-grabbing" : ""
                   } ${isTarget ? "bg-mw-tint-blue text-mw-record" : ""} ${
                     invalidColKey===col.key?"cursor-not-allowed":""
                   } ${
                     dragColKey === col.key ? "opacity-50" : ""
                   } ${col.rightPinned ? "right-0 text-mw-record" : ""}`}
                 >
-                  <span className="flex items-center gap-1">
-                    {canManageColumns && !structureLocked ? (
+                  <span className="flex min-w-0 items-center">
+                    {manageStructure || columnView ? (
                       <ColumnContextMenu
                         boardId={boardId}
                         column={col}
+                        rows={fillKnown ? rows : undefined}
+                        deleteRows={fillKnown ? boardRows ?? rows : undefined}
+                        catalog={columnCatalog ?? detailColumns}
+                        canManage={manageStructure}
+                        move={movable ? {
+                          canLeft: previous !== undefined && !isStructureLocked(previous),
+                          canRight: next !== undefined && !isStructureLocked(next),
+                          onMove: (delta) => onColumnKeyboardMove(col.key, delta),
+                        } : null}
+                        view={columnView}
                         scheduleItems={scheduleItems}
                         scheduleRecipients={scheduleRecipients}
                         onArchived={onColumnArchived}
-                      >
-                        <SourceBadge source={col.source} />
-                         <BoardInlineTitleEditor name={col.label} label="컬럼 이름" onSave={(value)=>renameColumnTitleAction(boardId,col.id,value)} className="min-w-0 flex-1 truncate"/>
-                      </ColumnContextMenu>
+                      />
                     ) : (
-                      <>
-                        <SourceBadge source={col.source} />
-                        <span className="truncate">{col.label}</span>
-                      </>
+                      <span className="truncate">{col.label}</span>
                     )}
                   </span>
-                  {canManageColumns && !structureLocked && (
+                  {manageStructure && (
                     <span
                       aria-hidden="true"
                       data-no-drag
@@ -1269,14 +1297,12 @@ export function GroupTable({
                        * ★ 잡는 영역은 6px 그대로 둔다 — 1px 를 겨누게 만들면 못 잡는다.
                        *   바꾸는 것은 «보이는 것» 뿐이다: 오른쪽 끝에 2px 선으로, 구분선 위에 정확히 겹치게.
                        * ★ top-0 h-full → inset-y-0. 그래야 테두리까지 포함한 셀 «전체» 높이가 된다.
+                       * ★ #845 5단계 — 평소엔 보이지 않는다. 머리글에 올리거나 칸 이름에 초점이 있으면 옅은 2px 선,
+                       *   손잡이에 올리면 진한 2px 선.
                        */
-                      className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize border-r-2 border-transparent transition-colors hover:border-mw-record"
+                      className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize border-r-2 border-transparent transition-colors group-hover/colhead:border-mw-line group-focus-within/colhead:border-mw-line hover:border-mw-record!"
                     />
                   )}
-                  {canManageColumns&&canMoveColumns&&!structureLocked?<span className="sr-only focus-within:not-sr-only">
-                    <button type="button" onClick={()=>onColumnKeyboardMove(col.key,-1)} aria-label={`${col.label} 왼쪽으로 이동`}>왼쪽으로 이동</button>
-                    <button type="button" onClick={()=>onColumnKeyboardMove(col.key,1)} aria-label={`${col.label} 오른쪽으로 이동`}>오른쪽으로 이동</button>
-                  </span>:null}
                 </th>
               );
             })}

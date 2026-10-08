@@ -42,7 +42,8 @@ import { BoardHeader } from "./BoardHeader";
 import { TabChromeProvider, type TabSettingsSection } from "./tab-chrome";
 import { selectionTriState } from "./bulk-selection";
 import { BoardScrollViewport } from "./BoardScrollViewport";
-import { BoardToolbar } from "./BoardToolbar";
+import { BoardToolbar, hasToolbarFacet, type ToolbarFilterFocus } from "./BoardToolbar";
+import type { ColumnViewRequest } from "./column-menu-model";
 import { GroupBlock, GroupSelectAll } from "./GroupBlock";
 import { GroupNameEditor } from "./GroupNameEditor";
 import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
@@ -939,6 +940,50 @@ export function BoardWorkspace({
   const pickAssignee = (value: string | null) =>
     setFilters((f) => ({ ...f, assignees: value === null ? [] : [value] }));
 
+  /*
+   * #845 5단계 — 칸 메뉴 「보기 · 나만」 의 요청을 받는 곳(onRequestViewCondition). 도구줄과 같은 보기 상태
+   * (주소에 남고 «뷰로 저장» 이 담는다)를 바꾼다. 칸 순서처럼 모두에게 바뀌는 것은 여기서 다루지 않는다.
+   *   · sort   — 이 칸 하나로 줄 세운다(다른 줄 세우기는 걷는다) · null 이면 이 칸만 뺀다
+   *   · filter — 「골라 보기…」: 지금은 도구줄 필터 패널을 펴고 그 칸 칩을 연다(다음 단계가 보기 조건 칸으로 돌린다)
+   *   · hide   — 「숨기기」: 보이는 칸에서 뺀다
+   * 도구줄과 똑같이 화면 key(displayFilters) 기준으로 고친다 — 신규리드 durable/present key 변환은 그대로 돈다.
+   */
+  const [filterFocus, setFilterFocus] = useState<ToolbarFilterFocus | null>(null);
+  const tableColumnKeys = tableColumns.map((column) => column.key).join(",");
+  const onRequestViewCondition = useCallback((request: ColumnViewRequest) => {
+    if (request.kind === "filter") {
+      setFilterFocus((current) => ({ columnKey: request.columnKey, seq: (current?.seq ?? 0) + 1 }));
+      return;
+    }
+    setFilters((current) => {
+      const shown = canonicalNewLead ? presentNewLeadSavedFilters(current) : current;
+      if (request.kind === "sort") {
+        const sorts = shown.sorts?.length
+          ? shown.sorts
+          : shown.sortKey
+            ? [{ columnKey: shown.sortKey, direction: shown.sortDir }]
+            : [];
+        return {
+          ...shown,
+          sortKey: "",
+          sortDir: "asc",
+          sorts: request.direction
+            ? [{ columnKey: request.columnKey, direction: request.direction }]
+            : sorts.filter((sort) => sort.columnKey !== request.columnKey),
+        };
+      }
+      const allKeys = tableColumnKeys ? tableColumnKeys.split(",") : [];
+      const visible = shown.visibleColumnKeys ?? allKeys;
+      return { ...shown, columnLimit: 0, visibleColumnKeys: visible.filter((key) => key !== request.columnKey) };
+    });
+  }, [canonicalNewLead, tableColumnKeys]);
+  const canFilterColumn = useCallback((column: BoardColumn) => hasToolbarFacet(column), []);
+  const activeSorts = displayFilters.sorts?.length
+    ? displayFilters.sorts
+    : displayFilters.sortKey
+      ? [{ columnKey: displayFilters.sortKey, direction: displayFilters.sortDir }]
+      : [];
+
   const handleColumnDrop = (
     groupKey: string,
     /** 그 그룹의 **전체** 컬럼 순서(컬럼수 제한 적용 전). */
@@ -1229,6 +1274,7 @@ export function BoardWorkspace({
         total={displayRows.length}
         people={people}
         legacyFacetLabels={canonicalNewLead ? NEW_LEAD_LEGACY_FACET_LABELS : undefined}
+        focusFilter={filterFocus}
       />
 
       {board.is_system && (
@@ -1278,7 +1324,7 @@ export function BoardWorkspace({
 
       {archivedColumnIds.size > 0 ? (
         <div role="status" className="flex items-center justify-between rounded-lg border border-mw-line bg-mw-card px-3 py-2 text-sm shadow">
-          <span>컬럼을 휴지통으로 옮겼습니다. 값과 설정은 보존됩니다.</span>
+          <span>칸을 휴지통으로 옮겼어요.</span>
           <button
             type="button"
             disabled={restoring}
@@ -1343,6 +1389,11 @@ export function BoardWorkspace({
           onRowDrop={() => {}}
           onColumnDrop={handleSharedColumnDrop}
           onColumnKeyboardMove={handleSharedColumnKeyboardMove}
+          onRequestViewCondition={onRequestViewCondition}
+          canFilterColumn={canFilterColumn}
+          activeSorts={activeSorts}
+          columnCatalog={physicalActiveColumns}
+          boardRows={optimisticRows}
           selection={selectedIds}
           onToggleRow={toggleRow}
           onToggleGroup={(checked) => toggleGroupIds(sharedHeaderRows.map((row) => row.id), checked)}
@@ -1524,6 +1575,11 @@ export function BoardWorkspace({
                   handleColumnDrop(block.key, resolvedColumns, draggedKey, targetKey)
                 }
                 onColumnKeyboardMove={(columnKey,delta)=>handleColumnKeyboardMove(block.key,resolvedColumns,columnKey,delta)}
+                onRequestViewCondition={onRequestViewCondition}
+                canFilterColumn={canFilterColumn}
+                activeSorts={activeSorts}
+                columnCatalog={physicalActiveColumns}
+                boardRows={optimisticRows}
                 dragRowId={rowDragEnabled ? dragRowId : null}
                 canDropRow={canDropRow}
                 selection={selectedIds}

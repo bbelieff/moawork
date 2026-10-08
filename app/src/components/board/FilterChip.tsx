@@ -28,6 +28,7 @@ export function FilterChip({
   active,
   onClear,
   children,
+  openSignal,
 }: {
   label: string;
   /** 칩 위에 붙는 현재 값 요약(예: "2개", "신청일 ↑"). 없으면 라벨만. */
@@ -36,9 +37,16 @@ export function FilterChip({
   /** 활성일 때만 ×(해제) 버튼이 붙는다. */
   onClear: () => void;
   children: ReactNode;
+  /** 바뀔 때마다 한 번 칩을 연다 — #845 칸 메뉴의 「골라 보기…」. 없으면 누를 때만 열린다. */
+  openSignal?: number;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
+  const [seenSignal, setSeenSignal] = useState<number | undefined>(undefined);
+  if (openSignal !== undefined && openSignal !== seenSignal) {
+    setSeenSignal(openSignal);
+    setOpen(true);
+  }
   const [position, setPosition] = useState({ left: 0, top: 0, maxHeight: 360, width: 288 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -48,6 +56,10 @@ export function FilterChip({
     if (restoreFocus) queueMicrotask(() => triggerRef.current?.focus());
   }, []);
 
+  useEffect(() => {
+    // 신호로 열렸을 때도 누른 것과 같이 다른 칩을 닫는다.
+    if (openSignal !== undefined) window.dispatchEvent(new CustomEvent("moawork:popover-open", { detail: id }));
+  }, [id, openSignal]);
   useEffect(() => {
     const closeOther = (event: Event) => {
       if ((event as CustomEvent<string>).detail !== id) close(false);

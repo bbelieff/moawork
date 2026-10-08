@@ -126,9 +126,13 @@ describe("② 표 렌더 — 업무 컬럼과 고정 열", () => {
     expect(html).toContain('name="columnKey" value="recontact_on"');
   });
 
-  it("출처 배지 4종이 헤더에 뜬다 — 이 탭이 실제로 쓰는 것 (⟳ ✎ ▼ ✉)", () => {
+  it("#845 5단계 — 머리글은 칸 이름만: 출처 기호(⟳ ✎ ▼ ✉) 대신 칸 메뉴·풀이가 출처를 말한다", () => {
     const html = renderTab(presentNewLeadColumns(repo.listColumns(ctx, boardId)));
-    for (const mark of ["⟳", "✎", "▼", "✉"]) expect(html, mark).toContain(mark);
+    const head = html.match(/<thead>[\s\S]*?<\/thead>/)?.[0] ?? "";
+    expect(head).not.toBe("");
+    for (const mark of ["⟳", "✎", "▼", "✉", "⋯"]) expect(head, mark).not.toContain(mark);
+    // 이 탭이 실제로 쓰는 출처 4종(수집·입력·버튼·발송)은 머리글 풀이(title)에 그대로 남는다.
+    for (const label of ["수집(", "입력(", "버튼(", "발송("]) expect(head, label).toContain(label);
   });
 });
 

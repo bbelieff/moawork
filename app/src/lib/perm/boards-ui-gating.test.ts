@@ -78,9 +78,15 @@ describe("boards UI consumes effective permissions", () => {
     );
     expect(trashDialog).toContain("<form action={deleteAction}");
     const table = readFileSync(join(__dirname, "..", "..", "components", "board", "GroupTable.tsx"), "utf8");
-    expect(table).toContain("canManageColumns && !structureLocked ? (");
+    // #845 5단계 — 칸 이름이 곧 칸 메뉴다. 「칸 자체 바꾸기」(이름·입력 방식·옮기기·지우기)와 폭 조절은
+    // 칸 관리 권한 + 구조를 바꿀 수 있는 칸에서만, 보는 방법(나만)만 권한과 무관하다. 서버도 다시 검사한다.
+    expect(table).toContain("const manageStructure = canManageColumns && !structureLocked;");
+    expect(table).toContain("canManage={manageStructure}");
+    expect(table).toContain("{manageStructure && (");
     expect(table).toContain("<ColumnContextMenu");
-    expect(table).toContain("<BoardInlineTitleEditor");
+    const columnMenu = readFileSync(join(__dirname, "..", "..", "components", "board", "ColumnContextMenu.tsx"), "utf8");
+    expect(columnMenu).toContain("{canManage ? (");
+    expect(columnMenu).toContain("<BoardInlineTitleEditor");
     expect(table).not.toContain("⠿");
     // BBE-239 — 공지사항 작성자 예외로 canDeleteRow 가 됐지만, role 권한(canDeleteItems)은
     // 여전히 그 계산식 안에 있어야 한다(작성자 예외가 role 권한을 대체하면 안 된다).

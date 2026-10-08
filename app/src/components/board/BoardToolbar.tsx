@@ -11,7 +11,7 @@
  * 다른 보드에서도 같은 도구줄이 그 보드의 어휘로 나온다.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { CheckOption, FilterChip, RadioOption } from "./FilterChip";
 import {
@@ -22,6 +22,19 @@ import {
   type BoardFilterState,
 } from "./filters";
 import { OtherInfoFacetFilters } from "./OtherInfoFacetFilter";
+
+/**
+ * 필터 패널에 칩이 생기는 칸인가 — 선택지가 있는 목록·상태 칸과 기타정보 칸.
+ * #845 5단계: 칸 메뉴의 「골라 보기…」 는 이 칸들에서만 보인다(다음 단계에서 보기 조건 칸이 넓힌다).
+ */
+export function hasToolbarFacet(column: Pick<BoardColumn, "type" | "options_jsonb">): boolean {
+  if (column.type === "other_info") return true;
+  return (column.type === "select" || column.type === "multiselect" || column.type === "status")
+    && Boolean(column.options_jsonb?.options?.length);
+}
+
+/** 칸 메뉴가 「골라 보기…」 로 이 칸의 필터를 열어 달라는 요청. seq 가 바뀔 때마다 한 번 연다. */
+export type ToolbarFilterFocus = Readonly<{ columnKey: string; seq: number }>;
 
 function toggle(list: readonly string[], value: string): string[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -84,6 +97,7 @@ export function BoardToolbar({
   total,
   people,
   legacyFacetLabels = {},
+  focusFilter = null,
 }: {
   /** 보드 전체 컬럼(그룹 오버라이드 적용 전) — 필터·정렬 대상은 보드 전역이다. */
   columns: readonly BoardColumn[];
@@ -96,17 +110,15 @@ export function BoardToolbar({
   people: { value: string; label: string }[];
   /** presentation에서 숨긴 physical facet이 이미 활성일 때만 보여 주는 clear-only 라벨. */
   legacyFacetLabels?: Readonly<Record<string, string>>;
+  /** #845 5단계 — 칸 메뉴 「골라 보기…」: 필터 패널을 펴고 그 칸의 칩을 연다. */
+  focusFilter?: ToolbarFilterFocus | null;
 }) {
   // `status` 도 선택지 컬럼이다(BBE-145). BBE-123 이 타입 15종을 넣으면서 select 에서
   // «상태»(버튼으로 바꾸는 단계값)를 분리했는데 이 필터 목록은 그때 같이 안 늘었다.
   // 그래서 신규리드의 핵심 필터인 「상담 상황」·「컨택 이동」·「피드백 상황」이 전부
   // 칩으로 뜨지 않았다 — 표에서는 StatusCell 로 잘 그리면서 필터에서만 빠져 있었다.
   const optionColumns = useMemo(
-    () => columns.filter(
-      (c) =>
-        (c.type === "select" || c.type === "multiselect" || c.type === "status") &&
-        c.options_jsonb?.options?.length,
-    ),
+    () => columns.filter((c) => c.type !== "other_info" && hasToolbarFacet(c)),
     [columns],
   );
   const otherInfoColumns = columns.filter((column) => column.type === "other_info");
@@ -181,8 +193,28 @@ export function BoardToolbar({
    *   useState 초기값으로만 두면 나중에 저장뷰를 불러와 필터가 걸려도 안 열린다.
    */
   const [openOverride, setOpenOverride] = useState<boolean | null>(null);
+  /*
+   * 칸 메뉴에서 온 「골라 보기…」 — 받은 요청마다 한 번: 패널을 펴고 그 칸의 칩을 연다.
+   * 패널을 접으면 잊는다(다시 펼 때 칩이 저절로 열리지 않게).
+   */
+  const [handledFocusSeq, setHandledFocusSeq] = useState(0);
+  const [chipFocus, setChipFocus] = useState<ToolbarFilterFocus | null>(null);
+  if (focusFilter && focusFilter.seq !== handledFocusSeq) {
+    setHandledFocusSeq(focusFilter.seq);
+    setOpenOverride(true);
+    setChipFocus(focusFilter);
+  }
+  const chipFocusSeq = chipFocus?.seq ?? 0;
+  useEffect(() => {
+    if (chipFocusSeq === 0) return;
+    // 도구줄이 화면 밖(아래로 내려 본 표)이면 칩 팝오버가 화면 밖에 뜨므로 패널을 먼저 보이게 한다.
+    document.getElementById("board-filter-panel")?.scrollIntoView?.({ block: "nearest" });
+  }, [chipFocusSeq]);
   const filtersOpen = openOverride ?? facetCount > 0;
-  const setFiltersOpen = (next: boolean) => setOpenOverride(next);
+  const setFiltersOpen = (next: boolean) => {
+    setOpenOverride(next);
+    if (!next) setChipFocus(null);
+  };
   /**
    * 필터가 하나도 만들어질 수 없는 보드에서는 「필터」 버튼을 아예 안 그린다.
    * 열어도 빈 패널이면 «있는데 비었다» 와 «애초에 없다» 를 구분 못 한다.
@@ -262,6 +294,7 @@ export function BoardToolbar({
             }
             active={picked.length > 0}
             onClear={() => patch({ byColumn: { ...filters.byColumn, [col.key]: [] } })}
+            openSignal={chipFocus?.columnKey === col.key ? chipFocus.seq : undefined}
           >
             <OptionPicker
               label={col.label}

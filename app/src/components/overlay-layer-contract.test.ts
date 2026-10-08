@@ -9,7 +9,6 @@ const switcher = read("src/components/workspace/WorkspaceSwitcher.tsx");
 const switcherCss = read("src/components/workspace/workspace-switcher.module.css");
 const filter = read("src/components/board/FilterChip.tsx");
 const columnMenu = read("src/components/board/BoardAnchoredMenu.tsx");
-const columnPanel = read("src/components/board/ColumnExpandedPanel.tsx");
 const boardDialogPortal = read("src/components/board/BoardDialogPortal.tsx");
 const workBoard = read("src/components/work-management/WorkBoardSurface.tsx");
 const workBoardCss = read("src/components/work-management/work-management.module.css");
@@ -60,12 +59,11 @@ describe("Issue #568 global overlay contract", () => {
     expect(workBoardCss).not.toContain(".drawer{position:fixed;z-index:20;");
   });
 
-  it("컬럼 메뉴와 확장 패널은 body portal의 page-popover 레이어를 쓴다", () => {
+  // #845 5단계 — 칸 메뉴 맨 위가 칸 정보를 보여 주면서 옛 «컬럼 확장» 패널은 없어졌다.
+  it("칸 메뉴는 body portal의 page-popover 레이어를 쓴다", () => {
     expect(columnMenu).toContain("<BoardDialogPortal>");
     expect(columnMenu).toContain("mw-layer-page-popover fixed");
-    expect(columnPanel).toContain("<BoardDialogPortal>");
-    expect(columnPanel).toContain("mw-layer-page-popover fixed");
-    expect(columnPanel).not.toContain("mw-layer-dialog");
+    expect(columnMenu).not.toContain("mw-layer-dialog");
   });
 
   it("보드 모달은 scrim과 dialog를 별도 의미 레이어로 렌더한다", () => {

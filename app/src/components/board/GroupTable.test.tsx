@@ -73,14 +73,20 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     expect(boardFileSelectionError(MAX_FILE_BYTES + 1)).toContain("10MB");
   });
 
-  it("모든 출처 배지가 헤더에 뜬다(⟳✎▼✉⇄ƒ 6종 전부)", () => {
+  it("#845 5단계 — 머리글에는 칸 이름만: 출처 기호(⟳✎▼✉⇄ƒ)·⋯ 단추 없이 이름이 곧 메뉴 단추다", () => {
     const columns = (["auto", "in", "act", "msg", "lk", "calc"] as const).map((source) =>
-      col({ key: source, label: source, source, type: source === "calc" ? "calc" : "text" }),
+      col({ key: source, label: `칸-${source}`, source, type: source === "calc" ? "calc" : "text" }),
     );
     const html = renderTable(columns, [row()]);
-    for (const mark of ["⟳", "✎", "▼", "✉", "⇄", "ƒ"]) {
-      expect(html).toContain(mark);
+    const head = html.match(/<thead>[\s\S]*?<\/thead>/)?.[0] ?? "";
+    expect(head).not.toBe("");
+    for (const mark of ["⟳", "✎", "▼", "✉", "⇄", "ƒ", "⋯"]) expect(head, mark).not.toContain(mark);
+    for (const column of columns) {
+      const header = head.match(new RegExp(`<th(?=[^>]*data-column-key="${column.key}")[\\s\\S]*?<\\/th>`))?.[0] ?? "";
+      expect(header).toMatch(new RegExp(`role="button"[^>]*aria-haspopup="menu"[^>]*>${column.label}</span>`));
     }
+    // 칸이 어떤 칸인지(종류·출처)는 메뉴 맨 위와 머리글 풀이(title)에 남는다.
+    expect(head).toContain("발송(바꾸면 고객에게 문자가 나가고 비용이 듭니다)");
   });
 
   it("⇄ 연동 칸은 provenance 배지와 편집 폼을 함께 그린다", () => {
@@ -211,15 +217,18 @@ describe("GroupTable — 컬럼 순서 바꾸기만 끄기 (2026-10-08)", () => 
     />,
   );
 
-  it("순서 바꾸기만 끄면 끌기·키보드 이동은 없고 이름 편집·폭 조절은 남는다", () => {
+  it("순서 바꾸기만 끄면 끌기는 없고 칸 메뉴(이름 바꾸기·지우기 등)·폭 조절은 남는다", () => {
     const off = render(false);
     expect(off).not.toContain('draggable="true"');
-    expect(off).not.toContain("왼쪽으로 이동");
+    expect(off).not.toContain("칸 순서 바꾸기");
     expect(off).toContain("끌어서 폭 조절");
-    expect(off).toContain('aria-label="구분 컬럼 메뉴"');
-    expect(off).toContain('aria-label="컬럼 이름 편집"');
+    expect(off).toMatch(/<th[^>]*data-column-key="kind"[^>]*data-column-manage="true"/);
+    expect(off).toContain('aria-haspopup="menu"');
+    // 머리글 안에 숨은 「왼쪽으로 이동」 단추를 두지 않는다 — 옮기기는 칸 메뉴에 있다.
+    expect(off).not.toContain("왼쪽으로 이동");
     const on = render(true);
     expect(on).toContain('draggable="true"');
-    expect(on).toContain("구분 왼쪽으로 이동");
+    expect(on).toContain("칸 순서 바꾸기");
+    expect(on).not.toContain("왼쪽으로 이동");
   });
 });

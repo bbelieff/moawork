@@ -14,7 +14,8 @@ describe("BBE-178 column settings UI preparation", () => {
   });
 
   it("registers the settings panel in the merged context-menu surface", () => {
-    expect(menu).toContain('showSurface("settings")}>컬럼 설정');
+    // #845 5단계 — 칸 메뉴의 「선택지 고치기」(목록 칸)·「입력 방식 바꾸기」 가 같은 설정 화면을 연다.
+    expect(menu).toContain('label={editLabel} onClick={() => showSurface("settings")}');
     expect(menu).toContain("<ColumnSettingsPanel");
     expect(menu).toContain("onPendingChange={setSettingsPending}");
     expect(panel).toContain("onPendingChange?.(pending)");
