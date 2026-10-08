@@ -604,7 +604,7 @@ export function BoardWorkspace({
   const groupValueEditable = Boolean(groupColumn) && !readOnly && groupValueBlocked === null;
   const groupValueInFlightRef = useRef(false);
   const [groupValuePending, setGroupValuePending] = useState(false);
-  const [groupValueError, setGroupValueError] = useState<string | null>(null);
+  const [groupValueNotice, setGroupValueNotice] = useState<ResultNotice | null>(null);
 
   const [orderedGroups, setOrderedGroups] = useOptimistic(
     [...groups].sort((a, b) => a.sort_order - b.sort_order),
@@ -1055,7 +1055,7 @@ export function BoardWorkspace({
   const changeGroupBy = useCallback((key: string) => {
     setGroupByKey(key);
     setEmptyGroupsOpen(false);
-    setGroupValueError(null);
+    setGroupValueNotice(null);
     const url = new URL(window.location.href);
     const stored = key && canonicalNewLead ? durableNewLeadColumnKeys([key])[0] ?? key : key;
     if (stored) url.searchParams.set("group", stored);
@@ -1246,7 +1246,7 @@ export function BoardWorkspace({
     if (groupValueInFlightRef.current) { setMoveNotice("이전 변경을 저장하고 있어요."); return; }
     groupValueInFlightRef.current = true;
     setGroupValuePending(true);
-    setGroupValueError(null);
+    setGroupValueNotice(null);
     const columnKey = groupColumn.key;
     const value = movedGroupValue(groupColumn, row.values[columnKey] ?? null, target.groupValue.id);
     const targetName = blockDisplayNames.get(target.key) ?? target.name;
@@ -1255,11 +1255,11 @@ export function BoardWorkspace({
       try {
         const result = await setGroupValueAction(groupValueForm(row.id, columnKey, value));
         if (result.ok) setMoveNotice(result.notice ?? `「${targetName}」에 옮겼어요.`);
-        else { setMoveNotice(result.message); setGroupValueError(result.message); }
+        else { setMoveNotice(result.message); setGroupValueNotice({ ok: false, message: result.message }); }
       } catch {
         const message = "값을 바꾸지 못했어요. 다시 시도해 주세요.";
         setMoveNotice(message);
-        setGroupValueError(message);
+        setGroupValueNotice({ ok: false, message });
       } finally {
         groupValueInFlightRef.current = false;
         setGroupValuePending(false);
@@ -1286,9 +1286,9 @@ export function BoardWorkspace({
     startTransition(async () => {
       try {
         const result = await setGroupValueAction(groupValueForm(itemId, prefill.columnKey, prefill.value));
-        if (!result.ok) setGroupValueError(result.message);
+        if (!result.ok) setGroupValueNotice({ ok: false, message: result.message });
       } catch {
-        setGroupValueError("묶음 값을 넣지 못했어요. 칸에서 골라 주세요.");
+        setGroupValueNotice({ ok: false, message: "묶음 값을 넣지 못했어요. 칸에서 골라 주세요." });
       }
     });
   };
@@ -1494,9 +1494,9 @@ export function BoardWorkspace({
           줄 세우기 중에는 행을 끌어 옮길 수 없어요 · 「원래 순서」로 바꾸면 옮길 수 있어요
         </p>
       )}
-      {groupValueError ? (
-        <p role="alert" data-group-value-error="" className="rounded-lg border border-mw-line bg-mw-card px-3 py-2 text-xs text-mw-error">
-          {groupValueError}
+      {groupValueNotice ? (
+        <p role={noticeRole(groupValueNotice.ok)} aria-live={noticeLive(groupValueNotice.ok)} data-group-value-error="" className={`rounded-lg border border-mw-line bg-mw-card px-3 py-2 text-xs ${groupValueNotice.ok ? "text-mw-body" : "text-mw-error"}`}>
+          {groupValueNotice.message}
         </p>
       ) : null}
       {selectedIds.size > 0 || bulkDialog !== null ? (

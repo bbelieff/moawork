@@ -50,6 +50,7 @@ import { ItemDetailPanel } from "./ItemDetailPanel";
 import type { ItemDetailSnapshot } from "@/app/(app)/boards/item-detail-actions";
 import { moveItemToTrash } from "./ItemTrashUndo";
 import { RowContextMenu, rowContextMenuPoint, type RowContextMenuRequest } from "./RowContextMenu";
+import { LONG_PRESS_IGNORE_SELECTOR, useTouchLongPress } from "./use-touch-long-press";
 import { requestItemDetailOpen } from "@/lib/boards/item-detail-open";
 import { AddItemForm } from "./AddItemForm";
 import { ContractWorkIntakeForm } from "./ContractWorkIntakeForm";
@@ -869,6 +870,10 @@ export function GroupTable({
     const target = rows.find((candidate) => candidate.id === rowId);
     if (target) void moveItemToTrash({ boardId, itemId: target.id, title: target.title });
   };
+  const openRowMenuAt = (row: ItemWithValues, canTrash: boolean, point: { x: number; y: number }) =>
+    setRowMenu({ rowId: row.id, title: row.title, x: point.x, y: point.y, canRename: !readOnly, canTrash });
+  /** 터치 길게 누르기(약 0.5초) — iOS 는 contextmenu 를 보내지 않으므로 같은 메뉴를 직접 연다. */
+  const longPress = useTouchLongPress();
   /** 우클릭·Shift+F10·메뉴 키. 글자를 고치는 칸에서는 브라우저 기본 메뉴(붙여넣기 등)를 그대로 둔다. */
   const openRowMenuFromEvent = (
     event: React.MouseEvent<HTMLTableRowElement> | React.KeyboardEvent<HTMLTableRowElement>,
@@ -878,10 +883,11 @@ export function GroupTable({
     const target = event.target as HTMLElement;
     // 행 «안» 의 DOM 에서 일어난 것만 — 칸이 띄운 포털(선택지 팝오버 등)에서 올라온 것은 행 메뉴가 아니다.
     if (!event.currentTarget.contains(target)) return;
-    if (target.closest('input:not([type="checkbox"]),textarea,select,[contenteditable="true"]')) return;
+    if (target.closest(LONG_PRESS_IGNORE_SELECTOR)) return;
+    // 길게 누르기로 이미 연 몸짓에 브라우저가 contextmenu 를 또 보내면(안드로이드) 다시 열지 않는다.
+    if ("clientX" in event && longPress.takeContextMenu(event)) return;
     event.preventDefault();
-    const point = rowContextMenuPoint("clientX" in event ? event : { clientX: 0, clientY: 0 }, target);
-    setRowMenu({ rowId: row.id, title: row.title, x: point.x, y: point.y, canRename: !readOnly, canTrash });
+    openRowMenuAt(row, canTrash, rowContextMenuPoint("clientX" in event ? event : { clientX: 0, clientY: 0 }, target));
   };
 
   const clearColDrag = useCallback(() => {
@@ -1362,6 +1368,9 @@ export function GroupTable({
               <tr
                 key={row.id}
                 data-board-row=""
+                {...longPress.bind<HTMLTableRowElement>((point, target) =>
+                  openRowMenuAt(row, canDeleteRow, rowContextMenuPoint(point, target)))}
+                onDragStart={longPress.cancel}
                 onContextMenu={(event) => openRowMenuFromEvent(event, row, canDeleteRow)}
                 onKeyDown={(event) => {
                   if (!((event.shiftKey && event.key === "F10") || event.key === "ContextMenu")) return;

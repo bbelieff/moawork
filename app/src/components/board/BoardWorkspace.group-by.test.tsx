@@ -186,6 +186,8 @@ describe("값 묶음", () => {
     expect(sections(host).find(({ title }) => title === "신용보증기금")!.rows).toEqual(["가회사"]);
     expect(sections(host).find(({ title }) => title === "(없음)")!.rows).toEqual(["다회사"]);
     expect(host.querySelector("[data-group-value-error]")!.textContent).toBe("이 업무를 실행할 권한이 없어요.");
+    // 실패 판정을 읽어 경고(alert)로 알린다 — 성공을 alert 로, 실패를 status 로 칠하지 않는다.
+    expect(host.querySelector("[data-group-value-error]")!.getAttribute("role")).toBe("alert");
     expect(JSON.parse(String(actionMocks.setGroupValueAction.mock.calls[0][0].get("value")))).toBeNull();
   });
 

@@ -225,3 +225,117 @@ describe("행 우클릭 메뉴", () => {
     expect([...toast!.querySelectorAll("button")].some((button) => button.textContent === "되돌리기")).toBe(false);
   });
 });
+
+/*
+ * #845 8단계(2026-10-08) — 터치 길게 누르기. iOS 는 contextmenu 를 보내지 않으므로
+ * 터치 포인터가 약 0.5초 거의 움직이지 않으면 우클릭과 같은 행 메뉴를 연다.
+ */
+function pointer(
+  type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel",
+  target: Element,
+  { x = 40, y = 30, pointerType = "touch", pointerId = 7 }: { x?: number; y?: number; pointerType?: string; pointerId?: number } = {},
+) {
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y });
+  Object.defineProperties(event, {
+    pointerType: { value: pointerType },
+    pointerId: { value: pointerId },
+    isPrimary: { value: true },
+  });
+  return act(async () => { target.dispatchEvent(event); });
+}
+const wait = (ms: number) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
+
+describe("터치 길게 누르기 — 우클릭과 같은 행 메뉴", () => {
+  it("0.5초 길게 누르면 같은 메뉴가 누른 자리에 열리고, 손을 뗄 때의 click 은 상세를 열지 않는다", async () => {
+    const host = await mount();
+    const name = nameButton(host, "다온디자인");
+    await pointer("pointerdown", name, { x: 64, y: 48 });
+    await wait(200);
+    expect(menu()).toBeNull();
+    await wait(350);
+    expect(menu()?.getAttribute("aria-label")).toBe("다온디자인 행 메뉴");
+    expect(menuLabels()).toEqual(["옆에 열기", "업체명 바꾸기", "휴지통으로 이동"]);
+    const anchor = document.querySelector<HTMLElement>("[data-row-menu-anchor]")!;
+    expect([anchor.style.left, anchor.style.top]).toEqual(["64px", "48px"]);
+
+    await pointer("pointerup", name, { x: 64, y: 48 });
+    await act(async () => { name.click(); });
+    expect(dialog()).toBeNull();
+    expect(menu()).not.toBeNull();
+
+    // 메뉴 항목은 평소처럼 — 「휴지통으로 이동」 은 기존 휴지통 액션.
+    await clickMenuItem("휴지통으로 이동");
+    expect(trash.trashItemAction).toHaveBeenCalledTimes(1);
+    expect((trash.trashItemAction.mock.calls[0][1] as FormData).get("itemId")).toBe("row-a");
+  });
+
+  it("짧게 누르면(탭) 메뉴 없이 평소처럼 상세가 열린다", async () => {
+    const host = await mount();
+    const name = nameButton(host, "리드건설");
+    await pointer("pointerdown", name);
+    await wait(150);
+    await pointer("pointerup", name);
+    await act(async () => { name.click(); });
+    await wait(450);
+    expect(menu()).toBeNull();
+    expect(dialog()?.getAttribute("aria-label")).toBe("리드건설 상세");
+  });
+
+  it("손가락이 움직이면(스크롤·끌기) 열지 않는다", async () => {
+    const host = await mount();
+    const cell = host.querySelector("tbody tr[data-board-row] td:last-child")!;
+    await pointer("pointerdown", cell, { x: 40, y: 30 });
+    await pointer("pointermove", cell, { x: 40, y: 45 });
+    await wait(550);
+    expect(menu()).toBeNull();
+
+    await pointer("pointerdown", cell, { x: 40, y: 30 });
+    await pointer("pointercancel", cell, { x: 40, y: 30 });
+    await wait(550);
+    expect(menu()).toBeNull();
+  });
+
+  it("마우스로 오래 누르거나, 글자를 고치는 칸을 길게 누르면 열지 않는다", async () => {
+    const host = await mount();
+    await pointer("pointerdown", nameButton(host, "다온디자인"), { pointerType: "mouse", pointerId: 1 });
+    await wait(550);
+    expect(menu()).toBeNull();
+    await pointer("pointerup", nameButton(host, "다온디자인"), { pointerType: "mouse", pointerId: 1 });
+
+    const input = host.querySelector<HTMLInputElement>('tbody tr[data-board-row] input[aria-label="메모"]')!;
+    await pointer("pointerdown", input);
+    await wait(550);
+    expect(menu()).toBeNull();
+  });
+
+  it("브라우저가 길게 누르기에 contextmenu 도 보내면(안드로이드) 한 몸짓에 메뉴는 하나만", async () => {
+    const host = await mount();
+    const cell = host.querySelectorAll("tbody tr[data-board-row]")[1].querySelector("td:last-child")!;
+    // 우리 타이머가 먼저 — 뒤이은 contextmenu 는 기본 메뉴만 막고 다시 열지 않는다.
+    await pointer("pointerdown", cell, { x: 50, y: 60 });
+    await wait(550);
+    const opened = menu();
+    expect(opened?.getAttribute("aria-label")).toBe("리드건설 행 메뉴");
+    const late = await rightClick(cell, 50, 60);
+    expect(late.defaultPrevented).toBe(true);
+    expect(document.querySelectorAll('[role="menu"]')).toHaveLength(1);
+    expect(menu()).toBe(opened);
+    await pointer("pointerup", cell, { x: 50, y: 60 });
+    await act(async () => { menu()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+    expect(menu()).toBeNull();
+
+    // 브라우저 contextmenu 가 먼저 — 그 메뉴 하나만, 우리 타이머는 거두고, 손 뗄 때의 click 은 삼킨다.
+    const name = nameButton(host, "리드건설");
+    await pointer("pointerdown", name, { x: 20, y: 60 });
+    await wait(100);
+    const early = await rightClick(name, 20, 60);
+    expect(early.defaultPrevented).toBe(true);
+    const first = menu();
+    expect(first?.getAttribute("aria-label")).toBe("리드건설 행 메뉴");
+    await wait(500);
+    expect(menu()).toBe(first);
+    await pointer("pointerup", name, { x: 20, y: 60 });
+    await act(async () => { name.click(); });
+    expect(dialog()).toBeNull();
+  });
+});
