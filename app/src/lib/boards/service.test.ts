@@ -448,6 +448,56 @@ describe("보드 화면 스냅샷", () => {
     expect(listValues).toHaveBeenCalledOnce();
   });
 
+  it("Issue 857 — 저장소가 행과 값을 함께 주면 값을 따로 읽지 않고, 버린 휴지통 행의 값은 쓰지 않는다", async () => {
+    const { repo, service, boardId, active, deleted } = await setupSnapshotBoard();
+    const listValues = vi.spyOn(repo, "listValues");
+    const [activeValues, deletedValues] = await Promise.all([
+      repo.listValues(owner, [active.id]),
+      repo.listValues(owner, [deleted.id]),
+    ]);
+    listValues.mockClear();
+    repo.listItemsWithValues = async (_ctx, _boardId, scope) => scope === "active"
+      ? { items: await repo.listItems(owner, boardId), values: activeValues }
+      : scope === "deleted"
+        ? { items: await repo.listDeletedItems(owner, boardId), values: deletedValues }
+        : { items: [], values: [] };
+
+    const snapshot = await service.loadPageSnapshot(owner, boardId, { includeDeleted: true });
+    expect(listValues).not.toHaveBeenCalled();
+    expect(snapshot.items[0].values.status).toBe("opt-doing");
+    expect(snapshot.deletedItems[0].values.status).toBe("opt-done");
+
+    const original = repo.getBoard.bind(repo);
+    repo.getBoard = async (ctx, id) => {
+      const board = await original(ctx, id);
+      return board ? { ...board, is_system: true } : board;
+    };
+    const system = await service.loadPageSnapshot(owner, boardId, { includeDeleted: true });
+    expect(system.deletedItems).toEqual([]);
+    expect(system.items.map((item) => item.id)).toEqual([active.id]);
+  });
+
+  it("Issue 857 — 보드를 못 찾으면 같은 물결의 행 읽기가 실패해도 «없음» 으로 끝난다", async () => {
+    const { repo, service, boardId } = await setupSnapshotBoard();
+    repo.getBoard = async () => undefined;
+    repo.listItems = async () => { throw new Error("network"); };
+    await expect(service.loadPageSnapshot(owner, boardId, { includeDeleted: true }))
+      .rejects.toThrow("보드를 찾을 수 없습니다");
+  });
+
+  it("Issue 857 — 시스템 보드는 휴지통 행을 같이 읽어도 버리고 그 값 ID 를 발행하지 않는다", async () => {
+    const { repo, service, boardId, active } = await setupSnapshotBoard();
+    const original = repo.getBoard.bind(repo);
+    repo.getBoard = async (ctx, id) => {
+      const board = await original(ctx, id);
+      return board ? { ...board, is_system: true } : board;
+    };
+    const listValues = vi.spyOn(repo, "listValues");
+    const snapshot = await service.loadPageSnapshot(owner, boardId, { includeDeleted: true });
+    expect(snapshot.deletedItems).toEqual([]);
+    expect(listValues).toHaveBeenCalledWith(owner, [active.id]);
+  });
+
   it("휴지통을 허용하지 않으면 deleted read와 deleted value ID를 발행하지 않는다", async () => {
     const { local, service, boardId, active } = await setupSnapshotBoard();
     const listDeletedItems = vi.spyOn(local, "listDeletedItems");

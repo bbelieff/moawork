@@ -63,6 +63,9 @@ const probe = vi.hoisted(() => {
   const tables: Record<string, unknown[]> = {};
   const rpcs: Record<string, unknown> = {};
   const rpcErrors: Record<string, unknown> = {};
+  // Issue 857 — 어느 회사로 판정했는지 본다(이른 판정을 버리는 경로 확인용). 값이 함수면 인자로 응답을 고른다.
+  const rpcCalls: Array<{ name: string; args: Record<string, unknown> | undefined; wave: number }> = [];
+  let cookieOrg: string | null = "org-1";
 
   function thenable(label: string, produce: () => unknown, error: () => unknown = () => null) {
     return {
@@ -87,7 +90,8 @@ const probe = vi.hoisted(() => {
   function makeQuery(table: string) {
     let deletedScope: "active" | "deleted" | null = null;
     let archivedScope = false;
-    const rows = () => {
+    let embedsValues = false;
+    const scopedRows = () => {
       const all = tables[table] ?? [];
       if (table !== "items" || deletedScope === null) return all;
       return all.filter((row) => {
@@ -95,6 +99,13 @@ const probe = vi.hoisted(() => {
         return deletedScope === "deleted" ? deleted : !deleted;
       });
     };
+    // Issue 857 — `items` 에 item_values 를 묶어 읽으면(한 왕복) 각 행에 그 값을 붙여 돌려준다.
+    const rows = () => embedsValues
+      ? scopedRows().map((row) => ({
+          ...(row as Record<string, unknown>),
+          item_values: (tables.item_values ?? []).filter((value) => (value as { item_id?: string }).item_id === (row as { id?: string }).id),
+        }))
+      : scopedRows();
     const q: Record<string, unknown> = {};
     let op = "select";
     for (const method of CHAIN) {
@@ -103,6 +114,10 @@ const probe = vi.hoisted(() => {
         return q;
       };
     }
+    q.select = (columns?: string) => {
+      if (typeof columns === "string" && /item_values[!(]/.test(columns)) embedsValues = true;
+      return q;
+    };
     q.is = (column: string, value: unknown) => {
       if (table === "items" && column === "deleted_at" && value === null) deletedScope = "active";
       return q;
@@ -165,14 +180,24 @@ const probe = vi.hoisted(() => {
 
   const client = {
     auth: {
-      getUser: () =>
-        roundtrip("auth.getUser", {
-          data: { user: { id: "user-1", email: "member@example.test" } },
+      // Issue 857 — 세션은 getClaims 로 확인한다. 비대칭 키면 왕복이 없지만, 대칭 키(getUser 폴백)일
+      //   수도 있으므로 계측은 보수적으로 한 번의 왕복으로 센다.
+      getClaims: () =>
+        roundtrip("auth.getClaims", {
+          data: { claims: { sub: "user-1", email: "member@example.test" } },
           error: null,
         }),
     },
     from: (table: string) => makeQuery(table),
-    rpc: (name: string) => thenable(rpcLabel(name), () => rpcs[name] ?? null, () => rpcErrors[name] ?? null),
+    rpc: (name: string, args?: Record<string, unknown>) => {
+      rpcCalls.push({ name, args, wave });
+      const value = rpcs[name];
+      return thenable(
+        rpcLabel(name),
+        () => (typeof value === "function" ? (value as (input: typeof args) => unknown)(args) : value) ?? null,
+        () => rpcErrors[name] ?? null,
+      );
+    },
   };
 
   return {
@@ -180,7 +205,10 @@ const probe = vi.hoisted(() => {
     tables,
     rpcs,
     rpcErrors,
+    rpcCalls,
     trips,
+    get cookieOrg() { return cookieOrg; },
+    set cookieOrg(value: string | null) { cookieOrg = value; },
     get traceId() { return traceId; },
     set traceId(value: string | null) { traceId = value; },
     get requestStart() { return requestStart; },
@@ -192,6 +220,8 @@ const probe = vi.hoisted(() => {
       traceId = null;
       requestStart = null;
       trips.length = 0;
+      rpcCalls.length = 0;
+      cookieOrg = "org-1";
       for (const key of Object.keys(rpcErrors)) delete rpcErrors[key];
     },
   };
@@ -204,7 +234,12 @@ vi.mock("@/lib/supabase/env", () => ({
   getSupabaseEnv: () => ({ url: "https://example.test", anonKey: "anon" }),
 }));
 vi.mock("next/headers", () => ({
-  cookies: async () => ({ get: () => undefined, getAll: () => [], set: () => {} }),
+  // Issue 857 — 프록시가 이 요청에서 확인해 심은 회사(mw_org). 화면은 이것으로 판정을 세션과 같이 출발시킨다.
+  cookies: async () => ({
+    get: (name: string) => (name === "mw_org" && probe.cookieOrg ? { value: probe.cookieOrg } : undefined),
+    getAll: () => [],
+    set: () => {},
+  }),
   headers: async () => ({
     get: (name: string) => {
       const normalized = name.toLowerCase();
@@ -367,7 +402,7 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
   // 왕복 수가 «작게» 나와서 «빨라 보이는» 거짓 통과가 된다. 그래서 먼저 경로를 확인한다.
   it("하니스가 실제 데이터 경로를 탄다 — 조기 이탈이 아니다", async () => {
     const run = await renderBoard();
-    expect(run.countOf("auth.getUser")).toBe(1);
+    expect(run.countOf("auth.getClaims")).toBe(1);
     expect(run.countOf("select:boards")).toBeGreaterThan(0);
     expect(run.countOf("select:items:active")).toBeGreaterThan(0);
   });
@@ -460,12 +495,14 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
   it("보드 화면의 직렬 단계가 예산을 넘지 않는다 — 병렬을 직렬로 되돌리면 빨개진다", async () => {
     const run = await renderBoard();
     // 담당자 목록과 그룹 컬럼 배치를 같은 물결에 실은 뒤 측정값 8.
-    // 권한·D24/메타·행·값 또는 snapshot 뒤의 두 독립 읽기를 다시 줄 세우면 즉시 넘는다.
+    // Issue 857 — 보드 정보와 행 목록을 한 물결로, 그룹 컬럼 배치를 스냅샷과 같은 물결로, 기본 담당자
+    //   목록은 보드 종류를 안 순간(메타데이터) 띄워 6. 이어서 판정을 세션 확인과 같이 출발시키고(mw_org),
+    //   값을 행과 함께 읽어 5. 세션 → 메타‖행(값 포함) 순서를 다시 줄 세우면 넘는다.
     expect(run.serialStages, "보드 화면의 직렬 DB 단계가 늘었다 — 어디서 await 이 줄 섰는지 확인해라")
-      .toBe(8);
-    // 보관 읽기는 활성·휴지통과 같은 물결에 탄다 (직렬 단계 추가 없음, 왕복 +1).
+      .toBe(5);
+    // 보관 읽기는 활성·휴지통과 같은 물결에 탄다 (직렬 단계 추가 없음, 왕복 +1). 값은 행에 묶여 와서 따로 안 센다.
     expect(run.total, "보드 화면의 읽기 왕복 계약이 바뀌었다 — 로그 계측은 쿼리를 더하면 안 된다")
-      .toBe(15);
+      .toBe(14);
     const permissionWave = run.trips.find((trip) => trip.label === "rpc:effective_permissions")?.wave;
     const scopeWave = run.trips.find((trip) => trip.label === "rpc:read_permission_scoped_work_items")?.wave;
     expect(permissionWave, "권한 판정 왕복을 못 찾았다").toBeTypeOf("number");
@@ -474,9 +511,12 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
       .filter((trip) => trip.label === "select:org_members")
       .map((trip) => trip.wave);
     const groupLayoutWave = run.trips.find((trip) => trip.label === "select:board_views")?.wave;
+    const metadataWave = run.trips.find((trip) => trip.label === "select:boards")?.wave;
     expect(groupLayoutWave, "그룹 컬럼 배치 읽기를 못 찾았다").toBeTypeOf("number");
-    expect(assigneeWaves, "그룹 컬럼 배치와 같은 물결에서 시작한 담당자 목록 읽기를 못 찾았다")
-      .toContain(groupLayoutWave);
+    // Issue 857 — 그룹 컬럼 배치는 스냅샷(메타데이터)과 같은 물결, 기본 담당자 목록은 메타데이터 바로 다음 물결.
+    expect(groupLayoutWave, "그룹 컬럼 배치가 스냅샷과 같은 물결에서 시작하지 않았다").toBe(metadataWave);
+    expect(assigneeWaves, "보드 종류를 안 바로 다음 물결에서 시작한 담당자 목록 읽기를 못 찾았다")
+      .toContain((metadataWave ?? 0) + 1);
   });
 
   it("한 요청에 한 로그만 남기고 검증된 UUID와 유한한 비음수 단계만 기록한다", async () => {
@@ -496,8 +536,8 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
       });
 
       for (const run of [valid, missing, invalid]) {
-        expect(run.total).toBe(15);
-        expect(run.serialStages).toBe(8);
+        expect(run.total).toBe(14);
+        expect(run.serialStages).toBe(5);
       }
 
       const logs = info.mock.calls
@@ -557,7 +597,8 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
     }
   });
 
-  it("화면 스냅샷은 메타1·활성1·휴지통1·보관1·값1이고 칸반 추가 조회는 0이다", async () => {
+  // Issue 857 — 값은 행과 함께(items 에 item_values 를 묶어) 읽으므로 따로 나가는 값 조회는 0이다.
+  it("화면 스냅샷은 메타1·활성1·휴지통1·보관1·값0(행과 함께)이고 칸반 추가 조회는 0이다", async () => {
     const table = await renderBoard();
     const kanban = await renderBoard({ view: "kanban" });
     for (const run of [table, kanban]) {
@@ -567,7 +608,7 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
       expect(run.countOf("select:items:active")).toBe(1);
       expect(run.countOf("select:items:deleted")).toBe(1);
       expect(run.countOf("select:items:archived")).toBe(1);
-      expect(run.countOf("select:item_values")).toBe(1);
+      expect(run.countOf("select:item_values")).toBe(0);
     }
     expect(kanban.total).toBe(table.total);
     expect(kanban.serialStages).toBe(table.serialStages);
@@ -595,10 +636,53 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
       expect(run.countOf("select:items:deleted")).toBe(0);
       expect(run.countOf("select:items:archived")).toBe(0);
       expect(run.countOf("select:item_values")).toBe(0);
+      // Issue 857 — 스냅샷과 같은 물결로 앞당긴 꼬리 읽기도 판정 «뒤» 여야 한다.
+      expect(run.countOf("select:board_views")).toBe(0);
+      expect(run.countOf("select:org_members")).toBeLessThanOrEqual(1);
     }
   });
 
-  it("휴지통·보관 권한이 없으면 deleted/archived read 0, 있으면 1이며 값 수화는 둘 다 1이다", async () => {
+  describe("Issue 857 · 이른 판정은 세션이 고른 회사일 때만 쓴다", () => {
+    const allowAll = () => ({ ...(probe.rpcs.effective_permissions as Record<string, boolean>) });
+    const orgsAsked = () => probe.rpcCalls
+      .filter((call) => call.name === "effective_permissions")
+      .map((call) => call.args?.p_org_id);
+
+    // 세션은 같은 쿠키 회사를 고른다(chooseSessionMembership) — 회원이 아닌 회사면 세션 자체가 없다.
+    //   그래서 «다른 회사» 의 이른 판정은 결과가 어떻든 보드 읽기로 이어지지 않아야 한다.
+    it("쿠키가 회원 아닌 회사를 가리키면 그 판정(허용)과 상관없이 보드를 한 줄도 읽지 않는다", async () => {
+      const run = await renderBoardAttempt({}, () => {
+        probe.cookieOrg = "org-x";
+        const allowed = allowAll();
+        probe.rpcs.effective_permissions = () => allowed;
+      });
+      expect((run.error as Error)?.message).toBe("HARNESS_REDIRECT");
+      expect(orgsAsked()).toEqual(["org-x"]);
+      expect(run.countOf("select:boards")).toBe(0);
+      expect(run.countOf("select:board_columns")).toBe(0);
+      expect(run.countOf("select:items:active")).toBe(0);
+      expect(run.countOf("select:board_views")).toBe(0);
+    });
+
+    it("쿠키가 없으면 세션 뒤에 세션 회사로 한 번만 판정한다", async () => {
+      const run = await renderBoardAttempt({}, () => {
+        probe.cookieOrg = null;
+      });
+      expect(run.error).toBeNull();
+      expect(orgsAsked()).toEqual(["org-1"]);
+      const sessionWave = Math.min(...run.trips.filter((trip) => trip.label === "select:org_members").map((trip) => trip.wave));
+      const guardWave = run.trips.find((trip) => trip.label === "rpc:effective_permissions")?.wave;
+      expect(guardWave).toBeGreaterThan(sessionWave);
+    });
+
+    it("쿠키가 세션 회사와 같으면 이른 판정을 그대로 쓴다(다시 묻지 않음)", async () => {
+      const run = await renderBoard();
+      expect(orgsAsked()).toEqual(["org-1"]);
+      expect(run.trips.find((trip) => trip.label === "rpc:effective_permissions")?.wave).toBe(0);
+    });
+  });
+
+  it("휴지통·보관 권한이 없으면 deleted/archived read 0, 있으면 1이며 값은 둘 다 행과 함께 온다", async () => {
     const denied = await renderBoard({}, () => {
       probe.rpcs.effective_permissions = {
         ...(probe.rpcs.effective_permissions as Record<string, boolean>),
@@ -609,11 +693,11 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
     expect(denied.countOf("select:items:active")).toBe(1);
     expect(denied.countOf("select:items:deleted")).toBe(0);
     expect(denied.countOf("select:items:archived")).toBe(0);
-    expect(denied.countOf("select:item_values")).toBe(1);
+    expect(denied.countOf("select:item_values")).toBe(0);
     expect(allowed.countOf("select:items:active")).toBe(1);
     expect(allowed.countOf("select:items:deleted")).toBe(1);
     expect(allowed.countOf("select:items:archived")).toBe(1);
-    expect(allowed.countOf("select:item_values")).toBe(1);
+    expect(allowed.countOf("select:item_values")).toBe(0);
   });
 
   it("측정 — savedView 붙은 테이블 뷰", async () => {

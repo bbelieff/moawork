@@ -27,3 +27,19 @@ describe("boardCellValueFromFormData people", () => {
     expect(boardCellValueFromFormData(form)).toEqual(["member-a", "member-b"]);
   });
 });
+
+describe("boardCellValueFromFormData multiselect", () => {
+  it("Issue 857 — 여러 선택지를 배열로 보존한다(첫 값만 읽으면 저장이 거절됐다)", () => {
+    const form = new FormData();
+    form.set("kind", "multiselect");
+    form.append("value", "opt-a");
+    form.append("value", "opt-b");
+    expect(boardCellValueFromFormData(form)).toEqual(["opt-a", "opt-b"]);
+  });
+
+  it("모두 지우면 빈 배열이다", () => {
+    const form = new FormData();
+    form.set("kind", "multiselect");
+    expect(boardCellValueFromFormData(form)).toEqual([]);
+  });
+});

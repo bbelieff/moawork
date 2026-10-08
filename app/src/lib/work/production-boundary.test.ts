@@ -27,7 +27,8 @@ describe("BBE-150 /work production repository boundary", () => {
     //   이제 리드컨택과 같은 형태로 표준 보드 화면에 넘긴다.
     expect(source).not.toMatch(/WorkManagementSource/);
     expect(source).not.toMatch(/NotificationWorkBoard/);
-    expect(source).toContain("redirect(`/boards/");
+    // Issue 857 — 확인된 워크스페이스 주소를 붙여 보낸다(프록시 307 한 번 제거). 못 읽으면 같은 /boards/ 주소.
+    expect(source).toContain("redirect(withWorkspaceBase(await basePath, `/boards/");
   });
 
   it("the shared default-tab repair helper still builds SupabaseBoardsRepo, never a local one", () => {

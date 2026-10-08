@@ -1,8 +1,9 @@
 /* eslint-disable react-hooks/purity -- Async Server Component timing is emitted only to an operational log, never rendered. */
-import Link from "next/link";
+import { WorkspaceLink } from "@/components/shell/WorkspaceLink";
+import { scheduleDefaultTabRepair } from "@/lib/workspace-entry/default-tab-repair";
 import { notFound } from "next/navigation";
 import { cookies, headers } from "next/headers";
-import { applyAs, getSession } from "@/lib/auth/session";
+import { applyAs, getSession, SESSION_COOKIE } from "@/lib/auth/session";
 import { CELL_FLASH_COOKIE, decodeCellFlash } from "@/lib/boards/cellFlash";
 import {
   BOARD_ACTION_FLASH_COOKIE,
@@ -12,6 +13,7 @@ import {
 import { NotFoundError } from "@/lib/boards";
 import { createRequestBoards, requireRequestClient } from "@/lib/boards/server";
 import { markNoticeItemsReadAtomic } from "@/lib/notices/atomic";
+import { after } from "next/server";
 import { issueFileToken } from "@/lib/deal/fileSignedUrl";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
@@ -115,6 +117,15 @@ async function measurePagePhase<T>(
  * 뒤로가기·뷰 전환은 셸의 **헤더 슬롯**에 넣는다 — 별도 줄을 만들면 원칙 3(헤더 1줄)이 깨진다.
  * 칸반 뷰는 기존 화면을 그대로 둔다(이번 WO 범위 밖).
  */
+/** 값이 나중에 정해지는 약속 — 스냅샷이 보드 종류를 알려 주면 다음 읽기를 띄운다(Issue 857). */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
+
 export default async function BoardPage({
   params,
   searchParams,
@@ -129,12 +140,10 @@ export default async function BoardPage({
   const sessionStartedAt = performance.now();
   const { id } = await params;
   const sp = await searchParams;
-  const ctx = applyAs(await getSession(), sp.as);
-  const sessionTiming = phaseTiming(startedAt, sessionStartedAt);
-  // BBE-214 — 두 판정은 같은 ctx만 소비하고 서로의 결과에 의존하지 않는다.
+  // BBE-214 — 두 판정은 같은 회사 id만 소비하고 서로의 결과에 의존하지 않는다.
   // 둘 다 통과하기 전에는 board metadata를 읽지 않으므로 fail-closed 순서는 유지한다.
-  const [permissionsMeasured, scopedItemsMeasured] = await Promise.all([
-    measurePagePhase(startedAt, () => loadPermGuards(ctx.org.id, [
+  const readGuards = (guardOrgId: string) => Promise.all([
+    measurePagePhase(startedAt, () => loadPermGuards(guardOrgId, [
         "work.view_tabs",
         "work.item_upsert",
         "work.item_delete",
@@ -144,8 +153,19 @@ export default async function BoardPage({
         "danger.csv_export",
         "structure.tab_manage",
       ])),
-    measurePagePhase(startedAt, () => loadPermissionScopedWorkItems(ctx.org.id)),
+    measurePagePhase(startedAt, () => loadPermissionScopedWorkItems(guardOrgId)),
   ]);
+  // Issue 857 — 판정은 회사 id 만 있으면 된다. 프록시가 이 요청에서 멤버십을 확인해 심은 회사(mw_org)로
+  //   세션 확인과 «같이» 출발시키고, 세션이 고른 회사와 다르면 버리고 세션 회사로 다시 판정한다.
+  //   판정은 DB 가 이 사람(auth.uid())으로 하므로 일찍 출발해도 권한이 넓어지지 않는다.
+  const presetOrgId = (await cookies()).get(SESSION_COOKIE.org)?.value ?? null;
+  const earlyGuards = presetOrgId ? readGuards(presetOrgId) : null;
+  earlyGuards?.catch(() => {});
+  const ctx = applyAs(await getSession(), sp.as);
+  const sessionTiming = phaseTiming(startedAt, sessionStartedAt);
+  const [permissionsMeasured, scopedItemsMeasured] = await (
+    earlyGuards && presetOrgId === ctx.org.id ? earlyGuards : readGuards(ctx.org.id)
+  );
   const permissions = permissionsMeasured.value;
   const scopedItems = scopedItemsMeasured.value;
   const viewTabs = permissions["work.view_tabs"];
@@ -169,6 +189,15 @@ export default async function BoardPage({
   const canDeleteBoard = boardDelete.kind === "allowed";
   const canManageSummaries = tabManage.kind === "allowed";
   const { client, repo, service: svc } = await createRequestBoards();
+  // Issue 857 — 보드 종류를 몰라도 되는 꼬리 읽기(그룹 컬럼 배치)는 두 판정이 통과한 «뒤»,
+  //   스냅샷과 같은 물결로 띄운다. 기본 담당자 목록은 보드 종류를 안 순간(메타데이터) 띄운다 —
+  //   신규리드는 조직도를 쓰므로 거기서는 읽지 않는다(구성원 수만큼의 RPC 를 버리지 않게).
+  const columnOrderRead = getBoardColumnOrder(repo, ctx, id);
+  columnOrderRead.catch(() => {});
+  const boardSource = deferred<string | null | undefined>();
+  const defaultAssigneesRead = boardSource.promise.then((source) =>
+    source === NEW_LEAD_TAB_SOURCE && client ? null : loadDefaultTabAssignees(ctx));
+  defaultAssigneesRead.catch(() => {});
 
   let snapshot;
   const snapshotStartedOffsetMs = performance.now() - startedAt;
@@ -182,6 +211,7 @@ export default async function BoardPage({
     snapshot = await svc.loadPageSnapshot(ctx, id, {
       includeDeleted: canDeleteItems,
       includeArchived: canDeleteItems,
+      onDetail: (loaded) => boardSource.resolve(loaded.board.source),
       onTiming: ({ phase, offsetMs, durationMs }) => {
         snapshotTimings[phase] = {
           offsetMs: Math.max(0, snapshotStartedOffsetMs + offsetMs),
@@ -197,6 +227,8 @@ export default async function BoardPage({
 
   const { detail, items: loadedItems, deletedItems } = snapshot;
   const { board, columns, groups } = detail;
+  // Issue 857 — 사이드바가 기본 탭으로 바로 오면 경유지 점검을 안 거친다. 응답 뒤에 대신 돌린다.
+  await scheduleDefaultTabRepair(ctx, board.source);
   const canMoveRows = !board.is_system && canEditItems
     && (ctx.role === "owner" || ctx.role === "admin" || ctx.scope === "all");
   const view = sp.view === "kanban" ? "kanban" : sp.view === "flat" ? "flat" : sp.view === "calendar" ? "calendar" : "table";
@@ -213,9 +245,22 @@ export default async function BoardPage({
     : loadedItems;
   // 읽음 표시는 «쓰기» 다. 로컬 시드에는 그 저장소가 없어 건너뛴다 —
   // 화면에 표시되는 내용은 달라지지 않는다(BBE-209).
+  // Issue 857 — 이 화면은 읽음 상태를 그리지 않으므로 응답을 보낸 «뒤에» 표시한다(글마다 RPC 한 물결을 기다렸다).
   if (board.source === NOTICE_TAB_SOURCE && client) {
     const visibleNoticeIds = projectedItems.filter((item) => visibleItemIds.has(item.id)).map((item) => item.id);
-    await markNoticeItemsReadAtomic(ctx, visibleNoticeIds, client);
+    const markRead = () => markNoticeItemsReadAtomic(ctx, visibleNoticeIds, client);
+    try {
+      after(async () => {
+        try {
+          await markRead();
+        } catch (error) {
+          console.warn("[notice read]", id, error);
+        }
+      });
+    } catch {
+      // 요청 밖(시험 등)에서는 미룰 곳이 없어 바로 표시한다.
+      await markRead();
+    }
   }
 
   /*
@@ -265,7 +310,7 @@ export default async function BoardPage({
         : null;
       const defaultTabAssignees = orgChart?.kind === "ready"
         ? []
-        : await loadDefaultTabAssignees(ctx);
+        : (await defaultAssigneesRead) ?? await loadDefaultTabAssignees(ctx);
       return {
         assigneeLabels: Object.fromEntries(
           orgChart?.kind === "ready"
@@ -277,7 +322,7 @@ export default async function BoardPage({
           : legacyMemberPickerEntries(defaultTabAssignees),
       };
     })(),
-    getBoardColumnOrder(repo, ctx, id),
+    columnOrderRead,
       board.source === CONTRACT_WORK_TAB_SOURCE
       // 권한(D24)으로 거른 이 보드의 행을 넘긴다 — 회사별 «이 탭에 이미 N건» 의 근거(#6). 새 왕복 없음.
       ? loadCompanyPickerRows(ctx, { boardItems: permissionItems })
@@ -392,13 +437,13 @@ export default async function BoardPage({
     boardViewSwitchUrl(nextView, `https://app.local/boards/${id}?${currentQuery}`, nextGroup);
 
   const backLink = (
-    <Link
+    <WorkspaceLink
       href="/boards"
       aria-label="보드 목록으로"
       className="shrink-0 rounded-full px-1.5 text-sm text-mw-sub hover:text-mw-fg"
     >
       ←
-    </Link>
+    </WorkspaceLink>
   );
 
   // #845 6단계 — 보기 방식(표·칸반·캘린더)·뷰 탭·보기 조건은 모든 보기가 같은 보기 줄(BoardViewBar) 하나로 고른다.
@@ -508,16 +553,16 @@ export default async function BoardPage({
         >
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto text-xs">
           <span className="shrink-0 text-mw-sub">그룹 기준</span>
-          <Link
+          <WorkspaceLink
             href={switchView("kanban", "")}
             className={`shrink-0 rounded-full border px-2.5 py-1 ${groupBy === "" ? "border-mw-record bg-mw-tint-blue text-mw-record" : "border-mw-line text-mw-body"}`}
           >
             그룹
-          </Link>
+          </WorkspaceLink>
           {selectColumns.map((c) => (
             <span key={c.id} className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 ${groupBy===c.key?"border-mw-record bg-mw-tint-blue text-mw-record":"border-mw-line text-mw-body"}`}>
               {!board.is_system&&canManageColumns?<BoardInlineTitleEditor name={c.label} label="컬럼 이름" onSave={renameColumnTitleAction.bind(null,id,c.id)}/>:c.label}
-              <Link href={switchView("kanban",c.key)} aria-label={`${c.label} 기준 칸반 보기`} className="text-[0.65rem] text-mw-sub">보기</Link>
+              <WorkspaceLink href={switchView("kanban",c.key)} aria-label={`${c.label} 기준 칸반 보기`} className="text-[0.65rem] text-mw-sub">보기</WorkspaceLink>
               {!board.is_system&&canManageColumns?<span className="sr-only focus-within:not-sr-only">{([-1,1] as const).map((delta)=>{const ordered=columns.map((column)=>column.id);const from=ordered.indexOf(c.id);const to=Math.max(0,Math.min(ordered.length-1,from+delta));if(from!==to){const [moved]=ordered.splice(from,1);ordered.splice(to,0,moved);}return <form key={delta} action={reorderColumnsAction} className="inline"><input type="hidden" name="boardId" value={id}/><input type="hidden" name="columnIds" value={JSON.stringify(ordered)}/><button type="submit" disabled={from===to} aria-label={`${c.label} ${delta<0?"왼쪽":"오른쪽"}으로 이동`}>{delta<0?"←":"→"}</button></form>;})}</span>:null}
             </span>
           ))}

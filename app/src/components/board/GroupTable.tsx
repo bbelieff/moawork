@@ -19,11 +19,13 @@
 import {
   startTransition,
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import { CellSaveContext } from "./cell-save-context";
 import type {
   BoardColumn,
   CellValue,
@@ -197,7 +199,7 @@ export function BoardCell({
   canonicalNewLead,
   canonicalOwner = false,
   members = [],
-  error,
+  error: flashError,
   workflowProgressKind,
   workflowTransitionAction,
   workflowMoveTargets,
@@ -243,6 +245,13 @@ export function BoardCell({
   addLabelOptionAction?: (input: AddLabelOptionInput) => Promise<AddLabelOptionResult>;
 }) {
   const value = row.values[column.key] ?? null;
+  // Issue 857 — 보드 화면이 저장을 맡으면 값은 즉시 바뀌고, 결과 한 줄은 서버 플래시 대신 그 화면이 준다.
+  //   파일·컨택 이동 칸과 시각 fixture(cellAction)는 기존 서버 액션 경로 그대로다.
+  const cellSave = useContext(CellSaveContext);
+  const savesInPlace = cellSave !== null && !cellAction && column.type !== "file"
+    && column.key !== "contact_move" && column.key !== "consult_status";
+  const localMessage = savesInPlace ? cellSave.messageFor(row.id, column.key) : undefined;
+  const error = localMessage === undefined ? flashError : localMessage;
   const phoneStatus = row.value_statuses?.[column.key] ?? "normalized";
   const options = column.options_jsonb?.options ?? [];
   // 출처가 편집을 막는 칸(⇄ 연동·ƒ 수식)은 보드가 편집 가능해도 클릭해도 열리지 않는다 — D09 수용기준.
@@ -443,7 +452,7 @@ export function BoardCell({
             ? updateNewLeadFieldAction
             : auditedMetaEdit
               ? updateNewLeadMetaAction
-              : cellAction ?? setCellAction
+              : cellAction ?? (savesInPlace ? cellSave.save : setCellAction)
         }
         aria-describedby={errorId}
         onSubmit={
@@ -522,6 +531,7 @@ export function BoardCell({
             canCreate={labelCreatable}
             createLabel={labelCreatable ? createCellLabel : undefined}
             interceptChange={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
+            optimistic={!needsConfirm}
             className={`${CELL_INPUT} cursor-pointer`}
           />
         ) : column.type === "select" ? (
@@ -533,6 +543,7 @@ export function BoardCell({
             canCreate={labelCreatable}
             createLabel={labelCreatable ? createCellLabel : undefined}
             interceptChange={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
+            optimistic={!needsConfirm}
             className={`${CELL_INPUT} cursor-pointer`}
           />
         ) : column.type === "person" ? (
@@ -546,16 +557,19 @@ export function BoardCell({
             <MemberPicker label={column.label} members={members.length > 0 ? members : options.map(({ id, label }) => ({ id, label }))} value={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []} multiple compact />
           </>
         ) : column.type === "multiselect" ? (
-          <LabelCombobox
-            options={options}
-            value={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []}
-            multiple
-            name="value"
-            label={column.label}
-            canCreate={labelCreatable}
-            createLabel={labelCreatable ? createCellLabel : undefined}
-            className={CELL_INPUT}
-          />
+          <>
+            <input type="hidden" name="kind" value="multiselect" />
+            <LabelCombobox
+              options={options}
+              value={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []}
+              multiple
+              name="value"
+              label={column.label}
+              canCreate={labelCreatable}
+              createLabel={labelCreatable ? createCellLabel : undefined}
+              className={CELL_INPUT}
+            />
+          </>
         ) : (
           <input
             type={inputTypeOf(column.type)}

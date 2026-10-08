@@ -20,11 +20,13 @@ describe("boards UI consumes effective permissions", () => {
 
   it("gates item, structure, and destructive controls on a board", () => {
     const source = readFileSync(join(app, "[id]", "page.tsx"), "utf8");
-    expect(source).toContain("loadPermGuards(ctx.org.id, [");
-    expect(source).toContain("loadPermissionScopedWorkItems(ctx.org.id)");
+    // Issue 857 — 두 판정은 한 물결로, 세션 확인과 같이 출발할 수 있지만 «세션이 고른 회사» 의 판정만 쓴다.
+    expect(source).toContain("loadPermGuards(guardOrgId, [");
+    expect(source).toContain("loadPermissionScopedWorkItems(guardOrgId)");
     expect(source).toMatch(
-      /await\s+Promise\.all\s*\(\s*\[[\s\S]*loadPermGuards\([\s\S]*loadPermissionScopedWorkItems\(/u,
+      /Promise\.all\s*\(\s*\[[\s\S]*loadPermGuards\([\s\S]*loadPermissionScopedWorkItems\(/u,
     );
+    expect(source).toContain("earlyGuards && presetOrgId === ctx.org.id ? earlyGuards : readGuards(ctx.org.id)");
     expect(source).toContain('if (viewTabs.kind !== "allowed") notFound()');
     expect(source.indexOf('if (viewTabs.kind !== "allowed") notFound()')).toBeLessThan(
       source.indexOf("svc.loadPageSnapshot(ctx, id, {"),

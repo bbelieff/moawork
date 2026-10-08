@@ -2,6 +2,7 @@ import { parseActiveMembershipRows } from "@/lib/auth/workspace-routing";
 import { isMemberRole, type MemberRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { getVerifiedAuthUser, type ClaimsAuthClient } from "@/lib/auth/verified-user";
 
 export type WorkspaceEntryOption = {
   orgId: string;
@@ -26,13 +27,7 @@ export type WorkspaceRoutingSnapshot =
       selfRouteState?: "eligible_entry" | "blocked_inactive";
     };
 
-type WorkspaceAuthClient = {
-  auth: {
-    getUser(): Promise<{
-      data: { user: { id: string } | null };
-      error: unknown;
-    }>;
-  };
+type WorkspaceAuthClient = ClaimsAuthClient & {
   from(table: "org_members"): {
     select(columns: string): {
       eq(column: "user_id", value: string): {
@@ -60,11 +55,9 @@ function relation(value: unknown): Record<string, unknown> | null {
 export async function readWorkspaceRoutingSnapshot(
   client: WorkspaceAuthClient,
 ): Promise<WorkspaceRoutingSnapshot> {
-  const {
-    data: { user },
-    error: userError,
-  } = await client.auth.getUser();
-  if (userError || !user) return { kind: "unauthenticated" };
+  // Issue 857 — 서명으로 확인(비대칭 키면 왕복 없음). 레이아웃의 세션·라우팅 단계가 0.1초 줄어든다.
+  const user = await getVerifiedAuthUser(client);
+  if (!user) return { kind: "unauthenticated" };
 
   const [membershipResult, selfStateResult] = await Promise.all([
     client

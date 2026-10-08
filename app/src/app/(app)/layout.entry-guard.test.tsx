@@ -3,6 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  hasRecentCleanBootstrap: vi.fn(() => false),
+  deferBootstrapCheck: vi.fn(() => true),
+  markBootstrapChecked: vi.fn(),
+  forgetBootstrapOutcome: vi.fn(),
   getSession: vi.fn(),
   loadWorkspaceRoutingSnapshot: vi.fn(),
   loadWorkspaceApprovals: vi.fn(),
@@ -35,6 +39,12 @@ vi.mock("@/lib/notify/server", () => ({ loadNotifySnapshot: mocks.loadNotifySnap
 vi.mock("@/lib/supabase/server", () => ({ createClient: mocks.createClient }));
 vi.mock("@/lib/workspace-entry/bootstrap", () => ({
   ensureApprovedWorkspaceOnEntry: mocks.ensureApprovedWorkspaceOnEntry,
+}));
+vi.mock("@/lib/workspace-entry/bootstrap-verdict", () => ({
+  hasRecentCleanBootstrap: mocks.hasRecentCleanBootstrap,
+  deferBootstrapCheck: mocks.deferBootstrapCheck,
+  markBootstrapChecked: mocks.markBootstrapChecked,
+  forgetBootstrapOutcome: mocks.forgetBootstrapOutcome,
 }));
 vi.mock("@/lib/account/presentation", () => ({
   buildAccountViewModel: () => ({
@@ -119,12 +129,69 @@ describe("BBE-139 root entry guard", () => {
     expect(mocks.getSession).toHaveBeenCalledOnce();
     expect(mocks.loadWorkspaceRoutingSnapshot).toHaveBeenCalledOnce();
     expect(mocks.createClient).toHaveBeenCalledWith({ noStore: true });
+    // Issue 857 — 이 요청에서 검증된 세션을 그대로 넘겨 점검이 getUser·회사·멤버십을 다시 읽지 않는다.
+    const sessionCtx = await mocks.getSession.mock.results[0].value;
     expect(mocks.ensureApprovedWorkspaceOnEntry).toHaveBeenCalledWith(
       { requestScoped: true },
       "test-company",
+      { ctx: sessionCtx },
     );
+    // 앞에서 통과한 점검을 기억해야 다음 화면부터 미룰 수 있다.
+    expect(mocks.markBootstrapChecked).toHaveBeenCalledWith(sessionCtx.org.id, sessionCtx.user.id);
     expect(html).toContain("trusted-sidebar");
     expect(html).toContain("root-dashboard");
+  });
+
+  it("Issue 857 — 셸 읽기를 기본 탭 점검과 같이 출발시킨다", async () => {
+    let releaseBootstrap!: () => void;
+    mocks.ensureApprovedWorkspaceOnEntry.mockImplementation(() => new Promise<void>((resolve) => {
+      releaseBootstrap = resolve;
+    }));
+    const pending = AppLayout({ children: createElement("p", null, "overlapped-shell") });
+    // 점검이 끝나기 전에 알림 읽기가 출발해야 한다 — 직렬이면 점검이 풀릴 때까지 시작되지 않는다.
+    await vi.waitFor(() => {
+      expect(mocks.loadNotifySnapshot).toHaveBeenCalled();
+    }, { timeout: 2000, interval: 10 });
+    releaseBootstrap();
+    expect(renderToStaticMarkup(await pending)).toContain("overlapped-shell");
+  });
+
+  it("Issue 857 — 최근 점검을 통과했으면 이번 화면은 점검을 기다리지 않고 응답 뒤로 미룬다", async () => {
+    mocks.hasRecentCleanBootstrap.mockReturnValueOnce(true);
+    mocks.ensureApprovedWorkspaceOnEntry.mockImplementation(() => new Promise<void>(() => {}));
+    const html = renderToStaticMarkup(await AppLayout({ children: createElement("p", null, "deferred-check") }));
+    expect(html).toContain("deferred-check");
+    expect(mocks.deferBootstrapCheck).toHaveBeenCalledTimes(1);
+    expect(mocks.ensureApprovedWorkspaceOnEntry).not.toHaveBeenCalled();
+    // 미룬 점검은 앞 점검과 같은 요청 클라이언트·회사·검증된 세션으로 돈다.
+    const sessionCtx = await mocks.getSession.mock.results[0].value;
+    const deferredCheck = (mocks.deferBootstrapCheck.mock.calls[0] as unknown[])[2] as () => Promise<unknown>;
+    mocks.ensureApprovedWorkspaceOnEntry.mockResolvedValueOnce("clean");
+    await deferredCheck();
+    expect(mocks.ensureApprovedWorkspaceOnEntry).toHaveBeenCalledWith(
+      { requestScoped: true },
+      "test-company",
+      { ctx: sessionCtx },
+    );
+    mocks.hasRecentCleanBootstrap.mockReturnValue(false);
+  });
+
+  it("Issue 857 — 미룰 곳이 없으면(요청 밖) 지금처럼 앞에서 점검하고 기억한다", async () => {
+    mocks.hasRecentCleanBootstrap.mockReturnValueOnce(true);
+    mocks.deferBootstrapCheck.mockReturnValueOnce(false);
+    const html = renderToStaticMarkup(await AppLayout({ children: createElement("p", null, "blocking-check") }));
+    expect(html).toContain("blocking-check");
+    expect(mocks.ensureApprovedWorkspaceOnEntry).toHaveBeenCalledTimes(1);
+    expect(mocks.markBootstrapChecked).toHaveBeenCalledTimes(1);
+    mocks.hasRecentCleanBootstrap.mockReturnValue(false);
+  });
+
+  it("Issue 857 — 앞에서 점검이 실패하면 기억을 지우고 «준비 못 함» 으로 닫는다", async () => {
+    mocks.ensureApprovedWorkspaceOnEntry.mockRejectedValueOnce(new Error("unavailable"));
+    const html = renderToStaticMarkup(await AppLayout({ children: createElement("p", null, "never") }));
+    expect(html).not.toContain("never");
+    expect(mocks.forgetBootstrapOutcome).toHaveBeenCalled();
+    expect(mocks.markBootstrapChecked).not.toHaveBeenCalled();
   });
 
   it("starts the session and the routing snapshot together, not in series", async () => {

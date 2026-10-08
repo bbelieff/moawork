@@ -16,8 +16,9 @@ export async function handleWorkspaceRequest(
   request: Request,
   loadSnapshot: SnapshotLoader = loadWorkspaceRoutingSnapshot,
   loadRpcClient: RpcClientLoader = defaultLoadRpcClient,
-  bootstrapWorkspace: WorkspaceBootstrapper = async (client, slug) =>
-    bootstrapApprovedWorkspace(client as unknown as SupabaseClient, slug),
+  bootstrapWorkspace: WorkspaceBootstrapper = async (client, slug) => {
+    await bootstrapApprovedWorkspace(client as unknown as SupabaseClient, slug);
+  },
 ): Promise<Response> {
   let payload: unknown;
   try {

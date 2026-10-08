@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => ({
   loadSidebarBoards: vi.fn(),
   loadPermGuard: vi.fn(),
   createRequestBoards: vi.fn(),
-  purgeExpiredTrashedTabs: vi.fn(),
+  scheduleExpiredTrashPurge: vi.fn(),
   sidebarProps: [] as Record<string, unknown>[],
   routeAppearanceProps: [] as Record<string, unknown>[],
 }));
@@ -45,13 +45,20 @@ vi.mock("@/lib/platform/actor", () => ({ loadPlatformActor: mocks.loadPlatformAc
 vi.mock("@/lib/entitlements/server", () => ({ loadLockedFeatures: mocks.loadLockedFeatures }));
 vi.mock("@/lib/notify/server", () => ({ loadNotifySnapshot: mocks.loadNotifySnapshot }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: mocks.createClient }));
+// 점검 기억(Issue 857)은 이 시험의 관심이 아니다 — 매번 앞에서 점검하게 둔다.
+vi.mock("@/lib/workspace-entry/bootstrap-verdict", () => ({
+  hasRecentCleanBootstrap: () => false,
+  deferBootstrapCheck: () => false,
+  markBootstrapChecked: () => {},
+  forgetBootstrapOutcome: () => {},
+}));
 vi.mock("@/lib/workspace-entry/bootstrap", () => ({
   ensureApprovedWorkspaceOnEntry: mocks.ensureApprovedWorkspaceOnEntry,
 }));
 vi.mock("@/lib/shell/board-nav-map", () => ({ loadSidebarBoards: mocks.loadSidebarBoards }));
 vi.mock("@/lib/perm/guard", () => ({ loadPermGuard: mocks.loadPermGuard }));
 vi.mock("@/lib/boards/server", () => ({ createRequestBoards: mocks.createRequestBoards }));
-vi.mock("@/lib/boards/trash-maintenance", () => ({ purgeExpiredTrashedTabs: mocks.purgeExpiredTrashedTabs }));
+vi.mock("@/lib/boards/trash-maintenance", () => ({ scheduleExpiredTrashPurge: mocks.scheduleExpiredTrashPurge }));
 vi.mock("@/lib/account/presentation", () => ({
   buildAccountViewModel: () => ({
     displayName: "대표",
@@ -131,7 +138,7 @@ describe("셸 → 사이드바 사용자 탭 배선", () => {
     mocks.createRequestBoards.mockResolvedValue({ repo: REPO });
     mocks.loadSidebarBoards.mockResolvedValue(SIDEBAR_BOARDS);
     mocks.loadPermGuard.mockResolvedValue({ kind: "allowed" });
-    mocks.purgeExpiredTrashedTabs.mockResolvedValue(0);
+    mocks.scheduleExpiredTrashPurge.mockResolvedValue(undefined);
   });
 
   it("한 번의 보드 읽기 결과와 탭 관리 권한을 사이드바·라우트 강조에 넘긴다", async () => {
@@ -158,6 +165,21 @@ describe("셸 → 사이드바 사용자 탭 배선", () => {
     mocks.loadPermGuard.mockResolvedValue(permission);
     await renderShell();
     expect(mocks.sidebarProps.at(-1)!.canCreateTab).toBe(false);
+  });
+
+  it("Issue 857 — 점검이 이번 요청에서 탭을 고쳤으면 사이드바 지도를 다시 읽어 그 결과를 쓴다", async () => {
+    const repaired = { ...SIDEBAR_BOARDS, boardNavKeys: { "board-new": "new" } };
+    mocks.ensureApprovedWorkspaceOnEntry.mockResolvedValue("repaired");
+    mocks.loadSidebarBoards.mockResolvedValueOnce(SIDEBAR_BOARDS).mockResolvedValueOnce(repaired);
+    await renderShell();
+    expect(mocks.loadSidebarBoards).toHaveBeenCalledTimes(2);
+    expect(mocks.sidebarProps.at(-1)!.boardNavKeys).toEqual(repaired.boardNavKeys);
+  });
+
+  it("Issue 857 — 고칠 것이 없었으면 사이드바 지도는 한 번만 읽는다", async () => {
+    mocks.ensureApprovedWorkspaceOnEntry.mockResolvedValue("clean");
+    await renderShell();
+    expect(mocks.loadSidebarBoards).toHaveBeenCalledTimes(1);
   });
 
   it("보드 읽기와 권한 판정을 같이 출발시킨다 — 한쪽을 기다렸다가 다른 쪽을 시작하지 않는다", async () => {

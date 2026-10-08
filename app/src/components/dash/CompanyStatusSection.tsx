@@ -25,6 +25,7 @@ import { ChecklistCompletionCell } from "@/components/policyfund/ChecklistComple
 import { SupabaseChecklistStore } from "@/lib/policyfund/checklist";
 import { createClient } from "@/lib/supabase/server";
 import { MonthlyCollection } from "./MonthlyCollection";
+import { RouteLoading } from "@/components/shell/RouteLoading";
 
 // 「회사 현황」 — 홈 한 화면의 아래쪽 절(총괄 확정, BBE-215).
 //
@@ -34,6 +35,26 @@ import { MonthlyCollection } from "./MonthlyCollection";
 //
 // 진입점: 없다 — 홈 한 화면의 아래 절이라 «가는 링크» 가 필요 없다(BBE-215 로 바로가기를 뺐다).
 //   사이드바(nav-items.ts)는 목업 D05 정본이라 건드리지 않았다.
+function CompanyStatusHeader() {
+  return (
+    <header className="flex flex-wrap items-baseline justify-between gap-[var(--sp-2)]">
+      <div>
+        <h2 className="text-[length:var(--fs-18)] font-semibold text-[var(--mw-t-1)]">회사 현황</h2>
+      </div>
+    </header>
+  );
+}
+
+/** Issue 857 — 홈이 이 절을 따로 기다리는 동안: 제목은 그대로 두고 내용 자리만 «불러오는 중». */
+export function CompanyStatusSectionFallback() {
+  return (
+    <div className="flex flex-col gap-6">
+      <CompanyStatusHeader />
+      <RouteLoading label="회사 현황을 불러오는 중이에요." />
+    </div>
+  );
+}
+
 export async function CompanyStatusSection({
   ctx,
   month,
@@ -48,14 +69,7 @@ export async function CompanyStatusSection({
   today: TodayHomeState;
 }) {
 
-  const header = (
-    <header className="flex flex-wrap items-baseline justify-between gap-[var(--sp-2)]">
-      <div>
-        <h2 className="text-[length:var(--fs-18)] font-semibold text-[var(--mw-t-1)]">회사 현황</h2>
-
-      </div>
-    </header>
-  );
+  const header = <CompanyStatusHeader />;
 
   // 홈과 같은 이유로 가드가 필요하다 — createClient() 는 환경변수가 없으면 throw 한다.
   // ★ 조건은 `canUseLocalSeedFallback()` 이다(BBE-203). 이 아래 체크리스트 블록은 BBE-203 이

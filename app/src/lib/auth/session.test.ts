@@ -62,12 +62,12 @@ function setup({
   const select = vi.fn(() => ({ eq }));
   const supabase = {
     auth: {
-      getUser: vi.fn().mockResolvedValue({
+      // Issue 857 — 세션은 토큰 서명 확인(getClaims)으로 사람을 안다.
+      getClaims: vi.fn().mockResolvedValue({
         data: {
-          user: {
-            id: "user-1",
+          claims: {
+            sub: "user-1",
             email: "platform@example.test",
-            created_at: "2026-01-01T00:00:00.000Z",
             user_metadata: { name: "구성원" },
           },
         },
@@ -198,12 +198,11 @@ describe("workspace session authorization", () => {
     let identityStarted = false;
     const supabase = {
       auth: {
-        getUser: vi.fn().mockResolvedValue({
+        getClaims: vi.fn().mockResolvedValue({
           data: {
-            user: {
-              id: "user-1",
+            claims: {
+              sub: "user-1",
               email: "platform@example.test",
-              created_at: "2026-01-01T00:00:00.000Z",
               user_metadata: { name: "구성원" },
             },
           },

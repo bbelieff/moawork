@@ -10,6 +10,7 @@ import {
 import { getRepo } from "@/lib/repo";
 import { SEED_ORG_ID } from "@/lib/repo/local/seed";
 import { createClient } from "@/lib/supabase/server";
+import { getVerifiedAuthUser } from "@/lib/auth/verified-user";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 
 export const SESSION_COOKIE = {
@@ -68,11 +69,9 @@ async function resolveSupabaseSession(
 ): Promise<SupabaseSessionResult> {
   const denied = { ctx: null, chooser: false };
   const supabase = await createClient();
-  const {
-    data: { user: authUser },
-    error: userError,
-  } = await supabase.auth.getUser();
-  if (userError || !authUser) return denied;
+  // Issue 857 — 서명으로 확인(비대칭 키면 왕복 없음). 세션이 화면·액션마다 인증 서버에 묻던 0.1초.
+  const authUser = await getVerifiedAuthUser(supabase);
+  if (!authUser) return denied;
   const authUserId = authUser.id;
 
   // The tenant membership read and the platform identity read are independent
@@ -116,13 +115,14 @@ async function resolveSupabaseSession(
     platformRole = parseAdminRole(platformRoleResult.data);
   }
 
-  const metadata = authUser.user_metadata ?? {};
+  const metadata = authUser.user_metadata;
   const user: User = {
     id: authUser.id,
-    email: authUser.email ?? null,
+    email: authUser.email,
     name: text(metadata.full_name) ?? text(metadata.name),
     avatar_url: text(metadata.avatar_url) ?? text(metadata.picture),
-    created_at: authUser.created_at,
+    // 토큰에는 가입 시각이 없다. 화면·판정 어디에서도 쓰지 않는다.
+    created_at: "",
   };
 
   return {

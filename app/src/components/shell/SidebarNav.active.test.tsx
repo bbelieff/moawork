@@ -58,4 +58,12 @@ describe("사이드바 — 지금 어느 탭인지 색으로 보인다", () => {
     pathname = `${BASE}/boards/board-work`;
     expect(activeKeys(render())).toEqual([]);
   });
+
+  it("Issue 857 — 기본 탭 메뉴는 그 보드가 딱 하나면 경유지 대신 보드로 바로 간다", () => {
+    pathname = `${BASE}/settings/members`;
+    const html = render({ "board-work": "work", "board-contact": "contact" });
+    expect(html).toContain(`href="${BASE}/boards/board-work"`);
+    expect(html).toContain(`href="${BASE}/boards/board-contact?consultation=remote"`);
+    expect(html).not.toContain(`href="${BASE}/work"`);
+  });
 });
