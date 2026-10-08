@@ -242,6 +242,13 @@ export function ContractWorkIntakeForm({
   //   새 줄을 보여 주고, 트리거 옆에서 「○○ 추가했어요」 를 알린다.
   const submittedName = useRef("");
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // 포커스를 돌려줄 곳은 효과의 의존값이 아니라 ref 로 읽는다 — 그룹 순서가 바뀌어 함수가 새로 만들어져도
+  // 「방금 추가한 줄」 강조·스크롤 효과가 다시 돌지 않게.
+  const returnFocusRef = useRef(returnFocusTarget);
+  useEffect(() => {
+    returnFocusRef.current = returnFocusTarget;
+  }, [returnFocusTarget]);
   const restoreTriggerFocus = useRef(false);
   const [announcement, setAnnouncement] = useState("");
   const [justAdded, setJustAdded] = useState<{ itemId: string | null; seq: number } | null>(null);
@@ -384,21 +391,21 @@ export function ContractWorkIntakeForm({
   useEffect(() => {
     if (!justAdded) return;
     const active = document.activeElement;
-    if (!active || active === document.body) (triggerRef.current ?? returnFocusTarget?.() ?? null)?.focus({ preventScroll: true });
+    if (!active || active === document.body) (triggerRef.current ?? returnFocusRef.current?.() ?? null)?.focus({ preventScroll: true });
     const stopHighlight = justAdded.itemId ? highlightAddedRow(justAdded.itemId) : undefined;
     const clearAnnouncement = setTimeout(() => setAnnouncement(""), ADDED_ANNOUNCEMENT_MS);
     return () => {
       stopHighlight?.();
       clearTimeout(clearAnnouncement);
     };
-  }, [justAdded, returnFocusTarget]);
+  }, [justAdded]);
 
   // 「닫기」 로 닫으면 포커스가 사라진 패널에 남지 않게 트리거로 돌린다.
   useEffect(() => {
     if (open || !restoreTriggerFocus.current) return;
     restoreTriggerFocus.current = false;
-    (triggerRef.current ?? returnFocusTarget?.() ?? null)?.focus();
-  }, [open, returnFocusTarget]);
+    (triggerRef.current ?? returnFocusRef.current?.() ?? null)?.focus();
+  }, [open]);
 
   useEffect(() => {
     onOpenChange?.(open);
@@ -419,6 +426,19 @@ export function ContractWorkIntakeForm({
       setOpen(true);
     }
   }
+  // 패널은 그룹 행들 «끝» 에 열린다. 머리말 단추는 화면 위에 있으므로, 연 뒤 패널을 보이는 자리로 당기고
+  // 초점이 패널 밖에 있으면(「새 회사」 탭처럼 자동 초점이 없을 때) 첫 입력으로 옮긴다.
+  const handledOpenRequest = useRef(openRequest);
+  useEffect(() => {
+    if (seenOpenRequest <= 0 || handledOpenRequest.current === seenOpenRequest) return;
+    handledOpenRequest.current = seenOpenRequest;
+    const root = rootRef.current;
+    if (!root) return;
+    if (!root.contains(document.activeElement)) {
+      root.querySelector<HTMLElement>("input:not([type=hidden]):not([disabled]), select, textarea")?.focus({ preventScroll: true });
+    }
+    root.scrollIntoView?.({ block: "nearest" });
+  }, [seenOpenRequest]);
 
   // 확정 성공 «까지» 의 결과(「업무를 시작했어요」·같은 이름 후보)는 다시 열어도 보이지 않는다.
   const existingResult = (state.seq ?? 0) > dismissedThrough ? state : INITIAL_ACTION_STATE;
@@ -434,7 +454,7 @@ export function ContractWorkIntakeForm({
 
   // 바깥 틀과 안내 영역(role=status)은 열고 닫아도 «그대로» 있다 — 내용이 바뀔 때 읽어 주게.
   return (
-    <div className={open ? "flex w-full max-w-2xl flex-col gap-2" : "flex min-w-0 items-center gap-2"}>
+    <div ref={rootRef} className={open ? "flex w-full max-w-2xl flex-col gap-2" : "flex min-w-0 items-center gap-2"}>
       {!open ? (trigger === "none" ? null : (
         <button
           ref={triggerRef}

@@ -43,6 +43,8 @@ afterEach(async () => {
 const groups = [
   { id: "g-ready", org_id: "o", board_id: "b", name: "준비단계", color: "#00c875", sort_order: 0 },
   { id: "g-review", org_id: "o", board_id: "b", name: "심사 중", color: "#9cd326", sort_order: 1 },
+  // 행이 없는 보드 — 계약업체 실무에서는 «빈 보드» 로 접힌다.
+  { id: "g-empty", org_id: "o", board_id: "b", name: "승인", color: "#cab641", sort_order: 2 },
 ] as BoardGroup[];
 
 const column = (id: string, key: string, label: string, sort: number) => ({
@@ -73,6 +75,7 @@ async function mount(source: string, options: { columnOrder?: GroupColumnOrder }
       assigneeLabels={{}}
       canEditItems
       canManageColumns
+      canMoveRows
       contractWorkCompanyPicker={{ rows: [], error: null, truncated: false }}
       startCompanyWorkAction={vi.fn(async () => ({ ok: null, message: "" }))}
     />,
@@ -129,9 +132,12 @@ describe("제목행은 보드 맨 위 하나 (2026-10-08)", () => {
     expect(actionMocks.setGroupColumnOrdersAction).toHaveBeenCalledTimes(1);
     const form = (actionMocks.setGroupColumnOrdersAction.mock.calls[0] as unknown as [FormData])[0];
     expect(form.get("boardId")).toBe("b");
+    // 보이는 묶음만이 아니라 모든 실제 그룹과 «그룹 없음» 까지 같은 순서로 맞춘다.
     expect(JSON.parse(String(form.get("entries")))).toEqual([
       { groupKey: "g-ready", order: ["rep_name", "kind"] },
       { groupKey: "g-review", order: ["rep_name", "kind"] },
+      { groupKey: "g-empty", order: ["rep_name", "kind"] },
+      { groupKey: "__ungrouped__", order: ["rep_name", "kind"] },
     ]);
   });
 
@@ -141,6 +147,26 @@ describe("제목행은 보드 맨 위 하나 (2026-10-08)", () => {
     expect(host.querySelector('[data-board-table-part="body"]')).toBeNull();
     const headers = sections(host).map((section) => [...section.querySelectorAll("thead th")].map((th) => th.getAttribute("data-column-key")).filter(Boolean));
     expect(headers).toEqual([["kind", "rep_name"], ["rep_name", "kind"]]);
+  });
+
+  it("행을 끄는 동안 펼쳐지는 빈 보드의 열 순서가 달라도 맨 위 제목행은 그대로고, 그 보드만 자기 제목행을 그린다", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const host = await mount(CONTRACT_WORK_TAB_SOURCE, { columnOrder: { "g-empty": ["rep_name", "kind"] } });
+      expect(host.querySelectorAll('[data-board-table-part="head"]')).toHaveLength(1);
+      const handle = host.querySelector<HTMLElement>("tr[data-board-row] > td:first-child")!;
+      const drag = new Event("dragstart", { bubbles: true, cancelable: true });
+      Object.defineProperty(drag, "dataTransfer", { value: { effectAllowed: "", dropEffect: "", setData() {}, getData: () => "" } });
+      await act(async () => handle.dispatchEvent(drag));
+      await act(async () => vi.runOnlyPendingTimers());
+      expect(sections(host).map((section) => section.querySelector("[data-group-title]")?.textContent)).toEqual(["준비단계", "심사 중", "승인"]);
+      expect(host.querySelectorAll('[data-board-table-part="head"]'), "끌기 도중 제목행 방식이 바뀌면 안 된다").toHaveLength(1);
+      const revealed = sections(host)[2];
+      expect(revealed.querySelector('[data-board-table-part="body"]')).toBeNull();
+      expect([...revealed.querySelectorAll("thead th")].map((th) => th.getAttribute("data-column-key")).filter(Boolean)).toEqual(["rep_name", "kind"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
