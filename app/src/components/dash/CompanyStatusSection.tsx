@@ -71,7 +71,7 @@ export function CompanyStatusSectionFallback() {
 export async function CompanyStatusSection({
   ctx,
   month,
-  today,
+  today: todayInput,
 }: {
   ctx: Ctx;
   month?: string;
@@ -79,7 +79,7 @@ export async function CompanyStatusSection({
    * ★ 홈이 이미 부른 `loadTodayHome` 결과를 «받아서» 쓴다. 여기서 다시 부르지 않는다 —
    *   같은 RPC 를 두 번 부르면 왕복이 늘고, 무엇보다 «같은 화면의 두 숫자» 가 갈릴 수 있다.
    */
-  today: TodayHomeState;
+  today: TodayHomeState | Promise<TodayHomeState>;
 }) {
 
   const header = <CompanyStatusHeader />;
@@ -102,6 +102,8 @@ export async function CompanyStatusSection({
   const checklistRead = earlyChecklistRead(new SupabaseChecklistStore(await createClient()), ctx.org.id);
   const model = await loadDashboardPageData(ctx, { month, onCrmDeals: checklistRead.start });
   const core = model.core.status === "ready" ? model.core.data : null;
+  // Issue 857 — 홈은 «오늘» 을 기다리지 않고 이 절을 띄운다. 오늘 결과는 여기서(대시보드를 읽은 뒤) 받는다.
+  const today = await todayInput;
   const checklists: Map<string, DealChecklistState> = core
     ? await checklistRead.result(core.deals.map((deal) => deal.id))
     : new Map();

@@ -135,6 +135,14 @@ describe("BBE-215 · 「회사 현황」의 자리", () => {
     for (const symbol of HOME_ONLY) expect(home).toContain(symbol);
   });
 
+  it("Issue 857 — 홈은 «오늘» 을 기다리지 않고, 오늘과 회사 현황이 각자 기다리며 같이 읽는다", () => {
+    const home = read(homeEntry);
+    expect(home).toContain("const today = loadTodayHome(ctx.org.id);");
+    expect(home).not.toMatch(/await loadTodayHome\(/u);
+    expect(home).toMatch(/<Suspense fallback=\{<RouteLoading[^>]*\/>\}>\s*<TodayHomeWhenReady today=\{today\} \/>/u);
+    expect(home).toContain("<CompanyStatusSection ctx={ctx} month={month} today={today} />");
+  });
+
   // ★ 이 단언이 「입구를 잎으로 오인하지 않는다」를 지킨다.
   //   `/dash` 의 위젯이 자식 세 화면의 «유일한» 입구였다. 절이 홈으로 오면서 그 링크도 같이 왔다.
   //   여기서 끊기면 /dash/all · /dash/[pipelineId] · /dash/tasks 가 «어디에서도 안 열린다».
