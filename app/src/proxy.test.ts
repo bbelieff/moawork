@@ -475,6 +475,35 @@ describe("Issue 857 · 프록시의 회사 목록 기억(들어갈 수 있다 �
     expect(response.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
   });
 
+  it("회사 목록 읽기가 실패하면 기억하지 않는다 — 다음 요청도 다시 읽는다", async () => {
+    const order = vi.fn().mockResolvedValue({ data: null, error: { message: "unavailable" } });
+    const from = vi.fn(() => ({ select: () => ({ eq: () => ({ order }) }) }));
+    mocks.createServerClient.mockReturnValue({ auth: { getClaims: vi.fn().mockResolvedValue(claimsFor({ id: "user-1" })) }, from });
+    const first = await proxy(new NextRequest("https://www.moa-work.com/w/acme/work"));
+    const second = await proxy(new NextRequest("https://www.moa-work.com/w/acme/work"));
+    expect(first.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+    expect(second.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+    expect(from).toHaveBeenCalledTimes(2);
+  });
+
+  it("다른 회사 주소가 새로 읽혀 거부되면 기억을 지운다 — 다음 요청도 다시 읽는다", async () => {
+    rememberMembershipRows("user-1", [membership("org-acme", "acme")]);
+    const { from } = setup({ id: "user-1" }, []);
+    const other = await proxy(new NextRequest("https://www.moa-work.com/w/other/work"));
+    expect(other.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+    const acme = await proxy(new NextRequest("https://www.moa-work.com/w/acme/work"));
+    expect(acme.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
+    expect(from).toHaveBeenCalledTimes(2);
+  });
+
+  it("기억한 목록에서도 주소의 회사를 골라 넘긴다", async () => {
+    rememberMembershipRows("user-1", [membership("org-alpha", "alpha-team"), membership("org-acme", "acme")]);
+    const { from } = setup({ id: "user-1" }, []);
+    const response = await proxy(new NextRequest("https://www.moa-work.com/w/alpha-team/work"));
+    expect(from).not.toHaveBeenCalled();
+    expect(response.headers.get("x-middleware-request-cookie")).toContain("mw_org=org-alpha");
+  });
+
   it("1분이 지난 기억은 버리고 다시 읽는다(탈퇴가 주소 판정에도 반영)", async () => {
     rememberMembershipRows("user-1", [membership("org-acme", "acme")], Date.now() - 61_000);
     const { from } = setup({ id: "user-1" }, []);

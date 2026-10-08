@@ -17,6 +17,11 @@ describe("Issue 857 · 프록시 회사 목록 기억", () => {
     expect(recallMembershipRows("user-1", 1_000)).toBeUndefined();
   });
 
+  it("시계가 뒤로 가면 낡은 것으로 본다", () => {
+    rememberMembershipRows("user-1", ["row"], 10_000);
+    expect(recallMembershipRows("user-1", 9_000)).toBeUndefined();
+  });
+
   it("사람마다 따로 기억하고, 잊으라면 잊는다", () => {
     rememberMembershipRows("user-1", ["a"], 0);
     rememberMembershipRows("user-2", ["b"], 0);
