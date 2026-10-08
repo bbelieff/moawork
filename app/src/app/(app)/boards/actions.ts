@@ -18,7 +18,7 @@ import { isBoardNavSection } from "@/lib/boards/types";
 import { createRequestBoards } from "@/lib/boards/server";
 import { COLUMN_DELETE_CONFIRM, parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
 import type { Ctx, FieldOption } from "@/lib/types";
-import { boardCellValueFromFormData } from "@/lib/boards/form-values";
+import { writeBoardCell } from "@/lib/boards/cell-save";
 import type { CellError } from "@/lib/boards/service";
 import { clampWidth, UNGROUPED_KEY } from "@/components/board/layout";
 import { setGroupColumnOrder } from "./groupLayout";
@@ -585,26 +585,7 @@ export async function setCellAction(formData: FormData): Promise<void> {
       revalidatePath(`/boards/${boardId}`);
       return;
     }
-    const normalized = boardCellValueFromFormData(formData);
-    let changedColumn: import("@/lib/boards/types").BoardColumn | undefined;
-    if (graph.client) {
-      changedColumn = (await svc.getBoardDetail(ctx, boardId)).columns.find((candidate) => candidate.key === columnKey);
-      const column = changedColumn;
-      if (!column) throw new UserFacingActionError("기록 항목을 찾을 수 없어요.");
-      if (column.type === "person" || column.type === "people") {
-        const ids = (Array.isArray(normalized) ? normalized : normalized ? [normalized] : [])
-          .filter((value): value is string => typeof value === "string");
-        if (ids.length > 0) {
-          const members = await graph.client.from("org_members").select("user_id")
-            .eq("org_id", ctx.org.id).eq("status", "active").in("user_id", ids);
-          if (members.error || new Set((members.data ?? []).map((member) => member.user_id)).size !== new Set(ids).size) {
-            throw new UserFacingActionError("이 회사에 속한 사람만 선택할 수 있어요.");
-          }
-        }
-      }
-    }
-    const patch: Record<string, import("@/lib/boards/types").CellValue> = { [columnKey]: normalized };
-    const saved = await svc.setCells(ctx, boardId, itemId, patch);
+    const { saved, changedColumn } = await writeBoardCell(ctx, graph, { boardId, itemId, columnKey, formData });
     const { errors } = saved;
     // 저장 실패(errors)가 없으면 «저장은 됐지만 알릴 것»(notices — 예: 옮길 그룹이 없어 값만 저장)을
     // 같은 셀 자리에 보여 준다. 실패로 세지 않는다 — 아래 상태 알림도 그대로 보낸다(검토 P3).
