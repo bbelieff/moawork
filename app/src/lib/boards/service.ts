@@ -514,23 +514,28 @@ export class BoardsService {
     };
 
     const metadataStartedAt = performance.now();
-    const detail = await this.getBoardDetail(ctx, boardId);
-    measure("metadata", metadataStartedAt);
     const repo = await this.repo;
-    const includeDeleted = options.includeDeleted === true && !detail.board.is_system;
     // 보관 목록은 휴지통과 같은 가시성 등급(work.item_delete)으로 같은 스냅샷에서 분리한다.
     // 명시 옵션이 없으면 includeDeleted를 따른다 — 호출문(권한 순서 계약)을 바꾸지 않고도
     // 보관 패널이 휴지통과 같은 관문 뒤에 같은 왕복으로 읽힌다.
-    const includeArchived = (options.includeArchived ?? options.includeDeleted) === true && !detail.board.is_system;
-    const itemsStartedAt = performance.now();
-    // 보관 행은 listItems(활성 전용)에서 제외되므로 보관함이 필요할 때만 같은
-    // 파동에서 listArchivedItems를 함께 읽는다 (직렬 단계는 그대로 metadata→items→hydrate).
-    const [visibleItems, deletedItems, archivedOnly] = await Promise.all([
+    const wantsDeleted = options.includeDeleted === true;
+    const wantsArchived = (options.includeArchived ?? options.includeDeleted) === true;
+    const itemsStartedAt = metadataStartedAt;
+    // Issue 857 — 보드 정보와 행 목록은 서로 기다리지 않는다(한 물결: metadata ‖ items → hydrate).
+    //   행 읽기는 RLS·org 범위 그대로라, 보드를 못 찾으면 아래에서 NotFound 로 끝나고 읽은 행은 버린다.
+    //   시스템 보드는 휴지통·보관 행을 쓰지 않으므로 같이 읽었더라도 버린다.
+    const [detail, visibleItems, deletedCandidates, archivedCandidates] = await Promise.all([
+      this.getBoardDetail(ctx, boardId).then((loaded) => {
+        measure("metadata", metadataStartedAt);
+        return loaded;
+      }),
       repo.listItems(ctx, boardId),
-      includeDeleted ? repo.listDeletedItems(ctx, boardId) : Promise.resolve([]),
-      includeArchived ? repo.listArchivedItems(ctx, boardId) : Promise.resolve([]),
+      wantsDeleted ? repo.listDeletedItems(ctx, boardId) : Promise.resolve([]),
+      wantsArchived ? repo.listArchivedItems(ctx, boardId) : Promise.resolve([]),
     ]);
     measure("items", itemsStartedAt);
+    const deletedItems = wantsDeleted && !detail.board.is_system ? deletedCandidates : [];
+    const archivedOnly = wantsArchived && !detail.board.is_system ? archivedCandidates : [];
 
     // 방어 분리: 보관 권한이 없으면 보관 행의 값 ID를 발행하지 않는다.
     const activeItems = visibleItems.filter((item) => !item.archived_at);

@@ -460,9 +460,10 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
   it("보드 화면의 직렬 단계가 예산을 넘지 않는다 — 병렬을 직렬로 되돌리면 빨개진다", async () => {
     const run = await renderBoard();
     // 담당자 목록과 그룹 컬럼 배치를 같은 물결에 실은 뒤 측정값 8.
-    // 권한·D24/메타·행·값 또는 snapshot 뒤의 두 독립 읽기를 다시 줄 세우면 즉시 넘는다.
+    // Issue 857 — 보드 정보와 행 목록을 한 물결로, 두 독립 꼬리 읽기를 스냅샷과 같은 물결로 띄워 5.
+    // 권한·D24 → 메타‖행‖꼬리 → 값 순서를 다시 줄 세우면 즉시 넘는다.
     expect(run.serialStages, "보드 화면의 직렬 DB 단계가 늘었다 — 어디서 await 이 줄 섰는지 확인해라")
-      .toBe(8);
+      .toBe(5);
     // 보관 읽기는 활성·휴지통과 같은 물결에 탄다 (직렬 단계 추가 없음, 왕복 +1).
     expect(run.total, "보드 화면의 읽기 왕복 계약이 바뀌었다 — 로그 계측은 쿼리를 더하면 안 된다")
       .toBe(15);
@@ -497,7 +498,7 @@ describe("BBE-214 · 보드 화면 한 번을 그리는 데 드는 DB 왕복", (
 
       for (const run of [valid, missing, invalid]) {
         expect(run.total).toBe(15);
-        expect(run.serialStages).toBe(8);
+        expect(run.serialStages).toBe(5);
       }
 
       const logs = info.mock.calls

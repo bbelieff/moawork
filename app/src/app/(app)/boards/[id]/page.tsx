@@ -12,6 +12,7 @@ import {
 import { NotFoundError } from "@/lib/boards";
 import { createRequestBoards, requireRequestClient } from "@/lib/boards/server";
 import { markNoticeItemsReadAtomic } from "@/lib/notices/atomic";
+import { after } from "next/server";
 import { issueFileToken } from "@/lib/deal/fileSignedUrl";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE, NOTICE_TAB_SOURCE } from "@/lib/default-tabs/types";
 import { CONTRACT_WORK_TAB_SOURCE } from "@/lib/default-tabs/contract-work";
@@ -170,6 +171,12 @@ export default async function BoardPage({
   const canEditPresets = presetEdit.kind === "allowed";
   const canManageSummaries = tabManage.kind === "allowed";
   const { client, repo, service: svc } = await createRequestBoards();
+  // Issue 857 — 보드 종류를 몰라도 되는 꼬리 읽기(그룹 컬럼 배치·기본 담당자 목록)는 두 판정이
+  //   통과한 «뒤», 스냅샷과 같은 물결로 띄운다. 신규리드는 조직도를 쓰므로 담당자 목록은 버려질 수 있다.
+  const columnOrderRead = getBoardColumnOrder(repo, ctx, id);
+  const defaultAssigneesRead = loadDefaultTabAssignees(ctx);
+  columnOrderRead.catch(() => {});
+  defaultAssigneesRead.catch(() => {});
 
   let snapshot;
   const snapshotStartedOffsetMs = performance.now() - startedAt;
@@ -212,9 +219,22 @@ export default async function BoardPage({
     : loadedItems;
   // 읽음 표시는 «쓰기» 다. 로컬 시드에는 그 저장소가 없어 건너뛴다 —
   // 화면에 표시되는 내용은 달라지지 않는다(BBE-209).
+  // Issue 857 — 이 화면은 읽음 상태를 그리지 않으므로 응답을 보낸 «뒤에» 표시한다(글마다 RPC 라 직렬 대기였다).
   if (board.source === NOTICE_TAB_SOURCE && client) {
     const visibleNoticeIds = projectedItems.filter((item) => visibleItemIds.has(item.id)).map((item) => item.id);
-    await markNoticeItemsReadAtomic(ctx, visibleNoticeIds, client);
+    const markRead = () => markNoticeItemsReadAtomic(ctx, visibleNoticeIds, client);
+    try {
+      after(async () => {
+        try {
+          await markRead();
+        } catch (error) {
+          console.warn("[notice read]", id, error);
+        }
+      });
+    } catch {
+      // 요청 밖(시험 등)에서는 미룰 곳이 없어 바로 표시한다.
+      await markRead();
+    }
   }
 
   /*
@@ -264,7 +284,7 @@ export default async function BoardPage({
         : null;
       const defaultTabAssignees = orgChart?.kind === "ready"
         ? []
-        : await loadDefaultTabAssignees(ctx);
+        : await defaultAssigneesRead;
       return {
         assigneeLabels: Object.fromEntries(
           orgChart?.kind === "ready"
@@ -276,7 +296,7 @@ export default async function BoardPage({
           : legacyMemberPickerEntries(defaultTabAssignees),
       };
     })(),
-    getBoardColumnOrder(repo, ctx, id),
+    columnOrderRead,
       board.source === CONTRACT_WORK_TAB_SOURCE
       // 권한(D24)으로 거른 이 보드의 행을 넘긴다 — 회사별 «이 탭에 이미 N건» 의 근거(#6). 새 왕복 없음.
       ? loadCompanyPickerRows(ctx, { boardItems: permissionItems })
