@@ -620,6 +620,7 @@ export function GroupTable({
   authorColumnKey,
   viewerUserId,
   canManageColumns = !readOnly,
+  canMoveColumns = canManageColumns,
   addLabelOptionAction,
   rowDragEnabled,
   cellFlash,
@@ -716,6 +717,11 @@ export function GroupTable({
   authorColumnKey?: string;
   viewerUserId?: string;
   canManageColumns?: boolean;
+  /**
+   * 컬럼 «순서» 를 끌기·키보드로 바꿀 수 있는가(기본 = canManageColumns). 2026-10-08 — 상담 단계 보기처럼
+   * 저장할 그룹이 없는 가상 묶음만 있는 화면에서 순서 바꾸기만 끄고 이름·메뉴·폭 조절은 그대로 둔다.
+   */
+  canMoveColumns?: boolean;
   /** 2026-09-26 — 라벨 만들기 서버 액션. 셀 드롭다운의 만들기 행이 이걸 쓴다. */
   addLabelOptionAction?: (input: AddLabelOptionInput) => Promise<AddLabelOptionResult>;
   /** 정렬이 켜져 있으면 부모가 false 를 준다 — 손잡이 자체를 감춰 헛짚을 자리를 없앤다. */
@@ -1132,7 +1138,7 @@ export function GroupTable({
                 <th
                   key={col.id}
                   scope="col"
-                  draggable={canManageColumns && !structureLocked}
+                  draggable={canManageColumns && canMoveColumns && !structureLocked}
                    onDragStart={(event) => {
                      if (structureLocked) return;
                      if((event.target as HTMLElement).closest("button,input,select,textarea,a,[role=menu],[contenteditable=true],[data-no-drag]")){event.preventDefault();setOverColKey(null);return;}
@@ -1159,7 +1165,7 @@ export function GroupTable({
                     clearColDrag();
                   }}
                   title={
-                    !canManageColumns || structureLocked
+                    !canManageColumns || !canMoveColumns || structureLocked
                       ? cellTitle(col)
                       : `${cellTitle(col)} — 끌어서 ${tablePart === "head" ? "" : "이 그룹의 "}컬럼 순서 변경`
                   }
@@ -1168,7 +1174,7 @@ export function GroupTable({
                   data-column-key={col.key}
                   data-right-pinned={col.rightPinned || undefined}
                    className={`relative sticky top-0 z-[var(--mw-layer-board-header)] min-w-20 ${BOARD_TABLE_HEADER_CELL} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-board-head"} ${
-                    !canManageColumns || structureLocked
+                    !canManageColumns || !canMoveColumns || structureLocked
                       ? ""
                       : "cursor-grab active:cursor-grabbing"
                   } ${isTarget ? "bg-mw-tint-blue text-mw-record" : ""} ${
@@ -1219,7 +1225,7 @@ export function GroupTable({
                       className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize border-r-2 border-transparent transition-colors hover:border-mw-record"
                     />
                   )}
-                  {canManageColumns&&!structureLocked?<span className="sr-only focus-within:not-sr-only">
+                  {canManageColumns&&canMoveColumns&&!structureLocked?<span className="sr-only focus-within:not-sr-only">
                     <button type="button" onClick={()=>onColumnKeyboardMove(col.key,-1)} aria-label={`${col.label} 왼쪽으로 이동`}>왼쪽으로 이동</button>
                     <button type="button" onClick={()=>onColumnKeyboardMove(col.key,1)} aria-label={`${col.label} 오른쪽으로 이동`}>오른쪽으로 이동</button>
                   </span>:null}

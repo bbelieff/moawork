@@ -186,3 +186,37 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     expect(renderTable(columns, [row()])).not.toContain("📒 원장");
   });
 });
+
+describe("GroupTable — 컬럼 순서 바꾸기만 끄기 (2026-10-08)", () => {
+  const render = (canMoveColumns: boolean) => renderToStaticMarkup(
+    <GroupTable
+      boardId="b1"
+      groupId={null}
+      columns={[col({ key: "kind", label: "구분" }), col({ id: "col-rep", key: "rep", label: "대표자명" })]}
+      rows={[row()]}
+      readOnly={false}
+      canManageColumns
+      canMoveColumns={canMoveColumns}
+      rowDragEnabled={false}
+      cellFlash={null}
+      onColumnDrop={() => {}}
+      dragRowId={null}
+      canDropRow={() => false}
+      onRowDragStart={() => {}}
+      onRowDragEnd={() => {}}
+      onRowDrop={() => {}}
+    />,
+  );
+
+  it("순서 바꾸기만 끄면 끌기·키보드 이동은 없고 이름 편집·폭 조절은 남는다", () => {
+    const off = render(false);
+    expect(off).not.toContain('draggable="true"');
+    expect(off).not.toContain("왼쪽으로 이동");
+    expect(off).toContain("끌어서 폭 조절");
+    expect(off).toContain('aria-label="구분 컬럼 메뉴"');
+    expect(off).toContain('aria-label="컬럼 이름 편집"');
+    const on = render(true);
+    expect(on).toContain('draggable="true"');
+    expect(on).toContain("구분 왼쪽으로 이동");
+  });
+});

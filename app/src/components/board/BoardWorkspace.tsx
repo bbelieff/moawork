@@ -972,9 +972,15 @@ export function BoardWorkspace({
   const applySharedColumnMove = (move: (fullColumns: BoardColumn[]) => string[] | null) => {
     if (!sharedColumnsMovable) return;
     const entries = new Map<string, string[]>();
-    for (const block of blocks) {
-      const groupKey = durableLayoutKey(block.key);
-      if (entries.has(groupKey)) continue;
+    // 지금 보이는 묶음만이 아니라 «모든» 실제 그룹과 «그룹 없음» 을 맞춘다 — 행이 없어 묶음이 안 보이던
+    // 그룹(신규리드 단계 보기의 빈 단계 등)도 같은 순서여야 나중에 행이 들어와도 제목행이 갈라지지 않는다.
+    const groupKeys = new Set([
+      ...orderedGroups.map((group) => group.id),
+      UNGROUPED_KEY,
+      ...blocks.map((block) => durableLayoutKey(block.key)),
+    ]);
+    for (const groupKey of groupKeys) {
+      if (!durableGroupKeys.has(groupKey)) continue;
       const storedOrder = canonicalNewLead
         ? presentNewLeadColumnKeys(optimisticOrder[groupKey])
         : optimisticOrder[groupKey];
@@ -995,16 +1001,15 @@ export function BoardWorkspace({
   };
   const handleSharedColumnDrop = (draggedKey: string, targetKey: string) =>
     applySharedColumnMove((fullColumns) => reorderColumnKeys(fullColumns, draggedKey, targetKey));
-  const handleSharedColumnKeyboardMove = (columnKey: string, delta: number) =>
-    applySharedColumnMove((fullColumns) => {
-      const keys = fullColumns.map((column) => column.key);
-      const from = keys.indexOf(columnKey);
-      const to = Math.max(0, Math.min(keys.length - 1, from + delta));
-      if (from < 0 || from === to) return null;
-      const [moved] = keys.splice(from, 1);
-      keys.splice(to, 0, moved);
-      return keys;
-    });
+  // 키보드 ±1 은 «보이는» 이웃 칸 자리로 옮긴다(끌어 놓기와 같은 규칙). 숨긴 칸까지 센 전체 순서로
+  // 한 칸씩 밀면, 숨긴 칸 위치가 그룹마다 다를 때 보이는 순서가 갈라진다.
+  const handleSharedColumnKeyboardMove = (columnKey: string, delta: number) => {
+    const visible = blocks[0] ? columnsForBlock(blocks[0].key).map((column) => column.key) : [];
+    const from = visible.indexOf(columnKey);
+    const target = from < 0 ? undefined : visible[from + delta];
+    if (!target) return;
+    handleSharedColumnDrop(columnKey, target);
+  };
 
   /**
    * 보이는 목록 기준 인덱스 → 그룹 전체 기준 인덱스.
@@ -1137,10 +1142,17 @@ export function BoardWorkspace({
    * 보이는 그룹의 열 구성이 모두 같을 때만 하나로 합친다. 어떤 그룹이 따로 열 순서를 바꿔
    * 구성이 다르면 그 차이를 숨기지 않도록 지금처럼 그룹마다 제목행을 그린다(데이터는 그대로).
    */
-  const shownColumnSignatures = shownBlockViews.map(({ block }) => columnsForBlock(block.key).map((column) => column.key).join(","));
-  const sharedHeader = shownBlockViews.length > 0
-    && shownColumnSignatures.every((signature) => signature === shownColumnSignatures[0]);
-  const sharedHeaderRows = sharedHeader ? shownBlockViews.flatMap((view) => view.visibleRows) : [];
+  // 판단은 행을 끄는 동안 잠깐 펼쳐지는 빈 보드를 빼고 한다 — 끌기 도중에 제목행 방식이 바뀌어 표가
+  // 다시 배치되지 않게. 그때 펼쳐진 보드의 열 구성이 다르면 그 보드만 자기 제목행을 그린다.
+  const signatureOf = (blockKey: string) => columnsForBlock(blockKey).map((column) => column.key).join(",");
+  const stableBlockViews = emptyGroupsOpen ? blockViews : blockViews.filter((view) => !view.foldable);
+  const sharedSignature = stableBlockViews.length > 0 ? signatureOf(stableBlockViews[0].block.key) : null;
+  const sharedHeader = sharedSignature !== null
+    && stableBlockViews.every(({ block }) => signatureOf(block.key) === sharedSignature);
+  const sharedBlockKeys = new Set(sharedHeader
+    ? shownBlockViews.filter(({ block }) => signatureOf(block.key) === sharedSignature).map(({ block }) => block.key)
+    : []);
+  const sharedHeaderRows = shownBlockViews.filter((view) => sharedBlockKeys.has(view.block.key)).flatMap((view) => view.visibleRows);
   // 「업체 추가」 를 머리말 단추·배너 ＋ 로만 여는 보드 — 회사를 먼저 고르는 계약업체 실무.
   const onDemandAdd = Boolean(companyPickerProps.companyPicker) && !readOnly;
 
@@ -1294,10 +1306,11 @@ export function BoardWorkspace({
           canonicalNewLead={canonicalNewLead}
           currentUserId={currentUserId}
           groupId={null}
-          columns={columnsForBlock(shownBlockViews[0].block.key)}
+          columns={columnsForBlock(stableBlockViews[0].block.key)}
           rows={sharedHeaderRows}
           readOnly={readOnly}
-          canManageColumns={!board.is_system && canManageColumns && sharedColumnsMovable}
+          canManageColumns={!board.is_system && canManageColumns}
+          canMoveColumns={sharedColumnsMovable}
           focusColumnKey={savedPresentation.focusColumnKey}
           onColumnArchived={(columnId) => setArchivedColumnIds((current) => new Set(current).add(columnId))}
           scheduleItems={scheduleItems}
@@ -1402,7 +1415,7 @@ export function BoardWorkspace({
                 />
               }
               onAddRow={onDemandAdd && !(isConsultationStageView || (isNewLeadStageView && !block.group && block.key !== "new-lead-stage:0")) ? (opener) => requestAdd(block.key, opener) : undefined}
-              selectControl={sharedHeader ? (
+              selectControl={sharedBlockKeys.has(block.key) ? (
                 <GroupSelectAll
                   name={blockDisplayNames.get(block.key) ?? block.name}
                   state={selectionTriState(selectedIds, visibleRows.map((row) => row.id))}
@@ -1417,7 +1430,7 @@ export function BoardWorkspace({
               ) : undefined}
             >
               <GroupTable
-                tablePart={sharedHeader ? "body" : "full"}
+                tablePart={sharedBlockKeys.has(block.key) ? "body" : "full"}
                 addRowMode={onDemandAdd ? "on-demand" : "always"}
                 addRequest={addRequest?.key === block.key ? addRequest.seq : 0}
                 addReturnFocus={addReturnFocusFor(block.key)}
