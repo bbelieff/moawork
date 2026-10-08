@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseEnv } from "@/lib/supabase/env";
 import { safeNextPath } from "@/lib/auth/oauth";
+import { getVerifiedAuthUser } from "@/lib/auth/verified-user";
 import { SESSION_COOKIE } from "@/lib/auth/session";
 import { decideWorkspaceNamespace, isWorkspaceNamespaceCandidate } from "@/lib/auth/workspace-namespace";
 import { WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
@@ -179,10 +180,9 @@ async function routeRequest(
     },
   });
 
-  // getUser() 를 호출해 토큰을 검증·갱신한다(세션 유지의 핵심).
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // 토큰을 검증·갱신한다(세션 유지의 핵심). Issue 857 — getUser 대신 서명 확인(getClaims):
+  // 비대칭 키면 인증 서버 왕복 없이 끝난다. 이 줄은 모든 요청(이동·액션·미리 받기)이 지난다.
+  const user = await getVerifiedAuthUser(supabase);
 
   // 미인증 + 비공개 경로 → 로그인으로.
   // ★ 이 응답도 갱신 쿠키를 실어야 한다. refresh 실패 시 @supabase/ssr 은

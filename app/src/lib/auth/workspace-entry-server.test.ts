@@ -25,7 +25,8 @@ function client(rows: unknown[], user: { id: string } | null = { id: "user-1" },
   const eq = vi.fn(() => ({ order }));
   const select = vi.fn(() => ({ eq }));
   return {
-    auth: { getUser: vi.fn().mockResolvedValue({ data: { user }, error: null }) },
+    // Issue 857 — 라우팅은 토큰 서명 확인(getClaims)으로 사람을 안다.
+    auth: { getClaims: vi.fn().mockResolvedValue(user ? { data: { claims: { sub: user.id } }, error: null } : { data: null, error: null }) },
     from: vi.fn(() => ({ select })),
     rpc: vi.fn().mockResolvedValue({ data: selfState, error: selfStateError }),
   };

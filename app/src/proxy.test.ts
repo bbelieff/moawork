@@ -14,11 +14,16 @@ function membership(orgId: string, slug: string) {
   return { org_id: orgId, status: "active", role: "member", scope: "assigned", created_at: "2026-01-01T00:00:00Z", orgs: { id: orgId, slug, status: "active", name: "샘플", plan_tier: "t1_3", created_at: "2026-01-01T00:00:00Z" } };
 }
 
+function claimsFor(user: { id: string } | null) {
+  return user ? { data: { claims: { sub: user.id } }, error: null } : { data: null, error: null };
+}
+
 function setup(user: { id: string } | null, rows: unknown[] = []) {
   const order = vi.fn().mockResolvedValue({ data: rows, error: null });
   const eq = vi.fn(() => ({ order }));
   const select = vi.fn(() => ({ eq }));
-  mocks.createServerClient.mockReturnValue({ auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) }, from: vi.fn(() => ({ select })) });
+  // Issue 857 — 프록시는 토큰 서명 확인(getClaims)으로 사람을 안다.
+  mocks.createServerClient.mockReturnValue({ auth: { getClaims: vi.fn().mockResolvedValue(claimsFor(user)) }, from: vi.fn(() => ({ select })) });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,9 +61,9 @@ function setupRotating(user: { id: string } | null, rows: unknown[], refresh: Re
   mocks.createServerClient.mockImplementation(
     (_url: string, _anonKey: string, options: { cookies: { setAll: (cookies: WrittenCookie[]) => void } }) => ({
       auth: {
-        getUser: vi.fn(async () => {
+        getClaims: vi.fn(async () => {
           refresh((cookies) => options.cookies.setAll(cookies));
-          return { data: { user } };
+          return claimsFor(user);
         }),
       },
       from: vi.fn(() => ({ select })),
