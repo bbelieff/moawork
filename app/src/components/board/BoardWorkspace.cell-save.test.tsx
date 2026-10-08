@@ -6,9 +6,10 @@ import type { CellSaveResult } from "@/lib/boards/cell-save-result";
 
 const saveMocks = vi.hoisted(() => ({ saveCellValueAction: vi.fn() }));
 vi.mock("@/app/(app)/boards/cell-save-actions", () => ({ saveCellValueAction: saveMocks.saveCellValueAction }));
+const routerMocks = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({
   usePathname: () => "/boards/board-1",
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: routerMocks.refresh }),
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -18,6 +19,8 @@ let root: Root | null = null;
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 afterEach(async () => {
   saveMocks.saveCellValueAction.mockReset();
+  routerMocks.refresh.mockReset();
+  vi.useRealTimers();
   if (root) await act(async () => root?.unmount());
   root = null;
   document.body.replaceChildren();
@@ -48,7 +51,10 @@ function stageInput(host: HTMLElement) {
 
 async function pick(host: HTMLElement, label: string) {
   const input = stageInput(host);
-  await act(async () => input.focus());
+  await act(async () => {
+    input.blur();
+    input.focus();
+  });
   const option = [...host.querySelectorAll<HTMLButtonElement>('[role="option"] button')].find((button) => button.textContent?.includes(label))!;
   await act(async () => option.click());
 }
@@ -99,5 +105,24 @@ describe("Issue 857 — 칸 저장은 그 행만 고친다", () => {
         rows={[{ ...row, values: { stage: "a" } } as never]} columnOrder={{}} cellFlash={null} assigneeLabels={{}} canEditItems />,
     ));
     expect(stageInput(host).placeholder).toBe("접수");
+  });
+
+  it("Issue 857 검토 — 저장이 멈추면 화면 데이터를 조용히 한 번 새로 받는다(실패는 받지 않는다)", async () => {
+    vi.useFakeTimers();
+    saveMocks.saveCellValueAction
+      .mockResolvedValueOnce({ ok: false, errors: [{ key: "stage", label: "단계", message: "실패" }] } satisfies CellSaveResult)
+      .mockResolvedValueOnce({ ok: true, item: { ...row, values: { stage: "b" } } as never, errors: [], notices: [] } satisfies CellSaveResult);
+    const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    await act(async () => root?.render(workspace()));
+
+    await pick(host, "진행");
+    await act(async () => { vi.advanceTimersByTime(2500); });
+    expect(routerMocks.refresh).not.toHaveBeenCalled();
+
+    await pick(host, "진행");
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    expect(routerMocks.refresh).not.toHaveBeenCalled();
+    await act(async () => { vi.advanceTimersByTime(1500); });
+    expect(routerMocks.refresh).toHaveBeenCalledTimes(1);
   });
 });

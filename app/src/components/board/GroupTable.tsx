@@ -558,16 +558,19 @@ export function BoardCell({
             <MemberPicker label={column.label} members={members.length > 0 ? members : options.map(({ id, label }) => ({ id, label }))} value={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []} multiple compact />
           </>
         ) : column.type === "multiselect" ? (
-          <LabelCombobox
-            options={options}
-            value={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []}
-            multiple
-            name="value"
-            label={column.label}
-            canCreate={labelCreatable}
-            createLabel={labelCreatable ? createCellLabel : undefined}
-            className={CELL_INPUT}
-          />
+          <>
+            <input type="hidden" name="kind" value="multiselect" />
+            <LabelCombobox
+              options={options}
+              value={Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []}
+              multiple
+              name="value"
+              label={column.label}
+              canCreate={labelCreatable}
+              createLabel={labelCreatable ? createCellLabel : undefined}
+              className={CELL_INPUT}
+            />
+          </>
         ) : (
           <input
             type={inputTypeOf(column.type)}

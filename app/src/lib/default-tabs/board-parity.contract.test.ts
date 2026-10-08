@@ -1,4 +1,11 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// Issue 857 — BoardWorkspace 가 셀 저장 뒤 조용히 새로 받으려 useRouter 를 쓴다. 이 시험은 라우터 없이
+// 서버 렌더만 하므로 그 하나만 대신한다(나머지 next/navigation 은 실제 그대로).
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  useRouter: () => ({ push() {}, replace() {}, refresh() {}, prefetch() {}, back() {}, forward() {} }),
+}));
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import type { Board, BoardColumn } from "@/lib/boards/types";

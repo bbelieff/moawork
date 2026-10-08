@@ -150,4 +150,25 @@ describe("BoardCell 셀 저장", () => {
     expect(cellAction).toHaveBeenCalledTimes(1);
     expect(save).not.toHaveBeenCalled();
   });
+
+  it("Issue 857 검토 — 다중 선택 칸은 고른 값 전부를 다중 선택으로 보낸다", async () => {
+    const host = mount();
+    const save = vi.fn(async (_formData: FormData) => {});
+    const column: BoardColumn = {
+      ...memoColumn(), key: "tags", label: "태그", type: "multiselect",
+      options_jsonb: { options: [{ id: "opt-a", label: "가", order: 0 }, { id: "opt-b", label: "나", order: 1 }] },
+    };
+    const row: ItemWithValues = { ...memoRow(), values: { tags: ["opt-a", "opt-b"] } };
+    await renderCell(
+      <CellSaveContext.Provider value={{ save, messageFor: () => undefined }}>
+        <BoardCell boardId="b1" row={row} column={column} readOnly={false} />
+      </CellSaveContext.Provider>,
+    );
+    await act(async () => {
+      submitCellForm(host);
+    });
+    const sent = save.mock.calls[0]?.[0];
+    expect(sent?.get("kind")).toBe("multiselect");
+    expect(sent?.getAll("value")).toEqual(["opt-a", "opt-b"]);
+  });
 });

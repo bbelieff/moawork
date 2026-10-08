@@ -61,8 +61,12 @@ vi.mock("@/lib/auth/session", () => ({
     scope: "all",
   }),
 }));
+const permCalls: Array<[string, string]> = [];
 vi.mock("@/lib/perm/guard", () => ({
-  loadPermGuard: async () => mocks.state.perm,
+  loadPermGuard: async (orgId: string, key: string) => {
+    permCalls.push([orgId, key]);
+    return mocks.state.perm;
+  },
 }));
 vi.mock("@/lib/boards/server", () => ({
   createRequestBoards: async () => ({
@@ -159,5 +163,25 @@ describe("saveCellValueAction", () => {
       ok: false,
       errors: [{ key: "owner_person", label: "owner_person", message: "이 회사에 속한 사람만 선택할 수 있어요." }],
     });
+  });
+
+  it("Issue 857 검토 — 항목 편집 권한(work.item_upsert)을 이 회사로 확인한다", async () => {
+    permCalls.length = 0;
+    const form = new FormData();
+    form.set("boardId", "board-1"); form.set("itemId", "item-1"); form.set("columnKey", "memo"); form.set("value", "x");
+    await saveCellValueAction(form);
+    expect(permCalls).toContainEqual(["org-1", "work.item_upsert"]);
+  });
+
+  it.each([
+    ["contact_move", "컨택 이동"],
+    ["consult_status", "리드컨택으로 넘기기"],
+  ])("Issue 857 검토 — %s 의 다른 탭 보내기는 이 경로로 저장하지 않는다", async (columnKey, value) => {
+    mocks.setCells.mockClear();
+    const form = new FormData();
+    form.set("boardId", "board-1"); form.set("itemId", "item-1"); form.set("columnKey", columnKey); form.set("value", value);
+    const result = await saveCellValueAction(form);
+    expect(result.ok).toBe(false);
+    expect(mocks.setCells).not.toHaveBeenCalled();
   });
 });

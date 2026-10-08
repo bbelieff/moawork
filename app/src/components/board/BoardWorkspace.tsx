@@ -36,6 +36,7 @@ import { boardCellValueFromFormData } from "@/lib/boards/form-values";
 import { applySavedItems, cellSaveMessage, patchCellValue, type CellSaveResult } from "@/lib/boards/cell-save-result";
 import { saveCellValueAction } from "@/app/(app)/boards/cell-save-actions";
 import { CellSaveContext, type CellSaveApi } from "./cell-save-context";
+import { useRouter } from "next/navigation";
 import {
   moveRowAction,
   reorderGroupsAction,
@@ -165,6 +166,9 @@ export function companyRevenue(value: unknown): string {
   const text = String(value ?? "").trim().replaceAll(",", "");
   return /^-?\d+(?:\.\d+)?$/.test(text) ? text : "";
 }
+
+/** Issue 857 — 셀 저장이 이만큼 멈추면 화면 데이터를 조용히 새로 받는다. */
+const CELL_SAVE_QUIET_REFRESH_MS = 2000;
 
 /** 낙관적 행 이동 — 서버의 moveRowAction 과 같은 규칙(그룹 내 재색인)을 화면에서 미리 흉내낸다. */
 function rowMoveReducer(rows: ItemWithValues[], move: RowMove): ItemWithValues[] {
@@ -461,6 +465,23 @@ export function BoardWorkspace({
   );
   const [cellPatchedRows, patchCellOptimistic] = useOptimistic(baseRows, patchCellValue);
   const [optimisticRows, moveRowOptimistic] = useOptimistic(cellPatchedRows, rowMoveReducer);
+  /*
+   * 저장이 잠시 멈추면(2초) 화면 데이터를 조용히 한 번 새로 받는다. 서버가 계산하는 값(저장된 보기의
+   * 담당 범위·건수·행 순서 버전)과 브라우저 뒤로 가기 기억을 맞추려는 것이다. 새로 받는 동안에도
+   * 화면은 그대로 보이고, Next 가 액션을 차례로 처리해 그 사이 저장한 값이 되돌아가지 않는다.
+   */
+  const router = useRouter();
+  const quietRefreshTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (quietRefreshTimer.current !== null) window.clearTimeout(quietRefreshTimer.current);
+  }, []);
+  const scheduleQuietRefresh = useCallback(() => {
+    if (quietRefreshTimer.current !== null) window.clearTimeout(quietRefreshTimer.current);
+    quietRefreshTimer.current = window.setTimeout(() => {
+      quietRefreshTimer.current = null;
+      router.refresh();
+    }, CELL_SAVE_QUIET_REFRESH_MS);
+  }, [router]);
   const saveCell = useCallback(async (formData: FormData) => {
     const itemId = String(formData.get("itemId") ?? "");
     const columnKey = String(formData.get("columnKey") ?? "");
@@ -475,18 +496,19 @@ export function BoardWorkspace({
     if (result.ok) {
       const saved = result.item;
       setSavedRows((prev) => ({ source: current, items: { ...(prev.source === current ? prev.items : {}), [itemId]: saved } }));
+      scheduleQuietRefresh();
     }
     const message = cellSaveMessage(result, columnKey);
     setCellMessages((prev) => ({
       source: current,
-      byCell: { ...(prev.source === current ? prev.byCell : {}), [`${itemId} ${columnKey}`]: message },
+      byCell: { ...(prev.source === current ? prev.byCell : {}), [`${itemId}\u0000${columnKey}`]: message },
     }));
-  }, [patchCellOptimistic]);
+  }, [patchCellOptimistic, scheduleQuietRefresh]);
   const cellSaveApi = useMemo<CellSaveApi>(() => ({
     save: saveCell,
     messageFor: (itemId, columnKey) => {
       if (cellMessages.source !== rows) return undefined;
-      const key = `${itemId} ${columnKey}`;
+      const key = `${itemId}\u0000${columnKey}`;
       return key in cellMessages.byCell ? cellMessages.byCell[key] : undefined;
     },
   }), [cellMessages, rows, saveCell]);
