@@ -136,6 +136,8 @@ describe("BBE-139 root entry guard", () => {
       "test-company",
       { ctx: sessionCtx },
     );
+    // 앞에서 통과한 점검을 기억해야 다음 화면부터 미룰 수 있다.
+    expect(mocks.markBootstrapChecked).toHaveBeenCalledWith(sessionCtx.org.id, sessionCtx.user.id);
     expect(html).toContain("trusted-sidebar");
     expect(html).toContain("root-dashboard");
   });
@@ -161,6 +163,26 @@ describe("BBE-139 root entry guard", () => {
     expect(html).toContain("deferred-check");
     expect(mocks.deferBootstrapCheck).toHaveBeenCalledTimes(1);
     expect(mocks.ensureApprovedWorkspaceOnEntry).not.toHaveBeenCalled();
+    // 미룬 점검은 앞 점검과 같은 요청 클라이언트·회사·검증된 세션으로 돈다.
+    const sessionCtx = await mocks.getSession.mock.results[0].value;
+    const deferredCheck = (mocks.deferBootstrapCheck.mock.calls[0] as unknown[])[2] as () => Promise<unknown>;
+    mocks.ensureApprovedWorkspaceOnEntry.mockResolvedValueOnce("clean");
+    await deferredCheck();
+    expect(mocks.ensureApprovedWorkspaceOnEntry).toHaveBeenCalledWith(
+      { requestScoped: true },
+      "test-company",
+      { ctx: sessionCtx },
+    );
+    mocks.hasRecentCleanBootstrap.mockReturnValue(false);
+  });
+
+  it("Issue 857 — 미룰 곳이 없으면(요청 밖) 지금처럼 앞에서 점검하고 기억한다", async () => {
+    mocks.hasRecentCleanBootstrap.mockReturnValueOnce(true);
+    mocks.deferBootstrapCheck.mockReturnValueOnce(false);
+    const html = renderToStaticMarkup(await AppLayout({ children: createElement("p", null, "blocking-check") }));
+    expect(html).toContain("blocking-check");
+    expect(mocks.ensureApprovedWorkspaceOnEntry).toHaveBeenCalledTimes(1);
+    expect(mocks.markBootstrapChecked).toHaveBeenCalledTimes(1);
     mocks.hasRecentCleanBootstrap.mockReturnValue(false);
   });
 

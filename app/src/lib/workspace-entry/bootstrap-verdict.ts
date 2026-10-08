@@ -16,6 +16,8 @@ const VERDICT_TTL_MS = 10 * 60 * 1000;
 const RECHECK_INTERVAL_MS = 60 * 1000;
 
 const verdicts = new Map<string, number>();
+/** 지금 응답 뒤에서 돌고 있는 점검 — 끝나기 전에 들어온 요청은 같은 점검을 또 걸지 않는다. */
+const pending = new Set<string>();
 
 function keyOf(orgId: string, userId: string): string {
   return `${orgId}:${userId}`;
@@ -45,8 +47,9 @@ export function deferBootstrapCheck(
   check: () => Promise<BootstrapOutcome>,
   now = Date.now(),
 ): boolean {
-  const at = verdicts.get(keyOf(orgId, userId)) ?? 0;
-  if (now - at < RECHECK_INTERVAL_MS) return true;
+  const key = keyOf(orgId, userId);
+  const at = verdicts.get(key) ?? 0;
+  if (pending.has(key) || now - at < RECHECK_INTERVAL_MS) return true;
   try {
     after(async () => {
       try {
@@ -54,8 +57,11 @@ export function deferBootstrapCheck(
         markBootstrapChecked(orgId, userId);
       } catch {
         forgetBootstrapOutcome(orgId, userId);
+      } finally {
+        pending.delete(key);
       }
     });
+    pending.add(key);
     return true;
   } catch {
     return false;
