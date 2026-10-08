@@ -15,7 +15,7 @@ import { canUseLocalSeedFallback } from "@/lib/supabase/local-fallback";
 import { NOTICE_TAB } from "@/lib/default-tabs/notice";
 import { DismissedDefaultTabNotice } from "@/components/default-tabs/DismissedDefaultTabNotice";
 import { isManager } from "@/lib/auth/roles";
-import { loadVerifiedWorkspaceBasePath } from "@/lib/auth/workspace-href-server";
+import { startVerifiedWorkspaceBasePath } from "@/lib/auth/workspace-href-server";
 import { workspaceHref } from "@/components/shell/workspace-href";
 import { NoticeCategoryBadge, PinnedBadge } from "@/components/notices/NoticeCategoryBadge";
 import { NoticeStatusBadge } from "@/components/notices/NoticeStatusBadge";
@@ -72,15 +72,16 @@ export default async function NoticesPage({
   if (canUseLocalSeedFallback()) return <NoticesNotConnected />;
 
   // 진입 repair 는 «늘 새로 읽는» 클라이언트여야 한다(#851 — 같은 요청의 GET 기억으로 낡은 구조를 읽는다).
+  // Issue 857 — base 경로는 점검과 동시에 읽는다(전에는 점검 앞에서 따로 기다려 한 단계가 더 붙었다).
+  const workspaceBasePathPromise = startVerifiedWorkspaceBasePath();
   const client = await createClient({ noStore: true });
-  const workspaceBasePath = await loadVerifiedWorkspaceBasePath();
   const repo = new SupabaseBoardsRepo(client);
   let noticeEntryState: "conflict" | "dismissed" | "missing" | "permission" | "unavailable" | null = null;
   try {
     const productBoard = await repairNoticeBoardOnEntry(ctx, client);
     if (productBoard.kind === "ready") {
       const query = sp.as ? `?as=${encodeURIComponent(sp.as)}` : "";
-      redirect(workspaceHref(workspaceBasePath, `/boards/${encodeURIComponent(productBoard.boardId)}${query}`));
+      redirect(workspaceHref(await workspaceBasePathPromise, `/boards/${encodeURIComponent(productBoard.boardId)}${query}`));
     }
     noticeEntryState = productBoard.kind;
   } catch (error) {
@@ -138,7 +139,10 @@ export default async function NoticesPage({
 
   // Existing organizations can keep consuming their pre-default-tab notice
   // board until reconciliation installs the product-owned source.
-  const notices = await new NoticesService(new BoardsService(repo), repo).list(ctx);
+  const [notices, workspaceBasePath] = await Promise.all([
+    new NoticesService(new BoardsService(repo), repo).list(ctx),
+    workspaceBasePathPromise,
+  ]);
 
   // 공지 작성/수정은 관리자(owner/admin)만. member 는 읽기 전용.
   // (UI 를 숨기는 것과 별개로 서비스가 서버에서 같은 검사를 한다.)

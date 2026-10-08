@@ -154,6 +154,7 @@ export function NewLeadRevenue3yCell({
           aria-describedby={constraintError || actionError ? itemId + "-revenue-3y-error" : legacy ? itemId + "-revenue-3y-legacy" : undefined}
           aria-invalid={Boolean(constraintError || actionError)}
           placeholder={legacy || "0"}
+          data-has-value={legacy ? "true" : undefined}
           className={BOARD_TABLE_CONTROL + " pr-14 text-right tabular-nums disabled:opacity-60"}
           onChange={(event) => {
             const next = event.currentTarget.value;

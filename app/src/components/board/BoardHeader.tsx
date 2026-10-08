@@ -14,6 +14,7 @@
  */
 
 import type { ReactNode } from "react";
+import { useFormStatus } from "react-dom";
 import type { BoardGroup } from "@/lib/boards/types";
 import { addItemAction } from "@/app/(app)/boards/actions";
 import { renameBoardTitleAction } from "@/app/(app)/boards/title-actions";
@@ -143,17 +144,27 @@ export function BoardHeader({
                 </option>
               ))}
             </select>
-            <button
-              type="submit"
-              data-mw-cta="primary"
-              className="h-9 rounded-lg bg-mw-primary text-xs font-semibold text-mw-on-accent"
-            >
-              추가
-            </button>
+            <AddItemSubmitButton />
           </form>
         </details>
       ))}
       </div>
     </div>
+  );
+}
+
+/** Issue 857 — 저장하는 동안 잠그고 그렇다고 말한다. 전에는 1~5초 동안 아무 표시가 없어 두 번 눌렸다. */
+function AddItemSubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      data-mw-cta="primary"
+      disabled={pending}
+      aria-busy={pending || undefined}
+      className="h-9 rounded-lg bg-mw-primary text-xs font-semibold text-mw-on-accent disabled:opacity-60"
+    >
+      {pending ? "추가하는 중…" : "추가"}
+    </button>
   );
 }

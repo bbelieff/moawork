@@ -381,8 +381,18 @@ nav[aria-label="주요 메뉴"]::-webkit-scrollbar-button { display: none; }
     opacity: 1;
   }
 }
-[data-visual-block="group-table"] tbody > tr[data-board-row] > td input:not(:focus)::placeholder {
+/* «검색…» 같은 안내 글자는 초점 때만(PR 852). 단, 고른 값을 placeholder 로 보여 주는 라벨 콤보박스
+   (data-has-value)는 빼야 한다 — Issue 857 에서 상태·선택 칸의 값이 통째로 안 보이던 것을 고쳤다. */
+[data-visual-block="group-table"] tbody > tr[data-board-row] > td input:not(:focus):not([data-has-value])::placeholder {
   color: transparent;
+}
+/* 고른 값은 안내 글자가 아니라 값이다 — 값 글자색으로. 저장 중(Issue 857 즉시 표시)엔 살짝 흐리게. */
+[data-visual-block="group-table"] tbody > tr[data-board-row] > td input[data-has-value]:not(:focus)::placeholder {
+  color: var(--mw-fg);
+  opacity: 1;
+}
+[data-visual-block="group-table"] tbody > tr[data-board-row] > td input[data-has-value][data-saving]::placeholder {
+  opacity: 0.6;
 }
 /* 방금 추가된 행 — 접수 흐름이 tr 에 data-just-added="true" 를 단다. 강조색이 서서히 빠진다. */
 @keyframes mw-row-just-added {
@@ -392,6 +402,33 @@ nav[aria-label="주요 메뉴"]::-webkit-scrollbar-button { display: none; }
 /* 한 번만 흐려지고 끝난다 — 속성이 남아 있어도 계속 칠해 두지 않는다. */
 [data-visual-block="group-table"] tbody > tr[data-just-added="true"] > td {
   animation: mw-row-just-added 2.4s ease-out 1;
+}
+/* Issue 857 — 누른 사이드바 메뉴의 다음 화면이 올 때까지 도는 작은 고리. 글자색을 따라간다. */
+@keyframes mw-spin {
+  to { transform: rotate(360deg); }
+}
+.mw-nav-pending {
+  flex: none;
+  width: var(--sp-3);
+  height: var(--sp-3);
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 9999px;
+  opacity: 0.7;
+  animation: mw-spin 0.7s linear infinite;
+}
+/* Issue 857 — 회사 전환은 문서 이동이라 새 화면이 다 올 때까지 이전 화면이 서 있다. 그 위를 덮어 알린다. */
+.mw-workspace-switching {
+  position: fixed;
+  inset: 0;
+  /* 전환기 선택창(60)보다 아래 — 이동이 막혀 선택창이 다시 열리면 그 위를 덮지 않는다. */
+  z-index: 59;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--mw-bg) 72%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mw-nav-pending { animation: none; border-right-color: currentColor; opacity: 0.45; }
 }
 @media (forced-colors: active) {
   :is([data-visual-block="group-table"], [data-board-table-part="head"]) :is(th, td) {

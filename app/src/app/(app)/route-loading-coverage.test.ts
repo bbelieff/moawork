@@ -7,25 +7,20 @@ import { describe, expect, it } from "vitest";
 
 const APP_ROOT = fileURLToPath(new URL(".", import.meta.url));
 
+// Issue 857 — 예외는 «정말 서버 대기가 없는» 화면이나 «바로 위 로딩 경계를 쓰는» 하위 화면만.
+//   전에는 대시보드·원장·거래 상세·탭 관리 등 서버를 1~3초 읽는 화면이 «클라이언트 화면» 이라는
+//   사실과 다른 이유로 빠져 있어서, 눌러도 아무 표시 없이 멈춘 듯 보였다.
 const LOADING_EXCEPTIONS: Readonly<Record<string, string>> = {
-  "/": "인증 뒤 작업공간 주소로 즉시 이동하는 진입 경로다.",
-  "/account": "브라우저 저장소의 계정 설정만 읽는 클라이언트 화면이다.",
+  "/account": "설정 › 계정으로 바로 넘기는 경유 경로다(서버 읽기 없음).",
   "/companies/[companyId]": "상위 업체 목록의 로딩 경계를 그대로 사용한다.",
-  "/dash": "선택된 파이프라인 주소로 즉시 이동하는 경유 경로다.",
-  "/dash/[pipelineId]": "워크스페이스 셸 안에서 클라이언트 상태로 전환되는 화면이다.",
-  "/dash/all": "워크스페이스 셸 안에서 클라이언트 상태로 전환되는 화면이다.",
-  "/dash/tasks": "워크스페이스 셸 안에서 클라이언트 상태로 전환되는 화면이다.",
-  "/deals/[dealId]": "클라이언트 저장소에서 거래 상세를 선택하는 화면이다.",
-  "/ledger": "클라이언트 저장소 기반 원장 화면이라 서버 대기 구간이 없다.",
+  "/dash/[pipelineId]": "상위 dash 로딩 경계를 그대로 사용한다.",
+  "/dash/all": "상위 dash 로딩 경계를 그대로 사용한다.",
+  "/dash/tasks": "상위 dash 로딩 경계를 그대로 사용한다.",
   "/notices/[noticeId]": "상위 공지 목록의 로딩 경계를 그대로 사용한다.",
-  "/onboarding": "워크스페이스 생성 안내 전용 화면이다.",
-  "/onboarding/practice": "로컬 연습 데이터로 동작하는 안내 화면이다.",
+  "/onboarding/practice": "상위 온보딩 로딩 경계를 그대로 사용한다.",
   "/settings/account/privacy": "상위 계정 설정의 로딩 경계를 그대로 사용한다.",
   "/settings/account/sessions": "상위 계정 설정의 로딩 경계를 그대로 사용한다.",
-  "/settings/automations": "브라우저 저장소 기반 설정 화면이다.",
   "/settings/members/approvals": "상위 멤버 설정의 로딩 경계를 그대로 사용한다.",
-  "/settings/notifications": "브라우저 저장소 기반 설정 화면이다.",
-  "/settings/workspace-builder": "브라우저 저장소 기반 설정 화면이다.",
 };
 
 function listFiles(directory: string): string[] {

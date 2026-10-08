@@ -523,6 +523,7 @@ export function BoardCell({
             canCreate={labelCreatable}
             createLabel={labelCreatable ? createCellLabel : undefined}
             interceptChange={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
+            optimistic={!needsConfirm}
             className={`${CELL_INPUT} cursor-pointer`}
           />
         ) : column.type === "select" ? (
@@ -534,6 +535,7 @@ export function BoardCell({
             canCreate={labelCreatable}
             createLabel={labelCreatable ? createCellLabel : undefined}
             interceptChange={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
+            optimistic={!needsConfirm}
             className={`${CELL_INPUT} cursor-pointer`}
           />
         ) : column.type === "person" ? (
