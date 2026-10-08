@@ -157,6 +157,49 @@ describe("플랫폼 관리자 판정 폴백 (마이그레이션 017 적용 전�
     expect(rpc.rpc).not.toHaveBeenCalledWith("app_admin_role", expect.anything());
   });
 
+  it("Issue 857 — 같은 요청의 세션이 이미 본 관리자 역할을 주면 폴백 RPC 를 다시 부르지 않는다", async () => {
+    const promoted = client({
+      is_platform_admin: { data: false, error: null },
+      list_my_workspace_entry_requests: req,
+      list_pending_workspace_create_requests: { data: [], error: null },
+    });
+    await expect(
+      readWorkspaceEntryContext(promoted, undefined, "admin@example.test", true),
+    ).resolves.toMatchObject({ kind: "ready", isPlatformAdmin: true });
+    expect(promoted.rpc).not.toHaveBeenCalledWith("app_admin_role", expect.anything());
+    expect(promoted.rpc).toHaveBeenCalledWith("list_pending_workspace_create_requests");
+
+    const ordinary = client({
+      is_platform_admin: { data: false, error: null },
+      list_my_workspace_entry_requests: req,
+    });
+    await expect(
+      readWorkspaceEntryContext(ordinary, undefined, "member@example.test", false),
+    ).resolves.toMatchObject({ kind: "ready", isPlatformAdmin: false });
+    expect(ordinary.rpc).not.toHaveBeenCalledWith("app_admin_role", expect.anything());
+
+    // 세션이 «관리자 아님» 을 줘도 is_platform_admin() 의 true 를 뒤집지 않는다.
+    const serverAdmin = client({
+      is_platform_admin: { data: true, error: null },
+      list_my_workspace_entry_requests: req,
+      list_pending_workspace_create_requests: { data: [], error: null },
+    });
+    await expect(
+      readWorkspaceEntryContext(serverAdmin, undefined, "admin@example.test", false),
+    ).resolves.toMatchObject({ kind: "ready", isPlatformAdmin: true });
+  });
+
+  it("Issue 857 — 대기열을 쓰지 않는 호출부는 관리자여도 플랫폼 생성 요청 대기열을 읽지 않는다", async () => {
+    const rpc = client({
+      is_platform_admin: { data: true, error: null },
+      list_my_workspace_entry_requests: req,
+    });
+    await expect(
+      readWorkspaceEntryContext(rpc, undefined, "admin@example.test", true, true),
+    ).resolves.toMatchObject({ kind: "ready", isPlatformAdmin: true, platformCreateRequests: [] });
+    expect(rpc.rpc).not.toHaveBeenCalledWith("list_pending_workspace_create_requests");
+  });
+
   it("017 적용 후처럼 is_platform_admin 이 true 면 폴백을 부르지 않는다", async () => {
     const rpc = client({
       is_platform_admin: { data: true, error: null },
