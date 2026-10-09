@@ -72,7 +72,7 @@ export default async function NoticeDetailPage({
           본문이 없는 공지입니다.
         </p>
       ) : (
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-zinc-700 dark:text-zinc-200">
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--mw-t-1)]">
           {notice.body}
         </p>
       )}

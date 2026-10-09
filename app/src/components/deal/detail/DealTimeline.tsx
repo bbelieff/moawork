@@ -58,7 +58,7 @@ function ActivityRow({ activity }: { activity: Activity }) {
       <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
         {ACTIVITY_TYPE_LABEL[activity.type] ?? activity.type}
       </span>
-      <span className="text-zinc-700 dark:text-zinc-200">{activity.content}</span>
+      <span className="text-[var(--mw-t-1)]">{activity.content}</span>
     </li>
   );
 }
@@ -105,7 +105,7 @@ function CommentRow({
       }`}
     >
       <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-        <span className="font-medium text-zinc-700 dark:text-zinc-200">
+        <span className="font-medium text-[var(--mw-t-1)]">
           {authorName ?? "알 수 없음"}
         </span>
         {isReturnRequest && (
@@ -163,7 +163,7 @@ function CommentRow({
           </div>
         </div>
       ) : (
-        <p className="whitespace-pre-wrap text-zinc-700 dark:text-zinc-200">
+        <p className="whitespace-pre-wrap text-[var(--mw-t-1)]">
           {renderBodyWithMentions(comment.body)}
         </p>
       )}

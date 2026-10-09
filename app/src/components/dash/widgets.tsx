@@ -71,7 +71,7 @@ export function Widget({
   return (
     <section className="rounded-[var(--mw-r-3)] border border-[var(--mw-line)] bg-[var(--mw-card)] p-[var(--sp-4)]">
       <div className="mb-[var(--sp-3)]">
-        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+        <h2 className="text-sm font-semibold text-[var(--mw-t-1)]">
           {title}
         </h2>
         {subtitle ? (
@@ -398,7 +398,7 @@ export function FollowUpListWidget({
           key={`${e.kind}-${e.dealId}`}
           className="flex items-center justify-between gap-2 py-2"
         >
-          <span className="truncate text-zinc-700 dark:text-zinc-200">{e.title}</span>
+          <span className="truncate text-[var(--mw-t-1)]">{e.title}</span>
           <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
             {FOLLOW_UP_LABEL[e.kind]}
           </span>

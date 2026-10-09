@@ -138,7 +138,7 @@ export function InviteLinkCard({ list, canManage }: InviteLinkCardProps) {
 
       {createState.kind === "created" ? (
         <p className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-zinc-100 px-3 py-2 text-sm dark:bg-zinc-900">
-          <span className="text-zinc-700 dark:text-zinc-200">링크를 만들었어요.</span>
+          <span className="text-[var(--mw-t-1)]">링크를 만들었어요.</span>
           <code className="truncate text-xs text-zinc-500 dark:text-zinc-400">{inviteJoinPath(createState.token)}</code>
           <CopyButton token={createState.token} />
         </p>
