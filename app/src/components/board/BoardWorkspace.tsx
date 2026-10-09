@@ -21,7 +21,7 @@ import { consultationPhase, REMOTE_PHASES, INPERSON_PHASES, CONSULTATION_PHASE_L
  *
  * #845 7단계 — 나눠 보기. 사람·목록·상태 칸을 고르면 블록이 «보드» 대신 그 칸의 «값 묶음» 이 된다
  * (buildValueBlocks). 그때 행을 다른 묶음으로 끌면 순서가 아니라 그 칸의 값을 바꾼다(setGroupValueAction ·
- * 낙관적 + 실패 시 되돌림). 묶음 안의 순서는 저장하지 않는다(보이는 순서 = 보드 순서 또는 줄 세우기).
+ * 낙관적 + 실패 시 되돌림). 묶음 안의 순서는 저장하지 않는다(보이는 순서 = 보드 순서 또는 정렬).
  */
 
 import {
@@ -775,7 +775,7 @@ export function BoardWorkspace({
   /*
    * #845 7단계 — 나눠 보기에서 끌기는 «값 바꾸기» 다. 행 순서 권한(canMoveRows)이 아니라 항목 수정 권한과
    * 그 칸을 이 길로 바꿀 수 있는지(groupValueEditBlock — 고칠 수 없는 칸·편집 제한 칸·✉ 발송 칸·신규리드 정본·배정 담당)로 정한다.
-   * 줄 세우기와는 상관없다(순서를 저장하지 않는다). 서버(setGroupValueAction)가 같은 규칙으로 다시 막는다.
+   * 정렬과는 상관없다(순서를 저장하지 않는다). 서버(setGroupValueAction)가 같은 규칙으로 다시 막는다.
    */
   const groupValueBlocked = groupColumn
     ? groupValueEditBlock(groupColumn, {
@@ -1228,8 +1228,8 @@ export function BoardWorkspace({
   /*
    * #845 5단계 — 칸 메뉴 「보기 · 나만」 의 요청을 받는 곳(onRequestViewCondition). 보기 줄과 같은 보기 조건
    * (주소에 남고 «저장» 이 담는다)을 바꾼다 — 그래서 뷰가 «바뀜» 이 된다. 칸 순서처럼 모두에게 바뀌는 것은 여기서 다루지 않는다.
-   *   · sort   — 이 칸 하나로 줄 세운다(다른 줄 세우기는 걷는다) · null 이면 이 칸만 뺀다
-   *   · filter — 「골라 보기…」: 보기 조건 칸을 골라 보기 탭으로 펴고 그 칸 칩을 연다(6단계)
+   *   · sort   — 이 칸 하나로 줄 세운다(다른 정렬은 걷는다) · null 이면 이 칸만 뺀다
+   *   · filter — 「필터…」: 보기 조건 칸을 필터 탭으로 펴고 그 칸 칩을 연다(6단계)
    *   · hide   — 「숨기기」: 보이는 칸에서 뺀다
    * 보기 줄과 똑같이 화면 key(displayFilters) 기준으로 고친다 — 신규리드 durable/present key 변환은 그대로 돈다.
    */
@@ -1522,7 +1522,7 @@ export function BoardWorkspace({
   };
 
   const keyboardMoveRow=(rowId:string,groupId:string|null,visibleRows:readonly ItemWithValues[],direction:"up"|"down")=>{
-    if(!rowDragEnabled){setMoveNotice(rowMoveInFlightRef.current?"이전 이동을 저장하고 있어요.":sortActive?"줄 세우기 중에는 행 순서를 바꿀 수 없어요.":"행을 옮길 권한이 없어요.");return;}
+    if(!rowDragEnabled){setMoveNotice(rowMoveInFlightRef.current?"이전 이동을 저장하고 있어요.":sortActive?"정렬 중에는 행 순서를 바꿀 수 없어요.":"행을 옮길 권한이 없어요.");return;}
     const at=visibleRows.findIndex((row)=>row.id===rowId);
     if(at<0)return;
     const targetIndex=direction==="up"?at-1:at+2;
@@ -1675,7 +1675,7 @@ export function BoardWorkspace({
 
       {sortActive && !readOnly && !valueMode && (
         <p className="text-xs text-mw-sub">
-          줄 세우기 중에는 행을 끌어 옮길 수 없어요 · 「원래 순서」로 바꾸면 옮길 수 있어요
+          정렬 중에는 행을 끌어 옮길 수 없어요 · 「원래 순서」로 바꾸면 옮길 수 있어요
         </p>
       )}
       {groupValueNotice ? (

@@ -70,7 +70,7 @@ describe("BBE-214 · 보드 화면의 세로 순서 — 이름이 먼저, 뷰가
     const html = renderWorkspace();
     const row = html.match(/<div[^>]*data-board-toolbar[\s\S]*?data-view-count[^>]*>/)?.[0] ?? "";
     const tabsAt = row.indexOf("메인 테이블");
-    const chipsAt = row.indexOf("골라 보기");
+    const chipsAt = row.indexOf("필터");
     const searchAt = row.indexOf('aria-label="찾기"');
 
     // ★ 셋 다 «같은 줄» 에서 찾는다 — 하나라도 -1 이면 그 줄에서 빠진 것이다.

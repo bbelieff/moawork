@@ -67,7 +67,7 @@ describe("#845 6단계 — 칸반의 보기 줄", () => {
       .find((button) => button.textContent?.replace("✓", "") === "나")!;
     await act(async () => mine.click());
     expect(cards(host)).toEqual(["가나정밀"]);
-    expect(host.querySelector("[data-view-count]")!.textContent).toBe("내 담당 · 골라 보기 1 · 2건 중 1건");
+    expect(host.querySelector("[data-view-count]")!.textContent).toBe("내 담당 · 필터 1 · 2건 중 1건");
     expect(decodeBoardFilters(new URL(window.location.href).searchParams.get("mwFilters")).assignees).toEqual(["me"]);
   });
 

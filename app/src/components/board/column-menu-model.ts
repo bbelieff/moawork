@@ -14,8 +14,8 @@ export type ColumnSortDirection = "asc" | "desc";
 
 /**
  * 칸 메뉴 「보기 · 나만」 이 보드에 올리는 요청. 표는 상태를 들지 않고 BoardWorkspace 가 처리한다.
- *   · sort   — 이 칸 하나로 줄 세우기(direction null = 원래 순서로)
- *   · filter — 「골라 보기…」: 이 칸의 골라 보기 화면을 연다
+ *   · sort   — 이 칸 하나로 정렬(direction null = 원래 순서로)
+ *   · filter — 「필터…」: 이 칸의 필터 화면을 연다
  *   · hide   — 「숨기기」: 이 뷰의 보이는 칸에서 뺀다
  *   · group  — 「{칸}별로 나눠 보기」(#845 7단계): on=false 면 보드별로 되돌린다
  */
@@ -32,7 +32,7 @@ export const COLUMN_MENU_TEXT = {
   manage: "칸",
   manageTag: "모두",
   sortReset: "원래 순서로",
-  filter: "골라 보기…",
+  filter: "필터…",
   hide: "숨기기",
   rename: "이름 바꾸기",
   editOptions: "선택지 고치기",
@@ -118,7 +118,7 @@ export function columnMetaParts(
   return parts;
 }
 
-/* ── 줄 세우기 ─────────────────────────────────────────────────────────────── */
+/* ── 정렬 ─────────────────────────────────────────────────────────────── */
 
 export type ColumnSortOption = Readonly<{ direction: ColumnSortDirection; label: string }>;
 
@@ -132,7 +132,7 @@ const pair = (
 ];
 
 /**
- * 칸 종류에 맞는 줄 세우기(자주 쓰는 쪽이 위). 목록 칸은 선택지 이름으로, 사람 칸은 이름으로
+ * 칸 종류에 맞는 정렬(자주 쓰는 쪽이 위). 목록 칸은 선택지 이름으로, 사람 칸은 이름으로
  * 줄 세운다(filters.applyFilters 의 sortableCell). 파일 칸은 줄 세울 말이 없어 내지 않는다.
  */
 export function columnSortOptions(column: Pick<BoardColumn, "type">): ColumnSortOption[] {

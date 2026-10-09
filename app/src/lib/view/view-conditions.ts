@@ -3,7 +3,7 @@
  *
  * 세 가지를 나눈다.
  *   · 찾기   — 잠깐 쓰는 검색. 저장하지 않고, 뷰를 «바뀜» 으로 만들지 않는다.
- *   · 보기 조건 — 보기 방식(표·칸반·캘린더) · 담당 · 골라 보기(필터) · 줄 세우기 · 나눠 보기 · 보이는 칸.
+ *   · 보기 조건 — 보기 방식(표·칸반·캘린더) · 담당 · 필터(필터) · 정렬 · 나눠 보기 · 보이는 칸.
  *   · 뷰     — 보기 조건 + 이름 + 나만/팀. 탭으로 보인다.
  *
  * 칸 순서는 보드 전체의 것이라(모두에게 바뀜) 보기 조건이 아니다. 그래서 여기서 비교하지 않는다.
@@ -51,7 +51,7 @@ export const MAIN_TABLE_CONDITIONS: ViewConditions = {
   visibleColumnKeys: null,
 };
 
-/** 걸린 줄 세우기 — 여러 개(sorts)가 정본이고, 예전 저장값의 sortKey 하나도 읽는다. */
+/** 걸린 정렬 — 여러 개(sorts)가 정본이고, 예전 저장값의 sortKey 하나도 읽는다. */
 export function effectiveSorts(filters: Pick<BoardFilterState, "sorts" | "sortKey" | "sortDir">): ViewSort[] {
   if (filters.sorts?.length) return filters.sorts.map((sort) => ({ columnKey: sort.columnKey, direction: sort.direction }));
   return filters.sortKey ? [{ columnKey: filters.sortKey, direction: filters.sortDir }] : [];
@@ -139,7 +139,7 @@ const sameList = (left: readonly string[], right: readonly string[]) =>
 
 /**
  * 기준(저장된 뷰 또는 메인 테이블)과 지금 조건의 차이. 하나하나가 «바뀐 조건 1개» 다.
- * 골라 보기는 칸마다 하나로 센다. 검색어와 칸 순서는 여기 들어오지 않는다(위 conditionsFrom* 가 이미 뺐다).
+ * 필터는 칸마다 하나로 센다. 검색어와 칸 순서는 여기 들어오지 않는다(위 conditionsFrom* 가 이미 뺐다).
  */
 export function changedConditions(current: ViewConditions, baseline: ViewConditions): string[] {
   const changes: string[] = [];
@@ -201,14 +201,14 @@ export function assigneeChipValue(
   return people.find((person) => person.value === only)?.label ?? "1명";
 }
 
-/** 골라 보기에 걸린 칸 수(담당 제외). */
+/** 필터에 걸린 칸 수(담당 제외). */
 export function pickedFilterCount(filters: Pick<BoardFilterState, "byColumn">): number {
   return Object.values(filters.byColumn).filter((picked) => picked.length > 0).length;
 }
 
 /**
  * 건수 글자 — 「내 담당 · 40건 중 6건」. 조건으로 줄어든 행이 «조용히» 사라지지 않게 늘 보인다.
- * 요약은 짧게: 담당 · 골라 보기 N · 찾기. 아무것도 안 걸리면 「40건」.
+ * 요약은 짧게: 담당 · 필터 N · 찾기. 아무것도 안 걸리면 「40건」.
  */
 export function viewCountText({
   filters,
@@ -232,7 +232,7 @@ export function viewCountText({
     parts.push(`담당 ${assignees.length}명`);
   }
   const picked = pickedFilterCount(filters);
-  if (picked > 0) parts.push(`골라 보기 ${picked}`);
+  if (picked > 0) parts.push(`필터 ${picked}`);
   const query = filters.q.trim();
   if (query) parts.push(`찾기 “${query.length > 12 ? `${query.slice(0, 12)}…` : query}”`);
   parts.push(matched === total ? `${total}건` : `${total}건 중 ${matched}건`);

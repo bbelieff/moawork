@@ -3,7 +3,7 @@
 /**
  * 보기 줄 — #845 6단계(2026-10-08 대표 결정, 목업 ViewModel · ViewBar · ViewMobile).
  *
- *   [메인 테이블 · 저장된 뷰(나만/팀) · ＋] | [표 ▾][담당 · 전체][골라 보기][줄 세우기][나눠 보기][보이는 칸 24/29]
+ *   [메인 테이블 · 저장된 뷰(나만/팀) · ＋] | [표 ▾][담당 · 전체][필터][정렬][나눠 보기][보이는 칸 24/29]
  *   [되돌리기][저장 ▾](바뀌었을 때만) ……………………………… [찾기] 「내 담당 · 40건 중 6건」
  *
  * 예전의 도구줄(찾기·보기·저장 세 묶음) · 머리말 둘째 줄(테이블/칸반 탭 · 담당자) · 저장된 뷰 줄을 이 한 줄로 합쳤다.
@@ -102,11 +102,11 @@ export function conditionSummaryChips({
   const chips = [VIEW_MODE_LABEL[mode]];
   if (filters.assignees.length > 0) chips.push(`담당 · ${assigneeChipValue(filters.assignees, people, currentUserId)}`);
   const picked = pickedFilterCount(filters);
-  if (picked > 0) chips.push(`골라 보기 ${picked}`);
+  if (picked > 0) chips.push(`필터 ${picked}`);
   const sorts = effectiveSorts(filters).length;
-  if (sorts > 0) chips.push(`줄 세우기 ${sorts}`);
+  if (sorts > 0) chips.push(`정렬 ${sorts}`);
   if (groupBy) chips.push(`${groupLabel ?? groupBy}별`);
-  if (filters.visibleColumnKeys != null) chips.push(`보이는 칸 ${filters.visibleColumnKeys.length}/${columnCount}`);
+  if (filters.visibleColumnKeys != null) chips.push(`칸 숨기기 ${Math.max(0, columnCount - filters.visibleColumnKeys.length)}`);
   return chips;
 }
 
@@ -330,7 +330,7 @@ export function BoardViewBar({
    * 없으면 주소를 바꿔 서버가 다시 그린다(칸반 레인).
    */
   onGroupByChange?: (key: string) => void;
-  /** 화면 칸 — 골라 보기·줄 세우기·보이는 칸의 대상. */
+  /** 화면 칸 — 필터·정렬·보이는 칸의 대상. */
   columns: readonly BoardColumn[];
   rows: readonly ItemWithValues[];
   people: readonly Person[];
@@ -396,7 +396,7 @@ export function BoardViewBar({
     setHandledFocusSeq(focusFilter.seq);
     setPanelTab("filter");
     if (narrowViewport()) {
-      // 640px 아래에는 펼침 칸이 없다 — 보기 조건 시트를 골라 보기 탭으로 열고 그 칸을 펼친다.
+      // 640px 아래에는 펼침 칸이 없다 — 보기 조건 시트를 필터 탭으로 열고 그 칸을 펼친다.
       setSheetFocus(focusFilter);
       setSheet("conditions");
     } else {
@@ -666,10 +666,10 @@ export function BoardViewBar({
             <Chevron size={12} />
           </button>
           {chip("assignee", <>담당 · {assigneeValue}</>, filters.assignees.length > 0)}
-          {chip("filter", <>골라 보기<CountBadge count={filterCount} /></>, filterCount > 0, { "data-board-filter-toggle": "" })}
-          {chip("sort", <>줄 세우기<CountBadge count={sortCount} /></>, sortCount > 0)}
+          {chip("filter", <>필터<CountBadge count={filterCount} /></>, filterCount > 0, { "data-board-filter-toggle": "" })}
+          {chip("sort", <>정렬<CountBadge count={sortCount} /></>, sortCount > 0)}
           {chip("group", <>나눠 보기 · {groupLabel ? `${groupLabel}별` : "보드별"}</>, Boolean(groupBy))}
-          {chip("columns", <>보이는 칸 {visibleCount}/{columns.length}</>, filters.visibleColumnKeys != null)}
+          {chip("columns", <>칸 숨기기<CountBadge count={filters.visibleColumnKeys != null ? Math.max(0, columns.length - visibleCount) : 0} /></>, filters.visibleColumnKeys != null)}
         </div>
         {dirty ? (
           <div className="flex shrink-0 items-center gap-1 pb-0.5" data-view-dirty-actions>

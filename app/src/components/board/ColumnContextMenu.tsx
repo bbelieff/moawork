@@ -9,7 +9,7 @@
  *
  * 메뉴는 간결하게(대표: "설명이 너무 많아 메뉴는 간결하게") — 항목마다 한 줄, 둘째 줄·예시 없음.
  *   · 맨 위: 칸 이름(15px) + 회색 한 줄 「날짜 · 18/24 채움」
- *   · 보기 [나만]: 줄 세우기 두 가지 · 골라 보기… · 숨기기 (BoardWorkspace 가 처리)
+ *   · 보기 [나만]: 정렬 두 가지 · 필터… · 숨기기 (BoardWorkspace 가 처리)
  *   · 칸 [모두]: 이름 바꾸기 · 선택지 고치기/입력 방식 바꾸기 · 왼쪽으로 · 오른쪽으로 · 오른쪽에 칸 추가 ·
  *     복사하기 · 지우기(칸 관리 권한이 있을 때만 · 서버가 다시 검사한다)
  * 결과(값이 함께 휴지통으로 · 계산이 멈춤)는 지우기 확인 창에서만 말한다.
@@ -66,7 +66,7 @@ type ColumnSurface = "menu" | "duplicate" | "add" | "settings" | "archive" | nul
 export type ColumnMenuView = Readonly<{
   /** 지금 이 칸으로 줄 세운 방향. 없으면 null. */
   sortDirection: ColumnSortDirection | null;
-  /** 이 칸의 「골라 보기…」 를 열 수 있는가. */
+  /** 이 칸의 「필터…」 를 열 수 있는가. */
   canFilter: boolean;
   /** 「{칸}별로 나눠 보기」 를 보이는가(#845 7단계 — 사람·목록·상태 칸, 메인 표). 없으면 false. */
   canGroup?: boolean;

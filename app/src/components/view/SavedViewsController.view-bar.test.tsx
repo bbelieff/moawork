@@ -97,7 +97,7 @@ describe("#845 6단계 — 목록 보기의 보기 줄", () => {
   it("주소의 보기 조건으로 첫 화면을 그린다(저장된 뷰 설정이 덮지 않는다)", async () => {
     const host = await mount("view=flat", { ...EMPTY_FILTERS, visibleColumnKeys: ["second"] });
     expect(headers(host)).toEqual(["second"]);
-    expect(host.querySelector('[data-view-chip="columns"]')!.textContent).toBe("보이는 칸 1/2");
+    expect(host.querySelector('[data-view-chip="columns"]')!.textContent).toBe("칸 숨기기1");
   });
 });
 

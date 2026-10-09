@@ -83,7 +83,7 @@ describe("BBE-150 계약업체 실무 렌더", () => {
   });
 
   /*
-   * #845 6단계 — 필터 칩은 보기 줄 아래로 펼쳐지는 「보기 조건」 칸의 「골라 보기」 탭에 있다.
+   * #845 6단계 — 필터 칩은 보기 줄 아래로 펼쳐지는 「보기 조건」 칸의 「필터」 탭에 있다.
    * 원칙 9(칩+팝오버·네이티브 select 금지)는 그대로이고 «어디에 서 있는가» 만 바뀌었다.
    */
   const panel = (filters: typeof EMPTY_FILTERS) => renderToStaticMarkup(
@@ -123,7 +123,7 @@ describe("BBE-150 계약업체 실무 렌더", () => {
 
   it("아무것도 안 걸리면 보기 조건 칸은 접혀 있고 한 줄에 칩만 선다 (#845 6단계)", () => {
     const html = bar(EMPTY_FILTERS);
-    for (const label of ["메인 테이블", "표", "담당 · 전체", "골라 보기", "줄 세우기", "나눠 보기", "보이는 칸", 'aria-label="찾기"']) {
+    for (const label of ["메인 테이블", "표", "담당 · 전체", "필터", "정렬", "나눠 보기", "칸 숨기기", 'aria-label="찾기"']) {
       expect(html, label).toContain(label);
     }
     // 접혔으므로 개별 필터 칩은 아직 서 있지 않다.
