@@ -26,7 +26,6 @@ import { SupabaseChecklistStore } from "@/lib/policyfund/checklist";
 import type { DealChecklistState } from "@/lib/policyfund/checklist/types";
 import { createClient } from "@/lib/supabase/server";
 import { MonthlyCollection } from "./MonthlyCollection";
-import { RouteLoading } from "@/components/shell/RouteLoading";
 import { createEntryTimer, logEntryTimings, type EntryStageTiming } from "@/lib/entry-timing";
 
 // 「회사 현황」 — 홈 한 화면의 아래쪽 절(총괄 확정, BBE-215).
@@ -70,12 +69,50 @@ function CompanyStatusHeader() {
   );
 }
 
-/** Issue 857 — 홈이 이 절을 따로 기다리는 동안: 제목은 그대로 두고 내용 자리만 «불러오는 중». */
+const SKELETON_CARD = "rounded-[var(--mw-r-3)] border border-[var(--mw-line)] bg-[var(--mw-card)] p-[var(--sp-4)]";
+
+/** 위젯 모양 뼈대 — 제목 줄 하나 + 막대 몇 줄. 숫자·이름은 넣지 않는다(지어낸 값 0). */
+function WidgetSkeleton({ rows }: { rows: number }) {
+  return (
+    <div className={SKELETON_CARD}>
+      <div className="mw-skeleton mb-[var(--sp-4)] h-[var(--sp-3)] w-2/5 rounded-[var(--mw-r-1)]" />
+      <div className="flex flex-col gap-[var(--sp-3)]">
+        {Array.from({ length: rows }, (_, index) => (
+          <div key={index} className="flex flex-col gap-[var(--sp-1)]">
+            <div className="mw-skeleton h-[var(--sp-2)] w-1/3 rounded-[var(--mw-r-1)]" />
+            <div className="mw-skeleton h-[6px] w-full rounded-full" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Issue 857 — 홈이 이 절을 따로 기다리는 동안: 제목은 그대로 두고 내용 자리만 «불러오는 중».
+ * 2026-10-09 — 글 한 줄 대신 위젯 모양 뼈대(요약 카드 3 + 위젯 4). 화면 낭독기에는 같은 문장을 읽힌다.
+ */
 export function CompanyStatusSectionFallback() {
   return (
     <div className="flex flex-col gap-6">
       <CompanyStatusHeader />
-      <RouteLoading label="회사 현황을 불러오는 중이에요." />
+      <div role="status" aria-busy="true" data-testid="company-status-skeleton" className="flex flex-col gap-[var(--sp-4)]">
+        <span className="sr-only">회사 현황을 불러오는 중이에요.</span>
+        <div aria-hidden="true" className="grid grid-cols-2 gap-[var(--sp-4)] sm:grid-cols-4">
+          {Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className={SKELETON_CARD}>
+              <div className="mw-skeleton h-[var(--sp-2)] w-1/2 rounded-[var(--mw-r-1)]" />
+              <div className="mw-skeleton mt-[var(--sp-2)] h-[var(--sp-6)] w-2/3 rounded-[var(--mw-r-1)]" />
+            </div>
+          ))}
+        </div>
+        <div aria-hidden="true" className="grid gap-[var(--sp-4)] lg:grid-cols-2">
+          <WidgetSkeleton rows={4} />
+          <WidgetSkeleton rows={3} />
+          <WidgetSkeleton rows={3} />
+          <WidgetSkeleton rows={4} />
+        </div>
+      </div>
     </div>
   );
 }

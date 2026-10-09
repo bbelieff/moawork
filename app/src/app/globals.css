@@ -605,3 +605,82 @@ header {
     padding: 0 !important;
   }
 }
+
+/* =====================================================================
+ * 대시보드 시각 1차 (2026-10-09) — 차트 색 · 한 번만 도는 등장 움직임 · 불러오는 중 뼈대.
+ * 차트 색은 기존 브랜드/상태 토큰을 가리킨다. 그 토큰이 다크에서 바뀌므로 여기도 따라 바뀐다
+ * (data-theme 는 <html> 에 붙고 :root 와 같은 요소라, var() 가 테마별 값으로 풀린다).
+ * 움직임은 transform/opacity 만(고리 게이지 sweep 만 SVG stroke-dashoffset), 0.9초 이하, 처음 붙을 때 한 번.
+ * ===================================================================== */
+:root {
+  --mw-chart-1: var(--mw-work-blue);
+  --mw-chart-2: var(--mw-flow-teal);
+  --mw-chart-3: var(--mw-moa-violet);
+  --mw-chart-4: var(--mw-admin);
+  --mw-chart-5: var(--mw-people-coral);
+  --mw-chart-6: var(--mw-success);
+  --mw-chart-empty: color-mix(in srgb, var(--mw-fg) 22%, var(--mw-card)); /* 미입력 */
+  --mw-chart-track: color-mix(in srgb, var(--mw-fg) 8%, var(--mw-card)); /* 막대·고리 바탕 */
+  --mw-skeleton: color-mix(in srgb, var(--mw-fg) 7%, var(--mw-card));
+  --mw-skeleton-glint: color-mix(in srgb, var(--mw-card) 65%, transparent);
+}
+
+@keyframes mw-bar-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.mw-bar-grow {
+  transform-origin: left center;
+  animation: mw-bar-grow 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes mw-ring-sweep {
+  from { stroke-dashoffset: var(--mw-ring-from, 0); }
+  to { stroke-dashoffset: 0; }
+}
+.mw-ring-sweep {
+  animation: mw-ring-sweep 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes mw-pop-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+.mw-pop-in {
+  transform-origin: center;
+  animation: mw-pop-in 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 휴대폰 KPI 가로 넘김 — 스크롤바만 숨긴다(넘김·키보드 이동은 그대로). */
+.mw-scroll-strip { scrollbar-width: none; }
+.mw-scroll-strip::-webkit-scrollbar { display: none; }
+
+/* 불러오는 중 뼈대 — 빛이 지나간다(transform 만). */
+@keyframes mw-shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+.mw-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--mw-skeleton);
+}
+.mw-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--mw-skeleton-glint), transparent);
+  animation: mw-shimmer 900ms ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mw-bar-grow,
+  .mw-ring-sweep,
+  .mw-pop-in { animation: none; }
+  .mw-skeleton::after { animation: none; display: none; }
+}
+@media (forced-colors: active) {
+  .mw-skeleton { background: Canvas; border: 1px solid CanvasText; }
+  .mw-skeleton::after { display: none; }
+}

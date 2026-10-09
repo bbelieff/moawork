@@ -102,6 +102,51 @@ describe("홈 «오늘» — 정상", () => {
   });
 });
 
+describe("홈 «오늘» — 2026-10-09 시각 1차", () => {
+  it("KPI 최종 값이 서버 HTML 에 그대로 있고, 휴대폰용 점 버튼이 카드 수만큼 있다", () => {
+    const html = render({ kind: "ready", snapshot: snapshot() });
+    expect(html).toContain("21,600,000원");
+    expect(html.match(/data-kpi-card=""/g)).toHaveLength(6);
+    expect(html.match(/aria-label="[^"]+ 보기"/g)).toHaveLength(6);
+  });
+
+  it("내 할 일을 기한으로 묶는다 — 지난 일은 «오늘», 그다음 내일·이번 주·그 뒤", () => {
+    const task = (itemId: string, dueOn: string) => ({
+      kind: "work_due" as const,
+      itemId,
+      title: `업체 ${itemId}`,
+      dueOn,
+      status: "not_started" as const,
+      href: `/work?notification=${itemId}`,
+    });
+    // 2026-08-17 은 월요일 — 이번 주는 08-23(일)까지.
+    const html = render({
+      kind: "ready",
+      snapshot: snapshot({
+        tasks: [
+          task("late", "2026-08-30"),
+          task("past", "2026-08-15"),
+          task("now", "2026-08-17"),
+          task("tmr", "2026-08-18"),
+          task("wk", "2026-08-21"),
+        ],
+      }),
+    });
+    const groups = ["today", "tomorrow", "week", "later"].map((key) => html.indexOf(`data-task-group="${key}"`));
+    expect(groups.every((index) => index >= 0)).toBe(true);
+    expect([...groups].sort((a, b) => a - b)).toEqual(groups);
+    const between = (from: number, to: number) => html.slice(from, to);
+    expect(between(groups[0], groups[1])).toContain("업체 past");
+    expect(between(groups[0], groups[1])).toContain("업체 now");
+    expect(between(groups[1], groups[2])).toContain("업체 tmr");
+    expect(between(groups[2], groups[3])).toContain("업체 wk");
+    expect(html.slice(groups[3])).toContain("업체 late");
+    expect(between(groups[0], groups[1])).toContain("2건");
+    // 묶음 머리글은 표의 행 묶음 머리글이다(낭독기가 묶음 이름을 읽는다).
+    expect(html).toContain('scope="rowgroup"');
+  });
+});
+
 describe("홈 «오늘» — 비어있음 · 부분 · 오류", () => {
   it("0건이어도 0 을 보여주고 다음 행동을 알려준다", () => {
     const html = render({
