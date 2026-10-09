@@ -198,7 +198,7 @@ describe("저장된 뷰 — 덮어쓰기 권한", () => {
     expect(host.querySelector('[aria-label="뷰 team 뷰 메뉴"]')).toBeNull();
     await click(chip(host, "sort"));
     await click(host.querySelector('#board-filter-panel [aria-label="상태 가나다순"]'));
-    expect(chip(host, "sort")!.textContent).toBe("줄 세우기1");
+    expect(chip(host, "sort")!.textContent).toBe("정렬1");
     await click(host.querySelector("[data-view-save]"));
     expect(menuLabels()).toEqual(["새 뷰로 저장…", "되돌리기"]);
     expect(calls.filter((call) => call.method === "PATCH")).toEqual([]);
@@ -211,7 +211,7 @@ describe("저장된 뷰 — 덮어쓰기 권한", () => {
     await type(search(host), "찾던 말");
     await click(chip(host, "columns"));
     await click([...host.querySelectorAll("#board-filter-panel label")].find((label) => label.textContent === "메모")?.querySelector("input"));
-    expect(chip(host, "columns")!.textContent).toBe("보이는 칸 1/2");
+    expect(chip(host, "columns")!.textContent).toBe("칸 숨기기1");
     await click(host.querySelector("[data-view-save]"));
     expect(menuLabels()).toEqual(["이 뷰에 저장", "새 뷰로 저장…", "되돌리기"]);
     await click(menuItem("이 뷰에 저장"));
@@ -279,7 +279,7 @@ describe("예전 뷰 · 탭", () => {
     const host = await mount({ activeViewId: "legacy", mode: "kanban", initial: decodeBoardFilters(url.searchParams.get("mwFilters")) });
     expect(search(host).value).toBe("kim");
     expect(chip(host, "mode")!.textContent).toBe("칸반");
-    expect(chip(host, "filter")!.textContent).toBe("골라 보기1");
+    expect(chip(host, "filter")!.textContent).toBe("필터1");
     expect(dirtyDot(host)).toBeNull();
     expect(host.querySelector("[data-view-dirty-actions]")).toBeNull();
   });
@@ -305,7 +305,7 @@ describe("예전 뷰 · 탭", () => {
 });
 
 describe("휴대폰(640px 아래) — [뷰 이름 •▾] [보기 조건 N] [찾기]", () => {
-  it("보기 조건은 바닥 시트로 열고, 골라 보기는 팝오버 없이 그 자리에서 펼친다 · 바뀌면 시트 아래 저장이 선다", async () => {
+  it("보기 조건은 바닥 시트로 열고, 필터는 팝오버 없이 그 자리에서 펼친다 · 바뀌면 시트 아래 저장이 선다", async () => {
     const host = await mount();
     const mobile = host.querySelector("[data-board-view-bar-mobile]")!;
     const [viewsButton, conditionsButton, searchButton] = [...mobile.querySelectorAll("button")];
@@ -316,7 +316,7 @@ describe("휴대폰(640px 아래) — [뷰 이름 •▾] [보기 조건 N] [찾
     await click(conditionsButton);
     const sheet = document.querySelector<HTMLElement>("[data-view-bar-sheet]")!;
     expect(sheet).not.toBeNull();
-    expect([...sheet.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent)).toEqual(["골라 보기", "담당", "줄 세우기", "나눠 보기", "보이는 칸"]);
+    expect([...sheet.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent)).toEqual(["필터", "담당", "정렬", "나눠 보기", "칸 숨기기"]);
     // 시트 안에서는 칩 팝오버를 띄우지 않는다.
     expect(sheet.querySelector('[aria-haspopup="dialog"]')).toBeNull();
     await click([...sheet.querySelectorAll("button[aria-expanded]")].find((button) => button.textContent?.includes("상태")));
@@ -574,7 +574,7 @@ describe("나눠 보기 — 이 화면이 걸 수 없는 저장값은 바뀜이 
   });
 });
 
-describe("휴대폰(640px 아래) — 칸 메뉴 「골라 보기…」 와 뷰 목록", () => {
+describe("휴대폰(640px 아래) — 칸 메뉴 「필터…」 와 뷰 목록", () => {
   beforeEach(() => {
     vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
       matches: query === "(max-width: 639px)",
@@ -584,12 +584,12 @@ describe("휴대폰(640px 아래) — 칸 메뉴 「골라 보기…」 와 뷰 
     })));
   });
 
-  it("「골라 보기…」 가 오면 보기 조건 시트를 골라 보기 탭으로 열고 그 칸을 펼친다", async () => {
+  it("「필터…」 가 오면 보기 조건 시트를 필터 탭으로 열고 그 칸을 펼친다", async () => {
     function FocusHarness() {
       const [focus, setFocus] = useState<{ columnKey: string; seq: number } | null>(null);
       return (
         <>
-          <button type="button" data-test-focus onClick={() => setFocus({ columnKey: "status", seq: (focus?.seq ?? 0) + 1 })}>골라 보기…</button>
+          <button type="button" data-test-focus onClick={() => setFocus({ columnKey: "status", seq: (focus?.seq ?? 0) + 1 })}>필터…</button>
           <Harness focusFilter={focus} />
         </>
       );
@@ -602,7 +602,7 @@ describe("휴대폰(640px 아래) — 칸 메뉴 「골라 보기…」 와 뷰 
     await click(host.querySelector("[data-test-focus]"));
     const sheet = document.querySelector<HTMLElement>("[data-view-bar-sheet]")!;
     expect(sheet).not.toBeNull();
-    expect(sheet.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe("골라 보기");
+    expect(sheet.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe("필터");
     const facet = [...sheet.querySelectorAll<HTMLButtonElement>("button[aria-expanded]")].find((button) => button.textContent?.includes("상태"))!;
     expect(facet.getAttribute("aria-expanded")).toBe("true");
     expect([...sheet.querySelectorAll("label")].map((label) => label.textContent)).toEqual(expect.arrayContaining(["신규 (2)", "완료 (1)"]));

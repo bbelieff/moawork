@@ -130,7 +130,7 @@ export function valueBlockKey(columnKey: string, id: string | null): string {
  * - 묶음 순서: 목록·상태 칸은 선택지 순서, 사람 칸은 구성원 순서. 선택지·구성원에 없는 값(옛 값·나간
  *   사람)은 숨기지 않고 그 뒤에 따로 묶는다. 값이 없는 행은 맨 끝 「(없음)」.
  * - 빈 묶음도 만든다(끌어 놓을 자리) — 화면이 접어 둔다.
- * - 묶음 안의 행 순서: 보드 순서 → 보드 안 순서(sort_order). 줄 세우기가 걸리면 화면이 그 순서로 다시 세운다.
+ * - 묶음 안의 행 순서: 보드 순서 → 보드 안 순서(sort_order). 정렬이 걸리면 화면이 그 순서로 다시 세운다.
  * - 물리 그룹·순서·이동 규칙은 건드리지 않는다(group 은 null — 보드 띠가 아니다).
  */
 export function buildValueBlocks({

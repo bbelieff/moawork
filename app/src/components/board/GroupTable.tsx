@@ -830,11 +830,11 @@ export function GroupTable({
    */
   onBulkStatusRequest?: (rowId: string, columnKey: string, presetValue: string) => boolean;
   /**
-   * #845 5단계 — 칸 메뉴 「보기 · 나만」(줄 세우기 · 골라 보기… · 숨기기)을 보드에 올린다.
+   * #845 5단계 — 칸 메뉴 「보기 · 나만」(정렬 · 필터… · 숨기기)을 보드에 올린다.
    * 없으면 칸 메뉴에 그 묶음이 없다(칸 관리 권한도 없으면 머리글은 이름 글자만 남는다).
    */
   onRequestViewCondition?: (request: ColumnViewRequest) => void;
-  /** 이 칸의 「골라 보기…」 를 지금 열 수 있는가(보드의 골라 보기 화면이 그 칸을 다루는가). */
+  /** 이 칸의 「필터…」 를 지금 열 수 있는가(보드의 필터 화면이 그 칸을 다루는가). */
   canFilterColumn?: (column: BoardColumn) => boolean;
   /** #845 7단계 — 칸 메뉴에 「{칸}별로 나눠 보기」 를 보이는가(사람·목록·상태 칸). 없으면 감춘다. */
   canGroupColumn?: (column: BoardColumn) => boolean;
@@ -847,7 +847,7 @@ export function GroupTable({
   addPrefill?: { columnKey: string; value: CellValue } | null;
   /** 회사부터 고르는 추가(계약업체 실무)가 새 행을 만들었을 때 — 그 행 id. */
   onRowCreated?: (itemId: string) => void;
-  /** 지금 걸린 줄 세우기 — 칸 메뉴의 그 항목에 체크 표시를 단다. */
+  /** 지금 걸린 정렬 — 칸 메뉴의 그 항목에 체크 표시를 단다. */
   activeSorts?: readonly { columnKey: string; direction: "asc" | "desc" }[];
   /** 지우기 확인 창이 «멈추는 계산 칸» 을 찾을 같은 탭의 칸 정의(기본 detailColumns). */
   columnCatalog?: readonly BoardColumn[];

@@ -3,12 +3,12 @@
 /**
  * 「보기 조건」 칸 — #845 6단계(2026-10-08 대표 결정).
  *
- * 보기 줄의 칩을 누르면 줄 «아래로 펼쳐지는» 칸이다(팝오버가 아니다 — 안쪽 골라 보기 칩이 팝오버라
- * 팝오버 안에 팝오버가 생기지 않게). 왼쪽 탭: 골라 보기 · 담당 · 줄 세우기 · 나눠 보기 · 보이는 칸.
+ * 보기 줄의 칩을 누르면 줄 «아래로 펼쳐지는» 칸이다(팝오버가 아니다 — 안쪽 필터 칩이 팝오버라
+ * 팝오버 안에 팝오버가 생기지 않게). 왼쪽 탭: 필터 · 담당 · 정렬 · 나눠 보기 · 보이는 칸.
  * 고르는 화면은 예전 도구줄의 것을 그대로 옮겼다(필터 칩·담당자·정렬·표시 컬럼).
  *
  * 메뉴·칸은 짧게(대표: "설명이 너무 많아 메뉴는 간결하게") — 항목은 한 줄, 풀이 문단이 없다.
- * 휴대폰(바닥 시트)에서는 골라 보기도 팝오버 대신 그 자리에서 펼친다.
+ * 휴대폰(바닥 시트)에서는 필터도 팝오버 대신 그 자리에서 펼친다.
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -27,8 +27,8 @@ import { UNASSIGNED, type BoardFilterState } from "./filters";
 import { OtherInfoFacetFilters } from "./OtherInfoFacetFilter";
 
 /**
- * 골라 보기에 칩이 생기는 칸인가 — 선택지가 있는 목록·상태 칸과 기타정보 칸.
- * 칸 메뉴의 「골라 보기…」 도 이 칸들에서만 보인다.
+ * 필터에 칩이 생기는 칸인가 — 선택지가 있는 목록·상태 칸과 기타정보 칸.
+ * 칸 메뉴의 「필터…」 도 이 칸들에서만 보인다.
  */
 export function hasToolbarFacet(column: Pick<BoardColumn, "type" | "options_jsonb">): boolean {
   if (column.type === "other_info") return true;
@@ -36,17 +36,17 @@ export function hasToolbarFacet(column: Pick<BoardColumn, "type" | "options_json
     && Boolean(column.options_jsonb?.options?.length);
 }
 
-/** 칸 메뉴가 「골라 보기…」 로 이 칸의 골라 보기를 열어 달라는 요청. seq 가 바뀔 때마다 한 번 연다. */
+/** 칸 메뉴가 「필터…」 로 이 칸의 필터를 열어 달라는 요청. seq 가 바뀔 때마다 한 번 연다. */
 export type ToolbarFilterFocus = Readonly<{ columnKey: string; seq: number }>;
 
 export type ConditionTab = "filter" | "assignee" | "sort" | "group" | "columns";
 
 export const CONDITION_TABS: readonly { id: ConditionTab; label: string }[] = [
-  { id: "filter", label: "골라 보기" },
+  { id: "filter", label: "필터" },
   { id: "assignee", label: "담당" },
-  { id: "sort", label: "줄 세우기" },
+  { id: "sort", label: "정렬" },
   { id: "group", label: "나눠 보기" },
-  { id: "columns", label: "보이는 칸" },
+  { id: "columns", label: "칸 숨기기" },
 ];
 
 const OTHER_INFO_STATES: readonly { id: OtherInfoFacetState; label: string }[] = [
@@ -107,7 +107,7 @@ export function OptionPicker({
   );
 }
 
-/** 휴대폰 시트의 골라 보기 한 칸 — 팝오버 대신 그 자리에서 펼친다. openSignal 이 바뀌면(칸 메뉴 「골라 보기…」) 펼쳐 보인다. */
+/** 휴대폰 시트의 필터 한 칸 — 팝오버 대신 그 자리에서 펼친다. openSignal 이 바뀌면(칸 메뉴 「필터…」) 펼쳐 보인다. */
 function InlineFacet({ label, summary, openSignal, children }: { label: string; summary?: string; openSignal?: number; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [seenSignal, setSeenSignal] = useState<number | undefined>(undefined);
@@ -159,7 +159,7 @@ export function ViewConditionsPanel({
   variant?: "panel" | "sheet";
   tab: ConditionTab;
   onTab: (tab: ConditionTab) => void;
-  /** 화면 칸(신규리드는 합성 칸 key) — 골라 보기·줄 세우기·보이는 칸의 대상. */
+  /** 화면 칸(신규리드는 합성 칸 key) — 필터·정렬·보이는 칸의 대상. */
   columns: readonly BoardColumn[];
   rows: readonly ItemWithValues[];
   filters: BoardFilterState;
@@ -168,7 +168,7 @@ export function ViewConditionsPanel({
   currentUserId?: string;
   /** 화면에서 감춘 예전 칸이 아직 걸려 있을 때 지울 수 있게 보이는 이름. */
   legacyFacetLabels?: Readonly<Record<string, string>>;
-  /** 칸 메뉴 「골라 보기…」 — 그 칸의 칩을 연다(시트에서는 그 칸을 펼친다). */
+  /** 칸 메뉴 「필터…」 — 그 칸의 칩을 연다(시트에서는 그 칸을 펼친다). */
   focusFilter?: ToolbarFilterFocus | null;
   groupBy: string;
   /** 나눠 보기에 고를 수 있는 칸(보드별 말고). 없으면 「보드별」 하나다. */
@@ -221,7 +221,7 @@ export function ViewConditionsPanel({
   const summaryOf = (picked: readonly string[], options: readonly { id: string; label: string }[]) =>
     picked.length === 1 ? options.find((option) => option.id === picked[0])?.label ?? picked[0] : picked.length > 1 ? `${picked.length}개` : undefined;
 
-  /* ── 골라 보기 ── */
+  /* ── 필터 ── */
   const filterContent = (
     <div className="flex flex-col gap-2">
       <div className={sheet ? "flex flex-col gap-1.5" : "flex flex-wrap items-center gap-2"}>
@@ -366,7 +366,7 @@ export function ViewConditionsPanel({
     </div>
   );
 
-  /* ── 줄 세우기 ── */
+  /* ── 정렬 ── */
   const activeSorts = filters.sorts?.length
     ? filters.sorts
     : filters.sortKey

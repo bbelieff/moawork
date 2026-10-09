@@ -37,7 +37,7 @@ export function FilterChip({
   /** 활성일 때만 ×(해제) 버튼이 붙는다. */
   onClear: () => void;
   children: ReactNode;
-  /** 바뀔 때마다 한 번 칩을 연다 — #845 칸 메뉴의 「골라 보기…」. 없으면 누를 때만 열린다. */
+  /** 바뀔 때마다 한 번 칩을 연다 — #845 칸 메뉴의 「필터…」. 없으면 누를 때만 열린다. */
   openSignal?: number;
 }) {
   const id = useId();

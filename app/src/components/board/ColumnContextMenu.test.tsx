@@ -4,7 +4,7 @@
  *   · 머리글은 이름만: 이름이 곧 메뉴 단추(누르기 · Enter/Space · 오른쪽 단추), ⋯ 단추·출처 기호 없음
  *   · 메뉴는 간결하게: 맨 위 칸 이름 + 회색 한 줄(「날짜 · 18/24 채움」), 항목은 한 줄씩(둘째 줄·예시 없음)
  *   · 「보기 [나만]」 / 「칸 [모두]」 — 뒤쪽은 칸 관리 권한이 있을 때만
- *   · 고른 일은 맞는 요청을 올린다(줄 세우기·골라 보기·숨기기·옮기기), 지우기는 확인 창에서 결과를 말한다
+ *   · 고른 일은 맞는 요청을 올린다(정렬·필터·숨기기·옮기기), 지우기는 확인 창에서 결과를 말한다
  *   (#604 계약: 메뉴는 본문 포털 · 보드에서 한 번에 하나 · 확인 대화상자 · 중복 제출 막기는 그대로)
  */
 
@@ -214,7 +214,7 @@ describe("두 묶음 — 보기 [나만] · 칸 [모두]", () => {
     await openMenu();
     expect(sectionLabels()).toEqual(["보기나만", "칸모두"]);
     expect(labels()).toEqual([
-      "큰 금액순", "작은 금액순", "골라 보기…", "숨기기",
+      "큰 금액순", "작은 금액순", "필터…", "숨기기",
       "이름 바꾸기", "입력 방식 바꾸기", "왼쪽으로", "오른쪽으로", "오른쪽에 칸 추가", "복사하기", "지우기",
     ]);
     // 둘째 줄·예시·결과 풀이가 없다 — 항목 글자 = 이름 하나.
@@ -231,16 +231,17 @@ describe("두 묶음 — 보기 [나만] · 칸 [모두]", () => {
     expect(sectionLabels()).toEqual(["칸모두"]);
   });
 
-  it("메뉴 글자에 정렬·필터·그룹·컬럼 같은 말을 쓰지 않는다", async () => {
+  it("메뉴 글자에 정렬·그룹·컬럼 같은 말을 쓰지 않는다 — 「필터…」 는 2026-10-09 대표 결정", async () => {
     await renderMenu({ view: view({ canFilter: true }), column: { ...column, type: "select", label: "진행기관", options_jsonb: { options: [{ id: "a", label: "소진공", order: 0 }, { id: "b", label: "신보", order: 1 }] } } as BoardColumn });
     await openMenu("진행기관");
     const text = menu()!.textContent ?? "";
-    for (const word of ["정렬", "필터", "그룹", "컬럼", "예:"]) expect(text).not.toContain(word);
+    for (const word of ["정렬", "그룹", "컬럼", "예:"]) expect(text).not.toContain(word);
+    expect(labels()).toContain("필터…");
     expect(labels()).toContain("선택지 고치기");
     expect(labels()).toContain("가나다순");
   });
 
-  it("줄 세우기는 이 칸의 방향을 올리고, 걸려 있으면 체크 표시와 「원래 순서로」 가 생긴다", async () => {
+  it("정렬은 이 칸의 방향을 올리고, 걸려 있으면 체크 표시와 「원래 순서로」 가 생긴다", async () => {
     const onRequest = vi.fn();
     await renderMenu({ view: view({ onRequest }), column: { ...column, type: "date", key: "applied_on", label: "신청일" } as BoardColumn });
     await openMenu("신청일");
@@ -266,12 +267,12 @@ describe("두 묶음 — 보기 [나만] · 칸 [모두]", () => {
     expect(labels()).toEqual(["이름순", "숨기기"]);
   });
 
-  it("골라 보기… · 숨기기는 이 칸으로 요청을 올린다", async () => {
+  it("필터… · 숨기기는 이 칸으로 요청을 올린다", async () => {
     const onRequest = vi.fn();
     const institution = { ...column, key: "institution", label: "진행기관", type: "select", options_jsonb: { options: [{ id: "a", label: "소진공", order: 0 }] } } as BoardColumn;
     await renderMenu({ view: view({ onRequest, canFilter: true }), column: institution });
     await openMenu("진행기관");
-    await click(item("골라 보기…")!);
+    await click(item("필터…")!);
     expect(onRequest).toHaveBeenLastCalledWith({ kind: "filter", columnKey: "institution" });
     expect(menu()).toBeNull();
     await openMenu("진행기관");
@@ -279,10 +280,10 @@ describe("두 묶음 — 보기 [나만] · 칸 [모두]", () => {
     expect(onRequest).toHaveBeenLastCalledWith({ kind: "hide", columnKey: "institution" });
   });
 
-  it("골라 보기 화면이 이 칸을 못 다루면 「골라 보기…」 를 감춘다", async () => {
+  it("필터 화면이 이 칸을 못 다루면 「필터…」 를 감춘다", async () => {
     await renderMenu({ view: view({ canFilter: false }), column: { ...column, type: "date", label: "신청일" } as BoardColumn });
     await openMenu("신청일");
-    expect(item("골라 보기…")).toBeUndefined();
+    expect(item("필터…")).toBeUndefined();
   });
 
   it("옮기기는 끝에서 막히고, 고르면 한 칸 옮긴다", async () => {

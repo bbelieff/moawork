@@ -45,7 +45,7 @@ describe("#845 6단계 — 바뀐 조건 세기", () => {
     expect(changedConditions(conditionsFromSavedConfig(other, ALL), conditionsFromSavedConfig(saved, ALL))).toEqual([]);
   });
 
-  it("골라 보기는 칸마다 하나, 담당·줄 세우기·보이는 칸은 하나씩 센다", () => {
+  it("필터는 칸마다 하나, 담당·정렬·보이는 칸은 하나씩 센다", () => {
     const current = conditionsFromFilters({
       ...EMPTY_FILTERS,
       assignees: ["me"],
@@ -72,7 +72,7 @@ describe("#845 6단계 — 바뀐 조건 세기", () => {
     expect(changedConditions(current, conditionsFromSavedConfig(saved, ALL))).toEqual([]);
   });
 
-  it("줄 세우기 우선순위가 바뀌면 바뀐 것이다", () => {
+  it("정렬 우선순위가 바뀌면 바뀐 것이다", () => {
     const saved = config({ sorts: [{ columnKey: "amount", direction: "desc" }, { columnKey: "status", direction: "asc" }] });
     const current = conditionsFromFilters({
       ...EMPTY_FILTERS,
@@ -137,7 +137,7 @@ describe("#845 6단계 — 저장할 설정", () => {
     expect(draftViewConfig({ mode: "kanban", filters, groupBy: "", params, active: null }).kind).toBe("board");
   });
 
-  it("검색어는 빼고 저장한다 · 줄 세우기는 sorts 로 · 칸 배치(layout)는 담지 않는다", () => {
+  it("검색어는 빼고 저장한다 · 정렬은 sorts 로 · 칸 배치(layout)는 담지 않는다", () => {
     const draft = draftViewConfig({ mode: "table", filters, groupBy: "", params, active: null });
     expect(draft.filters.q).toBe("");
     expect(draft.filters.sortKey).toBe("");
@@ -177,7 +177,7 @@ describe("#845 6단계 — 칩·건수 글자", () => {
     expect(viewCountText({
       filters: { ...EMPTY_FILTERS, assignees: ["u2"], byColumn: { status: ["a"], memo: [] }, q: "서울" },
       people, currentUserId: "me", matched: 2, total: 40,
-    })).toBe("가담당 담당 · 골라 보기 1 · 찾기 “서울” · 40건 중 2건");
+    })).toBe("가담당 담당 · 필터 1 · 찾기 “서울” · 40건 중 2건");
   });
 });
 

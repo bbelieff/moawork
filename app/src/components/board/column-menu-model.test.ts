@@ -73,7 +73,7 @@ describe("채움 수", () => {
 });
 
 describe("메뉴 항목은 짧은 한 줄", () => {
-  it("칸 종류마다 쉬운 말 줄 세우기(자주 쓰는 쪽이 위)", () => {
+  it("칸 종류마다 쉬운 말 정렬(자주 쓰는 쪽이 위)", () => {
     const labels = (type: BoardColumn["type"]) => columnSortOptions({ type }).map((option) => [option.direction, option.label]);
     expect(labels("text")).toEqual([["asc", "가나다순"], ["desc", "가나다 역순"]]);
     expect(labels("select")).toEqual([["asc", "가나다순"], ["desc", "가나다 역순"]]);
@@ -89,8 +89,9 @@ describe("메뉴 항목은 짧은 한 줄", () => {
       ...FIELD_TYPES.flatMap((type) => columnSortOptions({ type }).map((option) => option.label)),
       ...FIELD_TYPES.map((type) => columnEditLabel({ type })),
     ];
+    // 「필터」 는 2026-10-09 대표 결정으로 쓰는 말이다(정렬 항목은 여전히 「가나다순」 처럼 쉬운 말).
     for (const label of all) {
-      expect(label, label).not.toMatch(/정렬|오름차순|내림차순|필터|그룹|컬럼|예:|\n/u);
+      expect(label, label).not.toMatch(/정렬|오름차순|내림차순|그룹|컬럼|예:|\n/u);
       expect(label.length, label).toBeLessThanOrEqual(10);
     }
   });

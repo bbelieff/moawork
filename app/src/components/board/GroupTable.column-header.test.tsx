@@ -121,7 +121,7 @@ describe("칸 머리글 — 누르면 메뉴, 끌면 순서", () => {
 });
 
 describe("칸 메뉴 — 「보기」 는 보드로, 「칸」 은 권한대로", () => {
-  it("줄 세우기·숨기기는 이 칸의 요청을 올리고, 채움 수는 넘어온 행으로 센다", async () => {
+  it("정렬·숨기기는 이 칸의 요청을 올리고, 채움 수는 넘어온 행으로 센다", async () => {
     const { host, calls } = await mount();
     await act(async () => title(host, "kind")!.click());
     expect(document.querySelector("[data-column-menu-meta]")!.textContent).toBe("글자 · 1/2 채움");
@@ -132,7 +132,7 @@ describe("칸 메뉴 — 「보기」 는 보드로, 「칸」 은 권한대로"
     expect(calls.view).toHaveBeenLastCalledWith({ kind: "hide", columnKey: "kind" });
   });
 
-  it("지금 걸린 줄 세우기를 메뉴에 표시한다", async () => {
+  it("지금 걸린 정렬을 메뉴에 표시한다", async () => {
     const { host } = await mount({ activeSorts: [{ columnKey: "rep", direction: "desc" }] });
     await act(async () => title(host, "rep")!.click());
     expect(menuItem("가나다 역순")!.getAttribute("aria-checked")).toBe("true");
@@ -167,7 +167,7 @@ describe("칸 메뉴 — 「보기」 는 보드로, 「칸」 은 권한대로"
     expect(th(host, "kind").querySelector('[role="button"]')).toBeNull();
   });
 
-  it("오른쪽 고정 「진행현황」 머리글은 sticky 그대로이고 「보기」(골라 보기… 포함)만 연다", async () => {
+  it("오른쪽 고정 「진행현황」 머리글은 sticky 그대로이고 「보기」(필터… 포함)만 연다", async () => {
     const { host, calls } = await mount();
     const pinned = th(host, WORKFLOW_PROGRESS_KEY);
     expect(pinned.getAttribute("data-right-pinned")).toBe("true");
@@ -177,7 +177,7 @@ describe("칸 메뉴 — 「보기」 는 보드로, 「칸」 은 권한대로"
     expect(pinned.hasAttribute("data-column-manage")).toBe(false);
     await act(async () => title(host, WORKFLOW_PROGRESS_KEY)!.click());
     expect(document.querySelector('[data-column-menu-section="manage"]')).toBeNull();
-    await act(async () => menuItem("골라 보기…")!.click());
+    await act(async () => menuItem("필터…")!.click());
     expect(calls.view).toHaveBeenLastCalledWith({ kind: "filter", columnKey: WORKFLOW_PROGRESS_KEY });
   });
 });

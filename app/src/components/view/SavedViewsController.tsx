@@ -3,7 +3,7 @@ import { ParentItemLabel } from "@/components/board/ParentItemLabel";
 
 /**
  * 목록(묶지 않은 표)·캘린더 보기 — #845 6단계부터 표·칸반과 같은 보기 줄(BoardViewBar)을 쓴다.
- * 보기 조건(찾기·골라 보기·담당·줄 세우기·보이는 칸)은 화면이 들고 주소(mwFilters)에 남긴다.
+ * 보기 조건(찾기·필터·담당·정렬·보이는 칸)은 화면이 들고 주소(mwFilters)에 남긴다.
  * 저장된 뷰는 «기준» 이다 — 지금 조건과 다르면 보기 줄이 «바뀜» 을 알린다.
  */
 
