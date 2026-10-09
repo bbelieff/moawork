@@ -110,6 +110,12 @@ function toPipeline(r: Row): Pipeline {
   };
 }
 
+/**
+ * 파이프라인에 단계를 묶어 읽는 select. stages → pipelines 외래키는 하나뿐이지만(운영 pg_constraint 실측,
+ * 2026-10-09) 나중에 다른 키가 생기면 이름 없는 묶음은 PGRST201 로 실패한다 — 이름을 붙여 둔다.
+ */
+export const PIPELINES_WITH_STAGES_SELECT = "id, org_id, name, stages!stages_pipeline_id_fkey(id, pipeline_id, name, sort_order, kind)";
+
 export class SupabaseCrmSource implements CrmSource {
   readonly kind = "supabase" as const;
 
@@ -129,6 +135,20 @@ export class SupabaseCrmSource implements CrmSource {
       .order("name");
     if (error) this.fail("listPipelines", error);
     return (data ?? []).map(toPipeline);
+  }
+
+  async listPipelinesWithStages(orgId: string): Promise<Array<Pipeline & { stages: Stage[] }>> {
+    const { data, error } = await this.db
+      .from("pipelines")
+      .select(PIPELINES_WITH_STAGES_SELECT)
+      .eq("org_id", orgId)
+      .order("name")
+      .order("sort_order", { referencedTable: "stages" });
+    if (error) this.fail("listPipelinesWithStages", error);
+    return ((data ?? []) as Row[]).map((row) => ({
+      ...toPipeline(row),
+      stages: (Array.isArray(row.stages) ? (row.stages as Row[]) : []).map(toStage),
+    }));
   }
 
   async listStages(pipelineId: string): Promise<Stage[]> {

@@ -20,6 +20,11 @@ export interface CrmSource {
   // 파이프라인 / 단계 (조직 공용 — 담당범위 무관)
   listPipelines(orgId: string): Promise<Pipeline[]>;
   listStages(pipelineId: string): Promise<Stage[]>;
+  /**
+   * Issue 857 — 파이프라인과 그 단계를 한 번에(선택). 있으면 AsyncCrmService 가 파이프라인마다
+   * listStages 를 부르던 두 번째 물결을 건너뛴다. 결과 모양·순서는 listPipelines + listStages 와 같다.
+   */
+  listPipelinesWithStages?(orgId: string): Promise<Array<Pipeline & { stages: Stage[] }>>;
   getStage(stageId: string): Promise<Stage | undefined>;
 
   // 고객사 (담당범위 적용)

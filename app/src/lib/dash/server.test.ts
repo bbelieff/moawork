@@ -146,6 +146,114 @@ describe("loadDashboardPageData", () => {
     expect(second.core.status === "ready" && second.core.data.dash.totalDeals).toBe(2);
   });
 
+  it("Issue 857 — 거래에 기대는 읽기(inputs·원장·체크리스트 훅)는 보드·공지를 기다리지 않는다", async () => {
+    const base = fixtureSource();
+    let releaseBoards!: () => void;
+    let releaseNotices!: () => void;
+    const loadLedger = vi.fn(base.loadLedger);
+    const loadDashboardInputs = vi.fn(base.loadDashboardInputs);
+    const onCrmDeals = vi.fn();
+    const source: DashboardSource = {
+      ...base,
+      loadLedger,
+      loadDashboardInputs,
+      loadBoards: (ctx) => new Promise((resolve) => { releaseBoards = () => resolve(base.loadBoards(ctx)); }),
+      loadNotices: (ctx) => new Promise((resolve) => { releaseNotices = () => resolve(base.loadNotices(ctx)); }),
+    };
+    const pending = loadDashboardPageData(ownerCtx, { source, onCrmDeals });
+    await vi.waitFor(() => {
+      expect(loadLedger).toHaveBeenCalledTimes(1);
+      expect(loadDashboardInputs).toHaveBeenCalledTimes(1);
+      expect(onCrmDeals).toHaveBeenCalledWith(["deal-0"]);
+    });
+    releaseBoards();
+    releaseNotices();
+    const result = await pending;
+    expect(result.core.status).toBe("ready");
+    expect(result.boards).toEqual({ status: "ready", data: { boardCount: 2, itemCount: 3 } });
+    expect(result.ledger.status).toBe("ready");
+  });
+
+  it("Issue 857 — crm 이 실패하면 core·원장은 crm 이유로 unavailable, 보드·공지는 따로 판단", async () => {
+    const result = await loadDashboardPageData(ownerCtx, { source: fixtureSource({ fail: "loadCrm" }) });
+    expect(result.core).toEqual({ status: "unavailable", operation: "crm" });
+    expect(result.ledger).toEqual({ status: "unavailable", operation: "crm" });
+    expect(result.boards.status).toBe("ready");
+    expect(result.notices.status).toBe("ready");
+  });
+
+  it("Issue 857 — 계측 콜백이 던져도 묶음은 «불러오지 못함» 이 되지 않는다", async () => {
+    const result = await loadDashboardPageData(ownerCtx, {
+      source: fixtureSource(),
+      onStage: () => { throw new Error("log sink down"); },
+    });
+    expect(result.core.status).toBe("ready");
+    expect(result.boards.status).toBe("ready");
+    expect(result.ledger.status).toBe("ready");
+  });
+
+  it("Issue 857 — 보드 행 수는 행을 읽지 않고 같은 조건으로 센다(보드 id 100개씩)", async () => {
+    const calls: Array<{ table: string; ops: Array<[string, ...unknown[]]> }> = [];
+    const boards = Array.from({ length: 150 }, (_, index) => ({ id: `board-${index}`, org_id: "org-a", source: index === 0 ? "user.section-preset/x" : null }));
+    const db = {
+      from: vi.fn((table: string) => {
+        const entry = { table, ops: [] as Array<[string, ...unknown[]]> };
+        calls.push(entry);
+        const builder: Record<string, unknown> = new Proxy({}, {
+          get(_target, property) {
+            if (property === "then") {
+              const result = table === "boards"
+                ? { data: boards, error: null }
+                : table === "items"
+                  ? { data: null, error: null, count: (entry.ops.find(([name]) => name === "in")?.[2] as string[]).length }
+                  : { data: null, error: { message: "not in this test" } };
+              return (resolve: (value: unknown) => unknown) => Promise.resolve(resolve(result));
+            }
+            return (...args: unknown[]) => {
+              entry.ops.push([String(property), ...args]);
+              return builder;
+            };
+          },
+        });
+        return builder;
+      }),
+    } as unknown as SupabaseClient;
+    const result = await loadDashboardPageData(ownerCtx, { clientFactory: async () => db });
+    const itemCalls = calls.filter((call) => call.table === "items");
+    expect(itemCalls).toHaveLength(2);
+    for (const call of itemCalls) {
+      expect(call.ops).toContainEqual(["select", "id", { count: "exact", head: true }]);
+      expect(call.ops).toContainEqual(["eq", "org_id", "org-a"]);
+      expect(call.ops).toContainEqual(["is", "deleted_at", null]);
+      expect(call.ops).toContainEqual(["is", "archived_at", null]);
+    }
+    expect(itemCalls.map((call) => (call.ops.find(([name]) => name === "in")?.[2] as string[]).length)).toEqual([100, 49]);
+    expect(calls.some((call) => call.table === "item_values")).toBe(false);
+    // 섹션 프리셋 보드는 보드 수에서 빠지고, 그 보드의 행도 세지 않는다.
+    expect(result.boards).toEqual({ status: "ready", data: { boardCount: 149, itemCount: 149 } });
+  });
+
+  it("Issue 857 — 보드 행 수 읽기가 실패하면 0 이 아니라 «불러오지 못함»", async () => {
+    const db = {
+      from: vi.fn((table: string) => {
+        const builder: Record<string, unknown> = new Proxy({}, {
+          get(_target, property) {
+            if (property === "then") {
+              const result = table === "boards"
+                ? { data: [{ id: "board-1", org_id: "org-a", source: null }], error: null }
+                : { data: null, error: table === "items" ? null : { message: "x" }, count: null };
+              return (resolve: (value: unknown) => unknown) => Promise.resolve(resolve(result));
+            }
+            return () => builder;
+          },
+        });
+        return builder;
+      }),
+    } as unknown as SupabaseClient;
+    const result = await loadDashboardPageData(ownerCtx, { clientFactory: async () => db });
+    expect(result.boards).toEqual({ status: "unavailable", operation: "boards" });
+  });
+
   it("creates one cookie-bound client per request and does not expose DB error details", async () => {
     const failedQuery = {
       select: () => failedQuery,

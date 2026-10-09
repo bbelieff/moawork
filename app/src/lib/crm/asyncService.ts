@@ -31,6 +31,8 @@ export class AsyncCrmService {
 
   // ── 파이프라인 ────────────────────────────────────────
   async listPipelines(ctx: Ctx): Promise<PipelineWithStages[]> {
+    // Issue 857 — 소스가 한 번에 읽을 수 있으면 파이프라인마다 단계를 따로 묻지 않는다(물결 2 → 1).
+    if (this.source.listPipelinesWithStages) return this.source.listPipelinesWithStages(ctx.org.id);
     const pipelines = await this.source.listPipelines(ctx.org.id);
     return Promise.all(
       pipelines.map(async (p) => ({

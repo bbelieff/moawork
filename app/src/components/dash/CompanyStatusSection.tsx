@@ -27,6 +27,7 @@ import type { DealChecklistState } from "@/lib/policyfund/checklist/types";
 import { createClient } from "@/lib/supabase/server";
 import { MonthlyCollection } from "./MonthlyCollection";
 import { RouteLoading } from "@/components/shell/RouteLoading";
+import { createEntryTimer, logEntryTimings, type EntryStageTiming } from "@/lib/entry-timing";
 
 // 「회사 현황」 — 홈 한 화면의 아래쪽 절(총괄 확정, BBE-215).
 //
@@ -36,6 +37,17 @@ import { RouteLoading } from "@/components/shell/RouteLoading";
 //
 // 진입점: 없다 — 홈 한 화면의 아래 절이라 «가는 링크» 가 필요 없다(BBE-215 로 바로가기를 뺐다).
 //   사이드바(nav-items.ts)는 목업 D05 정본이라 건드리지 않았다.
+/** 묶음별 읽기 시간을 모은다(로그용 — 묶음 이름과 ms 만). */
+function stageCollector() {
+  const stages: EntryStageTiming[] = [];
+  return {
+    add: (stage: string, ms: number) => {
+      stages.push({ stage, ms: Math.round(ms * 10) / 10 });
+    },
+    list: () => [...stages],
+  };
+}
+
 /** 거래 목록을 안 순간 체크리스트 읽기를 띄우고, 나중에 그 결과를 받는다(못 띄웠으면 그때 읽는다). */
 function earlyChecklistRead(store: SupabaseChecklistStore, orgId: string) {
   let read: Promise<Map<string, DealChecklistState>> | null = null;
@@ -100,13 +112,21 @@ export async function CompanyStatusSection({
   // Issue 857 — 거래별 체크리스트를 한 번에, 거래 목록을 안 물결에 같이 읽는다(전: 거래마다 한 번, 대시보드 뒤
   //   한 물결 더). 결과는 거래 목록이 «준비됨» 일 때만 쓴다 — 실패하면 전처럼 이 절이 오류로 끝난다.
   const checklistRead = earlyChecklistRead(new SupabaseChecklistStore(await createClient()), ctx.org.id);
-  const model = await loadDashboardPageData(ctx, { month, onCrmDeals: checklistRead.start });
+  // Issue 857 — 회사 현황 절의 단계별 시간(묶음 이름과 ms 만). 대시보드가 1초를 넘는 원인을 운영에서 가른다.
+  const timer = createEntryTimer();
+  const segments = stageCollector();
+  const model = await timer.time("data", () => loadDashboardPageData(ctx, {
+    month,
+    onCrmDeals: checklistRead.start,
+    onStage: segments.add,
+  }));
   const core = model.core.status === "ready" ? model.core.data : null;
   // Issue 857 — 홈은 «오늘» 을 기다리지 않고 이 절을 띄운다. 오늘 결과는 여기서(대시보드를 읽은 뒤) 받는다.
-  const today = await todayInput;
+  const today = await timer.time("today-wait", async () => todayInput);
   const checklists: Map<string, DealChecklistState> = core
-    ? await checklistRead.result(core.deals.map((deal) => deal.id))
+    ? await timer.time("checklists", () => checklistRead.result(core.deals.map((deal) => deal.id)))
     : new Map();
+  logEntryTimings("dashboard-company", [...segments.list(), ...timer.snapshot()], "ready");
   const displayMonth = core?.dash.month ?? month ?? currentMonthKst();
   const stageName = (id: string | null) =>
     core?.stages.find((stage) => stage.id === id)?.name ?? "-";

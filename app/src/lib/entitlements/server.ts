@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 
 import { getRepo } from "@/lib/repo";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -16,6 +17,25 @@ import { type EntitlementRow, lockedFeatures } from "./resolve";
  * 보안 경계가 아니고(진짜 경계는 RLS), 조회 실패로 전 메뉴가 잠기면 그게 곧 장애다.
  * → 실패 시 기본값(MVP 무료)으로 수렴한다.
  */
+/**
+ * Issue 857 — 한 요청 안에서 회사의 기능 잠금 행은 한 번만 읽는다(React cache — 요청 단위).
+ * 레이아웃·홈 «오늘»·«회사 현황» 이 각각 같은 행을 읽었고, 회사 현황의 것은 절 끝에 한 물결을 더 세웠다.
+ * 실패해도 던지지 않는다 — 빈 행(기본값)으로 수렴하는 규칙 그대로.
+ */
+const readEntitlementRows = cache(async (orgId: string): Promise<EntitlementRow[]> => {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("org_entitlements")
+      .select("feature_key, enabled, expires_at")
+      .eq("org_id", orgId);
+    return !error && data ? (data as EntitlementRow[]) : [];
+  } catch {
+    // 네트워크·권한 실패 → 기본값으로 수렴(위 주석 참고).
+    return [];
+  }
+});
+
 export async function loadLockedFeatures(
   orgId: string,
   features: readonly string[],
@@ -26,17 +46,5 @@ export async function loadLockedFeatures(
     return features.filter((f) => !repo.isFeatureEnabled(orgId, f));
   }
 
-  let rows: EntitlementRow[] = [];
-  try {
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("org_entitlements")
-      .select("feature_key, enabled, expires_at")
-      .eq("org_id", orgId);
-    if (!error && data) rows = data as EntitlementRow[];
-  } catch {
-    // 네트워크·권한 실패 → 기본값으로 수렴(위 주석 참고).
-  }
-
-  return lockedFeatures(features, rows);
+  return lockedFeatures(features, await readEntitlementRows(orgId));
 }

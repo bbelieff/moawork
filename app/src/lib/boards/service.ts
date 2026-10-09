@@ -446,12 +446,16 @@ export class BoardsService {
   // BBE-214 — 보드 메타(컬럼)와 아이템 목록은 서로 독립이다. 같이 발행한다.
   // 보드가 없으면 getBoardDetail 이 거부하므로 NotFoundError 는 그대로 나간다.
   async listItems(ctx: Ctx, boardId: string): Promise<ItemWithValues[]> {
-    const [detail, items] = await Promise.all([
+    // Issue 857 — 저장소가 행과 값을 한 왕복으로 줄 수 있으면 그렇게 읽는다(탭 화면 loadPageSnapshot 과 같은
+    //   경로 — 값 읽기 물결이 사라진다). 공지·업체·대시보드·권한 범위 읽기가 이 함수를 쓴다.
+    const [detail, read] = await Promise.all([
       this.getBoardDetail(ctx, boardId),
-      this.repo.then((repo) => repo.listItems(ctx, boardId)),
+      this.repo.then((repo) => repo.listItemsWithValues
+        ? repo.listItemsWithValues(ctx, boardId, "active")
+        : repo.listItems(ctx, boardId).then((items) => ({ items, values: null as ItemValue[] | null }))),
     ]);
     // 153-draft 별도 보관 행은 활성 목록에서 뺀다 (읽기는 한 번, 분리는 메모리에서 — BBE-214 왕복 예산 유지).
-    return this.compose(ctx, items.filter((item) => !item.archived_at), detail);
+    return this.compose(ctx, read.items.filter((item) => !item.archived_at), detail, read.values ?? undefined);
   }
 
   async listDeletedItems(ctx: Ctx, boardId: string): Promise<ItemWithValues[]> {

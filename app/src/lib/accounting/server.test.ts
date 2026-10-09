@@ -111,6 +111,25 @@ describe("deal ledger server read model", () => {
     );
   });
 
+  it("Issue 857 — 접근 확인을 통과한 뒤 원장 행과 합계를 같이 읽는다(서로 기다리지 않음)", async () => {
+    const mock = client();
+    let releaseRows!: () => void;
+    const order = vi.fn(() => new Promise((resolve) => {
+      releaseRows = () => resolve({ data: [], error: null });
+    }));
+    mock.eq.mockReturnValue({ order });
+    const pending = loadDealLedger("deal-1", async () => mock.client);
+    await vi.waitFor(() => {
+      expect(mock.rpc).toHaveBeenCalledWith("deal_ledger_summary", { p_deal_id: "deal-1" });
+    });
+    // 원장 행이 아직 오지 않았는데 합계를 이미 물었다 — 같은 물결이다.
+    expect(order).toHaveBeenCalledTimes(1);
+    releaseRows();
+    await expect(pending).resolves.toEqual({ entries: [], expectedFeeTotal: 0 });
+    const calls = mock.rpc.mock.calls.map(([name]) => name);
+    expect(calls.indexOf("can_access_deal_ledger")).toBeLessThan(calls.indexOf("deal_ledger_summary"));
+  });
+
   it("does not disguise an RLS-hidden deal as an empty ledger", async () => {
     const mock = client({ access: false });
     await expect(loadDealLedger("deal-1", async () => mock.client)).rejects.toBeInstanceOf(

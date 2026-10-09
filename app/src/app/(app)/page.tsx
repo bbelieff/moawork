@@ -5,6 +5,7 @@ import { FeatureGateServer } from "@/components/auth/FeatureGateServer";
 import { FEATURES } from "@/lib/product";
 import { loadTodayHome, type TodayHomeState } from "@/lib/dash/today-server";
 import { RouteLoading } from "@/components/shell/RouteLoading";
+import { createEntryTimer, logEntryTimings } from "@/lib/entry-timing";
 import { TodayHome } from "@/components/dash/TodayHome";
 import { CompanyStatusSection, CompanyStatusSectionFallback } from "@/components/dash/CompanyStatusSection";
 import { MEMBER_ROLES, type MemberRole } from "@/lib/types";
@@ -24,6 +25,11 @@ import { PlatformAccessNotice } from "@/components/platform/PlatformAccessNotice
 //
 //   ★ 옛 지시를 «지우지 않고» 뒤집힌 경위를 남긴다. 안 그러면 다음 사람이 이 절을 보고
 //     「BBE-186 을 어겼네」로 읽고 되돌린다. 규칙이 바뀐 것이지 어긴 것이 아니다.
+/** Issue 857 — 홈 위쪽 단계별 시간(세션·오늘 읽기 ms 만). 오늘을 다 읽은 뒤 한 줄 남긴다. */
+function logHomeTimingsWhenDone(today: Promise<unknown>, timer: ReturnType<typeof createEntryTimer>) {
+  void timer.time("today", () => today).then(() => logEntryTimings("dashboard-home", timer.snapshot(), "ready"));
+}
+
 /** «오늘» 을 다 읽으면 그린다 — 기다리는 동안 위 머리말과 아래 회사 현황은 먼저 진행된다. */
 async function TodayHomeWhenReady({ today }: { today: Promise<TodayHomeState> }) {
   return <TodayHome state={await today} />;
@@ -39,12 +45,14 @@ export default async function DashboardPage({
   const accessError = typeof sp.error === "string" ? sp.error : undefined;
   const month = typeof sp.month === "string" ? sp.month : undefined;
 
-  const base = await getSession();
+  const homeTimer = createEntryTimer();
+  const base = await homeTimer.time("session", () => getSession());
   const devToolsEnabled = process.env.NODE_ENV !== "production";
   const ctx = devToolsEnabled ? applyAs(base, asParam) : base;
   // Issue 857 — «오늘» 읽기를 기다리지 않는다. 오늘과 회사 현황이 각자 기다리며 같이 읽는다
   //   (전: 오늘을 다 읽은 뒤에야 회사 현황이 읽기 시작해 두 시간이 더해졌다). loadTodayHome 은 던지지 않는다.
   const today = loadTodayHome(ctx.org.id);
+  logHomeTimingsWhenDone(today, homeTimer);
   /*
    * ★ 목록을 손으로 좁혀 적지 않는다. 정본을 그대로 쓴다.
    *   전에는 `const roles: MemberRole[] = ["owner","admin","member"]` 였다 —
