@@ -689,7 +689,8 @@ export function BoardViewBar({
             </button>
           </div>
         ) : null}
-        <div className="ms-auto flex min-w-0 shrink items-center gap-2 pb-0.5">
+        {/* 찾기 칸은 줄어들지 않는다 — 줄이 모자라면 건수 글자가 먼저 잘리고 그다음 뷰 탭 줄이 줄어든다(넘쳐서 가로 막대가 생기지 않게). */}
+        <div className="ms-auto flex min-w-40 shrink items-center gap-2 pb-0.5 lg:min-w-48">
           <div className="relative shrink-0">
             <span aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-mw-sub">⌕</span>
             {searchInput("h-7 w-40 rounded-full border border-mw-line bg-mw-card pl-7 pr-3 text-xs text-mw-fg outline-none placeholder:text-mw-sub focus:border-mw-record lg:w-48")}

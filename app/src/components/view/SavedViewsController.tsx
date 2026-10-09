@@ -40,6 +40,7 @@ import {
   presentNewLeadColumns,
 } from "@/lib/default-tabs/new-lead";
 import { BoardInlineTitleEditor } from "@/components/board/BoardInlineTitleEditor";
+import { columnPlainName } from "@/components/board/column-menu-model";
 import { GroupNameEditor } from "@/components/board/GroupNameEditor";
 import { renameColumnTitleAction } from "@/app/(app)/boards/title-actions";
 import { addBoardLabelOptionAction } from "@/app/(app)/boards/label-option-actions";
@@ -267,7 +268,7 @@ export function SavedViewsController({
         const definition=displayColumns.find((candidate)=>candidate.key===column.key);
         if(!definition)return column.label;
         const presentationOnly=canonicalNewLead&&isNewLeadPresentationOnlyStructure(definition);
-        return <span className="flex items-center gap-1">{canManageColumns&&!isSystem&&!presentationOnly?<BoardInlineTitleEditor name={definition.label} label="컬럼 이름" onSave={(value)=>renameColumnTitleAction(boardId,definition.id,value)}/>:definition.label}{canManageColumns&&!isSystem&&!presentationOnly?<span className="sr-only focus-within:not-sr-only"><button type="button" onClick={()=>void moveFlatColumn(column.key,-1)} aria-label={`${definition.label} 왼쪽으로 이동`}>왼쪽으로 이동</button><button type="button" onClick={()=>void moveFlatColumn(column.key,1)} aria-label={`${definition.label} 오른쪽으로 이동`}>오른쪽으로 이동</button></span>:null}</span>;
+        return <span className="flex items-center gap-1">{canManageColumns&&!isSystem&&!presentationOnly?<BoardInlineTitleEditor name={columnPlainName(definition.label)} label="컬럼 이름" onSave={(value)=>renameColumnTitleAction(boardId,definition.id,value)}/>:columnPlainName(definition.label)}{canManageColumns&&!isSystem&&!presentationOnly?<span className="sr-only focus-within:not-sr-only"><button type="button" onClick={()=>void moveFlatColumn(column.key,-1)} aria-label={`${definition.label} 왼쪽으로 이동`}>왼쪽으로 이동</button><button type="button" onClick={()=>void moveFlatColumn(column.key,1)} aria-label={`${definition.label} 오른쪽으로 이동`}>오른쪽으로 이동</button></span>:null}</span>;
       }} renderCell={(row, column) => {
         if (column.key === "__selection") return cell(row);
         if (column.key === "__title") return <span className="flex min-w-0 flex-col gap-1"><span>{row.title}{rowMoveControls(row)}</span><ParentItemLabel parentId={row.parent_item_id} title={filteredRows.find((candidate) => candidate.id === row.parent_item_id)?.title} /></span>;

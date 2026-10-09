@@ -59,7 +59,7 @@ import { ContractWorkIntakeForm } from "./ContractWorkIntakeForm";
 import type { CompanyPickerRow } from "@/lib/companies/search";
 import type { CompanyIntakeActionState } from "@/app/(app)/boards/[id]/company-intake-actions";
 import { ColumnContextMenu } from "./ColumnContextMenu";
-import type { ColumnViewRequest } from "./column-menu-model";
+import { columnPlainName, type ColumnViewRequest } from "./column-menu-model";
 import type {
   ColumnScheduleItemOption,
   ColumnScheduleRecipientOption,
@@ -1184,7 +1184,7 @@ export function GroupTable({
                     data-column-key={col.key}
                     data-right-pinned={col.rightPinned || undefined}
                   >
-                    <span className="sr-only">{col.label}</span>
+                    <span className="sr-only">{columnPlainName(col.label)}</span>
                   </th>
                 );
               })}
@@ -1463,7 +1463,8 @@ export function GroupTable({
                         title="이 보드에 같은 회사 이름의 건이 여러 개 있어요. 회사 1곳의 자금 건이 여러 개일 수 있습니다."
                         className="shrink-0 whitespace-nowrap rounded-full border border-mw-line bg-mw-board-head px-1.5 text-[length:var(--fs-11)] leading-5 text-mw-sub"
                       >
-                        같은 회사 {sameTitleCounts?.get(row.title)}건
+                        {/* 좁은 화면은 「N건」 만 보인다 — 업체명이 먼저다. 읽어 주는 글은 그대로 「같은 회사 N건」. */}
+                        <span className="max-sm:sr-only">같은 회사 </span>{sameTitleCounts?.get(row.title)}건
                       </span>
                     ) : null}
 

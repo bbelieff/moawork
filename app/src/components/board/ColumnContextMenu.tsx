@@ -206,6 +206,8 @@ export function ColumnContextMenu({
     showSurface("menu");
   };
 
+  // 머리글·메뉴·확인 창은 ƒ(계산 표시)를 뗀 이름을 쓴다 — 칸 종류는 메뉴의 회색 줄(「계산 · 고칠 수 없음」)이 말한다(#845).
+  const shownLabel = columnPlainName(column.label);
   const title = (shown: string) => (
     <span
       ref={triggerRef}
@@ -257,7 +259,7 @@ export function ColumnContextMenu({
       {canManage ? (
         <BoardInlineTitleEditor
           ref={editorRef}
-          name={column.label}
+          name={shownLabel}
           label="칸 이름"
           onSave={(value) => renameColumnTitleAction(boardId, column.id, value)}
           idle={title}
@@ -268,14 +270,14 @@ export function ColumnContextMenu({
           })}
           className="flex-1"
         />
-      ) : title(column.label)}
+      ) : title(shownLabel)}
 
       <BoardAnchoredMenu
         id={menuId}
         open={surface === "menu"}
         anchorRef={triggerRef}
         menuRef={menuRef}
-        label={`${column.label} 칸 메뉴`}
+        label={`${shownLabel} 칸 메뉴`}
         describedBy={aboutId}
         width={240}
         maxHeight={520}
@@ -283,7 +285,7 @@ export function ColumnContextMenu({
         onClose={(restore) => closeSurface(restore, true)}
       >
         <div id={aboutId} data-column-menu-about="" className="mb-1 border-b border-mw-line px-3 pb-2 pt-1">
-          <p className="truncate text-[15px] font-semibold leading-6 text-mw-fg">{column.label}</p>
+          <p className="truncate text-[15px] font-semibold leading-6 text-mw-fg">{shownLabel}</p>
           <p className="truncate text-xs leading-5 text-mw-sub" data-column-menu-meta="">
             {columnMetaParts(column, fill).join(" · ")}
             {columnSendsMessage(column) ? <span style={{ color: "var(--mw-error)" }}>{` · ${T.sendsMessage}`}</span> : null}
@@ -322,7 +324,7 @@ export function ColumnContextMenu({
                 role="menuitemcheckbox"
                 checked={Boolean(view.grouped)}
                 icon="group"
-                label={groupByChoiceLabel(columnPlainName(column.label))}
+                label={groupByChoiceLabel(shownLabel)}
                 onClick={() => run(() => view.onRequest({ kind: "group", columnKey: column.key, on: !view.grouped }), true)}
               />
             ) : null}
@@ -361,7 +363,7 @@ export function ColumnContextMenu({
 
       {modalSurface ? (
         <BoardModalLayer
-          label={`${column.label} · ${modalTitle}`}
+          label={`${shownLabel} · ${modalTitle}`}
           onClose={() => closeSurface(true)}
           dismissible={!modalPending}
         >
@@ -369,7 +371,7 @@ export function ColumnContextMenu({
             <header className="mb-4 flex items-start justify-between gap-3 border-b border-mw-line pb-3">
               <div>
                 <p className="text-xs font-medium text-mw-sub">{modalTitle}</p>
-                <h2 className="text-base font-semibold">{column.label}</h2>
+                <h2 className="text-base font-semibold">{shownLabel}</h2>
               </div>
               <button type="button" disabled={modalPending} onClick={() => closeSurface(true)} className="rounded-lg border border-mw-line px-2 py-1 text-sm text-mw-sub hover:bg-mw-bg disabled:cursor-not-allowed disabled:opacity-50">닫기</button>
             </header>
@@ -406,7 +408,7 @@ export function ColumnContextMenu({
             {surface === "archive" ? (
               <div className="grid gap-4" data-column-delete-confirm="">
                 <div className="grid gap-1 text-sm">
-                  <p className="font-medium">‘{column.label}’ 칸을 지울까요?</p>
+                  <p className="font-medium">‘{shownLabel}’ 칸을 지울까요?</p>
                   <p className="text-mw-sub">{deleteLines.main}</p>
                   {deleteLines.calc ? <p style={{ color: "var(--mw-error)" }}>{deleteLines.calc}</p> : null}
                 </div>
