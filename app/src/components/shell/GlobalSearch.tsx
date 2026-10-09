@@ -53,6 +53,16 @@ function remember(result: SearchResult) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(next));
 }
 
+/**
+ * 셸의 다른 자리(휴대폰 아래 메뉴 「찾기」)가 이 검색을 여는 신호. 검색을 새로 만들지 않고
+ * 상단바에 이미 떠 있는 이 하나를 연다 — Ctrl K 와 같은 길이다.
+ */
+export const OPEN_GLOBAL_SEARCH_EVENT = "mw:open-global-search";
+
+export function openGlobalSearch() {
+  window.dispatchEvent(new Event(OPEN_GLOBAL_SEARCH_EVENT));
+}
+
 export function GlobalSearch() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -78,8 +88,13 @@ export function GlobalSearch() {
       if (event.key === "/" && !event.ctrlKey && !event.metaKey && !(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)) { event.preventDefault(); setOpen(true); }
       if (event.key === "Escape") setOpen(false);
     };
+    const onOpen = () => setOpen(true);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener(OPEN_GLOBAL_SEARCH_EVENT, onOpen);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(OPEN_GLOBAL_SEARCH_EVENT, onOpen);
+    };
   }, []);
 
   useEffect(() => {

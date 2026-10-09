@@ -1,7 +1,7 @@
 "use client";
 
-import Link, { useLinkStatus } from "next/link";
-import { Suspense, useEffect, useRef, useState, type MouseEvent } from "react";
+import Link from "next/link";
+import { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   WorkspaceSwitcher,
@@ -17,16 +17,16 @@ import { RouteLoading } from "./RouteLoading";
 import { SidebarNewTab } from "./SidebarNewTab";
 import { withoutDismissedDefaults, workNavSections, type SidebarUserTab } from "./user-tabs";
 import {
-  NAV_ITEMS,
   NAV_SECTIONS,
   WORK_TOOL_ITEMS,
   navItemsForSection,
   type NavBadgeKey,
   type NavItem,
 } from "./nav-items";
-import { resolveActiveNavKey, resolveConsultationNavKey } from "./active-nav";
+import { resolveShellActiveKey } from "./shell-active-key";
 import { workspaceHref } from "./workspace-href";
 import { directBoardHref } from "./direct-tab-href";
+import { NavPending, isPlainClick } from "./NavPending";
 
 // 사이드바 메뉴 목록 — 활성 표시를 위해 클라이언트 컴포넌트.
 // 잠금/미구현 판정은 서버(레이아웃)에서 내려받는다(엔타이틀먼트는 서버 진실).
@@ -67,25 +67,6 @@ function SidebarNavQuery(props: Props) {
   return <SidebarNavContent {...props} search={search} />;
 }
 
-/**
- * Issue 857 — 누른 메뉴의 다음 화면이 올 때까지 도는 작은 표시. Link 안에서만 의미가 있다.
- * 이동이 끝나면 부모에 알린다 — 같은 주소로 돌아오는 이동(경유지 → 원래 화면)에서도 누른 표시를 내려놓게.
- */
-function NavPending({ onSettled }: { onSettled: () => void }) {
-  const { pending } = useLinkStatus();
-  const wasPending = useRef(false);
-  useEffect(() => {
-    if (wasPending.current && !pending) onSettled();
-    wasPending.current = pending;
-  }, [pending, onSettled]);
-  return pending ? <span aria-hidden="true" data-nav-pending className="mw-nav-pending" /> : null;
-}
-
-/** 새 탭·새 창으로 여는 클릭은 이 화면의 이동이 아니다. */
-function isPlainClick(event: MouseEvent<HTMLAnchorElement>) {
-  return !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
-}
-
 function SidebarNavContent({
   userTabs,
   dismissedSources,
@@ -123,18 +104,8 @@ function SidebarNavContent({
     };
   }, [switchingWorkspace]);
 
-  // 활성은 «항목마다» 가 아니라 «전체에서 하나» 다 — 둘이 켜지면 색으로 구분하는 목적이 깨진다.
-  // 같은 리드컨택 정본 보드라도 ?consultation=remote|inperson 이면 STEP2·STEP3 탭이 켜진다.
-  const consultationKey = resolveConsultationNavKey(pathname, search, boardNavKeys);
-  const resolvedActiveKey = consultationKey ?? resolveActiveNavKey(
-    pathname,
-    [...NAV_ITEMS, ...WORK_TOOL_ITEMS].filter((item) => item.href).map((item) => ({
-      key: item.key,
-      href: workspaceHref(workspaceBasePath, item.href!).split(/[?#]/)[0],
-    })),
-    { basePath: workspaceBasePath, boardNavKeys },
-  );
-  const settledActiveKey = resolvedActiveKey === "contact" ? "consult-remote" : resolvedActiveKey;
+  // 활성 판정은 휴대폰 아래 메뉴와 같은 함수 하나 — 둘이 다른 탭을 켜지 않게.
+  const settledActiveKey = resolveShellActiveKey(pathname, search, workspaceBasePath, boardNavKeys);
   const activeKey = pendingNav && pendingNav.from === location ? pendingNav.key : settledActiveKey;
 
   const renderItem = (item: NavItem, nested: boolean) => {

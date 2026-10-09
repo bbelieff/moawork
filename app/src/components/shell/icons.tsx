@@ -30,6 +30,10 @@ const PATHS: Record<string, string> = {
   // #849 사용자 탭(폴더)·「새 탭」(더하기) — 2026-10-06 승인 목업 L01 사이드바 줄의 선 그대로.
   folder: '<path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  // 2026-10-09 휴대폰 아래 메뉴(홈·알림·더보기) — 같은 monoline 규칙(24 격자 · 선만)으로 그렸다.
+  home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16Z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  more: '<circle cx="5.5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18.5" cy="12" r="1.3"/>',
 };
 
 export type IconName = keyof typeof PATHS;

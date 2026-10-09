@@ -61,6 +61,7 @@ vi.mock("@/components/theme/ThemeToggle", () => ({ ThemeToggle: () => null }));
 vi.mock("@/components/shell/SidebarNav", () => ({
   SidebarNav: () => createElement("nav", null, "trusted-sidebar"),
 }));
+vi.mock("@/components/shell/MobileBottomNav", () => ({ MobileBottomNav: () => null }));
 vi.mock("@/components/shell/icons", () => ({ Icon: () => null, IconSprite: () => null }));
 vi.mock("@/components/shell/GlobalSearch", () => ({ GlobalSearch: () => null }));
 vi.mock("@/components/account/AccountMenu", () => ({ AccountMenu: () => null }));

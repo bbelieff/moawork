@@ -424,7 +424,7 @@ export function ColumnContextMenu({
       ) : null}
 
       {showCommandMessage && state.ok && state.message && surface === null ? (
-        <div role="status" aria-live="polite" className="mw-layer-toast fixed bottom-5 right-5 rounded-md border border-mw-line bg-mw-card px-4 py-3 text-sm text-mw-fg shadow-xl">
+        <div role="status" aria-live="polite" className="mw-layer-toast fixed bottom-[calc(1.25rem_+_var(--mw-bottom-nav-h))] right-5 rounded-md border border-mw-line bg-mw-card px-4 py-3 text-sm text-mw-fg shadow-xl">
           {state.message}
         </div>
       ) : null}

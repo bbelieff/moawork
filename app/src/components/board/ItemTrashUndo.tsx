@@ -151,7 +151,7 @@ export function ItemTrashUndoToast({ boardId, durationMs = ITEM_TRASH_UNDO_MS }:
             onMouseLeave={release}
             onFocus={hold}
             onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) release(); }}
-            className="mw-layer-toast fixed bottom-5 left-1/2 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-[var(--mw-r-2)] bg-mw-fg py-2 pl-4 pr-2 text-[length:var(--fs-13)] text-mw-card shadow-xl"
+            className="mw-layer-toast fixed bottom-[calc(1.25rem_+_var(--mw-bottom-nav-h))] left-1/2 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-[var(--mw-r-2)] bg-mw-fg py-2 pl-4 pr-2 text-[length:var(--fs-13)] text-mw-card shadow-xl"
           >
             <span className="min-w-0 truncate">{message}</span>
             {toast.kind === "trashed" ? (

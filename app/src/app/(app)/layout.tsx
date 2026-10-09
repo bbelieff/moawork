@@ -8,6 +8,7 @@ import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { AppearanceControl } from "@/components/appearance/AppearanceControl";
 import { RouteAppearance } from "@/components/appearance/RouteAppearance";
 import { SidebarNav } from "@/components/shell/SidebarNav";
+import { MobileBottomNav } from "@/components/shell/MobileBottomNav";
 import { IconSprite } from "@/components/shell/icons";
 import { GlobalSearch } from "@/components/shell/GlobalSearch";
 import { AccountMenu } from "@/components/account/AccountMenu";
@@ -179,6 +180,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const canAccessPlatform = platformActor.kind === "granted";
 
   const initial = (ctx.user.name ?? "?").trim().charAt(0) || "?";
+  // 사이드바(넓은 화면)와 휴대폰 아래 메뉴가 «같은 값» 으로 목적지·잠금·배지를 그린다.
+  const navBadges = workspaceApprovals
+    ? { workspaceApprovals: workspaceApprovals.pendingCount }
+    : undefined;
   const account = buildAccountViewModel(ctx);
 
   return (
@@ -196,8 +201,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       {/* v17 vivid 라우트 팔레트·외관 배선 — DOM을 그리지 않는다. */}
       <RouteAppearance boardNavKeys={boardNavKeys} basePath={workspaceBasePath} />
       {/* ── 사이드바 ── */}
+      {/* 2026-10-09 — 휴대폰(md 미만)에서는 로고 + 회사 전환만 한 줄로 남긴다. 메뉴 목록은 아래 메뉴가 맡는다.
+          넓은 화면의 클래스(md:*)는 그대로다 — gap·items 는 md 에서 기본값으로 되돌린다. */}
       <aside
-        className="mw-layer-shell relative flex h-auto w-full flex-none flex-col border-b px-[var(--sp-3)] py-[var(--sp-3)] md:fixed md:inset-y-0 md:left-0 md:h-dvh md:w-[var(--mw-shell-nav-w)] md:overflow-visible md:border-b-0 md:border-r md:py-[var(--sp-4)]"
+        className="mw-layer-shell relative flex h-auto w-full flex-none flex-row items-center gap-[var(--sp-2)] border-b px-[var(--sp-3)] py-[var(--sp-1)] md:fixed md:flex-col md:items-stretch md:gap-0 md:inset-y-0 md:left-0 md:h-dvh md:w-[var(--mw-shell-nav-w)] md:overflow-visible md:border-b-0 md:border-r md:py-[var(--sp-4)]"
         style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}
       >
         {/* 목업 v6 `.brand` — 로고 한 덩이만. 높이 48px · 좌우 --sp-3 · 아래 경계선.
@@ -207,13 +214,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             락업 viewBox 는 2400×800(3:1)이라 22 로 그리면 자연 너비가 66px 뿐이어서
             Logo 의 minWidth:120 이 가로로 1.8배 잡아늘였다 — 그 찌그러짐도 같이 없어진다. */}
         <div
-          className="flex shrink-0 items-center border-b px-[var(--sp-3)]"
+          className="flex shrink-0 items-center px-[var(--sp-3)] md:border-b"
           style={{ height: "var(--mw-shell-header-h)", borderColor: "var(--mw-line)" }}
         >
           <Logo height={40} href={logoHref} />
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <SidebarNav
             workspaceBasePath={workspaceBasePath}
             boardNavKeys={boardNavKeys}
@@ -221,9 +228,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             dismissedSources={dismissedSources}
             canCreateTab={canCreateTab}
             lockedFeatures={lockedFeatures}
-            badges={workspaceApprovals
-              ? { workspaceApprovals: workspaceApprovals.pendingCount }
-              : undefined}
+            badges={navBadges}
             // 알림 뱃지는 별도 prop — badges 는 서버 검증 키 전용 계약이라 침범하지 않는다.
             notifyBadges={notify.sidebar}
             workspaceSwitcher={{
@@ -278,7 +283,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
       {/* ── 본문 ── */}
       <div
-        className="min-w-0 max-w-full flex-1 overflow-x-hidden md:ml-[var(--mw-shell-nav-w)] px-[var(--sp-4)] py-[var(--sp-3)] sm:px-[var(--sp-5)] md:px-[var(--sp-6)]"
+        className="min-w-0 max-w-full flex-1 overflow-x-hidden md:ml-[var(--mw-shell-nav-w)] px-[var(--sp-4)] pt-[var(--sp-3)] pb-[calc(var(--sp-3)_+_var(--mw-bottom-nav-h))] sm:px-[var(--sp-5)] md:px-[var(--sp-6)]"
       >
         {/* 페이지 제목은 각 화면이 자기 <h1> 로 그린다 — 셸은 우측 액션만 소유. */}
         <header
@@ -331,6 +336,16 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         </header>
         <main className="min-w-0 max-w-full">{children}</main>
       </div>
+      {/* ── 휴대폰 아래 메뉴(md 미만) ── 홈·알림·업무·찾기·더보기. 사이드바와 같은 값을 받는다. */}
+      <MobileBottomNav
+        workspaceBasePath={workspaceBasePath}
+        boardNavKeys={boardNavKeys}
+        userTabs={userTabs}
+        dismissedSources={dismissedSources}
+        lockedFeatures={lockedFeatures}
+        badges={navBadges}
+        notifyBadges={notify.sidebar}
+      />
     </div>
   );
 }
