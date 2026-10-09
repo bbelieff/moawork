@@ -76,7 +76,7 @@ export default async function PipelineDashboardPage({
           대시보드
         </Link>
         <span className="mx-1.5 text-zinc-300 dark:text-zinc-600">/</span>
-        <span className="text-zinc-700 dark:text-zinc-200">{pipeline.name}</span>
+        <span className="text-[var(--mw-t-1)]">{pipeline.name}</span>
       </nav>
 
       <FeatureGateServer
@@ -106,7 +106,7 @@ export default async function PipelineDashboardPage({
 
           {/* 단계별 딜 목록 */}
           <section className="flex flex-col gap-4">
-            <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+            <h2 className="text-sm font-semibold text-[var(--mw-t-1)]">
               단계별 업무
             </h2>
             {ordered.map((s) => {
@@ -114,7 +114,7 @@ export default async function PipelineDashboardPage({
               return (
                 <div key={s.id}>
                   <div className="mb-1 flex items-baseline justify-between text-sm">
-                    <span className="font-medium text-zinc-700 dark:text-zinc-200">
+                    <span className="font-medium text-[var(--mw-t-1)]">
                       {s.name}
                     </span>
                     <span className="tabular-nums text-zinc-500">

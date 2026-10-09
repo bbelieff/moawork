@@ -73,7 +73,7 @@ export default async function AllDealsDashboardPage({
           대시보드
         </Link>
         <span className="mx-1.5 text-zinc-300 dark:text-zinc-600">/</span>
-        <span className="text-zinc-700 dark:text-zinc-200">{title}</span>
+        <span className="text-[var(--mw-t-1)]">{title}</span>
       </nav>
 
       <FeatureGateServer orgId={ctx.org.id} feature={FEATURES.dash} label="대시보드">

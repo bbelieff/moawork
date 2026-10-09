@@ -188,7 +188,7 @@ export async function CompanyStatusSection({
           <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
             <div className="mb-2 flex items-baseline justify-between gap-2">
               <div>
-                <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">📢 최근 공지</h2>
+                <h2 className="text-sm font-semibold text-[var(--mw-t-1)]">📢 최근 공지</h2>
 
               </div>
               <Link href="/notices" className="text-xs text-zinc-500 hover:underline">전체 보기 →</Link>
@@ -250,7 +250,7 @@ export async function CompanyStatusSection({
 
               <section>
                 <div className="mb-2">
-                  <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+                  <h2 className="text-sm font-semibold text-[var(--mw-t-1)]">
                     내 업무 ({formatCount(core.deals.length)})
                   </h2>
 
@@ -280,7 +280,7 @@ export async function CompanyStatusSection({
               </section>
 
               <section>
-                <h2 className="mb-2 text-sm font-semibold text-zinc-700 dark:text-zinc-200">보드별 상세</h2>
+                <h2 className="mb-2 text-sm font-semibold text-[var(--mw-t-1)]">보드별 상세</h2>
                 <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
                   {core.pipelines.length === 0 ? (
                     <li className="p-3 text-sm text-zinc-400">파이프라인이 없습니다.</li>
