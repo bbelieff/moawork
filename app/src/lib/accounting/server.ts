@@ -94,17 +94,21 @@ export async function loadDealLedger(
   const accessResult = await client.rpc("can_access_deal_ledger", { p_deal_id: dealId });
   if (accessResult.error || accessResult.data !== true) throw new DealLedgerReadError();
 
-  const rowsResult = await client
-    .from("deal_ledger_entries")
-    .select(
-      "id,deal_id,kind,amount,received_amount,occurred_on,paid_on,attribution_month,vat_included,tax_invoice_issued",
-    )
-    .eq("deal_id", dealId)
-    .order("occurred_on", { ascending: true });
+  // Issue 857 — 접근 확인을 통과한 «뒤» 원장 행과 합계를 같이 읽는다(서로 기다리지 않음, 물결 3 → 2).
+  //   확인 전에는 원장을 한 줄도 읽지 않는다는 규칙은 그대로다.
+  const [rowsResult, summaryResult] = await Promise.all([
+    client
+      .from("deal_ledger_entries")
+      .select(
+        "id,deal_id,kind,amount,received_amount,occurred_on,paid_on,attribution_month,vat_included,tax_invoice_issued",
+      )
+      .eq("deal_id", dealId)
+      .order("occurred_on", { ascending: true }),
+    client.rpc("deal_ledger_summary", { p_deal_id: dealId }),
+  ]);
 
   if (rowsResult.error || !Array.isArray(rowsResult.data)) throw new DealLedgerReadError();
 
-  const summaryResult = await client.rpc("deal_ledger_summary", { p_deal_id: dealId });
   if (summaryResult.error || !Array.isArray(summaryResult.data) || summaryResult.data.length !== 1) {
     throw new DealLedgerReadError();
   }

@@ -186,11 +186,26 @@ function createSupabaseDashboardSource(client: SupabaseClient): DashboardSource 
 
     async loadBoards(ctx) {
       const visibleBoards = await boards.listBoards(ctx);
-      const items = await Promise.all(visibleBoards.map((board) => boards.listItems(ctx, board.id)));
-      return {
-        boardCount: visibleBoards.length,
-        itemCount: items.reduce((sum, rows) => sum + rows.length, 0),
-      };
+      // Issue 857 — 개수만 쓰므로 행·값·컬럼·그룹을 보드마다 읽어 길이를 세지 않는다(요청 1+4N+M → 1+⌈N/100⌉,
+      //   물결 3 → 2). 같은 조건(회사·보드·휴지통·보관 아님)으로 같은 사람(RLS)이 센다. 보드 목록은 그대로 서비스로.
+      const boardIds = visibleBoards.map((board) => board.id);
+      const chunks: string[][] = [];
+      for (let index = 0; index < boardIds.length; index += BOARD_COUNT_BATCH) chunks.push(boardIds.slice(index, index + BOARD_COUNT_BATCH));
+      const counts = await Promise.all(chunks.map((ids) => client
+        .from("items")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", ctx.org.id)
+        .in("board_id", ids)
+        .is("deleted_at", null)
+        .is("archived_at", null)));
+      let itemCount = 0;
+      for (const result of counts) {
+        if (result.error || typeof result.count !== "number" || !Number.isSafeInteger(result.count) || result.count < 0) {
+          throw new DashboardReadError("boards");
+        }
+        itemCount += result.count;
+      }
+      return { boardCount: visibleBoards.length, itemCount };
     },
 
     loadNotices(ctx) {
@@ -292,6 +307,9 @@ async function capture<T>(operation: string, read: () => Promise<T>): Promise<Da
   }
 }
 
+/** 보드 행 수를 셀 때 한 번에 묶는 보드 id 수 — uuid 100개면 주소가 약 4KB 다. */
+const BOARD_COUNT_BATCH = 100;
+
 export async function loadDashboardPageData(
   ctx: Ctx,
   options: {
@@ -304,6 +322,8 @@ export async function loadDashboardPageData(
      * (예: 체크리스트)를 이 물결에 같이 띄우게 한다 — 전에는 대시보드를 다 읽은 «뒤» 한 물결 더 섰다.
      */
     onCrmDeals?: (dealIds: string[]) => void;
+    /** Issue 857 — 묶음별 읽기 시간(ms)을 알려 준다(로그용). 이름은 고정 낱말뿐이다. */
+    onStage?: (stage: string, ms: number) => void;
   } = {},
 ): Promise<DashboardPageData> {
   // createClient is cookie-bound. It must run once per page request and that
@@ -325,20 +345,34 @@ export async function loadDashboardPageData(
   //   crm → inputs → [boards·notices·ledger] 로 «맨 뒤» 물결에 묶여 있었다.
   //   앞으로 당기면 crm 과 같은 물결에 실린다 — 왕복 수는 그대로고 직렬 단계만 줄어든다.
   //   ledger 는 crm.data.deals 가 «입력» 이라 못 당긴다. 그건 진짜 의존이다.
-  const [crm, boardsSegment, noticesSegment] = await Promise.all([
-    capture("crm", () => source.loadCrm(ctx)),
-    capture("boards", () => source.loadBoards(ctx)),
-    capture("notices", () => source.loadNotices(ctx)),
-  ]);
+  const timed = <T,>(operation: string, read: () => Promise<T>) => capture(operation, async () => {
+    const startedAt = performance.now();
+    try {
+      return await read();
+    } finally {
+      try {
+        options.onStage?.(operation, performance.now() - startedAt);
+      } catch {
+        // 계측 실패가 화면 묶음을 «불러오지 못함» 으로 바꾸지 않게 한다.
+      }
+    }
+  });
+  // Issue 857 — 셋을 같이 띄우되, 거래에 기대는 둘째 물결(inputs·원장, 호출부의 체크리스트)은 crm «만»
+  //   기다린다. 보드·공지(각 2물결)는 맨 끝에서만 합친다 — 예전에는 셋이 다 끝나야 둘째 물결이 출발했다.
+  //   셋 다 capture 로 감싸 reject 하지 않는다(처리되지 않은 거부 없음). now 는 crm 이 끝난 시각이다.
+  const crmRead = timed("crm", () => source.loadCrm(ctx));
+  const boardsRead = timed("boards", () => source.loadBoards(ctx));
+  const noticesRead = timed("notices", () => source.loadNotices(ctx));
+  const crm = await crmRead;
   const now = options.now?.() ?? new Date();
   if (crm.status === "ready") options.onCrmDeals?.(crm.data.deals.map((deal) => deal.id));
 
   //   ★ core(=inputs) 와 ledger 는 «둘 다» crm.data.deals 만 입력으로 쓴다. 서로는 무관하다.
   //     그러니 crm 뒤의 «한 물결» 에 같이 실어야 한다 — 줄 세우면 단계가 하나 더 는다.
-  const [core, ledgerSegment] = await Promise.all([
+  const [core, ledgerSegment, boardsSegment, noticesSegment] = await Promise.all([
     crm.status === "unavailable"
     ? Promise.resolve(unavailable<DashboardCoreData>(crm.operation))
-    : capture("dashboard", async () => {
+    : timed("dashboard", async () => {
         const input = await source.loadDashboardInputs(
           ctx,
           new Set(crm.data.deals.map((deal) => deal.id)),
@@ -358,7 +392,9 @@ export async function loadDashboardPageData(
       }),
     crm.status === "unavailable"
       ? Promise.resolve(unavailable<DashboardLedgerData>(crm.operation))
-      : capture("ledger", () => source.loadLedger(ctx, crm.data.deals.map((deal) => deal.id))),
+      : timed("ledger", () => source.loadLedger(ctx, crm.data.deals.map((deal) => deal.id))),
+    boardsRead,
+    noticesRead,
   ]);
 
   return {

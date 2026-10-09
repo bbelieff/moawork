@@ -30,7 +30,7 @@ export function createEntryTimer(): {
 export type EntryTimingOutcome = "fast-skip" | "repaired" | "ready" | "unavailable";
 
 export function logEntryTimings(
-  scope: "workspace-bootstrap" | "workspace-layout",
+  scope: "workspace-bootstrap" | "workspace-layout" | "dashboard-home" | "dashboard-company",
   stages: EntryStageTiming[],
   outcome: EntryTimingOutcome,
 ): void {
