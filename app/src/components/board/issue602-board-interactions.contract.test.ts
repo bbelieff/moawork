@@ -22,16 +22,20 @@ describe("Issue #602 final board interaction wiring",()=>{
     expect(read("GroupTable.tsx")).toContain("setOverRowIndex(null);setInvalidRowIndex(index)");
     expect(read("GroupTable.tsx")).toContain("data-no-drag");
   });
-  it("uses one direct title editor and never adds a rename menu item",()=>{
+  it("uses one direct title editor; a menu rename item only starts that same inline editor",()=>{
     expect(read("BoardHeader.tsx")).toContain("BoardInlineTitleEditor");
     expect(read("GroupNameEditor.tsx")).toContain("BoardInlineTitleEditor");
-    expect(read("GroupTable.tsx")).toContain("BoardInlineTitleEditor");
-    expect(read("ColumnContextMenu.tsx")).not.toContain("이름 바꾸기");
+    // #845 5단계 — 칸 이름은 칸 메뉴의 「칸 이름 바꾸기」 가 머리글의 같은 편집칸을 연다(따로 이름 바꾸기 창이 없다).
+    const columnMenu=read("ColumnContextMenu.tsx");
+    expect(columnMenu).toContain("BoardInlineTitleEditor");
+    expect(columnMenu).toContain("editorRef.current?.beginEdit()");
+    expect(columnMenu).not.toContain('surface === "rename"');
   });
   it("keeps generic kanban on the same tokens and atomic physical-group move contract",()=>{
     const kanban=readBoards("GenericBoardKanban.tsx");
     expect(kanban).not.toContain("zinc-");expect(kanban).toContain("border-mw-line");expect(kanban).toContain('fd.set("expectedVersion"');
     expect(kanban).toContain("pendingRef.current");expect(kanban).toContain("intentRef.current");expect(kanban).toContain("beforeItemId");expect(kanban).toContain("moveRowAction");expect(kanban).toContain("GroupNameEditor");
-    expect(readPage()).toContain("reorderColumnsAction");
+    // #845 — 칸반의 「그룹 기준」 줄은 보기 줄의 「나눠 보기」 칩으로 합쳤다. 칸 순서는 표 칸 메뉴(왼쪽으로·오른쪽으로)가 맡는다.
+    expect(readPage()).not.toContain("그룹 기준");
   });
 });

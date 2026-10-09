@@ -25,7 +25,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { renameColumnTitleAction } from "@/app/(app)/boards/title-actions";
 import { CellSaveContext } from "./cell-save-context";
 import type {
   BoardColumn,
@@ -46,18 +45,21 @@ import { StatusCell } from "@/components/boards/StatusCell";
 import { LabelCombobox } from "./LabelCombobox";
 import { canCreateLabelForColumn, newLabelRequestId } from "@/lib/boards/label-options";
 import type { AddLabelOptionInput, AddLabelOptionResult } from "@/app/(app)/boards/label-option-actions";
-import { SourceBadge } from "./FieldBadge";
 import { clampWidth, fixedColumnWidth } from "./layout";
 import { useLiveColumnWidths } from "./column-live-width";
 import type { DetailLayoutEntry } from "@/lib/boards/detail-layout";
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import type { ItemDetailSnapshot } from "@/app/(app)/boards/item-detail-actions";
-import { TrashItemButton } from "./ItemTrashControls";
+import { moveItemToTrash } from "./ItemTrashUndo";
+import { RowContextMenu, rememberTrashFocus, rowContextMenuPoint, type RowContextMenuRequest } from "./RowContextMenu";
+import { LONG_PRESS_IGNORE_SELECTOR, useTouchLongPress } from "./use-touch-long-press";
+import { requestItemDetailOpen } from "@/lib/boards/item-detail-open";
 import { AddItemForm } from "./AddItemForm";
 import { ContractWorkIntakeForm } from "./ContractWorkIntakeForm";
 import type { CompanyPickerRow } from "@/lib/companies/search";
 import type { CompanyIntakeActionState } from "@/app/(app)/boards/[id]/company-intake-actions";
 import { ColumnContextMenu } from "./ColumnContextMenu";
+import type { ColumnViewRequest } from "./column-menu-model";
 import type {
   ColumnScheduleItemOption,
   ColumnScheduleRecipientOption,
@@ -95,10 +97,8 @@ import {
 import {
   updateNewLeadFieldAction,
   updateNewLeadMetaAction,
-  updateNewLeadTitleAction,
 } from "@/app/(app)/boards/new-lead-actions";
 import {
-  renameItemAction,
   setCellAction,
   setColumnWidthAction,
 } from "@/app/(app)/boards/actions";
@@ -107,9 +107,8 @@ import {
   BOARD_TABLE_CONTROL,
   BOARD_TABLE_HEADER_CELL,
   BOARD_TABLE_ROW,
-  BOARD_TABLE_TITLE_CONTROL,
+  BOARD_TABLE_TITLE_NAME,
 } from "./table-style";
-import { BoardInlineTitleEditor } from "./BoardInlineTitleEditor";
 import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
 import { selectionTriState } from "./bulk-selection";
 import { MAX_FILE_BYTES } from "@/lib/services/file-contract";
@@ -672,6 +671,15 @@ export function GroupTable({
   onToggleRow,
   onToggleGroup,
   onBulkStatusRequest,
+  onRequestViewCondition,
+  canFilterColumn,
+  canGroupColumn,
+  groupByKey = "",
+  addPrefill = null,
+  onRowCreated,
+  activeSorts = [],
+  columnCatalog,
+  boardRows,
 }: {
   boardId: string;
   boardName?: string;
@@ -821,6 +829,30 @@ export function GroupTable({
    * 그 칸이 스스로 편집되게 한다.
    */
   onBulkStatusRequest?: (rowId: string, columnKey: string, presetValue: string) => boolean;
+  /**
+   * #845 5단계 — 칸 메뉴 「보기 · 나만」(줄 세우기 · 골라 보기… · 숨기기)을 보드에 올린다.
+   * 없으면 칸 메뉴에 그 묶음이 없다(칸 관리 권한도 없으면 머리글은 이름 글자만 남는다).
+   */
+  onRequestViewCondition?: (request: ColumnViewRequest) => void;
+  /** 이 칸의 「골라 보기…」 를 지금 열 수 있는가(보드의 골라 보기 화면이 그 칸을 다루는가). */
+  canFilterColumn?: (column: BoardColumn) => boolean;
+  /** #845 7단계 — 칸 메뉴에 「{칸}별로 나눠 보기」 를 보이는가(사람·목록·상태 칸). 없으면 감춘다. */
+  canGroupColumn?: (column: BoardColumn) => boolean;
+  /** 지금 나눠 보는 칸 key(보드별이면 ""). 칸 메뉴의 체크 표시. */
+  groupByKey?: string;
+  /**
+   * #845 7단계 — 나눠 보기 묶음의 추가 줄이 새 행에 미리 넣는 값(칸 key · 값). 이름만 받는 추가는
+   * 서버가 만들 때 같이 넣고, 회사부터 고르는 추가는 만든 뒤 `onRowCreated` 로 화면이 넣는다.
+   */
+  addPrefill?: { columnKey: string; value: CellValue } | null;
+  /** 회사부터 고르는 추가(계약업체 실무)가 새 행을 만들었을 때 — 그 행 id. */
+  onRowCreated?: (itemId: string) => void;
+  /** 지금 걸린 줄 세우기 — 칸 메뉴의 그 항목에 체크 표시를 단다. */
+  activeSorts?: readonly { columnKey: string; direction: "asc" | "desc" }[];
+  /** 지우기 확인 창이 «멈추는 계산 칸» 을 찾을 같은 탭의 칸 정의(기본 detailColumns). */
+  columnCatalog?: readonly BoardColumn[];
+  /** 지우기 확인 창의 «값 N건» 기준 — 걸러지기 전 탭의 행(기본 rows). */
+  boardRows?: readonly ItemWithValues[];
 }) {
   /*
    * 드래그 중인 대상은 **ref 가 정본**이고 state 는 표시(반투명·강조)에만 쓴다.
@@ -835,6 +867,49 @@ export function GroupTable({
   const [overRowIndex, setOverRowIndex] = useState<number | null>(null);
   const [invalidRowIndex,setInvalidRowIndex]=useState<number|null>(null);
   const [dropMessage,setDropMessage]=useState<string|null>(null);
+  /*
+   * #845 개선안(2026-10-08) — 행 우클릭 메뉴(옆에 열기 · 업체명 바꾸기 | 휴지통으로 이동). 표마다 하나.
+   * 업체명 단추를 행 id 로 기억해 둔다 — 메뉴가 연 상세가 닫히면 초점이 그 단추로 돌아간다.
+   */
+  const [rowMenu, setRowMenu] = useState<RowContextMenuRequest | null>(null);
+  const nameButtons = useRef(new Map<string, HTMLButtonElement>());
+  const closeRowMenu = useCallback((restoreFocus: boolean) => {
+    const rowId = rowMenu?.rowId;
+    setRowMenu(null);
+    if (restoreFocus && rowId) window.requestAnimationFrame(() => nameButtons.current.get(rowId)?.focus());
+  }, [rowMenu]);
+  const openRowBeside = (rowId: string) => requestItemDetailOpen(rowId, nameButtons.current.get(rowId));
+  const renameRow = (rowId: string) => requestItemDetailOpen(rowId, nameButtons.current.get(rowId), { editTitle: true });
+  const trashRow = (rowId: string) => {
+    const target = rows.find((candidate) => candidate.id === rowId);
+    if (!target) return;
+    // 메뉴가 닫히며 초점이 <body> 로 떨어지지 않게 먼저 그 행 이름으로 — 옮기고 나면(행이 사라지면) 이웃 행으로.
+    const nameButton = nameButtons.current.get(rowId);
+    nameButton?.focus();
+    const focusAfterTrash = nameButton ? rememberTrashFocus(nameButton) : null;
+    void moveItemToTrash({ boardId, itemId: target.id, title: target.title }).then((result) => {
+      if (result.ok) focusAfterTrash?.();
+    });
+  };
+  const openRowMenuAt = (row: ItemWithValues, canTrash: boolean, point: { x: number; y: number }) =>
+    setRowMenu({ rowId: row.id, title: row.title, x: point.x, y: point.y, canRename: !readOnly, canTrash });
+  /** 터치 길게 누르기(약 0.5초) — iOS 는 contextmenu 를 보내지 않으므로 같은 메뉴를 직접 연다. */
+  const longPress = useTouchLongPress();
+  /** 우클릭·Shift+F10·메뉴 키. 글자를 고치는 칸·링크에서는 브라우저 기본 메뉴(붙여넣기·링크 저장 등)를 그대로 둔다. */
+  const openRowMenuFromEvent = (
+    event: React.MouseEvent<HTMLTableRowElement> | React.KeyboardEvent<HTMLTableRowElement>,
+    row: ItemWithValues,
+    canTrash: boolean,
+  ) => {
+    const target = event.target as HTMLElement;
+    // 행 «안» 의 DOM 에서 일어난 것만 — 칸이 띄운 포털(선택지 팝오버 등)에서 올라온 것은 행 메뉴가 아니다.
+    if (!event.currentTarget.contains(target)) return;
+    if (target.closest(LONG_PRESS_IGNORE_SELECTOR)) return;
+    // 길게 누르기로 이미 연 몸짓에 브라우저가 contextmenu 를 또 보내면(안드로이드) 다시 열지 않는다.
+    if ("clientX" in event && longPress.takeContextMenu(event)) return;
+    event.preventDefault();
+    openRowMenuAt(row, canTrash, rowContextMenuPoint("clientX" in event ? event : { clientX: 0, clientY: 0 }, target));
+  };
 
   const clearColDrag = useCallback(() => {
     dragColRef.current = null;
@@ -1019,6 +1094,13 @@ export function GroupTable({
   const fixedLayout = tablePart !== "full";
   // 첫 열 이름 — 계약업체 실무는 목업대로 「업체」(한 줄이 «어느 업체의 자금 건» 이다).
   const titleLabel = canonicalNewLead ? "회사명" : workflowProgressKind === "work" ? "업체" : "이름";
+  // 진행현황(화면용 통합 칸)·신규리드 합성 칸은 구조(이름·순서·폭·지우기)를 바꿀 수 없다 — 보는 방법만 고른다.
+  const isStructureLocked = (column: BoardColumn) =>
+    column.key === WORKFLOW_PROGRESS_KEY || (canonicalNewLead && isNewLeadPresentationOnlyStructure(column));
+  // 이름을 부르는 말 — 우클릭 「업체명 바꾸기」 와 상세 제목 칸의 이름.
+  const titleNoun = canonicalNewLead ? "회사명" : workflowProgressKind === "work" ? "업체명" : "이름";
+  // 메뉴를 연 행이 화면에서 사라졌으면(옮김·걸러짐) 메뉴도 닫힌 것으로 본다.
+  const rowMenuOpen = rowMenu && rows.some((candidate) => candidate.id === rowMenu.rowId) ? rowMenu : null;
   // 2026-10-08 — 「업체 추가」 는 머리말 단추·배너 ＋ 에서만 연다. 닫혀 있으면 추가 줄은 그룹 끝 드롭 자리만
   // 남는다 — 평소엔 얇은 띠, 행을 끄는 동안엔 한 줄 높이(그룹 맨 끝에 놓을 수 있게).
   const onDemandAdd = addRowMode === "on-demand" && Boolean(companyPicker) && !(canonicalNewLead && groupId);
@@ -1060,6 +1142,18 @@ export function GroupTable({
         : "relative isolate max-h-[70vh] min-w-0 max-w-full overflow-auto"}
     >
       <p className="sr-only" aria-live="polite">{dropMessage}</p>
+      {rowMenuOpen ? (
+        <RowContextMenu
+          key={`${rowMenuOpen.rowId}:${rowMenuOpen.x}:${rowMenuOpen.y}`}
+          boardId={boardId}
+          request={rowMenuOpen}
+          renameLabel={`${titleNoun} 바꾸기`}
+          onClose={closeRowMenu}
+          onOpenBeside={openRowBeside}
+          onRename={renameRow}
+          onTrash={trashRow}
+        />
+      ) : null}
       <table
         className={`${fixedLayout ? "" : "w-full "}border-collapse text-left`}
         style={tableStyle}
@@ -1115,13 +1209,12 @@ export function GroupTable({
                     aria-checked={groupTriState === "partial" ? "mixed" : undefined}
                     aria-label={tablePart === "head" ? "보이는 행 전체 선택" : `${groupName ?? "그룹"} 전체 선택`}
                     onChange={(event) => onToggleGroup(event.currentTarget.checked)}
-                    className="h-3.5 w-3.5 shrink-0"
+                    className="shrink-0"
+                    data-row-select
                     data-no-drag
                   />
                 ) : null}
-                {canonicalNewLead ? (
-                  <><SourceBadge source="auto" />회사명</>
-                ) : titleLabel}
+                {titleLabel}
               </span>
               <span
                 role="separator"
@@ -1141,18 +1234,32 @@ export function GroupTable({
                 className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize border-r-2 border-transparent transition-colors hover:border-mw-record focus-visible:border-mw-record focus-visible:outline-none"
               />
             </th>
-            {columns.map((col) => {
+            {columns.map((col, columnIndex) => {
               const isTarget = overColKey === col.key && dragColKey !== col.key;
               const width = columnWidth(col);
-              const workflowLocked = col.key === WORKFLOW_PROGRESS_KEY;
-              const presentationOnlyStructure = canonicalNewLead
-                && isNewLeadPresentationOnlyStructure(col);
-              const structureLocked = workflowLocked || presentationOnlyStructure;
+              const structureLocked = isStructureLocked(col);
+              // #845 5단계 — 이름이 곧 칸 메뉴 단추다. 「칸 · 모두」 묶음은 칸 관리 권한 + 구조를 바꿀 수 있는 칸만.
+              const manageStructure = canManageColumns && !structureLocked;
+              const movable = manageStructure && canMoveColumns;
+              const sortDirection = activeSorts.find((sort) => sort.columnKey === col.key)?.direction ?? null;
+              const columnView = onRequestViewCondition
+                ? {
+                    sortDirection,
+                    canFilter: canFilterColumn?.(col) ?? false,
+                    canGroup: canGroupColumn?.(col) ?? false,
+                    grouped: groupByKey !== "" && groupByKey === col.key,
+                    onRequest: onRequestViewCondition,
+                  }
+                : null;
+              // 가상 칸(신규리드 합성 칸·상담 진행)은 행 값이 그 key 에 없어 «몇 건 채움» 을 셀 수 없다.
+              const fillKnown = !(canonicalNewLead && isNewLeadPresentationOnlyStructure(col)) && col.key !== CONSULTATION_PROGRESS_KEY;
+              const previous = columns[columnIndex - 1];
+              const next = columns[columnIndex + 1];
               return (
                 <th
                   key={col.id}
                   scope="col"
-                  draggable={canManageColumns && canMoveColumns && !structureLocked}
+                  draggable={movable}
                    onDragStart={(event) => {
                      if (structureLocked) return;
                      if((event.target as HTMLElement).closest("button,input,select,textarea,a,[role=menu],[contenteditable=true],[data-no-drag]")){event.preventDefault();setOverColKey(null);return;}
@@ -1162,9 +1269,9 @@ export function GroupTable({
                   }}
                   onDragEnd={clearColDrag}
                    onDragOver={(e) => {
-                     if (structureLocked) {setOverColKey(null);setInvalidColKey(col.key);setDropMessage("이 컬럼은 구조를 바꿀 수 없어요.");return;}
+                     if (structureLocked) {setOverColKey(null);setInvalidColKey(col.key);setDropMessage("이 칸은 자리를 바꿀 수 없어요.");return;}
                     if (!dragColRef.current) return;
-                    if(dragColRef.current===col.key){setOverColKey(null);setInvalidColKey(col.key);setDropMessage("같은 컬럼 위치에는 놓을 수 없어요.");return;}
+                    if(dragColRef.current===col.key){setOverColKey(null);setInvalidColKey(col.key);setDropMessage("같은 칸 자리에는 놓을 수 없어요.");return;}
                     e.preventDefault();
                     setInvalidColKey(null);
                     setOverColKey(col.key);
@@ -1179,44 +1286,47 @@ export function GroupTable({
                     clearColDrag();
                   }}
                   title={
-                    !canManageColumns || !canMoveColumns || structureLocked
-                      ? cellTitle(col)
-                      : `${cellTitle(col)} — 끌어서 ${tablePart === "head" ? "" : "이 그룹의 "}컬럼 순서 변경`
+                    movable
+                      ? `${cellTitle(col)} — 끌어서 ${tablePart === "head" ? "" : "이 그룹의 "}칸 순서 바꾸기`
+                      : cellTitle(col)
                   }
                   style={width ? { width, minWidth: width } : undefined}
                   data-view-focus={col.key === focusColumnKey || undefined}
                   data-column-key={col.key}
                   data-right-pinned={col.rightPinned || undefined}
-                   className={`relative sticky top-0 z-[var(--mw-layer-board-header)] min-w-20 ${BOARD_TABLE_HEADER_CELL} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-board-head"} ${
-                    !canManageColumns || !canMoveColumns || structureLocked
-                      ? ""
-                      : "cursor-grab active:cursor-grabbing"
+                  data-column-manage={manageStructure || undefined}
+                   className={`group/colhead relative sticky top-0 z-[var(--mw-layer-board-header)] min-w-20 ${BOARD_TABLE_HEADER_CELL} ${col.key === focusColumnKey ? "bg-mw-tint-blue" : col.rightPinned ? "bg-mw-tint-blue" : "bg-mw-board-head"} ${
+                    movable ? "cursor-grab active:cursor-grabbing" : ""
                   } ${isTarget ? "bg-mw-tint-blue text-mw-record" : ""} ${
                     invalidColKey===col.key?"cursor-not-allowed":""
                   } ${
                     dragColKey === col.key ? "opacity-50" : ""
                   } ${col.rightPinned ? "right-0 text-mw-record" : ""}`}
                 >
-                  <span className="flex items-center gap-1">
-                    {canManageColumns && !structureLocked ? (
+                  <span className="flex min-w-0 items-center">
+                    {manageStructure || columnView ? (
                       <ColumnContextMenu
                         boardId={boardId}
                         column={col}
+                        rows={fillKnown ? rows : undefined}
+                        deleteRows={fillKnown ? boardRows ?? rows : undefined}
+                        catalog={columnCatalog ?? detailColumns}
+                        canManage={manageStructure}
+                        move={movable ? {
+                          canLeft: previous !== undefined && !isStructureLocked(previous),
+                          canRight: next !== undefined && !isStructureLocked(next),
+                          onMove: (delta) => onColumnKeyboardMove(col.key, delta),
+                        } : null}
+                        view={columnView}
                         scheduleItems={scheduleItems}
                         scheduleRecipients={scheduleRecipients}
                         onArchived={onColumnArchived}
-                      >
-                        <SourceBadge source={col.source} />
-                         <BoardInlineTitleEditor name={col.label} label="컬럼 이름" onSave={(value)=>renameColumnTitleAction(boardId,col.id,value)} className="min-w-0 flex-1 truncate"/>
-                      </ColumnContextMenu>
+                      />
                     ) : (
-                      <>
-                        <SourceBadge source={col.source} />
-                        <span className="truncate">{col.label}</span>
-                      </>
+                      <span className="truncate">{col.label}</span>
                     )}
                   </span>
-                  {canManageColumns && !structureLocked && (
+                  {manageStructure && (
                     <span
                       aria-hidden="true"
                       data-no-drag
@@ -1235,14 +1345,12 @@ export function GroupTable({
                        * ★ 잡는 영역은 6px 그대로 둔다 — 1px 를 겨누게 만들면 못 잡는다.
                        *   바꾸는 것은 «보이는 것» 뿐이다: 오른쪽 끝에 2px 선으로, 구분선 위에 정확히 겹치게.
                        * ★ top-0 h-full → inset-y-0. 그래야 테두리까지 포함한 셀 «전체» 높이가 된다.
+                       * ★ #845 5단계 — 평소엔 보이지 않는다. 머리글에 올리거나 칸 이름에 초점이 있으면 옅은 2px 선,
+                       *   손잡이에 올리면 진한 2px 선.
                        */
-                      className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize border-r-2 border-transparent transition-colors hover:border-mw-record"
+                      className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize border-r-2 border-transparent transition-colors group-hover/colhead:border-mw-line group-focus-within/colhead:border-mw-line hover:border-mw-record!"
                     />
                   )}
-                  {canManageColumns&&canMoveColumns&&!structureLocked?<span className="sr-only focus-within:not-sr-only">
-                    <button type="button" onClick={()=>onColumnKeyboardMove(col.key,-1)} aria-label={`${col.label} 왼쪽으로 이동`}>왼쪽으로 이동</button>
-                    <button type="button" onClick={()=>onColumnKeyboardMove(col.key,1)} aria-label={`${col.label} 오른쪽으로 이동`}>오른쪽으로 이동</button>
-                  </span>:null}
                 </th>
               );
             })}
@@ -1281,6 +1389,14 @@ export function GroupTable({
               <tr
                 key={row.id}
                 data-board-row=""
+                {...longPress.bind<HTMLTableRowElement>((point, target) =>
+                  openRowMenuAt(row, canDeleteRow, rowContextMenuPoint(point, target)))}
+                onDragStart={longPress.cancel}
+                onContextMenu={(event) => openRowMenuFromEvent(event, row, canDeleteRow)}
+                onKeyDown={(event) => {
+                  if (!((event.shiftKey && event.key === "F10") || event.key === "ContextMenu")) return;
+                  openRowMenuFromEvent(event, row, canDeleteRow);
+                }}
                 onDragOver={acceptRow(index)}
                 onDragLeave={(event)=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null)&&overRowIndex===index)clearRowDrop();}}
                 onDrop={dropRow(index)}
@@ -1291,7 +1407,8 @@ export function GroupTable({
                 <td
                   draggable={rowDragEnabled}
                   onDragStart={rowDragEnabled?(event)=>{
-                    if((event.target as HTMLElement).closest("button,input,select,textarea,a,[role=menu],[contenteditable=true],[data-no-drag]")){event.preventDefault();clearRowDrop();setDropMessage("편집 중인 컨트롤에서는 끌 수 없어요.");return;}
+                    // 업체명 단추는 칸을 채우므로 그 위에서도 끌 수 있다(누르면 열고, 끌면 옮긴다).
+                    if((event.target as HTMLElement).closest("button:not([data-row-name]),input,select,textarea,a,[role=menu],[contenteditable=true],[data-no-drag]")){event.preventDefault();clearRowDrop();setDropMessage("편집 중인 컨트롤에서는 끌 수 없어요.");return;}
                     claimBoardTransientSurface(`board:${boardId}`,`row-drag:${boardId}`);
                     event.dataTransfer.effectAllowed="move";onRowDragStart(row.id);
                   }:undefined}
@@ -1301,7 +1418,7 @@ export function GroupTable({
                   data-board-title-cell
                   data-title-width={titleWidthAttr}
                 >
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5">
                     {selection && onToggleRow ? (
                       <input
                         type="checkbox"
@@ -1314,51 +1431,31 @@ export function GroupTable({
                             : false;
                           onToggleRow(row.id, event.currentTarget.checked, shift);
                         }}
-                        className="h-3.5 w-3.5 shrink-0"
+                        className="shrink-0"
+                        data-row-select
                         data-no-drag
                       />
                     ) : null}
 
-                    {readOnly ? (
-                      <span className="truncate text-[length:var(--fs-13)] font-semibold text-mw-fg">
-                        {row.title}
-                      </span>
-                    ) : (
-                      <>
-                        <form
-                          action={
-                            canonicalNewLead && row.deal_id
-                              ? updateNewLeadTitleAction
-                              : renameItemAction
-                          }
-                          className="min-w-0 flex-1"
-                        >
-                          <input type="hidden" name="boardId" value={boardId} />
-                          <input type="hidden" name="itemId" value={row.id} />
-                          {canonicalNewLead && row.deal_id ? (
-                            <input
-                              type="hidden"
-                              name="dealId"
-                              value={row.deal_id}
-                            />
-                          ) : null}
-                          <input
-                            name="title"
-                            defaultValue={row.title}
-                            aria-label="행 이름"
-                            className={BOARD_TABLE_TITLE_CONTROL}
-                          />
-                        </form>
-                        {findCellError(cellFlash, row.id, "title") ? (
-                          <p
-                            role="alert"
-                            className="text-[0.65rem] text-mw-error"
-                          >
-                            {findCellError(cellFlash, row.id, "title")}
-                          </p>
-                        ) : null}
-                      </>
-                    )}
+                    {/*
+                      #845 개선안(2026-10-08, 승인 목업 Rows) — 이름이 곧 «열기». 「열기 ↗」·「삭제」 단추는 걷었다.
+                      이름 고치기는 열린 상세의 제목에서(또는 우클릭 「업체명 바꾸기」), 지우기는 상세 ⋯·우클릭·일괄 막대에서.
+                    */}
+                    <button
+                      ref={(element) => {
+                        if (element) nameButtons.current.set(row.id, element);
+                        else nameButtons.current.delete(row.id);
+                      }}
+                      type="button"
+                      onClick={(event) => requestItemDetailOpen(row.id, event.currentTarget)}
+                      aria-label={`${row.title} 상세 열기`}
+                      title={row.title}
+                      data-item-detail-trigger={row.id}
+                      data-row-name
+                      className={BOARD_TABLE_TITLE_NAME}
+                    >
+                      {row.title}
+                    </button>
 
                     {(sameTitleCounts?.get(row.title) ?? 0) >= 2 ? (
                       <span
@@ -1370,7 +1467,26 @@ export function GroupTable({
                       </span>
                     ) : null}
 
+                    {/* 옆에 열기 — 줄에 올리거나 초점이 갈 때만(터치 기기는 흐리게 늘). globals.css [data-row-side-open]. */}
+                    <button
+                      type="button"
+                      onClick={() => openRowBeside(row.id)}
+                      aria-label={`${row.title} 옆에 열기`}
+                      title="옆에 열기"
+                      data-row-side-open
+                      className="grid size-[26px] shrink-0 place-items-center rounded-[7px] border border-mw-line bg-mw-card text-mw-sub hover:text-mw-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-primary"
+                    >
+                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                        <rect x="3" y="4" width="18" height="16" rx="2" />
+                        <path d="M14 4v16" />
+                      </svg>
+                    </button>
+
                     <ItemDetailPanel
+                      trigger="none"
+                      canTrash={canDeleteRow}
+                      titleNoun={titleNoun}
+                      titleError={findCellError(cellFlash, row.id, "title")}
                       boardId={boardId}
                       boardName={boardName}
                       groupName={groupName}
@@ -1407,21 +1523,17 @@ export function GroupTable({
                       }
                     />
 
-                    {/* BBE-240 원장 버튼은 2026-10-07 대표 피드백으로 상세(열기) 머리말로 옮겼다 — 행은 이름·열기·삭제만. */}
-
-                    {canDeleteRow && (
-                      <TrashItemButton
-                        boardId={boardId}
-                        itemId={row.id}
-                        title={row.title}
-                      />
-                    )}
                     {rowDragEnabled?<span className="sr-only focus-within:not-sr-only">
                       <button type="button" onClick={()=>onRowKeyboardMove(row.id,"up")} aria-label={`${row.title} 위로 이동`}>위로 이동</button>
                       <button type="button" onClick={()=>onRowKeyboardMove(row.id,"down")} aria-label={`${row.title} 아래로 이동`}>아래로 이동</button>
                       <label><span>그룹으로 이동</span><select aria-label={`${row.title} 이동할 그룹`} defaultValue="" onChange={(event)=>{if(event.target.value)onRowMoveToGroup(row.id,event.target.value);event.currentTarget.value="";}}><option value="">그룹 선택</option>{groupMoveOptions.filter((group)=>group.id!==groupId).map((group)=><option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
                     </span>:null}
                   </div>
+                  {findCellError(cellFlash, row.id, "title") ? (
+                    <p role="alert" className="text-[0.65rem] text-mw-error">
+                      {findCellError(cellFlash, row.id, "title")}
+                    </p>
+                  ) : null}
                   {renderRowAction?.(row)}
                 </td>
 
@@ -1538,12 +1650,15 @@ export function GroupTable({
                     openRequest={onDemandAdd ? addRequest : 0}
                     onOpenChange={setAddPanelOpen}
                     returnFocusTarget={onDemandAdd ? addReturnFocus : undefined}
+                    onAdded={onRowCreated}
                   />
                 ) : (
                   <AddItemForm
                     boardId={boardId}
                     variant="inline"
                     groupId={groupId}
+                    prefill={addPrefill}
+                    focusRequest={addRequest}
                     inputClassName={`${CELL_INPUT} max-w-64`}
                   />
                 )}

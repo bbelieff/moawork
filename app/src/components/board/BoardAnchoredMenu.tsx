@@ -115,7 +115,8 @@ export function useAnchoredPosition({
 }
 
 function menuItems(menu: HTMLElement | null): HTMLElement[] {
-  return [...(menu?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])') ?? [])]
+  // menuitem · menuitemradio · menuitemcheckbox 모두 — 담당자 고르기처럼 하나만 고르는 메뉴도 같은 키보드 이동을 쓴다.
+  return [...(menu?.querySelectorAll<HTMLElement>('[role^="menuitem"]:not([aria-disabled="true"])') ?? [])]
     .filter((item) => !(item instanceof HTMLButtonElement) || !item.disabled);
 }
 
@@ -136,6 +137,9 @@ export function BoardAnchoredMenu({
   initialFocus = "first",
   onClose,
   children,
+  width = 232,
+  maxHeight = 360,
+  describedBy,
 }: {
   id: string;
   open: boolean;
@@ -145,6 +149,11 @@ export function BoardAnchoredMenu({
   initialFocus?: "first" | "last";
   onClose(restoreFocus: boolean): void;
   children: ReactNode;
+  /** 메뉴 너비·최대 높이(기본 232×360). 칸 메뉴처럼 맨 위에 이름·회색 줄이 있는 메뉴만 바꾼다. */
+  width?: number;
+  maxHeight?: number;
+  /** 메뉴 안의 설명(항목이 아닌 글)을 가리키는 id — 보조기기가 메뉴 이름과 함께 읽는다. */
+  describedBy?: string;
 }) {
   const anchorMissing = useCallback(() => onClose(false), [onClose]);
   const position = useAnchoredPosition({
@@ -152,8 +161,8 @@ export function BoardAnchoredMenu({
     anchorRef,
     surfaceRef: menuRef,
     onAnchorMissing: anchorMissing,
-    desiredWidth: 232,
-    desiredMaxHeight: 360,
+    desiredWidth: width,
+    desiredMaxHeight: maxHeight,
   });
 
   useEffect(() => {
@@ -204,6 +213,7 @@ export function BoardAnchoredMenu({
         id={id}
         role="menu"
         aria-label={label}
+        aria-describedby={describedBy}
         data-board-anchored-menu
         data-placement={position.placement}
         draggable={false}

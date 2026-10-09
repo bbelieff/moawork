@@ -19,6 +19,8 @@ export function BoardModalLayer({
   onClose,
   dismissible = true,
   returnFocusRef,
+  ownsEscape,
+  layerClassName = "items-center justify-center p-3",
   children,
 }: {
   label?: string;
@@ -26,20 +28,31 @@ export function BoardModalLayer({
   onClose(): void;
   dismissible?: boolean;
   returnFocusRef?: RefObject<HTMLElement | null>;
+  /**
+   * Esc 를 대화상자 안의 입력이 먼저 쓰는가(예: 고치던 이름 되돌리기). true 면 닫지 않고 그 입력에 넘긴다.
+   * 없으면 Esc 는 언제나 대화상자를 닫는다(기존 동작).
+   */
+  ownsEscape?: (event: KeyboardEvent) => boolean;
+  /** 패널을 놓는 자리(정렬·여백). 기본은 가운데. 바닥 시트처럼 다른 자리가 필요할 때만 바꾼다. */
+  layerClassName?: string;
   children: ReactNode;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   const dismissibleRef = useRef(dismissible);
+  const ownsEscapeRef = useRef(ownsEscape);
   useEffect(() => { closeRef.current = onClose; }, [onClose]);
   useEffect(() => { dismissibleRef.current = dismissible; }, [dismissible]);
+  useEffect(() => { ownsEscapeRef.current = ownsEscape; }, [ownsEscape]);
 
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
     const explicitReturnFocus = returnFocusRef?.current;
+    // Tab 으로 닿는 것만 — 로빙 tabindex=-1 단추(탭 목록·메뉴 항목)는 화살표로만 간다.
     const focusable = () => [...(dialogRef.current?.querySelectorAll<HTMLElement>(
       'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex]:not([tabindex="-1"])',
-    ) ?? [])].filter((element) => !element.hasAttribute("hidden"));
+    ) ?? [])].filter((element) => element.tabIndex >= 0 && !element.hasAttribute("hidden"));
+    const follows = (from: Node, to: Node) => Boolean(from.compareDocumentPosition(to) & Node.DOCUMENT_POSITION_FOLLOWING);
     const frame = window.requestAnimationFrame(() => {
       // A form may already focus its title or invalid field during mount.
       if (!dialogRef.current?.contains(document.activeElement)) {
@@ -48,6 +61,7 @@ export function BoardModalLayer({
     });
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && dismissibleRef.current) {
+        if (ownsEscapeRef.current?.(event)) return;
         event.preventDefault();
         event.stopPropagation();
         closeRef.current();
@@ -62,12 +76,16 @@ export function BoardModalLayer({
       }
       const first = items[0];
       const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      const active = document.activeElement;
+      // 대화상자 밖(그 위에 겹쳐 연 다른 대화상자 등)의 초점은 그쪽이 맡는다.
+      if (!active || !dialogRef.current?.contains(active)) return;
+      // 화살표로 간 tabindex=-1 자리여도 문서 순서로 앞뒤를 가린다 — 더 갈 곳이 없으면 반대 끝으로 돈다.
+      const hasNext = event.shiftKey
+        ? items.some((item) => follows(item, active))
+        : items.some((item) => follows(active, item));
+      if (!hasNext) {
         event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
+        (event.shiftKey ? last : first).focus();
       }
     };
     document.addEventListener("keydown", onKeyDown, true);
@@ -96,7 +114,7 @@ export function BoardModalLayer({
         aria-labelledby={labelledBy}
         data-board-modal-layer
         tabIndex={-1}
-        className="mw-layer-dialog fixed inset-0 flex items-center justify-center p-3"
+        className={`mw-layer-dialog fixed inset-0 flex ${layerClassName}`}
         onPointerDown={(event) => {
           if (event.target === event.currentTarget && dismissible) onClose();
         }}

@@ -357,20 +357,14 @@ nav[aria-label="주요 메뉴"]::-webkit-scrollbar-button { display: none; }
 
 /* ── 2026-10-07 대표 피드백 «목업처럼» ────────────────────────────────────
    칸은 값만 보이는 «글자» 처럼: 입력칸 테두리·바탕은 올리거나 초점이 갈 때만, «검색…» 같은 빈 칸
-   안내 글자는 초점이 갈 때만. 행 동작(열기·삭제)과 띠 도구(순서·프리셋)는 올리거나 초점이 갈 때만.
-   마우스가 없는 기기(터치)에서는 숨기지 않는다 — 올릴 수 없으면 찾을 수 없다. */
+   안내 글자는 초점이 갈 때만. 띠 도구(순서·프리셋)는 올리거나 초점이 갈 때만.
+   마우스가 없는 기기(터치)에서는 숨기지 않는다 — 올릴 수 없으면 찾을 수 없다.
+   (행의 「열기」「삭제」 단추는 #845 개선안(2026-10-08)으로 걷었다 — 아래 «업체명 칸» 규칙.) */
 @media (hover: hover) {
   [data-visual-block="group-table"] tbody > tr[data-board-row] > td :is(input:not([type="checkbox"]):not([type="hidden"]):not([type="file"]), select, textarea):not(:hover):not(:focus) {
     border-color: transparent !important;
     background-color: transparent !important;
     box-shadow: none !important;
-  }
-  [data-visual-block="group-table"] tbody > tr[data-board-row] > td :is([data-item-detail-trigger], [data-row-trash]) {
-    opacity: 0;
-    transition: opacity 0.12s;
-  }
-  [data-visual-block="group-table"] tbody > tr[data-board-row]:is(:hover, :focus-within) > td :is([data-item-detail-trigger], [data-row-trash]) {
-    opacity: 1;
   }
   [data-visual-block="group-table"] [data-group-banner-tools] {
     opacity: 0;
@@ -385,6 +379,83 @@ nav[aria-label="주요 메뉴"]::-webkit-scrollbar-button { display: none; }
    (data-has-value)는 빼야 한다 — Issue 857 에서 상태·선택 칸의 값이 통째로 안 보이던 것을 고쳤다. */
 [data-visual-block="group-table"] tbody > tr[data-board-row] > td input:not(:focus):not([data-has-value])::placeholder {
   color: transparent;
+}
+/* ── #845 개선안(2026-10-08, 승인 목업 Rows) «업체명 칸» ─────────────────────
+   이름이 곧 «열기» 다. 평소엔 흐린 체크 + 이름만. 줄에 올리거나 이 칸에 초점이 가면 이름에 밑줄과
+   「옆에 열기」 아이콘. 터치 기기(올릴 수 없다)에서는 그 아이콘을 흐리게 늘 보인다. */
+tbody > tr[data-board-row]:hover > td [data-row-name],
+tbody > tr[data-board-row] > td[data-board-title-cell]:focus-within [data-row-name] {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (hover: hover) {
+  tbody > tr[data-board-row] > td [data-row-side-open] {
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  tbody > tr[data-board-row]:hover > td [data-row-side-open],
+  tbody > tr[data-board-row] > td[data-board-title-cell]:focus-within [data-row-side-open] {
+    opacity: 1;
+  }
+}
+@media (hover: none) {
+  tbody > tr[data-board-row] > td [data-row-side-open] {
+    opacity: 0.4;
+  }
+  /* 길게 누르기(약 0.5초)가 행 메뉴를 연다(use-touch-long-press) — iOS 의 기본 말풍선·이름 글자 고르기가 겹치지 않게. */
+  tbody > tr[data-board-row] {
+    -webkit-touch-callout: none;
+  }
+  tbody > tr[data-board-row] > td [data-row-name] {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+/* 고르기 체크 — 늘 보이되 차분한 회색 테두리. 고른 상태만 주 색(선택은 색을 쓰는 세 자리 중 하나).
+   테두리는 행 바탕(카드·호버·끌어 놓는 자리 옅은 파랑)과 3:1 이상 — WCAG 1.4.11 비텍스트 대비
+   (#845, 2026-10-08: 24% 는 1.7:1 이라 52% 로 — 라이트 3.1~3.6:1, 다크 4.8~5.7:1). */
+input[type="checkbox"][data-row-select] {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  border: 1.5px solid color-mix(in srgb, var(--mw-fg) 52%, var(--mw-card));
+  border-radius: 4px;
+  background: var(--mw-card);
+  cursor: pointer;
+}
+input[type="checkbox"][data-row-select]:hover {
+  border-color: color-mix(in srgb, var(--mw-fg) 68%, var(--mw-card));
+}
+input[type="checkbox"][data-row-select]:is(:checked, :indeterminate) {
+  border-color: var(--mw-primary);
+  background: var(--mw-primary);
+}
+input[type="checkbox"][data-row-select]:checked::before {
+  content: "";
+  width: 8px;
+  height: 4px;
+  border: solid var(--mw-on-accent);
+  border-width: 0 0 2px 2px;
+  transform: translateY(-1px) rotate(-45deg);
+}
+input[type="checkbox"][data-row-select]:indeterminate::before {
+  content: "";
+  width: 8px;
+  height: 2px;
+  background: var(--mw-on-accent);
+}
+input[type="checkbox"][data-row-select]:focus-visible {
+  outline: 2px solid var(--mw-primary);
+  outline-offset: 2px;
+}
+@media (forced-colors: active) {
+  input[type="checkbox"][data-row-select] {
+    appearance: auto;
+  }
 }
 /* 고른 값은 안내 글자가 아니라 값이다 — 값 글자색으로. 저장 중(Issue 857 즉시 표시)엔 살짝 흐리게. */
 [data-visual-block="group-table"] tbody > tr[data-board-row] > td input[data-has-value]:not(:focus)::placeholder {

@@ -29,12 +29,11 @@ function statusLabel(status: ColumnScheduleRow["status"]): string {
   return { scheduled: "예약됨", claimed: "처리 중", fired: "완료", cancelled: "취소됨" }[status];
 }
 
-export function ColumnSettingsPanel({ boardId, column, items, recipients, onRequestClose, onPendingChange, onSaved }: {
+export function ColumnSettingsPanel({ boardId, column, items, recipients, onPendingChange, onSaved }: {
   boardId: string;
   column: BoardColumn;
   items: readonly ColumnScheduleItemOption[];
   recipients: readonly ColumnScheduleRecipientOption[];
-  onRequestClose?: () => void;
   onPendingChange?: (pending: boolean) => void;
   onSaved?: () => void;
 }) {
@@ -126,7 +125,6 @@ export function ColumnSettingsPanel({ boardId, column, items, recipients, onRequ
         <label><input name="deadline" type="checkbox" defaultChecked={date.deadline ?? false} /> 데드라인으로 표시</label>
         <label className="grid gap-1"><span>리마인더(분, 쉼표 구분)</span><input name="reminderOffsetsMinutes" defaultValue={(date.reminderOffsetsMinutes ?? []).join(", ")} className="rounded border p-2" /></label>
       </fieldset> : null}
-      <button type="button" onClick={() => { onRequestClose?.(); window.requestAnimationFrame(() => { const settings = document.getElementById("board-settings") as HTMLDetailsElement | null; const forms = document.getElementById("board-work-forms"); settings?.setAttribute("open", ""); forms?.scrollIntoView({ behavior: "smooth", block: "center" }); forms?.querySelector<HTMLElement>("summary")?.focus(); }); }} className="rounded border border-mw-line px-3 py-2 text-left text-sm">업무 양식에서 재사용</button>
       <button disabled={pending} className="rounded bg-mw-primary px-3 py-2 text-mw-on-accent disabled:opacity-50">{settingsPending ? "저장 중…" : "설정 저장"}</button>
     </form>
 

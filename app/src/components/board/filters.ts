@@ -8,7 +8,7 @@
  * (그 파일 머리말의 "2중/3중 구현 금지" 규약).
  */
 
-import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
+import type { BoardColumn, CellValue, ItemWithValues } from "@/lib/boards/types";
 import { cellSearchText, compareCells } from "@/lib/boards/cells";
 import { normalizeBoardPhoneDigits } from "./bulk-selection";
 import {
@@ -275,6 +275,10 @@ export function applyFilters(
       ? [{ columnKey: f.sortKey, direction: f.sortDir }]
       : [];
   if (sorts.length === 0) return kept;
+  const sortValue = new Map(sorts.map((sort) => [
+    sort.columnKey,
+    sortValueOf(columns.find((column) => column.key === sort.columnKey), assigneeLabels),
+  ]));
 
   return kept.map((row, index) => ({ row, index })).sort((a, b) => {
     for (const sort of sorts) {
@@ -283,14 +287,41 @@ export function applyFilters(
         if (projected !== 0) return projected;
         continue;
       }
-      const compared = compareCells(
-          a.row.values[sort.columnKey] ?? null,
-          b.row.values[sort.columnKey] ?? null,
-        );
+      const toSortable = sortValue.get(sort.columnKey);
+      const left = a.row.values[sort.columnKey] ?? null;
+      const right = b.row.values[sort.columnKey] ?? null;
+      const compared = toSortable ? compareCells(toSortable(left), toSortable(right)) : compareCells(left, right);
       if (compared !== 0) return sort.direction === "desc" ? -compared : compared;
     }
     return a.index - b.index;
   }).map(({ row }) => row);
+}
+
+/**
+ * 줄 세우기용 값 바꾸기 — 목록 칸은 저장된 선택지 id 대신 선택지 이름으로, 사람 칸은 계정 id 대신
+ * 이름으로 비교한다(#845 칸 메뉴의 「가나다순」·「이름순」 이 말 그대로 되게). 이름을 모르면 저장값 그대로.
+ * 바꿀 것이 없는 칸은 null(공통 비교 그대로).
+ */
+function sortValueOf(
+  column: BoardColumn | undefined,
+  assigneeLabels?: Readonly<Record<string, string>>,
+): ((value: CellValue) => CellValue) | null {
+  if (!column) return null;
+  let names: ReadonlyMap<string, string> | null = null;
+  if ((column.type === "person" || column.type === "people") && assigneeLabels) {
+    names = new Map(Object.entries(assigneeLabels));
+  } else if (column.type === "select" || column.type === "multiselect" || column.type === "status") {
+    const options = column.options_jsonb?.options ?? [];
+    if (options.length > 0) names = new Map(options.map((option) => [option.id, option.label]));
+  }
+  if (!names) return null;
+  const lookup = names;
+  const name = (entry: string) => lookup.get(entry) ?? entry;
+  return (value) => {
+    if (typeof value === "string") return name(value);
+    if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) return (value as string[]).map(name);
+    return value;
+  };
 }
 
 /** 이전 저장 뷰 테스트용 역호환 함수. 제품 UI는 `selectVisibleColumns`를 사용한다. */

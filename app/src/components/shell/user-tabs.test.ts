@@ -57,11 +57,12 @@ describe("#849 사용자 탭 → 메뉴 줄", () => {
     expect(WORK_KEYS).toEqual(BOARD_NAV_SECTIONS.map((place) => USER_TAB_SECTION_KEY[place]));
   });
 
-  it("고른 소분류의 탭만, 받은 순서대로, 폴더 아이콘의 보드 링크로 만든다", () => {
+  it("고른 소분류의 탭만, 받은 순서대로, 머리말과 같은 탭 아이콘의 보드 링크로 만든다", () => {
     const bySection = userTabNavItemsBySection(TABS, WORK_KEYS);
     expect(bySection.get("after-contract")).toEqual([
-      { key: "board:t-after-1", label: "영업 파이프라인", icon: "folder", href: "/boards/t-after-1" },
-      { key: "board:t-after-2", label: "계약 진행", icon: "folder", href: "/boards/t-after-2" },
+      // 옛 이모지 📋 은 머리말(resolveBoardIconKey)처럼 문서 그림, 빈 값도 문서 그림.
+      { key: "board:t-after-1", label: "영업 파이프라인", icon: "folder", tabIcon: "document", href: "/boards/t-after-1" },
+      { key: "board:t-after-2", label: "계약 진행", icon: "folder", tabIcon: "document", href: "/boards/t-after-2" },
     ]);
     expect(bySection.get("before-contract")!.map((item) => item.key)).toEqual(["board:t-before"]);
     expect(userTabNavItemsBySection(undefined, WORK_KEYS).get("after-contract")).toEqual([]);

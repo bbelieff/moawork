@@ -19,7 +19,7 @@ import { createRequestBoards } from "@/lib/boards/server";
 import { COLUMN_DELETE_CONFIRM, parseNewBoard, parseNewColumn, parseNewItem, isFieldType } from "@/lib/boards/validation";
 import type { Ctx, FieldOption } from "@/lib/types";
 import { writeBoardCell } from "@/lib/boards/cell-save";
-import type { CellError } from "@/lib/boards/service";
+import { columnPolicyAllows, type CellError } from "@/lib/boards/service";
 import { clampWidth, UNGROUPED_KEY } from "@/components/board/layout";
 import { setGroupColumnOrder } from "./groupLayout";
 // ★ 상태 모양·문장은 순수 모듈에 있다("use server" 파일은 async 함수만 export 할 수 있다).
@@ -60,6 +60,15 @@ import {
   CREDIT_SCORE_KEYS,
   NEW_LEAD_COMPOSITE_FIELD_KEYS,
 } from "@/lib/new-lead/financial-profile";
+import { resolveMoveTarget } from "@/lib/boards/moveRules";
+import type { BoardColumn, BoardDetail, CellValue } from "@/lib/boards/types";
+import {
+  groupValueEditBlock,
+  isTransitionGroupValue,
+  ownerModeForSource,
+  parseGroupCellValue,
+  personIdsOf,
+} from "@/lib/view/group-by";
 
 function str(fd: FormData, key: string): string {
   const v = fd.get(key);
@@ -155,6 +164,47 @@ function moveEventKey(formData: FormData): string {
 
 async function boardsService() {
   return (await createRequestBoards()).service;
+}
+
+type BoardGraph = Awaited<ReturnType<typeof createRequestBoards>>;
+
+/** 사람 칸에 넣는 계정이 모두 이 회사의 활성 구성원인가 — 연결된 워크스페이스에서만 확인한다(로컬 시드는 구성원 표가 없다). */
+async function assertActiveMembers(graph: BoardGraph, ctx: Ctx, ids: readonly string[]): Promise<void> {
+  if (!graph.client || ids.length === 0) return;
+  const members = await graph.client.from("org_members").select("user_id")
+    .eq("org_id", ctx.org.id).eq("status", "active").in("user_id", [...ids]);
+  if (members.error || new Set((members.data ?? []).map((member) => member.user_id)).size !== new Set(ids).size) {
+    throw new UserFacingActionError("이 회사에 속한 사람만 선택할 수 있어요.");
+  }
+}
+
+/**
+ * #845 7단계 — 나눠 보기 묶음의 값(칸 key · 값 JSON)을 검증한다. 끌어 옮기기와 묶음 ＋ 미리 채우기가 같이 쓴다.
+ * 화면이 감춘 것(고칠 수 없는 칸·편집 제한 칸·✉ 발송 칸·신규리드 정본·배정 담당·넘기기 값)을 서버가 다시 막는다.
+ * ★ 편집 제한(「관리자만」 등)은 DB 가 값 쓰기를 거부한다 — 그런데 ＋ 는 행을 먼저 만들므로, 여기서 막지 않으면
+ *   값 없는 행만 남고 다시 누를 때마다 하나씩 늘어난다. 그래서 행을 만들기 «전» 에 같은 규칙으로 거절한다.
+ */
+async function resolveGroupValue(
+  graph: BoardGraph,
+  ctx: Ctx,
+  boardId: string,
+  columnKey: string,
+  rawValue: string,
+): Promise<{ column: BoardColumn; value: CellValue; detail: BoardDetail }> {
+  const detail = await graph.service.getBoardDetail(ctx, boardId);
+  const column = detail.columns.find((candidate) => candidate.key === columnKey);
+  if (!column) throw new UserFacingActionError("기록 항목을 찾을 수 없어요.");
+  const blocked = groupValueEditBlock(column, {
+    canonicalNewLead: detail.board.source === NEW_LEAD_TAB_SOURCE,
+    ownerMode: ownerModeForSource(detail.board.source),
+    editPolicyAllows: columnPolicyAllows(ctx, column.edit_policy_jsonb),
+  });
+  if (blocked) throw new UserFacingActionError(blocked);
+  const value = parseGroupCellValue(column.type, rawValue);
+  if (value === undefined) throw new UserFacingActionError("옮길 값을 읽지 못했어요. 새로고침 후 다시 시도해 주세요.");
+  if (isTransitionGroupValue(column.key, value)) throw new UserFacingActionError("이 값은 칸에서 바꿔요.");
+  if (column.type === "person" || column.type === "people") await assertActiveMembers(graph, ctx, personIdsOf(value));
+  return { column, value, detail };
 }
 
 async function requirePermission(ctx: Ctx, scopeKey: string, riskKey?: "danger.bulk_edit_delete"): Promise<void> {
@@ -458,7 +508,17 @@ export async function addItemAction(formData: FormData): Promise<void> {
       title: str(formData, "title"),
       group_id: groupId === "" ? null : groupId,
     });
-    await (await boardsService()).createItem(ctx, boardId, input);
+    const graph = await createRequestBoards();
+    // #845 7단계 — 나눠 보기 묶음의 ＋ 는 그 묶음의 값을 미리 넣는다. 서버가 칸·값·구성원을 다시 확인한다.
+    // 그 값이 행을 옮기는 단계(이동 규칙)면 그 단계의 보드에 바로 만든다 — 값과 보드가 어긋나지 않게.
+    const prefillKey = str(formData, "prefillKey");
+    if (prefillKey) {
+      const { column, value, detail } = await resolveGroupValue(graph, ctx, boardId, prefillKey, str(formData, "prefillValue"));
+      input.values = { ...(input.values ?? {}), [column.key]: value };
+      const ruleTarget = resolveMoveTarget(column, value);
+      if (ruleTarget && detail.groups.some((group) => group.id === ruleTarget)) input.group_id = ruleTarget;
+    }
+    await graph.service.createItem(ctx, boardId, input);
     // 성공했으면 직전 실패를 지운다 — 안 지우면 고쳐서 성공한 뒤에도 옛 오류가 다시 그려진다.
     await clearFlashCookie(BOARD_ACTION_FLASH_COOKIE);
   } catch (error) {
@@ -679,6 +739,48 @@ export async function moveItemAction(formData: FormData): Promise<MoveItemAction
     console.error("[board kanban move]",error);
     // 셀 저장 경로(setCells)는 낡은 버전을 한 번 다시 시도한 뒤 사람 말로 바꿔 던진다 — 원문·변환문 모두 같은 종류로 읽는다.
     return{ok:false,stale:classifyRowMoveFailure(error)==="stale",message:userFacingMessage(error)};
+  }
+}
+
+/**
+ * #845 7단계 — 나눠 보기에서 행을 다른 묶음으로 끌어 놓으면 그 칸의 값을 바꾼다(칸 편집과 같은 setCells 경로).
+ * 화면은 먼저 옮겨 보이고(낙관적), 실패하면 되돌린 뒤 이 문구를 보인다. 던지지 않는다.
+ *   · 권한: 항목 수정(work.item_upsert). 행을 옮기는 단계 값은 setCells 가 행 이동 권한을 다시 본다.
+ *   · 막는 것: 고칠 수 없는 칸 · 편집 제한 칸 · ✉ 발송 칸 · 신규리드 정본 · 배정으로 관리하는 담당 · 넘기기 값 · 회사 밖 사람
+ */
+export type SetGroupValueActionResult =
+  | { ok: true; notice?: string }
+  | { ok: false; message: string };
+
+export async function setGroupValueAction(formData: FormData): Promise<SetGroupValueActionResult> {
+  try {
+    const ctx = await getSession();
+    await requirePermission(ctx, "work.item_upsert");
+    const boardId = str(formData, "boardId");
+    const itemId = str(formData, "itemId");
+    const graph = await createRequestBoards();
+    const { column, value } = await resolveGroupValue(graph, ctx, boardId, str(formData, "columnKey"), str(formData, "value"));
+    const saved = await graph.service.setCells(ctx, boardId, itemId, { [column.key]: value });
+    if (saved.errors.length > 0) {
+      revalidatePath(`/boards/${boardId}`);
+      return { ok: false, message: saved.errors[0]?.message ?? "값을 바꾸지 못했어요." };
+    }
+    const notices = saved.notices ?? [];
+    await flashCellErrors(itemId, notices);
+    if (graph.client && column.type === "status") {
+      try {
+        await notifyBoardItemMoved(graph.client, ctx, { boardId, itemId, eventKey: crypto.randomUUID() });
+      } catch (notificationError) {
+        // 값은 이미 저장됐다. 알림 부작용 실패를 저장 실패로 거짓 표시하지 않는다.
+        console.warn("[board group value notification]", boardId, itemId, notificationError);
+      }
+    }
+    revalidatePath(`/boards/${boardId}`);
+    return notices[0]?.message ? { ok: true, notice: notices[0].message } : { ok: true };
+  } catch (error) {
+    if (isNextControlFlow(error)) throw error;
+    console.error("[board group value]", error);
+    return { ok: false, message: userFacingMessage(error) };
   }
 }
 

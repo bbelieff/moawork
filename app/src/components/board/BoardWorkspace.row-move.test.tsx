@@ -51,7 +51,7 @@ describe("#602 BoardWorkspace row move fence",()=>{
     const host=document.createElement("div");document.body.append(host);root=createRoot(host);
     await act(async()=>root?.render(workspace(2)));
     await act(async()=>{host.querySelector<HTMLButtonElement>('[aria-label="A 아래로 이동"]')!.click();await Promise.resolve();});
-    expect([...host.querySelectorAll<HTMLInputElement>('input[name="title"]')].map((input)=>input.value).filter(Boolean)).toEqual(["A","B"]);
+    expect([...host.querySelectorAll<HTMLButtonElement>("button[data-row-name]")].map((button)=>button.textContent).filter(Boolean)).toEqual(["A","B"]);
     expect(host.textContent).toContain("다른 사용자가 먼저 순서를 바꿨어요");
   });
 

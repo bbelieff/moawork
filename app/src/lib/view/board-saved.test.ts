@@ -6,14 +6,20 @@ import {
   applySavedKanbanView,
   applySavedPersonScope,
   boardViewSwitchUrl,
+  canOverwriteSavedView,
   durableNewLeadSavedViewConfig,
+  modeForSavedKind,
   NEW_LEAD_SAVED_FILTER_PROJECTION,
   parsePersonScopeInput,
   parseSavedBoardViewConfig,
   presentNewLeadSavedViewConfig,
   savedBoardViewFromRow,
+  savedKindForMode,
   savedViewUrl,
   systemViewUrl,
+  tabViewDbKind,
+  viewerScopedAssignees,
+  type SavedBoardView,
 } from "./board-saved";
 
 describe("parseSavedBoardViewConfig", () => {
@@ -323,5 +329,93 @@ describe("parseSavedBoardViewConfig", () => {
       textMode: "single",
       focusColumnKey: null,
     });
+  });
+});
+
+describe("#845 6단계 — 보기 방식·메인 테이블·덮어쓰기 권한", () => {
+  const view = (kind: string) => ({
+    id: "v1", name: "뷰", visibility: "shared" as const, ownerId: "u2", isDefault: false, lastUsedAt: null,
+    config: parseSavedBoardViewConfig({ kind, layout: { g1: ["memo", "status"] } }),
+  });
+
+  it("표(grouped)·칸반·목록·캘린더가 주소의 view 와 서로 바뀐다 — 예전 table=목록, board=칸반은 그대로 읽는다", () => {
+    for (const mode of ["table", "kanban", "flat", "calendar"] as const) {
+      expect(modeForSavedKind(savedKindForMode(mode))).toBe(mode);
+    }
+    expect(parseSavedBoardViewConfig({ kind: "grouped" }).kind).toBe("grouped");
+    expect(new URL(savedViewUrl(view("grouped"), "https://app.test/boards/b")).searchParams.get("view")).toBe("table");
+    expect(new URL(savedViewUrl(view("table"), "https://app.test/boards/b")).searchParams.get("view")).toBe("flat");
+    expect(new URL(savedViewUrl(view("board"), "https://app.test/boards/b")).searchParams.get("view")).toBe("kanban");
+    // DB 의 정규화 열은 세 값만 받는다(072 check) — 표는 'board' 로 둔다. 읽을 때는 config_jsonb 가 정본이다.
+    expect(tabViewDbKind("grouped")).toBe("board");
+    expect(tabViewDbKind("table")).toBe("flat");
+    expect(tabViewDbKind("calendar")).toBe("cal");
+  });
+
+  it("칸 순서는 보드 전체의 것 — 저장된 뷰를 열어도 예전 layout 으로 보드 순서를 덮지 않는다", () => {
+    const url = new URL(savedViewUrl(view("grouped"), "https://app.test/boards/b?mwLayout=%7B%7D"));
+    expect(url.searchParams.has("mwLayout")).toBe(false);
+  });
+
+  it("「메인 테이블」 은 묶인 메인 표(?view=table)를 연다 — 묶지 않은 목록이 아니다", () => {
+    const url = new URL(systemViewUrl("table", "https://app.test/boards/b?savedView=v1&view=flat&mwFilters=x&group=status"));
+    expect(url.searchParams.get("view")).toBe("table");
+    expect([...url.searchParams.keys()]).toEqual(["view"]);
+  });
+
+  it("뷰를 덮어쓰거나 지우는 것은 만든 사람과 워크스페이스 소유자·관리자만", () => {
+    expect(canOverwriteSavedView({ ownerId: "u1" }, { userId: "u1", role: "member" })).toBe(true);
+    expect(canOverwriteSavedView({ ownerId: "u2" }, { userId: "u1", role: "member" })).toBe(false);
+    expect(canOverwriteSavedView({ ownerId: "u2" }, { userId: "u1", role: "team_lead" })).toBe(false);
+    expect(canOverwriteSavedView({ ownerId: "u2" }, { userId: "u1", role: "admin" })).toBe(true);
+    expect(canOverwriteSavedView({ ownerId: "u2" }, { userId: "u1", role: "owner" })).toBe(true);
+    expect(canOverwriteSavedView({ ownerId: null }, { userId: "u1", role: "member" })).toBe(false);
+  });
+});
+
+describe("#845 7단계 — 나눠 보기는 뷰 설정의 groupBy 그대로", () => {
+  it("저장된 표 뷰의 groupBy(사람·목록 칸)가 주소 group 으로 열리고, 신규리드 durable/present 변환을 지나도 같은 칸이다", () => {
+    const config = parseSavedBoardViewConfig({ kind: "grouped", groupBy: "collaborators" });
+    expect(config.groupBy).toBe("collaborators");
+    const view = { id: "v1", name: "뷰", visibility: "private" as const, ownerId: "u1", isDefault: false, lastUsedAt: null, config };
+    expect(new URL(savedViewUrl(view, "https://app.test/boards/b")).searchParams.get("group")).toBe("collaborators");
+    expect(presentNewLeadSavedViewConfig(config).groupBy).toBe("collaborators");
+    expect(durableNewLeadSavedViewConfig(presentNewLeadSavedViewConfig(config)).groupBy).toBe("collaborators");
+    // 보드별(빈 값)은 주소에서 group 을 지운다.
+    const plain = { ...view, config: parseSavedBoardViewConfig({ kind: "grouped" }) };
+    expect(new URL(savedViewUrl(plain, "https://app.test/boards/b?group=owner")).searchParams.has("group")).toBe(false);
+  });
+});
+
+describe("저장된 뷰 주소 — 캘린더 날짜 칸 · 보는 사람 기준 담당", () => {
+  const view = (id: string, config: Record<string, unknown>, over: Partial<SavedBoardView> = {}): SavedBoardView => ({
+    id, name: id, visibility: "shared", ownerId: "u1", isDefault: false, lastUsedAt: null,
+    config: parseSavedBoardViewConfig(config), ...over,
+  });
+
+  it("뷰의 캘린더 날짜 칸을 주소에 싣고, 날짜 칸이 없는 뷰로 옮기면 앞 뷰의 칸을 지운다", () => {
+    const contract = new URL(savedViewUrl(view("a", { kind: "calendar", calendarFieldKey: "contract_date" }), "https://app.test/boards/b?view=table"));
+    expect(contract.searchParams.get("calendarField")).toBe("contract_date");
+    const next = new URL(savedViewUrl(view("b", { kind: "calendar" }), contract.toString()));
+    expect(next.searchParams.has("calendarField")).toBe(false);
+  });
+
+  it("보는 사람 기준(viewer) 뷰는 담당을 여는 사람으로 채우고, 사람 id 를 박은 뷰·다른 범위는 그대로 둔다", () => {
+    const viewer = view("me", { kind: "grouped" }, { personScope: "viewer", personScopeUserId: null });
+    const filters = (url: string) => decodeBoardFilters(new URL(url).searchParams.get("mwFilters"));
+    expect(filters(savedViewUrl(viewer, "https://app.test/boards/b", "u2")).assignees).toEqual(["u2"]);
+    expect(filters(savedViewUrl(viewer, "https://app.test/boards/b")).assignees).toEqual([]);
+    expect(viewerScopedAssignees({ ...viewer, personScope: "team" }, "u2")).toEqual([]);
+    expect(viewerScopedAssignees(view("x", { filters: { assignees: ["u3"] } }, { personScope: "viewer" }), "u2")).toEqual(["u3"]);
+  });
+
+  it("칸반 사람 칸 「이름순」 은 이름표로 줄 세운다(계정 id 순이 아니다)", () => {
+    const owner = { id: "c-owner", org_id: "o1", board_id: "b1", key: "owner", label: "담당자", type: "person", source: "in", rightPinned: false, options_jsonb: null, sort_order: 0, width: null } as BoardColumn;
+    const card = (id: string, ownerId: string): ItemWithValues => ({ id, org_id: "o1", board_id: "b1", group_id: "g1", title: id, assigned_to: ownerId, deal_id: null, sort_order: 0, created_at: "", updated_at: "", values: { owner: ownerId } });
+    const rows = [card("sky", "u-1"), card("garam", "u-2")];
+    const filters = { q: "", assignees: [], byColumn: {}, sortKey: "", sortDir: "asc" as const, sorts: [{ columnKey: "owner", direction: "asc" as const }], columnLimit: 0 };
+    const labels = { "u-1": "하늘", "u-2": "가람" };
+    expect(applySavedKanbanView([{ id: "lane", items: rows }], rows, [owner], filters)[0].items.map((row) => row.id)).toEqual(["sky", "garam"]);
+    expect(applySavedKanbanView([{ id: "lane", items: rows }], rows, [owner], filters, undefined, labels)[0].items.map((row) => row.id)).toEqual(["garam", "sky"]);
   });
 });

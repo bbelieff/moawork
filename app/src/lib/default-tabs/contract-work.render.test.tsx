@@ -1,6 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { BoardToolbar } from "@/components/board/BoardToolbar";
+import { describe, expect, it, vi } from "vitest";
+// 보기 줄은 표·칸반 전환에 앱 라우터를 쓴다(#845) — 정적 렌더에는 라우터가 없다.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: () => undefined }) }));
+import { BoardViewBar } from "@/components/board/BoardViewBar";
+import { ViewConditionsPanel } from "@/components/board/ViewConditionsPanel";
 import { EMPTY_FILTERS } from "@/components/board/filters";
 import { GroupTable } from "@/components/board/GroupTable";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
@@ -77,14 +80,29 @@ describe("BBE-150 계약업체 실무 렌더", () => {
   });
 
   /*
-   * #655 — 필터 칩은 「필터」 패널 안으로 들어갔다. 원칙 9(칩+팝오버·네이티브 select 금지)는
-   * 그대로이고 «어디에 서 있는가» 만 바뀌었다. 걸린 필터가 있으면 패널은 기본으로 열린다(#602).
+   * #845 6단계 — 필터 칩은 보기 줄 아래로 펼쳐지는 「보기 조건」 칸의 「골라 보기」 탭에 있다.
+   * 원칙 9(칩+팝오버·네이티브 select 금지)는 그대로이고 «어디에 서 있는가» 만 바뀌었다.
    */
-  const toolbar = (filters: typeof EMPTY_FILTERS) => renderToStaticMarkup(
-    <BoardToolbar
+  const panel = (filters: typeof EMPTY_FILTERS) => renderToStaticMarkup(
+    <ViewConditionsPanel
+      tab="filter"
+      onTab={() => {}}
+      columns={columns}
+      rows={[]}
+      filters={filters}
+      onChange={() => {}}
+      people={[]}
+      groupBy=""
+    />,
+  );
+  const bar = (filters: typeof EMPTY_FILTERS) => renderToStaticMarkup(
+    <BoardViewBar
+      boardId={boardId}
+      mode="table"
       columns={columns}
       filters={filters}
       onChange={() => {}}
+      rows={[]}
       matched={0}
       total={0}
       people={[]}
@@ -92,7 +110,7 @@ describe("BBE-150 계약업체 실무 렌더", () => {
   );
 
   it("상태·선택 필터는 칩+팝오버이며 네이티브 select가 아니다", () => {
-    const html = toolbar({ ...EMPTY_FILTERS, assignees: ["someone"] });
+    const html = panel(EMPTY_FILTERS);
     expect(html).not.toContain("<select");
     expect(html).toContain('aria-haspopup="dialog"');
     expect(html).toContain('aria-expanded="false"');
@@ -100,13 +118,16 @@ describe("BBE-150 계약업체 실무 렌더", () => {
     for (const label of ["진행기관", "세부명칭", "진행상황"]) expect(html).toContain(label);
   });
 
-  it("아무것도 안 걸리면 필터는 접히고 세 묶음만 선다 (#655)", () => {
-    const html = toolbar(EMPTY_FILTERS);
-    for (const label of ["찾기", "필터", "보기", "정렬", "표시 컬럼", "저장", "뷰로 저장"]) {
+  it("아무것도 안 걸리면 보기 조건 칸은 접혀 있고 한 줄에 칩만 선다 (#845 6단계)", () => {
+    const html = bar(EMPTY_FILTERS);
+    for (const label of ["메인 테이블", "표", "담당 · 전체", "골라 보기", "줄 세우기", "나눠 보기", "보이는 칸", 'aria-label="찾기"']) {
       expect(html, label).toContain(label);
     }
     // 접혔으므로 개별 필터 칩은 아직 서 있지 않다.
     expect(html).not.toContain("진행기관");
     expect(html).not.toContain("<select");
+    // 바뀐 것이 없으면 되돌리기·저장이 없다. 예전 「뷰로 저장」 단추도 없다.
+    expect(html).not.toContain("되돌리기");
+    expect(html).not.toContain(">뷰로 저장<");
   });
 });

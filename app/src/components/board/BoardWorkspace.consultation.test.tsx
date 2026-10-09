@@ -105,8 +105,9 @@ beforeEach(() => {
   actionMocks.readHandoff.mockResolvedValue({ ok: true, ready: false, message: "승인 대기", missing: [] });
 });
 
+// #845 개선안(2026-10-08) — 행 이름은 입력칸이 아니라 상세를 여는 업체명 단추다.
 function renderedRowNames(host: HTMLElement) {
-  return [...host.querySelectorAll<HTMLInputElement>('input[aria-label="행 이름"]')].map((input) => input.value);
+  return [...host.querySelectorAll<HTMLButtonElement>("button[data-row-name]")].map((button) => button.textContent);
 }
 
 async function expectSharedConsultation(host: HTMLElement, title: string, itemId: string) {

@@ -299,3 +299,30 @@ test("modal and detail Escape checks use the bounded connected-focus contract", 
   assert.doesNotMatch(source, /modalProbe\.evaluate\(el=>document\.activeElement===el\)/u);
   assert.doesNotMatch(source, /opener\.evaluate\(el=>document\.activeElement===el\)/u);
 });
+
+test("the filter path follows the viewport, not whichever chip is visible", () => {
+  const source = readFileSync(new URL("./qa-visual-blocks.mjs", import.meta.url), "utf8");
+  assert.match(source, /narrowViewport=vp\.width<640/u);
+  assert.match(source, /if\(!narrowViewport&&!filterToggleVisible\)failures\.push\("interaction: desktop filter toggle not visible"\)/u);
+  assert.match(source, /if\(narrowViewport&&filterToggleVisible\)failures\.push\("interaction: desktop filter toggle visible below 640px"\)/u);
+  // The mobile 「보기 조건」 entry is pressed for real and only when visible — a DOM click also presses a hidden button.
+  assert.match(source, /if\(await conditions\.isVisible\(\)\.catch\(\(\)=>false\)\)\{try\{await conditions\.click\(\{timeout:3000\}\)/u);
+  assert.doesNotMatch(source, /\[data-board-view-bar-mobile\] button"\)\]\.find\(x=>x\.textContent\?\.includes\("보기 조건"\)\);if\(b instanceof HTMLElement\)\{b\.click\(\)/u);
+});
+
+test("a settings entry inside the header may not cover the title or the primary CTA", () => {
+  const source = readFileSync(new URL("./qa-visual-blocks.mjs", import.meta.url), "utf8");
+  assert.match(source, /!boxesIntersect\(s,headerParts\?\.title\)&&!boxesIntersect\(s,headerParts\?\.cta\)/u);
+  const body = source.match(/const boxesIntersect=([^;]+);/u)?.[1];
+  assert.ok(body, "boxesIntersect must stay a single pure expression");
+  const boxesIntersect = new Function(`return ${body}`)();
+  const box = (x, y, width, height) => ({ x, y, width, height });
+  assert.equal(boxesIntersect(box(0, 0, 40, 34), box(30, 10, 40, 34)), true);
+  // Adjacent boxes (the header's 8px gap, or a shared 1px edge) are not an overlap; a missing part is skipped.
+  assert.equal(boxesIntersect(box(0, 0, 40, 34), box(48, 0, 80, 34)), false);
+  assert.equal(boxesIntersect(box(0, 0, 40, 34), box(39.5, 0, 80, 34)), false);
+  assert.equal(boxesIntersect(box(0, 0, 40, 34), null), false);
+  // The scoring contract stays visual 70 / minimum 65 and the overlap still costs the same 20 points.
+  assert.match(source, /c\.evaluation\.visual!==70\|\|c\.evaluation\.minimumVisual!==65/u);
+  assert.match(source, /failures\.push\("screen: wrong-order\/overlap"\);position-=20/u);
+});

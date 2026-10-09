@@ -10,6 +10,8 @@ const actions = vi.hoisted(() => ({
 }));
 vi.mock("@/app/(app)/boards/actions", () => actions);
 vi.mock("@/app/(app)/boards/label-option-actions", () => ({ addBoardLabelOptionAction: actions.addBoardLabelOptionAction }));
+// 보기 줄은 보기 방식을 router.push 로 바꾼다 — 앱 라우터 밖에서 그리므로 바꿔 끼운다.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: () => undefined }) }));
 import { SavedViewsController } from "./SavedViewsController";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

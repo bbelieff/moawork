@@ -139,10 +139,12 @@ describe("BBE-171 new-lead GroupTable wiring", () => {
     const ownerHeader = html.match(/<th(?=[^>]*data-column-key="owner")[\s\S]*?<\/th>/)?.[0] ?? "";
     expect(creditHeader).not.toBe("");
     expect(creditHeader).not.toContain('draggable="true"');
-    expect(creditHeader).not.toContain("credit_scores 컬럼 메뉴");
+    // #845 5단계 — 칸 메뉴의 «칸 자체 바꾸기» 는 구조를 바꿀 수 있는 칸에만(data-column-manage).
+    expect(creditHeader).not.toContain("data-column-manage");
     expect(creditHeader).not.toContain("cursor-col-resize");
     expect(ownerHeader).toContain('draggable="true"');
-    expect(ownerHeader).toContain("owner 컬럼 메뉴");
+    expect(ownerHeader).toContain('data-column-manage="true"');
+    expect(ownerHeader).toContain('aria-haspopup="menu"');
     expect(ownerHeader).toContain("cursor-col-resize");
   });
 
@@ -154,9 +156,9 @@ describe("BBE-171 new-lead GroupTable wiring", () => {
     const html=render(null,[presentation]);
     const header=html.match(new RegExp(`<th(?=[^>]*data-column-key="${key}")[\\s\\S]*?<\\/th>`))?.[0]??"";
     expect(header).not.toContain('draggable="true"');
-    expect(header).not.toContain("컬럼 메뉴");
+    expect(header).not.toContain("data-column-manage");
     expect(header).not.toContain("cursor-col-resize");
-    expect(header).not.toContain("컬럼 이름 편집");
+    expect(header).not.toContain('aria-label="칸 이름"');
   });
 
   it("numeric 매출 컬럼 archive fallback만 구조 제어를 잠그고 restore하면 물리 제어를 되돌린다", () => {
@@ -182,7 +184,7 @@ describe("BBE-171 new-lead GroupTable wiring", () => {
     expect(fallbackColumns[0].id).toBe("band-real:revenue-3y-million");
     expect(fallbackHtml).toContain("10억~30억");
     expect(fallbackHeader).not.toContain('draggable="true"');
-    expect(fallbackHeader).not.toContain("컬럼 메뉴");
+    expect(fallbackHeader).not.toContain("data-column-manage");
     expect(fallbackHeader).not.toContain("cursor-col-resize");
 
     const restoredColumns = presentNewLeadColumns([bandColumn, numericColumn]);
@@ -191,7 +193,8 @@ describe("BBE-171 new-lead GroupTable wiring", () => {
     expect(restoredColumns[0].id).toBe("revenue-real");
     expect(restoredHeader).toContain('draggable="true"');
     /* #673 — 총괄 지시로 이름이 「매출」이 됐다. 키는 그대로다. */
-    expect(restoredHeader).toContain("매출(백만원) 컬럼 메뉴");
+    expect(restoredHeader).toContain('data-column-manage="true"');
+    expect(restoredHeader).toContain(">매출(백만원)</span>");
     expect(restoredHeader).toContain("cursor-col-resize");
   });
 

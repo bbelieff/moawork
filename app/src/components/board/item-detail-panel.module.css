@@ -116,6 +116,53 @@
   font-weight: var(--fw-semibold);
 }
 
+/* #845 개선안 — 제목은 눌러서 바로 고친다(표의 이름 칸은 이제 «열기»). */
+.titleButton {
+  display: block;
+  overflow: hidden;
+  max-width: 100%;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: inherit;
+  padding: 0 0.25rem;
+  margin-left: -0.25rem;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.titleButton:hover {
+  box-shadow: inset 0 0 0 1px var(--mw-line);
+}
+
+.titleButton:focus-visible,
+.titleInput:focus-visible {
+  outline: 2px solid var(--mw-primary);
+  outline-offset: 2px;
+}
+
+.titleInput {
+  width: min(18rem, 100%);
+  min-height: 2rem;
+  border: 1px solid var(--mw-record);
+  border-radius: 0.35rem;
+  background: var(--mw-card);
+  color: var(--mw-fg);
+  padding: 0 0.4rem;
+  font: inherit;
+  font-size: var(--fs-16);
+  font-weight: var(--fw-semibold);
+}
+
+.titleError {
+  margin: 0.15rem 0 0;
+  color: var(--mw-error);
+  font-size: var(--fs-12);
+}
+
 .breadcrumb {
   overflow: hidden;
   color: var(--mw-sub);
@@ -171,6 +218,18 @@
 
 .morePopover button:hover {
   background: var(--mw-bg);
+}
+
+.moreSeparator {
+  display: block;
+  height: 1px;
+  margin: 0.2rem 0.3rem;
+  background: var(--mw-line);
+}
+
+/* 휴지통으로 이동 — 메뉴의 마지막 항목, 위험색. */
+.morePopover .moreDanger {
+  color: var(--mw-error);
 }
 
 .content {

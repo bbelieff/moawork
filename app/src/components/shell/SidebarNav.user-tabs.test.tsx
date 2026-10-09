@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SidebarNav } from "./SidebarNav";
 import type { SidebarUserTab } from "./user-tabs";
+import { resolveBoardIconKey } from "@/lib/boards/board-icons";
 
 /**
  * #849 PR2 — 사용자 탭이 사이드바 업무 › 계약 전/계약 후 «맨 끝» 에 보통 메뉴 줄로 들어가고,
@@ -54,7 +55,7 @@ describe("사이드바 사용자 탭", () => {
     expect(after.indexOf("work")).toBeLessThan(after.indexOf("board:t-after-1"));
   });
 
-  it("보통 중첩 메뉴 줄과 같은 모양 — 폴더 선 아이콘·이름·워크스페이스 안 보드 주소", () => {
+  it("보통 중첩 메뉴 줄과 같은 모양 — 탭 선 아이콘·이름·워크스페이스 안 보드 주소", () => {
     const html = render({ userTabs: TABS });
     const link = linkFor(html, "board:t-after-1");
     const work = linkFor(html, "work");
@@ -66,7 +67,9 @@ describe("사이드바 사용자 탭", () => {
       .filter((rule) => /^(gap|height|border-radius|padding-left|padding-right|font-size):/.test(rule));
     expect(metrics(link)).toEqual(metrics(work));
     const row = html.match(/<a[^>]*data-nav-key="board:t-after-1"[^>]*>([\s\S]*?)<\/a>/)?.[1] ?? "";
-    expect(row).toContain('href="#i-folder"');
+    // 아이콘이 비어 있으면 머리말과 같은 문서 그림(폴더 셸 아이콘이 아니다).
+    expect(row).toContain('data-tab-icon="document"');
+    expect(row).not.toContain('href="#i-folder"');
     expect(row).toContain("영업 파이프라인");
     // 이모지 아이콘을 UI 아이콘으로 쓰지 않는다(D43).
     expect(row).not.toContain("📋");
@@ -153,5 +156,62 @@ describe("「새 탭」 줄", () => {
     expect(style).toContain("border-radius:var(--mw-r-3)");
     expect(style).toContain("font-size:var(--mw-shell-item-fs)");
     expect(style).toContain("color:var(--mw-sub)");
+  });
+});
+
+/**
+ * #845 대표 결정(2026-10-08) — 탭 아이콘 한 벌을 사이드바에도 쓴다(머리말과 같은 그림).
+ * 아이콘은 16px 회색, 지금 탭만 탭 색으로 진하다. 사용자 탭도 머리말과 같은 규칙(resolveBoardIconKey) —
+ * 고른 키는 그 그림, 옛 이모지는 뜻이 같은 그림, 비었으면 문서.
+ */
+describe("사이드바 탭 아이콘", () => {
+  const rowOf = (html: string, key: string) => html.match(new RegExp(`<a[^>]*data-nav-key="${key}"[^>]*>([\\s\\S]*?)</a>`))?.[1] ?? "";
+
+  it("업무 탭 줄은 머리말과 같은 16px 선 아이콘을 쓴다", () => {
+    const html = render();
+    const expected: Record<string, string> = {
+      new: "lead",
+      "consult-remote": "video",
+      "consult-inperson": "people",
+      work: "case",
+      company: "building",
+      acct: "receipt",
+      notice: "notice",
+    };
+    for (const [key, icon] of Object.entries(expected)) {
+      const row = rowOf(html, key);
+      expect(row, key).toContain(`data-tab-icon="${icon}"`);
+      expect(row, key).toContain('width="16"');
+      expect(row, key).not.toContain('href="#i-');
+    }
+    // 탭이 아닌 메뉴(대시보드 등)는 셸 아이콘 그대로다.
+    expect(rowOf(html, "dash")).toContain('href="#i-grid"');
+  });
+
+  it("아이콘은 회색이고 지금 탭만 탭 색으로 진하다", () => {
+    route.pathname = `${BASE}/work`;
+    const html = render();
+    const iconColor = (key: string) => rowOf(html, key).match(/<span aria-hidden="true"[^>]*style="color:([^"]+)"/)?.[1];
+    expect(iconColor("work")).toBe("var(--mw-tab-icon, currentColor)");
+    expect(iconColor("company")).toBe("var(--mw-sub)");
+    expect(iconColor("dash")).toBe("var(--mw-sub)");
+  });
+
+  it("사용자 탭은 머리말과 같은 그림 — 고른 키는 그 그림, 옛 이모지는 뜻이 같은 그림, 비었으면 문서", () => {
+    const tabs: SidebarUserTab[] = [
+      { id: "t-key", name: "달력 탭", icon: "calendar", navSection: "after-contract" },
+      { id: "t-emoji", name: "이모지 탭", icon: "💰", navSection: "after-contract" },
+      { id: "t-none", name: "빈 탭", icon: null, navSection: "after-contract" },
+    ];
+    const html = render({ userTabs: tabs });
+    for (const tab of tabs) {
+      const row = rowOf(html, `board:${tab.id}`);
+      // 머리말(BoardHeader)은 사용자 탭(출처 없음)을 resolveBoardIconKey(icon, null)로 그린다.
+      expect(row, tab.id).toContain(`data-tab-icon="${resolveBoardIconKey(tab.icon, null)}"`);
+      expect(row, tab.id).not.toContain('href="#i-folder"');
+    }
+    expect(rowOf(html, "board:t-emoji")).toContain('data-tab-icon="phone"');
+    expect(rowOf(html, "board:t-emoji")).not.toContain("💰");
+    expect(rowOf(html, "board:t-none")).toContain('data-tab-icon="document"');
   });
 });

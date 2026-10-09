@@ -56,12 +56,14 @@ import {
   addUnplacedDetailEntryAction,
   demoteDetailFieldAction,
   promoteDetailFieldAction,
+  renameItemAction,
   resetGroupDetailLayoutAction,
   saveDetailLayoutAction,
 } from "@/app/(app)/boards/actions";
 import {
   saveNewLeadDetailFieldAction,
   updateNewLeadMetaAction,
+  updateNewLeadTitleAction,
 } from "@/app/(app)/boards/new-lead-actions";
 import {
   addItemDetailEventAction,
@@ -115,6 +117,7 @@ import {
 } from "@/lib/boards/structured-field";
 import { eulReul } from "@/lib/text/josa";
 import { DealLedgerButton } from "./DealLedgerButton";
+import { moveItemToTrash } from "./ItemTrashUndo";
 import styles from "./item-detail-panel.module.css";
 
 const CANONICAL_NEW_LEAD_DETAIL_KEYS = new Set([
@@ -518,6 +521,10 @@ export function ItemDetailPanel({
   nextItem,
   consultationSection,
   parentItemTitle,
+  trigger = "button",
+  canTrash = false,
+  titleNoun = "이름",
+  titleError = null,
 }: {
   boardId: string;
   row: ItemWithValues;
@@ -545,6 +552,18 @@ export function ItemDetailPanel({
    * 업무이동 메뉴를 찾지 않아도 상세 안에서 바로 확인한다.
    */
   consultationSection?: ReactNode;
+  /**
+   * #845 개선안(2026-10-08) — 여는 단추를 누가 그리나.
+   *   · "button": 이 패널이 「열기 ↗」 단추를 그린다(단독 사용·픽스처).
+   *   · "none": 표의 업체명 단추가 연다(requestItemDetailOpen). 이 패널은 단추를 그리지 않는다.
+   */
+  trigger?: "button" | "none";
+  /** ⋯ 메뉴의 「휴지통으로 이동」 — 행 삭제와 같은 권한(canDeleteItems 또는 공지 작성자)일 때만. */
+  canTrash?: boolean;
+  /** 제목을 부르는 말 — 「업체명」·「회사명」·「이름」. 제목 고치기 칸의 이름이 된다. */
+  titleNoun?: string;
+  /** 제목 저장 실패(신규리드 표준 경로는 셀 오류로 돌아온다). */
+  titleError?: string | null;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const boardActionError = useBoardActionError();
@@ -737,6 +756,75 @@ export function ItemDetailPanel({
   const wasOpenRef = useRef(open);
   const suppressOpenerRestoreRef = useRef(false);
   const hashPushedRef = useRef(false);
+  /*
+   * #845 개선안(2026-10-08) — 제목(업체명)은 여기서 눌러 바로 고친다. 표의 이름 칸은 이제 «열기» 다.
+   * 저장은 표 칸이 쓰던 기존 액션(renameItemAction · 신규리드 표준이면 updateNewLeadTitleAction) 그대로다.
+   * 보이는 이름은 늘 서버 값(row.title)이고, 저장하는 동안만 고친 글자를 보인다 — 실패하면 원래 이름으로 돌아온다.
+   */
+  const [titleEditing, setTitleEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(row.title);
+  const [pendingTitle, setPendingTitle] = useState<string | null>(null);
+  const [titleLocalError, setTitleLocalError] = useState<string | null>(null);
+  const [, startTitleTransition] = useTransition();
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  // 한 번 고치기에 저장은 한 번 — Enter 로 저장한 뒤 칸이 사라지며 blur 가 또 와도(Esc 로 되돌린 뒤도) 다시 저장하지 않는다.
+  const titleSessionRef = useRef(false);
+  const moreMenuRef = useRef<HTMLDetailsElement>(null);
+  const shownTitle = pendingTitle ?? row.title;
+  const beginTitleEdit = useCallback(() => {
+    if (!canEditItems) return;
+    titleSessionRef.current = true;
+    setTitleDraft(row.title);
+    setTitleLocalError(null);
+    setTitleEditing(true);
+  }, [canEditItems, row.title]);
+  const cancelTitleEdit = () => {
+    titleSessionRef.current = false;
+    setTitleEditing(false);
+    setTitleDraft(row.title);
+    setTitleLocalError(null);
+  };
+  const commitTitle = () => {
+    if (!titleSessionRef.current) return;
+    const next = titleDraft.trim();
+    if (!next) {
+      setTitleLocalError(`${titleNoun}${eulReul(titleNoun)} 비울 수는 없어요.`);
+      return;
+    }
+    titleSessionRef.current = false;
+    setTitleEditing(false);
+    setTitleLocalError(null);
+    if (next === row.title) return;
+    const data = new FormData();
+    data.set("boardId", boardId);
+    data.set("itemId", row.id);
+    data.set("title", next);
+    const canonicalTitle = canonicalNewLead && row.deal_id;
+    if (canonicalTitle) data.set("dealId", row.deal_id!);
+    setPendingTitle(next);
+    startTitleTransition(async () => {
+      try {
+        await (canonicalTitle ? updateNewLeadTitleAction : renameItemAction)(data);
+      } catch {
+        setTitleLocalError(`${titleNoun}${eulReul(titleNoun)} 저장하지 못했어요. 다시 시도해 주세요.`);
+      } finally {
+        setPendingTitle(null);
+      }
+    });
+  };
+  // 바깥(덮개) pointerdown·×·뒤로 가기로 닫히면 제목 칸은 blur 없이 사라진다 — 고치던 이름은 닫힐 때 한 번 저장한다
+  // (Enter·칸 떠나기로 이미 저장했으면 titleSessionRef 가 막고, 비웠으면 버린다).
+  const flushTitleRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    flushTitleRef.current = () => {
+      if (!titleSessionRef.current) return;
+      if (titleDraft.trim()) commitTitle();
+      else cancelTitleEdit();
+    };
+  });
+  useEffect(() => {
+    if (!open) flushTitleRef.current();
+  }, [open]);
   const columnsByKey = new Map(columns.map((column) => [column.key, column]));
   const historyEntries = detail.events.map((event) => ({
     event,
@@ -841,11 +929,17 @@ export function ItemDetailPanel({
     const openRequestedItem = (event: Event) => {
       const request = (event as CustomEvent<ItemDetailOpenRequest>).detail;
       if (request?.itemId !== row.id) return;
+      // 「업체명 바꾸기」 — 열면서 제목을 고치는 칸으로 둔다(초점은 아래 열기 효과가 그 칸에 준다).
+      if (request.editTitle) beginTitleEdit();
+      else {
+        titleSessionRef.current = false;
+        setTitleEditing(false);
+      }
       openDrawer(request.opener instanceof HTMLElement ? request.opener : undefined);
     };
     window.addEventListener(ITEM_DETAIL_OPEN_EVENT, openRequestedItem);
     return () => window.removeEventListener(ITEM_DETAIL_OPEN_EVENT, openRequestedItem);
-  }, [openDrawer, row.id]);
+  }, [beginTitleEdit, openDrawer, row.id]);
 
   useEffect(() => {
     const syncFromHash = () => {
@@ -867,7 +961,9 @@ export function ItemDetailPanel({
         setDetail(await loadItemDetailAction(boardId, row.id)),
       );
     }
-    focusDetailPanelElement(closeButtonRef.current);
+    // 「업체명 바꾸기」 로 열었으면 제목 칸에, 아니면 닫기 단추에 초점을 둔다.
+    if (titleInputRef.current) focusDetailPanelElement(titleInputRef.current);
+    else focusDetailPanelElement(closeButtonRef.current);
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") closeDrawer();
       if (event.key === "Tab") {
@@ -1121,6 +1217,17 @@ export function ItemDetailPanel({
     );
   }
 
+  /**
+   * #845 개선안 — ⋯ 「휴지통으로 이동」. 상세를 먼저 닫고(주소의 #item- 도 걷는다 — 되돌리면 같은 행이
+   * 다시 그려지는데 주소가 남아 있으면 상세가 저절로 다시 열린다) 기존 휴지통 액션을 부른다.
+   * 결과(되돌리기·실패 사유)는 보드 아래 알림이 말한다 — 이 행은 곧 화면에서 사라진다.
+   */
+  function moveToTrash() {
+    if (moreMenuRef.current) moreMenuRef.current.open = false;
+    closeDrawer();
+    void moveItemToTrash({ boardId, itemId: row.id, title: row.title });
+  }
+
   async function copyDeepLink() {
     const url = new URL(window.location.href);
     url.hash = `item-${row.id}`;
@@ -1130,26 +1237,32 @@ export function ItemDetailPanel({
   }
 
   useEffect(() => {
+    // 단추를 표(업체명)가 그리면 그 단추가 «여는 단추» 다 — 주소(#item-)로 열린 뒤 닫혀도 초점이 돌아갈 곳.
+    if (trigger === "none") {
+      triggerRef.current = document.querySelector<HTMLButtonElement>(`[data-item-detail-trigger="${row.id}"]`);
+    }
     if (!open && wasOpenRef.current && suppressOpenerRestoreRef.current) {
       suppressOpenerRestoreRef.current = false;
     } else {
       restoreDetailPanelOpener(open, wasOpenRef.current, requestedOpenerRef.current?.isConnected ? requestedOpenerRef.current : triggerRef.current);
     }
     wasOpenRef.current = open;
-  }, [open]);
+  }, [open, row.id, trigger]);
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => openDrawer()}
-        className="min-h-7 shrink-0 rounded-lg border border-mw-line px-2 text-xs font-semibold text-mw-record hover:bg-mw-tint-blue"
-        aria-label={`${row.title} 상세 열기`}
-        data-item-detail-trigger={row.id}
-      >
-        열기 ↗
-      </button>
+      {trigger === "button" ? (
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={() => { titleSessionRef.current = false; setTitleEditing(false); openDrawer(); }}
+          className="min-h-7 shrink-0 rounded-lg border border-mw-line px-2 text-xs font-semibold text-mw-record hover:bg-mw-tint-blue"
+          aria-label={`${row.title} 상세 열기`}
+          data-item-detail-trigger={row.id}
+        >
+          열기 ↗
+        </button>
+      ) : null}
       {open && (
         <DialogPortal>
           <div
@@ -1182,7 +1295,52 @@ export function ItemDetailPanel({
                 </button>
                 <div className={styles.identity}>
                   <div className="min-w-0">
-                    <h2 className={styles.companyName}>{row.title}</h2>
+                    {titleEditing ? (
+                      <input
+                        ref={titleInputRef}
+                        autoFocus
+                        value={titleDraft}
+                        maxLength={100}
+                        aria-label={titleNoun}
+                        aria-invalid={titleLocalError ? true : undefined}
+                        data-item-detail-title-input
+                        className={styles.titleInput}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onChange={(event) => { setTitleDraft(event.target.value); setTitleLocalError(null); }}
+                        onBlur={commitTitle}
+                        onKeyDown={(event) => {
+                          // 패널의 Esc(닫기)·Tab(가두기)보다 먼저 이 칸이 쓴다.
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            commitTitle();
+                          } else if (event.key === "Escape") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            cancelTitleEdit();
+                          }
+                        }}
+                      />
+                    ) : (
+                      <h2 className={styles.companyName}>
+                        {canEditItems ? (
+                          <button
+                            type="button"
+                            className={styles.titleButton}
+                            title={`눌러서 ${titleNoun} 바꾸기`}
+                            data-item-detail-title
+                            onClick={beginTitleEdit}
+                          >
+                            {shownTitle}
+                          </button>
+                        ) : shownTitle}
+                      </h2>
+                    )}
+                    {titleLocalError || titleError ? (
+                      <p role="alert" className={styles.titleError} data-item-detail-title-error>
+                        {titleLocalError ?? titleError}
+                      </p>
+                    ) : null}
                     <ParentItemLabel parentId={row.parent_item_id} title={parentItemTitle} />
                   </div>
                   <span className={styles.breadcrumb}>
@@ -1226,12 +1384,21 @@ export function ItemDetailPanel({
                   >
                     {linkCopied ? "링크 복사됨" : "링크 복사"}
                   </button>
-                  <details className={styles.moreMenu}>
+                  <details ref={moreMenuRef} className={styles.moreMenu}>
                     <summary className={styles.moreButton} aria-label="회사 상세 추가 메뉴">⋯</summary>
                     <div className={styles.morePopover}>
                       <button type="button" onClick={() => download(`${row.title}.txt`, exportText(), "text/plain;charset=utf-8")}>TXT 내려받기</button>
                       <button type="button" onClick={() => download(`${row.title}.csv`, exportCsv(), "text/csv;charset=utf-8")}>CSV 내려받기</button>
                       <button type="button" onClick={() => navigator.clipboard.writeText(exportText())}>회사 정보 복사</button>
+                      {canTrash ? (
+                        <>
+                          <span role="separator" className={styles.moreSeparator} />
+                          {/* #845 개선안 — 표의 「삭제」 단추 대신. 마지막·위험색. 옮긴 뒤 보드 아래에 「되돌리기」 가 뜬다. */}
+                          <button type="button" className={styles.moreDanger} data-item-detail-trash onClick={moveToTrash}>
+                            휴지통으로 이동
+                          </button>
+                        </>
+                      ) : null}
                     </div>
                   </details>
                 </nav>

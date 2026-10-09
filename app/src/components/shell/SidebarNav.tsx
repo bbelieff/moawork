@@ -11,6 +11,7 @@ import { Badge } from "@/components/notify/Badge";
 import { AccessibleTooltip } from "@/components/ui/AccessibleTooltip";
 import type { BadgeState } from "@/lib/notify/types";
 import { NAVIGATION_STALL_MS, navigationKindFor } from "@/lib/workspace/switch-navigation";
+import { TabIcon } from "@/components/board/TabIcon";
 import { Icon } from "./icons";
 import { RouteLoading } from "./RouteLoading";
 import { SidebarNewTab } from "./SidebarNewTab";
@@ -156,7 +157,14 @@ function SidebarNavContent({
 
     const inner = (
       <>
-        <Icon name={item.icon} />
+        {/* Issue 845(2026-10-08) — 아이콘은 회색, 지금 탭만 탭 색으로 진하게. 업무 탭은 머리말과 같은 탭 아이콘. */}
+        <span
+          aria-hidden="true"
+          className="inline-flex shrink-0"
+          style={{ color: active ? "var(--mw-tab-icon, currentColor)" : "var(--mw-sub)" }}
+        >
+          {item.tabIcon ? <TabIcon name={item.tabIcon} size={16} /> : <Icon name={item.icon} />}
+        </span>
         <span className="flex-1 truncate">{item.label}</span>
         {visibleBadge !== null ? (
           <span

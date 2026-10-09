@@ -1,4 +1,5 @@
 import type { BoardNavSection } from "@/lib/boards/types";
+import { resolveBoardIconKey } from "@/lib/boards/board-icons";
 import { TAB_SOURCE_NAV_KEY } from "./active-nav";
 import { navItemsForSection, type NavItem, type NavSection } from "./nav-items";
 
@@ -23,7 +24,10 @@ export function userTabNavKey(boardId: string): string {
 export type SidebarUserTab = {
   id: string;
   name: string;
-  /** 보드에 저장된 아이콘 값(지금은 그리지 않는다 — 줄 아이콘은 폴더 선 아이콘으로 통일). */
+  /**
+   * 보드에 저장된 아이콘 값. 머리말과 같은 규칙(resolveBoardIconKey)으로 그린다 — 고른 키는 그 그림,
+   * 옛 이모지는 뜻이 같은 그림, 비었으면 문서 아이콘(#849 L01 · #845 2026-10-08).
+   */
   icon: string | null;
   /** 업무 › 계약 전/계약 후. 값이 없던 탭은 로더가 계약 후로 맞춘다. */
   navSection: BoardNavSection;
@@ -74,6 +78,8 @@ function userTabNavItem(tab: SidebarUserTab): NavItem {
     key: userTabNavKey(tab.id),
     label: tab.name,
     icon: "folder",
+    // 머리말과 같은 그림 — 사용자 탭은 출처(source)가 없으므로 저장값만으로 정한다(없으면 문서).
+    tabIcon: resolveBoardIconKey(tab.icon),
     href: `/boards/${encodeURIComponent(tab.id)}`,
   };
 }

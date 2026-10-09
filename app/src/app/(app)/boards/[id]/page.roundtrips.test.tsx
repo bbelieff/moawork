@@ -351,7 +351,7 @@ function seed() {
     "structure.tab_manage": true,
     "danger.bulk_edit_delete": true,
     "danger.csv_export": true,
-    "structure.preset_edit": true,
+    // #845 (2026-10-08): 업무 양식(그룹 프리셋) 칸이 빠져 보드 화면은 structure.preset_edit 을 더 묻지 않는다.
   };
   probe.rpcs.read_permission_scoped_work_items = { itemIds: ["item-1"], hiddenCount: 0 };
   probe.rpcs.get_member_account_profile = { id: "user-1", name: "멤버", title: null, team_key: "team-a" };

@@ -1,0 +1,328 @@
+"use client";
+
+/**
+ * 탭 머리말의 작은 부품들 (#845 개선안 · 2026-10-08 대표 결정).
+ *   · TabTitleMenu   — 제목 옆 ▾ : 이름 바꾸기 · 아이콘 바꾸기 · 설명 고치기 · 탭 설정… | 휴지통으로 이동
+ *   · (담당자 고르기는 #845 6단계에서 보기 줄의 「담당」 조건으로 옮겼다)
+ *   · DescriptionHint — 설명은 줄글 대신 ⓘ 에 올리거나 초점을 주거나 누르면 보인다
+ *   · TabSettingsButton — 오른쪽 위 「탭 설정」 (640px 아래는 아이콘만 40px)
+ *
+ * 메뉴는 표의 컬럼 메뉴와 같은 BoardAnchoredMenu(본문 포털·화살표 이동·Esc·바깥 누르기 닫힘)를 쓰고,
+ * 같은 보드 안에서는 한 번에 하나만 열리도록 claimBoardTransientSurface 로 서로를 닫는다.
+ */
+
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
+import {
+  BOARD_TRANSIENT_SURFACE_EVENT,
+  BoardAnchoredMenu,
+  claimBoardTransientSurface,
+  useAnchoredPosition,
+  type BoardTransientSurfaceDetail,
+} from "./BoardAnchoredMenu";
+import { BoardDialogPortal } from "./BoardDialogPortal";
+import type { TabSettingsOpenRequest } from "./tab-chrome";
+
+/** 같은 보드의 다른 표면(컬럼 메뉴 등)이 열리면 닫히고, 열 때는 다른 표면을 닫게 한다. 행 우클릭 메뉴도 쓴다. */
+export function useBoardSurface(boardId: string, closeQuietly: () => void) {
+  const owner = useId();
+  const scope = `board:${boardId}`;
+  useEffect(() => {
+    const onClaim = (event: Event) => {
+      const detail = (event as CustomEvent<BoardTransientSurfaceDetail>).detail;
+      if (detail.scope === scope && detail.owner !== owner) closeQuietly();
+    };
+    window.addEventListener(BOARD_TRANSIENT_SURFACE_EVENT, onClaim);
+    return () => window.removeEventListener(BOARD_TRANSIENT_SURFACE_EVENT, onClaim);
+  }, [closeQuietly, owner, scope]);
+  return useCallback(() => claimBoardTransientSurface(scope, owner), [owner, scope]);
+}
+
+/** 메뉴 하나의 열림·닫힘과 초점 되돌리기. 보기 줄(BoardViewBar·ViewTabs)의 메뉴도 같은 것을 쓴다. */
+export function useMenuState(boardId: string) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuId = `${useId().replace(/:/gu, "")}-menu`;
+  const closeQuietly = useCallback(() => setOpen(false), []);
+  const claim = useBoardSurface(boardId, closeQuietly);
+  const close = useCallback((restoreFocus: boolean) => {
+    setOpen(false);
+    if (restoreFocus) window.requestAnimationFrame(() => triggerRef.current?.focus());
+  }, []);
+  const show = useCallback(() => {
+    claim();
+    setOpen(true);
+  }, [claim]);
+  return { open, triggerRef, menuRef, menuId, close, show };
+}
+
+export function Chevron({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" style={{ flex: "none" }}>
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+/** 보드 메뉴 항목 한 줄 — 탭 ▾ 메뉴와 행 우클릭 메뉴가 같은 모양을 쓴다. */
+export function MenuItem({
+  children,
+  onClick,
+  danger = false,
+  role = "menuitem",
+  checked,
+}: {
+  children: ReactNode;
+  onClick(): void;
+  danger?: boolean;
+  role?: "menuitem" | "menuitemradio";
+  checked?: boolean;
+}) {
+  return (
+    <button
+      role={role}
+      aria-checked={role === "menuitemradio" ? Boolean(checked) : undefined}
+      tabIndex={-1}
+      type="button"
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[length:var(--fs-13)] hover:bg-mw-bg focus:bg-mw-bg focus:outline-none ${checked ? "font-semibold text-mw-fg" : ""}`}
+      style={danger ? { color: "var(--mw-error)" } : undefined}
+    >
+      {role === "menuitemradio" ? (
+        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" style={{ flex: "none", visibility: checked ? "visible" : "hidden" }}>
+          <path d="M4 12l5 5L20 6" />
+        </svg>
+      ) : null}
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+    </button>
+  );
+}
+
+export function TabTitleMenu({
+  boardId,
+  tabName,
+  onRename,
+  onOpenSettings,
+  canEditGeneral = true,
+  onRequestTrash,
+}: {
+  boardId: string;
+  tabName: string;
+  /** 제목 편집칸을 연다. 없으면 「이름 바꾸기」 를 감춘다(이름을 바꿀 권한이 없다). */
+  onRename?: () => void;
+  /** 탭 설정을 연다. 없으면 설정 항목을 감춘다. */
+  onOpenSettings?: (request: TabSettingsOpenRequest) => void;
+  /** 탭 설정에 «일반» 칸이 있는가 — 없으면 「아이콘 바꾸기」·「설명 고치기」 를 감춘다. */
+  canEditGeneral?: boolean;
+  /** 휴지통으로 이동 확인을 연다. 인자는 닫힌 뒤 초점을 돌려줄 단추다. */
+  onRequestTrash?: (opener: HTMLElement | null) => void;
+}) {
+  const { open, triggerRef, menuRef, menuId, close, show } = useMenuState(boardId);
+  if (!onRename && !onOpenSettings && !onRequestTrash) return null;
+
+  // 메뉴를 닫고 고른 일을 한다. 초점은 고른 일이 연 곳(편집칸·설정)으로 가야 하므로 단추로 되돌리지 않는다.
+  // 연 곳이 닫히면 초점은 이 ▾ 단추로 돌아온다(사라지는 메뉴 항목이 아니라).
+  const run = (action: () => void) => {
+    close(false);
+    action();
+  };
+  const label = `${tabName} 탭 메뉴`;
+  const showGeneral = Boolean(onOpenSettings) && canEditGeneral;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        data-board-tab-menu-trigger
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        onClick={() => (open ? close(false) : show())}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            show();
+          }
+        }}
+        className={`grid size-8 shrink-0 place-items-center rounded-[var(--mw-r-2)] text-mw-sub hover:bg-[color:var(--mw-board-canvas)] hover:text-mw-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-primary ${open ? "bg-[color:var(--mw-board-canvas)] text-mw-fg" : ""}`}
+      >
+        <Chevron />
+      </button>
+      <BoardAnchoredMenu id={menuId} open={open} anchorRef={triggerRef} menuRef={menuRef} label={label} onClose={close}>
+        {onRename ? <MenuItem onClick={() => run(onRename)}>이름 바꾸기</MenuItem> : null}
+        {showGeneral && onOpenSettings ? (
+          <>
+            <MenuItem onClick={() => run(() => onOpenSettings({ section: "general", field: "icon", opener: triggerRef.current }))}>아이콘 바꾸기</MenuItem>
+            <MenuItem onClick={() => run(() => onOpenSettings({ section: "general", field: "description", opener: triggerRef.current }))}>설명 고치기</MenuItem>
+          </>
+        ) : null}
+        {onOpenSettings ? (
+          <MenuItem onClick={() => run(() => onOpenSettings({ opener: triggerRef.current }))}>탭 설정…</MenuItem>
+        ) : null}
+        {onRequestTrash ? (
+          <>
+            {onRename || onOpenSettings ? <div role="separator" className="my-1 border-t border-mw-line" /> : null}
+            <MenuItem danger onClick={() => run(() => onRequestTrash(triggerRef.current))}>휴지통으로 이동</MenuItem>
+          </>
+        ) : null}
+      </BoardAnchoredMenu>
+    </>
+  );
+}
+
+/**
+ * 탭 설명 — ⓘ 에 마우스를 올리거나 초점을 주면 본문 위에 뜬다(Esc 로 닫힘). 줄글은 보조기기에 늘 읽힌다.
+ * 터치는 누를 때마다 열고 닫는다 — iOS 의 누르기는 초점을 주지 않아 blur 로 닫히지 않으므로 바깥을 누르면 닫는다.
+ */
+export function DescriptionHint({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const hideTimer = useRef<number | null>(null);
+  // 누르기 직전의 열림 — 누르는 사이 초점(안드로이드)이 먼저 열어도 누르기는 그 전 상태를 뒤집는다.
+  const pressRef = useRef<{ open: boolean; pointerType: string } | null>(null);
+  const descriptionId = `${useId().replace(/:/gu, "")}-description`;
+  const hide = useCallback(() => setOpen(false), []);
+  const position = useAnchoredPosition({
+    open,
+    anchorRef,
+    surfaceRef,
+    onAnchorMissing: hide,
+    desiredWidth: 280,
+    desiredMaxHeight: 240,
+  });
+
+  const cancelHide = () => {
+    if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
+    hideTimer.current = null;
+  };
+  const showNow = () => {
+    cancelHide();
+    setOpen(true);
+  };
+  // 단추에서 말풍선으로 마우스를 옮기는 사이에 닫히지 않게 조금 기다린다.
+  const hideSoon = () => {
+    cancelHide();
+    hideTimer.current = window.setTimeout(() => setOpen(false), 120);
+  };
+  // 올리기·떠나기는 마우스·펜만 — 터치는 누른 뒤 곧바로 «떠나기» 가 와서 열자마자 닫힌다.
+  const hoverIn = (event: ReactPointerEvent) => {
+    if (event.pointerType !== "touch") showNow();
+  };
+  const hoverOut = (event: ReactPointerEvent) => {
+    if (event.pointerType !== "touch") hideSoon();
+  };
+
+  useEffect(() => () => {
+    if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && (anchorRef.current?.contains(target) || surfaceRef.current?.contains(target))) return;
+      setOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [open]);
+
+  return (
+    <>
+      <button
+        ref={anchorRef}
+        type="button"
+        data-board-description
+        aria-label="탭 설명"
+        aria-describedby={descriptionId}
+        onPointerEnter={hoverIn}
+        onPointerLeave={hoverOut}
+        onPointerDown={(event) => { pressRef.current = { open, pointerType: event.pointerType }; }}
+        onFocus={showNow}
+        onBlur={() => setOpen(false)}
+        onClick={() => {
+          const press = pressRef.current;
+          pressRef.current = null;
+          // 마우스는 올리기가 이미 열었다 — 누르기는 열어 둔다. 터치·키보드는 누를 때마다 뒤집는다.
+          if (press?.pointerType === "mouse" || !(press?.open ?? open)) showNow();
+          else {
+            cancelHide();
+            setOpen(false);
+          }
+        }}
+        className="grid size-7 shrink-0 place-items-center rounded-full text-mw-sub hover:text-mw-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-primary"
+      >
+        <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 8h.01M11 12h1v4h1" />
+        </svg>
+      </button>
+      <span id={descriptionId} className="sr-only">{text}</span>
+      {open ? (
+        <BoardDialogPortal>
+          <div
+            ref={surfaceRef}
+            aria-hidden="true"
+            data-board-description-tip
+            onPointerEnter={hoverIn}
+            onPointerLeave={hoverOut}
+            style={{
+              left: position.left,
+              top: position.top,
+              width: position.width,
+              maxHeight: position.maxHeight,
+              visibility: position.ready ? "visible" : "hidden",
+            }}
+            className="mw-layer-tooltip fixed overflow-y-auto rounded-md border border-mw-line bg-mw-card px-3 py-2 text-[length:var(--fs-12)] leading-5 text-mw-body shadow-lg"
+          >
+            {text}
+          </div>
+        </BoardDialogPortal>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * 오른쪽 위 「탭 설정」 — 테두리만 있는 단추. 640px 아래에서는 글자를 숨기고 40px 아이콘 단추가 된다.
+ * 감싼 칸이 시각 계약의 board-settings 블록이다(#845 — 보드 설정 진입점이 머리말 오른쪽 위로 옮겨 왔다).
+ */
+export function TabSettingsButton({ onOpen }: { onOpen: (opener: HTMLElement) => void }) {
+  return (
+    <span data-visual-block="board-settings" className="inline-flex shrink-0">
+      <button
+        type="button"
+        data-board-tab-settings
+        aria-haspopup="dialog"
+        onClick={(event) => onOpen(event.currentTarget)}
+        className="flex h-[34px] shrink-0 items-center gap-1.5 rounded-[var(--mw-r-2)] border border-mw-line bg-mw-card px-3 text-[length:var(--fs-13)] text-mw-body hover:bg-[color:var(--mw-board-canvas)] hover:text-mw-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-primary max-sm:size-10 max-sm:justify-center max-sm:px-0"
+      >
+        <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" style={{ flex: "none" }}>
+          <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12" />
+          <circle cx="16" cy="6" r="2" />
+          <circle cx="10" cy="12" r="2" />
+          <circle cx="18" cy="18" r="2" />
+        </svg>
+        <span className="max-sm:sr-only">탭 설정</span>
+      </button>
+    </span>
+  );
+}

@@ -107,4 +107,37 @@ describe("Issue #549 board dialog portal", () => {
     await new Promise((resolve) => window.requestAnimationFrame(resolve));
     expect(document.activeElement).toBe(opener);
   });
+
+  it("로빙 tabindex=-1 단추는 Tab 목록이 아니다 — 첫·끝을 넘으면 안에서 돈다", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(
+        <BoardModalLayer label="로빙" onClose={() => {}}>
+          <button tabIndex={-1}>첫 탭</button>
+          <button>고른 탭</button>
+          <input aria-label="칸" />
+          <button tabIndex={-1}>메뉴 항목</button>
+        </BoardModalLayer>,
+      );
+    });
+    await act(async () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    const named = (text: string) => [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((node) => node.textContent === text)!;
+    const field = document.querySelector<HTMLInputElement>('[role="dialog"] input')!;
+    const tab = (shiftKey: boolean) => act(async () => {
+      document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true, cancelable: true }));
+    });
+    // 처음 초점은 Tab 으로 닿는 첫 단추다(tabindex=-1 인 탭이 아니라).
+    expect(document.activeElement).toBe(named("고른 탭"));
+    await tab(true);
+    expect(document.activeElement).toBe(field);
+    // 화살표로 옮겨 간 tabindex=-1 자리에서도 끝을 넘으면 처음으로, 처음 앞이면 끝으로 돈다.
+    named("메뉴 항목").focus();
+    await tab(false);
+    expect(document.activeElement).toBe(named("고른 탭"));
+    named("첫 탭").focus();
+    await tab(true);
+    expect(document.activeElement).toBe(field);
+  });
 });

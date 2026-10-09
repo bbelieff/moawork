@@ -1,4 +1,5 @@
 import { FEATURES, type FeatureKey } from "@/lib/product";
+import type { TabIconKey } from "@/lib/boards/board-icons";
 import type { IconName } from "./icons";
 
 // 사이드바 IA — UI목업_워크스페이스_최종_v6 D05·D06 기준.
@@ -15,6 +16,11 @@ export type NavItem = {
   label: string;
   /** SVG 심볼 이름 — components/shell/icons.tsx 참조. */
   icon: IconName;
+  /**
+   * 업무 탭이면 탭 아이콘 한 벌(lib/boards/board-icons.ts)의 키 — #845(2026-10-08) 머리말과 같은 그림을
+   * 사이드바에도 쓴다. 있으면 icon 대신 이것을 그린다.
+   */
+  tabIcon?: TabIconKey;
   /** 라우트가 있으면 링크, 없으면 비활성(준비 중). */
   href?: string;
   /** 이 메뉴가 요구하는 기능키. 미보유 시 자물쇠. */
@@ -35,20 +41,20 @@ export const WORK_TOOL_ITEMS: readonly NavItem[] = [
 export const NAV_ITEMS: readonly NavItem[] = [
   { key: "dash", label: "대시보드", icon: "grid", href: "/", feature: FEATURES.dash, owner: "T04" },
   { key: "notifications", label: "알림", icon: "notice", href: "/settings/notifications", owner: "T06" },
-  { key: "notice", label: "공지사항", icon: "notice", href: "/notices", owner: "미배정" },
-  { key: "new", label: "신규리드 관리", icon: "new", href: "/newcust", feature: FEATURES.crm, owner: "BBE-26" },
-  { key: "contact", label: "리드컨택 관리", icon: "contact", href: "/contract", feature: FEATURES.crm, owner: "T02" },
+  { key: "notice", label: "공지사항", icon: "notice", tabIcon: "notice", href: "/notices", owner: "미배정" },
+  { key: "new", label: "신규리드 관리", icon: "new", tabIcon: "lead", href: "/newcust", feature: FEATURES.crm, owner: "BBE-26" },
+  { key: "contact", label: "리드컨택 관리", icon: "contact", tabIcon: "phone", href: "/contract", feature: FEATURES.crm, owner: "T02" },
   // 상담 STEP 탭 — 같은 리드컨택 정본 보드의 단계 보기다(STEP1=신규리드 관리·STEP2=비대면·STEP3=대면).
   // 행을 복제하지 않고 /consult-remote·/consult-inperson 경유지에서 같은 보드의
   // ?consultation=remote|inperson 보기로 보낸다. 기존 /contract 주소는 그대로 둔다.
-  { key: "consult-remote", label: "비대면 상담", icon: "contact", href: "/consult-remote", feature: FEATURES.crm, owner: "T02" },
-  { key: "consult-inperson", label: "대면 상담", icon: "contact", href: "/consult-inperson", feature: FEATURES.crm, owner: "T02" },
-  { key: "work", label: "계약업체 실무", icon: "work", href: "/work", feature: FEATURES.policyfund, owner: "T09" },
-  { key: "company", label: "업체관리 현황", icon: "company", href: "/companies", feature: FEATURES.crm, owner: "T02" },
+  { key: "consult-remote", label: "비대면 상담", icon: "contact", tabIcon: "video", href: "/consult-remote", feature: FEATURES.crm, owner: "T02" },
+  { key: "consult-inperson", label: "대면 상담", icon: "contact", tabIcon: "people", href: "/consult-inperson", feature: FEATURES.crm, owner: "T02" },
+  { key: "work", label: "계약업체 실무", icon: "work", tabIcon: "case", href: "/work", feature: FEATURES.policyfund, owner: "T09" },
+  { key: "company", label: "업체관리 현황", icon: "company", tabIcon: "building", href: "/companies", feature: FEATURES.crm, owner: "T02" },
   { key: "vendor", label: "거래처등록", icon: "vendor", feature: FEATURES.crm, owner: "T02" },
   { key: "topco", label: "이달의 계약회사", href: "/dash/top-companies", icon: "topco", feature: FEATURES.dash, owner: "T04/B5" },
   // BBE-240: 연도별 전체 원장 실화면 배선 — "준비 중"에서 "계약 후"로 이동.
-  { key: "acct", label: "회계", icon: "acct", href: "/ledger", feature: FEATURES.policyfund, owner: "T09" },
+  { key: "acct", label: "회계", icon: "acct", tabIcon: "receipt", href: "/ledger", feature: FEATURES.policyfund, owner: "T09" },
   // Phase 2 벤더 모듈 — MVP 엔타이틀먼트 OFF 라 기본 자물쇠.
   { key: "addons", label: "추가서비스", icon: "addons", feature: FEATURES.notify, owner: "T06/T08" },
   { key: "tabs", label: "탭 관리", icon: "grid", href: "/settings/workspace-builder", feature: FEATURES.org, owner: "BBE-126" },

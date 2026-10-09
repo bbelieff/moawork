@@ -1,8 +1,11 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+// 보기 줄은 보기 방식을 router.push 로 바꾼다 — 앱 라우터 밖에서 그리므로 바꿔 끼운다.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+
 import { SavedViewsController } from "./SavedViewsController";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards";
 
@@ -11,6 +14,9 @@ const page = readFileSync(resolve(process.cwd(), "src/app/(app)/boards/[id]/page
 const migration = readFileSync(resolve(process.cwd(), "../supabase/migrations/072_tab_views.sql"), "utf8");
 const collectionRoute = readFileSync(resolve(process.cwd(), "src/app/api/tab-views/route.ts"), "utf8");
 const itemRoute = readFileSync(resolve(process.cwd(), "src/app/api/tab-views/[viewId]/route.ts"), "utf8");
+const viewBar = readFileSync(resolve(process.cwd(), "src/components/board/BoardViewBar.tsx"), "utf8");
+const savedViewsHook = readFileSync(resolve(process.cwd(), "src/components/view/use-saved-views.ts"), "utf8");
+const kanban = readFileSync(resolve(process.cwd(), "src/components/boards/KanbanViewWorkspace.tsx"), "utf8");
 
 describe("saved view production consumer", () => {
   it("canonical flat consumer가 합성 금융 셀과 #618 담당자 lineage를 실제 렌더한다", () => {
@@ -49,33 +55,36 @@ describe("saved view production consumer", () => {
   });
 
   it("mounts all three view kinds and restores saved presentation state", () => {
-    expect(controller).toContain("<ViewTabs");
-    expect(controller).toContain("<ViewPicker");
-    expect(controller).toContain("<SaveViewDialog");
+    // #845 6단계 — 뷰 탭·저장·보기 조건은 모든 보기가 같은 보기 줄(BoardViewBar) 하나로 고른다.
+    expect(controller).toContain("<BoardViewBar");
+    expect(controller).not.toContain("<ViewTabs");
+    expect(controller).not.toContain("<SaveViewDialog");
     expect(controller).toContain("<TableView");
     expect(controller).toContain("<CalendarView");
-    expect(controller).toContain("config.hiddenColumns");
-    expect(controller).toContain("config.columnOrder");
-    expect(controller).toContain("config.calendarFieldKey");
+    expect(controller).toContain('params.get("mwHidden")');
+    expect(controller).toContain('params.get("mwOrder")');
+    expect(controller).toContain('params.get("calendarField")');
     expect(controller).toContain("parseSavedStringList");
     expect(controller).toContain("filters.sorts");
     expect(controller).toContain("textMode={config.textMode}");
     expect(controller).toContain("focusColumnKey={config.focusColumnKey}");
-    expect(controller).toContain("applySavedPersonScope(rows, activeSaved, currentUserId, personColumnKey, teamMemberIds, canonicalNewLead)");
+    expect(controller).toContain("applySavedPersonScope(rows, scopeView, currentUserId, personColumnKey, teamMemberIds, canonicalNewLead)");
     expect(page).toContain("const items = applySavedPersonScope(permissionItems, personRuntime.view");
     expect(page).toContain("personRuntime.memberIds, board.source === NEW_LEAD_TAB_SOURCE)");
     expect(page).toContain("teamMemberIds={personRuntime.memberIds}");
-    expect(page).toContain("applySavedKanbanView(");
+    expect(kanban).toContain("applySavedKanbanView(");
+    expect(kanban).toContain("presentNewLeadSavedFilters(initialFilters)");
+    expect(kanban).toContain("canonicalNewLead ? NEW_LEAD_SAVED_FILTER_PROJECTION : undefined");
     expect(page).toContain('view === "flat" || view === "calendar"');
     expect(page).toContain("parseSavedBoardLayout(sp.mwLayout)");
-    expect(page).toContain("presentNewLeadSavedFilters(decodeBoardFilters(sp.mwFilters ?? null))");
-    expect(page).toContain("canonicalNewLead ? NEW_LEAD_SAVED_FILTER_PROJECTION : undefined");
-    expect(page.match(/canonicalNewLead=\{canonicalNewLead\}/g)).toHaveLength(3);
-    expect(page.match(/memberOptions=\{memberDirectory\}/g)).toHaveLength(3);
+    expect(page).toContain("decodeBoardFilters(sp.mwFilters ?? null)");
+    expect(page.match(/canonicalNewLead=\{canonicalNewLead\}/g)).toHaveLength(2);
+    expect(page.match(/memberOptions=\{memberDirectory\}/g)).toHaveLength(1);
     expect(controller).toContain("presentNewLeadColumns(columns)");
-    expect(controller).toContain("presentNewLeadSavedViewConfig(view.config)");
-    expect(controller).toContain("durableNewLeadSavedViewConfig(nextConfig)");
-    expect(controller).toContain("applyFilters(personScopedRows, displayColumns, config.filters, filterProjection)");
+    expect(controller).toContain("presentNewLeadSavedViewConfig(activeRaw.config)");
+    expect(viewBar).toContain("presentNewLeadSavedViewConfig(view.config)");
+    expect(viewBar).toContain("durableNewLeadSavedViewConfig(presentNewLeadSavedViewConfig(draft))");
+    expect(controller).toContain("applyFilters(personScopedRows, displayColumns, filters, filterProjection, memberLabels)");
     const boardCell = controller.match(/<BoardCell\b[\s\S]*?\/>/)?.[0] ?? "";
     expect(boardCell).toContain("canonicalNewLead={canonicalNewLead}");
     expect(boardCell).toContain("canonicalOwner={workflowKindForSource(boardSource ?? null) !== null}");
@@ -90,9 +99,9 @@ describe("saved view production consumer", () => {
   it("lets a second org member select a shared view without owner-only UPDATE", () => {
     expect(migration).toMatch(/visibility = 'shared' or owner_id = auth\.uid\(\)/);
     expect(migration).toMatch(/owner_id = auth\.uid\(\) or public\.org_role/);
-    expect(controller).toMatch(/savedViewUrl\([\s\S]*?saved[\s\S]*?window\.location\.href/);
-    expect(controller).not.toContain("touch: true");
-    expect(controller).toContain("selected: true");
+    expect(viewBar).toMatch(/savedViewUrl\([\s\S]*?raw[\s\S]*?window\.location\.href/);
+    expect(savedViewsHook).not.toContain("touch: true");
+    expect(savedViewsHook).toContain("selected: true");
     expect(controller).toContain("<BoardCell");
     expect(controller).toContain("changeCalendarField");
   });
@@ -103,7 +112,8 @@ describe("saved view production consumer", () => {
     expect(collectionRoute).toContain("sort_jsonb: config.sorts");
     expect(collectionRoute).toContain("person_scope: scope.personScope");
     expect(collectionRoute).toContain("person_scope_user_id: scope.personScopeUserId");
-    expect(controller).toContain("personScope: input.personScope");
+    // D26 — 「담당 · 나」 는 보는 사람 기준으로, 그 밖에는 지금 뷰의 사람 범위를 잇는다.
+    expect(viewBar).toContain("draftPersonScope(durableDraft(), rawActive, currentUserId)");
     expect(itemRoute).toContain("patch.sort_jsonb = config.sorts");
     expect(itemRoute).toContain("patch.person_scope = scope.personScope");
     expect(collectionRoute).toContain("requireActiveFixedPerson(ctx.org.id, scope");

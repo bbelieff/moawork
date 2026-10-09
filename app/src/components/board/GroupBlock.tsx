@@ -37,6 +37,8 @@ export function GroupBlock({
   name,
   displayName,
   tone = null,
+  accentColor = null,
+  addLabel,
   columns,
   rows,
   presetMenu,
@@ -63,6 +65,13 @@ export function GroupBlock({
   color?: string | null;
   /** 이 그룹의 톤(탭 2색 × 깊이). 없으면(«그룹 없음») 중립색. */
   tone?: GroupTone | null;
+  /**
+   * #845 7단계 — 나눠 보기 묶음의 띠 색(목록·상태 칸의 선택지 색). 있으면 톤 대신 쓴다.
+   * 사람 칸·「(없음)」 묶음은 null(중립색).
+   */
+  accentColor?: string | null;
+  /** 띠 ＋ 의 읽는 이름. 기본은 「{이름}에 업체 추가」. */
+  addLabel?: string;
   columns: readonly BoardColumn[];
   rows: readonly ItemWithValues[];
   /** 아이템 프리셋 이름 — `탭-그룹` 형식(PLAN-002 §5 WO-6 명명 규칙). */
@@ -96,7 +105,7 @@ export function GroupBlock({
   const [localOpen, setOpen] = useState(true);
   const open = controlledOpen ?? localOpen;
   const [dropState,setDropState]=useState<"valid"|"invalid"|null>(null);
-  const accent = groupToneAccent(tone);
+  const accent = accentColor ?? groupToneAccent(tone);
   const shownName = displayName ?? presentLabel(name);
   void columns;
 
@@ -172,8 +181,8 @@ export function GroupBlock({
               <button
                 type="button"
                 data-group-add=""
-                aria-label={`${shownName}에 업체 추가`}
-                title="이 보드에 업체 추가"
+                aria-label={addLabel ?? `${shownName}에 업체 추가`}
+                title={addLabel ?? "이 보드에 업체 추가"}
                 onClick={(event) => { event.preventDefault(); onAddRow(event.currentTarget); }}
                 className="flex h-6 w-6 items-center justify-center rounded text-sm text-mw-sub hover:bg-mw-card hover:text-mw-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-mw-primary"
               >

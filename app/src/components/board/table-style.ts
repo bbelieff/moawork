@@ -11,9 +11,12 @@
 export const BOARD_TABLE_CONTROL =
   "h-7 w-full rounded border border-mw-line bg-mw-card px-2 text-xs text-mw-fg outline-none hover:border-mw-record focus:border-mw-record";
 
-/** 행 제목(이름) 입력 — 공통 컨트롤과 같은 틀에 글자만 13px/600. */
-export const BOARD_TABLE_TITLE_CONTROL =
-  "h-7 w-full rounded border border-mw-line bg-mw-card px-2 text-[length:var(--fs-13)] font-semibold text-mw-fg outline-none hover:border-mw-record focus:border-mw-record";
+/**
+ * 행 제목(이름) — #845 개선안(2026-10-08)부터 입력칸이 아니라 «상세 열기» 단추다.
+ * 칸을 채우고(넘치면 말줄임) 글자만 13px/600. 밑줄(올리거나 초점)은 globals.css [data-row-name].
+ */
+export const BOARD_TABLE_TITLE_NAME =
+  "h-7 min-w-0 flex-1 truncate rounded px-1 text-left text-[length:var(--fs-13)] font-semibold text-mw-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-primary";
 
 export const BOARD_TABLE_ROW = "h-8";
 

@@ -61,25 +61,49 @@ describe("boards UI consumes effective permissions", () => {
     expect(source).toContain('ctx.role === "owner" || ctx.role === "admin" || ctx.scope === "all"');
     expect(source).toContain("canMoveRows={canMoveRows}");
     expect(source).toContain("isSystem={board.is_system}");
-    expect(source).toContain('id="board-work-forms"');
-    expect(source).toContain("groups.map((group) =>");
-    expect(source).toContain("<GroupPresetMenu key={group.id}");
-    // #849 탭 삭제(휴지통) 폼은 BoardTrashSection 안에 있다 — 여전히 danger 권한 뒤에서만 그린다.
-    expect(source).toContain("canDeleteBoard && <BoardTrashSection");
+    // #845 (2026-10-08) — 「⚙ 보드 설정」 펼침·업무 양식·그룹 순서 칸이 빠지고 머리말 「탭 설정」 대화상자가 된다.
+    //   칸마다 그 칸의 권한 뒤에서만 그린다: 일반 = 탭 관리, 항목 = 컬럼 관리, 단계 = 그룹 관리. 시스템 보드는 없다.
+    expect(source).not.toContain('id="board-settings"');
+    expect(source).not.toContain("<GroupPresetMenu");
+    expect(source).toContain("const settingsSections: TabSettingsSection[] = board.is_system ? [] : [");
+    expect(source).toContain('...(canManageSummaries ? ["general" as const] : [])');
+    expect(source).toContain('...(canManageColumns ? ["fields" as const] : [])');
+    expect(source).toContain('...(canManageSections ? ["stages" as const] : [])');
+    expect(source).toContain("general={canManageSummaries ? (");
+    expect(source).toContain("fields={canManageColumns ? (");
+    expect(source).toContain("stages={canManageSections ? (");
+    expect(source).toContain("tabSettingsSections={settingsSections}");
+    // #849 탭 삭제(휴지통) 확인은 여전히 danger 권한 뒤에서만, 시스템 보드가 아닐 때만 그린다.
+    expect(source).toContain("const tabTrashDialog = !board.is_system && canDeleteBoard ? (");
     expect(source).toContain("deleteAction={deleteBoardAction}");
-    const trashSection = readFileSync(
-      join(__dirname, "..", "..", "components", "workspace-builder", "TabTrashSurface.tsx"),
+    expect(source).toContain("tabTrashSlot={tabTrashDialog}");
+    const trashDialog = readFileSync(
+      join(__dirname, "..", "..", "components", "board", "TabTrashDialog.tsx"),
       "utf8",
     );
-    expect(trashSection).toContain("<form action={deleteAction}");
+    expect(trashDialog).toContain("<form action={deleteAction}");
     const table = readFileSync(join(__dirname, "..", "..", "components", "board", "GroupTable.tsx"), "utf8");
-    expect(table).toContain("canManageColumns && !structureLocked ? (");
+    // #845 5단계 — 칸 이름이 곧 칸 메뉴다. 「칸 자체 바꾸기」(이름·입력 방식·옮기기·지우기)와 폭 조절은
+    // 칸 관리 권한 + 구조를 바꿀 수 있는 칸에서만, 보는 방법(나만)만 권한과 무관하다. 서버도 다시 검사한다.
+    expect(table).toContain("const manageStructure = canManageColumns && !structureLocked;");
+    expect(table).toContain("canManage={manageStructure}");
+    expect(table).toContain("{manageStructure && (");
     expect(table).toContain("<ColumnContextMenu");
-    expect(table).toContain("<BoardInlineTitleEditor");
+    const columnMenu = readFileSync(join(__dirname, "..", "..", "components", "board", "ColumnContextMenu.tsx"), "utf8");
+    expect(columnMenu).toContain("{canManage ? (");
+    expect(columnMenu).toContain("<BoardInlineTitleEditor");
     expect(table).not.toContain("⠿");
     // BBE-239 — 공지사항 작성자 예외로 canDeleteRow 가 됐지만, role 권한(canDeleteItems)은
     // 여전히 그 계산식 안에 있어야 한다(작성자 예외가 role 권한을 대체하면 안 된다).
-    expect(table).toContain("{canDeleteRow && (");
+    // #845 (2026-10-08) — 업체명 칸의 「삭제」 단추가 빠지고 행 우클릭 메뉴·상세 ⋯ 메뉴로 옮겼다.
+    // 두 진입점 모두 같은 canDeleteRow 로만 「휴지통으로 이동」 을 보인다.
     expect(table).toContain("canDeleteItems ||");
+    expect(table).toContain("openRowMenuFromEvent(event, row, canDeleteRow)");
+    expect(table).toContain("canTrash={canDeleteRow}");
+    const rowMenu = readFileSync(join(__dirname, "..", "..", "components", "board", "RowContextMenu.tsx"), "utf8");
+    expect(rowMenu).toContain("{request.canTrash ? (");
+    const detailPanel = readFileSync(join(__dirname, "..", "..", "components", "board", "ItemDetailPanel.tsx"), "utf8");
+    expect(detailPanel).toContain("canTrash = false,");
+    expect(detailPanel).toContain("{canTrash ? (");
   });
 });

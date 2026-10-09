@@ -3,7 +3,7 @@
 import { consultationPhase, REMOTE_PHASES, INPERSON_PHASES, CONSULTATION_PHASE_LABEL } from "@/lib/consultation/phases";
 
 /**
- * 보드 화면 셸 — 헤더 1줄 + 도구줄 1줄 + **블록 리스트** (PLAN-002 WO-2).
+ * 보드 화면 셸 — 헤더 1줄 + 보기 줄 1줄(#845 6단계 BoardViewBar) + **블록 리스트** (PLAN-002 WO-2).
  *
  * 이 파일이 갖는 상태는 세 가지뿐이다:
  *  ① 필터(클라이언트 전용 — 서버에 저장하지 않는다. 저장 뷰는 WO-3 범위)
@@ -18,6 +18,10 @@ import { consultationPhase, REMOTE_PHASES, INPERSON_PHASES, CONSULTATION_PHASE_L
  *
  * 정렬 칩이 켜져 있는 동안에는 행 드래그를 잠근다 — 보이는 순서가 저장된 순서가 아니라서
  * "여기 놓았는데 저기 꽂히는" 거짓말이 되기 때문이다.
+ *
+ * #845 7단계 — 나눠 보기. 사람·목록·상태 칸을 고르면 블록이 «보드» 대신 그 칸의 «값 묶음» 이 된다
+ * (buildValueBlocks). 그때 행을 다른 묶음으로 끌면 순서가 아니라 그 칸의 값을 바꾼다(setGroupValueAction ·
+ * 낙관적 + 실패 시 되돌림). 묶음 안의 순서는 저장하지 않는다(보이는 순서 = 보드 순서 또는 줄 세우기).
  */
 
 import {
@@ -30,7 +34,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Board, BoardColumn, BoardGroup, ItemWithValues } from "@/lib/boards/types";
+import type { Board, BoardColumn, BoardGroup, CellValue, ItemWithValues } from "@/lib/boards/types";
 import type { CellFlash } from "@/lib/boards/cellFlash";
 import { boardCellValueFromFormData } from "@/lib/boards/form-values";
 import { applySavedItems, cellSaveMessage, patchCellValue, type CellSaveResult } from "@/lib/boards/cell-save-result";
@@ -42,15 +46,20 @@ import {
   reorderGroupsAction,
   setGroupColumnOrderAction,
   setGroupColumnOrdersAction,
+  setGroupValueAction,
 } from "@/app/(app)/boards/actions";
 import { BoardHeader } from "./BoardHeader";
+import { TabChromeProvider, type TabSettingsSection } from "./tab-chrome";
 import { selectionTriState } from "./bulk-selection";
 import { BoardScrollViewport } from "./BoardScrollViewport";
-import { BoardToolbar } from "./BoardToolbar";
+import { BoardViewBar } from "./BoardViewBar";
+import { hasToolbarFacet, type ToolbarFilterFocus } from "./ViewConditionsPanel";
+import { columnPlainName, type ColumnViewRequest } from "./column-menu-model";
 import { GroupBlock, GroupSelectAll } from "./GroupBlock";
 import { GroupNameEditor } from "./GroupNameEditor";
 import { claimBoardTransientSurface } from "./BoardAnchoredMenu";
 import { GroupTable } from "./GroupTable";
+import { ItemTrashUndoToast } from "./ItemTrashUndo";
 import type { MemberPickerMember } from "./MemberPicker";
 import { NewLeadIntakeForm } from "./NewLeadIntakeForm";
 import { useDeferredDragReveal } from "./use-deferred-drag-reveal";
@@ -80,7 +89,21 @@ import {
   presentNewLeadDetailLayout,
 } from "@/lib/default-tabs/new-lead";
 import { NOTICE_KEYS } from "@/lib/notices/types";
-import { buildBlocks, buildNewLeadStageBlocks, durableNewLeadBlockKey } from "./blocks";
+import {
+  buildBlocks,
+  buildNewLeadStageBlocks,
+  buildValueBlocks,
+  durableNewLeadBlockKey,
+  valueBlockKey,
+  type BoardBlock,
+} from "./blocks";
+import {
+  groupValueEditBlock,
+  isTableGroupColumn,
+  movedGroupValue,
+  ownerModeForSource,
+  prefillGroupValue,
+} from "@/lib/view/group-by";
 import {
   groupKeyOf,
   reorderColumnKeys,
@@ -148,6 +171,7 @@ import { parseBoardSummaryConfig, type BoardSummarySettingsRequest } from "@/lib
 import { saveBoardSummarySettingsAction } from "@/app/(app)/boards/[id]/summary-actions";
 
 const NEW_LEAD_LEGACY_FACET_LABELS = { revenue_band: "기존 매출구간" } as const;
+const NO_COLUMN_KEYS: readonly string[] = [];
 
 interface RowMove {
   itemId: string;
@@ -167,11 +191,116 @@ export function companyRevenue(value: unknown): string {
   return /^-?\d+(?:\.\d+)?$/.test(text) ? text : "";
 }
 
+/**
+ * 주소의 보기 조건(mwFilters · group)만 바꾼다 — 화면은 다시 받지 않는다.
+ * ★ 상태는 null 로 넘긴다(ItemDetailPanel.pushItemDetailHash 와 같은 이유). Next 가 넣어 둔 history.state 를
+ *   그대로 넘기면 그 표식(__NA) 때문에 Next 가 «자기가 쓴 기록» 으로 보고 라우터 주소를 맞추지 않는다.
+ *   그러면 칸 저장 뒤의 조용한 새로 받기(router.refresh)·묶음 끌기의 revalidate 가 옛 주소로 되돌려
+ *   ?group= 이 주소창에서 사라진다. null 이면 Next 가 이 주소를 라우터 상태로 받아 둔다.
+ */
+function replaceBoardUrl(url: URL) {
+  window.history.replaceState(null, "", url);
+}
+
 /** Issue 857 — 셀 저장이 이만큼 멈추면 화면 데이터를 조용히 새로 받는다. */
 const CELL_SAVE_QUIET_REFRESH_MS = 2000;
 
-/** 낙관적 행 이동 — 서버의 moveRowAction 과 같은 규칙(그룹 내 재색인)을 화면에서 미리 흉내낸다. */
-function rowMoveReducer(rows: ItemWithValues[], move: RowMove): ItemWithValues[] {
+/**
+ * Issue 857 — 칸 저장이 화면에 얹어 둔 것. 행 id(칸 한 줄은 행 id + 칸 key)로 든다.
+ *   saved    — 서버가 돌려준 행(그 판 = updated_at).
+ *   messages — 칸 아래 한 줄(null = 지난 사유를 지움). 성공은 돌려받은 행의 판, 실패는 저장할 때 보던 행의 판을 든다.
+ *   staleSeen — 저장한 판보다 «옛» 서버 화면을 몇 번 넘겼나.
+ */
+type SavedCellRow = { item: ItemWithValues; staleSeen: number };
+type SavedCellMessage = { message: string | null; version: string; failed: boolean; staleSeen: number };
+type CellSaveOverlay = {
+  rows: ItemWithValues[];
+  saved: Readonly<Record<string, SavedCellRow>>;
+  messages: Readonly<Record<string, SavedCellMessage>>;
+};
+
+function cellMessageKey(itemId: string, columnKey: string): string {
+  return `${itemId}\u0000${columnKey}`;
+}
+
+/** 행의 판(updated_at) → 비교할 수 있는 시각. 읽지 못하면 NaN(= 모름). */
+function rowVersionTime(version: string | null | undefined): number {
+  return typeof version === "string" && version ? Date.parse(version) : Number.NaN;
+}
+
+/** 서버 행이 저장한 판을 «따라잡았나»(같거나 새 판). 둘 중 하나라도 모르면 false. */
+function serverCaughtUp(serverVersion: string | undefined, savedVersion: string): boolean {
+  const server = rowVersionTime(serverVersion);
+  const saved = rowVersionTime(savedVersion);
+  return !Number.isNaN(server) && !Number.isNaN(saved) && server >= saved;
+}
+
+/** 아직 서버보다 앞선 저장 행만 — 서버가 따라잡은(같거나 새 판) 행은 서버 것을 그린다. */
+function savedItemsAhead(
+  rows: readonly ItemWithValues[],
+  saved: Readonly<Record<string, SavedCellRow>>,
+): Record<string, ItemWithValues> {
+  const ids = Object.keys(saved);
+  if (ids.length === 0) return {};
+  const serverVersion = new Map(rows.map((row) => [row.id, row.updated_at]));
+  const ahead: Record<string, ItemWithValues> = {};
+  for (const id of ids) {
+    if (!serverCaughtUp(serverVersion.get(id), saved[id].item.updated_at)) ahead[id] = saved[id].item;
+  }
+  return ahead;
+}
+
+/**
+ * 서버가 화면을 새로 보냈을 때(rows 가 바뀜) 얹어 둔 것을 가린다 — #857 «언제나 서버가 이긴다» 를 지킨다.
+ *   · 그 행을 같거나 새 판으로 보냈다 → 버린다(서버가 이긴다).
+ *   · 옛 판이다 → 저장 «전» 에 출발한 응답(묶음 끌기의 revalidate 등)이다. 한 번은 얹은 것을 지킨다.
+ *     두 번째 옛 판에서는 서버를 따른다 — 칸 저장(앱 서버 시계)과 행 이동(DB 시계)의 판이 어긋나
+ *     새 값이 옛 판처럼 보여도 영영 가려지지 않게.
+ *   · 판을 읽을 수 없거나 그 행이 없어졌다 → 버린다(예전처럼).
+ * 실패 사유는 그 칸을 다시 저장하거나 서버가 그 행의 «더 새» 판을 보낼 때까지 둔다.
+ */
+function reconcileCellSaveOverlay(overlay: CellSaveOverlay, rows: ItemWithValues[]): CellSaveOverlay {
+  const serverVersion = new Map(rows.map((row) => [row.id, row.updated_at]));
+  const keepAhead = (itemId: string, version: string, staleSeen: number): boolean => {
+    const server = serverVersion.get(itemId);
+    if (Number.isNaN(rowVersionTime(server)) || Number.isNaN(rowVersionTime(version))) return false;
+    return !serverCaughtUp(server, version) && staleSeen < 1;
+  };
+  const saved: Record<string, SavedCellRow> = {};
+  for (const [itemId, entry] of Object.entries(overlay.saved)) {
+    if (keepAhead(itemId, entry.item.updated_at, entry.staleSeen)) saved[itemId] = { ...entry, staleSeen: entry.staleSeen + 1 };
+  }
+  const messages: Record<string, SavedCellMessage> = {};
+  for (const [key, entry] of Object.entries(overlay.messages)) {
+    const itemId = key.slice(0, key.indexOf("\u0000"));
+    if (entry.failed) {
+      const server = rowVersionTime(serverVersion.get(itemId));
+      const before = rowVersionTime(entry.version);
+      if (!Number.isNaN(server) && !Number.isNaN(before) && server <= before) messages[key] = entry;
+    } else if (keepAhead(itemId, entry.version, entry.staleSeen)) {
+      messages[key] = { ...entry, staleSeen: entry.staleSeen + 1 };
+    }
+  }
+  return { rows, saved, messages };
+}
+
+/** #845 7단계 — 나눠 보기에서 다른 묶음으로 끌어 놓은 행의 새 값(낙관적). */
+interface RowValuePatch {
+  itemId: string;
+  columnKey: string;
+  value: CellValue;
+}
+
+/**
+ * 낙관적 행 이동 — 서버의 moveRowAction 과 같은 규칙(그룹 내 재색인)을 화면에서 미리 흉내낸다.
+ * 나눠 보기의 값 바꾸기(RowValuePatch)는 그 행의 칸 값만 먼저 바꾼다.
+ */
+function rowMoveReducer(rows: ItemWithValues[], move: RowMove | RowValuePatch): ItemWithValues[] {
+  if ("columnKey" in move) {
+    return rows.map((row) => row.id === move.itemId
+      ? { ...row, values: { ...row.values, [move.columnKey]: move.value } }
+      : row);
+  }
   const moving = rows.find((r) => r.id === move.itemId);
   if (!moving) return rows;
 
@@ -213,9 +342,13 @@ export function BoardWorkspace({
   assigneeLabels,
   memberDirectory,
   backSlot,
-  viewSlot,
-  savedViewsSlot,
-  settingsSlot,
+  viewMode = "table",
+  groupBy = "",
+  loadSavedViews = false,
+  calendarAvailable = false,
+  tabSettingsSlot,
+  tabSettingsSections,
+  tabTrashSlot,
   onboardingSlot,
   canEditItems = false,
   canDeleteItems = false,
@@ -225,6 +358,7 @@ export function BoardWorkspace({
   canManageSections = false,
   canManageSummaries = false,
   canMoveRows = false,
+  editLockedColumnKeys = NO_COLUMN_KEYS,
   savedViewActive = false,
   savedViewId = null,
   currentUserId,
@@ -264,18 +398,29 @@ export function BoardWorkspace({
   assigneeLabels: Record<string, string>;
   /** 활성 조직 멤버의 사람 선택기 표시 정보. 조직도 공급자가 붙으면 이 경계만 교체한다. */
   memberDirectory?: readonly MemberPickerMember[];
-  /** 헤더 1줄 안에 얹을 화면 고유 컨트롤(뒤로가기·뷰 전환) — 줄을 늘리지 않기 위한 슬롯. */
+  /** 헤더 1줄 안에 얹을 화면 고유 컨트롤(뒤로가기) — 줄을 늘리지 않기 위한 슬롯. */
   backSlot?: ReactNode;
-  viewSlot?: ReactNode;
   /**
-   * 저장된 뷰 줄 — 목업 순서상 «보드 이름 아래 · 필터 위» 다 (BBE-214).
-   * 근거: UI목업_워크스페이스_최종_v6.html 의 head() —
-   *   :1810 `.hrow > .h1` 보드 이름 → :1821 `.vrow` 보기 → :1841 filterbar 필터.
-   * 뷰는 «보드에 속한 것» 이라 소속처보다 위에 두면 위계가 뒤집혀 보인다.
+   * #845 6단계 — 보드 이름 아래 «보기 줄» 하나(뷰 탭 · 보기 조건 칩 · 저장 · 찾기)가 예전의
+   * 저장된 뷰 줄 · 머리말 둘째 줄 · 도구줄을 대신한다. 이 화면은 메인 표(?view=table)다.
    */
-  savedViewsSlot?: ReactNode;
-  /** 보드 상단에서 즉시 발견되는 단일 설정 진입점. */
-  settingsSlot?: ReactNode;
+  viewMode?: "table";
+  /** 주소의 나눠 보기(?group=). 표는 다음 단계에서 이 값으로 묶는다. */
+  groupBy?: string;
+  /** 저장된 뷰를 /api/tab-views 에서 읽는다. 화면 fixture·시험은 끈다. */
+  loadSavedViews?: boolean;
+  /** 날짜 칸이 있어 캘린더로 볼 수 있는가. */
+  calendarAvailable?: boolean;
+  /**
+   * #845 개선안(2026-10-08) — 머리말 오른쪽 위 「탭 설정」 이 여는 대화상자(일반·항목·단계).
+   * 옛 「⚙ 보드 설정」 펼침을 대신한다. 열림 상태는 TabChromeProvider 가 들고 문맥으로 알린다.
+   * `tabSettingsSections` 가 비면 「탭 설정」 단추·▾ 설정 항목이 없다(권한 없음·시스템 보드).
+   */
+  tabSettingsSlot?: ReactNode;
+  /** 이 탭에서 열 수 있는 설정 칸 — 화면이 권한으로 정한다. */
+  tabSettingsSections?: readonly TabSettingsSection[];
+  /** #845 개선안 — 제목 ▾ 「휴지통으로 이동」 확인. 없으면 메뉴에서 감춘다(지울 권한 없음·시스템 보드). */
+  tabTrashSlot?: ReactNode;
   /** 서버가 판정한 신규리드 1회 온보딩. 권한 판정에는 사용하지 않는다. */
   onboardingSlot?: ReactNode;
   canEditItems?: boolean;
@@ -287,6 +432,11 @@ export function BoardWorkspace({
   canManageSummaries?: boolean;
   /** Whole-group reindex is available only to owner/admin/all-scope sessions. */
   canMoveRows?: boolean;
+  /**
+   * 칸의 편집 제한(edit_policy_jsonb, 예: 「관리자만」)이 이 사람에게 닫힌 칸 key — 서버가 columnPolicyAllows 로
+   * 판정해 넘긴다(화면은 역할을 모른다). 나눠 보기의 끌기·묶음 ＋ 를 그 칸에서는 내놓지 않는다.
+   */
+  editLockedColumnKeys?: readonly string[];
   savedViewActive?: boolean;
   savedViewId?: string | null;
   /** BBE-239 — 공지사항에서 작성자 본인 삭제 예외를 판정하는 데 쓴다. */
@@ -382,6 +532,27 @@ export function BoardWorkspace({
     }
     return base;
   }, [activeColumns, board.source, consultationProgressColumn]);
+  /*
+   * #845 7단계 — 나눠 보기. 기본은 보드별(탭 안의 그룹 = 단계). 사람·목록·상태 칸을 고르면 모든 보드의 행을
+   * 그 칸의 값 묶음으로 다시 나눈다. 고른 값은 주소(?group=)에 남고 «저장» 이 뷰에 담는다(보기 조건 groupBy).
+   * 바꾸기는 화면 안에서 한다(다시 읽지 않는다). 서버가 새로 그려 주소 값이 바뀌면(뷰 고르기) 그 값을 따른다.
+   */
+  const [groupBySource, setGroupBySource] = useState(groupBy);
+  const [groupByKey, setGroupByKey] = useState(() => (canonicalNewLead && groupBy ? newLeadPresentationKey(groupBy) : groupBy));
+  if (groupBySource !== groupBy) {
+    setGroupBySource(groupBy);
+    setGroupByKey(canonicalNewLead && groupBy ? newLeadPresentationKey(groupBy) : groupBy);
+  }
+  const groupColumns = useMemo(() => tableColumns.filter((column) => isTableGroupColumn(column)), [tableColumns]);
+  const groupColumn = useMemo(
+    () => (groupByKey ? groupColumns.find((column) => column.key === groupByKey) ?? null : null),
+    [groupColumns, groupByKey],
+  );
+  const groupByOptions = useMemo(
+    () => groupColumns.map((column) => ({ key: column.key, label: columnPlainName(column.label) })),
+    [groupColumns],
+  );
+  const ownerMode = useMemo(() => ownerModeForSource(board.source), [board.source]);
   const detailColumns = useMemo(
     () => {
       const hidden = new Set(workflowProgressKind ? workflowDetailHiddenKeys(workflowProgressKind) : []);
@@ -418,7 +589,7 @@ export function BoardWorkspace({
     const url = new URL(window.location.href);
     if (activeFilterCount(filters) === 0) url.searchParams.delete(BOARD_FILTER_QUERY_KEY);
     else url.searchParams.set(BOARD_FILTER_QUERY_KEY, encodeBoardFilters(filters));
-    window.history.replaceState(window.history.state, "", url);
+    replaceBoardUrl(url);
   }, [filterUrlReady, filters]);
   /*
    * 끌고 있는 행: ref 가 정본(드롭 판정), state 는 표시(반투명·드롭 안내문)용.
@@ -446,22 +617,24 @@ export function BoardWorkspace({
 
   /*
    * Issue 857 — 셀 저장은 화면 전체를 다시 그리지 않는다.
-   *   ① 누른 순간 useOptimistic 으로 그 칸 값을 먼저 그리고 ② 서버가 돌려준 행을 savedRows 에 얹는다.
-   *   서버가 화면을 새로 보내면(rows 가 바뀜) 얹은 것은 버린다 — 언제나 서버가 이긴다.
+   *   ① 누른 순간 useOptimistic 으로 그 칸 값을 먼저 그리고 ② 서버가 돌려준 행을 얹어 둔다(cellOverlay).
+   *   서버가 화면을 새로 보내면(rows 가 바뀜) 행의 판(updated_at)으로 가린다 — 규칙은 reconcileCellSaveOverlay.
+   *   그 행을 같거나 새 판으로 보내면 서버가 이긴다. 저장 «전» 에 출발한 응답(묶음 끌기의 revalidate 등)이
+   *   옛 판을 들고 오면 방금 저장한 값을 지운 채 그리지 않는다.
    */
-  const [savedRows, setSavedRows] = useState<{ source: ItemWithValues[]; items: Record<string, ItemWithValues> }>(
-    () => ({ source: rows, items: {} }),
-  );
-  const [cellMessages, setCellMessages] = useState<{ source: ItemWithValues[]; byCell: Record<string, string | null> }>(
-    () => ({ source: rows, byCell: {} }),
-  );
+  const [cellOverlay, setCellOverlay] = useState<CellSaveOverlay>(() => ({ rows, saved: {}, messages: {} }));
+  if (cellOverlay.rows !== rows) {
+    // 화면 데이터가 바뀌었다 — 얹어 둔 것을 새 rows 에 맞춰 가린다(지난 값을 상태로 들고 렌더 중에 비교하는 방식).
+    // 함수로 넘긴다 — 아직 처리되지 않은 저장 결과(앞선 갱신)를 덮어쓰지 않고 그 위에서 가린다.
+    setCellOverlay((current) => (current.rows === rows ? current : reconcileCellSaveOverlay(current, rows)));
+  }
   const latestRowsRef = useRef(rows);
   useEffect(() => {
     latestRowsRef.current = rows;
   }, [rows]);
   const baseRows = useMemo(
-    () => (savedRows.source === rows ? applySavedItems(rows, savedRows.items) : rows),
-    [rows, savedRows],
+    () => applySavedItems(rows, savedItemsAhead(rows, cellOverlay.saved)),
+    [rows, cellOverlay.saved],
   );
   const [cellPatchedRows, patchCellOptimistic] = useOptimistic(baseRows, patchCellValue);
   const [optimisticRows, moveRowOptimistic] = useOptimistic(cellPatchedRows, rowMoveReducer);
@@ -492,26 +665,29 @@ export function BoardWorkspace({
     } catch {
       result = { ok: false, errors: [{ key: columnKey, label: columnKey, message: "저장하지 못했어요. 잠시 후 다시 시도해 주세요." }] };
     }
-    const current = latestRowsRef.current;
+    const message = cellSaveMessage(result, columnKey);
+    const cellKey = cellMessageKey(itemId, columnKey);
     if (result.ok) {
       const saved = result.item;
-      setSavedRows((prev) => ({ source: current, items: { ...(prev.source === current ? prev.items : {}), [itemId]: saved } }));
+      setCellOverlay((prev) => ({
+        ...prev,
+        saved: { ...prev.saved, [itemId]: { item: saved, staleSeen: 0 } },
+        messages: { ...prev.messages, [cellKey]: { message, version: saved.updated_at, failed: false, staleSeen: 0 } },
+      }));
       scheduleQuietRefresh();
+      return;
     }
-    const message = cellSaveMessage(result, columnKey);
-    setCellMessages((prev) => ({
-      source: current,
-      byCell: { ...(prev.source === current ? prev.byCell : {}), [`${itemId}\u0000${columnKey}`]: message },
+    // 실패 사유는 그 칸을 다시 저장하거나 서버가 그 행의 더 새 판을 보낼 때까지 둔다 — 기준은 지금 보던 행의 판.
+    const before = latestRowsRef.current.find((row) => row.id === itemId)?.updated_at ?? "";
+    setCellOverlay((prev) => ({
+      ...prev,
+      messages: { ...prev.messages, [cellKey]: { message, version: before, failed: true, staleSeen: 0 } },
     }));
   }, [patchCellOptimistic, scheduleQuietRefresh]);
   const cellSaveApi = useMemo<CellSaveApi>(() => ({
     save: saveCell,
-    messageFor: (itemId, columnKey) => {
-      if (cellMessages.source !== rows) return undefined;
-      const key = `${itemId}\u0000${columnKey}`;
-      return key in cellMessages.byCell ? cellMessages.byCell[key] : undefined;
-    },
-  }), [cellMessages, rows, saveCell]);
+    messageFor: (itemId, columnKey) => cellOverlay.messages[cellMessageKey(itemId, columnKey)]?.message,
+  }), [cellOverlay.messages, saveCell]);
   const displayRows = useMemo(() => {
     // 상담 단계 보기 — 같은 정본 행을 서버 적재분의 mode 로 가른다. 적재된 레거시 remote 는
     // SQL 의도된 기본값이며, 미조회(null)는 특정 보기에 넣지 않는다(F5). 새로고침해도 mode 는 DB 값 그대로다.
@@ -548,6 +724,8 @@ export function BoardWorkspace({
   // 패널을 닫으면 포커스를 그 패널을 연 단추로 돌린다(그룹마다의 「＋ 업체 추가」 단추가 이제 없다).
   // 그룹마다 따로 기억한다 — A 를 열고 B 를 연 뒤 A 를 닫아도 A 를 연 단추로 돌아간다.
   const addOpenersRef = useRef(new Map<string, HTMLElement | null>());
+  /** 지금 접혀 있는 빈 블록의 키 — 추가 요청이 그 블록을 가리키면 먼저 펼친다. */
+  const foldedBlockKeysRef = useRef<ReadonlySet<string>>(new Set());
   const requestAdd = (blockKey: string, opener: HTMLElement | null) => {
     addOpenersRef.current.set(blockKey, opener);
     setClosedGroups((current) => {
@@ -556,7 +734,15 @@ export function BoardWorkspace({
       next.delete(blockKey);
       return next;
     });
-    setAddRequest((current) => ({ key: blockKey, seq: (current?.seq ?? 0) + 1 }));
+    const bump = () => setAddRequest((current) => ({ key: blockKey, seq: (current?.seq ?? 0) + 1 }));
+    // 접혀 있는 빈 블록(나눠 보기의 「(없음)」 등)에 추가하려면 먼저 펼친다. 추가 패널은 «값이 바뀔 때» 열리므로
+    // 펼친 블록이 그려진 다음에 요청을 올린다.
+    if (foldedBlockKeysRef.current.has(blockKey)) {
+      setEmptyGroupsOpen(true);
+      window.setTimeout(bump, 0);
+      return;
+    }
+    bump();
   };
   /*
    * #845 (대표 지시 2026-10-06, 승인 방향 목업 Main.dc) — 보이는 행이 0건인 그룹은 끝의 컨트롤
@@ -586,6 +772,22 @@ export function BoardWorkspace({
   // 상담 단계 보기는 가상 계약 단계 묶음이라 행 순서를 옮기지 않는다 —
   // 순서는 리드컨택 전체 보기(물리 그룹)에서만 바꾼다.
   const rowDragEnabled = !readOnly && canMoveRows && !sortActive && !rowMovePending && !isConsultationStageView;
+  /*
+   * #845 7단계 — 나눠 보기에서 끌기는 «값 바꾸기» 다. 행 순서 권한(canMoveRows)이 아니라 항목 수정 권한과
+   * 그 칸을 이 길로 바꿀 수 있는지(groupValueEditBlock — 고칠 수 없는 칸·편집 제한 칸·✉ 발송 칸·신규리드 정본·배정 담당)로 정한다.
+   * 줄 세우기와는 상관없다(순서를 저장하지 않는다). 서버(setGroupValueAction)가 같은 규칙으로 다시 막는다.
+   */
+  const groupValueBlocked = groupColumn
+    ? groupValueEditBlock(groupColumn, {
+      canonicalNewLead,
+      ownerMode,
+      editPolicyAllows: !editLockedColumnKeys.includes(groupColumn.key),
+    })
+    : null;
+  const groupValueEditable = Boolean(groupColumn) && !readOnly && groupValueBlocked === null;
+  const groupValueInFlightRef = useRef(false);
+  const [groupValuePending, setGroupValuePending] = useState(false);
+  const [groupValueNotice, setGroupValueNotice] = useState<ResultNotice | null>(null);
 
   const [orderedGroups, setOrderedGroups] = useOptimistic(
     [...groups].sort((a, b) => a.sort_order - b.sort_order),
@@ -661,7 +863,23 @@ export function BoardWorkspace({
   }, [consultationByItem, consultationView, displayRows, isConsultationStageView]);
   const newLeadStageBlocks = useMemo(() => isNewLeadStageView ? buildNewLeadStageBlocks(orderedGroups, displayRows) : null,
     [isNewLeadStageView, orderedGroups, displayRows]);
-  const blocks = consultationStageBlocks ?? newLeadStageBlocks ?? physicalBlocks;
+  // 사람 칸 묶음의 순서 = 구성원 순서(사람 선택기·담당자 탭과 같은 원천).
+  const groupMembers = useMemo(
+    () => memberDirectory?.length
+      ? memberDirectory.map((member) => ({ id: member.id, label: member.label }))
+      : Object.entries(assigneeLabels).map(([id, label]) => ({ id, label: label || "이름 없는 구성원" })),
+    [assigneeLabels, memberDirectory],
+  );
+  /** #845 7단계 — 나눠 보기 묶음. 보드별(기본)이면 null 이고 아래 보드·단계 블록을 그대로 쓴다. */
+  const valueBlocks = useMemo(
+    () => groupColumn
+      ? buildValueBlocks({ column: groupColumn, groups: orderedGroups, rows: displayRows, members: groupMembers, memberLabels: assigneeLabels, ownerMode })
+      : null,
+    [assigneeLabels, displayRows, groupColumn, groupMembers, orderedGroups, ownerMode],
+  );
+  const valueMode = valueBlocks !== null;
+  const blocks = valueBlocks ?? consultationStageBlocks ?? newLeadStageBlocks ?? physicalBlocks;
+  const firstGroupId = orderedGroups[0]?.id ?? null;
   // 그룹마다 «패널을 연 단추로 포커스 돌리기» 함수 — 그룹 구성이 그대로면 같은 함수라 접수 폼의 효과가 다시 돌지 않는다.
   const blockKeysSignature = JSON.stringify(blocks.map((block) => block.key));
   const addReturnFocusByKey = useMemo(
@@ -670,9 +888,11 @@ export function BoardWorkspace({
   );
   const addReturnFocusFor = (key: string) => addReturnFocusByKey.get(key);
   const durableLayoutKey = useCallback((key: string) => {
+    // 값 묶음은 보드가 아니다 — 칸 순서는 보드 전체의 것이라 첫 보드의 배치를 함께 쓴다(제목행 하나).
+    if (valueMode) return firstGroupId ?? UNGROUPED_KEY;
     const block = isNewLeadStageView ? blocks.find((candidate) => candidate.key === key) : undefined;
     return block ? durableNewLeadBlockKey(block, orderedGroups) : key;
-  }, [blocks, isNewLeadStageView, orderedGroups]);
+  }, [blocks, firstGroupId, isNewLeadStageView, orderedGroups, valueMode]);
 
   // 사라진 행 id는 렌더 중에 털어낸다 — effect로 미루면 삭제된 id가 복구·필터 전환 때
   // 다시 보이는 «예상 밖 재등장»이 된다. 필터로 숨겨진 행은 여기서 지우지 않는다
@@ -757,12 +977,14 @@ export function BoardWorkspace({
         if (stage) stageByGroup.set(group.id, stage);
       }
     }
+    // 나눠 보기 묶음은 톤이 없다(선택지 색·중립색) — 진행현황 점의 톤은 실제 보드로 정한다.
+    const toneBlocks = valueMode ? physicalBlocks : blocks;
     return resolveGroupTones(
       board.source,
-      blocks.filter((block) => block.key !== UNGROUPED_KEY).map((block) => ({ key: block.key, name: block.name })),
+      toneBlocks.filter((block) => block.key !== UNGROUPED_KEY).map((block) => ({ key: block.key, name: block.name })),
       stageByGroup,
     );
-  }, [blocks, board.source, orderedGroups, physicalActiveColumns, workflowProgressKind]);
+  }, [blocks, board.source, orderedGroups, physicalActiveColumns, physicalBlocks, valueMode, workflowProgressKind]);
 
   /**
    * 진행현황 선택지 중 «행을 옮기는» 것 → 목표 그룹 (#839). 화면용 진행현황 열은 이동 규칙을
@@ -788,6 +1010,11 @@ export function BoardWorkspace({
     const shown = presentLabels(orderedGroups.map((group) => group.name));
     return orderedGroups.map((group, index) => ({ id: group.id, name: shown[index] }));
   }, [orderedGroups]);
+  /** 나눠 보기의 키보드 「묶음으로 이동」 선택지 — 묶음 키와 이름. */
+  const valueMoveOptions = useMemo(
+    () => valueMode ? blocks.map((block) => ({ id: block.key, name: blockDisplayNames.get(block.key) ?? block.name })) : [],
+    [blockDisplayNames, blocks, valueMode],
+  );
 
   const bulkTargetIds = useMemo(
     () => intersectVisibleSelection(selectedIds, visibleOrderedIds),
@@ -998,9 +1225,65 @@ export function BoardWorkspace({
     return result;
   }, [board.id]);
 
-  /** 도구줄 담당자 필터 ↔ 헤더 담당자 탭의 단일 소스. null = 전체. */
-  const pickAssignee = (value: string | null) =>
-    setFilters((f) => ({ ...f, assignees: value === null ? [] : [value] }));
+  /*
+   * #845 5단계 — 칸 메뉴 「보기 · 나만」 의 요청을 받는 곳(onRequestViewCondition). 보기 줄과 같은 보기 조건
+   * (주소에 남고 «저장» 이 담는다)을 바꾼다 — 그래서 뷰가 «바뀜» 이 된다. 칸 순서처럼 모두에게 바뀌는 것은 여기서 다루지 않는다.
+   *   · sort   — 이 칸 하나로 줄 세운다(다른 줄 세우기는 걷는다) · null 이면 이 칸만 뺀다
+   *   · filter — 「골라 보기…」: 보기 조건 칸을 골라 보기 탭으로 펴고 그 칸 칩을 연다(6단계)
+   *   · hide   — 「숨기기」: 보이는 칸에서 뺀다
+   * 보기 줄과 똑같이 화면 key(displayFilters) 기준으로 고친다 — 신규리드 durable/present key 변환은 그대로 돈다.
+   */
+  const [filterFocus, setFilterFocus] = useState<ToolbarFilterFocus | null>(null);
+  /** 나눠 보기 바꾸기(보기 줄 · 칸 메뉴) — 화면 안에서 묶음을 바꾸고 주소의 group 만 고친다. */
+  const changeGroupBy = useCallback((key: string) => {
+    setGroupByKey(key);
+    setEmptyGroupsOpen(false);
+    setGroupValueNotice(null);
+    const url = new URL(window.location.href);
+    const stored = key && canonicalNewLead ? durableNewLeadColumnKeys([key])[0] ?? key : key;
+    if (stored) url.searchParams.set("group", stored);
+    else url.searchParams.delete("group");
+    replaceBoardUrl(url);
+  }, [canonicalNewLead]);
+  const tableColumnKeys = tableColumns.map((column) => column.key).join(",");
+  const onRequestViewCondition = useCallback((request: ColumnViewRequest) => {
+    if (request.kind === "filter") {
+      setFilterFocus((current) => ({ columnKey: request.columnKey, seq: (current?.seq ?? 0) + 1 }));
+      return;
+    }
+    if (request.kind === "group") {
+      changeGroupBy(request.on ? request.columnKey : "");
+      return;
+    }
+    setFilters((current) => {
+      const shown = canonicalNewLead ? presentNewLeadSavedFilters(current) : current;
+      if (request.kind === "sort") {
+        const sorts = shown.sorts?.length
+          ? shown.sorts
+          : shown.sortKey
+            ? [{ columnKey: shown.sortKey, direction: shown.sortDir }]
+            : [];
+        return {
+          ...shown,
+          sortKey: "",
+          sortDir: "asc",
+          sorts: request.direction
+            ? [{ columnKey: request.columnKey, direction: request.direction }]
+            : sorts.filter((sort) => sort.columnKey !== request.columnKey),
+        };
+      }
+      const allKeys = tableColumnKeys ? tableColumnKeys.split(",") : [];
+      const visible = shown.visibleColumnKeys ?? allKeys;
+      return { ...shown, columnLimit: 0, visibleColumnKeys: visible.filter((key) => key !== request.columnKey) };
+    });
+  }, [canonicalNewLead, changeGroupBy, tableColumnKeys]);
+  const canFilterColumn = useCallback((column: BoardColumn) => hasToolbarFacet(column), []);
+  const canGroupColumn = useCallback((column: BoardColumn) => isTableGroupColumn(column), []);
+  const activeSorts = displayFilters.sorts?.length
+    ? displayFilters.sorts
+    : displayFilters.sortKey
+      ? [{ columnKey: displayFilters.sortKey, direction: displayFilters.sortDir }]
+      : [];
 
   const handleColumnDrop = (
     groupKey: string,
@@ -1122,6 +1405,76 @@ export function BoardWorkspace({
     () => rowDragEnabled && dragRowRef.current !== null,
     [rowDragEnabled],
   );
+  // 나눠 보기: 끌기가 켜져 있고, 끄는 행이 지금 묶음의 것이 아닐 때만 놓을 수 있다(같은 묶음 안 순서는 저장하지 않는다).
+  const valueDragEnabled = groupValueEditable && !groupValuePending;
+  const valueSectionByRow = useMemo(
+    () => valueMode ? new Map(blocks.flatMap((block) => block.rows.map((row) => [row.id, block.key] as const))) : null,
+    [blocks, valueMode],
+  );
+  const canDropInto = (blockKey: string) => valueMode
+    ? () => valueDragEnabled && dragRowRef.current !== null && valueSectionByRow?.get(dragRowRef.current) !== blockKey
+    : canDropRow;
+
+  const groupValueForm = (itemId: string, columnKey: string, value: CellValue) => {
+    const fd = new FormData();
+    fd.set("boardId", board.id);
+    fd.set("itemId", itemId);
+    fd.set("columnKey", columnKey);
+    fd.set("value", JSON.stringify(value));
+    return fd;
+  };
+  /** 행을 다른 묶음으로 — 먼저 옮겨 보이고(낙관적), 서버가 거절하면 제자리로 돌아가며 까닭을 보인다. */
+  const persistGroupValue = (row: ItemWithValues, target: BoardBlock) => {
+    if (!groupColumn || !target.groupValue) return;
+    if (groupValueInFlightRef.current) { setMoveNotice("이전 변경을 저장하고 있어요."); return; }
+    groupValueInFlightRef.current = true;
+    setGroupValuePending(true);
+    setGroupValueNotice(null);
+    const columnKey = groupColumn.key;
+    const value = movedGroupValue(groupColumn, row.values[columnKey] ?? null, target.groupValue.id);
+    const targetName = blockDisplayNames.get(target.key) ?? target.name;
+    startTransition(async () => {
+      moveRowOptimistic({ itemId: row.id, columnKey, value });
+      try {
+        const result = await setGroupValueAction(groupValueForm(row.id, columnKey, value));
+        if (result.ok) setMoveNotice(result.notice ?? `「${targetName}」에 옮겼어요.`);
+        else { setMoveNotice(result.message); setGroupValueNotice({ ok: false, message: result.message }); }
+      } catch {
+        const message = "값을 바꾸지 못했어요. 다시 시도해 주세요.";
+        setMoveNotice(message);
+        setGroupValueNotice({ ok: false, message });
+      } finally {
+        groupValueInFlightRef.current = false;
+        setGroupValuePending(false);
+      }
+    });
+  };
+  const handleValueDrop = (target: BoardBlock) => {
+    const itemId = dragRowRef.current;
+    endRowDrag();
+    if (!itemId || !valueDragEnabled) return;
+    if (valueSectionByRow?.get(itemId) === target.key) { setMoveNotice("같은 묶음 안에서는 순서를 바꾸지 않아요."); return; }
+    const row = rowById.get(itemId);
+    if (row) persistGroupValue(row, target);
+  };
+  const moveRowToValueSection = (rowId: string, targetKey: string | null) => {
+    const target = blocks.find((block) => block.key === targetKey);
+    const row = rowById.get(rowId);
+    if (!target || !row || !valueDragEnabled) return;
+    if (valueSectionByRow?.get(rowId) === target.key) { setMoveNotice("이미 이 묶음에 있어요."); return; }
+    persistGroupValue(row, target);
+  };
+  /** 회사부터 고르는 추가(계약업체 실무)는 만든 뒤에 묶음 값을 넣는다 — 같은 값 바꾸기 길(권한 확인 포함). */
+  const applyCreatedPrefill = (itemId: string, prefill: { columnKey: string; value: CellValue }) => {
+    startTransition(async () => {
+      try {
+        const result = await setGroupValueAction(groupValueForm(itemId, prefill.columnKey, prefill.value));
+        if (!result.ok) setGroupValueNotice({ ok: false, message: result.message });
+      } catch {
+        setGroupValueNotice({ ok: false, message: "묶음 값을 넣지 못했어요. 칸에서 골라 주세요." });
+      }
+    });
+  };
 
   const persistRowMove = useCallback((itemId:string,groupId:string|null,beforeItemId:string|null,index:number)=>{
     if(rowMoveInFlightRef.current){setMoveNotice("이전 이동을 저장하고 있어요.");return false;}
@@ -1169,7 +1522,7 @@ export function BoardWorkspace({
   };
 
   const keyboardMoveRow=(rowId:string,groupId:string|null,visibleRows:readonly ItemWithValues[],direction:"up"|"down")=>{
-    if(!rowDragEnabled){setMoveNotice(rowMoveInFlightRef.current?"이전 이동을 저장하고 있어요.":sortActive?"정렬 중에는 행 순서를 바꿀 수 없어요.":"행을 옮길 권한이 없어요.");return;}
+    if(!rowDragEnabled){setMoveNotice(rowMoveInFlightRef.current?"이전 이동을 저장하고 있어요.":sortActive?"줄 세우기 중에는 행 순서를 바꿀 수 없어요.":"행을 옮길 권한이 없어요.");return;}
     const at=visibleRows.findIndex((row)=>row.id===rowId);
     if(at<0)return;
     const targetIndex=direction==="up"?at-1:at+2;
@@ -1197,8 +1550,11 @@ export function BoardWorkspace({
     const visibleRows = applyFilters(block.rows, searchColumns, displayFilters, filterProjection, assigneeLabels);
     const createdThisSession = Boolean(block.group && !sessionGroupBaseline.ids.has(block.group.id));
     // 계약업체 실무 보드에서만, 실제로 행이 0건인 그룹만 접는다(검색·필터로 0건이 된 그룹은 접지 않는다).
-    const foldable = workflowProgressKind === "work" && index > 0 && block.group !== null
-      && block.rows.length === 0 && !createdThisSession;
+    // 나눠 보기는 모든 보드에서 빈 묶음(행 0건인 값)을 접는다 — 끄는 동안에는 놓을 자리로 나온다.
+    const foldable = valueMode
+      ? block.rows.length === 0
+      : workflowProgressKind === "work" && index > 0 && block.group !== null
+        && block.rows.length === 0 && !createdThisSession;
     return { block, visibleRows, foldable };
   });
   const foldedEmptyCount = blockViews.filter((view) => view.foldable).length;
@@ -1208,6 +1564,12 @@ export function BoardWorkspace({
   useEffect(() => {
     foldedGroupIdsRef.current = new Set(foldedGroupIdsKey ? foldedGroupIdsKey.split(",") : []);
   }, [foldedGroupIdsKey]);
+  const foldedBlockKeysKey = emptyGroupsOpen
+    ? ""
+    : JSON.stringify(blockViews.filter((view) => view.foldable).map((view) => view.block.key));
+  useEffect(() => {
+    foldedBlockKeysRef.current = new Set(foldedBlockKeysKey ? JSON.parse(foldedBlockKeysKey) as string[] : []);
+  }, [foldedBlockKeysKey]);
   // 행을 끄는 동안에는 빈 그룹도 놓을 자리로 보여 준다 — 끌기가 시작된 뒤에(useDeferredDragReveal).
   const shownBlockViews = emptyGroupsOpen || dragRevealGroups
     ? blockViews
@@ -1235,30 +1597,36 @@ export function BoardWorkspace({
     /*
      * 원칙 2·8 — 인위적 max-width 없이 뷰포트 폭을 그대로 쓴다.
      * 세로 여백(gap-3)은 "그룹 사이 구획"이라는 위계 표현으로만 쓴다(원칙 10).
+     * 탭 설정·휴지통 확인은 머리말이 열고 화면이 넘긴 슬롯이 그린다(#845 — 열림 상태는 제공자가 든다).
      */
     <CellSaveContext.Provider value={cellAction ? null : cellSaveApi}>
-    <div className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden">
+    <TabChromeProvider
+      settings={tabSettingsSlot}
+      settingsSections={board.is_system ? [] : tabSettingsSections}
+      trash={board.is_system ? undefined : tabTrashSlot}
+    >
+    <div data-board-workspace="" className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden">
       <BoardHeader
         boardId={board.id}
         icon={board.icon}
         name={board.name}
         description={board.description}
-        people={people}
-        selected={filters.assignees}
-        onSelect={pickAssignee}
         groups={groups}
         readOnly={readOnly}
         canEditTitle={!board.is_system&&canManageSummaries}
+        source={board.source}
         backSlot={backSlot}
         helpSlot={onboardingSlot}
-        viewSlot={viewSlot}
         addItemSlot={onDemandAdd && blocks[0] ? (
-          /* 2026-10-08 — 계약업체 실무의 주 단추. 이름만 받는 「＋ 새 항목」 대신 회사부터 고르는 첫 보드의 추가 패널을 연다. */
+          /*
+           * 2026-10-08 — 계약업체 실무의 주 단추. 이름만 받는 「＋ 새 항목」 대신 회사부터 고르는 첫 보드의 추가 패널을 연다.
+           * 나눠 보기 중이면 값을 미리 넣지 않는 「(없음)」 묶음의 패널을 연다(새 행은 첫 보드에 들어간다).
+           */
           <button
             type="button"
             data-mw-cta="primary"
-            onClick={(event) => requestAdd(blocks[0].key, event.currentTarget)}
-            className="flex h-9 shrink-0 items-center rounded-full bg-mw-primary px-3.5 text-xs font-semibold text-mw-on-accent"
+            onClick={(event) => requestAdd(groupColumn ? valueBlockKey(groupColumn.key, null) : blocks[0].key, event.currentTarget)}
+            className="flex h-[34px] shrink-0 items-center rounded-[var(--mw-r-2)] bg-mw-primary px-3.5 text-[length:var(--fs-13)] font-semibold text-mw-on-accent"
           >
             ＋ 업체 추가
           </button>
@@ -1274,20 +1642,29 @@ export function BoardWorkspace({
         ) : undefined}
       />
 
-      {/* 보드 이름 «아래» · 필터 «위» — 목업 head() 의 `.vrow` 자리다 (BBE-214). */}
-      {savedViewsSlot}
-
-      {settingsSlot ? <div data-visual-block="board-settings">{settingsSlot}</div> : null}
-
-      <BoardToolbar
-        columns={tableColumns}
-        rows={displayRows}
+      {/* 보드 이름 «아래» 의 보기 줄 하나 — 뷰 탭 · 보기 조건 · 저장 · 찾기 (BBE-214 순서 · #845 6단계). */}
+      <BoardViewBar
+        boardId={board.id}
+        currentUserId={currentUserId}
+        mode={viewMode}
         filters={displayFilters}
         onChange={setFilters}
+        groupBy={groupColumn?.key ?? ""}
+        groupByOptions={groupByOptions}
+        onGroupByChange={changeGroupBy}
+        columns={tableColumns}
+        rows={displayRows}
+        people={people}
         matched={matched}
         total={displayRows.length}
-        people={people}
         legacyFacetLabels={canonicalNewLead ? NEW_LEAD_LEGACY_FACET_LABELS : undefined}
+        focusFilter={filterFocus}
+        canonicalNewLead={canonicalNewLead}
+        loadSavedViews={loadSavedViews}
+        activeViewId={savedViewId}
+        calendarAvailable={calendarAvailable}
+        defaultCalendarFieldKey={tableColumns.find((column) => column.type === "date")?.key ?? null}
+        ready={filterUrlReady}
       />
 
       {board.is_system && (
@@ -1296,11 +1673,16 @@ export function BoardWorkspace({
         </p>
       )}
 
-      {sortActive && !readOnly && (
+      {sortActive && !readOnly && !valueMode && (
         <p className="text-xs text-mw-sub">
-          정렬이 켜져 있어 행 드래그를 잠갔습니다. 직접 배치하려면 정렬을 «기본 순서»로 되돌리세요.
+          줄 세우기 중에는 행을 끌어 옮길 수 없어요 · 「원래 순서」로 바꾸면 옮길 수 있어요
         </p>
       )}
+      {groupValueNotice ? (
+        <p role={noticeRole(groupValueNotice.ok)} aria-live={noticeLive(groupValueNotice.ok)} data-group-value-error="" className={`rounded-lg border border-mw-line bg-mw-card px-3 py-2 text-xs ${groupValueNotice.ok ? "text-mw-body" : "text-mw-error"}`}>
+          {groupValueNotice.message}
+        </p>
+      ) : null}
       {selectedIds.size > 0 || bulkDialog !== null ? (
         <BulkActionBar
           boardId={board.id}
@@ -1337,7 +1719,7 @@ export function BoardWorkspace({
 
       {archivedColumnIds.size > 0 ? (
         <div role="status" className="flex items-center justify-between rounded-lg border border-mw-line bg-mw-card px-3 py-2 text-sm shadow">
-          <span>컬럼을 휴지통으로 옮겼습니다. 값과 설정은 보존됩니다.</span>
+          <span>칸을 휴지통으로 옮겼어요.</span>
           <button
             type="button"
             disabled={restoring}
@@ -1370,6 +1752,8 @@ export function BoardWorkspace({
         </div>
       ) : null}
       {restoreError ? <p role={noticeRole(false)} aria-live={noticeLive(false)} className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{restoreError}</p> : null}
+      {/* #845 개선안 — 상세 ⋯·행 우클릭으로 휴지통에 옮긴 행의 「되돌리기」 알림. 행은 곧 사라지므로 보드가 하나 든다. */}
+      <ItemTrashUndoToast boardId={board.id} />
 
       <BoardScrollViewport>
       {sharedHeader ? (
@@ -1400,6 +1784,13 @@ export function BoardWorkspace({
           onRowDrop={() => {}}
           onColumnDrop={handleSharedColumnDrop}
           onColumnKeyboardMove={handleSharedColumnKeyboardMove}
+          onRequestViewCondition={onRequestViewCondition}
+          canFilterColumn={canFilterColumn}
+          canGroupColumn={canGroupColumn}
+          groupByKey={groupColumn?.key ?? ""}
+          activeSorts={activeSorts}
+          columnCatalog={physicalActiveColumns}
+          boardRows={optimisticRows}
           selection={selectedIds}
           onToggleRow={toggleRow}
           onToggleGroup={(checked) => toggleGroupIds(sharedHeaderRows.map((row) => row.id), checked)}
@@ -1442,6 +1833,16 @@ export function BoardWorkspace({
             : rawResolvedDetailLayout.entries;
           // `start_company_work`는 정본상 첫 그룹에 넣는다. 다른 그룹 아래에도 선택기를
           // 보여주면 누른 위치와 생성 위치가 달라지므로 첫 그룹에만 둔다.
+          /*
+           * #845 7단계 — 나눠 보기 묶음의 추가: 새 행은 첫 보드에 들어가고 그 묶음의 값을 미리 넣는다.
+           * 값을 이 길로 넣을 수 없는 칸이면 「(없음)」 묶음에서만(값 없이) 추가한다. 신규리드는 머리말 등록만 쓴다.
+           */
+          const valuePrefill = groupColumn && groupValueEditable && block.groupValue?.id
+            ? { columnKey: groupColumn.key, value: prefillGroupValue(groupColumn, block.groupValue.id) }
+            : null;
+          const valueAddAllowed = !readOnly && !canonicalNewLead
+            && (valuePrefill !== null || block.groupValue?.id === null);
+          const shownName = blockDisplayNames.get(block.key) ?? block.name;
 
           return (
             <GroupBlock
@@ -1455,7 +1856,9 @@ export function BoardWorkspace({
               key={block.key}
               name={block.name}
               displayName={blockDisplayNames.get(block.key)}
-              tone={groupTones.get(block.key) ?? null}
+              tone={valueMode ? null : groupTones.get(block.key) ?? null}
+              accentColor={block.groupValue?.accent ?? null}
+              addLabel={valueMode ? `${shownName}에 ${onDemandAdd ? "업체" : "새 항목"} 추가` : undefined}
               columns={shown}
               rows={visibleRows}
               presetName={groupPresetName(board.name, block.name)}
@@ -1490,7 +1893,9 @@ export function BoardWorkspace({
                   }
                 />
               }
-              onAddRow={onDemandAdd && !(isConsultationStageView || (isNewLeadStageView && !block.group && block.key !== "new-lead-stage:0")) ? (opener) => requestAdd(block.key, opener) : undefined}
+              onAddRow={valueMode
+                ? (valueAddAllowed ? (opener) => requestAdd(block.key, opener) : undefined)
+                : onDemandAdd && !(isConsultationStageView || (isNewLeadStageView && !block.group && block.key !== "new-lead-stage:0")) ? (opener) => requestAdd(block.key, opener) : undefined}
               selectControl={sharedBlockKeys.has(block.key) ? (
                 <GroupSelectAll
                   name={blockDisplayNames.get(block.key) ?? block.name}
@@ -1518,7 +1923,9 @@ export function BoardWorkspace({
                 {...companyPickerProps}
                 itemDetailFixture={itemDetailFixture}
                 currentUserId={currentUserId}
-                groupId={block.group?.id ?? (isNewLeadStageView && block.key === "new-lead-stage:0" ? orderedGroups[0]?.id ?? null : null)}
+                groupId={valueMode ? firstGroupId : block.group?.id ?? (isNewLeadStageView && block.key === "new-lead-stage:0" ? orderedGroups[0]?.id ?? null : null)}
+                addPrefill={valuePrefill}
+                onRowCreated={valuePrefill ? (itemId) => applyCreatedPrefill(itemId, valuePrefill) : undefined}
                 columns={shown}
                 detailColumns={[...detailColumns]}
                 boardDetailLayout={boardDetailLayout}
@@ -1569,8 +1976,8 @@ export function BoardWorkspace({
                     initialCompanyName={row.title}
                   />
                 ) : undefined}
-                hideAddRow={isConsultationStageView || (isNewLeadStageView && !block.group && block.key !== "new-lead-stage:0")}
-                rowDragEnabled={rowDragEnabled && (!isNewLeadStageView || Boolean(block.group))}
+                hideAddRow={valueMode ? !valueAddAllowed : isConsultationStageView || (isNewLeadStageView && !block.group && block.key !== "new-lead-stage:0")}
+                rowDragEnabled={valueMode ? valueDragEnabled : rowDragEnabled && (!isNewLeadStageView || Boolean(block.group))}
                 cellFlash={cellFlash}
                 cellAction={cellAction}
                 workflowProgressKind={workflowProgressKind}
@@ -1581,8 +1988,15 @@ export function BoardWorkspace({
                   handleColumnDrop(block.key, resolvedColumns, draggedKey, targetKey)
                 }
                 onColumnKeyboardMove={(columnKey,delta)=>handleColumnKeyboardMove(block.key,resolvedColumns,columnKey,delta)}
-                dragRowId={rowDragEnabled ? dragRowId : null}
-                canDropRow={canDropRow}
+                onRequestViewCondition={onRequestViewCondition}
+                canFilterColumn={canFilterColumn}
+                canGroupColumn={canGroupColumn}
+                groupByKey={groupColumn?.key ?? ""}
+                activeSorts={activeSorts}
+                columnCatalog={physicalActiveColumns}
+                boardRows={optimisticRows}
+                dragRowId={(valueMode ? valueDragEnabled : rowDragEnabled) ? dragRowId : null}
+                canDropRow={canDropInto(block.key)}
                 selection={selectedIds}
                 onToggleRow={toggleRow}
                 onToggleGroup={(checked) => toggleGroupIds(visibleRows.map((row) => row.id), checked)}
@@ -1609,12 +2023,15 @@ export function BoardWorkspace({
                 }}
                 onRowDragStart={startRowDrag}
                 onRowDragEnd={endRowDrag}
-                onRowDrop={(index) =>
-                  handleRowDrop(block.group?.id ?? null, block.rows, visibleRows, index)
+                onRowDrop={(index) => valueMode
+                  ? handleValueDrop(block)
+                  : handleRowDrop(block.group?.id ?? null, block.rows, visibleRows, index)
                 }
-                onRowKeyboardMove={(rowId,direction)=>keyboardMoveRow(rowId,block.group?.id??null,visibleRows,direction)}
-                onRowMoveToGroup={keyboardMoveRowToGroup}
-                groupMoveOptions={groupMoveOptions}
+                onRowKeyboardMove={valueMode
+                  ? () => setMoveNotice("이 보기에서는 순서를 바꾸지 않아요.")
+                  : (rowId,direction)=>keyboardMoveRow(rowId,block.group?.id??null,visibleRows,direction)}
+                onRowMoveToGroup={valueMode ? moveRowToValueSection : keyboardMoveRowToGroup}
+                groupMoveOptions={valueMode ? valueMoveOptions : groupMoveOptions}
                 renderWorkflowTransition={board.source === CONTACT_TAB_SOURCE ? (row) => (
                   workflowTransitionSlot ?? (
                     <>
@@ -1660,12 +2077,15 @@ export function BoardWorkspace({
             onClick={() => setEmptyGroupsOpen((open) => !open)}
             className="h-8 rounded-[var(--mw-r-2)] px-3 text-[length:var(--fs-13)] text-mw-sub outline-none hover:bg-mw-card hover:text-mw-fg focus-visible:ring-2 focus-visible:ring-mw-primary"
           >
-            {emptyGroupsOpen ? "빈 보드 접기" : `빈 보드 ${foldedEmptyCount}개 보기`}
+            {valueMode
+              ? (emptyGroupsOpen ? "빈 묶음 접기" : `빈 묶음 ${foldedEmptyCount}개 보기`)
+              : (emptyGroupsOpen ? "빈 보드 접기" : `빈 보드 ${foldedEmptyCount}개 보기`)}
           </button>
         </div>
       ) : null}
       </BoardScrollViewport>
     </div>
+    </TabChromeProvider>
     </CellSaveContext.Provider>
   );
 }

@@ -327,3 +327,22 @@ describe("#6 이미 이 탭에 줄이 있는 회사 — 한 번 묻는다 (막�
     expect(host.querySelector<HTMLInputElement>('input[name="companyName"]')?.value).toBe("");
   });
 });
+
+describe("#845 7단계 — 나눠 보기 묶음이 새 행에 값을 넣도록 새 행 id 를 알린다", () => {
+  it("확정 성공에서만 onAdded(행 id) — 결과를 모르면 부르지 않는다", async () => {
+    let outcome: CompanyIntakeActionState = { ok: false, outcome: "uncertain", message: "저장 결과를 확인하지 못했어요." };
+    const { action, host } = mount(() => outcome);
+    const onAdded = vi.fn();
+    await act(async () => {
+      root!.render(
+        <ContractWorkIntakeForm rows={ROWS} boardId="b-1" groupId="g-1" startWorkAction={action as never} truncated={false} onAdded={onAdded} />,
+      );
+    });
+    await open(host);
+    await act(async () => submitFor(host, "c-1")?.requestSubmit());
+    expect(onAdded).not.toHaveBeenCalled();
+    outcome = { ok: true, message: "업무를 시작했어요.", itemId: "item-9" };
+    await act(async () => submitFor(host, "c-1")?.requestSubmit());
+    expect(onAdded).toHaveBeenCalledWith("item-9");
+  });
+});
