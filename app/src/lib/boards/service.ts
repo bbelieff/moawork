@@ -447,7 +447,9 @@ export class BoardsService {
   // 보드가 없으면 getBoardDetail 이 거부하므로 NotFoundError 는 그대로 나간다.
   async listItems(ctx: Ctx, boardId: string): Promise<ItemWithValues[]> {
     // Issue 857 — 저장소가 행과 값을 한 왕복으로 줄 수 있으면 그렇게 읽는다(탭 화면 loadPageSnapshot 과 같은
-    //   경로 — 값 읽기 물결이 사라진다). 공지·업체·대시보드·권한 범위 읽기가 이 함수를 쓴다.
+    //   경로 — 값 읽기 물결이 사라진다). 운영 호출처: 공지 목록(NoticesService.list)·캠페인 대상(loadScopedBoard).
+    //   묶어 읽은 값은 PostgREST max-rows(행 단위)에 잘리지 않는다 — 전의 item_values 따로 읽기는 값이 1000개를
+    //   넘는 보드에서 잘려, 캠페인 대상에서 전화번호가 빠진 행이 조용히 빠질 수 있었다(이제 전체 값을 본다).
     const [detail, read] = await Promise.all([
       this.getBoardDetail(ctx, boardId),
       this.repo.then((repo) => repo.listItemsWithValues

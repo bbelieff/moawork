@@ -123,10 +123,18 @@ export async function CompanyStatusSection({
   const core = model.core.status === "ready" ? model.core.data : null;
   // Issue 857 — 홈은 «오늘» 을 기다리지 않고 이 절을 띄운다. 오늘 결과는 여기서(대시보드를 읽은 뒤) 받는다.
   const today = await timer.time("today-wait", async () => todayInput);
-  const checklists: Map<string, DealChecklistState> = core
-    ? await timer.time("checklists", () => checklistRead.result(core.deals.map((deal) => deal.id)))
-    : new Map();
-  logEntryTimings("dashboard-company", [...segments.list(), ...timer.snapshot()], "ready");
+  // 시간 로그는 결과대로 남긴다 — 묶음이 하나라도 «불러오지 못함» 이거나 체크리스트가 던지면 unavailable.
+  let checklists: Map<string, DealChecklistState>;
+  try {
+    checklists = core
+      ? await timer.time("checklists", () => checklistRead.result(core.deals.map((deal) => deal.id)))
+      : new Map();
+  } catch (error) {
+    logEntryTimings("dashboard-company", [...segments.list(), ...timer.snapshot()], "unavailable");
+    throw error;
+  }
+  const anyUnavailable = [model.core, model.boards, model.notices, model.ledger].some((segment) => segment.status === "unavailable");
+  logEntryTimings("dashboard-company", [...segments.list(), ...timer.snapshot()], anyUnavailable ? "unavailable" : "ready");
   const displayMonth = core?.dash.month ?? month ?? currentMonthKst();
   const stageName = (id: string | null) =>
     core?.stages.find((stage) => stage.id === id)?.name ?? "-";

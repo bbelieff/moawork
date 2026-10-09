@@ -26,8 +26,9 @@ import { PlatformAccessNotice } from "@/components/platform/PlatformAccessNotice
 //   ★ 옛 지시를 «지우지 않고» 뒤집힌 경위를 남긴다. 안 그러면 다음 사람이 이 절을 보고
 //     「BBE-186 을 어겼네」로 읽고 되돌린다. 규칙이 바뀐 것이지 어긴 것이 아니다.
 /** Issue 857 — 홈 위쪽 단계별 시간(세션·오늘 읽기 ms 만). 오늘을 다 읽은 뒤 한 줄 남긴다. */
-function logHomeTimingsWhenDone(today: Promise<unknown>, timer: ReturnType<typeof createEntryTimer>) {
-  void timer.time("today", () => today).then(() => logEntryTimings("dashboard-home", timer.snapshot(), "ready"));
+function logHomeTimingsWhenDone(today: Promise<TodayHomeState>, timer: ReturnType<typeof createEntryTimer>) {
+  void timer.time("today", () => today).then((state) =>
+    logEntryTimings("dashboard-home", timer.snapshot(), state.kind === "ready" ? "ready" : "unavailable"));
 }
 
 /** «오늘» 을 다 읽으면 그린다 — 기다리는 동안 위 머리말과 아래 회사 현황은 먼저 진행된다. */
