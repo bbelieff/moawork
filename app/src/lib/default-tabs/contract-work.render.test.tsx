@@ -6,6 +6,7 @@ import { BoardViewBar } from "@/components/board/BoardViewBar";
 import { ViewConditionsPanel } from "@/components/board/ViewConditionsPanel";
 import { EMPTY_FILTERS } from "@/components/board/filters";
 import { GroupTable } from "@/components/board/GroupTable";
+import { columnPlainName } from "@/components/board/column-menu-model";
 import type { BoardColumn, ItemWithValues } from "@/lib/boards/types";
 import { CONTRACT_WORK_TAB } from "./contract-work";
 
@@ -65,10 +66,12 @@ function renderTable() {
 describe("BBE-150 계약업체 실무 렌더", () => {
   it("28개 컬럼을 정의 순서로 그리고 진행상황을 우측 고정한다", () => {
     const html = renderTable();
-    const positions = CONTRACT_WORK_TAB.columns.map((column) => html.indexOf(`>${column.label}<`));
+    // 머리글은 ƒ(계산 표시)를 뗀 이름을 그린다(#845 — 칸 종류는 칸 메뉴의 회색 줄이 말한다).
+    const positions = CONTRACT_WORK_TAB.columns.map((column) => html.indexOf(`>${columnPlainName(column.label)}<`));
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     expect(html).toContain("sticky right-0");
+    expect(html).not.toContain(">ƒ");
   });
 
   it("lk 8개와 계산 5개는 편집 폼을 열지 않는다", () => {

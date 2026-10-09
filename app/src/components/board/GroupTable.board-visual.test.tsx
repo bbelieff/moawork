@@ -98,8 +98,9 @@ describe("GroupTable 보드 위계 (#839)", () => {
   it("같은 제목(회사명)이 2건 이상인 행에만 «같은 회사 N건» 을 단다 — 제목은 그대로", () => {
     const rows = [row("r1", "QA합성회사", "심사 중"), row("r2", "QA합성회사", "심사 중"), row("r3", "단독회사", "심사 중")];
     const html = render(rows, new Map([["QA합성회사", 2], ["단독회사", 1]]));
-    expect(html.match(/같은 회사 2건/g)).toHaveLength(2);
-    expect(html).not.toContain("같은 회사 1건");
+    // 좁은 화면은 「2건」 만 보이고 「같은 회사 」 는 읽어 주는 글로만 남는다(max-sm:sr-only) — 글 자체는 그대로.
+    expect(html.match(/<span class="max-sm:sr-only">같은 회사 <\/span>2건/g)).toHaveLength(2);
+    expect(html).not.toContain("</span>1건");
     // 제목은 그대로 — 두 행 모두 같은 업체명 단추(#845 개선안: 이름이 곧 «열기»)를 그린다.
     expect(html.match(/aria-label="QA합성회사 상세 열기"/g)).toHaveLength(2);
     // 다른 보드(카운트 없음)에는 달지 않는다.
