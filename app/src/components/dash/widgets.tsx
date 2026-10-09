@@ -6,7 +6,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { EMPTY, formatCount, formatKrw, formatPercent } from "@/lib/dash/format";
-import type { FollowUpEntry } from "@/lib/dash/aggregate";
+import { todayKst, type FollowUpEntry } from "@/lib/dash/aggregate";
+import { dDayLabel, groupByWeek } from "./date-groups";
 import type {
   ContractStatusBreakdown,
   ConversionRate,
@@ -68,8 +69,8 @@ export function Widget({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-      <div className="mb-3">
+    <section className="rounded-[var(--mw-r-3)] border border-[var(--mw-line)] bg-[var(--mw-card)] p-[var(--sp-4)]">
+      <div className="mb-[var(--sp-3)]">
         <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
           {title}
         </h2>
@@ -82,12 +83,25 @@ export function Widget({
   );
 }
 
-/** 비율 막대(0~1). */
-function Bar({ ratio }: { ratio: number }) {
-  const pct = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0)) * 100;
+const clamp01 = (ratio: number) => Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
+
+/** 막대가 차례로 자라나는 간격과 상한 — 전체가 0.9초를 넘지 않게(막대 0.6초 + 지연 최대 0.3초). */
+const BAR_STAGGER_MS = 60;
+const BAR_STAGGER_MAX_MS = 300;
+
+/**
+ * 비율 막대(0~1) — 처음 그려질 때 한 번 왼쪽에서 자라난다(transform 만, CSS 애니메이션).
+ * 서버 HTML 에 최종 폭이 그대로 들어 있어 스크립트가 없어도 읽힌다. 움직임 줄이기면 멈춰 있다.
+ */
+function Bar({ ratio, index = 0 }: { ratio: number; index?: number }) {
+  const pct = clamp01(ratio) * 100;
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800">
-      <div className="h-full rounded bg-zinc-900 dark:bg-zinc-100" style={{ width: `${pct}%` }} />
+    <div className="h-[6px] w-full overflow-hidden rounded-full bg-[var(--mw-chart-track)]">
+      <div
+        data-bar-fill=""
+        className="mw-bar-grow h-full rounded-full bg-[var(--mw-record)]"
+        style={{ width: `${pct}%`, animationDelay: `${Math.min(index * BAR_STAGGER_MS, BAR_STAGGER_MAX_MS)}ms` }}
+      />
     </div>
   );
 }
@@ -96,26 +110,26 @@ function Bar({ ratio }: { ratio: number }) {
 export function PipelineWidget({ data }: { data: PipelineBreakdown }) {
   if (data.stages.length === 0) {
     return (
-      <p className="text-sm text-zinc-400">
+      <p className="text-[length:var(--fs-13)] text-[var(--mw-sub)]">
         파이프라인 단계가 아직 없어요. 단계를 만들면 여기에 보여요.
       </p>
     );
   }
   return (
-    <div className="flex flex-col gap-3">
-      {data.stages.map((s) => (
-        <div key={s.stageId} className="flex flex-col gap-1">
-          <div className="flex items-baseline justify-between text-sm">
-            <span className="text-zinc-700 dark:text-zinc-200">{s.name}</span>
-            <span className="tabular-nums text-zinc-500">
+    <div className="flex flex-col gap-[var(--sp-3)]">
+      {data.stages.map((s, index) => (
+        <div key={s.stageId} className="flex flex-col gap-[var(--sp-1)]">
+          <div className="flex items-baseline justify-between gap-[var(--sp-2)] text-[length:var(--fs-13)]">
+            <span className="text-[var(--mw-body)]">{s.name}</span>
+            <span className="tabular-nums text-[var(--mw-sub)]">
               {formatCount(s.count)}건 · {formatPercent(s.ratio)}
             </span>
           </div>
-          <Bar ratio={s.ratio} />
+          <Bar ratio={s.ratio} index={index} />
         </div>
       ))}
       {data.unassigned > 0 ? (
-        <p className="text-xs text-zinc-400">
+        <p className="text-[length:var(--fs-12)] text-[var(--mw-sub)]">
           단계 미지정 {formatCount(data.unassigned)}건
         </p>
       ) : null}
@@ -123,70 +137,173 @@ export function PipelineWidget({ data }: { data: PipelineBreakdown }) {
   );
 }
 
-/** 전환율 위젯 — 분모/분자를 함께 표기(정의 모호성 제거). */
-export function ConversionWidget({ rates }: { rates: ConversionRate[] }) {
-  const LABEL: Record<string, string> = {
-    marketing: "마케팅",
-    meeting: "미팅",
-    contract: "계약",
-    work: "실행",
-    settle: "정산",
-    post: "사후관리",
-  };
+const CONVERSION_LABEL: Record<string, string> = {
+  marketing: "마케팅",
+  meeting: "미팅",
+  contract: "계약",
+  work: "실행",
+  settle: "정산",
+  post: "사후관리",
+};
+
+/**
+ * 고리 게이지 — 비율만큼 원을 칠한다(pathLength=100 이라 dasharray 가 곧 퍼센트).
+ * 처음 그려질 때 한 번 0 에서 비율까지 돈다. 원은 그림일 뿐이라 숨기고, 숫자는 글자로 둔다.
+ */
+function RingGauge({ ratio, label }: { ratio: number; label: string }) {
+  const pct = clamp01(ratio) * 100;
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
-      {rates.map((r) => (
-        <div key={r.kind} className="flex flex-col gap-1">
-          <div className="flex items-baseline justify-between text-sm">
-            <span className="text-zinc-700 dark:text-zinc-200">
-              {LABEL[r.kind] ?? r.kind} 도달
-            </span>
-            <span className="tabular-nums font-medium">{formatPercent(r.rate)}</span>
-          </div>
-          <Bar ratio={r.rate} />
-          <span className="text-xs text-zinc-400 tabular-nums">
-            {formatCount(r.reached)} / {formatCount(r.total)}건
-          </span>
-        </div>
-      ))}
+    <div className="relative h-[64px] w-[64px] shrink-0">
+      <svg viewBox="0 0 36 36" className="h-full w-full -rotate-90" aria-hidden="true" focusable="false">
+        <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--mw-chart-track)" strokeWidth="4" />
+        {pct > 0 ? (
+          <circle
+            data-ring-arc=""
+            className="mw-ring-sweep"
+            cx="18"
+            cy="18"
+            r="15.5"
+            fill="none"
+            stroke="var(--mw-record)"
+            strokeWidth="4"
+            strokeLinecap="round"
+            pathLength={100}
+            strokeDasharray={`${pct} 100`}
+            style={{ ["--mw-ring-from" as string]: `${pct}` }}
+          />
+        ) : null}
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-[length:var(--fs-12)] font-semibold tabular-nums text-[var(--mw-fg)]">
+        {label}
+      </span>
     </div>
   );
 }
 
-/** 계약상황 분포 위젯 — field_defs 프리셋 기반. */
+/** 전환율 위젯 — 단계마다 고리 하나. 분모/분자를 함께 표기(정의 모호성 제거). */
+export function ConversionWidget({ rates }: { rates: ConversionRate[] }) {
+  return (
+    <ul className="grid grid-cols-2 gap-[var(--sp-3)] sm:grid-cols-3">
+      {rates.map((r) => (
+        <li key={r.kind} data-conversion={r.kind} className="flex flex-col items-center gap-[var(--sp-1)] text-center">
+          <RingGauge ratio={r.rate} label={formatPercent(r.rate)} />
+          <span className="text-[length:var(--fs-13)] text-[var(--mw-body)]">
+            {CONVERSION_LABEL[r.kind] ?? r.kind} 도달
+          </span>
+          <span className="text-[length:var(--fs-12)] tabular-nums text-[var(--mw-sub)]">
+            {formatCount(r.reached)} / {formatCount(r.total)}건
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** 계약상황 조각 색 — 토큰만(globals.css 의 --mw-chart-*). 다크에서도 토큰이 바뀐다. */
+const CHART_COLORS = [
+  "var(--mw-chart-1)",
+  "var(--mw-chart-2)",
+  "var(--mw-chart-3)",
+  "var(--mw-chart-4)",
+  "var(--mw-chart-5)",
+  "var(--mw-chart-6)",
+] as const;
+const CHART_EMPTY = "var(--mw-chart-empty)";
+
+export interface DonutSlice {
+  key: string;
+  label: string;
+  count: number;
+  ratio: number;
+  color: string;
+}
+
+/** 도넛·범례에 쓰는 조각 — 입력된 계약상황(0건 제외) + 미입력. 비율의 분모는 전체 업무 수다. */
+export function contractSlices(data: ContractStatusBreakdown): DonutSlice[] {
+  const slices: DonutSlice[] = data.options
+    .filter((o) => o.count > 0)
+    .map((o, index) => ({
+      key: o.optionId,
+      label: o.label,
+      count: o.count,
+      ratio: o.ratio,
+      color: CHART_COLORS[index % CHART_COLORS.length],
+    }));
+  if (data.unset > 0) {
+    slices.push({
+      key: "unset",
+      label: "미입력",
+      count: data.unset,
+      ratio: data.total > 0 ? data.unset / data.total : 0,
+      color: CHART_EMPTY,
+    });
+  }
+  return slices;
+}
+
+/** 계약상황 분포 위젯 — 도넛 + 범례. 범례가 곧 글자 대안이고 도넛 그림은 숨긴다. */
 export function ContractStatusWidget({ data }: { data: ContractStatusBreakdown }) {
   if (!data.available) {
     return (
-      <p className="text-sm text-zinc-400">
+      <p className="text-[length:var(--fs-13)] text-[var(--mw-sub)]">
         {EMPTY} 계약상황을 아직 사용할 수 없어요. 계약상황 항목이 준비되면 여기에 보여요.
       </p>
     );
   }
-  const shown = data.options.filter((o) => o.count > 0);
-  if (shown.length === 0) {
+  if (!data.options.some((o) => o.count > 0)) {
     return (
-      <p className="text-sm text-zinc-400">
+      <p className="text-[length:var(--fs-13)] text-[var(--mw-sub)]">
         계약상황을 입력한 업무가 아직 없어요. 업무에 계약상황을 입력하면 여기에 보여요.
       </p>
     );
   }
+  const slices = contractSlices(data);
+  const sum = slices.reduce((acc, slice) => acc + slice.count, 0);
+  const arcs = slices.map((slice, index) => {
+    const share = sum > 0 ? (slice.count / sum) * 100 : 0;
+    const before = slices.slice(0, index).reduce((acc, prev) => acc + (sum > 0 ? (prev.count / sum) * 100 : 0), 0);
+    return { slice, share, before };
+  });
   return (
-    <ul className="flex flex-col gap-2">
-      {shown.map((o) => (
-        <li key={o.optionId} className="flex items-baseline justify-between text-sm">
-          <span className="text-zinc-700 dark:text-zinc-200">{o.label}</span>
-          <span className="tabular-nums text-zinc-500">
-            {formatCount(o.count)}건 · {formatPercent(o.ratio)}
+    <div className="flex flex-wrap items-center gap-[var(--sp-4)]">
+      <div className="mw-pop-in relative h-[120px] w-[120px] shrink-0">
+        <svg viewBox="0 0 42 42" className="h-full w-full -rotate-90" aria-hidden="true" focusable="false">
+          <circle cx="21" cy="21" r="15.9155" fill="none" stroke="var(--mw-chart-track)" strokeWidth="6" />
+          {arcs.map(({ slice, share, before }) => (
+            <circle
+              key={slice.key}
+              data-donut-slice={slice.key}
+              cx="21"
+              cy="21"
+              r="15.9155"
+              fill="none"
+              stroke={slice.color}
+              strokeWidth="6"
+              pathLength={100}
+              strokeDasharray={`${share} ${100 - share}`}
+              strokeDashoffset={-before}
+            />
+          ))}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-[length:var(--fs-18)] font-semibold tabular-nums text-[var(--mw-fg)]">
+            {formatCount(data.total)}
           </span>
-        </li>
-      ))}
-      {data.unset > 0 ? (
-        <li className="flex items-baseline justify-between text-sm text-zinc-400">
-          <span>미입력</span>
-          <span className="tabular-nums">{formatCount(data.unset)}건</span>
-        </li>
-      ) : null}
-    </ul>
+          <span className="text-[length:var(--fs-11)] text-[var(--mw-sub)]">전체 건</span>
+        </div>
+      </div>
+      <ul className="flex min-w-[180px] flex-1 flex-col gap-[var(--sp-2)]" data-donut-legend="">
+        {slices.map((slice) => (
+          <li key={slice.key} data-legend={slice.key} className="flex items-center gap-[var(--sp-2)] text-[length:var(--fs-13)]">
+            <span aria-hidden="true" className="h-[10px] w-[10px] shrink-0 rounded-full" style={{ background: slice.color }} />
+            <span className={slice.key === "unset" ? "text-[var(--mw-sub)]" : "text-[var(--mw-body)]"}>{slice.label}</span>
+            <span className="ml-auto tabular-nums text-[var(--mw-sub)]">
+              {formatCount(slice.count)}건 · {formatPercent(slice.ratio)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -291,25 +408,65 @@ export function FollowUpListWidget({
   );
 }
 
-/** 재접촉(D+180) 목록 위젯. */
-export function ReContactWidget({ entries }: { entries: ReContactEntry[] }) {
+/**
+ * 재접촉(D+180) 목록 위젯 — 이번 주 / 다음 주 / 그 뒤 / 날짜 없음으로 묶는다(KST).
+ * `today` 를 안 주면 지금 KST 날짜를 쓴다(서버 컴포넌트에서 그려지므로 하이드레이션 차이는 없다).
+ */
+export function ReContactWidget({ entries, today = todayKst() }: { entries: ReContactEntry[]; today?: string }) {
   if (entries.length === 0) {
     return (
-      <p className="text-sm text-zinc-400">
+      <p className="text-[length:var(--fs-13)] text-[var(--mw-sub)]">
         이번 달에 재접촉할 업무가 없어요. 재접촉 날짜가 다가오면 여기에 보여요.
       </p>
     );
   }
+  const groups = groupByWeek(entries, (e) => e.dPlus180, today);
+  const thisWeek = groups.find((group) => group.key === "this-week")?.items.length ?? 0;
   return (
-    <ul className="divide-y divide-zinc-100 text-sm dark:divide-zinc-800">
-      {entries.map((e) => (
-        <li key={e.dealId} className="flex items-center justify-between py-2">
-          <span className="text-zinc-700 dark:text-zinc-200">{e.title}</span>
-          <span className="tabular-nums text-zinc-500">
-            D+180 {e.dPlus180 ?? EMPTY}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col gap-[var(--sp-2)]">
+      <p className="flex justify-end">
+        <span
+          data-recontact-badge=""
+          className="rounded-[var(--mw-r-1)] bg-[var(--mw-tint-blue)] px-[var(--sp-2)] py-[2px] text-[length:var(--fs-12)] font-semibold tabular-nums text-[var(--mw-record)]"
+        >
+          이번 주 {formatCount(thisWeek)}곳
+        </span>
+      </p>
+      <div className="max-h-[calc(var(--mw-row-h-loose)*8)] overflow-auto">
+        {groups.map((group) => (
+          <section key={group.key} data-recontact-group={group.key}>
+            <h3 className="sticky top-0 z-[1] flex items-baseline gap-[var(--sp-1)] border-b border-[var(--mw-line)] bg-[var(--mw-card)] py-[var(--sp-1)] text-[length:var(--fs-12)] font-semibold text-[var(--mw-body)]">
+              {group.label}
+              <span className="font-normal tabular-nums text-[var(--mw-sub)]">{formatCount(group.items.length)}곳</span>
+            </h3>
+            <ul className="text-[length:var(--fs-13)]">
+              {group.items.map((e) => (
+                <li
+                  key={e.dealId}
+                  className="flex items-center gap-[var(--sp-2)] border-b border-[var(--mw-line)] py-[var(--sp-2)] last:border-b-0"
+                >
+                  <span className="min-w-0 flex-1 truncate text-[var(--mw-body)]">{e.title}</span>
+                  <span className="shrink-0 text-[length:var(--fs-12)] tabular-nums text-[var(--mw-sub)]">
+                    {e.dPlus180 ?? EMPTY}
+                  </span>
+                  {e.dPlus180 ? (
+                    <span
+                      data-dday=""
+                      className={`shrink-0 rounded-[var(--mw-r-1)] px-[var(--sp-1)] py-[2px] text-[length:var(--fs-11)] font-semibold tabular-nums ${
+                        e.dPlus180 <= today
+                          ? "bg-[var(--mw-badge-reject-bg)] text-[var(--mw-badge-reject-fg)]"
+                          : "bg-[var(--mw-badge-neutral-bg)] text-[var(--mw-badge-neutral-fg)]"
+                      }`}
+                    >
+                      {dDayLabel(e.dPlus180, today)}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </div>
   );
 }

@@ -13,11 +13,12 @@ import {
   HOME_KPIS,
   HOME_SHORTCUTS,
   dueBadge,
-  formatKpi,
   taskTabLabel,
   taskWhat,
   type DueTone,
 } from "@/lib/dash/today-view";
+import { KpiStrip } from "./KpiStrip";
+import { groupByDue } from "./date-groups";
 
 const PANE = "rounded-[var(--mw-r-3)] border border-[var(--mw-bd)] bg-[var(--mw-s-2)]";
 const PANE_TITLE =
@@ -61,20 +62,16 @@ function Hint({ children }: { children: React.ReactNode }) {
 
 function KpiRow({ kpis }: { kpis: TodayDashboardSnapshot["kpis"] }) {
   return (
-    <ul className="grid grid-cols-2 gap-[var(--sp-3)] sm:grid-cols-3 xl:grid-cols-5">
-      {HOME_KPIS.map((kpi) => (
-        <li key={kpi.key} className={`${PANE} px-[var(--sp-3)] py-[var(--sp-3)]`}>
-          <div className="text-[length:var(--fs-12)] text-[var(--mw-t-3)]">{kpi.label}</div>
-          <div className="mt-[var(--sp-1)] text-[length:var(--fs-22)] font-semibold tabular-nums text-[var(--mw-t-1)]">
-            {formatKpi(kpi, kpis)}
-          </div>
-        </li>
-      ))}
-    </ul>
+    <KpiStrip items={HOME_KPIS.map((kpi) => ({ key: kpi.key, label: kpi.label, value: kpis[kpi.key], unit: kpi.unit }))} />
   );
 }
 
+const CELL = "px-[var(--sp-3)] py-[var(--sp-2)]";
+/** 머리글 줄 높이 — 묶음 머리글이 그 바로 아래에 붙는다(둘 다 sticky). */
+const HEAD_CELL = "sticky top-0 z-[1] h-[var(--mw-row-h)] bg-[var(--mw-s-2)] px-[var(--sp-3)] py-0 font-normal";
+
 function TaskPane({ tasks, today }: { tasks: readonly TodayDashboardTask[]; today: string }) {
+  const groups = groupByDue(tasks, (task) => task.dueOn, today);
   return (
     <Pane title="내 할 일">
       {tasks.length === 0 ? (
@@ -83,42 +80,54 @@ function TaskPane({ tasks, today }: { tasks: readonly TodayDashboardTask[]; toda
 
         </Hint>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="max-h-[calc(var(--mw-row-h-loose)*11)] overflow-auto" data-task-scroll="">
           <table className="w-full text-[length:var(--fs-13)] text-[var(--mw-t-1)]">
             <thead>
               <tr className="text-left text-[length:var(--fs-12)] font-normal text-[var(--mw-t-3)]">
-                <th scope="col" className="w-[190px] px-[var(--sp-3)] py-[var(--sp-2)] font-normal">업체</th>
-                <th scope="col" className="px-[var(--sp-3)] py-[var(--sp-2)] font-normal">할 일</th>
-                <th scope="col" className="w-[130px] px-[var(--sp-3)] py-[var(--sp-2)] font-normal">탭</th>
-                <th scope="col" className="w-[92px] px-[var(--sp-3)] py-[var(--sp-2)] font-normal">기한</th>
+                <th scope="col" className={`w-[190px] ${HEAD_CELL}`}>업체</th>
+                <th scope="col" className={HEAD_CELL}>할 일</th>
+                <th scope="col" className={`w-[130px] ${HEAD_CELL}`}>탭</th>
+                <th scope="col" className={`w-[92px] ${HEAD_CELL}`}>기한</th>
               </tr>
             </thead>
-            <tbody>
-              {tasks.map((task) => {
-                const due = dueBadge(task.dueOn, today);
-                return (
-                  <tr key={task.itemId} className="border-t border-[var(--mw-bd)]">
-                    <td className="px-[var(--sp-3)] py-[var(--sp-2)]">
-                      <Link
-                        href={task.href}
-                        className="font-semibold underline-offset-2 hover:underline focus-visible:underline"
-                      >
-                        {task.title}
-                      </Link>
-                    </td>
-                    <td className="px-[var(--sp-3)] py-[var(--sp-2)] text-[var(--mw-t-2)]">{taskWhat(task)}</td>
-                    <td className="px-[var(--sp-3)] py-[var(--sp-2)] text-[var(--mw-t-3)]">{taskTabLabel(task.href)}</td>
-                    <td className="px-[var(--sp-3)] py-[var(--sp-2)]">
-                      <span
-                        className={`inline-flex rounded-[var(--mw-r-1)] px-[var(--sp-2)] py-[2px] text-[length:var(--fs-12)] tabular-nums ${DUE_TONE_CLASS[due.tone]}`}
-                      >
-                        {due.label}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
+            {groups.map((group) => (
+              <tbody key={group.key} data-task-group={group.key}>
+                <tr>
+                  <th
+                    scope="rowgroup"
+                    colSpan={4}
+                    className="sticky top-[var(--mw-row-h)] z-[1] border-y border-[var(--mw-bd)] bg-[var(--mw-s-1)] px-[var(--sp-3)] py-[var(--sp-1)] text-left text-[length:var(--fs-12)] font-semibold text-[var(--mw-t-2)]"
+                  >
+                    {group.label}
+                    <span className="ml-[var(--sp-1)] font-normal tabular-nums text-[var(--mw-t-3)]">{group.items.length}건</span>
+                  </th>
+                </tr>
+                {group.items.map((task, index) => {
+                  const due = dueBadge(task.dueOn, today);
+                  return (
+                    <tr key={task.itemId} className={index === 0 ? undefined : "border-t border-[var(--mw-bd)]"}>
+                      <td className={CELL}>
+                        <Link
+                          href={task.href}
+                          className="font-semibold underline-offset-2 hover:underline focus-visible:underline"
+                        >
+                          {task.title}
+                        </Link>
+                      </td>
+                      <td className={`${CELL} text-[var(--mw-t-2)]`}>{taskWhat(task)}</td>
+                      <td className={`${CELL} text-[var(--mw-t-3)]`}>{taskTabLabel(task.href)}</td>
+                      <td className={CELL}>
+                        <span
+                          className={`inline-flex rounded-[var(--mw-r-1)] px-[var(--sp-2)] py-[2px] text-[length:var(--fs-12)] tabular-nums ${DUE_TONE_CLASS[due.tone]}`}
+                        >
+                          {due.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            ))}
           </table>
         </div>
       )}
