@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   createRequestBoards: vi.fn(),
   scheduleExpiredTrashPurge: vi.fn(),
   sidebarProps: [] as Record<string, unknown>[],
+  bottomNavProps: [] as Record<string, unknown>[],
   routeAppearanceProps: [] as Record<string, unknown>[],
 }));
 
@@ -90,6 +91,13 @@ vi.mock("@/components/shell/SidebarNav", () => ({
   },
 }));
 
+vi.mock("@/components/shell/MobileBottomNav", () => ({
+  MobileBottomNav: (props: Record<string, unknown>) => {
+    mocks.bottomNavProps.push(props);
+    return createElement("nav", null, "mobile-bottom-nav");
+  },
+}));
+
 import AppLayout from "./layout";
 
 const REPO = { listBoards: vi.fn(), listDefaultTabDismissals: vi.fn() };
@@ -108,6 +116,7 @@ describe("셸 → 사이드바 사용자 탭 배선", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.sidebarProps = [];
+    mocks.bottomNavProps = [];
     mocks.routeAppearanceProps = [];
     mocks.getSession.mockResolvedValue({
       user: { id: "owner-1", email: null, name: "대표", avatar_url: null, created_at: "2026-10-06T00:00:00.000Z" },
@@ -154,6 +163,12 @@ describe("셸 → 사이드바 사용자 탭 배선", () => {
     expect(props.userTabs).toEqual(SIDEBAR_BOARDS.userTabs);
     expect(props.dismissedSources).toEqual(SIDEBAR_BOARDS.dismissedSources);
     expect(props.canCreateTab).toBe(true);
+    // 2026-10-09 휴대폰 아래 메뉴도 사이드바와 «같은 값» 을 받는다 — 휴대폰에서만 빠지는 탭이 없게.
+    expect(html).toContain("mobile-bottom-nav");
+    const bottom = mocks.bottomNavProps.at(-1)!;
+    for (const key of ["boardNavKeys", "userTabs", "dismissedSources", "lockedFeatures", "badges", "notifyBadges", "workspaceBasePath"]) {
+      expect(bottom[key], key).toEqual(props[key]);
+    }
     // 라우트 강조도 같은 지도를 본다 — «board:*» 는 RouteAppearance 가 기본 강조로 폴백한다.
     expect(mocks.routeAppearanceProps.at(-1)?.boardNavKeys).toEqual(SIDEBAR_BOARDS.boardNavKeys);
   });

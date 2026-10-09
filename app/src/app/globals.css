@@ -88,6 +88,8 @@
   --mw-layer-board-corner: 30;
   --mw-layer-page-popover: 40;
   --mw-layer-shell: 50;
+  /* 휴대폰 아래 메뉴 — 셸 위, 셸 팝오버·흐림막·대화상자·시트·토스트 아래(그것들이 메뉴를 덮는다). */
+  --mw-layer-bottom-nav: 55;
   --mw-layer-shell-popover: 60;
   --mw-layer-tooltip: 65;
   --mw-layer-scrim: 70;
@@ -500,6 +502,37 @@ input[type="checkbox"][data-row-select]:focus-visible {
 }
 @media (prefers-reduced-motion: reduce) {
   .mw-nav-pending { animation: none; border-right-color: currentColor; opacity: 0.45; }
+}
+/* 2026-10-09 휴대폰 아래 메뉴(MobileBottomNav). md(48rem) 미만에서만 그린다(md:hidden).
+   --mw-bottom-nav-h 는 «지금 바닥을 차지한 높이» — 메뉴가 실제로 떠 있는 휴대폰 폭에서만 0 이 아니다.
+   본문 아래 여백·바닥 토스트가 이 값만큼 올라간다(넓은 화면·키보드가 열린 동안은 0 → 기존과 같은 자리).
+   :has 로 «메뉴가 이 문서에 있을 때만» 켠다 — 로그인·플랫폼 화면에는 여백이 생기지 않는다. */
+:root {
+  --mw-bottom-nav-bar-h: 56px;
+  --mw-bottom-nav-h: 0px;
+}
+@media (max-width: 47.99rem) {
+  :root:has([data-mw-bottom-nav]:not([data-keyboard-open])) {
+    --mw-bottom-nav-h: calc(var(--mw-bottom-nav-bar-h) + env(safe-area-inset-bottom, 0px));
+  }
+}
+.mw-bottom-nav {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: var(--mw-layer-bottom-nav);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-top: 1px solid var(--mw-line);
+  background: var(--mw-card);
+}
+/* 화면 키보드가 올라오면 입력칸을 가리지 않게 숨긴다. */
+.mw-bottom-nav[data-keyboard-open] { display: none; }
+@keyframes mw-bottom-sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mw-bottom-sheet { animation: mw-bottom-sheet-in 0.2s ease-out; }
 }
 @media (forced-colors: active) {
   :is([data-visual-block="group-table"], [data-board-table-part="head"]) :is(th, td) {

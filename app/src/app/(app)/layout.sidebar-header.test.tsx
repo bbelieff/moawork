@@ -66,6 +66,10 @@ vi.mock("@/components/notify/NotificationBell", () => ({ NotificationBell: () =>
 vi.mock("@/components/shell/SidebarNav", () => ({
   SidebarNav: () => createElement("nav", null, "trusted-sidebar"),
 }));
+// 휴대폰 아래 메뉴는 사이드바 밖 별도 부품 — 여기서는 자리만 찍는다(nav-items 를 비워 둔 테스트라 실물은 못 그린다).
+vi.mock("@/components/shell/MobileBottomNav", () => ({
+  MobileBottomNav: () => createElement("nav", { "aria-label": "아래 메뉴" }, "mobile-bottom-nav"),
+}));
 // 검색 트리거는 위치를 재려는 것이므로 자리표시자로 바꾼다.
 vi.mock("@/components/shell/GlobalSearch", () => ({
   GlobalSearch: () => createElement("span", null, "global-search-trigger"),
@@ -183,6 +187,18 @@ describe("BBE-194 사이드바 머리", () => {
   it("눌리지 않는 가짜 검색창을 상단바에 그리지 않는다", async () => {
     const html = await renderShell();
     expect(html).not.toContain("업체·담당자 검색");
+  });
+
+  // 2026-10-09 휴대폰 아래 메뉴 — 되돌리면 빨개진다: 아래 메뉴를 빼거나 사이드바 안에 넣거나,
+  // 본문 아래 여백(--mw-bottom-nav-h)을 지우거나, 휴대폰 사이드바를 다시 세로로 쌓으면 실패.
+  it("휴대폰에서는 위 한 줄(로고·회사 전환) + 아래 메뉴, 넓은 화면은 기존 세로 사이드바", async () => {
+    const html = await renderShell();
+    const aside = asideOf(html);
+    expect(aside).not.toContain("mobile-bottom-nav");
+    expect(html.indexOf("mobile-bottom-nav")).toBeGreaterThan(html.indexOf("page-body"));
+    const asideClass = /<aside class="([^"]*)"/.exec(html)?.[1] ?? "";
+    expect(asideClass.split(" ")).toEqual(expect.arrayContaining(["flex-row", "items-center", "md:flex-col", "md:items-stretch", "md:gap-0", "md:py-[var(--sp-4)]"]));
+    expect(html).toContain("pb-[calc(var(--sp-3)_+_var(--mw-bottom-nav-h))]");
   });
 
   it("넓은 보드가 페이지 폭을 밀지 않고 보드 내부 스크롤에만 남는다", async () => {
