@@ -120,8 +120,8 @@ describe("GroupTable — 출처 배지·편집 게이트(D09)", () => {
     })]);
     expect(html).toContain('type="date"');
     expect(html).toContain('type="datetime-local"');
-    expect(html).toContain('value="2026-08-11T03:45"');
-    expect(cellInputValue("datetime", "2026-08-11T03:45:00.000Z")).toBe("2026-08-11T03:45");
+    expect(html).toContain('value="2026-08-11T12:45"');
+    expect(cellInputValue("datetime", "2026-08-11T03:45:00.000Z")).toBe("2026-08-11T12:45"); // QA #886 — 한국 시각
     expect(cellInputValue("phone", "01030266007")).toBe("010-3026-6007");
   });
 

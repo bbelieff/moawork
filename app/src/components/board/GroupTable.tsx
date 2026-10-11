@@ -34,6 +34,7 @@ import type {
 import { formatCell } from "@/lib/boards/cells";
 import { NEW_LEAD_FIELD_KEYS } from "@/lib/new-lead/cell-fields";
 import { presentPhone } from "@/lib/format/phone";
+import { kstDateTimeLocal } from "@/lib/format/kst-datetime";
 import { findCellError, type CellFlash } from "@/lib/boards/cellFlash";
 import {
   getFieldSourceSpec,
@@ -209,12 +210,8 @@ export function cellInputValue(
 ): string | number {
   if (value === null) return "";
   if (type === "phone") return presentPhone(typeof value === "string" ? value : null, phoneStatus);
-  if (type === "datetime" && typeof value === "string") {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime())
-      ? value.slice(0, 16)
-      : parsed.toISOString().slice(0, 16);
-  }
+  // QA #886 — 한국 시각으로 보인다(전에는 세계 표준시라 상담 패널보다 9시간 이르게 보였다).
+  if (type === "datetime" && typeof value === "string") return kstDateTimeLocal(value);
   if (type === "date" && typeof value === "string") return value.slice(0, 10);
   if (typeof value === "object") return "";
   return typeof value === "number" ? value : String(value);
