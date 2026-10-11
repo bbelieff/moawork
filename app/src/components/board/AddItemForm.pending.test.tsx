@@ -34,8 +34,8 @@ function pendingAddItem() {
   let finish!: () => void;
   mockedAddItem.mockImplementation(
     () =>
-      new Promise<void>((resolve) => {
-        finish = resolve;
+      new Promise<{ ok: boolean }>((resolve) => {
+        finish = () => resolve({ ok: true });
       }),
   );
   return { done: () => finish() };
@@ -85,5 +85,20 @@ describe("AddItemForm — 저장 중 표시와 중복 제출 막기", () => {
       done();
     });
     expect(host.textContent).toContain("이름만 입력하면 등록돼요.");
+  });
+});
+
+describe("QA #882 — 추가가 실패하면 입력한 이름을 남긴다", () => {
+  it("실패하면 이름이 칸에 그대로 있고, 성공하면 비운다", async () => {
+    const host = mount();
+    const { form, input } = await renderForm(host);
+    mockedAddItem.mockResolvedValueOnce({ ok: false });
+    await act(async () => type(input, "실패할 항목"));
+    await act(async () => form.requestSubmit());
+    expect(input.value).toBe("실패할 항목");
+
+    mockedAddItem.mockResolvedValueOnce({ ok: true });
+    await act(async () => form.requestSubmit());
+    expect(input.value).toBe("");
   });
 });

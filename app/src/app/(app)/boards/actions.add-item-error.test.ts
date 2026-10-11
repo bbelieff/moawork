@@ -74,7 +74,7 @@ describe("BBE-201 addItemAction 은 실패를 화면 안에서 말한다", () =>
     guard.kind = "denied";
     guard.reason = "permission";
 
-    await expect(addItemAction(form())).resolves.toBeUndefined();
+    await expect(addItemAction(form())).resolves.toEqual({ ok: false });
     expect(flashed()?.message).toContain("권한이 없어요");
     expect(createItem).not.toHaveBeenCalled();
   });
@@ -97,7 +97,7 @@ describe("BBE-201 addItemAction 은 실패를 화면 안에서 말한다", () =>
 
   // 되돌리면 빨개진다: ValidationError 를 그대로 던지기
   it("③ 입력 오류(제목 없음) — 던지지 않고 무엇이 잘못됐는지 말한다", async () => {
-    await expect(addItemAction(form(""))).resolves.toBeUndefined();
+    await expect(addItemAction(form(""))).resolves.toEqual({ ok: false });
     expect(flashed()?.message).toBeTruthy();
     expect(createItem).not.toHaveBeenCalled();
   });
@@ -107,7 +107,7 @@ describe("BBE-201 addItemAction 은 실패를 화면 안에서 말한다", () =>
     const raw = 'new row violates row-level security policy for table "item_values" (SQLSTATE 42501)';
     createItem.mockImplementation(async () => { throw new Error(raw); });
 
-    await expect(addItemAction(form())).resolves.toBeUndefined();
+    await expect(addItemAction(form())).resolves.toEqual({ ok: false });
     const message = flashed()?.message ?? "";
     expect(message).toBeTruthy();
     expect(message).not.toContain("row-level security");

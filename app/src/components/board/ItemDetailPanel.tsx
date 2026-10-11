@@ -160,7 +160,20 @@ function AutoSaveField({
   options?: readonly { id: string; label: string }[];
   onStatusChange?: (status: string) => void;
 }) {
-  const presentedInitial = type === "phone" ? presentPhone(String(initialValue), phoneStatus) : String(initialValue);
+  // QA #882 — 목록·상태 칸은 저장값이 선택지 id 다. 화면에는 이름을 보이고, 저장할 때 이름을 id 로 바꾼다.
+  //   전에는 «opt-1-높음» 같은 id 가 그대로 보였고, 자동완성에서 이름을 고르면 서버가 «선택지에 없다» 며 거부했다.
+  const optionField = (type === "select" || type === "status") && options !== undefined && options.length > 0;
+  const toStored = (shown: string): string | null => {
+    if (!optionField) return shown;
+    const text = shown.trim();
+    if (text === "") return "";
+    return options!.find((option) => option.label === text)?.id ?? options!.find((option) => option.id === text)?.id ?? null;
+  };
+  const presentedInitial = type === "phone"
+    ? presentPhone(String(initialValue), phoneStatus)
+    : optionField
+      ? options!.find((option) => option.id === String(initialValue))?.label ?? String(initialValue)
+      : String(initialValue);
   const [value, setValue] = useState(presentedInitial);
   const [status, setStatus] = useState("✓ 자동 저장됨");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -189,7 +202,7 @@ function AutoSaveField({
             itemId,
             fieldKey,
             source,
-            value: next,
+            value: toStored(next) ?? next,
           });
       if (!result.ok) {
         updateStatus(result.message);
@@ -213,6 +226,12 @@ function AutoSaveField({
 
   function save(next: string) {
     if (next === savedRef.current) return;
+    if (toStored(next) === null) {
+      // 목록에 없는 글자는 보내지 않는다 — 치는 중간 글자마다 «선택지에 없다» 오류가 나던 자리다.
+      if (timerRef.current) clearTimeout(timerRef.current);
+      updateStatus("목록에 있는 값을 골라 주세요.");
+      return;
+    }
     if (timerRef.current) clearTimeout(timerRef.current);
     queuedRef.current = next;
     void drain();
@@ -245,6 +264,11 @@ function AutoSaveField({
           valueRef.current = next;
           updateStatus("저장 대기…");
           if (timerRef.current) clearTimeout(timerRef.current);
+          // 목록 칸은 목록의 이름과 꼭 맞을 때만 바로 저장하고, 치는 중에는 칸을 벗어날 때까지 기다린다.
+          if (optionField) {
+            if (toStored(next) !== null && next.trim() !== "") save(next);
+            return;
+          }
           timerRef.current = setTimeout(() => save(valueRef.current), 700);
         }}
         onBlur={() => {
@@ -645,7 +669,11 @@ export function ItemDetailPanel({
       applyComposerEdit(next);
       return;
     }
-    if (event.key === "Escape") node.blur();
+    if (event.key === "Escape") {
+      // QA #882 — 칸에서만 빠져나간다. 안 막으면 창 전체 단축키가 받아 상세 패널을 통째로 닫았다.
+      event.stopPropagation();
+      node.blur();
+    }
   }, [applyComposerEdit]);
 
   /*

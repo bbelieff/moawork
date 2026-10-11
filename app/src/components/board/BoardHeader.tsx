@@ -131,7 +131,7 @@ export function BoardHeader({
             </summary>
 
             <form
-              action={addItemAction}
+              action={async (formData: FormData) => { await addItemAction(formData); }}
               className="mw-layer-page-popover absolute end-0 top-full mt-1 flex w-64 flex-col gap-2 rounded-md border border-mw-line bg-mw-card p-2 shadow-lg"
             >
               <input type="hidden" name="boardId" value={boardId} />

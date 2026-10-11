@@ -30,6 +30,9 @@ export function AddItemForm({
   // Issue 857 — 저장 중에 Enter 를 또 누르면 같은 행이 두 번 생겼다. 폼 상태는 폼 안에서만 읽히므로
   //   안쪽 부품이 여기에 적어 두고, 제출 처리기가 읽는다.
   const pendingRef = useRef(false);
+  // QA #882 — 추가가 실패하면 입력한 이름을 돌려놓는다. 폼 액션이 끝나면 React 가 입력칸을 비우므로
+  //   실패한 이름을 여기 적어 두고, 저장 중 표시가 꺼진 뒤 다시 채운다.
+  const failedTitleRef = useRef<string | null>(null);
   const id = useId();
   const errorId = `mw-additem-error-${id}`;
   const hintId = `mw-additem-hint-${id}`;
@@ -53,8 +56,14 @@ export function AddItemForm({
     if (plan.focusField) inputRef.current?.focus();
   }
 
+  async function submitNewItem(formData: FormData) {
+    const title = formData.get("title");
+    const result = await addItemAction(formData);
+    failedTitleRef.current = result?.ok !== false || typeof title !== "string" ? null : title;
+  }
+
   return (
-    <form action={addItemAction} onSubmit={handleSubmit} noValidate className="flex flex-col gap-1">
+    <form action={submitNewItem} onSubmit={handleSubmit} noValidate className="flex flex-col gap-1">
       <input type="hidden" name="boardId" value={boardId} />
       <input type="hidden" name="groupId" value={groupId ?? ""} />
       {prefill ? (
@@ -69,6 +78,7 @@ export function AddItemForm({
         hintId={hintId}
         inputRef={inputRef}
         pendingRef={pendingRef}
+        failedTitleRef={failedTitleRef}
         inputClassName={inputClassName}
         onEdit={() => error && setError(null)}
       />
@@ -82,6 +92,7 @@ function AddItemFields({
   hintId,
   inputRef,
   pendingRef,
+  failedTitleRef,
   inputClassName,
   onEdit,
 }: {
@@ -90,13 +101,21 @@ function AddItemFields({
   hintId: string;
   inputRef: RefObject<HTMLInputElement | null>;
   pendingRef: MutableRefObject<boolean>;
+  failedTitleRef: MutableRefObject<string | null>;
   inputClassName?: string;
   onEdit: () => void;
 }) {
   const { pending } = useFormStatus();
   useEffect(() => {
     pendingRef.current = pending;
-  }, [pending, pendingRef]);
+    if (pending) return;
+    const failed = failedTitleRef.current;
+    failedTitleRef.current = null;
+    if (failed !== null && inputRef.current && inputRef.current.value === "") {
+      inputRef.current.value = failed;
+      inputRef.current.focus();
+    }
+  }, [pending, pendingRef, failedTitleRef, inputRef]);
   return (
     <>
       <div className="flex items-center gap-1">
