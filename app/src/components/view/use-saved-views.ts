@@ -8,9 +8,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PersonScope } from "@/lib/view";
 import type { SavedBoardView, SavedBoardViewConfig } from "@/lib/view/board-saved";
+import { workspaceFetch } from "@/components/shell/workspace-fetch";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  // QA #887 — 이 탭의 회사로 보낸다(다른 탭에서 마지막에 연 회사 쿠키가 아니라).
+  const response = await workspaceFetch(url, init);
   const payload = await response.json().catch(() => ({})) as { data?: T; error?: string };
   if (!response.ok) throw new Error(payload.error ?? "뷰를 저장하지 못했어요.");
   return payload.data as T;

@@ -451,9 +451,11 @@ describe("proxy workspace namespace", () => {
 
     it("머리글이 없으면 예전처럼 쿠키를 따른다", async () => {
       setup({ id: "user-1" }, [membership("org-acme", "acme")]);
+      setup({ id: "user-1" }, [membership("org-alpha", "alpha-team"), membership("org-acme", "acme")]);
       const response = await proxy(api({ cookie: "mw_org=org-acme" }));
       expect(response.status).toBe(200);
-      expect(response.headers.get("x-middleware-request-cookie") ?? "mw_org=org-acme").toContain("mw_org=org-acme");
+      // 머리글 없는 요청은 회사를 바꾸지 않는다 — 다른 회사로 바꿔 싣지 않았는지 본다.
+      expect(response.headers.get("x-middleware-request-cookie") ?? "").not.toContain("mw_org=org-alpha");
       expect(response.headers.get("set-cookie") ?? "").not.toContain("mw_org");
     });
 
