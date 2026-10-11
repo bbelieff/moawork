@@ -669,10 +669,14 @@ export function BoardWorkspace({
     const cellKey = cellMessageKey(itemId, columnKey);
     if (result.ok) {
       const saved = result.item;
+      // QA #882 — 행은 저장됐어도 이 칸이 거절됐을 수 있다(관대 저장: 틀린 칸만 뺀다. 예: 권한 없는 단계 이동).
+      //   그 사유를 «알림» 처럼 다루면 2초 뒤 조용한 새로고침에서 서버가 같은 판을 보내 지워졌다 —
+      //   사용자는 값이 왜 돌아갔는지 못 봤다. 거절 사유는 실패처럼 이 판 기준으로 남긴다.
+      const rejected = result.errors.length > 0;
       setCellOverlay((prev) => ({
         ...prev,
         saved: { ...prev.saved, [itemId]: { item: saved, staleSeen: 0 } },
-        messages: { ...prev.messages, [cellKey]: { message, version: saved.updated_at, failed: false, staleSeen: 0 } },
+        messages: { ...prev.messages, [cellKey]: { message, version: saved.updated_at, failed: rejected, staleSeen: 0 } },
       }));
       scheduleQuietRefresh();
       return;
