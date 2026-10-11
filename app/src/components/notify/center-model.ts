@@ -1,5 +1,6 @@
 import type { NotifySnapshot } from "@/lib/notify/server";
 import { notificationTargetHref } from "@/lib/notify/highlight";
+import { workspaceFetch } from "@/components/shell/workspace-fetch";
 export const ROUTES: Record<string, string> = {
   mine: "내게 온 알림",
   assignment: "담당",
@@ -117,7 +118,8 @@ export function filterCenterItems(
   });
 }
 export async function requestReadAll(
-  request: typeof fetch = fetch,
+  // QA #887 — 기본은 이 탭의 회사로 보낸다.
+  request: (input: string, init?: RequestInit) => Promise<Response> = workspaceFetch,
 ): Promise<void> {
   const response = await request("/api/notifications/read-all", {
     method: "POST",

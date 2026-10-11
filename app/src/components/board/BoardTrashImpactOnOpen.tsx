@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { BoardTrashImpact } from "@/lib/boards/types";
 import { formatTrashImpact } from "@/lib/boards/trash-impact-format";
+import { workspaceFetch } from "@/components/shell/workspace-fetch";
 
 /**
  * «탭 삭제» 칸의 지울 내용 개수 — 감싼 «탭 설정»(details)을 열 때 한 번만 읽는다(Issue 857).
@@ -25,7 +26,7 @@ export function BoardTrashImpactOnOpen({ boardId }: Readonly<{ boardId: string }
       if (requested.current) return;
       requested.current = true;
       setState({ kind: "loading" });
-      fetch(`/api/boards/${encodeURIComponent(boardId)}/trash-impact`, { cache: "no-store" })
+      workspaceFetch(`/api/boards/${encodeURIComponent(boardId)}/trash-impact`, { cache: "no-store" })
         .then(async (response) => {
           if (!response.ok) throw new Error(String(response.status));
           const body = (await response.json()) as { data?: BoardTrashImpact };

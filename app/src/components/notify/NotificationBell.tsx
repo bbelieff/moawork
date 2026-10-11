@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { NotifySnapshot } from "@/lib/notify/server";
 import { Badge } from "./Badge";
 import { NotificationPanel } from "./NotificationPanel";
+import { workspaceFetch } from "@/components/shell/workspace-fetch";
 
 /** Realtime 이 안 될 때의 조용한 대체 주기(60초). */
 const POLL_MS = 60_000;
@@ -23,7 +24,7 @@ export function NotificationBell({ initial }: { initial: NotifySnapshot }) {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch("/api/notifications", { cache: "no-store" });
+      const res = await workspaceFetch("/api/notifications", { cache: "no-store" });
       if (!res.ok) return; // 조용히 무시
       const body = (await res.json()) as { data?: NotifySnapshot };
       if (body.data) setSnapshot(body.data);

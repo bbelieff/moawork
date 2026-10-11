@@ -13,6 +13,8 @@ import {
   PANEL_WIDTH_CLASS,
   TEXT_CLAMP_CLASS,
 } from "./layout";
+import { workspaceFetch } from "@/components/shell/workspace-fetch";
+import { withWorkspaceBase, workspaceBaseFromPathname } from "@/components/shell/workspace-href";
 
 /**
  * 소식창 — 탭 2개(내 알림 / 회사 소식).
@@ -36,7 +38,7 @@ export function NotificationPanel({
     setBusy(true);
     try {
       // 점만 지운다 — 숫자는 서버에서도 유지된다.
-      await fetch("/api/notifications/read-all", { method: "POST" });
+      await workspaceFetch("/api/notifications/read-all", { method: "POST" });
       await onChanged();
       router.refresh();
     } catch {
@@ -55,7 +57,10 @@ export function NotificationPanel({
    */
   const go = async (href: string | null, notificationId?: string) => {
     onClose();
-    if (href) router.push(notificationId ? notificationTargetHref(href, notificationId) : href);
+    // QA #887 — 회사 주소 없이 온 링크는 «이 탭의 회사» 를 붙인다. 붙이지 않으면 프록시가 마지막에 연 회사
+    //   (다른 탭일 수 있다) 쿠키로 보낸다.
+    const base = typeof window === "undefined" ? null : workspaceBaseFromPathname(window.location.pathname);
+    if (href) router.push(withWorkspaceBase(base, notificationId ? notificationTargetHref(href, notificationId) : href));
     void onChanged();
   };
 

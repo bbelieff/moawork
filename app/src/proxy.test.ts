@@ -426,6 +426,45 @@ describe("proxy workspace namespace", () => {
     const response = await proxy(new NextRequest("https://www.moa-work.com/notices"));
     expect(response.headers.get("location")).toBe("https://www.moa-work.com/workspace-entry?error=routing");
   });
+
+  describe("QA #887 — /api 는 화면이 보낸 회사를 이 요청에만 쓴다", () => {
+    const api = (headers: Record<string, string>) =>
+      new NextRequest("https://www.moa-work.com/api/notifications", { headers });
+
+    it("회원인 회사를 보내면 쿠키의 «마지막 회사» 대신 그 회사로 요청을 보내고, 응답 쿠키는 바꾸지 않는다", async () => {
+      setup({ id: "user-1" }, [membership("org-alpha", "alpha-team"), membership("org-acme", "acme")]);
+      const response = await proxy(api({ "x-mw-workspace": "acme", cookie: "mw_org=org-alpha; mw_workspace_slug=alpha-team" }));
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-middleware-request-cookie")).toContain("mw_org=org-acme");
+      expect(response.headers.get("set-cookie") ?? "").not.toContain("mw_org");
+      expect(response.headers.get("set-cookie") ?? "").not.toContain("mw_workspace_slug");
+    });
+
+    it("회원이 아닌 회사나 이상한 이름표는 403 이고 쿠키 회사로 넘어가지 않는다", async () => {
+      setup({ id: "user-1" }, [membership("org-acme", "acme")]);
+      const other = await proxy(api({ "x-mw-workspace": "someone-else", cookie: "mw_org=org-acme" }));
+      expect(other.status).toBe(403);
+      expect(other.headers.get("x-middleware-request-cookie")).toBeNull();
+      const odd = await proxy(api({ "x-mw-workspace": "../acme", cookie: "mw_org=org-acme" }));
+      expect(odd.status).toBe(403);
+    });
+
+    it("머리글이 없으면 예전처럼 쿠키를 따른다", async () => {
+      setup({ id: "user-1" }, [membership("org-acme", "acme")]);
+      setup({ id: "user-1" }, [membership("org-alpha", "alpha-team"), membership("org-acme", "acme")]);
+      const response = await proxy(api({ cookie: "mw_org=org-acme" }));
+      expect(response.status).toBe(200);
+      // 머리글 없는 요청은 회사를 바꾸지 않는다 — 다른 회사로 바꿔 싣지 않았는지 본다.
+      expect(response.headers.get("x-middleware-request-cookie") ?? "").not.toContain("mw_org=org-alpha");
+      expect(response.headers.get("set-cookie") ?? "").not.toContain("mw_org");
+    });
+
+    it("로그인하지 않았으면 머리글이 있어도 로그인으로 보낸다", async () => {
+      setup(null);
+      const response = await proxy(api({ "x-mw-workspace": "acme" }));
+      expect(response.headers.get("location")).toContain("/login");
+    });
+  });
 });
 
 describe("Issue 857 · 프록시의 회사 목록 기억(들어갈 수 있다 판정에만)", () => {
