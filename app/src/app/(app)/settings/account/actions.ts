@@ -53,17 +53,15 @@ export async function revokeCurrentSession(formData: FormData) {
  * 전에는 기기 목록 표의 행만 «로그아웃» 으로 표시했고(목록은 채우는 곳이 없어 늘 비어 있었다),
  * Supabase 로그인 자체는 어느 기기에서도 끝나지 않았다 — 잃어버린 휴대폰이 그대로 로그인돼 있었다.
  * 이제 Supabase 의 전체 로그아웃(scope: global)으로 모든 기기의 갱신 토큰을 끊고, 이 기기도 로그아웃한다.
- * 다른 기기는 이미 받은 접속 토큰이 끝나는 대로(길어야 한 시간) 로그인 화면으로 간다.
+ * 다른 기기는 이미 받은 접속 토큰이 끝나는 대로(보통 한 시간 이내) 로그인 화면으로 간다.
+ *
+ * 실패해도 이 기기는 이미 로그아웃된 상태일 수 있다(Supabase 가 서버 오류 전에 이 기기 세션을 먼저 지운다).
+ * 그래서 실패는 설정 화면이 아니라 로그인 화면에서 «다른 기기는 안 끊겼을 수 있다» 고 알린다.
  */
 export async function revokeAllSessions() {
   await getSession();
-  try {
-    await revokeAllMemberSessions(crypto.randomUUID());
-  } catch {
-    // 기기 기록 표는 보조 장부다. 실패해도 실제 로그아웃은 해야 한다.
-  }
+  let failed = false;
   if (hasSupabaseEnv()) {
-    let failed = false;
     try {
       const supabase = await createClient();
       const { error } = await supabase.auth.signOut({ scope: "global" });
@@ -71,13 +69,19 @@ export async function revokeAllSessions() {
     } catch {
       failed = true;
     }
-    if (failed) redirect("/settings/account/sessions?error=signout-all");
+  }
+  if (!failed) {
+    try {
+      await revokeAllMemberSessions(crypto.randomUUID());
+    } catch {
+      // 기기 기록 표는 보조 장부다 — 실제 로그아웃이 끝났으면 장부 실패로 되돌리지 않는다.
+    }
   }
   const jar = await cookies();
   jar.delete(SESSION_COOKIE.uid);
   jar.delete(SESSION_COOKIE.org);
   jar.delete(SESSION_COOKIE.as);
-  redirect("/login?reason=signed-out-everywhere");
+  redirect(failed ? "/login?error=signout-all-failed" : "/login?reason=signed-out-everywhere");
 }
 
 export async function requestPrivacyExport() {

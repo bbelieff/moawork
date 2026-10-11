@@ -96,9 +96,9 @@ describe("QA #887 — 모든 기기에서 로그아웃", () => {
     expect(mocks.signOut).toHaveBeenCalledTimes(1);
   });
 
-  it("전체 로그아웃이 실패하면 쿠키를 지우지 않고 실패를 알린다", async () => {
+  it("전체 로그아웃이 실패하면 장부를 바꾸지 않고, 로그인 화면에서 다른 기기가 남았을 수 있다고 알린다", async () => {
     mocks.signOut.mockResolvedValue({ error: { message: "nope" } });
-    await expect(revokeAllSessions()).rejects.toThrow("REDIRECT /settings/account/sessions?error=signout-all");
-    expect(mocks.cookieDelete).not.toHaveBeenCalled();
+    await expect(revokeAllSessions()).rejects.toThrow("REDIRECT /login?error=signout-all-failed");
+    expect(mocks.revokeAll).not.toHaveBeenCalled();
   });
 });
