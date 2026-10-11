@@ -50,6 +50,7 @@ import {
 } from "@/lib/boards/detail-layout";
 import { formatCell } from "@/lib/boards/cells";
 import { formatPhone, presentPhone, type PhoneNormalizationStatus } from "@/lib/format/phone";
+import { kstDateTimeLocal } from "@/lib/format/kst-datetime";
 import { isSourceEditable } from "@/lib/field/source";
 import {
   addDetailFieldAction,
@@ -1638,7 +1639,7 @@ export function ItemDetailPanel({
                                 fieldKey={entry.key}
                                 source={entry.source}
                                 type={type}
-                                initialValue={inputValue(value)}
+                                initialValue={type === "datetime" && typeof value === "string" ? kstDateTimeLocal(value) : inputValue(value)}
                                 canonicalDealId={canonicalNewLead && CANONICAL_NEW_LEAD_DETAIL_KEYS.has(entry.key) ? row.deal_id : null}
                                 phoneStatus={row.value_statuses?.[entry.key] ?? "normalized"}
                                 options={column?.options_jsonb?.options}

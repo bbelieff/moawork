@@ -17,6 +17,7 @@ import { getFieldTypeSpec, validateValue } from "@/lib/custom/field-types";
 // 엉뚱한 모듈로 리졸브된다(지금까지 이 배럴의 실제 소비자가 0곳이라 아무도 못 봤다) —
 // 파일을 직접 가리켜 우회한다.
 import { analyzePhone, formatPhone } from "@/lib/format/phone";
+import { kstDateTimeText } from "@/lib/format/kst-datetime";
 import {
   canonicalNumberString,
   formatDecimal,
@@ -128,6 +129,8 @@ export function formatCell(
   if (type === "number" && typeof value === "number") return formatDecimal(value);
   if (type === "money" && typeof value === "number") return formatDecimal(value);
   if (type === "phone" && typeof value === "string") return formatPhone(value);
+  // QA #886 — 일시는 «2026-10-11T05:00:00.000Z» 원문 대신 한국 시각 «2026-10-11 14:00».
+  if (type === "datetime" && typeof value === "string") return kstDateTimeText(value);
   if (type === "file" && Array.isArray(value)) {
     return value
       .map((entry) => (typeof entry === "string" ? entry : (entry as FileCellValue).name))

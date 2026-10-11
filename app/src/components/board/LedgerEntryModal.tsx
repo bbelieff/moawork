@@ -12,6 +12,7 @@ import type { LedgerKind } from "@/lib/accounting/ledger";
 import { ResultBanner } from "@/lib/ui/ResultBanner";
 import type { ResultNotice } from "@/lib/ui/result-notice";
 import { BoardModalLayer } from "./BoardDialogPortal";
+import { kstToday } from "@/lib/format/kst-datetime";
 
 export interface LedgerEntryModalProps {
   dealId: string;
@@ -21,8 +22,9 @@ export interface LedgerEntryModalProps {
   onSaved(): void;
 }
 
+// QA #886 — 한국 날짜. 전에는 세계 표준시라 한국 오전 9시 전에 열면 어제가 들어갔다(1일 아침이면 전달).
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return kstToday();
 }
 
 function parseWon(raw: string): number {

@@ -7,6 +7,7 @@
  */
 
 import { FIELD_TYPES, type FieldType, type FieldOption } from "./domain-types";
+import { parseKstDateTime } from "@/lib/format/kst-datetime";
 import {
   checkedOtherInfoCount,
   parseOtherInfoValue,
@@ -254,8 +255,9 @@ const SPECS: Record<FieldType, FieldTypeSpec> = {
     normalize: (raw) => {
       const s = asString(raw, "datetime", 40);
       if (s === null) return null;
-      const d = new Date(s);
-      if (Number.isNaN(d.getTime())) throw new ValidationError("datetime: 유효한 일시가 아닙니다");
+      // QA #886 — 입력칸이 보내는 시간대 없는 일시는 한국 시각이다(서버 시간대로 읽으면 9시간 밀린다).
+      const d = parseKstDateTime(s);
+      if (d === null) throw new ValidationError("datetime: 유효한 일시가 아닙니다");
       return d.toISOString();
     },
     isEmpty: emptyDefault,
