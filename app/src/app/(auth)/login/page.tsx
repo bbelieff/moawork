@@ -15,6 +15,7 @@ const LOGIN_ERROR_MESSAGES: Record<string, string> = {
   membership: "회사 연결이 필요합니다.",
   profile: "사용자 정보를 준비하지 못했어요. 다시 로그인해 주세요.",
   provisioning: "회사 접근 권한을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.",
+  "signout-all-failed": "모든 기기에서 로그아웃하지 못했어요. 다른 기기는 아직 로그인돼 있을 수 있어요. 다시 로그인한 뒤 «모든 기기에서 로그아웃»을 한 번 더 눌러 주세요.",
 };
 
 export default async function LoginPage({
@@ -28,6 +29,8 @@ export default async function LoginPage({
   );
   const errorCode = typeof params.error === "string" ? params.error : "";
   const errorMessage = LOGIN_ERROR_MESSAGES[errorCode];
+  // QA #887 — «모든 기기에서 로그아웃» 뒤 무엇이 일어났는지 알린다.
+  const signedOutEverywhere = params.reason === "signed-out-everywhere";
   const devToolsEnabled = process.env.NODE_ENV !== "production";
   const users = devToolsEnabled ? getRepo().listUsers() : [];
 
@@ -118,6 +121,11 @@ export default async function LoginPage({
           {errorMessage ? (
             <p role="alert" className={styles.alert}>
               {errorMessage}
+            </p>
+          ) : null}
+          {signedOutEverywhere ? (
+            <p role="status" className={styles.alert}>
+              모든 기기에서 로그아웃했어요. 다른 기기도 잠시 뒤(보통 한 시간 이내) 로그인 화면으로 바뀌어요.
             </p>
           ) : null}
 
