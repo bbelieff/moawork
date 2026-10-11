@@ -14,6 +14,7 @@ import {
   WORK_MOVE_LABEL,
   type ContactTransitionKind,
 } from "@/lib/crm/contactPipeline";
+import { workspaceFetch } from "@/components/shell/workspace-fetch";
 
 const INITIAL: ContactPipelineActionState = { ok: false, message: "" };
 
@@ -73,7 +74,7 @@ export function ContactPipelineAction({
   useEffect(() => {
     if (kind !== "contact_to_work") return;
     let active = true;
-    void fetch("/api/companies", { cache: "no-store" })
+    void workspaceFetch("/api/companies", { cache: "no-store" })
       .then(async (response) => response.ok ? companyRowsFromResponse(await response.json()) : [])
       .then((rows) => {
         if (!active) return;

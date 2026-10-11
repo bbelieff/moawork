@@ -7,6 +7,7 @@ import { SESSION_COOKIE } from "@/lib/auth/session";
 import { decideWorkspaceNamespace, isWorkspaceNamespaceCandidate } from "@/lib/auth/workspace-namespace";
 import { forgetMembershipRows, recallMembershipRows, rememberMembershipRows } from "@/lib/auth/proxy-membership-memo";
 import { WORKSPACE_ENTRY_RESUME_COOKIE } from "@/lib/workspace-entry/contracts";
+import { WORKSPACE_API_HEADER } from "@/lib/auth/workspace-api-header";
 
 // Next 16: `middleware` 는 `proxy` 로 대체됐다(node_modules/next/dist/docs — proxy.ts 규약).
 // 역할:
@@ -83,6 +84,10 @@ type CookieOp =
 /** 응답 «판단». 응답 «객체» 가 아니다 — 그래서 우회 return 이 만들어지지 않는다. */
 type RouteDecision =
   | { kind: "pass"; cookies?: CookieOp[] }
+  // QA #887 — 지정한 회사의 회원이 아니면 /api 요청을 막는다(쿠키는 건드리지 않는다).
+  | { kind: "reject"; status: 403 }
+  // QA #887 — 이 요청에만 회사를 바꿔 실어 보낸다. 응답 쿠키는 바꾸지 않는다(다른 탭의 «마지막 회사» 를 흔들지 않게).
+  | { kind: "forward"; requestHeaders: Headers }
   | { kind: "redirect"; to: Parameters<typeof NextResponse.redirect>[0]; cookies?: CookieOp[] }
   | {
       kind: "rewrite";
@@ -229,11 +234,10 @@ async function routeRequest(
     return { kind: "redirect", to: loginUrl };
   }
 
-  if (user && isWorkspaceNamespaceCandidate(pathname)) {
-    const pathWithSearch = `${pathname}${search}`;
-    // Issue 857 — 같은 사람이 1분 안에 다시 오면 기억한 회사 목록으로 «들어갈 수 있다» 만 판정한다
-    //   (lib/auth/proxy-membership-memo.ts). 거부·없음은 기억을 믿지 않고 지금 다시 읽는다.
-    const remembered = recallMembershipRows(user.id);
+  // Issue 857 — 같은 사람이 1분 안에 다시 오면 기억한 회사 목록으로 «들어갈 수 있다» 만 판정한다
+  //   (lib/auth/proxy-membership-memo.ts). 거부·없음은 기억을 믿지 않고 지금 다시 읽는다.
+  const decideMembership = async (userId: string, pathWithSearch: string) => {
+    const remembered = recallMembershipRows(userId);
     let decision = remembered === undefined ? null : decideWorkspaceNamespace(pathWithSearch, remembered);
     timing.membership = "memo";
     if (!decision || (decision.kind !== "rewrite" && decision.kind !== "alias")) {
@@ -242,16 +246,37 @@ async function routeRequest(
       const { data: membershipRows, error: membershipError } = await supabase
         .from("org_members")
         .select("org_id, status, role, scope, created_at, orgs!inner(id, slug, status, name, plan_tier, created_at)")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .order("created_at", { ascending: true });
       timing.membershipMs = performance.now() - membershipStartedAt;
       decision = decideWorkspaceNamespace(pathWithSearch, membershipError ? null : membershipRows);
       if (!membershipError && (decision.kind === "rewrite" || decision.kind === "alias")) {
-        rememberMembershipRows(user.id, membershipRows);
+        rememberMembershipRows(userId, membershipRows);
       } else {
-        forgetMembershipRows(user.id);
+        forgetMembershipRows(userId);
       }
     }
+    return decision;
+  };
+
+  // QA #887 — 화면이 «지금 보는 회사» 를 머리글로 보낸 /api 요청. 그 회사의 활성 회원일 때만 이 요청에
+  //   그 회사를 싣는다. 머리글이 없으면 아래 예전 경로(쿠키)를 따른다.
+  const apiWorkspace = pathname.startsWith("/api/") ? request.headers.get(WORKSPACE_API_HEADER) : null;
+  if (user && apiWorkspace !== null) {
+    const slug = apiWorkspace.trim();
+    const decision = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(slug)
+      ? await decideMembership(user.id, `/w/${slug}`)
+      : null;
+    if (!decision || decision.kind !== "rewrite") return { kind: "reject", status: 403 };
+    request.cookies.set(SESSION_COOKIE.org, decision.orgId);
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("cookie", request.cookies.toString());
+    return { kind: "forward", requestHeaders };
+  }
+
+  if (user && isWorkspaceNamespaceCandidate(pathname)) {
+    const pathWithSearch = `${pathname}${search}`;
+    const decision = await decideMembership(user.id, pathWithSearch);
     if (decision.kind === "deny" || decision.kind === "none") {
       const denied = new URL(request.url);
       denied.pathname = "/workspace-entry";
@@ -308,7 +333,11 @@ function buildResponse(request: NextRequest, decision: RouteDecision, jar: Retur
       ? NextResponse.redirect(decision.to)
       : decision.kind === "rewrite"
         ? NextResponse.rewrite(decision.to, { request: { headers: decision.requestHeaders } })
-        : NextResponse.next({ request });
+        : decision.kind === "forward"
+          ? NextResponse.next({ request: { headers: decision.requestHeaders } })
+          : decision.kind === "reject"
+            ? NextResponse.json({ error: "workspace_forbidden" }, { status: decision.status })
+            : NextResponse.next({ request });
 
   // 세션 갱신 쿠키가 먼저, 라우팅이 요구한 쿠키 조작이 그 위에.
   //
@@ -318,7 +347,7 @@ function buildResponse(request: NextRequest, decision: RouteDecision, jar: Retur
   //   그때는 라우팅 의도가 이겨야 한다(예: 접근 거부 응답의 삭제 지시).
   //   ※ 없는 충돌 사례를 찾다가 이 규칙을 지우지 마라. 지금 안 겹치는 게 맞다.
   jar.applyTo(response);
-  for (const cookie of decision.cookies ?? []) {
+  for (const cookie of ("cookies" in decision ? decision.cookies : undefined) ?? []) {
     if (cookie.op === "delete") response.cookies.delete(cookie.name);
     else response.cookies.set(cookie.name, cookie.value, cookie.options);
   }

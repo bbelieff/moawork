@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SEARCH_KINDS, type SearchKind, type SearchResponse, type SearchResult } from "@/lib/search/types";
 import { Icon } from "./icons";
+import { workspaceFetch } from "@/components/shell/workspace-fetch";
 
 const RECENT_KEY = "mw:recent-search:v1";
 const KIND_LABEL: Record<SearchKind, string> = { board: "보드", deal: "업무", company: "회사", notice: "공지" };
@@ -77,7 +78,7 @@ export function GlobalSearch() {
 
   const load = useCallback(async (value: string) => {
     const recent = readRecent().map((item) => `${item.kind}:${item.id}`).join(",");
-    const response = await fetch(`/api/search?q=${encodeURIComponent(value)}&recent=${encodeURIComponent(recent)}`, { cache: "no-store" });
+    const response = await workspaceFetch(`/api/search?q=${encodeURIComponent(value)}&recent=${encodeURIComponent(recent)}`, { cache: "no-store" });
     if (!response.ok) throw new Error("검색 결과를 불러오지 못했어요");
     setData(unwrapSearchResponse(await response.json() as unknown));
   }, []);
@@ -113,7 +114,7 @@ export function GlobalSearch() {
     const title = query.trim(); if (!title) return;
     setBusy(true); setError("");
     try {
-      const response = await fetch("/api/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: createKind, title }) });
+      const response = await workspaceFetch("/api/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: createKind, title }) });
       const payload = await response.json() as unknown;
       if (!response.ok) {
         const message = isRecord(payload) && typeof payload.error === "string" ? payload.error : "만들지 못했어요";
