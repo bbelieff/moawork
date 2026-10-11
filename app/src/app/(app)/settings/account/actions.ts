@@ -1,7 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getSession } from "@/lib/auth/session";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { getSession, SESSION_COOKIE } from "@/lib/auth/session";
+import { createClient } from "@/lib/supabase/server";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { requestMyPrivacyExport, revokeAllMemberSessions, revokeCurrentMemberSession } from "@/lib/account/memberAccountOps";
 import { requestWorkspaceDeletion, restoreWorkspaceDeletion } from "@/lib/workspace-deletion/server";
 
@@ -43,10 +47,37 @@ export async function revokeCurrentSession(formData: FormData) {
   revalidatePath("/settings/account/sessions");
 }
 
+/**
+ * 모든 기기에서 로그아웃 (QA #887).
+ *
+ * 전에는 기기 목록 표의 행만 «로그아웃» 으로 표시했고(목록은 채우는 곳이 없어 늘 비어 있었다),
+ * Supabase 로그인 자체는 어느 기기에서도 끝나지 않았다 — 잃어버린 휴대폰이 그대로 로그인돼 있었다.
+ * 이제 Supabase 의 전체 로그아웃(scope: global)으로 모든 기기의 갱신 토큰을 끊고, 이 기기도 로그아웃한다.
+ * 다른 기기는 이미 받은 접속 토큰이 끝나는 대로(길어야 한 시간) 로그인 화면으로 간다.
+ */
 export async function revokeAllSessions() {
   await getSession();
-  await revokeAllMemberSessions(crypto.randomUUID());
-  revalidatePath("/settings/account/sessions");
+  try {
+    await revokeAllMemberSessions(crypto.randomUUID());
+  } catch {
+    // 기기 기록 표는 보조 장부다. 실패해도 실제 로그아웃은 해야 한다.
+  }
+  if (hasSupabaseEnv()) {
+    let failed = false;
+    try {
+      const supabase = await createClient();
+      const { error } = await supabase.auth.signOut({ scope: "global" });
+      failed = Boolean(error);
+    } catch {
+      failed = true;
+    }
+    if (failed) redirect("/settings/account/sessions?error=signout-all");
+  }
+  const jar = await cookies();
+  jar.delete(SESSION_COOKIE.uid);
+  jar.delete(SESSION_COOKIE.org);
+  jar.delete(SESSION_COOKIE.as);
+  redirect("/login?reason=signed-out-everywhere");
 }
 
 export async function requestPrivacyExport() {

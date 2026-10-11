@@ -28,6 +28,8 @@ export default async function LoginPage({
   );
   const errorCode = typeof params.error === "string" ? params.error : "";
   const errorMessage = LOGIN_ERROR_MESSAGES[errorCode];
+  // QA #887 — «모든 기기에서 로그아웃» 뒤 무엇이 일어났는지 알린다.
+  const signedOutEverywhere = params.reason === "signed-out-everywhere";
   const devToolsEnabled = process.env.NODE_ENV !== "production";
   const users = devToolsEnabled ? getRepo().listUsers() : [];
 
@@ -118,6 +120,11 @@ export default async function LoginPage({
           {errorMessage ? (
             <p role="alert" className={styles.alert}>
               {errorMessage}
+            </p>
+          ) : null}
+          {signedOutEverywhere ? (
+            <p role="status" className={styles.alert}>
+              모든 기기에서 로그아웃했어요. 다른 기기도 길어야 한 시간 안에 로그인 화면으로 바뀌어요.
             </p>
           ) : null}
 

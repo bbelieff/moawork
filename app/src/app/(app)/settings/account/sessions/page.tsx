@@ -25,8 +25,13 @@ const NAV_ITEMS = [
   },
 ] as const;
 
-export default async function AccountSessionsPage() {
+export default async function AccountSessionsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const ctx = await getSession();
+  const signOutAllFailed = (await searchParams)?.error === "signout-all";
   let sessions: Awaited<ReturnType<typeof listMyMemberSessions>> = [];
   let unavailable = false;
   // The 011 RPC accepts a nullable UUID when the request has no registered
@@ -45,7 +50,8 @@ export default async function AccountSessionsPage() {
         <p>지금 사용하는 기기에서 안전하게 로그아웃할 수 있어요.</p>
       </header>
       <AccountNav current="sessions" items={NAV_ITEMS} />
-      {unavailable ? <AccountState kind="blocked" title="로그인한 기기 정보를 불러오지 못했어요" message="잠시 후 이 화면을 다시 열어 주세요." /> : <section aria-label="로그인 세션"><p>로그인한 기기 {sessions.length}개</p>{sessions.map((session) => <form action={revokeCurrentSession} key={session.id}><input type="hidden" name="sessionId" value={session.id} /><p>{session.current_session ? "지금 사용하는 기기" : "다른 기기"} · 마지막 사용 {session.last_seen_at}</p><button type="submit">이 기기에서 로그아웃</button></form>)}</section>}
+      {signOutAllFailed ? <AccountState kind="blocked" title="모든 기기에서 로그아웃하지 못했어요" message="아무 기기도 로그아웃되지 않았어요. 잠시 후 다시 눌러 주세요." /> : null}
+      {unavailable ? <AccountState kind="blocked" title="로그인한 기기 정보를 불러오지 못했어요" message="잠시 후 이 화면을 다시 열어 주세요." /> : sessions.length === 0 ? <p>«모든 기기에서 로그아웃»을 누르면 이 기기를 포함해 이 계정으로 로그인한 모든 기기가 로그아웃돼요. 잃어버린 기기가 있을 때 쓰세요.</p> : <section aria-label="로그인 세션"><p>로그인한 기기 {sessions.length}개</p>{sessions.map((session) => <form action={revokeCurrentSession} key={session.id}><input type="hidden" name="sessionId" value={session.id} /><p>{session.current_session ? "지금 사용하는 기기" : "다른 기기"} · 마지막 사용 {session.last_seen_at}</p><button type="submit">이 기기에서 로그아웃</button></form>)}</section>}
       <div className={styles.actionRow}>
         <CurrentSessionLogout />
         {!unavailable && <form action={revokeAllSessions}><button type="submit">모든 기기에서 로그아웃</button></form>}

@@ -51,7 +51,7 @@ import {
 import { formatCell } from "@/lib/boards/cells";
 import { formatPhone, presentPhone, type PhoneNormalizationStatus } from "@/lib/format/phone";
 import { kstDateTimeLocal } from "@/lib/format/kst-datetime";
-import { isSourceEditable } from "@/lib/field/source";
+import { isSourceEditable, sourceRequiresConfirm } from "@/lib/field/source";
 import {
   addDetailFieldAction,
   addUnplacedDetailEntryAction,
@@ -1474,10 +1474,14 @@ export function ItemDetailPanel({
                       const label = entry.label ?? column?.label ?? entry.key;
                       const type = entry.type ?? column?.type ?? "text";
                       const value = row.values[entry.key];
+                      // QA #887 — 문자가 나가는 칸(발송 출처)은 상세에서 바로 저장하지 않는다. 표에서는 «문자가
+                      //   발송되고 비용이 듭니다» 확인을 거치는데, 여기서는 고르고 0.7초 뒤 그대로 저장됐다.
+                      const sendLocked = Boolean(column && sourceRequiresConfirm(column.source));
                       const editableColumn =
                         entry.source === "column" &&
                         column &&
                         isSourceEditable(column.source) &&
+                        !sendLocked &&
                         !column.is_readonly;
                       const editable =
                         canEditItems &&
@@ -1662,6 +1666,9 @@ export function ItemDetailPanel({
                                           column.options_jsonb?.options ?? [],
                                         )) || "—"
                                   : inputValue(value) || "—"}
+                                {sendLocked && canEditItems ? (
+                                  <span className="mt-1 block text-[0.7rem] text-mw-sub">문자가 나가는 칸이라 표에서 확인을 거쳐 바꿀 수 있어요.</span>
+                                ) : null}
                               </p>
                             )}
                           </div>
