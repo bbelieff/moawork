@@ -151,6 +151,67 @@ describe("BoardCell 셀 저장", () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  describe("QA #882 — 글자 칸은 칸을 벗어나면 저장한다", () => {
+    async function mountMemo(save: CellSaveApi["save"]) {
+      const host = mount();
+      await renderCell(
+        <CellSaveContext.Provider value={{ save, messageFor: () => undefined }}>
+          <BoardCell boardId="b1" row={memoRow()} column={memoColumn()} readOnly={false} />
+        </CellSaveContext.Provider>,
+      );
+      return host.querySelector('input[aria-label="메모"]') as HTMLInputElement;
+    }
+    const key = (input: HTMLInputElement, name: string) =>
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true }));
+
+    it("값을 바꾸고 다른 곳을 누르면 Enter 없이도 저장한다", async () => {
+      const save = vi.fn(async (_formData: FormData) => {});
+      const input = await mountMemo(save);
+      await act(async () => {
+        input.focus();
+        input.value = "새 값";
+        input.blur();
+      });
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(save.mock.calls[0]?.[0].get("value")).toBe("새 값");
+    });
+
+    it("값이 그대로면 벗어나도 저장하지 않는다", async () => {
+      const save = vi.fn(async (_formData: FormData) => {});
+      const input = await mountMemo(save);
+      await act(async () => {
+        input.focus();
+        input.blur();
+      });
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it("Enter 로 보낸 값은 벗어날 때 한 번 더 보내지 않는다", async () => {
+      const save = vi.fn(async (_formData: FormData) => {});
+      const input = await mountMemo(save);
+      await act(async () => {
+        input.focus();
+        input.value = "엔터 값";
+        key(input, "Enter");
+        input.form?.requestSubmit();
+        input.blur();
+      });
+      expect(save).toHaveBeenCalledTimes(1);
+    });
+
+    it("Esc 는 입력을 원래 값으로 되돌리고 저장하지 않는다", async () => {
+      const save = vi.fn(async (_formData: FormData) => {});
+      const input = await mountMemo(save);
+      await act(async () => {
+        input.focus();
+        input.value = "취소할 값";
+        key(input, "Escape");
+      });
+      expect(input.value).toBe("이전");
+      expect(save).not.toHaveBeenCalled();
+    });
+  });
+
   it("Issue 857 검토 — 다중 선택 칸은 고른 값 전부를 다중 선택으로 보낸다", async () => {
     const host = mount();
     const save = vi.fn(async (_formData: FormData) => {});

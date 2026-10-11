@@ -25,6 +25,7 @@ export function WorkflowProgressCell({
   error,
   transitionAction,
   cellAction,
+  stageSave,
   bulkIntercept,
   moveTargets,
   canMoveRows = true,
@@ -38,6 +39,12 @@ export function WorkflowProgressCell({
   error?: string | null;
   transitionAction?: ReactNode;
   cellAction?: (formData: FormData) => Promise<void>;
+  /**
+   * QA #882 — 보드 화면의 그 자리 저장(CellSaveContext). 있으면 «보드 안 단계» 변경은 이것으로 저장한다:
+   * 고른 값이 바로 보이고, 거절되면 바로 원래 값으로 돌아가며 문구는 이 칸에만 뜬다.
+   * 다음 업무로 넘기기(대화창)는 화면 전체가 바뀌어야 하므로 여전히 cellAction/setCellAction 이다.
+   */
+  stageSave?: (formData: FormData) => Promise<void>;
   /**
    * 여러 행이 선택된 상태의 낱개 진행 변경을 일괄 흐름으로 넘긴다.
    * true 를 돌려주면 낱개 저장·전이 대화를 건너뛰고 표시값으로 되돌린다.
@@ -84,7 +91,7 @@ export function WorkflowProgressCell({
   async function submitStage(formData: FormData) {
     const next = formData.get("value");
     if (typeof next === "string") showOptimistic(next);
-    await action(formData);
+    await (cellAction ? cellAction(formData) : stageSave ? stageSave(formData) : setCellAction(formData));
   }
 
   function selectStage(next: string) {

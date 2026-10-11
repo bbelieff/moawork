@@ -130,6 +130,58 @@ export function boardFileSelectionError(size: number): string | null {
 const STICKY_FIRST_BASE = "sticky left-0 z-[var(--mw-layer-board-cell)]";
 const STICKY_FIRST = `${STICKY_FIRST_BASE} bg-mw-card`;
 
+/**
+ * 표의 글자·숫자·날짜 칸 (QA #882).
+ *
+ * 전에는 Enter 를 눌러야만 저장됐다. 다른 곳을 누르면 입력한 값이 칸에 그대로 남아 저장된 것처럼
+ * 보였지만 새로고침하면 사라졌다. 휴대폰 숫자·날짜 자판에는 Enter 가 없어 저장할 길이 없었다.
+ * 이제 칸을 벗어날 때 바뀐 값이 있으면 저장한다. Esc 는 입력을 원래 값으로 되돌린다.
+ * Enter 로 이미 보낸 값은 벗어날 때 한 번 더 보내지 않는다.
+ */
+function CellTextInput({
+  type,
+  defaultValue,
+  placeholder,
+  label,
+  className,
+}: {
+  type: string;
+  defaultValue: string;
+  placeholder: string;
+  label: string;
+  className: string;
+}) {
+  const sentRef = useRef<string | null>(null);
+  return (
+    <input
+      type={type}
+      name="value"
+      defaultValue={defaultValue}
+      placeholder={placeholder}
+      aria-label={label}
+      className={className}
+      onKeyDown={(event) => {
+        const input = event.currentTarget;
+        if (event.key === "Enter") {
+          sentRef.current = input.value;
+        } else if (event.key === "Escape") {
+          input.value = input.defaultValue;
+          sentRef.current = null;
+          input.blur();
+        }
+      }}
+      onBlur={(event) => {
+        const input = event.currentTarget;
+        const sent = sentRef.current;
+        sentRef.current = null;
+        if (input.value === input.defaultValue || input.value === sent) return;
+        if (!input.checkValidity()) return;
+        input.form?.requestSubmit();
+      }}
+    />
+  );
+}
+
 function inputTypeOf(type: BoardColumn["type"]): string {
   switch (type) {
     case "number":
@@ -297,6 +349,11 @@ export function BoardCell({
   }
 
   if (column.key === WORKFLOW_PROGRESS_KEY && workflowProgressKind) {
+    // QA #882 — 단계 변경도 그 자리 저장을 쓴다. 전에는 화면 전체를 다시 그리는 서버 액션이라 3~5초 동안
+    //   고른 단계가 칩에 남았고, 거절 문구는 쿠키에 실려 새로고침 뒤에도 행 밑에 붙어 있었다.
+    //   실제로 쓰는 칸은 가상 칸이 아니라 단계 칸이라 결과 문구도 그 칸 이름으로 읽는다.
+    const stageKey = workflowProgressSpec(workflowProgressKind).stageColumnKey;
+    const stageMessage = savesInPlace ? cellSave.messageFor(row.id, stageKey) : undefined;
     return (
       <WorkflowProgressCell
         boardId={boardId}
@@ -304,9 +361,10 @@ export function BoardCell({
         column={column}
         kind={workflowProgressKind}
         readOnly={readOnly}
-        error={error}
+        error={stageMessage === undefined ? error : stageMessage}
         transitionAction={workflowTransitionAction}
         cellAction={cellAction}
+        stageSave={savesInPlace ? cellSave.save : undefined}
         bulkIntercept={bulkStatusIntercept ? (nextValue) => bulkStatusIntercept(column.key, nextValue) : undefined}
         moveTargets={workflowMoveTargets}
         canMoveRows={canMoveRows}
@@ -506,7 +564,10 @@ export function BoardCell({
                 if (error) {
                   input.reportValidity();
                   input.value = "";
+                  return;
                 }
+                // 고르면 바로 올린다 — 파일 칸에는 저장 단추가 없어서 고르기만 하고 아무 일도 없었다(QA #882).
+                if (input.files?.[0]) input.form?.requestSubmit();
               }}
             />
           </span>
@@ -571,12 +632,11 @@ export function BoardCell({
             />
           </>
         ) : (
-          <input
+          <CellTextInput
             type={inputTypeOf(column.type)}
-            name="value"
-            defaultValue={cellInputValue(column.type, value, phoneStatus)}
+            defaultValue={String(cellInputValue(column.type, value, phoneStatus))}
             placeholder={emptyLabel ?? "—"}
-            aria-label={column.label}
+            label={column.label}
             className={`${CELL_INPUT} ${numeric ? "text-right tabular-nums" : ""}`}
           />
         )}

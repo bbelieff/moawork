@@ -498,9 +498,10 @@ export async function setColumnWidthAction(formData: FormData): Promise<void> {
  * ★ getSession() 은 try 밖에 둔다. 미인증이면 그 안에서 redirect() 가 일어나는데,
  *   Next 의 redirect 는 «예외로 구현된 제어 흐름» 이라 catch 로 삼키면 로그인 이동이 죽는다.
  */
-export async function addItemAction(formData: FormData): Promise<void> {
+export async function addItemAction(formData: FormData): Promise<{ ok: boolean }> {
   const ctx = await getSession();
   const boardId = str(formData, "boardId");
+  let ok = false;
   try {
     await requirePermission(ctx, "work.item_upsert");
     const groupId = str(formData, "groupId");
@@ -519,12 +520,15 @@ export async function addItemAction(formData: FormData): Promise<void> {
       if (ruleTarget && detail.groups.some((group) => group.id === ruleTarget)) input.group_id = ruleTarget;
     }
     await graph.service.createItem(ctx, boardId, input);
+    ok = true;
     // 성공했으면 직전 실패를 지운다 — 안 지우면 고쳐서 성공한 뒤에도 옛 오류가 다시 그려진다.
     await clearFlashCookie(BOARD_ACTION_FLASH_COOKIE);
   } catch (error) {
     await flashBoardActionError(boardId, error);
   }
   revalidatePath(`/boards/${boardId}`);
+  // QA #882 — 화면이 실패를 알아야 입력한 이름을 지우지 않고 남겨 둔다(성공·실패 모두 던지지 않는다).
+  return { ok };
 }
 
 /**
