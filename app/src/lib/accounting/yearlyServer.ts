@@ -41,7 +41,7 @@ type Row = Readonly<{
   deals: unknown;
 }>;
 
-type DealJoin = { title: unknown; assigned_to: unknown };
+type DealJoin = { title: unknown; assigned_to: unknown; company_id?: unknown; companies?: unknown };
 
 function requiredString(value: unknown): string {
   if (typeof value !== "string" || value.length === 0) throw new YearlyLedgerReadError();
@@ -79,10 +79,17 @@ function toRow(
   const assignedTo = nullableString(deal.assigned_to);
   const dealId = requiredString(raw.deal_id);
   const board = boardValues.get(dealId) ?? EMPTY_CONTRACT_WORK_VALUES;
+  // QA #885 — 업체는 회사 이름이다. 전에는 업무 제목(deals.title)이라 «자금명» 을 바꾸면 업체 칸이
+  //   «운전자금» 이 되고 여러 회사가 한 묶음으로 합쳐졌다. 회사가 없는 옛 업무만 제목으로 대신한다.
+  const company = Array.isArray(deal.companies) ? deal.companies[0] : deal.companies;
+  const companyName = typeof company === "object" && company !== null && typeof (company as { name?: unknown }).name === "string"
+    ? (company as { name: string }).name
+    : null;
   return {
     id: requiredString(raw.id),
     dealId,
-    companyName: requiredString(deal.title),
+    companyId: nullableString(deal.company_id),
+    companyName: companyName && companyName.length > 0 ? companyName : requiredString(deal.title),
     assigneeId: assignedTo,
     assigneeName: assignedTo ? (nameById.get(assignedTo) ?? null) : null,
     institution: board.institution,
@@ -111,7 +118,7 @@ export async function loadLedgerScreen(ctx: Ctx): Promise<LedgerScreenData> {
   const [entriesResult, members, boardValues] = await Promise.all([
     client
       .from("deal_ledger_entries")
-      .select("id,deal_id,kind,amount,received_amount,occurred_on,paid_on,tax_invoice_issued,deals(title,assigned_to)")
+      .select("id,deal_id,kind,amount,received_amount,occurred_on,paid_on,tax_invoice_issued,deals(title,assigned_to,company_id,companies(name))")
       .eq("org_id", ctx.org.id)
       .order("occurred_on", { ascending: true }),
     listOrgMemberOptions(ctx),

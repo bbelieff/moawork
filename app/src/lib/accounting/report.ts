@@ -19,7 +19,9 @@ import type { YearlyLedgerRow } from "./yearly";
 export interface LedgerReportRow {
   id: string;
   dealId: string;
-  /** 업체 — `deals.title`. */
+  /** 업체 회사 id — 이름이 같은 다른 회사를 한 묶음으로 합치지 않게 묶는 기준. 회사 없는 옛 업무는 null. */
+  companyId?: string | null;
+  /** 업체 — 회사 이름(회사가 없는 옛 업무는 업무 제목). */
   companyName: string;
   assigneeId: string | null;
   assigneeName: string | null;
@@ -186,7 +188,7 @@ function totalsOf(rows: readonly LedgerReportRow[]): LedgerReportTotals {
 }
 
 function groupKeyOf(row: LedgerReportRow, grouping: LedgerReportGrouping): string {
-  if (grouping === "company") return row.companyName;
+  if (grouping === "company") return row.companyId ? `company:${row.companyId}` : `name:${row.companyName}`;
   if (grouping === "assignee") return assigneeKey(row);
   return row.occurredOn.slice(0, 7);
 }

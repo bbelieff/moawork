@@ -94,6 +94,16 @@ describe("buildLedgerReport — 묶기·소계·합계", () => {
     expect(report.groups.map((g) => g.subtotal.amount)).toEqual(subtotals);
   });
 
+  it("QA #885 — 업체 묶기는 회사 기준이다: 이름이 같은 다른 회사는 따로, 같은 회사는 함께", () => {
+    const sameName = [
+      row({ id: "a", companyId: "c1", companyName: "운전자금", occurredOn: "2026-03-01", kind: "fee", amount: 100 }),
+      row({ id: "b", companyId: "c2", companyName: "운전자금", occurredOn: "2026-03-02", kind: "fee", amount: 200 }),
+      row({ id: "c", companyId: "c1", companyName: "운전자금", occurredOn: "2026-03-03", kind: "fee", amount: 300 }),
+    ];
+    const report = buildLedgerReport(sameName, filter(), "company");
+    expect(report.groups.map((g) => g.subtotal.amount).sort()).toEqual([200, 400]);
+  });
+
   it("합계는 묶기와 무관하게 같다 — 묶는 방식이 매출을 바꾸면 안 된다", () => {
     const totals = (["company", "assignee", "month"] as const).map(
       (grouping) => buildLedgerReport(rows, filter(), grouping).total,

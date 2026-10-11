@@ -160,6 +160,9 @@ function CompanyRow({
   const deposit = view.deals.reduce((total, row) => total + (row.money?.contractDeposit ?? 0), 0);
   const fee = view.deals.reduce((total, row) => total + (row.money?.fee ?? 0), 0);
   const outstanding = view.deals.reduce((total, row) => total + (row.money?.outstanding ?? 0), 0);
+  // QA #885 — 원장을 못 읽은 건이 하나라도 있으면 «완납» 이라 단정하지 않는다(전에는 0 으로 쳐서 초록 «완납»).
+  //   업무가 없는 회사도 «완납» 이 아니다.
+  const moneyUnknown = view.deals.some((row) => !row.money);
   const identity = [view.company.owner_name, view.company.biz_type, view.company.region].filter(Boolean).join(" · ");
 
   return (
@@ -223,7 +226,13 @@ function CompanyRow({
         <Cell align="left"><span className="text-zinc-400">{DASH}</span></Cell>
         <Cell align="left">
           {outstanding > 0 ? (
-            <span className="font-semibold text-rose-600 dark:text-rose-400">미수 {money(outstanding)}</span>
+            <span className="font-semibold text-rose-600 dark:text-rose-400">
+              미수 {money(outstanding)}{moneyUnknown ? <span className="ml-1 text-xs font-normal text-amber-700 dark:text-amber-400">+ 확인 필요</span> : null}
+            </span>
+          ) : moneyUnknown ? (
+            <span className="text-xs font-normal text-amber-700 dark:text-amber-400">확인 필요</span>
+          ) : view.deals.length === 0 ? (
+            <span className="text-zinc-400">{DASH}</span>
           ) : (
             <span className="text-xs font-normal text-emerald-700 dark:text-emerald-400">완납</span>
           )}

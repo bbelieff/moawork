@@ -7,10 +7,12 @@
  * 선택지는 하드코딩이 아니라 001 의 `field_defs` 프리셋에서 온다.
  */
 
-import { useTransition } from "react";
+import { useActionState, useTransition } from "react";
 import type { Company, Deal, FieldDef, Stage } from "@/lib/types";
 import { ContractStatusField } from "./ContractStatusField";
-import { setContractStatusAction, updateDealAction } from "@/app/(app)/deals/[dealId]/actions";
+import { setContractStatusAction, updateDealAction, type DealUpdateState } from "@/app/(app)/deals/[dealId]/actions";
+
+const IDLE: DealUpdateState = { kind: "idle", message: "" };
 
 export interface DealInfoTabProps {
   deal: Deal;
@@ -30,6 +32,7 @@ export function DealInfoTab({
   canEdit,
 }: DealInfoTabProps) {
   const [, startTransition] = useTransition();
+  const [saveState, saveDeal, saving] = useActionState(updateDealAction, IDLE);
 
   const statusKey = contractStatusDef?.key;
   const statusValue = statusKey
@@ -38,7 +41,7 @@ export function DealInfoTab({
 
   return (
     <div className="flex flex-col gap-8">
-      <form action={updateDealAction} className="flex flex-col gap-4">
+      <form action={saveDeal} className="flex flex-col gap-4">
         <input type="hidden" name="dealId" value={deal.id} />
 
         <Field label="제목">
@@ -54,7 +57,8 @@ export function DealInfoTab({
           <Field label="금액">
             <input
               name="amount"
-              inputMode="numeric"
+              inputMode="text"
+              placeholder="예: 5,000,000 또는 1억 5천만"
               defaultValue={deal.amount ?? ""}
               disabled={!canEdit}
               className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm tabular-nums disabled:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:disabled:bg-zinc-800"
@@ -99,10 +103,16 @@ export function DealInfoTab({
           <div>
             <button
               type="submit"
-              className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900"
+              disabled={saving}
+              className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
             >
-              업무 정보 저장하기
+              {saving ? "저장하는 중…" : "업무 정보 저장하기"}
             </button>
+            {saveState.kind !== "idle" ? (
+              <p role={saveState.kind === "error" ? "alert" : "status"} className={`mt-2 text-sm ${saveState.kind === "error" ? "text-rose-600 dark:text-rose-400" : "text-emerald-700 dark:text-emerald-400"}`}>
+                {saveState.message}
+              </p>
+            ) : null}
           </div>
         )}
       </form>

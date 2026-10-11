@@ -15,6 +15,7 @@ import { getCrmService, ValidationError } from "@/lib/crm";
 import { addComment, editComment, type CommentKind } from "@/lib/deal/comments";
 import { attachDealFile, removeDealFile, type NewDealFileInput } from "@/lib/deal/files";
 import { listOrgMemberOptions } from "@/lib/deal/members";
+import { parseWonInput } from "@/lib/format/won-input";
 import {
   notifyFollowupRequested,
   notifyMentions,
@@ -51,20 +52,37 @@ export async function addActivityAction(formData: FormData): Promise<void> {
   revalidatePath(`/deals/${dealId}`);
 }
 
-/** 딜 기본정보 수정(제목·금액·상태메모). 단계는 여기서 바꾸지 않는다. */
-export async function updateDealAction(formData: FormData): Promise<void> {
+export type DealUpdateState = { kind: "idle" | "saved" | "error"; message: string };
+
+/**
+ * 딜 기본정보 수정(제목·금액·상태메모). 단계는 여기서 바꾸지 않는다.
+ *
+ * QA #885 — 전에는 금액에 «5,000,000원» 이나 «1억» 을 치면 검증 오류가 그대로 던져져 화면이 깨지고
+ * 입력이 사라졌다. 음수도 저장됐다. 이제 한국식 금액을 읽고, 못 읽으면 저장하지 않고 이유를 돌려준다.
+ */
+export async function updateDealAction(_state: DealUpdateState, formData: FormData): Promise<DealUpdateState> {
   const ctx = await getSession();
   const dealId = str(formData, "dealId");
-  if (!dealId) return;
+  if (!dealId) return { kind: "error", message: "업무를 찾지 못했어요. 새로고침 후 다시 시도해 주세요." };
 
-  const rawAmount = str(formData, "amount");
-  await getCrmService().updateDeal(ctx, dealId, {
-    title: str(formData, "title") || undefined,
-    status_note: str(formData, "status_note") || null,
-    fee_terms: str(formData, "fee_terms") || null,
-    amount: rawAmount === "" ? null : Number(rawAmount.replace(/[,\s]/g, "")),
-  });
+  const rawAmount = str(formData, "amount").trim();
+  const amount = rawAmount === "" ? null : parseWonInput(rawAmount);
+  if (rawAmount !== "" && amount === null) {
+    return { kind: "error", message: "금액은 숫자로 적어 주세요. 예: 5,000,000 · 5000000원 · 1억 5천만 (음수는 안 돼요)" };
+  }
+  try {
+    await getCrmService().updateDeal(ctx, dealId, {
+      title: str(formData, "title") || undefined,
+      status_note: str(formData, "status_note") || null,
+      fee_terms: str(formData, "fee_terms") || null,
+      amount,
+    });
+  } catch (error) {
+    if (error instanceof ValidationError) return { kind: "error", message: "입력한 값을 저장하지 못했어요. 값을 확인해 주세요." };
+    return { kind: "error", message: "업무 정보를 저장하지 못했어요. 잠시 후 다시 시도해 주세요." };
+  }
   revalidatePath(`/deals/${dealId}`);
+  return { kind: "saved", message: "저장했어요." };
 }
 
 /**
