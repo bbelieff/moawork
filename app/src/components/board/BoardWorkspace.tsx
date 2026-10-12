@@ -1961,6 +1961,7 @@ export function BoardWorkspace({
                 focusColumnKey={savedPresentation.focusColumnKey}
                 readOnly={readOnly}
                 canDeleteItems={!board.is_system && canDeleteItems}
+                canTrashOwnRows={!readOnly}
                 authorColumnKey={authorColumnKey}
                 viewerUserId={currentUserId}
                 canManageColumns={!board.is_system && canManageColumns}

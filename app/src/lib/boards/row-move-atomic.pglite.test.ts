@@ -690,3 +690,32 @@ it("153 archive boundary rejects shelved moves but preserves active sibling orde
     await expect(db.query("select * from public.move_board_row_atomic($1,$2,$3,$4,null,0,$5)",[ids.other,ids.otherBoard,ids.c,ids.g1,request(9805)])).rejects.toMatchObject({code:"42501"});
   } finally { await db.exec(`reset role; set app.actor='${ids.actor}';`); }
 });
+
+// #883 — 172: «본인 담당» 직원은 자기가 맡은 행을 옮길 수 있다(기준 행도 본인 것일 때). 위 시험들 뒤에 같은 db 에 올린다.
+describe("migration 172 own assigned rows",()=>{
+  // 바로 앞 153 시험이 남긴 보관 행은 공통 beforeEach 의 삭제를 막는다(보관 가드). 이 묶음 전에 치운다.
+  beforeAll(async()=>{
+    await db.exec("reset role; alter table public.items disable trigger user; delete from public.items where archived_at is not null; alter table public.items enable trigger user;");
+    await db.exec(`set app.actor='${ids.actor}';`);
+  });
+  it("lets an assigned-scope member move only their own rows, and keeps the writer boundary",async()=>{
+    const sql172=readFileSync(resolve(process.cwd(),"../supabase/migrations/172_row_move_own_assigned_rows.sql"),"utf8");
+    const owner=async()=>(await db.query<{owner:string}>("select pg_get_userbyid(proowner) owner from pg_proc where oid='public.move_board_row_atomic(uuid,uuid,uuid,uuid,uuid,bigint,uuid)'::regprocedure")).rows[0].owner;
+    const ownerBefore=await owner();
+    await db.exec("reset role");
+    await db.exec(sql172);
+    await db.exec(`set app.actor='${ids.actor}';`);
+    expect(await owner()).toBe(ownerBefore);
+    // 본인 담당 직원: a·c 는 본인 것, b 는 남의 것.
+    await db.exec(`update org_members set scope='assigned' where org_id='${ids.org}' and user_id='${ids.actor}'; update items set assigned_to='${ids.outsider}' where id='${ids.b}';`);
+    const v0=Number((await db.query<{v:string}>(`select row_order_version v from public.boards where id='${ids.board}'`)).rows[0].v);
+    const moved=await move({item:ids.a,group:ids.g2,version:v0,request:9901});
+    expect(moved.rows[0]).toMatchObject({item_id:ids.a,target_group_id:ids.g2});
+    const v1=Number(moved.rows[0].version);
+    await expect(move({item:ids.b,group:ids.g2,version:v1,request:9902})).rejects.toThrow(/permission denied/);
+    // 남의 행(b, g1) 앞으로 끼워 넣기는 막는다.
+    await expect(move({item:ids.c,group:ids.g1,before:ids.b,version:v1,request:9903})).rejects.toThrow(/permission denied/);
+    // 본인 행(a, 이제 g2) 앞으로는 된다.
+    expect((await move({item:ids.c,group:ids.g2,before:ids.a,version:v1,request:9904})).rows[0]).toMatchObject({item_id:ids.c,target_group_id:ids.g2});
+  });
+});
