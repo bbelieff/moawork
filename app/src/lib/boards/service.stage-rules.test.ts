@@ -382,7 +382,9 @@ describe("[1] 그룹을 옮기는 단계 변경의 실패를 뭉개지 않는다
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
-  it("행을 옮길 수 없는 담당 범위 멤버: 옮기는 단계는 사유와 함께 저장하지 않고, 값만 바뀌는 단계는 저장한다", async () => {
+  // QA #883 (belie 결정 2026-10-12) — 담당 범위 멤버도 «자기가 맡은 행» 은 옮기는 단계로 바꿀 수 있다(172 와 같은 규칙).
+  //   남의 행은 담당 범위 멤버에게 애초에 보이지 않으므로, 거절 쪽은 172 PGlite 시험이 DB 관문에서 확인한다.
+  it("담당 범위 멤버: 자기 행은 옮기는 단계도, 값만 바뀌는 단계도 저장한다", async () => {
     const { store, svc, boardId, group } = await contractWorkBoard();
     // #845 이후 기본 14단계는 모두 그룹을 옮긴다. «값만 바뀌는 단계» 는 회사가 규칙을 뗀 단계로 만든다.
     const status = (await store.listColumns(owner, boardId)).find((column) => column.key === "progress_status")!;
@@ -392,27 +394,25 @@ describe("[1] 그룹을 옮기는 단계 변경의 실패를 뭉개지 않는다
     const item = await svc.createItem(member, boardId, { title: "멤버 건", group_id: group("🔂 심사 중").id });
 
     const moving = await svc.setCells(member, boardId, item.id, { progress_status: "승인" });
-    expect(moving.errors).toEqual([{ key: "progress_status", label: "진행상황", message: ROW_MOVE_FAILURE_MESSAGES.permission }]);
-    expect(moving.undo).toBeNull();
-    expect(moving.item.group_id).toBe(group("🔂 심사 중").id);
-    expect(moving.item.values.progress_status).toBeUndefined();
+    expect(moving.errors).toEqual([]);
+    expect(moving.item.values.progress_status).toBe("승인");
+    expect(moving.item.group_id).not.toBe(group("🔂 심사 중").id);
 
     const valueOnly = await svc.setCells(member, boardId, item.id, { progress_status: "업체관리" });
     expect(valueOnly.errors).toEqual([]);
     expect(valueOnly.item.values.progress_status).toBe("업체관리");
-    expect(valueOnly.item.group_id).toBe(group("🔂 심사 중").id);
   });
 
-  it("쌍원자 저장(strict)은 멤버의 옮기는 단계를 하나도 쓰지 않는다", async () => {
+  it("쌍원자 저장(strict)도 멤버의 자기 행은 옮기는 단계와 다른 칸을 함께 쓴다", async () => {
     const { svc, boardId, group } = await contractWorkBoard();
     const item = await svc.createItem(member, boardId, { title: "멤버 strict", group_id: group("🔂 심사 중").id });
 
     const result = await svc.setCellsStrict(member, boardId, item.id, { progress_status: "승인", fee_terms: "3%" });
 
-    expect(result.committed).toBe("none");
-    expect(result.errors.map((error) => error.message)).toEqual([ROW_MOVE_FAILURE_MESSAGES.permission]);
+    expect(result.errors).toEqual([]);
     const after = await svc.getItem(member, boardId, item.id);
-    expect(after.values.fee_terms).toBeUndefined();
+    expect(after.values.fee_terms).toBe("3%");
+    expect(after.values.progress_status).toBe("승인");
   });
 
   it("규칙이 가리키는 그룹이 사라졌으면 값만 저장하고 그 사실을 알린다", async () => {

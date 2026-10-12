@@ -151,6 +151,14 @@ function canMoveRows(ctx: Ctx): boolean {
 }
 
 /**
+ * QA #883 (172) — 자기가 맡은 행은 옮길 수 있다. 끼워 넣을 기준 행이 있으면 그것도 자기 것이어야 한다.
+ * move_board_row_atomic 의 172 관문과 같은 규칙이다.
+ */
+function canMoveOwnRow(ctx: Ctx, item: { assigned_to?: string | null }, anchor?: { assigned_to?: string | null } | null): boolean {
+  return item.assigned_to === ctx.user.id && (anchor == null || anchor.assigned_to === ctx.user.id);
+}
+
+/**
  * 컬럼의 편집·보기 제한(`edit_policy_jsonb`·`view_policy_jsonb`)이 이 사용자에게 열려 있는가.
  *
  * DB `board_column_policy_allows`(089) 와 같은 규칙이다 — 빈 정책(없음·`{}`)이면 허용하고,
@@ -629,12 +637,18 @@ export class BoardsService {
    * 응답이 유실돼 같은 requestId 로 다시 보내도 같은 요청이 되어 receipt 가 재생된다.
    */
   async moveRowAtomic(ctx: Ctx, boardId: string, request: RowMoveRequest): Promise<RowMoveReceipt> {
-    if (!canMoveRows(ctx)) {
-      throw new BoardRuleError("전체 행을 볼 수 있는 사용자만 행 순서를 바꿀 수 있습니다");
-    }
     const board = await this.requireEditableBoard(ctx, boardId);
     await this.requireActiveItem(ctx, request.itemId);
     const repo = await this.repo;
+    if (!canMoveRows(ctx)) {
+      const [item, anchor] = await Promise.all([
+        repo.getItem(ctx, request.itemId),
+        request.beforeItemId ? repo.getItem(ctx, request.beforeItemId) : Promise.resolve(null),
+      ]);
+      if (!item || (request.beforeItemId && !anchor) || !canMoveOwnRow(ctx, item, anchor)) {
+        throw new BoardRuleError("자기가 맡은 행만 옮길 수 있어요. 다른 사람 행은 전체 행 권한이 있는 사람이 옮겨요.");
+      }
+    }
     const values = await this.planRowMoveStage(ctx, board, request);
     return values
       ? repo.setValuesAndMoveAtomic(ctx, boardId, { ...request, values })
@@ -748,7 +762,7 @@ export class BoardsService {
     const before = await this.getItem(ctx, boardId, itemId);
 
     const validated = this.validateValues(detail.columns, patch, true);
-    const gate = this.gateRuleMove(ctx, detail.columns, before.group_id, validated.values);
+    const gate = this.gateRuleMove(ctx, detail.columns, before, validated.values);
     const values = gate.values;
     const errors = [...validated.errors, ...gate.errors];
     const writtenKeys = Object.keys(values);
@@ -779,11 +793,15 @@ export class BoardsService {
   private gateRuleMove(
     ctx: Ctx,
     columns: readonly BoardColumn[],
-    beforeGroupId: string | null,
+    before: { group_id: string | null; assigned_to?: string | null },
     values: Record<string, CellValue>,
   ): { values: Record<string, CellValue>; errors: CellError[] } {
+    const beforeGroupId = before.group_id;
     const decided = ruleMoveTarget(columns, values);
-    if (!decided || decided.target === beforeGroupId || canMoveRows(ctx)) return { values, errors: [] };
+    // QA #883 — 단계로 옮길 때는 맨 뒤에 붙이므로(기준 행 없음) 자기 행이면 된다.
+    if (!decided || decided.target === beforeGroupId || canMoveRows(ctx) || canMoveOwnRow(ctx, before)) {
+      return { values, errors: [] };
+    }
     const byKey = new Map(columns.map((column) => [column.key, column]));
     const kept: Record<string, CellValue> = {};
     const errors: CellError[] = [];
@@ -911,7 +929,7 @@ export class BoardsService {
       return { item: before, errors, notices: [], undo: null, committed: "none", commitDetail: null };
     }
     // 행을 옮길 수 없는 사람이 그룹을 옮기는 값을 섞으면 «하나도» 쓰지 않는다(쌍원자 계약).
-    const gate = this.gateRuleMove(ctx, detail.columns, before.group_id, values);
+    const gate = this.gateRuleMove(ctx, detail.columns, before, values);
     if (gate.errors.length > 0) {
       return { item: before, errors: gate.errors, notices: [], undo: null, committed: "none", commitDetail: null };
     }

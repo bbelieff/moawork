@@ -590,7 +590,13 @@ export class LocalBoardsRepo {
   moveRowAtomic(ctx: Ctx, boardId: string, request: RowMoveRequest): RowMoveReceipt {
     const board = this.getBoard(ctx, boardId);
     if (!board || board.is_system) throw new Error("보드를 찾을 수 없습니다.");
-    if (!canSeeAll(ctx)) throw new Error("전체 행을 볼 수 있는 사용자만 행 순서를 바꿀 수 있습니다.");
+    if (!canSeeAll(ctx)) {
+      // QA #883 (172 와 같은 규칙) — 자기가 맡은 행은 옮길 수 있다. 기준 행이 있으면 그것도 자기 것이어야 한다.
+      const own = (id: string | null) => id === null || db().boardItems.find((item) => item.id === id)?.assigned_to === ctx.user.id;
+      if (!own(request.itemId) || !own(request.beforeItemId)) {
+        throw new Error("전체 행을 볼 수 있는 사용자만 행 순서를 바꿀 수 있습니다.");
+      }
+    }
     const requestKey = `${ctx.org.id}:${request.requestId}`;
     const payload = JSON.stringify({ boardId, ...request });
     const prior = this.rowMoveRequests.get(requestKey);
