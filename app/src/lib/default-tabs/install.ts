@@ -505,6 +505,18 @@ async function reconcileDefaultDefinition(
       if (baselineLabel !== undefined && column.label === baselineLabel && column.label !== definition.label) {
         patch.label = definition.label;
       }
+      // QA #884 — 이전 정의에서 비어 있던 이동 규칙이 지금도 비어 있으면(회사가 안 켰으면) 이번 정의 규칙으로 켠다.
+      const storedRule = (column as { move_rule_jsonb?: Record<string, string> | null }).move_rule_jsonb;
+      if (tab.previousRevision?.columns[definition.key]?.moveRule === "empty" && definition.moveTo
+        && (!storedRule || Object.keys(storedRule).length === 0)) {
+        const groups = await store.listGroups(ctx, boardId);
+        const rule: Record<string, string> = {};
+        for (const [optionId, groupName] of Object.entries(definition.moveTo)) {
+          const target = pickBackfillTarget(groupName, groups, new Set(), undefined);
+          if (target) rule[optionId] = target.id;
+        }
+        if (Object.keys(rule).length > 0) patch.moveRule = rule;
+      }
       if (Object.keys(patch).length > 0) await store.updateColumn(ctx, column.id, patch);
     }
     columns = await store.listColumns(ctx, boardId);

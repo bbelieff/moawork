@@ -37,7 +37,7 @@ import type {
   ItemWithValues,
 } from "./types";
 import { compareCells, isEmptyCell, validateCell } from "./cells";
-import { planStageBackSync, resolveMoveTarget } from "./moveRules";
+import { planStageBackSync, resolveMoveTarget, returnMoveTarget } from "./moveRules";
 import {
   classifyRowMoveFailure,
   ROW_MOVE_FAILURE_MESSAGES,
@@ -778,7 +778,7 @@ export class BoardsService {
     };
 
     // 알림(값만 저장)은 errors 에 섞지 않는다 — 저장은 성공했다(검토 P3).
-    const notices = await this.writeValuesWithRuleMove(ctx, boardId, itemId, detail, before.group_id, values, requestId);
+    const notices = await this.writeValuesWithRuleMove(ctx, boardId, itemId, detail, before, values, requestId);
 
     return { item: await this.getItem(ctx, boardId, itemId), errors, notices, undo };
   }
@@ -797,7 +797,7 @@ export class BoardsService {
     values: Record<string, CellValue>,
   ): { values: Record<string, CellValue>; errors: CellError[] } {
     const beforeGroupId = before.group_id;
-    const decided = ruleMoveTarget(columns, values);
+    const decided = ruleMoveTarget(columns, values) ?? returnMoveTarget(columns, values, before);
     // QA #883 — 단계로 옮길 때는 맨 뒤에 붙이므로(기준 행 없음) 자기 행이면 된다.
     if (!decided || decided.target === beforeGroupId || canMoveRows(ctx) || canMoveOwnRow(ctx, before)) {
       return { values, errors: [] };
@@ -829,10 +829,11 @@ export class BoardsService {
     boardId: string,
     itemId: string,
     detail: BoardDetail,
-    beforeGroupId: string | null,
+    before: { group_id: string | null; assigned_to?: string | null; values?: Record<string, CellValue> },
     values: Record<string, CellValue>,
     requestId: string,
   ): Promise<CellError[]> {
+    const beforeGroupId = before.group_id;
     const repo = await this.repo;
     const valueOnly = async (decidedKey: string, columns: readonly BoardColumn[]): Promise<CellError[]> => {
       await repo.setValues(ctx, itemId, values);
@@ -840,7 +841,8 @@ export class BoardsService {
       return [{ key: decidedKey, label, message: ROW_MOVE_VALUE_ONLY_NOTICE }];
     };
     const attempt = async (current: BoardDetail, groupId: string | null): Promise<CellError[] | "stale"> => {
-      const decided = ruleMoveTarget(current.columns, values);
+      const decided = ruleMoveTarget(current.columns, values)
+        ?? returnMoveTarget(current.columns, values, { ...before, group_id: groupId });
       if (!decided || decided.target === groupId) {
         await repo.setValues(ctx, itemId, values);
         return [];
@@ -942,7 +944,7 @@ export class BoardsService {
 
     let notices: CellError[] = [];
     try {
-      notices = await this.writeValuesWithRuleMove(ctx, boardId, itemId, detail, before.group_id, values, requestId);
+      notices = await this.writeValuesWithRuleMove(ctx, boardId, itemId, detail, before, values, requestId);
     } catch (error) {
       // 쓰기 실패 뒤 실제 반영 범위를 재조회로 가린다 — 추측으로 "미저장"이라 하지 않는다.
       let reread: ItemWithValues;

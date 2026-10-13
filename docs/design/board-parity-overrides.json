@@ -8,8 +8,6 @@
       "rationale": "#576의 최신 사용자 확정 순서를 정본으로 쓰고 #589에서 재무 입력 구조를 구체화한다. 회사명·신청일·광고명·대표자명·연락처·담당자·연관담당·사업자유형·업종·창업연월·3개년매출·기대출·NCB·KCB·폐업여부·수출여부·필요금액·시도·시군구·주소·이메일 순서이며, 우측 고정 진행현황은 별도 업무 관문이다. 사업자유형은 자유 입력이고 기대출은 진행기관·대출연월·금액·금리·조건·비고를 대출별 반복 목록으로 한 번에 저장해 부분 저장과 덮어쓰기를 막는다. 과거 단일 기대출과 기관 미상 신용점수는 추정 복사하지 않고 무손실 fallback/detail-only로 남긴다. 자동 유입 구간은 3개년매출에 보존하되 상담 뒤 자유 편집할 수 있다. 담당자/연관담당 개인 선택지는 조직 멤버를 런타임에 주입하므로 정적 계약에는 비어 있다. #602는 revision 5에서 기존 38개 물리 컬럼의 key·label·type·source·order·visibility 계약을 그대로 두고 revenue_band 바로 뒤에 revenue_3y_million(3개년매출(백만원), number, source=in, width=150) 한 개만 additive로 추가한다. NCB·KCB·창업연월·기존 revenue_band는 보존하고 credit_scores는 presentation-only이므로 물리 컬럼으로 추가하지 않는다.",
       "differences": {
         "그룹 차이": "88c0bbea99b26828d9cfdbba36c73956867077c64b2b7d93567eb7de66dbd6c2",
-        "목업에만 있는 컬럼": "9dd7db942db46919b5b310f1d0637027fcacf7ac1afe913c99a61db8586a149a",
-        "앱에만 있는 컬럼": "93373ff693ec89d69e688b2ce2f378619070c31eb8b31028fbfcf0c5e5dbf62e",
         "출처 차이": "e96371819678b80ab9d98e8041f8f7f0bb0ae3a8598b83f909ce2660d3f363f4",
         "선택지 차이": "87114a5799fb33ce26ccbcbe2908203356e72d530104c51c8d1b4f9195093b9c",
         "탭 간 이동 관문 차이": "a098707929891a498c4b6114febffcb83e9c85d0faf0a3e49bf5f905297bc536"
@@ -20,11 +18,20 @@
       "issue": 601,
       "date": "2026-08-28",
       "rationale": "#601은 #602가 고정한 revision 5의 39개 물리 컬럼과 모든 key·label·type·source·order·visibility·options·move·assignee 의미를 그대로 보존하고, export_status 바로 뒤·required_amount 바로 앞에 other_info(기타정보, other_info, source=in, width=170) 한 컬럼만 additive로 추가한다. 이 누적 fingerprint는 기존 #602 app-only 목록에 기타정보 한 항목이 더해진 현재 목록만 허용하며, qa-board-parity의 rev5 전체 semantic fingerprint와 other_info exact 위치·의미 guard가 별도로 blind bless를 막는다.",
+      "differences": {}
+    },
+    {
+      "scope": "new",
+      "issue": 884,
+      "date": "2026-10-13",
+      "rationale": "2026-10-13 제품 책임자(belie) QA 결정(#884 «탭 사이 칸 이름 통일»): 신규리드·리드컨택의 같은 미팅 시각 칸 이름을 «미팅 일시» 하나로 맞춘다. new revision 7은 meeting_at(datetime, source=in, 키·자리·너비 그대로)의 라벨만 «대면미팅 일시»→«미팅 일시»로 바꾸고 옛 이름을 previousRevision 6 baseline으로 남겨 회사가 바꾼 이름은 덮지 않는다. 컬럼 목록 차이 두 항목은 #602/#601의 기존 목업만 5개·앱만 23개 목록에 이 한 칸의 이름 차이(목업만 대면미팅 일시 + 앱만 미팅 일시)만 더한 현재 목록이며, 이전 #602·#601의 컬럼 목록 fingerprint를 대체한다. qa-board-parity의 #884 guard가 이 변경만 되돌린 rev6 열이 기존 #601/#602 semantic fingerprint와 그대로 같은지 계속 확인한다.",
       "differences": {
-        "앱에만 있는 컬럼": "b00f633113391f16161b76f5bbecb89bdde10f352da81269af7652bb33c50497"
+        "목업에만 있는 컬럼": "273b2fe4ffbb024533a0d0a87a528975cbaed73d257fe6ede3794fea7c254e5f",
+        "앱에만 있는 컬럼": "86164d9a85101d0fa802e330a7bec746de2884b798616e459a9d616670ce26d1"
       },
       "counts": {
-        "앱에만 있는 컬럼": 23
+        "목업에만 있는 컬럼": 6,
+        "앱에만 있는 컬럼": 24
       }
     },
     {
@@ -33,9 +40,7 @@
       "date": "2026-08-24",
       "rationale": "실제 조직 멤버 수에 따라 담당 그룹이 동적으로 구성되고 linked provenance 필드도 직접 편집 가능해야 한다는 최신 사용자 계약이다.",
       "differences": {
-        "그룹 차이": "88c0bbea99b26828d9cfdbba36c73956867077c64b2b7d93567eb7de66dbd6c2",
-        "선택지 차이": "c4c8a1476dcdf4b150279b56932660a8b786368ed8c81bd17f62f990cdd87c3e",
-        "자동 이동 규칙 차이": "3926e2cc9c633fcda7f4dc54f2fbeecae7ba866b53f01693393be648f943a317"
+        "그룹 차이": "88c0bbea99b26828d9cfdbba36c73956867077c64b2b7d93567eb7de66dbd6c2"
       }
     },
     {
@@ -43,11 +48,24 @@
       "issue": 601,
       "date": "2026-08-28",
       "rationale": "#601은 contact revision 2의 기존 21개 컬럼과 모든 key·label·type·source·order·visibility·options·move·assignee 의미, 기존 #534 그룹·선택지·자동이동 override를 그대로 보존하고 revenue 바로 뒤·contract_status 바로 앞에 other_info(기타정보, other_info, source=in, width=170) 한 컬럼만 additive로 추가한다. diff count 1과 exact fingerprint가 동시에 맞아야 하며 qa-board-parity의 revision 2 전체 semantic fingerprint와 새 컬럼 exact guard가 다른 변경을 계속 RED로 만든다.",
+      "differences": {}
+    },
+    {
+      "scope": "contact",
+      "issue": 884,
+      "date": "2026-10-13",
+      "rationale": "2026-10-13 제품 책임자(belie) QA 결정(#884 «탭 사이 칸 이름 통일 / 미팅 일정 한 곳 저장 / 계약취소·미팅취소·뒤로가기 행 이동»). contact revision 4는 (1) 라벨만 창업년도→창업연도·매출액→매출·전자계약 / 미팅일정→미팅 일시·계약금 완료여부→계약금 입금여부로 바꾸고(키·타입·출처·자리·선택지 그대로), (2) 미팅 일시는 상담 기록(consultation_states.meeting_at)이 정본이라 이 칸은 그 값을 비추는 읽기 전용이 되며, (3) 계약상황의 계약 보류·미팅보류·미팅취소·계약취소 네 값이 목업에 이미 있는 같은 이름의 그룹으로 행을 옮긴다(다른 단계로 되돌리면 담당자 그룹으로 복귀). 컬럼 목록 차이는 이 네 이름 차이와 #601의 기타정보뿐이고, 선택지 차이는 #534의 담당자·사업자유형·시군구·미팅확정 메세지 4항목만 남는다(계약금 칸은 이름이 달라 비교에서 빠짐). 자동이동 차이는 #534의 담당자 4규칙(실제 멤버 기반)과 새 계약상황 4규칙이다. 이 항목들은 #534 선택지·자동이동과 #601 앱만 컬럼 fingerprint를 대체한다. qa-board-parity의 #884 guard는 이 변경만 되돌린 rev3 열이 #601 semantic fingerprint와 같아야 통과한다.",
       "differences": {
-        "앱에만 있는 컬럼": "112ef8f175c070df2990edbaa901fd04ffe481fedf1410c1ffdd59723088712d"
+        "목업에만 있는 컬럼": "6e8116d0bca7a981ff3b6bf73289b9b2b896248a641983f518631b64141bb29f",
+        "앱에만 있는 컬럼": "6e90495be392608c84b03e9d3aa6f06e79616dd010c02823e0fe930aa4c15367",
+        "선택지 차이": "b8eed0aa307e3030ed6cbefe798cafd655fd76ec33025d2e59e4605e71bc1abc",
+        "자동 이동 규칙 차이": "a351d208d133fd1ffec402aa4034dd5666a0820006b5533181a8ba3dc1232116"
       },
       "counts": {
-        "앱에만 있는 컬럼": 1
+        "목업에만 있는 컬럼": 4,
+        "앱에만 있는 컬럼": 5,
+        "선택지 차이": 4,
+        "자동 이동 규칙 차이": 8
       }
     },
     {
@@ -56,8 +74,6 @@
       "date": "2026-08-26",
       "rationale": "두 결정이 겹쳐 있다. (1) #534 — 계약업체 보드는 실제 조직 멤버 기반 동적 그룹과 검증된 정본 용어·선택지를 보존하며 목업의 오탈자(자금명·진행 상품·진행상항)를 재도입하지 않는다. (2) #544 — 총괄 직접 지시 「수수료율을 계약조건으로 하자」로 목업의 수수료(%)(숫자) 자리를 계약조건(자유기재 텍스트)으로 바꿨다. 수수료 %는 앞으로 변동이 생길 수 있어 숫자로 굳히지 않고, 금액의 정본은 원장(ledger.kind=fee)으로 둔다. 업체관리 현황이 읽는 deals.fee_terms(105_bbe240)와 같은 이름을 쓴다. 컬럼을 빼지 않고 그 자리에서 바꿨으므로 28개와 순서는 그대로다. (3) #531 — 업체관리 현황(목업 T.company)의 «승인» 열이 날짜를 그리는데 그 날짜를 담을 자리가 제품 어디에도 없어 영원히 «—» 였다. 계약업체 실무에 «승인일»(date)을 새로 둔다. 목업의 계약업체 실무에는 없는 열이라 여기 등록한다 — 컬럼이 늘어나는 것은 허용이고(D73 은 줄이는 것을 막는다), 자리는 «심사 종료 → 승인 → 실행» 흐름을 따른다.",
       "differences": {
-        "목업에만 있는 컬럼": "44dea45c271c7cba3ea2d695bb24a1dbde18402300fe39aa4a3decf523ad57e4",
-        "앱에만 있는 컬럼": "787be9788aa47b2b1abcf46dc690353b4e77e0dfac747cb0cc834fd0f3498bb1",
         "선택지 차이": "70b8421c3b4046c4ff14b4b68671f049b1e29689b55972c787610bbbea9893c8"
       }
     },
@@ -73,6 +89,20 @@
       "counts": {
         "그룹 차이": 14,
         "자동 이동 규칙 차이": 18
+      }
+    },
+    {
+      "scope": "work",
+      "issue": 884,
+      "date": "2026-10-13",
+      "rationale": "2026-10-13 제품 책임자(belie) QA 결정(#884 «탭 사이 칸 이름 통일»): 리드컨택과 같은 정보를 같은 이름으로 읽도록 계약업체 실무 revision 4에서 라벨만 창업년도→창업연도·연 매출액→매출·계약금_입금일→계약금 입금일로 바꾼다. 키·타입·출처·자리·읽기 전용은 그대로이고 옛 이름은 previousRevision 3 baseline으로 남아 회사가 바꾼 이름은 덮지 않는다. 컬럼 목록 차이는 #531의 기존 목업만 4개·앱만 6개(구분·상품명칭·세부명칭·진행상황·승인일·계약조건)에 이 세 칸 이름 차이만 더한 현재 목록이며 #531의 컬럼 목록 fingerprint를 대체한다.",
+      "differences": {
+        "목업에만 있는 컬럼": "cbe9b94db4e9cc75cfdcde55c05af2e91a10acb144921375face42a36474ddd7",
+        "앱에만 있는 컬럼": "8e9c40244baf4af31528237b19562b9062158dfda6e473a00826669c3feb21a7"
+      },
+      "counts": {
+        "목업에만 있는 컬럼": 7,
+        "앱에만 있는 컬럼": 9
       }
     },
     {

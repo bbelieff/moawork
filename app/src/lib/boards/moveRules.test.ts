@@ -5,6 +5,7 @@ import {
   plainGroupName,
   primaryStageForGroup,
   resolveMoveTarget,
+  returnMoveTarget,
   stageOptionIdForGroup,
   stageSyncNeedsLiveRowCounts,
   syncGroupLinkedStageColumn,
@@ -354,5 +355,78 @@ describe("syncGroupLinkedStageColumn — 단계 = 보드 그룹 (#845)", () => {
     const before = JSON.stringify(column);
     syncGroupLinkedStageColumn(column, [...baseGroups, { id: "g-new", name: "새 그룹", sort_order: 5 }]);
     expect(JSON.stringify(column)).toBe(before);
+  });
+});
+
+describe("returnMoveTarget — 취소·보류 그룹에서 담당자 그룹으로 되돌리기 (QA #884)", () => {
+  type MoveColumn = Pick<BoardColumn, "key" | "type" | "move_rule_jsonb">;
+  const columns: MoveColumn[] = [
+    { key: "owner", type: "person", move_rule_jsonb: { "user-a": "grp-a", "user-b": "grp-b", __unassigned__: "grp-unassigned" } },
+    {
+      key: "contract_status",
+      type: "status",
+      move_rule_jsonb: { "미팅취소": "grp-meeting-cancel", "계약취소": "grp-contract-cancel" },
+    },
+    { key: "memo", type: "text", move_rule_jsonb: null },
+  ];
+
+  it("취소 그룹에 있는 행을 규칙 없는 값으로 바꾸면 담당자 그룹으로 돌아간다", () => {
+    expect(returnMoveTarget(columns, { contract_status: "계약 전" }, {
+      group_id: "grp-contract-cancel",
+      values: { owner: "user-a" },
+    })).toEqual({ target: "grp-a", key: "contract_status" });
+  });
+
+  it("담당자 값이 배열(person)이어도 첫 사람의 그룹을 쓰고, 값이 없으면 assigned_to 로 읽는다", () => {
+    expect(returnMoveTarget(columns, { contract_status: "계약 전" }, {
+      group_id: "grp-meeting-cancel",
+      values: { owner: ["user-b"] },
+    })).toEqual({ target: "grp-b", key: "contract_status" });
+    expect(returnMoveTarget(columns, { contract_status: "계약 전" }, {
+      group_id: "grp-meeting-cancel",
+      assigned_to: "user-a",
+      values: {},
+    })).toEqual({ target: "grp-a", key: "contract_status" });
+  });
+
+  it("담당자가 없거나 그 담당자의 규칙이 없으면 null — 추측으로 옮기지 않는다", () => {
+    expect(returnMoveTarget(columns, { contract_status: "계약 전" }, {
+      group_id: "grp-contract-cancel",
+      assigned_to: null,
+      values: {},
+    })).toBeNull();
+    expect(returnMoveTarget(columns, { contract_status: "계약 전" }, {
+      group_id: "grp-contract-cancel",
+      values: { owner: "user-unknown" },
+    })).toBeNull();
+  });
+
+  it("새 값에 자기 규칙이 있으면 null — 그 규칙(resolveMoveTarget)이 정한다", () => {
+    expect(returnMoveTarget(columns, { contract_status: "미팅취소" }, {
+      group_id: "grp-contract-cancel",
+      values: { owner: "user-a" },
+    })).toBeNull();
+  });
+
+  it("지금 그룹이 그 칸 규칙의 목적지가 아니면 null — 담당자 그룹·다른 그룹의 행은 그대로", () => {
+    expect(returnMoveTarget(columns, { contract_status: "계약 전" }, {
+      group_id: "grp-somewhere-else",
+      values: { owner: "user-a" },
+    })).toBeNull();
+    expect(returnMoveTarget(columns, { contract_status: "계약 전" }, {
+      group_id: "grp-a",
+      values: { owner: "user-a" },
+    })).toBeNull();
+  });
+
+  it("그룹이 없거나 규칙 없는 칸만 바꾸면 null", () => {
+    expect(returnMoveTarget(columns, { contract_status: "계약 전" }, {
+      group_id: null,
+      values: { owner: "user-a" },
+    })).toBeNull();
+    expect(returnMoveTarget(columns, { memo: "메모" }, {
+      group_id: "grp-contract-cancel",
+      values: { owner: "user-a" },
+    })).toBeNull();
   });
 });

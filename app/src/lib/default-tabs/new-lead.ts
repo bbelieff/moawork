@@ -256,7 +256,7 @@ const ALL_COLUMNS: DefaultTabColumn[] = [
 
   // 17~20 일정·금액
   { key: "recall_at", label: "재통화 일시", type: "datetime", source: "in", width: 150 },
-  { key: "meeting_at", label: "대면미팅 일시", type: "datetime", source: "in", width: 150 },
+  { key: "meeting_at", label: "미팅 일시", type: "datetime", source: "in", width: 150 },
   { key: "recontact_on", label: "재접촉일", type: "date", source: "in", width: 120 },
   { key: "contract_fee", label: "계약금", type: "money", source: "in", width: 110 },
 
@@ -652,10 +652,11 @@ export function presentNewLeadColumns(columns: readonly BoardColumn[]): BoardCol
 }
 
 export const NEW_LEAD_TAB: DefaultTab = {
-  revision: 6,
+  // 2026-10-13(QA #884) — 7: 미팅 일시 이름 통일(리드컨택과 같은 이름).
+  revision: 7,
   previousRevision: {
-    revision: 5,
-    columns: {},
+    revision: 6,
+    columns: { meeting_at: { label: "대면미팅 일시" } },
   },
   key: "new",
   source: NEW_LEAD_TAB_SOURCE,
