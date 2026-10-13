@@ -73,12 +73,12 @@ export function DealLedgerButton({ dealId }: DealLedgerButtonProps) {
   // 원장 조회를 부르지 않게 한다.
   function removeEntry(entry: DealLedgerEntry): void {
     setDeleteError(null);
-    startDelete(() => {
-      void deleteDealLedgerEntryAction({ entryId: entry.id, dealId }).then((result) => {
-        if (!result.ok) { setDeleteError(result.message); return; }
-        setConfirmDelete(null);
-        refresh();
-      });
+    // 약속을 돌려줘야 «지우는 중» 동안 버튼이 잠긴다(두 번 눌러 두 번 보내지 않게).
+    startDelete(async () => {
+      const result = await deleteDealLedgerEntryAction({ entryId: entry.id, dealId });
+      if (!result.ok) { setDeleteError(result.message); return; }
+      setConfirmDelete(null);
+      refresh();
     });
   }
 

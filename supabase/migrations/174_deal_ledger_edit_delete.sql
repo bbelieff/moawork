@@ -1,9 +1,9 @@
--- moa-migration-guard: logical_key=174_deal_ledger_edit_delete predecessor=173_companies_read_via_own_deal digest=9cc22a10bd3c8f20db166835059529fa0ac266d13dbf2bf98c5d32b3bba36f8e foundation=false
+-- moa-migration-guard: logical_key=174_deal_ledger_edit_delete predecessor=173_companies_read_via_own_deal digest=867f8a7e4f4a9aa535dc71c82e2fe518a7fd327855fc1307ebfdfb87df454681 foundation=false
 
 select public.begin_guarded_migration(
   p_logical_key => '174_deal_ledger_edit_delete',
   p_file_name => '174_deal_ledger_edit_delete.sql',
-  p_file_digest => '9cc22a10bd3c8f20db166835059529fa0ac266d13dbf2bf98c5d32b3bba36f8e',
+  p_file_digest => '867f8a7e4f4a9aa535dc71c82e2fe518a7fd327855fc1307ebfdfb87df454681',
   p_expected_predecessor => '173_companies_read_via_own_deal',
   p_executor => 'DC',
   p_thread_id => '9ffa2331-f8b8-46fc-9b09-6375b2e85f6c',
@@ -119,10 +119,14 @@ begin
 
   insert into public.activities (org_id, deal_id, type, content, actor)
   values (v_before.org_id, v_before.deal_id, 'memo',
-    format('원장 수정 · %s %s원(%s, 입금 %s원) → %s원(%s, 입금 %s원)',
+    format('원장 수정 · %s %s원(발생 %s, 입금 %s원, 입금일 %s, %s) → %s원(발생 %s, 입금 %s원, 입금일 %s, %s)',
       case v_before.kind when 'contract_deposit' then '계약금' else '수수료' end,
-      to_char(v_before.amount, 'FM999,999,999,999'), v_before.occurred_on, to_char(v_before.received_amount, 'FM999,999,999,999'),
-      to_char(p_amount, 'FM999,999,999,999'), p_occurred_on, to_char(p_received_amount, 'FM999,999,999,999')),
+      to_char(v_before.amount, 'FM999,999,999,999,999,999'), v_before.occurred_on, to_char(v_before.received_amount, 'FM999,999,999,999,999,999'),
+      coalesce(v_before.paid_on::text, '없음'),
+      concat_ws('·', case when v_before.vat_included then 'VAT포함' end, case when v_before.tax_invoice_issued then '계산서' end, case when not v_before.vat_included and not v_before.tax_invoice_issued then 'VAT없음' end),
+      to_char(p_amount, 'FM999,999,999,999,999,999'), p_occurred_on, to_char(p_received_amount, 'FM999,999,999,999,999,999'),
+      coalesce(p_paid_on::text, '없음'),
+      concat_ws('·', case when p_vat_included then 'VAT포함' end, case when p_tax_invoice_issued then '계산서' end, case when not p_vat_included and not p_tax_invoice_issued then 'VAT없음' end)),
     auth.uid());
 end; $$;
 
@@ -155,7 +159,7 @@ begin
   values (v_entry.org_id, v_entry.deal_id, 'memo',
     format('원장 삭제 · %s %s원(%s)',
       case v_entry.kind when 'contract_deposit' then '계약금' else '수수료' end,
-      to_char(v_entry.amount, 'FM999,999,999,999'), v_entry.occurred_on),
+      to_char(v_entry.amount, 'FM999,999,999,999,999,999'), v_entry.occurred_on),
     auth.uid());
 end;
 $$;
