@@ -11,6 +11,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { DealLedgerPanel } from "@/components/accounting/DealLedgerPanel";
 import { deleteDealLedgerEntryAction, loadDealLedgerAction, type LedgerPopupState } from "@/lib/accounting/actions";
 import type { DealLedgerEntry } from "@/lib/accounting/ledger";
+import { ResultBanner } from "@/lib/ui/ResultBanner";
+import type { ResultNotice } from "@/lib/ui/result-notice";
 import { LedgerEntryModal } from "./LedgerEntryModal";
 import { BoardModalLayer } from "./BoardDialogPortal";
 
@@ -38,7 +40,7 @@ export function DealLedgerButton({ dealId }: DealLedgerButtonProps) {
   const [state, setState] = useState<LedgerPopupState>({ kind: "loading" });
   const [editing, setEditing] = useState<DealLedgerEntry | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<DealLedgerEntry | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteNotice, setDeleteNotice] = useState<ResultNotice | null>(null);
   const [deleting, startDelete] = useTransition();
   const [, startTransition] = useTransition();
   const openerRef = useRef<HTMLButtonElement>(null);
@@ -72,11 +74,11 @@ export function DealLedgerButton({ dealId }: DealLedgerButtonProps) {
   // 읽지 않고, 「📒 원장」 을 누를 때 읽는다(수납종료 뱃지도 그때부터 보인다). 상세를 여는 일이
   // 원장 조회를 부르지 않게 한다.
   function removeEntry(entry: DealLedgerEntry): void {
-    setDeleteError(null);
+    setDeleteNotice(null);
     // 약속을 돌려줘야 «지우는 중» 동안 버튼이 잠긴다(두 번 눌러 두 번 보내지 않게).
     startDelete(async () => {
       const result = await deleteDealLedgerEntryAction({ entryId: entry.id, dealId });
-      if (!result.ok) { setDeleteError(result.message); return; }
+      if (!result.ok) { setDeleteNotice({ ok: false, message: result.message }); return; }
       setConfirmDelete(null);
       refresh();
     });
@@ -119,7 +121,7 @@ export function DealLedgerButton({ dealId }: DealLedgerButtonProps) {
               dealId={dealId}
               state={state}
               onEdit={(entry) => { setConfirmDelete(null); setEditing(entry); setEntryOpen(true); }}
-              onDelete={(entry) => { setDeleteError(null); setConfirmDelete(entry); }}
+              onDelete={(entry) => { setDeleteNotice(null); setConfirmDelete(entry); }}
             />
 
             {confirmDelete && (
@@ -128,7 +130,7 @@ export function DealLedgerButton({ dealId }: DealLedgerButtonProps) {
                   {confirmDelete.kind === "contract_deposit" ? "계약금" : "수수료"} {new Intl.NumberFormat("ko-KR").format(confirmDelete.amount)}원({confirmDelete.occurredOn}) 항목을 지울까요?
                   합계에서 빠지고, 딜 활동 기록에 지운 내용이 남아요.
                 </p>
-                {deleteError ? <p role="alert" className="mt-1 font-semibold text-mw-error">{deleteError}</p> : null}
+                {deleteNotice ? <ResultBanner notice={deleteNotice} okClassName="mt-1 font-semibold text-mw-success" errorClassName="mt-1 font-semibold text-mw-error" /> : null}
                 <div className="mt-2 flex justify-end gap-2">
                   <button type="button" onClick={() => setConfirmDelete(null)} className="rounded-lg border border-mw-line px-3 py-1 font-semibold">그대로 두기</button>
                   <button type="button" disabled={deleting} onClick={() => removeEntry(confirmDelete)} className="rounded-lg bg-mw-error px-3 py-1 font-semibold text-mw-on-accent disabled:opacity-40">{deleting ? "지우는 중…" : "지우기"}</button>
