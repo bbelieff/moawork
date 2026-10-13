@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * 담당자 재배정 (BBE-16). 변경 시 서비스가 타임라인에 자동 기록하고
- * (`AsyncCrmService.reassignDeal`), DB 트리거가 새 담당자에게 알림을 보낸다
- * (`064_deal_collab_notify.sql: trg_notify_deal_assigned`).
+ * 담당자 재배정 (BBE-16). 서버 함수 `reassign_deal_with_activity`(171)가 타임라인에 한 줄 남기고,
+ * 보드 행이 있으면 담당 계보 경로로 바꿔 보드 행 담당과 알림도 함께 처리한다.
+ * (064 의 배정 알림 트리거는 운영에 없고 되살리지 않았다 — #881)
  */
 
 import { useState, useTransition } from "react";

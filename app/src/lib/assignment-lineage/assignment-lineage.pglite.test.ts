@@ -9,6 +9,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { PGliteWorkerLockBroker, workerWebLocksBootstrapSource } from "./pglite-worker-locks.test-support";
 
 const migration = readFileSync(resolve(process.cwd(), "../supabase/migrations/134_issue599_assignment_lineage_core.sql"), "utf8");
+// #881 — 업무 상세 담당자 바꾸기(171)가 실제 134 계보 경로를 타는지 같은 기반 위에서 확인한다.
+const restore171 = readFileSync(resolve(process.cwd(), "../supabase/migrations/171_restore_deal_reassign_and_comment_edit.sql"), "utf8");
 
 const id = {
   orgA: "00000000-0000-4000-8000-000000000001",
@@ -349,5 +351,47 @@ describe("#599 assignment lineage migration", () => {
       ('read_assignment_lineage','reassign_deal_with_lineage','set_assignment_follower','schedule_assignment_handoff','cancel_assignment_handoff')`);
     expect(rows.rows.length).toBeGreaterThanOrEqual(9);
     for (const row of rows.rows) expect(row.config).toContain("search_path=public, pg_temp");
+  });
+});
+
+describe("#881 171 reassign_deal_with_activity over the real 134 lineage", () => {
+  async function boot171() {
+    const { db } = await boot();
+    await db.exec(`
+      alter table public.users add column if not exists name text;
+      create table if not exists public.activities(
+        id uuid primary key default gen_random_uuid(), org_id uuid not null, deal_id uuid,
+        type text not null, content text, actor uuid
+      );`);
+    await db.exec(restore171);
+    return db;
+  }
+
+  it("moves deal, board row, owner cell, lineage version and notifications together and logs one activity", async () => {
+    const db = await boot171();
+    const result = await as<{ assigned_to: string }>(db, id.ownerA,
+      `select (public.reassign_deal_with_activity('${id.orgA}','${id.dealA}','${id.memberA}')).assigned_to`);
+    expect(result.rows[0].assigned_to).toBe(id.memberA);
+    expect((await db.query(`select d.assigned_to deal_owner,i.assigned_to item_owner,v.value_jsonb#>>'{}' projected
+      from deals d join items i on i.deal_id=d.id join item_values v on v.item_id=i.id and v.column_key='owner' where d.id='${id.dealA}'`)).rows[0]).toEqual({
+      deal_owner: id.memberA, item_owner: id.memberA, projected: id.memberA,
+    });
+    expect((await scalar<number>(db, `select version::int n from assignment_lineage_state where deal_id='${id.dealA}'`)).n).toBe(1);
+    expect((await scalar<number>(db, "select count(*)::int n from assignment_transition_events")).n).toBe(1);
+    expect((await db.query("select user_id from notifications")).rows).toEqual([{ user_id: id.memberA }]);
+    expect((await scalar<number>(db, "select count(*)::int n from activities where type='assignment'")).n).toBe(1);
+
+    // 두 번째 변경은 저장된 버전(1)을 읽어 이어 간다.
+    await as(db, id.ownerA, `select public.reassign_deal_with_activity('${id.orgA}','${id.dealA}',null)`);
+    expect((await scalar<number>(db, `select version::int n from assignment_lineage_state where deal_id='${id.dealA}'`)).n).toBe(2);
+  });
+
+  it("refuses assigned-scope members and other orgs with no partial change", async () => {
+    const db = await boot171();
+    await expect(as(db, id.memberA, `select public.reassign_deal_with_activity('${id.orgA}','${id.dealA}','${id.adminA}')`)).rejects.toThrow(/not allowed/);
+    await expect(as(db, id.ownerB, `select public.reassign_deal_with_activity('${id.orgA}','${id.dealA}','${id.ownerB}')`)).rejects.toThrow(/not allowed/);
+    await expect(as(db, id.ownerA, `select public.reassign_deal_with_activity('${id.orgA}','${id.dealA}','${id.ownerB}')`)).rejects.toThrow(/not an active member/);
+    expect((await scalar<string>(db, `select assigned_to::text a from deals where id='${id.dealA}'`)).a).toBe(id.ownerA);
+    expect((await scalar<number>(db, "select count(*)::int n from activities")).n).toBe(0);
   });
 });
