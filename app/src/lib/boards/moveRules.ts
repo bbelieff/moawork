@@ -32,6 +32,39 @@ export function resolveMoveTarget(
   return rule[key] ?? null;
 }
 
+/**
+ * QA #884 — «되돌아가기» 목적지.
+ *
+ * 리드컨택에서 «미팅취소·계약취소·…보류» 로 옮겨진 행을 «계약 전·계약고민» 처럼 이동 규칙이 없는
+ * 단계로 되돌리면, 예전에는 값만 바뀌고 행은 취소 그룹에 남았다. 돌아갈 자리는 담당자마다 달라
+ * (담당자 1/2/컨텍) 단계 규칙에 적을 수 없다. 그래서 «지금 그룹이 이 단계 칸 규칙이 보낸 자리» 이고
+ * «새 값에 규칙이 없을 때만» 담당자 칸(person + 이동 규칙)의 규칙으로 돌려보낸다.
+ * 담당자가 없거나 그 담당자 규칙이 없으면 null(지금처럼 값만 바꾼다 — 추측으로 옮기지 않는다).
+ */
+export function returnMoveTarget(
+  columns: readonly Pick<BoardColumn, "key" | "type" | "move_rule_jsonb">[],
+  values: Record<string, CellValue>,
+  before: { group_id: string | null; assigned_to?: string | null; values?: Record<string, CellValue> },
+): { target: string; key: string } | null {
+  if (!before.group_id) return null;
+  const person = columns.find((column) => column.type === "person" && isMoveColumn(column));
+  if (!person?.move_rule_jsonb) return null;
+  const rawOwner = before.values?.[person.key];
+  const owner = Array.isArray(rawOwner)
+    ? (typeof rawOwner[0] === "string" ? rawOwner[0] : null)
+    : typeof rawOwner === "string" && rawOwner ? rawOwner : (before.assigned_to ?? null);
+  const home = owner ? person.move_rule_jsonb[owner] ?? null : null;
+  if (!home || home === before.group_id) return null;
+  for (const [key, value] of Object.entries(values)) {
+    const column = columns.find((candidate) => candidate.key === key);
+    if (!column || column === person || !column.move_rule_jsonb || !isMoveColumn(column)) continue;
+    if (resolveMoveTarget(column, value) !== null) continue;
+    if (!Object.values(column.move_rule_jsonb).includes(before.group_id)) continue;
+    return { target: home, key };
+  }
+  return null;
+}
+
 /** 이 컬럼이 "조작 열"(이동 규칙을 가진 컬럼)인가 — UI/서비스가 분기용으로 쓴다. */
 export function isMoveColumn(column: Pick<BoardColumn, "move_rule_jsonb">): boolean {
   return Boolean(column.move_rule_jsonb && Object.keys(column.move_rule_jsonb).length > 0);

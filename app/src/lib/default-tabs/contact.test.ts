@@ -36,7 +36,15 @@ describe("리드컨택 기본 탭 — 목업 계약", () => {
   it("목업 21컬럼을 보존하고 기타정보 한 컬럼만 additive로 추가한다", () => {
     expect(CONTACT_TAB.columns).toHaveLength(22);
     const legacyColumns = CONTACT_TAB.columns.filter((column) => column.key !== "other_info");
-    expect(legacyColumns.map((column) => column.label)).toEqual(mock.columns.map((column) => column.label));
+    // QA #884(2026-10-13 belie) — 탭 사이 이름 통일. 이 네 칸만 목업 이름과 다르다(자리·타입·출처는 같다).
+    const renamed: Record<string, string> = {
+      창업년도: "창업연도",
+      매출액: "매출",
+      "전자계약 / 미팅일정": "미팅 일시",
+      "계약금 완료여부": "계약금 입금여부",
+    };
+    expect(legacyColumns.map((column) => column.label))
+      .toEqual(mock.columns.map((column) => renamed[column.label] ?? column.label));
     for (const [index, column] of legacyColumns.entries()) {
       expect(TYPE_MAP[column.type], column.label).toContain(mock.columns[index].type);
       expect(column.source, column.label).toBe(mock.columns[index].source);

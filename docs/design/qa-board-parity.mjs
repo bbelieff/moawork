@@ -200,17 +200,124 @@ const runIssue601SemanticGuard = (scope, columns, detailOnlyKeys) => {
   }
 };
 
+// QA #884 (belie 2026-10-13): 탭 사이 칸 이름 통일 · 미팅 일시 한 곳 저장(읽기 전용) · 계약상황 취소/보류 이동.
+// 이 변경만 정확히 되돌린 열 목록이 기존 #601/#602 선행 정본 fingerprint와 그대로 맞아야 한다.
+// 즉 #884가 허용하는 것은 아래 열의 아래 속성뿐이고, 다른 열·속성 변경은 계속 RED다.
+const stableJson = (value) => JSON.stringify(value, (_key, item) => (item && typeof item === "object" && !Array.isArray(item)
+  ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right)))
+  : item));
+const ISSUE_884_CONTACT_MOVE_TO = {
+  "계약 보류": "💰 계약보류(온/오프)",
+  "미팅보류": "📍 미팅보류",
+  "미팅취소": "📍 미팅취소",
+  "계약취소": "📍 계약취소",
+};
+const ISSUE_884_CONFIG = {
+  new: {
+    revision: 7,
+    previousRevision: { revision: 6, columns: { meeting_at: { label: "대면미팅 일시" } } },
+    changes: {
+      meeting_at: { before: { label: "대면미팅 일시" }, after: { label: "미팅 일시" } },
+    },
+  },
+  contact: {
+    revision: 4,
+    previousRevision: {
+      revision: 3,
+      columns: {
+        ad_name: { readOnly: true },
+        applied_on: { readOnly: true },
+        phone: { readOnly: true },
+        industry: { readOnly: true },
+        rep_name: { readOnly: true },
+        email: { readOnly: true },
+        revenue: { readOnly: true, label: "매출액" },
+        founded_year: { label: "창업년도" },
+        meeting_at: { label: "전자계약 / 미팅일정", readOnly: false },
+        contract_fee_status: { label: "계약금 완료여부" },
+        contract_status: { moveRule: "empty" },
+      },
+    },
+    changes: {
+      founded_year: { before: { label: "창업년도" }, after: { label: "창업연도" } },
+      revenue: { before: { label: "매출액" }, after: { label: "매출" } },
+      meeting_at: {
+        before: { label: "전자계약 / 미팅일정", readOnly: undefined },
+        after: { label: "미팅 일시", readOnly: true },
+      },
+      contract_fee_status: { before: { label: "계약금 완료여부" }, after: { label: "계약금 입금여부" } },
+      contract_status: { before: { moveTo: undefined }, after: { moveTo: ISSUE_884_CONTACT_MOVE_TO } },
+    },
+  },
+};
+
+/** #884 변경이 정확히 들어 있으면 그 변경만 되돌린 열 목록을, 아니면 null을 돌려준다. */
+const revertIssue884 = (scope, columns) => {
+  const config = ISSUE_884_CONFIG[scope];
+  const reverted = structuredClone(columns);
+  for (const [key, change] of Object.entries(config.changes)) {
+    const matches = reverted.filter((column) => column.key === key);
+    if (matches.length !== 1) return null;
+    const column = matches[0];
+    for (const [property, expected] of Object.entries(change.after)) {
+      if (stableJson(column[property] ?? null) !== stableJson(expected ?? null)) return null;
+    }
+    for (const [property, previous] of Object.entries(change.before)) {
+      if (previous === undefined) delete column[property];
+      else column[property] = previous;
+    }
+  }
+  return reverted;
+};
+
+const issue884ContractPasses = (scope, tab, columns, detailOnlyKeys) => {
+  const config = ISSUE_884_CONFIG[scope];
+  if (tab.revision !== config.revision || stableJson(tab.previousRevision) !== stableJson(config.previousRevision)) return false;
+  const reverted = revertIssue884(scope, columns);
+  return Boolean(reverted) && issue601ContractPasses(reverted, detailOnlyKeys, ISSUE_601_CONFIG[scope]);
+};
+
+const runIssue884Guard = (scope, tab, detailOnlyKeys) => {
+  requireIssueOverride(scope, 884);
+  if (!issue884ContractPasses(scope, tab, tab.columns, detailOnlyKeys)) {
+    failures.push(`${scope}: #884 revision ${ISSUE_884_CONFIG[scope].revision}/이름·읽기 전용·이동 규칙 exact 변경 계약 불일치`);
+    return null;
+  }
+  const firstChanged = Object.keys(ISSUE_884_CONFIG[scope].changes)[0];
+  const untouched = tab.columns.find((column) => column.key !== "other_info" && !(column.key in ISSUE_884_CONFIG[scope].changes));
+  const mutations = [
+    ["old label kept", (columns) => { columns.find((column) => column.key === firstChanged).label = ISSUE_884_CONFIG[scope].changes[firstChanged].before.label; }],
+    ["unrelated label", (columns) => { columns.find((column) => column.key === untouched.key).label = `${untouched.label}-changed`; }],
+    ["meeting_at readOnly", (columns) => { const column = columns.find((item) => item.key === "meeting_at"); column.readOnly = !column.readOnly; }],
+    ["revision", (_columns, mutatedTab) => { mutatedTab.revision += 1; }],
+  ];
+  if (scope === "contact") {
+    mutations.push(["contract_status extra move", (columns) => {
+      columns.find((column) => column.key === "contract_status").moveTo["다시전화"] = "📍 미팅보류";
+    }]);
+  }
+  for (const [label, mutate] of mutations) {
+    const mutatedTab = { revision: tab.revision, previousRevision: structuredClone(tab.previousRevision) };
+    const mutatedColumns = structuredClone(tab.columns);
+    mutate(mutatedColumns, mutatedTab);
+    if (issue884ContractPasses(scope, mutatedTab, mutatedColumns, detailOnlyKeys)) {
+      failures.push(`${scope}: #884 semantic guard self-test ${label}가 RED 아님`);
+    }
+  }
+  return revertIssue884(scope, tab.columns);
+};
+
 for (const scope of scopes) {
   requireOverride(scope);
   requireIssueOverride(scope, 601);
   const tab = app.tabs.get(scope);
   if (!tab) { failures.push(`${scope}: actual DefaultTab 없음`); continue; }
   if (scope === "new") {
+    // #884 rev7은 meeting_at 이름만 바꿨다. 그 변경을 되돌린 rev6 열에 기존 #601/#602 guard를 그대로 실행한다.
+    const revision6Columns = runIssue884Guard("new", tab, newLeadDetailOnlyKeys);
+    if (!revision6Columns) continue;
     // #601 rev6에서 other_info를 걷어 낸 rev5를 대상으로 기존 #602 guard를 그대로 실행한다.
-    if (tab.revision !== 6 || JSON.stringify(tab.previousRevision) !== JSON.stringify({ revision: 5, columns: {} })) {
-      failures.push("new: #601 revision 6/predecessor 5 계약 불일치");
-    }
-    const revision5Columns = tab.columns.filter((column) => column.key !== "other_info");
+    const revision5Columns = revision6Columns.filter((column) => column.key !== "other_info");
     if (revision5Columns.length !== 39) failures.push(`new: #602 predecessor columns ${revision5Columns.length}/39`);
     const revenueColumns = revision5Columns.filter((column) => column.key === "revenue_3y_million");
     const revenue = revenueColumns[0];
@@ -251,17 +358,19 @@ for (const scope of scopes) {
     const visibleGroups = tab.groups.map((group) => group.name.replace(/^[^가-힣A-Za-z0-9]+\s*/, ""));
     if (visibleGroups.join("|") !== "신규고객|2차 상담고객|1차 부재|보류|거절") failures.push("new: explicit group order 불일치");
     if (Object.keys(tab.columns.find((column) => column.key === "consult_status")?.moveTo ?? {}).length !== 6) failures.push("new: move rules 6 아님");
-    runIssue601SemanticGuard("new", tab.columns, newLeadDetailOnlyKeys);
+    runIssue601SemanticGuard("new", revision6Columns, newLeadDetailOnlyKeys);
   }
   if (scope === "contact") {
-    if (tab.revision !== 3 || tab.previousRevision?.revision !== 2) failures.push("contact: #601 revision 3/predecessor 2 계약 불일치");
+    // #884 rev4의 이름·읽기 전용·이동 규칙 변경만 되돌린 rev3 열에 기존 #601 guard를 그대로 실행한다.
+    const revision3Columns = runIssue884Guard("contact", tab, new Set());
+    if (!revision3Columns) continue;
     if (tab.columns.length !== 22) failures.push(`contact: columns ${tab.columns.length}/22`);
     if (tab.groups.filter((group) => group.assigneeSlot !== undefined).length !== 2) failures.push("contact: dynamic member groups 불일치");
     const linked = tab.columns.filter((column) => column.source === "lk");
     if (linked.some((column) => column.readOnly === true)) failures.push("contact: linked provenance가 편집 잠금됨");
     const transition = tab.transitions.find((entry) => entry.columnKey === "work_move");
     if (!transition || transition.guard?.columnKey !== "seal_status") failures.push("contact: transition seal guard 상실");
-    runIssue601SemanticGuard("contact", tab.columns, new Set());
+    runIssue601SemanticGuard("contact", revision3Columns, new Set());
   }
   const pinned = tab.columns.filter((column) => column.rightPinned);
   if (pinned.length !== 1) failures.push(`${scope}: pinned workflow gate ${pinned.length}/1`);
@@ -276,7 +385,7 @@ if (failures.length) {
 }
 
 if (selfTest) {
-  console.log("qa-board-parity #602/#601 semantic guards: GREEN 3 + RED 11");
+  console.log("qa-board-parity #884/#602/#601 semantic guards: GREEN 5 + RED 20");
   process.exit(0);
 }
 

@@ -127,6 +127,11 @@ export interface DefaultTab {
      *   ⚠ `sortOrder` 는 여기 적지 «않는다». 옛 보드마다 뒤섞인 값이 제각각이라
      *     코드에 하나로 적을 수 있는 값이 아니다 — 기록된 상태로만 판단한다.
      */
-    columns: Record<string, { readOnly?: boolean; rightPinned?: boolean; label?: string }>;
+    /**
+     * `moveRule: "empty"` — 이전 정의에서는 이 칸의 이동 규칙이 «비어 있었다». 지금 DB 규칙도 비어 있으면
+     * (회사가 손대지 않았으면) 이번 정의의 `moveTo` 로 채운다. 비어 있지 않으면 회사 것이라 그대로 둔다.
+     * 평소 백필(planMoveRuleBackfill)은 빈 규칙을 «끄기» 로 읽어 건너뛰므로, 리비전을 올릴 때만 이 길로 켠다.
+     */
+    columns: Record<string, { readOnly?: boolean; rightPinned?: boolean; label?: string; moveRule?: "empty" }>;
   };
 }

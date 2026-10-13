@@ -64,6 +64,8 @@ byLabel.set("매출 구간", NEW_LEAD_TAB.columns.find((column) => column.key ==
 byLabel.set("광고 명", NEW_LEAD_TAB.columns.find((column) => column.key === "ad_name")!);
 byLabel.set("사업자 유형", NEW_LEAD_TAB.columns.find((column) => column.key === "biz_reg_type")!);
 byLabel.set("업종/업태", NEW_LEAD_TAB.columns.find((column) => column.key === "industry")!);
+// QA #884(2026-10-13 belie) — 탭 사이 이름 통일: 목업의 «대면미팅 일시» 는 «미팅 일시» 다(같은 meeting_at 키).
+byLabel.set("대면미팅 일시", NEW_LEAD_TAB.columns.find((column) => column.key === "meeting_at")!);
 
 /**
  * 목업과 다르기로 «결정한» 곳. 근거 없이 다른 것은 여기 못 들어온다.
@@ -105,6 +107,7 @@ describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
       if (column.label === "광고 명") return "광고명";
       if (column.label === "사업자 유형") return "사업자유형";
       if (column.label === "업종/업태") return "업종";
+      if (column.label === "대면미팅 일시") return "미팅 일시";
       return column.label;
     })));
     expect(labels).toEqual(expect.arrayContaining([
@@ -215,12 +218,13 @@ describe("신규리드 기본 탭 ↔ 목업 v6 (기계 대조)", () => {
 });
 
 describe("제품 규칙 — 목업을 그대로 옮기면 안 되는 곳", () => {
-  it("revision 6은 기타정보 물리 열을 additive로 추가하고 revision 5를 선행 정본으로 남긴다", () => {
-    expect(NEW_LEAD_TAB.revision).toBe(6);
+  it("revision 7은 미팅 일시 이름만 통일하고(QA #884) revision 6의 옛 이름을 baseline으로 남긴다", () => {
+    expect(NEW_LEAD_TAB.revision).toBe(7);
     expect(NEW_LEAD_TAB.previousRevision).toEqual({
-      revision: 5,
-      columns: {},
+      revision: 6,
+      columns: { meeting_at: { label: "대면미팅 일시" } },
     });
+    expect(NEW_LEAD_TAB.columns.find((column) => column.key === "meeting_at")?.label).toBe("미팅 일시");
   });
 
   it("#602는 revenue 물리 열만 추가하고 신용점수는 durable 두 키를 한 presentation 셀로 둔다", () => {

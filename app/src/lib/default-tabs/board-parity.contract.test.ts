@@ -15,7 +15,8 @@ import { resolveColumnOrder } from "@/components/board/layout";
 import { LocalBoardsRepo, toAsyncBoardsRepo } from "@/lib/repo/local/boardsRepo";
 import { resetDb } from "@/lib/repo/local/store";
 import type { Ctx } from "@/lib/types";
-import { CONTACT_TAB } from "./contact";
+import { CONTACT_GROUPS, CONTACT_TAB } from "./contact";
+import type { DefaultTab } from "./types";
 import { ensureDefaultTabAdditive } from "./install";
 import { BoardsService } from "@/lib/boards/service";
 
@@ -56,7 +57,56 @@ describe("actual board rendering and definition reconciliation", () => {
     await ensureDefaultTabAdditive(ctx, CONTACT_TAB, repo, []);
     const reloaded = toAsyncBoardsRepo(new LocalBoardsRepo());
     expect((await reloaded.listColumns(ctx, board.id)).filter((column) => column.source === "lk").every((column) => !column.is_readonly)).toBe(true);
-    expect((await reloaded.getDefaultDefinitionState?.(ctx, board.id))?.revision).toBe(3);
+    expect((await reloaded.getDefaultDefinitionState?.(ctx, board.id))?.revision).toBe(CONTACT_TAB.revision);
+  });
+
+  // QA #884 (belie 2026-10-13) — revision 3 boards had no contract_status move rule. Revision 4 turns it on only
+  // where the stored rule is still empty; a rule the company already set is theirs and stays untouched.
+  const contactRevision3: DefaultTab = {
+    ...CONTACT_TAB,
+    revision: 3,
+    previousRevision: undefined,
+    columns: CONTACT_TAB.columns.map((column) => (column.key === "contract_status" ? { ...column, moveTo: undefined } : column)),
+  };
+
+  it("fills the empty contract_status move rule from the revision 4 definition", async () => {
+    const repo = toAsyncBoardsRepo(new LocalBoardsRepo());
+    const { boardId } = await ensureDefaultTabAdditive(ctx, contactRevision3, repo, []);
+    const before = (await repo.listColumns(ctx, boardId)).find((column) => column.key === "contract_status")!;
+    expect(before.move_rule_jsonb ?? null).toBeNull();
+    await ensureDefaultTabAdditive(ctx, CONTACT_TAB, repo, []);
+    const groups = await repo.listGroups(ctx, boardId);
+    const groupId = (name: string) => groups.find((group) => group.name === name)!.id;
+    const after = (await new LocalBoardsRepo().listColumns(ctx, boardId)).find((column) => column.key === "contract_status")!;
+    expect(after.move_rule_jsonb).toEqual({
+      "계약 보류": groupId(CONTACT_GROUPS.contractHold),
+      "미팅보류": groupId(CONTACT_GROUPS.meetingHold),
+      "미팅취소": groupId(CONTACT_GROUPS.meetingCancelled),
+      "계약취소": groupId(CONTACT_GROUPS.contractCancelled),
+    });
+    expect((await repo.getDefaultDefinitionState?.(ctx, boardId))?.revision).toBe(4);
+  });
+
+  it("leaves a company-customized contract_status move rule alone", async () => {
+    const repo = toAsyncBoardsRepo(new LocalBoardsRepo());
+    const { boardId } = await ensureDefaultTabAdditive(ctx, contactRevision3, repo, []);
+    const groups = await repo.listGroups(ctx, boardId);
+    const custom = { "계약취소": groups.find((group) => group.name === CONTACT_GROUPS.meetingHold)!.id };
+    const column = (await repo.listColumns(ctx, boardId)).find((candidate) => candidate.key === "contract_status")!;
+    await repo.updateColumn(ctx, column.id, { moveRule: custom });
+    await ensureDefaultTabAdditive(ctx, CONTACT_TAB, repo, []);
+    const after = (await repo.listColumns(ctx, boardId)).find((candidate) => candidate.key === "contract_status")!;
+    const groupId = (name: string) => groups.find((group) => group.name === name)!.id;
+    // The company's own destination wins (계약취소 → 미팅보류, not the definition's 계약취소 group). The regular
+    // move-rule backfill (planMoveRuleBackfill) still adds only the entries that were missing — existing behaviour.
+    expect(after.move_rule_jsonb).toEqual({
+      ...custom,
+      "계약 보류": groupId(CONTACT_GROUPS.contractHold),
+      "미팅보류": groupId(CONTACT_GROUPS.meetingHold),
+      "미팅취소": groupId(CONTACT_GROUPS.meetingCancelled),
+    });
+    expect(after.move_rule_jsonb?.["계약취소"]).not.toBe(groupId(CONTACT_GROUPS.contractCancelled));
+    expect((await repo.getDefaultDefinitionState?.(ctx, boardId))?.revision).toBe(4);
   });
 
   it("edits a linked provenance cell and reloads the persisted value through a fresh service", async () => {

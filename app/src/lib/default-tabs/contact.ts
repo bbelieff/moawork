@@ -82,11 +82,11 @@ const COLUMNS: DefaultTabColumn[] = [
     options: options("개인/면세", "개인/간이", "개인/일반", "개인/성실", "법인", "법인/성실"),
     width: 110,
   },
-  { key: "founded_year", label: "창업년도", type: "number", source: "in", width: 100 },
+  { key: "founded_year", label: "창업연도", type: "number", source: "in", width: 100 },
   { key: "sido", label: "시도", type: "select", source: "in", options: options(...SIDO), width: 90 },
   { key: "sigungu", label: "시군구", type: "select", source: "in", options: sigunguOptions(), width: 110 },
   { key: "rep_name", label: "대표자명", type: "text", source: "lk", width: 110 },
-  { key: "revenue", label: "매출액", type: "text", source: "lk", width: 110 },
+  { key: "revenue", label: "매출", type: "text", source: "lk", width: 110 },
   { key: OTHER_INFO_COLUMN_KEY, label: "기타정보", type: "other_info", source: "in", width: 170 },
   {
     key: "contract_status",
@@ -98,8 +98,18 @@ const COLUMNS: DefaultTabColumn[] = [
       "다시전화", "진행했다함", "미팅보류", "미팅취소", "계약취소",
     ),
     width: 130,
+    // QA #884 — 취소·보류를 고르면 그 그룹으로 옮긴다(예전엔 그룹만 있고 규칙이 없어 값만 바뀌었다).
+    //   다른 단계로 되돌리면 담당자 그룹으로 돌아간다(moveRules.returnMoveTarget).
+    moveTo: {
+      "계약 보류": CONTACT_GROUPS.contractHold,
+      "미팅보류": CONTACT_GROUPS.meetingHold,
+      "미팅취소": CONTACT_GROUPS.meetingCancelled,
+      "계약취소": CONTACT_GROUPS.contractCancelled,
+    },
   },
-  { key: "meeting_at", label: "전자계약 / 미팅일정", type: "datetime", source: "in", width: 165 },
+  // QA #884 — 미팅 일시의 정본은 상담 기록(consultation_states.meeting_at)이다. 이 칸은 그 값을 비추기만 한다
+  //   (상담 패널에서 예약·변경·취소하면 같이 바뀐다). 여기서 따로 고치면 두 값이 갈라져서 읽기 전용으로 둔다.
+  { key: "meeting_at", label: "미팅 일시", type: "datetime", source: "in", readOnly: true, width: 165 },
   {
     key: "meeting_confirm_message",
     label: "미팅확정 메세지",
@@ -113,7 +123,7 @@ const COLUMNS: DefaultTabColumn[] = [
   { key: "contract_fee", label: "계약금", type: "money", source: "in", width: 110 },
   {
     key: "contract_fee_status",
-    label: "계약금 완료여부",
+    label: "계약금 입금여부",
     type: "status",
     source: "act",
     options: idleAnd("계약금 미", "계약금 완"),
@@ -142,14 +152,23 @@ const COLUMNS: DefaultTabColumn[] = [
 ];
 
 export const CONTACT_TAB: DefaultTab = {
-  revision: 3,
+  // 2026-10-13(QA #884) — 4: 탭 사이 이름 통일(매출·창업연도·미팅 일시·계약금 입금여부), 미팅 일시 읽기 전용,
+  //   계약상황 취소·보류 이동 규칙. 회사가 이름·규칙을 바꿔 둔 보드는 건드리지 않는다(reconcile 규칙).
+  revision: 4,
   previousRevision: {
-    revision: 2,
+    revision: 3,
     // 기록이 없는 revision 1 보드의 linked-field 교정도 계속 감지한다.
-    // revision 2 상태가 있으면 저장된 false baseline이 우선하므로 회사 수정값은 덮지 않는다.
-    columns: Object.fromEntries([
-      "ad_name", "applied_on", "phone", "industry", "rep_name", "revenue", "email",
-    ].map((key) => [key, { readOnly: true }])),
+    // 상태 기록이 있으면 저장된 baseline 이 우선하므로 회사 수정값은 덮지 않는다.
+    columns: {
+      ...Object.fromEntries([
+        "ad_name", "applied_on", "phone", "industry", "rep_name", "email",
+      ].map((key) => [key, { readOnly: true }])),
+      revenue: { readOnly: true, label: "매출액" },
+      founded_year: { label: "창업년도" },
+      meeting_at: { label: "전자계약 / 미팅일정", readOnly: false },
+      contract_fee_status: { label: "계약금 완료여부" },
+      contract_status: { moveRule: "empty" },
+    },
   },
   key: "contact",
   source: CONTACT_TAB_SOURCE,

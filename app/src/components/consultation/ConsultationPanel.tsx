@@ -3,7 +3,7 @@
 /**
  * 상담 확인 패널 — 리드컨택 행의 비대면/대면 보기 + 계약 확인 2단계 + 실무 인계.
  *
- * ★ #830(167): 계약 확인은 1단계 «계약금 입금 확인»(보드 «계약금 완료여부» 칸) →
+ * ★ #830(167): 계약 확인은 1단계 «계약금 입금 확인»(보드 «계약금 입금여부» 칸) →
  * 2단계 «직인»(대표·관리자 승인)이다. 4단계 체크리스트 UI 는 없앴다 — 1단계는
  * 보드 칸에서 바꾸고, 이 패널은 두 단계의 상태를 읽기 전용으로 보여준다.
  *
@@ -357,7 +357,7 @@ export function ConsultationPanel({
                 <dd className={snapshot.contractFee?.ready ? "text-mw-success" : "text-mw-body"}>
                   {snapshot.contractFee?.status ?? "계약금 미"}
                 </dd>
-                <dd className="w-full text-[11px] text-mw-sub">보드 «계약금 완료여부» 칸에서 바꿉니다</dd>
+                <dd className="w-full text-[11px] text-mw-sub">보드 «계약금 입금여부» 칸에서 바꿉니다</dd>
               </div>
               <div className="flex flex-wrap items-baseline gap-x-2 border-t border-mw-line py-1.5">
                 <dt className="font-medium">2단계 직인</dt>

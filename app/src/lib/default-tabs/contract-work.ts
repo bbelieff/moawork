@@ -104,8 +104,8 @@ const columns: DefaultTabColumn[] = [
   //   2026-08-20 총괄 직접 지시로 «상품명칭» 바로 뒤로 옮겼다 — 큰 이름과 세부 이름은 붙어 있어야 읽힌다.
   { key: "product", label: "세부명칭", type: "select", source: "act", options: mappedOptions("진행 상품"), width: 180 },
   { key: "business_type", label: "사업자유형", type: "select", source: "lk", readOnly: true, options: POLICYFUND_OPTION_SETS.biz_reg_type.map((option) => ({ ...option })), width: 120 },
-  { key: "founded_year", label: "창업년도", type: "number", source: "lk", readOnly: true, width: 100 },
-  { key: "annual_revenue", label: "연 매출액", type: "text", source: "lk", readOnly: true, width: 120 },
+  { key: "founded_year", label: "창업연도", type: "number", source: "lk", readOnly: true, width: 100 },
+  { key: "annual_revenue", label: "매출", type: "text", source: "lk", readOnly: true, width: 120 },
   { key: "representative", label: "대표자명", type: "text", source: "lk", readOnly: true, width: 110 },
   { key: "phone", label: "전화번호", type: "phone", source: "lk", readOnly: true, width: 130 },
   { key: "industry", label: "업종/업태", type: "status", source: "lk", readOnly: true, options: mappedOptions("업종/업태"), width: 140 },
@@ -190,7 +190,7 @@ const columns: DefaultTabColumn[] = [
   { key: "reapply_notice_date", label: "ƒ재신청 안내일", type: "calc", source: "calc", readOnly: true, width: 140 },
   { key: "d180", label: "ƒD+180", type: "calc", source: "calc", readOnly: true, width: 110 },
   { key: "contract_deposit", label: "계약금", type: "money", source: "in", width: 120 },
-  { key: "contract_deposit_paid_on", label: "계약금_입금일", type: "date", source: "in", width: 130 },
+  { key: "contract_deposit_paid_on", label: "계약금 입금일", type: "date", source: "in", width: 130 },
 ];
 
 export const CONTRACT_WORK_TAB: DefaultTab = {
@@ -205,12 +205,16 @@ export const CONTRACT_WORK_TAB: DefaultTab = {
   // 2026-08-26(#531) — 3 으로 올린다. «승인일» 을 새로 넣었는데, 새 열은 맨 뒤에 붙으므로
   //   재배치(reorderToDefinition)가 한 번 돌아야 정의 자리로 간다. 그 재배치는 revision 이
   //   올라갈 때만 돈다.
-  revision: 3,
+  // 2026-10-13(QA #884) — 4: 탭 사이 이름 통일(창업연도·매출·계약금 입금일).
+  revision: 4,
   previousRevision: {
     // 라벨 교정은 revision 2 에서 이미 끝났다. 기록이 없는 옛 보드를 위해 그대로 남겨 둔다 —
     // 지우면 아직 한 번도 진입하지 않은 워크스페이스가 옛 이름에 갇힌다.
-    revision: 2,
+    revision: 3,
     columns: {
+      founded_year: { label: "창업년도" },
+      annual_revenue: { label: "연 매출액" },
+      contract_deposit_paid_on: { label: "계약금_입금일" },
       progress_status: { label: "진행상항" },  // 목업 오탈자를 그대로 심었던 자리
       fund_name: { label: "자금명" },          // → 상품명칭 (2026-08-20 지시)
       product: { label: "진행 상품" },          // → 세부명칭 (2026-08-20 지시)

@@ -150,7 +150,7 @@ describe("ConsultationPanel", () => {
     const stages = container!.querySelector('[aria-label="계약 확인 2단계"]')!;
     expect(stages.textContent).toContain("1단계 계약금 입금 확인");
     expect(stages.textContent).toContain("계약금 미");
-    expect(stages.textContent).toContain("보드 «계약금 완료여부» 칸에서 바꿉니다");
+    expect(stages.textContent).toContain("보드 «계약금 입금여부» 칸에서 바꿉니다");
     expect(stages.textContent).toContain("2단계 직인대기");
     expect(boxes()).toHaveLength(0);
     for (const retired of ["계약서 송부", "서명본 발송", "상대 서명 확인", "착수금 입금 확인", "4단계"]) expect(html).not.toContain(retired);
