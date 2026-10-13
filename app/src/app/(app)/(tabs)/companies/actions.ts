@@ -14,7 +14,7 @@ import { isManager } from "@/lib/auth/roles";
 import { getCrmService } from "@/lib/crm";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
-import { IMPORT_ROW_CAP, mapCsvToCompanies, type ImportRow } from "@/lib/companies/csv-import";
+import { IMPORT_ROW_CAP, companyDuplicateKey, mapCsvToCompanies, type ImportRow } from "@/lib/companies/csv-import";
 import type { CompanyImportResult } from "./csv-import-contract";
 
 export async function importCompaniesCsvAction(
@@ -71,21 +71,37 @@ export async function importCompaniesCsvAction(
   const crm = getCrmService();
   const failures = [...rejected];
   let imported = 0;
+  let skippedExisting = 0;
 
-  for (const [index, row] of mapped.entries()) {
+  // QA #885 — 이미 있는 회사(회사명·대표자명이 같음)는 새로 만들지 않고 건너뛴다. 자동 병합하지 않는다.
+  let existing: Set<string>;
+  try {
+    existing = new Set((await crm.listCompanies(ctx)).map((c) => companyDuplicateKey(c.name, c.owner_name)));
+  } catch {
+    return { ok: false, message: "기존 회사 목록을 읽지 못해 중복을 확인할 수 없어요. 잠시 뒤 다시 시도해 주세요.", imported: 0, rejected: [] };
+  }
+
+  for (const row of mapped) {
+    if (existing.has(companyDuplicateKey(row.input.name, row.input.owner_name))) {
+      skippedExisting += 1;
+      failures.push({ line: row.line, title: row.input.name, reason: "이미 있는 회사라 건너뛰었어요(회사명·대표자명이 같음)" });
+      continue;
+    }
     try {
       await crm.createCompany(ctx, row.input);
       imported += 1;
     } catch {
       // ★ 한 행이 실패해도 «멈추지 않는다». 어디까지 들어갔는지 사용자가 알아야 한다.
-      failures.push({ line: index + 2, title: row.input.name, reason: "저장하지 못했어요" });
+      failures.push({ line: row.line, title: row.input.name, reason: "저장하지 못했어요" });
     }
   }
+  failures.sort((a, b) => a.line - b.line);
 
   revalidatePath("/companies");
 
   const notes: string[] = [`${imported}개 회사를 가져왔어요.`];
-  if (failures.length > 0) notes.push(`${failures.length}행은 넣지 못했어요.`);
+  if (skippedExisting > 0) notes.push(`이미 있는 회사 ${skippedExisting}건은 건너뛰었어요.`);
+  if (failures.length > skippedExisting) notes.push(`${failures.length - skippedExisting}행은 넣지 못했어요.`);
   if (unrecognized.length > 0) notes.push(`알아보지 못한 열 ${unrecognized.length}개는 저장하지 않았어요: ${unrecognized.join(", ")}`);
 
   return { ok: imported > 0, message: notes.join(" "), imported, rejected: failures };

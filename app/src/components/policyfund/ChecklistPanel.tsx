@@ -69,6 +69,9 @@ export function ChecklistPanel({
   const [state, setState] = useState(initialState);
   const [productPending, startProductTransition] = useTransition();
   const [newLabel, setNewLabel] = useState("");
+  // QA #885 — 상품을 바꾸면 지금 목록(체크·직접 추가 포함)이 새 상품 기본 목록으로 «통째로» 바뀐다(engine.applyPreset).
+  //   항목이 있으면 바로 바꾸지 않고 한 번 묻는다. 같은 상품을 다시 골라도 체크가 풀리지 않게 그냥 둔다.
+  const [confirmProduct, setConfirmProduct] = useState<string | null>(null);
 
   const completion = completionOf(state.items);
   const barColor = completion.percent === 100 ? "var(--mw-success)" : "var(--mw-record)";
@@ -80,13 +83,22 @@ export function ChecklistPanel({
     return form;
   };
 
-  const selectProduct = (productId: string) => {
-    if (!productId) return;
+  const applyProduct = (productId: string) => {
+    setConfirmProduct(null);
     setState((s) => ({ ...s, productId })); // 상품 id 는 즉시 반영해도 안전(추측이 아니다)
     startProductTransition(async () => {
       const server = await applyProductAction(fd({ productId }));
       setState(server);
     });
+  };
+
+  const selectProduct = (productId: string) => {
+    if (!productId || productId === state.productId) return;
+    if (state.items.length > 0) {
+      setConfirmProduct(productId);
+      return;
+    }
+    applyProduct(productId);
   };
 
   const toggle = (itemId: string) => {
@@ -154,6 +166,19 @@ export function ChecklistPanel({
             />
           </div>
           {productPending && <span className="pb-2 text-xs text-mw-sub">적용 중…</span>}
+        </div>
+      )}
+
+      {confirmProduct !== null && (
+        <div role="alertdialog" aria-label="상품 바꾸기 확인" className="flex flex-col gap-2 rounded-lg border border-mw-line bg-mw-tint-blue px-3 py-2 text-xs text-mw-body">
+          <p>
+            상품을 «{confirmProduct}»(으)로 바꾸면
+            지금 목록(체크 {completion.checked}/{completion.total}, 직접 추가한 항목 포함)이 새 상품의 기본 서류로 바뀌고 되돌릴 수 없어요.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setConfirmProduct(null)} className="h-8 rounded-lg border border-mw-line px-3 font-semibold">그대로 두기</button>
+            <button type="button" data-mw-cta="primary" onClick={() => applyProduct(confirmProduct)} className="h-8 rounded-lg bg-mw-primary px-3 font-semibold text-mw-on-accent">바꾸기</button>
+          </div>
         </div>
       )}
 
