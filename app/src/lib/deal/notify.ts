@@ -7,8 +7,8 @@
  *
  * 댓글 멘션은 부가 알림이라 Supabase 미설정 시 조용히 스킵한다. 반면 보완요청은
  * 담당자 전달 자체가 목적이므로 미설정·RPC 실패·대상 부재를 타입 결과로 호출부에 돌려준다.
- * 담당자 배정 알림(`trg_notify_deal_assigned`)은 DB 트리거라 이 파일이 다루지 않는다
- * (deals.assigned_to 갱신 자체가 이미 asyncService 를 통해 실DB에 반영되면 자동 발화).
+ * 담당자 배정 알림은 이 파일이 다루지 않는다 — 담당 계보 경로(`reassign_deal_with_lineage`)가 보낸다
+ * (064 의 `trg_notify_deal_assigned` 는 운영에 없고 되살리지 않았다 — #881).
  */
 
 import { hasSupabaseEnv } from "@/lib/supabase/env";
