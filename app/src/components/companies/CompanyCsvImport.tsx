@@ -51,17 +51,18 @@ export function CompanyCsvImport({
     if (file.size > 1024 * 1024) { setNotice("CSV 파일은 1MB 이하만 가져올 수 있어요."); return; }
     const text = await file.text();
     const parsed = parseDeidentifiedCsv(text);
+    // 제외한 행은 «몇 행이 왜» 인지 앞의 3건까지 보여 준다(QA #885).
+    const skippedNote = parsed.skipped.length
+      ? ` 제외 ${parsed.skipped.length}행: ${parsed.skipped.slice(0, 3).map((row) => `${row.line}행 ${row.reason}`).join(" · ")}${parsed.skipped.length > 3 ? " 외" : ""}`
+      : parsed.quarantined ? ` 형식이 안 맞는 ${parsed.quarantined}행은 제외했어요.` : "";
     if (parsed.rows.length === 0) {
       setFileName(file.name); setRows([]); setHeaders([]);
-      setNotice(`읽을 수 있는 행이 없어요. 격리된 행 ${parsed.quarantined}개 — 첫 줄이 열 이름인지 확인해 주세요.`);
+      setNotice(`읽을 수 있는 행이 없어요. 첫 줄이 열 이름인지 확인해 주세요.${skippedNote}`);
       return;
     }
-    // 파서는 헤더를 돌려주지 않으므로 첫 줄에서 직접 뽑는다(파서와 같은 규칙).
-    const firstLine = text.replace(/^﻿/, "").split(/\r?\n/)[0] ?? "";
-    const parsedHeaders = firstLine.split(",").map((value) => value.trim().replace(/^"|"$/g, ""));
     requestIdRef.current = crypto.randomUUID();
-    setFileName(file.name); setRows(parsed.rows); setHeaders(parsedHeaders);
-    setNotice(`${parsed.rows.length}개 행을 읽었어요.${parsed.quarantined ? ` 형식이 안 맞는 ${parsed.quarantined}행은 제외했어요.` : ""}`);
+    setFileName(file.name); setRows(parsed.rows); setHeaders(parsed.headers);
+    setNotice(`${parsed.rows.length}개 행을 읽었어요.${skippedNote}`);
   };
 
   const submit = async () => {
@@ -117,7 +118,12 @@ export function CompanyCsvImport({
             <div className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800">
               <p className="font-medium">{preview.mapped.length}건이 들어갑니다</p>
               {preview.rejected.length > 0 ? (
-                <p className="mt-1 text-amber-700 dark:text-amber-300">{preview.rejected.length}행은 회사명이 없어 제외됩니다.</p>
+                <ul className="mt-1 grid gap-0.5 text-amber-700 dark:text-amber-300">
+                  {preview.rejected.slice(0, 5).map((row) => (
+                    <li key={`${row.line}-${row.title}`}>{row.line}행 · {row.title || "(이름 없음)"} — {row.reason}</li>
+                  ))}
+                  {preview.rejected.length > 5 ? <li>외 {preview.rejected.length - 5}행 제외</li> : null}
+                </ul>
               ) : null}
               {preview.unrecognized.length > 0 ? (
                 <p className="mt-1 text-zinc-500">알아보지 못한 열은 저장하지 않아요: {preview.unrecognized.join(", ")}</p>

@@ -6,9 +6,11 @@ import { STAGE_BOARDS } from "@/lib/crm/stageBoards";
 import { noticeLive, noticeRole, type ResultNotice } from "@/lib/ui/result-notice";
 import styles from "./builder-workspace.module.css";
 
-export type CsvRow = Readonly<{ title: string; values: Record<string, string> }>;
+/** line = 원본 파일의 레코드 번호(헤더 = 1). 빈 줄도 센다 — 오류를 «몇 행» 으로 알려 줄 때 쓴다(QA #885). */
+export type CsvRow = Readonly<{ title: string; values: Record<string, string>; line?: number }>;
+export type CsvSkippedRow = Readonly<{ line: number; reason: string }>;
 
-function csvRecords(text: string): { records: string[][]; malformed: boolean } {
+function csvRecords(text: string): { records: { line: number; cells: string[] }[]; malformed: boolean } {
   const records: string[][] = [];
   let record: string[] = [], field = "", quoted = false, malformed = false, fieldStarted = false;
   for (let index = 0; index < text.length; index += 1) {
@@ -22,23 +24,27 @@ function csvRecords(text: string): { records: string[][]; malformed: boolean } {
     } else { field += char; fieldStarted = true; }
   }
   if (field.length > 0 || record.length > 0) { record.push(field); records.push(record); }
-  return { records: records.filter((row) => row.some((value) => value.trim())), malformed: malformed || quoted };
+  return {
+    records: records.map((cells, index) => ({ line: index + 1, cells })).filter((row) => row.cells.some((value) => value.trim())),
+    malformed: malformed || quoted,
+  };
 }
 
-export function parseDeidentifiedCsv(text: string): { rows: CsvRow[]; quarantined: number } {
+export function parseDeidentifiedCsv(text: string): { rows: CsvRow[]; quarantined: number; headers: string[]; skipped: CsvSkippedRow[] } {
   const parsed = csvRecords(text.replace(/^\uFEFF/, ""));
   const records = parsed.records;
-  if (parsed.malformed) return { rows: [], quarantined: Math.max(1, records.length - 1) };
-  if (records.length < 2) return { rows: [], quarantined: 0 };
-  const headers = records[0].map((value) => value.trim());
-  if (headers.some((value) => !value) || new Set(headers).size !== headers.length) return { rows: [], quarantined: records.length - 1 };
+  if (parsed.malformed) return { rows: [], quarantined: Math.max(1, records.length - 1), headers: [], skipped: [] };
+  if (records.length < 2) return { rows: [], quarantined: 0, headers: records[0]?.cells.map((value) => value.trim()) ?? [], skipped: [] };
+  const headers = records[0].cells.map((value) => value.trim());
+  if (headers.some((value) => !value) || new Set(headers).size !== headers.length) return { rows: [], quarantined: records.length - 1, headers, skipped: [] };
   const rows: CsvRow[] = [];
-  let quarantined = 0;
-  for (const cells of records.slice(1)) {
-    if (cells.length !== headers.length || !cells[0].trim()) { quarantined += 1; continue; }
-    rows.push({ title: cells[0].trim(), values: Object.fromEntries(headers.slice(1).map((header, index) => [header, cells[index + 1]?.trim() ?? ""])) });
+  const skipped: CsvSkippedRow[] = [];
+  for (const { line, cells } of records.slice(1)) {
+    if (cells.length !== headers.length) { skipped.push({ line, reason: `칸 수가 열 이름(${headers.length}개)과 달라요(${cells.length}개)` }); continue; }
+    if (!cells[0].trim()) { skipped.push({ line, reason: `첫 칸(${headers[0]})이 비어 있어요` }); continue; }
+    rows.push({ line, title: cells[0].trim(), values: Object.fromEntries(headers.slice(1).map((header, index) => [header, cells[index + 1]?.trim() ?? ""])) });
   }
-  return { rows, quarantined };
+  return { rows, quarantined: skipped.length, headers, skipped };
 }
 
 export function CsvImportDialog({ activeBoard, importCsv }: Readonly<{

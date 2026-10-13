@@ -197,7 +197,8 @@ export async function importPlatformDemoCrmCsv(boardSlug: string, rows: readonly
   const result = await client.rpc("platform_import_selected_demo_crm_csv", {
     p_request_id: requestId,
     p_board_kind: board.kind,
-    p_rows: rows,
+    // 줄 번호(line)는 화면 안내용이다 — 데모 RPC 에는 예전 모양 그대로 보낸다.
+    p_rows: rows.map(({ title, values }) => ({ title, values })),
   });
   const response = result.data as { accepted?: unknown; row_count?: unknown } | null;
   if (result.error || response?.accepted !== true) return { ok: false, message: "CSV를 저장하지 못했어요. 같은 파일을 다시 시도해도 중복 저장되지 않아요." };
