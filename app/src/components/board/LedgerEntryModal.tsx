@@ -7,8 +7,8 @@
  */
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { addDealLedgerEntryAction, type AddLedgerEntryInput } from "@/lib/accounting/actions";
-import type { LedgerKind } from "@/lib/accounting/ledger";
+import { addDealLedgerEntryAction, updateDealLedgerEntryAction, type AddLedgerEntryInput } from "@/lib/accounting/actions";
+import type { DealLedgerEntry, LedgerKind } from "@/lib/accounting/ledger";
 import { ResultBanner } from "@/lib/ui/ResultBanner";
 import type { ResultNotice } from "@/lib/ui/result-notice";
 import { BoardModalLayer } from "./BoardDialogPortal";
@@ -18,6 +18,8 @@ export interface LedgerEntryModalProps {
   dealId: string;
   feeTerms: string | null;
   depositAlreadyReceived: boolean;
+  /** QA #885 — 넘기면 «고치기» 모드. 구분(계약금/수수료)은 바꾸지 않는다. */
+  editing?: DealLedgerEntry;
   onClose(): void;
   onSaved(): void;
 }
@@ -39,17 +41,18 @@ export function LedgerEntryModal({
   dealId,
   feeTerms,
   depositAlreadyReceived,
+  editing,
   onClose,
   onSaved,
 }: LedgerEntryModalProps) {
-  const [kind, setKind] = useState<LedgerKind>(depositAlreadyReceived ? "fee" : "contract_deposit");
-  const [amount, setAmount] = useState("");
-  const [receivedAmount, setReceivedAmount] = useState("");
-  const [occurredOn, setOccurredOn] = useState(today());
-  const [paidOn, setPaidOn] = useState(today());
-  const [notYetPaid, setNotYetPaid] = useState(false);
-  const [vatIncluded, setVatIncluded] = useState(false);
-  const [taxInvoiceIssued, setTaxInvoiceIssued] = useState(false);
+  const [kind, setKind] = useState<LedgerKind>(editing?.kind ?? (depositAlreadyReceived ? "fee" : "contract_deposit"));
+  const [amount, setAmount] = useState(editing ? String(editing.amount) : "");
+  const [receivedAmount, setReceivedAmount] = useState(editing ? String(editing.receivedAmount) : "");
+  const [occurredOn, setOccurredOn] = useState(editing?.occurredOn ?? today());
+  const [paidOn, setPaidOn] = useState(editing?.paidOn ?? today());
+  const [notYetPaid, setNotYetPaid] = useState(editing ? editing.paidOn === null : false);
+  const [vatIncluded, setVatIncluded] = useState(editing?.vatIncluded ?? false);
+  const [taxInvoiceIssued, setTaxInvoiceIssued] = useState(editing?.taxInvoiceIssued ?? false);
   // ★ BBE-208 — 판정(`ok`)을 «상태에» 담는다. 문자열만 담아 두고 표현을 빨간 alert 로
   //   못박아 두면, 나중에 성공 메시지가 이 자리에 들어오는 순간 성공이 오류로 읽힌다.
   const [notice, setNotice] = useState<ResultNotice | null>(null);
@@ -83,8 +86,11 @@ export function LedgerEntryModal({
       vatIncluded,
       taxInvoiceIssued,
     };
+    const save = editing
+      ? updateDealLedgerEntryAction({ ...input, entryId: editing.id })
+      : addDealLedgerEntryAction(input);
     startTransition(() => {
-      void addDealLedgerEntryAction(input).then((result) => {
+      void save.then((result) => {
         if (!result.ok) {
           setNotice({ ok: false, message: result.message });
           return;
@@ -98,14 +104,14 @@ export function LedgerEntryModal({
   return <BoardModalLayer labelledBy="ledger-entry-title" onClose={onClose}>
       <div className="w-[min(30rem,calc(100vw-1.5rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-[var(--mw-radius)] border border-mw-line bg-mw-card p-4 text-mw-fg shadow-xl sm:p-5">
         <div className="flex items-start justify-between gap-3">
-          <h2 id="ledger-entry-title" className="text-base font-semibold">원장에 기록하기</h2>
+          <h2 id="ledger-entry-title" className="text-base font-semibold">{editing ? "원장 항목 고치기" : "원장에 기록하기"}</h2>
           <button ref={closeRef} type="button" onClick={onClose} aria-label="원장 입력 닫기" className="rounded p-1 text-mw-sub hover:bg-mw-bg hover:text-mw-fg">✕</button>
         </div>
 
         <div className="mt-3 flex gap-2">
           <button
             type="button"
-            disabled={depositAlreadyReceived}
+            disabled={Boolean(editing) && kind !== "contract_deposit"}
             onClick={() => setKind("contract_deposit")}
             className={`min-h-9 flex-1 rounded-lg border px-3 py-1.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
               kind === "contract_deposit" ? "border-mw-record bg-mw-tint-blue text-mw-record" : "border-mw-line text-mw-body"
@@ -115,17 +121,18 @@ export function LedgerEntryModal({
           </button>
           <button
             type="button"
+            disabled={Boolean(editing) && kind !== "fee"}
             onClick={() => setKind("fee")}
-            className={`min-h-9 flex-1 rounded-lg border px-3 py-1.5 text-sm font-semibold ${
+            className={`min-h-9 flex-1 rounded-lg border px-3 py-1.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
               kind === "fee" ? "border-mw-record bg-mw-tint-blue text-mw-record" : "border-mw-line text-mw-body"
             }`}
           >
             수수료
           </button>
         </div>
-        {depositAlreadyReceived && (
+        {!editing && depositAlreadyReceived && (
           <p className="mt-1.5 text-xs text-mw-sub">
-            계약금은 이미 받았어요 — 그래서 자동으로 수수료가 선택됐어요. 다시 계약금을 고를 순 없어요(한 건당 한 번뿐이라).
+            계약금이 이미 기록돼 있어 수수료를 먼저 골라 뒀어요. 계약금을 나눠 받았으면 계약금을 골라 한 건 더 기록하면 돼요.
           </p>
         )}
 
@@ -229,7 +236,7 @@ export function LedgerEntryModal({
             onClick={submit}
             className="rounded-lg bg-mw-record px-3 py-1.5 text-sm font-semibold text-mw-on-accent disabled:opacity-40"
           >
-            {pending ? "저장하는 중…" : "원장에 저장"}
+            {pending ? "저장하는 중…" : editing ? "고친 내용 저장" : "원장에 저장"}
           </button>
         </div>
       </div>

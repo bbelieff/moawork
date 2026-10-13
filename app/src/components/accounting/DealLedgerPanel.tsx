@@ -13,6 +13,9 @@ export type LedgerPanelState =
 export interface DealLedgerPanelProps {
   dealId: string;
   state: LedgerPanelState;
+  /** QA #885 — 넘기면 행마다 «고치기·지우기» 를 보인다(원장 팝업). 서버가 권한을 다시 확인한다. */
+  onEdit?: (entry: DealLedgerEntry) => void;
+  onDelete?: (entry: DealLedgerEntry) => void;
 }
 
 const KIND_LABEL: Readonly<Record<DealLedgerEntry["kind"], string>> = {
@@ -28,7 +31,8 @@ function DateValue({ value }: { value: string | null }) {
   return <span>{value ?? "아직 입금되지 않았어요"}</span>;
 }
 
-export function DealLedgerPanel({ dealId, state }: DealLedgerPanelProps) {
+export function DealLedgerPanel({ dealId, state, onEdit, onDelete }: DealLedgerPanelProps) {
+  const manage = Boolean(onEdit || onDelete);
   if (state.kind === "loading") {
     return <section aria-label="업무 원장" className={styles.notice}>원장을 불러오는 중이에요.</section>;
   }
@@ -72,7 +76,7 @@ export function DealLedgerPanel({ dealId, state }: DealLedgerPanelProps) {
 
       <div className={styles.tableWrap}>
         <table>
-          <thead><tr><th>구분</th><th>발생일</th><th>금액</th><th>입금액</th><th>미수금</th><th>입금일</th></tr></thead>
+          <thead><tr><th>구분</th><th>발생일</th><th>금액</th><th>입금액</th><th>미수금</th><th>입금일</th>{manage ? <th><span className="sr-only">관리</span></th> : null}</tr></thead>
           <tbody>{entries.map((entry) => (
             <tr key={entry.id}>
               <td>{KIND_LABEL[entry.kind]}</td>
@@ -88,6 +92,12 @@ export function DealLedgerPanel({ dealId, state }: DealLedgerPanelProps) {
               </td>
               <td>{won(Math.max(0, entry.amount - entry.receivedAmount))}</td>
               <td><DateValue value={entry.paidOn} /></td>
+              {manage ? (
+                <td className="whitespace-nowrap text-right">
+                  {onEdit ? <button type="button" onClick={() => onEdit(entry)} className="rounded px-1.5 py-0.5 text-xs font-semibold text-mw-record hover:bg-mw-tint-blue">고치기</button> : null}
+                  {onDelete ? <button type="button" onClick={() => onDelete(entry)} className="ml-1 rounded px-1.5 py-0.5 text-xs font-semibold text-mw-error hover:bg-mw-bg">지우기</button> : null}
+                </td>
+              ) : null}
             </tr>
           ))}</tbody>
         </table>
