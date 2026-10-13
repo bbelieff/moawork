@@ -19,6 +19,11 @@ import { canSeeAll, type CrmSource } from "./source";
  */
 
 /** PostgREST 오류를 호출부에서 알아볼 수 있는 형태로 올린다. */
+/** 회사 정보 수정·삭제 — 회사 담당자 본인 또는 전체 범위. 딜로만 보이는 회사는 읽기 전용이다. */
+function canEditCompany(ctx: Ctx, company: Company): boolean {
+  return canSeeAll(ctx) || company.assigned_to === ctx.user.id;
+}
+
 export class SupabaseCrmError extends Error {
   constructor(
     readonly op: string,
@@ -173,9 +178,29 @@ export class SupabaseCrmSource implements CrmSource {
 
   // ── 고객사 ──
 
+  /**
+   * QA #883 (belie 결정 2026-10-13) — «본인 담당» 멤버는 회사 담당자가 아니어도 내 담당 딜이 걸린 회사를 읽을 수 있다
+   * (migration 173 companies_read_via_own_deal). 수정·삭제는 여전히 회사 담당자·전체 범위만(canEditCompany).
+   */
+  private async ownDealCompanyIds(ctx: Ctx): Promise<string[]> {
+    const { data, error } = await this.db
+      .from("deals")
+      .select("company_id")
+      .eq("org_id", ctx.org.id)
+      .eq("assigned_to", ctx.user.id)
+      .not("company_id", "is", null);
+    if (error) this.fail("ownDealCompanyIds", error);
+    return [...new Set((data ?? []).map((d) => (d as { company_id: string }).company_id))];
+  }
+
   async listCompanies(ctx: Ctx): Promise<Company[]> {
     let q = this.db.from("companies").select("*").eq("org_id", ctx.org.id);
-    if (!canSeeAll(ctx)) q = q.eq("assigned_to", ctx.user.id);
+    if (!canSeeAll(ctx)) {
+      const viaDeals = await this.ownDealCompanyIds(ctx);
+      q = viaDeals.length > 0
+        ? q.or(`assigned_to.eq.${ctx.user.id},id.in.(${viaDeals.join(",")})`)
+        : q.eq("assigned_to", ctx.user.id);
+    }
     const { data, error } = await q.order("created_at", { ascending: false });
     if (error) this.fail("listCompanies", error);
     return (data ?? []).map(toCompany);
@@ -192,7 +217,8 @@ export class SupabaseCrmSource implements CrmSource {
     if (!data) return undefined;
     const c = toCompany(data);
     // 미가시 리소스는 존재 자체를 흘리지 않는다(undefined 로 수렴) — 공용 포트 규약과 동일.
-    return canSeeAll(ctx) || c.assigned_to === ctx.user.id ? c : undefined;
+    if (canEditCompany(ctx, c)) return c;
+    return (await this.ownDealCompanyIds(ctx)).includes(c.id) ? c : undefined;
   }
 
   async createCompany(ctx: Ctx, input: NewCompany): Promise<Company> {
@@ -215,7 +241,7 @@ export class SupabaseCrmSource implements CrmSource {
     patch: CompanyPatch,
   ): Promise<Company | undefined> {
     const current = await this.getCompany(ctx, id);
-    if (!current) return undefined;
+    if (!current || !canEditCompany(ctx, current)) return undefined;
     const { assigned_to, ...rest } = patch;
     const next: Row = { ...rest };
     // 재배정은 매니저 한정 — 일반 멤버의 assigned_to 변경은 무시(권한 상승 방지).
@@ -233,7 +259,8 @@ export class SupabaseCrmSource implements CrmSource {
 
   async deleteCompany(ctx: Ctx, id: string): Promise<boolean> {
     // 가시성 확인 후 삭제 — 안 보이는 리소스는 false(존재 유출 방지).
-    if (!(await this.getCompany(ctx, id))) return false;
+    const current = await this.getCompany(ctx, id);
+    if (!current || !canEditCompany(ctx, current)) return false;
     const { error } = await this.db
       .from("companies")
       .delete()
