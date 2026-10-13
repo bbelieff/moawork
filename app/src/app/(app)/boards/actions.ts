@@ -11,6 +11,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth/session";
 import { loadPermGuard } from "@/lib/perm/guard";
+import { canTrashOwnRow } from "@/lib/boards/own-row";
 import { recordRiskyAction } from "@/lib/perm/server";
 import { NotFoundError } from "@/lib/boards";
 import type { NewBoard } from "@/lib/boards/store";
@@ -559,7 +560,9 @@ export async function deleteItemAction(formData: FormData): Promise<void> {
     const itemId = str(formData, "itemId");
     const svc = await boardsService();
     const permission = await loadPermGuard(ctx.org.id, "work.item_delete");
-    if (permission.kind !== "allowed" && !(await canDeleteAsNoticeAuthor(ctx, svc, boardId, itemId))) {
+    if (permission.kind !== "allowed" && !(await canDeleteAsNoticeAuthor(ctx, svc, boardId, itemId))
+      // QA #883 — 자기가 맡은 행은 «항목 삭제» 권한 없이도 휴지통으로(lib/boards/own-row.ts).
+      && !(await canTrashOwnRow(ctx, async (id) => (await svc.getItem(ctx, boardId, id)).assigned_to, itemId))) {
       throw new UserFacingActionError(
         permission.reason === "permission" ? "이 업무를 실행할 권한이 없어요." : "권한을 확인하지 못했어요.",
       );

@@ -689,6 +689,7 @@ export function GroupTable({
   canDeleteItems = !readOnly,
   authorColumnKey,
   viewerUserId,
+  canTrashOwnRows = false,
   canManageColumns = !readOnly,
   canMoveColumns = canManageColumns,
   addLabelOptionAction,
@@ -795,6 +796,8 @@ export function GroupTable({
   /** BBE-239 — 이 키가 있으면 그 컬럼 값이 `viewerUserId` 와 같은 행은 role 권한 없이도 삭제 버튼을 보여준다(작성자 예외, 공지사항 한정). 서버가 다시 검증한다 — 여긴 표시 전용. */
   authorColumnKey?: string;
   viewerUserId?: string;
+  /** QA #883 — 항목을 고칠 수 있으면 자기가 맡은 행은 «항목 삭제» 권한 없이도 휴지통에 넣는다(서버 lib/boards/own-row.ts). */
+  canTrashOwnRows?: boolean;
   canManageColumns?: boolean;
   /**
    * 컬럼 «순서» 를 끌기·키보드로 바꿀 수 있는가(기본 = canManageColumns). 2026-10-08 — 상담 단계 보기처럼
@@ -1438,7 +1441,8 @@ export function GroupTable({
               canDeleteItems ||
               (authorColumnKey !== undefined &&
                 viewerUserId !== undefined &&
-                row.values[authorColumnKey] === viewerUserId);
+                row.values[authorColumnKey] === viewerUserId) ||
+              (canTrashOwnRows && viewerUserId !== undefined && row.assigned_to === viewerUserId);
             // 이 행이 여러 선택에 포함돼 있으면 낱개 상태 변경 대신 일괄 흐름을 연다.
             const resolvedRowDetail = rowDetailLayout?.(row);
             const armedForRow = bulkArmed && (selection?.has(row.id) ?? false) && onBulkStatusRequest;
@@ -1657,7 +1661,7 @@ export function GroupTable({
                           workflowProgressKind={workflowProgressKind}
                           workflowTransitionAction={renderWorkflowTransition?.(row)}
                           workflowMoveTargets={workflowMoveTargets}
-                          canMoveRows={canMoveRows}
+                          canMoveRows={canMoveRows || (viewerUserId !== undefined && row.assigned_to === viewerUserId)}
                           consultationEntry={consultationByItem?.[row.id] ?? null}
                           consultationMembers={consultationMembers}
                           cellAction={cellAction}
