@@ -53,6 +53,6 @@ export const WORK_MOVE_COLUMN_KEY = "work_move";
 export const WORK_MOVE_VALUE = "업무관리 이동";
 export const SEAL_STATUS_COLUMN_KEY = "seal_status";
 export const SEAL_APPROVED_VALUE = "완료";
-/** ★ 167 계약 확인 1단계 — 보드 «계약금 완료여부» 칸. 일반 보드 칸이라 셀 쓰기 권한으로 바뀐다. */
+/** ★ 167 계약 확인 1단계 — 보드 «계약금 입금여부» 칸. 일반 보드 칸이라 셀 쓰기 권한으로 바뀐다. */
 export const CONTRACT_FEE_COLUMN_KEY = "contract_fee_status";
 export const CONTRACT_FEE_DONE_VALUE = "계약금 완";

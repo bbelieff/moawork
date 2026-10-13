@@ -41,7 +41,7 @@ export interface ConsultationBoardEntry {
   absentFromPhase?: ConsultationPhase | null;
   /** 과거 4단계 기록(읽기 전용) — 167 부터 계약 판정에 쓰지 않는다. */
   checklist: ChecklistState;
-  /** 167 계약 확인 1단계 — 보드 «계약금 완료여부» = 계약금 완. */
+  /** 167 계약 확인 1단계 — 보드 «계약금 입금여부» = 계약금 완. */
   contractFeeReady: boolean;
   /** 167 계약 확인 2단계 — 직인(계약 정본 AND 보드 거울) 완료. */
   sealDone: boolean;
@@ -235,7 +235,7 @@ export const CONTRACT_STEP_GROUPS: ReadonlyArray<{
   title: string;
   hint: string;
 }> = [
-  { key: "fee", title: "1단계 · 계약금 입금 확인", hint: "보드 «계약금 완료여부» 칸을 계약금 완으로 바꿉니다" },
+  { key: "fee", title: "1단계 · 계약금 입금 확인", hint: "보드 «계약금 입금여부» 칸을 계약금 완으로 바꿉니다" },
   { key: "seal", title: "2단계 · 직인", hint: "대표·관리자가 직인 승인을 기록합니다" },
   { key: "done", title: "계약 확인 완료", hint: "계약금·직인 완료 — 실무 인계 가능" },
 ];

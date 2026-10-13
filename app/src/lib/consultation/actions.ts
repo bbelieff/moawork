@@ -8,7 +8,6 @@
 "use server";
 
 import { getSession } from "@/lib/auth/session";
-import { createRequestBoards } from "@/lib/boards/server";
 import { createClient } from "@/lib/supabase/server";
 import type { ConsultationRpcClient } from "./supabaseConsultation";
 
@@ -66,14 +65,14 @@ function versionOf(formData: FormData): number | null {
 
 /**
  * QA #884 — 미팅 일시는 상담 기록이 정본이다. 상담 쪽을 바꾼 «뒤» 보드 칸(meeting_at)을 같은 값으로 맞춘다.
+ *   보드 칸은 읽기 전용이라 사용자 권한으로는 못 쓴다 — 상담 기록 값을 옮겨 적기만 하는 RPC(migration 175)로 맞춘다.
  *   상담 저장은 이미 끝났으므로 실패해도 결과를 뒤집지 않는다(다음 저장 때 다시 맞춘다).
  */
 async function mirrorMeetingAt(itemId: string): Promise<void> {
   try {
     const ctx = await getSession();
-    const snapshot = await readConsultationSnapshotOrFail(await rpcClient(), { orgId: ctx.org.id, itemId });
-    const { repo } = await createRequestBoards();
-    await repo.setValues(ctx, itemId, { meeting_at: snapshot.meetingAt ?? null });
+    const { error } = await (await createClient()).rpc("mirror_consultation_meeting_at", { p_org_id: ctx.org.id, p_item_id: itemId });
+    if (error) console.warn("[consultation] meeting_at mirror failed", itemId, error.code);
   } catch (error) {
     console.warn("[consultation] meeting_at mirror failed", itemId, error);
   }
