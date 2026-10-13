@@ -1,3 +1,4 @@
+// ⚠ 2026-10-13 — 104 원문 고정 시험이다. 계약금 1건 제한·하드 삭제는 174 가 바꿨다(deal-ledger-edit-delete.pglite.test.ts).
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";

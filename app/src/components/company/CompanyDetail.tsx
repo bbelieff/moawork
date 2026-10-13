@@ -15,6 +15,8 @@ export interface CompanyDetailProps {
    * 0 보다 크면 「업무 시작」 이 한 번 묻는다. 모르면 0 (묻지 않는다 — 막는 규칙이 아니다).
    */
   liveWorkRowCount?: number;
+  /** QA #883 — 내 담당 딜로만 보이는 회사. 업무 시작을 감추고 읽기 전용이라고 알린다. */
+  readOnly?: boolean;
 }
 
 function formatRevenue(value: number | null): string {
@@ -31,7 +33,7 @@ function safeHomepage(value: string | null): string | null {
   }
 }
 
-export function CompanyDetail({ company, deals, stageNames, workStartRequestId, workStartStatus, startedDealId, startWorkAction, liveWorkRowCount = 0 }: CompanyDetailProps) {
+export function CompanyDetail({ company, deals, stageNames, workStartRequestId, workStartStatus, startedDealId, startWorkAction, liveWorkRowCount = 0, readOnly = false }: CompanyDetailProps) {
   const homepage = safeHomepage(company.homepage);
 
   return (
@@ -88,12 +90,16 @@ export function CompanyDetail({ company, deals, stageNames, workStartRequestId, 
           <div>
             <h2 id="company-deals-title" className="font-semibold">관련 업무</h2>
           </div>
-          <CompanyWorkStartForm
-            companyId={company.id}
-            requestId={workStartRequestId}
-            liveWorkRowCount={liveWorkRowCount}
-            action={startWorkAction}
-          />
+          {readOnly ? (
+            <p className="text-xs text-zinc-500">읽기 전용 — 내 담당 업무가 걸린 회사입니다. 회사 정보 수정·업무 시작은 회사 담당자에게 요청해 주세요.</p>
+          ) : (
+            <CompanyWorkStartForm
+              companyId={company.id}
+              requestId={workStartRequestId}
+              liveWorkRowCount={liveWorkRowCount}
+              action={startWorkAction}
+            />
+          )}
         </div>
         {workStartStatus === "ok" ? (
           <p role="status" className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">업무를 시작했습니다. {startedDealId ? <Link className="font-semibold underline" href={`/deals/${startedDealId}`}>업무 열기</Link> : null}</p>

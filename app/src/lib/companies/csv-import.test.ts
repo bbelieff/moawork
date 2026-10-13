@@ -130,3 +130,35 @@ describe("고객사 CSV 매핑", () => {
     expect(IMPORT_ROW_CAP).toBe(500);
   });
 });
+
+describe("QA #885 — 원본 행 번호와 파일 안 중복", () => {
+  const csv = [
+    "회사명,대표자명,전화번호",
+    "가나상사,김대표,010-0000-0001",
+    ",빈이름,010-0000-0002",
+    "다라상사,이대표",
+    "",
+    "(주)가나상사,김대표,010-0000-0003",
+    "마바상사,박대표,010-0000-0004",
+  ].join("\n");
+
+  it("파서는 원본 줄 번호와 제외 사유를 돌려주고, 헤더도 함께 준다", () => {
+    const parsed = parseDeidentifiedCsv(csv);
+    expect(parsed.headers).toEqual(["회사명", "대표자명", "전화번호"]);
+    expect(parsed.rows.map((row) => row.line)).toEqual([2, 6, 7]);
+    expect(parsed.skipped.map((row) => row.line)).toEqual([3, 4]);
+    expect(parsed.quarantined).toBe(2);
+  });
+
+  it("매핑은 원본 줄 번호를 쓰고, 같은 회사(정규화 이름+대표자)는 앞 행 번호와 함께 거절한다", () => {
+    const parsed = parseDeidentifiedCsv(csv);
+    const result = mapCsvToCompanies(parsed.rows, parsed.headers);
+    expect(result.mapped.map((row) => [row.line, row.input.name])).toEqual([[2, "가나상사"], [7, "마바상사"]]);
+    expect(result.rejected).toEqual([{ line: 6, title: "(주)가나상사", reason: "2행과 같은 회사예요(회사명·대표자명이 같음)" }]);
+  });
+
+  it("따옴표 안 쉼표가 있는 헤더도 파서 기준으로 읽는다", () => {
+    const parsed = parseDeidentifiedCsv('회사명,"매출, 원"\n가나상사,100\n');
+    expect(parsed.headers).toEqual(["회사명", "매출, 원"]);
+  });
+});

@@ -4,6 +4,7 @@ import { getCrmService, NotFoundError } from "@/lib/crm";
 import { CompanyDetail } from "@/components/company/CompanyDetail";
 import { loadCompanyLiveWorkRowCount } from "@/lib/companies/picker-server";
 import { startCompanyWorkAction } from "./actions";
+import { canEditCompany } from "@/lib/repo/supabase/source";
 
 export default async function CompanyDetailPage({
   params,
@@ -36,5 +37,5 @@ export default async function CompanyDetailPage({
   const liveWorkRowCount = await loadCompanyLiveWorkRowCount(ctx, deals.map((deal) => deal.id));
 
   const workStartStatus = sp.workStart === "ok" || sp.workStart === "failed" || sp.workStart === "invalid" ? sp.workStart : undefined;
-  return <CompanyDetail company={company} deals={deals} stageNames={stageNames} workStartRequestId={crypto.randomUUID()} workStartStatus={workStartStatus} startedDealId={sp.dealId} startWorkAction={startCompanyWorkAction} liveWorkRowCount={liveWorkRowCount ?? 0} />;
+  return <CompanyDetail company={company} deals={deals} stageNames={stageNames} workStartRequestId={crypto.randomUUID()} workStartStatus={workStartStatus} startedDealId={sp.dealId} startWorkAction={startCompanyWorkAction} liveWorkRowCount={liveWorkRowCount ?? 0} readOnly={!canEditCompany(ctx, company)} />;
 }

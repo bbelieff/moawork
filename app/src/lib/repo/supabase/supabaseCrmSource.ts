@@ -9,7 +9,7 @@ import type {
 } from "@/lib/repo";
 import { mergeCustom } from "@/lib/repo/custom-merge";
 import { ACTIVITY_TYPES, stageMoveContent } from "@/lib/crm/activity";
-import { canSeeAll, type CrmSource } from "./source";
+import { canEditCompany, canSeeAll, type CrmSource } from "./source";
 
 /**
  * 001_schema_v1 정본 테이블에 직접 붙는 core.crm 소스 (T02 · B2).
@@ -173,9 +173,26 @@ export class SupabaseCrmSource implements CrmSource {
 
   // ── 고객사 ──
 
+  /**
+   * QA #883 (belie 결정 2026-10-13) — «본인 담당» 멤버는 회사 담당자가 아니어도 내 담당 딜이 걸린 회사를 읽는다.
+   *   읽기 범위는 RLS 가 정한다(companies_rw = 내 회사 · migration 173 companies_read_via_own_deal = 내 딜이 걸린 회사).
+   *   앱에서 회사 id 목록을 URL 에 싣지 않는다 — 딜이 수백 건이면 URL 길이·행 상한에 걸린다.
+   *   수정·삭제·업무 시작은 canEditCompany(회사 담당자·전체 범위)만.
+   */
+  private async hasOwnDealOn(ctx: Ctx, companyId: string): Promise<boolean> {
+    const { data, error } = await this.db
+      .from("deals")
+      .select("id")
+      .eq("org_id", ctx.org.id)
+      .eq("company_id", companyId)
+      .eq("assigned_to", ctx.user.id)
+      .limit(1);
+    if (error) this.fail("hasOwnDealOn", error);
+    return (data ?? []).length > 0;
+  }
+
   async listCompanies(ctx: Ctx): Promise<Company[]> {
-    let q = this.db.from("companies").select("*").eq("org_id", ctx.org.id);
-    if (!canSeeAll(ctx)) q = q.eq("assigned_to", ctx.user.id);
+    const q = this.db.from("companies").select("*").eq("org_id", ctx.org.id);
     const { data, error } = await q.order("created_at", { ascending: false });
     if (error) this.fail("listCompanies", error);
     return (data ?? []).map(toCompany);
@@ -192,7 +209,8 @@ export class SupabaseCrmSource implements CrmSource {
     if (!data) return undefined;
     const c = toCompany(data);
     // 미가시 리소스는 존재 자체를 흘리지 않는다(undefined 로 수렴) — 공용 포트 규약과 동일.
-    return canSeeAll(ctx) || c.assigned_to === ctx.user.id ? c : undefined;
+    if (canEditCompany(ctx, c)) return c;
+    return (await this.hasOwnDealOn(ctx, c.id)) ? c : undefined;
   }
 
   async createCompany(ctx: Ctx, input: NewCompany): Promise<Company> {
@@ -215,7 +233,7 @@ export class SupabaseCrmSource implements CrmSource {
     patch: CompanyPatch,
   ): Promise<Company | undefined> {
     const current = await this.getCompany(ctx, id);
-    if (!current) return undefined;
+    if (!current || !canEditCompany(ctx, current)) return undefined;
     const { assigned_to, ...rest } = patch;
     const next: Row = { ...rest };
     // 재배정은 매니저 한정 — 일반 멤버의 assigned_to 변경은 무시(권한 상승 방지).
@@ -233,7 +251,8 @@ export class SupabaseCrmSource implements CrmSource {
 
   async deleteCompany(ctx: Ctx, id: string): Promise<boolean> {
     // 가시성 확인 후 삭제 — 안 보이는 리소스는 false(존재 유출 방지).
-    if (!(await this.getCompany(ctx, id))) return false;
+    const current = await this.getCompany(ctx, id);
+    if (!current || !canEditCompany(ctx, current)) return false;
     const { error } = await this.db
       .from("companies")
       .delete()

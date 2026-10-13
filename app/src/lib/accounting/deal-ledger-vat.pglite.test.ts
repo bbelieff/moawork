@@ -10,6 +10,9 @@ import { afterEach, describe, expect, it } from "vitest";
  * 035+103 을 실제로 실행해 RPC 가 런타임에 진짜 그렇게 동작하는지 잰다.
  * 특히 계약금 중복 방지는 UI 비활성화만으로는 우회 가능하므로(수용기준), 서버가
  * «두 번째 contract_deposit 을 실제로 거부하는지» 를 반드시 실행형으로 확인한다.
+ *
+ * ⚠ 2026-10-13 — 104 «만» 올린 상태의 기록이다. 운영 규칙은 174 가 바꿨다(계약금 여러 건 허용·고치기·지운 표시).
+ *   현재 동작은 deal-ledger-edit-delete.pglite.test.ts 를 본다.
  */
 const ledger035 = readFileSync(resolve(process.cwd(), "../supabase/migrations/035_ledger.sql"), "utf8");
 const vatWiring103 = readFileSync(

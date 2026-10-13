@@ -6,7 +6,7 @@ import type { CrmSource } from "./source";
 export { isSupabaseConfigured, readSupabaseEnv, resetSupabaseClient } from "./client";
 export { SupabaseCrmSource, SupabaseCrmError } from "./supabaseCrmSource";
 export { LocalCrmSource } from "./localCrmSource";
-export { canSeeAll, type CrmSource } from "./source";
+export { canEditCompany, canSeeAll, type CrmSource } from "./source";
 
 const g = globalThis as unknown as { __moaworkCrmSource?: CrmSource };
 
