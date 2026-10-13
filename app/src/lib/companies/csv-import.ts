@@ -11,6 +11,7 @@
 
 import type { NewCompany } from "@/lib/repo";
 import { parseNumericInput } from "@/lib/format/number";
+import { normalizeCompanyName } from "@/lib/company/match";
 
 /** 표준 필드 → 받아들이는 헤더 이름들(소문자·공백제거 후 비교). */
 const ALIASES: Readonly<Record<string, readonly string[]>> = {
@@ -64,9 +65,17 @@ export function parseFoundedOn(raw: string | undefined): string | null {
   return null;
 }
 
-export type ImportRow = Readonly<{ title: string; values: Record<string, string> }>;
+export type ImportRow = Readonly<{ title: string; values: Record<string, string>; line?: number }>;
 
-export type MappedRow = Readonly<{ input: NewCompany }>;
+export type MappedRow = Readonly<{ input: NewCompany; line: number }>;
+
+/**
+ * QA #885 — 같은 회사 판정 키: 정규화 회사명 + 대표자명(없으면 빈 칸).
+ * 사업자번호는 CSV 별칭에 없어 쓰지 않는다. 자동 병합하지 않고 «건너뛴다» 만 한다(D40).
+ */
+export function companyDuplicateKey(name: string, ownerName: string | null | undefined): string {
+  return `${normalizeCompanyName(name)}|${(ownerName ?? "").trim()}`;
+}
 export type RejectedRow = Readonly<{ line: number; title: string; reason: string }>;
 
 export type MappingResult = Readonly<{
@@ -97,9 +106,11 @@ export function mapCsvToCompanies(
 
   const mapped: MappedRow[] = [];
   const rejected: RejectedRow[] = [];
+  const firstLineByKey = new Map<string, number>();
 
   rows.forEach((row, index) => {
-    const line = index + 2; // 헤더가 1행
+    // 원본 파일의 줄 번호(파서가 준 것). 없으면 예전처럼 «헤더 다음부터 순서대로» 센다.
+    const line = row.line ?? index + 2;
     const pick = (field: string) => {
       const header = headerMap[field];
       return header ? (row.values[header] ?? "").trim() : "";
@@ -109,10 +120,19 @@ export function mapCsvToCompanies(
       rejected.push({ line, title: row.title, reason: "회사명이 비어 있습니다" });
       return;
     }
+    const ownerName = pick("owner_name") || null;
+    const key = companyDuplicateKey(name, ownerName);
+    const first = firstLineByKey.get(key);
+    if (first !== undefined) {
+      rejected.push({ line, title: name, reason: `${first}행과 같은 회사예요(회사명·대표자명이 같음)` });
+      return;
+    }
+    firstLineByKey.set(key, line);
     mapped.push({
+      line,
       input: {
         name,
-        owner_name: pick("owner_name") || null,
+        owner_name: ownerName,
         phone: pick("phone") || null,
         email: pick("email") || null,
         region: pick("region") || null,
