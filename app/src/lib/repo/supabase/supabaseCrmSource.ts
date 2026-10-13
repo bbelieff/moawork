@@ -9,7 +9,7 @@ import type {
 } from "@/lib/repo";
 import { mergeCustom } from "@/lib/repo/custom-merge";
 import { ACTIVITY_TYPES, stageMoveContent } from "@/lib/crm/activity";
-import { canSeeAll, type CrmSource } from "./source";
+import { canEditCompany, canSeeAll, type CrmSource } from "./source";
 
 /**
  * 001_schema_v1 정본 테이블에 직접 붙는 core.crm 소스 (T02 · B2).
@@ -19,11 +19,6 @@ import { canSeeAll, type CrmSource } from "./source";
  */
 
 /** PostgREST 오류를 호출부에서 알아볼 수 있는 형태로 올린다. */
-/** 회사 정보 수정·삭제 — 회사 담당자 본인 또는 전체 범위. 딜로만 보이는 회사는 읽기 전용이다. */
-function canEditCompany(ctx: Ctx, company: Company): boolean {
-  return canSeeAll(ctx) || company.assigned_to === ctx.user.id;
-}
-
 export class SupabaseCrmError extends Error {
   constructor(
     readonly op: string,
@@ -179,28 +174,25 @@ export class SupabaseCrmSource implements CrmSource {
   // ── 고객사 ──
 
   /**
-   * QA #883 (belie 결정 2026-10-13) — «본인 담당» 멤버는 회사 담당자가 아니어도 내 담당 딜이 걸린 회사를 읽을 수 있다
-   * (migration 173 companies_read_via_own_deal). 수정·삭제는 여전히 회사 담당자·전체 범위만(canEditCompany).
+   * QA #883 (belie 결정 2026-10-13) — «본인 담당» 멤버는 회사 담당자가 아니어도 내 담당 딜이 걸린 회사를 읽는다.
+   *   읽기 범위는 RLS 가 정한다(companies_rw = 내 회사 · migration 173 companies_read_via_own_deal = 내 딜이 걸린 회사).
+   *   앱에서 회사 id 목록을 URL 에 싣지 않는다 — 딜이 수백 건이면 URL 길이·행 상한에 걸린다.
+   *   수정·삭제·업무 시작은 canEditCompany(회사 담당자·전체 범위)만.
    */
-  private async ownDealCompanyIds(ctx: Ctx): Promise<string[]> {
+  private async hasOwnDealOn(ctx: Ctx, companyId: string): Promise<boolean> {
     const { data, error } = await this.db
       .from("deals")
-      .select("company_id")
+      .select("id")
       .eq("org_id", ctx.org.id)
+      .eq("company_id", companyId)
       .eq("assigned_to", ctx.user.id)
-      .not("company_id", "is", null);
-    if (error) this.fail("ownDealCompanyIds", error);
-    return [...new Set((data ?? []).map((d) => (d as { company_id: string }).company_id))];
+      .limit(1);
+    if (error) this.fail("hasOwnDealOn", error);
+    return (data ?? []).length > 0;
   }
 
   async listCompanies(ctx: Ctx): Promise<Company[]> {
-    let q = this.db.from("companies").select("*").eq("org_id", ctx.org.id);
-    if (!canSeeAll(ctx)) {
-      const viaDeals = await this.ownDealCompanyIds(ctx);
-      q = viaDeals.length > 0
-        ? q.or(`assigned_to.eq.${ctx.user.id},id.in.(${viaDeals.join(",")})`)
-        : q.eq("assigned_to", ctx.user.id);
-    }
+    const q = this.db.from("companies").select("*").eq("org_id", ctx.org.id);
     const { data, error } = await q.order("created_at", { ascending: false });
     if (error) this.fail("listCompanies", error);
     return (data ?? []).map(toCompany);
@@ -218,7 +210,7 @@ export class SupabaseCrmSource implements CrmSource {
     const c = toCompany(data);
     // 미가시 리소스는 존재 자체를 흘리지 않는다(undefined 로 수렴) — 공용 포트 규약과 동일.
     if (canEditCompany(ctx, c)) return c;
-    return (await this.ownDealCompanyIds(ctx)).includes(c.id) ? c : undefined;
+    return (await this.hasOwnDealOn(ctx, c.id)) ? c : undefined;
   }
 
   async createCompany(ctx: Ctx, input: NewCompany): Promise<Company> {

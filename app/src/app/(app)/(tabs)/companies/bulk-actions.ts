@@ -6,6 +6,7 @@ import { loadPermGuard } from "@/lib/perm/guard";
 import { recordRiskyAction } from "@/lib/perm/server";
 import { AsyncCrmService } from "@/lib/crm";
 import { SupabaseCrmSource } from "@/lib/repo/supabase/supabaseCrmSource";
+import { canEditCompany } from "@/lib/repo/supabase/source";
 import { userFacingMessage } from "@/lib/boards/boardActionFlash";
 import { BULK_MAX_ITEMS } from "@/components/board/bulk-selection";
 import { validateCompanyBulkPatch, validateDealBulkPatch } from "@/lib/companies/bulk";
@@ -127,7 +128,11 @@ export async function bulkUpdateCompaniesAction(input: {
   for (const companyId of head) {
     try {
       // tenant/row 재검증 — getCompany가 org·scope를 강제한다. 없으면 여기서 실패한다.
-      await crm.getCompany(gate.ctx, companyId);
+      const company = await crm.getCompany(gate.ctx, companyId);
+      if (!canEditCompany(gate.ctx, company)) {
+        processed.push({ itemId: companyId, ok: false, message: "읽기 전용 회사입니다 — 회사 담당자에게 요청해 주세요." });
+        continue;
+      }
       await crm.updateCompany(gate.ctx, companyId, patch as Parameters<typeof crm.updateCompany>[2]);
       processed.push({ itemId: companyId, ok: true, message: "저장했습니다." });
     } catch (error) {
@@ -324,7 +329,11 @@ export async function bulkStartWorkAction(input: {
   const processed: CompaniesBulkItemResult[] = [];
   for (const companyId of head) {
     try {
-      await crm.getCompany(gate.ctx, companyId);
+      const company = await crm.getCompany(gate.ctx, companyId);
+      if (!canEditCompany(gate.ctx, company)) {
+        processed.push({ itemId: companyId, ok: false, message: "읽기 전용 회사입니다 — 회사 담당자에게 요청해 주세요." });
+        continue;
+      }
       await startCompanyWork(client as unknown as CompanyStartWorkClient, {
         orgId: gate.ctx.org.id,
         companyId,

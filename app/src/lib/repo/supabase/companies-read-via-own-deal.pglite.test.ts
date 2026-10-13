@@ -11,7 +11,7 @@ const migration = readFileSync(
 
 const id = (suffix: string) => `00000000-0000-4000-8000-${suffix.padStart(12, "0")}`;
 const ids = {
-  org: id("a1"), otherOrg: id("a2"), owner: id("1a"), member: id("2a"), outsider: id("3a"),
+  org: id("a1"), otherOrg: id("a2"), owner: id("1a"), member: id("2a"), outsider: id("3a"), teammate: id("4a"),
   ownCompany: id("c1"), viaDeal: id("c2"), unrelated: id("c3"), otherOrgCompany: id("c4"),
 };
 
@@ -53,6 +53,7 @@ beforeAll(async () => {
     insert into public.org_members values
       ('${ids.org}','${ids.owner}','owner','all'),
       ('${ids.org}','${ids.member}','member','assigned'),
+      ('${ids.org}','${ids.teammate}','member','assigned'),
       ('${ids.otherOrg}','${ids.outsider}','owner','all');
     insert into public.companies values
       ('${ids.ownCompany}','${ids.org}','내 회사','${ids.member}'),
@@ -62,6 +63,8 @@ beforeAll(async () => {
     insert into public.deals(org_id, company_id, assigned_to) values
       ('${ids.org}','${ids.viaDeal}','${ids.member}'),
       ('${ids.org}','${ids.unrelated}','${ids.owner}'),
+      ('${ids.org}','${ids.unrelated}','${ids.teammate}'),
+      ('${ids.org}', null, '${ids.member}'),
       ('${ids.otherOrg}','${ids.otherOrgCompany}','${ids.member}');
   `);
 });
@@ -88,6 +91,15 @@ describe("migration 173 companies_read_via_own_deal", () => {
     });
     expect(changed).toBe(0);
     expect((await db.query<{ name: string }>(`select name from public.companies where id='${ids.viaDeal}'`)).rows[0]?.name).toBe("딜만 내 것");
+  });
+
+  it("같은 회사에 동료의 딜만 있으면 안 보인다(동료 딜로 새지 않음)", async () => {
+    expect(await asUser(ids.teammate, names)).toEqual(["상관없는 회사"]);
+  });
+
+  it("회사 추가는 예전처럼 본인 담당으로만 된다(173 은 select 전용)", async () => {
+    await expect(asUser(ids.member, () => db.query(
+      `insert into public.companies values (gen_random_uuid(), '${ids.org}', '남 명의', '${ids.owner}')`))).rejects.toThrow();
   });
 
   it("대표는 예전처럼 워크스페이스 회사 전체를 본다", async () => {

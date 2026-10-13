@@ -64,6 +64,14 @@ export interface CrmSource {
  * Supabase 에서는 RLS 가 최종 방어선이지만(소유 T03), 쿼리 단에서도 같은 조건을 걸어
  * 로컬↔원격 결과가 어긋나지 않게 한다(RLS 미적용 상태에서도 동작 동일).
  */
+/**
+ * QA #883 — 회사 정보 수정·삭제·업무 시작은 회사 담당자 본인 또는 전체 범위만.
+ * 내 담당 딜로만 보이는 회사(migration 173)는 읽기 전용이다.
+ */
+export function canEditCompany(ctx: Ctx, company: { assigned_to: string | null }): boolean {
+  return canSeeAll(ctx) || company.assigned_to === ctx.user.id;
+}
+
 export function canSeeAll(ctx: Ctx): boolean {
   return ctx.role === "owner" || ctx.role === "admin" || ctx.scope === "all";
 }

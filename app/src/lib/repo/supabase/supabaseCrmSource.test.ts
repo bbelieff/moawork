@@ -34,6 +34,9 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: unknown }> {
   order() {
     return this;
   }
+  limit() {
+    return this;
+  }
   maybeSingle() {
     return this.settle();
   }
@@ -120,6 +123,34 @@ describe("SupabaseCrmSource — 담당범위 필터", () => {
     const { db, log } = fakeDb({ companies: { data: [] } });
     await new SupabaseCrmSource(db).listCompanies(ctxOf("member", "all"));
     expect(log[0].filters).toEqual([["org_id", "o1"]]);
+  });
+});
+
+describe("SupabaseCrmSource — 내 딜로만 보이는 회사 (QA #883)", () => {
+  const COMPANY = { id: "c9", org_id: "o1", name: "남의 회사", assigned_to: "other", created_at: "2026-10-13T00:00:00Z" };
+
+  it("본인 담당 멤버의 회사 목록은 org 만 거른다 — 범위는 RLS(173)가 정하고 id 목록을 URL 에 싣지 않는다", async () => {
+    const { db, log } = fakeDb({ companies: { data: [COMPANY] } });
+    const rows = await new SupabaseCrmSource(db).listCompanies(ctxOf("member", "assigned"));
+    expect(log.map((l) => l.table)).toEqual(["companies"]);
+    expect(log[0].filters).toEqual([["org_id", "o1"]]);
+    expect(rows.map((c) => c.id)).toEqual(["c9"]);
+  });
+
+  it("상세: 내 딜이 걸리면 보이고, 없으면 존재를 흘리지 않는다", async () => {
+    const withDeal = fakeDb({ companies: { data: COMPANY }, deals: { data: [{ id: "d1" }] } });
+    expect((await new SupabaseCrmSource(withDeal.db).getCompany(ctxOf("member", "assigned"), "c9"))?.id).toBe("c9");
+    expect(withDeal.log[1].filters).toEqual([["org_id", "o1"], ["company_id", "c9"], ["assigned_to", "u1"]]);
+    const noDeal = fakeDb({ companies: { data: COMPANY }, deals: { data: [] } });
+    expect(await new SupabaseCrmSource(noDeal.db).getCompany(ctxOf("member", "assigned"), "c9")).toBeUndefined();
+  });
+
+  it("딜로만 보이는 회사는 수정·삭제하지 않는다(쓰기 쿼리를 보내지 않음)", async () => {
+    const { db, queries } = fakeDb({ companies: { data: COMPANY }, deals: { data: [{ id: "d1" }] } });
+    const src = new SupabaseCrmSource(db);
+    expect(await src.updateCompany(ctxOf("member", "assigned"), "c9", { name: "바꿈" })).toBeUndefined();
+    expect(await src.deleteCompany(ctxOf("member", "assigned"), "c9")).toBe(false);
+    expect(queries.some((q) => q.updated !== undefined)).toBe(false);
   });
 });
 
