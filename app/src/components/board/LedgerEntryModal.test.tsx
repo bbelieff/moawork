@@ -15,15 +15,15 @@ function render(depositAlreadyReceived: boolean, feeTerms: string | null = null)
 }
 
 describe("BBE-240 · LedgerEntryModal — 구분 토글 초기 상태", () => {
-  it("계약금을 이미 받았으면 계약금 버튼이 비활성화되고 수수료가 기본 선택이다", () => {
+  // QA #885 (2026-10-13) — 계약금 여러 건(분납)을 허용한다. 이미 있으면 수수료를 먼저 골라 두되 계약금도 고를 수 있다.
+  it("계약금이 이미 있으면 수수료가 기본 선택이지만 계약금 버튼도 누를 수 있다", () => {
     const html = render(true);
     expect(html).toMatch(/계약금<\/button>/);
-    // disabled 속성이 실제로 붙어야 한다 — 안 그러면 «누를 수 있는데 안내만 하는» 상태가 된다.
     const depositButtonIdx = html.indexOf(">계약금<");
     const beforeDeposit = html.slice(0, depositButtonIdx);
     const buttonStart = beforeDeposit.lastIndexOf("<button");
-    expect(html.slice(buttonStart, depositButtonIdx)).toContain("disabled=\"\"");
-    expect(html).toContain("계약금은 이미 받았어요");
+    expect(html.slice(buttonStart, depositButtonIdx)).not.toContain("disabled=\"\"");
+    expect(html).toContain("계약금을 나눠 받았으면");
   });
 
   it("계약금이 없으면 계약금 버튼을 그대로 고를 수 있고 안내문이 없다", () => {
