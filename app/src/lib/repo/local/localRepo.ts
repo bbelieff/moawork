@@ -244,9 +244,18 @@ export class LocalRepo implements Repo {
   // ── 고객사 (담당범위 적용) ──
   listCompanies(ctx: Ctx): Company[] {
     const all = db().companies.filter((c) => c.org_id === ctx.org.id);
-    return canSeeAll(ctx)
-      ? all
-      : all.filter((c) => c.assigned_to === ctx.user.id);
+    if (canSeeAll(ctx)) return all;
+    const viaDeals = this.ownDealCompanyIds(ctx);
+    return all.filter((c) => c.assigned_to === ctx.user.id || viaDeals.has(c.id));
+  }
+
+  /** QA #883 — 내 담당 딜이 걸린 회사는 읽기만 허용(운영 migration 173 과 같은 규칙). */
+  private ownDealCompanyIds(ctx: Ctx): Set<string> {
+    return new Set(
+      db().deals
+        .filter((d) => d.org_id === ctx.org.id && d.assigned_to === ctx.user.id && d.company_id)
+        .map((d) => d.company_id as string),
+    );
   }
 
   getCompany(ctx: Ctx, id: string): Company | undefined {
@@ -254,7 +263,8 @@ export class LocalRepo implements Repo {
       (x) => x.id === id && x.org_id === ctx.org.id,
     );
     if (!c) return undefined;
-    return canSeeAll(ctx) || c.assigned_to === ctx.user.id ? c : undefined;
+    if (canSeeAll(ctx) || c.assigned_to === ctx.user.id) return c;
+    return this.ownDealCompanyIds(ctx).has(c.id) ? c : undefined;
   }
 
   createCompany(ctx: Ctx, input: NewCompany): Company {
@@ -287,7 +297,7 @@ export class LocalRepo implements Repo {
     patch: CompanyPatch,
   ): Company | undefined {
     const c = this.getCompany(ctx, id);
-    if (!c) return undefined;
+    if (!c || !(canSeeAll(ctx) || c.assigned_to === ctx.user.id)) return undefined;
     // assigned_to 재배정은 매니저/전체범위만.
     const { assigned_to, ...rest } = patch;
     Object.assign(c, rest);
@@ -297,7 +307,7 @@ export class LocalRepo implements Repo {
 
   deleteCompany(ctx: Ctx, id: string): boolean {
     const c = this.getCompany(ctx, id);
-    if (!c) return false;
+    if (!c || !(canSeeAll(ctx) || c.assigned_to === ctx.user.id)) return false;
     db().companies = db().companies.filter((x) => x.id !== id);
     return true;
   }
