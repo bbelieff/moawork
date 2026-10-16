@@ -717,3 +717,68 @@ header {
   .mw-skeleton { background: Canvas; border: 1px solid CanvasText; }
   .mw-skeleton::after { display: none; }
 }
+
+/* ── 사이드바 글래스 (2026-10-16 belie 결정) ─────────────────────────────
+ * 라이트 = 화면 가장자리에서 떨어져 떠 있는 둥근 유리 카드, 다크 = 화면에 붙은 어두운 유리 판.
+ * 유리가 «비치려면» 뒤에 색이 있어야 해서 셸 바탕에 아주 옅은 빛(파랑·청록·보라)을 깐다.
+ * 휴대폰(md 미만)의 위쪽 한 줄은 예전처럼 카드 바탕 + 아래 경계선. */
+.mw-shell-glass {
+  background: var(--mw-card);
+  border-color: var(--mw-line);
+}
+@media (min-width: 48rem) {
+  .mw-shell-ambient {
+    background:
+      radial-gradient(38rem 38rem at -6rem -8rem, color-mix(in srgb, var(--mw-primary) 22%, transparent), transparent 70%),
+      radial-gradient(34rem 34rem at 6rem 110%, color-mix(in srgb, var(--mw-flow-teal) 18%, transparent), transparent 70%),
+      var(--mw-bg);
+    background-attachment: fixed;
+  }
+  .mw-shell-glass {
+    --mw-shell-gap: 12px;
+    top: var(--mw-shell-gap);
+    bottom: var(--mw-shell-gap);
+    left: var(--mw-shell-gap);
+    height: calc(100dvh - 2 * var(--mw-shell-gap));
+    border-radius: 22px;
+    border: 1px solid rgb(255 255 255 / 0.75);
+    background: rgb(255 255 255 / 0.5);
+    -webkit-backdrop-filter: blur(24px) saturate(170%);
+    backdrop-filter: blur(24px) saturate(170%);
+    box-shadow: 0 18px 50px rgb(36 60 110 / 0.14), inset 0 1px 0 rgb(255 255 255 / 0.9);
+    --mw-line: rgb(25 26 30 / 0.07);
+  }
+  .mw-shell-main {
+    margin-left: calc(var(--mw-shell-nav-w) + 24px);
+  }
+}
+@media (min-width: 48rem) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .mw-shell-glass {
+    top: 0; bottom: 0; left: 0;
+    height: 100dvh;
+    border-radius: 0;
+    border-width: 0 1px 0 0;
+    border-color: rgb(255 255 255 / 0.08);
+    background: rgb(20 22 30 / 0.55);
+    box-shadow: inset -1px 0 0 color-mix(in srgb, var(--mw-primary) 12%, transparent), 10px 0 40px rgb(0 0 0 / 0.35);
+    --mw-line: rgb(255 255 255 / 0.07);
+  }
+  :root:not([data-theme="light"]) .mw-shell-main { margin-left: var(--mw-shell-nav-w); }
+}
+@media (min-width: 48rem) {
+  [data-theme="dark"] .mw-shell-glass {
+    top: 0; bottom: 0; left: 0;
+    height: 100dvh;
+    border-radius: 0;
+    border-width: 0 1px 0 0;
+    border-color: rgb(255 255 255 / 0.08);
+    background: rgb(20 22 30 / 0.55);
+    box-shadow: inset -1px 0 0 color-mix(in srgb, var(--mw-primary) 12%, transparent), 10px 0 40px rgb(0 0 0 / 0.35);
+    --mw-line: rgb(255 255 255 / 0.07);
+  }
+  [data-theme="dark"] .mw-shell-main { margin-left: var(--mw-shell-nav-w); }
+}
+/* 사이드바 지금 탭 — 유리 위에서 떠 보이게 은은한 그림자(색은 탭 색 그대로). */
+@media (min-width: 48rem) {
+  .mw-shell-glass .mw-nav-active { box-shadow: 0 6px 18px color-mix(in srgb, var(--mw-nav-active-bg, var(--mw-record)) 28%, transparent); }
+}
