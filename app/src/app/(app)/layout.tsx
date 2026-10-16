@@ -206,7 +206,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       <aside
         // 2026-10-16(belie) — 라이트 모드는 떠 있는 유리 카드, 다크 모드는 화면에 붙은 어두운 유리 판.
         //   위치·배경·테두리는 globals.css 의 .mw-shell-glass 가 테마별로 정한다(휴대폰 위 한 줄은 예전 그대로).
-        className="mw-shell-glass mw-layer-shell relative flex h-auto w-full flex-none flex-row items-center gap-[var(--sp-2)] border-b px-[var(--sp-3)] py-[var(--sp-1)] md:fixed md:flex-col md:items-stretch md:gap-0 md:w-[var(--mw-shell-nav-w)] md:overflow-visible md:border-b-0 md:py-[var(--sp-4)]"
+        className="mw-layer-shell relative flex h-auto w-full flex-none flex-row items-center gap-[var(--sp-2)] border-b px-[var(--sp-3)] py-[var(--sp-1)] md:fixed md:flex-col md:items-stretch md:gap-0 md:w-[var(--mw-shell-nav-w)] md:overflow-visible md:border-b-0 md:py-[var(--sp-4)] mw-shell-glass"
       >
         {/* 목업 v6 `.brand` — 로고 한 덩이만. 높이 48px · 좌우 --sp-3 · 아래 경계선.
             회사명은 여기 적지 않는다: 바로 아래 WorkspaceSwitcher 가 같은 이름을
