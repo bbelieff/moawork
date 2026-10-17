@@ -15,14 +15,15 @@
 .trigger {
   display: flex;
   width: 100%;
-  min-height: 48px;
+  min-height: 44px;
   align-items: center;
   gap: 10px;
-  padding: 8px;
-  border: 1px solid var(--mw-line);
-  border-radius: var(--mw-radius);
+  padding: 4px 12px 4px 4px;
+  border: 1px solid transparent;
+  border-radius: 999px;
   color: var(--mw-fg);
-  background: var(--mw-bg);
+  background: var(--mw-pill-bg, var(--mw-bg));
+  box-shadow: var(--mw-pill-shadow-lg, none);
   text-align: left;
   cursor: pointer;
 }
@@ -183,25 +184,29 @@
 .sectionLabel { margin: 8px 10px 3px; color: var(--mw-sub); font-size: 11px; }
 .pendingItem { opacity: 0.62; cursor: not-allowed; }
 .divider { height: 1px; margin: 7px 4px; background: var(--mw-line); }
-.actions { display: grid; gap: 2px; }
+.actions { display: grid; gap: 6px; }
 
+/* 2026-10-17 belie «단추 통일» — 큰 유리 알약(40px) + 동그란 아이콘. */
 .action {
   display: flex;
   width: 100%;
-  min-height: 48px;
+  min-height: 40px;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
-  border: 0;
-  border-radius: calc(var(--mw-radius) - 4px);
+  padding: 0 14px 0 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
   color: var(--mw-fg);
-  background: transparent;
+  background: var(--mw-pill-bg, transparent);
+  box-shadow: var(--mw-pill-shadow-lg, none);
+  font-weight: 600;
   text-align: left;
   cursor: pointer;
 }
 .action:hover:not(:disabled) { background: var(--mw-bg); }
 .action:disabled { cursor: not-allowed; opacity: 0.55; }
-.actionIcon { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; border: 1px solid var(--mw-line); border-radius: calc(var(--mw-radius) - 6px); color: var(--mw-primary); background: var(--mw-card); font-weight: 800; }
+.actionIcon { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; border: 1px solid color-mix(in srgb, var(--mw-primary) 28%, transparent); border-radius: 50%; color: var(--mw-primary); background: color-mix(in srgb, var(--mw-primary) 12%, transparent); }
+.actionIcon[data-kind="create"] { border-color: transparent; color: #fff; background: linear-gradient(135deg, var(--mw-primary), #3fb6c8); box-shadow: 0 3px 10px color-mix(in srgb, var(--mw-primary) 35%, transparent); }
 .note,
 .errorMessage { margin: 6px 4px 0; padding: 8px; border-radius: calc(var(--mw-radius) - 5px); font-size: 11px; line-height: 1.5; }
 .note { color: var(--mw-sub); background: var(--mw-bg); }

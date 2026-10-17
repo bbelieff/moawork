@@ -95,7 +95,7 @@
 .quick button, .quick a, .actions button, .inlineActions button {
   min-height: 44px;
   border: 1px solid transparent;
-  border-radius: var(--mw-radius);
+  border-radius: 999px;
   padding: 7px 14px;
   color: var(--entry-on-accent);
   background: var(--entry-violet);
@@ -148,7 +148,7 @@
 .pendingSummary dd { margin: 0; color: var(--entry-ink); font-size: 13px; font-weight: 850; overflow-wrap: anywhere; }
 .pendingMeta .answerPreview { width: 100%; max-width: none; box-sizing: border-box; justify-self: stretch; }
 .pendingExits { display: flex; width: 100%; flex-wrap: wrap; gap: 8px; align-items: center; padding-top: 2px; }
-.pendingExits a, .pendingExits button { min-height: 44px; border: 1px solid var(--entry-line); border-radius:var(--mw-radius); padding: 0 12px; color: var(--entry-muted); background: var(--entry-surface); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.pendingExits a, .pendingExits button { min-height: 44px; border: 1px solid var(--entry-line); border-radius: 999px; padding: 0 12px; color: var(--entry-muted); background: var(--entry-surface); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
 .pendingExits form { margin: 0; }
 
 .status, .error {
@@ -177,7 +177,7 @@
 .queue { min-width: 0; }
 .queueList { margin-top: 14px; }
 .inlineActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-.inlineActions button { min-height: 44px; padding-inline: 12px; border-radius:var(--mw-radius); font-size: 13px; }
+.inlineActions button { min-height: 44px; padding-inline: 12px; border-radius: 999px; font-size: 13px; }
 
 .compactShell { max-width: 760px; }
 .compactHub { width: min(100%, 620px); margin: 0 auto; padding: var(--sp-6); }

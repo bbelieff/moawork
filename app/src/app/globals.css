@@ -842,3 +842,34 @@ header {
     box-shadow: 0 14px 40px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.06);
   }
 }
+
+/* ── 단추 통일: 둥글고 세로가 낮은 유리 알약 (2026-10-17 belie 시안 «단추 통일») ─────────────────
+ * 크기 3단계 — 작은 칩 28px(보기 막대 «담당·나» 기준) · 중간 32px · 큰 40px(회사 메뉴·계정·관리자 모드).
+ * 표 안 칸(입력·선택)과 여러 줄짜리 카드형 단추는 그대로 둔다. */
+:root {
+  --mw-pill-bg: linear-gradient(180deg, rgb(255 255 255 / 0.92), rgb(255 255 255 / 0.66));
+  --mw-pill-shadow: 0 4px 14px rgb(36 60 110 / 0.10), inset 0 1px 0 #fff, 0 0 0 1px rgb(25 26 30 / 0.06);
+  --mw-pill-shadow-lg: 0 6px 18px rgb(36 60 110 / 0.12), inset 0 1px 0 #fff, 0 0 0 1px rgb(25 26 30 / 0.06);
+}
+[data-theme="dark"] {
+  --mw-pill-bg: linear-gradient(180deg, rgb(255 255 255 / 0.10), rgb(255 255 255 / 0.04));
+  --mw-pill-shadow: 0 4px 14px rgb(0 0 0 / 0.30), inset 0 1px 0 rgb(255 255 255 / 0.08), 0 0 0 1px rgb(255 255 255 / 0.08);
+  --mw-pill-shadow-lg: 0 6px 18px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.08), 0 0 0 1px rgb(255 255 255 / 0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --mw-pill-bg: linear-gradient(180deg, rgb(255 255 255 / 0.10), rgb(255 255 255 / 0.04));
+    --mw-pill-shadow: 0 4px 14px rgb(0 0 0 / 0.30), inset 0 1px 0 rgb(255 255 255 / 0.08), 0 0 0 1px rgb(255 255 255 / 0.08);
+    --mw-pill-shadow-lg: 0 6px 18px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.08), 0 0 0 1px rgb(255 255 255 / 0.08);
+  }
+}
+
+/* 테두리 있는 네모 단추(모서리 rounded·rounded-md·rounded-lg) → 알약. 표 칸·목록 선택칸·여러 줄 카드는 뺀다. */
+:is(button, a, summary)[class~="border"]:is([class~="rounded"], [class~="rounded-md"], [class~="rounded-lg"]):not(td *, th *, [role="combobox"], [role="option"], [class~="flex-col"], [class~="grid"], [data-no-pill]) {
+  border-radius: 999px;
+}
+/* 흰 바탕(카드색) 단추는 유리 알약 바탕·빛을 입힌다 — 색 단추(주 단추·위험)는 제 색을 지킨다. */
+:is(button, a, summary)[class~="border"][class~="bg-mw-card"]:is([class~="rounded"], [class~="rounded-md"], [class~="rounded-lg"]):not(td *, th *, [role="combobox"], [role="option"], [class~="flex-col"], [class~="grid"], [data-no-pill]):not(:disabled) {
+  background: var(--mw-pill-bg);
+  box-shadow: var(--mw-pill-shadow);
+}
