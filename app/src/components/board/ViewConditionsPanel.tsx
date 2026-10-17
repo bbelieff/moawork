@@ -25,6 +25,7 @@ import { CheckOption, FilterChip, RadioOption } from "./FilterChip";
 import { columnSortOptions } from "./column-menu-model";
 import { UNASSIGNED, type BoardFilterState } from "./filters";
 import { OtherInfoFacetFilters } from "./OtherInfoFacetFilter";
+import { Chevron } from "@/components/ui/Chevron";
 
 /**
  * 필터에 칩이 생기는 칸인가 — 선택지가 있는 목록·상태 칸과 기타정보 칸.
@@ -130,7 +131,7 @@ function InlineFacet({ label, summary, openSignal, children }: { label: string; 
       >
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {summary ? <span className="shrink-0 text-xs">{summary}</span> : null}
-        <span aria-hidden="true" className="text-[0.6rem] text-mw-sub">{open ? "▲" : "▼"}</span>
+        <Chevron open={open} variant="circle" />
       </button>
       {open ? <div className="border-t border-mw-line p-1.5">{children}</div> : null}
     </div>

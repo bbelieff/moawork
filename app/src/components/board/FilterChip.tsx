@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { Chevron } from "@/components/ui/Chevron";
 
 export function FilterChip({
   label,
@@ -135,9 +136,7 @@ export function FilterChip({
         >
           <span>{label}</span>
           {summary && <span className="font-semibold">{summary}</span>}
-          <span aria-hidden="true" className="text-[0.6rem] opacity-70">
-            ▼
-          </span>
+          <Chevron open={open} size={12} />
         </button>
         {typeof document !== "undefined" && open ? createPortal(
           <div

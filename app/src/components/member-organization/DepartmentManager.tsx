@@ -9,6 +9,7 @@ import {
   type DepartmentActionState,
 } from "@/app/(app)/settings/members/department-actions";
 import { toTree, type DepartmentNode, type OrgChart } from "@/lib/org/departments";
+import { Chevron } from "@/components/ui/Chevron";
 
 export type DepartmentManagerActionSet = Readonly<{
   create: (formData: FormData) => Promise<DepartmentActionState>;
@@ -159,7 +160,7 @@ export function DepartmentManager({ chart, canManage, actions = DEFAULT_ACTIONS 
                     className={`flex w-full items-center gap-2 rounded-lg py-2 pr-2 text-left text-sm ${selected?.id === row.id ? "bg-mw-tint-purple text-mw-primary" : "hover:bg-zinc-50 dark:hover:bg-zinc-900"}`}
                     style={{ paddingLeft: `${10 + row.depth * 18}px` }}
                   >
-                    <span aria-hidden="true" className="text-zinc-400">{row.depth === 0 ? "▾" : "└"}</span>
+                    {row.depth === 0 ? <Chevron size={12} /> : <span aria-hidden="true" className="text-zinc-400">└</span>}
                     <span className="min-w-0 flex-1 truncate font-medium">{row.name}</span>
                     <span className="text-xs tabular-nums text-zinc-500" title="직접 배정 / 하위 포함">{row.memberCount}{row.reachCount !== row.memberCount ? ` / ${row.reachCount}` : ""}</span>
                   </button>

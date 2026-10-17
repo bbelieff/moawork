@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { toTree, type OrgChart } from "@/lib/org/departments";
+import { Chevron } from "@/components/ui/Chevron";
 
 /**
  * #571 — 조직관리의 «조직도».
@@ -60,7 +61,7 @@ export function DepartmentTree({ chart }: { chart: OrgChart }): ReactElement {
                 // 들여쓰기로 «보고 계통» 을 보여준다. 목업도 같은 방식이다.
                 style={{ paddingLeft: `${8 + row.depth * 16}px` }}
               >
-                <span aria-hidden="true" className="text-zinc-300">{row.depth === 0 ? "▾" : "·"}</span>
+                {row.depth === 0 ? <Chevron size={12} /> : <span aria-hidden="true" className="text-zinc-300">·</span>}
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{row.name}</span>
                 {head ? (
                   <span className="text-[11px] text-zinc-500">책임자 {head}</span>
