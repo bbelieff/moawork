@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import type { ItemWithValues } from "@/lib/boards/types";
 import { formatPhone } from "@/lib/format/phone";
 import { BoardModalLayer } from "./BoardDialogPortal";
+import { Chevron } from "@/components/ui/Chevron";
 
 const MESSAGE_TEMPLATES = [
   { id: "delay", label: "상담지연", body: "안녕하세요. 상담 일정이 지연되어 안내드립니다. 담당자가 확인 후 다시 연락드리겠습니다." },
@@ -111,7 +112,7 @@ export function NewLeadMessageCell({ row }: { row: ItemWithValues }) {
         <span className="shrink-0 font-semibold">{template.label}</span>
         <span aria-hidden="true" className="text-mw-sub">·</span>
         <span className="min-w-0 flex-1 truncate text-[0.68rem] text-mw-sub">{status}</span>
-        <span aria-hidden="true" className="shrink-0 text-[0.58rem] text-mw-sub">▼</span>
+        <Chevron open={menuOpen} size={12} />
       </button>
 
       {typeof document !== "undefined" && menuOpen ? createPortal(

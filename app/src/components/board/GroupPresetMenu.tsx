@@ -39,6 +39,7 @@ import {
   type GroupPresetLibraryState,
 } from "@/app/(app)/boards/preset-actions";
 import { INITIAL_GROUP_PRESET_STATE } from "@/app/(app)/boards/group-preset-state";
+import { Chevron } from "@/components/ui/Chevron";
 
 interface GroupPresetMenuProps {
   boardId: string;
@@ -140,7 +141,7 @@ export function GroupPresetMenu({
         className="flex cursor-pointer list-none items-center gap-1 rounded-full border border-mw-line px-2 py-0.5 hover:bg-mw-bg [&::-webkit-details-marker]:hidden"
       >
         <span>{presetName}</span>
-        <span aria-hidden="true" className="text-[0.6rem] text-mw-sub">▾</span>
+        <Chevron size={12} />
       </summary>
 
       <div

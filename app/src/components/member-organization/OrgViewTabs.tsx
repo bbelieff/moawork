@@ -14,6 +14,7 @@ import { OrgChartFlow } from "./OrgChartFlow";
 import { SeatPanel } from "./SeatPanel";
 import { deriveSeats, findSeat, seatName, seatSummary, type Seat } from "@/lib/org/seats";
 import { seatDefinitionIsEmpty, type SeatDefinition } from "@/lib/org/seat-definitions";
+import { Chevron } from "@/components/ui/Chevron";
 
 /**
  * #640 ①③ — 조직관리의 «보는 방식» 다섯 갈래와 「부서 ↔ 사람」 잇기.
@@ -316,7 +317,7 @@ export function OrgViewTabs({
                     selectedDeptId === null ? "bg-zinc-100 font-medium dark:bg-zinc-800" : "hover:bg-zinc-50 dark:hover:bg-zinc-900"
                   }`}
                 >
-                  <span aria-hidden="true" className="text-zinc-300">▾</span>
+                  <Chevron size={12} />
                   <span className="min-w-0 flex-1 truncate">전체</span>
                   <span className="tabular-nums text-xs text-zinc-500">{model.members.length}</span>
                 </button>

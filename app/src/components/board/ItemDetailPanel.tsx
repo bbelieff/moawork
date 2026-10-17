@@ -118,6 +118,7 @@ import {
 } from "@/lib/boards/structured-field";
 import { eulReul } from "@/lib/text/josa";
 import { DealLedgerButton } from "./DealLedgerButton";
+import { Chevron } from "@/components/ui/Chevron";
 import { moveItemToTrash } from "./ItemTrashUndo";
 import styles from "./item-detail-panel.module.css";
 
@@ -2722,9 +2723,7 @@ export function ItemDetailPanel({
                             onClick={() => setKindPickerOpen((open) => !open)}
                           >
                             {detailEventKindLabel(composerKind)}
-                            <span className={styles.kindChevron} aria-hidden="true">
-                              ▾
-                            </span>
+                            <Chevron open={kindPickerOpen} size={12} className={styles.kindChevron} />
                           </button>
                           <div
                             id="item-detail-kind-options"

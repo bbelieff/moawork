@@ -21,6 +21,7 @@ import {
 } from "@/lib/companies/bulk";
 import { CompaniesBulkBar, type CompaniesBulkOp, type CompaniesBulkTarget } from "./CompaniesBulkBar";
 import type { ResultNotice } from "@/lib/ui/result-notice";
+import { Chevron } from "@/components/ui/Chevron";
 
 const won = new Intl.NumberFormat("ko-KR");
 
@@ -190,7 +191,7 @@ function CompanyRow({
               />
             ) : null}
             <button type="button" onClick={onToggle} aria-expanded={open} className="flex items-center gap-2">
-              <span aria-hidden="true" className={`text-zinc-400 transition ${open ? "rotate-180" : ""}`}>⌄</span>
+              <Chevron open={open} variant="circle" />
               <span>{view.company.name}</span>
               <span className="rounded-full bg-mw-tint-blue px-2 py-0.5 text-xs font-semibold text-mw-primary  ">
                 {dealsUnknown ? "확인 필요" : `자금 ${view.deals.length}건`}

@@ -6,6 +6,7 @@ import type { StageBoardData } from "@/lib/crm/boardData";
 import type { WorkspaceOpsAction } from "@/lib/dynamic-workspace/workspace-ops-actions";
 import { PlatformDemoCrm } from "./PlatformDemoCrm";
 import styles from "./platform-demo.module.css";
+import { Chevron } from "@/components/ui/Chevron";
 
 export type DemoWorkspaceScreen = "dashboard" | "newcust" | "contract" | "work";
 
@@ -42,7 +43,7 @@ export function PlatformDemoWorkspaceShell({ activeScreen, data, importCsv }: Re
       <div className={styles.workspaceSelector}>
         <span aria-hidden="true">M</span>
         <div><strong>MoaWork 데모 조직</strong><small>대표 · 내 회사</small></div>
-        <b aria-hidden="true">⌄</b>
+        <Chevron size={14} />
       </div>
       <nav className={styles.workspaceNav} aria-label="데모 워크스페이스 메뉴">
         {NAV_ITEMS.map((item) => {
@@ -62,7 +63,7 @@ export function PlatformDemoWorkspaceShell({ activeScreen, data, importCsv }: Re
         <div className={styles.workspaceSearch}>🔍 업체·담당자 검색…</div>
         <button type="button" aria-label="알림" disabled>🔔</button>
         <button type="button" aria-label="화면 모드" disabled>◐</button>
-        <div className={styles.workspaceAccount}><span>관</span><div><strong>관리자</strong><small>계정 및 설정</small></div><b>⌄</b></div>
+        <div className={styles.workspaceAccount}><span>관</span><div><strong>관리자</strong><small>계정 및 설정</small></div><Chevron size={14} /></div>
       </header>
       <div className={styles.workspaceActionbar}>
         <div><strong>{activeScreen === "dashboard" ? "대시보드" : data.board.title}</strong><small>데모 워크스페이스 · 변경 내용은 실제로 저장돼요</small></div>
