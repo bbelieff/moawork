@@ -366,7 +366,7 @@ html[data-mw-accent][data-mw-effects="on"] [data-mw-cta="primary"]:not(:disabled
   background: var(--mw-cta-glass, var(--mw-cta-solid));
   color: #fff;
   border: 1px solid rgb(255 255 255 / 0.25);
-  border-radius: 12px;
+  border-radius: 999px; /* 2026-10-17 단추 통일 — 주 단추도 알약 */
   box-shadow: 0 8px 22px color-mix(in srgb, var(--mw-cta-solid) 32%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.35);
 }
 @media (forced-colors: active) {
