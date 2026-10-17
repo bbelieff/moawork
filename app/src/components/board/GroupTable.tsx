@@ -133,6 +133,51 @@ const STICKY_FIRST_BASE = "sticky left-0 z-[var(--mw-layer-board-cell)]";
 const STICKY_FIRST = `${STICKY_FIRST_BASE} bg-mw-card`;
 
 /**
+ * 칸 폭 «내용에 맞춤»(엑셀 경계 두 번 누르기). 화면에 그려진 그 칸의 모든 셀과 머리글에서
+ * 글자가 실제로 차지하는 오른쪽 끝을 재고(입력칸은 값·안내문을 글꼴로 잰다) 여유를 더해 폭 범위 안으로 맞춘다.
+ */
+export function measureColumnFit(columnKey: string, header: Element | null): number | null {
+  if (typeof document === "undefined") return null;
+  const cells = [
+    ...(header ? [header] : []),
+    ...document.querySelectorAll(`td[data-column-key="${CSS.escape(columnKey)}"]`),
+  ];
+  if (cells.length === 0) return null;
+  const canvas = document.createElement("canvas").getContext("2d");
+  let widest = 0;
+  for (const cell of cells) {
+    const box = cell.getBoundingClientRect();
+    const style = getComputedStyle(cell);
+    const padRight = parseFloat(style.paddingRight) || 0;
+    let right = 0;
+    cell.querySelectorAll("input:not([type=hidden]):not([type=checkbox]), textarea, select").forEach((field) => {
+      const el = field as HTMLInputElement;
+      const fs = getComputedStyle(el);
+      const text = (el.tagName === "SELECT" ? (el as unknown as HTMLSelectElement).selectedOptions[0]?.text : el.value || el.placeholder) ?? "";
+      if (!canvas) return;
+      canvas.font = fs.font;
+      const inner = canvas.measureText(text).width
+        + (parseFloat(fs.paddingLeft) || 0) + (parseFloat(fs.paddingRight) || 0)
+        + (parseFloat(fs.borderLeftWidth) || 0) + (parseFloat(fs.borderRightWidth) || 0)
+        + (el.type === "date" || el.type === "datetime-local" || el.tagName === "SELECT" ? 24 : 4);
+      right = Math.max(right, el.getBoundingClientRect().left - box.left + inner);
+    });
+    const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!node.textContent?.trim()) continue;
+      const parent = node.parentElement;
+      if (!parent || parent.closest("input, textarea, select, .sr-only, [role=listbox]")) continue;
+      range.selectNodeContents(node);
+      const rect = range.getBoundingClientRect();
+      if (rect.width > 0) right = Math.max(right, rect.right - box.left + 20);
+    }
+    widest = Math.max(widest, right + padRight);
+  }
+  return widest > 0 ? clampWidth(widest) : null;
+}
+
+/**
  * 숫자 입력에 천단위 콤마를 넣는다(2026-10-17 belie). 숫자·소수점·앞 마이너스만 남기고
  * 정수부를 3자리마다 끊는다. 서버(field-types number/money)는 콤마를 지우고 읽는다.
  */
@@ -1199,11 +1244,15 @@ export function GroupTable({
       };
     };
 
-  const resetWidth = (columnId: string) => (e: React.MouseEvent) => {
+  // 2026-10-17(belie): 엑셀처럼 — 칸 경계를 두 번 누르면 그 칸의 가장 긴 내용(모든 그룹)에 폭을 맞춘다.
+  const fitWidth = (columnId: string, columnKey: string) => (e: React.MouseEvent<HTMLSpanElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    setLiveWidth(columnId, null);
-    commitWidth(columnId, null);
+    const th = e.currentTarget.closest("th");
+    const width = measureColumnFit(columnKey, th);
+    if (width === null) return;
+    setLiveWidth(columnId, width);
+    commitWidth(columnId, width);
   };
 
   /*
@@ -1453,8 +1502,8 @@ export function GroupTable({
                       data-no-drag
                       draggable={false}
                       onMouseDown={startResize(col.id)}
-                      onDoubleClick={resetWidth(col.id)}
-                      title="끌어서 폭 조절 · 두 번 누르면 원래대로"
+                      onDoubleClick={fitWidth(col.id, col.key)}
+                      title="끌어서 폭 조절 · 두 번 누르면 내용에 맞춤"
                       /*
                        * #655 ② — 모서리 슬롭 제거.
                        *
@@ -1490,9 +1539,12 @@ export function GroupTable({
                   overRowIndex === 0 ? "bg-mw-tint-blue" : ""
                 }`}
               >
-                {dragRowId
-                  ? "여기에 놓으면 이 그룹으로 이동합니다"
-                  : "행이 없습니다."}
+                {/* 2026-10-17(belie): 옆으로 밀어도 문구가 왼쪽에 남는다(칸은 표 너비 전체라 글을 붙잡는다). */}
+                <span data-board-row-pinned className="sticky left-3 inline-block">
+                  {dragRowId
+                    ? "여기에 놓으면 이 그룹으로 이동합니다"
+                    : "행이 없습니다."}
+                </span>
               </td>
             </tr>
           )}
@@ -1751,6 +1803,8 @@ export function GroupTable({
                 눌려 찌그러지지 않고, 패널을 열어도 다른 행의 이름 열 폭이 바뀌지 않는다.
               */}
               <td colSpan={columns.length + 1} className={`${STICKY_FIRST} ${onDemandAdd && !addPanelOpen ? (dragRowId ? "h-9 p-0" : "h-2 p-0") : "px-2 py-1"} ${overRowIndex === rows.length ? "bg-mw-tint-blue" : ""}`}>
+                {/* 2026-10-17(belie): 「＋ 새 항목」·접수 패널은 옆으로 밀어도 보이는 폭 안 왼쪽에 남는다. */}
+                <div data-board-row-pinned className="sticky left-2 max-w-[var(--board-visible-width,100%)]">
                 {canonicalNewLead && groupId ? (
                   <NewLeadIntakeForm
                     boardId={boardId}
@@ -1785,6 +1839,7 @@ export function GroupTable({
                     inputClassName={`${CELL_INPUT} max-w-64`}
                   />
                 )}
+                </div>
               </td>
             </tr>
           )}
