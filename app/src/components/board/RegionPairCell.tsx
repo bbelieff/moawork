@@ -329,6 +329,7 @@ export function RegionCell({
         suggestions={suggestions}
         disabled={disabled}
         invalid={invalid}
+        compact
       />
       <span
         aria-live="polite"

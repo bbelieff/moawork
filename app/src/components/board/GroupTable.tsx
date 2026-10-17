@@ -32,6 +32,7 @@ import type {
   ItemWithValues,
 } from "@/lib/boards/types";
 import { formatCell } from "@/lib/boards/cells";
+import type { FieldOption } from "@/lib/types";
 import { NEW_LEAD_FIELD_KEYS } from "@/lib/new-lead/cell-fields";
 import { presentPhone } from "@/lib/format/phone";
 import { kstDateTimeLocal } from "@/lib/format/kst-datetime";
@@ -132,6 +133,20 @@ const STICKY_FIRST_BASE = "sticky left-0 z-[var(--mw-layer-board-cell)]";
 const STICKY_FIRST = `${STICKY_FIRST_BASE} bg-mw-card`;
 
 /**
+ * 숫자 입력에 천단위 콤마를 넣는다(2026-10-17 belie). 숫자·소수점·앞 마이너스만 남기고
+ * 정수부를 3자리마다 끊는다. 서버(field-types number/money)는 콤마를 지우고 읽는다.
+ */
+export function groupDigitsForInput(raw: string): string {
+  const negative = raw.trimStart().startsWith("-");
+  const cleaned = raw.replace(/[^\d.]/g, "");
+  const dot = cleaned.indexOf(".");
+  const intPart = dot === -1 ? cleaned : cleaned.slice(0, dot);
+  const fraction = dot === -1 ? "" : `.${cleaned.slice(dot + 1).replace(/\./g, "")}`;
+  const grouped = intPart.replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${negative ? "-" : ""}${grouped}${fraction}`;
+}
+
+/**
  * 표의 글자·숫자·날짜 칸 (QA #882).
  *
  * 전에는 Enter 를 눌러야만 저장됐다. 다른 곳을 누르면 입력한 값이 칸에 그대로 남아 저장된 것처럼
@@ -145,22 +160,41 @@ function CellTextInput({
   placeholder,
   label,
   className,
+  grouped = false,
 }: {
   type: string;
   defaultValue: string;
   placeholder: string;
   label: string;
   className: string;
+  grouped?: boolean;
 }) {
   const sentRef = useRef<string | null>(null);
   return (
     <input
-      type={type}
+      type={grouped ? "text" : type}
+      inputMode={grouped ? "decimal" : undefined}
       name="value"
-      defaultValue={defaultValue}
+      defaultValue={grouped ? groupDigitsForInput(defaultValue) : defaultValue}
       placeholder={placeholder}
       aria-label={label}
       className={className}
+      onInput={grouped ? (event) => {
+        const input = event.currentTarget;
+        const caret = input.selectionStart ?? input.value.length;
+        // 커서 앞 숫자 개수를 기억했다가 콤마를 다시 넣은 뒤 같은 자리로 돌려놓는다.
+        const digitsBefore = input.value.slice(0, caret).replace(/[^\d.-]/g, "").length;
+        const next = groupDigitsForInput(input.value);
+        if (next === input.value) return;
+        input.value = next;
+        let seen = 0;
+        let position = next.length;
+        for (let index = 0; index < next.length; index += 1) {
+          if (seen === digitsBefore) { position = index; break; }
+          if (/[\d.-]/.test(next[index]!)) seen += 1;
+        }
+        input.setSelectionRange(position, position);
+      } : undefined}
       onKeyDown={(event) => {
         const input = event.currentTarget;
         if (event.key === "Enter") {
@@ -227,6 +261,19 @@ function cellTitle(column: BoardColumn): string {
 }
 
 const NUMERIC_TYPES = new Set(["money", "number"]);
+
+/** 신규리드 사업자유형 — 저장값은 접수 폼(resolveNewLeadBusinessSubtype)과 같은 표기. */
+const BIZ_TYPE_KEYS = new Set(["biz_reg_type", "business_registration_type"]);
+const BIZ_TYPE_VALUES = [
+  "개인사업자", "개인사업자(간이)", "개인사업자(면세)",
+  "법인사업자", "법인사업자(면세)", "법인사업자(유한)", "그외",
+] as const;
+function businessTypeOptions(current: string | null): FieldOption[] {
+  const labels: string[] = [...BIZ_TYPE_VALUES];
+  // 목록 밖의 과거·자유기재 값도 지워지지 않게 그대로 보여 준다.
+  if (current && !labels.includes(current)) labels.push(current);
+  return labels.map((label, order) => ({ id: label, label, order }));
+}
 const NEW_LEAD_EMPTY_LABELS: Readonly<Record<string, string>> = {
   absence_notice: "해당 없음",
   consult1_notice: "해당 없음",
@@ -303,6 +350,9 @@ export function BoardCell({
   const error = localMessage === undefined ? flashError : localMessage;
   const phoneStatus = row.value_statuses?.[column.key] ?? "normalized";
   const options = column.options_jsonb?.options ?? [];
+  const bizTypeOptions = canonicalNewLead && column.type === "text" && BIZ_TYPE_KEYS.has(column.key)
+    ? businessTypeOptions(typeof value === "string" ? value : null)
+    : null;
   // 출처가 편집을 막는 칸(⇄ 연동·ƒ 수식)은 보드가 편집 가능해도 클릭해도 열리지 않는다 — D09 수용기준.
   //
   // `is_readonly` 도 같이 본다(BBE-145). 서비스는 이미 이 칸의 쓰기를 전부 거부하는데
@@ -592,6 +642,16 @@ export function BoardCell({
             optimistic={!needsConfirm}
             className={`${CELL_INPUT} cursor-pointer`}
           />
+        ) : bizTypeOptions ? (
+          // 2026-10-17(belie): 사업자유형은 글자 입력이 아니라 고르는 칸 — 접수 폼과 같은 정본 값.
+          <LabelCombobox
+            options={bizTypeOptions}
+            value={typeof value === "string" ? value : null}
+            name="value"
+            label={column.label}
+            optimistic
+            className={`${CELL_INPUT} cursor-pointer`}
+          />
         ) : column.type === "select" ? (
           <LabelCombobox
             options={options}
@@ -635,6 +695,7 @@ export function BoardCell({
             placeholder={emptyLabel ?? "—"}
             label={column.label}
             className={`${CELL_INPUT} ${numeric ? "text-right tabular-nums" : ""}`}
+            grouped={numeric}
           />
         )}
 

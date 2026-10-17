@@ -86,7 +86,8 @@ export function presentWorkflowProgressColumns(
     key: WORKFLOW_PROGRESS_KEY,
     label: "진행현황",
     rightPinned: true,
-    width: Math.max(stage.width ?? 0, 180),
+    // 2026-10-17(belie «셀 크기 낭비»): 단계 칩(점+이름+▾)이 들어가는 만큼만 — 132~160px.
+    width: Math.min(Math.max(stage.width ?? 0, 132), 160),
     options_jsonb: { ...stage.options_jsonb, options: visibleOptions },
     move_rule_jsonb: null,
   };

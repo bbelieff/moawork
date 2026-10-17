@@ -1,5 +1,5 @@
 import { matchesQuery } from "@/lib/company/chosung";
-import { CANONICAL_REGIONS } from "@/lib/structure-packs/region-options";
+import { KOREA_SIGUNGU, LEGACY_SIGUNGU } from "@/lib/region/korea-admin-regions";
 
 export type RegionSuggestion = Readonly<{ value: string; label: string }>;
 
@@ -40,13 +40,8 @@ export function searchSido(query: string): RegionSuggestion[] {
 export function sigunguSuggestions(sidoInput: string): RegionSuggestion[] {
   const sido = canonicalSido(sidoInput);
   if (!sido) return [];
-  const prefixes = sido === "강원" ? ["강원_", "강원도_"] : [`${sido}_`];
-  return CANONICAL_REGIONS.flatMap((region) => {
-    const prefix = prefixes.find((candidate) => region.startsWith(candidate));
-    if (!prefix) return [];
-    const value = region.slice(prefix.length);
-    return value ? [{ value, label: value }] : [];
-  });
+  // 2026-10-17(belie): 먼데이 아카이브 222지 대신 행정구역 전수 목록.
+  return (KOREA_SIGUNGU[sido] ?? []).map((value) => ({ value, label: value }));
 }
 
 export function searchSigungu(sidoInput: string, query: string): RegionSuggestion[] {
@@ -59,5 +54,8 @@ export function canonicalSigungu(sidoInput: string | null, value: string): strin
   const exact = sigunguSuggestions(sidoInput).find(
     (entry) => entry.value === trimmed || entry.label === trimmed,
   );
-  return exact?.value ?? null;
+  if (exact) return exact.value;
+  // 이미 저장된 옛 이름(인천 중구 등)은 다시 저장해도 막지 않는다.
+  const sido = canonicalSido(sidoInput);
+  return sido && LEGACY_SIGUNGU[sido]?.includes(trimmed) ? trimmed : null;
 }
