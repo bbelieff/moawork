@@ -17,8 +17,8 @@ describe("Issue #582 dark board visual contract", () => {
     expect(globals).toContain('.relative.isolate::-webkit-scrollbar-thumb');
     expect(globals).toContain(':is(tbody td, input, select, textarea)');
     expect(table).toContain("max-w-full overflow-auto");
-    // #845: 그룹 띠 틴트는 톤 16%(승인 목업 Palette.dc 의 rgba(.16)).
-    expect(group).toContain("16%, var(--mw-card)");
+    // 2026-10-16(belie) 리퀴드 글래스: 그룹 띠는 톤 18% → 4% → 투명으로 옅어지는 유리 띠.
+    expect(group).toContain("18%, transparent), color-mix(in srgb, ${accent} 4%, transparent) 60%, transparent)");
     expect(group).not.toContain("14%, transparent");
   });
 

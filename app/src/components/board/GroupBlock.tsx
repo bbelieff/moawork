@@ -126,7 +126,7 @@ export function GroupBlock({
       data-visual-block="group-table"
       data-group-accent={accent}
       data-group-tone={groupToneLabel(tone) ?? undefined}
-      className="min-w-0 max-w-full rounded-md border border-mw-line bg-mw-card"
+      className="mw-glass-group min-w-0 max-w-full rounded-md border border-mw-line bg-mw-card"
       style={{ "--mw-group-accent": accent } as CSSProperties}
     >
       <details className="min-w-0 max-w-full" open={open} onToggle={(e) => {
@@ -153,12 +153,14 @@ export function GroupBlock({
           } : undefined}
           className={`flex select-none items-center gap-2 rounded-t-xl px-3 py-2 list-none [&::-webkit-details-marker]:hidden ${onOrderDragStart?"cursor-grab active:cursor-grabbing":"cursor-pointer"} ${dropState==="valid"?"border-t-2 border-mw-record bg-mw-tint-blue":dropState==="invalid"?"cursor-not-allowed":""}`}
           style={{
-            backgroundColor: dropState === "valid"
+            // 2026-10-16(belie) 리퀴드 글래스 — 그룹 색이 왼쪽에서 옅어지는 띠. 왼쪽 색 선은 아래 data-mw-group-bar 가
+            //   카드 모서리 곡선을 따라 그린다(globals.css section.mw-glass-group).
+            background: dropState === "valid"
               ? "var(--mw-tint-blue)"
-              : `color-mix(in srgb, ${accent} 16%, var(--mw-card))`,
-            borderLeft: `3px solid ${accent}`,
+              : `linear-gradient(90deg, color-mix(in srgb, ${accent} 18%, transparent), color-mix(in srgb, ${accent} 4%, transparent) 60%, transparent)`,
           }}
         >
+          <span data-mw-group-bar="" aria-hidden="true" />
           <span className="sr-only" aria-live="polite">{dropState==="invalid"?"같은 그룹 위치에는 놓을 수 없어요.":dropState==="valid"?"이 위치로 그룹을 이동합니다.":""}</span>
           <span data-mw-group-color aria-hidden="true" style={{ backgroundColor: accent }} />
           <span
@@ -207,7 +209,7 @@ export function GroupBlock({
           </span>
         </summary>
 
-        <div className="min-w-0 max-w-full overflow-hidden rounded-b-xl">{children}</div>
+        <div data-mw-group-body="" className="min-w-0 max-w-full overflow-hidden rounded-b-xl">{children}</div>
       </details>
     </section>
   );

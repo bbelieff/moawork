@@ -319,3 +319,61 @@ html[data-mw-accent] [data-mw-group-color]{display:inline-block;flex:none;width:
 html[data-mw-accent] [data-visual-block="group-table"]{border-radius:7px}
 html[data-mw-accent] [data-visual-block="group-table"]>details>summary{border-radius:7px 7px 0 0;border-bottom:1px solid var(--mw-line)}
 @media(forced-colors:active){html[data-mw-accent] [data-mw-group-color]{background:Highlight!important}}
+
+/* ── 2026-10-16(belie) 글래스 마감 ───────────────────────────────────────
+ * 선택 메뉴 = 라이트 글래스 시안 A 의 알약(탭 색 그라데이션 + 흰 글씨 + 빛), 다크는 시안 B(탭 색이 비치는 유리 알약).
+ * 주 단추 = 2차 시안 A(탭 색 그라데이션 + 흰 글씨 + 색 그림자).
+ * 흰 글씨가 읽히도록 단추 그라데이션은 탭 사다리의 진한 쪽(600~700)으로 따로 둔다(대비 4.8 이상). */
+html[data-mw-accent="new"] { --mw-cta-glass: linear-gradient(135deg, #c2410c, #b45309); }
+html[data-mw-accent="contact"],
+html[data-mw-accent="dash"] { --mw-cta-glass: linear-gradient(135deg, #2563eb, #6d28d9); }
+html[data-mw-accent="inperson"] { --mw-cta-glass: linear-gradient(135deg, #dc2626, #be185d); }
+html[data-mw-accent="work"] { --mw-cta-glass: linear-gradient(135deg, #15803d, #0f766e); }
+html[data-mw-accent="company"] { --mw-cta-glass: linear-gradient(135deg, #0369a1, #0e7490); }
+html[data-mw-accent="news"] { --mw-cta-glass: linear-gradient(135deg, #0e7490, #0f766e); }
+
+html[data-mw-accent] {
+  --mw-nav-active-bg: var(--mw-cta-glass, var(--mw-cta-solid));
+  --mw-nav-active-fg: #fff;
+}
+html[data-mw-accent] .mw-nav-active,
+html[data-mw-accent][data-mw-effects] .mw-nav-active {
+  --mw-tab-icon: currentColor;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--mw-cta-solid) 32%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.35);
+}
+html[data-mw-accent][data-theme="dark"] {
+  --mw-nav-active-bg: linear-gradient(135deg, color-mix(in srgb, var(--mw-cta-solid) 32%, transparent), color-mix(in srgb, var(--mw-cta-solid) 14%, transparent));
+  --mw-nav-active-fg: #fff;
+}
+html[data-mw-accent][data-theme="dark"] .mw-nav-active,
+html[data-mw-accent][data-mw-effects][data-theme="dark"] .mw-nav-active {
+  --mw-tab-icon: var(--mw-tab-a-1);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mw-tab-a-1) 38%, transparent), 0 6px 22px color-mix(in srgb, var(--mw-cta-solid) 26%, transparent);
+}
+@media (prefers-color-scheme: dark) {
+  html[data-mw-accent]:not([data-theme="light"]) {
+    --mw-nav-active-bg: linear-gradient(135deg, color-mix(in srgb, var(--mw-cta-solid) 32%, transparent), color-mix(in srgb, var(--mw-cta-solid) 14%, transparent));
+    --mw-nav-active-fg: #fff;
+  }
+  html[data-mw-accent]:not([data-theme="light"]) .mw-nav-active,
+  html[data-mw-accent][data-mw-effects]:not([data-theme="light"]) .mw-nav-active {
+    --mw-tab-icon: var(--mw-tab-a-1);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mw-tab-a-1) 38%, transparent), 0 6px 22px color-mix(in srgb, var(--mw-cta-solid) 26%, transparent);
+  }
+}
+
+html[data-mw-accent][data-mw-effects="on"] [data-mw-cta="primary"]:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--mw-cta-glass, var(--mw-cta-solid));
+  color: #fff;
+  border: 1px solid rgb(255 255 255 / 0.25);
+  border-radius: 12px;
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--mw-cta-solid) 32%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.35);
+}
+@media (forced-colors: active) {
+  html[data-mw-accent][data-mw-effects="on"] [data-mw-cta="primary"]:not(:disabled):not([aria-disabled="true"]) {
+    background: ButtonFace;
+    color: ButtonText;
+    border-color: ButtonText;
+    box-shadow: none;
+  }
+}

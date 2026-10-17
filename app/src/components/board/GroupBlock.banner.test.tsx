@@ -39,8 +39,9 @@ describe("GroupBlock 색 띠 — 탭 2색 × 깊이 (#839 · #845)", () => {
     const markup = html({ tone: { axis: "A", level: 4 } });
     expect(markup).toContain("--mw-group-accent:var(--mw-tab-a-4)");
     expect(markup).toContain('data-group-tone="A4"');
-    expect(markup).toContain("background-color:color-mix(in srgb, var(--mw-tab-a-4) 16%, var(--mw-card))");
-    expect(markup).toContain("border-left:3px solid var(--mw-tab-a-4)");
+    // 2026-10-16(belie) 리퀴드 글래스: 옅어지는 톤 띠 + 모서리 곡선을 따르는 3px 레일(data-mw-group-bar, globals.css).
+    expect(markup).toContain("background:linear-gradient(90deg, color-mix(in srgb, var(--mw-tab-a-4) 18%, transparent)");
+    expect(markup).toContain('data-mw-group-bar=""');
     expect(markup).toContain("color:color-mix(in srgb, var(--mw-tab-a-4) 40%, var(--mw-fg))");
     // 컴포넌트는 hex 를 고르지 않는다 — 색은 언제나 토큰.
     expect(markup).not.toMatch(/#[0-9a-f]{6}/i);
