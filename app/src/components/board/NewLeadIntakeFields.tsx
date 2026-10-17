@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import {
   NEW_LEAD_BUSINESS_TYPES,
   NEW_LEAD_CORPORATE_BUSINESS_SUBTYPES,
@@ -232,11 +233,41 @@ export function RegionCombobox({ name, label, value, onValue, suggestions, disab
   // 2026-10-17(belie «전수»): 8개로 자르지 않는다 — 목록은 스크롤된다.
   const visible = suggestions;
   const listId = `${name}-suggestions`;
+  // 보드 칸(td)은 overflow:hidden 이라 absolute 목록이 칸 안에서 잘린다 → compact 는 화면 기준(fixed)으로 띄운다.
+  const [anchor, setAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
+  const showList = open && visible.length > 0;
+  useEffect(() => {
+    if (!compact || !showList) return;
+    const place = () => {
+      const rect = inputRef.current?.getBoundingClientRect();
+      if (rect) setAnchor({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [compact, showList]);
   const choose = (entry: RegionSuggestion) => {
     onValue(entry.value);
     setOpen(false);
     setActive(0);
   };
+  const list = (
+    <ul id={listId} role="listbox"
+      style={compact && anchor ? { position: "fixed", top: anchor.top, left: anchor.left, width: Math.max(anchor.width, 144), right: "auto" } : undefined}
+      className={`mw-layer-page-popover absolute left-0 right-0 ${compact ? "top-full mt-1 min-w-36" : "top-[4.2rem]"} max-h-56 overflow-auto rounded-lg border border-mw-line bg-mw-card p-1 shadow-xl`}>
+      {visible.map((entry, index) => (
+        <li key={entry.value} id={`${listId}-${index}`} role="option" aria-selected={index === active}
+          onMouseDown={(event) => event.preventDefault()} onClick={() => choose(entry)}
+          className={`cursor-pointer rounded px-3 py-2 text-sm ${index === active ? "bg-mw-tint-blue text-mw-record" : "text-mw-fg hover:bg-mw-bg"}`}>
+          {entry.label}
+        </li>
+      ))}
+    </ul>
+  );
   return (
     <label className={compact ? "relative block text-xs" : "relative grid gap-1 text-xs text-mw-sub"}>
       <span className={compact ? "sr-only" : undefined}>{label}</span>
@@ -257,17 +288,7 @@ export function RegionCombobox({ name, label, value, onValue, suggestions, disab
         }}
         className={`${compact ? COMPACT_CONTROL : CONTROL} aria-[invalid=true]:border-mw-error disabled:bg-mw-bg disabled:text-mw-sub`}
         placeholder={disabled ? "시도를 먼저 선택하세요" : `${label} 또는 초성 검색`} />
-      {open && visible.length > 0 ? (
-        <ul id={listId} role="listbox" className={`mw-layer-page-popover absolute left-0 right-0 ${compact ? "top-full mt-1 min-w-36" : "top-[4.2rem]"} max-h-56 overflow-auto rounded-lg border border-mw-line bg-mw-card p-1 shadow-xl`}>
-          {visible.map((entry, index) => (
-            <li key={entry.value} id={`${listId}-${index}`} role="option" aria-selected={index === active}
-              onMouseDown={(event) => event.preventDefault()} onClick={() => choose(entry)}
-              className={`cursor-pointer rounded px-3 py-2 text-sm ${index === active ? "bg-mw-tint-blue text-mw-record" : "text-mw-fg hover:bg-mw-bg"}`}>
-              {entry.label}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {showList ? (compact ? (anchor && typeof document !== "undefined" ? createPortal(list, document.body) : null) : list) : null}
     </label>
   );
 }
