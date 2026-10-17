@@ -182,12 +182,13 @@ describe("Issue #589 신규리드 재무 저장", () => {
     ]);
   });
 
-  it.each(["2026-08", "2026-08-27"])("창업일 %s의 입력 정밀도를 그대로 저장한다", async (value) => {
+  // 2026-10-17 belie: 연도·월까지만 있으면 없는 값은 1로 채워 저장한다.
+  it.each([["2026-08", "2026-08-01"], ["2026", "2026-01-01"], ["2026-08-27", "2026-08-27"]])("창업일 %s → %s 로 저장한다", async (value, stored) => {
     const data = baseForm();
     data.set("foundedDate", value);
     expect((await saveNewLeadFoundedDateAction({ ok: false, message: "" }, data)).ok).toBe(true);
     expect(mocks.setCells).toHaveBeenCalledWith(expect.anything(), "board-a", "item-a", {
-      founded_month: value,
+      founded_month: stored,
     });
   });
 

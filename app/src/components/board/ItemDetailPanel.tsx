@@ -121,6 +121,7 @@ import { DealLedgerButton } from "./DealLedgerButton";
 import { Chevron } from "@/components/ui/Chevron";
 import { moveItemToTrash } from "./ItemTrashUndo";
 import styles from "./item-detail-panel.module.css";
+import { groupIfPlainNumber } from "@/lib/format/group-digits";
 
 const CANONICAL_NEW_LEAD_DETAIL_KEYS = new Set([
   "applied_on", "address_detail", "rep_name", "phone", "email", "biz_reg_type",
@@ -171,8 +172,12 @@ function AutoSaveField({
     if (text === "") return "";
     return options!.find((option) => option.label === text)?.id ?? options!.find((option) => option.id === text)?.id ?? null;
   };
+  // 2026-10-17(belie): 금액·숫자 칸은 천단위 콤마(신용점수·금리 같은 범위 칸은 숫자 자판 그대로).
+  const groupedNumber = (type === "number" || type === "money") && !RANGE_NUMBER_KEYS.has(fieldKey);
   const presentedInitial = type === "phone"
     ? presentPhone(String(initialValue), phoneStatus)
+    : groupedNumber
+      ? groupIfPlainNumber(String(initialValue))
     : optionField
       ? options!.find((option) => option.id === String(initialValue))?.label ?? String(initialValue)
       : String(initialValue);
@@ -255,13 +260,14 @@ function AutoSaveField({
       <input
         id={`${itemId}-${fieldKey}`}
         value={value}
-        type={inputType(type)}
+        type={groupedNumber ? "text" : inputType(type)}
+        inputMode={groupedNumber ? "decimal" : undefined}
         list={optionListId}
         min={fieldKey === "credit_score_ncb" || fieldKey === "credit_score_kcb" ? 1 : undefined}
         max={fieldKey === "credit_score_ncb" || fieldKey === "credit_score_kcb" ? 1000 : fieldKey === "existing_loan_rate" ? 100 : undefined}
         step={fieldKey === "credit_score_ncb" || fieldKey === "credit_score_kcb" ? 1 : undefined}
         onChange={(event) => {
-          const next = event.target.value;
+          const next = groupedNumber ? groupIfPlainNumber(event.target.value) : event.target.value;
           setValue(next);
           valueRef.current = next;
           updateStatus("저장 대기…");
@@ -397,6 +403,8 @@ function RegionAutoSaveField({
     </div>
   );
 }
+
+const RANGE_NUMBER_KEYS = new Set(["credit_score_ncb", "credit_score_kcb", "existing_loan_rate"]);
 
 function inputType(type: string | undefined): string {
   if (type === "number" || type === "money") return "number";

@@ -11,6 +11,7 @@ import { useActionState, useTransition } from "react";
 import type { Company, Deal, FieldDef, Stage } from "@/lib/types";
 import { ContractStatusField } from "./ContractStatusField";
 import { setContractStatusAction, updateDealAction, type DealUpdateState } from "@/app/(app)/deals/[dealId]/actions";
+import { regroupInputInPlace } from "@/lib/format/group-digits";
 
 const IDLE: DealUpdateState = { kind: "idle", message: "" };
 
@@ -59,6 +60,7 @@ export function DealInfoTab({
               name="amount"
               inputMode="text"
               placeholder="예: 5,000,000 또는 1억 5천만"
+              onInput={(event) => regroupInputInPlace(event.currentTarget)}
               defaultValue={deal.amount ?? ""}
               disabled={!canEdit}
               className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm tabular-nums disabled:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:disabled:bg-zinc-800"

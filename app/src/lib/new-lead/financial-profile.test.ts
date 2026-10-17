@@ -83,17 +83,16 @@ describe("신규리드 금융 정보", () => {
     })).toEqual({ ncb: 812, kcb: 745 });
   });
 
-  it("창업일의 월/일 정밀도를 보존하고 기본 표시는 연월로 통일한다", () => {
-    expect(parseFoundedDate("2026-08")).toEqual({
-      ok: true,
-      value: { value: "2026-08", precision: "month" },
-    });
-    expect(parseFoundedDate("2024-02-29")).toEqual({
-      ok: true,
-      value: { value: "2024-02-29", precision: "day" },
-    });
+  it("창업일 — 연도·월만 있으면 없는 값은 1로 채운다(2026-10-17 belie)", () => {
+    expect(parseFoundedDate("2026-08")).toEqual({ ok: true, value: { value: "2026-08-01", precision: "day" } });
+    expect(parseFoundedDate("2019")).toEqual({ ok: true, value: { value: "2019-01-01", precision: "day" } });
+    expect(parseFoundedDate("2019.5")).toEqual({ ok: true, value: { value: "2019-05-01", precision: "day" } });
+    expect(parseFoundedDate("201905")).toEqual({ ok: true, value: { value: "2019-05-01", precision: "day" } });
+    expect(parseFoundedDate("2024-02-29")).toEqual({ ok: true, value: { value: "2024-02-29", precision: "day" } });
     expect(parseFoundedDate("2025-02-29").ok).toBe(false);
-    expect(formatFoundedDate("2024-02-29")).toBe("2024. 02.");
+    expect(parseFoundedDate("2026-13").ok).toBe(false);
+    expect(formatFoundedDate("2024-02-29")).toBe("2024. 02. 29.");
+    expect(formatFoundedDate("2024-02")).toBe("2024. 02. 01.");
     expect(formatFoundedDate("legacy-unknown")).toBe("legacy-unknown");
   });
 

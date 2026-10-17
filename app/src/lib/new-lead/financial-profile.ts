@@ -136,31 +136,45 @@ export function formatCreditScoreValue(value: CellValue | undefined): string {
 export type FoundedDatePrecision = "month" | "day";
 export type ParsedFoundedDate = Readonly<{ value: string | null; precision: FoundedDatePrecision | null }>;
 
-/** Preserve the precision the user supplied; never guess a day for month-only legacy values. */
+/**
+ * 창업일 — 2026-10-17 belie: 달력으로 고르고, 리드가 연도·월까지만 주면 없는 값은 1로 채운다.
+ * («2019» → 2019-01-01, «2019-05» → 2019-05-01). 점·빗금(2019.05)·붙여 쓰기(201905)도 받는다.
+ * 이미 연월로 저장된 옛 값은 그대로 읽힌다(표시는 그 달 1일로).
+ */
 export function parseFoundedDate(raw: string):
   | { ok: true; value: ParsedFoundedDate }
   | { ok: false; message: string } {
-  const value = raw.trim();
+  const value = toFoundedDateInput(raw);
+  if (value === null) return { ok: false, message: "창업일은 연도, 연도-월, 연도-월-일 중 하나로 입력해 주세요." };
   if (!value) return { ok: true, value: { value: null, precision: null } };
-  const month = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(value);
-  if (month) return { ok: true, value: { value, precision: "month" } };
-  const day = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.exec(value);
-  if (day) {
-    const date = new Date(value + "T00:00:00Z");
-    if (!Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value) {
-      return { ok: true, value: { value, precision: "day" } };
-    }
-  }
-  return { ok: false, message: "창업연월은 연도-월 또는 연도-월-일 형식으로 입력해 주세요." };
+  return { ok: true, value: { value, precision: "day" } };
 }
 
-/** Default board display is month-granular while the durable value keeps an optional day. */
+/** 저장값·입력값 → 달력 칸 값(YYYY-MM-DD). 빈값은 "", 읽을 수 없으면 null. */
+export function toFoundedDateInput(raw: string | null | undefined): string | null {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return "";
+  const compact = /^(\d{4})(\d{2})?(\d{2})?$/.exec(trimmed);
+  const parts = compact
+    ? [compact[1]!, compact[2], compact[3]]
+    : /^(\d{4})(?:[-./](\d{1,2}))?(?:[-./](\d{1,2}))?\.?$/.exec(trimmed)?.slice(1, 4);
+  if (!parts || !parts[0]) return null;
+  const year = parts[0];
+  const month = (parts[1] ?? "1").padStart(2, "0");
+  const day = (parts[2] ?? "1").padStart(2, "0");
+  const value = `${year}-${month}-${day}`;
+  const date = new Date(value + "T00:00:00Z");
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) return null;
+  return value;
+}
+
+/** 표 표시 — 연. 월. 일. (연월만 있던 옛 값은 그 달 1일). */
 export function formatFoundedDate(raw: CellValue | undefined): string {
   if (typeof raw !== "string" || !raw.trim()) return "—";
-  const parsed = parseFoundedDate(raw);
-  if (!parsed.ok || !parsed.value.value) return raw;
-  const [year, month] = parsed.value.value.split("-");
-  return year + ". " + month + ".";
+  const value = toFoundedDateInput(raw);
+  if (!value) return raw;
+  const [year, month, day] = value.split("-");
+  return year + ". " + month + ". " + day + ".";
 }
 
 export function parseRevenue3yMillion(raw: string):
