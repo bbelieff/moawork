@@ -187,7 +187,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const account = buildAccountViewModel(ctx);
 
   return (
-    <div className="flex min-h-full flex-1 flex-col md:flex-row">
+    <div className="mw-shell-ambient flex min-h-full flex-1 flex-col md:flex-row">
       {/* 분석 필수 속성(org_id·role·plan_tier·app_version) 등록 + 내부 UUID 식별.
           DOM 을 그리지 않는다. 이메일·이름은 넘기지 않는다(PII 하드 금지). */}
       <AnalyticsIdentity
@@ -204,8 +204,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       {/* 2026-10-09 — 휴대폰(md 미만)에서는 로고 + 회사 전환만 한 줄로 남긴다. 메뉴 목록은 아래 메뉴가 맡는다.
           넓은 화면의 클래스(md:*)는 그대로다 — gap·items 는 md 에서 기본값으로 되돌린다. */}
       <aside
-        className="mw-layer-shell relative flex h-auto w-full flex-none flex-row items-center gap-[var(--sp-2)] border-b px-[var(--sp-3)] py-[var(--sp-1)] md:fixed md:flex-col md:items-stretch md:gap-0 md:inset-y-0 md:left-0 md:h-dvh md:w-[var(--mw-shell-nav-w)] md:overflow-visible md:border-b-0 md:border-r md:py-[var(--sp-4)]"
-        style={{ background: "var(--mw-card)", borderColor: "var(--mw-line)" }}
+        // 2026-10-16(belie) — 라이트 모드는 떠 있는 유리 카드, 다크 모드는 화면에 붙은 어두운 유리 판.
+        //   위치·배경·테두리는 globals.css 의 .mw-shell-glass 가 테마별로 정한다(휴대폰 위 한 줄은 예전 그대로).
+        className="mw-layer-shell relative flex h-auto w-full flex-none flex-row items-center gap-[var(--sp-2)] border-b px-[var(--sp-3)] py-[var(--sp-1)] md:fixed md:flex-col md:items-stretch md:gap-0 md:w-[var(--mw-shell-nav-w)] md:overflow-visible md:border-b-0 md:py-[var(--sp-4)] mw-shell-glass"
       >
         {/* 목업 v6 `.brand` — 로고 한 덩이만. 높이 48px · 좌우 --sp-3 · 아래 경계선.
             회사명은 여기 적지 않는다: 바로 아래 WorkspaceSwitcher 가 같은 이름을
@@ -283,7 +284,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
       {/* ── 본문 ── */}
       <div
-        className="min-w-0 max-w-full flex-1 overflow-x-hidden md:ml-[var(--mw-shell-nav-w)] px-[var(--sp-4)] pt-[var(--sp-3)] pb-[calc(var(--sp-3)_+_var(--mw-bottom-nav-h))] sm:px-[var(--sp-5)] md:px-[var(--sp-6)]"
+        className="mw-shell-main min-w-0 max-w-full flex-1 overflow-x-hidden px-[var(--sp-4)] pt-[var(--sp-3)] pb-[calc(var(--sp-3)_+_var(--mw-bottom-nav-h))] sm:px-[var(--sp-5)] md:px-[var(--sp-6)]"
       >
         {/* 페이지 제목은 각 화면이 자기 <h1> 로 그린다 — 셸은 우측 액션만 소유. */}
         <header
