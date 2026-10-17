@@ -6,7 +6,7 @@ import {
   type SaveNewLeadFinancialState,
 } from "@/app/(app)/boards/new-lead-actions";
 import type { CellValue } from "@/lib/boards/types";
-import { formatFoundedDate } from "@/lib/new-lead/financial-profile";
+import { formatFoundedDate, toFoundedDateInput } from "@/lib/new-lead/financial-profile";
 import { BOARD_TABLE_CONTROL } from "./table-style";
 
 export function NewLeadFoundedDateCell({
@@ -27,7 +27,8 @@ export function NewLeadFoundedDateCell({
   ) => Promise<SaveNewLeadFinancialState>;
   onStatusChange?: (status: string) => void;
 }) {
-  const shown = typeof value === "string" ? value : "";
+  // 2026-10-17(belie): 달력 칸 — 연도·월만 있던 값은 1일·1월로 채워 보여 준다.
+  const shown = typeof value === "string" ? (toFoundedDateInput(value) ?? value) : "";
   const formRef = useRef<HTMLFormElement>(null);
   const externalRef = useRef(shown);
   const attemptedRef = useRef<string | null>(null);
@@ -123,15 +124,14 @@ export function NewLeadFoundedDateCell({
       <input type="hidden" name="itemId" value={itemId} />
       <input
         name="foundedDate"
-        type="text"
-        inputMode="numeric"
-        pattern="\d{4}-(0[1-9]|1[0-2])(-([0-2]\d|3[01]))?"
+        type="date"
+        min="1900-01-01"
+        max="2100-12-31"
         value={draft}
         disabled={pending}
         aria-label="창업연월"
         aria-describedby={constraintError || actionError ? itemId + "-founded-date-error" : undefined}
         aria-invalid={Boolean(constraintError || actionError)}
-        placeholder="YYYY-MM 또는 YYYY-MM-DD"
         className={BOARD_TABLE_CONTROL + " tabular-nums disabled:opacity-60"}
         onChange={(event) => {
           const next = event.currentTarget.value;
@@ -145,7 +145,7 @@ export function NewLeadFoundedDateCell({
         onInvalid={() => {
           armedSubmitRef.current = false;
           submittingRef.current = false;
-          setConstraintError("YYYY-MM 또는 YYYY-MM-DD 형식으로 입력해 주세요.");
+          setConstraintError("달력에서 날짜를 골라 주세요.");
           statusChangeRef.current?.("저장 확인 필요");
         }}
       />

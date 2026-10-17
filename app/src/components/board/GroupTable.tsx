@@ -33,6 +33,7 @@ import type {
 } from "@/lib/boards/types";
 import { formatCell } from "@/lib/boards/cells";
 import type { FieldOption } from "@/lib/types";
+import { groupDigitsForInput, regroupInputInPlace } from "@/lib/format/group-digits";
 import { NEW_LEAD_FIELD_KEYS } from "@/lib/new-lead/cell-fields";
 import { presentPhone } from "@/lib/format/phone";
 import { kstDateTimeLocal } from "@/lib/format/kst-datetime";
@@ -132,19 +133,7 @@ export function boardFileSelectionError(size: number): string | null {
 const STICKY_FIRST_BASE = "sticky left-0 z-[var(--mw-layer-board-cell)]";
 const STICKY_FIRST = `${STICKY_FIRST_BASE} bg-mw-card`;
 
-/**
- * 숫자 입력에 천단위 콤마를 넣는다(2026-10-17 belie). 숫자·소수점·앞 마이너스만 남기고
- * 정수부를 3자리마다 끊는다. 서버(field-types number/money)는 콤마를 지우고 읽는다.
- */
-export function groupDigitsForInput(raw: string): string {
-  const negative = raw.trimStart().startsWith("-");
-  const cleaned = raw.replace(/[^\d.]/g, "");
-  const dot = cleaned.indexOf(".");
-  const intPart = dot === -1 ? cleaned : cleaned.slice(0, dot);
-  const fraction = dot === -1 ? "" : `.${cleaned.slice(dot + 1).replace(/\./g, "")}`;
-  const grouped = intPart.replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${negative ? "-" : ""}${grouped}${fraction}`;
-}
+export { groupDigitsForInput } from "@/lib/format/group-digits";
 
 /**
  * 표의 글자·숫자·날짜 칸 (QA #882).
@@ -179,22 +168,7 @@ function CellTextInput({
       placeholder={placeholder}
       aria-label={label}
       className={className}
-      onInput={grouped ? (event) => {
-        const input = event.currentTarget;
-        const caret = input.selectionStart ?? input.value.length;
-        // 커서 앞 숫자 개수를 기억했다가 콤마를 다시 넣은 뒤 같은 자리로 돌려놓는다.
-        const digitsBefore = input.value.slice(0, caret).replace(/[^\d.-]/g, "").length;
-        const next = groupDigitsForInput(input.value);
-        if (next === input.value) return;
-        input.value = next;
-        let seen = 0;
-        let position = next.length;
-        for (let index = 0; index < next.length; index += 1) {
-          if (seen === digitsBefore) { position = index; break; }
-          if (/[\d.-]/.test(next[index]!)) seen += 1;
-        }
-        input.setSelectionRange(position, position);
-      } : undefined}
+      onInput={grouped ? (event) => regroupInputInPlace(event.currentTarget) : undefined}
       onKeyDown={(event) => {
         const input = event.currentTarget;
         if (event.key === "Enter") {

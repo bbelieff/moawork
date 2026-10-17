@@ -5,6 +5,7 @@ import { mutateWork, type WorkActionState } from "@/app/(app)/(tabs)/work/action
 import { calendarBuckets, visibleItems } from "@/lib/work-management/domain";
 import { canManageStructure, canMutateField, type WorkBoardSnapshot, type WorkColumnContract, type WorkItemSnapshot, type WorkViewKind } from "@/lib/work-management/contracts";
 import styles from "./work-management.module.css";
+import { groupIfPlainNumber, regroupInputInPlace } from "@/lib/format/group-digits";
 
 const actionInitial: WorkActionState = { ok: false, message: "" };
 
@@ -26,6 +27,11 @@ function Cell({ snapshot, item, column }: { snapshot: WorkBoardSnapshot; item: W
   if (column.key === "assigned_to") return <ActionForm snapshot={snapshot} item={item} operation="set_field" field="assigned_to"><select className={styles.cellInput} name="value" defaultValue={String(value ?? "")} aria-label="담당자 수정"><option value="">재배정 필요</option>{snapshot.members.map((member) => <option key={member.membershipId} value={member.userId}>{member.displayName}</option>)}</select><button className={styles.saveButton}>저장</button></ActionForm>;
   if (column.key === "workflow_status") return <ActionForm snapshot={snapshot} item={item} operation="set_field" field="workflow_status"><select className={styles.cellInput} name="value" defaultValue={String(value ?? "not_started")} aria-label="진행상황 수정"><option value="not_started">시작 전</option><option value="in_progress">작업 중</option><option value="done">완료</option><option value="blocked">차단</option></select><button className={styles.saveButton}>저장</button></ActionForm>;
   const inputType = column.kind === "date" || column.kind === "system_date" ? "date" : column.kind === "amount" || column.kind === "percent" || column.kind === "year" ? "number" : column.kind === "url" ? "url" : "text";
+  // 2026-10-17(belie): 금액은 천단위 콤마로 보이고, 보낼 때는 숨은 칸에 숫자만 담는다.
+  if (column.kind === "amount") {
+    const raw = String(value ?? "");
+    return <ActionForm snapshot={snapshot} item={item} operation="set_field" field={column.key}><input type="hidden" name="value" defaultValue={raw} /><input className={styles.cellInput} type="text" inputMode="numeric" defaultValue={groupIfPlainNumber(raw)} aria-label={`${column.label} 수정`} onInput={(event) => { regroupInputInPlace(event.currentTarget); const hidden = event.currentTarget.previousElementSibling as HTMLInputElement | null; if (hidden) hidden.value = event.currentTarget.value.replace(/[,\s]/g, ""); }}/><button className={styles.saveButton}>저장</button></ActionForm>;
+  }
   return <ActionForm snapshot={snapshot} item={item} operation="set_field" field={column.key}><input className={styles.cellInput} name="value" type={inputType} defaultValue={String(value ?? "")} aria-label={`${column.label} 수정`}/><button className={styles.saveButton}>저장</button></ActionForm>;
 }
 

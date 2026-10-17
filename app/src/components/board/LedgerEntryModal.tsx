@@ -13,6 +13,7 @@ import { ResultBanner } from "@/lib/ui/ResultBanner";
 import type { ResultNotice } from "@/lib/ui/result-notice";
 import { BoardModalLayer } from "./BoardDialogPortal";
 import { kstToday } from "@/lib/format/kst-datetime";
+import { groupIfPlainNumber } from "@/lib/format/group-digits";
 
 export interface LedgerEntryModalProps {
   dealId: string;
@@ -147,7 +148,7 @@ export function LedgerEntryModal({
           id="ledger-amount"
           inputMode="numeric"
           value={amount}
-          onChange={(event) => setAmount(event.target.value)}
+          onChange={(event) => setAmount(groupIfPlainNumber(event.target.value))}
           className={FIELD}
         />
         <p className="mt-1 text-[0.65rem] text-mw-sub">
@@ -161,7 +162,7 @@ export function LedgerEntryModal({
               id="ledger-received"
               inputMode="numeric"
               value={receivedAmount}
-              onChange={(event) => setReceivedAmount(event.target.value)}
+              onChange={(event) => setReceivedAmount(groupIfPlainNumber(event.target.value))}
               className={FIELD}
             />
           </div>

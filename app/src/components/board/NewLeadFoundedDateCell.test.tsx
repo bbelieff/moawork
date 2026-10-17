@@ -44,13 +44,15 @@ describe("Issue #600 정밀도 보존 창업일 leaf", () => {
     root = createRoot(host);
     await act(async () => root?.render(<NewLeadFoundedDateCell boardId="board-a" itemId="item-a" value="legacy/raw" readOnly={false} saveAction={saveAction} onStatusChange={statuses} />));
     let input = host.querySelector<HTMLInputElement>('[aria-label="창업연월"]')!;
-    expect(input.value).toBe("legacy/raw");
+    // 달력 칸은 읽을 수 없는 옛 글자를 비워 보이지만, 손대지 않으면 저장하지 않는다(옛 값 보존).
+    expect(input.type).toBe("date");
     await blur(input);
     expect(saveAction).not.toHaveBeenCalled();
 
     await act(async () => root?.render(<NewLeadFoundedDateCell boardId="board-a" itemId="item-a" value="2026-08" readOnly={false} saveAction={saveAction} onStatusChange={statuses} />));
     input = host.querySelector('[aria-label="창업연월"]')!;
-    expect(input.value).toBe("2026-08");
+    // 2026-10-17 belie: 연월만 있으면 일은 1로 채워 달력에 보인다.
+    expect(input.value).toBe("2026-08-01");
     await act(async () => setInput(input, "2026-08-27"));
     await act(async () => root?.render(<NewLeadFoundedDateCell boardId="board-a" itemId="item-a" value="2026-09" readOnly={false} saveAction={saveAction} onStatusChange={statuses} />));
     const dirty = host.querySelector<HTMLInputElement>('[aria-label="창업연월"]')!;
@@ -98,7 +100,7 @@ describe("Issue #600 정밀도 보존 창업일 leaf", () => {
     expect(statuses.mock.calls.at(-1)).toEqual(["✓ 자동 저장됨"]);
   });
 
-  it("native invalid와 action reject를 inline·panel 실패로 보고하고 draft를 유지한다", async () => {
+  it("저장 실패(action reject)를 칸 아래에 알리고 draft를 유지한다", async () => {
     const statuses = vi.fn();
     const saveAction = vi.fn(async () => { throw new Error("network"); });
     const host = document.createElement("div");
@@ -106,12 +108,6 @@ describe("Issue #600 정밀도 보존 창업일 leaf", () => {
     root = createRoot(host);
     await act(async () => root?.render(<NewLeadFoundedDateCell boardId="board-a" itemId="item-a" value="2026-08" readOnly={false} saveAction={saveAction} onStatusChange={statuses} />));
     const input = host.querySelector<HTMLInputElement>('[aria-label="창업연월"]')!;
-    await act(async () => setInput(input, "2026-13"));
-    await blur(input);
-    expect(saveAction).not.toHaveBeenCalled();
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain("YYYY-MM");
-    expect(statuses.mock.calls.at(-1)).toEqual(["저장 확인 필요"]);
-
     await act(async () => setInput(input, "2026-08-27"));
     await blur(input);
     expect(saveAction).toHaveBeenCalledTimes(1);
@@ -120,25 +116,11 @@ describe("Issue #600 정밀도 보존 창업일 leaf", () => {
     expect(statuses.mock.calls.at(-1)).toEqual(["저장 확인 필요"]);
   });
 
-  it("invalid 수정 뒤 valid submit 성공은 stale constraint 오류를 남기지 않는다", async () => {
-    const statuses = vi.fn();
-    const saveAction = vi.fn(async () => ({ ok: true, message: "저장됨" }));
+  it("연도만 있는 리드는 1월 1일로 채워 보여 준다", async () => {
     const host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
-    await act(async () => root?.render(<NewLeadFoundedDateCell boardId="board-a" itemId="item-a" value="2026-08" readOnly={false} saveAction={saveAction} onStatusChange={statuses} />));
-    const input = host.querySelector<HTMLInputElement>('[aria-label="창업연월"]')!;
-
-    await act(async () => setInput(input, "2026-13"));
-    await blur(input);
-    expect(saveAction).not.toHaveBeenCalled();
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain("YYYY-MM");
-
-    await act(async () => setInput(input, "2026-08-27"));
-    expect(host.querySelector('[role="alert"]')).toBeNull();
-    await blur(input);
-    expect(saveAction).toHaveBeenCalledTimes(1);
-    expect(host.querySelector('[role="alert"]')).toBeNull();
-    expect(statuses.mock.calls.at(-1)).toEqual(["✓ 자동 저장됨"]);
+    await act(async () => root?.render(<NewLeadFoundedDateCell boardId="board-a" itemId="item-a" value="2019" readOnly={false} saveAction={vi.fn()} />));
+    expect(host.querySelector<HTMLInputElement>('[aria-label="창업연월"]')!.value).toBe("2019-01-01");
   });
 });

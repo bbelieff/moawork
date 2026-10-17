@@ -10,6 +10,7 @@ import { formatRevenue3yMillion } from "@/lib/new-lead/financial-profile";
 import { formatQuantity } from "@/lib/format/number";
 import { readRevenueYears, revenueYearsSummary } from "@/lib/new-lead/revenue-years";
 import { BOARD_TABLE_CONTROL } from "./table-style";
+import { groupIfPlainNumber } from "@/lib/format/group-digits";
 
 export function NewLeadRevenue3yCell({
   boardId,
@@ -38,7 +39,7 @@ export function NewLeadRevenue3yCell({
   const shown = numeric !== null
     ? formatQuantity(numeric)
     : typeof value === "string"
-      ? value
+      ? groupIfPlainNumber(value)
       : "";
   const legacy = typeof legacyRevenueBand === "string" ? legacyRevenueBand.trim() : "";
   /* 적힌 해만 줄여 보인다. 하나도 없으면 줄 자체가 없다 — 빈 줄이 표를 늘리지 않게. */
@@ -157,7 +158,7 @@ export function NewLeadRevenue3yCell({
           data-has-value={legacy ? "true" : undefined}
           className={BOARD_TABLE_CONTROL + " pr-14 text-right tabular-nums disabled:opacity-60"}
           onChange={(event) => {
-            const next = event.currentTarget.value;
+            const next = groupIfPlainNumber(event.currentTarget.value);
             setDraft(next);
             setConstraintError("");
             setDismissedAttempt(state.attempt);

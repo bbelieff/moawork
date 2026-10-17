@@ -30,6 +30,7 @@ import {
   subscribeToLoanRecords,
 } from "./new-lead-loan-sync";
 import { BOARD_TABLE_CONTROL } from "./table-style";
+import { groupIfPlainNumber } from "@/lib/format/group-digits";
 
 type ExistingLoanDraft = Omit<ExistingLoanRecord, "amount" | "rate"> & {
   amount: string;
@@ -295,7 +296,7 @@ function NewLeadLoanCellInner({
                         <input type="month" value={record.month} onChange={(event) => updateRecord(record.id, { month: event.target.value })} className={styles.control} />
                       </label>
                       <label className={styles.field}>금액
-                        <input inputMode="numeric" value={record.amount} onChange={(event) => updateRecord(record.id, { amount: event.target.value })} className={styles.control} placeholder="원 단위" />
+                        <input inputMode="numeric" value={record.amount} onChange={(event) => updateRecord(record.id, { amount: groupIfPlainNumber(event.target.value) })} className={styles.control} placeholder="원 단위" />
                       </label>
                       <label className={styles.field}>금리
                         <span className={styles.rateField}><input inputMode="decimal" value={record.rate} onChange={(event) => updateRecord(record.id, { rate: event.target.value })} className={styles.control} placeholder="0.0" /><span className={styles.rateSuffix}>%</span></span>

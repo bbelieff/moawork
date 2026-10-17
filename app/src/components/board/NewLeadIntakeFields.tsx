@@ -21,6 +21,7 @@ import {
   type RegionSuggestion,
 } from "@/lib/new-lead/region-search";
 import { analyzePhone, formatPhone } from "@/lib/format/phone";
+import { groupIfPlainNumber } from "@/lib/format/group-digits";
 
 const CONTROL = "h-9 w-full rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg outline-none focus:border-mw-record";
 const COMPACT_CONTROL = "h-7 w-full rounded border border-mw-line bg-mw-card px-2 text-xs text-mw-fg outline-none hover:border-mw-record focus:border-mw-record";
@@ -203,7 +204,7 @@ export function RevenueYearsField() {
               autoComplete="off"
               value={values[field.key] ?? ""}
               onChange={(event) =>
-                setValues((current) => ({ ...current, [field.key]: event.target.value }))
+                setValues((current) => ({ ...current, [field.key]: groupIfPlainNumber(event.target.value) }))
               }
               onBlur={(event) =>
                 setValues((current) => ({
