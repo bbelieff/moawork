@@ -817,6 +817,9 @@ header {
 :root section.mw-glass-group[data-visual-block] [data-mw-group-body] {
   border-bottom-left-radius: 20px;
   border-bottom-right-radius: 20px;
+  /* 공유 가로 스크롤에서는 본문이 overflow:visible(고정 칸 계약)이라 둥근 모서리로 잘리지 않는다.
+     clip-path 는 스크롤 상자를 만들지 않아 sticky 를 깨지 않고 모서리만 깎는다. */
+  clip-path: inset(0 round 0 0 20px 20px);
 }
 /* 행 유리는 base 층에 둔다 — hover·끌어 놓기 자리·고정 칸의 기존 배경 유틸리티가 그대로 이긴다. */
 @layer base {
