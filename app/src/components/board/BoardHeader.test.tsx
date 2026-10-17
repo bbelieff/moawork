@@ -51,18 +51,19 @@ const menu = () => document.querySelector<HTMLElement>('[role="menu"]');
 const menuLabels = () => [...(menu()?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? [])].map((item) => item.textContent);
 const trigger = (host: ParentNode) => host.querySelector<HTMLButtonElement>("button[data-board-tab-menu-trigger]");
 
-describe("탭 아이콘 — 선 아이콘 하나, 색 칸 없음", () => {
-  it("옛 이모지 저장값도 22px 선 아이콘으로 그리고 이모지 글자는 남기지 않는다", async () => {
+describe("탭 아이콘 — 탭 색 유리 동그라미 안의 선 아이콘 (2026-10-17 belie ①안)", () => {
+  it("옛 이모지 저장값도 선 아이콘으로 그리고 이모지 글자는 남기지 않는다", async () => {
     const { host } = await mount({ icon: "💰" });
     const header = host.querySelector('[data-visual-block="board-header"]')!;
     const icon = header.querySelector("h1 svg[data-tab-icon]");
     expect(icon?.getAttribute("data-tab-icon")).toBe("phone");
-    expect(icon?.getAttribute("width")).toBe("22");
+    expect(icon?.getAttribute("width")).toBe("19");
     expect(icon?.getAttribute("stroke")).toBe("currentColor");
     expect(icon?.getAttribute("aria-hidden")).toBe("true");
     expect(header.textContent).not.toContain("💰");
-    // 예전 색 칸(h1>span[aria-hidden]) 이 없다.
+    // 예전 이모지 색 칸 대신 탭 색 유리 동그라미(data-board-title-icon) 하나.
     expect(header.querySelector('h1 > span[aria-hidden="true"]')).toBeNull();
+    expect(header.querySelectorAll("h1 [data-board-title-icon]")).toHaveLength(1);
   });
 
   it("저장값이 없으면 탭 출처로 아이콘을 정한다", async () => {

@@ -84,7 +84,17 @@ export function BoardHeader({
         {backSlot}
 
         <h1 className="flex shrink-0 items-center gap-2 text-[length:var(--fs-18)] font-semibold tracking-[var(--ls-tight)] text-mw-fg sm:text-[length:var(--fs-22)]">
-          <TabIcon name={iconKey} size={22} style={{ color: "var(--mw-tab-icon, var(--mw-record))" }} />
+          {/* 2026-10-17(belie): 탭 아이콘을 탭 색 유리 동그라미에 담는다(①안). */}
+          <span
+            data-board-title-icon
+            className="inline-grid size-9 shrink-0 place-items-center rounded-full"
+            style={{
+              background: "linear-gradient(135deg, color-mix(in srgb, var(--mw-cta-solid, var(--mw-record)) 18%, transparent), color-mix(in srgb, var(--mw-cta-solid, var(--mw-record)) 6%, transparent))",
+              boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--mw-cta-solid, var(--mw-record)) 28%, transparent), 0 4px 14px color-mix(in srgb, var(--mw-cta-solid, var(--mw-record)) 18%, transparent)",
+            }}
+          >
+            <TabIcon name={iconKey} size={19} style={{ color: "var(--mw-tab-icon, var(--mw-record))" }} />
+          </span>
           {canEditTitle ? (
             <BoardInlineTitleEditor
               ref={titleRef}

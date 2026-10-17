@@ -1,24 +1,26 @@
 .menuRoot {
   position: relative;
 }
+/* 2026-10-17 belie «단추 통일» — 큰 유리 알약(40px): 동그란 아바타 + 이름·메일. */
 .menuButton {
   display: inline-flex;
-  min-height: 36px;
+  min-height: 40px;
   max-width: 260px;
   align-items: center;
-  gap: 10px;
-  border: 1px solid var(--mw-line);
-  border-radius: var(--mw-radius);
-  background: var(--mw-card);
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--mw-pill-bg, var(--mw-card));
+  box-shadow: var(--mw-pill-shadow-lg, none);
   color: var(--mw-fg);
-  padding: 6px 10px;
+  padding: 3px 12px 3px 3px;
   text-align: left;
 }
 
 .avatar {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   flex: none;
   place-items: center;
   border-radius: 999px;

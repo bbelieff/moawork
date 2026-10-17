@@ -248,7 +248,7 @@
   display: inline-flex;
   margin-top: 11px;
   padding: 5px 8px;
-  border-radius: 7px;
+  border-radius: 999px;
   color: var(--module-tone);
   background: color-mix(in srgb, var(--module-tone) 13%, transparent);
   font-size: 9px;

@@ -392,14 +392,14 @@ export function WorkspaceSwitcher({
             <div className={styles.divider} />
             <div className={styles.actions}>
               <button type="button" className={styles.action} data-destination={destinations.createHref} onClick={() => void navigate(destinations.createHref, "create")} disabled={!destinations.createHref || busyKey !== null}>
-                <span className={styles.actionIcon} aria-hidden="true">+</span>
+                <span className={styles.actionIcon} data-kind="create" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M10 4.5v11M4.5 10h11" /></svg></span>
                 <span className={styles.itemText}>
                   <span className={styles.name}>새 회사 만들기</span>
 
                 </span>
               </button>
               <button type="button" className={styles.action} data-destination={destinations.joinHref} onClick={() => void navigate(destinations.joinHref, "join")} disabled={!destinations.joinHref || busyKey !== null}>
-                <span className={styles.actionIcon} aria-hidden="true">↳</span>
+                <span className={styles.actionIcon} aria-hidden="true"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M11.5 3.5h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-3" /><path d="M3.5 10h8.5" /><path d="M9 6.8 12.2 10 9 13.2" /></svg></span>
                 <span className={styles.itemText}>
                   <span className={styles.name}>기존 회사에 합류하기</span>
 

@@ -73,7 +73,7 @@ export function DeveloperModeControl({
     <form action="/mode/preference" method="post" className={styles.form}>
       <input type="hidden" name="mode" value={approvedAction.mode} />
       {approvedAction.next ? <input type="hidden" name="next" value={approvedAction.next} /> : null}
-      <button type="submit" className={styles.action} data-mode-action={approvedAction.mode}>{label}</button>
+      <button type="submit" className={styles.action} data-mode-action={approvedAction.mode}><span className={styles.actionIcon} aria-hidden="true"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 2.8 15.8 5v4.6c0 3.6-2.5 6.3-5.8 7.6-3.3-1.3-5.8-4-5.8-7.6V5z"/><path d="m7.6 10 1.7 1.7 3.2-3.4"/></svg></span>{label}</button>
     </form>
   );
 

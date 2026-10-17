@@ -51,7 +51,7 @@
   min-height: 36px;
   padding: 0 12px;
   border: 1px solid var(--mw-line);
-  border-radius:var(--mw-radius);
+  border-radius: 999px;
   background: var(--mw-bg);
   color: var(--mw-fg);
   font-size: 13px;
