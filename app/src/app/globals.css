@@ -790,8 +790,10 @@ header {
   backdrop-filter: blur(22px) saturate(160%);
   box-shadow: 0 12px 34px rgb(36 60 110 / 0.10), inset 0 1px 0 rgb(255 255 255 / 0.95);
 }
+/* position 은 낮은 우선순위로만 준다 — 공유 가로 스크롤(board-scroll .groups)의 sticky 를 덮으면
+   옆으로 밀 때 그룹 제목이 함께 밀려 나간다(2026-10-17 belie 지적, #902 회귀). */
+:where(section.mw-glass-group) > details > summary { position: relative; }
 :root section.mw-glass-group[data-visual-block] > details > summary {
-  position: relative;
   border-top-left-radius: 20px;
   border-top-right-radius: 20px;
 }
@@ -819,6 +821,9 @@ header {
   border-bottom-right-radius: 20px;
   /* 공유 가로 스크롤에서는 본문이 overflow:visible(고정 칸 계약)이라 둥근 모서리로 잘리지 않는다.
      clip-path 는 스크롤 상자를 만들지 않아 sticky 를 깨지 않고 모서리만 깎는다. */
+}
+/* 칸 안 목록(시도·시군구 등 absolute 팝오버)이 카드 아래로 나갈 수 있어, 편집 중(초점 안)에는 깎지 않는다. */
+:root section.mw-glass-group[data-visual-block] [data-mw-group-body]:not(:focus-within) {
   clip-path: inset(0 round 0 0 20px 20px);
 }
 /* 행 유리는 base 층에 둔다 — hover·끌어 놓기 자리·고정 칸의 기존 배경 유틸리티가 그대로 이긴다. */

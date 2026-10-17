@@ -65,5 +65,7 @@ export function joinCanonicalRegion(
     const matched = normalizeRegion(candidate);
     if (matched) return matched;
   }
-  throw new Error("지역을 추천 목록에서 선택해 주세요. 입력은 유지됩니다.");
+  // 아카이브(222지)에 없는 전수 목록 지역(제주·세종·인천 신설 구 등)은 `시도_시군구` 그대로 저장한다.
+  // canonicalSigungu 가 이미 행정구역 전수 목록으로 검증했다.
+  return `${canonicalSidoValue}_${canonicalSigunguValue}`;
 }

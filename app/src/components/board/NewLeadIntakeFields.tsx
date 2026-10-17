@@ -22,6 +22,7 @@ import {
 import { analyzePhone, formatPhone } from "@/lib/format/phone";
 
 const CONTROL = "h-9 w-full rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg outline-none focus:border-mw-record";
+const COMPACT_CONTROL = "h-7 w-full rounded border border-mw-line bg-mw-card px-2 text-xs text-mw-fg outline-none hover:border-mw-record focus:border-mw-record";
 
 function useReset(ref: RefObject<HTMLElement | null>, reset: () => void) {
   useEffect(() => {
@@ -219,14 +220,17 @@ export function RevenueYearsField() {
   );
 }
 
-export function RegionCombobox({ name, label, value, onValue, suggestions, disabled = false, invalid = false }: {
+export function RegionCombobox({ name, label, value, onValue, suggestions, disabled = false, invalid = false, compact = false }: {
   name: string; label: string; value: string; onValue: (value: string) => void;
   suggestions: readonly RegionSuggestion[]; disabled?: boolean; invalid?: boolean;
+  /** 보드 칸 — 위 라벨을 숨기고 다른 칸과 같은 28px 높이로(2026-10-17 belie «셀 크기 낭비»). */
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const visible = suggestions.slice(0, 8);
+  // 2026-10-17(belie «전수»): 8개로 자르지 않는다 — 목록은 스크롤된다.
+  const visible = suggestions;
   const listId = `${name}-suggestions`;
   const choose = (entry: RegionSuggestion) => {
     onValue(entry.value);
@@ -234,8 +238,8 @@ export function RegionCombobox({ name, label, value, onValue, suggestions, disab
     setActive(0);
   };
   return (
-    <label className="relative grid gap-1 text-xs text-mw-sub">
-      {label}
+    <label className={compact ? "relative block text-xs" : "relative grid gap-1 text-xs text-mw-sub"}>
+      <span className={compact ? "sr-only" : undefined}>{label}</span>
       <input ref={inputRef} name={name} value={value} disabled={disabled} autoComplete="off"
         aria-label={label} aria-invalid={invalid}
         role="combobox" aria-expanded={open && visible.length > 0} aria-controls={listId}
@@ -251,10 +255,10 @@ export function RegionCombobox({ name, label, value, onValue, suggestions, disab
           if (event.key === "ArrowUp") { event.preventDefault(); setOpen(true); setActive((current) => (current - 1 + visible.length) % visible.length); }
           if (event.key === "Escape") setOpen(false);
         }}
-        className={`${CONTROL} aria-[invalid=true]:border-mw-error disabled:bg-mw-bg disabled:text-mw-sub`}
+        className={`${compact ? COMPACT_CONTROL : CONTROL} aria-[invalid=true]:border-mw-error disabled:bg-mw-bg disabled:text-mw-sub`}
         placeholder={disabled ? "시도를 먼저 선택하세요" : `${label} 또는 초성 검색`} />
       {open && visible.length > 0 ? (
-        <ul id={listId} role="listbox" className="mw-layer-page-popover absolute left-0 right-0 top-[4.2rem] max-h-56 overflow-auto rounded-lg border border-mw-line bg-mw-card p-1 shadow-xl">
+        <ul id={listId} role="listbox" className={`mw-layer-page-popover absolute left-0 right-0 ${compact ? "top-full mt-1 min-w-36" : "top-[4.2rem]"} max-h-56 overflow-auto rounded-lg border border-mw-line bg-mw-card p-1 shadow-xl`}>
           {visible.map((entry, index) => (
             <li key={entry.value} id={`${listId}-${index}`} role="option" aria-selected={index === active}
               onMouseDown={(event) => event.preventDefault()} onClick={() => choose(entry)}
