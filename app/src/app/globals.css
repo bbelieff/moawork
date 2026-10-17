@@ -865,8 +865,12 @@ header {
 }
 
 /* 테두리 있는 네모 단추(모서리 rounded·rounded-md·rounded-lg) → 알약. 표 칸·목록 선택칸·여러 줄 카드는 뺀다. */
-:is(button, a, summary)[class~="border"]:is([class~="rounded"], [class~="rounded-md"], [class~="rounded-lg"]):not(td *, th *, [role="combobox"], [role="option"], [class~="flex-col"], [class~="grid"], [data-no-pill]) {
+:is(button, a, summary)[class~="border"]:is([class~="rounded"], [class~="rounded-md"], [class~="rounded-lg"], [class*="rounded-[var(--mw-r-"]):not(td *, th *, [role="combobox"], [role="option"], [class~="flex-col"], [class~="grid"], [data-no-pill]) {
   border-radius: 999px;
+}
+/* 인라인 style 로 모서리를 준 상단바 단추(전체 검색·알림·테마 등)도 알약으로. */
+:is(button, a, summary)[class~="border"]:is([style*="border-radius: var(--mw-r-"], [style*="border-radius:var(--mw-r-"]):not(td *, th *, [data-no-pill]) {
+  border-radius: 999px !important;
 }
 /* 흰 바탕(카드색) 단추는 유리 알약 바탕·빛을 입힌다 — 색 단추(주 단추·위험)는 제 색을 지킨다. */
 :is(button, a, summary)[class~="border"][class~="bg-mw-card"]:is([class~="rounded"], [class~="rounded-md"], [class~="rounded-lg"]):not(td *, th *, [role="combobox"], [role="option"], [class~="flex-col"], [class~="grid"], [data-no-pill]):not(:disabled) {
