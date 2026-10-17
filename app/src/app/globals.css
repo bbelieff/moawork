@@ -778,7 +778,59 @@ header {
   }
   [data-theme="dark"] .mw-shell-main { margin-left: var(--mw-shell-nav-w); }
 }
-/* 사이드바 지금 탭 — 유리 위에서 떠 보이게 은은한 그림자(색은 탭 색 그대로). */
-@media (min-width: 48rem) {
-  .mw-shell-glass .mw-nav-active { box-shadow: 0 6px 18px color-mix(in srgb, var(--mw-nav-active-bg, var(--mw-record)) 28%, transparent); }
+/* ── 탭 안 보드 리퀴드 글래스 (2026-10-16 belie) ─────────────────────────────
+ * 그룹 카드 = 둥근(20px) 반투명 유리, 머리말은 그룹 색이 왼쪽에서 옅어지는 띠, 왼쪽 색 선은 모서리 곡선을 따라간다.
+ * 행은 읽기 쉽게 더 진한 유리(약 72%), 왼쪽 고정 칸은 기존대로 불투명(가로로 밀린 내용이 비치지 않게). */
+:root section.mw-glass-group[data-visual-block] {
+  position: relative;
+  border-radius: 20px;
+  border: 1px solid rgb(255 255 255 / 0.78);
+  background: color-mix(in srgb, var(--mw-card) 52%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  backdrop-filter: blur(22px) saturate(160%);
+  box-shadow: 0 12px 34px rgb(36 60 110 / 0.10), inset 0 1px 0 rgb(255 255 255 / 0.95);
+}
+:root section.mw-glass-group[data-visual-block] > details > summary {
+  position: relative;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+}
+:root section.mw-glass-group[data-visual-block] > details:not([open]) > summary {
+  border-bottom-left-radius: 20px;
+  border-bottom-right-radius: 20px;
+}
+:root section.mw-glass-group[data-visual-block] [data-mw-group-bar] {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 22px;
+  box-sizing: border-box;
+  border-left: 3px solid var(--mw-group-accent);
+  border-top-left-radius: 20px;
+  pointer-events: none;
+}
+:root section.mw-glass-group[data-visual-block] > details:not([open]) [data-mw-group-bar] { border-bottom-left-radius: 20px; }
+:root section.mw-glass-group[data-visual-block] [data-mw-group-color] {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mw-group-accent) 18%, transparent), 0 0 12px color-mix(in srgb, var(--mw-group-accent) 55%, transparent);
+}
+:root section.mw-glass-group[data-visual-block] [data-mw-group-body] {
+  border-bottom-left-radius: 20px;
+  border-bottom-right-radius: 20px;
+}
+/* 행 유리는 base 층에 둔다 — hover·끌어 놓기 자리·고정 칸의 기존 배경 유틸리티가 그대로 이긴다. */
+@layer base {
+  section.mw-glass-group [data-mw-group-body] tbody tr {
+    background: color-mix(in srgb, var(--mw-card) 72%, transparent);
+  }
+}
+:root[data-theme="dark"] section.mw-glass-group[data-visual-block] {
+  border-color: rgb(255 255 255 / 0.08);
+  box-shadow: 0 14px 40px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) section.mw-glass-group[data-visual-block] {
+    border-color: rgb(255 255 255 / 0.08);
+    box-shadow: 0 14px 40px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  }
 }
