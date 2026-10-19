@@ -18,7 +18,8 @@ export const BOARD_TABLE_CONTROL =
 export const BOARD_TABLE_TITLE_NAME =
   "h-7 min-w-0 flex-1 truncate rounded px-1 text-left text-[length:var(--fs-13)] font-semibold text-mw-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mw-primary";
 
-export const BOARD_TABLE_ROW = "h-8";
+/** 행 높이 = 보드의 사람별 설정(--mw-row-h, board-row-height.ts). 기본 34px — 한 줄. 최소 높이라 내용이 크면 그 행만 커진다. */
+export const BOARD_TABLE_ROW = "h-[var(--mw-row-h,34px)]";
 
 export const BOARD_TABLE_HEADER_CELL =
   "border-b border-r border-mw-grid-line px-2 py-1.5 text-xs font-semibold text-mw-sub";

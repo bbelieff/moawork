@@ -82,7 +82,13 @@ export function useAnchoredPosition({
     const available = placement === "bottom" ? below : above;
     const maxHeight = Math.max(96, Math.min(desiredMaxHeight, available));
     const actualHeight = Math.min(wantedHeight, maxHeight);
-    const left = Math.max(inset, Math.min(anchorRect.right - width, window.innerWidth - width - inset));
+    // 2026-10-19(belie «＋ 누르면 사이드탭에 가려짐») — 오른쪽 맞춤이 본문 왼쪽(사이드바) 밖으로 나가면
+    //   누른 단추의 왼쪽 끝에 맞춰 오른쪽으로 연다. 사이드바(층 50)가 떠 있는 화면 층(40)을 덮기 때문이다.
+    const shellLeft = anchorRef.current?.closest(".mw-shell-main")?.getBoundingClientRect().left ?? 0;
+    const minLeft = Math.max(inset, shellLeft + inset);
+    const rightAligned = anchorRect.right - width;
+    const preferred = rightAligned >= minLeft ? rightAligned : anchorRect.left;
+    const left = Math.max(minLeft, Math.min(preferred, window.innerWidth - width - inset));
     const top = placement === "bottom"
       ? Math.min(window.innerHeight - inset - actualHeight, anchorRect.bottom + gap)
       : Math.max(inset, anchorRect.top - gap - actualHeight);
