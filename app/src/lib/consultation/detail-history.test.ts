@@ -20,7 +20,7 @@ describe("readonly consultation handoff history",()=>{
     const event={...base,step:"phase",kind:"phase_changed",details:{before:{phase:"scheduled",assigneeId:"a",meetingAt:null},after:{phase:"absent",absentFromPhase:"scheduled",assigneeId:"a",meetingAt:null}}};
     expect(consultationFeedEvent(event,[]).body).toBe("상담 단계: 상담예정 → 부재(상담예정에서)");
     const back={...event,details:{before:{phase:"absent",absentFromPhase:"consulting",assigneeId:"a",meetingAt:null},after:{phase:"deliberating",assigneeId:"a",meetingAt:null}}};
-    expect(consultationFeedEvent(back,[]).body).toBe("상담 단계: 부재(상담중에서) → 미팅 후 고민 중");
+    expect(consultationFeedEvent(back,[]).body).toBe("상담 단계: 부재(상담중에서) → 계약고민");
   });
   it("is attributed to the actor and remains uneditable/unremovable even for the owner",()=>{
     const viewer={viewerId:"actor",viewerRole:"owner",assignedTo:"actor"};

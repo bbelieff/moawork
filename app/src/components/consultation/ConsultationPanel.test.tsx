@@ -446,7 +446,7 @@ describe("ConsultationPanel", () => {
   it("remote phase choice includes the in-person appointment transition", async () => {
     await renderPanel({ stage: "remote", version: 3 });
     const select = container!.querySelector('[aria-label="상담 단계"]') as HTMLSelectElement;
-    expect([...select.options].map((option) => option.text)).toEqual(["정보수집","상담예정","상담중","부재","보류","거절","재상담","계약 진행","대면상담예약"]);
+    expect([...select.options].map((option) => option.text)).toEqual(["정보수집","상담예정","상담중","부재","재상담","계약고민","보류","거절","계약 진행","→ 대면 상담으로 (미팅대기)"]);
     await act(async () => { select.value = "meeting_scheduled"; select.dispatchEvent(new Event("change", { bubbles: true })); });
     await act(async () => [...container!.querySelectorAll("button")].find((b) => b.textContent === "단계 저장")!.click());
     const form = consultationActions.mutateWorkflow.mock.calls[0][1] as FormData;
@@ -454,10 +454,10 @@ describe("ConsultationPanel", () => {
     expect(form.get("meetingAt")).toBeTruthy(); expect(form.get("assigneeId")).toBe("user-1");
   });
 
-  it("167: in-person choices include 미팅취소 · 미팅 후 고민 중", async () => {
+  it("177: in-person choices are 미팅대기 · 계약 · 완료 · 변경 · 취소", async () => {
     await renderPanel({ stage: "inperson", version: 3 });
     const select = container!.querySelector('[aria-label="상담 단계"]') as HTMLSelectElement;
-    expect([...select.options].map((option) => option.text)).toEqual(["대면상담예약","미팅완료","미팅취소","미팅 후 고민 중","계약 진행"]);
+    expect([...select.options].map((option) => option.text)).toEqual(["미팅대기","계약","완료","변경","취소"]);
   });
 
   it("167: 부재 저장은 일정 초안이 비어 있어도 그대로 보낸다", async () => {
